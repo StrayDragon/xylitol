@@ -10,7 +10,7 @@ use std::sync::Arc;
 
 use serde_json::Value;
 
-use crate::domain::session_types::{MessageEntry, SessionEntry};
+use crate::domain::session_types::{MessageEntry, SessionEntry, message_role};
 use crate::domain::text::xml_escape;
 use crate::runtime_protocol::{XyExportIo, XySessionStore};
 
@@ -117,6 +117,19 @@ fn render_entry_html(entry: &SessionEntry) -> String {
             "header",
             &format!("session {} (v{}) @ {}", h.id, h.version, h.timestamp),
         ),
+        SessionEntry::Message(m) if message_role(&m.message) == Some("bashExecution") => {
+            let cmd = m
+                .message
+                .get("command")
+                .and_then(|v| v.as_str())
+                .unwrap_or("");
+            let out = m
+                .message
+                .get("output")
+                .and_then(|v| v.as_str())
+                .unwrap_or("");
+            block("bash", &format!("$ {cmd}\n{out}"))
+        }
         SessionEntry::Message(m) => block("message", &render_message(m)),
         SessionEntry::Compaction(c) => block(
             "compaction",

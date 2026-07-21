@@ -61,7 +61,7 @@ D  God 文件拆分（react / driver / session）
    └─ driver D5–D7 已完成
    └─ react / session 大拆：默认不做（见 §D 决议）；D11 已分诊待确认
 E  runtime_protocol RPITIT               ← **已关闭（α）**：dyn 全覆盖，维持 async_trait
-F  孪生类型与 domain↔packages 边界     ← **已冻结**：禁止 domain→bridge；孪生为缝税；F4 取消
+F  孪生类型与 domain↔packages 边界     ← **c1210**：compose bridge DTO；消息孪生已删
 G  观测 kind 打尖                        ← 可与 B 并行或紧随
 ```
 
@@ -499,68 +499,53 @@ step(phase, ctx) -> (next, Vec<XyEvent>)   // 或 mpsc，由薄 async_stream 只
 
 ### 背景
 
-- `src/infra/provider/map.rs` 对若干叶做近 1:1 `From` / 字段映射（domain ∥ `AiBridge*`）。
-- 早先意向曾写「叶 SSOT 迁 bridge，`AgentMessage::Llm(bridge类型)`」——与 **domain 准可独立成包** 冲突。
+- 曾有 `domain::LlmMessage` ∥ `AiBridgeMessage` 近 1:1 孪生 + `infra/provider/map.rs` 叶映射。
+- **c1210** 解冻：LLM 叶 SSOT 迁 bridge；domain **组合**之；消息孪生表删除。
 
-### 边界心智（2026-07-21 冻结）
+### 边界心智（c1210 后）
 
 | 侧 | 职责 | 开闭 |
 |---|---|---|
-| **`src/domain`** | 业务需要的类型（session 真源、Env、投影前 LLM 词汇） | 对业务扩展开闭；**不**依赖 packages |
-| **`packages/xylitol-ai-bridge`** | 跨厂商通用适配 / 计量 / LLM 边 DTO | 对厂商/方言开闭；**不**依赖主仓 / domain |
-| **`infra/provider/map`** | 两边之间的缝 | 唯一允许「认识双方」的薄映射 |
-
-因此：
+| **`src/domain`** | session 真源：`AgentMessage = Llm(AiBridgeMessage) \| Env`；Env / session / trust | MAY 依赖 bridge **DTO only**；禁 HTTP/SDK |
+| **`packages/xylitol-ai-bridge`** | LLM 叶 SSOT + 方言 adapter / 计量 | 对厂商开闭；不依赖主仓 |
+| **`infra/provider/map`** | chunk / tool-schema / provenance 等真边界缝；**消息 = identity** | 薄 |
 
 ```text
-domain::AgentMessage::Llm(domain::LlmMessage) | Env(EnvMessage)
-        │  project_for_llm（domain）
+domain::AgentMessage::Llm(AiBridgeMessage) | Env(EnvMessage)
+        │  project_for_llm（passthrough Llm；fold Env）
         ▼
-infra::provider::map  →  AiBridge*（packages）
-        ▼
-dialect adapters
+Vec<AiBridgeMessage> → dialect adapters
 ```
 
-**不是** `Llm(bridge::…)`——那会让 domain 嵌 packages，破坏「只关心自己 / 准迁出独立 package」。
-
-### 归属表（冻结）
+### 归属表
 
 | 类型 | 归属 | 说明 |
 |---|---|---|
-| `LlmMessage` / Part / StopReason / Usage（session 形状） | **domain** | 业务真源 |
-| `EnvMessage` / `AgentMessage` | **domain** | 组合在 domain；Env 不进 bridge |
+| `AiBridgeMessage` / Part / StopReason / Usage | **bridge**（domain `pub use` 别名） | LLM 叶 SSOT |
+| `EnvMessage` / `AgentMessage` | **domain** | 组合；Env 不进 bridge |
 | session / trust / queue / AgentState | **domain** | 与 bridge 无关 |
-| `AiBridge*` + accounting 叶 | **bridge** | 适配器/计量自洽；可与 domain 同形 |
-| 边界孪生 | **可接受的缝税** | 由 map 承担；靠纪律防无必要双份 |
+| chunk / provenance 若仍双份 | **map 缝** | 仅真边界差 |
 
-### 要做（分阶段）
+### 要做
 
-**现阶段（仅 src）**
+- [x] **F1–F3** 旧「禁 domain→bridge + 孪生留缝」文档（已被 c1210 取代）。
+- [x] **F4** domain 组合 bridge DTO + 删消息孪生 — **c1210**。
+- [x] **F5** `map.rs` 消息路径 identity；chunk/tool 保留薄 map。
+- [x] **F6** bridge / 主仓 AGENTS 与本决议一致。
 
-- [x] **F1** 归属 / 边界心智写入 `src/AGENTS.md`「Provider 适配」。
-- [x] **F2** 禁止无必要孪生；新叶先定 domain vs bridge（已写入 AGENTS）。
-- [x] **F3** `map.rs` 顶部保留映射索引（现为**长期缝**清单，而非「待删 SSOT 搬迁清单」）。
+### 决议
 
-**后置 / 非目标**
-
-- [x] **F4** ~~叶 SSOT 迁 bridge + domain 依赖 dto~~ — **取消**（与 domain 可迁出冲突）。
-- [ ] **F5**（可选）在不改变归属的前提下把 `map.rs` 写得更薄/更表驱动；**不**追求消灭孪生。
-- [ ] **F6** 若 bridge AGENTS 仍暗示「domain 组合库类型」，改为与本决议一致（packages 后置改文档时）。
-
-### 决议（冻结）
-
-- 是否接受 `domain → xylitol-ai-bridge(dto)`：**no**。
-- 备选：**保持边界孪生 + `infra` map**；拒绝为消孪生抽第三 `*-types` crate（除非未来同时抽 `xylitol-domain` 包且另议共享叶——默认不做）。
-- domain 开闭：业务词汇与 `AgentMessage` 组合留在 domain；厂商差异留在 bridge。
+- `domain → xylitol-ai-bridge(dto)`：**yes（仅 DTO）**。
+- 拒绝抽第三 `*-types` crate（除非另议迁出 `xylitol-domain`）。
+- bang-bash 新写：`type=message` + `role=bashExecution`；旧顶层 bash 读提升。
 
 ### 验收
 
-- domain **零** packages 依赖；Env 永不进 bridge DTO；`AgentMessage` 仍为 session 真源；新叶有明确归属。
+- 无平行 domain `LlmMessage` enum 体；`project_for_llm` → `Vec<AiBridgeMessage>`；Env 永不进 bridge DTO；相关单测绿。
 
 ### 风险 / SDD
 
-- F1–F4 决议 / 文档 → **不走 SDD**。
-- 若将来真抽 `xylitol-domain` 包：仍 **禁止** 依赖 ai-bridge；map 留在主仓或 thin 装配 crate。
+- 行为合约 → **c1210-refactor-compose-bridge-llm**。
 
 ---
 
@@ -614,6 +599,7 @@ dialect adapters
 | 2026-07-21 | agent | §F1–F3 | AGENTS 叶归属表 + 禁新增孪生；`map.rs` 待删映射索引；**F4 domain→bridge 仍待决** |
 | 2026-07-21 | agent | docs | commit `bf7c7a45`（F1–F3） |
 | 2026-07-21 | agent | §F 决议 | **拒绝** `domain→bridge`；domain 业务自洽/准迁出；bridge 通用适配；孪生留在 `infra/map` 缝；F4 取消 |
+| 2026-07-21 | agent | §F / c1210 | **解冻**：compose `Llm(AiBridgeMessage)`；消息孪生 map 删除；bash 嵌 message |
 |  |  |  |  |
 
 ---

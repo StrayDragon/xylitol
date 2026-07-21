@@ -1,5 +1,5 @@
 //! Session entry vocabulary — the shared data types describing a session's
-//! persisted entries. Aligns with pi's SessionEntry interfaces.
+//! persisted entries.
 //!
 //! Pure vocabulary (serde types only): both `agent` (compaction, export) and
 //! `infra` (session manager, persistence) reference these. The storage-backend
@@ -8,6 +8,8 @@
 
 use serde::{Deserialize, Serialize};
 use serde_json::Value;
+
+use super::message::{AgentMessage, EnvMessage};
 
 /// Current session format version.
 /// v3: legacy (no id/parentId tree)
@@ -299,6 +301,117 @@ impl SessionEntry {
     pub fn parent_id(&self) -> Option<&str> {
         self.base().and_then(|b| b.parent_id.as_deref())
     }
+
+    /// Convert a persisted entry into an [`AgentMessage`] for context / ReAct seed.
+    ///
+    /// Includes: Message (all roles), compaction / branch summaries as Env,
+    /// legacy top-level `BashExecution` lifted to Env bash. Honors
+    /// `exclude_from_context` (returns `None`). Non-context entry kinds → `None`.
+    pub fn as_agent_message(&self) -> Option<AgentMessage> {
+        match self {
+            SessionEntry::Message(msg) => {
+                match serde_json::from_value::<AgentMessage>(msg.message.clone()) {
+                    Ok(agent_msg) => {
+                        if agent_msg_excluded_from_context(&agent_msg) {
+                            return None;
+                        }
+                        Some(agent_msg)
+                    }
+                    Err(e) => {
+                        log::warn!(target: "xylitol::session", "skip message entry: AgentMessage deserialize failed (c646 tagged wire only) error={}", e);
+                        None
+                    }
+                }
+            }
+            SessionEntry::BashExecution(b) => {
+                // Legacy top-level bash → Env bash (c1210 read lift).
+                if b.exclude_from_context {
+                    return None;
+                }
+                Some(lift_bash_execution_entry(b))
+            }
+            SessionEntry::Compaction(c) => {
+                Some(AgentMessage::Env(EnvMessage::CompactionSummaryMessage {
+                    summary: c.summary.clone(),
+                    tokens_before: c.tokens_before,
+                    tokens_after: 0,
+                    read_files: None,
+                    modified_files: None,
+                }))
+            }
+            SessionEntry::BranchSummary(b) => {
+                Some(AgentMessage::Env(EnvMessage::BranchSummaryMessage {
+                    summary: b.summary.clone(),
+                    from_id: b.from_id.clone(),
+                }))
+            }
+            SessionEntry::CustomMessage(cm) => {
+                if !cm.display {
+                    return None;
+                }
+                Some(AgentMessage::Env(EnvMessage::CustomMessage {
+                    custom_type: cm.custom_type.clone(),
+                    content: cm.content.clone(),
+                    display: Value::Bool(cm.display),
+                    details: cm.details.clone().unwrap_or(Value::Null),
+                }))
+            }
+            _ => None,
+        }
+    }
+}
+
+fn agent_msg_excluded_from_context(msg: &AgentMessage) -> bool {
+    matches!(
+        msg,
+        AgentMessage::Env(EnvMessage::BashExecutionMessage {
+            exclude_from_context: true,
+            ..
+        })
+    )
+}
+
+/// Lift a legacy top-level [`BashExecutionEntry`] to Env bash [`AgentMessage`].
+pub fn lift_bash_execution_entry(b: &BashExecutionEntry) -> AgentMessage {
+    AgentMessage::Env(EnvMessage::BashExecutionMessage {
+        command: b.command.clone(),
+        output: b.output.clone(),
+        exit_code: b.exit_code,
+        cancelled: b.cancelled,
+        truncated: b.truncated,
+        full_output_path: b.full_output_path.clone(),
+        exclude_from_context: b.exclude_from_context,
+    })
+}
+
+/// Build a nested bash `SessionEntry::Message` for new bang writes (c1210 / be4).
+pub fn bash_execution_message_entry(
+    command: impl Into<String>,
+    output: impl Into<String>,
+    exit_code: Option<i32>,
+    cancelled: bool,
+    truncated: bool,
+    full_output_path: Option<String>,
+    exclude_from_context: bool,
+) -> SessionEntry {
+    let message = AgentMessage::Env(EnvMessage::BashExecutionMessage {
+        command: command.into(),
+        output: output.into(),
+        exit_code,
+        cancelled,
+        truncated,
+        full_output_path,
+        exclude_from_context,
+    });
+    SessionEntry::Message(MessageEntry {
+        base: EntryBase {
+            entry_type: "message".into(),
+            id: String::new(),
+            parent_id: None,
+            timestamp: String::new(),
+        },
+        message: serde_json::to_value(&message).unwrap_or(Value::Null),
+    })
 }
 
 // ── Message entry helpers ───────────────────────────────────────────

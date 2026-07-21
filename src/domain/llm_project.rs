@@ -2,12 +2,13 @@
 //!
 //! [`AgentMessage`] remains the session SSOT (`Llm` ∪ `Env`). Before any
 //! provider call, history MUST pass through [`project_for_llm`].
+//! Llm arm is passthrough (`LlmMessage` ≡ bridge `AiBridgeMessage`).
 
 use serde_json::Value;
 
-use super::message::{AgentMessage, EnvMessage, LlmMessage, now_ms};
+use super::message::{AgentMessage, AgentPart, EnvMessage, LlmMessage, now_ms};
 
-/// Project session history into LLM-visible [`LlmMessage`] rows.
+/// Project session history into LLM-visible [`LlmMessage`] / `AiBridgeMessage` rows.
 pub fn project_for_llm(messages: &[AgentMessage]) -> Vec<LlmMessage> {
     let mut out = Vec::with_capacity(messages.len());
     for msg in messages {
@@ -44,7 +45,7 @@ pub fn project_for_llm(messages: &[AgentMessage]) -> Vec<LlmMessage> {
 
 fn user_text(text: String) -> LlmMessage {
     LlmMessage::UserMessage {
-        content: vec![super::message::AgentPart::text(text)],
+        content: vec![AgentPart::text(text)],
         timestamp: now_ms(),
     }
 }
@@ -82,6 +83,7 @@ mod tests {
             exit_code: None,
             cancelled: false,
             truncated: false,
+            full_output_path: None,
             exclude_from_context: true,
         })];
         assert!(project_for_llm(&history).is_empty());
@@ -139,5 +141,14 @@ mod tests {
         assert!(projected[0].text().contains("Successfully replaced"));
         assert!(!projected[0].text().contains("display_diff"));
         assert!(!projected[0].text().contains("big-diff-wall"));
+    }
+
+    #[test]
+    fn llm_passthrough_is_identity() {
+        let user = AgentMessage::user("hi");
+        let projected = project_for_llm(std::slice::from_ref(&user));
+        assert_eq!(projected.len(), 1);
+        // Same type as bridge DTO (alias).
+        let _: xylitol_ai_bridge::dto::AiBridgeMessage = projected[0].clone();
     }
 }

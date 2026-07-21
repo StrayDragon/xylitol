@@ -1,6 +1,6 @@
-//! Domain vocabulary — zero-dependency layer containing the fundamental data
-//! types, errors, and pure utilities shared by [`agent`](crate::agent),
-//! [`infra`](crate::infra), and [`runtime_protocol`](crate::runtime_protocol).
+//! Domain vocabulary — fundamental data types, errors, and pure utilities
+//! shared by [`agent`](crate::agent), [`infra`](crate::infra), and
+//! [`runtime_protocol`](crate::runtime_protocol).
 //!
 //! # Layering
 //!
@@ -10,10 +10,12 @@
 //!                        domain/
 //! ```
 //!
-//! - `domain/` depends on **nothing** else in the crate (only external crates).
+//! - `domain/` has **zero crate-internal** layer deps; MAY depend on workspace
+//!   package **DTO only** (`xylitol_ai_bridge::dto`) to compose LLM leaves.
 //! - `runtime_protocol/` depends only on `domain/`.
 //! - Both `agent/` and `infra/` depend on `domain/` + `runtime_protocol/`.
 //! - `infra/` must **never** depend on `agent/`.
+//! - domain/agent MUST NOT depend on bridge HTTP / vendor SDK types.
 
 pub mod compaction_config;
 pub mod error;

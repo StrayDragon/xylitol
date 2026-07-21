@@ -1,36 +1,27 @@
-//! [`LlmMessage`] ↔ xylitol-ai-bridge DTO mapping (c1030 / c1070).
+//! Provider boundary maps (c1210: LLM messages are identity / passthrough).
 //!
 //! Session vocabulary stays on [`AgentMessage`] (`Llm` ∪ `Env`). Bridge DTOs
 //! are LLM-only; [`crate::domain::llm_project::project_for_llm`] folds Env
-//! first. This module maps [`LlmMessage`] ↔ package DTOs for the provider path.
+//! first. `LlmMessage` is a type alias of [`AiBridgeMessage`], so message maps
+//! are identity.
 //!
-//! ## Boundary seam（长期；非「迁 SSOT 后删除」）
-//!
-//! domain 与 packages 各自自洽：业务叶在 domain，适配器叶在 bridge。
-//! 本文件是主仓唯一应认识双方的薄缝。Hand-written maps（勿无故加长）：
+//! Remaining hand-written maps (true boundary seams):
 //! - `TokenProvenance` / `ContextTokenEstimate` — `From` bridge → domain
-//! - `to_bridge_llm_message` / `to_bridge_part` / `to_bridge_image` / `to_bridge_diagnostic`
-//! - `to_bridge_stop_reason` / `to_bridge_usage`（及反向 `to_xy_*`）
-//! - chunk / tool-schema 边界转换
+//! - chunk / tool-schema / error boundary conversion
 //!
-//! Keep: `project_for_llm` 入口、`to_bridge_messages`、Env 误入 bridge 的错误路径。
-//! Ownership: `src/AGENTS.md`「Provider 适配」；计划：`src/_TODO.md` §F（**禁止** domain→bridge）。
+//! Ownership: `src/AGENTS.md`「Provider 适配」；`src/_TODO.md` §F.
 
 use futures::StreamExt;
 use xylitol_ai_bridge::dto::{
-    AiBridgeChunk, AiBridgeImageContent, AiBridgeMessage, AiBridgePart, AiBridgeStopReason,
-    AiBridgeStream, AiBridgeToolSchema, AiBridgeUsage, AiBridgeUsageCost,
-    ContextTokenEstimate as AiBridgeContextTokenEstimate, Diagnostic as AiBridgeDiagnostic,
+    AiBridgeChunk, AiBridgeMessage, AiBridgeStream, AiBridgeToolSchema,
+    ContextTokenEstimate as AiBridgeContextTokenEstimate,
     TokenProvenance as AiBridgeTokenProvenance,
 };
 use xylitol_ai_bridge::error::AiBridgeError;
 
 use crate::domain::error::XyError;
 use crate::domain::llm_project::project_for_llm;
-use crate::domain::message::{
-    AgentMessage, AgentPart, Diagnostic, ImageContent, LlmMessage, XyStopReason, XyUsage,
-    XyUsageCost,
-};
+use crate::domain::message::{AgentMessage, LlmMessage, XyUsage};
 use crate::domain::types::{ContextTokenEstimate, TokenProvenance, XyChunk, XyToolSchema};
 use crate::runtime_protocol::XyStream;
 
@@ -58,18 +49,15 @@ impl From<AiBridgeContextTokenEstimate> for ContextTokenEstimate {
     }
 }
 
-/// Project session messages then map to LLM bridge DTOs (provider entry).
+/// Project session messages to LLM bridge DTOs (provider entry).
 pub fn to_bridge_messages(messages: Vec<AgentMessage>) -> Result<Vec<AiBridgeMessage>, XyError> {
-    Ok(project_for_llm(&messages)
-        .into_iter()
-        .map(to_bridge_llm_message)
-        .collect())
+    Ok(project_for_llm(&messages))
 }
 
-/// Map a single [`LlmMessage`] (or LLM-role [`AgentMessage`]) to bridge DTO.
+/// Map a single LLM-role [`AgentMessage`] to bridge DTO (identity on Llm arm).
 pub fn to_bridge_message(msg: AgentMessage) -> Result<AiBridgeMessage, XyError> {
     match msg {
-        AgentMessage::Llm(m) => Ok(to_bridge_llm_message(m)),
+        AgentMessage::Llm(m) => Ok(m),
         AgentMessage::Env(e) => Err(XyError::Provider(anyhow::anyhow!(
             "to_bridge_message expects Llm after projection; got Env {}",
             e.role_name()
@@ -77,101 +65,10 @@ pub fn to_bridge_message(msg: AgentMessage) -> Result<AiBridgeMessage, XyError> 
     }
 }
 
+/// Identity: [`LlmMessage`] ≡ [`AiBridgeMessage`].
+#[inline]
 pub fn to_bridge_llm_message(msg: LlmMessage) -> AiBridgeMessage {
-    match msg {
-        LlmMessage::UserMessage { content, timestamp } => AiBridgeMessage::UserMessage {
-            content: content.into_iter().map(to_bridge_part).collect(),
-            timestamp,
-        },
-        LlmMessage::AssistantMessage {
-            content,
-            stop_reason,
-            usage,
-            api,
-            provider,
-            model,
-            response_id,
-            error_message,
-            timestamp,
-            diagnostics,
-        } => AiBridgeMessage::AssistantMessage {
-            content: content.into_iter().map(to_bridge_part).collect(),
-            stop_reason: stop_reason.map(to_bridge_stop_reason),
-            usage: usage.as_ref().map(to_bridge_usage),
-            api,
-            provider,
-            model,
-            response_id,
-            error_message,
-            timestamp,
-            diagnostics: diagnostics.into_iter().map(to_bridge_diagnostic).collect(),
-        },
-        LlmMessage::ToolResultMessage {
-            tool_use_id,
-            tool_name,
-            content,
-            details,
-            is_error,
-            timestamp,
-        } => AiBridgeMessage::ToolResultMessage {
-            tool_use_id,
-            tool_name,
-            content: content.into_iter().map(to_bridge_part).collect(),
-            details,
-            is_error,
-            timestamp,
-        },
-    }
-}
-
-fn to_bridge_part(part: AgentPart) -> AiBridgePart {
-    match part {
-        AgentPart::Text { text } => AiBridgePart::Text { text },
-        AgentPart::Image(img) => AiBridgePart::Image(to_bridge_image(img)),
-        AgentPart::Thinking {
-            thinking,
-            redacted,
-            thinking_signature,
-        } => AiBridgePart::Thinking {
-            thinking,
-            redacted,
-            thinking_signature,
-        },
-        AgentPart::ToolCall {
-            id,
-            name,
-            arguments,
-        } => AiBridgePart::ToolCall {
-            id,
-            name,
-            arguments,
-        },
-    }
-}
-
-fn to_bridge_image(img: ImageContent) -> AiBridgeImageContent {
-    AiBridgeImageContent {
-        url: img.url,
-        data: img.data,
-        media_type: img.media_type,
-    }
-}
-
-fn to_bridge_diagnostic(d: Diagnostic) -> AiBridgeDiagnostic {
-    AiBridgeDiagnostic {
-        message: d.message,
-        source: d.source,
-    }
-}
-
-fn to_bridge_stop_reason(r: XyStopReason) -> AiBridgeStopReason {
-    match r {
-        XyStopReason::Stop => AiBridgeStopReason::Stop,
-        XyStopReason::MaxTokens => AiBridgeStopReason::MaxTokens,
-        XyStopReason::Error => AiBridgeStopReason::Error,
-        XyStopReason::Aborted => AiBridgeStopReason::Aborted,
-        XyStopReason::ToolUse => AiBridgeStopReason::ToolUse,
-    }
+    msg
 }
 
 pub fn to_bridge_tools(tools: &[XyToolSchema]) -> Vec<AiBridgeToolSchema> {
@@ -200,50 +97,9 @@ pub fn to_bridge_error(err: XyError) -> AiBridgeError {
     }
 }
 
-fn to_xy_stop_reason(r: AiBridgeStopReason) -> XyStopReason {
-    match r {
-        AiBridgeStopReason::Stop => XyStopReason::Stop,
-        AiBridgeStopReason::MaxTokens => XyStopReason::MaxTokens,
-        AiBridgeStopReason::Error => XyStopReason::Error,
-        AiBridgeStopReason::Aborted => XyStopReason::Aborted,
-        AiBridgeStopReason::ToolUse => XyStopReason::ToolUse,
-    }
-}
-
-fn to_xy_usage(u: AiBridgeUsage) -> XyUsage {
-    XyUsage {
-        input: u.input,
-        output: u.output,
-        cache_read: u.cache_read,
-        cache_write: u.cache_write,
-        cache_write_1h: u.cache_write_1h,
-        total_tokens: u.total_tokens,
-        cost: u.cost.map(|c| XyUsageCost {
-            input: c.input,
-            output: c.output,
-            cache_read: c.cache_read,
-            cache_write: c.cache_write,
-            total: c.total,
-        }),
-    }
-}
-
-pub fn to_bridge_usage(u: &XyUsage) -> AiBridgeUsage {
-    AiBridgeUsage {
-        input: u.input,
-        output: u.output,
-        cache_read: u.cache_read,
-        cache_write: u.cache_write,
-        cache_write_1h: u.cache_write_1h,
-        total_tokens: u.total_tokens,
-        cost: u.cost.map(|c| AiBridgeUsageCost {
-            input: c.input,
-            output: c.output,
-            cache_read: c.cache_read,
-            cache_write: c.cache_write,
-            total: c.total,
-        }),
-    }
+/// Identity clone (usage types are aliases).
+pub fn to_bridge_usage(u: &XyUsage) -> xylitol_ai_bridge::dto::AiBridgeUsage {
+    *u
 }
 
 pub fn to_xy_chunk(chunk: AiBridgeChunk) -> XyChunk {
@@ -274,8 +130,8 @@ pub fn to_xy_chunk(chunk: AiBridgeChunk) -> XyChunk {
             finish_reason,
             usage,
         } => XyChunk::Done {
-            finish_reason: to_xy_stop_reason(finish_reason),
-            usage: usage.map(to_xy_usage),
+            finish_reason,
+            usage,
         },
     }
 }
@@ -287,7 +143,8 @@ pub fn to_xy_stream(stream: AiBridgeStream) -> XyStream {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::domain::message::AgentMessage;
+    use crate::domain::message::{AgentMessage, XyStopReason};
+    use xylitol_ai_bridge::dto::{AiBridgeStopReason, AiBridgeUsage};
 
     #[test]
     fn llm_user_maps_to_bridge() {
