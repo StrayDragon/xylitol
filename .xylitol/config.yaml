@@ -196,3 +196,13 @@ mcp_servers:
     transport: stdio
     command: "{{ vars.home }}/.cargo/bin/lspz"
     args: ["mcp"]
+
+# Optional OTLP → Langfuse (c1475). Keys in secret.env (LANGFUSE_*).
+# Default exporter is none; set otlp-http to export.
+otel:
+  exporter: otlp-http
+  protocol: http-json
+  environment: dev
+  service_name: xylitol
+  # endpoint omitted → LANGFUSE_BASE_URL + /api/public/otel/v1/traces
+  # (with_endpoint is used as-is; we append /v1/traces if missing)
