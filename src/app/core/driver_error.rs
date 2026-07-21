@@ -106,17 +106,61 @@ impl XyDriverError {
     pub fn message(msg: impl Into<String>) -> Self {
         Self::Message(msg.into())
     }
+
+    /// Best-effort classify an opaque upstream string into a typed variant.
+    ///
+    /// Unknown strings stay [`Self::Message`] so Display text is unchanged.
+    /// Matched strings keep the original body and add a kind prefix via Display.
+    pub fn from_opaque(msg: impl Into<String>) -> Self {
+        let msg = msg.into();
+        let lower = msg.to_ascii_lowercase();
+        if lower.contains("not found")
+            || lower.contains("no active session")
+            || lower.contains("does not exist")
+            || lower.contains("no such file")
+            || lower.contains("no such session")
+            || lower.contains("no models available")
+        {
+            Self::NotFound(msg)
+        } else if lower.contains("not implemented")
+            || lower.contains("unsupported")
+            || lower.contains("not supported")
+        {
+            Self::Unsupported(msg)
+        } else if lower.contains("invalid")
+            || lower.contains("unknown ")
+            || lower.starts_with("usage:")
+            || lower.contains("unavailable")
+        {
+            Self::InvalidInput(msg)
+        } else if lower.contains("permission denied")
+            || lower.contains("i/o")
+            || lower.contains("io error")
+            || lower.contains("failed to read")
+            || lower.contains("failed to write")
+            || lower.contains("filesystem")
+            || lower.contains("disk ")
+            || lower.contains("clipboard")
+            || lower.contains("trust store write")
+        {
+            Self::Io(msg)
+        } else if lower.starts_with("remote:") || lower.contains("server error") {
+            Self::Remote(msg)
+        } else {
+            Self::Message(msg)
+        }
+    }
 }
 
 impl From<String> for XyDriverError {
     fn from(value: String) -> Self {
-        Self::Message(value)
+        Self::from_opaque(value)
     }
 }
 
 impl From<&str> for XyDriverError {
     fn from(value: &str) -> Self {
-        Self::Message(value.to_string())
+        Self::from_opaque(value)
     }
 }
 
@@ -142,9 +186,31 @@ mod tests {
 
     #[test]
     fn kind_and_display_message() {
-        let err = XyDriverError::message("session not found: abc");
+        let err = XyDriverError::message("opaque note");
         assert_eq!(err.kind(), "Message");
-        assert_eq!(err.to_string(), "session not found: abc");
+        assert_eq!(err.to_string(), "opaque note");
+    }
+
+    #[test]
+    fn from_opaque_classifies_common_shapes() {
+        let nf: XyDriverError = "session not found: abc".into();
+        assert_eq!(nf.kind(), "NotFound");
+        assert!(nf.to_string().contains("session not found: abc"));
+
+        let un: XyDriverError = "session tree kind 'file_browser' is not implemented".into();
+        assert_eq!(un.kind(), "Unsupported");
+        assert!(un.to_string().contains("file_browser"));
+
+        let inv: XyDriverError = "unknown theme `x`".into();
+        assert_eq!(inv.kind(), "InvalidInput");
+
+        let io: XyDriverError = "clipboard image task failed: boom".into();
+        assert_eq!(io.kind(), "Io");
+
+        let msg: XyDriverError =
+            "This session has not been saved yet. Wait for the first assistant response.".into();
+        assert_eq!(msg.kind(), "Message");
+        assert!(msg.to_string().contains("not been saved yet"));
     }
 
     #[test]

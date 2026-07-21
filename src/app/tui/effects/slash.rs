@@ -10,7 +10,7 @@ use super::super::bridge::UiEntry;
 use super::super::commands::PendingSlash;
 use super::super::host::HostSession;
 use super::super::keybindings::ReloadOutcome;
-use super::helpers::format_session_stats_dump;
+use super::helpers::{format_session_stats_dump, note_driver_err};
 
 fn last_assistant_text(entries: &[UiEntry]) -> Option<&str> {
     entries.iter().rev().find_map(|e| match e {
@@ -125,7 +125,7 @@ pub(super) async fn handle_slash<T: Terminal>(
                 log::info!(target: "xylitol::tui", "XyDriver::load_debug_scene scene={}", scene);
                 match driver.load_debug_scene(&scene).await {
                     Ok(load) => session.apply_debug_scene(load),
-                    Err(e) => session.push_system_note(e.to_string()),
+                    Err(e) => note_driver_err(session, "tui.load_debug_scene", &e, e.to_string()),
                 }
             }
             let _ = session.render_now();
@@ -249,7 +249,12 @@ pub(super) async fn handle_slash<T: Terminal>(
                     }
                     Err(e) => {
                         session.close_session_resume_slot();
-                        session.push_system_note(format!("/session-resume failed: {e}"));
+                        note_driver_err(
+                            session,
+                            "tui.list_sessions",
+                            &e,
+                            format!("/session-resume failed: {e}"),
+                        );
                     }
                 }
             }
@@ -263,10 +268,19 @@ pub(super) async fn handle_slash<T: Terminal>(
                 match driver.new_session().await {
                     Ok(sid) => match driver.get_messages().await {
                         Ok(entries) => session.apply_new_session(&sid, entries),
-                        Err(e) => session
-                            .push_system_note(format!("new session: get_messages failed: {e}")),
+                        Err(e) => note_driver_err(
+                            session,
+                            "tui.session_new.get_messages",
+                            &e,
+                            format!("new session: get_messages failed: {e}"),
+                        ),
                     },
-                    Err(e) => session.push_system_note(format!("/session-new failed: {e}")),
+                    Err(e) => note_driver_err(
+                        session,
+                        "tui.new_session",
+                        &e,
+                        format!("/session-new failed: {e}"),
+                    ),
                 }
             }
             let _ = session.render_now();
@@ -288,16 +302,26 @@ pub(super) async fn handle_slash<T: Terminal>(
                             Ok(child_id) => match driver.switch_session(&child_id).await {
                                 Ok(_) => match driver.get_messages().await {
                                     Ok(entries) => session.apply_clone_session(&child_id, entries),
-                                    Err(e) => session.push_system_note(format!(
-                                        "clone: get_messages failed: {e}"
-                                    )),
+                                    Err(e) => note_driver_err(
+                                        session,
+                                        "tui.session_clone.get_messages",
+                                        &e,
+                                        format!("clone: get_messages failed: {e}"),
+                                    ),
                                 },
-                                Err(e) => session
-                                    .push_system_note(format!("switch after clone failed: {e}")),
+                                Err(e) => note_driver_err(
+                                    session,
+                                    "tui.session_clone.switch",
+                                    &e,
+                                    format!("switch after clone failed: {e}"),
+                                ),
                             },
-                            Err(e) => {
-                                session.push_system_note(format!("/session-clone failed: {e}"))
-                            }
+                            Err(e) => note_driver_err(
+                                session,
+                                "tui.session_clone.fork",
+                                &e,
+                                format!("/session-clone failed: {e}"),
+                            ),
                         }
                     }
                 }
@@ -312,7 +336,12 @@ pub(super) async fn handle_slash<T: Terminal>(
                     None => match driver.get_session_name().await {
                         Ok(Some(n)) => session.push_system_note(format!("Session name: {n}")),
                         Ok(None) => session.push_system_note("usage: /session-name <name>"),
-                        Err(e) => session.push_system_note(format!("/session-name failed: {e}")),
+                        Err(e) => note_driver_err(
+                            session,
+                            "tui.get_session_name",
+                            &e,
+                            format!("/session-name failed: {e}"),
+                        ),
                     },
                     Some(raw) => match driver.set_session_name(&raw).await {
                         Ok(stored) => {
@@ -323,7 +352,12 @@ pub(super) async fn handle_slash<T: Terminal>(
                             }
                             session.push_system_note(format!("Session name set: {stored}"));
                         }
-                        Err(e) => session.push_system_note(format!("/session-name failed: {e}")),
+                        Err(e) => note_driver_err(
+                            session,
+                            "tui.set_session_name",
+                            &e,
+                            format!("/session-name failed: {e}"),
+                        ),
                     },
                 }
             }
@@ -367,9 +401,12 @@ pub(super) async fn handle_slash<T: Terminal>(
                                 "Copied last assistant message ({n} chars)"
                             ));
                         }
-                        Err(e) => {
-                            session.push_system_note(format!("/history-copy-last failed: {e}"))
-                        }
+                        Err(e) => note_driver_err(
+                            session,
+                            "tui.copy_text_to_clipboard",
+                            &e,
+                            format!("/history-copy-last failed: {e}"),
+                        ),
                     }
                 }
             }
@@ -386,9 +423,16 @@ pub(super) async fn handle_slash<T: Terminal>(
                         match resolved {
                             Ok(theme_name) => match session.reload_themes(&theme_name) {
                                 Ok(()) => session.push_system_note(format!("theme → {theme_name}")),
-                                Err(e) => session.push_system_note(format!("/theme failed: {e}")),
+                                Err(e) => note_driver_err(
+                                    session,
+                                    "tui.reload_themes.slash",
+                                    &e,
+                                    format!("/theme failed: {e}"),
+                                ),
                             },
-                            Err(msg) => session.push_system_note(msg.to_string()),
+                            Err(e) => {
+                                note_driver_err(session, "tui.resolve_theme_arg", &e, e.to_string())
+                            }
                         }
                     }
                 }
@@ -418,6 +462,8 @@ fn resolve_theme_arg<T: Terminal>(
             };
             Ok(next.to_string())
         }
-        _ => Err(format!("unknown theme `{arg}` (usage: /theme [dark|light|toggle])").into()),
+        _ => Err(XyDriverError::invalid_input(format!(
+            "unknown theme `{arg}` (usage: /theme [dark|light|toggle])"
+        ))),
     }
 }

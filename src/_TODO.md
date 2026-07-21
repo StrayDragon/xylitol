@@ -618,6 +618,7 @@ Vec<AiBridgeMessage> → XyModel / dialect adapters
 | 2026-07-21 | agent | §C5 | `HookEvent` 载荷扩展 + `script_hook_ctx` 收拢 react/session/driver `json!` |
 | 2026-07-21 | agent | §G2+ | dispatch/TUI/remote 失败打 `error.kind`；C3 TypedTool **搁置** |
 | 2026-07-21 | agent | §G2++ | pending_ui/bang `log_failure`；in_process/remote 升 NotFound/Io/Unsupported/Remote |
+| 2026-07-21 | agent | §G2+++ | slash 非 dispatch 失败打 kind；`From<String>`→`from_opaque` 启发式分类 |
 |  |  |  |  |
 
 ---
