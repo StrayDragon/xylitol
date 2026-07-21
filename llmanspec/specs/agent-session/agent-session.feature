@@ -295,6 +295,12 @@
     当 第二轮 run_with_id
     那么 送给模型的 history 含第一轮消息
 
+  @req:as45
+  场景: seed-includes-bash-and-summaries
+    假如 session 含 bang bashExecution（Message 内）与 compaction 条目且未 exclude
+    当 run_with_id 播种 history
+    那么 history 含折叠后的 bash/摘要上下文而非空跳过
+
   @req:as46
   场景: persist-load-thinking
     假如 含 ThinkingDelta 与 TextDelta 的 assistant 已 persist

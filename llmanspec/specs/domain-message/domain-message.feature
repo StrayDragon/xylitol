@@ -40,18 +40,24 @@
 
   @req:dm6
   场景: bash-is-session
-    假如 一条 bashExecution 消息
+    假如 一条 bashExecution 消息经 bang 落盘
     当 持久化 session
-    那么 仍以 Env bashExecution 角色写入 JSONL（role 字段不变）
+    那么 JSONL 行为 type=message 且 message.role=bashExecution（非顶层 type=bashExecution）
 
   @req:dm6
   场景: llm-compose
     假如 一条 user 消息
     当 序列化再反序列化
-    那么 得到 AgentMessage::Llm(LlmMessage::User…)
+    那么 得到 AgentMessage::Llm 且叶类型为 bridge AiBridgeMessage（或等价）
 
   @req:dm6
-  场景: not-twin-dto
-    假如 对比 bridge 公共消息 enum 与 LlmMessage
-    当 角色集合
-    那么 bridge 不为环境角色维护平行 enum
+  场景: compose-not-twin
+    假如 审查 domain 公共 API
+    当 查找平行于 AiBridgeMessage 的第二份 LLM 叶 enum
+    那么 不存在（仅组合 bridge DTO + Env）
+
+  @req:dm3
+  场景: legacy-bash-lift
+    假如 JSONL 含旧顶层 type=bashExecution 条目
+    当 构建 AgentMessage 上下文
+    那么 提升为等价 Message+role=bashExecution 且字段可读
