@@ -200,7 +200,7 @@ pub struct SessionContext {
     pub model: Option<(String, String)>, // (provider, model_id)
 }
 
-/// Kind of session tree exposed via [`crate::app::core::driver::Driver`].
+/// Kind of session tree exposed via [`crate::app::core::driver::XyDriver`].
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(rename_all = "snake_case")]
 pub enum SessionTreeKind {

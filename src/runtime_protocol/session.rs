@@ -8,7 +8,7 @@ use crate::domain::session_types::{
 
 pub use crate::domain::session_types::ForkPosition;
 
-/// Row for session resume picker (Driver seam; mtime order is store-defined).
+/// Row for session resume picker (XyDriver seam; mtime order is store-defined).
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct SessionListEntry {
     pub id: String,
@@ -81,7 +81,7 @@ pub trait XySessionStore: Send + Sync {
 
     /// List resumable sessions (mtime descending when persisted).
     ///
-    /// Used by the Driver for `/session-resume` (not a `protocol::Command`).
+    /// Used by the XyDriver for `/session-resume` (not a `protocol::Command`).
     /// Default returns an empty list so minimal store stubs stay usable.
     async fn list_sessions(&self) -> Result<Vec<SessionListEntry>, String> {
         let _ = self;
@@ -122,7 +122,7 @@ pub trait XySessionStore: Send + Sync {
         Ok(sanitized)
     }
 
-    /// Delete a persisted session (Driver `/session-resume` panel; c1065).
+    /// Delete a persisted session (XyDriver `/session-resume` panel; c1065).
     ///
     /// Default returns an error so minimal store stubs stay safe.
     async fn delete_session(&self, session_id: &str) -> Result<(), String> {

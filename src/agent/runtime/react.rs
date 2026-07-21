@@ -125,7 +125,7 @@ impl AgentRuntime {
     /// in-flight interactive `!`/`!!` bash (c660; aligns with pi `abortBash`).
     /// Mid-stream model HTTP is aborted by racing this token in the ReAct chunk
     /// loop and dropping the provider stream (c680; surfaces inherit via
-    /// [`crate::app::core::driver::Driver::abort`]).
+    /// [`crate::app::core::driver::XyDriver::abort`]).
     pub fn abort(&self) {
         self.cancel
             .lock()
@@ -163,7 +163,7 @@ impl AgentRuntime {
         &mut self.inner
     }
 
-    /// Session store shared with the Driver seam.
+    /// Session store shared with the XyDriver seam.
     pub fn session_store(&self) -> Arc<dyn crate::runtime_protocol::XySessionStore> {
         self.inner.session_store()
     }
@@ -651,7 +651,7 @@ fn run_react_loop(cfg: ReActConfig) -> impl Stream<Item = XyEvent> + Send {
                 let mut done_stop_reason: Option<crate::domain::message::XyStopReason> = None;
 
                 // Mid-stream abort: drop `chunk_stream` so adapter/reqwest closes
-                // the HTTP body (c680). Surfaces inherit via Driver::abort → token.
+                // the HTTP body (c680). Surfaces inherit via XyDriver::abort → token.
                 loop {
                     let chunk_result = tokio::select! {
                         biased;

@@ -1,10 +1,10 @@
-//! Driver abstraction — the single dependency of interactive layers.
+//! XyDriver abstraction — the single dependency of interactive layers.
 //!
 //! All interactive clients (cli/print/tui) interact with the core through a
-//! [`Driver`]; they import agent symbols only from `agent` (mod-level),
+//! [`XyDriver`]; they import agent symbols only from `agent` (mod-level),
 //! never reaching into `agent::session`/`agent::runtime` internals or `infra`.
 //!
-//! - [`crate::app::core::driver::InProcessDriver`]: wraps the local agent module (composition root wires
+//! - [`crate::app::core::driver::XyInProcessDriver`]: wraps the local agent module (composition root wires
 //!   ports and agent together).
 //! - Remote HTTP driver: speaks the protocol over REST/WS to a remote server.
 //!
@@ -16,7 +16,7 @@
 //! `app::server::ws`.
 //!
 //! NOTE: trait methods are consumed via dispatch under tui/server features.
-//! `RemoteDriver` is reserved for a remote thin-client surface (not constructed
+//! `XyRemoteDriver` is reserved for a remote thin-client surface (not constructed
 //! yet) — `dead_code` allow is on that type/impl, not this module.
 
 use std::path::Path;
@@ -33,6 +33,8 @@ use crate::domain::session_types::{
 };
 use crate::domain::types::{ThinkingLevel, XyModelMeta};
 use crate::runtime_protocol::{XyBashResult, XySessionStore};
+
+pub use crate::app::core::driver_error::XyDriverError;
 
 /// One step in a [`RuntimeReloadReport`] (c1120).
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -59,7 +61,7 @@ pub enum ProjectTrustMode {
     Deny,
 }
 
-/// Outcome of [`Driver::persist_project_trust`] (c1105).
+/// Outcome of [`XyDriver::persist_project_trust`] (c1105).
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct ProjectTrustPersistReport {
     pub trusted: bool,
@@ -73,7 +75,7 @@ impl ProjectTrustPersistReport {
         "Project resources apply after /reload or restart (not auto-reloaded).";
 }
 
-/// Outcome of [`Driver::copy_text_to_clipboard`] (c1110).
+/// Outcome of [`XyDriver::copy_text_to_clipboard`] (c1110).
 ///
 /// Native tools run off the UI thread; OSC 52 (when needed) is returned here so
 /// the product TUI can write it via `Terminal` on the host thread — never from
@@ -131,19 +133,19 @@ impl LoadedResourcesSnapshot {
     }
 }
 
-/// Re-export so Driver implementors under surfaces can name the return type
+/// Re-export so XyDriver implementors under surfaces can name the return type
 /// without importing `crate::agent::session` directly (layering: surfaces use
-/// the Driver seam). Surfaces reference this as
+/// the XyDriver seam). Surfaces reference this as
 /// `crate::app::core::driver::SessionStats`.
 pub use crate::agent::session::{QueueStats, SessionStats};
 
 /// Session resume list row (from [`XySessionStore::list_sessions`]).
 pub use crate::runtime_protocol::SessionListEntry;
 
-/// Build a [`ContextTokenEstimate`] from persisted session entries (Driver seam).
+/// Build a [`ContextTokenEstimate`] from persisted session entries (XyDriver seam).
 ///
 /// `tokenizer_override` comes from `AppConfig` (`models.*.tokenizer` / `tokenizers:`)
-/// when the in-process Driver estimates; harness / remote may pass `None`.
+/// when the in-process XyDriver estimates; harness / remote may pass `None`.
 pub fn estimate_from_session_entries(
     entries: &[SessionEntry],
     model_id: Option<String>,
@@ -190,7 +192,7 @@ fn estimate_opts_from_app_config(
     }
 }
 
-/// Lifecycle events on [`EventStream`] — surfaces import via the Driver seam
+/// Lifecycle events on [`EventStream`] — surfaces import via the XyDriver seam
 /// (not `crate::agent`), keeping app/tui off agent internals.
 pub use crate::domain::lifecycle::XyEvent;
 
@@ -206,7 +208,7 @@ use crate::app::server::ws::{ClientFrame, ServerFrame};
 pub type EventStream = Pin<Box<dyn Stream<Item = XyEvent> + Send>>;
 
 /// Minimal info about a slash command (for `GetCommands`), decoupled from the
-/// agent's internal `SlashCommandInfo` so the Driver trait does not leak
+/// agent's internal `SlashCommandInfo` so the XyDriver trait does not leak
 /// `pub(crate)` agent types.
 #[derive(Debug, Clone)]
 pub struct CommandInfo {
@@ -222,7 +224,7 @@ pub struct SessionState {
     pub thinking_level: ThinkingLevel,
 }
 
-/// Minimal model info returned by the Driver, decoupled from `XyModelMeta`'s
+/// Minimal model info returned by the XyDriver, decoupled from `XyModelMeta`'s
 /// many fields so callers only see what command dispatch needs.
 #[derive(Debug, Clone)]
 pub struct ModelInfo {
@@ -243,13 +245,13 @@ impl From<&XyModelMeta> for ModelInfo {
     }
 }
 
-/// Driver — interact with the core without knowing its internals.
+/// XyDriver — interact with the core without knowing its internals.
 ///
-/// [`crate::app::core::driver::InProcessDriver`] keeps a cached `AgentRuntime` and is the local
+/// [`crate::app::core::driver::XyInProcessDriver`] keeps a cached `AgentRuntime` and is the local
 /// (single-process) implementation. The remote HTTP driver speaks the protocol over
 /// WS/REST to a xylitol server.
 #[async_trait]
-pub trait Driver: Send {
+pub trait XyDriver: Send {
     /// Submit a prompt and receive a stream of events.
     async fn run(&mut self, prompt: &str) -> EventStream;
 
@@ -264,15 +266,15 @@ pub trait Driver: Send {
 
     /// Select a model by id (exact match on `id` or `config.model`).
     /// Returns the selected model on success.
-    fn select_model(&mut self, model_id: &str) -> Result<ModelInfo, String>;
+    fn select_model(&mut self, model_id: &str) -> Result<ModelInfo, XyDriverError>;
 
     /// Cycle to the next model in the registry. Returns the newly-selected model.
-    fn cycle_model(&mut self) -> Result<ModelInfo, String>;
+    fn cycle_model(&mut self) -> Result<ModelInfo, XyDriverError>;
 
     /// Set the thinking level.
     ///
     /// Returns `Err` if the level is not in the current model's support set.
-    fn set_thinking_level(&mut self, level: ThinkingLevel) -> Result<(), String>;
+    fn set_thinking_level(&mut self, level: ThinkingLevel) -> Result<(), XyDriverError>;
 
     /// Current thinking level.
     fn thinking_level(&self) -> ThinkingLevel;
@@ -281,7 +283,7 @@ pub trait Driver: Send {
     ///
     /// Returns the level now in effect. Product TUI MUST use this (not package
     /// `ThinkingBorderLevel::cycle_next`) as the cycle truth source.
-    fn cycle_thinking_level(&mut self) -> Result<ThinkingLevel, String>;
+    fn cycle_thinking_level(&mut self) -> Result<ThinkingLevel, XyDriverError>;
 
     /// Current session id (the id the next `run`/export acts on).
     fn session_id(&self) -> Option<String>;
@@ -305,73 +307,80 @@ pub trait Driver: Send {
         command: &str,
         exclude_from_context: bool,
         chunk_tx: Option<tokio::sync::mpsc::Sender<Vec<u8>>>,
-    ) -> Result<XyBashResult, String>;
+    ) -> Result<XyBashResult, XyDriverError>;
 
     /// Run auto-compaction. Returns whether a compaction occurred.
-    async fn compact(&mut self) -> Result<bool, String>;
+    async fn compact(&mut self) -> Result<bool, XyDriverError>;
 
     /// Export the session to HTML at `path`. Returns the path used.
-    async fn export_html(&mut self, path: &Path) -> Result<String, String>;
+    async fn export_html(&mut self, path: &Path) -> Result<String, XyDriverError>;
 
     /// Export the session to JSONL at `path`. Returns the path used.
-    async fn export_jsonl(&mut self, path: &Path) -> Result<String, String>;
+    async fn export_jsonl(&mut self, path: &Path) -> Result<String, XyDriverError>;
 
     /// Import a JSONL file. Returns the new session id.
-    async fn import_jsonl(&mut self, path: &Path) -> Result<String, String>;
+    async fn import_jsonl(&mut self, path: &Path) -> Result<String, XyDriverError>;
 
     /// Fork the current session at `entry_id`. Returns the new session id.
     async fn fork_session(
         &mut self,
         entry_id: &str,
         position: crate::domain::session_types::ForkPosition,
-    ) -> Result<String, String>;
+    ) -> Result<String, XyDriverError>;
 
     /// Switch to an existing session id. Validates existence first.
-    async fn switch_session(&mut self, session_id: &str) -> Result<String, String>;
+    async fn switch_session(&mut self, session_id: &str) -> Result<String, XyDriverError>;
 
     /// Load the message entries of the current session.
-    async fn get_messages(&self) -> Result<Vec<SessionEntry>, String>;
+    async fn get_messages(&self) -> Result<Vec<SessionEntry>, XyDriverError>;
 
     /// Load session statistics.
-    async fn get_session_stats(&self) -> Result<SessionStats, String>;
+    async fn get_session_stats(&self) -> Result<SessionStats, XyDriverError>;
 
     /// Read-only context token estimate for the current leaf/path (c1030 / c1035).
     ///
     /// Product footer polls this after travel / turn / compact.
     async fn estimate_context_tokens(
         &self,
-    ) -> Result<crate::domain::types::ContextTokenEstimate, String>;
+    ) -> Result<crate::domain::types::ContextTokenEstimate, XyDriverError>;
 
     /// List available slash commands.
     fn get_commands(&self) -> Vec<CommandInfo>;
 
     /// Enqueue a steering message for the active (or next) run.
-    fn steer(&mut self, message: &str) -> Result<(), String>;
+    fn steer(&mut self, message: &str) -> Result<(), XyDriverError>;
 
     /// Enqueue a follow-up message delivered when the run would otherwise stop.
-    fn follow_up(&mut self, message: &str) -> Result<(), String>;
+    fn follow_up(&mut self, message: &str) -> Result<(), XyDriverError>;
 
     /// Clear one or both pending-message queues.
-    fn clear_queue(&mut self, clear_steer: bool, clear_follow_up: bool) -> Result<(), String>;
+    fn clear_queue(
+        &mut self,
+        clear_steer: bool,
+        clear_follow_up: bool,
+    ) -> Result<(), XyDriverError>;
 
     /// Queue depths for steer / follow-up.
     fn queue_stats(&self) -> QueueStats;
 
     /// Read a session tree for the given kind.
     ///
-    /// Driver-only seam (not wired through `protocol::Command`); REST calls this
+    /// XyDriver-only seam (not wired through `protocol::Command`); REST calls this
     /// directly for MessageHistory tree endpoints.
-    async fn session_tree(&self, kind: SessionTreeKind) -> Result<Vec<SessionTreeNode>, String>;
+    async fn session_tree(
+        &self,
+        kind: SessionTreeKind,
+    ) -> Result<Vec<SessionTreeNode>, XyDriverError>;
 
     /// Travel within a session tree kind and update the active leaf.
     ///
-    /// Driver-only seam (not wired through `protocol::Command`); REST travel
+    /// XyDriver-only seam (not wired through `protocol::Command`); REST travel
     /// endpoints call this directly.
     async fn travel_session_tree(
         &self,
         kind: SessionTreeKind,
         entry_id: &str,
-    ) -> Result<SessionTreeTravel, String>;
+    ) -> Result<SessionTreeTravel, XyDriverError>;
 
     /// Persist a tree annotation (`Label` entry) for `target_id` (c690).
     /// `label: None` or empty clears the annotation.
@@ -379,7 +388,7 @@ pub trait Driver: Send {
         &mut self,
         target_id: &str,
         label: Option<&str>,
-    ) -> Result<(), String>;
+    ) -> Result<(), XyDriverError>;
 
     /// Active MessageHistory leaf entry id for the current session (c700/c1005 `/session-fork`).
     fn leaf_entry_id(&self) -> Option<String>;
@@ -387,36 +396,36 @@ pub trait Driver: Send {
     /// Load a named `/debug <scene>` fixture into a fresh `debug-*` session (c710).
     ///
     /// Returns session id + entries for transcript rebuild. Does not invent a
-    /// `protocol::Command` — Driver-only like session_tree. Fixtures live in
+    /// `protocol::Command` — XyDriver-only like session_tree. Fixtures live in
     /// `app::debug_fixtures` (delete that module to remove).
-    async fn load_debug_scene(&mut self, scene: &str) -> Result<DebugSceneLoad, String>;
+    async fn load_debug_scene(&mut self, scene: &str) -> Result<DebugSceneLoad, XyDriverError>;
 
     /// List resumable sessions for `/session-resume` (c1015).
     ///
-    /// Driver-only seam (not `protocol::Command`); sorted mtime desc by store.
+    /// XyDriver-only seam (not `protocol::Command`); sorted mtime desc by store.
     /// TUI MUST NOT read the sessions directory directly.
-    async fn list_sessions(&self) -> Result<Vec<SessionListEntry>, String>;
+    async fn list_sessions(&self) -> Result<Vec<SessionListEntry>, XyDriverError>;
 
     /// Create an empty session and make it current (`/session-new`, c1020).
     ///
-    /// Driver-only seam (not `protocol::Command`).
-    async fn new_session(&mut self) -> Result<String, String>;
+    /// XyDriver-only seam (not `protocol::Command`).
+    async fn new_session(&mut self) -> Result<String, XyDriverError>;
 
     /// Current session display name (`/session-name`, c1020).
-    async fn get_session_name(&self) -> Result<Option<String>, String>;
+    async fn get_session_name(&self) -> Result<Option<String>, XyDriverError>;
 
     /// Set current session display name; returns sanitized stored name (c1020).
-    async fn set_session_name(&mut self, name: &str) -> Result<String, String>;
+    async fn set_session_name(&mut self, name: &str) -> Result<String, XyDriverError>;
 
     /// Set display name for any session (resume panel rename; c1065).
     async fn set_session_name_for(
         &mut self,
         session_id: &str,
         name: &str,
-    ) -> Result<String, String>;
+    ) -> Result<String, XyDriverError>;
 
     /// Delete a persisted session (resume panel; c1065). MUST NOT delete active session.
-    async fn delete_session(&mut self, session_id: &str) -> Result<(), String>;
+    async fn delete_session(&mut self, session_id: &str) -> Result<(), XyDriverError>;
 
     /// `(name, description)` for product `$skill` completion (c1130).
     ///
@@ -429,14 +438,14 @@ pub trait Driver: Send {
     /// Skills + MCP summary for the product TUI loaded-resources slot (c1135).
     ///
     /// In-process reads Trust-filtered skill names and MCP connected/diagnostics.
-    /// Remote / stub drivers return empty (no default body — `dyn Driver` + Sync).
+    /// Remote / stub drivers return empty (no default body — `dyn XyDriver` + Sync).
     async fn loaded_resources_snapshot(&self) -> LoadedResourcesSnapshot;
 
     /// Hot-reload skills, MCP, and prompt context (c1120).
     ///
     /// Keybindings and themes are orchestrated by the product TUI host. Default:
     /// no-op report for drivers without reload state.
-    async fn reload_runtime(&mut self) -> Result<RuntimeReloadReport, String> {
+    async fn reload_runtime(&mut self) -> Result<RuntimeReloadReport, XyDriverError> {
         Ok(RuntimeReloadReport::noop())
     }
 
@@ -447,7 +456,7 @@ pub trait Driver: Send {
     fn persist_project_trust(
         &mut self,
         _mode: ProjectTrustMode,
-    ) -> Result<ProjectTrustPersistReport, String> {
+    ) -> Result<ProjectTrustPersistReport, XyDriverError> {
         Err("persist_project_trust not supported on this driver".into())
     }
 
@@ -460,7 +469,7 @@ pub trait Driver: Send {
     async fn copy_text_to_clipboard(
         &mut self,
         _text: &str,
-    ) -> Result<ClipboardCopyOutcome, String> {
+    ) -> Result<ClipboardCopyOutcome, XyDriverError> {
         Err("copy_text_to_clipboard not supported on this driver".into())
     }
 
@@ -468,19 +477,19 @@ pub trait Driver: Send {
     ///
     /// Returns `Ok(None)` when the clipboard has no image. Product TUI inserts the
     /// path as plain text (pi-aligned); MUST NOT put base64 in the editor.
-    async fn stage_clipboard_image(&mut self) -> Result<Option<std::path::PathBuf>, String> {
+    async fn stage_clipboard_image(&mut self) -> Result<Option<std::path::PathBuf>, XyDriverError> {
         Err("stage_clipboard_image not supported on this driver".into())
     }
 
     /// Read UTF-8 text from the system clipboard (c1156 / Ctrl+V text fallback).
     ///
     /// Returns `Ok(None)` when empty / no text. Default: unsupported.
-    async fn read_clipboard_text(&mut self) -> Result<Option<String>, String> {
+    async fn read_clipboard_text(&mut self) -> Result<Option<String>, XyDriverError> {
         Err("read_clipboard_text not supported on this driver".into())
     }
 }
 
-/// Outcome of [`Driver::load_debug_scene`] (c710).
+/// Outcome of [`XyDriver::load_debug_scene`] (c710).
 #[derive(Debug, Clone)]
 pub struct DebugSceneLoad {
     pub session_id: String,
@@ -505,7 +514,7 @@ struct InProcessReloadState {
 /// Constructed at the composition root (`app::cli` via `bootstrap`) which wires
 /// ports and agent together. This is the **only** place in the app surfaces
 /// that imports `agent`.
-pub struct InProcessDriver {
+pub struct XyInProcessDriver {
     agent: AgentRuntime,
     /// Session store, held so SwitchSession/GetMessages/Fork can operate. The
     /// agent holds its own clone internally; this one is the surface's handle
@@ -515,7 +524,11 @@ pub struct InProcessDriver {
     reload: Option<InProcessReloadState>,
 }
 
-impl InProcessDriver {
+impl XyInProcessDriver {
+    fn map_str<T>(r: Result<T, String>) -> Result<T, XyDriverError> {
+        r.map_err(XyDriverError::from)
+    }
+
     /// Construct from a built agent plus the store used to build it.
     ///
     /// `store` is the same instance injected into the agent at construction;
@@ -547,7 +560,7 @@ impl InProcessDriver {
     }
 
     /// Initial MCP bootstrap after assembly (cli / server). No-op when reload disabled.
-    pub async fn bootstrap_mcp(&mut self) -> Result<(), String> {
+    pub async fn bootstrap_mcp(&mut self) -> Result<(), XyDriverError> {
         let servers = self
             .reload
             .as_ref()
@@ -585,7 +598,7 @@ impl InProcessDriver {
     async fn reload_mcp_with_servers(
         &mut self,
         servers: &[crate::app::core::mcp_spec::McpServerSpec],
-    ) -> Result<(), String> {
+    ) -> Result<(), XyDriverError> {
         let Some(mut state) = self.reload.take() else {
             return Ok(());
         };
@@ -657,7 +670,7 @@ impl InProcessDriver {
 }
 
 #[async_trait]
-impl Driver for InProcessDriver {
+impl XyDriver for XyInProcessDriver {
     async fn run(&mut self, prompt: &str) -> EventStream {
         let sid = self
             .agent
@@ -691,7 +704,7 @@ impl Driver for InProcessDriver {
             .collect()
     }
 
-    fn select_model(&mut self, model_id: &str) -> Result<ModelInfo, String> {
+    fn select_model(&mut self, model_id: &str) -> Result<ModelInfo, XyDriverError> {
         // Match by exact id or by config.model alias.
         let registry = self.agent.inner().model_registry();
         let found = registry
@@ -699,8 +712,11 @@ impl Driver for InProcessDriver {
             .iter()
             .find(|m| m.config.model == model_id || m.id == model_id)
             .map(|m| m.id.clone())
-            .ok_or_else(|| format!("model not found: {model_id}"))?;
-        self.agent.inner_mut().select_model(&found)?;
+            .ok_or_else(|| XyDriverError::from(format!("model not found: {model_id}")))?;
+        self.agent
+            .inner_mut()
+            .select_model(&found)
+            .map_err(XyDriverError::from)?;
         // Re-read the resolved model to return authoritative info.
         Ok(self
             .agent
@@ -715,7 +731,7 @@ impl Driver for InProcessDriver {
             }))
     }
 
-    fn cycle_model(&mut self) -> Result<ModelInfo, String> {
+    fn cycle_model(&mut self) -> Result<ModelInfo, XyDriverError> {
         let list = self.agent.inner().model_registry().list().to_vec();
         if list.is_empty() {
             return Err("no models available".into());
@@ -729,20 +745,21 @@ impl Driver for InProcessDriver {
         let next_id = list[next_idx].id.clone();
         self.agent
             .inner_mut()
-            .select_model_with_source(&next_id, "cycle")?;
+            .select_model_with_source(&next_id, "cycle")
+            .map_err(XyDriverError::from)?;
         Ok(ModelInfo::from(&list[next_idx]))
     }
 
-    fn set_thinking_level(&mut self, level: ThinkingLevel) -> Result<(), String> {
-        self.agent.inner_mut().set_thinking_level(level)
+    fn set_thinking_level(&mut self, level: ThinkingLevel) -> Result<(), XyDriverError> {
+        Self::map_str(self.agent.inner_mut().set_thinking_level(level))
     }
 
     fn thinking_level(&self) -> ThinkingLevel {
         self.agent.inner().thinking_level()
     }
 
-    fn cycle_thinking_level(&mut self) -> Result<ThinkingLevel, String> {
-        self.agent.inner_mut().cycle_thinking_level()
+    fn cycle_thinking_level(&mut self) -> Result<ThinkingLevel, XyDriverError> {
+        Self::map_str(self.agent.inner_mut().cycle_thinking_level())
     }
 
     fn session_id(&self) -> Option<String> {
@@ -754,47 +771,61 @@ impl Driver for InProcessDriver {
         command: &str,
         exclude_from_context: bool,
         chunk_tx: Option<tokio::sync::mpsc::Sender<Vec<u8>>>,
-    ) -> Result<XyBashResult, String> {
-        self.agent
-            .inner()
-            .execute_bash(command, exclude_from_context, chunk_tx)
-            .await
+    ) -> Result<XyBashResult, XyDriverError> {
+        Self::map_str(
+            self.agent
+                .inner()
+                .execute_bash(command, exclude_from_context, chunk_tx)
+                .await,
+        )
     }
 
-    async fn compact(&mut self) -> Result<bool, String> {
+    async fn compact(&mut self) -> Result<bool, XyDriverError> {
         let model_id = self.current_model().map(|m| m.id);
         let opts = estimate_opts_from_app_config(model_id);
-        self.agent.inner_mut().maybe_auto_compact_with(&opts).await
+        Self::map_str(self.agent.inner_mut().maybe_auto_compact_with(&opts).await)
     }
 
-    async fn export_html(&mut self, path: &Path) -> Result<String, String> {
-        self.agent.inner_mut().export_to_html(path).await?;
+    async fn export_html(&mut self, path: &Path) -> Result<String, XyDriverError> {
+        self.agent
+            .inner_mut()
+            .export_to_html(path)
+            .await
+            .map_err(XyDriverError::from)?;
         Ok(path.to_string_lossy().into_owned())
     }
 
-    async fn export_jsonl(&mut self, path: &Path) -> Result<String, String> {
-        self.agent.inner_mut().export_to_jsonl(path).await?;
+    async fn export_jsonl(&mut self, path: &Path) -> Result<String, XyDriverError> {
+        self.agent
+            .inner_mut()
+            .export_to_jsonl(path)
+            .await
+            .map_err(XyDriverError::from)?;
         Ok(path.to_string_lossy().into_owned())
     }
 
-    async fn import_jsonl(&mut self, path: &Path) -> Result<String, String> {
-        self.agent.inner_mut().import_from_jsonl(path).await
+    async fn import_jsonl(&mut self, path: &Path) -> Result<String, XyDriverError> {
+        Self::map_str(self.agent.inner_mut().import_from_jsonl(path).await)
     }
 
     async fn fork_session(
         &mut self,
         entry_id: &str,
         position: crate::domain::session_types::ForkPosition,
-    ) -> Result<String, String> {
-        self.agent
-            .inner_mut()
-            .fork_session(entry_id, position)
-            .await
+    ) -> Result<String, XyDriverError> {
+        Self::map_str(
+            self.agent
+                .inner_mut()
+                .fork_session(entry_id, position)
+                .await,
+        )
     }
 
-    async fn switch_session(&mut self, session_id: &str) -> Result<String, String> {
+    async fn switch_session(&mut self, session_id: &str) -> Result<String, XyDriverError> {
         if !self.store.exists(session_id).await {
-            return Err(format!("session not found: {session_id}"));
+            return Err(XyDriverError::from(format!(
+                "session not found: {session_id}"
+            )));
         }
         if let Some(bus) = self.agent.inner().hook_bus() {
             crate::agent::session::cancel_hook(
@@ -820,18 +851,22 @@ impl Driver for InProcessDriver {
         Ok(session_id.to_string())
     }
 
-    async fn get_messages(&self) -> Result<Vec<SessionEntry>, String> {
-        let sid = self.agent.inner().session_id().ok_or("no active session")?;
-        self.store.load_entries(sid).await
+    async fn get_messages(&self) -> Result<Vec<SessionEntry>, XyDriverError> {
+        let sid = self
+            .agent
+            .inner()
+            .session_id()
+            .ok_or_else(|| XyDriverError::from("no active session"))?;
+        Self::map_str(self.store.load_entries(sid).await)
     }
 
-    async fn get_session_stats(&self) -> Result<SessionStats, String> {
-        self.agent.inner().get_session_stats().await
+    async fn get_session_stats(&self) -> Result<SessionStats, XyDriverError> {
+        Self::map_str(self.agent.inner().get_session_stats().await)
     }
 
     async fn estimate_context_tokens(
         &self,
-    ) -> Result<crate::domain::types::ContextTokenEstimate, String> {
+    ) -> Result<crate::domain::types::ContextTokenEstimate, XyDriverError> {
         let entries = self.get_messages().await?;
         let model_id = self.current_model().map(|m| m.id);
         let tokenizer_override = model_id
@@ -843,6 +878,7 @@ impl Driver for InProcessDriver {
         })
         .await
         .map_err(|e| format!("estimate join: {e}"))
+        .map_err(XyDriverError::from)
     }
 
     fn get_commands(&self) -> Vec<CommandInfo> {
@@ -857,17 +893,21 @@ impl Driver for InProcessDriver {
             .collect()
     }
 
-    fn steer(&mut self, message: &str) -> Result<(), String> {
+    fn steer(&mut self, message: &str) -> Result<(), XyDriverError> {
         self.agent.steer(message);
         Ok(())
     }
 
-    fn follow_up(&mut self, message: &str) -> Result<(), String> {
+    fn follow_up(&mut self, message: &str) -> Result<(), XyDriverError> {
         self.agent.follow_up(message);
         Ok(())
     }
 
-    fn clear_queue(&mut self, clear_steer: bool, clear_follow_up: bool) -> Result<(), String> {
+    fn clear_queue(
+        &mut self,
+        clear_steer: bool,
+        clear_follow_up: bool,
+    ) -> Result<(), XyDriverError> {
         self.agent.clear_queues(clear_steer, clear_follow_up);
         Ok(())
     }
@@ -876,8 +916,15 @@ impl Driver for InProcessDriver {
         self.agent.queue_stats()
     }
 
-    async fn session_tree(&self, kind: SessionTreeKind) -> Result<Vec<SessionTreeNode>, String> {
-        let sid = self.agent.inner().session_id().ok_or("no active session")?;
+    async fn session_tree(
+        &self,
+        kind: SessionTreeKind,
+    ) -> Result<Vec<SessionTreeNode>, XyDriverError> {
+        let sid = self
+            .agent
+            .inner()
+            .session_id()
+            .ok_or_else(|| XyDriverError::from("no active session"))?;
         if let Some(bus) = self.agent.inner().hook_bus() {
             crate::agent::session::cancel_hook(
                 &bus,
@@ -892,7 +939,9 @@ impl Driver for InProcessDriver {
         self.agent.inner().ensure_session(sid, None).await?;
         let tree = match kind {
             SessionTreeKind::MessageHistory => self.store.message_history_tree(sid).await?,
-            SessionTreeKind::FileBrowser => return Err(session_tree_kind_unimplemented(kind)),
+            SessionTreeKind::FileBrowser => {
+                return Err(XyDriverError::from(session_tree_kind_unimplemented(kind)));
+            }
         };
         if let Some(bus) = self.agent.inner().hook_bus() {
             crate::agent::session::observe_hook(
@@ -910,8 +959,12 @@ impl Driver for InProcessDriver {
         &self,
         kind: SessionTreeKind,
         entry_id: &str,
-    ) -> Result<SessionTreeTravel, String> {
-        let sid = self.agent.inner().session_id().ok_or("no active session")?;
+    ) -> Result<SessionTreeTravel, XyDriverError> {
+        let sid = self
+            .agent
+            .inner()
+            .session_id()
+            .ok_or_else(|| XyDriverError::from("no active session"))?;
         if let Some(bus) = self.agent.inner().hook_bus() {
             crate::agent::session::cancel_hook(
                 &bus,
@@ -932,7 +985,7 @@ impl Driver for InProcessDriver {
                 travel
             }
             SessionTreeKind::FileBrowser => {
-                return Err(session_tree_kind_unimplemented(kind));
+                return Err(XyDriverError::from(session_tree_kind_unimplemented(kind)));
             }
         };
         if let Some(bus) = self.agent.inner().hook_bus() {
@@ -955,14 +1008,20 @@ impl Driver for InProcessDriver {
         &mut self,
         target_id: &str,
         label: Option<&str>,
-    ) -> Result<(), String> {
+    ) -> Result<(), XyDriverError> {
         use crate::domain::session_types::{EntryBase, LabelEntry};
 
-        let sid = self.agent.inner().session_id().ok_or("no active session")?;
+        let sid = self
+            .agent
+            .inner()
+            .session_id()
+            .ok_or_else(|| XyDriverError::from("no active session"))?;
         self.agent.inner().ensure_session(sid, None).await?;
         let entries = self.store.load_entries(sid).await?;
         if !entries.iter().any(|e| e.entry_id() == Some(target_id)) {
-            return Err(format!("target entry not found: {target_id}"));
+            return Err(XyDriverError::from(format!(
+                "target entry not found: {target_id}"
+            )));
         }
         let cleaned = label
             .map(str::trim)
@@ -978,7 +1037,7 @@ impl Driver for InProcessDriver {
             target_id: target_id.to_string(),
             label: cleaned,
         });
-        self.store.append_session_entry(sid, &entry).await
+        Self::map_str(self.store.append_session_entry(sid, &entry).await)
     }
 
     fn leaf_entry_id(&self) -> Option<String> {
@@ -986,24 +1045,34 @@ impl Driver for InProcessDriver {
         self.store.leaf_id(sid)
     }
 
-    async fn load_debug_scene(&mut self, scene: &str) -> Result<DebugSceneLoad, String> {
+    async fn load_debug_scene(&mut self, scene: &str) -> Result<DebugSceneLoad, XyDriverError> {
         use crate::app::debug_fixtures::{list_note, resolve_scene_id, seed_scene};
 
         let scene = scene.trim();
         if scene.is_empty() || scene.eq_ignore_ascii_case("list") {
-            return Err(list_note());
+            return Err(XyDriverError::from(list_note()));
         }
-        let canonical = resolve_scene_id(scene)
-            .ok_or_else(|| format!("unknown debug scene: {scene}\n{}", list_note()))?;
+        let canonical = resolve_scene_id(scene).ok_or_else(|| {
+            XyDriverError::from(format!("unknown debug scene: {scene}\n{}", list_note()))
+        })?;
         let short = &uuid::Uuid::new_v4().to_string()[..8];
         let session_id = format!("debug-{canonical}-{short}");
         let cwd = std::env::current_dir()
             .ok()
             .map(|p| p.to_string_lossy().into_owned());
-        self.store.create(&session_id, cwd.as_deref(), None).await?;
-        let canonical = seed_scene(self.store.as_ref(), &session_id, scene).await?;
+        self.store
+            .create(&session_id, cwd.as_deref(), None)
+            .await
+            .map_err(XyDriverError::from)?;
+        let canonical = seed_scene(self.store.as_ref(), &session_id, scene)
+            .await
+            .map_err(XyDriverError::from)?;
         self.agent.inner_mut().set_session(session_id.clone());
-        let entries = self.store.load_entries(&session_id).await?;
+        let entries = self
+            .store
+            .load_entries(&session_id)
+            .await
+            .map_err(XyDriverError::from)?;
         let mut note = format!("debug scene `{canonical}` → session {session_id}");
         let model = match self.select_model("fake") {
             Ok(m) => {
@@ -1023,40 +1092,51 @@ impl Driver for InProcessDriver {
         })
     }
 
-    async fn list_sessions(&self) -> Result<Vec<SessionListEntry>, String> {
-        self.store.list_sessions().await
+    async fn list_sessions(&self) -> Result<Vec<SessionListEntry>, XyDriverError> {
+        Self::map_str(self.store.list_sessions().await)
     }
 
-    async fn new_session(&mut self) -> Result<String, String> {
+    async fn new_session(&mut self) -> Result<String, XyDriverError> {
         let session_id = uuid::Uuid::new_v4().to_string();
         let cwd = std::env::current_dir()
             .ok()
             .map(|p| p.to_string_lossy().into_owned());
-        self.store.create(&session_id, cwd.as_deref(), None).await?;
+        self.store
+            .create(&session_id, cwd.as_deref(), None)
+            .await
+            .map_err(XyDriverError::from)?;
         self.agent.inner_mut().set_session(session_id.clone());
         Ok(session_id)
     }
 
-    async fn get_session_name(&self) -> Result<Option<String>, String> {
-        let sid = self.agent.inner().session_id().ok_or("no active session")?;
-        self.store.get_session_name(sid).await
+    async fn get_session_name(&self) -> Result<Option<String>, XyDriverError> {
+        let sid = self
+            .agent
+            .inner()
+            .session_id()
+            .ok_or_else(|| XyDriverError::from("no active session"))?;
+        Self::map_str(self.store.get_session_name(sid).await)
     }
 
-    async fn set_session_name(&mut self, name: &str) -> Result<String, String> {
-        let sid = self.agent.inner().session_id().ok_or("no active session")?;
-        self.store.set_session_name(sid, name).await
+    async fn set_session_name(&mut self, name: &str) -> Result<String, XyDriverError> {
+        let sid = self
+            .agent
+            .inner()
+            .session_id()
+            .ok_or_else(|| XyDriverError::from("no active session"))?;
+        Self::map_str(self.store.set_session_name(sid, name).await)
     }
 
     async fn set_session_name_for(
         &mut self,
         session_id: &str,
         name: &str,
-    ) -> Result<String, String> {
-        self.store.set_session_name(session_id, name).await
+    ) -> Result<String, XyDriverError> {
+        Self::map_str(self.store.set_session_name(session_id, name).await)
     }
 
-    async fn delete_session(&mut self, session_id: &str) -> Result<(), String> {
-        self.store.delete_session(session_id).await
+    async fn delete_session(&mut self, session_id: &str) -> Result<(), XyDriverError> {
+        Self::map_str(self.store.delete_session(session_id).await)
     }
 
     fn dollar_skill_catalog(&self) -> Vec<(String, String)> {
@@ -1087,7 +1167,7 @@ impl Driver for InProcessDriver {
         }
     }
 
-    async fn reload_runtime(&mut self) -> Result<RuntimeReloadReport, String> {
+    async fn reload_runtime(&mut self) -> Result<RuntimeReloadReport, XyDriverError> {
         let Some(mut state) = self.reload.take() else {
             return Ok(RuntimeReloadReport::noop());
         };
@@ -1164,7 +1244,7 @@ impl Driver for InProcessDriver {
             Err(e) => steps.push(ReloadStepReport {
                 step: "mcp",
                 ok: false,
-                message: e,
+                message: e.to_string(),
             }),
         }
 
@@ -1191,7 +1271,7 @@ impl Driver for InProcessDriver {
     fn persist_project_trust(
         &mut self,
         mode: ProjectTrustMode,
-    ) -> Result<ProjectTrustPersistReport, String> {
+    ) -> Result<ProjectTrustPersistReport, XyDriverError> {
         let cwd = self
             .reload
             .as_ref()
@@ -1232,20 +1312,26 @@ impl Driver for InProcessDriver {
         })
     }
 
-    async fn copy_text_to_clipboard(&mut self, text: &str) -> Result<ClipboardCopyOutcome, String> {
-        let plan = crate::infra::clipboard::plan_clipboard_copy_async(text.to_string()).await?;
+    async fn copy_text_to_clipboard(
+        &mut self,
+        text: &str,
+    ) -> Result<ClipboardCopyOutcome, XyDriverError> {
+        let plan = crate::infra::clipboard::plan_clipboard_copy_async(text.to_string())
+            .await
+            .map_err(XyDriverError::from)?;
         if !plan.will_succeed() {
-            return Err(plan.failure_message());
+            return Err(XyDriverError::from(plan.failure_message()));
         }
         Ok(ClipboardCopyOutcome {
             pending_osc52: plan.osc52_sequence,
         })
     }
 
-    async fn stage_clipboard_image(&mut self) -> Result<Option<std::path::PathBuf>, String> {
+    async fn stage_clipboard_image(&mut self) -> Result<Option<std::path::PathBuf>, XyDriverError> {
         let image = tokio::task::spawn_blocking(crate::infra::clipboard::read_clipboard_image)
             .await
-            .map_err(|e| format!("clipboard image task failed: {e}"))??;
+            .map_err(|e| XyDriverError::from(format!("clipboard image task failed: {e}")))?
+            .map_err(XyDriverError::from)?;
         let Some(image) = image else {
             return Ok(None);
         };
@@ -1253,14 +1339,16 @@ impl Driver for InProcessDriver {
             crate::infra::clipboard::write_clipboard_image_temp(&image.bytes, &image.mime_type)
         })
         .await
-        .map_err(|e| format!("clipboard image write task failed: {e}"))??;
+        .map_err(|e| XyDriverError::from(format!("clipboard image write task failed: {e}")))?
+        .map_err(XyDriverError::from)?;
         Ok(Some(path))
     }
 
-    async fn read_clipboard_text(&mut self) -> Result<Option<String>, String> {
+    async fn read_clipboard_text(&mut self) -> Result<Option<String>, XyDriverError> {
         tokio::task::spawn_blocking(crate::infra::clipboard::read_clipboard_text)
             .await
-            .map_err(|e| format!("clipboard text task failed: {e}"))?
+            .map_err(|e| XyDriverError::from(format!("clipboard text task failed: {e}")))?
+            .map_err(XyDriverError::from)
     }
 }
 
@@ -1269,11 +1357,11 @@ impl Driver for InProcessDriver {
 /// Uses `reqwest` for control commands (prompt, abort, model, export, ...) and
 /// `tokio-tungstenite` for WebSocket event streaming.
 ///
-/// 预留：独立远程薄端客户端接线后由该面 `RemoteDriver::new` 实例化；
-/// 落地条件：远程客户端应用面开闸。当前 Server 面用进程内 Driver，不构造本类型。
+/// 预留：独立远程薄端客户端接线后由该面 `XyRemoteDriver::new` 实例化；
+/// 落地条件：远程客户端应用面开闸。当前 Server 面用进程内 XyDriver，不构造本类型。
 #[cfg(feature = "server")]
 #[allow(dead_code)] // reserved remote thin-client surface; see doc above
-pub struct RemoteDriver {
+pub struct XyRemoteDriver {
     base_url: String,
     session_id: String,
     client: reqwest::Client,
@@ -1285,9 +1373,9 @@ pub struct RemoteDriver {
 }
 
 #[cfg(feature = "server")]
-#[allow(dead_code)] // reserved with RemoteDriver until thin client wires it
-impl RemoteDriver {
-    /// Create a new RemoteDriver connected to `base_url`.
+#[allow(dead_code)] // reserved with XyRemoteDriver until thin client wires it
+impl XyRemoteDriver {
+    /// Create a new XyRemoteDriver connected to `base_url`.
     ///
     /// `base_url` should be the server root, e.g. `http://127.0.0.1:8080`.
     pub fn new(base_url: impl Into<String>, session_id: impl Into<String>) -> Self {
@@ -1325,8 +1413,8 @@ impl RemoteDriver {
 
     fn block_on<T>(
         &self,
-        fut: impl std::future::Future<Output = Result<T, String>>,
-    ) -> Result<T, String> {
+        fut: impl std::future::Future<Output = Result<T, XyDriverError>>,
+    ) -> Result<T, XyDriverError> {
         match tokio::runtime::Handle::try_current() {
             Ok(handle) => tokio::task::block_in_place(|| handle.block_on(fut)),
             Err(_) => tokio::runtime::Builder::new_current_thread()
@@ -1337,7 +1425,7 @@ impl RemoteDriver {
         }
     }
 
-    async fn get_data(&self, suffix: &str) -> Result<serde_json::Value, String> {
+    async fn get_data(&self, suffix: &str) -> Result<serde_json::Value, XyDriverError> {
         let resp = self
             .client
             .get(self.api(suffix))
@@ -1351,7 +1439,7 @@ impl RemoteDriver {
         &self,
         suffix: &str,
         body: serde_json::Value,
-    ) -> Result<serde_json::Value, String> {
+    ) -> Result<serde_json::Value, XyDriverError> {
         let resp = self
             .client
             .post(self.api(suffix))
@@ -1362,7 +1450,7 @@ impl RemoteDriver {
         Self::parse_envelope(resp).await
     }
 
-    async fn parse_envelope(resp: reqwest::Response) -> Result<serde_json::Value, String> {
+    async fn parse_envelope(resp: reqwest::Response) -> Result<serde_json::Value, XyDriverError> {
         let status = resp.status();
         let env: crate::protocol::Envelope<serde_json::Value> =
             resp.json().await.map_err(|e| e.to_string())?;
@@ -1374,7 +1462,7 @@ impl RemoteDriver {
         Ok(env.data.unwrap_or(serde_json::Value::Null))
     }
 
-    fn model_from_value(v: &serde_json::Value) -> Result<ModelInfo, String> {
+    fn model_from_value(v: &serde_json::Value) -> Result<ModelInfo, XyDriverError> {
         Ok(ModelInfo {
             id: v
                 .get("id")
@@ -1398,7 +1486,7 @@ impl RemoteDriver {
 
 #[cfg(feature = "server")]
 #[async_trait]
-impl Driver for RemoteDriver {
+impl XyDriver for XyRemoteDriver {
     async fn run(&mut self, prompt: &str) -> EventStream {
         let client = self.client.clone();
         let run_url = self.run_url();
@@ -1521,7 +1609,7 @@ impl Driver for RemoteDriver {
         .unwrap_or_default()
     }
 
-    fn select_model(&mut self, model_id: &str) -> Result<ModelInfo, String> {
+    fn select_model(&mut self, model_id: &str) -> Result<ModelInfo, XyDriverError> {
         let model_id = model_id.to_string();
         let url = format!(
             "{}/api/v1/session/{}/model?model_id={}",
@@ -1559,14 +1647,14 @@ impl Driver for RemoteDriver {
         })
     }
 
-    fn cycle_model(&mut self) -> Result<ModelInfo, String> {
+    fn cycle_model(&mut self) -> Result<ModelInfo, XyDriverError> {
         self.block_on(async {
             let data = self.post_data("model/cycle", serde_json::json!({})).await?;
             Self::model_from_value(&data)
         })
     }
 
-    fn set_thinking_level(&mut self, level: ThinkingLevel) -> Result<(), String> {
+    fn set_thinking_level(&mut self, level: ThinkingLevel) -> Result<(), XyDriverError> {
         *self.thinking.lock().unwrap() = level;
         let level_str = level.as_str();
         self.block_on(async {
@@ -1580,7 +1668,7 @@ impl Driver for RemoteDriver {
         *self.thinking.lock().unwrap()
     }
 
-    fn cycle_thinking_level(&mut self) -> Result<ThinkingLevel, String> {
+    fn cycle_thinking_level(&mut self) -> Result<ThinkingLevel, XyDriverError> {
         // Remote REST has set-only; cycle locally over STANDARD then POST.
         let levels = ThinkingLevel::STANDARD;
         let cur = self.thinking_level();
@@ -1599,7 +1687,7 @@ impl Driver for RemoteDriver {
         command: &str,
         exclude_from_context: bool,
         _chunk_tx: Option<tokio::sync::mpsc::Sender<Vec<u8>>>,
-    ) -> Result<XyBashResult, String> {
+    ) -> Result<XyBashResult, XyDriverError> {
         // Remote REST bash is request/response — no live chunk uplink.
         let data = self
             .post_data(
@@ -1632,7 +1720,7 @@ impl Driver for RemoteDriver {
         })
     }
 
-    async fn compact(&mut self) -> Result<bool, String> {
+    async fn compact(&mut self) -> Result<bool, XyDriverError> {
         let data = self.post_data("compact", serde_json::json!({})).await?;
         Ok(data
             .get("compacted")
@@ -1640,7 +1728,7 @@ impl Driver for RemoteDriver {
             .unwrap_or(false))
     }
 
-    async fn export_html(&mut self, path: &Path) -> Result<String, String> {
+    async fn export_html(&mut self, path: &Path) -> Result<String, XyDriverError> {
         let data = self
             .post_data(
                 "export/html",
@@ -1654,7 +1742,7 @@ impl Driver for RemoteDriver {
             .to_string())
     }
 
-    async fn export_jsonl(&mut self, path: &Path) -> Result<String, String> {
+    async fn export_jsonl(&mut self, path: &Path) -> Result<String, XyDriverError> {
         let data = self
             .post_data(
                 "export/jsonl",
@@ -1668,7 +1756,7 @@ impl Driver for RemoteDriver {
             .to_string())
     }
 
-    async fn import_jsonl(&mut self, path: &Path) -> Result<String, String> {
+    async fn import_jsonl(&mut self, path: &Path) -> Result<String, XyDriverError> {
         let data = self
             .post_data(
                 "import/jsonl",
@@ -1686,7 +1774,7 @@ impl Driver for RemoteDriver {
         &mut self,
         entry_id: &str,
         position: crate::domain::session_types::ForkPosition,
-    ) -> Result<String, String> {
+    ) -> Result<String, XyDriverError> {
         let data = self
             .post_data(
                 "fork",
@@ -1706,7 +1794,7 @@ impl Driver for RemoteDriver {
             .to_string())
     }
 
-    async fn switch_session(&mut self, session_id: &str) -> Result<String, String> {
+    async fn switch_session(&mut self, session_id: &str) -> Result<String, XyDriverError> {
         let data = self
             .post_data("switch", serde_json::json!({ "session_id": session_id }))
             .await?;
@@ -1719,7 +1807,7 @@ impl Driver for RemoteDriver {
         Ok(id)
     }
 
-    async fn get_messages(&self) -> Result<Vec<SessionEntry>, String> {
+    async fn get_messages(&self) -> Result<Vec<SessionEntry>, XyDriverError> {
         let data = self.get_data("messages").await?;
         let entries = data
             .get("entries")
@@ -1728,7 +1816,7 @@ impl Driver for RemoteDriver {
         serde_json::from_value(entries).map_err(|e| e.to_string())
     }
 
-    async fn get_session_stats(&self) -> Result<SessionStats, String> {
+    async fn get_session_stats(&self) -> Result<SessionStats, XyDriverError> {
         let data = self.get_data("stats").await?;
         Ok(SessionStats {
             session_id: data
@@ -1764,7 +1852,7 @@ impl Driver for RemoteDriver {
 
     async fn estimate_context_tokens(
         &self,
-    ) -> Result<crate::domain::types::ContextTokenEstimate, String> {
+    ) -> Result<crate::domain::types::ContextTokenEstimate, XyDriverError> {
         let entries = self.get_messages().await.unwrap_or_default();
         // Remote surface: tokenizer mapping lives on the server; do not inject
         // local AppConfig override here.
@@ -1800,7 +1888,7 @@ impl Driver for RemoteDriver {
         .unwrap_or_default()
     }
 
-    fn steer(&mut self, message: &str) -> Result<(), String> {
+    fn steer(&mut self, message: &str) -> Result<(), XyDriverError> {
         self.block_on(async {
             self.post_data("steer", serde_json::json!({ "message": message }))
                 .await?;
@@ -1808,7 +1896,7 @@ impl Driver for RemoteDriver {
         })
     }
 
-    fn follow_up(&mut self, message: &str) -> Result<(), String> {
+    fn follow_up(&mut self, message: &str) -> Result<(), XyDriverError> {
         self.block_on(async {
             self.post_data("follow-up", serde_json::json!({ "message": message }))
                 .await?;
@@ -1816,7 +1904,11 @@ impl Driver for RemoteDriver {
         })
     }
 
-    fn clear_queue(&mut self, clear_steer: bool, clear_follow_up: bool) -> Result<(), String> {
+    fn clear_queue(
+        &mut self,
+        clear_steer: bool,
+        clear_follow_up: bool,
+    ) -> Result<(), XyDriverError> {
         self.block_on(async {
             self.post_data(
                 "queue/clear",
@@ -1847,14 +1939,19 @@ impl Driver for RemoteDriver {
         .unwrap_or_default()
     }
 
-    async fn session_tree(&self, kind: SessionTreeKind) -> Result<Vec<SessionTreeNode>, String> {
+    async fn session_tree(
+        &self,
+        kind: SessionTreeKind,
+    ) -> Result<Vec<SessionTreeNode>, XyDriverError> {
         match kind {
             SessionTreeKind::MessageHistory => {
                 let data = self.get_data("trees/message-history").await?;
                 let tree = data.get("tree").cloned().unwrap_or(serde_json::Value::Null);
                 serde_json::from_value(tree).map_err(|e| e.to_string())
             }
-            SessionTreeKind::FileBrowser => Err(session_tree_kind_unimplemented(kind)),
+            SessionTreeKind::FileBrowser => {
+                Err(XyDriverError::from(session_tree_kind_unimplemented(kind)))
+            }
         }
     }
 
@@ -1862,7 +1959,7 @@ impl Driver for RemoteDriver {
         &self,
         kind: SessionTreeKind,
         entry_id: &str,
-    ) -> Result<SessionTreeTravel, String> {
+    ) -> Result<SessionTreeTravel, XyDriverError> {
         match kind {
             SessionTreeKind::MessageHistory => {
                 let data = self
@@ -1873,7 +1970,9 @@ impl Driver for RemoteDriver {
                     .await?;
                 serde_json::from_value(data).map_err(|e| e.to_string())
             }
-            SessionTreeKind::FileBrowser => Err(session_tree_kind_unimplemented(kind)),
+            SessionTreeKind::FileBrowser => {
+                Err(XyDriverError::from(session_tree_kind_unimplemented(kind)))
+            }
         }
     }
 
@@ -1881,7 +1980,7 @@ impl Driver for RemoteDriver {
         &mut self,
         _target_id: &str,
         _label: Option<&str>,
-    ) -> Result<(), String> {
+    ) -> Result<(), XyDriverError> {
         Err("remote: append_entry_label not implemented".into())
     }
 
@@ -1889,11 +1988,11 @@ impl Driver for RemoteDriver {
         None
     }
 
-    async fn load_debug_scene(&mut self, _scene: &str) -> Result<DebugSceneLoad, String> {
+    async fn load_debug_scene(&mut self, _scene: &str) -> Result<DebugSceneLoad, XyDriverError> {
         Err("remote: load_debug_scene not implemented".into())
     }
 
-    async fn list_sessions(&self) -> Result<Vec<SessionListEntry>, String> {
+    async fn list_sessions(&self) -> Result<Vec<SessionListEntry>, XyDriverError> {
         self.block_on(async {
             let data = self.get_data("sessions").await?;
             let arr = data
@@ -1949,15 +2048,15 @@ impl Driver for RemoteDriver {
         })
     }
 
-    async fn new_session(&mut self) -> Result<String, String> {
+    async fn new_session(&mut self) -> Result<String, XyDriverError> {
         Err("remote: new_session not implemented".into())
     }
 
-    async fn get_session_name(&self) -> Result<Option<String>, String> {
+    async fn get_session_name(&self) -> Result<Option<String>, XyDriverError> {
         Err("remote: get_session_name not implemented".into())
     }
 
-    async fn set_session_name(&mut self, _name: &str) -> Result<String, String> {
+    async fn set_session_name(&mut self, _name: &str) -> Result<String, XyDriverError> {
         Err("remote: set_session_name not implemented".into())
     }
 
@@ -1965,11 +2064,11 @@ impl Driver for RemoteDriver {
         &mut self,
         _session_id: &str,
         _name: &str,
-    ) -> Result<String, String> {
+    ) -> Result<String, XyDriverError> {
         Err("remote: set_session_name_for not implemented".into())
     }
 
-    async fn delete_session(&mut self, _session_id: &str) -> Result<(), String> {
+    async fn delete_session(&mut self, _session_id: &str) -> Result<(), XyDriverError> {
         Err("remote: delete_session not implemented".into())
     }
 
@@ -2025,7 +2124,7 @@ mod driver_session_tree_tests {
         })
     }
 
-    async fn build_test_driver(store: Arc<SessionManager>) -> InProcessDriver {
+    async fn build_test_driver(store: Arc<SessionManager>) -> XyInProcessDriver {
         let store_trait: Arc<dyn XySessionStore> = store.clone();
         let mut agent = AgentBuilder::new(
             crate::agent::model::registry::ModelRegistry::new(Arc::new(InfraSecretResolver::new())),
@@ -2046,7 +2145,7 @@ mod driver_session_tree_tests {
             .await
             .expect("create session");
         agent.inner_mut().set_session(sid);
-        InProcessDriver::new(agent, store)
+        XyInProcessDriver::new(agent, store)
     }
 
     #[tokio::test]
@@ -2070,7 +2169,7 @@ mod driver_session_tree_tests {
         // Orphan id: set on agent but never created on disk (wipe / pre-persist).
         let orphan = uuid::Uuid::new_v4().to_string();
         agent.inner_mut().set_session(orphan.clone());
-        let driver = InProcessDriver::new(agent, store);
+        let driver = XyInProcessDriver::new(agent, store);
         let tree = driver
             .session_tree(SessionTreeKind::MessageHistory)
             .await
@@ -2186,7 +2285,7 @@ mod driver_session_tree_tests {
             .session_tree(SessionTreeKind::FileBrowser)
             .await
             .expect_err("file_browser");
-        assert!(err.contains("file_browser"));
+        assert!(err.to_string().contains("file_browser"));
         assert_eq!(
             XySessionStore::leaf_id(store.as_ref(), &sid).as_deref(),
             Some("keep")
@@ -2196,7 +2295,7 @@ mod driver_session_tree_tests {
             .travel_session_tree(SessionTreeKind::FileBrowser, "x")
             .await
             .expect_err("travel file_browser");
-        assert!(err.contains("file_browser"));
+        assert!(err.to_string().contains("file_browser"));
         assert_eq!(
             XySessionStore::leaf_id(store.as_ref(), &sid).as_deref(),
             Some("keep")
@@ -2286,9 +2385,10 @@ mod driver_session_tree_tests {
         .export_io(Arc::new(StdExportIo::new()) as Arc<dyn XyExportIo>)
         .build()
         .expect("build agent");
+        agent.inner_mut().select_model("mock").expect("select mock");
         let sid = uuid::Uuid::new_v4().to_string();
         agent.inner_mut().set_session(sid);
-        let mut driver = InProcessDriver::new(agent, store_trait);
+        let mut driver = XyInProcessDriver::new(agent, store_trait);
 
         let mut stream = driver.run("hello tree").await;
         while stream.next().await.is_some() {}
@@ -2305,7 +2405,7 @@ mod driver_session_tree_tests {
 
     #[tokio::test]
     async fn fork_rejects_unflushed_session_via_driver() {
-        // TUI cannot hit this while assistant is streaming (steer takes over); cover via Driver.
+        // TUI cannot hit this while assistant is streaming (steer takes over); cover via XyDriver.
         let dir = tempfile::tempdir().unwrap();
         let store = Arc::new(SessionManager::new(dir.path().join("sessions")));
         let mut driver = build_test_driver(store.clone()).await;
@@ -2350,8 +2450,8 @@ mod driver_session_tree_tests {
             .await
             .expect_err("unflushed fork");
         assert!(
-            err.contains("not been saved yet"),
-            "pi unflushed guard via Driver: {err}"
+            err.to_string().contains("not been saved yet"),
+            "pi unflushed guard via XyDriver: {err}"
         );
     }
 

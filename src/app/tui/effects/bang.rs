@@ -6,7 +6,7 @@ use futures::Stream;
 use futures::StreamExt;
 use xylitol_tui::Terminal;
 
-use crate::app::core::driver::{Driver, EventStream};
+use crate::app::core::driver::{EventStream, XyDriver, XyDriverError};
 
 use super::super::commands::PendingBash;
 use super::super::host::{HostEvent, HostSession};
@@ -14,21 +14,21 @@ use super::super::host::{HostEvent, HostSession};
 /// Interactive bang loop shared by production `run_host_loop` and harness (c715 / ath9).
 ///
 /// `input` yields terminal-side [`HostEvent`]s (Input / Paste / Resize). Tick is owned
-/// here (16ms). Esc → `Driver::abort` + [`HostSession::note_bash_cancelled`] (not agent
+/// here (16ms). Esc → `XyDriver::abort` + [`HostSession::note_bash_cancelled`] (not agent
 /// Aborted). Empty `input` is valid for fire-and-forget bang that completes without Esc.
 pub async fn run_interactive_bang<T, S>(
     session: &mut HostSession<T>,
-    driver: &mut dyn Driver,
+    driver: &mut dyn XyDriver,
     bash: PendingBash,
     agent_stream: &mut Option<EventStream>,
     input: S,
-) -> Result<(), String>
+) -> Result<(), XyDriverError>
 where
     T: Terminal,
-    S: Stream<Item = Result<HostEvent, String>>,
+    S: Stream<Item = Result<HostEvent, XyDriverError>>,
 {
     tokio::pin!(input);
-    log::info!(target: "xylitol::tui", "Driver::execute_bash (interactive bang) command_len={} exclude={}", bash.command.len(), bash.exclude_from_context);
+    log::info!(target: "xylitol::tui", "XyDriver::execute_bash (interactive bang) command_len={} exclude={}", bash.command.len(), bash.exclude_from_context);
     session.begin_bash_exec(&bash.command, bash.exclude_from_context);
     let _ = session.render_now();
     let (chunk_tx, mut chunk_rx) = tokio::sync::mpsc::channel::<Vec<u8>>(64);
@@ -61,7 +61,7 @@ where
                                 }
                                 log::info!(
                                     target: "xylitol::tui",
-                                    "Driver::abort during bang"
+                                    "XyDriver::abort during bang"
                                 );
                                 driver.abort();
                                 session.note_bash_cancelled();

@@ -3,7 +3,7 @@
 //! ## 入口（库用户从这里进门）
 //!
 //! - [`AgentRuntime`]（[`runtime::AgentRuntime`]）：ReAct 循环运行时，驱动
-//!   [`AgentCapabilities`] 跑 turn。交互层（cli/rpc/server/tui）经 `Driver` 持有它，
+//!   [`AgentCapabilities`] 跑 turn。交互层（cli/rpc/server/tui）经 `XyDriver` 持有它，
 //!   调用 `run` / `abort` / `set_tools` 等方法。
 //! - [`AgentCapabilities`]（[`session::AgentCapabilities`]）：可插拔的能力聚合体
 //!   （models + io + tools + 编排状态）。被 `AgentRuntime` 持有；构造期由
@@ -18,7 +18,7 @@
 //! 交互代码应只从本 mod 级（`crate::agent::*`）import。直接 reach into
 //! `agent::runtime` / `agent::session` / `agent::tools` 子模块是分层违规，唯一
 //! 例外是组合根（`app::core::composition`），它在构造期注入具体 adapter。
-//! [`AgentRuntime`] 是 in-process 半边的 Driver 抽象（见 c265）；远程半边是
+//! [`AgentRuntime`] 是 in-process 半边的 XyDriver 抽象（见 c265）；远程半边是
 //! `app::server::ws` / `app::server::rest`。
 
 pub mod builder;

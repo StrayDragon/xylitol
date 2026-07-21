@@ -1,7 +1,7 @@
 //! c485 synthetic vertical-slice harness — ScriptedDriver + host/driver pump.
 //!
 //! Only compiled in unit tests (`cfg(test)`). Stays inside `app/tui` and talks
-//! to the core solely via [`crate::app::core::driver::Driver`] (layering seam).
+//! to the core solely via [`crate::app::core::driver::XyDriver`] (layering seam).
 
 use std::collections::HashMap;
 use std::collections::VecDeque;
@@ -15,8 +15,9 @@ use futures::StreamExt;
 use xylitol_tui::Terminal;
 
 use crate::app::core::driver::{
-    CommandInfo, DebugSceneLoad, Driver, EventStream, LoadedResourcesSnapshot, ModelInfo,
-    QueueStats, ReloadStepReport, RuntimeReloadReport, SessionListEntry, SessionStats, XyEvent,
+    CommandInfo, DebugSceneLoad, EventStream, LoadedResourcesSnapshot, ModelInfo, QueueStats,
+    ReloadStepReport, RuntimeReloadReport, SessionListEntry, SessionStats, XyDriver, XyDriverError,
+    XyEvent,
 };
 use crate::domain::session_types::{
     SessionEntry, SessionTreeKind, SessionTreeNode, SessionTreeTravel, plan_message_history_travel,
@@ -86,7 +87,7 @@ pub struct ScriptedDriver {
     thinking_levels: Vec<ThinkingLevel>,
     /// Injectable clipboard image bytes for paste staging (c1155); `None` = no image.
     clipboard_image: Mutex<Option<(Vec<u8>, String)>>,
-    /// Paths written by [`Driver::stage_clipboard_image`].
+    /// Paths written by [`XyDriver::stage_clipboard_image`].
     staged_paste_paths: Mutex<Vec<String>>,
     /// Force `stage_clipboard_image` to Err.
     clipboard_image_error: Mutex<Option<String>>,
@@ -191,7 +192,7 @@ impl ScriptedDriver {
         }
     }
 
-    /// Queue a fake clipboard image for the next [`Driver::stage_clipboard_image`] (c1155).
+    /// Queue a fake clipboard image for the next [`XyDriver::stage_clipboard_image`] (c1155).
     pub fn set_clipboard_image(&self, bytes: Vec<u8>, mime: impl Into<String>) {
         *self.clipboard_image.lock().expect("clipboard_image") = Some((bytes, mime.into()));
     }
@@ -204,7 +205,7 @@ impl ScriptedDriver {
             .expect("clipboard_image_error") = Some(err.into());
     }
 
-    /// Queue clipboard text for [`Driver::read_clipboard_text`] (c1156).
+    /// Queue clipboard text for [`XyDriver::read_clipboard_text`] (c1156).
     pub fn set_clipboard_text(&self, text: impl Into<String>) {
         *self.clipboard_text.lock().expect("clipboard_text") = Some(text.into());
     }
@@ -216,7 +217,7 @@ impl ScriptedDriver {
             .clone()
     }
 
-    /// Replace the thinking support list used by [`Driver::cycle_thinking_level`].
+    /// Replace the thinking support list used by [`XyDriver::cycle_thinking_level`].
     pub fn set_thinking_levels(&mut self, levels: Vec<ThinkingLevel>) {
         self.thinking_levels = levels;
         if !self.thinking_levels.is_empty() && !self.thinking_levels.contains(&self.thinking_level)
@@ -290,7 +291,7 @@ impl ScriptedDriver {
         self.session_messages = entries;
     }
 
-    /// Fixed [`Driver::estimate_context_tokens`] result for footer harness (c1035).
+    /// Fixed [`XyDriver::estimate_context_tokens`] result for footer harness (c1035).
     pub fn set_estimate_override(
         &mut self,
         estimate: Option<crate::domain::types::ContextTokenEstimate>,
@@ -410,7 +411,7 @@ impl Default for ScriptedDriver {
 }
 
 #[async_trait]
-impl Driver for ScriptedDriver {
+impl XyDriver for ScriptedDriver {
     async fn run(&mut self, prompt: &str) -> EventStream {
         self.runs.push(prompt.to_string());
         let events = self
@@ -437,7 +438,7 @@ impl Driver for ScriptedDriver {
         }
     }
 
-    fn select_model(&mut self, model_id: &str) -> Result<ModelInfo, String> {
+    fn select_model(&mut self, model_id: &str) -> Result<ModelInfo, XyDriverError> {
         self.model = ModelInfo {
             id: model_id.into(),
             display_name: model_id.into(),
@@ -447,16 +448,17 @@ impl Driver for ScriptedDriver {
         Ok(self.model.clone())
     }
 
-    fn cycle_model(&mut self) -> Result<ModelInfo, String> {
+    fn cycle_model(&mut self) -> Result<ModelInfo, XyDriverError> {
         Ok(self.model.clone())
     }
 
-    fn set_thinking_level(&mut self, level: ThinkingLevel) -> Result<(), String> {
+    fn set_thinking_level(&mut self, level: ThinkingLevel) -> Result<(), XyDriverError> {
         if !self.thinking_levels.is_empty() && !self.thinking_levels.contains(&level) {
             return Err(format!(
                 "thinking level `{}` is not supported by the current model",
                 level.as_str()
-            ));
+            )
+            .into());
         }
         self.thinking_level = level;
         Ok(())
@@ -466,7 +468,7 @@ impl Driver for ScriptedDriver {
         self.thinking_level
     }
 
-    fn cycle_thinking_level(&mut self) -> Result<ThinkingLevel, String> {
+    fn cycle_thinking_level(&mut self) -> Result<ThinkingLevel, XyDriverError> {
         if self.thinking_levels.is_empty() {
             return Err("current model has no thinking levels".into());
         }
@@ -489,7 +491,7 @@ impl Driver for ScriptedDriver {
         command: &str,
         exclude_from_context: bool,
         chunk_tx: Option<tokio::sync::mpsc::Sender<Vec<u8>>>,
-    ) -> Result<XyBashResult, String> {
+    ) -> Result<XyBashResult, XyDriverError> {
         // Fresh run: do not inherit a prior abort latch (pi: new AbortController each bang).
         self.aborted.store(false, Ordering::SeqCst);
         self.bash_calls
@@ -528,12 +530,12 @@ impl Driver for ScriptedDriver {
         Ok(result)
     }
 
-    async fn compact(&mut self) -> Result<bool, String> {
+    async fn compact(&mut self) -> Result<bool, XyDriverError> {
         self.compact_calls.fetch_add(1, Ordering::SeqCst);
         Ok(false)
     }
 
-    async fn export_html(&mut self, path: &Path) -> Result<String, String> {
+    async fn export_html(&mut self, path: &Path) -> Result<String, XyDriverError> {
         let s = path.display().to_string();
         self.export_html_calls
             .lock()
@@ -542,7 +544,7 @@ impl Driver for ScriptedDriver {
         Ok(s)
     }
 
-    async fn export_jsonl(&mut self, path: &Path) -> Result<String, String> {
+    async fn export_jsonl(&mut self, path: &Path) -> Result<String, XyDriverError> {
         let s = path.display().to_string();
         self.export_jsonl_calls
             .lock()
@@ -551,7 +553,7 @@ impl Driver for ScriptedDriver {
         Ok(s)
     }
 
-    async fn import_jsonl(&mut self, path: &Path) -> Result<String, String> {
+    async fn import_jsonl(&mut self, path: &Path) -> Result<String, XyDriverError> {
         self.import_jsonl_calls
             .lock()
             .expect("import_jsonl_calls")
@@ -563,7 +565,7 @@ impl Driver for ScriptedDriver {
         &mut self,
         entry_id: &str,
         position: crate::domain::session_types::ForkPosition,
-    ) -> Result<String, String> {
+    ) -> Result<String, XyDriverError> {
         self.fork_calls
             .lock()
             .expect("fork_calls")
@@ -571,7 +573,7 @@ impl Driver for ScriptedDriver {
         Ok("forked-child".into())
     }
 
-    async fn switch_session(&mut self, session_id: &str) -> Result<String, String> {
+    async fn switch_session(&mut self, session_id: &str) -> Result<String, XyDriverError> {
         self.switch_calls
             .lock()
             .expect("switch_calls")
@@ -580,11 +582,11 @@ impl Driver for ScriptedDriver {
         Ok(session_id.into())
     }
 
-    async fn get_messages(&self) -> Result<Vec<SessionEntry>, String> {
+    async fn get_messages(&self) -> Result<Vec<SessionEntry>, XyDriverError> {
         Ok(self.session_messages.clone())
     }
 
-    async fn get_session_stats(&self) -> Result<SessionStats, String> {
+    async fn get_session_stats(&self) -> Result<SessionStats, XyDriverError> {
         self.session_stats
             .clone()
             .ok_or_else(|| "scripted: no stats".into())
@@ -592,7 +594,7 @@ impl Driver for ScriptedDriver {
 
     async fn estimate_context_tokens(
         &self,
-    ) -> Result<crate::domain::types::ContextTokenEstimate, String> {
+    ) -> Result<crate::domain::types::ContextTokenEstimate, XyDriverError> {
         if let Some(est) = self.estimate_override.clone() {
             return Ok(est);
         }
@@ -607,19 +609,23 @@ impl Driver for ScriptedDriver {
         Vec::new()
     }
 
-    fn steer(&mut self, message: &str) -> Result<(), String> {
+    fn steer(&mut self, message: &str) -> Result<(), XyDriverError> {
         self.steer_calls.push(message.to_string());
         self.steer_queued += 1;
         Ok(())
     }
 
-    fn follow_up(&mut self, message: &str) -> Result<(), String> {
+    fn follow_up(&mut self, message: &str) -> Result<(), XyDriverError> {
         self.follow_up_calls.push(message.to_string());
         self.follow_up_queued += 1;
         Ok(())
     }
 
-    fn clear_queue(&mut self, clear_steer: bool, clear_follow_up: bool) -> Result<(), String> {
+    fn clear_queue(
+        &mut self,
+        clear_steer: bool,
+        clear_follow_up: bool,
+    ) -> Result<(), XyDriverError> {
         self.clear_calls.push((clear_steer, clear_follow_up));
         if clear_steer {
             self.steer_queued = 0;
@@ -637,7 +643,10 @@ impl Driver for ScriptedDriver {
         }
     }
 
-    async fn session_tree(&self, kind: SessionTreeKind) -> Result<Vec<SessionTreeNode>, String> {
+    async fn session_tree(
+        &self,
+        kind: SessionTreeKind,
+    ) -> Result<Vec<SessionTreeNode>, XyDriverError> {
         match kind {
             SessionTreeKind::MessageHistory => {
                 self.session_tree_calls.fetch_add(1, Ordering::SeqCst);
@@ -653,7 +662,7 @@ impl Driver for ScriptedDriver {
         &self,
         kind: SessionTreeKind,
         entry_id: &str,
-    ) -> Result<SessionTreeTravel, String> {
+    ) -> Result<SessionTreeTravel, XyDriverError> {
         match kind {
             SessionTreeKind::MessageHistory => {
                 self.travel_calls
@@ -663,7 +672,7 @@ impl Driver for ScriptedDriver {
                 if let Some(travel) = self.travel_overrides.get(entry_id) {
                     return Ok(travel.clone());
                 }
-                plan_message_history_travel(&self.session_messages, entry_id)
+                plan_message_history_travel(&self.session_messages, entry_id).map_err(Into::into)
             }
             SessionTreeKind::FileBrowser => {
                 Err("scripted: file_browser travel not implemented".into())
@@ -675,7 +684,7 @@ impl Driver for ScriptedDriver {
         &mut self,
         target_id: &str,
         label: Option<&str>,
-    ) -> Result<(), String> {
+    ) -> Result<(), XyDriverError> {
         let cleaned = label
             .map(str::trim)
             .filter(|s| !s.is_empty())
@@ -691,7 +700,7 @@ impl Driver for ScriptedDriver {
         self.leaf_entry_id.lock().expect("leaf").clone()
     }
 
-    async fn load_debug_scene(&mut self, scene: &str) -> Result<DebugSceneLoad, String> {
+    async fn load_debug_scene(&mut self, scene: &str) -> Result<DebugSceneLoad, XyDriverError> {
         self.debug_scene_calls
             .lock()
             .expect("debug_scene_calls")
@@ -708,12 +717,12 @@ impl Driver for ScriptedDriver {
         })
     }
 
-    async fn list_sessions(&self) -> Result<Vec<SessionListEntry>, String> {
+    async fn list_sessions(&self) -> Result<Vec<SessionListEntry>, XyDriverError> {
         self.list_sessions_calls.fetch_add(1, Ordering::SeqCst);
         Ok(self.session_list.lock().expect("session_list").clone())
     }
 
-    async fn new_session(&mut self) -> Result<String, String> {
+    async fn new_session(&mut self) -> Result<String, XyDriverError> {
         self.new_session_calls.fetch_add(1, Ordering::SeqCst);
         let sid = format!("new-{}", self.new_session_calls());
         *self.active_session_id.lock().expect("sid") = sid.clone();
@@ -723,11 +732,11 @@ impl Driver for ScriptedDriver {
         Ok(sid)
     }
 
-    async fn get_session_name(&self) -> Result<Option<String>, String> {
+    async fn get_session_name(&self) -> Result<Option<String>, XyDriverError> {
         Ok(self.session_name.lock().expect("session_name").clone())
     }
 
-    async fn set_session_name(&mut self, name: &str) -> Result<String, String> {
+    async fn set_session_name(&mut self, name: &str) -> Result<String, XyDriverError> {
         let stored = crate::runtime_protocol::sanitize_session_display_name(name);
         self.set_session_name_calls
             .lock()
@@ -741,7 +750,7 @@ impl Driver for ScriptedDriver {
         &mut self,
         session_id: &str,
         name: &str,
-    ) -> Result<String, String> {
+    ) -> Result<String, XyDriverError> {
         let stored = crate::runtime_protocol::sanitize_session_display_name(name);
         self.set_session_name_for_calls
             .lock()
@@ -759,7 +768,7 @@ impl Driver for ScriptedDriver {
         Ok(stored)
     }
 
-    async fn delete_session(&mut self, session_id: &str) -> Result<(), String> {
+    async fn delete_session(&mut self, session_id: &str) -> Result<(), XyDriverError> {
         self.delete_session_calls
             .lock()
             .expect("delete_session_calls")
@@ -782,7 +791,7 @@ impl Driver for ScriptedDriver {
             .clone()
     }
 
-    async fn reload_runtime(&mut self) -> Result<RuntimeReloadReport, String> {
+    async fn reload_runtime(&mut self) -> Result<RuntimeReloadReport, XyDriverError> {
         self.reload_runtime_calls.fetch_add(1, Ordering::SeqCst);
         // Mirror catalog → skill_names so /reload harness sees header refresh (c1135).
         let names: Vec<String> = self
@@ -808,7 +817,7 @@ impl Driver for ScriptedDriver {
     fn persist_project_trust(
         &mut self,
         mode: crate::app::core::driver::ProjectTrustMode,
-    ) -> Result<crate::app::core::driver::ProjectTrustPersistReport, String> {
+    ) -> Result<crate::app::core::driver::ProjectTrustPersistReport, XyDriverError> {
         use crate::app::core::driver::{ProjectTrustMode, ProjectTrustPersistReport};
         self.persist_project_trust_calls
             .lock()
@@ -833,7 +842,7 @@ impl Driver for ScriptedDriver {
     async fn copy_text_to_clipboard(
         &mut self,
         text: &str,
-    ) -> Result<crate::app::core::driver::ClipboardCopyOutcome, String> {
+    ) -> Result<crate::app::core::driver::ClipboardCopyOutcome, XyDriverError> {
         self.copy_text_calls
             .lock()
             .expect("copy_text_calls")
@@ -846,14 +855,14 @@ impl Driver for ScriptedDriver {
         Ok(crate::app::core::driver::ClipboardCopyOutcome { pending_osc52 })
     }
 
-    async fn stage_clipboard_image(&mut self) -> Result<Option<std::path::PathBuf>, String> {
+    async fn stage_clipboard_image(&mut self) -> Result<Option<std::path::PathBuf>, XyDriverError> {
         if let Some(err) = self
             .clipboard_image_error
             .lock()
             .expect("clipboard_image_error")
             .take()
         {
-            return Err(err);
+            return Err(err.into());
         }
         let Some((bytes, mime)) = self.clipboard_image.lock().expect("clipboard_image").take()
         else {
@@ -875,7 +884,7 @@ impl Driver for ScriptedDriver {
         Ok(Some(path))
     }
 
-    async fn read_clipboard_text(&mut self) -> Result<Option<String>, String> {
+    async fn read_clipboard_text(&mut self) -> Result<Option<String>, XyDriverError> {
         Ok(self.clipboard_text.lock().expect("clipboard_text").take())
     }
 }
@@ -884,14 +893,14 @@ impl Driver for ScriptedDriver {
 /// Mirrors `run_host_loop` ordering via shared [`drain_pending`] (c485 / ath6).
 pub async fn pump_host_driver<T: Terminal>(
     session: &mut HostSession<T>,
-    driver: &mut dyn Driver,
+    driver: &mut dyn XyDriver,
     agent_stream: &mut Option<EventStream>,
-) -> Result<(), String> {
+) -> Result<(), XyDriverError> {
     drain_pending(session, driver, agent_stream).await?;
 
     if let Some(bash) = session.take_bash() {
         // No keyboard: pending stream (not empty — empty would EOF-quit the bang loop).
-        let input = futures::stream::pending::<Result<HostEvent, String>>();
+        let input = futures::stream::pending::<Result<HostEvent, XyDriverError>>();
         run_interactive_bang(session, driver, bash, agent_stream, input).await?;
     }
 
@@ -969,7 +978,7 @@ mod slice_tests {
     /// HostEvent stream for hanging-bang Esc: delay → Esc(+backlog) → park (no EOF).
     fn bang_esc_input_stream(
         backlog_after_abort: usize,
-    ) -> impl Stream<Item = Result<HostEvent, String>> {
+    ) -> impl Stream<Item = Result<HostEvent, XyDriverError>> {
         let (tx, rx) = tokio::sync::mpsc::unbounded_channel();
         tokio::spawn(async move {
             tokio::time::sleep(Duration::from_millis(40)).await;
@@ -1941,7 +1950,7 @@ mod slice_tests {
         drain_pending(&mut session, &mut driver, &mut stream)
             .await
             .unwrap();
-        assert_eq!(driver.abort_count(), 1, "Driver::abort must still run");
+        assert_eq!(driver.abort_count(), 1, "XyDriver::abort must still run");
         assert!(
             !session.ui_model().entries.iter().any(|e| matches!(
                 e,
@@ -2685,7 +2694,7 @@ mod slice_tests {
             .unwrap();
         assert!(
             driver.debug_scene_calls().is_empty(),
-            "list must not call Driver::load_debug_scene"
+            "list must not call XyDriver::load_debug_scene"
         );
         let note = session
             .ui_model()

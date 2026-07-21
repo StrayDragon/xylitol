@@ -2,8 +2,8 @@
 //! variants, consumed by tui (spec ce10).
 //!
 //! This module is a **pure dispatcher**: it maps each non-transport Command
-//! variant to a [`Driver`] method call and returns a [`DispatchOutcome`]. It
-//! holds no state of its own — all execution state lives behind the Driver.
+//! variant to a [`XyDriver`] method call and returns a [`DispatchOutcome`]. It
+//! holds no state of its own — all execution state lives behind the XyDriver.
 //!
 //! What does NOT live here (by design, spec ip9):
 //! - `Prompt` — starts an event stream + is tied to the caller's run loop, so
@@ -26,7 +26,8 @@
 
 use std::path::PathBuf;
 
-use crate::app::core::driver::{CommandInfo, Driver, ModelInfo, SessionState};
+use crate::app::core::driver::{CommandInfo, ModelInfo, SessionState, XyDriver};
+use crate::app::core::driver_error::XyDriverError;
 use crate::domain::session_types::SessionEntry;
 use crate::domain::types::ThinkingLevel;
 use crate::protocol::Command;
@@ -80,21 +81,10 @@ pub enum DispatchOutcome {
     },
 }
 
-/// Error from dispatching a Command.
-#[derive(Debug)]
-pub struct DispatchError(pub String);
-
-impl std::fmt::Display for DispatchError {
-    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        write!(f, "{}", self.0)
-    }
-}
-
-impl std::error::Error for DispatchError {}
-
 /// Parse a thinking-level string into the typed enum.
-pub fn parse_thinking_level(s: &str) -> Result<ThinkingLevel, DispatchError> {
-    ThinkingLevel::parse(s).ok_or_else(|| DispatchError(format!("unknown thinking level: {s}")))
+pub fn parse_thinking_level(s: &str) -> Result<ThinkingLevel, XyDriverError> {
+    ThinkingLevel::parse(s)
+        .ok_or_else(|| XyDriverError::invalid_input(format!("unknown thinking level: {s}")))
 }
 
 /// Dispatch a non-Prompt, non-Quit, non-WS Command against `driver`.
@@ -103,12 +93,12 @@ pub fn parse_thinking_level(s: &str) -> Result<ThinkingLevel, DispatchError> {
 /// handled here — callers must match those before calling this function.
 /// Reaching one of them here is a caller bug and returns an error.
 pub async fn dispatch(
-    driver: &mut dyn Driver,
+    driver: &mut dyn XyDriver,
     cmd: Command,
-) -> Result<DispatchOutcome, DispatchError> {
+) -> Result<DispatchOutcome, XyDriverError> {
     match cmd {
         Command::Abort { .. } => {
-            // The Driver::abort cancels the active run loop. Whether something
+            // The XyDriver::abort cancels the active run loop. Whether something
             // was actually running is caller/transport-dependent; we report
             // cancelled=true optimistically (tui only calls Abort when a
             // loop is active).
@@ -117,11 +107,11 @@ pub async fn dispatch(
         }
         Command::GetState { .. } => Ok(DispatchOutcome::State(driver.get_state())),
         Command::SetModel { model_id, .. } => {
-            let m = driver.select_model(&model_id).map_err(DispatchError)?;
+            let m = driver.select_model(&model_id)?;
             Ok(DispatchOutcome::Model(m))
         }
         Command::CycleModel { .. } => {
-            let m = driver.cycle_model().map_err(DispatchError)?;
+            let m = driver.cycle_model()?;
             Ok(DispatchOutcome::Model(m))
         }
         Command::GetAvailableModels { .. } => {
@@ -129,7 +119,7 @@ pub async fn dispatch(
         }
         Command::SetThinkingLevel { level, .. } => {
             let tl = parse_thinking_level(&level)?;
-            driver.set_thinking_level(tl).map_err(DispatchError)?;
+            driver.set_thinking_level(tl)?;
             Ok(DispatchOutcome::ThinkingLevel(tl))
         }
         Command::Bash {
@@ -139,16 +129,15 @@ pub async fn dispatch(
         } => {
             let r = driver
                 .execute_bash(&command, exclude_from_context, None)
-                .await
-                .map_err(DispatchError)?;
+                .await?;
             Ok(DispatchOutcome::Bash(r))
         }
         Command::Compact { .. } => {
-            let did = driver.compact().await.map_err(DispatchError)?;
+            let did = driver.compact().await?;
             Ok(DispatchOutcome::Compacted(did))
         }
         Command::GetSessionStats { .. } => {
-            let stats = driver.get_session_stats().await.map_err(DispatchError)?;
+            let stats = driver.get_session_stats().await?;
             Ok(DispatchOutcome::SessionStats(serde_json::json!({
                 "session_id": stats.session_id,
                 "user_messages": stats.user_messages,
@@ -164,19 +153,19 @@ pub async fn dispatch(
             let path = output_path
                 .map(PathBuf::from)
                 .unwrap_or_else(|| PathBuf::from("export.html"));
-            let written = driver.export_html(&path).await.map_err(DispatchError)?;
+            let written = driver.export_html(&path).await?;
             Ok(DispatchOutcome::ExportedPath(written))
         }
         Command::ExportJsonl { output_path, .. } => {
             let path = output_path
                 .map(PathBuf::from)
                 .unwrap_or_else(|| PathBuf::from("export.jsonl"));
-            let written = driver.export_jsonl(&path).await.map_err(DispatchError)?;
+            let written = driver.export_jsonl(&path).await?;
             Ok(DispatchOutcome::ExportedPath(written))
         }
         Command::ImportJsonl { input_path, .. } => {
             let path = PathBuf::from(&input_path);
-            let new_id = driver.import_jsonl(&path).await.map_err(DispatchError)?;
+            let new_id = driver.import_jsonl(&path).await?;
             Ok(DispatchOutcome::NewSession(new_id))
         }
         Command::SwitchSession { session_path, .. } => {
@@ -186,10 +175,7 @@ pub async fn dispatch(
                 .and_then(|st| st.to_str())
                 .unwrap_or(&session_path)
                 .to_string();
-            let switched = driver
-                .switch_session(&new_id)
-                .await
-                .map_err(DispatchError)?;
+            let switched = driver.switch_session(&new_id).await?;
             Ok(DispatchOutcome::SwitchedSession(switched))
         }
         Command::Fork {
@@ -199,14 +185,11 @@ pub async fn dispatch(
                 Some("before") => crate::domain::session_types::ForkPosition::Before,
                 _ => crate::domain::session_types::ForkPosition::At,
             };
-            let new_id = driver
-                .fork_session(&entry_id, pos)
-                .await
-                .map_err(DispatchError)?;
+            let new_id = driver.fork_session(&entry_id, pos).await?;
             Ok(DispatchOutcome::NewSession(new_id))
         }
         Command::GetMessages { .. } => {
-            let entries = driver.get_messages().await.map_err(DispatchError)?;
+            let entries = driver.get_messages().await?;
             let session_id = driver.session_id().unwrap_or_default();
             Ok(DispatchOutcome::Messages {
                 session_id,
@@ -215,7 +198,7 @@ pub async fn dispatch(
         }
         Command::GetCommands { .. } => Ok(DispatchOutcome::Commands(driver.get_commands())),
         Command::Steer { message, .. } => {
-            driver.steer(&message).map_err(DispatchError)?;
+            driver.steer(&message)?;
             let stats = driver.queue_stats();
             Ok(DispatchOutcome::QueueStats {
                 steer_count: stats.steer_count,
@@ -223,7 +206,7 @@ pub async fn dispatch(
             })
         }
         Command::FollowUp { message, .. } => {
-            driver.follow_up(&message).map_err(DispatchError)?;
+            driver.follow_up(&message)?;
             let stats = driver.queue_stats();
             Ok(DispatchOutcome::QueueStats {
                 steer_count: stats.steer_count,
@@ -235,9 +218,7 @@ pub async fn dispatch(
             clear_follow_up,
             ..
         } => {
-            driver
-                .clear_queue(clear_steer, clear_follow_up)
-                .map_err(DispatchError)?;
+            driver.clear_queue(clear_steer, clear_follow_up)?;
             let stats = driver.queue_stats();
             Ok(DispatchOutcome::QueueStats {
                 steer_count: stats.steer_count,
@@ -250,7 +231,7 @@ pub async fn dispatch(
         | Command::Quit { .. }
         | Command::Subscribe { .. }
         | Command::ApproveTool { .. }
-        | Command::AnswerQuestion { .. } => Err(DispatchError(format!(
+        | Command::AnswerQuestion { .. } => Err(XyDriverError::invalid_input(format!(
             "Command variant {:?} is not handled by shared dispatch; the caller must handle it before calling dispatch()",
             cmd_variant_name(&cmd)
         ))),
@@ -278,7 +259,7 @@ mod tests {
     use crate::runtime_protocol::XyBashResult;
     use async_trait::async_trait;
 
-    /// A stub Driver that records calls and returns canned responses, so the
+    /// A stub XyDriver that records calls and returns canned responses, so the
     /// dispatcher's Command→method mapping can be asserted without an agent.
     struct StubDriver {
         thinking: ThinkingLevel,
@@ -288,7 +269,7 @@ mod tests {
     }
 
     #[async_trait]
-    impl Driver for StubDriver {
+    impl XyDriver for StubDriver {
         async fn run(&mut self, _prompt: &str) -> crate::app::core::driver::EventStream {
             unimplemented!()
         }
@@ -304,7 +285,7 @@ mod tests {
         fn available_models(&self) -> Vec<ModelInfo> {
             vec![self.current_model().unwrap()]
         }
-        fn select_model(&mut self, id: &str) -> Result<ModelInfo, String> {
+        fn select_model(&mut self, id: &str) -> Result<ModelInfo, XyDriverError> {
             Ok(ModelInfo {
                 id: id.into(),
                 display_name: id.into(),
@@ -312,17 +293,17 @@ mod tests {
                 context_window: 0,
             })
         }
-        fn cycle_model(&mut self) -> Result<ModelInfo, String> {
+        fn cycle_model(&mut self) -> Result<ModelInfo, XyDriverError> {
             Ok(self.current_model().unwrap())
         }
-        fn set_thinking_level(&mut self, level: ThinkingLevel) -> Result<(), String> {
+        fn set_thinking_level(&mut self, level: ThinkingLevel) -> Result<(), XyDriverError> {
             self.thinking = level;
             Ok(())
         }
         fn thinking_level(&self) -> ThinkingLevel {
             self.thinking
         }
-        fn cycle_thinking_level(&mut self) -> Result<ThinkingLevel, String> {
+        fn cycle_thinking_level(&mut self) -> Result<ThinkingLevel, XyDriverError> {
             let levels = ThinkingLevel::STANDARD;
             let idx = levels.iter().position(|l| *l == self.thinking).unwrap_or(0);
             let next = levels[(idx + 1) % levels.len()];
@@ -337,43 +318,43 @@ mod tests {
             _command: &str,
             _exclude_from_context: bool,
             _chunk_tx: Option<tokio::sync::mpsc::Sender<Vec<u8>>>,
-        ) -> Result<XyBashResult, String> {
+        ) -> Result<XyBashResult, XyDriverError> {
             unimplemented!()
         }
-        async fn compact(&mut self) -> Result<bool, String> {
+        async fn compact(&mut self) -> Result<bool, XyDriverError> {
             Ok(false)
         }
-        async fn export_html(&mut self, path: &std::path::Path) -> Result<String, String> {
+        async fn export_html(&mut self, path: &std::path::Path) -> Result<String, XyDriverError> {
             Ok(path.to_string_lossy().into_owned())
         }
-        async fn export_jsonl(&mut self, path: &std::path::Path) -> Result<String, String> {
+        async fn export_jsonl(&mut self, path: &std::path::Path) -> Result<String, XyDriverError> {
             Ok(path.to_string_lossy().into_owned())
         }
-        async fn import_jsonl(&mut self, _path: &std::path::Path) -> Result<String, String> {
+        async fn import_jsonl(&mut self, _path: &std::path::Path) -> Result<String, XyDriverError> {
             Ok("new-session".into())
         }
         async fn fork_session(
             &mut self,
             _entry_id: &str,
             _position: crate::domain::session_types::ForkPosition,
-        ) -> Result<String, String> {
+        ) -> Result<String, XyDriverError> {
             Ok("forked-session".into())
         }
-        async fn switch_session(&mut self, id: &str) -> Result<String, String> {
+        async fn switch_session(&mut self, id: &str) -> Result<String, XyDriverError> {
             self.session_id = Some(id.into());
             Ok(id.into())
         }
-        async fn get_messages(&self) -> Result<Vec<SessionEntry>, String> {
+        async fn get_messages(&self) -> Result<Vec<SessionEntry>, XyDriverError> {
             Ok(Vec::new())
         }
         async fn get_session_stats(
             &self,
-        ) -> Result<crate::app::core::driver::SessionStats, String> {
+        ) -> Result<crate::app::core::driver::SessionStats, XyDriverError> {
             unimplemented!()
         }
         async fn estimate_context_tokens(
             &self,
-        ) -> Result<crate::domain::types::ContextTokenEstimate, String> {
+        ) -> Result<crate::domain::types::ContextTokenEstimate, XyDriverError> {
             Ok(crate::domain::types::ContextTokenEstimate {
                 tokens: 0,
                 provenance: crate::domain::types::TokenProvenance::Unknown,
@@ -388,15 +369,19 @@ mod tests {
                 description: "compact".into(),
             }]
         }
-        fn steer(&mut self, _message: &str) -> Result<(), String> {
+        fn steer(&mut self, _message: &str) -> Result<(), XyDriverError> {
             self.steer += 1;
             Ok(())
         }
-        fn follow_up(&mut self, _message: &str) -> Result<(), String> {
+        fn follow_up(&mut self, _message: &str) -> Result<(), XyDriverError> {
             self.follow_up += 1;
             Ok(())
         }
-        fn clear_queue(&mut self, clear_steer: bool, clear_follow_up: bool) -> Result<(), String> {
+        fn clear_queue(
+            &mut self,
+            clear_steer: bool,
+            clear_follow_up: bool,
+        ) -> Result<(), XyDriverError> {
             if clear_steer {
                 self.steer = 0;
             }
@@ -415,7 +400,7 @@ mod tests {
         async fn session_tree(
             &self,
             kind: SessionTreeKind,
-        ) -> Result<Vec<crate::domain::session_types::SessionTreeNode>, String> {
+        ) -> Result<Vec<crate::domain::session_types::SessionTreeNode>, XyDriverError> {
             match kind {
                 SessionTreeKind::MessageHistory => Ok(Vec::new()),
                 SessionTreeKind::FileBrowser => {
@@ -428,7 +413,7 @@ mod tests {
             &self,
             kind: SessionTreeKind,
             _entry_id: &str,
-        ) -> Result<crate::domain::session_types::SessionTreeTravel, String> {
+        ) -> Result<crate::domain::session_types::SessionTreeTravel, XyDriverError> {
             match kind {
                 SessionTreeKind::MessageHistory => {
                     Err("stub: travel_session_tree not implemented".into())
@@ -443,7 +428,7 @@ mod tests {
             &mut self,
             _target_id: &str,
             _label: Option<&str>,
-        ) -> Result<(), String> {
+        ) -> Result<(), XyDriverError> {
             Ok(())
         }
 
@@ -454,25 +439,25 @@ mod tests {
         async fn load_debug_scene(
             &mut self,
             _scene: &str,
-        ) -> Result<crate::app::core::driver::DebugSceneLoad, String> {
+        ) -> Result<crate::app::core::driver::DebugSceneLoad, XyDriverError> {
             Err("stub: load_debug_scene not implemented".into())
         }
 
         async fn list_sessions(
             &self,
-        ) -> Result<Vec<crate::app::core::driver::SessionListEntry>, String> {
+        ) -> Result<Vec<crate::app::core::driver::SessionListEntry>, XyDriverError> {
             Ok(Vec::new())
         }
 
-        async fn new_session(&mut self) -> Result<String, String> {
+        async fn new_session(&mut self) -> Result<String, XyDriverError> {
             Ok("new-session".into())
         }
 
-        async fn get_session_name(&self) -> Result<Option<String>, String> {
+        async fn get_session_name(&self) -> Result<Option<String>, XyDriverError> {
             Ok(None)
         }
 
-        async fn set_session_name(&mut self, name: &str) -> Result<String, String> {
+        async fn set_session_name(&mut self, name: &str) -> Result<String, XyDriverError> {
             Ok(name.trim().to_string())
         }
 
@@ -480,11 +465,11 @@ mod tests {
             &mut self,
             _session_id: &str,
             name: &str,
-        ) -> Result<String, String> {
+        ) -> Result<String, XyDriverError> {
             Ok(name.trim().to_string())
         }
 
-        async fn delete_session(&mut self, _session_id: &str) -> Result<(), String> {
+        async fn delete_session(&mut self, _session_id: &str) -> Result<(), XyDriverError> {
             Err("stub: delete_session not implemented".into())
         }
 
@@ -540,7 +525,7 @@ mod tests {
         assert_eq!(d.thinking_level(), ThinkingLevel::High);
     }
 
-    /// c1165: Driver level after SetThinkingLevel / cycle MUST map to OpenAI effort.
+    /// c1165: XyDriver level after SetThinkingLevel / cycle MUST map to OpenAI effort.
     #[tokio::test]
     async fn cycle_thinking_level_maps_to_openai_reasoning_effort() {
         use crate::domain::types::{
@@ -596,7 +581,7 @@ mod tests {
         )
         .await
         .unwrap_err();
-        assert!(err.0.contains("unknown thinking level"));
+        assert!(err.to_string().contains("unknown thinking level"));
     }
 
     #[tokio::test]
@@ -611,7 +596,7 @@ mod tests {
         )
         .await
         .unwrap_err();
-        assert!(err.0.contains("not handled by shared dispatch"));
+        assert!(err.to_string().contains("not handled by shared dispatch"));
     }
 
     #[tokio::test]

@@ -1,6 +1,6 @@
 //! Session tree / models / resume mount + apply helpers (c1170 / ath12).
 
-use crate::app::core::driver::{Driver, ModelInfo};
+use crate::app::core::driver::{ModelInfo, XyDriver};
 use crate::domain::session_types::{SessionEntry, SessionTreeTravel};
 use xylitol_tui::Terminal;
 use xylitol_tui::TreeNode;
@@ -213,8 +213,8 @@ impl<T: Terminal> HostSession<T> {
         root.borrow_mut().set_dollar_skill_catalog(catalog);
     }
 
-    /// Refresh loaded-resources header from Driver (c1135). Startup + `/reload`.
-    pub async fn refresh_loaded_resources(&mut self, driver: &dyn Driver) {
+    /// Refresh loaded-resources header from XyDriver (c1135). Startup + `/reload`.
+    pub async fn refresh_loaded_resources(&mut self, driver: &dyn XyDriver) {
         let snap = driver.loaded_resources_snapshot().await;
         let Some(root) = self.ui_root.as_ref() else {
             return;
@@ -263,7 +263,7 @@ impl<T: Terminal> HostSession<T> {
         self.sync_ui_root_from_model();
     }
 
-    /// After Driver fork+switch: rebuild transcript from child entries and optional prefill.
+    /// After XyDriver fork+switch: rebuild transcript from child entries and optional prefill.
     pub fn apply_session_tree_fork(
         &mut self,
         child_id: &str,
