@@ -55,7 +55,7 @@ impl<T: Terminal> HostSession<T> {
             // Drop untaken local steer so loop does not re-enqueue after abort.
             self.pending.steer = None;
             // c720 / 1A: arm suppress immediately so late Xy cannot revive UI before
-            // drain_pending calls Driver::abort (token waste / fake busy).
+            // drain_pending calls XyDriver::abort (token waste / fake busy).
             self.suppress_xy_until_stream_end = true;
             self.ui_model.clear_streaming_buffers();
             return true;
@@ -266,7 +266,7 @@ impl<T: Terminal> HostSession<T> {
         true
     }
 
-    /// Ctrl+V / `app.paste.image`: stage clipboard image via Driver (c1155).
+    /// Ctrl+V / `app.paste.image`: stage clipboard image via XyDriver (c1155).
     pub(super) fn try_paste_image(&mut self, input: &InputEvent) -> bool {
         let Some(root) = self.ui_root.as_ref() else {
             return false;

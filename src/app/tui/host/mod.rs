@@ -13,7 +13,7 @@ use std::sync::atomic::{AtomicBool, Ordering};
 
 use xylitol_tui::{InputEvent, RenderError, TUI, Terminal};
 
-use crate::app::core::driver::XyEvent;
+use crate::app::core::driver::{XyDriverError, XyEvent};
 use crate::runtime_protocol::XyBashResult;
 
 use super::bridge::{UiEntry, UiModel, UiPhase, apply_xy_event};
@@ -61,7 +61,7 @@ pub enum HostEvent {
     },
     Tick,
     Quit,
-    /// Agent lifecycle event from `Driver::run` EventStream (c465).
+    /// Agent lifecycle event from `XyDriver::run` EventStream (c465).
     Xy(Box<XyEvent>),
     /// Background footer token estimate finished (must not block input/render).
     FooterTokens {
@@ -93,7 +93,7 @@ pub struct HostSession<T: Terminal> {
     ui_model: UiModel,
     /// Side effects for [`crate::app::tui::effects::drain_pending`] (c730).
     pending: PendingOps,
-    /// True while a `Driver::run` stream is open (blocks duplicate submit).
+    /// True while a `XyDriver::run` stream is open (blocks duplicate submit).
     run_active: bool,
     /// True while interactive `!`/`!!` bash is in flight (c665 Esc abort).
     bash_active: bool,
@@ -248,7 +248,7 @@ impl<T: Terminal> HostSession<T> {
     ///
     /// Unknown names return `Err` and leave the current theme unchanged.
     /// Does not clear transcript.
-    pub fn reload_themes(&mut self, theme_name: &str) -> Result<(), String> {
+    pub fn reload_themes(&mut self, theme_name: &str) -> Result<(), XyDriverError> {
         let theme = super::themes::layout_theme_from_name(theme_name)?;
         if let Some(root) = &self.ui_root {
             root.borrow_mut().set_layout_theme(theme);
@@ -400,7 +400,7 @@ impl<T: Terminal> HostSession<T> {
         root.borrow_mut().set_footer_token_label(label);
     }
 
-    /// Request a Driver estimate refresh on the next `drain_pending` (c1035).
+    /// Request a XyDriver estimate refresh on the next `drain_pending` (c1035).
     pub fn request_footer_token_refresh(&mut self) {
         self.pending.footer_token_refresh = true;
     }
@@ -472,7 +472,7 @@ impl<T: Terminal> HostSession<T> {
         self.pending.submit = Some(prompt);
     }
 
-    /// Mark that `Driver::run` has started; seeds the user entry + busy phase.
+    /// Mark that `XyDriver::run` has started; seeds the user entry + busy phase.
     pub fn on_run_started(&mut self, prompt: &str) {
         self.suppress_idle_esc = false;
         self.suppress_xy_until_stream_end = false;
@@ -498,7 +498,7 @@ impl<T: Terminal> HostSession<T> {
     }
 
     /// Apply one host event and attempt a throttled render.
-    pub fn step(&mut self, event: HostEvent) -> Result<(), String> {
+    pub fn step(&mut self, event: HostEvent) -> Result<(), XyDriverError> {
         match event {
             HostEvent::Quit => {
                 self.quit = true;
@@ -574,7 +574,7 @@ impl<T: Terminal> HostSession<T> {
 
     /// ath4: min-size shows a hint; only exit if even the hint cannot paint.
     /// Overflow at a "valid" size degrades to TooSmall instead of freezing/exiting.
-    fn recover_from_render_error(&mut self) -> Result<(), String> {
+    fn recover_from_render_error(&mut self) -> Result<(), XyDriverError> {
         let cols = self.tui.terminal.columns();
         let rows = self.tui.terminal.rows();
         if self.mode != LayoutMode::TooSmall {
@@ -595,9 +595,10 @@ impl<T: Terminal> HostSession<T> {
             }
         }
         self.quit = true;
-        Err(format!(
-            "render failed: terminal too extreme ({cols}x{rows}); restoring and exiting"
-        ))
+        Err(
+            format!("render failed: terminal too extreme ({cols}x{rows}); restoring and exiting")
+                .into(),
+        )
     }
 
     /// Toggle terminal task progress (OSC 9;4) — used while loading session list.
@@ -608,20 +609,20 @@ impl<T: Terminal> HostSession<T> {
     /// Emit a preformatted OSC 52 clipboard sequence on the host/UI thread.
     ///
     /// Must run outside differential render batches (caller: slash effect after
-    /// `Driver::copy_text_to_clipboard`, before `render_now`). Never call from
+    /// `XyDriver::copy_text_to_clipboard`, before `render_now`). Never call from
     /// a blocking-pool clipboard worker.
     pub fn emit_clipboard_osc52(&mut self, sequence: &str) {
         self.tui.terminal.write(sequence);
         self.tui.terminal.flush();
     }
 
-    pub fn render_now(&mut self) -> Result<(), String> {
+    pub fn render_now(&mut self) -> Result<(), XyDriverError> {
         match self.tui.render_now() {
             Ok(_) => {
                 self.paint_dirty = false;
                 Ok(())
             }
-            Err(e) => Err(e.to_string()),
+            Err(e) => Err(XyDriverError::from(e.to_string())),
         }
     }
 

@@ -243,7 +243,7 @@ pub(crate) fn wrap_help_line(line: &str, width: usize) -> Vec<String> {
     }
 }
 
-/// Map Driver MessageHistory nodes to package tree rows (kind + plain-text label).
+/// Map XyDriver MessageHistory nodes to package tree rows (kind + plain-text label).
 pub fn map_session_tree_nodes(nodes: &[SessionTreeNode]) -> Vec<TreeNode> {
     nodes.iter().map(map_session_tree_node).collect()
 }

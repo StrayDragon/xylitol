@@ -1,6 +1,6 @@
 //! Product slash-command SSOT (c1175).
 //!
-//! Single catalog for Driver/GetCommands and the product TUI `SlashCommandSource`.
+//! Single catalog for XyDriver/GetCommands and the product TUI `SlashCommandSource`.
 //! Names follow PI_DELTAS A03 (`session-*`); legacy short names are intentionally absent.
 
 /// One product-facing slash command (no leading `/`).

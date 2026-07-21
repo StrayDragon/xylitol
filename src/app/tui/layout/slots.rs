@@ -8,7 +8,7 @@
 pub enum EditorSlot {
     #[default]
     Editor,
-    /// c615 MessageHistory live tree (Driver `session_tree` + `travel_session_tree`).
+    /// c615 MessageHistory live tree (XyDriver `session_tree` + `travel_session_tree`).
     Tree,
     /// Command plate empty shell (MAY; Esc closes).
     Plate,

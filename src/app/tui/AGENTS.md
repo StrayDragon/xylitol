@@ -14,7 +14,7 @@
 |---|---|
 | `mod.rs` | 生产 `run_host_loop`：终端 / tick / agent 流 / bang 扇入 |
 | `host.rs`（及子模块） | `HostSession::step` 同步步进机；`pending` / `input_policy` / `session_ops`；busy/idle 输入策略 |
-| `effects/` | **唯一** `drain_pending` → Driver / dispatch；slash / pending_ui / bang 分文件 |
+| `effects/` | **唯一** `drain_pending` → XyDriver / dispatch；slash / pending_ui / bang 分文件 |
 | `commands.rs`（可多文件） | slash / bang 解析 → pending；不执行副作用 |
 | `bridge/` | `XyEvent` → `UiModel`（`model.rs`）；family handlers |
 | `layout/` | 产品壳：`EditorSlot`、`UiRoot`（`root/`：slot_input / slot_nav / render）、theme、`slash_catalog` |
@@ -27,21 +27,21 @@
 
 ## Module Responsibilities
 
-- **`mod` / `HostSession`**：协调者。新逻辑能单测的 → 先下沉到 `effects` / `bridge` / `commands` / `layout` 子模块，**禁止**继续把业务堆进 God 文件（单文件逼近 ~1200 行视为硬味）。
+- **`mod` / `HostSession`**：协调者。新逻辑能单测的 → 先下沉到 `effects` / `bridge` / `commands` / `layout` 子模块，**禁止**继续把业务堆进 God 文件。体量软顶/硬顶与超标表 → [`../QUALITY_RETUNE.md`](../QUALITY_RETUNE.md)（测试 `harness`/`tests` 另计）。
 - **`effects`**：唯一异步副作用泵；harness MUST 复用，禁止第二套 slash/steer match。
 - **`bridge`**：只更新 `UiModel`；layout MUST NOT match `XyEvent`。
-- **`commands`**：只解析与 pending 类型；执行经 `drain_pending` → `protocol::Command` / `dispatch` 或 Driver。
-- **`layout` / `widgets`**：呈现与局部交互；**MUST NOT** 直接调 Driver / 读写 session。
+- **`commands`**：只解析与 pending 类型；执行经 `drain_pending` → `protocol::Command` / `dispatch` 或 XyDriver。
+- **`layout` / `widgets`**：呈现与局部交互；**MUST NOT** 直接调 XyDriver / 读写 session。
 - **Trust**：CLI `trust_gate`，不在本面 Choice stub 上扩活逻辑。
 - **Plate / Settings / Choice 槽**：stub 冻结，产品未拍板前勿扩。
 
 ## 硬约束
 
 - 渲染/通用组件只用 `xylitol_tui`；缺能力先改包再接线。产品路径 **host 驱动**；勿调 `TUI::start()`（demo 专用）。
-- Agent 只经 `app/core/driver::Driver`；禁止 reach `agent::session` / `runtime` / `infra`。
+- Agent 只经 `app/core/driver::XyDriver`；禁止 reach `agent::session` / `runtime` / `infra`。
 - Esc 归属（摘要；细节见 stage-QA design）：
   - Idle 空 editor → 双 Esc 开树（`UiRoot::on_escape`）
-  - Busy 无 overlay → abort latch（host `try_busy_input`）；**立刻**臂装 Xy 抑制，drain 仍 MUST 调 `Driver::abort`
+  - Busy 无 overlay → abort latch（host `try_busy_input`）；**立刻**臂装 Xy 抑制，drain 仍 MUST 调 `XyDriver::abort`
   - Busy + overlay → 先关槽，不 abort
   - Agent abort → `note_user_abort`（Aborted + `suppress_xy`）；Bang abort → `note_bash_cancelled`（`(cancelled)`，无 `suppress_xy`）
 - 颜色走本面 theme token（`DESIGN.md`）。已确认需求须有 harness / BDD 护栏。
@@ -49,7 +49,7 @@
 ## 视觉 / Specs / Debug
 
 - **视觉 SSOT**：`DESIGN.md` + `design/*`。三层：浏览器静图 / `just demo-tui` / 本目录生产。
-- **Specs**：`app-tui-*`（勿再堆单体 `app-tui`）。steer/follow-up 经 Driver 队列（c461），本面不持有 ReAct 队列。
+- **Specs**：`app-tui-*`（勿再堆单体 `app-tui`）。steer/follow-up 经 XyDriver 队列（c461），本面不持有 ReAct 队列。
 - **日志**：debug 默认写 `{agent_dir}/logs/xylitol.log`（默认 agent_dir 见 `DefaultResourceLoader::default_agent_dir`）；`RUST_LOG` / `XYLITOL_DEBUG=1`；埋点 `target: "xylitol::tui"`；禁止 `println!`。装配：`app/cli/logging.rs`。排障窄读：skill **`xylitol-inspect-runtime-logs`**。
 
 ## 验证

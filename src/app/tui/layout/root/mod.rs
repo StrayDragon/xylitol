@@ -121,9 +121,9 @@ pub struct UiRoot {
     model: String,
     /// Optional `used N|~N|? tokens` fragment (c1035); omitted when unknown/empty.
     footer_token: Option<String>,
-    /// Current Driver thinking level mirrored for border + footer (c1150).
+    /// Current XyDriver thinking level mirrored for border + footer (c1150).
     thinking_level: ThinkingLevel,
-    /// Shift+Tab / `app.thinking.cycle` → host drain calls Driver (c1150).
+    /// Shift+Tab / `app.thinking.cycle` → host drain calls XyDriver (c1150).
     pending_thinking_cycle: bool,
     /// Mutually exclusive editor-zone face (ati18).
     slot: EditorSlot,
@@ -134,7 +134,7 @@ pub struct UiRoot {
     bash_mode: bool,
     /// Ctrl+G stub invocation count (harness).
     external_editor_invocations: u32,
-    /// Double Esc while idle → host fetches MessageHistory via Driver (c615).
+    /// Double Esc while idle → host fetches MessageHistory via XyDriver (c615).
     pending_tree_open: bool,
     /// Tree Enter → host calls `travel_session_tree` (c615).
     pending_tree_travel: Option<String>,
@@ -616,7 +616,7 @@ impl UiRoot {
             .set_status_suffix(mode.status_suffix().map(str::to_string));
     }
 
-    /// Mount MessageHistory rows fetched via Driver and open the Tree slot.
+    /// Mount MessageHistory rows fetched via XyDriver and open the Tree slot.
     pub fn mount_session_tree(&mut self, roots: Vec<TreeNode>, active_id: Option<&str>) {
         self.tree_filter = FilterMode::Default;
         self.tree = TreeSelector::new(

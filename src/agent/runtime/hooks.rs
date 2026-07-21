@@ -8,7 +8,7 @@
 //! Steering / follow-up injection is owned by [`crate::agent::session::PendingMessageQueue`]
 //! on [`crate::agent::session::AgentCapabilities`] (c461). [`SteeringHooks`] remains as an
 //! optional external message-source adapter and is **not** wired into the ReAct
-//! loop; product paths must use `AgentCapabilities::steer` / `AgentCapabilities::follow_up` (via Driver).
+//! loop; product paths must use `AgentCapabilities::steer` / `AgentCapabilities::follow_up` (via XyDriver).
 
 use std::sync::Arc;
 
@@ -108,7 +108,7 @@ impl AgentHooks {
 /// **Not wired into the ReAct loop.** The authoritative path is
 /// [`crate::agent::session::PendingMessageQueue`] on the session
 /// [`crate::agent::session::AgentCapabilities`]
-/// (`steer` / `follow_up` / Driver APIs). Keep this type only if an extension
+/// (`steer` / `follow_up` / XyDriver APIs). Keep this type only if an extension
 /// needs a pull-based message source; do not dual-wire both paths.
 #[derive(Default)]
 pub struct SteeringHooks {

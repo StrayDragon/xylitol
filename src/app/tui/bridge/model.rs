@@ -178,13 +178,13 @@ impl UiModel {
         }
     }
 
-    /// Enqueue a steer message for strip + badge (host local; Driver follows).
+    /// Enqueue a steer message for strip + badge (host local; XyDriver follows).
     pub fn enqueue_steer_strip(&mut self, text: String) {
         self.pending_steer.push(text);
         self.queue.steer_count = self.pending_steer.len();
     }
 
-    /// Enqueue a follow-up message for strip + badge (host local; Driver follows).
+    /// Enqueue a follow-up message for strip + badge (host local; XyDriver follows).
     pub fn enqueue_follow_up_strip(&mut self, text: String) {
         self.pending_follow_up.push(text);
         self.queue.follow_up_count = self.pending_follow_up.len();
@@ -406,7 +406,7 @@ impl UiModel {
     }
 
     pub(crate) fn maybe_idle_after_agent_end(&mut self) {
-        // Follow-ups are drained inside the same Driver::run before AgentEnd on
+        // Follow-ups are drained inside the same XyDriver::run before AgentEnd on
         // the happy path. After abort, follow_up may remain — stay busy so layout
         // can restore (c480); counts still come from QueueUpdate.
         if self.queue.follow_up_count == 0 {

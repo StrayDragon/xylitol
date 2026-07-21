@@ -1,7 +1,7 @@
 //! # Hand-test debug fixtures (c710)
 //!
 //! **Delete this whole module** to remove `/debug` scenes: also drop
-//! `PendingSlash::DebugScene`, `Driver::load_debug_scene`, TUI slash/completion
+//! `PendingSlash::DebugScene`, `XyDriver::load_debug_scene`, TUI slash/completion
 //! wiring in `layout/root.rs` / `commands.rs` / `effects.rs`, and E2E cases that
 //! call `/debug …`.
 //!

@@ -72,7 +72,7 @@ impl TokenProvenance {
     }
 }
 
-/// Context occupancy estimate with provenance (Driver / compaction seam).
+/// Context occupancy estimate with provenance (XyDriver / compaction seam).
 #[derive(Debug, Clone)]
 pub struct ContextTokenEstimate {
     pub tokens: u64,

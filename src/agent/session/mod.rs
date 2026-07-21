@@ -360,7 +360,7 @@ impl AgentCapabilities {
             .collect())
     }
 
-    /// Shared session store handle (same instance as Driver uses).
+    /// Shared session store handle (same instance as XyDriver uses).
     pub fn session_store(&self) -> Arc<dyn XySessionStore> {
         self.store.clone()
     }
@@ -812,7 +812,7 @@ pub(crate) async fn observe_hook(
     }
 }
 
-/// Sync observe for Driver/agent APIs that are not async (c996).
+/// Sync observe for XyDriver/agent APIs that are not async (c996).
 fn observe_hook_sync(
     bus: &Arc<dyn XyHookBus>,
     event_type: &str,

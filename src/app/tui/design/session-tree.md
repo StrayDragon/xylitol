@@ -22,7 +22,7 @@ components:
 
 **优先路径**（替代 Codex 式 transcript 浏览）：双 Esc 打开会话树。
 **形态学 SSOT**：`packages/xylitol-tui` `agent_demo`（活树 / travel / filter / kind…）。
-**产品 c615**：双 Esc → `Driver::session_tree(MessageHistory)` 活树；Enter → `travel_session_tree`（user → `editor_text` 预填 + leaf 更新 + scrollback 按 ancestry 重建）。
+**产品 c615**：双 Esc → `XyDriver::session_tree(MessageHistory)` 活树；Enter → `travel_session_tree`（user → `editor_text` 预填 + leaf 更新 + scrollback 按 ancestry 重建）。
 **产品下一波**：filter **c635**（已）→ fold **c640**（已）→ fork **c645**（已）→ 树槽 Search/Help **c685** → label **c690** → E2E **c705**（强制）。
 
 ## MUST
@@ -33,10 +33,10 @@ components:
    - **未选中**：kind 前缀可用主题色（`user` / `assistant` / `tool`）。
    - **选中行**：reverse 独占对比度；kind **MUST NOT** 再叠独立前景色（否则紫/绿压在 reverse 底上对比度崩）。静图：`.rev` 内禁止有效的 `fg-*` 色穿透。
 4. Esc：label 编辑中取消编辑 → 有搜索串清搜索 → 否则关闭树；流中单 Esc 仍为 abort；**忙碌时 MUST NOT 开树**。
-5. travel / fork 经应用面 `Driver`；包组件只负责树 UI。demo **Enter travel（c600，对齐 pi）**：
+5. travel / fork 经应用面 `XyDriver`；包组件只负责树 UI。demo **Enter travel（c600，对齐 pi）**：
    - `kind=user` → history leaf = **父节点**；user 正文预填 editor；transcript = root→父（**不含**被选 user 及其后线性回复）。
    - 非 user → leaf = 选中 id；重建 root→选中；**不**因 travel 预填 user 正文。
-   - Shift+F fork：demo `ast5`（同会话）；产品 **c645** = Driver 新 session（user Before / 非 user At）。
+   - Shift+F fork：demo `ast5`（同会话）；产品 **c645** = XyDriver 新 session（user Before / 非 user At）。
    - **产品（c615）**：Enter MUST 调 `travel_session_tree`；`editor_text` 有值时预填；scrollback 按 travel `leaf_id` ancestry 最佳努力重建。
 6. **搜索**：对 label / kind / annotation 增量过滤（与 `include_node` AND）— 产品 **c635**；槽上 Search 行 **c685**。
 7. **翻页**：←→ 与 PgUp/PgDn 按 `max_visible` 翻页。

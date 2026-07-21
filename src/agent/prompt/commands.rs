@@ -1,4 +1,4 @@
-//! Slash command types and discovery for agent + Driver GetCommands (c1175).
+//! Slash command types and discovery for agent + XyDriver GetCommands (c1175).
 //!
 //! Builtin names/descriptions come from [`super::product_commands`] (product SSOT).
 //! Extension/skill/prompt commands merge on top.

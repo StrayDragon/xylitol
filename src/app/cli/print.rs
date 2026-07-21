@@ -5,15 +5,15 @@
 use std::io::{self, Write};
 
 use crate::agent::XyEvent;
-use crate::app::core::driver::{Driver, EventStream};
+use crate::app::core::driver::{EventStream, XyDriver, XyDriverError};
 use futures::StreamExt;
 
 /// Run the agent in print mode with the given prompt.
 pub(crate) async fn run_print(
-    driver: &mut dyn Driver,
+    driver: &mut dyn XyDriver,
     prompt: &str,
-    _session_id: &str, // reserved for future Driver.subscribe
-) -> Result<(), String> {
+    _session_id: &str, // reserved for future XyDriver.subscribe
+) -> Result<(), XyDriverError> {
     let mut stream = driver.run(prompt).await;
 
     let stdout = io::stdout();
@@ -26,7 +26,10 @@ pub(crate) async fn run_print(
 ///
 /// Extracted so print-mode event handling can be unit-tested without
 /// capturing the real stdout.
-async fn render_stream<W: Write>(stream: &mut EventStream, writer: &mut W) -> Result<(), String> {
+async fn render_stream<W: Write>(
+    stream: &mut EventStream,
+    writer: &mut W,
+) -> Result<(), XyDriverError> {
     let mut in_thinking_block = false;
     let mut thinking_has_tags = false;
 

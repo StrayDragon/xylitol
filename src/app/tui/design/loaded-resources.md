@@ -26,7 +26,7 @@ components:
 4. **MUST NOT** 展示「木糖醇」中文标签、化学式标题行、或 ASCII logo 艺术字。
 5. 无 skills/MCP 时仍保留卡片（title + model + directory）。
 6. **MUST NOT** 列出 prompt templates / 密钥。
-7. 数据经 `Driver::loaded_resources_snapshot` + UiRoot `cwd`/`model`；启动与 `/reload` 成功后刷新资源行。
+7. 数据经 `XyDriver::loaded_resources_snapshot` + UiRoot `cwd`/`model`；启动与 `/reload` 成功后刷新资源行。
 8. 卡片每行 **exact width** pad（降低差分 resize 残影）。
 
 ## MUST NOT

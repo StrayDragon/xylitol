@@ -19,14 +19,14 @@ pub enum QueueMode {
     OneAtATime,
 }
 
-/// Snapshot of queue depths for Driver / dispatch.
+/// Snapshot of queue depths for XyDriver / dispatch.
 #[derive(Debug, Clone, Copy, Default, PartialEq, Eq)]
 pub struct QueueStats {
     pub steer_count: usize,
     pub follow_up_count: usize,
 }
 
-/// Sender bound to the active `Driver::run` / ReAct EventStream (may be absent).
+/// Sender bound to the active `XyDriver::run` / ReAct EventStream (may be absent).
 pub type EventTx = tokio::sync::mpsc::UnboundedSender<XyEvent>;
 
 /// FIFO queue of [`AgentMessage`] with mode-aware drain ([`QueueChannel`]).

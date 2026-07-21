@@ -1,7 +1,7 @@
 # app/tui ↔ pi coding-agent 刻意差异台账
 
 > **目的**：对照 `../pi/packages/coding-agent` interactive 做 UX 对齐时，**不得静默覆盖**本文件列出的 xylitol 产品决议。
-> **定位**：本面是 xylitol 产品 TUI（host + Driver seam），不是 pi interactive 的 1:1 port。包层差异见 [`packages/xylitol-tui/PI_DELTAS.md`](../../../packages/xylitol-tui/PI_DELTAS.md)。
+> **定位**：本面是 xylitol 产品 TUI（host + XyDriver seam），不是 pi interactive 的 1:1 port。包层差异见 [`packages/xylitol-tui/PI_DELTAS.md`](../../../packages/xylitol-tui/PI_DELTAS.md)。
 > **不是**进度板；能力差距清单见 `design/session-tree-vs-pi.md`。稳定边界见本目录 `AGENTS.md`。
 > 新增刻意差异时：**先改代码与测试（或明确不实现），再在本表加一行**；回退差异须显式评审。
 
@@ -26,7 +26,7 @@
 | ID | 主题 | pi coding-agent | xylitol `src/app/tui` | 不得回退 |
 |---|---|---|---|---|
 | A01 | Travel 时分支摘要 | travel / 切分支时可走 LLM（或同类）生成 branch summary 写回树 | **不做** travel 时自动摘要；树节点文案来自 entry / label / 既有 summary 字段。若以后要策略，经 **hook / 扩展点** 注入，不内置默认 LLM 路径 | 是 |
-| A02 | 同会话 fork 形态 | 树内 `/fork` 等可在同会话 MessageHistory 上开兄弟枝（再配合新会话文件语义）；slash `/fork` 开 **user 消息选择器** | 产品 **Shift+F / `/session-fork`** = `Driver::fork_session`（**新 child session** + switch）；同会话兄弟枝靠 **travel 改 leaf 后再发消息**（`parent_id`←当前 leaf）长出来。demo `agent_demo` 的同会话 Shift+F 是原型，**不是**产品默认语义。**不开** pi 式 user 选择器 | 是 |
+| A02 | 同会话 fork 形态 | 树内 `/fork` 等可在同会话 MessageHistory 上开兄弟枝（再配合新会话文件语义）；slash `/fork` 开 **user 消息选择器** | 产品 **Shift+F / `/session-fork`** = `XyDriver::fork_session`（**新 child session** + switch）；同会话兄弟枝靠 **travel 改 leaf 后再发消息**（`parent_id`←当前 leaf）长出来。demo `agent_demo` 的同会话 Shift+F 是原型，**不是**产品默认语义。**不开** pi 式 user 选择器 | 是 |
 | A03 | Slash 命名 | 短名：`/tree` `/fork` `/export` `/import` `/compact` `/resume` `/quit` … | 选中迁移命令用 **`session-*` 前缀**（如 `/session-tree`）；**旧名无效**（unknown）。`/model` `/exit` 仍短名；`/exit` 仍认 `quit` | 是 |
 | A04 | `/session` 形态 | 无参 → scrollback **info/stats 转储**（非操作菜单） | 对齐 dump（c1015）；**不做**「SessionOperations 覆盖层 / 子命令板」 | 是 |
 | A05 | Compact 自定义指令 | `/compact <instructions>` 可传自定义压缩提示 | `Command::Compact` 无 instructions 字段 → **仅无参** `/session-compact`；带参 usage 错误 | 是 |

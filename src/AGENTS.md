@@ -10,9 +10,9 @@
 
 **后置 / 配置启用**：Server · MCP（见下）· 更多 provider 适配器 · 周边能力。未配置则不装配。独立远程薄端客户端未接线（线协议与 Server 已通）。
 
-**产品 TUI（`src/app/tui`）**：**已开闸并可用**。会话树 / slash / bang / steer / `$skill` / `/reload` / `/trust` / 粘贴与 thinking UX 等走 Driver + `XyEvent`。后续打磨（reload UX、MCP 启动策略等）见 `llmanspec/do-not-read-me/` purpose-drafts；勿在本文件钉 change id。引擎能力仍可在 `packages/xylitol-tui` / `agent_demo` 先行验证。
+**产品 TUI（`src/app/tui`）**：**已开闸并可用**。会话树 / slash / bang / steer / `$skill` / `/reload` / `/trust` / 粘贴与 thinking UX 等走 XyDriver + `XyEvent`。后续打磨（reload UX、MCP 启动策略等）见 `llmanspec/do-not-read-me/` purpose-drafts；勿在本文件钉 change id。引擎能力仍可在 `packages/xylitol-tui` / `agent_demo` 先行验证。
 
-共享流水线：`bootstrap` → `composition::build_agent` → `Driver::run` → ReAct → `XyEvent` → 应用面。库嵌入入口：`xylitol::embed`；矩阵与理想/现状：`docs/architecture/库与多客户端.md`。
+共享流水线：`bootstrap` → `composition::build_agent` → `XyDriver::run` → ReAct → `XyEvent` → 应用面。库嵌入入口：`xylitol::embed`；矩阵与理想/现状：`docs/architecture/库与多客户端.md`。
 
 ## 分层不变量（normative）
 
@@ -21,9 +21,9 @@
 - **组合根集中装配**：仅 `app/core/composition.rs` 与次级组合根 `app/cli/mod.rs`、`app/server/subcommand.rs`（及文档化的 `rpc` 等）可同时 import `agent` 与 `infra` 做装配。
 - **agent 不依赖 infra**；**infra 不依赖 agent**（经 `runtime_protocol` 端口）。
 - **domain** 零 crate 内依赖；**runtime_protocol** 只依赖 `domain`（可依赖已接受的契约级外部类型，见下「取消」）。
-- **应用面走 seam、不 reach 内部**：禁止 `agent::session::*` / `agent::runtime::*` / `infra::*`；只从 `crate::agent`（mod 级）与 `crate::app::core` import。共享 seam：`composition::build_agent` → `Driver::run(prompt)` → `XyEvent` 流 → 该面渲染；不够就扩 seam，不绕过。方法论：`write-surface` skill。
-- **`InProcessDriver` 表面 infra**：trust / clipboard / 必要 config 读可在 Driver 内调 `infra`（面仍禁止 reach）。provider / session / 默认工具集装配仍归 `composition`。内部搬家以 seam 行为保持绿为准。
-- **流中改道（steer / follow-up）**：经 `Driver` 队列 API（c461），禁止应用面直接改 ReAct 内部队列。`abort` 清 steer、保留 follow_up（队列条可见；Alt+Up 还原编辑器）。详见 archive `c461-expose-steer-followup-seam/design.md`。
+- **应用面走 seam、不 reach 内部**：禁止 `agent::session::*` / `agent::runtime::*` / `infra::*`；只从 `crate::agent`（mod 级）与 `crate::app::core` import。共享 seam：`composition::build_agent` → `XyDriver::run(prompt)` → `XyEvent` 流 → 该面渲染；不够就扩 seam，不绕过。方法论：`write-surface` skill。
+- **`XyInProcessDriver` 表面 infra**：trust / clipboard / 必要 config 读可在 XyDriver 内调 `infra`（面仍禁止 reach）。provider / session / 默认工具集装配仍归 `composition`。内部搬家以 seam 行为保持绿为准。
+- **流中改道（steer / follow-up）**：经 `XyDriver` 队列 API（c461），禁止应用面直接改 ReAct 内部队列。`abort` 清 steer、保留 follow_up（队列条可见；Alt+Up 还原编辑器）。详见 archive `c461-expose-steer-followup-seam/design.md`。
 
 ```text
 app → agent → runtime_protocol → domain
@@ -49,9 +49,11 @@ protocol ───────────────────────�
 
 | 用 `Xy*` | 不用 `Xy*` |
 |---|---|
-| 可替换端口：`XyModel` / `XyTool` / `XySessionStore` / `XyEventSink` / … | 应用面缝：`Driver`、bootstrap、dispatch |
-| 跨面生命周期：`XyEvent`、流式 `XyChunk`（及与之绑定的库级错误/模式类型） | 内部协作者、薄包装、单处 DTO、测试类型 |
-| 未来进精选 `pub use` 的稳定 API | `packages/xylitol-tui`（保持零 `Xy`） |
+| 可替换端口：`XyModel` / `XyTool` / `XySessionStore` / `XyEventSink` / … | bootstrap / dispatch 的装配细节（非协议类型名） |
+| **共享应用协议**：`XyDriver` / `XyInProcessDriver` / `XyDriverError` | 内部协作者、薄包装、单处 DTO、测试类型 |
+| 跨面生命周期：`XyEvent`、流式 `XyChunk` | `packages/xylitol-tui`（保持零 `Xy`） |
+| 库级错误：`XyError` / `XyToolError`；整机缝错误：`XyDriverError` | |
+| 未来进精选 `pub use` 的稳定 API | |
 
 **外部库包装**：会出现在库入口或多方言统一 → 包一层；纯内部 → 直接用 crate 类型（reqwest、glob、uuid、chrono、similar、`serde_json::Value` 等）。禁止为包而包。
 
@@ -61,7 +63,7 @@ protocol ───────────────────────�
 
 **队列运行时**：产品语义见 `docs/architecture/插话续跑与中止.md`；实现见 archive c525。QueueUpdate MUST 进活跃 EventStream。
 
-**EventBus / `XyEventSink`**：装配时注入的 sink 用于侧路生命周期（如 compaction），**不是**多 client 的 turn 总线；turn 进度走 `Driver::run` 的 `XyEvent` 流。可经 `BuildAgentOptions.event_sink` 替换默认 EventBus。
+**EventBus / `XyEventSink`**：装配时注入的 sink 用于侧路生命周期（如 compaction），**不是**多 client 的 turn 总线；turn 进度走 `XyDriver::run` 的 `XyEvent` 流。可经 `BuildAgentOptions.event_sink` 替换默认 EventBus。
 
 ## 扩展决策准则（normative）
 
@@ -98,7 +100,7 @@ protocol ───────────────────────�
 | `XyResourceLoader` | 资源发现抽象 | **暂无生产 `dyn` 消费者**；具体 loader + inherent 为主；升格前先接线再谈精选导出 |
 | `XyReloadable` | 热重载约束 | 非 dyn 注册表 |
 
-后置（LSP / DAP / Sub-agent / 即时设置）认领时：默认走「开关 + `XyTool`/`Driver`/`XyEvent`」，**先证明**需要新 port 再提案；产品轴见 `docs/architecture/扩展与开闭.md`。
+后置（LSP / DAP / Sub-agent / 即时设置）认领时：默认走「开关 + `XyTool`/`XyDriver`/`XyEvent`」，**先证明**需要新 port 再提案；产品轴见 `docs/architecture/扩展与开闭.md`。
 
 ## Trust / Permission / MCP
 
@@ -134,5 +136,9 @@ protocol ───────────────────────�
 
 ## 跨层测试
 
-- BDD（`tests/features` + `tests/bdd.rs`）；回归（`tests/regression/`）；应用面 / Driver 行为测。
+- BDD（`tests/features` + `tests/bdd.rs`）；回归（`tests/regression/`）；应用面 / XyDriver 行为测。
 - 设计史：`llmanspec/changes/archive/<变更>/design.md`。
+
+## 体量调音（指针）
+
+生产模块行数预算、超标表、下次调音日 → [`QUALITY_RETUNE.md`](./QUALITY_RETUNE.md)。质量调优待办（临时）→ [`_TODO.md`](./_TODO.md)。根 AGENTS「维护习惯」含长期调音 rule。

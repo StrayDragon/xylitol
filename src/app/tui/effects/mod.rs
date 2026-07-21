@@ -7,20 +7,25 @@ mod slash;
 
 use xylitol_tui::Terminal;
 
-use crate::app::core::driver::{Driver, EventStream, estimate_from_session_entries};
+use crate::app::core::driver::{
+    EventStream, XyDriver, XyDriverError, estimate_from_session_entries,
+};
 
 use super::host::HostSession;
 use super::widgets::footer_token_label;
 
 pub use bang::run_interactive_bang;
 
-/// Refresh footer token usage from [`Driver::estimate_context_tokens`] (c1035).
+/// Refresh footer token usage from [`XyDriver::estimate_context_tokens`] (c1035).
 ///
 /// Empty session → omit field (MUST NOT forge `used 0`). Estimate errors → omit.
 ///
 /// **Harness / tests**: awaits estimate (override is instant). Production host
 /// MUST prefer [`kick_footer_token_refresh`] so HF encode does not block input.
-pub async fn refresh_footer_tokens<T: Terminal>(session: &mut HostSession<T>, driver: &dyn Driver) {
+pub async fn refresh_footer_tokens<T: Terminal>(
+    session: &mut HostSession<T>,
+    driver: &dyn XyDriver,
+) {
     let _ = session.take_pending_footer_token_refresh();
     let entries = match driver.get_messages().await {
         Ok(e) => e,
@@ -49,7 +54,7 @@ pub async fn refresh_footer_tokens<T: Terminal>(session: &mut HostSession<T>, dr
 #[cfg_attr(test, allow(dead_code))] // production `drain_pending` only (`not(test)`)
 pub async fn kick_footer_token_refresh<T: Terminal>(
     session: &mut HostSession<T>,
-    driver: &dyn Driver,
+    driver: &dyn XyDriver,
 ) {
     let _ = session.take_pending_footer_token_refresh();
     let entries = match driver.get_messages().await {
@@ -84,10 +89,10 @@ pub async fn kick_footer_token_refresh<T: Terminal>(
     });
 }
 
-/// Consume HostSession pending ops and call Driver / dispatch.
+/// Consume HostSession pending ops and call XyDriver / dispatch.
 ///
 /// Ordering matches the historical `run_host_loop` body (abort → dequeue → steer →
-/// follow-up → slash → optional submit→`Driver::run`). Bang is **not** awaited here
+/// follow-up → slash → optional submit→`XyDriver::run`). Bang is **not** awaited here
 /// (c665 — host `select!` / [`run_pending_bash`]). Production and harness MUST share
 /// this entry so slash/steer branches cannot diverge.
 ///
@@ -98,9 +103,9 @@ pub async fn kick_footer_token_refresh<T: Terminal>(
 /// Footer token refresh is **kicked** async (does not await HF encode).
 pub async fn drain_pending<T: Terminal>(
     session: &mut HostSession<T>,
-    driver: &mut dyn Driver,
+    driver: &mut dyn XyDriver,
     agent_stream: &mut Option<EventStream>,
-) -> Result<(), String> {
+) -> Result<(), XyDriverError> {
     if session.take_pending_footer_token_refresh() {
         // Tests: await so ScriptedDriver estimate_override still applies.
         // Production: kick background job — never block input on HF encode.
@@ -115,7 +120,7 @@ pub async fn drain_pending<T: Terminal>(
         }
     }
     if session.take_abort() {
-        log::info!(target: "xylitol::tui", "Driver::abort (Esc)");
+        log::info!(target: "xylitol::tui", "XyDriver::abort (Esc)");
         driver.abort();
         session.note_user_abort();
         let _ = driver.clear_queue(true, false);
@@ -124,14 +129,14 @@ pub async fn drain_pending<T: Terminal>(
         let _ = session.render_now();
     }
     if session.take_dequeue() {
-        log::info!(target: "xylitol::tui", "Driver::clear_queue (Alt+Up dequeue)");
+        log::info!(target: "xylitol::tui", "XyDriver::clear_queue (Alt+Up dequeue)");
         let _ = driver.clear_queue(true, true);
         let stats = driver.queue_stats();
         session.set_queue_badge(stats.steer_count, stats.follow_up_count);
         let _ = session.render_now();
     }
     if let Some(msg) = session.take_steer() {
-        log::info!(target: "xylitol::tui", "Driver::steer prompt_len={}", msg.len());
+        log::info!(target: "xylitol::tui", "XyDriver::steer prompt_len={}", msg.len());
         if let Err(e) = driver.steer(&msg) {
             session.push_system_note(format!("steer failed: {e}"));
         }
@@ -140,7 +145,7 @@ pub async fn drain_pending<T: Terminal>(
         let _ = session.render_now();
     }
     if let Some(msg) = session.take_follow_up() {
-        log::info!(target: "xylitol::tui", "Driver::follow_up prompt_len={}", msg.len());
+        log::info!(target: "xylitol::tui", "XyDriver::follow_up prompt_len={}", msg.len());
         if let Err(e) = driver.follow_up(&msg) {
             session.push_system_note(format!("follow-up failed: {e}"));
         }
@@ -161,7 +166,7 @@ pub async fn drain_pending<T: Terminal>(
     if agent_stream.is_none()
         && let Some(prompt) = session.take_submit()
     {
-        log::info!(target: "xylitol::tui", "Driver::run starting prompt_len={}", prompt.len());
+        log::info!(target: "xylitol::tui", "XyDriver::run starting prompt_len={}", prompt.len());
         session.on_run_started(&prompt);
         let _ = session.render_now();
         *agent_stream = Some(driver.run(&prompt).await);

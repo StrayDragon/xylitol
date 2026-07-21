@@ -16,7 +16,7 @@
 //!     interactive: false,
 //!     caller: "embed-example",
 //! };
-//! // Then: `bootstrap(input)?.into_runtime()` → `Driver::run`.
+//! // Then: `bootstrap(input)?.into_runtime()` → `XyDriver::run`.
 //! // Do not name `AgentRuntime` at the call site.
 //! let _ = input.caller;
 //! ```
@@ -34,7 +34,7 @@
 //!
 //! ## Not exported here
 //!
-//! - `dispatch` / `RemoteDriver` — stay crate-internal until a surface wires
+//! - `dispatch` / `XyRemoteDriver` — stay crate-internal until a surface wires
 //!   them. Reach via `app::core` only inside this crate.
 //! - `HookDispatcher` / `HookEvent` — infra script implementation details.
 //!
@@ -48,5 +48,6 @@ pub use crate::app::core::composition::{
     BuildAgentOptions, McpServerSpec, McpSession, McpTransportSpec, build_agent,
 };
 pub use crate::app::core::driver::{
-    CommandInfo, Driver, EventStream, InProcessDriver, ModelInfo, SessionState, SessionStats,
+    CommandInfo, EventStream, ModelInfo, SessionState, SessionStats, XyDriver, XyDriverError,
+    XyInProcessDriver,
 };

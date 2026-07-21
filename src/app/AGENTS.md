@@ -9,4 +9,4 @@
 | TUI 产品面 | `src/app/tui/AGENTS.md` + `write-tui` skill；对照 pi 刻意差异 → `src/app/tui/PI_DELTAS.md` |
 | TUI 包内验证 | `test-tui-harness` skill |
 | 通用 TUI 引擎/组件 | `packages/xylitol-tui/AGENTS.md` |
-| steer / follow-up seam | `llmanspec/changes/c461-expose-steer-followup-seam/`（Driver 队列，非 UI） |
+| steer / follow-up seam | `llmanspec/changes/c461-expose-steer-followup-seam/`（XyDriver 队列，非 UI） |
