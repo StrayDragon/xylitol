@@ -41,13 +41,19 @@ async fn handle_reload<T: Terminal>(session: &mut HostSession<T>, driver: &mut d
 
     match driver.reload_runtime().await {
         Ok(report) => lines.extend(report.format_lines()),
-        Err(e) => lines.push(format!("runtime: failed — {e}")),
+        Err(e) => {
+            e.log_failure("tui.reload_runtime");
+            lines.push(format!("runtime: failed — {e}"));
+        }
     }
 
     if let Some(pref) = session.theme_preference().map(str::to_string) {
         match session.reload_themes(&pref) {
             Ok(()) => lines.push(format!("themes: ok — kept `{pref}`")),
-            Err(e) => lines.push(format!("themes: failed — {e}")),
+            Err(e) => {
+                e.log_failure("tui.reload_themes");
+                lines.push(format!("themes: failed — {e}"));
+            }
         }
     } else {
         lines.push("themes: unchanged (no preference; kept current)".into());
@@ -337,7 +343,10 @@ pub(super) async fn handle_slash<T: Terminal>(
             } else {
                 match driver.persist_project_trust(mode) {
                     Ok(report) => session.push_system_note(report.message),
-                    Err(e) => session.push_system_note(format!("/trust failed: {e}")),
+                    Err(e) => {
+                        e.log_failure("tui.persist_project_trust");
+                        session.push_system_note(format!("/trust failed: {e}"));
+                    }
                 }
             }
             let _ = session.render_now();
