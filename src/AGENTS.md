@@ -60,7 +60,7 @@ crate 内置工具             = *Args + serde；优先 TypedTool → dyn XyTool
 
 - 不改 MCP / hook 的 JSON 口换「全类型」。
 - schema 与 Args 手写并置；钩子总线与 `AgentHooks` **刻意保留 Value**。
-- 内置迁移进度不在本文件维护（见 active/purpose-draft changes）。
+- 内置工具经 `TypedTool` 装配；MCP / hook 仍走 `Value` + `XyTool`。
 
 ## 扩展开闭
 

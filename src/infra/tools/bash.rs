@@ -17,17 +17,17 @@ use tokio::process::Command;
 use tokio::time::timeout;
 
 use crate::protocol::error::XyToolError;
-use crate::protocol::ports::{XyTool, XyToolCtx};
+use crate::protocol::ports::XyToolCtx;
 
 use super::accumulator::OutputAccumulator;
-use super::args::parse_tool_args;
+use super::typed::TypedTool;
 
 const DEFAULT_TIMEOUT_SECS: u64 = 30;
 const MAX_TIMEOUT_SECS: u64 = 120;
 const SIGTERM_GRACE_SECS: u64 = 5;
 
 #[derive(Debug, Deserialize)]
-struct BashArgs {
+pub struct BashArgs {
     command: String,
     #[serde(default)]
     #[allow(dead_code)] // accepted in schema for LLM UX; not used by executor
@@ -262,7 +262,9 @@ impl BashTool {
 }
 
 #[async_trait]
-impl XyTool for BashTool {
+impl TypedTool for BashTool {
+    type Args = BashArgs;
+
     fn name(&self) -> &str {
         "bash"
     }
@@ -292,12 +294,12 @@ impl XyTool for BashTool {
         })
     }
 
-    async fn execute(&self, ctx: &XyToolCtx, args: Value) -> Result<String, XyToolError> {
+    async fn execute_typed(&self, ctx: &XyToolCtx, args: BashArgs) -> Result<String, XyToolError> {
         let BashArgs {
             command: cmd,
             description: _,
             timeout: requested,
-        } = parse_tool_args(args)?;
+        } = args;
 
         let timeout_secs = if requested <= 0 {
             DEFAULT_TIMEOUT_SECS
@@ -399,6 +401,7 @@ impl BashTool {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::protocol::ports::XyTool;
 
     fn test_ctx() -> XyToolCtx {
         XyToolCtx::new("test-call")

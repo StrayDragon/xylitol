@@ -13,14 +13,14 @@ use serde_json::{Value, json};
 use tokio::process::Command;
 use tokio::time::Duration;
 
-use super::args::parse_tool_args;
 use super::path_utils::resolve_to_cwd;
 use super::truncate::{
     DEFAULT_MAX_BYTES, GREP_MAX_LINE_LENGTH, TruncationOptions, format_size, truncate_head,
     truncate_line,
 };
+use super::typed::TypedTool;
 use crate::protocol::error::XyToolError;
-use crate::protocol::ports::{XyTool, XyToolCtx};
+use crate::protocol::ports::XyToolCtx;
 
 const DEFAULT_LIMIT: usize = 100;
 const RG_TIMEOUT: Duration = Duration::from_secs(30);
@@ -29,7 +29,7 @@ pub struct GrepTool;
 
 #[derive(Debug, Deserialize)]
 #[serde(rename_all = "camelCase")]
-struct GrepArgs {
+pub struct GrepArgs {
     pattern: String,
     #[serde(default = "default_dot")]
     path: String,
@@ -54,7 +54,9 @@ fn default_grep_limit() -> u64 {
 }
 
 #[async_trait]
-impl XyTool for GrepTool {
+impl TypedTool for GrepTool {
+    type Args = GrepArgs;
+
     fn name(&self) -> &str {
         "grep"
     }
@@ -100,7 +102,7 @@ impl XyTool for GrepTool {
         })
     }
 
-    async fn execute(&self, ctx: &XyToolCtx, args: Value) -> Result<String, XyToolError> {
+    async fn execute_typed(&self, ctx: &XyToolCtx, args: GrepArgs) -> Result<String, XyToolError> {
         let GrepArgs {
             pattern,
             path: search_path,
@@ -109,7 +111,7 @@ impl XyTool for GrepTool {
             literal,
             context,
             limit: limit_val,
-        } = parse_tool_args(args)?;
+        } = args;
         let effective_limit = (limit_val as usize).max(1);
 
         let search_dir = resolve_to_cwd(&search_path);
@@ -252,6 +254,7 @@ impl XyTool for GrepTool {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::protocol::ports::XyTool;
 
     fn test_ctx() -> XyToolCtx {
         XyToolCtx::new("test-call")
