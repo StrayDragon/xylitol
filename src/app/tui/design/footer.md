@@ -1,7 +1,7 @@
 ---
 version: "alpha"
 name: "footer"
-description: "Single-line dim footer — cwd · model · • thinking · optional used N/~N/? tokens."
+description: "Single-line dim footer — cwd · model · thinking · optional used N/~N/? tokens."
 tokens_from: "../DESIGN.md"
 components:
   footer:
@@ -12,12 +12,12 @@ components:
 # Footer
 
 > Token 根源：`{colors.*}` / `{spacing.*}` → [`../DESIGN.md`](../DESIGN.md)。
-> **c475 MVP**：`cwd · model`；**c1035**：带 provenance 的 `used N`/`~N`/`?`（无则省略）；**c1150**：thinking 标签（`• thinking off` / `• {as_str}`）。
+> **c475 MVP**：`cwd · model`；**c1035**：带 provenance 的 `used N`/`~N`/`?`（无则省略）；**c1150**：thinking 标签（`thinking off` / `{as_str}`）。字段间只用 ` · `，**不再**在 thinking 前加装饰 `•`（避免 `model · · low` 双分隔观感）。
 
 ## MUST
 
-1. 恰好 **1 行** dim。字段序：`cwd · model · • {thinking}`；有 `ContextTokenEstimate` 时追加 `· used … tokens`（见下表）；可选 `· branch`。
-2. Thinking 标签（**c1150**）：level=`off` → `thinking off`；其余用 `ThinkingLevel::as_str`（如 `medium`、`xhigh`）。形如 `~/x · model · • thinking off` 或 `· • high`。与编辑器 thinking 边框同步；切换经 XyDriver，**MUST NOT** 因 cycle 向 transcript 刷系统行。
+1. 恰好 **1 行** dim。字段序：`cwd · model · {thinking}`；有 `ContextTokenEstimate` 时追加 `· used … tokens`（见下表）；可选 `· branch`。
+2. Thinking 标签（**c1150**）：level=`off` → `thinking off`；其余用 `ThinkingLevel::as_str`（如 `medium`、`xhigh`）。形如 `~/x · model · thinking off` 或 `· low`。与编辑器 thinking 边框同步；切换经 XyDriver，**MUST NOT** 因 cycle 向 transcript 刷系统行。
 3. Token 文案按 `TokenProvenance`（经 `XyDriver::estimate_context_tokens`）：
 
    | Provenance | 文案 |

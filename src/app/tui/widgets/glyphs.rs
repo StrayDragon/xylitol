@@ -24,13 +24,6 @@ impl GlyphSet {
         }
     }
 
-    pub fn tool(self) -> &'static str {
-        match self {
-            Self::Unicode => "⚙",
-            Self::Ascii => "*",
-        }
-    }
-
     pub fn system(self) -> &'static str {
         match self {
             Self::Unicode => "·",

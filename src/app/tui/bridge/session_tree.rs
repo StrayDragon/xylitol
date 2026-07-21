@@ -238,7 +238,11 @@ fn assistant_parts_to_ui(entry_id: &str, message: &Value) -> Vec<UiEntry> {
                         .unwrap_or(entry_id)
                         .to_string(),
                     name: name.to_string(),
-                    args_preview: crate::app::tui::bridge::human_tool_args_preview(name, &args, 80),
+                    args_preview: crate::app::tui::bridge::human_tool_args_preview(
+                        name,
+                        &args,
+                        usize::MAX,
+                    ),
                     tool_path: crate::app::tui::bridge::extract_tool_path(&args),
                     write_content: (name == "write")
                         .then(|| {

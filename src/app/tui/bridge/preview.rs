@@ -1,5 +1,7 @@
 //! Tool args preview, path chrome, and quiet success output helpers.
 
+use std::path::{Path, PathBuf};
+
 use serde_json::Value;
 
 pub(crate) fn compact_json_preview(value: &Value, max_chars: usize) -> String {
@@ -14,22 +16,32 @@ pub(crate) fn compact_json_preview(value: &Value, max_chars: usize) -> String {
     format!("{truncated}…")
 }
 
-/// Prefer `~/…` when path is under $HOME (pi `shortenPath` chrome).
-fn shorten_tool_path(path: &str) -> String {
-    let Ok(home) = std::env::var("HOME") else {
+/// Display path for tool chrome: under process cwd → relative; otherwise absolute.
+///
+/// Aligns with VS Code / CLI path disclosure (not `~/` shortening).
+pub(crate) fn display_fs_path(path: &str) -> String {
+    if path.is_empty() {
         return path.to_string();
+    }
+    let cwd = std::env::current_dir().ok();
+    let input = Path::new(path);
+    let abs: PathBuf = if input.is_absolute() {
+        input.to_path_buf()
+    } else if let Some(ref cwd) = cwd {
+        cwd.join(input)
+    } else {
+        return path.replace('\\', "/");
     };
-    if home.is_empty() {
-        return path.to_string();
+
+    if let Some(cwd) = cwd.as_ref()
+        && let Ok(rel) = abs.strip_prefix(cwd)
+    {
+        let s = rel.to_string_lossy().replace('\\', "/");
+        if !s.is_empty() {
+            return s;
+        }
     }
-    if path == home {
-        return "~/".into();
-    }
-    let prefix = format!("{home}/");
-    if let Some(rest) = path.strip_prefix(&prefix) {
-        return format!("~/{rest}");
-    }
-    path.to_string()
+    abs.to_string_lossy().replace('\\', "/")
 }
 
 /// Streaming / empty path placeholder (pi `renderToolPath` → `...`).
@@ -71,28 +83,49 @@ pub(crate) fn extract_result_path(result: &str) -> Option<String> {
 
 fn path_slot(path: Option<&str>) -> String {
     match path.filter(|p| !p.is_empty()) {
-        Some(p) => shorten_tool_path(p),
+        Some(p) => display_fs_path(p),
         None => PATH_PLACEHOLDER.to_string(),
     }
 }
 
+/// VS Code–style location suffix: `:line`, `:line:col`, or `:start-end`.
 fn format_read_line_range(args: &Value) -> String {
     let offset = args.get("offset").and_then(json_u64);
     let limit = args.get("limit").and_then(json_u64);
+    let col = args
+        .get("column")
+        .or_else(|| args.get("col"))
+        .and_then(json_u64);
     if offset.is_none() && limit.is_none() {
         return String::new();
     }
     let start = offset.unwrap_or(1);
-    match limit {
-        Some(lim) => {
+    match (limit, col) {
+        (Some(lim), _) => {
             let end = start.saturating_add(lim).saturating_sub(1);
-            format!(":{start}-{end}")
+            if end == start {
+                format!(":{start}")
+            } else {
+                format!(":{start}-{end}")
+            }
         }
-        None => format!(":{start}"),
+        (None, Some(c)) => format!(":{start}:{c}"),
+        (None, None) => format!(":{start}"),
     }
 }
 
-/// Human-readable collapsed tool args (c1260 / c1280 / c1300 / c1320).
+/// Title-case tool name for scrollback chrome (`read` → `Read`).
+pub(crate) fn display_tool_title(name: &str) -> String {
+    let mut chars = name.chars();
+    match chars.next() {
+        Some(c) => format!("{}{}", c.to_uppercase(), chars.as_str()),
+        None => String::new(),
+    }
+}
+
+/// Human-readable collapsed tool **location** (no tool-name prefix; name painted separately).
+///
+/// Shape: `<path>[:line[:col]|:start-end]` or `$ <cmd>` for bash.
 ///
 /// `path_override`: sticky path when args lack one (partial JSON). `None` = derive from args.
 pub(crate) fn human_tool_args_preview_with_path(
@@ -114,14 +147,6 @@ pub(crate) fn human_tool_args_preview_with_path(
         None
     };
 
-    let content_line_count = || -> Option<usize> {
-        let content = args.get("content").and_then(Value::as_str)?;
-        if content.is_empty() {
-            return None;
-        }
-        Some(content.lines().count().max(1))
-    };
-
     let resolved_path = path_override
         .filter(|p| !p.is_empty())
         .map(str::to_string)
@@ -130,29 +155,27 @@ pub(crate) fn human_tool_args_preview_with_path(
     let summary = match name {
         "bash" | "shell" => pick_str(&["command", "cmd"])
             .map(|c| format!("$ {c}"))
-            .unwrap_or_else(|| name.to_string()),
+            .unwrap_or_else(|| PATH_PLACEHOLDER.to_string()),
         "read" => {
             format!(
-                "read {}{}",
+                "{}{}",
                 path_slot(resolved_path.as_deref()),
                 format_read_line_range(args)
             )
         }
-        "ls" => format!("ls {}", path_slot(resolved_path.as_deref())),
-        "edit" => format!("edit {}", path_slot(resolved_path.as_deref())),
-        "write" => {
-            let path = path_slot(resolved_path.as_deref());
-            match content_line_count() {
-                Some(n) => format!("write {path} ({n} lines)"),
-                None => format!("write {path}"),
-            }
-        }
+        "ls" | "edit" | "write" => path_slot(resolved_path.as_deref()),
         "find" => pick_str(&["pattern", "path", "glob"])
-            .map(|p| format!("find {p}"))
-            .unwrap_or_else(|| "find".into()),
+            .map(|p| display_fs_path(&p))
+            .unwrap_or_else(|| PATH_PLACEHOLDER.to_string()),
         "grep" => pick_str(&["pattern", "path"])
-            .map(|p| format!("grep {p}"))
-            .unwrap_or_else(|| "grep".into()),
+            .map(|p| {
+                if p.contains('/') || Path::new(&p).extension().is_some() {
+                    display_fs_path(&p)
+                } else {
+                    p
+                }
+            })
+            .unwrap_or_else(|| PATH_PLACEHOLDER.to_string()),
         _ => pick_str(&[
             "path",
             "file_path",
@@ -163,7 +186,7 @@ pub(crate) fn human_tool_args_preview_with_path(
             "query",
             "url",
         ])
-        .map(|p| shorten_tool_path(&p))
+        .map(|p| display_fs_path(&p))
         .unwrap_or_default(),
     };
 
@@ -174,8 +197,10 @@ pub(crate) fn human_tool_args_preview(name: &str, args: &Value, max_chars: usize
     human_tool_args_preview_with_path(name, args, None, max_chars)
 }
 
-/// Success write/edit machine JSON is not default chrome (c1280); errors stay visible.
-pub(crate) fn quiet_tool_success_output(
+/// Map built-in tool `result` → TUI body text (no machine JSON chrome).
+///
+/// Returns `None` when the result should stay as-is (errors, unknown shapes, plain text).
+pub(crate) fn humanize_tool_result_for_tui(
     name: &str,
     result: &str,
     is_error: bool,
@@ -192,8 +217,254 @@ pub(crate) fn quiet_tool_success_output(
                 None
             }
         }
+        "read" => humanize_read_tool_output(result),
+        "bash" | "shell" => humanize_bash_tool_output(result),
         _ => None,
     }
+}
+
+/// True when `text` is a JSON object that still looks like tool wire chrome.
+pub(crate) fn output_looks_like_machine_json(text: &str) -> bool {
+    let trimmed = text.trim();
+    if !(trimmed.starts_with('{') && trimmed.ends_with('}')) {
+        return false;
+    }
+    let Ok(value) = serde_json::from_str::<Value>(trimmed) else {
+        return false;
+    };
+    let Some(obj) = value.as_object() else {
+        return false;
+    };
+    const MACHINE_KEYS: &[&str] = &[
+        "success",
+        "bytes",
+        "display_diff",
+        "diff",
+        "total_lines",
+        "exit_code",
+        "combined",
+        "stdout",
+        "stderr",
+        "full_output_path",
+        "truncated_by",
+        "remaining_lines",
+    ];
+    // read-shaped: content + total_lines (or offset-only envelope)
+    if obj.contains_key("content")
+        && (obj.contains_key("total_lines")
+            || obj.contains_key("offset")
+            || obj.contains_key("truncated"))
+    {
+        return true;
+    }
+    MACHINE_KEYS.iter().any(|k| obj.contains_key(*k))
+}
+
+fn humanize_read_tool_output(result: &str) -> Option<String> {
+    let value: Value = serde_json::from_str(result).ok()?;
+    let obj = value.as_object()?;
+    // Read success envelope always has `content` (may be empty).
+    if !obj.contains_key("content") {
+        return None;
+    }
+    let content = obj.get("content").and_then(Value::as_str).unwrap_or("");
+    let mut body = content.to_string();
+    if obj
+        .get("truncated")
+        .and_then(Value::as_bool)
+        .unwrap_or(false)
+    {
+        if let Some(hint) = obj.get("hint").and_then(Value::as_str) {
+            if !body.is_empty() && !body.ends_with('\n') {
+                body.push('\n');
+            }
+            body.push_str(hint);
+        } else if let Some(rem) = obj.get("remaining_lines").and_then(Value::as_u64) {
+            if !body.is_empty() && !body.ends_with('\n') {
+                body.push('\n');
+            }
+            body.push_str(&format!("(truncated — {rem} lines remaining)"));
+        }
+    }
+    if let Some(note) = obj.get("note").and_then(Value::as_str) {
+        // e.g. offset exceeds file length
+        if body.is_empty() {
+            return Some(note.to_string());
+        }
+        if !body.ends_with('\n') {
+            body.push('\n');
+        }
+        body.push_str(note);
+    }
+    Some(body)
+}
+
+/// Turn bash/shell tool JSON into shell-like stdout/stderr text (not raw JSON chrome).
+pub(crate) fn humanize_bash_tool_output(result: &str) -> Option<String> {
+    let value: Value = serde_json::from_str(result).ok()?;
+    if !value.is_object() {
+        return None;
+    }
+    // Require at least one bash-shaped key so we don't swallow unknown tools.
+    let has_bash_shape = value.get("exit_code").is_some()
+        || value.get("combined").is_some()
+        || value.get("stdout").is_some();
+    if !has_bash_shape {
+        return None;
+    }
+
+    let combined = value
+        .get("combined")
+        .and_then(Value::as_str)
+        .filter(|s| !s.is_empty())
+        .or_else(|| {
+            value
+                .get("stdout")
+                .and_then(Value::as_str)
+                .filter(|s| !s.is_empty())
+        })
+        .unwrap_or("");
+    let stderr = value
+        .get("stderr")
+        .and_then(Value::as_str)
+        .filter(|s| !s.is_empty())
+        .unwrap_or("");
+    let exit_code = value
+        .get("exit_code")
+        .and_then(|v| v.as_i64().or_else(|| v.as_u64().map(|n| n as i64)));
+    let truncated = value
+        .get("truncated")
+        .and_then(Value::as_bool)
+        .unwrap_or(false);
+    let full_path = value
+        .get("full_output_path")
+        .and_then(Value::as_str)
+        .filter(|s| !s.is_empty());
+
+    let mut body = String::new();
+    if !combined.is_empty() {
+        body.push_str(combined.trim_end());
+    }
+    if !stderr.is_empty() {
+        if !body.is_empty() {
+            body.push('\n');
+        }
+        body.push_str(stderr.trim_end());
+    }
+    if truncated {
+        if !body.is_empty() {
+            body.push('\n');
+        }
+        if let Some(path) = full_path {
+            body.push_str(&format!(
+                "[Full output: {path}. Truncated: (see file) lines shown]"
+            ));
+        } else {
+            body.push_str("(truncated)");
+        }
+    }
+    if let Some(code) = exit_code.filter(|&c| c != 0) {
+        if !body.is_empty() {
+            body.push('\n');
+        }
+        body.push_str(&format!("(exit {code})"));
+    }
+    if body.is_empty() {
+        return Some("(no output)".into());
+    }
+    Some(body)
+}
+
+/// Line-range suffix from edit `display_diff` (`:start-end` on the new side).
+pub(crate) fn extract_line_range_from_display_diff(diff: &str) -> Option<String> {
+    let mut min_new = u32::MAX;
+    let mut max_new = 0u32;
+    let mut found = false;
+
+    for line in diff.lines() {
+        let hunk = line
+            .trim()
+            .strip_prefix("...")
+            .map(str::trim)
+            .and_then(|s| s.strip_prefix('|'))
+            .map(str::trim)
+            .unwrap_or(line.trim());
+        if let Some(hunk) = hunk.strip_prefix("@@") {
+            if let Some((start, count)) = parse_unified_new_span(hunk) {
+                found = true;
+                min_new = min_new.min(start);
+                let end = if count == 0 {
+                    start
+                } else {
+                    start.saturating_add(count).saturating_sub(1)
+                };
+                max_new = max_new.max(end.max(start));
+            }
+            continue;
+        }
+        // display_diff rows: "     NNNN | …" (new-only) or "OOOO NNNN | …"
+        if let Some((a, b)) = parse_display_diff_line_nos(line) {
+            found = true;
+            if let Some(n) = b.or(a) {
+                min_new = min_new.min(n);
+                max_new = max_new.max(n);
+            }
+        }
+    }
+
+    if !found || min_new == u32::MAX {
+        return None;
+    }
+    if min_new == max_new {
+        Some(format!(":{min_new}"))
+    } else {
+        Some(format!(":{min_new}-{max_new}"))
+    }
+}
+
+fn parse_unified_new_span(hunk_after_at: &str) -> Option<(u32, u32)> {
+    // " -12,5 +14,7 @@ …" or " -12 +14 @@"
+    let rest = hunk_after_at.trim();
+    let mut parts = rest.split_whitespace();
+    let _old = parts.next()?.strip_prefix('-')?;
+    let new = parts.next()?.strip_prefix('+')?;
+    let mut nums = new.split(',');
+    let start: u32 = nums.next()?.parse().ok()?;
+    let count: u32 = nums.next().and_then(|s| s.parse().ok()).unwrap_or(1);
+    Some((start, count))
+}
+
+fn parse_display_diff_line_nos(line: &str) -> Option<(Option<u32>, Option<u32>)> {
+    let (gutter, _) = line.split_once('|')?;
+    let gutter = gutter.trim_end();
+    if gutter.contains("...") {
+        return None;
+    }
+    let mut nums = gutter
+        .split_whitespace()
+        .filter_map(|t| t.parse::<u32>().ok());
+    let a = nums.next();
+    let b = nums.next();
+    if a.is_none() && b.is_none() {
+        return None;
+    }
+    Some((a, b))
+}
+
+/// Append `:range` to a path-only preview if missing.
+pub(crate) fn merge_path_preview_with_range(preview: &str, range: &str) -> String {
+    if preview.is_empty() || range.is_empty() || preview.starts_with('$') {
+        return preview.to_string();
+    }
+    for (i, ch) in preview.char_indices().rev() {
+        if ch == ':' {
+            let suffix = &preview[i..];
+            if suffix.len() > 1 && suffix.as_bytes()[1].is_ascii_digit() {
+                return preview.to_string();
+            }
+        }
+    }
+    format!("{preview}{range}")
 }
 
 /// Pull pi-shaped `[Full output: …]` line from bash tool JSON / plain result.
@@ -240,19 +511,10 @@ pub fn extract_display_diff(result: &str) -> Option<String> {
         .map(str::to_string)
 }
 
-/// True when header still has no real path slot (`edit ...`, bare `write`, etc.).
-pub(crate) fn preview_lacks_real_path(name: &str, preview: &str) -> bool {
-    let prefixes = match name {
-        "write" => &["write "][..],
-        "edit" => &["edit "][..],
-        "read" => &["read "][..],
-        "ls" => &["ls "][..],
-        _ => return false,
-    };
-    let Some(rest) = prefixes.iter().find_map(|p| preview.strip_prefix(p)) else {
-        return true;
-    };
-    rest.is_empty() || rest.starts_with("...")
+/// True when header still has no real path slot (`...` or empty).
+pub(crate) fn preview_lacks_real_path(_name: &str, preview: &str) -> bool {
+    let rest = preview.trim();
+    rest.is_empty() || rest == PATH_PLACEHOLDER || rest.starts_with("...")
 }
 
 /// Prefer keeping a richer streaming header over a weaker later snapshot.
@@ -260,11 +522,11 @@ pub(crate) fn preview_is_downgrade(name: &str, old: &str, new: &str) -> bool {
     if old.is_empty() || old == new {
         return false;
     }
-    if new == name || new == format!("{name} ...") {
+    if new == name || new == PATH_PLACEHOLDER {
         return true;
     }
     match name {
-        "bash" | "shell" => new == name || new == "$ ...",
+        "bash" | "shell" => new == name || new == "$ ..." || new == PATH_PLACEHOLDER,
         "write" | "edit" | "read" | "ls" => {
             preview_lacks_real_path(name, new) && !preview_lacks_real_path(name, old)
         }
@@ -287,7 +549,7 @@ mod tests {
     }
 
     #[test]
-    fn write_summary_includes_line_count_not_content() {
+    fn write_summary_is_path_only() {
         let preview = human_tool_args_preview(
             "write",
             &serde_json::json!({
@@ -296,8 +558,7 @@ mod tests {
             }),
             80,
         );
-        assert!(preview.contains("docs/a.md"), "got {preview}");
-        assert!(preview.contains("3 lines"), "got {preview}");
+        assert_eq!(preview, "docs/a.md");
         assert!(!preview.contains("line1"), "got {preview}");
         assert!(!preview.contains('{'));
     }
@@ -306,7 +567,7 @@ mod tests {
     fn write_content_only_uses_path_ellipsis() {
         let preview =
             human_tool_args_preview("write", &serde_json::json!({"content": "a\nb\nc"}), 80);
-        assert_eq!(preview, "write ... (3 lines)");
+        assert_eq!(preview, "...");
     }
 
     #[test]
@@ -322,7 +583,7 @@ mod tests {
             }),
             80,
         );
-        assert_eq!(preview, "edit src/main.rs");
+        assert_eq!(preview, "src/main.rs");
         assert!(!preview.contains("oldText"));
         assert!(!preview.contains('{'));
     }
@@ -336,14 +597,14 @@ mod tests {
             }),
             80,
         );
-        assert_eq!(preview, "edit ...");
+        assert_eq!(preview, "...");
     }
 
     #[test]
     fn file_path_alias_is_recognized() {
         let preview =
             human_tool_args_preview("edit", &serde_json::json!({"file_path": "lib.rs"}), 80);
-        assert_eq!(preview, "edit lib.rs");
+        assert_eq!(preview, "lib.rs");
     }
 
     #[test]
@@ -357,7 +618,7 @@ mod tests {
             }),
             80,
         );
-        assert_eq!(preview, "read README.md:120-329");
+        assert_eq!(preview, "README.md:120-329");
     }
 
     #[test]
@@ -367,7 +628,7 @@ mod tests {
             &serde_json::json!({"path": "a.rs", "offset": 5}),
             80,
         );
-        assert_eq!(preview, "read a.rs:5");
+        assert_eq!(preview, "a.rs:5");
     }
 
     #[test]
@@ -460,7 +721,7 @@ mod tests {
             } if id == "w1" => Some(args_preview.as_str()),
             _ => None,
         });
-        assert_eq!(preview, Some("write a.py (2 lines)"));
+        assert_eq!(preview, Some("a.py"));
     }
 
     #[test]
@@ -499,7 +760,7 @@ mod tests {
             } if id == "e1" => Some(args_preview.as_str()),
             _ => None,
         });
-        assert_eq!(preview, Some("edit /tmp/x"));
+        assert_eq!(preview, Some("/tmp/x"));
     }
 
     #[test]
@@ -592,7 +853,7 @@ mod tests {
             } if id == "w1" => Some(args_preview.as_str()),
             _ => None,
         });
-        assert_eq!(after, Some("write a.py (1 lines)"));
+        assert_eq!(after, Some("a.py"));
     }
 
     #[test]
@@ -613,7 +874,7 @@ mod tests {
             } if id == "e1" => Some(args_preview.clone()),
             _ => None,
         });
-        assert_eq!(before.as_deref(), Some("edit ..."));
+        assert_eq!(before.as_deref(), Some("..."));
         apply_xy_event(
             &mut model,
             &XyEvent::ToolExecutionEnd {
@@ -629,8 +890,8 @@ mod tests {
             } if id == "e1" => Some(args_preview.as_str()),
             _ => None,
         });
-        assert_eq!(after, Some("edit src/a.rs"));
-        assert!(!after.unwrap().contains(":1"));
+        assert_eq!(after, Some("src/a.rs:1"));
+        assert!(!after.unwrap().contains("oldText"));
     }
 
     #[test]
@@ -796,7 +1057,7 @@ mod tests {
             } if id == "e1" => Some(args_preview.as_str()),
             _ => None,
         });
-        assert_eq!(preview, Some("edit src/a.rs"));
+        assert_eq!(preview, Some("src/a.rs:1"));
     }
 
     #[test]
@@ -851,5 +1112,136 @@ mod tests {
             "must drop streamed full buffer: {out}"
         );
         assert!(out.contains("tail-line"));
+    }
+
+    #[test]
+    fn humanize_bash_json_to_shell_text() {
+        let out = humanize_bash_tool_output(
+            r#"{"stdout":"","stderr":"","exit_code":0,"combined":"","truncated":false}"#,
+        );
+        assert_eq!(out.as_deref(), Some("(no output)"));
+
+        let out = humanize_bash_tool_output(
+            r#"{"stdout":"hi\n","stderr":"","exit_code":0,"combined":"hi\n","truncated":false}"#,
+        );
+        assert_eq!(out.as_deref(), Some("hi"));
+
+        let out = humanize_bash_tool_output(
+            r#"{"stdout":"","stderr":"boom","exit_code":2,"combined":"","truncated":false}"#,
+        );
+        assert_eq!(out.as_deref(), Some("boom\n(exit 2)"));
+    }
+
+    #[test]
+    fn humanize_read_shows_content_not_json() {
+        let out = humanize_tool_result_for_tui(
+            "read",
+            r#"{"content":"hello\nworld\n","total_lines":2}"#,
+            false,
+        );
+        assert_eq!(out.as_deref(), Some("hello\nworld\n"));
+        assert!(!output_looks_like_machine_json(out.as_deref().unwrap()));
+    }
+
+    #[test]
+    fn humanize_read_keeps_truncation_hint() {
+        let out = humanize_tool_result_for_tui(
+            "read",
+            r#"{"content":"line1\n","total_lines":99,"truncated":true,"hint":"Output truncated. 90 lines remaining."}"#,
+            false,
+        )
+        .unwrap();
+        assert!(out.starts_with("line1\n"));
+        assert!(out.contains("Output truncated"));
+        assert!(!out.contains("\"total_lines\""));
+    }
+
+    #[test]
+    fn builtin_tool_results_never_leak_machine_json_in_tui() {
+        // Typical success envelopes from infra tools → TUI body must not be raw JSON chrome.
+        let cases: &[(&str, &str, &str)] = &[
+            ("write", r#"{"success":true,"path":"a.py","bytes":12}"#, ""),
+            (
+                "edit",
+                r#"{"success":true,"path":"a.py","display_diff":"1 1 | x","diff":"---"}"#,
+                "",
+            ),
+            (
+                "read",
+                r#"{"content":"hello\nworld\n","total_lines":2}"#,
+                "hello\nworld\n",
+            ),
+            (
+                "bash",
+                r#"{"stdout":"","stderr":"","exit_code":0,"combined":"","truncated":false}"#,
+                "(no output)",
+            ),
+            (
+                "bash",
+                r#"{"stdout":"ok\n","stderr":"","exit_code":0,"combined":"ok\n","truncated":false}"#,
+                "ok",
+            ),
+        ];
+        for (name, result, expect) in cases {
+            let human = humanize_tool_result_for_tui(name, result, false)
+                .unwrap_or_else(|| panic!("{name} should humanize: {result}"));
+            assert_eq!(human, *expect, "humanize({name})");
+            assert!(
+                !output_looks_like_machine_json(&human),
+                "{name} still looks like machine JSON: {human}"
+            );
+            assert!(!human.contains("\"success\""), "{name} leaked success key");
+            assert!(
+                !human.contains("\"total_lines\""),
+                "{name} leaked total_lines"
+            );
+            assert!(!human.contains("\"exit_code\""), "{name} leaked exit_code");
+            assert!(
+                !human.contains("\"display_diff\""),
+                "{name} leaked display_diff"
+            );
+            assert!(!human.contains("\"bytes\""), "{name} leaked bytes");
+        }
+    }
+
+    #[test]
+    fn read_tool_end_applies_content_to_scrollback_output() {
+        let mut model = UiModel::new();
+        model.begin_run("hi");
+        apply_xy_event(
+            &mut model,
+            &XyEvent::ToolExecutionStart {
+                id: "r1".into(),
+                name: "read".into(),
+                args: serde_json::json!({"path": "/tmp/note.md"}),
+            },
+        );
+        apply_xy_event(
+            &mut model,
+            &XyEvent::ToolExecutionEnd {
+                id: "r1".into(),
+                name: "read".into(),
+                result: r#"{"content":"hello\nworld\n","total_lines":2}"#.into(),
+                is_error: false,
+            },
+        );
+        let out = model.entries.iter().find_map(|e| match e {
+            UiEntry::Tool { id, output, .. } if id == "r1" => Some(output.as_str()),
+            _ => None,
+        });
+        assert_eq!(out, Some("hello\nworld\n"));
+        assert!(!output_looks_like_machine_json(out.unwrap()));
+    }
+
+    #[test]
+    fn ls_grep_find_plain_text_results_pass_through() {
+        // These tools already return human text — humanize returns None; body stays plain.
+        for name in ["ls", "grep", "find"] {
+            assert!(
+                humanize_tool_result_for_tui(name, "src/a.rs\nsrc/b.rs\n", false).is_none(),
+                "{name} plain text should not be rewritten"
+            );
+            assert!(!output_looks_like_machine_json("src/a.rs\nsrc/b.rs\n"));
+        }
     }
 }

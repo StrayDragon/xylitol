@@ -4,7 +4,7 @@ purpose: 主题 token、glyph、status 与 footer 等 layout 壳（历史 capabi
 valid_scope[1]: src/app/tui/
 requirements[18]{req_id,title,statement}:
   atc1,"idle-status-omitted",产品 UiRoot 空闲时 status 槽 MUST 渲染 0 行；忙碌时 MUST 至多独立 1 行短状态；MUST NOT 将 Working 等忙碌文案并入 footer。
-  atc2,"footer-minimal","产品 footer MUST 为 1 行 dim 文本；字段序为 cwd · model · thinking 标签（形如 `cwd · model · • thinking off` 或 `· • xhigh`，level 文案为 ThinkingLevel::as_str，off 时用 `thinking off`）；并在可获得 ContextTokenEstimate 时追加 `· used … tokens`（文案按 TokenProvenance：Api/RemoteCount/LocalTokenizer 为 used N tokens，Heuristic 为 used ~N tokens，Unknown 为 used ? tokens）；队列非空时可加 `q:sN|fM ·` 前缀；无估计数据时 MUST NOT 伪造 used 0；MUST NOT 常驻快捷键墙；放不下时 MUST 截断右侧而非增高。"
+  atc2,"footer-minimal","产品 footer MUST 为 1 行 dim 文本；字段序为 cwd · model · thinking 标签（形如 `cwd · model · thinking off` 或 `· xhigh`，level 文案为 ThinkingLevel::as_str，off 时用 `thinking off`；字段间只用 ` · `，MUST NOT 在 thinking 前再加装饰 `•`）；并在可获得 ContextTokenEstimate 时追加 `· used … tokens`（文案按 TokenProvenance：Api/RemoteCount/LocalTokenizer 为 used N tokens，Heuristic 为 used ~N tokens，Unknown 为 used ? tokens）；队列非空时可加 `q:sN|fM ·` 前缀；无估计数据时 MUST NOT 伪造 used 0；MUST NOT 常驻快捷键墙；放不下时 MUST 截断右侧而非增高。"
   atc3,"theme-glyphs-config","产品 host MUST 经 Palette::dark()（或等价闭包）将语义色注入组件主题；glyph 档（unicode/ascii）MUST 由显式配置切换，MUST NOT 做运行时字体探测；产品 MVP MUST NOT 默认开启 theme auto。"
   atc4,"design-docs-ssot","产品 TUI 视觉与 UX MUST 以 src/app/tui/DESIGN.md 为索引、以 src/app/tui/design/*.md 为组件级 SSOT；实现与 demo 引用组件规则时 MUST 指向对应子文档（尤其 design/diff-block.md 与 design/keybindings.md），MUST NOT 仅依赖口头约定。"
   atc5,"demo-theme-auto-detect",agent_demo MUST 默认使用 Dark token 集；当启用主题自动探测（环境变量或 harness API）时 MUST 经 package terminal_colors 纯函数切换 Light/Dark，并在 layout 壳（footer 或系统行）暴露当前 theme_mode；MUST NOT 将自动切换设为产品 MVP 默认。

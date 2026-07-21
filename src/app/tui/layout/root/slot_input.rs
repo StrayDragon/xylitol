@@ -212,11 +212,8 @@ impl UiRoot {
                 self.bump_upper_gen();
                 return;
             }
-            // MAY: Ctrl+P opens Plate stub (Esc closes). Not in app catalog (stub).
-            if matches_key_event(key, "ctrl+p") {
-                self.open_slot(EditorSlot::Plate);
-                return;
-            }
+            // Product MUST NOT open Command Plate (DESIGN 明确不做；Ctrl+P 留给
+            // session-resume path toggle 等已接线绑定，勿再抢占).
         }
 
         self.editor.handle_input(event);
