@@ -14,6 +14,19 @@ pub enum XyError {
     Aborted,
 }
 
+impl XyError {
+    /// Stable kind for logs / fastrace (`Provider`, `Tool`, …).
+    pub fn kind(&self) -> &'static str {
+        match self {
+            Self::Provider(_) => "Provider",
+            Self::Tool(_) => "Tool",
+            Self::Session(_) => "Session",
+            Self::Config(_) => "Config",
+            Self::Aborted => "Aborted",
+        }
+    }
+}
+
 #[derive(Debug, thiserror::Error)]
 pub enum XyToolError {
     #[error("invalid arguments: {0}")]
@@ -26,6 +39,19 @@ pub enum XyToolError {
     Timeout(Duration),
     #[error("aborted")]
     Aborted,
+}
+
+impl XyToolError {
+    /// Stable kind for logs / fastrace (`InvalidArgs`, `Aborted`, …).
+    pub fn kind(&self) -> &'static str {
+        match self {
+            Self::InvalidArgs(_) => "InvalidArgs",
+            Self::ExecutionFailed(_) => "ExecutionFailed",
+            Self::PermissionDenied(_) => "PermissionDenied",
+            Self::Timeout(_) => "Timeout",
+            Self::Aborted => "Aborted",
+        }
+    }
 }
 
 #[cfg(test)]
@@ -116,6 +142,35 @@ mod tests {
             result.unwrap_err().to_string(),
             "tool error: invalid arguments: bad"
         );
+    }
+
+    // ── kind() ──────────────────────────────────────────────────────
+
+    #[test]
+    fn xy_error_kind_variants() {
+        assert_eq!(XyError::Provider(anyhow::anyhow!("x")).kind(), "Provider");
+        assert_eq!(XyError::Tool(XyToolError::Aborted).kind(), "Tool");
+        assert_eq!(XyError::Session(anyhow::anyhow!("x")).kind(), "Session");
+        assert_eq!(XyError::Config("x".into()).kind(), "Config");
+        assert_eq!(XyError::Aborted.kind(), "Aborted");
+    }
+
+    #[test]
+    fn xy_tool_error_kind_variants() {
+        assert_eq!(XyToolError::InvalidArgs("x".into()).kind(), "InvalidArgs");
+        assert_eq!(
+            XyToolError::ExecutionFailed(anyhow::anyhow!("x")).kind(),
+            "ExecutionFailed"
+        );
+        assert_eq!(
+            XyToolError::PermissionDenied("x".into()).kind(),
+            "PermissionDenied"
+        );
+        assert_eq!(
+            XyToolError::Timeout(Duration::from_secs(1)).kind(),
+            "Timeout"
+        );
+        assert_eq!(XyToolError::Aborted.kind(), "Aborted");
     }
 
     // ── Debug ───────────────────────────────────────────────────────

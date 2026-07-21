@@ -351,24 +351,14 @@ impl XyDriver for XyInProcessDriver {
             )));
         }
         if let Some(bus) = self.agent.inner().hook_bus() {
-            crate::agent::session::cancel_hook(
-                &bus,
-                "session_before_switch",
-                "pre",
-                serde_json::json!({ "reason": "resume", "target": session_id }),
-            )
-            .await?;
-            crate::agent::session::observe_hook(
-                &bus,
-                "session_shutdown",
-                "",
-                serde_json::json!({
-                    "reason": "resume",
-                    "target": session_id,
-                    "previous": self.agent.inner().session_id(),
-                }),
-            )
-            .await;
+            let (ty, phase, ctx) =
+                crate::agent::runtime::script_hook_ctx::session_before_switch("resume", session_id);
+            crate::agent::session::cancel_hook(&bus, ty, phase, ctx).await?;
+            let (ty, phase, ctx) = crate::agent::runtime::script_hook_ctx::session_shutdown_resume(
+                session_id,
+                self.agent.inner().session_id(),
+            );
+            crate::agent::session::observe_hook(&bus, ty, phase, ctx).await;
         }
         self.agent.inner_mut().set_session(session_id.to_string());
         Ok(session_id.to_string())
@@ -449,13 +439,10 @@ impl XyDriver for XyInProcessDriver {
             .session_id()
             .ok_or_else(|| XyDriverError::from("no active session"))?;
         if let Some(bus) = self.agent.inner().hook_bus() {
-            crate::agent::session::cancel_hook(
-                &bus,
-                "session_before_tree",
-                "pre",
-                serde_json::json!({ "kind": format!("{kind:?}") }),
-            )
-            .await?;
+            let kind = format!("{kind:?}");
+            let (ty, phase, ctx) =
+                crate::agent::runtime::script_hook_ctx::session_before_tree(&kind);
+            crate::agent::session::cancel_hook(&bus, ty, phase, ctx).await?;
         }
         // Bootstrap may assign a fresh id before any persist; wiped HOME may leave
         // an orphan id. Ensure an empty session so double-Esc opens an empty tree.
@@ -467,13 +454,9 @@ impl XyDriver for XyInProcessDriver {
             }
         };
         if let Some(bus) = self.agent.inner().hook_bus() {
-            crate::agent::session::observe_hook(
-                &bus,
-                "session_tree",
-                "post",
-                serde_json::json!({ "kind": format!("{kind:?}") }),
-            )
-            .await;
+            let kind = format!("{kind:?}");
+            let (ty, phase, ctx) = crate::agent::runtime::script_hook_ctx::session_tree(&kind);
+            crate::agent::session::observe_hook(&bus, ty, phase, ctx).await;
         }
         Ok(tree)
     }
@@ -489,16 +472,12 @@ impl XyDriver for XyInProcessDriver {
             .session_id()
             .ok_or_else(|| XyDriverError::from("no active session"))?;
         if let Some(bus) = self.agent.inner().hook_bus() {
-            crate::agent::session::cancel_hook(
-                &bus,
-                "session_before_tree",
-                "pre",
-                serde_json::json!({
-                    "kind": format!("{kind:?}"),
-                    "entry_id": entry_id,
-                }),
-            )
-            .await?;
+            let kind_s = format!("{kind:?}");
+            let (ty, phase, ctx) =
+                crate::agent::runtime::script_hook_ctx::session_before_tree_travel(
+                    &kind_s, entry_id,
+                );
+            crate::agent::session::cancel_hook(&bus, ty, phase, ctx).await?;
         }
         let travel = match kind {
             SessionTreeKind::MessageHistory => {
@@ -512,17 +491,13 @@ impl XyDriver for XyInProcessDriver {
             }
         };
         if let Some(bus) = self.agent.inner().hook_bus() {
-            crate::agent::session::observe_hook(
-                &bus,
-                "session_tree",
-                "post",
-                serde_json::json!({
-                    "kind": format!("{kind:?}"),
-                    "entry_id": entry_id,
-                    "leaf_id": travel.leaf_id,
-                }),
-            )
-            .await;
+            let kind_s = format!("{kind:?}");
+            let (ty, phase, ctx) = crate::agent::runtime::script_hook_ctx::session_tree_travel(
+                &kind_s,
+                entry_id,
+                travel.leaf_id.as_deref(),
+            );
+            crate::agent::session::observe_hook(&bus, ty, phase, ctx).await;
         }
         Ok(travel)
     }

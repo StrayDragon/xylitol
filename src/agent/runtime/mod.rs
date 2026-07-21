@@ -11,6 +11,7 @@ pub(crate) mod obs;
 pub(crate) mod permission_router;
 pub mod react;
 pub mod retry;
+pub(crate) mod script_hook_ctx;
 
 // Public surface of the loop (XyEvent/XyEventStream/AgentRuntime/AgentHooks are `pub`).
 pub use crate::protocol::lifecycle::XyEvent;

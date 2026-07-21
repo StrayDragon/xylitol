@@ -336,13 +336,9 @@ impl AgentCapabilities {
             self.store.create(id, Some(&cwd_clone), parent).await?;
             if let Some(bus) = &self.hook_bus {
                 let reason = if parent.is_some() { "fork" } else { "new" };
-                observe_hook(
-                    bus,
-                    "session_start",
-                    "",
-                    serde_json::json!({ "reason": reason }),
-                )
-                .await;
+                let (ty, phase, ctx) =
+                    crate::agent::runtime::script_hook_ctx::session_start(reason);
+                observe_hook(bus, ty, phase, ctx).await;
             }
         }
         Ok(())
@@ -510,16 +506,11 @@ impl AgentCapabilities {
             .ok_or_else(|| "no active session".to_string())?;
 
         if let Some(bus) = &self.hook_bus {
-            observe_hook(
-                bus,
-                "session_before_fork",
-                "pre",
-                serde_json::json!({
-                    "entry_id": at_entry_id,
-                    "position": format!("{position:?}"),
-                }),
-            )
-            .await;
+            let (ty, phase, ctx) = crate::agent::runtime::script_hook_ctx::session_before_fork(
+                at_entry_id,
+                &format!("{position:?}"),
+            );
+            observe_hook(bus, ty, phase, ctx).await;
         }
 
         let child_id = uuid::Uuid::new_v4().to_string();
@@ -632,17 +623,12 @@ impl AgentCapabilities {
         chunk_tx: Option<tokio::sync::mpsc::Sender<Vec<u8>>>,
     ) -> Result<crate::protocol::ports::XyBashResult, String> {
         if let Some(bus) = &self.hook_bus {
-            cancel_hook(
-                bus,
-                "user_bash",
-                "pre",
-                serde_json::json!({
-                    "command": command,
-                    "exclude_from_context": exclude_from_context,
-                    "cwd": self.cwd,
-                }),
-            )
-            .await?;
+            let (ty, phase, ctx) = crate::agent::runtime::script_hook_ctx::user_bash(
+                command,
+                exclude_from_context,
+                &self.cwd,
+            );
+            cancel_hook(bus, ty, phase, ctx).await?;
         }
         let store: &dyn XySessionStore = self.store.as_ref();
         let sid = self.session_id().map(str::to_string);
@@ -758,7 +744,8 @@ impl AgentCapabilities {
             .unwrap_or(128000);
 
         if let Some(bus) = &self.hook_bus {
-            observe_hook(bus, "session_before_compact", "pre", serde_json::json!({})).await;
+            let (ty, phase, ctx) = crate::agent::runtime::script_hook_ctx::session_before_compact();
+            observe_hook(bus, ty, phase, ctx).await;
         }
 
         let compacted = self
@@ -774,7 +761,8 @@ impl AgentCapabilities {
             .await?;
 
         if compacted && let Some(bus) = &self.hook_bus {
-            observe_hook(bus, "session_compact", "post", serde_json::json!({})).await;
+            let (ty, phase, ctx) = crate::agent::runtime::script_hook_ctx::session_compact();
+            observe_hook(bus, ty, phase, ctx).await;
         }
 
         Ok(compacted)
