@@ -266,7 +266,11 @@ fn map_session_tree_node(node: &SessionTreeNode) -> TreeNode {
 
 fn session_tree_node_kind(entry: &SessionEntry) -> Option<String> {
     match entry {
-        SessionEntry::Message(m) => message_role(&m.message).map(str::to_string),
+        SessionEntry::Message(m) => match message_role(&m.message) {
+            Some("bashExecution") => Some("tool".into()),
+            Some(role) => Some(role.to_string()),
+            None => None,
+        },
         SessionEntry::BashExecution(_) => Some("tool".into()),
         SessionEntry::ModelChange(_)
         | SessionEntry::ThinkingLevelChange(_)
@@ -281,6 +285,12 @@ fn session_tree_node_kind(entry: &SessionEntry) -> Option<String> {
 
 fn session_tree_display_label(node: &SessionTreeNode) -> String {
     let raw = match &node.entry {
+        SessionEntry::Message(m) if message_role(&m.message) == Some("bashExecution") => m
+            .message
+            .get("command")
+            .and_then(|v| v.as_str())
+            .unwrap_or("")
+            .to_string(),
         SessionEntry::Message(m) => message_text(&m.message),
         SessionEntry::BashExecution(b) => b.command.clone(),
         SessionEntry::Compaction(c) => c.summary.clone(),

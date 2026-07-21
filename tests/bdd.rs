@@ -10,6 +10,7 @@ use std::future::Future;
 use std::sync::Arc;
 
 use futures::StreamExt;
+use xylitol::XyDriverError;
 use xylitol::agent::compaction::should_compact;
 use xylitol::agent::runtime::{AgentRuntime, XyEvent};
 use xylitol::agent::session::{AgentCapabilities, ContextUsage, ModelRegistry, get_context_usage};
@@ -230,7 +231,7 @@ fn make_agent_with_store(
         .borrow()
         .clone()
         .map(|log| log as Arc<dyn xylitol::XyHookBus>);
-    let session = AgentCapabilities::new(
+    let mut session = AgentCapabilities::new(
         agent.registry.borrow().clone(),
         ToolSet::from_iter(xylitol::infra::tools::default_tools()),
         store.clone(),
@@ -253,6 +254,12 @@ fn make_agent_with_store(
         xylitol::agent::session::QueueMode::default(),
         hook_bus,
     );
+    // Harness often registers models without select; pick the first so ReAct can build.
+    if session.current_model().is_none()
+        && let Some(id) = agent.registry.borrow().list().first().map(|m| m.id.clone())
+    {
+        let _ = session.select_model(&id);
+    }
     (AgentRuntime::new(session), store)
 }
 
@@ -325,7 +332,7 @@ async fn run_wiring_operation(agent: &AgentState, op: &str) -> Result<(), XyDriv
             let driver = XyInProcessDriver::new(runtime, store);
             driver.execute_bash("true", false, None).await.map(|_| ())
         }
-        other => Err(format!("未知操作: {other}")),
+        other => Err(format!("未知操作: {other}").into()),
     }
 }
 
@@ -375,7 +382,9 @@ macro_rules! tool_call {
     ($tool:expr, $ctx:expr, $json:expr, $ws:expr) => {
         match $tool.execute(&$ctx, $json).await {
             Ok(r) => $ws.last_result.replace(Some(Ok(r))),
-            Err(e) => $ws.last_result.replace(Some(Err(e.to_string()))),
+            Err(e) => $ws
+                .last_result
+                .replace(Some(Err(XyDriverError::from(e.to_string())))),
         }
     };
 }
@@ -774,6 +783,11 @@ fn _w_agent_switch_thinking(agent: &AgentState, verb: String, level: String) {
         xylitol::agent::session::QueueMode::default(),
         None,
     );
+    if session.current_model().is_none()
+        && let Some(id) = agent.registry.borrow().list().first().map(|m| m.id.clone())
+    {
+        let _ = session.select_model(&id);
+    }
     let tl = match level.as_str() {
         "high" => ThinkingLevel::High,
         "medium" => ThinkingLevel::Medium,
@@ -789,6 +803,7 @@ fn _w_agent_switch_thinking(agent: &AgentState, verb: String, level: String) {
 
 #[then("getThinkingLevel 返回 {level:string}")]
 fn _t_agent_thinking_level_is(agent: &AgentState, level: String) {
+    let level = strip_quotes(&level);
     assert!(
         agent
             .last_result
@@ -797,7 +812,9 @@ fn _t_agent_thinking_level_is(agent: &AgentState, level: String) {
             .unwrap()
             .as_ref()
             .unwrap()
-            .contains(&level)
+            .contains(&level),
+        "expected level {level:?} in {:?}",
+        agent.last_result.borrow()
     );
 }
 
@@ -1291,7 +1308,7 @@ async fn _w_wiring_op(agent: &AgentState, op: String) {
     match run_wiring_operation(agent, &op).await {
         Ok(()) => {}
         Err(e) => {
-            agent.last_op_error.replace(Some(e));
+            agent.last_op_error.replace(Some(e.to_string()));
         }
     }
 }
@@ -1549,7 +1566,7 @@ fn _t_edit_failed(ws: &Workspace, msg: String) {
     let r = ws.last_result.borrow();
     let r = r.as_ref().unwrap();
     assert!(
-        r.is_err() && check_or_contains(r.as_ref().unwrap_err(), &msg),
+        r.is_err() && check_or_contains(&r.as_ref().unwrap_err().to_string(), &msg),
         "expected error to match '{}', got: {}",
         msg,
         r.as_ref().unwrap_err()
@@ -1566,7 +1583,7 @@ fn _t_call_fail_msg(ws: &Workspace, msg: String) {
     let err = ws.last_result.borrow();
     let err = err.as_ref().unwrap().as_ref().unwrap_err();
     assert!(
-        check_or_contains(err, &msg),
+        check_or_contains(&err.to_string(), &msg),
         "expected error to match '{msg}', got: {err}"
     );
 }
@@ -1860,13 +1877,15 @@ async fn _w_bash_no_cmd(ws: &Workspace) {
 #[when("调用bash命令 {cmd:string} 超时 {secs:u64} 秒")]
 async fn _w_bash_timeout(ws: &Workspace, cmd: String, secs: u64) {
     let _ = (cmd, secs);
-    ws.last_result.replace(Some(Err("timeout".into())));
+    ws.last_result
+        .replace(Some(Err(XyDriverError::from("timeout"))));
 }
 
 #[when("在{ms:u32}ms后发送取消信号")]
 async fn _w_bash_abort(ws: &Workspace, ms: u32) {
     let _ = ms;
-    ws.last_result.replace(Some(Err("aborted".into())));
+    ws.last_result
+        .replace(Some(Err(XyDriverError::from("aborted"))));
 }
 
 #[when("调用grep 模式 {pattern:string} 路径 {path:string} 限制 {limit:u32}")]
@@ -1919,8 +1938,10 @@ async fn _w_find_absolute_fail(ws: &Workspace) {
     match result {
         Ok(_) => ws
             .last_result
-            .replace(Some(Err("should have failed".into()))),
-        Err(e) => ws.last_result.replace(Some(Err(e.to_string()))),
+            .replace(Some(Err(XyDriverError::from("should have failed")))),
+        Err(e) => ws
+            .last_result
+            .replace(Some(Err(XyDriverError::from(e.to_string())))),
     };
 }
 
@@ -2222,7 +2243,7 @@ fn _g_agent_mock_tool_call(_agent: &AgentState, tool: String, args: String) {
 fn _g_read_tool_result(_agent: &AgentState, result: String) {
     set_fake_tool_result(&result);
 }
-#[when("经 XyDriver 启动会话并在首个 TextDelta 后 abort")]
+#[when("经 Driver 启动会话并在首个 TextDelta 后 abort")]
 async fn _w_driver_abort_after_first_delta(agent: &AgentState) {
     use xylitol::embed::{XyDriver, XyInProcessDriver};
 
@@ -2502,12 +2523,17 @@ fn ar_register_fake(agent: &AgentState, id: &str) {
     });
 }
 
-/// 自足装配：reset fake + workspace + 注册模型 + make_agent。
+/// 自足装配：reset fake + workspace + 注册模型 + 选中 + make_agent。
 fn ar_make_runner(agent: &AgentState, ws: &Workspace) -> AgentRuntime {
     reset_fake_state();
     ws.init();
     ar_register_fake(agent, "ar-queue");
-    make_agent(agent)
+    let mut runtime = make_agent(agent);
+    runtime
+        .inner_mut()
+        .select_model("ar-queue")
+        .expect("select ar-queue fake model");
+    runtime
 }
 
 fn ar_store_runner(runner: AgentRuntime) {
@@ -2653,6 +2679,10 @@ async fn _g_ar11_second_run_after_abort(agent: &AgentState, ws: &Workspace) {
     ar_register_fake(agent, "ar-abort-second");
     set_fake_slow_stream(20, 10);
     let mut runner = make_agent(agent);
+    runner
+        .inner_mut()
+        .select_model("ar-abort-second")
+        .expect("select ar-abort-second fake model");
     let mut stream = runner.run("首轮").await;
     let mut saw_delta = false;
     while let Some(e) = stream.next().await {
@@ -2812,15 +2842,19 @@ fn _w_ar10_check_bash_result() {}
 
 #[then("cancelled 为 true")]
 fn _t_ar10_bang_cancelled() {
-    let result = AR_BANG_RESULT
-        .with(|r| r.borrow().clone())
-        .expect("bash result captured")
-        .expect("execute_bash ok");
-    assert!(
-        result.cancelled,
-        "bang must be cancelled, got cancelled={}",
-        result.cancelled
-    );
+    AR_BANG_RESULT.with(|r| {
+        let borrow = r.borrow();
+        let result = borrow
+            .as_ref()
+            .expect("bash result captured")
+            .as_ref()
+            .expect("execute_bash ok");
+        assert!(
+            result.cancelled,
+            "bang must be cancelled, got cancelled={}",
+            result.cancelled
+        );
+    });
 }
 
 // ar7 before-denies
@@ -4611,7 +4645,7 @@ fn g_rc18_named(tokenizer_bdd: &TokenizerBdd) {
         }
         Err(e) => {
             tokenizer_bdd.cfg_ok.set(false);
-            tokenizer_bdd.cfg_err.replace(e);
+            tokenizer_bdd.cfg_err.replace(e.to_string());
         }
     }
 }
@@ -4655,7 +4689,7 @@ fn g_rc18_inline(tokenizer_bdd: &TokenizerBdd) {
         }
         Err(e) => {
             tokenizer_bdd.cfg_ok.set(false);
-            tokenizer_bdd.cfg_err.replace(e);
+            tokenizer_bdd.cfg_err.replace(e.to_string());
         }
     }
 }
@@ -4693,7 +4727,7 @@ fn g_rc18_bad(tokenizer_bdd: &TokenizerBdd) {
         Ok(_) => tokenizer_bdd.cfg_ok.set(true),
         Err(e) => {
             tokenizer_bdd.cfg_ok.set(false);
-            tokenizer_bdd.cfg_err.replace(e);
+            tokenizer_bdd.cfg_err.replace(e.to_string());
         }
     }
 }
@@ -4796,7 +4830,7 @@ fn g_rc19_default(tokenizer_bdd: &TokenizerBdd) {
         }
         Err(e) => {
             tokenizer_bdd.cfg_ok.set(false);
-            tokenizer_bdd.cfg_err.replace(e);
+            tokenizer_bdd.cfg_err.replace(e.to_string());
         }
     }
 }
@@ -4811,7 +4845,7 @@ fn g_rc19_on(tokenizer_bdd: &TokenizerBdd) {
         }
         Err(e) => {
             tokenizer_bdd.cfg_ok.set(false);
-            tokenizer_bdd.cfg_err.replace(e);
+            tokenizer_bdd.cfg_err.replace(e.to_string());
         }
     }
 }
@@ -4826,7 +4860,7 @@ fn g_rc19_invalid(tokenizer_bdd: &TokenizerBdd) {
         }
         Err(e) => {
             tokenizer_bdd.cfg_ok.set(false);
-            tokenizer_bdd.cfg_err.replace(e);
+            tokenizer_bdd.cfg_err.replace(e.to_string());
         }
     }
 }

@@ -77,6 +77,9 @@ fn short_entry_id(id: &str) -> &str {
 /// Project one session entry into zero or more UI rows (c646: thinking ≠ text).
 pub fn session_entry_to_ui_entries(entry: &SessionEntry) -> Vec<UiEntry> {
     match entry {
+        SessionEntry::Message(m) if message_role(&m.message) == Some("bashExecution") => {
+            nested_bash_to_ui(&m.message)
+        }
         SessionEntry::Message(m) => message_json_to_ui_entries(&m.base.id, &m.message),
         SessionEntry::BashExecution(b) => {
             let status = if b.cancelled {
@@ -101,6 +104,41 @@ pub fn session_entry_to_ui_entries(entry: &SessionEntry) -> Vec<UiEntry> {
         }],
         _ => Vec::new(),
     }
+}
+
+fn nested_bash_to_ui(message: &Value) -> Vec<UiEntry> {
+    let command = message
+        .get("command")
+        .and_then(Value::as_str)
+        .unwrap_or("")
+        .to_string();
+    let output = message
+        .get("output")
+        .and_then(Value::as_str)
+        .unwrap_or("")
+        .to_string();
+    let cancelled = message
+        .get("cancelled")
+        .and_then(Value::as_bool)
+        .unwrap_or(false);
+    let exit_code = message.get("exit_code").and_then(Value::as_i64);
+    let exclude_from_context = message
+        .get("exclude_from_context")
+        .and_then(Value::as_bool)
+        .unwrap_or(false);
+    let status = if cancelled {
+        BashBlockStatus::Cancelled
+    } else if exit_code.is_some_and(|c| c != 0) {
+        BashBlockStatus::Error
+    } else {
+        BashBlockStatus::Success
+    };
+    vec![UiEntry::Bash {
+        command,
+        status,
+        output,
+        exclude_from_context,
+    }]
 }
 
 fn message_json_to_ui_entries(entry_id: &str, message: &Value) -> Vec<UiEntry> {

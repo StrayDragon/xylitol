@@ -1,12 +1,19 @@
-//! Typed agent message types — session SSOT with LLM / Env composition (c1070).
+//! Typed agent message types — session SSOT with LLM / Env composition (c1210).
 //!
-//! Provides [`AgentMessage`] (`Llm` ∪ `Env`), [`LlmMessage`], [`EnvMessage`],
-//! [`AgentPart`], [`XyUsage`], [`XyStopReason`], [`AgentState`], and
-//! [`AgentContext`] as the canonical agent data model.
+//! [`AgentMessage`] = `Llm(`[ `LlmMessage` ]`) | Env(`[ `EnvMessage` ]`)`.
+//! [`LlmMessage`] is a `pub use` alias of bridge `AiBridgeMessage` (wire-compatible).
 
 use serde::{Deserialize, Serialize};
 use serde_json::Value;
 use std::time::{SystemTime, UNIX_EPOCH};
+
+// ── Bridge LLM leaf aliases (minimize call-site churn) ──────────────
+
+pub use xylitol_ai_bridge::dto::{
+    AiBridgeImageContent as ImageContent, AiBridgeMessage as LlmMessage, AiBridgePart as AgentPart,
+    AiBridgeStopReason as XyStopReason, AiBridgeUsage as XyUsage, AiBridgeUsageCost as XyUsageCost,
+    Diagnostic, collect_text_parts,
+};
 
 /// Current timestamp in milliseconds since Unix epoch.
 pub fn now_ms() -> u64 {
@@ -16,145 +23,7 @@ pub fn now_ms() -> u64 {
         .as_millis() as u64
 }
 
-// ── LlmMessage / EnvMessage / AgentMessage (c1070 composition) ─
-
-/// LLM-visible turn content only (user / assistant / toolResult).
-///
-/// Session history wraps this in [`AgentMessage::Llm`]. Provider paths take
-/// [`crate::domain::llm_project::project_for_llm`] output of this type.
-#[derive(Debug, Clone, Serialize, Deserialize)]
-#[serde(tag = "role", rename_all = "camelCase")]
-pub enum LlmMessage {
-    #[serde(rename = "user")]
-    UserMessage {
-        content: Vec<AgentPart>,
-        #[serde(default = "now_ms")]
-        timestamp: u64,
-    },
-    #[serde(rename = "assistant")]
-    AssistantMessage {
-        content: Vec<AgentPart>,
-        #[serde(default, skip_serializing_if = "Option::is_none")]
-        stop_reason: Option<XyStopReason>,
-        #[serde(default, skip_serializing_if = "Option::is_none")]
-        usage: Option<XyUsage>,
-        #[serde(default)]
-        api: String,
-        #[serde(default)]
-        provider: String,
-        #[serde(default)]
-        model: String,
-        #[serde(default, skip_serializing_if = "Option::is_none")]
-        response_id: Option<String>,
-        #[serde(default, skip_serializing_if = "Option::is_none")]
-        error_message: Option<String>,
-        #[serde(default = "now_ms")]
-        timestamp: u64,
-        #[serde(default, skip_serializing_if = "Vec::is_empty")]
-        diagnostics: Vec<Diagnostic>,
-    },
-    #[serde(rename = "toolResult")]
-    ToolResultMessage {
-        #[serde(rename = "toolCallId")]
-        tool_use_id: String,
-        #[serde(default)]
-        tool_name: String,
-        content: Vec<AgentPart>,
-        #[serde(default, skip_serializing_if = "Option::is_none")]
-        details: Option<Value>,
-        #[serde(default)]
-        is_error: bool,
-        #[serde(default = "now_ms")]
-        timestamp: u64,
-    },
-}
-
-impl LlmMessage {
-    pub fn role_name(&self) -> &'static str {
-        match self {
-            Self::UserMessage { .. } => "user",
-            Self::AssistantMessage { .. } => "assistant",
-            Self::ToolResultMessage { .. } => "toolResult",
-        }
-    }
-
-    pub fn content(&self) -> &[AgentPart] {
-        match self {
-            Self::UserMessage { content, .. }
-            | Self::AssistantMessage { content, .. }
-            | Self::ToolResultMessage { content, .. } => content,
-        }
-    }
-
-    pub fn text(&self) -> String {
-        let mut buf = String::new();
-        for part in self.content() {
-            match part {
-                AgentPart::Text { text } | AgentPart::Thinking { thinking: text, .. } => {
-                    buf.push_str(text)
-                }
-                _ => {}
-            }
-        }
-        buf
-    }
-
-    pub fn is_error(&self) -> bool {
-        matches!(
-            self,
-            Self::AssistantMessage {
-                stop_reason: Some(XyStopReason::Error | XyStopReason::Aborted),
-                ..
-            }
-        )
-    }
-
-    pub fn user(text: impl Into<String>) -> Self {
-        Self::UserMessage {
-            content: vec![AgentPart::text(text)],
-            timestamp: now_ms(),
-        }
-    }
-
-    /// User message with arbitrary parts (text + images, c1155 / dm7).
-    pub fn user_parts(content: Vec<AgentPart>) -> Self {
-        Self::UserMessage {
-            content,
-            timestamp: now_ms(),
-        }
-    }
-
-    pub fn assistant(text: impl Into<String>) -> Self {
-        Self::AssistantMessage {
-            content: vec![AgentPart::text(text)],
-            stop_reason: Some(XyStopReason::Stop),
-            usage: None,
-            api: String::new(),
-            provider: String::new(),
-            model: String::new(),
-            response_id: None,
-            error_message: None,
-            timestamp: now_ms(),
-            diagnostics: Vec::new(),
-        }
-    }
-
-    pub fn tool_result(
-        id: impl Into<String>,
-        tool_name: impl Into<String>,
-        content: Vec<AgentPart>,
-        is_error: bool,
-    ) -> Self {
-        Self::ToolResultMessage {
-            tool_use_id: id.into(),
-            tool_name: tool_name.into(),
-            content,
-            details: None,
-            is_error,
-            timestamp: now_ms(),
-        }
-    }
-}
+// ── EnvMessage / AgentMessage (domain composition) ─────────────────
 
 /// Environment / session meta roles (not sent to the model as-is).
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -170,6 +39,8 @@ pub enum EnvMessage {
         cancelled: bool,
         #[serde(default)]
         truncated: bool,
+        #[serde(default, skip_serializing_if = "Option::is_none")]
+        full_output_path: Option<String>,
         #[serde(default)]
         exclude_from_context: bool,
     },
@@ -330,194 +201,10 @@ impl AgentMessage {
             exit_code,
             cancelled: false,
             truncated: false,
+            full_output_path: None,
             exclude_from_context: false,
         })
     }
-}
-
-// ── AgentPart ───────────────────────────────────────────────────────
-
-/// A single content part within an [`AgentMessage`].
-///
-/// Wire (c646 / pi): internally tagged with `"type"`. Tool results MUST NOT appear
-/// as content parts — use [`LlmMessage::ToolResultMessage`] / [`AgentMessage::tool_result`]
-/// rows instead.
-#[derive(Debug, Clone, Serialize, Deserialize)]
-#[serde(tag = "type", rename_all = "camelCase")]
-pub enum AgentPart {
-    /// Plain text content (`{"type":"text","text":…}`).
-    Text { text: String },
-    /// An image (url or base64 data).
-    Image(ImageContent),
-    /// Thinking / reasoning (`{"type":"thinking","thinking":…}`).
-    Thinking {
-        thinking: String,
-        /// Whether the thinking content was redacted by safety filters.
-        #[serde(default)]
-        redacted: bool,
-        /// Opaque signature for multi-turn thinking continuity (wire: `thinkingSignature`).
-        #[serde(
-            default,
-            rename = "thinkingSignature",
-            skip_serializing_if = "Option::is_none"
-        )]
-        thinking_signature: Option<String>,
-    },
-    /// A tool call request (assistant → tool).
-    ToolCall {
-        id: String,
-        name: String,
-        arguments: Value,
-    },
-}
-
-impl AgentPart {
-    /// Construct a text part.
-    pub fn text(s: impl Into<String>) -> Self {
-        Self::Text { text: s.into() }
-    }
-
-    /// Inline image part (base64 `data` + MIME).
-    pub fn image(media_type: impl Into<String>, data: impl Into<String>) -> Self {
-        Self::Image(ImageContent {
-            url: None,
-            data: Some(data.into()),
-            media_type: media_type.into(),
-        })
-    }
-
-    /// Construct a thinking part (no signature).
-    pub fn thinking(s: impl Into<String>) -> Self {
-        Self::Thinking {
-            thinking: s.into(),
-            redacted: false,
-            thinking_signature: None,
-        }
-    }
-
-    /// Returns `true` if this part is a [`ToolCall`](AgentPart::ToolCall).
-    pub fn is_tool_call(&self) -> bool {
-        matches!(self, Self::ToolCall { .. })
-    }
-
-    /// Returns `true` if this part is text or thinking content.
-    pub fn is_text_content(&self) -> bool {
-        matches!(self, Self::Text { .. } | Self::Thinking { .. })
-    }
-
-    /// Return the text content if this is a text or thinking part.
-    pub fn as_text(&self) -> Option<&str> {
-        match self {
-            Self::Text { text } => Some(text.as_str()),
-            Self::Thinking { thinking, .. } => Some(thinking.as_str()),
-            _ => None,
-        }
-    }
-}
-
-// ── ImageContent ────────────────────────────────────────────────────
-
-/// An image attachment (flattened under `AgentPart::Image` with `type: "image"`).
-#[derive(Debug, Clone, Serialize, Deserialize)]
-pub struct ImageContent {
-    /// Public URL of the image (if available).
-    #[serde(default, skip_serializing_if = "Option::is_none")]
-    pub url: Option<String>,
-    /// Base64-encoded image data (inline).
-    #[serde(default, skip_serializing_if = "Option::is_none")]
-    pub data: Option<String>,
-    /// MIME type (e.g. `image/png`, `image/jpeg`). Wire key: `mimeType`.
-    #[serde(rename = "mimeType")]
-    pub media_type: String,
-}
-
-// ── XyUsage & XyUsageCost ───────────────────────────────────────────────
-
-/// Token usage statistics for a model invocation.
-#[derive(Debug, Clone, Copy, Serialize, Deserialize)]
-pub struct XyUsage {
-    pub input: u64,
-    pub output: u64,
-    #[serde(default)]
-    pub cache_read: u64,
-    #[serde(default)]
-    pub cache_write: u64,
-    /// Anthropic 1-hour cache write subset.
-    #[serde(default)]
-    pub cache_write_1h: u64,
-    #[serde(skip)]
-    pub total_tokens: u64,
-    /// Estimated cost in USD.
-    #[serde(default, skip_serializing_if = "Option::is_none")]
-    pub cost: Option<XyUsageCost>,
-}
-
-/// Estimated cost breakdown in USD.
-#[derive(Debug, Clone, Copy, Serialize, Deserialize)]
-pub struct XyUsageCost {
-    pub input: f64,
-    pub output: f64,
-    pub cache_read: f64,
-    pub cache_write: f64,
-    pub total: f64,
-}
-
-impl XyUsage {
-    /// Recompute `total_tokens` from input + output.
-    pub fn compute_total(&mut self) {
-        self.total_tokens = self.input + self.output;
-    }
-
-    /// Estimate cost from per-token rates (cost per million tokens).
-    pub fn compute_cost(
-        &mut self,
-        per_m_input: f64,
-        per_m_output: f64,
-        per_m_cache_read: f64,
-        per_m_cache_write: f64,
-    ) {
-        let to_cost = |tokens: u64, rate: f64| (tokens as f64) * rate / 1_000_000.0;
-        let input_c = to_cost(self.input, per_m_input);
-        let output_c = to_cost(self.output, per_m_output);
-        let cache_read_c = to_cost(self.cache_read, per_m_cache_read);
-        let cache_write_c = to_cost(self.cache_write, per_m_cache_write);
-        self.cost = Some(XyUsageCost {
-            input: input_c,
-            output: output_c,
-            cache_read: cache_read_c,
-            cache_write: cache_write_c,
-            total: input_c + output_c + cache_read_c + cache_write_c,
-        });
-    }
-}
-
-// ── XyStopReason ──────────────────────────────────────────────────────
-
-/// Why the assistant stopped generating.
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
-#[serde(rename_all = "camelCase")]
-pub enum XyStopReason {
-    /// Normal stop — model finished its response.
-    Stop,
-    /// Hit the max_tokens limit.
-    #[serde(rename = "length")]
-    MaxTokens,
-    /// An error occurred during generation.
-    Error,
-    /// Generation was aborted (user cancel).
-    Aborted,
-    /// Model issued tool call(s) and is waiting for results.
-    ToolUse,
-}
-
-/// Provider/runtime diagnostic for failures and recoveries.
-#[derive(Debug, Clone, Serialize, Deserialize)]
-pub struct Diagnostic {
-    /// Human-readable diagnostic message.
-    pub message: String,
-    /// Optional source identifier (e.g. provider name, tool name).
-    #[serde(default, skip_serializing_if = "Option::is_none")]
-    pub source: Option<String>,
 }
 
 // ── AgentState ──────────────────────────────────────────────────────
@@ -556,23 +243,6 @@ pub struct AgentContext {
     pub messages: Vec<AgentMessage>,
     /// Tool names available for this run.
     pub tool_names: Vec<String>,
-}
-
-// ── Convenience helpers ─────────────────────────────────────────────
-
-/// Helper: collect text content from a slice of [`AgentPart`], skipping
-/// non-text parts.
-pub fn collect_text_parts(parts: &[AgentPart]) -> String {
-    parts
-        .iter()
-        .filter_map(|p| match p {
-            AgentPart::Text { text } | AgentPart::Thinking { thinking: text, .. } => {
-                Some(text.as_str())
-            }
-            _ => None,
-        })
-        .collect::<Vec<_>>()
-        .join("\n")
 }
 
 // ── Display ─────────────────────────────────────────────────────────
@@ -775,5 +445,13 @@ mod tests {
             msg,
             AgentMessage::Env(EnvMessage::BashExecutionMessage { .. })
         ));
+    }
+
+    #[test]
+    fn llm_arm_is_bridge_dto_alias() {
+        // dm6: Llm leaf is bridge AiBridgeMessage (type alias), not a parallel enum.
+        let llm: LlmMessage = LlmMessage::user("hi");
+        let bridge: xylitol_ai_bridge::dto::AiBridgeMessage = llm;
+        assert_eq!(bridge.role_name(), "user");
     }
 }

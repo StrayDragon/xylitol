@@ -105,6 +105,14 @@ impl AiBridgeMessage {
         }
     }
 
+    /// User message with arbitrary parts (text + images).
+    pub fn user_parts(content: Vec<AiBridgePart>) -> Self {
+        Self::UserMessage {
+            content,
+            timestamp: now_ms(),
+        }
+    }
+
     pub fn assistant(text: impl Into<String>) -> Self {
         Self::AssistantMessage {
             content: vec![AiBridgePart::text(text)],
@@ -165,6 +173,15 @@ pub enum AiBridgePart {
 impl AiBridgePart {
     pub fn text(s: impl Into<String>) -> Self {
         Self::Text { text: s.into() }
+    }
+
+    /// Inline image part (base64 `data` + MIME).
+    pub fn image(media_type: impl Into<String>, data: impl Into<String>) -> Self {
+        Self::Image(AiBridgeImageContent {
+            url: None,
+            data: Some(data.into()),
+            media_type: media_type.into(),
+        })
     }
 
     pub fn thinking(s: impl Into<String>) -> Self {
