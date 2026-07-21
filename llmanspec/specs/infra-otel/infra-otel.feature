@@ -51,3 +51,15 @@
     假如 低频观测 span 已激活
     当 创建 provider.request、react.turn、tool.execute
     那么 分别标记 generation、agent、tool，且默认不附带完整 prompt 或 completion 载荷
+
+  @req:otel9
+  场景: generation 写入 usage
+    假如 低频观测 span 已激活且 provider 流 Done 带 usage
+    当 provider.request span 结束
+    那么 含 gen_ai.usage.input_tokens 与 gen_ai.usage.output_tokens；无 usage 时不得伪造零用量
+
+  @req:otel10
+  场景: observation I/O 仅显式档
+    假如 observation_io 缺省或为 none
+    当 provider.request generation 导出
+    那么 不得写入 langfuse.observation.input 或 output；仅 truncated 或 full 时按档写入

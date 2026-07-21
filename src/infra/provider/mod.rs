@@ -24,7 +24,7 @@ pub use crate::protocol::types::{ContextTokenEstimate, TokenProvenance};
 /// Re-export provider-trace gate so CLI logging keeps a stable path.
 pub mod trace {
     pub use xylitol_ai_bridge::provider::trace::{
-        PROVIDER_TRACE_TEXT_MAX, ProviderRequestTrace, provider_trace_active,
-        set_provider_trace_active,
+        ObservationIoTier, PROVIDER_TRACE_TEXT_MAX, ProviderRequestTrace, observation_io_tier,
+        provider_trace_active, set_observation_io_tier, set_provider_trace_active,
     };
 }
