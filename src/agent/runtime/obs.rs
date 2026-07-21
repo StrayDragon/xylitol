@@ -15,7 +15,7 @@ use fastrace_futures::StreamExt as _;
 use futures::Stream;
 use xylitol_ai_bridge::provider::trace::provider_trace_active;
 
-use crate::protocol::error::XyError;
+use crate::protocol::error::{XyError, XyToolError};
 use crate::protocol::types::XyChunk;
 
 type ChunkStream = Pin<Box<dyn Stream<Item = Result<XyChunk, XyError>> + Send>>;
@@ -100,6 +100,60 @@ impl ToolExecuteSpan {
         }));
         Some(Self { _span: span })
     }
+}
+
+/// Log (+ optional fastrace) a hot-path [`XyError`] with stable `error.kind`.
+pub(crate) fn record_xy_error(where_: &str, err: &XyError, turn_id: Option<&str>) {
+    let kind = err.kind();
+    let tid = turn_id.unwrap_or("");
+    log::warn!(
+        target: "xylitol::react",
+        "{where_} failed error.kind={kind} turn_id={tid} error={err}"
+    );
+    if !provider_trace_active() {
+        return;
+    }
+    let span = Span::root("react.error", SpanContext::random()).with_properties(|| {
+        [
+            ("error.kind", kind.to_string()),
+            ("where", where_.to_string()),
+            ("turn_id", tid.to_string()),
+        ]
+    });
+    span.add_event(Event::new("error").with_properties(|| {
+        [
+            ("error.kind", kind.to_string()),
+            ("where", where_.to_string()),
+            ("message", err.to_string()),
+        ]
+    }));
+}
+
+/// Log (+ optional fastrace) a tool failure with stable `error.kind`.
+pub(crate) fn record_tool_error(tool: &str, err: &XyToolError, turn_id: Option<&str>) {
+    let kind = err.kind();
+    let tid = turn_id.unwrap_or("");
+    log::warn!(
+        target: "xylitol::react",
+        "tool.execute failed tool={tool} error.kind={kind} turn_id={tid} error={err}"
+    );
+    if !provider_trace_active() {
+        return;
+    }
+    let span = Span::root("tool.error", SpanContext::random()).with_properties(|| {
+        [
+            ("error.kind", kind.to_string()),
+            ("tool_name", tool.to_string()),
+            ("turn_id", tid.to_string()),
+        ]
+    });
+    span.add_event(Event::new("error").with_properties(|| {
+        [
+            ("error.kind", kind.to_string()),
+            ("tool_name", tool.to_string()),
+            ("message", err.to_string()),
+        ]
+    }));
 }
 
 #[cfg(test)]

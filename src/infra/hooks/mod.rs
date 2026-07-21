@@ -168,15 +168,33 @@ pub enum HookEvent {
     SessionStart {
         reason: String,
     },
-    SessionShutdown,
+    SessionShutdown {
+        /// Why the session is shutting down (e.g. `resume`).
+        reason: Option<String>,
+        /// Target session id when switching.
+        target: Option<String>,
+        /// Previous session id when switching.
+        previous: Option<String>,
+    },
     SessionBeforeCompact,
     SessionCompact,
-    SessionBeforeFork,
+    SessionBeforeFork {
+        entry_id: String,
+        position: String,
+    },
     SessionBeforeSwitch {
         reason: String,
+        target: Option<String>,
     },
-    SessionBeforeTree,
-    SessionTree,
+    SessionBeforeTree {
+        kind: Option<String>,
+        entry_id: Option<String>,
+    },
+    SessionTree {
+        kind: Option<String>,
+        entry_id: Option<String>,
+        leaf_id: Option<String>,
+    },
     // ── pi-aligned model / user ────────────────────────────────────
     ModelSelect {
         model: String,
@@ -186,6 +204,8 @@ pub enum HookEvent {
     },
     UserBash {
         command: String,
+        exclude_from_context: Option<bool>,
+        cwd: Option<String>,
     },
 }
 
@@ -222,17 +242,29 @@ impl HookEvent {
             HookEvent::MessageStart { .. } => "message_start",
             HookEvent::MessageEnd { .. } => "message_end",
             HookEvent::SessionStart { .. } => "session_start",
-            HookEvent::SessionShutdown => "session_shutdown",
+            HookEvent::SessionShutdown { .. } => "session_shutdown",
             HookEvent::SessionBeforeCompact => "session_before_compact",
             HookEvent::SessionCompact => "session_compact",
-            HookEvent::SessionBeforeFork => "session_before_fork",
+            HookEvent::SessionBeforeFork { .. } => "session_before_fork",
             HookEvent::SessionBeforeSwitch { .. } => "session_before_switch",
-            HookEvent::SessionBeforeTree => "session_before_tree",
-            HookEvent::SessionTree => "session_tree",
+            HookEvent::SessionBeforeTree { .. } => "session_before_tree",
+            HookEvent::SessionTree { .. } => "session_tree",
             HookEvent::ModelSelect { .. } => "model_select",
             HookEvent::ThinkingLevelSelect { .. } => "thinking_level_select",
             HookEvent::UserBash { .. } => "user_bash",
         }
+    }
+
+    /// Payload-only JSON for [`crate::protocol::ports::XyHookBus`] (no `event`/`phase` keys).
+    ///
+    /// Script stdin via typed [`Self::to_json_context`] still includes `event` + `phase`.
+    pub fn payload_context(&self) -> serde_json::Value {
+        let mut ctx = self.to_json_context(HookPhase::Pre);
+        if let Some(map) = ctx.as_object_mut() {
+            map.remove("event");
+            map.remove("phase");
+        }
+        ctx
     }
 
     /// Serialize the event to a JSON map for the hook script stdin.
@@ -336,20 +368,64 @@ impl HookEvent {
                 HookEvent::AgentStart
                 | HookEvent::AgentEnd
                 | HookEvent::AgentSettled
-                | HookEvent::SessionShutdown
                 | HookEvent::SessionBeforeCompact
-                | HookEvent::SessionCompact
-                | HookEvent::SessionBeforeFork
-                | HookEvent::SessionBeforeTree
-                | HookEvent::SessionTree => {}
+                | HookEvent::SessionCompact => {}
+                HookEvent::SessionShutdown {
+                    reason,
+                    target,
+                    previous,
+                } => {
+                    if let Some(reason) = reason {
+                        map.insert("reason".into(), serde_json::json!(reason));
+                    }
+                    if let Some(target) = target {
+                        map.insert("target".into(), serde_json::json!(target));
+                    }
+                    if let Some(previous) = previous {
+                        map.insert("previous".into(), serde_json::json!(previous));
+                    }
+                }
+                HookEvent::SessionBeforeFork { entry_id, position } => {
+                    map.insert("entry_id".into(), serde_json::json!(entry_id));
+                    map.insert("position".into(), serde_json::json!(position));
+                }
                 HookEvent::TurnStart { turn_index } | HookEvent::TurnEnd { turn_index } => {
                     map.insert("turn_index".into(), serde_json::json!(turn_index));
                 }
                 HookEvent::MessageStart { role } | HookEvent::MessageEnd { role } => {
                     map.insert("role".into(), serde_json::json!(role));
                 }
-                HookEvent::SessionStart { reason } | HookEvent::SessionBeforeSwitch { reason } => {
+                HookEvent::SessionStart { reason } => {
                     map.insert("reason".into(), serde_json::json!(reason));
+                }
+                HookEvent::SessionBeforeSwitch { reason, target } => {
+                    map.insert("reason".into(), serde_json::json!(reason));
+                    if let Some(target) = target {
+                        map.insert("target".into(), serde_json::json!(target));
+                    }
+                }
+                HookEvent::SessionBeforeTree { kind, entry_id } => {
+                    if let Some(kind) = kind {
+                        map.insert("kind".into(), serde_json::json!(kind));
+                    }
+                    if let Some(entry_id) = entry_id {
+                        map.insert("entry_id".into(), serde_json::json!(entry_id));
+                    }
+                }
+                HookEvent::SessionTree {
+                    kind,
+                    entry_id,
+                    leaf_id,
+                } => {
+                    if let Some(kind) = kind {
+                        map.insert("kind".into(), serde_json::json!(kind));
+                    }
+                    if let Some(entry_id) = entry_id {
+                        map.insert("entry_id".into(), serde_json::json!(entry_id));
+                    }
+                    if let Some(leaf_id) = leaf_id {
+                        map.insert("leaf_id".into(), serde_json::json!(leaf_id));
+                    }
                 }
                 HookEvent::ModelSelect { model } => {
                     map.insert("model".into(), serde_json::json!(model));
@@ -357,8 +433,18 @@ impl HookEvent {
                 HookEvent::ThinkingLevelSelect { level } => {
                     map.insert("level".into(), serde_json::json!(level));
                 }
-                HookEvent::UserBash { command } => {
+                HookEvent::UserBash {
+                    command,
+                    exclude_from_context,
+                    cwd,
+                } => {
                     map.insert("command".into(), serde_json::json!(command));
+                    if let Some(exclude) = exclude_from_context {
+                        map.insert("exclude_from_context".into(), serde_json::json!(exclude));
+                    }
+                    if let Some(cwd) = cwd {
+                        map.insert("cwd".into(), serde_json::json!(cwd));
+                    }
                 }
             }
         }
@@ -695,6 +781,26 @@ mod tests {
         assert_eq!(ctx["phase"], "pre");
         assert_eq!(ctx["tool"], "bash");
         assert_eq!(ctx["args"]["command"], "ls");
+    }
+
+    #[test]
+    fn test_payload_context_omits_event_phase() {
+        let event = HookEvent::TurnStart { turn_index: 2 };
+        let payload = event.payload_context();
+        assert!(payload.get("event").is_none());
+        assert!(payload.get("phase").is_none());
+        assert_eq!(payload["turn_index"], 2);
+    }
+
+    #[test]
+    fn test_session_before_fork_payload_fields() {
+        let event = HookEvent::SessionBeforeFork {
+            entry_id: "e1".into(),
+            position: "After".into(),
+        };
+        let payload = event.payload_context();
+        assert_eq!(payload["entry_id"], "e1");
+        assert_eq!(payload["position"], "After");
     }
 
     #[test]

@@ -62,11 +62,11 @@ D  God 文件拆分（react / driver / session）
    └─ react / session 大拆：默认不做（见 §D 决议）；D11 已分诊待确认
 E  protocol/ports RPITIT               ← **已关闭（α）**：dyn 全覆盖，维持 async_trait
 F  孪生类型与 protocol↔packages 边界   ← **已关闭**（c1210 compose + c1220 protocol 方案 B）
-G  观测 kind 打尖                        ← 可与 B 并行或紧随（B 已完成，下一项默认 G）
+G  观测 kind 打尖                        ← **已关闭**（G1–G4；热路径带 error.kind）
 ```
 
-可并行：C 与 D 不同文件时可并行；G 可紧随 B。
-串行更稳：B 已完成；E 已关（α）；**勿再开**「抽出 `xylitol-domain` / bridge→domain 叶」（与 c1210/c1220 主线冲突，搁置）。
+可并行：C 与 D 不同文件时可并行；C5 已随 G 落地。
+串行更稳：B / E / F 已关；**勿再开**「抽出 `xylitol-domain` / bridge→domain 叶」（与 c1210/c1220 主线冲突，搁置）。
 
 ### 0.6 关键路径速查
 
@@ -205,7 +205,9 @@ crate 内热路径 / 内置工具 = struct + serde
 ### 要做 — 钩子
 
 - [x] **C4** 保持 `XyHookBus::dispatch(..., Value)`；调用方用 typed 组装再 `to_value`。（确认：本轮不改）
-- [ ] **C5** 继续扩展 `HookEvent` 变体，减少 dispatcher 内临时 `json!` 散落。
+- [x] **C5** 继续扩展 `HookEvent` 变体，减少 dispatcher 内临时 `json!` 散落。
+  - 扩展：`SessionShutdown` / `SessionBeforeFork` / `SessionBeforeSwitch` / `SessionBeforeTree` / `SessionTree` / `UserBash` 载荷字段对齐真实调用点。
+  - agent：`runtime/script_hook_ctx` 收拢 ReAct / session / driver 的 `(event, phase, context)`；与 `HookEvent::payload_context` 字段对齐（agent ↛ infra）。
 - [x] **C6** `AgentHooks`：评估 before/after 是否改为更窄类型；**刻意保留 `Value`**（嵌入回调少；与脚本 JSON 同形）。
 
 ### 决议（填写）
@@ -563,10 +565,10 @@ Vec<AiBridgeMessage> → XyModel / dialect adapters
 
 ### 要做
 
-- [ ] **G1** 为错误类型提供稳定 `kind()` / `as_str()`（风格对齐 `TokenProvenance::as_str`）。
-- [ ] **G2** 关键失败路径：fastrace / log 带 `error.kind=…`（及已有 turn/request id 时一并带上）。
-- [ ] **G3** 禁止新的 seam `map_err(|e| e.to_string())`（clippy lint 或 code review 清单；可选 `#[deny]` 难做则靠 RETUNE/review）。
-- [ ] **G4** 文档：排障仍走 skill `xylitol-inspect-runtime-logs`，本 TODO 不复制长 how-to。
+- [x] **G1** 为错误类型提供稳定 `kind()` / `as_str()`（风格对齐 `TokenProvenance::as_str`）。
+- [x] **G2** 关键失败路径：fastrace / log 带 `error.kind=…`（及已有 turn/request id 时一并带上）。
+- [x] **G3** 禁止新的 seam `map_err(|e| e.to_string())`（review 约定；本轮未批量改 Display 以免漂文案）。
+- [x] **G4** 文档：排障仍走 skill `xylitol-inspect-runtime-logs`，本 TODO 不复制长 how-to。
 
 ### 验收
 
@@ -575,6 +577,12 @@ Vec<AiBridgeMessage> → XyModel / dialect adapters
 ### 风险 / SDD
 
 - 观测字段增强通常 **不走 SDD**（除非合约钉死 log 文案）。
+
+### 落地摘要（2026-07-21）
+
+- `XyError` / `XyToolError` /（既有）`XyDriverError` 均有 `kind()`。
+- ReAct：`model.generate_stream` / `model.stream` / `tool.execute` 失败路径 `log` + 条件 fastrace，带 `error.kind` 与 `turn_id`。
+- 排障：skill `xylitol-inspect-runtime-logs` / `just obs-*`。
 
 ---
 
@@ -606,6 +614,8 @@ Vec<AiBridgeMessage> → XyModel / dialect adapters
 | 2026-07-21 | agent | §F / c1210 | **解冻**：compose `Llm(AiBridgeMessage)`；消息孪生 map 删除；bash 嵌 message（`6e74f3ae`） |
 | 2026-07-21 | agent | §F / c1220 | 合入方案 B：消 `src/domain/` + `runtime_protocol/`；共享类型进 `protocol` 根；ports 并入 `protocol/ports`；`project_for_llm`→agent（`56212249`；docs `bb585524`） |
 | 2026-07-21 | agent | §F8 | **取消**：抽出 `xylitol-domain` / bridge→domain 叶与主线冲突，搁置 |
+| 2026-07-21 | agent | §G | `XyError`/`XyToolError` `kind()`；ReAct 热路径 log/fastrace 带 `error.kind` |
+| 2026-07-21 | agent | §C5 | `HookEvent` 载荷扩展 + `script_hook_ctx` 收拢 react/session/driver `json!` |
 |  |  |  |  |
 
 ---

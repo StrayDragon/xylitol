@@ -500,7 +500,8 @@ fn run_react_loop(cfg: ReActConfig) -> impl Stream<Item = XyEvent> + Send {
     } = cfg;
     async_stream::stream! {
         if let Some(bus) = &hook_bus {
-            observe_script_hook(bus, "agent_start", "", serde_json::json!({})).await;
+            let (ty, phase, ctx) = super::script_hook_ctx::agent_start();
+            observe_script_hook(bus, ty, phase, ctx).await;
         }
 
         let mut history: Vec<AgentMessage> = seeded_history;
@@ -532,13 +533,8 @@ fn run_react_loop(cfg: ReActConfig) -> impl Stream<Item = XyEvent> + Send {
 
                 yield XyEvent::TurnStart { turn_index: turn as u32 };
                 if let Some(bus) = &hook_bus {
-                    observe_script_hook(
-                        bus,
-                        "turn_start",
-                        "",
-                        serde_json::json!({ "turn_index": turn }),
-                    )
-                    .await;
+                    let (ty, phase, ctx) = super::script_hook_ctx::turn_start(turn as u32);
+                    observe_script_hook(bus, ty, phase, ctx).await;
                 }
                 let turn_span = super::obs::ReactTurnSpan::start(turn);
                 let turn_id = turn_span.as_ref().map(|t| t.turn_id().to_string());
@@ -552,26 +548,16 @@ fn run_react_loop(cfg: ReActConfig) -> impl Stream<Item = XyEvent> + Send {
                             message: Some(message.clone()),
                         };
                         if let Some(bus) = &hook_bus {
-                            observe_script_hook(
-                                bus,
-                                "message_start",
-                                "",
-                                serde_json::json!({ "role": "user" }),
-                            )
-                            .await;
+                            let (ty, phase, ctx) = super::script_hook_ctx::message_start("user");
+                            observe_script_hook(bus, ty, phase, ctx).await;
                         }
                         yield XyEvent::MessageEnd {
                             role: "user".to_string(),
                             message: Some(message.clone()),
                         };
                         if let Some(bus) = &hook_bus {
-                            observe_script_hook(
-                                bus,
-                                "message_end",
-                                "",
-                                serde_json::json!({ "role": "user" }),
-                            )
-                            .await;
+                            let (ty, phase, ctx) = super::script_hook_ctx::message_end("user");
+                            observe_script_hook(bus, ty, phase, ctx).await;
                         }
                         history.push(message.clone());
                         persist_agent_message(&store, &session_id, &message).await;
@@ -593,13 +579,10 @@ fn run_react_loop(cfg: ReActConfig) -> impl Stream<Item = XyEvent> + Send {
                 // Expand `$skill` only on the model-bound clone (history stays raw).
                 expand_skills_in_agent_messages(&mut messages, &skills);
                 if let Some(bus) = &hook_bus
-                    && let XyHookOutcome::Blocked { reason } = bus
-                        .dispatch(
-                            "context",
-                            "pre",
-                            serde_json::json!({ "message_count": messages.len() }),
-                        )
-                        .await
+                    && let (ty, phase, ctx) =
+                        super::script_hook_ctx::context_pre(messages.len())
+                    && let XyHookOutcome::Blocked { reason } =
+                        bus.dispatch(ty, phase, ctx).await
                 {
                     yield XyEvent::Error(format!("context hook blocked: {reason}"));
                     break 'outer;
@@ -612,6 +595,7 @@ fn run_react_loop(cfg: ReActConfig) -> impl Stream<Item = XyEvent> + Send {
                     _ = cancel.cancelled() => None,
                     result = call_with_retry(
                         &model, messages, &tool_schemas, &retry_state, &generate_options,
+                        turn_id.as_deref(),
                     ) => Some(result),
                 };
 
@@ -635,13 +619,8 @@ fn run_react_loop(cfg: ReActConfig) -> impl Stream<Item = XyEvent> + Send {
                     message: None,
                 };
                 if let Some(bus) = &hook_bus {
-                    observe_script_hook(
-                        bus,
-                        "message_start",
-                        "",
-                        serde_json::json!({ "role": "assistant" }),
-                    )
-                    .await;
+                    let (ty, phase, ctx) = super::script_hook_ctx::message_start("assistant");
+                    observe_script_hook(bus, ty, phase, ctx).await;
                 }
 
                 let mut text_acc = String::new();
@@ -797,6 +776,7 @@ fn run_react_loop(cfg: ReActConfig) -> impl Stream<Item = XyEvent> + Send {
                             }
                         },
                         Some(Err(e)) => {
+                            super::obs::record_xy_error("model.stream", &e, turn_id.as_deref());
                             yield XyEvent::Error(format!("stream error: {e}"));
                             break;
                         }
@@ -822,13 +802,8 @@ fn run_react_loop(cfg: ReActConfig) -> impl Stream<Item = XyEvent> + Send {
                     message: assistant_partial,
                 };
                 if let Some(bus) = &hook_bus {
-                    observe_script_hook(
-                        bus,
-                        "message_end",
-                        "",
-                        serde_json::json!({ "role": "assistant" }),
-                    )
-                    .await;
+                    let (ty, phase, ctx) = super::script_hook_ctx::message_end("assistant");
+                    observe_script_hook(bus, ty, phase, ctx).await;
                 }
 
                 let mut assistant_parts = Vec::new();
@@ -872,13 +847,8 @@ fn run_react_loop(cfg: ReActConfig) -> impl Stream<Item = XyEvent> + Send {
                     let turn_index = turn as u32;
                     yield XyEvent::TurnEnd { turn_index };
                     if let Some(bus) = &hook_bus {
-                        observe_script_hook(
-                            bus,
-                            "turn_end",
-                            "",
-                            serde_json::json!({ "turn_index": turn }),
-                        )
-                        .await;
+                        let (ty, phase, ctx) = super::script_hook_ctx::turn_end(turn as u32);
+                        observe_script_hook(bus, ty, phase, ctx).await;
                     }
                     turn += 1;
                     let stop_ctx = ShouldStopAfterTurnCtx {
@@ -929,13 +899,9 @@ fn run_react_loop(cfg: ReActConfig) -> impl Stream<Item = XyEvent> + Send {
 
                     let mut denied_reason: Option<String> = None;
                     if let Some(bus) = &hook_bus {
-                        match bus
-                            .dispatch(
-                                "tool_call",
-                                "pre",
-                                serde_json::json!({ "tool": name, "args": tool_args }),
-                            )
-                            .await
+                        let (ty, phase, ctx) =
+                            super::script_hook_ctx::tool_call_pre(name, &tool_args);
+                        match bus.dispatch(ty, phase, ctx).await
                         {
                             XyHookOutcome::Blocked { reason } => {
                                 denied_reason = Some(reason);
@@ -1045,6 +1011,7 @@ fn run_react_loop(cfg: ReActConfig) -> impl Stream<Item = XyEvent> + Send {
                             (vec![AgentPart::text(err)], true)
                         }
                         Err(e) => {
+                            super::obs::record_tool_error(name, &e, turn_id.as_deref());
                             let err = if tool_missing {
                                 format!("Unknown tool: {name}")
                             } else {
@@ -1077,28 +1044,25 @@ fn run_react_loop(cfg: ReActConfig) -> impl Stream<Item = XyEvent> + Send {
                         }
                         result.1 = hook_err;
                     }
-                    if let Some(bus) = &hook_bus
-                        && let XyHookOutcome::Modified { args: modified } = bus
-                            .dispatch(
-                                "tool_result",
-                                "post",
-                                serde_json::json!({
-                                    "tool": name,
-                                    "result": parts_preview_text(&result.0),
-                                    "is_error": result.1,
-                                }),
-                            )
-                            .await
-                    {
-                        if let Some(val) = modified.get("result") {
-                            let text = match val {
-                                serde_json::Value::String(s) => s.clone(),
-                                other => other.to_string(),
-                            };
-                            result.0 = vec![AgentPart::text(text)];
-                        }
-                        if let Some(err) = modified.get("is_error").and_then(|v| v.as_bool()) {
-                            result.1 = err;
+                    if let Some(bus) = &hook_bus {
+                        let (ty, phase, ctx) = super::script_hook_ctx::tool_result_post(
+                            name,
+                            parts_preview_text(&result.0),
+                            result.1,
+                        );
+                        if let XyHookOutcome::Modified { args: modified } =
+                            bus.dispatch(ty, phase, ctx).await
+                        {
+                            if let Some(val) = modified.get("result") {
+                                let text = match val {
+                                    serde_json::Value::String(s) => s.clone(),
+                                    other => other.to_string(),
+                                };
+                                result.0 = vec![AgentPart::text(text)];
+                            }
+                            if let Some(err) = modified.get("is_error").and_then(|v| v.as_bool()) {
+                                result.1 = err;
+                            }
                         }
                     }
 
@@ -1144,13 +1108,8 @@ fn run_react_loop(cfg: ReActConfig) -> impl Stream<Item = XyEvent> + Send {
                 let turn_index = turn as u32;
                 yield XyEvent::TurnEnd { turn_index };
                 if let Some(bus) = &hook_bus {
-                    observe_script_hook(
-                        bus,
-                        "turn_end",
-                        "",
-                        serde_json::json!({ "turn_index": turn }),
-                    )
-                    .await;
+                    let (ty, phase, ctx) = super::script_hook_ctx::turn_end(turn as u32);
+                    observe_script_hook(bus, ty, phase, ctx).await;
                 }
                 turn += 1;
 
@@ -1194,8 +1153,10 @@ fn run_react_loop(cfg: ReActConfig) -> impl Stream<Item = XyEvent> + Send {
 
         if let Some(bus) = &hook_bus {
             // pi agent_settled: no retry/compaction/follow-up left before AgentEnd.
-            observe_script_hook(bus, "agent_settled", "", serde_json::json!({})).await;
-            observe_script_hook(bus, "agent_end", "", serde_json::json!({})).await;
+            let (ty, phase, ctx) = super::script_hook_ctx::agent_settled();
+            observe_script_hook(bus, ty, phase, ctx).await;
+            let (ty, phase, ctx) = super::script_hook_ctx::agent_end();
+            observe_script_hook(bus, ty, phase, ctx).await;
         }
         yield XyEvent::AgentEnd { messages: history };
     }
@@ -1238,6 +1199,7 @@ async fn call_with_retry(
     tool_schemas: &[XyToolSchema],
     retry_state: &RetryState,
     options: &crate::protocol::ports::XyGenerateOptions,
+    turn_id: Option<&str>,
 ) -> Result<Pin<Box<dyn Stream<Item = Result<XyChunk, XyError>> + Send>>, String> {
     let llm_messages = project_for_llm(&messages);
     loop {
@@ -1249,10 +1211,17 @@ async fn call_with_retry(
             Err(e) => {
                 let err_msg = format!("model error: {e}");
                 if is_retryable_error(&err_msg) && retry_state.can_retry() {
+                    log::warn!(
+                        target: "xylitol::react",
+                        "model.generate_stream retrying error.kind={} turn_id={} error={e}",
+                        e.kind(),
+                        turn_id.unwrap_or("")
+                    );
                     let delay = retry_state.next_delay();
                     retry_state.backoff(delay).await;
                     continue;
                 }
+                super::obs::record_xy_error("model.generate_stream", &e, turn_id);
                 return Err(err_msg);
             }
         }
