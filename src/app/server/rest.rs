@@ -154,11 +154,11 @@ fn unexpected_outcome() -> Json<Envelope<Value>> {
 }
 
 fn dispatch_err(e: XyDriverError) -> Json<Envelope<Value>> {
-    Json(Envelope::error(ErrorCode::BadRequest, e.0))
+    Json(Envelope::error(ErrorCode::BadRequest, e.to_string()))
 }
 
 fn dispatch_err_as(e: XyDriverError, code: ErrorCode) -> Json<Envelope<Value>> {
-    Json(Envelope::error(code, e.0))
+    Json(Envelope::error(code, e.to_string()))
 }
 
 /// Map a dispatch result: `map` returns `Some(data)` on the expected variant.
@@ -611,7 +611,7 @@ async fn get_message_history_tree(
             Ok(v) => Json(Envelope::ok(serde_json::json!({ "tree": v }))),
             Err(e) => Json(Envelope::error(ErrorCode::InternalError, e.to_string())),
         },
-        Err(e) => Json(Envelope::error(ErrorCode::BadRequest, e)),
+        Err(e) => Json(Envelope::error(ErrorCode::BadRequest, e.to_string())),
     }
 }
 
@@ -635,7 +635,7 @@ async fn travel_message_history_tree(
             Ok(v) => Json(Envelope::ok(v)),
             Err(e) => Json(Envelope::error(ErrorCode::InternalError, e.to_string())),
         },
-        Err(e) => Json(Envelope::error(ErrorCode::BadRequest, e)),
+        Err(e) => Json(Envelope::error(ErrorCode::BadRequest, e.to_string())),
     }
 }
 
