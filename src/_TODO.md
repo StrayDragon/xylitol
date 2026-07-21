@@ -59,7 +59,7 @@ B  错误类型抬升（XyDriver / dispatch）     ← 横切收益最大
 C  内置工具 Args 类型化                  ← 局部、类型可见
 D  God 文件拆分（react / driver / session）
    └─ driver D5–D7 已完成
-   └─ react / session 大拆：默认不做（见 §D 决议）；可选卫生 D11
+   └─ react / session 大拆：默认不做（见 §D 决议）；D11 已分诊待确认
 E  runtime_protocol RPITIT               ← 一批改 port+实现
 F  孪生类型 SSOT（需动 packages）         ← 后置；先写归属、禁新增孪生
 G  观测 kind 打尖                        ← 可与 B 并行或紧随
@@ -347,17 +347,74 @@ step(phase, ctx) -> (next, Vec<XyEvent>)   // 或 mpsc，由薄 async_stream 只
 **结论**
 
 - **不值得为 RETUNE 行数单开 D8–D10 搬家 PR。** 方法本就按域分了注释区；再切成 `persist.rs` / `tree.rs` / `mutate.rs` 只是 `impl SessionManager` 分散，审阅收益有限，还增加跳转成本。
-- **值得做的小卫生**（可另项、非 D8–D10）：
-  1. 把 `XyEventSink for EventBus` 挪到 `infra/event`（错置）
-  2. 删除或真正接线孤儿 `infra/session/tests.rs`（死代码分诊）
-- **再开闸条件**：某域（如 fork / tree travel / deferred persist）要**独立演进或独立测**、且改动频繁撞 CRUD 大段时，再按**那一域**抽 `pub(crate)` 协作模块——而不是一次性按 D8/D9/D10 三切。
+- **值得记的卫生**已升格为 **D11 分诊**（见下）：D11a 错置 ≠ D11b 真死；**禁止**「接线救活」孤儿 snapshot 测。
+- **再开闸条件**（D8–D10）：某域（如 fork / tree travel / deferred persist）要**独立演进或独立测**、且改动频繁撞 CRUD 大段时，再按**那一域**抽 `pub(crate)` 协作模块——而不是一次性按 D8/D9/D10 三切。
 
 勾选：
 
 - [ ] **D8** persist / load — **默认不做**（见上再开闸条件）
 - [ ] **D9** tree / travel / list — **默认不做**
 - [ ] **D10** mutate — **默认不做**
-- [ ] **D11**（可选卫生）挪走 `EventBus: XyEventSink`；分诊孤儿 `session/tests.rs`
+- [ ] **D11** — **已拆分为 D11a / D11b，见下「D11 分诊」；勿当作单一必做项**
+
+#### D11 分诊（2026-07-21，严谨；**先不改代码**）
+
+先前把「挪 EventBus impl」与「孤儿 tests.rs」捆成一个「可选卫生」，过于粗糙。按 `audit-dead-code` 三类分开裁决。
+
+##### D11a — `XyEventSink for EventBus` 落在 `session/manager.rs`
+
+| 项 | 事实 |
+|---|---|
+| 代码 | 文件末 ~8 行：`emit` → `self.emit_lifecycle(event)` |
+| 归属 | `EventBus` 定义在 `infra/event/mod.rs`；port 在 `runtime_protocol::XyEventSink` |
+| 存活 | **活的**：`composition` / BDD / `react` 测等大量 `Arc::new(EventBus::new()) as Arc<dyn XyEventSink>` 依赖此 impl（同 crate 内任一模块提供即可） |
+| 来历 | c295（`ec7b0c32`）把 `EventSink` 重命名为 `XyEventSink` 时留在 manager；更早则是洋葱重构期「端口 impl 就近堆」的惯性，**不是** session 领域逻辑 |
+| `manager` 耦合 | `use XyEvent` / `XyEventSink` 在 manager 中**仅服务该 impl**；与 `XySessionStore for SessionManager` 无关 |
+| 分层味道 | session 模块为 **event 模块的类型** 实现 port → 读 session 文件会撞上无关适配器；`event` 已 re-export `XyEvent`，具备承接条件 |
+| 若挪到 `infra/event` | 纯搬家；行为不变；可顺手从 manager 去掉仅为此存在的 import；**不走 SDD** |
+| 若不挪 | 功能零损失；仅审阅噪音 |
+
+**裁决（冻结）**
+
+- **不是死代码，不是功能债，是低成本错置。**
+- **默认不单开 PR。** 触发再做：下次改 `infra/event` 或动到 manager 尾部时顺手挪；或与其它 event 整理捆一小 commit。
+- **不要**把它当 D8–D10 的「拆文件进度」；挪完 manager 只少约 8 行，不改变超标结论。
+
+##### D11b — `src/infra/session/tests.rs`（296 行）
+
+| 项 | 事实 |
+|---|---|
+| 模块树 | **未**出现在现行 `session/mod.rs`；`cargo` **从不编译**该文件 |
+| 内容 | 测 `SnapshotManager` / `SnapshotBuilder` / `ContextFilter` / spawn / prune 等 |
+| 符号现状 | 上述类型在全仓 **仅出现在此文件**（外加 `_TODO` 提及）；`session::{config,gc,storage}` 已删 |
+| 来历 | `a0ec28bc` 引入 snapshot 系并 `#[cfg(test)] mod tests`；`781d5e8b`（c05 pi 对齐重建）改掉 `mod.rs` **漏删文件**；`8f9ec6b0` 再删 config/gc/storage 后文件仍在盘上 |
+| 与现行 `SessionManager` | **无关**——现行是 JSONL `SessionManager` + manager 内联测；此文件测的是已废弃 snapshot/CoW 产品面 |
+| 激活代价 | 等于复活整套 Snapshot API + 产品语义；与当前会话真值冲突；**不在本调优范围** |
+| llmanspec | 无仍有效的 snapshot manager 合约依赖此文件 |
+
+**按 audit-dead-code 归类：真死（编译期零引用）。默认处置：删。无例外。**
+
+**裁决（冻结）**
+
+- **删除是正确且安全的**（不改任何可执行行为、不碰 BDD）。
+- **仍建议单独确认后再删**（本会话先分析）：删除是「清考古残骸」，不是「session 重构」。可与 D11a 解耦——**删 tests.rs 不必等 EventBus 搬家**。
+- **禁止**为「救活」此文件去接线或改 `mod tests`；那是开新功能，不是卫生。
+- **不走 SDD**（无运行时行为）。
+
+##### 捆绑建议
+
+| 做法 | 评价 |
+|---|---|
+| D11a + D11b 一个 commit | 可，但信息混杂（错置 vs 真死） |
+| **只删 D11b** | 最高 ROI、零行为风险；推荐若只做一件 |
+| 只做 D11a | 收益小，宜顺手 |
+| 都不做 | 可接受；在 RETUNE/TODO 保留结论即可，避免遗忘再误判为「预留」 |
+
+勾选（分析完成；实施另议）：
+
+- [x] **D11 分诊**（本小节）
+- [ ] **D11a** 挪 `XyEventSink for EventBus` → `infra/event` — **默认顺手 / 不单开**
+- [ ] **D11b** 删除孤儿 `infra/session/tests.rs` — **真死；建议删，待显式确认后执行**
 
 ### 约束
 
@@ -508,6 +565,8 @@ map.rs → 变薄：project_for_llm + 少量边界转换
 | 2026-07-21 | agent | §D react/P3 | 评估 sub-turn state machine：**先不改**（当时仍写 D0 路径；已被同日「默认不做」决议取代） |
 | 2026-07-21 | agent | docs | commit `04afab14`（Driver 心智 + P3 冻结写入） |
 | 2026-07-21 | agent | §D react/session | 再分析：外置 react 测 / D8–D10 **默认不做**；可选卫生 D11（EventBus 错置 + 孤儿 tests.rs） |
+| 2026-07-21 | agent | docs | commit `ac1899b6`（react/session 默认不拆写入 TODO/RETUNE） |
+| 2026-07-21 | agent | §D11 | 严谨分诊：D11a=活着的错置（顺手挪）；D11b=真死孤儿 tests（建议删、待确认）；二者解耦 |
 |  |  |  |  |
 
 ---
