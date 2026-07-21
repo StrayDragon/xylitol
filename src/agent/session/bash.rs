@@ -80,7 +80,7 @@ impl BashExecHandler {
         Ok(result)
     }
 
-    /// Abort any in-flight bash execution (`&self` for Driver / AgentRuntime abort).
+    /// Abort any in-flight bash execution (`&self` for XyDriver / AgentRuntime abort).
     pub fn abort(&self) {
         if let Some(cancel) = self.cancel.lock().unwrap_or_else(|e| e.into_inner()).take() {
             cancel.cancel();

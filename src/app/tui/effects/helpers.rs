@@ -2,7 +2,7 @@
 
 use xylitol_tui::Terminal;
 
-use crate::app::core::driver::Driver;
+use crate::app::core::driver::XyDriver;
 
 use super::super::host::HostSession;
 
@@ -28,7 +28,7 @@ pub(super) enum SwitchRebuildKind {
 /// Shared import/resume path: `switch_session` → rebuild transcript (c1010 / c1015).
 pub(super) async fn switch_and_rebuild_transcript<T: Terminal>(
     session: &mut HostSession<T>,
-    driver: &mut dyn Driver,
+    driver: &mut dyn XyDriver,
     session_id: &str,
     kind: SwitchRebuildKind,
 ) {

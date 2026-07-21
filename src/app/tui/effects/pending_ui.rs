@@ -3,7 +3,7 @@
 use xylitol_tui::Terminal;
 
 use crate::app::core::dispatch::{DispatchOutcome, dispatch};
-use crate::app::core::driver::Driver;
+use crate::app::core::driver::XyDriver;
 use crate::domain::session_types::SessionTreeKind;
 use crate::protocol::Command;
 
@@ -14,10 +14,10 @@ use super::helpers::{SwitchRebuildKind, deepest_tree_id, switch_and_rebuild_tran
 
 pub(super) async fn drain_pending_ui<T: Terminal>(
     session: &mut HostSession<T>,
-    driver: &mut dyn Driver,
+    driver: &mut dyn XyDriver,
 ) {
     if session.take_paste_image() {
-        log::info!(target: "xylitol::tui", "Driver::stage_clipboard_image");
+        log::info!(target: "xylitol::tui", "XyDriver::stage_clipboard_image");
         let image_outcome = driver.stage_clipboard_image().await;
         match image_outcome {
             Ok(Some(path)) => {
@@ -66,7 +66,7 @@ pub(super) async fn drain_pending_ui<T: Terminal>(
     }
 
     if session.take_pending_session_tree_open() {
-        log::info!(target: "xylitol::tui", "Driver::session_tree(MessageHistory)");
+        log::info!(target: "xylitol::tui", "XyDriver::session_tree(MessageHistory)");
         match driver.session_tree(SessionTreeKind::MessageHistory).await {
             Ok(nodes) => {
                 let mapped = map_session_tree_nodes(&nodes);
@@ -79,7 +79,7 @@ pub(super) async fn drain_pending_ui<T: Terminal>(
     }
 
     if let Some(entry_id) = session.take_pending_session_tree_travel() {
-        log::info!(target: "xylitol::tui", "Driver::travel_session_tree(MessageHistory) entry_id={}", entry_id);
+        log::info!(target: "xylitol::tui", "XyDriver::travel_session_tree(MessageHistory) entry_id={}", entry_id);
         match driver
             .travel_session_tree(SessionTreeKind::MessageHistory, &entry_id)
             .await
@@ -102,7 +102,7 @@ pub(super) async fn drain_pending_ui<T: Terminal>(
     if let Some(entry_id) = session.take_pending_session_tree_fork() {
         use crate::domain::session_types::{ForkPosition, is_user_message, message_text};
 
-        log::info!(target: "xylitol::tui", "Driver::fork_session + switch_session entry_id={}", entry_id);
+        log::info!(target: "xylitol::tui", "XyDriver::fork_session + switch_session entry_id={}", entry_id);
         let parent_entries = match driver.get_messages().await {
             Ok(e) => e,
             Err(e) => {
@@ -155,7 +155,7 @@ pub(super) async fn drain_pending_ui<T: Terminal>(
     }
 
     if let Some((entry_id, label)) = session.take_pending_session_tree_label() {
-        log::info!(target: "xylitol::tui", "Driver::append_entry_label entry_id={}", entry_id);
+        log::info!(target: "xylitol::tui", "XyDriver::append_entry_label entry_id={}", entry_id);
         match driver.append_entry_label(&entry_id, label.as_deref()).await {
             Ok(()) => session.apply_session_tree_label(&entry_id, label),
             Err(e) => session.push_system_note(format!("label failed: {e}")),

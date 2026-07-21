@@ -55,7 +55,7 @@
 
 - **`Xy*`** = 近期要精选进库 `pub use` 的**跨层契约 / 可替换端口 / 跨面事件**（方便导出），不是全局品牌前缀。细则 SSOT：`src/AGENTS.md`。
 - **外部库概念**：会出现在库入口或多方言统一处 → 包一层（我们的类型）；纯内部实现细节 → **直接用** crate 类型，不 newtype。
-- 应用面缝（`Driver` / bootstrap / dispatch）与内部协作者**不加** `Xy`。
+- 应用面缝（`XyDriver` / bootstrap / dispatch）与内部协作者**不加** `Xy`。
 
 ## 编码规则
 
@@ -116,10 +116,12 @@ SDD：`.agents/skills/llman-sdd-*`。应用面：`write-surface`、`audit-dead-c
 1. **几乎所有任务都要遵守** → 根 `AGENTS.md`。
 2. **某目录稳定边界** → 该目录 `AGENTS.md`（保持短；改代码边界时才改）。
 3. **流程性 how-to / harness / 多步工作流** → `.agents/skills/<name>/SKILL.md`；AGENTS 只留一行指针。
-4. **临时交接、复核笔记** → `_HANDOFF.md` / `*.tmp.md` 等，**勿当规范**，勿把清单抄进 AGENTS。
+4. **临时交接、复核笔记** → `_HANDOFF.md` / `_TODO.md` / `*.tmp.md` 等，**勿当规范**，勿把清单抄进 AGENTS。
+5. **易腐调音表**（行数预算、超标清单、调音日期）→ 独立文件（`src/` 为 [`src/QUALITY_RETUNE.md`](src/QUALITY_RETUNE.md)）；AGENTS **只留一行指针**，禁止把超标表粘进正文。
 
 ### 维护习惯
 
-- 先问：这条六个月后是否仍真？会否随每个 PR 改？若否 → skill 或 handoff，不是 AGENTS。
+- 先问：这条六个月后是否仍真？会否随每个 PR 改？若否 → skill、handoff、`_TODO` 或 `QUALITY_RETUNE`，不是 AGENTS。
 - 新增规则要有代码或可验证行为支撑；删过时规则，避免沉默腐烂。
 - 子文件变长时拆 skill，不要把根或子 AGENTS 写成百科。
+- **体量调音（长期 rule）**：生产模块避免无结构 God 文件；具体软顶/硬顶、当前超标表、下次调音日 → [`src/QUALITY_RETUNE.md`](src/QUALITY_RETUNE.md)。合并后超硬顶或约每季度更新该表；拆分待办见 [`src/_TODO.md`](src/_TODO.md)。

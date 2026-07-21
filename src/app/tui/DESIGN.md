@@ -152,7 +152,7 @@ components:
 | **c475** layout 壳 | `Palette::dark` 注入；glyph 档；idle **0** status；busy 一行；footer `cwd · model` | [`status`](./design/status.md) · [`footer`](./design/footer.md) · [`glyphs`](./design/glyphs.md) · [`theme-tokens`](./design/theme-tokens.md) |
 | **c476** live scrollback | Markdown / Expandable / Diff / tool-bg；对齐 `agent_demo` 形态（非 Codex 浏览面） | [`markdown`](./design/markdown.md) · [`expandable`](./design/expandable.md) · [`diff-block`](./design/diff-block.md) |
 | **c480** input | Editor 操作区；`/exit`；steer / follow-up / Alt+Up dequeue / abort / Ctrl+C；双 Esc → **c615 活树**；队列 strip = pi `Steering:`/`Follow-up:`（非 scrollback 墙）；注入后上行 `UiEntry::User` | [`editor`](./design/editor.md) · [`keybindings`](./design/keybindings.md) · [`queue-steer`](./design/queue-steer.md) · [`session-tree`](./design/session-tree.md) |
-| **c615** session tree | `Driver::session_tree(MessageHistory)` + `travel_session_tree` Enter；`effects::drain_pending` 异步泵 | [`session-tree`](./design/session-tree.md) |
+| **c615** session tree | `XyDriver::session_tree(MessageHistory)` + `travel_session_tree` Enter；`effects::drain_pending` 异步泵 | [`session-tree`](./design/session-tree.md) |
 | **c481** history | 同一 TUI session：idle/steer/follow-up 写入 Editor 发送历史；↑/↓ 召回（包 ed05） | [`editor`](./design/editor.md) · [`keybindings`](./design/keybindings.md) |
 | **c490** trust | Ask 时 **ChoicePrompt** 换 editor 槽（禁 stdio 数字菜单） | [`trust-prompt`](./design/trust-prompt.md) |
 | **c485** vertical slice | **已归档**：合成 harness H1–H9 + 产品 PTY Fake smoke | archive `2026-07-12-c485-…` |

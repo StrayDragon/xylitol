@@ -100,20 +100,20 @@ pub struct BootstrappedAgent {
     /// Diagnostics produced during assembly (surface renders these).
     pub warnings: Vec<BootstrapWarning>,
     /// Session store handle, the same instance the agent holds internally.
-    /// Surfaces construct an [`crate::app::core::driver::InProcessDriver`] from this + the agent so
-    /// Driver session commands (SwitchSession/GetMessages) operate without
+    /// Surfaces construct an [`crate::app::core::driver::XyInProcessDriver`] from this + the agent so
+    /// XyDriver session commands (SwitchSession/GetMessages) operate without
     /// reaching into agent internals.
     pub store: Arc<dyn crate::runtime_protocol::XySessionStore>,
     /// MCP servers from loaded config (`None` / empty = disabled, zero-cost).
     pub mcp_servers: Option<Vec<crate::app::core::mcp_spec::McpServerSpec>>,
 }
 
-/// Driver-ready result of [`BootstrappedAgent::into_runtime`].
+/// XyDriver-ready result of [`BootstrappedAgent::into_runtime`].
 ///
 /// This is the preferred embed / multi-client handoff: no need to name
 /// `AgentRuntime` at the call site.
 pub struct BootstrappedRuntime {
-    pub driver: crate::app::core::driver::InProcessDriver,
+    pub driver: crate::app::core::driver::XyInProcessDriver,
     pub session_id: String,
     pub warnings: Vec<BootstrapWarning>,
     /// MCP servers for [`crate::app::core::composition::McpSession::reload`].
@@ -121,20 +121,20 @@ pub struct BootstrappedRuntime {
 }
 
 impl BootstrappedAgent {
-    /// Consume into an [`crate::app::core::driver::InProcessDriver`] plus side-products (preferred path).
+    /// Consume into an [`crate::app::core::driver::XyInProcessDriver`] plus side-products (preferred path).
     pub fn into_runtime(mut self) -> BootstrappedRuntime {
         self.agent.inner_mut().set_session(self.session_id.clone());
         BootstrappedRuntime {
-            driver: crate::app::core::driver::InProcessDriver::new(self.agent, self.store),
+            driver: crate::app::core::driver::XyInProcessDriver::new(self.agent, self.store),
             session_id: self.session_id,
             warnings: self.warnings,
             mcp_servers: self.mcp_servers,
         }
     }
 
-    /// Consume into an [`crate::app::core::driver::InProcessDriver`] only (drops warnings / session id /
+    /// Consume into an [`crate::app::core::driver::XyInProcessDriver`] only (drops warnings / session id /
     /// mcp config). Prefer [`Self::into_runtime`] when those are needed.
-    pub fn into_driver(self) -> crate::app::core::driver::InProcessDriver {
+    pub fn into_driver(self) -> crate::app::core::driver::XyInProcessDriver {
         self.into_runtime().driver
     }
 }
@@ -564,8 +564,8 @@ pub fn bootstrap(input: BootstrapInput) -> Result<BootstrappedAgent, BootstrapEr
     let target_model = model.or_else(|| assembly.default_profile_model.clone());
     let mut warnings = std::mem::take(&mut assembly.warnings);
 
-    let mut agent =
-        build_agent(assembly.into_build_options()).map_err(BootstrapError::BuildFailed)?;
+    let mut agent = build_agent(assembly.into_build_options())
+        .map_err(|e| BootstrapError::BuildFailed(e.to_string()))?;
     agent
         .inner_mut()
         .register_prompt_commands(&discovered_templates);
@@ -614,7 +614,7 @@ pub struct SkillsReloadReport {
 ///
 /// Trust semantics match bootstrap. Does **not** mutate session history.
 pub fn reload_skills(
-    driver: &mut crate::app::core::driver::InProcessDriver,
+    driver: &mut crate::app::core::driver::XyInProcessDriver,
     cwd: &std::path::Path,
     agent_dir: &std::path::Path,
     project_trusted: bool,
@@ -654,7 +654,7 @@ pub struct PromptContextReloadReport {
 ///
 /// Does **not** mutate session history / transcript.
 pub fn reload_prompt_context(
-    driver: &mut crate::app::core::driver::InProcessDriver,
+    driver: &mut crate::app::core::driver::XyInProcessDriver,
     cwd: &std::path::Path,
     agent_dir: &std::path::Path,
     project_trusted: bool,
@@ -716,16 +716,16 @@ fn queue_mode_from_settings(
 mod tests {
     use super::*;
     use crate::app::core::composition::{BuildAgentOptions, build_agent};
-    use crate::app::core::driver::InProcessDriver;
+    use crate::app::core::driver::XyInProcessDriver;
     use crate::runtime_protocol::XySessionStore;
     use std::sync::Arc;
 
-    fn make_driver() -> InProcessDriver {
+    fn make_driver() -> XyInProcessDriver {
         let agent = build_agent(BuildAgentOptions::default()).expect("build");
         let store: Arc<dyn XySessionStore> = Arc::new(crate::infra::session::SessionManager::new(
             tempfile::tempdir().unwrap().path().join("sessions"),
         ));
-        InProcessDriver::new(agent, store)
+        XyInProcessDriver::new(agent, store)
     }
 
     #[test]

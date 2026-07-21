@@ -21,8 +21,8 @@ use serde::Deserialize;
 use serde_json::Value;
 use tokio::sync::Mutex;
 
-use crate::app::core::dispatch::{DispatchError, DispatchOutcome, dispatch};
-use crate::app::core::driver::{Driver, InProcessDriver};
+use crate::app::core::dispatch::{DispatchOutcome, XyDriverError, dispatch};
+use crate::app::core::driver::{XyDriver, XyInProcessDriver};
 use crate::app::server::ws::{ClientFrame, EventJournal, ReverseRpcGateway, ServerFrame};
 use crate::domain::lifecycle::XyEvent;
 use crate::domain::session_types::SessionTreeKind;
@@ -32,10 +32,10 @@ use crate::protocol::{Command, Envelope, ErrorCode};
 
 /// Shared state available to all route handlers.
 ///
-/// Holds [`InProcessDriver`] (same seam as Print), not a bare `AgentRuntime`.
+/// Holds [`XyInProcessDriver`] (same seam as Print), not a bare `AgentRuntime`.
 #[derive(Clone)]
 pub struct AppState {
-    pub driver: Arc<Mutex<InProcessDriver>>,
+    pub driver: Arc<Mutex<XyInProcessDriver>>,
     pub journal: Arc<Mutex<EventJournal>>,
     pub gateway: Arc<ReverseRpcGateway>,
 }
@@ -76,7 +76,7 @@ async fn run_prompt(
     let driver = state.driver.clone();
     let journal = state.journal.clone();
 
-    // Spawn a background task that runs via Driver and records events.
+    // Spawn a background task that runs via XyDriver and records events.
     // Lock is held only to obtain the stream (same pattern as before with agent).
     tokio::spawn(async move {
         let stream = {
@@ -141,7 +141,7 @@ async fn switch_model(
     )
 }
 
-async fn run_dispatch(state: &AppState, cmd: Command) -> Result<DispatchOutcome, DispatchError> {
+async fn run_dispatch(state: &AppState, cmd: Command) -> Result<DispatchOutcome, XyDriverError> {
     let mut driver = state.driver.lock().await;
     dispatch(&mut *driver, cmd).await
 }
@@ -153,19 +153,19 @@ fn unexpected_outcome() -> Json<Envelope<Value>> {
     ))
 }
 
-fn dispatch_err(e: DispatchError) -> Json<Envelope<Value>> {
+fn dispatch_err(e: XyDriverError) -> Json<Envelope<Value>> {
     Json(Envelope::error(ErrorCode::BadRequest, e.0))
 }
 
-fn dispatch_err_as(e: DispatchError, code: ErrorCode) -> Json<Envelope<Value>> {
+fn dispatch_err_as(e: XyDriverError, code: ErrorCode) -> Json<Envelope<Value>> {
     Json(Envelope::error(code, e.0))
 }
 
 /// Map a dispatch result: `map` returns `Some(data)` on the expected variant.
 fn map_dispatch(
-    result: Result<DispatchOutcome, DispatchError>,
+    result: Result<DispatchOutcome, XyDriverError>,
     map: impl FnOnce(DispatchOutcome) -> Option<Value>,
-    on_err: impl FnOnce(DispatchError) -> Json<Envelope<Value>>,
+    on_err: impl FnOnce(XyDriverError) -> Json<Envelope<Value>>,
 ) -> Json<Envelope<Value>> {
     match result {
         Ok(outcome) => match map(outcome) {
@@ -289,7 +289,7 @@ async fn get_queue(
     Path(_session_id): Path<String>,
     State(state): State<Arc<AppState>>,
 ) -> Json<Envelope<Value>> {
-    // No GetQueue Command — thin Driver read (design c550).
+    // No GetQueue Command — thin XyDriver read (design c550).
     let driver = state.driver.lock().await;
     let s = driver.queue_stats();
     Json(Envelope::ok(queue_json(s.steer_count, s.follow_up_count)))
@@ -600,7 +600,7 @@ async fn get_commands(
     )
 }
 
-/// Driver-only: read MessageHistory session tree (not routed through `protocol::Command`).
+/// XyDriver-only: read MessageHistory session tree (not routed through `protocol::Command`).
 async fn get_message_history_tree(
     Path(_session_id): Path<String>,
     State(state): State<Arc<AppState>>,
@@ -620,7 +620,7 @@ struct TravelTreeBody {
     entry_id: String,
 }
 
-/// Driver-only: travel MessageHistory tree (not routed through `protocol::Command`).
+/// XyDriver-only: travel MessageHistory tree (not routed through `protocol::Command`).
 async fn travel_message_history_tree(
     Path(_session_id): Path<String>,
     State(state): State<Arc<AppState>>,
@@ -839,7 +839,7 @@ mod tests {
         let store: Arc<dyn XySessionStore> = Arc::new(crate::infra::session::SessionManager::new(
             tempfile::tempdir().unwrap().path().join("sessions"),
         ));
-        let driver = InProcessDriver::new(agent, store);
+        let driver = XyInProcessDriver::new(agent, store);
         Arc::new(AppState {
             driver: Arc::new(Mutex::new(driver)),
             journal: Arc::new(Mutex::new(

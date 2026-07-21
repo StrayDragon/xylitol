@@ -3,7 +3,7 @@
 use xylitol_tui::Terminal;
 
 use crate::app::core::dispatch::{DispatchOutcome, dispatch};
-use crate::app::core::driver::Driver;
+use crate::app::core::driver::{XyDriver, XyDriverError};
 use crate::protocol::Command;
 
 use super::super::bridge::UiEntry;
@@ -31,7 +31,7 @@ fn format_keybindings_reload(outcome: ReloadOutcome) -> String {
     }
 }
 
-async fn handle_reload<T: Terminal>(session: &mut HostSession<T>, driver: &mut dyn Driver) {
+async fn handle_reload<T: Terminal>(session: &mut HostSession<T>, driver: &mut dyn XyDriver) {
     let agent_dir = super::super::keybindings::default_agent_dir();
     let mut lines = vec!["Reload:".to_string()];
 
@@ -60,7 +60,7 @@ async fn handle_reload<T: Terminal>(session: &mut HostSession<T>, driver: &mut d
 
 pub(super) async fn handle_slash<T: Terminal>(
     session: &mut HostSession<T>,
-    driver: &mut dyn Driver,
+    driver: &mut dyn XyDriver,
     slash: PendingSlash,
 ) {
     match slash {
@@ -116,10 +116,10 @@ pub(super) async fn handle_slash<T: Terminal>(
             if scene.is_empty() || scene == "list" {
                 session.push_system_note(crate::app::debug_fixtures::list_note());
             } else {
-                log::info!(target: "xylitol::tui", "Driver::load_debug_scene scene={}", scene);
+                log::info!(target: "xylitol::tui", "XyDriver::load_debug_scene scene={}", scene);
                 match driver.load_debug_scene(&scene).await {
                     Ok(load) => session.apply_debug_scene(load),
-                    Err(e) => session.push_system_note(e),
+                    Err(e) => session.push_system_note(e.to_string()),
                 }
             }
             let _ = session.render_now();
@@ -156,7 +156,7 @@ pub(super) async fn handle_slash<T: Terminal>(
                         } else {
                             "session unchanged (nothing to compact)"
                         };
-                        session.push_system_note(msg);
+                        session.push_system_note(msg.to_string());
                         super::refresh_footer_tokens(session, driver).await;
                     }
                     Ok(_) => {
@@ -253,7 +253,7 @@ pub(super) async fn handle_slash<T: Terminal>(
             if session.is_busy() {
                 session.push_system_note("session new unavailable while busy");
             } else {
-                log::info!(target: "xylitol::tui", "Driver::new_session");
+                log::info!(target: "xylitol::tui", "XyDriver::new_session");
                 match driver.new_session().await {
                     Ok(sid) => match driver.get_messages().await {
                         Ok(entries) => session.apply_new_session(&sid, entries),
@@ -275,7 +275,7 @@ pub(super) async fn handle_slash<T: Terminal>(
                     Some(entry_id) => {
                         log::info!(
                             target: "xylitol::tui",
-                            "Driver::fork_session(At) + switch for /session-clone entry_id={}",
+                            "XyDriver::fork_session(At) + switch for /session-clone entry_id={}",
                             entry_id
                         );
                         match driver.fork_session(&entry_id, ForkPosition::At).await {
@@ -379,7 +379,7 @@ pub(super) async fn handle_slash<T: Terminal>(
                                 Ok(()) => session.push_system_note(format!("theme → {theme_name}")),
                                 Err(e) => session.push_system_note(format!("/theme failed: {e}")),
                             },
-                            Err(msg) => session.push_system_note(msg),
+                            Err(msg) => session.push_system_note(msg.to_string()),
                         }
                     }
                 }
@@ -387,14 +387,17 @@ pub(super) async fn handle_slash<T: Terminal>(
             let _ = session.render_now();
         }
         PendingSlash::Usage(msg) => {
-            session.push_system_note(msg);
+            session.push_system_note(msg.to_string());
             let _ = session.render_now();
         }
     }
 }
 
 /// Resolve `/theme` argument to a built-in name (c1115).
-fn resolve_theme_arg<T: Terminal>(session: &HostSession<T>, arg: &str) -> Result<String, String> {
+fn resolve_theme_arg<T: Terminal>(
+    session: &HostSession<T>,
+    arg: &str,
+) -> Result<String, XyDriverError> {
     match arg.to_ascii_lowercase().as_str() {
         "dark" | "light" => Ok(arg.to_ascii_lowercase()),
         "toggle" | "cycle" => {
@@ -406,8 +409,6 @@ fn resolve_theme_arg<T: Terminal>(session: &HostSession<T>, arg: &str) -> Result
             };
             Ok(next.to_string())
         }
-        _ => Err(format!(
-            "unknown theme `{arg}` (usage: /theme [dark|light|toggle])"
-        )),
+        _ => Err(format!("unknown theme `{arg}` (usage: /theme [dark|light|toggle])").into()),
     }
 }

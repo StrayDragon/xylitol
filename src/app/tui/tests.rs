@@ -534,7 +534,7 @@ async fn harness_double_esc_opens_session_tree() {
     session.step(HostEvent::Input(esc_event())).unwrap();
     assert!(
         !root.borrow().tree_open(),
-        "tree opens after async Driver fetch"
+        "tree opens after async XyDriver fetch"
     );
     pump_host_driver(&mut session, &mut driver, &mut stream)
         .await
@@ -621,7 +621,7 @@ async fn harness_enter_user_prefills_editor() {
     assert_eq!(
         root.borrow().editor_text(),
         "hello",
-        "user travel must prefill editor_text from Driver travel"
+        "user travel must prefill editor_text from XyDriver travel"
     );
     assert_eq!(driver.travel_calls(), vec!["u1".to_string()]);
 }
@@ -673,7 +673,7 @@ fn harness_editor_slot_mutex_and_esc_closes() {
         "slots are mutually exclusive"
     );
 
-    // Opening Tree replaces Plate (mount directly in harness — open_slot queues Driver fetch).
+    // Opening Tree replaces Plate (mount directly in harness — open_slot queues XyDriver fetch).
     root.borrow_mut()
         .open_session_tree_for_test(super::layout::sample_tree_nodes_for_test(), Some("u2"));
     assert_eq!(root.borrow().slot(), EditorSlot::Tree);

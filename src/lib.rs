@@ -12,9 +12,10 @@
 //! Ports: [`XyModel`], [`XyTool`], [`XySessionStore`], [`XyEventSink`],
 //! [`XyPermission`], [`XyBashExecutor`], [`XyExportIo`], [`XySecretResolver`],
 //! [`XyModelBuilder`], [`XyHookBus`].
+//! Shared application protocol: [`XyDriver`], [`XyInProcessDriver`], [`XyDriverError`].
 //! Events / stream: [`XyEvent`], [`XyChunk`], [`XyStream`].
 //! Hook outcomes: [`XyHookOutcome`], [`NoopHookBus`].
-//! Errors: [`XyError`], [`XyToolError`].
+//! Errors: [`XyError`], [`XyToolError`], [`XyDriverError`].
 //! Config metadata: [`XyModelConfig`], [`XyModelKind`], [`XyModelMeta`],
 //! [`XyToolSchema`].
 //!
@@ -22,13 +23,13 @@
 //!
 //! Multi-client / external-crate assembly: [`embed::bootstrap`],
 //! [`embed::BootstrappedRuntime`] / [`embed::BootstrappedAgent::into_runtime`],
-//! [`embed::InProcessDriver`], [`embed::Driver`], [`embed::BuildAgentOptions`],
+//! [`embed::XyInProcessDriver`], [`embed::XyDriver`], [`embed::BuildAgentOptions`],
 //! [`embed::McpSession`]. Script hooks are configured via
 //! [`embed::BuildAgentOptions::hooks_config`]; replaceable port is [`XyHookBus`].
 //! Do **not** treat `infra::*` or `agent::session::*` as a stability promise —
 //! extend the seam instead.
 //!
-//! Not exported from `embed`: `dispatch`, `RemoteDriver`, infra concrete types
+//! Not exported from `embed`: `dispatch`, `XyRemoteDriver`, infra concrete types
 //! (`HookDispatcher`, `HookEvent`).
 
 pub mod agent;
@@ -41,6 +42,7 @@ pub mod runtime_protocol;
 
 // ── Curated `pub use` (c500 / architecture.ar09) ─────────────────────
 
+pub use crate::app::core::driver::{XyDriver, XyDriverError, XyInProcessDriver};
 pub use crate::domain::error::{XyError, XyToolError};
 pub use crate::domain::lifecycle::XyEvent;
 pub use crate::domain::model::{XyModelConfig, XyModelKind};

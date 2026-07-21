@@ -8,6 +8,7 @@ use crate::agent::compaction::CompactionSettings;
 use crate::agent::model::registry::ModelRegistry;
 use crate::agent::session::QueueMode;
 use crate::agent::tools::ToolSet;
+use crate::app::core::driver_error::XyDriverError;
 use crate::infra::bash_exec::InfraBashExecutor;
 use crate::infra::config::types::HooksConfig;
 use crate::infra::event::EventBus;
@@ -37,7 +38,7 @@ pub struct BuildAgentOptions {
     pub steering_mode: QueueMode,
     pub follow_up_mode: QueueMode,
     /// Optional lifecycle sink (compaction etc.). Default: in-process [`EventBus`].
-    /// Turn UX still uses the `Driver::run` EventStream, not this bus.
+    /// Turn UX still uses the `XyDriver::run` EventStream, not this bus.
     pub event_sink: Option<Arc<dyn XyEventSink>>,
     /// Three-tier script hook configuration (empty = zero-cost no-op).
     pub hooks_config: HooksConfig,
@@ -72,10 +73,10 @@ impl Default for BuildAgentOptions {
 /// (`SessionManager`, `XyEventSink`, `InfraBashExecutor`, `StdExportIo`) into the
 /// agent without letting `agent/` know about `infra/` types.
 ///
-/// **Event paths:** turn progress is the `Driver::run` → `XyEvent` stream.
+/// **Event paths:** turn progress is the `XyDriver::run` → `XyEvent` stream.
 /// The injected [`XyEventSink`] (default [`EventBus`]) is for side lifecycle
 /// (e.g. compaction); it is not the multi-client turn bus.
-pub fn build_agent(options: BuildAgentOptions) -> Result<AgentRuntime, String> {
+pub fn build_agent(options: BuildAgentOptions) -> Result<AgentRuntime, XyDriverError> {
     let sessions_dir = SessionManager::default_dir();
     std::fs::create_dir_all(&sessions_dir).map_err(|e| format!("create sessions dir: {e}"))?;
     let session_mgr = SessionManager::new(sessions_dir);
@@ -133,13 +134,13 @@ pub fn build_agent(options: BuildAgentOptions) -> Result<AgentRuntime, String> {
         builder = builder.system_prompt(sp);
     }
 
-    builder.build()
+    builder.build().map_err(XyDriverError::from)
 }
 
-/// Owns MCP client connections for a local Driver session (composition seam).
+/// Owns MCP client connections for a local XyDriver session (composition seam).
 ///
 /// Held by the surface (cli/server) so connections stay alive across turns and
-/// can be shut down / replaced on reload without `Driver` importing infra.
+/// can be shut down / replaced on reload without `XyDriver` importing infra.
 pub struct McpSession {
     manager: Option<Arc<crate::infra::mcp::McpClientManager>>,
 }
@@ -179,9 +180,9 @@ impl McpSession {
     /// Reload MCP tools onto `driver` (empty servers → builtins only, zero-cost).
     pub async fn reload(
         &mut self,
-        driver: &mut crate::app::core::driver::InProcessDriver,
+        driver: &mut crate::app::core::driver::XyInProcessDriver,
         servers: &[McpServerSpec],
-    ) -> Result<(), String> {
+    ) -> Result<(), XyDriverError> {
         use crate::infra::mcp::{connect_and_discover, mcp_enabled};
 
         if let Some(old) = self.manager.take() {
@@ -213,7 +214,7 @@ mod tests {
         let store: Arc<dyn XySessionStore> = Arc::new(crate::infra::session::SessionManager::new(
             tempfile::tempdir().unwrap().path().join("sessions"),
         ));
-        let mut driver = crate::app::core::driver::InProcessDriver::new(agent, store);
+        let mut driver = crate::app::core::driver::XyInProcessDriver::new(agent, store);
         let mut mcp = McpSession::new();
         mcp.reload(&mut driver, &[]).await.unwrap();
         assert!(!mcp.has_manager());

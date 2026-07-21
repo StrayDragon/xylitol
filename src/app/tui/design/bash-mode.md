@@ -17,7 +17,7 @@ components:
 | 行为 | 约定 |
 |---|---|
 | `!` / `!!` 前缀 | Editor 边框切 `{colors.success}`；去掉后恢复 muted |
-| idle Enter `!cmd` | `Driver::execute_bash`（`exclude_from_context=false`）；**MUST NOT** `Driver::run` |
+| idle Enter `!cmd` | `XyDriver::execute_bash`（`exclude_from_context=false`）；**MUST NOT** `XyDriver::run` |
 | idle Enter `!!cmd` | 同上且 `exclude_from_context=true` |
 | 空 `!` / `!!` | 系统提示，不执行 |
 | 结果 | live scrollback：`UiEntry::Bash` 块（`$ cmd` + 输出）；提交即 **pending** tint（`tool-pending-bg`）；输出 chunk 到达时 **同一块内增量刷新**（保持 pending）；成功 → `tool-success-bg`；失败 / Esc `(cancelled)` → `tool-error-bg`；**整行终端宽度** `apply_background_to_line` + 块内 padding_y=1 |
@@ -50,7 +50,7 @@ components:
 |---|---|
 | `packages/xylitol-tui` | **仅**挂起/恢复终端：`with_terminal_suspended`（`stop`/`start`/`refresh_size` + soft pending；**保留** `previous_lines` 供差分，**不**立刻 `do_render`、**不**整屏 clear）；**MUST NOT** 内置 `$EDITOR` / tempfile |
 | `agent_demo` / `src/app/tui` | 解析编辑器命令、写临时文件、spawn/wait、写回 Editor；产品 **c650** 对齐 demo 真路径，harness 仍 stub |
-| `infra` / Driver | bash **执行**走 `Driver::execute_bash`；外部编辑器 **不参与** |
+| `infra` / XyDriver | bash **执行**走 `XyDriver::execute_bash`；外部编辑器 **不参与** |
 
 ## 意向（对齐 pi / demo）
 

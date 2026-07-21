@@ -13,7 +13,7 @@ pub struct PendingOps {
     pub dequeue: bool,
     pub slash: Option<PendingSlash>,
     pub bash: Option<PendingBash>,
-    /// Refresh footer token estimate via Driver (c1035: turn end / stream close).
+    /// Refresh footer token estimate via XyDriver (c1035: turn end / stream close).
     pub footer_token_refresh: bool,
     /// Stage clipboard image into editor as tempfile path (c1155).
     pub paste_image: bool,

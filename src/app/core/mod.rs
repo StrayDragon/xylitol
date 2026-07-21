@@ -15,16 +15,17 @@
 //!   Server/TUI never duplicate it.
 //! - [`mcp_spec`] — embed-facing MCP server description (`McpServerSpec`).
 //! - [`dispatch`] — shared Command execution: maps non-transport
-//!   `protocol::Command` variants to [`driver::Driver`] method calls.
+//!   `protocol::Command` variants to [`driver::XyDriver`] method calls.
 //!   Consumed by tui (spec ce10).
-//! - [`driver`] — the runtime boundary (`Driver` trait + `InProcessDriver`/
-//!   `RemoteDriver`). Surfaces depend on this, never on `agent` internals.
-//!   `InProcessDriver` MAY call documented surface infra (trust / clipboard /
+//! - [`driver`] — the runtime boundary (`XyDriver` trait + `XyInProcessDriver`/
+//!   `XyRemoteDriver`). Surfaces depend on this, never on `agent` internals.
+//!   `XyInProcessDriver` MAY call documented surface infra (trust / clipboard /
 //!   config read); full agent+tool assembly stays in `composition`.
 
 pub(crate) mod bootstrap;
 pub(crate) mod composition;
 pub(crate) mod dispatch;
 pub(crate) mod driver;
+pub(crate) mod driver_error;
 pub(crate) mod mcp_spec;
 pub(crate) mod product_commands;

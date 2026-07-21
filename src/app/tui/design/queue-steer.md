@@ -29,4 +29,4 @@ components:
 
 ## 产品接线
 
-逻辑 seam：c461（`Driver::steer` / `follow_up` / `clear_queue`）；输入面：c480。demo 假队列仅形态学实验，**不得**当作产品 queue strip SSOT。
+逻辑 seam：c461（`XyDriver::steer` / `follow_up` / `clear_queue`）；输入面：c480。demo 假队列仅形态学实验，**不得**当作产品 queue strip SSOT。

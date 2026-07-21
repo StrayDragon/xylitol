@@ -17,8 +17,8 @@ components:
 ## MUST
 
 1. 恰好 **1 行** dim。字段序：`cwd · model · • {thinking}`；有 `ContextTokenEstimate` 时追加 `· used … tokens`（见下表）；可选 `· branch`。
-2. Thinking 标签（**c1150**）：level=`off` → `thinking off`；其余用 `ThinkingLevel::as_str`（如 `medium`、`xhigh`）。形如 `~/x · model · • thinking off` 或 `· • high`。与编辑器 thinking 边框同步；切换经 Driver，**MUST NOT** 因 cycle 向 transcript 刷系统行。
-3. Token 文案按 `TokenProvenance`（经 `Driver::estimate_context_tokens`）：
+2. Thinking 标签（**c1150**）：level=`off` → `thinking off`；其余用 `ThinkingLevel::as_str`（如 `medium`、`xhigh`）。形如 `~/x · model · • thinking off` 或 `· • high`。与编辑器 thinking 边框同步；切换经 XyDriver，**MUST NOT** 因 cycle 向 transcript 刷系统行。
+3. Token 文案按 `TokenProvenance`（经 `XyDriver::estimate_context_tokens`）：
 
    | Provenance | 文案 |
    |---|---|

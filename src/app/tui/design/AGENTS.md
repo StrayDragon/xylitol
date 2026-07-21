@@ -10,7 +10,7 @@ Token / 全局 Overview：上一级 [`../DESIGN.md`](../DESIGN.md)。引擎库�
 |---|---|---|---|
 | **静态设计图** | [`playground/`](./playground/) | 固定状态的形状 / 色板 / 整壳对照 | 不表达实现分层（无置灰/「包」标签）；不教快捷键百科；不当实现真值 |
 | **动态 playground** | `just demo-tui`（`agent_demo`） | 可交互试形状与键位 | 不替代产品 host |
-| **生产实现** | `src/app/tui/` | Driver / bridge / layout 真接线 | 不在本目录再实现通用引擎组件 |
+| **生产实现** | `src/app/tui/` | XyDriver / bridge / layout 真接线 | 不在本目录再实现通用引擎组件 |
 
 **MUST（合约文）**：本目录 `*.md` + [`../DESIGN.md`](../DESIGN.md)。
 

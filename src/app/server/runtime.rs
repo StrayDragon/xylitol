@@ -126,7 +126,7 @@ pub async fn start(
         log::info!("{summary}");
     }
 
-    // ── Server state (Driver seam — same as Print) ────────────────
+    // ── Server state (XyDriver seam — same as Print) ────────────────
     let session_id = format!("srv-{}", uuid::Uuid::new_v4());
     let journal = EventJournal::with_default_capacity(&session_id);
     let gateway = Arc::new(ReverseRpcGateway::new());

@@ -26,7 +26,7 @@ use crossterm::event::{Event, KeyEventKind};
 use futures::StreamExt;
 use xylitol_tui::{CrosstermTerminal, InputEvent};
 
-use crate::app::core::driver::{Driver, EventStream as AgentEventStream};
+use crate::app::core::driver::{EventStream as AgentEventStream, XyDriver, XyDriverError};
 
 use self::effects::{drain_pending, run_interactive_bang};
 use self::host::{HostEvent, HostSession};
@@ -90,7 +90,7 @@ impl std::error::Error for TuiPreflightError {}
 /// - API key unresolved for the selected provider
 /// - `tui` verb / default TTY entry forced on a pipe without a PTY
 /// - (optional) unreachable `base_url` probe — keep off critical path unless requested
-pub fn preflight(driver: &dyn Driver) -> Result<(), TuiPreflightError> {
+pub fn preflight(driver: &dyn XyDriver) -> Result<(), TuiPreflightError> {
     use std::io::IsTerminal;
 
     if !std::io::stdin().is_terminal() {
@@ -113,7 +113,7 @@ pub fn preflight(driver: &dyn Driver) -> Result<(), TuiPreflightError> {
 ///
 /// Callers MUST run [`preflight`] first (CLI does). This still fails closed if
 /// `TerminalGuard::enter` cannot start the terminal.
-pub async fn run(driver: &mut dyn Driver) -> Result<(), String> {
+pub async fn run(driver: &mut dyn XyDriver) -> Result<(), XyDriverError> {
     install_lifecycle_hooks();
     log::info!(target: "xylitol::tui", "starting product TUI host");
 
@@ -129,7 +129,10 @@ pub async fn run(driver: &mut dyn Driver) -> Result<(), String> {
     result
 }
 
-async fn run_host_loop(terminal: CrosstermTerminal, driver: &mut dyn Driver) -> Result<(), String> {
+async fn run_host_loop(
+    terminal: CrosstermTerminal,
+    driver: &mut dyn XyDriver,
+) -> Result<(), XyDriverError> {
     let model = driver
         .current_model()
         .map(|m| {
@@ -223,7 +226,9 @@ async fn run_host_loop(terminal: CrosstermTerminal, driver: &mut dyn Driver) -> 
 }
 
 /// Shared crossterm → HostEvent map for main select and bang input stream (c725 / 2A).
-fn map_crossterm_item(item: Result<Event, std::io::Error>) -> Option<Result<HostEvent, String>> {
+fn map_crossterm_item(
+    item: Result<Event, std::io::Error>,
+) -> Option<Result<HostEvent, XyDriverError>> {
     match item {
         Ok(Event::Key(key)) => {
             if key.kind != KeyEventKind::Press && key.kind != KeyEventKind::Repeat {
@@ -235,7 +240,7 @@ fn map_crossterm_item(item: Result<Event, std::io::Error>) -> Option<Result<Host
         Ok(Event::Paste(data)) => Some(Ok(HostEvent::Input(InputEvent::Paste(data)))),
         Ok(Event::Resize(cols, rows)) => Some(Ok(HostEvent::Resize { cols, rows })),
         Ok(_) => None,
-        Err(e) => Some(Err(format!("input error: {e}"))),
+        Err(e) => Some(Err(format!("input error: {e}").into())),
     }
 }
 
@@ -243,7 +248,7 @@ fn on_agent_stream_item<T: xylitol_tui::Terminal>(
     session: &mut HostSession<T>,
     agent_stream: &mut Option<AgentEventStream>,
     maybe: Option<crate::domain::lifecycle::XyEvent>,
-) -> Result<(), String> {
+) -> Result<(), XyDriverError> {
     match maybe {
         Some(xy) => session.step(HostEvent::Xy(Box::new(xy))),
         None => {

@@ -37,7 +37,7 @@ use xylitol::runtime_protocol::{XyTool, XyToolCtx};
 
 pub struct Workspace {
     pub dir: RefCell<Option<tempfile::TempDir>>,
-    pub last_result: RefCell<Option<Result<String, String>>>,
+    pub last_result: RefCell<Option<Result<String, XyDriverError>>>,
 }
 impl Workspace {
     fn new() -> Self {
@@ -67,7 +67,7 @@ pub struct XySessionStore {
     pub mgr: RefCell<Option<SessionManager>>,
     pub entries: RefCell<Vec<SessionEntry>>,
     pub current_id: RefCell<Option<String>>,
-    pub last_result: RefCell<Option<Result<String, String>>>,
+    pub last_result: RefCell<Option<Result<String, XyDriverError>>>,
 }
 impl XySessionStore {
     fn new() -> Self {
@@ -130,7 +130,7 @@ impl xylitol::XyHookBus for WiringHookLog {
 pub struct AgentState {
     pub registry: RefCell<ModelRegistry>,
     pub events: RefCell<Vec<XyEvent>>,
-    pub last_result: RefCell<Option<Result<String, String>>>,
+    pub last_result: RefCell<Option<Result<String, XyDriverError>>>,
     pub context_usage: RefCell<Option<ContextUsage>>,
     pub compaction_result: RefCell<Option<bool>>,
     pub compaction_threshold: Cell<f64>,
@@ -183,7 +183,7 @@ fn agent() -> AgentState {
 // Helpers
 // ═══════════════════════════════════════════════════════════════════
 
-fn result_ok_str(r: &RefCell<Option<Result<String, String>>>) -> String {
+fn result_ok_str(r: &RefCell<Option<Result<String, XyDriverError>>>) -> String {
     let guard = r.borrow();
     guard.as_ref().unwrap().as_ref().unwrap().clone()
 }
@@ -257,11 +257,11 @@ fn make_agent_with_store(
 }
 
 /// Library-seam operation dictionary (c990+). Unknown names return a readable Err.
-/// Must not call `HookDispatcher::dispatch` directly — only Driver/agent APIs.
-async fn run_wiring_operation(agent: &AgentState, op: &str) -> Result<(), String> {
+/// Must not call `HookDispatcher::dispatch` directly — only XyDriver/agent APIs.
+async fn run_wiring_operation(agent: &AgentState, op: &str) -> Result<(), XyDriverError> {
     use xylitol::domain::session_types::SessionTreeKind;
     use xylitol::domain::types::ThinkingLevel;
-    use xylitol::embed::{Driver, InProcessDriver};
+    use xylitol::embed::{XyDriver, XyInProcessDriver};
 
     match op {
         "确保新会话" => {
@@ -269,7 +269,7 @@ async fn run_wiring_operation(agent: &AgentState, op: &str) -> Result<(), String
             let (mut runtime, store) = make_agent_with_store(agent);
             let orphan = uuid::Uuid::new_v4().to_string();
             runtime.inner_mut().set_session(orphan);
-            let driver = InProcessDriver::new(runtime, store);
+            let driver = XyInProcessDriver::new(runtime, store);
             driver
                 .session_tree(SessionTreeKind::MessageHistory)
                 .await
@@ -280,7 +280,7 @@ async fn run_wiring_operation(agent: &AgentState, op: &str) -> Result<(), String
             let _ = agent.ensure_wiring_hook_log();
             ensure_wiring_fake_model(agent, true);
             let (runtime, store) = make_agent_with_store(agent);
-            let mut driver = InProcessDriver::new(runtime, store);
+            let mut driver = XyInProcessDriver::new(runtime, store);
             driver.select_model("fake").map(|_| ())
         }
         "设置思考级别 high" => {
@@ -288,7 +288,7 @@ async fn run_wiring_operation(agent: &AgentState, op: &str) -> Result<(), String
             ensure_wiring_fake_model(agent, true);
             let (runtime, store) = make_agent_with_store(agent);
             // Select fake first so a model exists; then change thinking.
-            let mut driver = InProcessDriver::new(runtime, store);
+            let mut driver = XyInProcessDriver::new(runtime, store);
             let _ = driver.select_model("fake");
             // Clear recorder so only thinking_level_select remains for key asserts.
             if let Some(log) = agent.wiring_hook_log.borrow().as_ref() {
@@ -302,7 +302,7 @@ async fn run_wiring_operation(agent: &AgentState, op: &str) -> Result<(), String
             let (mut runtime, store) = make_agent_with_store(agent);
             let orphan = uuid::Uuid::new_v4().to_string();
             runtime.inner_mut().set_session(orphan);
-            let driver = InProcessDriver::new(runtime, store);
+            let driver = XyInProcessDriver::new(runtime, store);
             driver
                 .session_tree(SessionTreeKind::MessageHistory)
                 .await
@@ -316,13 +316,13 @@ async fn run_wiring_operation(agent: &AgentState, op: &str) -> Result<(), String
             store.create(&current, Some("."), None).await?;
             store.create(&target, Some("."), None).await?;
             runtime.inner_mut().set_session(current);
-            let mut driver = InProcessDriver::new(runtime, store);
+            let mut driver = XyInProcessDriver::new(runtime, store);
             driver.switch_session(&target).await.map(|_| ())
         }
         "执行 bash" => {
             let _ = agent.ensure_wiring_hook_log();
             let (runtime, store) = make_agent_with_store(agent);
-            let driver = InProcessDriver::new(runtime, store);
+            let driver = XyInProcessDriver::new(runtime, store);
             driver.execute_bash("true", false, None).await.map(|_| ())
         }
         other => Err(format!("未知操作: {other}")),
@@ -2222,12 +2222,12 @@ fn _g_agent_mock_tool_call(_agent: &AgentState, tool: String, args: String) {
 fn _g_read_tool_result(_agent: &AgentState, result: String) {
     set_fake_tool_result(&result);
 }
-#[when("经 Driver 启动会话并在首个 TextDelta 后 abort")]
+#[when("经 XyDriver 启动会话并在首个 TextDelta 后 abort")]
 async fn _w_driver_abort_after_first_delta(agent: &AgentState) {
-    use xylitol::embed::{Driver, InProcessDriver};
+    use xylitol::embed::{XyDriver, XyInProcessDriver};
 
     let (runtime, store) = make_agent_with_store(agent);
-    let mut driver = InProcessDriver::new(runtime, store);
+    let mut driver = XyInProcessDriver::new(runtime, store);
     let mut stream = driver.run("abort-mid-stream").await;
     let mut local_events = Vec::new();
     let mut saw_delta = false;
@@ -2473,7 +2473,7 @@ thread_local! {
     static AR_RUNNER_EVENTS: std::cell::RefCell<Vec<XyEvent>> =
         const { std::cell::RefCell::new(Vec::new()) };
     static AR_BANG_RESULT: std::cell::RefCell<
-        Option<Result<xylitol::runtime_protocol::XyBashResult, String>>,
+        Option<Result<xylitol::runtime_protocol::XyBashResult, XyDriverError>>,
     > = const { std::cell::RefCell::new(None) };
 }
 
@@ -4255,7 +4255,9 @@ fn tokenizer_bdd() -> TokenizerBdd {
     TokenizerBdd::new()
 }
 
-fn parse_app_config_yaml(yaml: &str) -> Result<xylitol::infra::config::types::AppConfig, String> {
+fn parse_app_config_yaml(
+    yaml: &str,
+) -> Result<xylitol::infra::config::types::AppConfig, XyDriverError> {
     // Prefer direct typed deserialize so unknown enum variants (e.g. local_tokenizer)
     // fail here rather than only after a loose Value round-trip.
     let cfg: xylitol::infra::config::types::AppConfig =
