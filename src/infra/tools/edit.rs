@@ -12,16 +12,31 @@ use std::collections::HashSet;
 use std::sync::Arc;
 
 use async_trait::async_trait;
+use serde::Deserialize;
 use serde_json::{Value, json};
 
 use crate::domain::error::XyToolError;
 use crate::runtime_protocol::{XyTool, XyToolCtx};
 
+use super::args::parse_tool_args;
 use super::mutation::FileMutationQueue;
 use super::patch;
 
 pub struct EditTool {
     mutation_queue: Arc<FileMutationQueue>,
+}
+
+#[derive(Debug, Deserialize)]
+#[serde(rename_all = "camelCase")]
+struct EditItem {
+    old_text: String,
+    new_text: String,
+}
+
+#[derive(Debug, Deserialize)]
+struct EditArgs {
+    path: String,
+    edits: Vec<EditItem>,
 }
 
 impl EditTool {
@@ -184,38 +199,29 @@ impl XyTool for EditTool {
     }
 
     async fn execute(&self, ctx: &XyToolCtx, args: Value) -> Result<String, XyToolError> {
-        let file_path = args["path"]
-            .as_str()
-            .ok_or_else(|| XyToolError::InvalidArgs("missing 'path'".into()))?;
-
-        let edits_arr = args["edits"]
-            .as_array()
-            .ok_or_else(|| XyToolError::InvalidArgs("missing 'edits' array".into()))?;
-        if edits_arr.is_empty() {
+        let EditArgs {
+            path: file_path,
+            edits,
+        } = parse_tool_args(args)?;
+        if edits.is_empty() {
             return Err(XyToolError::InvalidArgs("edits must not be empty".into()));
         }
 
-        let edit_pairs: Vec<(String, String)> = edits_arr
-            .iter()
+        let edit_pairs: Vec<(String, String)> = edits
+            .into_iter()
             .enumerate()
             .map(|(i, e)| {
-                let old = e["oldText"].as_str().ok_or_else(|| {
-                    XyToolError::InvalidArgs(format!("edits[{i}].oldText required"))
-                })?;
-                let new = e["newText"].as_str().ok_or_else(|| {
-                    XyToolError::InvalidArgs(format!("edits[{i}].newText required"))
-                })?;
-                if old.is_empty() {
+                if e.old_text.is_empty() {
                     return Err(XyToolError::InvalidArgs(format!(
                         "edits[{i}].oldText must not be empty"
                     )));
                 }
-                if old == new {
+                if e.old_text == e.new_text {
                     return Err(XyToolError::InvalidArgs(format!(
                         "edits[{i}]: oldText == newText (no change)"
                     )));
                 }
-                Ok((old.to_string(), new.to_string()))
+                Ok((e.old_text, e.new_text))
             })
             .collect::<Result<_, _>>()?;
 
@@ -230,7 +236,7 @@ impl XyTool for EditTool {
         }
 
         let cancel = ctx.cancel.clone();
-        let fp = file_path.to_string();
+        let fp = file_path;
 
         // Use mutation queue to serialize same-path edits
         let result_text = self

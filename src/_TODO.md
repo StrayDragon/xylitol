@@ -194,23 +194,23 @@ crate 内热路径 / 内置工具 = struct + serde
 
 ### 要做 — 工具
 
-- [ ] **C1** 为每个内置工具增加 `XxxArgs`（`Deserialize`），入口 `serde_json::from_value` → `XyToolError::InvalidArgs`。
-  - 建议顺序：`read` → `grep` → `find`/`ls` → `write`/`edit` → `bash`。
-- [ ] **C2** schema 与 Args 同构策略二选一（写入决议）：
-  - (a) 手写 schema 与 Args 字段并置 + 单测断言关键字段；或
-  - (b) `schemars` 从 Args 生成（注意 camelCase 与现有 LLM schema 兼容）。
+- [x] **C1** 为每个内置工具增加 `XxxArgs`（`Deserialize`），入口 `serde_json::from_value` → `XyToolError::InvalidArgs`。
+  - 顺序完成：`read` → `grep` → `find`/`ls` → `write`/`edit` → `bash`；共享 `infra/tools/args.rs::parse_tool_args`。
+- [x] **C2** schema 与 Args 同构策略二选一（写入决议）：
+  - **选定 (a)**：手写 schema 与 Args 字段并置（LLM schema 形状稳定）；Args 用 `serde`/`rename_all = "camelCase"` 对齐。
 - [ ] **C3**（可选后置）`TypedTool` associated type + blanket 擦成 `dyn XyTool`——仅当 C1 完成后仍痛再做。
 
 ### 要做 — 钩子
 
-- [ ] **C4** 保持 `XyHookBus::dispatch(..., Value)`；调用方用 typed 组装再 `to_value`。
+- [x] **C4** 保持 `XyHookBus::dispatch(..., Value)`；调用方用 typed 组装再 `to_value`。（确认：本轮不改）
 - [ ] **C5** 继续扩展 `HookEvent` 变体，减少 dispatcher 内临时 `json!` 散落。
-- [ ] **C6** `AgentHooks`：评估 before/after 是否改为更窄类型；若嵌入回调少，可保留 `Value` 并注明「刻意」。
+- [x] **C6** `AgentHooks`：评估 before/after 是否改为更窄类型；**刻意保留 `Value`**（嵌入回调少；与脚本 JSON 同形）。
 
 ### 决议（填写）
 
-- Schema 策略：_（待填 a/b）_
-- `AgentHooks` 是否改签名：_（待填）_
+- Schema 策略：**`(a)` 手写 schema + typed Args**
+- `AgentHooks` 是否改签名：**否（刻意保留 Value）**
+- 模块放置：`args.rs` **暂留** `infra/tools/` 顶层（与 `path_utils`/`truncate` 同档）。日后若整理共享模块，倾向整批迁入 `infra/tools/support/`（勿单独塞进泛称 `utils/`）。
 
 ### 验收
 
@@ -397,6 +397,8 @@ map.rs → 变薄：project_for_llm + 少量边界转换
 | 2026-07-21 | agent | §A | 落地 `QUALITY_RETUNE.md`；根/`src`/tui AGENTS 指针；A1–A4 勾选 |
 | 2026-07-21 | agent | §B | 决议：路线 β + 方案 3（`XyDriver` / `XyDriverError`）；开工实现 |
 | 2026-07-21 | agent | §B | 落地重命名 + `XyDriverError` + 导出/AGENTS；dispatch/harness/driver 测绿 |
+| 2026-07-21 | agent | §B | commit `57efe1a7` |
+| 2026-07-21 | agent | §C | 内置工具 `*Args` + `parse_tool_args`；schema 策略 (a)；hooks 签名刻意保留 |
 |  |  |  |  |
 
 ---

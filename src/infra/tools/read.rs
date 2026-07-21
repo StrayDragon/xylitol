@@ -8,6 +8,7 @@
 //! - Image files: resize → `AgentPart::Image` (+ short text note); c1155 / t21
 
 use async_trait::async_trait;
+use serde::Deserialize;
 use serde_json::{Value, json};
 
 use crate::domain::error::XyToolError;
@@ -15,11 +16,21 @@ use crate::domain::message::AgentPart;
 use crate::infra::image::agent_part_from_image_path;
 use crate::runtime_protocol::{XyTool, XyToolCtx};
 
+use super::args::parse_tool_args;
 use super::truncate::{TruncationOptions, truncate_head};
 
 const IMAGE_EXTENSIONS: &[&str] = &["jpg", "jpeg", "png", "gif", "webp", "bmp", "ico", "svg"];
 
 pub struct ReadTool;
+
+#[derive(Debug, Deserialize)]
+struct ReadArgs {
+    path: String,
+    #[serde(default)]
+    offset: i64,
+    #[serde(default)]
+    limit: Option<i64>,
+}
 
 fn is_image_path(file_path: &str) -> bool {
     let ext = std::path::Path::new(file_path)
@@ -79,9 +90,12 @@ impl XyTool for ReadTool {
         ctx: &XyToolCtx,
         args: Value,
     ) -> Result<Vec<AgentPart>, XyToolError> {
-        let file_path = args["path"]
-            .as_str()
-            .ok_or_else(|| XyToolError::InvalidArgs("missing 'path'".into()))?;
+        let ReadArgs {
+            path: file_path,
+            offset,
+            limit,
+        } = parse_tool_args(args)?;
+        let file_path = file_path.as_str();
 
         if ctx.cancel.is_cancelled() {
             return Err(XyToolError::Aborted);
@@ -113,8 +127,6 @@ impl XyTool for ReadTool {
         })?;
 
         let total_lines = raw_content.lines().count();
-        let offset = args["offset"].as_i64().unwrap_or(0);
-        let limit = args["limit"].as_i64();
 
         // Apply offset/limit filtering
         let filtered = if offset <= 0 && limit.is_none() {
