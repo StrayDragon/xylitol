@@ -105,6 +105,16 @@ impl UiRoot {
                     self.confirm_models_selection();
                     return;
                 }
+                // ←→ / Shift+Tab: cycle provisional thinking on focused model (c1470).
+                // `tui.select.pageUp|pageDown` stay unbound so ←→ are not stolen.
+                if matches_key_event(key, "left") {
+                    self.cycle_focused_model_level(false);
+                    return;
+                }
+                if matches_key_event(key, "right") || matches_key_event(key, "shift+tab") {
+                    self.cycle_focused_model_level(true);
+                    return;
+                }
                 if matches_binding(key, "tui.select.up")
                     || matches_binding(key, "tui.select.down")
                     || matches_binding(key, "tui.select.pageUp")
@@ -112,15 +122,6 @@ impl UiRoot {
                 {
                     self.models_list.handle_input(event);
                     self.rebuild_models_items_keep_selection();
-                    return;
-                }
-                // ←→ or Shift+Tab cycle provisional thinking on focus model (picker only).
-                if matches_key_event(key, "left") {
-                    self.cycle_focused_model_level(false);
-                    return;
-                }
-                if matches_key_event(key, "right") || matches_key_event(key, "shift+tab") {
-                    self.cycle_focused_model_level(true);
                     return;
                 }
                 if matches_key_event(key, "backspace") {

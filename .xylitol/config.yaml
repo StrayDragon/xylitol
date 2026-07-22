@@ -6,6 +6,8 @@
 # YAML 插值：secret.NAME（须在 secret.env 定义）；vars.home（用户 home）；env.KEY。
 # 勿在注释里写未转义的双花括号示例。
 # 不再支持 config.local.yaml。
+#
+# models: 来自 pi providers dump；键与 `model` 均用上游 name/id，不做别名转换。
 
 # 本地 tokenizer encode：默认 off（缺省同义）；要精确本地计数时改为 on
 # 引号避免部分 YAML 1.1 解析器把 off 当成布尔
@@ -18,19 +20,170 @@ tokenizers:
     # file: tokenizer.json
 
 models:
-  default_model: qwen
+  default_model: "Qwen3.6-35B-A3B/UD-Q5_K_XL-think-coding"
   models:
-    qwen:
+    "DeepSeek-V4-Flash/UD-IQ3_XXS":
       provider: openai
-      model: Qwen3.6-35B-A3B/UD-Q5_K_XL-think-coding
+      model: "DeepSeek-V4-Flash/UD-IQ3_XXS"
       base_url: http://tufa:50256/v1
+      api: openai-completions
+      thinking: false
+      context_window: 65536
+    "Ornith-1.0-35B-APEX/I-Quality":
+      provider: openai
+      model: "Ornith-1.0-35B-APEX/I-Quality"
+      base_url: http://tufa:50256/v1
+      api: openai-completions
+      thinking: false
+      context_window: 131072
+    "Ornith-1.0-35B-MTP-APEX/I-Quality":
+      provider: openai
+      model: "Ornith-1.0-35B-MTP-APEX/I-Quality"
+      base_url: http://tufa:50256/v1
+      api: openai-completions
+      thinking: false
+      context_window: 131072
+    "Qwen3-Coder-Next-80B-A3B/unsloth-UD-Q4_K_M":
+      provider: openai
+      model: "Qwen3-Coder-Next-80B-A3B/unsloth-UD-Q4_K_M"
+      base_url: http://tufa:50256/v1
+      api: openai-completions
+      thinking: false
+      context_window: 131072
       tokenizer: qwen36
+    "Qwen3.6-27B/Omnimerge-v4-Q6_K":
+      provider: openai
+      model: "Qwen3.6-27B/Omnimerge-v4-Q6_K"
+      base_url: http://tufa:50256/v1
+      api: openai-completions
+      thinking: false
+      context_window: 131072
+      tokenizer: qwen36
+    "Qwen3.6-27B/unsloth-MTP-Q4_K_M":
+      provider: openai
+      model: "Qwen3.6-27B/unsloth-MTP-Q4_K_M"
+      base_url: http://tufa:50256/v1
+      api: openai-completions
+      thinking: false
+      context_window: 131072
+      tokenizer: qwen36
+    "Qwen3.6-27B/unsloth-MTP-UD-Q6_K_XL":
+      provider: openai
+      model: "Qwen3.6-27B/unsloth-MTP-UD-Q6_K_XL"
+      base_url: http://tufa:50256/v1
+      api: openai-completions
+      thinking: false
+      context_window: 131072
+      tokenizer: qwen36
+    "Qwen3.6-27B/unsloth-UD-Q6_K_XL":
+      provider: openai
+      model: "Qwen3.6-27B/unsloth-UD-Q6_K_XL"
+      base_url: http://tufa:50256/v1
+      api: openai-completions
+      thinking: false
+      context_window: 131072
+      tokenizer: qwen36
+    "Qwen3.6-35B-A3B/UD-Q4_K_M-instruct-general":
+      provider: openai
+      model: "Qwen3.6-35B-A3B/UD-Q4_K_M-instruct-general"
+      base_url: http://tufa:50256/v1
+      api: openai-completions
+      thinking: false
+      context_window: 131072
+      tokenizer: qwen36
+    "Qwen3.6-35B-A3B/UD-Q4_K_M-instruct-reasoning":
+      provider: openai
+      model: "Qwen3.6-35B-A3B/UD-Q4_K_M-instruct-reasoning"
+      base_url: http://tufa:50256/v1
+      api: openai-completions
+      thinking: false
+      context_window: 131072
+      tokenizer: qwen36
+    "Qwen3.6-35B-A3B/UD-Q4_K_M-think-coding":
+      provider: openai
+      model: "Qwen3.6-35B-A3B/UD-Q4_K_M-think-coding"
+      base_url: http://tufa:50256/v1
+      api: openai-completions
+      thinking: true
+      context_window: 131072
+      tokenizer: qwen36
+    "Qwen3.6-35B-A3B/UD-Q4_K_M-think-general":
+      provider: openai
+      model: "Qwen3.6-35B-A3B/UD-Q4_K_M-think-general"
+      base_url: http://tufa:50256/v1
+      api: openai-completions
+      thinking: true
+      context_window: 131072
+      tokenizer: qwen36
+    "Qwen3.6-35B-A3B/UD-Q5_K_XL-instruct-general":
+      provider: openai
+      model: "Qwen3.6-35B-A3B/UD-Q5_K_XL-instruct-general"
+      base_url: http://tufa:50256/v1
+      api: openai-completions
+      thinking: false
+      context_window: 131072
+      tokenizer: qwen36
+    "Qwen3.6-35B-A3B/UD-Q5_K_XL-instruct-reasoning":
+      provider: openai
+      model: "Qwen3.6-35B-A3B/UD-Q5_K_XL-instruct-reasoning"
+      base_url: http://tufa:50256/v1
+      api: openai-completions
+      thinking: false
+      context_window: 131072
+      tokenizer: qwen36
+    "Qwen3.6-35B-A3B/UD-Q5_K_XL-think-coding":
+      provider: openai
+      model: "Qwen3.6-35B-A3B/UD-Q5_K_XL-think-coding"
+      base_url: http://tufa:50256/v1
+      api: openai-completions
+      thinking: true
+      context_window: 131072
+      tokenizer: qwen36
+    "Qwen3.6-35B-A3B/UD-Q5_K_XL-think-general":
+      provider: openai
+      model: "Qwen3.6-35B-A3B/UD-Q5_K_XL-think-general"
+      base_url: http://tufa:50256/v1
+      api: openai-completions
+      thinking: true
+      context_window: 131072
+      tokenizer: qwen36
+    "Qwen3.6-35B-A3B/unsloth-MTP-UD-Q4_K_M-think-coding":
+      provider: openai
+      model: "Qwen3.6-35B-A3B/unsloth-MTP-UD-Q4_K_M-think-coding"
+      base_url: http://tufa:50256/v1
+      api: openai-completions
+      thinking: true
+      context_window: 131072
+      tokenizer: qwen36
+    "Qwen3.6-35B-A3B/unsloth-MTP-UD-Q5_K_XL-think-coding":
+      provider: openai
+      model: "Qwen3.6-35B-A3B/unsloth-MTP-UD-Q5_K_XL-think-coding"
+      base_url: http://tufa:50256/v1
+      api: openai-completions
+      thinking: true
+      context_window: 131072
+      tokenizer: qwen36
+    "Qwopus3.6-35B-A3B/v1-Q6_K-Coding":
+      provider: openai
+      model: "Qwopus3.6-35B-A3B/v1-Q6_K-Coding"
+      base_url: http://tufa:50256/v1
+      api: openai-completions
+      thinking: false
+      context_window: 131072
+      tokenizer: qwen36
+    "Step-3.7-Flash-GGUF/IQ4_XS":
+      provider: openai
+      model: "Step-3.7-Flash-GGUF/IQ4_XS"
+      base_url: http://tufa:50256/v1
+      api: openai-completions
+      thinking: false
+      context_window: 65536
 
 agents:
   default_profile: default
   profiles:
     default:
-      model: qwen
+      model: "Qwen3.6-35B-A3B/UD-Q5_K_XL-think-coding"
 
 mcp_servers:
   - name: context7

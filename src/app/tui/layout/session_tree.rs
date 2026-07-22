@@ -102,7 +102,10 @@ pub(crate) fn tree_help_line() -> String {
     let mut parts = Vec::new();
     // Purpose-first labels; ⊞/⊟ match tree fold markers (pi connector indicators).
     push_help_item(&mut parts, &move_keys, "move", false);
-    push_help_item(&mut parts, &page_keys, "page", false);
+    // page chords unbound by default (←→ owned by `/model` picker).
+    if !page_keys.is_empty() {
+        push_help_item(&mut parts, &page_keys, "page", false);
+    }
     push_help_item(&mut parts, &branch_keys, "fold/unfold", false);
     push_help_item(&mut parts, &label_keys, "edit label", false);
     push_help_item(&mut parts, &label_time_keys, "timestamps", false);

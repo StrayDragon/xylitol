@@ -1882,3 +1882,52 @@ fn upper_cache_reused_across_spinner_ticks() {
         "apply_ui_model must invalidate upper cache"
     );
 }
+
+#[test]
+fn models_picker_left_right_cycle_thinking_levels() {
+    use super::layout::{ModelPickerRow, UiRoot};
+    use crate::protocol::types::ThinkingLevel;
+    use crossterm::event::{KeyCode, KeyEvent, KeyModifiers};
+    use xylitol_tui::{Component, InputEvent};
+
+    let levels = ThinkingLevel::STANDARD.to_vec();
+    let row = ModelPickerRow {
+        id: "qwen".into(),
+        label: "qwen".into(),
+        levels: levels.clone(),
+        provisional: ThinkingLevel::Medium,
+    };
+    let mut root = UiRoot::new();
+    let _ = root.render(120);
+    root.mount_models_picker(vec![row]);
+
+    root.handle_input(InputEvent::Key(KeyEvent::new(
+        KeyCode::Left,
+        KeyModifiers::NONE,
+    )));
+    root.handle_input(InputEvent::Key(KeyEvent::new(
+        KeyCode::Enter,
+        KeyModifiers::NONE,
+    )));
+    let left = root.take_pending_model_select().expect("left confirm");
+    assert_eq!(left.model_id, "qwen");
+    assert_eq!(left.thinking, ThinkingLevel::Low);
+
+    let row = ModelPickerRow {
+        id: "qwen".into(),
+        label: "qwen".into(),
+        levels,
+        provisional: ThinkingLevel::Medium,
+    };
+    root.mount_models_picker(vec![row]);
+    root.handle_input(InputEvent::Key(KeyEvent::new(
+        KeyCode::Right,
+        KeyModifiers::NONE,
+    )));
+    root.handle_input(InputEvent::Key(KeyEvent::new(
+        KeyCode::Enter,
+        KeyModifiers::NONE,
+    )));
+    let right = root.take_pending_model_select().expect("right confirm");
+    assert_eq!(right.thinking, ThinkingLevel::High);
+}

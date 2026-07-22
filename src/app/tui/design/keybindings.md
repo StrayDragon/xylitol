@@ -54,7 +54,7 @@ components:
 | Ctrl+T/U/L/A | filter **toggle** ↔ default（no-tools / user / labeled / all） | **c635** |
 | Ctrl+O | filter cycle forward（树开优先；关树仍为工具视口） | **c635** |
 | Ctrl+Shift+O | filter cycle **backward** | **c685** |
-| Ctrl/Alt+←→ | fold / 分支跳转（转发包；裸 ←→ 仍翻页） | **c640** |
+| Ctrl/Alt+←→ | fold / 分支跳转（转发包）。裸 ←→ **不**翻页（`tui.select.pageUp|pageDown` 默认无键，留给 `/model`） | **c640** / **c1470** |
 | Shift+F | **fork** 新 session（user→Before / 非 user→At；对齐 pi） | **c645** |
 | Shift+L / T | annotation 编辑 / 时间戳显隐 | **c690** |
 | Enter | `travel_session_tree`（已 **c615**） | — |
