@@ -364,6 +364,12 @@
     当 按 fold 键
     那么 子行不可见且再 unfold 恢复
 
+  @req:ati29
+  场景: toggle-id-visibility
+    假如 Resume 面板已开且默认隐藏 id
+    当 按 Ctrl+U
+    那么 完整 session id 列出现；再按 Ctrl+U 则隐藏
+
   @req:ati33
   场景: at-opens-popup
     假如 产品 idle 且 AtPath 根目录含 hello.rs
