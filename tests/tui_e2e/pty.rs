@@ -563,14 +563,10 @@ fn pty_product_fake_bang_esc_cancelled() {
     // Brief settle so execute_bash is in-flight, then Esc.
     session.drain(Duration::from_millis(400));
     session.send_keys("\x1b").expect("Esc abort bang");
-    let screen = session
-        .wait_for("(cancelled)", Duration::from_secs(15), COLS, ROWS)
+    // Tall welcome/skills + differential CSI leaves CapturedScreen stale; assert raw.
+    session
+        .wait_for_raw("(cancelled)", Duration::from_secs(15))
         .expect("bang Esc should show (cancelled)");
-    let text = screen.text();
-    assert!(
-        text.contains("(cancelled)"),
-        "bang Esc must show (cancelled); screen:\n{text}"
-    );
     session.send_keys("\x15/exit\r").expect("submit /exit");
     let _ = session.wait_exit(Duration::from_secs(30));
 }
@@ -592,12 +588,13 @@ fn pty_product_fake_bang_second_hard_reject() {
     session
         .send_keys("\x15!echo second\r")
         .expect("submit second bang");
+    // Same CapturedScreen staleness as bang Esc / session-tree (see wait_for_raw).
     session
-        .wait_for("rejected", Duration::from_secs(10), COLS, ROWS)
+        .wait_for_raw("rejected", Duration::from_secs(10))
         .expect("second bang must hard-reject");
     // Cancel hanging first bang so /exit is clean.
     session.send_keys("\x1b").expect("Esc first bang");
-    let _ = session.wait_for("(cancelled)", Duration::from_secs(15), COLS, ROWS);
+    let _ = session.wait_for_raw("(cancelled)", Duration::from_secs(15));
     session.send_keys("\x15/exit\r").expect("submit /exit");
     let _ = session.wait_exit(Duration::from_secs(30));
 }
@@ -665,11 +662,12 @@ fn pty_product_fake_session_tree_label_path() {
     session.send_keys("\x1b").expect("dismiss completion");
     session.drain(Duration::from_millis(100));
     session.send_keys("\r").expect("submit debug scene");
+    // Cell-grid oracle goes stale under tall welcome; fixture notes live in raw PTY.
     session
-        .wait_for("debug scene", Duration::from_secs(20), COLS, ROWS)
+        .wait_for_raw("debug scene", Duration::from_secs(20))
         .expect("debug scene note");
     session
-        .wait_for("labeled root", Duration::from_secs(15), COLS, ROWS)
+        .wait_for_raw("labeled root", Duration::from_secs(15))
         .expect("fixture user in scrollback");
 
     session.send_keys("\x15").expect("clear");
