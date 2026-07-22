@@ -158,7 +158,16 @@ async fn run_host_loop(
 
     let mut term_events = CrosstermEventStream::new();
     let mut agent_stream: Option<AgentEventStream> = None;
-    let mut ticker = tokio::time::interval(Duration::from_millis(16));
+    // Busy / spinner: ~60Hz. Idle: slow wake so debug builds do not burn a core
+    // on empty Tick+try_render while the TTY is quiet.
+    const TICK_BUSY_MS: u64 = 16;
+    const TICK_IDLE_MS: u64 = 250;
+    let mut tick_busy = session.is_busy();
+    let mut ticker = tokio::time::interval(Duration::from_millis(if tick_busy {
+        TICK_BUSY_MS
+    } else {
+        TICK_IDLE_MS
+    }));
     ticker.set_missed_tick_behavior(tokio::time::MissedTickBehavior::Skip);
 
     // Always restore the TTY (even on RenderError / other Err) so a failed
@@ -166,6 +175,20 @@ async fn run_host_loop(
     let host_result = async {
         while !session.should_quit() && !exit_requested() {
             drain_pending(&mut session, driver, &mut agent_stream).await?;
+
+            let want_busy_tick = session.is_busy();
+            if want_busy_tick != tick_busy {
+                tick_busy = want_busy_tick;
+                let ms = if tick_busy {
+                    TICK_BUSY_MS
+                } else {
+                    TICK_IDLE_MS
+                };
+                ticker = tokio::time::interval(Duration::from_millis(ms));
+                ticker.set_missed_tick_behavior(tokio::time::MissedTickBehavior::Skip);
+                // First tick() completes immediately — skip so we do not spin a frame.
+                ticker.tick().await;
+            }
 
             if let Some(bash) = session.take_bash() {
                 // Guard: never start a second interactive bang while one is active.

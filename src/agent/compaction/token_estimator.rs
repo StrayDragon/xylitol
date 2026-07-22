@@ -187,21 +187,24 @@ fn emit_token_estimate_obs(est: &ContextTokenEstimate, opts: &EstimateOpts) {
     }
     use fastrace::prelude::*;
     let model = opts.model_id.clone().unwrap_or_default();
-    let span = Span::root("token.estimate", SpanContext::random()).with_properties(|| {
-        [
-            ("backend", backend.to_string()),
-            ("provenance", backend.to_string()),
-            ("tokens", est.tokens.to_string()),
-            ("usage_tokens", est.usage_tokens.to_string()),
-            ("trailing_tokens", est.trailing_tokens.to_string()),
-            (
-                "allow_local_tokenizer",
-                opts.allow_local_tokenizer.to_string(),
-            ),
-            ("allow_remote_count", opts.allow_remote_count.to_string()),
-            ("model_id", model),
-        ]
-    });
+    let mut props = vec![
+        ("backend".into(), backend.to_string()),
+        ("provenance".into(), backend.to_string()),
+        ("tokens".into(), est.tokens.to_string()),
+        ("usage_tokens".into(), est.usage_tokens.to_string()),
+        ("trailing_tokens".into(), est.trailing_tokens.to_string()),
+        (
+            "allow_local_tokenizer".into(),
+            opts.allow_local_tokenizer.to_string(),
+        ),
+        (
+            "allow_remote_count".into(),
+            opts.allow_remote_count.to_string(),
+        ),
+        ("model_id".into(), model),
+    ];
+    props.extend(xylitol_ai_bridge::provider::langfuse_session_properties());
+    let span = Span::root("token.estimate", SpanContext::random()).with_properties(|| props);
     span.add_event(Event::new("token.estimate").with_properties(|| {
         [
             ("kind", "token.estimate".to_string()),
