@@ -3,7 +3,8 @@
 # 仓库共享配置（可进 git）。无密钥。
 # 加载顺序（低→高）：~/.config/xylitol/config.yaml → 本文件 → --config
 # 密钥放 .xylitol/secret.env（或 ~/.config/xylitol/secret.env）。
-# YAML 插值：用 secret.NAME（须在 secret.env 定义）；勿在注释里写未转义的双花括号示例。
+# YAML 插值：secret.NAME（须在 secret.env 定义）；vars.home（用户 home）；env.KEY。
+# 勿在注释里写未转义的双花括号示例。
 # 不再支持 config.local.yaml。
 
 # 本地 tokenizer encode：默认 off（缺省同义）；要精确本地计数时改为 on
@@ -30,3 +31,15 @@ agents:
   profiles:
     default:
       model: qwen
+
+mcp_servers:
+  - name: context7
+    transport: sse
+    url: https://mcp.context7.com/mcp
+    headers:
+      CONTEXT7_API_KEY: "{{ secret.CONTEXT7_API_KEY }}"
+
+  - name: lspz
+    transport: stdio
+    command: "{{ vars.home }}/.cargo/bin/lspz"
+    args: ["mcp"]
