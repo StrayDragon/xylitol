@@ -5,6 +5,7 @@ status: purpose-draft
 priority: 1505
 depends_on:
   - c1500-fix-tui-scrollback-perf
+  - c1508-optimize-package-tui-visible-width-ansi
 author: agent
 ---
 
@@ -15,6 +16,12 @@ author: agent
 c1500 已用 `ScrollbackPaintCache`（entry fingerprint）压住「每帧全量 Markdown」的主卡顿。长会话下仍可能线性涨的是：**每帧把全部 entry 行 flatten 进 upper**，再交给差分引擎。引擎 `previous_viewport_top` 只省写屏，不省 `render_scrollback` CPU。
 
 产品面已对齐 **pi**（live 进 scrollback、不做 Codex TranscriptView）。需要在**不改产品心智**的前提下，为「历史行数 × 宽变化」留一条可验证的下一步。
+
+## 证据闸（c1520 `suite-20260723-122217`）
+
+- C-stream：主线程 **~59%** 落在 `visible_width`/`strip_ansi`（含 `TUI::do_render` 宽度不变量）；**~32%** 经 `scrollback::{fit,markdown}`。
+- B-scroll 短窗未打出强 scrollback 符号占比（paint cache 可能已生效）。
+- **结论**：先落地 [c1508](../c1508-optimize-package-tui-visible-width-ansi/proposal.md) 并复测 B/C；若长历史仍见 `render_scrollback` / flatten 线性涨，再 promote 本 change。
 
 ## 别人怎么做（对照）
 
