@@ -124,6 +124,17 @@ impl BootstrappedAgent {
     /// Consume into an [`crate::app::core::driver::XyInProcessDriver`] plus side-products (preferred path).
     pub fn into_runtime(mut self) -> BootstrappedRuntime {
         self.agent.inner_mut().set_session(self.session_id.clone());
+        if let Ok(handle) = tokio::runtime::Handle::try_current() {
+            let store = Arc::clone(&self.store);
+            let sid = self.session_id.clone();
+            tokio::task::block_in_place(|| {
+                handle.block_on(async move {
+                    if let Ok(Some(name)) = store.get_session_name(&sid).await {
+                        xylitol_ai_bridge::provider::set_obs_session_name(Some(name.as_str()));
+                    }
+                });
+            });
+        }
         BootstrappedRuntime {
             driver: crate::app::core::driver::XyInProcessDriver::new(self.agent, self.store),
             session_id: self.session_id,

@@ -33,3 +33,15 @@
     假如 本地 provider-trace FileReporter 与 OTLP Reporter 均满足开启条件
     当 一批 SpanRecord 被报告
     那么 fan-out 同时投递两侧且 OTLP 侧失败时按降级处理而不静默关掉本地闸
+
+  @req:otel6
+  场景: 根 span 始终带 session uuid
+    假如 低频观测 span 已激活且当前会话 UUID 已知
+    当 创建 react.turn 或 provider.request 等根 span
+    那么 属性含 langfuse.session.id 且值等于该 UUID 且不得用 display name 顶替
+
+  @req:otel7
+  场景: 有 display name 才写 session_name 元数据
+    假如 当前会话已设置 display name
+    当 创建低频根 span
+    那么 额外含 langfuse.trace.metadata.session_name；若尚未命名则不得写入该键且 session id 不变

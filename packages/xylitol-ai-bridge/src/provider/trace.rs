@@ -38,11 +38,13 @@ impl ProviderRequestTrace {
         }
         let request_id = uuid::Uuid::new_v4().to_string();
         let root = Span::root("provider.request", SpanContext::random()).with_properties(|| {
-            [
-                ("request_id", request_id.clone()),
-                ("api", api.to_string()),
-                ("model", model.to_string()),
-            ]
+            let mut props = vec![
+                ("request_id".to_string(), request_id.clone()),
+                ("api".to_string(), api.to_string()),
+                ("model".to_string(), model.to_string()),
+            ];
+            props.extend(super::langfuse_session_properties());
+            props
         });
         Some(Self { root, request_id })
     }

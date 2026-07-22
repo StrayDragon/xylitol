@@ -1,11 +1,13 @@
 kind: llman.sdd.spec
 name: "infra-otel"
-purpose: "可选 OpenTelemetry OTLP/HTTP 出口：Cargo feature otel + 配置显式开启；默认与失败路径均不收集；经 fastrace-opentelemetry 导出，禁止 tracing 双栈与 stdout/stderr。"
-valid_scope[2]: src/infra/observability/,src/app/cli/logging.rs
-requirements[5]{req_id,title,statement}:
+purpose: "可选 OpenTelemetry OTLP/HTTP 出口：Cargo feature otel + 配置显式开启；默认与失败路径均不收集；经 fastrace-opentelemetry 导出；Langfuse 会话与 GenAI 属性在 opt-in 出口之上叠加。"
+valid_scope[4]: src/infra/observability/,src/app/cli/logging.rs,src/agent/runtime/obs.rs,packages/xylitol-ai-bridge/src/provider/
+requirements[7]{req_id,title,statement}:
   otel1,"otel-default-none","未配置 [otel]、exporter 缺省或 exporter=none 时，进程 MUST NOT 向任何 OTLP 端点发送 traces；MUST NOT 仅因存在 fastrace span 而隐式开启远程导出。"
   otel2,"otel-config-opt-in","当 Cargo feature otel 启用且 AppConfig.[otel] exporter=otlp-http 且 endpoint（及所需认证头）合法时，组合根 MUST 经 fastrace-opentelemetry OpenTelemetryReporter（或等价）将 fastrace span 导出为 OTLP/HTTP；protocol MUST 为 HTTP（binary 或 json），MUST NOT 以 gRPC 作为 Langfuse 目标路径的默认或唯一选项。"
   otel3,"otel-fallback-no-block","OTLP exporter 构建失败、凭证缺失、feature otel 未启用、或配置不完整时，观测装配 MUST 降级为不安装 OTLP Reporter（本地 file JSONL 闸仍独立），MUST 将诊断写入 file-only 日志（若级别日志已开），MUST NOT 因此使对话主路径启动失败。"
   otel4,"otel-fastrace-only","OTLP 出口 MUST 建立在 fastrace Reporter 之上（fastrace-opentelemetry）；Cargo 与 src MUST NOT 为该出口引入 tracing 或 tracing-subscriber；MUST NOT 使用会打印到 stderr/stdout 的 ConsoleReporter 或 OTEL 调试打印破坏 TUI。"
   otel5,"otel-fanout-with-file","当本地 provider-trace FileReporter 与 OTLP Reporter 同时满足开启条件时，组合根 MUST 使用 fan-out（或等价）同时投递同一批 SpanRecord；任一侧失败 MUST NOT 静默关掉另一侧的既有闸门语义（OTLP 侧失败按 otel3 降级）。"
+  otel6,"otel-session-id-always","当低频观测 span 激活且当前会话 UUID 已知时，根 span（至少 react.turn / react.stream / tool.execute / provider.request）MUST 携带属性 langfuse.session.id，其值 MUST 等于该会话 UUID；MUST NOT 用 display name 替代 session id。"
+  otel7,"otel-session-name-optional","当用户已为当前会话设置 display name 时，上述根 span MUST 额外携带 langfuse.trace.metadata.session_name（值为该 display name）；未设置 name 时 MUST NOT 写入该属性；后期命名 MUST 只影响后续 span，且 MUST NOT 改变 langfuse.session.id。"
 scenarios[0]:
