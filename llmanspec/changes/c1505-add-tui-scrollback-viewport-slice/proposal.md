@@ -26,9 +26,27 @@ c1500 已用 `ScrollbackPaintCache`（entry fingerprint）压住「每帧全量 
 |---|---|
 | c1508 / c1509 | 已 applied 并归档（`archive/2026-07-23-c1508-*` / `c1509-*`） |
 | `post-c1508` C | `visible_width`/`strip_ansi` 降；剩 `wrap`/`markdown`/`scrollback` 链 |
+| `post-c1509` B/C | 见下 **T0** |
 | 微优化 vs 本 change | 流式**尾块**仍须真渲染；**长历史上半**的 flatten/extend 才是本 change 的主收益面 |
-| 是否仍值得 | **是**——结构热点仍在；不替代 wrap/markdown 微优化 |
-| promote 前闸 | 建议 `post-c1509` 后跑 **B-scroll（大种子）**：看 `render_scrollback` 全量 extend 是否仍随历史涨；有证据再 apply |
+| 是否仍值得 | **是**（代码 O(n) extend 仍在）；短 B 种子**不足以**用 samply 证明 flatten 热 |
+| promote / apply 闸 | 放大 B 种子再采 **或** 直接用 harness 行数上界落地（见 tasks） |
+
+## T0：`post-c1509`（B+C，15s）
+
+产物：`target/profile/post-c1509/{B-scroll,C-stream}.{json.gz,summary.txt}`
+
+主线程栈归因（batch addr2line）：
+
+| 场景 | main samples | scroll_render | wrap | width（含 do_render） | markdown |
+|---|---|---|---|---|---|
+| **B-scroll** | 71 | **0%** | 0% | ~18% | 0% |
+| **C-stream** | 134 | **~27%** | **~13%** | ~61% | ~20% |
+
+解读：
+
+1. **B（suite 默认 ~80 pairs）**：paint cache 生效，栈上几乎不见 `render_scrollback`；短窗滚动**测不出**全量 flatten。要证据需 **更大种子**（建议 ≥300–500 pairs）或改测「输出行数 vs viewport」而非 CPU%。
+2. **C**：仍有 scrollback/markdown/fit（~27% / ~20%）；`wrap` 相对 `post-c1508` 的 ~17–19% **略降到 ~13%**（c1509 有帮助）。流式尾必须真画——viewport 对 C 是次要收益。
+3. **代码事实未变**：`render_scrollback` cache hit 仍全量 `extend`——结构债在；T0 结论 = **不阻塞 design**，但 **apply 前要么放大 B，要么用 harness 行数上界当验收**（不必死等火焰图）。
 
 ## 证据闸（历史）
 
@@ -74,8 +92,8 @@ c1500 已用 `ScrollbackPaintCache`（entry fingerprint）压住「每帧全量 
 
 ## Status
 
-**purpose-draft（已推进）**：依赖微优化已归档；设计/任务见同目录 `design.md` / `tasks.md`。
-**下一步**：`post-c1509` B/C 复测 → 有线性证据后 `propose` 正式化或 quick/apply 实现 A。
+**purpose-draft（已推进 + T0 已跑）**：依赖微优化已归档；design/tasks 已有。
+**T0**：短 B 无 scroll_render 火焰；C 仍见 scrollback/markdown。apply 可用 harness 行数上界，或先放大 B 种子再采。
 
 ## Ethics
 
