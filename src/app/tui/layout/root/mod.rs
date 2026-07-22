@@ -36,7 +36,7 @@ use crate::app::core::driver::LoadedResourcesSnapshot;
 use crate::app::tui::bridge::UiModel;
 use crate::app::tui::session_resume::SessionResumePanel;
 use crate::app::tui::widgets::{
-    GlyphSet, ScrollbackFold, footer_thinking_label, format_footer_text,
+    GlyphSet, ScrollbackFold, ScrollbackPaintCache, footer_thinking_label, format_footer_text,
 };
 use crate::protocol::types::ThinkingLevel;
 
@@ -178,6 +178,7 @@ pub struct UiRoot {
     upper_cache_gen: u64,
     upper_cache_width: usize,
     upper_cache_lines: Vec<String>,
+    scrollback_paint: ScrollbackPaintCache,
     /// Test/obs: how many times upper (loaded+scrollback+queue) was rebuilt.
     #[cfg(test)]
     upper_rebuild_count: u64,
@@ -254,6 +255,7 @@ impl UiRoot {
             upper_cache_gen: u64::MAX,
             upper_cache_width: usize::MAX,
             upper_cache_lines: Vec::new(),
+            scrollback_paint: ScrollbackPaintCache::default(),
             #[cfg(test)]
             upper_rebuild_count: 0,
         };
@@ -647,8 +649,16 @@ impl UiRoot {
 
     /// Push bridge UI model into status / footer; scrollback re-renders from model (c476).
     pub fn apply_ui_model(&mut self, model: &UiModel) {
+        let upper_changed = self.ui_model.entries != model.entries
+            || self.ui_model.streaming_assistant != model.streaming_assistant
+            || self.ui_model.streaming_thinking != model.streaming_thinking
+            || self.ui_model.pending_steer != model.pending_steer
+            || self.ui_model.pending_follow_up != model.pending_follow_up
+            || self.ui_model.queue != model.queue;
         self.ui_model = model.clone();
-        self.bump_upper_gen();
+        if upper_changed {
+            self.bump_upper_gen();
+        }
 
         match model.status.as_ref() {
             Some(s) if !s.is_empty() => {
@@ -751,6 +761,16 @@ impl UiRoot {
     #[cfg(test)]
     pub fn upper_rebuild_count_for_test(&self) -> u64 {
         self.upper_rebuild_count
+    }
+
+    #[cfg(test)]
+    pub fn scrollback_entry_misses_for_test(&self) -> u64 {
+        self.scrollback_paint.entry_misses
+    }
+
+    #[cfg(test)]
+    pub fn clear_scrollback_entry_misses_for_test(&mut self) {
+        self.scrollback_paint.clear_misses();
     }
 }
 

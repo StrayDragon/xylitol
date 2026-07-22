@@ -204,16 +204,19 @@ impl UiRoot {
         if let InputEvent::Key(ref key) = event {
             if matches_binding(key, "app.thinking.toggle") {
                 self.fold.thinking_expanded = !self.fold.thinking_expanded;
+                self.scrollback_paint.invalidate();
                 self.bump_upper_gen();
                 return;
             }
             if matches_binding(key, "app.tools.blocks") {
                 self.fold.tools_expanded = !self.fold.tools_expanded;
+                self.scrollback_paint.invalidate();
                 self.bump_upper_gen();
                 return;
             }
             if matches_binding(key, "app.tools.expand") {
                 self.fold.tools_output_expanded = !self.fold.tools_output_expanded;
+                self.scrollback_paint.invalidate();
                 self.bump_upper_gen();
                 return;
             }
