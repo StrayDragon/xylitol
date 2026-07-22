@@ -151,24 +151,33 @@ fn message_json_to_ui_entries(entry_id: &str, message: &Value) -> Vec<UiEntry> {
         }],
         "assistant" => assistant_parts_to_ui(entry_id, message),
         "toolResult" | "tool" => {
+            use crate::app::tool_display::{is_mcp_tool_name, pretty_json_text};
+
             let details = message.get("details");
             let display_diff = details
                 .and_then(|d| d.get("display_diff"))
                 .and_then(Value::as_str)
                 .map(str::to_string);
+            let name = message
+                .get("toolName")
+                .or_else(|| message.get("tool_name"))
+                .and_then(Value::as_str)
+                .unwrap_or("tool")
+                .to_string();
+            let raw = message_text(message);
+            let output = if is_mcp_tool_name(&name) {
+                pretty_json_text(&raw)
+            } else {
+                raw
+            };
             vec![UiEntry::Tool {
                 id: entry_id.to_string(),
-                name: message
-                    .get("toolName")
-                    .or_else(|| message.get("tool_name"))
-                    .and_then(Value::as_str)
-                    .unwrap_or("tool")
-                    .to_string(),
+                name,
                 args_preview: String::new(),
                 tool_path: None,
                 write_content: None,
                 display_diff,
-                output: message_text(message),
+                output,
                 is_error: message
                     .get("isError")
                     .or_else(|| message.get("is_error"))
@@ -225,12 +234,15 @@ fn assistant_parts_to_ui(entry_id: &str, message: &Value) -> Vec<UiEntry> {
                 }
             }
             Some("toolCall") if is_tool_call_part(part) => {
+                use crate::app::tool_display::{is_mcp_tool_name, mcp_tool_body};
+
                 let name = tool_call_name(part).unwrap_or("tool");
                 let args = part
                     .get("arguments")
                     .or_else(|| part.get("args"))
                     .cloned()
                     .unwrap_or(Value::Object(Default::default()));
+                let mcp = is_mcp_tool_name(name);
                 out.push(UiEntry::Tool {
                     id: part
                         .get("id")
@@ -238,11 +250,11 @@ fn assistant_parts_to_ui(entry_id: &str, message: &Value) -> Vec<UiEntry> {
                         .unwrap_or(entry_id)
                         .to_string(),
                     name: name.to_string(),
-                    args_preview: crate::app::tui::bridge::human_tool_args_preview(
-                        name,
-                        &args,
-                        usize::MAX,
-                    ),
+                    args_preview: if mcp {
+                        String::new()
+                    } else {
+                        crate::app::tui::bridge::human_tool_args_preview(name, &args, usize::MAX)
+                    },
                     tool_path: crate::app::tui::bridge::extract_tool_path(&args),
                     write_content: (name == "write")
                         .then(|| {
@@ -253,7 +265,11 @@ fn assistant_parts_to_ui(entry_id: &str, message: &Value) -> Vec<UiEntry> {
                         .flatten()
                         .filter(|s| !s.is_empty()),
                     display_diff: None,
-                    output: String::new(),
+                    output: if mcp {
+                        mcp_tool_body(Some(&args), None)
+                    } else {
+                        String::new()
+                    },
                     is_error: false,
                     done: false,
                 });
