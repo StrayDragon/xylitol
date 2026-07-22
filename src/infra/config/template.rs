@@ -1,4 +1,5 @@
-//! YAML config template rendering — `{{ env.KEY }}` / `{{ secret.KEY }}` (r4/r5).
+//! YAML config template rendering — `{{ env.KEY }}` / `{{ secret.KEY }}` /
+//! `{{ vars.home }}` (r4/r5 / rc23).
 //!
 //! Uses minijinja with **strict** undefined behavior so missing keys fail with
 //! a path-aware error (edit the YAML or secret.env).
@@ -16,6 +17,8 @@ use super::secret_env::SecretMap;
 /// - `env.*` — process environment (after secret.env injection)
 /// - `secret.*` — keys from collected `secret.env` files (plus same key from
 ///   process env when present, so shell overrides still work in templates)
+/// - `vars.home` — user home directory (`dirs::home_dir`); **only** this key
+///   under `vars` (rc23). Other `vars.*` keys are undefined (strict fail).
 pub(crate) fn render_config_template(
     raw: &str,
     path: &Path,
@@ -33,6 +36,13 @@ pub(crate) fn render_config_template(
         if let Ok(v) = std::env::var(k) {
             secret_ns.insert(k.clone(), v);
         }
+    }
+
+    // vars.* — only `home` when resolvable; missing home → undefined (strict
+    // fails only if the template references vars.home).
+    let mut vars_ns = HashMap::new();
+    if let Some(home) = dirs::home_dir() {
+        vars_ns.insert("home".to_string(), home.to_string_lossy().into_owned());
     }
 
     let mut jinja = Environment::new();
@@ -57,6 +67,7 @@ pub(crate) fn render_config_template(
     let ctx = context! {
         env => MjValue::from_serialize(&env_map),
         secret => MjValue::from_serialize(&secret_ns),
+        vars => MjValue::from_serialize(&vars_ns),
     };
 
     tmpl.render(ctx)
@@ -67,7 +78,7 @@ fn format_template_error(path: &Path, err: &minijinja::Error) -> String {
     format!(
         "template error in {}: {err}\n  Hint: set the missing key in the environment, \
          or in secret.env next to this config, then reference {{{{ env.KEY }}}} / \
-         {{{{ secret.KEY }}}}.",
+         {{{{ secret.KEY }}}}; path home is {{{{ vars.home }}}} only (no other vars.*).",
         path.display()
     )
 }
@@ -136,5 +147,33 @@ mod tests {
         )
         .unwrap();
         assert_eq!(out, "headers:\n  CONTEXT7_API_KEY: \"sk-test\"");
+    }
+
+    #[test]
+    fn renders_vars_home() {
+        let home = dirs::home_dir().expect("home_dir for test");
+        let home_str = home.to_string_lossy();
+        let out = render_config_template(
+            "command: \"{{ vars.home }}/.cargo/bin/lspz\"\n",
+            Path::new("config.yaml"),
+            &SecretMap::new(),
+        )
+        .unwrap();
+        assert_eq!(out, format!("command: \"{home_str}/.cargo/bin/lspz\""));
+    }
+
+    #[test]
+    fn unknown_vars_key_is_strict_error() {
+        let err = render_config_template(
+            "path: {{ vars.project }}\n",
+            Path::new("cfg.yaml"),
+            &SecretMap::new(),
+        )
+        .unwrap_err();
+        assert!(err.contains("cfg.yaml"), "{err}");
+        assert!(
+            err.contains("vars.home") || err.contains("undefined") || err.contains("project"),
+            "{err}"
+        );
     }
 }
