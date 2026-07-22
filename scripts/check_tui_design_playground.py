@@ -239,6 +239,8 @@ def resolve_source(html: str, source: str) -> str | None:
     parts = source.split(".")
     if parts[0] == "treep" and len(parts) == 2:
         return extract_js_object_entry(html, "TREEP", parts[1])
+    if parts[0] == "resume" and len(parts) == 2:
+        return extract_js_object_entry(html, "RESUME", parts[1])
     if parts[0] == "models" and len(parts) >= 2:
         return extract_js_object_entry(html, "MODELS", parts[1])
     if parts[0] == "pending" and len(parts) >= 2:

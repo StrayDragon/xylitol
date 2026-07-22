@@ -3147,10 +3147,11 @@ mod slice_tests {
         let mut session = HostSession::new_product_ui(TestTerminal::new(100, 30));
         let root = session.ui_root().expect("ui").clone();
         let mut driver = ScriptedDriver::new();
-        *driver.active_session_id.lock().expect("sid") = "parent".into();
+        *driver.active_session_id.lock().expect("sid") =
+            "aaaaaaaa-bbbb-cccc-dddd-eeeeeeeeeeee".into();
         driver.set_session_list(vec![
             SessionListEntry {
-                id: "parent".into(),
+                id: "aaaaaaaa-bbbb-cccc-dddd-eeeeeeeeeeee".into(),
                 name: Some("Parent chat".into()),
                 first_message: Some("parent preview".into()),
                 message_count: 5,
@@ -3166,7 +3167,7 @@ mod slice_tests {
                 first_message: Some("child preview line".into()),
                 message_count: 2,
                 modified_unix: Some(1_700_000_100),
-                parent_session_id: Some("parent".into()),
+                parent_session_id: Some("aaaaaaaa-bbbb-cccc-dddd-eeeeeeeeeeee".into()),
                 tree_prefix: String::new(),
                 cwd: Some(".".into()),
                 path: None,
@@ -3197,6 +3198,25 @@ mod slice_tests {
             "expected resume header cues: {panel}"
         );
         assert!(panel.contains("filter"), "expected filter hint: {panel}");
+        assert!(panel.contains("ctrl+u"), "expected ctrl+u id hint: {panel}");
+        assert!(
+            !panel.contains("aaaaaaaa-bbbb-cccc-dddd-eeeeeeeeeeee"),
+            "session id must be hidden by default: {panel}"
+        );
+
+        // Ctrl+U shows full session ids in the list rows.
+        session.step(HostEvent::Input(ctrl_key_event('u'))).unwrap();
+        let with_id = root.borrow().session_resume_panel_text_for_test(100);
+        assert!(
+            with_id.contains("aaaaaaaa-bbbb-cccc-dddd-eeeeeeeeeeee"),
+            "ctrl+u must reveal full session id: {with_id}"
+        );
+        session.step(HostEvent::Input(ctrl_key_event('u'))).unwrap();
+        let id_off = root.borrow().session_resume_panel_text_for_test(100);
+        assert!(
+            !id_off.contains("aaaaaaaa-bbbb-cccc-dddd-eeeeeeeeeeee"),
+            "second ctrl+u must hide session id: {id_off}"
+        );
 
         // Tab to All scope — other-cwd session becomes visible.
         session.step(HostEvent::Input(tab_event())).unwrap();
