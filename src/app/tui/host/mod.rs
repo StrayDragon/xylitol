@@ -554,13 +554,20 @@ impl<T: Terminal> HostSession<T> {
             }
             HostEvent::Resize { cols, rows } => {
                 // Prefer crossterm Resize payload: ioctl refresh can lag/stale.
+                let prev_cols = self.tui.terminal.columns();
+                let prev_rows = self.tui.terminal.rows();
                 self.tui.terminal.refresh_size();
                 self.tui.terminal.set_size_hint(cols, rows);
-                self.sync_layout_from_terminal();
-                // Align pi: resize → soft requestRender(); doRender sees
-                // width/heightChanged → fullRender(true) with 2J/H/3J.
-                // force=true would zero/sentinel-skip that path incorrectly.
-                self.tui.request_render(false);
+                let size_changed = self.tui.terminal.columns() != prev_cols
+                    || self.tui.terminal.rows() != prev_rows;
+                // Cursor / multiplexers often flood identical Resize; skip paint.
+                if size_changed {
+                    self.sync_layout_from_terminal();
+                    // Align pi: resize → soft requestRender(); doRender sees
+                    // width/heightChanged → fullRender(true) with 2J/H/3J.
+                    // force=true would zero/sentinel-skip that path incorrectly.
+                    self.tui.request_render(false);
+                }
             }
             HostEvent::Input(input) => {
                 if self.mode == LayoutMode::Ready {
