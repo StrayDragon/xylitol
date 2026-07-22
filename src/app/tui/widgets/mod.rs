@@ -36,6 +36,7 @@ pub fn footer_thinking_label(level: ThinkingLevel) -> String {
 }
 
 /// Footer identity line (`cwd · model · {thinking}`, optional queue / tokens).
+/// Empty `thinking_label` omits the thinking segment (no-thinking models).
 pub fn format_footer_text(
     cwd: &str,
     model: &str,
@@ -44,7 +45,11 @@ pub fn format_footer_text(
     follow_up: usize,
     token_label: Option<&str>,
 ) -> String {
-    let mut base = format!("{cwd} · {model} · {thinking_label}");
+    let mut base = if thinking_label.is_empty() {
+        format!("{cwd} · {model}")
+    } else {
+        format!("{cwd} · {model} · {thinking_label}")
+    };
     if let Some(tok) = token_label.filter(|s| !s.is_empty()) {
         base = format!("{base} · {tok}");
     }

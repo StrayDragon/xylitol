@@ -80,7 +80,7 @@ pub(super) async fn handle_slash<T: Terminal>(
                 match dispatch(driver, Command::GetAvailableModels { id: None }).await {
                     Ok(DispatchOutcome::Models(models)) => {
                         let current = driver.current_model().map(|m| m.id);
-                        session.mount_models_picker(models, current);
+                        session.mount_models_picker(models, current, driver.thinking_level());
                     }
                     Ok(_) => session.push_system_note("models list unavailable"),
                     Err(e) => session.push_system_note(format!("/model failed: {e}")),
@@ -99,19 +99,11 @@ pub(super) async fn handle_slash<T: Terminal>(
             )
             .await
             {
-                Ok(DispatchOutcome::Model(m)) => {
-                    let label = if m.display_name.is_empty() {
-                        m.id
-                    } else {
-                        m.display_name
-                    };
-                    session.set_footer_model(label.clone());
-                    session.apply_thinking_level_ui(driver.thinking_level());
-                    session.push_system_note(format!("model → {label}"));
+                Ok(DispatchOutcome::Model(_)) => {
+                    session.sync_runtime_chrome(driver);
                 }
                 Ok(_) => {
-                    session.apply_thinking_level_ui(driver.thinking_level());
-                    session.push_system_note("model set");
+                    session.sync_runtime_chrome(driver);
                 }
                 Err(e) => session.push_system_note(format!("/model failed: {e}")),
             }
@@ -422,7 +414,7 @@ pub(super) async fn handle_slash<T: Terminal>(
                         let resolved = resolve_theme_arg(session, name);
                         match resolved {
                             Ok(theme_name) => match session.reload_themes(&theme_name) {
-                                Ok(()) => session.push_system_note(format!("theme → {theme_name}")),
+                                Ok(()) => {}
                                 Err(e) => note_driver_err(
                                     session,
                                     "tui.reload_themes.slash",

@@ -240,8 +240,33 @@
       min-height: 5rem;
       overflow: hidden;
     }
-    .term-status { color: var(--muted); padding: 0.1rem 0; line-height: 1.25; }
+    .term-status {
+      color: var(--muted);
+      padding: 0.1rem 0;
+      line-height: 1.25;
+      display: flex;
+      align-items: baseline;
+      gap: 0.75rem;
+      min-width: 0;
+    }
     .term-status .spin { color: var(--accent); display: inline-block; min-width: 1ch; }
+    /* Lead = spinner + short status; MUST stay left as one group (never space-between children). */
+    .term-status .status-lead {
+      flex: 0 1 auto;
+      white-space: nowrap;
+      min-width: 0;
+    }
+    /* Only the pending trail is end-aligned. */
+    .term-status .status-trail {
+      color: var(--muted);
+      margin-left: auto;
+      text-align: right;
+      overflow: hidden;
+      text-overflow: ellipsis;
+      white-space: nowrap;
+      min-width: 0;
+      font-size: 12px;
+    }
     .term-editor {
       border-top: 1px solid var(--muted);
       border-bottom: 1px solid var(--muted);
@@ -393,18 +418,20 @@
         <div class="ctl">
           <button type="button" id="shell-busy" aria-pressed="true">busy</button>
           <button type="button" id="shell-queue" aria-pressed="false">队列徽章</button>
+          <button type="button" id="shell-pending" aria-pressed="false">换模挂账</button>
           <button type="button" id="shell-tree" aria-pressed="false">会话树槽</button>
           <button type="button" id="shell-tool" aria-pressed="true">工具块</button>
-          <span class="hint">idle → status 0 行 · 一处 accent · 贴底 editor</span>
+          <span class="hint">idle → status 0 行 · footer=生效中 · Next turn 同行右侧</span>
         </div>
         <div class="term term-tall" id="shell-term">
           <div class="term-content" id="shell-content"></div>
-          <div class="steer-hint hidden" id="shell-queue-line">q:s1|f0 · 插话待消化</div>
+          <div class="steer-hint hidden" id="shell-queue-line">Steering: 补充一句约束</div>
           <div class="term-status" id="shell-status">
-            <span class="spin" id="shell-spin">⠋</span> Working
+            <span class="status-lead"><span class="spin" id="shell-spin">⠋</span> Working</span>
+            <span class="status-trail hidden" id="shell-pending-trail">Next turn: deepseek-v4-flash</span>
           </div>
           <div class="term-editor" id="shell-editor"></div>
-          <div class="term-footer" id="shell-footer">~/xylitol · ornith</div>
+          <div class="term-footer" id="shell-footer">~/xylitol · ornith · thinking off</div>
         </div>
       </section>
 
@@ -601,7 +628,9 @@
             </div>
           </div>
           <div class="steer-hint hidden" id="lay-steer-line">↳ queued steer · Enter 发送</div>
-          <div class="term-status" id="lay-status"><span class="spin" id="lay-spin">⠋</span> working</div>
+          <div class="term-status" id="lay-status">
+            <span class="status-lead"><span class="spin" id="lay-spin">⠋</span> Working</span>
+          </div>
           <div class="term-editor" id="lay-editor"></div>
           <div class="term-footer">~/xylitol · model · 42%</div>
         </div>
@@ -646,24 +675,60 @@
 
       <!-- models picker -->
       <section class="panel" id="panel-models" data-id="models">
-        <h2>Models · /model fuzzy</h2>
+        <h2>Models · /model + level</h2>
         <p class="spec">
-          <a href="../models-picker.md">models-picker.md</a> · 替换 editor 槽 · fuzzy · Esc 取消
+          <a href="../models-picker.md">models-picker.md</a> ·
+          ↑↓ 模型 · ←→ / shift+tab 等级 · 够宽铺开全部档 · 无思考 —
         </p>
         <div class="ctl">
-          <button type="button" class="chip-btn" data-models="open" aria-pressed="true">打开</button>
-          <button type="button" class="chip-btn" data-models="filter" aria-pressed="false">filter orn</button>
+          <button type="button" class="chip-btn" data-models="wide" aria-pressed="true">wide 全档</button>
+          <button type="button" class="chip-btn" data-models="narrow" aria-pressed="false">narrow</button>
+          <button type="button" class="chip-btn" data-models="noThinking" aria-pressed="false">无思考</button>
+          <button type="button" class="chip-btn" data-models="filter" aria-pressed="false">filter</button>
           <button type="button" class="chip-btn" data-models="empty" aria-pressed="false">无匹配</button>
-          <span class="hint">形状对照 DESIGN · 非实现分层示意</span>
+          <span class="hint">右列 xylitol；[档]=暂定</span>
         </div>
-        <div class="term term-slot" id="models-term" data-design-fixture="models.open">
+        <p class="spec" id="models-legend" style="margin-top:0.35rem"></p>
+        <div class="term term-slot" id="models-term" data-design-fixture="models.wide">
           <div class="term-content">
             <div class="row"><span class="fg-user">❯</span> 换个更快的模型</div>
             <div class="row fg-assistant">好的，用 /model 选一个。</div>
           </div>
           <div class="term-editor" id="models-editor"></div>
-          <div class="term-footer" id="models-footer">~/xylitol · ornith-think</div>
+          <div class="term-footer" id="models-footer">~/xylitol · ornith-fast · high</div>
         </div>
+        <span hidden data-design-fixture="models.narrow"></span>
+        <span hidden data-design-fixture="models.no-thinking"></span>
+      </section>
+
+      <!-- pending NextTurn chrome -->
+      <section class="panel" id="panel-pending" data-id="pending">
+        <h2>Pending · NextTurn 挂账</h2>
+        <p class="spec">
+          <a href="../pending-runtime.md">pending-runtime.md</a> ·
+          <strong>单槽</strong> Status trail · footer=生效中 · 多 pending 拼接 · 切回/cleared 清除
+        </p>
+        <div class="ctl">
+          <button type="button" class="chip-btn" data-pending="nextTurn" aria-pressed="true">仅模型 /model</button>
+          <button type="button" class="chip-btn" data-pending="thinking" aria-pressed="false">仅 thinking /model</button>
+          <button type="button" class="chip-btn" data-pending="cleared" aria-pressed="false">cleared</button>
+          <span class="hint">thinking 只经 /model；无全局 Shift+Tab</span>
+        </div>
+        <p class="spec" id="pending-legend" style="margin-top:0.35rem"></p>
+        <div class="term term-slot" id="pending-term" data-design-fixture="pending-model.next-turn">
+          <div class="term-content" id="pending-scroll">
+            <div class="row"><span class="fg-user">❯</span> 继续改这块</div>
+            <div class="row fg-assistant" id="pending-assistant">正在用 ornith · thinking off 流式输出…</div>
+          </div>
+          <div class="term-status" id="pending-status">
+            <span class="status-lead"><span class="spin" id="pending-spin">⠋</span> Working</span>
+            <span class="status-trail" id="pending-trail">Next turn: deepseek-v4-flash</span>
+          </div>
+          <div class="term-editor" id="pending-editor"></div>
+          <div class="term-footer" id="pending-footer">~/xylitol · ornith · thinking off</div>
+        </div>
+        <!-- fixture anchors (L2 sources are PENDING_RUNTIME.* templates) -->
+        <span hidden data-design-fixture="pending-thinking.next-turn"></span>
       </section>
 
       <!-- tree power -->
@@ -824,6 +889,7 @@
       { id: "layout-shell", label: "Layout 壳", key: "c" },
       { id: "keys", label: "Keybindings", key: "k" },
       { id: "models", label: "Models /model", key: "m" },
+      { id: "pending", label: "Pending / NextTurn", key: "n" },
       { id: "tree-power", label: "Tree power", key: "p" },
       { id: "layout", label: "Layout", key: "1" },
       { id: "tool", label: "Tool / Expandable", key: "2" },
@@ -858,9 +924,10 @@
       diff: { view: "unified", words: true },
       md: { streaming: false, line: 0 },
       layout: { busy: true, steer: false, tree: false },
-      shell: { busy: true, queue: false, tree: false, tool: true },
+      shell: { busy: true, queue: false, pending: false, tree: false, tool: true },
       keys: "idle",
-      models: "open",
+      models: "wide",
+      pending: "nextTurn",
       treep: "filter",
       layoutShell: "ok",
       widget: "empty",
@@ -1227,10 +1294,12 @@
       const S = state.shell;
       document.getElementById("shell-busy").setAttribute("aria-pressed", String(S.busy));
       document.getElementById("shell-queue").setAttribute("aria-pressed", String(S.queue));
+      document.getElementById("shell-pending").setAttribute("aria-pressed", String(S.pending));
       document.getElementById("shell-tree").setAttribute("aria-pressed", String(S.tree));
       document.getElementById("shell-tool").setAttribute("aria-pressed", String(S.tool));
       document.getElementById("shell-status").classList.toggle("hidden", !S.busy);
       document.getElementById("shell-queue-line").classList.toggle("hidden", !S.queue);
+      document.getElementById("shell-pending-trail").classList.toggle("hidden", !(S.busy && S.pending));
 
       const content = document.getElementById("shell-content");
       let html =
@@ -1260,9 +1329,9 @@
         ed.innerHTML = '<span class="cursor"> </span>询问或 / 命令…';
       }
 
-      let footer = "~/xylitol · ornith";
+      // footer MUST show active (in-flight) model even when pending successor exists
+      let footer = "~/xylitol · ornith · thinking off";
       if (S.queue) footer = "q:s1|f0 · " + footer;
-      // footer MUST NOT carry Working or key-chord walls (status / /help)
       document.getElementById("shell-footer").textContent = footer;
     }
     document.getElementById("shell-busy").addEventListener("click", () => {
@@ -1271,6 +1340,11 @@
     });
     document.getElementById("shell-queue").addEventListener("click", () => {
       state.shell.queue = !state.shell.queue;
+      renderShell();
+    });
+    document.getElementById("shell-pending").addEventListener("click", () => {
+      state.shell.pending = !state.shell.pending;
+      if (state.shell.pending) state.shell.busy = true;
       renderShell();
     });
     document.getElementById("shell-tree").addEventListener("click", () => {
@@ -1286,6 +1360,8 @@
       spinI = (spinI + 1) % SPIN.length;
       const el = document.getElementById("shell-spin");
       if (el) el.textContent = SPIN[spinI];
+      const pel = document.getElementById("pending-spin");
+      if (pel && state.pending === "nextTurn") pel.textContent = SPIN[spinI];
     }, 80);
 
     /* —— layout —— */
@@ -1392,32 +1468,53 @@
       });
     });
 
-    /* —— models picker shapes —— */
+    /* —— models: ↑↓ model, ←→/shift+tab level; wide spreads all levels —— */
     const MODELS = {
-      open: {
-        editor: `<div class="row fg-muted">models</div>
-<div class="row rev">› ornith-fast *</div>
-<div class="row fg-on">  ornith-think</div>
-<div class="row fg-on">  other/gpt-mini</div>`,
-        footer: "~/xylitol · ornith-think",
+      wide: {
+        editor: `<div class="row fg-muted">models · ←→ level · shift+tab · enter</div>
+<div class="row rev">› ornith-fast *     off  low  medium [high] max</div>
+<div class="row fg-on">  ornith-think                          max</div>
+<div class="row fg-on">  other/gpt-mini                          —</div>`,
+        footer: "~/xylitol · ornith-fast · high",
+        legend: "够宽：焦点行铺开该模型全部 xylitol 档；[high]=暂定；非焦点只预览一档；— = 无思考",
+      },
+      narrow: {
+        editor: `<div class="row fg-muted">models · ←→/shift+tab level · enter</div>
+<div class="row rev">› ornith-fast *                      high</div>
+<div class="row fg-on">  ornith-think                        max</div>
+<div class="row fg-on">  other/gpt-mini                        —</div>`,
+        footer: "~/xylitol · ornith-fast · high",
+        legend: "不够宽：只显示暂定一档；←→ / shift+tab 仍 cycle（不展示全档）",
+      },
+      noThinking: {
+        editor: `<div class="row fg-muted">models · enter</div>
+<div class="row fg-on">  ornith-fast                         high</div>
+<div class="row fg-on">  ornith-think                         max</div>
+<div class="row rev">› other/gpt-mini                         —</div>`,
+        footer: "~/xylitol · other/gpt-mini",
+        legend: "焦点无思考：等级区 —；←→/shift+tab 不改状态；footer 省略 thinking 段",
       },
       filter: {
         editor: `<div class="row fg-muted">filter: orn</div>
-<div class="row rev">› ornith-fast</div>
-<div class="row fg-on">  ornith-think</div>`,
-        footer: "~/xylitol · ornith-think",
+<div class="row rev">› ornith-fast *     off  low  medium [high] max</div>
+<div class="row fg-on">  ornith-think                          max</div>`,
+        footer: "~/xylitol · ornith-fast · high",
+        legend: "fuzzy 过滤；焦点仍可 wide 铺档",
       },
       empty: {
         editor: `<div class="row fg-muted">filter: zzz</div>
 <div class="row fg-muted">  No entries found</div>
 <div class="row fg-muted">  (0/0)</div>`,
-        footer: "~/xylitol · ornith-think",
+        footer: "~/xylitol · ornith-fast · high",
+        legend: "无匹配：无等级交互",
       },
     };
     function renderModels() {
-      const m = MODELS[state.models] || MODELS.open;
+      const m = MODELS[state.models] || MODELS.wide;
       document.getElementById("models-editor").innerHTML = m.editor;
       document.getElementById("models-footer").textContent = m.footer;
+      const legend = document.getElementById("models-legend");
+      if (legend) legend.textContent = m.legend || "";
       document.querySelectorAll("[data-models]").forEach((b) => {
         b.setAttribute("aria-pressed", String(b.dataset.models === state.models));
       });
@@ -1426,6 +1523,55 @@
       b.addEventListener("click", () => {
         state.models = b.dataset.models;
         renderModels();
+      });
+    });
+
+    /* Pending NextTurn: footer=active; trail = one dim at a time (model > thinking) */
+    const PENDING_RUNTIME = {
+      // 仅模型 pending（fixture pending-model.next-turn）— 入口 /model
+      nextTurn: {
+        editor: `<div class="row fg-muted"><span class="status-lead">⠋ Working</span>  <span class="status-trail">Next turn: deepseek-v4-flash</span></div>`,
+        footer: "~/xylitol · ornith · thinking off",
+        busy: true,
+        trail: "Next turn: deepseek-v4-flash",
+        legend: "入口 /model · selected model≠active → trail 仅模型（即使随后又 Shift+Tab，trail 仍只显示模型）",
+      },
+      // 仅 thinking — 入口 Shift+Tab，模型未变
+      thinking: {
+        editor: `<div class="row fg-muted"><span class="status-lead">⠋ Working</span>  <span class="status-trail">Next turn thinking: high</span></div>`,
+        footer: "~/xylitol · ornith · thinking off",
+        busy: true,
+        trail: "Next turn thinking: high",
+        legend: "入口 /model 改 level、模型未变 → trail 仅 thinking（无全局 Shift+Tab）",
+      },
+      cleared: {
+        editor: `<div class="row fg-muted"></div>`,
+        footer: "~/xylitol · ornith · thinking off",
+        busy: false,
+        trail: "",
+        legend: "selected == active（切回或 idle 收敛）→ 无 trail",
+      },
+    };
+    function renderPending() {
+      const p = PENDING_RUNTIME[state.pending] || PENDING_RUNTIME.nextTurn;
+      const trail = document.getElementById("pending-trail");
+      const status = document.getElementById("pending-status");
+      const ed = document.getElementById("pending-editor");
+      const legend = document.getElementById("pending-legend");
+      trail.textContent = p.trail;
+      trail.classList.toggle("hidden", !p.trail);
+      status.classList.toggle("hidden", !p.busy);
+      ed.innerHTML = '<span class="cursor"> </span>';
+      document.getElementById("pending-footer").textContent = p.footer;
+      if (legend) legend.textContent = p.legend || "";
+      document.querySelectorAll("[data-pending]").forEach((b) => {
+        b.setAttribute("aria-pressed", String(b.dataset.pending === state.pending));
+      });
+    }
+    document.querySelectorAll("[data-pending]").forEach((b) => {
+      b.addEventListener("click", () => {
+        state.pending = b.dataset.pending;
+        renderPending();
       });
     });
 
@@ -1528,7 +1674,7 @@
       } else if (e.key === "ArrowRight" || e.key === "]") {
         select(state.index + 1);
         e.preventDefault();
-      } else if (/^[0-9fFcCkKmMpP]$/.test(e.key) && !e.ctrlKey && !e.altKey && !e.metaKey) {
+      } else if (/^[0-9fFcCkKmMnNpP]$/.test(e.key) && !e.ctrlKey && !e.altKey && !e.metaKey) {
         const k = e.key.toLowerCase();
         const idx = SLOTS.findIndex((s) => s.key === k);
         if (idx >= 0) select(idx);
@@ -1578,6 +1724,7 @@
     renderLayoutShell();
     renderKeys();
     renderModels();
+    renderPending();
     renderTreep();
     renderWidgets();
     renderAtoms();

@@ -50,10 +50,23 @@ pub use crate::agent::model::registry::ModelRegistry;
 
 // ── AgentCapabilities ────────────────────────────────────────────────────
 
+/// In-flight (or last-bound) model+thinking for the active agent run (c1470 NextTurn).
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct ActiveTurnBinding {
+    pub model_id: String,
+    pub display_name: String,
+    pub thinking: ThinkingLevel,
+    /// True when footer should omit the thinking segment.
+    pub omit_thinking: bool,
+}
+
 /// Capability aggregate — model, tools, session persistence, and events.
 pub struct AgentCapabilities {
-    /// Model management (registry, selection, thinking level).
-    model_manager: ModelManager,
+    /// Model management (registry, selection, thinking level). Shared so ReAct
+    /// can refresh at turn boundaries while surfaces call `select_model`.
+    model_manager: Arc<Mutex<ModelManager>>,
+    /// Set for the duration of an agent `run`; `None` when idle / converged.
+    active_turn: Arc<Mutex<Option<ActiveTurnBinding>>>,
     /// Tools available to the agent (construct-time final set).
     tools: ToolSet,
     /// Runtime-mutable hooks consulted at tool-call boundaries.
@@ -119,7 +132,8 @@ impl AgentCapabilities {
         let prompt_guidelines = prompt::collect_tool_guidelines(&tool_registry, &selected_tools);
 
         let mut session = Self {
-            model_manager: ModelManager::new(model_registry, model_builder),
+            model_manager: Arc::new(Mutex::new(ModelManager::new(model_registry, model_builder))),
+            active_turn: Arc::new(Mutex::new(None)),
             tools: tool_registry,
             hooks: AgentHooks::empty(),
             tool_mode: XyToolExecutionMode::Sequential,
@@ -159,25 +173,87 @@ impl AgentCapabilities {
 
     // ── Model management (delegated to ModelManager) ──────────────
 
-    /// Get the current model config.
-    pub fn current_model(&self) -> Option<&XyModelMeta> {
-        self.model_manager.current_model()
+    fn with_models<R>(&self, f: impl FnOnce(&ModelManager) -> R) -> R {
+        let guard = self.model_manager.lock().unwrap_or_else(|e| e.into_inner());
+        f(&guard)
     }
 
-    /// Build the current model instance.
+    fn with_models_mut<R>(&self, f: impl FnOnce(&mut ModelManager) -> R) -> R {
+        let mut guard = self.model_manager.lock().unwrap_or_else(|e| e.into_inner());
+        f(&mut guard)
+    }
+
+    /// Shared handle for ReAct NextTurn refresh (clone into the run stream).
+    pub(crate) fn model_manager_handle(&self) -> Arc<Mutex<ModelManager>> {
+        self.model_manager.clone()
+    }
+
+    /// Shared active-turn binding for chrome (footer active / status trail).
+    pub(crate) fn active_turn_handle(&self) -> Arc<Mutex<Option<ActiveTurnBinding>>> {
+        self.active_turn.clone()
+    }
+
+    /// Get the currently selected model metadata (clone for lock safety).
+    pub fn current_model(&self) -> Option<XyModelMeta> {
+        self.with_models(|mm| mm.current_model().cloned())
+    }
+
+    /// Build the selected model instance.
     pub fn build_current_model(&self) -> Result<Arc<dyn XyModel>, String> {
-        self.model_manager.build_current_model()
+        self.with_models(|mm| mm.build_current_model())
     }
 
-    /// Get current thinking level (clamped).
+    /// Selected thinking level (clamped).
     pub fn thinking_level(&self) -> ThinkingLevel {
-        self.model_manager.thinking_level()
+        self.with_models(|mm| mm.thinking_level())
+    }
+
+    /// Active (in-flight) binding only — `None` when idle / converged.
+    pub fn inflight_turn_binding(&self) -> Option<ActiveTurnBinding> {
+        self.active_turn
+            .lock()
+            .unwrap_or_else(|e| e.into_inner())
+            .clone()
+    }
+
+    /// Active (in-flight) binding, or selected when idle.
+    pub fn active_turn_binding(&self) -> Option<ActiveTurnBinding> {
+        if let Some(active) = self.inflight_turn_binding() {
+            return Some(active);
+        }
+        self.with_models(|mm| {
+            let meta = mm.current_model()?;
+            let levels = crate::agent::model::manager::ModelManager::levels_for_meta(meta);
+            Some(ActiveTurnBinding {
+                model_id: meta.id.clone(),
+                display_name: if meta.display_name.is_empty() {
+                    meta.id.clone()
+                } else {
+                    meta.display_name.clone()
+                },
+                thinking: mm.thinking_level(),
+                omit_thinking: !ThinkingLevel::is_adjustable(&levels),
+            })
+        })
+    }
+
+    /// True while an agent run has an active turn binding (in-flight).
+    pub fn has_active_turn(&self) -> bool {
+        self.active_turn
+            .lock()
+            .unwrap_or_else(|e| e.into_inner())
+            .is_some()
+    }
+
+    /// Converge active → selected (idle / abort / run end).
+    pub fn clear_active_turn(&self) {
+        *self.active_turn.lock().unwrap_or_else(|e| e.into_inner()) = None;
     }
 
     /// Set thinking level.
     pub fn set_thinking_level(&mut self, level: ThinkingLevel) -> Result<(), String> {
         let previous = self.thinking_level();
-        self.model_manager.set_thinking_level(level)?;
+        self.with_models_mut(|mm| mm.set_thinking_level(level))?;
         self.persist_thinking_level_change(previous, level);
         Ok(())
     }
@@ -185,7 +261,7 @@ impl AgentCapabilities {
     /// Cycle to the next level in the current model's support list.
     pub fn cycle_thinking_level(&mut self) -> Result<ThinkingLevel, String> {
         let previous = self.thinking_level();
-        let level = self.model_manager.cycle_thinking_level()?;
+        let level = self.with_models_mut(|mm| mm.cycle_thinking_level())?;
         self.persist_thinking_level_change(previous, level);
         Ok(level)
     }
@@ -222,14 +298,13 @@ impl AgentCapabilities {
         }
     }
 
-    /// Apply Settings `default_thinking_level` (if parseable) then clamp to model.
+    /// Apply Settings `default_thinking_level` (if parseable) then preferred-or-highest.
     pub fn apply_default_thinking_level(&mut self, raw: Option<&str>) {
         let preferred = raw.and_then(ThinkingLevel::parse);
-        self.model_manager.set_preferred_default(preferred);
-        if let Some(level) = preferred {
-            let _ = self.model_manager.set_thinking_level(level);
-        }
-        self.model_manager.clamp_thinking_to_model();
+        self.with_models_mut(|mm| {
+            mm.set_preferred_default(preferred);
+            mm.apply_preferred_or_highest();
+        });
     }
 
     /// Select a specific model by ID (`source` = `"set"`).
@@ -240,7 +315,7 @@ impl AgentCapabilities {
     /// Select a model and emit `model_select` with the given source (`set` | `cycle`).
     pub fn select_model_with_source(&mut self, model_id: &str, source: &str) -> Result<(), String> {
         let previous = self.current_model().map(|m| m.id.clone());
-        self.model_manager.select_model(model_id)?;
+        self.with_models_mut(|mm| mm.select_model(model_id))?;
         // Fire-and-forget persistence via the session store port.
         if let Some(ref sid) = self.session_id {
             let store = self.store.clone();
@@ -481,8 +556,8 @@ impl AgentCapabilities {
         self.system_prompt.as_deref()
     }
 
-    pub fn model_registry(&self) -> &ModelRegistry {
-        self.model_manager.registry()
+    pub fn model_registry(&self) -> ModelRegistry {
+        self.with_models(|mm| mm.registry().clone())
     }
 
     /// Current working directory.

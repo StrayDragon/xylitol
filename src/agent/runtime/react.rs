@@ -134,6 +134,7 @@ impl AgentRuntime {
             .cancel();
         self.inner.clear_steer_queue();
         self.inner.abort_bash();
+        self.inner.clear_active_turn();
     }
 
     /// Enqueue a steering message for the active (or next) run.
@@ -313,16 +314,14 @@ impl AgentRuntime {
             Err(e) => return XyEventStream::error(format!("session load error: {e}")),
         };
 
-        let model = match self.inner.build_current_model() {
-            Ok(m) => m,
-            Err(e) => return XyEventStream::error(format!("model build error: {e}")),
-        };
-
         let tools = self.inner.tools().clone();
         let hooks = self.inner.hooks().clone();
         let hook_bus = self.inner.hook_bus();
         let tool_mode = self.inner.tool_mode();
         let user_parts = parts;
+        let model_manager = self.inner.model_manager_handle();
+        let active_turn = self.inner.active_turn_handle();
+        let system_prompt = self.inner.system_prompt().map(|s| s.to_string());
 
         // Build tool schemas
         let tool_schemas: Vec<XyToolSchema> = tools
@@ -344,22 +343,14 @@ impl AgentRuntime {
         let queues = self.inner.queues();
         let store = self.inner.session_store();
         let skills = self.inner.loaded_skills().to_vec();
-        let generate_options = crate::protocol::ports::XyGenerateOptions {
-            thinking_level: self.inner.thinking_level(),
-            level_map: self
-                .inner
-                .current_model()
-                .map(|m| m.thinking_level_map.clone())
-                .unwrap_or_default(),
-            thinking_budgets: None,
-            system_prompt: self.inner.system_prompt().map(|s| s.to_string()),
-        };
 
         let (queue_tx, mut queue_rx) = tokio::sync::mpsc::unbounded_channel();
         queues.bind_event_tx(queue_tx);
 
         let react = Box::pin(run_react_loop(ReActConfig {
-            model,
+            model_manager,
+            active_turn,
+            system_prompt,
             tools,
             tool_schemas,
             user_parts,
@@ -374,7 +365,6 @@ impl AgentRuntime {
             session_id: sid,
             seeded_history,
             skills,
-            generate_options,
         }));
 
         let inner: Pin<Box<dyn Stream<Item = XyEvent> + Send>> = Box::pin(async_stream::stream! {
@@ -410,7 +400,12 @@ impl AgentRuntime {
 
 /// Parameters for the ReAct agent loop.
 struct ReActConfig {
-    model: Arc<dyn XyModel>,
+    /// Shared selected model/thinking; refreshed at each turn boundary (c1470).
+    model_manager: Arc<Mutex<crate::agent::model::manager::ModelManager>>,
+    /// Active in-flight binding for chrome; cleared when the run ends.
+    active_turn: Arc<Mutex<Option<crate::agent::session::ActiveTurnBinding>>>,
+    /// System prompt snapshot for this run (ar6: next-run only).
+    system_prompt: Option<String>,
     tools: ToolSet,
     tool_schemas: Vec<XyToolSchema>,
     user_parts: Vec<crate::protocol::message::AgentPart>,
@@ -433,8 +428,57 @@ struct ReActConfig {
     seeded_history: Vec<AgentMessage>,
     /// Trust-filtered catalog for `$skill` expand (c1130); clone kept raw in history.
     skills: Vec<SkillInfo>,
-    /// Thinking level / map / budgets for provider request assembly (c1165).
-    generate_options: crate::protocol::ports::XyGenerateOptions,
+}
+
+fn prepare_turn_binding(
+    model_manager: &Arc<Mutex<crate::agent::model::manager::ModelManager>>,
+    active_turn: &Arc<Mutex<Option<crate::agent::session::ActiveTurnBinding>>>,
+    system_prompt: &Option<String>,
+    run_model: &mut Option<(String, Arc<dyn XyModel>)>,
+) -> Result<(Arc<dyn XyModel>, crate::protocol::ports::XyGenerateOptions), String> {
+    let mm = model_manager.lock().unwrap_or_else(|e| e.into_inner());
+    let meta = mm
+        .current_model()
+        .ok_or_else(|| "no model configured".to_string())?;
+    let model_id = meta.id.clone();
+    let thinking = mm.thinking_level();
+    let levels = crate::agent::model::manager::ModelManager::levels_for_meta(meta);
+    let binding = crate::agent::session::ActiveTurnBinding {
+        model_id: meta.id.clone(),
+        display_name: if meta.display_name.is_empty() {
+            meta.id.clone()
+        } else {
+            meta.display_name.clone()
+        },
+        thinking,
+        omit_thinking: !crate::protocol::types::ThinkingLevel::is_adjustable(&levels),
+    };
+    let generate_options = crate::protocol::ports::XyGenerateOptions {
+        thinking_level: thinking,
+        level_map: meta.thinking_level_map.clone(),
+        thinking_budgets: None,
+        system_prompt: system_prompt.clone(),
+    };
+    let model = match run_model.as_ref() {
+        Some((id, model)) if id == &model_id => Arc::clone(model),
+        _ => {
+            let built = mm.build_current_model()?;
+            *run_model = Some((model_id, Arc::clone(&built)));
+            built
+        }
+    };
+    drop(mm);
+    *active_turn.lock().unwrap_or_else(|e| e.into_inner()) = Some(binding);
+    Ok((model, generate_options))
+}
+
+/// Clears active-turn binding when the ReAct stream drops (normal end or abort).
+struct ClearActiveTurn(Arc<Mutex<Option<crate::agent::session::ActiveTurnBinding>>>);
+
+impl Drop for ClearActiveTurn {
+    fn drop(&mut self) {
+        *self.0.lock().unwrap_or_else(|e| e.into_inner()) = None;
+    }
 }
 
 fn should_stop_after_turn(hooks: &AgentHooks, ctx: &ShouldStopAfterTurnCtx) -> bool {
@@ -481,7 +525,9 @@ async fn persist_agent_message(
 
 fn run_react_loop(cfg: ReActConfig) -> impl Stream<Item = XyEvent> + Send {
     let ReActConfig {
-        model,
+        model_manager,
+        active_turn,
+        system_prompt,
         tools,
         tool_schemas,
         user_parts,
@@ -496,9 +542,10 @@ fn run_react_loop(cfg: ReActConfig) -> impl Stream<Item = XyEvent> + Send {
         session_id,
         seeded_history,
         skills,
-        generate_options,
     } = cfg;
     async_stream::stream! {
+        let _clear_active = ClearActiveTurn(active_turn.clone());
+
         if let Some(bus) = &hook_bus {
             let (ty, phase, ctx) = super::script_hook_ctx::agent_start();
             observe_script_hook(bus, ty, phase, ctx).await;
@@ -518,6 +565,8 @@ fn run_react_loop(cfg: ReActConfig) -> impl Stream<Item = XyEvent> + Send {
         // Steering queued before/at run start is injected before the first model call.
         let mut pending: Vec<AgentMessage> = drain_queue(&steer_queue);
         let mut turn: usize = 0;
+        // Per-run model instance: reuse while selected id is unchanged (NextTurn).
+        let mut run_model: Option<(String, Arc<dyn XyModel>)> = None;
 
         // Outer loop: continues when follow-up messages arrive after the agent
         // would otherwise stop (pi runLoop semantics).
@@ -587,6 +636,20 @@ fn run_react_loop(cfg: ReActConfig) -> impl Stream<Item = XyEvent> + Send {
                     yield XyEvent::Error(format!("context hook blocked: {reason}"));
                     break 'outer;
                 }
+
+                // NextTurn: re-read selected model + thinking at turn boundary (c1470).
+                let (model, generate_options) = match prepare_turn_binding(
+                    &model_manager,
+                    &active_turn,
+                    &system_prompt,
+                    &mut run_model,
+                ) {
+                    Ok(v) => v,
+                    Err(e) => {
+                        yield XyEvent::Error(format!("model build error: {e}"));
+                        break 'outer;
+                    }
+                };
 
                 // Race cancel against connect/retry so Esc aborts hung `send()`
                 // (reqwest drop-cancels the in-flight HTTP future).

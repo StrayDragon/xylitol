@@ -1,0 +1,13 @@
+# id: pending-model.next-turn
+id: pending-model.next-turn
+design: ../pending-runtime.md
+slot: pending
+state: next-turn
+source: pending.nextTurn.editor
+must_contain:
+  - "Next turn:"
+  - "deepseek-v4-flash"
+must_not_contain:
+  - "model →"
+  - "System"
+  - "ornith"

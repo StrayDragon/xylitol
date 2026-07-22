@@ -100,7 +100,19 @@
   场景: clamp-on-switch
     假如 当前为 xhigh 后切换到仅支持至 high 的模型
     当 select_model 完成
-    那么 thinking level 被 clamp 到支持集内合法值
+    那么 thinking level 为支持集最高档 high
+
+  @req:m10
+  场景: default-highest-on-select
+    假如 目标模型支持 off minimal low medium high
+    当 select_model 到该模型
+    那么 thinking level 为 high 而非 Settings 低档默认
+
+  @req:m10
+  场景: no-thinking-is-off
+    假如 目标模型 thinking 不可调或支持集仅 off
+    当 select_model 到该模型
+    那么 thinking level 为 off
 
   @req:m11
   场景: level-reaches-options

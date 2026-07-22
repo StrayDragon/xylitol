@@ -85,7 +85,7 @@ pub struct ContextTokenEstimate {
 // ── Thinking Level ──────────────────────────────────────────────────
 
 /// How much "thinking" / chain-of-thought the model should expose.
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Serialize, Deserialize)]
 #[serde(rename_all = "lowercase")]
 #[derive(Default)]
 pub enum ThinkingLevel {
@@ -168,7 +168,24 @@ impl ThinkingLevel {
         Ok(out)
     }
 
+    /// Highest level in `supported` by full order (`off` … `max`). Empty → `Off`.
+    pub fn highest_in(supported: &[ThinkingLevel]) -> ThinkingLevel {
+        supported
+            .iter()
+            .copied()
+            .max()
+            .unwrap_or(ThinkingLevel::Off)
+    }
+
+    /// Adjustable when the support set has any level other than sole `Off`.
+    pub fn is_adjustable(supported: &[ThinkingLevel]) -> bool {
+        supported.iter().any(|l| *l != ThinkingLevel::Off)
+    }
+
     /// Pick a legal level when the current one is unsupported.
+    ///
+    /// Prefers `preferred_default` when still legal (session-first assembly only);
+    /// otherwise the support-set highest (m10 / c1470). Does **not** fall back to Medium.
     pub fn clamp_to_supported(
         current: ThinkingLevel,
         supported: &[ThinkingLevel],
@@ -185,15 +202,7 @@ impl ThinkingLevel {
         {
             return d;
         }
-        if supported.contains(&ThinkingLevel::Medium) {
-            return ThinkingLevel::Medium;
-        }
-        supported
-            .iter()
-            .copied()
-            .rev()
-            .find(|l| *l != ThinkingLevel::Off)
-            .unwrap_or(supported[0])
+        Self::highest_in(supported)
     }
 }
 

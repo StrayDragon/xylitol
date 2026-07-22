@@ -376,20 +376,59 @@ impl<T: Terminal> HostSession<T> {
         self.sync_ui_root_from_model();
     }
 
-    /// Take pending Shift+Tab thinking cycle (c1150).
-    pub fn take_pending_thinking_cycle(&mut self) -> bool {
-        let Some(root) = self.ui_root.as_ref() else {
-            return false;
-        };
-        root.borrow_mut().take_pending_thinking_cycle()
-    }
-
-    /// Silent UI sync for thinking level (border + footer only; c1150).
+    /// Silent UI sync for thinking level (border + footer only).
     pub fn apply_thinking_level_ui(&mut self, level: crate::protocol::types::ThinkingLevel) {
         let Some(root) = self.ui_root.as_ref() else {
             return;
         };
         root.borrow_mut().set_thinking_level_ui(level);
+    }
+
+    /// Sync footer active chrome + optional status trail from driver (c1470).
+    pub fn sync_runtime_chrome(&mut self, driver: &dyn crate::app::core::driver::XyDriver) {
+        let selected = driver.current_model();
+        let selected_label = selected
+            .as_ref()
+            .map(|m| {
+                if m.display_name.is_empty() {
+                    m.id.clone()
+                } else {
+                    m.display_name.clone()
+                }
+            })
+            .unwrap_or_else(|| crate::app::core::bootstrap::UNSET_MODEL_DISPLAY.into());
+        let selected_thinking = driver.thinking_level();
+        let selected_omit = selected.as_ref().is_none_or(|m| !m.thinking);
+
+        let agent_run = driver.has_active_turn();
+        let (footer_label, footer_thinking, omit) =
+            if let Some((label, thinking, omit_thinking)) = driver.active_turn() {
+                (label, thinking, omit_thinking)
+            } else {
+                (selected_label.clone(), selected_thinking, selected_omit)
+            };
+
+        let trail = if agent_run {
+            if let Some((active_label, active_thinking, _)) = driver.active_turn() {
+                crate::app::tui::layout::status_trail_text(
+                    &active_label,
+                    active_thinking,
+                    &selected_label,
+                    selected_thinking,
+                )
+            } else {
+                None
+            }
+        } else {
+            None
+        };
+
+        if let Some(root) = self.ui_root.as_ref() {
+            let mut root = root.borrow_mut();
+            root.set_active_chrome(footer_label, footer_thinking, omit);
+            root.set_status_trail(trail);
+        }
+        self.sync_ui_root_from_model();
     }
 
     /// Set or clear footer token usage fragment (c1035).

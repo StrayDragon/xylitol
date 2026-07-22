@@ -419,16 +419,16 @@
     那么 $demo 使用 skill-ref 前景（可测 ANSI/cell）
 
   @req:ati36
-  场景: shift-tab-cycles
-    假如 产品 idle 且模型支持 off 与 high
-    当 按 Shift+Tab（或 app.thinking.cycle）
-    那么 thinking level 在支持列表内前进一档且 footer/边框更新
+  场景: no-global-shift-tab-cycle
+    假如 产品 idle 且 Editor 槽（非 Models）且模型支持 off 与 high
+    当 按 Shift+Tab
+    那么 thinking level MUST NOT 仅因该键前进一档
 
   @req:ati36
-  场景: busy-allowed
-    假如 产品 agent busy
+  场景: busy-no-global-cycle
+    假如 产品 agent busy 且非 Models 槽
     当 按 Shift+Tab
-    那么 thinking level 仍 cycle 成功且无拒绝系统块
+    那么 thinking level MUST NOT cycle 且 MUST NOT 因 cycle 写系统块
 
   @req:ati37
   场景: paste-inserts-abs-path

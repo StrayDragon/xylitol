@@ -2,7 +2,7 @@ kind: llman.sdd.spec
 name: "agent-runtime"
 purpose: "薄编排 ReAct 运行时：AgentRuntime 循环、工具批执行、steer/follow-up 队列、abort 与 XyEvent 流（不含 adk / OutputGuard）。"
 valid_scope[3]: src/agent/,src/protocol/,tests/
-requirements[25]{req_id,title,statement}:
+requirements[26]{req_id,title,statement}:
   ar1,"thin-react-loop","agent/ 层 MUST 以 AgentRuntime（runtime/react.rs）驱动 ReAct：调用 XyModel、执行工具、直至无 tool_calls、abort、或可选 should_stop_after_turn 请求停；MUST NOT 以 max_iterations 或等价硬步数闸结束 run；MUST NOT 在循环文件内联 bash 实现或厂商 HTTP。"
   ar2,"xy-event-stream",运行时 MUST 以 XyEvent 异步流对外输出（TextDelta / ThinkingDelta / Tool* / Turn* / QueueUpdate / Error 等）；MUST NOT 再引入 AgentEvent 或 adk 事件类型。
   ar3,工具批后继续,"同一模型响应中的全部工具调用 MUST 在下一轮模型调用前执行完毕（可并行或串行）；MUST NOT 因流结束 Done 而提前结束含 tool_calls 的回合。该行为 MUST 有可执行 BDD 场景（live `.feature`，`@req`）。"
@@ -28,6 +28,7 @@ requirements[25]{req_id,title,statement}:
   "ar-pilot",live feature 试点,"agent-runtime spec MUST 在 llmanspec/specs/agent-runtime/agent-runtime.feature 携带可执行场景 react-terminates 与 stream-is-xyevent；场景文本与 @req 对齐对应 requirement。"
   ar23,"persist-done-usage","ReAct 在模型流正常结束时 MUST 将 XyChunk::Done 携带的 usage 与 stop_reason（若有）写入随后持久化的 AssistantMessage；MUST NOT 在 Done 已提供非空 usage 时仍硬编码 usage: None。该行为 MUST 有可执行 BDD 或等价单测场景。"
   ar24,"should-stop-after-turn","ReAct MUST 在每次 TurnEnd 之后、轮询 steer/follow-up 或开始下一模型调用之前，调用可选的单槽 should_stop_after_turn（对齐 pi shouldStopAfterTurn）；返回 true 时 MUST 发射 AgentEnd 并结束本 run，MUST NOT 为此新增专用停闸 XyEvent 变体，MUST NOT abort 本 turn 已完成的助手消息或工具。未注册时 MUST 不因步数上限停止。该行为 MUST 有可执行 BDD 场景（live `.feature`，`@req`）。"
+  ar25,"next-turn-refresh-model-thinking","ReAct MUST 在每次模型调用前（turn 边界，对齐 pi prepareNextTurn）从 session 重读当前选中模型与 thinking level，并据此重建本 turn 的 XyModel 与 XyGenerateOptions（或等价绑定）；MUST NOT 在整个 run 内握死首帧 model/thinking snapshot。已开始的 in-flight generate_stream MUST 继续使用该次调用开始时的绑定，MUST NOT 中途拆流。run 结束（AgentEnd）或 abort 后无 in-flight 时，active 与 selected MUST 收敛。该行为 MUST 有可执行 BDD 或等价单测场景。"
 scenarios[15]{req_id,id,given,when,then,feature}:
   ar13,"no-rloop",在 src 中搜索 loop raw identifier,运行检查,零匹配,false
   ar14,"no-facade",检查 agent/facade.rs,不存在该模块,facade 保持移除,false

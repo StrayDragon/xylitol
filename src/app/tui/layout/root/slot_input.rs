@@ -102,9 +102,7 @@ impl UiRoot {
                     return;
                 };
                 if matches_binding(key, "tui.select.confirm") {
-                    if let Some(item) = self.models_list.get_selected_item() {
-                        self.pending_model_select = Some(item.value.clone());
-                    }
+                    self.confirm_models_selection();
                     return;
                 }
                 if matches_binding(key, "tui.select.up")
@@ -113,6 +111,16 @@ impl UiRoot {
                     || matches_binding(key, "tui.select.pageDown")
                 {
                     self.models_list.handle_input(event);
+                    self.rebuild_models_items_keep_selection();
+                    return;
+                }
+                // ←→ or Shift+Tab cycle provisional thinking on focus model (picker only).
+                if matches_key_event(key, "left") {
+                    self.cycle_focused_model_level(false);
+                    return;
+                }
+                if matches_key_event(key, "right") || matches_key_event(key, "shift+tab") {
+                    self.cycle_focused_model_level(true);
                     return;
                 }
                 if matches_key_event(key, "backspace") {
@@ -193,10 +201,6 @@ impl UiRoot {
         }
 
         if let InputEvent::Key(ref key) = event {
-            if matches_binding(key, "app.thinking.cycle") {
-                self.pending_thinking_cycle = true;
-                return;
-            }
             if matches_binding(key, "app.thinking.toggle") {
                 self.fold.thinking_expanded = !self.fold.thinking_expanded;
                 self.bump_upper_gen();

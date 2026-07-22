@@ -36,7 +36,27 @@ impl UiRoot {
             return vec![String::new()];
         }
         // Keep Loader leading blank + spinner row (do not strip empties).
-        self.status_loader.render(width)
+        let mut lines = self.status_loader.render(width);
+        if let Some(trail) = self.status_trail.as_deref()
+            && let Some(content) = lines.last_mut()
+        {
+            let trail_paint = self.theme.paint_muted(trail);
+            let lead_w = xylitol_tui::visible_width(content);
+            let trail_w = xylitol_tui::visible_width(&trail_paint);
+            if lead_w + 1 + trail_w <= width {
+                let pad = width.saturating_sub(lead_w + trail_w);
+                *content = format!("{content}{}{trail_paint}", " ".repeat(pad));
+            } else if trail_w < width {
+                // Prefer lead; truncate trail if needed.
+                let budget = width.saturating_sub(lead_w.saturating_add(1));
+                if budget > 3 {
+                    let truncated = truncate_to_width(&trail_paint, budget, "…", false);
+                    let pad = width.saturating_sub(lead_w + xylitol_tui::visible_width(&truncated));
+                    *content = format!("{content}{}{truncated}", " ".repeat(pad.max(1)));
+                }
+            }
+        }
+        lines
     }
 
     pub(super) fn render_editor_slot(&mut self, width: usize) -> Vec<String> {
@@ -71,9 +91,14 @@ impl UiRoot {
             EditorSlot::Settings => vec![" Settings".to_string(), " (stub) Esc close".to_string()],
             EditorSlot::Choice => vec![" Choice".to_string(), " (stub) Esc close".to_string()],
             EditorSlot::Models => {
+                let w = width.max(1);
+                if self.models_last_width != w {
+                    self.models_last_width = w;
+                    self.rebuild_models_items_keep_selection();
+                }
                 let mut lines = Vec::new();
                 lines.push(self.models_filter_line());
-                lines.extend(self.models_list.render(width.max(1)));
+                lines.extend(self.models_list.render(w));
                 lines
             }
             EditorSlot::Themes => {

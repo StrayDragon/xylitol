@@ -31,6 +31,17 @@ pub trait XyDriver: Send {
     /// Currently selected model, if any.
     fn current_model(&self) -> Option<ModelInfo>;
 
+    /// In-flight turn binding `(display_label, thinking, omit_thinking)` while an agent run is active.
+    /// `None` when idle / converged (footer uses selected).
+    fn active_turn(&self) -> Option<(String, ThinkingLevel, bool)> {
+        None
+    }
+
+    /// True while ReAct has an active turn binding (agent run in flight).
+    fn has_active_turn(&self) -> bool {
+        false
+    }
+
     /// All registered models.
     fn available_models(&self) -> Vec<ModelInfo>;
 
@@ -51,8 +62,8 @@ pub trait XyDriver: Send {
 
     /// Cycle to the next level in the current model's thinking support list.
     ///
-    /// Returns the level now in effect. Product TUI MUST use this (not package
-    /// `ThinkingBorderLevel::cycle_next`) as the cycle truth source.
+    /// Returns the level now in effect. Demo / legacy callers only; product TUI
+    /// changes thinking solely via `/model` (ati36).
     fn cycle_thinking_level(&mut self) -> Result<ThinkingLevel, XyDriverError>;
 
     /// Current session id (the id the next `run`/export acts on).

@@ -4,6 +4,7 @@
 //! `infra::process::shell` and to read as the product component tree root.
 
 mod editor_border;
+mod models_slot;
 mod mount;
 mod render;
 mod slot_input;
@@ -21,10 +22,11 @@ use xylitol_tui::components::select_list::{SelectItem, SelectList, SelectListLay
 use xylitol_tui::components::text::Text;
 use xylitol_tui::{
     AtPathSource, CompletionSource, Focusable, Input, SlashArgCompletionSource, SlashCommandSource,
-    SystemClock, TreeNode, TreeSelector, TreeSelectorOptions, fg_rgb, fuzzy_filter,
+    SystemClock, TreeNode, TreeSelector, TreeSelectorOptions, fg_rgb,
 };
 
 use super::dollar_skill_source::DollarSkillSource;
+use super::models_picker::{ModelPickerRow, PendingModelChoice};
 use super::slash_catalog::product_slash_commands_for_editor;
 
 use super::session_tree::FilterMode;
@@ -123,8 +125,10 @@ pub struct UiRoot {
     footer_token: Option<String>,
     /// Current XyDriver thinking level mirrored for border + footer (c1150).
     thinking_level: ThinkingLevel,
-    /// Shift+Tab / `app.thinking.cycle` → host drain calls XyDriver (c1150).
-    pending_thinking_cycle: bool,
+    /// When true, footer omits the thinking segment (no-thinking active model).
+    footer_omit_thinking: bool,
+    /// Agent-busy status trail (`Next turn: …`); independent of status short-word.
+    status_trail: Option<String>,
     /// Mutually exclusive editor-zone face (ati18).
     slot: EditorSlot,
     tree: TreeSelector,
@@ -145,10 +149,12 @@ pub struct UiRoot {
     /// Active label editor for selected tree node (c690).
     tree_label_edit: Option<(String, Input)>,
     /// Models Enter → host calls `SetModel` (c630).
-    pending_model_select: Option<String>,
+    pending_model_select: Option<PendingModelChoice>,
     models_list: SelectList,
     models_items: Vec<SelectItem>,
+    models_rows: Vec<ModelPickerRow>,
     models_filter: String,
+    models_last_width: usize,
     /// `(model_id, description)` for [`SlashArgCompletionSource`] (c999).
     model_arg_catalog: Vec<(String, String)>,
     /// Themes Enter → host calls `reload_themes` (c1115).
@@ -213,7 +219,8 @@ impl UiRoot {
             model: crate::app::core::bootstrap::UNSET_MODEL_DISPLAY.into(),
             footer_token: None,
             thinking_level: ThinkingLevel::Off,
-            pending_thinking_cycle: false,
+            footer_omit_thinking: false,
+            status_trail: None,
             slot: EditorSlot::Editor,
             tree: empty_tree_selector(theme),
             tree_filter: FilterMode::Default,
@@ -228,7 +235,9 @@ impl UiRoot {
             pending_model_select: None,
             models_list: empty_models_list(theme),
             models_items: Vec::new(),
+            models_rows: Vec::new(),
             models_filter: String::new(),
+            models_last_width: 80,
             model_arg_catalog: Vec::new(),
             pending_theme_select: None,
             themes_list: empty_themes_list(theme),
@@ -468,7 +477,7 @@ impl UiRoot {
         }
     }
 
-    pub fn take_pending_model_select(&mut self) -> Option<String> {
+    pub fn take_pending_model_select(&mut self) -> Option<PendingModelChoice> {
         self.pending_model_select.take()
     }
 
@@ -552,15 +561,6 @@ impl UiRoot {
         }
     }
 
-    /// Mount fuzzy model picker in the editor slot (c630).
-    pub fn mount_models_picker(&mut self, items: Vec<SelectItem>) {
-        self.models_filter.clear();
-        self.models_items = items;
-        self.models_list = empty_models_list(self.theme);
-        self.apply_models_filter();
-        self.slot = EditorSlot::Models;
-    }
-
     /// Mount built-in theme picker in the editor slot (c1115).
     pub fn mount_themes_picker(&mut self, current: Option<&str>) {
         let current = current.unwrap_or("dark");
@@ -586,25 +586,6 @@ impl UiRoot {
             },
         );
         self.slot = EditorSlot::Themes;
-    }
-
-    fn apply_models_filter(&mut self) {
-        let filter = self.models_filter.as_str();
-        self.models_list.filtered_items = if filter.is_empty() {
-            self.models_items.clone()
-        } else {
-            fuzzy_filter(&self.models_items, filter, |item| item.value.as_str())
-        };
-        self.models_list.selected_index = 0;
-    }
-
-    fn models_filter_line(&self) -> String {
-        if self.models_filter.is_empty() {
-            self.theme.paint_muted(" models")
-        } else {
-            self.theme
-                .paint_muted(&format!(" filter: {}", self.models_filter))
-        }
     }
 
     fn apply_tree_filter(&mut self, mode: FilterMode) {
@@ -687,7 +668,11 @@ impl UiRoot {
     }
 
     fn refresh_footer_from_queue(&mut self, steer: usize, follow_up: usize) {
-        let thinking = footer_thinking_label(self.thinking_level);
+        let thinking = if self.footer_omit_thinking {
+            String::new()
+        } else {
+            footer_thinking_label(self.thinking_level)
+        };
         let base = format_footer_text(
             &self.cwd,
             &self.model,
@@ -697,6 +682,28 @@ impl UiRoot {
             self.footer_token.as_deref(),
         );
         self.footer.set_text(self.theme.paint_muted(&base));
+    }
+
+    /// Apply active chrome for footer (model + thinking); omit thinking when not adjustable.
+    pub fn set_active_chrome(
+        &mut self,
+        model_label: impl Into<String>,
+        thinking: ThinkingLevel,
+        omit_thinking: bool,
+    ) {
+        self.model = model_label.into();
+        self.thinking_level = thinking;
+        self.footer_omit_thinking = omit_thinking;
+        self.sync_editor_border();
+        self.refresh_footer_from_queue(
+            self.ui_model.queue.steer_count,
+            self.ui_model.queue.follow_up_count,
+        );
+    }
+
+    /// Set or clear status trail (agent-busy NextTurn pending).
+    pub fn set_status_trail(&mut self, trail: Option<String>) {
+        self.status_trail = trail.filter(|s| !s.is_empty());
     }
 
     /// Pending steer / follow-up strip above status (pi `pendingMessagesContainer`).

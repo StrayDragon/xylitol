@@ -194,15 +194,23 @@ pub struct ModelInfo {
     pub id: String,
     pub display_name: String,
     pub thinking: bool,
+    /// Xylitol thinking levels supported by this model (`off`-only when not adjustable).
+    pub thinking_levels: Vec<String>,
     pub context_window: u64,
 }
 
 impl From<&XyModelMeta> for ModelInfo {
     fn from(m: &XyModelMeta) -> Self {
+        let levels = ThinkingLevel::resolve_configured_levels(
+            m.thinking,
+            (!m.thinking_levels.is_empty()).then_some(m.thinking_levels.as_slice()),
+        )
+        .unwrap_or_else(|_| vec![ThinkingLevel::Off]);
         Self {
             id: m.id.clone(),
             display_name: m.display_name.clone(),
-            thinking: m.thinking,
+            thinking: m.thinking && ThinkingLevel::is_adjustable(&levels),
+            thinking_levels: levels.iter().map(|l| l.as_str().to_string()).collect(),
             context_window: m.context_window,
         }
     }

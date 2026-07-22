@@ -131,6 +131,7 @@ impl ScriptedDriver {
                 id: "fake".into(),
                 display_name: "Fake".into(),
                 thinking: false,
+                thinking_levels: Vec::new(),
                 context_window: 8_000,
             },
             available_models: vec![
@@ -138,18 +139,21 @@ impl ScriptedDriver {
                     id: "fake".into(),
                     display_name: "Fake".into(),
                     thinking: false,
+                    thinking_levels: Vec::new(),
                     context_window: 8_000,
                 },
                 ModelInfo {
                     id: "ornith-fast".into(),
                     display_name: "Ornith Fast".into(),
                     thinking: false,
+                    thinking_levels: Vec::new(),
                     context_window: 8_000,
                 },
                 ModelInfo {
                     id: "ornith-think".into(),
                     display_name: "Ornith Think".into(),
                     thinking: true,
+                    thinking_levels: Vec::new(),
                     context_window: 32_000,
                 },
             ],
@@ -443,6 +447,7 @@ impl XyDriver for ScriptedDriver {
             id: model_id.into(),
             display_name: model_id.into(),
             thinking: false,
+            thinking_levels: Vec::new(),
             context_window: 8_000,
         };
         Ok(self.model.clone())
@@ -1112,16 +1117,6 @@ mod slice_tests {
         })
     }
 
-    fn back_tab_event() -> InputEvent {
-        use crossterm::event::{KeyCode, KeyEvent, KeyEventKind, KeyEventState, KeyModifiers};
-        InputEvent::Key(KeyEvent {
-            code: KeyCode::BackTab,
-            modifiers: KeyModifiers::NONE,
-            kind: KeyEventKind::Press,
-            state: KeyEventState::NONE,
-        })
-    }
-
     fn alt_up_event() -> InputEvent {
         use crossterm::event::{KeyCode, KeyEvent, KeyEventKind, KeyEventState, KeyModifiers};
         InputEvent::Key(KeyEvent {
@@ -1483,6 +1478,7 @@ mod slice_tests {
             id: "fake".into(),
             display_name: "Fake".into(),
             thinking: false,
+            thinking_levels: Vec::new(),
             context_window: 8_000,
         });
         let mut stream = None;
@@ -1518,6 +1514,7 @@ mod slice_tests {
             id: "fake".into(),
             display_name: "Fake".into(),
             thinking: false,
+            thinking_levels: Vec::new(),
             context_window: 8_000,
         });
         let mut stream = None;
@@ -3726,8 +3723,8 @@ mod slice_tests {
         assert_eq!(session.theme_preference(), Some("light"));
         let notes = system_notes(&session);
         assert!(
-            notes.iter().any(|t| t.contains("theme → light")),
-            "expected success note: {notes:?}"
+            !notes.iter().any(|t| t.contains("theme →")),
+            "success path must not emit theme system note: {notes:?}"
         );
     }
 
@@ -3932,10 +3929,10 @@ mod slice_tests {
         );
     }
 
-    // ── c1150 thinking level cycle ─────────────────────────────────
+    // ── c1470: no global thinking cycle (picker-only) ──────────────
 
     #[test]
-    fn c1150_scripted_driver_cycle_wraps_support_list() {
+    fn c1470_scripted_driver_cycle_wraps_support_list() {
         let mut driver = ScriptedDriver::new();
         driver.set_thinking_levels(vec![ThinkingLevel::Off, ThinkingLevel::High]);
         assert_eq!(driver.thinking_level(), ThinkingLevel::Off);
@@ -3950,7 +3947,7 @@ mod slice_tests {
     }
 
     #[tokio::test]
-    async fn c1150_shift_tab_cycles_footer_and_border_silently() {
+    async fn c1470_shift_tab_does_not_cycle_outside_picker() {
         let mut session = HostSession::new_product_ui(TestTerminal::new(80, 24));
         let root = session.ui_root().expect("ui").clone();
         let mut driver = ScriptedDriver::new();
@@ -3964,49 +3961,17 @@ mod slice_tests {
             .await
             .unwrap();
 
-        assert_eq!(driver.thinking_level(), ThinkingLevel::High);
-        assert_eq!(root.borrow().thinking_level_for_test(), ThinkingLevel::High);
-
-        let frame = root.borrow_mut().render(80);
-        let footer = frame.last().expect("footer");
-        assert!(
-            footer.contains("high") && !footer.contains('•'),
-            "footer must show thinking label without decorative bullet: {footer}"
-        );
-        let editor = root.borrow_mut().editor_render_for_test(40).join("\n");
-        // pi dark thinkingHigh #b294bb
-        assert!(
-            editor.contains("38;2;178;148;187"),
-            "high border SGR missing; got:\n{editor}"
-        );
+        assert_eq!(driver.thinking_level(), ThinkingLevel::Off);
+        assert_eq!(root.borrow().thinking_level_for_test(), ThinkingLevel::Off);
         assert_eq!(
             root.borrow().ui_model_entries_len_for_test(),
             entries_before,
             "MUST NOT push thinking-border system note"
         );
-        let scroll = frame.join("\n");
-        assert!(
-            !scroll.contains("thinking-border"),
-            "scrollback must stay silent: {scroll}"
-        );
-
-        // BackTab (legacy VT) also cycles.
-        session.step(HostEvent::Input(back_tab_event())).unwrap();
-        pump_host_driver(&mut session, &mut driver, &mut stream)
-            .await
-            .unwrap();
-        assert_eq!(driver.thinking_level(), ThinkingLevel::Off);
-        let footer2 = root.borrow_mut().render(80);
-        let f2 = footer2.last().expect("footer");
-        assert!(f2.contains("thinking off"), "off label: {f2}");
-        assert!(
-            !f2.contains("· •") && !f2.contains("• thinking"),
-            "MUST NOT keep decorative bullet before thinking: {f2}"
-        );
     }
 
     #[tokio::test]
-    async fn c1150_busy_shift_tab_still_cycles_no_refuse() {
+    async fn c1470_busy_shift_tab_does_not_cycle() {
         let mut session = HostSession::new_product_ui(TestTerminal::new(80, 24));
         let root = session.ui_root().expect("ui").clone();
         let mut driver = ScriptedDriver::new();
@@ -4022,11 +3987,11 @@ mod slice_tests {
             .await
             .unwrap();
 
-        assert_eq!(driver.thinking_level(), ThinkingLevel::High);
+        assert_eq!(driver.thinking_level(), ThinkingLevel::Off);
         assert_eq!(
             root.borrow().ui_model_entries_len_for_test(),
             entries_before,
-            "busy cycle must not emit refuse / thinking-border note"
+            "busy Shift+Tab must not cycle or emit refuse note"
         );
         let frame = root.borrow_mut().render(80).join("\n");
         assert!(!frame.contains("refused"));
