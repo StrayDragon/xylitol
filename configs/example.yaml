@@ -103,3 +103,12 @@ hooks:
 #     url: "https://mcp.context7.com/mcp"
 #     headers:
 #       CONTEXT7_API_KEY: "{{ secret.CONTEXT7_API_KEY }}"
+
+# Optional remote traces (OTLP/HTTP → Langfuse / Collector). Default: none.
+# Requires Cargo feature `otel` (in default features). Secrets via secret.env.
+# otel:
+#   exporter: otlp-http   # or omit / none
+#   # endpoint: "http://localhost:3000/api/public/otel"
+#   # (or set LANGFUSE_BASE_URL in secret.env → …/api/public/otel)
+#   environment: dev
+#   service_name: xylitol

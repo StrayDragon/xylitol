@@ -24,6 +24,11 @@ thiserror = "2.0.18"
 # Timeline tracing (c1000): enable at the binary crate; FileReporter is file-only.
 fastrace = { version = "0.7.18", features = ["enable"] }
 fastrace-futures = "0.7.18"
+# Optional OTLP export (c1475): fastrace → OpenTelemetry → Langfuse/Collector.
+fastrace-opentelemetry = { version = "0.18", optional = true }
+opentelemetry = { version = "0.32", default-features = false, features = ["trace"], optional = true }
+opentelemetry_sdk = { version = "0.32", default-features = false, features = ["trace"], optional = true }
+opentelemetry-otlp = { version = "0.32", default-features = false, features = ["trace", "http-proto", "http-json", "reqwest-client", "reqwest-rustls"], optional = true }
 log = "0.4"
 env_logger = "0.11"
 clap = { version = "4.6.1", features = ["derive"] }
@@ -51,7 +56,7 @@ flate2 = { version = "1.1.9" }
 tar = { version = "0.4.46" }
 
 notify = { version = "8" }
-reqwest = { version = "0.13.4", features = ["stream", "json"] }
+reqwest = { version = "0.13.4", default-features = false, features = ["stream", "json", "rustls", "charset", "http2", "system-proxy"] }
 async-stream = "0.3.6"
 tokio-util = "0.7.18"
 yaml_serde = "0.10.4"
@@ -71,13 +76,21 @@ crossterm = { version = "0.29", optional = true, features = ["event-stream"] }
 http = "1"
 
 [features]
-default = ["cli", "tui"]
+default = ["cli", "tui", "otel"]
 # CLI composition root.
 cli = []
 # Always-on HTTP/WebSocket server.
 server = ["dep:axum", "dep:tokio-tungstenite", "dep:tower-http"]
 # Terminal UI surface (host-driven on xylitol-tui).
 tui = ["dep:xylitol-tui", "dep:crossterm"]
+# Optional OTLP/HTTP export (Langfuse / Collector). Default on for local agents;
+# config still defaults to exporter=none (zero remote traffic until configured).
+otel = [
+    "dep:fastrace-opentelemetry",
+    "dep:opentelemetry",
+    "dep:opentelemetry_sdk",
+    "dep:opentelemetry-otlp",
+]
 # Future GUI placeholder.
 gui = []
 

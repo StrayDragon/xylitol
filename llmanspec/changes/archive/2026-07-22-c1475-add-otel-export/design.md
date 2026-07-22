@@ -28,13 +28,15 @@ app::cli::init_logging / 观测装配
 [otel]
 exporter = "none"           # none | otlp-http
 # endpoint = "http://localhost:3000/api/public/otel"
-# protocol = "http-binary" # 或 http-json
+# protocol = "http-json"   # 默认；部分 Langfuse self-host 对 protobuf 吞掉不出 trace
 # environment = "dev"
 # service_name = "xylitol"
 # headers 经 secret / env 注入（勿把 secret 明文写进可分享 config）
 ```
 
 Langfuse Basic Auth：`Authorization=Basic base64(pk:sk)`，可选 `x-langfuse-ingestion-version=4`。
+OTLP HTTP 使用 **async reqwest**（禁止在 app Tokio 内构建 `reqwest::blocking`，会 panic）。导出 `block_on`：有 Handle 则 `block_in_place`；否则私有 `xylitol-otel` runtime。
+客户端强制 **HTTP/1.1**。`with_endpoint` 须带 `/v1/traces`（装配侧规范化）。`ForceSampledExporter` 强制 SAMPLED。
 
 ## 与 Codex 的差异
 

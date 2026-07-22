@@ -1,8 +1,10 @@
-//! Observability bootstrap — fastrace FileReporter + `log` file logger.
+//! Observability bootstrap — fastrace reporters + `log` file logger.
 //!
-//! File-only (never stdout/stderr) so TUI Inline + DSR stay intact.
+//! File-only sinks never write stdout/stderr so TUI Inline + DSR stay intact.
+//! Optional OTLP/HTTP (feature `otel` + `[otel]` config) is also file/network
+//! only — never console.
 //!
-//! Activation (no CLI flag / settings field):
+//! Local file activation (no CLI flag):
 //! - `RUST_LOG` set → level filter from env
 //! - else `XYLITOL_DEBUG=1` → `xylitol=debug,warn`
 //! - else debug builds (`cfg(debug_assertions)`) → same default
@@ -10,24 +12,30 @@
 //!
 //! Provider timeline (`provider-trace.jsonl`) follows the same gate, or
 //! `XYLITOL_PROVIDER_TRACE=1` alone in release.
+//!
+//! Remote OTLP is orthogonal: `[otel].exporter = otlp-http` (+ feature), default
+//! `none`.
 
 use std::io::Write;
 use std::path::Path;
 use std::sync::Mutex;
 
-use crate::infra::observability::FileTraceReporter;
+use crate::infra::config::types::OtelConfig;
+use crate::infra::observability::{FanoutReporter, FileTraceReporter};
 use crate::infra::provider::trace::set_provider_trace_active;
 
 const DEFAULT_FILTER: &str = "xylitol=debug,warn";
 
-/// Install file-only log + fastrace reporter when the environment / build requests it.
+/// Install file-only log + fastrace reporters when requested.
 ///
-/// Returns `Some(())` when backends were installed.
-pub fn init_logging(agent_dir: &Path) -> Option<()> {
+/// `otel` controls optional remote OTLP (ignored / degraded when feature off or
+/// misconfigured). Returns `Some(())` when any backend was installed.
+pub fn init_logging(agent_dir: &Path, otel: &OtelConfig) -> Option<()> {
     let want_log = logging_requested();
     let want_provider = provider_trace_requested(want_log);
+    let otel_reporter = crate::infra::observability::otel::install::try_build_otlp_reporter(otel);
 
-    if !want_log && !want_provider {
+    if !want_log && !want_provider && otel_reporter.is_none() {
         set_provider_trace_active(false);
         return None;
     }
@@ -65,13 +73,11 @@ pub fn init_logging(agent_dir: &Path) -> Option<()> {
                 );
             }
             Err(e) => {
-                // Another global logger already installed — leave a TUI-safe
-                // breadcrumb in the log file (never stdout/stderr).
                 if let Some(mut f) = open_append(&log_dir, &log_path) {
                     let _ = writeln!(
                         f,
                         "xylitol::logging WARN env_logger init failed ({e}); \
-                         level log sink inactive; provider-trace may still run \
+                         level log sink inactive; provider-trace / otel may still run \
                          under the same logs/ dir"
                     );
                     let _ = f.flush();
@@ -80,12 +86,17 @@ pub fn init_logging(agent_dir: &Path) -> Option<()> {
         }
     }
 
+    let mut fanout = FanoutReporter::new(Vec::new());
+    // Span emission (provider_trace_active) is on when any sink needs spans:
+    // local JSONL and/or OTLP. FileReporter alone still follows env/build gate.
+    let mut emit_spans = false;
+
     if want_provider {
         let trace_path = log_dir.join("provider-trace.jsonl");
         match FileTraceReporter::open(trace_path.clone()) {
             Ok(reporter) => {
-                fastrace::set_reporter(reporter, fastrace::collector::Config::default());
-                set_provider_trace_active(true);
+                fanout.push(reporter);
+                emit_spans = true;
                 log::info!(
                     target: "xylitol::logging",
                     "provider trace enabled path={}",
@@ -93,18 +104,30 @@ pub fn init_logging(agent_dir: &Path) -> Option<()> {
                 );
             }
             Err(e) => {
-                set_provider_trace_active(false);
                 log::warn!(target: "xylitol::logging", "provider trace open failed: {e}");
             }
         }
-    } else {
-        set_provider_trace_active(false);
+    }
+
+    if let Some(otel_r) = otel_reporter {
+        fanout.push_box(otel_r);
+        emit_spans = true;
+        log::info!(
+            target: "xylitol::otel",
+            "OTLP export enabled exporter=otlp-http"
+        );
+    }
+
+    set_provider_trace_active(emit_spans);
+
+    if !fanout.is_empty() {
+        fastrace::set_reporter(fanout, fastrace::collector::Config::default());
     }
 
     Some(())
 }
 
-/// Flush fastrace before process exit.
+/// Flush fastrace before process exit (file + OTLP batch).
 pub fn flush_observability() {
     fastrace::flush();
 }
