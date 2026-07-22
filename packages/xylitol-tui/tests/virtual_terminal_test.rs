@@ -525,6 +525,75 @@ fn render_exempts_image_lines_from_width_check() {
         .expect("Kitty image lines should be exempt from the width check");
 }
 
+#[test]
+fn unchanged_lines_reuse_finalize_skip_width_checks() {
+    use support::MutableComponent;
+
+    // Many CJK lines: second identical frame must reuse finalized strings and
+    // skip visible_width (profile hotspot A+B).
+    let body: Vec<String> = (0..40)
+        .map(|i| format!("预览标题{i}测宽与排版混合正文"))
+        .collect();
+    let lines = std::rc::Rc::new(std::cell::RefCell::new(body.clone()));
+    let term = LoggingVirtualTerminal::new(80, 24);
+    let mut tui = TUI::new(term);
+    tui.add_child(Box::new(MutableComponent {
+        lines: lines.clone(),
+    }));
+
+    tui.render_frame().expect("warm");
+    assert_eq!(tui.finalize_width_checks_for_test(), 40);
+    assert_eq!(tui.finalize_line_reuses_for_test(), 0);
+
+    tui.clear_finalize_counters_for_test();
+    tui.render_frame().expect("identical frame");
+    assert_eq!(
+        tui.finalize_line_reuses_for_test(),
+        40,
+        "stable content must reuse previous finalized lines"
+    );
+    assert_eq!(
+        tui.finalize_width_checks_for_test(),
+        0,
+        "reused lines must not re-run visible_width"
+    );
+
+    // Touch one line → only that line pays width check.
+    tui.clear_finalize_counters_for_test();
+    lines.borrow_mut()[7] = "仅改一行".into();
+    tui.render_frame().expect("one line changed");
+    assert_eq!(tui.finalize_width_checks_for_test(), 1);
+    assert_eq!(tui.finalize_line_reuses_for_test(), 39);
+}
+
+#[test]
+fn resize_still_width_checks_all_lines() {
+    use support::MutableComponent;
+
+    let lines = std::rc::Rc::new(std::cell::RefCell::new(vec![
+        "你好世界".to_string(), // visible width 8
+        "ok".to_string(),
+    ]));
+    let term = LoggingVirtualTerminal::new(20, 4);
+    let mut tui = TUI::new(term);
+    tui.add_child(Box::new(MutableComponent {
+        lines: lines.clone(),
+    }));
+    tui.render_frame().expect("wide");
+    tui.clear_finalize_counters_for_test();
+
+    // Narrower than CJK line → must error (reuse forbidden when width changes).
+    tui.terminal.set_size_hint(6, 4);
+    let err = tui
+        .render_frame()
+        .expect_err("resize to underflow must re-check width");
+    assert!(err.line_width > err.width);
+    assert!(
+        tui.finalize_line_reuses_for_test() == 0,
+        "must not reuse finalized lines across width change"
+    );
+}
+
 // ── overlay compositing (extract_segments style inheritance) ────────────────
 
 #[test]
