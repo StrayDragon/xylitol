@@ -18,7 +18,16 @@ pub fn apply_tools_family(model: &mut UiModel, event: &XyEvent) -> bool {
             true
         }
         XyEvent::ToolExecutionUpdate { id, output } => {
-            if let Some(UiEntry::Tool { output: buf, .. }) = find_tool_mut(&mut model.entries, id) {
+            if let Some(UiEntry::Tool {
+                name, output: buf, ..
+            }) = find_tool_mut(&mut model.entries, id)
+            {
+                use crate::app::tool_display::is_mcp_tool_name;
+                // MCP body is owned by Start/End (args + pretty result). Streaming the raw
+                // CallToolResult into the buffer glues onto `args:` and duplicates under result.
+                if is_mcp_tool_name(name) && buf.starts_with("args:") {
+                    return true;
+                }
                 buf.push_str(output);
             }
             true
@@ -40,9 +49,17 @@ pub fn apply_tools_family(model: &mut UiModel, event: &XyEvent) -> bool {
                 ..
             }) = find_tool_mut(&mut model.entries, id)
             {
+                use crate::app::tool_display::{
+                    extract_mcp_args_value, is_mcp_tool_name, mcp_tool_body,
+                };
+
                 if let Some(truncated_display) = extract_truncated_tool_display(result) {
                     // att16: drop streamed full buffer; keep truncated view + Full output footer.
                     *output = truncated_display;
+                } else if is_mcp_tool_name(name) {
+                    // c1460: rebuild — drop any streamed raw append; no content extract.
+                    let args = extract_mcp_args_value(output);
+                    *output = mcp_tool_body(args.as_ref(), Some(result));
                 } else if let Some(human) = humanize_tool_result_for_tui(name, result, *is_error) {
                     // write/edit/read always replace; bash only when no live stream yet.
                     match name.as_str() {
