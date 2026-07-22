@@ -89,10 +89,9 @@ impl AgentIterationSpan {
             None => Span::root("agent.iteration", SpanContext::random()),
         }
         .with_properties(|| {
-            let mut props = vec![
-                ("turn_id".to_string(), turn_id.clone()),
-                ("turn_index".to_string(), turn_index.to_string()),
-            ];
+            // `turn_id` lives on `agent.turn` span attrs only — same value on every
+            // iteration was Langfuse observation noise (parent chain correlates).
+            let mut props = vec![("turn_index".to_string(), turn_index.to_string())];
             props.extend(langfuse_observation_properties("agent"));
             props
         });
@@ -101,6 +100,8 @@ impl AgentIterationSpan {
                 ("kind", "lifecycle".to_string()),
                 ("phase", "start".to_string()),
                 ("name", "agent.iteration".to_string()),
+                // Local JSONL / inspect correlation only (not a span attribute).
+                ("turn_id", turn_id.clone()),
             ]
         }));
         if let Some(ctx) = SpanContext::from_span(&span) {
@@ -292,6 +293,23 @@ mod tests {
         assert_eq!(iter.parent_id, turn.span_id);
         assert_eq!(tool.parent_id, iter.span_id);
         assert_eq!(llm.parent_id, iter.span_id);
+        // Attribute slim: single model key; no duplicate turn_id on iteration.
+        let llm_keys: Vec<&str> = llm.properties.iter().map(|(k, _)| k.as_ref()).collect();
+        assert!(
+            llm_keys.contains(&"langfuse.observation.model.name"),
+            "llm keys={llm_keys:?}"
+        );
+        assert!(
+            !llm_keys
+                .iter()
+                .any(|k| *k == "model" || *k == "gen_ai.request.model")
+        );
+        let iter_keys: Vec<&str> = iter.properties.iter().map(|(k, _)| k.as_ref()).collect();
+        assert!(iter_keys.contains(&"turn_index"), "{iter_keys:?}");
+        assert!(
+            !iter_keys.contains(&"turn_id"),
+            "iteration must not copy turn_id: {iter_keys:?}"
+        );
         assert!(!spans.iter().any(|s| {
             matches!(
                 s.name.as_ref(),

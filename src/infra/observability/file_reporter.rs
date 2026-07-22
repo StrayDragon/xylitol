@@ -50,7 +50,10 @@ impl Reporter for FileTraceReporter {
         for span in spans {
             let request_id = prop(&span.properties, "request_id").unwrap_or("");
             let api = prop(&span.properties, "api").unwrap_or("");
-            let model = prop(&span.properties, "model").unwrap_or("");
+            // Model lives on Langfuse key after attribute slim; keep bare `model` fallback.
+            let model = prop(&span.properties, "model")
+                .or_else(|| prop(&span.properties, "langfuse.observation.model.name"))
+                .unwrap_or("");
             let trace_id = span.trace_id.to_string();
             let span_id = format!("{:016x}", span.span_id.0);
 
@@ -93,7 +96,7 @@ impl Reporter for FileTraceReporter {
                     "tool_name",
                     "tool_id",
                     "span_role",
-                    // token.estimate (c1420 follow-up)
+                    // token.estimate (c1420 follow-up); `backend` kept for old lines
                     "backend",
                     "provenance",
                     "tokens",

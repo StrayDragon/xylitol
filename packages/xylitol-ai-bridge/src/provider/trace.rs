@@ -91,10 +91,11 @@ impl ProviderRequestTrace {
         let request_id = uuid::Uuid::new_v4().to_string();
         let parent_ctx = parent.unwrap_or_else(SpanContext::random);
         let root = Span::root("llm.request", parent_ctx).with_properties(|| {
+            // `api` / `request_id` are xylitol-local; model goes only via
+            // `langfuse.observation.model.name` (see langfuse_generation_properties).
             let mut props = vec![
                 ("request_id".to_string(), request_id.clone()),
                 ("api".to_string(), api.to_string()),
-                ("model".to_string(), model.to_string()),
             ];
             props.extend(super::langfuse_generation_properties(model));
             props
@@ -167,10 +168,9 @@ impl ProviderRequestTrace {
     }
 
     fn attach_usage(&self, u: &AiBridgeUsage) {
-        self.root
-            .add_property(|| ("gen_ai.usage.input_tokens", u.input.to_string()));
-        self.root
-            .add_property(|| ("gen_ai.usage.output_tokens", u.output.to_string()));
+        // Single usage channel: Langfuse `usage_details` (verbatim / exclusive
+        // buckets, incl. optional cache). Do not also emit `gen_ai.usage.*` —
+        // same mapped field with inclusive/normalize semantics that fight cache.
         let mut details = serde_json::json!({
             "input": u.input,
             "output": u.output,
