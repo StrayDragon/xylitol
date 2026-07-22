@@ -52,7 +52,7 @@ Session (uuid)
 
 ## Status
 
-**purpose-draft** — TUI 性能轨优先；本 change 延后 promote。
+**purpose-draft** — TUI 性能波（A+B finalize 复用）已明显降温；**本 change 可优先 promote**（相对 wrap/流式尾候补 c1535）。
 
 ## Ethics
 
