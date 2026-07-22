@@ -1075,12 +1075,15 @@ fn run_react_loop(cfg: ReActConfig) -> impl Stream<Item = XyEvent> + Send {
                         }
                         Err(e) => {
                             super::obs::record_tool_error(name, &e, turn_id.as_deref());
+                            // Tool failure SSOT is ToolExecutionEnd(is_error) + history
+                            // tool_result — do not also yield XyEvent::Error (that duplicated
+                            // the same string as a global `error:` line in TUI/print; deny
+                            // path above already ends at ToolExecutionEnd only).
                             let err = if tool_missing {
                                 format!("Unknown tool: {name}")
                             } else {
                                 format!("Tool '{name}' error: {e}")
                             };
-                            yield XyEvent::Error(err.clone());
                             (vec![AgentPart::text(err)], true)
                         }
                     };
@@ -1801,6 +1804,58 @@ mod tests {
         assert_eq!(updates[1], "chunk-b\n");
         assert_eq!(updates[2], "chunk-c\n");
         assert!(saw_end, "expected ToolExecutionEnd");
+    }
+
+    #[tokio::test]
+    async fn tool_execute_err_ends_with_tool_end_not_global_error() {
+        use crate::protocol::lifecycle::XyEvent;
+        use futures::StreamExt;
+
+        // Missing tool → ExecutionFailed; surfaces must not get a second XyEvent::Error.
+        let chunks = vec![
+            crate::protocol::types::XyChunk::ToolCallEnd {
+                id: "call-missing".into(),
+                name: "no_such_tool".into(),
+                args: serde_json::json!({}),
+            },
+            crate::protocol::types::XyChunk::Done {
+                finish_reason: crate::protocol::message::XyStopReason::ToolUse,
+                usage: None,
+            },
+        ];
+        let mut agent = make_agent_with_tools(chunks, ToolSet::empty());
+
+        let mut stream = agent.run("go").await;
+        let mut tool_ends = Vec::new();
+        let mut global_errors = Vec::new();
+        while let Some(evt) = stream.next().await {
+            match evt {
+                XyEvent::ToolExecutionEnd {
+                    name,
+                    result,
+                    is_error,
+                    ..
+                } => tool_ends.push((name, result, is_error)),
+                XyEvent::Error(msg) => global_errors.push(msg),
+                _ => {}
+            }
+        }
+        assert_eq!(
+            tool_ends.len(),
+            1,
+            "expected one ToolExecutionEnd: {tool_ends:?}"
+        );
+        assert_eq!(tool_ends[0].0, "no_such_tool");
+        assert!(tool_ends[0].2, "is_error");
+        assert!(
+            tool_ends[0].1.contains("Unknown tool"),
+            "result: {}",
+            tool_ends[0].1
+        );
+        assert!(
+            global_errors.is_empty(),
+            "tool failure must not also yield XyEvent::Error: {global_errors:?}"
+        );
     }
 
     #[tokio::test]
