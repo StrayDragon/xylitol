@@ -123,7 +123,14 @@ impl UiRoot {
 
     pub(super) fn render_scrollback_slot(&mut self, width: usize) -> Vec<String> {
         // Idle empty: 0 rows (DESIGN editor.md — no loud placeholder wall).
-        render_scrollback(&self.ui_model, self.glyphs, self.theme, self.fold, width)
+        render_scrollback(
+            &self.ui_model,
+            self.glyphs,
+            self.theme,
+            self.fold,
+            width,
+            &mut self.scrollback_paint,
+        )
     }
 }
 

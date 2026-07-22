@@ -66,7 +66,7 @@ pub struct QueueBadge {
 }
 
 /// Bang / interactive bash block tint state (c668; aligns demo tool tint).
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
 pub enum BashBlockStatus {
     Pending,
     Success,

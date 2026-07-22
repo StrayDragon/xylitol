@@ -11,7 +11,7 @@ mod scrollback;
 pub use glyphs::GlyphSet;
 pub use loaded_resources::render_loaded_resources;
 pub use queue::render_queue_strip;
-pub use scrollback::{ScrollbackFold, render_scrollback};
+pub use scrollback::{ScrollbackFold, ScrollbackPaintCache, render_scrollback};
 
 use crate::protocol::types::{ThinkingLevel, TokenProvenance};
 

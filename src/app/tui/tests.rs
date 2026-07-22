@@ -1884,6 +1884,35 @@ fn upper_cache_reused_across_spinner_ticks() {
 }
 
 #[test]
+fn scrollback_entry_cache_limits_misses_under_streaming() {
+    use super::layout::UiRoot;
+
+    let mut root = UiRoot::new();
+    let mut model = UiModel::new();
+    model.begin_run("hello");
+    for i in 0..30 {
+        model.entries.push(super::bridge::UiEntry::Assistant {
+            text: format!("history-{i}\n\nparagraph"),
+        });
+    }
+    root.apply_ui_model(&model);
+    let _ = root.render(80);
+    root.clear_scrollback_entry_misses_for_test();
+
+    // Streaming deltas change only the tail — committed entries must be cache hits.
+    for i in 0..20 {
+        model.streaming_assistant.push_str(&format!("x{i}"));
+        root.apply_ui_model(&model);
+        let _ = root.render(80);
+    }
+    let misses = root.scrollback_entry_misses_for_test();
+    assert!(
+        misses <= 2,
+        "TextDelta must not re-Markdown all history; misses={misses}"
+    );
+}
+
+#[test]
 fn models_picker_left_right_cycle_thinking_levels() {
     use super::layout::{ModelPickerRow, UiRoot};
     use crate::protocol::types::ThinkingLevel;
