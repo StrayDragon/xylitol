@@ -30,7 +30,7 @@ flowchart TB
   subgraph Surfaces["应用面"]
     Homo["Web 与 TUI 同源 · 约束板"]
     Web["Cloud Agent 与 Web 控制台"]
-    Inspect["出口流量检视"]
+    Obs["OTEL 与 Langfuse 观测"]
     Visual["TUI 视觉与信息表达"]
   end
 
@@ -50,22 +50,21 @@ flowchart TB
 
   Homo -.->|跨面约束| Web
   Homo -.->|覆盖事实源| Live
-  Web -.->|全日用可内嵌检视| Inspect
   Live --> Lsp
   Live --> Dap
   Live --> Sub
   Live --> Loop
-  Inspect -.-> Prov
+  Obs -.->|排障对照网关| Prov
   Sub -.-> Web
 ```
 
-> **检视**：独立页 / TUI 只起 **可先于** Cloud-Agent 全日用壳；上图虚线只表示全日用控制台可内嵌同一模块，不是硬阻塞。
+> **观测**：本地 fastrace JSONL 已落地；远程以 **OTLP → Langfuse** 为首要出口（默认关闭）。**不**自研 Inspect 检视台。
 
 | 文档 | 候补方向 |
 |---|---|
 | [Web与TUI同源.md](./Web与TUI同源.md) | 跨面语义约束板（非 Web 壳本身） |
 | [TUI视觉与信息表达.md](./TUI视觉与信息表达.md) | 状态减噪、主题密度 |
-| [出口流量检视.md](./出口流量检视.md) | 事实源、独立检视页、子进程、agent API |
+| [OTEL与Langfuse观测.md](./OTEL与Langfuse观测.md) | OTLP 出口、Langfuse GenAI 属性、默认不收集 |
 | [Cloud-Agent与Web控制台.md](./Cloud-Agent与Web控制台.md) | 多工作区 CS + Web |
 | [运行时即时设置.md](./运行时即时设置.md) | 能力覆盖盘 / 可观察覆盖集 / Web 同源（模型 NextTurn 已迁 [architecture](../architecture/运行时即时设置.md)） |
 | [Loop管理与触发可视化.md](./Loop管理与触发可视化.md) | Loop 管理与触发醒目 |

@@ -103,10 +103,10 @@ python3 scripts/inspect_provider_trace.py --request-id RID lag
 ## 人类可选（agent 仍优先脚本）
 
 - DuckDB / `lnav`：对 **`$LOG_DIR/provider-trace.jsonl`** 即席查；勿把大结果贴回 agent。
-- 「漂亮时间线」→ roadmap OTel/Jaeger；当前产物是 **专用 JSONL**，不是 OTLP。
+- 「漂亮时间线」→ 可选 OTLP/HTTP → Langfuse（roadmap `OTEL与Langfuse观测.md`，配置 `[otel]`，默认 none）；当前默认产物仍是 **专用 JSONL**，不是 OTLP。
 
 ## agent 约定
 
 - 先跑 **一个** 子命令，stdout 原样用于推理，再决定下一步。
 - `lag` / `lifecycle` / 健康检查已够则 **停**，不要 `recent -n 500`。
-- 用户要 Jaeger → 说明需后续 OTel；短期用本 skill。
+- 用户要 Jaeger / Langfuse → 指向 `[otel]` + roadmap；未配置时短期用本 skill 读 JSONL。

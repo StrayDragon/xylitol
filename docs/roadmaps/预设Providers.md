@@ -48,14 +48,14 @@ Then 无 Cursor 依赖；配置后可按协同路线调度
 |---|---|
 | M1 档案与文档 | 主要预设可配置、可发现 |
 | M2 验证过的默认 | 各预设有「已知可用」基线说明 |
-| M3 与计量/检视 | 词表策略、出口检视对网关友好；排障时能对照「线路 vs 理解」（见 [出口流量检视.md](./出口流量检视.md)） |
+| M3 与计量/检视 | 词表策略、观测出口对网关友好；排障时能对照「线路 vs 理解」（见 [OTEL与Langfuse观测.md](./OTEL与Langfuse观测.md)） |
 | M4 Cursor SDK | Web 协同面落地（见 Cloud 路线图） |
 
 ## 依赖
 
 - 开闭扩展心智：[../architecture/多厂商模型.md](../architecture/多厂商模型.md)、[../architecture/产品分层总览.md](../architecture/产品分层总览.md)
-- 与 Tokenizer、Inspect、Web 可交错，不互相硬阻塞
-- 厂商/网关排障：[出口流量检视.md](./出口流量检视.md)；对照底座见 [../architecture/进程内观测.md](../architecture/进程内观测.md)
+- 与 Tokenizer、观测出口、Web 可交错，不互相硬阻塞
+- 厂商/网关排障：[OTEL与Langfuse观测.md](./OTEL与Langfuse观测.md)；对照底座见 [../architecture/进程内观测.md](../architecture/进程内观测.md)
 
 ## 相关
 
