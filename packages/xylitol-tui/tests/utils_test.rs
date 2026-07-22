@@ -91,6 +91,21 @@ fn test_visible_width_with_osc() {
 }
 
 #[test]
+fn test_visible_width_ansi_ascii_matches_plain() {
+    // c1508: colored ASCII must match plain width (ANSI+ASCII fast path).
+    let plain = "Resume Session (Current Folder)  Current | All";
+    let styled = format!("\x1b[38;5;245m{plain}\x1b[0m");
+    assert_eq!(visible_width(&styled), visible_width(plain));
+    assert_eq!(visible_width(&styled), plain.len());
+}
+
+#[test]
+fn test_visible_width_ansi_cjk_still_correct() {
+    let styled = "\x1b[31m预览标题\x1b[0m";
+    assert_eq!(visible_width(styled), visible_width("预览标题"));
+}
+
+#[test]
 fn test_extract_ansi_code_csi() {
     let (code, len) = extract_ansi_code("\x1b[31m", 0).unwrap();
     assert_eq!(code, "\x1b[31m");
