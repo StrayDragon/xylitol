@@ -590,6 +590,66 @@ fn update_tracker_from_text(text: &str, tracker: &mut AnsiCodeTracker) {
 
 /// Split text into tokens while keeping ANSI codes attached.
 fn split_into_tokens_with_ansi(text: &str) -> Vec<String> {
+    // c1509: ANSI + ASCII printable (incl. space) — no grapheme scan.
+    if let Some(tokens) = split_into_tokens_ansi_ascii(text) {
+        return tokens;
+    }
+    split_into_tokens_with_ansi_slow(text)
+}
+
+/// Byte/space tokenizer when every non-escape byte is ASCII printable (`0x20..=0x7e`).
+fn split_into_tokens_ansi_ascii(text: &str) -> Option<Vec<String>> {
+    // Eligibility: same gate as visible_width ANSI+ASCII fast path.
+    visible_width_ansi_ascii(text)?;
+
+    let bytes = text.as_bytes();
+    let mut tokens: Vec<String> = Vec::new();
+    let mut current = String::new();
+    let mut pending_ansi = String::new();
+    let mut current_kind: Option<TokenKind> = None;
+    let mut i = 0usize;
+
+    while i < bytes.len() {
+        if let Some((code, len)) = extract_ansi_code(&text[i..], 0) {
+            pending_ansi.push_str(code);
+            i += len;
+            continue;
+        }
+        let b = bytes[i];
+        let is_space = b == b' ';
+        let kind = if is_space {
+            TokenKind::Space
+        } else {
+            TokenKind::Word
+        };
+        if !current.is_empty() && current_kind != Some(kind) {
+            tokens.push(std::mem::take(&mut current));
+        }
+        if !pending_ansi.is_empty() {
+            current.push_str(&pending_ansi);
+            pending_ansi.clear();
+        }
+        current_kind = Some(kind);
+        current.push(b as char);
+        i += 1;
+    }
+
+    if !pending_ansi.is_empty() {
+        if !current.is_empty() {
+            current.push_str(&pending_ansi);
+        } else if let Some(last) = tokens.last_mut() {
+            last.push_str(&pending_ansi);
+        } else {
+            current = pending_ansi;
+        }
+    }
+    if !current.is_empty() {
+        tokens.push(current);
+    }
+    Some(tokens)
+}
+
+fn split_into_tokens_with_ansi_slow(text: &str) -> Vec<String> {
     let mut tokens: Vec<String> = Vec::new();
     let mut current = String::new();
     let mut pending_ansi = String::new();
@@ -712,7 +772,12 @@ pub fn wrap_text_with_ansi(text: &str, max_width: usize) -> Vec<String> {
         } else {
             String::new()
         };
-        let wrapped = wrap_single_line(&format!("{}{}", prefix, input_line), max_width);
+        // Avoid allocate when no carried SGR prefix (common for first / unstyled lines).
+        let wrapped = if prefix.is_empty() {
+            wrap_single_line(input_line, max_width)
+        } else {
+            wrap_single_line(&format!("{prefix}{input_line}"), max_width)
+        };
         for line in wrapped {
             result.push(line);
         }
