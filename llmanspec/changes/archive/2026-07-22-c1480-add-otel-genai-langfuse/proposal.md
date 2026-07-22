@@ -8,7 +8,8 @@ depends_on:
 branch: feature/c1480-add-otel-genai-langfuse
 author: agent
 base_sha: 746ab42b7e36c8d33b87420b0cfff83856ce6ef3
-checkpointed: false
+checkpointed: true
+checkpoint_sha: 746ab42b7e36c8d33b87420b0cfff83856ce6ef3
 ---
 
 # c1480-add-otel-genai-langfuse

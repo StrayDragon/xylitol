@@ -43,7 +43,7 @@ impl ProviderRequestTrace {
                 ("api".to_string(), api.to_string()),
                 ("model".to_string(), model.to_string()),
             ];
-            props.extend(super::langfuse_session_properties());
+            props.extend(super::langfuse_generation_properties(model));
             props
         });
         Some(Self { root, request_id })

@@ -32,7 +32,7 @@
 | 阶段 | 用户可感知结果 | 对应 change（意向） |
 |---|---|---|
 | **M1 OTLP 装配 + 默认 none** | 配置开启才导出；未配/坏配不收集 | `c1475-add-otel-export` |
-| **M2 GenAI / Langfuse 属性** | Langfuse 里可读 generation、tool、session、用量 | `c1480-add-otel-genai-langfuse` |
+| **M2 GenAI / Langfuse 属性** | Langfuse 里可读 generation、tool、session（uuid+可选 name）；用量/完整 I/O 见 M3 | `c1480-add-otel-genai-langfuse`（进行中） |
 | **M3 载荷档位（可选）** | 显式档才带截断/全文 observation input-output | 后置；默认可只元数据 |
 | **M4 子进程出站（可选）** | 托管 bash/MCP 对外请求策略透明 | 后置；不假装已全捕获 |
 
