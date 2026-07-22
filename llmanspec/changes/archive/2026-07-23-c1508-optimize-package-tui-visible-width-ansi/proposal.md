@@ -2,6 +2,7 @@
 change_id: c1508-optimize-package-tui-visible-width-ansi
 title: package-tui：visible_width ANSI 快路径（免整串 strip 分配）
 status: applied
+# archived: 2026-07-23 (docs-only; quick landed on main)
 priority: 1508
 depends_on: []
 author: agent
@@ -9,6 +10,7 @@ author: agent
 
 # c1508-optimize-package-tui-visible-width-ansi
 
+> **Archived** `llmanspec/changes/archive/2026-07-23-c1508-optimize-package-tui-visible-width-ansi/`
 > Promoted → applied（无 MUST/SHALL；quick 落地）。验收：`just test-tui` + `utils_test` visible_width。
 
 ## Why

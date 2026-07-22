@@ -16,20 +16,31 @@ author: agent
 
 c1500 已用 `ScrollbackPaintCache`（entry fingerprint）压住「每帧全量 Markdown」的主卡顿。长会话下仍可能线性涨的是：**每帧把全部 entry 行 flatten 进 upper**，再交给差分引擎。引擎 `previous_viewport_top` 只省写屏，不省 `render_scrollback` CPU。
 
+代码事实（`render_scrollback`）：对 `model.entries` **全量**循环；cache hit 仍 `lines.extend(cached)`——总行数随历史 **O(n) 克隆进输出 Vec**，与是否重 paint 无关。
+
 产品面已对齐 **pi**（live 进 scrollback、不做 Codex TranscriptView）。需要在**不改产品心智**的前提下，为「历史行数 × 宽变化」留一条可验证的下一步。
 
-## 证据闸（c1520 `suite-20260723-122217`）
+## 评估（c1508 / c1509 之后）
 
-- C-stream：主线程 **~59%** 落在 `visible_width`/`strip_ansi`（含 `TUI::do_render` 宽度不变量）；**~32%** 经 `scrollback::{fit,markdown}`。
-- B-scroll 短窗未打出强 scrollback 符号占比（paint cache 可能已生效）。
-- **结论**：先落地 [c1508](../c1508-optimize-package-tui-visible-width-ansi/proposal.md) 并复测 B/C；若长历史仍见 `render_scrollback` / flatten 线性涨，再 promote 本 change。
+| 项 | 结论 |
+|---|---|
+| c1508 / c1509 | 已 applied 并归档（`archive/2026-07-23-c1508-*` / `c1509-*`） |
+| `post-c1508` C | `visible_width`/`strip_ansi` 降；剩 `wrap`/`markdown`/`scrollback` 链 |
+| 微优化 vs 本 change | 流式**尾块**仍须真渲染；**长历史上半**的 flatten/extend 才是本 change 的主收益面 |
+| 是否仍值得 | **是**——结构热点仍在；不替代 wrap/markdown 微优化 |
+| promote 前闸 | 建议 `post-c1509` 后跑 **B-scroll（大种子）**：看 `render_scrollback` 全量 extend 是否仍随历史涨；有证据再 apply |
+
+## 证据闸（历史）
+
+- c1520 `suite-20260723-122217` C：width ~59%；scrollback 相关 ~32%（修前）。
+- `post-c1508`：热点迁到 `wrap_text_with_ansi` ~19%（流式）；架构 flatten 问题未消。
 
 ## 别人怎么做（对照）
 
 | 路径 | 做法 | 对我们的含义 |
 |---|---|---|
 | **pi** | 全量组件 `render(width)` + 差分写屏；块内 preview 裁剪；历史靠终端 scrollback | 继续同源；**主路径无** transcript 虚拟列表 |
-| **Codex** | live 仅 `active_cell`；提交后 `insert_history`；Ctrl+T `PagerView` 做 viewport slice | **不宜**整套搬（与 `app/tui/AGENTS.md` 冲突）；slice **算法**可参考 |
+| **Codex** | live 仅 `active_cell`；提交后 `insert_history`；Ctrl+T `PagerView` 做 viewport slice | **不宜**整套搬；slice **算法**可参考 |
 | **ratatui VirtualList** | Codex 也未用 | 与 `Vec<String>` + pi 差分割裂，不优先 |
 
 ## 意向方案（推荐 A）
@@ -39,34 +50,32 @@ c1500 已用 `ScrollbackPaintCache`（entry fingerprint）压住「每帧全量 
 1. 维护 entry → 已 paint 行数（复用 `ScrollbackPaintCache` 行数，**不必估高**）
 2. 在 follow-bottom（常态）时：`offset = max(0, total_lines - viewport_h - overscan)`
 3. `render_scrollback` / `UiRoot::render` 只 flatten 落在窗口内的 entries（参考 Codex `PagerView::render_content` 的 skip/break）
-4. 流式贴底：窗口尾部始终真渲染，避免空尾巴
+4. 流式贴底：窗口尾部 + streaming tails 始终真渲染，避免空尾巴
 
-**B — 估高虚拟列表**：Markdown/diff 行高随 width 变，维护成本高；三家均无先例 → **不优先**。
+**B — 估高虚拟列表**：不优先。
+**C — 仅引擎 clip**：不够。
 
-**C — 仅引擎 clip**：不省 paint CPU → **不够**。
-
-## What Changes（仅意向；本 draft 不写代码）
+## What Changes（意向；见 design/tasks）
 
 1. 产品 host 引入可选 `scroll_line_offset`（或等价）；默认 follow-bottom 行为与今日一致
-2. `render_scrollback` 按 offset + height + margin 切片 flatten
-3. harness：长 scrollback streaming 帧耗时 / 行数上限断言（与 ath25 对齐方向）
-4. **不**引入 Codex `insert_history` 分裂架构；**不**做 ratatui VirtualList
+2. `render_scrollback` 按 offset + height + margin 切片 flatten（跳过屏外 entry 的 extend）
+3. harness：长 scrollback 帧耗时 / 输出行数上限断言
+4. **不**引入 Codex `insert_history`；**不**做 ratatui VirtualList
 
-## UX / 体验风险（先讨论再 promote）
+## UX / 体验风险
 
-- 快滚进未 paint 区：短暂空白或补 paint 卡一下（用 overscan 缓解）
-- fold/展开改变总高：需失效窗口边界
-- ath/att / PTY：可见内容不得缺字；屏外可不做工作
+- 快滚进未 paint 区：短暂空白或补 paint（overscan 缓解）
+- fold/展开改变总高：失效窗口边界
+- ath/att / PTY：可见内容不得缺字
 
 ## Out of scope
 
-- c1495 OTEL span 树
-- 流式 assistant「稳定前缀 + 尾 block」增量（可另开）
-- 改信任 / 工具策略
+- c1495 OTEL；流式 assistant 稳定前缀增量；改信任 / 工具策略
 
 ## Status
 
-**purpose-draft** — 有实测「与历史长度线性」的 CPU 后再 promote；当前 c1500 已压住主痛点。
+**purpose-draft（已推进）**：依赖微优化已归档；设计/任务见同目录 `design.md` / `tasks.md`。
+**下一步**：`post-c1509` B/C 复测 → 有线性证据后 `propose` 正式化或 quick/apply 实现 A。
 
 ## Ethics
 

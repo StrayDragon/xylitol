@@ -2,6 +2,7 @@
 change_id: c1509-optimize-package-tui-wrap-text-ansi
 title: package-tui：wrap_text_with_ansi ANSI+ASCII 快路径
 status: applied
+# archived: 2026-07-23 (docs-only; quick landed on main)
 priority: 1509
 depends_on:
   - c1508-optimize-package-tui-visible-width-ansi
@@ -10,7 +11,8 @@ author: agent
 
 # c1509-optimize-package-tui-wrap-text-ansi
 
-> Promoted → applied（无 MUST/SHALL；quick 落地）。验收：`utils_test` wrap + `just test-tui` 相关。
+> **Archived** `llmanspec/changes/archive/2026-07-23-c1509-optimize-package-tui-wrap-text-ansi/`
+> Promoted → applied（无 MUST/SHALL；quick 落地）。验收：`utils_test` wrap + xylitol-tui 包测。
 
 ## Why
 
