@@ -42,7 +42,7 @@
 | 主题 | 双方行为 |
 |---|---|
 | Export 默认格式 | **默认 HTML**；路径以 `.jsonl` 结尾才 JSONL |
-| Resume 入口 | 无参开会话列表（mtime 降序）；选中 switch |
+| Resume 入口 | 无参开会话列表；选中 switch；预览按终端比例软顶；**默认隐藏** session id，**Ctrl+U** 展开完整 id（c1530） |
 | Tree 入口 | slash / 快捷键开 MessageHistory 树（xylitol 另保留双 Esc） |
 | Skills catalog → system | Trust 后发现；`<available_skills>` XML；reload 不改历史（c1085） |
 
@@ -79,6 +79,7 @@
 | 2026-07-15 | 会话 slash 迁移调研：A02 钉 `/session-fork`（非 user 选择器）；增 A03–A06；手测备忘 `/tree`/`/fork`→新名；对照 `../pi/_PLAN_REPORT.md` |
 | 2026-07-15 | c1020：`/session-new` `/session-clone` `/session-name`；A07 clone(At) ≠ session-fork |
 | 2026-07-15 | c1065：Resume 面板 P0–P2；A08 单 sessions_dir All ≠ pi 多根 listAll |
+| 2026-07-23 | c1530：Resume 预览按终端比例软顶；**Ctrl+U** 切换完整 session id（默认隐藏） |
 | 2026-07-16 | c1090：app.* 目录 + 热重载；A09 `app.tools.blocks` |
 | 2026-07-16 | A10：多 `$skill` → 用户消息内紫色高亮 + 静默注入 SKILL.md；废弃 /session·/status skills 观测面；验收验注入不验 TUI |
 | 2026-07-16 | A11：skills 发现路径子集 vs pi 多源；对齐 disable-model-invocation / 碰撞 / available_skills 引导文 |

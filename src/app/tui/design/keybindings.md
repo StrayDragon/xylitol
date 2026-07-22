@@ -70,7 +70,7 @@ components:
 | `/session-tree` | 打开会话树（同双 Esc；**c700/c1005**；旧名 `/tree` 无效） |
 | `/session-fork` | 在当前 leaf fork（同 Shift+F 语义；选节点仍用树；**c700/c1005**；旧名 `/fork` 无效） |
 | `/session` | 转储会话 info/stats（**c1015**；非操作菜单） |
-| `/session-resume` | 会话 Resume 面板（scope/sort/搜索/rename/delete；**c1065**；旧名 `/resume` 无效） |
+| `/session-resume` | 会话 Resume 面板（scope/sort/搜索/rename/delete；**Ctrl+U** 切换完整 session id，默认隐藏；**c1065** / **c1530**；旧名 `/resume` 无效） |
 | `/session-compact` | 手动 Compact（**c1010**；仅无参） |
 | `/session-export` [path] | 默认 HTML；`.jsonl` → JSONL（**c1010**） |
 | `/session-import` \<path\> | Yes/No 确认后 ImportJsonl（**c1010**） |
