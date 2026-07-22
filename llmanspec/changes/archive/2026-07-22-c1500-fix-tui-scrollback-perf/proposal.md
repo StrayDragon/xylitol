@@ -7,7 +7,8 @@ depends_on: []
 author: agent
 branch: feature/c1500-fix-tui-scrollback-perf
 base_sha: c8fa127776ea9cd8bb8ddcc23dfd7c9661721249
-checkpointed: false
+checkpointed: true
+checkpoint_sha: c8fa127776ea9cd8bb8ddcc23dfd7c9661721249
 ---
 
 # c1500-fix-tui-scrollback-perf
