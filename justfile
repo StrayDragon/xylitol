@@ -288,9 +288,9 @@ profile-build:
 
 # Run Fake/tmux scenarios A–D (or subset). Writes target/profile/<run-id>/.
 #   just profile-suite
-#   just profile-suite scenarios="A,D" duration="15"
+#   just profile-suite "A,D" 15
 profile-suite scenarios="A,B,C,D" duration="20":
-    python3 scripts/profile_tui_suite.py --build --scenarios "{{scenarios}}" --duration {{duration}}
+    python3 scripts/profile_tui_suite.py --build --scenarios {{scenarios}} --duration {{duration}}
 
 # Summarize one profile (xylitol-only filter).
 profile-summary path:
