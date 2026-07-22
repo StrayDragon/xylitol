@@ -75,8 +75,14 @@
   @req:rc16
   场景: default-setting
     假如 Settings.default_thinking_level 为 low 且模型支持 low
-    当 启动或选模
+    当 会话首次装配
     那么 当前 thinking level 为 Low
+
+  @req:rc16
+  场景: select-ignores-settings-default
+    假如 Settings.default_thinking_level 为 low 且模型支持至 high
+    当 select_model 到该模型
+    那么 thinking level 为 high
 
   @req:rc17
   场景: parse-map

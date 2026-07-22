@@ -100,3 +100,15 @@
     假如 未注册 should_stop_after_turn 的无工具 agent
     当 运行 AgentRuntime
     那么 正常出现 AgentEnd 且恰好一轮 TurnStart
+
+  @req:ar25
+  场景: mid-run-select-applies-next-turn
+    假如 多 turn mock 且第一 turn 已开始流式
+    当 run 中途 select_model 或 set_thinking_level 到新值
+    那么 当前流仍用旧绑定且下一 turn 的 generate_stream 用新绑定
+
+  @req:ar25
+  场景: idle-abort-converges
+    假如 run 中途切换 selected 后 abort
+    当 run 结束后查询 active 与 selected
+    那么 active 与 selected 收敛为同一 model 与 thinking

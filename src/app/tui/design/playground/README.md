@@ -56,6 +56,6 @@ just check-tui-tokens   # tokens.css/js + Palette ≡ DESIGN.md
 
 | 槽 | 说明 |
 |---|---|
-| Full shell · Layout · Keybindings · Models · Tree power | 产品整页 / 下一波形状 |
+| Full shell · Layout · Keybindings · Models · Pending / NextTurn · Tree power | 产品整页 / 下一波形状 |
 | Tool · Diff · Markdown · Overlay · Palette | 呈现积木 |
 | Widgets · Atoms · Ask | 其它固定形状槽（与实现分层无关） |

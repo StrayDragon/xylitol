@@ -12,7 +12,19 @@
   场景: model-id-after-completion
     假如 idle 编辑器经补全得到 /model fake
     当 Enter 提交
-    那么 SetModel 或等价被调用
+    那么 SetModel 或等价被调用且 thinking 为该模型支持集最高档或 off
+
+  @req:atm1
+  场景: picker-level-keys
+    假如 Models 槽已打开且焦点模型可调 thinking
+    当 按 ←→ 或槽内 Shift+Tab
+    那么 焦点模型的预览档在支持集内前进或后退
+
+  @req:atm1
+  场景: no-thinking-dash
+    假如 Models 槽焦点为无思考模型
+    当 按 ←→ 或槽内 Shift+Tab
+    那么 等级区保持 — 且状态不变
 
   @req:atm2
   场景: model-via-dispatch

@@ -135,6 +135,25 @@ impl XyRemoteDriver {
     }
 
     fn model_from_value(v: &serde_json::Value) -> Result<ModelInfo, XyDriverError> {
+        let thinking = v.get("thinking").and_then(|x| x.as_bool()).unwrap_or(false);
+        let thinking_levels = v
+            .get("thinking_levels")
+            .and_then(|x| x.as_array())
+            .map(|arr| {
+                arr.iter()
+                    .filter_map(|x| x.as_str().map(str::to_string))
+                    .collect()
+            })
+            .unwrap_or_else(|| {
+                if thinking {
+                    ThinkingLevel::STANDARD
+                        .iter()
+                        .map(|l| l.as_str().to_string())
+                        .collect()
+                } else {
+                    Vec::new()
+                }
+            });
         Ok(ModelInfo {
             id: v
                 .get("id")
@@ -147,7 +166,8 @@ impl XyRemoteDriver {
                 .and_then(|x| x.as_str())
                 .unwrap_or("")
                 .to_string(),
-            thinking: v.get("thinking").and_then(|x| x.as_bool()).unwrap_or(false),
+            thinking,
+            thinking_levels,
             context_window: v
                 .get("context_window")
                 .and_then(|x| x.as_u64())
@@ -313,6 +333,7 @@ impl XyDriver for XyRemoteDriver {
                         .unwrap_or("")
                         .to_string(),
                     thinking: false,
+                    thinking_levels: Vec::new(),
                     context_window: 0,
                 })
             }

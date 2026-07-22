@@ -12,7 +12,7 @@ requirements[17]{req_id,title,statement}:
   rc1,ConfigValue 在 infra,"ConfigValueResolver（环境变量、shell 命令与 ${VAR:-default} 解析，原 agent/config_value.rs）MUST 位于 infra/config/value.rs；除 infra/config 外 MUST 零 crate:: 内部依赖；agent/ MUST NOT 含 config_value.rs。"
   rc8,配置边界承载 JsonSchema,需要对外暴露 JSON Schema 的配置结构 MUST 在 runtime/config 边界（infra/config 或 settings）定义或包装，并 MUST 能映射到 domain 纯数据（若存在对应领域类型）。
   rc9,mcp_servers 配置字段,运行时配置 MUST 提供 mcp_servers（或等价）字段以声明 MCP 服务器；缺省或空表示未启用 MCP。
-  rc16,"model-entry-thinking-levels",ModelsConfig 的 ModelEntry（或等价 YAML 面）MUST 支持可选 thinking_levels 字符串列表；解析时未知 level 名 MUST 使配置加载失败；Settings.default_thinking_level 若存在 MUST 可被选模/启动路径消费（合法则采用，非法则忽略并 clamp）。
+  rc16,"model-entry-thinking-levels","ModelsConfig 的 ModelEntry（或等价 YAML 面）MUST 支持可选 thinking_levels 字符串列表；解析时未知 level 名 MUST 使配置加载失败；Settings.default_thinking_level 若存在 MAY 仅用于会话首次装配的初始档（合法则采用，非法则忽略）；换模与精确 /model <id> 默认档 MUST 遵循 m10 最高档策略，MUST NOT 被 Settings 默认覆盖。"
   rc17,"model-entry-thinking-level-map",ModelsConfig 的 ModelEntry MUST 支持可选 thinking_level_map（键为 ThinkingLevel 名，值为字符串或 null）；未知键名 MUST 使配置加载失败；解析结果 MUST 进入 XyModelMeta（或等价）供请求组装；键缺省 MUST 表示使用 adapter 内置默认，null MUST 表示该档不向 provider 发送 thinking/effort 字段。
   rc18,"model-entry-tokenizer","ModelsConfig 的 ModelEntry MUST 支持可选字符串字段 tokenizer：可为顶层 tokenizers 表中的名字、HF owner/repo、本地路径或 builtin；AppConfig MUST 支持可选顶层 tokenizers 映射（条目含 repo/file 或 path）供多模型共用同一词表源；缺省 tokenizer 时 MUST 回退 registry builtin 启发式或视为未映射，MUST NOT 用推理用 model id 静默假定 HF 仓库。"
   rc19,"token-estimate-local-tokenizer","AppConfig MUST 支持可选 token_estimate.local_tokenizer，取值仅 on 或 off（或缺省等价 off）；默认 MUST 为 off；非法值 MUST 使配置加载失败；该闸 MUST 接到估计路径的 LocalTokenizer 允许位（paa10），MUST NOT 引入其它本地计数策略枚举。"

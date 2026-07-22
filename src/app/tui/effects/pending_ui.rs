@@ -61,20 +61,6 @@ pub(super) async fn drain_pending_ui<T: Terminal>(
         let _ = session.render_now();
     }
 
-    if session.take_pending_thinking_cycle() {
-        match driver.cycle_thinking_level() {
-            Ok(level) => session.apply_thinking_level_ui(level),
-            Err(e) => {
-                e.log_failure("tui.cycle_thinking_level");
-                log::warn!(
-                    target: "xylitol::tui",
-                    "cycle_thinking_level failed: {e}"
-                );
-            }
-        }
-        let _ = session.render_now();
-    }
-
     if session.take_pending_session_tree_open() {
         log::info!(target: "xylitol::tui", "XyDriver::session_tree(MessageHistory)");
         match driver.session_tree(SessionTreeKind::MessageHistory).await {
@@ -209,32 +195,29 @@ pub(super) async fn drain_pending_ui<T: Terminal>(
         let _ = session.render_now();
     }
 
-    if let Some(model_id) = session.take_pending_model_select() {
-        log::info!(target: "xylitol::tui", "SetModel from picker model_id={}", model_id);
+    if let Some(choice) = session.take_pending_model_select() {
+        log::info!(target: "xylitol::tui", "SetModel from picker model_id={}", choice.model_id);
         match dispatch(
             driver,
             Command::SetModel {
                 id: None,
                 provider: String::new(),
-                model_id: model_id.clone(),
+                model_id: choice.model_id.clone(),
             },
         )
         .await
         {
-            Ok(DispatchOutcome::Model(m)) => {
-                let label = if m.display_name.is_empty() {
-                    m.id
-                } else {
-                    m.display_name
-                };
-                session.set_footer_model(label.clone());
-                session.apply_thinking_level_ui(driver.thinking_level());
-                session.push_system_note(format!("model → {label}"));
+            Ok(DispatchOutcome::Model(_)) => {
+                if let Err(e) = driver.set_thinking_level(choice.thinking) {
+                    e.log_failure("tui.set_thinking_level");
+                    session.push_system_note(format!("thinking level failed: {e}"));
+                }
+                session.sync_runtime_chrome(driver);
                 session.close_models_slot();
             }
             Ok(_) => {
-                session.apply_thinking_level_ui(driver.thinking_level());
-                session.push_system_note("model set");
+                let _ = driver.set_thinking_level(choice.thinking);
+                session.sync_runtime_chrome(driver);
                 session.close_models_slot();
             }
             // dispatch already logs error.kind
@@ -247,7 +230,6 @@ pub(super) async fn drain_pending_ui<T: Terminal>(
         log::info!(target: "xylitol::tui", "reload_themes from picker theme={}", theme_name);
         match session.reload_themes(&theme_name) {
             Ok(()) => {
-                session.push_system_note(format!("theme → {theme_name}"));
                 session.close_themes_slot();
             }
             Err(e) => note_driver_err(

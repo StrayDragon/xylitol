@@ -69,12 +69,14 @@ impl ModelManager {
 
     // ── Thinking level ───────────────────────────────────────────
 
-    fn supported_levels(&self) -> Option<Vec<ThinkingLevel>> {
+    /// Levels supported by the current model (`Off`-only when no thinking).
+    pub fn supported_levels(&self) -> Option<Vec<ThinkingLevel>> {
         let meta = self.current_model()?;
         Some(Self::levels_for_meta(meta))
     }
 
-    fn levels_for_meta(meta: &XyModelMeta) -> Vec<ThinkingLevel> {
+    /// Levels for an arbitrary meta (picker / UI).
+    pub fn levels_for_meta(meta: &XyModelMeta) -> Vec<ThinkingLevel> {
         if !meta.thinking {
             return vec![ThinkingLevel::Off];
         }
@@ -90,11 +92,13 @@ impl ModelManager {
     /// Get the current thinking level (already clamped to support / bool).
     pub fn thinking_level(&self) -> ThinkingLevel {
         match self.supported_levels() {
-            Some(levels) => ThinkingLevel::clamp_to_supported(
-                self.thinking_level,
-                &levels,
-                self.preferred_default,
-            ),
+            Some(levels) => {
+                if levels.contains(&self.thinking_level) {
+                    self.thinking_level
+                } else {
+                    ThinkingLevel::highest_in(&levels)
+                }
+            }
             None => {
                 let supports = false;
                 self.thinking_level.clamp(supports)
@@ -117,14 +121,41 @@ impl ModelManager {
         Ok(())
     }
 
-    /// After model switch / startup: keep current if still legal, else clamp.
+    /// After startup when current is illegal: keep if legal, else support-set highest.
+    /// Does **not** apply Settings preferred (that is only [`Self::apply_preferred_or_highest`]).
     pub fn clamp_thinking_to_model(&mut self) {
         let Some(levels) = self.supported_levels() else {
             self.thinking_level = ThinkingLevel::Off;
             return;
         };
-        self.thinking_level =
-            ThinkingLevel::clamp_to_supported(self.thinking_level, &levels, self.preferred_default);
+        if levels.contains(&self.thinking_level) {
+            return;
+        }
+        self.thinking_level = ThinkingLevel::highest_in(&levels);
+    }
+
+    /// Session-first assembly: preferred Settings default if legal, else highest.
+    pub fn apply_preferred_or_highest(&mut self) {
+        let Some(levels) = self.supported_levels() else {
+            self.thinking_level = ThinkingLevel::Off;
+            return;
+        };
+        if let Some(d) = self.preferred_default
+            && levels.contains(&d)
+        {
+            self.thinking_level = d;
+            return;
+        }
+        self.thinking_level = ThinkingLevel::highest_in(&levels);
+    }
+
+    /// Default thinking for a freshly selected model (always highest / off).
+    pub fn default_thinking_for_current(&mut self) {
+        let Some(levels) = self.supported_levels() else {
+            self.thinking_level = ThinkingLevel::Off;
+            return;
+        };
+        self.thinking_level = ThinkingLevel::highest_in(&levels);
     }
 
     /// Cycle to the next level in the current model's support list.
@@ -144,7 +175,7 @@ impl ModelManager {
 
     // ── Model switching ──────────────────────────────────────────
 
-    /// Select a model by its ID.
+    /// Select a model by its ID. Thinking defaults to support-set highest (m10).
     pub fn select_model(&mut self, model_id: &str) -> Result<(), String> {
         let model = self
             .registry
@@ -158,7 +189,7 @@ impl ModelManager {
             .position(|m| std::ptr::eq(m, model))
             .unwrap_or(0);
         self.current_index = Some(idx);
-        self.clamp_thinking_to_model();
+        self.default_thinking_for_current();
         Ok(())
     }
 
@@ -302,12 +333,36 @@ mod tests {
     }
 
     #[test]
-    fn preferred_default_used_when_clamping() {
+    fn preferred_default_only_on_apply_preferred() {
         let mut mm = manager_with(vec![meta("m1", true, &["off", "low", "high"])]);
         mm.thinking_level = ThinkingLevel::Xhigh;
         mm.set_preferred_default(Some(ThinkingLevel::Low));
         mm.clamp_thinking_to_model();
+        // Illegal current → highest, not Settings low.
+        assert_eq!(mm.thinking_level(), ThinkingLevel::High);
+        mm.apply_preferred_or_highest();
         assert_eq!(mm.thinking_level(), ThinkingLevel::Low);
+    }
+
+    #[test]
+    fn select_model_defaults_to_highest() {
+        let mut mm = manager_with(vec![
+            meta("a", true, &["off", "low", "high"]),
+            meta("b", true, &["off", "minimal", "medium"]),
+        ]);
+        mm.set_thinking_level(ThinkingLevel::Low).unwrap();
+        mm.select_model("b").unwrap();
+        assert_eq!(mm.thinking_level(), ThinkingLevel::Medium);
+    }
+
+    #[test]
+    fn select_model_no_thinking_is_off() {
+        let mut mm = manager_with(vec![
+            meta("think", true, &["off", "high"]),
+            meta("plain", false, &[]),
+        ]);
+        mm.select_model("plain").unwrap();
+        assert_eq!(mm.thinking_level(), ThinkingLevel::Off);
     }
 
     #[test]

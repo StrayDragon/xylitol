@@ -20,10 +20,6 @@ impl UiRoot {
         self.thinking_level
     }
 
-    pub fn take_pending_thinking_cycle(&mut self) -> bool {
-        std::mem::take(&mut self.pending_thinking_cycle)
-    }
-
     /// Map domain thinking level → package border level by `as_str`.
     fn thinking_border_level(&self) -> ThinkingBorderLevel {
         ThinkingBorderLevel::parse(self.thinking_level.as_str()).unwrap_or(ThinkingBorderLevel::Off)

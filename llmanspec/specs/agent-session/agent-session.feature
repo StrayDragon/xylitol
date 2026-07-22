@@ -34,7 +34,7 @@
   场景: thinking-clamp
     假定 当前模型不支持思考
     当 尝试将思考级别设为 "high"
-    那么 实际思考级别被限制为 "low" 或模型支持的最高级别
+    那么 实际思考级别为 "off" 或 set 被拒绝且保持 off
 
   @req:a7
   场景: context-usage

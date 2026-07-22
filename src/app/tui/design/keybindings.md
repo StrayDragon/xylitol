@@ -43,7 +43,8 @@ components:
 | Ctrl+O | 工具详情视口折叠/全文 |
 | Ctrl+T | thinking 展开/折叠 |
 | Alt+E | tool/diff **块**展开/折叠 |
-| Shift+Tab | **cycle thinking level**（模型支持集；静默更新边框 + footer；idle/busy 均可；**c1150**） |
+| Shift+Tab | **仅 `/model` picker 开且焦点模型可调思考时**：cycle xylitol 等级（与 ←→ 同槽，见 [`models-picker.md`](./models-picker.md)）。**MUST NOT** 全局 cycle thinking |
+| ←→ | **仅 `/model` picker 开且焦点可调时**：在支持集上移动暂定等级（循环） |
 
 ## MUST — 树开（产品接线 · c635→c645；demo 已有）
 
@@ -95,7 +96,7 @@ components:
 
 - Settings / Plate 槽的运行时配置编辑（配置走 YAML+JSON Schema）；**产品 MUST NOT** 绑定 Ctrl+P 打开 Command Plate stub（demo 可有）。
 - computer-use 专用键位（本波延后）。
-- 产品 `/thinking-level` slash（demo 可有；产品用 Shift+Tab / `app.thinking.cycle` 静默切换）。
+- 产品 `/thinking-level` slash；**全局** Shift+Tab / `app.thinking.cycle`（thinking 只在 `/model` picker 内配置，见 [`models-picker.md`](./models-picker.md)）。
 
 ## 规则
 

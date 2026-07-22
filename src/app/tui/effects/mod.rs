@@ -174,5 +174,8 @@ pub async fn drain_pending<T: Terminal>(
         *agent_stream = Some(driver.run(&prompt).await);
     }
 
+    session.sync_runtime_chrome(driver);
+    let _ = session.render_now();
+
     Ok(())
 }

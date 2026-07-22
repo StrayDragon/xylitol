@@ -95,9 +95,39 @@
 
   @req:atc11
   场景: footer-updates
-    假如 选定新模型成功
+    假如 idle 选定新模型成功
     当 下一帧 footer
     那么 含新模型标签
+
+  @req:atc11
+  场景: busy-footer-stays-active
+    假如 agent busy 且 active 为模型 A、selected 改为 B
+    当 渲染 footer
+    那么 footer model 仍为 A
+
+  @req:atc19
+  场景: trail-model-pending
+    假如 agent busy 且 selected 模型与 active 不同
+    当 渲染 status
+    那么 trail 文案为 Next turn: 新模型名且 lead spinner 与 Working 贴左
+
+  @req:atc19
+  场景: trail-thinking-only
+    假如 agent busy 且仅 thinking selected 与 active 不同
+    当 渲染 status
+    那么 trail 为 Next turn thinking: 档名且不含模型拼接
+
+  @req:atc19
+  场景: bang-no-trail
+    假如 仅 bang busy 且无 agent run
+    当 渲染 status
+    那么 无 Next turn trail
+
+  @req:atc20
+  场景: success-no-system
+    假如 idle 经 /model 成功换模
+    当 检查 scrollback
+    那么 无 model → 成功确认系统行
 
   @req:atc12
   场景: busy-keeps-leading-blank

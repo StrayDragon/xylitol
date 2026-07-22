@@ -44,6 +44,15 @@
     当 查看 Models 打开态
     那么 替换 editor 槽示意且选中行为整行 reverse
 
+  @req:adp9
+  场景: models-wide-levels
+    当 查看 models.wide 夹具
+    那么 焦点行铺开多档 xylitol level 且当前档有方括号标记
+
+  @req:adp9
+  场景: pending-trail
+    当 查看 pending-model.next-turn 夹具
+    那么 status 含 Next turn trail 且 lead 贴左
   @req:adp10
   场景: design-table
     当 阅读 DESIGN.md Next wave 表
@@ -63,7 +72,7 @@
   @req:adp7
   场景: fixtures-present
     当 列出 design/fixtures
-    那么 存在 session-tree.filter 与 models.open YAML 且 HTML 有对应 data-design-fixture
+    那么 存在 session-tree.filter、models.wide 与 pending-model.next-turn YAML 且 HTML 有对应 data-design-fixture
 
   @req:adp8
   场景: docs-pointer

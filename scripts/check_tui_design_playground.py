@@ -103,17 +103,24 @@ def check_global(html: str, errors: list[str]) -> None:
         fail("rev-no-kind-fg: CSS must include .rev * { color: inherit } (or equivalent)", errors)
     elif "color: inherit" not in html:
         fail("rev-no-kind-fg: .rev descendants must use color: inherit", errors)
-    for pid in ("panel-models", "panel-tree-power"):
+    for pid in ("panel-models", "panel-tree-power", "panel-pending"):
         if f'id="{pid}"' not in html:
             fail(f"required-slots: missing {pid}", errors)
     models = panel_inner(html, "panel-models") or ""
     treep = panel_inner(html, "panel-tree-power") or ""
-    if 'term-slot' not in models:
+    pending = panel_inner(html, "panel-pending") or ""
+    if "term-slot" not in models:
         fail("term-slot: panel-models must use term-slot", errors)
     if "term-slot" not in treep:
         fail("term-slot: panel-tree-power must use term-slot", errors)
+    if "term-slot" not in pending:
+        fail("term-slot: panel-pending must use term-slot", errors)
     # Next-wave panels: no change-id noise in visible markup (not comments-only — scan panel text)
-    for name, chunk in (("panel-models", models), ("panel-tree-power", treep)):
+    for name, chunk in (
+        ("panel-models", models),
+        ("panel-tree-power", treep),
+        ("panel-pending", pending),
+    ):
         # strip HTML comments
         visible = re.sub(r"<!--.*?-->", "", chunk, flags=re.S)
         if CHANGE_ID_RE.search(visible):
@@ -122,14 +129,16 @@ def check_global(html: str, errors: list[str]) -> None:
                 f"(keep history titles elsewhere; not here): {CHANGE_ID_RE.findall(visible)}",
                 errors,
             )
-    # MODELS / TREEP sources
-    for const, key in (("MODELS", "open"), ("MODELS", "filter"), ("TREEP", "filter")):
-        src = extract_js_object_entry(html, const if const != "MODELS" else "MODELS", key)
-        # MODELS uses nested editor; extract_js_object_entry handles both
-        if const == "MODELS":
-            src = extract_js_object_entry(html, "MODELS", key)
-        else:
-            src = extract_js_object_entry(html, "TREEP", key)
+    for const, key in (
+        ("MODELS", "wide"),
+        ("MODELS", "narrow"),
+        ("MODELS", "noThinking"),
+        ("MODELS", "filter"),
+        ("PENDING_RUNTIME", "nextTurn"),
+        ("PENDING_RUNTIME", "thinking"),
+        ("TREEP", "filter"),
+    ):
+        src = extract_js_object_entry(html, const, key)
         if src is None:
             fail(f"source-missing: const {const}.{key} template not found", errors)
             continue
@@ -226,13 +235,14 @@ def load_fixture(path: Path) -> dict:
 
 
 def resolve_source(html: str, source: str) -> str | None:
-    # treep.filter / models.open.editor
+    # treep.filter / models.open.editor / pending.nextTurn.editor
     parts = source.split(".")
     if parts[0] == "treep" and len(parts) == 2:
         return extract_js_object_entry(html, "TREEP", parts[1])
     if parts[0] == "models" and len(parts) >= 2:
-        block = extract_js_object_entry(html, "MODELS", parts[1])
-        return block
+        return extract_js_object_entry(html, "MODELS", parts[1])
+    if parts[0] == "pending" and len(parts) >= 2:
+        return extract_js_object_entry(html, "PENDING_RUNTIME", parts[1])
     return None
 
 
@@ -245,7 +255,7 @@ def check_fixtures(html: str, errors: list[str]) -> None:
         fail("fixtures: no *.yaml in design/fixtures/", errors)
         return
     ids = {p.stem for p in paths}
-    for need in ("session-tree.filter", "models.open"):
+    for need in ("session-tree.filter", "models.wide"):
         if need not in ids:
             fail(f"fixtures: missing {need}.yaml", errors)
     for path in paths:
@@ -273,6 +283,12 @@ def check_fixtures(html: str, errors: list[str]) -> None:
         ah = fix.get("assert_html") or {}
         if not isinstance(ah, dict):
             continue
+        # Skip selected-row asserts when fixture does not care (e.g. pending strip).
+        if "selected_class" not in ah and "selected_forbids_substrings" not in ah:
+            if ah.get("status_after_selected"):
+                pass
+            else:
+                continue
         sel_cls = ah.get("selected_class", "rev")
         # selected chunks: lines/divs containing class rev
         selected_bits = re.findall(
