@@ -47,6 +47,64 @@ pub struct AppConfig {
     /// Context token estimate gates (c1420).
     #[serde(default)]
     pub token_estimate: TokenEstimateConfig,
+
+    /// Optional remote OTLP export (c1475). Default exporter=none (no remote traffic).
+    #[serde(default)]
+    pub otel: OtelConfig,
+}
+
+/// Remote OpenTelemetry export settings (`[otel]`). Orthogonal to local file
+/// provider-trace gates (`XYLITOL_PROVIDER_TRACE` / debug build).
+#[derive(Clone, Debug, Default, Serialize, Deserialize, JsonSchema, PartialEq, Eq)]
+#[serde(default)]
+pub struct OtelConfig {
+    /// `none` (default) or `otlp-http`.
+    #[serde(default)]
+    pub exporter: OtelExporterKind,
+    /// OTLP/HTTP base or traces endpoint (e.g. `http://host:3000/api/public/otel`).
+    #[serde(default)]
+    pub endpoint: Option<String>,
+    /// Wire encoding for OTLP/HTTP.
+    #[serde(default)]
+    pub protocol: OtelHttpProtocol,
+    /// Resource `deployment.environment` / Langfuse environment hint.
+    #[serde(default)]
+    pub environment: Option<String>,
+    /// Resource `service.name` (default: `xylitol`).
+    #[serde(default)]
+    pub service_name: Option<String>,
+    /// Extra OTLP HTTP headers (e.g. `Authorization`). Prefer `{{ secret.* }}` /
+    /// env; Langfuse Basic Auth MAY also be derived from `LANGFUSE_*` env.
+    #[serde(default)]
+    pub headers: HashMap<String, String>,
+}
+
+/// `[otel].exporter` — remote export off by default.
+#[derive(Clone, Debug, Default, PartialEq, Eq, Serialize, Deserialize, JsonSchema)]
+#[serde(rename_all = "kebab-case")]
+pub enum OtelExporterKind {
+    #[default]
+    None,
+    OtlpHttp,
+}
+
+/// `[otel].protocol` for OTLP/HTTP.
+///
+/// Default is JSON: Langfuse self-host (v3.x) reliably ingests OTLP/HTTP JSON;
+/// protobuf binary has been observed to flush without creating traces.
+#[derive(Clone, Debug, Default, PartialEq, Eq, Serialize, Deserialize, JsonSchema)]
+#[serde(rename_all = "kebab-case")]
+pub enum OtelHttpProtocol {
+    HttpBinary,
+    #[default]
+    HttpJson,
+}
+
+impl OtelConfig {
+    /// Effective remote export enabled (config only; feature gate is separate).
+    pub fn wants_otlp_http(&self) -> bool {
+        matches!(self.exporter, OtelExporterKind::OtlpHttp)
+    }
 }
 
 /// Gates for multi-source context token estimation (c1420 / paa10 / rc19).
@@ -1186,5 +1244,47 @@ token_estimate:
 "#,
         );
         assert!(err.is_err());
+    }
+
+    #[test]
+    fn otel_config_default_is_none() {
+        let cfg: AppConfig = yaml_serde::from_str("models: {}").unwrap();
+        assert_eq!(cfg.otel.exporter, OtelExporterKind::None);
+        assert!(!cfg.otel.wants_otlp_http());
+    }
+
+    #[test]
+    fn otel_config_otlp_http_parses() {
+        let cfg: AppConfig = yaml_serde::from_str(
+            r#"
+models: {}
+otel:
+  exporter: otlp-http
+  endpoint: "http://coral:3000/api/public/otel"
+  protocol: http-binary
+  environment: dev
+  service_name: xylitol
+"#,
+        )
+        .expect("otel section");
+        assert_eq!(cfg.otel.exporter, OtelExporterKind::OtlpHttp);
+        assert_eq!(
+            cfg.otel.endpoint.as_deref(),
+            Some("http://coral:3000/api/public/otel")
+        );
+        assert_eq!(cfg.otel.protocol, OtelHttpProtocol::HttpBinary);
+        assert_eq!(cfg.otel.environment.as_deref(), Some("dev"));
+    }
+
+    #[test]
+    fn otel_config_rejects_unknown_exporter() {
+        let err = yaml_serde::from_str::<AppConfig>(
+            r#"
+models: {}
+otel:
+  exporter: grpc
+"#,
+        );
+        assert!(err.is_err(), "unknown exporter must fail load");
     }
 }
