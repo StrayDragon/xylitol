@@ -172,11 +172,26 @@ pub fn resolve_print_prompt(
 pub async fn run() -> Result<(), Box<dyn std::error::Error>> {
     let args = CliArgs::parse();
 
-    // ── Install file-only observability (fastrace + log) ────────────
+    // Secrets first so `[otel]` / templates can see LANGFUSE_* from secret.env.
+    let paths = crate::infra::config::paths::ConfigPaths::discover();
+    let _ = crate::infra::config::secret_env::load_secret_env_files(&paths);
+
+    // Best-effort early config for OTLP assembly (bootstrap reloads later).
+    let early_otel = crate::infra::config::loader::load_app_config(
+        args.config.as_ref().map(std::path::Path::new),
+    )
+    .map(|c| c.otel)
+    .unwrap_or_default();
+
+    // ── Install file-only observability (fastrace + log) + optional OTLP ─
     // Done before any mode dispatch so every surface (print / TUI / RPC /
-    // subcommands) is covered. Debug builds default on; release needs
-    // RUST_LOG / XYLITOL_DEBUG / XYLITOL_PROVIDER_TRACE. Never stdout/stderr.
-    logging::init_logging(&crate::infra::resource::DefaultResourceLoader::default_agent_dir());
+    // subcommands) is covered. Debug builds default on for local file sinks;
+    // release needs RUST_LOG / XYLITOL_DEBUG / XYLITOL_PROVIDER_TRACE.
+    // Remote OTLP: `[otel]` + feature `otel`, default none. Never stdout/stderr.
+    logging::init_logging(
+        &crate::infra::resource::DefaultResourceLoader::default_agent_dir(),
+        &early_otel,
+    );
     struct FlushOnDrop;
     impl Drop for FlushOnDrop {
         fn drop(&mut self) {
