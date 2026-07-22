@@ -63,7 +63,7 @@ Then 按统一中止语义停止，并回到可管理状态
 | [Web与TUI同源.md](./Web与TUI同源.md) | 状态同构 |
 | [运行时即时设置.md](./运行时即时设置.md) | 可临时禁用全部 loop |
 | [Sub-Agent编排.md](./Sub-Agent编排.md) | loop 是否允许派生子 agent 的策略交叉 |
-| [出口流量检视.md](./出口流量检视.md) | 开火轮次与出站对照可关联（排障）；不要求 Loop UI 内嵌完整检视台 |
+| [OTEL与Langfuse观测.md](./OTEL与Langfuse观测.md) | 开火轮次与出站对照可关联（排障）；不要求 Loop UI 内嵌完整检视台 |
 
 ## 相关
 
