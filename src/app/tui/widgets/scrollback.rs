@@ -274,6 +274,130 @@ fn highlight_dollar_skill_refs(text: &str, skill_ref: RgbColor) -> String {
     out
 }
 
+/// End index of a stable markdown prefix (after last `\n\n` not inside a fence).
+///
+/// Streaming paint reuses lines for `text[..end]` and only re-parses the suffix.
+pub fn find_stable_markdown_prefix_end(text: &str) -> usize {
+    let bytes = text.as_bytes();
+    let mut in_fence = false;
+    let mut last_stable = 0usize;
+    let mut i = 0usize;
+    while i < bytes.len() {
+        let at_line_start = i == 0 || bytes[i - 1] == b'\n';
+        if at_line_start && bytes[i] == b'`' {
+            let mut j = i;
+            while j < bytes.len() && bytes[j] == b'`' {
+                j += 1;
+            }
+            if j - i >= 3 {
+                in_fence = !in_fence;
+                i = j;
+                continue;
+            }
+        }
+        if !in_fence && bytes[i] == b'\n' && i + 1 < bytes.len() && bytes[i + 1] == b'\n' {
+            last_stable = i + 2;
+            i += 2;
+            continue;
+        }
+        i += 1;
+    }
+    last_stable
+}
+
+/// Incremental paint cache for `streaming_assistant` (ath26 / c1510).
+#[derive(Debug, Default)]
+pub struct StreamingAssistantPaint {
+    width: usize,
+    stable_prefix: String,
+    prefix_lines: Vec<String>,
+    /// Full-buffer Markdown parses (no prefix reuse).
+    pub(crate) full_parses: u64,
+    /// Suffix-only (or stable-extend) Markdown parses.
+    pub(crate) suffix_parses: u64,
+}
+
+impl StreamingAssistantPaint {
+    pub fn invalidate(&mut self) {
+        self.width = 0;
+        self.stable_prefix.clear();
+        self.prefix_lines.clear();
+    }
+
+    #[cfg(test)]
+    pub fn clear_counts(&mut self) {
+        self.full_parses = 0;
+        self.suffix_parses = 0;
+    }
+
+    fn prepare_width(&mut self, width: usize) {
+        if self.width != width {
+            self.invalidate();
+            self.width = width;
+        }
+    }
+}
+
+fn markdown_fit_lines(text: String, width: usize, theme: LayoutTheme) -> Vec<String> {
+    let mut md = Markdown::new(text, 0, 0, theme.palette().markdown_theme(), None);
+    md.render(width)
+        .into_iter()
+        .map(|line| fit(&line, width))
+        .collect()
+}
+
+fn paint_streaming_assistant(
+    text: &str,
+    width: usize,
+    theme: LayoutTheme,
+    stream: &mut StreamingAssistantPaint,
+) -> Vec<String> {
+    let width = width.max(1);
+    stream.prepare_width(width);
+    if text.is_empty() {
+        stream.invalidate();
+        stream.width = width;
+        return markdown_fit_lines("…".into(), width, theme);
+    }
+
+    let stable_end = find_stable_markdown_prefix_end(text);
+    let new_stable = &text[..stable_end];
+
+    if !stream.stable_prefix.is_empty()
+        && text.starts_with(stream.stable_prefix.as_str())
+        && new_stable.starts_with(stream.stable_prefix.as_str())
+    {
+        if new_stable.len() > stream.stable_prefix.len() {
+            let chunk = &text[stream.stable_prefix.len()..stable_end];
+            stream.suffix_parses = stream.suffix_parses.saturating_add(1);
+            stream
+                .prefix_lines
+                .extend(markdown_fit_lines(chunk.to_string(), width, theme));
+            stream.stable_prefix = new_stable.to_string();
+        }
+        stream.suffix_parses = stream.suffix_parses.saturating_add(1);
+        let mut out = stream.prefix_lines.clone();
+        out.extend(markdown_fit_lines(
+            format!("{}…", &text[stable_end..]),
+            width,
+            theme,
+        ));
+        return out;
+    }
+
+    stream.full_parses = stream.full_parses.saturating_add(1);
+    let all = markdown_fit_lines(format!("{text}…"), width, theme);
+    if stable_end > 0 {
+        // Seed prefix cache for subsequent deltas (extra parse; not counted as full).
+        stream.prefix_lines = markdown_fit_lines(new_stable.to_string(), width, theme);
+        stream.stable_prefix = new_stable.to_string();
+    } else {
+        stream.prefix_lines.clear();
+        stream.stable_prefix.clear();
+    }
+    all
+}
+
 /// Per-entry paint cache so streaming/spinner frames do not re-Markdown the
 /// entire transcript (ath25).
 #[derive(Debug, Default)]
@@ -283,13 +407,16 @@ pub struct ScrollbackPaintCache {
     entries: Vec<(u64, Vec<String>)>,
     /// Test/obs: how many committed entries were freshly painted.
     pub(crate) entry_misses: u64,
+    /// Streaming assistant incremental paint (ath26).
+    pub(crate) streaming_assistant: StreamingAssistantPaint,
 }
 
 impl ScrollbackPaintCache {
     pub fn invalidate(&mut self) {
         self.entries.clear();
         self.width = 0;
-        // keep entry_misses cumulative for tests unless cleared explicitly
+        self.streaming_assistant.invalidate();
+        // keep entry_misses / stream counters cumulative unless cleared
     }
 
     #[cfg(test)]
@@ -301,6 +428,7 @@ impl ScrollbackPaintCache {
     fn prepare(&mut self, width: usize, fold: ScrollbackFold) {
         if self.width != width || self.fold != fold {
             self.entries.clear();
+            self.streaming_assistant.invalidate();
             self.width = width;
             self.fold = fold;
         }
@@ -376,6 +504,7 @@ pub fn render_scrollback(
 
     if model.entries.is_empty() && model.streaming_scrollback_tails().is_empty() {
         cache.entries.clear();
+        cache.streaming_assistant.invalidate();
         return lines;
     }
 
@@ -601,7 +730,12 @@ pub fn render_scrollback(
         lines.extend(block_lines);
     }
 
-    for (kind, text) in model.streaming_scrollback_tails() {
+    let streaming_tails = model.streaming_scrollback_tails();
+    if !streaming_tails.iter().any(|(kind, _)| *kind == "assistant") {
+        cache.streaming_assistant.invalidate();
+    }
+
+    for (kind, text) in streaming_tails {
         if need_spacer {
             lines.push(inter_block_spacer(width));
         }
@@ -621,16 +755,12 @@ pub fn render_scrollback(
                 }
             }
             "assistant" => {
-                let mut md = Markdown::new(
-                    format!("{text}…"),
-                    0,
-                    0,
-                    theme.palette().markdown_theme(),
-                    None,
-                );
-                for line in md.render(width) {
-                    lines.push(fit(&line, width));
-                }
+                lines.extend(paint_streaming_assistant(
+                    text,
+                    width,
+                    theme,
+                    &mut cache.streaming_assistant,
+                ));
             }
             _ => {}
         }

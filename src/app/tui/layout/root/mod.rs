@@ -772,6 +772,16 @@ impl UiRoot {
     pub fn clear_scrollback_entry_misses_for_test(&mut self) {
         self.scrollback_paint.clear_misses();
     }
+
+    #[cfg(test)]
+    pub fn streaming_assistant_full_parses_for_test(&self) -> u64 {
+        self.scrollback_paint.streaming_assistant.full_parses
+    }
+
+    #[cfg(test)]
+    pub fn clear_streaming_assistant_parse_counts_for_test(&mut self) {
+        self.scrollback_paint.streaming_assistant.clear_counts();
+    }
 }
 
 impl Default for UiRoot {

@@ -232,6 +232,18 @@
     当 完成一轮 Fake 对话并 /exit
     那么 进程干净退出且不得超时挂死
 
+  @req:ath26
+  场景: streaming-assistant-reuses-stable-prefix
+    假如 Busy 且 streaming_assistant 已有多段完整段落
+    当 连续追加多次 TextDelta 仅增长后缀
+    那么 全量 Markdown 解析次数有上界且可见行与全量解析一致
+
+  @req:ath26
+  场景: streaming-paint-preserves-ctrl-o-viewport
+    假如 工具块处于高度缩略
+    当 流式 assistant 增量绘制进行中并切换 Ctrl+O
+    那么 工具块视口展开/折叠语义不变
+
   @req:avs1
   场景: h2-stream
     假如 HostSession 已 on_run_started
