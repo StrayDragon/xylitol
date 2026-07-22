@@ -1913,6 +1913,115 @@ fn scrollback_entry_cache_limits_misses_under_streaming() {
 }
 
 #[test]
+fn streaming_assistant_reuses_stable_prefix_under_deltas() {
+    use super::layout::{LayoutTheme, UiRoot};
+    use super::widgets::{
+        GlyphSet, ScrollbackFold, ScrollbackPaintCache, find_stable_markdown_prefix_end,
+        render_scrollback,
+    };
+
+    let mut root = UiRoot::new();
+    let mut model = UiModel::new();
+    model.begin_run("hello");
+    // Seed enough complete paragraphs so stable prefix is non-empty.
+    model.streaming_assistant = "alpha para\n\nbeta para\n\n".into();
+    root.apply_ui_model(&model);
+    let _ = root.render(80);
+    root.clear_streaming_assistant_parse_counts_for_test();
+
+    for i in 0..40 {
+        model.streaming_assistant.push_str(&format!("tok{i} "));
+        if i % 10 == 9 {
+            model.streaming_assistant.push_str("\n\n");
+        }
+        root.apply_ui_model(&model);
+        let _ = root.render(80);
+    }
+
+    let full = root.streaming_assistant_full_parses_for_test();
+    assert!(
+        full <= 8,
+        "stable prefix must limit full Markdown parses; full_parses={full}"
+    );
+    assert!(
+        find_stable_markdown_prefix_end(&model.streaming_assistant) > 0,
+        "fixture must keep a stable prefix"
+    );
+
+    // Warm incremental cache across growth, then compare to a cold full paint.
+    let theme = LayoutTheme::product_dark();
+    let glyphs = GlyphSet::from_env();
+    let fold = ScrollbackFold::default();
+    let mut warm = ScrollbackPaintCache::default();
+    let mut growing = UiModel::new();
+    growing.streaming_assistant = "alpha para\n\nbeta para\n\n".into();
+    let _ = render_scrollback(&growing, glyphs, theme, fold, 80, &mut warm);
+    for i in 0..40 {
+        growing.streaming_assistant.push_str(&format!("tok{i} "));
+        if i % 10 == 9 {
+            growing.streaming_assistant.push_str("\n\n");
+        }
+        let _ = render_scrollback(&growing, glyphs, theme, fold, 80, &mut warm);
+    }
+    assert_eq!(
+        growing.streaming_assistant, model.streaming_assistant,
+        "warm growth must match root fixture text"
+    );
+    assert!(
+        warm.streaming_assistant.full_parses <= 8,
+        "warm cache full_parses={}",
+        warm.streaming_assistant.full_parses
+    );
+    let got = render_scrollback(&growing, glyphs, theme, fold, 80, &mut warm);
+    let mut cold = ScrollbackPaintCache::default();
+    let expected = render_scrollback(&growing, glyphs, theme, fold, 80, &mut cold);
+    assert_eq!(
+        got, expected,
+        "warm incremental paint must match cold full Markdown(text+…)"
+    );
+}
+
+#[test]
+fn streaming_paint_does_not_break_bash_ctrl_o_viewport() {
+    use super::bridge::BashBlockStatus;
+    use super::layout::UiRoot;
+    use crossterm::event::{KeyCode, KeyEvent, KeyModifiers};
+    use xylitol_tui::InputEvent;
+
+    let mut root = UiRoot::new();
+    root.set_layout_meta(".", "m");
+    let mut model = UiModel::new();
+    model.begin_run("hi");
+    model.streaming_assistant = "streaming…\n\nmore ".into();
+    let long_out: String = (0..20).map(|i| format!("line-{i}\n")).collect();
+    model.entries.push(super::bridge::UiEntry::Bash {
+        command: "seq".into(),
+        status: BashBlockStatus::Success,
+        output: long_out,
+        exclude_from_context: false,
+    });
+    root.apply_ui_model(&model);
+    let _ = root.render(100);
+    assert!(
+        !root.fold().tools_output_expanded,
+        "default viewport collapsed"
+    );
+    root.handle_input(InputEvent::Key(KeyEvent::new(
+        KeyCode::Char('o'),
+        KeyModifiers::CONTROL,
+    )));
+    assert!(
+        root.fold().tools_output_expanded,
+        "Ctrl+O must still expand tool/bash viewport while assistant streams"
+    );
+    let expanded = root.render(100);
+    assert!(
+        !strip_ansi(&expanded.join("\n")).contains("ctrl+o to expand"),
+        "expanded viewport must drop collapse hint"
+    );
+}
+
+#[test]
 fn models_picker_left_right_cycle_thinking_levels() {
     use super::layout::{ModelPickerRow, UiRoot};
     use crate::protocol::types::ThinkingLevel;
