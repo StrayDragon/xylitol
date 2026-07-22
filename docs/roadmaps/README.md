@@ -67,7 +67,7 @@ flowchart TB
 | [TUI视觉与信息表达.md](./TUI视觉与信息表达.md) | 状态减噪、主题密度 |
 | [出口流量检视.md](./出口流量检视.md) | 事实源、独立检视页、子进程、agent API |
 | [Cloud-Agent与Web控制台.md](./Cloud-Agent与Web控制台.md) | 多工作区 CS + Web |
-| [运行时即时设置.md](./运行时即时设置.md) | 会话覆盖、下一波次生效（≠ `/reload`） |
+| [运行时即时设置.md](./运行时即时设置.md) | NextTurn 生效、双态 chrome（生效中/即将接替）；会话覆盖 ≠ `/reload` |
 | [Loop管理与触发可视化.md](./Loop管理与触发可视化.md) | Loop 管理与触发醒目 |
 | [Sub-Agent编排.md](./Sub-Agent编排.md) | 子 agent 派生/回收/可见 |
 | [LSP会话集成.md](./LSP会话集成.md) | lspz；会话启停；零成本 |

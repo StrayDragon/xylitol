@@ -175,14 +175,20 @@
   @req:ath22
   场景: silent-no-transcript
     假如 产品 host 已挂载
-    当 连续 cycle thinking level
+    当 经 /model 提交新 thinking level
     那么 scrollback 无 thinking-border 系统行且 footer 与边框与 Driver 一致
 
   @req:ath22
   场景: model-switch-resync
-    假如 已切换到支持集不同的模型且 level 被 clamp
+    假如 已切换到支持集不同的模型且 level 被设为最高档
     当 下一帧 render
-    那么 footer 与边框反映 Driver::thinking_level 钳制结果
+    那么 footer 与边框反映 Driver::thinking_level 结果
+
+  @req:ath22
+  场景: busy-pending-no-system
+    假如 agent busy 且 active 模型为 A
+    当 有参 /model B 成功更新 selected
+    那么 scrollback 无 model → 系统确认行且 status trail 含 Next turn
 
   @req:ath23
   场景: reload-refreshes

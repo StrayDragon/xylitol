@@ -311,6 +311,7 @@ mod tests {
                 id: "m1".into(),
                 display_name: "M1".into(),
                 thinking: true,
+                thinking_levels: Vec::new(),
                 context_window: 100,
             })
         }
@@ -322,6 +323,7 @@ mod tests {
                 id: id.into(),
                 display_name: id.into(),
                 thinking: true,
+                thinking_levels: Vec::new(),
                 context_window: 0,
             })
         }

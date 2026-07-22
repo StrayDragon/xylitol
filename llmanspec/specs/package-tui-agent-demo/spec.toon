@@ -8,5 +8,5 @@ requirements[6]{req_id,title,statement}:
   pad3,"slim-default-seed",默认 seed transcript MUST 保持短小（帮助指向 plate）；重型 showcase MUST 经 plate 或显式 slash（如 /md）注入，MUST NOT 仅依赖过长默认 seed。
   pad4,"footer-no-key-wall",agent_demo footer MUST NOT 常驻多行或长键位墙；完整键位说明 MUST 经 plate 项或 /help 进入 transcript。
   pad5,"demo-compaction-retry-chrome","agent_demo MUST 提供可触发的 Compacting 与 Retry n/m 单行 status 预览（和弦或 Command plate 或 slash），时序结束后 MUST 回到 Ready/Working 类空闲短词，并 MUST 向 transcript 追加对应 System 说明；MUST NOT 以 capturing overlay focus-restore 演示作为本预览的一部分。"
-  pad6,"thinking-border-cycle","agent_demo MUST 以 Shift+Tab 作为 thinking border level 的主 cycle 入口（可另保留 plate 或 /thinking-level 辅助）；每次 cycle MUST 经 Editor set_border_color（或 apply_thinking_border）应用对应 Palette 边框；bash 模式边框 MUST 仍优先 success，退出 bash 后 MUST 恢复当前 thinking 边框；MUST NOT 将本 cycle 实现为产品 src/app/tui 默认键位（产品 Shift+Tab 留给 c1150）。"
+  pad6,"thinking-border-cycle","agent_demo MUST 以 Shift+Tab 作为 thinking border level 的主 cycle 入口（可另保留 plate 或 /thinking-level 辅助）；每次 cycle MUST 经 Editor set_border_color（或 apply_thinking_border）应用对应 Palette 边框；bash 模式边框 MUST 仍优先 success，退出 bash 后 MUST 恢复当前 thinking 边框；MUST NOT 将本 cycle 实现为产品 src/app/tui 默认键位（产品 thinking 仅经 /model 槽，见 ati36）。"
 scenarios[0]:

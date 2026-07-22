@@ -4,7 +4,6 @@ use crate::app::core::driver::{ModelInfo, XyDriver};
 use crate::protocol::session::{SessionEntry, SessionTreeTravel};
 use xylitol_tui::Terminal;
 use xylitol_tui::TreeNode;
-use xylitol_tui::components::select_list::SelectItem;
 
 use super::super::bridge::session_tree::rebuild_scrollback_from_travel;
 use super::HostSession;
@@ -61,7 +60,9 @@ impl<T: Terminal> HostSession<T> {
         self.sync_ui_root_from_model();
     }
 
-    pub fn take_pending_model_select(&mut self) -> Option<String> {
+    pub fn take_pending_model_select(
+        &mut self,
+    ) -> Option<crate::app::tui::layout::PendingModelChoice> {
         let root = self.ui_root.as_ref()?;
         root.borrow_mut().take_pending_model_select()
     }
@@ -159,7 +160,12 @@ impl<T: Terminal> HostSession<T> {
         }
     }
 
-    pub fn mount_models_picker(&mut self, models: Vec<ModelInfo>, current_id: Option<String>) {
+    pub fn mount_models_picker(
+        &mut self,
+        models: Vec<ModelInfo>,
+        current_id: Option<String>,
+        current_thinking: crate::protocol::types::ThinkingLevel,
+    ) {
         let Some(root) = self.ui_root.as_ref() else {
             return;
         };
@@ -174,14 +180,20 @@ impl<T: Terminal> HostSession<T> {
                 (m.id.clone(), desc)
             })
             .collect();
-        let items = models
+        let rows = models
             .iter()
-            .map(|m| model_info_to_select_item(m, &current_id))
+            .map(|m| {
+                crate::app::tui::layout::ModelPickerRow::from_info(
+                    m,
+                    current_id.as_deref(),
+                    current_thinking,
+                )
+            })
             .collect();
         {
             let mut root = root.borrow_mut();
             root.set_model_arg_catalog(catalog);
-            root.mount_models_picker(items);
+            root.mount_models_picker(rows);
         }
         self.sync_ui_root_from_model();
     }
@@ -399,18 +411,4 @@ impl<T: Terminal> HostSession<T> {
         self.sync_ui_root_from_model();
         self.push_system_note(load.note);
     }
-}
-
-fn model_info_to_select_item(m: &ModelInfo, current_id: &Option<String>) -> SelectItem {
-    let label = if m.display_name.is_empty() {
-        m.id.clone()
-    } else {
-        m.display_name.clone()
-    };
-    let marked = if current_id.as_deref() == Some(m.id.as_str()) {
-        format!("{label} *")
-    } else {
-        label
-    };
-    SelectItem::new(m.id.clone(), marked)
 }

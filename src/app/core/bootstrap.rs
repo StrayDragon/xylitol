@@ -573,7 +573,8 @@ pub fn bootstrap(input: BootstrapInput) -> Result<BootstrappedAgent, BootstrapEr
     timing::time("session.create");
 
     if let Some(mid) = target_model {
-        let available: Vec<&XyModelMeta> = agent.inner().model_registry().list().iter().collect();
+        let available_owned = agent.inner().model_registry();
+        let available: Vec<&XyModelMeta> = available_owned.list().iter().collect();
         match resolver::resolve_model(&mid, &available, None) {
             Ok(resolved) => {
                 if let Some(ref warning) = resolved.warning {

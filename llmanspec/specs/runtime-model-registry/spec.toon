@@ -12,7 +12,7 @@ requirements[12]{req_id,title,statement}:
   m7,鉴权指引,未配置模型 API key 时，ModelRegistry MUST 返回面向用户的错误消息，指引正确环境变量名。
   m8,BDD model,模型注册表与解析的 BDD 测试 MUST 全部通过。
   m9,"thinking-levels-on-meta","ModelRegistry / resolve_model_meta（或等价）MUST 将配置中的 thinking_levels 填入 XyModelMeta.thinking_levels；thinking 为 false 时支持集 MUST 仅为 off（或空且运行时仅允许 Off）；thinking 为 true 且未声明列表时 MUST 默认为 off、minimal、low、medium、high；显式列表 MUST 保留配置顺序并可含洞（如无 xhigh）；domain ThinkingLevel MUST 覆盖 off…max（含 xhigh、max）。MUST NOT 依赖 xylitol-tui ThinkingBorderLevel。"
-  m10,"thinking-level-validate-clamp",set_thinking_level（或 Driver 等价）在目标 level 不在当前模型支持集时 MUST 拒绝且 MUST NOT 更改当前值；换模或启动时若当前 level 不在新支持集 MUST clamp 到合法默认（Settings default_thinking_level 若合法则优先）。
+  m10,"thinking-level-validate-clamp","set_thinking_level（或 Driver 等价）在目标 level 不在当前模型支持集时 MUST 拒绝且 MUST NOT 更改当前值。换模、精确 /model <id> 或启动时若当前 level 不在新支持集、或路径要求默认档：可调模型 MUST 采用支持集全序（off < minimal < low < medium < high < xhigh < max）中的最高档；仅 off 或不可调 MUST 为 off。MUST NOT 因 Settings.default_thinking_level 覆盖换模默认最高档策略；产品面 MUST 仅暴露 xylitol ThinkingLevel 名，provider 差异仅经 thinking_level_map 在请求边界生效。"
   m11,"thinking-level-on-generate","Agent 在调用 XyModel::generate_stream（或等价）时 MUST 传入当前 ThinkingLevel 与模型 thinking_level_map（及可用的 thinking_budgets）；resolve 后 MUST 影响下一轮 provider 请求体；MUST NOT 仅更新会话/UI 状态而不影响请求组装。"
   m12,"no-silent-env-select","bootstrap 在仅有 provider API key、无配置模型别名且无显式 --model（或等价选中源）时，MUST NOT 自动将 default_model_id_for_provider 的返回值设为当前选中模型；未选中 MUST 保持为空并由应用面按 cli-entry ce18 展示。"
 scenarios[0]:

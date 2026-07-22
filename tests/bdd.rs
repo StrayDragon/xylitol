@@ -833,6 +833,31 @@ fn _t_agent_thinking_clamped(agent: &AgentState, level: String) {
     );
 }
 
+#[then("实际思考级别为 {level:string} 或 set 被拒绝且保持 off")]
+fn _t_agent_thinking_off_or_rejected(agent: &AgentState, level: String) {
+    let level = strip_quotes(&level);
+    let msg = agent
+        .last_result
+        .borrow()
+        .as_ref()
+        .expect("try-set result")
+        .as_ref()
+        .expect("try-set ok payload")
+        .clone();
+    let actual = msg
+        .strip_prefix("rejected:level:")
+        .or_else(|| msg.strip_prefix("level:"))
+        .unwrap_or(msg.as_str());
+    assert_eq!(
+        actual, level,
+        "expected level {level:?} (or rejected keeping it), got {msg:?}"
+    );
+    assert!(
+        msg.contains("off"),
+        "expected off after unsupported set, got {msg:?}"
+    );
+}
+
 #[given("会话包含 {tokens:u32} 个 token 的消息")]
 fn _g_agent_tokens(agent: &AgentState, tokens: u32) {
     agent
@@ -2274,7 +2299,55 @@ fn _t_agent_aborted_error(agent: &AgentState) {
 }
 #[when("尝试将思考级别设为 {level}")]
 fn _w_agent_try_thinking_level(agent: &AgentState, level: String) {
-    _w_agent_switch_thinking(agent, "切换".into(), level);
+    let level = strip_quotes(&level);
+    let dir = tempfile::tempdir().unwrap();
+    let mgr = SessionManager::new(dir.keep());
+    let store: std::sync::Arc<dyn xylitol::protocol::ports::XySessionStore> =
+        std::sync::Arc::new(mgr.clone());
+    let sink: std::sync::Arc<dyn xylitol::protocol::ports::XyEventSink> =
+        std::sync::Arc::new(xylitol::infra::event::EventBus::new());
+    let mut session = AgentCapabilities::new(
+        agent.registry.borrow().clone(),
+        ToolSet::from_iter(xylitol::infra::tools::default_tools()),
+        store,
+        sink,
+        None,
+        Vec::new(),
+        Vec::new(),
+        0.8,
+        ".".into(),
+        None,
+        std::sync::Arc::new(xylitol::infra::provider::factory::build_provider),
+        xylitol::infra::permission::allow_all_permission(),
+        Some(std::sync::Arc::new(
+            xylitol::infra::bash_exec::InfraBashExecutor::new(),
+        )),
+        Some(std::sync::Arc::new(
+            xylitol::infra::export::StdExportIo::new(),
+        )),
+        xylitol::agent::session::QueueMode::default(),
+        xylitol::agent::session::QueueMode::default(),
+        None,
+    );
+    if session.current_model().is_none()
+        && let Some(id) = agent.registry.borrow().list().first().map(|m| m.id.clone())
+    {
+        let _ = session.select_model(&id);
+    }
+    let tl = match level.as_str() {
+        "high" => ThinkingLevel::High,
+        "medium" => ThinkingLevel::Medium,
+        "low" => ThinkingLevel::Low,
+        "minimal" => ThinkingLevel::Minimal,
+        "xhigh" => ThinkingLevel::Xhigh,
+        "max" => ThinkingLevel::Max,
+        _ => ThinkingLevel::Off,
+    };
+    let payload = match session.set_thinking_level(tl) {
+        Ok(()) => format!("level:{}", session.thinking_level().as_str()),
+        Err(_) => format!("rejected:level:{}", session.thinking_level().as_str()),
+    };
+    agent.last_result.replace(Some(Ok(payload)));
 }
 
 // ═══════════════════════════════════════════════════════════════════

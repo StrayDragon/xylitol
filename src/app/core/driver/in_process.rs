@@ -214,7 +214,23 @@ impl XyDriver for XyInProcessDriver {
     }
 
     fn current_model(&self) -> Option<ModelInfo> {
-        self.agent.inner().current_model().map(ModelInfo::from)
+        self.agent
+            .inner()
+            .current_model()
+            .map(|m| ModelInfo::from(&m))
+    }
+
+    fn active_turn(&self) -> Option<(String, ThinkingLevel, bool)> {
+        let binding = self.agent.inner().inflight_turn_binding()?;
+        Some((
+            binding.display_name,
+            binding.thinking,
+            binding.omit_thinking,
+        ))
+    }
+
+    fn has_active_turn(&self) -> bool {
+        self.agent.inner().has_active_turn()
     }
 
     fn available_models(&self) -> Vec<ModelInfo> {
@@ -245,11 +261,12 @@ impl XyDriver for XyInProcessDriver {
             .agent
             .inner()
             .current_model()
-            .map(ModelInfo::from)
+            .map(|m| ModelInfo::from(&m))
             .unwrap_or_else(|| ModelInfo {
                 id: found.clone(),
                 display_name: found,
                 thinking: true,
+                thinking_levels: Vec::new(),
                 context_window: 0,
             }))
     }
