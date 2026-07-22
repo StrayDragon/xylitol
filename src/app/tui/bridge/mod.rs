@@ -41,6 +41,8 @@ pub fn apply_xy_event(model: &mut UiModel, event: &XyEvent) {
 
 /// Upsert a pending tool row from streaming intent (MessageUpdate) or execution start.
 pub(crate) fn upsert_tool_entry(model: &mut UiModel, id: &str, name: &str, args: &Value) {
+    use crate::app::tool_display::{is_mcp_tool_name, mcp_tool_body};
+
     let fresh_path = extract_tool_path(args);
     let write_content = (name == "write")
         .then(|| {
@@ -50,11 +52,17 @@ pub(crate) fn upsert_tool_entry(model: &mut UiModel, id: &str, name: &str, args:
         })
         .flatten()
         .filter(|s| !s.is_empty());
+    let mcp = is_mcp_tool_name(name);
+    // Header: no args chrome for mcp (body owns `args:` — avoids `{}` / compact JSON redundancy).
+    let mcp_preview = mcp.then(String::new);
+    let mcp_pending_body = mcp.then(|| mcp_tool_body(Some(args), None));
     if let Some(UiEntry::Tool {
         name: n,
         args_preview,
         tool_path,
         write_content: wc,
+        output,
+        done,
         ..
     }) = find_tool_mut(&mut model.entries, id)
     {
@@ -62,18 +70,28 @@ pub(crate) fn upsert_tool_entry(model: &mut UiModel, id: &str, name: &str, args:
         if let Some(p) = fresh_path {
             *tool_path = Some(p);
         }
-        let new_preview =
-            human_tool_args_preview_with_path(name, args, tool_path.as_deref(), usize::MAX);
+        let new_preview = mcp_preview.clone().unwrap_or_else(|| {
+            human_tool_args_preview_with_path(name, args, tool_path.as_deref(), usize::MAX)
+        });
         if !preview_is_downgrade(name, args_preview, &new_preview) {
             *args_preview = new_preview;
         }
         if write_content.is_some() {
             *wc = write_content;
         }
+        // Refresh pretty call args while still pending (no streamed result yet).
+        if let Some(body) = mcp_pending_body
+            && !*done
+            && (output.is_empty() || output.starts_with("args:"))
+        {
+            *output = body;
+        }
         return;
     }
     let tool_path = fresh_path;
-    let preview = human_tool_args_preview_with_path(name, args, tool_path.as_deref(), usize::MAX);
+    let preview = mcp_preview.unwrap_or_else(|| {
+        human_tool_args_preview_with_path(name, args, tool_path.as_deref(), usize::MAX)
+    });
     model.entries.push(UiEntry::Tool {
         id: id.to_string(),
         name: name.to_string(),
@@ -81,7 +99,7 @@ pub(crate) fn upsert_tool_entry(model: &mut UiModel, id: &str, name: &str, args:
         tool_path,
         write_content,
         display_diff: None,
-        output: String::new(),
+        output: mcp_pending_body.unwrap_or_default(),
         is_error: false,
         done: false,
     });
@@ -778,5 +796,128 @@ mod tests {
                 .iter()
                 .any(|e| matches!(e, UiEntry::System { text } if text.contains("retry failed")))
         );
+    }
+
+    #[test]
+    fn mcp_tool_shows_pretty_args_and_result() {
+        let mut model = UiModel::new();
+        model.begin_run("hi");
+        apply_xy_event(
+            &mut model,
+            &XyEvent::ToolExecutionStart {
+                id: "m1".into(),
+                name: "mcp:lspz:get_diagnostics".into(),
+                args: serde_json::json!({"uri": "file:///tmp/a.rs"}),
+            },
+        );
+        let pending = model.entries.iter().find_map(|e| match e {
+            UiEntry::Tool {
+                id,
+                args_preview,
+                output,
+                ..
+            } if id == "m1" => Some((args_preview.clone(), output.clone())),
+            _ => None,
+        });
+        let (preview, body) = pending.expect("mcp tool row");
+        assert!(
+            preview.is_empty(),
+            "mcp header must omit args chrome (body owns args:): {preview:?}"
+        );
+        assert!(
+            body.starts_with("args:\n") && body.contains("\"uri\": \"file:///tmp/a.rs\""),
+            "pending body must show pretty args: {body}"
+        );
+
+        // Simulate provider streaming the raw result before End (regression: duplicated body).
+        let raw = r#"{"content":[{"type":"text","text":"ok"}],"isError":false}"#;
+        apply_xy_event(
+            &mut model,
+            &XyEvent::ToolExecutionUpdate {
+                id: "m1".into(),
+                output: raw.into(),
+            },
+        );
+        let mid = model.entries.iter().find_map(|e| match e {
+            UiEntry::Tool { id, output, .. } if id == "m1" => Some(output.clone()),
+            _ => None,
+        });
+        let mid = mid.expect("mcp mid");
+        assert!(
+            !mid.contains("\"content\""),
+            "streamed raw must not glue onto args: {mid}"
+        );
+
+        apply_xy_event(
+            &mut model,
+            &XyEvent::ToolExecutionEnd {
+                id: "m1".into(),
+                name: "mcp:lspz:get_diagnostics".into(),
+                result: raw.into(),
+                is_error: false,
+            },
+        );
+        let done = model.entries.iter().find_map(|e| match e {
+            UiEntry::Tool {
+                id, output, done, ..
+            } if id == "m1" => Some((output.clone(), *done)),
+            _ => None,
+        });
+        let (out, done) = done.expect("mcp done");
+        assert!(done);
+        assert!(out.contains("args:\n"), "{out}");
+        assert!(out.contains("result:\n"), "{out}");
+        assert!(out.contains("\"isError\": false"), "pretty result: {out}");
+        assert!(out.contains('\n'), "result must be pretty multiline: {out}");
+        let raw_hits = out.matches(r#"{"content""#).count();
+        assert_eq!(
+            raw_hits, 0,
+            "minified result must not appear beside args: {out}"
+        );
+        assert_eq!(
+            out.matches("result:").count(),
+            1,
+            "result section once: {out}"
+        );
+    }
+
+    #[test]
+    fn mcp_end_rebuilds_even_if_buffer_was_polluted() {
+        let mut model = UiModel::new();
+        model.begin_run("hi");
+        apply_xy_event(
+            &mut model,
+            &XyEvent::ToolExecutionStart {
+                id: "m2".into(),
+                name: "mcp:lspz:get_diagnostics".into(),
+                args: serde_json::json!({}),
+            },
+        );
+        // Force-pollute as if an older build appended Update.
+        for e in &mut model.entries {
+            if let UiEntry::Tool { id, output, .. } = e
+                && id == "m2"
+            {
+                output.push_str(r#"{"content":[{"type":"text","text":"x"}],"isError":false}"#);
+            }
+        }
+        apply_xy_event(
+            &mut model,
+            &XyEvent::ToolExecutionEnd {
+                id: "m2".into(),
+                name: "mcp:lspz:get_diagnostics".into(),
+                result: r#"{"content":[{"type":"text","text":"ok"}],"isError":false}"#.into(),
+                is_error: false,
+            },
+        );
+        let out = model.entries.iter().find_map(|e| match e {
+            UiEntry::Tool { id, output, .. } if id == "m2" => Some(output.as_str()),
+            _ => None,
+        });
+        let out = out.expect("m2");
+        assert!(out.starts_with("args:\n{}"), "{out}");
+        assert!(out.contains("result:\n"), "{out}");
+        assert!(!out.contains("args:\n{}{"), "no glued minified: {out}");
+        assert_eq!(out.matches("\"text\": \"ok\"").count(), 1, "{out}");
     }
 }

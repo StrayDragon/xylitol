@@ -6,6 +6,7 @@ use std::io::{self, Write};
 
 use crate::agent::XyEvent;
 use crate::app::core::driver::{EventStream, XyDriver, XyDriverError};
+use crate::app::tool_display::{is_mcp_tool_name, pretty_json_text, pretty_json_value};
 use futures::StreamExt;
 
 /// Run the agent in print mode with the given prompt.
@@ -91,22 +92,17 @@ async fn render_stream<W: Write>(
                 // every prefix and produce garbled output like
                 // "HelloHello!Hello! How...".
             }
-            XyEvent::ToolExecutionStart { name, .. } => {
-                eprintln!("\n[Tool: {name}]");
+            XyEvent::ToolExecutionStart { name, args, .. } => {
+                for line in format_tool_start_lines(&name, &args) {
+                    eprintln!("{line}");
+                }
             }
             XyEvent::ToolExecutionUpdate { output, .. } => {
                 eprint!("{output}");
                 let _ = io::stderr().flush();
             }
             XyEvent::ToolExecutionEnd { name, result, .. } => {
-                // Summarize result
-                let preview: String = result.lines().take(3).collect::<Vec<_>>().join("\n");
-                let suffix = if result.lines().count() > 3 {
-                    "..."
-                } else {
-                    ""
-                };
-                eprintln!("[Tool: {name}] result:\n{preview}{suffix}");
+                eprintln!("{}", format_tool_end_line(&name, &result));
             }
             XyEvent::Error(msg) => {
                 eprintln!("\n[Error] {msg}");
@@ -139,6 +135,34 @@ async fn render_stream<W: Write>(
     }
     let _ = writeln!(writer);
     Ok(())
+}
+
+fn format_tool_start_lines(name: &str, args: &serde_json::Value) -> Vec<String> {
+    let mut lines = vec![format!("\n[Tool: {name}]")];
+    // c1460: MCP call args on stderr for debug (pretty JSON).
+    if is_mcp_tool_name(name) && !args.is_null() {
+        lines.push(format!("args:\n{}", pretty_json_value(args)));
+    }
+    lines
+}
+
+fn format_tool_end_line(name: &str, result: &str) -> String {
+    let display = if is_mcp_tool_name(name) {
+        pretty_json_text(result)
+    } else {
+        result.to_string()
+    };
+    // Summarize: MCP pretty may be long — keep a short preview + ellipsis.
+    let lines: Vec<&str> = display.lines().collect();
+    let take = if is_mcp_tool_name(name) { 24 } else { 3 };
+    let preview: String = lines
+        .iter()
+        .take(take)
+        .copied()
+        .collect::<Vec<_>>()
+        .join("\n");
+    let suffix = if lines.len() > take { "\n..." } else { "" };
+    format!("[Tool: {name}] result:\n{preview}{suffix}")
 }
 
 #[cfg(test)]
@@ -223,5 +247,50 @@ mod tests {
 
         let output = String::from_utf8(buf).unwrap();
         assert_eq!(output, "Hi\n");
+    }
+
+    #[tokio::test]
+    async fn mcp_tool_prints_pretty_args_and_result_preview() {
+        let events = vec![
+            XyEvent::ToolExecutionStart {
+                id: "m1".into(),
+                name: "mcp:lspz:get_diagnostics".into(),
+                args: serde_json::json!({"uri": "file:///x"}),
+            },
+            XyEvent::ToolExecutionEnd {
+                id: "m1".into(),
+                name: "mcp:lspz:get_diagnostics".into(),
+                result: r#"{"content":[{"type":"text","text":"a"}],"isError":false}"#.into(),
+                is_error: false,
+            },
+            XyEvent::AgentEnd { messages: vec![] },
+        ];
+        let mut stream = mock_stream(events);
+        let mut buf: Vec<u8> = Vec::new();
+        render_stream(&mut stream, &mut buf).await.unwrap();
+        // MCP chrome goes to stderr; stdout only gets final newline from AgentEnd path.
+        assert_eq!(String::from_utf8(buf).unwrap(), "\n");
+    }
+
+    #[test]
+    fn mcp_format_helpers_pretty_print() {
+        let start = format_tool_start_lines(
+            "mcp:lspz:get_diagnostics",
+            &serde_json::json!({"uri": "file:///x"}),
+        );
+        let joined = start.join("\n");
+        assert!(
+            joined.contains("[Tool: mcp:lspz:get_diagnostics]"),
+            "{joined}"
+        );
+        assert!(joined.contains("args:\n"), "{joined}");
+        assert!(joined.contains("\"uri\": \"file:///x\""), "{joined}");
+
+        let end = format_tool_end_line(
+            "mcp:lspz:get_diagnostics",
+            r#"{"content":[{"type":"text","text":"a"}],"isError":false}"#,
+        );
+        assert!(end.contains("\"isError\": false"), "{end}");
+        assert!(end.contains('\n'), "{end}");
     }
 }
