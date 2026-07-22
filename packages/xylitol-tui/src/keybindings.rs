@@ -110,16 +110,10 @@ static TUI_KEYBINDINGS: &[(&str, &[&str], Option<&str>)] = &[
     ("tui.input.copy", &["ctrl+c"], Some("Copy selection")),
     ("tui.select.up", &["up"], Some("Move selection up")),
     ("tui.select.down", &["down"], Some("Move selection down")),
-    (
-        "tui.select.pageUp",
-        &["pageUp", "left"],
-        Some("Selection page up"),
-    ),
-    (
-        "tui.select.pageDown",
-        &["pageDown", "right"],
-        Some("Selection page down"),
-    ),
+    // Unbound by default: bare ←→ reserved for product `/model` level cycle (c1470).
+    // Page chords can be restored via keybindings.json when needed.
+    ("tui.select.pageUp", &[], Some("Selection page up")),
+    ("tui.select.pageDown", &[], Some("Selection page down")),
     ("tui.select.confirm", &["enter"], Some("Confirm selection")),
     (
         "tui.select.cancel",

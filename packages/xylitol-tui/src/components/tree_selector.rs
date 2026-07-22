@@ -1251,7 +1251,7 @@ mod tests {
     }
 
     #[test]
-    fn left_right_page_by_max_visible() {
+    fn page_bindings_empty_left_right_inert() {
         use crossterm::event::{KeyCode, KeyEvent, KeyModifiers};
 
         let roots =
@@ -1267,16 +1267,55 @@ mod tests {
             },
         );
         assert_eq!(sel.selected_index, 0);
+        // Defaults: tui.select.pageUp/pageDown unbound (←→ reserved for product).
         sel.handle_input(InputEvent::Key(KeyEvent::new(
             KeyCode::Right,
             KeyModifiers::NONE,
         )));
-        assert_eq!(sel.selected_index, 5);
+        assert_eq!(sel.selected_index, 0);
         sel.handle_input(InputEvent::Key(KeyEvent::new(
             KeyCode::Left,
             KeyModifiers::NONE,
         )));
         assert_eq!(sel.selected_index, 0);
+    }
+
+    #[test]
+    fn page_up_down_move_by_max_visible_when_bound() {
+        use crate::keybindings::{KeybindingsConfig, with_keybindings_mut};
+        use crossterm::event::{KeyCode, KeyEvent, KeyModifiers};
+        use std::collections::HashMap;
+
+        let mut user = KeybindingsConfig::new();
+        user.insert("tui.select.pageUp".into(), vec!["pageUp".into()]);
+        user.insert("tui.select.pageDown".into(), vec!["pageDown".into()]);
+        with_keybindings_mut(|kb| kb.set_user_bindings(user));
+
+        let roots =
+            vec![TreeNode::new("r", "root").with_children(
+                (0..20).map(|i| TreeNode::new(format!("n{i}"), format!("node-{i}"))),
+            )];
+        let mut sel = TreeSelector::new(
+            roots,
+            TreeSelectorTheme::default(),
+            TreeSelectorOptions {
+                max_visible: 5,
+                ..TreeSelectorOptions::default()
+            },
+        );
+        assert_eq!(sel.selected_index, 0);
+        sel.handle_input(InputEvent::Key(KeyEvent::new(
+            KeyCode::PageDown,
+            KeyModifiers::NONE,
+        )));
+        assert_eq!(sel.selected_index, 5);
+        sel.handle_input(InputEvent::Key(KeyEvent::new(
+            KeyCode::PageUp,
+            KeyModifiers::NONE,
+        )));
+        assert_eq!(sel.selected_index, 0);
+
+        with_keybindings_mut(|kb| kb.set_user_bindings(HashMap::new()));
     }
 
     #[test]
