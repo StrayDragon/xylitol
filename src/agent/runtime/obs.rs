@@ -13,7 +13,7 @@ use std::pin::Pin;
 use fastrace::prelude::*;
 use fastrace_futures::StreamExt as _;
 use futures::Stream;
-use xylitol_ai_bridge::provider::langfuse_session_properties;
+use xylitol_ai_bridge::provider::langfuse_observation_properties;
 use xylitol_ai_bridge::provider::trace::provider_trace_active;
 
 use crate::protocol::error::{XyError, XyToolError};
@@ -38,7 +38,7 @@ impl ReactTurnSpan {
                 ("turn_id".to_string(), turn_id.clone()),
                 ("turn_index".to_string(), turn_index.to_string()),
             ];
-            props.extend(langfuse_session_properties());
+            props.extend(langfuse_observation_properties("agent"));
             props
         });
         root.add_event(Event::new("lifecycle").with_properties(|| {
@@ -67,7 +67,7 @@ fn stream_span(turn_id: Option<&str>) -> Span {
             ("turn_id".to_string(), tid),
             ("span_role".to_string(), "react.stream".to_string()),
         ];
-        props.extend(langfuse_session_properties());
+        props.extend(langfuse_observation_properties("span"));
         props
     });
     span.add_event(Event::new("lifecycle").with_properties(|| {
@@ -103,7 +103,7 @@ impl ToolExecuteSpan {
                 ("tool_name".to_string(), name.to_string()),
                 ("tool_id".to_string(), id.to_string()),
             ];
-            props.extend(langfuse_session_properties());
+            props.extend(langfuse_observation_properties("tool"));
             props
         });
         span.add_event(Event::new("lifecycle").with_properties(|| {
@@ -134,7 +134,7 @@ pub(crate) fn record_xy_error(where_: &str, err: &XyError, turn_id: Option<&str>
             ("where".to_string(), where_.to_string()),
             ("turn_id".to_string(), tid.to_string()),
         ];
-        props.extend(langfuse_session_properties());
+        props.extend(langfuse_observation_properties("span"));
         props
     });
     span.add_event(Event::new("error").with_properties(|| {
@@ -163,7 +163,7 @@ pub(crate) fn record_tool_error(tool: &str, err: &XyToolError, turn_id: Option<&
             ("tool_name".to_string(), tool.to_string()),
             ("turn_id".to_string(), tid.to_string()),
         ];
-        props.extend(langfuse_session_properties());
+        props.extend(langfuse_observation_properties("span"));
         props
     });
     span.add_event(Event::new("error").with_properties(|| {

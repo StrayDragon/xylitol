@@ -11,13 +11,13 @@
 
 ## Phase 2 — GenAI / observation
 
-- [ ] `provider.request` → generation 属性（model / usage；I/O 档位）
-- [ ] `react.turn` / `tool.execute` observation 类型与工具字段
-- [ ] 敏感档配置（默认不带完整 I/O）
-- [ ] specs 扩展 + 单测
-- [ ] roadmap M2 一句兑现
+- [x] `provider.request` → generation 属性（model；I/O 默认不带）
+- [x] `react.turn` / `tool.execute` observation 类型（agent / tool）
+- [x] 敏感档：默认不带完整 I/O（otel8）；显式载荷档留后续
+- [x] specs 扩展（otel8）+ 单测（generation helpers）
+- [x] roadmap M2 一句兑现
 
 ## 校验
 
-- [x] `llman sdd validate c1480-add-otel-genai-langfuse --strict --no-check`（Phase 1；Phase 2 任务仍开放）
-- [x] `just lint` / 相关单测（Phase 1）
+- [x] `llman sdd validate c1480-add-otel-genai-langfuse --strict --no-check`
+- [x] `just lint` / 相关单测

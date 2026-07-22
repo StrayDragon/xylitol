@@ -22,7 +22,8 @@ pub mod trace;
 
 pub use anthropic_messages::AnthropicMessagesAdapter;
 pub use obs_session::{
-    ObsSessionContext, clear_obs_session, langfuse_session_properties, obs_session_context,
+    ObsSessionContext, clear_obs_session, langfuse_generation_properties,
+    langfuse_observation_properties, langfuse_session_properties, obs_session_context,
     set_obs_session, set_obs_session_name,
 };
 pub use openai_completions::OpenAiCompletionsAdapter;

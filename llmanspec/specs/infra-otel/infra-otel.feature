@@ -45,3 +45,9 @@
     假如 当前会话已设置 display name
     当 创建低频根 span
     那么 额外含 langfuse.trace.metadata.session_name；若尚未命名则不得写入该键且 session id 不变
+
+  @req:otel8
+  场景: 根 span 带 Langfuse observation 类型
+    假如 低频观测 span 已激活
+    当 创建 provider.request、react.turn、tool.execute
+    那么 分别标记 generation、agent、tool，且默认不附带完整 prompt 或 completion 载荷
