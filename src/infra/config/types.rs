@@ -77,6 +77,20 @@ pub struct OtelConfig {
     /// env; Langfuse Basic Auth MAY also be derived from `LANGFUSE_*` env.
     #[serde(default)]
     pub headers: HashMap<String, String>,
+    /// Whether generation spans attach observation input/output (c1485).
+    /// Default `none` — metadata/usage only.
+    #[serde(default)]
+    pub observation_io: OtelObservationIo,
+}
+
+/// `[otel].observation_io` — generation I/O on Langfuse observations.
+#[derive(Clone, Debug, Default, PartialEq, Eq, Serialize, Deserialize, JsonSchema)]
+#[serde(rename_all = "kebab-case")]
+pub enum OtelObservationIo {
+    #[default]
+    None,
+    Truncated,
+    Full,
 }
 
 /// `[otel].exporter` — remote export off by default.

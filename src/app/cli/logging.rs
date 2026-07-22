@@ -20,9 +20,11 @@ use std::io::Write;
 use std::path::Path;
 use std::sync::Mutex;
 
-use crate::infra::config::types::OtelConfig;
+use crate::infra::config::types::{OtelConfig, OtelObservationIo};
 use crate::infra::observability::{FanoutReporter, FileTraceReporter};
-use crate::infra::provider::trace::set_provider_trace_active;
+use crate::infra::provider::trace::{
+    ObservationIoTier, set_observation_io_tier, set_provider_trace_active,
+};
 
 const DEFAULT_FILTER: &str = "xylitol=debug,warn";
 
@@ -37,6 +39,7 @@ pub fn init_logging(agent_dir: &Path, otel: &OtelConfig) -> Option<()> {
 
     if !want_log && !want_provider && otel_reporter.is_none() {
         set_provider_trace_active(false);
+        set_observation_io_tier(ObservationIoTier::None);
         return None;
     }
 
@@ -119,6 +122,11 @@ pub fn init_logging(agent_dir: &Path, otel: &OtelConfig) -> Option<()> {
     }
 
     set_provider_trace_active(emit_spans);
+    set_observation_io_tier(match otel.observation_io {
+        OtelObservationIo::None => ObservationIoTier::None,
+        OtelObservationIo::Truncated => ObservationIoTier::Truncated,
+        OtelObservationIo::Full => ObservationIoTier::Full,
+    });
 
     if !fanout.is_empty() {
         fastrace::set_reporter(fanout, fastrace::collector::Config::default());
