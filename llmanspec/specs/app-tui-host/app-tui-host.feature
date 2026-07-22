@@ -217,8 +217,20 @@
   @req:ath24
   场景: spinner-reuses-upper-cache
     假如 busy 且 transcript 很长
-    当 仅 status Loader 推进
+    当 仅 status Loader 推进或仅 status 短词变化
     那么 UiRoot 复用上区缓存且 spinner 帧仍更新
+
+  @req:ath25
+  场景: scrollback-entry-cache-under-streaming
+    假如 已有多条已提交 Assistant 条目
+    当 连续注入多次 TextDelta
+    那么 不得对全部历史条目重新 Markdown；harness 可观测的重绘或 cache miss 有上界
+
+  @req:ath25
+  场景: large-scrollback-e2e-smoke
+    假如 PTY 或 tmux 下产品 TUI 带较大 scrollback 模拟
+    当 完成一轮 Fake 对话并 /exit
+    那么 进程干净退出且不得超时挂死
 
   @req:avs1
   场景: h2-stream

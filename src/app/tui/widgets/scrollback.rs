@@ -15,7 +15,7 @@ use crate::app::tui::layout::LayoutTheme;
 use xylitol_tui::terminal_colors::RgbColor;
 
 /// Fold state owned by the product surface (att7).
-#[derive(Debug, Clone, Copy)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
 pub struct ScrollbackFold {
     pub thinking_expanded: bool,
     /// Alt+E — tool/diff **block** show/hide detail.
@@ -274,6 +274,93 @@ fn highlight_dollar_skill_refs(text: &str, skill_ref: RgbColor) -> String {
     out
 }
 
+/// Per-entry paint cache so streaming/spinner frames do not re-Markdown the
+/// entire transcript (ath25).
+#[derive(Debug, Default)]
+pub struct ScrollbackPaintCache {
+    width: usize,
+    fold: ScrollbackFold,
+    entries: Vec<(u64, Vec<String>)>,
+    /// Test/obs: how many committed entries were freshly painted.
+    pub(crate) entry_misses: u64,
+}
+
+impl ScrollbackPaintCache {
+    pub fn invalidate(&mut self) {
+        self.entries.clear();
+        self.width = 0;
+        // keep entry_misses cumulative for tests unless cleared explicitly
+    }
+
+    #[cfg(test)]
+    #[allow(dead_code)] // called via UiRoot test helper
+    pub fn clear_misses(&mut self) {
+        self.entry_misses = 0;
+    }
+
+    fn prepare(&mut self, width: usize, fold: ScrollbackFold) {
+        if self.width != width || self.fold != fold {
+            self.entries.clear();
+            self.width = width;
+            self.fold = fold;
+        }
+    }
+}
+
+fn entry_fingerprint(entry: &UiEntry) -> u64 {
+    use std::collections::hash_map::DefaultHasher;
+    use std::hash::{Hash, Hasher};
+    let mut h = DefaultHasher::new();
+    std::mem::discriminant(entry).hash(&mut h);
+    match entry {
+        UiEntry::User { text }
+        | UiEntry::Assistant { text }
+        | UiEntry::Thinking { text }
+        | UiEntry::System { text }
+        | UiEntry::Error { text } => text.hash(&mut h),
+        UiEntry::Tool {
+            id,
+            name,
+            args_preview,
+            tool_path,
+            write_content,
+            display_diff,
+            output,
+            is_error,
+            done,
+        } => {
+            id.hash(&mut h);
+            name.hash(&mut h);
+            args_preview.hash(&mut h);
+            tool_path.hash(&mut h);
+            write_content.hash(&mut h);
+            display_diff.hash(&mut h);
+            output.hash(&mut h);
+            is_error.hash(&mut h);
+            done.hash(&mut h);
+        }
+        UiEntry::Diff {
+            summary,
+            display_diff,
+        } => {
+            summary.hash(&mut h);
+            display_diff.hash(&mut h);
+        }
+        UiEntry::Bash {
+            command,
+            status,
+            output,
+            exclude_from_context,
+        } => {
+            command.hash(&mut h);
+            status.hash(&mut h);
+            output.hash(&mut h);
+            exclude_from_context.hash(&mut h);
+        }
+    }
+    h.finish()
+}
+
 /// Render UiModel entries into scrollback lines for the product host.
 pub fn render_scrollback(
     model: &UiModel,
@@ -281,95 +368,190 @@ pub fn render_scrollback(
     theme: LayoutTheme,
     fold: ScrollbackFold,
     width: usize,
+    cache: &mut ScrollbackPaintCache,
 ) -> Vec<String> {
     let width = width.max(1);
+    cache.prepare(width, fold);
     let mut lines = Vec::new();
 
     if model.entries.is_empty() && model.streaming_scrollback_tails().is_empty() {
+        cache.entries.clear();
         return lines;
     }
 
+    if cache.entries.len() > model.entries.len() {
+        cache.entries.truncate(model.entries.len());
+    }
+
     let mut need_spacer = false;
-    for entry in &model.entries {
+    for (entry_idx, entry) in model.entries.iter().enumerate() {
         if need_spacer {
             lines.push(inter_block_spacer(width));
         }
         need_spacer = true;
-        match entry {
-            UiEntry::User { text } => {
-                let prefix = theme.paint_user(glyphs.user());
-                let painted = highlight_dollar_skill_refs(text, theme.palette().skill_ref);
-                let body = format!("{prefix} {painted}");
-                let content = wrap_text_with_ansi(&body, width);
-                push_tinted(&mut lines, &content, width, theme.palette().user_message_bg);
-            }
-            UiEntry::Assistant { text } => {
-                let mut md =
-                    Markdown::new(text.clone(), 0, 0, theme.palette().markdown_theme(), None);
-                for line in md.render(width) {
-                    lines.push(fit(&line, width));
+        let fp = entry_fingerprint(entry);
+        if cache.entries.get(entry_idx).is_some_and(|(f, _)| *f == fp) {
+            lines.extend(cache.entries[entry_idx].1.iter().cloned());
+            continue;
+        }
+        let block_lines = {
+            let mut lines = Vec::new();
+            match entry {
+                UiEntry::User { text } => {
+                    let prefix = theme.paint_user(glyphs.user());
+                    let painted = highlight_dollar_skill_refs(text, theme.palette().skill_ref);
+                    let body = format!("{prefix} {painted}");
+                    let content = wrap_text_with_ansi(&body, width);
+                    push_tinted(&mut lines, &content, width, theme.palette().user_message_bg);
                 }
-            }
-            UiEntry::Thinking { text } => {
-                let marker = if fold.thinking_expanded {
-                    glyphs.unfold()
-                } else {
-                    glyphs.fold()
-                };
-                let header =
-                    theme.paint_muted(&format!("{marker} thinking  {}", key_hint("Ctrl+T")));
-                push_wrapped(&mut lines, &header, width);
-                if fold.thinking_expanded {
-                    push_wrapped(&mut lines, &theme.paint_muted(text), width);
+                UiEntry::Assistant { text } => {
+                    let mut md =
+                        Markdown::new(text.clone(), 0, 0, theme.palette().markdown_theme(), None);
+                    for line in md.render(width) {
+                        lines.push(fit(&line, width));
+                    }
                 }
-            }
-            UiEntry::Tool {
-                name,
-                args_preview,
-                write_content,
-                display_diff,
-                output,
-                is_error,
-                done,
-                ..
-            } => {
-                let marker = if fold.tools_expanded {
-                    glyphs.unfold()
-                } else {
-                    glyphs.fold()
-                };
-                let header = paint_tool_header_line(theme, marker, name, args_preview);
-                let rgb = tool_bg_rgb(!done, *is_error, theme);
-                let mut block = Vec::new();
-                push_wrapped(&mut block, &header, width);
+                UiEntry::Thinking { text } => {
+                    let marker = if fold.thinking_expanded {
+                        glyphs.unfold()
+                    } else {
+                        glyphs.fold()
+                    };
+                    let header =
+                        theme.paint_muted(&format!("{marker} thinking  {}", key_hint("Ctrl+T")));
+                    push_wrapped(&mut lines, &header, width);
+                    if fold.thinking_expanded {
+                        push_wrapped(&mut lines, &theme.paint_muted(text), width);
+                    }
+                }
+                UiEntry::Tool {
+                    name,
+                    args_preview,
+                    write_content,
+                    display_diff,
+                    output,
+                    is_error,
+                    done,
+                    ..
+                } => {
+                    let marker = if fold.tools_expanded {
+                        glyphs.unfold()
+                    } else {
+                        glyphs.fold()
+                    };
+                    let header = paint_tool_header_line(theme, marker, name, args_preview);
+                    let rgb = tool_bg_rgb(!done, *is_error, theme);
+                    let mut block = Vec::new();
+                    push_wrapped(&mut block, &header, width);
 
-                if fold.tools_expanded {
-                    // write: header + body share one pending/success/error wash (pi Box).
-                    // Tail viewport follows stream end (c1340); Ctrl+O still expands.
-                    if let Some(content) = write_content
-                        && !content.is_empty()
-                    {
-                        let total = content.lines().count().max(1);
-                        let opts = ExpandableOutputOptions {
-                            max_preview_lines: WRITE_BODY_PREVIEW_LINES,
-                            from: TruncateFrom::Tail,
-                            expand_hint: format!("{total} total, ctrl+o to expand"),
-                            hint_style: None,
-                        };
-                        for line in render_expandable_output(
-                            content,
-                            width,
-                            fold.tools_output_expanded,
-                            &opts,
-                        ) {
-                            block.push(fit(&line, width));
+                    if fold.tools_expanded {
+                        // write: header + body share one pending/success/error wash (pi Box).
+                        // Tail viewport follows stream end (c1340); Ctrl+O still expands.
+                        if let Some(content) = write_content
+                            && !content.is_empty()
+                        {
+                            let total = content.lines().count().max(1);
+                            let opts = ExpandableOutputOptions {
+                                max_preview_lines: WRITE_BODY_PREVIEW_LINES,
+                                from: TruncateFrom::Tail,
+                                expand_hint: format!("{total} total, ctrl+o to expand"),
+                                hint_style: None,
+                            };
+                            for line in render_expandable_output(
+                                content,
+                                width,
+                                fold.tools_output_expanded,
+                                &opts,
+                            ) {
+                                block.push(fit(&line, width));
+                            }
+                        }
+
+                        // Error / other output behind Alt+E: still same wash when shown.
+                        // Hard-truncated: never expand viewport (att16).
+                        if !output.is_empty() {
+                            let painted = paint_output_with_full_footer(output, theme, *is_error);
+                            let hard = output_is_hard_truncated(output);
+                            let opts = ExpandableOutputOptions {
+                                max_preview_lines: TOOLS_OUTPUT_PREVIEW_LINES,
+                                from: TruncateFrom::Tail,
+                                expand_hint: if hard {
+                                    HARD_TRUNCATED_EXPAND_HINT.into()
+                                } else {
+                                    "ctrl+o to expand".into()
+                                },
+                                hint_style: None,
+                            };
+                            let expanded = fold.tools_output_expanded && !hard;
+                            for line in render_expandable_output(&painted, width, expanded, &opts) {
+                                block.push(line);
+                            }
+                        }
+
+                        // edit: header + diff share one tool-*-bg wash; MUST honor Alt+E.
+                        if let Some(diff) = display_diff
+                            && !diff.is_empty()
+                        {
+                            if !block.is_empty() {
+                                block.push(String::new()); // pi Spacer between title and body
+                            }
+                            push_viewport_diff_lines(
+                                &mut block,
+                                diff,
+                                width,
+                                theme,
+                                Some(rgb),
+                                fold.tools_output_expanded,
+                            );
                         }
                     }
 
-                    // Error / other output behind Alt+E: still same wash when shown.
-                    // Hard-truncated: never expand viewport (att16).
+                    push_tinted(&mut lines, &block, width, rgb);
+                }
+                UiEntry::Diff {
+                    summary,
+                    display_diff,
+                } => {
+                    let marker = if fold.tools_expanded {
+                        glyphs.unfold()
+                    } else {
+                        glyphs.fold()
+                    };
+                    let header = paint_tool_header_line(theme, marker, "diff", summary);
+                    let mut block = Vec::new();
+                    push_wrapped(&mut block, &header, width);
+                    let rgb = tool_bg_rgb(false, false, theme);
+                    if fold.tools_expanded && !display_diff.is_empty() {
+                        block.push(String::new());
+                        push_viewport_diff_lines(
+                            &mut block,
+                            display_diff,
+                            width,
+                            theme,
+                            Some(rgb),
+                            fold.tools_output_expanded,
+                        );
+                    }
+                    push_tinted(&mut lines, &block, width, rgb);
+                }
+                UiEntry::Bash {
+                    command,
+                    status,
+                    output,
+                    ..
+                } => {
+                    let mut block = Vec::new();
+                    push_wrapped(
+                        &mut block,
+                        &theme.paint_success(&format!("$ {command}")),
+                        width,
+                    );
                     if !output.is_empty() {
-                        let painted = paint_output_with_full_footer(output, theme, *is_error);
+                        let body = paint_output_with_full_footer(
+                            output,
+                            theme,
+                            matches!(status, BashBlockStatus::Error | BashBlockStatus::Cancelled),
+                        );
                         let hard = output_is_hard_truncated(output);
                         let opts = ExpandableOutputOptions {
                             max_preview_lines: TOOLS_OUTPUT_PREVIEW_LINES,
@@ -382,114 +564,41 @@ pub fn render_scrollback(
                             hint_style: None,
                         };
                         let expanded = fold.tools_output_expanded && !hard;
-                        for line in render_expandable_output(&painted, width, expanded, &opts) {
+                        for line in render_expandable_output(&body, width, expanded, &opts) {
                             block.push(line);
                         }
-                    }
-
-                    // edit: header + diff share one tool-*-bg wash; MUST honor Alt+E.
-                    if let Some(diff) = display_diff
-                        && !diff.is_empty()
-                    {
-                        if !block.is_empty() {
-                            block.push(String::new()); // pi Spacer between title and body
-                        }
-                        push_viewport_diff_lines(
+                    } else if matches!(status, BashBlockStatus::Pending) {
+                        push_wrapped(
                             &mut block,
-                            diff,
+                            &theme.paint_muted(&format!("Running… {}", key_hint("Esc"))),
                             width,
-                            theme,
-                            Some(rgb),
-                            fold.tools_output_expanded,
                         );
                     }
+                    push_tinted(&mut lines, &block, width, bash_bg_rgb(*status, theme));
                 }
-
-                push_tinted(&mut lines, &block, width, rgb);
-            }
-            UiEntry::Diff {
-                summary,
-                display_diff,
-            } => {
-                let marker = if fold.tools_expanded {
-                    glyphs.unfold()
-                } else {
-                    glyphs.fold()
-                };
-                let header = paint_tool_header_line(theme, marker, "diff", summary);
-                let mut block = Vec::new();
-                push_wrapped(&mut block, &header, width);
-                let rgb = tool_bg_rgb(false, false, theme);
-                if fold.tools_expanded && !display_diff.is_empty() {
-                    block.push(String::new());
-                    push_viewport_diff_lines(
-                        &mut block,
-                        display_diff,
-                        width,
-                        theme,
-                        Some(rgb),
-                        fold.tools_output_expanded,
-                    );
-                }
-                push_tinted(&mut lines, &block, width, rgb);
-            }
-            UiEntry::Bash {
-                command,
-                status,
-                output,
-                ..
-            } => {
-                let mut block = Vec::new();
-                push_wrapped(
-                    &mut block,
-                    &theme.paint_success(&format!("$ {command}")),
-                    width,
-                );
-                if !output.is_empty() {
-                    let body = paint_output_with_full_footer(
-                        output,
-                        theme,
-                        matches!(status, BashBlockStatus::Error | BashBlockStatus::Cancelled),
-                    );
-                    let hard = output_is_hard_truncated(output);
-                    let opts = ExpandableOutputOptions {
-                        max_preview_lines: TOOLS_OUTPUT_PREVIEW_LINES,
-                        from: TruncateFrom::Tail,
-                        expand_hint: if hard {
-                            HARD_TRUNCATED_EXPAND_HINT.into()
-                        } else {
-                            "ctrl+o to expand".into()
-                        },
-                        hint_style: None,
-                    };
-                    let expanded = fold.tools_output_expanded && !hard;
-                    for line in render_expandable_output(&body, width, expanded, &opts) {
-                        block.push(line);
-                    }
-                } else if matches!(status, BashBlockStatus::Pending) {
+                UiEntry::System { text } => {
                     push_wrapped(
-                        &mut block,
-                        &theme.paint_muted(&format!("Running… {}", key_hint("Esc"))),
+                        &mut lines,
+                        &theme.paint_muted(&format!("{} {text}", glyphs.system())),
                         width,
                     );
                 }
-                push_tinted(&mut lines, &block, width, bash_bg_rgb(*status, theme));
+                UiEntry::Error { text } => {
+                    push_wrapped(
+                        &mut lines,
+                        &theme.paint_error(&format!("error: {text}")),
+                        width,
+                    );
+                }
             }
-            UiEntry::System { text } => {
-                push_wrapped(
-                    &mut lines,
-                    &theme.paint_muted(&format!("{} {text}", glyphs.system())),
-                    width,
-                );
-            }
-            UiEntry::Error { text } => {
-                push_wrapped(
-                    &mut lines,
-                    &theme.paint_error(&format!("error: {text}")),
-                    width,
-                );
-            }
+            lines // end block paint
+        };
+        cache.entry_misses = cache.entry_misses.saturating_add(1);
+        if entry_idx < cache.entries.len() {
+            cache.entries.truncate(entry_idx);
         }
+        cache.entries.push((fp, block_lines.clone()));
+        lines.extend(block_lines);
     }
 
     for (kind, text) in model.streaming_scrollback_tails() {
@@ -549,6 +658,7 @@ mod tests {
             theme,
             ScrollbackFold::default(),
             80,
+            &mut ScrollbackPaintCache::default(),
         );
         let joined = lines.join("\n");
         let expect = bold(&fg_rgb(skill, "$demo"));
@@ -579,6 +689,7 @@ mod tests {
             theme,
             ScrollbackFold::default(),
             80,
+            &mut ScrollbackPaintCache::default(),
         );
         let header = lines
             .iter()
@@ -636,6 +747,7 @@ mod tests {
             theme,
             ScrollbackFold::default(),
             100,
+            &mut ScrollbackPaintCache::default(),
         );
         let header = lines
             .iter()
@@ -688,6 +800,7 @@ mod tests {
                 ..ScrollbackFold::default()
             },
             120,
+            &mut ScrollbackPaintCache::default(),
         );
         let joined = lines.join("\n");
         assert!(
@@ -731,6 +844,7 @@ mod tests {
             theme,
             ScrollbackFold::default(),
             100,
+            &mut ScrollbackPaintCache::default(),
         );
         let plain = strip_ansi_local(&lines.join("\n"));
         assert!(
@@ -774,6 +888,7 @@ mod tests {
             theme,
             ScrollbackFold::default(),
             100,
+            &mut ScrollbackPaintCache::default(),
         );
         let plain = strip_ansi_local(&lines.join("\n"));
         assert!(

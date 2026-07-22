@@ -693,6 +693,34 @@ fn pty_product_fake_session_tree_label_path() {
     assert_eq!(code, 0);
 }
 
+/// Product Fake — tall scrollback fixture must still /exit cleanly (ath25 smoke).
+#[test]
+#[ignore = "E2E: product PTY + cargo build; run via `just test-tui-e2e-pty`"]
+fn pty_product_fake_large_scrollback_then_exit() {
+    const COLS: usize = 100;
+    const ROWS: usize = 30;
+    let (mut session, _tmp) = spawn_product_fake_ready(COLS as u16, ROWS as u16);
+
+    session
+        .send_keys("\x15/debug session-tree-branched")
+        .expect("type debug scene");
+    session.drain(Duration::from_millis(200));
+    session.send_keys("\x1b").expect("dismiss completion");
+    session.drain(Duration::from_millis(100));
+    session.send_keys("\r").expect("submit debug scene");
+    session
+        .wait_for_raw("debug scene", Duration::from_secs(20))
+        .expect("debug scene note in PTY stream");
+    session
+        .wait_for_raw("alt leaf", Duration::from_secs(15))
+        .expect("fixture alt leaf in PTY stream");
+
+    // Busy spinner / paint path under tall transcript must not hang exit.
+    session.send_keys("\x15/exit\r").expect("/exit");
+    let code = session.wait_exit(Duration::from_secs(45)).expect("exit");
+    assert_eq!(code, 0);
+}
+
 /// Product Fake — `/debug session-tree-branched` + double Esc shows sibling branches.
 #[test]
 #[ignore = "E2E: product PTY + cargo build; run via `just test-tui-e2e-pty`"]

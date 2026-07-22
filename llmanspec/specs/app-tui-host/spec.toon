@@ -2,7 +2,7 @@ kind: llman.sdd.spec
 name: "app-tui-host"
 purpose: 产品 TUI 宿主：host 驱动引擎、终端生命周期、即时日志、尺寸降级，以及合成垂直切片 / 产品 PTY smoke 验收。
 valid_scope[2]: src/app/tui/,tests/tui_e2e/
-requirements[23]{req_id,title,statement}:
+requirements[24]{req_id,title,statement}:
   ath1,"host-driven-engine","产品 TUI MUST 以 host 驱动 packages/xylitol-tui：使用 dispatch_event、request_render、try_render、idle_tick；产品路径 MUST NOT 调用 TUI::start()。"
   ath2,"terminal-restore",产品 TUI MUST 在正常退出、错误退出与 panic 路径恢复终端（关闭 raw mode 等），不得把用户终端留在损坏状态；MUST 安装 panic hook（仅靠 Drop 不足）。
   ath3,"infra-logging-default","debug 构建下产品 TUI MUST 默认启用即时文件日志（人类与 agent 可用 tail -f 观察）；release 构建 MUST 默认关闭，仍可通过 XYLITOL_DEBUG 或 RUST_LOG 显式打开。src/app/tui/AGENTS.md MUST 写明日志路径与查看方式。"
@@ -23,7 +23,8 @@ requirements[23]{req_id,title,statement}:
   ath21,"copy-last-via-driver-seam","产品 /history-copy-last MUST 经 Driver::copy_text_to_clipboard（或等价）调用剪贴板，MUST NOT 从 app/tui 直接 reach infra::clipboard；选文 MUST 取已提交 UiEntry::Assistant 自尾向前第一条非空正文，MUST NOT 复制 thinking/tool/system 块或未提交 streaming 半句作为成功路径。"
   ath22,"thinking-level-silent-commit","产品 host 经 /model 槽或有参 /model 提交 model/thinking 时 MUST 经 Driver set_thinking_level / SetModel（或 Command 等价）更新 selected；成功路径 MUST 仅更新 chrome（footer active、边框、busy 时 status trail），MUST NOT 向 live scrollback / transcript 追加 model → … 或 thinking-border → … 类系统确认块；失败或诊断 MAY 写 System。agent-busy 且 selected ≠ active 时 MUST 在 status trail 显示 pending（见 atc19）；idle/abort 收敛后 MUST 清除 trail。模型切换后 MUST 从 Driver 重同步 UI；组件 MUST NOT 直接 reach ModelManager。"
   ath23,"loaded-resources-via-driver","产品 host MUST 经 Driver 只读缝获取 skills 名与 MCP 连接摘要以填充 loaded-resources；启动与 /reload 成功后 MUST 刷新该槽；MUST NOT 从 app/tui reach infra::mcp 或 skills 目录；busy 时 /reload 拒绝语义保持 ath20/既有行为。"
-  ath24,"tick-gated-local-paint","产品 host 在 Ready 态处理 Tick 时：MUST 先 idle_tick；仅当 idle_tick 报告 dirty 或 host 已置 paint_dirty（含 bang chunk 追加）时才 request_render；idle 且无 paint_dirty 时 MUST NOT 仅为 Tick 整帧重绘。UiRoot 对 loaded-resources+scrollback+queue MUST 在仅 status Loader 推进时复用上区行缓存；apply_ui_model、fold、theme、loaded-resources 或宽度变化时 MUST 失效缓存。"
+  ath24,"tick-gated-local-paint","产品 host 在 Ready 态处理 Tick 时：MUST 先 idle_tick；仅当 idle_tick 报告 dirty 或 host 已置 paint_dirty（含 bang chunk 追加）时才 request_render；idle 且无 paint_dirty 时 MUST NOT 仅为 Tick 整帧重绘。UiRoot 对 loaded-resources+scrollback+queue MUST 在仅 status Loader 推进时复用上区行缓存；仅当 entries、streaming tails、queue strip、fold、theme、loaded-resources 或宽度变化时 MUST 失效该上区缓存；纯 status 短词变化 MUST NOT 失效上区缓存。"
+  ath25,"scrollback-entry-paint-cache","产品 live scrollback 绘制 MUST 对已提交 UiEntry 使用按条目指纹的行缓存：在 width 与 fold 不变时，仅 streaming tails 或发生变化的条目 MUST 触发该条目（及必要时其后条目）重绘；MUST NOT 因单次 TextDelta/ThinkingDelta 而对全部历史 Assistant 条目重新 Markdown 解析。MUST 在无真 TTY harness 中可测（重绘/miss 计数上界）；可选 PTY/tmux e2e 冒烟 MUST 在较大 scrollback 下仍能完成一轮并干净退出，MUST NOT 以 OS CPU% 作为硬闸。"
   avs1,"synthetic-harness-one-round","产品 TUI MUST 提供可在无真 TTY/无真 LLM 下运行的合成验收：ScriptedDriver（或等价）记录 run/steer/follow_up/abort/clear_queue，并能将预置 XyEvent 流回流 HostSession。MUST 覆盖提交→流式/工具→steer/follow-up queue strip→abort 后再提交→/exit 触发 finish_inline（H1–H9）；MUST NOT 把活树、bash、compaction UI 纳入本切片。"
   avs2,"product-pty-fake-smoke","tests/tui_e2e MUST 包含产品 xylitol 二进制的 PTY 冒烟（#[ignore]，经 just test-tui-e2e-pty 可跑）：在临时 Fake 模型配置与 --trust 下启动 TUI，提交用户消息后屏上 MUST 出现 Fake 默认文案 Hello from fake provider，输入 /exit 后进程 MUST 退出。MUST NOT 要求跨进程 Fake 脚本化，MUST NOT 在本用例断言 steer/工具 strip。"
 scenarios[0]:
