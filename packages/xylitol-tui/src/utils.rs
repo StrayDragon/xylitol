@@ -30,15 +30,91 @@ pub fn visible_width(s: &str) -> usize {
         return s.len();
     }
 
-    // Strip ANSI escape sequences
-    let clean = strip_ansi_codes(s);
+    // Fast path: ANSI escapes + ASCII printable only — no alloc, no grapheme scan.
+    // Colored UI chrome / invariant checks hit this constantly (c1508 / c1520 suite).
+    if let Some(w) = visible_width_ansi_ascii(s) {
+        return w;
+    }
 
-    // Measure grapheme clusters
+    // Slow path: strip + grapheme (tabs, CJK, emoji, …)
+    let clean = strip_ansi_codes(s);
     let mut width = 0usize;
     for g in UnicodeSegmentation::graphemes(clean.as_str(), true) {
         width += grapheme_width(g);
     }
     width
+}
+
+/// Byte length of a recognized ANSI escape at `i`, or `None` if not a skippable sequence.
+fn ansi_escape_len(bytes: &[u8], i: usize) -> Option<usize> {
+    if i >= bytes.len() || bytes[i] != 0x1b || i + 1 >= bytes.len() {
+        return None;
+    }
+    match bytes[i + 1] {
+        b'[' => {
+            // CSI: ESC [ ... m/G/K/H/J
+            let mut j = i + 2;
+            while j < bytes.len() && ![b'm', b'G', b'K', b'H', b'J'].contains(&bytes[j]) {
+                j += 1;
+            }
+            if j < bytes.len() {
+                Some(j + 1 - i)
+            } else {
+                None
+            }
+        }
+        b']' => {
+            // OSC: ESC ] ... BEL or ST
+            let mut j = i + 2;
+            while j < bytes.len() {
+                if bytes[j] == 0x07 {
+                    return Some(j + 1 - i);
+                }
+                if bytes[j] == 0x1b && j + 1 < bytes.len() && bytes[j + 1] == b'\\' {
+                    return Some(j + 2 - i);
+                }
+                j += 1;
+            }
+            Some(bytes.len() - i)
+        }
+        b'_' => {
+            // APC: ESC _ ... BEL or ST
+            let mut j = i + 2;
+            while j < bytes.len() {
+                if bytes[j] == 0x07 {
+                    return Some(j + 1 - i);
+                }
+                if bytes[j] == 0x1b && j + 1 < bytes.len() && bytes[j + 1] == b'\\' {
+                    return Some(j + 2 - i);
+                }
+                j += 1;
+            }
+            Some(bytes.len() - i)
+        }
+        _ => None,
+    }
+}
+
+/// Width when every non-escape byte is ASCII printable (`0x20..=0x7e`).
+fn visible_width_ansi_ascii(s: &str) -> Option<usize> {
+    let bytes = s.as_bytes();
+    let mut i = 0usize;
+    let mut width = 0usize;
+    while i < bytes.len() {
+        if bytes[i] == 0x1b {
+            let len = ansi_escape_len(bytes, i)?;
+            i += len;
+            continue;
+        }
+        let b = bytes[i];
+        if (0x20..=0x7e).contains(&b) {
+            width += 1;
+            i += 1;
+        } else {
+            return None;
+        }
+    }
+    Some(width)
 }
 
 /// Strip ANSI escape sequences from a string.
@@ -47,59 +123,9 @@ fn strip_ansi_codes(s: &str) -> String {
     let mut i = 0;
     let bytes = s.as_bytes();
     while i < bytes.len() {
-        if bytes[i] == 0x1b && i + 1 < bytes.len() {
-            match bytes[i + 1] {
-                b'[' => {
-                    // CSI sequence: ESC [ ... m/G/K/H/J
-                    let mut j = i + 2;
-                    while j < bytes.len() && ![b'm', b'G', b'K', b'H', b'J'].contains(&bytes[j]) {
-                        j += 1;
-                    }
-                    if j < bytes.len() {
-                        i = j + 1;
-                        continue;
-                    }
-                }
-                b']' => {
-                    // OSC sequence: ESC ] ... BEL or ESC ] ... ST
-                    let mut j = i + 2;
-                    while j < bytes.len() {
-                        if bytes[j] == 0x07 {
-                            i = j + 1;
-                            break;
-                        }
-                        if bytes[j] == 0x1b && j + 1 < bytes.len() && bytes[j + 1] == b'\\' {
-                            i = j + 2;
-                            break;
-                        }
-                        j += 1;
-                    }
-                    if j >= bytes.len() {
-                        i = bytes.len();
-                    }
-                    continue;
-                }
-                b'_' => {
-                    // APC sequence
-                    let mut j = i + 2;
-                    while j < bytes.len() {
-                        if bytes[j] == 0x07 {
-                            i = j + 1;
-                            break;
-                        }
-                        if bytes[j] == 0x1b && j + 1 < bytes.len() && bytes[j + 1] == b'\\' {
-                            i = j + 2;
-                            break;
-                        }
-                        j += 1;
-                    }
-                    if j >= bytes.len() {
-                        i = bytes.len();
-                    }
-                    continue;
-                }
-                _ => {}
-            }
+        if let Some(len) = ansi_escape_len(bytes, i) {
+            i += len;
+            continue;
         }
         // Copy one UTF-8 scalar — never `bytes[i] as char` (splits `·` → Â·, +1 width).
         let ch = s[i..].chars().next().expect("i in bounds");
