@@ -56,7 +56,7 @@
   场景: generation 写入 usage
     假如 低频观测 span 已激活且 provider 流 Done 带 usage
     当 llm.request span 结束
-    那么 含 gen_ai.usage.input_tokens 与 gen_ai.usage.output_tokens；无 usage 时不得伪造零用量
+    那么 含 langfuse.observation.usage_details；无 usage 时不得伪造零用量
 
   @req:otel10
   场景: observation I/O 仅显式档

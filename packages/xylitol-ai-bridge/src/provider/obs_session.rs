@@ -69,11 +69,14 @@ pub fn langfuse_observation_properties(observation_type: &str) -> Vec<(String, S
     out
 }
 
-/// Generation helpers: observation type + model name attributes.
+/// Generation helpers: observation type + single model attribute.
+///
+/// Prefer `langfuse.observation.model.name` only (Langfuse OTEL mapping; `langfuse.*`
+/// takes precedence). Do not also set bare `model` / `gen_ai.request.model` — same
+/// mapped field, and bare `model` can force generation typing on unrelated spans.
 pub fn langfuse_generation_properties(model: &str) -> Vec<(String, String)> {
     let mut out = langfuse_observation_properties("generation");
     if !model.is_empty() {
-        out.push(("gen_ai.request.model".into(), model.to_string()));
         out.push(("langfuse.observation.model.name".into(), model.to_string()));
     }
     out
@@ -126,7 +129,11 @@ mod tests {
         set_obs_session("sid-g", None);
         let p = langfuse_generation_properties("gpt-test");
         assert!(p.contains(&("langfuse.observation.type".into(), "generation".into())));
-        assert!(p.contains(&("gen_ai.request.model".into(), "gpt-test".into())));
+        assert!(p.contains(&("langfuse.observation.model.name".into(), "gpt-test".into())));
+        assert!(
+            !p.iter()
+                .any(|(k, _)| k == "gen_ai.request.model" || k == "model")
+        );
         assert!(p.contains(&("langfuse.session.id".into(), "sid-g".into())));
     }
 }
