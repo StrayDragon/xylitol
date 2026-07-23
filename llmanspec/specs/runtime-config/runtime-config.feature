@@ -20,6 +20,12 @@
     当 加载 settings
     那么 Settings.steering_mode 为 OneAtATime
 
+  @req:rc12
+  场景: mode-default-one-at-a-time
+    假如 settings 未配置 steering_mode 与 follow_up_mode
+    当 读取缺省
+    那么 二者均为 OneAtATime
+
   @req:rc13
   场景: shell-path
     假如 settings.json 中 shell_path 设为 "/usr/local/bin/bash"

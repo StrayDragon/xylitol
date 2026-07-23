@@ -5,7 +5,7 @@ valid_scope[2]: src/infra/config/,src/infra/settings/
 requirements[19]{req_id,title,statement}:
   rc0,占位,System SHALL 支持完整 pi Settings 接口，含 camelCase JSON 序列化。
   rc11,transport 字段,Settings MUST 含 transport 字段，枚举 auto、sse、direct。
-  rc12,mode 字段,"Settings MUST 含 steering_mode 与 follow_up_mode，均为 one-at-a-time 枚举选项。"
+  rc12,mode 字段,"Settings MUST 含 steering_mode 与 follow_up_mode，枚举含 all 与 one-at-a-time；缺省（未配置）MUST 为 one-at-a-time。"
   rc13,杂项字段,Settings MUST 含 shell_path、shell_command_prefix、npm_command、default_project_trust、enable_skill_commands、session_dir、markdown、warnings 及 c83 的 http 相关字段。
   rc14,列表字段,Settings MUST 含 prompts 与 themes 作为 Option<Vec<String>> 用于资源路径配置。
   rc15,compaction 配置映射,运行时配置 MUST 定义从 YAML 加载期 compaction 表面到规范运行时 compaction settings 的单一文档化映射，无并行重复类型。

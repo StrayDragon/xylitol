@@ -13,9 +13,9 @@ use crate::protocol::message::AgentMessage;
 #[derive(Debug, Clone, Copy, Default, PartialEq, Eq)]
 pub enum QueueMode {
     /// Drain every queued message in one call.
-    #[default]
     All,
-    /// Drain only the oldest message; leave the rest queued.
+    /// Drain only the oldest message; leave the rest queued (product default; c1585).
+    #[default]
     OneAtATime,
 }
 
@@ -151,6 +151,16 @@ mod tests {
 
     fn user(text: &str) -> AgentMessage {
         AgentMessage::user(text)
+    }
+
+    #[test]
+    fn default_mode_is_one_at_a_time() {
+        assert_eq!(QueueMode::default(), QueueMode::OneAtATime);
+        let mut q = PendingMessageQueue::new(QueueMode::default());
+        q.enqueue(user("a"));
+        q.enqueue(user("b"));
+        assert_eq!(q.drain().len(), 1);
+        assert_eq!(q.len(), 1);
     }
 
     #[test]
