@@ -85,6 +85,9 @@ impl OpenAIProvider {
                 AiBridgeError::Provider(anyhow::anyhow!("serialize completions request: {e}"))
             })?;
             crate::thinking::apply_thinking_openai_completions(&mut body, &resolved);
+            if let Some(t) = &trace {
+                t.capture_request_input(&body.to_string());
+            }
 
             let sdk_stream = self
                 .client
@@ -107,6 +110,9 @@ impl OpenAIProvider {
                 AiBridgeError::Provider(anyhow::anyhow!("serialize completions request: {e}"))
             })?;
             crate::thinking::apply_thinking_openai_completions(&mut body, &resolved);
+            if let Some(t) = &trace {
+                t.capture_request_input(&body.to_string());
+            }
 
             let json: Value = self
                 .client
