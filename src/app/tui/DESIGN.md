@@ -257,6 +257,7 @@ footer            1 行 dim（cwd · model · 可选 context%）
 | 文档 | 内容 |
 |---|---|
 | [`design/session-tree.md`](./design/session-tree.md) | **优先**：双 Esc 会话树（travel/fork） |
+| [`design/session-resume.md`](./design/session-resume.md) | `/session-resume`：预览封顶 + **完整 session id** + count/age |
 | [`design/models-picker.md`](./design/models-picker.md) | `/model` fuzzy 列表（替换 editor 槽；对齐 pi） |
 | [`design/transcript.md`](./design/transcript.md) | live 输出进 scrollback（非 Codex 浏览面） |
 | [`design/expandable.md`](./design/expandable.md) | thinking / tool 可展开（demo 优先） |
