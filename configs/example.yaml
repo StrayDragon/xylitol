@@ -112,3 +112,6 @@ hooks:
 #   # (or set LANGFUSE_BASE_URL in secret.env → …/api/public/otel)
 #   environment: dev
 #   service_name: xylitol
+#   # HTTP client timeout for each OTLP export (default 60). Raise if large
+#   # batches time out as generic "network error" on a healthy Langfuse.
+#   # export_timeout_secs: 60

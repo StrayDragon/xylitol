@@ -165,9 +165,10 @@ pub(crate) mod install {
         // MUST use async reqwest here: init_logging runs inside the app Tokio
         // runtime; building reqwest::blocking::Client nests/drops another runtime
         // and panics ("Cannot drop a runtime in a context where blocking is not allowed").
+        let timeout_secs = cfg.export_timeout_secs.max(1);
         let http_client = reqwest::Client::builder()
             .http1_only()
-            .timeout(std::time::Duration::from_secs(10))
+            .timeout(std::time::Duration::from_secs(timeout_secs))
             .build()
             .map_err(|e| format!("otlp http client: {e}"))?;
 
@@ -212,7 +213,7 @@ pub(crate) mod install {
 
         log::info!(
             target: "xylitol::otel",
-            "OTLP exporter ready endpoint={endpoint} protocol={protocol:?} service={service_name}"
+            "OTLP exporter ready endpoint={endpoint} protocol={protocol:?} service={service_name} export_timeout_secs={timeout_secs}"
         );
 
         Ok(reporter)

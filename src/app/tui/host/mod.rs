@@ -521,6 +521,11 @@ impl<T: Terminal> HostSession<T> {
     }
 
     /// Stream ended (None) — clear run flag; idle only if bridge already did.
+    ///
+    /// **Sole** scheduler for post-run footer token refresh (c1035). Do not also
+    /// arm refresh on `AgentEnd`: production `drain_pending` often runs between
+    /// those two signals and would kick two `estimate_context_tokens` jobs
+    /// (duplicate `token.estimate` spans / wasted encode).
     pub fn on_run_stream_closed(&mut self) {
         self.run_active = false;
         self.suppress_xy_until_stream_end = false;
@@ -592,7 +597,9 @@ impl<T: Terminal> HostSession<T> {
                     apply_xy_event(&mut self.ui_model, &xy);
                     if matches!(xy.as_ref(), XyEvent::AgentEnd { .. }) {
                         self.run_active = false;
-                        self.pending.footer_token_refresh = true;
+                        // Footer token refresh is owned by [`Self::on_run_stream_closed`]
+                        // (single end-of-run signal). Scheduling here as well caused two
+                        // estimate jobs when drain ran between AgentEnd and stream close.
                     }
                     self.sync_ui_root_from_model();
                     self.tui.request_render(false);
