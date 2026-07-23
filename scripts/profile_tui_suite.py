@@ -21,6 +21,7 @@ import argparse
 import json
 import os
 import shutil
+import signal
 import subprocess
 import sys
 import time
@@ -318,8 +319,10 @@ def run_scenario(
         if scenario == "D-resume":
             send_literal(name, "/session-resume")
             send_keys(name, "Enter")
-            time.sleep(0.8)
-            wait_pane(name, "Resume", timeout=20.0)
+            # list_sessions → Loading N/N paint, then picker paint can be slow
+            # (width/ANSI on many rows); do not require "Resume" too early.
+            wait_pane(name, "Loading sessions", timeout=30.0)
+            wait_pane(name, "Resume Session", timeout=30.0)
 
         pid = find_xylitol_pid(bin_path, home)
         out_gz = out_dir / f"{scenario}.json.gz"
@@ -369,11 +372,24 @@ def run_scenario(
                 send_keys(name, "Down")
                 time.sleep(0.08)
 
-        rc = proc.wait(timeout=duration + 30)
-        if rc != 0:
-            die(f"samply failed ({rc}); see {err}")
+        # samply -p sometimes ignores -d; stop explicitly after the window.
+        deadline = t0 + duration
+        while time.time() < deadline:
+            if proc.poll() is not None:
+                break
+            time.sleep(0.2)
+        if proc.poll() is None:
+            proc.send_signal(signal.SIGINT)
+            try:
+                proc.wait(timeout=45)
+            except subprocess.TimeoutExpired:
+                proc.kill()
+                proc.wait(timeout=10)
+                die(f"samply hung; see {err}")
+        rc = proc.returncode
+        # SIGINT exit may be non-zero; accept if profile exists.
         if not out_gz.is_file():
-            die(f"missing profile {out_gz}")
+            die(f"samply failed (rc={rc}); missing {out_gz}; see {err}")
 
         # Summarize
         summary = out_dir / f"{scenario}.summary.txt"
