@@ -1,6 +1,6 @@
 //! Current xylitol session identity for Langfuse OTEL attributes (c1480).
 //!
-//! Lives in ai-bridge so both `provider.request` and agent ReAct obs can read
+//! Lives in ai-bridge so both `llm.request` and agent ReAct obs can read
 //! it without agent → infra edges. App driver updates on session switch/name.
 
 use std::sync::{Mutex, OnceLock};

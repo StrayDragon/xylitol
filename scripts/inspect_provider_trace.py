@@ -332,7 +332,7 @@ def main() -> None:
     lag = sub.add_parser("lag", help="args-delta → mapped tool lag for one request")
     # lag keeps optional override; global --request-id also applies via filter
     lag.add_argument("--rid", dest="lag_rid", default="", help="alias: prefer this request")
-    life = sub.add_parser("lifecycle", help="react.turn/stream/tool.execute events")
+    life = sub.add_parser("lifecycle", help="agent.turn/iteration/tool.execute events")
     life.add_argument("--rid", dest="life_rid", default="", help="prefer this request_id")
     ch = sub.add_parser("channel", help="raw reasoning/text vs mapped variants")
 
