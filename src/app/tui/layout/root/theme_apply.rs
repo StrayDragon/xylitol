@@ -3,8 +3,9 @@
 use xylitol_tui::components::loader::{Loader, LoaderIndicatorOptions};
 use xylitol_tui::fg_rgb;
 
-use super::{
-    UiRoot, empty_models_list, empty_session_resume_panel, empty_themes_list, empty_tree_selector,
+use super::UiRoot;
+use super::empty_widgets::{
+    empty_models_list, empty_session_resume_panel, empty_themes_list, empty_tree_selector,
     import_confirm_list,
 };
 use crate::app::tui::layout::LayoutTheme;

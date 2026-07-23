@@ -4,12 +4,18 @@
 //! `infra::process::shell` and to read as the product component tree root.
 
 mod editor_border;
+mod empty_widgets;
 mod models_slot;
 mod mount;
 mod render;
 mod slot_input;
 mod slot_nav;
 mod theme_apply;
+
+use empty_widgets::{
+    empty_models_list, empty_session_resume_panel, empty_themes_list, empty_tree_selector,
+    import_confirm_list as make_import_confirm_list,
+};
 use std::path::PathBuf;
 use std::sync::atomic::{AtomicBool, Ordering};
 use std::time::Instant;
@@ -39,63 +45,6 @@ use crate::app::tui::widgets::{
     GlyphSet, ScrollbackFold, ScrollbackPaintCache, footer_thinking_label, format_footer_text,
 };
 use crate::protocol::types::ThinkingLevel;
-
-pub(super) fn empty_tree_selector(theme: LayoutTheme) -> TreeSelector {
-    TreeSelector::new(
-        Vec::new(),
-        theme.tree_selector_theme(),
-        TreeSelectorOptions {
-            max_visible: 10,
-            unicode_connectors: true,
-            include_node: None,
-            active_id: None,
-            status_suffix: None,
-        },
-    )
-}
-
-pub(super) fn empty_models_list(theme: LayoutTheme) -> SelectList {
-    SelectList::new(
-        Vec::new(),
-        8,
-        theme.select_list_theme(),
-        SelectListLayoutOptions {
-            min_primary_column_width: Some(24),
-            max_primary_column_width: Some(48),
-            truncate_primary: None,
-        },
-    )
-}
-
-pub(super) fn empty_themes_list(theme: LayoutTheme) -> SelectList {
-    SelectList::new(
-        Vec::new(),
-        4,
-        theme.select_list_theme(),
-        SelectListLayoutOptions {
-            min_primary_column_width: Some(12),
-            max_primary_column_width: Some(24),
-            truncate_primary: None,
-        },
-    )
-}
-
-pub(super) fn import_confirm_list(theme: LayoutTheme) -> SelectList {
-    SelectList::new(
-        vec![SelectItem::new("yes", "Yes"), SelectItem::new("no", "No")],
-        4,
-        theme.select_list_theme(),
-        SelectListLayoutOptions {
-            min_primary_column_width: Some(8),
-            max_primary_column_width: Some(24),
-            truncate_primary: None,
-        },
-    )
-}
-
-pub(super) fn empty_session_resume_panel(theme: LayoutTheme) -> SessionResumePanel {
-    SessionResumePanel::new(theme)
-}
 
 /// User choice from `/session-import` confirm slot (c1010).
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -244,7 +193,7 @@ impl UiRoot {
             themes_list: empty_themes_list(theme),
             at_path_base: std::env::current_dir().unwrap_or_else(|_| PathBuf::from(".")),
             dollar_skill_catalog: Vec::new(),
-            import_confirm_list: import_confirm_list(theme),
+            import_confirm_list: make_import_confirm_list(theme),
             import_confirm_path: None,
             pending_import_decision: None,
             session_resume: empty_session_resume_panel(theme),
@@ -557,7 +506,7 @@ impl UiRoot {
     /// Mount Yes/No import confirm in the editor slot (c1010).
     pub fn mount_import_confirm(&mut self, path: &str) {
         self.import_confirm_path = Some(path.to_string());
-        self.import_confirm_list = import_confirm_list(self.theme);
+        self.import_confirm_list = make_import_confirm_list(self.theme);
         self.import_confirm_list.selected_index = 0;
         self.slot = EditorSlot::ImportConfirm;
     }
