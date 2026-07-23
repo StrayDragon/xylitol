@@ -4,14 +4,16 @@
 Preconditions: samply, tmux, perf_event_paranoid<=1, release xylitol with debuginfo.
 
 Scenarios (Fake model; no real LLM / MCP tools):
-  A-idle   — attach + idle
-  B-scroll — long seeded session + PageUp/Down
-  C-stream — XYLITOL_FAKE_SLOW_STREAM + submit prompt
-  D-resume — many sessions + /session-resume scroll + Ctrl+U
+  A-idle        — attach + idle
+  B-scroll      — long seeded session + PageUp/Down
+  C-stream      — empty session + XYLITOL_FAKE_SLOW_STREAM + submit
+  D-resume      — many sessions + /session-resume scroll + Ctrl+U
+  E-hist-stream — seeded long history + stream (c1505 T0d; bumps upper_gen)
 
 Examples:
   python3 scripts/profile_tui_suite.py --build
   python3 scripts/profile_tui_suite.py --scenarios A,D
+  python3 scripts/profile_tui_suite.py --scenarios E --b-pairs 400 --duration 20
   python3 scripts/profile_tui_suite.py --all
 """
 
@@ -92,9 +94,14 @@ def ts() -> str:
     return datetime.now(timezone.utc).strftime("%Y-%m-%dT%H:%M:%S.000Z")
 
 
-def seed_long_session(sessions_dir: Path, cwd: str, n_pairs: int = 80) -> str:
+def seed_long_session(
+    sessions_dir: Path,
+    cwd: str,
+    n_pairs: int = 80,
+    *,
+    sid: str = "profile-scroll-b",
+) -> str:
     """Linear user/assistant jsonl for scrollback pressure (CJK + long lines)."""
-    sid = "profile-scroll-b"
     path = sessions_dir / f"{sid}.jsonl"
     lines: list[str] = []
     lines.append(
@@ -253,6 +260,7 @@ def run_scenario(
     duration: int,
     cols: int,
     rows: int,
+    b_pairs: int = 80,
 ) -> Path:
     sandbox = out_dir / f"sandbox-{scenario}"
     if sandbox.exists():
@@ -269,11 +277,27 @@ def run_scenario(
     session_arg: list[str] = []
     extra_env: dict[str, str] = {}
     if scenario == "B-scroll":
-        sid = seed_long_session(sessions, cwd, n_pairs=80)
+        sid = seed_long_session(sessions, cwd, n_pairs=b_pairs, sid="profile-scroll-b")
         session_arg = ["--session", sid]
     elif scenario == "C-stream":
         # ~40 chunks * 15ms + long grapheme payload
         extra_env["XYLITOL_FAKE_SLOW_STREAM"] = "50,12,64"
+    elif scenario == "E-hist-stream":
+        # Long history already loaded; TextDelta bumps upper_gen → warm flatten path.
+        # Stream MUST fill most of the samply window — short C-style streams (~0.6s)
+        # leave idle that dilutes scroll_render% and hides n-scaling.
+        sid = seed_long_session(
+            sessions, cwd, n_pairs=b_pairs, sid="profile-hist-stream-e"
+        )
+        session_arg = ["--session", sid]
+        chunks = max(80, duration * 8)
+        delay_ms = max(20, (duration * 1000) // chunks)
+        extra_env["XYLITOL_FAKE_SLOW_STREAM"] = f"{chunks},{delay_ms},48"
+        print(
+            f"E-hist-stream stream_spec={extra_env['XYLITOL_FAKE_SLOW_STREAM']} "
+            f"(~{chunks * delay_ms}ms)",
+            flush=True,
+        )
     elif scenario == "D-resume":
         seed_resume_sessions(sessions, cwd, n=45)
 
@@ -312,7 +336,9 @@ def run_scenario(
 
     try:
         # Product chrome usually shows model id or path-ish footer.
-        wait_pane(name, "fake", timeout=60.0)
+        # E with large seed may need longer first paint before "fake" appears.
+        boot_timeout = 120.0 if scenario == "E-hist-stream" and b_pairs >= 200 else 60.0
+        wait_pane(name, "fake", timeout=boot_timeout)
         time.sleep(0.5)
 
         # Scenario-specific prep before/during sampling
@@ -355,7 +381,7 @@ def run_scenario(
                 time.sleep(0.15)
                 send_keys(name, "NPage")
                 time.sleep(0.15)
-        elif scenario == "C-stream":
+        elif scenario in ("C-stream", "E-hist-stream"):
             send_literal(name, "ping stream profile")
             send_keys(name, "Enter")
             while time.time() - t0 < duration - 1:
@@ -414,14 +440,20 @@ def run_scenario(
 def main() -> int:
     ap = argparse.ArgumentParser(description=__doc__)
     ap.add_argument("--build", action="store_true", help="release build with symbols")
-    ap.add_argument("--all", action="store_true", help="run A,B,C,D")
+    ap.add_argument("--all", action="store_true", help="run A,B,C,D,E")
     ap.add_argument(
         "--scenarios",
         default="",
-        help="comma list: A-idle,B-scroll,C-stream,D-resume (also A,B,C,D aliases)",
+        help="comma list: A..E / A-idle,B-scroll,C-stream,D-resume,E-hist-stream",
     )
     ap.add_argument("--bin", type=Path, default=DEFAULT_BIN)
     ap.add_argument("--duration", type=int, default=20, help="samply seconds per scenario")
+    ap.add_argument(
+        "--b-pairs",
+        type=int,
+        default=80,
+        help="seed pair count for B-scroll and E-hist-stream (default 80; 400+ for c1505)",
+    )
     ap.add_argument("--cols", type=int, default=120)
     ap.add_argument("--rows", type=int, default=40)
     ap.add_argument(
@@ -436,14 +468,22 @@ def main() -> int:
         "B": "B-scroll",
         "C": "C-stream",
         "D": "D-resume",
+        "E": "E-hist-stream",
         "A-idle": "A-idle",
         "B-scroll": "B-scroll",
         "C-stream": "C-stream",
         "D-resume": "D-resume",
+        "E-hist-stream": "E-hist-stream",
     }
     scenarios: list[str] = []
     if args.all:
-        scenarios = ["A-idle", "B-scroll", "C-stream", "D-resume"]
+        scenarios = [
+            "A-idle",
+            "B-scroll",
+            "C-stream",
+            "D-resume",
+            "E-hist-stream",
+        ]
     elif args.scenarios.strip():
         for part in args.scenarios.split(","):
             part = part.strip()
@@ -470,7 +510,9 @@ def main() -> int:
         f"xylitol profile suite run {run_id}\n"
         f"bin={args.bin}\n"
         f"scenarios={scenarios}\n"
-        f"duration={args.duration}s\n",
+        f"duration={args.duration}s\n"
+        f"b_pairs={args.b_pairs}\n"
+        "note: E-hist-stream auto-sizes FAKE_SLOW_STREAM to ~cover duration\n",
         encoding="utf-8",
     )
 
@@ -482,6 +524,7 @@ def main() -> int:
             duration=args.duration,
             cols=args.cols,
             rows=args.rows,
+            b_pairs=args.b_pairs,
         )
 
     print(f"\nAll done: {out_dir}", flush=True)
