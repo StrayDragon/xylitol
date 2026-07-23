@@ -115,13 +115,21 @@ pub fn build_system_prompt(opts: &SystemPromptOpts) -> String {
     }
 
     // Runtime policy fragments (c1605) — after user APPEND / guidelines, before date.
+    // Bodies are Session-deduped by fragment id; still unique-by-content here.
     if !opts.runtime_policy_fragments.is_empty() {
         prompt.push_str("\n\n<runtime_policy>\n");
-        for (i, frag) in opts.runtime_policy_fragments.iter().enumerate() {
-            if i > 0 {
+        let mut seen = std::collections::HashSet::new();
+        let mut first = true;
+        for frag in &opts.runtime_policy_fragments {
+            let t = frag.trim();
+            if t.is_empty() || !seen.insert(t) {
+                continue;
+            }
+            if !first {
                 prompt.push('\n');
             }
-            prompt.push_str(frag.trim());
+            first = false;
+            prompt.push_str(t);
             prompt.push('\n');
         }
         prompt.push_str("</runtime_policy>\n");

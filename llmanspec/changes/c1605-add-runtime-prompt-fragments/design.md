@@ -10,8 +10,9 @@ XyBatchMode ──► fragments_for_batch_mode() ──► SystemPromptOpts.runt
 ```
 
 - Fragment id `tool_batch.barrier_parallel`：仅 mode=BarrierParallel 时注入。
+- Session 持有 `runtime_fragment_ids`：id 集合不变则 sync no-op（构造后再 `set_tool_mode(同模式)` 不重复写）。
 - Sequential：不注入（或未来可加「串行确认」片段——本 change 不做）。
-- 单测：mode 切换启停；APPEND_SYSTEM 仍可叠加且出现在 policy 段之前。
+- 单测：mode 切换启停；同 id 不重复；APPEND_SYSTEM 仍可叠加且出现在 policy 段之前。
 
 ## c1610
 
