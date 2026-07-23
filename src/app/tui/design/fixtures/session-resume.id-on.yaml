@@ -1,0 +1,18 @@
+# id: session-resume.id-on
+id: session-resume.id-on
+design: ../session-resume.md
+slot: session-resume
+state: id-on
+source: resume.idOn
+must_contain:
+  - "Resume Session"
+  - "ctrl+u id"
+  - "ad43e96a-2e87-4767-ae1c-870854346b23"
+  - "ad43e96a-2e87-4767-ae1c-870854346b99"
+must_not_contain:
+  - "c1530"
+assert_html:
+  selected_class: "bg-user"
+  selected_forbids_substrings: []
+  status_pattern: "\\([0-9]+/[0-9]+\\)"
+  status_after_selected: true
