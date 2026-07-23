@@ -81,7 +81,7 @@ Fake 环境变量（进程启动前）：
 ### 结论（驱动下游 draft）
 
 1. **[c1508](../archive/2026-07-23-c1508-optimize-package-tui-visible-width-ansi/proposal.md)** / **[c1509](../archive/2026-07-23-c1509-optimize-package-tui-wrap-text-ansi/proposal.md)**：已落地并归档。
-2. **下一步 [c1505](../c1505-add-tui-scrollback-viewport-slice/proposal.md)**：结构 flatten；T0=`post-c1509` B/C 已记（短 B 无 scroll 火焰；C 仍见 scrollback/markdown）。
+2. **[c1505](../../do-not-read-me/c1505-add-tui-scrollback-viewport-slice/proposal.md)**（**P9-deferred**）：T0d `E-hist-stream` 复现后，历史放大未抬升 `scroll_render` → 非当前瓶颈，已移出 active changes。
 3. Idle 无空转危机；`??` 仍多 → 深挖可开 samply UI 或加 debuginfo。
 
 ### 复测 `post-c1508` / `post-c1509`
@@ -102,7 +102,7 @@ samply load target/profile/post-c1509/B-scroll.json.gz
 ## Out of scope
 
 - 改生产默认二进制；CI 硬闸 OS CPU%
-- 实现 c1505 / c1508（独立 change）
+- 实现已归档的 c1508/c1509；deferred 的 c1505（见 do-not-read-me）
 - 真模型 / MCP 工具链进默认 suite
 
 ## 环境前置

@@ -1032,6 +1032,71 @@ mod tests {
         );
     }
 
+    /// c1505 evidence: warm flatten (cache hit + extend) and upper-cache clone
+    /// scale with entry count — B-scroll flames miss this because `upper_gen` is
+    /// stable while scrolling (no `render_scrollback` re-entry).
+    #[test]
+    fn scrollback_warm_flatten_grows_with_entry_count() {
+        use std::time::Instant;
+
+        fn model_with_n(n: usize) -> UiModel {
+            let mut model = UiModel::default();
+            for i in 0..n {
+                model.entries.push(UiEntry::Assistant {
+                    text: format!(
+                        "entry-{i}: {}",
+                        "这是一段用于 flatten 压力的中文与 `code` 混合正文。".repeat(6)
+                    ),
+                });
+            }
+            model
+        }
+
+        fn warm_flatten_ns(n: usize, iters: u32) -> (usize, u128) {
+            let model = model_with_n(n);
+            let theme = LayoutTheme::product_dark();
+            let fold = ScrollbackFold::default();
+            let glyphs = GlyphSet::from_env();
+            let mut cache = ScrollbackPaintCache::default();
+            // Cold fill cache.
+            let _cold = render_scrollback(&model, glyphs, theme, fold, 100, &mut cache);
+            let t0 = Instant::now();
+            let mut last_len = 0usize;
+            for _ in 0..iters {
+                let lines = render_scrollback(&model, glyphs, theme, fold, 100, &mut cache);
+                last_len = lines.len();
+                // Simulate UiRoot upper_cache hit: clone full upper each frame.
+                let _ = lines.clone();
+            }
+            (last_len, t0.elapsed().as_nanos() / u128::from(iters))
+        }
+
+        let iters = 40;
+        let (len50, ns50) = warm_flatten_ns(50, iters);
+        let (len200, ns200) = warm_flatten_ns(200, iters);
+        let (len400, ns400) = warm_flatten_ns(400, iters);
+        let report = format!(
+            "c1505 flatten evidence: n=50 lines={len50} ~{ns50}ns/iter; \
+             n=200 lines={len200} ~{ns200}ns; n=400 lines={len400} ~{ns400}ns\n"
+        );
+        let out = std::path::PathBuf::from(env!("CARGO_MANIFEST_DIR"))
+            .join("target/profile/c1505-flatten-microbench.txt");
+        if let Some(parent) = out.parent() {
+            let _ = std::fs::create_dir_all(parent);
+        }
+        let _ = std::fs::write(&out, &report);
+        assert!(
+            len200 > len50 * 2,
+            "line count should track entries: {report}"
+        );
+        assert!(len400 > len200, "line count should keep growing: {report}");
+        // Allow noise but require clear growth 50 → 400 (warm path).
+        assert!(
+            ns400 > ns50.saturating_mul(2),
+            "warm flatten+clone should grow with history: {report}"
+        );
+    }
+
     fn strip_ansi_local(s: &str) -> String {
         let mut out = String::new();
         let mut chars = s.chars().peekable();

@@ -161,6 +161,128 @@ def bucket(func: str, loc: str) -> str:
     return "other"
 
 
+# Inclusive stack buckets for c1505 / TUI hotspots (any frame in sample stack).
+INCLUSIVE_RULES: list[tuple[str, tuple[str, ...]]] = [
+    ("scroll_render", ("render_scrollback", "scrollback.rs")),
+    ("wrap", ("wrap_text_with_ansi", "wrap_text")),
+    ("width", ("visible_width", "strip_ansi", "ansi_escape_len")),
+    ("do_render", ("do_render", "differential")),
+    ("markdown", ("markdown::", "pulldown", "Markdown::")),
+    ("upper_clone", ("upper_cache", "clone_from")),
+]
+
+
+def walk_stack_frames(
+    stack_idx: int,
+    *,
+    frame_of_stack: list,
+    prefix_of_stack: list,
+) -> list[int]:
+    out: list[int] = []
+    seen: set[int] = set()
+    cur = stack_idx
+    while cur is not None and cur >= 0 and cur not in seen:
+        seen.add(cur)
+        if cur >= len(frame_of_stack):
+            break
+        fr = frame_of_stack[cur]
+        if fr is not None and fr >= 0:
+            out.append(int(fr))
+        pref = prefix_of_stack[cur] if cur < len(prefix_of_stack) else None
+        if pref is None or pref < 0:
+            break
+        cur = int(pref)
+    return out
+
+
+def inclusive_hotspots(
+    th: dict,
+    binary: Path | None,
+    *,
+    leaf_total: int,
+) -> list[str]:
+    """Count samples whose stack contains known TUI symbols (addr2line)."""
+    lines: list[str] = []
+    if not binary or not binary.is_file() or leaf_total <= 0:
+        return lines
+
+    samples = th.get("samples") or {}
+    stacks = samples.get("stack") or []
+    length = int(samples.get("length", len(stacks)))
+    st = th.get("stackTable") or {}
+    frame_of_stack = st.get("frame") or []
+    prefix_of_stack = st.get("prefix") or []
+    ft = th.get("frameTable") or {}
+    addrs = ft.get("address") or []
+    funcs = ft.get("func") or []
+    fname = (th.get("funcTable") or {}).get("name") or []
+
+    # Collect unique native addresses used on any sample stack.
+    used_addrs: set[int] = set()
+    sample_frames: list[list[int]] = []
+    for i in range(min(length, len(stacks))):
+        si = stacks[i]
+        if si is None or si < 0:
+            sample_frames.append([])
+            continue
+        frames = walk_stack_frames(
+            int(si), frame_of_stack=frame_of_stack, prefix_of_stack=prefix_of_stack
+        )
+        sample_frames.append(frames)
+        for fr in frames:
+            if fr < len(addrs) and addrs[fr] is not None:
+                used_addrs.add(int(addrs[fr]))
+
+    if not used_addrs:
+        return lines
+
+    # Firefox profiler / samply often store runtime-relative addresses.
+    # Match prior leaf path: stringArray already has 0x… for unknown leaves;
+    # for inclusive we resolve via address hex like the leaf path when present.
+    hex_addrs = [f"0x{a:x}" for a in sorted(used_addrs)]
+    # Cap addr2line batch size for speed
+    if len(hex_addrs) > 4000:
+        hex_addrs = hex_addrs[:4000]
+
+    pairs = addr2line_batch(binary, hex_addrs)
+    resolved_by_hex: dict[str, tuple[str, str]] = {
+        h: (func, loc) for h, (func, loc) in zip(hex_addrs, pairs)
+    }
+
+    bags: collections.Counter[str] = collections.Counter()
+    for frames in sample_frames:
+        if not frames:
+            continue
+        texts: list[str] = []
+        for fr in frames:
+            # Prefer demangled func table name when present
+            if fr < len(funcs) and funcs[fr] is not None:
+                name = string_at(th, funcs[fr])
+                if name:
+                    texts.append(name)
+            if fr < len(addrs) and addrs[fr] is not None:
+                h = f"0x{int(addrs[fr]):x}"
+                if h in resolved_by_hex:
+                    func, loc = resolved_by_hex[h]
+                    texts.append(f"{func} {loc}")
+        blob = "\n".join(texts).lower()
+        hit_any = False
+        for label, needles in INCLUSIVE_RULES:
+            if any(n.lower() in blob for n in needles):
+                bags[label] += 1
+                hit_any = True
+        if hit_any:
+            bags["_any_listed"] += 1
+
+    lines.append("=== INCLUSIVE STACK HOTSPOTS (any frame; % of main samples) ===")
+    for label, _ in INCLUSIVE_RULES:
+        v = bags.get(label, 0)
+        lines.append(f"  {100.0 * v / leaf_total:5.1f}%  {label}: {v}/{leaf_total}")
+    any_v = bags.get("_any_listed", 0)
+    lines.append(f"  {100.0 * any_v / leaf_total:5.1f}%  (any listed): {any_v}/{leaf_total}")
+    return lines
+
+
 def main() -> int:
     ap = argparse.ArgumentParser(description=__doc__)
     ap.add_argument("profile", type=Path, help="profile.json or profile.json.gz")
@@ -283,6 +405,10 @@ def main() -> int:
             out("=== $XY FILES IN ADDR2LINE SET ===")
             for f, c in xy_files.most_common(15):
                 out(f"  {100.0 * c / leaf_total:5.1f}% {c:6d}  {f}")
+        for line in inclusive_hotspots(main_th, binary, leaf_total=leaf_total):
+            if line.startswith("==="):
+                out()
+            out(line)
     elif addrs:
         out()
         out("(pass --addr2line ./target/release/xylitol to resolve 0x… leaves)")
