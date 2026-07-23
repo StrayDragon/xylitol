@@ -250,6 +250,10 @@ pub struct TUI<T: Terminal> {
     full_redraw_count: u64,
     /// Increments on every successful `do_render` (throttle / skip 不计入).
     frame_count: u64,
+    /// Obs/test: lines that ran normalize + `visible_width` in finalize.
+    finalize_width_checks: u64,
+    /// Obs/test: lines that reused the previous finalized string (A+B fast path).
+    finalize_line_reuses: u64,
     focus_order_counter: u64,
     next_overlay_id: u64,
     next_input_listener_id: u64,
@@ -296,6 +300,8 @@ impl<T: Terminal> TUI<T> {
             max_lines_rendered: 0,
             full_redraw_count: 0,
             frame_count: 0,
+            finalize_width_checks: 0,
+            finalize_line_reuses: 0,
             focus_order_counter: 0,
             next_overlay_id: 1,
             next_input_listener_id: 1,
@@ -336,6 +342,21 @@ impl<T: Terminal> TUI<T> {
     /// Frames actually painted via `do_render` (excludes throttle skips).
     pub fn frame_count(&self) -> u64 {
         self.frame_count
+    }
+
+    /// Lines that ran normalize + `visible_width` in `do_render` (harness / obs).
+    pub fn finalize_width_checks_for_test(&self) -> u64 {
+        self.finalize_width_checks
+    }
+
+    /// Lines that reused the previous finalized string in `do_render` (harness / obs).
+    pub fn finalize_line_reuses_for_test(&self) -> u64 {
+        self.finalize_line_reuses
+    }
+
+    pub fn clear_finalize_counters_for_test(&mut self) {
+        self.finalize_width_checks = 0;
+        self.finalize_line_reuses = 0;
     }
 
     /// Whether a soft/force `request_render` is pending.
@@ -1094,34 +1115,45 @@ impl<T: Terminal> TUI<T> {
         // pi: extract cursor marker before applyLineResets.
         let cursor_pos = self.extract_cursor_position(&mut new_lines, height);
 
-        // pi applyLineResets: normalize + SEGMENT_RESET on every non-image line
-        // (including empty — clears OSC-8 / SGR bleed).
+        // pi applyLineResets + hard width invariant.
+        // Fast path (A+B): when terminal width is unchanged and the component
+        // emitted the same pre-reset body as last frame, reuse the previous
+        // finalized line (already normalized + SEGMENT_RESET + width-ok).
+        // Skip normalize and visible_width for that line. On resize, or when
+        // content differs, take the slow path so overflow still errors.
         const SEGMENT_RESET: &str = "\x1b[0m\x1b]8;;\x07";
-        for line in &mut new_lines {
+        let reuse_ok = self.previous_width == width;
+        for (i, line) in new_lines.iter_mut().enumerate() {
             if is_image_line(line) {
                 continue;
             }
-            *line = normalize_terminal_output(line);
-            line.push_str(SEGMENT_RESET);
-        }
-
-        // Hard width invariant (pi's crash guard): every rendered line must fit
-        // the terminal width. An overflowing line desyncs the cursor and
-        // corrupts the diff, so we stop loudly rather than paint garbage.
-        // Image-bearing lines (Kitty APC) are exempt — their visible width is 0.
-        for (i, line) in new_lines.iter().enumerate() {
-            if line.contains(CURSOR_MARKER) || is_image_line(line) {
+            if reuse_ok
+                && let Some(prev) = self.previous_lines.get(i)
+                && let Some(body) = prev.strip_suffix(SEGMENT_RESET)
+                && body == line.as_str()
+            {
+                *line = prev.clone();
+                self.finalize_line_reuses = self.finalize_line_reuses.saturating_add(1);
                 continue;
             }
-            let lw = visible_width(line);
-            if lw > width {
-                return Err(RenderError {
-                    width,
-                    line_width: lw,
-                    line_index: i,
-                    line_preview: line.chars().take(40).collect(),
-                });
+
+            let mut finalized = normalize_terminal_output(line);
+            finalized.push_str(SEGMENT_RESET);
+            // Image-bearing lines (Kitty APC) are exempt — their visible width is 0.
+            // CURSOR_MARKER lines are measured after extract; marker-bearing leftovers skip.
+            if !finalized.contains(CURSOR_MARKER) {
+                self.finalize_width_checks = self.finalize_width_checks.saturating_add(1);
+                let lw = visible_width(&finalized);
+                if lw > width {
+                    return Err(RenderError {
+                        width,
+                        line_width: lw,
+                        line_index: i,
+                        line_preview: finalized.chars().take(40).collect(),
+                    });
+                }
             }
+            *line = finalized;
         }
 
         let width_changed = self.previous_width != 0 && self.previous_width != width;
