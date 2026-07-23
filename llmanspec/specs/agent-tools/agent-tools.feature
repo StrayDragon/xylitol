@@ -79,9 +79,15 @@
     当 调用bash命令 "exit 42"
     那么 退出码为 42
 
+  @req:t24
   场景: bash-timeout
     当 调用bash命令 "sleep 10" 超时 1 秒
     那么 命令应该失败 包含超时错误
+
+  @req:t24
+  场景: bash-omit-timeout-completes
+    当 调用bash命令 "sleep 2"
+    那么 退出码为 0
 
   场景: bash-merged-streams
     当 调用bash命令 "echo out && echo err >&2 && echo out2"
@@ -300,6 +306,12 @@
   @req:r6
   场景: negative-timeout
     假如 LLM 传入 timeout=-1
+    当 bash 工具校验参数
+    那么 工具以无效 timeout 错误拒绝
+
+  @req:r6
+  场景: zero-timeout-rejected
+    假如 LLM 传入 timeout=0
     当 bash 工具校验参数
     那么 工具以无效 timeout 错误拒绝
 
