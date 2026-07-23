@@ -48,6 +48,18 @@ author: agent
 
 **applied** — `visible_width_ansi_ascii` + 共用 `ansi_escape_len`；慢路径仍 strip+grapheme（tab/CJK/emoji）。
 
+## 复测 `post-c1508`（C-stream 15s）
+
+产物：`target/profile/post-c1508/C-stream.json.gz`（本地；不入库）。samply UI 自时间对照：
+
+| | 修前（同场景） | 修后 |
+|---|---|---|
+| `do_render` 下 `visible_width` | ~68% | markdown 子树 ~**1.9%** |
+| `strip_ansi_codes` | ~27% | leaf ~1–2% |
+| 新显性热点 | — | **`wrap_text_with_ansi` ~19%**（`markdown` → `scrollback`） |
+
+结论：本 change 目标达成；下游见 [c1509](../c1509-optimize-package-tui-wrap-text-ansi/proposal.md)。
+
 ## Ethics
 
 - risk_level: low

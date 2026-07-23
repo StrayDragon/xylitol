@@ -6,6 +6,7 @@ priority: 1505
 depends_on:
   - c1500-fix-tui-scrollback-perf
   - c1508-optimize-package-tui-visible-width-ansi
+  - c1509-optimize-package-tui-wrap-text-ansi
 author: agent
 ---
 

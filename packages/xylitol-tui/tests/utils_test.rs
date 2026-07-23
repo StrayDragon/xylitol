@@ -82,6 +82,48 @@ fn test_wrap_text_with_ansi_preserves_ansi() {
 }
 
 #[test]
+fn test_wrap_ansi_ascii_matches_plain_breaks() {
+    // c1509: colored ASCII must wrap like plain (fast tokenizer).
+    let plain = "hello world from wrap fast path test case";
+    let styled = format!("\x1b[32m{plain}\x1b[0m");
+    let a = wrap_text_with_ansi(plain, 12);
+    let b = wrap_text_with_ansi(&styled, 12);
+    assert!(a.len() > 1, "expected wrap: {a:?}");
+    assert_eq!(a.len(), b.len(), "plain={a:?} styled={b:?}");
+    for (pa, pb) in a.iter().zip(b.iter()) {
+        // Strip CSI for compare of visible text shape.
+        let strip = |s: &str| {
+            let mut out = String::new();
+            let mut i = 0;
+            let bytes = s.as_bytes();
+            while i < bytes.len() {
+                if bytes[i] == 0x1b {
+                    if let Some((_, len)) = extract_ansi_code(&s[i..], 0) {
+                        i += len;
+                        continue;
+                    }
+                }
+                out.push(s[i..].chars().next().unwrap());
+                i += s[i..].chars().next().unwrap().len_utf8();
+            }
+            out
+        };
+        assert_eq!(
+            strip(pa),
+            strip(pb),
+            "line mismatch plain={pa:?} styled={pb:?}"
+        );
+    }
+}
+
+#[test]
+fn test_wrap_cjk_still_breaks_per_cluster() {
+    let lines = wrap_text_with_ansi("你好世界测试", 4);
+    assert!(lines.len() >= 2, "CJK should wrap: {lines:?}");
+    assert!(lines.iter().all(|l| visible_width(l) <= 4), "{lines:?}");
+}
+
+#[test]
 fn test_visible_width_with_osc() {
     // OSC hyperlinks should be stripped
     assert_eq!(
