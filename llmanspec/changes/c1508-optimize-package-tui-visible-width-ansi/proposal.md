@@ -1,13 +1,15 @@
 ---
 change_id: c1508-optimize-package-tui-visible-width-ansi
 title: package-tui：visible_width ANSI 快路径（免整串 strip 分配）
-status: purpose-draft
+status: applied
 priority: 1508
 depends_on: []
 author: agent
 ---
 
 # c1508-optimize-package-tui-visible-width-ansi
+
+> Promoted → applied（无 MUST/SHALL；quick 落地）。验收：`just test-tui` + `utils_test` visible_width。
 
 ## Why
 
@@ -44,7 +46,7 @@ author: agent
 
 ## Status
 
-**purpose-draft** — 证据来自 c1520 suite；promote 后可用 quick 或完整 propose（若要写 package-tui width 合约再走完整路径）。
+**applied** — `visible_width_ansi_ascii` + 共用 `ansi_escape_len`；慢路径仍 strip+grapheme（tab/CJK/emoji）。
 
 ## Ethics
 
