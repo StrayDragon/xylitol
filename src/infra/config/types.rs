@@ -96,8 +96,8 @@ pub struct ToolBatchConfig {
 #[derive(Clone, Copy, Debug, Default, PartialEq, Eq, Serialize, Deserialize, JsonSchema)]
 #[serde(rename_all = "snake_case")]
 pub enum ToolBatchMode {
-    #[default]
     Sequential,
+    #[default]
     BarrierParallel,
 }
 
@@ -1424,13 +1424,26 @@ tui:
     }
 
     #[test]
-    fn tool_batch_default_sequential() {
+    fn tool_batch_default_barrier_parallel() {
         let cfg: AppConfig = yaml_serde::from_str("models: {}").expect("minimal");
-        assert_eq!(cfg.tool_batch.mode, ToolBatchMode::Sequential);
+        assert_eq!(cfg.tool_batch.mode, ToolBatchMode::BarrierParallel);
         assert_eq!(
             crate::protocol::ports::XyBatchMode::from(cfg.tool_batch.mode),
-            crate::protocol::ports::XyBatchMode::Sequential
+            crate::protocol::ports::XyBatchMode::BarrierParallel
         );
+    }
+
+    #[test]
+    fn tool_batch_sequential_parses() {
+        let cfg: AppConfig = yaml_serde::from_str(
+            r#"
+models: {}
+tool_batch:
+  mode: sequential
+"#,
+        )
+        .expect("tool_batch sequential");
+        assert_eq!(cfg.tool_batch.mode, ToolBatchMode::Sequential);
     }
 
     #[test]

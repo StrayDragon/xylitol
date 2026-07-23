@@ -136,7 +136,7 @@ impl AgentCapabilities {
             active_turn: Arc::new(Mutex::new(None)),
             tools: tool_registry,
             hooks: AgentHooks::empty(),
-            batch_mode: XyBatchMode::Sequential,
+            batch_mode: XyBatchMode::BarrierParallel,
             system_prompt: system_prompt.clone(),
             session_id: None,
             compaction_orchestrator: CompactionOrchestrator::new(
@@ -153,6 +153,12 @@ impl AgentCapabilities {
                 tool_snippets,
                 prompt_guidelines,
                 skills: Vec::new(),
+                runtime_policy_fragments: prompt::fragments_for_batch_mode(
+                    XyBatchMode::BarrierParallel,
+                )
+                .into_iter()
+                .map(str::to_string)
+                .collect(),
                 ..Default::default()
             },
             prompt_templates: Vec::new(),
@@ -461,6 +467,11 @@ impl AgentCapabilities {
 
     pub(crate) fn set_tool_mode(&mut self, mode: XyBatchMode) {
         self.batch_mode = mode;
+        self.prompt_opts.runtime_policy_fragments = prompt::fragments_for_batch_mode(mode)
+            .into_iter()
+            .map(str::to_string)
+            .collect();
+        self.rebuild_system_prompt();
     }
 
     pub(crate) fn steer_queue(&self) -> Arc<Mutex<PendingMessageQueue>> {

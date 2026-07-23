@@ -1,22 +1,24 @@
 ---
 change_id: c1610-update-oob-tool-batch-defaults
 title: 开箱 tool 批并行 + 默认多 tool 提示（收敛临时配置面）
-status: purpose-draft
+status: in-progress
 priority: 1610
 depends_on:
-  - c1545-add-tool-batch-execution-mode
-  - c1605-add-runtime-prompt-fragments
+- c1545-add-tool-batch-execution-mode
+- c1605-add-runtime-prompt-fragments
 author: agent
+branch: feat/c1605-c1610-oob-prompt-batch
+base_sha: 7c5075601088d1bfe49a865c31b80aa7bfaa24bf
+checkpointed: false
 ---
 
 # c1610-update-oob-tool-batch-defaults
 
 ## Discussion context（2026-07-24）
 
-- `c1545` 调度器在「同消息多 ParallelSafe」时正确（含 FIFO 实验：三 read delay=2s → 批墙钟 2.001s）。
-- 默认仍 `sequential`、靠开发 yaml 开试验档 = 临时态；产品要开箱合适特性、少配置面。
-- 模型不配合时靠提示可改善（APPEND 烟雾：session `ec1351b6-…` 同消息 3×read）；默认 fragment 经 `c1605` 注入。
-- 并行不解决预填大头；ROI = 批内执行加速。
+- `c1545` 调度器正确；FIFO 实验批墙钟 2s；实验 2 显示本端 End→Done≈0 → `c1615` 搁置。
+- 实验 3（APPEND + 硬性同消息）：`3f9473d5` / `50783e31` / `b75339ca`（+烟雾 `ec1351b6`）**multi_hit 4/4**。
+- 开箱 = `barrier_parallel` + `c1605` 注入同文案片段；去掉手贴 APPEND 临时态。
 
 ## Why
 
@@ -27,41 +29,41 @@ author: agent
 | 项 | 目标 |
 |---|---|
 | `tool_batch.mode` 默认 | `barrier_parallel` |
-| 配置面 | 保留 `sequential` 逃生；勿再靠开发剖面 |
-| 默认提示 | 独立只读同消息多 tool；禁止假装并行却单发 |
+| 配置面 | 保留 `sequential` 逃生 |
+| 默认提示 | 经 `c1605` 注入实验 3 验证过的多-tool 策略 |
 
-## Decisions（意向）
+## Decisions
 
-1. 默认模式翻转 + BDD/文档。
-2. 默认 fragment 文案 promote 时定稿。
-3. TUI 策略切换后置（依赖覆盖盘 + `c1605`）。
-4. 不为提示强度再加旋钮。
+1. 默认模式翻转；`ar27`/`rc26` 期望随之改。
+2. 默认 fragment 文案 = 实验 3 APPEND 精华（英短句）。
+3. 开发仓可删冗余 `tool_batch.mode` / `APPEND_SYSTEM.md`。
 
-## Experiments（可先于 promote）
+## Experiments
 
-### 实验 1 — 慢 I/O 并行
+### 实验 1 — 慢 I/O 并行 ✅
 
-前置：终端跑 `python3 scripts/xylitol_batch_slow_fifos.py --delay 2`；`tool_batch.mode=barrier_parallel`。
+`c3889dc5-…` / 烟雾 `95338a3a-…`：批墙钟 ~2.007s。
 
-用户提示词见会话交付（同消息 3× read FIFO）。判据：批墙钟 ≈2s 非 ≈6s；Langfuse 同 `barrier_index`。
+### 实验 3 — 多-tool 提示 ✅
 
-烟雾：`95338a3a-…` → 2.001s。
+| session | multi_hit |
+|---|---|
+| `ec1351b6-…` | ✅ 3 |
+| `3f9473d5-…` | ✅ 3 |
+| `50783e31-…` | ✅ 3 |
+| `b75339ca-…` | ✅ 3 |
 
-### 实验 3 — 多-tool 提示命中率
-
-`.xylitol/APPEND_SYSTEM.md` 已含策略片段。固定 3 小文件同消息 read，N=10 计 `multi_hit` / `fake_parallel`。
-
-烟雾：`ec1351b6-…` → toolCall 个数=3。
+**4/4 = 100%**，无 fake_parallel。
 
 ## Non-Goals
 
-流中抢跑（`c1615`）；MCP ParallelSafe；删 `sequential`。
+`c1615`；MCP ParallelSafe；删 `sequential`。
 
 ## Status
 
-**purpose-draft** — 实验 3 命中率可接受后再翻转默认。
+**promoting / applying** on `feat/c1605-c1610-oob-prompt-batch`。
 
 ## Ethics
 
 - risk_level: medium
-- required_evidence: BDD 屏障仍绿；实验 1/3
+- required_evidence: BDD 默认并行；单测片段启停；显式 sequential 仍可用
