@@ -10,44 +10,42 @@ author: agent
 
 # c1600-update-prefer-openai-responses
 
-## Discussion context
+## Discussion context（2026-07-24）
 
-见 [`../DEFERRED-responses-tool-batch-CONTEXT.md`](../DEFERRED-responses-tool-batch-CONTEXT.md)。
-
-方向：逐步放弃 Completions 日常路径；llama.cpp 等高版本已支持 Responses。本提交已将仓库 `.xylitol/config.yaml` 全部改为 `openai-responses`（在 c1598 接线生效后配置=实际）。
+- 方向：逐步放弃 Completions 日常路径；llama.cpp 等高版本已支持 Responses。
+- `c1598` 前配置字面与实际方言脱节；修后开发仓 `.xylitol/config.yaml` 已全部改为 `openai-responses`。
+- Responses 上 `ToolCallEnd` 更早，才值得谈流中抢跑（`c1615`）。
+- `llm.request` 已有属性 `api`；本 change 将其升格为排障一等信号（文档 / turn 摘要）。
 
 ## Why
 
-产品方向：逐步放弃 Chat Completions 作为日常路径。Responses 上工具块 `ToolCallEnd` 更早，也为 `c1615` 抢跑留窗口。
+开箱与文档应对齐 Responses；Completions 仅作遗留显式档，避免多开关。
 
-今日问题曾包括：配置写 Completions 却静默 Responses（`c1598`）；方言已在 `llm.request.api` 导出但未升格为一等排障信号。
-
-## Product intent（开箱）
+## Product intent
 
 | | 目标 |
 |---|---|
-| OpenAI 兼容缺省 `api` | **`openai-responses`** |
+| 缺省 `api` | `openai-responses` |
 | Completions | 遗留显式档 |
-| 多面配置 | 一个 `models.*.api`，禁止第二开关 |
-| 观测 | 每次 `llm.request` MUST 带 dialect；文档教看 `api=` |
+| 配置面 | 仅 `models.*.api` |
+| 观测 | 每次 `llm.request` 带 dialect；文档教看 `api=` |
 
 ## Decisions（意向）
 
-1. 先 `c1598`（已落地代码）。
-2. 示例/开发配置 → Responses（本提交开发 yaml 已改）。
-3. `default_api()` / 文档对齐 Responses。
-4. OTEL：保持 `api`；SHOULD 在 turn/session 带 `xylitol.model.api`。
-5. Pre-1.0 保留 Completions 代码路径。
+1. 依赖 `c1598`（已接线）。
+2. 示例/产品默认/文档 → Responses。
+3. OTEL：保持 `api`；SHOULD 在 turn/session 带 `xylitol.model.api`。
+4. Pre-1.0 保留 Completions 代码路径。
 
 ## Non-Goals
 
-- 删除 Completions adapter；流中抢跑（`c1615`）；提示词 / tool_batch 默认（`c1605`/`c1610`）
+删 Completions adapter；流中抢跑（`c1615`）；提示/tool_batch 默认（`c1605`/`c1610`）。
 
 ## Status
 
-**purpose-draft** — 开发配置已切 Responses；产品默认/文档/观测加强待 promote。
+**purpose-draft** — 开发 yaml 已切 Responses；产品默认/文档/观测加强待 promote。
 
 ## Ethics
 
 - risk_level: medium（端点无 Responses 时须 Completions 逃生舱）
-- required_evidence: 本机 `/v1/responses` 烟雾；Langfuse `api` 与配置一致
+- required_evidence: `/v1/responses` 烟雾；Langfuse `api` 与配置一致
