@@ -2484,7 +2484,7 @@ mod tests {
         let mut stream = agent.run_with_id("hello", &sid).await;
         while stream.next().await.is_some() {}
 
-        let entries = store.load_entries(sid).await.expect("load entries");
+        let entries = store.load_entries(&sid).await.expect("load entries");
         let messages: Vec<_> = entries
             .iter()
             .filter_map(|e| match e {
