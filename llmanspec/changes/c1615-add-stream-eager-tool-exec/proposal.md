@@ -1,7 +1,7 @@
 ---
 change_id: c1615-add-stream-eager-tool-exec
 title: 流式 ToolCallEnd 后抢跑 ParallelSafe（Responses/Anthropic）
-status: purpose-draft
+status: shelved
 priority: 1615
 depends_on:
   - c1598-fix-bootstrap-honor-model-api
@@ -56,7 +56,7 @@ Completions 抢跑；结果流式回灌同轮 LLM；放开 MCP 并行。
 
 ## Status
 
-**purpose-draft — 实验 2 后建议搁置**（见上）。依赖与方言门闩结论仍保留，待其它端点再现大空隙再 reopen。
+**shelved（2026-07-24）** — 实验 2 证明当前 Ornith/Responses 上 End→Done 空隙≈0，ROI≈0。不 promote。依赖与方言门闩结论保留；仅当其它端点测出稳定大空隙再 reopen。
 
 ## Ethics
 
