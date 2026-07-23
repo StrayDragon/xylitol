@@ -196,8 +196,9 @@ pub(crate) mod install {
             .map(str::trim)
             .filter(|s| !s.is_empty())
         {
+            // Langfuse maps both `deployment.environment` and `langfuse.environment`
+            // to the same field — emit the OTel SemConv key only.
             attrs.push(KeyValue::new("deployment.environment", env.to_string()));
-            attrs.push(KeyValue::new("langfuse.environment", env.to_string()));
         }
 
         let resource = Resource::builder_empty().with_attributes(attrs).build();

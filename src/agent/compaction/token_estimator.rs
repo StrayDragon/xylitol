@@ -186,23 +186,27 @@ fn emit_token_estimate_obs(est: &ContextTokenEstimate, opts: &EstimateOpts) {
         return;
     }
     use fastrace::prelude::*;
-    let model = opts.model_id.clone().unwrap_or_default();
     let mut props = vec![
-        ("backend".into(), backend.to_string()),
         ("provenance".into(), backend.to_string()),
         ("tokens".into(), est.tokens.to_string()),
         ("usage_tokens".into(), est.usage_tokens.to_string()),
         ("trailing_tokens".into(), est.trailing_tokens.to_string()),
-        (
-            "allow_local_tokenizer".into(),
-            opts.allow_local_tokenizer.to_string(),
-        ),
-        (
-            "allow_remote_count".into(),
-            opts.allow_remote_count.to_string(),
-        ),
-        ("model_id".into(), model),
     ];
+    // Gate flags: only emit when armed (default false is noise).
+    if opts.allow_local_tokenizer {
+        props.push(("allow_local_tokenizer".into(), "true".into()));
+    }
+    if opts.allow_remote_count {
+        props.push(("allow_remote_count".into(), "true".into()));
+    }
+    if let Some(model) = opts
+        .model_id
+        .as_deref()
+        .map(str::trim)
+        .filter(|s| !s.is_empty())
+    {
+        props.push(("model_id".into(), model.to_string()));
+    }
     props.extend(xylitol_ai_bridge::provider::langfuse_session_properties());
     // Prefer active agent.turn parent; otherwise independent root (same session attrs).
     let parent = xylitol_ai_bridge::provider::obs_turn_parent().unwrap_or_else(SpanContext::random);
@@ -210,7 +214,7 @@ fn emit_token_estimate_obs(est: &ContextTokenEstimate, opts: &EstimateOpts) {
     span.add_event(Event::new("token.estimate").with_properties(|| {
         [
             ("kind", "token.estimate".to_string()),
-            ("backend", backend.to_string()),
+            ("provenance", backend.to_string()),
             ("tokens", est.tokens.to_string()),
         ]
     }));
