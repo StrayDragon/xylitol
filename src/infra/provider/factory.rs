@@ -66,11 +66,35 @@ pub fn build_provider_with_hooks(
         }
         XyModelKind::Fake => {
             let steps = {
-                let slow = FAKE_SLOW_STREAM.with(|c| c.borrow_mut().take());
+                let mut slow = FAKE_SLOW_STREAM.with(|c| c.borrow_mut().take());
                 let tool = FAKE_TOOL_CALL.with(|c| c.borrow_mut().take());
-                let text = FAKE_TEXT.with(|c| c.borrow_mut().take());
+                let mut text = FAKE_TEXT.with(|c| c.borrow_mut().take());
+                // Profiling suite (c1520): env when TLS unset.
+                // XYLITOL_FAKE_SLOW_STREAM=chunks,delay_ms[,chunk_chars]
+                // XYLITOL_FAKE_TEXT=single-shot reply
+                let mut env_chunk_chars: Option<usize> = None;
+                if slow.is_none()
+                    && let Ok(spec) = std::env::var("XYLITOL_FAKE_SLOW_STREAM")
+                {
+                    let parts: Vec<&str> = spec.split(',').map(str::trim).collect();
+                    if parts.len() >= 2
+                        && let (Ok(n), Ok(delay_ms)) =
+                            (parts[0].parse::<usize>(), parts[1].parse::<u64>())
+                    {
+                        slow = Some((n.max(1), delay_ms));
+                        env_chunk_chars = parts.get(2).and_then(|s| s.parse().ok());
+                    }
+                }
+                if text.is_none()
+                    && let Ok(t) = std::env::var("XYLITOL_FAKE_TEXT")
+                    && !t.is_empty()
+                {
+                    text = Some(t);
+                }
                 if let Some((n, delay_ms)) = slow {
-                    let chunks: Vec<String> = (0..n).map(|i| format!("chunk-{i}")).collect();
+                    let chunk_chars = env_chunk_chars.unwrap_or(12).clamp(1, 200);
+                    let pad = "字".repeat(chunk_chars);
+                    let chunks: Vec<String> = (0..n).map(|i| format!("[{i}/{n}]{pad}")).collect();
                     vec![ScenarioStep::slow_stream(
                         chunks,
                         std::time::Duration::from_millis(delay_ms),
