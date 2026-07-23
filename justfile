@@ -278,6 +278,24 @@ fmt-check verbosity=verbosity_default:
       verbose) cargo fmt -v --all -- --check ;;
     esac
 
+# --- Dev CPU profiling suite (c1520; maintenance; NOT in qa) ---
+# Needs: samply, tmux, perf_event_paranoid<=1
+#   echo 1 | sudo tee /proc/sys/kernel/perf_event_paranoid
+
+# Release build with symbols (strip=none, line-tables-only).
+profile-build:
+    python3 scripts/profile_tui_suite.py --build
+
+# Run Fake/tmux scenarios A–D (or subset). Writes target/profile/<run-id>/.
+#   just profile-suite
+#   just profile-suite scenarios="A,D" duration="15"
+profile-suite scenarios="A,B,C,D" duration="20":
+    python3 scripts/profile_tui_suite.py --build --scenarios "{{scenarios}}" --duration {{duration}}
+
+# Summarize one profile (xylitol-only filter).
+profile-summary path:
+    python3 scripts/summarize_samply_profile.py "{{path}}" --addr2line ./target/release/xylitol
+
 # --- Observability / provider-trace inspect (maintenance; not in qa) ---
 # Token-efficient summaries. Skill: xylitol-inspect-runtime-logs.
 # Filters (--since / --request-id / --turn-id): pass via python CLI, not just kwargs
