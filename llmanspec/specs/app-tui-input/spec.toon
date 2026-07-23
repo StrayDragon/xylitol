@@ -2,7 +2,7 @@ kind: llman.sdd.spec
 name: "app-tui-input"
 purpose: "Editor 操作区、取消/退出键位、steer 与 follow-up、信任后 yolo。"
 valid_scope[1]: src/app/tui/
-requirements[38]{req_id,title,statement}:
+requirements[39]{req_id,title,statement}:
   ati1,"editor-operation-zone","输入区 MUST 使用 xylitol-tui Editor，并保留上下边框作为操作区边界；选择器打开时 MUST 替换 editor 槽而非画到内容顶部。"
   ati2,"cancel-and-ctrl-c","流式或 agent 忙碌时 Esc MUST 调用 Driver::abort；Ctrl+C 在编辑器非空时 MUST 清空输入，在编辑器为空时 MUST 退出 TUI。"
   ati3,"steer-and-followup-keys","agent 忙碌时普通 Enter MUST 将当前输入作为 steer 入队；Alt+Enter MUST 将当前输入作为 follow-up 入队（等待当前 agent loop 全部完成后再执行）。"
@@ -15,7 +15,8 @@ requirements[38]{req_id,title,statement}:
   ati10,"product-host-key-wiring","产品 HostSession MUST 在 agent 忙碌且会话树关闭时将普通 Enter 映射为 Driver::steer、Alt+Enter 映射为 Driver::follow_up；忙碌时 Esc MUST 调用 Driver::abort 并 clear_queue(steer=true, follow_up=false)；MUST NOT 在忙碌 Esc 时打开 c491 stub 树。"
   ati11,"product-queue-chrome","产品 TUI 在 steer/follow-up 队列非空时 MUST 在 scrollback 与 status 之间以 muted 色渲染 Steering:/Follow-up: 行及 Alt+Up dequeue 提示（对齐 pi pendingMessagesContainer；实现为 queue strip）；MUST NOT 将排队内容写成 scrollback System [steer]/[follow-up] 墙；Alt+Up MUST 将队列文本还原进 editor 并 clear_queue(steer=true, follow_up=true)。"
   ati12,"product-queue-uplink","当 steer/follow-up 从队列注入 agent history 时，runtime MUST 发射 MessageStart/MessageEnd（role=user，带 message）；产品 bridge MUST 将其提交为 scrollback UiEntry::User（与 idle 提交同形）；queue strip 随 QueueUpdate 消退后用户文本 MUST 仍留在 transcript；MUST NOT 仅在 strip 闪现后丢失。"
-  ati13,"product-editor-send-history","产品 Host 在 idle 提交、busy steer、busy follow-up 发送用户文本时 MUST 调用 Editor::add_to_history（跳过空串与连续重复）；同一 TUI session 内 MUST 能在 editor 空或已在浏览态时用 ↑/↓ 召回这些文本（委托包 ed05）；MUST NOT 要求跨进程持久化。"
+  ati13,"product-editor-send-history","产品 Host 在 idle 提交、busy steer、busy follow-up 发送用户文本时 MUST 调用 Editor::add_to_history（跳过空串与连续重复）；同一 TUI session 内 MUST 能在 editor 空或已在浏览态时用 ↑/↓ 召回这些文本（委托包 ed05）；启动与切 session 时 MAY 从 session store 只读装载用户发送历史种子（见 ati41），MUST NOT 要求把 editor 浏览态本身做成独立持久化文件。"
+  ati41,"editor-history-session-seed","纯 new session（含 /session-new）启动时，产品 Host MUST 在当前 cwd 下按 mtime 取最近 N 个其它已持久化 session（N 来自配置 tui.editor_history_seed_sessions，缺省 1），抽取其中 user 角色正文（跳过 trim 后以 / 开头的行），按较旧 session 先、会话内时间序调用 add_to_history，使 ↑ 先召回全局最近一条；恢复或切换到已有 session 时 MUST 仅用该 session 的 user 正文替换 editor 发送历史缓冲；MUST NOT 写入 assistant/tool/thinking；MUST NOT 改 transcript 或会话树；cwd 比较 MUST 与 resume Current scope 的 cwd_matches 同口径。"
   ati14,"product-abort-resumable","产品 TUI 在用户 Esc abort 当前流之后 MUST 回到可提交 idle（follow-up restore 语义不变）；MUST NOT 让后续用户输入持续产生粘性 aborted Error 而无法继续对话。"
   ati15,"product-bash-prefix-border",产品 TUI 中当编辑器文本 trim 后以 ! 或 !! 开头时，Editor 操作区边框 MUST 切换为 bash 强调色（对齐 DESIGN success 前景）；去掉该前缀后 MUST 恢复当前 thinking level 边框（atc17），MUST NOT 在已接线 thinking 边框后仍用 muted 覆盖。
   ati16,"product-idle-bang-execute","产品 idle 且会话树关闭时，Enter 提交以 ! 或 !! 开头的非空命令 MUST 调用 Driver::execute_bash（经 Command::Bash / dispatch），MUST NOT 调用 Driver::run；!! 前缀 MUST 设置 exclude_from_context=true，单 ! 为 false；命令体为空时 MUST 提示且 MUST NOT 执行。"

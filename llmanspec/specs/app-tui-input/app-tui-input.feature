@@ -130,6 +130,24 @@
     当 idle 后 editor 空再按 ↑
     那么 可召回该 steer 文本
 
+  @req:ati41
+  场景: new-session-seeds-prior-cwd-user-prompts
+    假如 同 cwd 存在另一已持久化 session 含非 slash user 正文且当前为纯 new session
+    当 TUI 启动完成且 editor 为空后按 ↑
+    那么 editor 回填该先验 user 正文
+
+  @req:ati41
+  场景: resume-seeds-only-current-session
+    假如 恢复已有 session 且其它 session 也有 user 正文
+    当 装载完成且 editor 空后按 ↑
+    那么 仅召回当前 session 的 user 正文
+
+  @req:ati41
+  场景: seed-skips-slash-user-lines
+    假如 先验 session 的 user 行以 /session-name 开头
+    当 纯 new session 装载种子后按 ↑
+    那么 不回填该 slash 行
+
   @req:ati14
   场景: esc-then-submit
     假如 TUI busy 中 Esc abort 后
