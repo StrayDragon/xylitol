@@ -2,7 +2,7 @@ kind: llman.sdd.spec
 name: "runtime-model-registry"
 purpose: "模型注册表 — provider 注册、鉴权检查、模型发现与解析。Pre-1.0.0 仅支持 OpenAI 兼容与 Anthropic provider。"
 valid_scope[3]: src/agent/model/,src/protocol/,src/app/core/bootstrap.rs
-requirements[13]{req_id,title,statement}:
+requirements[14]{req_id,title,statement}:
   m1,ModelRegistry provider,"ModelRegistry MUST 支持 register_provider(name, config) 与 has_configured_auth(model) / has_resolved_auth(model) 检查 API key 可用性。"
   m2,模型发现,ModelRegistry MUST 支持 get_available()，返回已注册 provider 的全部配置模型，按 provider 优先级排序。
   m3,模型默认值,"ModelRegistry MUST 仅为 openai 与 anthropic provider 维护默认模型 ID。Pre-1.0.0 其它 provider MUST NOT 有默认模型条目。默认模型 ID MUST 为有效、当前可用的模型标识（如 gpt-4o、claude-sonnet-4-20250514），不得为占位或不存在的模型名。该默认 ID 仅作显式解析/回退辅助，MUST NOT 单独构成「用户已配置默认模型」的产品选中态。"
@@ -16,6 +16,9 @@ requirements[13]{req_id,title,statement}:
   m11,"thinking-level-on-generate","Agent 在调用 XyModel::generate_stream（或等价）时 MUST 传入当前 ThinkingLevel 与模型 thinking_level_map（及可用的 thinking_budgets）；resolve 后 MUST 影响下一轮 provider 请求体；MUST NOT 仅更新会话/UI 状态而不影响请求组装。"
   m12,"no-silent-env-select","bootstrap 在仅有 provider API key、无配置模型别名且无显式 --model（或等价选中源）时，MUST NOT 自动将 default_model_id_for_provider 的返回值设为当前选中模型；未选中 MUST 保持为空并由应用面按 cli-entry ce18 展示。"
   m13,"honor-model-entry-api","bootstrap / resolve_model_meta（或等价装配）注册 XyModelMeta 时 MUST 保留 ModelsConfig ModelEntry 的可选 api 字段：显式值 MUST 写入 config.api 与 meta.api 并参与 adapter 选择；省略 api 时 MUST 走 AdapterKind::default_for（或等价）而非静默丢弃后再伪造其它方言。MUST NOT 在注册路径把已配置的 api 写成 None。由单测覆盖，MUST NOT 为静态接线单独扩 BDD step。"
-scenarios[2]{req_id,id,given,when,then,feature}:
+  m14,"manifest-api-kind-default","JSON model manifest 省略 api 时 MUST 按 provider 选用与 AdapterKind::default_for 一致的方言字符串（OpenAI→openai-responses，Anthropic→anthropic-messages）；MUST NOT 写死 openai-completions。显式 api MUST 保留。由单测覆盖，MUST NOT 为静态缺省单独扩 BDD step。"
+scenarios[4]{req_id,id,given,when,then,feature}:
   m13,"yaml-explicit-completions-honored","YAML 模型条目 api 为 openai-completions","bootstrap 注册 registry","config.api 与 meta.api 为 openai-completions 且 adapter 为 Completions",false
   m13,"yaml-omitted-api-uses-kind-default","YAML OpenAI 模型条目省略 api","bootstrap 注册后 resolve_adapter_kind","选用 OpenAI Responses 默认（非静默 Completions）",false
+  m14,"manifest-openai-omitted-api-responses","JSON manifest OpenAI 模型省略 api","load_models_from_manifest","meta.api 为 openai-responses",false
+  m14,"manifest-anthropic-omitted-api-messages","JSON manifest Anthropic 模型省略 api","load_models_from_manifest","meta.api 为 anthropic-messages",false

@@ -8,7 +8,7 @@
 //!     {
 //!       "id": "my-custom-model",
 //!       "provider": "openai",
-//!       "api": "openai-completions",
+//!       "api": "openai-responses",
 //!       "display_name": "My Custom Model",
 //!       "context_window": 128000,
 //!       "thinking": true,
@@ -17,6 +17,8 @@
 //!   ]
 //! }
 //! ```
+//! Omitting `api` uses [`crate::infra::provider::adapter::AdapterKind::default_for`]
+//! (OpenAI → `openai-responses`, Anthropic → `anthropic-messages`).
 
 use std::path::Path;
 
@@ -31,8 +33,9 @@ use crate::protocol::types::XyModelMeta;
 pub struct ManifestModel {
     pub id: String,
     pub provider: String,
-    #[serde(default = "default_api")]
-    pub api: String,
+    /// Adapter dialect; omitted → [`AdapterKind::default_for`] for provider (c1600).
+    #[serde(default)]
+    pub api: Option<String>,
     pub display_name: Option<String>,
     #[serde(default = "default_context_window")]
     pub context_window: u64,
@@ -54,10 +57,6 @@ pub struct ManifestModel {
     pub max_tokens: u64,
     #[serde(default)]
     pub thinking_levels: Vec<String>,
-}
-
-fn default_api() -> String {
-    "openai-completions".to_string()
 }
 
 fn default_context_window() -> u64 {
@@ -104,6 +103,10 @@ pub fn load_models_from_manifest(
             .or_else(|| default_api_key.map(String::from))
             .unwrap_or_default();
 
+        let api = m.api.clone().filter(|s| !s.is_empty()).unwrap_or_else(|| {
+            crate::infra::provider::adapter::AdapterKind::default_for(kind).to_string()
+        });
+
         let meta = XyModelMeta {
             id: m.id.clone(),
             config: XyModelConfig {
@@ -112,12 +115,12 @@ pub fn load_models_from_manifest(
                 model: m.id.clone(),
                 base_url: m.base_url.clone(),
                 // Keep in sync with meta.api (c1598 / adapter resolve uses config.api).
-                api: Some(m.api.clone()).filter(|s| !s.is_empty()),
+                api: Some(api.clone()),
             },
             display_name: m.display_name.clone().unwrap_or_else(|| m.id.clone()),
             thinking: m.thinking,
             context_window: m.context_window,
-            api: m.api.clone(),
+            api,
             provider: m.provider.clone(),
             cost_input: m.cost_input,
             cost_output: m.cost_output,
@@ -181,9 +184,35 @@ mod tests {
         assert_eq!(gpt.config.provider_name(), "openai");
         assert_eq!(gpt.context_window, 128000);
         assert!(gpt.thinking);
+        assert_eq!(gpt.api, "openai-responses");
+        assert_eq!(gpt.config.api.as_deref(), Some("openai-responses"));
 
         let claude = reg.find("claude-opus-4").unwrap();
         assert_eq!(claude.config.provider_name(), "anthropic");
+        assert_eq!(claude.api, "anthropic-messages");
+        assert_eq!(claude.config.api.as_deref(), Some("anthropic-messages"));
+    }
+
+    #[test]
+    fn manifest_explicit_completions_is_preserved() {
+        let json = r#"
+        {
+            "models": [
+                {
+                    "id": "legacy",
+                    "provider": "openai",
+                    "api": "openai-completions"
+                }
+            ]
+        }
+        "#;
+        let file = NamedTempFile::new().unwrap();
+        std::fs::write(file.path(), json).unwrap();
+        let mut reg = empty_registry();
+        load_models_from_manifest(file.path(), &mut reg, None).unwrap();
+        let m = reg.find("legacy").unwrap();
+        assert_eq!(m.api, "openai-completions");
+        assert_eq!(m.config.api.as_deref(), Some("openai-completions"));
     }
 
     #[test]

@@ -565,7 +565,12 @@ fn run_react_loop(cfg: ReActConfig) -> impl Stream<Item = XyEvent> + Send {
         let mut run_model: Option<(String, Arc<dyn XyModel>)> = None;
         // One OTEL/fastrace tree per user-triggered run (c1495 / c1555 turn preview).
         let user_preview = parts_preview_text(&user_parts);
-        let agent_turn_span = super::obs::AgentTurnSpan::start(Some(user_preview.as_str()));
+        let model_api = {
+            let mm = model_manager.lock().unwrap_or_else(|e| e.into_inner());
+            mm.current_model().map(|m| m.api.clone())
+        };
+        let agent_turn_span =
+            super::obs::AgentTurnSpan::start(Some(user_preview.as_str()), model_api.as_deref());
 
         // Outer loop: continues when follow-up messages arrive after the agent
         // would otherwise stop (pi runLoop semantics).
