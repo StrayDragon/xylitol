@@ -323,7 +323,7 @@ impl<T: Terminal> HostSession<T> {
         self.sync_ui_root_from_model();
     }
 
-    /// Immediate Esc abort feedback: one System `Aborted`, idle status (agent run; c665).
+    /// Immediate Esc abort feedback: flush partial + System `Operation aborted`, idle (c1595).
     /// Drops further agent Xy events until the current EventStream ends (c670).
     pub fn note_user_abort(&mut self) {
         self.ui_model.note_user_abort();

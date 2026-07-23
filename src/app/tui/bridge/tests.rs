@@ -178,12 +178,10 @@ fn aborted_error_is_system_note_and_idles() {
     apply_xy_event(&mut model, &XyEvent::Error("aborted".into()));
     assert_eq!(model.phase, UiPhase::Idle);
     assert!(model.status.is_none());
-    assert!(
-        model
-            .entries
-            .iter()
-            .any(|e| matches!(e, UiEntry::System { text } if text == "Aborted"))
-    );
+    assert!(model.entries.iter().any(|e| matches!(
+        e,
+        UiEntry::System { text } if text == "Operation aborted" || text == "Aborted"
+    )));
     assert!(
         !model
             .entries
@@ -205,12 +203,11 @@ fn note_bash_cancelled_does_not_emit_aborted() {
             ..
         } if output.contains("(cancelled)")
     )));
-    assert!(
-        !model
-            .entries
-            .iter()
-            .any(|e| matches!(e, UiEntry::System { text } if text == "Aborted"))
-    );
+    assert!(!model.entries.iter().any(|e| matches!(
+        e,
+        UiEntry::System { text }
+            if text == "Aborted" || text == "Operation aborted"
+    )));
 }
 
 #[test]
@@ -224,11 +221,17 @@ fn note_user_abort_allows_second_abort_after_new_command() {
     let n = model
         .entries
         .iter()
-        .filter(|e| matches!(e, UiEntry::System { text } if text == "Aborted"))
+        .filter(|e| {
+            matches!(
+                e,
+                UiEntry::System { text }
+                    if text == "Operation aborted" || text == "Aborted"
+            )
+        })
         .count();
     assert_eq!(
         n, 2,
-        "each bang abort must show Aborted: {:?}",
+        "each agent abort must show abort note: {:?}",
         model.entries
     );
 }
@@ -242,10 +245,43 @@ fn note_user_abort_dedupes_with_error_aborted() {
     let n = model
         .entries
         .iter()
-        .filter(|e| matches!(e, UiEntry::System { text } if text == "Aborted" || text == "aborted"))
+        .filter(|e| {
+            matches!(
+                e,
+                UiEntry::System { text }
+                    if text == "Operation aborted"
+                        || text == "Aborted"
+                        || text == "aborted"
+            )
+        })
         .count();
-    assert_eq!(n, 1, "must not duplicate Aborted notes");
+    assert_eq!(n, 1, "must not duplicate abort notes");
     assert_eq!(model.phase, UiPhase::Idle);
+}
+
+#[test]
+fn note_user_abort_keeps_flushed_partial() {
+    let mut model = UiModel::new();
+    model.begin_run("hi");
+    apply_xy_event(&mut model, &XyEvent::TextDelta("hello partial".into()));
+    model.note_user_abort();
+    assert!(
+        model.entries.iter().any(|e| matches!(
+            e,
+            UiEntry::Assistant { text } if text.contains("hello partial")
+        )),
+        "abort must keep streamed assistant: {:?}",
+        model.entries
+    );
+    assert!(
+        model.entries.iter().any(|e| matches!(
+            e,
+            UiEntry::System { text } if text == "Operation aborted"
+        )),
+        "expected abort footer: {:?}",
+        model.entries
+    );
+    assert!(model.streaming_assistant.is_empty());
 }
 
 #[test]
