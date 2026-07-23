@@ -32,7 +32,7 @@ just open-design-playground
 xdg-open src/app/tui/design/playground/index.html
 ```
 
-深链示例：`?slot=models&mode=focus&scheme=light`
+深链示例：`?slot=models&mode=focus&scheme=light` · `?slot=session-resume`
 
 ## 改 DESIGN 后同步
 
