@@ -52,9 +52,15 @@ flowchart LR
    - `tasks.md`（理解实现范围）
    - change 内 `llmanspec/changes/<id>/specs/` 仅当残留文档存在时（优先读 live specs）
 
-5. 对比 artifacts 与代码：
-   - 标出不一致（缺失行为、错误行为、缺测试/文档）
-   - 给出最小修复建议或建议更新 artifacts
+5. **双轴审查（标准轴 + 合约轴分离，互不掩盖）**——对比 diff（`git diff <merge-base>...HEAD`，merge-base 取 attach 的 base_sha 或 `main`）分两轴：
+   - **合约轴（Spec）**：实现是否满足 `spec.toon` 的 MUST/SHALL 与 `*.feature` 的 GWT。
+     - 缺失/部分实现的行为、错误实现、以及 diff 中未被 spec 要求的超范围改动。
+     - 给出最小修复建议，或建议更新 artifacts。
+   - **标准轴（Standards）**：代码是否符合 `AGENTS.md` 的编码规范 + 常见代码坏味（code smell）清单。
+     - **权威优先级**：`AGENTS.md` 文档规范 > 坏味清单（文档说了算）；工具已强制的项跳过。
+     - 坏味标记为**判断性提示**（「可能是 Feature Envy」），不是硬性违规。
+     - 坏味清单（每项「是什么 → 怎么修」）：Mysterious Name（名不达意→重命名）/ Duplicated Code（重复逻辑→抽取共享）/ Feature Envy（方法更爱用别人的数据→移过去）/ Data Clumps（同组字段到处走→打包成类型）/ Primitive Obsession（原始类型充当领域概念→给专门类型）/ Repeated Switches（同类 switch 反复出现→多态或共享 map）/ Shotgun Surgery（一处改动散落多处→聚到一模块）/ Divergent Change（一文件因多无关原因被改→拆分）/ Speculative Generality（为未发生的需求加抽象→删除）/ Message Chains（长链 a.b().c()→隐藏于一方法）/ Middle Man（只转发→删掉直连）/ Refused Bequest（子类拒绝大部继承→改组合）。
+   - 两轴可并行（sub-agent）审查；报告 MUST 分离呈现，MUST NOT 合并或交叉重排（一轴通过不能掩盖另一轴失败）。
 6. **BDD-on 验证（Git-native Partitioned SSOT）**——仅当 `config.yaml` 含 `bdd:` 段时：
    - 确认 change 已 attach，且当前在对应 feature 分支上。
    - `llman sdd validate --specs`：Gherkin + `@req`/双写门禁；默认跑 `bdd.run_command`（可用 `--no-check` 跳过）。

@@ -45,11 +45,17 @@ flowchart LR
    - 阅读 context 的 `direct` 列出的 spec 全文（这些是必须理解的合约）。
    - 如果 context 不可用，运行 `llman sdd index rebuild`（默认 `pageindex`，无需模型）后重试。
 2. 澄清目标与约束（问 1–3 个问题）。
-3. 如果某个 change id 相关，阅读 `llmanspec/changes/<id>/` 下的 artifacts。
+3. **逐问深挖分支（可选，仅当用户显式触发时进入）**：触发词为「深挖」「grill」「逐个问」「彻底理清」。进入后一问一答走清决策：
+   - **一次只问一个问题**，并附你的推荐答案，等用户反馈后再继续下一个。
+   - **事实 vs 决策分离**：能通过读 `spec.toon`/代码/运行命令查证的事实，自行查证，**不问**用户；只有**决策**（取舍、偏好、范围边界）才交给用户。
+   - **术语校准（r107）**：遇到术语冲突或模糊词时立即指出（「你的 spec.toon 定义 'X' 为 A，但你刚说成 B——哪个对？」）；解决后更新对应 `spec.toon` 的 requirement statement（BDD-on 在 feature 分支编辑 live 文件），MUST NOT 另建 `CONTEXT.md` 词表作为第二权威。
+   - **决策回写**：已解决的决策回写到该 change 的 `proposal.md`「Open Questions」段（BDD-on 写 feature 分支）。
+   - **完成判据**：每个待定决策都已解决或被显式推迟。未触发时保持默认（问 1–3 个问题）行为不变。
+4. 如果某个 change id 相关，阅读 `llmanspec/changes/<id>/` 下的 artifacts。
    - 诊断校验错误时优先跑 `llman sdd validate <spec> --strict --no-check`（fast mode，跳过可能耗时的 `bdd.run_command`），先解决结构门禁（Gherkin / `@req` 链接 / 双写 / req_id 唯一性），再跑 full mode（`--check` 或 `cargo test --features bdd`）。错误输出中的 `FAIL <item_type>/<id>` 行会逐条指明失败项。
-4. 探索 2–3 个选项与权衡。
-5. 判断变更规模（triage），确定是否需要走完整 SDD 流程。
-6. 当结论逐渐清晰时，建议用户把它记录下来（不要自动写入）：
+5. 探索 2–3 个选项与权衡。
+6. 判断变更规模（triage），确定是否需要走完整 SDD 流程。
+7. 当结论逐渐清晰时，建议用户把它记录下来（不要自动写入）：
    - 范围变化 → `proposal.md`
    - BDD-off 约束/场景 → `llmanspec/changes/<id>/specs/<capability>/spec.toon`（TOON delta）
    - BDD-on 约束 → feature 分支上的 live `llmanspec/specs/<capability>/spec.toon`
