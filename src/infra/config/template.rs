@@ -136,8 +136,13 @@ mod tests {
 
     #[test]
     fn renders_inside_yaml_double_quotes() {
-        let _guard = ENV_LOCK.lock().unwrap();
+        let _guard = ENV_LOCK.lock().unwrap_or_else(|e| e.into_inner());
         let path = PathBuf::from("config.yaml");
+        // Process env wins over secret.env for the same key — isolate this test.
+        let prev = std::env::var("CONTEXT7_API_KEY").ok();
+        unsafe {
+            std::env::remove_var("CONTEXT7_API_KEY");
+        }
         let mut secrets = SecretMap::new();
         secrets.insert("CONTEXT7_API_KEY".into(), "sk-test".into());
         let out = render_config_template(
@@ -147,6 +152,12 @@ mod tests {
         )
         .unwrap();
         assert_eq!(out, "headers:\n  CONTEXT7_API_KEY: \"sk-test\"");
+        unsafe {
+            match prev {
+                Some(v) => std::env::set_var("CONTEXT7_API_KEY", v),
+                None => std::env::remove_var("CONTEXT7_API_KEY"),
+            }
+        }
     }
 
     #[test]
