@@ -77,9 +77,9 @@ components:
 | `!` / `!!` 前缀 | bash 边框 + idle Enter → `execute_bash`（**c492**） |
 | Ctrl+G | 外部编辑器（**c650**）：TTY + 已配置 `$VISUAL`/`$EDITOR` → 真编辑器；harness / 非 TTY → stub；未配置/失败 → `UiEntry::Error`（无静默默认编辑器） |
 
-## MUST — Resume 面板（`EditorSlot::SessionResume` · c1065）
+## MUST — Resume 面板（`EditorSlot::SessionResume` · c1065 / c1530）
 
-布局（预览封顶 · **完整 session id** · count/age）见 [`session-resume.md`](./session-resume.md)。
+布局（预览按终端比例软顶 · **默认隐藏** session id · `Ctrl+U` 展开完整 id）见 [`session-resume.md`](./session-resume.md)。
 
 | 键 | 行为 |
 |---|---|
@@ -87,6 +87,7 @@ components:
 | Ctrl+S | Sort 循环：Threaded → Recent → Fuzzy |
 | Ctrl+N | Name filter：**All** ↔ **Named** |
 | Ctrl+P | 切换行内 path/cwd 显示 |
+| Ctrl+U | 切换会话行 **完整 session id** 列显隐（默认隐藏；显示时不截断） |
 | Ctrl+R | 重命名选中项（Enter 确认；Esc 取消） |
 | Ctrl+D | 删除确认（Enter 确认；Esc 取消；**禁止**删当前活跃 session） |
 | Ctrl/Alt+←→ | Threaded 下折叠/展开父节点的子会话 |

@@ -156,6 +156,18 @@
     当 提交 /resume
     那么 显示 unknown command 类错误
 
+  @req:atm10
+  场景: resume-id-hidden-by-default
+    假如 产品 idle 且列表含带 uuid 的会话
+    当 提交 /session-resume 打开面板
+    那么 会话行可见预览与 meta 且默认不展示完整 session id
+
+  @req:atm10
+  场景: resume-ctrl-u-shows-full-id
+    假如 Resume 面板已开且 id 列隐藏
+    当 按 Ctrl+U
+    那么 会话行出现完整 session id 且未被截断
+
   @req:atm11
   场景: session-new-bare
     假如 产品 idle
