@@ -88,7 +88,8 @@ flowchart LR
 
    - 充实 `proposal.md`（Why / What Changes / Capabilities / Impact）
    - 仅在涉及权衡/迁移时创建 `design.md`
-   - `tasks.md`：按顺序拆分为可勾选清单（包含校验命令）
+   - **测试边界前置确认（在写 tasks.md 之前）**：列出将测试的边界（seam）并与用户确认。seam = `*.feature` 的 GWT 步骤所驱动的公共边界（CLI 子进程或 public interface）——MUST 复用已有 harness 的边界，MUST NOT 另行发明脱离 `.feature` 的边界。BDD-off 无 `.feature` 时，seam 取被测的 CLI 子命令或 public 函数边界。
+   - `tasks.md`：按**垂直切片**拆分（每个 task 一刀切穿 schema→API→UI→tests 的完整窄路径，且可独立验证），支持 `[blocked-by: <task-id>]` 依赖标记。**大范围机械重构例外**（一个机械改动横扫全库、单次编辑破坏大量调用点）：按「新旧并存再切换」顺序排列（先并存 → 分批迁移 → 删旧），不强行塞进垂直切片。
    - **BDD-off**：同时创建 `specs/<capability>/spec.toon` delta（独立 TOON，每文件一份）：
      - 建议优先通过 authoring helpers：`llman sdd change delta skeleton` / `add-req` / `add-scenario`
      - 至少包含一个 `add_requirement`/`modify_requirement` op（statement 必须含 MUST/SHALL），以及至少一行匹配的 op scenario
