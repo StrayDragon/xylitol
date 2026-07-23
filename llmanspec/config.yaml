@@ -1,10 +1,14 @@
 # yaml-language-server: $schema=https://raw.githubusercontent.com/StrayDragon/llman/main/artifacts/schema/configs/en/llmanspec-config.schema.json
 schema: spec-driven
 locale: zh-Hans
-
+extra_skills:
+- llman-sdd-ff
+- llman-sdd-arch-review
+- llman-sdd-wayfinder
+- llman-sdd-research
 bdd:
   framework: rstest-bdd
   feature_dir: tests/features
   default_language: zh-CN
-  run_command: "cargo test --test bdd -- --test-threads=1"
-  verify_prompt: "Each scenario in the feature file MUST be mapped to an implemented step definition. Run `cargo test --test bdd` to confirm all scenarios pass."
+  run_command: cargo test --test bdd -- --test-threads=1
+  verify_prompt: Each scenario in the feature file MUST be mapped to an implemented step definition. Run `cargo test --test bdd` to confirm all scenarios pass.
