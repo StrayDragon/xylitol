@@ -55,7 +55,7 @@ pub struct AppConfig {
 
 /// Remote OpenTelemetry export settings (`[otel]`). Orthogonal to local file
 /// provider-trace gates (`XYLITOL_PROVIDER_TRACE` / debug build).
-#[derive(Clone, Debug, Default, Serialize, Deserialize, JsonSchema, PartialEq, Eq)]
+#[derive(Clone, Debug, Serialize, Deserialize, JsonSchema, PartialEq, Eq)]
 #[serde(default)]
 pub struct OtelConfig {
     /// `none` (default) or `otlp-http`.
@@ -81,6 +81,30 @@ pub struct OtelConfig {
     /// Default `none` — metadata/usage only.
     #[serde(default)]
     pub observation_io: OtelObservationIo,
+    /// OTLP/HTTP client timeout seconds (default 60). Large batches over LAN
+    /// often exceed the previous hard-coded 10s and surface as generic
+    /// `network error` even when Langfuse itself is healthy.
+    #[serde(default = "default_otel_export_timeout_secs")]
+    pub export_timeout_secs: u64,
+}
+
+fn default_otel_export_timeout_secs() -> u64 {
+    60
+}
+
+impl Default for OtelConfig {
+    fn default() -> Self {
+        Self {
+            exporter: OtelExporterKind::default(),
+            endpoint: None,
+            protocol: OtelHttpProtocol::default(),
+            environment: None,
+            service_name: None,
+            headers: HashMap::new(),
+            observation_io: OtelObservationIo::default(),
+            export_timeout_secs: default_otel_export_timeout_secs(),
+        }
+    }
 }
 
 /// `[otel].observation_io` — generation I/O on Langfuse observations.
@@ -1288,6 +1312,21 @@ otel:
         );
         assert_eq!(cfg.otel.protocol, OtelHttpProtocol::HttpBinary);
         assert_eq!(cfg.otel.environment.as_deref(), Some("dev"));
+        assert_eq!(cfg.otel.export_timeout_secs, 60);
+    }
+
+    #[test]
+    fn otel_config_export_timeout_parses() {
+        let cfg: AppConfig = yaml_serde::from_str(
+            r#"
+models: {}
+otel:
+  exporter: otlp-http
+  export_timeout_secs: 90
+"#,
+        )
+        .expect("otel timeout");
+        assert_eq!(cfg.otel.export_timeout_secs, 90);
     }
 
     #[test]

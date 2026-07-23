@@ -3637,7 +3637,7 @@ mod slice_tests {
     }
 
     #[tokio::test]
-    async fn c1035_agent_end_requests_footer_refresh() {
+    async fn c1035_stream_closed_requests_footer_refresh() {
         use crate::protocol::types::{ContextTokenEstimate, TokenProvenance};
 
         let mut session = HostSession::new_product_ui_with_meta(
@@ -3654,6 +3654,7 @@ mod slice_tests {
             trailing_tokens: 7,
             last_usage_index: None,
         }));
+        // AgentEnd alone must not schedule estimate; stream close is the owner.
         session
             .step(HostEvent::Xy(Box::new(XyEvent::AgentEnd {
                 messages: Vec::new(),
@@ -3663,11 +3664,22 @@ mod slice_tests {
         pump_host_driver(&mut session, &mut driver, &mut stream)
             .await
             .unwrap();
+        let before = session.ui_root().expect("ui").borrow_mut().render(80);
+        let before_f = before.last().expect("footer").clone();
+        assert!(
+            !before_f.contains("used 7 tokens"),
+            "AgentEnd must not kick footer estimate alone: {before_f}"
+        );
+
+        session.on_run_stream_closed();
+        pump_host_driver(&mut session, &mut driver, &mut stream)
+            .await
+            .unwrap();
         let footer = session.ui_root().expect("ui").borrow_mut().render(80);
         let f = footer.last().expect("footer");
         assert!(
             f.contains("used 7 tokens"),
-            "AgentEnd + drain must refresh footer: {f}"
+            "stream closed + drain must refresh footer: {f}"
         );
     }
 
