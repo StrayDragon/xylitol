@@ -204,7 +204,9 @@ fn emit_token_estimate_obs(est: &ContextTokenEstimate, opts: &EstimateOpts) {
         ("model_id".into(), model),
     ];
     props.extend(xylitol_ai_bridge::provider::langfuse_session_properties());
-    let span = Span::root("token.estimate", SpanContext::random()).with_properties(|| props);
+    // Prefer active agent.turn parent; otherwise independent root (same session attrs).
+    let parent = xylitol_ai_bridge::provider::obs_turn_parent().unwrap_or_else(SpanContext::random);
+    let span = Span::root("token.estimate", parent).with_properties(|| props);
     span.add_event(Event::new("token.estimate").with_properties(|| {
         [
             ("kind", "token.estimate".to_string()),

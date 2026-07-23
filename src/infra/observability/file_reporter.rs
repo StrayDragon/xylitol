@@ -54,7 +54,7 @@ impl Reporter for FileTraceReporter {
             let trace_id = span.trace_id.to_string();
             let span_id = format!("{:016x}", span.span_id.0);
 
-            // Span-level correlation for lifecycle (react.turn / stream / tool.execute).
+            // Span-level correlation for lifecycle (agent.turn / iteration / tool.execute).
             let span_turn_id = prop(&span.properties, "turn_id");
             let span_tool_name = prop(&span.properties, "tool_name");
             let span_tool_id = prop(&span.properties, "tool_id");

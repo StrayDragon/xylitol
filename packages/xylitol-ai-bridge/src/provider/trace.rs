@@ -67,7 +67,7 @@ pub fn observation_io_tier() -> ObservationIoTier {
     ObservationIoTier::from_u8(OBSERVATION_IO_TIER.load(Ordering::Relaxed))
 }
 
-/// Root span for one provider HTTP stream; drop (end of stream) reports to FileReporter.
+/// Span for one provider HTTP stream (`llm.request`); drop reports to FileReporter.
 pub struct ProviderRequestTrace {
     root: Span,
     #[allow(dead_code)]
@@ -79,12 +79,18 @@ pub struct ProviderRequestTrace {
 }
 
 impl ProviderRequestTrace {
+    /// Start under the current obs parent (`agent.iteration` / `agent.turn`) when set.
     pub fn start(api: &str, model: &str) -> Option<Self> {
+        Self::start_with_parent(api, model, super::obs_llm_parent())
+    }
+
+    pub fn start_with_parent(api: &str, model: &str, parent: Option<SpanContext>) -> Option<Self> {
         if !provider_trace_active() {
             return None;
         }
         let request_id = uuid::Uuid::new_v4().to_string();
-        let root = Span::root("provider.request", SpanContext::random()).with_properties(|| {
+        let parent_ctx = parent.unwrap_or_else(SpanContext::random);
+        let root = Span::root("llm.request", parent_ctx).with_properties(|| {
             let mut props = vec![
                 ("request_id".to_string(), request_id.clone()),
                 ("api".to_string(), api.to_string()),
