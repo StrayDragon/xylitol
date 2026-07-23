@@ -24,6 +24,7 @@ use crate::infra::config::types::{OtelConfig, OtelObservationIo};
 use crate::infra::observability::{FanoutReporter, FileTraceReporter};
 use crate::infra::provider::trace::{
     ObservationIoTier, set_observation_io_tier, set_provider_trace_active,
+    set_tool_observation_io_tier,
 };
 
 const DEFAULT_FILTER: &str = "xylitol=debug,warn";
@@ -40,6 +41,7 @@ pub fn init_logging(agent_dir: &Path, otel: &OtelConfig) -> Option<()> {
     if !want_log && !want_provider && otel_reporter.is_none() {
         set_provider_trace_active(false);
         set_observation_io_tier(ObservationIoTier::None);
+        set_tool_observation_io_tier(ObservationIoTier::None);
         return None;
     }
 
@@ -123,6 +125,11 @@ pub fn init_logging(agent_dir: &Path, otel: &OtelConfig) -> Option<()> {
 
     set_provider_trace_active(emit_spans);
     set_observation_io_tier(match otel.observation_io {
+        OtelObservationIo::None => ObservationIoTier::None,
+        OtelObservationIo::Truncated => ObservationIoTier::Truncated,
+        OtelObservationIo::Full => ObservationIoTier::Full,
+    });
+    set_tool_observation_io_tier(match otel.tool_observation_io {
         OtelObservationIo::None => ObservationIoTier::None,
         OtelObservationIo::Truncated => ObservationIoTier::Truncated,
         OtelObservationIo::Full => ObservationIoTier::Full,
