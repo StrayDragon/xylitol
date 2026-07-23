@@ -286,9 +286,10 @@ fmt-check verbosity=verbosity_default:
 profile-build:
     python3 scripts/profile_tui_suite.py --build
 
-# Run Fake/tmux scenarios A–D (or subset). Writes target/profile/<run-id>/.
+# Run Fake/tmux scenarios A–E (or subset). Writes target/profile/<run-id>/.
 #   just profile-suite
 #   just profile-suite "A,D" 15
+# c1505 T0d (long history + stream): python3 scripts/profile_tui_suite.py --scenarios E --b-pairs 400 --duration 20 --run-id e-hist-400
 profile-suite scenarios="A,B,C,D" duration="20":
     python3 scripts/profile_tui_suite.py --build --scenarios {{scenarios}} --duration {{duration}}
 
