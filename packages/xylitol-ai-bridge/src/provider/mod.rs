@@ -11,6 +11,7 @@ use crate::thinking::AiBridgeGenerateOptions;
 pub mod anthropic_messages;
 pub mod factory;
 pub mod obs_session;
+pub mod obs_span_parent;
 pub mod openai;
 pub mod openai_client;
 pub mod openai_completions;
@@ -25,6 +26,10 @@ pub use obs_session::{
     ObsSessionContext, clear_obs_session, langfuse_generation_properties,
     langfuse_observation_properties, langfuse_session_properties, obs_session_context,
     set_obs_session, set_obs_session_name,
+};
+pub use obs_span_parent::{
+    clear_obs_span_parents, obs_llm_parent, obs_turn_parent, set_obs_iteration_parent,
+    set_obs_turn_parent,
 };
 pub use openai_completions::OpenAiCompletionsAdapter;
 pub use openai_responses::{

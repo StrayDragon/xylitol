@@ -567,6 +567,8 @@ fn run_react_loop(cfg: ReActConfig) -> impl Stream<Item = XyEvent> + Send {
         let mut turn: usize = 0;
         // Per-run model instance: reuse while selected id is unchanged (NextTurn).
         let mut run_model: Option<(String, Arc<dyn XyModel>)> = None;
+        // One OTEL/fastrace tree per user-triggered run (c1495).
+        let agent_turn_span = super::obs::AgentTurnSpan::start();
 
         // Outer loop: continues when follow-up messages arrive after the agent
         // would otherwise stop (pi runLoop semantics).
@@ -585,8 +587,12 @@ fn run_react_loop(cfg: ReActConfig) -> impl Stream<Item = XyEvent> + Send {
                     let (ty, phase, ctx) = super::script_hook_ctx::turn_start(turn as u32);
                     observe_script_hook(bus, ty, phase, ctx).await;
                 }
-                let turn_span = super::obs::ReactTurnSpan::start(turn);
-                let turn_id = turn_span.as_ref().map(|t| t.turn_id().to_string());
+                let iteration_span =
+                    super::obs::AgentIterationSpan::start(agent_turn_span.as_ref(), turn);
+                let turn_id = iteration_span
+                    .as_ref()
+                    .map(|t| t.turn_id().to_string())
+                    .or_else(|| agent_turn_span.as_ref().map(|t| t.turn_id().to_string()));
 
                 // Inject pending messages (steering / follow-up) before the model call.
                 // Emit user MessageStart/End so surfaces can 上行 scrollback (pi chat).
@@ -669,7 +675,7 @@ fn run_react_loop(cfg: ReActConfig) -> impl Stream<Item = XyEvent> + Send {
                         break 'outer;
                     }
                     Some(Ok(s)) => {
-                        chunk_stream = super::obs::wrap_chunk_stream(s, turn_id.as_deref());
+                        chunk_stream = s;
                     }
                     Some(Err(e)) => {
                         yield XyEvent::Error(e);
@@ -947,7 +953,11 @@ fn run_react_loop(cfg: ReActConfig) -> impl Stream<Item = XyEvent> + Send {
                 let turn_assistant = history.last().cloned();
 
                 for (id, name, args) in &tool_calls {
-                    let _tool_span = super::obs::ToolExecuteSpan::start(name, id);
+                    let _tool_span = super::obs::ToolExecuteSpan::start(
+                        name,
+                        id,
+                        iteration_span.as_ref().map(|s| s.span()),
+                    );
                     yield XyEvent::ToolExecutionStart {
                         id: id.clone(),
                         name: name.clone(),
@@ -1224,6 +1234,8 @@ fn run_react_loop(cfg: ReActConfig) -> impl Stream<Item = XyEvent> + Send {
             let (ty, phase, ctx) = super::script_hook_ctx::agent_end();
             observe_script_hook(bus, ty, phase, ctx).await;
         }
+        // Keep `agent.turn` open for the whole run (NLL would otherwise drop early).
+        drop(agent_turn_span);
         yield XyEvent::AgentEnd { messages: history };
     }
 }
