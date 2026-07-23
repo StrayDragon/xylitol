@@ -30,7 +30,7 @@ TUI 长会话性能优化（c1500 / c1510 / 后续 c1505）目前仍大量依赖
 
 脚本：
 
-- `scripts/profile_tui_suite.py` — 编排（沙箱 HOME/config、种子 jsonl、samply `-p`）
+- `scripts/profile_tui_suite.py` — 编排（沙箱 HOME/config、种子 jsonl、samply `-p`、录完 SIGINT）
 - `scripts/summarize_samply_profile.py` — 过滤 agent 拉起的 rustc/cargo/lspz
 
 Fake 环境变量（进程启动前）：
@@ -49,10 +49,49 @@ Fake 环境变量（进程启动前）：
 
 **不进 `just qa`**。
 
+## 基线跑次 `suite-20260723-122217`（15s × A–D）
+
+产物：`target/profile/suite-20260723-122217/{A,B,C,D}.{json.gz,summary.txt}`
+（commit 后本地目录；不入库。）
+
+### Leaf / bucket（主线程，addr2line）
+
+| 场景 | 主线程 samples | 要点 |
+|---|---|---|
+| A-idle | 43 | 安静；偶发 `utils` |
+| B-scroll | 59 | grapheme ~8%；`strip_ansi` / `grapheme_width` |
+| C-stream | 133 | grapheme ~13%；最清晰 |
+| D-resume | 379 | 最忙；`utils.rs` 仍在 `$XY` top |
+
+### 调用栈归因（batch addr2line，主线程）
+
+| 场景 | width 相关栈 | scrollback 相关栈 |
+|---|---|---|
+| C-stream | **~59%** | **~32%**（`scrollback::{fit,markdown}` / wrap） |
+| D-resume | **~33%** | ~0%（resume 面板，非 scrollback） |
+| B-scroll | ~30% | ~0%（本窗短采样；paint cache 可能已挡重 paint） |
+| A-idle | ~26% | ~0%（绝对量低） |
+
+典型链：
+
+- `strip_ansi_codes` / `visible_width` ← **`TUI::do_render`**（硬宽度不变量扫每一行）
+- C：另经 `scrollback::fit` / `markdown` / `wrap_text_with_ansi`
+- D：另经 `format_session_row_body` / `truncate_to_width`
+
+### 结论（驱动下游 draft）
+
+1. **下一步优先 [c1508](../c1508-optimize-package-tui-visible-width-ansi/proposal.md)**：ANSI 行免整串 strip 分配 / ASCII+ANSI 快路径。
+2. **[c1505](../c1505-add-tui-scrollback-viewport-slice/proposal.md)**：C 上仍有 ~32% scrollback 栈，长历史仍可能值得；建议在 c1508 复测后再 promote。
+3. Idle 无空转危机；`??` 仍多 → 深挖可开 samply UI 或加 debuginfo。
+
+### Suite 副作用发现
+
+- Resume 帮助行未截断 → 宽度不变量失败 → 卡在 `Loading N/N`（已修，见 `fix(tui): truncate resume help…`）。
+
 ## Out of scope
 
 - 改生产默认二进制；CI 硬闸 OS CPU%
-- 实现 c1505（需独立证据）
+- 实现 c1505 / c1508（独立 change）
 - 真模型 / MCP 工具链进默认 suite
 
 ## 环境前置
@@ -60,18 +99,20 @@ Fake 环境变量（进程启动前）：
 ```bash
 echo 1 | sudo tee /proc/sys/kernel/perf_event_paranoid
 # samply + tmux on PATH
-just profile-suite
+just profile-suite A,B,C,D 15
+# or: python3 scripts/profile_tui_suite.py --build --scenarios A,B,C,D --duration 15
 ```
 
 ## 调研备忘
 
 - framehop `two modules at the same start address` = samply stderr，不是产品 bug
 - 过滤前 rustc 可占 >90%（agent 工具）；suite 用 Fake 从源头避免
-- 热路径线索：`visible_width` → ANSI 行无 ASCII 快路径 → `strip_ansi` + grapheme
+- 热路径：`visible_width` → ANSI 行无 ASCII 快路径 → `strip_ansi` 分配 + grapheme
+- profile JSON 内多为 `0x…` 地址；归因需 `addr2line -e target/release/xylitol`
 
 ## Status
 
-**purpose-draft** — suite MVP 可用；正式 propose 再收 `profile.profiling` / pprof / criterion。
+**purpose-draft** — suite MVP + 首轮基线已记；正式 propose 再收 `profile.profiling` / pprof / criterion。
 
 ## Ethics
 
