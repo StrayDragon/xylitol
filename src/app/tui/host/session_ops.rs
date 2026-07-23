@@ -318,6 +318,17 @@ impl<T: Terminal> HostSession<T> {
         );
     }
 
+    /// After CLI `--session` restore: rebuild transcript like `/session-resume` (c1560 gap).
+    pub fn apply_cli_restored_session(&mut self, session_id: &str, entries: Vec<SessionEntry>) {
+        self.apply_switched_session(
+            session_id,
+            entries,
+            format!("restored → session {session_id}"),
+            |_root| {},
+            false,
+        );
+    }
+
     /// After `/session-resume` switch: rebuild transcript and clear overlays (c1015).
     pub fn apply_resume_session(&mut self, session_id: &str, entries: Vec<SessionEntry>) {
         self.apply_switched_session(

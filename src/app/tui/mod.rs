@@ -178,9 +178,15 @@ async fn run_host_loop(
     session.refresh_loaded_resources(driver).await;
     if options.restored_session {
         match driver.get_messages().await {
-            Ok(entries) => session.seed_editor_history_from_entries(&entries),
+            Ok(entries) => {
+                if let Some(sid) = driver.session_id() {
+                    session.apply_cli_restored_session(&sid, entries);
+                } else {
+                    session.seed_editor_history_from_entries(&entries);
+                }
+            }
             Err(e) => {
-                log::debug!(target: "xylitol::tui", "editor history seed on restore failed: {e}");
+                log::debug!(target: "xylitol::tui", "CLI session restore UI failed: {e}");
             }
         }
     } else {
