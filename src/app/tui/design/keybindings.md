@@ -79,6 +79,8 @@ components:
 
 ## MUST — Resume 面板（`EditorSlot::SessionResume` · c1065）
 
+布局（预览封顶 · **完整 session id** · count/age）见 [`session-resume.md`](./session-resume.md)。
+
 | 键 | 行为 |
 |---|---|
 | Tab | scope **Current** ↔ **All** |
