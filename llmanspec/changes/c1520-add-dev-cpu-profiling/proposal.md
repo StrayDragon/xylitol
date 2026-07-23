@@ -81,8 +81,10 @@ Fake 环境变量（进程启动前）：
 ### 结论（驱动下游 draft）
 
 1. **[c1508](../archive/2026-07-23-c1508-optimize-package-tui-visible-width-ansi/proposal.md)** / **[c1509](../archive/2026-07-23-c1509-optimize-package-tui-wrap-text-ansi/proposal.md)**：已落地并归档。
-2. **[c1505](../../do-not-read-me/c1505-add-tui-scrollback-viewport-slice/proposal.md)**（**P9-deferred**）：T0d `E-hist-stream` 复现后，历史放大未抬升 `scroll_render` → 非当前瓶颈，已移出 active changes。
-3. Idle 无空转危机；`??` 仍多 → 深挖可开 samply UI 或加 debuginfo。
+2. **[c1505](../../do-not-read-me/c1505-add-tui-scrollback-viewport-slice/proposal.md)**（**P9-deferred**）：T0d 后非瓶颈。
+3. **A+B finalize 行复用**（`e2da4022`）：`post-ab-e{80,800}` — width ~64%→~37%，主线程样本约减半；体感已可。
+4. **[c1535](../../do-not-read-me/c1535-optimize-tui-stream-wrap-tail/proposal.md)**（**P9-deferred**）：下一份额为 wrap/流式尾，ROI 暂低；主线改投 c1495 OTEL/Langfuse 树。
+5. Idle 无空转危机；`??` 仍多 → 深挖可开 samply UI 或加 debuginfo。
 
 ### 复测 `post-c1508` / `post-c1509`
 
