@@ -50,12 +50,13 @@ impl<T: Terminal> HostSession<T> {
             return false;
         }
 
-        if matches_binding(key, "app.interrupt") {
+        if matches_binding(key, "app.interrupt") || matches_binding(key, "app.clear") {
             self.pending.abort = true;
             // Drop untaken local steer so loop does not re-enqueue after abort.
             self.pending.steer = None;
             // c720 / 1A: arm suppress immediately so late Xy cannot revive UI before
             // drain_pending calls XyDriver::abort (token waste / fake busy).
+            // c1570: Ctrl+C (app.clear) shares this latch while busy — MUST NOT quit.
             self.suppress_xy_until_stream_end = true;
             self.ui_model.clear_streaming_buffers();
             return true;

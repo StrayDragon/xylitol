@@ -12,6 +12,18 @@
     当 流式中按 Esc
     那么 Driver::abort 被调用
 
+  @req:ati2
+  场景: busy-ctrl-c-aborts
+    假如 agent 忙碌且无 overlay
+    当 按 Ctrl+C
+    那么 abort 被请求且不退出 TUI
+
+  @req:ati2
+  场景: idle-ctrl-c-clear-then-quit
+    假如 idle 且编辑器非空
+    当 按 Ctrl+C 再对空编辑器按 Ctrl+C
+    那么 先清空后退出
+
   @req:ati3
   场景: alt-enter-followup
     当 忙碌时 Alt+Enter 提交文本
