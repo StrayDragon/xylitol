@@ -15,6 +15,9 @@ use crate::protocol::ports::format_session_age;
 
 use super::search::{NameFilter, SessionScope, SortMode, filter_and_sort};
 
+/// Visible session rows in the resume list viewport (pi SessionList.maxVisible = 10).
+const MAX_VISIBLE_SESSIONS: usize = 10;
+
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub enum SessionResumeAction {
     Switch(String),
@@ -250,7 +253,15 @@ impl SessionResumePanel {
             .map(|d| d.as_secs())
             .unwrap_or(0);
 
-        for (i, entry) in rows.iter().enumerate() {
+        let total = rows.len();
+        let max_vis = MAX_VISIBLE_SESSIONS.min(total);
+        let start = self
+            .selected
+            .saturating_sub(max_vis / 2)
+            .min(total.saturating_sub(max_vis));
+        let end = (start + max_vis).min(total);
+
+        for (i, entry) in rows.iter().enumerate().take(end).skip(start) {
             let primary = entry
                 .name
                 .as_deref()
@@ -269,29 +280,54 @@ impl SessionResumePanel {
             }
             let age = format_session_age(entry.modified_unix, now);
             let right = format!("{}  {age}", entry.message_count);
+            let is_selected = i == self.selected;
+            let (prefix_plain, prefix_w) = if is_selected {
+                ("› ", 2usize)
+            } else {
+                ("  ", 2usize)
+            };
             let right_w = visible_width(&right);
-            let left_w = w.saturating_sub(right_w + 1);
-            let mut line = truncate_to_width(&label, left_w.max(1), "…", true);
-            let pad = w.saturating_sub(visible_width(&line) + right_w);
-            line.push_str(&" ".repeat(pad));
-            line.push_str(&right);
-            if i == self.selected {
-                line = format!("\x1b[7m{line}\x1b[27m");
-            }
+            let left_w = w.saturating_sub(prefix_w + right_w + 1);
+            let mut body = truncate_to_width(&label, left_w.max(1), "…", true);
+            let pad = w.saturating_sub(prefix_w + visible_width(&body) + right_w);
+            body.push_str(&" ".repeat(pad));
+            body.push_str(&right);
+
+            let line = if is_selected {
+                let marked = format!("{}{body}", self.theme.paint_tool_name(prefix_plain));
+                self.theme.paint_selected_row(&marked, w)
+            } else {
+                format!("{prefix_plain}{body}")
+            };
             lines.push(line);
+
             if self.show_path {
                 let path = entry
                     .path
                     .as_deref()
                     .or(entry.cwd.as_deref())
                     .unwrap_or("—");
-                lines.push(self.theme.paint_muted(&truncate_to_width(
-                    &format!("   {path}"),
-                    w,
-                    "…",
-                    true,
-                )));
+                let path_line = format!(
+                    "{}{}",
+                    " ".repeat(prefix_w),
+                    truncate_to_width(&format!("  {path}"), w.saturating_sub(prefix_w), "…", true)
+                );
+                if is_selected {
+                    lines.push(
+                        self.theme
+                            .paint_selected_row(&self.theme.paint_muted(&path_line), w),
+                    );
+                } else {
+                    lines.push(self.theme.paint_muted(&path_line));
+                }
             }
+        }
+
+        if total > max_vis {
+            lines.push(
+                self.theme
+                    .paint_muted(&format!(" ({}/{})", self.selected + 1, total)),
+            );
         }
         lines
     }
@@ -420,6 +456,17 @@ impl SessionResumePanel {
             }
             return SessionResumeAction::None;
         }
+        if matches_binding(key, "tui.select.pageUp") {
+            self.selected = self.selected.saturating_sub(MAX_VISIBLE_SESSIONS);
+            return SessionResumeAction::None;
+        }
+        if matches_binding(key, "tui.select.pageDown") {
+            let n = self.visible_rows().len();
+            if n > 0 {
+                self.selected = (self.selected + MAX_VISIBLE_SESSIONS).min(n - 1);
+            }
+            return SessionResumeAction::None;
+        }
 
         if matches_key_event(key, "backspace") {
             let mut v = self.filter.value().to_string();
@@ -461,4 +508,97 @@ fn matches_tree_fold_up(key: &KeyEvent) -> bool {
 
 fn matches_tree_unfold_down(key: &KeyEvent) -> bool {
     with_keybindings(|kb| kb.matches_event(key, "tui.tree.unfoldOrDown"))
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    fn strip_ansi(s: &str) -> String {
+        let mut out = String::new();
+        let mut chars = s.chars().peekable();
+        while let Some(c) = chars.next() {
+            if c == '\u{1b}' {
+                if chars.peek() == Some(&'[') {
+                    chars.next();
+                    for ch in chars.by_ref() {
+                        if ch.is_ascii_alphabetic() {
+                            break;
+                        }
+                    }
+                }
+                continue;
+            }
+            out.push(c);
+        }
+        out
+    }
+
+    fn entry(id: &str, n: usize) -> SessionListEntry {
+        SessionListEntry {
+            id: id.into(),
+            name: Some(format!("session-{id}")),
+            first_message: None,
+            message_count: n,
+            modified_unix: Some(1_700_000_000 + n as u64),
+            parent_session_id: None,
+            tree_prefix: String::new(),
+            cwd: Some(".".into()),
+            path: None,
+        }
+    }
+
+    #[test]
+    fn resume_panel_viewport_caps_rows_and_shows_scroll_info() {
+        let mut panel = SessionResumePanel::new(LayoutTheme::product_dark());
+        panel.set_current_cwd(".");
+        let entries: Vec<_> = (0..30).map(|i| entry(&format!("s{i}"), i)).collect();
+        panel.load_entries(entries, None);
+        panel.scope = SessionScope::All;
+
+        let text = panel.render(80).join("\n");
+        let plain = strip_ansi(&text);
+        let body_hits = (0..30)
+            .filter(|i| plain.contains(&format!("session-s{i}")))
+            .count();
+        assert!(
+            body_hits <= MAX_VISIBLE_SESSIONS,
+            "viewport must cap visible sessions; got {body_hits}:\n{plain}"
+        );
+        assert!(
+            plain.contains("(1/30)") || plain.contains("/30)"),
+            "expected scroll indicator: {plain}"
+        );
+        assert!(
+            plain.contains('›') || text.contains('›'),
+            "selected row should show › cursor"
+        );
+        assert!(
+            !text.contains("\x1b[7m"),
+            "selection must not use reverse video"
+        );
+    }
+
+    #[test]
+    fn resume_panel_selection_moves_viewport_window() {
+        let mut panel = SessionResumePanel::new(LayoutTheme::product_dark());
+        panel.set_current_cwd(".");
+        let entries: Vec<_> = (0..25).map(|i| entry(&format!("s{i}"), i)).collect();
+        panel.load_entries(entries, None);
+        panel.scope = SessionScope::All;
+        panel.selected = 20;
+        let plain = strip_ansi(&panel.render(80).join("\n"));
+        assert!(
+            plain.contains("session-s20"),
+            "selected entry must stay in viewport: {plain}"
+        );
+        assert!(
+            plain.contains("(21/25)"),
+            "scroll info follows selection: {plain}"
+        );
+        assert!(
+            !plain.contains("session-s0"),
+            "early rows should scroll off: {plain}"
+        );
+    }
 }
