@@ -118,3 +118,15 @@
     假如 run 中途切换 selected 后 abort
     当 run 结束后查询 active 与 selected
     那么 active 与 selected 收敛为同一 model 与 thinking
+
+  @req:ar26
+  场景: abort-persists-partial
+    假如 模型流已输出部分正文后用户 abort
+    当 检查 session history
+    那么 存在 stop_reason=aborted 的 assistant 且含 partial 正文
+
+  @req:ar26
+  场景: abort-skipped-in-llm-project
+    假如 history 含 stop_reason=aborted 的 assistant
+    当 project_for_llm
+    那么 投影结果不含该 assistant 行
