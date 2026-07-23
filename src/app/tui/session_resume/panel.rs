@@ -215,9 +215,15 @@ impl SessionResumePanel {
                 .paint_muted(&truncate_to_width(&header, w, "…", true)),
         );
 
-        lines.push(self.theme.paint_muted(
-            "tab scope · re:<pattern> · \"phrase\" exact · ctrl+s sort · ctrl+n named · ctrl+d delete · ctrl+p path · ctrl+u id · ctrl+r rename",
-        ));
+        // MUST truncate: help is wider than many slots and trips xylitol-tui's
+        // hard width invariant (render_now Err → last good frame stuck on Loading).
+        // Put high-signal bindings (incl. ctrl+u id) early so they survive truncation.
+        lines.push(self.theme.paint_muted(&truncate_to_width(
+            "tab scope · ctrl+u id · ctrl+s sort · ctrl+n named · ctrl+d delete · ctrl+p path · ctrl+r rename · re:<pattern> · \"phrase\"",
+            w,
+            "…",
+            true,
+        )));
         lines.push(self.theme.paint_muted(&truncate_to_width(
             "> filter… (type to search; re: / \"phrase\" supported)",
             w,
@@ -233,23 +239,32 @@ impl SessionResumePanel {
         lines.push(truncate_to_width(&filter_line, w, "…", true));
 
         if let Some((id, input)) = &self.rename {
-            lines.push(
-                self.theme
-                    .paint_muted(&format!("Rename {id}: (Enter save, Esc cancel)")),
-            );
-            lines.push(format!("> {}", input.value()));
+            lines.push(self.theme.paint_muted(&truncate_to_width(
+                &format!("Rename {id}: (Enter save, Esc cancel)"),
+                w,
+                "…",
+                true,
+            )));
+            lines.push(truncate_to_width(
+                &format!("> {}", input.value()),
+                w,
+                "…",
+                true,
+            ));
             return lines;
         }
 
         if let Some(id) = &self.confirming_delete {
-            lines.push(
-                self.theme
-                    .paint_muted(&format!("Delete session {id}? Enter confirm · Esc cancel")),
-            );
+            lines.push(self.theme.paint_muted(&truncate_to_width(
+                &format!("Delete session {id}? Enter confirm · Esc cancel"),
+                w,
+                "…",
+                true,
+            )));
         }
 
         if let Some(s) = &self.status_line {
-            lines.push(self.theme.paint_status(s));
+            lines.push(self.theme.paint_status(&truncate_to_width(s, w, "…", true)));
         }
 
         let rows = self.visible_rows();
@@ -614,6 +629,22 @@ mod tests {
             tree_prefix: String::new(),
             cwd: Some(".".into()),
             path: None,
+        }
+    }
+
+    #[test]
+    fn resume_panel_lines_fit_narrow_and_wide_widths() {
+        let mut panel = SessionResumePanel::new(LayoutTheme::product_dark());
+        panel.set_current_cwd(".");
+        let entries: Vec<_> = (0..12).map(|i| entry(&format!("s{i}"), i)).collect();
+        panel.load_entries(entries, Some("s0".into()));
+        panel.scope = SessionScope::All;
+        panel.show_id = true;
+        for w in [40usize, 80, 120] {
+            for line in panel.render(w) {
+                let vis = visible_width(&line);
+                assert!(vis <= w, "overflow at width {w}: vis={vis} line={line:?}");
+            }
         }
     }
 
