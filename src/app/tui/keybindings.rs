@@ -106,6 +106,11 @@ static APP_KEYBINDINGS: &[(&str, &[&str], Option<&str>)] = &[
         &["ctrl+p"],
         Some("Resume: toggle path"),
     ),
+    (
+        "app.session.toggleId",
+        &["ctrl+u"],
+        Some("Resume: toggle session id"),
+    ),
     ("app.session.rename", &["ctrl+r"], Some("Resume: rename")),
     ("app.session.delete", &["ctrl+d"], Some("Resume: delete")),
     (

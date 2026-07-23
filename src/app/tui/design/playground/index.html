@@ -753,6 +753,30 @@
         </div>
       </section>
 
+      <!-- session-resume -->
+      <section class="panel" id="panel-session-resume" data-id="session-resume">
+        <h2>Resume · /session-resume</h2>
+        <p class="spec">
+          <a href="../session-resume.md">session-resume.md</a> ·
+          <a href="../keybindings.md">keybindings.md</a> ·
+          预览按终端比例软顶 · <strong>默认隐藏</strong> session id · <code>ctrl+u</code> 展开完整 id · 选中 wash
+        </p>
+        <div class="ctl">
+          <button type="button" class="chip-btn" data-resume="default" aria-pressed="true">默认 · id 隐藏</button>
+          <button type="button" class="chip-btn" data-resume="idOn" aria-pressed="false">id-on</button>
+          <span class="hint">显示态 id MUST 不截断</span>
+        </div>
+        <div class="term term-slot" id="resume-term" data-design-fixture="session-resume.default">
+          <div class="term-content">
+            <div class="row"><span class="fg-user">❯</span> /session-resume</div>
+            <div class="row fg-assistant">打开 Resume 面板…</div>
+          </div>
+          <div class="term-editor" id="resume-editor"></div>
+          <div class="term-footer">~/xylitol · ornith · high</div>
+        </div>
+        <span hidden data-design-fixture="session-resume.id-on"></span>
+      </section>
+
 
       <!-- 8 widgets: Select / Settings / Input / Loader narrow+empty -->
       <section class="panel" id="panel-widgets" data-id="widgets">
@@ -891,6 +915,7 @@
       { id: "models", label: "Models /model", key: "m" },
       { id: "pending", label: "Pending / NextTurn", key: "n" },
       { id: "tree-power", label: "Tree power", key: "p" },
+      { id: "session-resume", label: "Resume /session-resume", key: "r" },
       { id: "layout", label: "Layout", key: "1" },
       { id: "tool", label: "Tool / Expandable", key: "2" },
       { id: "diff", label: "Diff", key: "3" },
@@ -929,6 +954,7 @@
       models: "wide",
       pending: "nextTurn",
       treep: "filter",
+      resume: "default",
       layoutShell: "ok",
       widget: "empty",
       atom: "trunc",
@@ -1604,6 +1630,39 @@
       });
     });
 
+    /* Resume panel: preview soft-cap · default hide id · ctrl+u shows full uuid · selectedBg wash */
+    const RESUME = {
+      default: `<div class="row fg-muted">Resume Session (Current Folder)  ◉ Current | ○ All  Name: All  Sort: Threaded</div>
+<div class="row fg-muted">tab scope · ctrl+s sort · ctrl+n named · ctrl+d delete · ctrl+p path · ctrl+u id · ctrl+r rename</div>
+<div class="row fg-muted">&gt; filter…</div>
+<div class="row">&gt; </div>
+<div class="row">  hi                                                                   2  6m</div>
+<div class="row bg-user">› 请给我一个表格markdown的示例…                                    79  22m</div>
+<div class="row">  请帮我在 @.tmp/tuitest/ 进行一个你所有…                           52  13h</div>
+<div class="row fg-muted"> (3/66)</div>`,
+      idOn: `<div class="row fg-muted">Resume Session (Current Folder)  ◉ Current | ○ All  Name: All  Sort: Threaded</div>
+<div class="row fg-muted">tab scope · ctrl+s sort · ctrl+n named · ctrl+d delete · ctrl+p path · ctrl+u id · ctrl+r rename</div>
+<div class="row fg-muted">&gt; filter…</div>
+<div class="row">&gt; </div>
+<div class="row">  hi                    ad43e96a-2e87-4767-ae1c-870854346b23  2  6m</div>
+<div class="row bg-user">› 请给我一个表格markdown…  ad43e96a-2e87-4767-ae1c-870854346b99  79  22m</div>
+<div class="row">  请帮我在 @.tmp/tuitest/…  bb43e96a-2e87-4767-ae1c-870854346b00  52  13h</div>
+<div class="row fg-muted"> (3/66)</div>`,
+    };
+    function renderResume() {
+      document.getElementById("resume-editor").innerHTML =
+        RESUME[state.resume] || RESUME.default;
+      document.querySelectorAll("[data-resume]").forEach((b) => {
+        b.setAttribute("aria-pressed", String(b.dataset.resume === state.resume));
+      });
+    }
+    document.querySelectorAll("[data-resume]").forEach((b) => {
+      b.addEventListener("click", () => {
+        state.resume = b.dataset.resume;
+        renderResume();
+      });
+    });
+
 
     function renderWidgets() {
       const empty = document.getElementById("widgets-empty");
@@ -1726,6 +1785,7 @@
     renderModels();
     renderPending();
     renderTreep();
+    renderResume();
     renderWidgets();
     renderAtoms();
     renderAsk();

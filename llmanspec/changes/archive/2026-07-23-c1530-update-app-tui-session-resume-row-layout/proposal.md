@@ -7,7 +7,8 @@ depends_on: []
 author: agent
 branch: c1530-update-app-tui-session-resume-row-layout
 base_sha: 62f3ec3222a03dc9e17f9b39b481522ff607439e
-checkpointed: false
+checkpointed: true
+checkpoint_sha: 62f3ec3222a03dc9e17f9b39b481522ff607439e
 ---
 
 # c1530-update-app-tui-session-resume-row-layout

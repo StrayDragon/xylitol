@@ -18,9 +18,9 @@ use super::search::{NameFilter, SessionScope, SortMode, filter_and_sort};
 /// Visible session rows in the resume list viewport (pi SessionList.maxVisible = 10).
 const MAX_VISIBLE_SESSIONS: usize = 10;
 
-/// Max display columns for the preview (name / first_message) column.
-/// Remaining horizontal space pads before the full session id column.
-const MAX_PREVIEW_COLS: usize = 40;
+/// Soft cap for the preview column as a fraction of terminal width (≈60%).
+const PREVIEW_SOFT_CAP_NUM: usize = 60;
+const PREVIEW_SOFT_CAP_DEN: usize = 100;
 
 /// Gap between preview | id | meta columns.
 const COL_GAP: usize = 2;
@@ -39,6 +39,8 @@ pub struct SessionResumePanel {
     sort: SortMode,
     name_filter: NameFilter,
     show_path: bool,
+    /// When true, render a full (never truncated) session id column.
+    show_id: bool,
     selected: usize,
     folded_parents: HashSet<String>,
     rename: Option<(String, Input)>,
@@ -59,6 +61,7 @@ impl SessionResumePanel {
             sort: SortMode::Threaded,
             name_filter: NameFilter::All,
             show_path: false,
+            show_id: false,
             selected: 0,
             folded_parents: HashSet::new(),
             rename: None,
@@ -213,7 +216,7 @@ impl SessionResumePanel {
         );
 
         lines.push(self.theme.paint_muted(
-            "tab scope · re:<pattern> · \"phrase\" exact · ctrl+s sort · ctrl+n named · ctrl+d delete · ctrl+p path · ctrl+r rename",
+            "tab scope · re:<pattern> · \"phrase\" exact · ctrl+s sort · ctrl+n named · ctrl+d delete · ctrl+p path · ctrl+u id · ctrl+r rename",
         ));
         lines.push(self.theme.paint_muted(&truncate_to_width(
             "> filter… (type to search; re: / \"phrase\" supported)",
@@ -268,15 +271,19 @@ impl SessionResumePanel {
             .min(total.saturating_sub(max_vis));
         let end = (start + max_vis).min(total);
 
-        let id_col_w = rows[start..end]
-            .iter()
-            .map(|e| visible_width(e.id.as_str()))
-            .max()
-            .unwrap_or(0);
+        let id_col_w = if self.show_id {
+            rows[start..end]
+                .iter()
+                .map(|e| visible_width(e.id.as_str()))
+                .max()
+                .unwrap_or(0)
+        } else {
+            0
+        };
 
         for (i, entry) in rows.iter().enumerate().take(end).skip(start) {
-            // Preview is name / first_message only — id lives in its own column (never
-            // duplicate the id as the preview fallback).
+            // Preview is name / first_message only — id lives in its own column when
+            // show_id (never duplicate the id as the preview fallback).
             let primary = entry
                 .name
                 .as_deref()
@@ -296,7 +303,12 @@ impl SessionResumePanel {
             let age = format_session_age(entry.modified_unix, now);
             let right = format!("{}  {age}", entry.message_count);
             let is_selected = i == self.selected;
-            let body = format_session_row_body(&label, entry.id.as_str(), &right, w, id_col_w);
+            let id_for_row = if self.show_id {
+                Some(entry.id.as_str())
+            } else {
+                None
+            };
+            let body = format_session_row_body(&label, id_for_row, &right, w, id_col_w);
 
             let line = if is_selected {
                 let marked = format!("{}{body}", self.theme.paint_tool_name("› "));
@@ -402,6 +414,10 @@ impl SessionResumePanel {
             self.show_path = !self.show_path;
             return SessionResumeAction::None;
         }
+        if matches_binding(key, "app.session.toggleId") {
+            self.show_id = !self.show_id;
+            return SessionResumeAction::None;
+        }
         if matches_binding(key, "app.session.rename") {
             if let Some(entry) = self.selected_entry() {
                 let mut input = Input::new();
@@ -491,37 +507,46 @@ impl SessionResumePanel {
     }
 }
 
-/// Build the row body after the `› `/`  ` prefix: capped preview · full id · count/age.
+/// Build the row body after the `› `/`  ` prefix: preview · optional full id · count/age.
 ///
-/// Session id is **never** truncated. When the terminal is narrower than
-/// `prefix + id + meta`, preview shrinks first (possibly to empty); the id column
-/// still renders in full even if the line exceeds `width`.
+/// When `id` is `Some`, it is **never** truncated. Preview is soft-capped at ~60% of
+/// `width` and further limited by leftover space after reserving id + meta.
 fn format_session_row_body(
     label: &str,
-    id: &str,
+    id: Option<&str>,
     right: &str,
     width: usize,
     id_col_w: usize,
 ) -> String {
     const PREFIX_W: usize = 2;
     let right_w = visible_width(right);
-    let id_w = visible_width(id);
-    let id_col = id_col_w.max(id_w);
-    let fixed = PREFIX_W + COL_GAP + id_col + COL_GAP + right_w;
-    let preview_budget = width.saturating_sub(fixed).min(MAX_PREVIEW_COLS);
+    let soft_cap = (width * PREVIEW_SOFT_CAP_NUM) / PREVIEW_SOFT_CAP_DEN;
+
+    let (id_part, id_col, id_gaps) = if let Some(id) = id {
+        let id_w = visible_width(id);
+        let id_col = id_col_w.max(id_w);
+        (Some((id, id_w)), id_col, COL_GAP * 2)
+    } else {
+        (None, 0, COL_GAP)
+    };
+
+    let fixed = PREFIX_W + id_gaps + id_col + right_w;
+    let preview_budget = width.saturating_sub(fixed).min(soft_cap);
     let preview = if preview_budget == 0 {
         String::new()
     } else {
         truncate_to_width(label, preview_budget, "…", true)
     };
     let preview_pad = preview_budget.saturating_sub(visible_width(&preview));
-    let id_pad = id_col.saturating_sub(id_w);
 
     let mut body = String::with_capacity(width.saturating_sub(PREFIX_W) + 8);
     body.push_str(&preview);
     body.push_str(&" ".repeat(preview_pad + COL_GAP));
-    body.push_str(id);
-    body.push_str(&" ".repeat(id_pad + COL_GAP));
+    if let Some((id, id_w)) = id_part {
+        let id_pad = id_col.saturating_sub(id_w);
+        body.push_str(id);
+        body.push_str(&" ".repeat(id_pad + COL_GAP));
+    }
     body.push_str(right);
 
     let content_w = PREFIX_W + visible_width(&body);
@@ -647,10 +672,13 @@ mod tests {
     }
 
     #[test]
-    fn resume_row_keeps_full_session_id_and_caps_preview() {
+    fn resume_row_shows_full_id_when_enabled_and_soft_caps_preview() {
         let uuid = "550e8400-e29b-41d4-a716-446655440000";
         let long_title = "请给我一个表格markdown的示例以及更多说明文字用于撑满预览列";
-        let body = format_session_row_body(long_title, uuid, "2  9m", 100, visible_width(uuid));
+        let width = 100usize;
+        let soft_cap = (width * PREVIEW_SOFT_CAP_NUM) / PREVIEW_SOFT_CAP_DEN;
+        let body =
+            format_session_row_body(long_title, Some(uuid), "2  9m", width, visible_width(uuid));
         assert!(
             body.contains(uuid),
             "full session id must appear untruncated: {body}"
@@ -665,8 +693,8 @@ mod tests {
         );
         let preview_part = body.split(uuid).next().unwrap_or("");
         assert!(
-            visible_width(preview_part) <= MAX_PREVIEW_COLS + COL_GAP,
-            "preview column budget exceeded: width={} body={body}",
+            visible_width(preview_part) <= soft_cap + COL_GAP,
+            "preview column budget exceeded: width={} soft_cap={soft_cap} body={body}",
             visible_width(preview_part)
         );
     }
@@ -677,7 +705,7 @@ mod tests {
         // Too narrow for preview + id + meta; id must still be intact.
         let body = format_session_row_body(
             "very-long-preview-title",
-            uuid,
+            Some(uuid),
             "99  13h",
             48,
             visible_width(uuid),
@@ -693,7 +721,10 @@ mod tests {
     }
 
     #[test]
-    fn resume_panel_render_includes_full_ids() {
+    fn resume_panel_hides_id_by_default_and_toggles_with_ctrl_u() {
+        use crossterm::event::{KeyCode, KeyEvent, KeyModifiers};
+        use xylitol_tui::InputEvent;
+
         let mut panel = SessionResumePanel::new(LayoutTheme::product_dark());
         panel.set_current_cwd(".");
         let uuid = "aaaaaaaa-bbbb-cccc-dddd-eeeeeeeeeeee";
@@ -701,14 +732,34 @@ mod tests {
         e.name = Some("短标题".into());
         panel.load_entries(vec![e], None);
         panel.scope = SessionScope::All;
-        let plain = strip_ansi(&panel.render(100).join("\n"));
+
+        let plain_off = strip_ansi(&panel.render(100).join("\n"));
         assert!(
-            plain.contains(uuid),
-            "rendered panel must show full session id: {plain}"
+            !plain_off.contains(uuid),
+            "default must hide full session id: {plain_off}"
         );
         assert!(
-            plain.contains("短标题"),
-            "preview title still shown: {plain}"
+            plain_off.contains("短标题"),
+            "preview title still shown: {plain_off}"
+        );
+        assert!(
+            plain_off.contains("ctrl+u"),
+            "header should hint ctrl+u id toggle: {plain_off}"
+        );
+
+        let key = KeyEvent::new(KeyCode::Char('u'), KeyModifiers::CONTROL);
+        panel.handle_input(InputEvent::Key(key));
+        let plain_on = strip_ansi(&panel.render(100).join("\n"));
+        assert!(
+            plain_on.contains(uuid),
+            "ctrl+u must show full session id: {plain_on}"
+        );
+
+        panel.handle_input(InputEvent::Key(key));
+        let plain_again = strip_ansi(&panel.render(100).join("\n"));
+        assert!(
+            !plain_again.contains(uuid),
+            "second ctrl+u must hide id again: {plain_again}"
         );
     }
 }

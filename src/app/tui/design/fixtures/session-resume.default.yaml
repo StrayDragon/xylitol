@@ -1,0 +1,19 @@
+# id: session-resume.default
+id: session-resume.default
+design: ../session-resume.md
+slot: session-resume
+state: default
+source: resume.default
+must_contain:
+  - "Resume Session"
+  - "ctrl+u id"
+  - "› 请给我一个表格markdown的示例…"
+  - "(3/66)"
+must_not_contain:
+  - "ad43e96a-2e87-4767-ae1c-870854346b23"
+  - "c1530"
+assert_html:
+  selected_class: "bg-user"
+  selected_forbids_substrings: []
+  status_pattern: "\\([0-9]+/[0-9]+\\)"
+  status_after_selected: true
