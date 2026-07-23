@@ -80,10 +80,9 @@ Fake 环境变量（进程启动前）：
 
 ### 结论（驱动下游 draft）
 
-1. **[c1508](../c1508-optimize-package-tui-visible-width-ansi/proposal.md)**：已落地；`post-c1508` 复测见下。
-2. **下一步 [c1509](../c1509-optimize-package-tui-wrap-text-ansi/proposal.md)**：`wrap_text_with_ansi`（post-c1508 新热点 ~19%）。
-3. **[c1505](../c1505-add-tui-scrollback-viewport-slice/proposal.md)**：长历史仍可能值得；建议 c1509 后再评估。
-4. Idle 无空转危机；`??` 仍多 → 深挖可开 samply UI 或加 debuginfo。
+1. **[c1508](../archive/2026-07-23-c1508-optimize-package-tui-visible-width-ansi/proposal.md)** / **[c1509](../archive/2026-07-23-c1509-optimize-package-tui-wrap-text-ansi/proposal.md)**：已落地并归档。
+2. **下一步 [c1505](../c1505-add-tui-scrollback-viewport-slice/proposal.md)**：结构 flatten（全量 extend）；已补 design/tasks；实现前建议 `post-c1509` B 复测。
+3. Idle 无空转危机；`??` 仍多 → 深挖可开 samply UI 或加 debuginfo。
 
 ### 复测 `post-c1508`（C only）
 
@@ -92,7 +91,7 @@ python3 scripts/profile_tui_suite.py --build --scenarios C --duration 15 --run-i
 samply load target/profile/post-c1508/C-stream.json.gz
 ```
 
-samply 自时间：`visible_width` / `strip_ansi` 从 do_render 主导降为次要；**`wrap_text_with_ansi` ~19%** 成为流式 markdown 主热点（详见 c1508 proposal 复测表）。
+samply 自时间：`visible_width` / `strip_ansi` 从 do_render 主导降为次要；曾见 **`wrap_text_with_ansi` ~19%**（c1509 已针对 ASCII tokenize）。
 
 ### Suite 副作用发现
 
