@@ -32,9 +32,14 @@ impl LayoutTheme {
     pub fn select_list_theme(self) -> SelectListTheme {
         let muted = self.palette.muted;
         let accent = self.palette.accent;
+        let selected_bg = self.palette.user_message_bg;
         SelectListTheme {
             selected_prefix: Box::new(move |s| fg_rgb(accent, s)),
-            selected_text: Box::new(|s| format!("\x1b[7m{s}\x1b[27m")),
+            // Truecolor wash (pi selectedBg) — reverse video flickers under differential paint.
+            selected_text: Box::new(move |s| {
+                use xylitol_tui::bg_rgb;
+                bg_rgb(selected_bg, s)
+            }),
             description: Box::new(move |s| fg_rgb(muted, s)),
             scroll_info: Box::new(move |s| fg_rgb(muted, s)),
             no_match: Box::new(move |s| fg_rgb(muted, s)),
@@ -58,11 +63,15 @@ impl LayoutTheme {
         let on_surface = self.palette.on_surface;
         let warning = self.palette.warning;
         let accent = self.palette.accent;
+        let selected_bg = self.palette.user_message_bg;
         TreeSelectorTheme {
             cursor: Box::new(move |s| fg_rgb(accent, s)),
             prefix: Box::new(move |s| fg_rgb(muted, s)),
             label: Box::new(move |s| fg_rgb(on_surface, s)),
-            selected_row: Box::new(|s| format!("\x1b[7m{s}\x1b[27m")),
+            selected_row: Box::new(move |s| {
+                use xylitol_tui::bg_rgb;
+                bg_rgb(selected_bg, s)
+            }),
             active_marker: Box::new(move |s| fg_rgb(accent, s)),
             scroll_info: Box::new(move |s| fg_rgb(muted, s)),
             empty: Box::new(move |s| fg_rgb(muted, s)),
@@ -115,6 +124,19 @@ impl LayoutTheme {
 
     pub fn paint_error(self, s: &str) -> String {
         fg_rgb(self.palette.error, s)
+    }
+
+    /// Full-width list selection wash (pi `selectedBg`; avoids reverse-video flicker).
+    pub fn paint_selected_row(self, s: &str, width: usize) -> String {
+        use xylitol_tui::{apply_background_to_line, bg_rgb, visible_width};
+        let w = width.max(1);
+        let mut line = s.to_string();
+        let pad = w.saturating_sub(visible_width(&line));
+        if pad > 0 {
+            line.push_str(&" ".repeat(pad));
+        }
+        let bg = self.palette.user_message_bg;
+        apply_background_to_line(&line, w, &move |t| bg_rgb(bg, t))
     }
 
     pub fn paint_success(self, s: &str) -> String {
