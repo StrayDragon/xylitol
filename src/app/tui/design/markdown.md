@@ -79,7 +79,7 @@ components:
 | 任务列表 | `- [ ]` / `- [x]` | 同左 | 扩展开启时；勿画框 |
 | 引用 | `{colors.muted}` + italic（`md-quote`）；左 gutter `│ `（`quote_border`，同 muted） | `│ ` + 引用正文 | 竖线是引用结构标记（非盒线墙）；**MUST NOT** 嵌套 `theme.italic`（warning）以免发黄 |
 | 代码块 | 语法高亮（SGR）；可选 2 空格缩进 | 纯代码行 | **MUST NOT** fence、语言标签条、行号墙、边框 |
-| 表格 | **列宽空格对齐（方案 A）**；表头 **accent + bold + underline** | 对齐纯文本，**无** `\|`、**无**盒线 | 见下「表格」 |
+| 表格 | **列宽空格对齐（方案 A）**；表头 **accent + bold**（underline 可选、默认关） | 对齐纯文本，**无** `\|`、**无**盒线 | 见下「表格」 |
 | 分隔线 | 短 muted 线（约 4–8×`─`）或单空行 | 少数字符或无 | **MUST NOT** 拉满终端宽的装饰线 |
 | 图片 | `alt (url)`（无 alt 则用 url） | 同左 | 与链接同：不丢 URL；**勿**只靠不可选 OSC |
 
@@ -100,7 +100,7 @@ components:
 
 ### 表格（方案 A · 已决议）
 
-- **显示**：按列计算宽度，**空格垫齐**；表头行 **accent + bold + underline**（与行内粗体同色通道，便于无字重终端辨认）；表头与正文之间**不要** `│`/`─┼─`/`┌┐` 盒线。
+- **显示**：按列计算宽度，**空格垫齐**；表头行 **accent + bold**（与行内粗体同色通道，便于无字重终端辨认）。**默认不**对垫齐后的表头单元格套 SGR underline（垫齐空格一起 underline 会连成一条「伪下划线」）；需要旧观感时由 `Markdown::with_table_header_underline(true)` 打开。表头与正文之间**不要** `│`/`─┼─`/`┌┐` 盒线。
 - **复制**：即显示中的可见字符 → 对齐的纯文本表（无 pipe、无盒线）。
 - **不选 B**（对齐 GFM `\|` 表）除非产品日后改决议；B 更利 round-trip，但每行多个 `\|` 更胀。
 
@@ -112,7 +112,7 @@ alice     30  eng
 bob       28  design
 ```
 
-（终端里 `Name Age Role` 一行为 underline+bold+accent；上表仅示字符。）
+（终端里表头为 accent+bold；可选 underline。）
 
 ## MUST（实现检查清单）
 
@@ -121,7 +121,7 @@ bob       28  design
 3. 代码块：语法高亮即可；**MUST NOT** 边框、`` ``` `` fence、语言标签条、行号墙。
 4. 行内：粗体/斜体 **MUST** 为色 + SGR、**MUST NOT** 输出可见 `**`/`*`；行内代码 / 删除线 **MUST** 保留 `` ` `` / `~~`。
 5. 引用：**MUST** 每行 `│ ` gutter（`quote_border`，与正文同 `{colors.muted}`）+ quote 色 + italic；**MUST NOT** 经 `theme.italic` 再套 warning 色；**MUST NOT** 盒线墙（`┌─┐` 等）。
-6. 表格：方案 A（空格对齐 + 表头 underline + accent）；**MUST NOT** 盒线表；**MUST NOT** 为装饰输出 `\|`。
+6. 表格：方案 A（空格对齐 + 表头 accent/bold；underline **可选**、默认关）；**MUST NOT** 盒线表；**MUST NOT** 为装饰输出 `\|`。
 7. 列表：`- ` / `1. `；嵌套空格缩进；**MUST NOT** `│`/`├`/`└` 树线。
 8. HR：短线或空行；**MUST NOT** 近全宽装饰线墙。
 9. 高亮库（syntect 等）注入主 crate / demo；**MUST NOT** 打进 `xylitol-tui` 默认依赖（c452）。

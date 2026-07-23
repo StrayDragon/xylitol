@@ -61,6 +61,10 @@ pub struct Markdown {
     padding_y: usize,
     default_text_style: Option<DefaultTextStyle>,
     theme: MarkdownTheme,
+    /// When true, table header cells also apply [`MarkdownTheme::underline`] to the
+    /// full padded cell (historical look). Default **false**: bold only — padded
+    /// underlines otherwise join into a continuous bar under the header row.
+    table_header_underline: bool,
 
     cached_text: Option<String>,
     cached_width: Option<usize>,
@@ -81,10 +85,29 @@ impl Markdown {
             padding_y,
             theme,
             default_text_style,
+            table_header_underline: false,
             cached_text: None,
             cached_width: None,
             cached_lines: None,
         }
+    }
+
+    /// Toggle SGR underline on padded table header cells (default off).
+    pub fn with_table_header_underline(mut self, enabled: bool) -> Self {
+        self.table_header_underline = enabled;
+        self.invalidate();
+        self
+    }
+
+    pub fn set_table_header_underline(&mut self, enabled: bool) {
+        if self.table_header_underline != enabled {
+            self.table_header_underline = enabled;
+            self.invalidate();
+        }
+    }
+
+    pub fn table_header_underline(&self) -> bool {
+        self.table_header_underline
     }
 
     pub fn set_text(&mut self, text: String) {
@@ -1046,7 +1069,8 @@ fn render_table(md: &Markdown, events: &[Event], idx: &mut usize, width: usize) 
     // Space-aligned columns (scheme A) — no box drawing, no decorative `|` (c530).
     let join_row = |parts: &[String]| -> String { parts.join(" ") };
 
-    // Header (bold + underline)
+    // Header: bold; optional underline on padded cells (opt-in — default off so
+    // space-padded underlines do not form a continuous bar under the header).
     let hw: Vec<Vec<String>> = headers
         .iter()
         .enumerate()
@@ -1061,7 +1085,12 @@ fn render_table(md: &Markdown, events: &[Event], idx: &mut usize, width: usize) 
                 let text = cw.get(ri).cloned().unwrap_or_default();
                 let pad = widths[ci].saturating_sub(visible_width(&text));
                 let cell = format!("{text}{}", " ".repeat(pad));
-                (md.theme.underline)(&(md.theme.bold)(&cell))
+                let bold = (md.theme.bold)(&cell);
+                if md.table_header_underline {
+                    (md.theme.underline)(&bold)
+                } else {
+                    bold
+                }
             })
             .collect();
         lines.push(join_row(&parts));
@@ -1599,6 +1628,37 @@ mod tests {
                 visible_width(&line)
             );
         }
+    }
+
+    #[test]
+    fn table_header_underline_off_by_default() {
+        let mut theme = identity_theme();
+        theme.underline = Box::new(|s| format!("«u»{s}«/u»"));
+        theme.bold = Box::new(|s| format!("«b»{s}«/b»"));
+        let src = "| Name | Role |\n|------|------|\n| a | b |";
+        let mut md = Markdown::new(src.into(), 0, 0, theme, None);
+        let text = md.render(40).join("\n");
+        assert!(
+            !text.contains("«u»"),
+            "default header style must not underline padded cells:\n{text}"
+        );
+        assert!(
+            text.contains("«b»"),
+            "default header style still bold:\n{text}"
+        );
+    }
+
+    #[test]
+    fn table_header_underline_opt_in() {
+        let mut theme = identity_theme();
+        theme.underline = Box::new(|s| format!("«u»{s}«/u»"));
+        let src = "| Name | Role |\n|------|------|\n| a | b |";
+        let mut md = Markdown::new(src.into(), 0, 0, theme, None).with_table_header_underline(true);
+        let text = md.render(40).join("\n");
+        assert!(
+            text.contains("«u»"),
+            "opt-in must underline header cells:\n{text}"
+        );
     }
 
     #[test]
