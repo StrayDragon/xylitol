@@ -81,17 +81,19 @@ Fake 环境变量（进程启动前）：
 ### 结论（驱动下游 draft）
 
 1. **[c1508](../archive/2026-07-23-c1508-optimize-package-tui-visible-width-ansi/proposal.md)** / **[c1509](../archive/2026-07-23-c1509-optimize-package-tui-wrap-text-ansi/proposal.md)**：已落地并归档。
-2. **下一步 [c1505](../c1505-add-tui-scrollback-viewport-slice/proposal.md)**：结构 flatten（全量 extend）；已补 design/tasks；实现前建议 `post-c1509` B 复测。
+2. **下一步 [c1505](../c1505-add-tui-scrollback-viewport-slice/proposal.md)**：结构 flatten；T0=`post-c1509` B/C 已记（短 B 无 scroll 火焰；C 仍见 scrollback/markdown）。
 3. Idle 无空转危机；`??` 仍多 → 深挖可开 samply UI 或加 debuginfo。
 
-### 复测 `post-c1508`（C only）
+### 复测 `post-c1508` / `post-c1509`
 
 ```bash
 python3 scripts/profile_tui_suite.py --build --scenarios C --duration 15 --run-id post-c1508
-samply load target/profile/post-c1508/C-stream.json.gz
+python3 scripts/profile_tui_suite.py --build --scenarios B,C --duration 15 --run-id post-c1509
+samply load target/profile/post-c1509/B-scroll.json.gz
 ```
 
-samply 自时间：`visible_width` / `strip_ansi` 从 do_render 主导降为次要；曾见 **`wrap_text_with_ansi` ~19%**（c1509 已针对 ASCII tokenize）。
+- `post-c1508` C：`wrap_text_with_ansi` ~19%（催生 c1509）。
+- `post-c1509`：C wrap ~13%；B 短种子 scroll_render ~0%（详见 c1505 T0）。
 
 ### Suite 副作用发现
 
