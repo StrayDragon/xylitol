@@ -558,7 +558,7 @@ fn run_react_loop(cfg: ReActConfig) -> impl Stream<Item = XyEvent> + Send {
         let run_baseline = history.len();
 
         // Add user message (text and/or images, c1155).
-        history.push(AgentMessage::user_parts(user_parts));
+        history.push(AgentMessage::user_parts(user_parts.clone()));
         persist_agent_message(&store, &session_id, history.last().expect("user message")).await;
 
         let retry_state = RetryState::new(3, 1000);
@@ -567,8 +567,9 @@ fn run_react_loop(cfg: ReActConfig) -> impl Stream<Item = XyEvent> + Send {
         let mut turn: usize = 0;
         // Per-run model instance: reuse while selected id is unchanged (NextTurn).
         let mut run_model: Option<(String, Arc<dyn XyModel>)> = None;
-        // One OTEL/fastrace tree per user-triggered run (c1495).
-        let agent_turn_span = super::obs::AgentTurnSpan::start();
+        // One OTEL/fastrace tree per user-triggered run (c1495 / c1555 turn preview).
+        let user_preview = parts_preview_text(&user_parts);
+        let agent_turn_span = super::obs::AgentTurnSpan::start(Some(user_preview.as_str()));
 
         // Outer loop: continues when follow-up messages arrive after the agent
         // would otherwise stop (pi runLoop semantics).
@@ -953,11 +954,12 @@ fn run_react_loop(cfg: ReActConfig) -> impl Stream<Item = XyEvent> + Send {
                 let turn_assistant = history.last().cloned();
 
                 for (id, name, args) in &tool_calls {
-                    let _tool_span = super::obs::ToolExecuteSpan::start(
+                    let tool_span = super::obs::ToolExecuteSpan::start(
                         name,
                         id,
                         iteration_span.as_ref().map(|s| s.span()),
                     );
+                    let args_io = serde_json::to_string(args).unwrap_or_else(|_| "{}".into());
                     yield XyEvent::ToolExecutionStart {
                         id: id.clone(),
                         name: name.clone(),
@@ -1005,6 +1007,9 @@ fn run_react_loop(cfg: ReActConfig) -> impl Stream<Item = XyEvent> + Send {
 
                     if let Some(reason) = denied_reason {
                         let err = format!("Tool '{name}' blocked: {reason}");
+                        if let Some(span) = tool_span.as_ref() {
+                            span.attach_io(&args_io, &err);
+                        }
                         yield XyEvent::ToolExecutionUpdate {
                             id: id.clone(),
                             output: err.clone(),
@@ -1143,6 +1148,10 @@ fn run_react_loop(cfg: ReActConfig) -> impl Stream<Item = XyEvent> + Send {
                     }
 
                     let result_text = parts_preview_text(&result.0);
+
+                    if let Some(span) = tool_span.as_ref() {
+                        span.attach_io(&args_io, &result_text);
+                    }
 
                     // Avoid appending the final JSON blob on top of live bash chunks.
                     if !streamed_output {

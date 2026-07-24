@@ -115,3 +115,7 @@ hooks:
 #   # HTTP client timeout for each OTLP export (default 60). Raise if large
 #   # batches time out as generic "network error" on a healthy Langfuse.
 #   # export_timeout_secs: 60
+#   # Generation + agent.turn Session preview I/O (default none).
+#   # observation_io: truncated   # none | truncated | full
+#   # Tool.execute args/result (separate; default none).
+#   # tool_observation_io: truncated

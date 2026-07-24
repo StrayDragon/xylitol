@@ -78,9 +78,15 @@ pub struct OtelConfig {
     #[serde(default)]
     pub headers: HashMap<String, String>,
     /// Whether generation spans attach observation input/output (c1485).
-    /// Default `none` — metadata/usage only.
+    /// Default `none` — metadata/usage only. Also gates `agent.turn` root
+    /// user-prompt preview for Langfuse Session list (c1555).
     #[serde(default)]
     pub observation_io: OtelObservationIo,
+    /// Whether `tool.execute` spans attach args/result observation I/O (c1550).
+    /// Separate from [`Self::observation_io`] — tool payloads often differ in sensitivity.
+    /// Default `none`.
+    #[serde(default)]
+    pub tool_observation_io: OtelObservationIo,
     /// OTLP/HTTP client timeout seconds (default 60). Large batches over LAN
     /// often exceed the previous hard-coded 10s and surface as generic
     /// `network error` even when Langfuse itself is healthy.
@@ -102,12 +108,13 @@ impl Default for OtelConfig {
             service_name: None,
             headers: HashMap::new(),
             observation_io: OtelObservationIo::default(),
+            tool_observation_io: OtelObservationIo::default(),
             export_timeout_secs: default_otel_export_timeout_secs(),
         }
     }
 }
 
-/// `[otel].observation_io` — generation I/O on Langfuse observations.
+/// `[otel].observation_io` / `tool_observation_io` — observation I/O on Langfuse.
 #[derive(Clone, Debug, Default, PartialEq, Eq, Serialize, Deserialize, JsonSchema)]
 #[serde(rename_all = "kebab-case")]
 pub enum OtelObservationIo {
@@ -1310,6 +1317,22 @@ otel:
         )
         .expect("otel timeout");
         assert_eq!(cfg.otel.export_timeout_secs, 90);
+    }
+
+    #[test]
+    fn otel_config_observation_io_parses() {
+        let cfg: AppConfig = yaml_serde::from_str(
+            r#"
+models: {}
+otel:
+  exporter: otlp-http
+  observation_io: truncated
+  tool_observation_io: full
+"#,
+        )
+        .expect("otel io");
+        assert_eq!(cfg.otel.observation_io, OtelObservationIo::Truncated);
+        assert_eq!(cfg.otel.tool_observation_io, OtelObservationIo::Full);
     }
 
     #[test]

@@ -21,7 +21,9 @@ use xylitol_ai_bridge::provider::langfuse_observation_properties;
 use xylitol_ai_bridge::provider::obs_span_parent::{
     clear_obs_span_parents, obs_llm_parent, set_obs_iteration_parent, set_obs_turn_parent,
 };
-use xylitol_ai_bridge::provider::trace::provider_trace_active;
+use xylitol_ai_bridge::provider::trace::{
+    observation_io_tier, provider_trace_active, tool_observation_io_tier, truncate_observation_text,
+};
 
 use crate::protocol::error::{XyError, XyToolError};
 
@@ -32,7 +34,9 @@ pub(crate) struct AgentTurnSpan {
 }
 
 impl AgentTurnSpan {
-    pub(crate) fn start() -> Option<Self> {
+    /// Start a turn root. When `[otel].observation_io` ≠ none, `user_preview` is
+    /// attached as `langfuse.observation.input` for Langfuse Session list (c1555).
+    pub(crate) fn start(user_preview: Option<&str>) -> Option<Self> {
         if !provider_trace_active() {
             return None;
         }
@@ -40,6 +44,13 @@ impl AgentTurnSpan {
         let root = Span::root("agent.turn", SpanContext::random()).with_properties(|| {
             let mut props = vec![("turn_id".to_string(), turn_id.clone())];
             props.extend(langfuse_observation_properties("agent"));
+            if let Some(max) = observation_io_tier().max_chars()
+                && let Some(preview) = user_preview
+                && !preview.is_empty()
+            {
+                let (s, _) = truncate_observation_text(preview, max);
+                props.push(("langfuse.observation.input".to_string(), s));
+            }
             props
         });
         root.add_event(Event::new("lifecycle").with_properties(|| {
@@ -127,7 +138,7 @@ impl Drop for AgentIterationSpan {
 
 /// Span around a single tool execution (child of iteration when provided).
 pub(crate) struct ToolExecuteSpan {
-    _span: Span,
+    span: Span,
 }
 
 impl ToolExecuteSpan {
@@ -154,7 +165,20 @@ impl ToolExecuteSpan {
                 ("name", "tool.execute".to_string()),
             ]
         }));
-        Some(Self { _span: span })
+        Some(Self { span })
+    }
+
+    /// Attach args/result when `[otel].tool_observation_io` ≠ none (c1550).
+    pub(crate) fn attach_io(&self, input: &str, output: &str) {
+        let Some(max) = tool_observation_io_tier().max_chars() else {
+            return;
+        };
+        let (inn, _) = truncate_observation_text(input, max);
+        let (out, _) = truncate_observation_text(output, max);
+        self.span
+            .add_property(|| ("langfuse.observation.input", inn));
+        self.span
+            .add_property(|| ("langfuse.observation.output", out));
     }
 }
 
@@ -224,7 +248,10 @@ mod tests {
     use std::sync::{Arc, Mutex};
 
     use fastrace::collector::{Config, Reporter, SpanRecord};
-    use xylitol_ai_bridge::provider::trace::set_provider_trace_active;
+    use xylitol_ai_bridge::provider::trace::{
+        ObservationIoTier, set_observation_io_tier, set_provider_trace_active,
+        set_tool_observation_io_tier,
+    };
 
     static TEST_LOCK: Mutex<()> = Mutex::new(());
 
@@ -240,7 +267,7 @@ mod tests {
     fn inactive_helpers_are_none() {
         let _g = TEST_LOCK.lock().unwrap();
         set_provider_trace_active(false);
-        assert!(AgentTurnSpan::start().is_none());
+        assert!(AgentTurnSpan::start(None).is_none());
         assert!(AgentIterationSpan::start(None, 0).is_none());
         assert!(ToolExecuteSpan::start("bash", "1", None).is_none());
     }
@@ -253,16 +280,17 @@ mod tests {
         fastrace::set_reporter(CollectingReporter(Arc::clone(&records)), Config::default());
 
         {
-            let turn = AgentTurnSpan::start().expect("turn");
+            let turn = AgentTurnSpan::start(Some("hello turn")).expect("turn");
             let iter = AgentIterationSpan::start(Some(&turn), 0).expect("iter");
-            let _tool = ToolExecuteSpan::start("bash", "t1", Some(iter.span()));
+            let tool = ToolExecuteSpan::start("bash", "t1", Some(iter.span())).expect("tool");
+            tool.attach_io(r#"{"cmd":"echo"}"#, "ok");
             let _llm = xylitol_ai_bridge::provider::trace::ProviderRequestTrace::start(
                 "openai-responses",
                 "m",
             )
             .expect("llm");
             drop(_llm);
-            drop(_tool);
+            drop(tool);
             drop(iter);
             drop(turn);
         }
@@ -316,5 +344,96 @@ mod tests {
                 "react.turn" | "react.stream" | "provider.request"
             )
         }));
+    }
+
+    #[test]
+    fn turn_root_input_only_when_observation_io_set() {
+        let _g = TEST_LOCK.lock().unwrap();
+        set_provider_trace_active(true);
+        set_observation_io_tier(ObservationIoTier::None);
+        let records = Arc::new(Mutex::new(Vec::new()));
+        fastrace::set_reporter(CollectingReporter(Arc::clone(&records)), Config::default());
+        {
+            let turn = AgentTurnSpan::start(Some("secret prompt")).expect("turn");
+            drop(turn);
+        }
+        fastrace::flush();
+        {
+            let spans = records.lock().unwrap();
+            let turn = spans.iter().find(|s| s.name == "agent.turn").expect("turn");
+            assert!(
+                !turn
+                    .properties
+                    .iter()
+                    .any(|(k, _)| k.as_ref() == "langfuse.observation.input"),
+                "none tier must not write turn input"
+            );
+        }
+        records.lock().unwrap().clear();
+        set_observation_io_tier(ObservationIoTier::Truncated);
+        {
+            let turn = AgentTurnSpan::start(Some("secret prompt")).expect("turn");
+            drop(turn);
+        }
+        fastrace::flush();
+        set_observation_io_tier(ObservationIoTier::None);
+        set_provider_trace_active(false);
+        let spans = records.lock().unwrap().clone();
+        let turn = spans.iter().find(|s| s.name == "agent.turn").expect("turn");
+        let input = turn
+            .properties
+            .iter()
+            .find(|(k, _)| k.as_ref() == "langfuse.observation.input")
+            .map(|(_, v)| v.as_ref());
+        assert_eq!(input, Some("secret prompt"));
+    }
+
+    #[test]
+    fn tool_io_only_when_tool_observation_io_set() {
+        let _g = TEST_LOCK.lock().unwrap();
+        set_provider_trace_active(true);
+        set_tool_observation_io_tier(ObservationIoTier::None);
+        let records = Arc::new(Mutex::new(Vec::new()));
+        fastrace::set_reporter(CollectingReporter(Arc::clone(&records)), Config::default());
+        {
+            let tool = ToolExecuteSpan::start("bash", "t1", None).expect("tool");
+            tool.attach_io(r#"{"x":1}"#, "out");
+            drop(tool);
+        }
+        fastrace::flush();
+        {
+            let spans = records.lock().unwrap();
+            let tool = spans
+                .iter()
+                .find(|s| s.name == "tool.execute")
+                .expect("tool");
+            assert!(
+                !tool.properties.iter().any(|(k, _)| {
+                    matches!(
+                        k.as_ref(),
+                        "langfuse.observation.input" | "langfuse.observation.output"
+                    )
+                }),
+                "none tier must not write tool I/O"
+            );
+        }
+        records.lock().unwrap().clear();
+        set_tool_observation_io_tier(ObservationIoTier::Truncated);
+        {
+            let tool = ToolExecuteSpan::start("bash", "t2", None).expect("tool");
+            tool.attach_io(r#"{"x":1}"#, "out");
+            drop(tool);
+        }
+        fastrace::flush();
+        set_tool_observation_io_tier(ObservationIoTier::None);
+        set_provider_trace_active(false);
+        let spans = records.lock().unwrap().clone();
+        let tool = spans
+            .iter()
+            .find(|s| s.name == "tool.execute")
+            .expect("tool");
+        let keys: Vec<&str> = tool.properties.iter().map(|(k, _)| k.as_ref()).collect();
+        assert!(keys.contains(&"langfuse.observation.input"), "{keys:?}");
+        assert!(keys.contains(&"langfuse.observation.output"), "{keys:?}");
     }
 }

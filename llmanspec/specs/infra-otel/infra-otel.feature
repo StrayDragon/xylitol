@@ -81,3 +81,15 @@
     假如 低频观测 span 已激活
     当 在活跃 agent.turn 内发生 token.estimate
     那么 该 span 为该 turn 的子 span；当无 turn 上下文时可为独立根并在 session 已知时带同一 langfuse.session.id
+
+  @req:otel14
+  场景: tool observation I/O 仅显式档
+    假如 tool_observation_io 缺省或为 none
+    当 tool.execute 导出
+    那么 不得写入 langfuse.observation.input 或 output；仅 truncated 或 full 时按档写入参数与结果摘要
+
+  @req:otel15
+  场景: turn 根用户提示预览随 observation_io
+    假如 observation_io 缺省或为 none
+    当 agent.turn 根导出
+    那么 不得写入 langfuse.observation.input；仅 truncated 或 full 时写入本轮用户提示摘要

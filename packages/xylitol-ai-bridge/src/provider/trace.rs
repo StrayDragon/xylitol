@@ -18,8 +18,9 @@ pub const OBSERVATION_IO_FULL_MAX: usize = 65_536;
 
 static PROVIDER_TRACE_ACTIVE: AtomicBool = AtomicBool::new(false);
 static OBSERVATION_IO_TIER: AtomicU8 = AtomicU8::new(0);
+static TOOL_OBSERVATION_IO_TIER: AtomicU8 = AtomicU8::new(0);
 
-/// How much generation I/O to attach as Langfuse observation attributes (c1485).
+/// How much generation / turn I/O to attach as Langfuse observation attributes (c1485 / c1555).
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
 #[repr(u8)]
 pub enum ObservationIoTier {
@@ -38,7 +39,8 @@ impl ObservationIoTier {
         }
     }
 
-    fn max_chars(self) -> Option<usize> {
+    /// Unicode-scalar cap for observation I/O at this tier (`None` → no I/O).
+    pub fn max_chars(self) -> Option<usize> {
         match self {
             Self::None => None,
             Self::Truncated => Some(PROVIDER_TRACE_TEXT_MAX),
@@ -65,6 +67,21 @@ pub fn set_observation_io_tier(tier: ObservationIoTier) {
 #[inline]
 pub fn observation_io_tier() -> ObservationIoTier {
     ObservationIoTier::from_u8(OBSERVATION_IO_TIER.load(Ordering::Relaxed))
+}
+
+/// Called from composition root when `[otel].tool_observation_io` is resolved (c1550).
+pub fn set_tool_observation_io_tier(tier: ObservationIoTier) {
+    TOOL_OBSERVATION_IO_TIER.store(tier as u8, Ordering::Relaxed);
+}
+
+#[inline]
+pub fn tool_observation_io_tier() -> ObservationIoTier {
+    ObservationIoTier::from_u8(TOOL_OBSERVATION_IO_TIER.load(Ordering::Relaxed))
+}
+
+/// Truncate for Langfuse observation I/O (shared by generation / tool / turn).
+pub fn truncate_observation_text(text: &str, max: usize) -> (String, bool) {
+    truncate_text(text, max)
 }
 
 /// Span for one provider HTTP stream (`llm.request`); drop reports to FileReporter.

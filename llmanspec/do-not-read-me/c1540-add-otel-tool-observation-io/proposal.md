@@ -10,9 +10,9 @@ author: agent
 
 # c1540-add-otel-tool-observation-io
 
-> **⚠️ purpose-draft（`llmanspec/do-not-read-me/`）**
-> 仅记意向；**不** promote / **不** apply，除非用户明确升格。
-> 与 generation 的 `[otel].observation_io` 平行：默认 none，显式档才上工具参数/结果。
+> **⚠️ purpose-draft（`llmanspec/do-not-read-me/`）——已升格**
+> 正式变更：`c1550-add-otel-tool-observation-io`（原 c1540 号冲突，改用 1550）。
+> 本目录仅保留意向考古；**勿**再 promote 此路径。
 
 ## Why
 

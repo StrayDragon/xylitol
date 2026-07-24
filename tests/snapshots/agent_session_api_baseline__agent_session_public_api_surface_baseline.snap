@@ -20,16 +20,18 @@ pub async fn record_bash_result( &self, command: &str, result: &crate::protocol:
 pub enum QueueMode
 pub fn abort(&self)
 pub fn abort_bash(&self)
+pub fn active_turn_binding(&self) -> Option<ActiveTurnBinding>
 pub fn apply_default_thinking_level(&mut self, raw: Option<&str>)
 pub fn apply_prompt_resources( &mut self, context_files: Vec<(String, String)>, system_prompt: Option<String>, append_system_prompt: Vec<String>, )
 pub fn apply_skills(&mut self, skills: Vec<crate::protocol::resource::SkillInfo>)
 pub fn bind_event_tx(&self, tx: EventTx)
 pub fn build_current_model(&self) -> Result<Arc<dyn XyModel>, String>
 pub fn clear(&mut self)
+pub fn clear_active_turn(&self)
 pub fn clear_follow_up_queue(&self)
 pub fn clear_queues(&self, clear_steer: bool, clear_follow_up: bool)
 pub fn clear_steer_queue(&self)
-pub fn current_model(&self) -> Option<&XyModelMeta>
+pub fn current_model(&self) -> Option<XyModelMeta>
 pub fn cwd(&self) -> &str
 pub fn cycle_thinking_level(&mut self) -> Result<ThinkingLevel, String>
 pub fn drain(&mut self) -> Vec<AgentMessage>
@@ -39,13 +41,15 @@ pub fn follow_up(&self, message: impl Into<String>)
 pub fn follow_up_parts(&self, parts: Vec<crate::protocol::message::AgentPart>)
 pub fn get_context_usage(token_estimate: u64, context_window: u64, threshold: f64) -> ContextUsage
 pub fn get_permission(&self) -> std::sync::Arc<dyn XyPermission>
+pub fn has_active_turn(&self) -> bool
 pub fn has_items(&self) -> bool
+pub fn inflight_turn_binding(&self) -> Option<ActiveTurnBinding>
 pub fn is_empty(&self) -> bool
 pub fn len(&self) -> usize
 pub fn loaded_skill_names(&self) -> Vec<String>
 pub fn loaded_skills(&self) -> &[crate::protocol::resource::SkillInfo]
 pub fn mode(&self) -> QueueMode
-pub fn model_registry(&self) -> &ModelRegistry
+pub fn model_registry(&self) -> ModelRegistry
 pub fn new( model_registry: ModelRegistry, tool_registry: ToolSet, store: Arc<dyn XySessionStore>, sink: Arc<dyn XyEventSink>, system_prompt: Option<String>, context_files: Vec<(String, String)>, append_system_prompt: Vec<String>, compaction_threshold: f64, cwd: String, compaction_settings: Option<CompactionSettings>, model_builder: crate::protocol::ports::XyModelBuilder, permission: Arc<dyn XyPermission>, bash_executor: Option<Arc<dyn XyBashExecutor>>, export_io: Option<Arc<dyn XyExportIo>>, steering_mode: QueueMode, follow_up_mode: QueueMode, hook_bus: Option<Arc<dyn XyHookBus>>, ) -> Self
 pub fn new(executor: Option<Arc<dyn XyBashExecutor>>) -> Self
 pub fn new(io: Option<Arc<dyn XyExportIo>>) -> Self
@@ -76,10 +80,11 @@ pub fn steer_parts(&self, parts: Vec<crate::protocol::message::AgentPart>)
 pub fn system_prompt(&self) -> Option<&str>
 pub fn thinking_level(&self) -> ThinkingLevel
 pub fn unbind_event_tx(&self)
+pub model_id: String, pub display_name: String, pub thinking: ThinkingLevel, /// True when footer should omit the thinking segment. pub omit_thinking: bool, } /// Capability aggregate — model, tools, session persistence, and events. pub struct AgentCapabilities
 pub session_id: String, pub user_messages: usize, pub assistant_messages: usize, pub total_messages: usize, pub thinking_level: String, pub model: Option<(String, String)>, } /// Aggregate message counts for a session by reading the session store. /// /// Moved out of the `AgentCapabilities` body (spec as32 / c320 T24) so the capability /// aggregate holds no aggregation logic. pub async fn compute(store: &dyn XySessionStore, session_id: &str) -> Result<SessionStats, String>
 pub steer: Arc<Mutex<PendingMessageQueue>>, pub follow_up: Arc<Mutex<PendingMessageQueue>>, event_tx: Arc<Mutex<Option<EventTx>>>, } impl AsyncQueueRuntime
 pub steer_count: usize, pub follow_up_count: usize, } /// Sender bound to the active `XyDriver::run` / ReAct EventStream (may be absent). pub type EventTx = tokio::sync::mpsc::UnboundedSender<XyEvent>
-pub struct AgentCapabilities
+pub struct ActiveTurnBinding
 pub struct AsyncQueueRuntime
 pub struct BashExecHandler
 pub struct ContextUsage
