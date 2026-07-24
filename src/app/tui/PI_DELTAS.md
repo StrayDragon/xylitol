@@ -45,6 +45,7 @@
 | Resume 入口 | 无参开会话列表；选中 switch；预览按终端比例软顶；**默认隐藏** session id，**Ctrl+U** 展开完整 id（c1530） |
 | Tree 入口 | slash / 快捷键开 MessageHistory 树（xylitol 另保留双 Esc） |
 | Skills catalog → system | Trust 后发现；`<available_skills>` XML；reload 不改历史（c1085） |
+| Abort mid-stream | 保留已上行 partial + abort 脚注；落盘 `stop_reason=aborted`；下一轮 LLM **不**重放（c1595；曾清缓冲仅 `Aborted`） |
 
 ---
 
