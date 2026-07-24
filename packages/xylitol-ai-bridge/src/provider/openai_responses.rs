@@ -128,6 +128,9 @@ impl AiBridgeLlmAdapter for OpenAiResponsesAdapter {
         let trace =
             crate::provider::trace::ProviderRequestTrace::start("openai-responses", &self.model);
         let body = self.build_body(messages, tools, true, &options);
+        if let Some(t) = &trace {
+            t.capture_request_input(&body.to_string());
+        }
         // BYOT + `Value`: compatible servers (e.g. llama.cpp) may omit fields that
         // typed `ResponseStreamEvent` requires (`created_at` on `response.created`).
         let sdk_stream = self
@@ -148,6 +151,9 @@ impl AiBridgeLlmAdapter for OpenAiResponsesAdapter {
         let trace =
             crate::provider::trace::ProviderRequestTrace::start("openai-responses", &self.model);
         let body = self.build_body(messages, tools, false, &options);
+        if let Some(t) = &trace {
+            t.capture_request_input(&body.to_string());
+        }
         let json: Value = self
             .client
             .responses()

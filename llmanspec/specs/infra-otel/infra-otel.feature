@@ -62,7 +62,7 @@
   场景: observation I/O 仅显式档
     假如 observation_io 缺省或为 none
     当 llm.request generation 导出
-    那么 不得写入 langfuse.observation.input 或 output；仅 truncated 或 full 时按档写入
+    那么 不得写入 langfuse.observation.input 或 output；仅 truncated 或 full 时按档写入，且可在任意 Done 或提前结束时附着而不依赖 usage
 
   @req:otel11
   场景: 同 turn 父子共享 trace
@@ -93,3 +93,15 @@
     假如 observation_io 缺省或为 none
     当 agent.turn 根导出
     那么 不得写入 langfuse.observation.input；仅 truncated 或 full 时写入本轮用户提示摘要
+
+  @req:otel16
+  场景: generation input 来自请求体而非 raw 事件名
+    假如 observation_io 为 truncated 或 full 且流式 llm.request 已发出完整 request JSON
+    当 generation 结束
+    那么 langfuse.observation.input 含该请求体摘要且不得仅因缺少 response.json 等 raw 事件名而为空
+
+  @req:otel17
+  场景: abort 提前结束仍 flush 并标 ERROR
+    假如 observation_io 为 truncated 或 full 且流中已有 TextDelta
+    当 llm.request 在未见成功 Done 时因 abort 提前结束
+    那么 generation 仍按档带 input 或 output，且 level 为 ERROR、status_message 为 aborted，且不得伪造 usage
