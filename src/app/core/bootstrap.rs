@@ -310,13 +310,14 @@ pub fn resolve_assembly(input: &BootstrapInput) -> Result<ResolvedAssembly, Boot
                     api_key: api_key.expect("checked above"),
                     model: entry.model.clone(),
                     base_url: entry.base_url.clone(),
-                    api: None,
+                    // c1598: honor YAML `models.*.api`; None → AdapterKind::default_for
+                    api: entry.api.clone(),
                 },
                 display_name: alias.clone(),
                 thinking: entry.thinking,
                 context_window,
-                api: String::new(),
-                provider: String::new(),
+                api: entry.api.clone().unwrap_or_default(),
+                provider: entry.provider.provider_name().to_string(),
                 cost_input: 0.0,
                 cost_output: 0.0,
                 cost_cache_read: 0.0,
@@ -970,6 +971,90 @@ mod tests {
             "must not silent-select gpt-4o"
         );
         assert_eq!(UNSET_MODEL_DISPLAY, "NOT-SET");
+    }
+
+    #[test]
+    fn yaml_model_api_is_honored_in_registry_config() {
+        let home = tempfile::tempdir().unwrap();
+        let project = home.path().join("proj");
+        let proj_xy = project.join(".xylitol");
+        std::fs::create_dir_all(&proj_xy).unwrap();
+        let global = home.path().join(".config").join("xylitol");
+        std::fs::create_dir_all(&global).unwrap();
+
+        let _home = EnvGuard::set("HOME", home.path().to_str().unwrap());
+        let _proj = EnvGuard::set("XYLITOL_PROJECT_DIR", project.to_str().unwrap());
+        let _cfg = EnvGuard::set("XYLITOL_CONFIG_DIR", global.to_str().unwrap());
+        let _key = EnvGuard::set("OPENAI_API_KEY", "sk-test");
+
+        std::fs::write(
+            proj_xy.join("config.yaml"),
+            r#"models:
+  default_model: completions-model
+  models:
+    completions-model:
+      provider: openai
+      model: m-completions
+      api: openai-completions
+    responses-model:
+      provider: openai
+      model: m-responses
+      api: openai-responses
+    default-api-model:
+      provider: openai
+      model: m-default
+"#,
+        )
+        .unwrap();
+
+        let assembly = resolve_assembly(&BootstrapInput {
+            config_path: None,
+            session: None,
+            model: None,
+            trust_override: Some(true),
+            interactive: false,
+            caller: "test",
+        })
+        .expect("assembly");
+
+        let list = assembly.model_registry.list();
+        let by_id = |id: &str| {
+            list.iter()
+                .find(|m| m.id == id)
+                .unwrap_or_else(|| panic!("missing {id}"))
+        };
+
+        assert_eq!(
+            by_id("completions-model").config.api.as_deref(),
+            Some("openai-completions")
+        );
+        assert_eq!(by_id("completions-model").api, "openai-completions");
+        assert_eq!(
+            crate::infra::provider::adapter::factory::resolve_adapter_kind(
+                &by_id("completions-model").config
+            ),
+            crate::infra::provider::adapter::AdapterKind::OpenAiCompletions
+        );
+
+        assert_eq!(
+            by_id("responses-model").config.api.as_deref(),
+            Some("openai-responses")
+        );
+        assert_eq!(
+            crate::infra::provider::adapter::factory::resolve_adapter_kind(
+                &by_id("responses-model").config
+            ),
+            crate::infra::provider::adapter::AdapterKind::OpenAiResponses
+        );
+
+        // Omitted api → default_for(OpenAi) = Responses
+        assert_eq!(by_id("default-api-model").config.api, None);
+        assert_eq!(
+            crate::infra::provider::adapter::factory::resolve_adapter_kind(
+                &by_id("default-api-model").config
+            ),
+            crate::infra::provider::adapter::AdapterKind::OpenAiResponses
+        );
     }
 
     #[test]

@@ -8,11 +8,29 @@
 # 不再支持 config.local.yaml。
 #
 # models: 来自 pi providers dump；键与 `model` 均用上游 name/id，不做别名转换。
+#
+# --- 本仓开发向「全功能」剖面（看效果用）---
+# - tool_batch.barrier_parallel：同 turn 纯读扇出 + 写/bash/mcp 屏障
+# - models.*.api：openai-responses（llama.cpp / 兼容端；Completions 仅遗留显式档）
+# - APPEND_SYSTEM.md：实验 3 多-tool 策略片段（临时；见 c1610/experiments.md）
+# - local_tokenizer：开发可按需 on（当前 off）
+# - compaction enabled：长会话压缩
+# - mcp_servers + otel I/O full：见文末（密钥仍在 secret.env）
+# 启动模型优先级：agents.profiles.<default>.model → execution.model → models.default_model
+# 产品默认仍是 sequential / tokenizer off / otel none；勿把本剖面当发布默认。
+# api: openai-responses（c1598 起配置生效）。APPEND_SYSTEM.md = 实验 3 临时多-tool 提示。
 
-# 本地 tokenizer encode：默认 off（缺省同义）；要精确本地计数时改为 on
-# 引号避免部分 YAML 1.1 解析器把 off 当成布尔
+# 同 turn 工具批（c1545）：开发默认开试验档，便于体感并行读
+tool_batch:
+  mode: barrier_parallel
+
+# 本地 tokenizer encode（引号避免 YAML 1.1 布尔别名）
 token_estimate:
   local_tokenizer: "off"
+
+# 长会话压缩（缺省未写时看代码默认；此处显式打开）
+compaction:
+  enabled: true
 
 tokenizers:
   qwen36:
@@ -26,28 +44,28 @@ models:
       provider: openai
       model: "DeepSeek-V4-Flash/UD-IQ3_XXS"
       base_url: http://tufa:50256/v1
-      api: openai-completions
+      api: openai-responses
       thinking: false
       context_window: 65536
     "Ornith-1.0-35B-APEX/I-Quality":
       provider: openai
       model: "Ornith-1.0-35B-APEX/I-Quality"
       base_url: http://tufa:50256/v1
-      api: openai-completions
+      api: openai-responses
       thinking: false
       context_window: 131072
     "Ornith-1.0-35B-MTP-APEX/I-Quality":
       provider: openai
       model: "Ornith-1.0-35B-MTP-APEX/I-Quality"
       base_url: http://tufa:50256/v1
-      api: openai-completions
+      api: openai-responses
       thinking: false
       context_window: 131072
     "Qwen3-Coder-Next-80B-A3B/unsloth-UD-Q4_K_M":
       provider: openai
       model: "Qwen3-Coder-Next-80B-A3B/unsloth-UD-Q4_K_M"
       base_url: http://tufa:50256/v1
-      api: openai-completions
+      api: openai-responses
       thinking: false
       context_window: 131072
       tokenizer: qwen36
@@ -55,7 +73,7 @@ models:
       provider: openai
       model: "Qwen3.6-27B/Omnimerge-v4-Q6_K"
       base_url: http://tufa:50256/v1
-      api: openai-completions
+      api: openai-responses
       thinking: false
       context_window: 131072
       tokenizer: qwen36
@@ -63,7 +81,7 @@ models:
       provider: openai
       model: "Qwen3.6-27B/unsloth-MTP-Q4_K_M"
       base_url: http://tufa:50256/v1
-      api: openai-completions
+      api: openai-responses
       thinking: false
       context_window: 131072
       tokenizer: qwen36
@@ -71,7 +89,7 @@ models:
       provider: openai
       model: "Qwen3.6-27B/unsloth-MTP-UD-Q6_K_XL"
       base_url: http://tufa:50256/v1
-      api: openai-completions
+      api: openai-responses
       thinking: false
       context_window: 131072
       tokenizer: qwen36
@@ -79,7 +97,7 @@ models:
       provider: openai
       model: "Qwen3.6-27B/unsloth-UD-Q6_K_XL"
       base_url: http://tufa:50256/v1
-      api: openai-completions
+      api: openai-responses
       thinking: false
       context_window: 131072
       tokenizer: qwen36
@@ -87,7 +105,7 @@ models:
       provider: openai
       model: "Qwen3.6-35B-A3B/UD-Q4_K_M-instruct-general"
       base_url: http://tufa:50256/v1
-      api: openai-completions
+      api: openai-responses
       thinking: false
       context_window: 131072
       tokenizer: qwen36
@@ -95,7 +113,7 @@ models:
       provider: openai
       model: "Qwen3.6-35B-A3B/UD-Q4_K_M-instruct-reasoning"
       base_url: http://tufa:50256/v1
-      api: openai-completions
+      api: openai-responses
       thinking: false
       context_window: 131072
       tokenizer: qwen36
@@ -103,7 +121,7 @@ models:
       provider: openai
       model: "Qwen3.6-35B-A3B/UD-Q4_K_M-think-coding"
       base_url: http://tufa:50256/v1
-      api: openai-completions
+      api: openai-responses
       thinking: true
       context_window: 131072
       tokenizer: qwen36
@@ -111,7 +129,7 @@ models:
       provider: openai
       model: "Qwen3.6-35B-A3B/UD-Q4_K_M-think-general"
       base_url: http://tufa:50256/v1
-      api: openai-completions
+      api: openai-responses
       thinking: true
       context_window: 131072
       tokenizer: qwen36
@@ -119,7 +137,7 @@ models:
       provider: openai
       model: "Qwen3.6-35B-A3B/UD-Q5_K_XL-instruct-general"
       base_url: http://tufa:50256/v1
-      api: openai-completions
+      api: openai-responses
       thinking: false
       context_window: 131072
       tokenizer: qwen36
@@ -127,7 +145,7 @@ models:
       provider: openai
       model: "Qwen3.6-35B-A3B/UD-Q5_K_XL-instruct-reasoning"
       base_url: http://tufa:50256/v1
-      api: openai-completions
+      api: openai-responses
       thinking: false
       context_window: 131072
       tokenizer: qwen36
@@ -135,7 +153,7 @@ models:
       provider: openai
       model: "Qwen3.6-35B-A3B/UD-Q5_K_XL-think-coding"
       base_url: http://tufa:50256/v1
-      api: openai-completions
+      api: openai-responses
       thinking: true
       context_window: 131072
       tokenizer: qwen36
@@ -143,7 +161,7 @@ models:
       provider: openai
       model: "Qwen3.6-35B-A3B/UD-Q5_K_XL-think-general"
       base_url: http://tufa:50256/v1
-      api: openai-completions
+      api: openai-responses
       thinking: true
       context_window: 131072
       tokenizer: qwen36
@@ -151,7 +169,7 @@ models:
       provider: openai
       model: "Qwen3.6-35B-A3B/unsloth-MTP-UD-Q4_K_M-think-coding"
       base_url: http://tufa:50256/v1
-      api: openai-completions
+      api: openai-responses
       thinking: true
       context_window: 131072
       tokenizer: qwen36
@@ -159,7 +177,7 @@ models:
       provider: openai
       model: "Qwen3.6-35B-A3B/unsloth-MTP-UD-Q5_K_XL-think-coding"
       base_url: http://tufa:50256/v1
-      api: openai-completions
+      api: openai-responses
       thinking: true
       context_window: 131072
       tokenizer: qwen36
@@ -167,7 +185,7 @@ models:
       provider: openai
       model: "Qwopus3.6-35B-A3B/v1-Q6_K-Coding"
       base_url: http://tufa:50256/v1
-      api: openai-completions
+      api: openai-responses
       thinking: false
       context_window: 131072
       tokenizer: qwen36
@@ -175,7 +193,7 @@ models:
       provider: openai
       model: "Step-3.7-Flash-GGUF/IQ4_XS"
       base_url: http://tufa:50256/v1
-      api: openai-completions
+      api: openai-responses
       thinking: false
       context_window: 65536
 
@@ -183,7 +201,8 @@ agents:
   default_profile: default
   profiles:
     default:
-      model: "Qwen3.6-35B-A3B/UD-Q5_K_XL-think-coding"
+      # 与 models.default_model 对齐；若只改 default_model 而这里不改，启动仍用此处
+      model: "Ornith-1.0-35B-MTP-APEX/I-Quality"
 
 mcp_servers:
   - name: context7
