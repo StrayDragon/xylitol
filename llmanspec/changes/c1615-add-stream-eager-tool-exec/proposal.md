@@ -12,56 +12,48 @@ author: agent
 
 # c1615-add-stream-eager-tool-exec
 
-## Discussion context
+## Discussion context（2026-07-24）
 
-见 [`../DEFERRED-responses-tool-batch-CONTEXT.md`](../DEFERRED-responses-tool-batch-CONTEXT.md)。
-
-前提：非异步流水线回灌；仅批内/流中执行重叠。Completions End 过晚 → 方言门闩只要 Responses/Anthropic。实验 2 空隙数据决定是否 promote。
+- 今日 `ar21`：仅 MessageEnd 后执行；与 pi 同构，不是异步流水线回灌。
+- Completions 常 finish 时才批量 `ToolCallEnd` → 抢跑 ROI≈0；Responses/Anthropic 可逐块 End。
+- 依赖 `c1598`/`c1600`；**实验 2** 量 End→Done 空隙后再决定是否 promote。
 
 ## Why
 
-今日 `ar21`：仅 MessageEnd 后执行。批内并行（`c1545`）无法与「模型还在生成后续 token」重叠。
-
-Anthropic / OpenAI Responses 在**单个 tool 块结束**时即可 `ToolCallEnd`；Completions 常在 `finish_reason` 才刷 End——抢跑收益接近 0。故本 change **绑定 Responses 优先路线（`c1600`）**，Completions 保持 MessageEnd 批执行。
+批内并行无法与「模型还在生成后续 token」重叠；Responses 上可抢跑 ParallelSafe。
 
 ## Product intent
 
 | | |
 |---|---|
-| 目标 | ParallelSafe 在意图完整后尽早执行，与后续 stream 重叠 |
-| Barrier | 仍不可与未完成的前序并行窗重叠抢跑；MCP/write/bash 纪律不变 |
-| 回灌 LLM | 仍须 MessageEnd + 批汇聚后，源序 toolResult 再开下一轮 |
-| 默认 | 开箱开启（若实验证明空隙≥工具耗时）；否则随 Responses 默认附带且可关 |
+| 目标 | 意图完整后尽早执行 ParallelSafe，与后续 stream 重叠 |
+| Barrier / MCP | 纪律不变 |
+| 回灌 LLM | 仍 MessageEnd + 批汇聚后下一轮 |
+| Completions | 仍 MessageEnd 批跑（方言门闩） |
 
-## Decisions（意向 · 实验 2 边界）
+## Decisions（意向）
 
-1. **改合约**：放宽 `ar21` / `a3`——允许 MessageEnd 前对已 `ToolCallEnd` 的 ParallelSafe 发 `ToolExecutionStart`；禁止对未 End 的意图执行。
-2. **方言门闩**：`api=openai-responses` | `anthropic-messages` 可抢跑；`openai-completions` MUST 仍 MessageEnd 批跑（避免假预期）。
-3. **取消/截断**：stream abort、`length`、错误 → cancel 未完成抢跑；截断 tool 不执行（对齐 pi truncated fail）。
-4. **非异步流水线回灌**：不把部分 toolResult 塞进仍在飞的同一 HTTP 请求。
-5. **配置**：尽量零旋钮；若需逃生用单一 `tool_batch.eager: bool`（默认 true），禁止方言×eager 矩阵配置爆炸。
+1. 放宽 `ar21`/`a3`：允许 MessageEnd 前对已 End 的 ParallelSafe 执行。
+2. 方言门闩：仅 `openai-responses` | `anthropic-messages`。
+3. abort/截断：cancel 未完成抢跑；截断 tool 不执行。
+4. 不把部分结果塞进仍在飞的同一 HTTP 请求。
+5. 尽量零旋钮；逃生至多 `tool_batch.eager: bool`。
 
 ## Experiment 2（promote 前必做）
 
-在 Responses 下量：`ToolCallEnd(t0)` → `Done/MessageEnd(t1)` 空隙 vs 工具墙钟。仅当空隙经常 ≥ 工具耗时再 promote。
+在 Responses 下量 `ToolCallEnd(t0)` → `Done/MessageEnd(t1)` 空隙 vs 工具墙钟。仅当空隙经常 ≥ 工具耗时再 promote。
 
-## What Changes（promote 后）
-
-- ReAct 流式抢跑调度 + 汇聚
-- specs 修订 `ar21` 及 BDD
-- OTEL：抢跑 span 仍挂 `agent.iteration`；可选属性 `tool_batch.eager=true`
+用户提示词见会话交付。
 
 ## Non-Goals
 
-- Completions 抢跑
-- 结果流式回灌同轮 LLM
-- 放开 MCP 并行
+Completions 抢跑；结果流式回灌同轮 LLM；放开 MCP 并行。
 
 ## Status
 
-**purpose-draft** — 后置；先 `c1598`/`c1600` + 实验 2 数据。
+**purpose-draft** — 后置；等实验 2。
 
 ## Ethics
 
-- risk_level: high（副作用时序、取消、合约大改）
-- required_evidence: 方言门闩测试；abort 不留脏写；实验 2 空隙分布
+- risk_level: high
+- required_evidence: 方言门闩；abort 不留脏写；空隙分布
