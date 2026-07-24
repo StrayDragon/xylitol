@@ -10,8 +10,6 @@
 //! (process spawn + output streaming). The agent consumes it only through the
 //! `XyBashExecutor` port in `protocol::ports`.
 
-use std::time::Duration;
-
 use tokio::io::AsyncReadExt;
 use tokio::process::Command;
 use tokio::sync::mpsc;
@@ -20,9 +18,8 @@ use tokio_util::sync::CancellationToken;
 use crate::infra::tools::accumulator::OutputAccumulator;
 use crate::infra::tools::process::kill_tree;
 use crate::infra::tools::truncate::DEFAULT_MAX_BYTES;
+use crate::protocol::ToolTimeout;
 use crate::protocol::ports::{BashExecOpts, XyBashExecutor, XyBashResult};
-
-const DEFAULT_TIMEOUT_SECS: u64 = 30;
 
 /// Default infra bash executor.
 #[derive(Debug, Clone, Default)]
@@ -84,15 +81,18 @@ impl InfraBashExecutor {
 #[async_trait::async_trait]
 impl XyBashExecutor for InfraBashExecutor {
     async fn execute(&self, command: &str, opts: BashExecOpts) -> XyBashResult {
-        let BashExecOpts { cancel, chunk_tx } = opts;
-        let timeout_secs = DEFAULT_TIMEOUT_SECS;
-        let timeout_dur = Duration::from_secs(timeout_secs);
+        let BashExecOpts {
+            cancel,
+            chunk_tx,
+            timeout,
+        } = opts;
 
         if cancel.as_ref().is_some_and(|c| c.is_cancelled()) {
             return XyBashResult {
                 output: String::new(),
                 exit_code: None,
                 cancelled: true,
+                timed_out: false,
                 truncated: false,
                 full_output_path: None,
             };
@@ -112,6 +112,7 @@ impl XyBashExecutor for InfraBashExecutor {
                     output: String::from("[failed to spawn shell]"),
                     exit_code: None,
                     cancelled: false,
+                    timed_out: false,
                     truncated: false,
                     full_output_path: None,
                 };
@@ -131,7 +132,13 @@ impl XyBashExecutor for InfraBashExecutor {
 
         let mut acc = OutputAccumulator::new();
         let mut cancelled = false;
+        let mut timed_out = false;
         let mut coalesce = Vec::new();
+
+        let deadline = match timeout {
+            ToolTimeout::Unlimited => None,
+            ToolTimeout::After(d) => Some(tokio::time::Instant::now() + d),
+        };
 
         loop {
             tokio::select! {
@@ -149,8 +156,8 @@ impl XyBashExecutor for InfraBashExecutor {
                         None => break, // both readers finished
                     }
                 }
-                _ = tokio::time::sleep(timeout_dur) => {
-                    // Timeout reached.
+                _ = sleep_until_opt(deadline) => {
+                    timed_out = true;
                     break;
                 }
             }
@@ -158,7 +165,7 @@ impl XyBashExecutor for InfraBashExecutor {
 
         Self::flush_coalesce(&chunk_tx, &mut coalesce);
 
-        if cancelled {
+        if cancelled || timed_out {
             kill_tree(pid).await;
         }
         // Reap the child and capture its exit status.
@@ -168,8 +175,13 @@ impl XyBashExecutor for InfraBashExecutor {
 
         XyBashResult {
             output: snapshot.display_content(),
-            exit_code: if cancelled { None } else { exit_code },
+            exit_code: if cancelled || timed_out {
+                None
+            } else {
+                exit_code
+            },
             cancelled,
+            timed_out,
             truncated: snapshot.truncated,
             full_output_path: snapshot
                 .full_output_path
@@ -204,11 +216,19 @@ async fn cancelled_event(cancel: &Option<CancellationToken>) {
     }
 }
 
+async fn sleep_until_opt(deadline: Option<tokio::time::Instant>) {
+    match deadline {
+        Some(dl) => tokio::time::sleep_until(dl).await,
+        None => std::future::pending::<()>().await,
+    }
+}
+
 const _: usize = DEFAULT_MAX_BYTES;
 
 #[cfg(test)]
 mod tests {
     use super::*;
+    use std::time::Duration;
 
     #[tokio::test]
     async fn records_exit_code() {
@@ -216,6 +236,7 @@ mod tests {
             .execute("exit 7", BashExecOpts::default())
             .await;
         assert!(!result.cancelled);
+        assert!(!result.timed_out);
         assert_eq!(result.exit_code, Some(7));
     }
 
@@ -233,11 +254,40 @@ mod tests {
                 BashExecOpts {
                     cancel: Some(cancel),
                     chunk_tx: None,
+                    timeout: ToolTimeout::Unlimited,
                 },
             )
             .await;
         assert!(result.cancelled);
+        assert!(!result.timed_out);
         assert_eq!(result.exit_code, None);
+    }
+
+    #[tokio::test]
+    async fn explicit_timeout_kills() {
+        let result = InfraBashExecutor::new()
+            .execute(
+                "sleep 30",
+                BashExecOpts {
+                    cancel: None,
+                    chunk_tx: None,
+                    timeout: ToolTimeout::After(Duration::from_secs(1)),
+                },
+            )
+            .await;
+        assert!(result.timed_out);
+        assert!(!result.cancelled);
+        assert_eq!(result.exit_code, None);
+    }
+
+    #[tokio::test]
+    async fn omit_timeout_allows_short_sleep() {
+        let result = InfraBashExecutor::new()
+            .execute("sleep 2", BashExecOpts::default())
+            .await;
+        assert!(!result.timed_out);
+        assert!(!result.cancelled);
+        assert_eq!(result.exit_code, Some(0));
     }
 
     #[tokio::test]
@@ -257,6 +307,7 @@ mod tests {
                 BashExecOpts {
                     cancel: None,
                     chunk_tx: Some(tx),
+                    timeout: ToolTimeout::Unlimited,
                 },
             )
             .await;

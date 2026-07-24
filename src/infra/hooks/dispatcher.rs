@@ -9,9 +9,6 @@ use super::{DispatchResult, HookAction, HookEvent, HookPhase, entry_matches_raw,
 use crate::infra::config::types::{HookEntry, HooksConfig};
 use crate::protocol::ports::{XyHookBus, XyHookOutcome};
 
-/// Default timeout per hook script execution.
-const DEFAULT_TIMEOUT_SECS: u64 = 5;
-
 /// Hook event dispatcher.
 ///
 /// Manages a merged list of hooks from three tiers (global/project/user) and
@@ -23,9 +20,6 @@ const DEFAULT_TIMEOUT_SECS: u64 = 5;
 pub struct HookDispatcher {
     /// Merged hook entries (user overrides project overrides global).
     hooks: Vec<HookEntry>,
-    /// Timeout for hook execution (from config, applied per-invoke).
-    #[allow(dead_code)]
-    timeout: Duration,
 }
 
 impl HookDispatcher {
@@ -34,10 +28,11 @@ impl HookDispatcher {
     /// Merges hooks by event pattern: user > project > global.
     pub fn new(config: &HooksConfig) -> Self {
         let hooks = merge_hooks(config);
-        Self {
-            hooks,
-            timeout: Duration::from_secs(DEFAULT_TIMEOUT_SECS),
-        }
+        Self { hooks }
+    }
+
+    fn entry_timeout(hook: &HookEntry) -> Option<Duration> {
+        hook.timeout_secs.map(Duration::from_secs)
     }
 
     /// Dispatch an event to all matching hooks.
@@ -53,7 +48,7 @@ impl HookDispatcher {
                 continue;
             }
 
-            let timeout = Duration::from_secs(hook.timeout_secs.max(1));
+            let timeout = Self::entry_timeout(hook);
 
             let result = run_hook_script(&hook.command, event, phase, timeout, &hook.env).await;
 
@@ -115,7 +110,7 @@ impl HookDispatcher {
                 continue;
             }
 
-            let timeout = Duration::from_secs(hook.timeout_secs.max(1));
+            let timeout = Self::entry_timeout(hook);
 
             let result =
                 run_hook_script_with_context(&hook.command, &context, timeout, &hook.env).await;
