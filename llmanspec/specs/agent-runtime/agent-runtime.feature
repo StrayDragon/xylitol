@@ -46,6 +46,12 @@
     当 运行至将结束
     那么 继续循环而非 AgentEnd
 
+  @req:ar8
+  场景: default-drain-one-at-a-time
+    假如 使用缺省 QueueMode 入队两条 steer
+    当 一次 drain
+    那么 只取出一条且队列剩一条
+
   @req:ar9
   场景: queue-update
     假如 装配 agent 并入队 steer

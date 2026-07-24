@@ -12,7 +12,7 @@ requirements[26]{req_id,title,statement}:
   ar5,"sessionstore-eventsink",protocol MUST 提供 SessionStore 与 EventSink；SessionManager / EventBus 为实现。端口存在性由类型系统与组合根覆盖，MUST NOT 为 trait 存在性单独扩 BDD step。
   ar6,"mutable-slots-next-turn",set_tools / set_hooks / set_system_prompt 等 MUST 只影响下一轮 run；进行中回合使用启动快照。
   ar7,"hooks-at-tool-boundary",工具执行前 MUST 跑 before 链（可拒绝）；之后 MUST 跑 after 链；无 hook 时零开销。
-  ar8,"pending-queues","MUST 提供独立的 steer 与 follow_up 队列（enqueue/drain/clear）；ReAct MUST 在模型调用前 drain steer；在将因无 tool_calls 而结束前 drain follow_up（非空则继续）；若 should_stop_after_turn 已请求停，MUST NOT drain steer 或 follow_up。"
+  ar8,"pending-queues","MUST 提供独立的 steer 与 follow_up 队列（enqueue/drain/clear）；缺省 QueueMode / SteeringMode MUST 为 OneAtATime（一次 drain 一条；配置可显式 all）；ReAct MUST 在模型调用前 drain steer；在将因无 tool_calls 而结束前 drain follow_up（非空则继续）；若 should_stop_after_turn 已请求停，MUST NOT drain steer 或 follow_up。"
   ar9,"queue-update-events","入队/drain/clear 后 MUST 发射 XyEvent::QueueUpdate（steer_count / follow_up_count）。"
   ar10,"abort-queue-semantics",abort MUST 清空 steer、保留 follow_up；MUST 取消当前 run CancellationToken 与进行中工具/交互 bash；MUST NOT 仅靠无人订阅的 EventBus 旁路传队列状态。
   ar11,"abort-resets-token",每次 run 开始 MUST 安装新 CancellationToken；abort 后下一次 run MUST NOT 因沿用已取消 token 立刻 aborted。

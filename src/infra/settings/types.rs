@@ -228,8 +228,8 @@ pub enum Transport {
 #[derive(Debug, Clone, Default, PartialEq, Eq, Serialize, Deserialize, JsonSchema)]
 #[serde(rename_all = "kebab-case")]
 pub enum SteeringMode {
-    #[default]
     All,
+    #[default]
     #[serde(rename = "one-at-a-time")]
     OneAtATime,
 }
