@@ -481,6 +481,35 @@ fn harness_busy_esc_requests_abort_not_tree() {
 }
 
 #[test]
+fn harness_busy_ctrl_c_aborts_not_quit() {
+    let mut session = HostSession::new_product_ui(TestTerminal::new(80, 24));
+    let root = session.ui_root().expect("product ui").clone();
+    // Empty editor: pre-c1570 Ctrl+C would quit; must abort instead.
+    root.borrow_mut().set_editor_text(String::new());
+    session.on_run_started("hello");
+    session.step(HostEvent::Input(ctrl_c_event())).unwrap();
+    assert!(session.take_abort(), "busy Ctrl+C must latch abort");
+    assert!(
+        !session.should_quit(),
+        "busy Ctrl+C must not quit even with empty editor"
+    );
+    assert!(!root.borrow().tree_open());
+}
+
+#[test]
+fn harness_busy_ctrl_c_with_draft_still_aborts() {
+    let mut session = HostSession::new_product_ui(TestTerminal::new(80, 24));
+    let root = session.ui_root().expect("product ui").clone();
+    root.borrow_mut().set_editor_text("steer draft");
+    session.on_run_started("hello");
+    session.step(HostEvent::Input(ctrl_c_event())).unwrap();
+    assert!(session.take_abort());
+    assert!(!session.should_quit());
+    // Same as Esc: do not clear draft as a side effect of abort latch.
+    assert_eq!(root.borrow().editor_text(), "steer draft");
+}
+
+#[test]
 fn harness_idle_slash_exit_quits() {
     let mut session = HostSession::new_product_ui(TestTerminal::new(80, 24));
     let root = session.ui_root().expect("product ui").clone();

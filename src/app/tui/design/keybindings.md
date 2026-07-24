@@ -18,8 +18,8 @@ components:
 
 | 键 | 行为 |
 |---|---|
-| Esc | 流中：**abort**（清 steer，**留** follow_up 供 restore） |
-| Ctrl+C | 编辑器非空：**清空**；已空：**退出** TUI |
+| Esc | 流中 / bang busy：**abort**（清 steer，**留** follow_up 供 restore） |
+| Ctrl+C | **busy**（无 overlay）：等同 Esc abort，**不**退出；**idle** 非空：**清空**；已空：**退出** TUI；overlay：先关槽 |
 | Enter（idle） | 提交用户消息 |
 | Enter（流中） | **steer** |
 | Alt+Enter | **follow-up**（排队到本轮结束后） |

@@ -1,10 +1,14 @@
 ---
 change_id: c1570-update-tui-ctrl-c-busy-abort
 title: busy 时 Ctrl+C 等同 Esc abort；idle 保持清空/再退出
-status: purpose-draft
+status: ready
 priority: 1570
 depends_on: []
 author: agent
+branch: feat/c1570-tui-ctrl-c-busy-abort
+base_sha: 7c5075601088d1bfe49a865c31b80aa7bfaa24bf
+checkpointed: true
+checkpoint_sha: 7c5075601088d1bfe49a865c31b80aa7bfaa24bf
 ---
 
 # c1570-update-tui-ctrl-c-busy-abort
