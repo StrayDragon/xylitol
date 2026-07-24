@@ -144,53 +144,45 @@ pub(super) async fn handle_slash<T: Terminal>(
             let _ = session.render_now();
         }
         PendingSlash::Compact => {
-            if session.is_busy() {
-                session.push_system_note("session compact unavailable while busy");
-            } else {
-                match dispatch(driver, Command::Compact { id: None }).await {
-                    Ok(DispatchOutcome::Compacted(did)) => {
-                        let msg = if did {
-                            "session compacted"
-                        } else {
-                            "session unchanged (nothing to compact)"
-                        };
-                        session.push_system_note(msg.to_string());
-                        super::refresh_footer_tokens(session, driver).await;
-                    }
-                    Ok(_) => {
-                        session.push_system_note("session compact complete");
-                        super::refresh_footer_tokens(session, driver).await;
-                    }
-                    Err(e) => session.push_system_note(format!("/session-compact failed: {e}")),
+            match dispatch(driver, Command::Compact { id: None }).await {
+                Ok(DispatchOutcome::Compacted(did)) => {
+                    let msg = if did {
+                        "session compacted"
+                    } else {
+                        "session unchanged (nothing to compact)"
+                    };
+                    session.push_system_note(msg.to_string());
+                    super::refresh_footer_tokens(session, driver).await;
                 }
+                Ok(_) => {
+                    session.push_system_note("session compact complete");
+                    super::refresh_footer_tokens(session, driver).await;
+                }
+                Err(e) => session.push_system_note(format!("/session-compact failed: {e}")),
             }
             let _ = session.render_now();
         }
         PendingSlash::Export { path } => {
-            if session.is_busy() {
-                session.push_system_note("session export unavailable while busy");
-            } else {
-                let cmd = if path
-                    .as_ref()
-                    .is_some_and(|p| p.to_ascii_lowercase().ends_with(".jsonl"))
-                {
-                    Command::ExportJsonl {
-                        id: None,
-                        output_path: path,
-                    }
-                } else {
-                    Command::ExportHtml {
-                        id: None,
-                        output_path: path,
-                    }
-                };
-                match dispatch(driver, cmd).await {
-                    Ok(DispatchOutcome::ExportedPath(written)) => {
-                        session.push_system_note(format!("exported → {written}"));
-                    }
-                    Ok(_) => session.push_system_note("session exported"),
-                    Err(e) => session.push_system_note(format!("/session-export failed: {e}")),
+            let cmd = if path
+                .as_ref()
+                .is_some_and(|p| p.to_ascii_lowercase().ends_with(".jsonl"))
+            {
+                Command::ExportJsonl {
+                    id: None,
+                    output_path: path,
                 }
+            } else {
+                Command::ExportHtml {
+                    id: None,
+                    output_path: path,
+                }
+            };
+            match dispatch(driver, cmd).await {
+                Ok(DispatchOutcome::ExportedPath(written)) => {
+                    session.push_system_note(format!("exported → {written}"));
+                }
+                Ok(_) => session.push_system_note("session exported"),
+                Err(e) => session.push_system_note(format!("/session-export failed: {e}")),
             }
             let _ = session.render_now();
         }
@@ -203,17 +195,13 @@ pub(super) async fn handle_slash<T: Terminal>(
             let _ = session.render_now();
         }
         PendingSlash::SessionDump => {
-            if session.is_busy() {
-                session.push_system_note("session info unavailable while busy");
-            } else {
-                match dispatch(driver, Command::GetSessionStats { id: None }).await {
-                    Ok(DispatchOutcome::SessionStats(stats)) => {
-                        let state = driver.get_state();
-                        session.push_system_note(format_session_stats_dump(&stats, &state));
-                    }
-                    Ok(_) => session.push_system_note("session stats unavailable"),
-                    Err(e) => session.push_system_note(format!("/session failed: {e}")),
+            match dispatch(driver, Command::GetSessionStats { id: None }).await {
+                Ok(DispatchOutcome::SessionStats(stats)) => {
+                    let state = driver.get_state();
+                    session.push_system_note(format_session_stats_dump(&stats, &state));
                 }
+                Ok(_) => session.push_system_note("session stats unavailable"),
+                Err(e) => session.push_system_note(format!("/session failed: {e}")),
             }
             let _ = session.render_now();
         }
@@ -324,37 +312,33 @@ pub(super) async fn handle_slash<T: Terminal>(
             let _ = session.render_now();
         }
         PendingSlash::SessionName { name } => {
-            if session.is_busy() {
-                session.push_system_note("session name unavailable while busy");
-            } else {
-                match name {
-                    None => match driver.get_session_name().await {
-                        Ok(Some(n)) => session.push_system_note(format!("Session name: {n}")),
-                        Ok(None) => session.push_system_note("usage: /session-name <name>"),
-                        Err(e) => note_driver_err(
-                            session,
-                            "tui.get_session_name",
-                            &e,
-                            format!("/session-name failed: {e}"),
-                        ),
-                    },
-                    Some(raw) => match driver.set_session_name(&raw).await {
-                        Ok(stored) => {
-                            if stored != raw {
-                                session.push_system_note(format!(
-                                    "Session name was normalized from {raw:?} to {stored:?}"
-                                ));
-                            }
-                            session.push_system_note(format!("Session name set: {stored}"));
+            match name {
+                None => match driver.get_session_name().await {
+                    Ok(Some(n)) => session.push_system_note(format!("Session name: {n}")),
+                    Ok(None) => session.push_system_note("usage: /session-name <name>"),
+                    Err(e) => note_driver_err(
+                        session,
+                        "tui.get_session_name",
+                        &e,
+                        format!("/session-name failed: {e}"),
+                    ),
+                },
+                Some(raw) => match driver.set_session_name(&raw).await {
+                    Ok(stored) => {
+                        if stored != raw {
+                            session.push_system_note(format!(
+                                "Session name was normalized from {raw:?} to {stored:?}"
+                            ));
                         }
-                        Err(e) => note_driver_err(
-                            session,
-                            "tui.set_session_name",
-                            &e,
-                            format!("/session-name failed: {e}"),
-                        ),
-                    },
-                }
+                        session.push_system_note(format!("Session name set: {stored}"));
+                    }
+                    Err(e) => note_driver_err(
+                        session,
+                        "tui.set_session_name",
+                        &e,
+                        format!("/session-name failed: {e}"),
+                    ),
+                },
             }
             let _ = session.render_now();
         }

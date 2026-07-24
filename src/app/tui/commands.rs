@@ -55,6 +55,68 @@ pub enum PendingSlash {
     Usage(&'static str),
 }
 
+/// Whether a parsed slash may run while agent/bang busy (c1580).
+///
+/// Exhaustive over [`PendingSlash`] — new variants MUST pick Allow or Reject.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum BusySlashPolicy {
+    /// Clear editor and enqueue `pending.slash` (or quit for Exit).
+    Allow,
+    /// Clear editor, system note, MUST NOT steer/follow-up.
+    Reject,
+}
+
+/// Single-table busy policy for every [`PendingSlash`] (c1580).
+pub fn busy_slash_policy(slash: &PendingSlash) -> BusySlashPolicy {
+    match slash {
+        PendingSlash::SessionName { .. }
+        | PendingSlash::SetModel(_)
+        | PendingSlash::HistoryCopyLast
+        | PendingSlash::SessionDump
+        | PendingSlash::Export { .. }
+        | PendingSlash::Exit
+        | PendingSlash::Compact => BusySlashPolicy::Allow,
+        PendingSlash::Reload
+        | PendingSlash::Trust { .. }
+        | PendingSlash::Theme { .. }
+        | PendingSlash::OpenModels
+        | PendingSlash::OpenTree
+        | PendingSlash::ForkAtLeaf
+        | PendingSlash::OpenSessionResume
+        | PendingSlash::SessionNew
+        | PendingSlash::SessionClone
+        | PendingSlash::Import { .. }
+        | PendingSlash::DebugScene(_)
+        | PendingSlash::Usage(_) => BusySlashPolicy::Reject,
+    }
+}
+
+/// Short label for busy-reject notes (`agent busy — /reload refused`).
+pub fn busy_slash_refuse_label(slash: &PendingSlash) -> &'static str {
+    match slash {
+        PendingSlash::Reload => "/reload",
+        PendingSlash::Trust { .. } => "/trust",
+        PendingSlash::Theme { .. } => "/theme",
+        PendingSlash::OpenModels => "/model",
+        PendingSlash::OpenTree => "/session-tree",
+        PendingSlash::ForkAtLeaf => "/session-fork",
+        PendingSlash::OpenSessionResume => "/session-resume",
+        PendingSlash::SessionNew => "/session-new",
+        PendingSlash::SessionClone => "/session-clone",
+        PendingSlash::Import { .. } => "/session-import",
+        PendingSlash::DebugScene(_) => "/debug",
+        PendingSlash::Usage(_) => "slash",
+        // Allow variants are not refuse-noted; keep arms for exhaustiveness.
+        PendingSlash::Exit => "/exit",
+        PendingSlash::SetModel(_) => "/model",
+        PendingSlash::Compact => "/session-compact",
+        PendingSlash::Export { .. } => "/session-export",
+        PendingSlash::SessionDump => "/session",
+        PendingSlash::SessionName { .. } => "/session-name",
+        PendingSlash::HistoryCopyLast => "/history-copy-last",
+    }
+}
+
 /// Idle `!` / `!!` bash request for the async host loop (c492).
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct PendingBash {
@@ -251,7 +313,53 @@ pub fn bash_result_entries(command: &str, result: &XyBashResult) -> Vec<UiEntry>
 
 #[cfg(test)]
 mod parse_tests {
-    use super::{PendingSlash, parse_slash_command};
+    use super::{BusySlashPolicy, PendingSlash, busy_slash_policy, parse_slash_command};
+
+    #[test]
+    fn busy_policy_allow_and_reject_table() {
+        assert_eq!(
+            busy_slash_policy(&PendingSlash::SessionName {
+                name: Some("n".into())
+            }),
+            BusySlashPolicy::Allow
+        );
+        assert_eq!(
+            busy_slash_policy(&PendingSlash::SetModel("m".into())),
+            BusySlashPolicy::Allow
+        );
+        assert_eq!(
+            busy_slash_policy(&PendingSlash::HistoryCopyLast),
+            BusySlashPolicy::Allow
+        );
+        assert_eq!(
+            busy_slash_policy(&PendingSlash::SessionDump),
+            BusySlashPolicy::Allow
+        );
+        assert_eq!(
+            busy_slash_policy(&PendingSlash::Export { path: None }),
+            BusySlashPolicy::Allow
+        );
+        assert_eq!(
+            busy_slash_policy(&PendingSlash::Exit),
+            BusySlashPolicy::Allow
+        );
+        assert_eq!(
+            busy_slash_policy(&PendingSlash::Compact),
+            BusySlashPolicy::Allow
+        );
+        assert_eq!(
+            busy_slash_policy(&PendingSlash::Reload),
+            BusySlashPolicy::Reject
+        );
+        assert_eq!(
+            busy_slash_policy(&PendingSlash::OpenModels),
+            BusySlashPolicy::Reject
+        );
+        assert_eq!(
+            busy_slash_policy(&PendingSlash::Usage("x")),
+            BusySlashPolicy::Reject
+        );
+    }
 
     #[test]
     fn parse_reload_bare() {
