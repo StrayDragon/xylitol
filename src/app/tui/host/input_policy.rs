@@ -4,7 +4,8 @@ use xylitol_tui::{InputEvent, Terminal};
 
 use super::super::bridge::UiPhase;
 use super::super::commands::{
-    BangParse, PendingBash, PendingSlash, parse_bang_command, parse_slash_command,
+    BangParse, BusySlashPolicy, PendingBash, PendingSlash, busy_slash_policy,
+    busy_slash_refuse_label, parse_bang_command, parse_slash_command,
 };
 use super::super::keybindings::matches_binding;
 use super::HostSession;
@@ -105,36 +106,44 @@ impl<T: Terminal> HostSession<T> {
                 return true;
             }
             match parse_slash_command(&text) {
-                Some(PendingSlash::Reload) => {
+                Some(slash) => {
                     root.set_editor_text(String::new());
                     drop(root);
-                    self.push_system_note("agent busy — /reload refused");
+                    match busy_slash_policy(&slash) {
+                        BusySlashPolicy::Allow => {
+                            if matches!(slash, PendingSlash::Exit) {
+                                self.request_quit();
+                            } else {
+                                self.pending.slash = Some(slash);
+                            }
+                            self.sync_ui_root_from_model();
+                            return true;
+                        }
+                        BusySlashPolicy::Reject => {
+                            if let PendingSlash::Usage(msg) = slash {
+                                self.push_system_note(msg);
+                            } else {
+                                self.push_system_note(format!(
+                                    "agent busy — {} refused",
+                                    busy_slash_refuse_label(&slash)
+                                ));
+                            }
+                            self.sync_ui_root_from_model();
+                            return true;
+                        }
+                    }
+                }
+                None if text.trim().starts_with('/') && looks_like_unknown_slash_command(&text) => {
+                    root.set_editor_text(String::new());
+                    drop(root);
+                    self.push_system_note(format!(
+                        "agent busy — unknown command not steered: {}",
+                        text.split_whitespace().next().unwrap_or("/")
+                    ));
                     self.sync_ui_root_from_model();
                     return true;
                 }
-                Some(PendingSlash::Trust { .. }) => {
-                    root.set_editor_text(String::new());
-                    drop(root);
-                    self.push_system_note("agent busy — /trust refused");
-                    self.sync_ui_root_from_model();
-                    return true;
-                }
-                Some(PendingSlash::Theme { .. }) => {
-                    root.set_editor_text(String::new());
-                    drop(root);
-                    self.push_system_note("agent busy — /theme refused");
-                    self.sync_ui_root_from_model();
-                    return true;
-                }
-                // c1110: readonly copy allowed while busy.
-                Some(PendingSlash::HistoryCopyLast) => {
-                    root.set_editor_text(String::new());
-                    drop(root);
-                    self.pending.slash = Some(PendingSlash::HistoryCopyLast);
-                    self.sync_ui_root_from_model();
-                    return true;
-                }
-                _ => {}
+                None => {}
             }
             // c669 / ati32: hard-reject bang while bash_active or agent busy
             // (must not steer literal `!cmd`).

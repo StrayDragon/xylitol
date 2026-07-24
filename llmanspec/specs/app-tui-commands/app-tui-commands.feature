@@ -301,3 +301,21 @@
   场景: catalog-lists
     当 打开 slash 补全
     那么 列表含 theme
+
+  @req:atm16
+  场景: busy-session-name-allows
+    假如 产品 busy
+    当 提交 /session-name my-run
+    那么 不入 steer 且会话名被设置
+
+  @req:atm16
+  场景: busy-reload-rejects
+    假如 产品 busy
+    当 提交 /reload
+    那么 系统块拒绝且不入 steer
+
+  @req:atm16
+  场景: busy-unknown-slash-not-steer
+    假如 产品 busy
+    当 提交 /totally-unknown
+    那么 系统块提示且不入 steer
