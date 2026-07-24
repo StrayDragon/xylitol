@@ -30,10 +30,10 @@ pub use wire::{Command, Envelope, ErrorCode, Event};
 // Flat port re-exports for `crate::protocol::{XyModel, …}` call sites.
 pub use ports::{
     BashExecOpts, LifecycleHandler, NoopHookBus, SessionListEntry, XyBashExecutor, XyBashResult,
-    XyEventSink, XyExportIo, XyGenerateOptions, XyHookBus, XyHookOutcome, XyModel, XyModelBuilder,
-    XyPermission, XyPermissionVerdict, XyReloadable, XyResourceLoader, XySecretResolver,
-    XySessionStore, XyStream, XyTool, XyToolCtx, XyToolExecutionMode, XyTrustStore,
-    flatten_session_forest, format_session_age, sanitize_session_display_name,
+    XyBatchMode, XyEventSink, XyExportIo, XyGenerateOptions, XyHookBus, XyHookOutcome, XyModel,
+    XyModelBuilder, XyPermission, XyPermissionVerdict, XyReloadable, XyResourceLoader,
+    XySecretResolver, XySessionStore, XyStream, XyTool, XyToolCtx, XyToolExecutionMode,
+    XyTrustStore, flatten_session_forest, format_session_age, sanitize_session_display_name,
 };
 
 // Shared vocabulary commonly imported from protocol root.

@@ -2885,6 +2885,384 @@ fn _t_ar24_no_hook_open_end(agent: &AgentState) {
     );
 }
 
+// ── c1545 tool batch (ar27–ar29) ─────────────────────────────────────
+thread_local! {
+    static BATCH_TIMING: RefCell<Vec<(String, u128, u128)>> = const { RefCell::new(Vec::new()) };
+    static BATCH_EPOCH: Cell<Option<std::time::Instant>> = const { Cell::new(None) };
+}
+
+struct BddSlowTool {
+    name: &'static str,
+    mode: xylitol::protocol::ports::XyToolExecutionMode,
+    sleep_ms: u64,
+}
+
+#[async_trait::async_trait]
+impl XyTool for BddSlowTool {
+    fn name(&self) -> &str {
+        self.name
+    }
+    fn description(&self) -> &str {
+        "bdd slow tool"
+    }
+    fn parameters_schema(&self) -> serde_json::Value {
+        serde_json::json!({"type": "object", "properties": {}})
+    }
+    fn execution_mode(&self) -> xylitol::protocol::ports::XyToolExecutionMode {
+        self.mode
+    }
+    async fn execute(
+        &self,
+        _ctx: &XyToolCtx,
+        _args: serde_json::Value,
+    ) -> Result<String, xylitol::protocol::error::XyToolError> {
+        let epoch = BATCH_EPOCH.with(|e| e.get().expect("batch epoch"));
+        let start = epoch.elapsed().as_millis();
+        tokio::time::sleep(std::time::Duration::from_millis(self.sleep_ms)).await;
+        let end = epoch.elapsed().as_millis();
+        BATCH_TIMING.with(|t| t.borrow_mut().push((self.name.to_string(), start, end)));
+        Ok(format!("{}-ok", self.name))
+    }
+}
+
+struct BddMultiToolModel {
+    rounds: std::sync::Mutex<Vec<Vec<xylitol::protocol::types::XyChunk>>>,
+}
+
+#[async_trait::async_trait]
+impl xylitol::protocol::ports::XyModel for BddMultiToolModel {
+    fn name(&self) -> &str {
+        "bdd-batch-mock"
+    }
+    async fn generate_stream(
+        &self,
+        _messages: Vec<xylitol::protocol::message::LlmMessage>,
+        _tools: &[xylitol::protocol::types::XyToolSchema],
+        _stream: bool,
+        _options: xylitol::protocol::ports::XyGenerateOptions,
+    ) -> Result<xylitol::protocol::ports::XyStream, xylitol::protocol::error::XyError> {
+        let chunks = self.rounds.lock().unwrap().remove(0);
+        Ok(Box::pin(futures::stream::iter(chunks.into_iter().map(Ok))))
+    }
+}
+
+fn bdd_batch_rounds(calls: &[(&str, &str)]) -> Vec<Vec<xylitol::protocol::types::XyChunk>> {
+    let done = || xylitol::protocol::types::XyChunk::Done {
+        finish_reason: xylitol::protocol::message::XyStopReason::Stop,
+        usage: None,
+    };
+    let mut round1 = Vec::new();
+    for (i, (name, args_json)) in calls.iter().enumerate() {
+        let args: serde_json::Value =
+            serde_json::from_str(args_json).unwrap_or(serde_json::json!({}));
+        round1.push(xylitol::protocol::types::XyChunk::ToolCallEnd {
+            id: format!("call-{i}"),
+            name: (*name).into(),
+            args,
+        });
+    }
+    round1.push(done());
+    vec![
+        round1,
+        vec![
+            xylitol::protocol::types::XyChunk::TextDelta("ok".into()),
+            done(),
+        ],
+    ]
+}
+
+fn bdd_batch_make_runner(
+    agent: &AgentState,
+    tools: ToolSet,
+    calls: &[(&str, &str)],
+    mode: xylitol::protocol::ports::XyBatchMode,
+) -> AgentRuntime {
+    use xylitol::protocol::ports::{XyEventSink, XyModel, XySessionStore};
+    BATCH_TIMING.with(|t| t.borrow_mut().clear());
+    BATCH_EPOCH.with(|e| e.set(Some(std::time::Instant::now())));
+    reset_fake_state();
+    ar_register_fake(agent, "ar-batch");
+    let rounds = bdd_batch_rounds(calls);
+    let dir = tempfile::tempdir().unwrap();
+    let mgr = SessionManager::new(dir.keep());
+    let store: Arc<dyn XySessionStore> = Arc::new(mgr);
+    let sink: Arc<dyn XyEventSink> = Arc::new(xylitol::infra::event::EventBus::new());
+    let builder: xylitol::protocol::ports::XyModelBuilder = Arc::new(move |_| {
+        Ok(Arc::new(BddMultiToolModel {
+            rounds: std::sync::Mutex::new(rounds.clone()),
+        }) as Arc<dyn XyModel>)
+    });
+    let mut session = AgentCapabilities::new(
+        agent.registry.borrow().clone(),
+        tools,
+        store,
+        sink,
+        None,
+        Vec::new(),
+        Vec::new(),
+        0.8,
+        ".".into(),
+        None,
+        builder,
+        xylitol::infra::permission::allow_all_permission(),
+        None,
+        None,
+        xylitol::agent::session::QueueMode::default(),
+        xylitol::agent::session::QueueMode::default(),
+        None,
+    );
+    session
+        .select_model("ar-batch")
+        .expect("select ar-batch fake");
+    let mut runner = AgentRuntime::new(session);
+    runner.set_batch_mode(mode);
+    runner
+}
+
+fn bdd_timing_overlaps(a: (u128, u128), b: (u128, u128)) -> bool {
+    a.0 < b.1 && b.0 < a.1
+}
+
+#[given("未配置工具批模式且 mock 模型同 turn 发出两个可并行假工具")]
+fn _g_ar27_batch_default(agent: &AgentState, ws: &Workspace) {
+    ws.init();
+    let tools = ToolSet::from_iter(vec![Arc::new(BddSlowTool {
+        name: "slow_safe",
+        mode: xylitol::protocol::ports::XyToolExecutionMode::Parallel,
+        sleep_ms: 80,
+    }) as Arc<dyn XyTool>]);
+    let runner = bdd_batch_make_runner(
+        agent,
+        tools,
+        &[("slow_safe", r#"{"n":1}"#), ("slow_safe", r#"{"n":2}"#)],
+        xylitol::protocol::ports::XyBatchMode::Sequential,
+    );
+    ar_store_runner(runner);
+}
+
+#[given(
+    "工具批模式为 barrier_parallel 且 mock 同 turn 发出两个 ParallelSafe 慢假工具后接一个 Barrier 假工具"
+)]
+fn _g_ar28_overlap(agent: &AgentState, ws: &Workspace) {
+    ws.init();
+    let tools = ToolSet::from_iter(vec![
+        Arc::new(BddSlowTool {
+            name: "slow_safe",
+            mode: xylitol::protocol::ports::XyToolExecutionMode::Parallel,
+            sleep_ms: 100,
+        }) as Arc<dyn XyTool>,
+        Arc::new(BddSlowTool {
+            name: "slow_barrier",
+            mode: xylitol::protocol::ports::XyToolExecutionMode::Sequential,
+            sleep_ms: 40,
+        }) as Arc<dyn XyTool>,
+    ]);
+    let runner = bdd_batch_make_runner(
+        agent,
+        tools,
+        &[
+            ("slow_safe", r#"{"n":1}"#),
+            ("slow_safe", r#"{"n":2}"#),
+            ("slow_barrier", r#"{}"#),
+        ],
+        xylitol::protocol::ports::XyBatchMode::BarrierParallel,
+    );
+    ar_store_runner(runner);
+}
+
+#[given(
+    "工具批模式为 barrier_parallel 且 mock 同 turn 工具序为 ParallelSafe、Barrier、ParallelSafe"
+)]
+fn _g_ar28_windows(agent: &AgentState, ws: &Workspace) {
+    ws.init();
+    let tools = ToolSet::from_iter(vec![
+        Arc::new(BddSlowTool {
+            name: "slow_safe",
+            mode: xylitol::protocol::ports::XyToolExecutionMode::Parallel,
+            sleep_ms: 60,
+        }) as Arc<dyn XyTool>,
+        Arc::new(BddSlowTool {
+            name: "slow_barrier",
+            mode: xylitol::protocol::ports::XyToolExecutionMode::Sequential,
+            sleep_ms: 40,
+        }) as Arc<dyn XyTool>,
+    ]);
+    let runner = bdd_batch_make_runner(
+        agent,
+        tools,
+        &[
+            ("slow_safe", r#"{"n":1}"#),
+            ("slow_barrier", r#"{}"#),
+            ("slow_safe", r#"{"n":2}"#),
+        ],
+        xylitol::protocol::ports::XyBatchMode::BarrierParallel,
+    );
+    ar_store_runner(runner);
+}
+
+#[given(
+    "工具批模式为 barrier_parallel 且 mock 同 turn 工具序为 ParallelSafe、mcp 假工具、ParallelSafe"
+)]
+fn _g_ar28_mcp(agent: &AgentState, ws: &Workspace) {
+    ws.init();
+    let tools = ToolSet::from_iter(vec![
+        Arc::new(BddSlowTool {
+            name: "slow_safe",
+            mode: xylitol::protocol::ports::XyToolExecutionMode::Parallel,
+            sleep_ms: 80,
+        }) as Arc<dyn XyTool>,
+        Arc::new(BddSlowTool {
+            name: "mcp:fake:x",
+            mode: xylitol::protocol::ports::XyToolExecutionMode::Parallel,
+            sleep_ms: 80,
+        }) as Arc<dyn XyTool>,
+    ]);
+    let runner = bdd_batch_make_runner(
+        agent,
+        tools,
+        &[
+            ("slow_safe", r#"{"n":1}"#),
+            ("mcp:fake:x", r#"{}"#),
+            ("slow_safe", r#"{"n":2}"#),
+        ],
+        xylitol::protocol::ports::XyBatchMode::BarrierParallel,
+    );
+    ar_store_runner(runner);
+}
+
+#[given("工具批模式为 barrier_parallel 且并行窗内后发先完成")]
+fn _g_ar29_history(agent: &AgentState, ws: &Workspace) {
+    ws.init();
+    let tools = ToolSet::from_iter(vec![
+        Arc::new(BddSlowTool {
+            name: "slow_a",
+            mode: xylitol::protocol::ports::XyToolExecutionMode::Parallel,
+            sleep_ms: 120,
+        }) as Arc<dyn XyTool>,
+        Arc::new(BddSlowTool {
+            name: "slow_b",
+            mode: xylitol::protocol::ports::XyToolExecutionMode::Parallel,
+            sleep_ms: 30,
+        }) as Arc<dyn XyTool>,
+    ]);
+    let runner = bdd_batch_make_runner(
+        agent,
+        tools,
+        &[("slow_a", r#"{}"#), ("slow_b", r#"{}"#)],
+        xylitol::protocol::ports::XyBatchMode::BarrierParallel,
+    );
+    ar_store_runner(runner);
+}
+
+#[then("两工具按源序串行执行且无并行重叠")]
+fn _t_ar27_sequential_no_overlap() {
+    let entries = BATCH_TIMING.with(|t| t.borrow().clone());
+    assert_eq!(entries.len(), 2, "{entries:?}");
+    assert!(
+        !bdd_timing_overlaps((entries[0].1, entries[0].2), (entries[1].1, entries[1].2)),
+        "must not overlap: {entries:?}"
+    );
+    assert!(entries[0].2 <= entries[1].1, "source order: {entries:?}");
+}
+
+#[then("两 ParallelSafe 执行时间重叠且均在 Barrier 开始前结束")]
+fn _t_ar28_overlap() {
+    let entries = BATCH_TIMING.with(|t| t.borrow().clone());
+    let safes: Vec<_> = entries
+        .iter()
+        .filter(|(n, _, _)| n == "slow_safe")
+        .cloned()
+        .collect();
+    let barrier = entries
+        .iter()
+        .find(|(n, _, _)| n == "slow_barrier")
+        .expect("barrier");
+    assert_eq!(safes.len(), 2, "{entries:?}");
+    assert!(
+        bdd_timing_overlaps((safes[0].1, safes[0].2), (safes[1].1, safes[1].2)),
+        "safes must overlap: {entries:?}"
+    );
+    let safe_end = safes.iter().map(|e| e.2).max().unwrap();
+    assert!(safe_end <= barrier.1, "safes before barrier: {entries:?}");
+}
+
+#[then(
+    "第二个 ParallelSafe MUST NOT 与第一个 ParallelSafe 同窗并行且 MUST 在 Barrier 完成之后开始"
+)]
+fn _t_ar28_windows() {
+    let entries = BATCH_TIMING.with(|t| t.borrow().clone());
+    assert_eq!(entries.len(), 3, "{entries:?}");
+    let first = &entries[0];
+    let barrier = entries
+        .iter()
+        .find(|(n, _, _)| n == "slow_barrier")
+        .unwrap();
+    let second = entries
+        .iter()
+        .rev()
+        .find(|(n, _, _)| n == "slow_safe")
+        .unwrap();
+    assert!(first.2 <= barrier.1, "{entries:?}");
+    assert!(barrier.2 <= second.1, "{entries:?}");
+    assert!(
+        !bdd_timing_overlaps((first.1, first.2), (second.1, second.2)),
+        "{entries:?}"
+    );
+}
+
+#[then("mcp 假工具与两侧 ParallelSafe 均无执行时间重叠")]
+fn _t_ar28_mcp_no_overlap() {
+    let entries = BATCH_TIMING.with(|t| t.borrow().clone());
+    let mcp = entries
+        .iter()
+        .find(|(n, _, _)| n == "mcp:fake:x")
+        .expect("mcp");
+    for (n, s, e) in &entries {
+        if n == "mcp:fake:x" {
+            continue;
+        }
+        assert!(
+            !bdd_timing_overlaps((*s, *e), (mcp.1, mcp.2)),
+            "mcp overlaps {n}: {entries:?}"
+        );
+    }
+}
+
+#[when("检查 session history 中 toolResult")]
+async fn _w_ar29_check_history(agent: &AgentState) {
+    // Prefer prepared runner; run if events empty.
+    if agent.events.borrow().is_empty() {
+        _w_ar_react_run(agent).await;
+    }
+}
+
+#[then("toolResult 顺序与 assistant 源序一致")]
+fn _t_ar29_history_order(agent: &AgentState) {
+    let events = agent.events.borrow();
+    let history = events
+        .iter()
+        .rev()
+        .find_map(|ev| match ev {
+            XyEvent::AgentEnd { messages } => Some(messages.clone()),
+            _ => None,
+        })
+        .expect("AgentEnd");
+    let ids: Vec<_> = history
+        .iter()
+        .filter_map(|m| match m {
+            xylitol::protocol::message::AgentMessage::Llm(
+                xylitol::protocol::message::LlmMessage::ToolResultMessage { tool_use_id, .. },
+            ) => Some(tool_use_id.clone()),
+            _ => None,
+        })
+        .collect();
+    assert_eq!(
+        ids,
+        vec!["call-0".to_string(), "call-1".to_string()],
+        "history order: {ids:?}"
+    );
+}
+
 // ar10 abort-cancels-bang
 #[given("启动交互 bang 长命令后 abort")]
 async fn _g_ar10_abort_cancels_bang(_agent: &AgentState, _ws: &Workspace) {
@@ -3514,6 +3892,32 @@ async fn test_ar_should_stop_skips_followup(agent: AgentState, ws: Workspace) {}
     name = "no-hook-open-end"
 )]
 async fn test_ar_no_hook_open_end(agent: AgentState, ws: Workspace) {}
+
+#[scenario(
+    path = "llmanspec/specs/agent-runtime/agent-runtime.feature",
+    name = "batch-default-sequential"
+)]
+async fn test_ar_batch_default_sequential(agent: AgentState, ws: Workspace) {}
+#[scenario(
+    path = "llmanspec/specs/agent-runtime/agent-runtime.feature",
+    name = "batch-barrier-parallel-overlap"
+)]
+async fn test_ar_batch_barrier_parallel_overlap(agent: AgentState, ws: Workspace) {}
+#[scenario(
+    path = "llmanspec/specs/agent-runtime/agent-runtime.feature",
+    name = "batch-barrier-preserves-source-windows"
+)]
+async fn test_ar_batch_barrier_preserves_windows(agent: AgentState, ws: Workspace) {}
+#[scenario(
+    path = "llmanspec/specs/agent-runtime/agent-runtime.feature",
+    name = "batch-mcp-never-parallel"
+)]
+async fn test_ar_batch_mcp_never_parallel(agent: AgentState, ws: Workspace) {}
+#[scenario(
+    path = "llmanspec/specs/agent-runtime/agent-runtime.feature",
+    name = "batch-history-source-order"
+)]
+async fn test_ar_batch_history_source_order(agent: AgentState, ws: Workspace) {}
 
 // compaction.feature (5)
 #[scenario(

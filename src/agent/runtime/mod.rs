@@ -12,6 +12,8 @@ pub(crate) mod permission_router;
 pub mod react;
 pub mod retry;
 pub(crate) mod script_hook_ctx;
+pub(crate) mod tool_batch;
+pub(crate) mod tool_exec;
 
 // Public surface of the loop (XyEvent/XyEventStream/AgentRuntime/AgentHooks are `pub`).
 pub use crate::protocol::lifecycle::XyEvent;

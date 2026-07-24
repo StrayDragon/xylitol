@@ -17,7 +17,7 @@ use crate::infra::hooks::HookDispatcher;
 use crate::infra::permission;
 use crate::infra::session::SessionManager;
 use crate::protocol::ports::{
-    XyBashExecutor, XyEventSink, XyExportIo, XyHookBus, XyModelBuilder, XyPermission,
+    XyBashExecutor, XyBatchMode, XyEventSink, XyExportIo, XyHookBus, XyModelBuilder, XyPermission,
     XySessionStore,
 };
 
@@ -42,6 +42,8 @@ pub struct BuildAgentOptions {
     pub event_sink: Option<Arc<dyn XyEventSink>>,
     /// Three-tier script hook configuration (empty = zero-cost no-op).
     pub hooks_config: HooksConfig,
+    /// Same-turn tool batch mode from `AppConfig.tool_batch` (c1545).
+    pub batch_mode: XyBatchMode,
 }
 
 impl Default for BuildAgentOptions {
@@ -62,6 +64,7 @@ impl Default for BuildAgentOptions {
             follow_up_mode: QueueMode::default(),
             event_sink: None,
             hooks_config: HooksConfig::default(),
+            batch_mode: XyBatchMode::Sequential,
         }
     }
 }
@@ -128,7 +131,8 @@ pub fn build_agent(options: BuildAgentOptions) -> Result<AgentRuntime, XyDriverE
     .export_io(export_io)
     .steering_mode(options.steering_mode)
     .follow_up_mode(options.follow_up_mode)
-    .hook_bus(hook_bus);
+    .hook_bus(hook_bus)
+    .batch_mode(options.batch_mode);
 
     if let Some(sp) = options.system_prompt {
         builder = builder.system_prompt(sp);

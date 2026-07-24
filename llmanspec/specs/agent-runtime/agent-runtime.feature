@@ -130,3 +130,33 @@
     假如 history 含 stop_reason=aborted 的 assistant
     当 project_for_llm
     那么 投影结果不含该 assistant 行
+
+  @req:ar27
+  场景: batch-default-sequential
+    假如 未配置工具批模式且 mock 模型同 turn 发出两个可并行假工具
+    当 运行 AgentRuntime
+    那么 两工具按源序串行执行且无并行重叠
+
+  @req:ar28
+  场景: batch-barrier-parallel-overlap
+    假如 工具批模式为 barrier_parallel 且 mock 同 turn 发出两个 ParallelSafe 慢假工具后接一个 Barrier 假工具
+    当 运行 AgentRuntime
+    那么 两 ParallelSafe 执行时间重叠且均在 Barrier 开始前结束
+
+  @req:ar28
+  场景: batch-barrier-preserves-source-windows
+    假如 工具批模式为 barrier_parallel 且 mock 同 turn 工具序为 ParallelSafe、Barrier、ParallelSafe
+    当 运行 AgentRuntime
+    那么 第二个 ParallelSafe MUST NOT 与第一个 ParallelSafe 同窗并行且 MUST 在 Barrier 完成之后开始
+
+  @req:ar28
+  场景: batch-mcp-never-parallel
+    假如 工具批模式为 barrier_parallel 且 mock 同 turn 工具序为 ParallelSafe、mcp 假工具、ParallelSafe
+    当 运行 AgentRuntime
+    那么 mcp 假工具与两侧 ParallelSafe 均无执行时间重叠
+
+  @req:ar29
+  场景: batch-history-source-order
+    假如 工具批模式为 barrier_parallel 且并行窗内后发先完成
+    当 检查 session history 中 toolResult
+    那么 toolResult 顺序与 assistant 源序一致
