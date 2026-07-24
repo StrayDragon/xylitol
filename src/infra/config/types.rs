@@ -588,7 +588,7 @@ pub struct HooksConfig {
     pub user: Vec<HookEntry>,
 }
 
-#[derive(Clone, Debug, Serialize, Deserialize, JsonSchema)]
+#[derive(Clone, Debug, Default, Serialize, Deserialize, JsonSchema)]
 pub struct HookEntry {
     /// Shell command to execute (e.g., "python3 /path/to/hook.py").
     pub command: String,
@@ -596,9 +596,9 @@ pub struct HookEntry {
     /// Supports exact and prefix matching.
     #[serde(default)]
     pub events: Vec<String>,
-    /// Timeout in seconds per hook execution. Default: 5.
-    #[serde(default = "default_hook_timeout")]
-    pub timeout_secs: u64,
+    /// Optional timeout in seconds. Omit / null = unlimited.
+    #[serde(default)]
+    pub timeout_secs: Option<u64>,
     /// Optional phase filter: "pre", "post", or "" for both. When set, only
     /// matches events of that phase.
     #[serde(default)]
@@ -609,23 +609,6 @@ pub struct HookEntry {
     /// Extra environment variables for the hook process.
     #[serde(default)]
     pub env: std::collections::HashMap<String, String>,
-}
-
-impl Default for HookEntry {
-    fn default() -> Self {
-        Self {
-            command: String::new(),
-            events: Vec::new(),
-            timeout_secs: default_hook_timeout(),
-            phase: String::new(),
-            requires_approval: false,
-            env: std::collections::HashMap::new(),
-        }
-    }
-}
-
-fn default_hook_timeout() -> u64 {
-    5
 }
 
 // ---------------------------------------------------------------------------

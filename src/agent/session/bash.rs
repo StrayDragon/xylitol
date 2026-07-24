@@ -66,6 +66,7 @@ impl BashExecHandler {
                 BashExecOpts {
                     cancel: Some(cancel),
                     chunk_tx,
+                    ..Default::default()
                 },
             )
             .await;
@@ -154,6 +155,7 @@ mod tests {
             output: "hello\n".into(),
             exit_code: Some(0),
             cancelled: false,
+            timed_out: false,
             truncated: false,
             full_output_path: None,
         };

@@ -1047,7 +1047,7 @@ fn _g_hook_registered(agent: &AgentState, pat: String) {
         events: vec![pat],
         command: "echo '{\"action\":\"allow\"}'".into(),
         phase: String::new(),
-        timeout_secs: 5,
+        timeout_secs: Some(5),
         requires_approval: false,
         env: HashMap::new(),
     });
@@ -1103,7 +1103,7 @@ fn _g_hook_slow(agent: &AgentState) {
 #[given("hook 超时设为 1 秒")]
 fn _g_hook_timeout_1s(agent: &AgentState) {
     if let Some(e) = agent.hook_entries.borrow_mut().last_mut() {
-        e.timeout_secs = 1;
+        e.timeout_secs = Some(1);
     }
 }
 #[given("没有注册任何 hook")]

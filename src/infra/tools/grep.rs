@@ -11,7 +11,6 @@ use async_trait::async_trait;
 use serde::Deserialize;
 use serde_json::{Value, json};
 use tokio::process::Command;
-use tokio::time::Duration;
 
 use super::path_utils::resolve_to_cwd;
 use super::truncate::{
@@ -21,10 +20,9 @@ use super::truncate::{
 use super::typed::TypedTool;
 use crate::protocol::error::XyToolError;
 use crate::protocol::ports::XyToolCtx;
+use crate::protocol::{ToolTimeout, ToolTimeoutError};
 
 const DEFAULT_LIMIT: usize = 100;
-const RG_TIMEOUT: Duration = Duration::from_secs(30);
-
 pub struct GrepTool;
 
 #[derive(Debug, Deserialize)]
@@ -43,6 +41,9 @@ pub struct GrepArgs {
     context: u32,
     #[serde(default = "default_grep_limit")]
     limit: u64,
+    /// Optional timeout in seconds; omit for unlimited.
+    #[serde(default)]
+    timeout: Option<i64>,
 }
 
 fn default_dot() -> String {
@@ -96,6 +97,10 @@ impl TypedTool for GrepTool {
                 "limit": {
                     "type": "integer",
                     "description": "Maximum number of matches to return (default: 100)"
+                },
+                "timeout": {
+                    "type": "integer",
+                    "description": "Optional timeout in seconds (omit for unlimited; max 120). Zero is invalid."
                 }
             },
             "required": ["pattern"]
@@ -111,7 +116,13 @@ impl TypedTool for GrepTool {
             literal,
             context,
             limit: limit_val,
+            timeout: timeout_arg,
         } = args;
+        let tool_timeout = ToolTimeout::from_i64_opt(timeout_arg).map_err(|e| match e {
+            ToolTimeoutError::ZeroOrNegative | ToolTimeoutError::AboveMax { .. } => {
+                XyToolError::InvalidArgs(e.to_string())
+            }
+        })?;
         let effective_limit = (limit_val as usize).max(1);
 
         let search_dir = resolve_to_cwd(&search_path);
@@ -156,15 +167,27 @@ impl TypedTool for GrepTool {
 
         let pid = child.id().unwrap_or(0);
 
+        let deadline = tool_timeout
+            .duration()
+            .map(|d| tokio::time::Instant::now() + d);
         let child_result = tokio::select! {
             _ = cancel.cancelled() => {
                 super::process::kill_tree(pid).await;
                 return Err(XyToolError::Aborted);
             }
             result = child.wait_with_output() => result,
-            _ = tokio::time::sleep(RG_TIMEOUT) => {
+            _ = async {
+                match deadline {
+                    Some(dl) => tokio::time::sleep_until(dl).await,
+                    None => std::future::pending::<()>().await,
+                }
+            } => {
                 super::process::kill_tree(pid).await;
-                return Err(XyToolError::Timeout(RG_TIMEOUT));
+                return Err(XyToolError::Timeout(
+                    tool_timeout
+                        .duration()
+                        .expect("timeout arm only fires when limited"),
+                ));
             }
         };
 

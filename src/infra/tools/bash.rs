@@ -3,7 +3,7 @@
 //! Key behaviors (aligns with pi's bash.ts):
 //! - CancellationToken kills the process tree
 //! - Merges stdout/stderr streaming
-//! - Configurable timeout (default 30s, max 120s) with graduated escalation
+//! - Optional timeout (default unlimited, max 120s) with graduated escalation
 //! - Output truncated to DEFAULT_MAX_BYTES
 //! - Cross-platform shell discovery via `infra::process::shell`
 
@@ -18,12 +18,11 @@ use tokio::time::timeout;
 
 use crate::protocol::error::XyToolError;
 use crate::protocol::ports::XyToolCtx;
+use crate::protocol::{ToolTimeout, ToolTimeoutError};
 
 use super::accumulator::OutputAccumulator;
 use super::typed::TypedTool;
 
-const DEFAULT_TIMEOUT_SECS: u64 = 30;
-const MAX_TIMEOUT_SECS: u64 = 120;
 const SIGTERM_GRACE_SECS: u64 = 5;
 
 #[derive(Debug, Deserialize)]
@@ -32,12 +31,9 @@ pub struct BashArgs {
     #[serde(default)]
     #[allow(dead_code)] // accepted in schema for LLM UX; not used by executor
     description: Option<String>,
-    #[serde(default = "default_bash_timeout")]
-    timeout: i64,
-}
-
-fn default_bash_timeout() -> i64 {
-    DEFAULT_TIMEOUT_SECS as i64
+    /// Optional seconds; omit for unlimited. Zero/negative are invalid.
+    #[serde(default)]
+    timeout: Option<i64>,
 }
 
 // ── BashOperations trait ──────────────────────────────────────────────
@@ -52,7 +48,7 @@ pub trait BashOperations: Send + Sync {
     async fn execute(
         &self,
         command: &str,
-        timeout_secs: u64,
+        tool_timeout: ToolTimeout,
         cancel: tokio_util::sync::CancellationToken,
     ) -> Result<BashOutput, BashError>;
 }
@@ -100,7 +96,7 @@ impl BashOperations for RealBashOperations {
     async fn execute(
         &self,
         command: &str,
-        timeout_secs: u64,
+        tool_timeout: ToolTimeout,
         cancel: tokio_util::sync::CancellationToken,
     ) -> Result<BashOutput, BashError> {
         // Pre-spawn hook
@@ -111,8 +107,6 @@ impl BashOperations for RealBashOperations {
         if cancel.is_cancelled() {
             return Err(BashError::Aborted);
         }
-
-        let timeout_dur = Duration::from_secs(timeout_secs.min(MAX_TIMEOUT_SECS));
 
         // Use c135's shell discovery
         let shell_cfg = crate::infra::process::shell::find_bash(None);
@@ -128,13 +122,13 @@ impl BashOperations for RealBashOperations {
         let pid = child.id().unwrap_or(0);
         let output_fut = child.wait_with_output();
 
-        // Graduated timeout: SIGTERM → 5s grace → SIGKILL
+        // Graduated timeout when limited: SIGTERM → 5s grace → SIGKILL
         let output = tokio::select! {
             _ = cancel.cancelled() => {
                 sigterm_then_sigkill(pid).await;
                 return Err(BashError::Aborted);
             }
-            r = graduated_timeout(output_fut, timeout_dur, pid) => r,
+            r = graduated_timeout(output_fut, tool_timeout.duration(), pid) => r,
         };
 
         let output = match output {
@@ -213,21 +207,24 @@ async fn sigterm_then_sigkill(pid: u32) {
     crate::infra::process::group::kill_process_tree(pid);
 }
 
-/// Wait with a graduated timeout: first timeout → SIGTERM → grace → SIGKILL.
+/// Wait; when `dur` is Some, graduated timeout: first timeout → SIGTERM → grace → SIGKILL.
 async fn graduated_timeout<F, T>(
     fut: F,
-    dur: Duration,
+    dur: Option<Duration>,
     pid: u32,
 ) -> Result<Result<T, std::io::Error>, ()>
 where
     F: std::future::Future<Output = Result<T, std::io::Error>>,
 {
-    match timeout(dur, fut).await {
-        Ok(result) => Ok(result),
-        Err(_elapsed) => {
-            sigterm_then_sigkill(pid).await;
-            Err(())
-        }
+    match dur {
+        None => Ok(fut.await),
+        Some(d) => match timeout(d, fut).await {
+            Ok(result) => Ok(result),
+            Err(_elapsed) => {
+                sigterm_then_sigkill(pid).await;
+                Err(())
+            }
+        },
     }
 }
 
@@ -287,7 +284,7 @@ impl TypedTool for BashTool {
                 },
                 "timeout": {
                     "type": "integer",
-                    "description": "Timeout in seconds (default 30, max 120)"
+                    "description": "Optional timeout in seconds (omit for unlimited; max 120). Zero is invalid."
                 }
             },
             "required": ["command"]
@@ -301,11 +298,11 @@ impl TypedTool for BashTool {
             timeout: requested,
         } = args;
 
-        let timeout_secs = if requested <= 0 {
-            DEFAULT_TIMEOUT_SECS
-        } else {
-            (requested as u64).min(MAX_TIMEOUT_SECS)
-        };
+        let tool_timeout = ToolTimeout::from_i64_opt(requested).map_err(|e| match e {
+            ToolTimeoutError::ZeroOrNegative | ToolTimeoutError::AboveMax { .. } => {
+                XyToolError::InvalidArgs(e.to_string())
+            }
+        })?;
 
         if ctx.cancel.is_cancelled() {
             return Err(XyToolError::Aborted);
@@ -315,17 +312,21 @@ impl TypedTool for BashTool {
         // (c1255 ToolExecutionUpdate). Falls back to wait_with_output otherwise.
         if let Some(out_tx) = ctx.output_tx.clone() {
             return self
-                .execute_streaming(&cmd, timeout_secs, ctx.cancel.clone(), out_tx)
+                .execute_streaming(&cmd, tool_timeout, ctx.cancel.clone(), out_tx)
                 .await;
         }
 
         let output = self
             .operations
-            .execute(&cmd, timeout_secs, ctx.cancel.clone())
+            .execute(&cmd, tool_timeout, ctx.cancel.clone())
             .await
             .map_err(|e| match e {
                 BashError::Aborted => XyToolError::Aborted,
-                BashError::Timeout => XyToolError::Timeout(Duration::from_secs(timeout_secs)),
+                BashError::Timeout => XyToolError::Timeout(
+                    tool_timeout
+                        .duration()
+                        .unwrap_or_else(|| Duration::from_secs(0)),
+                ),
                 BashError::SpawnFailed(msg) => {
                     XyToolError::ExecutionFailed(anyhow::anyhow!("spawn failed: {msg}"))
                 }
@@ -353,7 +354,7 @@ impl BashTool {
     async fn execute_streaming(
         &self,
         cmd: &str,
-        _timeout_secs: u64,
+        tool_timeout: ToolTimeout,
         cancel: tokio_util::sync::CancellationToken,
         out_tx: tokio::sync::mpsc::Sender<String>,
     ) -> Result<String, XyToolError> {
@@ -376,6 +377,7 @@ impl BashTool {
                 BashExecOpts {
                     cancel: Some(cancel),
                     chunk_tx: Some(chunk_tx),
+                    timeout: tool_timeout,
                 },
             )
             .await;
@@ -384,6 +386,13 @@ impl BashTool {
 
         if result.cancelled {
             return Err(XyToolError::Aborted);
+        }
+        if result.timed_out {
+            return Err(XyToolError::Timeout(
+                tool_timeout
+                    .duration()
+                    .unwrap_or_else(|| Duration::from_secs(0)),
+            ));
         }
 
         Ok(serde_json::to_string(&json!({
@@ -455,7 +464,7 @@ mod tests {
             async fn execute(
                 &self,
                 _command: &str,
-                _timeout_secs: u64,
+                _tool_timeout: ToolTimeout,
                 _cancel: tokio_util::sync::CancellationToken,
             ) -> Result<BashOutput, BashError> {
                 Ok(BashOutput {
@@ -502,5 +511,42 @@ mod tests {
 
         assert!(pre_called.load(std::sync::atomic::Ordering::SeqCst));
         assert!(post_called.load(std::sync::atomic::Ordering::SeqCst));
+    }
+
+    #[tokio::test]
+    async fn test_bash_omit_timeout_unlimited() {
+        let tool = BashTool::default();
+        let result = tool
+            .execute(&test_ctx(), json!({"command": "sleep 2"}))
+            .await
+            .unwrap();
+        let v: Value = serde_json::from_str(&result).unwrap();
+        assert_eq!(v["exit_code"], 0);
+    }
+
+    #[tokio::test]
+    async fn test_bash_zero_timeout_rejected() {
+        let tool = BashTool::default();
+        let err = tool
+            .execute(&test_ctx(), json!({"command": "echo hi", "timeout": 0}))
+            .await
+            .unwrap_err();
+        assert!(
+            err.to_string().contains("invalid timeout")
+                || matches!(err, XyToolError::InvalidArgs(_)),
+            "got {err}"
+        );
+    }
+
+    #[tokio::test]
+    async fn test_bash_streaming_respects_timeout() {
+        let tool = BashTool::default();
+        let (tx, _rx) = tokio::sync::mpsc::channel::<String>(8);
+        let ctx = XyToolCtx::new("stream").with_output_tx(tx);
+        let err = tool
+            .execute(&ctx, json!({"command": "sleep 10", "timeout": 1}))
+            .await
+            .unwrap_err();
+        assert!(matches!(err, XyToolError::Timeout(_)), "got {err}");
     }
 }

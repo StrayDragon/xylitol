@@ -405,6 +405,10 @@ impl XyDriver for XyRemoteDriver {
                 .get("cancelled")
                 .and_then(|c| c.as_bool())
                 .unwrap_or(false),
+            timed_out: data
+                .get("timed_out")
+                .and_then(|c| c.as_bool())
+                .unwrap_or(false),
             truncated: data
                 .get("truncated")
                 .and_then(|c| c.as_bool())

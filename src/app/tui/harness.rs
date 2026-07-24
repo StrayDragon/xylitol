@@ -122,6 +122,7 @@ impl ScriptedDriver {
                 output: "ok".into(),
                 exit_code: Some(0),
                 cancelled: false,
+                timed_out: false,
                 truncated: false,
                 full_output_path: None,
             },
@@ -511,6 +512,7 @@ impl XyDriver for ScriptedDriver {
                 output: String::new(),
                 exit_code: None,
                 cancelled: true,
+                timed_out: false,
                 truncated: false,
                 full_output_path: None,
             });
@@ -2206,6 +2208,7 @@ mod slice_tests {
             output: "abcdef".into(),
             exit_code: Some(0),
             cancelled: false,
+            timed_out: false,
             truncated: false,
             full_output_path: None,
         });
