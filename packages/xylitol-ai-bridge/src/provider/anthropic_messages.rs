@@ -161,17 +161,15 @@ impl AnthropicMessagesAdapter {
             return Err(AiBridgeError::Provider(anyhow::anyhow!(msg)));
         }
 
+        let trace =
+            crate::provider::trace::ProviderRequestTrace::start("anthropic-messages", &self.model);
+        if let Some(t) = &trace {
+            t.capture_request_input(&body.to_string());
+        }
+
         if stream {
-            let trace = crate::provider::trace::ProviderRequestTrace::start(
-                "anthropic-messages",
-                &self.model,
-            );
             Ok(Box::pin(anthropic_stream(response, trace)))
         } else {
-            let trace = crate::provider::trace::ProviderRequestTrace::start(
-                "anthropic-messages",
-                &self.model,
-            );
             let json: Value = response
                 .json()
                 .await
