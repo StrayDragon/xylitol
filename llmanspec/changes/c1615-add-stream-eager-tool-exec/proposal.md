@@ -43,7 +43,12 @@ author: agent
 
 在 Responses 下量 `ToolCallEnd(t0)` → `Done/MessageEnd(t1)` 空隙 vs 工具墙钟。仅当空隙经常 ≥ 工具耗时再 promote。
 
-用户提示词见会话交付。
+### 结果（session `39d080fa-174d-489f-8107-11397d901f10`，Ornith / openai-responses）
+
+- 同消息 3×read；**无**同轮 tool 后 Text（长文在下一轮 llm）。
+- provider-trace：三个 `ToolCallEnd` 在 **0.2ms** 内连发，距 `Done`/`response.completed` **≈0.1–0.4ms**。
+- `ToolCallStart` 虽较早（间隔百 ms 级），但本端 `output_item.done`→End 挤在收尾——按 **End 抢跑** 几乎无可重叠。
+- **结论：暂不 promote `c1615`**（至少对该端点/模型）。若将来改「args JSON 完整即投机」另立决策，不在本草案默认路径。
 
 ## Non-Goals
 
@@ -51,7 +56,7 @@ Completions 抢跑；结果流式回灌同轮 LLM；放开 MCP 并行。
 
 ## Status
 
-**purpose-draft** — 后置；等实验 2。
+**purpose-draft — 实验 2 后建议搁置**（见上）。依赖与方言门闩结论仍保留，待其它端点再现大空隙再 reopen。
 
 ## Ethics
 
