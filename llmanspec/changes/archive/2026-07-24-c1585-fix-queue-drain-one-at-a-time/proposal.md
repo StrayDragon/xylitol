@@ -1,10 +1,14 @@
 ---
 change_id: c1585-fix-queue-drain-one-at-a-time
 title: steer/follow-up 默认一次性只 drain 一条进入下一 turn（对齐 pi）
-status: purpose-draft
+status: ready
 priority: 1585
 depends_on: []
 author: agent
+branch: feat/c1585-queue-one-at-a-time
+base_sha: 7c5075601088d1bfe49a865c31b80aa7bfaa24bf
+checkpointed: true
+checkpoint_sha: 7c5075601088d1bfe49a865c31b80aa7bfaa24bf
 ---
 
 # c1585-fix-queue-drain-one-at-a-time

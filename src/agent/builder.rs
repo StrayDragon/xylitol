@@ -139,13 +139,13 @@ impl AgentBuilder {
         self
     }
 
-    /// Set steering queue drain mode (default: [`QueueMode::All`]).
+    /// Set steering queue drain mode (default: [`QueueMode::OneAtATime`]).
     pub fn steering_mode(mut self, mode: QueueMode) -> Self {
         self.steering_mode = mode;
         self
     }
 
-    /// Set follow-up queue drain mode (default: [`QueueMode::All`]).
+    /// Set follow-up queue drain mode (default: [`QueueMode::OneAtATime`]).
     pub fn follow_up_mode(mut self, mode: QueueMode) -> Self {
         self.follow_up_mode = mode;
         self
