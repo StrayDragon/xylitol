@@ -104,18 +104,21 @@ hooks:
 #     headers:
 #       CONTEXT7_API_KEY: "{{ secret.CONTEXT7_API_KEY }}"
 
-# Optional remote traces (OTLP/HTTP → Langfuse / Collector). Default: none.
-# Requires Cargo feature `otel` (in default features). Secrets via secret.env.
+# Optional remote traces (OTLP/HTTP → Langfuse / Collector).
+# Code defaults (omit keys or leave commented):
+#   exporter: none
+#   protocol: http-json
+#   observation_io: none          # no prompt / completion / turn preview payloads
+#   tool_observation_io: none     # no tool args/results
+#   export_timeout_secs: 60
+# Turning exporter on WITHOUT raising the I/O gates still sends only structural
+# metadata (session id, model name, span types, latency, usage when present).
 # otel:
 #   exporter: otlp-http   # or omit / none
 #   # endpoint: "http://localhost:3000/api/public/otel"
 #   # (or set LANGFUSE_BASE_URL in secret.env → …/api/public/otel)
 #   environment: dev
 #   service_name: xylitol
-#   # HTTP client timeout for each OTLP export (default 60). Raise if large
-#   # batches time out as generic "network error" on a healthy Langfuse.
 #   # export_timeout_secs: 60
-#   # Generation + agent.turn Session preview I/O (default none).
-#   # observation_io: truncated   # none | truncated | full
-#   # Tool.execute args/result (separate; default none).
+#   # observation_io: truncated   # none | truncated | full  (default none)
 #   # tool_observation_io: truncated
