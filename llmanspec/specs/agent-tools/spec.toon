@@ -2,13 +2,15 @@ kind: llman.sdd.spec
 name: "agent-tools"
 purpose: 工具系统 — 工具定义、执行分发、bash/ls/grep/edit/write/read 内置工具与路径工具。
 valid_scope[3]: src/agent/tools/,src/infra/tools/,src/protocol/
-requirements[39]{req_id,title,statement}:
+requirements[41]{req_id,title,statement}:
   r32,工具 trait 前缀,System MUST 将主工具接口定义为 XyTool；trait 名已带 Xy 前缀，MUST 与 protocol 边界其余命名一致。
   r42,七种内置工具,System MUST 实现 7 个内置工具：read、bash、edit、write、grep、find、ls。
   r48,补丁应用,System MUST 使用 fudiff 模糊匹配应用 AI 生成的补丁，并以 patch crate 精确匹配作为回退。
   r4,读文件大小限制,Read 工具 MUST 拒绝超过 MAX_FILE_SIZE（默认 10MB）的文件，并返回清晰错误信息。
   r5,bash 流式输出,Bash 工具 MUST 流式输出 stdout/stderr 并设字节上限；超限时 MUST 终止子进程。
-  r6,整数转换校验,工具 MUST 在转换前校验数值参数（timeout、max_results）处于正数安全范围内。
+  r6,整数转换校验,工具 MUST 在转换前校验数值参数（timeout、max_results）处于正数安全范围内；timeout 若出现则 MUST 为正整数秒且不超过配置上界，MUST NOT 将 0 解释为无限。
+  t24,工具超时默认无限,"bash、grep、find 的 timeout 参数 MUST 为可选；省略时 MUST 不设执行时限（Unlimited）。显式正整数秒时 MUST 在到期后终止子进程并返回 timeout 类错误。bash 流式与非流式路径 MUST 共用同一 timeout 语义，MUST NOT 丢弃参数或硬编码默认秒数。"
+  t25,grep-find-timeout-schema,grep 与 find 的 parameters schema MUST 暴露可选 timeout（秒）；行为遵循 t24。
   r7,find 禁止绝对路径逃逸,Find 工具 MUST 拒绝绝对 pattern，或 MUST 规范化结果以验证其仍在 root 目录内。
   r8,"安全 UTF-8 截断","输出截断 MUST 使用字符边界感知切片，防止 UTF-8 panic。"
   r9,工具参数辅助函数,工具系统 MUST 提供共享参数提取辅助函数，消除各工具实现中重复的 JSON 字段解析。
@@ -42,6 +44,9 @@ requirements[39]{req_id,title,statement}:
   r36,MCP 工具经 XyTool 接入,MCP 工具 MUST 仅通过 XyTool 端口进入 agent 工具集；rmcp 具体类型 MUST NOT 泄漏到 agent/ 或 domain/。
   t21,"read-image-parts","Read 工具在路径为支持的图片文件时 MUST 经 resize/multimodal 准备产出含 AgentPart::Image（base64 data + media_type）的 tool result parts，并附简短 text note；MUST NOT 仅返回「[Image file: …]」占位字符串作为唯一结果。文本文件行为保持既有截断语义。工具端口 MUST 允许 execute 结果以 parts 形式进入 history（默认实现可将纯文本包成 Text part）。"
   t22,"write-edit-llm-result-quiet","write/edit 成功时，进入会话 history 并经 project_for_llm 发往模型的 tool result 正文 MUST 为短成功句（对齐 pi）；MUST NOT 把完整 content 回灌或嵌入 unified/display_diff。失败时 MUST 保留可读错误原因。UI 仍 MUST 能取得 display_diff（或等价）以渲染编辑块。"
-scenarios[2]{req_id,id,given,when,then,feature}:
+scenarios[5]{req_id,id,given,when,then,feature}:
   t22,"edit-success-short-llm",edit 成功后,project_for_llm 的 tool result 正文,为短成功句且不含 display_diff,false
   t22,"write-success-short-llm",write 成功后,project_for_llm 的 tool result 正文,为短成功句且不含文件正文,false
+  t24,"omit-timeout-unlimited-doc",省略 bash/grep/find timeout,执行工具,不武装默认秒级 timer（单测断言 ToolTimeout::Unlimited）,false
+  t25,"grep-find-schema-timeout",查阅 grep/find schema,检查 parameters,含可选 timeout 字段,false
+  r6,"zero-not-unlimited",传入 timeout=0,校验参数,拒绝为无效 timeout,false
