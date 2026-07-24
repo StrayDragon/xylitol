@@ -36,7 +36,8 @@ pub(crate) struct AgentTurnSpan {
 impl AgentTurnSpan {
     /// Start a turn root. When `[otel].observation_io` ≠ none, `user_preview` is
     /// attached as `langfuse.observation.input` for Langfuse Session list (c1555).
-    pub(crate) fn start(user_preview: Option<&str>) -> Option<Self> {
+    /// `model_api` (when known) is recorded as `xylitol.model.api` (c1600).
+    pub(crate) fn start(user_preview: Option<&str>, model_api: Option<&str>) -> Option<Self> {
         if !provider_trace_active() {
             return None;
         }
@@ -44,6 +45,9 @@ impl AgentTurnSpan {
         let root = Span::root("agent.turn", SpanContext::random()).with_properties(|| {
             let mut props = vec![("turn_id".to_string(), turn_id.clone())];
             props.extend(langfuse_observation_properties("agent"));
+            if let Some(api) = model_api.filter(|s| !s.is_empty()) {
+                props.push(("xylitol.model.api".to_string(), api.to_string()));
+            }
             if let Some(max) = observation_io_tier().max_chars()
                 && let Some(preview) = user_preview
                 && !preview.is_empty()
@@ -328,7 +332,7 @@ mod tests {
     fn inactive_helpers_are_none() {
         let _g = TEST_LOCK.lock().unwrap();
         set_provider_trace_active(false);
-        assert!(AgentTurnSpan::start(None).is_none());
+        assert!(AgentTurnSpan::start(None, None).is_none());
         assert!(AgentIterationSpan::start(None, 0).is_none());
         assert!(ToolExecuteSpan::start("bash", "1", None).is_none());
     }
@@ -341,7 +345,7 @@ mod tests {
         fastrace::set_reporter(CollectingReporter(Arc::clone(&records)), Config::default());
 
         {
-            let turn = AgentTurnSpan::start(Some("hello turn")).expect("turn");
+            let turn = AgentTurnSpan::start(Some("hello turn"), None).expect("turn");
             let iter = AgentIterationSpan::start(Some(&turn), 0).expect("iter");
             let tool = ToolExecuteSpan::start("bash", "t1", Some(iter.span())).expect("tool");
             tool.attach_io(r#"{"cmd":"echo"}"#, "ok");
@@ -415,7 +419,7 @@ mod tests {
         let records = Arc::new(Mutex::new(Vec::new()));
         fastrace::set_reporter(CollectingReporter(Arc::clone(&records)), Config::default());
         {
-            let turn = AgentTurnSpan::start(Some("secret prompt")).expect("turn");
+            let turn = AgentTurnSpan::start(Some("secret prompt"), None).expect("turn");
             drop(turn);
         }
         fastrace::flush();
@@ -433,7 +437,7 @@ mod tests {
         records.lock().unwrap().clear();
         set_observation_io_tier(ObservationIoTier::Truncated);
         {
-            let turn = AgentTurnSpan::start(Some("secret prompt")).expect("turn");
+            let turn = AgentTurnSpan::start(Some("secret prompt"), None).expect("turn");
             drop(turn);
         }
         fastrace::flush();
@@ -506,7 +510,7 @@ mod tests {
         fastrace::set_reporter(CollectingReporter(Arc::clone(&records)), Config::default());
 
         {
-            let turn = AgentTurnSpan::start(None).expect("turn");
+            let turn = AgentTurnSpan::start(None, Some("openai-responses")).expect("turn");
             let iter = AgentIterationSpan::start(Some(&turn), 1).expect("iter");
             let parent_ctx = SpanContext::from_span(iter.span());
             let t1 = ToolExecuteSpan::start_with_parent_ctx(
@@ -534,6 +538,16 @@ mod tests {
         set_provider_trace_active(false);
 
         let spans = records.lock().unwrap().clone();
+        let turn = spans.iter().find(|s| s.name == "agent.turn").expect("turn");
+        let turn_props: std::collections::HashMap<_, _> = turn
+            .properties
+            .iter()
+            .map(|(k, v)| (k.as_ref(), v.as_ref()))
+            .collect();
+        assert_eq!(
+            turn_props.get("xylitol.model.api"),
+            Some(&"openai-responses")
+        );
         let iter = spans
             .iter()
             .find(|s| s.name == "agent.iteration")
