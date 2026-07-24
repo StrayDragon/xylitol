@@ -31,6 +31,8 @@ pub struct SystemPromptOpts {
     pub system_prompt: Option<String>,
     /// Append system prompt lines from APPEND_SYSTEM.md.
     pub append_system_prompt: Vec<String>,
+    /// Built-in runtime policy fragments (c1605); injected as `<runtime_policy>`.
+    pub runtime_policy_fragments: Vec<String>,
 }
 
 /// Build a system prompt dynamically based on options.
@@ -110,6 +112,19 @@ pub fn build_system_prompt(opts: &SystemPromptOpts) -> String {
         for g in &opts.prompt_guidelines {
             prompt.push_str(&format!("- {g}\n"));
         }
+    }
+
+    // Runtime policy fragments (c1605) — after user APPEND / guidelines, before date.
+    if !opts.runtime_policy_fragments.is_empty() {
+        prompt.push_str("\n\n<runtime_policy>\n");
+        for (i, frag) in opts.runtime_policy_fragments.iter().enumerate() {
+            if i > 0 {
+                prompt.push('\n');
+            }
+            prompt.push_str(frag.trim());
+            prompt.push('\n');
+        }
+        prompt.push_str("</runtime_policy>\n");
     }
 
     // Date and CWD
@@ -353,6 +368,24 @@ mod tests {
         let prompt = build_system_prompt(&opts);
         assert!(prompt.contains("Only custom body"));
         assert!(!prompt.contains("Available tools:"));
+    }
+
+    #[test]
+    fn test_runtime_policy_fragments_section() {
+        let opts = SystemPromptOpts {
+            append_system_prompt: vec!["USER_APPEND".into()],
+            runtime_policy_fragments: vec!["POLICY_BODY".into()],
+            cwd: ".".into(),
+            ..Default::default()
+        };
+        let prompt = build_system_prompt(&opts);
+        let append_i = prompt.find("USER_APPEND").expect("append");
+        let policy_i = prompt.find("<runtime_policy>").expect("policy open");
+        let body_i = prompt.find("POLICY_BODY").expect("policy body");
+        let close_i = prompt.find("</runtime_policy>").expect("policy close");
+        assert!(append_i < policy_i);
+        assert!(policy_i < body_i && body_i < close_i);
+        assert!(prompt.contains("Current date:"));
     }
 
     #[test]

@@ -10,19 +10,14 @@
 # models: 来自 pi providers dump；键与 `model` 均用上游 name/id，不做别名转换。
 #
 # --- 本仓开发向「全功能」剖面（看效果用）---
-# - tool_batch.barrier_parallel：同 turn 纯读扇出 + 写/bash/mcp 屏障
-# - models.*.api：openai-responses（llama.cpp / 兼容端；Completions 仅遗留显式档）
-# - APPEND_SYSTEM.md：实验 3 多-tool 策略片段（临时；见 c1610/experiments.md）
+# - tool_batch：产品缺省已是 barrier_parallel（c1610）；显式 sequential 可逃生
+# - models.*.api：openai-responses（c1598 接线生效）
+# - 多-tool 策略：经 c1605 runtime_policy 片段注入（勿再依赖 APPEND_SYSTEM）
 # - local_tokenizer：开发可按需 on（当前 off）
 # - compaction enabled：长会话压缩
 # - mcp_servers + otel I/O full：见文末（密钥仍在 secret.env）
 # 启动模型优先级：agents.profiles.<default>.model → execution.model → models.default_model
-# 产品默认仍是 sequential / tokenizer off / otel none；勿把本剖面当发布默认。
-# api: openai-responses（c1598 起配置生效）。APPEND_SYSTEM.md = 实验 3 临时多-tool 提示。
-
-# 同 turn 工具批（c1545）：开发默认开试验档，便于体感并行读
-tool_batch:
-  mode: barrier_parallel
+# 产品默认 tokenizer off / otel none；勿把本剖面当发布默认。
 
 # 本地 tokenizer encode（引号避免 YAML 1.1 布尔别名）
 token_estimate:

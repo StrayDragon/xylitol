@@ -2,7 +2,7 @@ kind: llman.sdd.spec
 name: "agent-prompt"
 purpose: 系统提示组装与资源模板：skills/context 注入、可选 prompt 模板展开（非 Jinja；产品主路径用 skill 而非 prompt slash）。
 valid_scope[3]: src/agent/prompt/,src/protocol/,src/infra/resource/
-requirements[9]{req_id,title,statement}:
+requirements[10]{req_id,title,statement}:
   pt1,"system-assembly",System MUST 经 build_system_prompt（或等价）组装系统提示，可包含工具片段、skills 摘要、context 文件、日期与 CWD；自定义 system 文件可替换或 append。
   pt2,"skills-section",当 ResourceLoader 发现 skills 时，系统提示 MUST 能包含 available_skills（或等价）清单供模型发现；未信任项目 MUST NOT 注入项目 skills。
   pt3,"prompt-templates-optional",若加载 prompt 模板，AgentSession MUST 能注册为可展开命令并保留 source_path；产品 TUI MUST NOT 把 prompt 模板当作启动 header 主清单（用 skills 代替）。
@@ -12,4 +12,5 @@ requirements[9]{req_id,title,statement}:
   pt7,skills 热应用与引导注入,Agent MUST 在构造/bootstrap 时将 ResourceLoader 发现的 skills 写入 SystemPromptOpts 并经 build_system_prompt 进入 available_skills（若非空）；MUST 提供 apply_skills（或扩展 apply_prompt_resources）用新目录重建系统提示；MUST 只影响后续 run；MUST NOT 改写已持久化历史；未信任 MUST NOT 注入项目 skills。
   pt8,"dollar-skill 提交注入",当用户消息含 $name 且 name 在已加载 skills 目录中时，System MUST 在发往模型前将对应 SKILL.md 正文（去 frontmatter）注入该 user 消息的模型侧投影；会话历史 MUST 保留原始含 $ 文本；未知 $name MUST 透传；未信任 MUST NOT 注入项目 skill 正文（目录已空即可）。
   pt9,"tool-prompt-guidelines-assembly","set_tools 或等价初次装配工具集时，System MUST 收集各 XyTool::prompt_guidelines（非空）写入 SystemPromptOpts.prompt_guidelines，并经 build_system_prompt 进入 Guidelines 段；内置 bash/read/edit/write（及已启用的同族工具）MUST 提供与 pi 对齐的非空 guideline 短句。MUST NOT 为抑制 XML 伪工具而注入防呆文案。自定义 SYSTEM.md 或 custom_prompt 整段替换默认正文时 MUST 保持替换语义（不偷偷回填 Available tools）。"
+  pt10,"runtime-policy-fragments","System MUST 按当前工具批模式（XyBatchMode）从内置表解析 runtime policy 片段并经 build_system_prompt 注入 <runtime_policy> 段（位于 APPEND_SYSTEM / Guidelines 之后、日期与 CWD 之前）；barrier_parallel MUST 注入多-tool 同消息策略片段；sequential MUST NOT 注入该片段；set_tool_mode（或等价）MUST 在下一轮重建前提示中反映片段启停。MUST NOT 要求用户手写 APPEND_SYSTEM 才能获得该策略。由单测覆盖，MUST NOT 为静态存在性单独扩 BDD step。"
 scenarios[0]:

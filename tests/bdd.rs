@@ -3035,7 +3035,7 @@ fn _g_ar27_batch_default(agent: &AgentState, ws: &Workspace) {
         agent,
         tools,
         &[("slow_safe", r#"{"n":1}"#), ("slow_safe", r#"{"n":2}"#)],
-        xylitol::protocol::ports::XyBatchMode::Sequential,
+        xylitol::protocol::ports::XyBatchMode::BarrierParallel,
     );
     ar_store_runner(runner);
 }
@@ -3152,6 +3152,16 @@ fn _g_ar29_history(agent: &AgentState, ws: &Workspace) {
         xylitol::protocol::ports::XyBatchMode::BarrierParallel,
     );
     ar_store_runner(runner);
+}
+
+#[then("两工具执行时间重叠")]
+fn _t_ar27_default_overlap() {
+    let entries = BATCH_TIMING.with(|t| t.borrow().clone());
+    assert_eq!(entries.len(), 2, "{entries:?}");
+    assert!(
+        bdd_timing_overlaps((entries[0].1, entries[0].2), (entries[1].1, entries[1].2)),
+        "default batch must overlap ParallelSafe tools: {entries:?}"
+    );
 }
 
 #[then("两工具按源序串行执行且无并行重叠")]
@@ -3895,9 +3905,9 @@ async fn test_ar_no_hook_open_end(agent: AgentState, ws: Workspace) {}
 
 #[scenario(
     path = "llmanspec/specs/agent-runtime/agent-runtime.feature",
-    name = "batch-default-sequential"
+    name = "batch-default-barrier-parallel"
 )]
-async fn test_ar_batch_default_sequential(agent: AgentState, ws: Workspace) {}
+async fn test_ar_batch_default_barrier_parallel(agent: AgentState, ws: Workspace) {}
 #[scenario(
     path = "llmanspec/specs/agent-runtime/agent-runtime.feature",
     name = "batch-barrier-parallel-overlap"
