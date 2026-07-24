@@ -1443,6 +1443,63 @@ fn harness_resume_seeds_only_entry_users() {
 }
 
 #[test]
+fn harness_cli_restored_session_rebuilds_transcript() {
+    use super::bridge::UiEntry;
+    use crate::protocol::session::{EntryBase, MessageEntry, SessionEntry, fixture_message_json};
+
+    let entries = vec![
+        SessionEntry::Message(MessageEntry {
+            base: EntryBase {
+                entry_type: "message".into(),
+                id: "u1".into(),
+                parent_id: None,
+                timestamp: String::new(),
+            },
+            message: fixture_message_json("user", "hi"),
+        }),
+        SessionEntry::Message(MessageEntry {
+            base: EntryBase {
+                entry_type: "message".into(),
+                id: "a1".into(),
+                parent_id: Some("u1".into()),
+                timestamp: String::new(),
+            },
+            message: fixture_message_json("assistant", "hello there"),
+        }),
+    ];
+    let mut session = HostSession::new_product_ui(TestTerminal::new(80, 24));
+    session.apply_cli_restored_session("sid-restored", entries);
+    let model = session.ui_model();
+    assert!(
+        model.entries.iter().any(|e| matches!(
+            e,
+            UiEntry::User { text } if text.contains("hi")
+        )),
+        "CLI restore must show user turn: {:?}",
+        model.entries
+    );
+    assert!(
+        model.entries.iter().any(|e| matches!(
+            e,
+            UiEntry::Assistant { text, .. } if text.contains("hello there")
+        )),
+        "CLI restore must show assistant turn: {:?}",
+        model.entries
+    );
+    assert!(
+        model.entries.iter().any(|e| matches!(
+            e,
+            UiEntry::System { text } if text.contains("restored → session sid-restored")
+        )),
+        "expected restored note: {:?}",
+        model.entries
+    );
+    let root = session.ui_root().expect("product ui").clone();
+    session.step(HostEvent::Input(arrow_up_event())).unwrap();
+    assert_eq!(root.borrow().editor_text(), "hi");
+}
+
+#[test]
 fn apply_xy_event_sequence_snapshot() {
     let mut model = UiModel::new();
     model.begin_run("prompt");
