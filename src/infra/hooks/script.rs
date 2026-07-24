@@ -28,7 +28,7 @@ pub async fn run_hook_script(
     command: &str,
     event: &HookEvent,
     phase: HookPhase,
-    timeout: Duration,
+    timeout: Option<Duration>,
     env: &HashMap<String, String>,
 ) -> HookAction {
     let ctx = event.to_json_context(phase);
@@ -36,10 +36,12 @@ pub async fn run_hook_script(
 }
 
 /// Run a hook script with an explicit JSON context on stdin.
+///
+/// `timeout: None` means no wall-clock limit.
 pub async fn run_hook_script_with_context(
     command: &str,
     context: &serde_json::Value,
-    timeout: Duration,
+    timeout: Option<Duration>,
     env: &HashMap<String, String>,
 ) -> HookAction {
     let ctx_bytes = serde_json::to_vec(context).unwrap_or_default();
@@ -70,8 +72,15 @@ pub async fn run_hook_script_with_context(
         let _ = stdin.shutdown().await;
     }
 
-    // Wait for output with timeout. On timeout, kill the child to prevent zombies.
-    let result = tokio::time::timeout(timeout, child.wait_with_output()).await;
+    // Wait for output; optional wall-clock timeout.
+    let wait = child.wait_with_output();
+    let result = match timeout {
+        Some(d) => match tokio::time::timeout(d, wait).await {
+            Ok(inner) => Ok(inner),
+            Err(_elapsed) => Err(()),
+        },
+        None => Ok(wait.await),
+    };
 
     match result {
         Ok(Ok(output)) => {
@@ -105,14 +114,14 @@ pub async fn run_hook_script_with_context(
             warn!("Hook script I/O error command={} error={}", command, e);
             HookAction::Allow
         }
-        Err(_elapsed) => {
+        Err(()) => {
+            let ms = timeout.map(|d| d.as_millis()).unwrap_or(0);
             warn!(
                 "Hook script timed out, blocking (fail-closed) command={} timeout_ms={}",
-                command,
-                timeout.as_millis()
+                command, ms
             );
             HookAction::Block {
-                reason: format!("hook timed out after {}ms", timeout.as_millis()),
+                reason: format!("hook timed out after {ms}ms"),
             }
         }
     }
@@ -139,7 +148,7 @@ mod tests {
                 args: serde_json::json!({}),
             },
             HookPhase::Pre,
-            Duration::from_secs(5),
+            Some(Duration::from_secs(5)),
             &make_env(),
         )
         .await;
@@ -155,7 +164,7 @@ mod tests {
                 args: serde_json::json!({}),
             },
             HookPhase::Pre,
-            Duration::from_secs(5),
+            Some(Duration::from_secs(5)),
             &make_env(),
         )
         .await;
@@ -174,7 +183,7 @@ mod tests {
                 args: serde_json::json!({}),
             },
             HookPhase::Pre,
-            Duration::from_secs(5),
+            Some(Duration::from_secs(5)),
             &make_env(),
         )
         .await;
@@ -190,7 +199,7 @@ mod tests {
                 args: serde_json::json!({}),
             },
             HookPhase::Pre,
-            Duration::from_secs(5),
+            Some(Duration::from_secs(5)),
             &make_env(),
         )
         .await;
@@ -206,7 +215,7 @@ mod tests {
                 args: serde_json::json!({}),
             },
             HookPhase::Pre,
-            Duration::from_secs(5),
+            Some(Duration::from_secs(5)),
             &make_env(),
         )
         .await;
@@ -225,7 +234,7 @@ mod tests {
                 args: serde_json::json!({}),
             },
             HookPhase::Pre,
-            Duration::from_millis(50),
+            Some(Duration::from_millis(50)),
             &make_env(),
         )
         .await;
@@ -244,7 +253,7 @@ mod tests {
                 args: serde_json::json!({}),
             },
             HookPhase::Pre,
-            Duration::from_secs(5),
+            Some(Duration::from_secs(5)),
             &make_env(),
         )
         .await;

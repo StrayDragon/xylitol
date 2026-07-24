@@ -21,6 +21,7 @@ pub mod model_config;
 pub mod resource;
 pub mod session;
 pub mod source_info;
+pub mod tool_timeout;
 pub mod types;
 
 // Wire Command/Event at protocol root (legacy call sites).
@@ -40,4 +41,5 @@ pub use error::{XyError, XyToolError};
 pub use lifecycle::XyEvent;
 pub use message::{AgentMessage, AgentPart, EnvMessage, LlmMessage};
 pub use model_config::{XyModelConfig, XyModelKind};
+pub use tool_timeout::{MAX_TOOL_TIMEOUT_SECS, ToolTimeout, ToolTimeoutError};
 pub use types::{XyChunk, XyModelMeta, XyToolSchema};

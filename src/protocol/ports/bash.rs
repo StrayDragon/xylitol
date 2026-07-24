@@ -4,6 +4,8 @@ use async_trait::async_trait;
 use tokio::sync::mpsc;
 use tokio_util::sync::CancellationToken;
 
+use crate::protocol::ToolTimeout;
+
 /// Result of executing a bash command.
 #[derive(Debug, Clone, Default)]
 pub struct XyBashResult {
@@ -13,6 +15,8 @@ pub struct XyBashResult {
     pub exit_code: Option<i32>,
     /// Whether the command was cancelled via the cancel token.
     pub cancelled: bool,
+    /// Whether the command hit a wall-clock timeout.
+    pub timed_out: bool,
     /// Whether the output was truncated.
     pub truncated: bool,
     /// Path to a temp file containing the full output, if spilled.
@@ -30,14 +34,17 @@ pub struct BashExecOpts {
     pub cancel: Option<CancellationToken>,
     /// Optional bounded channel for live output bytes.
     pub chunk_tx: Option<mpsc::Sender<Vec<u8>>>,
+    /// Wall-clock timeout; default [`ToolTimeout::Unlimited`].
+    pub timeout: ToolTimeout,
 }
 
 impl BashExecOpts {
-    /// Cancel only (no live chunks).
+    /// Cancel only (no live chunks, unlimited timeout).
     pub fn cancel_only(cancel: CancellationToken) -> Self {
         Self {
             cancel: Some(cancel),
             chunk_tx: None,
+            timeout: ToolTimeout::Unlimited,
         }
     }
 }
