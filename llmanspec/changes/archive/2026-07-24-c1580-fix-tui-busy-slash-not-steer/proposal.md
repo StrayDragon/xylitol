@@ -1,10 +1,14 @@
 ---
 change_id: c1580-fix-tui-busy-slash-not-steer
 title: busy 已识别 slash 经 BusySlashPolicy 分流；MUST NOT 落入 steer
-status: purpose-draft
+status: ready
 priority: 1580
 depends_on: []
 author: agent
+branch: feat/c1580-busy-slash-not-steer
+base_sha: 7c5075601088d1bfe49a865c31b80aa7bfaa24bf
+checkpointed: true
+checkpoint_sha: 7c5075601088d1bfe49a865c31b80aa7bfaa24bf
 ---
 
 # c1580-fix-tui-busy-slash-not-steer

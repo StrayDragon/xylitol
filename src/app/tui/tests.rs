@@ -1072,6 +1072,58 @@ async fn harness_busy_slash_reload_refused() {
     );
 }
 
+#[tokio::test]
+async fn harness_busy_slash_session_name_allows_not_steer() {
+    use super::harness::{ScriptedDriver, pump_host_driver};
+    use crate::app::tui::bridge::UiEntry;
+
+    let mut session = HostSession::new_product_ui(TestTerminal::new(80, 24));
+    let root = session.ui_root().expect("product ui").clone();
+    session.on_run_started("hello");
+    assert!(session.is_busy());
+
+    let mut driver = ScriptedDriver::new();
+    let mut stream = None;
+    root.borrow_mut().set_editor_text("/session-name my-run");
+    session.step(HostEvent::Input(enter_event())).unwrap();
+    assert!(
+        session.take_steer().is_none(),
+        "Allow slash must not enqueue steer"
+    );
+    pump_host_driver(&mut session, &mut driver, &mut stream)
+        .await
+        .unwrap();
+
+    assert_eq!(driver.set_session_name_calls(), vec!["my-run".to_string()]);
+    assert!(
+        session.ui_model().entries.iter().any(|e| matches!(
+            e,
+            UiEntry::System { text } if text.contains("Session name set")
+        )),
+        "expected name set note; got {:?}",
+        session.ui_model().entries
+    );
+}
+
+#[test]
+fn harness_busy_unknown_slash_not_steered() {
+    let mut session = HostSession::new_product_ui(TestTerminal::new(80, 24));
+    let root = session.ui_root().expect("product ui").clone();
+    session.on_run_started("hello");
+    root.borrow_mut().set_editor_text("/totally-unknown");
+    session.step(HostEvent::Input(enter_event())).unwrap();
+    assert!(session.take_steer().is_none());
+    assert!(
+        session.ui_model().entries.iter().any(|e| matches!(
+            e,
+            super::bridge::UiEntry::System { text }
+                if text.contains("unknown command not steered")
+        )),
+        "got {:?}",
+        session.ui_model().entries
+    );
+}
+
 #[test]
 fn harness_keybindings_reload_keeps_old_on_bad_json() {
     use crate::app::tui::keybindings::{ReloadOutcome, matches_binding};
