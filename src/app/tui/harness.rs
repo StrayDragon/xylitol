@@ -1922,12 +1922,12 @@ mod slice_tests {
             .unwrap();
         assert_eq!(driver.abort_count(), 1);
         assert!(
-            session
-                .ui_model()
-                .entries
-                .iter()
-                .any(|e| matches!(e, UiEntry::System { text } if text == "Aborted")),
-            "expected Aborted note: {:?}",
+            session.ui_model().entries.iter().any(|e| matches!(
+                e,
+                UiEntry::System { text }
+                    if text == "Operation aborted" || text == "Aborted"
+            )),
+            "expected abort note: {:?}",
             session.ui_model().entries
         );
         assert!(
@@ -1959,6 +1959,14 @@ mod slice_tests {
             .unwrap();
         assert_eq!(driver.abort_count(), 1, "XyDriver::abort must still run");
         assert!(
+            session.ui_model().entries.iter().any(|e| matches!(
+                e,
+                UiEntry::Assistant { text } if text.contains("draft")
+            )),
+            "c1595: partial must remain after abort: {:?}",
+            session.ui_model().entries
+        );
+        assert!(
             !session.ui_model().entries.iter().any(|e| matches!(
                 e,
                 UiEntry::Assistant { text } if text.contains("SHOULD_NOT_APPEAR")
@@ -1967,12 +1975,12 @@ mod slice_tests {
             session.ui_model().entries
         );
         assert!(
-            session
-                .ui_model()
-                .entries
-                .iter()
-                .any(|e| matches!(e, UiEntry::System { text } if text == "Aborted")),
-            "expected Aborted after drain: {:?}",
+            session.ui_model().entries.iter().any(|e| matches!(
+                e,
+                UiEntry::System { text }
+                    if text == "Operation aborted" || text == "Aborted"
+            )),
+            "expected abort note after drain: {:?}",
             session.ui_model().entries
         );
     }
@@ -2012,12 +2020,12 @@ mod slice_tests {
             session.on_run_stream_closed();
         }
         assert!(
-            session
-                .ui_model()
-                .entries
-                .iter()
-                .any(|e| matches!(e, UiEntry::System { text } if text == "Aborted")),
-            "expected Aborted: {:?}",
+            session.ui_model().entries.iter().any(|e| matches!(
+                e,
+                UiEntry::System { text }
+                    if text == "Operation aborted" || text == "Aborted"
+            )),
+            "expected abort note: {:?}",
             session.ui_model().entries
         );
         assert!(
@@ -2079,10 +2087,12 @@ mod slice_tests {
             "bang Esc must cancel Bash block: {entries:?}"
         );
         assert!(
-            !entries
-                .iter()
-                .any(|e| matches!(e, UiEntry::System { text } if text == "Aborted")),
-            "bang Esc must not use agent Aborted: {entries:?}"
+            !entries.iter().any(|e| matches!(
+                e,
+                UiEntry::System { text }
+                    if text == "Aborted" || text == "Operation aborted"
+            )),
+            "bang Esc must not use agent abort footer: {entries:?}"
         );
         assert!(!session.bash_active());
         assert!(!session.is_busy());
@@ -2183,10 +2193,12 @@ mod slice_tests {
             "each bang Esc abort should cancel a Bash block: {entries:?}"
         );
         assert!(
-            !entries
-                .iter()
-                .any(|e| matches!(e, UiEntry::System { text } if text == "Aborted")),
-            "bang Esc must not emit Aborted: {entries:?}"
+            !entries.iter().any(|e| matches!(
+                e,
+                UiEntry::System { text }
+                    if text == "Aborted" || text == "Operation aborted"
+            )),
+            "bang Esc must not emit agent abort footer: {entries:?}"
         );
     }
 

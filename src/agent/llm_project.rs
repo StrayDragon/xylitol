@@ -13,7 +13,14 @@ pub fn project_for_llm(messages: &[AgentMessage]) -> Vec<LlmMessage> {
     let mut out = Vec::with_capacity(messages.len());
     for msg in messages {
         match msg {
-            AgentMessage::Llm(m) => out.push(m.clone()),
+            // c1595 / pi: aborted|error assistants stay in session scrollback but
+            // MUST NOT be replayed to the next LLM call (`LlmMessage::is_error`).
+            AgentMessage::Llm(m) => {
+                if m.is_error() {
+                    continue;
+                }
+                out.push(m.clone());
+            }
             AgentMessage::Env(EnvMessage::BashExecutionMessage {
                 command,
                 output,
@@ -61,7 +68,7 @@ fn custom_text(content: &Value) -> Option<String> {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::protocol::message::{AgentMessage, AgentPart, EnvMessage};
+    use crate::protocol::message::{AgentMessage, AgentPart, EnvMessage, LlmMessage};
 
     #[test]
     fn bash_folds_to_user_llm() {
@@ -141,6 +148,50 @@ mod tests {
         assert!(projected[0].text().contains("Successfully replaced"));
         assert!(!projected[0].text().contains("display_diff"));
         assert!(!projected[0].text().contains("big-diff-wall"));
+    }
+
+    #[test]
+    fn aborted_and_error_assistants_skipped_for_llm() {
+        use crate::protocol::message::XyStopReason;
+
+        let aborted = AgentMessage::Llm(LlmMessage::AssistantMessage {
+            content: vec![AgentPart::text("partial draft")],
+            stop_reason: Some(XyStopReason::Aborted),
+            usage: None,
+            api: String::new(),
+            provider: String::new(),
+            model: String::new(),
+            response_id: None,
+            error_message: None,
+            timestamp: now_ms(),
+            diagnostics: Vec::new(),
+        });
+        let errored = AgentMessage::Llm(LlmMessage::AssistantMessage {
+            content: vec![AgentPart::text("failed")],
+            stop_reason: Some(XyStopReason::Error),
+            usage: None,
+            api: String::new(),
+            provider: String::new(),
+            model: String::new(),
+            response_id: None,
+            error_message: None,
+            timestamp: now_ms(),
+            diagnostics: Vec::new(),
+        });
+        let ok = AgentMessage::assistant("kept");
+        let history = vec![
+            AgentMessage::user("hi"),
+            aborted,
+            AgentMessage::user("again"),
+            errored,
+            ok,
+        ];
+        let projected = project_for_llm(&history);
+        assert_eq!(projected.len(), 3);
+        assert_eq!(projected[0].role_name(), "user");
+        assert_eq!(projected[1].role_name(), "user");
+        assert_eq!(projected[2].role_name(), "assistant");
+        assert_eq!(projected[2].text(), "kept");
     }
 
     #[test]

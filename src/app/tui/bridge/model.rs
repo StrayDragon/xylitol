@@ -31,7 +31,11 @@ fn drain_utf8_prefix(buf: &mut Vec<u8>) -> String {
 pub(crate) fn trailing_aborted_note(entries: &[UiEntry]) -> bool {
     matches!(
         entries.last(),
-        Some(UiEntry::System { text }) if text == "Aborted" || text == "aborted"
+        Some(UiEntry::System { text })
+            if text == "Aborted"
+                || text == "aborted"
+                || text == "Operation aborted"
+                || text.starts_with("Operation aborted")
     )
 }
 
@@ -274,14 +278,14 @@ impl UiModel {
         out
     }
 
-    /// Immediate user Esc abort: System `Aborted` + idle status.
-    /// Dedupes only a trailing abort note (Esc repeat / same-event `Error("aborted")`),
-    /// not any historical `Aborted` in scrollback — each agent abort must show again.
+    /// User Esc/Ctrl+C abort: flush streamed partial into scrollback + abort footer (c1595 / pi).
+    /// Dedupes only a trailing abort note (Esc repeat / same-event `Error("aborted")`).
     /// Bang Esc uses [`Self::note_bash_cancelled`] instead (pi `(cancelled)`).
     pub fn note_user_abort(&mut self) {
+        self.flush_streaming();
         if !trailing_aborted_note(&self.entries) {
             self.entries.push(UiEntry::System {
-                text: "Aborted".into(),
+                text: "Operation aborted".into(),
             });
         }
         self.clear_streaming_buffers();
