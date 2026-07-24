@@ -71,8 +71,11 @@ pub struct AgentCapabilities {
     tools: ToolSet,
     /// Runtime-mutable hooks consulted at tool-call boundaries.
     hooks: AgentHooks,
-    /// Tool batch scheduling mode for the next run (c1545).
+    /// Tool batch scheduling mode for the next run (c1545 / c1610).
     batch_mode: XyBatchMode,
+    /// Fragment ids currently applied into [`Self::prompt_opts`] (c1605).
+    /// `None` = never synced; id-set equality skips rebuild / duplicate policy text.
+    runtime_fragment_ids: Option<Vec<&'static str>>,
     /// System prompt to prepend to every turn.
     system_prompt: Option<String>,
     /// Current session ID.
@@ -137,6 +140,7 @@ impl AgentCapabilities {
             tools: tool_registry,
             hooks: AgentHooks::empty(),
             batch_mode: XyBatchMode::BarrierParallel,
+            runtime_fragment_ids: None,
             system_prompt: system_prompt.clone(),
             session_id: None,
             compaction_orchestrator: CompactionOrchestrator::new(
@@ -153,12 +157,8 @@ impl AgentCapabilities {
                 tool_snippets,
                 prompt_guidelines,
                 skills: Vec::new(),
-                runtime_policy_fragments: prompt::fragments_for_batch_mode(
-                    XyBatchMode::BarrierParallel,
-                )
-                .into_iter()
-                .map(str::to_string)
-                .collect(),
+                // Filled once by sync_runtime_policy_from_batch_mode below.
+                runtime_policy_fragments: Vec::new(),
                 ..Default::default()
             },
             prompt_templates: Vec::new(),
@@ -171,9 +171,10 @@ impl AgentCapabilities {
             queues: Arc::new(AsyncQueueRuntime::new(steering_mode, follow_up_mode)),
             hook_bus,
         };
-        // Assemble full system prompt (tools + context + SYSTEM/APPEND) once at construction
-        // so bootstrap-injected AGENTS.md is visible on the first run (c1100 / pt1).
-        session.rebuild_system_prompt();
+        // Assemble full system prompt (tools + context + SYSTEM/APPEND + runtime
+        // policy) once at construction so bootstrap-injected AGENTS.md is visible
+        // on the first run (c1100 / pt1). Fragment sync is id-deduped (c1605).
+        session.sync_runtime_policy_from_batch_mode();
         session
     }
 
@@ -467,10 +468,26 @@ impl AgentCapabilities {
 
     pub(crate) fn set_tool_mode(&mut self, mode: XyBatchMode) {
         self.batch_mode = mode;
-        self.prompt_opts.runtime_policy_fragments = prompt::fragments_for_batch_mode(mode)
+        self.sync_runtime_policy_from_batch_mode();
+    }
+
+    /// Apply built-in runtime policy fragments for [`Self::batch_mode`].
+    ///
+    /// No-op when the active fragment **id set** is unchanged — Session holds the
+    /// applied ids so the same policy is not re-appended / rebuilt (c1605).
+    fn sync_runtime_policy_from_batch_mode(&mut self) {
+        let ids = prompt::fragment_ids_for_batch_mode(self.batch_mode);
+        if self.runtime_fragment_ids.as_deref() == Some(ids.as_slice()) {
+            return;
+        }
+        self.runtime_fragment_ids = Some(ids);
+        let mut bodies: Vec<String> = prompt::fragments_for_batch_mode(self.batch_mode)
             .into_iter()
             .map(str::to_string)
             .collect();
+        let mut seen = std::collections::HashSet::new();
+        bodies.retain(|b| seen.insert(b.clone()));
+        self.prompt_opts.runtime_policy_fragments = bodies;
         self.rebuild_system_prompt();
     }
 
@@ -967,6 +984,50 @@ mod tests {
                 base_dir: None,
             },
         }
+    }
+
+    #[test]
+    fn runtime_policy_synced_once_per_fragment_id_set() {
+        let mut session = make_session();
+        let prompt = session.system_prompt().unwrap_or("").to_string();
+        assert_eq!(prompt.matches("<runtime_policy>").count(), 1);
+        assert_eq!(prompt.matches("SAME assistant message").count(), 1);
+        assert_eq!(
+            session.runtime_fragment_ids.as_deref(),
+            Some(
+                [crate::agent::prompt::fragments::FRAGMENT_TOOL_BATCH_BARRIER_PARALLEL].as_slice()
+            )
+        );
+
+        // Same mode again (builder also calls set_tool_mode after new) — no duplicate.
+        session.set_tool_mode(XyBatchMode::BarrierParallel);
+        let again = session.system_prompt().unwrap_or("").to_string();
+        assert_eq!(again.matches("<runtime_policy>").count(), 1);
+        assert_eq!(again.matches("SAME assistant message").count(), 1);
+
+        session.set_tool_mode(XyBatchMode::Sequential);
+        let sequential = session.system_prompt().unwrap_or("").to_string();
+        assert!(!sequential.contains("<runtime_policy>"));
+        assert_eq!(session.runtime_fragment_ids.as_deref(), Some([].as_slice()));
+
+        session.set_tool_mode(XyBatchMode::BarrierParallel);
+        let restored = session.system_prompt().unwrap_or("").to_string();
+        assert_eq!(restored.matches("<runtime_policy>").count(), 1);
+        assert_eq!(restored.matches("SAME assistant message").count(), 1);
+    }
+
+    #[test]
+    fn apply_prompt_resources_keeps_single_runtime_policy() {
+        let mut session = make_session();
+        session.apply_prompt_resources(
+            vec![("AGENTS.md".into(), "CTX".into())],
+            Some("system-base".into()),
+            vec!["APPEND_MARK".into()],
+        );
+        let after = session.system_prompt().unwrap_or("").to_string();
+        assert!(after.contains("APPEND_MARK"));
+        assert_eq!(after.matches("<runtime_policy>").count(), 1);
+        assert_eq!(after.matches("SAME assistant message").count(), 1);
     }
 
     #[test]

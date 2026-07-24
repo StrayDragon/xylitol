@@ -159,7 +159,7 @@ impl AgentBuilder {
         self
     }
 
-    /// Set tool batch scheduling mode (default: [`XyBatchMode::Sequential`]).
+    /// Set tool batch scheduling mode (default: [`XyBatchMode::BarrierParallel`]).
     pub fn batch_mode(mut self, mode: XyBatchMode) -> Self {
         self.batch_mode = mode;
         self

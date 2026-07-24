@@ -24,7 +24,7 @@ checkpointed: false
 
 1. 内置 fragment 表（id + body）；`fragments_for_batch_mode(mode)` 解析。
 2. `SystemPromptOpts.runtime_policy_fragments: Vec<String>`；`build_system_prompt` 注入 `<runtime_policy>`（在 guidelines 前、append_system 后或 guidelines 后——定：在 Guidelines 段之后、date/CWD 之前）。
-3. Session：`batch_mode` 变更与构造时同步 fragment 列表并 `rebuild_system_prompt`。
+3. Session：构造与 `set_tool_mode` 时按 fragment **id 集合**同步；集合未变则 no-op（不重复写入 bodies / 不重建），避免同 session 多次初始化浪费 token。
 4. 无用户 YAML `prompt_fragments` 配置节。
 
 ## Status
