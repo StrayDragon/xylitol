@@ -1,7 +1,7 @@
 ---
 change_id: c1530-update-local-tokenizer-gigatoken
 title: 用 Gigatoken 替换 HuggingFace tokenizers 做本地 token 计数
-status: purpose-draft
+status: shelved
 priority: 1530
 depends_on: []
 author: agent
@@ -70,12 +70,12 @@ LocalTokenizer 档（`packages/xylitol-ai-bridge` → `tokenize::encode_count_at
 - **行为**：LocalTokenizer `on` 时计数更快；provenance 仍为 LocalTokenizer；默认 off 用户无感
 - **测试**：bridge 单测 + 与 HF 对照 fixture；不要求改 BDD 热路径（paa3 不变）
 
-## 正式化前
+## Status
 
-本文件为 **purpose-draft**。升级完整 propose（tasks + live specs attach）前须澄清：
+**shelved（2026-07-24）** — LocalTokenizer 默认 off；上游 Gigatoken 尚未 crates.io；短串会话计数加速比未证明。阻塞到 crates.io 发布或完成 Rust API spike 后再 reopen。
+
+正式化前须澄清：
 
 1. 是否接受 git dependency，或阻塞到 crates.io？
 2. 未覆盖词表：硬失败 / 回退 HF / 跳过 LocalTokenizer？
 3. 对齐标准：仅 `len(ids)` 还是完整 id 序列？
-
-下一步：用户确认后走 `llman-sdd-propose` 正式化，或先 spike 验证 Rust API 再补 tasks。
