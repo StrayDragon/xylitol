@@ -291,6 +291,10 @@ impl TypedTool for BashTool {
         })
     }
 
+    fn execution_mode(&self) -> crate::protocol::ports::XyToolExecutionMode {
+        crate::protocol::ports::XyToolExecutionMode::Sequential
+    }
+
     async fn execute_typed(&self, ctx: &XyToolCtx, args: BashArgs) -> Result<String, XyToolError> {
         let BashArgs {
             command: cmd,

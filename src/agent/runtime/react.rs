@@ -1,16 +1,11 @@
-//! Agent execution loop — core ReAct loop with full event stream, hooks, and tool execution modes.
+//! Agent execution loop — core ReAct loop with full event stream, hooks, and tool batch modes.
 //!
 //! NOTE: 本文件聚焦 ReAct 算法主体. 天花板: ~500 行 (含 inline tests), 因 run_react_loop
 //! 的 async_stream 宏块是原子逻辑单元, 跨函数 yield 不可行. 升级: 当工具执行/流处理逻辑
 //! 显著膨胀时, 考虑引入 sub-turn state machine 替代单宏块.
-
 //!
-//! Key features:
-//! - ReAct loop with turn-based execution
-//! - `AgentHooks`: before_tool_call, after_tool_call, transform_context
-//! - Steering/follow-up via [`PendingMessageQueue`] on the session agent
-//! - Per-tool execution modes: sequential / parallel
-//! - Auto-retry on transient errors
+//! Tool batch scheduling lives in `tool_batch` + `tool_exec` (c1545). Product default is
+//! Sequential (source-order await); BarrierParallel fans out ParallelSafe windows.
 
 use std::pin::Pin;
 use std::sync::{Arc, Mutex};
@@ -76,7 +71,6 @@ fn partial_assistant_message(
 }
 
 use super::hooks::ShouldStopAfterTurnCtx;
-use super::permission_router::permission_target;
 use super::retry::{RetryState, is_retryable_error};
 use super::{AgentHooks, XyEvent, XyEventStream};
 use crate::agent::llm_project::project_for_llm;
@@ -85,9 +79,7 @@ use crate::agent::session::{AgentCapabilities, PendingMessageQueue};
 use crate::agent::tools::ToolSet;
 use crate::protocol::error::XyError;
 use crate::protocol::message::{AgentMessage, AgentPart, LlmMessage};
-use crate::protocol::ports::{
-    XyHookBus, XyHookOutcome, XyModel, XySessionStore, XyToolCtx, XyToolExecutionMode,
-};
+use crate::protocol::ports::{XyBatchMode, XyHookBus, XyHookOutcome, XyModel, XySessionStore};
 use crate::protocol::resource::SkillInfo;
 use crate::protocol::session::{EntryBase, MessageEntry, SessionEntry};
 use crate::protocol::types::{XyChunk, XyToolSchema};
@@ -200,8 +192,13 @@ impl AgentRuntime {
         self.inner.set_permission(permission);
     }
 
-    /// Set the tool execution mode. Takes effect on the next [`run`](Self::run) call.
-    pub fn set_tool_mode(&mut self, mode: crate::protocol::ports::XyToolExecutionMode) {
+    /// Set the tool batch mode. Takes effect on the next [`run`](Self::run) call.
+    pub fn set_tool_mode(&mut self, mode: crate::protocol::ports::XyBatchMode) {
+        self.inner.set_tool_mode(mode);
+    }
+
+    /// Set the tool batch mode (alias of [`Self::set_tool_mode`]).
+    pub fn set_batch_mode(&mut self, mode: crate::protocol::ports::XyBatchMode) {
         self.inner.set_tool_mode(mode);
     }
 
@@ -317,7 +314,7 @@ impl AgentRuntime {
         let tools = self.inner.tools().clone();
         let hooks = self.inner.hooks().clone();
         let hook_bus = self.inner.hook_bus();
-        let tool_mode = self.inner.tool_mode();
+        let batch_mode = self.inner.tool_mode();
         let user_parts = parts;
         let model_manager = self.inner.model_manager_handle();
         let active_turn = self.inner.active_turn_handle();
@@ -358,7 +355,7 @@ impl AgentRuntime {
             permission_check,
             hooks,
             hook_bus,
-            tool_mode,
+            batch_mode,
             steer_queue,
             follow_up_queue,
             store,
@@ -418,9 +415,8 @@ struct ReActConfig {
     hooks: AgentHooks,
     /// Optional script hook bus (pi-aligned lifecycle + tool/context bridge).
     hook_bus: Option<Arc<dyn XyHookBus>>,
-    /// Tool execution mode (currently advisory; sequential execution is the
-    /// conservative default).
-    tool_mode: XyToolExecutionMode,
+    /// Tool batch scheduling mode snapshot for this run (c1545).
+    batch_mode: XyBatchMode,
     steer_queue: Arc<Mutex<PendingMessageQueue>>,
     follow_up_queue: Arc<Mutex<PendingMessageQueue>>,
     store: Arc<dyn XySessionStore>,
@@ -535,7 +531,7 @@ fn run_react_loop(cfg: ReActConfig) -> impl Stream<Item = XyEvent> + Send {
         permission_check,
         hooks,
         hook_bus,
-        tool_mode: _tool_mode,
+        batch_mode,
         steer_queue,
         follow_up_queue,
         store,
@@ -1000,241 +996,136 @@ fn run_react_loop(cfg: ReActConfig) -> impl Stream<Item = XyEvent> + Send {
                 let mut turn_tool_results: Vec<AgentMessage> = Vec::new();
                 let turn_assistant = history.last().cloned();
 
-                for (id, name, args) in &tool_calls {
-                    let tool_span = super::obs::ToolExecuteSpan::start(
-                        name,
-                        id,
-                        iteration_span.as_ref().map(|s| s.span()),
-                    );
-                    let args_io = serde_json::to_string(args).unwrap_or_else(|_| "{}".into());
-                    yield XyEvent::ToolExecutionStart {
-                        id: id.clone(),
-                        name: name.clone(),
-                        args: args.clone(),
-                    };
+                let tool_env = super::tool_exec::ToolExecEnv {
+                    tools: &tools,
+                    hooks: &hooks,
+                    hook_bus: &hook_bus,
+                    permission_check: &permission_check,
+                    cancel: &cancel,
+                    turn_id: turn_id.as_deref(),
+                    batch_mode,
+                };
+                let parent_ctx = super::tool_exec::capture_iteration_parent(
+                    iteration_span.as_ref().map(|s| s.span()),
+                );
 
-                    let tool = tools.get(name);
-                    let tool_missing = tool.is_none();
-                    let (out_tx, mut out_rx) = tokio::sync::mpsc::channel::<String>(64);
-                    let ctx = XyToolCtx::with_cancel(id, cancel.clone()).with_output_tx(out_tx);
-                    let mut tool_args = args.clone();
-
-                    let mut denied_reason: Option<String> = None;
-                    if let Some(bus) = &hook_bus {
-                        let (ty, phase, ctx) =
-                            super::script_hook_ctx::tool_call_pre(name, &tool_args);
-                        match bus.dispatch(ty, phase, ctx).await
-                        {
-                            XyHookOutcome::Blocked { reason } => {
-                                denied_reason = Some(reason);
-                            }
-                            XyHookOutcome::Modified { args: modified } => {
-                                tool_args = modified;
-                            }
-                            XyHookOutcome::Allowed => {}
-                        }
+                // Collect (window_index, call indices) for Sequential as one Barrier each,
+                // or BarrierParallel via plan_windows.
+                let planned: Vec<super::tool_batch::PlannedWindow> = match batch_mode {
+                    XyBatchMode::Sequential => tool_calls
+                        .iter()
+                        .enumerate()
+                        .map(|(i, _)| super::tool_batch::PlannedWindow::Barrier(i))
+                        .collect(),
+                    XyBatchMode::BarrierParallel => {
+                        let classes: Vec<_> = tool_calls
+                            .iter()
+                            .map(|(_, name, _)| {
+                                let tool = tools.get(name);
+                                super::tool_batch::classify(
+                                    name,
+                                    tool.as_ref().map(|t| t.as_ref() as &dyn crate::protocol::ports::XyTool),
+                                )
+                            })
+                            .collect();
+                        super::tool_batch::plan_windows(&classes)
                     }
-                    if !hooks.before_tool_call.is_empty() {
-                        for hook in &hooks.before_tool_call {
-                            if let Some(reason) = hook(name, id, &tool_args) {
-                                denied_reason = Some(reason);
-                                break;
-                            }
-                        }
-                    }
+                };
 
-                    if denied_reason.is_none()
-                        && let Some(ref check) = permission_check
-                    {
-                        let target = permission_target(name, &tool_args);
-                        if let Some(reason) = check(name, &target) {
-                            denied_reason = Some(format!("permission denied: {reason}"));
-                        }
-                    }
-
-                    if let Some(reason) = denied_reason {
-                        let err = format!("Tool '{name}' blocked: {reason}");
-                        if let Some(span) = tool_span.as_ref() {
-                            span.attach_io(&args_io, &err);
-                        }
-                        yield XyEvent::ToolExecutionUpdate {
-                            id: id.clone(),
-                            output: err.clone(),
-                        };
-                        yield XyEvent::ToolExecutionEnd {
-                            id: id.clone(),
-                            name: name.clone(),
-                            result: err.clone(),
-                            is_error: true,
-                        };
-                        history.push(AgentMessage::tool_result(
-                            id.clone(),
-                            name.clone(),
-                            vec![AgentPart::text(err.clone())],
-                            true,
-                        ));
-                        persist_agent_message(
-                            &store,
-                            &session_id,
-                            history.last().expect("tool result"),
-                        )
-                        .await;
-                        turn_tool_results.push(history.last().expect("tool result").clone());
-                        continue;
-                    }
-
-                    // Race tool future against live output chunks (bash uplink).
-                    let exec_fut = async {
-                        match tool {
-                            Some(t) => t.execute_as_parts(&ctx, tool_args.clone()).await,
-                            None => Err(crate::protocol::error::XyToolError::ExecutionFailed(
-                                anyhow::anyhow!("Unknown tool: {name}"),
-                            )),
-                        }
-                    };
-                    tokio::pin!(exec_fut);
-                    let mut streamed_output = false;
-                    let exec_outcome = loop {
-                        tokio::select! {
-                            biased;
-                            _ = cancel.cancelled() => {
-                                break Err(crate::protocol::error::XyToolError::Aborted);
-                            }
-                            chunk = out_rx.recv() => {
-                                match chunk {
-                                    Some(output) => {
-                                        streamed_output = true;
-                                        yield XyEvent::ToolExecutionUpdate {
-                                            id: id.clone(),
-                                            output,
-                                        };
+                for (barrier_index, window) in planned.into_iter().enumerate() {
+                    let barrier_index = barrier_index as u32;
+                    match window {
+                        super::tool_batch::PlannedWindow::Barrier(i) => {
+                            let (id, name, args) = &tool_calls[i];
+                            let (tx, mut rx) = tokio::sync::mpsc::unbounded_channel();
+                            let fut = super::tool_exec::run_one(
+                                &tool_env,
+                                id,
+                                name,
+                                args,
+                                tx,
+                                parent_ctx,
+                                barrier_index,
+                            );
+                            tokio::pin!(fut);
+                            let msg = loop {
+                                tokio::select! {
+                                    biased;
+                                    ev = rx.recv() => {
+                                        match ev {
+                                            Some(e) => yield e,
+                                            None => break fut.await,
+                                        }
                                     }
-                                    None => {
-                                        // Sender dropped — wait for execute to finish.
-                                        break exec_fut.await;
+                                    result = &mut fut => {
+                                        while let Ok(e) = rx.try_recv() {
+                                            yield e;
+                                        }
+                                        break result;
                                     }
                                 }
-                            }
-                            done = &mut exec_fut => {
-                                break done;
-                            }
-                        }
-                    };
-                    // Drain any chunks that arrived after the future completed.
-                    while let Ok(output) = out_rx.try_recv() {
-                        streamed_output = true;
-                        yield XyEvent::ToolExecutionUpdate {
-                            id: id.clone(),
-                            output,
-                        };
-                    }
-
-                    let mut result = match exec_outcome {
-                        Ok(parts) => (parts, false),
-                        Err(crate::protocol::error::XyToolError::Aborted) => {
-                            let err = format!("Tool '{name}' aborted");
-                            (vec![AgentPart::text(err)], true)
-                        }
-                        Err(e) => {
-                            super::obs::record_tool_error(name, &e, turn_id.as_deref());
-                            // Tool failure SSOT is ToolExecutionEnd(is_error) + history
-                            // tool_result — do not also yield XyEvent::Error (that duplicated
-                            // the same string as a global `error:` line in TUI/print; deny
-                            // path above already ends at ToolExecutionEnd only).
-                            let err = if tool_missing {
-                                format!("Unknown tool: {name}")
-                            } else {
-                                format!("Tool '{name}' error: {e}")
                             };
-                            (vec![AgentPart::text(err)], true)
+                            history.push(msg.clone());
+                            persist_agent_message(
+                                &store,
+                                &session_id,
+                                history.last().expect("tool result"),
+                            )
+                            .await;
+                            turn_tool_results.push(msg);
                         }
-                    };
-
-                    if !hooks.after_tool_call.is_empty() {
-                        // Hooks still see a string/JSON value (text preview); Image parts are
-                        // preserved unless the hook replaces the whole result with text.
-                        let mut hook_value = serde_json::Value::String(parts_preview_text(&result.0));
-                        let mut hook_err = result.1;
-                        for hook in &hooks.after_tool_call {
-                            if let Some((new_value, new_is_error)) =
-                                hook(name, id, hook_value.clone(), hook_err)
-                            {
-                                hook_value = new_value;
-                                hook_err = new_is_error;
-                                result = (
-                                    vec![AgentPart::text(match hook_value {
-                                        serde_json::Value::String(ref s) => s.clone(),
-                                        ref other => other.to_string(),
-                                    })],
-                                    hook_err,
-                                );
+                        super::tool_batch::PlannedWindow::Parallel(idxs) => {
+                            let (tx, mut rx) = tokio::sync::mpsc::unbounded_channel();
+                            let mut futs = Vec::with_capacity(idxs.len());
+                            for &i in &idxs {
+                                let (id, name, args) = &tool_calls[i];
+                                let tx = tx.clone();
+                                futs.push(async {
+                                    super::tool_exec::run_one(
+                                        &tool_env,
+                                        id,
+                                        name,
+                                        args,
+                                        tx,
+                                        parent_ctx,
+                                        barrier_index,
+                                    )
+                                    .await
+                                });
+                            }
+                            drop(tx);
+                            let join = futures::future::join_all(futs);
+                            tokio::pin!(join);
+                            let msgs = loop {
+                                tokio::select! {
+                                    biased;
+                                    ev = rx.recv() => {
+                                        match ev {
+                                            Some(e) => yield e,
+                                            None => break join.await,
+                                        }
+                                    }
+                                    results = &mut join => {
+                                        while let Ok(e) = rx.try_recv() {
+                                            yield e;
+                                        }
+                                        break results;
+                                    }
+                                }
+                            };
+                            // History / toolResults: source order (join_all preserves idxs order).
+                            for msg in msgs {
+                                history.push(msg.clone());
+                                persist_agent_message(
+                                    &store,
+                                    &session_id,
+                                    history.last().expect("tool result"),
+                                )
+                                .await;
+                                turn_tool_results.push(msg);
                             }
                         }
-                        result.1 = hook_err;
                     }
-                    if let Some(bus) = &hook_bus {
-                        let (ty, phase, ctx) = super::script_hook_ctx::tool_result_post(
-                            name,
-                            parts_preview_text(&result.0),
-                            result.1,
-                        );
-                        if let XyHookOutcome::Modified { args: modified } =
-                            bus.dispatch(ty, phase, ctx).await
-                        {
-                            if let Some(val) = modified.get("result") {
-                                let text = match val {
-                                    serde_json::Value::String(s) => s.clone(),
-                                    other => other.to_string(),
-                                };
-                                result.0 = vec![AgentPart::text(text)];
-                            }
-                            if let Some(err) = modified.get("is_error").and_then(|v| v.as_bool()) {
-                                result.1 = err;
-                            }
-                        }
-                    }
-
-                    let result_text = parts_preview_text(&result.0);
-
-                    if let Some(span) = tool_span.as_ref() {
-                        span.attach_io(&args_io, &result_text);
-                    }
-
-                    // Avoid appending the final JSON blob on top of live bash chunks.
-                    if !streamed_output {
-                        yield XyEvent::ToolExecutionUpdate {
-                            id: id.clone(),
-                            output: result_text.clone(),
-                        };
-                    }
-                    yield XyEvent::ToolExecutionEnd {
-                        id: id.clone(),
-                        name: name.clone(),
-                        result: result_text.clone(),
-                        is_error: result.1,
-                    };
-
-                    // c1310: UI keeps full End.result; history content is short for write/edit.
-                    let (history_parts, details) =
-                        crate::agent::tool_result_quiet::quiet_write_edit_for_history(
-                            name,
-                            &result_text,
-                            result.1,
-                        );
-                    history.push(AgentMessage::tool_result_with_details(
-                        id.clone(),
-                        name.clone(),
-                        history_parts,
-                        details,
-                        result.1,
-                    ));
-                    persist_agent_message(
-                        &store,
-                        &session_id,
-                        history.last().expect("tool result"),
-                    )
-                    .await;
-                    turn_tool_results.push(history.last().expect("tool result").clone());
                 }
 
                 let turn_index = turn as u32;
@@ -2551,7 +2442,7 @@ mod tests {
 
         // c1595: partial assistant persisted with stop_reason=Aborted.
         let sid = agent.inner().session_id().expect("session id after run");
-        let entries = store.load_entries(&sid).await.expect("load entries");
+        let entries = store.load_entries(sid).await.expect("load entries");
         let mut found_aborted = false;
         for e in &entries {
             let SessionEntry::Message(m) = e else {
@@ -2593,7 +2484,7 @@ mod tests {
         let mut stream = agent.run_with_id("hello", &sid).await;
         while stream.next().await.is_some() {}
 
-        let entries = store.load_entries(&sid).await.expect("load entries");
+        let entries = store.load_entries(sid).await.expect("load entries");
         let messages: Vec<_> = entries
             .iter()
             .filter_map(|e| match e {
@@ -2948,6 +2839,337 @@ mod tests {
                 .iter()
                 .any(|t| t.contains("REACT_SKILL_BODY_MARKER")),
             "session history must not persist expanded body: {hist_user:?}"
+        );
+    }
+
+    // ── c1545 tool batch (S1–S5 harness) ─────────────────────────────
+
+    use std::sync::Mutex;
+    use std::time::{Duration, Instant};
+
+    struct SlowTool {
+        name: &'static str,
+        mode: crate::protocol::ports::XyToolExecutionMode,
+        sleep_ms: u64,
+        /// Shared wall-clock log: (name, start_ms, end_ms) from a fixed epoch.
+        log: Arc<Mutex<Vec<(String, u128, u128)>>>,
+        epoch: Instant,
+    }
+
+    #[async_trait::async_trait]
+    impl crate::protocol::ports::XyTool for SlowTool {
+        fn name(&self) -> &str {
+            self.name
+        }
+        fn description(&self) -> &str {
+            "slow test tool"
+        }
+        fn parameters_schema(&self) -> serde_json::Value {
+            serde_json::json!({"type": "object", "properties": {}})
+        }
+        fn execution_mode(&self) -> crate::protocol::ports::XyToolExecutionMode {
+            self.mode
+        }
+        async fn execute(
+            &self,
+            _ctx: &crate::protocol::ports::XyToolCtx,
+            _args: serde_json::Value,
+        ) -> Result<String, crate::protocol::error::XyToolError> {
+            let start = self.epoch.elapsed().as_millis();
+            tokio::time::sleep(Duration::from_millis(self.sleep_ms)).await;
+            let end = self.epoch.elapsed().as_millis();
+            self.log
+                .lock()
+                .unwrap()
+                .push((self.name.to_string(), start, end));
+            Ok(format!("{}-done", self.name))
+        }
+    }
+
+    fn multi_tool_rounds(calls: Vec<(&str, &str)>) -> Vec<Vec<crate::protocol::types::XyChunk>> {
+        let done_stop = || crate::protocol::types::XyChunk::Done {
+            finish_reason: crate::protocol::message::XyStopReason::Stop,
+            usage: None,
+        };
+        let mut round1 = Vec::new();
+        for (i, (name, args_json)) in calls.iter().enumerate() {
+            let args: serde_json::Value =
+                serde_json::from_str(args_json).unwrap_or(serde_json::json!({}));
+            round1.push(crate::protocol::types::XyChunk::ToolCallEnd {
+                id: format!("call-{i}"),
+                name: (*name).into(),
+                args,
+            });
+        }
+        round1.push(done_stop());
+        vec![
+            round1,
+            vec![
+                crate::protocol::types::XyChunk::TextDelta("done".into()),
+                done_stop(),
+            ],
+        ]
+    }
+
+    fn overlaps(a: (u128, u128), b: (u128, u128)) -> bool {
+        a.0 < b.1 && b.0 < a.1
+    }
+
+    #[tokio::test]
+    async fn batch_default_sequential_no_overlap() {
+        let log = Arc::new(Mutex::new(Vec::new()));
+        let epoch = Instant::now();
+        let tools = ToolSet::from_iter(vec![Arc::new(SlowTool {
+            name: "slow_safe",
+            mode: crate::protocol::ports::XyToolExecutionMode::Parallel,
+            sleep_ms: 80,
+            log: log.clone(),
+            epoch,
+        }) as Arc<dyn crate::protocol::ports::XyTool>]);
+        // Two calls to the same ParallelSafe tool — Sequential batch must not overlap.
+        let rounds = multi_tool_rounds(vec![
+            ("slow_safe", r#"{"n":1}"#),
+            ("slow_safe", r#"{"n":2}"#),
+        ]);
+        let mut agent = make_agent_with_rounds(rounds, tools);
+        // Default batch mode is Sequential.
+        let mut stream = agent.run("go").await;
+        let mut ends = Vec::new();
+        while let Some(ev) = stream.next().await {
+            if let XyEvent::ToolExecutionEnd { id, .. } = ev {
+                ends.push(id);
+            }
+        }
+        assert_eq!(ends, vec!["call-0".to_string(), "call-1".to_string()]);
+        let entries = log.lock().unwrap().clone();
+        assert_eq!(entries.len(), 2);
+        assert!(
+            !overlaps((entries[0].1, entries[0].2), (entries[1].1, entries[1].2)),
+            "Sequential must not overlap: {entries:?}"
+        );
+        assert!(
+            entries[0].2 <= entries[1].1,
+            "source-order serial: {entries:?}"
+        );
+    }
+
+    #[tokio::test]
+    async fn batch_barrier_parallel_overlap_then_barrier() {
+        let log = Arc::new(Mutex::new(Vec::new()));
+        let epoch = Instant::now();
+        let tools = ToolSet::from_iter(vec![
+            Arc::new(SlowTool {
+                name: "slow_safe",
+                mode: crate::protocol::ports::XyToolExecutionMode::Parallel,
+                sleep_ms: 100,
+                log: log.clone(),
+                epoch,
+            }) as Arc<dyn crate::protocol::ports::XyTool>,
+            Arc::new(SlowTool {
+                name: "slow_barrier",
+                mode: crate::protocol::ports::XyToolExecutionMode::Sequential,
+                sleep_ms: 50,
+                log: log.clone(),
+                epoch,
+            }) as Arc<dyn crate::protocol::ports::XyTool>,
+        ]);
+        let rounds = multi_tool_rounds(vec![
+            ("slow_safe", r#"{"n":1}"#),
+            ("slow_safe", r#"{"n":2}"#),
+            ("slow_barrier", r#"{}"#),
+        ]);
+        let mut agent = make_agent_with_rounds(rounds, tools);
+        agent.set_batch_mode(XyBatchMode::BarrierParallel);
+        let t0 = Instant::now();
+        let mut stream = agent.run("go").await;
+        while stream.next().await.is_some() {}
+        let elapsed = t0.elapsed();
+        let entries = log.lock().unwrap().clone();
+        assert_eq!(entries.len(), 3, "{entries:?}");
+        let by = |n: &str| {
+            entries
+                .iter()
+                .find(|(name, _, _)| name == n)
+                .cloned()
+                .unwrap_or_else(|| panic!("missing {n} in {entries:?}"))
+        };
+        // Two slow_safe — find both by order of log push (start order may race).
+        let safes: Vec<_> = entries
+            .iter()
+            .filter(|(n, _, _)| n == "slow_safe")
+            .cloned()
+            .collect();
+        assert_eq!(safes.len(), 2);
+        assert!(
+            overlaps((safes[0].1, safes[0].2), (safes[1].1, safes[1].2)),
+            "ParallelSafe window must overlap: {entries:?}"
+        );
+        let barrier = by("slow_barrier");
+        let safe_end_max = safes.iter().map(|e| e.2).max().unwrap();
+        assert!(
+            safe_end_max <= barrier.1,
+            "both safes must finish before barrier starts: {entries:?}"
+        );
+        // S3: wall clock ≪ 200ms serial (two 100ms safes).
+        assert!(
+            elapsed < Duration::from_millis(280),
+            "expected parallel speedup, elapsed={elapsed:?}"
+        );
+    }
+
+    #[tokio::test]
+    async fn batch_barrier_preserves_source_windows() {
+        let log = Arc::new(Mutex::new(Vec::new()));
+        let epoch = Instant::now();
+        let tools = ToolSet::from_iter(vec![
+            Arc::new(SlowTool {
+                name: "slow_safe",
+                mode: crate::protocol::ports::XyToolExecutionMode::Parallel,
+                sleep_ms: 60,
+                log: log.clone(),
+                epoch,
+            }) as Arc<dyn crate::protocol::ports::XyTool>,
+            Arc::new(SlowTool {
+                name: "slow_barrier",
+                mode: crate::protocol::ports::XyToolExecutionMode::Sequential,
+                sleep_ms: 40,
+                log: log.clone(),
+                epoch,
+            }) as Arc<dyn crate::protocol::ports::XyTool>,
+        ]);
+        // safe → barrier → safe : second safe must start after barrier ends.
+        let rounds = multi_tool_rounds(vec![
+            ("slow_safe", r#"{"n":1}"#),
+            ("slow_barrier", r#"{}"#),
+            ("slow_safe", r#"{"n":2}"#),
+        ]);
+        let mut agent = make_agent_with_rounds(rounds, tools);
+        agent.set_batch_mode(XyBatchMode::BarrierParallel);
+        let mut stream = agent.run("go").await;
+        while stream.next().await.is_some() {}
+        let entries = log.lock().unwrap().clone();
+        assert_eq!(entries.len(), 3, "{entries:?}");
+        // Log order = start order for serial barriers between safes.
+        let first_safe = &entries[0];
+        let barrier = entries
+            .iter()
+            .find(|(n, _, _)| n == "slow_barrier")
+            .unwrap();
+        let second_safe = entries
+            .iter()
+            .rev()
+            .find(|(n, _, _)| n == "slow_safe")
+            .unwrap();
+        assert_eq!(first_safe.0, "slow_safe");
+        assert!(
+            first_safe.2 <= barrier.1,
+            "first safe before barrier: {entries:?}"
+        );
+        assert!(
+            barrier.2 <= second_safe.1,
+            "second safe after barrier: {entries:?}"
+        );
+        assert!(
+            !overlaps((first_safe.1, first_safe.2), (second_safe.1, second_safe.2)),
+            "safes must not share a window across barrier: {entries:?}"
+        );
+    }
+
+    #[tokio::test]
+    async fn batch_mcp_never_parallel_even_if_trait_lies() {
+        let log = Arc::new(Mutex::new(Vec::new()));
+        let epoch = Instant::now();
+        let tools = ToolSet::from_iter(vec![
+            Arc::new(SlowTool {
+                name: "slow_safe",
+                mode: crate::protocol::ports::XyToolExecutionMode::Parallel,
+                sleep_ms: 80,
+                log: log.clone(),
+                epoch,
+            }) as Arc<dyn crate::protocol::ports::XyTool>,
+            Arc::new(SlowTool {
+                name: "mcp:fake:x",
+                mode: crate::protocol::ports::XyToolExecutionMode::Parallel, // lie
+                sleep_ms: 80,
+                log: log.clone(),
+                epoch,
+            }) as Arc<dyn crate::protocol::ports::XyTool>,
+        ]);
+        let rounds = multi_tool_rounds(vec![
+            ("slow_safe", r#"{"n":1}"#),
+            ("mcp:fake:x", r#"{}"#),
+            ("slow_safe", r#"{"n":2}"#),
+        ]);
+        let mut agent = make_agent_with_rounds(rounds, tools);
+        agent.set_batch_mode(XyBatchMode::BarrierParallel);
+        let mut stream = agent.run("go").await;
+        while stream.next().await.is_some() {}
+        let entries = log.lock().unwrap().clone();
+        assert_eq!(entries.len(), 3, "{entries:?}");
+        let mcp = entries.iter().find(|(n, _, _)| n == "mcp:fake:x").unwrap();
+        for (n, s, e) in &entries {
+            if n == "mcp:fake:x" {
+                continue;
+            }
+            assert!(
+                !overlaps((*s, *e), (mcp.1, mcp.2)),
+                "mcp must not overlap with {n}: {entries:?}"
+            );
+        }
+    }
+
+    #[tokio::test]
+    async fn batch_history_source_order_despite_completion_order() {
+        let log = Arc::new(Mutex::new(Vec::new()));
+        let epoch = Instant::now();
+        // First call sleeps longer so second finishes first under BarrierParallel.
+        let tools = ToolSet::from_iter(vec![
+            Arc::new(SlowTool {
+                name: "slow_a",
+                mode: crate::protocol::ports::XyToolExecutionMode::Parallel,
+                sleep_ms: 120,
+                log: log.clone(),
+                epoch,
+            }) as Arc<dyn crate::protocol::ports::XyTool>,
+            Arc::new(SlowTool {
+                name: "slow_b",
+                mode: crate::protocol::ports::XyToolExecutionMode::Parallel,
+                sleep_ms: 30,
+                log: log.clone(),
+                epoch,
+            }) as Arc<dyn crate::protocol::ports::XyTool>,
+        ]);
+        let rounds = multi_tool_rounds(vec![("slow_a", r#"{}"#), ("slow_b", r#"{}"#)]);
+        let mut agent = make_agent_with_rounds(rounds, tools);
+        agent.set_batch_mode(XyBatchMode::BarrierParallel);
+        let mut stream = agent.run("go").await;
+        let mut history = Vec::new();
+        let mut end_order = Vec::new();
+        while let Some(ev) = stream.next().await {
+            match ev {
+                XyEvent::ToolExecutionEnd { id, .. } => end_order.push(id),
+                XyEvent::AgentEnd { messages } => history = messages,
+                _ => {}
+            }
+        }
+        // End MAY be completion order (b before a).
+        assert!(
+            end_order.contains(&"call-0".to_string()) && end_order.contains(&"call-1".to_string())
+        );
+        let tool_results: Vec<_> = history
+            .iter()
+            .filter_map(|m| match m {
+                AgentMessage::Llm(crate::protocol::message::LlmMessage::ToolResultMessage {
+                    tool_use_id,
+                    ..
+                }) => Some(tool_use_id.clone()),
+                _ => None,
+            })
+            .collect();
+        assert_eq!(
+            tool_results,
+            vec!["call-0".to_string(), "call-1".to_string()],
+            "history toolResults must be source order; ends were {end_order:?}"
         );
     }
 }

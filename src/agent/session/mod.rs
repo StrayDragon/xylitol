@@ -35,7 +35,7 @@ use crate::agent::runtime::AgentHooks;
 use crate::agent::tools::ToolSet;
 use crate::protocol::message::AgentMessage;
 use crate::protocol::ports::{
-    XyBashExecutor, XyExportIo, XyHookBus, XyModel, XyPermission, XyToolExecutionMode,
+    XyBashExecutor, XyBatchMode, XyExportIo, XyHookBus, XyModel, XyPermission,
 };
 use crate::protocol::session::{
     EntryBase, ModelChangeEntry, SessionEntry, ThinkingLevelChangeEntry,
@@ -71,8 +71,8 @@ pub struct AgentCapabilities {
     tools: ToolSet,
     /// Runtime-mutable hooks consulted at tool-call boundaries.
     hooks: AgentHooks,
-    /// Tool execution mode for the current turn.
-    tool_mode: XyToolExecutionMode,
+    /// Tool batch scheduling mode for the next run (c1545).
+    batch_mode: XyBatchMode,
     /// System prompt to prepend to every turn.
     system_prompt: Option<String>,
     /// Current session ID.
@@ -136,7 +136,7 @@ impl AgentCapabilities {
             active_turn: Arc::new(Mutex::new(None)),
             tools: tool_registry,
             hooks: AgentHooks::empty(),
-            tool_mode: XyToolExecutionMode::Sequential,
+            batch_mode: XyBatchMode::Sequential,
             system_prompt: system_prompt.clone(),
             session_id: None,
             compaction_orchestrator: CompactionOrchestrator::new(
@@ -455,12 +455,12 @@ impl AgentCapabilities {
         self.hook_bus.clone()
     }
 
-    pub(crate) fn tool_mode(&self) -> XyToolExecutionMode {
-        self.tool_mode
+    pub(crate) fn tool_mode(&self) -> XyBatchMode {
+        self.batch_mode
     }
 
-    pub(crate) fn set_tool_mode(&mut self, mode: XyToolExecutionMode) {
-        self.tool_mode = mode;
+    pub(crate) fn set_tool_mode(&mut self, mode: XyBatchMode) {
+        self.batch_mode = mode;
     }
 
     pub(crate) fn steer_queue(&self) -> Arc<Mutex<PendingMessageQueue>> {

@@ -55,6 +55,10 @@ pub struct AppConfig {
     /// Product TUI surface settings (c1560).
     #[serde(default)]
     pub tui: TuiConfig,
+
+    /// Same-turn tool batch scheduling (c1545). Default sequential.
+    #[serde(default)]
+    pub tool_batch: ToolBatchConfig,
 }
 
 /// Product TUI knobs under top-level `tui:` (c1560).
@@ -76,6 +80,34 @@ impl Default for TuiConfig {
 
 fn default_editor_history_seed_sessions() -> u32 {
     1
+}
+
+/// `[tool_batch]` — same-turn tool call scheduling (c1545 / rc26).
+///
+/// Only `mode` is accepted. Extra fields (e.g. MCP allowlists) fail load.
+#[derive(Clone, Debug, Default, Serialize, Deserialize, JsonSchema, PartialEq, Eq)]
+#[serde(default, deny_unknown_fields)]
+pub struct ToolBatchConfig {
+    #[serde(default)]
+    pub mode: ToolBatchMode,
+}
+
+/// `tool_batch.mode` wire values.
+#[derive(Clone, Copy, Debug, Default, PartialEq, Eq, Serialize, Deserialize, JsonSchema)]
+#[serde(rename_all = "snake_case")]
+pub enum ToolBatchMode {
+    #[default]
+    Sequential,
+    BarrierParallel,
+}
+
+impl From<ToolBatchMode> for crate::protocol::ports::XyBatchMode {
+    fn from(value: ToolBatchMode) -> Self {
+        match value {
+            ToolBatchMode::Sequential => Self::Sequential,
+            ToolBatchMode::BarrierParallel => Self::BarrierParallel,
+        }
+    }
 }
 
 /// Remote OpenTelemetry export settings (`[otel]`). Orthogonal to local file
@@ -1389,5 +1421,56 @@ tui:
         )
         .expect("tui section");
         assert_eq!(cfg.tui.editor_history_seed_sessions, 3);
+    }
+
+    #[test]
+    fn tool_batch_default_sequential() {
+        let cfg: AppConfig = yaml_serde::from_str("models: {}").expect("minimal");
+        assert_eq!(cfg.tool_batch.mode, ToolBatchMode::Sequential);
+        assert_eq!(
+            crate::protocol::ports::XyBatchMode::from(cfg.tool_batch.mode),
+            crate::protocol::ports::XyBatchMode::Sequential
+        );
+    }
+
+    #[test]
+    fn tool_batch_barrier_parallel_parses() {
+        let cfg: AppConfig = yaml_serde::from_str(
+            r#"
+models: {}
+tool_batch:
+  mode: barrier_parallel
+"#,
+        )
+        .expect("tool_batch section");
+        assert_eq!(cfg.tool_batch.mode, ToolBatchMode::BarrierParallel);
+    }
+
+    #[test]
+    fn tool_batch_invalid_mode_fails() {
+        let err = yaml_serde::from_str::<AppConfig>(
+            r#"
+models: {}
+tool_batch:
+  mode: parallel
+"#,
+        );
+        assert!(err.is_err(), "invalid mode must fail load");
+    }
+
+    #[test]
+    fn tool_batch_rejects_patterns_field() {
+        let err = yaml_serde::from_str::<AppConfig>(
+            r#"
+models: {}
+tool_batch:
+  mode: sequential
+  parallel_safe_patterns: ["mcp:*"]
+"#,
+        );
+        assert!(
+            err.is_err(),
+            "MCP allowlist / patterns fields must not be accepted"
+        );
     }
 }

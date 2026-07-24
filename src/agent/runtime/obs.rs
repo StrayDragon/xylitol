@@ -142,19 +142,80 @@ pub(crate) struct ToolExecuteSpan {
 }
 
 impl ToolExecuteSpan {
+    #[allow(dead_code)] // kept for Sequential-style enter_with_parent call sites / tests
     pub(crate) fn start(name: &str, id: &str, parent: Option<&Span>) -> Option<Self> {
+        Self::start_with_batch(name, id, parent, None, None)
+    }
+
+    #[allow(dead_code)]
+    pub(crate) fn start_with_batch(
+        name: &str,
+        id: &str,
+        parent: Option<&Span>,
+        batch_mode: Option<&str>,
+        barrier_index: Option<u32>,
+    ) -> Option<Self> {
         if !provider_trace_active() {
             return None;
         }
         let span = match parent {
             Some(p) => Span::enter_with_parent("tool.execute", p),
             None => Span::root("tool.execute", SpanContext::random()),
+        };
+        Some(Self::finish_start(
+            span,
+            name,
+            id,
+            batch_mode,
+            barrier_index,
+        ))
+    }
+
+    /// Child of a captured parent [`SpanContext`] (BarrierParallel fan-out).
+    ///
+    /// Capturing the context before `join_all` avoids racing the global parent
+    /// slot and avoids `SpanContext::random` roots for concurrent tools.
+    pub(crate) fn start_with_parent_ctx(
+        name: &str,
+        id: &str,
+        parent_ctx: Option<SpanContext>,
+        batch_mode: &str,
+        barrier_index: u32,
+    ) -> Option<Self> {
+        if !provider_trace_active() {
+            return None;
         }
-        .with_properties(|| {
+        let span = match parent_ctx {
+            Some(ctx) => Span::root("tool.execute", ctx),
+            None => Span::root("tool.execute", SpanContext::random()),
+        };
+        Some(Self::finish_start(
+            span,
+            name,
+            id,
+            Some(batch_mode),
+            Some(barrier_index),
+        ))
+    }
+
+    fn finish_start(
+        span: Span,
+        name: &str,
+        id: &str,
+        batch_mode: Option<&str>,
+        barrier_index: Option<u32>,
+    ) -> Self {
+        let span = span.with_properties(|| {
             let mut props = vec![
                 ("tool_name".to_string(), name.to_string()),
                 ("tool_id".to_string(), id.to_string()),
             ];
+            if let Some(m) = batch_mode {
+                props.push(("tool_batch.mode".to_string(), m.to_string()));
+            }
+            if let Some(i) = barrier_index {
+                props.push(("tool_batch.barrier_index".to_string(), i.to_string()));
+            }
             props.extend(langfuse_observation_properties("tool"));
             props
         });
@@ -165,7 +226,7 @@ impl ToolExecuteSpan {
                 ("name", "tool.execute".to_string()),
             ]
         }));
-        Some(Self { span })
+        Self { span }
     }
 
     /// Attach args/result when `[otel].tool_observation_io` ≠ none (c1550).
@@ -435,5 +496,60 @@ mod tests {
         let keys: Vec<&str> = tool.properties.iter().map(|(k, _)| k.as_ref()).collect();
         assert!(keys.contains(&"langfuse.observation.input"), "{keys:?}");
         assert!(keys.contains(&"langfuse.observation.output"), "{keys:?}");
+    }
+
+    #[test]
+    fn parallel_tool_spans_share_iteration_parent_via_captured_ctx() {
+        let _g = TEST_LOCK.lock().unwrap();
+        set_provider_trace_active(true);
+        let records = Arc::new(Mutex::new(Vec::new()));
+        fastrace::set_reporter(CollectingReporter(Arc::clone(&records)), Config::default());
+
+        {
+            let turn = AgentTurnSpan::start(None).expect("turn");
+            let iter = AgentIterationSpan::start(Some(&turn), 1).expect("iter");
+            let parent_ctx = SpanContext::from_span(iter.span());
+            let t1 = ToolExecuteSpan::start_with_parent_ctx(
+                "slow_safe",
+                "c0",
+                parent_ctx,
+                "barrier_parallel",
+                0,
+            )
+            .expect("t1");
+            let t2 = ToolExecuteSpan::start_with_parent_ctx(
+                "slow_safe",
+                "c1",
+                parent_ctx,
+                "barrier_parallel",
+                0,
+            )
+            .expect("t2");
+            drop(t1);
+            drop(t2);
+            drop(iter);
+            drop(turn);
+        }
+        fastrace::flush();
+        set_provider_trace_active(false);
+
+        let spans = records.lock().unwrap().clone();
+        let iter = spans
+            .iter()
+            .find(|s| s.name == "agent.iteration")
+            .expect("iter");
+        let tools: Vec<_> = spans.iter().filter(|s| s.name == "tool.execute").collect();
+        assert_eq!(tools.len(), 2);
+        for t in &tools {
+            assert_eq!(t.trace_id, iter.trace_id);
+            assert_eq!(t.parent_id, iter.span_id);
+            let props: std::collections::HashMap<_, _> = t
+                .properties
+                .iter()
+                .map(|(k, v)| (k.as_ref(), v.as_ref()))
+                .collect();
+            assert_eq!(props.get("tool_batch.mode"), Some(&"barrier_parallel"));
+            assert_eq!(props.get("tool_batch.barrier_index"), Some(&"0"));
+        }
     }
 }

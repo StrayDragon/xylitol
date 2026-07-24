@@ -42,3 +42,35 @@ pub fn default_tools() -> Vec<Arc<dyn XyTool>> {
         Arc::new(ls::LsTool),
     ]
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::protocol::ports::XyToolExecutionMode;
+
+    #[test]
+    fn builtin_concurrency_class_table() {
+        let tools = default_tools();
+        let mode = |name: &str| {
+            tools
+                .iter()
+                .find(|t| t.name() == name)
+                .unwrap_or_else(|| panic!("missing tool {name}"))
+                .execution_mode()
+        };
+        for name in ["read", "grep", "find", "ls"] {
+            assert_eq!(
+                mode(name),
+                XyToolExecutionMode::Parallel,
+                "{name} must be ParallelSafe"
+            );
+        }
+        for name in ["write", "edit", "bash"] {
+            assert_eq!(
+                mode(name),
+                XyToolExecutionMode::Sequential,
+                "{name} must be Barrier"
+            );
+        }
+    }
+}
