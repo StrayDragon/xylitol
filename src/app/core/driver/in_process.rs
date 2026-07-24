@@ -617,6 +617,13 @@ impl XyDriver for XyInProcessDriver {
         Self::map_str(self.store.list_sessions().await)
     }
 
+    async fn load_session_entries(
+        &self,
+        session_id: &str,
+    ) -> Result<Vec<SessionEntry>, XyDriverError> {
+        Self::map_str(self.store.load_entries(session_id).await)
+    }
+
     async fn new_session(&mut self) -> Result<String, XyDriverError> {
         let session_id = uuid::Uuid::new_v4().to_string();
         let cwd = std::env::current_dir()

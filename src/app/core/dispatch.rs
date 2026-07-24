@@ -483,6 +483,13 @@ mod tests {
             Ok(Vec::new())
         }
 
+        async fn load_session_entries(
+            &self,
+            _session_id: &str,
+        ) -> Result<Vec<crate::protocol::session::SessionEntry>, XyDriverError> {
+            Ok(Vec::new())
+        }
+
         async fn new_session(&mut self) -> Result<String, XyDriverError> {
             Ok("new-session".into())
         }

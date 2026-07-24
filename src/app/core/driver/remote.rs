@@ -749,6 +749,15 @@ impl XyDriver for XyRemoteDriver {
         })
     }
 
+    async fn load_session_entries(
+        &self,
+        _session_id: &str,
+    ) -> Result<Vec<SessionEntry>, XyDriverError> {
+        Err(XyDriverError::unsupported(
+            "remote: load_session_entries not implemented",
+        ))
+    }
+
     async fn new_session(&mut self) -> Result<String, XyDriverError> {
         Err(XyDriverError::unsupported(
             "remote: new_session not implemented",

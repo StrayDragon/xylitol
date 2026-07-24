@@ -13,8 +13,9 @@ use std::sync::atomic::{AtomicBool, Ordering};
 
 use xylitol_tui::{InputEvent, RenderError, TUI, Terminal};
 
-use crate::app::core::driver::{XyDriverError, XyEvent};
+use crate::app::core::driver::{XyDriver, XyDriverError, XyEvent};
 use crate::protocol::ports::XyBashResult;
+use crate::protocol::session::SessionEntry;
 
 use super::bridge::{UiEntry, UiModel, UiPhase, apply_xy_event};
 use super::layout::{UiRoot, install_ui_root_key_listeners, shared_ui_root_rebuild};
@@ -121,6 +122,8 @@ pub struct HostSession<T: Terminal> {
     /// Background estimate results → host `select!` (production).
     footer_token_tx: tokio::sync::mpsc::UnboundedSender<(u64, Option<String>)>,
     footer_token_rx: tokio::sync::mpsc::UnboundedReceiver<(u64, Option<String>)>,
+    /// `tui.editor_history_seed_sessions` (c1560).
+    editor_history_seed_sessions: u32,
 }
 
 impl<T: Terminal> HostSession<T> {
@@ -168,6 +171,7 @@ impl<T: Terminal> HostSession<T> {
             footer_token_gen: 0,
             footer_token_tx,
             footer_token_rx,
+            editor_history_seed_sessions: 1,
         }
     }
 
@@ -203,6 +207,38 @@ impl<T: Terminal> HostSession<T> {
         session.quit_flag = quit_flag.clone();
         install_ui_root_key_listeners(&ui_root, &quit_flag, &mut session.tui);
         session
+    }
+
+    /// Configure how many prior sessions seed ↑/↓ history on new session (c1560).
+    pub fn set_editor_history_seed_sessions(&mut self, n: u32) {
+        self.editor_history_seed_sessions = n;
+    }
+
+    /// Replace editor send history from already-loaded entries (resume/switch).
+    pub fn seed_editor_history_from_entries(&mut self, entries: &[SessionEntry]) {
+        let texts = super::editor_history_seed::user_prompt_texts_from_entries(entries);
+        if let Some(root) = self.ui_root.as_ref() {
+            root.borrow_mut().replace_editor_send_history(texts);
+        }
+    }
+
+    /// Seed ↑/↓ history from prior same-cwd sessions (pure new session).
+    pub async fn seed_editor_history_for_new_session(&mut self, driver: &dyn XyDriver) {
+        let cwd = std::env::current_dir()
+            .map(|p| p.to_string_lossy().into_owned())
+            .unwrap_or_else(|_| self.layout_cwd.clone());
+        let current_id = driver.session_id();
+        let texts = super::editor_history_seed::collect_new_session_seed(
+            driver,
+            &cwd,
+            current_id.as_deref(),
+            self.editor_history_seed_sessions,
+        )
+        .await
+        .unwrap_or_default();
+        if let Some(root) = self.ui_root.as_ref() {
+            root.borrow_mut().replace_editor_send_history(texts);
+        }
     }
 
     pub fn mode(&self) -> LayoutMode {

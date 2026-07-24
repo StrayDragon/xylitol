@@ -436,6 +436,11 @@ impl UiRoot {
         self.editor.add_to_history(text.into());
     }
 
+    /// Replace ↑/↓ send history from session seed (c1560).
+    pub fn replace_editor_send_history(&mut self, texts: impl IntoIterator<Item = String>) {
+        self.editor.replace_history(texts);
+    }
+
     pub fn slot(&self) -> EditorSlot {
         self.slot
     }
