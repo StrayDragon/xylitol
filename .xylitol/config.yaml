@@ -20,7 +20,7 @@ tokenizers:
     # file: tokenizer.json
 
 models:
-  default_model: "Qwen3.6-35B-A3B/UD-Q5_K_XL-think-coding"
+  default_model: "Ornith-1.0-35B-MTP-APEX/I-Quality"
   models:
     "DeepSeek-V4-Flash/UD-IQ3_XXS":
       provider: openai
@@ -198,15 +198,14 @@ mcp_servers:
     args: ["mcp"]
 
 # Optional OTLP → Langfuse (c1475). Keys in secret.env (LANGFUSE_*).
-# Default exporter is none; set otlp-http to export.
+# Product defaults (code): exporter=none, observation_io=none, tool_observation_io=none
+# → even with exporter on, only structural metadata (session/model/latency/types/usage).
+# This workspace profile: export on + I/O full for local debug / Langfuse tuning.
 otel:
   exporter: otlp-http
   protocol: http-json
   environment: dev
   service_name: xylitol
   # endpoint omitted → LANGFUSE_BASE_URL + /api/public/otel/v1/traces
-  # (with_endpoint is used as-is; we append /v1/traces if missing)
-  # Generation + agent.turn Session preview (default none).
-  observation_io: truncated
-  # Tool.execute args/result (separate gate; default none).
-  tool_observation_io: truncated
+  observation_io: full
+  tool_observation_io: full
