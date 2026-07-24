@@ -22,10 +22,11 @@ requirements[20]{req_id,title,statement}:
   rc23,"config-yaml-vars-home","配置 YAML minijinja 模板 MUST 提供命名空间 vars，且 MUST 仅暴露键 home（解析为用户 home 目录绝对路径）；{{ vars.home }} MUST 可在任意配置字符串字段插值；home 不可解析或引用 vars 下其它键 MUST 使模板渲染以 strict 错误失败；MUST NOT 在 vars 下提供 project、cwd 或其它路径键。由配置模板单测覆盖，MUST NOT 为该插值单独扩 BDD step。"
   rc24,"otel-config-section","AppConfig MUST 支持可选顶层 otel（或等价）节：至少含 exporter（none 或 otlp-http；缺省等价 none）、可选 endpoint、protocol（http-binary 或 http-json）、environment、service_name 与 headers/凭证引用字段；非法 exporter/protocol MUST 使配置加载失败；该节 MUST 仅控制远程 OTLP 出口，MUST NOT 取代本地 file log / provider-trace 的环境与构建闸（见 infra-logging / infra-provider-trace）。由配置单测覆盖，MUST NOT 为静态字段形状单独扩 BDD step。"
   rc25,"tui-editor-history-seed-sessions","AppConfig MUST 支持可选顶层 tui 节字段 editor_history_seed_sessions（非负整数）；缺省 MUST 为 1；该值 MUST 供产品 TUI 纯 new session 装载跨 session 发送历史种子（ati41）；由配置单测覆盖，MUST NOT 为静态字段形状单独扩 BDD step。"
-  rc26,"tool-batch-config","AppConfig MUST 支持可选工具批配置节 tool_batch：含 mode（sequential 或 barrier_parallel；缺省 sequential）；非法 mode MUST 使配置加载失败；缺省 MUST NOT 改变开箱串行批行为；MUST NOT 提供将 mcp: 工具升为并行安全的配置字段（无 parallel_safe_patterns 或等价 MCP 放行名单）。由配置单测覆盖，MUST NOT 为静态字段形状单独扩 BDD step。"
+  rc26,"tool-batch-config","AppConfig MUST 支持可选工具批配置节 tool_batch：含 mode（sequential 或 barrier_parallel；缺省 barrier_parallel）；非法 mode MUST 使配置加载失败；显式 sequential MUST 恢复源序串行批；MUST NOT 提供将 mcp: 工具升为并行安全的配置字段（无 parallel_safe_patterns 或等价 MCP 放行名单）。由配置单测覆盖，MUST NOT 为静态字段形状单独扩 BDD step。"
+
 scenarios[5]{req_id,id,given,when,then,feature}:
   rc22,"profile-no-max-iterations",Agent profile 类型与 schema,检查 max_iterations 字段,MUST NOT 存在可生效字段,false
   rc23,"vars-home-unit-covered",配置模板渲染上下文,"渲染含 {{ vars.home }} 的 YAML 片段","展开为 home 绝对路径；未知 vars 键 strict 失败",false
   rc24,"otel-default-none-unit",AppConfig 缺省 otel 节,检查 exporter 生效值,等价 none 且不隐式开启 OTLP,false
   rc25,"tui-seed-default-one",AppConfig 缺省 tui.editor_history_seed_sessions,读取生效值,等于 1,false
-  rc26,"tool-batch-default-sequential-unit",AppConfig 缺省或未写 tool_batch,读取 mode,等于 sequential,false
+  rc26,"tool-batch-default-barrier-parallel-unit",AppConfig 缺省或未写 tool_batch,读取 mode,等于 barrier_parallel,false

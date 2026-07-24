@@ -1,50 +1,32 @@
 ---
 change_id: c1605-add-runtime-prompt-fragments
 title: 运行时能力 ↔ 系统提示片段自动注入（少配置面）
-status: purpose-draft
+status: in-progress
 priority: 1605
 depends_on: []
 author: agent
+branch: feat/c1605-c1610-oob-prompt-batch
+base_sha: 7c5075601088d1bfe49a865c31b80aa7bfaa24bf
+checkpointed: false
 ---
 
 # c1605-add-runtime-prompt-fragments
 
 ## Discussion context（2026-07-24）
 
-- 批并行 ROI 在「模型单 tool/turn」时≈0；单靠调度器不够，需要匹配的系统提示。
-- 临时态：`.xylitol/APPEND_SYSTEM.md` 已放实验 3 多-tool 片段；本 change 把「策略→片段」做成机制，去掉手贴 APPEND。
-- 与候补「运行时即时设置 / 能力覆盖盘」同轴：切换 tool 策略 → 下一波次自动换片段。
-- 默认片段内容与开箱 `barrier_parallel` 见 `c1610`。
+见 `c1610` 实验 3：固定多-tool 提示显著提高同消息多 tool 命中率。本 change 提供机制；默认内容与默认 `barrier_parallel` 由 `c1610` 打开。
 
 ## Why
 
-开箱行为 = 默认能力 + 匹配提示，而不是用户同时拧配置又手写 SYSTEM。
+能力/策略变更应自动带上匹配提示，避免用户手贴 APPEND。
 
-## Product intent
+## Decisions
 
-| MUST | 禁止 |
-|---|---|
-| 内置策略变更自动带上/撤下对应片段 | 为每个策略再要用户贴一段 system |
-| 片段短、可测、可关 | 不可维护的提示墙 |
-| 与 SYSTEM.md / APPEND_SYSTEM.md 可叠加且顺序稳定 | 静默覆盖用户 SYSTEM.md 全文 |
-| 会话覆盖切换 → 下一 turn 提示已变 | 暗示已切换但模型仍吃旧提示 |
-
-## Decisions（意向）
-
-1. Fragment 源：代码内置表（非用户 YAML 碎文件森林）。
-2. 注入点：`build_system_prompt` 专用段；用户 append 仍在后。
-3. 生效波次：与 Session 能力快照一致。
-4. 不新增「prompt_fragments:」用户配置主路径。
-
-## Non-Goals
-
-完整覆盖盘 UI；改 ReAct 执行语义；用户 Jinja 模板市场。
+1. 内置 fragment 表（id + body）；`fragments_for_batch_mode(mode)` 解析。
+2. `SystemPromptOpts.runtime_policy_fragments: Vec<String>`；`build_system_prompt` 注入 `<runtime_policy>`（在 guidelines 前、append_system 后或 guidelines 后——定：在 Guidelines 段之后、date/CWD 之前）。
+3. Session：`batch_mode` 变更与构造时同步 fragment 列表并 `rebuild_system_prompt`。
+4. 无用户 YAML `prompt_fragments` 配置节。
 
 ## Status
 
-**purpose-draft** — 建议先落地机制再填默认文案（`c1610`）。
-
-## Ethics
-
-- risk_level: low–medium
-- required_evidence: 启停片段单测；实验 3 命中率
+**promoting / applying** with `c1610` on same feature branch.

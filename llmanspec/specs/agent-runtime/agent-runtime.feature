@@ -132,10 +132,10 @@
     那么 投影结果不含该 assistant 行
 
   @req:ar27
-  场景: batch-default-sequential
+  场景: batch-default-barrier-parallel
     假如 未配置工具批模式且 mock 模型同 turn 发出两个可并行假工具
     当 运行 AgentRuntime
-    那么 两工具按源序串行执行且无并行重叠
+    那么 两工具执行时间重叠
 
   @req:ar28
   场景: batch-barrier-parallel-overlap

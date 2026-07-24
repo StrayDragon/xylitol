@@ -53,10 +53,11 @@ impl XyToolCtx {
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Default, serde::Serialize, serde::Deserialize)]
 #[serde(rename_all = "snake_case")]
 pub enum XyBatchMode {
-    /// Source-order one-by-one await (product default; matches pre-c1545 behaviour).
-    #[default]
+    /// Source-order one-by-one await.
     Sequential,
-    /// Experimental: consecutive ParallelSafe tools fan out; Barrier tools flush then run alone.
+    /// Consecutive ParallelSafe tools fan out; Barrier tools flush then run alone.
+    /// Product default (c1610); was experimental opt-in under c1545.
+    #[default]
     BarrierParallel,
 }
 
