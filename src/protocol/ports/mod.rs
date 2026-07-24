@@ -32,5 +32,5 @@ pub use resource::XyResourceLoader;
 pub use secret::XySecretResolver;
 pub use session::{SessionListEntry, XySessionStore, sanitize_session_display_name};
 pub use session_list::{flatten_session_forest, format_session_age};
-pub use tool::{XyTool, XyToolCtx, XyToolExecutionMode};
+pub use tool::{XyBatchMode, XyTool, XyToolCtx, XyToolExecutionMode};
 pub use trust::XyTrustStore;

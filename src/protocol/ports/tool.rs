@@ -47,13 +47,34 @@ impl XyToolCtx {
     }
 }
 
-/// Whether a tool prefers sequential or parallel execution.
+/// Session / config tool-batch scheduling mode (c1545).
+///
+/// Distinct from per-tool [`XyToolExecutionMode`] (concurrency class).
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Default, serde::Serialize, serde::Deserialize)]
+#[serde(rename_all = "snake_case")]
+pub enum XyBatchMode {
+    /// Source-order one-by-one await (product default; matches pre-c1545 behaviour).
+    #[default]
+    Sequential,
+    /// Experimental: consecutive ParallelSafe tools fan out; Barrier tools flush then run alone.
+    BarrierParallel,
+}
+
+/// Per-tool concurrency class used when batch mode is [`XyBatchMode::BarrierParallel`].
+///
+/// - [`Self::Parallel`] = ParallelSafe (may share a parallel window)
+/// - [`Self::Sequential`] = Barrier (flush window, then run alone)
+///
+/// Default for undeclared / self-registered tools is Barrier ([`Self::Sequential`]).
+/// Built-in read-family tools opt into ParallelSafe via [`XyTool::execution_mode`].
+/// MCP / unknown names are forced to Barrier by the scheduler (`mcp:` prefix / missing
+/// tool), independent of this trait value.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Default, serde::Serialize)]
 pub enum XyToolExecutionMode {
-    /// Execute in parallel with other tools (default).
-    #[default]
+    /// ParallelSafe — may run concurrently with other ParallelSafe tools in a window.
     Parallel,
-    /// Execute sequentially (entire batch falls back to sequential).
+    /// Barrier — must not share a parallel window; flush first, then run alone.
+    #[default]
     Sequential,
 }
 
@@ -90,8 +111,11 @@ pub trait XyTool: Send + Sync {
         &[]
     }
 
+    /// Per-tool concurrency class (ParallelSafe / Barrier). See [`XyToolExecutionMode`].
+    ///
+    /// Default is Barrier ([`XyToolExecutionMode::Sequential`]) for undeclared tools.
     fn execution_mode(&self) -> XyToolExecutionMode {
-        XyToolExecutionMode::Parallel
+        XyToolExecutionMode::Sequential
     }
 
     fn prepare_arguments(&self, args: Value) -> Value {
@@ -129,10 +153,31 @@ mod tests {
     }
 
     #[test]
-    fn tool_execution_mode_default_is_parallel() {
+    fn tool_execution_mode_default_is_barrier() {
         assert_eq!(
             XyToolExecutionMode::default(),
-            XyToolExecutionMode::Parallel
+            XyToolExecutionMode::Sequential
+        );
+    }
+
+    #[test]
+    fn batch_mode_default_is_sequential() {
+        assert_eq!(XyBatchMode::default(), XyBatchMode::Sequential);
+    }
+
+    #[test]
+    fn batch_mode_serde_snake_case() {
+        assert_eq!(
+            serde_json::to_string(&XyBatchMode::Sequential).unwrap(),
+            "\"sequential\""
+        );
+        assert_eq!(
+            serde_json::to_string(&XyBatchMode::BarrierParallel).unwrap(),
+            "\"barrier_parallel\""
+        );
+        assert_eq!(
+            serde_json::from_str::<XyBatchMode>("\"barrier_parallel\"").unwrap(),
+            XyBatchMode::BarrierParallel
         );
     }
 
@@ -186,7 +231,7 @@ mod tests {
         assert_eq!(tool.description(), "A mock tool for testing");
         assert!(tool.prompt_snippet().is_none());
         assert!(tool.prompt_guidelines().is_empty());
-        assert_eq!(tool.execution_mode(), XyToolExecutionMode::Parallel);
+        assert_eq!(tool.execution_mode(), XyToolExecutionMode::Sequential);
 
         let schema = tool.parameters_schema();
         assert_eq!(schema["type"], "object");

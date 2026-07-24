@@ -63,6 +63,10 @@ impl TypedTool for WriteTool {
         })
     }
 
+    fn execution_mode(&self) -> crate::protocol::ports::XyToolExecutionMode {
+        crate::protocol::ports::XyToolExecutionMode::Sequential
+    }
+
     async fn execute_typed(&self, ctx: &XyToolCtx, args: WriteArgs) -> Result<String, XyToolError> {
         let WriteArgs {
             path: file_path,

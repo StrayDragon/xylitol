@@ -80,6 +80,11 @@ impl crate::protocol::ports::XyTool for McpToolAdapter {
             ))
         })
     }
+
+    fn execution_mode(&self) -> crate::protocol::ports::XyToolExecutionMode {
+        // Barrier — MCP tools must never enter a parallel window (c1545 / mcp6).
+        crate::protocol::ports::XyToolExecutionMode::Sequential
+    }
 }
 
 #[cfg(test)]
@@ -120,5 +125,21 @@ mod tests {
         );
         assert_eq!(adapter.name(), "mcp:git:status");
         assert_eq!(adapter.parameters_schema(), schema);
+    }
+
+    #[test]
+    fn test_mcp_tool_adapter_execution_mode_is_barrier() {
+        let manager = Arc::new(McpClientManager::new());
+        let adapter = McpToolAdapter::new(
+            "filesystem".into(),
+            "read_file".into(),
+            "Read a file".into(),
+            None,
+            manager,
+        );
+        assert_eq!(
+            adapter.execution_mode(),
+            crate::protocol::ports::XyToolExecutionMode::Sequential
+        );
     }
 }

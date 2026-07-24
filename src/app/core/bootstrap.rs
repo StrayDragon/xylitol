@@ -183,6 +183,8 @@ pub struct ResolvedAssembly {
     pub hooks_config: crate::infra::config::types::HooksConfig,
     /// Settings `defaultThinkingLevel` (camelCase JSON), if any.
     pub default_thinking_level: Option<String>,
+    /// `AppConfig.tool_batch.mode` (c1545).
+    pub batch_mode: crate::protocol::ports::XyBatchMode,
 }
 
 impl ResolvedAssembly {
@@ -204,6 +206,7 @@ impl ResolvedAssembly {
             follow_up_mode: self.follow_up_mode,
             event_sink: None,
             hooks_config: self.hooks_config,
+            batch_mode: self.batch_mode,
         }
     }
 }
@@ -538,6 +541,11 @@ pub fn resolve_assembly(input: &BootstrapInput) -> Result<ResolvedAssembly, Boot
         .map(|c| c.hooks.clone())
         .unwrap_or_default();
 
+    let batch_mode = app_config
+        .as_ref()
+        .map(|c| crate::protocol::ports::XyBatchMode::from(c.tool_batch.mode))
+        .unwrap_or_default();
+
     Ok(ResolvedAssembly {
         model_registry,
         system_prompt,
@@ -557,6 +565,7 @@ pub fn resolve_assembly(input: &BootstrapInput) -> Result<ResolvedAssembly, Boot
         mcp_servers,
         hooks_config,
         default_thinking_level,
+        batch_mode,
     })
 }
 

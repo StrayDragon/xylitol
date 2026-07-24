@@ -13,7 +13,7 @@ use crate::agent::runtime::AgentRuntime;
 use crate::agent::session::{AgentCapabilities, QueueMode};
 use crate::agent::tools::ToolSet;
 use crate::protocol::ports::{
-    XyBashExecutor, XyEventSink, XyExportIo, XyHookBus, XyModelBuilder, XyPermission,
+    XyBashExecutor, XyBatchMode, XyEventSink, XyExportIo, XyHookBus, XyModelBuilder, XyPermission,
     XySessionStore,
 };
 
@@ -40,6 +40,7 @@ pub struct AgentBuilder {
     steering_mode: QueueMode,
     follow_up_mode: QueueMode,
     hook_bus: Option<Arc<dyn XyHookBus>>,
+    batch_mode: XyBatchMode,
 }
 
 impl AgentBuilder {
@@ -70,6 +71,7 @@ impl AgentBuilder {
             steering_mode: QueueMode::default(),
             follow_up_mode: QueueMode::default(),
             hook_bus: None,
+            batch_mode: XyBatchMode::Sequential,
         }
     }
 
@@ -157,6 +159,12 @@ impl AgentBuilder {
         self
     }
 
+    /// Set tool batch scheduling mode (default: [`XyBatchMode::Sequential`]).
+    pub fn batch_mode(mut self, mode: XyBatchMode) -> Self {
+        self.batch_mode = mode;
+        self
+    }
+
     /// Build the [`AgentRuntime`] (ReAct-loop runtime over [`AgentCapabilities`]).
     pub fn build(self) -> Result<AgentRuntime, String> {
         let mut session = AgentCapabilities::new(
@@ -178,6 +186,7 @@ impl AgentBuilder {
             self.follow_up_mode,
             self.hook_bus,
         );
+        session.set_tool_mode(self.batch_mode);
         if !self.skills.is_empty() {
             session.apply_skills(self.skills);
         }
