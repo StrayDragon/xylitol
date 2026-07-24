@@ -55,9 +55,11 @@ pub fn apply_lifecycle_family(model: &mut UiModel, event: &XyEvent) -> bool {
             // Esc abort used to emit Error("aborted"); treat as cancel note + idle
             // so a sticky Error wall cannot block further conversation (c482 / c665).
             if msg == "aborted" {
+                // c1595: keep partial (flush) + footer; do not wipe already-committed assistant.
+                model.flush_streaming();
                 if !trailing_aborted_note(&model.entries) {
                     model.entries.push(UiEntry::System {
-                        text: "Aborted".into(),
+                        text: "Operation aborted".into(),
                     });
                 }
                 model.streaming_thinking.clear();

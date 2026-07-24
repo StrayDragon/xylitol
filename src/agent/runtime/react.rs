@@ -707,6 +707,53 @@ fn run_react_loop(cfg: ReActConfig) -> impl Stream<Item = XyEvent> + Send {
                         biased;
                         _ = cancel.cancelled() => {
                             drop(chunk_stream);
+                            // c1595 / pi: keep partial assistant in session with
+                            // stop_reason=Aborted (skip empty); project_for_llm
+                            // filters it from the next model call.
+                            let mut assistant_parts = Vec::new();
+                            if !thinking_acc.is_empty() || thinking_signature.is_some() {
+                                assistant_parts.push(AgentPart::Thinking {
+                                    thinking: std::mem::take(&mut thinking_acc),
+                                    redacted: false,
+                                    thinking_signature: thinking_signature.take(),
+                                });
+                            }
+                            if !text_acc.is_empty() {
+                                assistant_parts.push(AgentPart::text(std::mem::take(
+                                    &mut text_acc,
+                                )));
+                            }
+                            for (id, name, args) in &tool_calls {
+                                assistant_parts.push(AgentPart::ToolCall {
+                                    id: id.clone(),
+                                    name: name.clone(),
+                                    arguments: args.clone(),
+                                });
+                            }
+                            if !assistant_parts.is_empty() {
+                                let assistant_msg =
+                                    AgentMessage::Llm(LlmMessage::AssistantMessage {
+                                        content: assistant_parts,
+                                        stop_reason: Some(
+                                            crate::protocol::message::XyStopReason::Aborted,
+                                        ),
+                                        usage: done_usage.take(),
+                                        api: String::new(),
+                                        provider: String::new(),
+                                        model: String::new(),
+                                        response_id: None,
+                                        error_message: None,
+                                        timestamp: crate::protocol::message::now_ms(),
+                                        diagnostics: Vec::new(),
+                                    });
+                                yield XyEvent::MessageEnd {
+                                    role: "assistant".to_string(),
+                                    message: Some(assistant_msg.clone()),
+                                };
+                                persist_agent_message(&store, &session_id, &assistant_msg)
+                                    .await;
+                                history.push(assistant_msg);
+                            }
                             yield XyEvent::Error("aborted".to_string());
                             break 'outer;
                         }
@@ -2457,7 +2504,7 @@ mod tests {
         let session = select_mock(AgentCapabilities::new(
             reg,
             ToolSet::empty(),
-            store,
+            store.clone(),
             sink,
             None,
             Vec::new(),
@@ -2500,6 +2547,29 @@ mod tests {
         assert!(
             text_count < 40,
             "UI/event consumer must not see a full drain after abort (text_count={text_count})"
+        );
+
+        // c1595: partial assistant persisted with stop_reason=Aborted.
+        let sid = agent.inner().session_id().expect("session id after run");
+        let entries = store.load_entries(&sid).await.expect("load entries");
+        let mut found_aborted = false;
+        for e in &entries {
+            let SessionEntry::Message(m) = e else {
+                continue;
+            };
+            if m.message.get("role").and_then(|r| r.as_str()) != Some("assistant") {
+                continue;
+            }
+            if m.message.get("stopReason").and_then(|r| r.as_str()) == Some("aborted")
+                || m.message.get("stop_reason").and_then(|r| r.as_str()) == Some("aborted")
+            {
+                found_aborted = true;
+                break;
+            }
+        }
+        assert!(
+            found_aborted,
+            "mid-stream abort must persist assistant with aborted stop_reason: {entries:?}"
         );
     }
 
