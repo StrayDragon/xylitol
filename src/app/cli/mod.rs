@@ -12,7 +12,7 @@ pub mod tokenizer;
 #[cfg(feature = "tui")]
 mod trust_gate;
 
-use clap::{Parser, Subcommand};
+use clap::{Args, Parser, Subcommand};
 
 use crate::app::cli::resources::ResourcesAction;
 use crate::app::cli::tokenizer::TokenizerAction;
@@ -23,11 +23,49 @@ use crate::app::core::bootstrap::{
 use crate::app::server::subcommand::ServerSubcommand;
 use crate::infra::timing;
 
+/// Surface flags for `xylitol tui` / `xylitol tui run` (c1565).
+#[derive(Args, Debug, Default, Clone, PartialEq, Eq)]
+pub struct TuiSurfaceArgs {
+    #[arg(long)]
+    pub session: Option<String>,
+    #[arg(long)]
+    pub model: Option<String>,
+    #[arg(long)]
+    pub config: Option<String>,
+    #[arg(long)]
+    pub list_models: bool,
+    #[arg(long)]
+    pub no_color: bool,
+    /// Trust the project directory and load its `.xylitol/` resources.
+    #[arg(long)]
+    pub trust: bool,
+    /// Do not trust the project directory; skip its `.xylitol/` resources.
+    #[arg(long)]
+    pub no_trust: bool,
+}
+
 /// Optional leaf under `xylitol tui` (default = run when omitted).
-#[derive(Subcommand, Debug, Clone, Copy, PartialEq, Eq)]
+/// Flags may sit on the parent (`tui --session …`) or on `run` (`tui run --session …`).
+#[derive(Subcommand, Debug, Clone, PartialEq, Eq)]
 pub enum TuiAction {
     /// Open the interactive TUI (same as bare `xylitol tui`).
-    Run,
+    Run {
+        #[command(flatten)]
+        surface: TuiSurfaceArgs,
+    },
+}
+
+/// Surface flags for `xylitol print` (c1565).
+#[derive(Args, Debug, Default, Clone, PartialEq, Eq)]
+pub struct PrintSurfaceArgs {
+    #[arg(long)]
+    pub session: Option<String>,
+    #[arg(long)]
+    pub model: Option<String>,
+    #[arg(long)]
+    pub config: Option<String>,
+    #[arg(long)]
+    pub no_color: bool,
 }
 
 /// Top-level subcommand. When absent: TTY → TUI; non-TTY → print (stdin).
@@ -36,11 +74,15 @@ pub enum TuiAction {
 pub enum CliCommand {
     /// Interactive TUI surface (default on a TTY).
     Tui {
+        #[command(flatten)]
+        surface: TuiSurfaceArgs,
         #[command(subcommand)]
         action: Option<TuiAction>,
     },
     /// One-shot print surface (requires a non-empty prompt).
     Print {
+        #[command(flatten)]
+        surface: PrintSurfaceArgs,
         /// Positional one-shot prompt.
         #[arg(value_name = "PROMPT")]
         prompt: Option<String>,
@@ -75,28 +117,72 @@ pub enum CliCommand {
 pub struct CliArgs {
     #[command(subcommand)]
     pub command: Option<CliCommand>,
+}
 
-    #[arg(long)]
+/// Resolved surface bootstrap knobs (from `tui` / `print` flatten args).
+#[derive(Debug, Default, Clone, PartialEq, Eq)]
+pub struct SurfaceBootstrap {
     pub session: Option<String>,
-    #[arg(long)]
     pub model: Option<String>,
-    #[arg(long)]
     pub config: Option<String>,
-
-    #[arg(long)]
     pub list_models: bool,
-    #[arg(long)]
     pub no_color: bool,
-    /// Trust the project directory and load its `.xylitol/` resources.
-    #[arg(long)]
     pub trust: bool,
-    /// Do not trust the project directory; skip its `.xylitol/` resources.
-    #[arg(long)]
     pub no_trust: bool,
+}
+
+fn merge_tui_surface(parent: &TuiSurfaceArgs, action: Option<&TuiAction>) -> TuiSurfaceArgs {
+    let Some(TuiAction::Run { surface: run }) = action else {
+        return parent.clone();
+    };
+    // Prefer whichever side set a value (`tui --session x run` vs `tui run --session x`).
+    TuiSurfaceArgs {
+        session: run.session.clone().or_else(|| parent.session.clone()),
+        model: run.model.clone().or_else(|| parent.model.clone()),
+        config: run.config.clone().or_else(|| parent.config.clone()),
+        list_models: run.list_models || parent.list_models,
+        no_color: run.no_color || parent.no_color,
+        trust: run.trust || parent.trust,
+        no_trust: run.no_trust || parent.no_trust,
+    }
+}
+
+/// Resolve surface-owned flags from a parsed CLI command (c1565).
+pub fn surface_from_command(command: Option<&CliCommand>) -> SurfaceBootstrap {
+    match command {
+        Some(CliCommand::Tui { surface, action }) => {
+            let s = merge_tui_surface(surface, action.as_ref());
+            SurfaceBootstrap {
+                session: s.session,
+                model: s.model,
+                config: s.config,
+                list_models: s.list_models,
+                no_color: s.no_color,
+                trust: s.trust,
+                no_trust: s.no_trust,
+            }
+        }
+        Some(CliCommand::Print { surface, .. }) => SurfaceBootstrap {
+            session: surface.session.clone(),
+            model: surface.model.clone(),
+            config: surface.config.clone(),
+            list_models: false,
+            no_color: surface.no_color,
+            trust: false,
+            no_trust: false,
+        },
+        _ => SurfaceBootstrap::default(),
+    }
 }
 
 fn merge_prompt_parts<'a>(flag: Option<&'a str>, positional: Option<&'a str>) -> Option<&'a str> {
     flag.or(positional).map(str::trim).filter(|s| !s.is_empty())
+}
+
+/// stderr resume line when the session was persisted (c1565).
+pub fn resume_hint_line(session_id: Option<&str>, listed: bool) -> Option<String> {
+    let sid = session_id?;
+    listed.then(|| format!("Resume by $ xylitol tui --session {sid}"))
 }
 
 /// Resolve force-tui / explicit-print / one-shot prompt from surface verbs only.
@@ -109,6 +195,7 @@ pub fn resolve_surface_intent(command: Option<&CliCommand>) -> (bool, bool, Opti
         Some(CliCommand::Print {
             prompt,
             prompt_flag,
+            ..
         }) => {
             let merged =
                 merge_prompt_parts(prompt_flag.as_deref(), prompt.as_deref()).map(str::to_string);
@@ -171,6 +258,7 @@ pub fn resolve_print_prompt(
 
 pub async fn run() -> Result<(), Box<dyn std::error::Error>> {
     let args = CliArgs::parse();
+    let surface = surface_from_command(args.command.as_ref());
 
     // Secrets first so `[otel]` / templates can see LANGFUSE_* from secret.env.
     let paths = crate::infra::config::paths::ConfigPaths::discover();
@@ -178,7 +266,7 @@ pub async fn run() -> Result<(), Box<dyn std::error::Error>> {
 
     // Best-effort early config for OTLP assembly (bootstrap reloads later).
     let early_otel = crate::infra::config::loader::load_app_config(
-        args.config.as_ref().map(std::path::Path::new),
+        surface.config.as_ref().map(std::path::Path::new),
     )
     .map(|c| c.otel)
     .unwrap_or_default();
@@ -225,7 +313,7 @@ pub async fn run() -> Result<(), Box<dyn std::error::Error>> {
 
     timing::reset_timings();
 
-    let trust_override = match (args.trust, args.no_trust) {
+    let trust_override = match (surface.trust, surface.no_trust) {
         (true, _) => Some(true),
         (_, true) => Some(false),
         _ => None,
@@ -236,7 +324,7 @@ pub async fn run() -> Result<(), Box<dyn std::error::Error>> {
     let (force_tui, explicit_print, one_shot) = resolve_surface_intent(args.command.as_ref());
 
     #[cfg(feature = "tui")]
-    let want_tui = !args.list_models
+    let want_tui = !surface.list_models
         && select_surface_mode(force_tui, explicit_print, one_shot.is_some(), stdin_is_tty)
             == SurfaceMode::Tui;
     #[cfg(not(feature = "tui"))]
@@ -260,9 +348,9 @@ pub async fn run() -> Result<(), Box<dyn std::error::Error>> {
     }
 
     let bootstrap_input = BootstrapInput {
-        config_path: args.config.as_ref().map(std::path::PathBuf::from),
-        session: args.session.clone(),
-        model: args.model.clone(),
+        config_path: surface.config.as_ref().map(std::path::PathBuf::from),
+        session: surface.session.clone(),
+        model: surface.model.clone(),
         trust_override,
         // c490: product TUI Ask is `run_trust_gate_if_needed` (ChoicePrompt), never stdio.
         interactive: false,
@@ -271,7 +359,7 @@ pub async fn run() -> Result<(), Box<dyn std::error::Error>> {
 
     // `--list-models` needs the resolved registry before any agent build; it
     // resolves assembly (cheap — no agent construction) and returns early.
-    if args.list_models {
+    if surface.list_models {
         let assembly = match resolve_assembly(&bootstrap_input) {
             Ok(a) => a,
             Err(BootstrapError::NoModelsAvailable) => {
@@ -362,19 +450,20 @@ pub async fn run() -> Result<(), Box<dyn std::error::Error>> {
             return Err(e.into());
         }
         let seed_n = crate::infra::config::loader::load_app_config(
-            args.config.as_ref().map(std::path::Path::new),
+            surface.config.as_ref().map(std::path::Path::new),
         )
         .map(|c| c.tui.editor_history_seed_sessions)
         .unwrap_or(1);
-        return crate::app::tui::run(
+        let tui_result = crate::app::tui::run(
             &mut driver,
             crate::app::tui::TuiRunOptions {
                 editor_history_seed_sessions: seed_n,
-                restored_session: args.session.is_some(),
+                restored_session: surface.session.is_some(),
             },
         )
-        .await
-        .map_err(|e| e.into());
+        .await;
+        maybe_print_resume_hint(&driver).await;
+        return tui_result.map_err(|e| e.into());
     }
 
     let prompt = match resolve_print_prompt(
@@ -396,9 +485,22 @@ pub async fn run() -> Result<(), Box<dyn std::error::Error>> {
     };
 
     crate::app::cli::print::run_print(&mut driver, &prompt, &session_id).await?;
+    maybe_print_resume_hint(&driver).await;
 
     timing::print_timings();
     Ok(())
+}
+
+/// stderr resume line when the session was persisted (c1565).
+async fn maybe_print_resume_hint(driver: &dyn crate::app::core::driver::XyDriver) {
+    let sid = driver.session_id();
+    let listed = match (sid.as_deref(), driver.list_sessions().await) {
+        (Some(id), Ok(list)) => list.iter().any(|e| e.id == id),
+        _ => false,
+    };
+    if let Some(line) = resume_hint_line(sid.as_deref(), listed) {
+        eprintln!("{line}");
+    }
 }
 
 /// Render bootstrap diagnostics as CLI warnings (print-mode byte-compat).
@@ -500,7 +602,7 @@ mod tests {
         let args = CliArgs::try_parse_from(["xylitol", "tui"]).unwrap();
         assert!(matches!(
             args.command,
-            Some(CliCommand::Tui { action: None })
+            Some(CliCommand::Tui { action: None, .. })
         ));
         let (force_tui, explicit_print, one_shot) = resolve_surface_intent(args.command.as_ref());
         assert!(force_tui);
@@ -518,9 +620,73 @@ mod tests {
         assert!(matches!(
             args.command,
             Some(CliCommand::Tui {
-                action: Some(TuiAction::Run)
+                action: Some(TuiAction::Run { .. }),
+                ..
             })
         ));
+    }
+
+    #[test]
+    fn tui_surface_flags_on_parent_or_run() {
+        let a = CliArgs::try_parse_from(["xylitol", "tui", "--session", "abc"]).unwrap();
+        let s = surface_from_command(a.command.as_ref());
+        assert_eq!(s.session.as_deref(), Some("abc"));
+
+        let b = CliArgs::try_parse_from(["xylitol", "tui", "run", "--session", "def"]).unwrap();
+        let s = surface_from_command(b.command.as_ref());
+        assert_eq!(s.session.as_deref(), Some("def"));
+
+        let c = CliArgs::try_parse_from([
+            "xylitol",
+            "tui",
+            "--model",
+            "m1",
+            "run",
+            "--trust",
+            "--list-models",
+        ])
+        .unwrap();
+        let s = surface_from_command(c.command.as_ref());
+        assert_eq!(s.model.as_deref(), Some("m1"));
+        assert!(s.trust);
+        assert!(s.list_models);
+    }
+
+    #[test]
+    fn print_surface_flags_and_rejects_toplevel_surface_flags() {
+        let a = CliArgs::try_parse_from([
+            "xylitol",
+            "print",
+            "--session",
+            "s1",
+            "--model",
+            "m",
+            "--no-color",
+            "hi",
+        ])
+        .unwrap();
+        let s = surface_from_command(a.command.as_ref());
+        assert_eq!(s.session.as_deref(), Some("s1"));
+        assert_eq!(s.model.as_deref(), Some("m"));
+        assert!(s.no_color);
+        assert!(!s.list_models);
+        assert!(!s.trust);
+
+        for bad in [
+            &["xylitol", "--session", "x"][..],
+            &["xylitol", "--model", "m"][..],
+            &["xylitol", "--list-models"][..],
+            &["xylitol", "--trust"][..],
+            &["xylitol", "--no-trust"][..],
+            &["xylitol", "--config", "c.yaml"][..],
+            &["xylitol", "--no-color"][..],
+        ] {
+            assert!(
+                CliArgs::try_parse_from(bad).is_err(),
+                "top-level {:?} must be rejected",
+                bad
+            );
+        }
     }
 
     #[test]
@@ -574,6 +740,16 @@ mod tests {
     }
 
     #[test]
+    fn resume_hint_line_only_when_listed() {
+        assert_eq!(
+            resume_hint_line(Some("abc"), true).as_deref(),
+            Some("Resume by $ xylitol tui --session abc")
+        );
+        assert!(resume_hint_line(Some("abc"), false).is_none());
+        assert!(resume_hint_line(None, true).is_none());
+    }
+
+    #[test]
     fn help_lists_surface_and_ops_commands() {
         use clap::CommandFactory;
         let mut cmd = CliArgs::command();
@@ -592,8 +768,13 @@ mod tests {
         let tui_help = tui.render_long_help().to_string();
         assert!(tui_help.contains("run"), "{tui_help}");
         assert!(
-            !tui_help.contains("tokenizer") && !tui_help.contains("resources"),
+            tui.find_subcommand("tokenizer").is_none()
+                && tui.find_subcommand("resources").is_none(),
             "ops must stay top-level, not under tui:\n{tui_help}"
+        );
+        assert!(
+            tui_help.contains("--session") && tui_help.contains("--trust"),
+            "tui must own surface flags:\n{tui_help}"
         );
     }
 }
