@@ -111,7 +111,8 @@ pub fn load_models_from_manifest(
                 api_key,
                 model: m.id.clone(),
                 base_url: m.base_url.clone(),
-                api: None,
+                // Keep in sync with meta.api (c1598 / adapter resolve uses config.api).
+                api: Some(m.api.clone()).filter(|s| !s.is_empty()),
             },
             display_name: m.display_name.clone().unwrap_or_else(|| m.id.clone()),
             thinking: m.thinking,

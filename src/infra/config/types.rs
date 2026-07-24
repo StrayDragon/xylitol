@@ -565,12 +565,12 @@ impl AppConfig {
 
         Ok(XyModelMeta {
             id: model_id.to_string(),
-            config: model_config,
+            config: model_config.clone(),
             display_name: model_id.to_string(),
             thinking,
             context_window,
-            api: String::new(),
-            provider: String::new(),
+            api: model_config.api.clone().unwrap_or_default(),
+            provider: model_config.kind.provider_name().to_string(),
             cost_input: 0.0,
             cost_output: 0.0,
             cost_cache_read: 0.0,
