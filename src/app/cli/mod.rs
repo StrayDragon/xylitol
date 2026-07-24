@@ -361,9 +361,20 @@ pub async fn run() -> Result<(), Box<dyn std::error::Error>> {
             eprintln!("Error: {e}");
             return Err(e.into());
         }
-        return crate::app::tui::run(&mut driver)
-            .await
-            .map_err(|e| e.into());
+        let seed_n = crate::infra::config::loader::load_app_config(
+            args.config.as_ref().map(std::path::Path::new),
+        )
+        .map(|c| c.tui.editor_history_seed_sessions)
+        .unwrap_or(1);
+        return crate::app::tui::run(
+            &mut driver,
+            crate::app::tui::TuiRunOptions {
+                editor_history_seed_sessions: seed_n,
+                restored_session: args.session.is_some(),
+            },
+        )
+        .await
+        .map_err(|e| e.into());
     }
 
     let prompt = match resolve_print_prompt(

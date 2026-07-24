@@ -187,6 +187,14 @@ pub trait XyDriver: Send {
     /// TUI MUST NOT read the sessions directory directly.
     async fn list_sessions(&self) -> Result<Vec<SessionListEntry>, XyDriverError>;
 
+    /// Load raw session entries for any session id (c1560 editor history seed).
+    ///
+    /// TUI MUST NOT read the sessions directory directly.
+    async fn load_session_entries(
+        &self,
+        session_id: &str,
+    ) -> Result<Vec<SessionEntry>, XyDriverError>;
+
     /// Create an empty session and make it current (`/session-new`, c1020).
     ///
     /// XyDriver-only seam (not `protocol::Command`).

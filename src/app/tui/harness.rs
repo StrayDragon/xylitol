@@ -729,6 +729,14 @@ impl XyDriver for ScriptedDriver {
         Ok(self.session_list.lock().expect("session_list").clone())
     }
 
+    async fn load_session_entries(
+        &self,
+        session_id: &str,
+    ) -> Result<Vec<SessionEntry>, XyDriverError> {
+        let _ = session_id;
+        Ok(self.session_messages.clone())
+    }
+
     async fn new_session(&mut self) -> Result<String, XyDriverError> {
         self.new_session_calls.fetch_add(1, Ordering::SeqCst);
         let sid = format!("new-{}", self.new_session_calls());

@@ -328,6 +328,16 @@ impl Editor {
             self.history.pop();
         }
     }
+
+    /// Replace ↑/↓ send history (c1560 session seed). Texts oldest→newest.
+    pub fn replace_history(&mut self, texts: impl IntoIterator<Item = String>) {
+        self.exit_history_browsing();
+        self.history.clear();
+        self.history_draft = None;
+        for text in texts {
+            self.add_to_history(text);
+        }
+    }
     pub fn insert_text_at_cursor(&mut self, t: &str) {
         if t.is_empty() {
             return;

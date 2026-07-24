@@ -7,7 +7,8 @@ depends_on: []
 author: agent
 branch: feat/c1560-tui-editor-history-seed
 base_sha: 7c5075601088d1bfe49a865c31b80aa7bfaa24bf
-checkpointed: false
+checkpointed: true
+checkpoint_sha: 7c5075601088d1bfe49a865c31b80aa7bfaa24bf
 ---
 
 # c1560-update-tui-editor-history-seed

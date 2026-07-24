@@ -51,6 +51,31 @@ pub struct AppConfig {
     /// Optional remote OTLP export (c1475). Default exporter=none (no remote traffic).
     #[serde(default)]
     pub otel: OtelConfig,
+
+    /// Product TUI surface settings (c1560).
+    #[serde(default)]
+    pub tui: TuiConfig,
+}
+
+/// Product TUI knobs under top-level `tui:` (c1560).
+#[derive(Clone, Debug, Serialize, Deserialize, JsonSchema, PartialEq, Eq)]
+#[serde(default)]
+pub struct TuiConfig {
+    /// How many prior same-cwd sessions seed ↑/↓ send history on a pure new session.
+    #[serde(default = "default_editor_history_seed_sessions")]
+    pub editor_history_seed_sessions: u32,
+}
+
+impl Default for TuiConfig {
+    fn default() -> Self {
+        Self {
+            editor_history_seed_sessions: default_editor_history_seed_sessions(),
+        }
+    }
+}
+
+fn default_editor_history_seed_sessions() -> u32 {
+    1
 }
 
 /// Remote OpenTelemetry export settings (`[otel]`). Orthogonal to local file
@@ -1345,5 +1370,24 @@ otel:
 "#,
         );
         assert!(err.is_err(), "unknown exporter must fail load");
+    }
+
+    #[test]
+    fn tui_editor_history_seed_sessions_defaults_to_one() {
+        let cfg: AppConfig = yaml_serde::from_str("models: {}").expect("minimal");
+        assert_eq!(cfg.tui.editor_history_seed_sessions, 1);
+    }
+
+    #[test]
+    fn tui_editor_history_seed_sessions_parses() {
+        let cfg: AppConfig = yaml_serde::from_str(
+            r#"
+models: {}
+tui:
+  editor_history_seed_sessions: 3
+"#,
+        )
+        .expect("tui section");
+        assert_eq!(cfg.tui.editor_history_seed_sessions, 3);
     }
 }
