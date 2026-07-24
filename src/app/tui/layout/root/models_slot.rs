@@ -4,7 +4,8 @@ use xylitol_tui::{SelectItem, fuzzy_filter};
 
 use super::super::models_picker::{ModelPickerRow, PendingModelChoice};
 use super::super::slots::EditorSlot;
-use super::{UiRoot, empty_models_list};
+use super::UiRoot;
+use super::empty_widgets::empty_models_list;
 use crate::protocol::types::ThinkingLevel;
 
 impl UiRoot {
