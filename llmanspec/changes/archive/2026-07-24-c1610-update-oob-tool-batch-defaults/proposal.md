@@ -9,7 +9,8 @@ depends_on:
 author: agent
 branch: feat/c1605-c1610-oob-prompt-batch
 base_sha: 7c5075601088d1bfe49a865c31b80aa7bfaa24bf
-checkpointed: false
+checkpointed: true
+checkpoint_sha: 7c5075601088d1bfe49a865c31b80aa7bfaa24bf
 ---
 
 # c1610-update-oob-tool-batch-defaults
@@ -55,15 +56,21 @@ checkpointed: false
 
 **4/4 = 100%**，无 fake_parallel。
 
+### OOB 验收（无 APPEND，c1605 片段）✅
+
+| session | multi_hit | notes |
+|---|---|---|
+| `0362b702-96b6-47c1-a197-aad5e354e963` | ✅ 3 | Langfuse：每轮 `llm.request` 恰 1×`<runtime_policy>`；3×`tool.execute` `barrier_index=0` / `barrier_parallel`；api=`openai-responses` |
+
 ## Non-Goals
 
 `c1615`；MCP ParallelSafe；删 `sequential`。
 
 ## Status
 
-**promoting / applying** on `feat/c1605-c1610-oob-prompt-batch`。
+**verify green → finalize** on `feat/c1605-c1610-oob-prompt-batch`。
 
 ## Ethics
 
 - risk_level: medium
-- required_evidence: BDD 默认并行；单测片段启停；显式 sequential 仍可用
+- required_evidence: BDD 默认并行；单测片段启停；显式 sequential 仍可用；OOB session `0362b702-…`
