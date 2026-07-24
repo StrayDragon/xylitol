@@ -334,6 +334,12 @@
     当 再注入迟到 TextDelta 或 AgentEnd
     那么 UI 保持 Aborted/idle 语义且无新 assistant 正文复活
 
+  @req:ati42
+  场景: abort-keeps-streamed-text
+    假如 agent busy 且已流式输出部分 assistant 正文
+    当 按 Esc 或 Ctrl+C abort
+    那么 scrollback 仍含该正文并带 abort 脚注
+
   @req:ati30
   场景: bang-esc-and-second
     假如 hanging bang 进行中

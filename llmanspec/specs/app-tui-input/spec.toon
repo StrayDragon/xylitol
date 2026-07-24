@@ -2,7 +2,7 @@ kind: llman.sdd.spec
 name: "app-tui-input"
 purpose: "Editor 操作区、取消/退出键位、steer 与 follow-up、信任后 yolo。"
 valid_scope[1]: src/app/tui/
-requirements[39]{req_id,title,statement}:
+requirements[40]{req_id,title,statement}:
   ati1,"editor-operation-zone","输入区 MUST 使用 xylitol-tui Editor，并保留上下边框作为操作区边界；选择器打开时 MUST 替换 editor 槽而非画到内容顶部。"
   ati2,"cancel-and-ctrl-c","流式、agent 忙碌或 bang（!/!!）忙碌且无 overlay 时，Esc 与 Ctrl+C（app.clear）MUST 同语义调用 Driver::abort（或等价 pending abort latch）且 MUST NOT 退出 TUI；有 overlay 时 Ctrl+C MUST 先关槽且 MUST NOT abort。idle 且无 overlay 时：编辑器非空 Ctrl+C MUST 清空输入；编辑器为空 Ctrl+C MUST 退出 TUI。"
   ati3,"steer-and-followup-keys","agent 忙碌时普通 Enter MUST 将当前输入作为 steer 入队；Alt+Enter MUST 将当前输入作为 follow-up 入队（等待当前 agent loop 全部完成后再执行）。"
@@ -33,7 +33,8 @@ requirements[39]{req_id,title,statement}:
   ati27,"session-tree-label-keys","产品 TUI 在 EditorSlot::Tree 时 Shift+L MUST 打开 label 编辑（非向 editor 写入字面 L）；Shift+T MUST 切换 annotation 时间戳显示；label 编辑中 Esc MUST 取消编辑且 MUST NOT 关树；树关时 Shift+L/T 保持既有语义。"
   ati28,"slash-session-tree-fork-keys","产品 TUI idle 且 Editor 槽时 Enter 提交 /session-tree 或 /session-fork MUST 走 PendingSlash（非向 agent 当普通 prompt）；树已开时 /session-tree 再提交 MUST NOT 重复破坏既有槽（可 noop 或刷新）；busy 时 MUST NOT 开树或 fork；/tree 与 /fork MUST NOT 再进入上述 PendingSlash 路径。"
   ati30,"input-bdd-guardrails","产品 TUI 输入面关键行为 MUST 可由 rstest-bdd 场景固定：忙碌 Esc abort 与迟到 Xy 不复活；bang Esc 取消与 suppress_idle_esc 后第二 bang 仍可 abort；overlay Esc 先关槽且忙碌无 overlay 时 Esc MUST NOT 开树；忙碌 Enter/Alt+Enter/Alt+Up 与 Driver steer/follow_up/clear_queue 契约。实现可复用 HostSession+ScriptedDriver+HostEvent 注入，MUST NOT 为 BDD 另造第二套副作用泵。"
-  ati31,"abort-latch-suppresses-xy","产品 TUI 在 agent 忙碌且无 overlay 时按 Esc MUST 在同一步进内臂装流抑制并保留 pending_abort 供 drain_pending 调用 Driver::abort；在 drain 完成前注入的迟到 Xy MUST NOT 写出新 assistant 正文或清除 Aborted 语义。"
+  ati31,"abort-latch-suppresses-xy","产品 TUI 在 agent 忙碌且无 overlay 时按 Esc/Ctrl+C MUST 在同一步进内臂装流抑制并保留 pending_abort 供 drain_pending 调用 Driver::abort；在 drain 完成前注入的迟到 Xy MUST NOT 写出新 assistant 正文或清除已 flush 的 abort 语义（含 partial 与脚注）。"
+  ati42,"abort-keeps-partial","产品 TUI 在 agent 流式中用户 abort（Esc 或 busy Ctrl+C）时 MUST 将已累积的 streaming thinking/text flush 为正式 scrollback 条目，并追加 abort 脚注（Operation aborted 或文档化等价文案）；MUST NOT 清空已上行可见正文而仅保留 System Aborted。Bang abort 仍走 ati19/(cancelled)，本要求不适用。迟到 Xy 抑制仍遵循 ati31。"
   ati32,"busy-bang-prefix-policy","产品 TUI 在 agent 忙碌（run_active / phase Busy）且非 bash_active 时，用户 Enter 提交以 ! 或 !! 开头的文本 MUST 硬拒绝（提示 + 保留编辑器文本），MUST NOT 将该字面量作为 Driver::steer 入队；bash_active 时第二 bang 硬拒绝仍遵循 ati20。"
   ati29,"session-resume-panel-keys","产品 TUI 在 EditorSlot::SessionResume 打开时：Tab MUST 切换 scope Current/All；Ctrl+S（或键位表等价）MUST 循环 Sort Threaded/Recent/Fuzzy；Ctrl+N MUST 切换 Name All/Named；Ctrl+P MUST 切换 path 显示；Ctrl+U（或键位表 app.session.toggleId）MUST 切换会话行完整 session id 列显隐（默认隐藏）；Ctrl+R MUST 进入选中项 rename（Esc 取消 rename MUST NOT 改名）；Ctrl+D MUST 进入删除确认（Enter 确认 / Esc 取消）；Threaded 下 ctrl/alt+left|right（tui.tree.foldOrUp / unfoldOrDown）MUST 折叠或展开选中父节点的子会话行；上述键 MUST 优先于 Editor 槽同名语义；面板关闭后键位恢复既有语义；搜索键入 MUST 交给面板 filter 而非误提交 prompt。"
   ati33,"at-path-completion",产品 Editor MUST 经包 CompletionSource 注册 AtPathSource，根目录默认为进程 cwd（harness MAY 注入测试根）；用户键入 @（及路径前缀）时 MUST 弹出文件/目录补全；Tab/Enter 选定 MUST 将路径引用写入 editor；Esc 关 popup MUST NOT 改已有非补全文本；提交消息时本变更 MUST NOT 自动把文件内容读入 transcript（路径文本引用即可）。
