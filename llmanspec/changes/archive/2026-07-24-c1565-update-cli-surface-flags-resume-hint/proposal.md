@@ -1,10 +1,14 @@
 ---
 change_id: c1565-update-cli-surface-flags-resume-hint
 title: 表面旗标下沉到 tui/print + 退出时条件打印 resume 提示
-status: purpose-draft
+status: ready
 priority: 1565
 depends_on: []
 author: agent
+branch: feat/c1565-cli-surface-flags-resume-hint
+base_sha: 7c5075601088d1bfe49a865c31b80aa7bfaa24bf
+checkpointed: true
+checkpoint_sha: 7c5075601088d1bfe49a865c31b80aa7bfaa24bf
 ---
 
 # c1565-update-cli-surface-flags-resume-hint
