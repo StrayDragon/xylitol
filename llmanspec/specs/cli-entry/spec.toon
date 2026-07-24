@@ -2,7 +2,7 @@ kind: llman.sdd.spec
 name: "cli-entry"
 purpose: "CLI 统一入口：默认 TUI；surface（tui/print）与 ops（resources/server/tokenizer）；bootstrap/dispatch；产品 slash 以 session-* 为准。"
 valid_scope[2]: src/,tests/
-requirements[20]{req_id,title,statement}:
+requirements[22]{req_id,title,statement}:
   r67,"info-fields",SlashCommandInfo MUST 携带 name、description、source 与 source_info 字段。
   r68,"source-enum",SlashCommandSource MUST 恰为 prompt 或 skill 之一（extension 若未实现 MUST NOT 作为产品必选项）。
   r69,"builtin-table","产品对外 slash 与 GetCommands 内建表 MUST 同源自同一产品命令 SSOT（见 app-tui-commands）；名称 MUST 以 session-* /model /exit 等产品名为准（PI_DELTAS A03）；MUST NOT 再以 pi 短名表（/tree /fork /export /compact /resume /new 等）作为 GetCommands 或文档的权威清单；产品解析 MUST NOT 将上述废弃短名识别为有效命令入口。"
@@ -23,4 +23,6 @@ requirements[20]{req_id,title,statement}:
   ce16,"cli-surface-vs-ops","CLI MUST 区分表面动词与管理动词：表面至少含 tui 与 print（xylitol tui 进入 TUI；xylitol print 进入一次性 print 且须非空 prompt）；管理动词 resources、server、tokenizer MUST 保持顶层，MUST NOT 挪入 tui 子树；TTY 裸跑默认 TUI 的语义 MUST 保持；MUST NOT 提供顶层 --tui/--print/-p/--prompt 或位置 PROMPT 作为表面切换别名（print 的 --prompt/-p 仅允许挂在 print 子命令下）。"
   ce17,"config-load-fail-closed","load_app_config（或等价）失败（含模板渲染、YAML 解析、IO）时，bootstrap MUST 返回硬错误且经其装配的全表面 MUST 非零退出；MUST NOT 仅 Warning 后继续并用 env 默认模型进入 TUI/print。"
   ce18,"unset-model-display","当前未选中模型时，产品面展示的模型名 MUST 为 NOT-SET（或文档化的等价明确占位）；MUST NOT 将未显式配置/未传 --model 的状态显示为 gpt-4o 等厂商默认模型名。"
+  ce19,"surface-owned-flags","CLI MUST 将表面旗标挂在表面动词下：`xylitol tui`（含可选 `run`）MUST 接受 --session/--model/--list-models/--trust/--no-trust/--config/--no-color；`xylitol print` MUST 接受 --session/--model/--config/--no-color 且 MUST NOT 接受 --list-models/--trust/--no-trust；顶层 MUST NOT 再提供上述旗标（解析 MUST 失败）。`tui --session` 与 `tui run --session` MUST 等价生效。"
+  ce20,"resume-hint-on-exit","TUI 与 print 正常退出后，若当前 session_id 出现在 Driver list_sessions（或等价已持久化判定）中，CLI MUST 向 stderr 打印恰好一行 `Resume by $ xylitol tui --session <uuid>`；未持久化或无 session_id 时 MUST NOT 打印该行。"
 scenarios[0]:

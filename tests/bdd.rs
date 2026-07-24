@@ -5074,13 +5074,11 @@ fn t_ce16_ops_toplevel(tokenizer_bdd: &TokenizerBdd) {
     assert!(help.contains("print"), "{help}");
     let mut cmd = xylitol::app::cli::CliArgs::command();
     let tui = cmd.find_subcommand_mut("tui").expect("tui subcommand");
-    let tui_help = tui.render_long_help().to_string();
     assert!(
-        !tui_help.contains("tokenizer") && !tui_help.contains("resources"),
-        "ops must not nest under tui:\n{tui_help}"
+        tui.find_subcommand("tokenizer").is_none() && tui.find_subcommand("resources").is_none(),
+        "ops must not nest under tui"
     );
 }
-
 #[scenario(
     path = "llmanspec/specs/cli-entry/cli-entry.feature",
     name = "surface-tui-verb"
@@ -5098,3 +5096,173 @@ fn test_ce16_print(surface_bdd: SurfaceBdd) {}
     name = "ops-stay-toplevel"
 )]
 fn test_ce16_ops(tokenizer_bdd: TokenizerBdd) {}
+
+// ═══════════════════════════════════════════════════════════════════
+// c1565 — surface-owned flags + resume hint (ce19/ce20)
+// ═══════════════════════════════════════════════════════════════════
+
+pub struct SurfaceFlagsBdd {
+    parse_ok: Cell<bool>,
+    session: RefCell<Option<String>>,
+    hint: RefCell<Option<String>>,
+}
+
+impl SurfaceFlagsBdd {
+    fn new() -> Self {
+        Self {
+            parse_ok: Cell::new(false),
+            session: RefCell::new(None),
+            hint: RefCell::new(None),
+        }
+    }
+}
+
+#[fixture]
+fn surface_flags_bdd() -> SurfaceFlagsBdd {
+    SurfaceFlagsBdd::new()
+}
+
+#[given("表面旗标上下文就绪")]
+fn g_ce19_cli_ready(_surface_flags_bdd: &SurfaceFlagsBdd) {}
+
+#[when("xylitol tui --session sid --model m --trust")]
+fn w_ce19_tui_flags(surface_flags_bdd: &SurfaceFlagsBdd) {
+    use clap::Parser;
+    use xylitol::app::cli::{CliArgs, surface_from_command};
+    let args = CliArgs::try_parse_from([
+        "xylitol",
+        "tui",
+        "--session",
+        "sid",
+        "--model",
+        "m",
+        "--trust",
+    ])
+    .expect("parse tui flags");
+    let s = surface_from_command(args.command.as_ref());
+    surface_flags_bdd.parse_ok.set(true);
+    surface_flags_bdd.session.replace(s.session);
+    assert_eq!(s.model.as_deref(), Some("m"));
+    assert!(s.trust);
+}
+
+#[then("解析成功且表面旗标生效")]
+fn t_ce19_flags_ok(surface_flags_bdd: &SurfaceFlagsBdd) {
+    assert!(surface_flags_bdd.parse_ok.get());
+    assert_eq!(surface_flags_bdd.session.borrow().as_deref(), Some("sid"));
+}
+
+#[when("xylitol tui run --session sid")]
+fn w_ce19_tui_run_session(surface_flags_bdd: &SurfaceFlagsBdd) {
+    use clap::Parser;
+    use xylitol::app::cli::{CliArgs, surface_from_command};
+    let args = CliArgs::try_parse_from(["xylitol", "tui", "run", "--session", "sid"])
+        .expect("parse tui run --session");
+    let s = surface_from_command(args.command.as_ref());
+    surface_flags_bdd.parse_ok.set(true);
+    surface_flags_bdd.session.replace(s.session);
+}
+
+#[then("解析成功且 --session 生效")]
+fn t_ce19_session_ok(surface_flags_bdd: &SurfaceFlagsBdd) {
+    assert!(surface_flags_bdd.parse_ok.get());
+    assert_eq!(surface_flags_bdd.session.borrow().as_deref(), Some("sid"));
+}
+
+#[when("xylitol print --session sid --no-color hi")]
+fn w_ce19_print_flags(surface_flags_bdd: &SurfaceFlagsBdd) {
+    use clap::Parser;
+    use xylitol::app::cli::CliArgs;
+    CliArgs::try_parse_from(["xylitol", "print", "--session", "sid", "--no-color", "hi"])
+        .expect("parse print flags");
+    surface_flags_bdd.parse_ok.set(true);
+}
+
+#[then("解析成功")]
+fn t_ce19_parse_ok(surface_flags_bdd: &SurfaceFlagsBdd) {
+    assert!(surface_flags_bdd.parse_ok.get());
+}
+
+#[when("xylitol --session sid")]
+fn w_ce19_toplevel_session(surface_flags_bdd: &SurfaceFlagsBdd) {
+    use clap::Parser;
+    use xylitol::app::cli::CliArgs;
+    surface_flags_bdd
+        .parse_ok
+        .set(CliArgs::try_parse_from(["xylitol", "--session", "sid"]).is_ok());
+}
+
+#[then("解析失败")]
+fn t_ce19_parse_fail(surface_flags_bdd: &SurfaceFlagsBdd) {
+    assert!(!surface_flags_bdd.parse_ok.get());
+}
+
+#[given("当前 session 已出现在 list_sessions")]
+fn g_ce20_listed(surface_flags_bdd: &SurfaceFlagsBdd) {
+    surface_flags_bdd.session.replace(Some("uuid-1".into()));
+    surface_flags_bdd
+        .hint
+        .replace(xylitol::app::cli::resume_hint_line(Some("uuid-1"), true));
+}
+
+#[given("当前 session 未持久化")]
+fn g_ce20_unlisted(surface_flags_bdd: &SurfaceFlagsBdd) {
+    surface_flags_bdd.session.replace(Some("uuid-2".into()));
+    surface_flags_bdd
+        .hint
+        .replace(xylitol::app::cli::resume_hint_line(Some("uuid-2"), false));
+}
+
+#[when("TUI 或 print 正常退出")]
+fn w_ce20_exit(_surface_flags_bdd: &SurfaceFlagsBdd) {}
+
+#[then("stderr 含 resume 提示行")]
+fn t_ce20_hint_present(surface_flags_bdd: &SurfaceFlagsBdd) {
+    let hint = surface_flags_bdd.hint.borrow();
+    let line = hint.as_deref().expect("hint");
+    assert!(
+        line.starts_with("Resume by $ xylitol tui --session "),
+        "{line}"
+    );
+}
+
+#[then("stderr 不含 resume 提示行")]
+fn t_ce20_hint_absent(surface_flags_bdd: &SurfaceFlagsBdd) {
+    assert!(surface_flags_bdd.hint.borrow().is_none());
+}
+
+#[scenario(
+    path = "llmanspec/specs/cli-entry/cli-entry.feature",
+    name = "surface-flags-on-tui"
+)]
+fn test_ce19_tui_flags(surface_flags_bdd: SurfaceFlagsBdd) {}
+
+#[scenario(
+    path = "llmanspec/specs/cli-entry/cli-entry.feature",
+    name = "surface-flags-on-tui-run"
+)]
+fn test_ce19_tui_run(surface_flags_bdd: SurfaceFlagsBdd) {}
+
+#[scenario(
+    path = "llmanspec/specs/cli-entry/cli-entry.feature",
+    name = "surface-flags-on-print"
+)]
+fn test_ce19_print(surface_flags_bdd: SurfaceFlagsBdd) {}
+
+#[scenario(
+    path = "llmanspec/specs/cli-entry/cli-entry.feature",
+    name = "toplevel-surface-flags-rejected"
+)]
+fn test_ce19_toplevel_reject(surface_flags_bdd: SurfaceFlagsBdd) {}
+
+#[scenario(
+    path = "llmanspec/specs/cli-entry/cli-entry.feature",
+    name = "resume-hint-when-persisted"
+)]
+fn test_ce20_hint_yes(surface_flags_bdd: SurfaceFlagsBdd) {}
+
+#[scenario(
+    path = "llmanspec/specs/cli-entry/cli-entry.feature",
+    name = "resume-hint-absent-when-unpersisted"
+)]
+fn test_ce20_hint_no(surface_flags_bdd: SurfaceFlagsBdd) {}

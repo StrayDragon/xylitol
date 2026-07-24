@@ -169,3 +169,39 @@
     假如 CLI 已解析
     当 xylitol --help
     那么 Commands 含 tokenizer 与 resources 为顶层而非 tui 子命令
+
+  @req:ce19
+  场景: surface-flags-on-tui
+    假如 表面旗标上下文就绪
+    当 xylitol tui --session sid --model m --trust
+    那么 解析成功且表面旗标生效
+
+  @req:ce19
+  场景: surface-flags-on-tui-run
+    假如 表面旗标上下文就绪
+    当 xylitol tui run --session sid
+    那么 解析成功且 --session 生效
+
+  @req:ce19
+  场景: surface-flags-on-print
+    假如 表面旗标上下文就绪
+    当 xylitol print --session sid --no-color hi
+    那么 解析成功
+
+  @req:ce19
+  场景: toplevel-surface-flags-rejected
+    假如 表面旗标上下文就绪
+    当 xylitol --session sid
+    那么 解析失败
+
+  @req:ce20
+  场景: resume-hint-when-persisted
+    假如 当前 session 已出现在 list_sessions
+    当 TUI 或 print 正常退出
+    那么 stderr 含 resume 提示行
+
+  @req:ce20
+  场景: resume-hint-absent-when-unpersisted
+    假如 当前 session 未持久化
+    当 TUI 或 print 正常退出
+    那么 stderr 不含 resume 提示行
