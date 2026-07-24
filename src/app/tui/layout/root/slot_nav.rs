@@ -3,10 +3,10 @@
 use std::time::{Duration, Instant};
 
 use super::super::slots::EditorSlot;
-use super::{
-    ImportConfirmDecision, UiRoot, empty_models_list, empty_session_resume_panel,
-    empty_themes_list, import_confirm_list,
+use super::empty_widgets::{
+    empty_models_list, empty_session_resume_panel, empty_themes_list, import_confirm_list,
 };
+use super::{ImportConfirmDecision, UiRoot};
 use crate::app::tui::bridge::UiPhase;
 
 impl UiRoot {
