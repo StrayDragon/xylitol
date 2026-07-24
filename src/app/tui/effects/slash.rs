@@ -259,7 +259,10 @@ pub(super) async fn handle_slash<T: Terminal>(
                 log::info!(target: "xylitol::tui", "XyDriver::new_session");
                 match driver.new_session().await {
                     Ok(sid) => match driver.get_messages().await {
-                        Ok(entries) => session.apply_new_session(&sid, entries),
+                        Ok(entries) => {
+                            session.apply_new_session(&sid, entries);
+                            session.seed_editor_history_for_new_session(driver).await;
+                        }
                         Err(e) => note_driver_err(
                             session,
                             "tui.session_new.get_messages",

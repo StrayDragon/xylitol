@@ -1290,6 +1290,77 @@ fn harness_idle_up_recalls_submit_history() {
     assert_eq!(root.borrow().editor_text(), "run me");
 }
 
+#[tokio::test]
+async fn harness_new_session_seeds_prior_user_prompt() {
+    use crate::app::core::driver::SessionListEntry;
+    use crate::protocol::session::{EntryBase, MessageEntry, SessionEntry, fixture_message_json};
+
+    let cwd = std::env::current_dir()
+        .unwrap()
+        .to_string_lossy()
+        .into_owned();
+    let mut driver = super::harness::ScriptedDriver::new();
+    driver.set_session_list(vec![SessionListEntry {
+        id: "prior".into(),
+        name: None,
+        first_message: Some("prior prompt".into()),
+        message_count: 1,
+        modified_unix: Some(100),
+        parent_session_id: None,
+        tree_prefix: String::new(),
+        cwd: Some(cwd),
+        path: None,
+    }]);
+    driver.set_session_messages(vec![SessionEntry::Message(MessageEntry {
+        base: EntryBase {
+            entry_type: "message".into(),
+            id: "u1".into(),
+            parent_id: None,
+            timestamp: String::new(),
+        },
+        message: fixture_message_json("user", "prior prompt"),
+    })]);
+
+    let mut session = HostSession::new_product_ui(TestTerminal::new(80, 24));
+    session.set_editor_history_seed_sessions(1);
+    session.seed_editor_history_for_new_session(&driver).await;
+    let root = session.ui_root().expect("product ui").clone();
+    assert!(root.borrow().editor_text().is_empty());
+    session.step(HostEvent::Input(arrow_up_event())).unwrap();
+    assert_eq!(root.borrow().editor_text(), "prior prompt");
+}
+
+#[test]
+fn harness_resume_seeds_only_entry_users() {
+    use crate::protocol::session::{EntryBase, MessageEntry, SessionEntry, fixture_message_json};
+
+    let entries = vec![
+        SessionEntry::Message(MessageEntry {
+            base: EntryBase {
+                entry_type: "message".into(),
+                id: "u1".into(),
+                parent_id: None,
+                timestamp: String::new(),
+            },
+            message: fixture_message_json("user", "only me"),
+        }),
+        SessionEntry::Message(MessageEntry {
+            base: EntryBase {
+                entry_type: "message".into(),
+                id: "a1".into(),
+                parent_id: None,
+                timestamp: String::new(),
+            },
+            message: fixture_message_json("assistant", "nope"),
+        }),
+    ];
+    let mut session = HostSession::new_product_ui(TestTerminal::new(80, 24));
+    session.seed_editor_history_from_entries(&entries);
+    let root = session.ui_root().expect("product ui").clone();
+    session.step(HostEvent::Input(arrow_up_event())).unwrap();
+    assert_eq!(root.borrow().editor_text(), "only me");
+}
+
 #[test]
 fn apply_xy_event_sequence_snapshot() {
     let mut model = UiModel::new();

@@ -4,6 +4,7 @@
 
 mod bridge;
 mod commands;
+mod editor_history_seed;
 mod effects;
 mod external_editor;
 mod host;
@@ -43,6 +44,7 @@ pub use self::host::{
 };
 pub use self::layout::{EditorSlot, LayoutTheme};
 pub use self::widgets::GlyphSet;
+// TuiRunOptions exported via struct above in this module
 
 /// Failures that MUST abort before raw-mode / host loop (CLI-level, no TTY corruption).
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -109,18 +111,36 @@ pub fn preflight(driver: &dyn XyDriver) -> Result<(), TuiPreflightError> {
     Ok(())
 }
 
+/// Options for [`run`] (c1560).
+#[derive(Debug, Clone)]
+pub struct TuiRunOptions {
+    /// `tui.editor_history_seed_sessions` (default 1).
+    pub editor_history_seed_sessions: u32,
+    /// True when CLI restored an existing `--session` id.
+    pub restored_session: bool,
+}
+
+impl Default for TuiRunOptions {
+    fn default() -> Self {
+        Self {
+            editor_history_seed_sessions: 1,
+            restored_session: false,
+        }
+    }
+}
+
 /// Enter the interactive TUI REPL (host-driven; never calls `TUI::start()`).
 ///
 /// Callers MUST run [`preflight`] first (CLI does). This still fails closed if
 /// `TerminalGuard::enter` cannot start the terminal.
-pub async fn run(driver: &mut dyn XyDriver) -> Result<(), XyDriverError> {
+pub async fn run(driver: &mut dyn XyDriver, options: TuiRunOptions) -> Result<(), XyDriverError> {
     install_lifecycle_hooks();
     log::info!(target: "xylitol::tui", "starting product TUI host");
 
     let guard = TerminalGuard::enter()?;
     let terminal = guard.take();
 
-    let result = run_host_loop(terminal, driver).await;
+    let result = run_host_loop(terminal, driver, options).await;
 
     if let Err(ref e) = result {
         log::error!(
@@ -138,6 +158,7 @@ pub async fn run(driver: &mut dyn XyDriver) -> Result<(), XyDriverError> {
 async fn run_host_loop(
     terminal: CrosstermTerminal,
     driver: &mut dyn XyDriver,
+    options: TuiRunOptions,
 ) -> Result<(), XyDriverError> {
     let model = driver
         .current_model()
@@ -150,10 +171,21 @@ async fn run_host_loop(
         })
         .unwrap_or_else(|| crate::app::core::bootstrap::UNSET_MODEL_DISPLAY.into());
     let mut session = HostSession::new_product_ui_with_meta(terminal, host::display_cwd(), model);
+    session.set_editor_history_seed_sessions(options.editor_history_seed_sessions);
     session.apply_thinking_level_ui(driver.thinking_level());
     session.set_model_arg_catalog_from_models(&driver.available_models());
     session.set_dollar_skill_catalog(driver.dollar_skill_catalog());
     session.refresh_loaded_resources(driver).await;
+    if options.restored_session {
+        match driver.get_messages().await {
+            Ok(entries) => session.seed_editor_history_from_entries(&entries),
+            Err(e) => {
+                log::debug!(target: "xylitol::tui", "editor history seed on restore failed: {e}");
+            }
+        }
+    } else {
+        session.seed_editor_history_for_new_session(driver).await;
+    }
     session.render_now()?;
 
     let mut term_events = CrosstermEventStream::new();

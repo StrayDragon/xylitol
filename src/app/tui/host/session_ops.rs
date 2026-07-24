@@ -302,6 +302,7 @@ impl<T: Terminal> HostSession<T> {
         // Single trailing note (same family as clone/resume); do not also rewrite the
         // history @ banner — that duplicated the fork notice at top and bottom.
         self.push_system_note(format!("forked → session {child_id}"));
+        self.seed_editor_history_from_entries(&entries);
     }
 
     /// After import + switch: rebuild transcript from imported entries (c1010).
@@ -313,6 +314,7 @@ impl<T: Terminal> HostSession<T> {
             |root| {
                 root.close_import_confirm();
             },
+            false,
         );
     }
 
@@ -326,6 +328,7 @@ impl<T: Terminal> HostSession<T> {
                 root.close_session_tree();
                 root.close_session_resume();
             },
+            false,
         );
     }
 
@@ -339,6 +342,7 @@ impl<T: Terminal> HostSession<T> {
                 root.close_session_tree();
                 root.close_session_resume();
             },
+            true,
         );
     }
 
@@ -351,6 +355,7 @@ impl<T: Terminal> HostSession<T> {
             |root| {
                 root.close_session_tree();
             },
+            false,
         );
     }
 
@@ -360,6 +365,8 @@ impl<T: Terminal> HostSession<T> {
         entries: Vec<SessionEntry>,
         note: String,
         close_overlays: impl FnOnce(&mut super::super::layout::UiRoot),
+        // When true, seed ↑/↓ from prior sessions (session-new); else from `entries`.
+        seed_as_new: bool,
     ) {
         let leaf_id = entries
             .iter()
@@ -376,6 +383,9 @@ impl<T: Terminal> HostSession<T> {
             let mut root = root.borrow_mut();
             close_overlays(&mut root);
             root.set_editor_text(String::new());
+        }
+        if !seed_as_new {
+            self.seed_editor_history_from_entries(&entries);
         }
         self.sync_ui_root_from_model();
         self.push_system_note(note);
