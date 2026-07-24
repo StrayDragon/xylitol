@@ -206,3 +206,7 @@ otel:
   service_name: xylitol
   # endpoint omitted → LANGFUSE_BASE_URL + /api/public/otel/v1/traces
   # (with_endpoint is used as-is; we append /v1/traces if missing)
+  # Generation + agent.turn Session preview (default none).
+  observation_io: truncated
+  # Tool.execute args/result (separate gate; default none).
+  tool_observation_io: truncated

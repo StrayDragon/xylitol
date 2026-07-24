@@ -35,6 +35,7 @@
 | **M2 GenAI / Langfuse 属性** | Langfuse 里可读 generation、tool、session（uuid+可选 name） | `c1480-add-otel-genai-langfuse`（已归档） |
 | **M3 usage + 载荷档** | generation 带 token usage；`observation_io` 显式档才带截断/全文 I/O | `c1485-add-otel-usage-io`（已归档） |
 | **M4 同 turn 父子树 + 产品导出名** | Session 内每轮一条 `agent.turn` 树（iteration / llm.request / tool）；不再平铺散落根 | `c1495-add-otel-session-span-tree` |
+| **M4b tool / turn 预览 I/O** | `tool_observation_io` 档挂工具参数结果；`observation_io` 同时给 `agent.turn` 根用户提示（Session 列表） | `c1550` / `c1555` |
 | **M5 子进程出站（可选）** | 托管 bash/MCP 对外请求策略透明 | 后置；不假装已全捕获 |
 
 ## 与本地 JSONL 的关系

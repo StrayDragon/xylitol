@@ -2,7 +2,7 @@ kind: llman.sdd.spec
 name: "infra-otel"
 purpose: "可选 OpenTelemetry OTLP/HTTP 出口：Cargo feature otel + 配置显式开启；默认与失败路径均不收集；经 fastrace-opentelemetry 导出；Langfuse 会话、GenAI 属性与同一 turn 内父子 span 树在 opt-in 出口之上叠加。"
 valid_scope[4]: src/infra/observability/,src/app/cli/logging.rs,src/agent/runtime/obs.rs,packages/xylitol-ai-bridge/src/provider/
-requirements[13]{req_id,title,statement}:
+requirements[15]{req_id,title,statement}:
   otel1,"otel-default-none","未配置 [otel]、exporter 缺省或 exporter=none 时，进程 MUST NOT 向任何 OTLP 端点发送 traces；MUST NOT 仅因存在 fastrace span 而隐式开启远程导出。"
   otel2,"otel-config-opt-in","当 Cargo feature otel 启用且 AppConfig.[otel] exporter=otlp-http 且 endpoint（及所需认证头）合法时，组合根 MUST 经 fastrace-opentelemetry OpenTelemetryReporter（或等价）将 fastrace span 导出为 OTLP/HTTP；protocol MUST 为 HTTP（binary 或 json），MUST NOT 以 gRPC 作为 Langfuse 目标路径的默认或唯一选项。"
   otel3,"otel-fallback-no-block","OTLP exporter 构建失败、凭证缺失、feature otel 未启用、或配置不完整时，观测装配 MUST 降级为不安装 OTLP Reporter（本地 file JSONL 闸仍独立），MUST 将诊断写入 file-only 日志（若级别日志已开），MUST NOT 因此使对话主路径启动失败。"
@@ -16,4 +16,6 @@ requirements[13]{req_id,title,statement}:
   otel11,"otel-turn-span-tree","当低频观测 span 激活且发生一次用户触发的 agent 处理时，该次处理 MUST 导出为以 agent.turn 为根的同一 fastrace/OTel trace；agent.iteration、llm.request、tool.execute MUST 作为该根的后代并共享同一 trace_id、经 parent_span_id（或等价）挂接；MUST NOT 在活跃 agent.turn 下将上述主路径 span 各自以无关的 SpanContext::random 根 span 导出。"
   otel12,"otel-product-span-names","当低频观测 span 激活时，OTLP/Langfuse 导出名 MUST 使用产品词汇：agent.turn（根）、agent.iteration、llm.request、tool.execute；MUST NOT 再以 react.stream、react.turn 或 provider.request 作为导出名。"
   otel13,"otel-token-estimate-parent","当低频观测 span 激活时：若存在活跃 agent.turn 上下文，token.estimate MUST 作为该 turn 的子 span；若不存在 turn 上下文，token.estimate MAY 为独立根 span 且在 session 已知时 MUST 携带同一 langfuse.session.id；MUST NOT 伪造父 turn。"
+  otel14,"otel-tool-observation-io-tier","AppConfig.[otel].tool_observation_io 缺省或 none 时 MUST NOT 在 tool.execute 上写入 langfuse.observation.input/output；仅当配置为 truncated 或 full 且 span 闸激活时，tool.execute MUST 在结果落定后按该档写入参数与结果摘要；MUST NOT 与 observation_io 合并为同一配置键；MUST NOT 因 tool_observation_io 未配置而改变 otel1 默认不出口语义。"
+  otel15,"otel-turn-input-preview","AppConfig.[otel].observation_io 缺省或 none 时 MUST NOT 在 agent.turn 根上写入 langfuse.observation.input；仅当配置为 truncated 或 full 且 span 闸激活时，agent.turn MUST 写入本轮用户提示文本摘要为 langfuse.observation.input（按同档硬顶截断）；本 req 不强制 agent.turn 根 output。"
 scenarios[0]:
