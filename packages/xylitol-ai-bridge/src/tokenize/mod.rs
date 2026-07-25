@@ -4,9 +4,49 @@
 //! `count_tokens` (RemoteCount); otherwise Heuristic. The abandoned
 //! `claude-tokenizer` crate is intentionally not used.
 
+use std::collections::HashMap;
 use std::path::{Path, PathBuf};
+use std::sync::{Arc, OnceLock, RwLock};
 
 use crate::dto::AiBridgeMessage;
+
+/// Process-wide loaded HF [`tokenizers::Tokenizer`] handles (keyed by canonical path).
+///
+/// Disk cache under `~/.xylitol/tokenizers/` is separate: this map avoids re-parsing
+/// `tokenizer.json` on every LocalTokenizer encode_count.
+fn loaded_tokenizer_handles() -> &'static RwLock<HashMap<PathBuf, Arc<tokenizers::Tokenizer>>> {
+    static HANDLES: OnceLock<RwLock<HashMap<PathBuf, Arc<tokenizers::Tokenizer>>>> =
+        OnceLock::new();
+    HANDLES.get_or_init(|| RwLock::new(HashMap::new()))
+}
+
+fn cache_key_for(path: &Path) -> PathBuf {
+    path.canonicalize().unwrap_or_else(|_| path.to_path_buf())
+}
+
+fn invalidate_loaded_tokenizer(path: &Path) {
+    let key = cache_key_for(path);
+    let Ok(mut guard) = loaded_tokenizer_handles().write() else {
+        return;
+    };
+    guard.remove(&key);
+    // Best-effort: also drop the pre-canonical key if callers passed a relative path.
+    guard.remove(&path.to_path_buf());
+}
+
+fn invalidate_all_loaded_tokenizers() {
+    if let Ok(mut guard) = loaded_tokenizer_handles().write() {
+        guard.clear();
+    }
+}
+
+#[cfg(test)]
+fn loaded_tokenizer_handle_len() -> usize {
+    loaded_tokenizer_handles()
+        .read()
+        .map(|g| g.len())
+        .unwrap_or(0)
+}
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum BuiltinTokenizer {
@@ -140,6 +180,7 @@ impl HfTokenizerCache {
     /// Remove one cache key. Missing path is Ok (idempotent).
     pub fn remove(&self, repo: &str, file: &str) -> Result<(), String> {
         let path = self.cache_path(repo, file);
+        invalidate_loaded_tokenizer(&path);
         if path.exists() {
             std::fs::remove_file(&path).map_err(|e| e.to_string())?;
         }
@@ -151,6 +192,7 @@ impl HfTokenizerCache {
 
     /// Remove all entries under the cache root.
     pub fn remove_all(&self) -> Result<(), String> {
+        invalidate_all_loaded_tokenizers();
         if !self.cache_dir.exists() {
             return Ok(());
         }
@@ -223,9 +265,24 @@ fn encode_count_at_path(path: &Path, text: &str) -> Option<u64> {
     if !path.exists() {
         return None;
     }
-    let tokenizer = tokenizers::Tokenizer::from_file(path).ok()?;
+    let key = cache_key_for(path);
+
+    if let Ok(guard) = loaded_tokenizer_handles().read()
+        && let Some(tokenizer) = guard.get(&key)
+    {
+        let encoding = tokenizer.encode(text, false).ok()?;
+        return Some(encoding.get_ids().len() as u64);
+    }
+
+    let tokenizer = tokenizers::Tokenizer::from_file(&key).ok()?;
     let encoding = tokenizer.encode(text, false).ok()?;
-    Some(encoding.get_ids().len() as u64)
+    let n = encoding.get_ids().len() as u64;
+    let arc = Arc::new(tokenizer);
+    if let Ok(mut guard) = loaded_tokenizer_handles().write() {
+        // Another thread may have inserted; prefer keeping an existing handle.
+        guard.entry(key).or_insert(arc);
+    }
+    Some(n)
 }
 
 #[cfg(test)]
@@ -308,6 +365,89 @@ mod tests {
             cache
                 .encode_count_if_cached("org/model", "tokenizer.json", "x")
                 .is_none()
+        );
+    }
+
+    /// Minimal WordLevel `tokenizer.json` accepted by `tokenizers` 0.21.
+    fn write_tiny_wordlevel(path: &Path) {
+        let json = r#"{
+  "version": "1.0",
+  "truncation": null,
+  "padding": null,
+  "added_tokens": [],
+  "normalizer": null,
+  "pre_tokenizer": {"type": "Whitespace"},
+  "post_processor": null,
+  "decoder": null,
+  "model": {
+    "type": "WordLevel",
+    "vocab": {"hello": 0, "world": 1, "[UNK]": 2},
+    "unk_token": "[UNK]"
+  }
+}"#;
+        if let Some(parent) = path.parent() {
+            std::fs::create_dir_all(parent).unwrap();
+        }
+        std::fs::write(path, json).unwrap();
+    }
+
+    #[test]
+    fn encode_count_reuses_loaded_handle_until_invalidated() {
+        let dir = tempfile::tempdir().unwrap();
+        let cache = HfTokenizerCache::new(Some(dir.path().to_path_buf()));
+        let path = cache.cache_path("org/tiny", "tokenizer.json");
+        write_tiny_wordlevel(&path);
+
+        let n1 = cache
+            .encode_count_if_cached("org/tiny", "tokenizer.json", "hello world")
+            .expect("first encode");
+        assert_eq!(n1, 2);
+        assert!(
+            loaded_tokenizer_handle_len() >= 1,
+            "expected at least one loaded handle after first encode"
+        );
+
+        let n2 = cache
+            .encode_count_if_cached("org/tiny", "tokenizer.json", "hello world")
+            .expect("second encode");
+        assert_eq!(n2, n1);
+
+        cache.remove("org/tiny", "tokenizer.json").unwrap();
+        assert!(
+            cache
+                .encode_count_if_cached("org/tiny", "tokenizer.json", "hello world")
+                .is_none()
+        );
+
+        // Re-write after remove: must load from disk again (stale handle invalidated).
+        write_tiny_wordlevel(&path);
+        assert_eq!(
+            cache.encode_count_if_cached("org/tiny", "tokenizer.json", "hello world"),
+            Some(2)
+        );
+    }
+
+    #[test]
+    fn remove_all_clears_disk_and_allows_reload() {
+        let dir = tempfile::tempdir().unwrap();
+        let cache = HfTokenizerCache::new(Some(dir.path().to_path_buf()));
+        let path = cache.cache_path("org/tiny2", "tokenizer.json");
+        write_tiny_wordlevel(&path);
+        assert_eq!(
+            cache.encode_count_if_cached("org/tiny2", "tokenizer.json", "hello"),
+            Some(1)
+        );
+        cache.remove_all().unwrap();
+        assert!(cache.list_entries().is_empty());
+        assert!(
+            cache
+                .encode_count_if_cached("org/tiny2", "tokenizer.json", "hello")
+                .is_none()
+        );
+        write_tiny_wordlevel(&path);
+        assert_eq!(
+            cache.encode_count_if_cached("org/tiny2", "tokenizer.json", "hello"),
+            Some(1)
         );
     }
 }
