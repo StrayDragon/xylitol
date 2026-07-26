@@ -72,10 +72,26 @@ LocalTokenizer 档（`packages/xylitol-ai-bridge` → `tokenize::encode_count_at
 
 ## Status
 
-**shelved（2026-07-24）** — LocalTokenizer 默认 off；上游 Gigatoken 尚未 crates.io；短串会话计数加速比未证明。阻塞到 crates.io 发布或完成 Rust API spike 后再 reopen。
+**shelved（2026-07-26 调研确认）** — 一手调研判定主线 **blocked**（见 Further Notes）。LocalTokenizer 默认 off；上游无 crates.io lean core；crate 强制 nightly + PyO3 硬依赖；短串 count 吃不到 GB/s 宣传收益。阻塞到 [#30](https://github.com/marcelroed/gigatoken/issues/30) crates.io / `gigatoken-core` 拆分，或另行评估已剥离 nightly 的第三方提取。
 
 正式化前须澄清：
 
-1. 是否接受 git dependency，或阻塞到 crates.io？
+1. 是否接受 git dependency，或阻塞到 crates.io？（调研建议：**阻塞到 crates.io lean core**；git dep 仅独立 nightly spike）
 2. 未覆盖词表：硬失败 / 回退 HF / 跳过 LocalTokenizer？
 3. 对齐标准：仅 `len(ids)` 还是完整 id 序列？
+
+## Further Notes
+
+调研产出（[Research gigatoken Rust API](916163e8-3e18-4f76-982b-e0b63e837d1d)）：[`research/gigatoken-rust-feasibility.md`](./research/gigatoken-rust-feasibility.md)
+
+要点（2026-07-26）：
+
+| 判据 | 结论 |
+|---|---|
+| crates.io `gigatoken` | **404**；PyPI 有 `0.10.0`；#30 仍 open |
+| Rust API（`load_hf_bpe` / `load_hf_slice` + encode） | **能力上**可覆盖本地 json + 短串 count |
+| xylitol 主线可接入 | **否**：nightly `portable_simd`；`pyo3`/`numpy`/`parquet` 非 optional；与本仓 stable 冲突 |
+| 用例 | 上游 bench ≈ GB 文件批处理；本仓会话短串 — 收益未证明 |
+| 旁路线索 | [`hermes-tokenizer`](https://crates.io/crates/hermes-tokenizer) 自称从 Gigatoken 抽出并去掉 PyO3/nightly — **未验收**，若 reopen 可另开调研 |
+
+**不**进入 `llman-sdd-ff` 补齐 specs/tasks，直至上游交付面或替代 crate 解除 blocked。
