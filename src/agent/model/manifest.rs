@@ -33,7 +33,7 @@ use crate::protocol::types::XyModelMeta;
 pub struct ManifestModel {
     pub id: String,
     pub provider: String,
-    /// Adapter dialect; omitted → [`AdapterKind::default_for`] for provider (c1600).
+    /// Adapter dialect; omitted → [`crate::infra::provider::adapter::AdapterKind::default_for`] for provider (c1600).
     #[serde(default)]
     pub api: Option<String>,
     pub display_name: Option<String>,

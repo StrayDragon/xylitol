@@ -798,6 +798,7 @@ impl XyDriver for XyRemoteDriver {
 }
 
 #[cfg(feature = "server")]
+#[allow(dead_code)] // used by reserved XyRemoteDriver; keep while thin-client surface is dormant
 fn urlencoding_loose(s: &str) -> String {
     s.replace(' ', "%20")
 }
