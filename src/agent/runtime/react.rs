@@ -2937,7 +2937,7 @@ mod tests {
             ("slow_safe", r#"{"n":2}"#),
         ]);
         let mut agent = make_agent_with_rounds(rounds, tools);
-        // Default batch mode is Sequential.
+        agent.set_batch_mode(XyBatchMode::Sequential);
         let mut stream = agent.run("go").await;
         let mut ends = Vec::new();
         while let Some(ev) = stream.next().await {

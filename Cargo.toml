@@ -2,6 +2,7 @@
 name = "xylitol"
 version = "0.0.0-dev"
 edition = "2024"
+rust-version = "1.97.1"
 license = "MIT"
 repository = "https://github.com/straydragon/xylitol"
 description = "xylitol (placeholder)"

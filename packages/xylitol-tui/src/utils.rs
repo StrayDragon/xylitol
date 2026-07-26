@@ -54,7 +54,7 @@ fn ansi_escape_len(bytes: &[u8], i: usize) -> Option<usize> {
         b'[' => {
             // CSI: ESC [ ... m/G/K/H/J
             let mut j = i + 2;
-            while j < bytes.len() && ![b'm', b'G', b'K', b'H', b'J'].contains(&bytes[j]) {
+            while j < bytes.len() && !b"mGKHJ".contains(&bytes[j]) {
                 j += 1;
             }
             if j < bytes.len() {
@@ -147,7 +147,7 @@ pub fn extract_ansi_code(s: &str, pos: usize) -> Option<(&str, usize)> {
     match next {
         b'[' => {
             let mut j = pos + 2;
-            while j < bytes.len() && ![b'm', b'G', b'K', b'H', b'J'].contains(&bytes[j]) {
+            while j < bytes.len() && !b"mGKHJ".contains(&bytes[j]) {
                 j += 1;
             }
             if j < bytes.len() {

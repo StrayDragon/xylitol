@@ -162,8 +162,9 @@ mod tests {
     }
 
     #[test]
-    fn batch_mode_default_is_sequential() {
-        assert_eq!(XyBatchMode::default(), XyBatchMode::Sequential);
+    fn batch_mode_default_is_barrier_parallel() {
+        // Product default after c1610.
+        assert_eq!(XyBatchMode::default(), XyBatchMode::BarrierParallel);
     }
 
     #[test]

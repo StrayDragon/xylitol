@@ -92,6 +92,15 @@ LocalTokenizer 档（`packages/xylitol-ai-bridge` → `tokenize::encode_count_at
 | Rust API（`load_hf_bpe` / `load_hf_slice` + encode） | **能力上**可覆盖本地 json + 短串 count |
 | xylitol 主线可接入 | **否**：nightly `portable_simd`；`pyo3`/`numpy`/`parquet` 非 optional；与本仓 stable 冲突 |
 | 用例 | 上游 bench ≈ GB 文件批处理；本仓会话短串 — 收益未证明 |
-| 旁路线索 | [`hermes-tokenizer`](https://crates.io/crates/hermes-tokenizer) 自称从 Gigatoken 抽出并去掉 PyO3/nightly — **未验收**，若 reopen 可另开调研 |
+| 旁路线索 | [`hermes-tokenizer`](https://crates.io/crates/hermes-tokenizer) 自称从 Gigatoken 抽出并去掉 PyO3/nightly — **见下 spike，不可作 Qwen3.6 权宜替换** |
+
+### hermes-tokenizer spike（2026-07-26）
+
+详见 [`research/hermes-tokenizer-spike.md`](./research/hermes-tokenizer-spike.md)。
+
+- 宿主已升 **rustc 1.97.1**（hermes MSRV 1.97；升前 1.95 编不过）。
+- 词表：`xylitol tokenizer download Qwen/Qwen3.6-35B-A3B`（hf-mirror）→ 原生 `from_file` **失败**（string merges；空 `continuing_subword_prefix`；`use_regex=false`）。
+- 强行改写 json 后：探针 + 假 session 与 **原始** HF id **对齐**；但同一改写会让 HF 自身对部分输入变码；缓存 encode 约 2–3× 快于 HF，远小于「每次 from_file」差距。
+- **Verdict：不能当 LocalTokenizer 权宜替换**；优先 Tokenizer 句柄缓存或等真正 lean core。
 
 **不**进入 `llman-sdd-ff` 补齐 specs/tasks，直至上游交付面或替代 crate 解除 blocked。
