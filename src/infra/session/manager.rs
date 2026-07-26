@@ -1352,10 +1352,7 @@ impl SessionManager {
         let entries = self.load(session_id).await?;
         for entry in entries.iter().rev() {
             if let SessionEntry::SessionInfo(si) = entry {
-                return Ok(si
-                    .name
-                    .clone()
-                    .and_then(|n| if n.is_empty() { None } else { Some(n) }));
+                return Ok(si.name.clone().filter(|n| !n.is_empty()));
             }
         }
         Ok(None)
