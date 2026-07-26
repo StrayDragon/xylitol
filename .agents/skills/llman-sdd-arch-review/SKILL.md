@@ -2,7 +2,7 @@
 name: "llman-sdd-arch-review"
 description: "扫描 codebase 的薄模块（接口几乎等于实现），找出可以加深（藏更多行为到更小接口后）的候选。当用户想做架构审查、寻找模块加深机会、或想改善代码可测性与 AI 可导航性时使用。"
 metadata:
-  version: "0.0.64"
+  version: "0.0.65"
   llman_sdd:
     bdd_mode: "on"
     skill_set: "optional"
