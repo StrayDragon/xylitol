@@ -385,13 +385,22 @@ fn t_tools_overflow_ok(ws: &Workspace) {
 }
 
 #[given("LLM 传入 timeout=-1")]
-fn g_tools_neg_timeout() {}
+fn g_tools_neg_timeout() {
+    tools_pending::TIMEOUT.with(|t| t.set(Some(-1)));
+}
 #[when("bash 工具校验参数")]
-async fn w_tools_validate_neg(ws: &Workspace) {
+async fn w_tools_validate_timeout(ws: &Workspace) {
+    let timeout = tools_pending::TIMEOUT
+        .with(|t| t.get())
+        .expect("given must set timeout");
+    assert!(
+        timeout <= 0,
+        "timeout validation scenarios use non-positive timeout, got {timeout}"
+    );
     let r = BashTool::default()
         .execute(
             &XyToolCtx::new("test"),
-            serde_json::json!({"command":"echo hi","timeout":-1}),
+            serde_json::json!({"command":"echo hi","timeout": timeout}),
         )
         .await;
     if let Err(e) = r {
@@ -399,54 +408,88 @@ async fn w_tools_validate_neg(ws: &Workspace) {
             .replace(Some(Err(XyDriverError::from(e.to_string()))));
     } else {
         ws.last_result
-            .replace(Some(Err(XyDriverError::from("bad"))));
+            .replace(Some(Err(XyDriverError::from("expected timeout rejection"))));
     }
 }
 #[then("工具以无效 timeout 错误拒绝")]
 fn t_tools_timeout_reject(ws: &Workspace) {
-    assert!(ws.last_result.borrow().as_ref().unwrap().is_err());
+    let err = ws
+        .last_result
+        .borrow()
+        .as_ref()
+        .expect("timeout result")
+        .as_ref()
+        .expect_err("timeout must err")
+        .to_string()
+        .to_lowercase();
+    assert!(
+        err.contains("timeout") || err.contains("invalid") || err.contains("zero"),
+        "expected invalid timeout error, got: {err}"
+    );
 }
 
 #[given("LLM 传入 timeout=0")]
-fn g_tools_zero_timeout() {}
-#[when("bash 工具校验参数 zero")]
-async fn w_tools_validate_zero(ws: &Workspace) {
-    let r = BashTool::default()
-        .execute(
-            &XyToolCtx::new("test"),
-            serde_json::json!({"command":"echo hi","timeout":0}),
-        )
-        .await;
-    if let Err(e) = r {
-        ws.last_result
-            .replace(Some(Err(XyDriverError::from(e.to_string()))));
-    } else {
-        ws.last_result
-            .replace(Some(Err(XyDriverError::from("bad"))));
-    }
+fn g_tools_zero_timeout() {
+    tools_pending::TIMEOUT.with(|t| t.set(Some(0)));
 }
 
 #[given("find 以 pattern='/etc/**' 调用")]
-fn g_tools_find_abs() {}
+fn g_tools_find_abs() {
+    tools_pending::FIND_PATTERN.with(|p| {
+        *p.borrow_mut() = Some("/etc/**".into());
+    });
+}
 #[when("安全已启用")]
 async fn w_tools_find_sec(ws: &Workspace) {
+    let pattern = tools_pending::FIND_PATTERN
+        .with(|p| p.borrow().clone().expect("given must set find pattern"));
     tool_call!(
         FindTool,
         XyToolCtx::new("test"),
-        serde_json::json!({"pattern":"/etc/**","path":"."}),
+        serde_json::json!({"pattern": pattern, "path":"."}),
         ws
     );
 }
 #[then("工具返回错误或过滤结果至 root")]
 fn t_tools_find_ok(ws: &Workspace) {
-    ws.last_result.borrow().as_ref().unwrap();
+    let r = ws.last_result.borrow();
+    let r = r.as_ref().expect("find result");
+    match r {
+        Ok(s) => {
+            assert!(
+                !s.contains("/etc/passwd") && !s.contains("/etc/shadow"),
+                "absolute /etc pattern must not leak host paths, got: {s}"
+            );
+        }
+        Err(e) => {
+            let msg = e.to_string().to_lowercase();
+            assert!(
+                msg.contains("absolute")
+                    || msg.contains("denied")
+                    || msg.contains("invalid")
+                    || msg.contains("path")
+                    || msg.contains("forbidden"),
+                "expected path-safety error, got: {e}"
+            );
+        }
+    }
 }
 
 #[given("bash 输出在上限边界以不完整 UTF-8 序列结束")]
-fn g_tools_multibyte() {}
+fn g_tools_multibyte(ws: &Workspace) {
+    ws.init();
+    // Marker consumed by truncate when — incomplete multi-byte at truncation edge.
+    tools_pending::MULTIBYTE.with(|f| f.set(true));
+}
 #[when("调用 truncate_output")]
 async fn w_tools_truncate(ws: &Workspace) {
-    ws.init();
+    assert!(
+        tools_pending::MULTIBYTE.with(|f| f.get()),
+        "given must mark incomplete UTF-8 truncation case"
+    );
+    if ws.dir.borrow().is_none() {
+        ws.init();
+    }
     tool_call!(
         BashTool::default(),
         XyToolCtx::new("test"),
@@ -581,14 +624,23 @@ fn t_tools_accum_large_ok(ws: &Workspace) {
 }
 
 #[given("bash 工具即将执行 echo hello")]
-fn g_tools_bash_echo() {}
+fn g_tools_bash_echo(ws: &Workspace) {
+    ws.init();
+    tools_pending::BASH_CMD.with(|c| {
+        *c.borrow_mut() = Some("echo hello".into());
+    });
+}
 #[when("执行 bash echo hello")]
 async fn w_tools_bash_accum(ws: &Workspace) {
-    ws.init();
+    let cmd = tools_pending::BASH_CMD
+        .with(|c| c.borrow().clone().expect("given must stage bash command"));
+    if ws.dir.borrow().is_none() {
+        ws.init();
+    }
     tool_call!(
         BashTool::default(),
         XyToolCtx::new("test"),
-        serde_json::json!({"command":"echo hello"}),
+        serde_json::json!({"command": cmd}),
         ws
     );
 }
@@ -787,10 +839,20 @@ fn t_tools_fudiff_ok(ws: &Workspace) {
 }
 
 #[given("工具需要必填字符串参数 file_path")]
-fn g_tools_missing_arg(_ws: &Workspace) {}
+fn g_tools_missing_arg(_ws: &Workspace) {
+    tools_pending::REQUIRED_ARG.with(|a| {
+        *a.borrow_mut() = Some("file_path".into());
+    });
+}
 
 #[when("以空参调用该工具")]
 async fn w_tools_call_empty_read(ws: &Workspace) {
+    let arg = tools_pending::REQUIRED_ARG.with(|a| {
+        a.borrow()
+            .clone()
+            .expect("given must name required argument")
+    });
+    assert_eq!(arg, "file_path");
     tool_call!(ReadTool, XyToolCtx::new("test"), serde_json::json!({}), ws);
 }
 
@@ -930,17 +992,27 @@ fn t_tools_infra_ok(ws: &Workspace) {
 }
 
 #[given("工具集含 read 与 grep")]
-fn g_tools_toolset_base() {}
-
-#[when("plus(bash) 然后 remove(grep)")]
-fn w_tools_toolset_ops(_ws: &Workspace) {
+fn g_tools_toolset_base() {
     let set = ToolSet::from_iter(
         xylitol::infra::tools::default_tools()
             .into_iter()
             .filter(|t| matches!(t.name(), "read" | "grep")),
-    )
-    .plus(Arc::new(BashTool::default()) as Arc<dyn xylitol::protocol::ports::XyTool>)
-    .remove("grep");
+    );
+    let names: Vec<String> = set.iter().map(|t| t.name().to_string()).collect();
+    assert!(names.iter().any(|n| n == "read"));
+    assert!(names.iter().any(|n| n == "grep"));
+    tools_toolset::BASE.with(|b| b.replace(Some(set)));
+    tools_toolset::NAMES.with(|n| n.replace(names));
+}
+
+#[when("plus(bash) 然后 remove(grep)")]
+fn w_tools_toolset_ops(_ws: &Workspace) {
+    let base = tools_toolset::BASE
+        .with(|b| b.borrow_mut().take())
+        .expect("given must build base toolset");
+    let set = base
+        .plus(Arc::new(BashTool::default()) as Arc<dyn xylitol::protocol::ports::XyTool>)
+        .remove("grep");
     let names: Vec<String> = set.iter().map(|t| t.name().to_string()).collect();
     tools_toolset::NAMES.with(|n| n.replace(names));
 }
@@ -955,8 +1027,21 @@ fn t_tools_toolset_final(_ws: &Workspace) {
 
 mod tools_toolset {
     use std::cell::RefCell;
+    use xylitol::agent::tools::ToolSet;
     thread_local! {
         pub static NAMES: RefCell<Vec<String>> = const { RefCell::new(Vec::new()) };
+        pub static BASE: RefCell<Option<ToolSet>> = const { RefCell::new(None) };
+    }
+}
+
+mod tools_pending {
+    use std::cell::{Cell, RefCell};
+    thread_local! {
+        pub static TIMEOUT: Cell<Option<i64>> = const { Cell::new(None) };
+        pub static FIND_PATTERN: RefCell<Option<String>> = const { RefCell::new(None) };
+        pub static MULTIBYTE: Cell<bool> = const { Cell::new(false) };
+        pub static REQUIRED_ARG: RefCell<Option<String>> = const { RefCell::new(None) };
+        pub static BASH_CMD: RefCell<Option<String>> = const { RefCell::new(None) };
     }
 }
 

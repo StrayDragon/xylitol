@@ -230,14 +230,14 @@ test-tui verbosity=verbosity_default:
     case "{{verbosity}}" in
       quiet)
         # Swallow pass/progress noise; print full output only on failure.
-        # --test-threads=1: keys/protocol tests mutate process-global kitty flags.
-        if ! out=$(cargo test -q -p xylitol-tui -- --test-threads=1 2>&1); then
+        # Kitty flag races are serialized inside with_kitty_protocol_active (keys.rs).
+        if ! out=$(cargo test -q -p xylitol-tui 2>&1); then
           printf '%s\n' "$out"
           exit 1
         fi
         ;;
-      normal)  cargo test -p xylitol-tui -- --test-threads=1 ;;
-      verbose) cargo test -v -p xylitol-tui -- --test-threads=1 ;;
+      normal)  cargo test -p xylitol-tui ;;
+      verbose) cargo test -v -p xylitol-tui ;;
     esac
 
 # Unified daily / PR gate (no TUI layer-5 E2E — needs PTY/tmux).
