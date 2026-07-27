@@ -3584,6 +3584,84 @@ mod slice_tests {
             footer.contains("used ~42 tokens"),
             "Heuristic must show tilde: {footer}"
         );
+        assert!(
+            footer.contains("~0.5%/8.0k"),
+            "Heuristic must derive ~percent with tilde: {footer}"
+        );
+    }
+
+    #[tokio::test]
+    async fn c1680_no_percent_when_window_zero() {
+        use crate::app::tui::effects::refresh_footer_tokens;
+        use crate::protocol::types::{ContextTokenEstimate, TokenProvenance};
+
+        let mut session = HostSession::new_product_ui_with_meta(
+            TestTerminal::new(80, 24),
+            "~/x".into(),
+            "Fake".into(),
+        );
+        let mut driver = ScriptedDriver::new();
+        driver.set_current_model(ModelInfo {
+            id: "Fake".into(),
+            display_name: "Fake".into(),
+            thinking: false,
+            thinking_levels: Vec::new(),
+            context_window: 0,
+        });
+        driver.set_session_messages(harness_sample_session_messages());
+        driver.set_estimate_override(Some(ContextTokenEstimate {
+            tokens: 42,
+            provenance: TokenProvenance::Api,
+            usage_tokens: 42,
+            trailing_tokens: 0,
+            last_usage_index: None,
+        }));
+        refresh_footer_tokens(&mut session, &driver).await;
+        let frame = session.ui_root().expect("ui").borrow_mut().render(80);
+        let footer = frame.last().expect("footer");
+        assert!(
+            footer.contains("used 42 tokens"),
+            "must keep used field: {footer}"
+        );
+        assert!(
+            !footer.contains("%/"),
+            "window=0 must omit percent: {footer}"
+        );
+    }
+
+    #[tokio::test]
+    async fn c1680_api_derived_percent() {
+        use crate::app::tui::effects::refresh_footer_tokens;
+        use crate::protocol::types::{ContextTokenEstimate, TokenProvenance};
+
+        let mut session = HostSession::new_product_ui_with_meta(
+            TestTerminal::new(80, 24),
+            "~/x".into(),
+            "Fake".into(),
+        );
+        let mut driver = ScriptedDriver::new();
+        driver.set_current_model(ModelInfo {
+            id: "Fake".into(),
+            display_name: "Fake".into(),
+            thinking: false,
+            thinking_levels: Vec::new(),
+            context_window: 128_000,
+        });
+        driver.set_session_messages(harness_sample_session_messages());
+        driver.set_estimate_override(Some(ContextTokenEstimate {
+            tokens: 42_000,
+            provenance: TokenProvenance::Api,
+            usage_tokens: 42_000,
+            trailing_tokens: 0,
+            last_usage_index: None,
+        }));
+        refresh_footer_tokens(&mut session, &driver).await;
+        let frame = session.ui_root().expect("ui").borrow_mut().render(80);
+        let footer = frame.last().expect("footer");
+        assert!(
+            footer.contains("used 42000 tokens") && footer.contains("32.8%/128k"),
+            "Api must show derived percent: {footer}"
+        );
     }
 
     #[tokio::test]
@@ -3611,6 +3689,10 @@ mod slice_tests {
         assert!(
             footer.contains("used 100 tokens") && !footer.contains("used ~"),
             "Api must be exact: {footer}"
+        );
+        assert!(
+            footer.contains("1.3%/8.0k") || footer.contains("1.2%/8.0k"),
+            "Api with default window must show derived percent: {footer}"
         );
     }
 

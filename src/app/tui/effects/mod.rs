@@ -40,7 +40,11 @@ pub async fn refresh_footer_tokens<T: Terminal>(
     }
     match driver.estimate_context_tokens().await {
         Ok(est) => {
-            let label = footer_token_label(est.provenance, est.tokens);
+            let window = driver
+                .current_model()
+                .map(|m| m.context_window)
+                .unwrap_or(0);
+            let label = footer_token_label(est.provenance, est.tokens, window);
             session.set_footer_token_label(Some(label));
         }
         Err(_) => session.set_footer_token_label(None),
@@ -72,6 +76,10 @@ pub async fn kick_footer_token_refresh<T: Terminal>(
     let job_id = session.begin_footer_token_job();
     let tx = session.footer_token_tx();
     let model_id = driver.current_model().map(|m| m.id);
+    let context_window = driver
+        .current_model()
+        .map(|m| m.context_window)
+        .unwrap_or(0);
     let tokenizer_override = model_id.as_deref().and_then(|id| {
         crate::infra::config::loader::load_app_config(None)
             .ok()
@@ -81,7 +89,7 @@ pub async fn kick_footer_token_refresh<T: Terminal>(
     tokio::spawn(async move {
         let label = tokio::task::spawn_blocking(move || {
             let est = estimate_from_session_entries(&entries, model_id, tokenizer_override);
-            footer_token_label(est.provenance, est.tokens)
+            footer_token_label(est.provenance, est.tokens, context_window)
         })
         .await
         .ok();
