@@ -57,6 +57,18 @@ Then 无 Cursor 依赖；配置后可按协同路线调度
 - 与 Tokenizer、观测出口、Web 可交错，不互相硬阻塞
 - 厂商/网关排障：[OTEL与Langfuse观测.md](./OTEL与Langfuse观测.md)；对照底座见 [../architecture/进程内观测.md](../architecture/进程内观测.md)
 
+## 支线与方向
+
+| 支线 | 意向 |
+|---|---|
+| **Cache 能力声明格** | 各预设是否透出 prompt cache / TTL / 最小前缀（挂缓存 roadmap） |
+| **兼容回归 Dataset** | 新预设合并前跑小回归集（挂 [Agent-Eval与回归基准.md](./Agent-Eval与回归基准.md)） |
+| **国产/网关词表策略** | 计量与 tokenizer 映射说明，避免启发式假「官方」 |
+| **预设发现 UX** | 「常用名」列表与文档同源，避免只活在 yaml 注释 |
+| **失效预设退役叙事** | 废弃预设诚实提示迁移路径，不静默改写 |
+
 ## 相关
 
+- [上下文缓存与极致压缩.md](./上下文缓存与极致压缩.md)
+- [Agent-Eval与回归基准.md](./Agent-Eval与回归基准.md)
 - 总索引：[README.md](./README.md)

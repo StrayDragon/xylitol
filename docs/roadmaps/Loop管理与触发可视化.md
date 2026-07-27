@@ -65,7 +65,18 @@ Then 按统一中止语义停止，并回到可管理状态
 | [Sub-Agent编排.md](./Sub-Agent编排.md) | loop 是否允许派生子 agent 的策略交叉 |
 | [OTEL与Langfuse观测.md](./OTEL与Langfuse观测.md) | 开火轮次与出站对照可关联（排障）；不要求 Loop UI 内嵌完整检视台 |
 
+## 支线与方向
+
+| 支线 | 意向 |
+|---|---|
+| **安静时段 / 勿扰** | 夜间或专注模式自动暂停全部 loop |
+| **失败退避策略** | 连续失败后拉长间隔并醒目告警 |
+| **Loop → Eval 金丝雀** | 周期性跑小回归集（挂 [Agent-Eval与回归基准.md](./Agent-Eval与回归基准.md)） |
+| **条件触发 DSL 轻量集** | 文件变更 / git 钩子类条件（产品边界先钉，防变成工作流引擎） |
+| **开火摘要折叠** | 主对话只留一行结果徽章，详情进面板 |
+
 ## 相关
 
 - 插话/中止现行心智：[../architecture/插话续跑与中止.md](../architecture/插话续跑与中止.md)
+- [Agent-Eval与回归基准.md](./Agent-Eval与回归基准.md)
 - 总索引：[README.md](./README.md)
