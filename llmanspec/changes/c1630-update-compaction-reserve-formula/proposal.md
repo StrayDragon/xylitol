@@ -43,10 +43,14 @@ xylitol 配置面已有与 pi 对齐的 `compaction.{enabled,reserveTokens,keepR
 ## Depends / 后续
 
 ```text
-c1630 (本) ──┬──► c1640 auto/manual 接线
-             ├──► c1650 cut + split-turn
-             └──► c1680 TUI % 展示（后置）
+c1630 (本 · 本分支 full) ──┬──► c1640 auto/manual 接线（purpose-draft，勿提前 full）
+                          ├──► c1650 cut + split-turn（purpose-draft）
+                          ├──► c1660 overflow（依赖 1640+1650）
+                          ├──► c1670 optional instructions（依赖 1640）
+                          └──► c1680 TUI %（后置 draft）
 ```
+
+> 兄弟 change 仅 draft 锁需求；**禁止**在未 `change start`+apply 前改其 live specs。需求正文以各 `changes/c16xx-*/proposal.md`「需求锁定」为准。
 
 ## Open Questions
 

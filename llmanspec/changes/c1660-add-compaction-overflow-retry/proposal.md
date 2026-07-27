@@ -11,48 +11,68 @@ author: agent
 
 # c1660-add-compaction-overflow-retry
 
+> **流程**：仅 `purpose-draft`；禁止提前 full / 改 live specs。
+> **依赖**：c1640（auto 编排 + 防抖）与 c1650（可靠切点）**均归档**后再 apply。
+> **对照**：pi `agent-session.ts` `_checkCompaction` overflow 支路 + `_runAutoCompaction("overflow", willRetry)`；**一次** recovery。
+
 ## Why
 
-pi 在模型报 context overflow 时走 `_runAutoCompaction("overflow")`，并可在压缩后重试该轮；阈值触发与 overflow 恢复分离。xylitol `retry.rs` 注释写「overflow 由 compaction 处理」，但缺少 compact-and-retry 路径——长会话会硬失败而非恢复。
+`retry.rs` 称 overflow 交给 compaction，但无 compact-and-retry。pi：overflow → compact →（可）重试一轮；与 threshold 分离。
 
-## What Changes
+## 需求锁定
 
-- 识别 provider/桥接层的 context overflow（与现有非 retryable 分类衔接）。
-- Overflow → `CompactionStart(reason=overflow)` → compact → 在策略允许下 **重试一轮**（`willRetry` 语义对齐 pi）；失败则诚实结束并说明。
-- 与阈值 auto（c1640）共用编排，但 reason / 遥测区分 `threshold` vs `overflow`。
-- 压缩后 stale usage 不得立刻误触发（与 c1640 防抖共用）。
-- 可选：abort 进行中的 auto-compaction。
-- **本 change 不做**：自定义 instructions（c1670）、TUI %、extension 替换。
+### R1 — 识别 overflow（已决精神）
+
+- MUST 经稳定错误 kind / 桥接映射识别 context overflow（禁止仅靠不稳定英文子串散落匹配作为唯一手段；可有测试夹具注入）。
+- MUST 校验 assistant 与 **当前模型** 同 provider+model（对齐 pi `sameModel`）：换模后旧 overflow MUST NOT 触发对新窗的 recovery。
+
+### R2 — 一次 compact-and-retry（已决）
+
+- 默认 **仅一次** overflow recovery（对齐 pi `_overflowRecoveryAttempted`）；二次仍 overflow → MUST 失败并说明，MUST NOT 无限循环。
+- `willRetry`：仅当该 assistant 并非已成功 `stop` 完成答案时（对齐 pi：成功超窗可 compact **但不** `continue` 重试）。
+
+### R3 — 生命周期
+
+- MUST `CompactionStart` / `End`，`reason` 可区分 **overflow**（与 c1640 的 threshold / manual 分开）。
+- 重试前：错误 assistant MUST NOT 留在将送入重试的上下文（可保留在 session 历史；对齐 pi 从 agent state 摘掉最后错误 assistant）。
+
+### R4 — 与 threshold 共用防抖
+
+- 复用 c1640 stale-after-compaction 规则。
+- MUST NOT 把非 overflow 错误吞进 compaction。
+
+### R5 — 非目标
+
+| 禁止 | 归属 |
+|---|---|
+| 自定义 instructions | c1670 |
+| TUI % | c1680 |
+| extension 替换 compaction | 不做 |
+| 动态阈值 / 热温冷 | roadmap |
+| 可配置 max overflow retries（本 change） | 先钉死 = 1；以后另案 |
+
+## 验收锚点
+
+| id | Then |
+|---|---|
+| overflow-retry-ok | 注入 overflow → compact → 重试成功（Fake） |
+| overflow-once | 第二次 overflow → 失败文案，不再循环 |
+| wrong-model | 旧模型 overflow 在换模后不触发 |
+| reason-overflow | 事件 reason 可区分 overflow |
 
 ## Capabilities
 
-| Capability | 变更 |
-|---|---|
-| `domain-compaction` | overflow 恢复 MUST |
-| `agent-runtime` | overflow 与 retry/compaction 编排顺序 |
-| `package-ai-bridge`（若需） | overflow 错误可识别映射 |
-
-## Impact
-
-- **破坏性**：原先 overflow 直接失败的路径变为「先压再试」；调用方需能处理中间 Compaction 事件。
-- **默认体验**：接近窗顶时更不易裸崩。
-- **非目标**：无限重试；把所有 4xx 当 overflow。
-
-## Depends / 后续
-
-```text
-c1640 + c1650 ──► c1660 (本)
-```
+`domain-compaction` · `agent-runtime` · 必要时 `package-ai-bridge`（overflow kind）
 
 ## Open Questions
 
-- 重试次数：对齐 pi「一次 compact-and-retry」还是可配置？（倾向：先一次，与 pi 文档一致。）
-- Fake provider 如何注入 overflow 以测恢复。
+- （已决）重试次数 = **1**。
+- Fake 注入方式：promote 时定（错误 kind vs 专用测试钩）。
 
 ## Ethics
 
 - risk_level: medium
-- prohibited_actions: 把非 overflow 错误吞进 compaction；无限 compact 循环
-- required_evidence: 集成/BDD：模拟 overflow → compact → 成功重试；二次 overflow 失败路径
-- refusal_contract: 不在本 change 做动态阈值/热温冷策略
-- escalation_policy: 若各 provider 错误字符串不一致，先统一 bridge 错误 kind 再挂恢复
+- prohibited_actions: 无限 compact；误分类 4xx；提前改 live specs
+- required_evidence: 上表集成/BDD
+- refusal_contract: 不做动态压缩策略
+- escalation_policy: provider 错误不齐时先统一 bridge kind

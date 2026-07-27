@@ -10,48 +10,87 @@ author: agent
 
 # c1650-update-compaction-cut-split-turn
 
+> **流程**：仅 `purpose-draft`；禁止提前改 live specs。可与 c1640 **并行** promote（共依赖 c1630）。
+> **对照**：`../pi/.../compaction/compaction.ts` — `findCutPoint` / `prepareCompaction` / `compact` split-turn 双摘要；`TURN_PREFIX_SUMMARIZATION_PROMPT`。
+
 ## Why
 
-pi 允许在 user **或** assistant（及 bash/custom 等）处切断；超长单轮会 `isSplitTurn`，并对 history + turn prefix **各生成摘要再合并**。xylitol 刻意只认 user 为切点，导致 `is_split_turn` 字段半死、超长单轮易丢前缀上下文。要「完全跟进」实现，必须把切点规则与双摘要路径对齐。
+xylitol 切点几乎只认 user → `is_split_turn` 半死；超长单轮会丢 turn 前缀。pi：assistant 等可切 + history/turn-prefix **双摘要合并**。
 
-## What Changes
+## 需求锁定
 
-- `is_valid_cut_point`：对齐 pi——user / assistant / bashExecution / custom / branchSummary 等合法；**永不**在 tool result 切断。
-- `find_cut_point`：mid-turn 时正确填 `turn_start_index` / `is_split_turn`。
-- `prepare`/`compact`：split-turn 时收集 `turn_prefix_messages`，生成 turn-prefix 摘要并与 history 摘要合并（prompt 对齐 pi `TURN_PREFIX_SUMMARIZATION_PROMPT`）。
-- `tokens_before`：尽量按重建会话上下文估计（对齐 pi `estimateContextTokens(buildSessionContext(...))`），而非仅 boundary 内 entry heuristic 求和（可与现有 provenance 入口共存）。
-- 单测对齐 pi 关键用例：split-turn 指示、keep 预算、先前 compaction 边界再摘要。
-- **本 change 不做**：overflow retry、auto 接线（可依赖已归档的 c1640，但不阻塞本算法落地）、instructions、A01 分支 LLM。
+### R1 — 合法切点（已决，对齐 pi）
+
+合法（context-visible）：**user、assistant、bashExecution、custom、branchSummary**（及产品已有等价 entry）。
+**永不**在 tool result / tool 结果条目切断。
+assistant 带 tool_calls 时：切在 assistant，其后 tool results 留在 kept 侧（pi 语义）。
+
+### R2 — `find_cut_point`（已决）
+
+- 自新向旧累加至 `keep_recent_tokens`，落到最近合法切点。
+- mid-turn 切在非 turn-start 时：MUST 填 `turn_start_index` 且 `is_split_turn=true`。
+- 切在 turn-start 时：`is_split_turn=false`，`turn_start_index` 无效哨兵（现有 `-1` 可保留）。
+
+### R3 — Split-turn 双摘要（已决）
+
+当 `is_split_turn`：
+
+1. `messagesToSummarize` = `[boundary_start, turn_start)`
+2. `turnPrefixMessages` = `[turn_start, first_kept)`
+3. 若两者皆空 → 不 compact（prepare 失败）
+4. 否则：history 摘要（可带 previousSummary）+ turn-prefix 摘要（专用 prompt，对齐 pi `TURN_PREFIX_SUMMARIZATION_PROMPT`）
+5. 合并格式（锁定，防漂）：
+
+```text
+{historyText}\n\n---\n\n**Turn Context (split turn):**\n\n{turnPrefixText}
+```
+
+history 为空时 historyText 用 `"No prior history."`（对齐 pi）。
+
+**禁止**：只放开 assistant 切点却不写 turn-prefix 摘要。
+
+### R4 — `tokens_before`（已决倾向）
+
+MUST 按 **重建后将送入模型的上下文** 估计（对齐 pi `estimateContextTokens(buildSessionContext(...).messages)`），优先走既有同源估计入口；MUST NOT 仅用 boundary 内 entry `len/4` 总和作为唯一权威（可作降级但须可测）。
+
+### R5 — 迭代边界
+
+存在先前 CompactionEntry 时：摘要 span 自上一 `firstKeptEntryId`（找不到则 compaction 后一条）起——与现有/pi 一致；本 change 不改该边界语义，只修切点与 split 摘要。
+
+### R6 — 非目标
+
+| 禁止 | 归属 |
+|---|---|
+| turn 后 auto / force 接线 | c1640 |
+| overflow retry | c1660 |
+| compact instructions | c1670 |
+| travel 时 LLM 分支摘要 | **A01 保留** |
+| 百分比触发 | 禁止 |
+
+## 验收锚点
+
+| id | Then |
+|---|---|
+| cut-assistant | 超长单轮可切在 assistant；`is_split_turn=true` |
+| never-tool-result | 切点索引永不落在 tool result |
+| split-dual-summary | fake 模型可观察两次摘要或合并后含 `Turn Context (split turn)` |
+| keep-budget | `keep_recent_tokens` 下保留近期约量（与现有 find-cut 精神一致） |
+| tokens-before | `tokens_before` 与重建上下文估计一致（或单测钉入口） |
 
 ## Capabilities
 
-| Capability | 变更 |
-|---|---|
-| `domain-compaction` | c8 切点规则；新增/修订 split-turn 与双摘要 MUST |
-
-## Impact
-
-- **破坏性**：同会话在超长单轮下切点索引可能变化；依赖「只切 user」的测试需改。
-- **默认体验**：超长工具回合不再静默丢掉 turn 前缀。
-- **非目标**：branch travel LLM 摘要（A01 仍保留）。
-
-## Depends / 后续
-
-```text
-c1630 ──► c1650 (本) ──► c1660（overflow 依赖可靠切点）
-```
-
-可与 c1640 **并行**开发（共同依赖 c1630）。
+`domain-compaction`（修订 c8；新增 split-turn / 双摘要 MUST）
 
 ## Open Questions
 
-- （倾向）assistant 带 tool_calls 时切点语义跟 pi：tool results 跟在 kept 侧。
-- BashExecution entry 若产品面未全量使用，仍实现切点规则以免日后漂移。
+- （已决）assistant+tools 切点跟 pi。
+- （已决）BashExecution 等角色：代码路径有则规则覆盖，避免日后漂移。
+- AgentMessage 角色映射表：promote 时在 design 附一张 xylitol entry → 是否合法切点对照即可。
 
 ## Ethics
 
 - risk_level: medium
-- prohibited_actions: 只放开 assistant 切点却不实现 turn-prefix 摘要（会丢上下文）
-- required_evidence: 单测覆盖 split-turn 双摘要合并；tool result 不可切；BDD 或等价场景
-- refusal_contract: 不推翻 A01（travel 自动 LLM 分支摘要）
-- escalation_policy: 若消息模型与 pi AgentMessage 角色差导致切点映射歧义，先 design 对照表
+- prohibited_actions: 半套 split-turn；提前改 live specs；推翻 A01
+- required_evidence: 上表单测/BDD
+- refusal_contract: 不做 travel LLM 分支摘要
+- escalation_policy: 角色映射歧义先 design 对照表

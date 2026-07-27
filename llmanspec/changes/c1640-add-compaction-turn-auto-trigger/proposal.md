@@ -10,49 +10,83 @@ author: agent
 
 # c1640-add-compaction-turn-auto-trigger
 
+> **流程**：本 change 仅 `purpose-draft`。**禁止**在未 `change start` / apply 前改 live `spec.toon` / `.feature`。
+> **依赖**：须等 **c1630 归档**（reserve 公式 + 无 `compaction_threshold`）后再 promote/apply。
+> **对照**：`../pi/packages/coding-agent/src/core/agent-session.ts` — `compact()` / `_checkCompaction`（仅 threshold 支路；overflow 属 c1660）。
+
 ## Why
 
-公式对齐后仍不够：当前 `maybe_auto_compact` **只**经 `XyDriver::compact()`（slash / REST）调用，且该路径还要先过阈值闸。pi 在 agent 回合结算后 `_checkCompaction`；手动 `/compact` 是强制摘要。xylitol 文档已标「阈值自动压缩 ✅」，与代码事实漂移——本 change 补上触发器与 manual/force 分离。
+c1630 只换触发尺子。今日 `XyDriver::compact()` → `maybe_auto_compact`（先过闸），且 **turn 结束后无人调用**。pi：回合后 `_checkCompaction`；手动 `compact()` **强制**摘要。须补接线并拆开 auto / force。
 
-## What Changes
+## 需求锁定（日后写入 live specs；apply 不得偏移）
 
-- **Auto**：在 turn 结算后（对齐 pi：assistant 落定 / agent_end 前可判定处）调用 reserve 公式；超阈则跑 compaction，发 `CompactionStart(reason=threshold|…)` / `CompactionEnd`。
-- **Manual force**：`/session-compact` 与 REST compact 走 `CompactionOrchestrator::compact`（或等价 force API），**不过**阈值闸；无可摘要内容时明确错误（如 already compacted / session too small）。
-- `XyDriver::compact` 语义改为 force（或拆 `compact` / `maybe_auto_compact` 两 API，面只调 force）；禁止再把 manual 接到 `maybe_*`。
-- 防抖：紧接 compact 后勿用压缩前 stale usage 立刻再触发（对齐 pi 对 compaction 边界后 usage 的处理）。
-- **本 change 不做**：overflow compact-and-retry（c1660）、split-turn（c1650）、optional instructions（c1670）、abort 细控可最小可用。
+### R1 — Auto 挂点（已决）
 
-## Capabilities
+- System MUST 在 **agent/session 层**、assistant 回合落定后（对齐 pi：settled / 可 `_checkCompaction` 处）调用 reserve 判定（c1630 公式）。
+- MUST NOT 仅靠 TUI host 轮询触发。
+- `CompactionSettings.enabled == false` 时 MUST NOT auto-compact。
+- 用户 abort 的 assistant（若可区分）MUST NOT 触发 threshold auto（对齐 pi `skipAbortedCheck` 默认）。
 
-| Capability | 变更 |
+### R2 — Auto 生命周期
+
+- 触发时 MUST 发 `CompactionStart`，`reason` 含可区分的 threshold 语义（建议字面或结构化：`threshold`；展示文案可含占用说明）。
+- 结束后 MUST 发 `CompactionEnd`（成功 / 失败 / 无可压 均诚实；本 change 不要求 overflow `willRetry`）。
+
+### R3 — Manual force（已决）
+
+- `/session-compact`（无参）与 REST compact MUST 走 **force** 路径（`CompactionOrchestrator::compact` 或等价），**MUST NOT** 再调用 `maybe_auto_compact`。
+- Force MUST **不过** reserve 闸。
+- `prepare` 无内容时 MUST 返回明确错误：
+  - 末条已是 compaction → 等价 pi `"Already compacted"`；
+  - 会话过小无可摘要 → 等价 `"Nothing to compact (session too small)"`。
+- `XyDriver::compact`（或后继 API）语义 = force；若保留 `maybe_auto_compact`，仅供内部 auto。
+
+### R4 — 防抖 / stale usage（已决）
+
+- 紧接一次 compaction 之后，threshold 检查 MUST NOT 使用 **compaction 边界之前** 的 assistant usage/估计再触发（对齐 pi：assistant / usage 时间戳 ≤ 最新 CompactionEntry）。
+- 无任何可信 usage/估计时，threshold 支路 MUST NOT 盲目 compact（可 skip）。
+
+### R5 — 非目标（防漂）
+
+| 禁止在本 change | 归属 |
 |---|---|
-| `domain-compaction` | agent 集成：auto 触发 + force 手动 |
-| `agent-runtime` | turn 结算与 compaction 钩子顺序 |
-| `app-tui-commands` / driver | slash / Driver compact = force |
-| `cli-entry` / server | REST compact 与 TUI 同语义 |
+| overflow compact-and-retry / `reason=overflow` | c1660 |
+| split-turn 双摘要 / 放开 assistant 切点 | c1650 |
+| `/session-compact <instructions>` | c1670 |
+| extension 替换整段 compaction | 不做 |
+| 恢复 `compaction_threshold` | 禁止 |
+| travel LLM 分支摘要 | A01 保留 |
+
+## 验收锚点（promote 时落 `.feature` / 单测）
+
+| id | Given | When | Then |
+|---|---|---|---|
+| auto-over | enabled、同源估计超 `window-reserve`、turn 刚落定 | 回合结算 | 发生 compact + Start/End（threshold） |
+| auto-under | 估计未超闸 | 回合结算 | 不 compact |
+| auto-disabled | enabled=false 且用量很高 | 回合结算 | 不 compact |
+| manual-force | 用量未超闸但有可摘要历史 | `/session-compact` 或 Driver force | 仍 compact（或明确已无可压错误） |
+| manual-wired | — | Driver/slash compact | MUST NOT 走 maybe 闸 |
+| stale-guard | 刚写入 CompactionEntry | 立即再 check threshold | MUST NOT 用压缩前 usage 再触发 |
+
+## Capabilities（预期）
+
+`domain-compaction` · `agent-runtime` · `app-tui-commands` / driver · server REST（与 TUI 同 force 语义）
 
 ## Impact
 
-- **破坏性**：手动 compact 在未超阈时也会尝试压缩（与今日 maybe 行为不同）。
-- **默认体验**：长会话可在无需 slash 时自动压；生命周期事件可感知。
-- **非目标**：overflow 重试、自定义 instructions、extension 替换摘要。
-
-## Depends / 后续
-
-```text
-c1630 ──► c1640 (本) ──┬──► c1660 overflow retry
-                       └──► c1670 optional instructions
-```
+- 破坏性：未超闸时手动也会尝试压。
+- 文档：architecture「理想 vs 现状」中 turn 后 auto 可标落地（本 change 归档后）。
 
 ## Open Questions
 
-- （倾向）挂点优先对齐 pi：session/agent 层在 turn 结束后检查，而非 TUI host 轮询。
-- abort：本批可只保证 lifecycle `aborted` 字段诚实；完整 AbortController 可随 c1660。
+- （已决）挂点 = agent/session，非 TUI 轮询。
+- （已决）abort 细控：本 change 最小可用（事件诚实）；完整 AbortController 可随 c1660。
+- （可延后）`reason` 字符串 vs 枚举上线协议——promote 时与现有 `XyEvent::CompactionStart { reason: String }` 对齐即可。
 
 ## Ethics
 
 - risk_level: medium
-- prohibited_actions: 仅改文档标 ✅ 而不接线；manual 继续走 maybe 闸
-- required_evidence: BDD/单测覆盖「超阈 auto」「未超阈 manual 仍 force」「无可压时报错」；ReAct/Driver 集成测至少一处
-- refusal_contract: 不在本 change 实现 extension 可替换 compaction
-- escalation_policy: 若挂点与 steer/follow-up 队列竞态不清，先 design 钉顺序再 apply
+- prohibited_actions: 只改文档不接线；manual 继续 maybe；提前改 live specs
+- required_evidence: 上表锚点至少单测或 BDD 覆盖；Driver 集成一处
+- refusal_contract: 不实现 extension 自定义 compaction
+- escalation_policy: 与 steer/follow-up 队列顺序不清时先 design 再 apply
