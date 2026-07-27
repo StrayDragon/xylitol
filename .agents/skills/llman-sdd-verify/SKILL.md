@@ -2,7 +2,7 @@
 name: "llman-sdd-verify"
 description: "验证已实施的 llman SDD 变更是否与 specs/design/tasks 一致。产出分级报告（CRITICAL / WARNING / SUGGESTION），对比代码与工件。在 apply 完成后运行；全绿则可归档。"
 metadata:
-  version: "0.0.64"
+  version: "0.0.65"
   llman_sdd:
     bdd_mode: "on"
     skill_set: "default"
@@ -40,8 +40,8 @@ flowchart LR
    ```
    （若无 `jq`，可用任意工具从 JSON 中解析 `stage` 值。）
    - 若 `stage` 不为 `full`，变更尚未实现、无可验证内容 → 必须停止并给出守卫提示：
-     - `draft`："变更 <id> 是 draft 提案（仅 proposal.md），尚无可验证的实现。请先用 llman-sdd-propose 生成完整工件，再用 llman-sdd-apply <id> 实现。" BDD-on 下，已有 proposal+design+tasks 仍是 `draft` 意味着变更**未 attach** —— 修复方式是 `llman sdd change attach <id>`（而非新增 `changes/<id>/specs/`）。
-     - 其他非 full 阶段（`specified`/`designed`）："变更 <id> 处于 <stage> 阶段，尚未准备好被验证。请先用 llman-sdd-apply 实现。"
+     - `draft`："变更 <id> 是 draft 提案（仅 proposal.md），尚无可验证的实现。请先用 llman-sdd-propose 生成完整工件，再 `llman sdd change start <id>`，然后用 llman-sdd-apply 实现。" 若已有 proposal+design+tasks 仍是 `draft`，意味着变更**未 start/attach** —— 修复方式是 `llman sdd change start <id>` 或 `change attach <id>`（而非新增 `changes/<id>/specs/`）。
+     - `designed`："变更 <id> 处于 designed 阶段，尚未进入 Full。请运行 `llman sdd change start <id>` 后再 apply/verify。"
 3. 先跑一个快速校验门禁：
    - `llman sdd validate <id> --strict --no-interactive`
    - **诊断结构问题（Gherkin 解析 / `@req` 链接 / 双写 / 全局 req_id 唯一性）时优先加 `--no-check`**（BDD-on 下跳过可能耗时的 `bdd.run_command`），结构门禁全绿后再跑完整 `--check`（full mode）。`FAIL <item_type>/<id>` 行会逐条列出失败项（在 Totals 行上方）。
@@ -90,14 +90,12 @@ flowchart LR
 - `llman sdd index rebuild`（重建 pageindex 树索引——不需要模型）
 - `llman sdd index check`（检查索引新鲜度）
 - `llman sdd change new <id>`（创建草稿 `changes/<id>/proposal.md`）
-
-- `llman sdd change attach <id> [--force]`（BDD-on：绑定 feature 分支 + base SHA）
-- `llman sdd change finalize <id> [--no-check]`（BDD-on：**推荐单 commit 路径**——不要求干净树；同进程 checkpoint + docs-only archive；写 `checkpoint_sha = base_sha`）
-- `llman sdd change checkpoint <id> [--no-check]`（BDD-on：干净工作区 + 归档前门禁；严格 sha = HEAD）
-- `llman sdd change diff <id> [--export-patch <path>]`（BDD-on：只读 `base...HEAD` 审查/导出）
-
-
-- `llman sdd change archive <id>`（封存变更；BDD-on：checkpoint 后仅文档 / 或作 finalize fallback；BDD-off：合并 TOON delta）
+- `llman sdd change start <id> [--worktree]`（Designed→Full：干净树 → 创建 `sdd/<id>` 分支 + attach 绑定）
+- `llman sdd change attach <id> [--force]`（绑定已有 feature 分支 + base SHA）
+- `llman sdd change finalize <id> [--no-check]`（**推荐单 commit 路径**——不要求干净树；门禁 + 自动 ff-merge + 文档改名）
+- `llman sdd change checkpoint <id> [--no-check]`（干净工作区 + 归档前门禁；严格 sha = HEAD）
+- `llman sdd change diff <id> [--export-patch <path>]`（只读 `base...HEAD` 审查/导出）
+- `llman sdd change archive <id>`（封存变更：自动 ff-merge 到默认分支，再将文档改名到 `changes/archive/`；单 commit 收尾优先用 `finalize`）
 - `llman sdd archive freeze [--before YYYY-MM-DD] [--keep-recent N] [--dry-run]`（冻结已归档目录）
 - `llman sdd archive thaw [--change <id> ...] [--dest <path>]`（从冷备份恢复）
 - `llman sdd graph [CHANGE] [--format mermaid] [--scope active|archived|all] [--depth N]`（生成变更依赖图）
