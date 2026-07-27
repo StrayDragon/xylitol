@@ -22,4 +22,7 @@ requirements[19]{req_id,title,statement}:
   r75,信任状态接线,agent 启动时，项目 CWD 的已解析 trust 决策 MUST 应用于门控项目范围 settings 与资源。项目未 trusted 时 SettingsManager MUST 拒绝加载项目范围 settings。SettingsManager 上独立 project_trusted bool 切换 MUST 由已解析 trust 决策替换（per t1 单一真源）。
   r76,信任命令接线,"信任相关产品命令（如 /trust）MUST 经 Driver/composition（或等价应用缝）调用 TrustManager/端口持久化决策；MUST NOT 从应用面 reach-in infra::trust 具体类型。会话中运行信任命令 MUST 为当前项目 CWD 持久化决策；写盘成功后本会话 MUST NOT 自动重载项目 skills/MCP/context（用户显式 /reload 或重启除外）。"
   s15,Permission 非安全边界,文档与命名 MUST 明示 XyPermission 为建议性：礼貌阻止循环调用被拒绝工具，但不阻止主机级访问，因 bash 仍可删文件且恶意 prompt 不受 containment。真实隔离 MUST 来自 OS、容器或 VM 边界（如未来将工具执行委托到沙箱的工具路由模式）；扩展 XyPermission MUST NOT 被视为增加安全控制。这与 pi 无内置沙箱立场一致。
-scenarios[0]:
+scenarios[3]{req_id,id,given,when,then,feature}:
+  r66,"network-permission-stays",网络权限检查,检查实现引用,引用 XyPermission 而非 SandboxEngine,false
+  r71,"trust-single-source-unit",trust 真源,检查 src/agent/trust/,目录不存在（信任单测在 infra）,false
+  s15,"permission-advisory-documented",XyPermission 模块文档,检查门控声明,为建议性非安全边界,false

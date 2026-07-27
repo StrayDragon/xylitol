@@ -1,5 +1,8 @@
 # language: zh-CN
 # migrated from tests/features/agent.feature
+# BDD 接线（tests/bdd.rs）：text-response / tool-call / turn-order / thinking-* /
+# context-usage / auto-persist
+# session 创建/切换：create-load 等在 agent-session-store.feature；无 session-switch id
 功能: agent-session
   背景:
     假定 有一个临时工作目录
@@ -103,12 +106,6 @@
     当 agent 开始回合
     那么 messages 数组为 system prompt、history、user message
 
-  @req:a10
-  场景: bdd-pass
-    假如 调用 BDD runner
-    当 cargo test --test bdd
-    那么 全部 agent 场景通过
-
   @req:a21
   场景: template-expand
     假如 模板含第一参数占位符
@@ -151,12 +148,6 @@
     当 调用 load_context_files
     那么 以 AGENTS.md 内容为首项返回
 
-  @req:a26
-  场景: bdd-pass
-    假如 调用 BDD runner
-    当 运行 cargo test
-    那么 全部 agent-v3 场景通过
-
   @req:as27
   场景: auto-persist-on-message-end
     假如 已启用 session 的 Agent
@@ -169,77 +160,23 @@
     当 调用 resume_session
     那么 会话加载成功
 
-  @req:as29
-  场景: bdd-pass
-    假如 调用 BDD runner
-    当 cargo test --test bdd
-    那么 全部 agent-v4 场景通过
-
   @req:as30
   场景: responsibilities-separated
-    假如 枚举 session 模块职责
-    当 划定组件边界
-    那么 各组件拥有单一职责类
-
-  @req:as31
-  场景: capabilities-named
-    假如 源码树在本变更后
-    当 rg '\bstruct Agent\b' agent/session
-    那么 能力聚合体类型名为 AgentCapabilities
-
-  @req:as32
-  场景: retry-extracted
-    假如 AgentSession 持有 retry_state 与超 100 行内联 auto-retry 逻辑
-    当 应用变更后
-    那么 存在 AutoRetryEngine 协作者，AgentSession 组合它，公共 retry 行为不变
-
-  @req:as32
-  场景: bash-extracted
-    假如 AgentSession 持有 bash_cancel 与内联 !cmd/!!cmd 处理
-    当 应用变更后
-    那么 存在 BashExecHandler 协作者，AgentSession 组合它，infra-bash slash 命令行为一致
-
-  @req:as32
-  场景: export-extracted
-    假如 AgentSession 有内联导出/导入方法
-    当 应用变更后
-    那么 存在 SessionExporter 协作者，AgentSession 组合它，导出输出字节一致
+    假如 session 模块源码存在
+    当 逐文件统计 pub 方法
+    那么 各子模块职责不重叠且无混杂编译/运行/持久化到同一 struct
 
   @req:as32
   场景: api-retained
-    假如 AgentSession 公共 API（per as31）
-    当 session 模块重组为含子模块的目录
-    那么 全部既有公共方法签名与发出事件不变
-
-  @req:as33
-  场景: no-orphan-managers
-    假如 检查 src/agent/
-    当 列出顶层文件
-    那么 model_manager.rs、compaction_orchestrator.rs、skill_manager.rs 不存在（分别位于 model/、compaction/、prompt/）
-
-  @req:as34
-  场景: store-is-trait
-    假如 agent 持有 session backend
-    当 检查字段类型
-    那么 为 Arc<dyn SessionStore> 而非 Arc<SessionManager>
+    假如 Agent 公共 API 快照已存
+    当 编译本模块
+    那么 快照重构后通过且 XyEvent 流不变
 
   @req:as35
   场景: export-io-injected
-    假如 为导出构造 AgentSession
-    当 执行写入
-    那么 写入经注入 ExportIo 实现，agent/ 内无直接 fs 调用
-
-  @req:as36
-  场景: bang-in-agent
-    假如 定位 bang 解析器
-    当 检查模块
-    那么 定义于 src/agent/session/bang.rs
-
-  @req:as37
-  场景: exporter-in-agent
-    假如 定位导出渲染辅助
-    当 检查模块
-    那么 定义于 src/agent/session/export.rs
+    假如 构造含 MockExportIo 的 Agent
+    当 调用 export_to_html
+    那么 MockExportIo.write 被调用且 agent/ 源码无 std::fs 引用
 
   @req:as38
   场景: no-bash-configured
@@ -247,47 +184,11 @@
     当 调用 execute_bash
     那么 返回提及 bash executor 未配置的错误且不 panic
 
-  @req:as39
-  场景: loop-no-dup-state
-    假如 检查 AgentLoop 字段
-    当 应用变更后
-    那么 hooks 与 tool_mode 仅在 AgentSession，AgentLoop 仅持 session 与 cancel
-
-  @req:as40
-  场景: agent-session-renamed
-    假如 重命名后源码树
-    当 rg '\bAgentSession\b' src/ tests/ 运行
-    那么 零匹配且 Agent 为能力聚合体
-
   @req:as40
   场景: snapshot-regenerated
-    假如 公共 API 快照曾针对 AgentSession
-    当 快照测试运行
-    那么 重生成后针对 Agent 类型通过
-
-  @req:as41
-  场景: permission-gate-exists
-    假如 permission 端口曾是 Agent 裸字段
-    当 应用变更后
-    那么 PermissionGate 结构持有它且 get_permission 仍返回 Arc 供 react 路由
-
-  @req:as42
-  场景: stats-delegate
-    假如 get_session_stats 曾含内联聚合
-    当 检查 Agent 方法
-    那么 主体为一行委托至 stats::compute
-
-  @req:as43
-  场景: trust-free-fn
-    假如 save_trust_decision 曾在 Agent 上
-    当 应用变更后
-    那么 为 agent/session/trust.rs 自由函数且 Agent 不再携带
-
-  @req:as44
-  场景: dead-methods-gone
-    假如 steering 域与其它死方法曾存在
-    当 在 src/agent/ rg 那些方法名
-    那么 无生产死方法残留（仅合法使用方法保留）
+    假如 公共 API 快照期针对 Agent 类型
+    当 运行快照测试
+    那么 快照重生成后通过
 
   @req:as45
   场景: second-turn-sees-first

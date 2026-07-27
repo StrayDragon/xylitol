@@ -8,4 +8,9 @@ requirements[5]{req_id,title,statement}:
   peo3,"streaming-stick-tail",流式追加文本时 collapsed Tail 视口 MUST 继续显示最新视觉行；expanded MUST 显示全文且无 earlier 提示。
   peo4,"head-more-hint","当 TruncateFrom::Head 且 collapsed 并跳过行数大于 0 时，MUST 在可见首部之下渲染 dim 的 more lines 提示（含 expand_hint）；MUST NOT 把该提示放在首部之上冒充 Tail。"
   peo5,"zero-width-safe",ExpandableOutput 在 width 为 0 或 1、或文本为空时 MUST 安全返回（空或有界行）；MUST NOT panic。
-scenarios[0]:
+scenarios[5]{req_id,id,given,when,then,feature}:
+  peo1,peo1-unit,"expandable-api 约束由包级单测覆盖（非 BDD harness）",审查实现与对应测试,"行为符合本 requirement 陈述",false
+  peo2,peo2-unit,"collapsed-tail-hint 约束由包级单测覆盖（非 BDD harness）",审查实现与对应测试,"行为符合本 requirement 陈述",false
+  peo3,peo3-unit,"streaming-stick-tail 约束由包级单测覆盖（非 BDD harness）",审查实现与对应测试,"行为符合本 requirement 陈述",false
+  peo4,peo4-unit,"head-more-hint 约束由包级单测覆盖（非 BDD harness）",审查实现与对应测试,"行为符合本 requirement 陈述",false
+  peo5,peo5-unit,"zero-width-safe 约束由包级单测覆盖（非 BDD harness）",审查实现与对应测试,"行为符合本 requirement 陈述",false

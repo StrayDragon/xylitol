@@ -11,4 +11,12 @@ requirements[8]{req_id,title,statement}:
   ptm6,"table-space-align",Markdown 表格 MUST 以空格对齐列宽显示；表头 MAY bold 与 underline；MUST NOT 使用盒线表字符；MUST NOT 为装饰输出管道符。
   ptm7,"list-and-hr","Markdown 列表 MUST 使用 - 或数字点号标记且嵌套用空格缩进；MUST NOT 使用树线装饰。分隔线 MUST 为短线或空行；MUST NOT 拉满近全宽装饰线墙。任务列表 MUST 保持 - [ ] / - [x] 与正文同一行。"
   ptm8,"highlight-callback-only","语法高亮 MUST 仅经 MarkdownTheme.highlight_code 可选回调注入；xylitol-tui 默认依赖 MUST NOT 捆绑 syntect。fg 着色在内联阶段完成；若设置 bg_color 则 MUST 在行宽 padding 后经 apply_background_to_line 铺满。"
-scenarios[0]:
+scenarios[8]{req_id,id,given,when,then,feature}:
+  ptm1,ptm1-unit,"heading-sgr-no-hash 约束由包级单测覆盖（非 BDD harness）",审查实现与对应测试,"行为符合本 requirement 陈述",false
+  ptm2,ptm2-unit,"link-text-url 约束由包级单测覆盖（非 BDD harness）",审查实现与对应测试,"行为符合本 requirement 陈述",false
+  ptm3,ptm3-unit,"code-block-no-fence 约束由包级单测覆盖（非 BDD harness）",审查实现与对应测试,"行为符合本 requirement 陈述",false
+  ptm4,ptm4-unit,"inline-emphasis-display 约束由包级单测覆盖（非 BDD harness）",审查实现与对应测试,"行为符合本 requirement 陈述",false
+  ptm5,ptm5-unit,"quote-no-box 约束由包级单测覆盖（非 BDD harness）",审查实现与对应测试,"行为符合本 requirement 陈述",false
+  ptm6,ptm6-unit,"table-space-align 约束由包级单测覆盖（非 BDD harness）",审查实现与对应测试,"行为符合本 requirement 陈述",false
+  ptm7,ptm7-unit,"list-and-hr 约束由包级单测覆盖（非 BDD harness）",审查实现与对应测试,"行为符合本 requirement 陈述",false
+  ptm8,ptm8-unit,"highlight-callback-only 约束由包级单测覆盖（非 BDD harness）",审查实现与对应测试,"行为符合本 requirement 陈述",false

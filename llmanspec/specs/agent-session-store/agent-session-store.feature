@@ -101,12 +101,6 @@
     当 两次写入完成
     那么 文件含全部条目且无损坏
 
-  @req:s8
-  场景: bdd-pass
-    假如 调用 BDD runner
-    当 cargo test --test bdd
-    那么 全部 session 场景通过
-
   @req:s9
   场景: basic-fork
     假如 会话 A 有 e0 至 e9 共 10 条
@@ -154,12 +148,6 @@
     假如 会话文件 cwd 为 /nonexistent
     当 调用 load
     那么 错误引用缺失目录 /nonexistent
-
-  @req:s17
-  场景: bdd-pass
-    假如 调用 BDD runner
-    当 cargo test --test bdd
-    那么 全部 session-v3 场景通过
 
   @req:ex1
   场景: html

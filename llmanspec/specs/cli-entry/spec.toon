@@ -25,4 +25,26 @@ requirements[22]{req_id,title,statement}:
   ce18,"unset-model-display","当前未选中模型时，产品面展示的模型名 MUST 为 NOT-SET（或文档化的等价明确占位）；MUST NOT 将未显式配置/未传 --model 的状态显示为 gpt-4o 等厂商默认模型名。"
   ce19,"surface-owned-flags","CLI MUST 将表面旗标挂在表面动词下：`xylitol tui`（含可选 `run`）MUST 接受 --session/--model/--list-models/--trust/--no-trust/--config/--no-color；`xylitol print` MUST 接受 --session/--model/--config/--no-color 且 MUST NOT 接受 --list-models/--trust/--no-trust；顶层 MUST NOT 再提供上述旗标（解析 MUST 失败）。`tui --session` 与 `tui run --session` MUST 等价生效。"
   ce20,"resume-hint-on-exit","TUI 与 print 正常退出后，若当前 session_id 出现在 Driver list_sessions（或等价已持久化判定）中，CLI MUST 向 stderr 打印恰好一行 `Resume by $ xylitol tui --session <uuid>`；未持久化或无 session_id 时 MUST NOT 打印该行。"
-scenarios[0]:
+scenarios[22]{req_id,id,given,when,then,feature}:
+  r67,info-fields-unit,"SlashCommandInfo 类型",检查字段,"含 name/description/source/source_info",false
+  r68,source-enum-unit,SlashCommandSource,枚举成员,"恰为 prompt 或 skill",false
+  r69,builtin-table-unit,"GetCommands 与产品 slash SSOT",对照表,产品名同源且无废弃短名权威清单,false
+  r70,dispatch-path-unit,"产品 TUI idle slash",执行路径,"经 commands→effects→Driver/dispatch",false
+  ce1,cli-under-app-unit,源码布局,"定位 CLI 模块","位于 src/app/cli/；面不 reach agent 内部",false
+  ce2,no-silent-fallback-unit,配置存在但零可加载模型,"经 bootstrap 启动表面",硬失败并指向配置,false
+  ce6,driver-abstraction-unit,"InProcessDriver 与 RemoteDriver",切换构造,"同实现 Driver trait",false
+  ce7,composition-ports-unit,组合根装配,"注入 SessionStore/EventSink","从 infra 构造；无 agent::facade",false
+  ce8,server-subcommands-unit,"CLI server 子命令","解析 run/install/stop",子命令存在,false
+  ce9,assembly-via-bootstrap-unit,"cli 与 server 装配",跟踪调用,"经 app::core::bootstrap",false
+  ce10,dispatch-via-shared-unit,"产品 TUI 命令执行",跟踪调用,"委托 dispatch/Driver",false
+  ce11,rpc-removed-unit,"仓库与 feature","检查 rpc 路径","stdio RPC 保持移除",false
+  ce12,default-tui-entry-unit,"TTY 且无表面子命令","启动 xylitol","默认进入产品 TUI",false
+  ce13,print-requires-prompt-unit,"print 模式","缺 prompt 启动","失败且无 Hello! 占位",false
+  ce-st1,session-tree-kind-api-unit,"Driver session_tree API","调用 MessageHistory kind","区分 kind；未实现返回明确错误",false
+  ce14,stable-session-id-unit,"InProcessDriver::run","多轮 run","复用 bootstrap session_id",false
+  ce15,tokenizer-ops-bdd,"顶层 tokenizer 动词","跑 tests/features/cli-entry tokenizer 场景","status/download/clean 早退且委托 bridge",false
+  ce16,surface-vs-ops-bdd,"表面与 ops 动词","跑 tests/features/cli-entry surface 场景","tui/print 与 resources/server/tokenizer 分层",false
+  ce17,config-load-fail-closed-unit,"load_app_config 失败","经 bootstrap 装配",硬错误非零退出,false
+  ce18,unset-model-display-unit,未选中模型,读取产品面模型名展示,"为 NOT-SET 或文档化占位",false
+  ce19,surface-owned-flags-bdd,表面旗标归属,"跑 tests/features/cli-entry flags 场景",旗标挂表面动词；顶层拒绝,false
+  ce20,resume-hint-bdd,"正常退出且 session 已持久化","跑 tests/features/cli-entry resume-hint 场景","stderr 恰好一行 Resume by …",false

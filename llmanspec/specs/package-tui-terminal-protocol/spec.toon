@@ -9,4 +9,10 @@ requirements[6]{req_id,title,statement}:
   tp04,"osc-title-and-progress","Terminal trait MUST 暴露 set_title(title)，发出 OSC 0;title BEL（或等价 OSC 2），以及 set_progress(active)，active 时发出 OSC 9;4;3，清除时 OSC 9;4;0（pi 使用的 xterm/conpty progress 约定）。VirtualTerminal 测试替身 MUST 记录这些调用（或 no-op）而不发出真实转义。与 pi 不同，xy 不为 progress 运行 1 秒 keepalive 间隔（TUI 在 stop 时清除 progress）；每次状态变化单次发射即可。"
   tp05,"color-scheme-pure-helpers","packages/xylitol-tui 的 terminal_colors MUST 提供纯函数：从 OSC11 背景 RGB 经相对亮度判定 Dark/Light、解析 COLORFGBG（bg>=7 为 Light）、以及按优先级合成多源探测结果；MUST NOT 要求真实 TTY 或事件循环即可单测。"
   tp06,"color-scheme-priority",多源合成 MUST 按显式注入 > OSC11 亮度 > CSI 997 报告 > COLORFGBG > 默认 Dark 的优先级选择 TerminalColorScheme。
-scenarios[0]:
+scenarios[6]{req_id,id,given,when,then,feature}:
+  tp01,tp01-unit,"kitty-protocol-probe 约束由包级单测覆盖（非 BDD harness）",审查实现与对应测试,"行为符合本 requirement 陈述",false
+  tp02,tp02-unit,"kitty-flags-parser 约束由包级单测覆盖（非 BDD harness）",审查实现与对应测试,"行为符合本 requirement 陈述",false
+  tp03,tp03-unit,"modify-other-keys-fallback 约束由包级单测覆盖（非 BDD harness）",审查实现与对应测试,"行为符合本 requirement 陈述",false
+  tp04,tp04-unit,"osc-title-and-progress 约束由包级单测覆盖（非 BDD harness）",审查实现与对应测试,"行为符合本 requirement 陈述",false
+  tp05,tp05-unit,"color-scheme-pure-helpers 约束由包级单测覆盖（非 BDD harness）",审查实现与对应测试,"行为符合本 requirement 陈述",false
+  tp06,tp06-unit,"color-scheme-priority 约束由包级单测覆盖（非 BDD harness）",审查实现与对应测试,"行为符合本 requirement 陈述",false

@@ -2,7 +2,7 @@ kind: llman.sdd.spec
 name: "agent-session-store"
 purpose: 会话持久化 — 基于 JSONL 文件的会话存储，含树操作、compaction、fork 与 CWD 校验。
 valid_scope[1]: src/infra/session/
-requirements[29]{req_id,title,statement}:
+requirements[31]{req_id,title,statement}:
   r31,快照操作,System MUST 支持对不可变会话快照执行 snapshot、restore、spawn、list、prune、diff、merge 操作。
   r41,compaction,对话 token 数超过配置窗口阈值时，System MUST 自动 compact 上下文。
   s1,JSONL 存储,SessionManager MUST 将会话持久化为 JSONL 文件（每行一个带版本标签的 JSON 对象），位于 ~/.xylitol/sessions/。
@@ -18,6 +18,8 @@ requirements[29]{req_id,title,statement}:
   s11,agent fork,"AgentSession MUST 暴露 fork_session(at_entry_id)，经 SessionManager::fork() 创建新子会话并返回子 session id。"
   s16,会话 CWD 校验,从磁盘加载会话时 SessionManager MUST 校验存储 CWD 存在且可访问；不可用时返回可操作错误信息。
   s17,"BDD session-v3",CWD 校验的 BDD 测试 MUST 通过。
+  s18,"session-entry-camelcase-v5","Session JSONL 外壳 MUST 使用 camelCase 字段（含 parentId、parentSession）与 camelCase 的 SessionEntry type 判别（如 message、branchSummary、compaction）；新写入的 bang-bash MUST 使用 type=message 且 message.role=bashExecution，MUST NOT 再写出顶层 type=bashExecution。新写入的 header.version MUST 为 5。MUST NOT 再写出 parent_id 或 version≤4 作为新会话真源。读路径 MAY 识别旧顶层 bashExecution 并提升为等价 message+role。"
+  s19,"tool-result-tool-call-id",role=toolResult 的 AgentMessage MUST 以 toolCallId 键持久化工具调用关联 id（对齐 pi）；MUST NOT 写出 toolUseId。content 内 MUST NOT 再嵌入 type=toolResult 的 AgentPart（工具结果只走独立 message 行）。
   ex1,导出 HTML,AgentSession MUST 支持将会话导出为 HTML 文件。
   ex2,导出 JSONL,AgentSession MUST 支持将会话导出为 JSONL 文件。
   ex3,导入 JSONL,AgentSession MUST 支持从 JSONL 文件导入会话为新会话。
@@ -32,4 +34,8 @@ requirements[29]{req_id,title,statement}:
   sp6,日志访问,"会话 store MUST 暴露 read_recent(session_id, limit) -> Vec<Event> 供 server journal；journal 容量 MUST 可配置（默认 10000）。"
   sp3,ExportIo 实现,"infra/ MUST 提供 protocol::export::ExportIo 实现（StdExportIo），使用 tokio::fs 做 write_text 与 read_bytes；组合根 MUST 注入 AgentSession。"
   s12,延迟持久化至 assistant,Persisted SessionManager（非 in_memory backend）MUST 对齐 pi：首条 assistant 消息写入前，会话条目可仅保留在内存；首条 assistant append 时 MUST 创建磁盘 jsonl（若尚不存在）并刷出此前挂起条目（含 header 与先前 user 等）；其后每次 append MUST 落盘。InMemory backend MUST NOT 写文件。MUST NOT 在仅有 header、用户又放弃对话时强制留下无消息垃圾文件作为唯一策略（允许 create 仍写 header，但 deferred 刷出路径 MUST 存在并可测）。
-scenarios[0]:
+scenarios[4]{req_id,id,given,when,then,feature}:
+  s18,session-entry-camelcase-v5-unit,"写入新会话 JSONL","检查外壳字段与 header.version","camelCase（parentId/parentSession/type）且 version=5；bang-bash 为 message+role=bashExecution",false
+  s19,tool-result-tool-call-id-unit,"持久化 role=toolResult 消息","serde JSONL","含 toolCallId 且无 toolUseId；content 无嵌入 toolResult AgentPart",false
+  s8,"bdd-session-pass",session BDD 套件,执行,全通过（由 CI 保证）,false
+  s17,"bdd-session-v3-pass",session-v3 BDD 套件,执行,全通过（由 CI 保证）,false

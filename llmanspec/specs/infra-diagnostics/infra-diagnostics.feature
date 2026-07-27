@@ -2,11 +2,6 @@
 # managed by llman sdd partition-migrate
 功能: infra-diagnostics
 
-  @req:d0
-  场景: placeholder
-    假如 未启用诊断
-    当 无操作
-    那么 无变化
 
   @req:d1
   场景: enabled

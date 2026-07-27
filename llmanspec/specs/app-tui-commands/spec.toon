@@ -19,4 +19,20 @@ requirements[16]{req_id,title,statement}:
   atm14,"slash-history-copy-last","产品 TUI MUST 解析无参 /history-copy-last：将当前 transcript 最近一条已提交 assistant 正文经 Driver 缝复制到系统剪贴板，并以系统块提示成功或失败；idle 与 busy MUST 均可执行（只读）；无 assistant 时 MUST 提示且 MUST NOT 伪造成功；SlashCommandSource MUST 列出 history-copy-last；带参 MUST usage 错误。"
   atm15,"slash-theme","产品 TUI idle 时 MUST 解析 /theme：无参 MUST 打开替换 editor 槽的主题 SelectList（至少内建 dark/light）；有参 dark|light MUST 经 HostSession::reload_themes（或等价）应用；有参 toggle|cycle MUST 在 dark↔light 间切换；busy MUST 拒绝且 MUST NOT 改主题；未知参 MUST 提示且 MUST NOT 伪造成功；SlashCommandSource MUST 列出 theme；空格后参数补全 MUST 至少含 dark 与 light。"
   atm16,"busy-slash-policy","产品 TUI agent/bang 忙碌且无 overlay 时，Enter 提交经 parse_slash_command 命中的 PendingSlash MUST 经单一穷尽 BusySlashPolicy::{Allow,Reject} 分流且 MUST NOT 落入 steer/follow-up：Allow 至少含 SessionName、SetModel、HistoryCopyLast、SessionDump、Export、Exit、Compact；Reject 至少含 Reload、Trust、Theme、OpenModels、OpenTree、ForkAtLeaf、OpenSessionResume、SessionNew、SessionClone、Import、DebugScene、Usage。未识别且 looks_like_unknown_slash 的 `/…` MUST 短提示拒绝且 MUST NOT 入 steer（严于 pi）。try_busy_input MUST NOT 再对个别命令散落特判。"
-scenarios[0]:
+scenarios[16]{req_id,id,given,when,then,feature}:
+  atm1,atm1-unit,"slash-exit-model 约束由产品单测/harness覆盖（非 BDD harness）",审查实现与对应测试,"行为符合本 requirement 陈述",false
+  atm2,atm2-unit,"dispatch-shared 约束由产品单测/harness覆盖（非 BDD harness）",审查实现与对应测试,"行为符合本 requirement 陈述",false
+  atm3,atm3-unit,"extensible-commands 约束由产品单测/harness覆盖（非 BDD harness）",审查实现与对应测试,"行为符合本 requirement 陈述",false
+  atm4,atm4-unit,"idle-slash-submit 约束由产品单测/harness覆盖（非 BDD harness）",审查实现与对应测试,"行为符合本 requirement 陈述",false
+  atm5,atm5-unit,"debug-scene-slash 约束由产品单测/harness覆盖（非 BDD harness）",审查实现与对应测试,"行为符合本 requirement 陈述",false
+  atm6,atm6-unit,"slash-session-tree-fork 约束由产品单测/harness覆盖（非 BDD harness）",审查实现与对应测试,"行为符合本 requirement 陈述",false
+  atm7,atm7-unit,"commands-module-growth 约束由产品单测/harness覆盖（非 BDD harness）",审查实现与对应测试,"行为符合本 requirement 陈述",false
+  atm8,atm8-unit,"slash-session-io 约束由产品单测/harness覆盖（非 BDD harness）",审查实现与对应测试,"行为符合本 requirement 陈述",false
+  atm9,atm9-unit,"slash-session-info 约束由产品单测/harness覆盖（非 BDD harness）",审查实现与对应测试,"行为符合本 requirement 陈述",false
+  atm10,atm10-unit,"slash-session-resume 约束由产品单测/harness覆盖（非 BDD harness）",审查实现与对应测试,"行为符合本 requirement 陈述",false
+  atm11,atm11-unit,"slash-session-lifecycle 约束由产品单测/harness覆盖（非 BDD harness）",审查实现与对应测试,"行为符合本 requirement 陈述",false
+  atm12,atm12-unit,"slash-reload 约束由产品单测/harness覆盖（非 BDD harness）",审查实现与对应测试,"行为符合本 requirement 陈述",false
+  atm13,atm13-unit,"slash-trust 约束由产品单测/harness覆盖（非 BDD harness）",审查实现与对应测试,"行为符合本 requirement 陈述",false
+  atm14,atm14-unit,"slash-history-copy-last 约束由产品单测/harness覆盖（非 BDD harness）",审查实现与对应测试,"行为符合本 requirement 陈述",false
+  atm15,atm15-unit,"slash-theme 约束由产品单测/harness覆盖（非 BDD harness）",审查实现与对应测试,"行为符合本 requirement 陈述",false
+  atm16,atm16-unit,"busy-slash-policy 约束由产品单测/harness覆盖（非 BDD harness）",审查实现与对应测试,"行为符合本 requirement 陈述",false
