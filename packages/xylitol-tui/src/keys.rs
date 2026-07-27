@@ -1,14 +1,40 @@
 use std::collections::HashMap;
-use std::sync::Mutex;
+use std::panic::{AssertUnwindSafe, catch_unwind, resume_unwind};
+use std::sync::{Mutex, MutexGuard};
 
 static KITTY_PROTOCOL_ACTIVE: Mutex<bool> = Mutex::new(false);
+/// Serializes tests (and callers) that mutate the process-global Kitty flag.
+static KITTY_PROTOCOL_SERIAL: Mutex<()> = Mutex::new(());
+
+fn kitty_lock() -> MutexGuard<'static, bool> {
+    KITTY_PROTOCOL_ACTIVE
+        .lock()
+        .unwrap_or_else(|e| e.into_inner())
+}
 
 pub fn set_kitty_protocol_active(active: bool) {
-    *KITTY_PROTOCOL_ACTIVE.lock().unwrap() = active;
+    *kitty_lock() = active;
 }
 
 pub fn is_kitty_protocol_active() -> bool {
-    *KITTY_PROTOCOL_ACTIVE.lock().unwrap()
+    *kitty_lock()
+}
+
+/// Run `f` with the Kitty keyboard-protocol flag set to `active`.
+///
+/// Holds a process-wide serial lock for the whole closure so concurrent tests
+/// cannot race the flag (unlike set-then-assert across unlocked windows).
+pub fn with_kitty_protocol_active<R>(active: bool, f: impl FnOnce() -> R) -> R {
+    let _serial = KITTY_PROTOCOL_SERIAL
+        .lock()
+        .unwrap_or_else(|e| e.into_inner());
+    set_kitty_protocol_active(active);
+    let result = catch_unwind(AssertUnwindSafe(f));
+    set_kitty_protocol_active(false);
+    match result {
+        Ok(v) => v,
+        Err(payload) => resume_unwind(payload),
+    }
 }
 
 pub type KeyId = &'static str;

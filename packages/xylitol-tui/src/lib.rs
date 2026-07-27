@@ -71,7 +71,7 @@ pub use keybindings::{
 };
 pub use keys::{
     KeyId, decode_printable_key, is_key_release, is_key_repeat, matches_key, matches_key_event,
-    parse_key, printable_from_key_event, set_kitty_protocol_active,
+    parse_key, printable_from_key_event, set_kitty_protocol_active, with_kitty_protocol_active,
 };
 pub use paste_burst::PasteBurst;
 pub use terminal::{CrosstermTerminal, Terminal, parse_kitty_flags};
