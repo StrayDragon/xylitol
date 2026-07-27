@@ -13,20 +13,20 @@
 
 ## 2. 核心 API 与装配去阈
 
-- [ ] 2.1 实现 `should_compact(tokens, window, &CompactionSettings)`（合并/删除百分比版与仅测试的 `should_compact_by_reserve`）；单测覆盖边界与 `enabled=false` / `window=0`
-- [ ] 2.2 `CompactionOrchestrator` 去掉 `threshold: f64`，`maybe_auto_compact` 走新公式；`get_context_usage` 改吃 `&CompactionSettings`，`percent` 仍派生
-- [ ] 2.3 删除 `compaction_threshold` 全装配链（builder / composition / bootstrap / `AgentCapabilities` / 测试 helpers）；调用点一律持 `CompactionSettings`
+- [x] 2.1 实现 `should_compact(tokens, window, &CompactionSettings)`（合并/删除百分比版与仅测试的 `should_compact_by_reserve`）；单测覆盖边界与 `enabled=false` / `window=0`
+- [x] 2.2 `CompactionOrchestrator` 去掉 `threshold: f64`，`maybe_auto_compact` 走新公式；`get_context_usage` 改吃 `&CompactionSettings`，`percent` 仍派生
+- [x] 2.3 删除 `compaction_threshold` 全装配链（builder / composition / bootstrap / `AgentCapabilities` / 测试 helpers）；调用点一律持 `CompactionSettings`
   `[blocked-by: 2.1]` `[blocked-by: 2.2]`
 
 ## 3. BDD / 夹具对齐验收
 
-- [ ] 3.1 将 propose 阶段已改写的 BDD steps（reserve Given / `shouldCompact` 步内公式）**改接到**生产 `should_compact(..., &CompactionSettings)`；清理 fixtures 上遗留 `compaction_threshold`
+- [x] 3.1 将 propose 阶段已改写的 BDD steps（reserve Given / `shouldCompact` 步内公式）**改接到**生产 `should_compact(..., &CompactionSettings)`；清理 fixtures 上遗留 `compaction_threshold`
   `[blocked-by: 1.2]` `[blocked-by: 2.1]`
-- [ ] 3.2 跑通 `domain-compaction` 与 `runtime-config` 相关 BDD；`need-compact`/`no-compact`/`disabled-no-compact`/rc15 与单测一致
+- [x] 3.2 跑通 `domain-compaction` 与 `runtime-config` 相关 BDD；`need-compact`/`no-compact`/`disabled-no-compact`/rc15 与单测一致
   `[blocked-by: 3.1]` `[blocked-by: 1.3]`
 
 ## 4. 收尾闸
 
-- [ ] 4.1 全仓确认无生产 `compaction_threshold` 残留；示例 config 可显式三字段；`llman sdd validate c1630-update-compaction-reserve-formula --strict`
+- [x] 4.1 全仓确认无生产 `compaction_threshold` 残留；示例 config 可显式三字段；`llman sdd validate c1630-update-compaction-reserve-formula --strict`
   `[blocked-by: 2.3]` `[blocked-by: 3.2]`
-- [ ] 4.2 确认未实现 c1640+（无 turn 后 auto 新接线、无 split-turn/overflow/instructions/TUI % 条）
+- [x] 4.2 确认未实现 c1640+（无 turn 后 auto 新接线、无 split-turn/overflow/instructions/TUI % 条）

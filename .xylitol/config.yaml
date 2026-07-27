@@ -23,9 +23,11 @@
 token_estimate:
   local_tokenizer: "off"
 
-# 长会话压缩（缺省未写时看代码默认；此处显式打开）
+# 长会话压缩（与 pi 同构：tokens > window - reserveTokens）
 compaction:
   enabled: true
+  reserveTokens: 16384
+  keepRecentTokens: 20000
 
 tokenizers:
   qwen36:

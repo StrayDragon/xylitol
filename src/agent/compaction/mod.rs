@@ -437,18 +437,14 @@ mod tests {
             enabled: false,
             ..Default::default()
         };
-        assert!(!token_estimator::should_compact_by_reserve(
-            100_000, 200_000, &s
-        ));
+        assert!(!should_compact(100_000, 200_000, &s));
     }
 
     #[test]
     fn test_should_compact_enabled_not_exceeded() {
         let s = CompactionSettings::default();
-        // 50_000 tokens + 16384 reserve = 66384, under 200K
-        assert!(!token_estimator::should_compact_by_reserve(
-            50_000, 200_000, &s
-        ));
+        // 50_000 tokens + 16384 reserve under 200K
+        assert!(!should_compact(50_000, 200_000, &s));
     }
 
     #[test]
@@ -457,27 +453,21 @@ mod tests {
             reserve_tokens: 1000,
             ..Default::default()
         };
-        // 190_000 tokens + 1000 reserve = 191_000, exceeds 200K
-        // threshold = 200_000 - 1000 = 199_000, context_tokens=190_000 < 199_000
-        // Actually still not exceeded... let me fix the logic check
-        // threshold = 200_000 - 1000 = 199_000, context_tokens=190_000 < 199_000
-        // Wait the function checks context_tokens > threshold
-        // context_tokens = 190_000, threshold = 199_000, so 190_000 > 199_000 is false
-        // Hmm the test says "exceeded" but the math doesn't work.
-        // Let me use 200_000 tokens: 200_000 > 199_000 = true
-        assert!(token_estimator::should_compact_by_reserve(
-            200_000, 200_000, &s
-        ));
+        // threshold = 200_000 - 1000 = 199_000; 200_000 > 199_000
+        assert!(should_compact(200_000, 200_000, &s));
     }
 
     #[test]
     fn test_should_compact_exact_threshold() {
         let s = CompactionSettings::default();
-        // threshold = 200_000 - 16384 = 183_616
-        // 183_617 > 183_616 = true
-        assert!(token_estimator::should_compact_by_reserve(
-            183_617, 200_000, &s
-        ));
+        // threshold = 200_000 - 16384 = 183_616; one over triggers
+        assert!(should_compact(183_617, 200_000, &s));
+    }
+
+    #[test]
+    fn test_should_compact_window_zero() {
+        let s = CompactionSettings::default();
+        assert!(!should_compact(100_000, 0, &s));
     }
 
     // ── XyUsage tests ───────────────────────────────────────────────

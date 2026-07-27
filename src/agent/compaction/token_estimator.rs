@@ -222,20 +222,6 @@ fn emit_token_estimate_obs(est: &ContextTokenEstimate, opts: &EstimateOpts) {
     drop(span);
 }
 
-/// Check if compaction should trigger based on a token reserve threshold.
-#[cfg(test)]
-pub(crate) fn should_compact_by_reserve(
-    context_tokens: u64,
-    context_window: u64,
-    settings: &super::settings::CompactionSettings,
-) -> bool {
-    if !settings.enabled {
-        return false;
-    }
-    let threshold = context_window.saturating_sub(settings.reserve_tokens);
-    context_tokens > threshold
-}
-
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -341,7 +327,8 @@ mod tests {
         let est = estimate_from_session_entries(&entries, &EstimateOpts::default());
         assert_eq!(est.provenance, TokenProvenance::Api);
         assert!(est.tokens > 0);
-        // Threshold must use this shared number (not an independent len/4 sum).
-        let _ = crate::agent::compaction::should_compact(est.tokens, 128_000, 0.8);
+        // Reserve formula must use this shared number (not an independent len/4 sum).
+        let settings = crate::agent::compaction::CompactionSettings::default();
+        let _ = crate::agent::compaction::should_compact(est.tokens, 128_000, &settings);
     }
 }

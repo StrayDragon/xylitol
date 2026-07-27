@@ -7,7 +7,8 @@ depends_on: []
 author: agent
 branch: sdd/c1630-update-compaction-reserve-formula
 base_sha: 8394fd101a7d77ad3496e69ce9c53e42c01320c6
-checkpointed: false
+checkpointed: true
+checkpoint_sha: 8394fd101a7d77ad3496e69ce9c53e42c01320c6
 ---
 
 # c1630-update-compaction-reserve-formula
