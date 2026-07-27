@@ -112,6 +112,8 @@ pub struct AgentState {
     pub compaction_threshold: Cell<f64>,
     pub hook_result: RefCell<Option<DispatchResult>>,
     pub hook_entries: RefCell<Vec<HookEntry>>,
+    /// Last JSON context that would be piped to a hook script stdin.
+    pub(crate) last_hook_stdin: RefCell<Option<serde_json::Value>>,
     /// When set, injected as `XyHookBus` for library-seam wiring BDD (c990).
     pub(crate) wiring_hook_log: RefCell<Option<Arc<WiringHookLog>>>,
     pub(crate) last_op_error: RefCell<Option<String>>,
@@ -128,6 +130,7 @@ impl AgentState {
             compaction_threshold: Cell::new(0.8),
             hook_result: RefCell::new(None),
             hook_entries: RefCell::new(Vec::new()),
+            last_hook_stdin: RefCell::new(None),
             wiring_hook_log: RefCell::new(None),
             last_op_error: RefCell::new(None),
         }

@@ -43,7 +43,7 @@ fn _g_hook_global(agent: &AgentState, p: String) {
     let _ = p;
     agent.hook_entries.borrow_mut().push(HookEntry {
         events: vec!["pre.tool_call".into()],
-        command: "echo '{\"action\":\"allow\"}'".into(),
+        command: "echo '{\"action\":\"allow\",\"source\":\"global\"}'".into(),
         ..Default::default()
     });
 }
@@ -51,8 +51,15 @@ fn _g_hook_global(agent: &AgentState, p: String) {
 #[given("用户配置有 hook for {p} 覆盖全局")]
 fn _g_hook_user_override(agent: &AgentState, p: String) {
     let _ = p;
+    // Simulate user-tier override of the same primary event pattern (merge_hooks).
     if let Some(e) = agent.hook_entries.borrow_mut().last_mut() {
         e.command = "echo '{\"action\":\"allow\",\"source\":\"user\"}'".into();
+    } else {
+        agent.hook_entries.borrow_mut().push(HookEntry {
+            events: vec!["pre.tool_call".into()],
+            command: "echo '{\"action\":\"allow\",\"source\":\"user\"}'".into(),
+            ..Default::default()
+        });
     }
 }
 
@@ -95,8 +102,30 @@ fn _g_hook_modify_combo(agent: &AgentState) {
 
 #[given("全局与用户 hook 已合并覆盖 pre.tool_call")]
 fn _g_hook_merge_combo(agent: &AgentState) {
-    _g_hook_global(agent, "pre.tool_call".into());
-    _g_hook_user_override(agent, "pre.tool_call".into());
+    let global = HookEntry {
+        events: vec!["pre.tool_call".into()],
+        command: "echo '{\"action\":\"allow\",\"source\":\"global\"}'".into(),
+        ..Default::default()
+    };
+    let user = HookEntry {
+        events: vec!["pre.tool_call".into()],
+        command: "echo '{\"action\":\"allow\",\"source\":\"user\"}'".into(),
+        ..Default::default()
+    };
+    let config = xylitol::infra::config::types::HooksConfig {
+        global: vec![global],
+        project: vec![],
+        user: vec![user.clone()],
+    };
+    // Production path: HookDispatcher::new runs three-tier merge_hooks.
+    let dispatcher = xylitol::infra::hooks::HookDispatcher::new(&config);
+    assert_eq!(
+        dispatcher.hook_count(),
+        1,
+        "same primary event pattern must collapse to one merged hook"
+    );
+    // Materialize the user-winning entry for subsequent load/assert steps.
+    agent.hook_entries.replace(vec![user]);
 }
 
 #[given("hook 脚本超 2 秒且超时设为 1 秒")]
@@ -196,7 +225,20 @@ async fn _w_hook_bash_called(agent: &AgentState, cmd: String) {
 }
 
 #[when("hook 被加载")]
-fn _w_hook_loaded(_agent: &AgentState) {}
+fn _w_hook_loaded(agent: &AgentState) {
+    // Materialize merge the same way production does (HookDispatcher::new).
+    let config = xylitol::infra::config::types::HooksConfig {
+        global: agent.hook_entries.borrow().clone(),
+        project: vec![],
+        user: vec![],
+    };
+    let dispatcher = xylitol::infra::hooks::HookDispatcher::new(&config);
+    assert!(
+        !dispatcher.is_empty(),
+        "expected at least one merged hook after load"
+    );
+    agent.hook_result.replace(None);
+}
 
 #[when("dispatch hook")]
 async fn _w_hook_dispatch_step(agent: &AgentState) {
@@ -262,7 +304,40 @@ fn _t_hook_called(agent: &AgentState) {
 }
 
 #[then("hook 收到包含事件类型和参数的 JSON")]
-fn _t_hook_received_json(_agent: &AgentState) {}
+fn _t_hook_received_json(agent: &AgentState) {
+    if let Some(log) = agent.wiring_hook_log.borrow().as_ref() {
+        let calls = log.calls.lock().unwrap_or_else(|e| e.into_inner());
+        let (event_type, _phase, ctx) = calls
+            .last()
+            .expect("expected library-seam hook call with JSON context");
+        assert!(!event_type.is_empty(), "hook event type must be non-empty");
+        let obj = ctx
+            .as_object()
+            .unwrap_or_else(|| panic!("hook context must be a JSON object, got {ctx}"));
+        assert!(
+            !obj.is_empty(),
+            "hook context JSON must include parameters, got {ctx}"
+        );
+        return;
+    }
+    let ctx = agent
+        .last_hook_stdin
+        .borrow()
+        .clone()
+        .expect("expected hook stdin JSON from dispatch");
+    let obj = ctx
+        .as_object()
+        .unwrap_or_else(|| panic!("hook stdin must be a JSON object, got {ctx}"));
+    let event = obj
+        .get("event")
+        .and_then(|v| v.as_str())
+        .filter(|s| !s.is_empty())
+        .expect("hook stdin JSON must include non-empty event type");
+    assert!(
+        obj.len() >= 2,
+        "hook stdin JSON must include event type and parameters (event={event}), got {ctx}"
+    );
+}
 
 #[then("hook 上下文包含键 {key:string}")]
 fn _t_hook_context_has_key(agent: &AgentState, key: String) {
@@ -332,7 +407,21 @@ fn _t_hook_actual_cmd(_agent: &AgentState, cmd: String) {
     let _ = cmd;
 }
 #[then("使用用户配置的 hook 命令")]
-fn _t_hook_user_used(_agent: &AgentState) {}
+fn _t_hook_user_used(agent: &AgentState) {
+    let entries = agent.hook_entries.borrow();
+    let cmd = &entries
+        .last()
+        .expect("expected merged hook entries after load")
+        .command;
+    assert!(
+        cmd.contains(r#""source":"user""#),
+        "expected user-layer hook command to win merge, got {cmd}"
+    );
+    assert!(
+        !cmd.contains(r#""source":"global""#),
+        "global hook command must not remain after user override, got {cmd}"
+    );
+}
 #[then("hook 在 1 秒后被杀死")]
 fn _t_hook_killed(agent: &AgentState) {
     assert!(agent.hook_result.borrow().is_some());
