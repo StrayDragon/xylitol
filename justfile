@@ -59,8 +59,10 @@ test verbosity=verbosity_default:
     if command -v cargo-nextest >/dev/null; then
       case "{{verbosity}}" in
         quiet)
+          # Failures only; keep one Summary line from the agent profile.
           cargo nextest run --all-features --profile agent \
-            --show-progress none --cargo-quiet
+            --show-progress none --cargo-quiet \
+            --success-output never
           ;;
         normal)
           cargo nextest run --all-features --profile ci --show-progress none
@@ -72,7 +74,13 @@ test verbosity=verbosity_default:
       esac
     else
       case "{{verbosity}}" in
-        quiet)   cargo test -q --all-features ;;
+        quiet)
+          # cargo -q already forwards quiet to libtest; do not also pass --quiet.
+          if ! out=$(cargo test -q --all-features 2>&1); then
+            printf '%s\n' "$out"
+            exit 1
+          fi
+          ;;
         normal)  cargo test --all-features ;;
         verbose) cargo test -v --all-features ;;
       esac
@@ -220,9 +228,16 @@ test-tui verbosity=verbosity_default:
     #!/usr/bin/env bash
     set -euo pipefail
     case "{{verbosity}}" in
-      quiet)   cargo test -q -p xylitol-tui ;;
-      normal)  cargo test -p xylitol-tui ;;
-      verbose) cargo test -v -p xylitol-tui ;;
+      quiet)
+        # Swallow pass/progress noise; print full output only on failure.
+        # --test-threads=1: keys/protocol tests mutate process-global kitty flags.
+        if ! out=$(cargo test -q -p xylitol-tui -- --test-threads=1 2>&1); then
+          printf '%s\n' "$out"
+          exit 1
+        fi
+        ;;
+      normal)  cargo test -p xylitol-tui -- --test-threads=1 ;;
+      verbose) cargo test -v -p xylitol-tui -- --test-threads=1 ;;
     esac
 
 # Unified daily / PR gate (no TUI layer-5 E2E — needs PTY/tmux).
@@ -363,7 +378,12 @@ doc-test verbosity=verbosity_default:
     #!/usr/bin/env bash
     set -euo pipefail
     case "{{verbosity}}" in
-      quiet)   cargo test -q --doc --all-features ;;
+      quiet)
+        if ! out=$(cargo test -q --doc --all-features 2>&1); then
+          printf '%s\n' "$out"
+          exit 1
+        fi
+        ;;
       normal)  cargo test --doc --all-features ;;
       verbose) cargo test -v --doc --all-features ;;
     esac
