@@ -1,0 +1,126 @@
+use crate::steps_cli_tokenizer::{TokenizerBdd, tokenizer_bdd};
+use crate::steps_runtime_config::{RcSnap, rc_snap};
+use rstest_bdd_macros::scenario;
+
+#[scenario(
+    path = "llmanspec/specs/runtime-config/runtime-config.feature",
+    name = "tokenizer-hf-ok"
+)]
+fn test_rc18_named(tokenizer_bdd: TokenizerBdd) {}
+
+#[scenario(
+    path = "llmanspec/specs/runtime-config/runtime-config.feature",
+    name = "tokenizer-inline-repo"
+)]
+fn test_rc18_inline(tokenizer_bdd: TokenizerBdd) {}
+
+#[scenario(
+    path = "llmanspec/specs/runtime-config/runtime-config.feature",
+    name = "tokenizer-unknown-name-fails"
+)]
+fn test_rc18_unknown(tokenizer_bdd: TokenizerBdd) {}
+
+#[scenario(
+    path = "llmanspec/specs/runtime-config/runtime-config.feature",
+    name = "local-tokenizer-default-off"
+)]
+fn test_rc19_default(tokenizer_bdd: TokenizerBdd) {}
+
+#[scenario(
+    path = "llmanspec/specs/runtime-config/runtime-config.feature",
+    name = "local-tokenizer-on"
+)]
+fn test_rc19_on(tokenizer_bdd: TokenizerBdd) {}
+
+#[scenario(
+    path = "llmanspec/specs/runtime-config/runtime-config.feature",
+    name = "local-tokenizer-invalid-fails"
+)]
+fn test_rc19_invalid(tokenizer_bdd: TokenizerBdd) {}
+
+#[scenario(
+    path = "llmanspec/specs/runtime-config/runtime-config.feature",
+    name = "transport"
+)]
+fn test_rc_transport(rc_snap: RcSnap) {}
+#[scenario(
+    path = "llmanspec/specs/runtime-config/runtime-config.feature",
+    name = "mode-set"
+)]
+fn test_rc_mode_set(rc_snap: RcSnap) {}
+#[scenario(
+    path = "llmanspec/specs/runtime-config/runtime-config.feature",
+    name = "mode-default-one-at-a-time"
+)]
+fn test_rc_mode_default(rc_snap: RcSnap) {}
+#[scenario(
+    path = "llmanspec/specs/runtime-config/runtime-config.feature",
+    name = "shell-path"
+)]
+fn test_rc_shell_path(rc_snap: RcSnap) {}
+#[scenario(
+    path = "llmanspec/specs/runtime-config/runtime-config.feature",
+    name = "trust-default"
+)]
+fn test_rc_trust_default(rc_snap: RcSnap) {}
+#[scenario(
+    path = "llmanspec/specs/runtime-config/runtime-config.feature",
+    name = "prompts-list"
+)]
+fn test_rc_prompts_list(rc_snap: RcSnap) {}
+#[scenario(
+    path = "llmanspec/specs/runtime-config/runtime-config.feature",
+    name = "mapping-documented"
+)]
+fn test_rc_mapping(rc_snap: RcSnap) {}
+#[scenario(
+    path = "llmanspec/specs/runtime-config/runtime-config.feature",
+    name = "field"
+)]
+fn test_rc_field(rc_snap: RcSnap) {}
+#[scenario(
+    path = "llmanspec/specs/runtime-config/runtime-config.feature",
+    name = "default-setting"
+)]
+fn test_rc_default_setting(rc_snap: RcSnap) {}
+#[scenario(
+    path = "llmanspec/specs/runtime-config/runtime-config.feature",
+    name = "select-ignores-settings-default"
+)]
+fn test_rc_select_ignores(rc_snap: RcSnap) {}
+#[scenario(
+    path = "llmanspec/specs/runtime-config/runtime-config.feature",
+    name = "config-yaml-secret-env-layout"
+)]
+fn test_rc_config_docs(rc_snap: RcSnap) {}
+
+#[scenario(
+    path = "llmanspec/specs/runtime-config/runtime-config.feature",
+    name = "parse-list"
+)]
+fn test_rc_parse_list(tokenizer_bdd: TokenizerBdd, rc_snap: RcSnap) {}
+#[scenario(
+    path = "llmanspec/specs/runtime-config/runtime-config.feature",
+    name = "unknown-fails"
+)]
+fn test_rc_unknown_fails(tokenizer_bdd: TokenizerBdd) {}
+#[scenario(
+    path = "llmanspec/specs/runtime-config/runtime-config.feature",
+    name = "parse-map"
+)]
+fn test_rc_parse_map(tokenizer_bdd: TokenizerBdd, rc_snap: RcSnap) {}
+#[scenario(
+    path = "llmanspec/specs/runtime-config/runtime-config.feature",
+    name = "unknown-key-fails"
+)]
+fn test_rc_unknown_key_fails(tokenizer_bdd: TokenizerBdd) {}
+#[scenario(
+    path = "llmanspec/specs/runtime-config/runtime-config.feature",
+    name = "absent-key-ok"
+)]
+fn test_rc_absent_key_ok(tokenizer_bdd: TokenizerBdd, rc_snap: RcSnap) {}
+#[scenario(
+    path = "llmanspec/specs/runtime-config/runtime-config.feature",
+    name = "config-local-not-merged"
+)]
+fn test_rc_local_not_merged(tokenizer_bdd: TokenizerBdd, rc_snap: RcSnap) {}
