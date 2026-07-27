@@ -42,13 +42,14 @@ impl CompactionOrchestrator {
         &self.settings
     }
 
-    /// Manual force compact (pi `compact()`). Does **not** apply the reserve gate.
+    /// Manual force compact (pi `compact(customInstructions?)`). Does **not** apply the reserve gate.
     pub async fn compact(
         &self,
         store: &dyn XySessionStore,
         sid: &str,
         model: &dyn XyModel,
         event_sink: &dyn XyEventSink,
+        instructions: Option<String>,
     ) -> Result<(), String> {
         event_sink
             .emit(&XyEvent::CompactionStart {
@@ -73,7 +74,7 @@ impl CompactionOrchestrator {
         let mut force_settings = self.settings.clone();
         force_settings.enabled = true;
 
-        let result = compact_session(store, sid, model, &force_settings)
+        let result = compact_session(store, sid, model, &force_settings, instructions.as_deref())
             .await
             .map_err(|e| format!("compaction failed: {e}"));
 
@@ -238,7 +239,7 @@ impl CompactionOrchestrator {
             })
             .await;
 
-        let result = compact_session(store, sid, model, &self.settings).await;
+        let result = compact_session(store, sid, model, &self.settings, None).await;
         let (ok_result, err_msg) = match &result {
             Ok(_) => (Some("ok".to_string()), None),
             Err(e) => (

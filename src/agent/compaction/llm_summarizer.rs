@@ -200,12 +200,24 @@ pub fn serialize_conversation(messages: &[AgentMessage]) -> String {
 
 // ── Summary generation ─────────────────────────────────────────────
 
+/// Append pi-style `Additional focus:` when non-empty instructions are present.
+pub(crate) fn with_additional_focus(
+    base_prompt: &str,
+    custom_instructions: Option<&str>,
+) -> String {
+    match custom_instructions.map(str::trim).filter(|s| !s.is_empty()) {
+        Some(instr) => format!("{base_prompt}\n\nAdditional focus: {instr}"),
+        None => base_prompt.to_string(),
+    }
+}
+
 /// Generate a structured summary of messages using the LLM.
 pub async fn generate_summary(
     messages: &[AgentMessage],
     model: &dyn XyModel,
     _reserve_tokens: u64,
     previous_summary: Option<&str>,
+    custom_instructions: Option<&str>,
 ) -> Result<String> {
     let conversation_text = serialize_conversation(messages);
 
@@ -214,6 +226,7 @@ pub async fn generate_summary(
     } else {
         SUMMARIZATION_PROMPT
     };
+    let base_prompt = with_additional_focus(base_prompt, custom_instructions);
 
     let mut prompt_text = format!("<conversation>\n{conversation_text}\n</conversation>\n\n");
     if let Some(prev) = previous_summary {
@@ -221,7 +234,7 @@ pub async fn generate_summary(
             "<previous-summary>\n{prev}\n</previous-summary>\n\n"
         ));
     }
-    prompt_text.push_str(base_prompt);
+    prompt_text.push_str(&base_prompt);
 
     let summarization_messages = project_for_llm(&[AgentMessage::user(prompt_text.clone())]);
 
@@ -243,4 +256,90 @@ pub async fn generate_turn_prefix_summary(
     // Smaller budget than full history summary (pi: 0.5 * reserveTokens).
     let max_tokens = ((_reserve_tokens as f64) * 0.5) as u32;
     generate_complete(model, summarization_messages, max_tokens.max(256)).await
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::protocol::error::XyError;
+    use crate::protocol::message::XyStopReason;
+    use crate::protocol::ports::{XyGenerateOptions, XyStream};
+    use crate::protocol::types::XyToolSchema;
+    use async_trait::async_trait;
+    use std::sync::Mutex;
+
+    #[test]
+    fn additional_focus_appends_non_empty() {
+        let out = with_additional_focus("BASE", Some("focus on bugs"));
+        assert!(out.starts_with("BASE"));
+        assert!(out.contains("Additional focus: focus on bugs"));
+    }
+
+    #[test]
+    fn additional_focus_skips_blank() {
+        assert_eq!(with_additional_focus("BASE", Some("   ")), "BASE");
+        assert_eq!(with_additional_focus("BASE", None), "BASE");
+    }
+
+    struct CaptureModel {
+        last: Mutex<Option<String>>,
+    }
+
+    #[async_trait]
+    impl XyModel for CaptureModel {
+        fn name(&self) -> &str {
+            "capture"
+        }
+
+        async fn generate_stream(
+            &self,
+            messages: Vec<LlmMessage>,
+            _tools: &[XyToolSchema],
+            _stream: bool,
+            _options: XyGenerateOptions,
+        ) -> Result<XyStream, XyError> {
+            let text = messages
+                .iter()
+                .map(LlmMessage::text)
+                .collect::<Vec<_>>()
+                .join("\n");
+            *self.last.lock().expect("last") = Some(text);
+            Ok(Box::pin(futures::stream::iter(vec![
+                Ok(XyChunk::TextDelta("ok".into())),
+                Ok(XyChunk::Done {
+                    finish_reason: XyStopReason::Stop,
+                    usage: None,
+                }),
+            ])))
+        }
+    }
+
+    #[tokio::test]
+    async fn generate_summary_injects_additional_focus_into_model_input() {
+        let model = CaptureModel {
+            last: Mutex::new(None),
+        };
+        let msgs = vec![AgentMessage::user("hello")];
+        let _ = generate_summary(&msgs, &model, 1024, None, Some("prioritize API errors"))
+            .await
+            .unwrap();
+        let prompt = model.last.lock().expect("last").clone().expect("captured");
+        assert!(
+            prompt.contains("Additional focus: prioritize API errors"),
+            "prompt missing focus: {prompt}"
+        );
+    }
+
+    #[tokio::test]
+    async fn generate_summary_without_instructions_has_no_additional_focus() {
+        let model = CaptureModel {
+            last: Mutex::new(None),
+        };
+        let msgs = vec![AgentMessage::user("hello")];
+        let _ = generate_summary(&msgs, &model, 1024, None, None)
+            .await
+            .unwrap();
+        let prompt = model.last.lock().expect("last").clone().expect("captured");
+        assert!(!prompt.contains("Additional focus:"));
+    }
 }

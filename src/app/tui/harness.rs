@@ -59,7 +59,7 @@ pub struct ScriptedDriver {
     active_session_id: Mutex<String>,
     /// Scripted leaf for `/session-fork` (c700/c1005).
     leaf_entry_id: Mutex<Option<String>>,
-    compact_calls: AtomicUsize,
+    compact_calls: Mutex<Vec<Option<String>>>,
     export_html_calls: Mutex<Vec<String>>,
     export_jsonl_calls: Mutex<Vec<String>>,
     import_jsonl_calls: Mutex<Vec<String>>,
@@ -169,7 +169,7 @@ impl ScriptedDriver {
             debug_scene_calls: Mutex::new(Vec::new()),
             active_session_id: Mutex::new("scripted".into()),
             leaf_entry_id: Mutex::new(None),
-            compact_calls: AtomicUsize::new(0),
+            compact_calls: Mutex::new(Vec::new()),
             export_html_calls: Mutex::new(Vec::new()),
             export_jsonl_calls: Mutex::new(Vec::new()),
             import_jsonl_calls: Mutex::new(Vec::new()),
@@ -340,7 +340,11 @@ impl ScriptedDriver {
     }
 
     pub fn compact_calls(&self) -> usize {
-        self.compact_calls.load(Ordering::SeqCst)
+        self.compact_calls.lock().expect("compact_calls").len()
+    }
+
+    pub fn compact_instructions(&self) -> Vec<Option<String>> {
+        self.compact_calls.lock().expect("compact_calls").clone()
     }
 
     pub fn export_html_calls(&self) -> Vec<String> {
@@ -537,8 +541,11 @@ impl XyDriver for ScriptedDriver {
         Ok(result)
     }
 
-    async fn compact(&mut self) -> Result<bool, XyDriverError> {
-        self.compact_calls.fetch_add(1, Ordering::SeqCst);
+    async fn compact(&mut self, instructions: Option<String>) -> Result<bool, XyDriverError> {
+        self.compact_calls
+            .lock()
+            .expect("compact_calls")
+            .push(instructions);
         Ok(false)
     }
 
@@ -2884,13 +2891,17 @@ mod slice_tests {
         use crate::app::tui::commands::{PendingSlash, parse_slash_command};
         assert_eq!(
             parse_slash_command("/session-compact"),
-            Some(PendingSlash::Compact)
+            Some(PendingSlash::Compact { instructions: None })
         );
         assert_eq!(
-            parse_slash_command("/session-compact please"),
-            Some(PendingSlash::Usage(
-                "usage: /session-compact (no arguments; custom instructions not supported)",
-            ))
+            parse_slash_command("/session-compact please focus on errors"),
+            Some(PendingSlash::Compact {
+                instructions: Some("please focus on errors".into())
+            })
+        );
+        assert_eq!(
+            parse_slash_command("/session-compact    "),
+            Some(PendingSlash::Compact { instructions: None })
         );
         assert_eq!(parse_slash_command("/compact"), None);
 
@@ -2905,19 +2916,22 @@ mod slice_tests {
             .await
             .unwrap();
         assert_eq!(driver.compact_calls(), 1);
+        assert_eq!(driver.compact_instructions(), vec![None]);
 
-        root.borrow_mut().set_editor_text("/session-compact extra");
+        root.borrow_mut()
+            .set_editor_text("/session-compact please focus on errors");
         session.step(HostEvent::Input(enter_event())).unwrap();
         pump_host_driver(&mut session, &mut driver, &mut stream)
             .await
             .unwrap();
-        assert_eq!(driver.compact_calls(), 1, "args must not compact");
-        assert!(
-            system_notes(&session)
-                .iter()
-                .any(|t| t.contains("usage") && t.contains("/session-compact")),
-            "expected usage error: {:?}",
-            system_notes(&session)
+        assert_eq!(
+            driver.compact_calls(),
+            2,
+            "args must compact with instructions"
+        );
+        assert_eq!(
+            driver.compact_instructions(),
+            vec![None, Some("please focus on errors".into())]
         );
     }
 

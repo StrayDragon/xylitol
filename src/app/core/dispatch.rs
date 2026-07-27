@@ -146,8 +146,8 @@ async fn dispatch_inner(
                 .await?;
             Ok(DispatchOutcome::Bash(r))
         }
-        Command::Compact { .. } => {
-            let did = driver.compact().await?;
+        Command::Compact { instructions, .. } => {
+            let did = driver.compact(instructions).await?;
             Ok(DispatchOutcome::Compacted(did))
         }
         Command::GetSessionStats { .. } => {
@@ -355,7 +355,7 @@ mod tests {
         ) -> Result<XyBashResult, XyDriverError> {
             unimplemented!()
         }
-        async fn compact(&mut self) -> Result<bool, XyDriverError> {
+        async fn compact(&mut self, _instructions: Option<String>) -> Result<bool, XyDriverError> {
             Ok(false)
         }
         async fn export_html(&mut self, path: &std::path::Path) -> Result<String, XyDriverError> {

@@ -48,6 +48,9 @@ pub enum Command {
     Compact {
         #[serde(default)]
         id: Option<String>,
+        /// Optional focus text for summarization (c1670; pi `customInstructions`).
+        #[serde(default)]
+        instructions: Option<String>,
     },
     GetSessionStats {
         #[serde(default)]
@@ -152,7 +155,7 @@ impl Command {
             | Command::GetAvailableModels { id }
             | Command::SetThinkingLevel { id, .. }
             | Command::Bash { id, .. }
-            | Command::Compact { id }
+            | Command::Compact { id, .. }
             | Command::GetSessionStats { id }
             | Command::ExportHtml { id, .. }
             | Command::ExportJsonl { id, .. }

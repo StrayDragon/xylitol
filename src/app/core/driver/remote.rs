@@ -417,8 +417,13 @@ impl XyDriver for XyRemoteDriver {
         })
     }
 
-    async fn compact(&mut self) -> Result<bool, XyDriverError> {
-        let data = self.post_data("compact", serde_json::json!({})).await?;
+    async fn compact(&mut self, instructions: Option<String>) -> Result<bool, XyDriverError> {
+        let data = self
+            .post_data(
+                "compact",
+                serde_json::json!({ "instructions": instructions }),
+            )
+            .await?;
         Ok(data
             .get("compacted")
             .and_then(|c| c.as_bool())

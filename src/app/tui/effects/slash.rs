@@ -143,8 +143,16 @@ pub(super) async fn handle_slash<T: Terminal>(
             }
             let _ = session.render_now();
         }
-        PendingSlash::Compact => {
-            match dispatch(driver, Command::Compact { id: None }).await {
+        PendingSlash::Compact { instructions } => {
+            match dispatch(
+                driver,
+                Command::Compact {
+                    id: None,
+                    instructions,
+                },
+            )
+            .await
+            {
                 Ok(DispatchOutcome::Compacted(did)) => {
                     let msg = if did {
                         "session compacted"
