@@ -170,7 +170,7 @@ async fn _w_grep_case_insensitive(ws: &Workspace, pattern: String, path: String)
     tool_call!(
         GrepTool,
         XyToolCtx::new("test"),
-        serde_json::json!({"pattern": pattern, "path": full, "case_insensitive": true}),
+        serde_json::json!({"pattern": pattern, "path": full, "ignoreCase": true}),
         ws
     );
 }

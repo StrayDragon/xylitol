@@ -212,12 +212,12 @@ async fn _w_hook_any_tool(agent: &AgentState) {
 
 #[when("bash 工具以 {cmd:string} 调用")]
 async fn _w_hook_bash_called(agent: &AgentState, cmd: String) {
-    let _ = cmd;
+    let cmd = strip_quotes(&cmd);
     dispatch_hook(
         agent,
         HookEvent::ToolCall {
             tool: "bash".into(),
-            args: serde_json::json!({"command":"rm -rf /"}),
+            args: serde_json::json!({"command": cmd}),
         },
         HookPhase::Pre,
     )
@@ -403,8 +403,21 @@ fn _t_hook_block_reason(agent: &AgentState, reason: String) {
 }
 
 #[then("实际执行的命令为 {cmd}")]
-fn _t_hook_actual_cmd(_agent: &AgentState, cmd: String) {
-    let _ = cmd;
+fn _t_hook_actual_cmd(agent: &AgentState, cmd: String) {
+    let expected = strip_quotes(&cmd);
+    match agent.hook_result.borrow().as_ref() {
+        Some(DispatchResult::Modified { args }) => {
+            let actual = args
+                .get("command")
+                .and_then(|v| v.as_str())
+                .unwrap_or_default();
+            assert_eq!(
+                actual, expected,
+                "expected modified command {expected:?}, got args={args}"
+            );
+        }
+        other => panic!("expected Modified with command, got {other:?}"),
+    }
 }
 #[then("使用用户配置的 hook 命令")]
 fn _t_hook_user_used(agent: &AgentState) {

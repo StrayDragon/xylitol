@@ -321,13 +321,30 @@ fn _t_exact_results(ws: &Workspace, count: u32) {
 }
 
 #[then("共有 {n:u32} 条匹配")]
-fn _t_grep_match_count(_ws: &Workspace, n: u32) {
-    let _ = n;
+fn _t_grep_match_count(ws: &Workspace, n: u32) {
+    let r = result_ok_str(&ws.last_result);
+    let count = r
+        .lines()
+        .filter(|l| {
+            let parts: Vec<_> = l.splitn(3, ':').collect();
+            parts.len() >= 3 && parts[1].parse::<u32>().is_ok()
+        })
+        .count();
+    assert_eq!(
+        count, n as usize,
+        "expected {n} matches, got {count} in:\n{r}"
+    );
 }
 
 #[then("匹配结果包含第{line:u32}行的 {text}")]
-fn _t_grep_match_on_line(_ws: &Workspace, line: u32, text: String) {
-    let _ = (line, text);
+fn _t_grep_match_on_line(ws: &Workspace, line: u32, text: String) {
+    let text = strip_quotes(&text);
+    let r = result_ok_str(&ws.last_result);
+    let marker = format!(":{line}:");
+    assert!(
+        r.lines().any(|l| l.contains(&marker) && l.contains(&text)),
+        "expected match on line {line} containing {text:?} in:\n{r}"
+    );
 }
 
 #[then("内容为空")]
