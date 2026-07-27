@@ -19,4 +19,6 @@ requirements[16]{req_id,title,statement}:
   c14,单一配置来源,Compaction 配置 MUST 有且仅有一个 serde 面向类型 XyCompactionSettingsConfig 与一个运行时类型 XyCompactionSettings；重复 CompactionConfig 定义 MUST 移除。
   c15,token 使用量类型统一与来源标注,Compaction 与会话侧上下文估计 MUST 使用 domain 的 XyUsage 作为厂商/归一化用量类型；估计结果 MUST 能暴露 TokenProvenance（或经映射的等价来源标注）供上层区分 Api 与降级估计；token_estimator 内 MUST NOT 再定义重复的 XyUsage。
   c16,阈值估计同源展示,"auto-compact 的阈值决策 MUST 消费与 TUI footer 相同的 ContextTokenEstimate（或等价共享 helper 结果）；当存在可信 Api 锚点时阈值数字 MUST 跟 Api，MUST NOT 在 footer 已标 Api 时仍用独立 heuristic 触发。"
-scenarios[0]:
+scenarios[2]{req_id,id,given,when,then,feature}:
+  c6,"bdd-compaction-pass",compaction BDD 套件,执行,全通过（由 CI 保证）,false
+  c14,"single-compaction-config-unit",代码库,搜索 CompactionConfig,零匹配残留（单测维护）,false

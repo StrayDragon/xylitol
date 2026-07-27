@@ -9,4 +9,10 @@ requirements[6]{req_id,title,statement}:
   pte04,"image-surface-optional","包 MUST NOT 要求 Image 组件或完整 terminal_image encode 路径用于主 agent_demo / app-shell 接线。is_image_line（及 width invariant 所需的 minimal helpers）MUST 保留。未使用的 image encode/UI surface MAY 移除或 feature-gate。"
   pte05,"input-listener-pre-focus",TUI MUST 提供 add_input_listener / remove_input_listener；每个 InputEvent 在路由到 focused overlay 或 focused root child 之前 MUST 按注册顺序调用 listener；任一 listener 返回 Consumed MUST 阻止后续 listener 与焦点组件接收该事件。
   pte06,"overlay-focus-restore-sm","TUI MUST 维护 overlay focus-restore 状态 inactive/eligible/blocked；capturing overlay 获焦时 MUST 进入 eligible；焦点被临时转到非祖先 root/child 时 MUST 进入 blocked；dispatch_event 在 listener 之后 MUST reclaim eligible 或满足条件的 blocked resume；set_focus(None) 在 clear 策略下 MUST 清除 restore；non_capturing show 与 set_hidden(false) MUST NOT 自动抢焦点。"
-scenarios[0]:
+scenarios[6]{req_id,id,given,when,then,feature}:
+  pte01,pte01-unit,"container-vertical-stack 约束由包级单测覆盖（非 BDD harness）",审查实现与对应测试,"行为符合本 requirement 陈述",false
+  pte02,pte02-unit,"overlay-handle 约束由包级单测覆盖（非 BDD harness）",审查实现与对应测试,"行为符合本 requirement 陈述",false
+  pte03,pte03-unit,"overlay-handle-focus-controls 约束由包级单测覆盖（非 BDD harness）",审查实现与对应测试,"行为符合本 requirement 陈述",false
+  pte04,pte04-unit,"image-surface-optional 约束由包级单测覆盖（非 BDD harness）",审查实现与对应测试,"行为符合本 requirement 陈述",false
+  pte05,pte05-unit,"input-listener-pre-focus 约束由包级单测覆盖（非 BDD harness）",审查实现与对应测试,"行为符合本 requirement 陈述",false
+  pte06,pte06-unit,"overlay-focus-restore-sm 约束由包级单测覆盖（非 BDD harness）",审查实现与对应测试,"行为符合本 requirement 陈述",false

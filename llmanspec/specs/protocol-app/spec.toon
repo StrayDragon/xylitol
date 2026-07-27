@@ -2,7 +2,7 @@ kind: llman.sdd.spec
 name: "protocol-app"
 purpose: Client↔core 线协议词汇（Command/Event 枚举 + 传输辅助），传输无关。
 valid_scope[2]: src/,tests/
-requirements[11]{req_id,title,statement}:
+requirements[13]{req_id,title,statement}:
   ip1,Command 枚举,protocol MUST 定义 Command 枚举，至少覆盖 Run、Cancel、SwitchModel、SetThinking、ListCommands、ApproveTool、AnswerQuestion、SwitchSession、GetMessages、ExportHtml、ExportJsonl、ImportJsonl；每个 client→core 消息 MUST 反序列化为此枚举。
   ip2,Event 枚举,protocol/ MUST 定义 Event 枚举，至少覆盖 TurnStart、Delta、ToolCall、ApprovalRequired、QuestionRequired、TurnEnd、Usage；每个 core→client 消息 MUST 反序列化为此枚举。
   ip3,信封与错误,"protocol/ MUST 定义统一 REST 响应信封 {code, msg, data, request_id} 与类型化错误码集；信封类型位于 protocol/ 且 MUST 传输无关（内部无 HTTP 或 WS 类型）。"
@@ -14,4 +14,19 @@ requirements[11]{req_id,title,statement}:
   "ip-q2",dispatch 队列命令,"app::core::dispatch MUST 将 Steer、FollowUp、ClearQueue 路由到 Driver 对应方法；这些变体 MUST NOT 留在仅 WS 层处理。"
   ip10,线协议不镜像厂商事件,"protocol::Event MUST 映射领域 XyEvent 闭集；MUST NOT 为 OpenAI/Anthropic 等厂商专属事件增加平行变体。无法表达的细节 MUST 留在领域 Message 载荷或被省略，而非拓宽线协议宽表。"
   "pa-wire1",线协议映射队列与闭集,protocol Event MUST 能表达跨面所需的 XyEvent 闭集子集（至少含 QueueUpdate）；未映射变体 MUST 可降级忽略，MUST NOT panic。
-scenarios[0]:
+  pa-m1,"agent-part-tagged-wire","AgentPart 序列化到 JSONL/session message.content 时 MUST 使用带 type 判别的自描述形态（对齐 pi ThinkingContent/TextContent/ToolCall）：thinking MUST 为 {type:thinking, thinking, thinkingSignature?, redacted?}；text MUST 为 {type:text, text}；toolCall MUST 为 {type:toolCall, id, name, arguments}。MUST NOT 使用 serde untagged；MUST NOT 将 Text 写成裸字符串；MUST NOT 将 Thinking 写成无 type 且字段名为 text 的对象。"
+  pa-m2,"preview-text-excludes-thinking",用于 editor 预填与树摘要的 message 纯文本提取（message_text 或等价）MUST 只聚合 type=text 的正文；MUST NOT 把 type=thinking 的正文拼进预填/摘要。
+scenarios[13]{req_id,id,given,when,then,feature}:
+  ip1,command-enum-roundtrip,"构造含 ExportJsonl 与 ImportJsonl 的 Command","serde JSON 往返",变体与字段保持一致,false
+  ip2,event-enum-covers-lifecycle,"检查 protocol::Event 变体集","对照 TurnStart/Delta/ToolCall/ApprovalRequired/QuestionRequired/TurnEnd/Usage",所需生命周期变体均存在,false
+  ip3,envelope-serializes,"构造含 code Ok 与 data 的统一信封","序列化为 JSON","含 code、msg、data、request_id 且无 HTTP/WS 类型泄漏",false
+  ip6,subscribe-command-roundtrip,"Command::Subscribe {session_id, last_seq}","serde JSON 往返","session_id 与 last_seq 一致",false
+  ip7,thinking-delta-wire-roundtrip,"XyEvent::ThinkingDelta 经 wire Event 映射",反序列化,"仍为 ThinkingDelta 而非空 MessageUpdate",false
+  ip8,switch-session-validates,"对不存在 session id 分发 SwitchSession","RPC/dispatch 处理",返回错误且活动会话未改变,false
+  ip9,ws-only-variants-stay-server,"检查 app::core::dispatch","审查 Subscribe/ApproveTool/AnswerQuestion","不在 core dispatch；留在 server/ws",false
+  ip-q1,steer-followup-serde,"Command::Steer / FollowUp / ClearQueue","serde JSON 往返",字段与原文一致,false
+  ip-q2,dispatch-queue-commands,"dispatch Steer/FollowUp/ClearQueue",执行,"路由到 Driver 对应方法且非未处理变体",false
+  ip10,no-vendor-wire-variants,"对比 protocol::Event 与厂商 SSE 事件名",审查线协议变体,无厂商专名平行变体,false
+  pa-wire1,queue-update-on-wire,需要跨面表达队列状态,"映射 XyEvent 子集到 wire Event","至少可表达 QueueUpdate；未映射可降级忽略且不 panic",false
+  pa-m1,agent-part-tagged-wire,"序列化含 thinking/text/toolCall 的 AgentPart","写入 JSONL/session content","带 type 判别；拒绝 untagged 与裸字符串 Text",false
+  pa-m2,preview-text-excludes-thinking,"assistant content 含 thinking 与 text","提取 message_text 预填/摘要","仅聚合 type=text 正文",false

@@ -2,8 +2,7 @@ kind: llman.sdd.spec
 name: "infra-diagnostics"
 purpose: 诊断 — 启动计时 instrumentation 与性能 profiling。
 valid_scope[1]: src/infra/timing.rs
-requirements[4]{req_id,title,statement}:
-  d0,placeholder,"System SHALL 提供 opt-in 启动计时 instrumentation。"
+requirements[3]{req_id,title,statement}:
   d1,"timing-collector",System MUST 提供 reset_timings、time label 与 print_timings，由 XYLITOL_TIMING 环境变量门控。
   d2,"timing-points",System MUST 在 config load、ResourceLoader reload、ModelRegistry load、session restore 与 session create 插入 timing points。
   d3,"timing-output",print_timings MUST 向 stderr 输出每步 ms 与 total。

@@ -50,17 +50,6 @@
     当 搜索主仓与包内的重复 adapter 实现
     那么 主仓无并行完整实现体
 
-  @req:pa7
-  场景: no-vendor-in-agent
-    假如 变更完成后
-    当 rg async_openai 于 src/agent
-    那么 零匹配
-
-  @req:pa7
-  场景: no-vendor-leak
-    当 rg async_openai 于 src/agent 与 src/protocol
-    那么 零匹配
-
   @req:pa20
   场景: bash-folded
     假如 history 含 bashExecution

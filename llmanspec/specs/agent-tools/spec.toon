@@ -46,7 +46,7 @@ requirements[43]{req_id,title,statement}:
   t22,"write-edit-llm-result-quiet","write/edit 成功时，进入会话 history 并经 project_for_llm 发往模型的 tool result 正文 MUST 为短成功句（对齐 pi）；MUST NOT 把完整 content 回灌或嵌入 unified/display_diff。失败时 MUST 保留可读错误原因。UI 仍 MUST 能取得 display_diff（或等价）以渲染编辑块。"
   t26,"builtin-tool-concurrency-class","内置工具 MUST 声明并发类：read/grep/find/ls 为 ParallelSafe；write/edit/bash 为 Barrier（或等价 Sequential 映射）。调度层在 barrier_parallel 下 MUST 尊重该类；FileMutationQueue 可并存作同 path 纵深防御。由单测覆盖 default_tools 分类表，MUST NOT 为静态表单独扩 BDD step。"
   t27,"dynamic-tool-mcp-hard-barrier","公开名以 `mcp:` 为前缀的工具（含 McpToolAdapter 与任何同前缀注册）在批调度分类中 MUST 为 Barrier，无论其 trait 并发声明或配置如何；MUST NOT 提供 glob、配置名名单或 MCP annotation 将其升为 ParallelSafe。非 mcp 自注册工具缺省 MUST 为 Barrier，MAY 经 ToolConcurrency 显式标 ParallelSafe。由单测覆盖，MUST NOT 为静态默认单独扩 BDD step。"
-scenarios[7]{req_id,id,given,when,then,feature}:
+scenarios[16]{req_id,id,given,when,then,feature}:
   t22,"edit-success-short-llm",edit 成功后,project_for_llm 的 tool result 正文,为短成功句且不含 display_diff,false
   t22,"write-success-short-llm",write 成功后,project_for_llm 的 tool result 正文,为短成功句且不含文件正文,false
   t24,"omit-timeout-unlimited-doc",省略 bash/grep/find timeout,执行工具,不武装默认秒级 timer（单测断言 ToolTimeout::Unlimited）,false
@@ -54,3 +54,12 @@ scenarios[7]{req_id,id,given,when,then,feature}:
   r6,"zero-not-unlimited",传入 timeout=0,校验参数,拒绝为无效 timeout,false
   t26,"builtin-class-table",查询 default_tools 各工具 execution_mode,对照分类表,读族 ParallelSafe 且 write/edit/bash Barrier,false
   t27,"mcp-hard-barrier",构造 mcp: 名工具即便 trait 声称 ParallelSafe,经 classify,仍为 Barrier,false
+  r32,"tool-trait-prefix-unit",XyTool trait 已定义,检查名称前缀,以 Xy 开头,false
+  r10,"no-global-dead-code-unit",crate 根,检查 #![allow(dead_code)],不存在或附理由,false
+  t13,"bdd-tool-tests-pass",工具 BDD 套件,执行,全通过（由 CI 保证）,false
+  t16,"bdd-tool-v3-tests-pass",tool-v3 BDD 套件,执行,全通过（由 CI 保证）,false
+  t17,"tool-def-schema-unit",ToolDefinition 结构,检查 schema 字段,含 XyToolSchema,false
+  t18,"toolset-agent-final-unit",ToolSet 构建终态,检查模块路径,位于 agent::tools 且一轮接收最终集合,false
+  t19,"tool-exec-mode-renamed-unit",代码引用,检查 ToolExecutionMode,已重命名为 XyToolExecutionMode,false
+  t20,"dead-filter-api-removed-unit",ReAct 循环源码,检查 set_allowed 等符号,不存在,false
+  r36,"mcp-via-xy-tool-unit",MCP 工具接入路径,检查 rmcp 类型泄漏,agent/ 无 rmcp 引用,false

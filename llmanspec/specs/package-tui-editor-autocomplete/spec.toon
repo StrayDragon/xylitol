@@ -9,4 +9,10 @@ requirements[6]{req_id,title,statement}:
   ea04,"request-serialisation-and-debounce","多个快速 autocomplete 请求 MUST 由 autocomplete_start_token 计数器串行化；仅最新请求应用结果。@-attachment 触发器在 async debounce 接线时 MUST 强制 20ms debounce。显式 Tab 或 force-file 补全时 debounce MUST 为 0。editor MUST NOT 在 autocomplete 期间阻塞主线程；async 执行 MUST 使用可选 tokio Handle，缺失时回退 sync。"
   ea05,"extra-source-open",Editor MUST 允许在 Slash/AtPath 之外再注册自定义 CompletionSource；未注册时 MUST NOT 为未来触发符预留运行时成本。应用面 MAY 注册测试桩或未来 $/^ 源。
   ea06,"narrow-popup-width",补全 popup 打开时，其渲染行宽 MUST 不超过 Editor 当前内容宽度预算；超长项 MUST 截断或夹紧，MUST NOT 使整行超出 terminal width。
-scenarios[0]:
+scenarios[6]{req_id,id,given,when,then,feature}:
+  ea01,ea01-unit,"completion-source-registry 约束由包级单测覆盖（非 BDD harness）",审查实现与对应测试,"行为符合本 requirement 陈述",false
+  ea02,ea02-unit,"autocomplete-selectlist-popup 约束由包级单测覆盖（非 BDD harness）",审查实现与对应测试,"行为符合本 requirement 陈述",false
+  ea03,ea03-unit,"edit-cursor-refresh 约束由包级单测覆盖（非 BDD harness）",审查实现与对应测试,"行为符合本 requirement 陈述",false
+  ea04,ea04-unit,"request-serialisation-and-debounce 约束由包级单测覆盖（非 BDD harness）",审查实现与对应测试,"行为符合本 requirement 陈述",false
+  ea05,ea05-unit,"extra-source-open 约束由包级单测覆盖（非 BDD harness）",审查实现与对应测试,"行为符合本 requirement 陈述",false
+  ea06,ea06-unit,"narrow-popup-width 约束由包级单测覆盖（非 BDD harness）",审查实现与对应测试,"行为符合本 requirement 陈述",false
