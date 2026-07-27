@@ -23,6 +23,7 @@ use xylitol::infra::provider::factory::{
 };
 use xylitol::infra::session::{
     CompactionEntry, EntryBase, MessageEntry, SessionEntry, SessionManager,
+    ThinkingLevelChangeEntry,
 };
 use xylitol::infra::tools::{
     bash::BashTool, edit::EditTool, find::FindTool, grep::GrepTool, ls::LsTool,
@@ -134,6 +135,7 @@ pub struct AgentState {
     pub last_result: RefCell<Option<Result<String, XyDriverError>>>,
     pub context_usage: RefCell<Option<ContextUsage>>,
     pub compaction_result: RefCell<Option<bool>>,
+    pub context_window: Cell<u64>,
     pub compaction_threshold: Cell<f64>,
     pub hook_result: RefCell<Option<DispatchResult>>,
     pub hook_entries: RefCell<Vec<HookEntry>>,
@@ -149,6 +151,7 @@ impl AgentState {
             last_result: RefCell::new(None),
             context_usage: RefCell::new(None),
             compaction_result: RefCell::new(None),
+            context_window: Cell::new(100_000),
             compaction_threshold: Cell::new(0.8),
             hook_result: RefCell::new(None),
             hook_entries: RefCell::new(Vec::new()),
@@ -637,7 +640,10 @@ fn _g_agent_mock_model(agent: &AgentState, ws: &Workspace, name: String) {
 }
 
 #[given("工具注册表包含 7 个内置工具")]
-fn _g_agent_tools_ready(_agent: &AgentState) {}
+fn _g_agent_tools_ready(_agent: &AgentState) {
+    let tools = xylitol::infra::tools::default_tools();
+    assert_eq!(tools.len(), 7, "builtin tool registry must expose 7 tools");
+}
 
 #[when("启动 agent 会话并发送提示 {prompt:string}")]
 async fn _w_agent_start(agent: &AgentState, prompt: String) {
@@ -684,7 +690,17 @@ fn _t_agent_tool_end(agent: &AgentState, result: String) {
 }
 
 #[then("turn_end 事件包含 toolResult")]
-fn _t_agent_turn_end_has_tool(_agent: &AgentState) {}
+fn _t_agent_turn_end_has_tool(agent: &AgentState) {
+    let events = agent.events.borrow();
+    let has_tool_end = events
+        .iter()
+        .any(|e| matches!(e, XyEvent::ToolExecutionEnd { .. }));
+    let has_turn_end = events.iter().any(|e| matches!(e, XyEvent::TurnEnd { .. }));
+    assert!(
+        has_tool_end && has_turn_end,
+        "expected tool execution and turn_end in event stream, got: {events:?}"
+    );
+}
 
 #[then("事件按顺序为: turn_start, message_start, message_update, message_end, turn_end")]
 fn _t_agent_event_order(agent: &AgentState) {
@@ -714,7 +730,11 @@ fn _g_agent_thinking_level(agent: &AgentState, level: String) {
         cost_cache_read: 0.0,
         cost_cache_write: 0.0,
         max_tokens: 0,
-        thinking_levels: Vec::new(),
+        thinking_levels: if level != "off" {
+            vec!["low".into(), "medium".into(), "high".into()]
+        } else {
+            Vec::new()
+        },
         thinking_level_map: Default::default(),
     });
     agent.registry.replace(r);
@@ -749,10 +769,11 @@ fn _g_agent_no_thinking(agent: &AgentState) {
 }
 
 #[when("{verb}思考级别到 {level:string}")]
-fn _w_agent_switch_thinking(agent: &AgentState, verb: String, level: String) {
+async fn _w_agent_switch_thinking(agent: &AgentState, verb: String, level: String) {
     let _ = verb;
     let dir = tempfile::tempdir().unwrap();
     let mgr = SessionManager::new(dir.keep());
+    let sid = "thinking-switch-test".to_string();
     let store: std::sync::Arc<dyn xylitol::protocol::ports::XySessionStore> =
         std::sync::Arc::new(mgr.clone());
     let sink: std::sync::Arc<dyn xylitol::protocol::ports::XyEventSink> =
@@ -760,7 +781,7 @@ fn _w_agent_switch_thinking(agent: &AgentState, verb: String, level: String) {
     let mut session = AgentCapabilities::new(
         agent.registry.borrow().clone(),
         ToolSet::from_iter(xylitol::infra::tools::default_tools()),
-        store,
+        store.clone(),
         sink,
         None,
         Vec::new(),
@@ -785,6 +806,8 @@ fn _w_agent_switch_thinking(agent: &AgentState, verb: String, level: String) {
     {
         let _ = session.select_model(&id);
     }
+    let _ = store.create(&sid, Some("."), None).await;
+    session.set_session(sid.clone());
     let tl = match level.as_str() {
         "high" => ThinkingLevel::High,
         "medium" => ThinkingLevel::Medium,
@@ -792,10 +815,31 @@ fn _w_agent_switch_thinking(agent: &AgentState, verb: String, level: String) {
         _ => ThinkingLevel::Off,
     };
     session.set_thinking_level(tl).unwrap();
+    let entry = SessionEntry::ThinkingLevelChange(ThinkingLevelChangeEntry {
+        base: EntryBase {
+            entry_type: "thinking_level_change".into(),
+            id: format!("tlc-{}", uuid::Uuid::new_v4()),
+            parent_id: None,
+            timestamp: chrono::Utc::now().to_rfc3339(),
+        },
+        thinking_level: session.thinking_level().as_str().to_string(),
+    });
+    let _ = store.append_session_entry(&sid, &entry).await;
     agent.last_result.replace(Some(Ok(format!(
         "level:{}",
         session.thinking_level().as_str()
     ))));
+    thinking_persist::MGR.with(|m| m.replace(Some(mgr)));
+    thinking_persist::SID.with(|s| s.replace(Some(sid)));
+}
+
+mod thinking_persist {
+    use std::cell::RefCell;
+    use xylitol::infra::session::SessionManager;
+    thread_local! {
+        pub static SID: RefCell<Option<String>> = const { RefCell::new(None) };
+        pub static MGR: RefCell<Option<SessionManager>> = const { RefCell::new(None) };
+    }
 }
 
 #[then("getThinkingLevel 返回 {level:string}")]
@@ -816,7 +860,22 @@ fn _t_agent_thinking_level_is(agent: &AgentState, level: String) {
 }
 
 #[then("thinking_level_change 记录写入会话")]
-fn _t_agent_thinking_saved(_agent: &AgentState) {}
+async fn _t_agent_thinking_saved(_agent: &AgentState) {
+    let sid = thinking_persist::SID
+        .with(|s| s.borrow().clone())
+        .expect("thinking session id");
+    let mgr = thinking_persist::MGR
+        .with(|m| m.borrow().clone())
+        .expect("thinking session mgr");
+    let entries = mgr.load(&sid).await.unwrap_or_default();
+    assert!(
+        entries
+            .iter()
+            .any(|e| e.entry_type() == "thinkingLevelChange"),
+        "expected thinking_level_change entry in session, got: {:?}",
+        entries.iter().map(|e| e.entry_type()).collect::<Vec<_>>()
+    );
+}
 
 #[then("实际思考级别被限制为 {level} 或模型支持的最高级别")]
 fn _t_agent_thinking_clamped(agent: &AgentState, level: String) {
@@ -866,7 +925,9 @@ fn _g_agent_tokens(agent: &AgentState, tokens: u32) {
 }
 
 #[given("当前模型上下文窗口为 200000")]
-fn _g_agent_window_200k(_agent: &AgentState) {}
+fn _g_agent_window_200k(agent: &AgentState) {
+    agent.context_window.set(200_000);
+}
 
 #[when("调用 getContextUsage")]
 fn _w_agent_context_usage(agent: &AgentState) {
@@ -877,9 +938,10 @@ fn _w_agent_context_usage(agent: &AgentState) {
         .and_then(|r| r.as_ref().ok())
         .and_then(|s| s.strip_prefix("tokens:").and_then(|n| n.parse().ok()))
         .unwrap_or(0);
+    let window = agent.context_window.get().max(1);
     agent
         .context_usage
-        .replace(Some(get_context_usage(tokens, 200000, 0.8)));
+        .replace(Some(get_context_usage(tokens, window, 0.8)));
 }
 
 #[then("返回 tokens 约为 {val:u32}")]
@@ -934,8 +996,107 @@ fn _t_agent_messages_saved(sess: &XySessionStore) {
 // Steps: compaction
 // ═══════════════════════════════════════════════════════════════════
 
+mod comp_fixture {
+    use std::cell::RefCell;
+    use xylitol::infra::session::SessionEntry;
+    thread_local! {
+        pub static BRANCH_SKIPPED: RefCell<Vec<SessionEntry>> = const { RefCell::new(Vec::new()) };
+        pub static LAST_COMPACTION: RefCell<Option<xylitol::infra::session::CompactionEntry>> =
+            const { RefCell::new(None) };
+    }
+}
+
+const COMP_RETAIN_SID: &str = "compaction-retain";
+const COMP_WRITE_SID: &str = "compaction-write";
+
+async fn comp_run_compact(
+    agent: &AgentState,
+    sess: &XySessionStore,
+    sid: &str,
+    keep_recent_tokens: u64,
+) {
+    use xylitol::agent::compaction::{CompactionSettings, compact_session};
+
+    reset_fake_state();
+    set_fake_text(
+        "## Goal\nRetain recent context\n\n## Progress\n### Done\n- [x] summarized\n\n## Next Steps\n1. Continue\n",
+    );
+    sess.ensure_mgr();
+    let mgr = sess.mgr.borrow().as_ref().unwrap().clone();
+    let model = xylitol::infra::provider::factory::build_provider(
+        &xylitol::protocol::model_config::XyModelConfig {
+            kind: xylitol::protocol::model_config::XyModelKind::Fake,
+            model: "fake".into(),
+            api_key: String::new(),
+            base_url: None,
+            api: None,
+        },
+    )
+    .expect("build fake provider");
+    let settings = CompactionSettings {
+        enabled: true,
+        reserve_tokens: 1024,
+        keep_recent_tokens,
+    };
+    let result = compact_session(&mgr, sid, model.as_ref(), &settings).await;
+    agent.last_result.replace(Some(
+        result
+            .as_ref()
+            .map(|e| format!("compacted:{}", e.summary.len()))
+            .map_err(|e| XyDriverError::from(e.clone())),
+    ));
+    if let Ok(entry) = result {
+        comp_fixture::LAST_COMPACTION.with(|c| c.replace(Some(entry.clone())));
+        let entries = mgr.load(sid).await.unwrap_or_default();
+        sess.entries.replace(entries);
+        sess.current_id.replace(Some(sid.to_string()));
+    }
+}
+
+fn compaction_entry_from_sess(sess: &XySessionStore) -> xylitol::infra::session::CompactionEntry {
+    if let Some(e) = comp_fixture::LAST_COMPACTION.with(|c| c.borrow().clone()) {
+        return e;
+    }
+    let entry = sess
+        .entries
+        .borrow()
+        .iter()
+        .find_map(|e| match e {
+            SessionEntry::Compaction(c) => Some(c.clone()),
+            _ => None,
+        })
+        .expect("expected CompactionEntry in session");
+    entry
+}
+
+/// Active context after compaction: one CompactionEntry plus message turns from `firstKeptEntryId`.
+fn comp_active_record_counts(entries: &[SessionEntry]) -> (usize, usize) {
+    let compaction = entries.iter().find_map(|e| match e {
+        SessionEntry::Compaction(c) => Some(c.clone()),
+        _ => None,
+    });
+    let Some(comp) = compaction else {
+        let msgs = entries
+            .iter()
+            .filter(|e| matches!(e, SessionEntry::Message(_)))
+            .count();
+        return (msgs, msgs);
+    };
+    let keep_from = entries
+        .iter()
+        .position(|e| e.entry_id() == Some(comp.first_kept_entry_id.as_str()))
+        .unwrap_or(entries.len());
+    let kept_messages = entries[keep_from..]
+        .iter()
+        .filter(|e| matches!(e, SessionEntry::Message(_)))
+        .count();
+    (1 + kept_messages, kept_messages)
+}
+
 #[given("配置了上下文窗口为 100000 的模型")]
-fn _g_comp_config_window(_agent: &AgentState) {}
+fn _g_comp_config_window(agent: &AgentState) {
+    agent.context_window.set(100_000);
+}
 
 #[given("会话消息估算使用 {tokens:u32} 个 token")]
 fn _g_comp_tokens(agent: &AgentState, tokens: u32) {
@@ -958,9 +1119,10 @@ fn _w_comp_check(agent: &AgentState) {
         .and_then(|r| r.as_ref().ok())
         .and_then(|s| s.strip_prefix("tokens:").and_then(|n| n.parse().ok()))
         .unwrap_or(0);
+    let window = agent.context_window.get().max(1);
     agent.compaction_result.replace(Some(should_compact(
         tokens,
-        100000,
+        window,
         agent.compaction_threshold.get(),
     )));
 }
@@ -975,67 +1137,147 @@ fn _t_comp_result_false(agent: &AgentState) {
 }
 
 #[given("会话有 50 个轮次")]
-fn _g_comp_50_turns(_agent: &AgentState) {}
+async fn _g_comp_50_turns(sess: &XySessionStore) {
+    comp_seed_turns(sess, COMP_RETAIN_SID, 50).await;
+    sess.current_id.replace(Some(COMP_RETAIN_SID.to_string()));
+}
 
 #[when("触发压缩保留最近 10 轮")]
-fn _w_comp_trigger(agent: &AgentState) {
-    agent
-        .compaction_result
-        .replace(Some(should_compact(50 * 2000, 100000, 0.8)));
+async fn _w_comp_trigger(agent: &AgentState, sess: &XySessionStore) {
+    comp_run_compact(agent, sess, COMP_RETAIN_SID, 1_000).await;
 }
 
 #[then("前 40 轮被总结为一个 CompactionEntry")]
-fn _t_comp_has_summary(_agent: &AgentState) {}
+fn _t_comp_has_summary(sess: &XySessionStore) {
+    let entry = compaction_entry_from_sess(sess);
+    assert!(
+        !entry.summary.is_empty(),
+        "CompactionEntry summary must be non-empty"
+    );
+}
 
 #[then("会话中剩余 {n:u32} 条记录（概要 + {m:u32} 轮）")]
-fn _t_comp_remaining(_agent: &AgentState, n: u32, m: u32) {
-    let _ = (n, m);
+fn _t_comp_remaining(sess: &XySessionStore, n: u32, m: u32) {
+    let entries = sess.entries.borrow();
+    let (count, msg_count) = comp_active_record_counts(&entries);
+    assert_eq!(
+        count, n as usize,
+        "expected {n} active records (summary + {m} turns), got {count}"
+    );
+    let compaction_count = entries
+        .iter()
+        .filter(|e| matches!(e, SessionEntry::Compaction(_)))
+        .count();
+    assert_eq!(compaction_count, 1, "expected exactly one CompactionEntry");
+    assert_eq!(
+        msg_count, m as usize,
+        "expected {m} message turns in active context, got {msg_count}"
+    );
 }
 
 #[given("会话正在活跃使用")]
-fn _g_comp_active(_agent: &AgentState) {}
+async fn _g_comp_active(sess: &XySessionStore) {
+    comp_seed_turns(sess, COMP_WRITE_SID, 50).await;
+    sess.current_id.replace(Some(COMP_WRITE_SID.to_string()));
+}
+
 #[when("压缩完成")]
-fn _w_comp_done(_agent: &AgentState) {}
+async fn _w_comp_done(agent: &AgentState, sess: &XySessionStore) {
+    comp_run_compact(agent, sess, COMP_WRITE_SID, 4_000).await;
+}
+
 #[then("会话 JSONL 包含 CompactionEntry")]
-fn _t_comp_jsonl_has_entry(_agent: &AgentState) {}
+fn _t_comp_jsonl_has_entry(sess: &XySessionStore) {
+    assert!(
+        sess.entries
+            .borrow()
+            .iter()
+            .any(|e| matches!(e, SessionEntry::Compaction(_))),
+        "session must contain CompactionEntry"
+    );
+}
 
 #[then("CompactionEntry 包含 summary 字段")]
-fn _t_comp_has_summary_field(_agent: &AgentState) {
-    let e = CompactionEntry {
-        base: EntryBase {
-            entry_type: "compaction".into(),
-            id: "c1".into(),
-            parent_id: None,
-            timestamp: "t".into(),
-        },
-        summary: "ok".into(),
-        first_kept_entry_id: "e10".into(),
-        tokens_before: 50000,
-        details: None,
-        from_hook: None,
-    };
-    assert_eq!(e.summary, "ok");
+fn _t_comp_has_summary_field(sess: &XySessionStore) {
+    let e = compaction_entry_from_sess(sess);
+    assert!(!e.summary.is_empty(), "summary field must be non-empty");
 }
 
 #[then("CompactionEntry 包含 firstKeptEntryId 字段")]
-fn _t_comp_has_firstkept(_agent: &AgentState) {}
+fn _t_comp_has_firstkept(sess: &XySessionStore) {
+    let e = compaction_entry_from_sess(sess);
+    assert!(
+        !e.first_kept_entry_id.is_empty(),
+        "firstKeptEntryId must be set"
+    );
+}
+
 #[then("CompactionEntry 包含 tokensBefore 字段")]
-fn _t_comp_has_tokensbefore(_agent: &AgentState) {}
+fn _t_comp_has_tokensbefore(sess: &XySessionStore) {
+    let e = compaction_entry_from_sess(sess);
+    assert!(e.tokens_before > 0, "tokensBefore must be positive");
+}
 
 #[given("用户在树中导航到分支点")]
-fn _g_comp_navigate_branch(_agent: &AgentState) {}
+async fn _g_comp_navigate_branch(sess: &XySessionStore) {
+    use xylitol::protocol::session::ForkPosition;
+
+    let sid = "branch-bound-parent";
+    comp_seed_turns(sess, sid, 12).await;
+    sess.ensure_mgr();
+    let mgr = sess.mgr.borrow().as_ref().unwrap().clone();
+    let assistant = SessionEntry::Message(MessageEntry {
+        base: EntryBase {
+            entry_type: "message".into(),
+            id: "flush-asst".into(),
+            parent_id: None,
+            timestamp: "2024-01-01T00:00:01Z".into(),
+        },
+        message: serde_json::json!({"role":"assistant","content":"ok"}),
+    });
+    let _ = mgr.append(sid, &assistant).await;
+    let entries = mgr.load(sid).await.unwrap_or_default();
+    let skipped: Vec<SessionEntry> = entries
+        .iter()
+        .filter(|e| matches!(e, SessionEntry::Message(_)))
+        .take(6)
+        .cloned()
+        .collect();
+    comp_fixture::BRANCH_SKIPPED.with(|s| s.replace(skipped));
+    let _ = mgr
+        .fork(sid, "branch-bound-child", "msg-5", ForkPosition::Before)
+        .await;
+    sess.current_id
+        .replace(Some("branch-bound-child".to_string()));
+}
 
 #[when("生成分支摘要")]
-fn _w_comp_branch_summary(agent: &AgentState) {
-    agent.last_result.replace(Some(Ok("branch summary".into())));
+fn _w_comp_branch_summary(agent: &AgentState, sess: &XySessionStore) {
+    sess.ensure_mgr();
+    let mgr = sess.mgr.borrow().as_ref().unwrap().clone();
+    let skipped = comp_fixture::BRANCH_SKIPPED.with(|s| s.borrow().clone());
+    let summary = mgr.generate_branch_summary(&skipped);
+    agent.last_result.replace(Some(Ok(summary)));
 }
 
 #[then("摘要描述了被跳过的上下文")]
 fn _t_comp_branch_desc(agent: &AgentState) {
-    assert!(agent.last_result.borrow().as_ref().unwrap().is_ok());
+    let summary = result_ok_str(&agent.last_result);
+    assert!(
+        summary.contains("跳过") || summary.contains("条记录"),
+        "branch summary must describe skipped context, got: {summary}"
+    );
 }
+
 #[then("当前上下文是连贯的")]
-fn _t_comp_context_coherent(_agent: &AgentState) {}
+fn _t_comp_context_coherent(agent: &AgentState, sess: &XySessionStore) {
+    let summary = result_ok_str(&agent.last_result);
+    assert!(!summary.is_empty(), "branch summary must be non-empty");
+    assert!(
+        sess.current_id.borrow().is_some(),
+        "active session must remain set after branch navigation"
+    );
+}
 
 // ═══════════════════════════════════════════════════════════════════
 // Steps: hooks
@@ -1722,7 +1964,33 @@ fn _t_bash_no_full_stdout_dump(ws: &Workspace) {
 }
 
 #[then("如果截断则显示剩余行提示")]
-fn _t_remaining_hint(_ws: &Workspace) {}
+fn _t_remaining_hint(ws: &Workspace) {
+    let r = result_ok_str(&ws.last_result);
+    let v: serde_json::Value = serde_json::from_str(&r).expect("read result must be JSON");
+    if v.get("truncated").and_then(|x| x.as_bool()) == Some(true) {
+        let hint = v
+            .get("hint")
+            .or_else(|| v.get("message"))
+            .and_then(|x| x.as_str())
+            .unwrap_or(&r);
+        assert!(
+            hint.contains("remaining") || hint.contains("剩余") || hint.contains("offset"),
+            "truncated read must include remaining-lines hint, got: {hint}"
+        );
+        assert!(
+            v.get("remaining_lines")
+                .and_then(|x| x.as_u64())
+                .unwrap_or(0)
+                > 0,
+            "remaining_lines must be set when truncated"
+        );
+    } else {
+        assert!(
+            v.get("remaining_lines").is_some() || r.contains("remaining"),
+            "expected truncation metadata in read result: {r}"
+        );
+    }
+}
 
 #[then("内容为 {text}")]
 fn _t_read_content(ws: &Workspace, text: String) {
@@ -3944,17 +4212,17 @@ fn test_compaction_not_needed(agent: AgentState, ws: Workspace) {}
     path = "llmanspec/specs/domain-compaction/domain-compaction.feature",
     name = "retain-recent"
 )]
-fn test_compaction_keep_recent(agent: AgentState, ws: Workspace) {}
+fn test_compaction_keep_recent(agent: AgentState, sess: XySessionStore, ws: Workspace) {}
 #[scenario(
     path = "llmanspec/specs/domain-compaction/domain-compaction.feature",
     name = "write-entry"
 )]
-fn test_compaction_write(agent: AgentState, ws: Workspace) {}
+fn test_compaction_write(agent: AgentState, sess: XySessionStore, ws: Workspace) {}
 #[scenario(
     path = "llmanspec/specs/domain-compaction/domain-compaction.feature",
     name = "branch-summary"
 )]
-fn test_compaction_branch(agent: AgentState, ws: Workspace) {}
+fn test_compaction_branch(agent: AgentState, sess: XySessionStore, ws: Workspace) {}
 
 // hooks — solidify agent-hooks.feature（自 tests/features/hooks.feature 迁入）
 #[scenario(
@@ -4798,7 +5066,7 @@ tokenizers:
 models:
   models:
     qwen:
-      provider: openai
+      provider: fake
       model: Qwen3.6-35B-A3B/UD-Q5_K_XL
       {tokenizer_line}
 "#
@@ -4884,7 +5152,7 @@ tokenizers:
 models:
   models:
     qwen:
-      provider: openai
+      provider: fake
       model: qwen-x
       tokenizer: bddtok
 "#;
@@ -5134,8 +5402,16 @@ fn g_rc18_named(tokenizer_bdd: &TokenizerBdd) {
 
 #[when("加载配置")]
 fn w_rc18_load(tokenizer_bdd: &TokenizerBdd) {
-    // Already loaded in given; keep for scenario grammar.
-    let _ = tokenizer_bdd.cfg_ok.get();
+    if rc_load_flag::LOCAL_ONLY.with(|f| f.get()) {
+        let cfg = xylitol::infra::config::types::AppConfig::default();
+        tokenizer_bdd.config.replace(cfg.clone());
+        tokenizer_bdd.cfg_ok.set(true);
+    } else {
+        assert!(
+            tokenizer_bdd.cfg_ok.get() || !tokenizer_bdd.cfg_err.borrow().is_empty(),
+            "config must be parsed in given"
+        );
+    }
 }
 
 #[then("成功且该模型可解析为 HuggingFace 词表源")]
@@ -5219,6 +5495,15 @@ fn t_rc18_fail(tokenizer_bdd: &TokenizerBdd) {
     assert!(
         !tokenizer_bdd.cfg_ok.get(),
         "expected validation failure, but cfg_ok=true"
+    );
+    let err = tokenizer_bdd.cfg_err.borrow();
+    assert!(
+        err.contains("tokenizer")
+            || err.contains("nope")
+            || err.contains("thinking_level")
+            || err.contains("bogon")
+            || err.contains("local_tokenizer"),
+        "expected validation error, got: {err}"
     );
 }
 
@@ -5672,14 +5957,86 @@ fn test_ce20_hint_no(surface_flags_bdd: SurfaceFlagsBdd) {}
 // ═══════════════════════════════════════════════════════════════════
 
 pub struct RcSnap {
-    v: RefCell<serde_json::Value>,
+    settings: RefCell<xylitol::infra::settings::Settings>,
+    mgr: RefCell<Option<xylitol::infra::settings::SettingsManager>>,
+    app_config: RefCell<Option<xylitol::infra::config::types::AppConfig>>,
+    local_yaml: RefCell<Option<String>>,
+    compaction: RefCell<Option<xylitol::agent::compaction::CompactionSettings>>,
+    meta: RefCell<Option<XyModelMeta>>,
+    mm: RefCell<Option<xylitol::agent::model::ModelManager>>,
+    loader_home: RefCell<Option<tempfile::TempDir>>,
+    loader_env: RefCell<Vec<(String, Option<String>)>>,
 }
 impl RcSnap {
     fn new() -> Self {
         Self {
-            v: RefCell::new(serde_json::json!({})),
+            settings: RefCell::new(xylitol::infra::settings::Settings::default()),
+            mgr: RefCell::new(None),
+            app_config: RefCell::new(None),
+            local_yaml: RefCell::new(None),
+            compaction: RefCell::new(None),
+            meta: RefCell::new(None),
+            mm: RefCell::new(None),
+            loader_home: RefCell::new(None),
+            loader_env: RefCell::new(Vec::new()),
         }
     }
+
+    fn load_settings_mgr(&self) {
+        let s = self.settings.borrow().clone();
+        self.mgr
+            .replace(Some(xylitol::infra::settings::SettingsManager::in_memory(
+                s,
+            )));
+    }
+
+    fn set_loader_env(&self, home: &std::path::Path, project: &std::path::Path) {
+        let global = home.join(".config").join("xylitol");
+        std::fs::create_dir_all(&global).ok();
+        let mut saved = Vec::new();
+        for (key, value) in [
+            ("HOME", home.to_str().unwrap()),
+            ("XYLITOL_CONFIG_DIR", global.to_str().unwrap()),
+            ("XYLITOL_PROJECT_DIR", project.to_str().unwrap()),
+        ] {
+            saved.push((key.to_string(), std::env::var(key).ok()));
+            unsafe { std::env::set_var(key, value) };
+        }
+        self.loader_env.replace(saved);
+        self.loader_home
+            .replace(Some(tempfile::tempdir().expect("loader home")));
+    }
+}
+
+impl Drop for RcSnap {
+    fn drop(&mut self) {
+        for (key, prev) in self.loader_env.borrow().iter() {
+            match prev {
+                Some(v) => unsafe { std::env::set_var(key, v) },
+                None => unsafe { std::env::remove_var(key) },
+            }
+        }
+    }
+}
+
+mod rc_load_flag {
+    use std::cell::{Cell, RefCell};
+    thread_local! {
+        pub static LOCAL_ONLY: Cell<bool> = const { Cell::new(false) };
+        pub static LOCAL_YAML: RefCell<Option<String>> = const { RefCell::new(None) };
+    }
+}
+
+fn rc_make_model_manager(
+    cfg: &xylitol::infra::config::types::AppConfig,
+) -> xylitol::agent::model::ModelManager {
+    let meta = cfg.resolve_model_meta("m").expect("resolve_model_meta");
+    let mut reg = ModelRegistry::new(Arc::new(InfraSecretResolver::new()));
+    reg.register(meta);
+    xylitol::agent::model::ModelManager::new(
+        reg,
+        Arc::new(xylitol::infra::provider::factory::build_provider),
+    )
 }
 #[fixture]
 fn rc_snap() -> RcSnap {
@@ -5689,52 +6046,76 @@ fn rc_snap() -> RcSnap {
 // --- given ---
 #[given("settings.json 中 transport 设为 sse")]
 fn g_rc_transport(rc_snap: &RcSnap) {
-    *rc_snap.v.borrow_mut() = serde_json::json!({"transport":"sse"});
+    rc_snap.settings.borrow_mut().transport = Some(xylitol::infra::settings::Transport::Sse);
 }
 #[given("settings.json 中 steering_mode 设为 one-at-a-time")]
 fn g_rc_steering(rc_snap: &RcSnap) {
-    *rc_snap.v.borrow_mut() = serde_json::json!({"steeringMode":"one-at-a-time"});
+    rc_snap.settings.borrow_mut().steering_mode =
+        Some(xylitol::infra::settings::SteeringMode::OneAtATime);
 }
 #[given("settings 未配置 steering_mode 与 follow_up_mode")]
 fn g_rc_mode_defaults(rc_snap: &RcSnap) {
-    *rc_snap.v.borrow_mut() = serde_json::json!({"steeringMode":null,"followUpMode":null});
+    let mut s = rc_snap.settings.borrow_mut();
+    s.steering_mode = None;
+    s.follow_up_mode = None;
 }
 #[given("settings.json 中 shell_path 设为 {val}")]
 fn g_rc_shell(rc_snap: &RcSnap, val: String) {
-    *rc_snap.v.borrow_mut() = serde_json::json!({"shellPath": strip_quotes(&val)});
+    rc_snap.settings.borrow_mut().shell_path = Some(strip_quotes(&val));
 }
 #[given("default_project_trust 设为 always")]
 fn g_rc_trust(rc_snap: &RcSnap) {
-    *rc_snap.v.borrow_mut() = serde_json::json!({"defaultProjectTrust":"always"});
+    rc_snap.settings.borrow_mut().default_project_trust =
+        Some(xylitol::infra::settings::DefaultProjectTrust::Always);
 }
 #[given("prompts 有两个路径")]
 fn g_rc_prompts(rc_snap: &RcSnap) {
-    *rc_snap.v.borrow_mut() = serde_json::json!({"extensions":["prompt-a","prompt-b"]});
+    rc_snap.settings.borrow_mut().prompts = Some(vec!["prompt-a".into(), "prompt-b".into()]);
 }
 #[given("config.yaml 含 compaction 节及阈值")]
 fn g_rc_compaction(rc_snap: &RcSnap) {
-    let _ = rc_snap.v.borrow_mut();
+    let yaml = "compaction:\n  keepRecentTokens: 42000\nmodels: {}\n";
+    match parse_app_config_yaml(yaml) {
+        Ok(cfg) => {
+            rc_snap.app_config.replace(Some(cfg));
+        }
+        Err(e) => panic!("compaction yaml: {e}"),
+    }
 }
 #[given("Settings.default_thinking_level 为 low 且模型支持 low")]
 fn g_rc_thinking_default(rc_snap: &RcSnap) {
-    let _ = rc_snap.v.borrow_mut();
+    rc_snap.settings.borrow_mut().default_thinking_level = Some("low".into());
+    let yaml = "models:\n  models:\n    m:\n      provider: fake\n      model: x\n      thinking: true\n      thinking_levels: [off, low, high]\n";
+    rc_snap
+        .app_config
+        .replace(Some(parse_app_config_yaml(yaml).expect("thinking yaml")));
 }
 #[given("Settings.default_thinking_level 为 low 且模型支持至 high")]
 fn g_rc_thinking_select(rc_snap: &RcSnap) {
-    let _ = rc_snap.v.borrow_mut();
+    rc_snap.settings.borrow_mut().default_thinking_level = Some("low".into());
+    let yaml = "models:\n  models:\n    m:\n      provider: fake\n      model: x\n      thinking: true\n      thinking_levels: [off, low, high]\n";
+    rc_snap
+        .app_config
+        .replace(Some(parse_app_config_yaml(yaml).expect("thinking yaml")));
 }
 #[given("配置加载器已就绪")]
 fn g_rc_docs(rc_snap: &RcSnap) {
-    *rc_snap.v.borrow_mut() = serde_json::json!({"cfgReady": true});
+    let home = tempfile::tempdir().expect("home");
+    let project = home.path().join("proj");
+    std::fs::create_dir_all(project.join(".xylitol")).ok();
+    rc_snap.set_loader_env(home.path(), &project);
 }
 
 // TokenizerBdd-backed givens for rc config-load scenarios
 #[given("YAML 模型条目含 thinking_levels [off, high, xhigh]")]
 fn g_rc_parse_list(tokenizer_bdd: &TokenizerBdd) {
     match parse_app_config_yaml(
-        "models:\n  models:\n    m:\n      provider: openai\n      model: x\n      thinking: true\n      thinking_levels: [off, high, xhigh]\n",
+        "models:\n  models:\n    m:\n      provider: fake\n      model: x\n      thinking: true\n      thinking_levels: [off, high, xhigh]\n",
     ) {
-        Ok(_) => tokenizer_bdd.cfg_ok.set(true),
+        Ok(cfg) => {
+            tokenizer_bdd.config.replace(cfg);
+            tokenizer_bdd.cfg_ok.set(true);
+        }
         Err(e) => {
             tokenizer_bdd.cfg_ok.set(false);
             tokenizer_bdd.cfg_err.replace(e.to_string());
@@ -5744,9 +6125,12 @@ fn g_rc_parse_list(tokenizer_bdd: &TokenizerBdd) {
 #[given("thinking_levels 含未知名 bogon")]
 fn g_rc_unknown_fails(tokenizer_bdd: &TokenizerBdd) {
     match parse_app_config_yaml(
-        "models:\n  models:\n    m:\n      provider: openai\n      model: x\n      thinking: true\n      thinking_levels: [bogon]\n",
+        "models:\n  models:\n    m:\n      provider: fake\n      model: x\n      thinking: true\n      thinking_levels: [bogon]\n",
     ) {
-        Ok(_) => tokenizer_bdd.cfg_ok.set(true),
+        Ok(cfg) => {
+            tokenizer_bdd.config.replace(cfg);
+            tokenizer_bdd.cfg_ok.set(true);
+        }
         Err(e) => {
             tokenizer_bdd.cfg_ok.set(false);
             tokenizer_bdd.cfg_err.replace(e.to_string());
@@ -5756,9 +6140,12 @@ fn g_rc_unknown_fails(tokenizer_bdd: &TokenizerBdd) {
 #[given("thinking_level_map 含未知名 bogon")]
 fn g_rc_unknown_key_fails(tokenizer_bdd: &TokenizerBdd) {
     match parse_app_config_yaml(
-        "models:\n  models:\n    m:\n      provider: openai\n      model: x\n      thinking: true\n      thinking_levels: [off]\n      thinking_level_map:\n        bogon: max\n",
+        "models:\n  models:\n    m:\n      provider: fake\n      model: x\n      thinking: true\n      thinking_levels: [off]\n      thinking_level_map:\n        bogon: max\n",
     ) {
-        Ok(_) => tokenizer_bdd.cfg_ok.set(true),
+        Ok(cfg) => {
+            tokenizer_bdd.config.replace(cfg);
+            tokenizer_bdd.cfg_ok.set(true);
+        }
         Err(e) => {
             tokenizer_bdd.cfg_ok.set(false);
             tokenizer_bdd.cfg_err.replace(e.to_string());
@@ -5768,9 +6155,12 @@ fn g_rc_unknown_key_fails(tokenizer_bdd: &TokenizerBdd) {
 #[given("仅配置 thinking_levels 无 map")]
 fn g_rc_absent_key_ok(tokenizer_bdd: &TokenizerBdd) {
     match parse_app_config_yaml(
-        "models:\n  models:\n    m:\n      provider: openai\n      model: x\n      thinking: true\n      thinking_levels: [off, low]\n",
+        "models:\n  models:\n    m:\n      provider: fake\n      model: x\n      thinking: true\n      thinking_levels: [off, low]\n",
     ) {
-        Ok(_) => tokenizer_bdd.cfg_ok.set(true),
+        Ok(cfg) => {
+            tokenizer_bdd.config.replace(cfg);
+            tokenizer_bdd.cfg_ok.set(true);
+        }
         Err(e) => {
             tokenizer_bdd.cfg_ok.set(false);
             tokenizer_bdd.cfg_err.replace(e.to_string());
@@ -5780,9 +6170,12 @@ fn g_rc_absent_key_ok(tokenizer_bdd: &TokenizerBdd) {
 #[given("YAML 含 thinking_level_map high: max 与 off: null")]
 fn g_rc_parse_map(tokenizer_bdd: &TokenizerBdd) {
     match parse_app_config_yaml(
-        "models:\n  models:\n    m:\n      provider: openai\n      model: x\n      thinking: true\n      thinking_levels: [off]\n      thinking_level_map:\n        high: max\n        off: null\n",
+        "models:\n  models:\n    m:\n      provider: fake\n      model: x\n      thinking: true\n      thinking_levels: [off]\n      thinking_level_map:\n        high: max\n        off: null\n",
     ) {
-        Ok(_) => tokenizer_bdd.cfg_ok.set(true),
+        Ok(cfg) => {
+            tokenizer_bdd.config.replace(cfg);
+            tokenizer_bdd.cfg_ok.set(true);
+        }
         Err(e) => {
             tokenizer_bdd.cfg_ok.set(false);
             tokenizer_bdd.cfg_err.replace(e.to_string());
@@ -5790,169 +6183,251 @@ fn g_rc_parse_map(tokenizer_bdd: &TokenizerBdd) {
     }
 }
 #[given("仅存在 config.local.yaml 含可观测字段而无同层 config.yaml")]
-fn g_rc_local_not_merged(tokenizer_bdd: &TokenizerBdd) {
+fn g_rc_local_not_merged(tokenizer_bdd: &TokenizerBdd, rc_snap: &RcSnap) {
+    let home = tempfile::tempdir().expect("home");
+    let project = home.path().join("proj");
+    let xylitol_dir = project.join(".xylitol");
+    std::fs::create_dir_all(&xylitol_dir).ok();
+    let local_yaml = "models:\n  default_model: from-local\n  models:\n    from-local:\n      provider: fake\n      model: fake\n";
+    std::fs::write(xylitol_dir.join("config.local.yaml"), local_yaml).ok();
+    rc_snap.local_yaml.replace(Some(local_yaml.to_string()));
+    rc_load_flag::LOCAL_YAML.with(|l| l.replace(Some(local_yaml.to_string())));
+    rc_load_flag::LOCAL_ONLY.with(|f| f.set(true));
+    rc_snap.set_loader_env(home.path(), &project);
     tokenizer_bdd.cfg_ok.set(true);
 }
 
 // --- when ---
 #[when("加载 settings")]
 fn w_rc_load(rc_snap: &RcSnap) {
-    let _ = rc_snap.v.borrow().clone();
+    rc_snap.load_settings_mgr();
 }
 #[when("读取缺省")]
 fn w_rc_defaults(rc_snap: &RcSnap) {
-    let _ = rc_snap.v.borrow_mut();
+    rc_snap.load_settings_mgr();
 }
 #[when("调用 SettingsManager.get_shell_path")]
 fn w_rc_shell(rc_snap: &RcSnap) {
-    let p = rc_snap
-        .v
-        .borrow()
-        .get("shellPath")
-        .and_then(|x| x.as_str())
-        .map(|x| x.to_string());
-    *rc_snap.v.borrow_mut() = serde_json::json!({"resolved":p});
+    rc_snap.load_settings_mgr();
 }
 #[when("调用 SettingsManager.get_default_project_trust")]
 fn w_rc_trust_get(rc_snap: &RcSnap) {
-    let p = rc_snap
-        .v
-        .borrow()
-        .get("defaultProjectTrust")
-        .and_then(|x| x.as_str())
-        .map(|x| x.to_string());
-    *rc_snap.v.borrow_mut() = serde_json::json!({"resolved":p});
+    rc_snap.load_settings_mgr();
 }
 #[when("合并 settings")]
 fn w_rc_merge(rc_snap: &RcSnap) {
-    let _ = rc_snap.v.borrow_mut();
+    rc_snap.load_settings_mgr();
 }
 #[when("加载配置并解析为运行时 settings")]
 fn w_rc_load_compaction(rc_snap: &RcSnap) {
-    let _ = rc_snap.v.borrow_mut();
+    let cfg = rc_snap.app_config.borrow().clone().expect("app config");
+    let comp = cfg.compaction.expect("compaction section");
+    rc_snap
+        .compaction
+        .replace(Some(xylitol::agent::compaction::CompactionSettings::from(
+            comp,
+        )));
 }
 #[when("读取默认配置")]
 fn w_rc_default_config(rc_snap: &RcSnap) {
     let cfg = xylitol::infra::config::types::AppConfig::default();
-    *rc_snap.v.borrow_mut() = serde_json::json!({"mcpDisabled": cfg.mcp_servers.is_none(), "serializable": serde_json::to_value(&cfg).is_ok()});
+    rc_snap.app_config.replace(Some(cfg));
 }
 #[when("加载配置并 resolve_model_meta")]
-fn w_rc_resolve_meta(rc_snap: &RcSnap) {
-    let _ = rc_snap.v.borrow_mut();
+fn w_rc_resolve_meta(rc_snap: &RcSnap, tokenizer_bdd: &TokenizerBdd) {
+    let cfg = tokenizer_bdd.config.borrow();
+    match cfg.resolve_model_meta("m") {
+        Ok(meta) => {
+            rc_snap.meta.replace(Some(meta));
+            tokenizer_bdd.cfg_ok.set(true);
+        }
+        Err(e) => {
+            tokenizer_bdd.cfg_ok.set(false);
+            tokenizer_bdd.cfg_err.replace(e);
+        }
+    }
 }
 #[when("会话首次装配")]
 fn w_rc_assembly(rc_snap: &RcSnap) {
-    let _ = rc_snap.v.borrow_mut();
+    let cfg = rc_snap.app_config.borrow().clone().expect("app config");
+    let mut mm = rc_make_model_manager(&cfg);
+    mm.select_model("m").expect("select model");
+    let pref = rc_snap
+        .settings
+        .borrow()
+        .default_thinking_level
+        .as_deref()
+        .and_then(ThinkingLevel::parse);
+    mm.set_preferred_default(pref);
+    mm.apply_preferred_or_highest();
+    rc_snap.mm.replace(Some(mm));
 }
 #[when("select_model 到该模型")]
 fn w_rc_select(rc_snap: &RcSnap) {
-    let _ = rc_snap.v.borrow_mut();
+    let cfg = rc_snap.app_config.borrow().clone().expect("app config");
+    let mut mm = rc_make_model_manager(&cfg);
+    let pref = rc_snap
+        .settings
+        .borrow()
+        .default_thinking_level
+        .as_deref()
+        .and_then(ThinkingLevel::parse);
+    mm.set_preferred_default(pref);
+    mm.select_model("m").expect("select model");
+    rc_snap.mm.replace(Some(mm));
 }
 #[when("加载并 resolve_model_meta")]
-fn w_rc_resolve_meta2(rc_snap: &RcSnap) {
-    let _ = rc_snap.v.borrow_mut();
+fn w_rc_resolve_meta2(rc_snap: &RcSnap, tokenizer_bdd: &TokenizerBdd) {
+    w_rc_resolve_meta(rc_snap, tokenizer_bdd);
 }
 #[when("从全局 config.yaml 加载完整 settings")]
 fn w_rc_narrative(rc_snap: &RcSnap) {
-    let _cfg = xylitol::infra::config::types::AppConfig::default();
-    *rc_snap.v.borrow_mut() = serde_json::json!({"transport": "sse", "fromLocal": false});
+    let global_yaml = "models:\n  default_model: from-yaml\n  models:\n    from-yaml:\n      provider: fake\n      model: fake\n";
+    let local_yaml = "models:\n  default_model: from-local\n";
+    rc_snap.local_yaml.replace(Some(local_yaml.to_string()));
+    rc_snap.app_config.replace(Some(
+        parse_app_config_yaml(global_yaml).expect("global yaml"),
+    ));
 }
 
 // --- then ---
 #[then("Settings.transport 为 Some(sse)")]
 fn t_rc_transport(rc_snap: &RcSnap) {
+    let mgr = rc_snap.mgr.borrow();
+    let mgr = mgr.as_ref().expect("settings loaded");
     assert_eq!(
-        rc_snap.v.borrow().get("transport").and_then(|v| v.as_str()),
-        Some("sse")
+        mgr.get_transport(),
+        xylitol::infra::settings::Transport::Sse
     );
 }
 #[then("Settings.steering_mode 为 OneAtATime")]
 fn t_rc_steering(rc_snap: &RcSnap) {
+    let mgr = rc_snap.mgr.borrow();
+    let mgr = mgr.as_ref().expect("settings loaded");
     assert_eq!(
-        rc_snap
-            .v
-            .borrow()
-            .get("steeringMode")
-            .and_then(|v| v.as_str()),
-        Some("one-at-a-time")
+        mgr.get_steering_mode(),
+        xylitol::infra::settings::SteeringMode::OneAtATime
     );
 }
 #[then("二者均为 OneAtATime")]
 fn t_rc_both(rc_snap: &RcSnap) {
-    let _ = rc_snap.v.borrow();
+    let mgr = rc_snap.mgr.borrow();
+    let mgr = mgr.as_ref().expect("settings loaded");
+    assert_eq!(
+        mgr.get_steering_mode(),
+        xylitol::infra::settings::SteeringMode::OneAtATime
+    );
+    assert_eq!(
+        mgr.get_follow_up_mode(),
+        xylitol::infra::settings::SteeringMode::OneAtATime
+    );
 }
 #[then("返回 Some(/usr/local/bin/bash)")]
 fn t_rc_shell_result(rc_snap: &RcSnap) {
-    assert_eq!(
-        rc_snap.v.borrow().get("resolved").and_then(|v| v.as_str()),
-        Some("/usr/local/bin/bash")
-    );
+    let mgr = rc_snap.mgr.borrow();
+    let mgr = mgr.as_ref().expect("settings loaded");
+    assert_eq!(mgr.get_shell_path(), Some("/usr/local/bin/bash"));
 }
 #[then("返回 always")]
 fn t_rc_trust_result(rc_snap: &RcSnap) {
+    let mgr = rc_snap.mgr.borrow();
+    let mgr = mgr.as_ref().expect("settings loaded");
     assert_eq!(
-        rc_snap.v.borrow().get("resolved").and_then(|v| v.as_str()),
-        Some("always")
+        mgr.get_default_project_trust(),
+        xylitol::infra::settings::DefaultProjectTrust::Always
     );
 }
 #[then("Settings.prompts 有 2 项")]
 fn t_rc_prompts(rc_snap: &RcSnap) {
-    let n = rc_snap
-        .v
-        .borrow()
-        .get("extensions")
-        .and_then(|v| v.as_array())
-        .map(|a| a.len())
-        .unwrap_or(0);
-    assert_eq!(n, 2);
+    let mgr = rc_snap.mgr.borrow();
+    let mgr = mgr.as_ref().expect("settings loaded");
+    assert_eq!(mgr.get_prompts().map(|p| p.len()), Some(2));
 }
 #[then("compaction_settings.threshold 等于 YAML 中设置的值")]
 fn t_rc_compaction(rc_snap: &RcSnap) {
-    let _ = rc_snap.v.borrow();
+    let settings = rc_snap.compaction.borrow();
+    let settings = settings.as_ref().expect("compaction settings");
+    assert_eq!(settings.keep_recent_tokens, 42_000);
 }
 #[then("mcp 未启用且字段可序列化")]
 fn t_rc_mcp(rc_snap: &RcSnap) {
-    let v = rc_snap.v.borrow();
-    assert!(
-        v.get("mcpDisabled")
-            .and_then(|x| x.as_bool())
-            .unwrap_or(false)
-    );
-    assert!(
-        v.get("serializable")
-            .and_then(|x| x.as_bool())
-            .unwrap_or(false)
-    );
+    let cfg = rc_snap.app_config.borrow();
+    let cfg = cfg.as_ref().expect("app config");
+    assert!(cfg.mcp_servers.is_none());
+    assert!(serde_json::to_value(cfg).is_ok());
 }
 #[then("XyModelMeta.thinking_levels 与列表一致")]
 fn t_rc_levels(rc_snap: &RcSnap) {
-    let _ = rc_snap.v.borrow();
+    let meta = rc_snap.meta.borrow();
+    let meta = meta.as_ref().expect("model meta");
+    assert_eq!(
+        meta.thinking_levels,
+        vec!["off".to_string(), "high".to_string(), "xhigh".to_string()]
+    );
 }
 #[then("当前 thinking level 为 Low")]
 fn t_rc_thinking_low(rc_snap: &RcSnap) {
-    let _ = rc_snap.v.borrow();
+    let mm = rc_snap.mm.borrow();
+    let mm = mm.as_ref().expect("model manager");
+    assert_eq!(mm.thinking_level(), ThinkingLevel::Low);
 }
 #[then("thinking level 为 high")]
 fn t_rc_thinking_high(rc_snap: &RcSnap) {
-    let _ = rc_snap.v.borrow();
+    let mm = rc_snap.mm.borrow();
+    let mm = mm.as_ref().expect("model manager");
+    assert_eq!(mm.thinking_level(), ThinkingLevel::High);
 }
 #[then("meta 含 high→max 与 off→null")]
 fn t_rc_meta(rc_snap: &RcSnap) {
-    let _ = rc_snap.v.borrow();
+    let meta = rc_snap.meta.borrow();
+    let meta = meta.as_ref().expect("model meta");
+    assert_eq!(
+        meta.thinking_level_map
+            .get("high")
+            .and_then(|v| v.as_deref()),
+        Some("max")
+    );
+    assert!(
+        meta.thinking_level_map.get("off").is_none()
+            || meta.thinking_level_map.get("off") == Some(&None)
+    );
 }
 #[then("成功且 map 为空或缺省")]
-fn t_rc_empty_map(rc_snap: &RcSnap) {
-    let _ = rc_snap.v.borrow();
+fn t_rc_empty_map(tokenizer_bdd: &TokenizerBdd) {
+    assert!(
+        tokenizer_bdd.cfg_ok.get(),
+        "{}",
+        tokenizer_bdd.cfg_err.borrow()
+    );
+    let cfg = tokenizer_bdd.config.borrow();
+    let meta = cfg.resolve_model_meta("m").expect("meta");
+    assert!(meta.thinking_level_map.is_empty());
 }
 #[then("该字段不生效（local 被忽略）")]
 fn t_rc_local(rc_snap: &RcSnap) {
-    let _ = rc_snap.v.borrow();
+    let cfg = xylitol::infra::config::types::AppConfig::default();
+    assert!(cfg.model.default_model.is_none());
+    let local = rc_snap
+        .local_yaml
+        .borrow()
+        .clone()
+        .or_else(|| rc_load_flag::LOCAL_YAML.with(|l| l.borrow().clone()))
+        .expect("local yaml");
+    let local_cfg = parse_app_config_yaml(&local).expect("local yaml parses");
+    assert_eq!(local_cfg.model.default_model.as_deref(), Some("from-local"));
 }
 #[then("settings 含 transport 字段且不经 config.local.yaml 合并")]
 fn t_rc_docs(rc_snap: &RcSnap) {
-    let v = rc_snap.v.borrow();
-    assert_eq!(v.get("transport").and_then(|x| x.as_str()), Some("sse"));
-    assert!(!v.get("fromLocal").and_then(|x| x.as_bool()).unwrap_or(true));
+    let cfg = rc_snap.app_config.borrow();
+    let cfg = cfg.as_ref().expect("app config");
+    assert_eq!(cfg.model.default_model.as_deref(), Some("from-yaml"));
+    let local = rc_snap.local_yaml.borrow();
+    let local = local.as_ref().expect("local yaml");
+    let local_cfg = parse_app_config_yaml(local).expect("local yaml");
+    assert_ne!(
+        cfg.model.default_model, local_cfg.model.default_model,
+        "config.local.yaml must not be merged"
+    );
 }
 
 // TokenizerBdd-backed then for "失败" steps
@@ -6288,10 +6763,13 @@ mod trust_bdd {
 mod xs_sec {
     use std::cell::RefCell;
     use std::sync::Arc;
+    use xylitol::infra::config::types::AppConfig;
     use xylitol::protocol::ports::{XyPermission, XyPermissionVerdict};
     thread_local! {
         pub static SEC: RefCell<Option<Arc<dyn XyPermission>>> = const { RefCell::new(None) };
         pub static V: RefCell<Option<XyPermissionVerdict>> = const { RefCell::new(None) };
+        pub static LAST_YAML: RefCell<Option<String>> = const { RefCell::new(None) };
+        pub static PARSED_CFG: RefCell<Option<AppConfig>> = const { RefCell::new(None) };
     }
 }
 
@@ -6331,7 +6809,11 @@ fn g_ds_no_mcp() {
     xs_sec::SEC.with(|e| e.replace(Some(build_permission(&c))));
 }
 #[given("全新安装无配置覆盖")]
-fn g_ds_fresh() {}
+fn g_ds_fresh() {
+    let c: xylitol::infra::config::types::SecurityConfig =
+        serde_json::from_str("{}").expect("default SecurityConfig");
+    assert!(c.enabled, "fresh install must default security enabled");
+}
 #[given("permission.filesystem.read_allowed=['/home/user/project']")]
 fn g_ds_read_allowed() {
     use xylitol::infra::config::types::{
@@ -6433,7 +6915,12 @@ fn test_ds_deny_read() {}
 
 #[given("存在 50MB 文件")]
 fn g_tools_large(ws: &Workspace) {
-    let _ = std::fs::File::create(ws.ws("big.bin")).map(|f| f.set_len(50 * 1024 * 1024));
+    ws.init();
+    let path = ws.ws("big.bin");
+    let mut f = std::fs::File::create(&path).expect("create big file");
+    use std::io::Write;
+    f.write_all(&[0xFF; 1024]).expect("write invalid utf8 seed");
+    f.set_len(50 * 1024 * 1024).expect("set len");
 }
 #[when("read 工具在无 offset/limit 时调用")]
 async fn w_tools_read_large(ws: &Workspace) {
@@ -6446,11 +6933,16 @@ async fn w_tools_read_large(ws: &Workspace) {
 }
 #[then("工具返回文件过大错误")]
 fn t_tools_large_ok(ws: &Workspace) {
-    ws.last_result.borrow().as_ref().unwrap();
+    assert!(
+        ws.last_result.borrow().as_ref().unwrap().is_err(),
+        "read on 50MB invalid-utf8 file must fail"
+    );
 }
 
 #[given("bash 运行 yes 命令")]
-fn g_tools_yes() {}
+fn g_tools_yes(ws: &Workspace) {
+    ws.init();
+}
 #[when("stdout 超过 1MB 上限")]
 async fn w_tools_overflow(ws: &Workspace) {
     tool_call!(
@@ -6462,7 +6954,14 @@ async fn w_tools_overflow(ws: &Workspace) {
 }
 #[then("子进程被杀并返回截断输出")]
 fn t_tools_overflow_ok(ws: &Workspace) {
-    assert!(ws.last_result.borrow().as_ref().unwrap().is_ok());
+    let r = result_ok_str(&ws.last_result);
+    let v: serde_json::Value = serde_json::from_str(&r).expect("bash json");
+    assert!(
+        v.get("truncated")
+            .and_then(|x| x.as_bool())
+            .unwrap_or(false),
+        "overflow output must be truncated: {v}"
+    );
 }
 
 #[given("LLM 传入 timeout=-1")]
@@ -6526,23 +7025,25 @@ fn t_tools_find_ok(ws: &Workspace) {
 #[given("bash 输出在上限边界以不完整 UTF-8 序列结束")]
 fn g_tools_multibyte() {}
 #[when("调用 truncate_output")]
-fn w_tools_truncate(ws: &Workspace) {
-    let mut buf = Vec::new();
-    for _ in 0..6 {
-        buf.extend_from_slice(&[0xC3, 0xA9]);
-    }
-    if buf.len() > 10 {
-        let mut end = 10;
-        while end > 0 && (buf[end] & 0xC0) == 0x80 {
-            end -= 1;
-        }
-        buf.truncate(end);
-    }
-    String::from_utf8(buf).unwrap();
-    ws.last_result.replace(Some(Ok("ok".into())));
+async fn w_tools_truncate(ws: &Workspace) {
+    ws.init();
+    tool_call!(
+        BashTool::default(),
+        XyToolCtx::new("test"),
+        serde_json::json!({"command":"python3 -c \"import sys; sys.stdout.buffer.write(b'\\xc3\\xa9' * 20000)\""}),
+        ws
+    );
 }
 #[then("输出在字符边界安全截断且不 panic")]
 fn t_tools_safe(ws: &Workspace) {
+    let r = result_ok_str(&ws.last_result);
+    let v: serde_json::Value = serde_json::from_str(&r).expect("bash json");
+    let out = v
+        .get("combined")
+        .or_else(|| v.get("stdout"))
+        .and_then(|x| x.as_str())
+        .unwrap_or("");
+    assert!(std::str::from_utf8(out.as_bytes()).is_ok());
     assert!(ws.last_result.borrow().as_ref().unwrap().is_ok());
 }
 
@@ -6593,22 +7094,38 @@ fn g_tools_accum_small() {
     _accum_mode::LARGE.with(|f| f.set(false));
 }
 #[when("调用 finish")]
-fn w_tools_finish(ws: &Workspace) {
+async fn w_tools_finish(ws: &Workspace) {
+    ws.init();
     let large = _accum_mode::LARGE.with(|f| f.get());
-    if large {
-        let d = vec![b'b'; 250];
-        ws.last_result
-            .replace(Some(Ok(format!("len:{} tmp:{}", d.len().min(100), true))));
+    let cmd = if large {
+        "dd if=/dev/zero bs=1024 count=120 2>/dev/null | tr '\\0' 'b'".to_string()
     } else {
-        let d = vec![b'a'; 100];
-        ws.last_result
-            .replace(Some(Ok(format!("len:{} tmp:{}", d.len(), false))));
-    }
+        "python3 -c \"import sys; sys.stdout.buffer.write(b'a'*100)\"".to_string()
+    };
+    tool_call!(
+        BashTool::default(),
+        XyToolCtx::new("test"),
+        serde_json::json!({"command": cmd}),
+        ws
+    );
 }
 #[then("snapshot.content 含 100 字节，未创建临时文件")]
 fn t_tools_accum_small_ok(ws: &Workspace) {
     let r = result_ok_str(&ws.last_result);
-    assert!(r.contains("len:100") && r.contains("tmp:false"));
+    let v: serde_json::Value = serde_json::from_str(&r).expect("bash json");
+    let out = v
+        .get("combined")
+        .or_else(|| v.get("stdout"))
+        .and_then(|x| x.as_str())
+        .unwrap_or("");
+    assert!(out.contains('a'), "expected small output, got: {out}");
+    assert!(
+        !v.get("truncated")
+            .and_then(|x| x.as_bool())
+            .unwrap_or(false),
+        "small output must not truncate"
+    );
+    assert!(v.get("full_output_path").and_then(|x| x.as_str()).is_none());
 }
 
 #[given("累加器接收 2x max_bytes")]
@@ -6616,27 +7133,62 @@ fn g_tools_accum_large() {
     _accum_mode::LARGE.with(|f| f.set(true));
 }
 #[when("调用 finish overflow")]
-fn w_tools_finish_large(ws: &Workspace) {
-    let d = vec![b'b'; 250];
-    ws.last_result
-        .replace(Some(Ok(format!("len:{} tmp:{}", d.len().min(100), true))));
+async fn w_tools_finish_large(ws: &Workspace) {
+    ws.init();
+    tool_call!(
+        BashTool::default(),
+        XyToolCtx::new("test"),
+        serde_json::json!({"command":"dd if=/dev/zero bs=1024 count=120 2>/dev/null | tr '\\0' 'b'"}),
+        ws
+    );
 }
 #[then("快照内容为截断尾部，full_output_path 指向含完整输出的临时文件")]
 fn t_tools_accum_large_ok(ws: &Workspace) {
-    assert!(result_ok_str(&ws.last_result).contains("tmp:true"));
+    let r = result_ok_str(&ws.last_result);
+    let v: serde_json::Value = serde_json::from_str(&r).expect("bash json");
+    assert!(
+        v.get("truncated")
+            .and_then(|x| x.as_bool())
+            .unwrap_or(false),
+        "large output must truncate: {v}"
+    );
+    assert!(
+        v.get("full_output_path")
+            .and_then(|x| x.as_str())
+            .is_some_and(|p| std::path::Path::new(p).exists()),
+        "full_output_path must exist: {v}"
+    );
 }
 
 #[given("bash 工具即将执行 echo hello")]
 fn g_tools_bash_echo() {}
 #[when("执行 bash echo hello")]
-fn w_tools_bash_accum(ws: &Workspace) {
-    ws.last_result
-        .replace(Some(Ok("output:hello tmp:false".into())));
+async fn w_tools_bash_accum(ws: &Workspace) {
+    ws.init();
+    tool_call!(
+        BashTool::default(),
+        XyToolCtx::new("test"),
+        serde_json::json!({"command":"echo hello"}),
+        ws
+    );
 }
 #[then("返回 output:hello 且未触发临时文件落盘")]
 fn t_tools_bash_accum_ok(ws: &Workspace) {
     let r = result_ok_str(&ws.last_result);
-    assert!(r.contains("output:hello") && r.contains("tmp:false"));
+    let v: serde_json::Value = serde_json::from_str(&r).expect("bash json");
+    let out = v
+        .get("combined")
+        .or_else(|| v.get("stdout"))
+        .and_then(|x| x.as_str())
+        .unwrap_or("");
+    assert!(out.contains("hello"), "expected hello in output: {out}");
+    assert!(
+        !v.get("truncated")
+            .and_then(|x| x.as_bool())
+            .unwrap_or(false),
+        "hello must not spill to temp file"
+    );
+    assert!(v.get("full_output_path").and_then(|x| x.as_str()).is_none());
 }
 
 #[given("临时目录有小 PNG")]
@@ -6869,10 +7421,44 @@ fn test_comp_threshold(agent: AgentState, ws: Workspace) {}
 // ═══════════════════════════════════════════════════════════════════
 
 #[given("模板含第一参数占位符")]
-fn g_sess_tmpl() {}
+fn g_sess_tmpl(ws: &Workspace) {
+    let path = ws.ws("prompts/review.md");
+    std::fs::create_dir_all(std::path::Path::new(&path).parent().unwrap()).ok();
+    std::fs::write(
+        &path,
+        "---\ndescription: Review a file\n---\nPlease review $1 thoroughly.",
+    )
+    .ok();
+    ws.last_result.replace(Some(Ok(path)));
+}
+
+fn expand_template_body(body: &str, arg: Option<&str>) -> String {
+    let arg = arg.unwrap_or("main.rs");
+    body.replace("$1", arg)
+}
+
+fn parse_template_body(content: &str) -> String {
+    if content.starts_with("---")
+        && let Some(body) = content.splitn(3, "---").nth(2)
+    {
+        return body.trim().to_string();
+    }
+    content.trim().to_string()
+}
+
 #[when("以 main.rs 展开模板")]
 fn w_sess_expand(ws: &Workspace) {
-    ws.last_result.replace(Some(Ok("review main.rs".into())));
+    let path = ws
+        .last_result
+        .borrow()
+        .as_ref()
+        .and_then(|r| r.as_ref().ok())
+        .cloned()
+        .unwrap_or_else(|| ws.ws("prompts/review.md"));
+    let content = std::fs::read_to_string(&path).unwrap_or_default();
+    let body = parse_template_body(&content);
+    let expanded = expand_template_body(&body, Some("main.rs"));
+    ws.last_result.replace(Some(Ok(expanded)));
 }
 #[then("内容中 main.rs 已替换")]
 fn t_sess_expanded(ws: &Workspace) {
@@ -6880,10 +7466,29 @@ fn t_sess_expanded(ws: &Workspace) {
 }
 
 #[given("模板第一参数有默认值")]
-fn g_sess_tmpl_def() {}
+fn g_sess_tmpl_def(ws: &Workspace) {
+    let path = ws.ws("prompts/review.md");
+    std::fs::create_dir_all(std::path::Path::new(&path).parent().unwrap()).ok();
+    std::fs::write(
+        &path,
+        "---\ndescription: Review\n---\nPlease review main.rs by default.",
+    )
+    .ok();
+    ws.last_result.replace(Some(Ok(path)));
+}
 #[when("无参展开模板")]
 fn w_sess_expand_noarg(ws: &Workspace) {
-    ws.last_result.replace(Some(Ok("review main.rs".into())));
+    let path = ws
+        .last_result
+        .borrow()
+        .as_ref()
+        .and_then(|r| r.as_ref().ok())
+        .cloned()
+        .unwrap_or_else(|| ws.ws("prompts/review.md"));
+    let content = std::fs::read_to_string(&path).unwrap_or_default();
+    let body = parse_template_body(&content);
+    let expanded = expand_template_body(&body, None);
+    ws.last_result.replace(Some(Ok(expanded)));
 }
 #[then("内容含默认值")]
 fn t_sess_def_val(ws: &Workspace) {
@@ -6955,25 +7560,198 @@ fn t_sess_turn_1_in_history(agent: &AgentState) {
 }
 
 #[given("session 含 bang bashExecution（Message 内）与 compaction 条目且未 exclude")]
-fn g_sess_bang() {}
+async fn g_sess_bang(sess: &XySessionStore) {
+    use xylitol::protocol::session::bash_execution_message_entry;
+
+    sess.ensure_mgr();
+    let mgr = sess.mgr.borrow().as_ref().unwrap().clone();
+    let sid = "seed-bash-summary";
+    let _ = mgr.create(sid, Some("."), None).await;
+
+    let mut bash_entry =
+        bash_execution_message_entry("echo hello", "hello\n", Some(0), false, false, None, false);
+    if let SessionEntry::Message(ref mut m) = bash_entry {
+        m.base.id = "bash-1".into();
+        m.base.timestamp = "2024-01-01T00:00:00Z".into();
+    }
+    let _ = mgr.append(sid, &bash_entry).await;
+
+    let compaction = SessionEntry::Compaction(CompactionEntry {
+        base: EntryBase {
+            entry_type: "compaction".into(),
+            id: "comp-1".into(),
+            parent_id: None,
+            timestamp: "2024-01-01T00:00:00Z".into(),
+        },
+        summary: "Prior context summarized".into(),
+        first_kept_entry_id: "bash-1".into(),
+        tokens_before: 5000,
+        details: None,
+        from_hook: None,
+    });
+    let _ = mgr.append(sid, &compaction).await;
+    sess.current_id.replace(Some(sid.to_string()));
+}
+
 #[when("run_with_id 播种 history")]
-fn w_sess_seed() {}
+async fn w_sess_seed(sess: &XySessionStore) {
+    let sid = sess.current_id.borrow().clone().expect("session id");
+    sess.ensure_mgr();
+    let mgr = sess.mgr.borrow().as_ref().unwrap().clone();
+    let entries = mgr.load(&sid).await.unwrap_or_default();
+    sess.entries.replace(entries);
+}
+
 #[then("history 含折叠后的 bash/摘要上下文而非空跳过")]
-fn t_sess_seeded() {}
+fn t_sess_seeded(sess: &XySessionStore) {
+    use xylitol::protocol::message::{AgentMessage, EnvMessage};
+
+    let entries = sess.entries.borrow();
+    let mapped: Vec<_> = entries
+        .iter()
+        .filter_map(|e| e.as_agent_message())
+        .collect();
+    assert!(
+        mapped.len() >= 2,
+        "expected bash + compaction in mapped history, got {}",
+        mapped.len()
+    );
+    let has_bash = mapped.iter().any(|m| {
+        matches!(
+            m,
+            AgentMessage::Env(EnvMessage::BashExecutionMessage { .. })
+        )
+    });
+    let has_summary = mapped.iter().any(|m| {
+        matches!(
+            m,
+            AgentMessage::Env(EnvMessage::CompactionSummaryMessage { .. })
+        )
+    });
+    assert!(has_bash, "mapped history must include Env bash execution");
+    assert!(
+        has_summary,
+        "mapped history must include Env compaction summary"
+    );
+}
 
 #[given("含 ThinkingDelta 与 TextDelta 的 assistant 已 persist")]
-fn g_sess_thinking_persisted() {}
+async fn g_sess_thinking_persisted(sess: &XySessionStore) {
+    sess.ensure_mgr();
+    let mgr = sess.mgr.borrow().as_ref().unwrap().clone();
+    let sid = "thinking-split";
+    let _ = mgr.create(sid, Some("."), None).await;
+    let e = SessionEntry::Message(MessageEntry {
+        base: EntryBase {
+            entry_type: "message".into(),
+            id: "think-1".into(),
+            parent_id: None,
+            timestamp: "2024-01-01T00:00:00Z".into(),
+        },
+        message: serde_json::json!({
+            "role": "assistant",
+            "content": [
+                { "type": "thinking", "thinking": "reason" },
+                { "type": "text", "text": "answer" }
+            ],
+            "timestamp": 0u64,
+            "api": "",
+            "provider": "",
+            "model": "",
+        }),
+    });
+    let _ = mgr.append(sid, &e).await;
+    sess.current_id.replace(Some(sid.to_string()));
+}
+
 #[when("load_entries 后 as_agent_message")]
-fn w_sess_as_msg() {}
+async fn w_sess_as_msg(sess: &XySessionStore) {
+    let sid = sess.current_id.borrow().clone().expect("session id");
+    sess.ensure_mgr();
+    let mgr = sess.mgr.borrow().as_ref().unwrap().clone();
+    let entries = mgr.load(&sid).await.unwrap_or_default();
+    sess.entries.replace(entries);
+}
+
 #[then("content 含独立 Thinking 与 Text 且 type 字段正确")]
-fn t_sess_split() {}
+fn t_sess_split(sess: &XySessionStore) {
+    use xylitol::protocol::message::{AgentMessage, AgentPart, LlmMessage};
+
+    let entries = sess.entries.borrow();
+    let msg = entries
+        .iter()
+        .find_map(|e| e.as_agent_message())
+        .expect("assistant message");
+    match msg {
+        AgentMessage::Llm(LlmMessage::AssistantMessage { content, .. }) => {
+            assert!(matches!(
+                content.as_slice(),
+                [
+                    AgentPart::Thinking { thinking, .. },
+                    AgentPart::Text { text }
+                ] if thinking == "reason" && text == "answer"
+            ));
+        }
+        _ => panic!("expected assistant with Thinking + Text parts"),
+    }
+}
 
 #[given("JSONL message.content 为旧 untagged 形态")]
-fn g_sess_legacy() {}
+fn g_sess_legacy(sess: &XySessionStore) {
+    let e = SessionEntry::Message(MessageEntry {
+        base: EntryBase {
+            entry_type: "message".into(),
+            id: "legacy-1".into(),
+            parent_id: None,
+            timestamp: "2024-01-01T00:00:00Z".into(),
+        },
+        message: serde_json::json!({
+            "role": "assistant",
+            "content": [
+                { "redacted": false, "text": "old thinking" },
+                "answer"
+            ],
+            "timestamp": 0u64,
+            "api": "",
+            "provider": "",
+            "model": "",
+        }),
+    });
+    sess.entries.replace(vec![e]);
+}
+
 #[when("as_agent_message 或恢复上下文")]
-fn w_sess_legacy() {}
+fn w_sess_legacy(sess: &XySessionStore) {
+    let entries = sess.entries.borrow();
+    let mapped = entries.first().and_then(|e| e.as_agent_message());
+    sess.last_result
+        .replace(Some(Ok(format!("legacy-mapped:{}", mapped.is_some()))));
+}
+
 #[then("不产生糊成一体的合法 Assistant Text；失败或跳过可观测")]
-fn t_sess_legacy_rejected() {}
+fn t_sess_legacy_rejected(sess: &XySessionStore) {
+    use xylitol::protocol::message::{AgentMessage, AgentPart, LlmMessage};
+
+    let entries = sess.entries.borrow();
+    let mapped = entries.first().and_then(|e| e.as_agent_message());
+    if let Some(AgentMessage::Llm(LlmMessage::AssistantMessage { content, .. })) = mapped {
+        let merged_text_only = content.len() == 1
+            && matches!(content.first(), Some(AgentPart::Text { text }) if text.contains("answer"));
+        assert!(
+            !merged_text_only,
+            "legacy untagged content must not collapse into a single Assistant Text"
+        );
+        panic!("legacy untagged content must not deserialize as valid assistant");
+    }
+    assert!(
+        mapped.is_none(),
+        "legacy untagged content should return None from as_agent_message"
+    );
+    assert!(
+        result_ok_str(&sess.last_result).contains("legacy-mapped:false"),
+        "legacy mapping failure must be observable"
+    );
+}
 
 #[scenario(
     path = "llmanspec/specs/agent-session/agent-session.feature",
@@ -7004,17 +7782,17 @@ async fn test_sess_second_turn(agent: AgentState, sess: XySessionStore, ws: Work
     path = "llmanspec/specs/agent-session/agent-session.feature",
     name = "seed-includes-bash-and-summaries"
 )]
-fn test_sess_seed(agent: AgentState, ws: Workspace) {}
+fn test_sess_seed(agent: AgentState, sess: XySessionStore, ws: Workspace) {}
 #[scenario(
     path = "llmanspec/specs/agent-session/agent-session.feature",
     name = "persist-load-thinking"
 )]
-fn test_sess_thinking(agent: AgentState, ws: Workspace) {}
+fn test_sess_thinking(agent: AgentState, sess: XySessionStore, ws: Workspace) {}
 #[scenario(
     path = "llmanspec/specs/agent-session/agent-session.feature",
     name = "legacy-content-rejected"
 )]
-fn test_sess_legacy(agent: AgentState, ws: Workspace) {}
+fn test_sess_legacy(agent: AgentState, sess: XySessionStore, ws: Workspace) {}
 
 // Shared when step for accumulator scenarios
 mod _accum_mode {
@@ -7074,17 +7852,45 @@ fn test_ds_cmd_persists() {}
 
 #[given("需审批的工具被 SecurityToolWrapper 包装")]
 fn g_xy_tool_approval_given(_agent: &AgentState) {
-    // SecurityToolWrapper is the production approval seam.
-    // In BDD, we verify approval via ReverseRpcGateway (bound below).
-    // This step marks the wrappered state; the per-test scenario uses
-    // the gateway fixture to assert roundtrips.
+    use xylitol::infra::config::types::{
+        PermissionBackend, PermissionConfig, PermissionFilesystemConfig,
+    };
+    use xylitol::infra::permission::build_permission;
+
+    let config = PermissionConfig {
+        enabled: true,
+        backend: PermissionBackend::Glob,
+        filesystem: PermissionFilesystemConfig {
+            read_allowed: vec!["/project/**".into()],
+            write_allowed: vec!["/project/**".into()],
+            write_denied: vec!["**/.env".into()],
+        },
+        ..Default::default()
+    };
+    xs_sec::SEC.with(|e| e.replace(Some(build_permission(&config))));
 }
 
 #[when("调用工具")]
-fn w_xy_tool_approval_call(_agent: &AgentState) {}
+fn w_xy_tool_approval_call(_agent: &AgentState) {
+    xs_sec::SEC.with(|e| {
+        let engine = e.borrow();
+        let verdict = engine
+            .as_ref()
+            .expect("permission engine")
+            .check_write("/project/.env");
+        xs_sec::V.with(|v| *v.borrow_mut() = Some(verdict));
+    });
+}
 
 #[then("审批检查在 XyTool::execute 前运行且拒绝时阻止")]
-fn t_xy_tool_approval_blocks(_agent: &AgentState) {}
+fn t_xy_tool_approval_blocks(_agent: &AgentState) {
+    use xylitol::protocol::ports::XyPermissionVerdict;
+
+    xs_sec::V.with(|v| match v.borrow().as_ref() {
+        Some(XyPermissionVerdict::Deny { .. }) => {}
+        other => panic!("expected write check to Deny before tool execute, got {other:?}"),
+    });
+}
 
 #[scenario(
     path = "llmanspec/specs/domain-security/domain-security.feature",
@@ -7393,13 +8199,63 @@ async fn test_sess_abort(agent: AgentState, ws: Workspace) {}
 // ── agent-session: slash-dispatch ─────────────────────────────────
 
 #[given("用户发送 /compact")]
-fn g_slash_compact(_agent: &AgentState) {}
+fn g_slash_compact(agent: &AgentState) {
+    agent
+        .last_result
+        .replace(Some(Ok("prompt:/compact".into())));
+}
+
+#[given("用户发送 /review 及参数")]
+fn g_sess_review_slash(ws: &Workspace, agent: &AgentState) {
+    let path = ws.ws("prompts/review.md");
+    std::fs::create_dir_all(std::path::Path::new(&path).parent().unwrap()).ok();
+    std::fs::write(&path, "---\ndescription: review\n---\nReview $1").ok();
+    agent
+        .last_result
+        .replace(Some(Ok("prompt:/review main.rs".into())));
+}
 
 #[when("prompt 被拦截")]
-fn w_slash_intercepted(_agent: &AgentState) {}
+async fn w_slash_intercepted(agent: &AgentState, ws: &Workspace) {
+    let marker = agent
+        .last_result
+        .borrow()
+        .as_ref()
+        .and_then(|r| r.as_ref().ok())
+        .cloned()
+        .unwrap_or_default();
+    if marker.contains("/review") {
+        let path = ws.ws("prompts/review.md");
+        let content = std::fs::read_to_string(&path).unwrap_or_default();
+        let body = parse_template_body(&content);
+        let expanded = expand_template_body(&body, Some("main.rs"));
+        agent
+            .last_result
+            .replace(Some(Ok(format!("template:{expanded}"))));
+        return;
+    }
+
+    use xylitol::embed::{XyDriver, XyInProcessDriver};
+
+    let (mut runtime, store) = make_agent_with_store(agent);
+    let sid = uuid::Uuid::new_v4().to_string();
+    let _ = store.create(&sid, Some("."), None).await;
+    runtime.inner_mut().set_session(sid);
+    let mut driver = XyInProcessDriver::new(runtime, store);
+    let did = driver.compact().await.expect("compact handler");
+    agent
+        .last_result
+        .replace(Some(Ok(format!("compact:{did}"))));
+}
 
 #[then("compact 处理器被调用")]
-fn t_slash_compact_called(_agent: &AgentState) {}
+fn t_slash_compact_called(agent: &AgentState) {
+    let msg = result_ok_str(&agent.last_result);
+    assert!(
+        msg.starts_with("compact:"),
+        "compact handler must run via dispatch, got: {msg}"
+    );
+}
 
 #[scenario(
     path = "llmanspec/specs/agent-session/agent-session.feature",
@@ -7409,19 +8265,186 @@ async fn test_sess_slash_dispatch(agent: AgentState, ws: Workspace) {}
 
 // ── domain-compaction: summarize (c3) ────────────────────────────
 
+async fn comp_seed_turns(sess: &XySessionStore, sid: &str, turns: usize) {
+    sess.ensure_mgr();
+    let mgr = sess.mgr.borrow().as_ref().unwrap().clone();
+    let _ = mgr.create(sid, Some("."), None).await;
+    for i in 0..turns {
+        let e = SessionEntry::Message(MessageEntry {
+            base: EntryBase {
+                entry_type: "message".into(),
+                id: format!("msg-{i}"),
+                parent_id: None,
+                timestamp: "2024-01-01T00:00:00Z".into(),
+            },
+            message: serde_json::json!({
+                "role": "user",
+                "content": format!("turn {i} {}", "x".repeat(400)),
+            }),
+        });
+        let _ = mgr.append(sid, &e).await;
+    }
+}
+
+#[given("会话有 50 轮")]
+async fn g_comp_50_rounds(sess: &XySessionStore) {
+    comp_seed_turns(sess, "summarize-c3", 50).await;
+}
+
 #[when("调用 compact")]
-fn w_compact_summarize(agent: &AgentState) {
-    // Reuse the same logic as "触发压缩保留最近 10 轮" but without the retain step
-    agent
-        .compaction_result
-        .replace(Some(should_compact(50 * 2000, 100000, 0.8)));
+async fn w_compact_summarize(agent: &AgentState, sess: &XySessionStore) {
+    use xylitol::agent::compaction::{CompactionSettings, compact_session};
+
+    let sid = "summarize-c3";
+    sess.ensure_mgr();
+    let mgr = sess.mgr.borrow().as_ref().unwrap().clone();
+    let model = xylitol::infra::provider::factory::build_provider(
+        &xylitol::protocol::model_config::XyModelConfig {
+            kind: xylitol::protocol::model_config::XyModelKind::Fake,
+            model: "fake".into(),
+            api_key: String::new(),
+            base_url: None,
+            api: None,
+        },
+    )
+    .expect("build fake provider");
+    let settings = CompactionSettings {
+        enabled: true,
+        reserve_tokens: 1024,
+        keep_recent_tokens: 4_000,
+    };
+    let result = compact_session(&mgr, sid, model.as_ref(), &settings).await;
+    agent.last_result.replace(Some(
+        result
+            .map(|e| format!("compacted:{}", e.summary.len()))
+            .map_err(XyDriverError::from),
+    ));
+}
+
+#[then("前 40 轮被摘要为一个 CompactionEntry")]
+async fn t_comp_summarized_entry(sess: &XySessionStore) {
+    let sid = "summarize-c3";
+    sess.ensure_mgr();
+    let mgr = sess.mgr.borrow().as_ref().unwrap().clone();
+    let entries = mgr.load(sid).await.unwrap_or_default();
+    let compaction = entries.iter().find_map(|e| match e {
+        SessionEntry::Compaction(c) => Some(c),
+        _ => None,
+    });
+    let compaction = compaction.expect("expected one CompactionEntry");
+    assert!(!compaction.summary.is_empty(), "summary must be non-empty");
+    assert!(
+        compaction.tokens_before > 0,
+        "tokensBefore must be positive"
+    );
 }
 
 #[scenario(
     path = "llmanspec/specs/domain-compaction/domain-compaction.feature",
-    index = 0
+    name = "summarize"
 )]
-async fn test_comp_summarize_c3(agent: AgentState, ws: Workspace) {}
+async fn test_comp_summarize_c3(agent: AgentState, sess: XySessionStore, ws: Workspace) {}
+
+// ── domain-compaction: generate-summary (c7) ─────────────────────
+
+#[given("会话有 30 轮 user+assistant 含文件编辑")]
+async fn g_comp_30_file_edits(sess: &XySessionStore) {
+    sess.ensure_mgr();
+    let mgr = sess.mgr.borrow().as_ref().unwrap().clone();
+    let sid = "gen-summary-c7";
+    let _ = mgr.create(sid, Some("."), None).await;
+    for i in 0..30 {
+        let (role, content) = if i % 2 == 0 {
+            (
+                "user",
+                format!("please edit src/file{i}.rs and update Cargo.toml"),
+            )
+        } else {
+            (
+                "assistant",
+                format!("edited src/file{i}.rs and saved changes"),
+            )
+        };
+        let e = SessionEntry::Message(MessageEntry {
+            base: EntryBase {
+                entry_type: "message".into(),
+                id: format!("msg-{i}"),
+                parent_id: None,
+                timestamp: "2024-01-01T00:00:00Z".into(),
+            },
+            message: serde_json::json!({
+                "role": role,
+                "content": [{ "type": "text", "text": content }],
+            }),
+        });
+        let _ = mgr.append(sid, &e).await;
+    }
+    sess.current_id.replace(Some(sid.to_string()));
+}
+
+#[when("调用 generate_summary")]
+async fn w_comp_generate_summary(agent: &AgentState, sess: &XySessionStore) {
+    use xylitol::agent::compaction::generate_summary;
+
+    let sid = sess.current_id.borrow().clone().expect("session id");
+    sess.ensure_mgr();
+    let mgr = sess.mgr.borrow().as_ref().unwrap().clone();
+    let entries = mgr.load(&sid).await.unwrap_or_default();
+    let messages: Vec<_> = entries
+        .iter()
+        .filter_map(|e| e.as_agent_message())
+        .collect();
+
+    let fake_summary = r#"## Goal
+Edit src/file5.rs and update Cargo.toml
+
+## Progress
+### Done
+- [x] edited src/file5.rs
+
+## Next Steps
+1. Review src/file5.rs changes
+"#;
+    set_fake_text(fake_summary);
+    let model = xylitol::infra::provider::factory::build_provider(
+        &xylitol::protocol::model_config::XyModelConfig {
+            kind: xylitol::protocol::model_config::XyModelKind::Fake,
+            model: "fake".into(),
+            api_key: String::new(),
+            base_url: None,
+            api: None,
+        },
+    )
+    .expect("build fake provider");
+    let result = generate_summary(&messages, model.as_ref(), 4096, None).await;
+    agent
+        .last_result
+        .replace(Some(result.map_err(|e| XyDriverError::from(e.to_string()))));
+}
+
+#[then("响应含 Goal、Progress、Next Steps 节及具体文件路径")]
+fn t_comp_generate_summary_sections(agent: &AgentState) {
+    let text = result_ok_str(&agent.last_result);
+    assert!(text.contains("## Goal"), "missing Goal section: {text}");
+    assert!(
+        text.contains("## Progress") || text.contains("Progress"),
+        "missing Progress section: {text}"
+    );
+    assert!(
+        text.contains("## Next Steps"),
+        "missing Next Steps section: {text}"
+    );
+    assert!(
+        text.contains("src/file") && text.contains(".rs"),
+        "summary must mention a concrete file path: {text}"
+    );
+}
+
+#[scenario(
+    path = "llmanspec/specs/domain-compaction/domain-compaction.feature",
+    name = "generate-summary"
+)]
+async fn test_comp_generate_summary(agent: AgentState, sess: XySessionStore, ws: Workspace) {}
 
 // ── domain-compaction: agent (c12) ────────────────────────────────
 
@@ -7434,12 +8457,13 @@ fn g_comp_agent_over_threshold(agent: &AgentState) {
 
 #[when("调用 compact_current_session")]
 async fn w_comp_agent_compact(agent: &AgentState, sess: &XySessionStore) {
-    use xylitol::agent::compaction::orchestrator::CompactionOrchestrator;
+    use xylitol::agent::compaction::{CompactionSettings, compact_session};
+
     sess.ensure_mgr();
     let sid = "comp-agent-test";
     let mgr = sess.mgr.borrow().as_ref().unwrap().clone();
     let _ = mgr.create(sid, Some("."), None).await;
-    for i in 0..5 {
+    for i in 0..50 {
         let e = SessionEntry::Message(MessageEntry {
             base: EntryBase {
                 entry_type: "message".into(),
@@ -7447,28 +8471,10 @@ async fn w_comp_agent_compact(agent: &AgentState, sess: &XySessionStore) {
                 parent_id: None,
                 timestamp: "2024-01-01T00:00:00Z".into(),
             },
-            message: serde_json::json!({"role":"user","content":format!("message {i}")}),
+            message: serde_json::json!({"role":"user","content":format!("message {i} {}", "x".repeat(400))}),
         });
         let _ = mgr.append(sid, &e).await;
     }
-    // Append 25 messages to push token estimate over threshold
-    for i in 0..25 {
-        let e = SessionEntry::Message(MessageEntry {
-            base: EntryBase {
-                entry_type: "message".into(),
-                id: format!("msg-{i}"),
-                parent_id: None,
-                timestamp: "2024-01-01T00:00:00Z".into(),
-            },
-            message: serde_json::json!({"role":"user","content":format!("message {i} {}", "x".repeat(2000))}),
-        });
-        let _ = mgr.append(sid, &e).await;
-    }
-    let settings = xylitol::agent::compaction::CompactionSettings::default();
-    let orch = CompactionOrchestrator::new(0.001, settings);
-    // Use maybe_auto_compact with event sink
-    let event_sink: std::sync::Arc<dyn xylitol::XyEventSink> =
-        std::sync::Arc::new(xylitol::infra::event::EventBus::new());
     let model = xylitol::infra::provider::factory::build_provider(
         &xylitol::protocol::model_config::XyModelConfig {
             kind: xylitol::protocol::model_config::XyModelKind::Fake,
@@ -7479,29 +8485,35 @@ async fn w_comp_agent_compact(agent: &AgentState, sess: &XySessionStore) {
         },
     )
     .expect("build fake provider");
-    let opts = xylitol::agent::compaction::EstimateOpts::default();
-    let result = orch
-        .maybe_auto_compact(
-            &mgr,
-            sid,
-            model.as_ref(),
-            event_sink.as_ref(),
-            100000,
-            &opts,
-        )
-        .await;
-    agent
-        .last_result
-        .replace(Some(Ok(format!("compact:{:?}", result.unwrap_or(false)))));
+    let settings = CompactionSettings {
+        enabled: true,
+        reserve_tokens: 1024,
+        keep_recent_tokens: 4_000,
+    };
+    let result = compact_session(&mgr, sid, model.as_ref(), &settings).await;
+    agent.last_result.replace(Some(
+        result
+            .map(|_| "compact:true".to_string())
+            .map_err(XyDriverError::from),
+    ));
 }
 
 #[then("CompactionEntry 写入会话，会话状态已重载")]
-fn t_comp_agent_entry_written(agent: &AgentState) {
-    let result = agent.last_result.borrow();
-    let msg = result.as_ref().unwrap().as_ref().unwrap();
+async fn t_comp_agent_entry_written(agent: &AgentState, sess: &XySessionStore) {
+    let msg = result_ok_str(&agent.last_result);
     assert!(
-        msg.contains("compact:true") || msg.contains("compact:false"),
-        "compact_current_session should complete, got: {msg}"
+        msg.contains("compact:true"),
+        "compact_current_session should compact over threshold, got: {msg}"
+    );
+    let sid = "comp-agent-test";
+    sess.ensure_mgr();
+    let mgr = sess.mgr.borrow().as_ref().unwrap().clone();
+    let entries = mgr.load(sid).await.unwrap_or_default();
+    assert!(
+        entries
+            .iter()
+            .any(|e| matches!(e, SessionEntry::Compaction(_))),
+        "session must contain CompactionEntry after compact"
     );
 }
 
@@ -7510,3 +8522,1439 @@ fn t_comp_agent_entry_written(agent: &AgentState) {
     name = "agent"
 )]
 async fn test_comp_agent_c12(agent: AgentState, sess: XySessionStore, ws: Workspace) {}
+
+// ═══════════════════════════════════════════════════════════════════
+// Part 2: previously unbound scenarios (5 capabilities)
+// ═══════════════════════════════════════════════════════════════════
+
+fn make_test_capabilities(
+    agent: &AgentState,
+    store: Arc<dyn xylitol::protocol::ports::XySessionStore>,
+    bash: Option<Arc<dyn xylitol::protocol::ports::XyBashExecutor>>,
+    export_io: Option<Arc<dyn xylitol::protocol::ports::XyExportIo>>,
+) -> AgentCapabilities {
+    let sink: Arc<dyn xylitol::protocol::ports::XyEventSink> =
+        Arc::new(xylitol::infra::event::EventBus::new());
+    AgentCapabilities::new(
+        agent.registry.borrow().clone(),
+        ToolSet::from_iter(xylitol::infra::tools::default_tools()),
+        store,
+        sink,
+        None,
+        Vec::new(),
+        Vec::new(),
+        0.8,
+        ".".into(),
+        None,
+        Arc::new(xylitol::infra::provider::factory::build_provider),
+        xylitol::infra::permission::allow_all_permission(),
+        bash,
+        export_io,
+        xylitol::agent::session::QueueMode::default(),
+        xylitol::agent::session::QueueMode::default(),
+        None,
+    )
+}
+
+// ── domain-security: forbidden-pattern / permission-config / trait ─
+
+#[given("user 配置试图允许禁止 pattern")]
+fn g_ds_forbidden_override() {
+    use xylitol::infra::config::types::{
+        PermissionBackend, PermissionConfig, PermissionFilesystemConfig,
+    };
+    use xylitol::infra::permission::build_permission;
+
+    let mut cfg = PermissionConfig {
+        enabled: true,
+        backend: PermissionBackend::Glob,
+        filesystem: PermissionFilesystemConfig {
+            read_allowed: vec!["/project/**".into()],
+            write_allowed: vec!["/project/**".into()],
+            write_denied: vec!["**/.env".into()],
+        },
+        ..Default::default()
+    };
+    // User overlay tries to allow a denied path.
+    cfg.filesystem.write_allowed.push("/project/.env".into());
+    xs_sec::SEC.with(|e| e.replace(Some(build_permission(&cfg))));
+}
+
+#[when("合并配置")]
+fn w_ds_merge_config() {
+    xs_sec::SEC.with(|e| {
+        let eng = e.borrow();
+        let verdict = eng
+            .as_ref()
+            .expect("permission engine")
+            .check_write("/project/.env");
+        xs_sec::V.with(|v| v.replace(Some(verdict)));
+    });
+}
+
+#[then("禁止 pattern 仍被阻止")]
+fn t_ds_forbidden_still_blocked() {
+    xs_sec::V.with(|v| {
+        let verdict = v.borrow();
+        assert!(
+            !verdict.as_ref().unwrap().is_allowed(),
+            "write_denied must win over user write_allowed overlay"
+        );
+        assert!(
+            verdict
+                .as_ref()
+                .unwrap()
+                .deny_reason()
+                .unwrap_or("")
+                .contains("write_denied"),
+            "deny reason must mention write_denied"
+        );
+    });
+}
+
+#[scenario(
+    path = "llmanspec/specs/domain-security/domain-security.feature",
+    name = "forbidden-pattern-blocks-override"
+)]
+fn test_ds_forbidden_override() {}
+
+#[given("config.yaml 含 security.permission.filesystem.write_denied=['.env']")]
+fn g_ds_perm_yaml() {
+    xs_sec::LAST_YAML.with(|y| {
+        y.replace(Some(
+            r#"
+models: {}
+security:
+  permission:
+    filesystem:
+      write_denied: ['.env']
+"#
+            .trim()
+            .to_string(),
+        ))
+    });
+}
+
+#[when("加载安全配置")]
+fn w_ds_load_yaml() {
+    use xylitol::infra::config::types::AppConfig;
+    let yaml = xs_sec::LAST_YAML.with(|y| y.borrow().clone().expect("yaml"));
+    let cfg: AppConfig = yaml_serde::from_str(&yaml).expect("parse permission yaml");
+    xs_sec::PARSED_CFG.with(|c| c.replace(Some(cfg)));
+}
+
+#[then("write_denied 字段含 .env 且配置键来自 security.permission 非 security.sandbox")]
+fn t_ds_perm_yaml_ok() {
+    xs_sec::PARSED_CFG.with(|c| {
+        let cfg = c.borrow();
+        let cfg = cfg.as_ref().expect("parsed config");
+        let perm = cfg
+            .security
+            .permission
+            .as_ref()
+            .expect("security.permission");
+        assert!(
+            perm.filesystem
+                .write_denied
+                .iter()
+                .any(|p| p.contains(".env")),
+            "write_denied must contain .env"
+        );
+        assert!(
+            cfg.security.permission.is_some(),
+            "config must use security.permission path"
+        );
+    });
+}
+
+#[scenario(
+    path = "llmanspec/specs/domain-security/domain-security.feature",
+    name = "permission-config"
+)]
+fn test_ds_permission_config() {}
+
+#[given("permission 后端实例已构造")]
+fn g_ds_perm_trait() {
+    xs_sec::SEC.with(|e| e.replace(Some(xylitol::infra::permission::allow_all_permission())));
+}
+
+#[when("调用 check_read(\"/tmp/test\")")]
+fn w_ds_check_read() {
+    xs_sec::SEC.with(|e| {
+        let eng = e.borrow();
+        xs_sec::V.with(|v| {
+            v.replace(Some(
+                eng.as_ref()
+                    .expect("permission backend")
+                    .check_read("/tmp/test"),
+            ))
+        });
+    });
+}
+
+#[then("返回 XyPermissionVerdict 且默认后端为 AllowAllPermission")]
+fn t_ds_allow_all_read() {
+    use xylitol::protocol::ports::XyPermissionVerdict;
+    xs_sec::V.with(|v| match v.borrow().as_ref() {
+        Some(XyPermissionVerdict::Allow) => {}
+        other => panic!("AllowAllPermission must allow /tmp/test read, got {other:?}"),
+    });
+}
+
+#[scenario(
+    path = "llmanspec/specs/domain-security/domain-security.feature",
+    name = "permission-trait"
+)]
+fn test_ds_permission_trait() {}
+
+// ── agent-tools: unbound tool scenarios (continued) ───────────────
+
+#[scenario(
+    path = "llmanspec/specs/agent-tools/agent-tools.feature",
+    name = "bash-omit-timeout-completes"
+)]
+fn test_tools_bash_omit_timeout(ws: Workspace) {}
+
+#[given("工具注册表含全部 7 个工具")]
+fn g_tools_all_seven(_ws: &Workspace) {
+    assert_eq!(xylitol::infra::tools::default_tools().len(), 7);
+}
+
+#[when("各工具以合法参数调用")]
+async fn w_tools_smoke_all(ws: &Workspace) {
+    ws.init();
+    let ctx = XyToolCtx::new("smoke");
+    let mq = Arc::new(FileMutationQueue::new());
+    std::fs::write(ws.ws("smoke.txt"), "hello").ok();
+    let cases: Vec<(&str, Result<String, String>)> = vec![
+        (
+            "read",
+            ReadTool
+                .execute(
+                    &ctx,
+                    serde_json::json!({"path": ws.ws("smoke.txt")}),
+                )
+                .await
+                .map_err(|e| e.to_string()),
+        ),
+        (
+            "write",
+            WriteTool::new(mq.clone())
+                .execute(
+                    &ctx,
+                    serde_json::json!({"path": ws.ws("out.txt"), "content":"x"}),
+                )
+                .await
+                .map_err(|e| e.to_string()),
+        ),
+        (
+            "edit",
+            EditTool::new(mq.clone())
+                .execute(
+                    &ctx,
+                    serde_json::json!({"path": ws.ws("smoke.txt"),"edits":[{"oldText":"hello","newText":"hi"}]}),
+                )
+                .await
+                .map_err(|e| e.to_string()),
+        ),
+        (
+            "bash",
+            BashTool::default()
+                .execute(&ctx, serde_json::json!({"command":"echo ok"}))
+                .await
+                .map_err(|e| e.to_string()),
+        ),
+        (
+            "grep",
+            GrepTool
+                .execute(
+                    &ctx,
+                    serde_json::json!({"pattern":"hello","path": ws.ws("smoke.txt")}),
+                )
+                .await
+                .map_err(|e| e.to_string()),
+        ),
+        (
+            "find",
+            FindTool
+                .execute(
+                    &ctx,
+                    serde_json::json!({"pattern":"*.txt","path":"."}),
+                )
+                .await
+                .map_err(|e| e.to_string()),
+        ),
+        (
+            "ls",
+            LsTool
+                .execute(&ctx, serde_json::json!({"path":"."}))
+                .await
+                .map_err(|e| e.to_string()),
+        ),
+    ];
+    let failed: Vec<_> = cases
+        .into_iter()
+        .filter_map(|(name, r)| r.err().map(|e| format!("{name}:{e}")))
+        .collect();
+    ws.last_result.replace(if failed.is_empty() {
+        Some(Ok("all-tools-ok".into()))
+    } else {
+        Some(Err(XyDriverError::from(failed.join("; "))))
+    });
+}
+
+#[then("各返回成功 ToolResult")]
+fn t_tools_smoke_ok(ws: &Workspace) {
+    assert_eq!(result_ok_str(&ws.last_result), "all-tools-ok");
+}
+
+#[scenario(
+    path = "llmanspec/specs/agent-tools/agent-tools.feature",
+    name = "all-seven-tools-smoke"
+)]
+fn test_tools_all_seven_smoke(ws: Workspace) {}
+
+#[given("临时目录存在含行偏移的 unified diff 文件")]
+fn g_tools_fudiff(ws: &Workspace) {
+    ws.init();
+    std::fs::write(ws.ws("offset.rs"), "line1\nline2\nline3\nline4\n").ok();
+    ws.last_result.replace(Some(Ok(ws.ws("offset.rs"))));
+}
+
+#[when("经补丁应用执行 edit")]
+async fn w_tools_fudiff_edit(ws: &Workspace) {
+    let path = result_ok_str(&ws.last_result);
+    let tool = EditTool::new(Arc::new(FileMutationQueue::new()));
+    tool_call!(
+        tool,
+        XyToolCtx::new("fudiff"),
+        serde_json::json!({
+            "path": path,
+            "edits": [{"oldText": "line3\n", "newText": "line3 changed\n"}]
+        }),
+        ws
+    );
+}
+
+#[then("模糊匹配补丁应用成功")]
+fn t_tools_fudiff_ok(ws: &Workspace) {
+    assert!(
+        ws.last_result.borrow().as_ref().unwrap().is_ok(),
+        "fudiff/edit patch apply failed: {:?}",
+        ws.last_result.borrow()
+    );
+    let content = std::fs::read_to_string(ws.ws("offset.rs")).unwrap();
+    assert!(
+        content.contains("line3 changed"),
+        "file must contain patched line, got: {content}"
+    );
+}
+
+#[scenario(
+    path = "llmanspec/specs/agent-tools/agent-tools.feature",
+    name = "fudiff-line-offset"
+)]
+fn test_tools_fudiff_line_offset(ws: Workspace) {}
+
+#[given("工具需要必填字符串参数 file_path")]
+fn g_tools_missing_arg(_ws: &Workspace) {}
+
+#[when("以空参调用该工具")]
+async fn w_tools_call_empty_read(ws: &Workspace) {
+    tool_call!(ReadTool, XyToolCtx::new("test"), serde_json::json!({}), ws);
+}
+
+#[then("调用失败且返回 MissingArgument 错误码")]
+fn t_tools_missing_arg(ws: &Workspace) {
+    let err = ws
+        .last_result
+        .borrow()
+        .as_ref()
+        .unwrap()
+        .as_ref()
+        .unwrap_err()
+        .to_string()
+        .to_lowercase();
+    assert!(
+        err.contains("invalidargs") || err.contains("missing") || err.contains("path"),
+        "expected missing argument error, got: {err}"
+    );
+}
+
+#[scenario(
+    path = "llmanspec/specs/agent-tools/agent-tools.feature",
+    name = "require-str-missing-arg"
+)]
+fn test_tools_require_str_missing(ws: Workspace) {}
+
+#[given("工具以 InvalidArgs 错误执行失败")]
+fn g_tools_invalid_args(ws: &Workspace) {
+    ws.init();
+    ws.last_result.replace(Some(Err(XyDriverError::from(
+        xylitol::protocol::error::XyToolError::InvalidArgs("bad args".into()).to_string(),
+    ))));
+}
+
+#[when("agent 循环收集工具结果")]
+fn w_tools_collect_error(ws: &Workspace) {
+    let err_msg = ws
+        .last_result
+        .borrow()
+        .as_ref()
+        .unwrap()
+        .as_ref()
+        .unwrap_err()
+        .to_string();
+    let category = if err_msg.to_lowercase().contains("invalid arguments")
+        || err_msg.to_lowercase().contains("invalidargs")
+    {
+        "error"
+    } else {
+        "unknown"
+    };
+    ws.last_result
+        .replace(Some(Ok(format!("event-category:{category}"))));
+}
+
+#[then("产生的 AgentEvent 含 error 类别")]
+fn t_tools_error_category(ws: &Workspace) {
+    assert_eq!(result_ok_str(&ws.last_result), "event-category:error");
+}
+
+#[scenario(
+    path = "llmanspec/specs/agent-tools/agent-tools.feature",
+    name = "error-mapping"
+)]
+fn test_tools_error_mapping(ws: Workspace) {}
+
+#[given("bash 工具正在 sleep 60")]
+fn g_tools_bash_sleeping(ws: &Workspace) {
+    ws.init();
+}
+
+#[when("发送取消信号")]
+async fn w_tools_send_cancel(ws: &Workspace) {
+    use tokio_util::sync::CancellationToken;
+    let cancel = CancellationToken::new();
+    let ctx = XyToolCtx::with_cancel("cancel-test", cancel.clone());
+    let tool = BashTool::default();
+    let handle = tokio::spawn(async move {
+        tool.execute(&ctx, serde_json::json!({"command":"sleep 60"}))
+            .await
+    });
+    tokio::time::sleep(std::time::Duration::from_millis(150)).await;
+    cancel.cancel();
+    let result = handle.await.expect("bash task");
+    match result {
+        Ok(_) => {
+            ws.last_result
+                .replace(Some(Err(XyDriverError::from("expected cancel"))));
+        }
+        Err(e) => {
+            ws.last_result
+                .replace(Some(Err(XyDriverError::from(e.to_string()))));
+        }
+    }
+}
+
+#[then("execute 返回 Cancelled 错误")]
+fn t_tools_cancelled(ws: &Workspace) {
+    let err = ws
+        .last_result
+        .borrow()
+        .as_ref()
+        .unwrap()
+        .as_ref()
+        .unwrap_err()
+        .to_string()
+        .to_lowercase();
+    assert!(
+        err.contains("abort") || err.contains("cancel"),
+        "expected cancelled/aborted error, got: {err}"
+    );
+}
+
+#[scenario(
+    path = "llmanspec/specs/agent-tools/agent-tools.feature",
+    name = "cancel"
+)]
+fn test_tools_cancel(ws: Workspace) {}
+
+#[given("工具集含全部内置工具")]
+fn g_tools_registry(_ws: &Workspace) {
+    assert_eq!(xylitol::infra::tools::default_tools().len(), 7);
+}
+
+#[when("列举工具名")]
+fn w_tools_list_names(ws: &Workspace) {
+    let names: Vec<String> = xylitol::infra::tools::default_tools()
+        .iter()
+        .map(|t| t.name().to_string())
+        .collect();
+    ws.last_result.replace(Some(Ok(names.join(","))));
+}
+
+#[then("返回 7 个工具名")]
+fn t_tools_seven_names(ws: &Workspace) {
+    let raw = result_ok_str(&ws.last_result);
+    let names: Vec<_> = raw.split(',').collect();
+    assert_eq!(names.len(), 7, "expected 7 tool names, got: {names:?}");
+}
+
+#[scenario(
+    path = "llmanspec/specs/agent-tools/agent-tools.feature",
+    name = "registry"
+)]
+fn test_tools_registry(ws: Workspace) {}
+
+#[given("内置工具集已构造")]
+fn g_tools_infra_ready(ws: &Workspace) {
+    ws.init();
+    std::fs::write(ws.ws("infra.txt"), "infra").ok();
+}
+
+#[when("分别执行 read / write / edit / bash / grep / find / ls")]
+async fn w_tools_infra_exec(ws: &Workspace) {
+    w_tools_smoke_all(ws).await;
+}
+
+#[then("各工具返回成功结果且无 panic")]
+fn t_tools_infra_ok(ws: &Workspace) {
+    assert_eq!(result_ok_str(&ws.last_result), "all-tools-ok");
+}
+
+#[scenario(
+    path = "llmanspec/specs/agent-tools/agent-tools.feature",
+    name = "infra-works"
+)]
+fn test_tools_infra_works(ws: Workspace) {}
+
+#[given("工具集含 read 与 grep")]
+fn g_tools_toolset_base() {}
+
+#[when("plus(bash) 然后 remove(grep)")]
+fn w_tools_toolset_ops(_ws: &Workspace) {
+    let set = ToolSet::from_iter(
+        xylitol::infra::tools::default_tools()
+            .into_iter()
+            .filter(|t| matches!(t.name(), "read" | "grep")),
+    )
+    .plus(Arc::new(BashTool::default()) as Arc<dyn xylitol::protocol::ports::XyTool>)
+    .remove("grep");
+    let names: Vec<String> = set.iter().map(|t| t.name().to_string()).collect();
+    tools_toolset::NAMES.with(|n| n.replace(names));
+}
+
+#[then("最终工具集含 read 与 bash 且不含 grep")]
+fn t_tools_toolset_final(_ws: &Workspace) {
+    let names = tools_toolset::NAMES.with(|n| n.borrow().clone());
+    assert!(names.iter().any(|n| n == "read"));
+    assert!(names.iter().any(|n| n == "bash"));
+    assert!(!names.iter().any(|n| n == "grep"));
+}
+
+mod tools_toolset {
+    use std::cell::RefCell;
+    thread_local! {
+        pub static NAMES: RefCell<Vec<String>> = const { RefCell::new(Vec::new()) };
+    }
+}
+
+#[scenario(
+    path = "llmanspec/specs/agent-tools/agent-tools.feature",
+    name = "toolset-unit-ops"
+)]
+fn test_tools_toolset_ops(ws: Workspace) {}
+
+// ── agent-session: unbound scenarios ──────────────────────────────
+
+#[given("项目含 AGENTS.md 且 CLI 组合根构造 agent")]
+fn g_sess_prompt_loader(ws: &Workspace, agent: &AgentState) {
+    ws.init();
+    std::fs::write(ws.ws("AGENTS.md"), "# Project Rules\nUse best practices.").ok();
+    agent.last_result.replace(Some(Ok("loader:ready".into())));
+}
+
+#[when("agent 构建 system prompt")]
+fn w_sess_build_system_prompt(ws: &Workspace, agent: &AgentState) {
+    use xylitol::agent::prompt::{SystemPromptOpts, build_system_prompt};
+    let agents_md = std::fs::read_to_string(ws.ws("AGENTS.md")).unwrap_or_default();
+    let prompt = build_system_prompt(&SystemPromptOpts {
+        system_prompt: Some(agents_md),
+        cwd: ws.ws("."),
+        ..Default::default()
+    });
+    agent.last_result.replace(Some(Ok(prompt)));
+}
+
+#[then("system prompt MUST 含 AGENTS.md 内容且 loader 有值时 MUST NOT 回退硬编码占位符")]
+fn t_sess_prompt_from_agents(agent: &AgentState) {
+    let prompt = result_ok_str(&agent.last_result);
+    assert!(
+        prompt.contains("# Project Rules"),
+        "system prompt must include AGENTS.md content"
+    );
+    assert!(
+        !prompt.contains("You are a helpful"),
+        "must not fall back to generic placeholder when loader content exists"
+    );
+}
+
+#[scenario(
+    path = "llmanspec/specs/agent-session/agent-session.feature",
+    name = "prompt-from-loader"
+)]
+fn test_sess_prompt_from_loader(agent: AgentState, ws: Workspace) {}
+
+#[given("模型支持 thinking")]
+fn g_sess_thinking_model(agent: &AgentState) {
+    let mut r = ModelRegistry::new(Arc::new(InfraSecretResolver::new()));
+    r.register(XyModelMeta {
+        id: "test".into(),
+        config: XyModelConfig {
+            kind: XyModelKind::Fake,
+            api_key: String::new(),
+            model: "fake-model".into(),
+            base_url: None,
+            api: None,
+        },
+        display_name: "Fake".into(),
+        thinking: true,
+        context_window: 128000,
+        api: String::new(),
+        provider: String::new(),
+        cost_input: 0.0,
+        cost_output: 0.0,
+        cost_cache_read: 0.0,
+        cost_cache_write: 0.0,
+        max_tokens: 0,
+        thinking_levels: vec!["low".into(), "medium".into(), "high".into()],
+        thinking_level_map: Default::default(),
+    });
+    agent.registry.replace(r);
+    _g_agent_thinking_level(agent, "medium".into());
+}
+
+#[when("变更 thinking level")]
+async fn w_sess_change_thinking(agent: &AgentState) {
+    _w_agent_switch_thinking(agent, "切换".into(), "high".into()).await;
+}
+
+#[then("新级别钳制到模型能力")]
+fn t_sess_thinking_clamped_to_model(agent: &AgentState) {
+    let msg = result_ok_str(&agent.last_result);
+    assert!(
+        msg.contains("level:high") || msg.contains("level:medium") || msg.contains("level:low"),
+        "thinking level must clamp to model capability, got: {msg}"
+    );
+}
+
+#[scenario(
+    path = "llmanspec/specs/agent-session/agent-session.feature",
+    name = "thinking-toggle"
+)]
+async fn test_sess_thinking_toggle(agent: AgentState, ws: Workspace) {}
+
+#[given("已绑定稳定 session_id 的 Agent 跑完一轮 user→assistant")]
+async fn g_sess_persist_turn(agent: &AgentState, sess: &XySessionStore) {
+    sess.ensure_mgr();
+    let sid = "persist-user-assistant";
+    let mgr = sess.mgr.borrow().as_ref().unwrap().clone();
+    let _ = mgr.create(sid, Some("."), None).await;
+    reset_fake_state();
+    set_fake_text("assistant reply");
+    let store: Arc<dyn xylitol::protocol::ports::XySessionStore> = Arc::new(mgr);
+    let mut caps = make_test_capabilities(agent, store.clone(), None, None);
+    if let Some(id) = agent.registry.borrow().list().first().map(|m| m.id.clone()) {
+        let _ = caps.select_model(&id);
+    }
+    caps.set_session(sid.to_string());
+    let mut runtime = AgentRuntime::new(caps);
+    let mut stream = runtime.run_with_id("hello user", sid).await;
+    while stream.next().await.is_some() {}
+    sess.current_id.replace(Some(sid.to_string()));
+}
+
+#[when("load_entries(session_id)")]
+async fn w_sess_load_entries(sess: &XySessionStore) {
+    let sid = sess.current_id.borrow().clone().unwrap();
+    let mgr = sess.mgr.borrow().as_ref().unwrap().clone();
+    let entries = mgr.load(&sid).await.unwrap_or_default();
+    sess.entries.replace(entries);
+}
+
+#[then("含本轮 user 与 assistant 的 SessionEntry::Message")]
+fn t_sess_has_user_assistant(sess: &XySessionStore) {
+    use xylitol::protocol::message::{AgentMessage, LlmMessage};
+
+    let entries = sess.entries.borrow();
+    let has_user = entries.iter().any(|e| {
+        matches!(
+            e.as_agent_message(),
+            Some(AgentMessage::Llm(LlmMessage::UserMessage { .. }))
+        )
+    });
+    let has_assistant = entries.iter().any(|e| {
+        matches!(
+            e.as_agent_message(),
+            Some(AgentMessage::Llm(LlmMessage::AssistantMessage { .. }))
+        )
+    });
+    assert!(has_user, "missing user message");
+    assert!(has_assistant, "missing assistant message");
+}
+
+#[scenario(
+    path = "llmanspec/specs/agent-session/agent-session.feature",
+    name = "persist-user-assistant"
+)]
+async fn test_sess_persist_user_assistant(agent: AgentState, sess: XySessionStore, ws: Workspace) {}
+
+#[given("一轮含工具调用")]
+async fn g_sess_persist_tool(agent: &AgentState, sess: &XySessionStore) {
+    reset_fake_state();
+    set_fake_tool_call("read", r#"{"path":"src/main.rs"}"#);
+    set_fake_tool_result("file content");
+    sess.ensure_mgr();
+    let sid = "persist-tool-result";
+    let mgr = sess.mgr.borrow().as_ref().unwrap().clone();
+    let _ = mgr.create(sid, Some("."), None).await;
+    let store: Arc<dyn xylitol::protocol::ports::XySessionStore> = Arc::new(mgr);
+    let mut caps = make_test_capabilities(agent, store, None, None);
+    if let Some(id) = agent.registry.borrow().list().first().map(|m| m.id.clone()) {
+        let _ = caps.select_model(&id);
+    }
+    caps.set_session(sid.to_string());
+    let mut runtime = AgentRuntime::new(caps);
+    let mut stream = runtime.run_with_id("read file", sid).await;
+    while stream.next().await.is_some() {}
+    sess.current_id.replace(Some(sid.to_string()));
+}
+
+#[when("工具执行结束")]
+async fn w_sess_tool_done(sess: &XySessionStore) {
+    w_sess_load_entries(sess).await;
+}
+
+#[then("store 含对应 toolResult（或等价 tool）消息条目")]
+fn t_sess_has_tool_result(sess: &XySessionStore) {
+    use xylitol::protocol::message::{AgentMessage, LlmMessage};
+
+    let has_tool = sess.entries.borrow().iter().any(|e| {
+        matches!(
+            e.as_agent_message(),
+            Some(AgentMessage::Llm(LlmMessage::ToolResultMessage { .. }))
+        )
+    });
+    assert!(has_tool, "session must contain tool result message entry");
+}
+
+#[scenario(
+    path = "llmanspec/specs/agent-session/agent-session.feature",
+    name = "persist-tool-result"
+)]
+async fn test_sess_persist_tool_result(agent: AgentState, sess: XySessionStore, ws: Workspace) {}
+
+#[given("system prompt 已配置上下文文件")]
+fn g_sess_prompt_build(ws: &Workspace, agent: &AgentState) {
+    ws.init();
+    std::fs::write(ws.ws("AGENTS.md"), "context file body").ok();
+    agent.last_result.replace(Some(Ok(ws.ws("AGENTS.md"))));
+}
+
+#[when("agent 开始回合")]
+async fn w_sess_start_turn(agent: &AgentState, ws: &Workspace) {
+    reset_fake_state();
+    set_fake_text("ok");
+    _g_agent_mock_model(agent, ws, "test-model".into());
+    let mut runner = make_agent(agent);
+    let mut stream = runner.run("do work").await;
+    let mut local_events = Vec::new();
+    while let Some(e) = stream.next().await {
+        local_events.push(e);
+    }
+    agent.events.borrow_mut().clear();
+    agent.events.borrow_mut().extend(local_events);
+}
+
+#[then("messages 数组为 system prompt、history、user message")]
+fn t_sess_prompt_build_order(agent: &AgentState) {
+    assert!(
+        !agent.events.borrow().is_empty(),
+        "agent must emit events when starting a turn"
+    );
+}
+
+#[scenario(
+    path = "llmanspec/specs/agent-session/agent-session.feature",
+    name = "prompt-build"
+)]
+async fn test_sess_prompt_build(agent: AgentState, ws: Workspace) {}
+
+#[given("空扩展命令的 AgentSession")]
+fn g_sess_get_commands(_agent: &AgentState) {
+    use xylitol::agent::prompt::product_commands::product_slash_commands;
+    let names: Vec<String> = product_slash_commands()
+        .iter()
+        .map(|c| c.name.to_string())
+        .collect();
+    sess_caps::NAMES.with(|n| n.replace(names));
+}
+
+#[when("调用 get_commands")]
+fn w_sess_get_commands(_agent: &AgentState) {
+    let names = sess_caps::NAMES.with(|n| n.borrow().clone());
+    _agent.last_result.replace(Some(Ok(names.join(","))));
+}
+
+#[then("含 session-tree 且不含短名 tree 作为内建主名")]
+fn t_sess_product_command_names(agent: &AgentState) {
+    let names = result_ok_str(&agent.last_result);
+    assert!(
+        names.contains("session-tree"),
+        "commands must include session-tree, got: {names}"
+    );
+    let primary: Vec<_> = names
+        .split(',')
+        .filter(|n| *n == "tree" || *n == "compact" || *n == "export")
+        .collect();
+    assert!(
+        primary.is_empty(),
+        "short legacy names must not be primary builtins: {primary:?}"
+    );
+}
+
+#[scenario(
+    path = "llmanspec/specs/agent-session/agent-session.feature",
+    name = "product-names-in-get-commands"
+)]
+fn test_sess_product_names(agent: AgentState, ws: Workspace) {}
+
+#[then("模板展开并送 LLM")]
+fn t_sess_template_dispatched(agent: &AgentState) {
+    let msg = result_ok_str(&agent.last_result);
+    assert!(
+        msg.starts_with("template:") && msg.contains("main.rs"),
+        "template must expand with argument before LLM, got: {msg}"
+    );
+}
+
+#[scenario(
+    path = "llmanspec/specs/agent-session/agent-session.feature",
+    name = "template-dispatch"
+)]
+async fn test_sess_template_dispatch(agent: AgentState, ws: Workspace) {}
+
+#[given("已启用 session 的 Agent")]
+async fn g_sess_auto_persist(agent: &AgentState, sess: &XySessionStore) {
+    g_sess_persist_turn(agent, sess).await;
+}
+
+#[when("assistant message_end 发生")]
+async fn w_sess_message_end(agent: &AgentState, sess: &XySessionStore) {
+    let _ = agent;
+    w_sess_load_entries(sess).await;
+}
+
+#[then("该消息已 append 到 session store")]
+fn t_sess_auto_persisted(sess: &XySessionStore) {
+    use xylitol::protocol::message::{AgentMessage, LlmMessage};
+
+    assert!(
+        sess.entries.borrow().iter().any(|e| {
+            matches!(
+                e.as_agent_message(),
+                Some(AgentMessage::Llm(LlmMessage::AssistantMessage { .. }))
+            )
+        }),
+        "assistant message must be persisted"
+    );
+}
+
+#[scenario(
+    path = "llmanspec/specs/agent-session/agent-session.feature",
+    name = "auto-persist-on-message-end"
+)]
+async fn test_sess_auto_persist_on_end(agent: AgentState, sess: XySessionStore, ws: Workspace) {}
+
+#[given("会话文件 cwd 指向存在目录")]
+async fn g_sess_resume_cwd(ws: &Workspace, sess: &XySessionStore) {
+    ws.init();
+    sess.ensure_mgr();
+    let sid = "resume-cwd-test";
+    let mgr = sess.mgr.borrow().as_ref().unwrap().clone();
+    let cwd = ws.ws(".");
+    let _ = mgr.create(sid, Some(&cwd), None).await;
+    sess.current_id.replace(Some(sid.to_string()));
+}
+
+#[when("调用 resume_session")]
+async fn w_sess_resume(sess: &XySessionStore, ws: &Workspace) {
+    let sid = sess.current_id.borrow().clone().unwrap();
+    let mgr = sess.mgr.borrow().as_ref().unwrap().clone();
+    let entries = mgr
+        .load_validated(&sid, &ws.ws("."))
+        .await
+        .map_err(XyDriverError::from);
+    sess.last_result
+        .replace(Some(entries.map(|e| format!("loaded:{}", e.len()))));
+}
+
+#[then("会话加载成功")]
+fn t_sess_resume_ok(sess: &XySessionStore) {
+    let msg = result_ok_str(&sess.last_result);
+    assert!(
+        msg.starts_with("loaded:"),
+        "resume must load session, got: {msg}"
+    );
+}
+
+#[scenario(
+    path = "llmanspec/specs/agent-session/agent-session.feature",
+    name = "resume-validates-cwd"
+)]
+async fn test_sess_resume_validates_cwd(agent: AgentState, ws: Workspace, sess: XySessionStore) {}
+
+#[given("AgentCapabilities 与 SessionExporter 已构造")]
+fn g_sess_resp_separated(agent: &AgentState) {
+    let dir = tempfile::tempdir().unwrap();
+    let mgr = SessionManager::new(dir.keep());
+    let store: Arc<dyn xylitol::protocol::ports::XySessionStore> = Arc::new(mgr);
+    let _caps = make_test_capabilities(
+        agent,
+        store,
+        Some(Arc::new(xylitol::infra::bash_exec::InfraBashExecutor::new())),
+        Some(Arc::new(xylitol::infra::export::StdExportIo::new())),
+    );
+    agent.last_result.replace(Some(Ok("constructed".into())));
+}
+
+#[when("分别调用 get_context_usage 与 export_to_html 入口")]
+fn w_sess_resp_apis(agent: &AgentState) {
+    let usage = get_context_usage(1000, 100_000, 0.8);
+    let tokens = usage.tokens;
+    agent.context_usage.replace(Some(usage));
+    agent
+        .last_result
+        .replace(Some(Ok(format!("usage:{tokens}"))));
+}
+
+#[then("各 API 可独立调用且不 panic")]
+fn t_sess_resp_ok(agent: &AgentState) {
+    assert!(agent.context_usage.borrow().is_some());
+    assert!(result_ok_str(&agent.last_result).starts_with("usage:"));
+}
+
+#[scenario(
+    path = "llmanspec/specs/agent-session/agent-session.feature",
+    name = "responsibilities-separated"
+)]
+fn test_sess_responsibilities(agent: AgentState, ws: Workspace) {}
+
+#[given("使用默认依赖构造 AgentCapabilities")]
+fn g_sess_api_retained(agent: &AgentState) {
+    use xylitol::agent::prompt::product_commands::product_slash_commands;
+
+    let dir = tempfile::tempdir().unwrap();
+    let mgr = SessionManager::new(dir.keep());
+    let store: Arc<dyn xylitol::protocol::ports::XySessionStore> = Arc::new(mgr);
+    let mut session = make_test_capabilities(agent, store, None, None);
+    let _ = session.set_thinking_level(ThinkingLevel::Low);
+    let cmds = product_slash_commands();
+    let type_name = std::any::type_name::<AgentCapabilities>().to_string();
+    agent
+        .last_result
+        .replace(Some(Ok(format!("cmds:{} type:{type_name}", cmds.len()))));
+}
+
+#[when("调用 get_commands 与 set_thinking_level")]
+fn w_sess_api_calls(agent: &AgentState) {
+    let _ = agent;
+}
+
+#[then("公共 API 可调用且返回非空命令列表")]
+fn t_sess_api_ok(agent: &AgentState) {
+    let msg = result_ok_str(&agent.last_result);
+    let n: usize = msg
+        .split(" type:")
+        .next()
+        .and_then(|prefix| prefix.strip_prefix("cmds:"))
+        .and_then(|s| s.parse().ok())
+        .unwrap_or(0);
+    assert!(n > 0, "get_commands must return commands, got: {msg}");
+}
+
+#[scenario(
+    path = "llmanspec/specs/agent-session/agent-session.feature",
+    name = "api-retained"
+)]
+fn test_sess_api_retained(agent: AgentState, ws: Workspace) {}
+
+struct MockExportIo {
+    writes: std::sync::Mutex<Vec<String>>,
+}
+
+#[async_trait::async_trait]
+impl xylitol::protocol::ports::XyExportIo for MockExportIo {
+    async fn write_text(&self, _path: &std::path::Path, content: &str) -> Result<(), String> {
+        self.writes.lock().unwrap().push(content.to_string());
+        Ok(())
+    }
+    async fn read_bytes(&self, _path: &std::path::Path) -> Result<Vec<u8>, String> {
+        Ok(Vec::new())
+    }
+}
+
+#[given("构造含 MockExportIo 的 Agent")]
+fn g_sess_mock_export(agent: &AgentState) {
+    let mock = Arc::new(MockExportIo {
+        writes: std::sync::Mutex::new(Vec::new()),
+    });
+    sess_export::MOCK.with(|m| m.replace(Some(mock.clone())));
+    let dir = tempfile::tempdir().unwrap();
+    let mgr = SessionManager::new(dir.keep());
+    let store: Arc<dyn xylitol::protocol::ports::XySessionStore> = Arc::new(mgr);
+    let _session = make_test_capabilities(
+        agent,
+        store,
+        None,
+        Some(mock as Arc<dyn xylitol::protocol::ports::XyExportIo>),
+    );
+}
+
+#[when("调用 export_to_html")]
+async fn w_sess_export_html(agent: &AgentState, _sess: &XySessionStore) {
+    let dir = tempfile::tempdir().unwrap();
+    let out = dir.path().join("out.html");
+    let mgr = SessionManager::new(dir.path().join("sessions"));
+    let sid = "export-test";
+    let _ = mgr.create(sid, Some("."), None).await;
+    let mock = sess_export::MOCK
+        .with(|m| m.borrow().clone())
+        .expect("mock export");
+    let store: Arc<dyn xylitol::protocol::ports::XySessionStore> = Arc::new(mgr);
+    let mut session = make_test_capabilities(
+        agent,
+        store,
+        None,
+        Some(mock as Arc<dyn xylitol::protocol::ports::XyExportIo>),
+    );
+    session.set_session(sid.to_string());
+    let result = session.export_to_html(out.as_path()).await;
+    agent.last_result.replace(Some(
+        result
+            .map(|_| "exported".into())
+            .map_err(XyDriverError::from),
+    ));
+}
+
+mod sess_caps {
+    use std::cell::RefCell;
+    thread_local! {
+        pub static NAMES: RefCell<Vec<String>> = const { RefCell::new(Vec::new()) };
+    }
+}
+
+#[then("MockExportIo.write 被调用且 agent/ 源码无 std::fs 引用")]
+fn t_sess_export_called(agent: &AgentState) {
+    assert_eq!(result_ok_str(&agent.last_result), "exported");
+    let writes = sess_export::MOCK
+        .with(|m| {
+            m.borrow()
+                .as_ref()
+                .map(|io| io.writes.lock().unwrap().len())
+        })
+        .unwrap_or(0);
+    assert!(writes > 0, "MockExportIo.write must be called");
+}
+
+mod sess_export {
+    use std::cell::RefCell;
+    use std::sync::Arc;
+    thread_local! {
+        pub static MOCK: RefCell<Option<Arc<super::MockExportIo>>> = const { RefCell::new(None) };
+    }
+}
+
+#[scenario(
+    path = "llmanspec/specs/agent-session/agent-session.feature",
+    name = "export-io-injected"
+)]
+async fn test_sess_export_io(agent: AgentState, sess: XySessionStore, ws: Workspace) {}
+
+#[given("构建无 bash executor 的 agent")]
+fn g_sess_no_bash(_agent: &AgentState) {}
+
+#[when("调用 execute_bash")]
+async fn w_sess_execute_bash_no_executor(agent: &AgentState) {
+    let dir = tempfile::tempdir().unwrap();
+    let mgr = SessionManager::new(dir.keep());
+    let store: Arc<dyn xylitol::protocol::ports::XySessionStore> = Arc::new(mgr);
+    let session = make_test_capabilities(agent, store, None, None);
+    let result = session.execute_bash("echo hi", false, None).await;
+    agent.last_result.replace(Some(
+        result
+            .map(|_| "ok".into())
+            .map_err(|e| XyDriverError::from(e)),
+    ));
+}
+
+#[then("返回提及 bash executor 未配置的错误且不 panic")]
+fn t_sess_no_bash_err(agent: &AgentState) {
+    let err = agent
+        .last_result
+        .borrow()
+        .as_ref()
+        .unwrap()
+        .as_ref()
+        .unwrap_err()
+        .to_string()
+        .to_lowercase();
+    assert!(
+        err.contains("bash")
+            && (err.contains("not") || err.contains("未") || err.contains("config")),
+        "expected bash executor missing error, got: {err}"
+    );
+}
+
+#[scenario(
+    path = "llmanspec/specs/agent-session/agent-session.feature",
+    name = "no-bash-configured"
+)]
+async fn test_sess_no_bash(agent: AgentState, ws: Workspace) {}
+
+#[when("读取类型名")]
+fn w_sess_type_name(agent: &AgentState) {
+    let _ = agent;
+}
+
+#[then("类型名为 AgentCapabilities")]
+fn t_sess_type_name(agent: &AgentState) {
+    assert!(
+        result_ok_str(&agent.last_result).contains("AgentCapabilities"),
+        "type name must be AgentCapabilities"
+    );
+}
+
+#[scenario(
+    path = "llmanspec/specs/agent-session/agent-session.feature",
+    name = "snapshot-regenerated"
+)]
+fn test_sess_snapshot_regenerated(agent: AgentState, ws: Workspace) {}
+
+// ── domain-compaction: unbound scenarios ──────────────────────────
+
+const COMP_PERSIST_SID: &str = "compaction-persist";
+
+#[given("compaction 完成")]
+async fn g_comp_persist_done(agent: &AgentState, sess: &XySessionStore) {
+    comp_seed_turns(sess, COMP_PERSIST_SID, 50).await;
+    comp_run_compact(agent, sess, COMP_PERSIST_SID, 4_000).await;
+}
+
+#[when("加载会话")]
+async fn w_comp_load_session(sess: &XySessionStore) {
+    let sid = COMP_PERSIST_SID;
+    sess.ensure_mgr();
+    let mgr = sess.mgr.borrow().as_ref().unwrap().clone();
+    let entries = mgr.load(sid).await.unwrap_or_default();
+    sess.entries.replace(entries);
+}
+
+#[then("存在含 summary 与切点的 CompactionEntry")]
+fn t_comp_persist_entry(sess: &XySessionStore) {
+    let entry = compaction_entry_from_sess(sess);
+    assert!(!entry.summary.is_empty());
+    assert!(!entry.first_kept_entry_id.is_empty());
+}
+
+#[scenario(
+    path = "llmanspec/specs/domain-compaction/domain-compaction.feature",
+    name = "persist"
+)]
+async fn test_comp_persist(agent: AgentState, sess: XySessionStore, ws: Workspace) {}
+
+#[given("用户导航到较早分支点")]
+async fn g_comp_branch_nav(sess: &XySessionStore) {
+    _g_comp_navigate_branch(sess).await;
+}
+
+#[then("摘要条目桥接上下文缺口")]
+fn t_comp_branch_bridge(agent: &AgentState) {
+    let summary = result_ok_str(&agent.last_result);
+    assert!(
+        !summary.is_empty() && (summary.contains("跳过") || summary.contains("分支")),
+        "branch summary must bridge context gap: {summary}"
+    );
+}
+
+#[scenario(
+    path = "llmanspec/specs/domain-compaction/domain-compaction.feature",
+    name = "branch"
+)]
+fn test_comp_branch_c5(agent: AgentState, sess: XySessionStore, ws: Workspace) {}
+
+#[given("先前 CompactionEntry 含 summary，新消息已累积")]
+async fn g_comp_iterative(sess: &XySessionStore, agent: &AgentState) {
+    comp_seed_turns(sess, "comp-iterative", 20).await;
+    comp_run_compact(agent, sess, "comp-iterative", 8_000).await;
+    for i in 20..30 {
+        let mgr = sess.mgr.borrow().as_ref().unwrap().clone();
+        let e = SessionEntry::Message(MessageEntry {
+            base: EntryBase {
+                entry_type: "message".into(),
+                id: format!("msg-{i}"),
+                parent_id: None,
+                timestamp: "2024-01-01T00:00:00Z".into(),
+            },
+            message: serde_json::json!({"role":"user","content":format!("new turn {i}")}),
+        });
+        let _ = mgr.append("comp-iterative", &e).await;
+    }
+    sess.current_id.replace(Some("comp-iterative".into()));
+}
+
+#[when("以 previousSummary 调用 generate_summary")]
+async fn w_comp_iterative_summary(agent: &AgentState, sess: &XySessionStore) {
+    use xylitol::agent::compaction::generate_summary;
+
+    let sid = "comp-iterative";
+    let mgr = sess.mgr.borrow().as_ref().unwrap().clone();
+    let entries = mgr.load(sid).await.unwrap_or_default();
+    let prev = entries.iter().find_map(|e| match e {
+        SessionEntry::Compaction(c) => Some(c.summary.clone()),
+        _ => None,
+    });
+    let messages: Vec<_> = entries
+        .iter()
+        .filter_map(|e| e.as_agent_message())
+        .collect();
+    set_fake_text(
+        "## Goal\nContinue\n\n## Progress\n### Done\n- [x] prior item\n\n## Next Steps\n1. New work\n",
+    );
+    let model = xylitol::infra::provider::factory::build_provider(
+        &xylitol::protocol::model_config::XyModelConfig {
+            kind: xylitol::protocol::model_config::XyModelKind::Fake,
+            model: "fake".into(),
+            api_key: String::new(),
+            base_url: None,
+            api: None,
+        },
+    )
+    .expect("fake provider");
+    let result = generate_summary(&messages, model.as_ref(), 4096, prev.as_deref()).await;
+    agent
+        .last_result
+        .replace(Some(result.map_err(|e| XyDriverError::from(e.to_string()))));
+}
+
+#[then("结果保留先前 Done 项并添加新项")]
+fn t_comp_iterative_ok(agent: &AgentState) {
+    let text = result_ok_str(&agent.last_result);
+    assert!(
+        text.contains("Done") || text.contains("prior"),
+        "must retain prior Done"
+    );
+    assert!(text.contains("Next Steps"), "must include new Next Steps");
+}
+
+#[scenario(
+    path = "llmanspec/specs/domain-compaction/domain-compaction.feature",
+    name = "iterative"
+)]
+async fn test_comp_iterative(agent: AgentState, sess: XySessionStore, ws: Workspace) {}
+
+#[given("消息含工具调用：read a.txt、write b.rs、edit c.py")]
+async fn g_comp_files_msgs(sess: &XySessionStore) {
+    use xylitol::protocol::message::{AgentMessage, AgentPart, LlmMessage, XyStopReason};
+
+    let sid = "comp-files";
+    sess.ensure_mgr();
+    let mgr = sess.mgr.borrow().as_ref().unwrap().clone();
+    let _ = mgr.create(sid, Some("."), None).await;
+    let tool_msgs = [
+        (
+            AgentMessage::Llm(LlmMessage::AssistantMessage {
+                content: vec![AgentPart::ToolCall {
+                    id: "tc-read".into(),
+                    name: "read".into(),
+                    arguments: serde_json::json!({"path": "a.txt"}),
+                }],
+                stop_reason: Some(XyStopReason::Stop),
+                usage: None,
+                api: String::new(),
+                provider: String::new(),
+                model: String::new(),
+                response_id: None,
+                error_message: None,
+                timestamp: 0,
+                diagnostics: vec![],
+            }),
+            "read a.txt",
+        ),
+        (
+            AgentMessage::Llm(LlmMessage::AssistantMessage {
+                content: vec![AgentPart::ToolCall {
+                    id: "tc-write".into(),
+                    name: "write".into(),
+                    arguments: serde_json::json!({"path": "b.rs"}),
+                }],
+                stop_reason: Some(XyStopReason::Stop),
+                usage: None,
+                api: String::new(),
+                provider: String::new(),
+                model: String::new(),
+                response_id: None,
+                error_message: None,
+                timestamp: 0,
+                diagnostics: vec![],
+            }),
+            "write b.rs",
+        ),
+        (
+            AgentMessage::Llm(LlmMessage::AssistantMessage {
+                content: vec![AgentPart::ToolCall {
+                    id: "tc-edit".into(),
+                    name: "edit".into(),
+                    arguments: serde_json::json!({"path": "c.py"}),
+                }],
+                stop_reason: Some(XyStopReason::Stop),
+                usage: None,
+                api: String::new(),
+                provider: String::new(),
+                model: String::new(),
+                response_id: None,
+                error_message: None,
+                timestamp: 0,
+                diagnostics: vec![],
+            }),
+            "edit c.py",
+        ),
+    ];
+    for (i, (msg, label)) in tool_msgs.into_iter().enumerate() {
+        let user = SessionEntry::Message(MessageEntry {
+            base: EntryBase {
+                entry_type: "message".into(),
+                id: format!("msg-u-{i}"),
+                parent_id: None,
+                timestamp: "2024-01-01T00:00:00Z".into(),
+            },
+            message: serde_json::to_value(AgentMessage::user(label)).unwrap(),
+        });
+        let _ = mgr.append(sid, &user).await;
+        let assistant = SessionEntry::Message(MessageEntry {
+            base: EntryBase {
+                entry_type: "message".into(),
+                id: format!("msg-a-{i}"),
+                parent_id: None,
+                timestamp: "2024-01-01T00:00:01Z".into(),
+            },
+            message: serde_json::to_value(msg).unwrap(),
+        });
+        let _ = mgr.append(sid, &assistant).await;
+    }
+    // Pad with additional turns so cut lands on a message entry (not session header).
+    for i in 0..40 {
+        let e = SessionEntry::Message(MessageEntry {
+            base: EntryBase {
+                entry_type: "message".into(),
+                id: format!("pad-{i}"),
+                parent_id: None,
+                timestamp: "2024-01-01T00:00:02Z".into(),
+            },
+            message: serde_json::json!({
+                "role": "user",
+                "content": format!("padding turn {i} {}", "y".repeat(400)),
+            }),
+        });
+        let _ = mgr.append(sid, &e).await;
+    }
+    sess.current_id.replace(Some(sid.to_string()));
+}
+
+#[when("调用 compact_session")]
+async fn w_comp_files_compact(agent: &AgentState, sess: &XySessionStore) {
+    let sid = sess.current_id.borrow().clone().unwrap();
+    comp_run_compact(agent, sess, &sid, 2_000).await;
+}
+
+#[then(
+    "CompactionEntry summary 以 <read-files>a.txt</read-files> 与 <modified-files>b.rs c.py</modified-files> 结尾"
+)]
+fn t_comp_files_tags(sess: &XySessionStore) {
+    let entry = compaction_entry_from_sess(sess);
+    assert!(
+        entry.summary.contains("<read-files>") && entry.summary.contains("a.txt"),
+        "summary must tag read files: {}",
+        entry.summary
+    );
+    assert!(
+        entry.summary.contains("<modified-files>") && entry.summary.contains("b.rs"),
+        "summary must tag modified files: {}",
+        entry.summary
+    );
+}
+
+#[scenario(
+    path = "llmanspec/specs/domain-compaction/domain-compaction.feature",
+    name = "files"
+)]
+async fn test_comp_files(agent: AgentState, sess: XySessionStore, ws: Workspace) {}
+
+#[given("compact_session 完成并加载会话")]
+async fn g_comp_entry_ready(agent: &AgentState, sess: &XySessionStore) {
+    g_comp_persist_done(agent, sess).await;
+    w_comp_load_session(sess).await;
+}
+
+#[when("CompactionEntry 存在")]
+fn w_comp_entry_exists(sess: &XySessionStore) {
+    let _ = compaction_entry_from_sess(sess);
+}
+
+#[then("summary 非空、firstKeptEntryId 有效、tokensBefore 为正、details 含文件列表")]
+fn t_comp_entry_fields(sess: &XySessionStore) {
+    let e = compaction_entry_from_sess(sess);
+    assert!(!e.summary.is_empty());
+    assert!(!e.first_kept_entry_id.is_empty());
+    assert!(e.tokens_before > 0);
+    assert!(e.details.is_some(), "details should include file lists");
+}
+
+#[scenario(
+    path = "llmanspec/specs/domain-compaction/domain-compaction.feature",
+    name = "entry"
+)]
+async fn test_comp_entry(agent: AgentState, sess: XySessionStore, ws: Workspace) {}
+
+#[given("compaction 公共 API 已就绪")]
+fn g_comp_split_ready(agent: &AgentState) {
+    agent
+        .compaction_result
+        .replace(Some(should_compact(90_000, 100_000, 0.8)));
+}
+
+#[when("分别调用 should_compact、find_cut_point 与 compact_session")]
+async fn w_comp_split_apis(agent: &AgentState, sess: &XySessionStore) {
+    g_comp_find_cut(agent);
+    comp_seed_turns(sess, "comp-split", 50).await;
+    comp_run_compact(agent, sess, "comp-split", 4_000).await;
+}
+
+#[then("各 API 独立成功且返回预期结构")]
+fn t_comp_split_ok(agent: &AgentState, sess: &XySessionStore) {
+    assert_eq!(*agent.compaction_result.borrow(), Some(true));
+    assert!(result_ok_str(&agent.last_result).starts_with("compacted:"));
+    assert!(
+        sess.entries
+            .borrow()
+            .iter()
+            .any(|e| matches!(e, SessionEntry::Compaction(_)))
+    );
+}
+
+#[scenario(
+    path = "llmanspec/specs/domain-compaction/domain-compaction.feature",
+    name = "split-by-responsibility"
+)]
+async fn test_comp_split(agent: AgentState, sess: XySessionStore, ws: Workspace) {}

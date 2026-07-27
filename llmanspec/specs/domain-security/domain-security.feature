@@ -29,7 +29,7 @@
     那么 审批检查在 XyTool::execute 前运行且拒绝时阻止
 
   @req:r44
-  场景: happy
+  场景: forbidden-pattern-blocks-override
     假如 user 配置试图允许禁止 pattern
     当 合并配置
     那么 禁止 pattern 仍被阻止
@@ -61,7 +61,7 @@
   @req:r64
   场景: permission-config
     假如 config.yaml 含 security.permission.filesystem.write_denied=['.env']
-    当 加载配置
+    当 加载安全配置
     那么 write_denied 字段含 .env 且配置键来自 security.permission 非 security.sandbox
 
   @req:s13
