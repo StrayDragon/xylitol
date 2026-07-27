@@ -194,6 +194,9 @@ pub(crate) fn ensure_wiring_fake_model(agent: &AgentState, thinking: bool) {
 }
 
 pub(crate) async fn dispatch_hook(agent: &AgentState, event: HookEvent, phase: HookPhase) {
+    agent
+        .last_hook_stdin
+        .replace(Some(event.to_json_context(phase)));
     let dispatcher = HookDispatcher::new(&xylitol::infra::config::types::HooksConfig {
         global: agent.hook_entries.borrow().clone(),
         project: vec![],

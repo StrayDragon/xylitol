@@ -124,19 +124,34 @@ fn second_instance_rejected(server_test: &mut ServerTest) {
         None => panic!("no result recorded"),
     }
 }
-use xylitol::app::server::ws::ReverseRpcGateway;
+use tokio::sync::oneshot;
+use xylitol::app::server::ws::{ReverseRpcGateway, ReverseRpcResult};
 
 /// Fixture for approval tests.
 pub struct ApprovalTest {
     pub gateway: ReverseRpcGateway,
-    pub last_result: RefCell<Option<String>>,
+    /// Receiver for the in-flight reverse-RPC call (agent side).
+    pub pending_rx: RefCell<Option<oneshot::Receiver<ReverseRpcResult>>>,
+    /// Result delivered to the agent after client ApproveTool.
+    pub last_result: RefCell<Option<ReverseRpcResult>>,
 }
 impl ApprovalTest {
     fn new() -> Self {
         Self {
             gateway: ReverseRpcGateway::new(),
+            pending_rx: RefCell::new(None),
             last_result: RefCell::new(None),
         }
+    }
+
+    fn take_result(&self) -> ReverseRpcResult {
+        let mut rx = self
+            .pending_rx
+            .borrow_mut()
+            .take()
+            .expect("no pending reverse-RPC receiver");
+        rx.try_recv()
+            .expect("reverse-RPC result should be ready after ApproveTool")
     }
 }
 
@@ -146,27 +161,33 @@ pub fn approval_test() -> ApprovalTest {
 }
 
 #[given("服务端和已连接的 WebSocket 客户端")]
-fn server_and_ws_client(_approval_test: &mut ApprovalTest) {
+fn server_and_ws_client(approval_test: &mut ApprovalTest) {
     // Gateway initialized in fixture; represents the server side.
-    // WS client is implied by the ability to call handle_approve.
+    approval_test.pending_rx.replace(None);
+    approval_test.last_result.replace(None);
 }
 
 #[when("agent 执行需要审批的工具")]
 fn agent_executes_approvable_tool(approval_test: &mut ApprovalTest) {
-    // Register a pending call (simulates agent emitting ApprovalRequired).
-    approval_test.gateway.register("call-approve-1".into());
+    let rx = approval_test.gateway.register("call-approve-1".into());
+    approval_test.pending_rx.replace(Some(rx));
 }
 
 #[then("客户端收到带有 call_id 的审批请求")]
 fn client_receives_approval_request(approval_test: &mut ApprovalTest) {
-    // The gateway has a pending call registered.
     assert_eq!(approval_test.gateway.pending_count(), 1);
+    assert!(
+        approval_test.pending_rx.borrow().is_some(),
+        "agent should hold a pending reverse-RPC receiver"
+    );
 }
 
 #[when("客户端发送 ApproveTool approved=true")]
 fn client_approves(approval_test: &mut ApprovalTest) {
     let consumed = approval_test.gateway.handle_approve("call-approve-1", true);
     assert!(consumed, "call_id should be consumed");
+    let result = approval_test.take_result();
+    approval_test.last_result.replace(Some(result));
 }
 
 #[when("客户端发送 ApproveTool approved=false")]
@@ -175,21 +196,44 @@ fn client_denies(approval_test: &mut ApprovalTest) {
         .gateway
         .handle_approve("call-approve-1", false);
     assert!(consumed, "call_id should be consumed");
+    let result = approval_test.take_result();
+    approval_test.last_result.replace(Some(result));
 }
 
 #[then("工具执行继续")]
 fn tool_execution_continues(approval_test: &mut ApprovalTest) {
-    // Call was consumed; no pending calls remain.
     assert_eq!(approval_test.gateway.pending_count(), 0);
+    assert_eq!(
+        *approval_test.last_result.borrow(),
+        Some(ReverseRpcResult::Approved)
+    );
 }
 
 #[then("turn 正常结束")]
-fn turn_completes(_approval_test: &mut ApprovalTest) {}
+fn turn_completes(approval_test: &mut ApprovalTest) {
+    assert_eq!(approval_test.gateway.pending_count(), 0);
+    assert_eq!(
+        *approval_test.last_result.borrow(),
+        Some(ReverseRpcResult::Approved),
+        "approved turn must deliver Approved to the agent"
+    );
+}
 
 #[then("工具被拒绝")]
 fn tool_denied(approval_test: &mut ApprovalTest) {
     assert_eq!(approval_test.gateway.pending_count(), 0);
+    assert_eq!(
+        *approval_test.last_result.borrow(),
+        Some(ReverseRpcResult::Denied)
+    );
 }
 
 #[then("turn 继续但不包含工具结果")]
-fn turn_continues_without_tool(_approval_test: &mut ApprovalTest) {}
+fn turn_continues_without_tool(approval_test: &mut ApprovalTest) {
+    assert_eq!(approval_test.gateway.pending_count(), 0);
+    assert_eq!(
+        *approval_test.last_result.borrow(),
+        Some(ReverseRpcResult::Denied),
+        "denied turn must deliver Denied (no tool result) to the agent"
+    );
+}
