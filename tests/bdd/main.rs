@@ -1,0 +1,42 @@
+//! BDD tests for Xylitol core — rstest-bdd.
+//! Run: `cargo test --test bdd -- --test-threads=1`
+
+#[macro_use]
+mod helpers;
+mod bindings_agent_hooks;
+mod bindings_agent_runtime;
+mod bindings_agent_session;
+mod bindings_agent_session_store;
+mod bindings_agent_tools;
+mod bindings_cli_entry;
+mod bindings_domain_compaction;
+mod bindings_domain_security;
+mod bindings_misc;
+mod bindings_runtime_config;
+mod bindings_server;
+mod fixtures;
+mod prelude;
+mod steps_agent;
+mod steps_agent_runtime;
+mod steps_agent_session_extra;
+mod steps_bridge;
+mod steps_cli_tokenizer;
+mod steps_compaction;
+mod steps_domain_compaction_extra;
+mod steps_domain_security;
+mod steps_hooks;
+mod steps_runtime_config;
+mod steps_sandbox;
+mod steps_server;
+mod steps_session;
+mod steps_shared_thens;
+mod steps_tools;
+mod steps_workspace;
+
+pub use fixtures::*;
+pub use steps_bridge::{AiBridgeBdd, PromptBdd, ai_bridge_bdd, prompt_bdd};
+pub use steps_cli_tokenizer::{
+    SurfaceBdd, SurfaceFlagsBdd, TokenizerBdd, surface_bdd, surface_flags_bdd, tokenizer_bdd,
+};
+pub use steps_runtime_config::{RcSnap, rc_snap};
+pub use steps_server::{ApprovalTest, ServerTest, approval_test, server_test};
