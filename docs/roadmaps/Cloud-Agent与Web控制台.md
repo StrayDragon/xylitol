@@ -85,9 +85,21 @@ Then 可按配置调度到 xylitol 工作区或并行；未配置时互不影响
 | 观测 | [OTEL与Langfuse观测.md](./OTEL与Langfuse观测.md)；底座见 [../architecture/进程内观测.md](../architecture/进程内观测.md) |
 | 可并行 | TUI 视觉优化（不同面） |
 
+## 支线与方向
+
+| 支线 | 意向 |
+|---|---|
+| **只读运维台** | 先交付多工作区状态总览，对话 parity 后置 |
+| **Eval 结果面板** | Web 链到 Langfuse Experiment / Score（外链优先，不嵌自研 eval UI） |
+| **词表/缓存管理** | 控制台管理 tokenizer 缓存与压缩策略档（architecture 后置项） |
+| **工作区隔离档** | 沙箱/资源配额叙事（M6 分布式前的轻量切片） |
+| **审阅评论流** | diff 上挂评论 → 回灌会话（M3 深化） |
+| **移动窄端** | 仅监控与中止，不做完整编辑（明确非主路径） |
+
 ## 相关
 
 - [OTEL与Langfuse观测.md](./OTEL与Langfuse观测.md)
 - [运行时即时设置.md](./运行时即时设置.md) / [Sub-Agent编排.md](./Sub-Agent编排.md) / [Loop管理与触发可视化.md](./Loop管理与触发可视化.md)
 - [预设Providers.md](./预设Providers.md)（Cursor SDK 亦出现在厂商/协同清单）
+- [Agent-Eval与回归基准.md](./Agent-Eval与回归基准.md)
 - 总索引：[README.md](./README.md)
