@@ -120,7 +120,7 @@ fn g_rc_trust(rc_snap: &RcSnap) {
 fn g_rc_prompts(rc_snap: &RcSnap) {
     rc_snap.settings.borrow_mut().prompts = Some(vec!["prompt-a".into(), "prompt-b".into()]);
 }
-#[given("config.yaml 含 compaction 节及阈值")]
+#[given("config.yaml 含 compaction 节及 keepRecentTokens")]
 fn g_rc_compaction(rc_snap: &RcSnap) {
     let yaml = "compaction:\n  keepRecentTokens: 42000\nmodels: {}\n";
     match parse_app_config_yaml(yaml) {
@@ -391,7 +391,7 @@ fn t_rc_prompts(rc_snap: &RcSnap) {
     let mgr = mgr.as_ref().expect("settings loaded");
     assert_eq!(mgr.get_prompts().map(|p| p.len()), Some(2));
 }
-#[then("compaction_settings.threshold 等于 YAML 中设置的值")]
+#[then("compaction_settings.keep_recent_tokens 等于 YAML 中设置的值")]
 fn t_rc_compaction(rc_snap: &RcSnap) {
     let settings = rc_snap.compaction.borrow();
     let settings = settings.as_ref().expect("compaction settings");

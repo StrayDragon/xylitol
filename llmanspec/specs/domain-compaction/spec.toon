@@ -4,7 +4,7 @@ purpose: "对话 compaction — n-gram 切点检测、LLM 摘要与 token 估计
 valid_scope[1]: src/agent/compaction/
 requirements[16]{req_id,title,statement}:
   c1,token 估算使用统一 Usage 与多源计量,"System MUST 基于当前消息与可选 XyUsage 锚点估计上下文占用，并经 xylitol-ai-bridge accounting（或等价注入端口）按 Api 然后 RemoteCount 然后 LocalTokenizer 然后 Heuristic 的优先级解析；MUST 继续使用 canonical XyUsage，MUST NOT 再引入并行的第二套 usage 结构。"
-  c2,应触发 compact,"估计 token 用量超过上下文窗口可配置阈值百分比时，System MUST 触发 compaction；该阈值所用估计 MUST 与产品 footer / Driver 只读估计同源（同一 paa1 入口与 LocalTokenizer 闸），MUST NOT 另用独立的 message 字符串 len/4 总和作为 auto-compact 触发尺子。"
+  c2,应触发 compact,"当 CompactionSettings.enabled 为 true 且 context_window > 0 时，System MUST 在 contextTokens > contextWindow - reserveTokens（与 pi 同构；reserveTokens 来自 CompactionSettings）时判定应触发 compaction；enabled 为 false 时 MUST NOT 因用量触发；该判定所用 contextTokens MUST 与产品 footer / Driver 只读估计同源（同一 paa1 入口与 LocalTokenizer 闸），MUST NOT 另用独立的 message 字符串 len/4 总和，MUST NOT 再使用独立的百分比阈值（如 compaction_threshold / usage_ratio）作为触发 SSOT。"
   c3,compact 摘要,Compaction MUST 将较早消息摘要为 CompactionEntry，同时保留最近 N 轮。
   c4,compact 会话,Compaction MUST 将 CompactionEntry 持久化到会话文件并更新会话树。
   c5,分支摘要,导航到会话树分支时，System MUST 生成分支摘要条目桥接上下文缺口。
@@ -16,9 +16,9 @@ requirements[16]{req_id,title,statement}:
   c11,compact 条目,Compaction MUST 产出含 summary 字符串、firstKeptEntryId（切点后首条保留条目）、tokensBefore 计数及含 readFiles 与 modifiedFiles 列表的 details 对象的 CompactionEntry。
   c12,agent 集成,AgentSession MUST 暴露 compact_current_session()：估计上下文用量、找切点、调用 LLM 摘要、写入 CompactionEntry、重载会话状态。
   c13,模块拆分,compaction 子系统 MUST 按职责拆分为内聚模块，覆盖 token 估计、切点检测、文件操作跟踪、LLM 摘要与分支摘要，而非单一超大文件。
-  c14,单一配置来源,Compaction 配置 MUST 有且仅有一个 serde 面向类型 XyCompactionSettingsConfig 与一个运行时类型 XyCompactionSettings；重复 CompactionConfig 定义 MUST 移除。
+  c14,单一配置来源,"Compaction 配置 MUST 有且仅有一个 serde 面向类型 XyCompactionSettingsConfig 与一个运行时类型 CompactionSettings（字段 enabled / reserve_tokens / keep_recent_tokens）；MUST NOT 再保留 compaction_threshold 或重复 CompactionConfig 定义。"
   c15,token 使用量类型统一与来源标注,Compaction 与会话侧上下文估计 MUST 使用 domain 的 XyUsage 作为厂商/归一化用量类型；估计结果 MUST 能暴露 TokenProvenance（或经映射的等价来源标注）供上层区分 Api 与降级估计；token_estimator 内 MUST NOT 再定义重复的 XyUsage。
-  c16,阈值估计同源展示,"auto-compact 的阈值决策 MUST 消费与 TUI footer 相同的 ContextTokenEstimate（或等价共享 helper 结果）；当存在可信 Api 锚点时阈值数字 MUST 跟 Api，MUST NOT 在 footer 已标 Api 时仍用独立 heuristic 触发。"
+  c16,触发估计同源展示,"auto-compact 的 reserve 触发决策 MUST 消费与 TUI footer 相同的 ContextTokenEstimate（或等价共享 helper 结果）；当存在可信 Api 锚点时触发所用 token 数字 MUST 跟 Api，MUST NOT 在 footer 已标 Api 时仍用独立 heuristic 触发；派生占用百分比（若展示）MUST NOT 作为触发 SSOT。"
 scenarios[2]{req_id,id,given,when,then,feature}:
   c6,"bdd-compaction-pass",compaction BDD 套件,执行,全通过（由 CI 保证）,false
-  c14,"single-compaction-config-unit",代码库,搜索 CompactionConfig,零匹配残留（单测维护）,false
+  c14,"single-compaction-config-unit",代码库,"搜索 CompactionConfig 与 compaction_threshold","零匹配残留（单测或闸脚本维护）",false

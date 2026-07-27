@@ -13,6 +13,11 @@ fn test_compaction_need(agent: AgentState, ws: Workspace) {}
 fn test_compaction_not_needed(agent: AgentState, ws: Workspace) {}
 #[scenario(
     path = "llmanspec/specs/domain-compaction/domain-compaction.feature",
+    name = "disabled-no-compact"
+)]
+fn test_compaction_disabled(agent: AgentState, ws: Workspace) {}
+#[scenario(
+    path = "llmanspec/specs/domain-compaction/domain-compaction.feature",
     name = "retain-recent"
 )]
 fn test_compaction_keep_recent(agent: AgentState, sess: XySessionStore, ws: Workspace) {}
@@ -49,9 +54,9 @@ fn test_comp_find_cut(agent: AgentState, ws: Workspace) {}
 fn test_comp_provenance(agent: AgentState, ws: Workspace) {}
 #[scenario(
     path = "llmanspec/specs/domain-compaction/domain-compaction.feature",
-    name = "threshold-shares-footer-estimate"
+    name = "reserve-trigger-shares-footer-estimate"
 )]
-fn test_comp_threshold(agent: AgentState, ws: Workspace) {}
+fn test_comp_reserve_trigger_shared(agent: AgentState, ws: Workspace) {}
 
 #[scenario(
     path = "llmanspec/specs/domain-compaction/domain-compaction.feature",
