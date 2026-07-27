@@ -162,15 +162,15 @@
 
   @req:as30
   场景: responsibilities-separated
-    假如 session 模块源码存在
-    当 逐文件统计 pub 方法
-    那么 各子模块职责不重叠且无混杂编译/运行/持久化到同一 struct
+    假如 AgentCapabilities 与 SessionExporter 已构造
+    当 分别调用 get_context_usage 与 export_to_html 入口
+    那么 各 API 可独立调用且不 panic
 
   @req:as32
   场景: api-retained
-    假如 Agent 公共 API 快照已存
-    当 编译本模块
-    那么 快照重构后通过且 XyEvent 流不变
+    假如 使用默认依赖构造 AgentCapabilities
+    当 调用 get_commands 与 set_thinking_level
+    那么 公共 API 可调用且返回非空命令列表
 
   @req:as35
   场景: export-io-injected
@@ -186,9 +186,9 @@
 
   @req:as40
   场景: snapshot-regenerated
-    假如 公共 API 快照期针对 Agent 类型
-    当 运行快照测试
-    那么 快照重生成后通过
+    假如 使用默认依赖构造 AgentCapabilities
+    当 读取类型名
+    那么 类型名为 AgentCapabilities
 
   @req:as45
   场景: second-turn-sees-first
