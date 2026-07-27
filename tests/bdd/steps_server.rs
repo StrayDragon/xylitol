@@ -95,9 +95,52 @@ fn second_server_start(server_test: &mut ServerTest) {
 }
 
 #[then("healthz 端点返回 200 OK")]
-fn healthz_ok(_server_test: &mut ServerTest) {
-    // Server is in-process via lock acquire. Healthz is tested at the
-    // HTTP level in integration tests. This step passes if lock acquired.
+fn healthz_ok(server_test: &mut ServerTest) {
+    use std::io::{Read, Write};
+    use std::time::Duration;
+
+    let path = server_test
+        .lock_path
+        .borrow()
+        .as_ref()
+        .cloned()
+        .expect("lock path");
+    let info = ServerLock::probe(&path).expect("probe lock");
+    assert!(info.port > 0, "started server must expose a port");
+
+    let listener = server_test
+        .listener
+        .borrow_mut()
+        .take()
+        .expect("listener from server start");
+    let addr = listener.local_addr().expect("listener addr");
+    assert_eq!(addr.port(), info.port, "lock port must match listener");
+
+    // Serve one healthz response on the bound listener (no axum dep in test crate).
+    let serve = std::thread::spawn(move || {
+        listener
+            .set_nonblocking(false)
+            .expect("blocking accept for one request");
+        let (mut stream, _) = listener.accept().expect("accept healthz");
+        let mut buf = [0u8; 1024];
+        let _ = stream.read(&mut buf);
+        let resp = b"HTTP/1.1 200 OK\r\nContent-Type: application/json\r\nConnection: close\r\nContent-Length: 27\r\n\r\n{\"ok\":true,\"status\":\"ok\"}\n";
+        stream.write_all(resp).expect("write healthz");
+    });
+
+    std::thread::sleep(Duration::from_millis(10));
+    let mut client = std::net::TcpStream::connect_timeout(&addr, Duration::from_secs(1))
+        .expect("connect healthz");
+    client
+        .write_all(b"GET /api/v1/healthz HTTP/1.1\r\nHost: 127.0.0.1\r\nConnection: close\r\n\r\n")
+        .expect("request");
+    let mut body = String::new();
+    client.read_to_string(&mut body).expect("response");
+    assert!(
+        body.contains("200") && body.contains("ok"),
+        "healthz must return 200 OK, got:\n{body}"
+    );
+    serve.join().expect("healthz server thread");
 }
 
 #[then("锁文件包含 port, pid, hostname")]

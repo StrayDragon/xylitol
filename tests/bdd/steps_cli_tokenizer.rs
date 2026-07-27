@@ -15,6 +15,8 @@ pub struct TokenizerBdd {
     pub(crate) cfg_err: RefCell<String>,
     pub(crate) resolved_hf_repo: RefCell<String>,
     pub(crate) mock_uri: RefCell<String>,
+    pub(crate) env_hf_endpoint_prev: RefCell<Option<String>>,
+    pub(crate) env_hf_hub_prev: RefCell<Option<String>>,
 }
 
 impl TokenizerBdd {
@@ -31,6 +33,8 @@ impl TokenizerBdd {
             cfg_err: RefCell::new(String::new()),
             resolved_hf_repo: RefCell::new(String::new()),
             mock_uri: RefCell::new(String::new()),
+            env_hf_endpoint_prev: RefCell::new(None),
+            env_hf_hub_prev: RefCell::new(None),
         }
     }
 
@@ -86,7 +90,15 @@ models:
 }
 
 #[given("CLI 已解析")]
-fn g_ce15_cli_parsed(_tokenizer_bdd: &TokenizerBdd) {}
+fn g_ce15_cli_parsed(tokenizer_bdd: &TokenizerBdd) {
+    use clap::CommandFactory;
+    assert!(
+        xylitol::app::cli::CliArgs::command()
+            .find_subcommand("tokenizer")
+            .is_some()
+    );
+    tokenizer_bdd.cli_code_ok.set(true);
+}
 
 #[when("xylitol tokenizer --help")]
 fn w_ce15_tokenizer_help(tokenizer_bdd: &TokenizerBdd) {
@@ -111,7 +123,27 @@ fn t_ce15_help_leaves(tokenizer_bdd: &TokenizerBdd) {
 
 #[given("缓存目录为空")]
 fn g_ce15_empty_cache(tokenizer_bdd: &TokenizerBdd) {
+    let cache = tokenizer_bdd.ensure_cache();
+    let entries = cache.list_entries();
+    assert!(
+        entries.is_empty(),
+        "fresh cache dir must be empty, got {entries:?}"
+    );
+}
+
+#[given("仅执行 tokenizer 子命令")]
+fn g_ce15_tokenizer_only(tokenizer_bdd: &TokenizerBdd) {
     let _ = tokenizer_bdd.ensure_cache();
+    use clap::Parser;
+    let args = xylitol::app::cli::CliArgs::try_parse_from(["xylitol", "tokenizer", "status"])
+        .expect("parse");
+    assert!(
+        matches!(
+            args.command,
+            Some(xylitol::app::cli::CliCommand::Tokenizer { .. })
+        ),
+        "expected tokenizer-only command"
+    );
 }
 
 #[when("xylitol tokenizer status")]
@@ -258,11 +290,6 @@ async fn t_ce15_clean_gone(tokenizer_bdd: &TokenizerBdd) {
     assert!(out.contains("(none)"), "{out}");
 }
 
-#[given("仅执行 tokenizer 子命令")]
-fn g_ce15_tokenizer_only(tokenizer_bdd: &TokenizerBdd) {
-    let _ = tokenizer_bdd.ensure_cache();
-}
-
 #[then("不经 bootstrap 装配会话或 MCP 即可完成")]
 fn t_ce15_no_bootstrap(tokenizer_bdd: &TokenizerBdd) {
     // `run_with` is the early-dispatch leaf used by CLI before bootstrap.
@@ -360,17 +387,23 @@ fn t_paa8_no_partial(tokenizer_bdd: &TokenizerBdd) {
 }
 
 #[given("环境变量 HF_ENDPOINT 为 https://hf-mirror.com")]
-fn g_paa9_mirror(_tokenizer_bdd: &TokenizerBdd) {}
+fn g_paa9_mirror(tokenizer_bdd: &TokenizerBdd) {
+    let prev = std::env::var("HF_ENDPOINT").ok();
+    unsafe { std::env::set_var("HF_ENDPOINT", "https://hf-mirror.com") };
+    tokenizer_bdd.env_hf_endpoint_prev.replace(prev);
+}
 
 #[when("拼装某 repo 的 tokenizer.json resolve URL")]
 fn w_paa9_build_mirror(tokenizer_bdd: &TokenizerBdd) {
     use xylitol_ai_bridge::tokenize::{build_hf_resolve_url_with_base, hf_endpoint_base_from_env};
-    let base = hf_endpoint_base_from_env(|k| match k {
-        "HF_ENDPOINT" => Some("https://hf-mirror.com".into()),
-        _ => None,
-    });
+    let base = hf_endpoint_base_from_env(|k| std::env::var(k).ok());
     let url = build_hf_resolve_url_with_base(&base, "Qwen/Qwen2.5", "tokenizer.json");
     tokenizer_bdd.last_url.replace(url);
+    // Restore env after using it.
+    match tokenizer_bdd.env_hf_endpoint_prev.borrow_mut().take() {
+        Some(v) => unsafe { std::env::set_var("HF_ENDPOINT", v) },
+        None => unsafe { std::env::remove_var("HF_ENDPOINT") },
+    }
 }
 
 #[then("URL 以 https://hf-mirror.com/ 为前缀且含 resolve/main/tokenizer.json")]
@@ -381,14 +414,31 @@ fn t_paa9_mirror_url(tokenizer_bdd: &TokenizerBdd) {
 }
 
 #[given("未设置 HF_ENDPOINT 与 HF_HUB_ENDPOINT")]
-fn g_paa9_default(_tokenizer_bdd: &TokenizerBdd) {}
+fn g_paa9_default(tokenizer_bdd: &TokenizerBdd) {
+    let prev_ep = std::env::var("HF_ENDPOINT").ok();
+    let prev_hub = std::env::var("HF_HUB_ENDPOINT").ok();
+    unsafe {
+        std::env::remove_var("HF_ENDPOINT");
+        std::env::remove_var("HF_HUB_ENDPOINT");
+    }
+    tokenizer_bdd.env_hf_endpoint_prev.replace(prev_ep);
+    tokenizer_bdd.env_hf_hub_prev.replace(prev_hub);
+}
 
 #[when("拼装 resolve URL")]
 fn w_paa9_build_default(tokenizer_bdd: &TokenizerBdd) {
     use xylitol_ai_bridge::tokenize::{build_hf_resolve_url_with_base, hf_endpoint_base_from_env};
-    let base = hf_endpoint_base_from_env(|_| None);
+    let base = hf_endpoint_base_from_env(|k| std::env::var(k).ok());
     let url = build_hf_resolve_url_with_base(&base, "org/m", "tokenizer.json");
     tokenizer_bdd.last_url.replace(url);
+    match tokenizer_bdd.env_hf_endpoint_prev.borrow_mut().take() {
+        Some(v) => unsafe { std::env::set_var("HF_ENDPOINT", v) },
+        None => unsafe { std::env::remove_var("HF_ENDPOINT") },
+    }
+    match tokenizer_bdd.env_hf_hub_prev.borrow_mut().take() {
+        Some(v) => unsafe { std::env::set_var("HF_HUB_ENDPOINT", v) },
+        None => unsafe { std::env::remove_var("HF_HUB_ENDPOINT") },
+    }
 }
 
 #[then("基址为 https://huggingface.co")]
@@ -604,6 +654,8 @@ fn t_rc19_on(tokenizer_bdd: &TokenizerBdd) {
 pub struct SurfaceBdd {
     pub(crate) mode: Cell<Option<xylitol::app::cli::SurfaceMode>>,
     pub(crate) print_err: RefCell<String>,
+    pub(crate) is_tty: Cell<bool>,
+    pub(crate) has_prompt: Cell<bool>,
 }
 
 impl SurfaceBdd {
@@ -611,6 +663,8 @@ impl SurfaceBdd {
         Self {
             mode: Cell::new(None),
             print_err: RefCell::new(String::new()),
+            is_tty: Cell::new(false),
+            has_prompt: Cell::new(true),
         }
     }
 }
@@ -621,19 +675,22 @@ pub fn surface_bdd() -> SurfaceBdd {
 }
 
 #[given("TTY")]
-fn g_ce16_tty(_surface_bdd: &SurfaceBdd) {}
+fn g_ce16_tty(surface_bdd: &SurfaceBdd) {
+    surface_bdd.is_tty.set(true);
+}
 
 #[when("xylitol tui")]
 fn w_ce16_tui(surface_bdd: &SurfaceBdd) {
     use clap::Parser;
     use xylitol::app::cli::{CliArgs, resolve_surface_intent, select_surface_mode};
+    assert!(surface_bdd.is_tty.get(), "given TTY must arm is_tty");
     let args = CliArgs::try_parse_from(["xylitol", "tui"]).expect("parse tui");
     let (force_tui, print_flag, one_shot) = resolve_surface_intent(args.command.as_ref());
     surface_bdd.mode.set(Some(select_surface_mode(
         force_tui,
         print_flag,
         one_shot.is_some(),
-        true,
+        surface_bdd.is_tty.get(),
     )));
 }
 
@@ -646,12 +703,18 @@ fn t_ce16_enters_tui(surface_bdd: &SurfaceBdd) {
 }
 
 #[given("无 prompt")]
-fn g_ce16_no_prompt(_surface_bdd: &SurfaceBdd) {}
+fn g_ce16_no_prompt(surface_bdd: &SurfaceBdd) {
+    surface_bdd.has_prompt.set(false);
+}
 
 #[when("xylitol print")]
 fn w_ce16_print(surface_bdd: &SurfaceBdd) {
     use clap::Parser;
     use xylitol::app::cli::{CliArgs, resolve_print_prompt, resolve_surface_intent};
+    assert!(
+        !surface_bdd.has_prompt.get(),
+        "given 无 prompt must clear has_prompt"
+    );
     let args = CliArgs::try_parse_from(["xylitol", "print"]).expect("parse print");
     let (_force_tui, print_flag, one_shot) = resolve_surface_intent(args.command.as_ref());
     let err = resolve_print_prompt(one_shot.as_deref(), print_flag, true, || Ok(String::new()))
@@ -717,7 +780,11 @@ pub fn surface_flags_bdd() -> SurfaceFlagsBdd {
 }
 
 #[given("表面旗标上下文就绪")]
-fn g_ce19_cli_ready(_surface_flags_bdd: &SurfaceFlagsBdd) {}
+fn g_ce19_cli_ready(surface_flags_bdd: &SurfaceFlagsBdd) {
+    surface_flags_bdd.parse_ok.set(false);
+    surface_flags_bdd.session.replace(None);
+    surface_flags_bdd.hint.replace(None);
+}
 
 #[when("xylitol tui --session sid --model m --trust")]
 fn w_ce19_tui_flags(surface_flags_bdd: &SurfaceFlagsBdd) {
@@ -808,7 +875,13 @@ fn g_ce20_unlisted(surface_flags_bdd: &SurfaceFlagsBdd) {
 }
 
 #[when("TUI 或 print 正常退出")]
-fn w_ce20_exit(_surface_flags_bdd: &SurfaceFlagsBdd) {}
+fn w_ce20_exit(surface_flags_bdd: &SurfaceFlagsBdd) {
+    // Exit path: resume hint is prepared in given from list_sessions membership.
+    assert!(
+        surface_flags_bdd.session.borrow().is_some(),
+        "normal exit requires a current session prepared by given"
+    );
+}
 
 #[then("stderr 含 resume 提示行")]
 fn t_ce20_hint_present(surface_flags_bdd: &SurfaceFlagsBdd) {
