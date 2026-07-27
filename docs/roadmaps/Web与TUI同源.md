@@ -58,9 +58,20 @@ Given 用户在 Web 关闭了某后置能力覆盖（如 DAP）
 When 回到 TUI 开启下一波次
 Then 覆盖一致，且下一波次按关闭该能力装配
 
+## 支线与方向
+
+| 支线 | 意向 |
+|---|---|
+| **同源契约测试意图** | 跨面状态对拍的 BDD 意图清单（可先无 Web UI，钉词汇） |
+| **覆盖集只读投影** | Web 未开写时仍能只读看见 TUI 覆盖（M2 轻量） |
+| **事件闭集变更检查单** | 新生命周期词必须双面登记（流程向，非进度板） |
+| **Eval harness 面无关** | 回归跑 Print/CLI，不要求 TUI/Web 像素同源 |
+| **压缩/cache 状态同源** | 两面看到的「正在压缩 / cache 未知」语义一致 |
+
 ## 相关
 
 - [Cloud-Agent与Web控制台.md](./Cloud-Agent与Web控制台.md)
 - [运行时即时设置.md](./运行时即时设置.md)
 - [OTEL与Langfuse观测.md](./OTEL与Langfuse观测.md)
+- [上下文缓存与极致压缩.md](./上下文缓存与极致压缩.md)
 - 总索引：[README.md](./README.md)
