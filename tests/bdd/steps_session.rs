@@ -1,4 +1,5 @@
 use crate::fixtures::*;
+use crate::helpers::result_ok_str;
 use crate::prelude::*;
 use rstest_bdd_macros::{given, then, when};
 
@@ -237,8 +238,19 @@ async fn _t_session_no_label(sess: &XySessionStore) {
 }
 
 #[then("恰好有 {n:u32} 条匹配")]
-fn _t_grep_exact_matches(_ws: &Workspace, n: u32) {
-    let _ = n;
+fn _t_grep_exact_matches(ws: &Workspace, n: u32) {
+    let r = result_ok_str(&ws.last_result);
+    let count = r
+        .lines()
+        .filter(|l| {
+            let parts: Vec<_> = l.splitn(3, ':').collect();
+            parts.len() >= 3 && parts[1].parse::<u32>().is_ok()
+        })
+        .count();
+    assert_eq!(
+        count, n as usize,
+        "expected exactly {n} matches, got {count} in:\n{r}"
+    );
 }
 #[then("操作被允许继续（fail-open 策略）")]
 fn _t_hook_fail_open(agent: &AgentState) {
