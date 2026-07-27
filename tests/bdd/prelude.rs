@@ -16,7 +16,7 @@ pub use xylitol::infra::provider::factory::{
     reset_fake_state, set_fake_slow_stream, set_fake_text, set_fake_tool_call, set_fake_tool_result,
 };
 pub use xylitol::infra::session::{
-    CompactionEntry, EntryBase, MessageEntry, SessionEntry, SessionManager,
+    BranchSummaryEntry, CompactionEntry, EntryBase, MessageEntry, SessionEntry, SessionManager,
     ThinkingLevelChangeEntry,
 };
 pub use xylitol::infra::tools::{
@@ -25,4 +25,5 @@ pub use xylitol::infra::tools::{
 };
 pub use xylitol::protocol::model_config::{XyModelConfig, XyModelKind};
 pub use xylitol::protocol::ports::{XyTool, XyToolCtx};
+pub use xylitol::protocol::session::ForkPosition;
 pub use xylitol::protocol::types::{ThinkingLevel, XyModelMeta};
