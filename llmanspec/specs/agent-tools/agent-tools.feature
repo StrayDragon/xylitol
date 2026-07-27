@@ -285,13 +285,13 @@
     那么 调用失败 包含错误信息
 
   @req:r42
-  场景: happy
+  场景: all-seven-tools-smoke
     假如 工具注册表含全部 7 个工具
     当 各工具以合法参数调用
     那么 各返回成功 ToolResult
 
   @req:r48
-  场景: happy
+  场景: fudiff-line-offset
     假如 临时目录存在含行偏移的 unified diff 文件
     当 经补丁应用执行 edit
     那么 模糊匹配补丁应用成功
@@ -333,7 +333,7 @@
     那么 输出在字符边界安全截断且不 panic
 
   @req:r9
-  场景: happy
+  场景: require-str-missing-arg
     假如 工具需要必填字符串参数 file_path
     当 以空参调用该工具
     那么 调用失败且返回 MissingArgument 错误码

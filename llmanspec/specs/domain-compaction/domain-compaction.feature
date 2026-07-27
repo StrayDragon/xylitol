@@ -70,7 +70,7 @@
     那么 摘要条目桥接上下文缺口
 
   @req:c7
-  场景: summarize
+  场景: generate-summary
     假如 会话有 30 轮 user+assistant 含文件编辑
     当 调用 generate_summary
     那么 响应含 Goal、Progress、Next Steps 节及具体文件路径
@@ -107,9 +107,9 @@
 
   @req:c13
   场景: split-by-responsibility
-    假如 枚举 compaction 模块职责
-    当 拆分模块
-    那么 各结果文件拥有单一职责且可独立测试
+    假如 compaction 公共 API 已就绪
+    当 分别调用 should_compact、find_cut_point 与 compact_session
+    那么 各 API 独立成功且返回预期结构
 
   @req:c15
   场景: provenance-available
