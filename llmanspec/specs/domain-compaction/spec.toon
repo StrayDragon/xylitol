@@ -2,7 +2,7 @@ kind: llman.sdd.spec
 name: "domain-compaction"
 purpose: "对话 compaction — n-gram 切点检测、LLM 摘要与 token 估计。"
 valid_scope[2]: src/agent/compaction/,src/agent/session/
-requirements[20]{req_id,title,statement}:
+requirements[23]{req_id,title,statement}:
   c1,token 估算使用统一 Usage 与多源计量,"System MUST 基于当前消息与可选 XyUsage 锚点估计上下文占用，并经 xylitol-ai-bridge accounting（或等价注入端口）按 Api 然后 RemoteCount 然后 LocalTokenizer 然后 Heuristic 的优先级解析；MUST 继续使用 canonical XyUsage，MUST NOT 再引入并行的第二套 usage 结构。"
   c2,应触发 compact,"当 CompactionSettings.enabled 为 true 且 context_window > 0 时，System MUST 在 contextTokens > contextWindow - reserveTokens（与 pi 同构；reserveTokens 来自 CompactionSettings）时判定应触发 compaction；enabled 为 false 时 MUST NOT 因用量触发；该判定所用 contextTokens MUST 与产品 footer / Driver 只读估计同源（同一 paa1 入口与 LocalTokenizer 闸），MUST NOT 另用独立的 message 字符串 len/4 总和，MUST NOT 再使用独立的百分比阈值（如 compaction_threshold / usage_ratio）作为触发 SSOT。"
   c3,compact 摘要,Compaction MUST 将较早消息摘要为 CompactionEntry，同时保留最近 N 轮。
@@ -23,6 +23,9 @@ requirements[20]{req_id,title,statement}:
   c18,stale 防抖,"threshold auto 检查 MUST NOT 使用时间戳不新于最新 CompactionEntry 的 assistant 或 usage 锚点再触发（对齐 pi）；无任何可信 usage/估计时 MUST NOT 盲目 compact。"
   c19,split-turn 双摘要,"当 is_split_turn 为 true 时，System MUST 分别对 history（boundary 至 turn_start）与 turn-prefix（turn_start 至 first_kept）做 LLM 摘要，再按「historyText + 空行 + --- + 空行 + **Turn Context (split turn):** + 空行 + turnPrefixText」合并写入 CompactionEntry.summary；history 无可摘要内容时 historyText MUST 为 No prior history.；MUST NOT 丢弃 turn-prefix 不做摘要。"
   c20,tokens_before 同源估计,"CompactionEntry.tokensBefore MUST 优先来自对压缩前会话上下文（与 buildSessionContext / estimate_from_session_entries 同源）的估计，MUST NOT 仅以 boundary 内条目字符串 len/4 累加作为唯一权威。"
+  c21,overflow 识别,"System MUST 经单一 is_context_overflow_assistant（或等价）判定上下文溢出：含 usage 输入超 context_window、length/max_tokens 且近零输出填窗、以及 stop_reason=error 时对 error_message 的集中 overflow 模式匹配；MUST 应用 non-overflow 排除（如 rate limit）；MUST NOT 以散落英文子串匹配作为唯一手段；该判定 MUST 同时供 compaction Case1 与 retry 互斥使用。"
+  c22,overflow 一次 recovery,"当 sameModel（assistant 的 provider+model 等于当前模型）且判定 overflow 时，System MUST 以 CompactionStart.reason 含 overflow 语义执行 auto-compact；默认每个 run/用户回合仅允许一次 compact-and-retry（对齐 pi _overflowRecoveryAttempted）；二次仍 overflow MUST 失败并给出固定说明文案，MUST NOT 无限循环；willRetry MUST 仅在 stop_reason 不是成功 stop 时为 true（成功超窗可 compact 但不 continue 重试）；重试前错误 assistant MUST NOT 留在将送入模型的工作上下文（session 历史可保留）。"
+  c23,overflow 与 threshold 分流,"overflow Case1 MUST 先于 threshold Case2 评估；overflow 路径 MUST 复用 c18 stale 防抖；CompactionEnd MUST 能暴露 reason=overflow、will_retry 与失败时 error_message；MUST NOT 将非 overflow 错误吞进 compaction。"
 scenarios[2]{req_id,id,given,when,then,feature}:
   c6,"bdd-compaction-pass",compaction BDD 套件,执行,全通过（由 CI 保证）,false
   c14,"single-compaction-config-unit",代码库,"搜索 CompactionConfig 与 compaction_threshold","零匹配残留（单测或闸脚本维护）",false
