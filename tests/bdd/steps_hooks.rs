@@ -79,10 +79,6 @@ fn _g_hook_timeout_1s(agent: &AgentState) {
 fn _g_hook_none(agent: &AgentState) {
     agent.hook_entries.borrow_mut().clear();
 }
-#[given("当前 provider 为 {name}")]
-fn _g_hook_provider(_agent: &AgentState, name: String) {
-    let _ = name;
-}
 
 /// solidify 复合 given：多步折叠（solidify 无 Background / 并且）。
 #[given("注册了匹配 pre.tool_call 的 hook 且返回 block 不允许")]
@@ -138,7 +134,6 @@ fn _g_hook_timeout_combo(agent: &AgentState) {
 #[given("注册了匹配 before_provider_request 的 hook 且 provider 为 deepseek")]
 fn _g_hook_before_provider_combo(agent: &AgentState) {
     _g_hook_registered(agent, "before_provider_request".into());
-    _g_hook_provider(agent, "deepseek".into());
 }
 
 /// hooks-wiring solidify：观察型 then 折叠（调用 + 上下文键）。

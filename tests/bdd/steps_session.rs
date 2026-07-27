@@ -583,7 +583,3 @@ fn _t_grep_exact_matches(ws: &Workspace, n: u32) {
         "expected exactly {n} matches, got {count} in:\n{r}"
     );
 }
-#[then("操作被允许继续（fail-open 策略）")]
-fn _t_hook_fail_open(agent: &AgentState) {
-    let _ = agent;
-}
