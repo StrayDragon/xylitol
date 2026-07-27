@@ -10,4 +10,11 @@ requirements[7]{req_id,title,statement}:
   ptt05,"detect-opt-in","终端色探测 MUST 仅在显式 opt-in（如 XYLITOL_AGENT_DEMO_THEME_AUTO）时启用；未启用时 MUST 保持 Dark。"
   ptt06,"host-feed-replies",包 MUST 导出 OSC11 / CSI 色方案查询常量，并允许宿主将 reply 喂入 resolve_terminal_color_scheme；MUST NOT 因本变更强制产品 host 打开自动亮色。
   ptt07,"thinking-border-palette","包 MUST 提供 ThinkingBorderLevel（或等价）覆盖至少 off、minimal、low、medium、high、xhigh、max，并提供 cycle_next；Palette MUST 经 thinking_border_rgb（或等价）为每一 level 返回边框色，色阶 MUST 对齐 pi coding-agent theme dark/light.json 的 thinking*，且相邻 level MUST 可区分；MUST 提供 thinking_border_paint（或等价）返回真彩边框闭包；MUST NOT 依赖主 crate domain::ThinkingLevel；MUST NOT 用 muted/accent/warning 等通用 token 冒充 thinking 强弱。"
-scenarios[0]:
+scenarios[7]{req_id,id,given,when,then,feature}:
+  ptt01,ptt01-unit,"two-palettes 约束由包级单测覆盖（非 BDD harness）",审查实现与对应测试,"行为符合本 requirement 陈述",false
+  ptt02,ptt02-unit,"paint-truecolor 约束由包级单测覆盖（非 BDD harness）",审查实现与对应测试,"行为符合本 requirement 陈述",false
+  ptt03,ptt03-unit,"theme-factories 约束由包级单测覆盖（非 BDD harness）",审查实现与对应测试,"行为符合本 requirement 陈述",false
+  ptt04,ptt04-unit,"demo-full-restyle 约束由包级单测覆盖（非 BDD harness）",审查实现与对应测试,"行为符合本 requirement 陈述",false
+  ptt05,ptt05-unit,"detect-opt-in 约束由包级单测覆盖（非 BDD harness）",审查实现与对应测试,"行为符合本 requirement 陈述",false
+  ptt06,ptt06-unit,"host-feed-replies 约束由包级单测覆盖（非 BDD harness）",审查实现与对应测试,"行为符合本 requirement 陈述",false
+  ptt07,ptt07-unit,"thinking-border-palette 约束由包级单测覆盖（非 BDD harness）",审查实现与对应测试,"行为符合本 requirement 陈述",false

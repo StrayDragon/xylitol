@@ -12,4 +12,13 @@ requirements[9]{req_id,title,statement}:
   ptd7,"sbs-no-default-row-bg","当 Diff 以 side-by-side 渲染时，增删半栏 MUST NOT 默认套用 added_line_bg / removed_line_bg 全行背景；极性 MUST 仅用 fg（及 gutter 符号/行号）表达。Unified 路径 MAY 继续使用行底。"
   ptd8,"cjk-narrow-wrap",当 Diff 行含全角/CJK 且宽度受限时，折行或截断 MUST 按 visible_width 处理；MUST NOT 按字节中途切开字形。
   ptd9,"sbs-empty-half-no-fake-lineno","side-by-side 仅一侧有内容时，空半栏 MUST NOT 伪造行号；有内容半栏 MUST 仍显示对应 old_no 或 new_no。"
-scenarios[0]:
+scenarios[9]{req_id,id,given,when,then,feature}:
+  ptd1,ptd1-unit,"diff-component-api 约束由包级单测覆盖（非 BDD harness）",审查实现与对应测试,"行为符合本 requirement 陈述",false
+  ptd2,ptd2-unit,"diff-word-level 约束由包级单测覆盖（非 BDD harness）",审查实现与对应测试,"行为符合本 requirement 陈述",false
+  ptd3,ptd3-unit,"diff-width-cjk 约束由包级单测覆盖（非 BDD harness）",审查实现与对应测试,"行为符合本 requirement 陈述",false
+  ptd4,ptd4-unit,"diff-edit-text-format 约束由包级单测覆盖（非 BDD harness）",审查实现与对应测试,"行为符合本 requirement 陈述",false
+  ptd5,ptd5-unit,"diff-side-by-side-line-numbers 约束由包级单测覆盖（非 BDD harness）",审查实现与对应测试,"行为符合本 requirement 陈述",false
+  ptd6,ptd6-unit,"diff-optional-content-highlight 约束由包级单测覆盖（非 BDD harness）",审查实现与对应测试,"行为符合本 requirement 陈述",false
+  ptd7,ptd7-unit,"sbs-no-default-row-bg 约束由包级单测覆盖（非 BDD harness）",审查实现与对应测试,"行为符合本 requirement 陈述",false
+  ptd8,ptd8-unit,"cjk-narrow-wrap 约束由包级单测覆盖（非 BDD harness）",审查实现与对应测试,"行为符合本 requirement 陈述",false
+  ptd9,ptd9-unit,"sbs-empty-half-no-fake-lineno 约束由包级单测覆盖（非 BDD harness）",审查实现与对应测试,"行为符合本 requirement 陈述",false

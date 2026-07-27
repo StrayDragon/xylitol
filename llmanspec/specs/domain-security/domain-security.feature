@@ -1,6 +1,8 @@
 # language: zh-CN
 # live Partitioned SSOT feature (domain-security)
 # executable permission subset (migrated from tests/features/sandbox.feature)
+# BDD 接线（tests/bdd.rs）：network-domain-block / deny-write / allow-write
+# 其余场景尚未绑 #[scenario]；后续实现或 # disabled，勿留悬空期望
 功能: domain-security
   @req:r61
   场景: network-domain-block
@@ -60,37 +62,19 @@
   场景: permission-config
     假如 config.yaml 含 security.permission.filesystem.write_denied=['.env']
     当 加载配置
-    那么 PermissionConfig.write_denied 含 .env 且无 SandboxConfig 类型
-
-  @req:r65
-  场景: s11-renamed
-    假如 阅读文件系统强制要求
-    当 应用变更后
-    那么 引用 XyPermission 而非 SandboxEngine
-
-  @req:r66
-  场景: s12-renamed
-    假如 阅读网络强制要求
-    当 应用变更后
-    那么 引用 XyPermission 而非 SandboxEngine
+    那么 write_denied 字段含 .env 且配置键来自 security.permission 非 security.sandbox
 
   @req:s13
   场景: permission-trait
-    假如 定位 permission 边界类型
-    当 检查名称
-    那么 为 protocol::XyPermission 返回 XyPermissionVerdict，后端含 AllowAllPermission 与 GlobPolicy
+    假如 permission 后端实例已构造
+    当 调用 check_read("/tmp/test")
+    那么 返回 XyPermissionVerdict 且默认后端为 AllowAllPermission
 
   @req:s14
   场景: default-deny-read
     假如 permission.filesystem.read_allowed=['/home/user/project']
     当 read 工具读取 /etc/passwd
     那么 permission engine 返回 access-denied
-
-  @req:r71
-  场景: no-agent-trust
-    假如 应用变更后
-    当 运行 rg 'agent::trust' src/ tests/（排除已移除模块）
-    那么 零匹配且 src/agent/trust/ 目录不存在
 
   @req:r72
   场景: parent-inheritance
@@ -139,9 +123,3 @@
     假如 项目 CWD 中有活动会话
     当 用户经产品命令面运行信任命令
     那么 经应用缝持久化到 trust store，后续解析返回持久化值，且本会话不自动重载项目资源
-
-  @req:s15
-  场景: advisory-not-security
-    假如 读者检查 XyPermission 模块文档
-    当 阅读文档
-    那么 声明门控为建议性且非安全边界，并指向 OS 或容器隔离以实现真实 containment

@@ -17,4 +17,18 @@ requirements[14]{req_id,title,statement}:
   pts12,"selection-stable-on-filter",include_node 或搜索串变更后，若先前选中 id 仍在可见列表中则 MUST 保持该选中；否则 MUST 将选中落到可见列表的合理默认项（通常为首项）。
   pts13,"node-kind",TreeNode MUST 支持可选 kind（字符串；包 MUST NOT 硬编码产品 role 枚举）；有 kind 时渲染 MUST 在 annotation 之后、主 label 之前经主题闭包输出 kind 前缀；无 kind 时 MUST NOT 强制前缀。
   pts14,"kind-in-search",TreeSelector 增量搜索 MUST 将节点 kind（若有）纳入匹配；搜索 MUST 仍与 include_node 组合（AND）。
-scenarios[0]:
+scenarios[14]{req_id,id,given,when,then,feature}:
+  pts1,pts1-unit,"tree-node-model 约束由包级单测覆盖（非 BDD harness）",审查实现与对应测试,"行为符合本 requirement 陈述",false
+  pts2,pts2-unit,"include-node-filter 约束由包级单测覆盖（非 BDD harness）",审查实现与对应测试,"行为符合本 requirement 陈述",false
+  pts3,pts3-unit,"select-keybindings 约束由包级单测覆盖（非 BDD harness）",审查实现与对应测试,"行为符合本 requirement 陈述",false
+  pts4,pts4-unit,"incremental-search 约束由包级单测覆盖（非 BDD harness）",审查实现与对应测试,"行为符合本 requirement 陈述",false
+  pts5,pts5-unit,"left-right-page 约束由包级单测覆盖（非 BDD harness）",审查实现与对应测试,"行为符合本 requirement 陈述",false
+  pts6,pts6-unit,"status-suffix 约束由包级单测覆盖（非 BDD harness）",审查实现与对应测试,"行为符合本 requirement 陈述",false
+  pts7,pts7-unit,"fold-and-branch-jump 约束由包级单测覆盖（非 BDD harness）",审查实现与对应测试,"行为符合本 requirement 陈述",false
+  pts8,pts8-unit,"node-annotation 约束由包级单测覆盖（非 BDD harness）",审查实现与对应测试,"行为符合本 requirement 陈述",false
+  pts9,pts9-unit,"label-edit-callback 约束由包级单测覆盖（非 BDD harness）",审查实现与对应测试,"行为符合本 requirement 陈述",false
+  pts10,pts10-unit,"horizontal-viewport-pan 约束由包级单测覆盖（非 BDD harness）",审查实现与对应测试,"行为符合本 requirement 陈述",false
+  pts11,pts11-unit,"empty-visible-state 约束由包级单测覆盖（非 BDD harness）",审查实现与对应测试,"行为符合本 requirement 陈述",false
+  pts12,pts12-unit,"selection-stable-on-filter 约束由包级单测覆盖（非 BDD harness）",审查实现与对应测试,"行为符合本 requirement 陈述",false
+  pts13,pts13-unit,"node-kind 约束由包级单测覆盖（非 BDD harness）",审查实现与对应测试,"行为符合本 requirement 陈述",false
+  pts14,pts14-unit,"kind-in-search 约束由包级单测覆盖（非 BDD harness）",审查实现与对应测试,"行为符合本 requirement 陈述",false

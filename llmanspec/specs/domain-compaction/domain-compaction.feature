@@ -1,5 +1,7 @@
 # language: zh-CN
 # migrated from tests/features/compaction.feature
+# BDD 接线（tests/bdd.rs）：need-compact / no-compact（= should-compact true/false）/
+# retain-recent / write-entry / branch-summary
 功能: domain-compaction
   背景:
     假定 有一个临时工作目录
@@ -49,12 +51,6 @@
     当 调用上下文估计
     那么 采用 LocalTokenizer 而非静默当作 Api
 
-  @req:c2
-  场景: trigger
-    假如 tokens 超过上下文窗口 80%
-    当 调用 shouldCompact
-    那么 返回 true
-
   @req:c3
   场景: summarize
     假如 会话有 50 轮
@@ -72,12 +68,6 @@
     假如 用户导航到较早分支点
     当 生成分支摘要
     那么 摘要条目桥接上下文缺口
-
-  @req:c6
-  场景: bdd-pass
-    假如 调用 BDD runner
-    当 cargo test --test bdd
-    那么 全部 compaction 场景通过
 
   @req:c7
   场景: summarize
@@ -121,23 +111,11 @@
     当 拆分模块
     那么 各结果文件拥有单一职责且可独立测试
 
-  @req:c14
-  场景: single-compaction-config
-    假如 在代码库搜索 CompactionConfig
-    当 rg "struct CompactionConfig"
-    那么 零匹配残留
-
   @req:c15
   场景: provenance-available
     假如 完成一次启发式降级估计
     当 检查估计结果
     那么 带有 Heuristic 来源标注且无重复 XyUsage 定义
-
-  @req:c15
-  场景: usage-unified
-    假如 检查 token_estimator.rs
-    当 应用变更后
-    那么 从 domain 导入 XyUsage 而非定义本地结构
 
   @req:c2
   @req:c16

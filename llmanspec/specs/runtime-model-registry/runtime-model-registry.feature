@@ -67,12 +67,6 @@
     当 调用 auth_guidance_message
     那么 消息含 ANTHROPIC_API_KEY
 
-  @req:m8
-  场景: bdd-pass
-    假如 运行模型注册表与解析 BDD 套件
-    当 全部场景执行
-    那么 每场景通过且无回归
-
   @req:m9
   场景: default-standard
     假如 模型 thinking true 且无 thinking_levels

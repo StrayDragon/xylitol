@@ -8,4 +8,9 @@ requirements[5]{req_id,title,statement}:
   pcp03,"multi-question-tabs",当问卷含多题时 MUST 渲染可切换的题目标签与 Submit，且每题可独立为 Single 或 Multi；单题 MUST NOT 强制显示多题 Tab 条。
   pcp04,"inline-not-overlay",ChoicePrompt MUST 可作为 Component 嵌入宿主布局（如 editor 槽替换）；MUST NOT 要求以全屏 Overlay 仪表盘呈现。
   pcp05,cancel,Esc（tui.select.cancel）MUST 取消整份问卷并给出 cancelled 结果；MUST NOT 静默丢弃无回调。
-scenarios[0]:
+scenarios[5]{req_id,id,given,when,then,feature}:
+  pcp01,pcp01-unit,"single-and-multi 约束由包级单测覆盖（非 BDD harness）",审查实现与对应测试,"行为符合本 requirement 陈述",false
+  pcp02,pcp02-unit,"other-free-text 约束由包级单测覆盖（非 BDD harness）",审查实现与对应测试,"行为符合本 requirement 陈述",false
+  pcp03,pcp03-unit,"multi-question-tabs 约束由包级单测覆盖（非 BDD harness）",审查实现与对应测试,"行为符合本 requirement 陈述",false
+  pcp04,pcp04-unit,"inline-not-overlay 约束由包级单测覆盖（非 BDD harness）",审查实现与对应测试,"行为符合本 requirement 陈述",false
+  pcp05,pcp05-unit,"cancel 约束由包级单测覆盖（非 BDD harness）",审查实现与对应测试,"行为符合本 requirement 陈述",false

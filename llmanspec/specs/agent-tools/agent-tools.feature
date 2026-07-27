@@ -1,6 +1,8 @@
 # language: zh-CN
 # migrated from tests/features/{read,write,bash,edit,grep,find,ls}.feature
 # scenario titles = English ids; docstring 已收成单行字符串（\n）
+# BDD 接线（tests/bdd.rs）：七工具主路径已绑，含 read-truncate / bash-timeout /
+# edit-empty-old / edit-nonunique / edit-noop（无 edit-oldtext-* 旧 id）
 功能: agent-tools
   背景:
     假定 有一个临时工作目录
@@ -29,6 +31,7 @@
     那么 内容为空
     并且 偏移量为 10
 
+  @req:t10
   场景: read-truncate
     假定 存在文件 "src/large.txt" 包含10000行内容
     当 调用read工具 路径 "src/large.txt"
@@ -108,6 +111,7 @@
     那么 结果含 Full output 脚注
     并且 bash 结果 JSON 无未截断全量 stdout 字段载荷
 
+  @req:t9
   场景: bash-cancel
     当 调用bash命令 "sleep 60"
     并且 在500ms后发送取消信号
@@ -121,6 +125,7 @@
     当 调用edit工具 路径 "src/main.rs" 将 "println!(\"hello\");" 替换为 "println!(\"你好\");"
     那么 文件 "src/main.rs" 应该包含 "你好"
 
+  @req:t3
   场景: edit-multi
     假定 存在文件 "src/lib.rs" 内容为 "pub fn add(a: i32, b: i32) -> i32 { a + b }\npub fn sub(a: i32, b: i32) -> i32 { a - b }"
     当 调用edit工具 路径 "src/lib.rs" 将 "a + b" 替换为 "a.wrapping_add(b)"
@@ -128,6 +133,7 @@
     那么 文件 "src/lib.rs" 应该包含 "a.wrapping_add(b)"
     并且 文件 "src/lib.rs" 应该包含 "a.wrapping_sub(b)"
 
+  @req:t4
   场景: edit-overlap
     假定 存在文件 "src/overlap.rs" 内容为 "fn hello_world() {\n    println!(\"hello world\");\n}"
     当 调用edit工具 路径 "src/overlap.rs" 做重叠替换
@@ -145,12 +151,14 @@
     当 调用edit工具 路径 "src/main.rs" 将 "println!(\"hello\");" 替换为 "println!(\"hello\");"
     那么 edit调用应该失败 包含错误信息 "identical" 或 "No changes" 或 "no change" 或 "not unique"
 
+  @req:e2
   场景: edit-crlf
     假定 存在文件 "src/windows.rs" 使用CRLF行尾 内容为 "// Windows 风格\n// 第二行"
     当 调用edit工具 路径 "src/windows.rs" 将 "Windows 风格" 替换为 "Unix 风格"
     那么 文件 "src/windows.rs" 应该包含 "Unix 风格"
     并且 文件 "src/windows.rs" 应该包含 "第二行"
 
+  @req:t5
   场景: edit-bom
     假定 存在文件 "src/bom.txt" 带UTF8_BOM 内容为 "Hello World"
     当 调用edit工具 路径 "src/bom.txt" 将 "Hello World" 替换为 "Hello BOM"
@@ -162,6 +170,8 @@
     当 调用edit工具 路径 "src/quotes.rs" 将 "let msg = \"hello world\";" 替换为 "let msg = \"hi earth\";"
     那么 文件 "src/quotes.rs" 应该包含 "hi earth"
 
+  @req:t6
+  @req:e4
   场景: edit-diff
     假定 存在文件 "src/diff_test.rs" 内容为 "第1行\n第2行\n第3行"
     当 调用edit工具 路径 "src/diff_test.rs" 将 "第2行" 替换为 "第二行"
@@ -199,6 +209,7 @@
     当 调用grep 不传模式参数
     那么 调用失败 包含验证错误
 
+  @req:t8
   场景: find-simple
     假定 存在文件 "src/main.rs"
     并且 存在文件 "src/lib.rs"
@@ -273,12 +284,6 @@
     当 调用ls工具 路径 "src/main.rs"
     那么 调用失败 包含错误信息
 
-  @req:r32
-  场景: xy-tool-consistent
-    假如 检查 protocol 工具边界
-    当 应用变更后
-    那么 所有工具边界类型均带 Xy 前缀
-
   @req:r42
   场景: happy
     假如 工具注册表含全部 7 个工具
@@ -287,9 +292,9 @@
 
   @req:r48
   场景: happy
-    假如 AI 生成的 unified diff 略有行偏移
-    当 经 fudiff 应用补丁
-    那么 fudiff 在行偏移下仍成功应用
+    假如 临时目录存在含行偏移的 unified diff 文件
+    当 经补丁应用执行 edit
+    那么 模糊匹配补丁应用成功
 
   @req:r4
   场景: large-file
@@ -329,93 +334,39 @@
 
   @req:r9
   场景: happy
-    假如 工具需要必填字符串参数
-    当 工具调用 require_str(args, 'file_path')
-    那么 返回 Ok(value) 或含一致错误码的 Err(AdkError)
-
-  @req:r10
-  场景: happy
-    假如 crate 在启用 dead_code lint 下编译
-    当 运行 cargo clippy
-    那么 生产路径无 dead_code 警告
+    假如 工具需要必填字符串参数 file_path
+    当 以空参调用该工具
+    那么 调用失败且返回 MissingArgument 错误码
 
   @req:r11
   场景: error-mapping
-    假如 工具返回 XyToolError::InvalidArgs
-    当 错误传播到 agent 循环
-    那么 错误类别保留并展示给用户
+    假如 工具以 InvalidArgs 错误执行失败
+    当 agent 循环收集工具结果
+    那么 产生的 AgentEvent 含 error 类别
 
   @req:t1
   场景: cancel
-    假如 全部工具实现 XyTool
-    当 触发取消
-    那么 返回 abort 错误
+    假如 bash 工具正在 sleep 60
+    当 发送取消信号
+    那么 execute 返回 Cancelled 错误
 
   @req:t2
   场景: registry
-    假如 调用 ToolRegistry builtins
-    当 调用 list()
-    那么 返回七个工具
-
-  @req:t3
-  场景: multi-edit
-    假如 文件有 3 个不重叠区域
-    当 调用 multi-edit
-    那么 3 个区域均被替换
-
-  @req:t4
-  场景: overlap
-    假如 两个重叠编辑
-    当 调用 edit
-    那么 错误含重叠及索引
-
-  @req:t5
-  场景: bom
-    假如 文件含 UTF-8 BOM
-    当 替换文本
-    那么 BOM 保留且内容已更新
-
-  @req:t6
-  场景: diff
-    假如 文件已编辑
-    当 返回结果
-    那么 含 unified patch 与带行号 diff
-
-  @req:t8
-  场景: find-basic
-    假如 文件匹配 glob
-    当 调用 find
-    那么 fd 返回尊重 gitignore 的 Posix 路径
-
-  @req:t9
-  场景: bash-kill
-    假如 长时间 bash 命令运行中
-    当 CancellationToken 触发
-    那么 进程被杀并返回 abort 错误
-
-  @req:t10
-  场景: read-trunc
-    假如 存在 10000 行文件
-    当 无限制调用 read
-    那么 截断并附提示
+    假如 工具集含全部内置工具
+    当 列举工具名
+    那么 返回 7 个工具名
 
   @req:t11
   场景: infra-works
-    假如 infra 结构已定义
-    当 全部工具使用它们
-    那么 行为与 pi 完全一致
+    假如 内置工具集已构造
+    当 分别执行 read / write / edit / bash / grep / find / ls
+    那么 各工具返回成功结果且无 panic
 
   @req:t12
   场景: toolset-unit-ops
-    假如 构造 ToolSet
-    当 链式 plus/remove/merge/retain
-    那么 结果集仅反映单元操作且无运行时过滤状态
-
-  @req:t13
-  场景: bdd-pass
-    假如 调用 BDD runner
-    当 cargo test --test bdd
-    那么 全部工具场景通过
+    假如 工具集含 read 与 grep
+    当 plus(bash) 然后 remove(grep)
+    那么 最终工具集含 read 与 bash 且不含 grep
 
   @req:t14
   场景: small-output
@@ -431,15 +382,9 @@
 
   @req:t15
   场景: bash-uses-accumulator
-    假如 bash 执行 echo hello
-    当 经 OutputAccumulator 捕获输出
-    那么 result.output 为 hello 且小输出时 result.full_output_path 为 None
-
-  @req:t16
-  场景: bdd-pass
-    假如 调用 BDD runner
-    当 cargo test --test bdd
-    那么 全部 tool-v3 场景通过
+    假如 bash 工具即将执行 echo hello
+    当 执行 bash echo hello
+    那么 返回 output:hello 且未触发临时文件落盘
 
   @req:e1
   场景: fuzzy
@@ -447,52 +392,11 @@
     当 应用 edit
     那么 模糊匹配成功并写入替换
 
-  @req:e2
-  场景: line-ending
-    假如 文件使用 CRLF 或 LF
-    当 应用 edit
-    那么 输出文件保留原行尾风格
-
   @req:e3
   场景: span
     假如 oldText 跨 5 行但中间一行精确匹配失败
     当 以 span 匹配应用 edit
     那么 滑动窗口匹配成功
-
-  @req:e4
-  场景: diff
-    假如 edit 应用变更
-    当 计算 diff
-    那么 结果含变更标记的前后行
-
-  @req:t17
-  场景: tool-def-contains-schema
-    假如 构造 ToolDefinition
-    当 应用变更后
-    那么 存储 schema: XyToolSchema 且 prompt 元数据分离
-
-  @req:t18
-  场景: toolset-in-agent-final
-    假如 定位工具容器类型
-    当 检查模块路径
-    那么 为 agent::tools 的 ToolSet，一轮接收最终集合
-
-  @req:t19
-  场景: tool-mode-renamed
-    假如 代码引用 ToolExecutionMode
-    当 应用变更后
-    那么 各处重命名为 XyToolExecutionMode
-
-  @req:t20
-  场景: loop-uses-final-set
-    假如 检查循环源码
-    当 应用变更后
-    那么 无 set_allowed 或 list_filtered 符号且循环直接迭代 ToolSet
-
-  @req:r36
-  场景: via-port
-    当 rg rmcp 于 src/agent 与 src/protocol
-    那么 零匹配
 
   @req:t21
   场景: png-yields-image-part

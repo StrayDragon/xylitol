@@ -10,4 +10,11 @@ requirements[7]{req_id,title,statement}:
   tt05,"portable-pty E2E 主驱动","端到端 TUI 测试 MUST 以 portable-pty 为主集成驱动：以 PTY 子进程 spawn 真实二进制，经 writer 注入按键序列（时序重要时键间显式 sleep），从 reader 读原始字节流，送入现有 VirtualTerminal（vte 单元格解析器），断言结果网格（单元格内容、SGR 样式、光标位置）。PTY 驱动 MUST 支持选择 spawn 哪个 example 或二进制表面，使冒烟测试可跟随包单一主 example 表面。该层 MUST 覆盖 crossterm 真实多字节序列事件解析（Ctrl+arrow、Alt+arrow、bracketed paste 标记），进程内 handle_input 无法演练。portable-pty 测试位于工作区 tests/tui_e2e/（非 packages/xylitol-tui/tests/），因测试组装二进制而非 crate。"
   tt06,tmux 真终端冒烟,"TUI 测试 harness MUST 含少量（3-5 例）经 tmux 驱动的真终端冒烟测试（用手写薄包装 std::process::Command，非 tmux 绑定 crate）：创建 detached 会话（tmux new-session -d -s <name> -x <w> -y <h>），经 tmux send-keys 注入按键（支持 C-Left/M-Right/Escape/Enter 特殊键），经 tmux capture-pane -e -p 抓屏（保留 SGR 转义），经字符串包含 + insta 快照断言（过滤易变部分）。tmux 测试 MUST 标 #[ignore] 并经专用 justfile 目标（test-tui-e2e）运行，非主测试矩阵，因慢（每例 1-3s）且依赖真实 tmux 二进制与 TERM=xterm-256color。若屏幕内容轮询不可靠，MAY 添加渲染就绪信号（env XYLITOL_TEST_RENDER_SIGNAL=1 向 stderr 写 RENDER_DONE <frame_id>）以减少抓屏 flaky。"
   tt07,单一主 example 表面,"xylitol-tui 包 MUST 保留代表假 coding-agent 工作流的单一主 example 表面，而非多个重叠 showcase demo。验收与 E2E 测试 MUST 瞄准该主 example。主 example MUST 覆盖 transcript history、tool activity、侧栏或状态表面、可编辑输入区，且 MUST 在 realistic submit 流程中不违反 engine 宽度合约。"
-scenarios[0]:
+scenarios[7]{req_id,id,given,when,then,feature}:
+  tt01,tt01-unit,"五层测试架构 约束由包级单测覆盖（非 BDD harness）",审查实现与对应测试,"行为符合本 requirement 陈述",false
+  tt02,tt02-unit,"按键序列辅助 约束由包级单测覆盖（非 BDD harness）",审查实现与对应测试,"行为符合本 requirement 陈述",false
+  tt03,tt03-unit,"insta 快照黄金 约束由包级单测覆盖（非 BDD harness）",审查实现与对应测试,"行为符合本 requirement 陈述",false
+  tt04,tt04-unit,"可注入 Clock 的时序 约束由包级单测覆盖（非 BDD harness）",审查实现与对应测试,"行为符合本 requirement 陈述",false
+  tt05,tt05-unit,"portable-pty E2E 主驱动 约束由包级单测覆盖（非 BDD harness）",审查实现与对应测试,"行为符合本 requirement 陈述",false
+  tt06,tt06-unit,"tmux 真终端冒烟 约束由包级单测覆盖（非 BDD harness）",审查实现与对应测试,"行为符合本 requirement 陈述",false
+  tt07,tt07-unit,"单一主 example 表面 约束由包级单测覆盖（非 BDD harness）",审查实现与对应测试,"行为符合本 requirement 陈述",false

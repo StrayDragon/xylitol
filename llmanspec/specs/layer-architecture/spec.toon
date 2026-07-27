@@ -2,7 +2,7 @@ kind: llman.sdd.spec
 name: "layer-architecture"
 purpose: "分层与 seam、Xy 精选导出、嵌入缝与组件粒度：agent / protocol / infra / app（单 crate；无独立 domain/ 或 runtime_protocol/ 顶栏；不用源码 grep 元测试卡写法）。"
 valid_scope[3]: src/,tests/,src/AGENTS.md
-requirements[32]{req_id,title,statement}:
+requirements[34]{req_id,title,statement}:
   la1,核心层,"System MUST 以 src/agent/ 承载编排与投影（ReAct、project_for_llm、session 编排），语义对齐 pi-agent-core。System MUST 以单一 src/protocol/ 承载跨边界契约：仅两子树 wire/（Command/Event）与 ports/（XyModel、XyTool、XySessionStore、XyEventSink 等）；进 port/wire 签名的共享类型（AgentMessage、Env、SessionEntry、XyEvent、XyChunk 等）MUST 位于 protocol 根模块（非独立 vocab/types 子树顶栏）。因 infra 不得依赖 agent，上述类型物理 MUST 在 protocol，由 agent 再导出；MUST NOT 再提供独立的 src/domain/ 或 src/runtime_protocol/ 顶栏。"
   la2,向下依赖,"infra/ 模块 MUST NOT import 任何 crate::agent 符号；agent/ 模块 MUST NOT import 任何具体 infra/ 类型（仅经 protocol ports）；应用面（cli 渲染子路径、tui、非组合根的 app 模块）MUST NOT import crate::infra 或 agent 子模块内部，MUST 经 app/core seam（composition / Driver / bootstrap / dispatch）与 crate::agent 的 mod 级导出。组合根 app/cli/、app/server/、app/core/composition.rs 可同时 import agent 与 infra 做装配。InProcessDriver MAY 调用文档化的表面 infra（trust / clipboard / 必要 config 读）；MUST NOT 成为第二套组合根去构造 provider/session 工具集。protocol/ MUST NOT 依赖 agent/ 或 infra/ 实现。分层靠 AGENTS + review + 缝行为测保障，MUST NOT 要求源码 grep 元测试。"
   la3,infra 不依赖 agent,"src/infra 下 MUST NOT 有生产代码 import crate::agent；由约定与审查保障，MUST NOT 要求独立 arch_guard 测试模块。"
@@ -29,10 +29,46 @@ requirements[32]{req_id,title,statement}:
   "la-mcp-seam",MCP 经嵌入缝,"System MUST 向嵌入方提供不依赖 infra 路径的 MCP 服务器描述（或等价句柄），使 bootstrap/reload 可在不 reach-in infra::mcp 的情况下传递配置。composition/McpSession MUST 在缝边界内将嵌入缝 MCP 描述转为 infra 实现；应用面 MUST NOT 为 MCP 装配单独 reach-in infra 类型。"
   "la-dispatch-consume",dispatch 有消费方,跨面命令执行缝 dispatch MUST 至少被一个生产应用面消费（Server 或 TUI）；禁止长期仅单测覆盖而无面接线。
   la25,provider 包开闭,"LLM 厂商差异 MUST 收敛在 packages/xylitol-ai-bridge 的 adapter 族；主仓投影缝（agent 内 project_for_llm）仅负责 Env→LLM 折叠。新 OpenAI-like 或 Anthropic-like 兼容端 MUST 以开闭方式扩展（新 adapter/配置），MUST NOT 为某一网关修改 AgentMessage 角色集或 agent ReAct 核心；agent MAY 依赖 bridge DTO 组合 Llm 臂；agent/infra MUST NOT 依赖厂商 HTTP/SDK。"
+  la26,feature-flags,"System MUST 为每个可选能力定义带域前缀的 feature flag，使非默认 feature 零开销编译剔除。内置能力（tools、hooks、security、repeat-detection、print-mode）无 feature flag，运行时由 config.yaml 控制。ACP 模式使用 feature flag infra-acp。"
+  la27,minimal-default-features,"Cargo.toml default MUST 为 cli + tui + otel（个人 agent 开箱）；server 与 gui MUST 为 opt-in；MUST NOT 要求 default 包含全部非 dev feature。构建 feature 闸与条件编译以 Cargo.toml 为 SSOT（原 build-config 并入）。"
   ar01,清除 pi 文档引用,src/ 中所有源文件 MUST NOT 在 doc comments 中引用 pi coding agent 或其 TypeScript 模块。pi 设计理由引用 MUST 替换为该模块实际职责的独立描述。
   ar02,组件粒度边界,"少于 100 行或 5 个方法且无行为逻辑的组件 MUST 内联到父 struct。反之，内联块超过约 100 行、有独立行为逻辑且概念内聚时 MUST 提取为命名协作者对象。Agent 能力聚合 MUST NOT 作为单一 struct 或单一文件无界增长；export、bash、permission、stats、trust 关注点 MUST 提取为命名协作者，使聚合保持内聚。"
   ar06,精选库入口 Xy 前缀,精选进 crate 公开 API（lib.rs pub use）的可替换端口、跨面生命周期事件及其绑定签名类型 MUST 使用 Xy 前缀；应用面缝（Driver/bootstrap/dispatch）、protocol 线协议类型、infra 具体实现、以及未导出的内部协作者 MUST NOT 仅为品牌而加 Xy 前缀。
   ar07,消除重复领域实体,System MUST NOT 为同一领域概念定义多种类型；Usage、StopReason 与 Compaction 配置 MUST 各有一个 canonical 类型。
   ar09,精选 pub use 清单,System MUST 在 src/lib.rs（或等价公开入口）维护精选 pub use，至少覆盖 XyModel、XyTool、XySessionStore、XyEvent、XyChunk 及文档化的配套错误/配置类型；未列入清单的内部模块 MUST NOT 被误当作稳定公开 API。
   r12,配置 JSON Schema 边界,"需要 JSON Schema 的配置/settings DTO MUST 位于 infra/config 或 infra/settings（或等价配置边界）并在该处 derive schemars；agent/protocol 会话词汇 MUST NOT 仅为 schema 而 derive JsonSchema。"
-scenarios[0]:
+scenarios[34]{req_id,id,given,when,then,feature}:
+  la1,la1-unit,"核心层 约束由架构约定与缝行为测覆盖（非 BDD harness）",审查实现与对应测试,"行为符合本 requirement 陈述",false
+  la2,la2-unit,"向下依赖 约束由架构约定与缝行为测覆盖（非 BDD harness）",审查实现与对应测试,"行为符合本 requirement 陈述",false
+  la3,la3-unit,"infra 不依赖 agent 约束由架构约定与缝行为测覆盖（非 BDD harness）",审查实现与对应测试,"行为符合本 requirement 陈述",false
+  la4,la4-unit,"app 层命名 约束由架构约定与缝行为测覆盖（非 BDD harness）",审查实现与对应测试,"行为符合本 requirement 陈述",false
+  la5,la5-unit,"protocol 模块 约束由架构约定与缝行为测覆盖（非 BDD harness）",审查实现与对应测试,"行为符合本 requirement 陈述",false
+  la6,la6-unit,"server 在 app 下 约束由架构约定与缝行为测覆盖（非 BDD harness）",审查实现与对应测试,"行为符合本 requirement 陈述",false
+  la7,la7-unit,"运行时归属 约束由架构约定与缝行为测覆盖（非 BDD harness）",审查实现与对应测试,"行为符合本 requirement 陈述",false
+  la8,la8-unit,"agent 独立性 约束由架构约定与缝行为测覆盖（非 BDD harness）",审查实现与对应测试,"行为符合本 requirement 陈述",false
+  la9,la9-unit,"分层保障方式 约束由架构约定与缝行为测覆盖（非 BDD harness）",审查实现与对应测试,"行为符合本 requirement 陈述",false
+  la10,la10-unit,"NOTE 约定 约束由架构约定与缝行为测覆盖（非 BDD harness）",审查实现与对应测试,"行为符合本 requirement 陈述",false
+  la11,la11-unit,"Driver 表面缝 约束由架构约定与缝行为测覆盖（非 BDD harness）",审查实现与对应测试,"行为符合本 requirement 陈述",false
+  la12,la12-unit,"禁止 arch_guard 回归 约束由架构约定与缝行为测覆盖（非 BDD harness）",审查实现与对应测试,"行为符合本 requirement 陈述",false
+  la13,la13-unit,"agent 薄且无展示 约束由架构约定与缝行为测覆盖（非 BDD harness）",审查实现与对应测试,"行为符合本 requirement 陈述",false
+  la14,la14-unit,"禁止 domain 顶栏与兼容 shim 约束由架构约定与缝行为测覆盖（非 BDD harness）",审查实现与对应测试,"行为符合本 requirement 陈述",false
+  la15,la15-unit,"app composition 约束由架构约定与缝行为测覆盖（非 BDD harness）",审查实现与对应测试,"行为符合本 requirement 陈述",false
+  la16,la16-unit,"Xy 词汇就地 约束由架构约定与缝行为测覆盖（非 BDD harness）",审查实现与对应测试,"行为符合本 requirement 陈述",false
+  la17,la17-unit,"Xy 协议端口 约束由架构约定与缝行为测覆盖（非 BDD harness）",审查实现与对应测试,"行为符合本 requirement 陈述",false
+  la18,la18-unit,"事件分层与闭集 约束由架构约定与缝行为测覆盖（非 BDD harness）",审查实现与对应测试,"行为符合本 requirement 陈述",false
+  la19,la19-unit,"缝与表面分离 约束由架构约定与缝行为测覆盖（非 BDD harness）",审查实现与对应测试,"行为符合本 requirement 陈述",false
+  la20,la20-unit,"共享 bootstrap 与 dispatch 约束由架构约定与缝行为测覆盖（非 BDD harness）",审查实现与对应测试,"行为符合本 requirement 陈述",false
+  la21,la21-unit,"禁止死包装协作者 约束由架构约定与缝行为测覆盖（非 BDD harness）",审查实现与对应测试,"行为符合本 requirement 陈述",false
+  la-embed1,la-embed1-unit,"嵌入缝与公开入口 约束由架构约定与缝行为测覆盖（非 BDD harness）",审查实现与对应测试,"行为符合本 requirement 陈述",false
+  la-server-driver,la-server-driver-unit,"Server 与 Print 同缝 约束由架构约定与缝行为测覆盖（非 BDD harness）",审查实现与对应测试,"行为符合本 requirement 陈述",false
+  la-mcp-seam,la-mcp-seam-unit,"MCP 经嵌入缝 约束由架构约定与缝行为测覆盖（非 BDD harness）",审查实现与对应测试,"行为符合本 requirement 陈述",false
+  la-dispatch-consume,la-dispatch-consume-unit,"dispatch 有消费方 约束由架构约定与缝行为测覆盖（非 BDD harness）",审查实现与对应测试,"行为符合本 requirement 陈述",false
+  la25,la25-unit,"provider 包开闭 约束由架构约定与缝行为测覆盖（非 BDD harness）",审查实现与对应测试,"行为符合本 requirement 陈述",false
+  la26,la26-unit,"feature-flags 约束由架构约定与缝行为测覆盖（非 BDD harness）",审查实现与对应测试,"行为符合本 requirement 陈述",false
+  la27,la27-unit,"minimal-default-features 约束由架构约定与缝行为测覆盖（非 BDD harness）",审查实现与对应测试,"行为符合本 requirement 陈述",false
+  ar01,ar01-unit,"清除 pi 文档引用 约束由架构约定与缝行为测覆盖（非 BDD harness）",审查实现与对应测试,"行为符合本 requirement 陈述",false
+  ar02,ar02-unit,"组件粒度边界 约束由架构约定与缝行为测覆盖（非 BDD harness）",审查实现与对应测试,"行为符合本 requirement 陈述",false
+  ar06,ar06-unit,"精选库入口 Xy 前缀 约束由架构约定与缝行为测覆盖（非 BDD harness）",审查实现与对应测试,"行为符合本 requirement 陈述",false
+  ar07,ar07-unit,"消除重复领域实体 约束由架构约定与缝行为测覆盖（非 BDD harness）",审查实现与对应测试,"行为符合本 requirement 陈述",false
+  ar09,ar09-unit,"精选 pub use 清单 约束由架构约定与缝行为测覆盖（非 BDD harness）",审查实现与对应测试,"行为符合本 requirement 陈述",false
+  r12,r12-unit,"配置 JSON Schema 边界 约束由架构约定与缝行为测覆盖（非 BDD harness）",审查实现与对应测试,"行为符合本 requirement 陈述",false

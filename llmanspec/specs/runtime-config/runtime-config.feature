@@ -1,12 +1,9 @@
 # language: zh-CN
 # managed by llman sdd partition-migrate
+# BDD 接线（tests/bdd.rs）：tokenizer / local-tokenizer 子集已绑
+# profile-no-max-iterations / vars-home-unit-covered 在 spec.toon 为 feature:false
+# （requirement 明确 MUST NOT 扩 BDD；由配置单测覆盖）
 功能: runtime-config
-
-  @req:rc0
-  场景: placeholder
-    假如 未配置任何 settings
-    当 无操作发生
-    那么 无变化
 
   @req:rc11
   场景: transport
@@ -46,20 +43,9 @@
 
   @req:rc15
   场景: mapping-documented
-    假如 用户在 config.yaml 设置 compaction 字段
+    假如 config.yaml 含 compaction 节及阈值
     当 加载配置并解析为运行时 settings
-    那么 规范运行时 compaction settings 经单一文档化映射反映 YAML 值
-
-  @req:rc1
-  场景: value-relocated
-    假如 检查 src/agent/config_value.rs 是否存在
-    当 检查路径
-    那么 不存在且存在 src/infra/config/value.rs
-
-  @req:rc8
-  场景: config-has-schema
-    当 检查 AppConfig 或 settings 类型
-    那么 JsonSchema derive 仅出现在配置边界模块
+    那么 compaction_settings.threshold 等于 YAML 中设置的值
 
   @req:rc9
   场景: field
@@ -146,9 +132,9 @@
 
   @req:rc20
   场景: config-yaml-secret-env-layout
-    假如 查阅产品配置文档与 example
-    当 读取主叙事
-    那么 仅描述 config.yaml 与 secret.env 为配置面
+    假如 配置加载器已就绪
+    当 从全局 config.yaml 加载完整 settings
+    那么 settings 含 transport 字段且不经 config.local.yaml 合并
 
   @req:rc21
   场景: config-local-not-merged

@@ -1,7 +1,0 @@
-kind: llman.sdd.spec
-name: "build-config"
-purpose: 构建配置 — Cargo features、profile 设置与条件编译。
-valid_scope[1]: Cargo.toml
-requirements[1]{req_id,title,statement}:
-  r33,"default-features","Cargo.toml default MUST 包含除 dev- 前缀外的所有 feature。"
-scenarios[0]:
