@@ -430,7 +430,7 @@ impl AgentCapabilities {
         &self,
         session_id: &str,
     ) -> Result<Vec<AgentMessage>, String> {
-        let entries = self.store.load_entries(session_id).await?;
+        let entries = self.store.load_leaf_branch(session_id).await?;
         let entries = crate::protocol::session::build_context_entries(&entries);
         Ok(entries
             .iter()

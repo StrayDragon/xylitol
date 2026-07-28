@@ -598,7 +598,7 @@ async fn try_turn_end_compaction(
             if will_retry {
                 *overflow_recovery_attempted = true;
                 // Reload compaction-aware leaf context (pi: rebuild after compact).
-                match store.load_entries(session_id).await {
+                match store.load_leaf_branch(session_id).await {
                     Ok(entries) => {
                         let cut = crate::protocol::session::build_context_entries(&entries);
                         *history = cut.iter().filter_map(|e| e.as_agent_message()).collect();
