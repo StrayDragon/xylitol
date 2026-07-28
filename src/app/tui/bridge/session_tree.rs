@@ -186,13 +186,19 @@ fn message_json_to_ui_entries(entry_id: &str, message: &Value) -> Vec<UiEntry> {
 }
 
 fn assistant_parts_to_ui(entry_id: &str, message: &Value) -> Vec<UiEntry> {
+    let stop = message
+        .get("stopReason")
+        .or_else(|| message.get("stop_reason"))
+        .and_then(Value::as_str);
+    let error_message = message
+        .get("errorMessage")
+        .or_else(|| message.get("error_message"))
+        .and_then(Value::as_str)
+        .filter(|s| !s.is_empty());
+
     let Some(parts) = message_parts(message) else {
         let text = message_text(message);
-        return if text.is_empty() {
-            Vec::new()
-        } else {
-            vec![UiEntry::Assistant { text }]
-        };
+        return assistant_terminal_ui(stop, error_message, text);
     };
 
     let mut out = Vec::new();
@@ -265,7 +271,46 @@ fn assistant_parts_to_ui(entry_id: &str, message: &Value) -> Vec<UiEntry> {
             _ => {}
         }
     }
+
+    push_assistant_terminal_note(&mut out, stop, error_message);
     out
+}
+
+/// Map stopReason/errorMessage into scrollback rows (pi rebuild + live Error/abort).
+fn assistant_terminal_ui(
+    stop: Option<&str>,
+    error_message: Option<&str>,
+    text: String,
+) -> Vec<UiEntry> {
+    let mut out = Vec::new();
+    if !text.is_empty() {
+        out.push(UiEntry::Assistant { text });
+    }
+    push_assistant_terminal_note(&mut out, stop, error_message);
+    out
+}
+
+fn push_assistant_terminal_note(
+    out: &mut Vec<UiEntry>,
+    stop: Option<&str>,
+    error_message: Option<&str>,
+) {
+    match stop {
+        Some("error") => {
+            let text = error_message
+                .map(str::to_string)
+                .unwrap_or_else(|| "Error".into());
+            out.push(UiEntry::Error { text });
+        }
+        Some("aborted") => {
+            let text = error_message
+                .filter(|s| !s.is_empty())
+                .map(str::to_string)
+                .unwrap_or_else(|| "Operation aborted".into());
+            out.push(UiEntry::System { text });
+        }
+        _ => {}
+    }
 }
 
 #[cfg(test)]
@@ -328,6 +373,57 @@ mod tests {
                     detail: None,
                 }] if summary.contains("keep going")
             ),
+            "got: {ui:?}"
+        );
+    }
+
+    #[test]
+    fn error_assistant_empty_content_surfaces_error_row() {
+        let entry = SessionEntry::Message(MessageEntry {
+            base: EntryBase {
+                entry_type: "message".into(),
+                id: "a1".into(),
+                parent_id: Some("u1".into()),
+                timestamp: "t".into(),
+            },
+            message: json!({
+                "role": "assistant",
+                "content": [{ "type": "text", "text": "" }],
+                "stopReason": "error",
+                "errorMessage": "request exceeds the available context size",
+                "timestamp": 0u64,
+            }),
+        });
+        let ui = session_entry_to_ui_entries(&entry);
+        assert!(
+            matches!(
+                ui.as_slice(),
+                [UiEntry::Error { text }] if text.contains("exceeds the available context size")
+            ),
+            "got: {ui:?}"
+        );
+    }
+
+    #[test]
+    fn error_assistant_accepts_legacy_snake_stop_reason() {
+        let entry = SessionEntry::Message(MessageEntry {
+            base: EntryBase {
+                entry_type: "message".into(),
+                id: "a1".into(),
+                parent_id: Some("u1".into()),
+                timestamp: "t".into(),
+            },
+            message: json!({
+                "role": "assistant",
+                "content": [{ "type": "text", "text": "" }],
+                "stop_reason": "error",
+                "error_message": "legacy overflow",
+                "timestamp": 0u64,
+            }),
+        });
+        let ui = session_entry_to_ui_entries(&entry);
+        assert!(
+            matches!(ui.as_slice(), [UiEntry::Error { text }] if text == "legacy overflow"),
             "got: {ui:?}"
         );
     }

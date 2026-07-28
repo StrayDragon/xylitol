@@ -25,10 +25,16 @@ pub enum AiBridgeMessage {
         #[serde(default = "now_ms")]
         timestamp: u64,
     },
+    /// Wire fields camelCase (`stopReason`, `errorMessage`); snake aliases read pre-fix JSONL.
     #[serde(rename = "assistant")]
+    #[serde(rename_all = "camelCase")]
     AssistantMessage {
         content: Vec<AiBridgePart>,
-        #[serde(default, skip_serializing_if = "Option::is_none")]
+        #[serde(
+            default,
+            skip_serializing_if = "Option::is_none",
+            alias = "stop_reason"
+        )]
         stop_reason: Option<AiBridgeStopReason>,
         #[serde(default, skip_serializing_if = "Option::is_none")]
         usage: Option<AiBridgeUsage>,
@@ -38,9 +44,17 @@ pub enum AiBridgeMessage {
         provider: String,
         #[serde(default)]
         model: String,
-        #[serde(default, skip_serializing_if = "Option::is_none")]
+        #[serde(
+            default,
+            skip_serializing_if = "Option::is_none",
+            alias = "response_id"
+        )]
         response_id: Option<String>,
-        #[serde(default, skip_serializing_if = "Option::is_none")]
+        #[serde(
+            default,
+            skip_serializing_if = "Option::is_none",
+            alias = "error_message"
+        )]
         error_message: Option<String>,
         #[serde(default = "now_ms")]
         timestamp: u64,
@@ -48,15 +62,16 @@ pub enum AiBridgeMessage {
         diagnostics: Vec<Diagnostic>,
     },
     #[serde(rename = "toolResult")]
+    #[serde(rename_all = "camelCase")]
     ToolResultMessage {
-        #[serde(rename = "toolCallId")]
+        #[serde(rename = "toolCallId", alias = "tool_use_id")]
         tool_use_id: String,
-        #[serde(default)]
+        #[serde(default, alias = "tool_name")]
         tool_name: String,
         content: Vec<AiBridgePart>,
         #[serde(default, skip_serializing_if = "Option::is_none")]
         details: Option<Value>,
-        #[serde(default)]
+        #[serde(default, alias = "is_error")]
         is_error: bool,
         #[serde(default = "now_ms")]
         timestamp: u64,
@@ -220,14 +235,15 @@ pub struct AiBridgeImageContent {
 }
 
 #[derive(Debug, Clone, Copy, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
 pub struct AiBridgeUsage {
     pub input: u64,
     pub output: u64,
-    #[serde(default)]
+    #[serde(default, alias = "cache_read")]
     pub cache_read: u64,
-    #[serde(default)]
+    #[serde(default, alias = "cache_write")]
     pub cache_write: u64,
-    #[serde(default)]
+    #[serde(default, alias = "cache_write_1h")]
     pub cache_write_1h: u64,
     #[serde(skip)]
     pub total_tokens: u64,
@@ -236,10 +252,13 @@ pub struct AiBridgeUsage {
 }
 
 #[derive(Debug, Clone, Copy, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
 pub struct AiBridgeUsageCost {
     pub input: f64,
     pub output: f64,
+    #[serde(alias = "cache_read")]
     pub cache_read: f64,
+    #[serde(alias = "cache_write")]
     pub cache_write: f64,
     pub total: f64,
 }
@@ -300,4 +319,72 @@ pub fn collect_text_parts(parts: &[AiBridgePart]) -> String {
         })
         .collect::<Vec<_>>()
         .join("\n")
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use serde_json::json;
+
+    #[test]
+    fn assistant_wire_uses_camel_case_stop_reason() {
+        let msg = AiBridgeMessage::AssistantMessage {
+            content: vec![AiBridgePart::text("")],
+            stop_reason: Some(AiBridgeStopReason::Error),
+            usage: Some(AiBridgeUsage {
+                input: 1,
+                output: 2,
+                cache_read: 3,
+                cache_write: 4,
+                cache_write_1h: 5,
+                total_tokens: 0,
+                cost: None,
+            }),
+            api: String::new(),
+            provider: "openai".into(),
+            model: "m".into(),
+            response_id: Some("r1".into()),
+            error_message: Some("boom".into()),
+            timestamp: 1,
+            diagnostics: Vec::new(),
+        };
+        let v = serde_json::to_value(&msg).unwrap();
+        assert_eq!(v["stopReason"], "error");
+        assert_eq!(v["errorMessage"], "boom");
+        assert_eq!(v["responseId"], "r1");
+        assert_eq!(v["usage"]["cacheRead"], 3);
+        assert!(v.get("stop_reason").is_none());
+        assert!(v.get("error_message").is_none());
+    }
+
+    #[test]
+    fn assistant_deserializes_legacy_snake_case() {
+        let v = json!({
+            "role": "assistant",
+            "content": [{"type": "text", "text": ""}],
+            "stop_reason": "error",
+            "error_message": "legacy",
+            "timestamp": 1u64,
+        });
+        let msg: AiBridgeMessage = serde_json::from_value(v).unwrap();
+        match msg {
+            AiBridgeMessage::AssistantMessage {
+                stop_reason: Some(AiBridgeStopReason::Error),
+                error_message: Some(m),
+                ..
+            } => assert_eq!(m, "legacy"),
+            other => panic!("unexpected {other:?}"),
+        }
+    }
+
+    #[test]
+    fn tool_result_wire_uses_camel_case() {
+        let msg = AiBridgeMessage::tool_result("c1", "bash", vec![AiBridgePart::text("ok")], true);
+        let v = serde_json::to_value(&msg).unwrap();
+        assert_eq!(v["toolCallId"], "c1");
+        assert_eq!(v["toolName"], "bash");
+        assert_eq!(v["isError"], true);
+        assert!(v.get("tool_name").is_none());
+        assert!(v.get("is_error").is_none());
+    }
 }
