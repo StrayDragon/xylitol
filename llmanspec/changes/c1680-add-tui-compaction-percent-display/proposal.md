@@ -10,47 +10,55 @@ author: agent
 
 # c1680-add-tui-compaction-percent-display
 
+> **流程**：仅 `purpose-draft`；**后置**——禁止与 c1630 apply 缠做；禁止提前 full。
+> **建议**：c1630 **且** c1640 归档后再 promote（便于「刚 auto」与 footer 刷新同验）。
+
 ## Why
 
-触发 SSOT 改为 reserve 公式后，产品仍可能希望 footer / chrome **派生**显示「约占用 x%」（`tokens / contextWindow`），且诚实标注 provenance。该展示**不得**再成为触发闸。本 change **后置**：等 c1630（及建议的 c1640）落地后再做视觉提案，避免与公式迁移缠在一起。
+触发 SSOT 已是 reserve（c1630）。Footer 仍可能要 **派生**「约 x%」读数；该读数 **绝不是** 触发闸。
 
-## What Changes（意向）
+## 需求锁定
 
-- Footer（或 compact status）展示派生百分比 / 余量，文案区分 Api vs Heuristic 等 provenance。
-- 可选：接近 `window - reserve` 时弱提示，但仍 **MUST NOT** 用独立百分比阈值触发压缩。
-- design playground / `design/footer.md` 更新。
-- **明确非目标**：恢复 `compaction_threshold` 配置；用百分比替换 reserve 触发。
+### R1 — 派生展示（已决精神）
+
+- 若展示占用比：MUST 为 `tokens / context_window`（或文档化的等价派生），数据 MUST 与 footer 同源估计（c1/c16）。
+- MUST 诚实标注 provenance（Api / Heuristic 等）；MUST NOT 把 Heuristic 标成官方用量。
+
+### R2 — 与触发隔离（硬约束）
+
+- MUST NOT 恢复 `compaction_threshold` 或任何百分比触发配置。
+- MUST NOT 用「显示用 %」改变 `should_compact` / reserve 公式。
+- 可选「接近 `window - reserve`」弱提示：仅 UI，不改触发。
+
+### R3 — 非目标
+
+| 禁止 |
+|---|
+| cache hit 同屏叙事（另见 roadmap） |
+| 改 domain 触发合约 |
+| 在未归档 c1630 前 apply |
+
+## 验收锚点（promote 时）
+
+| id | Then |
+|---|---|
+| derived-only | footer % 与同源估计一致 |
+| no-threshold-config | 配置/schema 无百分比闸字段 |
+| trigger-unchanged | reserve 公式行为与 c1630 一致 |
+
+## Open Questions（promote 时再拍；草案不锁死）
+
+- 展示「已用 %」还是「距 reserve 余量」或两者？
+- 视觉：footer vs compact-status 行——走 `design/footer.md` / playground。
 
 ## Capabilities
 
-| Capability | 变更 |
-|---|---|
-| `app-tui-chrome` / footer | 派生 % 展示 |
-| （只读）`domain-compaction` | 消费同一估计入口，不改触发 |
-
-## Impact
-
-- **破坏性**：低（纯展示）。
-- **默认体验**：更易读占用；触发心智仍为 reserve。
-- **非目标**：本草案阶段不实现。
-
-## Depends / 后续
-
-```text
-c1630 ──► c1680 (本，后置)
-```
-
-建议在 c1640 之后再 promote，以便「auto 刚发生」与百分比刷新一起验收。
-
-## Open Questions
-
-- 显示「已用 %」还是「距 reserve 余量」？promote 时再拍。
-- 是否与 cache hit 叙事同屏（见 roadmap 上下文缓存）——默认本 change 不做 cache。
+`app-tui-chrome` / footer；（只读）domain-compaction
 
 ## Ethics
 
 - risk_level: low
-- prohibited_actions: 把派生 % 写回触发配置；把 Heuristic 标成官方用量
-- required_evidence: harness 快照/断言 footer 与估计同源；触发仍走 reserve
-- refusal_contract: 不在未归档 c1630 前 apply 本 change
-- escalation_policy: 视觉争议走 design playground，不改触发合约
+- prohibited_actions: % 写回触发；伪造 Api 用量；提前 full / 与 c1630 缠做
+- required_evidence: harness；触发仍 reserve
+- refusal_contract: 未归档 c1630 不 apply
+- escalation_policy: 视觉争议只进 design，不改触发
