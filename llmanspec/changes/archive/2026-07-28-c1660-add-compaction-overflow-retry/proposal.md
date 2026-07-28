@@ -9,7 +9,8 @@ depends_on:
 author: agent
 branch: sdd/c1660-add-compaction-overflow-retry
 base_sha: 8d1e8ba37a96b2a4d0d8375c071628224dcedddc
-checkpointed: false
+checkpointed: true
+checkpoint_sha: 8d1e8ba37a96b2a4d0d8375c071628224dcedddc
 ---
 
 # c1660-add-compaction-overflow-retry

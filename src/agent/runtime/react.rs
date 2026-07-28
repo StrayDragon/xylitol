@@ -505,38 +505,95 @@ fn queue_counts(
     (steer_count, follow_up_count)
 }
 
-/// Turn-end threshold auto (c1640 / pi `_checkCompaction` Case2). Failures are logged, not fatal.
-async fn try_threshold_auto_compact(
+/// Turn-end compaction: Case1 overflow then Case2 threshold (c1640/c1660).
+///
+/// Returns `true` when overflow recovery asks the ReAct loop to continue
+/// (compact succeeded with willRetry).
+async fn try_turn_end_compaction(
     store: &Arc<dyn XySessionStore>,
     session_id: &str,
     model_manager: &Arc<Mutex<crate::agent::model::manager::ModelManager>>,
     event_sink: &Arc<dyn crate::protocol::ports::XyEventSink>,
     settings: &crate::agent::compaction::CompactionSettings,
-    history: &[AgentMessage],
-) {
-    let last_assistant = history.iter().rev().find(|m| m.role_name() == "assistant");
-    let (model, ctx_window, model_id) = {
+    history: &mut Vec<AgentMessage>,
+    overflow_recovery_attempted: &mut bool,
+) -> bool {
+    use crate::agent::compaction::{CompactionOrchestrator, EstimateOpts, OverflowCompactOutcome};
+
+    let last_assistant = history
+        .iter()
+        .rev()
+        .find(|m| m.role_name() == "assistant")
+        .cloned();
+    let Some(last_assistant) = last_assistant else {
+        return false;
+    };
+
+    let (model, ctx_window, model_id, provider) = {
         let mm = model_manager.lock().unwrap_or_else(|e| e.into_inner());
         let meta = match mm.current_model() {
             Some(m) => m,
-            None => return,
+            None => return false,
         };
         let ctx_window = meta.context_window;
-        let model_id = meta.id.clone();
+        let model_id = meta.config.model.clone();
+        let provider = meta.config.provider_name().to_string();
         let model = match mm.build_current_model() {
             Ok(m) => m,
             Err(e) => {
                 log::warn!("turn-end compaction: no model: {e}");
-                return;
+                return false;
             }
         };
-        (model, ctx_window, model_id)
+        (model, ctx_window, model_id, provider)
     };
-    let opts = crate::agent::compaction::EstimateOpts {
+
+    let orch = CompactionOrchestrator::new(settings.clone());
+
+    match orch
+        .maybe_overflow_compact(
+            store.as_ref(),
+            session_id,
+            model.as_ref(),
+            event_sink.as_ref(),
+            ctx_window,
+            &last_assistant,
+            &provider,
+            &model_id,
+            *overflow_recovery_attempted,
+        )
+        .await
+    {
+        Ok(OverflowCompactOutcome::Ran { will_retry }) => {
+            if will_retry {
+                *overflow_recovery_attempted = true;
+                // Strip trailing error assistant from working history (session keeps it).
+                if matches!(
+                    history.last(),
+                    Some(AgentMessage::Llm(LlmMessage::AssistantMessage {
+                        stop_reason: Some(crate::protocol::message::XyStopReason::Error),
+                        ..
+                    }))
+                ) {
+                    history.pop();
+                }
+                return true;
+            }
+            return false;
+        }
+        Ok(OverflowCompactOutcome::FailedOnce) => {
+            return false;
+        }
+        Ok(OverflowCompactOutcome::Skipped) => {}
+        Err(e) => {
+            log::warn!("turn-end overflow compaction failed: {e}");
+        }
+    }
+
+    let opts = EstimateOpts {
         model_id: Some(model_id),
         ..Default::default()
     };
-    let orch = crate::agent::compaction::CompactionOrchestrator::new(settings.clone());
     if let Err(e) = orch
         .maybe_auto_compact(
             store.as_ref(),
@@ -545,12 +602,13 @@ async fn try_threshold_auto_compact(
             event_sink.as_ref(),
             ctx_window,
             &opts,
-            last_assistant,
+            Some(&last_assistant),
         )
         .await
     {
         log::warn!("turn-end compaction failed: {e}");
     }
+    false
 }
 
 async fn persist_agent_message(
@@ -621,6 +679,8 @@ fn run_react_loop(cfg: ReActConfig) -> impl Stream<Item = XyEvent> + Send {
         let mut turn: usize = 0;
         // Per-run model instance: reuse while selected id is unchanged (NextTurn).
         let mut run_model: Option<(String, Arc<dyn XyModel>)> = None;
+        // c1660: at most one overflow compact-and-retry per run.
+        let mut overflow_recovery_attempted = false;
         // One OTEL/fastrace tree per user-triggered run (c1495 / c1555 turn preview).
         let user_preview = parts_preview_text(&user_parts);
         let model_api = {
@@ -738,7 +798,47 @@ fn run_react_loop(cfg: ReActConfig) -> impl Stream<Item = XyEvent> + Send {
                         chunk_stream = s;
                     }
                     Some(Err(e)) => {
+                        // c1660: overflow on connect → synthesize error assistant + Case1.
+                        let err_text = e.clone();
+                        let (provider, model_id) = {
+                            let mm = model_manager.lock().unwrap_or_else(|err| err.into_inner());
+                            mm.current_model()
+                                .map(|m| {
+                                    (
+                                        m.config.provider_name().to_string(),
+                                        m.config.model.clone(),
+                                    )
+                                })
+                                .unwrap_or_default()
+                        };
+                        let err_asst = AgentMessage::Llm(LlmMessage::AssistantMessage {
+                            content: vec![AgentPart::text("")],
+                            stop_reason: Some(crate::protocol::message::XyStopReason::Error),
+                            usage: None,
+                            api: String::new(),
+                            provider,
+                            model: model_id,
+                            response_id: None,
+                            error_message: Some(err_text.clone()),
+                            timestamp: crate::protocol::message::now_ms(),
+                            diagnostics: Vec::new(),
+                        });
+                        persist_agent_message(&store, &session_id, &err_asst).await;
+                        history.push(err_asst);
                         yield XyEvent::Error(e);
+                        let will_continue = try_turn_end_compaction(
+                            &store,
+                            &session_id,
+                            &model_manager,
+                            &event_sink,
+                            &compaction_settings,
+                            &mut history,
+                            &mut overflow_recovery_attempted,
+                        )
+                        .await;
+                        if will_continue {
+                            continue 'outer;
+                        }
                         break 'outer;
                     }
                 }
@@ -758,6 +858,7 @@ fn run_react_loop(cfg: ReActConfig) -> impl Stream<Item = XyEvent> + Send {
                 let mut tool_calls: Vec<(String, String, Value)> = Vec::new();
                 let mut done_usage: Option<crate::protocol::message::XyUsage> = None;
                 let mut done_stop_reason: Option<crate::protocol::message::XyStopReason> = None;
+                let mut done_error_message: Option<String> = None;
 
                 // Mid-stream abort: drop `chunk_stream` so adapter/reqwest closes
                 // the HTTP body (c680). Surfaces inherit via XyDriver::abort → token.
@@ -953,7 +1054,11 @@ fn run_react_loop(cfg: ReActConfig) -> impl Stream<Item = XyEvent> + Send {
                         },
                         Some(Err(e)) => {
                             super::obs::record_xy_error("model.stream", &e, turn_id.as_deref());
-                            yield XyEvent::Error(format!("stream error: {e}"));
+                            let err_text = format!("stream error: {e}");
+                            done_stop_reason =
+                                Some(crate::protocol::message::XyStopReason::Error);
+                            done_error_message = Some(err_text.clone());
+                            yield XyEvent::Error(err_text);
                             break;
                         }
                     }
@@ -1000,16 +1105,35 @@ fn run_react_loop(cfg: ReActConfig) -> impl Stream<Item = XyEvent> + Send {
                         arguments: args.clone(),
                     });
                 }
-                if !assistant_parts.is_empty() {
+                if !assistant_parts.is_empty()
+                    || matches!(
+                        done_stop_reason,
+                        Some(crate::protocol::message::XyStopReason::Error)
+                    )
+                {
+                    let (provider, model_id) = {
+                        let mm = model_manager.lock().unwrap_or_else(|e| e.into_inner());
+                        mm.current_model()
+                            .map(|m| {
+                                (
+                                    m.config.provider_name().to_string(),
+                                    m.config.model.clone(),
+                                )
+                            })
+                            .unwrap_or_default()
+                    };
+                    if assistant_parts.is_empty() {
+                        assistant_parts.push(AgentPart::text(""));
+                    }
                     let assistant_msg = AgentMessage::Llm(LlmMessage::AssistantMessage {
                         content: assistant_parts,
                         stop_reason: done_stop_reason,
                         usage: done_usage,
                         api: String::new(),
-                        provider: String::new(),
-                        model: String::new(),
+                        provider,
+                        model: model_id,
                         response_id: None,
-                        error_message: None,
+                        error_message: done_error_message,
                         timestamp: crate::protocol::message::now_ms(),
                         diagnostics: Vec::new(),
                     });
@@ -1026,16 +1150,20 @@ fn run_react_loop(cfg: ReActConfig) -> impl Stream<Item = XyEvent> + Send {
                         let (ty, phase, ctx) = super::script_hook_ctx::turn_end(turn as u32);
                         observe_script_hook(bus, ty, phase, ctx).await;
                     }
-                    // c1640: pi `_checkCompaction` after settled assistant (threshold only).
-                    try_threshold_auto_compact(
+                    // c1640/c1660: pi `_checkCompaction` after settled assistant.
+                    let will_continue = try_turn_end_compaction(
                         &store,
                         &session_id,
                         &model_manager,
                         &event_sink,
                         &compaction_settings,
-                        &history,
+                        &mut history,
+                        &mut overflow_recovery_attempted,
                     )
                     .await;
+                    if will_continue {
+                        continue 'outer;
+                    }
                     turn += 1;
                     let stop_ctx = ShouldStopAfterTurnCtx {
                         turn_index,
@@ -1207,16 +1335,20 @@ fn run_react_loop(cfg: ReActConfig) -> impl Stream<Item = XyEvent> + Send {
                     let (ty, phase, ctx) = super::script_hook_ctx::turn_end(turn as u32);
                     observe_script_hook(bus, ty, phase, ctx).await;
                 }
-                // c1640: pi `_checkCompaction` after settled assistant (threshold only).
-                try_threshold_auto_compact(
+                // c1640/c1660: pi `_checkCompaction` after settled assistant.
+                let will_continue = try_turn_end_compaction(
                     &store,
                     &session_id,
                     &model_manager,
                     &event_sink,
                     &compaction_settings,
-                    &history,
+                    &mut history,
+                    &mut overflow_recovery_attempted,
                 )
                 .await;
+                if will_continue {
+                    continue 'outer;
+                }
                 turn += 1;
 
                 let stop_ctx = ShouldStopAfterTurnCtx {

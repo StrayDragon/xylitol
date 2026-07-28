@@ -171,3 +171,27 @@ async fn test_comp_split_dual(agent: AgentState, sess: XySessionStore, ws: Works
     name = "tokens-before"
 )]
 async fn test_comp_tokens_before(agent: AgentState, sess: XySessionStore, ws: Workspace) {}
+
+#[scenario(
+    path = "llmanspec/specs/domain-compaction/domain-compaction.feature",
+    name = "overflow-retry-ok"
+)]
+fn test_comp_overflow_retry_ok(agent: AgentState, ws: Workspace) {}
+
+#[scenario(
+    path = "llmanspec/specs/domain-compaction/domain-compaction.feature",
+    name = "overflow-once"
+)]
+fn test_comp_overflow_once(agent: AgentState, ws: Workspace) {}
+
+#[scenario(
+    path = "llmanspec/specs/domain-compaction/domain-compaction.feature",
+    name = "wrong-model"
+)]
+fn test_comp_overflow_wrong_model(agent: AgentState, ws: Workspace) {}
+
+#[scenario(
+    path = "llmanspec/specs/domain-compaction/domain-compaction.feature",
+    name = "reason-overflow"
+)]
+fn test_comp_reason_overflow(agent: AgentState, ws: Workspace) {}
