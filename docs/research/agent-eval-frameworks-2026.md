@@ -2,6 +2,7 @@
 
 > **主线**：用**同一模型**在主流 agent eval benchmark 上跑分，作为 xylitol 能力刻度与版本对比基准。
 > **形态**：Docker / sandbox 容器化 harness 驱动 agent 自主多轮，产出确定性分数（测试闸 / verifier）。
+> **驱动面硬约束**：benchmark **只**经 `xylitol print` / headless（`XyDriver::run`）；**禁止**以自动驱动产品 TUI（按键/PTY）作为 eval 主路径或前置。
 > **旁路**：Langfuse Dataset/Experiment 回归、Promptfoo 安全断言——从 benchmark 失败样本或日常 trace 抽样，**不替代**社区 leaderboard 主线。
 > **参考**：Artificial Analysis Data API / Intelligence Index — 选模与同模型公开基线；**不是** xylitol 评测入口。
 > 一手来源：各框架官方 docs / GitHub README / harness 源码（2025–2026 活跃项）。
@@ -48,16 +49,25 @@
 | **GAIA** | 通用助手（浏览/bash） | 466 | Inspect Evals / OpenHands | agent_bridge | 精确匹配 + 辅助 judge | 多步 | Docker |
 | **AgentBench** | 8 环境通用 agent | 多子集 | [THUDM/AgentBench](https://github.com/THUDM/AgentBench/) | 容器化 FC | 环境特定 | 多轮 | 重 |
 
-**xylitol 优先级建议**（双主线，按叙事选先手）：
+**xylitol 优先级（已定序）**：
 
 | 优先级 | Benchmark | 理由 |
 |--------|-----------|------|
-| **P0a** | Terminal-Bench 2.1 **10–20 任务子集**（Harbor） | 长程终端多轮；与 bash 工具链直接相关；**进入 AA Intelligence Index（16%）**，便于与公开模型刻度对照 |
-| **P0b** | SWE-bench Lite 或 Verified **50 实例子集** | 修真实 GitHub issue 的金标准；两阶段成熟；对标 mini-SWE-agent（**不在** AA Index 主权重） |
-| **P1** | Aider Polyglot **Rust 子集** | 快速 edit 质量信号 |
+| **P0** | SWE-bench Lite 或 Verified **子集**（M0: 5 实例 → M2: ~50） | 厂商最常引用；修真实 GitHub issue 金标准；两阶段成熟；对标 mini-SWE-agent |
+| **P1** | Terminal-Bench 2.1 **子集**（M2+: 10–20 任务） | 长程终端多轮；进 AA Index（16%）；Harbor 单阶段；在 SWE 管线跑通后再接 |
+| **P2** | Aider Polyglot **Rust 子集** | 快速 edit 质量信号 |
 | **Defer** | DevBench、LiveCodeBench、τ-bench 全量、GDPval 自跑、全量 leaderboard | 非 coding harness、成本过高、或 AA 闭源流水线 |
 
-先手选择：**要对齐 AA / 公开智能叙事 → 先 P0a（TB）**；**要证明 repo 修复能力 → 先 P0b（SWE）**。M0 冒烟可任选其一（或各跑极小子集）。
+**定序**：先 **SWE-bench**（权威口径 + 两阶段胶水），再 **Terminal-Bench 2.x**（AA 对照 + 终端长程）。二者测不同技能，分数不可直接比。
+
+**权威 vs 较新（对照用，不改定序）**：
+
+| | SWE-bench Verified | Terminal-Bench 2.x |
+|--|--------------------|--------------------|
+| **权威性** | 更「经典」：厂商 release notes、论文引用最多 | 新兴但快速成为 CLI/agent 标配；进 AA Index |
+| **较新** | Verified 约 2024-08 定稿；Pro 等变体更新 | **更新**：2.0/2.1、Harbor 官方 harness |
+| **测什么** | 静止 repo → 产出 patch → 测试闸 | 可变沙箱 → 自己立中间目标 → 终态 verifier |
+| **对 xylitol** | **先做** | **SWE 冒烟后再做** |
 
 ---
 
@@ -85,7 +95,7 @@
 | 权重 | 评测 | 与 xylitol 关系 |
 |------|------|-----------------|
 | 20% | GDPval-AA v2（Stirrup + shell/web，Elo pairwise） | 偏知识工作 agent；脚本未开源（[Stirrup#8](https://github.com/ArtificialAnalysis/Stirrup/issues/8)）→ **Defer 自跑** |
-| 16% | **Terminal-Bench 2.1** | **与 P0a 同任务族**；自家 Harbor 分可对照 AA 上同模型 TB 基线（scaffold 不同须诚实标注） |
+| 16% | **Terminal-Bench 2.1** | **与 P1 同任务族**；自家 Harbor 分可对照 AA 上同模型 TB 基线（scaffold 不同须诚实标注） |
 | 14% | τ³-Bench Banking | 双控 agent–user；非 coding harness → Defer |
 | 其余 | SciCode / HLE / GPQA / AA-* 等 | 模型能力；非 repo/终端 agent 主刻度 |
 
@@ -149,7 +159,7 @@ Benchmark harness **从不**在环内等人；差异在 agent 侧如何保证 lo
 
 ## 6. 集成模式：如何把 xylitol 接进 harness
 
-### 6.1 SWE-bench 两阶段（推荐 P0b）
+### 6.1 SWE-bench 两阶段（**P0**）
 
 **不**需要 Harbor agent 槽；仿 [mini-SWE-agent](https://mini-swe-agent.com/latest/usage/swebench/)：
 
@@ -169,7 +179,7 @@ python -m swebench.harness.run_evaluation \
 - **评分**：官方 harness，与 leaderboard 同口径。
 - **参考实现**：[mini-swe-agent swebench 批跑](https://github.com/SWE-agent/mini-swe-agent)、[sb-cli](https://github.com/swe-bench/sb-cli) 云提交。
 
-### 6.2 Harbor `BaseInstalledAgent`（推荐 P0a，Terminal-Bench）
+### 6.2 Harbor `BaseInstalledAgent`（**P1**，Terminal-Bench）
 
 将 xylitol 二进制装进任务容器，headless 执行：
 
@@ -213,10 +223,10 @@ harbor run -d terminal-bench/terminal-bench-2-1 \
 flowchart TB
   subgraph Main["主线 · 社区刻度"]
     Model["固定 model + xylitol eval profile"]
-  Model --> TB["Harbor · Terminal-Bench 子集"]
-  Model --> SWE["SWE-bench 子集 · preds.jsonl"]
-  TB --> Grade2["verifier 评分"]
+  Model --> SWE["SWE-bench 子集 · preds.jsonl · P0"]
+  Model --> TB["Harbor · Terminal-Bench 子集 · P1"]
   SWE --> Grade1["官方 harness 评分"]
+  TB --> Grade2["verifier 评分"]
   end
 
   subgraph Side["旁路 · 内化"]
@@ -237,9 +247,9 @@ flowchart TB
 
 | 层 | 选型 | 角色 |
 |---|---|---|
-| **主 harness** | Harbor (TB) + SWE-bench harness | 社区可比分数 |
+| **主 harness** | SWE-bench harness（先）+ Harbor TB（后） | 社区可比分数 |
 | **xylitol 入口** | `print` + eval YAML profile | 自主多轮，非 TUI |
-| **编排** | `harbor run` 或 Python 薄脚本 | 并行 Docker / 云 sandbox |
+| **编排** | Python 薄脚本（SWE）→ 再 `harbor run`（TB） | 并行 Docker / 云 sandbox |
 | **分数 SSOT** | harness 输出（resolved %、reward） | leaderboard 同口径 |
 | **旁路** | Langfuse | 实验对比、失败钉集、可选 CI 小回归 |
 | **参考** | Artificial Analysis Data API | 选模、同模型 AA 基线对照；**不**当 xylitol 分 |
@@ -271,11 +281,12 @@ flowchart TB
 
 | 阶段 | 目标 | 交付 |
 |------|------|------|
-| **M0 — 冒烟管线** | 证明能跑通并出分 | Docker；**TB 少量任务**（`harbor run` + xylitol adapter）**或** SWE Lite **5 实例**；文档化 `just eval-*-smoke` |
+| **M0 — 冒烟管线** | 证明能跑通并出分 | Docker；SWE Lite/Verified **5 实例** → `preds.jsonl` + harness；`just eval-swe-smoke` |
 | **M1 — eval profile** | 多轮与社区对齐 | `max_turns` / timeout / autosubmit；`--trust`；eval YAML 模板 |
-| **M2 — 子集刻度** | 可重复版本对比 | TB 10–20 + Verified 50；JSON 报告；可选对照 AA 同模型 TB 基线 |
-| **M3 — 回归旁路** | 失败不丢 | 失败 instance → Langfuse Dataset；小集 CI |
-| **M4 — 周期全量** | 社区对标 | 周期性全量 / 云并行（sb-cli、Harbor `--env daytona`） |
+| **M2 — SWE 子集刻度** | 可重复版本对比 | Verified ~50；JSON 报告 |
+| **M3 — Terminal-Bench** | 第二社区刻度 | Harbor + xylitol adapter；TB 10–20；可选对照 AA 同模型 TB 基线 |
+| **M4 — 回归旁路** | 失败不丢 | 失败 instance → Langfuse Dataset；小集 CI |
+| **M5 — 周期全量** | 社区对标 | 周期性全量 / 云并行（sb-cli、Harbor `--env daytona`） |
 
 ---
 
@@ -286,7 +297,7 @@ flowchart TB
 | **把 Langfuse 当分数 SSOT** | 社区对话看 harness resolved %，不是 Langfuse judge |
 | **把 AA Index 当 xylitol 分** | AA 评模型+固定 scaffold；Data API 不可提交自定义 agent |
 | **用 Stirrup 替代 xylitol 评测** | 变成评另一套 agent，偏离产品目标 |
-| **TUI 驱动 benchmark** | 不可自动化；必须 print / headless |
+| **TUI 驱动 benchmark** | 不可自动化且非社区接法；必须 print / headless；**禁止**把「自动 TUI API」当 eval 前置 |
 | **无停止条件跑全量** | 单实例可烧尽 context / 预算；必须先子集 |
 | **模型与 scaffold 混报** | 同模型不同 harness 差 5–20 分；报告须带 xylitol 版本 + profile |
 | **评路径不评产出** | 违反社区与 Anthropic 共识 |
