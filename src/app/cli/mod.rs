@@ -55,7 +55,7 @@ pub enum TuiAction {
     },
 }
 
-/// Surface flags for `xylitol print` (c1565).
+/// Surface flags for `xylitol print` (c1565 / c1620).
 #[derive(Args, Debug, Default, Clone, PartialEq, Eq)]
 pub struct PrintSurfaceArgs {
     #[arg(long)]
@@ -66,6 +66,12 @@ pub struct PrintSurfaceArgs {
     pub config: Option<String>,
     #[arg(long)]
     pub no_color: bool,
+    /// Trust the project directory and load its `.xylitol/` resources.
+    #[arg(long)]
+    pub trust: bool,
+    /// Do not trust the project directory; skip its `.xylitol/` resources.
+    #[arg(long)]
+    pub no_trust: bool,
 }
 
 /// Top-level subcommand. When absent: TTY → TUI; non-TTY → print (stdin).
@@ -168,8 +174,8 @@ pub fn surface_from_command(command: Option<&CliCommand>) -> SurfaceBootstrap {
             config: surface.config.clone(),
             list_models: false,
             no_color: surface.no_color,
-            trust: false,
-            no_trust: false,
+            trust: surface.trust,
+            no_trust: surface.no_trust,
         },
         _ => SurfaceBootstrap::default(),
     }
@@ -670,6 +676,28 @@ mod tests {
         assert_eq!(s.model.as_deref(), Some("m"));
         assert!(s.no_color);
         assert!(!s.list_models);
+        assert!(!s.trust);
+
+        let trusted = CliArgs::try_parse_from([
+            "xylitol",
+            "print",
+            "--session",
+            "s1",
+            "--trust",
+            "--model",
+            "m",
+            "hi",
+        ])
+        .unwrap();
+        let s = surface_from_command(trusted.command.as_ref());
+        assert!(s.trust);
+        assert!(!s.no_trust);
+
+        let denied =
+            CliArgs::try_parse_from(["xylitol", "print", "--session", "s1", "--no-trust", "hi"])
+                .unwrap();
+        let s = surface_from_command(denied.command.as_ref());
+        assert!(s.no_trust);
         assert!(!s.trust);
 
         for bad in [

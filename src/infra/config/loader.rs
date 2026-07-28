@@ -124,6 +124,9 @@ pub(crate) fn load_app_config_detailed(
     config
         .validate_model_tokenizers()
         .map_err(LoadError::Validation)?;
+    config
+        .validate_session_max_turns()
+        .map_err(LoadError::Validation)?;
     Ok(LoadedAppConfig {
         config,
         from_yaml_layers,

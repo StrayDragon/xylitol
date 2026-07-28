@@ -107,6 +107,12 @@
     当 运行 AgentRuntime
     那么 正常出现 AgentEnd 且恰好一轮 TurnStart
 
+  @req:ar30
+  场景: max-turns-stops-run
+    假如 按 session.max_turns=2 安装 should_stop_after_turn 且入队 follow_up 以迫使第二轮
+    当 运行 AgentRuntime
+    那么 至多出现 2 次 TurnStart 后出现 AgentEnd
+
   @req:ar25
   场景: mid-run-select-applies-next-turn
     假如 多 turn mock 且第一 turn 已开始流式

@@ -62,6 +62,36 @@ pub struct ShouldStopAfterTurnCtx {
 /// Contract: must not panic. Prefer returning `false` on uncertainty.
 pub type ShouldStopAfterTurnHook = Arc<dyn Fn(&ShouldStopAfterTurnCtx) -> bool + Send + Sync>;
 
+/// Build a [`ShouldStopAfterTurnHook`] for `session.max_turns` (c1620 / ar30).
+///
+/// Stops after `max_turns` completed turns (`turn_index` is 0-based).
+pub fn max_turns_stop_hook(max_turns: u32) -> ShouldStopAfterTurnHook {
+    Arc::new(move |ctx: &ShouldStopAfterTurnCtx| ctx.turn_index.saturating_add(1) >= max_turns)
+}
+
+#[cfg(test)]
+mod max_turns_hook_tests {
+    use super::*;
+
+    fn ctx(turn_index: u32) -> ShouldStopAfterTurnCtx {
+        ShouldStopAfterTurnCtx {
+            turn_index,
+            assistant: None,
+            tool_results: vec![],
+            history: vec![],
+            new_messages: vec![],
+        }
+    }
+
+    #[test]
+    fn stops_when_completed_turns_reach_cap() {
+        let hook = max_turns_stop_hook(2);
+        assert!(!hook(&ctx(0)));
+        assert!(hook(&ctx(1)));
+        assert!(hook(&ctx(2)));
+    }
+}
+
 // ── AgentHooks ──────────────────────────────────────────────────────
 
 /// Hooks for customizing the agent loop around tool execution and turn stop.

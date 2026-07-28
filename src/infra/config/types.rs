@@ -477,6 +477,15 @@ impl AppConfig {
         Ok(())
     }
 
+    /// `session.max_turns` must be absent or a positive integer (c1620 / rc27).
+    pub fn validate_session_max_turns(&self) -> Result<(), String> {
+        match self.session.as_ref().and_then(|s| s.max_turns) {
+            None => Ok(()),
+            Some(0) => Err("session.max_turns must be a positive integer (got 0)".into()),
+            Some(_) => Ok(()),
+        }
+    }
+
     /// Soft-check tokenizer refs (pre-1.0: warn via Err only for clearly broken named refs).
     pub fn validate_model_tokenizers(&self) -> Result<(), String> {
         for (alias, entry) in &self.model.models {
@@ -936,6 +945,11 @@ pub struct SessionConfig {
     #[serde(default = "default_max_snapshots")]
     pub max_snapshots: u16,
     pub storage: SessionStorageConfig,
+    /// Optional ReAct turn cap (c1620). When set, bootstrap installs
+    /// `should_stop_after_turn` so the run ends after N completed turns.
+    /// Absent / null = no turn-count stop hook (product default).
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub max_turns: Option<u32>,
 }
 
 impl Default for SessionConfig {
@@ -944,6 +958,7 @@ impl Default for SessionConfig {
             auto_snapshot: false,
             max_snapshots: default_max_snapshots(),
             storage: SessionStorageConfig::default(),
+            max_turns: None,
         }
     }
 }
@@ -1131,6 +1146,48 @@ system_prompt: "hi"
         .expect("valid profile");
         assert_eq!(p.model.as_deref(), Some("gpt-4o"));
         assert_eq!(p.system_prompt.as_deref(), Some("hi"));
+    }
+}
+
+#[cfg(test)]
+mod session_max_turns_tests {
+    use super::*;
+
+    #[test]
+    fn session_max_turns_deserializes() {
+        let cfg: AppConfig = yaml_serde::from_str(
+            r#"
+session:
+  storage: {}
+  max_turns: 12
+"#,
+        )
+        .expect("valid session.max_turns");
+        assert_eq!(cfg.session.as_ref().and_then(|s| s.max_turns), Some(12));
+        cfg.validate_session_max_turns().expect("12 is valid");
+    }
+
+    #[test]
+    fn session_max_turns_zero_fails_validation() {
+        let cfg: AppConfig = yaml_serde::from_str(
+            r#"
+session:
+  storage: {}
+  max_turns: 0
+"#,
+        )
+        .expect("0 deserializes as u32");
+        let err = cfg
+            .validate_session_max_turns()
+            .expect_err("0 must fail validation");
+        assert!(err.contains("max_turns"), "{err}");
+    }
+
+    #[test]
+    fn session_max_turns_absent_is_ok() {
+        let cfg = AppConfig::default();
+        cfg.validate_session_max_turns().expect("absent is ok");
+        assert!(cfg.session.as_ref().and_then(|s| s.max_turns).is_none());
     }
 }
 

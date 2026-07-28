@@ -65,6 +65,18 @@ fn test_ce19_print(surface_flags_bdd: SurfaceFlagsBdd) {}
 
 #[scenario(
     path = "tests/features/cli-entry.feature",
+    name = "surface-flags-on-print-trust"
+)]
+fn test_ce19_print_trust(surface_flags_bdd: SurfaceFlagsBdd) {}
+
+#[scenario(
+    path = "tests/features/cli-entry.feature",
+    name = "surface-flags-on-print-no-trust"
+)]
+fn test_ce19_print_no_trust(surface_flags_bdd: SurfaceFlagsBdd) {}
+
+#[scenario(
+    path = "tests/features/cli-entry.feature",
     name = "toplevel-surface-flags-rejected"
 )]
 fn test_ce19_toplevel_reject(surface_flags_bdd: SurfaceFlagsBdd) {}

@@ -839,6 +839,43 @@ fn w_ce19_print_flags(surface_flags_bdd: &SurfaceFlagsBdd) {
     surface_flags_bdd.parse_ok.set(true);
 }
 
+#[when("xylitol print --session sid --trust --model m hi")]
+fn w_ce19_print_trust(surface_flags_bdd: &SurfaceFlagsBdd) {
+    use clap::Parser;
+    use xylitol::app::cli::{CliArgs, surface_from_command};
+    let args = CliArgs::try_parse_from([
+        "xylitol",
+        "print",
+        "--session",
+        "sid",
+        "--trust",
+        "--model",
+        "m",
+        "hi",
+    ])
+    .expect("parse print --trust");
+    let s = surface_from_command(args.command.as_ref());
+    surface_flags_bdd.parse_ok.set(true);
+    surface_flags_bdd.session.replace(s.session);
+    assert_eq!(s.model.as_deref(), Some("m"));
+    assert!(s.trust);
+    assert!(!s.no_trust);
+}
+
+#[when("xylitol print --session sid --no-trust hi")]
+fn w_ce19_print_no_trust(surface_flags_bdd: &SurfaceFlagsBdd) {
+    use clap::Parser;
+    use xylitol::app::cli::{CliArgs, surface_from_command};
+    let args =
+        CliArgs::try_parse_from(["xylitol", "print", "--session", "sid", "--no-trust", "hi"])
+            .expect("parse print --no-trust");
+    let s = surface_from_command(args.command.as_ref());
+    surface_flags_bdd.parse_ok.set(true);
+    surface_flags_bdd.session.replace(s.session);
+    assert!(s.no_trust);
+    assert!(!s.trust);
+}
+
 #[then("解析成功")]
 fn t_ce19_parse_ok(surface_flags_bdd: &SurfaceFlagsBdd) {
     assert!(surface_flags_bdd.parse_ok.get());
