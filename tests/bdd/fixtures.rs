@@ -109,8 +109,6 @@ pub struct AgentState {
     pub context_usage: RefCell<Option<ContextUsage>>,
     pub compaction_result: RefCell<Option<bool>>,
     pub context_window: Cell<u64>,
-    /// Legacy percentage gate (removed by c1630 apply). Prefer reserve/enabled fields.
-    pub compaction_threshold: Cell<f64>,
     pub compaction_reserve_tokens: Cell<u64>,
     pub compaction_enabled: Cell<bool>,
     pub hook_result: RefCell<Option<DispatchResult>>,
@@ -130,7 +128,6 @@ impl AgentState {
             context_usage: RefCell::new(None),
             compaction_result: RefCell::new(None),
             context_window: Cell::new(100_000),
-            compaction_threshold: Cell::new(0.8),
             compaction_reserve_tokens: Cell::new(16_384),
             compaction_enabled: Cell::new(true),
             hook_result: RefCell::new(None),

@@ -116,8 +116,12 @@ pub(crate) fn _g_comp_tokens(agent: &AgentState, tokens: u32) {
 
 #[given("压缩阈值为 {val:f64}")]
 pub(crate) fn _g_comp_threshold(agent: &AgentState, val: f64) {
-    // Legacy step kept for any stray scenarios; c1630 features use reserveTokens.
-    agent.compaction_threshold.set(val);
+    // Legacy Gherkin step: map percentage-ish values into a reserve budget so
+    // stray scenarios still exercise the reserve formula (c1630 deleted %).
+    let window = agent.context_window.get().max(1);
+    let reserve = ((1.0 - val).max(0.0) * window as f64) as u64;
+    agent.compaction_reserve_tokens.set(reserve);
+    agent.compaction_enabled.set(true);
 }
 
 #[given("compaction reserveTokens 为 {reserve:u64}")]
@@ -145,14 +149,12 @@ pub(crate) fn _w_comp_check(agent: &AgentState) {
         .and_then(|s| s.strip_prefix("tokens:").and_then(|n| n.parse().ok()))
         .unwrap_or(0);
     let window = agent.context_window.get();
-    // c1630 acceptance: pi-aligned reserve formula (production API migrates in apply 2.1).
     let settings = xylitol::agent::compaction::CompactionSettings {
         enabled: agent.compaction_enabled.get(),
         reserve_tokens: agent.compaction_reserve_tokens.get(),
         keep_recent_tokens: 20_000,
     };
-    let should =
-        settings.enabled && window > 0 && tokens > window.saturating_sub(settings.reserve_tokens);
+    let should = should_compact(tokens, window, &settings);
     agent.compaction_result.replace(Some(should));
 }
 

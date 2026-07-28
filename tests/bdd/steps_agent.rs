@@ -178,7 +178,6 @@ pub(crate) async fn _w_agent_switch_thinking(agent: &AgentState, verb: String, l
         None,
         Vec::new(),
         Vec::new(),
-        0.8,
         ".".into(),
         None,
         std::sync::Arc::new(xylitol::infra::provider::factory::build_provider),
@@ -331,9 +330,10 @@ pub(crate) fn _w_agent_context_usage(agent: &AgentState) {
         .and_then(|s| s.strip_prefix("tokens:").and_then(|n| n.parse().ok()))
         .unwrap_or(0);
     let window = agent.context_window.get().max(1);
+    let settings = xylitol::agent::compaction::CompactionSettings::default();
     agent
         .context_usage
-        .replace(Some(get_context_usage(tokens, window, 0.8)));
+        .replace(Some(get_context_usage(tokens, window, &settings)));
 }
 
 #[then("返回 tokens 约为 {val:u32}")]
@@ -445,7 +445,6 @@ pub(crate) fn _w_agent_try_thinking_level(agent: &AgentState, level: String) {
         None,
         Vec::new(),
         Vec::new(),
-        0.8,
         ".".into(),
         None,
         std::sync::Arc::new(xylitol::infra::provider::factory::build_provider),
