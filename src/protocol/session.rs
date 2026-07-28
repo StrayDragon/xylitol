@@ -329,6 +329,38 @@ impl SessionEntry {
     }
 }
 
+/// Build LLM context entries from a leaf branch path (pi `buildContextEntries`).
+///
+/// Takes the **latest** compaction on `path`. Returns that compaction entry first,
+/// then entries from `firstKeptEntryId` up to (but not including) the compaction,
+/// then entries after the compaction. With no compaction, returns `path` unchanged.
+pub fn build_context_entries(path: &[SessionEntry]) -> Vec<SessionEntry> {
+    let mut latest: Option<(usize, &CompactionEntry)> = None;
+    for (i, entry) in path.iter().enumerate() {
+        if let SessionEntry::Compaction(c) = entry {
+            latest = Some((i, c));
+        }
+    }
+    let Some((compaction_idx, compaction)) = latest else {
+        return path.to_vec();
+    };
+
+    let mut out = Vec::with_capacity(path.len().saturating_sub(compaction_idx) + 1);
+    out.push(path[compaction_idx].clone());
+
+    let mut found_first_kept = false;
+    for entry in &path[..compaction_idx] {
+        if entry.entry_id() == Some(compaction.first_kept_entry_id.as_str()) {
+            found_first_kept = true;
+        }
+        if found_first_kept {
+            out.push(entry.clone());
+        }
+    }
+    out.extend(path[compaction_idx + 1..].iter().cloned());
+    out
+}
+
 fn agent_msg_excluded_from_context(msg: &AgentMessage) -> bool {
     matches!(
         msg,
@@ -860,5 +892,70 @@ mod session_tree_tests {
 "#;
         let err = parse_session_jsonl(content).unwrap_err();
         assert!(err.contains("not supported"), "{err}");
+    }
+
+    fn compaction_entry(id: &str, first_kept: &str, summary: &str) -> SessionEntry {
+        SessionEntry::Compaction(CompactionEntry {
+            base: EntryBase {
+                entry_type: "compaction".into(),
+                id: id.into(),
+                parent_id: None,
+                timestamp: "t".into(),
+            },
+            summary: summary.into(),
+            first_kept_entry_id: first_kept.into(),
+            tokens_before: 1000,
+            details: None,
+            from_hook: None,
+        })
+    }
+
+    #[test]
+    fn build_context_entries_without_compaction_returns_path() {
+        let path = vec![
+            msg_entry("u1", None, "user", "early"),
+            msg_entry("a1", Some("u1"), "assistant", "reply"),
+        ];
+        let ctx = build_context_entries(&path);
+        let ids: Vec<_> = ctx.iter().filter_map(|e| e.entry_id()).collect();
+        assert_eq!(ids, vec!["u1", "a1"]);
+    }
+
+    #[test]
+    fn build_context_entries_cuts_before_first_kept() {
+        let path = vec![
+            msg_entry("u_old", None, "user", "summarized away"),
+            msg_entry("a_old", Some("u_old"), "assistant", "old reply"),
+            msg_entry("u_keep", Some("a_old"), "user", "kept"),
+            msg_entry("a_keep", Some("u_keep"), "assistant", "kept reply"),
+            compaction_entry("c1", "u_keep", "## Goal\nkeep me"),
+            msg_entry("u_new", Some("c1"), "user", "after compact"),
+        ];
+        let ctx = build_context_entries(&path);
+        let ids: Vec<_> = ctx.iter().filter_map(|e| e.entry_id()).collect();
+        assert_eq!(ids, vec!["c1", "u_keep", "a_keep", "u_new"]);
+        assert!(!ids.contains(&"u_old"));
+        assert!(!ids.contains(&"a_old"));
+        match &ctx[0] {
+            SessionEntry::Compaction(c) => assert!(c.summary.contains("keep me")),
+            other => panic!("expected compaction first, got {other:?}"),
+        }
+    }
+
+    #[test]
+    fn build_context_entries_uses_latest_compaction() {
+        let path = vec![
+            msg_entry("u0", None, "user", "very old"),
+            compaction_entry("c0", "u0", "old summary"),
+            msg_entry("u1", Some("c0"), "user", "mid"),
+            msg_entry("u2", Some("u1"), "user", "keep from here"),
+            compaction_entry("c1", "u2", "new summary"),
+        ];
+        let ctx = build_context_entries(&path);
+        let ids: Vec<_> = ctx.iter().filter_map(|e| e.entry_id()).collect();
+        assert_eq!(ids, vec!["c1", "u2"]);
+        assert!(!ids.contains(&"c0"));
+        assert!(!ids.contains(&"u0"));
+        assert!(!ids.contains(&"u1"));
     }
 }

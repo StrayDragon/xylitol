@@ -701,10 +701,11 @@ impl SessionManager {
     }
 
     /// Build session context from the stored entries.
-    /// Walks from leaf to root, reconstructing messages in chronological order.
+    /// Walks from leaf to root, then applies compaction-aware cut (pi `buildContextEntries`).
     pub async fn build_session_context(&self, session_id: &str) -> Result<SessionContext, String> {
         let leaf_id = self.get_leaf(session_id);
         let branch = self.get_branch(session_id, leaf_id.as_deref()).await?;
+        let branch = crate::protocol::session::build_context_entries(&branch);
 
         let mut messages = Vec::new();
         let mut thinking_level = String::from("medium");
@@ -737,13 +738,15 @@ impl SessionManager {
     }
 
     /// Build session context as `Vec<AgentMessage>` (type-safe version).
-    /// Walks from leaf to root via unified [`SessionEntry::as_agent_message`].
+    /// Walks from leaf to root via unified [`SessionEntry::as_agent_message`],
+    /// after compaction-aware cut (pi `buildContextEntries`).
     pub async fn build_session_context_v2(
         &self,
         session_id: &str,
     ) -> Result<Vec<crate::protocol::message::AgentMessage>, String> {
         let leaf_id = self.get_leaf(session_id);
         let branch = self.get_branch(session_id, leaf_id.as_deref()).await?;
+        let branch = crate::protocol::session::build_context_entries(&branch);
         Ok(branch.iter().filter_map(|e| e.as_agent_message()).collect())
     }
 
