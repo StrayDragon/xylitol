@@ -163,7 +163,6 @@ pub struct ResolvedAssembly {
     pub append_system_prompt: Vec<String>,
     /// Skills discovered under Trust semantics (c1085).
     pub skills: Vec<crate::protocol::resource::SkillInfo>,
-    pub compaction_threshold: f64,
     pub cwd: String,
     pub compaction_settings: Option<crate::agent::compaction::CompactionSettings>,
     pub permission: Option<Arc<dyn crate::protocol::ports::XyPermission>>,
@@ -200,7 +199,6 @@ impl ResolvedAssembly {
             context_files: self.context_files,
             append_system_prompt: self.append_system_prompt,
             skills: self.skills,
-            compaction_threshold: self.compaction_threshold,
             cwd: self.cwd,
             compaction_settings: self.compaction_settings,
             permission: self.permission,
@@ -560,7 +558,6 @@ pub fn resolve_assembly(input: &BootstrapInput) -> Result<ResolvedAssembly, Boot
         context_files,
         append_system_prompt,
         skills,
-        compaction_threshold: 0.8,
         cwd,
         compaction_settings,
         permission: permission_engine,

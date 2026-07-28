@@ -32,7 +32,6 @@ pub struct AgentBuilder {
     context_files: Vec<(String, String)>,
     append_system_prompt: Vec<String>,
     skills: Vec<crate::protocol::resource::SkillInfo>,
-    compaction_threshold: f64,
     compaction_settings: Option<CompactionSettings>,
     cwd: String,
     bash_executor: Option<Arc<dyn XyBashExecutor>>,
@@ -63,7 +62,6 @@ impl AgentBuilder {
             context_files: Vec::new(),
             append_system_prompt: Vec::new(),
             skills: Vec::new(),
-            compaction_threshold: 0.8,
             compaction_settings: None,
             cwd: ".".into(),
             bash_executor: None,
@@ -102,12 +100,6 @@ impl AgentBuilder {
     /// Set skills catalog for `<available_skills>` in the system prompt (c1085).
     pub fn skills(mut self, skills: Vec<crate::protocol::resource::SkillInfo>) -> Self {
         self.skills = skills;
-        self
-    }
-
-    /// Set compaction threshold.
-    pub fn compaction_threshold(mut self, threshold: f64) -> Self {
-        self.compaction_threshold = threshold;
         self
     }
 
@@ -175,7 +167,6 @@ impl AgentBuilder {
             self.system_prompt,
             self.context_files,
             self.append_system_prompt,
-            self.compaction_threshold,
             self.cwd,
             self.compaction_settings,
             self.model_builder,

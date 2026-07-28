@@ -118,7 +118,6 @@ impl AgentCapabilities {
         system_prompt: Option<String>,
         context_files: Vec<(String, String)>,
         append_system_prompt: Vec<String>,
-        compaction_threshold: f64,
         cwd: String,
         compaction_settings: Option<CompactionSettings>,
         model_builder: crate::protocol::ports::XyModelBuilder,
@@ -144,7 +143,6 @@ impl AgentCapabilities {
             system_prompt: system_prompt.clone(),
             session_id: None,
             compaction_orchestrator: CompactionOrchestrator::new(
-                compaction_threshold,
                 compaction_settings.unwrap_or_default(),
             ),
             cwd: cwd.clone(),
@@ -951,7 +949,6 @@ mod tests {
             Some("you are helpful".into()),
             Vec::new(),
             Vec::new(),
-            0.8,
             ".".into(),
             None,
             std::sync::Arc::new(crate::infra::provider::factory::build_provider),

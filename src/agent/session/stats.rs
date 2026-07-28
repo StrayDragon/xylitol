@@ -58,7 +58,13 @@ pub fn estimate_tokens(messages: &[crate::protocol::message::AgentMessage]) -> u
 }
 
 /// Compute context usage info from a token estimate and window size.
-pub fn get_context_usage(token_estimate: u64, context_window: u64, threshold: f64) -> ContextUsage {
+///
+/// `percent` is a derived display value only; trigger uses reserve formula via `settings`.
+pub fn get_context_usage(
+    token_estimate: u64,
+    context_window: u64,
+    settings: &crate::agent::compaction::CompactionSettings,
+) -> ContextUsage {
     let percent = if context_window > 0 {
         ((token_estimate as f64 / context_window as f64) * 100.0) as u64
     } else {
@@ -68,6 +74,6 @@ pub fn get_context_usage(token_estimate: u64, context_window: u64, threshold: f6
         tokens: token_estimate,
         context_window,
         percent,
-        should_compact: should_compact(token_estimate, context_window, threshold),
+        should_compact: should_compact(token_estimate, context_window, settings),
     }
 }

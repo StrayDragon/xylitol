@@ -65,7 +65,6 @@ pub(crate) fn make_agent_with_store(
         Some("you are helpful".into()),
         Vec::new(),
         Vec::new(),
-        0.8,
         ".".into(),
         None,
         std::sync::Arc::new(xylitol::infra::provider::factory::build_provider),

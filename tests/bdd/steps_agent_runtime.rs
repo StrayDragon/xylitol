@@ -680,7 +680,6 @@ pub(crate) fn bdd_batch_make_runner(
         None,
         Vec::new(),
         Vec::new(),
-        0.8,
         ".".into(),
         None,
         builder,

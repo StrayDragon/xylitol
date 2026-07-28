@@ -338,7 +338,6 @@ pub(crate) fn make_test_capabilities(
         None,
         Vec::new(),
         Vec::new(),
-        0.8,
         ".".into(),
         None,
         Arc::new(xylitol::infra::provider::factory::build_provider),
@@ -608,9 +607,15 @@ pub(crate) fn t_comp_entry_fields(sess: &XySessionStore) {
 
 #[given("compaction 公共 API 已就绪")]
 pub(crate) fn g_comp_split_ready(agent: &AgentState) {
+    let settings = xylitol::agent::compaction::CompactionSettings {
+        enabled: true,
+        reserve_tokens: 10_000,
+        keep_recent_tokens: 20_000,
+    };
+    // pi: tokens > window - reserve → 90_001 > 90_000
     agent
         .compaction_result
-        .replace(Some(should_compact(90_000, 100_000, 0.8)));
+        .replace(Some(should_compact(90_001, 100_000, &settings)));
 }
 
 #[when("分别调用 should_compact、find_cut_point 与 compact_session")]

@@ -482,7 +482,6 @@ pub(crate) fn w_switch_model_cycle(agent: &AgentState) {
         None,
         Vec::new(),
         Vec::new(),
-        0.8,
         ".".into(),
         None,
         std::sync::Arc::new(xylitol::infra::provider::factory::build_provider),
@@ -930,7 +929,8 @@ pub(crate) fn g_sess_resp_separated(agent: &AgentState) {
 
 #[when("分别调用 get_context_usage 与 export_to_html 入口")]
 pub(crate) fn w_sess_resp_apis(agent: &AgentState) {
-    let usage = get_context_usage(1000, 100_000, 0.8);
+    let settings = xylitol::agent::compaction::CompactionSettings::default();
+    let usage = get_context_usage(1000, 100_000, &settings);
     let tokens = usage.tokens;
     agent.context_usage.replace(Some(usage));
     agent
