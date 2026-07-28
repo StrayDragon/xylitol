@@ -1,136 +1,310 @@
-# Coding Agent Eval 框架调研（2025–2026）
+# Coding Agent Benchmark Eval 调研（2025–2026）
 
-> 面向 xylitol roadmap：可重复端到端回归、优先复用 OTEL + Langfuse traces/scores。
-> 一手来源：各框架官方 docs / GitHub README / 官方 blog（2025–2026 活跃项）。
+> **主线**：用**同一模型**在主流 agent eval benchmark 上跑分，作为 xylitol 能力刻度与版本对比基准。
+> **形态**：Docker / sandbox 容器化 harness 驱动 agent 自主多轮，产出确定性分数（测试闸 / verifier）。
+> **旁路**：Langfuse Dataset/Experiment 回归、Promptfoo 安全断言——从 benchmark 失败样本或日常 trace 抽样，**不替代**社区 leaderboard 主线。
+> **参考**：Artificial Analysis Data API / Intelligence Index — 选模与同模型公开基线；**不是** xylitol 评测入口。
+> 一手来源：各框架官方 docs / GitHub README / harness 源码（2025–2026 活跃项）。
 
 ## 1. 一句话结论
 
-**以 Langfuse Datasets + Experiments + Scores/LLM-as-judge 为 eval 主拼图（直接吃现有 OTEL traces），CI 用 `langfuse/experiment-action` 做回归闸；外部对标用 Harbor 跑 SWE-bench Verified / Terminal-Bench 2.x；Promptfoo 仅作可选安全/trajectory 断言层，不把 Braintrust/Inspect UI 当第二观测栈。**
+**主线 = 社区 benchmark harness（Harbor + Terminal-Bench、SWE-bench Verified harness）+ xylitol Print 非交互自主多轮 adapter；分数 = harness 官方 grader（测试通过 / verifier reward），不是 Langfuse judge。Langfuse 用于记录 run 元数据、对比 commit/配置、从失败实例钉回归集。Artificial Analysis = 选模与同模型公开基线对照（Data API 只读），不是 xylitol 评测入口。**
+
+与上一版调研的差异：
+
+| 维度 | 上一版（偏回归） | 本版（偏 benchmark） |
+|------|------------------|----------------------|
+| 主拼图 | Langfuse Dataset/Experiment | Harbor (TB) / SWE-bench 官方 harness |
+| 分数来源 | 代码闸 + 可选 LLM judge | harness 确定性 grader（社区可比） |
+| Docker | M3 周期性对标 | **默认 eval 形态** |
+| xylitol 驱动面 | Print harness | Print + **eval 专用停止条件 / 产物协议** |
+| Langfuse | SSOT | 旁路：run 归档 + 失败 → Dataset |
+| Artificial Analysis | 未纳入 | 参考：选模 / 同模型公开基线（只读） |
 
 ---
 
-## 2. 对比表
+## 2. 为什么 benchmark 主线，而非「自研回归集」
 
-| 框架 | 定位 | coding-agent 适配度 | 与 Langfuse/OTEL 关系 | CI 友好度 | 许可/自托管 | 一手来源 |
-|------|------|---------------------|----------------------|-----------|-------------|----------|
-| **Langfuse**（Datasets / Experiments / Scores / LLM-as-judge） | 观测 + eval 闭环：trace → dataset → experiment → score | ★★★★★ 回归集、在线/离线 eval、代码 evaluator | **原生 OTEL backend**；SDK 基于 OTEL；scores 可挂 trace/observation/experiment | ★★★★★ `experiment-action` + `RegressionError` 阈值闸 | MIT；[自托管](https://langfuse.com/docs/observability/get-started) | [Overview](https://langfuse.com/docs/evaluation/overview) · [OTEL](https://langfuse.com/integrations/native/opentelemetry) · [Experiments CI/CD](https://langfuse.com/docs/evaluation/experiments/experiments-ci-cd) |
-| **Promptfoo** | 声明式 eval + agent red team + trajectory 断言 | ★★★★ agent provider 钩子、`trajectory:*` 断言 | 内置 OTLP receiver；可转发到 Jaeger/Tempo；与 Langfuse **并行**非原生合并 | ★★★★★ `promptfoo-action`、redteam CI | MIT | [GitHub](https://github.com/promptfoo/promptfoo) · [Tracing](https://www.promptfoo.dev/docs/tracing/) · [CI/CD](https://www.promptfoo.dev/docs/integrations/ci-cd/) |
-| **Braintrust** | Eval 平台：dataset + scorer + 在线评分 + CI | ★★★ 通用 agent task；autoevals **不评整条 trace** | 独立 tracing 栈；与 Langfuse 无官方一体集成 | ★★★★ Eval SDK + CI 文档 | 开源 core + SaaS | [Evaluate](https://www.braintrust.dev/docs/evaluate) · [Autoevals](https://www.braintrust.dev/docs/evaluate/autoevals) |
-| **OpenAI Evals**（开源 + Platform API） | LLM eval registry + hosted graders | ★★ coding 需自定义 completion fn | 无 Langfuse/OTEL 一体方案 | ★★★ API/CLI | 开源 MIT；Platform 将关停 | [GitHub](https://github.com/openai/evals) · [API 弃用说明](https://developers.openai.com/api/docs/guides/evals) |
-| **Anthropic**（工程指南，非 harness） | agent eval 方法论：capability vs regression、三种 grader | ★★★★★ coding agent 最佳实践 SSOT | 点名 Harbor / Braintrust / **Langfuse** 为可组合框架 | —（指南） | — | [Demystifying evals](https://www.anthropic.com/engineering/demystifying-evals-for-ai-agents) |
-| **Inspect AI + Inspect Evals** | 英方 AISI 通用 LLM/agent eval 框架 + 社区 benchmark 包 | ★★★★ SWE-bench/GAIA 等；自带 View UI | 自有 log 格式；非 Langfuse 原生 | ★★★ CLI/API、`--json` 后台跑 | MIT | [Inspect](https://inspect.aisi.org.uk/) · [Inspect Evals 公告](https://www.aisi.gov.uk/blog/inspect-evals) |
-| **DeepEval** | Pytest 式 LLM/agent 单测 + trace 级 metric | ★★★★ agent metrics（TaskCompletion、ToolCorrectness 等） | **可消费 OTEL spans**；结果需自行 `score` 回 Langfuse | ★★★★★ 设计目标即 CI/pytest | MIT | [Docs](https://deepeval.com/docs/introduction) · [Agent evals](https://deepeval.com/docs/getting-started-agents) · [OTEL tracing](https://deepeval.com/docs/evaluation-llm-tracing) |
-| **Ragas** | RAG/agent metric 库 + CLI quickstart | ★★★ ToolCallAccuracy / AgentGoalAccuracy 等 | 无 Langfuse 官方一体；偏 Python 侧离线 | ★★★ CLI `agent_evals` 模板 | Apache-2.0 | [Agent metrics](https://docs.ragas.io/en/stable/concepts/metrics/available_metrics/agents/) · [Agent evals quickstart](https://docs.ragas.io/en/v0.4.3/howtos/cli/agent_evals/) |
-| **SWE-bench / Verified + harness** | 真实 GitHub issue → patch → 测试闸 | ★★★★★ coding agent 金标准 | 独立 Docker harness；与 Langfuse **正交**（后处理写 score） | ★★★ 重（Docker/并行）；有 Modal/sb-cli | MIT | [GitHub](https://github.com/SWE-bench/SWE-bench/) · [Verified](https://www.swebench.com/verified) · [Harness](https://www.swebench.com/SWE-bench/reference/harness/) |
-| **mini-SWE-agent** | 极简 bash ReAct + SWE-bench 批跑脚本 | ★★★★★ LM 对标基线（非 xylitol 本体） | 产出 `preds.jsonl` → 官方 harness | ★★★ `mini-extra swebench` 批处理 | MIT | [GitHub](https://github.com/SWE-agent/mini-swe-agent) · [SWE-bench 用法](https://mini-swe-agent.com/latest/usage/swebench/) |
-| **Harbor + Terminal-Bench** | 容器化 agent eval 运行时 + benchmark registry | ★★★★★ 终端/工程长任务；TB 2.x 官方 harness | 自有 job viewer；可用 Langfuse **外挂**记 run-level score | ★★★★ `harbor run` + `--upload`；云 sandbox 并行 | Apache-2.0 | [Harbor](https://github.com/harbor-framework/harbor) · [Terminal-Bench](https://www.tbench.ai/) · [TB 2.1](https://github.com/harbor-framework/terminal-bench-2-1) |
-| **LiveCodeBench** | 竞赛题代码生成/修复（非 repo agent） | ★★ 测模型代码能力，非 harness 端到端 | 无 | ★★★ CLI runner | MIT | [GitHub](https://github.com/livecodebench/livecodebench) |
-| **GAIA**（Inspect Evals） | 通用助手：浏览/bash 工具 | ★★ 偏 research assistant，非 coding harness | 经 Inspect，非 Langfuse | ★★ Docker 依赖 | MIT | [Inspect Evals GAIA](https://ukgovernmentbeis.github.io/inspect_evals/evals/assistants/gaia/) |
-| **AgentBench**（THUDM） | 8 环境通用 agent（OS/DB/Web…） | ★★ OS 子任务相关；整体偏通用 | 独立栈 | ★★ 容器化 FC 版 | Apache-2.0 | [GitHub](https://github.com/THUDM/AgentBench/) |
-| **WebArena** | 自托管 Web 导航 | ★ 非 coding；作者推荐 [TheAgentCompany](https://the-agent-company.com) 做终端/编码 | 无 | ★★ 自托管重 | Apache-2.0 | [GitHub](https://github.com/web-arena-x/webarena) |
-| **Arena-Hard** | Chatbot Arena 近似：LLM judge 比答案 | ★ 含 SE 开放题，但**非 agent harness** | 无 | ★★★ 批跑 judge | Apache-2.0 | [GitHub](https://github.com/lmarena/arena-hard-auto) |
+1. **可比性**：SWE-bench Verified、Terminal-Bench 等有公开 leaderboard；同模型换 scaffold 可差 5–20 分，但仍是社区对话语言。
+2. **确定性**：评**产出**（patch 过测、环境终态过 verifier），不评工具路径——与 Anthropic agent eval 指南一致。
+3. **xylitol 产品形态**：个人 coding harness，开箱 **allow-all 工具 + 自主 ReAct**；benchmark 测的正是「无人值守多轮修代码/跑终端」，与 TUI 交互面正交。
+4. **自研回归**：仍需要，但从 benchmark 失败实例 / 生产 trace **抽样钉集**，不是 eval 的主刻度。
 
 ---
 
-## 3. 重点框架（能力 · 集成切入点 · 不适用处）
+## 3. 主流 benchmark 对比（coding agent 向）
 
-### Langfuse（主拼图）
+| Benchmark | 测什么 | 规模 | Harness | Agent 接入模式 | 评分 | 多轮 / 停止 | Docker |
+|-----------|--------|------|---------|----------------|------|-------------|--------|
+| **SWE-bench Verified** | 真实 GitHub issue → patch | 500 | [SWE-bench](https://github.com/SWE-bench/SWE-bench) | **两阶段**：容器内 agent 推理 → `preds.jsonl` → `run_evaluation` | F2P + P2P 测试全过 = resolved | mini: `step_limit` 250 / cost $3；SWE-agent: cost + autosubmit | 每实例镜像；~120GB 盘 |
+| **Terminal-Bench 2.x** | 长程终端任务（编译、训练、排障…） | 89 (2.1) | [Harbor](https://github.com/harbor-framework/harbor) 官方 | **单阶段**：`harbor run -d … -a <agent> -m <model>` | `tests/test.sh` verifier | `task.toml` `agent.timeout_sec`（墙钟）；agent 内 ReAct 直到超时/完成 | 每任务 Dockerfile |
+| **SWE-bench Lite** | Verified 子集 | 300 | 同上 | 同上 | 同上 | 同上 | 同上；**冒烟首选** |
+| **SWE-bench Multimodal** | issue 含截图/图 | ~617 | 同上 + sb-cli 私有 test | 同上；需多模态输入 | 同上 | 同上 | 同上 |
+| **SWE-bench Pro** | 企业级多文件长任务 | 1865 | [SWE-bench_Pro-os](https://github.com/scaleapi/SWE-bench_Pro-os) | SWE-agent scaffold → patch 收集 | Pass@1 resolve | 小时级 | 高并行 Docker |
+| **Aider Polyglot** | Exercism 小练习多语言编辑 | 225×6 语言 | [aider benchmark](https://github.com/Aider-AI/aider/blob/main/benchmark/README.md) | `benchmark.py --model`；Harbor 有 adapter | 语言原生单测 | 通常 1–2 轮（失败重试） | 推荐 |
+| **SWE-bench Multilingual** | 9 语言 repo 修复 | 300 | SWE-bench harness | 同上 | 同上 | 同上 | 同上 |
+| **DevBench** | FIM 代码补全 | 1800 | [microsoft/devbench](https://github.com/microsoft/devbench) | 单轮 completion | Pass@1 + judge | **非 agent** | 轻 |
+| **LiveCodeBench** | 竞赛题生成 | 滚动 | 独立 runner | 单轮 codegen | 单测 | 非 agent | 轻 |
+| **GAIA** | 通用助手（浏览/bash） | 466 | Inspect Evals / OpenHands | agent_bridge | 精确匹配 + 辅助 judge | 多步 | Docker |
+| **AgentBench** | 8 环境通用 agent | 多子集 | [THUDM/AgentBench](https://github.com/THUDM/AgentBench/) | 容器化 FC | 环境特定 | 多轮 | 重 |
 
-- **能力**：Datasets 版本化实验输入；Experiments（UI/SDK）对比 prompt/model/代码变更；Scores 统一承载人工/LLM/代码评判；LLM-as-judge 可跑在 trace、observation 或 experiment item 上 ([core concepts](https://langfuse.com/docs/evaluation/core-concepts))。
-- **集成**：xylitol 已有 OTEL → Langfuse；eval run 对每个 dataset item 调 `cargo run`/harness，trace 自动入库；evaluator 用 [code evaluators](https://langfuse.com/docs/evaluation/evaluation-methods/code-evaluators) 或 [scores-via-sdk](https://langfuse.com/docs/evaluation/evaluation-methods/scores-via-sdk) 写回；CI 用 [Experiments in CI/CD](https://langfuse.com/docs/evaluation/experiments/experiments-ci-cd) + `langfuse/experiment-action`。
-- **不适用**：不替代 SWE-bench/Terminal-Bench 的 Docker 沙箱与测试闸；需自建「任务执行器」把 xylitol 接到 dataset item。
+**xylitol 优先级建议**（双主线，按叙事选先手）：
 
-### Promptfoo
+| 优先级 | Benchmark | 理由 |
+|--------|-----------|------|
+| **P0a** | Terminal-Bench 2.1 **10–20 任务子集**（Harbor） | 长程终端多轮；与 bash 工具链直接相关；**进入 AA Intelligence Index（16%）**，便于与公开模型刻度对照 |
+| **P0b** | SWE-bench Lite 或 Verified **50 实例子集** | 修真实 GitHub issue 的金标准；两阶段成熟；对标 mini-SWE-agent（**不在** AA Index 主权重） |
+| **P1** | Aider Polyglot **Rust 子集** | 快速 edit 质量信号 |
+| **Defer** | DevBench、LiveCodeBench、τ-bench 全量、GDPval 自跑、全量 leaderboard | 非 coding harness、成本过高、或 AA 闭源流水线 |
 
-- **能力**：YAML 声明 eval/red team；agent 场景支持 `trajectory:tool-used` 等断言；内置 OTLP receiver，可把 provider spans 关联到 test case ([tracing](https://www.promptfoo.dev/docs/tracing/))。
-- **集成**：自定义 JS/Python provider 包装 xylitol CLI；OTLP child spans 可与 xylitol OTEL 并存（需统一 trace context）；CI 用 [GitHub Action](https://www.promptfoo.dev/docs/integrations/github-action/) 或 [CI/CD 指南](https://www.promptfoo.dev/docs/integrations/ci-cd/)。
-- **不适用**：观测主栈会与 Langfuse 重复；更适合安全回归/trajectory 断言，而非日常 eval SSOT。
-
-### Harbor + Terminal-Bench
-
-- **能力**：Harbor 为 TB 2.x 官方 harness，任务=指令+容器环境+验证器；支持本地/云并行 ([Harbor docs](https://www.harborframework.com/docs/getting-started))；TB 2.1 为 89 项长程终端任务 ([tbench.ai](https://www.tbench.ai/))。
-- **集成**：将 xylitol 注册为 Harbor agent adapter，跑 `harbor run -d terminal-bench/terminal-bench-2-1`；结果 reward 摘要写入 Langfuse experiment score（外挂，非原生）。
-- **不适用**：重依赖 Docker/算力；对个人 harness 是「周期性对标」而非每次 commit 默认跑全量。
-
-### SWE-bench Verified + mini-SWE-agent
-
-- **能力**：500 项人工校验 issue；Docker harness `swebench.harness.run_evaluation` 以测试通过为闸 ([harness](https://www.swebench.com/SWE-bench/reference/harness/))；Verified 页用 mini-SWE-agent 作 LM 对标基线 ([verified](https://www.swebench.com/verified))。
-- **集成**：xylitol 产出 patch predictions → 同一 harness 评分；可用 mini 脚本的批跑模式作参照实验 ([mini SWE-bench 文档](https://mini-swe-agent.com/latest/usage/swebench/))。
-- **不适用**：测的是「修 repo」而非 TUI/Print 产品面；全量成本高。
-
-### DeepEval
-
-- **能力**：`@observe` 产生 trace tree；agent metrics（TaskCompletion、ToolCorrectness 等）；声明支持 CI/CD ([introduction](https://deepeval.com/docs/introduction))；可消费外部 OTEL spans ([tracing doc](https://deepeval.com/docs/evaluation-llm-tracing))。
-- **集成**：Rust 侧继续 OTEL 导出 Langfuse；Python 薄包装用 DeepEval 读 OTEL/导出 span 做 pytest 断言，分数 `langfuse.score()` 回写。
-- **不适用**：Python 中心；与 Langfuse Experiments 功能重叠，宜作「本地 pytest 层」而非第二平台。
-
-### Braintrust
-
-- **能力**：离线 experiment + 在线 scoring + `autoevals` 预置 scorer；明确「playground → experiment → CI → production score」闭环 ([evaluate](https://www.braintrust.dev/docs/evaluate))。
-- **集成**：理论上可并行，但对 xylitol 会引入第二套 trace/dataset 存储。
-- **不适用**：与「复用 Langfuse traces」约束冲突；autoevals 明确只评 span 非整条 agent trace ([autoevals](https://www.braintrust.dev/docs/evaluate/autoevals))。
-
-### Inspect AI + Inspect Evals
-
-- **能力**：agent（ReAct、multi-agent、Agent Bridge）、Docker 沙箱、checkpoint；Inspect Evals 打包 SWE-bench/GAIA 等 ([AISI 公告](https://www.aisi.gov.uk/blog/inspect-evals))。
-- **集成**：可通过 Agent Bridge 接外部 agent；适合借 benchmark 定义，不适合当 xylitol 日常 eval UI。
-- **不适用**：自带 View/VS Code 扩展；与「不要第二套 Inspect UI」冲突。
-
-### OpenAI Evals
-
-- **能力**：开源 registry + hosted Evals API（graders、`string_check` 等）。
-- **集成**：可用 completion function 接 agent，但平台 **2026-10 只读、11 月关停** ([deprecation](https://developers.openai.com/api/docs/guides/evals))。
-- **不适用**：长期 roadmap 依赖风险高；且 xylitol 非 OpenAI-only。
-
-### Anthropic 指南（无官方 harness）
-
-- **能力**：capability vs regression eval；代码/模型/人工三种 grader；推荐「评产出不评路径」；附录点名 Harbor、Braintrust、Langfuse ([指南](https://www.anthropic.com/engineering/demystifying-evals-for-ai-agents))。
-- **集成**：直接指导 xylitol dataset 设计与 grader 选择；SWE-bench Verified / Terminal-Bench 作 coding agent 确定性 grader 范例。
-- **不适用**：不提供可执行框架。
-
-### Ragas / LiveCodeBench / Arena-Hard / WebArena / AgentBench
-
-- **Ragas**：agent tool/goal metrics 齐全 ([agents metrics](https://docs.ragas.io/en/stable/concepts/metrics/available_metrics/agents/))，但偏 Python 离线，与 Langfuse 需胶水层。
-- **LiveCodeBench**：竞赛题代码能力滚动评测 ([GitHub](https://github.com/livecodebench/livecodebench))，非 repo/TUI agent 端到端。
-- **Arena-Hard**：LLM judge 比单轮回答 ([README](https://github.com/lmarena/arena-hard-auto))，非 tool/agent harness。
-- **WebArena**：Web 导航 812 任务 ([GitHub](https://github.com/web-arena-x/webarena))，coding 弱相关。
-- **AgentBench**：8 环境通用 agent ([GitHub](https://github.com/THUDM/AgentBench/))；OS 子集有参考价值但整体偏离个人 coding harness。
+先手选择：**要对齐 AA / 公开智能叙事 → 先 P0a（TB）**；**要证明 repo 修复能力 → 先 P0b（SWE）**。M0 冒烟可任选其一（或各跑极小子集）。
 
 ---
 
-## 4. xylitol 分阶段拼图（M0–M3，产品语言）
+## 4. Artificial Analysis（参考刻度，非 xylitol 评测入口）
 
-| 阶段 | 目标 | 拼图 |
+> 一手：[artificialanalysis.ai](https://artificialanalysis.ai/) · [Data API](https://artificialanalysis.ai/data-api) · [Intelligence Index v4.1](https://artificialanalysis.ai/articles/artificial-analysis-intelligence-index-v4-1) · [Stirrup](https://github.com/ArtificialAnalysis/Stirrup)
+
+### 4.1 一句话
+
+**AA 评的是「模型在 AA 固定 scaffold 下」的公开刻度；Data API 只读已发布分数；不能把 xylitol 提交进 AA leaderboard。** 与 xylitol 主线（自跑 Harbor / SWE harness）正交：AA = 选模与对照；自家 harness = 评 xylitol+model。
+
+### 4.2 产品与边界
+
+| 产品 | 是什么 | 对 xylitol |
+|------|--------|------------|
+| **Intelligence Index v4.1** | 合成分（Agents / Coding / Scientific / General） | 选模型、读「同模型在社区口径大概多强」 |
+| **Data API** | `GET /api/v2/language/models`（指数、单项、价格、延迟）；Free 100 req/day | **只读**元数据 / 内部 dashboard；**不能**提交 xylitol run |
+| **Stirrup** | AA 开源轻量 agent（Docker/E2B、MCP、`max_turns`、finish tool） | 他们跑 GDPval-AA 等用的 scaffold；可参考多轮设计，**不是** xylitol 评测 harness |
+| **Leaderboard / Cost·Time per Task** | 模型排行与单位任务成本 | 外部对照；不可挂 xylitol 官方行 |
+
+**明确不是**：可插自定义 agent 的评测平台；不是 SWE/Harbor 式 runner；不是第二观测栈候选。
+
+### 4.3 Index 与 coding agent 相关权重（v4.1）
+
+| 权重 | 评测 | 与 xylitol 关系 |
+|------|------|-----------------|
+| 20% | GDPval-AA v2（Stirrup + shell/web，Elo pairwise） | 偏知识工作 agent；脚本未开源（[Stirrup#8](https://github.com/ArtificialAnalysis/Stirrup/issues/8)）→ **Defer 自跑** |
+| 16% | **Terminal-Bench 2.1** | **与 P0a 同任务族**；自家 Harbor 分可对照 AA 上同模型 TB 基线（scaffold 不同须诚实标注） |
+| 14% | τ³-Bench Banking | 双控 agent–user；非 coding harness → Defer |
+| 其余 | SciCode / HLE / GPQA / AA-* 等 | 模型能力；非 repo/终端 agent 主刻度 |
+
+**注意**：Index **未**把 SWE-bench 放进主权重。对外若谈「对齐 AA」，TB 应优先；若谈「修 issue」，仍以 SWE 为准。
+
+### 4.4 拼图落点
+
+```text
+主线（出分）     Harbor TB / SWE-bench  ← 评 xylitol+model
+旁路（回归）     Langfuse Dataset
+参考（选模/对照） Artificial Analysis Data API + Index  ← 评「模型在 AA scaffold 下」
+参考（实现）     Stirrup 多轮/沙箱设计（勿当主产品）
+```
+
+实用报告写法：固定 model 跑 xylitol@Harbor TB 子集 → 查 AA 同模型 Terminal-Bench / Coding Index → 并排写「AA 基线 vs xylitol scaffold」，解释差而非假装自家分 = Intelligence Index。
+
+---
+
+## 5. Agent 多轮 / 无人值守：社区怎么处理
+
+Benchmark harness **从不**在环内等人；差异在 agent 侧如何保证 loop 不挂起、超限如何交卷。
+
+```
+┌──────────────┐   instruction    ┌─────────────────┐
+│ Harness      │ ───────────────► │ xylitol print   │
+│ (Harbor /    │ ◄── tool results │ ReAct 自主多轮   │
+│  SWE docker) │                  └────────┬────────┘
+└──────┬───────┘                           │
+       │ 无 stdin 人工输入                    │ 直到 stop / timeout
+       ▼                                   ▼
+┌──────────────┐                  ┌─────────────────┐
+│ Verifier     │                  │ 产物：patch /    │
+│ 测试闸       │ ◄────────────────│ 终态文件         │
+└──────────────┘                  └─────────────────┘
+```
+
+| 框架 / agent | 多轮机制 | 停止条件 | 超限行为 | 模拟用户 |
+|--------------|----------|----------|----------|----------|
+| **mini-SWE-agent** | Bash-only ReAct，每步一个命令 | `step_limit: 250`, `cost_limit: $3`, `wall_time_limit_seconds` | `echo COMPLETE_TASK_AND_SUBMIT_FINAL_OUTPUT && cat patch.txt` 强制交卷 | 无 |
+| **SWE-agent** | ACI（bash/edit/search） | `per_instance_cost_limit` 为主 | autosubmit 当前 patch | 无 |
+| **OpenHands** | CodeActAgent | `max_iterations` CLI | `fake_user_response_fn`: *"Please continue. NEVER ASK FOR HUMAN HELP"* | **有**——agent 发 MessageAction 时注入 |
+| **Harbor agents** | 各 agent 自带 loop | `task.toml` `[agent] timeout_sec` | 超时 → 任务 fail；agent 可写部分产物 | 无 |
+| **Inspect sandbox_agent_bridge** | 容器内 agent 调 API | Inspect `Limits` | bridge 截断 | 无 |
+
+**Anthropic 指南**（[Demystifying evals](https://www.anthropic.com/engineering/demystifying-evals-for-ai-agents)）：评产出不评路径；capability set（低通过率探索）vs regression set（近满分防退化）分开维护。
+
+### xylitol 现状与缺口
+
+| 能力 | 现状 | Benchmark 需要 |
+|------|------|----------------|
+| 非交互驱动 | `xylitol print <prompt>` → `XyDriver::run` 全 ReAct 流 | ✅ 主线入口 |
+| 自主多轮 | ReAct loop 直到模型停 / 无 tool call | ✅ |
+| `max_turns` / cost limit | `example.yaml` 注释 `# max_turns: 200`，**未实现** | ⚠️ 需 eval profile |
+| 超限 autosubmit | 无 | ⚠️ SWE-bench 需交 patch；TB 需留可验证终态 |
+| 模拟用户 | TUI 有 steer/follow-up；print 无 stdin | ⚠️ 若模型「问用户」会挂起——需 eval 模式禁止或 fake 回复 |
+| 产物协议 | 无 `COMPLETE_TASK…` 约定 | ⚠️ SWE 适配需 `git diff` 收集 |
+| 会话隔离 | 每 `run` 新 session_id | ✅ 每 benchmark instance 独立 |
+| 权限 / trust | 项目 trust 闸 | eval 容器应 `--trust` 或预置 trust |
+
+---
+
+## 6. 集成模式：如何把 xylitol 接进 harness
+
+### 6.1 SWE-bench 两阶段（推荐 P0b）
+
+**不**需要 Harbor agent 槽；仿 [mini-SWE-agent](https://mini-swe-agent.com/latest/usage/swebench/)：
+
+```text
+for instance in dataset:
+  container = start_swebench_container(instance)   # 官方 per-instance 镜像
+  prompt = format_issue(instance.problem_statement)
+  run_in_container(["xylitol", "print", prompt, "--trust", "--config", "/eval.yaml"])
+  patch = git_diff_in_testbed(source_files)
+  preds.append({instance_id, model_patch: patch})
+
+python -m swebench.harness.run_evaluation \
+  --dataset_name princeton-nlp/SWE-bench_Verified \
+  --predictions_path preds.jsonl --run_id xylitol-<model>-<git-sha>
+```
+
+- **评分**：官方 harness，与 leaderboard 同口径。
+- **参考实现**：[mini-swe-agent swebench 批跑](https://github.com/SWE-agent/mini-swe-agent)、[sb-cli](https://github.com/swe-bench/sb-cli) 云提交。
+
+### 6.2 Harbor `BaseInstalledAgent`（推荐 P0a，Terminal-Bench）
+
+将 xylitol 二进制装进任务容器，headless 执行：
+
+```python
+# 概念 sketch — 见 Harbor docs/agents
+class XylitolAgent(BaseInstalledAgent):
+    async def install(self, env):
+        await self.exec_as_agent(env, "install /opt/xylitol …")
+
+    @with_prompt_template
+    async def run(self, instruction, env, ctx):
+        await self.exec_as_agent(
+            env,
+            f"xylitol print {shlex.quote(instruction)} --trust --config /agent/eval.yaml",
+            timeout_sec=ctx.agent_timeout_sec,
+        )
+```
+
+```bash
+harbor run -d terminal-bench/terminal-bench-2-1 \
+  --agent path.to:XylitolAgent \
+  -m anthropic/claude-sonnet-4-5-20250929 -n 4
+```
+
+- **评分**：Harbor job `reward` = `tests/test.sh` 结果。
+- **文档**：[Harbor agents](https://www.harborframework.com/docs/agents) · [TB 2.1](https://github.com/harbor-framework/terminal-bench-2-1)
+
+### 6.3 OpenHands 模式（参考，非首选）
+
+`run_controller(..., fake_user_response_fn=...)` 在 agent 试图问用户时注入「继续，不要求助」。xylitol 若 eval 模式保证从不 emit 用户询问，可省略。
+
+### 6.4 Inspect `sandbox_agent_bridge`（可选）
+
+容器内 xylitol 经 OpenAI-compat proxy 走统一 model routing；适合要 Inspect Evals 任务定义 + `.eval` 日志，但 SWE/TB 官方 harness 更直接。
+
+---
+
+## 7. 推荐 eval 栈拼图
+
+```mermaid
+flowchart TB
+  subgraph Main["主线 · 社区刻度"]
+    Model["固定 model + xylitol eval profile"]
+  Model --> TB["Harbor · Terminal-Bench 子集"]
+  Model --> SWE["SWE-bench 子集 · preds.jsonl"]
+  TB --> Grade2["verifier 评分"]
+  SWE --> Grade1["官方 harness 评分"]
+  end
+
+  subgraph Side["旁路 · 内化"]
+  Grade1 --> LF["Langfuse · run 元数据 + score 摘要"]
+  Grade2 --> LF
+  LF --> DS["失败实例 → Dataset 回归集"]
+  DS --> CI["小集 CI 防退化"]
+  end
+
+  subgraph Ref["参考 · 选模对照"]
+  AA["Artificial Analysis Data API / Index"]
+  end
+
+  subgraph Opt["可选"]
+  PF["Promptfoo trajectory / red team"]
+  end
+```
+
+| 层 | 选型 | 角色 |
+|---|---|---|
+| **主 harness** | Harbor (TB) + SWE-bench harness | 社区可比分数 |
+| **xylitol 入口** | `print` + eval YAML profile | 自主多轮，非 TUI |
+| **编排** | `harbor run` 或 Python 薄脚本 | 并行 Docker / 云 sandbox |
+| **分数 SSOT** | harness 输出（resolved %、reward） | leaderboard 同口径 |
+| **旁路** | Langfuse | 实验对比、失败钉集、可选 CI 小回归 |
+| **参考** | Artificial Analysis Data API | 选模、同模型 AA 基线对照；**不**当 xylitol 分 |
+| **可选** | Promptfoo | 安全 / trajectory 夜间 job |
+| **不主用** | Braintrust 主栈、Inspect View、OpenAI Evals Platform、Stirrup 当主产品 | 第二观测栈 / 关停风险 / 换栈评测 |
+
+---
+
+## 8. xylitol eval profile 设计要点（待实现）
+
+为 benchmark 准备的配置/CLI 切片，与日常 TUI 分离：
+
+| 项 | 建议 | 参考 |
+|---|---|---|
+| `max_turns` | 200–250（与 mini-SWE-agent 对齐） | `swebench.yaml` |
+| `cost_limit` / `wall_time` | 按 benchmark 预算设 | mini / SWE-agent |
+| 超限行为 | autosubmit：`git diff` 或写标记文件 | mini `COMPLETE_TASK…` |
+|  stdin | 禁用交互；可选 fake_user 单行策略 | OpenHands |
+| trust | `--trust` 或 eval 默认信任 `/testbed` | 容器内无人工确认 |
+| 输出 | stdout 答案；stderr 工具日志（已有 print 行为） | harness 解析 log 可选 |
+| 模型锁定 | `--model` / profile 固定，报告时写明 scaffold 版本 | 诚实对比 |
+| 会话 | 每 instance 新 session；eval 不写用户盘状态 | roadmap「Eval 固定覆盖」 |
+
+**报告规范**：写明 `xylitol <version>` + eval profile + model id + harness 版本；**不**混入 best-of-N、test-aware 浏览等 leaderboard 技巧，除非显式标注。
+
+---
+
+## 9. 分阶段（benchmark 主线）
+
+| 阶段 | 目标 | 交付 |
 |------|------|------|
-| **M0 — 可观测回归种子** | 把真实失败变成可重复案例 | 从 Langfuse 生产/开发 trace 抽样 → Dataset；每项附 input（用户任务）、expected（测试/补丁闸）、metadata（模型/commit）；Scores 记录「是否解决」 |
-| **M1 — 开发者后置实验** | 改 prompt/工具/模型前可对比 | Langfuse Experiments SDK：task=调 xylitol harness（Print 或非交互 CLI）；evaluator=代码闸（测试通过、文件 diff 检查）+ 可选 LLM-as-judge；UI 对比 run |
-| **M2 — CI 回归闸** | PR 不静默退化 | `langfuse/experiment-action` 跑回归 dataset；`RegressionError` 阈值；OTEL trace 与 experiment item 关联；可选 Promptfoo red team 夜间 job |
-| **M3 — 外部对标刻度** | 与社区刻度对齐，非日常默认 | Harbor 周期性跑 SWE-bench Verified 子集 + Terminal-Bench 2.x；摘要 score 写回 Langfuse experiment；参考 Anthropic 指南区分 capability（低 pass 率探索）与 regression（近 100%）集 |
+| **M0 — 冒烟管线** | 证明能跑通并出分 | Docker；**TB 少量任务**（`harbor run` + xylitol adapter）**或** SWE Lite **5 实例**；文档化 `just eval-*-smoke` |
+| **M1 — eval profile** | 多轮与社区对齐 | `max_turns` / timeout / autosubmit；`--trust`；eval YAML 模板 |
+| **M2 — 子集刻度** | 可重复版本对比 | TB 10–20 + Verified 50；JSON 报告；可选对照 AA 同模型 TB 基线 |
+| **M3 — 回归旁路** | 失败不丢 | 失败 instance → Langfuse Dataset；小集 CI |
+| **M4 — 周期全量** | 社区对标 | 周期性全量 / 云并行（sb-cli、Harbor `--env daytona`） |
 
 ---
 
-## 5. 风险与反模式
+## 10. 风险与反模式
 
-| 风险 / 反模式 | 说明 |
-|---------------|------|
-| **第二观测栈** | 同时上 Braintrust/LangSmith/Inspect View 作主 eval UI，与现有 Langfuse 分叉 ([Anthropic 附录亦建议组合但投入应在 task/grader](https://www.anthropic.com/engineering/demystifying-evals-for-ai-agents)) |
-| **把 leaderboard 当日常 CI** | SWE-bench Verified / Terminal-Bench 全量 Docker 成本高，宜 M3 周期性而非每 PR |
-| **依赖将关停的 OpenAI Evals Platform** | [2026 年关停时间线](https://developers.openai.com/api/docs/guides/evals) |
-| **评路径不评产出** | Anthropic 明确反对 rigid tool-sequence grading；应用测试/artifact 闸 |
-| **LLM judge 无校准** | Langfuse LLM-as-judge 适合主观维，但需与代码闸混用 ([LLM-as-a-judge](https://langfuse.com/docs/evaluation/evaluation-methods/llm-as-a-judge)) |
-| **Promptfoo 替代 Langfuse** | Promptfoo tracing 服务 eval 会话，不是长期 trace 仓库 ([tracing](https://www.promptfoo.dev/docs/tracing/)) |
-| **竞赛题 benchmark 替代 agent eval** | LiveCodeBench 测代码生成，不覆盖 repo 修复/TUI 驱动 ([GitHub](https://github.com/livecodebench/livecodebench)) |
-| **开箱默认 eval** | 与 xylitol「开发者/CI 后置」定位冲突；应文档化 `just eval-*` 而非 TUI 默认流程 |
+| 风险 | 说明 |
+|------|------|
+| **把 Langfuse 当分数 SSOT** | 社区对话看 harness resolved %，不是 Langfuse judge |
+| **把 AA Index 当 xylitol 分** | AA 评模型+固定 scaffold；Data API 不可提交自定义 agent |
+| **用 Stirrup 替代 xylitol 评测** | 变成评另一套 agent，偏离产品目标 |
+| **TUI 驱动 benchmark** | 不可自动化；必须 print / headless |
+| **无停止条件跑全量** | 单实例可烧尽 context / 预算；必须先子集 |
+| **模型与 scaffold 混报** | 同模型不同 harness 差 5–20 分；报告须带 xylitol 版本 + profile |
+| **评路径不评产出** | 违反社区与 Anthropic 共识 |
+| **每 PR 全量 SWE-bench** | 120GB+ 与小时级；M2 子集可以，全量仅 M4 |
+| **忽略「问用户」挂起** | print 模式无 fake_user 时，部分模型会 stall |
 
 ---
 
-## 参考索引（一手 URL）
+## 11. 参考索引
 
-- Langfuse：[Evaluation overview](https://langfuse.com/docs/evaluation/overview) · [Datasets](https://langfuse.com/docs/evaluation/experiments/datasets) · [Experiments SDK](https://langfuse.com/docs/evaluation/experiments/experiments-via-sdk) · [Experiments CI/CD](https://langfuse.com/docs/evaluation/experiments/experiments-ci-cd) · [LLM-as-a-judge](https://langfuse.com/docs/evaluation/evaluation-methods/llm-as-a-judge) · [Scores via SDK](https://langfuse.com/docs/evaluation/evaluation-methods/scores-via-sdk) · [OpenTelemetry](https://langfuse.com/integrations/native/opentelemetry)
-- Promptfoo：[GitHub](https://github.com/promptfoo/promptfoo) · [Tracing](https://www.promptfoo.dev/docs/tracing/) · [Red team agents](https://www.promptfoo.dev/docs/red-team/agents/) · [CI/CD](https://www.promptfoo.dev/docs/integrations/ci-cd/)
-- Harbor / Terminal-Bench：[Harbor](https://github.com/harbor-framework/harbor) · [Harbor docs](https://www.harborframework.com/docs/getting-started) · [tbench.ai](https://www.tbench.ai/) · [terminal-bench-2-1](https://github.com/harbor-framework/terminal-bench-2-1)
-- SWE-bench：[GitHub](https://github.com/SWE-bench/SWE-bench/) · [Verified](https://www.swebench.com/verified) · [Harness](https://www.swebench.com/SWE-bench/reference/harness/) · [mini-SWE-agent](https://github.com/SWE-agent/mini-swe-agent)
+- SWE-bench：[GitHub](https://github.com/SWE-bench/SWE-bench) · [Verified](https://www.swebench.com/verified) · [Harness](https://www.swebench.com/SWE-bench/reference/harness/) · [sb-cli](https://github.com/swe-bench/sb-cli)
+- mini-SWE-agent：[GitHub](https://github.com/SWE-agent/mini-swe-agent) · [SWE-bench 用法](https://mini-swe-agent.com/latest/usage/swebench/)
+- SWE-agent：[GitHub](https://github.com/SWE-agent/SWE-agent) · [Docs](https://swe-agent.com/latest/)
+- Harbor：[GitHub](https://github.com/harbor-framework/harbor) · [Agents](https://www.harborframework.com/docs/agents) · [Adapters](https://www.harborframework.com/docs/datasets/adapters)
+- Terminal-Bench：[tbench.ai](https://www.tbench.ai/) · [TB 2.1](https://github.com/harbor-framework/terminal-bench-2-1)
+- Artificial Analysis：[Site](https://artificialanalysis.ai/) · [Data API](https://artificialanalysis.ai/data-api) · [Index v4.1](https://artificialanalysis.ai/articles/artificial-analysis-intelligence-index-v4-1) · [Methodology](https://artificialanalysis.ai/methodology/intelligence-benchmarking) · [Stirrup](https://github.com/ArtificialAnalysis/Stirrup) · [Stirrup docs](https://stirrup.artificialanalysis.ai/)
+- OpenHands eval：[benchmarks](https://github.com/OpenHands/benchmarks) · [harness 文档](https://docs.openhands.dev/openhands/usage/developers/evaluation-harness)
+- Inspect：[Agent Bridge](https://inspect.aisi.org.uk/agent-bridge.html) · [Inspect Evals](https://www.aisi.gov.uk/blog/inspect-evals)
 - Anthropic：[Demystifying evals for AI agents](https://www.anthropic.com/engineering/demystifying-evals-for-ai-agents)
-- Inspect：[inspect.aisi.org.uk](https://inspect.aisi.org.uk/) · [Inspect Evals](https://www.aisi.gov.uk/blog/inspect-evals)
-- DeepEval：[Introduction](https://deepeval.com/docs/introduction) · [Agent evals](https://deepeval.com/docs/getting-started-agents)
-- 其他： [Braintrust evaluate](https://www.braintrust.dev/docs/evaluate) · [OpenAI evals deprecation](https://developers.openai.com/api/docs/guides/evals) · [Ragas agents](https://docs.ragas.io/en/stable/concepts/metrics/available_metrics/agents/) · [LiveCodeBench](https://github.com/livecodebench/livecodebench) · [Arena-Hard](https://github.com/lmarena/arena-hard-auto)
+- Aider Polyglot：[Leaderboard](https://aider.chat/docs/leaderboards/)
+- Langfuse（旁路）：[Experiments](https://langfuse.com/docs/evaluation/experiments/experiments-via-sdk) · [OTEL](https://langfuse.com/integrations/native/opentelemetry)
