@@ -13,9 +13,10 @@ pub mod file_ops;
 pub mod llm_summarizer;
 pub mod message_converter;
 pub mod orchestrator;
+pub mod overflow;
 pub mod settings;
 
-pub use orchestrator::{CompactionOrchestrator, should_compact};
+pub use orchestrator::{CompactionOrchestrator, OverflowCompactOutcome, should_compact};
 pub mod token_estimator;
 
 pub use cut_detector::{
@@ -25,6 +26,9 @@ pub use file_ops::{
     FileOps, compute_file_lists, extract_file_ops_from_messages, format_file_ops_xml,
 };
 pub use llm_summarizer::{generate_summary, generate_turn_prefix_summary, serialize_conversation};
+pub use overflow::{
+    assistant_same_model, error_message_is_context_overflow, is_context_overflow_assistant,
+};
 pub use settings::CompactionSettings;
 pub use token_estimator::{
     EstimateOpts, calculate_context_tokens, estimate_context_tokens, estimate_from_session_entries,

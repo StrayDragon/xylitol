@@ -218,6 +218,9 @@ impl TryFrom<&Event> for XyEvent {
             Event::CompactionEnd => Ok(XyEvent::CompactionEnd {
                 result: None,
                 aborted: false,
+                reason: String::new(),
+                will_retry: false,
+                error_message: None,
             }),
             Event::AgentEnd => Ok(XyEvent::AgentEnd {
                 messages: Vec::new(),

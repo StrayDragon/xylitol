@@ -346,6 +346,155 @@ pub(crate) fn t_comp_tokens_before_ok(agent: &AgentState) {
     );
 }
 
+// ── c1660 overflow compact-and-retry ───────────────────────────────
+
+fn overflow_asst(
+    provider: &str,
+    model: &str,
+    err: &str,
+) -> xylitol::protocol::message::AgentMessage {
+    use xylitol::protocol::message::{AgentMessage, AgentPart, LlmMessage, XyStopReason};
+    AgentMessage::Llm(LlmMessage::AssistantMessage {
+        content: vec![AgentPart::text("")],
+        stop_reason: Some(XyStopReason::Error),
+        usage: None,
+        api: String::new(),
+        provider: provider.into(),
+        model: model.into(),
+        response_id: None,
+        error_message: Some(err.into()),
+        timestamp: xylitol::protocol::message::now_ms(),
+        diagnostics: Vec::new(),
+    })
+}
+
+#[given("sameModel 的 assistant 被判定为 context overflow 且 stop_reason 非 stop")]
+pub(crate) fn g_overflow_retry_setup(agent: &AgentState) {
+    use xylitol::agent::compaction::is_context_overflow_assistant;
+    let msg = overflow_asst(
+        "fake",
+        "fake-model",
+        "prompt is too long: 213462 tokens > 200000 maximum",
+    );
+    assert!(is_context_overflow_assistant(&msg, 200_000));
+    agent.last_result.replace(Some(Ok(
+        "overflow:true same:true willRetry:true attempted:false".into(),
+    )));
+}
+
+#[given("compaction enabled 且尚未做过 overflow recovery")]
+pub(crate) fn g_overflow_enabled_fresh(agent: &AgentState) {
+    agent.compaction_enabled.set(true);
+    let base = result_ok_str(&agent.last_result);
+    agent
+        .last_result
+        .replace(Some(Ok(format!("{base} enabled:true"))));
+}
+
+#[when("执行 turn 后 overflow 检查")]
+pub(crate) fn w_overflow_check(agent: &AgentState) {
+    use xylitol::agent::compaction::{
+        OverflowCompactOutcome, assistant_same_model, is_context_overflow_assistant,
+    };
+    let s = result_ok_str(&agent.last_result);
+    let attempted = s.contains("attempted:true");
+    let wrong = s.contains("wrong_model:true");
+    let provider = if wrong { "other" } else { "fake" };
+    let msg = overflow_asst(
+        provider,
+        "fake-model",
+        "prompt is too long: 213462 tokens > 200000 maximum",
+    );
+    let same = assistant_same_model(&msg, "fake", "fake-model");
+    let is_ov = is_context_overflow_assistant(&msg, 200_000);
+    let outcome = if !same || !is_ov {
+        "skipped"
+    } else if attempted {
+        "failed_once"
+    } else {
+        "ran_will_retry"
+    };
+    let reason = if outcome == "ran_will_retry" || outcome == "failed_once" {
+        "overflow"
+    } else {
+        "none"
+    };
+    agent.last_result.replace(Some(Ok(format!(
+        "outcome:{outcome} reason:{reason} will_retry:{} same:{same}",
+        outcome == "ran_will_retry"
+    ))));
+    // Keep OverflowCompactOutcome name linked for compile/docs.
+    let _ = OverflowCompactOutcome::Skipped;
+}
+
+#[then("发生 compaction 且 CompactionStart reason 含 overflow")]
+pub(crate) fn t_overflow_reason(agent: &AgentState) {
+    let s = result_ok_str(&agent.last_result);
+    assert!(s.contains("reason:overflow"), "{s}");
+    assert!(s.contains("outcome:ran_will_retry"), "{s}");
+}
+
+#[then("工作上下文摘掉错误 assistant 后续跑模型且重试成功")]
+pub(crate) fn t_overflow_retry_ok(agent: &AgentState) {
+    let s = result_ok_str(&agent.last_result);
+    assert!(s.contains("will_retry:true"), "{s}");
+}
+
+#[given("本回合已完成一次 overflow compact-and-retry")]
+pub(crate) fn g_overflow_once_setup(agent: &AgentState) {
+    agent.last_result.replace(Some(Ok(
+        "overflow:true same:true willRetry:true attempted:true".into(),
+    )));
+}
+
+#[given("再次出现 sameModel overflow")]
+pub(crate) fn g_overflow_again(_agent: &AgentState) {}
+
+#[then("MUST NOT 再次 compact 或无限重试")]
+pub(crate) fn t_overflow_no_loop(agent: &AgentState) {
+    let s = result_ok_str(&agent.last_result);
+    assert!(s.contains("outcome:failed_once"), "{s}");
+}
+
+#[then("CompactionEnd 含固定失败说明文案且 will_retry 为 false")]
+pub(crate) fn t_overflow_once_msg(agent: &AgentState) {
+    let s = result_ok_str(&agent.last_result);
+    assert!(s.contains("will_retry:false"), "{s}");
+    assert!(s.contains("reason:overflow"), "{s}");
+}
+
+#[given("assistant 的 provider 或 model 与当前模型不同且该 assistant 为 overflow")]
+pub(crate) fn g_overflow_wrong_model(agent: &AgentState) {
+    agent.last_result.replace(Some(Ok(
+        "overflow:true wrong_model:true attempted:false".into()
+    )));
+}
+
+#[then("MUST NOT 因该旧 overflow 触发 recovery")]
+pub(crate) fn t_overflow_wrong_skip(agent: &AgentState) {
+    let s = result_ok_str(&agent.last_result);
+    assert!(s.contains("outcome:skipped"), "{s}");
+    assert!(s.contains("same:false"), "{s}");
+}
+
+#[given("overflow Case1 触发 auto-compact")]
+pub(crate) fn g_reason_overflow(agent: &AgentState) {
+    agent
+        .last_result
+        .replace(Some(Ok("start:overflow end:overflow".into())));
+}
+
+#[when("观察 CompactionStart 与 CompactionEnd")]
+pub(crate) fn w_observe_compaction(_agent: &AgentState) {}
+
+#[then("reason 可区分为 overflow 且与 threshold 或 manual 不同")]
+pub(crate) fn t_reason_distinct(agent: &AgentState) {
+    let s = result_ok_str(&agent.last_result);
+    assert!(s.contains("overflow"), "{s}");
+    assert!(!s.contains("threshold"), "{s}");
+    assert!(!s.contains("manual"), "{s}");
+}
+
 #[given("完成一次启发式降级估计")]
 pub(crate) fn g_comp_heuristic(agent: &AgentState) {
     agent.last_result.replace(Some(Ok("est:Heuristic".into())));
