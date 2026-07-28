@@ -149,20 +149,6 @@ pub(crate) fn allow_local_tokenizer_from_app_config() -> bool {
         .unwrap_or(false)
 }
 
-pub(crate) fn estimate_opts_from_app_config(
-    model_id: Option<String>,
-) -> crate::agent::compaction::EstimateOpts {
-    let tokenizer_override = model_id
-        .as_deref()
-        .and_then(tokenizer_override_from_app_config);
-    crate::agent::compaction::EstimateOpts {
-        model_id,
-        tokenizer_override,
-        allow_local_tokenizer: allow_local_tokenizer_from_app_config(),
-        ..Default::default()
-    }
-}
-
 /// Lifecycle events on [`EventStream`] — surfaces import via the XyDriver seam
 /// (not `crate::agent`), keeping app/tui off agent internals.
 pub use crate::protocol::lifecycle::XyEvent;

@@ -18,8 +18,8 @@ use super::XyDriverError;
 use super::types::{
     ClipboardCopyOutcome, CommandInfo, DebugSceneLoad, EventStream, LoadedResourcesSnapshot,
     ModelInfo, ProjectTrustMode, ProjectTrustPersistReport, ReloadStepReport, RuntimeReloadReport,
-    SessionListEntry, SessionStats, estimate_from_session_entries, estimate_opts_from_app_config,
-    session_tree_kind_unimplemented, tokenizer_override_from_app_config,
+    SessionListEntry, SessionStats, estimate_from_session_entries, session_tree_kind_unimplemented,
+    tokenizer_override_from_app_config,
 };
 
 // ── In-process driver ─────────────────────────────────────────────
@@ -321,9 +321,8 @@ impl XyDriver for XyInProcessDriver {
     }
 
     async fn compact(&mut self) -> Result<bool, XyDriverError> {
-        let model_id = self.current_model().map(|m| m.id);
-        let opts = estimate_opts_from_app_config(model_id);
-        Self::map_str(self.agent.inner_mut().maybe_auto_compact_with(&opts).await)
+        // Force path (c1640 / pi compact) — MUST NOT use maybe_auto_compact.
+        Self::map_str(self.agent.inner().force_compact().await.map(|()| true))
     }
 
     async fn export_html(&mut self, path: &Path) -> Result<String, XyDriverError> {

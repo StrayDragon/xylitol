@@ -9,12 +9,13 @@ pub async fn export_to_html( &self, path: &std::path::Path, ) -> Result<std::pat
 pub async fn export_to_html( &self, store: &dyn XySessionStore, session_id: &str, path: &std::path::Path, ) -> Result<std::path::PathBuf, String>
 pub async fn export_to_jsonl( &self, path: &std::path::Path, ) -> Result<std::path::PathBuf, String>
 pub async fn export_to_jsonl( &self, store: &dyn XySessionStore, session_id: &str, path: &std::path::Path, ) -> Result<std::path::PathBuf, String>
+pub async fn force_compact(&self) -> Result<(), String>
 pub async fn fork_session( &self, at_entry_id: &str, position: crate::protocol::session::ForkPosition, ) -> Result<String, String>
 pub async fn get_session_stats(&self) -> Result<SessionStats, String>
 pub async fn import_from_jsonl( &self, store: &dyn XySessionStore, path: &std::path::Path, ) -> Result<String, String>
 pub async fn import_from_jsonl(&self, path: &std::path::Path) -> Result<String, String>
 pub async fn maybe_auto_compact(&self) -> Result<bool, String>
-pub async fn maybe_auto_compact_with( &self, estimate_opts: &crate::agent::compaction::EstimateOpts, ) -> Result<bool, String>
+pub async fn maybe_auto_compact_with( &self, estimate_opts: &crate::agent::compaction::EstimateOpts, last_assistant: Option<&crate::protocol::message::AgentMessage>, ) -> Result<bool, String>
 pub async fn record_bash_result( &self, command: &str, result: &crate::protocol::ports::XyBashResult, exclude_from_context: bool, session_id: Option<&str>, ) -> Result<(), String>
 pub enum QueueMode
 pub fn abort(&self)
