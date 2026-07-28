@@ -137,3 +137,44 @@
     当 执行 auto-compact reserve 触发判断
     那么 所用 token 数字与同源估计一致且 MUST NOT 另算独立 len/4 总和
     并且 触发比较式为占用大于窗口减 reserveTokens
+
+  @req:c17
+  @req:c2
+  场景: auto-over-threshold
+    假如 compaction enabled 为 true
+    并且 同源估计已超过 window 减 reserveTokens
+    并且 非 abort 的 assistant 回合刚落定
+    当 执行 turn 后 threshold auto 检查
+    那么 发生 compaction 且 CompactionStart reason 含 threshold
+
+  @req:c17
+  @req:c2
+  场景: auto-under-threshold
+    假如 compaction enabled 为 true
+    并且 同源估计未超过 window 减 reserveTokens
+    并且 非 abort 的 assistant 回合刚落定
+    当 执行 turn 后 threshold auto 检查
+    那么 不发生 compaction
+
+  @req:c17
+  @req:c2
+  场景: auto-disabled-no-compact
+    假如 compaction enabled 为 false
+    并且 同源估计远超窗口
+    并且 非 abort 的 assistant 回合刚落定
+    当 执行 turn 后 threshold auto 检查
+    那么 不发生 compaction
+
+  @req:c17
+  场景: manual-force-bypasses-reserve
+    假如 用量未超 reserve 闸但会话有可摘要历史
+    当 调用 Driver 或 slash force compact
+    那么 仍执行 compaction 或返回 Already compacted / Nothing to compact 明确错误
+    并且 MUST NOT 经 maybe_auto_compact 闸
+
+  @req:c18
+  场景: stale-guard-after-compaction
+    假如 刚写入 CompactionEntry
+    并且 仅有压缩前 assistant usage 可用
+    当 立即再执行 threshold auto 检查
+    那么 MUST NOT 用压缩前 usage 再触发 compaction

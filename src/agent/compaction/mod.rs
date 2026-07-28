@@ -36,6 +36,61 @@ use serde_json::json;
 use crate::protocol::ports::{XyModel, XySessionStore};
 use crate::protocol::session::{CompactionEntry, EntryBase, SessionEntry};
 
+/// pi `prepareCompaction` gate: whether there is content worth summarizing.
+///
+/// Errors use pi-aligned English strings for the force path.
+pub fn prepare_compaction(
+    entries: &[SessionEntry],
+    settings: &CompactionSettings,
+) -> Result<(), String> {
+    if entries.is_empty() {
+        return Err("Nothing to compact (session too small)".into());
+    }
+    if matches!(entries.last(), Some(SessionEntry::Compaction(_))) {
+        return Err("Already compacted".into());
+    }
+
+    let mut boundary_start = 0usize;
+    for (i, entry) in entries.iter().enumerate().rev() {
+        if let SessionEntry::Compaction(comp) = entry {
+            let first_kept_id = comp.first_kept_entry_id.as_str();
+            if let Some(idx) = entries
+                .iter()
+                .position(|e| e.entry_id() == Some(first_kept_id))
+            {
+                boundary_start = idx;
+            } else {
+                boundary_start = i + 1;
+            }
+            break;
+        }
+    }
+    let boundary_end = entries.len();
+    let cut = find_cut_point(
+        entries,
+        boundary_start,
+        boundary_end,
+        settings.keep_recent_tokens,
+    );
+    let first_kept = &entries[cut.first_kept_entry_index];
+    if first_kept.entry_id().is_none() {
+        return Err("Nothing to compact (session too small)".into());
+    }
+    let history_end = if cut.is_split_turn {
+        cut.turn_start_index.max(0) as usize
+    } else {
+        cut.first_kept_entry_index
+    };
+    let to_summarize = entries[boundary_start..history_end]
+        .iter()
+        .filter_map(|e| e.as_agent_message())
+        .count();
+    if to_summarize == 0 {
+        return Err("Nothing to compact (session too small)".into());
+    }
+    Ok(())
+}
+
 /// Compact a session by summarizing old entries and writing a CompactionEntry.
 pub async fn compact_session(
     store: &dyn XySessionStore,

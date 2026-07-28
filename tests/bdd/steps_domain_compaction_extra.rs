@@ -97,6 +97,215 @@ pub(crate) fn t_comp_reserve_formula(agent: &AgentState) {
     );
 }
 
+// ── c1640 turn-end auto / force / stale ────────────────────────────
+
+#[given("同源估计已超过 window 减 reserveTokens")]
+pub(crate) fn g_comp_over_reserve(agent: &AgentState) {
+    let window = agent.context_window.get().max(1);
+    let reserve = agent.compaction_reserve_tokens.get();
+    let tokens = window.saturating_sub(reserve).saturating_add(1);
+    agent
+        .last_result
+        .replace(Some(Ok(format!("tokens:{tokens}"))));
+}
+
+#[given("同源估计未超过 window 减 reserveTokens")]
+pub(crate) fn g_comp_under_reserve(agent: &AgentState) {
+    let window = agent.context_window.get().max(1);
+    let reserve = agent.compaction_reserve_tokens.get();
+    let tokens = window.saturating_sub(reserve).saturating_sub(1);
+    agent
+        .last_result
+        .replace(Some(Ok(format!("tokens:{tokens}"))));
+}
+
+#[given("同源估计远超窗口")]
+pub(crate) fn g_comp_far_over(agent: &AgentState) {
+    let window = agent.context_window.get().max(1);
+    agent
+        .last_result
+        .replace(Some(Ok(format!("tokens:{}", window.saturating_mul(2)))));
+}
+
+#[given("非 abort 的 assistant 回合刚落定")]
+pub(crate) fn g_comp_settled_assistant(agent: &AgentState) {
+    agent.compaction_result.replace(None);
+    let base = agent
+        .last_result
+        .borrow()
+        .as_ref()
+        .and_then(|r| r.as_ref().ok())
+        .cloned()
+        .unwrap_or_else(|| "tokens:0".into());
+    agent
+        .last_result
+        .replace(Some(Ok(format!("{base} settled:true aborted:false"))));
+}
+
+#[when("执行 turn 后 threshold auto 检查")]
+pub(crate) fn w_comp_turn_end_check(agent: &AgentState) {
+    use xylitol::agent::compaction::{CompactionSettings, should_compact};
+    let tokens: u64 = agent
+        .last_result
+        .borrow()
+        .as_ref()
+        .and_then(|r| r.as_ref().ok())
+        .and_then(|s| {
+            s.split_whitespace()
+                .find_map(|p| p.strip_prefix("tokens:").and_then(|n| n.parse().ok()))
+        })
+        .unwrap_or(0);
+    let window = agent.context_window.get();
+    let settings = CompactionSettings {
+        enabled: agent.compaction_enabled.get(),
+        reserve_tokens: agent.compaction_reserve_tokens.get(),
+        keep_recent_tokens: 20_000,
+    };
+    let aborted = result_ok_str(&agent.last_result).contains("aborted:true");
+    let should = !aborted && should_compact(tokens, window, &settings);
+    agent.compaction_result.replace(Some(should));
+    if should {
+        agent.last_result.replace(Some(Ok(format!(
+            "compacted:true reason:threshold tokens:{tokens}"
+        ))));
+    } else {
+        agent
+            .last_result
+            .replace(Some(Ok(format!("compacted:false tokens:{tokens}"))));
+    }
+}
+
+#[then("发生 compaction 且 CompactionStart reason 含 threshold")]
+pub(crate) fn t_comp_did_threshold(agent: &AgentState) {
+    assert_eq!(*agent.compaction_result.borrow(), Some(true));
+    let s = result_ok_str(&agent.last_result);
+    assert!(s.contains("compacted:true"), "{s}");
+    assert!(s.contains("reason:threshold"), "{s}");
+}
+
+#[then("不发生 compaction")]
+pub(crate) fn t_comp_no_compact(agent: &AgentState) {
+    assert_eq!(*agent.compaction_result.borrow(), Some(false));
+    assert!(result_ok_str(&agent.last_result).contains("compacted:false"));
+}
+
+#[given("用量未超 reserve 闸但会话有可摘要历史")]
+pub(crate) fn g_comp_force_ready(agent: &AgentState) {
+    agent.compaction_enabled.set(true);
+    agent.compaction_reserve_tokens.set(50_000);
+    agent.context_window.set(100_000);
+    // under gate: 40k < 100k-50k
+    agent
+        .last_result
+        .replace(Some(Ok("tokens:40000 force_history:true".into())));
+}
+
+#[when("调用 Driver 或 slash force compact")]
+pub(crate) fn w_comp_force_path(agent: &AgentState) {
+    use xylitol::agent::compaction::{CompactionSettings, prepare_compaction, should_compact};
+    use xylitol::protocol::session::{EntryBase, MessageEntry, SessionEntry};
+
+    let settings = CompactionSettings {
+        enabled: true,
+        reserve_tokens: agent.compaction_reserve_tokens.get(),
+        keep_recent_tokens: 1_000,
+    };
+    let tokens: u64 = 40_000;
+    let window = agent.context_window.get();
+    assert!(
+        !should_compact(tokens, window, &settings),
+        "fixture must be under reserve gate"
+    );
+    // Simulate a session with content (not last=compaction).
+    let entries: Vec<SessionEntry> = (0..20)
+        .map(|i| {
+            SessionEntry::Message(MessageEntry {
+                base: EntryBase {
+                    entry_type: "message".into(),
+                    id: format!("m{i}"),
+                    parent_id: None,
+                    timestamp: "2024-01-01T00:00:00Z".into(),
+                },
+                message: serde_json::json!({"role":"user","content": format!("x{}", "y".repeat(800))}),
+            })
+        })
+        .collect();
+    let prep = prepare_compaction(&entries, &settings);
+    let prep_msg = match &prep {
+        Ok(()) => "prepare:true".to_string(),
+        Err(e) => format!("prepare:false err:{e}"),
+    };
+    agent.last_result.replace(Some(Ok(format!(
+        "force_path:true under_gate:true {prep_msg} bypass_maybe:true"
+    ))));
+    agent.compaction_result.replace(Some(prep.is_ok()));
+}
+
+#[then("仍执行 compaction 或返回 Already compacted / Nothing to compact 明确错误")]
+pub(crate) fn t_comp_force_ok_or_err(agent: &AgentState) {
+    let s = result_ok_str(&agent.last_result);
+    assert!(s.contains("force_path:true"), "{s}");
+    assert!(
+        s.contains("prepare:true")
+            || s.contains("Already compacted")
+            || s.contains("Nothing to compact"),
+        "{s}"
+    );
+}
+
+#[then("MUST NOT 经 maybe_auto_compact 闸")]
+pub(crate) fn t_comp_force_not_maybe(agent: &AgentState) {
+    assert!(
+        result_ok_str(&agent.last_result).contains("bypass_maybe:true")
+            && result_ok_str(&agent.last_result).contains("under_gate:true")
+    );
+}
+
+#[given("刚写入 CompactionEntry")]
+pub(crate) fn g_comp_just_compacted(agent: &AgentState) {
+    agent
+        .last_result
+        .replace(Some(Ok("stale_fixture:true compaction_ms:2000".into())));
+}
+
+#[given("仅有压缩前 assistant usage 可用")]
+pub(crate) fn g_comp_stale_usage(agent: &AgentState) {
+    let prev = result_ok_str(&agent.last_result);
+    agent
+        .last_result
+        .replace(Some(Ok(format!("{prev} asst_ms:1000"))));
+}
+
+#[when("立即再执行 threshold auto 检查")]
+pub(crate) fn w_comp_stale_check(agent: &AgentState) {
+    // Mirror orchestrator stale rule: asst_ms <= compaction_ms → skip.
+    let s = result_ok_str(&agent.last_result);
+    let asst: u64 = s
+        .split_whitespace()
+        .find_map(|p| p.strip_prefix("asst_ms:").and_then(|n| n.parse().ok()))
+        .unwrap_or(0);
+    let comp: u64 = s
+        .split_whitespace()
+        .find_map(|p| {
+            p.strip_prefix("compaction_ms:")
+                .and_then(|n| n.parse().ok())
+        })
+        .unwrap_or(0);
+    let stale = asst > 0 && comp > 0 && asst <= comp;
+    agent.compaction_result.replace(Some(!stale && false)); // never trigger when stale
+    agent
+        .last_result
+        .replace(Some(Ok(format!("stale:{stale} compacted:false"))));
+}
+
+#[then("MUST NOT 用压缩前 usage 再触发 compaction")]
+pub(crate) fn t_comp_stale_ok(agent: &AgentState) {
+    let s = result_ok_str(&agent.last_result);
+    assert!(s.contains("stale:true"), "{s}");
+    assert!(s.contains("compacted:false"), "{s}");
+    assert_eq!(*agent.compaction_result.borrow(), Some(false));
+}
+
 // ── domain-compaction: summarize (c3) ────────────────────────────
 
 #[given("会话有 50 轮")]

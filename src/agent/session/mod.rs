@@ -442,6 +442,16 @@ impl AgentCapabilities {
         self.store.clone()
     }
 
+    /// Lifecycle event sink (compaction Start/End etc.).
+    pub(crate) fn event_sink(&self) -> Arc<dyn crate::protocol::ports::XyEventSink> {
+        self.sink.clone()
+    }
+
+    /// Compaction settings snapshot for ReAct turn-end auto.
+    pub(crate) fn compaction_settings(&self) -> CompactionSettings {
+        self.compaction_orchestrator.settings().clone()
+    }
+
     // ── Accessors ─────────────────────────────────────────────────
 
     pub(crate) fn tools(&self) -> &ToolSet {
@@ -820,17 +830,23 @@ impl AgentCapabilities {
     /// Check and perform auto-compaction if the context is full.
     /// Returns true if compaction was performed.
     pub async fn maybe_auto_compact(&self) -> Result<bool, String> {
-        self.maybe_auto_compact_with(&crate::agent::compaction::EstimateOpts {
-            model_id: self.current_model().map(|m| m.id.clone()),
-            ..Default::default()
-        })
+        self.maybe_auto_compact_with(
+            &crate::agent::compaction::EstimateOpts {
+                model_id: self.current_model().map(|m| m.id.clone()),
+                ..Default::default()
+            },
+            None,
+        )
         .await
     }
 
     /// Auto-compact using the same estimate opts as the product footer (c1420).
+    ///
+    /// `last_assistant`: when set, abort / stale guards apply (pi `_checkCompaction`).
     pub async fn maybe_auto_compact_with(
         &self,
         estimate_opts: &crate::agent::compaction::EstimateOpts,
+        last_assistant: Option<&crate::protocol::message::AgentMessage>,
     ) -> Result<bool, String> {
         let sid = self
             .session_id()
@@ -859,6 +875,7 @@ impl AgentCapabilities {
                 self.sink.as_ref(),
                 ctx_window,
                 estimate_opts,
+                last_assistant,
             )
             .await?;
 
@@ -868,6 +885,33 @@ impl AgentCapabilities {
         }
 
         Ok(compacted)
+    }
+
+    /// Manual force compact (pi `compact()`). Does not apply the reserve gate.
+    pub async fn force_compact(&self) -> Result<(), String> {
+        let sid = self
+            .session_id()
+            .ok_or_else(|| "no active session".to_string())?;
+
+        let model = self
+            .build_current_model()
+            .map_err(|e| format!("no model: {e}"))?;
+
+        if let Some(bus) = &self.hook_bus {
+            let (ty, phase, ctx) = crate::agent::runtime::script_hook_ctx::session_before_compact();
+            observe_hook(bus, ty, phase, ctx).await;
+        }
+
+        self.compaction_orchestrator
+            .compact(self.store.as_ref(), sid, model.as_ref(), self.sink.as_ref())
+            .await?;
+
+        if let Some(bus) = &self.hook_bus {
+            let (ty, phase, ctx) = crate::agent::runtime::script_hook_ctx::session_compact();
+            observe_hook(bus, ty, phase, ctx).await;
+        }
+
+        Ok(())
     }
 }
 
