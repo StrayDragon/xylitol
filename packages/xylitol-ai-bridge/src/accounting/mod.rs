@@ -34,7 +34,18 @@ fn heuristic_tokens(messages: &[AiBridgeMessage]) -> u64 {
         .sum()
 }
 
+/// Index of the last assistant message that carries usage (pi `lastUsageIndex`).
+fn last_assistant_usage_index(messages: &[AiBridgeMessage]) -> Option<usize> {
+    messages
+        .iter()
+        .rposition(|m| matches!(m, AiBridgeMessage::AssistantMessage { usage: Some(_), .. }))
+}
+
 /// Estimate context tokens with priority: Api → RemoteCount → LocalTokenizer → Heuristic.
+///
+/// When an Api usage anchor is valid, trailing heuristic tokens cover only messages
+/// **after** the last usage-bearing assistant (pi `estimateContextTokens`). If that
+/// assistant is not present in `messages`, the whole slice is treated as trailing.
 pub fn estimate_context(
     messages: &[AiBridgeMessage],
     opts: EstimateContextOpts<'_>,
@@ -43,13 +54,17 @@ pub fn estimate_context(
         && is_valid_api_anchor(opts.stop_reason)
     {
         let usage_tokens = total_context_tokens(usage);
-        let trailing_tokens = heuristic_tokens(messages);
+        let last_usage_index = last_assistant_usage_index(messages);
+        let trailing_tokens = match last_usage_index {
+            Some(i) => heuristic_tokens(&messages[i + 1..]),
+            None => heuristic_tokens(messages),
+        };
         return ContextTokenEstimate {
             tokens: usage_tokens + trailing_tokens,
             provenance: TokenProvenance::Api,
             usage_tokens,
             trailing_tokens,
-            last_usage_index: Some(0),
+            last_usage_index,
         };
     }
 
@@ -102,6 +117,7 @@ mod tests {
             total_tokens: 1200,
             cost: None,
         };
+        // Usage-bearing assistant not in slice → whole slice is trailing (pi-aligned).
         let msgs = vec![AiBridgeMessage::user("trailing")];
         let est = estimate_context(
             &msgs,
@@ -115,6 +131,54 @@ mod tests {
         assert_eq!(est.usage_tokens, 1200);
         assert!(est.trailing_tokens > 0);
         assert_eq!(est.tokens, est.usage_tokens + est.trailing_tokens);
+        assert_eq!(est.last_usage_index, None);
+    }
+
+    #[test]
+    fn api_trailing_only_after_usage_message() {
+        let usage = AiBridgeUsage {
+            input: 1000,
+            output: 200,
+            cache_read: 0,
+            cache_write: 0,
+            cache_write_1h: 0,
+            total_tokens: 1200,
+            cost: None,
+        };
+        let history = AiBridgeMessage::user("x".repeat(8_000));
+        let hist_alone = heuristic_tokens(std::slice::from_ref(&history));
+        assert!(hist_alone > 500, "precondition: fat history heuristic");
+
+        let assistant = AiBridgeMessage::AssistantMessage {
+            content: vec![],
+            stop_reason: Some(AiBridgeStopReason::Stop),
+            usage: Some(usage.clone()),
+            api: "test".into(),
+            provider: "test".into(),
+            model: "test".into(),
+            response_id: None,
+            error_message: None,
+            timestamp: 1,
+            diagnostics: Vec::new(),
+        };
+        let trail = AiBridgeMessage::user("after");
+        let msgs = vec![history, assistant, trail.clone()];
+        let est = estimate_context(
+            &msgs,
+            EstimateContextOpts {
+                last_usage: Some(&usage),
+                stop_reason: Some(AiBridgeStopReason::Stop),
+                ..Default::default()
+            },
+        );
+        assert_eq!(est.provenance, TokenProvenance::Api);
+        assert_eq!(est.usage_tokens, 1200);
+        assert_eq!(est.last_usage_index, Some(1));
+        let only_trail = heuristic_tokens(std::slice::from_ref(&trail));
+        assert_eq!(est.trailing_tokens, only_trail);
+        assert_eq!(est.tokens, 1200 + only_trail);
+        // Must not double-count the fat history already covered by Api usage.
+        assert!(est.tokens < 1200 + hist_alone);
     }
 
     #[test]
