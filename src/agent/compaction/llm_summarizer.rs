@@ -84,6 +84,21 @@ Use this EXACT format:
 
 Keep each section concise. Preserve exact file paths, function names, and error messages."#;
 
+pub const TURN_PREFIX_SUMMARIZATION_PROMPT: &str = r#"This is the PREFIX of a turn that was too large to keep. The SUFFIX (recent work) is retained.
+
+Summarize the prefix to provide context for the retained suffix:
+
+## Original Request
+[What did the user ask for in this turn?]
+
+## Early Progress
+- [Key decisions and work done in the prefix]
+
+## Context for Suffix
+- [Information needed to understand the retained recent work]
+
+Be concise. Focus on what's needed to understand the kept suffix."#;
+
 // ── LLM interaction ───────────────────────────────────────────────
 
 pub(super) async fn generate_complete(
@@ -211,5 +226,21 @@ pub async fn generate_summary(
     let summarization_messages = project_for_llm(&[AgentMessage::user(prompt_text.clone())]);
 
     let max_tokens = ((_reserve_tokens as f64) * 0.8) as u32;
+    generate_complete(model, summarization_messages, max_tokens.max(256)).await
+}
+
+/// Generate a turn-prefix summary when splitting a turn (pi `generateTurnPrefixSummary`).
+pub async fn generate_turn_prefix_summary(
+    messages: &[AgentMessage],
+    model: &dyn XyModel,
+    _reserve_tokens: u64,
+) -> Result<String> {
+    let conversation_text = serialize_conversation(messages);
+    let prompt_text = format!(
+        "<conversation>\n{conversation_text}\n</conversation>\n\n{TURN_PREFIX_SUMMARIZATION_PROMPT}"
+    );
+    let summarization_messages = project_for_llm(&[AgentMessage::user(prompt_text)]);
+    // Smaller budget than full history summary (pi: 0.5 * reserveTokens).
+    let max_tokens = ((_reserve_tokens as f64) * 0.5) as u32;
     generate_complete(model, summarization_messages, max_tokens.max(256)).await
 }
