@@ -115,7 +115,7 @@
   @req:c19
   场景: split-dual-summary
     假如 find_cut_point 返回 is_split_turn=true 且 turn_start 与 first_kept 之间有可摘要内容
-    当 调用 compact_session
+    当 执行 split-turn compact_session
     那么 CompactionEntry.summary 含 Turn Context (split turn) 合并标记且 turn-prefix 已被摘要
 
   @req:c20

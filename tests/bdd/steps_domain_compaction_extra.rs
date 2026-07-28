@@ -64,6 +64,288 @@ pub(crate) fn t_comp_cut_ok(agent: &AgentState) {
     assert!(cut > 0, "cut should preserve some context");
 }
 
+// ── c1650 cut / split-turn / tokens_before ─────────────────────────
+
+fn comp_make_msg(id: &str, role: &str, content: &str) -> SessionEntry {
+    use xylitol::infra::session::SessionEntry;
+    use xylitol::infra::session::{EntryBase, MessageEntry};
+    use xylitol::protocol::message::AgentMessage;
+    let message = match role {
+        "user" => serde_json::to_value(AgentMessage::user(content)).unwrap(),
+        "assistant" => serde_json::to_value(AgentMessage::assistant(content)).unwrap(),
+        "toolResult" => serde_json::to_value(AgentMessage::tool_result(
+            format!("call-{id}"),
+            "test_tool",
+            vec![xylitol::protocol::message::AgentPart::text(content)],
+            false,
+        ))
+        .unwrap(),
+        other => serde_json::json!({
+            "role": other,
+            "content": [{ "type": "text", "text": content }],
+            "timestamp": 0u64,
+        }),
+    };
+    SessionEntry::Message(MessageEntry {
+        base: EntryBase {
+            entry_type: "message".into(),
+            id: id.into(),
+            parent_id: None,
+            timestamp: "2024-01-01T00:00:00Z".into(),
+        },
+        message,
+    })
+}
+
+#[given("会话在 keep 预算内最近合法切点落在 assistant 消息")]
+pub(crate) fn g_comp_cut_assistant(agent: &AgentState) {
+    use xylitol::agent::compaction::find_cut_point;
+    let long = "x".repeat(400);
+    let entries = vec![
+        comp_make_msg("u0", "user", "old"),
+        comp_make_msg("a0", "assistant", "old resp"),
+        comp_make_msg("u1", "user", "big turn"),
+        comp_make_msg("a1", "assistant", &long),
+        comp_make_msg("tr1", "toolResult", "tool out"),
+        comp_make_msg("a2", "assistant", &long),
+    ];
+    let result = find_cut_point(&entries, 0, entries.len(), 80);
+    let role = match &entries[result.first_kept_entry_index] {
+        SessionEntry::Message(m) => m
+            .message
+            .get("role")
+            .and_then(|r| r.as_str())
+            .unwrap_or("?")
+            .to_string(),
+        _ => "?".into(),
+    };
+    agent.last_result.replace(Some(Ok(format!(
+        "role:{role} split:{} turn:{}",
+        result.is_split_turn, result.turn_start_index
+    ))));
+}
+
+#[then("切点落在该 assistant 且 is_split_turn 为 true 或 false 依是否 mid-turn 而定")]
+pub(crate) fn t_comp_cut_assistant_ok(agent: &AgentState) {
+    let s = result_ok_str(&agent.last_result);
+    assert!(s.contains("role:assistant"), "{s}");
+    assert!(s.contains("split:true"), "{s}");
+}
+
+#[given("会话含 toolResult 条目")]
+pub(crate) fn g_comp_never_tool(agent: &AgentState) {
+    use xylitol::agent::compaction::find_cut_point;
+    let long = "y".repeat(400);
+    let entries = vec![
+        comp_make_msg("u0", "user", "start"),
+        comp_make_msg("a0", "assistant", "call tools"),
+        comp_make_msg("tr0", "toolResult", &long),
+        comp_make_msg("a1", "assistant", &long),
+    ];
+    let result = find_cut_point(&entries, 0, entries.len(), 50);
+    let role = match &entries[result.first_kept_entry_index] {
+        SessionEntry::Message(m) => m
+            .message
+            .get("role")
+            .and_then(|r| r.as_str())
+            .unwrap_or("?")
+            .to_string(),
+        _ => "?".into(),
+    };
+    agent
+        .last_result
+        .replace(Some(Ok(format!("first_kept_role:{role}"))));
+}
+
+#[then("first_kept 永不落在 toolResult 索引")]
+pub(crate) fn t_comp_never_tool_ok(agent: &AgentState) {
+    let s = result_ok_str(&agent.last_result);
+    assert!(!s.contains("first_kept_role:toolResult"), "{s}");
+}
+
+#[given("keepRecent tokens 预算给定且存在多个合法切点")]
+pub(crate) fn g_comp_keep_budget(agent: &AgentState) {
+    use xylitol::agent::compaction::{estimate_tokens_entry, find_cut_point};
+    let mut entries = Vec::new();
+    for i in 0..20 {
+        entries.push(comp_make_msg(
+            &format!("u{i}"),
+            "user",
+            &format!("msg-{i}-{}", "z".repeat(40)),
+        ));
+        entries.push(comp_make_msg(
+            &format!("a{i}"),
+            "assistant",
+            &format!("resp-{i}-{}", "z".repeat(40)),
+        ));
+    }
+    let keep = 80u64;
+    let result = find_cut_point(&entries, 0, entries.len(), keep);
+    let kept: u64 = entries[result.first_kept_entry_index..]
+        .iter()
+        .map(estimate_tokens_entry)
+        .sum();
+    agent.last_result.replace(Some(Ok(format!(
+        "kept:{kept} keep:{keep} cut:{}",
+        result.first_kept_entry_index
+    ))));
+}
+
+#[then("保留侧上下文约等于 keepRecent 预算（最近合法切点）")]
+pub(crate) fn t_comp_keep_budget_ok(agent: &AgentState) {
+    let s = result_ok_str(&agent.last_result);
+    let kept: u64 = s
+        .split_whitespace()
+        .find_map(|p| p.strip_prefix("kept:").and_then(|n| n.parse().ok()))
+        .unwrap_or(0);
+    let keep: u64 = s
+        .split_whitespace()
+        .find_map(|p| p.strip_prefix("keep:").and_then(|n| n.parse().ok()))
+        .unwrap_or(1);
+    let cut: usize = s
+        .split_whitespace()
+        .find_map(|p| p.strip_prefix("cut:").and_then(|n| n.parse().ok()))
+        .unwrap_or(0);
+    assert!(cut > 0, "{s}");
+    assert!(kept >= keep.saturating_sub(keep / 2), "{s}");
+}
+
+#[given("find_cut_point 返回 is_split_turn=true 且 turn_start 与 first_kept 之间有可摘要内容")]
+pub(crate) async fn g_comp_split_dual(sess: &XySessionStore) {
+    sess.ensure_mgr();
+    let mgr = sess.mgr.borrow().as_ref().unwrap().clone();
+    let sid = "split-dual-bdd";
+    let _ = mgr.create(sid, Some("."), None).await;
+    let long = "x".repeat(400);
+    for (id, role, content) in [
+        ("u0", "user", "old".to_string()),
+        ("a0", "assistant", "old resp".to_string()),
+        ("u1", "user", "big turn".to_string()),
+        ("a1", "assistant", long.clone()),
+        ("tr1", "toolResult", "tool out".to_string()),
+        ("a2", "assistant", long),
+    ] {
+        let _ = mgr.append(sid, &comp_make_msg(id, role, &content)).await;
+    }
+    sess.current_id.replace(Some(sid.to_string()));
+}
+
+#[when("执行 split-turn compact_session")]
+pub(crate) async fn w_comp_session_split(agent: &AgentState, sess: &XySessionStore) {
+    use xylitol::agent::compaction::{CompactionSettings, compact_session};
+    use xylitol::infra::provider::{FakeProvider, ScenarioStep};
+    let sid = sess
+        .current_id
+        .borrow()
+        .clone()
+        .unwrap_or_else(|| "split-dual-bdd".into());
+    sess.ensure_mgr();
+    let mgr = sess.mgr.borrow().as_ref().unwrap().clone();
+    let model = FakeProvider::new(
+        "split-dual",
+        vec![
+            ScenarioStep::text("## Goal\nhistory-summary"),
+            ScenarioStep::text("## Original Request\nturn-prefix"),
+        ],
+    );
+    let settings = CompactionSettings {
+        enabled: true,
+        reserve_tokens: 1024,
+        keep_recent_tokens: 80,
+    };
+    let result = compact_session(&mgr, &sid, &model, &settings).await;
+    agent.last_result.replace(Some(
+        result
+            .map(|e| format!("summary:{}", e.summary))
+            .map_err(XyDriverError::from),
+    ));
+}
+
+#[then("CompactionEntry.summary 含 Turn Context (split turn) 合并标记且 turn-prefix 已被摘要")]
+pub(crate) fn t_comp_split_dual_ok(agent: &AgentState) {
+    let s = result_ok_str(&agent.last_result);
+    assert!(
+        s.contains("**Turn Context (split turn):**"),
+        "expected split merge marker, got {s}"
+    );
+}
+
+#[given("compact_session 完成")]
+pub(crate) async fn g_comp_tokens_before_done(agent: &AgentState, sess: &XySessionStore) {
+    use xylitol::agent::compaction::{
+        CompactionSettings, EstimateOpts, compact_session, estimate_from_session_entries,
+        estimate_tokens_entry,
+    };
+    sess.ensure_mgr();
+    let mgr = sess.mgr.borrow().as_ref().unwrap().clone();
+    let sid = "tokens-before-bdd";
+    let _ = mgr.create(sid, Some("."), None).await;
+    for i in 0..12 {
+        let role = if i % 2 == 0 { "user" } else { "assistant" };
+        let _ = mgr
+            .append(
+                sid,
+                &comp_make_msg(
+                    &format!("m{i}"),
+                    role,
+                    &format!("msg {i} {}", "z".repeat(80)),
+                ),
+            )
+            .await;
+    }
+    let model = xylitol::infra::provider::factory::build_provider(
+        &xylitol::protocol::model_config::XyModelConfig {
+            kind: xylitol::protocol::model_config::XyModelKind::Fake,
+            model: "fake".into(),
+            api_key: String::new(),
+            base_url: None,
+            api: None,
+        },
+    )
+    .expect("fake");
+    let settings = CompactionSettings {
+        enabled: true,
+        reserve_tokens: 1024,
+        keep_recent_tokens: 200,
+    };
+    let entry = compact_session(&mgr, sid, model.as_ref(), &settings)
+        .await
+        .expect("compact");
+    let loaded = mgr.load(sid).await.unwrap_or_default();
+    // Drop the compaction entry itself for apples-to-apples pre-compact estimate.
+    let before: Vec<_> = loaded
+        .into_iter()
+        .filter(|e| !matches!(e, SessionEntry::Compaction(_)))
+        .collect();
+    let shared = estimate_from_session_entries(&before, &EstimateOpts::default()).tokens;
+    let len4: u64 = before.iter().map(estimate_tokens_entry).sum();
+    agent.last_result.replace(Some(Ok(format!(
+        "tokensBefore:{} shared:{} len4:{}",
+        entry.tokens_before, shared, len4
+    ))));
+}
+
+#[when("读取 CompactionEntry.tokensBefore")]
+pub(crate) fn w_comp_read_tokens_before(_agent: &AgentState) {}
+
+#[then("该值来自压缩前会话上下文同源估计而非仅 boundary len/4 累加")]
+pub(crate) fn t_comp_tokens_before_ok(agent: &AgentState) {
+    let s = result_ok_str(&agent.last_result);
+    let tb: u64 = s
+        .split_whitespace()
+        .find_map(|p| p.strip_prefix("tokensBefore:").and_then(|n| n.parse().ok()))
+        .unwrap_or(0);
+    let shared: u64 = s
+        .split_whitespace()
+        .find_map(|p| p.strip_prefix("shared:").and_then(|n| n.parse().ok()))
+        .unwrap_or(0);
+    assert!(tb > 0, "{s}");
+    assert_eq!(
+        tb, shared,
+        "tokensBefore must match estimate_from_session_entries: {s}"
+    );
+}
+
 #[given("完成一次启发式降级估计")]
 pub(crate) fn g_comp_heuristic(agent: &AgentState) {
     agent.last_result.replace(Some(Ok("est:Heuristic".into())));
