@@ -170,27 +170,6 @@ pub struct SessionInfoEntry {
     pub name: Option<String>,
 }
 
-// ── Bash execution entry ─────────────────────────────────────────────
-
-/// Records a user-initiated bash execution (`!cmd` / `!!cmd`).
-///
-/// When `exclude_from_context` is true (`!!` prefix), the entry is stored
-/// on disk but omitted from the LLM context.
-#[derive(Debug, Clone, Serialize, Deserialize)]
-#[serde(rename_all = "camelCase")]
-pub struct BashExecutionEntry {
-    #[serde(flatten)]
-    pub base: EntryBase,
-    pub command: String,
-    pub output: String,
-    pub exit_code: Option<i32>,
-    pub cancelled: bool,
-    pub truncated: bool,
-    #[serde(skip_serializing_if = "Option::is_none")]
-    pub full_output_path: Option<String>,
-    pub exclude_from_context: bool,
-}
-
 // ── Session context (reconstructed LLM messages) ───────────────────
 
 /// Reconstructed session context from stored entries.
@@ -257,8 +236,6 @@ pub enum SessionEntry {
     Label(LabelEntry),
     #[serde(rename = "sessionInfo")]
     SessionInfo(SessionInfoEntry),
-    #[serde(rename = "bashExecution")]
-    BashExecution(BashExecutionEntry),
 }
 
 impl SessionEntry {
@@ -274,7 +251,6 @@ impl SessionEntry {
             SessionEntry::CustomMessage(e) => Some(&e.base),
             SessionEntry::Label(e) => Some(&e.base),
             SessionEntry::SessionInfo(e) => Some(&e.base),
-            SessionEntry::BashExecution(e) => Some(&e.base),
         }
     }
 
@@ -290,7 +266,6 @@ impl SessionEntry {
             SessionEntry::CustomMessage(_) => "customMessage",
             SessionEntry::Label(_) => "label",
             SessionEntry::SessionInfo(_) => "sessionInfo",
-            SessionEntry::BashExecution(_) => "bashExecution",
         }
     }
 
@@ -304,9 +279,9 @@ impl SessionEntry {
 
     /// Convert a persisted entry into an [`AgentMessage`] for context / ReAct seed.
     ///
-    /// Includes: Message (all roles), compaction / branch summaries as Env,
-    /// legacy top-level `BashExecution` lifted to Env bash. Honors
-    /// `exclude_from_context` (returns `None`). Non-context entry kinds → `None`.
+    /// Includes: Message (all roles including nested `bashExecution`), compaction /
+    /// branch summaries as Env. Honors `exclude_from_context` (returns `None`).
+    /// Non-context entry kinds → `None`. Top-level bash is not a legal SSOT type.
     pub fn as_agent_message(&self) -> Option<AgentMessage> {
         match self {
             SessionEntry::Message(msg) => {
@@ -322,13 +297,6 @@ impl SessionEntry {
                         None
                     }
                 }
-            }
-            SessionEntry::BashExecution(b) => {
-                // Legacy top-level bash → Env bash (c1210 read lift).
-                if b.exclude_from_context {
-                    return None;
-                }
-                Some(lift_bash_execution_entry(b))
             }
             SessionEntry::Compaction(c) => {
                 Some(AgentMessage::Env(EnvMessage::CompactionSummaryMessage {
@@ -371,17 +339,56 @@ fn agent_msg_excluded_from_context(msg: &AgentMessage) -> bool {
     )
 }
 
-/// Lift a legacy top-level [`BashExecutionEntry`] to Env bash [`AgentMessage`].
-pub fn lift_bash_execution_entry(b: &BashExecutionEntry) -> AgentMessage {
-    AgentMessage::Env(EnvMessage::BashExecutionMessage {
-        command: b.command.clone(),
-        output: b.output.clone(),
-        exit_code: b.exit_code,
-        cancelled: b.cancelled,
-        truncated: b.truncated,
-        full_output_path: b.full_output_path.clone(),
-        exclude_from_context: b.exclude_from_context,
-    })
+/// Parse session JSONL content: skip unparseable / non-SSOT lines with warn≤3 then `...`.
+///
+/// Requires a header with [`SESSION_VERSION`]; does not migrate older versions.
+pub fn parse_session_jsonl(content: &str) -> Result<Vec<SessionEntry>, String> {
+    let (entries, _) = parse_session_jsonl_lines(content);
+    enforce_session_version(&entries)?;
+    Ok(entries)
+}
+
+/// Line parse with skip/warn, without header-version enforcement (flush merge).
+pub fn parse_session_jsonl_lines(content: &str) -> (Vec<SessionEntry>, usize) {
+    let mut entries = Vec::new();
+    let mut warn_count = 0usize;
+    for line in content.lines() {
+        if line.trim().is_empty() {
+            continue;
+        }
+        match serde_json::from_str::<SessionEntry>(line) {
+            Ok(entry) => entries.push(entry),
+            Err(e) => emit_session_load_warn(
+                &mut warn_count,
+                &format!("skip session line: parse entry: {e}"),
+            ),
+        }
+    }
+    (entries, warn_count)
+}
+
+fn emit_session_load_warn(warn_count: &mut usize, msg: &str) {
+    *warn_count += 1;
+    if *warn_count <= 3 {
+        log::warn!(target: "xylitol::session", "{msg}");
+    } else if *warn_count == 4 {
+        log::warn!(target: "xylitol::session", "...");
+    }
+}
+
+/// Reject sessions whose header is missing or not the current [`SESSION_VERSION`].
+pub fn enforce_session_version(entries: &[SessionEntry]) -> Result<(), String> {
+    let version = entries.iter().find_map(|e| match e {
+        SessionEntry::Header(h) => Some(h.version),
+        _ => None,
+    });
+    match version {
+        Some(v) if v == SESSION_VERSION => Ok(()),
+        Some(v) => Err(format!(
+            "session header version {v} is not supported (require {SESSION_VERSION}); refusing legacy migrate"
+        )),
+        None => Err("session has no header entry".into()),
+    }
 }
 
 /// Build a nested bash `SessionEntry::Message` for new bang writes (c1210 / be4).
@@ -816,5 +823,42 @@ mod session_tree_tests {
         let travel = plan_message_history_travel(&entries, "u2").expect("travel");
         assert_eq!(travel.leaf_id.as_deref(), Some("u1"));
         assert_eq!(travel.editor_text.as_deref(), Some("child"));
+    }
+
+    #[test]
+    fn parse_session_jsonl_skips_legacy_bash_and_unknown_type() {
+        let content = format!(
+            "{}\n{}\n{}\n{}\n",
+            serde_json::json!({
+                "type": "session",
+                "version": SESSION_VERSION,
+                "id": "s1",
+                "timestamp": "t",
+                "cwd": "/tmp"
+            }),
+            serde_json::json!({
+                "type": "message",
+                "id": "m1",
+                "timestamp": "t",
+                "message": {
+                    "role": "user",
+                    "content": [{ "type": "text", "text": "ok" }]
+                }
+            }),
+            r#"{"type":"bash_execution","id":"b1","timestamp":"t","command":"ls","output":"","cancelled":false,"truncated":false,"excludeFromContext":false}"#,
+            r#"{"type":"unknownLegacy","id":"x1","timestamp":"t"}"#,
+        );
+        let entries = parse_session_jsonl(&content).expect("load");
+        assert_eq!(entries.len(), 2);
+        assert!(matches!(entries[0], SessionEntry::Header(_)));
+        assert!(matches!(entries[1], SessionEntry::Message(_)));
+    }
+
+    #[test]
+    fn parse_session_jsonl_rejects_non_current_header_version() {
+        let content = r#"{"type":"session","version":4,"id":"s1","timestamp":"t","cwd":"/tmp"}
+"#;
+        let err = parse_session_jsonl(content).unwrap_err();
+        assert!(err.contains("not supported"), "{err}");
     }
 }

@@ -81,21 +81,6 @@ pub fn session_entry_to_ui_entries(entry: &SessionEntry) -> Vec<UiEntry> {
             nested_bash_to_ui(&m.message)
         }
         SessionEntry::Message(m) => message_json_to_ui_entries(&m.base.id, &m.message),
-        SessionEntry::BashExecution(b) => {
-            let status = if b.cancelled {
-                BashBlockStatus::Cancelled
-            } else if b.exit_code.is_some_and(|c| c != 0) {
-                BashBlockStatus::Error
-            } else {
-                BashBlockStatus::Success
-            };
-            vec![UiEntry::Bash {
-                command: b.command.clone(),
-                status,
-                output: b.output.clone(),
-                exclude_from_context: b.exclude_from_context,
-            }]
-        }
         SessionEntry::Compaction(c) => vec![UiEntry::System {
             text: format!("[compaction] {}", c.summary),
         }],
