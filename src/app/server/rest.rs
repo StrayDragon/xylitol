@@ -411,15 +411,30 @@ async fn bash(
 async fn compact(
     Path(_session_id): Path<String>,
     State(state): State<Arc<AppState>>,
+    body: Option<axum::extract::Json<CompactBody>>,
 ) -> Json<Envelope<Value>> {
+    let instructions = body.and_then(|b| b.0.instructions);
     map_dispatch(
-        run_dispatch(&state, Command::Compact { id: None }).await,
+        run_dispatch(
+            &state,
+            Command::Compact {
+                id: None,
+                instructions,
+            },
+        )
+        .await,
         |o| match o {
             DispatchOutcome::Compacted(did) => Some(serde_json::json!({ "compacted": did })),
             _ => None,
         },
         |e| dispatch_err_as(e, ErrorCode::InternalError),
     )
+}
+
+#[derive(Deserialize, Default)]
+struct CompactBody {
+    #[serde(default)]
+    instructions: Option<String>,
 }
 
 #[derive(Deserialize)]

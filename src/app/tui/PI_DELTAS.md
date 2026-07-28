@@ -29,7 +29,7 @@
 | A02 | 同会话 fork 形态 | 树内 `/fork` 等可在同会话 MessageHistory 上开兄弟枝（再配合新会话文件语义）；slash `/fork` 开 **user 消息选择器** | 产品 **Shift+F / `/session-fork`** = `XyDriver::fork_session`（**新 child session** + switch）；同会话兄弟枝靠 **travel 改 leaf 后再发消息**（`parent_id`←当前 leaf）长出来。demo `agent_demo` 的同会话 Shift+F 是原型，**不是**产品默认语义。**不开** pi 式 user 选择器 | 是 |
 | A03 | Slash 命名 | 短名：`/tree` `/fork` `/export` `/import` `/compact` `/resume` `/quit` … | 选中迁移命令用 **`session-*` 前缀**（如 `/session-tree`）；**旧名无效**（unknown）。`/model` `/exit` 仍短名；`/exit` 仍认 `quit` | 是 |
 | A04 | `/session` 形态 | 无参 → scrollback **info/stats 转储**（非操作菜单） | 对齐 dump（c1015）；**不做**「SessionOperations 覆盖层 / 子命令板」 | 是 |
-| A05 | Compact 自定义指令 | `/compact <instructions>` 可传自定义压缩提示 | `Command::Compact` 无 instructions 字段 → **仅无参** `/session-compact`；带参 usage 错误 | 是 |
+| A05 | Compact 自定义指令 | `/compact <instructions>` 可传自定义压缩提示 | **已对齐（c1670）**：`/session-compact` 可选 instructions → `Command::Compact.instructions` → 摘要 prompt `Additional focus:`；短名 `/compact` 仍无效（A03）；auto 不传 | 否 |
 | A06 | Import 确认 UI | extension confirm 对话框 | editor 槽 **Yes/No SelectList**（不解冻 Trust Choice stub） | 是 |
 | A07 | Clone vs fork | `/clone` = leaf `fork(at)`；`/fork` = user 选择器 | `/session-clone` = leaf **恒 At** + switch；`/session-fork` 仍遵守 A02（user→Before / 非 user→At）。二者 MUST NOT 混用语义 | 是 |
 | A08 | Resume scope=All | 多 project 根目录 `listAll` 全局列举 | 单 `sessions_dir` 下全部 jsonl；scope=Current 按 header `cwd` 过滤 | 是 |
@@ -86,3 +86,4 @@
 | 2026-07-16 | A11：skills 发现路径子集 vs pi 多源；对齐 disable-model-invocation / 碰撞 / available_skills 引导文 |
 | 2026-07-16 | A11：默认发现 `.agents/skills`（user+project）；优先级 `.xylitol` > `.agents`，project > user |
 | 2026-07-16 | A10 澄清：c1135 loaded-resources = 目录可见性，≠ 调用刷屏 / 不替代注入验收 |
+| 2026-07-28 | c1670：撤销 A05；`/session-compact` 可选 instructions → `Additional focus:`；auto 不传 |

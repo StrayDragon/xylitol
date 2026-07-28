@@ -17,8 +17,10 @@ pub enum PendingSlash {
     OpenTree,
     /// `/session-fork` — fork at current leaf (c700 / c1005).
     ForkAtLeaf,
-    /// Bare `/session-compact` (c1010).
-    Compact,
+    /// `/session-compact` with optional focus instructions (c1670).
+    Compact {
+        instructions: Option<String>,
+    },
     /// `/session-export` with optional path (c1010).
     Export {
         path: Option<String>,
@@ -75,7 +77,7 @@ pub fn busy_slash_policy(slash: &PendingSlash) -> BusySlashPolicy {
         | PendingSlash::SessionDump
         | PendingSlash::Export { .. }
         | PendingSlash::Exit
-        | PendingSlash::Compact => BusySlashPolicy::Allow,
+        | PendingSlash::Compact { .. } => BusySlashPolicy::Allow,
         PendingSlash::Reload
         | PendingSlash::Trust { .. }
         | PendingSlash::Theme { .. }
@@ -109,7 +111,7 @@ pub fn busy_slash_refuse_label(slash: &PendingSlash) -> &'static str {
         // Allow variants are not refuse-noted; keep arms for exhaustiveness.
         PendingSlash::Exit => "/exit",
         PendingSlash::SetModel(_) => "/model",
-        PendingSlash::Compact => "/session-compact",
+        PendingSlash::Compact { .. } => "/session-compact",
         PendingSlash::Export { .. } => "/session-export",
         PendingSlash::SessionDump => "/session",
         PendingSlash::SessionName { .. } => "/session-name",
@@ -190,10 +192,10 @@ pub fn parse_slash_command(text: &str) -> Option<PendingSlash> {
         ("model", Some(id)) => Some(PendingSlash::SetModel(id)),
         ("session-tree", None) => Some(PendingSlash::OpenTree),
         ("session-fork", None) => Some(PendingSlash::ForkAtLeaf),
-        ("session-compact", None) => Some(PendingSlash::Compact),
-        ("session-compact", Some(_)) => Some(PendingSlash::Usage(
-            "usage: /session-compact (no arguments; custom instructions not supported)",
-        )),
+        ("session-compact", None) => Some(PendingSlash::Compact { instructions: None }),
+        ("session-compact", Some(text)) => Some(PendingSlash::Compact {
+            instructions: Some(text),
+        }),
         ("session-export", path) => Some(PendingSlash::Export { path }),
         ("session-import", None) => Some(PendingSlash::Usage("usage: /session-import <path>")),
         ("session-import", Some(path)) => Some(PendingSlash::Import { path }),
@@ -344,7 +346,7 @@ mod parse_tests {
             BusySlashPolicy::Allow
         );
         assert_eq!(
-            busy_slash_policy(&PendingSlash::Compact),
+            busy_slash_policy(&PendingSlash::Compact { instructions: None }),
             BusySlashPolicy::Allow
         );
         assert_eq!(

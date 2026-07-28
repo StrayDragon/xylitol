@@ -105,11 +105,15 @@ pub fn prepare_compaction(
 }
 
 /// Compact a session by summarizing old entries and writing a CompactionEntry.
+///
+/// `custom_instructions` is only for the force/manual path (pi `customInstructions`);
+/// auto callers MUST pass `None`.
 pub async fn compact_session(
     store: &dyn XySessionStore,
     session_id: &str,
     model: &dyn XyModel,
     settings: &CompactionSettings,
+    custom_instructions: Option<&str>,
 ) -> Result<CompactionEntry, String> {
     if !settings.enabled {
         return Err("compaction disabled".to_string());
@@ -202,6 +206,7 @@ pub async fn compact_session(
                 model,
                 settings.reserve_tokens,
                 previous_summary,
+                custom_instructions,
             )
             .await
             {
@@ -235,6 +240,7 @@ pub async fn compact_session(
             model,
             settings.reserve_tokens,
             previous_summary,
+            custom_instructions,
         )
         .await
         {
@@ -797,7 +803,7 @@ mod tests {
             reserve_tokens: 1024,
             keep_recent_tokens: 80,
         };
-        let entry = compact_session(&mgr, sid, &model, &settings)
+        let entry = compact_session(&mgr, sid, &model, &settings, None)
             .await
             .expect("compact");
         assert!(

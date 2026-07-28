@@ -217,7 +217,7 @@ impl<T: Terminal> HostSession<T> {
                 | PendingSlash::DebugScene(_)
                 | PendingSlash::OpenTree
                 | PendingSlash::ForkAtLeaf
-                | PendingSlash::Compact
+                | PendingSlash::Compact { .. }
                 | PendingSlash::Export { .. }
                 | PendingSlash::Import { .. }
                 | PendingSlash::SessionDump

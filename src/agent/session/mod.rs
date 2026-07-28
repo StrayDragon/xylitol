@@ -887,8 +887,8 @@ impl AgentCapabilities {
         Ok(compacted)
     }
 
-    /// Manual force compact (pi `compact()`). Does not apply the reserve gate.
-    pub async fn force_compact(&self) -> Result<(), String> {
+    /// Manual force compact (pi `compact(customInstructions?)`). Does not apply the reserve gate.
+    pub async fn force_compact(&self, instructions: Option<String>) -> Result<(), String> {
         let sid = self
             .session_id()
             .ok_or_else(|| "no active session".to_string())?;
@@ -903,7 +903,13 @@ impl AgentCapabilities {
         }
 
         self.compaction_orchestrator
-            .compact(self.store.as_ref(), sid, model.as_ref(), self.sink.as_ref())
+            .compact(
+                self.store.as_ref(),
+                sid,
+                model.as_ref(),
+                self.sink.as_ref(),
+                instructions,
+            )
             .await?;
 
         if let Some(bus) = &self.hook_bus {
