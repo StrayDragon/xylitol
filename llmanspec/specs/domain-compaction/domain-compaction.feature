@@ -94,6 +94,36 @@
     当 调用 find_cut_point
     那么 切点索引大致保留最后 20000 tokens 上下文
 
+  @req:c8
+  场景: cut-assistant
+    假如 会话在 keep 预算内最近合法切点落在 assistant 消息
+    当 调用 find_cut_point
+    那么 切点落在该 assistant 且 is_split_turn 为 true 或 false 依是否 mid-turn 而定
+
+  @req:c8
+  场景: never-tool-result
+    假如 会话含 toolResult 条目
+    当 调用 find_cut_point
+    那么 first_kept 永不落在 toolResult 索引
+
+  @req:c8
+  场景: keep-budget
+    假如 keepRecent tokens 预算给定且存在多个合法切点
+    当 调用 find_cut_point
+    那么 保留侧上下文约等于 keepRecent 预算（最近合法切点）
+
+  @req:c19
+  场景: split-dual-summary
+    假如 find_cut_point 返回 is_split_turn=true 且 turn_start 与 first_kept 之间有可摘要内容
+    当 调用 compact_session
+    那么 CompactionEntry.summary 含 Turn Context (split turn) 合并标记且 turn-prefix 已被摘要
+
+  @req:c20
+  场景: tokens-before
+    假如 compact_session 完成
+    当 读取 CompactionEntry.tokensBefore
+    那么 该值来自压缩前会话上下文同源估计而非仅 boundary len/4 累加
+
   @req:c9
   场景: iterative
     假如 先前 CompactionEntry 含 summary，新消息已累积
