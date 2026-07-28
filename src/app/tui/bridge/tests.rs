@@ -565,6 +565,9 @@ fn compaction_end_restores_working() {
         &XyEvent::CompactionEnd {
             result: Some("ok".into()),
             aborted: false,
+            reason: "manual".into(),
+            will_retry: false,
+            error_message: None,
         },
     );
     assert_eq!(model.status.as_deref(), Some("Working"));
@@ -591,6 +594,9 @@ fn compaction_end_aborted_restores_working() {
         &XyEvent::CompactionEnd {
             result: None,
             aborted: true,
+            reason: "manual".into(),
+            will_retry: false,
+            error_message: None,
         },
     );
     assert_eq!(model.status.as_deref(), Some("Working"));

@@ -22,8 +22,11 @@ static NON_RETRYABLE_RE: LazyLock<Regex> = LazyLock::new(|| {
 });
 
 /// Check if an error message indicates a retryable transient error.
-/// Returns false for context overflow (handled by compaction).
+/// Returns false for context overflow (handled by compaction Case1).
 pub(crate) fn is_retryable_error(error_msg: &str) -> bool {
+    if crate::agent::compaction::error_message_is_context_overflow(error_msg) {
+        return false;
+    }
     if NON_RETRYABLE_RE.is_match(error_msg) {
         return false;
     }
@@ -113,10 +116,14 @@ mod tests {
 
     #[test]
     fn test_context_overflow_not_retryable() {
-        // Context overflow is handled by compaction, not retry
-        // The exact string varies by provider; this is not in retryable patterns
         assert!(!is_retryable_error(
             "Input length too long: exceeds 200000 token limit"
+        ));
+        assert!(!is_retryable_error(
+            "prompt is too long: 213462 tokens > 200000 maximum"
+        ));
+        assert!(!is_retryable_error(
+            "Your input exceeds the context window of this model"
         ));
     }
 

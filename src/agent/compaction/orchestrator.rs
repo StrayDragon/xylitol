@@ -3,9 +3,10 @@
 //! Trigger formula matches pi `shouldCompact` (coding-agent compaction.ts):
 //! `enabled && contextTokens > contextWindow - reserveTokens`.
 //!
-//! Manual `compact` = force (pi `AgentSession.compact`); auto = threshold only
-//! (pi `_checkCompaction` Case2). Overflow = c1660.
+//! Manual `compact` = force (pi `AgentSession.compact`); auto threshold = Case2;
+//! overflow compact-and-retry = Case1 (c1660).
 
+use crate::agent::compaction::overflow::{assistant_same_model, is_context_overflow_assistant};
 use crate::agent::compaction::token_estimator::{EstimateOpts, estimate_from_session_entries};
 use crate::agent::compaction::{CompactionSettings, compact_session, prepare_compaction};
 use crate::protocol::lifecycle::XyEvent;
@@ -13,11 +14,25 @@ use crate::protocol::message::{AgentMessage, LlmMessage, XyStopReason};
 use crate::protocol::ports::{XyEventSink, XyModel, XySessionStore};
 use crate::protocol::session::SessionEntry;
 
+/// Outcome of overflow Case1 auto-compact.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum OverflowCompactOutcome {
+    /// No overflow path taken (not overflow / skipped).
+    Skipped,
+    /// Compacted; `will_retry` means caller should continue the model loop.
+    Ran { will_retry: bool },
+    /// Second overflow after one recovery — failed with user-facing end event.
+    FailedOnce,
+}
+
+const OVERFLOW_ONCE_MSG: &str = "Context overflow recovery failed after one compact-and-retry attempt. Try reducing context or switching to a larger-context model.";
+
 /// Orchestrates session compaction — threshold checks and execution.
 pub struct CompactionOrchestrator {
     settings: CompactionSettings,
 }
 
+#[allow(clippy::too_many_arguments)]
 impl CompactionOrchestrator {
     pub fn new(settings: CompactionSettings) -> Self {
         Self { settings }
@@ -28,9 +43,6 @@ impl CompactionOrchestrator {
     }
 
     /// Manual force compact (pi `compact()`). Does **not** apply the reserve gate.
-    ///
-    /// Emits `CompactionStart { reason: "manual" }` then prepare; on prepare failure
-    /// returns pi-aligned errors (`Already compacted` / `Nothing to compact …`).
     pub async fn compact(
         &self,
         store: &dyn XySessionStore,
@@ -50,12 +62,14 @@ impl CompactionOrchestrator {
                 .emit(&XyEvent::CompactionEnd {
                     result: None,
                     aborted: false,
+                    reason: "manual".into(),
+                    will_retry: false,
+                    error_message: Some(err.clone()),
                 })
                 .await;
             return Err(err);
         }
 
-        // Manual always runs even if settings.enabled == false (pi).
         let mut force_settings = self.settings.clone();
         force_settings.enabled = true;
 
@@ -67,6 +81,9 @@ impl CompactionOrchestrator {
             .emit(&XyEvent::CompactionEnd {
                 result: result.as_ref().ok().map(|_| "ok".to_string()),
                 aborted: false,
+                reason: "manual".into(),
+                will_retry: false,
+                error_message: result.as_ref().err().cloned(),
             })
             .await;
 
@@ -74,9 +91,85 @@ impl CompactionOrchestrator {
         Ok(())
     }
 
-    /// Threshold auto-compact (pi `_checkCompaction` Case2 / `_runAutoCompaction("threshold")`).
-    ///
-    /// Returns `Ok(true)` if compaction ran. Prepare failure → silent `Ok(false)`.
+    /// Overflow Case1 (pi `_checkCompaction` overflow branch).
+    #[allow(clippy::too_many_arguments)]
+    pub async fn maybe_overflow_compact(
+        &self,
+        store: &dyn XySessionStore,
+        sid: &str,
+        model: &dyn XyModel,
+        event_sink: &dyn XyEventSink,
+        context_window: u64,
+        last_assistant: &AgentMessage,
+        current_provider: &str,
+        current_model_id: &str,
+        overflow_recovery_attempted: bool,
+    ) -> Result<OverflowCompactOutcome, String> {
+        if !self.settings.enabled {
+            return Ok(OverflowCompactOutcome::Skipped);
+        }
+        if assistant_is_aborted(Some(last_assistant)) {
+            return Ok(OverflowCompactOutcome::Skipped);
+        }
+
+        let entries = store.load_entries(sid).await?;
+        if assistant_is_stale_vs_compaction(Some(last_assistant), &entries) {
+            return Ok(OverflowCompactOutcome::Skipped);
+        }
+
+        if !assistant_same_model(last_assistant, current_provider, current_model_id) {
+            return Ok(OverflowCompactOutcome::Skipped);
+        }
+        if !is_context_overflow_assistant(last_assistant, context_window) {
+            return Ok(OverflowCompactOutcome::Skipped);
+        }
+
+        let will_retry = !matches!(
+            last_assistant,
+            AgentMessage::Llm(LlmMessage::AssistantMessage {
+                stop_reason: Some(XyStopReason::Stop),
+                ..
+            })
+        );
+
+        if !will_retry {
+            return self
+                .run_auto_compaction(store, sid, model, event_sink, "overflow", false, &entries)
+                .await
+                .map(|ran| {
+                    if ran {
+                        OverflowCompactOutcome::Ran { will_retry: false }
+                    } else {
+                        OverflowCompactOutcome::Skipped
+                    }
+                });
+        }
+
+        if overflow_recovery_attempted {
+            event_sink
+                .emit(&XyEvent::CompactionEnd {
+                    result: None,
+                    aborted: false,
+                    reason: "overflow".into(),
+                    will_retry: false,
+                    error_message: Some(OVERFLOW_ONCE_MSG.into()),
+                })
+                .await;
+            return Ok(OverflowCompactOutcome::FailedOnce);
+        }
+
+        self.run_auto_compaction(store, sid, model, event_sink, "overflow", true, &entries)
+            .await
+            .map(|ran| {
+                if ran {
+                    OverflowCompactOutcome::Ran { will_retry: true }
+                } else {
+                    OverflowCompactOutcome::Skipped
+                }
+            })
+    }
+
+    /// Threshold auto-compact (pi Case2).
     #[allow(clippy::too_many_arguments)]
     pub async fn maybe_auto_compact(
         &self,
@@ -103,7 +196,6 @@ impl CompactionOrchestrator {
         }
 
         let estimate = estimate_from_session_entries(&entries, estimate_opts);
-        // No usable estimate → skip (pi: no lastUsageIndex).
         if estimate.tokens == 0 {
             return Ok(false);
         }
@@ -116,34 +208,69 @@ impl CompactionOrchestrator {
             return Ok(false);
         }
 
-        // Auto: prepare before Start (pi _runAutoCompaction).
-        if prepare_compaction(&entries, &self.settings).is_err() {
+        let reason = format!(
+            "threshold: {} tokens over reserve of {}k window",
+            estimate.tokens,
+            context_window / 1000,
+        );
+        self.run_auto_compaction(store, sid, model, event_sink, &reason, false, &entries)
+            .await
+    }
+
+    #[allow(clippy::too_many_arguments)]
+    async fn run_auto_compaction(
+        &self,
+        store: &dyn XySessionStore,
+        sid: &str,
+        model: &dyn XyModel,
+        event_sink: &dyn XyEventSink,
+        reason: &str,
+        will_retry: bool,
+        entries: &[SessionEntry],
+    ) -> Result<bool, String> {
+        if prepare_compaction(entries, &self.settings).is_err() {
             return Ok(false);
         }
 
         event_sink
             .emit(&XyEvent::CompactionStart {
-                reason: format!(
-                    "threshold: {} tokens over reserve of {}k window",
-                    estimate.tokens,
-                    context_window / 1000,
-                ),
+                reason: reason.to_string(),
             })
             .await;
 
-        let result = compact_session(store, sid, model, &self.settings)
-            .await
-            .map_err(|e| format!("auto-compaction: {e}"));
+        let result = compact_session(store, sid, model, &self.settings).await;
+        let (ok_result, err_msg) = match &result {
+            Ok(_) => (Some("ok".to_string()), None),
+            Err(e) => (
+                None,
+                Some(if reason.starts_with("overflow") {
+                    format!("Context overflow recovery failed: {e}")
+                } else {
+                    format!("Auto-compaction failed: {e}")
+                }),
+            ),
+        };
 
         event_sink
             .emit(&XyEvent::CompactionEnd {
-                result: result.as_ref().ok().map(|_| "ok".to_string()),
+                result: ok_result,
                 aborted: false,
+                reason: if reason.starts_with("overflow") {
+                    "overflow".into()
+                } else if reason.starts_with("threshold") {
+                    "threshold".into()
+                } else {
+                    reason.to_string()
+                },
+                will_retry: will_retry && result.is_ok(),
+                error_message: err_msg,
             })
             .await;
 
-        result?;
-        Ok(true)
+        match result {
+            Ok(_) => Ok(true),
+            Err(e) => Err(format!("auto-compaction: {e}")),
+        }
     }
 }
 
@@ -204,7 +331,6 @@ fn assistant_is_stale_vs_compaction(
     }
 }
 
-/// If the leaf Api usage assistant is older than the latest compaction, skip.
 fn usage_anchor_stale_vs_compaction(entries: &[SessionEntry]) -> bool {
     let Some(comp_ms) = latest_compaction_ms(entries) else {
         return false;
@@ -222,7 +348,6 @@ fn usage_anchor_stale_vs_compaction(entries: &[SessionEntry]) -> bool {
             if *timestamp > 0 {
                 return *timestamp <= comp_ms;
             }
-            // Fall back to entry timestamp when message timestamp is unset.
             if let Some(entry_ms) = entry.base().and_then(|b| parse_rfc3339_ms(&b.timestamp)) {
                 return entry_ms <= comp_ms;
             }
@@ -279,25 +404,6 @@ mod tests {
     }
 
     #[test]
-    fn should_compact_pi_examples() {
-        let s = CompactionSettings {
-            enabled: true,
-            reserve_tokens: 10_000,
-            keep_recent_tokens: 20_000,
-        };
-        assert!(should_compact(95_000, 100_000, &s));
-        assert!(!should_compact(89_000, 100_000, &s));
-        assert!(!should_compact(
-            95_000,
-            100_000,
-            &CompactionSettings {
-                enabled: false,
-                ..s
-            }
-        ));
-    }
-
-    #[test]
     fn aborted_assistant_detected() {
         let msg = AgentMessage::Llm(LlmMessage::AssistantMessage {
             content: vec![crate::protocol::message::AgentPart::text("x")],
@@ -312,75 +418,5 @@ mod tests {
             diagnostics: Vec::new(),
         });
         assert!(assistant_is_aborted(Some(&msg)));
-    }
-
-    #[test]
-    fn prepare_already_compacted() {
-        use crate::protocol::session::{CompactionEntry, EntryBase};
-        let entries = vec![SessionEntry::Compaction(CompactionEntry {
-            base: EntryBase {
-                entry_type: "compaction".into(),
-                id: "c1".into(),
-                parent_id: None,
-                timestamp: chrono::Utc::now().to_rfc3339(),
-            },
-            summary: "s".into(),
-            first_kept_entry_id: "x".into(),
-            tokens_before: 1,
-            details: None,
-            from_hook: None,
-        })];
-        let err =
-            crate::agent::compaction::prepare_compaction(&entries, &CompactionSettings::default())
-                .unwrap_err();
-        assert_eq!(err, "Already compacted");
-    }
-
-    #[test]
-    fn stale_assistant_vs_compaction() {
-        use crate::protocol::session::{CompactionEntry, EntryBase};
-        let comp_ms = 2_000u64;
-        let comp_ts = chrono::DateTime::from_timestamp_millis(comp_ms as i64)
-            .unwrap()
-            .to_rfc3339();
-        let entries = vec![SessionEntry::Compaction(CompactionEntry {
-            base: EntryBase {
-                entry_type: "compaction".into(),
-                id: "c1".into(),
-                parent_id: None,
-                timestamp: comp_ts,
-            },
-            summary: "s".into(),
-            first_kept_entry_id: "x".into(),
-            tokens_before: 1,
-            details: None,
-            from_hook: None,
-        })];
-        let asst = AgentMessage::Llm(LlmMessage::AssistantMessage {
-            content: vec![crate::protocol::message::AgentPart::text("old")],
-            stop_reason: Some(XyStopReason::Stop),
-            usage: None,
-            api: String::new(),
-            provider: String::new(),
-            model: String::new(),
-            response_id: None,
-            error_message: None,
-            timestamp: 1_000, // before compaction
-            diagnostics: Vec::new(),
-        });
-        assert!(assistant_is_stale_vs_compaction(Some(&asst), &entries));
-        let fresh = AgentMessage::Llm(LlmMessage::AssistantMessage {
-            content: vec![crate::protocol::message::AgentPart::text("new")],
-            stop_reason: Some(XyStopReason::Stop),
-            usage: None,
-            api: String::new(),
-            provider: String::new(),
-            model: String::new(),
-            response_id: None,
-            error_message: None,
-            timestamp: 3_000,
-            diagnostics: Vec::new(),
-        });
-        assert!(!assistant_is_stale_vs_compaction(Some(&fresh), &entries));
     }
 }

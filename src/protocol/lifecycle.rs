@@ -91,6 +91,13 @@ pub enum XyEvent {
         result: Option<String>,
         #[serde(default)]
         aborted: bool,
+        /// `manual` | `threshold` | `overflow` (empty when legacy emitters omit).
+        #[serde(default)]
+        reason: String,
+        #[serde(default)]
+        will_retry: bool,
+        #[serde(default, skip_serializing_if = "Option::is_none")]
+        error_message: Option<String>,
     },
 
     // ── Model and settings ───────────────────────────────────────
