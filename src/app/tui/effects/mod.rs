@@ -114,19 +114,7 @@ pub async fn drain_pending<T: Terminal>(
     driver: &mut dyn XyDriver,
     agent_stream: &mut Option<EventStream>,
 ) -> Result<(), XyDriverError> {
-    if session.take_pending_footer_token_refresh() {
-        // Tests: await so ScriptedDriver estimate_override still applies.
-        // Production: kick background job — never block input on HF encode.
-        #[cfg(test)]
-        {
-            refresh_footer_tokens(session, driver).await;
-            let _ = session.render_now();
-        }
-        #[cfg(not(test))]
-        {
-            kick_footer_token_refresh(session, driver).await;
-        }
-    }
+    drain_footer_token_if_pending(session, driver).await;
     if session.take_abort() {
         log::info!(target: "xylitol::tui", "XyDriver::abort (Esc)");
         driver.abort();
@@ -172,6 +160,9 @@ pub async fn drain_pending<T: Terminal>(
     // abort concurrently (c665). Callers MUST `take_bash` after drain_pending.
 
     pending_ui::drain_pending_ui(session, driver).await;
+    // Session switch/resume/import apply mid-drain and arm footer refresh; pick it
+    // up in the same cycle (flag is only checked once at the top otherwise).
+    drain_footer_token_if_pending(session, driver).await;
 
     if agent_stream.is_none()
         && let Some(prompt) = session.take_submit()
@@ -186,4 +177,24 @@ pub async fn drain_pending<T: Terminal>(
     let _ = session.render_now();
 
     Ok(())
+}
+
+async fn drain_footer_token_if_pending<T: Terminal>(
+    session: &mut HostSession<T>,
+    driver: &dyn XyDriver,
+) {
+    if !session.take_pending_footer_token_refresh() {
+        return;
+    }
+    // Tests: await so ScriptedDriver estimate_override still applies.
+    // Production: kick background job — never block input on HF encode.
+    #[cfg(test)]
+    {
+        refresh_footer_tokens(session, driver).await;
+        let _ = session.render_now();
+    }
+    #[cfg(not(test))]
+    {
+        kick_footer_token_refresh(session, driver).await;
+    }
 }
