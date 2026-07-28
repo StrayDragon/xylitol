@@ -185,6 +185,8 @@ pub struct ResolvedAssembly {
     pub default_thinking_level: Option<String>,
     /// `AppConfig.tool_batch.mode` (c1545).
     pub batch_mode: crate::protocol::ports::XyBatchMode,
+    /// `AppConfig.session.max_turns` when set (c1620).
+    pub max_turns: Option<u32>,
 }
 
 impl ResolvedAssembly {
@@ -547,6 +549,11 @@ pub fn resolve_assembly(input: &BootstrapInput) -> Result<ResolvedAssembly, Boot
         .map(|c| crate::protocol::ports::XyBatchMode::from(c.tool_batch.mode))
         .unwrap_or_default();
 
+    let max_turns = app_config
+        .as_ref()
+        .and_then(|c| c.session.as_ref())
+        .and_then(|s| s.max_turns);
+
     Ok(ResolvedAssembly {
         model_registry,
         system_prompt,
@@ -567,6 +574,7 @@ pub fn resolve_assembly(input: &BootstrapInput) -> Result<ResolvedAssembly, Boot
         hooks_config,
         default_thinking_level,
         batch_mode,
+        max_turns,
     })
 }
 
@@ -582,6 +590,7 @@ pub fn bootstrap(input: BootstrapInput) -> Result<BootstrappedAgent, BootstrapEr
     let session_id = assembly.session_id.clone();
     let mcp_servers = assembly.mcp_servers.clone();
     let default_thinking_level = assembly.default_thinking_level.clone();
+    let max_turns = assembly.max_turns;
     let target_model = model.or_else(|| assembly.default_profile_model.clone());
     let mut warnings = std::mem::take(&mut assembly.warnings);
 
@@ -590,6 +599,10 @@ pub fn bootstrap(input: BootstrapInput) -> Result<BootstrappedAgent, BootstrapEr
     agent
         .inner_mut()
         .register_prompt_commands(&discovered_templates);
+
+    if let Some(n) = max_turns.filter(|&n| n >= 1) {
+        agent.set_should_stop_after_turn(Some(crate::agent::max_turns_stop_hook(n)));
+    }
 
     timing::time("session.create");
 
@@ -1109,5 +1122,108 @@ mod tests {
         let sp = driver.system_prompt_for_test().unwrap_or_default();
         assert!(sp.contains("user-global"));
         assert!(!sp.contains("project-only"));
+    }
+
+    #[test]
+    #[serial_test::serial(bootstrap_cwd)]
+    fn trust_override_loads_or_skips_project_xylitol_skills() {
+        let home = tempfile::tempdir().unwrap();
+        let project = home.path().join("proj");
+        std::fs::create_dir_all(&project).unwrap();
+        write_skill(&project, "c1620-proj-skill");
+        let global = home.path().join(".config").join("xylitol");
+        std::fs::create_dir_all(&global).unwrap();
+
+        let _home = EnvGuard::set("HOME", home.path().to_str().unwrap());
+        let _proj = EnvGuard::set("XYLITOL_PROJECT_DIR", project.to_str().unwrap());
+        let _cfg = EnvGuard::set("XYLITOL_CONFIG_DIR", global.to_str().unwrap());
+        let _key = EnvGuard::set("OPENAI_API_KEY", "sk-test");
+        let prev_cwd = std::env::current_dir().unwrap();
+        std::env::set_current_dir(&project).unwrap();
+        struct CwdRestore(std::path::PathBuf);
+        impl Drop for CwdRestore {
+            fn drop(&mut self) {
+                let _ = std::env::set_current_dir(&self.0);
+            }
+        }
+        let _cwd = CwdRestore(prev_cwd);
+
+        let trusted = resolve_assembly(&BootstrapInput {
+            config_path: None,
+            session: None,
+            model: None,
+            trust_override: Some(true),
+            interactive: false,
+            caller: "test",
+        })
+        .expect("trusted assembly");
+        assert!(
+            trusted.skills.iter().any(|s| s.name == "c1620-proj-skill"),
+            " --trust must discover .xylitol/skills; got {:?}",
+            trusted.skills.iter().map(|s| &s.name).collect::<Vec<_>>()
+        );
+
+        let denied = resolve_assembly(&BootstrapInput {
+            config_path: None,
+            session: None,
+            model: None,
+            trust_override: Some(false),
+            interactive: false,
+            caller: "test",
+        })
+        .expect("untrusted assembly");
+        assert!(
+            denied
+                .warnings
+                .iter()
+                .any(|w| matches!(w, BootstrapWarning::ProjectNotTrusted { .. })),
+            " --no-trust must warn ProjectNotTrusted; got {:?}",
+            denied.warnings
+        );
+        assert!(
+            !denied.skills.iter().any(|s| s.name == "c1620-proj-skill"),
+            "--no-trust must skip project .xylitol skills"
+        );
+    }
+
+    #[test]
+    fn resolve_assembly_reads_session_max_turns() {
+        let home = tempfile::tempdir().unwrap();
+        let project = home.path().join("proj");
+        let proj_xy = project.join(".xylitol");
+        std::fs::create_dir_all(&proj_xy).unwrap();
+        let global = home.path().join(".config").join("xylitol");
+        std::fs::create_dir_all(&global).unwrap();
+
+        let _home = EnvGuard::set("HOME", home.path().to_str().unwrap());
+        let _proj = EnvGuard::set("XYLITOL_PROJECT_DIR", project.to_str().unwrap());
+        let _cfg = EnvGuard::set("XYLITOL_CONFIG_DIR", global.to_str().unwrap());
+        let _key = EnvGuard::set("OPENAI_API_KEY", "sk-test");
+
+        std::fs::write(
+            proj_xy.join("config.yaml"),
+            r#"models:
+  default_model: m1
+  models:
+    m1:
+      provider: openai
+      model: m
+session:
+  storage: {}
+  max_turns: 7
+"#,
+        )
+        .unwrap();
+
+        let assembly = resolve_assembly(&BootstrapInput {
+            config_path: None,
+            session: None,
+            model: None,
+            trust_override: Some(true),
+            interactive: false,
+            caller: "test",
+        })
+        .expect("assembly");
+        assert_eq!(assembly.max_turns, Some(7));
     }
 }

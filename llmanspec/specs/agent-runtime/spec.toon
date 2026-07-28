@@ -2,8 +2,8 @@ kind: llman.sdd.spec
 name: "agent-runtime"
 purpose: "薄编排 ReAct 运行时：AgentRuntime 循环、工具批执行、steer/follow-up 队列、abort 与 XyEvent 流（不含 adk / OutputGuard）。"
 valid_scope[3]: src/agent/,src/protocol/,tests/
-requirements[30]{req_id,title,statement}:
-  ar1,"thin-react-loop","agent/ 层 MUST 以 AgentRuntime（runtime/react.rs）驱动 ReAct：调用 XyModel、执行工具、直至无 tool_calls、abort、或可选 should_stop_after_turn 请求停；MUST NOT 以 max_iterations 或等价硬步数闸结束 run；MUST NOT 在循环文件内联 bash 实现或厂商 HTTP。"
+requirements[31]{req_id,title,statement}:
+  ar1,"thin-react-loop","agent/ 层 MUST 以 AgentRuntime（runtime/react.rs）驱动 ReAct：调用 XyModel、执行工具、直至无 tool_calls、abort、或可选 should_stop_after_turn 请求停；MUST NOT 以产品默认 max_iterations 或未配置的硬步数闸结束 run；可选 session.max_turns（见 ar30）MUST 仅通过 should_stop_after_turn 生效。MUST NOT 在循环文件内联 bash 实现或厂商 HTTP。"
   ar2,"xy-event-stream",运行时 MUST 以 XyEvent 异步流对外输出（TextDelta / ThinkingDelta / Tool* / Turn* / QueueUpdate / Error 等）；MUST NOT 再引入 AgentEvent 或 adk 事件类型。
   ar3,工具批后继续,"同一模型响应中的全部工具调用 MUST 在下一轮模型调用前执行完毕（可并行或串行）；MUST NOT 因流结束 Done 而提前结束含 tool_calls 的回合。该行为 MUST 有可执行 BDD 场景（live `.feature`，`@req`）。"
   ar21,"tool-intent-before-execution","ReAct 消费 XyChunk::ToolCallStart/Delta/End 时：流式阶段 MUST 经 MessageUpdate（message 含渐进 ToolCall 部分）暴露工具意图；MUST NOT 在流未结束（MessageEnd 前）发射 ToolExecutionStart 或执行工具副作用。ToolExecutionStart/Update/End MUST 仅在 MessageEnd 之后的执行路径发出。该行为 MUST 有可执行 BDD 或等价单测场景。"
@@ -20,7 +20,7 @@ requirements[30]{req_id,title,statement}:
   ar13,"no-rloop-name","src/ MUST NOT 使用 r#loop 标识符；循环模块名为 runtime::react。由约定与代码审查保障，MUST NOT 单独扩 BDD step。"
   ar14,"facade-removed","MUST NOT 恢复 agent::facade 中枢；AgentRuntime / AgentCapabilities 由 agent/mod 再导出；app 禁止 reach agent::runtime / agent::session 内部。由 AGENTS + write-surface 保障，MUST NOT 单独扩 BDD step。"
   ar15,"unknown-event-degrade",应用面/bridge 对未识别 XyEvent 变体 MUST 降级（日志），MUST NOT panic。由 protocol 单元测试覆盖。
-  ar16,defaults,"未显式配置时 MUST 有可测默认：thinking level、compaction 频率等集中定义；MUST NOT 将 max_iterations 或等价硬步数闸列为运行时默认。由单元测试覆盖。"
+  ar16,defaults,"未显式配置时 MUST 有可测默认：thinking level、compaction 频率等集中定义；MUST NOT 将 max_iterations 或未配置的硬步数闸列为运行时默认。由单元测试覆盖。"
   ar17,"cwd-validate",创建/导入会话时 MUST 校验工作目录可访问，失败返回含路径的错误。由 session 单元测试覆盖。
   ar18,"wire-event-mapping","MUST 提供 XyEvent ↔ protocol::Event 映射（From/TryFrom 或等价），覆盖闭集内变体。由 protocol 单元测试覆盖。"
   ar19,Driver context 重载缝,InProcessDriver（经 app/core 助手）MUST 能在 Trust 语义下重载磁盘 context/SYSTEM/APPEND 并应用到 agent；未信任 MUST NOT 注入项目侧 context；重载 MUST NOT 清空 transcript。
@@ -33,6 +33,7 @@ requirements[30]{req_id,title,statement}:
   ar27,"tool-batch-default-barrier-parallel","未显式配置工具批模式时，ReAct MUST 对同一 MessageEnd 后的 tool call 批采用 barrier_parallel（连续 ParallelSafe 扇出；Barrier 先汇聚再串行）调度；MUST NOT 默认退回整批串行（除非显式 mode=sequential）。该行为 MUST 有可执行 BDD 场景（live `.feature`，`@req`）。"
   ar28,"tool-batch-barrier-parallel","当工具批模式为 barrier_parallel（含产品缺省）时，ReAct MUST 按 assistant 源序将连续 ParallelSafe 工具收入并行窗扇出执行，遇 Barrier 工具（写/副作用/未知/一切 mcp: 前缀工具等）MUST 先汇聚（await 齐）当前窗再串行执行该屏障工具，然后继续；MUST NOT 把屏障之后的 ParallelSafe 提前并入屏障之前的并行窗；MUST NOT 在 MessageEnd 前执行工具（ar21）；MUST NOT 经配置/glob/annotation 将 mcp: 工具升为 ParallelSafe。该行为 MUST 有可执行 BDD 或等价可控假工具单测/BDD 场景。"
   ar29,"tool-batch-history-source-order","无论 sequential 或 barrier_parallel，写入 session history 与发往模型的 toolResult MUST 严格按 assistant 源序；ToolExecutionEnd（及 Update）MAY 按完成序交错。该行为 MUST 有可执行 BDD 或等价单测场景。"
+  ar30,"config-max-turns-via-should-stop","当运行时配置 session.max_turns（正整数 N）存在时，组合根 MUST 在装配后安装 should_stop_after_turn：于 TurnEnd 后若 turn_index+1 >= N 则返回 true 结束 run；缺省或未配置时 MUST NOT 安装该步数钩子（开放结束，见 ar24）。MUST NOT 使用 max_iterations 字段名。该行为 MUST 有可执行 BDD 或等价单测场景。"
 scenarios[15]{req_id,id,given,when,then,feature}:
   ar13,"no-rloop",在 src 中搜索 loop raw identifier,运行检查,零匹配,false
   ar14,"no-facade",检查 agent/facade.rs,不存在该模块,facade 保持移除,false

@@ -84,7 +84,11 @@ hooks:
 #   reasoning_depth: 2
 
 # session:
-#   storage_dir: ".xylitol/sessions"
+#   storage:
+#     backend: file
+#     path: ".xylitol/sessions"
+#   # Optional ReAct turn cap: bootstrap installs should_stop_after_turn.
+#   # Omit / null = open-end (no product default max_iterations).
 #   max_turns: 200
 
 # skills:

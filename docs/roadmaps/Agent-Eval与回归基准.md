@@ -78,7 +78,7 @@ AA Index 权重含 TB、不含 SWE；先做 SWE 不妨碍日后用 AA 对照 TB 
 
 | 社区做法 | xylitol 对应 / 缺口 |
 |---|---|
-| mini-SWE-agent `step_limit` 250；Stirrup `max_turns` | `max_turns` 待实现（`example.yaml` 已预留注释） |
+| mini-SWE-agent `step_limit` 250；Stirrup `max_turns` | 可选 `session.max_turns`（c1620；缺省开放结束） |
 | 超限 autosubmit patch | 待实现 eval 交卷协议 |
 | OpenHands `fake_user_response` | print 无 stdin；eval 模式应禁止「问用户」或注入继续 |
 | Harbor `agent.timeout_sec` | 墙钟超时由 harness 管；agent 内须可被取消 |
@@ -162,13 +162,14 @@ Then 以测试/verifier 为准
 
 | 已够用 | 仍要迭代才稳跑子集 |
 |---|---|
-| `print` → 全 ReAct 事件流 | `max_turns` / 墙钟 / cost 停止（现仅注释预留） |
+| `print` → 全 ReAct 事件流 | 墙钟 / cost 停止 |
 | 工具 bash/读写（allow-all） | 超限 autosubmit（SWE 交 patch） |
-| `--trust` / 非交互 bootstrap | 稳定 exit code（harness 判失败） |
-| 每 run 新 session | eval YAML 锁定覆盖，防本地状态污染 |
-| | 「问用户」挂起时的 fake/禁用策略 |
+| `print --trust` / `--no-trust`（非交互） | eval YAML 锁定覆盖，防本地状态污染 |
+| `XyEvent::Error` → print 非 0 exit | 「问用户」挂起时的 fake/禁用策略 |
+| 可选 `session.max_turns` → `should_stop_after_turn` | |
+| 每 run 新 session | |
 
-**判断**：不必等 TUI「做完」；M0 冒烟可在现有 print 上试 1–几任务。子集刻度（M2）前建议先做完停止条件 + trust/exit 切片（约 1–2 个小闭环），与 TUI 并行即可。
+**判断**：不必等 TUI「做完」；M0 冒烟可在现有 print 上试 1–几任务。trust / Error exit / `max_turns` 基础切片见 c1620；子集刻度（M2）前再补墙钟与 autosubmit，与 TUI 并行即可。
 
 ## 相关
 
