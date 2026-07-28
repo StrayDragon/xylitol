@@ -208,3 +208,34 @@
     并且 仅有压缩前 assistant usage 可用
     当 立即再执行 threshold auto 检查
     那么 MUST NOT 用压缩前 usage 再触发 compaction
+
+  @req:c21
+  @req:c22
+  @req:c23
+  场景: overflow-retry-ok
+    假如 sameModel 的 assistant 被判定为 context overflow 且 stop_reason 非 stop
+    并且 compaction enabled 且尚未做过 overflow recovery
+    当 执行 turn 后 overflow 检查
+    那么 发生 compaction 且 CompactionStart reason 含 overflow
+    并且 工作上下文摘掉错误 assistant 后续跑模型且重试成功
+
+  @req:c22
+  场景: overflow-once
+    假如 本回合已完成一次 overflow compact-and-retry
+    并且 再次出现 sameModel overflow
+    当 执行 turn 后 overflow 检查
+    那么 MUST NOT 再次 compact 或无限重试
+    并且 CompactionEnd 含固定失败说明文案且 will_retry 为 false
+
+  @req:c22
+  场景: wrong-model
+    假如 assistant 的 provider 或 model 与当前模型不同且该 assistant 为 overflow
+    当 执行 turn 后 overflow 检查
+    那么 MUST NOT 因该旧 overflow 触发 recovery
+
+  @req:c23
+  @req:c17
+  场景: reason-overflow
+    假如 overflow Case1 触发 auto-compact
+    当 观察 CompactionStart 与 CompactionEnd
+    那么 reason 可区分为 overflow 且与 threshold 或 manual 不同
