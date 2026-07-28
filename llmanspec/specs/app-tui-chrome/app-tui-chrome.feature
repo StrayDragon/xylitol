@@ -147,6 +147,26 @@
     当 渲染 footer token 字段
     那么 文案为 used ~N tokens
 
+  @req:atc21
+  @req:atc13
+  场景: derived-only
+    假如 estimate tokens 与 context_window>0 且 provenance 为 Api
+    当 渲染 footer token 字段
+    那么 文案含 used N tokens 与派生 p%/W 且 p 约等于 tokens/window*100
+
+  @req:atc21
+  场景: no-percent-when-no-window
+    假如 estimate 存在但 context_window 为 0
+    当 渲染 footer token 字段
+    那么 文案为 used … tokens 且 MUST NOT 含 %/
+
+  @req:atc21
+  @req:atc13
+  场景: heuristic-percent-tilde
+    假如 estimate provenance 为 Heuristic 且 context_window>0
+    当 渲染 footer token 字段
+    那么 文案含 used ~N tokens 与 ~p%/W
+
   @req:atc13
   场景: unknown-question
     假如 estimate provenance 为 Unknown
