@@ -40,7 +40,9 @@ pub use crate::agent::llm_project::project_for_llm;
 /// ReAct 循环运行时（驱动 [`AgentCapabilities`]）。
 pub use crate::agent::runtime::AgentRuntime;
 pub use crate::agent::runtime::hooks::BeforeToolHook;
-pub use crate::agent::runtime::hooks::{ShouldStopAfterTurnCtx, ShouldStopAfterTurnHook};
+pub use crate::agent::runtime::hooks::{
+    ShouldStopAfterTurnCtx, ShouldStopAfterTurnHook, max_turns_stop_hook,
+};
 pub use crate::agent::runtime::{AgentHooks, XyEventStream};
 pub use crate::agent::session::AgentCapabilities;
 pub use crate::agent::session::{PendingMessageQueue, QueueMode, QueueStats};

@@ -76,6 +76,11 @@ async fn test_ar_should_stop_skips_followup(agent: AgentState, ws: Workspace) {}
     name = "no-hook-open-end"
 )]
 async fn test_ar_no_hook_open_end(agent: AgentState, ws: Workspace) {}
+#[scenario(
+    path = "llmanspec/specs/agent-runtime/agent-runtime.feature",
+    name = "max-turns-stops-run"
+)]
+async fn test_ar_max_turns_stops_run(agent: AgentState, ws: Workspace) {}
 
 #[scenario(
     path = "llmanspec/specs/agent-runtime/agent-runtime.feature",

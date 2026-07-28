@@ -455,6 +455,15 @@ pub(crate) async fn _g_ar24_no_hook_open(agent: &AgentState, ws: &Workspace) {
     ar_store_runner(runner);
 }
 
+#[given("按 session.max_turns=2 安装 should_stop_after_turn 且入队 follow_up 以迫使第二轮")]
+pub(crate) async fn _g_ar30_max_turns(agent: &AgentState, ws: &Workspace) {
+    set_fake_text("max-turns ack");
+    let mut runner = ar_make_runner(agent, ws);
+    runner.follow_up("第二轮追问");
+    runner.set_should_stop_after_turn(Some(xylitol::agent::max_turns_stop_hook(2)));
+    ar_store_runner(runner);
+}
+
 #[then("出现 AgentEnd 且其后无新的模型轮 TurnStart")]
 pub(crate) fn _t_ar24_agent_end_no_extra_turn(agent: &AgentState) {
     let events = agent.events.borrow();
@@ -481,6 +490,27 @@ pub(crate) fn _t_ar24_agent_end_no_extra_turn(agent: &AgentState) {
     assert!(
         !turn_start_after_end,
         "no TurnStart after AgentEnd: {events:?}"
+    );
+}
+
+#[then("至多出现 2 次 TurnStart 后出现 AgentEnd")]
+pub(crate) fn _t_ar30_max_two_turns(agent: &AgentState) {
+    let events = agent.events.borrow();
+    let turn_starts = events
+        .iter()
+        .filter(|ev| matches!(ev, XyEvent::TurnStart { .. }))
+        .count();
+    let saw_agent_end = events
+        .iter()
+        .any(|ev| matches!(ev, XyEvent::AgentEnd { .. }));
+    assert!(saw_agent_end, "expected AgentEnd, got {events:?}");
+    assert!(
+        turn_starts <= 2,
+        "expected at most 2 TurnStart, got {turn_starts}: {events:?}"
+    );
+    assert!(
+        turn_starts >= 1,
+        "expected at least one TurnStart, got {events:?}"
     );
 }
 

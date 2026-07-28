@@ -31,3 +31,15 @@
     假如 model 对同一内容发出 TextDelta 与 MessageUpdate
     当 Print 模式渲染
     那么 stdout 中每个 token 恰好出现一次
+
+  @req:r55
+  场景: error-nonzero-exit
+    假如 agent 事件流发出 XyEvent::Error
+    当 Print 模式消费该流结束
+    那么 进程以非零退出码结束
+
+  @req:r55
+  场景: success-zero-exit
+    假如 agent 事件流无 Error 且正常结束
+    当 Print 模式消费该流结束
+    那么 进程以零退出码结束

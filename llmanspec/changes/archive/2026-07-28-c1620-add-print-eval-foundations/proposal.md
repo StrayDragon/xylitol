@@ -5,6 +5,10 @@ status: designed
 priority: 1620
 depends_on: []
 author: agent
+branch: sdd/c1620-add-print-eval-foundations
+base_sha: 13242412a91d2e3097afbde2704256ceba3f5903
+checkpointed: true
+checkpoint_sha: 13242412a91d2e3097afbde2704256ceba3f5903
 ---
 
 # c1620-add-print-eval-foundations
@@ -38,7 +42,7 @@ SWE-bench / Harbor 等社区 harness 以 **headless `xylitol print`** 驱动自�
 ## Impact
 
 - **破坏性**：`ce19` 原「print MUST NOT 接受 --trust」改为允许；旧文档/脚本若依赖「print 拒绝 --trust」会变。
-- **默认体验**：未配 `max_turns`、未传 trust 时行为与今日一致（除未来若改 exit 语义：原先 Error 仍 0 → 变为非 0，属有意修正）。
+- **默认体验**：未配 `max_turns`、未传 trust 时行为与今日一致（除 exit 语义：原先 Error 仍 0 → 变为非 0，属有意修正）。
 - **非目标**：autosubmit / fake_user / SWE 编排脚本 / Harbor / TUI 自动驱动。
 
 ## Ethics

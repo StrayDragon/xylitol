@@ -76,6 +76,18 @@
     那么 解析成功
 
   @req:ce19
+  场景: surface-flags-on-print-trust
+    假如 表面旗标上下文就绪
+    当 xylitol print --session sid --trust --model m hi
+    那么 解析成功且表面旗标生效
+
+  @req:ce19
+  场景: surface-flags-on-print-no-trust
+    假如 表面旗标上下文就绪
+    当 xylitol print --session sid --no-trust hi
+    那么 解析成功且表面旗标生效
+
+  @req:ce19
   场景: toplevel-surface-flags-rejected
     假如 表面旗标上下文就绪
     当 xylitol --session sid

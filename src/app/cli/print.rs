@@ -106,6 +106,11 @@ async fn render_stream<W: Write>(
             }
             XyEvent::Error(msg) => {
                 eprintln!("\n[Error] {msg}");
+                if in_thinking_block && !thinking_has_tags {
+                    let _ = write!(io::stderr(), "</think>");
+                    let _ = io::stderr().flush();
+                }
+                return Err(XyDriverError::message(msg));
             }
             XyEvent::CompactionStart { reason } => {
                 eprintln!("\n[Compaction] {reason}");
@@ -247,6 +252,34 @@ mod tests {
 
         let output = String::from_utf8(buf).unwrap();
         assert_eq!(output, "Hi\n");
+    }
+
+    #[tokio::test]
+    async fn error_event_returns_driver_err() {
+        let events = vec![
+            XyEvent::TextDelta("partial".into()),
+            XyEvent::Error("provider blew up".into()),
+            XyEvent::AgentEnd { messages: vec![] },
+        ];
+        let mut stream = mock_stream(events);
+        let mut buf: Vec<u8> = Vec::new();
+        let err = render_stream(&mut stream, &mut buf)
+            .await
+            .expect_err("Error event must fail the print stream");
+        assert!(err.to_string().contains("provider blew up"), "got {err}");
+        assert_eq!(String::from_utf8(buf).unwrap(), "partial");
+    }
+
+    #[tokio::test]
+    async fn agent_end_without_error_returns_ok() {
+        let events = vec![
+            XyEvent::TextDelta("done".into()),
+            XyEvent::AgentEnd { messages: vec![] },
+        ];
+        let mut stream = mock_stream(events);
+        let mut buf: Vec<u8> = Vec::new();
+        render_stream(&mut stream, &mut buf).await.unwrap();
+        assert_eq!(String::from_utf8(buf).unwrap(), "done\n");
     }
 
     #[tokio::test]
