@@ -9,8 +9,8 @@
 
 ## 用户怎么碰到
 
-- 换模型、改系统提示或工具策略后，想知道 **xylitol 在 Terminal-Bench / SWE-bench 子集上是否进步**；
-- 需要与 Harbor 内置 agent、mini-SWE-agent **同口径**的 reward / resolved %，而不是自说自话；
+- 换模型、改系统提示或工具策略后，想知道 **xylitol 在 SWE-bench（及随后 Terminal-Bench）子集上是否进步**；
+- 需要与 mini-SWE-agent、Harbor 内置 agent **同口径**的 resolved % / reward，而不是自说自话；
 - 选模型时对照 AA 公开指数，并诚实区分「模型在 AA scaffold」与「模型在 xylitol scaffold」；
 - 偶尔把 benchmark 失败实例钉成回归集，防止同一 bug 再犯；
 - **不**强迫开 TUI 才算跑过 eval。
