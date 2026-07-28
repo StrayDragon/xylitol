@@ -239,3 +239,27 @@
     假如 overflow Case1 触发 auto-compact
     当 观察 CompactionStart 与 CompactionEnd
     那么 reason 可区分为 overflow 且与 threshold 或 manual 不同
+
+  @req:c24
+  场景: bare-force
+    假如 会话可 compact 且无 instructions
+    当 执行手动 force compact
+    那么 发生 compaction 且送入摘要模型的 prompt MUST NOT 含 Additional focus
+
+  @req:c24
+  场景: with-text
+    假如 会话可 compact 且 instructions 为非空文本
+    当 执行手动 force compact 并传入该文本
+    那么 history 摘要 prompt MUST 含 Additional focus 与该文本
+
+  @req:c24
+  场景: whitespace
+    假如 instructions 仅空白或 None
+    当 执行手动 force compact
+    那么 行为等同无 instructions（prompt 无 Additional focus）
+
+  @req:c24
+  场景: auto-clean
+    假如 threshold 或 overflow auto-compact 触发
+    当 观察摘要模型输入
+    那么 MUST NOT 含 Additional focus 且 MUST NOT 复用上一次 manual instructions
