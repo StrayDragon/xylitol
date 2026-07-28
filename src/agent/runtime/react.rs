@@ -340,6 +340,8 @@ impl AgentRuntime {
         let queues = self.inner.queues();
         let store = self.inner.session_store();
         let skills = self.inner.loaded_skills().to_vec();
+        let event_sink = self.inner.event_sink();
+        let compaction_settings = self.inner.compaction_settings();
 
         let (queue_tx, mut queue_rx) = tokio::sync::mpsc::unbounded_channel();
         queues.bind_event_tx(queue_tx);
@@ -362,6 +364,8 @@ impl AgentRuntime {
             session_id: sid,
             seeded_history,
             skills,
+            event_sink,
+            compaction_settings,
         }));
 
         let inner: Pin<Box<dyn Stream<Item = XyEvent> + Send>> = Box::pin(async_stream::stream! {
@@ -424,6 +428,10 @@ struct ReActConfig {
     seeded_history: Vec<AgentMessage>,
     /// Trust-filtered catalog for `$skill` expand (c1130); clone kept raw in history.
     skills: Vec<SkillInfo>,
+    /// Compaction lifecycle sink (Start/End).
+    event_sink: Arc<dyn crate::protocol::ports::XyEventSink>,
+    /// Snapshot of compaction settings for turn-end threshold auto (c1640).
+    compaction_settings: crate::agent::compaction::CompactionSettings,
 }
 
 fn prepare_turn_binding(
@@ -497,6 +505,54 @@ fn queue_counts(
     (steer_count, follow_up_count)
 }
 
+/// Turn-end threshold auto (c1640 / pi `_checkCompaction` Case2). Failures are logged, not fatal.
+async fn try_threshold_auto_compact(
+    store: &Arc<dyn XySessionStore>,
+    session_id: &str,
+    model_manager: &Arc<Mutex<crate::agent::model::manager::ModelManager>>,
+    event_sink: &Arc<dyn crate::protocol::ports::XyEventSink>,
+    settings: &crate::agent::compaction::CompactionSettings,
+    history: &[AgentMessage],
+) {
+    let last_assistant = history.iter().rev().find(|m| m.role_name() == "assistant");
+    let (model, ctx_window, model_id) = {
+        let mm = model_manager.lock().unwrap_or_else(|e| e.into_inner());
+        let meta = match mm.current_model() {
+            Some(m) => m,
+            None => return,
+        };
+        let ctx_window = meta.context_window;
+        let model_id = meta.id.clone();
+        let model = match mm.build_current_model() {
+            Ok(m) => m,
+            Err(e) => {
+                log::warn!("turn-end compaction: no model: {e}");
+                return;
+            }
+        };
+        (model, ctx_window, model_id)
+    };
+    let opts = crate::agent::compaction::EstimateOpts {
+        model_id: Some(model_id),
+        ..Default::default()
+    };
+    let orch = crate::agent::compaction::CompactionOrchestrator::new(settings.clone());
+    if let Err(e) = orch
+        .maybe_auto_compact(
+            store.as_ref(),
+            session_id,
+            model.as_ref(),
+            event_sink.as_ref(),
+            ctx_window,
+            &opts,
+            last_assistant,
+        )
+        .await
+    {
+        log::warn!("turn-end compaction failed: {e}");
+    }
+}
+
 async fn persist_agent_message(
     store: &Arc<dyn XySessionStore>,
     session_id: &str,
@@ -538,6 +594,8 @@ fn run_react_loop(cfg: ReActConfig) -> impl Stream<Item = XyEvent> + Send {
         session_id,
         seeded_history,
         skills,
+        event_sink,
+        compaction_settings,
     } = cfg;
     async_stream::stream! {
         let _clear_active = ClearActiveTurn(active_turn.clone());
@@ -968,6 +1026,16 @@ fn run_react_loop(cfg: ReActConfig) -> impl Stream<Item = XyEvent> + Send {
                         let (ty, phase, ctx) = super::script_hook_ctx::turn_end(turn as u32);
                         observe_script_hook(bus, ty, phase, ctx).await;
                     }
+                    // c1640: pi `_checkCompaction` after settled assistant (threshold only).
+                    try_threshold_auto_compact(
+                        &store,
+                        &session_id,
+                        &model_manager,
+                        &event_sink,
+                        &compaction_settings,
+                        &history,
+                    )
+                    .await;
                     turn += 1;
                     let stop_ctx = ShouldStopAfterTurnCtx {
                         turn_index,
@@ -1139,6 +1207,16 @@ fn run_react_loop(cfg: ReActConfig) -> impl Stream<Item = XyEvent> + Send {
                     let (ty, phase, ctx) = super::script_hook_ctx::turn_end(turn as u32);
                     observe_script_hook(bus, ty, phase, ctx).await;
                 }
+                // c1640: pi `_checkCompaction` after settled assistant (threshold only).
+                try_threshold_auto_compact(
+                    &store,
+                    &session_id,
+                    &model_manager,
+                    &event_sink,
+                    &compaction_settings,
+                    &history,
+                )
+                .await;
                 turn += 1;
 
                 let stop_ctx = ShouldStopAfterTurnCtx {

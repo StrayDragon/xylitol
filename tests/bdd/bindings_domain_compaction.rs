@@ -111,3 +111,33 @@ async fn test_comp_entry(agent: AgentState, sess: XySessionStore, ws: Workspace)
     name = "split-by-responsibility"
 )]
 async fn test_comp_split(agent: AgentState, sess: XySessionStore, ws: Workspace) {}
+
+#[scenario(
+    path = "llmanspec/specs/domain-compaction/domain-compaction.feature",
+    name = "auto-over-threshold"
+)]
+fn test_comp_auto_over(agent: AgentState, ws: Workspace) {}
+
+#[scenario(
+    path = "llmanspec/specs/domain-compaction/domain-compaction.feature",
+    name = "auto-under-threshold"
+)]
+fn test_comp_auto_under(agent: AgentState, ws: Workspace) {}
+
+#[scenario(
+    path = "llmanspec/specs/domain-compaction/domain-compaction.feature",
+    name = "auto-disabled-no-compact"
+)]
+fn test_comp_auto_disabled(agent: AgentState, ws: Workspace) {}
+
+#[scenario(
+    path = "llmanspec/specs/domain-compaction/domain-compaction.feature",
+    name = "manual-force-bypasses-reserve"
+)]
+fn test_comp_manual_force(agent: AgentState, ws: Workspace) {}
+
+#[scenario(
+    path = "llmanspec/specs/domain-compaction/domain-compaction.feature",
+    name = "stale-guard-after-compaction"
+)]
+fn test_comp_stale_guard(agent: AgentState, ws: Workspace) {}
