@@ -78,7 +78,7 @@ flowchart TB
 | [Web与TUI同源.md](./Web与TUI同源.md) | 跨面语义约束板（非 Web 壳本身） |
 | [TUI视觉与信息表达.md](./TUI视觉与信息表达.md) | 状态减噪、主题密度 |
 | [OTEL与Langfuse观测.md](./OTEL与Langfuse观测.md) | 子进程出站观测（已落地见 [architecture](../architecture/进程内观测.md)） |
-| [Agent-Eval与回归基准.md](./Agent-Eval与回归基准.md) | Langfuse Dataset/Experiment 回归；Harbor 外部刻度；CI 后置 |
+| [Agent-Eval与回归基准.md](./Agent-Eval与回归基准.md) | TB/SWE Docker 出分主线；AA 选模对照；Langfuse 回归旁路 |
 | [上下文缓存与极致压缩.md](./上下文缓存与极致压缩.md) | prompt cache、动态压缩、工具结果分级压缩 |
 | [Cloud-Agent与Web控制台.md](./Cloud-Agent与Web控制台.md) | 多工作区 CS + Web |
 | [运行时即时设置.md](./运行时即时设置.md) | 能力覆盖盘 / 可观察覆盖集 / Web 同源（模型 NextTurn 已迁 [architecture](../architecture/运行时即时设置.md)） |

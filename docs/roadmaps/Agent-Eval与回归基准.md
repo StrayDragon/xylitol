@@ -1,116 +1,161 @@
 # Agent Eval 与回归基准
 
-> 把「每次迭代是进步还是退步」做成可重复基准：复用已有 OTEL → Langfuse 过程树，不自研第二套检视台。
-> 现状对齐：2026-07-27。**开发者 / CI 后置**，非开箱默认体验。
+> **主线**：用**同一模型**在主流 agent eval benchmark（Terminal-Bench、SWE-bench 等）上跑分，Docker/sandbox 驱动 xylitol 自主多轮，分数来自 harness 官方 grader。
+> **旁路**：从 benchmark 失败或 Langfuse trace 钉回归集，做小集 CI 防退化——**不替代**社区刻度。
+> **参考**：[Artificial Analysis](https://artificialanalysis.ai/) Data API / Intelligence Index — 选模与同模型公开基线对照；**不是** xylitol 评测入口。
+> 现状对齐：2026-07-28。**开发者 / CI 后置**，非开箱默认体验。
 > 调研底稿：[../research/agent-eval-frameworks-2026.md](../research/agent-eval-frameworks-2026.md)。
 
 ## 用户怎么碰到
 
-- 改了系统提示、工具策略、模型档案或压缩行为后，想知道**同一批真实任务**是否变差；
-- 排障时已有 Langfuse 过程树，希望把失败案例**钉成回归集**，而不是口口相传；
-- 偶发对照社区刻度（SWE-bench / 终端长任务），但**不**把全量 Docker leaderboard 当成每次 PR 默认闸。
+- 换模型、改系统提示或工具策略后，想知道 **xylitol 在 Terminal-Bench / SWE-bench 子集上是否进步**；
+- 需要与 Harbor 内置 agent、mini-SWE-agent **同口径**的 reward / resolved %，而不是自说自话；
+- 选模型时对照 AA 公开指数，并诚实区分「模型在 AA scaffold」与「模型在 xylitol scaffold」；
+- 偶尔把 benchmark 失败实例钉成回归集，防止同一 bug 再犯；
+- **不**强迫开 TUI 才算跑过 eval。
 
 ## 产品目标
 
 | 要 | 不要 |
 |---|---|
-| 回归集版本化；实验可对比（模型 / 提示 / 代码变更） | 只靠感觉或单次手工试跑 |
-| Scores 挂回同一条 Langfuse 时间线 | Braintrust / Inspect View / 自研 UI 当第二观测栈 |
-| 代码闸（测试通过、产物检查）为主；LLM-as-judge 为辅 | 只评「工具调用路径是否长得像」 |
-| CI 可跑小回归集；外部对标周期性 | 每 PR 全量 SWE-bench / Terminal-Bench |
-| Print / 非交互 harness 可驱动评测 | 强迫 TUI 交互才算「跑过 eval」 |
+| 主流 benchmark harness 出分（社区可比） | 只靠自研小集或 Langfuse judge 当主刻度 |
+| Docker/sandbox 无人值守多轮 | TUI 人工点选驱动评测 |
+| `print` + eval profile 固定模型与停止条件 | 日常盘状态污染实验 |
+| 子集可重复、版本可对比 | 每 PR 全量 leaderboard |
+| 失败实例可钉成 Langfuse Dataset 回归 | Langfuse 当第二 leaderboard |
+| AA 作选模/对照（只读 API） | 把 AA Index 或 Stirrup 当 xylitol 分 / 主栈 |
+| 诚实报告 scaffold（xylitol 版本 + eval profile） | 混入 best-of-N 等未标注技巧 |
 
 ## 领域语言
 
 | 概念 | 含义 |
 |---|---|
-| **回归集（Dataset）** | 版本化的任务样本：输入、期望闸、元数据（模型档 / commit） |
-| **实验（Experiment）** | 对某一回归集跑一遍 xylitol harness，并写出 Scores |
-| **代码闸** | 确定性评判（测试绿、文件存在、diff 约束） |
-| **主观闸** | LLM-as-judge / 人工分；须与代码闸混用并校准 |
-| **能力集 vs 回归集** | 探索性低通过率 vs 近满分防退化（Anthropic 方法论） |
-| **外部刻度** | Harbor / SWE-bench 等社区 harness 的周期性对标 |
+| **Benchmark harness** | 社区官方评分管线（Harbor verifier、SWE-bench `run_evaluation`） |
+| **Eval profile** | 专用于 benchmark 的配置：max_turns、timeout、trust、autosubmit |
+| **单阶段（TB）** | Harbor 在任务容器内驱动 agent 直至 verifier |
+| **两阶段（SWE）** | 容器内 agent 推理 → `preds.jsonl` → 官方 harness 评 patch |
+| **Resolved / reward** | harness 确定性分数；主线 SSOT |
+| **AA 基线** | 同模型在 Artificial Analysis 固定 scaffold 下的公开分（对照用） |
+| **回归集** | 从失败 benchmark 实例或 trace 抽样的 Langfuse Dataset |
+| **能力集 vs 回归集** | 探索性低通过率 vs 近满分防退化 |
 
-## 推荐拼图（集成路径）
+## 推荐拼图
 
 ```mermaid
 flowchart LR
-  Trace["已有 OTEL / Langfuse 过程树"] --> Seed["抽样钉成 Dataset"]
-  Seed --> Exp["Experiments · xylitol harness"]
-  Exp --> Score["Scores · 代码闸 + 可选 judge"]
-  Score --> CI["CI 回归闸 · 阈值"]
-  Exp -.->|周期性| Harbor["Harbor · SWE / Terminal-Bench"]
-  Harbor -.-> Score
-  Promptfoo["Promptfoo · 可选安全/trajectory"] -.->|夜间| Score
+  Model["固定 model + eval profile"] --> Print["xylitol print · 自主多轮"]
+  Print --> TB["Harbor · Terminal-Bench"]
+  Print --> SWE["SWE-bench 子集"]
+  TB --> Score["官方 harness 分数"]
+  SWE --> Score
+  Score -.->|元数据| LF["Langfuse 摘要"]
+  Score -.->|失败钉集| DS["Dataset 回归"]
+  DS -.-> CI["小集 CI"]
+  AA["AA Data API"] -.->|选模/对照| Model
 ```
 
 | 层 | 选型 | 角色 |
 |---|---|---|
-| **主拼图** | Langfuse Datasets / Experiments / Scores | 日常回归 SSOT；吃现有 traces |
-| **本地断言薄层** | DeepEval（pytest）可选 | 读 OTEL / 断言后 `score` 回 Langfuse |
-| **安全旁路** | Promptfoo red team / trajectory | 夜间或专项；**不**替代 Langfuse |
-| **外部刻度** | Harbor + SWE-bench Verified 子集 / Terminal-Bench | M3 周期性；摘要写回 experiment |
-| **明确不主用** | Braintrust 主栈、Inspect View、OpenAI Evals Platform（关停风险） | 避免第二观测/关停依赖 |
+| **主 harness** | Harbor (Terminal-Bench) + SWE-bench | 社区刻度 |
+| **xylitol 面** | `print` + `--trust` + eval YAML | headless ReAct |
+| **编排** | `harbor run` / Python 薄脚本 | Docker 并行 |
+| **旁路** | Langfuse Experiments / Dataset | 失败钉集、commit 对比 |
+| **参考** | Artificial Analysis Data API | 选模、同模型公开基线；**不**提交 xylitol |
+| **可选** | Promptfoo red team | 安全夜间 job |
+| **明确不主用** | Langfuse judge 作主分、Braintrust 主栈、Inspect View、Stirrup 当主产品 | 偏离社区口径 / 第二观测栈 / 换栈评测 |
+
+## 双主线优先级
+
+| 先手 | 何时 | M0 冒烟 |
+|---|---|---|
+| **P0a Terminal-Bench** | 对齐 AA / 公开智能叙事；长程终端多轮 | Harbor + xylitol adapter 少量任务 |
+| **P0b SWE-bench** | 证明修真实 GitHub issue | Lite/Verified 5 实例 → `preds.jsonl` |
+
+AA Index 权重含 TB 2.1（16%），**不含** SWE-bench；对外叙事按目标选先手。
+
+## xylitol 适配要点（多轮）
+
+| 社区做法 | xylitol 对应 / 缺口 |
+|---|---|
+| mini-SWE-agent `step_limit` 250；Stirrup `max_turns` | `max_turns` 待实现（`example.yaml` 已预留注释） |
+| 超限 autosubmit patch | 待实现 eval 交卷协议 |
+| OpenHands `fake_user_response` | print 无 stdin；eval 模式应禁止「问用户」或注入继续 |
+| Harbor `agent.timeout_sec` | 墙钟超时由 harness 管；agent 内须可被取消 |
+| 每 instance 隔离 session | `run` 已新 session_id；eval 须锁定配置覆盖 |
 
 ## BDD 意图示例
 
-**场景：失败钉成回归项**
-Given 一次真实会话在 Langfuse 中失败或行为异常
-When 开发者将其纳入回归 Dataset
-Then 该项可复跑，且新实验能对比是否仍失败
+**场景：Terminal-Bench 自主多轮出分**
+Given Harbor 任务容器与 instruction
+When xylitol agent adapter 在超时内完成 ReAct
+Then verifier `tests/test.sh` 判定 pass/fail
 
-**场景：实验可对比**
-Given 同一 Dataset 上两次 Experiment（例如改压缩策略前后）
-When 查看 Scores 汇总
-Then 能判断关键指标进步或退步，而不是只看单条聊天
+**场景：SWE 子集出分**
+Given 固定 model 与 eval profile
+When 在 SWE-bench Lite 5 实例 Docker 环境跑 `xylitol print`
+Then 产出 `preds.jsonl` 且官方 harness 返回 resolved 计数
 
-**场景：CI 防静默退化**
-Given PR 触及 agent 行为相关变更
-When 跑配置的小回归集
-Then 低于约定阈值时失败；全量外部 benchmark 不作为默认门禁
+**场景：与 AA 基线对照（非等同）**
+Given 同一 model 的 xylitol@TB 子集分与 AA 公开 TB/Coding 分
+When 写版本报告
+Then 并排标注 scaffold 差异，不声称 Intelligence Index
+
+**场景：版本可对比**
+Given 同一子集、同一 model、两次 xylitol commit
+When 各跑一遍 harness
+Then resolved % 或 reward 可并排比较
+
+**场景：失败钉回归**
+Given 某 benchmark 实例 resolved=false
+When 开发者纳入 Langfuse Dataset
+Then 小集 CI 可在改 prompt/工具后快速复现
 
 **场景：评产出不评死路径**
-Given 任务可用多种合法工具顺序完成
-When grader 评判
-Then 以测试/产物闸为准，不以固定 tool 序列为唯一成功条件
+Given 多种合法工具顺序可完成任务
+When harness 评判
+Then 以测试/verifier 为准
 
 ## 分阶段
 
 | 阶段 | 用户可感知结果 |
 |---|---|
-| **M0 回归种子** | 从现有 traces 抽样 → Dataset；字段含任务、期望闸、元数据；人工/代码 Score「是否解决」 |
-| **M1 开发者实验** | 文档化后置流程：Experiments 调 Print/非交互 harness；UI/报告可对比 run |
-| **M2 CI 回归闸** | 小 Dataset 进 CI（如 `langfuse/experiment-action`）；阈值失败；可选 Promptfoo 夜间安全 job |
-| **M3 外部刻度** | Harbor 周期性子集对标；摘要 Score 回写；区分能力集与回归集 |
+| **M0 冒烟** | Docker + TB 少量任务 **或** SWE 5 实例跑通出分；`just eval-*-smoke` |
+| **M1 eval profile** | max_turns / timeout / autosubmit / trust；与社区停止条件对齐 |
+| **M2 子集刻度** | TB 10–20 + Verified 50；JSON 报告；可选对照 AA 同模型基线 |
+| **M3 回归旁路** | 失败 → Dataset；小集 CI |
+| **M4 周期全量** | 云并行全量 / leaderboard 提交（sb-cli、Harbor cloud） |
 
 ## 依赖
 
 | 关系 | 说明 |
 |---|---|
-| [../architecture/进程内观测.md](../architecture/进程内观测.md) | 已有过程树是 Dataset 种子前提 |
-| [OTEL与Langfuse观测.md](./OTEL与Langfuse观测.md) | 子进程出站完善有助于工具侧排障对照，不阻塞 M0–M2 |
-| [上下文缓存与极致压缩.md](./上下文缓存与极致压缩.md) | 压缩/缓存策略变更应以本篇回归集验证 |
-| [预设Providers.md](./预设Providers.md) | 网关预设变更可挂同一 Dataset 做兼容回归 |
+| [../architecture/进程内观测.md](../architecture/进程内观测.md) | Langfuse 旁路记 run，不替代 harness 分 |
+| [OTEL与Langfuse观测.md](./OTEL与Langfuse观测.md) | trace 对照排障 |
+| [运行时即时设置.md](./运行时即时设置.md) | eval 须锁定覆盖，避免本地状态污染 |
+| [预设Providers.md](./预设Providers.md) | 固定 model 档案与网关；可选 AA 辅助选模 |
+| [上下文缓存与极致压缩.md](./上下文缓存与极致压缩.md) | 压缩策略变更应以 benchmark 子集验证 |
 
 ## 支线与方向
 
 | 支线 | 意向 |
 |---|---|
-| **轨迹安全专项** | Promptfoo red team 独立 Dataset（注入、越权工具）；不并进日常能力回归 |
-| **多模型对照实验** | 同一任务矩阵扫 OpenAI-compat / Anthropic 档案，产出「哪档更稳」报告 |
-| **压缩策略 A/B** | Dataset 固定长会话；对比 cache hit、token、任务成功率（挂缓存 roadmap） |
-| **Sub-agent 回归** | 子任务委托成功/回收噪声作为独立指标（依赖 Sub-Agent 主线就绪） |
-| **金丝雀生产分** | 线上抽样在线评分（后置；隐私与默认关闭须钉清） |
+| **Aider Polyglot Rust 子集** | 快速 edit 质量信号 |
+| **Promptfoo 安全** | 注入/越权工具；独立夜间 job |
+| **多模型矩阵** | 同一子集扫 provider 档案（可叠 AA 价格/延迟字段） |
+| **Sub-agent 指标** | 子任务成功率（依赖 Sub-Agent 主线） |
 
 ## 反模式（产品级）
 
-- 为 eval 再做一个 Web Inspect 主路径；
-- 把竞赛题（LiveCodeBench 等）当成 coding harness 端到端回归；
-- 开箱默认在 TUI 里跑 eval；
-- 只上 LLM judge、没有可重复代码闸。
+- 把 Langfuse Experiments 当主 leaderboard；
+- 把 AA Index / Data API 当作 xylitol 已出分；
+- 用 Stirrup 替换 xylitol 做「自家评测」；
+- 用 TUI 交互跑 benchmark；
+- 无 max_turns/timeout 直接全量；
+- 竞赛题 benchmark（LiveCodeBench）替代 repo/终端 agent eval；
+- 开箱默认 eval 流程。
 
 ## 相关
 
-- 调研：[../research/agent-eval-frameworks-2026.md](../research/agent-eval-frameworks-2026.md)
-- Anthropic 方法论（一手）：[Demystifying evals for AI agents](https://www.anthropic.com/engineering/demystifying-evals-for-ai-agents)
+- 调研：[../research/agent-eval-frameworks-2026.md](../research/agent-eval-frameworks-2026.md)（含 §4 Artificial Analysis）
+- Anthropic 方法论：[Demystifying evals for AI agents](https://www.anthropic.com/engineering/demystifying-evals-for-ai-agents)
 - 总索引：[README.md](./README.md)
