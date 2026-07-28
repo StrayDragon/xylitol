@@ -141,3 +141,33 @@ fn test_comp_manual_force(agent: AgentState, ws: Workspace) {}
     name = "stale-guard-after-compaction"
 )]
 fn test_comp_stale_guard(agent: AgentState, ws: Workspace) {}
+
+#[scenario(
+    path = "llmanspec/specs/domain-compaction/domain-compaction.feature",
+    name = "cut-assistant"
+)]
+fn test_comp_cut_assistant(agent: AgentState, ws: Workspace) {}
+
+#[scenario(
+    path = "llmanspec/specs/domain-compaction/domain-compaction.feature",
+    name = "never-tool-result"
+)]
+fn test_comp_never_tool(agent: AgentState, ws: Workspace) {}
+
+#[scenario(
+    path = "llmanspec/specs/domain-compaction/domain-compaction.feature",
+    name = "keep-budget"
+)]
+fn test_comp_keep_budget(agent: AgentState, ws: Workspace) {}
+
+#[scenario(
+    path = "llmanspec/specs/domain-compaction/domain-compaction.feature",
+    name = "split-dual-summary"
+)]
+async fn test_comp_split_dual(agent: AgentState, sess: XySessionStore, ws: Workspace) {}
+
+#[scenario(
+    path = "llmanspec/specs/domain-compaction/domain-compaction.feature",
+    name = "tokens-before"
+)]
+async fn test_comp_tokens_before(agent: AgentState, sess: XySessionStore, ws: Workspace) {}

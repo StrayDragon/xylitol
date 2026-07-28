@@ -1,7 +1,7 @@
 //! Cut-point detection — where to compact session entries.
 //!
 //! Walk session entries backwards from newest, accumulate token estimates,
-//! and find the nearest valid boundary (user message / branch summary).
+//! and find the nearest valid boundary (user / assistant / bash / custom / branch).
 
 use crate::protocol::session::SessionEntry;
 
@@ -10,9 +10,9 @@ use crate::protocol::session::SessionEntry;
 pub struct CutPointResult {
     /// Index of first entry to keep (inclusive).
     pub first_kept_entry_index: usize,
-    /// If cutting mid-turn, the user message that started that turn (-1 = no split).
+    /// If cutting mid-turn, the turn-start entry index (-1 = no split).
     pub turn_start_index: isize,
-    /// Whether the cut splits a turn (cut point is not a user message).
+    /// Whether the cut splits a turn (cut point is not a turn-start).
     pub is_split_turn: bool,
 }
 
@@ -93,20 +93,53 @@ fn estimate_tokens_message_json(message: &serde_json::Value) -> u64 {
     tokens
 }
 
-/// Check whether `entry_type` is a valid cut point.
-///
-/// Only `user` messages (start of a turn), branch summaries, and custom
-/// messages are valid boundaries. Assistant messages are excluded because
-/// cutting at an assistant message would split a turn.
+fn message_role(entry: &SessionEntry) -> Option<&str> {
+    match entry {
+        SessionEntry::Message(msg) => msg.message.get("role").and_then(|r| r.as_str()),
+        _ => None,
+    }
+}
+
+/// Valid cut points align with pi `isCutPointMessage` + entry types.
+/// Never cut at `toolResult` (must follow its tool call).
 fn is_valid_cut_point(entry: &SessionEntry) -> bool {
     match entry {
-        SessionEntry::Message(msg) => msg
-            .message
-            .get("role")
-            .and_then(|r| r.as_str())
-            .map(|role| role == "user")
-            .unwrap_or(false),
+        SessionEntry::Message(_) => match message_role(entry) {
+            Some("user")
+            | Some("assistant")
+            | Some("bashExecution")
+            | Some("custom")
+            | Some("branchSummary")
+            | Some("compactionSummary") => true,
+            Some("toolResult") => false,
+            _ => false,
+        },
+        SessionEntry::BashExecution(_) => true,
         SessionEntry::BranchSummary(_) => true,
+        SessionEntry::CustomMessage(_) => true,
+        SessionEntry::Custom(c) => c.custom_type == "custom_message",
+        _ => false,
+    }
+}
+
+/// Turn-start aligns with pi `isTurnStartMessage` / `isTurnStartEntry`.
+/// Assistant is never a turn start. Compaction entry type is never a turn start.
+fn is_turn_start_entry(entry: &SessionEntry) -> bool {
+    if matches!(entry, SessionEntry::Compaction(_)) {
+        return false;
+    }
+    match entry {
+        SessionEntry::Message(_) => matches!(
+            message_role(entry),
+            Some("user")
+                | Some("bashExecution")
+                | Some("custom")
+                | Some("branchSummary")
+                | Some("compactionSummary")
+        ),
+        SessionEntry::BashExecution(_) => true,
+        SessionEntry::BranchSummary(_) => true,
+        SessionEntry::CustomMessage(_) => true,
         SessionEntry::Custom(c) => c.custom_type == "custom_message",
         _ => false,
     }
@@ -129,6 +162,10 @@ fn include_preceding_non_messages(
         }
         match prev {
             SessionEntry::Message(_) => break,
+            SessionEntry::BashExecution(_)
+            | SessionEntry::BranchSummary(_)
+            | SessionEntry::CustomMessage(_) => break,
+            SessionEntry::Custom(c) if c.custom_type == "custom_message" => break,
             _ => idx -= 1,
         }
     }
@@ -141,16 +178,8 @@ fn find_turn_start_index(
     start_index: usize,
 ) -> isize {
     for i in (start_index..=entry_index).rev() {
-        let entry = &entries[i];
-        match entry {
-            SessionEntry::BranchSummary(_) => return i as isize,
-            SessionEntry::Custom(c) if c.custom_type == "custom_message" => return i as isize,
-            SessionEntry::Message(msg) => {
-                if let Some("user") = msg.message.get("role").and_then(|r| r.as_str()) {
-                    return i as isize;
-                }
-            }
-            _ => {}
+        if is_turn_start_entry(&entries[i]) {
+            return i as isize;
         }
     }
     -1
@@ -209,40 +238,22 @@ pub fn find_cut_point(
     }
 
     // Remember the original cut point before including preceding non-messages.
-    // If the original cut was at a user-turn boundary, we want to preserve
-    // the "non-split" semantics even though `include_preceding_non_messages`
-    // moved the index backwards to include metadata entries.
+    // If the original cut was at a turn-start, preserve non-split semantics even
+    // when `include_preceding_non_messages` moves the index backwards.
     let original_cut_index = cut_index;
     cut_index = include_preceding_non_messages(entries, cut_index, start_index);
 
-    let cut_entry = &entries[cut_index];
-    let is_user_turn_start = match cut_entry {
-        SessionEntry::BranchSummary(_) => true,
-        SessionEntry::Custom(c) => c.custom_type == "custom_message",
-        SessionEntry::Message(msg) => msg
-            .message
-            .get("role")
-            .and_then(|r| r.as_str())
-            .map(|r| r == "user")
-            .unwrap_or(false),
-        _ => {
-            // If the adjusted cut_index is no longer at a user message, check
-            // whether the original cut point was a user-turn boundary.
-            (cut_index..=original_cut_index).any(|i| {
-                matches!(&entries[i], SessionEntry::Message(msg) if msg.message.get("role")
-                    .and_then(|r| r.as_str()) == Some("user"))
-            })
-        }
-    };
+    let starts_turn = is_turn_start_entry(&entries[original_cut_index])
+        || (cut_index..=original_cut_index).any(|i| is_turn_start_entry(&entries[i]));
 
-    if is_user_turn_start {
+    if starts_turn {
         CutPointResult {
             first_kept_entry_index: cut_index,
             turn_start_index: -1,
             is_split_turn: false,
         }
     } else {
-        let turn_start = find_turn_start_index(entries, cut_index, start_index);
+        let turn_start = find_turn_start_index(entries, original_cut_index, start_index);
         CutPointResult {
             first_kept_entry_index: cut_index,
             turn_start_index: turn_start,
