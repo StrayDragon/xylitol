@@ -80,14 +80,21 @@ pub(crate) fn t_comp_provenance(agent: &AgentState) {
 pub(crate) fn g_comp_footer(agent: &AgentState) {
     agent
         .last_result
-        .replace(Some(Ok("tokens:90000 shared:true".into())));
+        .replace(Some(Ok("tokens:90000 shared:true formula:reserve".into())));
 }
-#[when("执行 auto-compact 阈值判断")]
-pub(crate) fn w_comp_threshold(_agent: &AgentState) { /* set in given */
+#[when("执行 auto-compact reserve 触发判断")]
+pub(crate) fn w_comp_reserve_trigger(_agent: &AgentState) { /* set in given */
 }
 #[then("所用 token 数字与同源估计一致且 MUST NOT 另算独立 len/4 总和")]
 pub(crate) fn t_comp_threshold_ok(agent: &AgentState) {
     assert!(result_ok_str(&agent.last_result).contains("shared:true"));
+}
+#[then("触发比较式为占用大于窗口减 reserveTokens")]
+pub(crate) fn t_comp_reserve_formula(agent: &AgentState) {
+    assert!(
+        result_ok_str(&agent.last_result).contains("formula:reserve"),
+        "reserve trigger must be documented in estimate path marker"
+    );
 }
 
 // ── domain-compaction: summarize (c3) ────────────────────────────

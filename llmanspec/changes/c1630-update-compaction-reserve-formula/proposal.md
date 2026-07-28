@@ -1,10 +1,13 @@
 ---
 change_id: c1630-update-compaction-reserve-formula
 title: Compaction 触发改用 pi 同款 reserve 公式并移除百分比闸
-status: purpose-draft
+status: designed
 priority: 1630
 depends_on: []
 author: agent
+branch: sdd/c1630-update-compaction-reserve-formula
+base_sha: 8394fd101a7d77ad3496e69ce9c53e42c01320c6
+checkpointed: false
 ---
 
 # c1630-update-compaction-reserve-formula
@@ -18,16 +21,17 @@ xylitol 配置面已有与 pi 对齐的 `compaction.{enabled,reserveTokens,keepR
 - **触发公式**（与 pi 一致）：`contextTokens > contextWindow - reserveTokens`（`enabled=false` 时永不触发）。
 - **删除** `compaction_threshold: f64` 及装配路径（builder / composition / bootstrap / `AgentCapabilities` / `should_compact(..., f64)`）。
 - **单一配置 SSOT**：仅 `XyCompactionSettingsConfig` / 运行时 `CompactionSettings`（`enabled` / `reserve_tokens` / `keep_recent_tokens`）；默认 `16384` / `20000`。
+- `get_context_usage` / `ContextUsage.should_compact`：改吃 `CompactionSettings`（或 reserve），**percent 字段可保留为派生展示**（非触发 SSOT；TUI % 条见 c1680）。
 - 示例 / schema / architecture 文档：去掉「默认约 80%」叙事；改为 reserve 心智。
-- 更新 `domain-compaction`（及触及的 runtime-config / agent-session 文案）合约：c2 等从百分比改为 reserve；BDD `need-compact` / `no-compact` 重写。
-- **本 change 不做**：turn 后自动接线、split-turn、overflow retry、slash instructions、TUI % 条（见后续 change）。
+- 更新 `domain-compaction` / `runtime-config` 合约与 BDD：c2/c16、`need-compact`/`no-compact`、rc15 映射断言。
+- **本 change 不做**：turn 后自动接线（c1640）、split-turn（c1650）、overflow retry（c1660）、slash instructions（c1670）、TUI % 条（c1680）。
 
 ## Capabilities
 
 | Capability | 变更 |
 |---|---|
-| `domain-compaction` | 修订触发公式与配置单一来源；删百分比闸 |
-| `runtime-config` | 若仍写 threshold/百分比 → 改为 reserve/keepRecent |
+| `domain-compaction` | 修订 c2/c14/c16；删百分比闸；运行时类型名对齐 `CompactionSettings` |
+| `runtime-config` | rc15 映射验收改为 keepRecent/reserve，禁止 threshold 字段 |
 | `docs/architecture` | 压缩与上下文：默认心智对齐 pi |
 
 ## Impact
@@ -48,11 +52,12 @@ c1630 (本) ──┬──► c1640 auto/manual 接线
 
 - （已决）放弃百分比触发；百分比仅可后置为派生 UI。
 - （已决）配置字段名保持 camelCase，与现有 YAML/pi 一致。
+- （已决）`ContextUsage.percent` 可保留；`should_compact` 必须走 reserve。
 
 ## Ethics
 
 - risk_level: medium
 - prohibited_actions: 保留第二套百分比触发 SSOT；静默把 footer 百分比当触发闸
-- required_evidence: 单测/BDD 覆盖 reserve 公式边界；全仓无 `compaction_threshold` 残留
-- refusal_contract: 不在本 change 引入动态/按段策略（roadmap 极致压缩）
+- required_evidence: 单测/BDD 覆盖 reserve 公式边界与 enabled=false；全仓无 `compaction_threshold` 残留；rc15 映射绿
+- refusal_contract: 不在本 change 引入动态/按段策略（roadmap 极致压缩）；不实现 turn 后 auto 接线
 - escalation_policy: 若默认 reserve 相对旧 0.8 触发更晚/更早引发产品异议，先钉默认值再 apply
