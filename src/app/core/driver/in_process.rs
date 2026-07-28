@@ -320,9 +320,15 @@ impl XyDriver for XyInProcessDriver {
         )
     }
 
-    async fn compact(&mut self) -> Result<bool, XyDriverError> {
+    async fn compact(&mut self, instructions: Option<String>) -> Result<bool, XyDriverError> {
         // Force path (c1640 / pi compact) — MUST NOT use maybe_auto_compact.
-        Self::map_str(self.agent.inner().force_compact().await.map(|()| true))
+        Self::map_str(
+            self.agent
+                .inner()
+                .force_compact(instructions)
+                .await
+                .map(|()| true),
+        )
     }
 
     async fn export_html(&mut self, path: &Path) -> Result<String, XyDriverError> {

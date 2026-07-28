@@ -90,8 +90,9 @@ pub trait XyDriver: Send {
         chunk_tx: Option<tokio::sync::mpsc::Sender<Vec<u8>>>,
     ) -> Result<XyBashResult, XyDriverError>;
 
-    /// Run auto-compaction. Returns whether a compaction occurred.
-    async fn compact(&mut self) -> Result<bool, XyDriverError>;
+    /// Force compact (manual). Optional `instructions` focus the summary (c1670).
+    /// Returns whether a compaction occurred.
+    async fn compact(&mut self, instructions: Option<String>) -> Result<bool, XyDriverError>;
 
     /// Export the session to HTML at `path`. Returns the path used.
     async fn export_html(&mut self, path: &Path) -> Result<String, XyDriverError>;

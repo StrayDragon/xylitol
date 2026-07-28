@@ -603,7 +603,7 @@ pub(crate) async fn w_slash_intercepted(agent: &AgentState, ws: &Workspace) {
     let _ = store.create(&sid, Some("."), None).await;
     runtime.inner_mut().set_session(sid);
     let mut driver = XyInProcessDriver::new(runtime, store);
-    let did = driver.compact().await.expect("compact handler");
+    let did = driver.compact(None).await.expect("compact handler");
     agent
         .last_result
         .replace(Some(Ok(format!("compact:{did}"))));
