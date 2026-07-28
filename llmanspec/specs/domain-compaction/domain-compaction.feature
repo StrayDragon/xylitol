@@ -1,21 +1,34 @@
 # language: zh-CN
 # migrated from tests/features/compaction.feature
-# BDD 接线（tests/bdd.rs）：need-compact / no-compact（= should-compact true/false）/
+# BDD 接线（tests/bdd.rs）：need-compact / no-compact / disabled-no-compact
+# （should_compact + CompactionSettings.reserveTokens）/
 # retain-recent / write-entry / branch-summary
 功能: domain-compaction
   背景:
     假定 有一个临时工作目录
     并且 配置了上下文窗口为 100000 的模型
 
+  @req:c2
   场景: need-compact
     假定 会话消息估算使用 90000 个 token
-    并且 压缩阈值为 0.8
+    并且 compaction reserveTokens 为 16384
+    并且 compaction enabled 为 true
     当 调用 shouldCompact
     那么 返回 true
 
+  @req:c2
   场景: no-compact
     假定 会话消息估算使用 50000 个 token
-    并且 压缩阈值为 0.8
+    并且 compaction reserveTokens 为 16384
+    并且 compaction enabled 为 true
+    当 调用 shouldCompact
+    那么 返回 false
+
+  @req:c2
+  场景: disabled-no-compact
+    假定 会话消息估算使用 90000 个 token
+    并且 compaction reserveTokens 为 16384
+    并且 compaction enabled 为 false
     当 调用 shouldCompact
     那么 返回 false
 
@@ -119,7 +132,8 @@
 
   @req:c2
   @req:c16
-  场景: threshold-shares-footer-estimate
+  场景: reserve-trigger-shares-footer-estimate
     假如 会话叶上存在可信 Api usage 锚点且 footer 同源估计可用
-    当 执行 auto-compact 阈值判断
+    当 执行 auto-compact reserve 触发判断
     那么 所用 token 数字与同源估计一致且 MUST NOT 另算独立 len/4 总和
+    并且 触发比较式为占用大于窗口减 reserveTokens

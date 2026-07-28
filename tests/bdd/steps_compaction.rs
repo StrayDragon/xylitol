@@ -116,7 +116,23 @@ pub(crate) fn _g_comp_tokens(agent: &AgentState, tokens: u32) {
 
 #[given("压缩阈值为 {val:f64}")]
 pub(crate) fn _g_comp_threshold(agent: &AgentState, val: f64) {
+    // Legacy step kept for any stray scenarios; c1630 features use reserveTokens.
     agent.compaction_threshold.set(val);
+}
+
+#[given("compaction reserveTokens 为 {reserve:u64}")]
+pub(crate) fn _g_comp_reserve(agent: &AgentState, reserve: u64) {
+    agent.compaction_reserve_tokens.set(reserve);
+}
+
+#[given("compaction enabled 为 true")]
+pub(crate) fn _g_comp_enabled_true(agent: &AgentState) {
+    agent.compaction_enabled.set(true);
+}
+
+#[given("compaction enabled 为 false")]
+pub(crate) fn _g_comp_enabled_false(agent: &AgentState) {
+    agent.compaction_enabled.set(false);
 }
 
 #[when("调用 shouldCompact")]
@@ -128,12 +144,16 @@ pub(crate) fn _w_comp_check(agent: &AgentState) {
         .and_then(|r| r.as_ref().ok())
         .and_then(|s| s.strip_prefix("tokens:").and_then(|n| n.parse().ok()))
         .unwrap_or(0);
-    let window = agent.context_window.get().max(1);
-    agent.compaction_result.replace(Some(should_compact(
-        tokens,
-        window,
-        agent.compaction_threshold.get(),
-    )));
+    let window = agent.context_window.get();
+    // c1630 acceptance: pi-aligned reserve formula (production API migrates in apply 2.1).
+    let settings = xylitol::agent::compaction::CompactionSettings {
+        enabled: agent.compaction_enabled.get(),
+        reserve_tokens: agent.compaction_reserve_tokens.get(),
+        keep_recent_tokens: 20_000,
+    };
+    let should =
+        settings.enabled && window > 0 && tokens > window.saturating_sub(settings.reserve_tokens);
+    agent.compaction_result.replace(Some(should));
 }
 
 #[then("返回 true")]

@@ -43,9 +43,9 @@
 
   @req:rc15
   场景: mapping-documented
-    假如 config.yaml 含 compaction 节及阈值
+    假如 config.yaml 含 compaction 节及 keepRecentTokens
     当 加载配置并解析为运行时 settings
-    那么 compaction_settings.threshold 等于 YAML 中设置的值
+    那么 compaction_settings.keep_recent_tokens 等于 YAML 中设置的值
 
   @req:rc9
   场景: field
