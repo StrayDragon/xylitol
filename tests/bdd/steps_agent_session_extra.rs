@@ -603,7 +603,19 @@ pub(crate) async fn w_slash_intercepted(agent: &AgentState, ws: &Workspace) {
     let _ = store.create(&sid, Some("."), None).await;
     runtime.inner_mut().set_session(sid);
     let mut driver = XyInProcessDriver::new(runtime, store);
-    let did = driver.compact(None).await.expect("compact handler");
+    // Force compact on an empty session hits prepare gates (Nothing to compact /
+    // Already compacted) — that still proves slash→Driver::compact dispatch.
+    let did = match driver.compact(None).await {
+        Ok(did) => did,
+        Err(e) => {
+            let msg = e.to_string();
+            if msg.contains("Nothing to compact") || msg.contains("Already compacted") {
+                false
+            } else {
+                panic!("compact handler: {e}");
+            }
+        }
+    };
     agent
         .last_result
         .replace(Some(Ok(format!("compact:{did}"))));

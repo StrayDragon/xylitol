@@ -181,9 +181,9 @@ mod tests {
             other => panic!("expected Message, got {other:?}"),
         }
         assert!(
-            !entries
-                .iter()
-                .any(|e| matches!(e, SessionEntry::BashExecution(_))),
+            !entries.iter().any(
+                |e| e.entry_type() == "bashExecution" && !matches!(e, SessionEntry::Message(_))
+            ),
             "must not write top-level BashExecution"
         );
     }

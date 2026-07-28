@@ -10,9 +10,9 @@
 use std::path::PathBuf;
 
 pub use crate::protocol::session::{
-    BashExecutionEntry, BranchSummaryEntry, CompactionEntry, CustomEntry, CustomMessageEntry,
-    EntryBase, LabelEntry, MessageEntry, ModelChangeEntry, SESSION_VERSION, SessionContext,
-    SessionEntry, SessionHeader, SessionInfoEntry, SessionTreeNode, ThinkingLevelChangeEntry,
+    BranchSummaryEntry, CompactionEntry, CustomEntry, CustomMessageEntry, EntryBase, LabelEntry,
+    MessageEntry, ModelChangeEntry, SESSION_VERSION, SessionContext, SessionEntry, SessionHeader,
+    SessionInfoEntry, SessionTreeNode, ThinkingLevelChangeEntry,
 };
 
 /// Storage backend for a session.
