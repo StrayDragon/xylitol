@@ -139,7 +139,6 @@ fn render_entry_html(entry: &SessionEntry) -> String {
             "compaction",
             &format!("[branch summary from {}]\n{}", b.from_id, b.summary),
         ),
-        SessionEntry::BashExecution(b) => block("bash", &format!("$ {}\n{}", b.command, b.output)),
         SessionEntry::ModelChange(mc) => block(
             "header",
             &format!("model → {}:{}", mc.provider, mc.model_id),
@@ -198,16 +197,7 @@ pub fn render_jsonl(entries: &[SessionEntry]) -> Result<String, String> {
 /// compatible `version`. Returns an error otherwise.
 pub fn parse_jsonl(bytes: &[u8]) -> Result<Vec<SessionEntry>, String> {
     let text = std::str::from_utf8(bytes).map_err(|e| format!("jsonl is not utf-8: {e}"))?;
-    let mut entries = Vec::new();
-    for (i, line) in text.lines().enumerate() {
-        let line = line.trim();
-        if line.is_empty() {
-            continue;
-        }
-        let entry: SessionEntry =
-            serde_json::from_str(line).map_err(|e| format!("line {}: parse error: {e}", i + 1))?;
-        entries.push(entry);
-    }
+    let entries = crate::protocol::session::parse_session_jsonl(text)?;
     if entries.is_empty() {
         return Err("jsonl contained no entries".into());
     }
@@ -224,12 +214,14 @@ pub fn parse_jsonl(bytes: &[u8]) -> Result<Vec<SessionEntry>, String> {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::protocol::session::{BashExecutionEntry, EntryBase, SessionHeader};
+    use crate::protocol::session::{
+        EntryBase, SESSION_VERSION, SessionHeader, bash_execution_message_entry,
+    };
 
     fn header(id: &str) -> SessionEntry {
         SessionEntry::Header(SessionHeader {
             entry_type: "session".into(),
-            version: 3,
+            version: SESSION_VERSION,
             id: id.into(),
             timestamp: "2026-06-19T00:00:00Z".into(),
             cwd: "/tmp".into(),
@@ -266,19 +258,11 @@ mod tests {
     fn html_renders_bash_entry() {
         let entries = vec![
             header("s1"),
-            SessionEntry::BashExecution(BashExecutionEntry {
-                base: base(),
-                command: "echo hi".into(),
-                output: "hi".into(),
-                exit_code: Some(0),
-                cancelled: false,
-                truncated: false,
-                full_output_path: None,
-                exclude_from_context: false,
-            }),
+            bash_execution_message_entry("echo hi", "hi", Some(0), false, false, None, false),
         ];
         let html = render_html("s1", &entries);
         assert!(html.contains("$ echo hi"));
+        assert!(html.contains("hi"));
         assert!(html.contains("bash"));
     }
 

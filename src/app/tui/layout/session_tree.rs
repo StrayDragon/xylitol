@@ -274,7 +274,6 @@ fn session_tree_node_kind(entry: &SessionEntry) -> Option<String> {
             Some(role) => Some(role.to_string()),
             None => None,
         },
-        SessionEntry::BashExecution(_) => Some("tool".into()),
         SessionEntry::ModelChange(_)
         | SessionEntry::ThinkingLevelChange(_)
         | SessionEntry::Label(_)
@@ -295,7 +294,6 @@ fn session_tree_display_label(node: &SessionTreeNode) -> String {
             .unwrap_or("")
             .to_string(),
         SessionEntry::Message(m) => message_text(&m.message),
-        SessionEntry::BashExecution(b) => b.command.clone(),
         SessionEntry::Compaction(c) => c.summary.clone(),
         SessionEntry::BranchSummary(b) => b.summary.clone(),
         SessionEntry::CustomMessage(c) => c.content.to_string(),

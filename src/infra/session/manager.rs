@@ -1,7 +1,7 @@
 //! SessionManager — JSONL file-based session storage.
 //!
 //! Handles create, append, load, list, exists, tree navigation,
-//! build_session_context, and version migration for sessions.
+//! and build_session_context for sessions (latest SESSION_VERSION only).
 
 use std::collections::HashMap;
 use std::path::PathBuf;
@@ -163,7 +163,7 @@ impl SessionManager {
             let content = tokio::fs::read_to_string(&path)
                 .await
                 .map_err(|e| format!("read session before pending merge: {e}"))?;
-            let disk = Self::parse_entries_from_content(&content)?;
+            let (disk, _) = crate::protocol::session::parse_session_jsonl_lines(&content);
             let merged = Self::merge_pending_ahead_of_disk(pending, disk);
             self.write_entries_to_disk(session_id, &merged).await
         } else {
@@ -258,7 +258,7 @@ impl SessionManager {
     ) -> Result<(), String> {
         let header = SessionEntry::Header(SessionHeader {
             entry_type: "session".into(),
-            version: 4,
+            version: SESSION_VERSION,
             id: id.to_string(),
             timestamp: Utc::now().to_rfc3339(),
             cwd: cwd.unwrap_or(".").to_string(),
@@ -365,7 +365,7 @@ impl SessionManager {
         match entry {
             SessionEntry::Header(_) => SessionEntry::Header(SessionHeader {
                 entry_type: "session".into(),
-                version: 4,
+                version: SESSION_VERSION,
                 id: id.to_string(),
                 timestamp: timestamp.to_string(),
                 cwd: String::new(),
@@ -422,16 +422,6 @@ impl SessionManager {
                 base,
                 name: si.name.clone(),
             }),
-            SessionEntry::BashExecution(b) => SessionEntry::BashExecution(BashExecutionEntry {
-                base,
-                command: b.command.clone(),
-                output: b.output.clone(),
-                exit_code: b.exit_code,
-                cancelled: b.cancelled,
-                truncated: b.truncated,
-                full_output_path: b.full_output_path.clone(),
-                exclude_from_context: b.exclude_from_context,
-            }),
         }
     }
 
@@ -483,39 +473,42 @@ impl SessionManager {
         Ok(())
     }
 
-    /// Load all entries from a session (with v3→v4 migration if needed).
+    /// Load all entries from a session (latest [`SESSION_VERSION`] only).
     /// For persisted sessions, reads from the JSONL file or pending memory.
     /// For in-memory sessions, returns from the in-memory store.
     pub async fn load(&self, session_id: &str) -> Result<Vec<SessionEntry>, String> {
-        let mut entries = match &self.backend {
-            SessionBackend::InMemory { .. } => self
-                .in_memory_store
-                .read()
-                .expect("RwLock not poisoned")
-                .get(session_id)
-                .cloned()
-                .ok_or_else(|| format!("session not found: {session_id}"))?,
+        let entries = match &self.backend {
+            SessionBackend::InMemory { .. } => {
+                let entries = self
+                    .in_memory_store
+                    .read()
+                    .expect("RwLock not poisoned")
+                    .get(session_id)
+                    .cloned()
+                    .ok_or_else(|| format!("session not found: {session_id}"))?;
+                crate::protocol::session::enforce_session_version(&entries)?;
+                entries
+            }
             SessionBackend::Persisted { .. } => {
                 if self.session_file_exists(session_id) {
                     let path = self.session_path(session_id);
                     let content = tokio::fs::read_to_string(&path)
                         .await
                         .map_err(|e| format!("read session: {e}"))?;
-                    Self::parse_entries_from_content(&content)?
+                    crate::protocol::session::parse_session_jsonl(&content)?
                 } else {
-                    self.pending_store
+                    let entries = self
+                        .pending_store
                         .read()
                         .expect("RwLock not poisoned")
                         .get(session_id)
                         .cloned()
-                        .ok_or_else(|| format!("session not found: {session_id}"))?
+                        .ok_or_else(|| format!("session not found: {session_id}"))?;
+                    crate::protocol::session::enforce_session_version(&entries)?;
+                    entries
                 }
             }
         };
-
-        if needs_migration_from_entries(&entries) {
-            entries = self.migrate_v3_to_v4(entries);
-        }
 
         if let Some(last) = entries.last() {
             if let Some(id) = last.entry_id() {
@@ -525,19 +518,6 @@ impl SessionManager {
             self.set_leaf(session_id, None);
         }
 
-        Ok(entries)
-    }
-
-    fn parse_entries_from_content(content: &str) -> Result<Vec<SessionEntry>, String> {
-        let mut entries: Vec<SessionEntry> = Vec::new();
-        for line in content.lines() {
-            if line.trim().is_empty() {
-                continue;
-            }
-            let entry: SessionEntry =
-                serde_json::from_str(line).map_err(|e| format!("parse entry: {e}"))?;
-            entries.push(entry);
-        }
         Ok(entries)
     }
 
@@ -554,26 +534,6 @@ impl SessionManager {
         assert_session_cwd_exists(&entries, fallback_cwd)
             .map_err(|e| format!("session validation failed: {e}"))?;
         Ok(entries)
-    }
-
-    /// Migrate v3 entries (no id/parentId) to v4.
-    fn migrate_v3_to_v4(&self, entries: Vec<SessionEntry>) -> Vec<SessionEntry> {
-        let mut prev_id: Option<String> = None;
-
-        entries
-            .into_iter()
-            .map(|entry| match entry {
-                SessionEntry::Header(h) => SessionEntry::Header(SessionHeader { version: 4, ..h }),
-                _ => {
-                    let new_id = Uuid::new_v4().to_string();
-                    let now = Utc::now().to_rfc3339();
-                    let result =
-                        Self::clone_entry_with_ids(&entry, &new_id, prev_id.as_deref(), &now);
-                    prev_id = Some(new_id);
-                    result
-                }
-            })
-            .collect()
     }
 
     /// Delete a session file and in-memory tracking (c1065 resume panel).
@@ -759,7 +719,7 @@ impl SessionManager {
                     thinking_level = tc.thinking_level.clone();
                 }
                 other => {
-                    // Unified entry→AgentMessage (honors exclude; lifts legacy bash).
+                    // Unified entry→AgentMessage (honors exclude; nested bang-bash only).
                     if let Some(msg) = other.as_agent_message()
                         && let Ok(v) = serde_json::to_value(&msg)
                     {
@@ -1361,12 +1321,6 @@ impl SessionManager {
 
 // ── CWD Validation ──────────────────────────────────────────────────
 
-fn needs_migration_from_entries(entries: &[SessionEntry]) -> bool {
-    entries
-        .iter()
-        .any(|entry| matches!(entry, SessionEntry::Header(h) if h.version < 4))
-}
-
 /// Validate that the session's working directory exists.
 ///
 /// Checks the CWD stored in the session header. If the directory does not
@@ -1480,8 +1434,26 @@ impl XySessionStore for SessionManager {
             } else {
                 None
             };
-            let name = SessionManager::get_session_name(self, &id).await?;
-            let entries = SessionManager::load(self, &id).await.unwrap_or_default();
+            let name = match SessionManager::get_session_name(self, &id).await {
+                Ok(n) => n,
+                Err(e) => {
+                    log::warn!(
+                        target: "xylitol::session",
+                        "list_sessions skip {id}: {e}"
+                    );
+                    continue;
+                }
+            };
+            let entries = match SessionManager::load(self, &id).await {
+                Ok(e) => e,
+                Err(e) => {
+                    log::warn!(
+                        target: "xylitol::session",
+                        "list_sessions skip {id}: {e}"
+                    );
+                    continue;
+                }
+            };
             let mut message_count = 0usize;
             let mut first_message = None;
             let mut parent_session_id = None;
@@ -2083,5 +2055,53 @@ mod fork_path_tests {
             .find(|e| e.entry_id() == Some("a1"))
             .unwrap();
         assert_eq!(a1.parent_id(), Some("u1"));
+    }
+
+    #[tokio::test]
+    async fn create_writes_session_version_five() {
+        let dir = tempfile::tempdir().unwrap();
+        let mgr = SessionManager::new(dir.path().join("sessions"));
+        let sid = format!("ver-{}", uuid::Uuid::new_v4());
+        mgr.create(&sid, Some("."), None).await.unwrap();
+        mgr.flush_pending_to_disk(&sid).await.unwrap();
+        let entries = mgr.load(&sid).await.unwrap();
+        let version = entries.iter().find_map(|e| match e {
+            SessionEntry::Header(h) => Some(h.version),
+            _ => None,
+        });
+        assert_eq!(version, Some(SESSION_VERSION));
+        let raw = tokio::fs::read_to_string(mgr.session_path(&sid))
+            .await
+            .unwrap();
+        assert!(
+            raw.contains("\"version\":5") || raw.contains("\"version\": 5"),
+            "{raw}"
+        );
+        assert!(!raw.contains("\"type\":\"bashExecution\""));
+    }
+
+    #[tokio::test]
+    async fn list_sessions_skips_unreadable_file() {
+        use crate::protocol::ports::XySessionStore;
+        let dir = tempfile::tempdir().unwrap();
+        let sessions = dir.path().join("sessions");
+        let mgr = SessionManager::new(sessions.clone());
+        let good = format!("good-{}", uuid::Uuid::new_v4());
+        mgr.create(&good, Some("."), None).await.unwrap();
+        mgr.flush_pending_to_disk(&good).await.unwrap();
+
+        let bad_path = sessions.join("bad-legacy.jsonl");
+        tokio::fs::write(
+            &bad_path,
+            r#"{"type":"session","version":4,"id":"bad-legacy","timestamp":"t","cwd":"."}
+"#,
+        )
+        .await
+        .unwrap();
+
+        let listed = mgr.list_sessions().await.unwrap();
+        let ids: Vec<_> = listed.iter().map(|e| e.id.as_str()).collect();
+        assert!(ids.contains(&good.as_str()), "{ids:?}");
+        assert!(!ids.iter().any(|id| *id == "bad-legacy"), "{ids:?}");
     }
 }

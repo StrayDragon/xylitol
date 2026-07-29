@@ -7,9 +7,7 @@
 #[cfg(test)]
 mod tests {
     use crate::protocol::message::{AgentMessage, AgentPart, EnvMessage, LlmMessage};
-    use crate::protocol::session::{
-        BashExecutionEntry, EntryBase, MessageEntry, SessionEntry, fixture_message_json,
-    };
+    use crate::protocol::session::{EntryBase, MessageEntry, SessionEntry, fixture_message_json};
     use serde_json::{Value, json};
 
     fn entry(message: Value) -> SessionEntry {
@@ -77,23 +75,16 @@ mod tests {
     }
 
     #[test]
-    fn lifts_legacy_top_level_bash() {
-        let e = SessionEntry::BashExecution(BashExecutionEntry {
-            base: EntryBase {
-                entry_type: "bashExecution".into(),
-                id: "b1".into(),
-                parent_id: None,
-                timestamp: "t".into(),
-            },
-            command: "ls".into(),
-            output: "a".into(),
-            exit_code: Some(0),
-            cancelled: false,
-            truncated: false,
-            full_output_path: None,
-            exclude_from_context: false,
-        });
-        let msg = e.as_agent_message().expect("lift");
+    fn nested_bash_message_projects_to_env() {
+        let e = entry(json!({
+            "role": "bashExecution",
+            "command": "ls",
+            "output": "a",
+            "cancelled": false,
+            "truncated": false,
+            "exclude_from_context": false,
+        }));
+        let msg = e.as_agent_message().expect("nested bash");
         match msg {
             AgentMessage::Env(EnvMessage::BashExecutionMessage {
                 command,

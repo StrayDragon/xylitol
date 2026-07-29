@@ -44,9 +44,6 @@ pub fn estimate_tokens_entry(entry: &SessionEntry) -> u64 {
         }
         SessionEntry::Label(_) => 0,
         SessionEntry::SessionInfo(_) => 0,
-        SessionEntry::BashExecution(b) => {
-            (b.command.len() as u64 + b.output.len() as u64).div_ceil(4)
-        }
     }
 }
 
@@ -114,7 +111,6 @@ fn is_valid_cut_point(entry: &SessionEntry) -> bool {
             Some("toolResult") => false,
             _ => false,
         },
-        SessionEntry::BashExecution(_) => true,
         SessionEntry::BranchSummary(_) => true,
         SessionEntry::CustomMessage(_) => true,
         SessionEntry::Custom(c) => c.custom_type == "custom_message",
@@ -137,7 +133,6 @@ fn is_turn_start_entry(entry: &SessionEntry) -> bool {
                 | Some("branchSummary")
                 | Some("compactionSummary")
         ),
-        SessionEntry::BashExecution(_) => true,
         SessionEntry::BranchSummary(_) => true,
         SessionEntry::CustomMessage(_) => true,
         SessionEntry::Custom(c) => c.custom_type == "custom_message",
@@ -162,9 +157,7 @@ fn include_preceding_non_messages(
         }
         match prev {
             SessionEntry::Message(_) => break,
-            SessionEntry::BashExecution(_)
-            | SessionEntry::BranchSummary(_)
-            | SessionEntry::CustomMessage(_) => break,
+            SessionEntry::BranchSummary(_) | SessionEntry::CustomMessage(_) => break,
             SessionEntry::Custom(c) if c.custom_type == "custom_message" => break,
             _ => idx -= 1,
         }
