@@ -689,6 +689,8 @@ fn run_react_loop(cfg: ReActConfig) -> impl Stream<Item = XyEvent> + Send {
         };
         let agent_turn_span =
             super::obs::AgentTurnSpan::start(Some(user_preview.as_str()), model_api.as_deref());
+        // c1720: mark turn root aborted when cancel token ends the run.
+        let mut turn_aborted = false;
 
         // Outer loop: continues when follow-up messages arrive after the agent
         // would otherwise stop (pi runLoop semantics).
@@ -698,6 +700,7 @@ fn run_react_loop(cfg: ReActConfig) -> impl Stream<Item = XyEvent> + Send {
             while continue_after_tools || !pending.is_empty() {
                 if cancel.is_cancelled() {
                     // Bridge maps this to a dim system note + idle (not a sticky fault).
+                    turn_aborted = true;
                     yield XyEvent::Error("aborted".to_string());
                     break 'outer;
                 }
@@ -791,6 +794,7 @@ fn run_react_loop(cfg: ReActConfig) -> impl Stream<Item = XyEvent> + Send {
                 let mut chunk_stream: Pin<Box<dyn Stream<Item = Result<XyChunk, XyError>> + Send>>;
                 match stream_result {
                     None => {
+                        turn_aborted = true;
                         yield XyEvent::Error("aborted".to_string());
                         break 'outer;
                     }
@@ -914,6 +918,7 @@ fn run_react_loop(cfg: ReActConfig) -> impl Stream<Item = XyEvent> + Send {
                                     .await;
                                 history.push(assistant_msg);
                             }
+                            turn_aborted = true;
                             yield XyEvent::Error("aborted".to_string());
                             break 'outer;
                         }
@@ -1397,7 +1402,15 @@ fn run_react_loop(cfg: ReActConfig) -> impl Stream<Item = XyEvent> + Send {
             observe_script_hook(bus, ty, phase, ctx).await;
         }
         // Keep `agent.turn` open for the whole run (NLL would otherwise drop early).
-        drop(agent_turn_span);
+        // c1720 / otel20: explicit terminal status before parent slots clear.
+        if let Some(span) = agent_turn_span {
+            use super::obs::TurnEndReason;
+            span.finish(if turn_aborted {
+                TurnEndReason::Aborted
+            } else {
+                TurnEndReason::Ok
+            });
+        }
         yield XyEvent::AgentEnd { messages: history };
     }
 }

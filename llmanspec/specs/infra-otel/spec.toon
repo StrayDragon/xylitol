@@ -2,7 +2,7 @@ kind: llman.sdd.spec
 name: "infra-otel"
 purpose: "可选 OpenTelemetry OTLP/HTTP 出口：Cargo feature otel + 配置显式开启；默认与失败路径均不收集；经 fastrace-opentelemetry 导出；Langfuse 会话、GenAI 属性与同一 turn 内父子 span 树（含 agent.compaction）在 opt-in 出口之上叠加。"
 valid_scope[5]: src/infra/observability/,src/app/cli/logging.rs,src/agent/runtime/obs.rs,src/agent/compaction/,packages/xylitol-ai-bridge/src/provider/
-requirements[19]{req_id,title,statement}:
+requirements[20]{req_id,title,statement}:
   otel1,"otel-default-none","未配置 [otel]、feature 缺省或 exporter=none 时，进程 MUST NOT 向任何 OTLP 端点发送 traces；MUST NOT 仅因存在 fastrace span 而隐式开启远程导出。"
   otel2,"otel-config-opt-in","当 Cargo feature otel 启用且 AppConfig.[otel] exporter=otlp-http 且 endpoint（及所需认证头）合法时，组合根 MUST 经 fastrace-opentelemetry OpenTelemetryReporter（或等价）将 fastrace span 导出为 OTLP/HTTP；protocol MUST 为 HTTP（binary 或 json），MUST NOT 以 gRPC 作为 Langfuse 目标路径的默认或唯一选项。"
   otel3,"otel-fallback-no-block","OTLP exporter 构建失败、凭证缺失、feature otel 未启用、或配置不完整时，观测装配 MUST 降级为不安装 OTLP Reporter（本地 file JSONL 闸仍独立），MUST 将诊断写入 file-only 日志（若级别日志已开），MUST NOT 因此使对话主路径启动失败。"
@@ -22,6 +22,8 @@ requirements[19]{req_id,title,statement}:
   otel17,"otel-generation-abort-finalize","当低频观测 span 激活且 llm.request 在未见成功 Done 的情况下提前结束（用户 abort 或等价 drop 流）时：若 observation_io ≠ none，generation MUST 仍按档 flush 已缓冲的 input/output；该 generation MUST 携带 langfuse.observation.level=ERROR 与 langfuse.observation.status_message=aborted；MUST NOT 因此伪造 usage_details。"
   otel18,"otel-parallel-tool-spans","当低频观测 span 激活且 barrier_parallel 并行窗内并发执行多个工具时，各 tool.execute MUST 仍为同一 agent.iteration（进而同一 agent.turn）的子 span 并共享 trace_id；MUST 携带可区分的 tool_id（及可选 tool_batch.mode / tool_batch.barrier_index）；MUST NOT 为并发工具各自创建无关的 SpanContext::random 根 span；并发任务 MUST 使用扇出前捕获的显式 parent，MUST NOT 依赖全局 parent slot 的竞态读写。由单测或 obs 窄读覆盖，MUST NOT 为静态存在性单独扩 BDD step。"
   otel19,"otel-compaction-span","当低频观测 span 激活且实际执行会话 compaction（manual / threshold / overflow）时，MUST 导出名为 agent.compaction 的 fastrace span，且 langfuse.observation.type MUST 为 span；若存在活跃 agent.turn，该 span MUST 为其子 span 并共享 trace_id；若不存在 turn 上下文，MUST 可为独立根且在 session 已知时携带同一 langfuse.session.id；MUST 携带诚实 reason（manual|threshold|overflow），结束时 MUST 能暴露 will_retry / aborted 或失败 status（或等价属性）；默认 MUST NOT 将压缩摘要全文写入 langfuse.observation.input/output；观测闸关闭时 MUST 为零/近零开销。由单测（CollectingReporter）覆盖，MUST NOT 为静态存在性单独扩 BDD step。MUST NOT 改变 XyEvent CompactionStart/End 的面语义。"
-scenarios[2]{req_id,id,given,when,then,feature}:
+  otel20,"otel-turn-terminal-status","当低频观测 span 激活时，agent.turn 结束 MUST 暴露可过滤终态：若该轮因用户 abort（或等价 cancel 令牌）提前结束，MUST 携带 langfuse.observation.level=ERROR 与 langfuse.observation.status_message=aborted（或等价）；若该轮正常完成，MUST NOT 将 turn 标为 ERROR/aborted。本 req 不强制细分模型/工具 error 类（可 follow-up）。由单测覆盖，MUST NOT 为静态存在性单独扩 BDD step。"
+scenarios[3]{req_id,id,given,when,then,feature}:
   otel18,"parallel-tools-share-iteration",并行窗内两工具并发且观测激活,检查导出 span 树,两 tool.execute 同属一代 iteration 父且非 random 根,false
   otel19,"compaction-under-turn",观测激活且 turn 内发生 compaction,检查导出 span 树,存在 agent.compaction 为该 turn 子节点且 type 为 span 并含 reason,false
+  otel20,"turn-aborted-marks-error",观测激活且用户 abort 结束一轮,检查 agent.turn 属性,level 为 ERROR 且 status_message 为 aborted,false
