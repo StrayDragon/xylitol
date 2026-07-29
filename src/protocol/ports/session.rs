@@ -42,6 +42,15 @@ pub trait XySessionStore: Send + Sync {
 
     /// Load the raw typed session entries (for compaction / export).
     async fn load_entries(&self, session_id: &str) -> Result<Vec<SessionEntry>, String>;
+
+    /// Load entries on the current leaf→root branch (pi `getBranch`).
+    ///
+    /// Compaction prepare/cut MUST use this path so sibling branches are excluded.
+    /// Default falls back to [`Self::load_entries`] for linear/stub stores.
+    async fn load_leaf_branch(&self, session_id: &str) -> Result<Vec<SessionEntry>, String> {
+        self.load_entries(session_id).await
+    }
+
     /// Append a typed session entry (compaction summary, bash exec, etc.).
     async fn append_session_entry(
         &self,
