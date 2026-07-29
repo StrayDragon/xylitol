@@ -28,8 +28,8 @@ pub use obs_session::{
     set_obs_session, set_obs_session_name,
 };
 pub use obs_span_parent::{
-    clear_obs_span_parents, obs_llm_parent, obs_turn_parent, set_obs_iteration_parent,
-    set_obs_turn_parent,
+    clear_obs_span_parents, obs_llm_parent, obs_turn_parent, set_obs_compaction_parent,
+    set_obs_iteration_parent, set_obs_turn_parent,
 };
 pub use openai_completions::OpenAiCompletionsAdapter;
 pub use openai_responses::{

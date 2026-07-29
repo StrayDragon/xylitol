@@ -37,7 +37,7 @@
   @req:otel6
   场景: 根 span 始终带 session uuid
     假如 低频观测 span 已激活且当前会话 UUID 已知
-    当 创建 agent.turn 或无父 turn 的独立 token.estimate 等根 span
+    当 创建 agent.turn 或无父 turn 的独立 token.estimate 或独立 agent.compaction 等根 span
     那么 属性含 langfuse.session.id 且值等于该 UUID 且不得用 display name 顶替
 
   @req:otel7
@@ -49,8 +49,8 @@
   @req:otel8
   场景: 根 span 带 Langfuse observation 类型
     假如 低频观测 span 已激活
-    当 创建 llm.request、agent.turn、agent.iteration、tool.execute
-    那么 分别标记 generation、agent、agent、tool，且默认不附带完整 prompt 或 completion 载荷
+    当 创建 llm.request、agent.turn、agent.iteration、tool.execute、agent.compaction
+    那么 分别标记 generation、agent、agent、tool、span，且默认不附带完整 prompt 或 completion 载荷
 
   @req:otel9
   场景: generation 写入 usage
@@ -68,13 +68,13 @@
   场景: 同 turn 父子共享 trace
     假如 低频观测 span 已激活且跑完一轮含工具的用户触发处理
     当 收集该轮 fastrace SpanRecord
-    那么 存在名为 agent.turn 的根且 agent.iteration 与 llm.request 与 tool.execute 共享其 trace_id 并经 parent 挂接且不得各自无关 random 根
+    那么 存在名为 agent.turn 的根且 agent.iteration 与 llm.request 与 tool.execute 共享其 trace_id 并经 parent 挂接；若该轮发生了 compaction 则 agent.compaction 亦共享同一 trace_id 且不得各自无关 random 根
 
   @req:otel12
   场景: 导出名使用产品词汇
     假如 低频观测 span 已激活且跑完一轮用户触发处理
     当 检查导出或收集到的 span 名
-    那么 含 agent.turn 与 agent.iteration 与 llm.request 且不含 react.stream 与 react.turn 与 provider.request 作为导出名
+    那么 含 agent.turn 与 agent.iteration 与 llm.request 且不含 react.stream 与 react.turn 与 provider.request 作为导出名；若发生 compaction 则名称为 agent.compaction
 
   @req:otel13
   场景: token.estimate 挂 turn 或独立根

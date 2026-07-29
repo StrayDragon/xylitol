@@ -6,9 +6,10 @@
 //! Hierarchy (exported names):
 //! ```text
 //! agent.turn
-//!   └─ agent.iteration
-//!        ├─ llm.request   (via bridge obs parent slot)
-//!        └─ tool.execute
+//!   ├─ agent.iteration
+//!   │    ├─ llm.request   (via bridge obs parent slot)
+//!   │    └─ tool.execute
+//!   └─ agent.compaction   (via agent/compaction/obs; may parent summarization llm.request)
 //! ```
 //!
 //! Do **not** hold [`LocalParentGuard`] across `.await` in the ReAct
