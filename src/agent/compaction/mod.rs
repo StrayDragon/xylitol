@@ -12,6 +12,7 @@ pub mod cut_detector;
 pub mod file_ops;
 pub mod llm_summarizer;
 pub mod message_converter;
+pub mod obs;
 pub mod orchestrator;
 pub mod overflow;
 pub mod settings;

@@ -6,6 +6,7 @@
 //! Manual `compact` = force (pi `AgentSession.compact`); auto threshold = Case2;
 //! overflow compact-and-retry = Case1 (c1660).
 
+use crate::agent::compaction::obs::AgentCompactionSpan;
 use crate::agent::compaction::overflow::{assistant_same_model, is_context_overflow_assistant};
 use crate::agent::compaction::token_estimator::{EstimateOpts, estimate_from_session_entries};
 use crate::agent::compaction::{CompactionSettings, compact_session, prepare_compaction};
@@ -56,9 +57,13 @@ impl CompactionOrchestrator {
                 reason: "manual".to_string(),
             })
             .await;
+        let obs = AgentCompactionSpan::start("manual");
 
         let entries = store.load_entries(sid).await?;
         if let Some(err) = prepare_compaction(&entries, &self.settings).err() {
+            if let Some(obs) = obs {
+                obs.finish(false, false, Some(err.as_str()));
+            }
             event_sink
                 .emit(&XyEvent::CompactionEnd {
                     result: None,
@@ -78,6 +83,9 @@ impl CompactionOrchestrator {
             .await
             .map_err(|e| format!("compaction failed: {e}"));
 
+        if let Some(obs) = obs {
+            obs.finish(false, false, result.as_ref().err().map(String::as_str));
+        }
         event_sink
             .emit(&XyEvent::CompactionEnd {
                 result: result.as_ref().ok().map(|_| "ok".to_string()),
@@ -238,6 +246,7 @@ impl CompactionOrchestrator {
                 reason: reason.to_string(),
             })
             .await;
+        let obs = AgentCompactionSpan::start(reason);
 
         let result = compact_session(store, sid, model, &self.settings, None).await;
         let (ok_result, err_msg) = match &result {
@@ -252,18 +261,23 @@ impl CompactionOrchestrator {
             ),
         };
 
+        let end_reason = if reason.starts_with("overflow") {
+            "overflow".into()
+        } else if reason.starts_with("threshold") {
+            "threshold".into()
+        } else {
+            reason.to_string()
+        };
+        let will_retry_end = will_retry && result.is_ok();
+        if let Some(obs) = obs {
+            obs.finish(will_retry_end, false, err_msg.as_deref());
+        }
         event_sink
             .emit(&XyEvent::CompactionEnd {
                 result: ok_result,
                 aborted: false,
-                reason: if reason.starts_with("overflow") {
-                    "overflow".into()
-                } else if reason.starts_with("threshold") {
-                    "threshold".into()
-                } else {
-                    reason.to_string()
-                },
-                will_retry: will_retry && result.is_ok(),
+                reason: end_reason,
+                will_retry: will_retry_end,
                 error_message: err_msg,
             })
             .await;
