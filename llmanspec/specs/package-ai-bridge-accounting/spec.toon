@@ -2,9 +2,10 @@ kind: llman.sdd.spec
 name: "package-ai-bridge-accounting"
 purpose: "xylitol-ai-bridge 多源上下文 token 计量与 TokenProvenance。"
 valid_scope[2]: "packages/xylitol-ai-bridge/",src/agent/compaction/
-requirements[10]{req_id,title,statement}:
+requirements[11]{req_id,title,statement}:
   paa1,计量优先级,上下文 token 估计 MUST 按固定优先级解析来源：Api，然后 RemoteCount，然后 LocalTokenizer，然后 Heuristic；结果 MUST 携带 TokenProvenance（或等价枚举）标明实际采用的来源。
   paa2,"Api-锚点规则",当存在适用于当前会话 prefix/leaf 的可信厂商 usage 时 MUST 优先用作 Api 锚点；因 abort 或 error 结束的回合 usage、以及 compaction 之后不再描述当前 prefix 的旧 usage，MUST NOT 作为锚点。
+  paa11,"Api-trailing-范围","当 Api 锚点有效时，trailing_tokens MUST 仅计入 last usage 消息之后的消息（对齐 pi estimateContextTokens）；MUST NOT 对锚点及之前的消息再叠加 heuristic；last_usage_index MUST 为该锚点消息下标；若消息列表中找不到带 usage 的 assistant，可将整段列表视为 trailing 且 last_usage_index 可为 null。"
   paa3,禁止流上全量 encode,generate_stream 热路径 MUST NOT 在每个文本 delta 上对累计全文调用完整本地 tokenizer.encode；本地精确计数 MUST 仅在显式 estimate 调用、流结束补洞或经文档化的节流策略下发生。
   paa4,"Heuristic-诚实标注",当最终采用 Heuristic 时，ContextTokenEstimate 的 provenance MUST 为 Heuristic；下游展示层若使用该结果 MUST 能区分于 Api/LocalTokenizer。
   paa5,"RemoteCount-可降级",RemoteCount（Anthropic count_tokens 与 OpenAI Responses input_tokens，及等价注入 stub）MUST 可配置关闭；调用失败或超时时 MUST 降级到 LocalTokenizer 或 Heuristic，且 MUST NOT 将失败结果标为 Api。

@@ -8,6 +8,12 @@
     当 调用 estimate_context
     那么 provenance 为 Api 且 tokens 反映该 usage
 
+  @req:paa11
+  场景: api-trailing-after-anchor-only
+    假如 消息集含长历史与带 usage 的末条 assistant 及之后少量新消息
+    当 调用 estimate_context
+    那么 provenance 为 Api 且 tokens 约等于 usage 加锚点后增量而非 usage 加全量 heuristic
+
   @req:paa1
   @req:paa10
   场景: fallback-local
