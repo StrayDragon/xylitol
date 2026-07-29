@@ -400,6 +400,9 @@ impl<T: Terminal> HostSession<T> {
         }
         self.sync_ui_root_from_model();
         self.push_system_note(note);
+        // Resume / restore / clone / import must refresh footer without waiting for
+        // a new turn (c1035 was stream-close only; CLI --session left token blank).
+        self.request_footer_token_refresh();
     }
 
     /// Apply `/debug <scene>` load: rebuild transcript and optional footer model (c710).

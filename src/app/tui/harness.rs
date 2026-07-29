@@ -3803,6 +3803,65 @@ mod slice_tests {
     }
 
     #[tokio::test]
+    async fn c1035_cli_restore_and_resume_refresh_footer_token() {
+        use crate::protocol::types::{ContextTokenEstimate, TokenProvenance};
+
+        let mut session = HostSession::new_product_ui_with_meta(
+            TestTerminal::new(80, 24),
+            "~/x".into(),
+            "Fake".into(),
+        );
+        let root = session.ui_root().expect("ui").clone();
+        let mut driver = ScriptedDriver::new();
+        driver.set_session_messages(harness_sample_session_messages());
+        driver.set_estimate_override(Some(ContextTokenEstimate {
+            tokens: 42_252,
+            provenance: TokenProvenance::Api,
+            usage_tokens: 42_252,
+            trailing_tokens: 0,
+            last_usage_index: Some(0),
+        }));
+
+        // CLI `--session` restore path: apply then drain (mirrors first host tick).
+        session.apply_cli_restored_session("sid-restored", harness_sample_session_messages());
+        let before = root.borrow_mut().render(80);
+        let before_f = before.last().expect("footer").clone();
+        assert!(
+            !before_f.contains("used 42252 tokens"),
+            "restore alone must not sync estimate without drain: {before_f}"
+        );
+        let mut stream = None;
+        pump_host_driver(&mut session, &mut driver, &mut stream)
+            .await
+            .unwrap();
+        let after_restore = root.borrow_mut().render(80);
+        let f_restore = after_restore.last().expect("footer").clone();
+        assert!(
+            f_restore.contains("used 42252 tokens"),
+            "CLI restore + drain must fill footer tokens: {f_restore}"
+        );
+
+        // In-TUI `/session-resume` switch applies mid-drain; same-cycle refresh.
+        driver.set_estimate_override(Some(ContextTokenEstimate {
+            tokens: 99,
+            provenance: TokenProvenance::Heuristic,
+            usage_tokens: 0,
+            trailing_tokens: 99,
+            last_usage_index: None,
+        }));
+        session.apply_resume_session("sid-other", harness_sample_session_messages());
+        pump_host_driver(&mut session, &mut driver, &mut stream)
+            .await
+            .unwrap();
+        let after_resume = root.borrow_mut().render(80);
+        let f_resume = after_resume.last().expect("footer").clone();
+        assert!(
+            f_resume.contains("used ~99 tokens"),
+            "resume switch + drain must refresh footer: {f_resume}"
+        );
+    }
+
+    #[tokio::test]
     async fn c1120_reload_preserves_session_message_count() {
         use crate::app::tui::commands::{PendingSlash, parse_slash_command};
 
