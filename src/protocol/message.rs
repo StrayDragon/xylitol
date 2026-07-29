@@ -392,6 +392,33 @@ mod tests {
         let v = serde_json::to_value(&msg).unwrap();
         assert!(v.get("toolCallId").is_some(), "{v}");
         assert!(v.get("toolUseId").is_none(), "{v}");
+        assert_eq!(v.get("toolName").and_then(|x| x.as_str()), Some("read"));
+        assert_eq!(v.get("isError").and_then(|x| x.as_bool()), Some(false));
+        assert!(v.get("tool_name").is_none(), "{v}");
+        assert!(v.get("is_error").is_none(), "{v}");
+    }
+
+    #[test]
+    fn assistant_wire_uses_camel_case_stop_reason() {
+        let msg = AgentMessage::Llm(LlmMessage::AssistantMessage {
+            content: vec![AgentPart::text("")],
+            stop_reason: Some(XyStopReason::Error),
+            usage: None,
+            api: String::new(),
+            provider: String::new(),
+            model: String::new(),
+            response_id: None,
+            error_message: Some("overflow".into()),
+            timestamp: 1,
+            diagnostics: Vec::new(),
+        });
+        let v = serde_json::to_value(&msg).unwrap();
+        assert_eq!(v.get("stopReason").and_then(|x| x.as_str()), Some("error"));
+        assert_eq!(
+            v.get("errorMessage").and_then(|x| x.as_str()),
+            Some("overflow")
+        );
+        assert!(v.get("stop_reason").is_none(), "{v}");
     }
 
     #[test]
