@@ -620,7 +620,7 @@ fn agent_demo_alt_g_cycles_glyph_set_to_ascii() {
     );
     assert!(
         text.contains("glyph_set=ascii"),
-        "system note should confirm the switch; got:\n{text}"
+        "scroll notice should confirm the switch; got:\n{text}"
     );
 }
 
