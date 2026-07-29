@@ -106,22 +106,22 @@
     那么 footer model 仍为 A
 
   @req:atc19
-  场景: trail-model-pending
+  场景: next-turn-cue-model-pending
     假如 agent busy 且 selected 模型与 active 不同
     当 渲染 status
-    那么 trail 文案为 Next turn: 新模型名且 lead spinner 与 Working 贴左
+    那么 下轮预告文案为 Next turn: 新模型名且 lead spinner 与 Working 贴左
 
   @req:atc19
-  场景: trail-thinking-only
+  场景: next-turn-cue-thinking-only
     假如 agent busy 且仅 thinking selected 与 active 不同
     当 渲染 status
-    那么 trail 为 Next turn thinking: 档名且不含模型拼接
+    那么 下轮预告为 Next turn thinking: 档名且不含模型拼接
 
   @req:atc19
-  场景: bang-no-trail
+  场景: bang-no-next-turn-cue
     假如 仅 bang busy 且无 agent run
     当 渲染 status
-    那么 无 Next turn trail
+    那么 无 Next turn 下轮预告
 
   @req:atc20
   场景: success-no-system

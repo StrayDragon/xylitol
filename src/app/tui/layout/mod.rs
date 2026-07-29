@@ -12,7 +12,7 @@ mod slash_catalog;
 mod slots;
 mod theme;
 
-pub(crate) use models_picker::{ModelPickerRow, PendingModelChoice, status_trail_text};
+pub(crate) use models_picker::{ModelPickerRow, PendingModelChoice, status_next_turn_cue_text};
 pub(crate) use session_tree::map_session_tree_nodes;
 #[cfg(test)]
 pub(crate) use slash_catalog::product_slash_commands_for_editor;

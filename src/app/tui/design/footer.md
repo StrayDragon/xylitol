@@ -18,7 +18,7 @@ components:
 
 1. 恰好 **1 行** dim。字段序：`cwd · model · {thinking}`；有 `ContextTokenEstimate` 时追加 `· used … tokens`（见下表）；可选 `· branch`。
 2. Thinking 标签：可调思考时 level=`off` → `thinking off`，其余用 xylitol 档名。**无可调思考的模型**（支持集空或仅不可调 off）：footer **MUST 省略** thinking 段（`cwd · model`），避免假装可调。**MUST NOT** 展示 provider map 值。与编辑器边框同步；等级经 `/model` picker（[`models-picker.md`](./models-picker.md)）。
-2b. **NextTurn pending**（见 [`pending-runtime.md`](./pending-runtime.md)）：存在即将接替的模型/thinking 时，footer 的 model / thinking 字段 MUST 仍显示 **生效中（active）**；接替值 MUST NOT 覆写 footer 主字段，改由 **busy status 行右侧** dim 挂账表达。pending 清除后 footer 可与选中一致（通常已是 active）。
+2b. **NextTurn pending**（见 [`pending-runtime.md`](./pending-runtime.md)）：存在待生效的模型/thinking 时，footer 的 model / thinking 字段 MUST 仍显示 **生效中（active）**；接替值 MUST NOT 覆写 footer 主字段，改由 **busy status 行右侧** dim **下轮预告**表达。pending 清除后 footer 可与选中一致（通常已是 active）。
 3. Token 文案按 `TokenProvenance`（经 `XyDriver::estimate_context_tokens`）：
 
    | Provenance | 文案 |
