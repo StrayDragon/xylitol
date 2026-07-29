@@ -2,7 +2,7 @@ kind: llman.sdd.spec
 name: "app-tui-transcript"
 purpose: Live 输出进引擎 scrollback（非 Codex 式 transcript 浏览面）；分支回看走会话树。
 valid_scope[1]: src/app/tui/
-requirements[16]{req_id,title,statement}:
+requirements[17]{req_id,title,statement}:
   att1,"live-scrollback-output",产品 UiRoot 当前轮 live 用户/助手/系统输出 MUST 写入引擎 scrollback 并以包 Markdown（及角色色/glyph）呈现；MUST NOT 截断历史冒充滚动；MUST NOT 以此要求实现 Codex 式可导航 transcript 浏览面。
   att3,"diff-via-package","产品 live scrollback 中文件编辑 diff MUST 复用 packages/xylitol-tui Diff（含 word-level 与复制友好前缀）；MUST NOT 在应用面复制准通用 diff 渲染器。"
   att4,"tool-block-status-bg","产品 tool 可展开块 MUST 按 pending/success/error 为可见行套 tool-*-bg。edit/Diff（含 unified display_diff）MUST 将 header 与 Diff 正文置于同一 tool-*-bg 洗底块（对齐 pi Box / DESIGN diff-block「Edit 一体块」）；正文 MUST NOT 再叠 diff-*-bg 行底（极性靠 fg + word_wash_bg）；色值 MUST 对齐 DESIGN.md；外层 ANSI 背景 MUST 以 \\x1b[49m 复位。"
@@ -19,6 +19,7 @@ requirements[16]{req_id,title,statement}:
   att15,"bash-full-output-footer-chrome","产品 live scrollback 中 bang Bash 块与 bash 工具块的输出若含以 `[Full output:` 开头的脚注行，该行 MUST 以 DESIGN `{colors.warning}` 前景绘制（可 bold）；截断时 MUST 展示该脚注而非仅用 `(truncated)` 字面替换；未截断 MUST NOT 伪造该脚注。"
   att16,"hard-truncated-no-viewport-expand","产品 bang Bash 与 tool 块（含 bash）的输出若含 `[Full output:`（系统硬截断），Ctrl+O 视口 MUST NOT 展开为全文；渲染 MUST 保持 Tail 预览并提示 expand disabled（或等价）；write 正文 viewport MUST 仍允许 Ctrl+O 展开。ToolExecutionEnd 在 truncated 时 MUST 用截断后的 combined/stdout 替换流式累积的 output 缓冲。"
   att17,"diff-render-cap","产品 live scrollback 渲染 edit/Diff 的 display_diff 时 MUST 限制可见行数（硬上限）；超限 MUST 截断并提示 omitted；过大 diff MUST NOT 启用 word-level，以免卡死 TUI。"
+  att18,"no-prepend-nav-notices","产品 TUI 在 travel/fork/resume/切换等重建或瞬时导航通知写入 live scrollback 时，MUST 将此类 System/Error 提示追加到 entries 末尾（跟底时位于输入框上方可滚区域）；MUST NOT 为提高可见性而把瞬时导航通知 prepend 到 entries 前缀。会话路径上的时间线内容（含 BranchSummary 等按祖先投影的条目）不在本条「瞬时通知」范围。"
 scenarios[13]{req_id,id,given,when,then,feature}:
   att13,"bash-summary",bash 工具 args 含 command,外显或重建 args_preview,以 $ 开头且非纯 JSON 墙,false
   att13,"write-lines-hint",write args 含 path 与多行 content,求 args_preview,含 path 与 lines 且无 content 正文,false
