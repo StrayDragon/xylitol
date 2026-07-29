@@ -19,13 +19,13 @@
 
 视觉 / UX SSOT：`DESIGN.md` + `design/`。历史文案「chrome」= layout/widgets；勿用 `shell`/`scene` 命名。
 
-**信息面词汇（固定）**：讨论与本面文档 MUST 使用 [`docs/architecture/TUI信息面与chrome词汇.md`](../../../docs/architecture/TUI信息面与chrome词汇.md) 表内词——尤其 **下轮预告**（next-turn cue，≠ message）、**滚动提示**（≠ system prompt / AgentMessage）、**尾随 / 顶插**。禁止主用「挂账」「Status trail」「system 消息」指 UI。类型名 `UiEntry::System` 可滞后；叙述仍称滚动提示。
+**信息面词汇（固定）**：讨论与本面文档 MUST 使用 [`docs/architecture/TUI信息面与chrome词汇.md`](../../../docs/architecture/TUI信息面与chrome词汇.md) 表内词——尤其 **下轮预告**（next-turn cue，≠ message）、**滚动提示**（目标 `UiEntry::ScrollNotice`，≠ system prompt / AgentMessage；预留 Notice/toast 给角区等壳层通告）、**尾随 / 顶插**。禁止主用「挂账」「Status trail」「system 消息」指 UI。类型名改名可后置；叙述仍称滚动提示。
 
 **与未来 Web 的公共体验（跨面）**：凡 TUI 与 Web **共有**的能力（会话、改道、折叠/展开类减噪、即时设置等），用户学习模型与动作语义 MUST 同源——理解成本一致；快捷键 / 发现方式 SHOULD 尽量同构（允许 OS 修饰键差异与 Web 额外点击）。**仅**某一面独有的能力才可另起交互。约束板：[`docs/roadmaps/Web与TUI同源.md`](../../../docs/roadmaps/Web与TUI同源.md)；落地心智：[`docs/architecture/库与多客户端.md`](../../../docs/architecture/库与多客户端.md)。改公共交互前先对齐全套面，禁止静默开出「只教 TUI」的第二套故事。当前未兑现切片示例：长历史 activity 折叠（同文 M1b；草案 `c1760`；前置 `c1755` 已归档）。
 
 ## 硬约束
 
-- 滚动提示 / 导航瞬时提示：**MUST 尾随**（跟底可见）；**MUST NOT 顶插** `entries[0]`（跟底不可见 + 易整表 paint-cache 失效）。能进页脚 / 状态条 / **下轮预告** / 槽的，不要做成滚动提示。
+- 滚动提示 / 导航瞬时提示：默认 **尾随**（跟底可见、保 paint-cache）。**顶插不是绝对禁令**——顶层原则是高效绘制 + 用户跟底仍能合理看见关键反馈；仅当有明确理由（且接受缓存失效 / 视口外风险）才可顶插，须在 design/提案写清。瞬时确认优先页脚 / 状态条 / **下轮预告** / 槽，不要堆滚动提示。
 
 - 渲染只用 `xylitol_tui`；缺能力先改包再接线。产品路径 **host 驱动**（demo 专用启动 API 勿用于生产面）。
 - Agent 只经 `XyDriver`；禁止 reach `agent` / `infra` 内部（同 `src/AGENTS.md`）。
