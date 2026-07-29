@@ -311,6 +311,7 @@ pub(crate) fn _t_comp_context_coherent(agent: &AgentState, sess: &XySessionStore
 }
 
 pub(crate) async fn comp_seed_turns(sess: &XySessionStore, sid: &str, turns: usize) {
+    use xylitol::protocol::message::AgentMessage;
     sess.ensure_mgr();
     let mgr = sess.mgr.borrow().as_ref().unwrap().clone();
     let _ = mgr.create(sid, Some("."), None).await;
@@ -322,10 +323,11 @@ pub(crate) async fn comp_seed_turns(sess: &XySessionStore, sid: &str, turns: usi
                 parent_id: None,
                 timestamp: "2024-01-01T00:00:00Z".into(),
             },
-            message: serde_json::json!({
-                "role": "user",
-                "content": format!("turn {i} {}", "x".repeat(400)),
-            }),
+            message: serde_json::to_value(AgentMessage::user(format!(
+                "turn {i} {}",
+                "x".repeat(400)
+            )))
+            .unwrap(),
         });
         let _ = mgr.append(sid, &e).await;
     }

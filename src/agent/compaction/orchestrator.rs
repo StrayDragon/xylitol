@@ -59,7 +59,7 @@ impl CompactionOrchestrator {
             .await;
         let obs = AgentCompactionSpan::start("manual");
 
-        let entries = store.load_entries(sid).await?;
+        let entries = store.load_leaf_branch(sid).await?;
         if let Some(err) = prepare_compaction(&entries, &self.settings).err() {
             if let Some(obs) = obs {
                 obs.finish(false, false, Some(err.as_str()));
@@ -121,7 +121,7 @@ impl CompactionOrchestrator {
             return Ok(OverflowCompactOutcome::Skipped);
         }
 
-        let entries = store.load_entries(sid).await?;
+        let entries = store.load_leaf_branch(sid).await?;
         if assistant_is_stale_vs_compaction(Some(last_assistant), &entries) {
             return Ok(OverflowCompactOutcome::Skipped);
         }
@@ -198,7 +198,7 @@ impl CompactionOrchestrator {
             return Ok(false);
         }
 
-        let entries = store.load_entries(sid).await?;
+        let entries = store.load_leaf_branch(sid).await?;
 
         if assistant_is_stale_vs_compaction(last_assistant, &entries) {
             return Ok(false);

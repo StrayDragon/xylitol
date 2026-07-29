@@ -42,10 +42,24 @@ pub(crate) fn t_comp_fallback(agent: &AgentState) {
 pub(crate) fn g_comp_find_cut(agent: &AgentState) {
     use xylitol::agent::compaction::cut_detector::find_cut_point;
     use xylitol::infra::session::{EntryBase, MessageEntry, SessionEntry};
-    let entries: Vec<SessionEntry> = (0..50).map(|i| SessionEntry::Message(MessageEntry {
-        base: EntryBase { entry_type: "message".into(), id: format!("msg-{i}"), parent_id: None, timestamp: "2024-01-01T00:00:00Z".into() },
-        message: serde_json::json!({"role":"user","content":format!("message {i} {}", "x".repeat(2000))}),
-    })).collect();
+    use xylitol::protocol::message::AgentMessage;
+    let entries: Vec<SessionEntry> = (0..50)
+        .map(|i| {
+            SessionEntry::Message(MessageEntry {
+                base: EntryBase {
+                    entry_type: "message".into(),
+                    id: format!("msg-{i}"),
+                    parent_id: None,
+                    timestamp: "2024-01-01T00:00:00Z".into(),
+                },
+                message: serde_json::to_value(AgentMessage::user(format!(
+                    "message {i} {}",
+                    "x".repeat(2000)
+                )))
+                .unwrap(),
+            })
+        })
+        .collect();
     let result = find_cut_point(&entries, 0, entries.len(), 20000);
     agent
         .last_result
@@ -621,6 +635,7 @@ pub(crate) fn t_comp_no_compact(agent: &AgentState) {
 }
 
 #[given("用量未超 reserve 闸但会话有可摘要历史")]
+#[given("用量未超 reserve 闸但 leaf 分支上有可摘要历史（按 pi 同构切点计量超出 keepRecent）")]
 pub(crate) fn g_comp_force_ready(agent: &AgentState) {
     agent.compaction_enabled.set(true);
     agent.compaction_reserve_tokens.set(50_000);
@@ -634,6 +649,7 @@ pub(crate) fn g_comp_force_ready(agent: &AgentState) {
 #[when("调用 Driver 或 slash force compact")]
 pub(crate) fn w_comp_force_path(agent: &AgentState) {
     use xylitol::agent::compaction::{CompactionSettings, prepare_compaction, should_compact};
+    use xylitol::protocol::message::AgentMessage;
     use xylitol::protocol::session::{EntryBase, MessageEntry, SessionEntry};
 
     let settings = CompactionSettings {
@@ -647,7 +663,7 @@ pub(crate) fn w_comp_force_path(agent: &AgentState) {
         !should_compact(tokens, window, &settings),
         "fixture must be under reserve gate"
     );
-    // Simulate a session with content (not last=compaction).
+    // Simulate a session with content (not last=compaction); pi-shaped messages.
     let entries: Vec<SessionEntry> = (0..20)
         .map(|i| {
             SessionEntry::Message(MessageEntry {
@@ -657,7 +673,8 @@ pub(crate) fn w_comp_force_path(agent: &AgentState) {
                     parent_id: None,
                     timestamp: "2024-01-01T00:00:00Z".into(),
                 },
-                message: serde_json::json!({"role":"user","content": format!("x{}", "y".repeat(800))}),
+                message: serde_json::to_value(AgentMessage::user(format!("x{}", "y".repeat(800))))
+                    .unwrap(),
             })
         })
         .collect();
@@ -673,6 +690,7 @@ pub(crate) fn w_comp_force_path(agent: &AgentState) {
 }
 
 #[then("仍执行 compaction 或返回 Already compacted / Nothing to compact 明确错误")]
+#[then("仍执行 compaction 或仅在末条已是 CompactionEntry 时返回 Already compacted")]
 pub(crate) fn t_comp_force_ok_or_err(agent: &AgentState) {
     let s = result_ok_str(&agent.last_result);
     assert!(s.contains("force_path:true"), "{s}");
@@ -689,6 +707,104 @@ pub(crate) fn t_comp_force_not_maybe(agent: &AgentState) {
     assert!(
         result_ok_str(&agent.last_result).contains("bypass_maybe:true")
             && result_ok_str(&agent.last_result).contains("under_gate:true")
+    );
+}
+
+#[then("MUST NOT 因切点 JSON 低估把仍有可摘要历史误报为 Nothing to compact")]
+pub(crate) fn t_comp_force_not_undercount(agent: &AgentState) {
+    let s = result_ok_str(&agent.last_result);
+    assert!(
+        s.contains("prepare:true"),
+        "prepare must succeed when history exceeds keepRecent under pi cut estimate: {s}"
+    );
+}
+
+#[given("会话文件序含旁支 sibling 且当前 leaf 在右支")]
+pub(crate) async fn g_comp_leaf_branch_sibling(sess: &XySessionStore) {
+    use xylitol::protocol::message::AgentMessage;
+    use xylitol::protocol::session::{EntryBase, MessageEntry, SessionEntry};
+
+    sess.ensure_mgr();
+    let mgr = sess.mgr.borrow().as_ref().unwrap().clone();
+    let sid = "comp-leaf-branch";
+    mgr.create(sid, Some("."), None).await.unwrap();
+    for e in [
+        SessionEntry::Message(MessageEntry {
+            base: EntryBase {
+                entry_type: "message".into(),
+                id: "u1".into(),
+                parent_id: None,
+                timestamp: "2024-01-01T00:00:00Z".into(),
+            },
+            message: serde_json::to_value(AgentMessage::user("L".repeat(8_000))).unwrap(),
+        }),
+        SessionEntry::Message(MessageEntry {
+            base: EntryBase {
+                entry_type: "message".into(),
+                id: "a_left".into(),
+                parent_id: Some("u1".into()),
+                timestamp: "2024-01-01T00:00:01Z".into(),
+            },
+            message: serde_json::to_value(AgentMessage::assistant("LEFT".repeat(20_000))).unwrap(),
+        }),
+        SessionEntry::Message(MessageEntry {
+            base: EntryBase {
+                entry_type: "message".into(),
+                id: "a_right".into(),
+                parent_id: Some("u1".into()),
+                timestamp: "2024-01-01T00:00:02Z".into(),
+            },
+            message: serde_json::to_value(AgentMessage::assistant("right short")).unwrap(),
+        }),
+        SessionEntry::Message(MessageEntry {
+            base: EntryBase {
+                entry_type: "message".into(),
+                id: "u_right".into(),
+                parent_id: Some("a_right".into()),
+                timestamp: "2024-01-01T00:00:03Z".into(),
+            },
+            message: serde_json::to_value(AgentMessage::user("leaf tip")).unwrap(),
+        }),
+    ] {
+        mgr.append_with_id(sid, &e).await.unwrap();
+    }
+    sess.current_id.replace(Some(sid.to_string()));
+}
+
+#[when("执行 prepare 或 force compact")]
+pub(crate) async fn w_comp_prepare_on_leaf(agent: &AgentState, sess: &XySessionStore) {
+    use xylitol::agent::compaction::{CompactionSettings, prepare_compaction};
+    use xylitol::protocol::ports::XySessionStore as _;
+
+    let sid = sess.current_id.borrow().clone().expect("sid");
+    let mgr = sess.mgr.borrow().as_ref().expect("mgr").clone();
+    let all = mgr.load_entries(&sid).await.unwrap();
+    let branch = mgr.load_leaf_branch(&sid).await.unwrap();
+    let settings = CompactionSettings {
+        enabled: true,
+        reserve_tokens: 1024,
+        keep_recent_tokens: 20_000,
+    };
+    let prep_all = prepare_compaction(&all, &settings);
+    let prep_branch = prepare_compaction(&branch, &settings);
+    let branch_ids: Vec<_> = branch.iter().filter_map(|e| e.entry_id()).collect();
+    agent.last_result.replace(Some(Ok(format!(
+        "branch_ids:{} prep_all:{} prep_branch:{} has_left:{}",
+        branch_ids.join(","),
+        prep_all.is_ok(),
+        prep_branch.is_ok(),
+        branch_ids.contains(&"a_left")
+    ))));
+}
+
+#[then("切点与摘要范围仅含 leaf 分支条目且不含左支 sibling")]
+pub(crate) fn t_comp_leaf_only(agent: &AgentState) {
+    let s = result_ok_str(&agent.last_result);
+    assert!(s.contains("has_left:false"), "{s}");
+    assert!(s.contains("a_right") && s.contains("u_right"), "{s}");
+    assert!(
+        s.contains("prep_branch:false"),
+        "leaf-only branch should be too small: {s}"
     );
 }
 
@@ -1192,10 +1308,11 @@ pub(crate) async fn g_comp_files_msgs(sess: &XySessionStore) {
                 parent_id: None,
                 timestamp: "2024-01-01T00:00:02Z".into(),
             },
-            message: serde_json::json!({
-                "role": "user",
-                "content": format!("padding turn {i} {}", "y".repeat(400)),
-            }),
+            message: serde_json::to_value(AgentMessage::user(format!(
+                "padding turn {i} {}",
+                "y".repeat(400)
+            )))
+            .unwrap(),
         });
         let _ = mgr.append(sid, &e).await;
     }
