@@ -1,7 +1,9 @@
-//! Optional parent [`SpanContext`] for nesting llm.request / token.estimate (c1495).
+//! Optional parent [`SpanContext`] for nesting llm.request / token.estimate /
+//! agent.compaction (c1495 / c1700).
 //!
-//! Process-local like [`super::obs_session`]: agent installs turn/iteration contexts;
-//! bridge adapters read them without changing `XyModel` / adapter signatures.
+//! Process-local like [`super::obs_session`]: agent installs turn/iteration/
+//! compaction contexts; bridge adapters read them without changing `XyModel` /
+//! adapter signatures.
 //!
 //! **Performance**: callers MUST only write when `provider_trace_active()`; readers
 //! in `ProviderRequestTrace::start` / token estimate already gate on that flag first
@@ -15,6 +17,8 @@ use fastrace::prelude::SpanContext;
 struct ObsSpanParents {
     turn: Option<SpanContext>,
     iteration: Option<SpanContext>,
+    /// Active `agent.compaction` — preferred over iteration for summarization LLM.
+    compaction: Option<SpanContext>,
 }
 
 fn slot() -> &'static Mutex<ObsSpanParents> {
@@ -28,6 +32,7 @@ pub fn set_obs_turn_parent(ctx: Option<SpanContext>) {
     g.turn = ctx;
     if ctx.is_none() {
         g.iteration = None;
+        g.compaction = None;
     }
 }
 
@@ -36,18 +41,23 @@ pub fn set_obs_iteration_parent(ctx: Option<SpanContext>) {
     slot().lock().expect("obs span parent mutex").iteration = ctx;
 }
 
+/// Install or clear the `agent.compaction` parent (child of turn when both set).
+pub fn set_obs_compaction_parent(ctx: Option<SpanContext>) {
+    slot().lock().expect("obs span parent mutex").compaction = ctx;
+}
+
 pub fn clear_obs_span_parents() {
     *slot().lock().expect("obs span parent mutex") = ObsSpanParents::default();
 }
 
-/// Parent for `llm.request` / tools: prefer iteration, else turn.
+/// Parent for `llm.request` / tools: prefer compaction, else iteration, else turn.
 #[inline]
 pub fn obs_llm_parent() -> Option<SpanContext> {
     let g = slot().lock().expect("obs span parent mutex");
-    g.iteration.or(g.turn)
+    g.compaction.or(g.iteration).or(g.turn)
 }
 
-/// Parent for `token.estimate`: turn only (never invent under a stale iteration).
+/// Parent for `token.estimate` / `agent.compaction`: turn only (never invent under a stale iteration).
 #[inline]
 pub fn obs_turn_parent() -> Option<SpanContext> {
     slot().lock().expect("obs span parent mutex").turn
@@ -72,6 +82,12 @@ mod tests {
         set_obs_iteration_parent(Some(iter_ctx));
         assert_eq!(obs_llm_parent(), Some(iter_ctx));
         assert_eq!(obs_turn_parent(), Some(turn_ctx));
+        let compact = Span::enter_with_parent("c", &turn);
+        let compact_ctx = SpanContext::from_span(&compact).unwrap();
+        set_obs_compaction_parent(Some(compact_ctx));
+        assert_eq!(obs_llm_parent(), Some(compact_ctx));
+        set_obs_compaction_parent(None);
+        assert_eq!(obs_llm_parent(), Some(iter_ctx));
         set_obs_iteration_parent(None);
         assert_eq!(obs_llm_parent(), Some(turn_ctx));
         clear_obs_span_parents();

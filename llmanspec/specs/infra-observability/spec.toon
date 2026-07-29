@@ -7,8 +7,8 @@ requirements[5]{req_id,title,statement}:
   ipt1,"provider-raw-mapped-对照","当 provider tracing 激活时，每次 provider HTTP 流 MUST 在同一 fastrace 请求 span / request_id 下记录原始协议事件与映射后的 XyChunk 变体（Event），使 agent 能区分上游通道混写与适配器映射错误；记录 MUST 只经 file-only Reporter 写入 agent 日志目录专用文件（禁止 stdout/stderr 与 ConsoleReporter），MUST NOT 包含 Authorization 或 API-key 头值，且 MUST NOT 经 script hook 分发。"
   ipt2,"provider-trace-闸门",Provider tracing 在 cfg(debug_assertions) 下 MUST 默认安装 Reporter，在 release 构建 MUST 默认不安装；release MUST 经 XYLITOL_PROVIDER_TRACE 显式打开；tracing 未激活时 MUST 避免对 SSE 载荷做昂贵序列化；新增跨层低频 span MUST 遵守同一闸门（关闸零/近零开销）。
   ipt3,"fastrace-单栈","仓库观测时间线 MUST 仅使用 fastrace；级别诊断 MUST 使用 log 门面；Cargo 与 src MUST NOT 依赖 tracing 或 tracing-subscriber；MUST NOT 引入 fastrace-tracing 兼容层。允许 fastrace-futures 等官方 companion（非 tracing 桥）。"
-  ipt4,"agent-low-freq-spans","当 provider tracing 激活时，一次用户触发的 agent 处理 MUST 提供可关联的低频 fastrace span：根 agent.turn；每步 agent.iteration；模型流 llm.request（可与 request_id 对照）；可选 tool.execute。主路径子 span MUST 挂在 turn/iteration 父节点之下（共享 trace_id），MUST NOT 在活跃 turn 下各自无关 random 根。MUST NOT 为每条 SSE / 每帧 TUI tick 安装无采样 span。默认 MUST NOT 启用 OpenTelemetry/Jaeger 等外部导出 Reporter；远程 OTLP 仅可经独立 [otel] 配置 + feature otel 显式 opt-in（见 infra-otel），且不得写 stdout/stderr。"
-scenarios[7]{req_id,id,given,when,then,feature}:
+  ipt4,"agent-low-freq-spans","当 provider tracing 激活时，一次用户触发的 agent 处理 MUST 提供可关联的低频 fastrace span：根 agent.turn；每步 agent.iteration；模型流 llm.request（可与 request_id 对照）；可选 tool.execute；若发生会话 compaction 则 MUST 另有 agent.compaction（挂于该 turn 下，或无 turn 时为独立根）。主路径子 span MUST 挂在 turn/iteration/compaction 父节点之下（共享 trace_id），MUST NOT 在活跃 turn 下各自无关 random 根。MUST NOT 为每条 SSE / 每帧 TUI tick 安装无采样 span。默认 MUST NOT 启用 OpenTelemetry/Jaeger 等外部导出 Reporter；远程 OTLP 仅可经独立 [otel] 配置 + feature otel 显式 opt-in（见 infra-otel），且不得写 stdout/stderr。"
+scenarios[8]{req_id,id,given,when,then,feature}:
   dl1,"file-only-never-stdout-stderr","debug 构建或已显式打开观测且 TUI 活跃","任意层发出 log::debug 或 fastrace Event","内容写入日志目录文件且 stdout/stderr 无污染",false
   dl1,"debug-default-on","cfg(debug_assertions) 且未强制关闭",启动应用,"file-only Reporter/logger 已装配",false
   dl1,"release-needs-opt-in","release 且未设 XYLITOL_DEBUG / XYLITOL_PROVIDER_TRACE / 等价 RUST_LOG",启动应用,"不安装会落盘的观测后端（或等价零写入）",false
@@ -16,3 +16,4 @@ scenarios[7]{req_id,id,given,when,then,feature}:
   ipt4,"turn-span-names",provider tracing 激活且跑完一轮用户触发处理,观测 span 名,"存在 agent.turn 与 llm.request（或等价）且可与 request_id 关联",false
   ipt4,"no-per-sse-span",provider tracing 激活且工具 args 多 delta,观测 span 集合,无 adapter.map_event 或每 delta 独立热路径 span,false
   ipt4,"no-default-otel",默认配置,检查 Reporter 装配,仅 file-only JSONL 路径且无默认 OTel 出口,false
+  ipt4,"compaction-span-when-compacted",provider tracing 激活且该轮实际执行了 compaction,观测 span 名,存在 agent.compaction 且挂在对应 agent.turn 下（或无 turn 时为带 session 的独立根）,false
