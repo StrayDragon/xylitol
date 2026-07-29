@@ -9,7 +9,7 @@ mod preview;
 pub(crate) mod session_tree;
 
 pub(crate) use model::trailing_aborted_note;
-pub use model::{BashBlockStatus, QueueBadge, UiEntry, UiModel, UiPhase};
+pub use model::{BashBlockStatus, CompactionBlockStatus, QueueBadge, UiEntry, UiModel, UiPhase};
 pub use preview::extract_display_diff;
 pub(crate) use preview::{
     display_tool_title, extract_full_output_notice, extract_line_range_from_display_diff,

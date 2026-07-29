@@ -122,6 +122,8 @@ pub struct HostSession<T: Terminal> {
     /// Background estimate results → host `select!` (production).
     footer_token_tx: tokio::sync::mpsc::UnboundedSender<(u64, Option<String>)>,
     footer_token_rx: tokio::sync::mpsc::UnboundedReceiver<(u64, Option<String>)>,
+    /// Throttle mid-turn Api usage footer refresh (c1730).
+    last_mid_turn_footer_refresh: Option<std::time::Instant>,
     /// `tui.editor_history_seed_sessions` (c1560).
     editor_history_seed_sessions: u32,
 }
@@ -171,6 +173,7 @@ impl<T: Terminal> HostSession<T> {
             footer_token_gen: 0,
             footer_token_tx,
             footer_token_rx,
+            last_mid_turn_footer_refresh: None,
             editor_history_seed_sessions: 1,
         }
     }
@@ -261,6 +264,10 @@ impl<T: Terminal> HostSession<T> {
     /// UI-only model (harness / status).
     pub fn ui_model(&self) -> &UiModel {
         &self.ui_model
+    }
+
+    pub(crate) fn ui_model_mut(&mut self) -> &mut UiModel {
+        &mut self.ui_model
     }
 
     pub fn is_busy(&self) -> bool {
@@ -480,6 +487,20 @@ impl<T: Terminal> HostSession<T> {
         self.pending.footer_token_refresh = true;
     }
 
+    /// Mid-turn Api usage refresh with cooldown (MUST NOT per-TextDelta encode).
+    pub fn request_footer_token_refresh_throttled(&mut self) {
+        const MIN_INTERVAL: std::time::Duration = std::time::Duration::from_millis(750);
+        let now = std::time::Instant::now();
+        if self
+            .last_mid_turn_footer_refresh
+            .is_some_and(|t| now.duration_since(t) < MIN_INTERVAL)
+        {
+            return;
+        }
+        self.last_mid_turn_footer_refresh = Some(now);
+        self.pending.footer_token_refresh = true;
+    }
+
     pub fn take_pending_footer_token_refresh(&mut self) -> bool {
         self.pending.take_footer_token_refresh()
     }
@@ -513,6 +534,17 @@ impl<T: Terminal> HostSession<T> {
         self.ui_model
             .entries
             .push(UiEntry::System { text: text.into() });
+        self.sync_ui_root_from_model();
+    }
+
+    /// Push a completed compaction transcript block (c1730 slash path).
+    pub fn push_compaction_complete(&mut self, summary: String, tokens_before: u64) {
+        self.ui_model.entries.push(UiEntry::Compaction {
+            status: crate::app::tui::bridge::CompactionBlockStatus::Complete,
+            summary,
+            tokens_before,
+            detail: None,
+        });
         self.sync_ui_root_from_model();
     }
 
@@ -570,7 +602,7 @@ impl<T: Terminal> HostSession<T> {
         self.sync_ui_root_from_model();
     }
 
-    fn sync_ui_root_from_model(&mut self) {
+    pub(crate) fn sync_ui_root_from_model(&mut self) {
         let Some(root) = self.ui_root.as_ref() else {
             return;
         };
@@ -631,11 +663,34 @@ impl<T: Terminal> HostSession<T> {
                     self.tui.request_render(false);
                 } else {
                     apply_xy_event(&mut self.ui_model, &xy);
-                    if matches!(xy.as_ref(), XyEvent::AgentEnd { .. }) {
-                        self.run_active = false;
-                        // Footer token refresh is owned by [`Self::on_run_stream_closed`]
-                        // (single end-of-run signal). Scheduling here as well caused two
-                        // estimate jobs when drain ran between AgentEnd and stream close.
+                    match xy.as_ref() {
+                        XyEvent::AgentEnd { .. } => {
+                            self.run_active = false;
+                            // Footer token refresh is owned by [`Self::on_run_stream_closed`]
+                            // (single end-of-run signal). Scheduling here as well caused two
+                            // estimate jobs when drain ran between AgentEnd and stream close.
+                        }
+                        XyEvent::CompactionEnd { .. } | XyEvent::TurnEnd { .. } => {
+                            self.request_footer_token_refresh();
+                        }
+                        XyEvent::MessageEnd { role, message } => {
+                            // Mid-turn Api usage: assistant MessageEnd often carries usage.
+                            let has_usage = message.as_ref().is_some_and(|m| {
+                                matches!(
+                                    m,
+                                    crate::protocol::message::AgentMessage::Llm(
+                                        crate::protocol::message::LlmMessage::AssistantMessage {
+                                            usage: Some(_),
+                                            ..
+                                        }
+                                    )
+                                )
+                            });
+                            if role == "assistant" && has_usage {
+                                self.request_footer_token_refresh_throttled();
+                            }
+                        }
+                        _ => {}
                     }
                     self.sync_ui_root_from_model();
                     self.tui.request_render(false);

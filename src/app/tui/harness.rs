@@ -3756,6 +3756,92 @@ mod slice_tests {
     }
 
     #[tokio::test]
+    async fn c1730_compaction_end_refreshes_footer_token() {
+        use crate::protocol::types::{ContextTokenEstimate, TokenProvenance};
+
+        let mut session = HostSession::new_product_ui_with_meta(
+            TestTerminal::new(80, 24),
+            "~/x".into(),
+            "Fake".into(),
+        );
+        let mut driver = ScriptedDriver::new();
+        driver.set_session_messages(harness_sample_session_messages());
+        driver.set_estimate_override(Some(ContextTokenEstimate {
+            tokens: 42,
+            provenance: TokenProvenance::Api,
+            usage_tokens: 42,
+            trailing_tokens: 0,
+            last_usage_index: Some(0),
+        }));
+        session
+            .step(HostEvent::Xy(Box::new(XyEvent::CompactionEnd {
+                result: Some("ok".into()),
+                aborted: false,
+                reason: "manual".into(),
+                will_retry: false,
+                error_message: None,
+                summary: Some("done".into()),
+                tokens_before: Some(100),
+            })))
+            .unwrap();
+        let mut stream = None;
+        pump_host_driver(&mut session, &mut driver, &mut stream)
+            .await
+            .unwrap();
+        let footer = session
+            .ui_root()
+            .expect("ui")
+            .borrow_mut()
+            .render(80)
+            .last()
+            .cloned()
+            .unwrap_or_default();
+        assert!(
+            footer.contains("used 42 tokens"),
+            "CompactionEnd must refresh footer tokens: {footer}"
+        );
+    }
+
+    #[tokio::test]
+    async fn c1730_turn_end_refreshes_footer_token() {
+        use crate::protocol::types::{ContextTokenEstimate, TokenProvenance};
+
+        let mut session = HostSession::new_product_ui_with_meta(
+            TestTerminal::new(80, 24),
+            "~/x".into(),
+            "Fake".into(),
+        );
+        let mut driver = ScriptedDriver::new();
+        driver.set_session_messages(harness_sample_session_messages());
+        driver.set_estimate_override(Some(ContextTokenEstimate {
+            tokens: 11,
+            provenance: TokenProvenance::Api,
+            usage_tokens: 11,
+            trailing_tokens: 0,
+            last_usage_index: Some(0),
+        }));
+        session
+            .step(HostEvent::Xy(Box::new(XyEvent::TurnEnd { turn_index: 0 })))
+            .unwrap();
+        let mut stream = None;
+        pump_host_driver(&mut session, &mut driver, &mut stream)
+            .await
+            .unwrap();
+        let footer = session
+            .ui_root()
+            .expect("ui")
+            .borrow_mut()
+            .render(80)
+            .last()
+            .cloned()
+            .unwrap_or_default();
+        assert!(
+            footer.contains("used 11 tokens"),
+            "TurnEnd must refresh footer tokens: {footer}"
+        );
+    }
+
+    #[tokio::test]
     async fn c1035_stream_closed_requests_footer_refresh() {
         use crate::protocol::types::{ContextTokenEstimate, TokenProvenance};
 

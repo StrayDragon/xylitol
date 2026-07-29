@@ -6,7 +6,7 @@ use crate::protocol::session::{
 };
 use serde_json::Value;
 
-use super::{BashBlockStatus, UiEntry, UiModel, UiPhase};
+use super::{BashBlockStatus, CompactionBlockStatus, UiEntry, UiModel, UiPhase};
 
 /// Replace transcript with entries on the ancestry path to `travel.leaf_id`.
 pub fn rebuild_scrollback_from_travel(
@@ -81,8 +81,11 @@ pub fn session_entry_to_ui_entries(entry: &SessionEntry) -> Vec<UiEntry> {
             nested_bash_to_ui(&m.message)
         }
         SessionEntry::Message(m) => message_json_to_ui_entries(&m.base.id, &m.message),
-        SessionEntry::Compaction(c) => vec![UiEntry::System {
-            text: format!("[compaction] {}", c.summary),
+        SessionEntry::Compaction(c) => vec![UiEntry::Compaction {
+            status: CompactionBlockStatus::Complete,
+            summary: c.summary.clone(),
+            tokens_before: c.tokens_before,
+            detail: None,
         }],
         SessionEntry::BranchSummary(b) => vec![UiEntry::System {
             text: format!("[branch] {}", b.summary),
@@ -295,6 +298,36 @@ mod tests {
                 UiEntry::Thinking { text } ,
                 UiEntry::Assistant { text: reply }
             ] if text == "step 1" && reply == "hello"),
+            "got: {ui:?}"
+        );
+    }
+
+    #[test]
+    fn compaction_entry_maps_to_collapsed_block() {
+        let entry = SessionEntry::Compaction(crate::protocol::session::CompactionEntry {
+            base: EntryBase {
+                entry_type: "compaction".into(),
+                id: "c1".into(),
+                parent_id: Some("u1".into()),
+                timestamp: "t".into(),
+            },
+            summary: "## Goal\nkeep going".into(),
+            first_kept_entry_id: "u2".into(),
+            tokens_before: 186_842,
+            details: None,
+            from_hook: None,
+        });
+        let ui = session_entry_to_ui_entries(&entry);
+        assert!(
+            matches!(
+                ui.as_slice(),
+                [UiEntry::Compaction {
+                    status: CompactionBlockStatus::Complete,
+                    tokens_before: 186_842,
+                    summary,
+                    detail: None,
+                }] if summary.contains("keep going")
+            ),
             "got: {ui:?}"
         );
     }

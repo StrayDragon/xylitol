@@ -210,6 +210,7 @@ impl UiRoot {
             }
             if matches_binding(key, "app.tools.blocks") {
                 self.fold.tools_expanded = !self.fold.tools_expanded;
+                self.fold.compaction_expanded = !self.fold.compaction_expanded;
                 self.scrollback_paint.invalidate();
                 self.bump_upper_gen();
                 return;

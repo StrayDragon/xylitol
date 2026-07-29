@@ -10,7 +10,7 @@ use xylitol_tui::{
 };
 
 use super::glyphs::GlyphSet;
-use crate::app::tui::bridge::{BashBlockStatus, UiEntry, UiModel};
+use crate::app::tui::bridge::{BashBlockStatus, CompactionBlockStatus, UiEntry, UiModel};
 use crate::app::tui::layout::LayoutTheme;
 use xylitol_tui::terminal_colors::RgbColor;
 
@@ -22,6 +22,8 @@ pub struct ScrollbackFold {
     pub tools_expanded: bool,
     /// Ctrl+O — tool/bash detail **viewport** collapsed ↔ full (orthogonal to Alt+E).
     pub tools_output_expanded: bool,
+    /// Alt+E — compaction summary (default collapsed; shares chord with tools).
+    pub compaction_expanded: bool,
 }
 
 impl Default for ScrollbackFold {
@@ -31,6 +33,8 @@ impl Default for ScrollbackFold {
             // Product default: tool bodies open; Ctrl+O still clamps viewport height.
             tools_expanded: true,
             tools_output_expanded: false,
+            // Product default: compaction summary collapsed (c1730 / pi).
+            compaction_expanded: false,
         }
     }
 }
@@ -90,6 +94,19 @@ fn push_viewport_diff_lines(
 
 fn key_hint(chord: &str) -> String {
     format!("({chord})")
+}
+
+/// Format token counts with thousands separators (pi / design fixture).
+fn format_token_count(n: u64) -> String {
+    let s = n.to_string();
+    let mut out = String::with_capacity(s.len() + s.len() / 3);
+    for (i, ch) in s.chars().rev().enumerate() {
+        if i > 0 && i % 3 == 0 {
+            out.push(',');
+        }
+        out.push(ch);
+    }
+    out.chars().rev().collect()
 }
 
 fn paint_tool_header_line(
@@ -485,6 +502,17 @@ fn entry_fingerprint(entry: &UiEntry) -> u64 {
             output.hash(&mut h);
             exclude_from_context.hash(&mut h);
         }
+        UiEntry::Compaction {
+            status,
+            summary,
+            tokens_before,
+            detail,
+        } => {
+            status.hash(&mut h);
+            summary.hash(&mut h);
+            tokens_before.hash(&mut h);
+            detail.hash(&mut h);
+        }
     }
     h.finish()
 }
@@ -705,6 +733,45 @@ pub fn render_scrollback(
                     }
                     push_tinted(&mut lines, &block, width, bash_bg_rgb(*status, theme));
                 }
+                UiEntry::Compaction {
+                    status,
+                    summary,
+                    tokens_before,
+                    detail,
+                } => {
+                    push_wrapped(&mut lines, &theme.paint_muted("[compaction]"), width);
+                    match status {
+                        CompactionBlockStatus::Pending => {
+                            push_wrapped(&mut lines, &theme.paint_muted("Compacting…"), width);
+                        }
+                        CompactionBlockStatus::Complete => {
+                            let n = format_token_count(*tokens_before);
+                            if fold.compaction_expanded {
+                                push_wrapped(
+                                    &mut lines,
+                                    &theme.paint_muted(&format!("Compacted from {n} tokens")),
+                                    width,
+                                );
+                                if !summary.is_empty() {
+                                    lines.push(String::new());
+                                    push_wrapped(&mut lines, &theme.paint_muted(summary), width);
+                                }
+                            } else {
+                                push_wrapped(
+                                    &mut lines,
+                                    &theme.paint_muted(&format!(
+                                        "Compacted from {n} tokens (Alt+E to expand)"
+                                    )),
+                                    width,
+                                );
+                            }
+                        }
+                        CompactionBlockStatus::Aborted | CompactionBlockStatus::Failed => {
+                            let text = detail.as_deref().unwrap_or("compaction aborted");
+                            push_wrapped(&mut lines, &theme.paint_muted(text), width);
+                        }
+                    }
+                }
                 UiEntry::System { text } => {
                     push_wrapped(
                         &mut lines,
@@ -772,7 +839,73 @@ pub fn render_scrollback(
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::app::tui::bridge::UiEntry;
+    use crate::app::tui::bridge::{CompactionBlockStatus, UiEntry};
+
+    #[test]
+    fn compaction_block_defaults_collapsed() {
+        let mut model = UiModel::default();
+        model.entries.push(UiEntry::Compaction {
+            status: CompactionBlockStatus::Complete,
+            summary: "long summary body that should stay hidden".into(),
+            tokens_before: 186_842,
+            detail: None,
+        });
+        let theme = LayoutTheme::product_dark();
+        let lines = render_scrollback(
+            &model,
+            GlyphSet::from_env(),
+            theme,
+            ScrollbackFold::default(),
+            100,
+            &mut ScrollbackPaintCache::default(),
+        );
+        let plain = strip_ansi_local(&lines.join("\n"));
+        assert!(plain.contains("[compaction]"), "missing label: {plain}");
+        assert!(
+            plain.contains("Compacted from 186,842 tokens (Alt+E to expand)"),
+            "missing collapsed line: {plain}"
+        );
+        assert!(
+            !plain.contains("long summary body"),
+            "summary must stay hidden when collapsed: {plain}"
+        );
+    }
+
+    #[test]
+    fn compaction_block_expands_with_fold() {
+        let mut model = UiModel::default();
+        model.entries.push(UiEntry::Compaction {
+            status: CompactionBlockStatus::Complete,
+            summary: "visible summary body".into(),
+            tokens_before: 1_000,
+            detail: None,
+        });
+        let theme = LayoutTheme::product_dark();
+        let lines = render_scrollback(
+            &model,
+            GlyphSet::from_env(),
+            theme,
+            ScrollbackFold {
+                compaction_expanded: true,
+                ..ScrollbackFold::default()
+            },
+            100,
+            &mut ScrollbackPaintCache::default(),
+        );
+        let plain = strip_ansi_local(&lines.join("\n"));
+        assert!(
+            plain.contains("Compacted from 1,000 tokens"),
+            "missing header: {plain}"
+        );
+        assert!(
+            plain.contains("visible summary body"),
+            "expanded must show summary: {plain}"
+        );
+        assert!(
+            !plain.contains("to expand"),
+            "expanded must not show expand hint: {plain}"
+        );
+    }
 
     #[test]
     fn user_row_highlights_dollar_skill_ref() {

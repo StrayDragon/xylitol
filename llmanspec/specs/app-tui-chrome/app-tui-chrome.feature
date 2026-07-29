@@ -180,6 +180,24 @@
     那么 token 字段对应该 leaf 的 estimate
 
   @req:atc14
+  场景: compaction-end-refreshes-token
+    假如 发生 CompactionEnd
+    当 下一帧 footer
+    那么 token 字段经 estimate 刷新
+
+  @req:atc14
+  场景: turn-end-refreshes-token
+    假如 发生 TurnEnd
+    当 下一帧 footer
+    那么 token 字段经 estimate 刷新
+
+  @req:atc14
+  场景: mid-turn-api-usage-throttled
+    假如 turn 进行中且有 Api usage 更新
+    当 host 节流刷新 footer
+    那么 token 字段更新且 MUST NOT 每 TextDelta encode
+
+  @req:atc14
   场景: no-per-delta-encode
     假如 正在流式生成
     当 仅处理 TextDelta

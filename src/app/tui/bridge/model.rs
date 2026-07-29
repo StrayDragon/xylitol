@@ -78,6 +78,19 @@ pub enum BashBlockStatus {
     Cancelled,
 }
 
+/// Transcript compaction block phase (c1730; aligns pi CompactionSummaryMessageComponent).
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
+pub enum CompactionBlockStatus {
+    /// CompactionStart placeholder.
+    Pending,
+    /// CompactionEnd success / resume CompactionEntry.
+    Complete,
+    /// CompactionEnd aborted.
+    Aborted,
+    /// CompactionEnd failed (error_message).
+    Failed,
+}
+
 /// One scrollback / transcript entry — UI-only, no domain types.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub enum UiEntry {
@@ -114,6 +127,14 @@ pub enum UiEntry {
         status: BashBlockStatus,
         output: String,
         exclude_from_context: bool,
+    },
+    /// Context compaction transcript block (c1730).
+    Compaction {
+        status: CompactionBlockStatus,
+        summary: String,
+        tokens_before: u64,
+        /// Short failure / abort detail when not Complete.
+        detail: Option<String>,
     },
     System {
         text: String,
@@ -256,6 +277,32 @@ impl UiModel {
                         lines.push(output.clone());
                     }
                 }
+                UiEntry::Compaction {
+                    status,
+                    summary,
+                    tokens_before,
+                    detail,
+                } => match status {
+                    CompactionBlockStatus::Pending => {
+                        lines.push("[compaction]".into());
+                        lines.push("Compacting…".into());
+                    }
+                    CompactionBlockStatus::Complete => {
+                        lines.push("[compaction]".into());
+                        lines.push(format!("Compacted from {tokens_before} tokens"));
+                        if !summary.is_empty() {
+                            lines.push(summary.clone());
+                        }
+                    }
+                    CompactionBlockStatus::Aborted | CompactionBlockStatus::Failed => {
+                        lines.push("[compaction]".into());
+                        lines.push(
+                            detail
+                                .clone()
+                                .unwrap_or_else(|| "compaction aborted".into()),
+                        );
+                    }
+                },
                 UiEntry::System { text } => lines.push(format!("system: {text}")),
                 UiEntry::Error { text } => lines.push(format!("error: {text}")),
             }
