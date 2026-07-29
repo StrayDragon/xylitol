@@ -80,26 +80,18 @@ pub(crate) fn compaction_entry_from_sess(
 
 /// Active context after compaction: one CompactionEntry plus message turns from `firstKeptEntryId`.
 pub(crate) fn comp_active_record_counts(entries: &[SessionEntry]) -> (usize, usize) {
-    let compaction = entries.iter().find_map(|e| match e {
-        SessionEntry::Compaction(c) => Some(c.clone()),
-        _ => None,
-    });
-    let Some(comp) = compaction else {
-        let msgs = entries
-            .iter()
-            .filter(|e| matches!(e, SessionEntry::Message(_)))
-            .count();
-        return (msgs, msgs);
-    };
-    let keep_from = entries
-        .iter()
-        .position(|e| e.entry_id() == Some(comp.first_kept_entry_id.as_str()))
-        .unwrap_or(entries.len());
-    let kept_messages = entries[keep_from..]
+    use xylitol::protocol::session::build_context_entries;
+    let ctx = build_context_entries(entries);
+    let msgs = ctx
         .iter()
         .filter(|e| matches!(e, SessionEntry::Message(_)))
         .count();
-    (1 + kept_messages, kept_messages)
+    let has_compaction = ctx.iter().any(|e| matches!(e, SessionEntry::Compaction(_)));
+    if has_compaction {
+        (1 + msgs, msgs)
+    } else {
+        (msgs, msgs)
+    }
 }
 
 #[given("配置了上下文窗口为 100000 的模型")]

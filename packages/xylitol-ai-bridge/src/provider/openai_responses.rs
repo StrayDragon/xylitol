@@ -54,8 +54,61 @@ impl OpenAiResponsesAdapter {
     }
 
     fn map_err(err: async_openai::error::OpenAIError) -> AiBridgeError {
-        AiBridgeError::Provider(anyhow::anyhow!("OpenAI Responses: {err}"))
+        AiBridgeError::Provider(anyhow::anyhow!("{}", format_responses_error(&err)))
     }
+}
+
+/// Prefer upstream `error.message` when the SDK string embeds `content:{...}` JSON
+/// (e.g. integer `code` deserialize failure masking `exceed_context_size_error`).
+pub fn format_responses_error(err: &impl std::fmt::Display) -> String {
+    let raw = err.to_string();
+    match extract_embedded_provider_error_message(&raw) {
+        Some(msg) => format!("OpenAI Responses: {msg}"),
+        None => format!("OpenAI Responses: {raw}"),
+    }
+}
+
+/// Pull `error.message` (+ optional `type`) from an embedded JSON error body.
+pub fn extract_embedded_provider_error_message(raw: &str) -> Option<String> {
+    let json_src = if let Some(rest) = raw.split_once("content:").map(|(_, r)| r) {
+        extract_balanced_json_object(rest)?
+    } else {
+        let idx = raw.find("{\"error\"")?;
+        extract_balanced_json_object(&raw[idx..])?
+    };
+    let value: Value = serde_json::from_str(&json_src).ok()?;
+    let err = value.get("error")?;
+    let message = err.get("message")?.as_str()?.trim();
+    if message.is_empty() {
+        return None;
+    }
+    match err
+        .get("type")
+        .and_then(|t| t.as_str())
+        .filter(|t| !t.is_empty())
+    {
+        Some(ty) => Some(format!("{message} ({ty})")),
+        None => Some(message.to_string()),
+    }
+}
+
+fn extract_balanced_json_object(s: &str) -> Option<String> {
+    let start = s.find('{')?;
+    let bytes = s.as_bytes();
+    let mut depth = 0i32;
+    for (i, &b) in bytes.iter().enumerate().skip(start) {
+        match b {
+            b'{' => depth += 1,
+            b'}' => {
+                depth -= 1;
+                if depth == 0 {
+                    return Some(s[start..=i].to_string());
+                }
+            }
+            _ => {}
+        }
+    }
+    None
 }
 
 /// Assemble a Responses `/v1/responses` JSON body (pi-aligned store/strict/summary/include).
@@ -185,7 +238,7 @@ fn responses_sdk_stream(
 
         while let Some(item) = sdk_stream.next().await {
             let data = item.map_err(|e| {
-                AiBridgeError::Provider(anyhow::anyhow!("OpenAI Responses stream: {e}"))
+                AiBridgeError::Provider(anyhow::anyhow!("{}", format_responses_error(&e)))
             })?;
 
             let event_type = data.get("type").and_then(|v| v.as_str()).unwrap_or("");
@@ -1023,5 +1076,23 @@ mod tests {
         assert_eq!(items[0]["type"], "reasoning");
         assert_eq!(items[0]["id"], "rs_1");
         assert_eq!(items[1]["role"], "assistant");
+    }
+
+    #[test]
+    fn extract_embedded_error_prefers_upstream_message_over_deserialize_noise() {
+        let raw = r#"error decoding response body: error decoding response body: data did not match any variant of untagged enum ErrorSource at line 1 column 200 content:{"error":{"code":400,"message":"Your input exceeds the available context size.","type":"exceed_context_size_error"}}"#;
+        let msg = extract_embedded_provider_error_message(raw).expect("extract");
+        assert!(msg.contains("exceeds the available context size"), "{msg}");
+        assert!(msg.contains("exceed_context_size_error"), "{msg}");
+        let formatted = format_responses_error(&raw);
+        assert!(formatted.starts_with("OpenAI Responses:"));
+        assert!(
+            formatted.contains("exceeds the available context size"),
+            "{formatted}"
+        );
+        assert!(
+            !formatted.contains("did not match any variant"),
+            "{formatted}"
+        );
     }
 }
