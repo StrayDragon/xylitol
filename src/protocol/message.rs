@@ -26,26 +26,36 @@ pub fn now_ms() -> u64 {
 // ── EnvMessage / AgentMessage (domain composition) ─────────────────
 
 /// Environment / session meta roles (not sent to the model as-is).
+///
+/// Wire fields are camelCase (`excludeFromContext`, `tokensBefore`, …);
+/// snake aliases accept pre-fix JSONL.
 #[derive(Debug, Clone, Serialize, Deserialize)]
 #[serde(tag = "role", rename_all = "camelCase")]
 pub enum EnvMessage {
     #[serde(rename = "bashExecution")]
+    #[serde(rename_all = "camelCase")]
     BashExecutionMessage {
         command: String,
         output: String,
-        #[serde(default, skip_serializing_if = "Option::is_none")]
+        #[serde(default, skip_serializing_if = "Option::is_none", alias = "exit_code")]
         exit_code: Option<i32>,
         #[serde(default)]
         cancelled: bool,
         #[serde(default)]
         truncated: bool,
-        #[serde(default, skip_serializing_if = "Option::is_none")]
+        #[serde(
+            default,
+            skip_serializing_if = "Option::is_none",
+            alias = "full_output_path"
+        )]
         full_output_path: Option<String>,
-        #[serde(default)]
+        #[serde(default, alias = "exclude_from_context")]
         exclude_from_context: bool,
     },
     #[serde(rename = "custom")]
+    #[serde(rename_all = "camelCase")]
     CustomMessage {
+        #[serde(alias = "custom_type")]
         custom_type: String,
         content: Value,
         #[serde(default)]
@@ -54,17 +64,29 @@ pub enum EnvMessage {
         details: Value,
     },
     #[serde(rename = "compactionSummary")]
+    #[serde(rename_all = "camelCase")]
     CompactionSummaryMessage {
         summary: String,
+        #[serde(alias = "tokens_before")]
         tokens_before: u64,
+        #[serde(alias = "tokens_after")]
         tokens_after: u64,
-        #[serde(default, skip_serializing_if = "Option::is_none")]
+        #[serde(default, skip_serializing_if = "Option::is_none", alias = "read_files")]
         read_files: Option<Vec<String>>,
-        #[serde(default, skip_serializing_if = "Option::is_none")]
+        #[serde(
+            default,
+            skip_serializing_if = "Option::is_none",
+            alias = "modified_files"
+        )]
         modified_files: Option<Vec<String>>,
     },
     #[serde(rename = "branchSummary")]
-    BranchSummaryMessage { summary: String, from_id: String },
+    #[serde(rename_all = "camelCase")]
+    BranchSummaryMessage {
+        summary: String,
+        #[serde(alias = "from_id")]
+        from_id: String,
+    },
 }
 
 impl EnvMessage {
@@ -466,12 +488,27 @@ mod tests {
 
     #[test]
     fn wire_bash_deserializes_as_env_variant() {
-        let json = r#"{"role":"bashExecution","command":"ls","output":"a","cancelled":false,"truncated":false,"exclude_from_context":false}"#;
+        let json = r#"{"role":"bashExecution","command":"ls","output":"a","cancelled":false,"truncated":false,"excludeFromContext":false}"#;
         let msg: AgentMessage = serde_json::from_str(json).unwrap();
         assert!(matches!(
             msg,
             AgentMessage::Env(EnvMessage::BashExecutionMessage { .. })
         ));
+
+        let legacy = r#"{"role":"bashExecution","command":"ls","output":"a","cancelled":false,"truncated":false,"exclude_from_context":true}"#;
+        let msg: AgentMessage = serde_json::from_str(legacy).unwrap();
+        match msg {
+            AgentMessage::Env(EnvMessage::BashExecutionMessage {
+                exclude_from_context: true,
+                ..
+            }) => {}
+            other => panic!("expected excluded bash, got {other:?}"),
+        }
+
+        let v = serde_json::to_value(&AgentMessage::bash("pwd", "/tmp", Some(0))).unwrap();
+        assert_eq!(v.get("excludeFromContext"), Some(&serde_json::json!(false)));
+        assert!(v.get("exclude_from_context").is_none(), "{v}");
+        assert_eq!(v.get("exitCode"), Some(&serde_json::json!(0)));
     }
 
     #[test]

@@ -109,9 +109,13 @@ fn nested_bash_to_ui(message: &Value) -> Vec<UiEntry> {
         .get("cancelled")
         .and_then(Value::as_bool)
         .unwrap_or(false);
-    let exit_code = message.get("exit_code").and_then(Value::as_i64);
+    let exit_code = message
+        .get("exitCode")
+        .or_else(|| message.get("exit_code"))
+        .and_then(Value::as_i64);
     let exclude_from_context = message
-        .get("exclude_from_context")
+        .get("excludeFromContext")
+        .or_else(|| message.get("exclude_from_context"))
         .and_then(Value::as_bool)
         .unwrap_or(false);
     let status = if cancelled {
