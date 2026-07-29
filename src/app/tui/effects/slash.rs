@@ -6,7 +6,7 @@ use crate::app::core::dispatch::{DispatchOutcome, dispatch};
 use crate::app::core::driver::{XyDriver, XyDriverError};
 use crate::protocol::Command;
 
-use super::super::bridge::UiEntry;
+use super::super::bridge::{CompactionBlockStatus, UiEntry};
 use super::super::commands::PendingSlash;
 use super::super::host::HostSession;
 use super::super::keybindings::ReloadOutcome;
@@ -154,16 +154,15 @@ pub(super) async fn handle_slash<T: Terminal>(
             .await
             {
                 Ok(DispatchOutcome::Compacted(did)) => {
-                    let msg = if did {
-                        "session compacted"
+                    if did {
+                        append_compaction_from_session(session, driver).await;
                     } else {
-                        "session unchanged (nothing to compact)"
-                    };
-                    session.push_system_note(msg.to_string());
+                        session.push_system_note("session unchanged (nothing to compact)");
+                    }
                     super::refresh_footer_tokens(session, driver).await;
                 }
                 Ok(_) => {
-                    session.push_system_note("session compact complete");
+                    append_compaction_from_session(session, driver).await;
                     super::refresh_footer_tokens(session, driver).await;
                 }
                 Err(e) => session.push_system_note(format!("/session-compact failed: {e}")),
@@ -453,4 +452,43 @@ fn resolve_theme_arg<T: Terminal>(
             "unknown theme `{arg}` (usage: /theme [dark|light|toggle])"
         ))),
     }
+}
+
+/// After slash/force compact, surface the latest CompactionEntry as a collapsed block.
+async fn append_compaction_from_session<T: Terminal>(
+    session: &mut HostSession<T>,
+    driver: &dyn XyDriver,
+) {
+    let Ok(entries) = driver.get_messages().await else {
+        session.push_system_note("session compacted");
+        return;
+    };
+    let Some(comp) = entries.iter().rev().find_map(|e| match e {
+        crate::protocol::session::SessionEntry::Compaction(c) => Some(c),
+        _ => None,
+    }) else {
+        session.push_system_note("session compacted");
+        return;
+    };
+    // Avoid duplicate if CompactionEnd already arrived via turn stream / tee.
+    let already = session.ui_model().entries.iter().any(|e| {
+        matches!(
+            e,
+            UiEntry::Compaction {
+                status: CompactionBlockStatus::Complete,
+                tokens_before,
+                ..
+            } if *tokens_before == comp.tokens_before
+        )
+    });
+    if already {
+        return;
+    }
+    session.ui_model_mut().entries.push(UiEntry::Compaction {
+        status: CompactionBlockStatus::Complete,
+        summary: comp.summary.clone(),
+        tokens_before: comp.tokens_before,
+        detail: None,
+    });
+    session.sync_ui_root_from_model();
 }

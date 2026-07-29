@@ -856,6 +856,30 @@
         </div>
       </section>
 
+      <!-- compaction block + busy Compacting -->
+      <section class="panel" id="panel-compaction" data-id="compaction">
+        <h2>Compaction block</h2>
+        <p class="spec">
+          <a href="../compaction-status.md">compaction-status.md</a> ·
+          busy <code>Compacting</code> + transcript 块（默认折叠）· footer 只刷 token 数字
+        </p>
+        <div class="ctl">
+          <button type="button" class="chip-btn" data-compaction="progress" aria-pressed="true">进行中</button>
+          <button type="button" class="chip-btn" data-compaction="collapsed" aria-pressed="false">完成·折叠</button>
+          <button type="button" class="chip-btn" data-compaction="expanded" aria-pressed="false">完成·展开</button>
+          <button type="button" class="chip-btn" data-compaction="aborted" aria-pressed="false">aborted</button>
+          <span class="hint">默认折叠 · 展开用 Alt+E（与 tool 同和弦示意）</span>
+        </div>
+        <div class="term term-tall" id="compaction-term" data-design-fixture="compaction.collapsed">
+          <div class="term-content" id="compaction-content"></div>
+          <div class="term-status" id="compaction-status-line">
+            <span class="status-lead"><span class="spin">⠋</span> Compacting</span>
+          </div>
+          <div class="term-editor">❯ </div>
+          <div class="term-footer" id="compaction-footer">~/xylitol · ornith · used 186,842 tokens · 93.4%/200k</div>
+        </div>
+      </section>
+
       <!-- 0 ask: ChoicePrompt (c565) -->
       <section class="panel" id="panel-ask" data-id="ask">
         <h2>Ask</h2>
@@ -916,6 +940,7 @@
       { id: "pending", label: "Pending / NextTurn", key: "n" },
       { id: "tree-power", label: "Tree power", key: "p" },
       { id: "session-resume", label: "Resume /session-resume", key: "r" },
+      { id: "compaction", label: "Compaction", key: "g" },
       { id: "layout", label: "Layout", key: "1" },
       { id: "tool", label: "Tool / Expandable", key: "2" },
       { id: "diff", label: "Diff", key: "3" },
@@ -955,6 +980,7 @@
       pending: "nextTurn",
       treep: "filter",
       resume: "default",
+      compaction: "progress",
       layoutShell: "ok",
       widget: "empty",
       atom: "trunc",
@@ -1663,6 +1689,70 @@
       });
     });
 
+    /* Compaction block: progress placeholder → collapsed/expanded summary · busy Compacting */
+    const COMPACTION = {
+      progress: `<div class="row"><span class="fg-user">user:</span> <span class="fg-on">继续修这个大会话</span></div>
+<div class="row fg-muted" style="font-weight:700">[compaction]</div>
+<div class="row fg-muted">Compacting…</div>`,
+      collapsed: `<div class="row"><span class="fg-user">user:</span> <span class="fg-on">继续修这个大会话</span></div>
+<div class="row fg-muted" style="font-weight:700">[compaction]</div>
+<div class="row fg-muted">Compacted from 186,842 tokens (Alt+E to expand)</div>
+<div class="row"><span class="fg-success">assistant:</span> <span class="fg-on">好的，我先从摘要后的上下文继续。</span></div>`,
+      expanded: `<div class="row"><span class="fg-user">user:</span> <span class="fg-on">继续修这个大会话</span></div>
+<div class="row fg-muted" style="font-weight:700">[compaction]</div>
+<div class="row fg-muted"><strong>Compacted from 186,842 tokens</strong></div>
+<div class="row fg-muted"></div>
+<div class="row fg-muted">Session covered debugging token footer refresh, then a long tool loop</div>
+<div class="row fg-muted">reading session JSONL and provider-trace; concluded auto-compact was</div>
+<div class="row fg-muted">firing each turn because Api usage stayed above reserve…</div>
+<div class="row"><span class="fg-success">assistant:</span> <span class="fg-on">好的，我先从摘要后的上下文继续。</span></div>`,
+      aborted: `<div class="row"><span class="fg-user">user:</span> <span class="fg-on">继续修这个大会话</span></div>
+<div class="row fg-muted" style="font-weight:700">[compaction]</div>
+<div class="row fg-muted">compaction aborted</div>`,
+    };
+    const COMPACTION_META = {
+      progress: {
+        busy: true,
+        footer: "~/xylitol · ornith · used 186,842 tokens · 93.4%/200k",
+      },
+      collapsed: {
+        busy: false,
+        footer: "~/xylitol · ornith · used 42,110 tokens · 21.1%/200k",
+      },
+      expanded: {
+        busy: false,
+        footer: "~/xylitol · ornith · used 42,110 tokens · 21.1%/200k",
+      },
+      aborted: {
+        busy: false,
+        footer: "~/xylitol · ornith · used 186,842 tokens · 93.4%/200k",
+      },
+    };
+    function renderCompaction() {
+      const html = COMPACTION[state.compaction] || COMPACTION.progress;
+      const m = COMPACTION_META[state.compaction] || COMPACTION_META.progress;
+      document.getElementById("compaction-content").innerHTML = html;
+      document.getElementById("compaction-footer").textContent = m.footer;
+      const status = document.getElementById("compaction-status-line");
+      status.classList.toggle("hidden", !m.busy);
+      if (m.busy) {
+        status.innerHTML =
+          '<span class="status-lead"><span class="spin">⠋</span> Compacting</span>';
+      }
+      document.querySelectorAll("[data-compaction]").forEach((b) => {
+        b.setAttribute(
+          "aria-pressed",
+          String(b.dataset.compaction === state.compaction),
+        );
+      });
+    }
+    document.querySelectorAll("[data-compaction]").forEach((b) => {
+      b.addEventListener("click", () => {
+        state.compaction = b.dataset.compaction;
+        renderCompaction();
+      });
+    });
+
 
     function renderWidgets() {
       const empty = document.getElementById("widgets-empty");
@@ -1786,6 +1876,7 @@
     renderPending();
     renderTreep();
     renderResume();
+    renderCompaction();
     renderWidgets();
     renderAtoms();
     renderAsk();

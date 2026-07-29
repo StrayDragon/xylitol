@@ -241,6 +241,9 @@ def resolve_source(html: str, source: str) -> str | None:
         return extract_js_object_entry(html, "TREEP", parts[1])
     if parts[0] == "resume" and len(parts) == 2:
         return extract_js_object_entry(html, "RESUME", parts[1])
+    if parts[0] == "compaction" and len(parts) == 2:
+        # COMPACTION.progress.html / .collapsed.html …
+        return extract_js_object_entry(html, "COMPACTION", parts[1])
     if parts[0] == "models" and len(parts) >= 2:
         return extract_js_object_entry(html, "MODELS", parts[1])
     if parts[0] == "pending" and len(parts) >= 2:

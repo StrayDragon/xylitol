@@ -31,19 +31,27 @@
   场景: compact-start-status
     假如 agent Busy
     当 CompactionStart
-    那么 status 为 Compacting 且 scrollback 含 reason 说明
+    那么 status 为 Compacting 且 scrollback 含 compaction 占位块
 
   @req:atb5
   场景: compact-end-restores-working
-    假如 Busy 且 status=Compacting
-    当 CompactionEnd aborted=false
-    那么 scrollback 含 complete 且 status 恢复 Working
+    假如 Busy 且 status=Compacting 且已有占位块
+    当 CompactionEnd aborted=false 且含 summary 与 tokens_before
+    那么 占位就地变为默认折叠完成块且 status 恢复 Working
+    并且 MUST NOT 追加 compaction complete System 行
 
   @req:atb5
   场景: compact-end-aborted
-    假如 Busy 且 Compacting
+    假如 Busy 且 Compacting 且已有占位块
     当 CompactionEnd aborted=true
-    那么 scrollback 含 aborted 且 status 恢复 Working
+    那么 占位就地变为短失败态且 status 恢复 Working
+
+  @req:atb5
+  场景: compact-rebuild-collapsed
+    假如 session 含 CompactionEntry
+    当 rebuild scrollback from travel
+    那么 出现默认折叠的 compaction 完成块
+    并且 MUST NOT 整段 System dump summary
 
   @req:atb6
   场景: retry-start-status
