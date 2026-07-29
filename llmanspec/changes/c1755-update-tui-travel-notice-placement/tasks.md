@@ -5,7 +5,7 @@
 - [x] 1.1 修订 live `app-tui-session-tree`：travel 后 `history @` MUST 尾随可滚；rebuild MUST NOT 顶插该 banner
 - [x] 1.2 修订 live `app-tui-transcript`：重建路径对导航/瞬时通知 MUST NOT prepend（政策）
 - [x] 1.3 对应 `*.feature` 场景（`@req`）+ `llman sdd validate … --strict --no-check`
-- [ ] 1.4 `llman sdd change start c1755-update-tui-travel-notice-placement`（或 attach）— **blocked：脏树，需 commit/stash**
+- [x] 1.4 `llman sdd change start c1755-update-tui-travel-notice-placement` → branch `sdd/c1755-…`（Stage: full）
 
 ## 2. 产品实现
 
