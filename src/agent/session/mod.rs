@@ -425,12 +425,13 @@ impl AgentCapabilities {
         Ok(())
     }
 
-    /// Load conversation messages from the session store (leaf branch).
+    /// Load conversation messages from the session store (leaf + compaction-aware cut).
     pub(crate) async fn load_conversation_history(
         &self,
         session_id: &str,
     ) -> Result<Vec<AgentMessage>, String> {
         let entries = self.store.load_entries(session_id).await?;
+        let entries = crate::protocol::session::build_context_entries(&entries);
         Ok(entries
             .iter()
             .filter_map(|e| e.as_agent_message())

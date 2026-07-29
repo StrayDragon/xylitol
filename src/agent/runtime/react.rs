@@ -597,15 +597,26 @@ async fn try_turn_end_compaction(
         Ok(OverflowCompactOutcome::Ran { will_retry }) => {
             if will_retry {
                 *overflow_recovery_attempted = true;
-                // Strip trailing error assistant from working history (session keeps it).
-                if matches!(
-                    history.last(),
-                    Some(AgentMessage::Llm(LlmMessage::AssistantMessage {
-                        stop_reason: Some(crate::protocol::message::XyStopReason::Error),
-                        ..
-                    }))
-                ) {
-                    history.pop();
+                // Reload compaction-aware leaf context (pi: rebuild after compact).
+                match store.load_entries(session_id).await {
+                    Ok(entries) => {
+                        let cut = crate::protocol::session::build_context_entries(&entries);
+                        *history = cut.iter().filter_map(|e| e.as_agent_message()).collect();
+                    }
+                    Err(e) => {
+                        log::warn!(
+                            "overflow retry: reload history failed ({e}); falling back to pop"
+                        );
+                        if matches!(
+                            history.last(),
+                            Some(AgentMessage::Llm(LlmMessage::AssistantMessage {
+                                stop_reason: Some(crate::protocol::message::XyStopReason::Error),
+                                ..
+                            }))
+                        ) {
+                            history.pop();
+                        }
+                    }
                 }
                 return true;
             }

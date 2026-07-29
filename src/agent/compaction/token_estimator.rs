@@ -51,13 +51,14 @@ pub fn estimate_from_session_entries(
     entries: &[crate::protocol::session::SessionEntry],
     opts: &EstimateOpts,
 ) -> ContextTokenEstimate {
-    use crate::protocol::session::SessionEntry;
+    use crate::protocol::session::{SessionEntry, build_context_entries};
 
+    let entries = build_context_entries(entries);
     let mut messages: Vec<AgentMessage> = Vec::new();
     let mut last_usage: Option<XyUsage> = None;
     let mut stop_reason = None;
 
-    for entry in entries {
+    for entry in &entries {
         if let SessionEntry::Message(m) = entry
             && let Ok(msg) = serde_json::from_value::<AgentMessage>(m.message.clone())
         {
