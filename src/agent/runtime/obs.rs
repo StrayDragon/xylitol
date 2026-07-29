@@ -28,6 +28,15 @@ use xylitol_ai_bridge::provider::trace::{
 
 use crate::protocol::error::{XyError, XyToolError};
 
+/// How an [`AgentTurnSpan`] ended (c1720 / otel20).
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub(crate) enum TurnEndReason {
+    /// Normal completion (or non-abort early exit). MUST NOT mark ERROR.
+    Ok,
+    /// User cancel / cancel-token abort. Marks Langfuse ERROR + `aborted`.
+    Aborted,
+}
+
 /// Root span for one user-triggered agent run (`agent.turn`).
 pub(crate) struct AgentTurnSpan {
     root: Span,
@@ -77,6 +86,35 @@ impl AgentTurnSpan {
 
     pub(crate) fn span(&self) -> &Span {
         &self.root
+    }
+
+    /// Attach terminal status then drop (clears turn parent). Abort → ERROR/`aborted`
+    /// (aligned with `agent.compaction` / generation abort). Ok → no ERROR level.
+    pub(crate) fn finish(self, reason: TurnEndReason) {
+        match reason {
+            TurnEndReason::Aborted => {
+                self.root
+                    .add_property(|| ("langfuse.observation.level", "ERROR".to_string()));
+                self.root.add_property(|| {
+                    ("langfuse.observation.status_message", "aborted".to_string())
+                });
+            }
+            TurnEndReason::Ok => {}
+        }
+        let end = match reason {
+            TurnEndReason::Ok => "ok",
+            TurnEndReason::Aborted => "aborted",
+        };
+        self.root
+            .add_event(Event::new("lifecycle").with_properties(|| {
+                [
+                    ("kind", "lifecycle".to_string()),
+                    ("phase", "end".to_string()),
+                    ("name", "agent.turn".to_string()),
+                    ("end_reason", end.to_string()),
+                ]
+            }));
+        drop(self);
     }
 }
 
@@ -339,6 +377,71 @@ mod tests {
     }
 
     #[test]
+    fn turn_finish_ok_has_no_error_level() {
+        let _g = TEST_LOCK.lock().unwrap();
+        set_provider_trace_active(true);
+        let records = Arc::new(Mutex::new(Vec::new()));
+        fastrace::set_reporter(CollectingReporter(Arc::clone(&records)), Config::default());
+
+        {
+            let turn = AgentTurnSpan::start(Some("hello"), None).expect("turn");
+            turn.finish(TurnEndReason::Ok);
+        }
+        fastrace::flush();
+        set_provider_trace_active(false);
+
+        let spans = records.lock().unwrap().clone();
+        let turn = spans
+            .iter()
+            .find(|s| s.name == "agent.turn")
+            .expect("turn span");
+        let props: std::collections::HashMap<_, _> = turn
+            .properties
+            .iter()
+            .map(|(k, v)| (k.as_ref(), v.as_ref()))
+            .collect();
+        assert!(
+            props.get("langfuse.observation.level").is_none(),
+            "ok finish must not mark ERROR: {props:?}"
+        );
+        assert!(
+            props.get("langfuse.observation.status_message").is_none(),
+            "ok finish must not set status_message: {props:?}"
+        );
+    }
+
+    #[test]
+    fn turn_finish_aborted_marks_error() {
+        let _g = TEST_LOCK.lock().unwrap();
+        set_provider_trace_active(true);
+        let records = Arc::new(Mutex::new(Vec::new()));
+        fastrace::set_reporter(CollectingReporter(Arc::clone(&records)), Config::default());
+
+        {
+            let turn = AgentTurnSpan::start(Some("hello"), None).expect("turn");
+            turn.finish(TurnEndReason::Aborted);
+        }
+        fastrace::flush();
+        set_provider_trace_active(false);
+
+        let spans = records.lock().unwrap().clone();
+        let turn = spans
+            .iter()
+            .find(|s| s.name == "agent.turn")
+            .expect("turn span");
+        let props: std::collections::HashMap<_, _> = turn
+            .properties
+            .iter()
+            .map(|(k, v)| (k.as_ref(), v.as_ref()))
+            .collect();
+        assert_eq!(props.get("langfuse.observation.level"), Some(&"ERROR"));
+        assert_eq!(
+            props.get("langfuse.observation.status_message"),
+            Some(&"aborted")
+        );
+    }
+
+    #[test]
     fn turn_iteration_llm_share_trace_id() {
         let _g = TEST_LOCK.lock().unwrap();
         set_provider_trace_active(true);
@@ -358,7 +461,7 @@ mod tests {
             drop(_llm);
             drop(tool);
             drop(iter);
-            drop(turn);
+            turn.finish(TurnEndReason::Ok);
         }
         fastrace::flush();
         set_provider_trace_active(false);
@@ -421,7 +524,7 @@ mod tests {
         fastrace::set_reporter(CollectingReporter(Arc::clone(&records)), Config::default());
         {
             let turn = AgentTurnSpan::start(Some("secret prompt"), None).expect("turn");
-            drop(turn);
+            turn.finish(TurnEndReason::Ok);
         }
         fastrace::flush();
         {
@@ -439,7 +542,7 @@ mod tests {
         set_observation_io_tier(ObservationIoTier::Truncated);
         {
             let turn = AgentTurnSpan::start(Some("secret prompt"), None).expect("turn");
-            drop(turn);
+            turn.finish(TurnEndReason::Ok);
         }
         fastrace::flush();
         set_observation_io_tier(ObservationIoTier::None);
@@ -533,7 +636,7 @@ mod tests {
             drop(t1);
             drop(t2);
             drop(iter);
-            drop(turn);
+            turn.finish(TurnEndReason::Ok);
         }
         fastrace::flush();
         set_provider_trace_active(false);
