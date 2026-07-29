@@ -2,9 +2,9 @@
 
 ## 1. Specs
 
-- [ ] 1.1 收紧 live `app-tui-transcript` `att12`：重建 Tool 与 live End 后单块幂等；同 toolCallId → 恰好一条 `UiEntry::Tool`
-- [ ] 1.2 对应 `*.feature` 场景（`@req:att12`）+ `llman sdd validate … --strict --no-check`
-- [ ] 1.3 `llman sdd change start c1790-fix-tui-rebuild-tool-merge`
+- [x] 1.1 收紧 live `app-tui-transcript` `att12`：重建 Tool 与 live End 后单块幂等；同 toolCallId → 恰好一条 `UiEntry::Tool`
+- [x] 1.2 对应 `*.feature` 场景（`@req:att12`）+ `llman sdd validate … --strict --no-check`
+- [x] 1.3 `llman sdd change start c1790-fix-tui-rebuild-tool-merge` → branch `sdd/c1790-…`（Stage: full）
 
 ## 2. 共享投影
 

@@ -6,6 +6,9 @@ priority: 1790
 depends_on: []
 blocks: []
 author: agent
+branch: sdd/c1790-fix-tui-rebuild-tool-merge
+base_sha: 096ef094cfed1ab7b504b854939b7f7b43d5a0c7
+checkpointed: false
 ---
 
 # c1790 — Resume/travel 重建 Tool 与直播单块对齐
