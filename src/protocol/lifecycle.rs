@@ -98,6 +98,12 @@ pub enum XyEvent {
         will_retry: bool,
         #[serde(default, skip_serializing_if = "Option::is_none")]
         error_message: Option<String>,
+        /// CompactionEntry.summary when compact succeeded (TUI block).
+        #[serde(default, skip_serializing_if = "Option::is_none")]
+        summary: Option<String>,
+        /// CompactionEntry.tokens_before when compact succeeded.
+        #[serde(default, skip_serializing_if = "Option::is_none")]
+        tokens_before: Option<u64>,
     },
 
     // ── Model and settings ───────────────────────────────────────

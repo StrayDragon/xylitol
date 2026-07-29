@@ -1,7 +1,9 @@
 //! Queue / compaction / retry / error / metadata events.
 
 use crate::app::core::driver::XyEvent;
-use crate::app::tui::bridge::{UiEntry, UiModel, UiPhase, trailing_aborted_note};
+use crate::app::tui::bridge::{
+    CompactionBlockStatus, UiEntry, UiModel, UiPhase, trailing_aborted_note,
+};
 
 pub fn apply_lifecycle_family(model: &mut UiModel, event: &XyEvent) -> bool {
     match event {
@@ -12,20 +14,43 @@ pub fn apply_lifecycle_family(model: &mut UiModel, event: &XyEvent) -> bool {
             model.sync_queue(*steer_count, *follow_up_count);
             true
         }
-        XyEvent::CompactionStart { reason } => {
-            model.entries.push(UiEntry::System {
-                text: format!("compaction: {reason}"),
-            });
+        XyEvent::CompactionStart { .. } => {
+            push_compaction_pending(model);
             model.set_busy_status("Compacting");
             true
         }
-        XyEvent::CompactionEnd { aborted, .. } => {
-            let text = if *aborted {
-                "compaction aborted"
+        XyEvent::CompactionEnd {
+            aborted,
+            error_message,
+            summary,
+            tokens_before,
+            ..
+        } => {
+            if *aborted {
+                finish_compaction(
+                    model,
+                    CompactionBlockStatus::Aborted,
+                    String::new(),
+                    0,
+                    Some("compaction aborted".into()),
+                );
+            } else if let Some(err) = error_message {
+                finish_compaction(
+                    model,
+                    CompactionBlockStatus::Failed,
+                    String::new(),
+                    0,
+                    Some(err.clone()),
+                );
             } else {
-                "compaction complete"
-            };
-            model.entries.push(UiEntry::System { text: text.into() });
+                finish_compaction(
+                    model,
+                    CompactionBlockStatus::Complete,
+                    summary.clone().unwrap_or_default(),
+                    tokens_before.unwrap_or(0),
+                    None,
+                );
+            }
             // Sticky Compacting would block layout status; restore like ToolExecutionEnd.
             if model.phase == UiPhase::Busy {
                 model.status = Some("Working".into());
@@ -82,4 +107,55 @@ pub fn apply_lifecycle_family(model: &mut UiModel, event: &XyEvent) -> bool {
         }
         _ => false,
     }
+}
+
+fn push_compaction_pending(model: &mut UiModel) {
+    if let Some(UiEntry::Compaction {
+        status: CompactionBlockStatus::Pending,
+        ..
+    }) = model.entries.last()
+    {
+        return;
+    }
+    model.entries.push(UiEntry::Compaction {
+        status: CompactionBlockStatus::Pending,
+        summary: String::new(),
+        tokens_before: 0,
+        detail: None,
+    });
+}
+
+fn finish_compaction(
+    model: &mut UiModel,
+    status: CompactionBlockStatus,
+    summary: String,
+    tokens_before: u64,
+    detail: Option<String>,
+) {
+    if let Some(UiEntry::Compaction {
+        status: slot_status,
+        summary: slot_summary,
+        tokens_before: slot_tokens,
+        detail: slot_detail,
+    }) = model.entries.iter_mut().rev().find(|e| {
+        matches!(
+            e,
+            UiEntry::Compaction {
+                status: CompactionBlockStatus::Pending,
+                ..
+            }
+        )
+    }) {
+        *slot_status = status;
+        *slot_summary = summary;
+        *slot_tokens = tokens_before;
+        *slot_detail = detail;
+        return;
+    }
+    model.entries.push(UiEntry::Compaction {
+        status,
+        summary,
+        tokens_before,
+        detail,
+    });
 }

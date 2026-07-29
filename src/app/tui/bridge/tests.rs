@@ -531,7 +531,7 @@ fn message_update_streams_args_preview() {
 }
 
 #[test]
-fn compaction_start_sets_status_and_note() {
+fn compaction_start_sets_status_and_placeholder() {
     let mut model = UiModel::new();
     model.begin_run("hi");
     apply_xy_event(
@@ -543,10 +543,15 @@ fn compaction_start_sets_status_and_note() {
     assert_eq!(model.phase, UiPhase::Busy);
     assert_eq!(model.status.as_deref(), Some("Compacting"));
     assert!(
-        model
-            .entries
-            .iter()
-            .any(|e| matches!(e, UiEntry::System { text } if text.contains("auto: 90%")))
+        model.entries.iter().any(|e| matches!(
+            e,
+            UiEntry::Compaction {
+                status: CompactionBlockStatus::Pending,
+                ..
+            }
+        )),
+        "expected pending compaction block, got {:?}",
+        model.entries
     );
 }
 
@@ -568,14 +573,22 @@ fn compaction_end_restores_working() {
             reason: "manual".into(),
             will_retry: false,
             error_message: None,
+            summary: Some("session summary".into()),
+            tokens_before: Some(42_000),
         },
     );
     assert_eq!(model.status.as_deref(), Some("Working"));
     assert!(
-        model
-            .entries
-            .iter()
-            .any(|e| matches!(e, UiEntry::System { text } if text == "compaction complete"))
+        model.entries.iter().any(|e| matches!(
+            e,
+            UiEntry::Compaction {
+                status: CompactionBlockStatus::Complete,
+                tokens_before: 42_000,
+                ..
+            }
+        )),
+        "expected complete compaction block, got {:?}",
+        model.entries
     );
 }
 
@@ -597,14 +610,21 @@ fn compaction_end_aborted_restores_working() {
             reason: "manual".into(),
             will_retry: false,
             error_message: None,
+            summary: None,
+            tokens_before: None,
         },
     );
     assert_eq!(model.status.as_deref(), Some("Working"));
     assert!(
-        model
-            .entries
-            .iter()
-            .any(|e| matches!(e, UiEntry::System { text } if text == "compaction aborted"))
+        model.entries.iter().any(|e| matches!(
+            e,
+            UiEntry::Compaction {
+                status: CompactionBlockStatus::Aborted,
+                ..
+            }
+        )),
+        "expected aborted compaction block, got {:?}",
+        model.entries
     );
 }
 

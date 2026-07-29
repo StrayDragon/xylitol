@@ -221,6 +221,8 @@ impl TryFrom<&Event> for XyEvent {
                 reason: String::new(),
                 will_retry: false,
                 error_message: None,
+                summary: None,
+                tokens_before: None,
             }),
             Event::AgentEnd => Ok(XyEvent::AgentEnd {
                 messages: Vec::new(),

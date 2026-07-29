@@ -71,6 +71,8 @@ impl CompactionOrchestrator {
                     reason: "manual".into(),
                     will_retry: false,
                     error_message: Some(err.clone()),
+                    summary: None,
+                    tokens_before: None,
                 })
                 .await;
             return Err(err);
@@ -93,6 +95,8 @@ impl CompactionOrchestrator {
                 reason: "manual".into(),
                 will_retry: false,
                 error_message: result.as_ref().err().cloned(),
+                summary: result.as_ref().ok().map(|e| e.summary.clone()),
+                tokens_before: result.as_ref().ok().map(|e| e.tokens_before),
             })
             .await;
 
@@ -162,6 +166,8 @@ impl CompactionOrchestrator {
                     reason: "overflow".into(),
                     will_retry: false,
                     error_message: Some(OVERFLOW_ONCE_MSG.into()),
+                    summary: None,
+                    tokens_before: None,
                 })
                 .await;
             return Ok(OverflowCompactOutcome::FailedOnce);
@@ -249,8 +255,13 @@ impl CompactionOrchestrator {
         let obs = AgentCompactionSpan::start(reason);
 
         let result = compact_session(store, sid, model, &self.settings, None).await;
-        let (ok_result, err_msg) = match &result {
-            Ok(_) => (Some("ok".to_string()), None),
+        let (ok_result, err_msg, summary, tokens_before) = match &result {
+            Ok(entry) => (
+                Some("ok".to_string()),
+                None,
+                Some(entry.summary.clone()),
+                Some(entry.tokens_before),
+            ),
             Err(e) => (
                 None,
                 Some(if reason.starts_with("overflow") {
@@ -258,6 +269,8 @@ impl CompactionOrchestrator {
                 } else {
                     format!("Auto-compaction failed: {e}")
                 }),
+                None,
+                None,
             ),
         };
 
@@ -279,6 +292,8 @@ impl CompactionOrchestrator {
                 reason: end_reason,
                 will_retry: will_retry_end,
                 error_message: err_msg,
+                summary,
+                tokens_before,
             })
             .await;
 

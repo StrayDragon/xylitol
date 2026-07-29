@@ -340,7 +340,12 @@ impl AgentRuntime {
         let queues = self.inner.queues();
         let store = self.inner.session_store();
         let skills = self.inner.loaded_skills().to_vec();
-        let event_sink = self.inner.event_sink();
+        let (side_tx, mut side_rx) = tokio::sync::mpsc::unbounded_channel::<XyEvent>();
+        let event_sink: Arc<dyn crate::protocol::ports::XyEventSink> =
+            Arc::new(CompactionStreamTee {
+                inner: self.inner.event_sink(),
+                tx: side_tx,
+            });
         let compaction_settings = self.inner.compaction_settings();
 
         let (queue_tx, mut queue_rx) = tokio::sync::mpsc::unbounded_channel();
@@ -384,6 +389,11 @@ impl AgentRuntime {
                             yield e;
                         }
                     }
+                    ev = side_rx.recv() => {
+                        if let Some(e) = ev {
+                            yield e;
+                        }
+                    }
                 }
             }
             queues.unbind_event_tx();
@@ -393,6 +403,26 @@ impl AgentRuntime {
             inner,
             done: false,
             turn_index: 0,
+        }
+    }
+}
+
+/// Forward CompactionStart/End from the side lifecycle sink onto the turn stream
+/// so product TUI bridge can render the compaction block mid-run (c1730).
+struct CompactionStreamTee {
+    inner: Arc<dyn crate::protocol::ports::XyEventSink>,
+    tx: tokio::sync::mpsc::UnboundedSender<XyEvent>,
+}
+
+#[async_trait::async_trait]
+impl crate::protocol::ports::XyEventSink for CompactionStreamTee {
+    async fn emit(&self, event: &XyEvent) {
+        self.inner.emit(event).await;
+        if matches!(
+            event,
+            XyEvent::CompactionStart { .. } | XyEvent::CompactionEnd { .. }
+        ) {
+            let _ = self.tx.send(event.clone());
         }
     }
 }
