@@ -1,10 +1,11 @@
 ---
 name: codebase-life-review
 description: >-
-  人类主动触发。对已成长期、易失控的代码库做「人生回顾」式回归分析：宏观架构方向 ×
-  重点逻辑脉络，产出临时理解构件（mermaid / 入口索引 / 张力点），默认写入
-  `_HANDOFF/` 或 `*.tmp.md`。仅手动触发，agent 禁止自动启用。Keywords: 人生回顾,
-  逻辑脉络, 架构回看, life review, logic vein, reacquaint, 失控, 理解地图.
+  人类主动触发：仅当用户显式调用 /codebase-life-review 时启用。对已成长期、易失控的
+  代码库做「人生回顾」式回归分析：宏观架构方向 × 重点逻辑脉络，产出临时理解构件
+  （mermaid / 入口索引 / 张力点），默认写入 `_HANDOFF/` 或 `*.tmp.md`。Agent MUST NOT
+  自动启用。Keywords: /codebase-life-review, 人生回顾, 逻辑脉络, 架构回看,
+  life review, logic vein, reacquaint, 失控, 理解地图.
 disable-model-invocation: true
 ---
 
@@ -13,8 +14,10 @@ disable-model-invocation: true
 像重新审视前半生一样：不急着改造，先把**宣称的方向**与**代码事实**对上，再把几条
 **重点逻辑脉络**画清楚，让人类（与本会话 agent）重新可控。
 
-**仅手动触发**：用户显式点名本 skill / 「人生回顾」/ 「逻辑脉络审视」时才运行。
-Agent MUST NOT 因「看起来复杂」自动启用。
+**仅人类主动调用**：唯一合法触发为用户显式输入 **`/codebase-life-review`**
+（可带范围参数）。同义口述（「人生回顾」「逻辑脉络审视」）**不算**自动启用条件——
+须用户补打 `/codebase-life-review` 或明确说「按 codebase-life-review skill 执行」。
+Agent MUST NOT 因代码复杂、失控感、架构讨论而自行启用本 skill。
 
 ## 与相邻 skill 的边界
 
@@ -64,6 +67,10 @@ Life Review Progress:
 
 ### 0) 定范围
 
+**步进默认**：用户说「一步步来」时，一次只交付一个工作流步骤（0→1→2→…），
+每步结束用结构化选项问是否进入下一步；**禁止**一轮写完整份回顾。
+模板形态未定时：先薄后厚，落盘标 `template-draft`，后续轮次再收敛模板。
+
 向人类确认（缺省则采用括号内默认）：
 
 - **镜头**：整仓鸟瞰 / 一层（agent|infra|app|protocol）/ 一条产品能力
@@ -72,6 +79,7 @@ Life Review Progress:
 - **落盘名**：`_HANDOFF/life-review-<topic>-YYYYMMDD.md`（或用户指定）
 
 用户若只给痛点词（如「compact 细节」），先映射成脉络候选再确认，勿直接开写。
+未收到 `/codebase-life-review`（或等价明确授权）时：只回答普通问题，不跑本工作流。
 
 ### 1) 宏观回看
 
