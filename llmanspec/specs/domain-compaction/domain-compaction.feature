@@ -197,10 +197,18 @@
 
   @req:c17
   场景: manual-force-bypasses-reserve
-    假如 用量未超 reserve 闸但会话有可摘要历史
+    假如 用量未超 reserve 闸但 leaf 分支上有可摘要历史（按 pi 同构切点计量超出 keepRecent）
     当 调用 Driver 或 slash force compact
-    那么 仍执行 compaction 或返回 Already compacted / Nothing to compact 明确错误
+    那么 仍执行 compaction 或仅在末条已是 CompactionEntry 时返回 Already compacted
     并且 MUST NOT 经 maybe_auto_compact 闸
+    并且 MUST NOT 因切点 JSON 低估把仍有可摘要历史误报为 Nothing to compact
+
+  @req:c17
+  @req:c25
+  场景: compact-uses-leaf-branch-path
+    假如 会话文件序含旁支 sibling 且当前 leaf 在右支
+    当 执行 prepare 或 force compact
+    那么 切点与摘要范围仅含 leaf 分支条目且不含左支 sibling
 
   @req:c18
   场景: stale-guard-after-compaction

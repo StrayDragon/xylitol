@@ -21,7 +21,8 @@ pub use orchestrator::{CompactionOrchestrator, OverflowCompactOutcome, should_co
 pub mod token_estimator;
 
 pub use cut_detector::{
-    CutPointResult, estimate_tokens_entry, find_cut_point, is_context_overflow,
+    CutPointResult, estimate_tokens_entry, estimate_tokens_entry_for_cut,
+    estimate_tokens_message_for_cut, find_cut_point, is_context_overflow,
 };
 pub use file_ops::{
     FileOps, compute_file_lists, extract_file_ops_from_messages, format_file_ops_xml,
@@ -120,7 +121,7 @@ pub async fn compact_session(
         return Err("compaction disabled".to_string());
     }
 
-    let entries = store.load_entries(session_id).await?;
+    let entries = store.load_leaf_branch(session_id).await?;
 
     if entries.is_empty() {
         return Err("empty session, nothing to compact".to_string());
@@ -545,7 +546,7 @@ mod tests {
         let result = find_cut_point(&entries, 0, entries.len(), keep);
         let kept: u64 = entries[result.first_kept_entry_index..]
             .iter()
-            .map(estimate_tokens_entry)
+            .map(estimate_tokens_entry_for_cut)
             .sum();
         assert!(
             kept >= keep.saturating_sub(keep / 2),
@@ -564,11 +565,223 @@ mod tests {
             make_message_entry("a1", "assistant", &"d".repeat(80)),
         ];
         // keep ≈ size of (u1+a1) so cut lands at u1 (turn-start), not mid-turn assistant.
-        let keep: u64 = entries[2..].iter().map(estimate_tokens_entry).sum();
+        let keep: u64 = entries[2..].iter().map(estimate_tokens_entry_for_cut).sum();
         let result = find_cut_point(&entries, 0, entries.len(), keep);
         assert_eq!(result.first_kept_entry_index, 2);
         assert!(!result.is_split_turn);
         assert_eq!(result.turn_start_index, -1);
+    }
+
+    fn make_assistant_with_thinking_and_tool(
+        id: &str,
+        text: &str,
+        thinking: &str,
+        tool_name: &str,
+        tool_args: serde_json::Value,
+    ) -> SessionEntry {
+        use crate::protocol::message::{AgentMessage, AgentPart, LlmMessage, XyStopReason};
+        let now = chrono::Utc::now().to_rfc3339();
+        let msg = AgentMessage::Llm(LlmMessage::AssistantMessage {
+            content: vec![
+                AgentPart::text(text),
+                AgentPart::thinking(thinking),
+                AgentPart::ToolCall {
+                    id: format!("call-{id}"),
+                    name: tool_name.into(),
+                    arguments: tool_args,
+                },
+            ],
+            stop_reason: Some(XyStopReason::ToolUse),
+            usage: None,
+            api: String::new(),
+            provider: String::new(),
+            model: String::new(),
+            response_id: None,
+            error_message: None,
+            timestamp: 1,
+            diagnostics: Vec::new(),
+        });
+        SessionEntry::Message(crate::infra::session::MessageEntry {
+            base: crate::infra::session::EntryBase {
+                entry_type: "message".into(),
+                id: id.into(),
+                parent_id: None,
+                timestamp: now,
+            },
+            message: serde_json::to_value(msg).unwrap(),
+        })
+    }
+
+    #[test]
+    fn test_cut_estimate_counts_thinking_and_tool_call() {
+        let thinking = "t".repeat(40_000);
+        let args = serde_json::json!({ "path": "x".repeat(4_000) });
+        let entry = make_assistant_with_thinking_and_tool("a1", "ok", &thinking, "read", args);
+        let cut = estimate_tokens_entry_for_cut(&entry);
+        let text_only = ("ok".len() as u64).div_ceil(4);
+        assert!(
+            cut > text_only + 5_000,
+            "cut estimate must include thinking/toolCall: cut={cut} text_only={text_only}"
+        );
+        // Image-style: 4800 chars → 1200 tokens (not 4800 tokens).
+        let img = {
+            use crate::protocol::message::{AgentMessage, AgentPart};
+            let now = chrono::Utc::now().to_rfc3339();
+            SessionEntry::Message(crate::infra::session::MessageEntry {
+                base: crate::infra::session::EntryBase {
+                    entry_type: "message".into(),
+                    id: "img".into(),
+                    parent_id: None,
+                    timestamp: now,
+                },
+                message: serde_json::to_value(AgentMessage::user_parts(vec![
+                    AgentPart::text("see"),
+                    AgentPart::image("image/png", "AAAA"),
+                ]))
+                .unwrap(),
+            })
+        };
+        assert_eq!(
+            estimate_tokens_entry_for_cut(&img),
+            (3 + 4800u64).div_ceil(4)
+        );
+    }
+
+    #[test]
+    fn test_cut_point_thinking_heavy_can_carve_history() {
+        // Text-only keep budget would keep everything; with thinking counted, cut moves.
+        let thinking = "z".repeat(80_000); // ~20k tokens
+        let entries = vec![
+            make_message_entry("u0", "user", "old goal"),
+            make_message_entry("a0", "assistant", "old plan"),
+            make_message_entry("u1", "user", "continue"),
+            make_assistant_with_thinking_and_tool(
+                "a1",
+                "ok",
+                &thinking,
+                "bash",
+                serde_json::json!({"cmd": "ls"}),
+            ),
+        ];
+        let textish: u64 = entries
+            .iter()
+            .map(|e| {
+                e.as_agent_message()
+                    .map(|m| {
+                        m.content()
+                            .iter()
+                            .filter_map(|p| match p {
+                                crate::protocol::message::AgentPart::Text { text } => {
+                                    Some(text.len() as u64)
+                                }
+                                _ => None,
+                            })
+                            .sum::<u64>()
+                            .div_ceil(4)
+                    })
+                    .unwrap_or(0)
+            })
+            .sum();
+        assert!(textish < 200, "fixture text-only must look tiny: {textish}");
+        let result = find_cut_point(&entries, 0, entries.len(), 5_000);
+        assert!(
+            result.first_kept_entry_index > 0,
+            "thinking-aware cut must free history: idx={}",
+            result.first_kept_entry_index
+        );
+        let settings = CompactionSettings {
+            enabled: true,
+            reserve_tokens: 1024,
+            keep_recent_tokens: 5_000,
+        };
+        prepare_compaction(&entries, &settings).expect("should have history to compact");
+    }
+
+    #[test]
+    fn test_prepare_already_compacted_and_truly_small() {
+        let settings = CompactionSettings::default();
+        let small = vec![make_message_entry("u1", "user", "hi")];
+        assert_eq!(
+            prepare_compaction(&small, &settings).unwrap_err(),
+            "Nothing to compact (session too small)"
+        );
+        let already = vec![
+            make_message_entry("u1", "user", "hi"),
+            make_compaction_entry("c1", "prior"),
+        ];
+        assert_eq!(
+            prepare_compaction(&already, &settings).unwrap_err(),
+            "Already compacted"
+        );
+    }
+
+    #[tokio::test]
+    async fn test_load_leaf_branch_excludes_sibling_from_prepare() {
+        use crate::infra::session::SessionManager;
+        use crate::protocol::ports::XySessionStore;
+
+        let dir = tempfile::tempdir().unwrap();
+        let mgr = SessionManager::new(dir.path().join("sessions"));
+        let sid = "branch-compact";
+        mgr.create(sid, Some("."), None).await.unwrap();
+
+        // File order: u1, a_left (sibling), a_right, u_right (leaf on right).
+        // append_with_id flushes deferred header on first body write.
+        for e in [
+            {
+                let mut e = make_message_entry("u1", "user", &"L".repeat(8_000));
+                if let SessionEntry::Message(ref mut m) = e {
+                    m.base.parent_id = None;
+                }
+                e
+            },
+            {
+                let mut e = make_message_entry("a_left", "assistant", &"LEFT".repeat(20_000));
+                if let SessionEntry::Message(ref mut m) = e {
+                    m.base.parent_id = Some("u1".into());
+                }
+                e
+            },
+            {
+                let mut e = make_message_entry("a_right", "assistant", "right short");
+                if let SessionEntry::Message(ref mut m) = e {
+                    m.base.parent_id = Some("u1".into());
+                }
+                e
+            },
+            {
+                let mut e = make_message_entry("u_right", "user", "leaf tip");
+                if let SessionEntry::Message(ref mut m) = e {
+                    m.base.parent_id = Some("a_right".into());
+                }
+                e
+            },
+        ] {
+            mgr.append_with_id(sid, &e).await.unwrap();
+        }
+
+        let all = XySessionStore::load_entries(&mgr, sid).await.unwrap();
+        let branch = XySessionStore::load_leaf_branch(&mgr, sid).await.unwrap();
+        let branch_ids: Vec<_> = branch.iter().filter_map(|e| e.entry_id()).collect();
+        assert!(
+            !branch_ids.contains(&"a_left"),
+            "sibling must not be on leaf branch: {branch_ids:?}"
+        );
+        assert!(branch_ids.contains(&"a_right") && branch_ids.contains(&"u_right"));
+
+        let settings = CompactionSettings {
+            enabled: true,
+            reserve_tokens: 1024,
+            keep_recent_tokens: 20_000,
+        };
+        assert!(
+            prepare_compaction(&all, &settings).is_ok(),
+            "full JSONL with LEFT sibling looks compactable (false positive)"
+        );
+        assert_eq!(
+            prepare_compaction(&branch, &settings).unwrap_err(),
+            "Nothing to compact (session too small)"
+        );
     }
 
     // ── estimate_tokens_entry tests ───────────────────────────────

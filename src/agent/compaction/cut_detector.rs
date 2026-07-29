@@ -3,6 +3,7 @@
 //! Walk session entries backwards from newest, accumulate token estimates,
 //! and find the nearest valid boundary (user / assistant / bash / custom / branch).
 
+use crate::protocol::message::{AgentMessage, AgentPart, EnvMessage, LlmMessage};
 use crate::protocol::session::SessionEntry;
 
 /// Result from [`find_cut_point`].
@@ -25,7 +26,165 @@ pub fn is_context_overflow(token_estimate: u64, context_window: u64, reserve_tok
     token_estimate + reserve_tokens > context_window
 }
 
+/// pi `ESTIMATED_IMAGE_CHARS` — counted as chars before `/4`.
+const ESTIMATED_IMAGE_CHARS: u64 = 4800;
+
+/// Estimate tokens for cut-point walking (pi `estimateTokens` on AgentMessage).
+///
+/// Returns 0 when the entry has no context-visible message (skipped in accumulation).
+/// Message rows that fail typed deserialize still use a lax content walk (string or
+/// parts) so cut math stays usable for legacy / fixture wire shapes.
+pub fn estimate_tokens_entry_for_cut(entry: &SessionEntry) -> u64 {
+    match entry {
+        SessionEntry::Message(msg) => {
+            match serde_json::from_value::<AgentMessage>(msg.message.clone()) {
+                Ok(agent_msg) => {
+                    if matches!(
+                        agent_msg,
+                        AgentMessage::Env(EnvMessage::BashExecutionMessage {
+                            exclude_from_context: true,
+                            ..
+                        })
+                    ) {
+                        return 0;
+                    }
+                    estimate_tokens_message_for_cut(&agent_msg)
+                }
+                Err(_) => estimate_lax_message_json_chars(&msg.message).div_ceil(4),
+            }
+        }
+        _ => entry
+            .as_agent_message()
+            .map(|m| estimate_tokens_message_for_cut(&m))
+            .unwrap_or(0),
+    }
+}
+
+/// Lax wire: string `content` or part array (text / image / thinking / toolCall).
+fn estimate_lax_message_json_chars(message: &serde_json::Value) -> u64 {
+    if let Some(s) = message.get("content").and_then(|c| c.as_str()) {
+        return s.len() as u64;
+    }
+    let Some(parts) = message
+        .get("content")
+        .or_else(|| message.get("parts"))
+        .and_then(|p| p.as_array())
+    else {
+        return 0;
+    };
+    let role = message.get("role").and_then(|r| r.as_str()).unwrap_or("");
+    let mut chars = 0u64;
+    for part in parts {
+        let typ = part.get("type").and_then(|t| t.as_str());
+        match typ {
+            Some("image") => chars += ESTIMATED_IMAGE_CHARS,
+            Some("thinking") if role == "assistant" => {
+                if let Some(t) = part.get("thinking").and_then(|t| t.as_str()) {
+                    chars += t.len() as u64;
+                }
+            }
+            Some("toolCall") | Some("tool_call") if role == "assistant" => {
+                chars += part
+                    .get("name")
+                    .and_then(|n| n.as_str())
+                    .map(|s| s.len() as u64)
+                    .unwrap_or(0);
+                if let Some(args) = part.get("arguments") {
+                    chars += args.to_string().len() as u64;
+                }
+            }
+            Some("text") | None => {
+                if let Some(t) = part.get("text").and_then(|t| t.as_str()) {
+                    chars += t.len() as u64;
+                } else if let Some(s) = part.as_str() {
+                    chars += s.len() as u64;
+                }
+            }
+            _ => {}
+        }
+    }
+    chars
+}
+
+/// pi-aligned chars/4 estimate for a single transcript message.
+pub fn estimate_tokens_message_for_cut(msg: &AgentMessage) -> u64 {
+    let chars = match msg {
+        // pi user / toolResult / custom: text + image only
+        AgentMessage::Llm(LlmMessage::UserMessage { content, .. })
+        | AgentMessage::Llm(LlmMessage::ToolResultMessage { content, .. }) => {
+            estimate_text_and_image_chars(content)
+        }
+        // pi assistant: text + thinking + toolCall (not image)
+        AgentMessage::Llm(LlmMessage::AssistantMessage { content, .. }) => {
+            estimate_assistant_chars(content)
+        }
+        AgentMessage::Env(EnvMessage::BashExecutionMessage {
+            command, output, ..
+        }) => (command.len() + output.len()) as u64,
+        AgentMessage::Env(EnvMessage::CompactionSummaryMessage { summary, .. })
+        | AgentMessage::Env(EnvMessage::BranchSummaryMessage { summary, .. }) => {
+            summary.len() as u64
+        }
+        AgentMessage::Env(EnvMessage::CustomMessage { content, .. }) => {
+            estimate_custom_content_chars(content)
+        }
+    };
+    chars.div_ceil(4)
+}
+
+fn estimate_text_and_image_chars(parts: &[AgentPart]) -> u64 {
+    let mut chars = 0u64;
+    for part in parts {
+        match part {
+            AgentPart::Text { text } => chars += text.len() as u64,
+            AgentPart::Image(_) => chars += ESTIMATED_IMAGE_CHARS,
+            AgentPart::Thinking { .. } | AgentPart::ToolCall { .. } => {}
+        }
+    }
+    chars
+}
+
+fn estimate_assistant_chars(parts: &[AgentPart]) -> u64 {
+    let mut chars = 0u64;
+    for part in parts {
+        match part {
+            AgentPart::Text { text } => chars += text.len() as u64,
+            AgentPart::Thinking { thinking, .. } => chars += thinking.len() as u64,
+            AgentPart::ToolCall {
+                name, arguments, ..
+            } => {
+                chars += name.len() as u64 + arguments.to_string().len() as u64;
+            }
+            AgentPart::Image(_) => {}
+        }
+    }
+    chars
+}
+
+fn estimate_custom_content_chars(content: &serde_json::Value) -> u64 {
+    if let Some(s) = content.as_str() {
+        return s.len() as u64;
+    }
+    if let Some(parts) = content.as_array() {
+        let mut chars = 0u64;
+        for part in parts {
+            let typ = part.get("type").and_then(|t| t.as_str());
+            if typ == Some("image") {
+                chars += ESTIMATED_IMAGE_CHARS;
+            } else if let Some(text) = part.get("text").and_then(|t| t.as_str()) {
+                chars += text.len() as u64;
+            } else if let Some(s) = part.as_str() {
+                chars += s.len() as u64;
+            }
+        }
+        return chars;
+    }
+    content.to_string().len() as u64
+}
+
 /// Estimate tokens for a single `SessionEntry` using chars/4 heuristic.
+///
+/// Prefer [`estimate_tokens_entry_for_cut`] for cut-point walking (pi-aligned).
 pub fn estimate_tokens_entry(entry: &SessionEntry) -> u64 {
     match entry {
         SessionEntry::Message(msg) => estimate_tokens_message_json(&msg.message),
@@ -155,6 +314,10 @@ fn include_preceding_non_messages(
         if is_compaction_boundary(prev) {
             break;
         }
+        // pi: stop when previous entry contributes context messages.
+        if estimate_tokens_entry_for_cut(prev) > 0 {
+            break;
+        }
         match prev {
             SessionEntry::Message(_) => break,
             SessionEntry::BranchSummary(_) | SessionEntry::CustomMessage(_) => break,
@@ -217,7 +380,11 @@ pub fn find_cut_point(
 
     for i in (start_index..end_index).rev() {
         let entry = &entries[i];
-        accumulated += estimate_tokens_entry(entry);
+        let message_tokens = estimate_tokens_entry_for_cut(entry);
+        if message_tokens == 0 {
+            continue;
+        }
+        accumulated += message_tokens;
 
         if accumulated >= keep_tokens {
             for &cp in &cut_points {

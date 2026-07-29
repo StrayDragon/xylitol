@@ -138,6 +138,12 @@ fn test_comp_manual_force(agent: AgentState, ws: Workspace) {}
 
 #[scenario(
     path = "llmanspec/specs/domain-compaction/domain-compaction.feature",
+    name = "compact-uses-leaf-branch-path"
+)]
+async fn test_comp_leaf_branch(agent: AgentState, sess: XySessionStore, ws: Workspace) {}
+
+#[scenario(
+    path = "llmanspec/specs/domain-compaction/domain-compaction.feature",
     name = "stale-guard-after-compaction"
 )]
 fn test_comp_stale_guard(agent: AgentState, ws: Workspace) {}

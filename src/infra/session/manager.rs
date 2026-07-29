@@ -1379,6 +1379,14 @@ impl XySessionStore for SessionManager {
         SessionManager::load(self, session_id).await
     }
 
+    async fn load_leaf_branch(
+        &self,
+        session_id: &str,
+    ) -> Result<Vec<super::types::SessionEntry>, String> {
+        let leaf_id = self.get_leaf(session_id);
+        self.get_branch(session_id, leaf_id.as_deref()).await
+    }
+
     async fn append_session_entry(
         &self,
         session_id: &str,
