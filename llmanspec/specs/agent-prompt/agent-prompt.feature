@@ -90,3 +90,9 @@
     假如 custom_prompt 或 SYSTEM.md 整段替换默认正文且未附 Available tools
     当 build_system_prompt
     那么 正文以该替换内容为主且 MUST NOT 偷偷回填默认 Available tools 清单
+
+  @req:pt11
+  场景: builtins-only-available-tools-mcp-discover
+    假如 ToolSet 含 builtins 与至少一个 mcp: 工具且使用默认正文
+    当 build_system_prompt
+    那么 Available tools 段无 mcp: 工具名且含按本轮 tools 列表发现并精确调用的引导句
