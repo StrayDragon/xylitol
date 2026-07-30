@@ -734,7 +734,7 @@ fn pty_product_fake_session_tree_branched() {
     session.send_keys("\x1b").expect("dismiss completion");
     session.drain(Duration::from_millis(100));
     session.send_keys("\r").expect("submit debug scene");
-    // Tall branched fixture scrolls the system note off the cell-grid oracle;
+    // Tall branched fixture scrolls the scroll notice off the cell-grid oracle;
     // assert via raw PTY (same rationale as Type to search below).
     session
         .wait_for_raw("debug scene", Duration::from_secs(20))
