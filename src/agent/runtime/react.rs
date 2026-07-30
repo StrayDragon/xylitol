@@ -740,7 +740,7 @@ fn run_react_loop(cfg: ReActConfig) -> impl Stream<Item = XyEvent> + Send {
 
             while continue_after_tools || !pending.is_empty() {
                 if cancel.is_cancelled() {
-                    // Bridge maps this to a dim system note + idle (not a sticky fault).
+                    // Bridge maps this to a dim scroll notice + idle (not a sticky fault).
                     turn_aborted = true;
                     yield XyEvent::Error("aborted".to_string());
                     break 'outer;
