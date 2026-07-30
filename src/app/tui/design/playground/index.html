@@ -267,6 +267,16 @@
       min-width: 0;
       font-size: 12px;
     }
+    .term-editor-caption {
+      color: var(--muted);
+      font-size: 12px;
+      padding: 0.05rem 0.35rem 0.15rem;
+      border-bottom: 1px solid var(--muted);
+      opacity: 0.9;
+    }
+    .term-footer .mcp-footer-prefix {
+      color: var(--success, var(--muted));
+    }
     .term-editor {
       border-top: 1px solid var(--muted);
       border-bottom: 1px solid var(--muted);
@@ -731,6 +741,40 @@
         <span hidden data-design-fixture="pending-thinking.next-turn"></span>
       </section>
 
+      <!-- MCP: /mcp panel primary + optional short cue -->
+      <section class="panel" id="panel-mcp-cue" data-id="mcp-cue">
+        <h2>Mcp · /mcp 面板 + 短 cue</h2>
+        <p class="spec">
+          <a href="../mcp-input-cue.md">mcp-input-cue.md</a> ·
+          主发现面 = <strong>/mcp</strong> editor 槽 · 短 cue 只引导 ·
+          对照 <a href="../pending-runtime.md">pending-runtime.md</a>
+        </p>
+        <div class="ctl">
+          <button type="button" class="chip-btn" data-mcp-cue="panelConnecting" aria-pressed="true">/mcp · connecting</button>
+          <button type="button" class="chip-btn" data-mcp-cue="panelMixed" aria-pressed="false">/mcp · mixed 10+</button>
+          <button type="button" class="chip-btn" data-mcp-cue="panelArmed" aria-pressed="false">/mcp · all armed</button>
+          <button type="button" class="chip-btn" data-mcp-cue="cueShortBusy" aria-pressed="false">短 cue busy</button>
+          <button type="button" class="chip-btn" data-mcp-cue="cueShortIdle" aria-pressed="false">短 cue idle</button>
+          <button type="button" class="chip-btn" data-mcp-cue="cueArmedGone" aria-pressed="false">短 cue armed 收起</button>
+          <button type="button" class="chip-btn" data-mcp-cue="cueDumpBad" aria-pressed="false">cue 堆名单 ✗</button>
+        </div>
+        <p class="spec" id="mcp-cue-legend" style="margin-top:0.35rem"></p>
+        <div class="term term-slot" id="mcp-cue-term" data-design-fixture="mcp-cue.panel-connecting">
+          <div class="term-content" id="mcp-cue-scroll">
+            <div class="row"><span class="fg-user">❯</span> 先改这段，不需要等 MCP</div>
+            <div class="row fg-assistant">…</div>
+          </div>
+          <div class="term-status hidden" id="mcp-cue-status">
+            <span class="status-lead" id="mcp-cue-lead"><span class="spin">⠋</span> Working</span>
+            <span class="status-next-turn-cue" id="mcp-cue-cue">mcp 1/2 pending · /mcp</span>
+          </div>
+          <div class="term-editor" id="mcp-cue-editor"></div>
+          <div class="term-footer" id="mcp-cue-footer">~/xylitol · ornith</div>
+        </div>
+        <span hidden data-design-fixture="mcp-cue.panel-mixed"></span>
+        <span hidden data-design-fixture="mcp-cue.cue-short-busy"></span>
+      </section>
+
       <!-- tree power -->
       <section class="panel" id="panel-tree-power" data-id="tree-power">
         <h2>Tree power · filter / fold / fork</h2>
@@ -938,6 +982,7 @@
       { id: "keys", label: "Keybindings", key: "k" },
       { id: "models", label: "Models /model", key: "m" },
       { id: "pending", label: "Pending / NextTurn", key: "n" },
+      { id: "mcp-cue", label: "Mcp cue", key: "u" },
       { id: "tree-power", label: "Tree power", key: "p" },
       { id: "session-resume", label: "Resume /session-resume", key: "r" },
       { id: "compaction", label: "Compaction", key: "g" },
@@ -978,6 +1023,7 @@
       keys: "idle",
       models: "wide",
       pending: "nextTurn",
+      mcpCue: "panelConnecting",
       treep: "filter",
       resume: "default",
       compaction: "progress",
@@ -1627,6 +1673,104 @@
       });
     });
 
+    /* MCP: /mcp editor-slot panel (primary) + optional short cue */
+    const MCP_CUE = {
+      panelConnecting: {
+        editor: `<div class="row fg-muted">MCP · 2 configured · 0 armed · Esc</div>
+<div class="row">  lspz          connecting   tools —</div>
+<div class="row">  context7      connecting   tools —</div>
+<div class="row fg-muted">  next turn tools: builtins only · open anytime: /mcp</div>`,
+        legend: "/mcp 面板 · connecting：任意态可开 · 列 = id / 连接 / tools armed",
+        mode: "panel",
+      },
+      panelMixed: {
+        editor: `<div class="row fg-muted">MCP · 12 configured · 7 connected · 5 armed · Esc</div>
+<div class="row">  context7      connected    armed · 2 tools</div>
+<div class="row">  lspz          connected    armed · 4 tools</div>
+<div class="row">  github        connected    pending → next turn</div>
+<div class="row">  sentry        connecting   tools —</div>
+<div class="row">  … +8 more     (scroll)</div>
+<div class="row fg-muted">  detail in /mcp · cue MUST NOT dump all ids</div>`,
+        legend: "/mcp 面板 · 10+ mixed：名单只在槽内；短 cue 禁止堆 id",
+        mode: "panel",
+      },
+      panelArmed: {
+        editor: `<div class="row fg-muted">MCP · 2 configured · 2 connected · 2 armed · Esc</div>
+<div class="row fg-success">  context7      connected    armed · 2 tools</div>
+<div class="row fg-success">  lspz          connected    armed · 4 tools</div>
+<div class="row fg-muted">  next turn tools: include mcp:* · Esc to close</div>`,
+        legend: "/mcp 面板 · 全部 armed：下轮请求 tools 已含 MCP",
+        mode: "panel",
+      },
+      cueShortBusy: {
+        editor: `<div class="row fg-muted"><span class="status-lead">⠋ Working</span>  <span class="status-next-turn-cue">mcp 1/2 pending · /mcp</span></div>`,
+        legend: "短 cue · busy 下轮预告位：计数 + 引导 /mcp · 不列 server id",
+        mode: "cueBusy",
+        cue: "mcp 1/2 pending · /mcp",
+      },
+      cueShortIdle: {
+        editor: `<div class="row fg-muted"><span class="status-next-turn-cue">mcp tools pending · /mcp</span></div>`,
+        legend: "短 cue · idle 破例 1 行（长对话看不见头卡时）· 仍只引导 /mcp",
+        mode: "cueIdle",
+        cue: "mcp tools pending · /mcp",
+      },
+      cueArmedGone: {
+        editor: `<div class="row fg-muted"></div>`,
+        legend: "armed 后短 cue 收起 · 细节仍走 /mcp；头卡可有摘要",
+        mode: "cueGone",
+      },
+      cueDumpBad: {
+        editor: `<div class="row fg-muted"><span class="status-lead">⠋ Working</span>  <span class="status-next-turn-cue">mcp a·b·c·d·e·f·g·h·i·j·k·l pending</span></div>`,
+        legend: "反例 ✗：cue 堆 10+ id（空间不够）· 应用 /mcp 面板",
+        mode: "cueBusy",
+        cue: "mcp a·b·c·d·e·f·g·h·i·j·k·l pending",
+      },
+    };
+    function renderMcpCue() {
+      const kind = state.mcpCue;
+      const meta = MCP_CUE[kind] || MCP_CUE.panelConnecting;
+      const status = document.getElementById("mcp-cue-status");
+      const lead = document.getElementById("mcp-cue-lead");
+      const cue = document.getElementById("mcp-cue-cue");
+      const ed = document.getElementById("mcp-cue-editor");
+      const legend = document.getElementById("mcp-cue-legend");
+      const footer = document.getElementById("mcp-cue-footer");
+      if (legend) legend.textContent = meta.legend || "";
+      footer.textContent = "~/xylitol · ornith";
+
+      if (meta.mode === "panel") {
+        status.classList.add("hidden");
+        ed.innerHTML = meta.editor;
+      } else if (meta.mode === "cueBusy") {
+        status.classList.remove("hidden");
+        lead.classList.remove("hidden");
+        lead.innerHTML = '<span class="spin">⠋</span> Working';
+        cue.classList.remove("hidden");
+        cue.textContent = meta.cue || "";
+        ed.innerHTML = '<span class="cursor"> </span>';
+      } else if (meta.mode === "cueIdle") {
+        status.classList.remove("hidden");
+        lead.classList.add("hidden");
+        lead.innerHTML = "";
+        cue.classList.remove("hidden");
+        cue.textContent = meta.cue || "";
+        ed.innerHTML = '<span class="cursor"> </span>';
+      } else {
+        status.classList.add("hidden");
+        ed.innerHTML = '<span class="cursor"> </span>';
+      }
+
+      document.querySelectorAll("[data-mcp-cue]").forEach((b) => {
+        b.setAttribute("aria-pressed", String(b.dataset.mcpCue === state.mcpCue));
+      });
+    }
+    document.querySelectorAll("[data-mcp-cue]").forEach((b) => {
+      b.addEventListener("click", () => {
+        state.mcpCue = b.dataset.mcpCue;
+        renderMcpCue();
+      });
+    });
+
     /* TreeSelector shape: gutter ›/␠␠ · kind 色 + label · 选中整行 reverse · 底栏 (i/n) [filter] */
     const TREEP = {
       filter: `<div class="row">  <span class="fg-user">user:</span> <span class="fg-on">修 footer</span></div>
@@ -1823,7 +1967,7 @@
       } else if (e.key === "ArrowRight" || e.key === "]") {
         select(state.index + 1);
         e.preventDefault();
-      } else if (/^[0-9fFcCkKmMnNpP]$/.test(e.key) && !e.ctrlKey && !e.altKey && !e.metaKey) {
+      } else if (/^[0-9fFcCkKmMnNpPuUgGrR]$/.test(e.key) && !e.ctrlKey && !e.altKey && !e.metaKey) {
         const k = e.key.toLowerCase();
         const idx = SLOTS.findIndex((s) => s.key === k);
         if (idx >= 0) select(idx);
@@ -1874,6 +2018,7 @@
     renderKeys();
     renderModels();
     renderPending();
+    renderMcpCue();
     renderTreep();
     renderResume();
     renderCompaction();

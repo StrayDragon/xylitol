@@ -1,0 +1,13 @@
+# id: mcp-cue.panel-connecting
+id: mcp-cue.panel-connecting
+design: ../mcp-input-cue.md
+slot: mcp-cue
+state: panel-connecting
+source: mcpCue.panelConnecting.editor
+must_contain:
+  - "MCP · 2 configured"
+  - "connecting"
+  - "/mcp"
+must_not_contain:
+  - "Next turn:"
+  - "System"
