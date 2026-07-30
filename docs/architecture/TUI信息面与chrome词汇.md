@@ -1,14 +1,14 @@
 # TUI 信息面与 chrome 词汇
 
-> 固定讨论/文档用词，降低「system / message / trail」失真。实现类型名可滞后改；**新文与 AGENTS 只准用本表**。
+> 固定讨论/文档用词，降低「system / message / trail」失真。**新文与 AGENTS 只准用本表**；代码标识符与本表同步。
 > 跨面生命周期闭集见 [用户可见事件.md](./用户可见事件.md)。NextTurn 行为见 [运行时即时设置.md](./运行时即时设置.md)。
 
 ## 关键词汇（SSOT）
 
-| 中文（讨论） | 英文（文档 / 目标标识符） | 含义 | 禁止混称 |
+| 中文（讨论） | 英文（文档 / 标识符） | 含义 | 禁止混称 |
 |---|---|---|---|
 | **对话条目** | transcript entry | 主滚动区可持久内容（user / assistant / thinking / tool / …） | system 消息、LLM message（除非特指协议） |
-| **滚动提示** | scrollback notice · 目标类型 **`UiEntry::ScrollNotice`**（今仍 `UiEntry::System`，改名可后置） | 插入 **主滚动区** 的短 UI 提示 | system prompt、AgentMessage、system 消息；**勿**与角落弹层混称 |
+| **滚动提示** | scrollback notice · **`UiEntry::ScrollNotice`** | 插入 **主滚动区** 的短 UI 提示 | system prompt、AgentMessage、system 消息；**勿**与角落弹层混称 |
 | **（预留）壳层通告** | notice / toast（未来） | 非 scrollback 的短暂通告（如角区弹层）；**≠** 滚动提示 | 抢用 `ScrollNotice` 或笼统 Notice 指滚动行 |
 | **错误行** | error row | `UiEntry::Error` | 笼统 system |
 | **状态条** | status | busy 时输入区上方短状态（idle = 0 行） | 塞进 scrollback |
@@ -27,7 +27,8 @@
 | 挂账（主词） | **待生效**（状态）或 **下轮预告**（UI） |
 | Status trail / status trail / `status_trail` | **下轮预告** / **next-turn cue** / `status_next_turn_cue` |
 | 即将消息 | **下轮预告**（不是 message） |
-| System 确认行 / system 消息（指 UI） | **滚动提示**（目标 `ScrollNotice`） |
+| System 确认行 / system 消息（指 UI） / `UiEntry::System` | **滚动提示** / **`UiEntry::ScrollNotice`** |
+| `push_system_note` | **`push_scroll_notice`** |
 | 笼统 Notice 指滚动行 | **ScrollNotice**（预留 Notice/toast 给角区等壳层通告） |
 | 把「尾随」写成 trail（无 append） | **尾随 / trail-append** |
 
@@ -50,14 +51,14 @@
 - **不是绝对禁令**：若有明确产品理由且写清代价，可例外。
 - 能进页脚 / 状态条 / 下轮预告 / 槽的，优先别做成滚动提示。
 
-**原则一句话（旧）**：能反映在 chrome 的不要做成滚动提示；必须进主区的瞬时信息 → **默认尾随**。
+**原则一句话**：能反映在 chrome 的不要做成滚动提示；必须进主区的瞬时信息 → **默认尾随**。
 
 ## 与代码的对应（可漂移，以代码为准）
 
 | 概念 | 当前落点（摘要） |
 |---|---|
 | 下轮预告 | `status_next_turn_cue` · `status_next_turn_cue_text` · playground `.status-next-turn-cue` |
-| 滚动提示 | `UiEntry::System`（目标改名 **`ScrollNotice`**）· `HostSession::push_system_note`（命名滞后） |
+| 滚动提示 | `UiEntry::ScrollNotice` · `HostSession::push_scroll_notice`；demo `Role::ScrollNotice` |
 | 壳层通告（未来） | 未实现；勿占用 `ScrollNotice` |
 | 待生效 | selected ≠ active（模型 / thinking） |
 

@@ -31,7 +31,7 @@ fn drain_utf8_prefix(buf: &mut Vec<u8>) -> String {
 pub(crate) fn trailing_aborted_note(entries: &[UiEntry]) -> bool {
     matches!(
         entries.last(),
-        Some(UiEntry::System { text })
+        Some(UiEntry::ScrollNotice { text })
             if text == "Aborted"
                 || text == "aborted"
                 || text == "Operation aborted"
@@ -46,7 +46,7 @@ pub(crate) fn trailing_bash_cancelled_note(entries: &[UiEntry]) -> bool {
             status: BashBlockStatus::Cancelled,
             ..
         }) => true,
-        Some(UiEntry::System { text } | UiEntry::Error { text })
+        Some(UiEntry::ScrollNotice { text } | UiEntry::Error { text })
             if text.contains("(cancelled)") =>
         {
             true
@@ -136,7 +136,7 @@ pub enum UiEntry {
         /// Short failure / abort detail when not Complete.
         detail: Option<String>,
     },
-    System {
+    ScrollNotice {
         text: String,
     },
     Error {
@@ -303,7 +303,7 @@ impl UiModel {
                         );
                     }
                 },
-                UiEntry::System { text } => lines.push(format!("system: {text}")),
+                UiEntry::ScrollNotice { text } => lines.push(format!("scroll_notice: {text}")),
                 UiEntry::Error { text } => lines.push(format!("error: {text}")),
             }
         }
@@ -331,7 +331,7 @@ impl UiModel {
     pub fn note_user_abort(&mut self) {
         self.flush_streaming();
         if !trailing_aborted_note(&self.entries) {
-            self.entries.push(UiEntry::System {
+            self.entries.push(UiEntry::ScrollNotice {
                 text: "Operation aborted".into(),
             });
         }
@@ -372,7 +372,7 @@ impl UiModel {
             }
         }
         if !updated && !trailing_bash_cancelled_note(&self.entries) {
-            self.entries.push(UiEntry::System {
+            self.entries.push(UiEntry::ScrollNotice {
                 text: "(cancelled)".into(),
             });
         }

@@ -11,7 +11,7 @@ use super::{BashBlockStatus, CompactionBlockStatus, UiEntry, UiModel, UiPhase};
 /// Replace transcript with entries on the ancestry path to `travel.leaf_id`.
 ///
 /// Path projection only — callers that need a travel notice MUST append it
-/// via [`travel_history_note`] + `push_system_note` (trailing, not prepend).
+/// via [`travel_history_note`] + `push_scroll_notice` (trailing, not prepend).
 pub fn rebuild_scrollback_from_travel(
     ui_model: &mut UiModel,
     entries: &[SessionEntry],
@@ -92,7 +92,7 @@ pub fn session_entry_to_ui_entries(entry: &SessionEntry) -> Vec<UiEntry> {
             tokens_before: c.tokens_before,
             detail: None,
         }],
-        SessionEntry::BranchSummary(b) => vec![UiEntry::System {
+        SessionEntry::BranchSummary(b) => vec![UiEntry::ScrollNotice {
             text: format!("[branch] {}", b.summary),
         }],
         _ => Vec::new(),
@@ -188,7 +188,7 @@ fn message_json_to_ui_entries(entry_id: &str, message: &Value) -> Vec<UiEntry> {
             if text.is_empty() {
                 Vec::new()
             } else {
-                vec![UiEntry::System { text }]
+                vec![UiEntry::ScrollNotice { text }]
             }
         }
     }
@@ -316,7 +316,7 @@ fn push_assistant_terminal_note(
                 .filter(|s| !s.is_empty())
                 .map(str::to_string)
                 .unwrap_or_else(|| "Operation aborted".into());
-            out.push(UiEntry::System { text });
+            out.push(UiEntry::ScrollNotice { text });
         }
         _ => {}
     }
@@ -359,9 +359,9 @@ mod tests {
         let mut ui = UiModel::default();
         rebuild_scrollback_from_travel(&mut ui, &entries, &travel);
         assert!(
-            ui.entries
-                .iter()
-                .all(|e| !matches!(e, UiEntry::System { text } if text.contains("history @"))),
+            ui.entries.iter().all(
+                |e| !matches!(e, UiEntry::ScrollNotice { text } if text.contains("history @"))
+            ),
             "rebuild MUST NOT insert history @; got: {:?}",
             ui.entries
         );

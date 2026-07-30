@@ -1363,7 +1363,7 @@ mod slice_tests {
                 .ui_model()
                 .entries
                 .iter()
-                .any(|e| matches!(e, UiEntry::System { text } if text.contains("[steer]")))
+                .any(|e| matches!(e, UiEntry::ScrollNotice { text } if text.contains("[steer]")))
         );
     }
 
@@ -1866,8 +1866,8 @@ mod slice_tests {
                 .ui_model()
                 .entries
                 .iter()
-                .any(|e| matches!(e, UiEntry::System { text } if text.contains("Ctrl+G"))),
-            "system note: {:?}",
+                .any(|e| matches!(e, UiEntry::ScrollNotice { text } if text.contains("Ctrl+G"))),
+            "scroll notice: {:?}",
             session.ui_model().entries
         );
     }
@@ -1931,7 +1931,7 @@ mod slice_tests {
         assert!(
             session.ui_model().entries.iter().any(|e| matches!(
                 e,
-                UiEntry::System { text }
+                UiEntry::ScrollNotice { text }
                     if text == "Operation aborted" || text == "Aborted"
             )),
             "expected abort note: {:?}",
@@ -1984,7 +1984,7 @@ mod slice_tests {
         assert!(
             session.ui_model().entries.iter().any(|e| matches!(
                 e,
-                UiEntry::System { text }
+                UiEntry::ScrollNotice { text }
                     if text == "Operation aborted" || text == "Aborted"
             )),
             "expected abort note after drain: {:?}",
@@ -2029,7 +2029,7 @@ mod slice_tests {
         assert!(
             session.ui_model().entries.iter().any(|e| matches!(
                 e,
-                UiEntry::System { text }
+                UiEntry::ScrollNotice { text }
                     if text == "Operation aborted" || text == "Aborted"
             )),
             "expected abort note: {:?}",
@@ -2096,7 +2096,7 @@ mod slice_tests {
         assert!(
             !entries.iter().any(|e| matches!(
                 e,
-                UiEntry::System { text }
+                UiEntry::ScrollNotice { text }
                     if text == "Aborted" || text == "Operation aborted"
             )),
             "bang Esc must not use agent abort footer: {entries:?}"
@@ -2202,7 +2202,7 @@ mod slice_tests {
         assert!(
             !entries.iter().any(|e| matches!(
                 e,
-                UiEntry::System { text }
+                UiEntry::ScrollNotice { text }
                     if text == "Aborted" || text == "Operation aborted"
             )),
             "bang Esc must not emit agent abort footer: {entries:?}"
@@ -2273,7 +2273,7 @@ mod slice_tests {
                 .ui_model()
                 .entries
                 .iter()
-                .any(|e| matches!(e, UiEntry::System { text } if text.contains("rejected"))),
+                .any(|e| matches!(e, UiEntry::ScrollNotice { text } if text.contains("rejected"))),
             "expected hard-reject note: {:?}",
             session.ui_model().entries
         );
@@ -2302,7 +2302,7 @@ mod slice_tests {
                 .ui_model()
                 .entries
                 .iter()
-                .any(|e| matches!(e, UiEntry::System { text } if text.contains("rejected"))),
+                .any(|e| matches!(e, UiEntry::ScrollNotice { text } if text.contains("rejected"))),
             "expected reject note: {:?}",
             session.ui_model().entries
         );
@@ -2543,7 +2543,9 @@ mod slice_tests {
                 .ui_model()
                 .entries
                 .iter()
-                .filter(|e| matches!(e, UiEntry::System { text } if text.contains("forked →")))
+                .filter(
+                    |e| matches!(e, UiEntry::ScrollNotice { text } if text.contains("forked →"))
+                )
                 .count(),
             1,
             "exactly one trailing fork note: {:?}",
@@ -2555,7 +2557,9 @@ mod slice_tests {
             .iter()
             .rev()
             .find_map(|e| match e {
-                UiEntry::System { text } if text.contains("forked →") => Some(text.as_str()),
+                UiEntry::ScrollNotice { text } if text.contains("forked →") => {
+                    Some(text.as_str())
+                }
                 _ => None,
             });
         assert!(
@@ -2729,7 +2733,7 @@ mod slice_tests {
             .iter()
             .rev()
             .find_map(|e| match e {
-                crate::app::tui::UiEntry::System { text } => Some(text.as_str()),
+                crate::app::tui::UiEntry::ScrollNotice { text } => Some(text.as_str()),
                 _ => None,
             })
             .unwrap_or("");
@@ -2828,7 +2832,9 @@ mod slice_tests {
                 .ui_model()
                 .entries
                 .iter()
-                .filter(|e| matches!(e, UiEntry::System { text } if text.contains("forked →")))
+                .filter(
+                    |e| matches!(e, UiEntry::ScrollNotice { text } if text.contains("forked →"))
+                )
                 .count(),
             1,
             "exactly one trailing fork note: {:?}",
@@ -2856,7 +2862,7 @@ mod slice_tests {
             .entries
             .iter()
             .filter_map(|e| match e {
-                UiEntry::System { text } | UiEntry::Error { text } => Some(text.as_str()),
+                UiEntry::ScrollNotice { text } | UiEntry::Error { text } => Some(text.as_str()),
                 _ => None,
             })
             .collect();
@@ -2880,7 +2886,7 @@ mod slice_tests {
             .entries
             .iter()
             .filter_map(|e| match e {
-                UiEntry::System { text } | UiEntry::Error { text } => Some(text.clone()),
+                UiEntry::ScrollNotice { text } | UiEntry::Error { text } => Some(text.clone()),
                 _ => None,
             })
             .collect()
@@ -4020,7 +4026,7 @@ mod slice_tests {
         let notes = system_notes(&session);
         assert!(
             !notes.iter().any(|t| t.contains("theme →")),
-            "success path must not emit theme system note: {notes:?}"
+            "success path must not emit theme scroll notice: {notes:?}"
         );
     }
 
@@ -4262,7 +4268,7 @@ mod slice_tests {
         assert_eq!(
             root.borrow().ui_model_entries_len_for_test(),
             entries_before,
-            "MUST NOT push thinking-border system note"
+            "MUST NOT push thinking-border scroll notice"
         );
     }
 
@@ -4304,7 +4310,7 @@ mod slice_tests {
             ..LoadedResourcesSnapshot::default()
         });
         session.refresh_loaded_resources(&driver).await;
-        session.push_system_note("scrollback marker");
+        session.push_scroll_notice("scrollback marker");
 
         let frame = root.borrow_mut().render(80);
         let joined = frame.join("\n");

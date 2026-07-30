@@ -231,7 +231,7 @@ async fn run_host_loop(
             if let Some(bash) = session.take_bash() {
                 // Guard: never start a second interactive bang while one is active.
                 if session.bash_active() {
-                    session.push_system_note(
+                    session.push_scroll_notice(
                         "bash already running — wait or Esc to cancel (second ! rejected)",
                     );
                 } else {

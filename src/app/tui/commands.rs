@@ -64,7 +64,7 @@ pub enum PendingSlash {
 pub enum BusySlashPolicy {
     /// Clear editor and enqueue `pending.slash` (or quit for Exit).
     Allow,
-    /// Clear editor, system note, MUST NOT steer/follow-up.
+    /// Clear editor, scroll notice, MUST NOT steer/follow-up.
     Reject,
 }
 

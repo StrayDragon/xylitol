@@ -115,7 +115,7 @@ where
         }
         Err(e) => {
             e.log_failure("tui.execute_bash");
-            session.push_system_note(format!("bash failed: {e}"));
+            session.push_scroll_notice(format!("bash failed: {e}"));
         }
     }
     session.end_bash_exec();

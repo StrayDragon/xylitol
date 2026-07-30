@@ -275,7 +275,7 @@ impl<T: Terminal> HostSession<T> {
         }
         self.sync_ui_root_from_model();
         // Trailing notice (above input / end of scrollback) — never prepend via rebuild.
-        self.push_system_note(note);
+        self.push_scroll_notice(note);
     }
 
     /// After XyDriver fork+switch: rebuild transcript from child entries and optional prefill.
@@ -303,7 +303,7 @@ impl<T: Terminal> HostSession<T> {
         }
         self.sync_ui_root_from_model();
         // Single trailing note; rebuild no longer emits history @ (travel-only).
-        self.push_system_note(format!("forked → session {child_id}"));
+        self.push_scroll_notice(format!("forked → session {child_id}"));
         self.seed_editor_history_from_entries(&entries);
     }
 
@@ -401,7 +401,7 @@ impl<T: Terminal> HostSession<T> {
             self.seed_editor_history_from_entries(&entries);
         }
         self.sync_ui_root_from_model();
-        self.push_system_note(note);
+        self.push_scroll_notice(note);
         // Resume / restore / clone / import must refresh footer without waiting for
         // a new turn (c1035 was stream-close only; CLI --session left token blank).
         self.request_footer_token_refresh();
@@ -435,6 +435,6 @@ impl<T: Terminal> HostSession<T> {
             self.set_footer_model(label);
         }
         self.sync_ui_root_from_model();
-        self.push_system_note(load.note);
+        self.push_scroll_notice(load.note);
     }
 }

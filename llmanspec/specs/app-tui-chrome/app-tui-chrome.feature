@@ -127,7 +127,7 @@
   场景: success-no-system
     假如 idle 经 /model 成功换模
     当 检查 scrollback
-    那么 无 model → 成功确认系统行
+    那么 无 model → 成功确认滚动提示
 
   @req:atc12
   场景: busy-keeps-leading-blank

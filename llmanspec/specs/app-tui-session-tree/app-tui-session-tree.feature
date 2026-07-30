@@ -160,7 +160,7 @@
   @req:ast15
   场景: fork-no-extra-history-banner
     假如 产品树 Shift+F fork 成功
-    当 查看 scrollback System 行
+    当 查看 scrollback 滚动提示（ScrollNotice）
     那么 含 forked → 类 note，且 MUST NOT 再叠一条 travel 用 history @
 
   @req:ast16
