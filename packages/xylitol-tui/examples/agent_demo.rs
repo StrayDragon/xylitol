@@ -337,7 +337,7 @@ const DEMO_PLATE: &[DemoPlateItem] = &[
     DemoPlateItem {
         id: "compact-status",
         label: "Compaction status (c493)",
-        description: "Status Compacting → System note → Working (Alt+K)",
+        description: "Status Compacting → ScrollNotice → Working (Alt+K)",
     },
     DemoPlateItem {
         id: "retry-status",
@@ -1131,7 +1131,7 @@ enum LibAtomKind {
 enum Role {
     User,
     Assistant,
-    System,
+    ScrollNotice,
 }
 
 /// App-layer glyph config (DESIGN.md): no font probing — env / Alt+G only.
@@ -1264,8 +1264,8 @@ enum TimedAction {
     },
     /// Demo chrome status (c493 Compacting / Retry).
     SetStatus(String),
-    /// Demo scrollback System line.
-    PushSystem(String),
+    /// Demo scrollback ScrollNotice.
+    PushScrollNotice(String),
 }
 
 #[derive(Clone, Copy, PartialEq, Eq)]
@@ -1629,7 +1629,7 @@ impl FakeCodingAgentApp {
     fn apply_choice_result(&mut self, result: ChoiceResult) {
         self.close_choice_prompt();
         if result.cancelled {
-            self.push_message(Role::System, "ChoicePrompt · cancelled");
+            self.push_message(Role::ScrollNotice, "ChoicePrompt · cancelled");
             self.set_status("Ready");
             return;
         }
@@ -1642,7 +1642,10 @@ impl FakeCodingAgentApp {
             })
             .collect::<Vec<_>>()
             .join(" · ");
-        self.push_message(Role::System, format!("ChoicePrompt · answered: {summary}"));
+        self.push_message(
+            Role::ScrollNotice,
+            format!("ChoicePrompt · answered: {summary}"),
+        );
         self.set_status("Ready");
     }
 
@@ -1759,7 +1762,7 @@ impl FakeCodingAgentApp {
             }
             // Trailing notice (above input) — same shape as product travel.
             self.push_message(
-                Role::System,
+                Role::ScrollNotice,
                 format!("history @ {id} · leaf={parent} · path: {path_label}"),
             );
 
@@ -1788,7 +1791,10 @@ impl FakeCodingAgentApp {
                     self.transcript.push(entry);
                 }
             }
-            self.push_message(Role::System, format!("history @ {id} · path: {path_label}"));
+            self.push_message(
+                Role::ScrollNotice,
+                format!("history @ {id} · path: {path_label}"),
+            );
 
             self.input.set_text(String::new());
             self.history_leaf_id = id.to_string();
@@ -1816,7 +1822,7 @@ impl FakeCodingAgentApp {
         }
         // Trailing notice (above input) — same shape as travel / product fork notes.
         self.push_message(
-            Role::System,
+            Role::ScrollNotice,
             format!("forked @ {id} · path: {path_label} · edit & Enter to branch"),
         );
 
@@ -1888,18 +1894,21 @@ impl FakeCodingAgentApp {
         pending
     }
 
-    /// c493: Compacting status + System note, then restore Working.
+    /// c493: Compacting status + ScrollNotice, then restore Working.
     fn demo_compaction_status(&mut self) {
         self.set_status("Compacting");
         self.push_message(
-            Role::System,
+            Role::ScrollNotice,
             "compaction: auto: demo 90% of window (c493 chrome)",
         );
-        self.schedule_from_now(36, TimedAction::PushSystem("compaction complete".into()));
+        self.schedule_from_now(
+            36,
+            TimedAction::PushScrollNotice("compaction complete".into()),
+        );
         self.schedule_from_now(36, TimedAction::SetStatus("Working".into()));
         self.schedule_from_now(72, TimedAction::SetStatus("Ready".into()));
         self.push_message(
-            Role::System,
+            Role::ScrollNotice,
             "watch status: Compacting (spinner) → Working → Ready · Alt+K / plate compact-status",
         );
     }
@@ -1917,15 +1926,18 @@ impl FakeCodingAgentApp {
     /// c493: Retry n/m then fail note + Working.
     fn demo_retry_status(&mut self) {
         self.set_status("Retry 1/3");
-        self.push_message(Role::System, "auto-retry start · attempt 1/3 (c493 chrome)");
+        self.push_message(
+            Role::ScrollNotice,
+            "auto-retry start · attempt 1/3 (c493 chrome)",
+        );
         self.schedule_from_now(
             40,
-            TimedAction::PushSystem("retry failed (attempt 1)".into()),
+            TimedAction::PushScrollNotice("retry failed (attempt 1)".into()),
         );
         self.schedule_from_now(40, TimedAction::SetStatus("Working".into()));
         self.schedule_from_now(80, TimedAction::SetStatus("Ready".into()));
         self.push_message(
-            Role::System,
+            Role::ScrollNotice,
             "watch status: Retry 1/3 → Working → Ready · Alt+Y / plate retry-status",
         );
     }
@@ -1935,7 +1947,7 @@ impl FakeCodingAgentApp {
         self.input.set_text(text);
         self.sync_editor_border();
         self.push_message(
-            Role::System,
+            Role::ScrollNotice,
             "external editor saved — buffer replaced (Ctrl+G)".to_string(),
         );
     }
@@ -1946,7 +1958,7 @@ impl FakeCodingAgentApp {
     }
 
     pub fn push_system_for_test(&mut self, text: String) {
-        self.push_message(Role::System, text);
+        self.push_message(Role::ScrollNotice, text);
     }
 
     /// Ctrl+G: real `$EDITOR` when TTY (or REAL_EDITOR=1); else harness-safe stub.
@@ -2053,7 +2065,7 @@ impl FakeCodingAgentApp {
         self.theme_mode = scheme;
         self.refresh_editor_border_theme();
         self.push_message(
-            Role::System,
+            Role::ScrollNotice,
             format!(
                 "theme → {} (explicit; auto off). Try /theme dark|light|toggle",
                 self.theme_label()
@@ -2089,7 +2101,7 @@ impl FakeCodingAgentApp {
             "toggle" | "cycle" => self.cycle_theme(),
             other => {
                 self.push_message(
-                    Role::System,
+                    Role::ScrollNotice,
                     format!("unknown theme arg `{other}` · use /theme [dark|light|toggle]"),
                 );
                 self.set_status("Ready");
@@ -2114,14 +2126,14 @@ impl FakeCodingAgentApp {
         match parts.next() {
             None => {
                 self.push_message(
-                    Role::System,
+                    Role::ScrollNotice,
                     "model · pick an id from the list (`/model` or `/model <prefix>`) then Enter",
                 );
                 self.set_status("Ready");
             }
             Some(id) => {
                 self.footer_note = format!("~/xylitol · {id}");
-                self.push_message(Role::System, format!("model → {id}"));
+                self.push_message(Role::ScrollNotice, format!("model → {id}"));
                 self.set_status(format!("Ready · {id}"));
             }
         }
@@ -2178,7 +2190,7 @@ impl FakeCodingAgentApp {
             apply_thinking_border(&mut self.input, &palette, self.thinking_border_level);
         }
         let level = self.thinking_border_level.as_str();
-        self.push_message(Role::System, format!("thinking-border → {level}"));
+        self.push_message(Role::ScrollNotice, format!("thinking-border → {level}"));
         self.set_status(format!("Ready · thinking:{level}"));
     }
 
@@ -2211,13 +2223,13 @@ impl FakeCodingAgentApp {
                     self.thinking_border_level = level;
                     self.refresh_editor_border_theme();
                     self.push_message(
-                        Role::System,
+                        Role::ScrollNotice,
                         format!("thinking-border → {}", level.as_str()),
                     );
                     self.set_status(format!("Ready · thinking:{}", level.as_str()));
                 } else {
                     self.push_message(
-                        Role::System,
+                        Role::ScrollNotice,
                         format!(
                             "unknown thinking-level `{other}` · use /thinking-level or off|minimal|low|medium|high|xhigh|max"
                         ),
@@ -2234,7 +2246,7 @@ impl FakeCodingAgentApp {
         self.external_editor_invocations = self.external_editor_invocations.saturating_add(1);
         let text = self.input.get_text();
         self.push_message(
-            Role::System,
+            Role::ScrollNotice,
             format!(
                 "external editor stub (Ctrl+G) · {} chars · $EDITOR not spawned",
                 text.len()
@@ -2397,7 +2409,7 @@ impl FakeCodingAgentApp {
         self.scheduled_actions.clear();
         self.active_stream_entry = None;
         self.set_status("Ready");
-        self.push_message(Role::System, "stream aborted");
+        self.push_message(Role::ScrollNotice, "stream aborted");
     }
 
     pub fn new_with_prompt(quit_flag: Arc<AtomicBool>, initial_prompt: &str) -> Self {
@@ -2590,7 +2602,7 @@ impl FakeCodingAgentApp {
     fn seed_transcript(&mut self) {
         // Slim chrome (c535): short pointer + compact kit. Full Markdown → plate `/md`.
         self.push_message(
-            Role::System,
+            Role::ScrollNotice,
             "demo · Ctrl+P plate · /md Markdown · /theme dark|light · /help keys · /diff diffs",
         );
         self.push_message(
@@ -2646,14 +2658,14 @@ impl FakeCodingAgentApp {
 
     fn inject_help_keys(&mut self) {
         self.push_message(
-            Role::System,
+            Role::ScrollNotice,
             "keys: Enter submit/steer · Alt+Enter follow-up · /md Markdown stream · Ctrl+P plate · \
              /theme [dark|light|toggle] · Shift+Tab thinking-border · /help · /diff · ! bash · Ctrl+G $EDITOR · double Esc tree · \
              (Ctrl+T) thinking · (Alt+E) tools · (Ctrl+O) tools viewport · Alt+G glyphs · \
              Alt+K compact-status · Alt+Y retry-status · Esc · Ctrl+C",
         );
         self.push_message(
-            Role::System,
+            Role::ScrollNotice,
             "stream plate: md-full · stream-rust/python/typescript/json · diff-sbs · \
              completion-dollar (c545 $) · expandable-head (c550) · playground-sync (c555) · \
              md-list-wrap · narrow-clamp · truncated-text · cancellable-loader · panel · \
@@ -2670,7 +2682,7 @@ impl FakeCodingAgentApp {
             "Please run $demo and also $narrow-clamp-skill-with-a-very-long-identifier together.",
         );
         self.push_message(
-            Role::System,
+            Role::ScrollNotice,
             "A10 preview: `$name` tokens in the user row above use skill-ref (mauve/purple). \
              Submit a line with `$demo` — stub SKILL.md is recorded for inject assert \
              (no per-skill tint blocks; no status count). Type `use $` for completion popup \
@@ -2687,7 +2699,7 @@ impl FakeCodingAgentApp {
     fn inject_expandable_head_showcase(&mut self) {
         self.push_message(Role::User, "plate · expandable-head · c550");
         self.push_message(
-            Role::System,
+            Role::ScrollNotice,
             "c550: Read-style tools use TruncateFrom::Head — first N lines stay on top; \
              dim `more lines` hint sits below (not above like Tail/earlier). Ctrl+O expands \
              the viewport; width 0/1 stays safe.",
@@ -2705,7 +2717,7 @@ impl FakeCodingAgentApp {
     fn inject_playground_sync_tip(&mut self) {
         self.push_message(Role::User, "plate · playground-sync · c555");
         self.push_message(
-            Role::System,
+            Role::ScrollNotice,
             "This demo (`just demo-tui`) is the product TUI live playground. \
              Visual SSOT = `src/app/tui/DESIGN.md` only (no package HTML design tree). \
              Browser static preview: `src/app/tui/design/playground/` — Agents ignore by default. \
@@ -2718,7 +2730,7 @@ impl FakeCodingAgentApp {
     fn inject_md_list_wrap_showcase(&mut self) {
         self.push_message(Role::User, "plate · md-list-wrap · list prewrapped");
         self.push_message(
-            Role::System,
+            Role::ScrollNotice,
             "Library reference: Markdown list/table/quote rows are `prewrapped` — one hanging-indent \
              wrap pass, no second outer wrap that flushes continuation lines. Nested ordered markers \
              use pulldown `List(Some(n))`. Shrink the terminal and watch item 3 keep spaces under `3. `. \
@@ -2737,7 +2749,7 @@ impl FakeCodingAgentApp {
     fn inject_narrow_clamp_showcase(&mut self) {
         self.push_message(Role::User, "plate · narrow-clamp · widgets");
         self.push_message(
-            Role::System,
+            Role::ScrollNotice,
             "Library reference: SelectList / SettingsList / Input / Loader clamp every row to the \
              width budget (including width 0/1). Settings search empty → `No matching settings`; \
              SelectList filter → `No matching items`; Input prompt clips instead of overflowing; \
@@ -2801,7 +2813,7 @@ impl FakeCodingAgentApp {
     fn inject_truncated_text_atom(&mut self) {
         self.push_message(Role::User, "plate · truncated-text · atom");
         self.push_message(
-            Role::System,
+            Role::ScrollNotice,
             "Library reference: TruncatedText keeps a single line, pads, and ellipsizes to the \
              width budget. Playground: slot Atoms (key 9). Esc closes this slot.",
         );
@@ -2811,7 +2823,7 @@ impl FakeCodingAgentApp {
     fn inject_cancellable_loader_atom(&mut self) {
         self.push_message(Role::User, "plate · cancellable-loader · atom");
         self.push_message(
-            Role::System,
+            Role::ScrollNotice,
             "Library reference: CancellableLoader ticks like Loader; Esc matches \
              `tui.select.cancel` and fires `on_abort`. Playground: slot Atoms (key 9).",
         );
@@ -2821,7 +2833,7 @@ impl FakeCodingAgentApp {
     fn inject_panel_atom(&mut self) {
         self.push_message(Role::User, "plate · panel · atom");
         self.push_message(
-            Role::System,
+            Role::ScrollNotice,
             "Library reference: Panel (pi Box) pads children and paints an optional background on \
              every line. Playground: slot Atoms (key 9). Esc closes.",
         );
@@ -2831,7 +2843,7 @@ impl FakeCodingAgentApp {
     fn inject_ask_single(&mut self) {
         self.push_message(Role::User, "plate · ask-single · c565");
         self.push_message(
-            Role::System,
+            Role::ScrollNotice,
             "ChoicePrompt Single + Other: ↑↓ · Enter · Tab focuses Other · Esc cancel. \
              Playground: slot Ask (key 0).",
         );
@@ -2852,7 +2864,7 @@ impl FakeCodingAgentApp {
     fn inject_ask_multi(&mut self) {
         self.push_message(Role::User, "plate · ask-multi · c565");
         self.push_message(
-            Role::System,
+            Role::ScrollNotice,
             "ChoicePrompt Multi + Other: Space 勾选 · Enter 提交 · Tab→Other. Playground: Ask.",
         );
         self.open_choice_prompt(vec![ChoiceQuestion {
@@ -2872,7 +2884,7 @@ impl FakeCodingAgentApp {
     fn inject_ask_tabs(&mut self) {
         self.push_message(Role::User, "plate · ask-tabs · c565");
         self.push_message(
-            Role::System,
+            Role::ScrollNotice,
             "ChoicePrompt 多题混搭：Q1 单选 · Q2 多选(+) · Q3 单选；←→ 切题；答完进 Submit。\
              Tab 上 + 表示多选题，✓ 表示已答。",
         );
@@ -3016,7 +3028,7 @@ impl FakeCodingAgentApp {
             "tree" => {
                 self.push_message(Role::User, "plate · tree · c560");
                 self.push_message(
-                    Role::System,
+                    Role::ScrollNotice,
                     "c560: TreeSelector empty/no-match shows a dim hint (not a blank list). \
                      Filter/search keeps the prior selected id when still visible; otherwise \
                      falls back to the first visible row. Type a nonsense search to see empty; \
@@ -3125,7 +3137,7 @@ impl FakeCodingAgentApp {
     fn cycle_glyph_set(&mut self) {
         self.glyph_set = self.glyph_set.cycle();
         self.push_message(
-            Role::System,
+            Role::ScrollNotice,
             format!(
                 "glyph_set={} (Alt+G cycle; or XYLITOL_TUI_GLYPH_SET=ascii|unicode)",
                 self.glyph_set.label()
@@ -3240,7 +3252,7 @@ impl FakeCodingAgentApp {
         self.input.set_text(String::new());
         self.steer_queue.push_back(text.clone());
         self.push_message(
-            Role::System,
+            Role::ScrollNotice,
             format!("steer queued ({}) · {text}", self.steer_queue.len()),
         );
         // Grow tree now so the steer is visible in the session graph without aborting tools.
@@ -3261,7 +3273,7 @@ impl FakeCodingAgentApp {
         self.input.set_text(String::new());
         self.follow_up_queue.push_back(text.clone());
         self.push_message(
-            Role::System,
+            Role::ScrollNotice,
             format!("follow-up queued ({}) · {text}", self.follow_up_queue.len()),
         );
     }
@@ -3293,7 +3305,7 @@ impl FakeCodingAgentApp {
         }
         if let Some(text) = self.steer_queue.pop_front() {
             self.push_message(
-                Role::System,
+                Role::ScrollNotice,
                 format!("steer apply · {} remaining", self.steer_queue.len()),
             );
             // Steer node already grown at enqueue time — just run the turn from current leaf.
@@ -3305,7 +3317,7 @@ impl FakeCodingAgentApp {
         }
         if let Some(text) = self.follow_up_queue.pop_front() {
             self.push_message(
-                Role::System,
+                Role::ScrollNotice,
                 format!("follow-up apply · {} remaining", self.follow_up_queue.len()),
             );
             self.commit_user_turn(text);
@@ -3715,7 +3727,7 @@ impl FakeCodingAgentApp {
                     self.append_tool_detail_at(index, &chunk);
                 }
                 TimedAction::SetStatus(text) => self.set_status(text),
-                TimedAction::PushSystem(text) => self.push_message(Role::System, text),
+                TimedAction::PushScrollNotice(text) => self.push_message(Role::ScrollNotice, text),
             }
             changed = true;
         }
@@ -4011,7 +4023,7 @@ impl FakeCodingAgentApp {
         match role {
             Role::User => magenta(self.glyph_set.user()),
             Role::Assistant => String::new(),
-            Role::System => dim(self.glyph_set.system()),
+            Role::ScrollNotice => dim(self.glyph_set.system()),
         }
     }
 
@@ -4403,7 +4415,7 @@ impl Component for FakeCodingAgentApp {
                 loader.handle_input(InputEvent::Key(*key));
                 if loader.aborted() {
                     self.push_message(
-                        Role::System,
+                        Role::ScrollNotice,
                         "CancellableLoader · on_abort fired (Esc → tui.select.cancel)",
                     );
                     self.close_lib_atom();

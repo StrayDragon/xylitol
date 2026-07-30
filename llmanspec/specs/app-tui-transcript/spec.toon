@@ -19,7 +19,7 @@ requirements[17]{req_id,title,statement}:
   att15,"bash-full-output-footer-chrome","产品 live scrollback 中 bang Bash 块与 bash 工具块的输出若含以 `[Full output:` 开头的脚注行，该行 MUST 以 DESIGN `{colors.warning}` 前景绘制（可 bold）；截断时 MUST 展示该脚注而非仅用 `(truncated)` 字面替换；未截断 MUST NOT 伪造该脚注。"
   att16,"hard-truncated-no-viewport-expand","产品 bang Bash 与 tool 块（含 bash）的输出若含 `[Full output:`（系统硬截断），Ctrl+O 视口 MUST NOT 展开为全文；渲染 MUST 保持 Tail 预览并提示 expand disabled（或等价）；write 正文 viewport MUST 仍允许 Ctrl+O 展开。ToolExecutionEnd 在 truncated 时 MUST 用截断后的 combined/stdout 替换流式累积的 output 缓冲。"
   att17,"diff-render-cap","产品 live scrollback 渲染 edit/Diff 的 display_diff 时 MUST 限制可见行数（硬上限）；超限 MUST 截断并提示 omitted；过大 diff MUST NOT 启用 word-level，以免卡死 TUI。"
-  att18,"no-prepend-nav-notices","产品 TUI 在 travel/fork/resume/切换等重建或瞬时导航通知写入 live scrollback 时，MUST 将此类 System/Error 提示追加到 entries 末尾（跟底时位于输入框上方可滚区域）；MUST NOT 为提高可见性而把瞬时导航通知 prepend 到 entries 前缀。会话路径上的时间线内容（含 BranchSummary 等按祖先投影的条目）不在本条「瞬时通知」范围。"
+  att18,"no-prepend-nav-notices","产品 TUI 在 travel/fork/resume/切换等重建或瞬时导航通知写入 live scrollback 时，MUST 将此类 ScrollNotice/Error 滚动提示追加到 entries 末尾（跟底时位于输入框上方可滚区域）；MUST NOT 为提高可见性而把瞬时导航通知 prepend 到 entries 前缀。会话路径上的时间线内容（含 BranchSummary 等按祖先投影的条目）不在本条「瞬时通知」范围。"
 scenarios[13]{req_id,id,given,when,then,feature}:
   att13,"bash-summary",bash 工具 args 含 command,外显或重建 args_preview,以 $ 开头且非纯 JSON 墙,false
   att13,"write-lines-hint",write args 含 path 与多行 content,求 args_preview,含 path 与 lines 且无 content 正文,false

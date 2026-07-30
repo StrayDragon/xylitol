@@ -529,11 +529,11 @@ impl<T: Terminal> HostSession<T> {
         self.footer_token_gen
     }
 
-    /// Push a system line into the UI model (slash errors, notes).
-    pub fn push_system_note(&mut self, text: impl Into<String>) {
+    /// Push a scrollback notice (slash errors, nav/ops feedback).
+    pub fn push_scroll_notice(&mut self, text: impl Into<String>) {
         self.ui_model
             .entries
-            .push(UiEntry::System { text: text.into() });
+            .push(UiEntry::ScrollNotice { text: text.into() });
         self.sync_ui_root_from_model();
     }
 

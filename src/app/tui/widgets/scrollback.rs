@@ -461,7 +461,7 @@ fn entry_fingerprint(entry: &UiEntry) -> u64 {
         UiEntry::User { text }
         | UiEntry::Assistant { text }
         | UiEntry::Thinking { text }
-        | UiEntry::System { text }
+        | UiEntry::ScrollNotice { text }
         | UiEntry::Error { text } => text.hash(&mut h),
         UiEntry::Tool {
             id,
@@ -772,7 +772,7 @@ pub fn render_scrollback(
                         }
                     }
                 }
-                UiEntry::System { text } => {
+                UiEntry::ScrollNotice { text } => {
                     push_wrapped(
                         &mut lines,
                         &theme.paint_muted(&format!("{} {text}", glyphs.system())),

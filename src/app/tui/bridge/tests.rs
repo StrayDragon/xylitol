@@ -180,7 +180,7 @@ fn aborted_error_is_system_note_and_idles() {
     assert!(model.status.is_none());
     assert!(model.entries.iter().any(|e| matches!(
         e,
-        UiEntry::System { text } if text == "Operation aborted" || text == "Aborted"
+        UiEntry::ScrollNotice { text } if text == "Operation aborted" || text == "Aborted"
     )));
     assert!(
         !model
@@ -205,7 +205,7 @@ fn note_bash_cancelled_does_not_emit_aborted() {
     )));
     assert!(!model.entries.iter().any(|e| matches!(
         e,
-        UiEntry::System { text }
+        UiEntry::ScrollNotice { text }
             if text == "Aborted" || text == "Operation aborted"
     )));
 }
@@ -214,7 +214,7 @@ fn note_bash_cancelled_does_not_emit_aborted() {
 fn note_user_abort_allows_second_abort_after_new_command() {
     let mut model = UiModel::new();
     model.note_user_abort();
-    model.entries.push(UiEntry::System {
+    model.entries.push(UiEntry::ScrollNotice {
         text: "$ sleep 2".into(),
     });
     model.note_user_abort();
@@ -224,7 +224,7 @@ fn note_user_abort_allows_second_abort_after_new_command() {
         .filter(|e| {
             matches!(
                 e,
-                UiEntry::System { text }
+                UiEntry::ScrollNotice { text }
                     if text == "Operation aborted" || text == "Aborted"
             )
         })
@@ -248,7 +248,7 @@ fn note_user_abort_dedupes_with_error_aborted() {
         .filter(|e| {
             matches!(
                 e,
-                UiEntry::System { text }
+                UiEntry::ScrollNotice { text }
                     if text == "Operation aborted"
                         || text == "Aborted"
                         || text == "aborted"
@@ -276,7 +276,7 @@ fn note_user_abort_keeps_flushed_partial() {
     assert!(
         model.entries.iter().any(|e| matches!(
             e,
-            UiEntry::System { text } if text == "Operation aborted"
+            UiEntry::ScrollNotice { text } if text == "Operation aborted"
         )),
         "expected abort footer: {:?}",
         model.entries
@@ -667,7 +667,7 @@ fn auto_retry_end_fail_notes_and_restores() {
         model
             .entries
             .iter()
-            .any(|e| matches!(e, UiEntry::System { text } if text.contains("retry failed")))
+            .any(|e| matches!(e, UiEntry::ScrollNotice { text } if text.contains("retry failed")))
     );
 }
 
@@ -697,7 +697,7 @@ fn auto_retry_end_success_restores_without_fail_note() {
         !model
             .entries
             .iter()
-            .any(|e| matches!(e, UiEntry::System { text } if text.contains("retry failed")))
+            .any(|e| matches!(e, UiEntry::ScrollNotice { text } if text.contains("retry failed")))
     );
 }
 

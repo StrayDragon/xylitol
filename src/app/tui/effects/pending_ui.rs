@@ -132,7 +132,7 @@ pub(super) async fn drain_pending_ui<T: Terminal>(
             .find(|e| e.entry_id() == Some(entry_id.as_str()));
         match selected {
             None => {
-                session.push_system_note(format!("fork failed: entry not found: {entry_id}"));
+                session.push_scroll_notice(format!("fork failed: entry not found: {entry_id}"));
             }
             Some(e) => {
                 let (position, prefill) = if is_user_message(e) {
@@ -210,7 +210,7 @@ pub(super) async fn drain_pending_ui<T: Terminal>(
             Ok(DispatchOutcome::Model(_)) => {
                 if let Err(e) = driver.set_thinking_level(choice.thinking) {
                     e.log_failure("tui.set_thinking_level");
-                    session.push_system_note(format!("thinking level failed: {e}"));
+                    session.push_scroll_notice(format!("thinking level failed: {e}"));
                 }
                 session.sync_runtime_chrome(driver);
                 session.close_models_slot();
@@ -221,7 +221,7 @@ pub(super) async fn drain_pending_ui<T: Terminal>(
                 session.close_models_slot();
             }
             // dispatch already logs error.kind
-            Err(e) => session.push_system_note(format!("/model failed: {e}")),
+            Err(e) => session.push_scroll_notice(format!("/model failed: {e}")),
         }
         let _ = session.render_now();
     }
@@ -245,7 +245,7 @@ pub(super) async fn drain_pending_ui<T: Terminal>(
     if let Some(decision) = session.take_pending_import_decision() {
         match decision {
             ImportConfirmDecision::Rejected => {
-                session.push_system_note("Import cancelled");
+                session.push_scroll_notice("Import cancelled");
                 session.close_import_confirm();
             }
             ImportConfirmDecision::Accepted { path } => {
@@ -269,12 +269,12 @@ pub(super) async fn drain_pending_ui<T: Terminal>(
                         .await;
                     }
                     Ok(_) => {
-                        session.push_system_note("import complete");
+                        session.push_scroll_notice("import complete");
                         session.close_import_confirm();
                     }
                     // dispatch already logs error.kind
                     Err(e) => {
-                        session.push_system_note(format!("/session-import failed: {e}"));
+                        session.push_scroll_notice(format!("/session-import failed: {e}"));
                         session.close_import_confirm();
                     }
                 }
@@ -294,7 +294,7 @@ pub(super) async fn drain_pending_ui<T: Terminal>(
         match driver.set_session_name_for(&id, &name).await {
             Ok(stored) => {
                 session.session_resume_apply_rename(&id, &stored);
-                session.push_system_note(format!("Session renamed: {stored}"));
+                session.push_scroll_notice(format!("Session renamed: {stored}"));
             }
             Err(e) => {
                 note_driver_err(
@@ -312,12 +312,12 @@ pub(super) async fn drain_pending_ui<T: Terminal>(
     if let Some(id) = session.take_pending_session_resume_delete() {
         if driver.session_id().as_deref() == Some(id.as_str()) {
             session.session_resume_set_status("Cannot delete the active session");
-            session.push_system_note("Cannot delete the active session");
+            session.push_scroll_notice("Cannot delete the active session");
         } else {
             match driver.delete_session(&id).await {
                 Ok(()) => {
                     session.session_resume_remove_entry(&id);
-                    session.push_system_note(format!("Deleted session {id}"));
+                    session.push_scroll_notice(format!("Deleted session {id}"));
                 }
                 Err(e) => {
                     note_driver_err(

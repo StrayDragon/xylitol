@@ -121,9 +121,9 @@ impl<T: Terminal> HostSession<T> {
                         }
                         BusySlashPolicy::Reject => {
                             if let PendingSlash::Usage(msg) = slash {
-                                self.push_system_note(msg);
+                                self.push_scroll_notice(msg);
                             } else {
-                                self.push_system_note(format!(
+                                self.push_scroll_notice(format!(
                                     "agent busy — {} refused",
                                     busy_slash_refuse_label(&slash)
                                 ));
@@ -136,7 +136,7 @@ impl<T: Terminal> HostSession<T> {
                 None if text.trim().starts_with('/') && looks_like_unknown_slash_command(&text) => {
                     root.set_editor_text(String::new());
                     drop(root);
-                    self.push_system_note(format!(
+                    self.push_scroll_notice(format!(
                         "agent busy — unknown command not steered: {}",
                         text.split_whitespace().next().unwrap_or("/")
                     ));
@@ -158,7 +158,7 @@ impl<T: Terminal> HostSession<T> {
                         } else {
                             "agent busy — wait or Esc (! command cannot steer; rejected)"
                         };
-                        self.push_system_note(note);
+                        self.push_scroll_notice(note);
                         return true;
                     }
                 }
@@ -239,7 +239,7 @@ impl<T: Terminal> HostSession<T> {
         if text.trim().starts_with('/') && looks_like_unknown_slash_command(&text) {
             root.set_editor_text(String::new());
             drop(root);
-            self.push_system_note(format!(
+            self.push_scroll_notice(format!(
                 "unknown command: {} (try /exit, /model, /theme, /session, /session-resume, /session-new, /session-clone, /session-name, /session-tree, /session-fork, /session-compact, /session-export, /session-import, /reload, /trust, /history-copy-last)",
                 text.split_whitespace().next().unwrap_or("/")
             ));
@@ -251,7 +251,7 @@ impl<T: Terminal> HostSession<T> {
             BangParse::Empty { .. } => {
                 root.set_editor_text(String::new());
                 drop(root);
-                self.push_system_note("empty bash command (try !ls or !!ls)");
+                self.push_scroll_notice("empty bash command (try !ls or !!ls)");
                 return true;
             }
             BangParse::Cmd {
@@ -326,7 +326,7 @@ impl<T: Terminal> HostSession<T> {
             let chars = root.editor_text().len();
             root.open_external_editor_stub();
             drop(root);
-            self.push_system_note(format!(
+            self.push_scroll_notice(format!(
                 "external editor stub (Ctrl+G) · {chars} chars · $EDITOR not spawned"
             ));
             return true;
