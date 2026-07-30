@@ -8,7 +8,8 @@ must_contain:
   - "configured 2 · connected 0 · armed 0"
   - "connecting"
   - "not armed"
-  - "Esc to close"
+  - 'class="row rev"'
+  - "Enter closes"
 must_not_contain:
   - "Next turn:"
   - "System"
