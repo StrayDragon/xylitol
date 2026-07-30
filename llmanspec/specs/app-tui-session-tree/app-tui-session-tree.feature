@@ -150,3 +150,21 @@
   场景: e2e-case-exists
     当 列出 tests/tui_e2e/pty.rs
     那么 存在产品会话树 #[ignore] 用例且注释或名含 session_tree
+
+  @req:ast15
+  场景: travel-notice-trailing
+    假如 产品树选中节点且 transcript 路径足够长
+    当 Enter travel 成功
+    那么 scrollback 末尾附近含 history @ 文案，且 entries 首条不是该 history @ 顶插
+
+  @req:ast15
+  场景: fork-no-extra-history-banner
+    假如 产品树 Shift+F fork 成功
+    当 查看 scrollback System 行
+    那么 含 forked → 类 note，且 MUST NOT 再叠一条 travel 用 history @
+
+  @req:ast16
+  场景: demo-travel-notice-trailing
+    假如 agent_demo 树 travel 完成
+    当 查看 transcript
+    那么 history @ 出现在路径条目之后而非 clear 后的第一条

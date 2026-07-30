@@ -79,3 +79,9 @@
     假如 同一轮直播已 flush 出 Thinking+Assistant
     当 用其 persist 的 SessionEntry 再 rebuild
     那么 分块种类与顺序一致（正文等价）
+
+  @req:att18
+  场景: nav-notice-appended
+    假如 travel 重建完成且含 history @ 通知
+    当 检查 UiModel.entries
+    那么 该通知不在 entries 首条而在路径投影之后
