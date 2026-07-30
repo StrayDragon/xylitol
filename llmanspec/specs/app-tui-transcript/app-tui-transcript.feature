@@ -80,6 +80,18 @@
     当 用其 persist 的 SessionEntry 再 rebuild
     那么 分块种类与顺序一致（正文等价）
 
+  @req:att12
+  场景: rebuild-tool-call-result-merged
+    假如 路径含 assistant toolCall 与同 toolCallId 的 toolResult
+    当 rebuild_scrollback_from_travel
+    那么 UiModel 对该 toolCallId 恰好一条 done UiEntry::Tool（含 args_preview 与 output）
+
+  @req:att12
+  场景: rebuild-tool-idempotent-with-live
+    假如 同一轮直播已 ToolExecutionEnd 成单块 Tool
+    当 用其 persist 的 SessionEntry 再 rebuild
+    那么 Tool 条数与 id/preview/output/done 与直播末态幂等
+
   @req:att18
   场景: nav-notice-appended
     假如 travel 重建完成且含 history @ 通知
