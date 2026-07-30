@@ -267,3 +267,9 @@
     假如 有 skills
     当 审查文案
     那么 不含 Prompts 或 prompt template 清单
+
+  @req:atc18
+  场景: mcp-connecting-progress-in-slot
+    假如 已配置 MCP 且连接进行中
+    当 渲染 loaded-resources
+    那么 mcp 行含可区分的 connecting 进度且未逐步刷滚动提示墙

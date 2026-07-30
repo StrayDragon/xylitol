@@ -43,3 +43,15 @@
     假如 一个 server 已成功连接并注册工具
     当 查询已连接列表
     那么 含该 server id 与非零工具数或等价摘要
+
+  @req:mcp7
+  场景: startup-does-not-await-all-mcp
+    假如 配置含至少一个慢启动或可连接的 mcp server
+    当 产品启动进入 TUI 或 print 首交互窗口
+    那么 应用面已可用且未要求全部 MCP 连接完成
+
+  @req:mcp7
+  场景: parallel-connect-progress-snapshot
+    假如 配置含多个 mcp server
+    当 后台连接进行中
+    那么 Driver 只读缝可观察到进行中或已连接进度快照且单失败不拖死其余
