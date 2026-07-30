@@ -26,12 +26,6 @@
     当 装配 AgentSession 或 ResourceLoader 发现
     那么 get_commands MUST NOT 含 template:greet 或 /greet 模板命令且 loader MUST NOT 将 greet 注册为 prompt 模板
 
-  @req:pt5
-  场景: safe-minijinja-default
-    假如 使用默认正文路径且注入固定 date
-    当 build_system_prompt
-    那么 输出含该 date 与 Available tools（或等价默认段）且组装经沙箱 minijinja
-
   @req:pt6
   场景: apply-next-turn
     假如 会话已有 user/assistant 历史

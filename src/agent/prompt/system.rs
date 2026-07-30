@@ -5,8 +5,11 @@
 //!
 //! Key functions:
 //! - `build_system_prompt(opts)` — explicit options
+//! - default body path uses sandboxed minijinja ([`super::sandbox`])
 
 use crate::agent::tools::ToolSet;
+
+use super::sandbox::render_default_base;
 
 /// Options for building the system prompt.
 #[derive(Debug, Clone, Default)]
@@ -33,12 +36,16 @@ pub struct SystemPromptOpts {
     pub append_system_prompt: Vec<String>,
     /// Built-in runtime policy fragments (c1605); injected as `<runtime_policy>`.
     pub runtime_policy_fragments: Vec<String>,
+    /// Optional fixed calendar date (`YYYY-MM-DD`). `None` uses `Utc::now()`.
+    pub date: Option<String>,
 }
 
 /// Build a system prompt dynamically based on options.
 pub fn build_system_prompt(opts: &SystemPromptOpts) -> String {
-    let now = chrono::Utc::now();
-    let date = now.format("%Y-%m-%d").to_string();
+    let date = opts
+        .date
+        .clone()
+        .unwrap_or_else(|| chrono::Utc::now().format("%Y-%m-%d").to_string());
 
     let mut prompt = String::new();
 
@@ -142,32 +149,19 @@ pub fn build_system_prompt(opts: &SystemPromptOpts) -> String {
     prompt
 }
 
-/// Build the default prompt base with tool snippets.
+/// Build the default prompt base with tool snippets via sandboxed minijinja.
 fn default_prompt_base(selected_tools: &[String], snippets: &[(String, String)]) -> String {
-    let tool_lines: Vec<String> = selected_tools
+    let tools: Vec<(String, String)> = selected_tools
         .iter()
         .filter(|name| !name.starts_with("mcp:"))
         .filter_map(|name| {
             snippets
                 .iter()
                 .find(|(n, _)| n == name)
-                .map(|(n, s)| format!("- {n}: {s}"))
+                .map(|(n, s)| (n.clone(), s.clone()))
         })
         .collect();
-
-    let tools_section = if tool_lines.is_empty() {
-        String::from("(none)")
-    } else {
-        tool_lines.join("\n")
-    };
-
-    format!(
-        "You are an expert coding assistant.\n\n\
-         Available tools:\n\
-         {tools_section}\n\n\
-         MCP/custom tools are provided in this turn's tools list — call by exact name \
-         (see `/mcp` in the product TUI for connection status)."
-    )
+    render_default_base(&tools)
 }
 
 /// Collect tool snippets from a ToolSet.
@@ -213,6 +207,7 @@ mod tests {
                 ("bash".into(), "Execute bash commands".into()),
             ],
             cwd: "/tmp".into(),
+            date: Some("2026-07-31".into()),
             ..Default::default()
         };
         let prompt = build_system_prompt(&opts);
@@ -220,6 +215,20 @@ mod tests {
         assert!(prompt.contains("- read: Read file contents"));
         assert!(prompt.contains("- bash: Execute bash commands"));
         assert!(prompt.contains("/tmp"));
+        assert!(prompt.contains("Current date: 2026-07-31"));
+    }
+
+    #[test]
+    fn injected_date_is_stable() {
+        let opts = SystemPromptOpts {
+            cwd: "/x".into(),
+            date: Some("2099-01-02".into()),
+            ..Default::default()
+        };
+        let a = build_system_prompt(&opts);
+        let b = build_system_prompt(&opts);
+        assert_eq!(a, b);
+        assert!(a.contains("Current date: 2099-01-02"));
     }
 
     #[test]

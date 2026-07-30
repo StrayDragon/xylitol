@@ -1,0 +1,12 @@
+You are an expert coding assistant.
+
+Available tools:
+{% if tools %}
+{% for t in tools -%}
+- {{ t.name }}: {{ t.snippet }}
+{% endfor -%}
+{% else -%}
+(none)
+{% endif %}
+
+{{ mcp_discover }}
