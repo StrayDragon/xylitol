@@ -766,7 +766,7 @@
           </div>
           <div class="term-status hidden" id="mcp-cue-status">
             <span class="status-lead" id="mcp-cue-lead"><span class="spin">⠋</span> Working</span>
-            <span class="status-next-turn-cue" id="mcp-cue-cue">mcp 1/2 pending · /mcp</span>
+            <span class="status-next-turn-cue" id="mcp-cue-cue">mcp pending (see /mcp)</span>
           </div>
           <div class="term-editor" id="mcp-cue-editor"></div>
           <div class="term-footer" id="mcp-cue-footer">~/xylitol · ornith</div>
@@ -1703,20 +1703,20 @@
         mode: "panel",
       },
       cueShortBusy: {
-        editor: `<div class="row fg-muted"><span class="status-lead">⠋ Working</span>  <span class="status-next-turn-cue">mcp 1/2 pending · /mcp</span></div>`,
-        legend: "短 cue · busy 下轮预告位：计数 + 引导 /mcp · 不列 server id",
+        editor: `<div class="row fg-muted"><span class="status-lead">⠋ Working</span>  <span class="status-next-turn-cue">mcp pending (see /mcp)</span></div>`,
+        legend: "短 cue · busy：固定 mcp pending (see /mcp) · 无分数/无 id",
         mode: "cueBusy",
-        cue: "mcp 1/2 pending · /mcp",
+        cue: "mcp pending (see /mcp)",
       },
       cueShortIdle: {
-        editor: `<div class="row fg-muted"><span class="status-next-turn-cue">mcp tools pending · /mcp</span></div>`,
-        legend: "短 cue · idle 破例 1 行（长对话看不见头卡时）· 仍只引导 /mcp",
+        editor: `<div class="row fg-muted"><span class="status-next-turn-cue">mcp pending (see /mcp)</span></div>`,
+        legend: "短 cue · idle 破例 1 行：同一固定文案",
         mode: "cueIdle",
-        cue: "mcp tools pending · /mcp",
+        cue: "mcp pending (see /mcp)",
       },
       cueArmedGone: {
         editor: `<div class="row fg-muted"></div>`,
-        legend: "armed 后短 cue 收起 · 细节仍走 /mcp；头卡可有摘要",
+        legend: "全部 armed 后短 cue 收起 · 细节仍走 /mcp；头卡可有摘要",
         mode: "cueGone",
       },
       cueDumpBad: {
