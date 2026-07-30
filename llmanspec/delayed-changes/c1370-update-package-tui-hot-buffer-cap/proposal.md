@@ -7,6 +7,8 @@ depends_on:
 
 # Proposal: TUI 引擎热缓冲封顶（长会话视口滑动）
 
+> **仍 deferred**。**与 c1760**：activity-fold 减行后可能 **缓解** 引擎 `previous_lines` 压力；**不是**被 c1760 吸收实现。超长跑若仍胀，再单独升格。
+
 ## Why
 
 差异渲染已把屏外行滚进模拟器 scrollback，但 `previous_lines` 仍随会话线性增长：每帧 O(n) 字符串比对 + 内存膨胀，长时间运行仍会拖垮性能。需要「足够大但有界」的热缓冲，上方内容视为已写入模拟器 scrollback，保留滚轮回看习惯。
