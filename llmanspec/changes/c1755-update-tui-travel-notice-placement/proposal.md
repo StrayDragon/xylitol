@@ -1,7 +1,7 @@
 ---
 change_id: c1755-update-tui-travel-notice-placement
-title: Travel / 会话导航通知改为贴底可滚 System 行（前置）
-status: purpose-draft
+title: Scrollback 导航/瞬时通知一律贴底可滚（禁顶插）
+status: designed
 priority: 1755
 depends_on: []
 blocks:
@@ -9,64 +9,58 @@ blocks:
 author: agent
 ---
 
-# Travel / 会话导航通知改为贴底可滚 System 行
+# c1755 — Scrollback 通知贴底可滚（禁顶插）
 
-> 仅规划、不实现。意向为 **c1760 activity-fold** 的前置。与 c1760 一并继续调研，不急 propose。
+> 由 travel `history @` 前置扩大为：**凡重建/导航类瞬时 System 通知，MUST 贴底可滚（输入框上方），MUST NOT 顶插进 entries 前缀。**
+> 产品 + demo 同 change。前置于 c1760 activity-fold。
 
 ## Why
 
-`rebuild_scrollback_from_travel` 在 **entries 最前**插入：
+跟底（follow-bottom）时，插在 `entries[0]` 的通知常在视口外，等于没提示。fork/resume/import 等已用 `push_system_note` **尾随**；travel 重建仍 **prepend** `history @ …`，是明确例外。
 
-`history @ {selected} · leaf={leaf} · path: …`
-
-跟底时长史下该行常在视口外。fork/resume/import 已用尾随 `push_system_note`；fork 注释已避免顶+底双条。travel 仍是顶插例外。
-
-目标：导航通知改为 **贴底可滚 System**（与其它 note 同族），文案先保持完整 `history @ · leaf · path`。
+代码审计（2026-07-30）：产品路径上 **唯一系统性顶插违例** 即 `rebuild_scrollback_from_travel` 的 `history @`；slash/错误/会话切换 note 已尾随。扩大范围的意义是钉死 **政策 + 回归闸**，避免以后再开顶插，并同步 demo。
 
 ## 已拍板
 
 | 项 | 决定 |
 |---|---|
-| 文案 | **先 a**：保留完整 `history @ · leaf · path`，只改放置（顶插 → 尾随） |
-| System 族统一 | **后置**：另案统一处理各类 System message（本 change 不扩 scope） |
-| 正式化时机 | **先搁置**（继续调研；不与实现挂钩） |
+| 文案 | travel 仍用完整 `history @ · leaf · path`，只改放置 |
+| 政策 | 导航/瞬时 scrollback 通知 → **尾随**；**禁止**为「让用户看见」而 prepend |
+| 与已有尾随 note | fork/`switched →` 等路径 **不再叠** `history @`（去重） |
+| demo | **同 change** 改为 path 后再尾随 System |
+| System 文案族统一 | **另案**（本 change 不改 fork/switched 文案内容） |
 
-## 调研：同类处理盘点
+## What Changes
 
-| 模式 | 落点 | 跟底可见？ | 备注 |
-|---|---|---|---|
-| travel `history @` | **prepend** | 否（长史） | 本 change 主靶 |
-| fork / resume / import / clone / restored | 尾随 `push_system_note` | 是 | 目标形态 |
-| queue strip | chrome | 是 | 非 scrollback System 墙（`ati11`） |
-| status / Loader | 底栏 | 是 | 短时态 |
-| BranchSummary / Compaction | 时间线内 | 随位置 | 非导航 toast |
-| slash / abort / Error | 尾随 | 是 | 与 fork note 同族 |
+1. `rebuild_scrollback_from_travel`：**只**投影祖先路径条目，**不再**插入任何 System banner。
+2. `apply_session_tree_travel`：重建后 `push_system_note(history @ …)`。
+3. `apply_session_tree_fork` / `apply_switched_session` / `apply_debug_scene`：保持既有尾随 note；**不**再因 rebuild 带出 `history @`。
+4. `agent_demo` travel：先重建 path，再尾随 `history @`（与产品同形）。
+5. harness / demo 测：跟底可见；`entries` 首条 MUST NOT 为顶插 `history @`。
+6. live specs：session-tree + transcript 政策句；feature 场景可执行或文档场景按 Partitioned 规则。
 
-## What Changes（意向）
+## Capabilities
 
-1. 停止 rebuild **prepend** `history @ …`（产品 + 视需要的 demo）。
-2. travel 成功后 **尾随**完整文案的可滚 System。
-3. 与 fork/resume note **去重**（不顶+底双条）。
-4. harness：通知在 entries **末尾** / 跟底可见；`entries[0]` MUST NOT 再是顶插 `history @`。
+| capability | 角色 |
+|---|---|
+| `app-tui-session-tree` | travel 通知放置；demo travel 同源 |
+| `app-tui-transcript` | 重建路径禁止顶插瞬时导航通知（政策） |
+
+## Impact
+
+- Travel 后用户立刻看到 `history @`；长史顶不再无效噪声。
+- 为 c1760 清场（折叠规则不必特判「看不见的顶栏」）。
+- fork/resume 底栏仍一条产品 note，无双 System。
 
 ## Out of scope
 
-- 统一所有 System 文案/样式（**未来另案**）
-- activity-fold（c1760）；delayed 引擎优化
-- 改成 queue strip / 永久 chrome
-
-## 与 c1760
-
-叙事前置；`c1760.depends_on` 指向本 id。两案均先搁置，正式化顺序以后再定。
-
-## Open Questions
-
-1. demo 是否必须同期改？
-2. 未来「System 统一」案是否一并收口 fork/`switched →` 文案族？
+- 统一所有 System 文案/样式
+- activity-fold（c1760）；queue strip / status chrome 形态
+- 改 session JSONL；把 BranchSummary 等**时间线内容**当 toast（它们按路径投影，不是顶插 toast）
 
 ## Ethics
 
 - risk_level: low
-- prohibited_actions: 顶+底重复；本 change 顺手大改全部 System 文案
-- required_evidence: harness 末尾可见（apply 前）
-- escalation_policy: 改 chrome strip 须用户确认
+- prohibited_actions: 顶+底重复同一导航通知；本 change 顺手大改全部 System 文案
+- required_evidence: harness + demo 断言贴底可见
+- escalation_policy: 若改成 chrome strip 须用户确认

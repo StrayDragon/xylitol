@@ -10,7 +10,7 @@ author: agent
 
 # TUI activity-fold — 多级折叠（含 Worked for 通用表达）
 
-> 仅规划、**不实现**。与 `domain-compaction` 不是同一层。前置：[`c1755`](../c1755-update-tui-travel-notice-placement/proposal.md)。两案均继续调研。
+> 仅规划、**不实现**。与 `domain-compaction` 不是同一层。前置：[`c1755`](../c1755-update-tui-travel-notice-placement/proposal.md)（已扩大为「禁顶插 / 贴底可滚通知」政策）。两案调研后可分别 propose。
 
 ## Why
 
