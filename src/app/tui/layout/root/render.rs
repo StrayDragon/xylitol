@@ -31,38 +31,45 @@ impl UiRoot {
     }
 
     pub(super) fn render_status_slot(&mut self, width: usize) -> Vec<String> {
+        let paint_cue_line =
+            |theme: &crate::app::tui::layout::LayoutTheme, cue: &str, width: usize| {
+                let cue_paint = theme.paint_muted(cue);
+                let cue_w = xylitol_tui::visible_width(&cue_paint);
+                if cue_w >= width {
+                    return truncate_to_width(&cue_paint, width, "…", false);
+                }
+                let pad = width.saturating_sub(cue_w);
+                format!("{}{cue_paint}", " ".repeat(pad))
+            };
+
         if !self.status_busy {
             // Idle: optional MCP short cue (c1210), right-aligned; otherwise breathing room.
             if let Some(cue) = self.status_next_turn_cue.as_deref() {
-                let cue_paint = self.theme.paint_muted(cue);
-                let cue_w = xylitol_tui::visible_width(&cue_paint);
-                if cue_w >= width {
-                    return vec![truncate_to_width(&cue_paint, width, "…", false)];
-                }
-                let pad = width.saturating_sub(cue_w);
-                return vec![format!("{}{cue_paint}", " ".repeat(pad))];
+                return vec![paint_cue_line(&self.theme, cue, width)];
             }
             return vec![String::new()];
         }
         // Keep Loader leading blank + spinner row (do not strip empties).
         let mut lines = self.status_loader.render(width);
-        if let Some(cue) = self.status_next_turn_cue.as_deref()
-            && let Some(content) = lines.last_mut()
-        {
-            let cue_paint = self.theme.paint_muted(cue);
-            let lead_w = xylitol_tui::visible_width(content);
-            let cue_w = xylitol_tui::visible_width(&cue_paint);
-            if lead_w + 1 + cue_w <= width {
-                let pad = width.saturating_sub(lead_w + cue_w);
-                *content = format!("{content}{}{cue_paint}", " ".repeat(pad));
-            } else if cue_w < width {
-                // Prefer lead; truncate cue if needed.
-                let budget = width.saturating_sub(lead_w.saturating_add(1));
-                if budget > 3 {
-                    let truncated = truncate_to_width(&cue_paint, budget, "…", false);
-                    let pad = width.saturating_sub(lead_w + xylitol_tui::visible_width(&truncated));
-                    *content = format!("{content}{}{truncated}", " ".repeat(pad.max(1)));
+        if let Some(cue) = self.status_next_turn_cue.as_deref() {
+            if let Some(content) = lines.last_mut() {
+                let cue_paint = self.theme.paint_muted(cue);
+                let lead_w = xylitol_tui::visible_width(content);
+                let cue_w = xylitol_tui::visible_width(&cue_paint);
+                if lead_w + 1 + cue_w <= width {
+                    let pad = width.saturating_sub(lead_w + cue_w);
+                    *content = format!("{content}{}{cue_paint}", " ".repeat(pad));
+                } else if cue_w < width {
+                    let budget = width.saturating_sub(lead_w.saturating_add(1));
+                    if budget > 3 {
+                        let truncated = truncate_to_width(&cue_paint, budget, "…", false);
+                        let pad =
+                            width.saturating_sub(lead_w + xylitol_tui::visible_width(&truncated));
+                        *content = format!("{content}{}{truncated}", " ".repeat(pad.max(1)));
+                    }
                 }
+            } else {
+                lines.push(paint_cue_line(&self.theme, cue, width));
             }
         }
         lines

@@ -65,18 +65,19 @@ components:
 
 | | |
 |---|---|
-| 文案 | **仅** `mcp pending (see /mcp)`；渲染 **右对齐** |
-| idle | 头卡已有 `mcp:` 行时 **不画**（sticky 欢迎卡已含 `connecting i/n`，避免叠床架屋） |
-| busy | pending 时可画在 Working 行右侧；若已有 `Next turn…` 则不覆盖 |
-| 收起 | 全部 armed / 不再 pending，或 idle+头卡 mcp 时清掉 `MCP_PENDING_CUE` |
-| MUST NOT | 分数计数；枚举 server id；idle 下与头卡 mcp 行重复 |
+| 文案 | **仅** `mcp pending (see /mcp)` |
+| 落点 | status 槽 **右对齐**（idle 整行靠右；busy 贴 Working/Drafting 行右侧） |
+| 何时 | `mcp_tools_pending()`；头卡可同时有 `mcp: connecting i/n`（进度）——cue 只引导 `/mcp`，不左贴在卡下冒充第二行 mcp |
+| 优先级 | busy 且已有 `Next turn…` 时不覆盖 |
+| 收起 | 全部 armed / 不再 pending |
+| MUST NOT | 分数计数；枚举 id；idle 左对齐贴在欢迎卡正下方 |
 
-主发现：头卡摘要 + **`/mcp`**。
+主发现：头卡进度 + **`/mcp`**；短 cue = 右对齐提醒。
 
 ## 静图芯片（playground · 对齐实现）
 
 - `/mcp`：connecting / mixed / all armed（行文同上）
-- 短 cue：busy 右对齐 / idle 头卡有 mcp 时不画 / Next turn 优先 / armed 收起
+- 短 cue：idle/busy **右对齐** / Next turn 优先 / armed 收起
 
 ## 非目标（仍后置）
 

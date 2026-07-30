@@ -4102,9 +4102,18 @@ mod slice_tests {
         session.refresh_loaded_resources(&driver).await;
 
         assert_eq!(
-            root.borrow().status_next_turn_cue_for_test(),
-            None,
-            "short cue MUST NOT duplicate sticky header mcp: connecting row"
+            root.borrow().status_next_turn_cue_for_test().as_deref(),
+            Some(crate::app::core::driver::MCP_PENDING_CUE),
+            "pending MCP MUST set fixed short cue (right-aligned in status)"
+        );
+
+        session.ui_model_mut().set_busy_status("Drafting reply");
+        session.sync_ui_root_from_model();
+        root.borrow_mut().refresh_mcp_short_cue();
+        assert_eq!(
+            root.borrow().status_next_turn_cue_for_test().as_deref(),
+            Some(crate::app::core::driver::MCP_PENDING_CUE),
+            "busy MUST keep MCP short cue when no Next turn pending"
         );
 
         root.borrow_mut().set_editor_text("/mcp");
