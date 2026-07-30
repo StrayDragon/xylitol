@@ -67,7 +67,7 @@ pub fn apply_lifecycle_family(model: &mut UiModel, event: &XyEvent) -> bool {
         }
         XyEvent::AutoRetryEnd { success, attempt } => {
             if !*success {
-                model.entries.push(UiEntry::System {
+                model.entries.push(UiEntry::ScrollNotice {
                     text: format!("retry failed (attempt {attempt})"),
                 });
             }
@@ -83,7 +83,7 @@ pub fn apply_lifecycle_family(model: &mut UiModel, event: &XyEvent) -> bool {
                 // c1595: keep partial (flush) + footer; do not wipe already-committed assistant.
                 model.flush_streaming();
                 if !trailing_aborted_note(&model.entries) {
-                    model.entries.push(UiEntry::System {
+                    model.entries.push(UiEntry::ScrollNotice {
                         text: "Operation aborted".into(),
                     });
                 }

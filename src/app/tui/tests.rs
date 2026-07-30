@@ -382,7 +382,7 @@ fn harness_busy_enter_queues_steer() {
     assert_eq!(session.ui_model().pending_steer, vec!["nudge".to_string()]);
     assert!(
         !session.ui_model().entries.iter().any(
-            |e| matches!(e, super::bridge::UiEntry::System { text } if text.contains("[steer]"))
+            |e| matches!(e, super::bridge::UiEntry::ScrollNotice { text } if text.contains("[steer]"))
         ),
         "steer must not be a scrollback system wall: {:?}",
         session.ui_model().entries
@@ -529,7 +529,7 @@ fn harness_idle_unknown_slash_stays_alive() {
     assert!(session.take_submit().is_none());
     assert!(
         session.ui_model().entries.iter().any(
-            |e| matches!(e, super::bridge::UiEntry::System { text } if text.contains("unknown"))
+            |e| matches!(e, super::bridge::UiEntry::ScrollNotice { text } if text.contains("unknown"))
         ),
         "unknown slash note missing: {:?}",
         session.ui_model().entries
@@ -623,14 +623,14 @@ async fn harness_enter_travel_closes_tree() {
     assert!(
         !matches!(
             entries.first(),
-            Some(super::bridge::UiEntry::System { text }) if text.contains("history @")
+            Some(super::bridge::UiEntry::ScrollNotice { text }) if text.contains("history @")
         ),
         "history @ MUST NOT be prepended as entries[0]; got: {entries:?}"
     );
     assert!(
         matches!(
             entries.last(),
-            Some(super::bridge::UiEntry::System { text }) if text.contains("history @ u2")
+            Some(super::bridge::UiEntry::ScrollNotice { text }) if text.contains("history @ u2")
         ),
         "history @ MUST trail (above input); got: {entries:?}"
     );
@@ -831,7 +831,7 @@ async fn harness_idle_slash_reload_keeps_history_and_calls_runtime() {
 
     let mut session = HostSession::new_product_ui(TestTerminal::new(80, 24));
     let root = session.ui_root().expect("product ui").clone();
-    session.push_system_note("seed history");
+    session.push_scroll_notice("seed history");
     let before = session.ui_model().entries.len();
 
     let mut driver = ScriptedDriver::new();
@@ -848,11 +848,11 @@ async fn harness_idle_slash_reload_keeps_history_and_calls_runtime() {
     assert_eq!(
         session.ui_model().entries.len(),
         before + 1,
-        "reload must append one system note, not clear history"
+        "reload must append one scroll notice, not clear history"
     );
     assert!(
         session.ui_model().entries.iter().any(
-            |e| matches!(e, UiEntry::System { text } if text.contains("Reload:") && text.contains("skills:"))
+            |e| matches!(e, UiEntry::ScrollNotice { text } if text.contains("Reload:") && text.contains("skills:"))
         ),
         "expected reload system report; got {:?}",
         session.ui_model().entries
@@ -877,7 +877,7 @@ async fn harness_history_copy_last_copies_assistant() {
             messages: Vec::new(),
         })))
         .unwrap();
-    session.push_system_note("trailing system");
+    session.push_scroll_notice("trailing scroll notice");
 
     let mut driver = ScriptedDriver::new();
     let mut stream = None;
@@ -890,7 +890,7 @@ async fn harness_history_copy_last_copies_assistant() {
     assert_eq!(driver.copy_text_calls(), vec!["copy-me-please".to_string()]);
     assert!(
         session.ui_model().entries.iter().any(
-            |e| matches!(e, UiEntry::System { text } if text.contains("Copied") && text.contains("chars"))
+            |e| matches!(e, UiEntry::ScrollNotice { text } if text.contains("Copied") && text.contains("chars"))
         ),
         "expected copy ok note; got {:?}",
         session.ui_model().entries
@@ -915,7 +915,7 @@ async fn harness_history_copy_last_empty_prompts() {
     assert!(driver.copy_text_calls().is_empty());
     assert!(
         session.ui_model().entries.iter().any(
-            |e| matches!(e, UiEntry::System { text } if text.contains("no assistant message"))
+            |e| matches!(e, UiEntry::ScrollNotice { text } if text.contains("no assistant message"))
         ),
         "expected empty note; got {:?}",
         session.ui_model().entries
@@ -955,7 +955,7 @@ async fn harness_busy_history_copy_last_still_copies() {
             .ui_model()
             .entries
             .iter()
-            .any(|e| matches!(e, UiEntry::System { text } if text.contains("Copied"))),
+            .any(|e| matches!(e, UiEntry::ScrollNotice { text } if text.contains("Copied"))),
         "busy must still copy; got {:?}",
         session.ui_model().entries
     );
@@ -1021,7 +1021,7 @@ async fn harness_idle_slash_trust_persists_without_reload() {
     assert!(
         session.ui_model().entries.iter().any(|e| matches!(
             e,
-            UiEntry::System { text }
+            UiEntry::ScrollNotice { text }
                 if text.contains("trusted")
                     && (text.contains("/reload") || text.contains("restart"))
         )),
@@ -1052,7 +1052,7 @@ async fn harness_busy_slash_trust_refused() {
     assert_eq!(driver.reload_runtime_calls(), 0);
     assert!(
         session.ui_model().entries.iter().any(
-            |e| matches!(e, UiEntry::System { text } if text.contains("agent busy") && text.contains("/trust"))
+            |e| matches!(e, UiEntry::ScrollNotice { text } if text.contains("agent busy") && text.contains("/trust"))
         ),
         "expected busy refuse; got {:?}",
         session.ui_model().entries
@@ -1080,7 +1080,7 @@ async fn harness_busy_slash_reload_refused() {
     assert_eq!(driver.reload_runtime_calls(), 0);
     assert!(
         session.ui_model().entries.iter().any(
-            |e| matches!(e, UiEntry::System { text } if text.contains("agent busy") && text.contains("/reload"))
+            |e| matches!(e, UiEntry::ScrollNotice { text } if text.contains("agent busy") && text.contains("/reload"))
         ),
         "expected busy refuse note; got {:?}",
         session.ui_model().entries
@@ -1113,7 +1113,7 @@ async fn harness_busy_slash_session_name_allows_not_steer() {
     assert!(
         session.ui_model().entries.iter().any(|e| matches!(
             e,
-            UiEntry::System { text } if text.contains("Session name set")
+            UiEntry::ScrollNotice { text } if text.contains("Session name set")
         )),
         "expected name set note; got {:?}",
         session.ui_model().entries
@@ -1131,7 +1131,7 @@ fn harness_busy_unknown_slash_not_steered() {
     assert!(
         session.ui_model().entries.iter().any(|e| matches!(
             e,
-            super::bridge::UiEntry::System { text }
+            super::bridge::UiEntry::ScrollNotice { text }
                 if text.contains("unknown command not steered")
         )),
         "got {:?}",
@@ -1504,7 +1504,7 @@ fn harness_cli_restored_session_rebuilds_transcript() {
     assert!(
         model.entries.iter().any(|e| matches!(
             e,
-            UiEntry::System { text } if text.contains("restored → session sid-restored")
+            UiEntry::ScrollNotice { text } if text.contains("restored → session sid-restored")
         )),
         "expected restored note: {:?}",
         model.entries

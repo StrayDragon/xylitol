@@ -61,7 +61,7 @@ async fn handle_reload<T: Terminal>(session: &mut HostSession<T>, driver: &mut d
 
     session.set_dollar_skill_catalog(driver.dollar_skill_catalog());
     session.refresh_loaded_resources(driver).await;
-    session.push_system_note(lines.join("\n"));
+    session.push_scroll_notice(lines.join("\n"));
 }
 
 pub(super) async fn handle_slash<T: Terminal>(
@@ -75,15 +75,15 @@ pub(super) async fn handle_slash<T: Terminal>(
         }
         PendingSlash::OpenModels => {
             if session.is_busy() {
-                session.push_system_note("models picker unavailable while busy");
+                session.push_scroll_notice("models picker unavailable while busy");
             } else {
                 match dispatch(driver, Command::GetAvailableModels { id: None }).await {
                     Ok(DispatchOutcome::Models(models)) => {
                         let current = driver.current_model().map(|m| m.id);
                         session.mount_models_picker(models, current, driver.thinking_level());
                     }
-                    Ok(_) => session.push_system_note("models list unavailable"),
-                    Err(e) => session.push_system_note(format!("/model failed: {e}")),
+                    Ok(_) => session.push_scroll_notice("models list unavailable"),
+                    Err(e) => session.push_scroll_notice(format!("/model failed: {e}")),
                 }
             }
             let _ = session.render_now();
@@ -105,14 +105,14 @@ pub(super) async fn handle_slash<T: Terminal>(
                 Ok(_) => {
                     session.sync_runtime_chrome(driver);
                 }
-                Err(e) => session.push_system_note(format!("/model failed: {e}")),
+                Err(e) => session.push_scroll_notice(format!("/model failed: {e}")),
             }
             let _ = session.render_now();
         }
         PendingSlash::DebugScene(scene) => {
             let scene = scene.trim().to_ascii_lowercase();
             if scene.is_empty() || scene == "list" {
-                session.push_system_note(crate::app::debug_fixtures::list_note());
+                session.push_scroll_notice(crate::app::debug_fixtures::list_note());
             } else {
                 log::info!(target: "xylitol::tui", "XyDriver::load_debug_scene scene={}", scene);
                 match driver.load_debug_scene(&scene).await {
@@ -124,7 +124,7 @@ pub(super) async fn handle_slash<T: Terminal>(
         }
         PendingSlash::OpenTree => {
             if session.is_busy() {
-                session.push_system_note("session tree unavailable while busy");
+                session.push_scroll_notice("session tree unavailable while busy");
             } else {
                 session.request_session_tree_open();
             }
@@ -132,11 +132,11 @@ pub(super) async fn handle_slash<T: Terminal>(
         }
         PendingSlash::ForkAtLeaf => {
             if session.is_busy() {
-                session.push_system_note("fork unavailable while busy");
+                session.push_scroll_notice("fork unavailable while busy");
             } else {
                 match driver.leaf_entry_id() {
                         Some(id) => session.request_session_tree_fork(id),
-                        None => session.push_system_note(
+                        None => session.push_scroll_notice(
                             "fork failed: no leaf (send a message first, or /session-tree then Shift+F)",
                         ),
                     }
@@ -157,7 +157,7 @@ pub(super) async fn handle_slash<T: Terminal>(
                     if did {
                         append_compaction_from_session(session, driver).await;
                     } else {
-                        session.push_system_note("session unchanged (nothing to compact)");
+                        session.push_scroll_notice("session unchanged (nothing to compact)");
                     }
                     super::refresh_footer_tokens(session, driver).await;
                 }
@@ -165,7 +165,7 @@ pub(super) async fn handle_slash<T: Terminal>(
                     append_compaction_from_session(session, driver).await;
                     super::refresh_footer_tokens(session, driver).await;
                 }
-                Err(e) => session.push_system_note(format!("/session-compact failed: {e}")),
+                Err(e) => session.push_scroll_notice(format!("/session-compact failed: {e}")),
             }
             let _ = session.render_now();
         }
@@ -186,16 +186,16 @@ pub(super) async fn handle_slash<T: Terminal>(
             };
             match dispatch(driver, cmd).await {
                 Ok(DispatchOutcome::ExportedPath(written)) => {
-                    session.push_system_note(format!("exported → {written}"));
+                    session.push_scroll_notice(format!("exported → {written}"));
                 }
-                Ok(_) => session.push_system_note("session exported"),
-                Err(e) => session.push_system_note(format!("/session-export failed: {e}")),
+                Ok(_) => session.push_scroll_notice("session exported"),
+                Err(e) => session.push_scroll_notice(format!("/session-export failed: {e}")),
             }
             let _ = session.render_now();
         }
         PendingSlash::Import { path } => {
             if session.is_busy() {
-                session.push_system_note("session import unavailable while busy");
+                session.push_scroll_notice("session import unavailable while busy");
             } else {
                 session.mount_import_confirm(&path);
             }
@@ -205,16 +205,16 @@ pub(super) async fn handle_slash<T: Terminal>(
             match dispatch(driver, Command::GetSessionStats { id: None }).await {
                 Ok(DispatchOutcome::SessionStats(stats)) => {
                     let state = driver.get_state();
-                    session.push_system_note(format_session_stats_dump(&stats, &state));
+                    session.push_scroll_notice(format_session_stats_dump(&stats, &state));
                 }
-                Ok(_) => session.push_system_note("session stats unavailable"),
-                Err(e) => session.push_system_note(format!("/session failed: {e}")),
+                Ok(_) => session.push_scroll_notice("session stats unavailable"),
+                Err(e) => session.push_scroll_notice(format!("/session failed: {e}")),
             }
             let _ = session.render_now();
         }
         PendingSlash::OpenSessionResume => {
             if session.is_busy() {
-                session.push_system_note("session resume unavailable while busy");
+                session.push_scroll_notice("session resume unavailable while busy");
             } else {
                 // pi-style load UX: slot shows loaded/total; OSC 9;4 while scanning.
                 session.mount_session_resume_loading(0, 0);
@@ -225,7 +225,7 @@ pub(super) async fn handle_slash<T: Terminal>(
                 match listed {
                     Ok(entries) if entries.is_empty() => {
                         session.close_session_resume_slot();
-                        session.push_system_note("no sessions to resume");
+                        session.push_scroll_notice("no sessions to resume");
                     }
                     Ok(entries) => {
                         let n = entries.len();
@@ -249,7 +249,7 @@ pub(super) async fn handle_slash<T: Terminal>(
         }
         PendingSlash::SessionNew => {
             if session.is_busy() {
-                session.push_system_note("session new unavailable while busy");
+                session.push_scroll_notice("session new unavailable while busy");
             } else {
                 log::info!(target: "xylitol::tui", "XyDriver::new_session");
                 match driver.new_session().await {
@@ -277,11 +277,11 @@ pub(super) async fn handle_slash<T: Terminal>(
         }
         PendingSlash::SessionClone => {
             if session.is_busy() {
-                session.push_system_note("session clone unavailable while busy");
+                session.push_scroll_notice("session clone unavailable while busy");
             } else {
                 use crate::protocol::session::ForkPosition;
                 match driver.leaf_entry_id() {
-                    None => session.push_system_note("Nothing to clone yet"),
+                    None => session.push_scroll_notice("Nothing to clone yet"),
                     Some(entry_id) => {
                         log::info!(
                             target: "xylitol::tui",
@@ -321,8 +321,8 @@ pub(super) async fn handle_slash<T: Terminal>(
         PendingSlash::SessionName { name } => {
             match name {
                 None => match driver.get_session_name().await {
-                    Ok(Some(n)) => session.push_system_note(format!("Session name: {n}")),
-                    Ok(None) => session.push_system_note("usage: /session-name <name>"),
+                    Ok(Some(n)) => session.push_scroll_notice(format!("Session name: {n}")),
+                    Ok(None) => session.push_scroll_notice("usage: /session-name <name>"),
                     Err(e) => note_driver_err(
                         session,
                         "tui.get_session_name",
@@ -333,11 +333,11 @@ pub(super) async fn handle_slash<T: Terminal>(
                 Some(raw) => match driver.set_session_name(&raw).await {
                     Ok(stored) => {
                         if stored != raw {
-                            session.push_system_note(format!(
+                            session.push_scroll_notice(format!(
                                 "Session name was normalized from {raw:?} to {stored:?}"
                             ));
                         }
-                        session.push_system_note(format!("Session name set: {stored}"));
+                        session.push_scroll_notice(format!("Session name set: {stored}"));
                     }
                     Err(e) => note_driver_err(
                         session,
@@ -351,7 +351,7 @@ pub(super) async fn handle_slash<T: Terminal>(
         }
         PendingSlash::Reload => {
             if session.is_busy() {
-                session.push_system_note("agent busy — /reload refused");
+                session.push_scroll_notice("agent busy — /reload refused");
             } else {
                 handle_reload(session, driver).await;
             }
@@ -359,13 +359,13 @@ pub(super) async fn handle_slash<T: Terminal>(
         }
         PendingSlash::Trust { mode } => {
             if session.is_busy() {
-                session.push_system_note("agent busy — /trust refused");
+                session.push_scroll_notice("agent busy — /trust refused");
             } else {
                 match driver.persist_project_trust(mode) {
-                    Ok(report) => session.push_system_note(report.message),
+                    Ok(report) => session.push_scroll_notice(report.message),
                     Err(e) => {
                         e.log_failure("tui.persist_project_trust");
-                        session.push_system_note(format!("/trust failed: {e}"));
+                        session.push_scroll_notice(format!("/trust failed: {e}"));
                     }
                 }
             }
@@ -374,7 +374,7 @@ pub(super) async fn handle_slash<T: Terminal>(
         PendingSlash::HistoryCopyLast => {
             // c1110: busy allowed (readonly). Native copy async; OSC52 on host thread.
             match last_assistant_text(&session.ui_model().entries) {
-                None => session.push_system_note("no assistant message to copy"),
+                None => session.push_scroll_notice("no assistant message to copy"),
                 Some(text) => {
                     let text = text.to_string();
                     let n = text.chars().count();
@@ -383,7 +383,7 @@ pub(super) async fn handle_slash<T: Terminal>(
                             if let Some(seq) = outcome.pending_osc52.as_deref() {
                                 session.emit_clipboard_osc52(seq);
                             }
-                            session.push_system_note(format!(
+                            session.push_scroll_notice(format!(
                                 "Copied last assistant message ({n} chars)"
                             ));
                         }
@@ -400,7 +400,7 @@ pub(super) async fn handle_slash<T: Terminal>(
         }
         PendingSlash::Theme { arg } => {
             if session.is_busy() {
-                session.push_system_note("agent busy — /theme refused");
+                session.push_scroll_notice("agent busy — /theme refused");
             } else {
                 match arg.as_deref().map(str::trim).filter(|s| !s.is_empty()) {
                     None => session.mount_themes_picker(),
@@ -426,7 +426,7 @@ pub(super) async fn handle_slash<T: Terminal>(
             let _ = session.render_now();
         }
         PendingSlash::Usage(msg) => {
-            session.push_system_note(msg.to_string());
+            session.push_scroll_notice(msg.to_string());
             let _ = session.render_now();
         }
     }
@@ -460,14 +460,14 @@ async fn append_compaction_from_session<T: Terminal>(
     driver: &dyn XyDriver,
 ) {
     let Ok(entries) = driver.get_messages().await else {
-        session.push_system_note("session compacted");
+        session.push_scroll_notice("session compacted");
         return;
     };
     let Some(comp) = entries.iter().rev().find_map(|e| match e {
         crate::protocol::session::SessionEntry::Compaction(c) => Some(c),
         _ => None,
     }) else {
-        session.push_system_note("session compacted");
+        session.push_scroll_notice("session compacted");
         return;
     };
     // Avoid duplicate if CompactionEnd already arrived via turn stream / tee.

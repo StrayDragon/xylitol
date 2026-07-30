@@ -6,7 +6,7 @@ use crate::app::core::driver::{XyDriver, XyDriverError};
 
 use super::super::host::HostSession;
 
-/// Log `error.kind` then push a system note (direct Driver calls, not via dispatch).
+/// Log `error.kind` then push a scroll notice (direct Driver calls, not via dispatch).
 pub(super) fn note_driver_err<T: Terminal>(
     session: &mut HostSession<T>,
     where_: &str,
@@ -14,7 +14,7 @@ pub(super) fn note_driver_err<T: Terminal>(
     note: impl Into<String>,
 ) {
     e.log_failure(where_);
-    session.push_system_note(note);
+    session.push_scroll_notice(note);
 }
 
 /// Log `error.kind` then push an error-styled note.

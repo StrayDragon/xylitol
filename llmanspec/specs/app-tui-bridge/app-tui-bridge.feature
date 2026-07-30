@@ -38,7 +38,7 @@
     假如 Busy 且 status=Compacting 且已有占位块
     当 CompactionEnd aborted=false 且含 summary 与 tokens_before
     那么 占位就地变为默认折叠完成块且 status 恢复 Working
-    并且 MUST NOT 追加 compaction complete System 行
+    并且 MUST NOT 追加 compaction complete 滚动提示
 
   @req:atb5
   场景: compact-end-aborted
@@ -51,7 +51,7 @@
     假如 session 含 CompactionEntry
     当 rebuild scrollback from travel
     那么 出现默认折叠的 compaction 完成块
-    并且 MUST NOT 整段 System dump summary
+    并且 MUST NOT 整段滚动提示 dump summary
 
   @req:atb6
   场景: retry-start-status
@@ -69,7 +69,7 @@
   场景: retry-end-success-restores
     假如 Busy 且 Retry 状态
     当 AutoRetryEnd success=true
-    那么 status 恢复 Working 且无失败 System 行
+    那么 status 恢复 Working 且无失败滚动提示
 
   @req:atb7
   场景: esc-clears-streaming
