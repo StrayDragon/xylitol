@@ -27,6 +27,7 @@
 - **产品面**：Print + TUI（TTY 默认）已开闸；走 `XyDriver` + `XyEvent`。TUI 专属规则见 `src/app/tui/AGENTS.md`。
 - **跨面公共体验**：TUI 与未来 Web **共有**能力的动作语义 / 学习成本 MUST 同源；快捷键 SHOULD 尽量同构；仅面专属能力可分叉。约束板：`docs/roadmaps/Web与TUI同源.md`。
 - 产品心智图：`docs/architecture/`；候补方向：`docs/roadmaps/`（不维护进度列）；文档闭环：`docs/AGENTS.md`。
+- TUI chrome / 滚动区固定词（下轮预告、滚动提示、尾随…）：`docs/architecture/TUI信息面与chrome词汇.md`（面约束见 `src/app/tui/AGENTS.md`）。
 
 ## 工作原则
 

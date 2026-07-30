@@ -76,8 +76,8 @@ pub struct UiRoot {
     thinking_level: ThinkingLevel,
     /// When true, footer omits the thinking segment (no-thinking active model).
     footer_omit_thinking: bool,
-    /// Agent-busy status trail (`Next turn: …`); independent of status short-word.
-    status_trail: Option<String>,
+    /// Agent-busy next-turn cue (`Next turn: …`); independent of status short-word.
+    status_next_turn_cue: Option<String>,
     /// Mutually exclusive editor-zone face (ati18).
     slot: EditorSlot,
     tree: TreeSelector,
@@ -170,7 +170,7 @@ impl UiRoot {
             footer_token: None,
             thinking_level: ThinkingLevel::Off,
             footer_omit_thinking: false,
-            status_trail: None,
+            status_next_turn_cue: None,
             slot: EditorSlot::Editor,
             tree: empty_tree_selector(theme),
             tree_filter: FilterMode::Default,
@@ -665,9 +665,9 @@ impl UiRoot {
         );
     }
 
-    /// Set or clear status trail (agent-busy NextTurn pending).
-    pub fn set_status_trail(&mut self, trail: Option<String>) {
-        self.status_trail = trail.filter(|s| !s.is_empty());
+    /// Set or clear next-turn cue (agent-busy NextTurn pending).
+    pub fn set_status_next_turn_cue(&mut self, cue: Option<String>) {
+        self.status_next_turn_cue = cue.filter(|s| !s.is_empty());
     }
 
     /// Pending steer / follow-up strip above status (pi `pendingMessagesContainer`).

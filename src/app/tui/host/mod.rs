@@ -427,7 +427,7 @@ impl<T: Terminal> HostSession<T> {
         root.borrow_mut().set_thinking_level_ui(level);
     }
 
-    /// Sync footer active chrome + optional status trail from driver (c1470).
+    /// Sync footer active chrome + optional next-turn cue from driver (c1470).
     pub fn sync_runtime_chrome(&mut self, driver: &dyn crate::app::core::driver::XyDriver) {
         let selected = driver.current_model();
         let selected_label = selected
@@ -451,9 +451,9 @@ impl<T: Terminal> HostSession<T> {
                 (selected_label.clone(), selected_thinking, selected_omit)
             };
 
-        let trail = if agent_run {
+        let cue = if agent_run {
             if let Some((active_label, active_thinking, _)) = driver.active_turn() {
-                crate::app::tui::layout::status_trail_text(
+                crate::app::tui::layout::status_next_turn_cue_text(
                     &active_label,
                     active_thinking,
                     &selected_label,
@@ -469,7 +469,7 @@ impl<T: Terminal> HostSession<T> {
         if let Some(root) = self.ui_root.as_ref() {
             let mut root = root.borrow_mut();
             root.set_active_chrome(footer_label, footer_thinking, omit);
-            root.set_status_trail(trail);
+            root.set_status_next_turn_cue(cue);
         }
         self.sync_ui_root_from_model();
     }

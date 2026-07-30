@@ -117,8 +117,8 @@ pub struct PendingModelChoice {
     pub thinking: ThinkingLevel,
 }
 
-/// Status trail copy for selected ≠ active (c1470).
-pub fn status_trail_text(
+/// Next-turn cue copy for selected ≠ active (c1470).
+pub fn status_next_turn_cue_text(
     active_model: &str,
     active_thinking: ThinkingLevel,
     selected_model: &str,

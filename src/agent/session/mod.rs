@@ -193,7 +193,7 @@ impl AgentCapabilities {
         self.model_manager.clone()
     }
 
-    /// Shared active-turn binding for chrome (footer active / status trail).
+    /// Shared active-turn binding for chrome (footer active / next-turn cue).
     pub(crate) fn active_turn_handle(&self) -> Arc<Mutex<Option<ActiveTurnBinding>>> {
         self.active_turn.clone()
     }

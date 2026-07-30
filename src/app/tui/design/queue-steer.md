@@ -21,7 +21,7 @@ components:
    - 每条 steer → `Steering: {text}`
    - 每条 follow-up → `Follow-up: {text}`
    - 末行 hint → `↳ Alt+Up to edit all queued messages`
-   - NextTurn 换模挂账 **不在** 本带（改在 status 行右侧，见 [`pending-runtime.md`](./pending-runtime.md)）
+   - NextTurn 换模 **下轮预告** **不在** 本带（改在 status 行右侧，见 [`pending-runtime.md`](./pending-runtime.md)）
 4. **上行（硬约束）**：消息从队列 **注入 agent history** 时，MUST 经 `XyEvent::MessageStart/End { role: user }` 进入 scrollback 为普通 `UiEntry::User`（与 idle 提交同形）；queue strip 随 `QueueUpdate` 消退后，用户内容仍 MUST 留在 transcript。**MUST NOT** 只在 strip 里闪一下就消失。
 5. **MUST NOT** 把排队内容写成 scrollback `System` / `[steer]` / `[follow-up]` 墙（那是 demo 假树可观测痕迹，**不是**产品 queue strip）。
 6. **footer**：队列非空时前缀 `q:sN|fM`（dim）；**MUST NOT** 把全文塞进 status 行（见 [`status.md`](./status.md)）。
