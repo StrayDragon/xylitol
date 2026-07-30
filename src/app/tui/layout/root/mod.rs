@@ -301,9 +301,16 @@ impl UiRoot {
     }
 
     /// Sync fixed MCP short cue from loaded-resources snapshot (c1210).
+    ///
+    /// Idle: suppress while the sticky loaded-resources card already shows an
+    /// `mcp:` row (avoids duplicating `connecting i/n` under the welcome card).
+    /// Busy: may still show right-aligned on the Working line when pending.
     pub fn refresh_mcp_short_cue(&mut self) {
         use crate::app::core::driver::MCP_PENDING_CUE;
-        if self.loaded_resources.mcp_tools_pending() {
+        let pending = self.loaded_resources.mcp_tools_pending();
+        let header_has_mcp = self.loaded_resources.mcp_header_row_visible();
+        let idle_dup = !self.status_busy && header_has_mcp;
+        if pending && !idle_dup {
             // Keep an existing model/thinking next-turn cue when busy.
             if self.status_busy && self.status_next_turn_cue.is_some() {
                 let cue = self.status_next_turn_cue.as_deref().unwrap_or("");
@@ -649,6 +656,8 @@ impl UiRoot {
                 self.status_busy = false;
             }
         }
+        // Idle↔busy changes whether MCP short cue may show under a sticky mcp header.
+        self.refresh_mcp_short_cue();
 
         self.refresh_footer_from_queue(model.queue.steer_count, model.queue.follow_up_count);
     }
