@@ -4,7 +4,8 @@ use std::time::{Duration, Instant};
 
 use super::super::slots::EditorSlot;
 use super::empty_widgets::{
-    empty_models_list, empty_session_resume_panel, empty_themes_list, import_confirm_list,
+    empty_mcp_list, empty_models_list, empty_session_resume_panel, empty_themes_list,
+    import_confirm_list,
 };
 use super::{ImportConfirmDecision, UiRoot};
 use crate::app::tui::bridge::UiPhase;
@@ -69,7 +70,9 @@ impl UiRoot {
         self.session_resume = empty_session_resume_panel(self.theme);
         self.pending_session_resume_rename = None;
         self.pending_session_resume_delete = None;
-        self.mcp_panel_lines.clear();
+        self.mcp_list = empty_mcp_list(self.theme);
+        self.mcp_summary_line.clear();
+        self.mcp_diag_lines.clear();
     }
 
     pub fn close_session_tree(&mut self) {

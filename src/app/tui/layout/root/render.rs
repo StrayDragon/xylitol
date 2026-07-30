@@ -135,10 +135,16 @@ impl UiRoot {
             }
             EditorSlot::SessionResume => self.session_resume.render(width.max(1)),
             EditorSlot::Mcp => {
-                let mut lines = vec![self.theme.paint_muted(" MCP")];
-                for row in &self.mcp_panel_lines {
-                    lines.push(self.theme.paint_muted(row));
+                let mut lines = Vec::new();
+                lines.push(
+                    self.theme
+                        .paint_muted(&format!(" MCP · {}", self.mcp_summary_line)),
+                );
+                lines.extend(self.mcp_list.render(width.max(1)));
+                for diag in &self.mcp_diag_lines {
+                    lines.push(self.theme.paint_muted(diag));
                 }
+                lines.push(self.theme.paint_muted(" Esc · Enter closes"));
                 lines
             }
         }

@@ -81,6 +81,8 @@ pub struct ScriptedDriver {
     dollar_skill_catalog: Mutex<Vec<(String, String)>>,
     /// Injectable loaded-resources header snapshot (c1135).
     loaded_resources: Mutex<LoadedResourcesSnapshot>,
+    /// Count of [`XyDriver::loaded_resources_snapshot`] awaits (c1215 cache seam).
+    loaded_resources_snapshot_calls: AtomicUsize,
     /// Current thinking level (c1150); mutable via set/cycle.
     thinking_level: ThinkingLevel,
     /// Support list for cycle (default STANDARD; tests may narrow e.g. `[Off, High]`).
@@ -188,6 +190,7 @@ impl ScriptedDriver {
             copy_pending_osc52: Mutex::new(None),
             dollar_skill_catalog: Mutex::new(Vec::new()),
             loaded_resources: Mutex::new(LoadedResourcesSnapshot::default()),
+            loaded_resources_snapshot_calls: AtomicUsize::new(0),
             thinking_level: ThinkingLevel::Off,
             thinking_levels: ThinkingLevel::STANDARD.to_vec(),
             clipboard_image: Mutex::new(None),
@@ -261,6 +264,11 @@ impl ScriptedDriver {
     /// Inject loaded-resources snapshot for header harness (c1135).
     pub fn set_loaded_resources_for_driver(&self, snap: LoadedResourcesSnapshot) {
         *self.loaded_resources.lock().expect("loaded_resources") = snap;
+    }
+
+    /// How many times [`XyDriver::loaded_resources_snapshot`] was awaited (c1215).
+    pub fn loaded_resources_snapshot_calls(&self) -> usize {
+        self.loaded_resources_snapshot_calls.load(Ordering::SeqCst)
     }
 
     pub fn new_session_calls(&self) -> usize {
@@ -807,6 +815,8 @@ impl XyDriver for ScriptedDriver {
     }
 
     async fn loaded_resources_snapshot(&self) -> LoadedResourcesSnapshot {
+        self.loaded_resources_snapshot_calls
+            .fetch_add(1, Ordering::SeqCst);
         self.loaded_resources
             .lock()
             .expect("loaded_resources")
@@ -4116,17 +4126,28 @@ mod slice_tests {
             "busy MUST keep MCP short cue when no Next turn pending"
         );
 
+        let snaps_before_open = driver.loaded_resources_snapshot_calls();
         root.borrow_mut().set_editor_text("/mcp");
         session.step(HostEvent::Input(enter_event())).unwrap();
         pump_host_driver(&mut session, &mut driver, &mut stream)
             .await
             .unwrap();
-        assert!(root.borrow().mcp_open(), "/mcp MUST open panel");
+        assert!(root.borrow().mcp_open(), "/mcp MUST open SelectList");
+        assert_eq!(
+            driver.loaded_resources_snapshot_calls(),
+            snaps_before_open,
+            "cached loaded_resources MUST avoid second snapshot await on /mcp"
+        );
         let panel = root.borrow().mcp_panel_text_for_test();
         assert!(panel.contains("fs"), "panel shows server id: {panel}");
         assert!(panel.contains("connecting"), "panel shows phase: {panel}");
         assert!(panel.contains("not armed"), "panel shows armed: {panel}");
         assert!(panel.contains("configured 2"), "panel summary: {panel}");
+        assert_eq!(
+            root.borrow().mcp_selected_id_for_test().as_deref(),
+            Some("fs"),
+            "SelectList focuses first server"
+        );
 
         session.step(HostEvent::Input(esc_event())).unwrap();
         assert!(!root.borrow().mcp_open(), "Esc MUST close /mcp panel");
@@ -4156,6 +4177,119 @@ mod slice_tests {
             None,
             "cue MUST hide when all armed"
         );
+    }
+
+    #[tokio::test]
+    async fn c1215_mcp_select_list_nav_enter_closes() {
+        use crate::app::core::driver::{
+            LoadedResourcesSnapshot, McpServerPhase, McpServerSnapshot,
+        };
+
+        let mut session = HostSession::new_product_ui(TestTerminal::new(80, 24));
+        let root = session.ui_root().expect("ui").clone();
+        let mut driver = ScriptedDriver::new();
+        let mut stream = None;
+
+        driver.set_loaded_resources_for_driver(LoadedResourcesSnapshot {
+            mcp_configured: 2,
+            mcp_servers: vec![
+                McpServerSnapshot {
+                    id: "fs".into(),
+                    phase: McpServerPhase::Connected,
+                    tools_armed: true,
+                    tool_count: 3,
+                },
+                McpServerSnapshot {
+                    id: "git".into(),
+                    phase: McpServerPhase::Connecting,
+                    tools_armed: false,
+                    tool_count: 0,
+                },
+            ],
+            ..LoadedResourcesSnapshot::default()
+        });
+        session.refresh_loaded_resources(&driver).await;
+
+        root.borrow_mut().set_editor_text("/mcp");
+        session.step(HostEvent::Input(enter_event())).unwrap();
+        pump_host_driver(&mut session, &mut driver, &mut stream)
+            .await
+            .unwrap();
+        assert!(root.borrow().mcp_open());
+        assert_eq!(
+            root.borrow().mcp_selected_id_for_test().as_deref(),
+            Some("fs")
+        );
+        assert_eq!(root.borrow().mcp_selected_index_for_test(), 0);
+
+        session.step(HostEvent::Input(down_event())).unwrap();
+        assert_eq!(
+            root.borrow().mcp_selected_id_for_test().as_deref(),
+            Some("git"),
+            "↓ MUST move SelectList focus"
+        );
+        assert_eq!(root.borrow().mcp_selected_index_for_test(), 1);
+
+        session.step(HostEvent::Input(up_event())).unwrap();
+        assert_eq!(
+            root.borrow().mcp_selected_id_for_test().as_deref(),
+            Some("fs"),
+            "↑ MUST move SelectList focus back"
+        );
+
+        session.step(HostEvent::Input(down_event())).unwrap();
+        session.step(HostEvent::Input(enter_event())).unwrap();
+        assert!(
+            !root.borrow().mcp_open(),
+            "Enter MUST close /mcp SelectList (MVP; no fake disable)"
+        );
+    }
+
+    #[tokio::test]
+    async fn c1215_mcp_open_awaits_when_cache_empty() {
+        use crate::app::core::driver::{
+            LoadedResourcesSnapshot, McpServerPhase, McpServerSnapshot,
+        };
+
+        let mut session = HostSession::new_product_ui(TestTerminal::new(80, 24));
+        let root = session.ui_root().expect("ui").clone();
+        let mut driver = ScriptedDriver::new();
+        let mut stream = None;
+
+        // Driver has MCP data, but UiRoot cache was never refreshed → must await.
+        driver.set_loaded_resources_for_driver(LoadedResourcesSnapshot {
+            mcp_configured: 1,
+            mcp_servers: vec![McpServerSnapshot {
+                id: "only".into(),
+                phase: McpServerPhase::Connected,
+                tools_armed: true,
+                tool_count: 2,
+            }],
+            ..LoadedResourcesSnapshot::default()
+        });
+        assert!(
+            !session.mcp_cache_usable_for_open(),
+            "empty UiRoot cache MUST be unusable"
+        );
+        let before = driver.loaded_resources_snapshot_calls();
+
+        root.borrow_mut().set_editor_text("/mcp");
+        session.step(HostEvent::Input(enter_event())).unwrap();
+        pump_host_driver(&mut session, &mut driver, &mut stream)
+            .await
+            .unwrap();
+
+        assert!(root.borrow().mcp_open());
+        assert!(
+            driver.loaded_resources_snapshot_calls() > before,
+            "empty cache MUST await loaded_resources_snapshot"
+        );
+        let panel = root.borrow().mcp_panel_text_for_test();
+        assert!(
+            panel.contains("only"),
+            "await path mounts driver snap: {panel}"
+        );
+        assert!(panel.contains("armed"), "row shows armed: {panel}");
     }
 
     #[tokio::test]

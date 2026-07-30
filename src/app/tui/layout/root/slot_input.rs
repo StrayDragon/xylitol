@@ -199,7 +199,21 @@ impl UiRoot {
                 return;
             }
             EditorSlot::Mcp => {
-                // Readonly panel — Esc closes via slot_nav; no other input.
+                let InputEvent::Key(ref key) = event else {
+                    return;
+                };
+                // MVP: Enter closes the slot (no fake MCP disable).
+                if matches_binding(key, "tui.select.confirm") {
+                    self.close_slot();
+                    return;
+                }
+                if matches_binding(key, "tui.select.up")
+                    || matches_binding(key, "tui.select.down")
+                    || matches_binding(key, "tui.select.pageUp")
+                    || matches_binding(key, "tui.select.pageDown")
+                {
+                    self.mcp_list.handle_input(event);
+                }
                 return;
             }
             EditorSlot::Editor => {}
