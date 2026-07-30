@@ -8,7 +8,8 @@ blocks: []
 author: agent
 branch: sdd/c1200-update-infra-mcp-startup
 base_sha: eb765f4269cbb7d68bd3c46359ed2d5e552cb911
-checkpointed: false
+checkpointed: true
+checkpoint_sha: eb765f4269cbb7d68bd3c46359ed2d5e552cb911
 ---
 
 # c1200 — MCP 启动不挡 TTI + 进度可感

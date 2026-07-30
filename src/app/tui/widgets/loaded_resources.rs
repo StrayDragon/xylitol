@@ -233,6 +233,21 @@ mod tests {
     }
 
     #[test]
+    fn mcp_connecting_label_shown_in_card() {
+        let snap = LoadedResourcesSnapshot {
+            mcp_configured: 2,
+            mcp_connecting_label: Some("connecting 1/2 · foo".into()),
+            ..Default::default()
+        };
+        let joined =
+            render_loaded_resources(LayoutTheme::product_dark(), &snap, "~/x", "m", 72).join("\n");
+        assert!(
+            joined.contains("mcp") && joined.contains("connecting 1/2 · foo"),
+            "{joined}"
+        );
+    }
+
+    #[test]
     fn card_at_narrow_widths_does_not_hang() {
         let cases: &[(usize, &str, &str)] = &[
             (72, "~/x", "m"),
