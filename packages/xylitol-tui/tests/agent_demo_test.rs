@@ -2350,6 +2350,19 @@ fn agent_demo_session_tree_fork_stays_on_node_and_branches() {
         plain.contains("forked @ u1") && plain.contains("tighten footer truncation"),
         "expected fork banner + user turn; got:\n{plain}"
     );
+    let last = plain
+        .lines()
+        .rev()
+        .find(|l| !l.trim().is_empty())
+        .unwrap_or("");
+    assert!(
+        last.contains("forked @ u1"),
+        "forked @ MUST trail (not prepend); last={last:?}\n{plain}"
+    );
+    assert!(
+        !plain.trim_start().starts_with("forked @"),
+        "forked @ MUST NOT lead transcript; got:\n{plain}"
+    );
     // u1's path is root→u1 only; child assistant must not appear (unlike travel spine).
     assert!(
         !plain.contains("plan + tools"),
