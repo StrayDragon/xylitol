@@ -20,7 +20,7 @@ checkpointed: false
 
 启用 MCP 后，connecting 期间拒绝普通 prompt / bang，会挡住**根本不需要 MCP** 的工作。头卡已能表达进度；provider 每轮按请求携带 `tools`，settle 后热合并即可在**下一轮**生效。
 
-c1200 已交付非阻塞 TTI、并行连接、头卡进度、settle 热合并骨架。本变更改「输入闸」+「合并去重 / 防重复进程」+ system 散文收紧。
+c1200 已交付非阻塞 TTI、并行连接、头卡进度、settle 热合并骨架。本变更改「输入闸」+「合并去重 / 防重复进程」+ system 散文收紧 + **`/mcp` 发现面**。
 
 ## 已拍决策（2026-07-31）
 
@@ -36,17 +36,19 @@ c1200 已交付非阻塞 TTI、并行连接、头卡进度、settle 热合并骨
 
 ## What Changes
 
-- 改写 `mcp7` / `ath23` / `agent-prompt`（及 `.feature`）
+- 改写 `mcp7` / `ath23` / `ath27` / `atm17` / `agent-prompt`（及 `.feature`）
 - Host 去掉 connecting 输入闸；保留头卡进度
 - `ToolSet` overlay + 单一 rebuild 入口；禁止裸 extend 叠 mcp
 - settle / reload：先 shutdown 旧 manager 再装新
-- system：builtins-only Available tools + MCP discover 一句
+- system：builtins-only Available tools + MCP discover 一句（可引导 `/mcp`）
+- **`/mcp` 面板**（任意态）+ 可选短 cue（禁止长名单 dump）
 
 ## Capabilities
 
 - `infra-mcp`（mcp7）
-- `app-tui-host`（ath23）
-- `agent-prompt`（pt 新 req 或扩展）
+- `app-tui-host`（ath23、ath27）
+- `app-tui-commands`（atm16/atm17）
+- `agent-prompt`（pt11）
 - 可能触 `agent-runtime`（仅文档对齐 ar6）
 
 ## Impact

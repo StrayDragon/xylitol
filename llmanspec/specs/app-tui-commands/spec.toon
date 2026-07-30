@@ -2,7 +2,7 @@ kind: llman.sdd.spec
 name: "app-tui-commands"
 purpose: "斜杠命令与 protocol::Command / dispatch 映射。"
 valid_scope[1]: src/app/tui/
-requirements[16]{req_id,title,statement}:
+requirements[17]{req_id,title,statement}:
   atm1,"slash-exit-model","TUI MUST 解析斜杠命令 /exit（映射 Quit）与 /model：无参 idle MUST 打开替换 editor 槽的 fuzzy 模型列表（GetAvailableModels）；列表 MUST 支持 ↑↓ 选模型行，可调模型 MUST 支持 ←→ 与槽内 Shift+Tab 在焦点模型 thinking_levels 上选档；宽内容区 MUST 在焦点行铺开全部 xylitol 档名（当前档以方括号标记），窄内容区 MUST 仅显示单档标签；无思考或仅不可调 off 的模型 MUST 显示 — 且方向键 MUST NOT 改变状态。Enter 选定 MUST 提交 (model, level)（可调默认最高档，无思考为 off）经 SetModel/set_thinking_level 并关槽；有参 /model <id> MUST 直接 SetModel 并对可调模型默认最高档、不可调为 off；键入 /model 参数时 MAY/MUST 经包 SlashArgCompletionSource 内联补全（见 ati23）。busy 时无参 MUST 拒绝打开列表（idle-only）；busy 有参直设 MUST 更新 selected（NextTurn 生效，见 ar25）。MUST NOT 再把无参 /model 做成 CycleModel；MUST NOT 引入 /models 主路径；MUST NOT 在产品 UI 暴露厂商 thinking 档名；未知斜杠 MUST 显示内联错误且 MUST NOT 崩溃。"
   atm2,"dispatch-shared","除 Prompt、Quit 与传输专用命令外，斜杠执行 MUST 走 app::core::dispatch 共享路径，MUST NOT 发明平行命令词表。"
   atm3,"extensible-commands",命令面 MUST 允许后续追加斜杠（如 /compact /help）而不改引擎；MVP 仅要求 /exit 与 /model。
@@ -18,8 +18,9 @@ requirements[16]{req_id,title,statement}:
   atm13,"slash-trust",产品 TUI idle 时 MUST 解析 /trust（及文档约定子命令 self/this_dir/parent/deny）：经 Driver 缝将信任决策写入持久 trust store，并以系统块提示需 /reload 或重启后项目资源才按新信任生效；busy 时 MUST 拒绝且 MUST NOT 写盘；MUST NOT 在成功路径自动调用 runtime reload；SlashCommandSource MUST 列出 trust；/trust 空格后 MUST 提供 self（默认）/parent/deny 参数补全；未知子命令 MUST usage 错误。
   atm14,"slash-history-copy-last","产品 TUI MUST 解析无参 /history-copy-last：将当前 transcript 最近一条已提交 assistant 正文经 Driver 缝复制到系统剪贴板，并以系统块提示成功或失败；idle 与 busy MUST 均可执行（只读）；无 assistant 时 MUST 提示且 MUST NOT 伪造成功；SlashCommandSource MUST 列出 history-copy-last；带参 MUST usage 错误。"
   atm15,"slash-theme","产品 TUI idle 时 MUST 解析 /theme：无参 MUST 打开替换 editor 槽的主题 SelectList（至少内建 dark/light）；有参 dark|light MUST 经 HostSession::reload_themes（或等价）应用；有参 toggle|cycle MUST 在 dark↔light 间切换；busy MUST 拒绝且 MUST NOT 改主题；未知参 MUST 提示且 MUST NOT 伪造成功；SlashCommandSource MUST 列出 theme；空格后参数补全 MUST 至少含 dark 与 light。"
-  atm16,"busy-slash-policy","产品 TUI agent/bang 忙碌且无 overlay 时，Enter 提交经 parse_slash_command 命中的 PendingSlash MUST 经单一穷尽 BusySlashPolicy::{Allow,Reject} 分流且 MUST NOT 落入 steer/follow-up：Allow 至少含 SessionName、SetModel、HistoryCopyLast、SessionDump、Export、Exit、Compact；Reject 至少含 Reload、Trust、Theme、OpenModels、OpenTree、ForkAtLeaf、OpenSessionResume、SessionNew、SessionClone、Import、DebugScene、Usage。未识别且 looks_like_unknown_slash 的 `/…` MUST 短提示拒绝且 MUST NOT 入 steer（严于 pi）。try_busy_input MUST NOT 再对个别命令散落特判。"
-scenarios[16]{req_id,id,given,when,then,feature}:
+  atm16,"busy-slash-policy","产品 TUI agent/bang 忙碌且无 overlay 时，Enter 提交经 parse_slash_command 命中的 PendingSlash MUST 经单一穷尽 BusySlashPolicy::{Allow,Reject} 分流且 MUST NOT 落入 steer/follow-up：Allow 至少含 SessionName、SetModel、HistoryCopyLast、SessionDump、Export、Exit、Compact、OpenMcp；Reject 至少含 Reload、Trust、Theme、OpenModels、OpenTree、ForkAtLeaf、OpenSessionResume、SessionNew、SessionClone、Import、DebugScene、Usage。未识别且 looks_like_unknown_slash 的 `/…` MUST 短提示拒绝且 MUST NOT 入 steer（严于 pi）。try_busy_input MUST NOT 再对个别命令散落特判。"
+  atm17,"slash-mcp","产品 TUI MUST 解析无参 /mcp（可选别名 /mcps → 同路径）：打开替换 editor 槽的 MCP 面板（MUST NOT 居中 overlay）；面板行至少含 server id、连接态（connecting/connected/failed 或等价）、tools armed（是否已 overlay 进当前 ToolSet / 下轮请求 tools）、可选 tool 数；汇总行至少含 configured / connected / armed 摘要；失败短诊断可感。idle、agent-busy、bang-busy 与 MCP connecting 下 MUST 均可打开；Esc 关槽 MUST NOT 仅因开面板 abort agent。数据 MUST 经 Driver 只读缝（或公开等价），MUST NOT 从 app/tui reach infra::mcp。SlashCommandSource MUST 列出 mcp；带参 MUST usage 错误或不识别为成功路径；busy 时 OpenMcp MUST 为 BusySlashPolicy Allow 且 MUST NOT 入 steer。"
+scenarios[17]{req_id,id,given,when,then,feature}:
   atm1,atm1-unit,"slash-exit-model 约束由产品单测/harness覆盖（非 BDD harness）",审查实现与对应测试,"行为符合本 requirement 陈述",false
   atm2,atm2-unit,"dispatch-shared 约束由产品单测/harness覆盖（非 BDD harness）",审查实现与对应测试,"行为符合本 requirement 陈述",false
   atm3,atm3-unit,"extensible-commands 约束由产品单测/harness覆盖（非 BDD harness）",审查实现与对应测试,"行为符合本 requirement 陈述",false
@@ -36,3 +37,4 @@ scenarios[16]{req_id,id,given,when,then,feature}:
   atm14,atm14-unit,"slash-history-copy-last 约束由产品单测/harness覆盖（非 BDD harness）",审查实现与对应测试,"行为符合本 requirement 陈述",false
   atm15,atm15-unit,"slash-theme 约束由产品单测/harness覆盖（非 BDD harness）",审查实现与对应测试,"行为符合本 requirement 陈述",false
   atm16,atm16-unit,"busy-slash-policy 约束由产品单测/harness覆盖（非 BDD harness）",审查实现与对应测试,"行为符合本 requirement 陈述",false
+  atm17,atm17-unit,"slash-mcp 约束由产品单测/harness覆盖（非 BDD harness）",审查实现与对应测试,"行为符合本 requirement 陈述",false
