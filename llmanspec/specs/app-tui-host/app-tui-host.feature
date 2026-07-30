@@ -188,7 +188,7 @@
   场景: busy-pending-no-system
     假如 agent busy 且 active 模型为 A
     当 有参 /model B 成功更新 selected
-    那么 scrollback 无 model → 系统确认行且 status trail 含 Next turn
+    那么 scrollback 无 model → 系统确认行且 status 下轮预告含 Next turn
 
   @req:ath23
   场景: reload-refreshes

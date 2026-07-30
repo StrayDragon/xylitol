@@ -257,7 +257,7 @@
       min-width: 0;
     }
     /* Only the pending trail is end-aligned. */
-    .term-status .status-trail {
+    .term-status .status-next-turn-cue {
       color: var(--muted);
       margin-left: auto;
       text-align: right;
@@ -418,7 +418,7 @@
         <div class="ctl">
           <button type="button" id="shell-busy" aria-pressed="true">busy</button>
           <button type="button" id="shell-queue" aria-pressed="false">队列徽章</button>
-          <button type="button" id="shell-pending" aria-pressed="false">换模挂账</button>
+          <button type="button" id="shell-pending" aria-pressed="false">换模下轮预告</button>
           <button type="button" id="shell-tree" aria-pressed="false">会话树槽</button>
           <button type="button" id="shell-tool" aria-pressed="true">工具块</button>
           <span class="hint">idle → status 0 行 · footer=生效中 · Next turn 同行右侧</span>
@@ -428,7 +428,7 @@
           <div class="steer-hint hidden" id="shell-queue-line">Steering: 补充一句约束</div>
           <div class="term-status" id="shell-status">
             <span class="status-lead"><span class="spin" id="shell-spin">⠋</span> Working</span>
-            <span class="status-trail hidden" id="shell-pending-trail">Next turn: deepseek-v4-flash</span>
+            <span class="status-next-turn-cue hidden" id="shell-pending-cue">Next turn: deepseek-v4-flash</span>
           </div>
           <div class="term-editor" id="shell-editor"></div>
           <div class="term-footer" id="shell-footer">~/xylitol · ornith · thinking off</div>
@@ -703,10 +703,10 @@
 
       <!-- pending NextTurn chrome -->
       <section class="panel" id="panel-pending" data-id="pending">
-        <h2>Pending · NextTurn 挂账</h2>
+        <h2>Pending · NextTurn 下轮预告</h2>
         <p class="spec">
           <a href="../pending-runtime.md">pending-runtime.md</a> ·
-          <strong>单槽</strong> Status trail · footer=生效中 · 多 pending 拼接 · 切回/cleared 清除
+          <strong>单槽</strong> Next-turn cue · footer=生效中 · 多 pending 拼接 · 切回/cleared 清除
         </p>
         <div class="ctl">
           <button type="button" class="chip-btn" data-pending="nextTurn" aria-pressed="true">仅模型 /model</button>
@@ -722,7 +722,7 @@
           </div>
           <div class="term-status" id="pending-status">
             <span class="status-lead"><span class="spin" id="pending-spin">⠋</span> Working</span>
-            <span class="status-trail" id="pending-trail">Next turn: deepseek-v4-flash</span>
+            <span class="status-next-turn-cue" id="pending-cue">Next turn: deepseek-v4-flash</span>
           </div>
           <div class="term-editor" id="pending-editor"></div>
           <div class="term-footer" id="pending-footer">~/xylitol · ornith · thinking off</div>
@@ -1351,7 +1351,7 @@
       document.getElementById("shell-tool").setAttribute("aria-pressed", String(S.tool));
       document.getElementById("shell-status").classList.toggle("hidden", !S.busy);
       document.getElementById("shell-queue-line").classList.toggle("hidden", !S.queue);
-      document.getElementById("shell-pending-trail").classList.toggle("hidden", !(S.busy && S.pending));
+      document.getElementById("shell-pending-cue").classList.toggle("hidden", !(S.busy && S.pending));
 
       const content = document.getElementById("shell-content");
       let html =
@@ -1578,40 +1578,40 @@
       });
     });
 
-    /* Pending NextTurn: footer=active; trail = one dim at a time (model > thinking) */
+    /* Pending NextTurn: footer=active; next-turn cue = one dim at a time (model > thinking) */
     const PENDING_RUNTIME = {
       // 仅模型 pending（fixture pending-model.next-turn）— 入口 /model
       nextTurn: {
-        editor: `<div class="row fg-muted"><span class="status-lead">⠋ Working</span>  <span class="status-trail">Next turn: deepseek-v4-flash</span></div>`,
+        editor: `<div class="row fg-muted"><span class="status-lead">⠋ Working</span>  <span class="status-next-turn-cue">Next turn: deepseek-v4-flash</span></div>`,
         footer: "~/xylitol · ornith · thinking off",
         busy: true,
-        trail: "Next turn: deepseek-v4-flash",
-        legend: "入口 /model · selected model≠active → trail 仅模型（即使随后又 Shift+Tab，trail 仍只显示模型）",
+        cue: "Next turn: deepseek-v4-flash",
+        legend: "入口 /model · selected model≠active → 下轮预告仅模型（即使随后又改 level，仍只显示模型）",
       },
       // 仅 thinking — 入口 Shift+Tab，模型未变
       thinking: {
-        editor: `<div class="row fg-muted"><span class="status-lead">⠋ Working</span>  <span class="status-trail">Next turn thinking: high</span></div>`,
+        editor: `<div class="row fg-muted"><span class="status-lead">⠋ Working</span>  <span class="status-next-turn-cue">Next turn thinking: high</span></div>`,
         footer: "~/xylitol · ornith · thinking off",
         busy: true,
-        trail: "Next turn thinking: high",
-        legend: "入口 /model 改 level、模型未变 → trail 仅 thinking（无全局 Shift+Tab）",
+        cue: "Next turn thinking: high",
+        legend: "入口 /model 改 level、模型未变 → 下轮预告仅 thinking（无全局 Shift+Tab）",
       },
       cleared: {
         editor: `<div class="row fg-muted"></div>`,
         footer: "~/xylitol · ornith · thinking off",
         busy: false,
-        trail: "",
-        legend: "selected == active（切回或 idle 收敛）→ 无 trail",
+        cue: "",
+        legend: "selected == active（切回或 idle 收敛）→ 无下轮预告",
       },
     };
     function renderPending() {
       const p = PENDING_RUNTIME[state.pending] || PENDING_RUNTIME.nextTurn;
-      const trail = document.getElementById("pending-trail");
+      const cue = document.getElementById("pending-cue");
       const status = document.getElementById("pending-status");
       const ed = document.getElementById("pending-editor");
       const legend = document.getElementById("pending-legend");
-      trail.textContent = p.trail;
-      trail.classList.toggle("hidden", !p.trail);
+      cue.textContent = p.cue;
+      cue.classList.toggle("hidden", !p.cue);
       status.classList.toggle("hidden", !p.busy);
       ed.innerHTML = '<span class="cursor"> </span>';
       document.getElementById("pending-footer").textContent = p.footer;

@@ -169,7 +169,7 @@ components:
 | **c635–c645** 树 power | 产品 filter → fold → fork（demo 已有；逐个接线） | [`session-tree`](./design/session-tree.md) · [`keybindings`](./design/keybindings.md) |
 | **c650** 真 `$EDITOR` | Ctrl+G：TTY 真编辑器；harness 仍 stub | [`bash-mode`](./design/bash-mode.md) |
 | **c1035** footer token usage | 带 provenance 的 `used N`/`~N`/`?`；travel 刷新 | [`footer`](./design/footer.md) |
-| **候补 M0** NextTurn 挂账 | busy 换模：footer=生效中；strip=`Next turn:`；切回清除；无 System 墙 | [`pending-runtime`](./design/pending-runtime.md) · [`footer`](./design/footer.md) |
+| **候补 M0** NextTurn 下轮预告 | busy 换模：footer=生效中；cue=`Next turn:`；切回清除；无滚动提示墙 | [`pending-runtime`](./design/pending-runtime.md) · [`footer`](./design/footer.md) |
 | **c660–c665** abort 质量 | 工具/bash 进程树取消 + status 反馈（非 computer-use） | [`status`](./design/status.md) · [`errors`](./design/errors.md) |
 
 **明确不做（本波）**：Settings / Plate 槽（配置继续 YAML+JSON Schema，无运行时改配置 UX）；computer-use 扩展；Codex TranscriptView。
@@ -266,7 +266,7 @@ footer            1 行 dim（cwd · model · 可选 context%）
 | [`design/skill-ref.md`](./design/skill-ref.md) | `$skill` 用户消息内高亮（A10；demo 先验） |
 | [`design/loaded-resources.md`](./design/loaded-resources.md) | 启动品牌 + Skills/MCP 换行清单（c1135） |
 | [`design/footer.md`](./design/footer.md) | 一行 dim |
-| [`design/pending-runtime.md`](./design/pending-runtime.md) | NextTurn 挂账：生效中 vs 即将接替 |
+| [`design/pending-runtime.md`](./design/pending-runtime.md) | NextTurn 下轮预告：生效中 vs 待生效 |
 | [`design/overlay.md`](./design/overlay.md) | 默认不用；优先槽内；playground 静图已撤 |
 | [`design/diff-block.md`](./design/diff-block.md) | Diff 渲染 |
 | [`design/glyphs.md`](./design/glyphs.md) | unicode / ascii 档 |
