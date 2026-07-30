@@ -5,8 +5,11 @@ status: designed
 priority: 1755
 depends_on: []
 blocks:
-  - c1760-add-tui-activity-fold
+- c1760-add-tui-activity-fold
 author: agent
+branch: sdd/c1755-update-tui-travel-notice-placement
+base_sha: 096ef094cfed1ab7b504b854939b7f7b43d5a0c7
+checkpointed: false
 ---
 
 # c1755 — Scrollback 通知贴底可滚（禁顶插）
