@@ -1,12 +1,11 @@
 kind: llman.sdd.spec
 name: "agent-prompt"
-purpose: 系统提示组装与资源模板：skills/context 注入、可选 prompt 模板展开（非 Jinja；产品主路径用 skill 而非 prompt slash）。
+purpose: 系统提示组装：skills/context 注入与热应用；产品主路径用 skill（含 $name），MUST NOT 提供 pi 式 slash prompt templates。
 valid_scope[3]: src/agent/prompt/,src/protocol/,src/infra/resource/
-requirements[11]{req_id,title,statement}:
+requirements[10]{req_id,title,statement}:
   pt1,"system-assembly",System MUST 经 build_system_prompt（或等价）组装系统提示，可包含工具片段、skills 摘要、context 文件、日期与 CWD；自定义 system 文件可替换或 append。
   pt2,"skills-section",当 ResourceLoader 发现 skills 时，系统提示 MUST 能包含 available_skills（或等价）清单供模型发现；未信任项目 MUST NOT 注入项目 skills。
-  pt3,"prompt-templates-optional",若加载 prompt 模板，AgentSession MUST 能注册为可展开命令并保留 source_path；产品 TUI MUST NOT 把 prompt 模板当作启动 header 主清单（用 skills 代替）。
-  pt4,"positional-args",模板展开 MUST 保留位置参数替换语义（如 $1 / $@ 约定）。
+  pt3,"no-slash-prompt-templates","System MUST NOT 从 prompts 目录发现或注册 slash prompt 模板命令（含 /template:name 与 pi 式 /filename）；磁盘遗留 prompts/*.md MUST 忽略；MUST NOT 提供 $1/$@ 位置参数模板展开。产品主路径用 skills。"
   pt5,"no-jinja-runtime",提示组装 MUST NOT 依赖 Jinja2/minijinja 运行时；实现为 Rust 字符串组装或等价轻量替换。
   pt6,context 热应用,Agent MUST 提供 apply_prompt_resources（或等价）：用新的 context_files、system_prompt、append_system_prompt 重建系统提示；MUST 只影响后续 run；MUST NOT 改写已持久化历史消息。
   pt7,skills 热应用与引导注入,Agent MUST 在构造/bootstrap 时将 ResourceLoader 发现的 skills 写入 SystemPromptOpts 并经 build_system_prompt 进入 available_skills（若非空）；MUST 提供 apply_skills（或扩展 apply_prompt_resources）用新目录重建系统提示；MUST 只影响后续 run；MUST NOT 改写已持久化历史；未信任 MUST NOT 注入项目 skills。

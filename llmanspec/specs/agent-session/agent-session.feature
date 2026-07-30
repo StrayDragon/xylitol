@@ -106,24 +106,6 @@
     当 agent 开始回合
     那么 messages 数组为 system prompt、history、user message
 
-  @req:a21
-  场景: template-expand
-    假如 模板含第一参数占位符
-    当 以 main.rs 展开模板
-    那么 内容中 main.rs 已替换
-
-  @req:a21
-  场景: default-value
-    假如 模板第一参数有默认值
-    当 无参展开模板
-    那么 内容含默认值
-
-  @req:a22
-  场景: load-global
-    假如 prompts 目录有 review.md
-    当 加载模板
-    那么 返回含 description 的 review 模板
-
   @req:a23
   场景: product-names-in-get-commands
     假如 空扩展命令的 AgentSession
@@ -137,10 +119,10 @@
     那么 compact 处理器被调用
 
   @req:a24
-  场景: template-dispatch
-    假如 用户发送 /review 及参数
-    当 prompt 被拦截
-    那么 模板展开并送 LLM
+  场景: no-template-dispatch
+    假如 用户发送 /review 及参数且仅存在 prompts/review.md
+    当 prompt 处理
+    那么 MUST NOT 将 prompt 模板展开并送 LLM
 
   @req:a25
   场景: context-files-found

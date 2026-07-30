@@ -4,9 +4,15 @@
 
   @req:rd1
   场景: list
-    假如 ResourceLoader 已加载 skills 与 prompts
+    假如 ResourceLoader 已加载 skills
     当 调用 list
-    那么 输出展示每项资源的 scope 与 path
+    那么 输出展示每项资源的 scope 与 path 且 MUST NOT 含 prompt 模板清单段
+
+  @req:rd1
+  场景: list-ignores-prompts-dir
+    假如 仅存在 prompts/greet.md 而无 skills
+    当 调用 resources list（或等价）
+    那么 输出 MUST NOT 将 greet 列为 prompt 模板且退出码为零
 
   @req:rd1
   场景: list-empty
