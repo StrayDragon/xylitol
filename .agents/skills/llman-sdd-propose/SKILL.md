@@ -30,30 +30,16 @@ flowchart LR
 
 ## 硬约束
 
-- **必须与用户确认 change id 后再写文件**：不同变更的边界不能模糊。**例外**：用户请求轻量 draft 路径（见下方「轻量 draft 路径」）时，MUST NOT 询问 id——由 `change new --from` 推导并告知用户。
+- **必须与用户确认 change id 后再写文件**：不同变更的边界不能模糊。**例外**：用户只想快速记一个想法（仅草案，不需要 id）时，引导其使用 `llman-sdd-draft` 技能，而非走完整 propose。
 - **feature 分支上的 live specs 为 SSOT**：直接编辑 `llmanspec/specs/**`——**禁止**在 `changes/<id>/specs/` 下编写或使用 `change delta`（已移除）。
 - **不要问「要不要继续」**：在 propose 阶段内一路执行到底，生成工件并校验。
 
 - **若变更已存在**：STOP 并建议用户使用 `llman-sdd-apply`；若需补齐缺失 artifact，直接编辑 `llmanspec/changes/<id>/`（或启用 `extra_skills: [llman-sdd-continue]` 后使用 continue）。
 
 
-## 轻量 draft 路径（仅 draft proposal）
+## 快速记录路由
 
-当用户意图是**快速记一个提案**（如「draft 提案」「draft change」「记一个提案」「先把 X 记下来」）且未提供 change id 时，走此轻量路径，**不要**走完整 propose：
-
-1. **MUST NOT 询问用户 change id**。
-2. 从用户描述内容直接生成一个合法且有意义的 change id：
-   - 优先遵循该仓库 `llmanspec/AGENTS.md` 声明的命名约定（若有）。
-   - 若无显式约定，按描述语义合理命名（CLI `--from` 会做 kebab-case 清洗 + 合法性校验）。
-3. 直接调用 CLI 脚手架建 draft shell：
-   ```bash
-   llman sdd change new --from "<用户描述>"
-   ```
-   该命令仅在 `llmanspec/changes/<生成的 id>/` 下创建 `proposal.md`（draft skeleton），**不**强制 tasks/design/attach。
-4. **MUST 告知用户已生成的 id**（例如「已创建草案 change `<id>`，可在 `llmanspec/changes/<id>/proposal.md` 完善」）。用户可应要求修改 id 或补全为正式 change。
-5. 完整 propose（triage + tasks + live specs + `change start`）仅在用户**明确要求正式化**时启动。
-
-适用边界：若用户描述涉及 MUST/SHALL 行为合约变更、多文件改动、或需要 triage，应建议升级到完整 propose 而非停在 draft。
+若用户只想**随手记一个想法**（如「draft 提案」「记一个提案」「先把 X 记下来」）而无需完整规划，引导其使用 `llman-sdd-draft` 技能——它通过 `change new --from` 创建仅含 `proposal.md` 的草案壳（不问 id，不写 tasks/specs/attach）。完整 propose（triage + tasks + live specs + `change start`）从这里开始。
 
 ## 步骤
 
