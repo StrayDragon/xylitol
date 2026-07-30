@@ -5,9 +5,10 @@ slot: mcp-cue
 state: panel-mixed
 source: mcpCue.panelMixed.editor
 must_contain:
-  - "12 configured"
-  - "pending → next turn"
-  - "MUST NOT dump"
+  - "configured 12 · connected 7 · armed 5"
+  - "not armed"
+  - "Esc to close"
 must_not_contain:
   - "System"
   - "Next turn:"
+  - "a·b·c·d"

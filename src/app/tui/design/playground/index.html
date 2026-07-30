@@ -743,10 +743,10 @@
 
       <!-- MCP: /mcp panel primary + optional short cue -->
       <section class="panel" id="panel-mcp-cue" data-id="mcp-cue">
-        <h2>Mcp · /mcp 面板 + 短 cue</h2>
+        <h2>Mcp · /mcp 面板 + 短 cue（c1210 已落地）</h2>
         <p class="spec">
           <a href="../mcp-input-cue.md">mcp-input-cue.md</a> ·
-          主发现面 = <strong>/mcp</strong> editor 槽 · 短 cue 只引导 ·
+          as-built：editor 槽行文 + 固定 <code>mcp pending (see /mcp)</code> ·
           对照 <a href="../pending-runtime.md">pending-runtime.md</a>
         </p>
         <div class="ctl">
@@ -755,8 +755,8 @@
           <button type="button" class="chip-btn" data-mcp-cue="panelArmed" aria-pressed="false">/mcp · all armed</button>
           <button type="button" class="chip-btn" data-mcp-cue="cueShortBusy" aria-pressed="false">短 cue busy</button>
           <button type="button" class="chip-btn" data-mcp-cue="cueShortIdle" aria-pressed="false">短 cue idle</button>
+          <button type="button" class="chip-btn" data-mcp-cue="cueBusyNextTurnWins" aria-pressed="false">Next turn 优先</button>
           <button type="button" class="chip-btn" data-mcp-cue="cueArmedGone" aria-pressed="false">短 cue armed 收起</button>
-          <button type="button" class="chip-btn" data-mcp-cue="cueDumpBad" aria-pressed="false">cue 堆名单 ✗</button>
         </div>
         <p class="spec" id="mcp-cue-legend" style="margin-top:0.35rem"></p>
         <div class="term term-slot" id="mcp-cue-term" data-design-fixture="mcp-cue.panel-connecting">
@@ -982,7 +982,7 @@
       { id: "keys", label: "Keybindings", key: "k" },
       { id: "models", label: "Models /model", key: "m" },
       { id: "pending", label: "Pending / NextTurn", key: "n" },
-      { id: "mcp-cue", label: "Mcp cue", key: "u" },
+      { id: "mcp-cue", label: "Mcp", key: "u" },
       { id: "tree-power", label: "Tree power", key: "p" },
       { id: "session-resume", label: "Resume /session-resume", key: "r" },
       { id: "compaction", label: "Compaction", key: "g" },
@@ -1673,57 +1673,57 @@
       });
     });
 
-    /* MCP: /mcp editor-slot panel (primary) + optional short cue */
+    /* MCP: /mcp editor-slot panel + fixed short cue (as-built c1210) */
     const MCP_CUE = {
       panelConnecting: {
-        editor: `<div class="row fg-muted">MCP · 2 configured · 0 armed · Esc</div>
-<div class="row">  lspz          connecting   tools —</div>
-<div class="row">  context7      connecting   tools —</div>
-<div class="row fg-muted">  next turn tools: builtins only · open anytime: /mcp</div>`,
-        legend: "/mcp 面板 · connecting：任意态可开 · 列 = id / 连接 / tools armed",
+        editor: `<div class="row fg-muted"> configured 2 · connected 0 · armed 0</div>
+<div class="row"> lspz  connecting  not armed  tools=0</div>
+<div class="row"> context7  connecting  not armed  tools=0</div>
+<div class="row fg-muted"> Esc to close</div>`,
+        legend: "as-built /mcp · connecting · 行 = id / phase / armed / tools=",
         mode: "panel",
       },
       panelMixed: {
-        editor: `<div class="row fg-muted">MCP · 12 configured · 7 connected · 5 armed · Esc</div>
-<div class="row">  context7      connected    armed · 2 tools</div>
-<div class="row">  lspz          connected    armed · 4 tools</div>
-<div class="row">  github        connected    pending → next turn</div>
-<div class="row">  sentry        connecting   tools —</div>
-<div class="row">  … +8 more     (scroll)</div>
-<div class="row fg-muted">  detail in /mcp · cue MUST NOT dump all ids</div>`,
-        legend: "/mcp 面板 · 10+ mixed：名单只在槽内；短 cue 禁止堆 id",
+        editor: `<div class="row fg-muted"> configured 12 · connected 7 · armed 5</div>
+<div class="row"> context7  connected  armed  tools=2</div>
+<div class="row"> lspz  connected  armed  tools=4</div>
+<div class="row"> github  connected  not armed  tools=3</div>
+<div class="row"> sentry  connecting  not armed  tools=0</div>
+<div class="row fg-muted"> … +8 more</div>
+<div class="row fg-muted"> Esc to close</div>`,
+        legend: "as-built /mcp · mixed 10+：名单只在槽内；cue 禁止堆 id",
         mode: "panel",
       },
       panelArmed: {
-        editor: `<div class="row fg-muted">MCP · 2 configured · 2 connected · 2 armed · Esc</div>
-<div class="row fg-success">  context7      connected    armed · 2 tools</div>
-<div class="row fg-success">  lspz          connected    armed · 4 tools</div>
-<div class="row fg-muted">  next turn tools: include mcp:* · Esc to close</div>`,
-        legend: "/mcp 面板 · 全部 armed：下轮请求 tools 已含 MCP",
+        editor: `<div class="row fg-muted"> configured 2 · connected 2 · armed 2</div>
+<div class="row fg-success"> context7  connected  armed  tools=2</div>
+<div class="row fg-success"> lspz  connected  armed  tools=4</div>
+<div class="row fg-muted"> Esc to close</div>`,
+        legend: "as-built /mcp · 全部 armed：短 cue 应收起",
         mode: "panel",
       },
       cueShortBusy: {
         editor: `<div class="row fg-muted"><span class="status-lead">⠋ Working</span>  <span class="status-next-turn-cue">mcp pending (see /mcp)</span></div>`,
-        legend: "短 cue · busy：固定 mcp pending (see /mcp) · 无分数/无 id",
+        legend: "短 cue · busy：MCP_PENDING_CUE；无 Next turn 模型预告时写入",
         mode: "cueBusy",
         cue: "mcp pending (see /mcp)",
       },
       cueShortIdle: {
         editor: `<div class="row fg-muted"><span class="status-next-turn-cue">mcp pending (see /mcp)</span></div>`,
-        legend: "短 cue · idle 破例 1 行：同一固定文案",
+        legend: "短 cue · idle：同一固定文案（status 破例 1 行）",
         mode: "cueIdle",
         cue: "mcp pending (see /mcp)",
       },
+      cueBusyNextTurnWins: {
+        editor: `<div class="row fg-muted"><span class="status-lead">⠋ Working</span>  <span class="status-next-turn-cue">Next turn: model ornith · thinking high</span></div>`,
+        legend: "优先级 · busy 已有 Next turn… 时不覆盖为 MCP cue",
+        mode: "cueBusy",
+        cue: "Next turn: model ornith · thinking high",
+      },
       cueArmedGone: {
         editor: `<div class="row fg-muted"></div>`,
-        legend: "全部 armed 后短 cue 收起 · 细节仍走 /mcp；头卡可有摘要",
+        legend: "全部 armed 后短 cue 收起 · 细节仍走 /mcp",
         mode: "cueGone",
-      },
-      cueDumpBad: {
-        editor: `<div class="row fg-muted"><span class="status-lead">⠋ Working</span>  <span class="status-next-turn-cue">mcp a·b·c·d·e·f·g·h·i·j·k·l pending</span></div>`,
-        legend: "反例 ✗：cue 堆 10+ id（空间不够）· 应用 /mcp 面板",
-        mode: "cueBusy",
-        cue: "mcp a·b·c·d·e·f·g·h·i·j·k·l pending",
       },
     };
     function renderMcpCue() {
