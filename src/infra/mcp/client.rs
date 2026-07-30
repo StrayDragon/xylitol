@@ -43,16 +43,16 @@ pub struct McpConnectProgress {
 }
 
 impl McpConnectProgress {
-    /// Short label for the mcp header row (`connecting 1/3 · foo`).
+    /// Short label for the mcp header row (`connecting 0/2`, `1/2`, …).
+    ///
+    /// Numerator is **ready/finished** count. Do **not** append a server id: with
+    /// parallel connect the last-finished name reads like "currently connecting".
     pub fn connecting_label(&self) -> Option<String> {
         if !self.connecting || self.total == 0 {
             return None;
         }
-        let n = self.finished.saturating_add(1).min(self.total);
-        Some(match self.current.as_deref() {
-            Some(id) if !id.is_empty() => format!("connecting {n}/{} · {id}", self.total),
-            _ => format!("connecting {n}/{}", self.total),
-        })
+        let n = self.finished.min(self.total);
+        Some(format!("connecting {n}/{}", self.total))
     }
 }
 
@@ -149,7 +149,11 @@ impl McpClientManager {
                 .await;
         }
 
-        self.write_progress(&progress_out, false, total, finished, None)
+        // When a shared progress Arc is owned by bootstrap, leave `connecting=true`
+        // until discover + manager merge (caller clears). Clearing here flashes
+        // "N configured · 0 connected" while McpBootState is still Running.
+        let clear = progress_out.is_none();
+        self.write_progress(&progress_out, !clear, total, finished, None)
             .await;
         Ok(())
     }
@@ -459,5 +463,43 @@ mod tests {
         let manager = McpClientManager::new();
         assert!(manager.connected_servers().await.is_empty());
         assert!(manager.diagnostics().await.is_empty());
+    }
+
+    #[test]
+    fn connecting_label_is_ready_over_total() {
+        let start = McpConnectProgress {
+            connecting: true,
+            total: 2,
+            finished: 0,
+            current: None,
+        };
+        assert_eq!(start.connecting_label().as_deref(), Some("connecting 0/2"));
+
+        let mid = McpConnectProgress {
+            connecting: true,
+            total: 2,
+            finished: 1,
+            current: Some("lspz".into()),
+        };
+        assert_eq!(mid.connecting_label().as_deref(), Some("connecting 1/2"));
+
+        let done_but_boot = McpConnectProgress {
+            connecting: true,
+            total: 2,
+            finished: 2,
+            current: None,
+        };
+        assert_eq!(
+            done_but_boot.connecting_label().as_deref(),
+            Some("connecting 2/2")
+        );
+
+        let settled = McpConnectProgress {
+            connecting: false,
+            total: 2,
+            finished: 2,
+            current: None,
+        };
+        assert!(settled.connecting_label().is_none());
     }
 }

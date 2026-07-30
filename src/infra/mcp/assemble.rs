@@ -53,10 +53,15 @@ pub async fn connect_and_discover_with_progress(
 
     let manager = Arc::new(McpClientManager::new());
     manager
-        .connect_servers_with_progress(servers, progress)
+        .connect_servers_with_progress(servers, progress.clone())
         .await?;
     let rows = manager.list_all_tools().await;
     let tools = adapters_from_discovered(manager.clone(), &rows);
+    if let Some(progress) = progress.as_ref() {
+        let mut snap = progress.lock().await;
+        snap.connecting = false;
+        snap.current = None;
+    }
     Ok(Some((manager, tools)))
 }
 
