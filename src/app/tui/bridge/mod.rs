@@ -142,6 +142,111 @@ pub(crate) fn find_tool_mut<'a>(entries: &'a mut [UiEntry], id: &str) -> Option<
     })
 }
 
+/// Fill an existing Tool row with End semantics (live `ToolExecutionEnd` + rebuild merge).
+///
+/// Returns `false` when no Tool with `id` exists (caller may push an orphan stub then retry).
+pub(crate) fn apply_tool_result_to_entries(
+    entries: &mut [UiEntry],
+    id: &str,
+    name: &str,
+    result: &str,
+    is_error: bool,
+) -> bool {
+    let Some(UiEntry::Tool {
+        args_preview,
+        tool_path,
+        write_content,
+        output,
+        is_error: err,
+        done,
+        display_diff,
+        ..
+    }) = find_tool_mut(entries, id)
+    else {
+        return false;
+    };
+
+    use crate::app::tool_display::{extract_mcp_args_value, is_mcp_tool_name, mcp_tool_body};
+
+    if let Some(truncated_display) = extract_truncated_tool_display(result) {
+        // att16: drop streamed full buffer; keep truncated view + Full output footer.
+        *output = truncated_display;
+    } else if is_mcp_tool_name(name) {
+        // c1460: rebuild — drop any streamed raw append; no content extract.
+        let args = extract_mcp_args_value(output);
+        *output = mcp_tool_body(args.as_ref(), Some(result));
+    } else if let Some(human) = humanize_tool_result_for_tui(name, result, is_error) {
+        // write/edit/read always replace; bash only when no live stream yet.
+        match name {
+            "write" | "edit" | "read" => *output = human,
+            "bash" | "shell" if output.is_empty() => *output = human,
+            _ if output.is_empty() => *output = human,
+            _ => {}
+        }
+    } else if let Some(notice) = extract_full_output_notice(result) {
+        // Streaming bash kept live chunks; append pi Full output footer once.
+        if !output.contains("[Full output:") {
+            if !output.is_empty() && !output.ends_with('\n') {
+                output.push('\n');
+            }
+            output.push_str(&notice);
+        }
+    } else if output.is_empty() {
+        *output = result.to_string();
+    }
+
+    // Safety net: never leave built-in success JSON chrome in the TUI body.
+    if !is_error
+        && output_looks_like_machine_json(output)
+        && let Some(human) = humanize_tool_result_for_tui(name, result, false)
+    {
+        *output = human;
+    }
+    if name == "edit"
+        && !is_error
+        && let Some(diff) = extract_display_diff(result)
+    {
+        *display_diff = Some(diff);
+    }
+
+    // pi ToolExecutionComponent: updateResult refreshes result body/tint only —
+    // call header stays from streaming args. Never rebuild preview from an empty
+    // synthetic (that wiped bash `$ cmd` / write|edit paths after done).
+    if let Some(path) = extract_result_path(result) {
+        let weak_preview = preview_lacks_real_path(name, args_preview);
+        if tool_path.as_deref().filter(|p| !p.is_empty()).is_none() {
+            *tool_path = Some(path);
+        }
+        if weak_preview {
+            let mut synthetic = serde_json::Map::new();
+            if let Some(p) = tool_path.as_deref() {
+                synthetic.insert("path".into(), Value::String(p.to_string()));
+            }
+            if let Some(c) = write_content.as_deref() {
+                synthetic.insert("content".into(), Value::String(c.to_string()));
+            }
+            *args_preview = human_tool_args_preview_with_path(
+                name,
+                &Value::Object(synthetic),
+                tool_path.as_deref(),
+                usize::MAX,
+            );
+        }
+    }
+
+    // Edit line-range after path backfill so `:N-M` is not wiped.
+    if name == "edit"
+        && let Some(diff) = display_diff.as_ref()
+        && let Some(range) = extract_line_range_from_display_diff(diff)
+    {
+        *args_preview = merge_path_preview_with_range(args_preview, &range);
+    }
+
+    *err = is_error;
+    *done = true;
+    true
+}
+
 /// Append a user scrollback row; skip if it duplicates the trailing user entry
 /// (e.g. idle `begin_run` already seeded the same prompt).
 pub(crate) fn push_user_entry_dedup(model: &mut UiModel, text: String) {
