@@ -47,11 +47,17 @@
   @req:mcp7
   场景: startup-does-not-await-all-mcp
     假如 配置含至少一个慢启动或可连接的 mcp server
-    当 产品启动进入 TUI 或 print 首交互窗口
-    那么 应用面已可用且未要求全部 MCP 连接完成
+    当 产品启动进入 TUI
+    那么 应用面已渲染且未要求全部 MCP 连接完成
 
   @req:mcp7
   场景: parallel-connect-progress-snapshot
     假如 配置含多个 mcp server
     当 后台连接进行中
     那么 Driver 只读缝可观察到进行中或已连接进度快照且单失败不拖死其余
+
+  @req:mcp7
+  场景: agent-prompt-gated-while-connecting
+    假如 MCP 仍在 connecting
+    当 用户提交普通 agent prompt
+    那么 拒绝 run 且有短提示；结算后可提交
