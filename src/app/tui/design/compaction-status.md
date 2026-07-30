@@ -36,7 +36,7 @@ components:
 6. **CompactionStart**：在 transcript 插入一条 **占位块**（与最终块同槽位），折叠摘要示意进行中，例如：
    - 标签行：`[compaction]`（muted / 可加粗标签）
    - 折叠行：`Compacting…`（muted）
-7. **CompactionEnd（成功）**：同一占位 **就地变成** 完成块（勿再叠一条「compaction complete」System 行）：
+7. **CompactionEnd（成功）**：同一占位 **就地变成** 完成块（勿再叠一条「compaction complete」滚动提示）：
    - 标签行：`[compaction]`
    - **默认折叠**：`Compacted from {N} tokens ({expand-chord} to expand)`；`N` = `tokens_before`（千分位可选）
    - **展开**：`Compacted from {N} tokens` + 空行 + summary markdown（muted 正文）
