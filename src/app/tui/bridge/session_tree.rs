@@ -9,6 +9,9 @@ use serde_json::Value;
 use super::{BashBlockStatus, CompactionBlockStatus, UiEntry, UiModel, UiPhase};
 
 /// Replace transcript with entries on the ancestry path to `travel.leaf_id`.
+///
+/// Path projection only — callers that need a travel notice MUST append it
+/// via [`travel_history_note`] + `push_system_note` (trailing, not prepend).
 pub fn rebuild_scrollback_from_travel(
     ui_model: &mut UiModel,
     entries: &[SessionEntry],
@@ -21,6 +24,19 @@ pub fn rebuild_scrollback_from_travel(
     ui_model.streaming_thinking.clear();
     ui_model.current_role = None;
 
+    let path = ancestry_path_ids(entries, travel.leaf_id.as_deref());
+    for id in path {
+        let Some(entry) = entries.iter().find(|e| e.entry_id() == Some(id.as_str())) else {
+            continue;
+        };
+        for ui in session_entry_to_ui_entries(entry) {
+            ui_model.entries.push(ui);
+        }
+    }
+}
+
+/// Format the trailing travel System notice (`history @ … · leaf=… · path: …`).
+pub fn travel_history_note(entries: &[SessionEntry], travel: &SessionTreeTravel) -> String {
     let leaf = travel.leaf_id.as_deref();
     let path = ancestry_path_ids(entries, leaf);
     let path_label = if path.is_empty() {
@@ -31,22 +47,11 @@ pub fn rebuild_scrollback_from_travel(
             .collect::<Vec<_>>()
             .join(" → ")
     };
-    ui_model.entries.push(UiEntry::System {
-        text: format!(
-            "history @ {} · leaf={} · path: {path_label}",
-            short_entry_id(&travel.selected_id),
-            leaf.map(short_entry_id).unwrap_or("(root)")
-        ),
-    });
-
-    for id in path {
-        let Some(entry) = entries.iter().find(|e| e.entry_id() == Some(id.as_str())) else {
-            continue;
-        };
-        for ui in session_entry_to_ui_entries(entry) {
-            ui_model.entries.push(ui);
-        }
-    }
+    format!(
+        "history @ {} · leaf={} · path: {path_label}",
+        short_entry_id(&travel.selected_id),
+        leaf.map(short_entry_id).unwrap_or("(root)")
+    )
 }
 
 fn ancestry_path_ids(entries: &[SessionEntry], leaf_id: Option<&str>) -> Vec<String> {
@@ -322,6 +327,61 @@ mod tests {
     use super::*;
     use crate::protocol::session::{EntryBase, MessageEntry, fixture_message_json};
     use serde_json::json;
+
+    #[test]
+    fn rebuild_projects_path_only_without_history_banner() {
+        let entries = vec![
+            SessionEntry::Message(MessageEntry {
+                base: EntryBase {
+                    entry_type: "message".into(),
+                    id: "u1".into(),
+                    parent_id: None,
+                    timestamp: "t".into(),
+                },
+                message: fixture_message_json("user", "hi"),
+            }),
+            SessionEntry::Message(MessageEntry {
+                base: EntryBase {
+                    entry_type: "message".into(),
+                    id: "a1".into(),
+                    parent_id: Some("u1".into()),
+                    timestamp: "t".into(),
+                },
+                message: fixture_message_json("assistant", "yo"),
+            }),
+        ];
+        let travel = SessionTreeTravel {
+            kind: crate::protocol::session::SessionTreeKind::MessageHistory,
+            selected_id: "a1".into(),
+            leaf_id: Some("a1".into()),
+            editor_text: None,
+        };
+        let mut ui = UiModel::default();
+        rebuild_scrollback_from_travel(&mut ui, &entries, &travel);
+        assert!(
+            ui.entries
+                .iter()
+                .all(|e| !matches!(e, UiEntry::System { text } if text.contains("history @"))),
+            "rebuild MUST NOT insert history @; got: {:?}",
+            ui.entries
+        );
+        assert!(
+            matches!(
+                ui.entries.as_slice(),
+                [
+                    UiEntry::User { text: u },
+                    UiEntry::Assistant { text: a }
+                ] if u == "hi" && a == "yo"
+            ),
+            "got: {:?}",
+            ui.entries
+        );
+        let note = travel_history_note(&entries, &travel);
+        assert!(
+            note.contains("history @ a1") && note.contains("path:"),
+            "{note}"
+        );
+    }
 
     #[test]
     fn rebuild_keeps_thinking_and_assistant_separate() {

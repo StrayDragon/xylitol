@@ -619,6 +619,21 @@ async fn harness_enter_travel_closes_tree() {
         joined.contains("history @ u2"),
         "expected travel transcript banner; got: {joined}"
     );
+    let entries = &session.ui_model().entries;
+    assert!(
+        !matches!(
+            entries.first(),
+            Some(super::bridge::UiEntry::System { text }) if text.contains("history @")
+        ),
+        "history @ MUST NOT be prepended as entries[0]; got: {entries:?}"
+    );
+    assert!(
+        matches!(
+            entries.last(),
+            Some(super::bridge::UiEntry::System { text }) if text.contains("history @ u2")
+        ),
+        "history @ MUST trail (above input); got: {entries:?}"
+    );
 }
 
 #[tokio::test]

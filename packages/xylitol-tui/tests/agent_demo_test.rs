@@ -1879,6 +1879,19 @@ fn agent_demo_session_tree_travel_rebuilds_history_along_path() {
         plain.contains("history @ af") && plain.contains("root → fork → af"),
         "expected history banner with path; got:\n{plain}"
     );
+    let last = plain
+        .lines()
+        .rev()
+        .find(|l| !l.trim().is_empty())
+        .unwrap_or("");
+    assert!(
+        last.contains("history @ af"),
+        "history @ MUST trail (not prepend); last={last:?}\n{plain}"
+    );
+    assert!(
+        !plain.trim_start().starts_with("history @"),
+        "history @ MUST NOT lead transcript; got:\n{plain}"
+    );
     assert!(
         plain.contains("alternate branch") && plain.contains("fork leaf"),
         "expected fork-path messages only; got:\n{plain}"
