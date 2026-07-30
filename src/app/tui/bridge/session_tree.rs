@@ -6,12 +6,17 @@ use crate::protocol::session::{
 };
 use serde_json::Value;
 
-use super::{BashBlockStatus, CompactionBlockStatus, UiEntry, UiModel, UiPhase};
+use super::{
+    BashBlockStatus, CompactionBlockStatus, UiEntry, UiModel, UiPhase,
+    apply_tool_result_to_entries, find_tool_mut,
+};
 
 /// Replace transcript with entries on the ancestry path to `travel.leaf_id`.
 ///
 /// Path projection only — callers that need a travel notice MUST append it
 /// via [`travel_history_note`] + `push_scroll_notice` (trailing, not prepend).
+///
+/// `toolResult` rows merge into the matching Tool by `toolCallId` (same as live End).
 pub fn rebuild_scrollback_from_travel(
     ui_model: &mut UiModel,
     entries: &[SessionEntry],
@@ -29,9 +34,66 @@ pub fn rebuild_scrollback_from_travel(
         let Some(entry) = entries.iter().find(|e| e.entry_id() == Some(id.as_str())) else {
             continue;
         };
+        if let SessionEntry::Message(m) = entry {
+            let role = message_role(&m.message);
+            if matches!(role, Some("toolResult") | Some("tool")) {
+                merge_persisted_tool_result(&mut ui_model.entries, &m.base.id, &m.message);
+                continue;
+            }
+        }
         for ui in session_entry_to_ui_entries(entry) {
             ui_model.entries.push(ui);
         }
+    }
+}
+
+/// Merge a persisted toolResult into scrollback (att12): same End semantics as live.
+fn merge_persisted_tool_result(entries: &mut Vec<UiEntry>, entry_id: &str, message: &Value) {
+    let tool_call_id = message
+        .get("toolCallId")
+        .or_else(|| message.get("tool_call_id"))
+        .and_then(Value::as_str)
+        .unwrap_or(entry_id);
+    let name = message
+        .get("toolName")
+        .or_else(|| message.get("tool_name"))
+        .and_then(Value::as_str)
+        .unwrap_or("tool");
+    let is_error = message
+        .get("isError")
+        .or_else(|| message.get("is_error"))
+        .and_then(Value::as_bool)
+        .unwrap_or(false);
+    let result = message_text(message);
+    let details_diff = message
+        .get("details")
+        .and_then(|d| d.get("display_diff"))
+        .and_then(Value::as_str)
+        .map(str::to_string);
+
+    if !apply_tool_result_to_entries(entries, tool_call_id, name, &result, is_error) {
+        // Orphan: no matching call on path — still one done Tool row (id prefers toolCallId).
+        entries.push(UiEntry::Tool {
+            id: tool_call_id.to_string(),
+            name: name.to_string(),
+            args_preview: String::new(),
+            tool_path: None,
+            write_content: None,
+            display_diff: None,
+            output: String::new(),
+            is_error: false,
+            done: false,
+        });
+        let _ = apply_tool_result_to_entries(entries, tool_call_id, name, &result, is_error);
+    }
+
+    if let Some(diff) = details_diff
+        && let Some(UiEntry::Tool {
+            display_diff: slot, ..
+        }) = find_tool_mut(entries, tool_call_id)
+        && slot.is_none()
+    {
+        *slot = Some(diff);
     }
 }
 
@@ -148,8 +210,13 @@ fn message_json_to_ui_entries(entry_id: &str, message: &Value) -> Vec<UiEntry> {
         }],
         "assistant" => assistant_parts_to_ui(entry_id, message),
         "toolResult" | "tool" => {
-            use crate::app::tool_display::{is_mcp_tool_name, pretty_json_text};
-
+            // Standalone projection (orphan / direct call). Rebuild path merges via
+            // [`merge_persisted_tool_result`] instead of appending a second Tool.
+            let tool_call_id = message
+                .get("toolCallId")
+                .or_else(|| message.get("tool_call_id"))
+                .and_then(Value::as_str)
+                .unwrap_or(entry_id);
             let details = message.get("details");
             let display_diff = details
                 .and_then(|d| d.get("display_diff"))
@@ -161,27 +228,38 @@ fn message_json_to_ui_entries(entry_id: &str, message: &Value) -> Vec<UiEntry> {
                 .and_then(Value::as_str)
                 .unwrap_or("tool")
                 .to_string();
-            let raw = message_text(message);
-            let output = if is_mcp_tool_name(&name) {
-                pretty_json_text(&raw)
-            } else {
-                raw
-            };
-            vec![UiEntry::Tool {
-                id: entry_id.to_string(),
-                name,
+            let mut entries = vec![UiEntry::Tool {
+                id: tool_call_id.to_string(),
+                name: name.clone(),
                 args_preview: String::new(),
                 tool_path: None,
                 write_content: None,
-                display_diff,
-                output,
-                is_error: message
-                    .get("isError")
-                    .or_else(|| message.get("is_error"))
-                    .and_then(Value::as_bool)
-                    .unwrap_or(false),
-                done: true,
-            }]
+                display_diff: None,
+                output: String::new(),
+                is_error: false,
+                done: false,
+            }];
+            let is_error = message
+                .get("isError")
+                .or_else(|| message.get("is_error"))
+                .and_then(Value::as_bool)
+                .unwrap_or(false);
+            let _ = apply_tool_result_to_entries(
+                &mut entries,
+                tool_call_id,
+                &name,
+                &message_text(message),
+                is_error,
+            );
+            if let Some(diff) = display_diff
+                && let Some(UiEntry::Tool {
+                    display_diff: slot, ..
+                }) = find_tool_mut(&mut entries, tool_call_id)
+                && slot.is_none()
+            {
+                *slot = Some(diff);
+            }
+            entries
         }
         _ => {
             let text = message_text(message);
@@ -503,5 +581,129 @@ mod tests {
         });
         assert_eq!(message_text(&msg), "visible");
         let _ = fixture_message_json("user", "x");
+    }
+
+    #[test]
+    fn rebuild_merges_tool_call_and_result_into_one_tool() {
+        let entries = vec![
+            SessionEntry::Message(MessageEntry {
+                base: EntryBase {
+                    entry_type: "message".into(),
+                    id: "u1".into(),
+                    parent_id: None,
+                    timestamp: "t".into(),
+                },
+                message: fixture_message_json("user", "grep it"),
+            }),
+            SessionEntry::Message(MessageEntry {
+                base: EntryBase {
+                    entry_type: "message".into(),
+                    id: "a1".into(),
+                    parent_id: Some("u1".into()),
+                    timestamp: "t".into(),
+                },
+                message: json!({
+                    "role": "assistant",
+                    "content": [{
+                        "type": "toolCall",
+                        "id": "fc_grep1",
+                        "name": "grep",
+                        "arguments": { "pattern": "foo", "path": "src" }
+                    }],
+                    "timestamp": 0u64,
+                }),
+            }),
+            SessionEntry::Message(MessageEntry {
+                base: EntryBase {
+                    entry_type: "message".into(),
+                    id: "tr1".into(),
+                    parent_id: Some("a1".into()),
+                    timestamp: "t".into(),
+                },
+                message: json!({
+                    "role": "toolResult",
+                    "toolCallId": "fc_grep1",
+                    "toolName": "grep",
+                    "content": [{ "type": "text", "text": "src/a.rs:1:foo" }],
+                    "isError": false,
+                    "timestamp": 0u64,
+                }),
+            }),
+        ];
+        let travel = SessionTreeTravel {
+            kind: crate::protocol::session::SessionTreeKind::MessageHistory,
+            selected_id: "tr1".into(),
+            leaf_id: Some("tr1".into()),
+            editor_text: None,
+        };
+        let mut ui = UiModel::default();
+        rebuild_scrollback_from_travel(&mut ui, &entries, &travel);
+        let tools: Vec<_> = ui
+            .entries
+            .iter()
+            .filter(|e| matches!(e, UiEntry::Tool { .. }))
+            .collect();
+        assert_eq!(tools.len(), 1, "got entries: {:?}", ui.entries);
+        assert!(
+            matches!(
+                &tools[0],
+                UiEntry::Tool {
+                    id,
+                    name,
+                    args_preview,
+                    output,
+                    done: true,
+                    is_error: false,
+                    ..
+                } if id == "fc_grep1"
+                    && name == "grep"
+                    && !args_preview.is_empty()
+                    && output.contains("src/a.rs:1:foo")
+            ),
+            "got: {:?}",
+            tools[0]
+        );
+    }
+
+    #[test]
+    fn rebuild_orphan_tool_result_is_single_done_tool() {
+        let entries = vec![SessionEntry::Message(MessageEntry {
+            base: EntryBase {
+                entry_type: "message".into(),
+                id: "tr_orphan".into(),
+                parent_id: None,
+                timestamp: "t".into(),
+            },
+            message: json!({
+                "role": "toolResult",
+                "toolCallId": "fc_missing",
+                "toolName": "bash",
+                "content": [{ "type": "text", "text": "hello" }],
+                "isError": false,
+                "timestamp": 0u64,
+            }),
+        })];
+        let travel = SessionTreeTravel {
+            kind: crate::protocol::session::SessionTreeKind::MessageHistory,
+            selected_id: "tr_orphan".into(),
+            leaf_id: Some("tr_orphan".into()),
+            editor_text: None,
+        };
+        let mut ui = UiModel::default();
+        rebuild_scrollback_from_travel(&mut ui, &entries, &travel);
+        assert!(
+            matches!(
+                ui.entries.as_slice(),
+                [UiEntry::Tool {
+                    id,
+                    name,
+                    output,
+                    done: true,
+                    ..
+                }] if id == "fc_missing" && name == "bash" && output.contains("hello")
+            ),
+            "got: {:?}",
+            ui.entries
+        );
     }
 }
