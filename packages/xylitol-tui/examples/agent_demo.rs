@@ -1809,15 +1809,16 @@ impl FakeCodingAgentApp {
         let path_label = path.join(" → ");
 
         self.transcript.clear();
-        self.push_message(
-            Role::System,
-            format!("forked @ {id} · path: {path_label} · edit & Enter to branch"),
-        );
         for node_id in &path {
             if let Some(entry) = self.history_entry_for(node_id) {
                 self.transcript.push(entry);
             }
         }
+        // Trailing notice (above input) — same shape as travel / product fork notes.
+        self.push_message(
+            Role::System,
+            format!("forked @ {id} · path: {path_label} · edit & Enter to branch"),
+        );
 
         // Prefill editor from user payload at the fork point (pi /fork morphology).
         if let Some(TranscriptEntry::Message {
