@@ -33,6 +33,18 @@ docs/roadmaps/          →  删除已兑现段落；整篇兑现则删文件并
 | **docs（产品）** | 用户碰到什么、领域词汇、开箱/后置、跨面语义 |
 | **llmanspec（实现）** | 可验证行为合约、变更原子性、BDD 场景真源 |
 
+### 跨面公共体验（写文档时）
+
+TUI 与未来 Web 等**共有**能力：产品文必须按「一套学习成本」叙述——动作语义同源；快捷键 / 发现方式尽量同构（允许 OS 修饰键差异与面内增强如点击）。**仅**面专属能力才分开讲。
+
+| 写哪 | 怎么写 |
+|---|---|
+| 未兑现公共交互 | `roadmaps/Web与TUI同源.md`（及衔接篇）；可链 `llmanspec` 草案 |
+| 已兑现公共心智 | `architecture/`（如多客户端）；勿把未开闸面写成现行 MUST |
+| 面专属（纯 TTY / 纯 DOM） | 可分叉；**禁止**把专属键位/流程写成公共 MUST |
+
+改公共交互相关 roadmap / architecture / 面 `AGENTS` 前先对齐全套面，禁止静默开出「只教 TUI」或「只教 Web」的第二套公共故事。细则约束板：[`roadmaps/Web与TUI同源.md`](./roadmaps/Web与TUI同源.md)。
+
 ### ROADMAP 落地后迁移（MUST）
 
 当某条 roadmap 主线（或其可交付切片）在产品上**已兑现**且对应 change 已归档（或等价已成为默认体验）时：
@@ -54,7 +66,8 @@ docs/roadmaps/          →  删除已兑现段落；整篇兑现则删文件并
 
 ## 与其它 AGENTS 的关系
 
-- 根 `AGENTS.md`：全仓工作原则；产品图入口指向本目录。
+- 根 `AGENTS.md`：全仓工作原则；产品图入口指向本目录；含跨面公共体验一行指针。
+- `src/app/tui/AGENTS.md`：TUI 面边界 + 跨面公共体验操作约束。
 - `llmanspec/AGENTS.md`：change/spec 命名与语言规则。
 - `src/AGENTS.md`：代码分层真值；**不**在 docs 重复分层长文。
 

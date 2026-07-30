@@ -75,8 +75,8 @@ flowchart TB
 
 | 文档 | 候补方向 |
 |---|---|
-| [Web与TUI同源.md](./Web与TUI同源.md) | 跨面语义约束板（非 Web 壳本身） |
-| [TUI视觉与信息表达.md](./TUI视觉与信息表达.md) | 状态减噪、主题密度 |
+| [Web与TUI同源.md](./Web与TUI同源.md) | 跨面语义约束板（含长历史 activity 折叠栈意向；非 Web 壳本身） |
+| [TUI视觉与信息表达.md](./TUI视觉与信息表达.md) | 状态减噪、主题密度；与 activity 折叠减噪衔接 |
 | [OTEL与Langfuse观测.md](./OTEL与Langfuse观测.md) | 子进程出站观测（已落地见 [architecture](../architecture/进程内观测.md)） |
 | [Agent-Eval与回归基准.md](./Agent-Eval与回归基准.md) | SWE 先、TB 后；Docker 出分；AA 选模对照；Langfuse 回归旁路 |
 | [上下文缓存与极致压缩.md](./上下文缓存与极致压缩.md) | prompt cache、动态压缩、工具结果分级压缩 |

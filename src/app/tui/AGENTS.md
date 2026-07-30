@@ -19,6 +19,8 @@
 
 视觉 / UX SSOT：`DESIGN.md` + `design/`。历史文案「chrome」= layout/widgets；勿用 `shell`/`scene` 命名。
 
+**与未来 Web 的公共体验（跨面）**：凡 TUI 与 Web **共有**的能力（会话、改道、折叠/展开类减噪、即时设置等），用户学习模型与动作语义 MUST 同源——理解成本一致；快捷键 / 发现方式 SHOULD 尽量同构（允许 OS 修饰键差异与 Web 额外点击）。**仅**某一面独有的能力才可另起交互。约束板：[`docs/roadmaps/Web与TUI同源.md`](../../../docs/roadmaps/Web与TUI同源.md)；落地心智：[`docs/architecture/库与多客户端.md`](../../../docs/architecture/库与多客户端.md)。改公共交互前先对齐全套面，禁止静默开出「只教 TUI」的第二套故事。当前未兑现切片示例：长历史 activity 折叠（同文 M1b；草案 `c1760` / `c1755`）。
+
 ## 硬约束
 
 - 渲染只用 `xylitol_tui`；缺能力先改包再接线。产品路径 **host 驱动**（demo 专用启动 API 勿用于生产面）。
