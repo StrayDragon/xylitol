@@ -221,16 +221,22 @@
     那么 不因切换而阻塞等待 MCP 重连
 
   @req:ath27
-  场景: mcp-slash-opens-panel-any-state
+  场景: mcp-slash-opens-select-list-any-state
     假如 MCP 已配置且可能仍 connecting 或 agent busy
     当 提交无参 /mcp
-    那么 打开替换 editor 槽的 MCP 面板且 MUST NOT 仅因开面板 abort agent
+    那么 打开替换 editor 槽的 MCP SelectList 且 MUST NOT 仅因开面板 abort agent
 
   @req:ath27
-  场景: mcp-panel-shows-armed
+  场景: mcp-select-list-shows-armed
     假如 至少一个 MCP 已 settle 并 overlay 进 ToolSet
-    当 打开 /mcp 面板
+    当 打开 /mcp
     那么 对应行显示 tools armed（或等价）且汇总可区分 armed
+
+  @req:ath27
+  场景: mcp-select-list-enter-closes
+    假如 /mcp SelectList 已打开
+    当 按 Enter
+    那么 关槽且 MUST NOT 假实现禁用 MCP
 
   @req:ath27
   场景: mcp-short-cue-fixed-copy

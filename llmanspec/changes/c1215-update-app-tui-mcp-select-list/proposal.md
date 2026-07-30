@@ -4,8 +4,11 @@ title: /mcp 改为 SelectList（对齐 model/resume）并优化开槽性能
 status: designed
 priority: 1215
 depends_on:
-  - c1210-update-mcp-hot-merge-ungate
+- c1210-update-mcp-hot-merge-ungate
 author: agent
+branch: sdd/c1215-update-app-tui-mcp-select-list
+base_sha: a7fcca3f56e217eb823ce5dfaf3e8fde89afbf9e
+checkpointed: false
 ---
 
 # c1215 — /mcp SelectList + open perf

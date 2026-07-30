@@ -8,9 +8,9 @@
 
 ## 1. Specs + 绑定
 
-- [ ] 1.1 改写 live `atm17`（+ 必要时 ath27）；feature/harness 场景
-- [ ] 1.2 `llman sdd change start c1215-…` → `sdd/c1215-…`
-- [ ] 1.3 `validate c1215-… --strict --no-check`
+- [x] 1.1 改写 live `atm17`（+ 必要时 ath27）；feature/harness 场景
+- [x] 1.2 `llman sdd change start c1215-…` → `sdd/c1215-…`
+- [x] 1.3 `validate c1215-… --strict --no-check`
 
 ## 2. SelectList 壳
 
