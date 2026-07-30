@@ -1752,15 +1752,16 @@ impl FakeCodingAgentApp {
             };
 
             self.transcript.clear();
-            self.push_message(
-                Role::System,
-                format!("history @ {id} · leaf={parent} · path: {path_label}"),
-            );
             for node_id in &path {
                 if let Some(entry) = self.history_entry_for(node_id) {
                     self.transcript.push(entry);
                 }
             }
+            // Trailing notice (above input) — same shape as product travel.
+            self.push_message(
+                Role::System,
+                format!("history @ {id} · leaf={parent} · path: {path_label}"),
+            );
 
             if let Some(TranscriptEntry::Message {
                 role: Role::User,
@@ -1782,12 +1783,12 @@ impl FakeCodingAgentApp {
             let path_label = path.join(" → ");
 
             self.transcript.clear();
-            self.push_message(Role::System, format!("history @ {id} · path: {path_label}"));
             for node_id in &path {
                 if let Some(entry) = self.history_entry_for(node_id) {
                     self.transcript.push(entry);
                 }
             }
+            self.push_message(Role::System, format!("history @ {id} · path: {path_label}"));
 
             self.input.set_text(String::new());
             self.history_leaf_id = id.to_string();

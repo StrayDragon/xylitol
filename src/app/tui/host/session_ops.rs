@@ -5,7 +5,7 @@ use crate::protocol::session::{SessionEntry, SessionTreeTravel};
 use xylitol_tui::Terminal;
 use xylitol_tui::TreeNode;
 
-use super::super::bridge::session_tree::rebuild_scrollback_from_travel;
+use super::super::bridge::session_tree::{rebuild_scrollback_from_travel, travel_history_note};
 use super::HostSession;
 
 impl<T: Terminal> HostSession<T> {
@@ -262,6 +262,7 @@ impl<T: Terminal> HostSession<T> {
         travel: SessionTreeTravel,
         entries: Vec<SessionEntry>,
     ) {
+        let note = travel_history_note(&entries, &travel);
         rebuild_scrollback_from_travel(&mut self.ui_model, &entries, &travel);
         if let Some(root) = self.ui_root.as_ref() {
             let mut root = root.borrow_mut();
@@ -273,6 +274,8 @@ impl<T: Terminal> HostSession<T> {
             }
         }
         self.sync_ui_root_from_model();
+        // Trailing notice (above input / end of scrollback) — never prepend via rebuild.
+        self.push_system_note(note);
     }
 
     /// After XyDriver fork+switch: rebuild transcript from child entries and optional prefill.
@@ -299,8 +302,7 @@ impl<T: Terminal> HostSession<T> {
             root.set_editor_text(editor_prefill.unwrap_or_default());
         }
         self.sync_ui_root_from_model();
-        // Single trailing note (same family as clone/resume); do not also rewrite the
-        // history @ banner — that duplicated the fork notice at top and bottom.
+        // Single trailing note; rebuild no longer emits history @ (travel-only).
         self.push_system_note(format!("forked → session {child_id}"));
         self.seed_editor_history_from_entries(&entries);
     }
