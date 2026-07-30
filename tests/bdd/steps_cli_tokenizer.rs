@@ -3,6 +3,14 @@ use crate::steps_runtime_config::rc_load_flag;
 use rstest::fixture;
 use rstest_bdd_macros::{given, then, when};
 
+/// Process-env free HF base for paa9 (avoids `set_var` races under parallel BDD).
+enum HfEndpointInject {
+    /// Pretend `HF_ENDPOINT=<url>`.
+    Endpoint(String),
+    /// Pretend neither `HF_ENDPOINT` nor `HF_HUB_ENDPOINT` is set.
+    Unset,
+}
+
 pub struct TokenizerBdd {
     pub(crate) cache_dir: RefCell<Option<tempfile::TempDir>>,
     pub(crate) cache: RefCell<Option<xylitol_ai_bridge::tokenize::HfTokenizerCache>>,
@@ -15,8 +23,10 @@ pub struct TokenizerBdd {
     pub(crate) cfg_err: RefCell<String>,
     pub(crate) resolved_hf_repo: RefCell<String>,
     pub(crate) mock_uri: RefCell<String>,
-    pub(crate) env_hf_endpoint_prev: RefCell<Option<String>>,
-    pub(crate) env_hf_hub_prev: RefCell<Option<String>>,
+    /// When set, URL assembly uses this instead of process env.
+    hf_inject: RefCell<Option<HfEndpointInject>>,
+    /// Previous `HF_ENDPOINT` when this fixture owns a process-env mutation (download scenarios).
+    hf_endpoint_prev: RefCell<Option<Option<String>>>,
 }
 
 impl TokenizerBdd {
@@ -33,8 +43,35 @@ impl TokenizerBdd {
             cfg_err: RefCell::new(String::new()),
             resolved_hf_repo: RefCell::new(String::new()),
             mock_uri: RefCell::new(String::new()),
-            env_hf_endpoint_prev: RefCell::new(None),
-            env_hf_hub_prev: RefCell::new(None),
+            hf_inject: RefCell::new(None),
+            hf_endpoint_prev: RefCell::new(None),
+        }
+    }
+
+    fn take_hf_endpoint_guard(&self) {
+        if let Some(prev) = self.hf_endpoint_prev.borrow_mut().take() {
+            match prev {
+                Some(v) => unsafe { std::env::set_var("HF_ENDPOINT", v) },
+                None => unsafe { std::env::remove_var("HF_ENDPOINT") },
+            }
+        }
+    }
+
+    fn set_hf_endpoint_owned(&self, value: &str) {
+        self.take_hf_endpoint_guard();
+        let prev = std::env::var("HF_ENDPOINT").ok();
+        unsafe { std::env::set_var("HF_ENDPOINT", value) };
+        self.hf_endpoint_prev.replace(Some(prev));
+    }
+
+    fn hf_base_for_url(&self) -> String {
+        use xylitol_ai_bridge::tokenize::hf_endpoint_base_from_env;
+        match self.hf_inject.borrow().as_ref() {
+            Some(HfEndpointInject::Endpoint(ep)) => {
+                hf_endpoint_base_from_env(|k| (k == "HF_ENDPOINT").then(|| ep.clone()))
+            }
+            Some(HfEndpointInject::Unset) => hf_endpoint_base_from_env(|_| None),
+            None => hf_endpoint_base_from_env(|k| std::env::var(k).ok()),
         }
     }
 
@@ -47,6 +84,12 @@ impl TokenizerBdd {
             self.cache.replace(Some(cache));
         }
         self.cache.borrow().as_ref().unwrap().clone()
+    }
+}
+
+impl Drop for TokenizerBdd {
+    fn drop(&mut self) {
+        self.take_hf_endpoint_guard();
     }
 }
 
@@ -205,8 +248,7 @@ models:
     tokenizer_bdd.mock_uri.replace(server.uri());
 
     let cache = tokenizer_bdd.ensure_cache();
-    let prev = std::env::var("HF_ENDPOINT").ok();
-    unsafe { std::env::set_var("HF_ENDPOINT", server.uri()) };
+    tokenizer_bdd.set_hf_endpoint_owned(&server.uri());
     let cfg = tokenizer_bdd.config.borrow().clone();
     let (code, out) = run_with(
         TokenizerAction::Download {
@@ -219,10 +261,7 @@ models:
         false,
     )
     .await;
-    match prev {
-        Some(v) => unsafe { std::env::set_var("HF_ENDPOINT", v) },
-        None => unsafe { std::env::remove_var("HF_ENDPOINT") },
-    }
+    tokenizer_bdd.take_hf_endpoint_guard();
     tokenizer_bdd.cli_out.replace(out);
     tokenizer_bdd.cli_code_ok.set(code == ExitCode::SUCCESS);
 }
@@ -307,7 +346,9 @@ fn g_ce15_hf_mirror_mapped(tokenizer_bdd: &TokenizerBdd) {
     // Fast-fail local "mirror" so summary is asserted without waiting on real HF.
     let mirror = "http://127.0.0.1:9";
     tokenizer_bdd.mock_uri.replace(mirror.into());
-    unsafe { std::env::set_var("HF_ENDPOINT", mirror) };
+    // Process env still required: `run_with` → `build_hf_resolve_url` reads `HF_ENDPOINT`.
+    // Scenario is `#[serial_test::serial(bdd_hf_env)]`; fixture Drop restores.
+    tokenizer_bdd.set_hf_endpoint_owned(mirror);
 }
 
 #[when("xylitol tokenizer download <target> 进入确认摘要（或 --yes 的等价日志）")]
@@ -328,7 +369,7 @@ async fn w_ce15_download_summary(tokenizer_bdd: &TokenizerBdd) {
         false,
     )
     .await;
-    unsafe { std::env::remove_var("HF_ENDPOINT") };
+    tokenizer_bdd.take_hf_endpoint_guard();
     tokenizer_bdd.cli_out.replace(out);
 }
 
@@ -388,22 +429,19 @@ fn t_paa8_no_partial(tokenizer_bdd: &TokenizerBdd) {
 
 #[given("环境变量 HF_ENDPOINT 为 https://hf-mirror.com")]
 fn g_paa9_mirror(tokenizer_bdd: &TokenizerBdd) {
-    let prev = std::env::var("HF_ENDPOINT").ok();
-    unsafe { std::env::set_var("HF_ENDPOINT", "https://hf-mirror.com") };
-    tokenizer_bdd.env_hf_endpoint_prev.replace(prev);
+    tokenizer_bdd
+        .hf_inject
+        .replace(Some(HfEndpointInject::Endpoint(
+            "https://hf-mirror.com".into(),
+        )));
 }
 
 #[when("拼装某 repo 的 tokenizer.json resolve URL")]
 fn w_paa9_build_mirror(tokenizer_bdd: &TokenizerBdd) {
-    use xylitol_ai_bridge::tokenize::{build_hf_resolve_url_with_base, hf_endpoint_base_from_env};
-    let base = hf_endpoint_base_from_env(|k| std::env::var(k).ok());
+    use xylitol_ai_bridge::tokenize::build_hf_resolve_url_with_base;
+    let base = tokenizer_bdd.hf_base_for_url();
     let url = build_hf_resolve_url_with_base(&base, "Qwen/Qwen2.5", "tokenizer.json");
     tokenizer_bdd.last_url.replace(url);
-    // Restore env after using it.
-    match tokenizer_bdd.env_hf_endpoint_prev.borrow_mut().take() {
-        Some(v) => unsafe { std::env::set_var("HF_ENDPOINT", v) },
-        None => unsafe { std::env::remove_var("HF_ENDPOINT") },
-    }
 }
 
 #[then("URL 以 https://hf-mirror.com/ 为前缀且含 resolve/main/tokenizer.json")]
@@ -415,30 +453,17 @@ fn t_paa9_mirror_url(tokenizer_bdd: &TokenizerBdd) {
 
 #[given("未设置 HF_ENDPOINT 与 HF_HUB_ENDPOINT")]
 fn g_paa9_default(tokenizer_bdd: &TokenizerBdd) {
-    let prev_ep = std::env::var("HF_ENDPOINT").ok();
-    let prev_hub = std::env::var("HF_HUB_ENDPOINT").ok();
-    unsafe {
-        std::env::remove_var("HF_ENDPOINT");
-        std::env::remove_var("HF_HUB_ENDPOINT");
-    }
-    tokenizer_bdd.env_hf_endpoint_prev.replace(prev_ep);
-    tokenizer_bdd.env_hf_hub_prev.replace(prev_hub);
+    tokenizer_bdd
+        .hf_inject
+        .replace(Some(HfEndpointInject::Unset));
 }
 
 #[when("拼装 resolve URL")]
 fn w_paa9_build_default(tokenizer_bdd: &TokenizerBdd) {
-    use xylitol_ai_bridge::tokenize::{build_hf_resolve_url_with_base, hf_endpoint_base_from_env};
-    let base = hf_endpoint_base_from_env(|k| std::env::var(k).ok());
+    use xylitol_ai_bridge::tokenize::build_hf_resolve_url_with_base;
+    let base = tokenizer_bdd.hf_base_for_url();
     let url = build_hf_resolve_url_with_base(&base, "org/m", "tokenizer.json");
     tokenizer_bdd.last_url.replace(url);
-    match tokenizer_bdd.env_hf_endpoint_prev.borrow_mut().take() {
-        Some(v) => unsafe { std::env::set_var("HF_ENDPOINT", v) },
-        None => unsafe { std::env::remove_var("HF_ENDPOINT") },
-    }
-    match tokenizer_bdd.env_hf_hub_prev.borrow_mut().take() {
-        Some(v) => unsafe { std::env::set_var("HF_HUB_ENDPOINT", v) },
-        None => unsafe { std::env::remove_var("HF_HUB_ENDPOINT") },
-    }
 }
 
 #[then("基址为 https://huggingface.co")]

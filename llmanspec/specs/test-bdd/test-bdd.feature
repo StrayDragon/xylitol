@@ -11,5 +11,5 @@
   @req:bt2
   场景: upgrade-and-core-green
     假如 Cargo.toml 已升至目标 rstest-bdd 版本
-    当 cargo test --test bdd -- --test-threads=1
+    当 cargo test --test bdd
     那么 既有核心 feature 均通过

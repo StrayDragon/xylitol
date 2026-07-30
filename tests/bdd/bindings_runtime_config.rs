@@ -92,6 +92,7 @@ fn test_rc_select_ignores(rc_snap: RcSnap) {}
     path = "llmanspec/specs/runtime-config/runtime-config.feature",
     name = "config-yaml-secret-env-layout"
 )]
+#[serial_test::serial(bdd_home_env)]
 fn test_rc_config_docs(rc_snap: RcSnap) {}
 
 #[scenario(
@@ -123,4 +124,5 @@ fn test_rc_absent_key_ok(tokenizer_bdd: TokenizerBdd, rc_snap: RcSnap) {}
     path = "llmanspec/specs/runtime-config/runtime-config.feature",
     name = "config-local-not-merged"
 )]
+#[serial_test::serial(bdd_home_env)]
 fn test_rc_local_not_merged(tokenizer_bdd: TokenizerBdd, rc_snap: RcSnap) {}
