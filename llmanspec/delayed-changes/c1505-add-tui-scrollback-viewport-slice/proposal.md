@@ -13,9 +13,10 @@ author: agent
 
 # c1505-add-tui-scrollback-viewport-slice
 
-> **⚠️ P9 deferred（`llmanspec/do-not-read-me/`）**
-> T0d 已复现合格探针 `E-hist-stream`（长流盖满采样窗）：`b_pairs` 80→400→800 时 inclusive `scroll_render` ≈ **27.3% / 27.7% / 30.3%**，**不随历史明显上涨**。端到端热点仍是 width / do_render / wrap。
-> warm flatten 的 O(n) 结构债仍在（微基准），但**不是当前可证瓶颈** → 彻底延后；有真会话卡顿或改「行数上界」验收口径时再升格。
+> **⚠️ P9 deferred** — 仍非本波实现项。
+> **与 c1760**：activity-fold 落地后可能 **缓解** 对 viewport slice 的紧迫性（行数已降）；**不是**被 c1760 吸收实现。若 fold 后仍卡，再单独评估升格。
+>
+> T0d：`E-hist-stream` 下 `scroll_render` ≈ 27–30%，**不随历史明显上涨**；warm flatten O(n) 结构债仍在，端到端未证为主瓶颈。
 
 ## Why
 
