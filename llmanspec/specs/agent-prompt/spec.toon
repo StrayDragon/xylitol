@@ -2,7 +2,7 @@ kind: llman.sdd.spec
 name: "agent-prompt"
 purpose: 系统提示组装与资源模板：skills/context 注入、可选 prompt 模板展开（非 Jinja；产品主路径用 skill 而非 prompt slash）。
 valid_scope[3]: src/agent/prompt/,src/protocol/,src/infra/resource/
-requirements[10]{req_id,title,statement}:
+requirements[11]{req_id,title,statement}:
   pt1,"system-assembly",System MUST 经 build_system_prompt（或等价）组装系统提示，可包含工具片段、skills 摘要、context 文件、日期与 CWD；自定义 system 文件可替换或 append。
   pt2,"skills-section",当 ResourceLoader 发现 skills 时，系统提示 MUST 能包含 available_skills（或等价）清单供模型发现；未信任项目 MUST NOT 注入项目 skills。
   pt3,"prompt-templates-optional",若加载 prompt 模板，AgentSession MUST 能注册为可展开命令并保留 source_path；产品 TUI MUST NOT 把 prompt 模板当作启动 header 主清单（用 skills 代替）。
@@ -13,7 +13,9 @@ requirements[10]{req_id,title,statement}:
   pt8,"dollar-skill 提交注入",当用户消息含 $name 且 name 在已加载 skills 目录中时，System MUST 在发往模型前将对应 SKILL.md 正文（去 frontmatter）注入该 user 消息的模型侧投影；会话历史 MUST 保留原始含 $ 文本；未知 $name MUST 透传；未信任 MUST NOT 注入项目 skill 正文（目录已空即可）。
   pt9,"tool-prompt-guidelines-assembly","set_tools 或等价初次装配工具集时，System MUST 收集各 XyTool::prompt_guidelines（非空）写入 SystemPromptOpts.prompt_guidelines，并经 build_system_prompt 进入 Guidelines 段；内置 bash/read/edit/write（及已启用的同族工具）MUST 提供与 pi 对齐的非空 guideline 短句。MUST NOT 为抑制 XML 伪工具而注入防呆文案。自定义 SYSTEM.md 或 custom_prompt 整段替换默认正文时 MUST 保持替换语义（不偷偷回填 Available tools）。"
   pt10,"runtime-policy-fragments","System MUST 按当前工具批模式（XyBatchMode）从内置表解析 runtime policy 片段并经 build_system_prompt 注入 <runtime_policy> 段（位于 APPEND_SYSTEM / Guidelines 之后、日期与 CWD 之前）；barrier_parallel MUST 注入多-tool 同消息策略片段；sequential MUST NOT 注入该片段；set_tool_mode（或等价）MUST 在下一轮重建前提示中反映片段启停。Session MUST 持有已应用 fragment id 集合：同一 id 集合 MUST NOT 重复同步/重写片段正文（同模式重复 set_tool_mode 不得导致 <runtime_policy> 重复段或同 body 多份）；模式变更后 id 集合变化时 MUST 再同步一次。MUST NOT 要求用户手写 APPEND_SYSTEM 才能获得该策略。由单测覆盖，MUST NOT 为静态存在性单独扩 BDD step。"
-scenarios[3]{req_id,id,given,when,then,feature}:
+  pt11,"builtins-available-tools-mcp-discover","默认 build_system_prompt 路径下 Available tools 散文清单 MUST 仅含内置（非 mcp: 前缀）工具片段；MUST 含一句引导：MCP/custom 工具以本轮请求 tools 列表为准并按精确名调用。MUST NOT 在 Available tools 段枚举 mcp: 工具名。set_tools 热合并后的 provider tools 参数仍 MUST 可含 mcp 工具（由运行时 ToolSet 决定）。自定义 SYSTEM.md 或 custom_prompt 整段替换默认正文时 MUST 保持 pt9 替换语义。"
+scenarios[4]{req_id,id,given,when,then,feature}:
   pt10,"barrier-parallel-injects-runtime-policy","batch_mode 为 BarrierParallel","组装系统提示","含恰好一段 runtime_policy 且含多-tool 同消息策略短句",false
   pt10,"sequential-omits-runtime-policy","batch_mode 为 Sequential","组装系统提示","MUST NOT 含 runtime_policy 段",false
   pt10,"fragment-id-set-dedupe","Session 已应用 barrier_parallel 片段后再次 set_tool_mode 同模式","检查系统提示","runtime_policy 仍恰一段且 SAME assistant message 出现一次",false
+  pt11,"builtins-only-available-tools-lists","ToolSet 含 builtins 与 mcp: 工具且使用默认正文","build_system_prompt","Available tools 段无 mcp: 名且含 discover-via-tools 引导句",false
