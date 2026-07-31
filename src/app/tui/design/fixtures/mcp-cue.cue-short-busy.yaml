@@ -6,8 +6,8 @@ state: cue-short-busy
 source: mcpCue.cueShortBusy.editor
 must_contain:
   - "Working"
-  - "/mcp"
-  - "pending"
+  - "mcp pending (see /mcp)"
 must_not_contain:
   - "context7"
   - "System"
+  - "1/2"
