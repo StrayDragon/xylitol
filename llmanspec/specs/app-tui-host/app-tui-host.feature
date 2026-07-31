@@ -79,7 +79,7 @@
   @req:ath9
   场景: bdd-features-present
     假如 tests/features 含 app-tui abort/bang/esc/queue feature
-    当 cargo test --test bdd -- --test-threads=1
+    当 cargo test --test bdd
     那么 新增 app-tui 场景全部通过且既有核心 BDD 不回归
 
   @req:ath11
