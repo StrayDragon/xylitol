@@ -670,13 +670,38 @@ impl AgentCapabilities {
 
     /// Set the active tool set and rebuild the system prompt to reflect it.
     pub fn set_tools(&mut self, tools: ToolSet) {
-        self.prompt_opts.selected_tools = tools.iter().map(|t| t.name().to_string()).collect();
-        self.prompt_opts.tool_snippets =
-            prompt::collect_tool_snippets(&tools, &self.prompt_opts.selected_tools);
-        self.prompt_opts.prompt_guidelines =
-            prompt::collect_tool_guidelines(&tools, &self.prompt_opts.selected_tools);
+        self.apply_tools_metadata(&tools);
         self.tools = tools;
         self.rebuild_system_prompt();
+    }
+
+    /// Install tools + prompt metadata without rebuilding the system prompt text.
+    ///
+    /// Used by MCP settle so `build_system_prompt` can run off the TUI tick path.
+    /// Returns a clone of [`SystemPromptOpts`] ready for [`prompt::build_system_prompt`].
+    pub fn set_tools_defer_prompt(&mut self, tools: ToolSet) -> SystemPromptOpts {
+        self.apply_tools_metadata(&tools);
+        self.tools = tools;
+        self.prompt_opts.clone()
+    }
+
+    /// Install a prebuilt system prompt string (pair with [`Self::set_tools_defer_prompt`]).
+    pub fn install_system_prompt_text(&mut self, prompt: String) {
+        let chars = prompt.len();
+        let tool_n = self.prompt_opts.selected_tools.len();
+        self.system_prompt.replace(prompt);
+        log::debug!(
+            target: "xylitol::lag",
+            "install_system_prompt_text tools={tool_n} chars={chars}"
+        );
+    }
+
+    fn apply_tools_metadata(&mut self, tools: &ToolSet) {
+        self.prompt_opts.selected_tools = tools.iter().map(|t| t.name().to_string()).collect();
+        self.prompt_opts.tool_snippets =
+            prompt::collect_tool_snippets(tools, &self.prompt_opts.selected_tools);
+        self.prompt_opts.prompt_guidelines =
+            prompt::collect_tool_guidelines(tools, &self.prompt_opts.selected_tools);
     }
 
     /// Replace the active hooks.

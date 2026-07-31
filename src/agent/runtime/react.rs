@@ -167,6 +167,19 @@ impl AgentRuntime {
         self.inner.set_tools(tools);
     }
 
+    /// Install tools without rebuilding system prompt text (MCP settle offload).
+    pub fn set_tools_defer_prompt(
+        &mut self,
+        tools: ToolSet,
+    ) -> crate::agent::prompt::SystemPromptOpts {
+        self.inner.set_tools_defer_prompt(tools)
+    }
+
+    /// Install a prebuilt system prompt (pair with [`Self::set_tools_defer_prompt`]).
+    pub fn install_system_prompt_text(&mut self, prompt: String) {
+        self.inner.install_system_prompt_text(prompt);
+    }
+
     /// Replace the hook set. Takes effect on the next [`run`](Self::run) call.
     pub fn replace_hooks(&mut self, hooks: AgentHooks) {
         self.inner.replace_hooks(hooks);
