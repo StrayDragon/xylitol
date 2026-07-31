@@ -1,6 +1,5 @@
 ---
 depends_on: []
-status: purpose-draft
 ---
 
 ## Why
