@@ -57,7 +57,13 @@
     那么 Driver 只读缝可观察到进行中或已连接进度快照且单失败不拖死其余
 
   @req:mcp7
-  场景: agent-prompt-gated-while-connecting
+  场景: agent-prompt-allowed-while-connecting
     假如 MCP 仍在 connecting
     当 用户提交普通 agent prompt
-    那么 拒绝 run 且有短提示；结算后可提交
+    那么 允许进入 run 或等价提交路径且 MUST NOT 因 connecting 短拒
+
+  @req:mcp7
+  场景: settle-overlay-tools-unique-names
+    假如 MCP 结算或 reload 成功并热合并工具
+    当 查询 ToolSet 工具名
+    那么 每个工具名唯一且内置工具仍在

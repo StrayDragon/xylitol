@@ -9,10 +9,10 @@
 
 ## 1. Specs + 绑定
 
-- [ ] 1.1 改写 live `infra-mcp` mcp7、`app-tui-host` ath23、`agent-prompt`（builtins-only + MCP discover）
-- [ ] 1.2 对应 `*.feature`（删/改 gated 场景 → allowed-while-connecting；overlay / prompt 场景）
-- [ ] 1.3 `llman sdd validate c1210-… --strict --no-check`
-- [ ] 1.4 `llman sdd change start c1210-update-mcp-hot-merge-ungate` → `sdd/c1210-…`
+- [x] 1.1 改写 live `infra-mcp` mcp7、`app-tui-host` ath23、`agent-prompt`（builtins-only + MCP discover）
+- [x] 1.2 对应 `*.feature`（删/改 gated 场景 → allowed-while-connecting；overlay / prompt 场景）
+- [x] 1.3 `llman sdd validate c1210-… --strict --no-check`
+- [x] 1.4 `llman sdd change start c1210-update-mcp-hot-merge-ungate` → `sdd/c1210-…`
 
 ## 2. ToolSet + settle/reload
 
