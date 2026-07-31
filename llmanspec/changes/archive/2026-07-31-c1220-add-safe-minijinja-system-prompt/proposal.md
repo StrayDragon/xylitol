@@ -3,7 +3,8 @@ depends_on:
 - c1218-remove-slash-prompt-templates
 branch: sdd/c1220-add-safe-minijinja-system-prompt
 base_sha: eb765f4269cbb7d68bd3c46359ed2d5e552cb911
-checkpointed: false
+checkpointed: true
+checkpoint_sha: eb765f4269cbb7d68bd3c46359ed2d5e552cb911
 ---
 
 # 安全 minijinja 默认 system 组装
