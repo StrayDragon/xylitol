@@ -6,7 +6,7 @@
 - `ToolSet` / Driver：二次 rebuild **无**重复 tool 名
 - reload/settle：旧 manager shutdown 后再装新（能测的 public/Driver 缝）
 - `build_system_prompt`：默认路径 Available tools 无 `mcp:`；含 discover 一句
-- `/mcp`：任意态开面板；快照含 armed；短 cue 无长 id dump
+- `/mcp`：任意态开面板；快照含 armed；短 cue 固定 `mcp pending (see /mcp)`
 
 ## 1. Specs + 绑定
 
@@ -38,8 +38,8 @@
 
 - [ ] 5.1 解析 `/mcp`（及可选 `/mcps`）；BusySlashPolicy Allow OpenMcp；SlashCommandSource 列出
 - [ ] 5.2 editor 槽面板：id · 连接态 · armed · 可选 tool 数 + 汇总；Esc 关且不 abort agent
-- [ ] 5.3 可选短 cue：计数 + `· /mcp`；armed 收起/极简；MUST NOT ≥3 id dump
-- [ ] 5.4 harness：任意态可开；armed 行可观测；短 cue 反例（无 id 堆）
+- [ ] 5.3 可选短 cue：固定 `mcp pending (see /mcp)`；全部 armed 后收起；MUST NOT 分数/id dump
+- [ ] 5.4 harness：任意态可开；armed 行可观测；短 cue 固定文案 + 反例（无 id 堆）
 
 ## 6. 校验
 

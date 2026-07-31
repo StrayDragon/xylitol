@@ -233,10 +233,10 @@
     那么 对应行显示 tools armed（或等价）且汇总可区分 armed
 
   @req:ath27
-  场景: mcp-short-cue-no-id-dump
+  场景: mcp-short-cue-fixed-copy
     假如 配置了多个 MCP 且尚未全部 armed
     当 渲染可选短 cue
-    那么 cue 含 /mcp 引导且 MUST NOT 枚举三个及以上 server id
+    那么 cue 文案为 mcp pending (see /mcp) 且 MUST NOT 含分数计数或 server id 列表
 
   @req:ath24
   场景: idle-tick-skips-paint

@@ -77,7 +77,7 @@ replace_mcp:
 多 MCP 时 **MUST NOT** 把 server 名单塞进 status / 下轮预告。发现面：
 
 1. **`/mcp`**：任意态可开，替换 editor 槽；列表 = 连接态 + tools armed（是否已进下轮请求 `tools`）。设计 SSOT：[`mcp-input-cue.md`](../../../../src/app/tui/design/mcp-input-cue.md) · playground `?slot=mcp-cue`。
-2. **短 cue（可选但合约钉）**：仅计数 + `· /mcp` 引导；armed 后收起或极简；**MUST NOT** 枚举 ≥3 id。
+2. **短 cue（可选但合约钉）**：固定 `mcp pending (see /mcp)`；全部 armed 后收起；**MUST NOT** 分数计数或枚举 id。
 3. 头卡 mcp 行保留启动摘要；长对话滚走后以 `/mcp` + 短 cue 为准。
 
 实现与解闸 / overlay **同波**交付（atm17 / ath27 / mcp7 快照 armed）。
