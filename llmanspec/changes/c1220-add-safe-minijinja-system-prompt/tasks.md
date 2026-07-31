@@ -11,9 +11,9 @@
 
 ## 1. Specs landing
 
-- [ ] 1.1 `change start` → `sdd/c1220-add-safe-minijinja-system-prompt`
-- [ ] 1.2 改写 live `agent-prompt` pt5 + feature（废 no-jinja-dep）
-- [ ] 1.3 `validate` 相关 specs `--strict --no-check`；commit Specs landing
+- [x] 1.1 `change start` → `sdd/c1220-add-safe-minijinja-system-prompt`
+- [x] 1.2 改写 live `agent-prompt` pt5 + feature（废 no-jinja-dep）
+- [x] 1.3 `validate` agent-prompt `--strict --no-check`；commit Specs landing
 
 ## 2. 沙箱 + 模板
 
