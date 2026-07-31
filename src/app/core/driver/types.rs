@@ -139,6 +139,17 @@ impl LoadedResourcesSnapshot {
             || self.mcp_servers.iter().any(|s| !s.tools_armed)
             || self.mcp_connecting_label.is_some()
     }
+
+    /// Whether the loaded-resources header card would paint an `mcp:` row.
+    ///
+    /// Short cue MUST NOT duplicate that row while the sticky header is visible.
+    pub fn mcp_header_row_visible(&self) -> bool {
+        self.mcp_configured > 0
+            || !self.mcp_connected.is_empty()
+            || !self.mcp_diag_short.is_empty()
+            || self.mcp_connecting_label.is_some()
+            || !self.mcp_servers.is_empty()
+    }
 }
 
 /// Re-export so XyDriver implementors under surfaces can name the return type
