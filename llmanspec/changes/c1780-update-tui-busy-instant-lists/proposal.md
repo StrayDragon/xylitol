@@ -1,5 +1,8 @@
 ---
 depends_on: []
+branch: sdd/c1780-update-tui-busy-instant-lists
+base_sha: fd765a6b2b1320a60ca3a413569deb2f4630c3dc
+checkpointed: false
 ---
 
 # busy 即时列表闸（模型 / 主题 / Resume 只读）
