@@ -17,12 +17,12 @@
 
 ## 2. 沙箱 + 模板
 
-- [ ] 2.1 `agent/prompt` 沙箱 Env 构建（strict、白名单 ctx、预注册 include）[blocked-by: 1.3]
-- [ ] 2.2 嵌入入口 + 少量 partials；Rust 过滤 mcp:/skills 可见性后喂 ctx [blocked-by: 2.1]
-- [ ] 2.3 `SystemPromptOpts` 可注入 date；门面接线默认路径走 render [blocked-by: 2.2]
-- [ ] 2.4 SYSTEM/APPEND/context 纯文本路径保持语义 [blocked-by: 2.3]
+- [x] 2.1 `agent/prompt` 沙箱 Env 构建（strict、白名单 ctx、预注册 include）[blocked-by: 1.3]
+- [x] 2.2 嵌入入口 + 少量 partials；Rust 过滤 mcp:/skills 可见性后喂 ctx [blocked-by: 2.1]
+- [x] 2.3 `SystemPromptOpts` 可注入 date；门面接线默认路径走 render [blocked-by: 2.2]
+- [x] 2.4 SYSTEM/APPEND/context 纯文本路径保持语义 [blocked-by: 2.3]
 
 ## 3. 测试与校验
 
-- [ ] 3.1 单测：S1/S2；跑 S3 相关 BDD [blocked-by: 2.4]
-- [ ] 3.2 `llman sdd validate c1220-… --strict` [blocked-by: 3.1]
+- [x] 3.1 单测：S1/S2；跑 S3 相关 BDD [blocked-by: 2.4]
+- [x] 3.2 `llman sdd validate c1220-… --strict` [blocked-by: 3.1]
