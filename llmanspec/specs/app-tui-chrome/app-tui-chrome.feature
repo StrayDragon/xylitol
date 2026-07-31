@@ -70,10 +70,10 @@
     那么 存在独立 status 行含 spinner 帧或 accent 标记且 footer 无 spinner
 
   @req:atc8
-  场景: user-bg-row
+  场景: user-no-message-bg
     假如 scrollback 含用户消息
     当 render
-    那么 用户行带 user-message-bg 染色（或测试可观测的 bg 应用痕迹）
+    那么 用户行无 user-message-bg 全行淡底且保留语义前缀
 
   @req:atc9
   场景: compacting-one-row

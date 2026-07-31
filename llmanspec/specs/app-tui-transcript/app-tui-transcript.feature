@@ -13,14 +13,14 @@
     那么 render 经包 Diff 着色
 
   @req:att4
-  场景: edit-unified-tint
+  场景: edit-status-rail
     当 渲染含 display_diff 的成功 edit 工具块
-    那么 header 与 Diff 正文同属 tool-success-bg 洗底且无 diff-*-bg 行底分层
+    那么 header 与 Diff 正文共用 success 轨、无整行 tool-success-bg 洗底、且无 diff-*-bg 行底分层
 
   @req:att5
-  场景: reuse-apply-bg
+  场景: reuse-rail-paint
     当 渲染 tool 块
-    那么 调用 apply_background_to_line 而非手写 pad+bg
+    那么 调用 paint_left_rail_line（或等价包 API）而非手写轨/gutter
 
   @req:att6
   场景: tree-not-transcript-browser
@@ -48,7 +48,7 @@
   场景: stream-frames-pending
     假如 bang 执行中已收到至少一帧输出 chunk
     当 渲染 scrollback
-    那么 同一块含部分输出且仍为 pending tint
+    那么 同一块含部分输出且仍为 pending 轨色
 
   @req:att10
   场景: gap-between-blocks
@@ -57,16 +57,16 @@
     那么 两块内容行之间至少一行空白
 
   @req:att10
-  场景: full-width-tint
-    假如 渲染 tinted 块
-    当 行宽等于终端宽度
-    那么 背景铺满整行
+  场景: rail-not-full-wash
+    假如 渲染成功 tool 或 bang 块
+    当 检查着色行
+    那么 可见 status 轨前缀且 MUST NOT 整行铺 tool-success-bg
 
   @req:att11
-  场景: reuse-apply-bg
+  场景: reuse-rail-paint-bang
     假如 渲染 bang 块
-    当 调用 apply_background_to_line
-    那么 而非手写 pad+bg
+    当 调用 paint_left_rail_line（或等价包 API）
+    那么 而非手写轨或整行 tool-*-bg 洗底
 
   @req:att12
   场景: rebuild-keeps-thinking
