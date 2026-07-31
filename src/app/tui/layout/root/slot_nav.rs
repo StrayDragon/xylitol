@@ -69,6 +69,7 @@ impl UiRoot {
         self.session_resume = empty_session_resume_panel(self.theme);
         self.pending_session_resume_rename = None;
         self.pending_session_resume_delete = None;
+        self.mcp_panel_lines.clear();
     }
 
     pub fn close_session_tree(&mut self) {
@@ -88,7 +89,8 @@ impl UiRoot {
             EditorSlot::Models
             | EditorSlot::Themes
             | EditorSlot::ImportConfirm
-            | EditorSlot::SessionResume => {
+            | EditorSlot::SessionResume
+            | EditorSlot::Mcp => {
                 // Opened via mount_* after slash dispatch.
             }
         }

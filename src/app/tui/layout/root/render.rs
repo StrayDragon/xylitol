@@ -32,7 +32,10 @@ impl UiRoot {
 
     pub(super) fn render_status_slot(&mut self, width: usize) -> Vec<String> {
         if !self.status_busy {
-            // Idle breathing room above editor (status.md / agent_demo status_lines).
+            // Idle: optional MCP short cue (c1210); otherwise breathing room.
+            if let Some(cue) = self.status_next_turn_cue.as_deref() {
+                return vec![self.theme.paint_muted(&format!(" {cue}"))];
+            }
             return vec![String::new()];
         }
         // Keep Loader leading blank + spinner row (do not strip empties).
@@ -118,6 +121,13 @@ impl UiRoot {
                 lines
             }
             EditorSlot::SessionResume => self.session_resume.render(width.max(1)),
+            EditorSlot::Mcp => {
+                let mut lines = vec![self.theme.paint_muted(" MCP")];
+                for row in &self.mcp_panel_lines {
+                    lines.push(self.theme.paint_muted(row));
+                }
+                lines
+            }
         }
     }
 

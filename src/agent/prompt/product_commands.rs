@@ -94,6 +94,11 @@ pub fn product_slash_commands() -> Vec<ProductSlashCommand> {
             description: "Switch theme: /theme [dark|light|toggle]",
             argument_hint: Some("[dark|light|toggle]"),
         },
+        ProductSlashCommand {
+            name: "mcp",
+            description: "Show MCP servers and tools armed status",
+            argument_hint: None,
+        },
     ];
     #[cfg(debug_assertions)]
     cmds.push(ProductSlashCommand {

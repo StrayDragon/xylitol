@@ -142,4 +142,48 @@ mod tests {
         assert!(names.contains(&"read"));
         assert_eq!(names.len(), 6);
     }
+
+    #[test]
+    fn overlay_by_name_double_rebuild_keeps_unique_names() {
+        struct Named(&'static str);
+        #[async_trait::async_trait]
+        impl crate::protocol::ports::XyTool for Named {
+            fn name(&self) -> &str {
+                self.0
+            }
+            fn description(&self) -> &str {
+                "n"
+            }
+            fn parameters_schema(&self) -> serde_json::Value {
+                serde_json::json!({})
+            }
+            async fn execute(
+                &self,
+                _: &crate::protocol::ports::XyToolCtx,
+                _: serde_json::Value,
+            ) -> Result<String, crate::protocol::error::XyToolError> {
+                Ok("ok".into())
+            }
+        }
+        let builtins =
+            || -> Vec<Arc<dyn XyTool>> { vec![Arc::new(Named("read")), Arc::new(Named("bash"))] };
+        let mcp = || -> Vec<Arc<dyn XyTool>> {
+            vec![
+                Arc::new(Named("mcp:fs:read")),
+                Arc::new(Named("mcp:git:status")),
+            ]
+        };
+        let once = ToolSet::rebuild_agent_tools(builtins(), mcp());
+        let twice = once
+            .clone()
+            .overlay_by_name(ToolSet::rebuild_agent_tools(builtins(), mcp()));
+        let names: Vec<&str> = twice.iter().map(|t| t.name()).collect();
+        let mut sorted = names.clone();
+        sorted.sort();
+        sorted.dedup();
+        assert_eq!(names.len(), sorted.len(), "duplicate names: {names:?}");
+        assert_eq!(names.len(), 4);
+        assert!(names.contains(&"mcp:fs:read"));
+        assert!(names.contains(&"read"));
+    }
 }
