@@ -52,12 +52,37 @@ connecting 1/3 · foo
 | 允许 | 闸住 |
 |---|---|
 | 看/滚 transcript（含 CLI resume 投影） | **agent 普通 prompt 提交**（`run`） |
-| 多数 slash：`/session-resume`、`/exit`、`/model`、`/trust`… | （可选）connecting 中 `/reload` → 短拒或排队，本波定短拒） |
-| 打字进 editor（不提交） | bang `!` 若会走工具链且依赖完整 ToolSet — 本波 **一并闸** 或仅允只读类；默认 **闸 bang** 与 agent 同 |
+| 打字进 editor（不提交） | **bang `!`** |
+| slash 见下表白名单 | slash 见下表黑名单 |
 
-拒绝提交时：一条短滚动提示（如 `MCP still connecting — prompt deferred`），**MUST NOT** 静默吞 Enter。
+拒绝时：短滚动提示（`MCP still connecting — …`），**MUST NOT** 静默吞 Enter。
 
-结算（全部成功 / 部分失败 + diagnostics / 超时策略落地后）：`set_tools` 热合并 → **解除闸** → 此后 `run` 的 tools 列表已含 mcp:。
+结算后：`set_tools` 热合并 → **解闸**。
+
+### Slash 白名单（已锁 · 2026-07-31）
+
+**独立于** `busy_slash_policy`（agent busy 拒 `/session-resume`，此处要放行）。
+
+| Permit | 命令 |
+|---|---|
+| **Allow** | `/exit`、`/session`、`/history-copy-last`、`/session-export`、`/session-resume`、`/session-new`、`/session-clone`、`/session-name`、`/session-import`、`/session-tree`、`/session-fork`、`/theme`、`/model`（开槽+有参）、`/trust`、`/debug`、Usage 提示 |
+| **Reject** | `/reload`、`/session-compact` |
+
+### Rust 扩展方式（可维护）
+
+**单次穷尽 `match` 填双列**，新增 `PendingSlash` 变体时编译器迫使两列都填：
+
+```rust
+pub struct SlashAllowances {
+    pub when_agent_busy: SlashPermit,
+    pub when_mcp_connecting: SlashPermit,
+}
+
+pub fn slash_allowances(slash: &PendingSlash) -> SlashAllowances { match slash { /* 穷尽 */ } }
+```
+
+- `busy_slash_policy` / `mcp_connecting_slash_policy` 只是列投影，禁止再维护第二份平行 match。
+- 将来第三闸（如 c1205 reload-in-flight）→ **加一列字段**，仍一处穷尽。
 
 **为何不用 B（先 builtins 聊）**：见下节；本波先 A，后续可再议软开。
 

@@ -32,6 +32,19 @@ struct InProcessReloadState {
     mcp_servers: Vec<crate::app::core::mcp_spec::McpServerSpec>,
 }
 
+type McpToolList = Vec<Arc<dyn crate::protocol::ports::XyTool>>;
+type McpDiscoverOk = Option<(Arc<crate::infra::mcp::McpClientManager>, McpToolList)>;
+type McpDiscoverOutcome = Result<McpDiscoverOk, String>;
+
+enum McpBootState {
+    Idle,
+    Running {
+        handle: tokio::task::JoinHandle<McpDiscoverOutcome>,
+        progress: Arc<tokio::sync::Mutex<crate::infra::mcp::McpConnectProgress>>,
+    },
+    Settled,
+}
+
 /// In-process driver wrapping the local agent module.
 ///
 /// Constructed at the composition root (`app::cli` via `bootstrap`) which wires
@@ -45,6 +58,8 @@ pub struct XyInProcessDriver {
     store: Arc<dyn XySessionStore>,
     /// Optional reload state for `/reload` and MCP ownership (c1120).
     reload: Option<InProcessReloadState>,
+    /// Background MCP bootstrap (c1200); independent of agent busy.
+    mcp_boot: McpBootState,
 }
 
 impl XyInProcessDriver {
@@ -62,6 +77,7 @@ impl XyInProcessDriver {
             agent,
             store,
             reload: None,
+            mcp_boot: McpBootState::Idle,
         }
     }
 
@@ -82,14 +98,20 @@ impl XyInProcessDriver {
         });
     }
 
-    /// Initial MCP bootstrap after assembly (cli / server). No-op when reload disabled.
+    /// Initial MCP bootstrap after assembly (cli / server).
+    ///
+    /// Prefer [`XyDriver::begin_mcp_bootstrap`] + poll for TUI (c1200). This
+    /// still performs a blocking reload for callers that need a settled ToolSet
+    /// synchronously (legacy / tests).
     pub async fn bootstrap_mcp(&mut self) -> Result<(), XyDriverError> {
         let servers = self
             .reload
             .as_ref()
             .map(|s| s.mcp_servers.clone())
             .unwrap_or_default();
-        self.reload_mcp_with_servers(&servers).await
+        self.reload_mcp_with_servers(&servers).await?;
+        self.mcp_boot = McpBootState::Settled;
+        Ok(())
     }
 
     /// One-line MCP status for startup logs (empty when reload/MCP disabled).
@@ -684,9 +706,14 @@ impl XyDriver for XyInProcessDriver {
 
     async fn loaded_resources_snapshot(&self) -> LoadedResourcesSnapshot {
         let skill_names = self.loaded_skill_names();
+        let mcp_connecting_label = match &self.mcp_boot {
+            McpBootState::Running { progress, .. } => progress.lock().await.connecting_label(),
+            _ => None,
+        };
         let Some(state) = self.reload.as_ref() else {
             return LoadedResourcesSnapshot {
                 skill_names,
+                mcp_connecting_label,
                 ..LoadedResourcesSnapshot::default()
             };
         };
@@ -703,7 +730,84 @@ impl XyDriver for XyInProcessDriver {
                 .into_iter()
                 .map(|d| format!("{}: {}", d.server, d.message))
                 .collect(),
+            mcp_connecting_label,
         }
+    }
+
+    fn mcp_blocks_agent(&self) -> bool {
+        matches!(self.mcp_boot, McpBootState::Running { .. })
+    }
+
+    async fn begin_mcp_bootstrap(&mut self) {
+        if !matches!(self.mcp_boot, McpBootState::Idle) {
+            return;
+        }
+        let Some(state) = self.reload.as_ref() else {
+            self.mcp_boot = McpBootState::Settled;
+            return;
+        };
+        if state.mcp_servers.is_empty() {
+            self.mcp_boot = McpBootState::Settled;
+            return;
+        }
+        let servers = crate::app::core::mcp_spec::McpServerSpec::to_infra_list(&state.mcp_servers);
+        let progress = Arc::new(tokio::sync::Mutex::new(
+            crate::infra::mcp::McpConnectProgress {
+                connecting: true,
+                total: servers.len(),
+                finished: 0,
+                current: None,
+            },
+        ));
+        let progress_task = progress.clone();
+        let handle = tokio::spawn(async move {
+            crate::infra::mcp::connect_and_discover_with_progress(&servers, Some(progress_task))
+                .await
+        });
+        self.mcp_boot = McpBootState::Running { handle, progress };
+    }
+
+    async fn poll_mcp_bootstrap(&mut self) -> bool {
+        let finished = match &self.mcp_boot {
+            McpBootState::Running { handle, .. } => handle.is_finished(),
+            _ => return false,
+        };
+        if !finished {
+            // Still connecting — UI should refresh progress label.
+            return true;
+        }
+        let prev = std::mem::replace(&mut self.mcp_boot, McpBootState::Idle);
+        let McpBootState::Running { handle, .. } = prev else {
+            return false;
+        };
+        match handle.await {
+            Ok(Ok(Some((manager, tools)))) => {
+                let old = self.reload.as_mut().and_then(|s| s.mcp.take_manager());
+                let mut set =
+                    crate::agent::tools::ToolSet::from_iter(crate::infra::tools::default_tools());
+                set = set.merge(crate::agent::tools::ToolSet::from_iter(tools));
+                self.set_tools(set);
+                if let Some(state) = self.reload.as_mut() {
+                    state.mcp.set_manager(manager);
+                }
+                if let Some(old) = old {
+                    old.shutdown().await;
+                }
+                self.mcp_boot = McpBootState::Settled;
+            }
+            Ok(Ok(None)) => {
+                self.mcp_boot = McpBootState::Settled;
+            }
+            Ok(Err(e)) => {
+                log::warn!(target: "xylitol::mcp", "MCP bootstrap failed: {e}");
+                self.mcp_boot = McpBootState::Settled;
+            }
+            Err(e) => {
+                log::warn!(target: "xylitol::mcp", "MCP bootstrap join failed: {e}");
+                self.mcp_boot = McpBootState::Settled;
+            }
+        }
+        true
     }
 
     async fn reload_runtime(&mut self) -> Result<RuntimeReloadReport, XyDriverError> {

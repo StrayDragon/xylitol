@@ -176,6 +176,7 @@ async fn run_host_loop(
     session.set_model_arg_catalog_from_models(&driver.available_models());
     session.set_dollar_skill_catalog(driver.dollar_skill_catalog());
     session.refresh_loaded_resources(driver).await;
+    session.set_mcp_blocks_agent(driver.mcp_blocks_agent());
     if options.restored_session {
         match driver.get_messages().await {
             Ok(entries) => {
@@ -250,6 +251,10 @@ async fn run_host_loop(
                     // Drain any footer estimates that completed without waiting on select.
                     while let Some((job_id, label)) = session.try_recv_footer_token() {
                         session.step(HostEvent::FooterTokens { job_id, label })?;
+                    }
+                    if driver.poll_mcp_bootstrap().await {
+                        session.refresh_loaded_resources(driver).await;
+                        session.set_mcp_blocks_agent(driver.mcp_blocks_agent());
                     }
                     session.step(HostEvent::Tick)?;
                 }

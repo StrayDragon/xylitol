@@ -120,9 +120,10 @@ pub async fn start(
     let cwd = std::env::current_dir().unwrap_or_else(|_| std::path::PathBuf::from("."));
     let agent_dir = crate::infra::resource::DefaultResourceLoader::default_agent_dir();
     driver.enable_reload_state(cwd, agent_dir, project_trusted, servers);
-    if let Err(e) = driver.bootstrap_mcp().await {
-        log::warn!("MCP bootstrap failed error={e}");
-    } else if let Some(summary) = driver.mcp_status_summary().await {
+    use crate::app::core::driver::XyDriver;
+    driver.begin_mcp_bootstrap().await;
+    driver.wait_mcp_bootstrap().await;
+    if let Some(summary) = driver.mcp_status_summary().await {
         log::info!("{summary}");
     }
 

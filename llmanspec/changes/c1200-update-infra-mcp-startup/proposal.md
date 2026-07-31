@@ -30,7 +30,7 @@ checkpointed: false
 | 并行 | 多 server **并行** connect；单失败诊断、不拖死全队（mcp4） |
 | 进度落点 | **主：loaded-resources 的 mcp 行**（connecting i/n · id）；**不**用滚动提示刷进度；**不**占用 agent-busy status / 下轮预告 |
 | 完成/失败 | ready 后刷槽；失败摘要进 mcp 行 / diagnostics；严重失败 MAY 一条滚动提示 |
-| 输入闸 | **A**：connecting 期间闸住 agent prompt（及 bang）；允许滚历史、多数 slash、面内 resume；拒绝时短滚动提示 |
+| 输入闸 | **A**：connecting 闸 agent prompt + bang；slash 双列白名单（允会话/chrome/trust；拒 `/reload`、`/session-compact`）；拒绝短提示 |
 | 新会话 / CLI resume | 先开面（resume 先投影历史）；闸规则同上，直到 MCP 结算 |
 | 面内 `/session-resume` | MUST NOT 为切会话再阻塞重连 MCP |
 | print | 可等结算再跑 oneshot（无浏览态） |

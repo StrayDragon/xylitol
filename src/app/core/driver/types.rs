@@ -92,6 +92,8 @@ pub struct LoadedResourcesSnapshot {
     pub mcp_configured: usize,
     /// Short failure lines (`server: message`); no secrets.
     pub mcp_diag_short: Vec<String>,
+    /// When MCP bootstrap is in flight: `connecting 1/3 · foo` (c1200).
+    pub mcp_connecting_label: Option<String>,
 }
 
 impl LoadedResourcesSnapshot {
@@ -101,6 +103,7 @@ impl LoadedResourcesSnapshot {
             || self.mcp_configured > 0
             || !self.mcp_connected.is_empty()
             || !self.mcp_diag_short.is_empty()
+            || self.mcp_connecting_label.is_some()
     }
 }
 

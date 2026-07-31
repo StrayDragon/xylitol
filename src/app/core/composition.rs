@@ -178,6 +178,16 @@ impl McpSession {
         }
     }
 
+    /// Install a freshly discovered manager (c1200). Caller updates driver tools separately
+    /// when borrow-split is required.
+    pub fn set_manager(&mut self, manager: Arc<crate::infra::mcp::McpClientManager>) {
+        self.manager = Some(manager);
+    }
+
+    pub fn take_manager(&mut self) -> Option<Arc<crate::infra::mcp::McpClientManager>> {
+        self.manager.take()
+    }
+
     /// Reload MCP tools onto `driver` (empty servers → builtins only, zero-cost).
     pub async fn reload(
         &mut self,

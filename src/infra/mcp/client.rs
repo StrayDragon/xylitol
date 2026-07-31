@@ -1,13 +1,16 @@
 //! MCP client manager — connects to MCP servers and dispatches tool calls.
 
 use std::collections::HashMap;
+use std::sync::Arc;
 
+use futures::stream::{FuturesUnordered, StreamExt};
 use rmcp::model::{CallToolRequestParams, CallToolResult};
 use rmcp::service::RunningService;
 use rmcp::transport::child_process::TokioChildProcess;
 use rmcp::{RoleClient, serve_client};
 use serde_json::Value;
 use tokio::process::Command;
+use tokio::sync::Mutex;
 
 use super::types::{McpServerConfig, McpTransportKind};
 use crate::infra::config::types::AppConfig;
@@ -29,11 +32,36 @@ pub struct ConnectedMcpServer {
     pub tool_count: usize,
 }
 
+/// Live connect progress for loaded-resources / gates (c1200).
+#[derive(Debug, Clone, PartialEq, Eq, Default)]
+pub struct McpConnectProgress {
+    /// True while [`McpClientManager::connect_servers`] is in flight.
+    pub connecting: bool,
+    pub total: usize,
+    pub finished: usize,
+    pub current: Option<String>,
+}
+
+impl McpConnectProgress {
+    /// Short label for the mcp header row (`connecting 1/3 · foo`).
+    pub fn connecting_label(&self) -> Option<String> {
+        if !self.connecting || self.total == 0 {
+            return None;
+        }
+        let n = self.finished.saturating_add(1).min(self.total);
+        Some(match self.current.as_deref() {
+            Some(id) if !id.is_empty() => format!("connecting {n}/{} · {id}", self.total),
+            _ => format!("connecting {n}/{}", self.total),
+        })
+    }
+}
+
 /// Manages connections to MCP servers and dispatches tool calls.
 pub struct McpClientManager {
-    services: tokio::sync::Mutex<HashMap<String, McpService>>,
-    transports: tokio::sync::Mutex<HashMap<String, McpTransportKind>>,
-    diagnostics: tokio::sync::Mutex<Vec<McpConnectDiagnostic>>,
+    services: Mutex<HashMap<String, McpService>>,
+    transports: Mutex<HashMap<String, McpTransportKind>>,
+    diagnostics: Mutex<Vec<McpConnectDiagnostic>>,
+    progress: Mutex<McpConnectProgress>,
 }
 
 impl Default for McpClientManager {
@@ -45,29 +73,44 @@ impl Default for McpClientManager {
 impl McpClientManager {
     pub fn new() -> Self {
         Self {
-            services: tokio::sync::Mutex::new(HashMap::new()),
-            transports: tokio::sync::Mutex::new(HashMap::new()),
-            diagnostics: tokio::sync::Mutex::new(Vec::new()),
+            services: Mutex::new(HashMap::new()),
+            transports: Mutex::new(HashMap::new()),
+            diagnostics: Mutex::new(Vec::new()),
+            progress: Mutex::new(McpConnectProgress::default()),
         }
     }
 
     /// Connect to all MCP servers from the app configuration.
-    pub async fn connect(&self, config: &AppConfig) -> Result<(), String> {
+    pub async fn connect(self: &Arc<Self>, config: &AppConfig) -> Result<(), String> {
         match &config.mcp_servers {
             Some(servers) if !servers.is_empty() => self.connect_servers(servers).await,
             _ => Ok(()),
         }
     }
 
-    /// Connect to an explicit server list (empty = no-op).
+    /// Connect to an explicit server list (empty = no-op). Parallel per server (c1200).
     ///
     /// Invalid configs and connection failures are recorded as diagnostics and
     /// logged; remaining servers still attempt connect (mcp4).
-    pub async fn connect_servers(&self, servers: &[McpServerConfig]) -> Result<(), String> {
+    pub async fn connect_servers(
+        self: &Arc<Self>,
+        servers: &[McpServerConfig],
+    ) -> Result<(), String> {
+        self.connect_servers_with_progress(servers, None).await
+    }
+
+    /// Like [`Self::connect_servers`], optionally mirroring progress into `progress_out`.
+    pub async fn connect_servers_with_progress(
+        self: &Arc<Self>,
+        servers: &[McpServerConfig],
+        progress_out: Option<Arc<Mutex<McpConnectProgress>>>,
+    ) -> Result<(), String> {
         {
             let mut diags = self.diagnostics.lock().await;
             diags.clear();
         }
+
+        let mut validated = Vec::new();
         for server_config in servers {
             let name = server_config.name.clone();
             if let Err(e) = server_config.validate() {
@@ -75,19 +118,66 @@ impl McpClientManager {
                 self.push_diagnostic(name, e).await;
                 continue;
             }
-            let result = match server_config.transport {
-                McpTransportKind::Stdio => self.connect_stdio(&name, server_config).await,
-                McpTransportKind::Sse => self.connect_sse(&name, server_config).await,
-            };
+            validated.push(server_config.clone());
+        }
+
+        let total = validated.len();
+        self.write_progress(&progress_out, true, total, 0, None)
+            .await;
+
+        let mut futs = FuturesUnordered::new();
+        for server_config in validated {
+            let this = Arc::clone(self);
+            futs.push(async move {
+                let name = server_config.name.clone();
+                let result = match server_config.transport {
+                    McpTransportKind::Stdio => this.connect_stdio(&name, &server_config).await,
+                    McpTransportKind::Sse => this.connect_sse(&name, &server_config).await,
+                };
+                (name, result)
+            });
+        }
+
+        let mut finished = 0usize;
+        while let Some((name, result)) = futs.next().await {
             if let Err(e) = result {
                 log::warn!("MCP server {name}: connection failed: {e}");
-                self.push_diagnostic(name, e).await;
-                // Continue connecting to remaining servers.
+                self.push_diagnostic(name.clone(), e).await;
             }
+            finished += 1;
+            self.write_progress(&progress_out, true, total, finished, Some(name))
+                .await;
         }
+
+        self.write_progress(&progress_out, false, total, finished, None)
+            .await;
         Ok(())
     }
 
+    async fn write_progress(
+        &self,
+        progress_out: &Option<Arc<Mutex<McpConnectProgress>>>,
+        connecting: bool,
+        total: usize,
+        finished: usize,
+        current: Option<String>,
+    ) {
+        let snap = McpConnectProgress {
+            connecting,
+            total,
+            finished,
+            current,
+        };
+        *self.progress.lock().await = snap.clone();
+        if let Some(out) = progress_out {
+            *out.lock().await = snap;
+        }
+    }
+
+    /// Latest connect progress (c1200).
+    pub async fn progress_snapshot(&self) -> McpConnectProgress {
+        self.progress.lock().await.clone()
+    }
     async fn push_diagnostic(&self, server: String, message: String) {
         self.diagnostics
             .lock()
@@ -269,6 +359,7 @@ impl McpClientManager {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use std::sync::Arc;
 
     #[test]
     fn test_mcp_client_manager_new() {
@@ -280,7 +371,7 @@ mod tests {
     #[test]
     fn test_connect_with_no_servers() {
         let rt = tokio::runtime::Runtime::new().unwrap();
-        let manager = McpClientManager::new();
+        let manager = Arc::new(McpClientManager::new());
         let config = AppConfig::default();
         rt.block_on(manager.connect(&config)).unwrap();
         let services = rt.block_on(async { manager.services.lock().await });
@@ -290,7 +381,7 @@ mod tests {
     #[test]
     fn test_connect_with_empty_servers_list() {
         let rt = tokio::runtime::Runtime::new().unwrap();
-        let manager = McpClientManager::new();
+        let manager = Arc::new(McpClientManager::new());
         let config = AppConfig {
             mcp_servers: Some(vec![]),
             ..Default::default()
@@ -302,7 +393,7 @@ mod tests {
 
     #[tokio::test]
     async fn invalid_stdio_records_diagnostic_no_service() {
-        let manager = McpClientManager::new();
+        let manager = Arc::new(McpClientManager::new());
         let servers = vec![McpServerConfig {
             name: "bad".into(),
             transport: McpTransportKind::Stdio,
@@ -322,7 +413,7 @@ mod tests {
 
     #[tokio::test]
     async fn invalid_sse_url_records_diagnostic() {
-        let manager = McpClientManager::new();
+        let manager = Arc::new(McpClientManager::new());
         let servers = vec![McpServerConfig {
             name: "bad-url".into(),
             transport: McpTransportKind::Sse,
@@ -341,7 +432,7 @@ mod tests {
 
     #[tokio::test]
     async fn connect_fail_continues_and_ok() {
-        let manager = McpClientManager::new();
+        let manager = Arc::new(McpClientManager::new());
         let servers = vec![
             McpServerConfig {
                 name: "missing-bin".into(),
