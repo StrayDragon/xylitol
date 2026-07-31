@@ -2,7 +2,7 @@
 name: "llman-sdd-arch-review"
 description: "扫描 codebase 的薄模块（接口几乎等于实现），找出可以加深（藏更多行为到更小接口后）的候选。当用户想做架构审查、寻找模块加深机会、或想改善代码可测性与 AI 可导航性时使用。"
 metadata:
-  version: "0.0.65"
+  version: "0.0.66"
   llman_sdd:
     bdd_mode: "on"
     skill_set: "optional"
@@ -56,11 +56,11 @@ metadata:
 ### 3. 逐问深挖（用户选定候选后）
 用户从候选中选一个后，运行 `llman-sdd-explore` 的**逐问深挖分支**（触发词「深挖」）逐个走清决策——约束、依赖、加深后的模块形状、接缝后放什么、哪些测试存活。
 
-- 加深后的模块用到了 `spec.toon` 里没有的概念？→ 更新 `spec.toon` requirement statement（r107，BDD-on 在 feature 分支编辑 live 文件）。
+- 加深后的模块用到了 `spec.toon` 里没有的概念？→ 仅在 change 已 Branch binding 且当前在绑定分支上时，更新 live `spec.toon`（Specs landing）；否则 STOP，先走 `llman-sdd-propose` / `change start`，**禁止**在默认分支改 live specs。
 - 用户以关键理由拒绝候选？→ 仅当「难逆转 + 无上下文会困惑 + 真实权衡」三者皆满足时，建议记入 `design.md`。
 
 ## 输出
-候选清单（文本；可选 HTML 报告写 OS temp dir 不落 repo）+ 用户选定后的逐问深挖决策记录（回写 proposal/spec.toon）。
+候选清单（文本；可选 HTML 报告写 OS temp dir 不落 repo）+ 用户选定后的逐问深挖决策记录（回写 proposal；合约变更须经 Specs landing 才回写 live `spec.toon`）。
 
 ## Context
 - 执行前先确认当前 change/spec 状态。
@@ -73,7 +73,8 @@ metadata:
 - 变更保持最小化且范围明确。
 - 标识符或意图不明确时禁止猜测。
 - 在读取 spec 全文前，先使用 `llman sdd context --task --paths` 获取相关 specs。
-- 判断变更规模后选择路径：行为合约变更走完整 SDD 流程，实现变更走快速路径。
+- 判断变更规模后选择路径：行为合约变更走完整 SDD（Branch binding → Specs landing → `readyToImplement` → apply）；实现变更走快速路径（live specs 仍须绑定分支）。
+- 勿混淆 Skill 导航与 Git-native 生命周期；勿在默认分支编辑 live `llmanspec/specs/**`。
 
 ## Workflow
 - 以 `llman sdd` 命令结果为事实来源。

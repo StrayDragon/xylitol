@@ -1,11 +1,5 @@
 ---
-change_id: c1220-refactor-agent-prompt-extract
-title: 重构 agent prompt 管理并抽出可 eval 的 system 组装
-status: purpose-draft
-priority: 1220
-apply_band: P9-deferred
 depends_on: []
-author: agent
 ---
 
 # c1220 — Prompt 管理重构 / system 抽出（延后）
