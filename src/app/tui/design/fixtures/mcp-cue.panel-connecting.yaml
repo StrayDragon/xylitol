@@ -5,9 +5,10 @@ slot: mcp-cue
 state: panel-connecting
 source: mcpCue.panelConnecting.editor
 must_contain:
-  - "MCP · 2 configured"
+  - "configured 2 · connected 0 · armed 0"
   - "connecting"
-  - "/mcp"
+  - "not armed"
+  - "Esc to close"
 must_not_contain:
   - "Next turn:"
   - "System"

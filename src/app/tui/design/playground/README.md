@@ -56,8 +56,9 @@ just check-tui-tokens   # tokens.css/js + Palette ≡ DESIGN.md
 
 | 槽 | 说明 |
 |---|---|
-| Full shell · Layout · Keybindings · Models · Pending / NextTurn · **Mcp** (`/mcp` 面板 + 短 cue) · Tree power · Resume · Compaction | 产品整页 / 下一波形状 |
+| Full shell · Layout · Keybindings · Models · Pending / NextTurn · **Mcp** (`/mcp` + 固定 cue，c1210 已落地) · Tree power · Resume · Compaction | 产品整页 / 下一波形状 |
+
 | Tool · Diff · Markdown · Overlay · Palette | 呈现积木 |
 | Widgets · Atoms · Ask | 其它固定形状槽（与实现分层无关） |
 
-深链：`?slot=mcp-cue`（`/mcp` 列表态 + 短 cue 引导；见 [`../mcp-input-cue.md`](../mcp-input-cue.md)）。
+深链：`?slot=mcp-cue`（as-built `/mcp` 行文 + `mcp pending (see /mcp)`；见 [`../mcp-input-cue.md`](../mcp-input-cue.md)）。
