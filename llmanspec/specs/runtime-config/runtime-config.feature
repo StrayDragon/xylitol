@@ -36,10 +36,16 @@
     那么 返回 always
 
   @req:rc14
-  场景: prompts-list
-    假如 prompts 有两个路径
+  场景: themes-list
+    假如 themes 有两个路径
     当 合并 settings
-    那么 Settings.prompts 有 2 项
+    那么 Settings.themes 有 2 项
+
+  @req:rc14
+  场景: no-prompts-settings-field
+    假如 加载默认或示例 settings
+    当 检查 Settings 类型与合并结果
+    那么 MUST NOT 存在可生效的 prompts 路径列表字段
 
   @req:rc15
   场景: mapping-documented

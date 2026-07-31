@@ -21,16 +21,10 @@
     那么 MUST NOT 含该项目 skill
 
   @req:pt3
-  场景: register
-    假如 加载模板 greet
-    当 register_prompt_commands
-    那么 get_commands 含 greet 且带 source_path
-
-  @req:pt4
-  场景: positionals
-    假如 模板体含 $1
-    当 带参展开
-    那么 位置参数被替换
+  场景: no-slash-prompt-templates
+    假如 项目或全局 prompts 目录存在 greet.md
+    当 装配 AgentSession 或 ResourceLoader 发现
+    那么 get_commands MUST NOT 含 template:greet 或 /greet 模板命令且 loader MUST NOT 将 greet 注册为 prompt 模板
 
   @req:pt5
   场景: no-jinja-dep
