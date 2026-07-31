@@ -126,6 +126,8 @@ pub struct HostSession<T: Terminal> {
     last_mid_turn_footer_refresh: Option<std::time::Instant>,
     /// `tui.editor_history_seed_sessions` (c1560).
     editor_history_seed_sessions: u32,
+    /// MCP bootstrap in flight — gate agent prompt / bang / some slash (c1200).
+    mcp_blocks_agent: bool,
 }
 
 impl<T: Terminal> HostSession<T> {
@@ -175,7 +177,17 @@ impl<T: Terminal> HostSession<T> {
             footer_token_rx,
             last_mid_turn_footer_refresh: None,
             editor_history_seed_sessions: 1,
+            mcp_blocks_agent: false,
         }
+    }
+
+    /// Sync MCP connecting gate from the driver (c1200).
+    pub fn set_mcp_blocks_agent(&mut self, blocks: bool) {
+        self.mcp_blocks_agent = blocks;
+    }
+
+    pub fn mcp_blocks_agent(&self) -> bool {
+        self.mcp_blocks_agent
     }
 
     /// Product empty UI: shared `UiRoot` + Ctrl+C / Esc / idle-Enter listeners.

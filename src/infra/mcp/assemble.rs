@@ -39,12 +39,22 @@ pub fn adapters_from_discovered(
 pub async fn connect_and_discover(
     servers: &[McpServerConfig],
 ) -> Result<Option<(Arc<McpClientManager>, Vec<Arc<dyn XyTool>>)>, String> {
+    connect_and_discover_with_progress(servers, None).await
+}
+
+/// Like [`connect_and_discover`], mirroring connect progress when `progress` is set (c1200).
+pub async fn connect_and_discover_with_progress(
+    servers: &[McpServerConfig],
+    progress: Option<std::sync::Arc<tokio::sync::Mutex<super::client::McpConnectProgress>>>,
+) -> Result<Option<(Arc<McpClientManager>, Vec<Arc<dyn XyTool>>)>, String> {
     if servers.is_empty() {
         return Ok(None);
     }
 
     let manager = Arc::new(McpClientManager::new());
-    manager.connect_servers(servers).await?;
+    manager
+        .connect_servers_with_progress(servers, progress)
+        .await?;
     let rows = manager.list_all_tools().await;
     let tools = adapters_from_discovered(manager.clone(), &rows);
     Ok(Some((manager, tools)))
