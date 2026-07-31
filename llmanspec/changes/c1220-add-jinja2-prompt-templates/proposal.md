@@ -2,55 +2,96 @@
 depends_on: []
 ---
 
-# c1220 — Prompt 管理重构 / system 抽出（延后）
+# c1220 — Safe minijinja system prompt + eval 可换变体（purpose-draft）
 
-> **purpose-draft / deferred**。目录名仍为 `c1220-add-jinja2-prompt-templates`（历史 draft id）；**主题已改**：主目标是 **prompt 管理逻辑重构重写** + **抽出 system prompt 组装**，便于后续 eval / 调优。模板引擎（minijinja 等）只是可选实现手段，**其次**。
+> **purpose-draft**。目录名仍为历史 `c1220-add-jinja2-prompt-templates`；升格 propose 时宜改 id（如 `refactor-agent-prompt-safe-templates`）。
 >
-> 升格时可用 `llman-sdd-propose`；若改 id/目录名，propose 时一并整理。
+> 探索中（2026-07-31）：主路径定为 **C**——安全 minijinja + `PromptSpec × Context → Rendered`，服务 eval A/B；**明确不**对齐 pi 的 slash prompt templates。
 
 ## Why
 
-今日 system prompt 组装偏散：`SystemPromptOpts` 多字段 + Rust 字符串拼接 + tools 散文列表混在运行时路径里。结果：
+今日 `build_system_prompt` + `SystemPromptOpts` 字符串拼接难以：
 
-- 改一句文案 / 调一段结构要翻代码；
-- **eval / 调优**难以对「同一套 prompt 产物」做离线对比（缺稳定抽出与可替换边界）；
-- 用户/项目级定制与组合缺少清晰模块边界。
+- 稳定 dump / 同 ctx 对比两套 system 文本（eval 调优）；
+- 声明式改结构而不翻 Rust；
+- 与 Agent-Eval roadmap 的 **eval profile YAML** 绑定具名 scaffold。
 
-需要一次 **管理逻辑重构**：把「组装契约、块组合、默认文案」从 Agent 热路径里摘清楚，而不是先绑死某个模板引擎。
+另：live `pt5` 禁止 jinja，与「安全使用 minijinja」目标冲突，升格时须改写。
 
-## Purpose（暂缓 · 主次）
+## Decisions（探索已钉）
+
+| # | 决策 | 备注 |
+|---|---|---|
+| D1 | 走 **安全 minijinja**（推翻 `pt5` / `no-jinja-dep`） | 对齐 config 面 `rc23` 先例：strict + 白名单 ctx；agent 自建沙箱 Env（↛ infra） |
+| D2 | **不支持** pi 式 user prompt templates（`/review` 或 `/template:name` + `$1`/`$@`） | **移除**该产品能力，非迁到 Jinja |
+| D3 | Eval/测试缝：**库 `render(ctx)`**（可钉 clock）；CLI dump 非必做 | 与 D4 一致；无多 spec id |
+| D4 | **单一默认**安全 minijinja 入口 + `render(ctx)`；**不**暴露多 `prompt_profile` id | 可扩展 = 类型/API 日后可加 profile；本 change 只迁现行默认组装。用户 A/B = 不同 workspace / `SYSTEM.md` |
+| D5 | 不抄 pi：无 extension `before_agent_start` 链式改 prompt；无 pi-docs 段 | xylitol 非插件市场 |
+| D7 | **拆 change**：先删 slash prompts 半死路径；再本线做默认组装 → minijinja | 删 prompts 可接近 quick / 小 propose；引擎 change 专做 pt5 改写 |
+| D8 | **命名 A**：前置 `c1218-remove-slash-prompt-templates`；本线 **rename** `c1220` → `c1220-add-safe-minijinja-system-prompt`（propose 时改目录）；引擎 `depends_on: [c1218-…]` | 升格时执行 rename，探索阶段只记意向 |
+
+## 影响面（D2 移除 slash prompts — 事实）
+
+今日 xylitol 相对 pi **已半死**：
+
+- 加载：`~/.xylitol/prompts/*.md` + 项目 `.xylitol/prompts`（`ResourceLoader`）
+- 注册：`register_prompt_commands` → 命令名 `template:{name}`
+- **生产展开**：c320 已删 `process_prompt`；BDD 里仅有测试辅助 `expand_template_body`
+- 合约：`agent-prompt` pt3/pt4；`agent-session` a22；chrome **已禁止** header 列 templates（atc18）
+- CLI：`resources` 可列出 prompts；settings 有 `prompts: []` 路径配置
+
+移除 = 删/改写上述合约与加载/注册路径，避免「半死元数据」继续 levitation。Skills / `$skill` / SYSTEM.md **保留**（与 slash prompts 正交）。
+
+## Purpose（升格方向）
 
 | 优先 | 内容 |
 |---|---|
-| **主** | 重构 `agent/prompt`（或等价）管理：明确块、顺序、覆盖规则；**抽出**可单测 / 可 dump 的 system 组装入口，供 eval 与调优 |
-| **次** | 若组装需要声明式模板，再选 **minijinja**（或同类）做安全渲染；嵌入默认 + 用户模板；可组合 include |
-| **非主** | 「为上 Jinja 而上 Jinja」——无抽出与 eval 缝则不做引擎迁移 |
+| **主** | 现行默认组装 → 单一安全 minijinja + `render(ctx)`（可钉 clock）；用户 SYSTEM/APPEND 纯文本 |
+| **主** | 改写 `agent-prompt`：废 pt5；新安全渲染 MUST（pt3/pt4 由**前置**删 prompts change 处理） |
+| **非目标** | 多 prompt_profile；eval profile YAML；用户文件 Jinja；本 change 内删 slash prompts（见 D7） |
 
-升格前钉：
+## What Changes（意向 · 本线 = 引擎）
 
-1. 抽出后的 **公共 API**（输入：opts/块；输出：最终 system 字符串 + 可选结构化块清单）。
-2. 与 c1210「builtins-only Available tools + MCP discover 一句」如何落在默认块里。
-3. 用户覆盖路径与 trust 闸。
-4. 若引入模板引擎：安全边界（禁任意代码、路径逃逸、读秘密）。
+- 重写 `agent/prompt` 默认组装为沙箱 minijinja；运行时走 `render(ctx)`
+- 改写 pt5 → 安全 minijinja MUST；保留 SYSTEM/APPEND/context/skills 纯文本语义与 trust
+- **不**在本 change 删 prompts 加载（前置 change，见 D7）
 
-## What Changes（升格 full 时 · 意向）
+## 前置 change（D7 · 意向）
 
-- 重写 / 收拢 prompt 组装模块；运行时只依赖抽出的组装缝。
-- 提供 dump/fixture 友好的纯函数或端口，便于 eval 管线对比 prompt 文本。
-- （可选）minijinja 安全渲染 + 嵌入默认模板 + 用户模板组合。
-- specs：`agent-prompt`（管理边界、抽出 MUST、安全 SHOULD）。
+- 移除 `prompts/*.md` 发现、`register_prompt_commands` / `/template:`、pt3/pt4、a22、相关 BDD/settings 面
+- Skills / `$skill` / SYSTEM.md **不动**
 
 ## Capabilities
 
-- `agent-prompt`（主）
-- 可能触 trust / resource discovery（用户模板加载）
+- 本线：`agent-prompt`（主）
+- 前置删 prompts：另触 `agent-session` / `runtime-resource-discovery` / settings `prompts`（视清理范围）
 
 ## Impact
 
-- 面广、易回归 → **延后**、单独 propose；不阻塞 c1210。
-- 做好后 eval 调优成本应明显下降。
+- 两段交付；前置清理降低半死路径干扰后再迁引擎
 
-## Out of scope（本草案）
+## Out of scope（本线）
 
-- c1210 解闸 / tools overlay / MCP 进程关停
-- 立刻换引擎或改 live specs
+- 完整 SWE/Harbor 出分管线
+- pi 式 extension 改 prompt
+- 多 prompt_profile / eval profile YAML
+- 默认分支改 live specs（须 Branch binding）
+
+## Open Questions
+
+1. ~~slash prompts？~~ → **D2 + D7 + D8：前置 c1218 移除**
+2. ~~多 profile / eval？~~ → **D4：单一 `render(ctx)`；用户 A/B = workspace**
+3. ~~SYSTEM.md Jinja？~~ → **D6：纯文本**
+4. ~~同 change？~~ → **D7：拆开**
+5. ~~命名？~~ → **D8：c1218-remove-… + rename c1220-add-safe-minijinja-system-prompt**
+
+（安全白名单 ctx 字段表、嵌入模板文件布局 → propose/design 再钉，非产品分叉。）
+
+## 探索结论（可升格）
+
+| 线 | Change | 路径 |
+|---|---|---|
+| 1 | `c1218-remove-slash-prompt-templates` | 废 pt3/pt4/a22；删 loader/注册/BDD；保留 skills/SYSTEM |
+| 2 | `c1220-add-safe-minijinja-system-prompt`（rename） | 废 pt5→安全 minijinja；单一默认模板 + `render(ctx)`；SYSTEM/APPEND 纯文本 |
+
+下一步 skill：对 **c1218** 先 `llman-sdd-propose`（或确认可 `quick` 后仍建议小 propose 因改合约）；c1220 待 c1218 归档后再 propose/apply。
