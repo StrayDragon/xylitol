@@ -19,6 +19,7 @@ use crate::app::cli::tokenizer::TokenizerAction;
 use crate::app::core::bootstrap::{
     BootstrapError, BootstrapInput, BootstrapWarning, bootstrap, resolve_assembly,
 };
+use crate::app::core::driver::XyDriver;
 #[cfg(feature = "server")]
 use crate::app::server::subcommand::ServerSubcommand;
 use crate::infra::timing;
@@ -433,18 +434,6 @@ pub async fn run() -> Result<(), Box<dyn std::error::Error>> {
     let agent_dir = crate::infra::resource::DefaultResourceLoader::default_agent_dir();
     let mcp_servers = runtime.mcp_servers.unwrap_or_default();
     driver.enable_reload_state(cwd, agent_dir, project_trusted, mcp_servers);
-    if let Err(e) = driver.bootstrap_mcp().await {
-        eprintln!("Warning: MCP bootstrap failed: {e}");
-    } else if let Some(summary) = driver.mcp_status_summary().await {
-        // Surface connect issues (empty connected + diags) without breaking print-mode stdout.
-        if summary.contains("diagnostics:") {
-            eprintln!("Warning: {summary}");
-        } else {
-            log::info!(target: "xylitol::mcp", "{summary}");
-        }
-    }
-
-    // ── dispatch by mode ───────────────────────────────────────
     #[cfg(feature = "tui")]
     if want_tui {
         // Align with pi / 图4: untrusted project → message already printed, no TUI.
@@ -460,6 +449,8 @@ pub async fn run() -> Result<(), Box<dyn std::error::Error>> {
         )
         .map(|c| c.tui.editor_history_seed_sessions)
         .unwrap_or(1);
+        // c1200: do not await full MCP before opening the TUI.
+        driver.begin_mcp_bootstrap().await;
         let tui_result = crate::app::tui::run(
             &mut driver,
             crate::app::tui::TuiRunOptions {
@@ -470,6 +461,17 @@ pub async fn run() -> Result<(), Box<dyn std::error::Error>> {
         .await;
         maybe_print_resume_hint(&driver).await;
         return tui_result.map_err(|e| e.into());
+    }
+
+    // print / non-TUI: settle MCP before the oneshot prompt (c1200).
+    driver.begin_mcp_bootstrap().await;
+    driver.wait_mcp_bootstrap().await;
+    if let Some(summary) = driver.mcp_status_summary().await {
+        if summary.contains("diagnostics:") {
+            eprintln!("Warning: {summary}");
+        } else {
+            log::info!(target: "xylitol::mcp", "{summary}");
+        }
     }
 
     let prompt = match resolve_print_prompt(

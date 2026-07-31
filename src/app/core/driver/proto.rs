@@ -231,6 +231,27 @@ pub trait XyDriver: Send {
     /// Remote / stub drivers return empty (no default body — `dyn XyDriver` + Sync).
     async fn loaded_resources_snapshot(&self) -> LoadedResourcesSnapshot;
 
+    /// True while MCP bootstrap is in flight and agent prompt must wait (c1200).
+    fn mcp_blocks_agent(&self) -> bool {
+        false
+    }
+
+    /// Start background MCP connect when configured (c1200). Idempotent.
+    async fn begin_mcp_bootstrap(&mut self) {}
+
+    /// Poll background MCP bootstrap; returns true when loaded-resources should refresh.
+    async fn poll_mcp_bootstrap(&mut self) -> bool {
+        false
+    }
+
+    /// Block until MCP bootstrap settles (print / tests). No-op when idle.
+    async fn wait_mcp_bootstrap(&mut self) {
+        while self.mcp_blocks_agent() {
+            let _ = self.poll_mcp_bootstrap().await;
+            tokio::task::yield_now().await;
+        }
+    }
+
     /// Hot-reload skills, MCP, and prompt context (c1120).
     ///
     /// Keybindings and themes are orchestrated by the product TUI host. Default:

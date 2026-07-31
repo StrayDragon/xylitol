@@ -12,7 +12,8 @@ pub(crate) mod types;
 
 pub use adapter::McpToolAdapter;
 pub use assemble::{
-    adapters_from_discovered, connect_and_discover, connect_and_discover_from_config, mcp_enabled,
+    adapters_from_discovered, connect_and_discover, connect_and_discover_from_config,
+    connect_and_discover_with_progress, mcp_enabled,
 };
-pub use client::{ConnectedMcpServer, McpClientManager, McpConnectDiagnostic};
+pub use client::{ConnectedMcpServer, McpClientManager, McpConnectDiagnostic, McpConnectProgress};
 pub use types::{McpServerConfig, McpTransportKind};

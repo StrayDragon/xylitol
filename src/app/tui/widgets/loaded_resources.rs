@@ -70,14 +70,17 @@ pub fn render_loaded_resources(
 
     let show_mcp = snap.mcp_configured > 0
         || !snap.mcp_connected.is_empty()
-        || !snap.mcp_diag_short.is_empty();
+        || !snap.mcp_diag_short.is_empty()
+        || snap.mcp_connecting_label.is_some();
     if show_mcp {
         let ids: Vec<String> = snap
             .mcp_connected
             .iter()
             .map(|(id, n)| format!("{id}({n})"))
             .collect();
-        let mut body = if ids.is_empty() {
+        let mut body = if let Some(label) = snap.mcp_connecting_label.as_deref() {
+            label.to_string()
+        } else if ids.is_empty() {
             format!("{} configured · 0 connected", snap.mcp_configured)
         } else {
             format!(
