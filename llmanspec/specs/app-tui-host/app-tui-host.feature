@@ -209,6 +209,12 @@
     那么 面已渲染（resume 时历史已可投影）且未等待全部 MCP 连接完成
 
   @req:ath23
+  场景: prompt-gated-until-mcp-settled
+    假如 MCP 仍 connecting
+    当 提交普通 agent prompt
+    那么 拒绝并短提示；slash 与滚历史仍可用
+
+  @req:ath23
   场景: in-tui-resume-no-mcp-reconnect-block
     假如 MCP 已连接或仍在后台连接
     当 面内 /session-resume 切换会话

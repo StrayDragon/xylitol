@@ -9,6 +9,6 @@ requirements[7]{req_id,title,statement}:
   mcp4,配置校验与失败可观测,System MUST 校验 mcp_servers 条目（stdio 需 command；url/sse 需合法 url 类字段）；无效条目 MUST 产生可读错误或诊断且 MUST NOT 静默当作成功连接；单个服务器连接失败 MUST 可观察（warn 或诊断）且 MUST NOT 单独导致整次 bootstrap 失败。
   mcp5,已连接列表只读,System MUST 提供只读查询已成功连接的 MCP 服务器摘要（至少 id 与工具数量或等价）；无配置或全部失败时 MUST 返回空列表；该查询 MUST NOT 创建新连接。
   mcp6,"mcp-tool-hard-barrier","经 McpToolAdapter（或等价）暴露的 MCP 工具 MUST 在批调度中为 Barrier（不可进并行窗）；重载后新发现工具 MUST 同样为 Barrier；MUST NOT 提供配置名、glob 或 annotation 放行路径。由单测覆盖，MUST NOT 为静态默认单独扩 BDD step。"
-  mcp7,"nonblocking-parallel-startup","当 mcp_servers 非空时，产品启动路径（TUI / print）MUST NOT 在打开应用面或接受首交互之前阻塞等待全部 MCP 服务器连接完成；多服务器连接 MUST 并行尝试（单失败 MUST 仍可观察且 MUST NOT 拖死其余，对齐 mcp4）。连接过程 MUST 经 Driver/composition 只读缝暴露可轮询的进度或快照（至少：配置数、已连接摘要、进行中/完成态或等价），供应用面刷新；全部成功或失败结算后 MUST 将已发现工具热合并进 ToolSet（保留内置工具），供后续 run 使用。无配置路径 MUST 仍满足 mcp1 zero-cost。"
+  mcp7,"nonblocking-parallel-startup","当 mcp_servers 非空时，产品启动路径 MUST NOT 在打开 TUI 应用面（或 print 进入可观测启动）之前阻塞等待全部 MCP 连接完成；CLI `--session` resume MUST 能在 MCP 未完成时投影历史。多服务器连接 MUST 并行尝试（单失败 MUST 仍可观察且 MUST NOT 拖死其余，对齐 mcp4）。连接过程 MUST 经 Driver/composition 只读缝暴露可轮询的进度或快照（至少：配置数、已连接摘要、进行中/完成态或等价）。TUI 在 MCP 未结算前 MUST 拒绝 agent 普通 prompt 提交（及 bang），MUST 允许滚历史与多数 slash（含面内 session-resume）；拒绝时 MUST 短提示且 MUST NOT 静默吞提交。结算后 MUST 热合并已发现工具进 ToolSet（保留内置）并解除该闸。无配置路径 MUST 仍满足 mcp1 zero-cost。"
 scenarios[1]{req_id,id,given,when,then,feature}:
   mcp6,"adapter-hard-barrier",构造 McpToolAdapter,经 concurrency 或 classify,为 Barrier,false

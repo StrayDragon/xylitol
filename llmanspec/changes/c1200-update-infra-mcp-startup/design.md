@@ -4,10 +4,10 @@
 
 | 路径 | 用户应感到 |
 |---|---|
-| **新会话** | 几乎立刻进 TUI；头卡 mcp 行从 `connecting…` → `N connected`；可先聊（builtins） |
-| **CLI `--session` resume** | 同样立刻进 TUI；**历史先投影**（c1790 Tool 单块等）；MCP 在旁连接，不挡看旧会话 |
-| **面内 `/session-resume`** | 切会话只换 transcript；**不**重演启动连 MCP |
-| **print** | 首 prompt 不被 MCP 长时间挡住；诊断在 stderr/log |
+| **新会话** | 几乎立刻进 TUI；头卡 mcp `connecting…`；可看界面 / slash / 滚空白；**agent prompt 暂不可提交**，ready 后可聊 |
+| **CLI `--session` resume** | 立刻进 TUI；**历史先投影**；可滚读旧会话、slash、面内再 resume；**agent prompt 仍闸到 MCP 结算** |
+| **面内 `/session-resume`** | 切会话只换 transcript；**不**重演启动连 MCP；若启动波仍 connecting，闸规则同上 |
+| **print** | 无浏览态：首 prompt **可**等 MCP 结算后再跑（或短超时后带已连上的）；进度 stderr/log |
 
 ## 架构（意向）
 
@@ -45,13 +45,33 @@ connecting 1/3 · foo
 
 `LoadedResourcesSnapshot` 宜增加 phase（或等价字段），避免 host 猜字符串。
 
-## 首轮工具策略（B）
+## 输入闸策略（A · 已拍）
 
-- 连接中：ToolSet = builtins（+ 已连上的可增量合并，若实现简单）
-- **MUST**：ready 后 `set_tools` 合并 mcp:，**下一** `run` 可见
-- **MUST NOT** 为等 MCP 阻塞 TUI 首帧或 CLI resume 的 rebuild
+连接中（`mcp_servers` 非空且尚未结算）：
 
-可选增强（非本波 MUST）：已连上的 server 工具可中途增量注册——若做，须测竞态。
+| 允许 | 闸住 |
+|---|---|
+| 看/滚 transcript（含 CLI resume 投影） | **agent 普通 prompt 提交**（`run`） |
+| 多数 slash：`/session-resume`、`/exit`、`/model`、`/trust`… | （可选）connecting 中 `/reload` → 短拒或排队，本波定短拒） |
+| 打字进 editor（不提交） | bang `!` 若会走工具链且依赖完整 ToolSet — 本波 **一并闸** 或仅允只读类；默认 **闸 bang** 与 agent 同 |
+
+拒绝提交时：一条短滚动提示（如 `MCP still connecting — prompt deferred`），**MUST NOT** 静默吞 Enter。
+
+结算（全部成功 / 部分失败 + diagnostics / 超时策略落地后）：`set_tools` 热合并 → **解除闸** → 此后 `run` 的 tools 列表已含 mcp:。
+
+**为何不用 B（先 builtins 聊）**：见下节；本波先 A，后续可再议软开。
+
+## 若将来回到 B：系统提示 / 工具插入会不会「遗忘·幻觉」？
+
+本仓库每轮 `run` 会把 **当时** `ToolSet` 编进 provider 请求（tools 参数 + 当前 system），**不是**「只在第一轮写死、以后靠模型记忆工具表」。
+
+| 做法 | 对 provider | 风险 |
+|---|---|---|
+| **只改下一轮 tools 列表**（热合并，不改历史消息） | 正常；新一轮 schema 以请求为准 | 低。模型偶发仍提未声明工具名 → 运行时无此 tool |
+| **往历史里插入一条「MCP ready」system/user 伪消息** | 污染 transcript；多轮后更易偏 | **较高**；且与「面不伪造对话」不符 |
+| **改 system 正文中途追加「现已有 mcp:…」长列表** | 每轮 system 可变，一般可行 | 中：与 tools 参数重复；列表很长时吵 |
+
+结论：B 若只做 **下一请求带上新 tools**（不插假系统对话），不算「遗忘」——历史还在，只是工具目录变了。真正麻烦是 **首轮用户以为 MCP 已可用 / 模型按用户口头点名幻觉调用**。A 用闸避开首轮不一致；以后若开 B，优先「tools 热合并 + 头卡可感」，**避免**往 session 里塞假 system 行。
 
 ## 并行连接
 
