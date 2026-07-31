@@ -1384,4 +1384,26 @@ mod driver_session_tree_tests {
             None => unsafe { std::env::remove_var("HOME") },
         }
     }
+
+    #[tokio::test]
+    async fn begin_mcp_bootstrap_empty_settles_immediately() {
+        let dir = tempfile::tempdir().unwrap();
+        let store = Arc::new(SessionManager::new(dir.path().join("sessions")));
+        let mut driver = build_test_driver(store).await;
+        driver.enable_reload_state(
+            dir.path().to_path_buf(),
+            dir.path().join(".xylitol"),
+            true,
+            Vec::new(),
+        );
+        assert!(!driver.mcp_blocks_agent());
+        driver.begin_mcp_bootstrap().await;
+        assert!(
+            !driver.mcp_blocks_agent(),
+            "empty mcp_servers MUST settle without gating"
+        );
+        let snap = driver.loaded_resources_snapshot().await;
+        assert!(snap.mcp_connecting_label.is_none());
+        assert_eq!(snap.mcp_configured, 0);
+    }
 }
