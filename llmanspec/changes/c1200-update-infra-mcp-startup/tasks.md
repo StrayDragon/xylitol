@@ -5,7 +5,7 @@
 - [x] 1.1 收紧 live `infra-mcp`：非阻塞启动 / 并行连接 / 进度可观测（新 req）
 - [x] 1.2 收紧 live `app-tui-host` / `app-tui-chrome`：loaded-resources mcp 进度；新会话与 CLI resume 不挡；面内 resume 不重连
 - [x] 1.3 对应 `*.feature` + `llman sdd validate … --strict --no-check`
-- [ ] 1.4 `llman sdd change start c1200-update-infra-mcp-startup`
+- [x] 1.4 `llman sdd change start c1200-update-infra-mcp-startup` → branch `sdd/c1200-…`（Stage: full）
 
 ## 2. 连接与 Driver 缝
 
