@@ -89,10 +89,10 @@
     那么 块呈 cancelled 且无 ScrollNotice Aborted 混用
 
   @req:ath12
-  场景: god-files-under-budget
-    假如 拆分后统计行数
-    当 审查 host/mod layout/root effects 入口 bridge/mod
-    那么 各文件显著低于约 800 行且无第二套 drain 泵
+  场景: entry-complexity-under-budget
+    假如 ath12 入口协调者已接线
+    当 运行 scripts/check_complexity.py --check
+    那么 cognitive≤35 且 cyclomatic≤30 且无第二套 drain 泵
 
   @req:ath12
   场景: input-policy-module

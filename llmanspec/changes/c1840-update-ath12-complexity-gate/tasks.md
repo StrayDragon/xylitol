@@ -2,11 +2,11 @@
 
 ## 1. Specs landing
 
-- [ ] 1.1 Branch binding：`llman sdd change start c1840-update-ath12-complexity-gate`
-- [ ] 1.2 改写 `app-tui-host` ath12 statement：结构 MUST 保留；行数 → SHOULD ~800 / 硬味 ~1200；入口复杂度 MUST（cognitive≤35、cyclomatic≤30，cccc-rs / `check_complexity.py`）
-- [ ] 1.3 改写 `app-tui-host.feature`：`god-files-under-budget` → 入口复杂度闸场景；保留 input-policy / effects-slash 结构场景
-- [ ] 1.4 扩展 `test-qa-gate`：qg06 + feature（`check_complexity.py` 经 check-scripts 入闸）
-- [ ] 1.5 `llman sdd validate` + commit Specs landing
+- [x] 1.1 Branch binding：`llman sdd change start c1840-update-ath12-complexity-gate`
+- [x] 1.2 改写 `app-tui-host` ath12 statement：结构 MUST 保留；行数 → SHOULD ~800 / 硬味 ~1200；入口复杂度 MUST（cognitive≤35、cyclomatic≤30，cccc-rs / `check_complexity.py`）
+- [x] 1.3 改写 `app-tui-host.feature`：`god-files-under-budget` → 入口复杂度闸场景；保留 input-policy / effects-slash 结构场景
+- [x] 1.4 扩展 `test-qa-gate`：qg06 + feature（`check_complexity.py` 经 check-scripts 入闸）
+- [x] 1.5 `llman sdd validate` + commit Specs landing
 
 ## 2. 实现对齐
 
