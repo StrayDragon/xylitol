@@ -5,8 +5,8 @@ use xylitol_tui::fg_rgb;
 
 use super::UiRoot;
 use super::empty_widgets::{
-    empty_models_list, empty_session_resume_panel, empty_themes_list, empty_tree_selector,
-    import_confirm_list,
+    empty_mcp_list, empty_models_list, empty_session_resume_panel, empty_themes_list,
+    empty_tree_selector, import_confirm_list,
 };
 use crate::app::tui::layout::LayoutTheme;
 
@@ -40,6 +40,7 @@ impl UiRoot {
         self.models_list = empty_models_list(theme);
         self.apply_models_filter();
         self.themes_list = empty_themes_list(theme);
+        self.mcp_list = empty_mcp_list(theme);
         self.import_confirm_list = import_confirm_list(theme);
         self.session_resume = empty_session_resume_panel(theme);
         self.refresh_footer_from_queue(

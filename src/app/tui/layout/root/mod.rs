@@ -14,8 +14,8 @@ mod slot_nav;
 mod theme_apply;
 
 use empty_widgets::{
-    empty_models_list, empty_session_resume_panel, empty_themes_list, empty_tree_selector,
-    import_confirm_list as make_import_confirm_list,
+    empty_mcp_list, empty_models_list, empty_session_resume_panel, empty_themes_list,
+    empty_tree_selector, import_confirm_list as make_import_confirm_list,
 };
 use std::path::PathBuf;
 use std::sync::atomic::{AtomicBool, Ordering};
@@ -123,8 +123,12 @@ pub struct UiRoot {
     pending_session_resume_select: Option<String>,
     pending_session_resume_rename: Option<(String, String)>,
     pending_session_resume_delete: Option<String>,
-    /// `/mcp` readonly panel lines (c1210).
-    mcp_panel_lines: Vec<String>,
+    /// `/mcp` SelectList (c1215).
+    mcp_list: SelectList,
+    /// Summary above the list: `configured N · connected K · armed A`.
+    mcp_summary_line: String,
+    /// Optional diag lines under the list.
+    mcp_diag_lines: Vec<String>,
     /// Generation for loaded+scrollback+queue cache (ath24); bumps on content/theme/fold.
     upper_gen: u64,
     upper_cache_gen: u64,
@@ -203,7 +207,9 @@ impl UiRoot {
             pending_session_resume_select: None,
             pending_session_resume_rename: None,
             pending_session_resume_delete: None,
-            mcp_panel_lines: Vec::new(),
+            mcp_list: empty_mcp_list(theme),
+            mcp_summary_line: String::new(),
+            mcp_diag_lines: Vec::new(),
             upper_gen: 0,
             upper_cache_gen: u64::MAX,
             upper_cache_width: usize::MAX,

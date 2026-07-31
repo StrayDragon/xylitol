@@ -228,13 +228,38 @@ impl<T: Terminal> HostSession<T> {
     /// Refresh loaded-resources header from XyDriver (c1135). Startup + `/reload`.
     pub async fn refresh_loaded_resources(&mut self, driver: &dyn XyDriver) {
         let snap = driver.loaded_resources_snapshot().await;
+        self.refresh_loaded_resources_from_snap(snap);
+    }
+
+    /// Apply a loaded-resources snapshot into UiRoot (c1215 cache path).
+    pub fn refresh_loaded_resources_from_snap(
+        &mut self,
+        snap: crate::app::core::driver::LoadedResourcesSnapshot,
+    ) {
         let Some(root) = self.ui_root.as_ref() else {
             return;
         };
         root.borrow_mut().set_loaded_resources(snap);
     }
 
-    /// Mount `/mcp` panel from a snapshot (c1210). Allowed in any host state.
+    /// Whether `/mcp` can sync-mount without awaiting Driver snapshot (c1215).
+    pub fn mcp_cache_usable_for_open(&self) -> bool {
+        let Some(root) = self.ui_root.as_ref() else {
+            return false;
+        };
+        root.borrow().mcp_cache_usable_for_open()
+    }
+
+    /// Sync-mount `/mcp` from UiRoot's cached loaded-resources (c1215).
+    pub fn mount_mcp_from_cache(&mut self) {
+        let Some(root) = self.ui_root.as_ref() else {
+            return;
+        };
+        root.borrow_mut().mount_mcp_from_loaded_resources();
+        self.sync_ui_root_from_model();
+    }
+
+    /// Mount `/mcp` SelectList from a snapshot (c1215). Allowed in any host state.
     pub fn mount_mcp_panel(&mut self, snap: &crate::app::core::driver::LoadedResourcesSnapshot) {
         let Some(root) = self.ui_root.as_ref() else {
             return;

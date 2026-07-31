@@ -24,7 +24,7 @@ pub enum EditorSlot {
     ImportConfirm,
     /// `/session-resume` session picker (c1015).
     SessionResume,
-    /// `/mcp` MCP connection + armed panel (c1210).
+    /// `/mcp` MCP SelectList (c1215).
     Mcp,
 }
 

@@ -426,8 +426,14 @@ pub(super) async fn handle_slash<T: Terminal>(
             let _ = session.render_now();
         }
         PendingSlash::OpenMcp => {
-            let snap = driver.loaded_resources_snapshot().await;
-            session.mount_mcp_panel(&snap);
+            // Prefer sync mount from UiRoot cache; await snapshot only when empty/stale (c1215).
+            if session.mcp_cache_usable_for_open() {
+                session.mount_mcp_from_cache();
+            } else {
+                let snap = driver.loaded_resources_snapshot().await;
+                session.refresh_loaded_resources_from_snap(snap.clone());
+                session.mount_mcp_panel(&snap);
+            }
             let _ = session.render_now();
         }
         PendingSlash::Usage(msg) => {

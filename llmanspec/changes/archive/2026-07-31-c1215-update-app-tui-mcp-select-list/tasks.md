@@ -14,16 +14,16 @@
 
 ## 2. SelectList 壳
 
-- [ ] 2.1 `mcp_list: SelectList`；`mount_mcp_panel` → 从 snap 建 items；render 用 list
-- [ ] 2.2 slot_input：↑↓；Enter 关槽；Esc 既有 close
-- [ ] 2.3 harness：选中可观测；Enter/Esc 关
+- [x] 2.1 `mcp_list: SelectList`；`mount_mcp_panel` → 从 snap 建 items；render 用 list
+- [x] 2.2 slot_input：↑↓；Enter 关槽；Esc 既有 close
+- [x] 2.3 harness：选中可观测；Enter/Esc 关
 
 ## 3. 开槽 perf
 
-- [ ] 3.1 OpenMcp 优先 `UiRoot.loaded_resources`（或 host 缓存）同步 mount
-- [ ] 3.2 仅缓存空/无效时 await snapshot；单测或 harness 钉「无二次 await」缝
+- [x] 3.1 OpenMcp 优先 `UiRoot.loaded_resources`（或 host 缓存）同步 mount
+- [x] 3.2 仅缓存空/无效时 await snapshot；单测或 harness 钉「无二次 await」缝
 
 ## 4. 校验
 
-- [ ] 4.1 相关 `cargo test` + `validate --strict`
-- [ ] 4.2 playground check 仍绿；短 cue 不回归
+- [x] 4.1 相关 `cargo test` + `validate --strict`
+- [x] 4.2 playground check 仍绿；短 cue 不回归
