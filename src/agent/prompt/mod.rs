@@ -1,14 +1,11 @@
-//! Prompt/input shaping — system prompt assembly, slash commands, and
-//! templates. The agent loop consumes these to build the input it sends to the
-//! model.
+//! Prompt/input shaping — system prompt assembly and slash commands. The agent
+//! loop consumes these to build the input it sends to the model.
 
 pub mod commands;
 pub mod fragments;
 pub mod product_commands;
 pub mod skill_expand;
 pub mod system;
-pub mod templates;
-
 // Umbrella re-export: system-prompt construction is the subsystem's main entry.
 pub(crate) use fragments::{fragment_ids_for_batch_mode, fragments_for_batch_mode};
 pub(crate) use skill_expand::expand_skills_in_agent_messages;

@@ -116,9 +116,13 @@ fn g_rc_trust(rc_snap: &RcSnap) {
     rc_snap.settings.borrow_mut().default_project_trust =
         Some(xylitol::infra::settings::DefaultProjectTrust::Always);
 }
-#[given("prompts 有两个路径")]
-fn g_rc_prompts(rc_snap: &RcSnap) {
-    rc_snap.settings.borrow_mut().prompts = Some(vec!["prompt-a".into(), "prompt-b".into()]);
+#[given("themes 有两个路径")]
+fn g_rc_themes(rc_snap: &RcSnap) {
+    rc_snap.settings.borrow_mut().themes = Some(vec!["theme-a".into(), "theme-b".into()]);
+}
+#[given("加载默认或示例 settings")]
+fn g_rc_default_settings(rc_snap: &RcSnap) {
+    rc_snap.load_settings_mgr();
 }
 #[given("config.yaml 含 compaction 节及 keepRecentTokens")]
 fn g_rc_compaction(rc_snap: &RcSnap) {
@@ -266,6 +270,10 @@ fn w_rc_trust_get(rc_snap: &RcSnap) {
 fn w_rc_merge(rc_snap: &RcSnap) {
     rc_snap.load_settings_mgr();
 }
+#[when("检查 Settings 类型与合并结果")]
+fn w_rc_check_settings_no_prompts(rc_snap: &RcSnap) {
+    rc_snap.load_settings_mgr();
+}
 #[when("加载配置并解析为运行时 settings")]
 fn w_rc_load_compaction(rc_snap: &RcSnap) {
     let cfg = rc_snap.app_config.borrow().clone().expect("app config");
@@ -385,11 +393,28 @@ fn t_rc_trust_result(rc_snap: &RcSnap) {
         xylitol::infra::settings::DefaultProjectTrust::Always
     );
 }
-#[then("Settings.prompts 有 2 项")]
-fn t_rc_prompts(rc_snap: &RcSnap) {
+#[then("Settings.themes 有 2 项")]
+fn t_rc_themes(rc_snap: &RcSnap) {
     let mgr = rc_snap.mgr.borrow();
     let mgr = mgr.as_ref().expect("settings loaded");
-    assert_eq!(mgr.get_prompts().map(|p| p.len()), Some(2));
+    assert_eq!(mgr.get_themes().map(|p| p.len()), Some(2));
+}
+#[then("MUST NOT 存在可生效的 prompts 路径列表字段")]
+fn t_rc_no_prompts_field(rc_snap: &RcSnap) {
+    let mgr = rc_snap.mgr.borrow();
+    let mgr = mgr.as_ref().expect("settings loaded");
+    let v = serde_json::to_value(mgr.get_settings()).unwrap();
+    assert!(
+        !v.get("prompts").is_some_and(|p| !p.is_null()),
+        "Settings must not expose prompts list field"
+    );
+    let legacy: xylitol::infra::settings::Settings =
+        serde_json::from_str(r#"{"prompts":["legacy"]}"#).unwrap();
+    let legacy_v = serde_json::to_value(&legacy).unwrap();
+    assert!(
+        !legacy_v.get("prompts").is_some_and(|p| !p.is_null()),
+        "legacy prompts key must not take effect"
+    );
 }
 #[then("compaction_settings.keep_recent_tokens 等于 YAML 中设置的值")]
 fn t_rc_compaction(rc_snap: &RcSnap) {

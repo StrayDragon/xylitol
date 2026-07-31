@@ -1,7 +1,7 @@
 //! Slash command types and discovery for agent + XyDriver GetCommands (c1175).
 //!
 //! Builtin names/descriptions come from [`super::product_commands`] (product SSOT).
-//! Extension/skill/prompt commands merge on top.
+//! Extension/skill commands merge on top.
 
 use crate::protocol::source_info::SourceInfo;
 
@@ -10,13 +10,11 @@ use super::product_commands::product_slash_commands;
 /// Source of a registered (non-builtin) slash command.
 #[derive(Debug, Clone, PartialEq)]
 pub(crate) enum SlashCommandSource {
-    /// Registered from a prompt template (`/template:name`).
-    Prompt,
     /// Registered from a discovered SKILL.md.
     Skill,
 }
 
-/// A slash command registered by a non-builtin source (skill, prompt, extension).
+/// A slash command registered by a non-builtin source (skill, extension).
 #[derive(Debug, Clone)]
 pub(crate) struct SlashCommandInfo {
     /// Command name (without leading `/`).
@@ -27,6 +25,7 @@ pub(crate) struct SlashCommandInfo {
     #[allow(dead_code)] // retained for extension provenance; not yet read on product path
     pub(crate) source: SlashCommandSource,
     /// Provenance info for the originating resource, if applicable.
+    #[allow(dead_code)] // retained for extension provenance; not yet read on product path
     pub(crate) source_info: Option<SourceInfo>,
 }
 
@@ -51,7 +50,7 @@ impl SlashCommandInfo {
     }
 }
 
-/// Merge product builtins + extension/skill/prompt commands into a single list.
+/// Merge product builtins + extension/skill commands into a single list.
 pub(crate) fn get_all_commands(extensions: &[SlashCommandInfo]) -> Vec<SlashCommandInfo> {
     let mut all: Vec<SlashCommandInfo> = product_slash_commands()
         .into_iter()
@@ -112,9 +111,8 @@ mod tests {
     }
 
     #[test]
-    fn slash_command_source_variants() {
+    fn slash_command_source_skill_variant() {
         let skill = SlashCommandSource::Skill;
-        let prompt = SlashCommandSource::Prompt;
-        assert_ne!(format!("{skill:?}"), format!("{prompt:?}"));
+        assert_eq!(format!("{skill:?}"), "Skill");
     }
 }

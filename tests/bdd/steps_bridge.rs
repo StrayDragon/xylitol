@@ -387,3 +387,49 @@ fn t_pt9_no_backfill(prompt_bdd: &PromptBdd) {
     assert!(p.contains("CUSTOM_ONLY_BODY"), "{p}");
     assert!(!p.contains("Available tools:"), "{p}");
 }
+
+// ── agent-prompt pt3 (c1218) ──────────────────────────────────────
+
+#[given("项目或全局 prompts 目录存在 greet.md")]
+fn g_pt3_prompts_dir(ws: &crate::fixtures::Workspace) {
+    ws.init();
+    let path = ws.ws("prompts/greet.md");
+    std::fs::create_dir_all(std::path::Path::new(&path).parent().unwrap()).ok();
+    std::fs::write(&path, "---\ndescription: greet\n---\nHello $1\n").ok();
+}
+
+#[when("装配 AgentSession 或 ResourceLoader 发现")]
+fn w_pt3_discover(ws: &crate::fixtures::Workspace, prompt_bdd: &PromptBdd) {
+    use std::path::PathBuf;
+
+    use xylitol::app::cli::resources::{ResourcesAction, run_with_dirs};
+
+    let cwd = PathBuf::from(ws.ws("."));
+    let agent_dir = cwd.join(".xylitol");
+    let (code, list_out) = run_with_dirs(ResourcesAction::List, &cwd, &agent_dir);
+    assert_eq!(code, std::process::ExitCode::SUCCESS);
+    prompt_bdd.prompt.replace(list_out);
+}
+
+#[then(
+    "get_commands MUST NOT 含 template:greet 或 /greet 模板命令且 loader MUST NOT 将 greet 注册为 prompt 模板"
+)]
+fn t_pt3_no_slash_templates(prompt_bdd: &PromptBdd) {
+    use xylitol::agent::prompt::product_commands::product_slash_commands;
+
+    let list_out = prompt_bdd.prompt.borrow();
+    assert!(
+        !list_out.contains("prompts:"),
+        "resources list must not have prompts section: {list_out}"
+    );
+    assert!(
+        !list_out.contains("greet"),
+        "leftover prompts/greet.md must not appear in resources list: {list_out}"
+    );
+    let builtins: Vec<&str> = product_slash_commands().iter().map(|c| c.name).collect();
+    assert!(
+        !builtins
+            .iter()
+            .any(|n| *n == "template:greet" || *n == "greet")
+    );
+}
