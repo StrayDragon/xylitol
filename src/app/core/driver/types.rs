@@ -92,7 +92,7 @@ pub struct LoadedResourcesSnapshot {
     pub mcp_configured: usize,
     /// Short failure lines (`server: message`); no secrets.
     pub mcp_diag_short: Vec<String>,
-    /// When MCP bootstrap is in flight: `connecting 1/3 · foo` (c1200).
+    /// When MCP bootstrap is in flight: `connecting 0/3` … `2/3` (c1200).
     pub mcp_connecting_label: Option<String>,
 }
 

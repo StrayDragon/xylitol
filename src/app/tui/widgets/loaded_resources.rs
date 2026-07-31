@@ -236,14 +236,18 @@ mod tests {
     fn mcp_connecting_label_shown_in_card() {
         let snap = LoadedResourcesSnapshot {
             mcp_configured: 2,
-            mcp_connecting_label: Some("connecting 1/2 · foo".into()),
+            mcp_connecting_label: Some("connecting 1/2".into()),
             ..Default::default()
         };
         let joined =
             render_loaded_resources(LayoutTheme::product_dark(), &snap, "~/x", "m", 72).join("\n");
         assert!(
-            joined.contains("mcp") && joined.contains("connecting 1/2 · foo"),
+            joined.contains("mcp") && joined.contains("connecting 1/2"),
             "{joined}"
+        );
+        assert!(
+            !joined.contains("connecting 1/2 ·"),
+            "must not append finished server id during connecting: {joined}"
         );
     }
 
