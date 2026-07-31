@@ -71,3 +71,13 @@ replace_mcp:
 ## 非目标
 
 - c1220；假 MCP ready 消息；改 wire；Trust UI
+
+## MCP 发现：`/mcp` 面板（优先于贴输入长名单）
+
+多 MCP 时 **MUST NOT** 把 server 名单塞进 status / 下轮预告。发现面：
+
+1. **`/mcp`**：任意态可开，替换 editor 槽；列表 = 连接态 + tools armed（是否已进下轮请求 `tools`）。设计 SSOT 意向：[`mcp-input-cue.md`](../../../../src/app/tui/design/mcp-input-cue.md) · playground `?slot=mcp-cue`。
+2. **短 cue（可选）**：仅计数 + `· /mcp` 引导；armed 后收起或极简。
+3. 头卡 mcp 行保留启动摘要；长对话滚走后以 `/mcp` 为准。
+
+本 change 实现解闸 / overlay 时可先不接线面板；面板升格可同波或紧随切片。

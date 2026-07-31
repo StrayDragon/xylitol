@@ -15,6 +15,7 @@ components:
 > 固定词：[`docs/architecture/TUI信息面与chrome词汇.md`](../../../../docs/architecture/TUI信息面与chrome词汇.md)。
 > 下轮预告槽：[`status.md`](./status.md)。Footer：[`footer.md`](./footer.md)。
 > 静图：[`playground/`](./playground/)「Pending / NextTurn」槽 + Full shell 芯片。
+> 贴输入 MCP：**主面 `/mcp` 面板** + 可选短 cue（[`mcp-input-cue.md`](./mcp-input-cue.md) · playground **Mcp**）。
 
 ## 产品意图
 

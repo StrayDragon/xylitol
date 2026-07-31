@@ -29,7 +29,8 @@ c1200 已交付非阻塞 TTI、并行连接、头卡进度、settle 热合并骨
 | 输入 | connecting 期间 **允许** agent prompt **与** bang |
 | Slash | connecting 期间 **放开** `/reload` 等（删除 `when_mcp_connecting` 列或整列废弃） |
 | Tools | settle 后 overlay；**下一轮** `run` 的请求 `tools` 带上 |
-| SYSTEM | `Available tools:` **只列 builtins**；MCP 一句 discover-via-tools rule |
+| SYSTEM | `Available tools:` **只列 builtins**；MCP 一句 discover + 可引导 `/mcp` |
+| 发现面 | **`/mcp` 面板**（任意态）看列表/连接/armed；短 cue 可选引导；**不**在输入区堆名单 |
 | 假消息 | **禁止**往 transcript 插「MCP ready」 |
 | `/reload` | 放开 + MUST shutdown/替换旧 MCP 进程，防无法管理残留 |
 

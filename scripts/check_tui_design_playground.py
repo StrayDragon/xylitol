@@ -248,6 +248,8 @@ def resolve_source(html: str, source: str) -> str | None:
         return extract_js_object_entry(html, "MODELS", parts[1])
     if parts[0] == "pending" and len(parts) >= 2:
         return extract_js_object_entry(html, "PENDING_RUNTIME", parts[1])
+    if parts[0] == "mcpCue" and len(parts) >= 2:
+        return extract_js_object_entry(html, "MCP_CUE", parts[1])
     return None
 
 

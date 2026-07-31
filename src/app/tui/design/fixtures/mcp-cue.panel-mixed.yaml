@@ -1,0 +1,13 @@
+# id: mcp-cue.panel-mixed
+id: mcp-cue.panel-mixed
+design: ../mcp-input-cue.md
+slot: mcp-cue
+state: panel-mixed
+source: mcpCue.panelMixed.editor
+must_contain:
+  - "12 configured"
+  - "pending → next turn"
+  - "MUST NOT dump"
+must_not_contain:
+  - "System"
+  - "Next turn:"

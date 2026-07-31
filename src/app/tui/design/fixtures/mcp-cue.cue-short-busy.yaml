@@ -1,0 +1,13 @@
+# id: mcp-cue.cue-short-busy
+id: mcp-cue.cue-short-busy
+design: ../mcp-input-cue.md
+slot: mcp-cue
+state: cue-short-busy
+source: mcpCue.cueShortBusy.editor
+must_contain:
+  - "Working"
+  - "/mcp"
+  - "pending"
+must_not_contain:
+  - "context7"
+  - "System"
