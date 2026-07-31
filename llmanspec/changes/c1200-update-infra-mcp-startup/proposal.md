@@ -26,16 +26,15 @@ checkpointed: false
 
 | 项 | 决定 |
 |---|---|
-| TTI | 有 MCP 配置也先开面（builtins）；MCP **后台**连 |
+| TTI | 有 MCP 配置也先开面；MCP **后台**并行连 |
 | 并行 | 多 server **并行** connect；单失败诊断、不拖死全队（mcp4） |
 | 进度落点 | **主：loaded-resources 的 mcp 行**（connecting i/n · id）；**不**用滚动提示刷进度；**不**占用 agent-busy status / 下轮预告 |
 | 完成/失败 | ready 后刷槽；失败摘要进 mcp 行 / diagnostics；严重失败 MAY 一条滚动提示 |
-| 首轮工具 | **B**：本轮可用 builtins；MCP ready 后 **下一轮**自动带上（热合并 ToolSet） |
-| 新会话 | 同上 |
-| CLI `--session` resume | 先开 TUI → **尽快** rebuild transcript；MCP 与 rebuild **并行**，MUST NOT 等 MCP 完再投影历史 |
-| 面内 `/session-resume` | MUST NOT 为切会话再阻塞重连 MCP（沿用已连集合；除非用户 `/reload`） |
-| print | 不挡首 prompt 同等策略；进度走 log/stderr，无 TUI 槽 |
-| `/reload` | 编排步骤不变；本波 **不**升格 c1205（锁 editor / 禁二次 / 取消） |
+| 输入闸 | **A**：connecting 期间闸住 agent prompt（及 bang）；允许滚历史、多数 slash、面内 resume；拒绝时短滚动提示 |
+| 新会话 / CLI resume | 先开面（resume 先投影历史）；闸规则同上，直到 MCP 结算 |
+| 面内 `/session-resume` | MUST NOT 为切会话再阻塞重连 MCP |
+| print | 可等结算再跑 oneshot（无浏览态） |
+| `/reload` | 编排步骤不变；本波 **不**升格 c1205 |
 
 ## What Changes
 
@@ -52,9 +51,9 @@ checkpointed: false
 
 ## Impact
 
-- **用户**：新开与 resume 都能马上看到界面（resume 还能马上看到历史）；MCP 在头卡里长出来。
-- **LLM**：首轮可能暂无 mcp: 工具；ready 后下一轮可用——可接受换 TTI。
-- **风险**：用户首轮以为 MCP「没配」——mcp 行须明确 `connecting` / `configured · 0 connected` 过渡态。
+- **用户**：新开与 resume 都能马上看到界面与历史；MCP 连上前不能开跑 agent，避免工具半残。
+- **LLM**：首轮 `run` 时 tools 已结算（或超时策略后的子集）；**不**靠中途插假 system 消息补 MCP。
+- **风险**：connecting 久时用户急着聊——头卡进度 + 拒提提示须清楚；超时/失败须能解闸。
 
 ## 测试边界（seam）
 
