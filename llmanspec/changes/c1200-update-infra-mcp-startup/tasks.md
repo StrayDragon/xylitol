@@ -18,6 +18,7 @@
 - [ ] 3.1 loaded-resources mcp 行渲染 connecting / ready / 失败摘要
 - [ ] 3.2 CLI `--session`：rebuild 与 MCP 并行（验收：未 ready 也可见历史）
 - [ ] 3.3 面内 `/session-resume`：不触发阻塞重连
+- [ ] 3.4 connecting 期间闸 agent prompt（及 bang）；允许 slash/滚历史；拒绝短提示；结算后解闸
 
 ## 4. 验证
 
