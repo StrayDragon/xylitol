@@ -4,7 +4,8 @@ blocks:
 - c1220-add-jinja2-prompt-templates
 branch: sdd/c1218-remove-slash-prompt-templates
 base_sha: eb765f4269cbb7d68bd3c46359ed2d5e552cb911
-checkpointed: false
+checkpointed: true
+checkpoint_sha: eb765f4269cbb7d68bd3c46359ed2d5e552cb911
 ---
 
 # 移除 slash prompt templates（pi `/name` / `/template:`）
