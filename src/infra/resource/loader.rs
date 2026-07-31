@@ -3,7 +3,6 @@
 //! Central resource layer that discovers:
 //! - Project context files (AGENTS.md, CLAUDE.md) by walking cwd → root
 //! - Skills via skills loader integration
-//! - Prompt templates from global and project directories
 //! - Themes from global and project directories
 //! - Extensions (placeholder for c70)
 //! - System prompt files (SYSTEM.md, APPEND_SYSTEM.md)
@@ -19,9 +18,7 @@ use crate::protocol::ports::{XyReloadable, XyResourceLoader};
 
 // Resource metadata types relocated to `domain::resource_types` (shared vocabulary).
 // `DefaultResourceLoader` (the runtime/loader impl) stays here in infra.
-pub use crate::protocol::resource::{
-    AgentsFile, PromptTemplate, ResourceDiagnostic, SkillInfo, ThemeInfo,
-};
+pub use crate::protocol::resource::{AgentsFile, ResourceDiagnostic, SkillInfo, ThemeInfo};
 
 // ── DefaultResourceLoader ─────────────────────────────────────────────
 
@@ -37,7 +34,6 @@ pub struct DefaultResourceLoader {
 
     // ── Cached resources ──
     context_files: Vec<AgentsFile>,
-    prompt_templates: Vec<PromptTemplate>,
     skills: Vec<SkillInfo>,
     themes: Vec<ThemeInfo>,
     system_prompt: Option<String>,
@@ -46,7 +42,6 @@ pub struct DefaultResourceLoader {
     // ── Diagnostics ──
     context_diagnostics: Vec<ResourceDiagnostic>,
     skills_diagnostics: Vec<ResourceDiagnostic>,
-    prompts_diagnostics: Vec<ResourceDiagnostic>,
     themes_diagnostics: Vec<ResourceDiagnostic>,
 }
 
@@ -62,14 +57,12 @@ impl DefaultResourceLoader {
             cwd,
             agent_dir,
             context_files: Vec::new(),
-            prompt_templates: Vec::new(),
             skills: Vec::new(),
             themes: Vec::new(),
             system_prompt: None,
             append_system_prompt: Vec::new(),
             context_diagnostics: Vec::new(),
             skills_diagnostics: Vec::new(),
-            prompts_diagnostics: Vec::new(),
             themes_diagnostics: Vec::new(),
         };
         loader.load_all();
@@ -85,7 +78,6 @@ impl DefaultResourceLoader {
 
     fn load_all(&mut self) {
         self.load_context_files();
-        self.load_prompt_templates();
         self.load_skills_internal();
         self.load_themes();
         self.discover_system_prompt();
@@ -93,14 +85,12 @@ impl DefaultResourceLoader {
 
     fn clear_caches(&mut self) {
         self.context_files.clear();
-        self.prompt_templates.clear();
         self.skills.clear();
         self.themes.clear();
         self.system_prompt = None;
         self.append_system_prompt.clear();
         self.context_diagnostics.clear();
         self.skills_diagnostics.clear();
-        self.prompts_diagnostics.clear();
         self.themes_diagnostics.clear();
     }
 
@@ -117,11 +107,6 @@ impl DefaultResourceLoader {
     /// Get the loaded context files (AGENTS.md, CLAUDE.md).
     pub fn get_agents_files(&self) -> &[AgentsFile] {
         &self.context_files
-    }
-
-    /// Get loaded prompt templates.
-    pub fn get_prompts(&self) -> (&[PromptTemplate], &[ResourceDiagnostic]) {
-        (&self.prompt_templates, &self.prompts_diagnostics)
     }
 
     /// Get loaded skills.
@@ -149,7 +134,6 @@ impl DefaultResourceLoader {
         self.context_diagnostics
             .iter()
             .chain(&self.skills_diagnostics)
-            .chain(&self.prompts_diagnostics)
             .chain(&self.themes_diagnostics)
             .collect()
     }
@@ -310,86 +294,7 @@ impl DefaultResourceLoader {
         }
     }
 
-    // ── Prompt templates ──────────────────────────────────────────────
-
-    /// Load prompt templates from global and project directories.
-    ///
-    /// Searches:
-    /// 1. `~/.xylitol/prompts/*.md` (global)
-    /// 2. `<cwd>/.xylitol/prompts/*.md` (project)
-    ///
-    /// Project templates override global templates with the same name.
-    fn load_prompt_templates(&mut self) {
-        let mut templates: Vec<PromptTemplate> = Vec::new();
-
-        // Load from global dir first (lower priority)
-        let global_prompts_dir = self.agent_dir.join("prompts");
-        self.load_templates_from_dir(&global_prompts_dir, &mut templates);
-
-        // Load from project dir (higher priority — overrides)
-        let project_prompts_dir = self.cwd.join(".xylitol").join("prompts");
-        self.load_templates_from_dir(&project_prompts_dir, &mut templates);
-
-        // Deduplicate: project overrides global
-        let mut seen = std::collections::HashSet::new();
-        let mut deduped = Vec::new();
-        // Reverse so project (loaded last) wins
-        for tmpl in templates.into_iter().rev() {
-            if seen.insert(tmpl.name.clone()) {
-                deduped.push(tmpl);
-            }
-        }
-        deduped.reverse();
-        deduped.sort_by(|a, b| a.name.cmp(&b.name));
-
-        self.prompt_templates = deduped;
-    }
-
-    fn load_templates_from_dir(&mut self, dir: &Path, templates: &mut Vec<PromptTemplate>) {
-        if !dir.is_dir() {
-            return;
-        }
-        let Ok(entries) = std::fs::read_dir(dir) else {
-            return;
-        };
-        for entry in entries.flatten() {
-            let path = entry.path();
-            if let Some(tmpl) = self.try_load_template(&path) {
-                templates.push(tmpl);
-            }
-        }
-    }
-
-    /// Try to load a single prompt template from a .md file.
-    fn try_load_template(&mut self, path: &Path) -> Option<PromptTemplate> {
-        if path.extension().and_then(|e| e.to_str()) != Some("md") {
-            return None;
-        }
-
-        let name = path.file_stem()?.to_str()?.to_string();
-        let content = match std::fs::read_to_string(path) {
-            Ok(c) => c,
-            Err(e) => {
-                self.prompts_diagnostics.push(ResourceDiagnostic::error(
-                    format!("Cannot read prompt template: {e}"),
-                    Some(path.to_path_buf()),
-                ));
-                return None;
-            }
-        };
-
-        let (description, argument_hint, body) = parse_template_frontmatter(&content);
-
-        Some(PromptTemplate {
-            name,
-            content: body,
-            description,
-            argument_hint,
-            source_info: self.source_info_for_path(path),
-        })
-    }
-
-    /// Build SourceInfo for a resource path, determining scope from directory.
+    // ── Skills ────────────────────────────────────────────────────────
     fn source_info_for_path(
         &self,
         path: &std::path::Path,
@@ -616,42 +521,6 @@ impl XyResourceLoader for DefaultResourceLoader {
 
 // ── Frontmatter Parsing ───────────────────────────────────────────────
 
-/// Parse YAML-style frontmatter from a markdown file.
-///
-/// Looks for `---` delimited block at the start.
-/// Returns `(description, argument_hint, body)`.
-fn parse_template_frontmatter(content: &str) -> (Option<String>, Option<String>, String) {
-    let trimmed = content.trim_start();
-
-    if !trimmed.starts_with("---") {
-        return (None, None, content.to_string());
-    }
-
-    // Find closing ---
-    let rest = &trimmed[3..];
-    let Some(end_pos) = rest.find("\n---") else {
-        return (None, None, content.to_string());
-    };
-
-    let fm = &rest[..end_pos];
-    let body_start = end_pos + 4; // past \n---
-    let body = rest[body_start..].trim_start().to_string();
-
-    let mut description = None;
-    let mut argument_hint = None;
-
-    for line in fm.lines() {
-        let line = line.trim();
-        if let Some(value) = line.strip_prefix("description:") {
-            description = Some(value.trim().trim_matches('"').to_string());
-        } else if let Some(value) = line.strip_prefix("argument-hint:") {
-            argument_hint = Some(value.trim().trim_matches('"').to_string());
-        }
-    }
-
-    (description, argument_hint, body)
-}
-
 /// Parse SKILL.md frontmatter to extract name and description.
 /// Parsed SKILL.md frontmatter (pi-aligned subset).
 struct ParsedSkillFrontmatter {
@@ -847,73 +716,6 @@ mod tests {
         let append = loader.get_append_system_prompt();
         assert_eq!(append.len(), 1);
         assert_eq!(append[0], "Appended text");
-    }
-
-    // ── Templates ──────────────────────────────────────────────────
-
-    #[test]
-    fn test_load_prompt_templates_from_project_dir() {
-        let tmp = TempDir::new().unwrap();
-        let prompts_dir = tmp.path().join(".xylitol").join("prompts");
-        std::fs::create_dir_all(&prompts_dir).unwrap();
-        std::fs::write(
-            prompts_dir.join("review.md"),
-            "---\ndescription: review\n---\nReview: $1",
-        )
-        .unwrap();
-
-        let loader = DefaultResourceLoader::new(tmp.path().to_path_buf(), PathBuf::from("/tmp"));
-        let (templates, diags) = loader.get_prompts();
-        assert!(diags.is_empty());
-        assert_eq!(templates.len(), 1);
-        assert_eq!(templates[0].name, "review");
-        assert_eq!(templates[0].description, Some("review".into()));
-    }
-
-    #[test]
-    fn test_project_templates_override_global() {
-        let tmp = TempDir::new().unwrap();
-        let global_dir = TempDir::new().unwrap();
-
-        // Global template
-        let global_prompts = global_dir.path().join("prompts");
-        std::fs::create_dir_all(&global_prompts).unwrap();
-        std::fs::write(
-            global_prompts.join("review.md"),
-            "---\ndescription: global\n---\nGlobal review",
-        )
-        .unwrap();
-
-        // Project template (same name)
-        let project_prompts = tmp.path().join(".xylitol").join("prompts");
-        std::fs::create_dir_all(&project_prompts).unwrap();
-        std::fs::write(
-            project_prompts.join("review.md"),
-            "---\ndescription: project\n---\nProject review",
-        )
-        .unwrap();
-
-        let loader =
-            DefaultResourceLoader::new(tmp.path().to_path_buf(), global_dir.path().to_path_buf());
-        let (templates, _) = loader.get_prompts();
-        assert_eq!(templates.len(), 1);
-        assert_eq!(templates[0].description, Some("project".into()));
-    }
-
-    #[test]
-    fn test_cannot_read_prompt_yields_diagnostic() {
-        let tmp = TempDir::new().unwrap();
-        let prompts_dir = tmp.path().join(".xylitol").join("prompts");
-        std::fs::create_dir_all(&prompts_dir).unwrap();
-        // Create a file with bad permissions simulation → just check no crash
-        // Instead: test diagnostics for missing name or parse errors
-        std::fs::write(prompts_dir.join("test.md"), "---\ninvalid yaml\n---\nBody").unwrap();
-
-        let loader = DefaultResourceLoader::new(tmp.path().to_path_buf(), PathBuf::from("/tmp"));
-        let (templates, _) = loader.get_prompts();
-        // Should still load (just no description)
-        assert_eq!(templates.len(), 1);
-        assert_eq!(templates[0].name, "test");
     }
 
     // ── Skills ─────────────────────────────────────────────────────
@@ -1135,15 +937,6 @@ mod tests {
         let (themes, diags) = loader.get_themes();
         assert!(diags.is_empty());
         assert!(themes.is_empty());
-    }
-
-    #[test]
-    fn test_parse_template_frontmatter() {
-        let content = "---\ndescription: \"Code review a file\"\nargument-hint: \"<file-path>\"\n---\nReview: $1";
-        let (desc, hint, body) = parse_template_frontmatter(content);
-        assert_eq!(desc, Some("Code review a file".into()));
-        assert_eq!(hint, Some("<file-path>".into()));
-        assert_eq!(body, "Review: $1");
     }
 
     #[test]

@@ -99,10 +99,6 @@ pub struct Settings {
     #[serde(skip_serializing_if = "Option::is_none")]
     pub enable_skill_commands: Option<bool>,
 
-    /// Custom prompt template paths.
-    #[serde(skip_serializing_if = "Option::is_none")]
-    pub prompts: Option<Vec<String>>,
-
     /// Custom theme paths.
     #[serde(skip_serializing_if = "Option::is_none")]
     pub themes: Option<Vec<String>>,

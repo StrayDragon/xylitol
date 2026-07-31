@@ -2,7 +2,6 @@
 //!
 //! Central resource layer that discovers:
 //! - Project context files (AGENTS.md, CLAUDE.md)
-//! - Prompt templates
 //! - Skills
 //! - Themes
 //! - System prompt files (SYSTEM.md, APPEND_SYSTEM.md)
@@ -12,6 +11,4 @@
 pub mod loader;
 
 #[allow(unused_imports)]
-pub use loader::{
-    AgentsFile, DefaultResourceLoader, PromptTemplate, ResourceDiagnostic, SkillInfo, ThemeInfo,
-};
+pub use loader::{AgentsFile, DefaultResourceLoader, ResourceDiagnostic, SkillInfo, ThemeInfo};
