@@ -202,6 +202,18 @@
     当 检查 import
     那么 无 tui→infra::mcp 直达
 
+  @req:ath23
+  场景: startup-mcp-nonblocking-new-and-resume
+    假如 配置了 MCP 且选择新会话或 CLI --session resume
+    当 进入 TUI
+    那么 面已渲染（resume 时历史已可投影）且未等待全部 MCP 连接完成
+
+  @req:ath23
+  场景: in-tui-resume-no-mcp-reconnect-block
+    假如 MCP 已连接或仍在后台连接
+    当 面内 /session-resume 切换会话
+    那么 不因切换而阻塞等待 MCP 重连
+
   @req:ath24
   场景: idle-tick-skips-paint
     假如 Ready 且 idle 无 paint_dirty

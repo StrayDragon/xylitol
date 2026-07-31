@@ -36,7 +36,8 @@ flowchart TD
 |---|---|
 | **后置 / 配置启用** | MCP 整体（相对开箱主线） |
 | **已落地能力** | 配置驱动装配 · 嵌入缝去泄漏 · `/reload` 重载路径 |
-| **有意后置** | MCP 安全 allowlist 产品 UI；启动策略 / reload UX 打磨 |
+| **有意后置** | MCP 安全 allowlist 产品 UI；`/reload` 进行中锁输入等整包 UX（c1205） |
+| **进行中** | 启动不挡 TTI + 并行连接 + loaded-resources 进度（c1200） |
 
 ## 理想 vs 现状
 
