@@ -32,9 +32,15 @@ impl UiRoot {
 
     pub(super) fn render_status_slot(&mut self, width: usize) -> Vec<String> {
         if !self.status_busy {
-            // Idle: optional MCP short cue (c1210); otherwise breathing room.
+            // Idle: optional MCP short cue (c1210), right-aligned; otherwise breathing room.
             if let Some(cue) = self.status_next_turn_cue.as_deref() {
-                return vec![self.theme.paint_muted(&format!(" {cue}"))];
+                let cue_paint = self.theme.paint_muted(cue);
+                let cue_w = xylitol_tui::visible_width(&cue_paint);
+                if cue_w >= width {
+                    return vec![truncate_to_width(&cue_paint, width, "…", false)];
+                }
+                let pad = width.saturating_sub(cue_w);
+                return vec![format!("{}{cue_paint}", " ".repeat(pad))];
             }
             return vec![String::new()];
         }

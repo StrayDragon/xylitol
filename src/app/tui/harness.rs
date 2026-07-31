@@ -4071,7 +4071,7 @@ mod slice_tests {
     #[tokio::test]
     async fn c1210_mcp_panel_open_and_short_cue() {
         use crate::app::core::driver::{
-            LoadedResourcesSnapshot, MCP_PENDING_CUE, McpServerPhase, McpServerSnapshot,
+            LoadedResourcesSnapshot, McpServerPhase, McpServerSnapshot,
         };
 
         let mut session = HostSession::new_product_ui(TestTerminal::new(80, 24));
@@ -4101,15 +4101,10 @@ mod slice_tests {
         driver.set_loaded_resources_for_driver(pending_snap.clone());
         session.refresh_loaded_resources(&driver).await;
 
-        let cue = root.borrow().status_next_turn_cue_for_test();
         assert_eq!(
-            cue.as_deref(),
-            Some(MCP_PENDING_CUE),
-            "short cue must be exact fixed copy"
-        );
-        assert!(
-            !cue.as_deref().unwrap_or("").contains("fs"),
-            "cue MUST NOT dump server ids"
+            root.borrow().status_next_turn_cue_for_test(),
+            None,
+            "short cue MUST NOT duplicate sticky header mcp: connecting row"
         );
 
         root.borrow_mut().set_editor_text("/mcp");
