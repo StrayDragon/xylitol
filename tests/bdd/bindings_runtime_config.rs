@@ -65,9 +65,14 @@ fn test_rc_shell_path(rc_snap: RcSnap) {}
 fn test_rc_trust_default(rc_snap: RcSnap) {}
 #[scenario(
     path = "llmanspec/specs/runtime-config/runtime-config.feature",
-    name = "prompts-list"
+    name = "themes-list"
 )]
-fn test_rc_prompts_list(rc_snap: RcSnap) {}
+fn test_rc_themes_list(rc_snap: RcSnap) {}
+#[scenario(
+    path = "llmanspec/specs/runtime-config/runtime-config.feature",
+    name = "no-prompts-settings-field"
+)]
+fn test_rc_no_prompts_settings_field(rc_snap: RcSnap) {}
 #[scenario(
     path = "llmanspec/specs/runtime-config/runtime-config.feature",
     name = "mapping-documented"

@@ -3,7 +3,7 @@
 use crate::protocol::resource::{AgentsFile, ResourceDiagnostic, SkillInfo};
 
 /// Resource loader port — abstracts discovery of project context files,
-/// prompt templates, skills, themes, and system prompts.
+/// skills, themes, and system prompts.
 pub trait XyResourceLoader: Send + Sync {
     /// Get the loaded context files (AGENTS.md, CLAUDE.md).
     fn get_agents_files(&self) -> &[AgentsFile];

@@ -9,17 +9,16 @@ use std::process::ExitCode;
 
 use clap::Subcommand;
 
-use crate::infra::resource::loader::PromptTemplate;
 use crate::infra::resource::{DefaultResourceLoader, ResourceDiagnostic, SkillInfo, ThemeInfo};
 
 /// Sub-actions for `xylitol resources`.
 #[derive(Subcommand, Debug)]
 pub enum ResourcesAction {
-    /// List all discovered resources (skills / prompts / themes).
+    /// List all discovered resources (skills / themes).
     List,
     /// Show details for a single named resource.
     Info {
-        /// Resource name (skill / prompt / theme name).
+        /// Resource name (skill / theme name).
         name: String,
     },
     /// Run diagnostics; exit non-zero when issues exist.
@@ -51,7 +50,6 @@ pub fn run_with_dirs(action: ResourcesAction, cwd: &Path, agent_dir: &Path) -> (
 
 fn list(loader: &DefaultResourceLoader, cwd: &Path, agent_dir: &Path) -> (ExitCode, String) {
     let (skills, _) = loader.get_skills();
-    let (prompts, _) = loader.get_prompts();
     let (themes, _) = loader.get_themes();
 
     let mut out = String::new();
@@ -69,20 +67,6 @@ fn list(loader: &DefaultResourceLoader, cwd: &Path, agent_dir: &Path) -> (ExitCo
             if let Some(desc) = &s.description {
                 out.push_str(&format!("      {desc}\n"));
             }
-        }
-    }
-
-    out.push_str("prompts:\n");
-    if prompts.is_empty() {
-        out.push_str("  (none)\n");
-    } else {
-        for p in prompts {
-            out.push_str(&format!(
-                "  {} [{}] {}\n",
-                p.name,
-                scope_of(&p.source_info.path, agent_dir, cwd),
-                p.source_info.path.display()
-            ));
         }
     }
 
@@ -110,14 +94,10 @@ fn info(
     agent_dir: &Path,
 ) -> (ExitCode, String) {
     let (skills, _) = loader.get_skills();
-    let (prompts, _) = loader.get_prompts();
     let (themes, _) = loader.get_themes();
 
     if let Some(s) = skills.iter().find(|s| s.name == name) {
         return (ExitCode::SUCCESS, format_skill(s, agent_dir, cwd));
-    }
-    if let Some(p) = prompts.iter().find(|p| p.name == name) {
-        return (ExitCode::SUCCESS, format_prompt(p, agent_dir, cwd));
     }
     if let Some(t) = themes.iter().find(|t| t.name == name) {
         return (ExitCode::SUCCESS, format_theme(t, agent_dir, cwd));
@@ -171,18 +151,6 @@ fn format_skill(s: &SkillInfo, agent_dir: &Path, cwd: &Path) -> String {
     out
 }
 
-fn format_prompt(p: &PromptTemplate, agent_dir: &Path, cwd: &Path) -> String {
-    let mut out = String::new();
-    out.push_str("kind:    prompt\n");
-    out.push_str(&format!("name:    {}\n", p.name));
-    out.push_str(&format!(
-        "scope:   {}\n",
-        scope_of(&p.source_info.path, agent_dir, cwd)
-    ));
-    out.push_str(&format!("path:    {}\n", p.source_info.path.display()));
-    out
-}
-
 fn format_theme(t: &ThemeInfo, agent_dir: &Path, cwd: &Path) -> String {
     let mut out = String::new();
     out.push_str("kind:    theme\n");
@@ -200,7 +168,7 @@ mod tests {
     use super::*;
     use std::fs;
 
-    /// Write a valid global skill, prompt, theme under `agent_dir`.
+    /// Write a valid global skill and theme under `agent_dir`.
     fn fixture(agent_dir: &Path) {
         // skill with valid frontmatter
         let skill_dir = agent_dir.join("skills").join("demo-skill");
@@ -211,7 +179,7 @@ mod tests {
         )
         .unwrap();
 
-        // prompt template
+        // leftover prompts dir (must not appear in list output)
         fs::create_dir_all(agent_dir.join("prompts")).unwrap();
         fs::write(
             agent_dir.join("prompts").join("greeting.md"),
@@ -243,10 +211,22 @@ mod tests {
         assert_eq!(code, ExitCode::SUCCESS);
         assert!(out.contains("skills:"));
         assert!(out.contains("demo-skill [user]"));
-        assert!(out.contains("prompts:"));
-        assert!(out.contains("greeting [user]"));
+        assert!(!out.contains("prompts:"));
+        assert!(!out.contains("greeting"));
         assert!(out.contains("themes:"));
         assert!(out.contains("dark [user]"));
+    }
+
+    #[test]
+    fn list_ignores_leftover_prompts_dir() {
+        let (_tmp, cwd, agent_dir) = layout();
+        fs::create_dir_all(agent_dir.join("prompts")).unwrap();
+        fs::write(agent_dir.join("prompts").join("greet.md"), "hi").unwrap();
+
+        let (code, out) = run_with_dirs(ResourcesAction::List, &cwd, &agent_dir);
+        assert_eq!(code, ExitCode::SUCCESS);
+        assert!(!out.contains("prompts:"));
+        assert!(!out.contains("greet"));
     }
 
     #[test]

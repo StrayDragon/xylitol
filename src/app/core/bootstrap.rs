@@ -10,7 +10,7 @@
 //!   innermost wiring step).
 //! - `bootstrap` runs everything *before* `build_agent`: config load →
 //!   ModelRegistry build → trust resolution → resource discovery
-//!   (templates/context_files/system_prompt/append) → compaction settings →
+//!   resource discovery (context_files/system_prompt/append/skills) → compaction settings →
 //!   permission → `build_agent` → model select.
 //!
 //! Surfaces that need the *resolved ingredients* without constructing an agent
@@ -34,7 +34,6 @@ use crate::infra::config::value::InfraSecretResolver;
 use crate::infra::permission;
 use crate::infra::session::SessionManager;
 use crate::infra::timing;
-use crate::protocol::resource::PromptTemplate;
 use crate::protocol::types::XyModelMeta;
 
 /// Inputs to [`bootstrap`] / `resolve_assembly`, mirroring the CLI flags that
@@ -168,7 +167,6 @@ pub struct ResolvedAssembly {
     pub permission: Option<Arc<dyn crate::protocol::ports::XyPermission>>,
     pub steering_mode: crate::agent::session::QueueMode,
     pub follow_up_mode: crate::agent::session::QueueMode,
-    pub discovered_templates: Vec<PromptTemplate>,
     /// Resolved default profile's model id, if any (for startup model selection
     /// when `BootstrapInput::model` is absent).
     pub default_profile_model: Option<String>,
@@ -190,8 +188,7 @@ pub struct ResolvedAssembly {
 
 impl ResolvedAssembly {
     /// Fold into [`BuildAgentOptions`] for `composition::build_agent`.
-    /// Drops the side-products (templates, warnings) the builder
-    /// does not consume.
+    /// Drops the side-products (warnings) the builder does not consume.
     pub fn into_build_options(self) -> BuildAgentOptions {
         BuildAgentOptions {
             model_registry: self.model_registry,
@@ -449,7 +446,7 @@ pub fn resolve_assembly(input: &BootstrapInput) -> Result<ResolvedAssembly, Boot
         });
     }
 
-    let (discovered_templates, context_files, loader_system_prompt, append_system_prompt, skills) = {
+    let (context_files, loader_system_prompt, append_system_prompt, skills) = {
         let agent_dir = crate::infra::resource::DefaultResourceLoader::default_agent_dir();
         let loader_cwd = if project_trusted {
             std::path::PathBuf::from(&cwd)
@@ -457,7 +454,6 @@ pub fn resolve_assembly(input: &BootstrapInput) -> Result<ResolvedAssembly, Boot
             std::env::temp_dir()
         };
         let loader = crate::infra::resource::DefaultResourceLoader::new(loader_cwd, agent_dir);
-        let templates = loader.get_prompts().0.to_vec();
         let ctx: Vec<(String, String)> = loader
             .get_agents_files()
             .iter()
@@ -466,15 +462,14 @@ pub fn resolve_assembly(input: &BootstrapInput) -> Result<ResolvedAssembly, Boot
         let sys = loader.get_system_prompt().map(String::from);
         let append = loader.get_append_system_prompt().to_vec();
         let skills = loader.get_skills().0.to_vec();
-        (templates, ctx, sys, append, skills)
+        (ctx, sys, append, skills)
     };
     log::debug!(
-        "resource discovery resolved caller={} trusted={} cwd={} context_files={} templates={} append_system_prompt={} loader_system_prompt={} skills={}",
+        "resource discovery resolved caller={} trusted={} cwd={} context_files={} append_system_prompt={} loader_system_prompt={} skills={}",
         input.caller,
         project_trusted,
         cwd,
         context_files.len(),
-        discovered_templates.len(),
         append_system_prompt.len(),
         loader_system_prompt.is_some(),
         skills.len()
@@ -563,7 +558,6 @@ pub fn resolve_assembly(input: &BootstrapInput) -> Result<ResolvedAssembly, Boot
         permission: permission_engine,
         steering_mode,
         follow_up_mode,
-        discovered_templates,
         default_profile_model,
         session_id,
         warnings,
@@ -583,7 +577,6 @@ pub fn bootstrap(input: BootstrapInput) -> Result<BootstrappedAgent, BootstrapEr
     let model = input.model.clone();
 
     let mut assembly = resolve_assembly(&input)?;
-    let discovered_templates = assembly.discovered_templates.clone();
     let session_id = assembly.session_id.clone();
     let mcp_servers = assembly.mcp_servers.clone();
     let default_thinking_level = assembly.default_thinking_level.clone();
@@ -593,9 +586,6 @@ pub fn bootstrap(input: BootstrapInput) -> Result<BootstrappedAgent, BootstrapEr
 
     let mut agent = build_agent(assembly.into_build_options())
         .map_err(|e| BootstrapError::BuildFailed(e.to_string()))?;
-    agent
-        .inner_mut()
-        .register_prompt_commands(&discovered_templates);
 
     if let Some(n) = max_turns.filter(|&n| n >= 1) {
         agent.set_should_stop_after_turn(Some(crate::agent::max_turns_stop_hook(n)));

@@ -4,11 +4,11 @@
 
 | ID | Seam | 断言方向 |
 |---|---|---|
-| S1 | BDD `agent-prompt` | 无 pt3/pt4 场景；其余 pt* 仍绿 |
-| S2 | BDD `agent-session` | 无 a21/a22 / `template-dispatch`；slash 命令分发仍绿 |
-| S3 | BDD `runtime-resource-discovery` | list/reload **不含** prompts；skills/themes/SYSTEM 仍绿 |
+| S1 | BDD `agent-prompt` | pt3 `no-slash-prompt-templates`；其余已绑 pt* 仍绿 |
+| S2 | BDD `agent-session` | 无 a21/a22 / `template-dispatch`；`no-template-dispatch` + slash 分发 |
+| S3 | BDD/单测 resource discovery | list **不含** prompts；`list_ignores_leftover_prompts_dir` |
 | S4 | 单测 / 编译 | 无 `register_prompt_commands`；loader 不扫 `prompts/`；`get_commands` 无 `template:` |
-| S5 | CLI `resources` | 列表/详情无 prompts 段（改现有 harness 或等价步骤） |
+| S5 | CLI `resources` | 列表/详情无 prompts 段 |
 
 ## 1. Specs landing（Branch binding 后）
 
@@ -19,12 +19,12 @@
 
 ## 2. 实现删除（垂直：发现 → 注册 → CLI）
 
-- [ ] 2.1 停 `ResourceLoader` prompts 发现与 `PromptTemplate` protocol 类型；改 rd 相关单测 [blocked-by: 1.4]
-- [ ] 2.2 删 `agent/prompt/templates.rs`、`register_prompt_commands`、bootstrap 接线；`get_commands` 无 `template:` [blocked-by: 2.1]
-- [ ] 2.3 CLI `resources` 去掉 prompts 列表/详情；Settings.`prompts` 字段与加载 [blocked-by: 2.1]
-- [ ] 2.4 清理 BDD step（含 `expand_template_body` / template 场景）对齐 S1–S5 [blocked-by: 2.2, 2.3]
+- [x] 2.1 停 `ResourceLoader` prompts 发现与 `PromptTemplate` protocol 类型；改 rd 相关单测
+- [x] 2.2 删 `agent/prompt/templates.rs`、`register_prompt_commands`、bootstrap 接线；`get_commands` 无 `template:`
+- [x] 2.3 CLI `resources` 去掉 prompts 列表/详情；Settings.`prompts` 字段与加载
+- [x] 2.4 清理 BDD step（S1–S5：pt3 / no-template-dispatch / themes-list / no-prompts-settings-field）
 
 ## 3. 校验
 
-- [ ] 3.1 `cargo test --test bdd`（相关 feature）+ 受影响单测 [blocked-by: 2.4]
-- [ ] 3.2 `llman sdd validate c1218-… --strict`（可带 `--check`）[blocked-by: 3.1]
+- [x] 3.1 相关单测 + BDD（themes_list / no_prompts / no_template / no_slash / resources / loader / settings）
+- [x] 3.2 `llman sdd validate c1218-… --strict`（可带 `--check`）

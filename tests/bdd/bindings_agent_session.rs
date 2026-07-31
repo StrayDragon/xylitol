@@ -39,19 +39,10 @@ async fn test_agent_auto_save(agent: AgentState, sess: XySessionStore, ws: Works
 
 #[scenario(
     path = "llmanspec/specs/agent-session/agent-session.feature",
-    name = "template-expand"
+    name = "no-template-dispatch"
 )]
-fn test_sess_template_expand(agent: AgentState, ws: Workspace) {}
-#[scenario(
-    path = "llmanspec/specs/agent-session/agent-session.feature",
-    name = "default-value"
-)]
-fn test_sess_default_value(agent: AgentState, ws: Workspace) {}
-#[scenario(
-    path = "llmanspec/specs/agent-session/agent-session.feature",
-    name = "load-global"
-)]
-fn test_sess_load_global(agent: AgentState, ws: Workspace) {}
+async fn test_sess_no_template_dispatch(agent: AgentState, ws: Workspace) {}
+
 #[scenario(
     path = "llmanspec/specs/agent-session/agent-session.feature",
     name = "context-files-found"
@@ -143,12 +134,6 @@ async fn test_sess_prompt_build(agent: AgentState, ws: Workspace) {}
     name = "product-names-in-get-commands"
 )]
 fn test_sess_product_names(agent: AgentState, ws: Workspace) {}
-
-#[scenario(
-    path = "llmanspec/specs/agent-session/agent-session.feature",
-    name = "template-dispatch"
-)]
-async fn test_sess_template_dispatch(agent: AgentState, ws: Workspace) {}
 
 #[scenario(
     path = "llmanspec/specs/agent-session/agent-session.feature",

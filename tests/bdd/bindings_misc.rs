@@ -102,6 +102,12 @@ fn test_pt9_collect(prompt_bdd: PromptBdd) {}
 fn test_pt9_no_backfill(prompt_bdd: PromptBdd) {}
 
 #[scenario(
+    path = "llmanspec/specs/agent-prompt/agent-prompt.feature",
+    name = "no-slash-prompt-templates"
+)]
+fn test_pt3_no_slash_prompt_templates(prompt_bdd: PromptBdd, ws: Workspace) {}
+
+#[scenario(
     path = "llmanspec/specs/package-ai-bridge-accounting/package-ai-bridge-accounting.feature",
     name = "cache-list-and-remove"
 )]

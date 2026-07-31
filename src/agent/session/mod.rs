@@ -29,7 +29,6 @@ use crate::agent::compaction::CompactionSettings;
 use crate::agent::compaction::orchestrator::CompactionOrchestrator;
 use crate::agent::model::manager::ModelManager;
 use crate::agent::prompt::commands::{SlashCommandInfo, get_all_commands};
-use crate::agent::prompt::templates::PromptTemplate;
 use crate::agent::prompt::{self, SystemPromptOpts};
 use crate::agent::runtime::AgentHooks;
 use crate::agent::tools::ToolSet;
@@ -40,8 +39,6 @@ use crate::protocol::ports::{
 use crate::protocol::session::{
     EntryBase, ModelChangeEntry, SessionEntry, ThinkingLevelChangeEntry,
 };
-#[cfg(test)]
-use crate::protocol::source_info::{SourceInfo, SourceOrigin, SourceScope};
 use crate::protocol::types::{ThinkingLevel, XyModelMeta};
 
 // ── Model Registry ──────────────────────────────────────────────────
@@ -86,8 +83,6 @@ pub struct AgentCapabilities {
     cwd: String,
     /// System prompt options for dynamic building.
     prompt_opts: SystemPromptOpts,
-    /// Registered prompt templates for /template:name expansion.
-    prompt_templates: Vec<PromptTemplate>,
     /// Extension-registered slash commands.
     extension_commands: Vec<SlashCommandInfo>,
     /// Bash-execution collaborator. Holds the optional [`XyBashExecutor`]
@@ -159,7 +154,6 @@ impl AgentCapabilities {
                 runtime_policy_fragments: Vec::new(),
                 ..Default::default()
             },
-            prompt_templates: Vec::new(),
             extension_commands: Vec::new(),
             bash: crate::agent::session::bash::BashExecHandler::new(bash_executor),
             exporter: crate::agent::session::export::SessionExporter::new(export_io),
@@ -355,46 +349,11 @@ impl AgentCapabilities {
         Ok(())
     }
 
-    // ── Prompt templates and commands ───────────────────────────
+    // ── Slash commands ───────────────────────────────────────────
 
-    /// Register prompt templates discovered by the XyResourceLoader.
-    ///
-    /// Converts the loader's `PromptTemplate` (content field) into the runtime
-    /// `agent::templates::PromptTemplate` (body field) and records the source
-    /// path for provenance. Each registered template becomes a `/template:name`
-    /// command.
-    pub fn register_prompt_commands(
-        &mut self,
-        templates: &[crate::protocol::resource::PromptTemplate],
-    ) {
-        for t in templates {
-            self.prompt_templates.push(PromptTemplate {
-                name: t.name.clone(),
-                description: t.description.clone(),
-                source_info: Some(t.source_info.clone()),
-            });
-        }
-    }
-
-    /// Get all available commands (builtin + extension + prompt templates).
+    /// Get all available commands (builtin + extension).
     pub(crate) fn get_commands(&self) -> Vec<SlashCommandInfo> {
-        let mut all = get_all_commands(&self.extension_commands);
-        // Surface registered prompt templates as commands so callers
-        // (slash dispatch / GetCommands) can discover them.
-        for t in &self.prompt_templates {
-            let mut cmd = SlashCommandInfo::new(
-                format!("template:{}", t.name),
-                t.description
-                    .clone()
-                    .unwrap_or_else(|| "prompt template".into()),
-                crate::agent::prompt::commands::SlashCommandSource::Prompt,
-            );
-            if let Some(ref si) = t.source_info {
-                cmd.source_info = Some(si.clone());
-            }
-            all.push(cmd);
-        }
-        all
+        get_all_commands(&self.extension_commands)
     }
 
     // ── Session management ────────────────────────────────────────
@@ -982,7 +941,6 @@ fn observe_hook_sync(
 mod tests {
     use super::*;
     use crate::infra::session::SessionManager;
-    use std::path::PathBuf;
 
     fn make_session() -> AgentCapabilities {
         let mgr = SessionManager::new(tempfile::tempdir().unwrap().path().join("sessions"));
@@ -1014,24 +972,19 @@ mod tests {
         )
     }
 
-    fn loader_template(
-        name: &str,
-        body: &str,
-        source: &str,
-    ) -> crate::protocol::resource::PromptTemplate {
-        crate::protocol::resource::PromptTemplate {
-            name: name.into(),
-            content: body.into(),
-            description: None,
-            argument_hint: None,
-            source_info: SourceInfo {
-                path: PathBuf::from(source),
-                source: "test".into(),
-                scope: SourceScope::Temporary,
-                origin: SourceOrigin::TopLevel,
-                base_dir: None,
-            },
-        }
+    #[test]
+    fn get_commands_includes_product_builtins() {
+        let session = make_session();
+        let names: Vec<String> = session.get_commands().into_iter().map(|c| c.name).collect();
+        // Product builtins from SSOT (c1175).
+        assert!(names.iter().any(|n| n == "model"));
+        assert!(names.iter().any(|n| n == "session-export"));
+        assert!(names.iter().any(|n| n == "session-compact"));
+        assert!(names.iter().any(|n| n == "session-tree"));
+        assert!(!names.iter().any(|n| n == "tree"));
+        assert!(!names.iter().any(|n| n == "compact"));
+        assert!(!names.iter().any(|n| n == "export"));
+        assert!(!names.iter().any(|n| n.starts_with("template:")));
     }
 
     #[test]
@@ -1141,26 +1094,6 @@ mod tests {
         assert_eq!(session.queue_stats(), stats_before);
     }
 
-    #[test]
-    fn registered_templates_appear_in_commands() {
-        let mut session = make_session();
-        session.register_prompt_commands(&[
-            loader_template("review", "body", "/x/review.md"),
-            loader_template("plan", "body2", "/x/plan.md"),
-        ]);
-        let names: Vec<String> = session.get_commands().into_iter().map(|c| c.name).collect();
-        assert!(names.iter().any(|n| n == "template:review"));
-        assert!(names.iter().any(|n| n == "template:plan"));
-        // Product builtins from SSOT (c1175).
-        assert!(names.iter().any(|n| n == "model"));
-        assert!(names.iter().any(|n| n == "session-export"));
-        assert!(names.iter().any(|n| n == "session-compact"));
-        assert!(names.iter().any(|n| n == "session-tree"));
-        assert!(!names.iter().any(|n| n == "tree"));
-        assert!(!names.iter().any(|n| n == "compact"));
-        assert!(!names.iter().any(|n| n == "export"));
-    }
-
     #[tokio::test]
     async fn abort_clears_steer_keeps_follow_up() {
         let session = make_session();
@@ -1216,25 +1149,6 @@ mod tests {
         assert!(
             result.cancelled,
             "AgentRuntime::abort must cancel in-flight interactive bash"
-        );
-    }
-
-    #[test]
-    fn source_path_preserved_after_registration() {
-        let mut session = make_session();
-        session.register_prompt_commands(&[loader_template(
-            "greet",
-            "hi",
-            "/home/u/.xylitol/prompts/greet.md",
-        )]);
-        let t = session
-            .prompt_templates
-            .iter()
-            .find(|t| t.name == "greet")
-            .unwrap();
-        assert_eq!(
-            t.source_info.as_ref().map(|si| si.path.as_path()),
-            Some(std::path::Path::new("/home/u/.xylitol/prompts/greet.md"))
         );
     }
 }

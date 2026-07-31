@@ -166,9 +166,6 @@ impl SettingsManager {
         if overrides.enable_skill_commands.is_some() {
             result.enable_skill_commands = overrides.enable_skill_commands;
         }
-        if overrides.prompts.is_some() {
-            result.prompts = overrides.prompts.clone();
-        }
         if overrides.themes.is_some() {
             result.themes = overrides.themes.clone();
         }
@@ -483,10 +480,6 @@ impl SettingsManager {
 
     pub fn get_enable_skill_commands(&self) -> bool {
         self.settings.enable_skill_commands.unwrap_or(true)
-    }
-
-    pub fn get_prompts(&self) -> Option<&[String]> {
-        self.settings.prompts.as_deref()
     }
 
     pub fn get_themes(&self) -> Option<&[String]> {

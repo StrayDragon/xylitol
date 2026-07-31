@@ -6,98 +6,6 @@ use crate::steps_agent_runtime::ar_register_fake;
 use crate::steps_domain_compaction_extra::make_test_capabilities;
 use rstest_bdd_macros::{given, then, when};
 
-#[given("模板含第一参数占位符")]
-pub(crate) fn g_sess_tmpl(ws: &Workspace) {
-    let path = ws.ws("prompts/review.md");
-    std::fs::create_dir_all(std::path::Path::new(&path).parent().unwrap()).ok();
-    std::fs::write(
-        &path,
-        "---\ndescription: Review a file\n---\nPlease review $1 thoroughly.",
-    )
-    .ok();
-    ws.last_result.replace(Some(Ok(path)));
-}
-
-pub(crate) fn expand_template_body(body: &str, arg: Option<&str>) -> String {
-    let arg = arg.unwrap_or("main.rs");
-    body.replace("$1", arg)
-}
-
-pub(crate) fn parse_template_body(content: &str) -> String {
-    if content.starts_with("---")
-        && let Some(body) = content.splitn(3, "---").nth(2)
-    {
-        return body.trim().to_string();
-    }
-    content.trim().to_string()
-}
-
-#[when("以 main.rs 展开模板")]
-pub(crate) fn w_sess_expand(ws: &Workspace) {
-    let path = ws
-        .last_result
-        .borrow()
-        .as_ref()
-        .and_then(|r| r.as_ref().ok())
-        .cloned()
-        .unwrap_or_else(|| ws.ws("prompts/review.md"));
-    let content = std::fs::read_to_string(&path).unwrap_or_default();
-    let body = parse_template_body(&content);
-    let expanded = expand_template_body(&body, Some("main.rs"));
-    ws.last_result.replace(Some(Ok(expanded)));
-}
-#[then("内容中 main.rs 已替换")]
-pub(crate) fn t_sess_expanded(ws: &Workspace) {
-    assert!(result_ok_str(&ws.last_result).contains("main.rs"));
-}
-
-#[given("模板第一参数有默认值")]
-pub(crate) fn g_sess_tmpl_def(ws: &Workspace) {
-    let path = ws.ws("prompts/review.md");
-    std::fs::create_dir_all(std::path::Path::new(&path).parent().unwrap()).ok();
-    std::fs::write(
-        &path,
-        "---\ndescription: Review\n---\nPlease review main.rs by default.",
-    )
-    .ok();
-    ws.last_result.replace(Some(Ok(path)));
-}
-#[when("无参展开模板")]
-pub(crate) fn w_sess_expand_noarg(ws: &Workspace) {
-    let path = ws
-        .last_result
-        .borrow()
-        .as_ref()
-        .and_then(|r| r.as_ref().ok())
-        .cloned()
-        .unwrap_or_else(|| ws.ws("prompts/review.md"));
-    let content = std::fs::read_to_string(&path).unwrap_or_default();
-    let body = parse_template_body(&content);
-    let expanded = expand_template_body(&body, None);
-    ws.last_result.replace(Some(Ok(expanded)));
-}
-#[then("内容含默认值")]
-pub(crate) fn t_sess_def_val(ws: &Workspace) {
-    assert!(result_ok_str(&ws.last_result).contains("main.rs"));
-}
-
-#[given("prompts 目录有 review.md")]
-pub(crate) fn g_sess_prompts(ws: &Workspace) {
-    let f = ws.ws("prompts/review.md");
-    std::fs::create_dir_all(std::path::Path::new(&f).parent().unwrap()).ok();
-    std::fs::write(&f, "Review template content").ok();
-}
-#[when("加载模板")]
-pub(crate) fn w_sess_load_tmpl(ws: &Workspace) {
-    let c = std::fs::read_to_string(ws.ws("prompts/review.md")).unwrap_or_default();
-    ws.last_result
-        .replace(Some(Ok(format!("desc:Review content:{c}"))));
-}
-#[then("返回含 description 的 review 模板")]
-pub(crate) fn t_sess_tmpl_desc(ws: &Workspace) {
-    assert!(result_ok_str(&ws.last_result).contains("desc:Review"));
-}
-
 #[given("cwd 树存在 AGENTS.md")]
 pub(crate) fn g_sess_agents(ws: &Workspace) {
     std::fs::write(ws.ws("AGENTS.md"), "# Project rules\nBe helpful.").ok();
@@ -566,8 +474,8 @@ pub(crate) fn g_slash_compact(agent: &AgentState) {
         .replace(Some(Ok("prompt:/compact".into())));
 }
 
-#[given("用户发送 /review 及参数")]
-pub(crate) fn g_sess_review_slash(ws: &Workspace, agent: &AgentState) {
+#[given("用户发送 /review 及参数且仅存在 prompts/review.md")]
+pub(crate) fn g_sess_review_no_template(ws: &Workspace, agent: &AgentState) {
     let path = ws.ws("prompts/review.md");
     std::fs::create_dir_all(std::path::Path::new(&path).parent().unwrap()).ok();
     std::fs::write(&path, "---\ndescription: review\n---\nReview $1").ok();
@@ -576,8 +484,46 @@ pub(crate) fn g_sess_review_slash(ws: &Workspace, agent: &AgentState) {
         .replace(Some(Ok("prompt:/review main.rs".into())));
 }
 
+#[when("prompt 处理")]
+pub(crate) fn w_prompt_process(agent: &AgentState, ws: &Workspace) {
+    use std::path::PathBuf;
+
+    use xylitol::agent::prompt::product_commands::product_slash_commands;
+    use xylitol::app::cli::resources::{ResourcesAction, run_with_dirs};
+
+    let cwd = PathBuf::from(ws.ws("."));
+    let agent_dir = cwd.join(".xylitol");
+    let (code, list_out) = run_with_dirs(ResourcesAction::List, &cwd, &agent_dir);
+    assert_eq!(code, std::process::ExitCode::SUCCESS);
+    assert!(
+        !list_out.contains("prompts:"),
+        "resources list must not include prompts section: {list_out}"
+    );
+
+    let builtins: Vec<&str> = product_slash_commands().iter().map(|c| c.name).collect();
+    let marker = result_ok_str(&agent.last_result);
+    let has_template_cmd = builtins
+        .iter()
+        .any(|n| *n == "template:review" || *n == "review");
+    let outcome = if has_template_cmd {
+        "template:expanded".into()
+    } else {
+        format!("plain:{marker}")
+    };
+    agent.last_result.replace(Some(Ok(outcome)));
+}
+
+#[then("MUST NOT 将 prompt 模板展开并送 LLM")]
+pub(crate) fn t_no_template_dispatch(agent: &AgentState) {
+    let msg = result_ok_str(&agent.last_result);
+    assert!(
+        !msg.starts_with("template:"),
+        "must not expand prompt template, got: {msg}"
+    );
+}
+
 #[when("prompt 被拦截")]
-pub(crate) async fn w_slash_intercepted(agent: &AgentState, ws: &Workspace) {
+pub(crate) async fn w_slash_intercepted(agent: &AgentState, _ws: &Workspace) {
     let marker = agent
         .last_result
         .borrow()
@@ -586,14 +532,7 @@ pub(crate) async fn w_slash_intercepted(agent: &AgentState, ws: &Workspace) {
         .cloned()
         .unwrap_or_default();
     if marker.contains("/review") {
-        let path = ws.ws("prompts/review.md");
-        let content = std::fs::read_to_string(&path).unwrap_or_default();
-        let body = parse_template_body(&content);
-        let expanded = expand_template_body(&body, Some("main.rs"));
-        agent
-            .last_result
-            .replace(Some(Ok(format!("template:{expanded}"))));
-        return;
+        panic!("slash-dispatch scenario must use /compact, got: {marker}");
     }
 
     use xylitol::embed::{XyDriver, XyInProcessDriver};
@@ -855,15 +794,6 @@ pub(crate) fn t_sess_product_command_names(agent: &AgentState) {
     assert!(
         primary.is_empty(),
         "short legacy names must not be primary builtins: {primary:?}"
-    );
-}
-
-#[then("模板展开并送 LLM")]
-pub(crate) fn t_sess_template_dispatched(agent: &AgentState) {
-    let msg = result_ok_str(&agent.last_result);
-    assert!(
-        msg.starts_with("template:") && msg.contains("main.rs"),
-        "template must expand with argument before LLM, got: {msg}"
     );
 }
 
