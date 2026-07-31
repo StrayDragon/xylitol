@@ -67,3 +67,9 @@
     假如 MCP 结算或 reload 成功并热合并工具
     当 查询 ToolSet 工具名
     那么 每个工具名唯一且内置工具仍在
+
+  @req:mcp7
+  场景: snapshot-exposes-tools-armed
+    假如 MCP 部分或全部已 settle
+    当 读取 Driver/composition MCP 快照
+    那么 可观察每 server 或汇总的 tools armed 态

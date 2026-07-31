@@ -220,6 +220,24 @@
     当 面内 /session-resume 切换会话
     那么 不因切换而阻塞等待 MCP 重连
 
+  @req:ath27
+  场景: mcp-slash-opens-panel-any-state
+    假如 MCP 已配置且可能仍 connecting 或 agent busy
+    当 提交无参 /mcp
+    那么 打开替换 editor 槽的 MCP 面板且 MUST NOT 仅因开面板 abort agent
+
+  @req:ath27
+  场景: mcp-panel-shows-armed
+    假如 至少一个 MCP 已 settle 并 overlay 进 ToolSet
+    当 打开 /mcp 面板
+    那么 对应行显示 tools armed（或等价）且汇总可区分 armed
+
+  @req:ath27
+  场景: mcp-short-cue-no-id-dump
+    假如 配置了多个 MCP 且尚未全部 armed
+    当 渲染可选短 cue
+    那么 cue 含 /mcp 引导且 MUST NOT 枚举三个及以上 server id
+
   @req:ath24
   场景: idle-tick-skips-paint
     假如 Ready 且 idle 无 paint_dirty
