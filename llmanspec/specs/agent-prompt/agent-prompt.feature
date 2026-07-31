@@ -27,9 +27,10 @@
     那么 get_commands MUST NOT 含 template:greet 或 /greet 模板命令且 loader MUST NOT 将 greet 注册为 prompt 模板
 
   @req:pt5
-  场景: no-jinja-dep
-    当 检查 Cargo.toml 与 src/agent/prompt
-    那么 无 jinja/minijinja 依赖
+  场景: safe-minijinja-default
+    假如 使用默认正文路径且注入固定 date
+    当 build_system_prompt
+    那么 输出含该 date 与 Available tools（或等价默认段）且组装经沙箱 minijinja
 
   @req:pt6
   场景: apply-next-turn
