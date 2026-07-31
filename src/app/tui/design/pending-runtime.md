@@ -15,7 +15,7 @@ components:
 > 固定词：[`docs/architecture/TUI信息面与chrome词汇.md`](../../../../docs/architecture/TUI信息面与chrome词汇.md)。
 > 下轮预告槽：[`status.md`](./status.md)。Footer：[`footer.md`](./footer.md)。
 > 静图：[`playground/`](./playground/)「Pending / NextTurn」槽 + Full shell 芯片。
-> 贴输入 MCP（**已落地 c1210**）：主面 `/mcp`；idle 时若 sticky 头卡已有 `mcp:` 行则 **不**画短 cue；busy 可用右对齐 `mcp pending (see /mcp)`（[`mcp-input-cue.md`](./mcp-input-cue.md)）。busy 且已有 `Next turn…` 时 MCP cue **不**覆盖。
+> 贴输入 MCP（**已落地 c1210**）：主面 `/mcp`；短 cue 固定右对齐 `mcp pending (see /mcp)`（可与头卡 `connecting i/n` 并存；[`mcp-input-cue.md`](./mcp-input-cue.md)）。busy 且已有 `Next turn…` 时 MCP cue **不**覆盖。
 
 ## 产品意图
 
