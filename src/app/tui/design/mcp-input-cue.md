@@ -16,14 +16,15 @@ components:
     textColor: "{colors.muted}"
 ---
 
-# MCP 发现：`/mcp` 面板 + 可选短 cue（未定稿 → 升格）
+# MCP 发现：`/mcp` 面板 + 可选短 cue
 
 > Token：`{colors.*}` → [`../DESIGN.md`](../DESIGN.md)。
 > 静图：[`playground/`](./playground/) 槽 **Mcp cue**（`?slot=mcp-cue`）。
+> 合约：c1210（`atm17` / `ath27` / mcp7 armed 快照）。
 > 下轮预告对照：[`pending-runtime.md`](./pending-runtime.md)。头卡：[`loaded-resources.md`](./loaded-resources.md)。
 > 词汇：[`docs/architecture/TUI信息面与chrome词汇.md`](../../../../docs/architecture/TUI信息面与chrome词汇.md)。
 
-## 产品意图（已拍方向）
+## 产品意图（已拍 · c1210 同波）
 
 多 MCP（10+）时，**禁止**把 server 名单塞进 status / 下轮预告右侧（空间不够、吵）。
 
@@ -35,7 +36,7 @@ components:
 
 长对话看不见 welcome 卡片 → 靠 **`/mcp` + 可选短 cue**，不是贴输入刷墙。
 
-## `/mcp` 面板 MUST（升格时）
+## `/mcp` 面板 MUST
 
 1. **`/mcp`（无参）** 打开面板，**替换 editor 槽**（对齐 `/model` / resume）；**MUST NOT** 居中 overlay。
 2. **任何 host 态可开**：idle / agent-busy / bang-busy / MCP connecting；Esc 关槽，**MUST NOT** 因开面板 abort agent（busy 时与其它 editor 槽一致：先关槽）。
@@ -44,7 +45,7 @@ components:
 5. **Esc**：关槽；本波 **不**要求面板内启停 server（管理动作可后置）。
 6. Slash 目录 / Usage 暴露 `/mcp`；可选别名 `/mcps` → 同面板。
 
-## 短 cue（可选 · 升格时钉）
+## 短 cue（可选 · 合约钉）
 
 | | |
 |---|---|
@@ -67,6 +68,5 @@ components:
 
 ## 非目标（本设计文）
 
-- 产品 host 真接线（升格 / c1210 切片）
-- 面板内热重载单 server（可后置）
+- 面板内热重载 / 启停单 server（可后置）
 - 往 transcript 插 MCP ready 假消息
