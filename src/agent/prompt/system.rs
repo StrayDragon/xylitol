@@ -146,6 +146,7 @@ pub fn build_system_prompt(opts: &SystemPromptOpts) -> String {
 fn default_prompt_base(selected_tools: &[String], snippets: &[(String, String)]) -> String {
     let tool_lines: Vec<String> = selected_tools
         .iter()
+        .filter(|name| !name.starts_with("mcp:"))
         .filter_map(|name| {
             snippets
                 .iter()
@@ -164,7 +165,8 @@ fn default_prompt_base(selected_tools: &[String], snippets: &[(String, String)])
         "You are an expert coding assistant.\n\n\
          Available tools:\n\
          {tools_section}\n\n\
-         In addition to the tools above, you may have access to other custom tools depending on the project."
+         MCP/custom tools are provided in this turn's tools list — call by exact name \
+         (see `/mcp` in the product TUI for connection status)."
     )
 }
 
@@ -406,5 +408,53 @@ mod tests {
         let prompt = build_system_prompt(&opts);
         assert!(prompt.contains("Guidelines:"));
         assert!(prompt.contains("Use read to examine files instead of cat or sed."));
+    }
+
+    #[test]
+    fn default_available_tools_omits_mcp_prefix_and_adds_discover() {
+        let opts = SystemPromptOpts {
+            selected_tools: vec![
+                "read".into(),
+                "mcp:fs:read".into(),
+                "bash".into(),
+                "mcp:git:status".into(),
+            ],
+            tool_snippets: vec![
+                ("read".into(), "Read file".into()),
+                ("bash".into(), "Run bash".into()),
+                ("mcp:fs:read".into(), "MCP read".into()),
+                ("mcp:git:status".into(), "MCP git".into()),
+            ],
+            cwd: "/tmp".into(),
+            ..Default::default()
+        };
+        let prompt = build_system_prompt(&opts);
+        assert!(prompt.contains("- read: Read file"));
+        assert!(prompt.contains("- bash: Run bash"));
+        assert!(
+            !prompt.contains("mcp:fs:read"),
+            "Available tools MUST NOT enumerate mcp: names: {prompt}"
+        );
+        assert!(!prompt.contains("mcp:git:status"));
+        assert!(prompt.contains("MCP/custom tools are provided in this turn's tools list"));
+        assert!(prompt.contains("`/mcp`"));
+    }
+
+    #[test]
+    fn custom_prompt_still_skips_default_tools_backfill() {
+        let opts = SystemPromptOpts {
+            custom_prompt: Some("Only custom".into()),
+            selected_tools: vec!["mcp:fs:read".into(), "read".into()],
+            tool_snippets: vec![
+                ("read".into(), "Read".into()),
+                ("mcp:fs:read".into(), "MCP".into()),
+            ],
+            cwd: ".".into(),
+            ..Default::default()
+        };
+        let prompt = build_system_prompt(&opts);
+        assert!(prompt.contains("Only custom"));
+        assert!(!prompt.contains("Available tools:"));
+        assert!(!prompt.contains("MCP/custom tools are provided"));
     }
 }

@@ -196,20 +196,35 @@ impl McpSession {
     ) -> Result<(), XyDriverError> {
         use crate::infra::mcp::{connect_and_discover, mcp_enabled};
 
-        if let Some(old) = self.manager.take() {
-            old.shutdown().await;
-        }
+        // Take old first; shut down after new tools/manager are installed (c1210).
+        let old = self.manager.take();
 
         let infra = McpServerSpec::to_infra_list(servers);
         let mut tools = ToolSet::from_iter(crate::infra::tools::default_tools());
-        if mcp_enabled(&Some(infra.clone()))
-            && let Some((manager, mcp_tools)) = connect_and_discover(&infra).await?
-        {
-            tools = tools.merge(ToolSet::from_iter(mcp_tools));
-            self.manager = Some(manager);
+        if mcp_enabled(&Some(infra.clone())) {
+            match connect_and_discover(&infra).await {
+                Ok(Some((manager, mcp_tools))) => {
+                    tools = ToolSet::rebuild_agent_tools(
+                        crate::infra::tools::default_tools(),
+                        mcp_tools,
+                    );
+                    self.manager = Some(manager);
+                }
+                Ok(None) => {}
+                Err(e) => {
+                    driver.set_tools(tools);
+                    if let Some(old) = old {
+                        old.shutdown().await;
+                    }
+                    return Err(XyDriverError::from_opaque(e));
+                }
+            }
         }
 
         driver.set_tools(tools);
+        if let Some(old) = old {
+            old.shutdown().await;
+        }
         Ok(())
     }
 }

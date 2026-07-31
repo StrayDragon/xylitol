@@ -24,6 +24,8 @@ pub enum EditorSlot {
     ImportConfirm,
     /// `/session-resume` session picker (c1015).
     SessionResume,
+    /// `/mcp` MCP connection + armed panel (c1210).
+    Mcp,
 }
 
 impl EditorSlot {
@@ -51,6 +53,7 @@ impl EditorSlot {
             Self::Themes => "Themes",
             Self::ImportConfirm => "Import confirm",
             Self::SessionResume => "Resume session",
+            Self::Mcp => "MCP",
         }
     }
 }

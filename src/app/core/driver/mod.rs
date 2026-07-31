@@ -35,7 +35,7 @@ pub use remote::XyRemoteDriver;
 #[allow(unused_imports)]
 pub use types::{
     ClipboardCopyOutcome, CommandInfo, DebugSceneLoad, EventStream, LoadedResourcesSnapshot,
-    ModelInfo, ProjectTrustMode, ProjectTrustPersistReport, QueueStats, ReloadStepReport,
-    RuntimeReloadReport, SessionListEntry, SessionState, SessionStats, XyEvent,
-    estimate_from_session_entries,
+    MCP_PENDING_CUE, McpServerPhase, McpServerSnapshot, ModelInfo, ProjectTrustMode,
+    ProjectTrustPersistReport, QueueStats, ReloadStepReport, RuntimeReloadReport, SessionListEntry,
+    SessionState, SessionStats, XyEvent, estimate_from_session_entries,
 };

@@ -425,6 +425,11 @@ pub(super) async fn handle_slash<T: Terminal>(
             }
             let _ = session.render_now();
         }
+        PendingSlash::OpenMcp => {
+            let snap = driver.loaded_resources_snapshot().await;
+            session.mount_mcp_panel(&snap);
+            let _ = session.render_now();
+        }
         PendingSlash::Usage(msg) => {
             session.push_scroll_notice(msg.to_string());
             let _ = session.render_now();

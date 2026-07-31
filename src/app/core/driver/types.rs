@@ -94,7 +94,30 @@ pub struct LoadedResourcesSnapshot {
     pub mcp_diag_short: Vec<String>,
     /// When MCP bootstrap is in flight: `connecting 0/3` … `2/3` (c1200).
     pub mcp_connecting_label: Option<String>,
+    /// Per-server connection + tools-armed rows for `/mcp` (c1210).
+    pub mcp_servers: Vec<McpServerSnapshot>,
 }
+
+/// Connection phase for one configured MCP server (c1210 `/mcp` panel).
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum McpServerPhase {
+    Connecting,
+    Connected,
+    Failed,
+}
+
+/// One MCP server row for `/mcp` / armed snapshot (c1210).
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct McpServerSnapshot {
+    pub id: String,
+    pub phase: McpServerPhase,
+    /// True when ToolSet already contains at least one `mcp:{id}:…` tool.
+    pub tools_armed: bool,
+    pub tool_count: usize,
+}
+
+/// Fixed short cue when MCP is configured but not all tools are armed (c1210).
+pub const MCP_PENDING_CUE: &str = "mcp pending (see /mcp)";
 
 impl LoadedResourcesSnapshot {
     /// Whether skills or MCP sections would render (brand line is separate).
@@ -103,6 +126,17 @@ impl LoadedResourcesSnapshot {
             || self.mcp_configured > 0
             || !self.mcp_connected.is_empty()
             || !self.mcp_diag_short.is_empty()
+            || self.mcp_connecting_label.is_some()
+            || !self.mcp_servers.is_empty()
+    }
+
+    /// MCP configured and not every configured server has tools armed in ToolSet.
+    pub fn mcp_tools_pending(&self) -> bool {
+        if self.mcp_configured == 0 {
+            return false;
+        }
+        self.mcp_servers.len() != self.mcp_configured
+            || self.mcp_servers.iter().any(|s| !s.tools_armed)
             || self.mcp_connecting_label.is_some()
     }
 }

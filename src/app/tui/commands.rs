@@ -53,11 +53,13 @@ pub enum PendingSlash {
     Theme {
         arg: Option<String>,
     },
+    /// Bare `/mcp` / `/mcps` — MCP connection + armed panel (c1210).
+    OpenMcp,
     /// Slash usage / arity error (no dispatch).
     Usage(&'static str),
 }
 
-/// Whether a parsed slash may run under a host gate (c1580 / c1200).
+/// Whether a parsed slash may run under a host gate (c1580 / c1210).
 ///
 /// Exhaustive over [`PendingSlash`] via [`slash_allowances`] — new variants MUST
 /// fill every column.
@@ -72,99 +74,82 @@ pub enum SlashPermit {
 /// Alias kept for call sites / specs that say «busy slash policy» (c1580).
 pub type BusySlashPolicy = SlashPermit;
 
-/// Per-slash allowances across host gates (c1200).
+/// Per-slash allowances across host gates (c1210).
 ///
 /// **Single exhaustive table**: add a [`PendingSlash`] arm → fill every field.
 /// Future gates (e.g. reload-in-flight) add a column here — do not fork parallel matches.
+/// MCP connecting no longer gates input (c1210); only `when_agent_busy` remains.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub struct SlashAllowances {
     pub when_agent_busy: SlashPermit,
-    pub when_mcp_connecting: SlashPermit,
 }
 
 /// Canonical slash gate table. Prefer this over ad-hoc matches.
 pub fn slash_allowances(slash: &PendingSlash) -> SlashAllowances {
     use SlashPermit::*;
     match slash {
-        // Leave / readonly / export
+        // Leave / readonly / export / MCP panel
         PendingSlash::Exit => SlashAllowances {
             when_agent_busy: Allow,
-            when_mcp_connecting: Allow,
         },
         PendingSlash::SessionDump => SlashAllowances {
             when_agent_busy: Allow,
-            when_mcp_connecting: Allow,
         },
         PendingSlash::HistoryCopyLast => SlashAllowances {
             when_agent_busy: Allow,
-            when_mcp_connecting: Allow,
         },
         PendingSlash::Export { .. } => SlashAllowances {
             when_agent_busy: Allow,
-            when_mcp_connecting: Allow,
         },
-        // Session nav (MCP connecting: allow; agent busy: mostly reject)
+        PendingSlash::OpenMcp => SlashAllowances {
+            when_agent_busy: Allow,
+        },
+        // Session nav (agent busy: mostly reject)
         PendingSlash::OpenSessionResume => SlashAllowances {
             when_agent_busy: Reject,
-            when_mcp_connecting: Allow,
         },
         PendingSlash::SessionNew => SlashAllowances {
             when_agent_busy: Reject,
-            when_mcp_connecting: Allow,
         },
         PendingSlash::SessionClone => SlashAllowances {
             when_agent_busy: Reject,
-            when_mcp_connecting: Allow,
         },
         PendingSlash::SessionName { .. } => SlashAllowances {
             when_agent_busy: Allow,
-            when_mcp_connecting: Allow,
         },
         PendingSlash::Import { .. } => SlashAllowances {
             when_agent_busy: Reject,
-            when_mcp_connecting: Allow,
         },
         PendingSlash::OpenTree => SlashAllowances {
             when_agent_busy: Reject,
-            when_mcp_connecting: Allow,
         },
         PendingSlash::ForkAtLeaf => SlashAllowances {
             when_agent_busy: Reject,
-            when_mcp_connecting: Allow,
         },
         // Chrome / trust
         PendingSlash::Theme { .. } => SlashAllowances {
             when_agent_busy: Reject,
-            when_mcp_connecting: Allow,
         },
         PendingSlash::OpenModels => SlashAllowances {
             when_agent_busy: Reject,
-            when_mcp_connecting: Allow,
         },
         PendingSlash::SetModel(_) => SlashAllowances {
             when_agent_busy: Allow,
-            when_mcp_connecting: Allow,
         },
         PendingSlash::Trust { .. } => SlashAllowances {
             when_agent_busy: Reject,
-            when_mcp_connecting: Allow,
         },
         PendingSlash::DebugScene(_) => SlashAllowances {
             when_agent_busy: Reject,
-            when_mcp_connecting: Allow,
         },
         PendingSlash::Usage(_) => SlashAllowances {
             when_agent_busy: Reject,
-            when_mcp_connecting: Allow,
         },
-        // Agent-like / races with bootstrap
         PendingSlash::Compact { .. } => SlashAllowances {
             when_agent_busy: Allow,
-            when_mcp_connecting: Reject,
         },
         PendingSlash::Reload => SlashAllowances {
             when_agent_busy: Reject,
-            when_mcp_connecting: Reject,
         },
     }
 }
@@ -172,11 +157,6 @@ pub fn slash_allowances(slash: &PendingSlash) -> SlashAllowances {
 /// Agent-busy column (c1580).
 pub fn busy_slash_policy(slash: &PendingSlash) -> SlashPermit {
     slash_allowances(slash).when_agent_busy
-}
-
-/// MCP connecting column (c1200) — independent of agent-busy.
-pub fn mcp_connecting_slash_policy(slash: &PendingSlash) -> SlashPermit {
-    slash_allowances(slash).when_mcp_connecting
 }
 
 /// Short label for refuse notes (`agent busy — /reload refused`).
@@ -202,6 +182,7 @@ pub fn busy_slash_refuse_label(slash: &PendingSlash) -> &'static str {
         PendingSlash::SessionDump => "/session",
         PendingSlash::SessionName { .. } => "/session-name",
         PendingSlash::HistoryCopyLast => "/history-copy-last",
+        PendingSlash::OpenMcp => "/mcp",
     }
 }
 
@@ -322,6 +303,8 @@ pub fn parse_slash_command(text: &str) -> Option<PendingSlash> {
             "usage: /history-copy-last (no arguments)",
         )),
         ("theme", arg) => Some(PendingSlash::Theme { arg }),
+        ("mcp" | "mcps", None) => Some(PendingSlash::OpenMcp),
+        ("mcp" | "mcps", Some(_)) => Some(PendingSlash::Usage("usage: /mcp (no arguments)")),
         // Space form only (`/debug scene`). Colon form intentionally unsupported.
         #[cfg(debug_assertions)]
         ("debug", None) => Some(PendingSlash::DebugScene("list".into())),
@@ -402,8 +385,8 @@ pub fn bash_result_entries(command: &str, result: &XyBashResult) -> Vec<UiEntry>
 #[cfg(test)]
 mod parse_tests {
     use super::{
-        BusySlashPolicy, PendingSlash, SlashPermit, busy_slash_policy, mcp_connecting_slash_policy,
-        parse_slash_command, slash_allowances,
+        BusySlashPolicy, PendingSlash, SlashPermit, busy_slash_policy, parse_slash_command,
+        slash_allowances,
     };
 
     #[test]
@@ -450,42 +433,32 @@ mod parse_tests {
             busy_slash_policy(&PendingSlash::Usage("x")),
             BusySlashPolicy::Reject
         );
-    }
-
-    #[test]
-    fn mcp_connecting_slash_whitelist() {
         assert_eq!(
-            mcp_connecting_slash_policy(&PendingSlash::OpenSessionResume),
-            SlashPermit::Allow
-        );
-        assert_eq!(
-            mcp_connecting_slash_policy(&PendingSlash::Reload),
-            SlashPermit::Reject
-        );
-        assert_eq!(
-            mcp_connecting_slash_policy(&PendingSlash::Compact { instructions: None }),
-            SlashPermit::Reject
-        );
-        assert_eq!(
-            mcp_connecting_slash_policy(&PendingSlash::Trust {
-                mode: crate::app::core::driver::ProjectTrustMode::TrustCwd,
-            }),
-            SlashPermit::Allow
-        );
-        assert_eq!(
-            mcp_connecting_slash_policy(&PendingSlash::Exit),
-            SlashPermit::Allow
+            busy_slash_policy(&PendingSlash::OpenMcp),
+            BusySlashPolicy::Allow
         );
     }
 
     #[test]
-    fn slash_allowances_single_table_columns_differ() {
+    fn slash_allowances_busy_only_table() {
         let a = slash_allowances(&PendingSlash::OpenSessionResume);
         assert_eq!(a.when_agent_busy, SlashPermit::Reject);
-        assert_eq!(a.when_mcp_connecting, SlashPermit::Allow);
         let b = slash_allowances(&PendingSlash::Compact { instructions: None });
         assert_eq!(b.when_agent_busy, SlashPermit::Allow);
-        assert_eq!(b.when_mcp_connecting, SlashPermit::Reject);
+        let c = slash_allowances(&PendingSlash::Reload);
+        assert_eq!(c.when_agent_busy, SlashPermit::Reject);
+        let d = slash_allowances(&PendingSlash::OpenMcp);
+        assert_eq!(d.when_agent_busy, SlashPermit::Allow);
+    }
+
+    #[test]
+    fn parse_mcp_bare() {
+        assert_eq!(parse_slash_command("/mcp"), Some(PendingSlash::OpenMcp));
+        assert_eq!(parse_slash_command("/mcps"), Some(PendingSlash::OpenMcp));
+        assert_eq!(
+            parse_slash_command("/mcp extra"),
+            Some(PendingSlash::Usage("usage: /mcp (no arguments)"))
+        );
     }
 
     #[test]

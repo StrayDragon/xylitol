@@ -198,6 +198,10 @@ impl UiRoot {
                 }
                 return;
             }
+            EditorSlot::Mcp => {
+                // Readonly panel — Esc closes via slot_nav; no other input.
+                return;
+            }
             EditorSlot::Editor => {}
         }
 

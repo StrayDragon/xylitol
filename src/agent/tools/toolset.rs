@@ -1,9 +1,9 @@
 //! Construct-time tool container for the agent runtime.
 //!
 //! [`ToolSet`] is a build-time-final collection of tools. It provides only
-//! unit operations (`empty`, `from_iter`, `plus`, `remove`, `merge`, `retain`);
-//! once handed to a turn, the loop consumes the final set directly. There is no
-//! runtime allow/exclude filter API.
+//! unit operations (`empty`, `from_iter`, `plus`, `remove`, `merge`,
+//! `overlay_by_name`, `retain`); once handed to a turn, the loop consumes the
+//! final set directly. There is no runtime allow/exclude filter API.
 
 use std::sync::Arc;
 
@@ -54,9 +54,34 @@ impl ToolSet {
     }
 
     /// Merge another tool set into this one, returning the updated set.
+    ///
+    /// Prefer [`Self::overlay_by_name`] / [`Self::rebuild_agent_tools`] for MCP
+    /// settle/reload so repeated rebuilds do not duplicate names.
     pub fn merge(mut self, other: ToolSet) -> Self {
         self.tools.extend(other.tools);
         self
+    }
+
+    /// Overlay `other` by tool name: later entries replace earlier; result names
+    /// are unique.
+    pub fn overlay_by_name(mut self, other: ToolSet) -> Self {
+        for tool in other.tools {
+            let name = tool.name();
+            if let Some(pos) = self.tools.iter().position(|t| t.name() == name) {
+                self.tools[pos] = tool;
+            } else {
+                self.tools.push(tool);
+            }
+        }
+        self
+    }
+
+    /// Rebuild the agent tool set: builtins first, then MCP/custom overlay by name.
+    pub fn rebuild_agent_tools(
+        builtins: impl IntoIterator<Item = Arc<dyn XyTool>>,
+        mcp: impl IntoIterator<Item = Arc<dyn XyTool>>,
+    ) -> Self {
+        Self::from_iter(builtins).overlay_by_name(Self::from_iter(mcp))
     }
 
     /// Retain only tools matching the predicate, returning the updated set.

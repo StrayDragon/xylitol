@@ -4006,11 +4006,10 @@ mod slice_tests {
     }
 
     #[tokio::test]
-    async fn c1200_mcp_connecting_gates_prompt_and_reload_allows_resume() {
+    async fn c1210_mcp_connecting_allows_prompt_and_reload() {
         let mut session = HostSession::new_product_ui(TestTerminal::new(80, 24));
         let root = session.ui_root().expect("ui").clone();
         let mut driver = ScriptedDriver::new();
-        // Empty list would close the slot with "no sessions" — seed so open is observable.
         driver.set_session_list(vec![SessionListEntry {
             id: "sid-a".into(),
             name: Some("While connecting".into()),
@@ -4031,13 +4030,13 @@ mod slice_tests {
         pump_host_driver(&mut session, &mut driver, &mut stream)
             .await
             .unwrap();
-        assert_eq!(driver.runs.len(), 0);
-        let notes = system_notes(&session);
+        assert_eq!(driver.runs.len(), 1, "prompt MUST run while MCP connecting");
         assert!(
-            notes
+            !system_notes(&session)
                 .iter()
-                .any(|t| t.contains("MCP still connecting") && t.contains("prompt")),
-            "expected prompt defer note: {notes:?}"
+                .any(|t| t.contains("MCP still connecting")),
+            "must not defer prompt: {:?}",
+            system_notes(&session)
         );
 
         root.borrow_mut().set_editor_text("/reload");
@@ -4045,13 +4044,17 @@ mod slice_tests {
         pump_host_driver(&mut session, &mut driver, &mut stream)
             .await
             .unwrap();
-        assert_eq!(driver.reload_runtime_calls(), 0);
-        let notes = system_notes(&session);
+        assert_eq!(
+            driver.reload_runtime_calls(),
+            1,
+            "/reload MUST run while MCP connecting (idle)"
+        );
         assert!(
-            notes
+            !system_notes(&session)
                 .iter()
                 .any(|t| t.contains("MCP still connecting") && t.contains("/reload")),
-            "expected reload refuse: {notes:?}"
+            "must not refuse reload: {:?}",
+            system_notes(&session)
         );
 
         root.borrow_mut().set_editor_text("/session-resume");
@@ -4061,13 +4064,93 @@ mod slice_tests {
             .unwrap();
         assert!(
             root.borrow().session_resume_open(),
-            "session-resume MUST be allowed while MCP connecting"
+            "session-resume MUST still open while MCP connecting"
+        );
+    }
+
+    #[tokio::test]
+    async fn c1210_mcp_panel_open_and_short_cue() {
+        use crate::app::core::driver::{
+            LoadedResourcesSnapshot, MCP_PENDING_CUE, McpServerPhase, McpServerSnapshot,
+        };
+
+        let mut session = HostSession::new_product_ui(TestTerminal::new(80, 24));
+        let root = session.ui_root().expect("ui").clone();
+        let mut driver = ScriptedDriver::new();
+        let mut stream = None;
+
+        let pending_snap = LoadedResourcesSnapshot {
+            mcp_configured: 2,
+            mcp_connecting_label: Some("connecting 0/2".into()),
+            mcp_servers: vec![
+                McpServerSnapshot {
+                    id: "fs".into(),
+                    phase: McpServerPhase::Connecting,
+                    tools_armed: false,
+                    tool_count: 0,
+                },
+                McpServerSnapshot {
+                    id: "git".into(),
+                    phase: McpServerPhase::Connecting,
+                    tools_armed: false,
+                    tool_count: 0,
+                },
+            ],
+            ..LoadedResourcesSnapshot::default()
+        };
+        driver.set_loaded_resources_for_driver(pending_snap.clone());
+        session.refresh_loaded_resources(&driver).await;
+
+        let cue = root.borrow().status_next_turn_cue_for_test();
+        assert_eq!(
+            cue.as_deref(),
+            Some(MCP_PENDING_CUE),
+            "short cue must be exact fixed copy"
         );
         assert!(
-            !system_notes(&session)
-                .iter()
-                .any(|t| t.contains("MCP still connecting") && t.contains("/session-resume")),
-            "session-resume must not be refused as MCP-connecting"
+            !cue.as_deref().unwrap_or("").contains("fs"),
+            "cue MUST NOT dump server ids"
+        );
+
+        root.borrow_mut().set_editor_text("/mcp");
+        session.step(HostEvent::Input(enter_event())).unwrap();
+        pump_host_driver(&mut session, &mut driver, &mut stream)
+            .await
+            .unwrap();
+        assert!(root.borrow().mcp_open(), "/mcp MUST open panel");
+        let panel = root.borrow().mcp_panel_text_for_test();
+        assert!(panel.contains("fs"), "panel shows server id: {panel}");
+        assert!(panel.contains("connecting"), "panel shows phase: {panel}");
+        assert!(panel.contains("not armed"), "panel shows armed: {panel}");
+        assert!(panel.contains("configured 2"), "panel summary: {panel}");
+
+        session.step(HostEvent::Input(esc_event())).unwrap();
+        assert!(!root.borrow().mcp_open(), "Esc MUST close /mcp panel");
+
+        let armed_snap = LoadedResourcesSnapshot {
+            mcp_configured: 2,
+            mcp_servers: vec![
+                McpServerSnapshot {
+                    id: "fs".into(),
+                    phase: McpServerPhase::Connected,
+                    tools_armed: true,
+                    tool_count: 3,
+                },
+                McpServerSnapshot {
+                    id: "git".into(),
+                    phase: McpServerPhase::Connected,
+                    tools_armed: true,
+                    tool_count: 1,
+                },
+            ],
+            ..LoadedResourcesSnapshot::default()
+        };
+        driver.set_loaded_resources_for_driver(armed_snap);
+        session.refresh_loaded_resources(&driver).await;
+        assert_eq!(
+            root.borrow().status_next_turn_cue_for_test(),
+            None,
+            "cue MUST hide when all armed"
         );
     }
 
