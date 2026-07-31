@@ -4,8 +4,8 @@ use xylitol_tui::{InputEvent, Terminal};
 
 use super::super::bridge::UiPhase;
 use super::super::commands::{
-    BangParse, BusySlashPolicy, PendingBash, PendingSlash, SlashPermit, busy_slash_policy,
-    busy_slash_refuse_label, mcp_connecting_slash_policy, parse_bang_command, parse_slash_command,
+    BangParse, BusySlashPolicy, PendingBash, PendingSlash, busy_slash_policy,
+    busy_slash_refuse_label, parse_bang_command, parse_slash_command,
 };
 use super::super::keybindings::matches_binding;
 use super::HostSession;
@@ -208,30 +208,6 @@ impl<T: Terminal> HostSession<T> {
         if let Some(slash) = parse_slash_command(&text) {
             root.set_editor_text(String::new());
             drop(root);
-            if self.mcp_blocks_agent {
-                match mcp_connecting_slash_policy(&slash) {
-                    SlashPermit::Allow => {
-                        if matches!(slash, PendingSlash::Exit) {
-                            self.request_quit();
-                        } else if let PendingSlash::Usage(msg) = slash {
-                            self.push_scroll_notice(msg);
-                        } else {
-                            self.pending.slash = Some(slash);
-                        }
-                    }
-                    SlashPermit::Reject => {
-                        if let PendingSlash::Usage(msg) = slash {
-                            self.push_scroll_notice(msg);
-                        } else {
-                            self.push_scroll_notice(format!(
-                                "MCP still connecting — {} refused",
-                                busy_slash_refuse_label(&slash)
-                            ));
-                        }
-                    }
-                }
-                return true;
-            }
             match slash {
                 PendingSlash::Exit => {
                     self.request_quit();
@@ -253,6 +229,7 @@ impl<T: Terminal> HostSession<T> {
                 | PendingSlash::Trust { .. }
                 | PendingSlash::HistoryCopyLast
                 | PendingSlash::Theme { .. }
+                | PendingSlash::OpenMcp
                 | PendingSlash::Usage(_) => {
                     self.pending.slash = Some(slash);
                 }
@@ -264,7 +241,7 @@ impl<T: Terminal> HostSession<T> {
             root.set_editor_text(String::new());
             drop(root);
             self.push_scroll_notice(format!(
-                "unknown command: {} (try /exit, /model, /theme, /session, /session-resume, /session-new, /session-clone, /session-name, /session-tree, /session-fork, /session-compact, /session-export, /session-import, /reload, /trust, /history-copy-last)",
+                "unknown command: {} (try /exit, /model, /theme, /mcp, /session, /session-resume, /session-new, /session-clone, /session-name, /session-tree, /session-fork, /session-compact, /session-export, /session-import, /reload, /trust, /history-copy-last)",
                 text.split_whitespace().next().unwrap_or("/")
             ));
             return true;
@@ -285,10 +262,6 @@ impl<T: Terminal> HostSession<T> {
                 root.remember_editor_send(text.clone());
                 root.set_editor_text(String::new());
                 drop(root);
-                if self.mcp_blocks_agent {
-                    self.push_scroll_notice("MCP still connecting — bang deferred");
-                    return true;
-                }
                 self.pending.bash = Some(PendingBash {
                     command,
                     exclude_from_context,
@@ -300,10 +273,6 @@ impl<T: Terminal> HostSession<T> {
         root.remember_editor_send(text.clone());
         root.set_editor_text(String::new());
         drop(root);
-        if self.mcp_blocks_agent {
-            self.push_scroll_notice("MCP still connecting — prompt deferred");
-            return true;
-        }
         self.pending.submit = Some(text);
         true
     }

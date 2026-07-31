@@ -710,6 +710,14 @@ impl XyDriver for XyInProcessDriver {
             McpBootState::Running { progress, .. } => progress.lock().await.connecting_label(),
             _ => None,
         };
+        let connecting = matches!(self.mcp_boot, McpBootState::Running { .. });
+        let tool_names: Vec<String> = self
+            .agent
+            .inner()
+            .tools()
+            .iter()
+            .map(|t| t.name().to_string())
+            .collect();
         let Some(state) = self.reload.as_ref() else {
             return LoadedResourcesSnapshot {
                 skill_names,
@@ -719,6 +727,33 @@ impl XyDriver for XyInProcessDriver {
         };
         let connected = state.mcp.connected_servers().await;
         let diags = state.mcp.diagnostics().await;
+        let mcp_servers = state
+            .mcp_servers
+            .iter()
+            .map(|spec| {
+                let id = spec.name.clone();
+                let connected_info = connected.iter().find(|s| s.id == id);
+                let failed = diags.iter().any(|d| d.server == id);
+                let prefix = format!("mcp:{id}:");
+                let armed_count = tool_names.iter().filter(|n| n.starts_with(&prefix)).count();
+                let tools_armed = armed_count > 0;
+                let phase = if connected_info.is_some() {
+                    crate::app::core::driver::McpServerPhase::Connected
+                } else if failed {
+                    crate::app::core::driver::McpServerPhase::Failed
+                } else if connecting {
+                    crate::app::core::driver::McpServerPhase::Connecting
+                } else {
+                    crate::app::core::driver::McpServerPhase::Failed
+                };
+                crate::app::core::driver::McpServerSnapshot {
+                    id,
+                    phase,
+                    tools_armed,
+                    tool_count: connected_info.map(|c| c.tool_count).unwrap_or(armed_count),
+                }
+            })
+            .collect();
         LoadedResourcesSnapshot {
             skill_names,
             mcp_connected: connected
@@ -731,6 +766,7 @@ impl XyDriver for XyInProcessDriver {
                 .map(|d| format!("{}: {}", d.server, d.message))
                 .collect(),
             mcp_connecting_label,
+            mcp_servers,
         }
     }
 
@@ -783,9 +819,10 @@ impl XyDriver for XyInProcessDriver {
         match handle.await {
             Ok(Ok(Some((manager, tools)))) => {
                 let old = self.reload.as_mut().and_then(|s| s.mcp.take_manager());
-                let mut set =
-                    crate::agent::tools::ToolSet::from_iter(crate::infra::tools::default_tools());
-                set = set.merge(crate::agent::tools::ToolSet::from_iter(tools));
+                let set = crate::agent::tools::ToolSet::rebuild_agent_tools(
+                    crate::infra::tools::default_tools(),
+                    tools,
+                );
                 self.set_tools(set);
                 if let Some(state) = self.reload.as_mut() {
                     state.mcp.set_manager(manager);

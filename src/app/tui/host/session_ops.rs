@@ -234,6 +234,15 @@ impl<T: Terminal> HostSession<T> {
         root.borrow_mut().set_loaded_resources(snap);
     }
 
+    /// Mount `/mcp` panel from a snapshot (c1210). Allowed in any host state.
+    pub fn mount_mcp_panel(&mut self, snap: &crate::app::core::driver::LoadedResourcesSnapshot) {
+        let Some(root) = self.ui_root.as_ref() else {
+            return;
+        };
+        root.borrow_mut().mount_mcp_panel(snap);
+        self.sync_ui_root_from_model();
+    }
+
     pub fn close_models_slot(&mut self) {
         if let Some(root) = self.ui_root.as_ref() {
             root.borrow_mut().close_slot();

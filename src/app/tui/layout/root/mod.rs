@@ -5,6 +5,7 @@
 
 mod editor_border;
 mod empty_widgets;
+mod mcp_slot;
 mod models_slot;
 mod mount;
 mod render;
@@ -122,6 +123,8 @@ pub struct UiRoot {
     pending_session_resume_select: Option<String>,
     pending_session_resume_rename: Option<(String, String)>,
     pending_session_resume_delete: Option<String>,
+    /// `/mcp` readonly panel lines (c1210).
+    mcp_panel_lines: Vec<String>,
     /// Generation for loaded+scrollback+queue cache (ath24); bumps on content/theme/fold.
     upper_gen: u64,
     upper_cache_gen: u64,
@@ -200,6 +203,7 @@ impl UiRoot {
             pending_session_resume_select: None,
             pending_session_resume_rename: None,
             pending_session_resume_delete: None,
+            mcp_panel_lines: Vec::new(),
             upper_gen: 0,
             upper_cache_gen: u64::MAX,
             upper_cache_width: usize::MAX,
@@ -293,6 +297,28 @@ impl UiRoot {
     pub fn set_loaded_resources(&mut self, snap: LoadedResourcesSnapshot) {
         self.loaded_resources = snap;
         self.bump_upper_gen();
+        self.refresh_mcp_short_cue();
+    }
+
+    /// Sync fixed MCP short cue from loaded-resources snapshot (c1210).
+    pub fn refresh_mcp_short_cue(&mut self) {
+        use crate::app::core::driver::MCP_PENDING_CUE;
+        if self.loaded_resources.mcp_tools_pending() {
+            // Keep an existing model/thinking next-turn cue when busy.
+            if self.status_busy && self.status_next_turn_cue.is_some() {
+                let cue = self.status_next_turn_cue.as_deref().unwrap_or("");
+                if cue.starts_with("Next turn") {
+                    return;
+                }
+            }
+            self.status_next_turn_cue = Some(MCP_PENDING_CUE.to_string());
+        } else if self
+            .status_next_turn_cue
+            .as_deref()
+            .is_some_and(|c| c == MCP_PENDING_CUE)
+        {
+            self.status_next_turn_cue = None;
+        }
     }
 
     /// Inject footer identity (cwd · model). Call before first render when known.
@@ -668,6 +694,10 @@ impl UiRoot {
     /// Set or clear next-turn cue (agent-busy NextTurn pending).
     pub fn set_status_next_turn_cue(&mut self, cue: Option<String>) {
         self.status_next_turn_cue = cue.filter(|s| !s.is_empty());
+        // If model/thinking cue cleared, restore MCP short cue when pending.
+        if self.status_next_turn_cue.is_none() {
+            self.refresh_mcp_short_cue();
+        }
     }
 
     /// Pending steer / follow-up strip above status (pi `pendingMessagesContainer`).

@@ -4,11 +4,12 @@ title: MCP connecting 不解闸输入；tools 热合并进下一轮请求
 status: designed
 priority: 1210
 depends_on:
-  - c1200-update-infra-mcp-startup
+- c1200-update-infra-mcp-startup
 author: agent
 branch: sdd/c1210-update-mcp-hot-merge-ungate
 base_sha: 07d736d503d4d6339b14151e6450b13039a128d7
-checkpointed: false
+checkpointed: true
+checkpoint_sha: 07d736d503d4d6339b14151e6450b13039a128d7
 ---
 
 # c1210 — MCP hot-merge ungate
