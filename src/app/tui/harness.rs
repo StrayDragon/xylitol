@@ -4006,6 +4006,72 @@ mod slice_tests {
     }
 
     #[tokio::test]
+    async fn c1200_mcp_connecting_gates_prompt_and_reload_allows_resume() {
+        let mut session = HostSession::new_product_ui(TestTerminal::new(80, 24));
+        let root = session.ui_root().expect("ui").clone();
+        let mut driver = ScriptedDriver::new();
+        // Empty list would close the slot with "no sessions" — seed so open is observable.
+        driver.set_session_list(vec![SessionListEntry {
+            id: "sid-a".into(),
+            name: Some("While connecting".into()),
+            first_message: Some("preview".into()),
+            message_count: 1,
+            modified_unix: Some(1_700_000_000),
+            parent_session_id: None,
+            tree_prefix: String::new(),
+            cwd: Some(".".into()),
+            path: None,
+        }]);
+        let mut stream = None;
+
+        session.set_mcp_blocks_agent(true);
+
+        root.borrow_mut().set_editor_text("hello while connecting");
+        session.step(HostEvent::Input(enter_event())).unwrap();
+        pump_host_driver(&mut session, &mut driver, &mut stream)
+            .await
+            .unwrap();
+        assert_eq!(driver.runs.len(), 0);
+        let notes = system_notes(&session);
+        assert!(
+            notes
+                .iter()
+                .any(|t| t.contains("MCP still connecting") && t.contains("prompt")),
+            "expected prompt defer note: {notes:?}"
+        );
+
+        root.borrow_mut().set_editor_text("/reload");
+        session.step(HostEvent::Input(enter_event())).unwrap();
+        pump_host_driver(&mut session, &mut driver, &mut stream)
+            .await
+            .unwrap();
+        assert_eq!(driver.reload_runtime_calls(), 0);
+        let notes = system_notes(&session);
+        assert!(
+            notes
+                .iter()
+                .any(|t| t.contains("MCP still connecting") && t.contains("/reload")),
+            "expected reload refuse: {notes:?}"
+        );
+
+        root.borrow_mut().set_editor_text("/session-resume");
+        session.step(HostEvent::Input(enter_event())).unwrap();
+        pump_host_driver(&mut session, &mut driver, &mut stream)
+            .await
+            .unwrap();
+        assert!(
+            root.borrow().session_resume_open(),
+            "session-resume MUST be allowed while MCP connecting"
+        );
+        assert!(
+            !system_notes(&session)
+                .iter()
+                .any(|t| t.contains("MCP still connecting") && t.contains("/session-resume")),
+            "session-resume must not be refused as MCP-connecting"
+        );
+    }
+
+    #[tokio::test]
     async fn c1115_theme_light_applies() {
         use xylitol_tui::Palette;
 
