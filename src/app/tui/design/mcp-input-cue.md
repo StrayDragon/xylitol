@@ -31,7 +31,7 @@ components:
 | 面 | 角色 |
 |---|---|
 | **`/mcp`（主）** | 替换 **editor 槽**的只读（或轻管理）面板：列表、连接态、tools armed / 下轮是否已进请求 `tools` |
-| **短 cue（辅）** | 可选 1 行 dim：计数 + 引导，如 `mcp 1/2 pending · /mcp`；**MUST NOT** 枚举长 id 列表 |
+| **短 cue（辅）** | 可选 1 行 dim，**固定**文案：`mcp pending (see /mcp)`；**MUST NOT** 带分数计数或枚举 id |
 | **头卡 mcp 行** | 启动摘要仍可；长对话滚走后 **不**依赖它作唯一发现面 |
 
 长对话看不见 welcome 卡片 → 靠 **`/mcp` + 可选短 cue**，不是贴输入刷墙。
@@ -49,9 +49,9 @@ components:
 
 | | |
 |---|---|
-| 文案 | 短：`mcp connecting 1/2 · /mcp` / `mcp tools pending · /mcp` / armed 后 **收起** 或极简 `mcp ✓ · /mcp` |
+| 文案 | **固定** `mcp pending (see /mcp)`（connecting / tools 未 armed 同一句）；全部 armed 后 **收起** |
 | 落点候选 | busy 下轮预告位 **或** idle 破例 1 行 status（playground 对照） |
-| MUST NOT | 在 cue 里列出 ≥3 个 server id；拼接 `Next turn: model \| mcp a·b·c…` |
+| MUST NOT | 分数计数（`1/2`）；枚举 server id；拼接 `Next turn: model \| mcp a·b·c…` |
 
 ## 两相位语义（面板列）
 

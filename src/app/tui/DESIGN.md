@@ -265,7 +265,7 @@ footer            1 行 dim（cwd · model · 可选 context%）
 | [`design/editor.md`](./design/editor.md) | 操作区 |
 | [`design/skill-ref.md`](./design/skill-ref.md) | `$skill` 用户消息内高亮（A10；demo 先验） |
 | [`design/loaded-resources.md`](./design/loaded-resources.md) | 启动品牌 + Skills/MCP 换行清单（c1135） |
-| [`design/mcp-input-cue.md`](./design/mcp-input-cue.md) | `/mcp` 面板 + 可选短 cue（多 MCP；未定稿升格） |
+| [`design/mcp-input-cue.md`](./design/mcp-input-cue.md) | `/mcp` 面板 + 固定短 cue `mcp pending (see /mcp)`（c1210） |
 | [`design/footer.md`](./design/footer.md) | 一行 dim |
 | [`design/pending-runtime.md`](./design/pending-runtime.md) | NextTurn 下轮预告：生效中 vs 待生效 |
 | [`design/overlay.md`](./design/overlay.md) | 默认不用；优先槽内；playground 静图已撤 |
