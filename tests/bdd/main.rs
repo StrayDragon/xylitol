@@ -1,5 +1,9 @@
 //! BDD tests for Xylitol core — rstest-bdd.
-//! Run: `cargo test --test bdd -- --test-threads=1`
+//! Run: `cargo test --test bdd`
+//!
+//! Most scenarios are parallel-safe. A few still mutate process env
+//! (`HF_ENDPOINT` download paths, `HOME`/`XYLITOL_*` loader paths) and are
+//! gated with `#[serial_test::serial(...)]` on their bindings.
 
 #[macro_use]
 mod helpers;
