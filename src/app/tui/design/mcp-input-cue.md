@@ -1,7 +1,7 @@
 ---
-version: "1.0"
+version: "1.1"
 name: "mcp-input-cue"
-description: "Shipped c1210: /mcp editor-slot panel + fixed short cue mcp pending (see /mcp)."
+description: "/mcp editor-slot SelectList (like /model|/resume) + fixed short cue mcp pending (see /mcp)."
 tokens_from: "../DESIGN.md"
 components:
   mcp-panel-title:
@@ -12,74 +12,74 @@ components:
     textColor: "{colors.success}"
   mcp-panel-pending:
     textColor: "{colors.muted}"
+  mcp-panel-selected:
+    textColor: "{colors.on-surface}"
   mcp-short-cue:
     textColor: "{colors.muted}"
 ---
 
-# MCP 发现：`/mcp` 面板 + 短 cue（已落地 · c1210）
+# MCP 发现：`/mcp` SelectList + 短 cue
 
 > Token：`{colors.*}` → [`../DESIGN.md`](../DESIGN.md)。
-> 静图：[`playground/`](./playground/) 槽 **Mcp cue**（`?slot=mcp-cue`）——与产品行文对齐。
-> 合约：`atm17` / `ath27` / mcp7；归档 `archive/2026-07-31-c1210-update-mcp-hot-merge-ungate/`。
-> 实现：`layout/root/mcp_slot.rs` · `LoadedResourcesSnapshot` / `MCP_PENDING_CUE` · `refresh_mcp_short_cue`。
-> 下轮预告对照：[`pending-runtime.md`](./pending-runtime.md)。头卡：[`loaded-resources.md`](./loaded-resources.md)。
+> 静图：[`playground/`](./playground/) 槽 **Mcp**（`?slot=mcp-cue`）。
+> 已归档：c1210（只读行文 + 短 cue + hot-merge ungate）。
+> **下一刀定稿**：SelectList 壳（对齐 `/model` / `/session-resume`）+ 开面板 perf；合约拟 `c1215-update-app-tui-mcp-select-list`。
+> 对照：[`models-picker.md`](./models-picker.md) · [`session-resume.md`](./session-resume.md) · [`pending-runtime.md`](./pending-runtime.md) · [`loaded-resources.md`](./loaded-resources.md)。
 
 ## 产品意图
 
-多 MCP 时 **禁止**把 server 名单塞进 status / 下轮预告。发现面：
+多 MCP 时 **禁止**把 server 名单塞进 status / 下轮预告。
 
 | 面 | 角色 |
 |---|---|
-| **`/mcp`（主）** | 替换 **editor 槽**的只读面板：汇总 + 每 server 连接态 / armed / tool 数 |
-| **短 cue（辅）** | 固定 `mcp pending (see /mcp)`（`MCP_PENDING_CUE`）；全部 armed 后收起 |
-| **头卡 mcp 行** | 启动摘要；长对话滚走后不依赖它作唯一发现面 |
+| **`/mcp`（主）** | 替换 **editor 槽**的 **SelectList**：↑↓ 选中；行 = id · phase · armed · tools；为日后「本 session 临时关某 MCP」留 Enter 动作缝 |
+| **短 cue（辅）** | 固定右对齐 `mcp pending (see /mcp)` |
+| **头卡 mcp 行** | 启动 `connecting i/n` / connected 摘要；**不是**唯一发现面 |
 
-## `/mcp` 面板（as-built）
+## `/mcp` 面板 MUST（定稿 · SelectList）
 
-| | |
-|---|---|
-| 命令 | 无参 `/mcp` 或 `/mcps` → `PendingSlash::OpenMcp`；BusySlashPolicy **Allow** |
-| 槽 | `EditorSlot::Mcp`；**MUST NOT** 居中 overlay |
-| 数据 | `Driver::loaded_resources_snapshot()` → `mcp_servers: Vec<McpServerSnapshot>` |
-| 任意态 | idle / agent-busy / bang-busy / MCP connecting 均可开；Esc 关槽，**不**因开面板 abort agent |
+1. **`/mcp` / `/mcps`（无参）** → 打开替换 editor 槽的列表；**MUST NOT** 居中 overlay。
+2. **组件**：包 `SelectList`（或与 resume/models 同族）；**↑↓** 移动焦点；选中行 **reverse**（对齐 models/resume）；**Esc** 关槽且 **MUST NOT** 仅因开面板 abort agent。
+3. **任意态可开**：idle / agent-busy / bang-busy / MCP connecting；BusySlashPolicy **Allow**。
+4. **行字段**（至少）：`id` · `connecting|connected|failed` · `armed|not armed` · `tools=N`。
+5. **汇总**：标题或首行 muted：`configured N · connected K · armed A`；`mcp_diag_short` 可感（标题下或底栏）。
+6. **Enter（本波）**：MUST 有明确行为——**MVP = 关槽**（与「先可选项、后动作」一致）或短提示「toggle not available yet」二选一，静图用 **Enter closes**；**MUST NOT** 假实现关 MCP。
+7. **数据**：经 Driver 只读缝（`LoadedResourcesSnapshot` / `mcp_servers`）；**MUST NOT** app/tui → infra::mcp。
+8. **Perf**：开槽 MUST 优先用已缓存的最近 snap（host tick / settle 已刷）；**MUST NOT** 每次 `/mcp` 都阻塞等待完整 reconnect 式 discover；缓存缺失时再 await 一次 snapshot。
 
-### 行文（与 `mount_mcp_panel` 一致）
+### 行文（SelectList item 意向）
 
 ```text
- configured N · connected K · armed A
- {id}  {connecting|connected|failed}  {armed|not armed}  tools={n}
- diag: {short…}          # 若有 mcp_diag_short
- Esc to close
+ MCP · configured 2 · connected 1 · armed 1
+> context7   connected   armed      tools=2     ← 焦点 reverse
+  lspz       connecting  not armed  tools=0
+ Esc · Enter closes
 ```
-
-无配置时第二行：`(no MCP servers configured)`。
 
 ### 相位 / armed
 
 | 字段 | 含义 |
 |---|---|
-| `phase` | `Connecting` / `Connected` / `Failed` |
-| `tools_armed` | ToolSet 已含至少一枚 `mcp:{id}:…` → **下一轮** provider `tools` 会带 |
+| phase | transport / 配置态：`Connecting` / `Connected` / `Failed` |
+| armed | ToolSet 已含 `mcp:{id}:…` → 下轮 provider `tools` 会带 |
 
-## 短 cue（as-built）
+## 短 cue（已落地 · 保持）
 
 | | |
 |---|---|
 | 文案 | **仅** `mcp pending (see /mcp)` |
-| 落点 | status 槽 **右对齐**（idle 整行靠右；busy 贴 Working/Drafting 行右侧） |
-| 何时 | `mcp_tools_pending()`；头卡可同时有 `mcp: connecting i/n`（进度）——cue 只引导 `/mcp`，不左贴在卡下冒充第二行 mcp |
+| 落点 | status **右对齐**（idle 整行 / busy 贴 Working\|Drafting 右侧） |
+| 何时 | `mcp_tools_pending()`；可与头卡 `connecting i/n` 并存 |
 | 优先级 | busy 且已有 `Next turn…` 时不覆盖 |
 | 收起 | 全部 armed / 不再 pending |
-| MUST NOT | 分数计数；枚举 id；idle 左对齐贴在欢迎卡正下方 |
 
-主发现：头卡进度 + **`/mcp`**；短 cue = 右对齐提醒。
+## 静图芯片（playground）
 
-## 静图芯片（playground · 对齐实现）
+- `/mcp` SelectList：connecting / mixed / all armed（含焦点 reverse）
+- 短 cue：idle/busy 右对齐 · Next turn 优先 · armed 收起
 
-- `/mcp`：connecting / mixed / all armed（行文同上）
-- 短 cue：idle/busy **右对齐** / Next turn 优先 / armed 收起
+## 非目标（后置 change）
 
-## 非目标（仍后置）
-
-- 面板内启停 / 单 server reload
-- transcript 假「MCP ready」消息
+- 本 session 临时禁用 / 启停单 server（Enter 真动作）
+- 面板内 `/reload` 单 server
+- transcript 假「MCP ready」

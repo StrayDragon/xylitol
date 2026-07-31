@@ -6,8 +6,9 @@ state: panel-mixed
 source: mcpCue.panelMixed.editor
 must_contain:
   - "configured 12 · connected 7 · armed 5"
+  - 'class="row rev"'
   - "not armed"
-  - "Esc to close"
+  - "Enter closes"
 must_not_contain:
   - "System"
   - "Next turn:"

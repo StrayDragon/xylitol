@@ -743,11 +743,12 @@
 
       <!-- MCP: /mcp panel primary + optional short cue -->
       <section class="panel" id="panel-mcp-cue" data-id="mcp-cue">
-        <h2>Mcp · /mcp 面板 + 短 cue（c1210 已落地）</h2>
+        <h2>Mcp · /mcp SelectList + 短 cue（定稿）</h2>
         <p class="spec">
           <a href="../mcp-input-cue.md">mcp-input-cue.md</a> ·
-          as-built：editor 槽行文 + 固定 <code>mcp pending (see /mcp)</code> ·
-          对照 <a href="../pending-runtime.md">pending-runtime.md</a>
+          SelectList（↑↓ · reverse · Esc）· 固定右对齐 <code>mcp pending (see /mcp)</code> ·
+          对照 <a href="../models-picker.md">models-picker</a> /
+          <a href="../pending-runtime.md">pending-runtime</a>
         </p>
         <div class="ctl">
           <button type="button" class="chip-btn" data-mcp-cue="panelConnecting" aria-pressed="true">/mcp · connecting</button>
@@ -1673,33 +1674,33 @@
       });
     });
 
-    /* MCP: /mcp editor-slot panel + fixed short cue (as-built c1210) */
+    /* MCP: /mcp SelectList + fixed short cue (design target c1215) */
     const MCP_CUE = {
       panelConnecting: {
-        editor: `<div class="row fg-muted"> configured 2 · connected 0 · armed 0</div>
-<div class="row"> lspz  connecting  not armed  tools=0</div>
+        editor: `<div class="row fg-muted"> MCP · configured 2 · connected 0 · armed 0</div>
+<div class="row rev"> lspz       connecting  not armed  tools=0</div>
 <div class="row"> context7  connecting  not armed  tools=0</div>
-<div class="row fg-muted"> Esc to close</div>`,
-        legend: "as-built /mcp · connecting · 行 = id / phase / armed / tools=",
+<div class="row fg-muted"> Esc · Enter closes</div>`,
+        legend: "定稿 /mcp SelectList · connecting · 焦点 reverse · ↑↓",
         mode: "panel",
       },
       panelMixed: {
-        editor: `<div class="row fg-muted"> configured 12 · connected 7 · armed 5</div>
-<div class="row"> context7  connected  armed  tools=2</div>
-<div class="row"> lspz  connected  armed  tools=4</div>
-<div class="row"> github  connected  not armed  tools=3</div>
-<div class="row"> sentry  connecting  not armed  tools=0</div>
+        editor: `<div class="row fg-muted"> MCP · configured 12 · connected 7 · armed 5</div>
+<div class="row"> context7  connected   armed      tools=2</div>
+<div class="row rev"> lspz       connected   armed      tools=4</div>
+<div class="row"> github    connected   not armed  tools=3</div>
+<div class="row"> sentry    connecting  not armed  tools=0</div>
 <div class="row fg-muted"> … +8 more</div>
-<div class="row fg-muted"> Esc to close</div>`,
-        legend: "as-built /mcp · mixed 10+：名单只在槽内；cue 禁止堆 id",
+<div class="row fg-muted"> Esc · Enter closes</div>`,
+        legend: "定稿 /mcp · mixed 10+：名单只在槽内 SelectList",
         mode: "panel",
       },
       panelArmed: {
-        editor: `<div class="row fg-muted"> configured 2 · connected 2 · armed 2</div>
-<div class="row fg-success"> context7  connected  armed  tools=2</div>
-<div class="row fg-success"> lspz  connected  armed  tools=4</div>
-<div class="row fg-muted"> Esc to close</div>`,
-        legend: "as-built /mcp · 全部 armed：短 cue 应收起",
+        editor: `<div class="row fg-muted"> MCP · configured 2 · connected 2 · armed 2</div>
+<div class="row rev"> context7  connected  armed  tools=2</div>
+<div class="row"> lspz       connected  armed  tools=4</div>
+<div class="row fg-muted"> Esc · Enter closes</div>`,
+        legend: "定稿 /mcp · 全部 armed：短 cue 应收起",
         mode: "panel",
       },
       cueShortBusy: {
