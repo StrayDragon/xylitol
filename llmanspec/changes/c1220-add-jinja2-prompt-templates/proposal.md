@@ -1,5 +1,6 @@
 ---
-depends_on: []
+depends_on:
+  - c1218-remove-slash-prompt-templates
 ---
 
 # c1220 — Safe minijinja system prompt + eval 可换变体（purpose-draft）
