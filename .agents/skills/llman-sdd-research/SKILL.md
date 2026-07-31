@@ -2,7 +2,7 @@
 name: "llman-sdd-research"
 description: "以后台 agent 委托外部文献调研。当用户需要针对某个问题查阅官方文档/API/源码等一手资料、或想把阅读文献的活委托给后台 agent 时使用。"
 metadata:
-  version: "0.0.65"
+  version: "0.0.66"
   llman_sdd:
     bdd_mode: "on"
     skill_set: "optional"
@@ -24,7 +24,8 @@ metadata:
 
 1. 针对**一手资料**调研问题——官方文档、源码、spec、第一方 API——而非对它们的二手转述。把每个论断追溯到拥有它的源头。
 2. 把发现写入单个 Markdown 文件，为每个论断标注来源引用。
-3. 存放位置：优先匹配仓库既有约定（如 `docs/research/`）；若无，放在 `llmanspec/changes/<current-change>/research/<topic>.md` 并说明位置。
+3. 存放位置：优先匹配仓库既有约定（如 `docs/research/`）；若无，放在 `llmanspec/changes/<current-change>/research/<topic>.md` 并说明位置（这是 Change 文档，**不是** live specs）。
+4. **禁止**本 skill 直接编辑 `llmanspec/specs/**`。若调研表明必须改 MUST/SHALL → 建议 `llman-sdd-propose`（Branch binding → Specs landing）。
 
 ## 步骤
 
@@ -53,7 +54,8 @@ metadata:
 - 变更保持最小化且范围明确。
 - 标识符或意图不明确时禁止猜测。
 - 在读取 spec 全文前，先使用 `llman sdd context --task --paths` 获取相关 specs。
-- 判断变更规模后选择路径：行为合约变更走完整 SDD 流程，实现变更走快速路径。
+- 判断变更规模后选择路径：行为合约变更走完整 SDD（Branch binding → Specs landing → `readyToImplement` → apply）；实现变更走快速路径（live specs 仍须绑定分支）。
+- 勿混淆 Skill 导航与 Git-native 生命周期；勿在默认分支编辑 live `llmanspec/specs/**`。
 
 ## Workflow
 - 以 `llman sdd` 命令结果为事实来源。

@@ -1,11 +1,6 @@
 ---
-change_id: c1760-add-tui-activity-fold
-title: TUI activity-fold — 多级折叠（含 Worked for 通用表达）
-status: purpose-draft
-priority: 1760
 depends_on:
   - c1755-update-tui-travel-notice-placement
-author: agent
 ---
 
 # TUI activity-fold — 多级折叠（含 Worked for 通用表达）
