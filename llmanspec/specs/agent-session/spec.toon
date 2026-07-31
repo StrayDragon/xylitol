@@ -2,7 +2,7 @@ kind: llman.sdd.spec
 name: "agent-session"
 purpose: Agent 会话管理 — 会话生命周期、能力状态、prompt 构造与回合编排。
 valid_scope[2]: src/agent/session/,src/protocol/
-requirements[37]{req_id,title,statement}:
+requirements[35]{req_id,title,statement}:
   a1,"agent-session",System MUST 提供 AgentSession，封装 prompt→model→tools→loop 与完整事件流，仅持有编排状态；system prompt MUST 由组合根注入的上下文（AGENTS.md、配置 system prompt、append prompts）组装，MUST NOT 使用硬编码回退。
   a2,回合事件,AgentSession MUST 每轮发出：turn_start、message_start、message_update（流式）、message_end。
   a3,工具事件,"AgentSession / ReAct MUST 每次工具调用在 MessageEnd 之后发出 tool_execution_start，执行期发出至少一次 tool_execution_update（长输出工具宜多段），再 tool_execution_end。MUST NOT 在助手消息流式阶段（MessageEnd 前）发出 tool_execution_start。"
@@ -13,12 +13,10 @@ requirements[37]{req_id,title,statement}:
   a8,"agent-session-store","AgentCapabilities 或 ReAct 运行时 MUST 在每条 user、assistant、toolResult 消息完成时（对齐 pi message_end）经 XySessionStore::append_session_entry 写入当前 session；tool 执行结束后 MUST 持久化对应 toolResult；一轮结束后 session 文件或内存 backend MUST 含本轮消息。MUST NOT 仅把对话留在 ReAct 本地 history 而不写入 store。"
   a9,prompt 构造,AgentSession MUST 构造完整 messages 数组：system prompt + context files + history + user prompt，每轮前置。
   a10,BDD agent,"llmanspec/specs/agent-session/agent-session.feature 下 BDD 测试 MUST 全部通过。"
-  a21,"agent-prompt",System MUST 支持正斜杠模板语法 colon name args，含位置参数替换、全参占位符与默认值语法。
-  a22,模板加载器,System MUST 从全局与项目 .xylitol/prompts 目录及 CLI 指定路径加载 md 为 prompt 模板；frontmatter 提供 description。
-  a23,slash 命令,"AgentSession MUST 暴露 get_commands，返回与产品 TUI 同源的内建命令（至少含 model、exit、session、session-tree、session-fork、session-compact、session-export、session-import、session-resume、session-new、session-clone、session-name 等已实现项）及扩展注册命令；MUST NOT 继续以已废弃 pi 短名表冒充产品命令清单。"
-  a24,命令分发,AgentSession prompt MUST 拦截正斜杠前缀输入，在送 LLM 前分发到命令处理器或模板展开器。
-  a25,资源加载器,System MUST 提供 ResourceLoader，聚合项目上下文文件（AGENTS.md、CLAUDE.md）、skills、prompts 与 CLI system prompt。
-  a26,"BDD agent-v3",prompt 模板与 slash 命令的 BDD 测试 MUST 全部通过。
+  a23,slash 命令,"AgentSession MUST 暴露 get_commands，返回与产品 TUI 同源的内建命令（至少含 model、exit、session、session-tree、session-fork、session-compact、session-export、session-import、session-resume、session-new、session-clone、session-name 等已实现项）及扩展注册命令；MUST NOT 继续以已废弃 pi 短名表冒充产品命令清单；MUST NOT 注册 slash prompt 模板命令（template: 或文件名模板）。"
+  a24,命令分发,AgentSession prompt MUST 拦截正斜杠前缀输入，在送 LLM 前分发到产品 slash 命令处理器；MUST NOT 提供 prompt 模板展开器路径。
+  a25,资源加载器,System MUST 提供 ResourceLoader，聚合项目上下文文件（AGENTS.md、CLAUDE.md）、skills 与 CLI/配置 system prompt；MUST NOT 将 prompts/*.md 发现为可注册 slash 模板。
+  a26,"BDD agent-v3",slash 命令相关 BDD 测试 MUST 全部通过。
   as27,事件总线生命周期,"AgentCapabilities MUST 在 turn 生命周期内发出 turn_start 与 turn_end（或等价 XyEvent）；并 MUST 在消息完成时 auto-persist 到 session store（与 a8 一致），不得只依赖无人订阅的旁路。"
   as28,会话生命周期,AgentSession MUST 支持 start_new_session 创建新会话（可选 parent 引用），以及 resume_session 加载并校验已有会话（含 CWD 断言）。
   as29,"BDD agent-v4",AgentSession 生命周期与事件总线集成的 BDD 测试 MUST 全部通过。
