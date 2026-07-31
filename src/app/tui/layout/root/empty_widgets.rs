@@ -46,6 +46,19 @@ pub(super) fn empty_themes_list(theme: LayoutTheme) -> SelectList {
     )
 }
 
+pub(super) fn empty_mcp_list(theme: LayoutTheme) -> SelectList {
+    SelectList::new(
+        Vec::new(),
+        10,
+        theme.select_list_theme(),
+        SelectListLayoutOptions {
+            min_primary_column_width: Some(24),
+            max_primary_column_width: Some(72),
+            truncate_primary: None,
+        },
+    )
+}
+
 pub(super) fn import_confirm_list(theme: LayoutTheme) -> SelectList {
     SelectList::new(
         vec![SelectItem::new("yes", "Yes"), SelectItem::new("no", "No")],

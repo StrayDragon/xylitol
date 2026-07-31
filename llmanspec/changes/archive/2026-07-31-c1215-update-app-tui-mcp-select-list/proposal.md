@@ -8,7 +8,8 @@ depends_on:
 author: agent
 branch: sdd/c1215-update-app-tui-mcp-select-list
 base_sha: a7fcca3f56e217eb823ce5dfaf3e8fde89afbf9e
-checkpointed: false
+checkpointed: true
+checkpoint_sha: a7fcca3f56e217eb823ce5dfaf3e8fde89afbf9e
 ---
 
 # c1215 — /mcp SelectList + open perf
