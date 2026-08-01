@@ -4344,7 +4344,7 @@ mod slice_tests {
     }
 
     #[tokio::test]
-    async fn c1115_theme_busy_refused() {
+    async fn c1780_theme_busy_allows_apply() {
         use xylitol_tui::Palette;
 
         let mut session = HostSession::new_product_ui(TestTerminal::new(80, 24));
@@ -4359,14 +4359,111 @@ mod slice_tests {
             .await
             .unwrap();
 
-        assert_eq!(root.borrow().layout_theme().palette(), Palette::dark());
-        assert_eq!(session.theme_preference(), None);
-        let notes = system_notes(&session);
+        assert_eq!(root.borrow().layout_theme().palette(), Palette::light());
+        assert_eq!(session.theme_preference().as_deref(), Some("light"));
         assert!(
-            notes
+            !system_notes(&session)
                 .iter()
-                .any(|t| t.contains("busy") && t.contains("/theme refused")),
-            "expected busy refusal: {notes:?}"
+                .any(|t| t.contains("/theme refused")),
+            "busy MUST Allow /theme: {:?}",
+            system_notes(&session)
+        );
+    }
+
+    #[tokio::test]
+    async fn c1780_busy_model_opens_picker() {
+        let mut session = HostSession::new_product_ui(TestTerminal::new(80, 24));
+        let root = session.ui_root().expect("ui").clone();
+        let mut driver = ScriptedDriver::new();
+        let mut stream = None;
+
+        session.on_run_started("busy");
+        root.borrow_mut().set_editor_text("/model");
+        session.step(HostEvent::Input(enter_event())).unwrap();
+        pump_host_driver(&mut session, &mut driver, &mut stream)
+            .await
+            .unwrap();
+
+        assert!(
+            root.borrow().models_open(),
+            "busy bare /model MUST open models slot"
+        );
+        assert!(
+            !system_notes(&session)
+                .iter()
+                .any(|t| t.contains("unavailable while busy") || t.contains("/model refused")),
+            "must not refuse open: {:?}",
+            system_notes(&session)
+        );
+    }
+
+    #[tokio::test]
+    async fn c1780_busy_session_resume_browse_but_switch_refused() {
+        use crate::app::tui::commands::BUSY_SESSION_SWITCH_NOTICE;
+
+        let mut session = HostSession::new_product_ui(TestTerminal::new(80, 24));
+        let root = session.ui_root().expect("ui").clone();
+        let mut driver = ScriptedDriver::new();
+        driver.set_session_list(vec![
+            SessionListEntry {
+                id: "older".into(),
+                name: Some("Old chat".into()),
+                first_message: Some("hello from older".into()),
+                message_count: 4,
+                modified_unix: Some(1_700_000_000),
+                parent_session_id: None,
+                tree_prefix: String::new(),
+                cwd: Some(".".into()),
+                path: None,
+            },
+            SessionListEntry {
+                id: "newer".into(),
+                name: None,
+                first_message: Some("latest dialogue preview".into()),
+                message_count: 2,
+                modified_unix: Some(1_700_000_100),
+                parent_session_id: Some("older".into()),
+                tree_prefix: String::new(),
+                cwd: Some(".".into()),
+                path: None,
+            },
+        ]);
+        driver.set_session_messages(harness_sample_session_messages());
+        let mut stream = None;
+
+        session.on_run_started("busy");
+        root.borrow_mut().set_editor_text("/session-resume");
+        session.step(HostEvent::Input(enter_event())).unwrap();
+        pump_host_driver(&mut session, &mut driver, &mut stream)
+            .await
+            .unwrap();
+        assert_eq!(driver.list_sessions_calls(), 1);
+        assert!(
+            root.borrow().session_resume_open(),
+            "busy /session-resume MUST open panel for browse"
+        );
+
+        session.step(HostEvent::Input(down_event())).unwrap();
+        session.step(HostEvent::Input(enter_event())).unwrap();
+        pump_host_driver(&mut session, &mut driver, &mut stream)
+            .await
+            .unwrap();
+
+        assert!(
+            driver.switch_calls().is_empty(),
+            "busy MUST NOT SwitchSession: {:?}",
+            driver.switch_calls()
+        );
+        assert!(
+            root.borrow().session_resume_open(),
+            "panel may stay open after refused switch"
+        );
+        assert!(
+            system_notes(&session)
+                .iter()
+                .any(|t| t == BUSY_SESSION_SWITCH_NOTICE),
+            "expected notice A: {:?}",
+            system_notes(&session)
         );
     }
 
