@@ -60,6 +60,9 @@ impl McpConnectProgress {
 pub struct McpClientManager {
     services: Mutex<HashMap<String, McpService>>,
     transports: Mutex<HashMap<String, McpTransportKind>>,
+    /// Tool counts from the last successful [`Self::list_all_tools`] (or connect-time list).
+    /// `connected_servers` MUST use this cache — MUST NOT re-RPC `list_all_tools` (TUI hitch).
+    tool_counts: Mutex<HashMap<String, usize>>,
     diagnostics: Mutex<Vec<McpConnectDiagnostic>>,
     progress: Mutex<McpConnectProgress>,
 }
@@ -75,6 +78,7 @@ impl McpClientManager {
         Self {
             services: Mutex::new(HashMap::new()),
             transports: Mutex::new(HashMap::new()),
+            tool_counts: Mutex::new(HashMap::new()),
             diagnostics: Mutex::new(Vec::new()),
             progress: Mutex::new(McpConnectProgress::default()),
         }
@@ -195,18 +199,17 @@ impl McpClientManager {
     }
 
     /// Connected servers with tool counts (mcp5). Does not create new connections.
+    ///
+    /// Uses cached counts from the last [`Self::list_all_tools`] (discover / reload).
+    /// MUST NOT call per-server `list_all_tools` RPC here — that blocked the TUI tick
+    /// loop for hundreds of ms when the welcome card flipped to `N connected`.
     pub async fn connected_servers(&self) -> Vec<ConnectedMcpServer> {
         let services = self.services.lock().await;
         let transports = self.transports.lock().await;
+        let counts = self.tool_counts.lock().await;
         let mut out = Vec::new();
-        for (id, service) in services.iter() {
-            let tool_count = match service.list_all_tools().await {
-                Ok(t) => t.len(),
-                Err(e) => {
-                    log::warn!("list_all_tools failed server_id={id} error={e}");
-                    0
-                }
-            };
+        for id in services.keys() {
+            let tool_count = counts.get(id).copied().unwrap_or(0);
             let transport = transports
                 .get(id)
                 .copied()
@@ -295,8 +298,10 @@ impl McpClientManager {
     /// List all tools from all connected MCP servers.
     ///
     /// Returns `(server_id, tool_name, description, input_schema)` for each tool.
+    /// Also refreshes [`Self::connected_servers`] tool-count cache.
     pub async fn list_all_tools(&self) -> Vec<(String, String, String, Value)> {
         let mut result = Vec::new();
+        let mut counts: HashMap<String, usize> = HashMap::new();
         let services = self.services.lock().await;
         for (server_id, service) in services.iter() {
             let tools = match service.list_all_tools().await {
@@ -307,9 +312,11 @@ impl McpClientManager {
                         { server_id },
                         e
                     );
+                    counts.insert(server_id.clone(), 0);
                     continue;
                 }
             };
+            counts.insert(server_id.clone(), tools.len());
             for tool in tools {
                 let description = tool.description.as_deref().unwrap_or("").to_string();
                 let schema = Value::Object(tool.input_schema.as_ref().clone());
@@ -321,6 +328,8 @@ impl McpClientManager {
                 ));
             }
         }
+        drop(services);
+        *self.tool_counts.lock().await = counts;
         result
     }
 
@@ -357,6 +366,7 @@ impl McpClientManager {
             }
         }
         self.transports.lock().await.clear();
+        self.tool_counts.lock().await.clear();
     }
 }
 
@@ -463,6 +473,18 @@ mod tests {
         let manager = McpClientManager::new();
         assert!(manager.connected_servers().await.is_empty());
         assert!(manager.diagnostics().await.is_empty());
+    }
+
+    #[tokio::test]
+    async fn connected_servers_reads_cached_counts_without_relisting() {
+        // After discover, list_all_tools fills tool_counts; connected_servers must
+        // not re-issue MCP list RPCs (would hitch the TUI welcome-card refresh).
+        let manager = Arc::new(McpClientManager::new());
+        let _ = manager.list_all_tools().await;
+        let t0 = std::time::Instant::now();
+        let rows = manager.connected_servers().await;
+        assert!(t0.elapsed().as_millis() < 50, "cache path must stay local");
+        assert!(rows.is_empty());
     }
 
     #[test]

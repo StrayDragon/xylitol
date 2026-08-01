@@ -741,7 +741,16 @@ impl XyDriver for XyInProcessDriver {
                 ..LoadedResourcesSnapshot::default()
             };
         };
-        let connected = state.mcp.connected_servers().await;
+        let connected = {
+            let t0 = std::time::Instant::now();
+            let c = state.mcp.connected_servers().await;
+            crate::app::core::lag::note_detail(
+                "loaded_snap_connected_servers",
+                t0,
+                &format!("servers={}", c.len()),
+            );
+            c
+        };
         let diags = state.mcp.diagnostics().await;
         let mcp_servers = state
             .mcp_servers
