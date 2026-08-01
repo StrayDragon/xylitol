@@ -392,6 +392,10 @@ impl ScriptedDriver {
         self.model = model;
     }
 
+    pub fn set_available_models(&mut self, models: Vec<ModelInfo>) {
+        self.available_models = models;
+    }
+
     pub fn push_script(&mut self, events: Vec<XyEvent>) {
         self.scripts.push_back(events);
     }
@@ -4674,10 +4678,8 @@ mod slice_tests {
         );
     }
 
-    /// Desired invariant for c1810 chrome footprint (see change design.md).
-    /// Today content-end viewport + tall Resume can hide `Working` on short terminals.
+    /// Short terminal + busy Resume: Working stays in content-end viewport (atc23 / c1810).
     #[tokio::test]
-    #[ignore = "known gap: busy list slot can push status above viewport — c1810 design.md"]
     async fn busy_resume_short_terminal_keeps_working_in_viewport() {
         let term_rows = 16usize;
         let mut session = HostSession::new_product_ui(TestTerminal::new(80, term_rows as u16));
@@ -4707,6 +4709,50 @@ mod slice_tests {
             .await
             .unwrap();
         assert!(root.borrow().session_resume_open());
+
+        let frame = root.borrow_mut().render(80);
+        let working_idx = frame.iter().position(|l| l.contains("Working"));
+        assert!(
+            working_idx.is_some(),
+            "Working must still be in full render tree: {}",
+            frame.len()
+        );
+        let working_idx = working_idx.expect("Working");
+        let vp_top = frame.len().saturating_sub(term_rows);
+        assert!(
+            working_idx >= vp_top,
+            "Working@{working_idx} MUST stay in content-end viewport [vp_top={vp_top}, rows={term_rows}]; frame_len={}",
+            frame.len()
+        );
+    }
+
+    /// Short terminal + busy Models: Working stays in content-end viewport (atc23 / c1810).
+    #[tokio::test]
+    async fn busy_models_short_terminal_keeps_working_in_viewport() {
+        let term_rows = 12usize;
+        let mut session = HostSession::new_product_ui(TestTerminal::new(80, term_rows as u16));
+        let root = session.ui_root().expect("ui").clone();
+        let mut driver = ScriptedDriver::new();
+        driver.set_available_models(
+            (0..20)
+                .map(|i| ModelInfo {
+                    id: format!("m{i}"),
+                    display_name: format!("Model {i}"),
+                    thinking: false,
+                    thinking_levels: Vec::new(),
+                    context_window: 8_000,
+                })
+                .collect(),
+        );
+        let mut stream = None;
+
+        session.on_run_started("busy");
+        root.borrow_mut().set_editor_text("/model");
+        session.step(HostEvent::Input(enter_event())).unwrap();
+        pump_host_driver(&mut session, &mut driver, &mut stream)
+            .await
+            .unwrap();
+        assert!(root.borrow().models_open(), "bare /model must open Models");
 
         let frame = root.borrow_mut().render(80);
         let working_idx = frame.iter().position(|l| l.contains("Working"));

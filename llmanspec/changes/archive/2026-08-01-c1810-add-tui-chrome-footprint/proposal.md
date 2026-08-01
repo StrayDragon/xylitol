@@ -3,7 +3,8 @@ depends_on:
 - c1800-add-tui-chrome-toast
 branch: sdd/c1810-add-tui-chrome-footprint
 base_sha: c645b0465bfc3df2e30225ef06b1940c5ee5e245
-checkpointed: false
+checkpointed: true
+checkpoint_sha: c645b0465bfc3df2e30225ef06b1940c5ee5e245
 ---
 
 # Chrome Footprint：终端高度预算地基
