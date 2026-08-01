@@ -308,6 +308,9 @@ impl UiRoot {
 
     /// Replace the loaded-resources header snapshot (c1135).
     pub fn set_loaded_resources(&mut self, snap: LoadedResourcesSnapshot) {
+        if self.loaded_resources == snap {
+            return;
+        }
         self.loaded_resources = snap;
         self.bump_upper_gen();
         self.refresh_mcp_short_cue();

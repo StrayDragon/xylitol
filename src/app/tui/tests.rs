@@ -2109,6 +2109,41 @@ fn upper_cache_reused_across_spinner_ticks() {
 }
 
 #[test]
+fn set_loaded_resources_skips_identical_snap_upper_bump() {
+    use crate::app::core::driver::LoadedResourcesSnapshot;
+    use xylitol_tui::Component;
+
+    use super::layout::UiRoot;
+
+    let mut root = UiRoot::new();
+    let snap = LoadedResourcesSnapshot {
+        mcp_configured: 2,
+        mcp_connecting_label: Some("connecting 0/2".into()),
+        ..LoadedResourcesSnapshot::default()
+    };
+    root.set_loaded_resources(snap.clone());
+    let _ = root.render(80);
+    let rebuilt = root.upper_rebuild_count_for_test();
+    root.set_loaded_resources(snap);
+    let _ = root.render(80);
+    assert_eq!(
+        root.upper_rebuild_count_for_test(),
+        rebuilt,
+        "identical loaded-resources snap MUST NOT invalidate upper"
+    );
+    root.set_loaded_resources(LoadedResourcesSnapshot {
+        mcp_configured: 2,
+        mcp_connecting_label: Some("connecting 1/2".into()),
+        ..LoadedResourcesSnapshot::default()
+    });
+    let _ = root.render(80);
+    assert!(
+        root.upper_rebuild_count_for_test() > rebuilt,
+        "label change MUST invalidate upper"
+    );
+}
+
+#[test]
 fn scrollback_entry_cache_limits_misses_under_streaming() {
     use super::layout::UiRoot;
 
