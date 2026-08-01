@@ -1,7 +1,7 @@
 # 扩展能力 · MCP
 
 > 用户/产品视角：外部工具怎么按需接入。不写传输种类与 SDK。
-> 现状对齐：2026-07-18。
+> 现状对齐：2026-08-01。
 
 ## 用户怎么碰到
 
@@ -11,11 +11,13 @@
 
 改配置后应能**重载工具集**。产品上可通过 `/reload`（与 skills / 键位 / 主题等一并编排）热更新；不必把「重启整个进程」写成唯一产品手段。
 
+启动时 MCP 连接**不挡** TUI 首屏：可先滚历史、开 slash；连接中可在头卡 / `/mcp` / 短 cue 看到进度，结算后工具热合并进本轮可用集。
+
 ```mermaid
 flowchart TD
   Cfg{"配置了 MCP 服务器？"}
   Cfg -->|否| Zero["不装配 · zero-cost"]
-  Cfg -->|是| Connect["连接 / 启动服务器"]
+  Cfg -->|是| Connect["连接 / 启动服务器（并行·不挡 TTI）"]
   Connect --> Discover["发现工具"]
   Discover --> Use["模型可调用 · 与内置工具并列"]
   Use --> Reload["改配置 → /reload 或等价重载"]
@@ -29,15 +31,15 @@ flowchart TD
 | 动态配置与重载是产品目标 | 把「必须重启进程」写成唯一合约 |
 | 外部工具经统一工具口接入对话 | 让界面学习 MCP 厂商私有事件 |
 | 内置工具在重载时保留 | 重载时误删开箱工具 |
+| 启动路径不因 MCP 连接完成才打开 TUI | 用假 system/user 行宣告 MCP ready |
 
 ## 主线 vs 后置
 
 | | 内容 |
 |---|---|
 | **后置 / 配置启用** | MCP 整体（相对开箱主线） |
-| **已落地能力** | 配置驱动装配 · 嵌入缝去泄漏 · `/reload` 重载路径 |
-| **有意后置** | MCP 安全 allowlist 产品 UI；`/reload` 进行中锁输入等整包 UX（c1205） |
-| **进行中** | 启动不挡 TTI + 并行连接 + loaded-resources 进度（c1200） |
+| **已落地能力** | 配置驱动装配 · 嵌入缝去泄漏 · `/reload` 重载路径 · 启动不挡 TTI + 并行连接 + loaded-resources 进度 · `/mcp` SelectList 发现面 · hot-merge ungate |
+| **有意后置** | MCP 安全 allowlist 产品 UI；`/reload` 进行中锁输入等整包 UX |
 
 ## 理想 vs 现状
 
@@ -46,6 +48,8 @@ flowchart TD
 | zero-cost 未配置 | ✅ |
 | 配置装配 + 重载 | ✅ |
 | 嵌入方不碰内部 MCP 配置类型 | ✅ |
+| 启动不挡 TTI + 并行连接 + 进度面 | ✅ |
+| `/mcp` SelectList 发现 | ✅ |
 | 安全 allowlist UI | 🔴 后置 |
 
 指针：`src/AGENTS.md`（MCP）。
@@ -57,3 +61,4 @@ flowchart TD
 - [配置与档案.md](./配置与档案.md)
 - [库与多客户端.md](./库与多客户端.md)
 - [信任与项目闸.md](./信任与项目闸.md)
+- chrome 词汇（壳层通告 / 下轮预告短 cue）：[TUI信息面与chrome词汇.md](./TUI信息面与chrome词汇.md)

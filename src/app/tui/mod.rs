@@ -209,14 +209,11 @@ async fn run_host_loop(
 
     let mut editor_seed: Option<(std::time::Instant, tokio::task::JoinHandle<Vec<String>>)> = None;
     if !options.restored_session {
-        match session.kick_editor_history_seed(driver) {
-            Some(handle) => {
-                editor_seed = Some((std::time::Instant::now(), handle));
-            }
-            None => {
-                // Scripted / remote: no cloneable store — keep blocking seed.
-                session.seed_editor_history_for_new_session(driver).await;
-            }
+        if session.kick_editor_history_seed_async(driver) {
+            editor_seed = session.take_editor_history_seed_job();
+        } else {
+            // Scripted / remote: no cloneable store — keep blocking seed.
+            session.seed_editor_history_for_new_session(driver).await;
         }
     }
     // Refresh while editor-history seed / CLI restore run in the background.
@@ -244,6 +241,12 @@ async fn run_host_loop(
             let t_drain = std::time::Instant::now();
             drain_pending(&mut session, driver, &mut agent_stream).await?;
             crate::app::core::lag::note("host_drain_pending", t_drain);
+            // `/session-new` (and similar) may arm a background seed during drain.
+            if editor_seed.is_none()
+                && let Some(job) = session.take_editor_history_seed_job()
+            {
+                editor_seed = Some(job);
+            }
 
             let want_busy_tick = session.is_busy();
             if want_busy_tick != tick_busy {

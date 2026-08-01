@@ -172,7 +172,10 @@ pub fn estimate_from_session_entries(
 }
 
 /// Resolve `models.<alias>.tokenizer` from the layered AppConfig (best-effort).
-pub(crate) fn tokenizer_override_from_app_config(
+///
+/// Surfaces MUST use this (or [`XyDriver::estimate_context_tokens`]) — do not
+/// reach `infra::config` from app/tui.
+pub fn tokenizer_override_from_app_config(
     model_alias: &str,
 ) -> Option<xylitol_ai_bridge::registry::TokenizerOverride> {
     crate::infra::config::loader::load_app_config(None)

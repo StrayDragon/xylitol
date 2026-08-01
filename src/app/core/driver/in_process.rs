@@ -58,6 +58,13 @@ enum McpBootState {
         /// Last connecting label published to the TUI; skip refresh when unchanged.
         last_ui_label: Option<Option<String>>,
     },
+    /// Rebuild ToolSet off the TUI tick (default_tools + MCP merge can hitch).
+    Rebuilding {
+        handle: tokio::task::JoinHandle<crate::agent::tools::ToolSet>,
+        manager: Arc<crate::infra::mcp::McpClientManager>,
+        tool_n: usize,
+        settle_started: std::time::Instant,
+    },
     /// Tools already applied; system prompt text building off the tick path.
     Settling {
         handle: tokio::task::JoinHandle<String>,
@@ -806,7 +813,9 @@ impl XyDriver for XyInProcessDriver {
     fn mcp_blocks_agent(&self) -> bool {
         matches!(
             self.mcp_boot,
-            McpBootState::Running { .. } | McpBootState::Settling { .. }
+            McpBootState::Running { .. }
+                | McpBootState::Rebuilding { .. }
+                | McpBootState::Settling { .. }
         )
     }
 
@@ -872,6 +881,60 @@ impl XyDriver for XyInProcessDriver {
             return false;
         }
 
+        // Apply rebuilt ToolSet + kick deferred prompt (rebuild ran off-tick).
+        if matches!(self.mcp_boot, McpBootState::Rebuilding { .. }) {
+            let finished = match &self.mcp_boot {
+                McpBootState::Rebuilding { handle, .. } => handle.is_finished(),
+                _ => false,
+            };
+            if !finished {
+                return false;
+            }
+            let prev = std::mem::replace(&mut self.mcp_boot, McpBootState::Idle);
+            let McpBootState::Rebuilding {
+                handle,
+                manager,
+                tool_n,
+                settle_started,
+            } = prev
+            else {
+                return false;
+            };
+            let set = match handle.await {
+                Ok(set) => set,
+                Err(e) => {
+                    log::warn!(target: "xylitol::mcp", "MCP settle rebuild join failed: {e}");
+                    self.mcp_boot = McpBootState::Settled;
+                    return true;
+                }
+            };
+            crate::app::core::lag::note_detail(
+                "mcp_settle_rebuild_tools",
+                settle_started,
+                &format!("mcp_tools={tool_n}"),
+            );
+            let t_set = std::time::Instant::now();
+            let opts = self.agent.set_tools_defer_prompt(set);
+            crate::app::core::lag::note_detail(
+                "mcp_settle_set_tools",
+                t_set,
+                &format!("mcp_tools={tool_n}"),
+            );
+            if let Some(state) = self.reload.as_mut() {
+                state.mcp.set_manager(manager);
+            }
+            let handle = tokio::task::spawn_blocking(move || {
+                crate::agent::prompt::build_system_prompt(&opts)
+            });
+            self.mcp_boot = McpBootState::Settling { handle };
+            crate::app::core::lag::note_detail(
+                "mcp_settle_total",
+                settle_started,
+                &format!("mcp_tools={tool_n} deferred_rebuild=1 deferred_prompt=1"),
+            );
+            return true;
+        }
+
         let finished = match &self.mcp_boot {
             McpBootState::Running { handle, .. } => handle.is_finished(),
             _ => return false,
@@ -895,28 +958,8 @@ impl XyDriver for XyInProcessDriver {
         match handle.await {
             Ok(Ok(Some((manager, tools)))) => {
                 let tool_n = tools.len();
-                let t_settle = std::time::Instant::now();
+                let settle_started = std::time::Instant::now();
                 let old = self.reload.as_mut().and_then(|s| s.mcp.take_manager());
-                let t_rebuild = std::time::Instant::now();
-                let set = crate::agent::tools::ToolSet::rebuild_agent_tools(
-                    crate::infra::tools::default_tools(),
-                    tools,
-                );
-                crate::app::core::lag::note_detail(
-                    "mcp_settle_rebuild_tools",
-                    t_rebuild,
-                    &format!("mcp_tools={tool_n}"),
-                );
-                let t_set = std::time::Instant::now();
-                let opts = self.agent.set_tools_defer_prompt(set);
-                crate::app::core::lag::note_detail(
-                    "mcp_settle_set_tools",
-                    t_set,
-                    &format!("mcp_tools={tool_n}"),
-                );
-                if let Some(state) = self.reload.as_mut() {
-                    state.mcp.set_manager(manager);
-                }
                 // Do not await shutdown on the TUI tick path (spinner hitch).
                 if let Some(old) = old {
                     tokio::spawn(async move {
@@ -924,28 +967,35 @@ impl XyDriver for XyInProcessDriver {
                     });
                 }
                 let handle = tokio::task::spawn_blocking(move || {
-                    crate::agent::prompt::build_system_prompt(&opts)
+                    crate::agent::tools::ToolSet::rebuild_agent_tools(
+                        crate::infra::tools::default_tools(),
+                        tools,
+                    )
                 });
-                self.mcp_boot = McpBootState::Settling { handle };
-                crate::app::core::lag::note_detail(
-                    "mcp_settle_total",
-                    t_settle,
-                    &format!("mcp_tools={tool_n} deferred_prompt=1"),
-                );
+                self.mcp_boot = McpBootState::Rebuilding {
+                    handle,
+                    manager,
+                    tool_n,
+                    settle_started,
+                };
+                // UI refresh waits until tools are applied (Rebuilding → Settling).
+                false
             }
             Ok(Ok(None)) => {
                 self.mcp_boot = McpBootState::Settled;
+                true
             }
             Ok(Err(e)) => {
                 log::warn!(target: "xylitol::mcp", "MCP bootstrap failed: {e}");
                 self.mcp_boot = McpBootState::Settled;
+                true
             }
             Err(e) => {
                 log::warn!(target: "xylitol::mcp", "MCP bootstrap join failed: {e}");
                 self.mcp_boot = McpBootState::Settled;
+                true
             }
         }
-        true
     }
 
     async fn reload_runtime(&mut self) -> Result<RuntimeReloadReport, XyDriverError> {
@@ -1583,7 +1633,7 @@ mod driver_session_tree_tests {
         }
         assert!(
             saw_refresh,
-            "invalid MCP bootstrap must finish Running→Settling and refresh UI"
+            "invalid MCP bootstrap must finish Running→Rebuilding→Settling and refresh UI"
         );
         assert!(
             driver.mcp_blocks_agent(),
