@@ -1,7 +1,7 @@
 ---
 version: "alpha"
 name: "footer"
-description: "Single-line dim footer — cwd · model · thinking · optional used N/~N/? tokens · optional derived p%/window."
+description: "Single-line dim footer — cwd · model · thinking · optional used C/~C/? tokens · optional derived p%/window."
 tokens_from: "../DESIGN.md"
 components:
   footer:
@@ -12,7 +12,7 @@ components:
 # Footer
 
 > Token 根源：`{colors.*}` / `{spacing.*}` → [`../DESIGN.md`](../DESIGN.md)。
-> **c475 MVP**：`cwd · model`；**c1035**：带 provenance 的 `used N`/`~N`/`?`（无则省略）；**c1150**：thinking 标签（`thinking off` / `{as_str}`）；**c1680**：有 `context_window>0` 时追加派生 `p%/W`（仅展示）。字段间只用 ` · `，**不再**在 thinking 前加装饰 `•`（避免 `model · · low` 双分隔观感）。
+> **c475 MVP**：`cwd · model`；**c1035**：带 provenance 的 `used C`/`~C`/`?`（无则省略）；**c1150**：thinking 标签（`thinking off` / `{as_str}`）；**c1680**：有 `context_window>0` 时追加派生 `p%/W`（仅展示）；**c1820**：used 计数 `C` 与 window 共用 `format_compact_tokens`。字段间只用 ` · `，**不再**在 thinking 前加装饰 `•`（避免 `model · · low` 双分隔观感）。
 
 ## MUST
 
@@ -23,13 +23,13 @@ components:
 
    | Provenance | 文案 |
    |---|---|
-   | Api / RemoteCount / LocalTokenizer | `used N tokens` |
-   | Heuristic | `used ~N tokens` |
+   | Api / RemoteCount / LocalTokenizer | `used C tokens` |
+   | Heuristic | `used ~C tokens` |
    | Unknown | `used ? tokens` |
 
-   无估计结果（空会话 / estimate 失败）时 **MUST 省略** 该字段；**MUST NOT** 伪造 `used 0 tokens`。
+   可数计数 `C` MUST 与 window 同源紧凑（`format_compact_tokens` / 对齐 pi `formatTokens`）：`<1k` 十进制全量；`1k–9.9k` 一位小数 `k`；`≥10k` 整 `Nk` / `NM`。Unknown 的 `?` MUST NOT 套紧凑。无估计结果（空会话 / estimate 失败）时 **MUST 省略** 该字段；**MUST NOT** 伪造 `used 0 tokens`。
 
-3b. **派生占用比（c1680）**：当已展示 used 字段且当前模型 `context_window > 0` 时，MUST 追加 ` · {p}%/{W}`，其中 `p = tokens/window*100`（1 位小数），`W` 为紧凑 window（如 `128k`，对齐 pi `formatTokens`）。Heuristic MUST ` · ~p%/W`；Unknown MUST ` · ?%/W`。`context_window` 为 0 时 MUST NOT 追加。该百分比 **仅展示**，MUST NOT 作为 compaction 触发 SSOT。
+3b. **派生占用比（c1680）**：当已展示 used 字段且当前模型 `context_window > 0` 时，MUST 追加 ` · {p}%/{W}`，其中 `p = tokens/window*100`（1 位小数），`W` 为紧凑 window（如 `128k`）。例：`used 42k tokens · 32.8%/128k`。Heuristic MUST ` · ~p%/W`；Unknown MUST ` · ?%/W`。`context_window` 为 0 时 MUST NOT 追加。该百分比 **仅展示**，MUST NOT 作为 compaction 触发 SSOT。
 4. 放不下截断右侧（优先保留 cwd 左端与 model），**MUST NOT** 增高。
 5. 快捷键提示：默认**不**写进 footer（勿 `enter submit · double Esc…` 墙）；需要时 `/help` 或旁注括号和弦（见 [`keybindings.md`](./keybindings.md)）。
 6. 队列摘要若展示：短前缀 `q:sN|fM ·` 可贴 footer 最左，仍保持单行。

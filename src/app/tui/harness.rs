@@ -3686,7 +3686,7 @@ mod slice_tests {
         let frame = session.ui_root().expect("ui").borrow_mut().render(80);
         let footer = frame.last().expect("footer");
         assert!(
-            footer.contains("used 42000 tokens") && footer.contains("32.8%/128k"),
+            footer.contains("used 42k tokens") && footer.contains("32.8%/128k"),
             "Api must show derived percent: {footer}"
         );
     }
@@ -3940,7 +3940,7 @@ mod slice_tests {
         let before = root.borrow_mut().render(80);
         let before_f = before.last().expect("footer").clone();
         assert!(
-            !before_f.contains("used 42252 tokens"),
+            !before_f.contains("used 42k tokens"),
             "restore alone must not sync estimate without drain: {before_f}"
         );
         let mut stream = None;
@@ -3950,7 +3950,7 @@ mod slice_tests {
         let after_restore = root.borrow_mut().render(80);
         let f_restore = after_restore.last().expect("footer").clone();
         assert!(
-            f_restore.contains("used 42252 tokens"),
+            f_restore.contains("used 42k tokens"),
             "CLI restore + drain must fill footer tokens: {f_restore}"
         );
 

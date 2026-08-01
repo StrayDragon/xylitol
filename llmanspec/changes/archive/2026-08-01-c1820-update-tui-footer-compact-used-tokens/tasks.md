@@ -8,10 +8,10 @@
 
 ## 2. 实现
 
-- [ ] 2.1 `footer_token_label` 对 used 调用 `format_compact_tokens`；更新 `design/footer.md`
-- [ ] 2.2 更新 widgets 单测 + harness footer 期望串
-- [ ] 2.3 `just test` / 相关 lib 测绿
+- [x] 2.1 `footer_token_label` 对 used 调用 `format_compact_tokens`；更新 `design/footer.md`
+- [x] 2.2 更新 widgets 单测 + harness footer 期望串
+- [x] 2.3 `just test` / 相关 lib 测绿
 
 ## 3. 收尾
 
-- [ ] 3.1 verify → finalize / archive
+- [x] 3.1 verify → finalize / archive
