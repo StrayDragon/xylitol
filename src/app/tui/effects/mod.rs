@@ -170,7 +170,14 @@ pub async fn drain_pending<T: Terminal>(
         log::info!(target: "xylitol::tui", "XyDriver::run starting prompt_len={}", prompt.len());
         session.on_run_started(&prompt);
         let _ = session.render_now();
+        // Spinner freezes while this await holds the host select loop.
+        let t0 = std::time::Instant::now();
         *agent_stream = Some(driver.run(&prompt).await);
+        super::super::core::lag::note_detail(
+            "host_run_await",
+            t0,
+            &format!("prompt_len={}", prompt.len()),
+        );
     }
 
     session.sync_runtime_chrome(driver);

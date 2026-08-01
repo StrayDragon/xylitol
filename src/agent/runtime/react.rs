@@ -302,14 +302,33 @@ impl AgentRuntime {
         // Ensure session exists
         let sid = session_id.to_string();
         self.inner.set_session(sid.clone());
+        let t_ensure = std::time::Instant::now();
         if let Err(e) = self.inner.ensure_session(&sid, None).await {
             return XyEventStream::error(format!("session error: {e}"));
         }
+        {
+            let ms = t_ensure.elapsed().as_millis();
+            if ms >= 16 {
+                log::info!(target: "xylitol::lag", "run_ensure_session {ms}ms");
+            } else {
+                log::debug!(target: "xylitol::lag", "run_ensure_session {ms}ms");
+            }
+        }
 
+        let t_hist = std::time::Instant::now();
         let seeded_history = match self.inner.load_conversation_history(&sid).await {
             Ok(h) => h,
             Err(e) => return XyEventStream::error(format!("session load error: {e}")),
         };
+        {
+            let ms = t_hist.elapsed().as_millis();
+            let n = seeded_history.len();
+            if ms >= 16 {
+                log::info!(target: "xylitol::lag", "run_load_history {ms}ms entries={n}");
+            } else {
+                log::debug!(target: "xylitol::lag", "run_load_history {ms}ms entries={n}");
+            }
+        }
 
         let tools = self.inner.tools().clone();
         let hooks = self.inner.hooks().clone();
@@ -321,6 +340,7 @@ impl AgentRuntime {
         let system_prompt = self.inner.system_prompt().map(|s| s.to_string());
 
         // Build tool schemas
+        let t_schemas = std::time::Instant::now();
         let tool_schemas: Vec<XyToolSchema> = tools
             .iter()
             .map(|t| XyToolSchema {
@@ -329,6 +349,15 @@ impl AgentRuntime {
                 parameters: t.parameters_schema(),
             })
             .collect();
+        {
+            let ms = t_schemas.elapsed().as_millis();
+            let n = tool_schemas.len();
+            if ms >= 16 {
+                log::info!(target: "xylitol::lag", "run_build_tool_schemas {ms}ms tools={n}");
+            } else {
+                log::debug!(target: "xylitol::lag", "run_build_tool_schemas {ms}ms tools={n}");
+            }
+        }
 
         let cancel = {
             let mut guard = self.cancel.lock().unwrap_or_else(|e| e.into_inner());

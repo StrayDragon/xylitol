@@ -601,7 +601,27 @@ impl AgentCapabilities {
 
     /// Rebuild the system prompt from current options.
     pub fn rebuild_system_prompt(&mut self) {
+        let t0 = std::time::Instant::now();
+        let tool_n = self.prompt_opts.selected_tools.len();
         self.system_prompt = Some(prompt::build_system_prompt(&self.prompt_opts));
+        let ms = t0.elapsed().as_millis();
+        let chars = self.system_prompt.as_ref().map(|s| s.len()).unwrap_or(0);
+        if ms >= 80 {
+            log::warn!(
+                target: "xylitol::lag",
+                "rebuild_system_prompt {ms}ms tools={tool_n} chars={chars}"
+            );
+        } else if ms >= 16 {
+            log::info!(
+                target: "xylitol::lag",
+                "rebuild_system_prompt {ms}ms tools={tool_n} chars={chars}"
+            );
+        } else {
+            log::debug!(
+                target: "xylitol::lag",
+                "rebuild_system_prompt {ms}ms tools={tool_n} chars={chars}"
+            );
+        }
     }
 
     /// Replace context / SYSTEM / APPEND resources and rebuild the system prompt (c1100).

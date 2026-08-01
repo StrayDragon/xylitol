@@ -355,6 +355,22 @@ obs-channel REQUEST_ID="":
       python3 scripts/inspect_provider_trace.py channel
     fi
 
+# Spinner / host-loop freeze breadcrumbs in xylitol.log (target xylitol::lag).
+# Repro: XYLITOL_DEBUG=1 or RUST_LOG=xylitol::lag=info,xylitol=info — then submit a prompt
+# while MCP is still connecting; run `just obs-tui-lag` and look for host_run_await /
+# mcp_settle_* / rebuild_system_prompt lines ≥80ms.
+obs-tui-lag n="80" LOG="":
+    #!/usr/bin/env bash
+    set -euo pipefail
+    log="${LOG:-${XYLITOL_AGENT_DIR:-$HOME/.xylitol}/logs/xylitol.log}"
+    if [[ ! -f "$log" ]]; then
+      echo "missing log: $log" >&2
+      echo "hint: XYLITOL_DEBUG=1 cargo run …  (or RUST_LOG=xylitol::lag=info)" >&2
+      exit 1
+    fi
+    echo "# $log (last {{n}} xylitol::lag lines)"
+    rg -n "xylitol::lag|host_run_await|host_drain_pending|host_mcp_poll|mcp_settle_|rebuild_system_prompt|run_ensure_session|run_load_history|run_build_tool_schemas|host_tick" "$log" | tail -n "{{n}}"
+
 # --- Documentation ---
 
 # Build API docs (cargo doc) and open in browser.
