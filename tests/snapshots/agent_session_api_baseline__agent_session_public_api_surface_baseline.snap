@@ -45,6 +45,7 @@ pub fn get_permission(&self) -> std::sync::Arc<dyn XyPermission>
 pub fn has_active_turn(&self) -> bool
 pub fn has_items(&self) -> bool
 pub fn inflight_turn_binding(&self) -> Option<ActiveTurnBinding>
+pub fn install_system_prompt_text(&mut self, prompt: String)
 pub fn is_empty(&self) -> bool
 pub fn len(&self) -> usize
 pub fn loaded_skill_names(&self) -> Vec<String>
@@ -74,6 +75,7 @@ pub fn set_session(&mut self, session_id: String)
 pub fn set_system_prompt(&mut self, prompt: Option<String>)
 pub fn set_thinking_level(&mut self, level: ThinkingLevel) -> Result<(), String>
 pub fn set_tools(&mut self, tools: ToolSet)
+pub fn set_tools_defer_prompt(&mut self, tools: ToolSet) -> SystemPromptOpts
 pub fn stats(&self) -> QueueStats
 pub fn steer(&self, message: impl Into<String>)
 pub fn steer_parts(&self, parts: Vec<crate::protocol::message::AgentPart>)

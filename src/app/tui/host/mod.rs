@@ -545,7 +545,7 @@ impl<T: Terminal> HostSession<T> {
         self.pending.take_footer_token_refresh()
     }
 
-    /// Allocate a generation id for a new background footer estimate job.
+    /// Footer estimate job: bump generation, clone tx, poll/await rx, read gen.
     pub fn begin_footer_token_job(&mut self) -> u64 {
         self.footer_token_gen = self.footer_token_gen.wrapping_add(1);
         self.footer_token_gen
@@ -555,12 +555,10 @@ impl<T: Terminal> HostSession<T> {
         self.footer_token_tx.clone()
     }
 
-    /// Poll one completed background estimate (non-blocking).
     pub fn try_recv_footer_token(&mut self) -> Option<(u64, Option<String>)> {
         self.footer_token_rx.try_recv().ok()
     }
 
-    /// Await the next background footer estimate (production `select!`).
     pub async fn recv_footer_token(&mut self) -> Option<(u64, Option<String>)> {
         self.footer_token_rx.recv().await
     }

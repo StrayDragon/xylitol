@@ -32,14 +32,17 @@ pub fn format_compact_tokens(count: u64) -> String {
     }
 }
 
-/// Provenance-honest footer fragment (`used N tokens` / `~N` / `?`), plus derived
-/// `p%/window` when `context_window > 0` (c1680).
+/// Provenance-honest footer fragment (`used C tokens` / `~C` / `?`), plus derived
+/// `p%/window` when `context_window > 0` (c1680). Count `C` reuses [`format_compact_tokens`]
+/// (c1820); Unknown stays `?` without compact.
 pub fn footer_token_label(provenance: TokenProvenance, tokens: u64, context_window: u64) -> String {
     let base = match provenance {
         TokenProvenance::Api | TokenProvenance::RemoteCount | TokenProvenance::LocalTokenizer => {
-            format!("used {tokens} tokens")
+            format!("used {} tokens", format_compact_tokens(tokens))
         }
-        TokenProvenance::Heuristic => format!("used ~{tokens} tokens"),
+        TokenProvenance::Heuristic => {
+            format!("used ~{} tokens", format_compact_tokens(tokens))
+        }
         TokenProvenance::Unknown => "used ? tokens".into(),
     };
     if context_window == 0 {
@@ -134,11 +137,15 @@ mod tests {
     fn footer_token_label_derived_percent() {
         assert_eq!(
             footer_token_label(TokenProvenance::Api, 42_000, 128_000),
-            "used 42000 tokens · 32.8%/128k"
+            "used 42k tokens · 32.8%/128k"
         );
         assert_eq!(
             footer_token_label(TokenProvenance::Heuristic, 100, 128_000),
             "used ~100 tokens · ~0.1%/128k"
+        );
+        assert_eq!(
+            footer_token_label(TokenProvenance::Heuristic, 42_000, 128_000),
+            "used ~42k tokens · ~32.8%/128k"
         );
         assert_eq!(
             footer_token_label(TokenProvenance::Unknown, 0, 128_000),
