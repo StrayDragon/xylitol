@@ -7,6 +7,7 @@ use crate::app::core::driver::XyDriver;
 use crate::protocol::Command;
 use crate::protocol::session::SessionTreeKind;
 
+use super::super::commands::BUSY_SESSION_SWITCH_NOTICE;
 use super::super::host::HostSession;
 use super::super::layout::ImportConfirmDecision;
 use super::super::layout::map_session_tree_nodes;
@@ -284,33 +285,44 @@ pub(super) async fn drain_pending_ui<T: Terminal>(
     }
 
     if let Some(session_id) = session.take_pending_session_resume_select() {
-        log::info!(target: "xylitol::tui", "SwitchSession from resume picker session_id={}", session_id);
-        switch_and_rebuild_transcript(session, driver, &session_id, SwitchRebuildKind::Resume)
-            .await;
+        if session.is_busy() {
+            // c1780 / atm10: browse Allow; switch Reject + ScrollNotice A.
+            session.push_scroll_notice(BUSY_SESSION_SWITCH_NOTICE);
+        } else {
+            log::info!(target: "xylitol::tui", "SwitchSession from resume picker session_id={}", session_id);
+            switch_and_rebuild_transcript(session, driver, &session_id, SwitchRebuildKind::Resume)
+                .await;
+        }
         let _ = session.render_now();
     }
 
     if let Some((id, name)) = session.take_pending_session_resume_rename() {
-        match driver.set_session_name_for(&id, &name).await {
-            Ok(stored) => {
-                session.session_resume_apply_rename(&id, &stored);
-                session.push_scroll_notice(format!("Session renamed: {stored}"));
-            }
-            Err(e) => {
-                note_driver_err(
-                    session,
-                    "tui.set_session_name_for",
-                    &e,
-                    format!("rename failed: {e}"),
-                );
-                session.session_resume_set_status(format!("rename failed: {e}"));
+        if session.is_busy() {
+            session.push_scroll_notice(BUSY_SESSION_SWITCH_NOTICE);
+        } else {
+            match driver.set_session_name_for(&id, &name).await {
+                Ok(stored) => {
+                    session.session_resume_apply_rename(&id, &stored);
+                    session.push_scroll_notice(format!("Session renamed: {stored}"));
+                }
+                Err(e) => {
+                    note_driver_err(
+                        session,
+                        "tui.set_session_name_for",
+                        &e,
+                        format!("rename failed: {e}"),
+                    );
+                    session.session_resume_set_status(format!("rename failed: {e}"));
+                }
             }
         }
         let _ = session.render_now();
     }
 
     if let Some(id) = session.take_pending_session_resume_delete() {
-        if driver.session_id().as_deref() == Some(id.as_str()) {
+        if session.is_busy() {
+            session.push_scroll_notice(BUSY_SESSION_SWITCH_NOTICE);
+        } else if driver.session_id().as_deref() == Some(id.as_str()) {
             session.session_resume_set_status("Cannot delete the active session");
             session.push_scroll_notice("Cannot delete the active session");
         } else {

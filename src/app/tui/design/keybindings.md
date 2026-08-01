@@ -27,10 +27,10 @@ components:
 | ↑ / ↓（editor） | 在首/末可视行且（空草稿或已在浏览）时：**发送历史**召回（c481；包 ed05） |
 | 双 Esc | 打开 **MessageHistory 活树**（`session_tree`；Esc 关；Enter：`travel_session_tree`，user→`editor_text` 预填） |
 | `/exit` | 退出并 restore（与垂直切片一致） |
-| `/model` | 打开 **fuzzy 模型列表**（替换 editor 槽；见 [`models-picker.md`](./models-picker.md)；**c630**；对齐 pi） |
-| `/model <id>` | 直选模型（不经列表） |
-| `/theme` | 打开 **Themes 槽** SelectList（`dark` / `light`；见 [`theme-tokens.md`](./theme-tokens.md)；**c1115**） |
-| `/theme dark` \| `light` | 经 `HostSession::reload_themes` 直切色板 |
+| `/model` | 打开 **fuzzy 模型列表**（替换 editor 槽；见 [`models-picker.md`](./models-picker.md)；**c630**；对齐 pi）；**busy 亦可开**（**c1780**；选定仍 NextTurn） |
+| `/model <id>` | 直选模型（不经列表；busy Allow） |
+| `/theme` | 打开 **Themes 槽** SelectList（`dark` / `light`；见 [`theme-tokens.md`](./theme-tokens.md)；**c1115**）；**busy 亦可**（**c1780**） |
+| `/theme dark` \| `light` | 经 `HostSession::reload_themes` 直切色板（busy Allow） |
 | `/theme toggle` \| `cycle` | dark↔light 翻转（相对当前 `theme_preference`，无则视为 dark） |
 
 **移除**：无参 `/model` 静默 **cycle** — 改为打开列表；**不**引入 `/models`。
@@ -70,7 +70,7 @@ components:
 | `/session-tree` | 打开会话树（同双 Esc；**c700/c1005**；旧名 `/tree` 无效） |
 | `/session-fork` | 在当前 leaf fork（同 Shift+F 语义；选节点仍用树；**c700/c1005**；旧名 `/fork` 无效） |
 | `/session` | 转储会话 info/stats（**c1015**；非操作菜单） |
-| `/session-resume` | 会话 Resume 面板（scope/sort/搜索/rename/delete；**Ctrl+U** 切换完整 session id，默认隐藏；**c1065** / **c1530**；旧名 `/resume` 无效） |
+| `/session-resume` | 会话 Resume 面板（scope/sort/搜索/rename/delete；**Ctrl+U** 切换完整 session id，默认隐藏；**c1065** / **c1530**；旧名 `/resume` 无效）。**busy 可浏览**；Enter switch / rename / delete **拒**并尾随 `agent busy — finish turn or Esc abort before switching session`（**c1780**） |
 | `/session-compact` | 手动 Compact（**c1010**；仅无参） |
 | `/session-export` [path] | 默认 HTML；`.jsonl` → JSONL（**c1010**） |
 | `/session-import` \<path\> | Yes/No 确认后 ImportJsonl（**c1010**） |

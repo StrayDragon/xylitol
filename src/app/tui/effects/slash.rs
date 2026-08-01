@@ -74,17 +74,14 @@ pub(super) async fn handle_slash<T: Terminal>(
             session.request_quit();
         }
         PendingSlash::OpenModels => {
-            if session.is_busy() {
-                session.push_scroll_notice("models picker unavailable while busy");
-            } else {
-                match dispatch(driver, Command::GetAvailableModels { id: None }).await {
-                    Ok(DispatchOutcome::Models(models)) => {
-                        let current = driver.current_model().map(|m| m.id);
-                        session.mount_models_picker(models, current, driver.thinking_level());
-                    }
-                    Ok(_) => session.push_scroll_notice("models list unavailable"),
-                    Err(e) => session.push_scroll_notice(format!("/model failed: {e}")),
+            // c1780: busy Allow — open list; selection still NextTurn via SetModel path.
+            match dispatch(driver, Command::GetAvailableModels { id: None }).await {
+                Ok(DispatchOutcome::Models(models)) => {
+                    let current = driver.current_model().map(|m| m.id);
+                    session.mount_models_picker(models, current, driver.thinking_level());
                 }
+                Ok(_) => session.push_scroll_notice("models list unavailable"),
+                Err(e) => session.push_scroll_notice(format!("/model failed: {e}")),
             }
             let _ = session.render_now();
         }
@@ -213,36 +210,33 @@ pub(super) async fn handle_slash<T: Terminal>(
             let _ = session.render_now();
         }
         PendingSlash::OpenSessionResume => {
-            if session.is_busy() {
-                session.push_scroll_notice("session resume unavailable while busy");
-            } else {
-                // pi-style load UX: slot shows loaded/total; OSC 9;4 while scanning.
-                session.mount_session_resume_loading(0, 0);
-                session.set_task_progress(true);
-                let _ = session.render_now();
-                let listed = driver.list_sessions().await;
-                session.set_task_progress(false);
-                match listed {
-                    Ok(entries) if entries.is_empty() => {
-                        session.close_session_resume_slot();
-                        session.push_scroll_notice("no sessions to resume");
-                    }
-                    Ok(entries) => {
-                        let n = entries.len();
-                        session.mount_session_resume_loading(n, n);
-                        let _ = session.render_now();
-                        let current = driver.session_id();
-                        session.mount_session_resume_picker(entries, current);
-                    }
-                    Err(e) => {
-                        session.close_session_resume_slot();
-                        note_driver_err(
-                            session,
-                            "tui.list_sessions",
-                            &e,
-                            format!("/session-resume failed: {e}"),
-                        );
-                    }
+            // c1780: busy Allow browse; switch/rename/delete gated in pending_ui.
+            // pi-style load UX: slot shows loaded/total; OSC 9;4 while scanning.
+            session.mount_session_resume_loading(0, 0);
+            session.set_task_progress(true);
+            let _ = session.render_now();
+            let listed = driver.list_sessions().await;
+            session.set_task_progress(false);
+            match listed {
+                Ok(entries) if entries.is_empty() => {
+                    session.close_session_resume_slot();
+                    session.push_scroll_notice("no sessions to resume");
+                }
+                Ok(entries) => {
+                    let n = entries.len();
+                    session.mount_session_resume_loading(n, n);
+                    let _ = session.render_now();
+                    let current = driver.session_id();
+                    session.mount_session_resume_picker(entries, current);
+                }
+                Err(e) => {
+                    session.close_session_resume_slot();
+                    note_driver_err(
+                        session,
+                        "tui.list_sessions",
+                        &e,
+                        format!("/session-resume failed: {e}"),
+                    );
                 }
             }
             let _ = session.render_now();
@@ -399,26 +393,23 @@ pub(super) async fn handle_slash<T: Terminal>(
             let _ = session.render_now();
         }
         PendingSlash::Theme { arg } => {
-            if session.is_busy() {
-                session.push_scroll_notice("agent busy — /theme refused");
-            } else {
-                match arg.as_deref().map(str::trim).filter(|s| !s.is_empty()) {
-                    None => session.mount_themes_picker(),
-                    Some(name) => {
-                        let resolved = resolve_theme_arg(session, name);
-                        match resolved {
-                            Ok(theme_name) => match session.reload_themes(&theme_name) {
-                                Ok(()) => {}
-                                Err(e) => note_driver_err(
-                                    session,
-                                    "tui.reload_themes.slash",
-                                    &e,
-                                    format!("/theme failed: {e}"),
-                                ),
-                            },
-                            Err(e) => {
-                                note_driver_err(session, "tui.resolve_theme_arg", &e, e.to_string())
-                            }
+            // c1780: busy Allow chrome theme open/apply.
+            match arg.as_deref().map(str::trim).filter(|s| !s.is_empty()) {
+                None => session.mount_themes_picker(),
+                Some(name) => {
+                    let resolved = resolve_theme_arg(session, name);
+                    match resolved {
+                        Ok(theme_name) => match session.reload_themes(&theme_name) {
+                            Ok(()) => {}
+                            Err(e) => note_driver_err(
+                                session,
+                                "tui.reload_themes.slash",
+                                &e,
+                                format!("/theme failed: {e}"),
+                            ),
+                        },
+                        Err(e) => {
+                            note_driver_err(session, "tui.resolve_theme_arg", &e, e.to_string())
                         }
                     }
                 }
