@@ -9,7 +9,7 @@
 |---|---|---|---|
 | **对话条目** | transcript entry | 主滚动区可持久内容（user / assistant / thinking / tool / …） | system 消息、LLM message（除非特指协议） |
 | **滚动提示** | scrollback notice · **`UiEntry::ScrollNotice`** | 插入 **主滚动区** 的短 UI 提示 | system prompt、AgentMessage、system 消息；**勿**与角落弹层混称 |
-| **壳层通告** | chrome toast · shell notice | 非 scrollback 的短暂固定通告（TUI：status/spinner **上方**一行，TTL 自动清除；**≠** 滚动提示） | 抢用 `ScrollNotice` / `UiEntry`；笼统 Notice 指滚动行 |
+| **壳层通告** | chrome toast · shell notice | 非 scrollback 的短暂固定通告（TUI：status/spinner **上方**独立一行；`{colors.warning}`；可见前缀 `Error: `；TTL 自动清除；**≠** 滚动提示 / 错误行） | 抢用 `ScrollNotice` / `UiEntry`；与 `UiEntry::Error` 混称；笼统 Notice 指滚动行 |
 | **错误行** | error row | `UiEntry::Error` | 笼统 system |
 | **状态条** | status | busy 时输入区上方短状态（idle = 0 行） | 塞进 scrollback |
 | **页脚** | footer | 输入区下：生效中模型、用量 provenance 等 | 成功确认刷滚动提示 |
@@ -29,7 +29,7 @@
 | 即将消息 | **下轮预告**（不是 message） |
 | System 确认行 / system 消息（指 UI） / `UiEntry::System` | **滚动提示** / **`UiEntry::ScrollNotice`** |
 | `push_system_note` | **`push_scroll_notice`** |
-| 笼统 Notice 指滚动行 | **ScrollNotice**（预留 Notice/toast 给角区等壳层通告） |
+| 笼统 Notice 指滚动行 | **ScrollNotice**（瞬时硬拒闸用 **壳层通告**，勿再堆滚动提示） |
 | 把「尾随」写成 trail（无 append） | **尾随 / trail-append** |
 
 用户可见文案 `Next turn:` / `Next turn thinking:` **可保持**；改的是概念名与标识符，不是强迫改屏上字符串。
@@ -42,7 +42,7 @@
 | **B 导航瞬时** | `history @`、`forked →`、`switched →` | **滚动提示 · 尾随** | 随 scrollback；rebuild 可清 | **默认尾随**（跟底可见） |
 | **C 操作结果 / 诊断** | slash 失败、复制、trust 报告 | 短：滚动提示尾随；成功换模/主题 → **不**刷 | 易堆墙 | **默认尾随** |
 | **D 即时设置** | 换模 / thinking / 主题成功 | **页脚 + 下轮预告**（待生效时） | 否（态） | — |
-| **E 运行态** | busy、abort、队列 | 状态条 / 队列条 | 否 | 禁止冒充 A/B |
+| **E 运行态** | busy、abort、队列；busy 下硬拒闸（如 Resume switch） | 状态条 / 队列条 / **壳层通告** | 否 | 禁止冒充 A/B；硬拒闸优先壳层通告，勿 ScrollNotice |
 | **F 槽内确认** | 树 travel、选模 | 关槽 + chrome / B 类尾随 | 视 B/C | **默认尾随** |
 | **G 减噪折叠** | 旧工具中间步（候补） | 折叠摘要条目 | 是（形态变） | — |
 
@@ -51,7 +51,7 @@
 - **不是绝对禁令**：若有明确产品理由且写清代价，可例外。
 - 能进页脚 / 状态条 / 下轮预告 / 槽的，优先别做成滚动提示。
 
-**原则一句话**：能反映在 chrome 的不要做成滚动提示；必须进主区的瞬时信息 → **默认尾随**。
+**原则一句话**：能反映在 chrome（页脚 / 状态条 / 下轮预告 / **壳层通告** / 槽）的不要做成滚动提示；必须进主区的瞬时信息 → **默认尾随**。
 
 ## 与代码的对应（可漂移，以代码为准）
 
@@ -59,7 +59,7 @@
 |---|---|
 | 下轮预告 | `status_next_turn_cue` · `status_next_turn_cue_text` · playground `.status-next-turn-cue` |
 | 滚动提示 | `UiEntry::ScrollNotice` · `HostSession::push_scroll_notice`；demo `Role::ScrollNotice` |
-| 壳层通告 | host `push_chrome_toast`（或等价）· layout toast 槽；c1800 |
+| 壳层通告 | host `push_chrome_toast` · layout toast 槽（status 上方；warning + `Error:`） |
 | 待生效 | selected ≠ active（模型 / thinking） |
 
 ## 维护

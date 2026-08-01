@@ -286,8 +286,8 @@ pub(super) async fn drain_pending_ui<T: Terminal>(
 
     if let Some(session_id) = session.take_pending_session_resume_select() {
         if session.is_busy() {
-            // c1780 / atm10: browse Allow; switch Reject + ScrollNotice A.
-            session.push_scroll_notice(BUSY_SESSION_SWITCH_NOTICE);
+            // c1780 / c1800 / atm10: browse Allow; switch Reject + chrome toast A.
+            session.push_chrome_toast(BUSY_SESSION_SWITCH_NOTICE);
         } else {
             log::info!(target: "xylitol::tui", "SwitchSession from resume picker session_id={}", session_id);
             switch_and_rebuild_transcript(session, driver, &session_id, SwitchRebuildKind::Resume)
@@ -298,7 +298,7 @@ pub(super) async fn drain_pending_ui<T: Terminal>(
 
     if let Some((id, name)) = session.take_pending_session_resume_rename() {
         if session.is_busy() {
-            session.push_scroll_notice(BUSY_SESSION_SWITCH_NOTICE);
+            session.push_chrome_toast(BUSY_SESSION_SWITCH_NOTICE);
         } else {
             match driver.set_session_name_for(&id, &name).await {
                 Ok(stored) => {
@@ -321,7 +321,7 @@ pub(super) async fn drain_pending_ui<T: Terminal>(
 
     if let Some(id) = session.take_pending_session_resume_delete() {
         if session.is_busy() {
-            session.push_scroll_notice(BUSY_SESSION_SWITCH_NOTICE);
+            session.push_chrome_toast(BUSY_SESSION_SWITCH_NOTICE);
         } else if driver.session_id().as_deref() == Some(id.as_str()) {
             session.session_resume_set_status("Cannot delete the active session");
             session.push_scroll_notice("Cannot delete the active session");
