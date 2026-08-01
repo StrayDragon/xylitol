@@ -10,7 +10,7 @@ requirements[24]{req_id,title,statement}:
   atc5,"demo-theme-auto-detect",agent_demo MUST 默认使用 Dark token 集；当启用主题自动探测（环境变量或 harness API）时 MUST 经 package terminal_colors 纯函数切换 Light/Dark，并在 layout 壳（footer 或系统行）暴露当前 theme_mode；MUST NOT 将自动切换设为产品 MVP 默认。
   atc6,"idle-editor-compact",产品空闲且 Editor 草稿为空时操作区可见内容行 MUST 紧凑（对齐 agent_demo 观感：上下 ─ 保留，避免大块空盒）；有多行草稿时 MUST 仍可按既有 terminal_rows/max_vis 规则长高。
   atc7,"busy-status-spinner","产品 agent-busy status 行 MUST 为至多一行：左侧 lead 为 accent spinner（或等价动画帧）加短词（MUST 作为同一组合贴左，MUST NOT 用 space-between 拆开 spinner 与短词）；idle MUST 仍为 0 行；MUST NOT 把 spinner 画进 footer；下轮预告见 atc19。"
-  atc8,"user-message-bg","产品 scrollback 用户消息行 MUST 可应用 DESIGN user-message-bg 全行淡底（默认开启或与 agent_demo 一致）；MUST NOT 改变消息文本语义前缀。"
+  atc8,"user-message-no-wash","产品 scrollback 用户消息行默认 MUST NOT 应用 DESIGN user-message-bg 全行淡底；MUST 保留消息文本语义前缀（如 ❯ / glyph）；MUST NOT 为用户行画 status 轨。"
   atc9,"compaction-retry-single-status-line",产品 TUI 在 Compacting 或 Retry n/m 忙碌态时 status 槽 MUST 仍至多独立 1 行（spinner+短词）；压缩/重试细节 MUST 走 scrollback 滚动提示（ScrollNotice）而非增高 status；MUST NOT 常驻多行 compaction/retry layout 条。
   atc10,"abort-status-idle",产品在用户 abort 后 status 槽 MUST 回到 0 行（idle）；取消说明 MUST 走 scrollback 滚动提示一行而非增高 status；bang 执行中 MAY 使用单行 Running。
   atc11,"models-picker-footer","经 models 槽或 /model <id> 成功更新 selected 后：idle 时 footer model/thinking MUST 反映新 active（与 selected 收敛）；agent-busy 时 footer MUST 仍显示 active（旧绑定），pending 仅出现在下轮预告（atc19）。无思考模型 MUST 省略 footer thinking 段。"
