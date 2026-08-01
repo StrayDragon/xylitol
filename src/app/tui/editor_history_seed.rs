@@ -124,6 +124,14 @@ pub fn spawn_new_session_seed(
     })
 }
 
+/// Background CLI `--session` JSONL load (same data as [`XyDriver::get_messages`](crate::app::core::driver::XyDriver::get_messages)).
+pub fn spawn_cli_session_load(
+    store: Arc<dyn XySessionStore>,
+    session_id: String,
+) -> tokio::task::JoinHandle<Result<Vec<SessionEntry>, String>> {
+    tokio::spawn(async move { store.load_entries(&session_id).await })
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
