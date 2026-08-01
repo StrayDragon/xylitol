@@ -1,12 +1,13 @@
 #!/usr/bin/env python3
-"""QA check: ath12 entry-module complexity via cccc-rs.
+"""QA check: ath12 entry-module complexity via cccc-rs (c1840 / qg06).
 
 Xylitol complexity model (see justfile `complexity` + this gate):
 
   Layer A — Clippy `-D warnings` (no cognitive_complexity; restriction/off).
-  Layer B — File LOC: `god_module_entry_files_under_budget` (<850) for ath12.
+  Layer B — File LOC: SHOULD ~800; hard-smell ceiling <1200
+            (`ath12_entry_files_under_hard_smell_loc` in src/app/tui/tests.rs).
   Layer C — THIS SCRIPT (HARD in `just qa`): Sonar cognitive + McCabe
-            cyclomatic on ath12 *entry coordinators* only.
+            cyclomatic on ath12 *entry coordinators* only (ath12 MUST).
   Layer D — Soft radar (`--radar` / `just complexity`): wider host/effects/
             bridge/layout tree; smell signal, not a hard gate (slash/pending_ui
             already exceed entry thresholds).
@@ -39,7 +40,8 @@ CCCC_RS_CRATE = "cccc-rs-cli"
 CCCC_RS_VERSION = "0.4.0"
 CCCC_RS_BIN = "cccc-rs"
 
-# HARD gate: ath12 entry coordinators (same set as god_module LOC test).
+# HARD gate: ath12 entry coordinators (same set as LOC hard-smell test).
+# Thresholds MUST match llmanspec ath12 / test-qa-gate qg06 (c1840).
 ENTRY_PATHS = [
     REPO / "src/app/tui/host/mod.rs",
     REPO / "src/app/tui/layout/root/mod.rs",
@@ -56,6 +58,7 @@ RADAR_PATHS = [
 ]
 
 # Passes today: host::step cognitive 33 / cyclo 28; headroom for small edits.
+# ath12 / qg06 MUST: keep in sync with live specs (c1840).
 MAX_COGNITIVE = 35
 MAX_CYCLOMATIC = 30
 
