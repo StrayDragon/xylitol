@@ -164,12 +164,16 @@ components:
 |---|---|---|
 | **c625** design/playground | 固定下一屏形状：`/model` 列表槽、树 power、真 `$EDITOR`、footer context%、abort 反馈；**不做** Settings/Plate 运行时改配置 | 本表 · [`playground/`](./design/playground/) |
 | **c630** `/model` | 替换 editor 槽：**模型 + xylitol thinking 等级**（行内右列；Shift+Tab 仅槽内）；默认最高档；**移除**全局 thinking cycle | [`models-picker`](./design/models-picker.md) · [`keybindings`](./design/keybindings.md) |
-| **c1115** `/theme` | 产品 slash 切内建 `dark`/`light`（无参 Themes 槽；有参/`toggle`；busy 拒绝）；**不**默认开 theme auto；**不**抄 demo Ctrl+P | [`theme-tokens`](./design/theme-tokens.md) · [`keybindings`](./design/keybindings.md) |
+| **c1115** `/theme` | 产品 slash 切内建 `dark`/`light`（无参 Themes 槽；有参/`toggle`；**busy Allow**）；**不**默认开 theme auto；**不**抄 demo Ctrl+P | [`theme-tokens`](./design/theme-tokens.md) · [`keybindings`](./design/keybindings.md) |
 | **c635–c645** 树 power | 产品 filter → fold → fork（demo 已有；逐个接线） | [`session-tree`](./design/session-tree.md) · [`keybindings`](./design/keybindings.md) |
 | **c650** 真 `$EDITOR` | Ctrl+G：TTY 真编辑器；harness 仍 stub | [`bash-mode`](./design/bash-mode.md) |
 | **c1035** footer token usage | 带 provenance 的 `used C`/`~C`/`?`（C 紧凑见 c1820 / `format_compact_tokens`）；travel 刷新 | [`footer`](./design/footer.md) |
 | **c1820** footer used 紧凑 | used 计数与 window 共用 `format_compact_tokens`（如 `42k`） | [`footer`](./design/footer.md) |
-| **候补 M0** NextTurn 下轮预告 | busy 换模：footer=生效中；cue=`Next turn:`；切回清除；无滚动提示墙 | [`pending-runtime`](./design/pending-runtime.md) · [`footer`](./design/footer.md) |
+| **已落地** NextTurn 下轮预告 | busy 换模：footer=生效中；cue=`Next turn:`；切回清除；无滚动提示墙 | [`pending-runtime`](./design/pending-runtime.md) · [`footer`](./design/footer.md) · architecture `运行时即时设置.md` |
+| **c1780** busy 即时列表 | busy Allow：`/model` `/theme` `/mcp` `/session-resume` 浏览；switch/rename/delete → **壳层通告** | [`keybindings`](./design/keybindings.md) · [`chrome-toast`](./design/chrome-toast.md) |
+| **c1800** chrome toast | status 上方单槽通告；busy Resume 硬拒闸 | [`chrome-toast`](./design/chrome-toast.md) |
+| **c1810** chrome footprint | term-aware 槽高预算；短终端仍见 Working | [`chrome-footprint`](./design/chrome-footprint.md) |
+| **c1830** UiEntry rail 默认 | tool/bash/diff = status 轨；user/assistant/thinking = flush | [`transcript`](./design/transcript.md) |
 | **c660–c665** abort 质量 | 工具/bash 进程树取消 + status 反馈（非 computer-use） | [`status`](./design/status.md) · [`errors`](./design/errors.md) |
 
 **明确不做（本波）**：Settings / Plate 槽（配置继续 YAML+JSON Schema，无运行时改配置 UX）；computer-use 扩展；Codex TranscriptView。

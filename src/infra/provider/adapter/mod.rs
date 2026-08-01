@@ -33,10 +33,10 @@ pub enum AdapterKind {
 
 impl AdapterKind {
     pub fn default_for(kind: XyModelKind) -> Self {
-        match kind {
-            XyModelKind::OpenAi => AdapterKind::OpenAiResponses,
-            XyModelKind::Anthropic => AdapterKind::AnthropicMessages,
-            XyModelKind::Fake => AdapterKind::OpenAiResponses,
+        // String SSOT: `XyModelKind::default_adapter_api` (agent-safe).
+        match kind.default_adapter_api() {
+            "anthropic-messages" => AdapterKind::AnthropicMessages,
+            _ => AdapterKind::OpenAiResponses,
         }
     }
 

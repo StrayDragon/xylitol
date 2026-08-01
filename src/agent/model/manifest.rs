@@ -17,7 +17,7 @@
 //!   ]
 //! }
 //! ```
-//! Omitting `api` uses [`crate::infra::provider::adapter::AdapterKind::default_for`]
+//! Omitting `api` uses [`XyModelKind::default_adapter_api`]
 //! (OpenAI → `openai-responses`, Anthropic → `anthropic-messages`).
 
 use std::path::Path;
@@ -33,7 +33,7 @@ use crate::protocol::types::XyModelMeta;
 pub struct ManifestModel {
     pub id: String,
     pub provider: String,
-    /// Adapter dialect; omitted → [`crate::infra::provider::adapter::AdapterKind::default_for`] for provider (c1600).
+    /// Adapter dialect; omitted → [`XyModelKind::default_adapter_api`] for provider (c1600).
     #[serde(default)]
     pub api: Option<String>,
     pub display_name: Option<String>,
@@ -103,9 +103,11 @@ pub fn load_models_from_manifest(
             .or_else(|| default_api_key.map(String::from))
             .unwrap_or_default();
 
-        let api = m.api.clone().filter(|s| !s.is_empty()).unwrap_or_else(|| {
-            crate::infra::provider::adapter::AdapterKind::default_for(kind).to_string()
-        });
+        let api = m
+            .api
+            .clone()
+            .filter(|s| !s.is_empty())
+            .unwrap_or_else(|| kind.default_adapter_api().to_string());
 
         let meta = XyModelMeta {
             id: m.id.clone(),

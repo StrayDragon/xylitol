@@ -250,7 +250,9 @@ pub(super) async fn handle_slash<T: Terminal>(
                     Ok(sid) => match driver.get_messages().await {
                         Ok(entries) => {
                             session.apply_new_session(&sid, entries);
-                            session.seed_editor_history_for_new_session(driver).await;
+                            if !session.kick_editor_history_seed_async(driver) {
+                                session.seed_editor_history_for_new_session(driver).await;
+                            }
                         }
                         Err(e) => note_driver_err(
                             session,
