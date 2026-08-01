@@ -58,6 +58,10 @@ enum McpBootState {
         /// Last connecting label published to the TUI; skip refresh when unchanged.
         last_ui_label: Option<Option<String>>,
     },
+    /// Tools already applied; system prompt text building off the tick path.
+    Settling {
+        handle: tokio::task::JoinHandle<String>,
+    },
     Settled,
 }
 
@@ -800,7 +804,10 @@ impl XyDriver for XyInProcessDriver {
     }
 
     fn mcp_blocks_agent(&self) -> bool {
-        matches!(self.mcp_boot, McpBootState::Running { .. })
+        matches!(
+            self.mcp_boot,
+            McpBootState::Running { .. } | McpBootState::Settling { .. }
+        )
     }
 
     async fn begin_mcp_bootstrap(&mut self) {
@@ -837,6 +844,34 @@ impl XyDriver for XyInProcessDriver {
     }
 
     async fn poll_mcp_bootstrap(&mut self) -> bool {
+        // Finish deferred system-prompt install before polling connect progress.
+        if matches!(self.mcp_boot, McpBootState::Settling { .. }) {
+            let finished = match &self.mcp_boot {
+                McpBootState::Settling { handle } => handle.is_finished(),
+                _ => false,
+            };
+            if !finished {
+                return false;
+            }
+            let prev = std::mem::replace(&mut self.mcp_boot, McpBootState::Idle);
+            let McpBootState::Settling { handle } = prev else {
+                return false;
+            };
+            match handle.await {
+                Ok(prompt) => {
+                    let t0 = std::time::Instant::now();
+                    self.agent.install_system_prompt_text(prompt);
+                    crate::app::core::lag::note("mcp_settle_install_prompt", t0);
+                }
+                Err(e) => {
+                    log::warn!(target: "xylitol::mcp", "MCP settle prompt join failed: {e}");
+                }
+            }
+            self.mcp_boot = McpBootState::Settled;
+            // Tools/UI already refreshed when settle was kicked; no second refresh.
+            return false;
+        }
+
         let finished = match &self.mcp_boot {
             McpBootState::Running { handle, .. } => handle.is_finished(),
             _ => return false,
@@ -873,7 +908,7 @@ impl XyDriver for XyInProcessDriver {
                     &format!("mcp_tools={tool_n}"),
                 );
                 let t_set = std::time::Instant::now();
-                self.set_tools(set);
+                let opts = self.agent.set_tools_defer_prompt(set);
                 crate::app::core::lag::note_detail(
                     "mcp_settle_set_tools",
                     t_set,
@@ -888,11 +923,14 @@ impl XyDriver for XyInProcessDriver {
                         old.shutdown().await;
                     });
                 }
-                self.mcp_boot = McpBootState::Settled;
+                let handle = tokio::task::spawn_blocking(move || {
+                    crate::agent::prompt::build_system_prompt(&opts)
+                });
+                self.mcp_boot = McpBootState::Settling { handle };
                 crate::app::core::lag::note_detail(
                     "mcp_settle_total",
                     t_settle,
-                    &format!("mcp_tools={tool_n}"),
+                    &format!("mcp_tools={tool_n} deferred_prompt=1"),
                 );
             }
             Ok(Ok(None)) => {
