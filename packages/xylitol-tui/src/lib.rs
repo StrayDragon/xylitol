@@ -84,8 +84,8 @@ pub use terminal_colors::{
 pub use terminal_image::{hyperlink, is_image_line};
 pub use theme::{
     Palette, SemanticPalette, ThinkingBorderLevel, apply_thinking_border, bg_rgb, bold, dim,
-    fg_bg_rgb, fg_rgb, italic, mix_rgb, shade_toward_black, shade_toward_white, strikethrough,
-    underline, word_wash_bg,
+    fg_bg_rgb, fg_rgb, italic, mix_rgb, paint_left_rail_line, shade_toward_black,
+    shade_toward_white, strikethrough, underline, word_wash_bg,
 };
 pub use tui::{
     Component, FocusTarget, Focusable, InputEvent, InputListenerResult, OverlayAnchor,

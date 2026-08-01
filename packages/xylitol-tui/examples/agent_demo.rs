@@ -29,10 +29,10 @@ use xylitol_tui::{
     ThinkingBorderLevel, TreeNode, TreeSelector, TreeSelectorOptions, TreeSelectorTheme,
     TruncateFrom, TruncatedText, apply_background_to_line, apply_thinking_border, bg_rgb,
     fg_bg_rgb, fg_rgb, is_osc11_background_color_response, is_terminal_color_reply,
-    matches_key_event, mix_rgb, parse_osc11_background_color, parse_terminal_color_scheme_report,
-    printable_from_key_event, render_diff_lines, render_expandable_output,
-    resolve_terminal_color_scheme, truncate_to_width, visible_width, word_wash_bg,
-    wrap_text_with_ansi,
+    matches_key_event, mix_rgb, paint_left_rail_line, parse_osc11_background_color,
+    parse_terminal_color_scheme_report, printable_from_key_event, render_diff_lines,
+    render_expandable_output, resolve_terminal_color_scheme, truncate_to_width, visible_width,
+    word_wash_bg, wrap_text_with_ansi,
 };
 
 /// Demo slash commands (static; product would load from Driver / protocol).
@@ -4135,23 +4135,9 @@ impl FakeCodingAgentApp {
         }
     }
 
-    /// Left layout: `[1-cell bg rail][1 plain gutter space][content…]`.
-    /// Gutter keeps text off the strip (rail+content alone feels cramped).
-    /// Native copy may include rail/gutter spaces — terminal-dependent; not worth ECH/BCE.
-    /// User/assistant stay flush without a rail.
+    /// Left layout via package `paint_left_rail_line` (rail + gutter + content).
     fn paint_rail_line(line: &str, width: usize, rgb: xylitol_tui::RgbColor) -> String {
-        const RAIL_COLS: usize = 1;
-        const GUTTER_COLS: usize = 1;
-        let prefix_w = (RAIL_COLS + GUTTER_COLS).min(width.max(1));
-        let rail_w = RAIL_COLS.min(prefix_w);
-        let gutter_w = prefix_w.saturating_sub(rail_w);
-        let content_w = width.saturating_sub(prefix_w);
-        let rail = bg_rgb(rgb, &" ".repeat(rail_w));
-        let gutter = " ".repeat(gutter_w);
-        if content_w == 0 {
-            return format!("{rail}{gutter}");
-        }
-        format!("{rail}{gutter}{}", Self::fit(line, content_w))
+        paint_left_rail_line(line, width, rgb)
     }
 
     fn push_entry_block(

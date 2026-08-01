@@ -4,9 +4,6 @@ name: "transcript"
 description: "Live turn output into scrollback — not a Codex-style transcript browser."
 tokens_from: "../DESIGN.md"
 components:
-  user-message:
-    backgroundColor: "{colors.user-message-bg}"
-    textColor: "{colors.on-surface}"
   user-prefix:
     textColor: "{colors.user}"
   assistant-body:
@@ -26,16 +23,18 @@ components:
 ## MUST（若有 live 行）
 
 1. 全宽写入引擎 scrollback；**MUST NOT** 截断历史冒充滚动。
-2. 用户：短前缀 + 正文；可选 `{colors.user-message-bg}`；**MUST NOT** `USER>` / `You` 长标签。
-3. 助手：正文直接出；**MUST NOT** 每段 `ASSISTANT>`。
+2. 用户：短前缀 + 正文；**默认无** `{colors.user-message-bg}` 全行淡底、**无** status 轨；**MUST NOT** `USER>` / `You` 长标签。
+3. 助手：正文直接出（flush）；**MUST NOT** 每段 `ASSISTANT>`。
 4. System / 错误：短 dim 或 `{colors.error}`（见 [`errors.md`](./errors.md)）。
 5. Markdown / Diff 细则见 [`markdown.md`](./markdown.md)、[`diff-block.md`](./diff-block.md)——作为**行级积木**，不是独立浏览面。
-6. thinking / tool 折叠与工具 bg：见 [`expandable.md`](./expandable.md)；优先在 demo 验证，产品不抢在会话树之前做完整 Expandable 栈。
+6. thinking / tool **rail 皮肤**与折叠：见 [`expandable.md`](./expandable.md)。
+7. 相邻块之间 **≥1** 行 untinted 空行。
 
 ## MUST NOT
 
 1. **MUST NOT** 实现 Codex 风格的可导航 transcript 浏览器 / 专用 `TranscriptView` 作为主 UX。
 2. **MUST NOT** 用 transcript 栈替代会话树完成 branch travel。
+3. **MUST NOT** 默认整行铺 `tool-*-bg` / `user-message-bg` 洗底（成败用左边轨）。
 
 ## Layout note
 
