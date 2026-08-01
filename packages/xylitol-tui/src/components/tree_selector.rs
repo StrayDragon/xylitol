@@ -303,6 +303,10 @@ impl TreeSelector {
         self.options.status_suffix = suffix;
     }
 
+    pub fn set_max_visible(&mut self, max_visible: usize) {
+        self.options.max_visible = max_visible.max(1);
+    }
+
     pub fn set_active_id(&mut self, id: Option<String>) {
         self.options.active_id = id;
         self.build_active_path();

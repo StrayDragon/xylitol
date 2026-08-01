@@ -15,8 +15,8 @@ use crate::protocol::ports::format_session_age;
 
 use super::search::{NameFilter, SessionScope, SortMode, filter_and_sort};
 
-/// Visible session rows in the resume list viewport (pi SessionList.maxVisible = 10).
-const MAX_VISIBLE_SESSIONS: usize = 10;
+/// Soft default body rows before term-aware Chrome Footprint sync (atc23).
+const DEFAULT_MAX_VISIBLE_SESSIONS: usize = 10;
 
 /// Soft cap for the preview column as a fraction of terminal width (≈60%).
 const PREVIEW_SOFT_CAP_NUM: usize = 60;
@@ -51,6 +51,8 @@ pub struct SessionResumePanel {
     current_cwd: String,
     status_line: Option<String>,
     theme: LayoutTheme,
+    /// Body rows in the session list viewport (Chrome Footprint budget).
+    max_visible: usize,
 }
 
 impl SessionResumePanel {
@@ -72,7 +74,17 @@ impl SessionResumePanel {
             current_cwd: ".".into(),
             status_line: None,
             theme,
+            max_visible: DEFAULT_MAX_VISIBLE_SESSIONS,
         }
+    }
+
+    pub fn set_max_visible(&mut self, max_visible: usize) {
+        self.max_visible = max_visible.max(1);
+    }
+
+    #[cfg(test)]
+    pub fn max_visible(&self) -> usize {
+        self.max_visible
     }
 
     pub fn set_current_cwd(&mut self, cwd: impl Into<String>) {
@@ -115,6 +127,10 @@ impl SessionResumePanel {
 
     pub fn set_status(&mut self, msg: impl Into<String>) {
         self.status_line = Some(msg.into());
+    }
+
+    pub fn status_line(&self) -> Option<&str> {
+        self.status_line.as_deref()
     }
 
     pub fn invalidate(&mut self) {
@@ -279,7 +295,7 @@ impl SessionResumePanel {
             .unwrap_or(0);
 
         let total = rows.len();
-        let max_vis = MAX_VISIBLE_SESSIONS.min(total);
+        let max_vis = self.max_visible.min(total);
         let start = self
             .selected
             .saturating_sub(max_vis / 2)
@@ -492,13 +508,13 @@ impl SessionResumePanel {
             return SessionResumeAction::None;
         }
         if matches_binding(key, "tui.select.pageUp") {
-            self.selected = self.selected.saturating_sub(MAX_VISIBLE_SESSIONS);
+            self.selected = self.selected.saturating_sub(self.max_visible);
             return SessionResumeAction::None;
         }
         if matches_binding(key, "tui.select.pageDown") {
             let n = self.visible_rows().len();
             if n > 0 {
-                self.selected = (self.selected + MAX_VISIBLE_SESSIONS).min(n - 1);
+                self.selected = (self.selected + self.max_visible).min(n - 1);
             }
             return SessionResumeAction::None;
         }
@@ -662,7 +678,7 @@ mod tests {
             .filter(|i| plain.contains(&format!("session-s{i}")))
             .count();
         assert!(
-            body_hits <= MAX_VISIBLE_SESSIONS,
+            body_hits <= DEFAULT_MAX_VISIBLE_SESSIONS || body_hits <= panel.max_visible(),
             "viewport must cap visible sessions; got {body_hits}:\n{plain}"
         );
         assert!(

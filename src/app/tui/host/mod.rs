@@ -215,6 +215,7 @@ impl<T: Terminal> HostSession<T> {
 
         let ui_root = Rc::new(RefCell::new(UiRoot::new()));
         ui_root.borrow_mut().set_layout_meta(cwd.clone(), model);
+        ui_root.borrow_mut().set_term_rows(terminal.rows() as usize);
         let quit_flag = Arc::new(AtomicBool::new(false));
         let mut session = Self::new(terminal, shared_ui_root_rebuild(ui_root.clone()));
         session.layout_cwd = cwd;
@@ -626,7 +627,10 @@ impl<T: Terminal> HostSession<T> {
         let Some(root) = self.ui_root.as_ref() else {
             return;
         };
-        root.borrow_mut().apply_ui_model(&self.ui_model);
+        let rows = self.tui.terminal.rows() as usize;
+        let mut root = root.borrow_mut();
+        root.set_term_rows(rows);
+        root.apply_ui_model(&self.ui_model);
     }
 
     /// Apply one host event and attempt a throttled render.
@@ -800,6 +804,9 @@ impl<T: Terminal> HostSession<T> {
     pub fn sync_layout_from_terminal(&mut self) {
         let cols = self.tui.terminal.columns();
         let rows = self.tui.terminal.rows();
+        if let Some(root) = self.ui_root.as_ref() {
+            root.borrow_mut().set_term_rows(rows as usize);
+        }
         let next = if is_too_small(cols, rows) {
             LayoutMode::TooSmall
         } else {

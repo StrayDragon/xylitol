@@ -4,6 +4,7 @@ use xylitol_tui::components::select_list::{SelectItem, SelectList, SelectListLay
 use xylitol_tui::{TreeSelector, TreeSelectorOptions};
 
 use super::super::theme::LayoutTheme;
+use crate::app::tui::layout::DEFAULT_MAX_VISIBLE;
 use crate::app::tui::session_resume::SessionResumePanel;
 
 pub(super) fn empty_tree_selector(theme: LayoutTheme) -> TreeSelector {
@@ -11,7 +12,7 @@ pub(super) fn empty_tree_selector(theme: LayoutTheme) -> TreeSelector {
         Vec::new(),
         theme.tree_selector_theme(),
         TreeSelectorOptions {
-            max_visible: 10,
+            max_visible: DEFAULT_MAX_VISIBLE,
             unicode_connectors: true,
             include_node: None,
             active_id: None,
@@ -23,7 +24,7 @@ pub(super) fn empty_tree_selector(theme: LayoutTheme) -> TreeSelector {
 pub(super) fn empty_models_list(theme: LayoutTheme) -> SelectList {
     SelectList::new(
         Vec::new(),
-        8,
+        DEFAULT_MAX_VISIBLE,
         theme.select_list_theme(),
         SelectListLayoutOptions {
             min_primary_column_width: Some(24),
@@ -36,7 +37,7 @@ pub(super) fn empty_models_list(theme: LayoutTheme) -> SelectList {
 pub(super) fn empty_themes_list(theme: LayoutTheme) -> SelectList {
     SelectList::new(
         Vec::new(),
-        4,
+        DEFAULT_MAX_VISIBLE,
         theme.select_list_theme(),
         SelectListLayoutOptions {
             min_primary_column_width: Some(12),
@@ -49,7 +50,7 @@ pub(super) fn empty_themes_list(theme: LayoutTheme) -> SelectList {
 pub(super) fn empty_mcp_list(theme: LayoutTheme) -> SelectList {
     SelectList::new(
         Vec::new(),
-        10,
+        DEFAULT_MAX_VISIBLE,
         theme.select_list_theme(),
         SelectListLayoutOptions {
             min_primary_column_width: Some(24),
@@ -62,7 +63,7 @@ pub(super) fn empty_mcp_list(theme: LayoutTheme) -> SelectList {
 pub(super) fn import_confirm_list(theme: LayoutTheme) -> SelectList {
     SelectList::new(
         vec![SelectItem::new("yes", "Yes"), SelectItem::new("no", "No")],
-        4,
+        DEFAULT_MAX_VISIBLE,
         theme.select_list_theme(),
         SelectListLayoutOptions {
             min_primary_column_width: Some(8),

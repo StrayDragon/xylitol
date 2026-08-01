@@ -202,6 +202,7 @@ impl Component for UiRoot {
         lines.extend(self.render_status_slot(width));
         // Editor owns the operation-zone ─ borders (DESIGN editor.md / agent_demo).
         // Do NOT wrap with a second outer border pair.
+        self.apply_chrome_footprint();
         lines.extend(self.render_editor_slot(width));
         let footer = if width == 0 {
             self.footer.text().to_string()
