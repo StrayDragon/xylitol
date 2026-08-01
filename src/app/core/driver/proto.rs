@@ -239,7 +239,9 @@ pub trait XyDriver: Send {
     /// Start background MCP connect when configured (c1200). Idempotent.
     async fn begin_mcp_bootstrap(&mut self) {}
 
-    /// Poll background MCP bootstrap; returns true when loaded-resources should refresh.
+    /// Poll background MCP bootstrap; returns true when loaded-resources should refresh
+    /// (connecting label changed, or bootstrap just settled). Unchanged progress ticks
+    /// return false so the TUI can skip upper invalidation while the spinner runs.
     async fn poll_mcp_bootstrap(&mut self) -> bool {
         false
     }

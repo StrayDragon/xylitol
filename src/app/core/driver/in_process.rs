@@ -36,11 +36,27 @@ type McpToolList = Vec<Arc<dyn crate::protocol::ports::XyTool>>;
 type McpDiscoverOk = Option<(Arc<crate::infra::mcp::McpClientManager>, McpToolList)>;
 type McpDiscoverOutcome = Result<McpDiscoverOk, String>;
 
+/// Whether connecting progress should invalidate the TUI loaded-resources strip.
+///
+/// `last_ui_label`: `None` = never published; `Some(label)` = last published value.
+fn mcp_progress_needs_ui_refresh(
+    last_ui_label: &mut Option<Option<String>>,
+    current: Option<String>,
+) -> bool {
+    if last_ui_label.as_ref() == Some(&current) {
+        return false;
+    }
+    *last_ui_label = Some(current);
+    true
+}
+
 enum McpBootState {
     Idle,
     Running {
         handle: tokio::task::JoinHandle<McpDiscoverOutcome>,
         progress: Arc<tokio::sync::Mutex<crate::infra::mcp::McpConnectProgress>>,
+        /// Last connecting label published to the TUI; skip refresh when unchanged.
+        last_ui_label: Option<Option<String>>,
     },
     Settled,
 }
@@ -800,7 +816,11 @@ impl XyDriver for XyInProcessDriver {
             crate::infra::mcp::connect_and_discover_with_progress(&servers, Some(progress_task))
                 .await
         });
-        self.mcp_boot = McpBootState::Running { handle, progress };
+        self.mcp_boot = McpBootState::Running {
+            handle,
+            progress,
+            last_ui_label: None,
+        };
     }
 
     async fn poll_mcp_bootstrap(&mut self) -> bool {
@@ -809,8 +829,16 @@ impl XyDriver for XyInProcessDriver {
             _ => return false,
         };
         if !finished {
-            // Still connecting — UI should refresh progress label.
-            return true;
+            // Progress-only: refresh loaded-resources when the connecting label
+            // changes (0/n → 1/n …). Unchanged ticks MUST NOT invalidate TUI upper.
+            let label = match &self.mcp_boot {
+                McpBootState::Running { progress, .. } => progress.lock().await.connecting_label(),
+                _ => return false,
+            };
+            if let McpBootState::Running { last_ui_label, .. } = &mut self.mcp_boot {
+                return mcp_progress_needs_ui_refresh(last_ui_label, label);
+            }
+            return false;
         }
         let prev = std::mem::replace(&mut self.mcp_boot, McpBootState::Idle);
         let McpBootState::Running { handle, .. } = prev else {
@@ -827,8 +855,11 @@ impl XyDriver for XyInProcessDriver {
                 if let Some(state) = self.reload.as_mut() {
                     state.mcp.set_manager(manager);
                 }
+                // Do not await shutdown on the TUI tick path (spinner hitch).
                 if let Some(old) = old {
-                    old.shutdown().await;
+                    tokio::spawn(async move {
+                        old.shutdown().await;
+                    });
                 }
                 self.mcp_boot = McpBootState::Settled;
             }
@@ -1442,5 +1473,27 @@ mod driver_session_tree_tests {
         let snap = driver.loaded_resources_snapshot().await;
         assert!(snap.mcp_connecting_label.is_none());
         assert_eq!(snap.mcp_configured, 0);
+    }
+
+    #[test]
+    fn mcp_progress_needs_ui_refresh_only_on_label_change() {
+        let mut last = None;
+        assert!(mcp_progress_needs_ui_refresh(
+            &mut last,
+            Some("connecting 0/2".into())
+        ));
+        assert!(!mcp_progress_needs_ui_refresh(
+            &mut last,
+            Some("connecting 0/2".into())
+        ));
+        assert!(mcp_progress_needs_ui_refresh(
+            &mut last,
+            Some("connecting 1/2".into())
+        ));
+        assert!(!mcp_progress_needs_ui_refresh(
+            &mut last,
+            Some("connecting 1/2".into())
+        ));
+        assert!(mcp_progress_needs_ui_refresh(&mut last, None));
     }
 }
