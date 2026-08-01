@@ -43,9 +43,10 @@ pub const MCP_SLOT_BASE: SlotChromeRows = SlotChromeRows {
     trailer: 1,
 };
 /// Scope + help + filter hint + filter input; optional status_line adds to header.
+/// Trailer: `(selected/total)` scroll info under the body.
 pub const RESUME_SLOT: SlotChromeRows = SlotChromeRows {
     header: 4,
-    trailer: 0,
+    trailer: 1,
 };
 /// Title + ~2 help wraps + search; tree scroll_info as trailer.
 pub const TREE_SLOT: SlotChromeRows = SlotChromeRows {
@@ -94,13 +95,24 @@ mod tests {
 
     #[test]
     fn short_terminal_resume_budget_keeps_status_room() {
-        // 16 rows: reserved busy+footer(+no queue/toast)=3; resume overhead=4 → body ≤ 9
+        // 16 rows: reserved busy+footer(+no queue/toast)=3; resume overhead=5 → body ≤ 8
         let reserved = reserved_lower_chrome(true, 0, false);
         assert_eq!(reserved, 3);
         let body = slot_body_budget(16, reserved, RESUME_SLOT);
-        // status(2)+header(4)+body+footer(1) ≤ 16 → body ≤ 9
-        assert_eq!(body, 9);
+        assert_eq!(body, 8);
         let slot_total = RESUME_SLOT.overhead() + body;
         assert_eq!(2 + slot_total + 1, 16);
+    }
+
+    #[test]
+    fn toast_and_queue_shrink_resume_body_so_lower_stack_fits() {
+        // 1 steer → spacer + msg + hint = 3 queue lines; + toast 1 → reserved 7
+        assert_eq!(queue_strip_line_count(1, 0), 3);
+        let reserved = reserved_lower_chrome(true, 3, true);
+        assert_eq!(reserved, 7);
+        let body = slot_body_budget(16, reserved, RESUME_SLOT);
+        assert_eq!(body, 4);
+        // queue(3)+toast(1)+status(2)+header(4)+body(4)+trailer(1)+footer(1) == 16
+        assert_eq!(3 + 1 + 2 + RESUME_SLOT.overhead() + body + 1, 16);
     }
 }

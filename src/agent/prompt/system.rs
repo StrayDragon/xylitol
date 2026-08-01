@@ -5,7 +5,7 @@
 //!
 //! Key functions:
 //! - `build_system_prompt(opts)` — explicit options
-//! - default body path uses sandboxed minijinja ([`super::sandbox`])
+//! - default body path uses sandboxed minijinja (`super::sandbox`)
 
 use crate::agent::tools::ToolSet;
 

@@ -4770,6 +4770,111 @@ mod slice_tests {
         );
     }
 
+    /// Toast occupies reserved: short terminal keeps Working **and** chrome toast in viewport.
+    #[tokio::test]
+    async fn busy_resume_short_terminal_with_toast_keeps_working_and_toast_in_viewport() {
+        use crate::app::tui::commands::{BUSY_SESSION_SWITCH_NOTICE, CHROME_TOAST_ERROR_PREFIX};
+
+        let term_rows = 16usize;
+        let mut session = HostSession::new_product_ui(TestTerminal::new(80, term_rows as u16));
+        let root = session.ui_root().expect("ui").clone();
+        let mut driver = ScriptedDriver::new();
+        let mut entries = Vec::new();
+        for i in 0..12 {
+            entries.push(SessionListEntry {
+                id: format!("s{i}"),
+                name: Some(format!("chat {i}")),
+                first_message: Some("preview".into()),
+                message_count: 1,
+                modified_unix: Some(1_700_000_000 + i),
+                parent_session_id: None,
+                tree_prefix: String::new(),
+                cwd: Some(".".into()),
+                path: None,
+            });
+        }
+        driver.set_session_list(entries);
+        let mut stream = None;
+
+        session.on_run_started("busy");
+        root.borrow_mut().set_editor_text("/session-resume");
+        session.step(HostEvent::Input(enter_event())).unwrap();
+        pump_host_driver(&mut session, &mut driver, &mut stream)
+            .await
+            .unwrap();
+        assert!(root.borrow().session_resume_open());
+        session.push_chrome_toast(BUSY_SESSION_SWITCH_NOTICE);
+
+        let frame = root.borrow_mut().render(80);
+        let vp_top = frame.len().saturating_sub(term_rows);
+        let working_idx = frame.iter().position(|l| l.contains("Working"));
+        let toast_idx = frame.iter().position(|l| {
+            l.contains(CHROME_TOAST_ERROR_PREFIX) && l.contains(BUSY_SESSION_SWITCH_NOTICE)
+        });
+        assert!(
+            working_idx.is_some_and(|i| i >= vp_top),
+            "Working MUST stay in viewport [vp_top={vp_top}]; frame_len={}",
+            frame.len()
+        );
+        assert!(
+            toast_idx.is_some_and(|i| i >= vp_top),
+            "chrome toast MUST stay in viewport when reserved (atc23); vp_top={vp_top} toast={toast_idx:?} frame_len={}",
+            frame.len()
+        );
+    }
+
+    /// Queue strip occupies reserved: short terminal keeps Working **and** Steering line in viewport.
+    #[tokio::test]
+    async fn busy_resume_short_terminal_with_queue_keeps_working_and_steer_in_viewport() {
+        let term_rows = 16usize;
+        let mut session = HostSession::new_product_ui(TestTerminal::new(80, term_rows as u16));
+        let root = session.ui_root().expect("ui").clone();
+        let mut driver = ScriptedDriver::new();
+        let mut entries = Vec::new();
+        for i in 0..12 {
+            entries.push(SessionListEntry {
+                id: format!("s{i}"),
+                name: Some(format!("chat {i}")),
+                first_message: Some("preview".into()),
+                message_count: 1,
+                modified_unix: Some(1_700_000_000 + i),
+                parent_session_id: None,
+                tree_prefix: String::new(),
+                cwd: Some(".".into()),
+                path: None,
+            });
+        }
+        driver.set_session_list(entries);
+        let mut stream = None;
+
+        session.on_run_started("busy");
+        root.borrow_mut().set_editor_text("/session-resume");
+        session.step(HostEvent::Input(enter_event())).unwrap();
+        pump_host_driver(&mut session, &mut driver, &mut stream)
+            .await
+            .unwrap();
+        assert!(root.borrow().session_resume_open());
+        session
+            .ui_model_mut()
+            .enqueue_steer_strip("nudge while listing".into());
+        session.sync_ui_root_from_model();
+
+        let frame = root.borrow_mut().render(80);
+        let vp_top = frame.len().saturating_sub(term_rows);
+        let working_idx = frame.iter().position(|l| l.contains("Working"));
+        let steer_idx = frame.iter().position(|l| l.contains("Steering:"));
+        assert!(
+            working_idx.is_some_and(|i| i >= vp_top),
+            "Working MUST stay in viewport [vp_top={vp_top}]; frame_len={}",
+            frame.len()
+        );
+        assert!(
+            steer_idx.is_some_and(|i| i >= vp_top),
+            "queue Steering line MUST stay in viewport when reserved (atc23); vp_top={vp_top} steer={steer_idx:?} frame_len={}",
+            frame.len()
+        );
+    }
+
     #[tokio::test]
     async fn c1115_theme_bare_opens_slot() {
         let mut session = HostSession::new_product_ui(TestTerminal::new(80, 24));

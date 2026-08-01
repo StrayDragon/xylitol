@@ -60,7 +60,6 @@ pub fn notify_queue_update(&self)
 pub fn parse_jsonl(bytes: &[u8]) -> Result<Vec<SessionEntry>, String>
 pub fn queue_stats(&self) -> QueueStats
 pub fn rebuild_system_prompt(&mut self)
-pub fn register_prompt_commands( &mut self, templates: &[crate::protocol::resource::PromptTemplate], )
 pub fn render_html(session_id: &str, entries: &[SessionEntry]) -> String
 pub fn render_jsonl(entries: &[SessionEntry]) -> Result<String, String>
 pub fn replace_hooks(&mut self, hooks: AgentHooks)
