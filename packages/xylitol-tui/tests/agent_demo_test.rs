@@ -183,12 +183,12 @@ fn agent_demo_slash_command_popup_esc_dismisses() {
         .expect("initial empty editor should render");
     h.keys("/");
     h.render_result().expect("slash popup open");
-    h.assert_text_contains("Switch model: /model <id>");
+    h.assert_text_contains("Show key help in transcript");
     h.keys("\x1b"); // Esc → Editor cancels autocomplete
     h.render_result().expect("Esc dismisses slash popup");
     let dismissed = h.tui.terminal.viewport().join("\n");
     assert!(
-        !dismissed.contains("Switch model: /model <id>"),
+        !dismissed.contains("Show key help in transcript"),
         "Esc should close CommandPopup and leave `/` in the editor; got:\n{dismissed}"
     );
 }
@@ -471,7 +471,7 @@ fn agent_demo_layout_is_minimal_single_column() {
         "user messages use a short glyph prefix; got:\n{text}"
     );
     assert!(
-        text.contains("Ctrl+P") && text.contains("plate") && text.contains("/md"),
+        text.contains("Ctrl+P") && text.contains("plate") && text.contains("Markdown"),
         "slim seed should point at plate/md without a permanent chrome wall; got:\n{text}"
     );
     assert!(

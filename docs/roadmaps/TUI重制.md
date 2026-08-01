@@ -77,7 +77,7 @@ packages/xylitol-tui
 | 阶段 | 用户可感知结果 | 路径 |
 |---|---|---|
 | **M0 prototype** | `just open-uientry-remaster`：rail + 空行 + 无洗底 | 独立 HTML |
-| **M1 条目呈现** | 产品主滚动区采用 rail（或等价） | 产品接线 |
+| **M1 条目呈现** | 产品主滚动区采用 rail（或等价） | 产品接线 · **c1830 兑现中** |
 | **M2 语义复制** | 复制出口无装饰墙 | 宿主为主 |
 | **M3 引擎按需** | 仅证明确需时 | `package-tui-*` |
 

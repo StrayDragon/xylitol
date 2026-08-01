@@ -20,7 +20,7 @@ components:
 | idle Enter `!cmd` | `XyDriver::execute_bash`（`exclude_from_context=false`）；**MUST NOT** `XyDriver::run` |
 | idle Enter `!!cmd` | 同上且 `exclude_from_context=true` |
 | 空 `!` / `!!` | 系统提示，不执行 |
-| 结果 | live scrollback：`UiEntry::Bash` 块（`$ cmd` + 输出）；提交即 **pending** tint（`tool-pending-bg`）；输出 chunk 到达时 **同一块内增量刷新**（保持 pending）；成功 → `tool-success-bg`；失败 / Esc `(cancelled)` → `tool-error-bg`；**整行终端宽度** `apply_background_to_line` + 块内 padding_y=1 |
+| 结果 | live scrollback：`UiEntry::Bash` 块（`$ cmd` + 输出）；提交即 **pending** 轨色；输出 chunk 到达时 **同一块内增量刷新**（保持 pending 轨）；成功 → success 轨；失败 / Esc `(cancelled)` → error 轨；经包 `paint_left_rail_line`（轨+gutter+内容）；**MUST NOT** 默认整行 `tool-*-bg` 洗底 |
 | 块间距 | 块与块之间 **一行** untinted Spacer |
 | 长输出 | 默认末尾 5 行视口；**Ctrl+O** 可展开全文（与工具详情同键）；若含 `[Full output: …]` 硬截断则 **禁展开**（hint=`expand disabled — see Full output`），脚注以 `{colors.warning}`（可 bold）绘制 |
 | busy（agent） | `!…` 仍走 steer/普通文本；**不**另开 bash |
@@ -54,4 +54,4 @@ components:
 
 ## 意向（对齐 pi / demo）
 
-bash 交互块用 **tool-*-bg 三态 tint**（pending / success / error·cancelled）；边框仍用 `{colors.success}` fg 强调 `!` 模式。退出码与 `(cancelled)` 用 error tint + error fg。
+bash 交互块用 **status 轨三态**（pending / success / error·cancelled）；边框仍用 `{colors.success}` fg 强调 `!` 模式。退出码与 `(cancelled)` 用 error 轨 + error fg。

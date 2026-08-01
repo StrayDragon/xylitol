@@ -193,8 +193,8 @@ components:
 | `diff-added-bg` / `diff-removed-bg` | Diff 增删行 **整行淡底**（**仅 unified**；铺满行宽；与 tool-*-bg 分离）。**Side-by-side MUST NOT 用行底**（c464） |
 | `diff-added-word-bg` / `diff-removed-word-bg` | 独立 unified 行底路径的词级底 token。**Edit 嵌在 `tool-*-bg` 时**改用 `word_wash_bg(block, polarity)`（块底→红/绿轻量混亮，默认 mix≈**0.32**）；复位到块/行底，**勿 reverse** |
 | `surface` | 默认底（终端常透明；需要垫底时用） |
-| `tool-pending-bg` / `tool-success-bg` / `tool-error-bg` | 工具块**全行背景**三态（Mocha tint：`#313244` / `#24352a` / `#352428`；对齐 pi 语义，色值本文件 SSOT） |
-| `user-message-bg` | 用户消息可选全行背景（对齐 pi `userMessageBg`） |
+| `tool-pending-bg` / `tool-success-bg` / `tool-error-bg` | 历史 wash token（仍保留于 Palette）；**产品默认不**作整行洗底——成败用 accent/success/error **左边轨**（c1830） |
+| `user-message-bg` | 历史用户淡底 token；**产品默认不**启用全行淡底（c1830） |
 | `skill-ref` | 用户消息内联 `$skill` 高亮（A10；提交注入见 c1130；**不是** accent） |
 
 **工具状态背景（吸取 pi）**：成功/失败不要只靠 fg `ok`/`error` 字——用极淡的绿/红 **bg** 铺满工具块行宽（`apply_background_to_line` + 仅重置 `\x1b[49m`），pending 用中性 surface tint。**demo 已验证（c462）**。产品侧 **不做 Codex 式 TranscriptView**（原 c470 已移除）；历史/分支 UX 优先双 Esc 会话树（c454→c456→**c615** 活树）。
