@@ -458,10 +458,10 @@ fn pty_agent_demo_narrow_cjk_submit_flow_survives_enter() {
         .send_keys("\x15把命令面板和设置面板的窄宽 CJK 回归补齐 🙂")
         .expect("replace editor text with narrow CJK prompt");
     session.send_keys("\r").expect("submit editor input");
-    let screen = session
-        .wait_for("窄宽 CJK", Duration::from_secs(10), 96, 32)
+    // Seed transcript is tall; CapturedScreen has no scroll-region — use raw.
+    session
+        .wait_for_raw("窄宽 CJK", Duration::from_secs(15))
         .expect("narrow submit should appear");
-    assert!(!screen.text().trim().is_empty());
 }
 
 /// Extreme shrink must show TooSmall hint and recover Ready on restore (not exit/stuck).
@@ -516,8 +516,10 @@ fn pty_product_fake_extreme_shrink_then_restore() {
 fn pty_product_fake_hello_then_exit() {
     let (mut session, _tmp) = spawn_product_fake_ready(100, 30);
     session.send_keys("\x15hi\r").expect("submit short prompt");
+    // Tall welcome/skills + differential CSI leaves CapturedScreen stale (no
+    // scroll-region); assert Fake reply via raw PTY like session-tree cases.
     session
-        .wait_for(crate::FAKE_HELLO, Duration::from_secs(30), 100, 30)
+        .wait_for_raw(crate::FAKE_HELLO, Duration::from_secs(30))
         .expect("Fake default reply should appear");
 
     session.send_keys("\x15/exit\r").expect("submit /exit");
@@ -608,7 +610,7 @@ fn pty_product_fake_session_tree_opens_search_help() {
     let (mut session, _tmp) = spawn_product_fake_ready(COLS as u16, ROWS as u16);
     session.send_keys("\x15hi\r").expect("submit prompt");
     session
-        .wait_for(crate::FAKE_HELLO, Duration::from_secs(30), COLS, ROWS)
+        .wait_for_raw(crate::FAKE_HELLO, Duration::from_secs(30))
         .expect("Fake reply");
 
     // Empty editor, then double Esc within the product window.
