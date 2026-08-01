@@ -4674,6 +4674,56 @@ mod slice_tests {
         );
     }
 
+    /// Desired invariant for c1810 chrome footprint (see change design.md).
+    /// Today content-end viewport + tall Resume can hide `Working` on short terminals.
+    #[tokio::test]
+    #[ignore = "known gap: busy list slot can push status above viewport — c1810 design.md"]
+    async fn busy_resume_short_terminal_keeps_working_in_viewport() {
+        let term_rows = 16usize;
+        let mut session = HostSession::new_product_ui(TestTerminal::new(80, term_rows as u16));
+        let root = session.ui_root().expect("ui").clone();
+        let mut driver = ScriptedDriver::new();
+        let mut entries = Vec::new();
+        for i in 0..12 {
+            entries.push(SessionListEntry {
+                id: format!("s{i}"),
+                name: Some(format!("chat {i}")),
+                first_message: Some("preview".into()),
+                message_count: 1,
+                modified_unix: Some(1_700_000_000 + i),
+                parent_session_id: None,
+                tree_prefix: String::new(),
+                cwd: Some(".".into()),
+                path: None,
+            });
+        }
+        driver.set_session_list(entries);
+        let mut stream = None;
+
+        session.on_run_started("busy");
+        root.borrow_mut().set_editor_text("/session-resume");
+        session.step(HostEvent::Input(enter_event())).unwrap();
+        pump_host_driver(&mut session, &mut driver, &mut stream)
+            .await
+            .unwrap();
+        assert!(root.borrow().session_resume_open());
+
+        let frame = root.borrow_mut().render(80);
+        let working_idx = frame.iter().position(|l| l.contains("Working"));
+        assert!(
+            working_idx.is_some(),
+            "Working must still be in full render tree: {}",
+            frame.len()
+        );
+        let working_idx = working_idx.expect("Working");
+        let vp_top = frame.len().saturating_sub(term_rows);
+        assert!(
+            working_idx >= vp_top,
+            "Working@{working_idx} MUST stay in content-end viewport [vp_top={vp_top}, rows={term_rows}]; frame_len={}",
+            frame.len()
+        );
+    }
+
     #[tokio::test]
     async fn c1115_theme_bare_opens_slot() {
         let mut session = HostSession::new_product_ui(TestTerminal::new(80, 24));
