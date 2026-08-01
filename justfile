@@ -124,6 +124,10 @@ test-tui-e2e-tmux verbosity=verbosity_default:
 demo-tui:
     cargo run -p xylitol-tui --example agent_demo
 
+# agent_demo with remaster rail skin (left bg strip; /entry-style rail).
+demo-tui-rail:
+    XYLITOL_AGENT_DEMO_ENTRY_STYLE=rail cargo run -p xylitol-tui --example agent_demo
+
 # agent_demo without syntect (lighter / no-highlight regression).
 demo-tui-no-highlight:
     cargo run -p xylitol-tui --example agent_demo --no-default-features
@@ -221,6 +225,10 @@ check-scripts verbosity=verbosity_default:
 # Open DESIGN playground HTML (Linux; xdg-open).
 open-design-playground:
     xdg-open src/app/tui/design/playground/index.html
+
+# Open UiEntry remaster prototype (rail skin; not SSOT).
+open-uientry-remaster:
+    xdg-open src/app/tui/design/playground/uientry-remaster.html
 
 # Package TUI tests with default features (includes highlight) — layers 1–4.
 [arg('verbosity', pattern='quiet|normal|verbose')]

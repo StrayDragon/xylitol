@@ -33,6 +33,7 @@ flowchart TB
     Web["Cloud Agent 与 Web 控制台"]
     Obs["OTEL 与 Langfuse 观测"]
     Visual["TUI 视觉与信息表达"]
+    Remaster["TUI 重制"]
     Keys["键位与命令发现"]
   end
 
@@ -58,6 +59,7 @@ flowchart TB
   Homo -.->|跨面约束| Web
   Homo -.->|覆盖事实源| Live
   Homo -.->|公共发现路径| Keys
+  Visual -.->|减噪与密度| Remaster
   Web -.->|学习键盘挂靠| Keys
   Live --> Lsp
   Live --> Dap
@@ -76,11 +78,13 @@ flowchart TB
 > **压缩**：会话 auto-compact + provenance 已落地（见 [architecture](../architecture/压缩与上下文.md)）；缓存/动态压缩见新篇。
 > **Eval 调研底稿**：[../research/agent-eval-frameworks-2026.md](../research/agent-eval-frameworks-2026.md)。
 > **键位学习 UI 调研**：[../research/keybinding-keyboard-visualizer-2026.md](../research/keybinding-keyboard-visualizer-2026.md)（挂 [键位与命令发现.md](./键位与命令发现.md) M4）。
+> **TUI 重制**：景观 [../research/coding-agent-tui-design-landscape-2026.md](../research/coding-agent-tui-design-landscape-2026.md)；引擎缺口 [../research/xylitol-tui-capability-hooks-vs-landscape-2026.md](../research/xylitol-tui-capability-hooks-vs-landscape-2026.md)。
 
 | 文档 | 候补方向 |
 |---|---|
 | [Web与TUI同源.md](./Web与TUI同源.md) | 跨面语义约束板（含长历史 activity 折叠栈意向；非 Web 壳本身） |
 | [TUI视觉与信息表达.md](./TUI视觉与信息表达.md) | 状态减噪、主题密度；与 activity 折叠减噪衔接 |
+| [TUI重制.md](./TUI重制.md) | **UiEntry** rail 皮肤；独立 remaster 页；无洗底 + 条目空行 |
 | [键位与命令发现.md](./键位与命令发现.md) | busy 即时列表（含 resume 只读）；`/hotkeys` 支线延后；可视化键盘挂 Web；busy 列表顶掉 status → `c1810`（调研在 change design） |
 | [OTEL与Langfuse观测.md](./OTEL与Langfuse观测.md) | 子进程出站观测（已落地见 [architecture](../architecture/进程内观测.md)） |
 | [Agent-Eval与回归基准.md](./Agent-Eval与回归基准.md) | SWE 先、TB 后；Docker 出分；AA 选模对照；Langfuse 回归旁路 |

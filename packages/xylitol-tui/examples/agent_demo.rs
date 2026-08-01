@@ -29,7 +29,7 @@ use xylitol_tui::{
     ThinkingBorderLevel, TreeNode, TreeSelector, TreeSelectorOptions, TreeSelectorTheme,
     TruncateFrom, TruncatedText, apply_background_to_line, apply_thinking_border, bg_rgb,
     fg_bg_rgb, fg_rgb, is_osc11_background_color_response, is_terminal_color_reply,
-    matches_key_event, parse_osc11_background_color, parse_terminal_color_scheme_report,
+    matches_key_event, mix_rgb, parse_osc11_background_color, parse_terminal_color_scheme_report,
     printable_from_key_event, render_diff_lines, render_expandable_output,
     resolve_terminal_color_scheme, truncate_to_width, visible_width, word_wash_bg,
     wrap_text_with_ansi,
@@ -41,6 +41,10 @@ const SLASH_COMMANDS: &[(&str, &str)] = &[
     ("help", "Show key help in transcript"),
     ("md", "Stream full Markdown grammar stub (typewriter)"),
     ("theme", "Switch chrome theme: /theme [dark|light|toggle]"),
+    (
+        "entry-style",
+        "Transcript entry skin: /entry-style [rail|wash|toggle] (left bg strip)",
+    ),
     (
         "thinking-level",
         "Cycle editor thinking border (Shift+Tab; or /thinking-level)",
@@ -939,9 +943,6 @@ fn markdown_showcase_seed() -> &'static str {
     markdown_grammar_stub()
 }
 
-fn magenta(s: &str) -> String {
-    format!("\x1b[35m{s}\x1b[39m")
-}
 fn red(s: &str) -> String {
     format!("\x1b[31m{s}\x1b[39m")
 }
@@ -1200,6 +1201,41 @@ impl GlyphSet {
     }
 }
 
+#[derive(Clone, Copy, PartialEq, Eq)]
+enum EntryStyle {
+    /// Full-row tool/user wash (legacy pi-ish).
+    Wash,
+    /// 1-cell status bg strip on tools/thinking; user/assistant flush (❯ only).
+    Rail,
+}
+
+impl EntryStyle {
+    fn from_env() -> Self {
+        match std::env::var("XYLITOL_AGENT_DEMO_ENTRY_STYLE")
+            .ok()
+            .as_deref()
+            .map(str::trim)
+        {
+            Some("rail") | Some("RAIL") => Self::Rail,
+            _ => Self::Wash,
+        }
+    }
+
+    fn cycle(self) -> Self {
+        match self {
+            Self::Wash => Self::Rail,
+            Self::Rail => Self::Wash,
+        }
+    }
+
+    fn label(self) -> &'static str {
+        match self {
+            Self::Wash => "wash",
+            Self::Rail => "rail",
+        }
+    }
+}
+
 #[derive(Clone)]
 enum TranscriptEntry {
     Message {
@@ -1355,6 +1391,8 @@ pub struct FakeCodingAgentApp {
     theme_auto: bool,
     /// Resolved Dark/Light token set (c458).
     theme_mode: TerminalColorScheme,
+    /// Transcript entry skin: full wash vs left bg rail (remaster prototype).
+    entry_style: EntryStyle,
     /// Editor thinking-level border (c1140); bash success border still wins while `!`.
     thinking_border_level: ThinkingBorderLevel,
     /// Last submit's resolved `$skill` → stub SKILL.md bodies (demo inject assert).
@@ -2110,6 +2148,43 @@ impl FakeCodingAgentApp {
         true
     }
 
+    /// Parse `/entry-style` [rail|wash|toggle] — left-bg rail vs full wash.
+    fn try_entry_style_command(&mut self, last_line: &str) -> bool {
+        let body = last_line
+            .strip_prefix('/')
+            .or_else(|| last_line.strip_prefix(':'))
+            .unwrap_or(last_line);
+        let mut parts = body.split_whitespace();
+        let Some(cmd) = parts.next() else {
+            return false;
+        };
+        if !(cmd.eq_ignore_ascii_case("entry-style") || cmd.eq_ignore_ascii_case("entrystyle")) {
+            return false;
+        }
+        match parts.next().unwrap_or("toggle") {
+            "rail" => self.entry_style = EntryStyle::Rail,
+            "wash" => self.entry_style = EntryStyle::Wash,
+            "toggle" | "cycle" => self.entry_style = self.entry_style.cycle(),
+            other => {
+                self.push_message(
+                    Role::ScrollNotice,
+                    format!("unknown entry-style `{other}` · use /entry-style [rail|wash|toggle]"),
+                );
+                self.set_status("Ready");
+                return true;
+            }
+        }
+        self.push_message(
+            Role::ScrollNotice,
+            format!(
+                "entry-style → {} (rail = left bg strip, no ASCII |)",
+                self.entry_style.label()
+            ),
+        );
+        self.set_status(format!("Ready · {}", self.entry_style.label()));
+        true
+    }
+
     /// Apply `/model <id>` (SetModel-style). Bare `/model` tips without changing footer.
     fn try_model_command(&mut self, last_line: &str) -> bool {
         let body = last_line
@@ -2588,6 +2663,7 @@ impl FakeCodingAgentApp {
                 .map(|v| v == "1" || v.eq_ignore_ascii_case("true"))
                 .unwrap_or(false),
             theme_mode: TerminalColorScheme::Dark,
+            entry_style: EntryStyle::from_env(),
             thinking_border_level: ThinkingBorderLevel::Medium,
             last_skill_injections: Vec::new(),
         };
@@ -2603,7 +2679,7 @@ impl FakeCodingAgentApp {
         // Slim chrome (c535): short pointer + compact kit. Full Markdown → plate `/md`.
         self.push_message(
             Role::ScrollNotice,
-            "demo · Ctrl+P plate · /md Markdown · /theme dark|light · /help keys · /diff diffs",
+            "demo · /entry-style rail|wash · ! bash · busy Enter=steer · Alt+Enter=follow-up · /help",
         );
         self.push_message(
             Role::User,
@@ -2654,13 +2730,18 @@ impl FakeCodingAgentApp {
             "error — test binary `missing` not found (demo stub)",
             ToolBlockStatus::Error,
         );
+        self.push_tool(
+            "! echo rail-bg-strip",
+            "rail-bg-strip\n(demo interactive bang · editor ! border when typing)",
+            ToolBlockStatus::Success,
+        );
     }
 
     fn inject_help_keys(&mut self) {
         self.push_message(
             Role::ScrollNotice,
             "keys: Enter submit/steer · Alt+Enter follow-up · /md Markdown stream · Ctrl+P plate · \
-             /theme [dark|light|toggle] · Shift+Tab thinking-border · /help · /diff · ! bash · Ctrl+G $EDITOR · double Esc tree · \
+             /theme [dark|light|toggle] · /entry-style rail|wash · Shift+Tab thinking-border · /help · /diff · ! bash · Ctrl+G $EDITOR · double Esc tree · \
              (Ctrl+T) thinking · (Alt+E) tools · (Ctrl+O) tools viewport · Alt+G glyphs · \
              Alt+K compact-status · Alt+Y retry-status · Esc · Ctrl+C",
         );
@@ -3184,6 +3265,11 @@ impl FakeCodingAgentApp {
         }
 
         if self.try_theme_command(last_line) {
+            self.input.set_text(String::new());
+            return;
+        }
+
+        if self.try_entry_style_command(last_line) {
             self.input.set_text(String::new());
             return;
         }
@@ -4021,7 +4107,10 @@ impl FakeCodingAgentApp {
 
     fn role_prefix(&self, role: Role) -> String {
         match role {
-            Role::User => magenta(self.glyph_set.user()),
+            Role::User => {
+                // Palette mauve — matches DESIGN user token (not hardcoded ANSI 35).
+                fg_rgb(self.palette().user, self.glyph_set.user())
+            }
             Role::Assistant => String::new(),
             Role::ScrollNotice => dim(self.glyph_set.system()),
         }
@@ -4046,20 +4135,76 @@ impl FakeCodingAgentApp {
         }
     }
 
+    /// Left layout: `[1-cell bg rail][1 plain gutter space][content…]`.
+    /// Gutter keeps text off the strip (rail+content alone feels cramped).
+    /// Native copy may include rail/gutter spaces — terminal-dependent; not worth ECH/BCE.
+    /// User/assistant stay flush without a rail.
+    fn paint_rail_line(line: &str, width: usize, rgb: xylitol_tui::RgbColor) -> String {
+        const RAIL_COLS: usize = 1;
+        const GUTTER_COLS: usize = 1;
+        let prefix_w = (RAIL_COLS + GUTTER_COLS).min(width.max(1));
+        let rail_w = RAIL_COLS.min(prefix_w);
+        let gutter_w = prefix_w.saturating_sub(rail_w);
+        let content_w = width.saturating_sub(prefix_w);
+        let rail = bg_rgb(rgb, &" ".repeat(rail_w));
+        let gutter = " ".repeat(gutter_w);
+        if content_w == 0 {
+            return format!("{rail}{gutter}");
+        }
+        format!("{rail}{gutter}{}", Self::fit(line, content_w))
+    }
+
+    fn push_entry_block(
+        &self,
+        lines: &mut Vec<String>,
+        content: &[String],
+        width: usize,
+        rgb: xylitol_tui::RgbColor,
+    ) {
+        match self.entry_style {
+            EntryStyle::Wash => {
+                let paint_bg = |line: &str| {
+                    apply_background_to_line(&Self::fit(line, width), width, &|s| bg_rgb(rgb, s))
+                };
+                lines.push(paint_bg(""));
+                for line in content {
+                    lines.push(paint_bg(line));
+                }
+                lines.push(paint_bg(""));
+            }
+            EntryStyle::Rail => {
+                for line in content {
+                    lines.push(Self::paint_rail_line(line, width, rgb));
+                }
+            }
+        }
+    }
+
+    /// Status rail: mix surface←status so a 1-cell strip reads clearly without neon wash.
+    fn rail_rgb_for_tool(&self, status: ToolBlockStatus) -> xylitol_tui::RgbColor {
+        let p = self.palette();
+        let vivid = match status {
+            ToolBlockStatus::Pending => p.accent,
+            ToolBlockStatus::Success => p.success,
+            ToolBlockStatus::Error => p.error,
+        };
+        mix_rgb(p.surface, vivid, 0.72)
+    }
+
+    fn rail_rgb_thinking(&self) -> xylitol_tui::RgbColor {
+        let p = self.palette();
+        // Slightly cooler than plain muted — readable on Mocha without looking like a tool.
+        mix_rgb(p.surface, p.muted, 0.88)
+    }
+
     fn transcript_lines(&self, width: usize) -> Vec<String> {
         let mut lines = Vec::new();
         let g = self.glyph_set;
         let spacer = |w: usize| format!("{}\x1b[49m", " ".repeat(w.max(1)));
-        let paint_bg = |line: &str, w: usize, rgb: xylitol_tui::RgbColor| {
-            apply_background_to_line(&Self::fit(line, w), w, &|s| bg_rgb(rgb, s))
-        };
-        // Full-width wash + padding_y=1; one Spacer between blocks.
-        let push_tinted = |lines: &mut Vec<String>, content: &[String], w: usize, rgb| {
-            lines.push(paint_bg("", w, rgb));
-            for line in content {
-                lines.push(paint_bg(line, w, rgb));
-            }
-            lines.push(paint_bg("", w, rgb));
+        // Rail+gutter = 2 cols for tool/thinking/diff. User + assistant stay full-width flush.
+        let rail_inner = match self.entry_style {
+            EntryStyle::Rail => width.saturating_sub(2).max(1),
+            EntryStyle::Wash => width,
         };
         let mut need_spacer = false;
         for entry in &self.transcript {
@@ -4070,6 +4215,7 @@ impl FakeCodingAgentApp {
             match entry {
                 TranscriptEntry::Message { role, text } => {
                     if matches!(role, Role::Assistant) {
+                        // Flush left — no rail indent (rail on tools only).
                         let mut md = Markdown::new(
                             text.clone(),
                             0,
@@ -4080,7 +4226,16 @@ impl FakeCodingAgentApp {
                         for line in md.render(width) {
                             lines.push(Self::fit(&line, width));
                         }
+                    } else if matches!(role, Role::ScrollNotice) {
+                        let prefix = self.role_prefix(*role);
+                        let raw = if prefix.is_empty() {
+                            text.clone()
+                        } else {
+                            format!("{prefix} {text}")
+                        };
+                        Self::push_wrapped(&mut lines, &raw, width);
                     } else {
+                        // User: only ❯ + body — no left bg rail / no extra gutter.
                         let prefix = self.role_prefix(*role);
                         let body = if matches!(role, Role::User) {
                             let p = self.palette();
@@ -4093,21 +4248,44 @@ impl FakeCodingAgentApp {
                         } else {
                             format!("{prefix} {body}")
                         };
-                        let content = wrap_text_with_ansi(&raw, width);
-                        let rgb = if matches!(role, Role::User) {
-                            self.palette().user_message_bg
-                        } else {
-                            self.palette().tool_pending_bg
-                        };
-                        push_tinted(&mut lines, &content, width, rgb);
+                        match self.entry_style {
+                            EntryStyle::Wash => {
+                                let content = wrap_text_with_ansi(&raw, width);
+                                self.push_entry_block(
+                                    &mut lines,
+                                    &content,
+                                    width,
+                                    self.palette().user_message_bg,
+                                );
+                            }
+                            EntryStyle::Rail => {
+                                Self::push_wrapped(&mut lines, &raw, width);
+                            }
+                        }
                     }
                 }
                 TranscriptEntry::Thinking { expanded, body } => {
                     let marker = if *expanded { g.unfold() } else { g.fold() };
                     let header = format!("{marker} thinking  {}", key_hint("Ctrl+T"));
-                    Self::push_wrapped(&mut lines, &header, width);
+                    let mut block = Vec::new();
+                    Self::push_wrapped(&mut block, &header, rail_inner);
                     if *expanded {
-                        Self::push_wrapped(&mut lines, &dim(body), width);
+                        Self::push_wrapped(&mut block, &dim(body), rail_inner);
+                    }
+                    match self.entry_style {
+                        EntryStyle::Wash => {
+                            for line in &block {
+                                lines.push(Self::fit(line, width));
+                            }
+                        }
+                        EntryStyle::Rail => {
+                            self.push_entry_block(
+                                &mut lines,
+                                &block,
+                                width,
+                                self.rail_rgb_thinking(),
+                            );
+                        }
                     }
                 }
                 TranscriptEntry::Tool {
@@ -4117,9 +4295,17 @@ impl FakeCodingAgentApp {
                     detail,
                 } => {
                     let marker = if *expanded { g.unfold() } else { g.fold() };
-                    let header = format!("{marker} {} {summary}  {}", g.tool(), key_hint("Alt+E"));
+                    // Rail: no ⚙ — product expandable uses Name/path only; wash keeps demo glyph.
+                    let header = match self.entry_style {
+                        EntryStyle::Rail => {
+                            format!("{marker} {summary}  {}", key_hint("Alt+E"))
+                        }
+                        EntryStyle::Wash => {
+                            format!("{marker} {} {summary}  {}", g.tool(), key_hint("Alt+E"))
+                        }
+                    };
                     let mut block = Vec::new();
-                    Self::push_wrapped(&mut block, &header, width);
+                    Self::push_wrapped(&mut block, &header, rail_inner);
                     if *expanded {
                         let from = if summary.starts_with("Read ") {
                             TruncateFrom::Head
@@ -4134,19 +4320,22 @@ impl FakeCodingAgentApp {
                         };
                         for line in render_expandable_output(
                             detail,
-                            width,
+                            rail_inner,
                             self.tools_output_expanded,
                             &opts,
                         ) {
                             block.push(line);
                         }
                     }
-                    let rgb = match status {
-                        ToolBlockStatus::Pending => self.palette().tool_pending_bg,
-                        ToolBlockStatus::Success => self.palette().tool_success_bg,
-                        ToolBlockStatus::Error => self.palette().tool_error_bg,
+                    let rgb = match self.entry_style {
+                        EntryStyle::Wash => match status {
+                            ToolBlockStatus::Pending => self.palette().tool_pending_bg,
+                            ToolBlockStatus::Success => self.palette().tool_success_bg,
+                            ToolBlockStatus::Error => self.palette().tool_error_bg,
+                        },
+                        EntryStyle::Rail => self.rail_rgb_for_tool(*status),
                     };
-                    push_tinted(&mut lines, &block, width, rgb);
+                    self.push_entry_block(&mut lines, &block, width, rgb);
                 }
                 TranscriptEntry::Diff {
                     expanded,
@@ -4155,32 +4344,42 @@ impl FakeCodingAgentApp {
                     input,
                     side_by_side_min_width,
                 } => {
-                    // pi edit: one Box(tool*Bg) wraps title + Spacer + full diff body.
                     let marker = if *expanded { g.unfold() } else { g.fold() };
-                    let header = format!("{marker} {} {summary}  {}", g.tool(), key_hint("Alt+E"));
+                    let header = match self.entry_style {
+                        EntryStyle::Rail => {
+                            format!("{marker} {summary}  {}", key_hint("Alt+E"))
+                        }
+                        EntryStyle::Wash => {
+                            format!("{marker} {} {summary}  {}", g.tool(), key_hint("Alt+E"))
+                        }
+                    };
                     let mut block = Vec::new();
-                    Self::push_wrapped(&mut block, &header, width);
-                    let rgb = match status {
+                    Self::push_wrapped(&mut block, &header, rail_inner);
+                    let wash_rgb = match status {
                         ToolBlockStatus::Pending => self.palette().tool_pending_bg,
                         ToolBlockStatus::Success => self.palette().tool_success_bg,
                         ToolBlockStatus::Error => self.palette().tool_error_bg,
                     };
                     if *expanded {
-                        let theme = demo_diff_theme(self.theme_mode, rgb);
+                        let theme = demo_diff_theme(self.theme_mode, wash_rgb);
                         let opts = DiffOptions {
                             word_level: true,
                             side_by_side_min_width: *side_by_side_min_width,
                             ..DiffOptions::default()
                         };
-                        let rendered = render_diff_lines(input, width, &theme, &opts);
+                        let rendered = render_diff_lines(input, rail_inner, &theme, &opts);
                         if !rendered.is_empty() {
-                            block.push(String::new()); // pi Spacer(1) between title and body
+                            block.push(String::new());
                             for line in rendered {
-                                block.push(Self::fit(&line, width));
+                                block.push(Self::fit(&line, rail_inner));
                             }
                         }
                     }
-                    push_tinted(&mut lines, &block, width, rgb);
+                    let rgb = match self.entry_style {
+                        EntryStyle::Wash => wash_rgb,
+                        EntryStyle::Rail => self.rail_rgb_for_tool(*status),
+                    };
+                    self.push_entry_block(&mut lines, &block, width, rgb);
                 }
             }
         }
@@ -4349,13 +4548,32 @@ impl FakeCodingAgentApp {
         }
         lines
     }
+
+    fn queue_strip_lines(&self, width: usize) -> Vec<String> {
+        let mut lines = Vec::new();
+        for text in &self.steer_queue {
+            Self::push_wrapped(&mut lines, &dim(&format!("Steering: {text}")), width);
+        }
+        for text in &self.follow_up_queue {
+            Self::push_wrapped(&mut lines, &dim(&format!("Follow-up: {text}")), width);
+        }
+        if !self.steer_queue.is_empty() || !self.follow_up_queue.is_empty() {
+            Self::push_wrapped(
+                &mut lines,
+                &dim("↳ Alt+Up to edit all queued messages"),
+                width,
+            );
+        }
+        lines
+    }
 }
 
 impl Component for FakeCodingAgentApp {
     fn render(&mut self, width: usize) -> Vec<String> {
-        // Minimal stack (pi): transcript → status (blank | blank+spinner) → editor → footer.
+        // Minimal stack: transcript → queue strip → status → editor → footer.
         let mut lines = Vec::new();
         lines.extend(self.transcript_lines(width));
+        lines.extend(self.queue_strip_lines(width));
         lines.extend(self.status_lines(width));
         lines.extend(self.render_editor_slot(width));
         let footer_owned;
@@ -4376,10 +4594,11 @@ impl Component for FakeCodingAgentApp {
             // Compact cue strip — full list is in the seed system line.
             footer_owned = format!(
                 // c535 pad4: metadata only — chords live in /help / plate help-keys.
-                "{} · {} · {}{queue_hint}",
+                "{} · {} · {} · entry:{}{queue_hint}",
                 self.footer_note,
                 self.theme_label(),
-                self.glyph_set.label()
+                self.glyph_set.label(),
+                self.entry_style.label()
             );
             footer_owned.as_str()
         };
