@@ -6,6 +6,9 @@
 ### Universal ###
 # Common files that should be ignored in all projects
 
+# Local tooling installs (e.g. cccc-rs via scripts/check_complexity.py)
+.tools/
+
 # Logs
 *.log
 # Temporary files
