@@ -263,6 +263,7 @@ footer            1 行 dim（cwd · model · 可选 context%）
 | [`design/expandable.md`](./design/expandable.md) | thinking / tool 可展开（demo 优先） |
 | [`design/status.md`](./design/status.md) | busy 一行 |
 | [`design/chrome-toast.md`](./design/chrome-toast.md) | 壳层通告：status 上方 warning + `Error:` |
+| [`design/chrome-footprint.md`](./design/chrome-footprint.md) | 终端行高预算：reserved + list/tree `max_visible`（atc23） |
 | [`design/editor.md`](./design/editor.md) | 操作区 |
 | [`design/skill-ref.md`](./design/skill-ref.md) | `$skill` 用户消息内高亮（A10；demo 先验） |
 | [`design/loaded-resources.md`](./design/loaded-resources.md) | 启动品牌 + Skills/MCP 换行清单（c1135） |
