@@ -190,10 +190,13 @@ async fn run_host_loop(
                 log::debug!(target: "xylitol::tui", "CLI session restore UI failed: {e}");
             }
         }
-    } else {
+    }
+    // First paint before ↑/↓ history seed: list_sessions can scan many on-disk
+    // sessions (incl. legacy skips) and must not block the welcome chrome.
+    session.render_now()?;
+    if !options.restored_session {
         session.seed_editor_history_for_new_session(driver).await;
     }
-    session.render_now()?;
 
     let mut term_events = CrosstermEventStream::new();
     let mut agent_stream: Option<AgentEventStream> = None;
