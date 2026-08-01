@@ -24,7 +24,7 @@ components:
 
 对齐 pi interactive：折叠一行摘要，展开完整内容。实现落在**应用面**（demo 优先）；**不是**包内通用 Chat 组件，也**不是** Codex 式 TranscriptView 的一部分。
 
-默认皮肤 **rail**（c1830）：`[1-cell status 轨][1 gutter][content]`；**MUST NOT** 默认整行 `tool-*-bg` 洗底。
+默认皮肤 **rail**（c1830）：tool/bash/diff 为 `[1-cell status 轨][1 gutter][content]`；**thinking / user / assistant flush**（无轨）。**MUST NOT** 默认整行 `tool-*-bg` 洗底。
 
 ## MUST
 
@@ -48,7 +48,7 @@ components:
 - **c453**：Thinking / Tool / Diff 共用折叠；Ctrl+T / Alt+E；流式 thinking 展开再折叠；块旁 `(Ctrl+T)` / `(Alt+E)`。
 - **c462**：历史 wash 一体块；现由 **c1830 rail** 取代为默认。
 - **c466**：长 bash + Ctrl+O 视口；与 Alt+E 正交。
-- **c1830**：产品默认 rail + gutter；无 user/tool 全行洗底。
+- **c1830**：产品默认 rail + gutter（工具类）；thinking flush 无轨；无 user/tool 全行洗底。
 
 ## 策略（可后续细化）
 
