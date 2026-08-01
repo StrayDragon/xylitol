@@ -1,6 +1,9 @@
 ---
 depends_on:
-  - c1780-update-tui-busy-instant-lists
+- c1780-update-tui-busy-instant-lists
+branch: sdd/c1800-add-tui-chrome-toast
+base_sha: fd765a6b2b1320a60ca3a413569deb2f4630c3dc
+checkpointed: false
 ---
 
 # 壳层通告（chrome toast）：固定位瞬时提示

@@ -2,7 +2,7 @@ kind: llman.sdd.spec
 name: "app-tui-chrome"
 purpose: 主题 token、glyph、status 与 footer 等 layout 壳（历史 capability 名 chrome）。
 valid_scope[1]: src/app/tui/
-requirements[21]{req_id,title,statement}:
+requirements[22]{req_id,title,statement}:
   atc1,"idle-status-omitted",产品 UiRoot 空闲时 status 槽 MUST 渲染 0 行；忙碌时 MUST 至多独立 1 行短状态；MUST NOT 将 Working 等忙碌文案并入 footer。
   atc2,"footer-minimal","产品 footer MUST 为 1 行 dim 文本，显示 active（in-flight 或当前 turn 已绑定）的 model，而非仅裸读 selected；字段序为 cwd · model · thinking 标签（形如 `cwd · model · thinking off` 或 `· xhigh`，level 文案为 ThinkingLevel::as_str，off 时用 `thinking off`；字段间只用 ` · `，MUST NOT 在 thinking 前再加装饰 `•`）；当 active 模型无思考或仅不可调 off 时 MUST 省略 thinking 段；并在可获得 ContextTokenEstimate 时追加 `· used … tokens`（文案按 TokenProvenance：Api/RemoteCount/LocalTokenizer 为 used N tokens，Heuristic 为 used ~N tokens，Unknown 为 used ? tokens）；当当前模型 context_window > 0 时 MUST 在 used 字段后追加派生占用比（见 atc21）；队列非空时可加 `q:sN|fM ·` 前缀；无估计数据时 MUST NOT 伪造 used 0；MUST NOT 常驻快捷键墙；放不下时 MUST 截断右侧而非增高。"
   atc3,"theme-glyphs-config","产品 host MUST 经 Palette::dark()（或等价闭包）将语义色注入组件主题；glyph 档（unicode/ascii）MUST 由显式配置切换，MUST NOT 做运行时字体探测；产品 MVP MUST NOT 默认开启 theme auto。"
@@ -24,4 +24,6 @@ requirements[21]{req_id,title,statement}:
   atc19,"status-next-turn-cue-pending","产品 agent-busy 且 selected ≠ active 时，status 行右侧 MUST 显示下轮预告（next-turn cue）：模型 pending 优先文案 `Next turn: {model}`；仅 thinking pending 为 `Next turn thinking: {level}`；MUST NOT 拼接为 `Next turn: model · high`。下轮预告 MUST 右对齐（margin-left auto 或等价），MUST NOT 破坏 lead 左贴。selected==active、NextTurn 消费、idle 或 abort 收敛后 MUST 清除下轮预告。仅 bang busy（无 agent LLM run）MUST NOT 显示 Next-turn 下轮预告；footer 可跟随 selected。status 短词轮换（Working/Compacting 等）MUST 保留下轮预告。"
   atc20,"chrome-success-no-system","产品 host 成功切换 model、thinking 或 theme 时 MUST NOT 向 scrollback 追加成功确认类滚动提示（如 model → …）；失败与诊断 MAY 写滚动提示（ScrollNotice）。"
   atc21,"footer-derived-context-percent","当 footer 已展示 ContextTokenEstimate 且当前模型 context_window > 0 时，MUST 在 used 字段后追加派生占用比：percent = tokens/context_window*100（展示 1 位小数）与紧凑 window（如 128k），形如 ` · 32.8%/128k`；Heuristic MUST 为 ` · ~p%/W`；Unknown 且有窗 MUST 为 ` · ?%/W`；context_window 为 0 或不展示 used 字段时 MUST NOT 追加 %；该百分比 MUST 仅作展示，MUST NOT 作为 should_compact / reserve 触发 SSOT，MUST NOT 恢复 compaction_threshold 或百分比闸配置。"
-scenarios[0]:
+  atc22,"chrome-toast-ephemeral","产品 TUI MUST 提供壳层通告（chrome toast）：固定于 layout 壳、位于 status/spinner 槽上方恰好一行（muted）；MUST NOT 写入 UiModel.entries / UiEntry；新通告 MUST 替换旧通告（单槽）；显示后 MUST 在约定 TTL（默认约 3–5s）内经 idle_tick/step 自动清除。agent/bang busy 下 Resume 面板 switch/rename/delete 拒闸文案（见 atm10）MUST 走壳层通告，MUST NOT 再追加 UiEntry::ScrollNotice。MUST NOT 用壳层通告冒充对话正文或下轮预告。"
+scenarios[1]{req_id,id,given,when,then,feature}:
+  atc22,atc22-unit,"壳层通告约束由产品 harness 覆盖（非 BDD）",审查实现与对应测试,"行为符合本 requirement 陈述",false

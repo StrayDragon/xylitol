@@ -9,7 +9,7 @@
 |---|---|---|---|
 | **对话条目** | transcript entry | 主滚动区可持久内容（user / assistant / thinking / tool / …） | system 消息、LLM message（除非特指协议） |
 | **滚动提示** | scrollback notice · **`UiEntry::ScrollNotice`** | 插入 **主滚动区** 的短 UI 提示 | system prompt、AgentMessage、system 消息；**勿**与角落弹层混称 |
-| **（预留）壳层通告** | notice / toast（未来） | 非 scrollback 的短暂通告（如角区弹层）；**≠** 滚动提示 | 抢用 `ScrollNotice` 或笼统 Notice 指滚动行 |
+| **壳层通告** | chrome toast · shell notice | 非 scrollback 的短暂固定通告（TUI：status/spinner **上方**一行，TTL 自动清除；**≠** 滚动提示） | 抢用 `ScrollNotice` / `UiEntry`；笼统 Notice 指滚动行 |
 | **错误行** | error row | `UiEntry::Error` | 笼统 system |
 | **状态条** | status | busy 时输入区上方短状态（idle = 0 行） | 塞进 scrollback |
 | **页脚** | footer | 输入区下：生效中模型、用量 provenance 等 | 成功确认刷滚动提示 |
@@ -59,7 +59,7 @@
 |---|---|
 | 下轮预告 | `status_next_turn_cue` · `status_next_turn_cue_text` · playground `.status-next-turn-cue` |
 | 滚动提示 | `UiEntry::ScrollNotice` · `HostSession::push_scroll_notice`；demo `Role::ScrollNotice` |
-| 壳层通告（未来） | 未实现；勿占用 `ScrollNotice` |
+| 壳层通告 | host `push_chrome_toast`（或等价）· layout toast 槽；c1800 |
 | 待生效 | selected ≠ active（模型 / thinking） |
 
 ## 维护
