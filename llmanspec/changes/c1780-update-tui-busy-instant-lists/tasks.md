@@ -4,8 +4,8 @@
 
 - `slash_allowances` Allow/Reject 表
 - 产品 TUI harness：busy 开 `/model` `/theme` `/session-resume`
-- harness：busy Resume switch → 无 SwitchSession + ScrollNotice 文案 A
-- busy `/reload` 拒不回归
+- harness：busy Resume switch / rename / delete → 无写盘 + ScrollNotice 文案 A；bang-busy switch 同拒
+- busy `/reload` 拒不回归；`slash_allowances` Reject 全集单测
 
 ## 1. Specs landing
 
