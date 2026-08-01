@@ -176,23 +176,36 @@ async fn run_host_loop(
     session.set_model_arg_catalog_from_models(&driver.available_models());
     session.set_dollar_skill_catalog(driver.dollar_skill_catalog());
     session.set_mcp_blocks_agent(driver.mcp_blocks_agent());
+    // First paint before CLI restore / loaded-resources / ↑/↓ history seed so
+    // welcome chrome is not blocked by JSONL load or list_sessions work.
+    session.render_now()?;
+
+    type CliRestoreHandle =
+        tokio::task::JoinHandle<Result<Vec<crate::protocol::session::SessionEntry>, String>>;
+    let mut cli_restore: Option<(std::time::Instant, String, CliRestoreHandle)> = None;
     if options.restored_session {
-        match driver.get_messages().await {
-            Ok(entries) => {
-                if let Some(sid) = driver.session_id() {
-                    session.apply_cli_restored_session(&sid, entries);
-                } else {
-                    session.seed_editor_history_from_entries(&entries);
+        match (driver.session_id(), driver.session_store()) {
+            (Some(sid), Some(store)) => {
+                cli_restore = Some((
+                    std::time::Instant::now(),
+                    sid.clone(),
+                    editor_history_seed::spawn_cli_session_load(store, sid),
+                ));
+            }
+            _ => match driver.get_messages().await {
+                Ok(entries) => {
+                    if let Some(sid) = driver.session_id() {
+                        session.apply_cli_restored_session(&sid, entries);
+                    } else {
+                        session.seed_editor_history_from_entries(&entries);
+                    }
                 }
-            }
-            Err(e) => {
-                log::debug!(target: "xylitol::tui", "CLI session restore UI failed: {e}");
-            }
+                Err(e) => {
+                    log::debug!(target: "xylitol::tui", "CLI session restore UI failed: {e}");
+                }
+            },
         }
     }
-    // First paint before loaded-resources refresh + ↑/↓ history seed so welcome
-    // chrome is not blocked by MCP snapshot / list_sessions work.
-    session.render_now()?;
 
     let mut editor_seed: Option<(std::time::Instant, tokio::task::JoinHandle<Vec<String>>)> = None;
     if !options.restored_session {
@@ -206,7 +219,7 @@ async fn run_host_loop(
             }
         }
     }
-    // Refresh while editor-history seed runs in the background (in-process).
+    // Refresh while editor-history seed / CLI restore run in the background.
     session.refresh_loaded_resources(driver).await;
     session.set_mcp_blocks_agent(driver.mcp_blocks_agent());
 
@@ -320,6 +333,34 @@ async fn run_host_loop(
                         let texts = maybe_seed.unwrap_or_default();
                         session.seed_editor_history_from_texts(texts);
                         crate::app::core::lag::note("tui_seed_editor_history", started);
+                    }
+                }
+                maybe_restore = async {
+                    match cli_restore.as_mut() {
+                        Some((_, _, handle)) => handle.await,
+                        None => std::future::pending().await,
+                    }
+                } => {
+                    if let Some((started, sid, _)) = cli_restore.take() {
+                        match maybe_restore {
+                            Ok(Ok(entries)) => {
+                                session.apply_cli_restored_session(&sid, entries);
+                                let _ = session.render_now();
+                            }
+                            Ok(Err(e)) => {
+                                log::debug!(
+                                    target: "xylitol::tui",
+                                    "CLI session restore UI failed: {e}"
+                                );
+                            }
+                            Err(e) => {
+                                log::debug!(
+                                    target: "xylitol::tui",
+                                    "CLI session restore join failed: {e}"
+                                );
+                            }
+                        }
+                        crate::app::core::lag::note("tui_cli_restore", started);
                     }
                 }
             }
