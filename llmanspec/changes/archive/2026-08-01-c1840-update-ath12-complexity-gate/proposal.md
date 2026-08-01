@@ -2,7 +2,8 @@
 depends_on: []
 branch: sdd/c1840-update-ath12-complexity-gate
 base_sha: 8e1b521428e89d18fc0d5ff1873ab67dd759be47
-checkpointed: false
+checkpointed: true
+checkpoint_sha: 8e1b521428e89d18fc0d5ff1873ab67dd759be47
 ---
 
 # ath12：入口复杂度硬闸，行数降为软味
