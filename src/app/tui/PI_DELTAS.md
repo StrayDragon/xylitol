@@ -30,7 +30,7 @@
 | A03 | Slash 命名 | 短名：`/tree` `/fork` `/export` `/import` `/compact` `/resume` `/quit` … | 选中迁移命令用 **`session-*` 前缀**（如 `/session-tree`）；**旧名无效**（unknown）。`/model` `/exit` 仍短名；`/exit` 仍认 `quit` | 是 |
 | A04 | `/session` 形态 | 无参 → scrollback **info/stats 转储**（非操作菜单） | 对齐 dump（c1015）；**不做**「SessionOperations 覆盖层 / 子命令板」 | 是 |
 | A05 | Compact 自定义指令 | `/compact <instructions>` 可传自定义压缩提示 | **已对齐（c1670）**：`/session-compact` 可选 instructions → `Command::Compact.instructions` → 摘要 prompt `Additional focus:`；短名 `/compact` 仍无效（A03）；auto 不传 | 否 |
-| A06 | Import 确认 UI | extension confirm 对话框 | editor 槽 **Yes/No SelectList**（不解冻 Trust Choice stub） | 是 |
+| A06 | Import 确认 UI | extension confirm 对话框 | editor 槽 **Yes/No SelectList**（Import 不解冻 Trust；`ask` 另解冻 `EditorSlot::Choice`，见 c1850） | 是 |
 | A07 | Clone vs fork | `/clone` = leaf `fork(at)`；`/fork` = user 选择器 | `/session-clone` = leaf **恒 At** + switch；`/session-fork` 仍遵守 A02（user→Before / 非 user→At）。二者 MUST NOT 混用语义 | 是 |
 | A08 | Resume scope=All | 多 project 根目录 `listAll` 全局列举 | 单 `sessions_dir` 下全部 jsonl；scope=Current 按 header `cwd` 过滤 | 是 |
 | A09 | tool/diff 块键 id | 无独立 Alt+E app id（或不同命名） | **`app.tools.blocks`** = Alt+E（产品特有）；`app.tools.expand` = Ctrl+O 视口 | 是 |

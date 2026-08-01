@@ -87,6 +87,8 @@ pub struct XyInProcessDriver {
     reload: Option<InProcessReloadState>,
     /// Background MCP bootstrap (c1200); independent of agent busy.
     mcp_boot: McpBootState,
+    /// TUI-only ask gateway; MCP reload MUST re-plus ask when this is set (c1850).
+    ask_gateway: Option<Arc<dyn crate::infra::tools::AskUserGateway>>,
 }
 
 impl XyInProcessDriver {
@@ -105,6 +107,28 @@ impl XyInProcessDriver {
             store,
             reload: None,
             mcp_boot: McpBootState::Idle,
+            ask_gateway: None,
+        }
+    }
+
+    /// Install TUI-only `ask` tool and remember the gateway for MCP reload.
+    pub fn install_ask_tool(&mut self, gateway: Arc<dyn crate::infra::tools::AskUserGateway>) {
+        self.ask_gateway = Some(gateway.clone());
+        self.set_tools(crate::agent::tools::ToolSet::from_iter(
+            crate::infra::tools::default_tools_with_ask(gateway),
+        ));
+    }
+
+    /// Gateway used when rebuilding builtins during MCP settle / reload (c1850).
+    pub fn ask_gateway(&self) -> Option<Arc<dyn crate::infra::tools::AskUserGateway>> {
+        self.ask_gateway.clone()
+    }
+
+    /// Builtins for ToolSet rebuild: `default_tools` or `default_tools`+ask.
+    pub fn builtins_for_reload(&self) -> Vec<Arc<dyn crate::protocol::ports::XyTool>> {
+        match &self.ask_gateway {
+            Some(g) => crate::infra::tools::default_tools_with_ask(g.clone()),
+            None => crate::infra::tools::default_tools(),
         }
     }
 
@@ -966,11 +990,9 @@ impl XyDriver for XyInProcessDriver {
                         old.shutdown().await;
                     });
                 }
+                let builtins = self.builtins_for_reload();
                 let handle = tokio::task::spawn_blocking(move || {
-                    crate::agent::tools::ToolSet::rebuild_agent_tools(
-                        crate::infra::tools::default_tools(),
-                        tools,
-                    )
+                    crate::agent::tools::ToolSet::rebuild_agent_tools(builtins, tools)
                 });
                 self.mcp_boot = McpBootState::Rebuilding {
                     handle,

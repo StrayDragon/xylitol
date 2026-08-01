@@ -31,7 +31,7 @@
 
 - 渲染只用 `xylitol_tui`；缺能力先改包再接线。产品路径 **host 驱动**（demo 专用启动 API 勿用于生产面）。
 - Agent 只经 `XyDriver`；禁止 reach `agent` / `infra` 内部（同 `src/AGENTS.md`）。
-- Trust 在 CLI 闸；本面 Choice 等 stub **冻结**，产品未拍板勿扩活树/活设置。
+- Trust 在 CLI 闸；本面 `EditorSlot::Choice` 已解冻给内置 `ask`（c1850）。Plate/Settings stub 仍冻结；产品未拍板勿扩活树/活设置。
 - Esc（行为规则；实现细节以代码与 stage-QA design 为准）：
   - Idle 空 editor → 双 Esc 开树
   - Busy 无 overlay → abort latch；立刻臂装 Xy 抑制，drain 仍须 `XyDriver::abort`

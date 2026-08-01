@@ -9,14 +9,16 @@ mod preview;
 pub(crate) mod session_tree;
 
 pub(crate) use model::trailing_aborted_note;
-pub use model::{BashBlockStatus, CompactionBlockStatus, QueueBadge, UiEntry, UiModel, UiPhase};
+pub use model::{
+    AskPhase, BashBlockStatus, CompactionBlockStatus, QueueBadge, UiEntry, UiModel, UiPhase,
+};
 pub use preview::extract_display_diff;
 pub(crate) use preview::{
     display_tool_title, extract_full_output_notice, extract_line_range_from_display_diff,
     extract_result_path, extract_tool_path, extract_truncated_tool_display,
-    human_tool_args_preview, human_tool_args_preview_with_path, humanize_tool_result_for_tui,
-    merge_path_preview_with_range, output_looks_like_machine_json, preview_is_downgrade,
-    preview_lacks_real_path,
+    human_tool_args_preview, human_tool_args_preview_with_path, humanize_ask_result,
+    humanize_tool_result_for_tui, merge_path_preview_with_range, output_looks_like_machine_json,
+    preview_is_downgrade, preview_lacks_real_path,
 };
 
 use serde_json::Value;
@@ -130,7 +132,24 @@ pub(crate) fn sync_tool_intent_from_message(model: &mut UiModel, message: &Agent
             arguments,
         } = part
         {
-            upsert_tool_entry(model, id, name, arguments);
+            if name == "ask" {
+                if !model
+                    .entries
+                    .iter()
+                    .rev()
+                    .any(|e| matches!(e, UiEntry::Ask { id: tid, .. } if tid == id))
+                {
+                    model.entries.push(UiEntry::Ask {
+                        id: id.to_string(),
+                        summary: "Ask · 等待回答…".into(),
+                        detail_lines: vec![],
+                        phase: AskPhase::Waiting,
+                        expanded: false,
+                    });
+                }
+            } else {
+                upsert_tool_entry(model, id, name, arguments);
+            }
         }
     }
 }

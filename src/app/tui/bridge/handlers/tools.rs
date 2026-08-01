@@ -1,15 +1,21 @@
 //! Tool execution + edit diff extraction.
 
 use crate::app::core::driver::XyEvent;
+use crate::app::tui::bridge::preview::humanize_ask_result;
 use crate::app::tui::bridge::{
-    UiEntry, UiModel, UiPhase, apply_tool_result_to_entries, find_tool_mut, upsert_tool_entry,
+    AskPhase, UiEntry, UiModel, UiPhase, apply_tool_result_to_entries, find_tool_mut,
+    upsert_tool_entry,
 };
 
 pub fn apply_tools_family(model: &mut UiModel, event: &XyEvent) -> bool {
     match event {
         XyEvent::ToolExecutionStart { id, name, args } => {
             model.flush_streaming();
-            upsert_tool_entry(model, id, name, args);
+            if name == "ask" {
+                upsert_ask_entry(model, id, AskPhase::Waiting, "Ask · 等待回答…", vec![]);
+            } else {
+                upsert_tool_entry(model, id, name, args);
+            }
             model.set_busy_status(format!("Running {name}"));
             true
         }
@@ -34,7 +40,13 @@ pub fn apply_tools_family(model: &mut UiModel, event: &XyEvent) -> bool {
             result,
             is_error,
         } => {
-            let _ = apply_tool_result_to_entries(&mut model.entries, id, name, result, *is_error);
+            if name == "ask" {
+                let (phase, summary, detail) = humanize_ask_result(result, *is_error);
+                upsert_ask_entry(model, id, phase, &summary, detail);
+            } else {
+                let _ =
+                    apply_tool_result_to_entries(&mut model.entries, id, name, result, *is_error);
+            }
             if model.phase == UiPhase::Busy {
                 model.status = Some("Working".into());
             }
@@ -42,4 +54,36 @@ pub fn apply_tools_family(model: &mut UiModel, event: &XyEvent) -> bool {
         }
         _ => false,
     }
+}
+
+fn upsert_ask_entry(
+    model: &mut UiModel,
+    id: &str,
+    phase: AskPhase,
+    summary: &str,
+    detail_lines: Vec<String>,
+) {
+    if let Some(UiEntry::Ask {
+        summary: s,
+        detail_lines: d,
+        phase: p,
+        expanded,
+        ..
+    }) = model.entries.iter_mut().rev().find(|e| match e {
+        UiEntry::Ask { id: tid, .. } => tid == id,
+        _ => false,
+    }) {
+        *s = summary.to_string();
+        *d = detail_lines;
+        *p = phase;
+        *expanded = false;
+        return;
+    }
+    model.entries.push(UiEntry::Ask {
+        id: id.to_string(),
+        summary: summary.to_string(),
+        detail_lines,
+        phase,
+        expanded: false,
+    });
 }

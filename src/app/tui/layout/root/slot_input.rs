@@ -93,8 +93,14 @@ impl UiRoot {
                 }
                 return;
             }
-            EditorSlot::Plate | EditorSlot::Settings | EditorSlot::Choice => {
+            EditorSlot::Plate | EditorSlot::Settings => {
                 // Empty shells: Esc is handled by InputListener; ignore other keys.
+                return;
+            }
+            EditorSlot::Choice => {
+                if let Some(ref mut prompt) = self.choice_prompt {
+                    prompt.handle_input(event);
+                }
                 return;
             }
             EditorSlot::Models => {

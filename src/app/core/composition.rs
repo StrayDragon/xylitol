@@ -200,14 +200,12 @@ impl McpSession {
         let old = self.manager.take();
 
         let infra = McpServerSpec::to_infra_list(servers);
-        let mut tools = ToolSet::from_iter(crate::infra::tools::default_tools());
+        let builtins = driver.builtins_for_reload();
+        let mut tools = ToolSet::from_iter(builtins.clone());
         if mcp_enabled(&Some(infra.clone())) {
             match connect_and_discover(&infra).await {
                 Ok(Some((manager, mcp_tools))) => {
-                    tools = ToolSet::rebuild_agent_tools(
-                        crate::infra::tools::default_tools(),
-                        mcp_tools,
-                    );
+                    tools = ToolSet::rebuild_agent_tools(builtins, mcp_tools);
                     self.manager = Some(manager);
                 }
                 Ok(None) => {}
@@ -250,5 +248,37 @@ mod tests {
         assert!(names.iter().any(|n| n == "read"));
         assert!(mcp.connected_servers().await.is_empty());
         assert!(mcp.diagnostics().await.is_empty());
+    }
+
+    #[tokio::test]
+    async fn reload_preserves_tui_ask_tool() {
+        use crate::infra::tools::{AskArgs, AskUserGateway};
+        use crate::protocol::error::XyToolError;
+        use async_trait::async_trait;
+
+        struct SkipGateway;
+        #[async_trait]
+        impl AskUserGateway for SkipGateway {
+            async fn prompt(&self, _args: AskArgs) -> Result<String, XyToolError> {
+                Ok(r#"{"status":"skipped","answers":[]}"#.into())
+            }
+        }
+
+        let agent = build_agent(BuildAgentOptions::default()).expect("build");
+        let store: Arc<dyn XySessionStore> = Arc::new(crate::infra::session::SessionManager::new(
+            tempfile::tempdir().unwrap().path().join("sessions"),
+        ));
+        let mut driver = crate::app::core::driver::XyInProcessDriver::new(agent, store);
+        driver.install_ask_tool(Arc::new(SkipGateway));
+        assert!(driver.tool_names_for_test().iter().any(|n| n == "ask"));
+
+        let mut mcp = McpSession::new();
+        mcp.reload(&mut driver, &[]).await.unwrap();
+        let names = driver.tool_names_for_test();
+        assert!(
+            names.iter().any(|n| n == "ask"),
+            "ask must survive MCP reload"
+        );
+        assert!(names.iter().any(|n| n == "read"));
     }
 }

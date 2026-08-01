@@ -1,5 +1,8 @@
 ---
 depends_on: []
+branch: sdd/c1850-add-tui-ask-tool
+base_sha: 4dee63fe4a2aa60c44dce71b586ad6573a5a106f
+checkpointed: false
 ---
 
 # TUI-only 内置工具 `ask`（澄清 / 分叉）

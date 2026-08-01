@@ -14,7 +14,7 @@ pub enum EditorSlot {
     Plate,
     /// Settings empty shell (MAY; Esc closes).
     Settings,
-    /// Ask / ChoicePrompt empty shell (MAY; Esc closes).
+    /// Ask / ChoicePrompt for builtin `ask` (c1850; Esc = skip success).
     Choice,
     /// Fuzzy model picker (`/model`, c630).
     Models,

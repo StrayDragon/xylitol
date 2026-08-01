@@ -94,6 +94,50 @@ impl<T: Terminal> HostSession<T> {
         }
     }
 
+    /// Mount ChoicePrompt for a pending ask tool call (c1850).
+    pub fn mount_ask_choice(
+        &mut self,
+        questions: Vec<xylitol_tui::ChoiceQuestion>,
+        reply: tokio::sync::oneshot::Sender<Result<String, crate::protocol::error::XyToolError>>,
+    ) {
+        let Some(root) = self.ui_root.as_ref() else {
+            let _ = reply.send(Err(crate::protocol::error::XyToolError::ExecutionFailed(
+                anyhow::anyhow!("TUI root unavailable for ask"),
+            )));
+            return;
+        };
+        root.borrow_mut().mount_ask_choice(questions, reply);
+        self.sync_ui_root_from_model();
+    }
+
+    /// Complete ask oneshot when ChoicePrompt finished.
+    pub fn complete_ask_if_ready(&mut self) -> bool {
+        let Some(root) = self.ui_root.as_ref() else {
+            return false;
+        };
+        let done = root.borrow_mut().complete_ask_if_ready();
+        if done {
+            self.sync_ui_root_from_model();
+        }
+        done
+    }
+
+    /// Poll ask gateway + complete finished ChoicePrompt (c1850).
+    pub fn poll_ask_host(&mut self) {
+        if self.complete_ask_if_ready() {
+            let _ = self.render_now();
+        }
+        let Some(gw) = self.ask_gateway.clone() else {
+            return;
+        };
+        let Some(pending) = gw.take_pending() else {
+            return;
+        };
+        let questions = crate::app::tui::ask_host::ask_questions_to_choice(pending.questions);
+        self.mount_ask_choice(questions, pending.reply);
+        let _ = self.render_now();
+    }
+
     pub fn mount_session_resume_picker(
         &mut self,
         entries: Vec<crate::app::core::driver::SessionListEntry>,
