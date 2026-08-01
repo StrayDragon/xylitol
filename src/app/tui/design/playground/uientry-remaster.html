@@ -1,0 +1,675 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>UiEntry remaster · prototype</title>
+  <!--
+    Standalone remaster sandbox — NOT DESIGN SSOT, NOT fixture-gated.
+    Style skin: "rail" (CSS border-left — not ASCII "|"; TTY 落地勿用可复制的 | 字符).
+    Tokens: ./tokens.css ← DESIGN.md via sync_tokens.py
+  -->
+  <link rel="stylesheet" href="./tokens.css" />
+  <style>
+    * { box-sizing: border-box; }
+    html, body { height: 100%; margin: 0; }
+    body {
+      background: var(--page-bg);
+      color: var(--page-fg);
+      font-family: var(--mono);
+      font-size: 13px;
+      line-height: 1.35;
+      display: flex;
+      flex-direction: column;
+    }
+    header {
+      display: flex;
+      flex-wrap: wrap;
+      align-items: center;
+      gap: 0.65rem 1rem;
+      padding: 0.55rem 0.9rem;
+      border-bottom: 1px solid var(--hairline);
+      flex-shrink: 0;
+    }
+    header h1 { margin: 0; font-size: 0.95rem; font-weight: 600; }
+    header .meta { color: var(--muted); font-size: 12px; }
+    header .meta a { color: var(--accent); }
+    .modes { display: flex; gap: 0.35rem; margin-left: auto; }
+    .modes button, .ctl button {
+      font: inherit;
+      color: var(--muted);
+      background: transparent;
+      border: 1px solid var(--hairline);
+      padding: 0.25rem 0.55rem;
+      cursor: pointer;
+    }
+    .modes button[aria-pressed="true"],
+    .ctl button[aria-pressed="true"] {
+      color: var(--on-surface);
+      border-color: var(--accent);
+      outline: 1px solid var(--accent);
+    }
+    main {
+      flex: 1;
+      overflow: auto;
+      padding: 1rem 1.1rem 2rem;
+    }
+    .note {
+      max-width: 48rem;
+      margin: 0 0 0.75rem;
+      color: var(--muted);
+      font-size: 12px;
+      line-height: 1.45;
+    }
+    .note strong { color: var(--on-surface); font-weight: 600; }
+    .ctl {
+      display: flex;
+      flex-wrap: wrap;
+      gap: 0.35rem;
+      margin: 0 0 0.55rem;
+      align-items: center;
+    }
+    .ctl .hint { color: var(--muted); font-size: 11px; }
+    .ctl-label {
+      width: 100%;
+      margin: 0.15rem 0 0;
+      font-size: 11px;
+      color: var(--muted);
+      text-transform: uppercase;
+      letter-spacing: 0.04em;
+    }
+    .term {
+      max-width: 48rem;
+      border: 1px solid var(--hairline);
+      background: var(--surface);
+      padding: 0.45rem 0.55rem 0.55rem;
+      min-height: 18rem;
+    }
+    .row {
+      padding: 0 0.15rem;
+      line-height: 1.25;
+      white-space: pre-wrap;
+    }
+    /* ≥1 blank between entries; slightly airier than wash for rail scan. */
+    .gap { height: 1.05em; }
+    .fg-muted { color: var(--muted); }
+    .fg-user { color: var(--user); }
+    .fg-on { color: var(--on-surface); }
+    .fg-assistant { color: var(--assistant); }
+    .fg-tool-name { color: var(--accent); font-weight: 700; }
+    .fg-tool-path { color: var(--on-surface); }
+    .fg-tool-range { color: var(--skill-ref); }
+    .fg-skill { color: var(--skill-ref); font-weight: 600; }
+    .fg-success { color: var(--success); }
+    .fg-error { color: var(--error); }
+    .fg-warning { color: var(--warning); }
+    .fg-diff-added { color: var(--diff-added); }
+    .fg-diff-removed { color: var(--diff-removed); }
+    .fg-diff-context { color: var(--diff-context); }
+
+    .style-current .bg-user { background: var(--user-message-bg); }
+    .style-current .bg-tool-ok { background: var(--tool-success-bg); }
+    .style-current .bg-tool-run { background: var(--tool-pending-bg); }
+    .style-current .bg-tool-err { background: var(--tool-error-bg); }
+    .style-current .entry { margin: 0; }
+
+    /* rail = CSS border only (not a "|" glyph → 不进剪贴板) */
+    /* User/assistant flush; tools/thinking: rail + ~1ch gutter + content (matches demo). */
+    .style-rail .entry {
+      border-left: 3px solid transparent;
+      padding-left: 0;
+      margin: 0;
+      background: transparent;
+    }
+    .style-rail .entry.kind-user,
+    .style-rail .entry.kind-asst,
+    .style-rail .entry.kind-notice {
+      border-left-color: transparent;
+      padding-left: 0;
+    }
+    /* Soften rails toward surface (~demo mix_rgb 0.72 / thinking 0.88). */
+    .style-rail .entry.kind-think {
+      border-left-color: color-mix(in srgb, var(--muted) 88%, var(--surface));
+      padding-left: 1ch;
+    }
+    .style-rail .entry.kind-tool-ok,
+    .style-rail .entry.kind-bash-ok {
+      border-left-color: color-mix(in srgb, var(--success) 72%, var(--surface));
+      padding-left: 1ch;
+    }
+    .style-rail .entry.kind-tool-run,
+    .style-rail .entry.kind-bash-run,
+    .style-rail .entry.kind-diff {
+      border-left-color: color-mix(in srgb, var(--accent) 72%, var(--surface));
+      padding-left: 1ch;
+    }
+    .style-rail .entry.kind-tool-err,
+    .style-rail .entry.kind-bash-err,
+    .style-rail .entry.kind-error {
+      border-left-color: color-mix(in srgb, var(--error) 72%, var(--surface));
+      padding-left: 1ch;
+    }
+    .style-rail .entry.kind-compact {
+      border-left-color: color-mix(in srgb, var(--warning) 72%, var(--surface));
+      padding-left: 1ch;
+    }
+    .style-rail[data-density="raw"] .hint { display: none; }
+    .style-rail[data-density="compact"] .body { display: none; }
+    .style-current[data-density="raw"] .hint { display: none; }
+    .style-current[data-density="compact"] .body { display: none; }
+
+    .copy {
+      margin-top: 0.85rem;
+      max-width: 48rem;
+      border: 1px dashed var(--hairline);
+      padding: 0.45rem 0.55rem;
+      font-size: 12px;
+      color: var(--muted);
+      white-space: pre-wrap;
+    }
+    .copy .label {
+      display: block;
+      margin-bottom: 0.25rem;
+      color: var(--accent);
+      font-size: 11px;
+      text-transform: uppercase;
+      letter-spacing: 0.04em;
+    }
+    .rules {
+      margin: 0.85rem 0 0;
+      padding: 0;
+      list-style: none;
+      max-width: 48rem;
+      font-size: 12px;
+      color: var(--muted);
+      display: grid;
+      gap: 0.25rem;
+    }
+    .rules .k::before { content: "keep · "; color: var(--success); }
+    .rules .c::before { content: "change · "; color: var(--accent); }
+    .rules .w::before { content: "watch · "; color: var(--warning); }
+    footer.bar {
+      border-top: 1px solid var(--hairline);
+      padding: 0.35rem 0.9rem;
+      color: var(--muted);
+      font-size: 11px;
+      flex-shrink: 0;
+    }
+  </style>
+</head>
+<body>
+  <header>
+    <h1>UiEntry remaster</h1>
+    <span class="meta">
+      prototype · skin <code>rail</code> ·
+      <a href="./index.html">SSOT playground</a> ·
+      <a href="../../../../docs/roadmaps/TUI重制.md">TUI重制</a>
+    </span>
+    <div class="modes">
+      <button type="button" data-scheme="dark" aria-pressed="true">Dark</button>
+      <button type="button" data-scheme="light" aria-pressed="false">Light</button>
+    </div>
+  </header>
+
+  <main>
+    <p class="note">
+      <strong>rail</strong>：用户只留 <code>❯</code>；工具/thinking 用 1 列饱和色 bg 空格轨（拖选是否带空格看终端；不追求 ECH）。
+      <code>just demo-tui-rail</code> · <code>/entry-style rail</code>。正文 <code>|</code> 是 markdown 引用，不是轨。
+    </p>
+
+    <div class="ctl-label">scene</div>
+    <div class="ctl" id="scene-ctl">
+      <button type="button" data-scene="turn" aria-pressed="true">happy turn</button>
+      <button type="button" data-scene="stream" aria-pressed="false">multi-line stream</button>
+      <button type="button" data-scene="errors" aria-pressed="false">errors</button>
+      <button type="button" data-scene="compaction" aria-pressed="false">compaction</button>
+      <button type="button" data-scene="skills-mcp" aria-pressed="false">skills + mcp</button>
+      <button type="button" data-scene="bang-queue" aria-pressed="false">! bash + queue</button>
+      <button type="button" data-scene="kitchen" aria-pressed="false">kitchen sink</button>
+    </div>
+
+    <div class="ctl-label">skin / density</div>
+    <div class="ctl">
+      <button type="button" data-style="rail" aria-pressed="true">rail</button>
+      <button type="button" data-style="current" aria-pressed="false">current</button>
+      <button type="button" data-density="rich" aria-pressed="true">rich</button>
+      <button type="button" data-density="compact" aria-pressed="false">compact</button>
+      <button type="button" data-density="raw" aria-pressed="false">raw</button>
+      <button type="button" id="btn-expand" aria-pressed="true">展开正文</button>
+      <button type="button" id="btn-stream" aria-pressed="false">假流式</button>
+      <span class="hint">假流式仅在 stream / kitchen 场景多行推进</span>
+    </div>
+
+    <div class="term" id="term" data-density="rich"></div>
+    <div class="copy" id="copy"></div>
+    <ul class="rules">
+      <li class="k">折叠摘要、<code>Name path:range</code>、旁注、无 ASSISTANT&gt;</li>
+      <li class="c">用户/助手 flush；工具轨 = 1 列 vivid 色（非 wash bg）；条目上空行</li>
+      <li class="w">正文 <code>|</code>/<code>│</code> 来自 markdown 引用，不是 rail</li>
+    </ul>
+  </main>
+
+  <footer class="bar">standalone prototype · scenario catalog · not fixture-gated</footer>
+
+  <script src="./tokens.js"></script>
+  <script>
+    const STREAM_LINES = [
+      "先把洗底收成边轨，多行助手共用同一条轨。",
+      "流式换行时，新行仍在同一 entry 内，rail 连续向下。",
+      "复制目标是源文本，不是边框字符。",
+    ];
+    const STREAM_FULL = STREAM_LINES.join("\n");
+
+    const state = {
+      scene: "turn",
+      style: "rail",
+      density: "rich",
+      expanded: true,
+      streaming: false,
+      streamText: "",
+      scheme: "dark",
+    };
+    let streamTimer = null;
+
+    function hint(s) {
+      return state.density === "raw" ? "" : ` <span class="hint fg-muted">${s}</span>`;
+    }
+    function gap() {
+      return '<div class="gap" aria-hidden="true"></div>';
+    }
+    function entry(kind, inner) {
+      return `${gap()}<div class="entry kind-${kind}">${inner}</div>`;
+    }
+    function wash(cls) {
+      return state.style === "current" ? " " + cls : "";
+    }
+    function rowsFromText(text, cls, cursor) {
+      const lines = String(text).split("\n");
+      return lines
+        .map((line, i) => {
+          const c = cursor && i === lines.length - 1 ? "▌" : "";
+          return `<div class="row ${cls}">${escapeHtml(line)}${c}</div>`;
+        })
+        .join("");
+    }
+    function escapeHtml(s) {
+      return s
+        .replace(/&/g, "&amp;")
+        .replace(/</g, "&lt;")
+        .replace(/>/g, "&gt;");
+    }
+
+    function userEntry(htmlInner) {
+      return entry(
+        "user",
+        `<div class="row${wash("bg-user")}"><span class="fg-user">❯</span> <span class="fg-on">${htmlInner}</span></div>`,
+      );
+    }
+    function thinkEntry(lines) {
+      if (state.density === "raw") return "";
+      let inner = `<div class="row fg-muted">thinking${hint("(Ctrl+T)")}</div>`;
+      if (state.density === "rich") {
+        for (const line of lines) {
+          inner += `<div class="row fg-muted">${escapeHtml(line)}</div>`;
+        }
+      }
+      return entry("think", inner);
+    }
+    function toolEntry(kind, name, path, opts = {}) {
+      const range = opts.range
+        ? `<span class="fg-tool-range">${escapeHtml(opts.range)}</span>`
+        : "";
+      const head =
+        `<div class="row${wash(kind === "tool-err" ? "bg-tool-err" : kind === "tool-run" ? "bg-tool-run" : "bg-tool-ok")}">` +
+        `<span class="fg-tool-name">${escapeHtml(name)}</span> ` +
+        `<span class="fg-tool-path">${escapeHtml(path)}</span>${range}${hint("(Alt+E)")}</div>`;
+      let body = "";
+      if (opts.body && state.expanded && state.density !== "compact") {
+        const w =
+          kind === "tool-err"
+            ? "bg-tool-err"
+            : kind === "tool-run"
+              ? "bg-tool-run"
+              : "bg-tool-ok";
+        for (const line of opts.body) {
+          const cls = line.err ? "fg-error" : line.dim ? "fg-muted" : "fg-on";
+          body += `<div class="row body${wash(w)} ${cls}">${escapeHtml(line.t)}</div>`;
+        }
+      }
+      return entry(kind, head + body);
+    }
+    function asstEntry(text, streaming) {
+      return entry("asst", rowsFromText(text, "fg-assistant", streaming));
+    }
+    function bashEntry(kind, cmd, bodyLines) {
+      const w =
+        kind === "bash-err"
+          ? "bg-tool-err"
+          : kind === "bash-run"
+            ? "bg-tool-run"
+            : "bg-tool-ok";
+      let inner =
+        `<div class="row${wash(w)}"><span class="fg-tool-name">Bash</span> ` +
+        `<span class="fg-tool-path">$ ${escapeHtml(cmd)}</span>${hint("(Alt+E)")}</div>`;
+      if (bodyLines && state.expanded && state.density !== "compact") {
+        for (const line of bodyLines) {
+          const cls = line.err ? "fg-error" : "fg-on";
+          inner += `<div class="row body${wash(w)} ${cls}">${escapeHtml(line.t)}</div>`;
+        }
+      }
+      return entry(kind, inner);
+    }
+    function compactEntry(status) {
+      // status: progress | collapsed | expanded | aborted
+      let inner = `<div class="row fg-muted" style="font-weight:700">[compaction]</div>`;
+      if (status === "progress") {
+        inner += `<div class="row fg-muted">Compacting…</div>`;
+      } else if (status === "collapsed") {
+        inner += `<div class="row fg-muted">Compacted from 186,842 tokens${hint("(Alt+E)")}</div>`;
+      } else if (status === "expanded") {
+        inner +=
+          `<div class="row fg-muted"><strong>Compacted from 186,842 tokens</strong></div>` +
+          `<div class="row fg-muted">Session covered footer refresh, then a long tool loop</div>` +
+          `<div class="row fg-muted">reading session JSONL; auto-compact fired each turn…</div>`;
+      } else {
+        inner += `<div class="row fg-warning">compaction aborted</div>`;
+      }
+      return entry("compact", inner);
+    }
+    function noticeEntry(text) {
+      return entry("notice", `<div class="row fg-muted">${escapeHtml(text)}</div>`);
+    }
+    function errorEntry(text) {
+      return entry("error", `<div class="row fg-error">${escapeHtml(text)}</div>`);
+    }
+    function diffEntry() {
+      let inner =
+        `<div class="row"><span class="fg-tool-name">Diff</span> ` +
+        `<span class="fg-tool-path">src/app/tui/widgets/scrollback.rs</span>${hint("(Alt+E)")}</div>`;
+      if (state.expanded && state.density !== "compact") {
+        inner +=
+          `<div class="row body fg-diff-context">@@ -10,3 +10,4 @@</div>` +
+          `<div class="row body fg-diff-removed">- old wash bg</div>` +
+          `<div class="row body fg-diff-added">+ rail border only</div>`;
+      }
+      return entry("diff", inner);
+    }
+
+    function buildScene() {
+      const parts = [];
+      const scene = state.scene;
+      const asstText =
+        state.streaming && state.streamText
+          ? state.streamText
+          : scene === "stream" || scene === "kitchen"
+            ? STREAM_FULL
+            : "已对齐 rail：多行共用边轨，条目之间留空行。";
+
+      if (scene === "turn") {
+        parts.push(
+          userEntry("跑一轮 happy path，看 Read + Bash pending"),
+          thinkEntry(["先读 bridge model，再决定是否展开工具。"]),
+          toolEntry("tool-ok", "Read", "src/app/tui/bridge/model.rs", {
+            range: ":96-145",
+            body: [
+              { t: "pub enum UiEntry {" },
+              { t: "    User { text: String },", dim: true },
+              { t: "... (8 earlier lines, ctrl+o to expand)", dim: true },
+            ],
+          }),
+          toolEntry("tool-run", "Bash", "$ just test-tui"),
+          asstEntry(asstText, state.streaming),
+        );
+      } else if (scene === "stream") {
+        parts.push(
+          userEntry("请多行流式说明 rail 如何跟着换行"),
+          thinkEntry(["流式时 assistant 是一个 entry，多 .row。"]),
+          asstEntry(asstText, state.streaming),
+        );
+      } else if (scene === "errors") {
+        parts.push(
+          userEntry("制造工具失败与错误行"),
+          toolEntry("tool-err", "Edit", "src/missing.rs", {
+            body: [
+              { t: "No such file or directory", err: true },
+              { t: "exit 1", dim: true },
+            ],
+          }),
+          bashEntry("bash-err", "cargo test -p nope", [
+            { t: "error: package ID specification `nope` did not match", err: true },
+          ]),
+          errorEntry("Error: provider 401 · invalid api key"),
+          noticeEntry("history @ turn-12"),
+          asstEntry("工具失败已落 error rail；Error 条目用红轨。", false),
+        );
+      } else if (scene === "compaction") {
+        parts.push(
+          userEntry("继续修这个大会话"),
+          compactEntry("progress"),
+          noticeEntry("— after compact —"),
+          compactEntry("collapsed"),
+          compactEntry("expanded"),
+          compactEntry("aborted"),
+          asstEntry("从摘要后的上下文继续。", false),
+        );
+      } else if (scene === "skills-mcp") {
+        parts.push(
+          userEntry(
+            '用 <span class="fg-skill">$write-tui</span> 改 scrollback，并查 MCP',
+          ),
+          thinkEntry(["skill 只高亮 token；MCP 工具名人类可读。"]),
+          toolEntry("tool-ok", "Mcp", "docs.search  query=rail+uientry", {
+            body: [
+              { t: "3 hits · opencode tui · gemini compactToolOutput" },
+              { t: "... (truncated)", dim: true },
+            ],
+          }),
+          toolEntry("tool-run", "Mcp", "linear.list_issues  team=XY"),
+          toolEntry("tool-err", "Mcp", "github.get_pr  #404", {
+            body: [{ t: "Not Found", err: true }],
+          }),
+          asstEntry(
+            "skill 引用在用户行内；MCP 成败仍走 tool-ok|run|err 轨。",
+            false,
+          ),
+        );
+      } else if (scene === "bang-queue") {
+        parts.push(
+          userEntry("试交互 <code>!</code> bash，并在 busy 时入队"),
+          bashEntry("bash-ok", "echo hi", [{ t: "hi" }]),
+          bashEntry("bash-run", "cargo test -p xylitol-tui --lib"),
+          noticeEntry("(editor ! → bash border · 产品 UiEntry::Bash)"),
+          // queue strip mock (between scrollback and status in product)
+          entry(
+            "notice",
+            `<div class="row fg-muted">Steering: 补充一句约束</div>` +
+              `<div class="row fg-muted">Follow-up: 跑完再问 diff</div>` +
+              `<div class="row fg-muted">↳ Alt+Up to edit all queued messages</div>`,
+          ),
+          asstEntry("队列条不进语义复制主平面；! 输出走 bash 轨。", false),
+        );
+      } else {
+        // kitchen sink
+        parts.push(
+          userEntry(
+            'kitchen：<span class="fg-skill">$audit-dead-code</span> + MCP + compact',
+          ),
+          thinkEntry(["全类型过一遍边轨色。"]),
+          toolEntry("tool-ok", "Read", "src/app/tui/design/skill-ref.md", {
+            range: ":1-40",
+            body: [{ t: "tokens_from: ../DESIGN.md" }],
+          }),
+          diffEntry(),
+          bashEntry("bash-ok", "just fmt", [{ t: "ok" }]),
+          toolEntry("tool-err", "Write", "/tmp/readonly/x", {
+            body: [{ t: "Permission denied", err: true }],
+          }),
+          toolEntry("tool-ok", "Mcp", "context7.query-docs  library=crossterm"),
+          compactEntry("collapsed"),
+          noticeEntry("forked → child-3"),
+          errorEntry("Error: stream interrupted"),
+          asstEntry(asstText, state.streaming),
+        );
+      }
+
+      return parts.filter(Boolean).join("");
+    }
+
+    function render() {
+      document.querySelectorAll("[data-scene]").forEach((b) => {
+        b.setAttribute("aria-pressed", String(b.dataset.scene === state.scene));
+      });
+      document.querySelectorAll("[data-style]").forEach((b) => {
+        b.setAttribute("aria-pressed", String(b.dataset.style === state.style));
+      });
+      document.querySelectorAll("[data-density]").forEach((b) => {
+        b.setAttribute(
+          "aria-pressed",
+          String(b.dataset.density === state.density),
+        );
+      });
+      document
+        .getElementById("btn-expand")
+        .setAttribute("aria-pressed", String(state.expanded));
+      document
+        .getElementById("btn-stream")
+        .setAttribute("aria-pressed", String(state.streaming));
+
+      const term = document.getElementById("term");
+      term.className = "term style-" + state.style;
+      term.dataset.density = state.density;
+
+      let html = buildScene();
+      html = html.replace(/^<div class="gap"[^>]*><\/div>/, "");
+      term.innerHTML = html;
+
+      const plain = term.innerText.replace(/\n{3,}/g, "\n\n").trim();
+      document.getElementById("copy").innerHTML =
+        `<span class="label">visible text sketch · rail 为 CSS 不在此串</span>` +
+        escapeHtml(plain) +
+        `\n\n<span class="fg-muted">← 语义复制应更干净（无旁注）；边轨不是 "|"</span>`;
+
+      const url = new URL(location.href);
+      url.searchParams.set("scene", state.scene);
+      url.searchParams.set("style", state.style);
+      url.searchParams.set("density", state.density);
+      url.searchParams.set("scheme", state.scheme);
+      history.replaceState(null, "", url);
+    }
+
+    function stopStream() {
+      if (streamTimer) {
+        clearInterval(streamTimer);
+        streamTimer = null;
+      }
+      state.streaming = false;
+      state.streamText = "";
+    }
+
+    function startStream() {
+      stopStream();
+      if (state.scene !== "stream" && state.scene !== "kitchen") {
+        state.scene = "stream";
+      }
+      state.streaming = true;
+      state.streamText = "";
+      let i = 0;
+      render();
+      streamTimer = setInterval(() => {
+        i += 1;
+        state.streamText = STREAM_FULL.slice(0, i);
+        if (i >= STREAM_FULL.length) {
+          clearInterval(streamTimer);
+          streamTimer = null;
+          state.streaming = false;
+        }
+        render();
+      }, 18);
+    }
+
+    document.querySelectorAll("[data-scene]").forEach((b) => {
+      b.addEventListener("click", () => {
+        stopStream();
+        state.scene = b.dataset.scene;
+        render();
+      });
+    });
+    document.querySelectorAll("[data-style]").forEach((b) => {
+      b.addEventListener("click", () => {
+        state.style = b.dataset.style;
+        render();
+      });
+    });
+    document.querySelectorAll("[data-density]").forEach((b) => {
+      b.addEventListener("click", () => {
+        state.density = b.dataset.density;
+        render();
+      });
+    });
+    document.getElementById("btn-expand").addEventListener("click", () => {
+      state.expanded = !state.expanded;
+      render();
+    });
+    document.getElementById("btn-stream").addEventListener("click", () => {
+      if (state.streaming) {
+        stopStream();
+        render();
+      } else {
+        startStream();
+      }
+    });
+
+    function applyScheme() {
+      document.documentElement.setAttribute("data-scheme", state.scheme);
+      document.querySelectorAll("[data-scheme]").forEach((b) => {
+        b.setAttribute(
+          "aria-pressed",
+          String(b.dataset.scheme === state.scheme),
+        );
+      });
+    }
+    document.querySelectorAll("[data-scheme]").forEach((b) => {
+      b.addEventListener("click", () => {
+        state.scheme = b.dataset.scheme;
+        applyScheme();
+        render();
+      });
+    });
+    document.addEventListener("keydown", (e) => {
+      if (e.target && /input|textarea/i.test(e.target.tagName)) return;
+      if (e.key === "d" || e.key === "D") {
+        state.scheme = "dark";
+        applyScheme();
+        render();
+      } else if (e.key === "l" || e.key === "L") {
+        state.scheme = "light";
+        applyScheme();
+        render();
+      }
+    });
+
+    const params = new URLSearchParams(location.search);
+    const scenes = [
+      "turn",
+      "stream",
+      "errors",
+      "compaction",
+      "skills-mcp",
+      "bang-queue",
+      "kitchen",
+    ];
+    if (scenes.includes(params.get("scene"))) state.scene = params.get("scene");
+    if (params.get("style") === "current" || params.get("style") === "rail") {
+      state.style = params.get("style");
+    }
+    if (["raw", "compact", "rich"].includes(params.get("density"))) {
+      state.density = params.get("density");
+    }
+    if (params.get("scheme") === "light" || params.get("scheme") === "dark") {
+      state.scheme = params.get("scheme");
+    }
+    applyScheme();
+    render();
+  </script>
+</body>
+</html>
