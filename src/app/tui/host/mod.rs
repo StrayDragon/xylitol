@@ -240,6 +240,7 @@ impl<T: Terminal> HostSession<T> {
 
     /// Seed ↑/↓ history from prior same-cwd sessions (pure new session).
     pub async fn seed_editor_history_for_new_session(&mut self, driver: &dyn XyDriver) {
+        let t = std::time::Instant::now();
         let cwd = std::env::current_dir()
             .map(|p| p.to_string_lossy().into_owned())
             .unwrap_or_else(|_| self.layout_cwd.clone());
@@ -255,6 +256,7 @@ impl<T: Terminal> HostSession<T> {
         if let Some(root) = self.ui_root.as_ref() {
             root.borrow_mut().replace_editor_send_history(texts);
         }
+        crate::app::core::lag::note("tui_seed_editor_history", t);
     }
 
     pub fn mode(&self) -> LayoutMode {
