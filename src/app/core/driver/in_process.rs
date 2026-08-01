@@ -1545,6 +1545,68 @@ mod driver_session_tree_tests {
         assert_eq!(snap.mcp_configured, 0);
     }
 
+    #[tokio::test]
+    async fn mcp_settle_defers_system_prompt_off_tick() {
+        use crate::app::core::mcp_spec::{McpServerSpec, McpTransportSpec};
+
+        let dir = tempfile::tempdir().unwrap();
+        let store = Arc::new(SessionManager::new(dir.path().join("sessions")));
+        let mut driver = build_test_driver(store).await;
+        let bad = McpServerSpec {
+            name: "bad".into(),
+            transport: McpTransportSpec::Stdio,
+            command: None,
+            args: None,
+            url: None,
+            env: None,
+            headers: None,
+        };
+        driver.enable_reload_state(
+            dir.path().to_path_buf(),
+            dir.path().join(".xylitol"),
+            true,
+            vec![bad],
+        );
+        let prompt_before = driver.system_prompt_for_test();
+        assert!(prompt_before.is_some());
+
+        driver.begin_mcp_bootstrap().await;
+        assert!(driver.mcp_blocks_agent(), "Running must gate wait_mcp");
+
+        let mut saw_refresh = false;
+        for _ in 0..200 {
+            if driver.poll_mcp_bootstrap().await {
+                saw_refresh = true;
+                break;
+            }
+            tokio::task::yield_now().await;
+        }
+        assert!(
+            saw_refresh,
+            "invalid MCP bootstrap must finish Running→Settling and refresh UI"
+        );
+        assert!(
+            driver.mcp_blocks_agent(),
+            "Settling must keep wait_mcp gated until prompt install"
+        );
+        assert!(
+            driver.tool_names_for_test().iter().any(|n| n == "read"),
+            "tools must be applied before prompt install"
+        );
+        assert_eq!(
+            driver.system_prompt_for_test(),
+            prompt_before,
+            "system prompt must stay deferred until Settling completes"
+        );
+
+        driver.wait_mcp_bootstrap().await;
+        assert!(!driver.mcp_blocks_agent());
+        let after = driver.system_prompt_for_test();
+        assert!(after.is_some());
+        // Prompt install may be identical text for builtins-only; just ensure Settled.
+        assert!(!driver.mcp_blocks_agent());
+    }
+
     #[test]
     fn mcp_progress_needs_ui_refresh_only_on_label_change() {
         let mut last = None;

@@ -4755,17 +4755,96 @@ mod slice_tests {
         assert!(root.borrow().models_open(), "bare /model must open Models");
 
         let frame = root.borrow_mut().render(80);
-        let working_idx = frame.iter().position(|l| l.contains("Working"));
+        assert_busy_lead_in_viewport(&frame, term_rows, "Working");
+    }
+
+    /// Short terminal + busy Themes: Working stays in content-end viewport (atc23).
+    #[tokio::test]
+    async fn busy_themes_short_terminal_keeps_working_in_viewport() {
+        let term_rows = 10usize;
+        let mut session = HostSession::new_product_ui(TestTerminal::new(80, term_rows as u16));
+        let root = session.ui_root().expect("ui").clone();
+        let mut driver = ScriptedDriver::new();
+        let mut stream = None;
+
+        session.on_run_started("busy");
+        root.borrow_mut().set_editor_text("/theme");
+        session.step(HostEvent::Input(enter_event())).unwrap();
+        pump_host_driver(&mut session, &mut driver, &mut stream)
+            .await
+            .unwrap();
+        assert!(root.borrow().themes_open(), "bare /theme must open Themes");
+
+        let frame = root.borrow_mut().render(80);
+        assert_busy_lead_in_viewport(&frame, term_rows, "Working");
+    }
+
+    /// Short terminal + busy MCP list: Working stays in content-end viewport (atc23).
+    #[tokio::test]
+    async fn busy_mcp_short_terminal_keeps_working_in_viewport() {
+        use crate::app::core::driver::{
+            LoadedResourcesSnapshot, McpServerPhase, McpServerSnapshot,
+        };
+
+        let term_rows = 12usize;
+        let mut session = HostSession::new_product_ui(TestTerminal::new(80, term_rows as u16));
+        let root = session.ui_root().expect("ui").clone();
+        let mut driver = ScriptedDriver::new();
+        let servers: Vec<_> = (0..16)
+            .map(|i| McpServerSnapshot {
+                id: format!("srv{i}"),
+                phase: McpServerPhase::Connected,
+                tools_armed: true,
+                tool_count: 2,
+            })
+            .collect();
+        driver.set_loaded_resources_for_driver(LoadedResourcesSnapshot {
+            mcp_servers: servers,
+            mcp_configured: 16,
+            ..LoadedResourcesSnapshot::default()
+        });
+        session.refresh_loaded_resources(&driver).await;
+        let mut stream = None;
+
+        session.on_run_started("busy");
+        root.borrow_mut().set_editor_text("/mcp");
+        session.step(HostEvent::Input(enter_event())).unwrap();
+        pump_host_driver(&mut session, &mut driver, &mut stream)
+            .await
+            .unwrap();
+        assert!(root.borrow().mcp_open(), "bare /mcp must open MCP list");
+
+        let frame = root.borrow_mut().render(80);
+        assert_busy_lead_in_viewport(&frame, term_rows, "Working");
+    }
+
+    /// Short terminal + busy Import confirm: Working stays in content-end viewport (atc23).
+    #[tokio::test]
+    async fn busy_import_short_terminal_keeps_working_in_viewport() {
+        let term_rows = 10usize;
+        let mut session = HostSession::new_product_ui(TestTerminal::new(80, term_rows as u16));
+        let root = session.ui_root().expect("ui").clone();
+
+        session.on_run_started("busy");
+        session.mount_import_confirm("/tmp/export.jsonl");
+        assert!(root.borrow().import_confirm_open());
+
+        let frame = root.borrow_mut().render(80);
+        assert_busy_lead_in_viewport(&frame, term_rows, "Working");
+    }
+
+    fn assert_busy_lead_in_viewport(frame: &[String], term_rows: usize, lead: &str) {
+        let working_idx = frame.iter().position(|l| l.contains(lead));
         assert!(
             working_idx.is_some(),
-            "Working must still be in full render tree: {}",
+            "{lead} must still be in full render tree: len={}",
             frame.len()
         );
-        let working_idx = working_idx.expect("Working");
+        let working_idx = working_idx.expect(lead);
         let vp_top = frame.len().saturating_sub(term_rows);
         assert!(
             working_idx >= vp_top,
-            "Working@{working_idx} MUST stay in content-end viewport [vp_top={vp_top}, rows={term_rows}]; frame_len={}",
+            "{lead}@{working_idx} MUST stay in content-end viewport [vp_top={vp_top}, rows={term_rows}]; frame_len={}",
             frame.len()
         );
     }
