@@ -15,17 +15,17 @@
 
 ## 2. Allow 表 + 开槽
 
-- [ ] 2.1 `slash_allowances`：OpenModels / Theme / OpenSessionResume → Allow
-- [ ] 2.2 `effects/slash`：busy 路径允许挂载 Models / Themes / SessionResume（删「unavailable while busy」拒开）
-- [ ] 2.3 harness：busy 开三槽
+- [x] 2.1 `slash_allowances`：OpenModels / Theme / OpenSessionResume → Allow
+- [x] 2.2 `effects/slash`：busy 路径允许挂载 Models / Themes / SessionResume（删「unavailable while busy」拒开）
+- [x] 2.3 harness：busy 开三槽
 
 ## 3. Resume switch 闸
 
-- [ ] 3.1 busy 下 `pending_session_resume_select`（及 rename/delete 确认若会写盘）拒执行 + ScrollNotice A
-- [ ] 3.2 harness 钉文案与「未 switch」
-- [ ] 3.3 busy `/reload`/`/trust` 既有拒测不回归
+- [x] 3.1 busy 下 `pending_session_resume_select`（及 rename/delete 确认若会写盘）拒执行 + ScrollNotice A
+- [x] 3.2 harness 钉文案与「未 switch」
+- [x] 3.3 busy `/reload`/`/trust` 既有拒测不回归
 
 ## 4. 文档与校验
 
-- [ ] 4.1 `design/keybindings.md` 同步 busy 列表一句（若有）
-- [ ] 4.2 相关 `cargo test` + `validate --strict`
+- [x] 4.1 `design/keybindings.md` 同步 busy 列表一句（若有）
+- [x] 4.2 相关 `cargo test` + `validate --strict`

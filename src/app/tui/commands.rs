@@ -74,6 +74,10 @@ pub enum SlashPermit {
 /// Alias kept for call sites / specs that say «busy slash policy» (c1580).
 pub type BusySlashPolicy = SlashPermit;
 
+/// ScrollNotice when Resume Enter would switch/rename/delete while agent busy (c1780 / atm10).
+pub const BUSY_SESSION_SWITCH_NOTICE: &str =
+    "agent busy — finish turn or Esc abort before switching session";
+
 /// Per-slash allowances across host gates (c1210).
 ///
 /// **Single exhaustive table**: add a [`PendingSlash`] arm → fill every field.
@@ -104,9 +108,9 @@ pub fn slash_allowances(slash: &PendingSlash) -> SlashAllowances {
         PendingSlash::OpenMcp => SlashAllowances {
             when_agent_busy: Allow,
         },
-        // Session nav (agent busy: mostly reject)
+        // Instant lists (c1780): browse/open Allow; Resume switch gated in pending_ui.
         PendingSlash::OpenSessionResume => SlashAllowances {
-            when_agent_busy: Reject,
+            when_agent_busy: Allow,
         },
         PendingSlash::SessionNew => SlashAllowances {
             when_agent_busy: Reject,
@@ -128,10 +132,10 @@ pub fn slash_allowances(slash: &PendingSlash) -> SlashAllowances {
         },
         // Chrome / trust
         PendingSlash::Theme { .. } => SlashAllowances {
-            when_agent_busy: Reject,
+            when_agent_busy: Allow,
         },
         PendingSlash::OpenModels => SlashAllowances {
-            when_agent_busy: Reject,
+            when_agent_busy: Allow,
         },
         PendingSlash::SetModel(_) => SlashAllowances {
             when_agent_busy: Allow,
@@ -427,7 +431,15 @@ mod parse_tests {
         );
         assert_eq!(
             busy_slash_policy(&PendingSlash::OpenModels),
-            BusySlashPolicy::Reject
+            BusySlashPolicy::Allow
+        );
+        assert_eq!(
+            busy_slash_policy(&PendingSlash::Theme { arg: None }),
+            BusySlashPolicy::Allow
+        );
+        assert_eq!(
+            busy_slash_policy(&PendingSlash::OpenSessionResume),
+            BusySlashPolicy::Allow
         );
         assert_eq!(
             busy_slash_policy(&PendingSlash::Usage("x")),
@@ -442,13 +454,17 @@ mod parse_tests {
     #[test]
     fn slash_allowances_busy_only_table() {
         let a = slash_allowances(&PendingSlash::OpenSessionResume);
-        assert_eq!(a.when_agent_busy, SlashPermit::Reject);
+        assert_eq!(a.when_agent_busy, SlashPermit::Allow);
         let b = slash_allowances(&PendingSlash::Compact { instructions: None });
         assert_eq!(b.when_agent_busy, SlashPermit::Allow);
         let c = slash_allowances(&PendingSlash::Reload);
         assert_eq!(c.when_agent_busy, SlashPermit::Reject);
         let d = slash_allowances(&PendingSlash::OpenMcp);
         assert_eq!(d.when_agent_busy, SlashPermit::Allow);
+        let e = slash_allowances(&PendingSlash::Theme { arg: None });
+        assert_eq!(e.when_agent_busy, SlashPermit::Allow);
+        let f = slash_allowances(&PendingSlash::OpenModels);
+        assert_eq!(f.when_agent_busy, SlashPermit::Allow);
     }
 
     #[test]
