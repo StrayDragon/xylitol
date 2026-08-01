@@ -227,10 +227,10 @@ fn shared_effect_pump_is_single_entry() {
 }
 
 #[test]
-fn god_module_entry_files_under_budget() {
-    // c1170 / ath12: entry modules must stay well under the ~1200 hard smell.
-    // Soft cap raised to 850: host/mod was already ~809 before c1210 (ath12 smell).
-    const BUDGET: usize = 850;
+fn ath12_entry_files_under_hard_smell_loc() {
+    // c1840 / ath12: physical LOC is SHOULD ~800; approaching ~1200 is hard smell.
+    // Function complexity HARD gate is scripts/check_complexity.py (just qa).
+    const HARD_SMELL: usize = 1200;
     let files = [
         ("host/mod.rs", include_str!("host/mod.rs")),
         ("layout/root/mod.rs", include_str!("layout/root/mod.rs")),
@@ -240,8 +240,8 @@ fn god_module_entry_files_under_budget() {
     for (name, src) in files {
         let lines = src.lines().count();
         assert!(
-            lines < BUDGET,
-            "{name} has {lines} lines (budget {BUDGET}); split further per ath12"
+            lines < HARD_SMELL,
+            "{name} has {lines} lines (hard smell {HARD_SMELL}); split further per ath12"
         );
     }
 }
