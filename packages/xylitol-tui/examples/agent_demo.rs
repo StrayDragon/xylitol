@@ -38,24 +38,24 @@ use xylitol_tui::{
 /// Demo slash commands (static; product would load from Driver / protocol).
 /// Names omit the leading `/` — Editor's CombinedAutocompleteProvider adds it.
 const SLASH_COMMANDS: &[(&str, &str)] = &[
-    ("help", "Show key help as 滚动提示 in transcript"),
+    ("help", "Show key help in transcript"),
     ("md", "Stream full Markdown grammar stub (typewriter)"),
-    ("theme", "Switch palette: /theme [dark|light|toggle]"),
+    ("theme", "Switch chrome theme: /theme [dark|light|toggle]"),
     (
         "entry-style",
-        "对话条目: /entry-style [rail|wash|toggle] — 左边轨 (default) vs 整行洗底",
+        "Entry paint: /entry-style [rail|wash|toggle] (left rail vs full-row wash)",
     ),
     (
         "thinking-level",
         "Cycle editor thinking border (Shift+Tab; or /thinking-level)",
     ),
     ("model", "Switch model: /model <id>"),
-    ("compact", "Demo Compacting 状态条 → Working (c493)"),
-    ("retry", "Demo Retry 状态条 → Working (c493)"),
+    ("compact", "Demo Compacting status → Working (c493)"),
+    ("retry", "Demo Retry status → Working (c493)"),
     ("export", "Export current session"),
     ("session", "Session management"),
     ("settings", "Open settings panel"),
-    ("palette", "Open 命令面板 (Ctrl+P)"),
+    ("palette", "Open command plate (Ctrl+P)"),
     ("diff", "Inject unified + side-by-side diffs"),
 ];
 
@@ -213,7 +213,7 @@ impl CompletionSource for DemoDollarSource {
     }
 }
 
-/// 命令面板行 (c535): id drives routing; label/description feed SelectList.
+/// Command-plate row (c535): id drives routing; label/description feed SelectList.
 #[derive(Debug, Clone, Copy)]
 struct DemoPlateItem {
     id: &'static str,
@@ -341,12 +341,12 @@ const DEMO_PLATE: &[DemoPlateItem] = &[
     DemoPlateItem {
         id: "compact-status",
         label: "Compaction status (c493)",
-        description: "状态条 Compacting → 滚动提示 → Working (Alt+K)",
+        description: "Status Compacting → ScrollNotice → Working (Alt+K)",
     },
     DemoPlateItem {
         id: "retry-status",
         label: "AutoRetry status (c493)",
-        description: "状态条 Retry 1/3 → 滚动提示 → Working (Alt+Y)",
+        description: "Status Retry 1/3 → fail note → Working (Alt+Y)",
     },
     DemoPlateItem {
         id: "compact",
@@ -783,7 +783,7 @@ fn demo_diff_theme(scheme: TerminalColorScheme, block_bg: xylitol_tui::RgbColor)
     }
 }
 
-/// Full Markdown grammar stub for c530 / c535 — streamed via 命令面板 `md-full` or `/md`.
+/// Full Markdown grammar stub for c530 / c535 — streamed via plate `md-full` or `/md`.
 /// Source keeps fences so syntect can highlight; display has no fence chrome.
 fn markdown_grammar_stub() -> &'static str {
     "\
@@ -914,7 +914,7 @@ function accept(prompt: string): boolean {
 完：打字机流式应逐段重绘标题 / 列表 / 表 / 高亮；粗体斜体靠 SGR，语义靠（加粗）/（斜体）标注。"
 }
 
-/// Focused nested-list sample for 命令面板 `md-list-wrap` (library reference).
+/// Focused nested-list sample for plate `md-list-wrap` (library reference).
 fn markdown_list_wrap_stub() -> &'static str {
     "\
 ### 列表嵌套 · 悬挂缩进（prewrapped）
@@ -1120,7 +1120,7 @@ impl Component for SharedFakeCodingAgentApp {
     }
 }
 
-/// Library-atom showcases that replace the editor slot (like Settings / 命令面板).
+/// Library-atom showcases that replace the editor slot (like Settings / plate).
 #[derive(Clone, Copy, PartialEq, Eq)]
 enum LibAtomKind {
     TruncatedText,
@@ -1228,19 +1228,11 @@ impl EntryStyle {
         }
     }
 
-    /// Slash / CLI token (`rail` | `wash`).
-    fn token(self) -> &'static str {
+    /// Slash / footer token (`rail` | `wash`). Demo-native; product chrome vocab is separate.
+    fn label(self) -> &'static str {
         match self {
             Self::Wash => "wash",
             Self::Rail => "rail",
-        }
-    }
-
-    /// Footer / 滚动提示 display (SSOT: 左边轨 / 洗底).
-    fn label(self) -> &'static str {
-        match self {
-            Self::Wash => "洗底",
-            Self::Rail => "左边轨",
         }
     }
 }
@@ -1332,7 +1324,7 @@ pub struct FakeCodingAgentApp {
     submit_slot: Rc<RefCell<Option<String>>>,
     palette_open: bool,
     palette: SelectList,
-    /// Typeahead filter for 命令面板 (SelectList::set_filter).
+    /// Typeahead filter for command plate (SelectList::set_filter).
     palette_filter: String,
     settings_open: bool,
     settings: SettingsList,
@@ -1400,7 +1392,7 @@ pub struct FakeCodingAgentApp {
     theme_auto: bool,
     /// Resolved Dark/Light token set (c458).
     theme_mode: TerminalColorScheme,
-    /// 对话条目外观：整行洗底（legacy）vs 左边轨（产品默认）。
+    /// Entry paint: full-row wash (legacy) vs left rail (product default; demo may differ).
     entry_style: EntryStyle,
     /// Editor thinking-level border (c1140); bash success border still wins while `!`.
     thinking_border_level: ThinkingBorderLevel,
@@ -1956,7 +1948,7 @@ impl FakeCodingAgentApp {
         self.schedule_from_now(72, TimedAction::SetStatus("Ready".into()));
         self.push_message(
             Role::ScrollNotice,
-            "watch 状态条: Compacting (spinner) → Working → Ready · Alt+K / 命令面板 compact-status",
+            "watch status: Compacting (spinner) → Working → Ready · Alt+K / plate compact-status",
         );
     }
 
@@ -1985,7 +1977,7 @@ impl FakeCodingAgentApp {
         self.schedule_from_now(80, TimedAction::SetStatus("Ready".into()));
         self.push_message(
             Role::ScrollNotice,
-            "watch 状态条: Retry 1/3 → Working → Ready · Alt+Y / 命令面板 retry-status",
+            "watch status: Retry 1/3 → Working → Ready · Alt+Y / plate retry-status",
         );
     }
 
@@ -2186,12 +2178,11 @@ impl FakeCodingAgentApp {
         self.push_message(
             Role::ScrollNotice,
             format!(
-                "对话条目 → {} (/entry-style {}; 左边轨=default, 洗底=legacy full-row)",
-                self.entry_style.label(),
-                self.entry_style.token()
+                "entry-style → {} (rail = left bg strip, wash = full-row; demo-only toggle)",
+                self.entry_style.label()
             ),
         );
-        self.set_status(format!("Ready · {}", self.entry_style.token()));
+        self.set_status(format!("Ready · {}", self.entry_style.label()));
         true
     }
 
@@ -2686,21 +2677,21 @@ impl FakeCodingAgentApp {
     }
 
     fn seed_transcript(&mut self) {
-        // Slim chrome (c535): short pointer + compact kit. Full Markdown → 命令面板 `/md`.
+        // Slim chrome (c535): short pointer + compact kit. Full Markdown → plate `/md`.
         self.push_message(
             Role::ScrollNotice,
-            "demo · /entry-style rail|wash（对话条目：左边轨|洗底）· ! bash · busy Enter=steer · Alt+Enter=follow-up · /help",
+            "demo · /entry-style rail|wash · ! bash · busy Enter=steer · Alt+Enter=follow-up · /help",
         );
         self.push_message(
             Role::User,
             "Collapse examples into one fake coding-agent demo and keep foot interaction stable.",
         );
         self.push_thinking(
-            "Plan: keep a compact kit in seed (thinking/tools/diff); full Markdown grammar streams from 命令面板.\n\nKeep transcript in scrollback; mark the editor as the operation zone with borders.",
+            "Plan: keep a compact kit in seed (thinking/tools/diff); full Markdown grammar streams from plate.\n\nKeep transcript in scrollback; mark the editor as the operation zone with borders.",
         );
         self.push_message(
             Role::Assistant,
-            "已就绪。用 **Ctrl+P** 打开命令面板：全语法 Markdown 打字机、流式高亮、更多 Diff/工具。折叠提示在块旁 `(Ctrl+T)` / `(Alt+E)`。",
+            "Ready. **Ctrl+P** opens the command plate: full Markdown typewriter, streamed highlight, more Diff/tools. Collapse hints: `(Ctrl+T)` / `(Alt+E)`.",
         );
         self.push_tool(
             "read packages/xylitol-tui/examples/agent_demo.rs · 42ms · 790 lines",
@@ -2750,14 +2741,14 @@ impl FakeCodingAgentApp {
     fn inject_help_keys(&mut self) {
         self.push_message(
             Role::ScrollNotice,
-            "keys: Enter submit/steer · Alt+Enter follow-up · /md Markdown stream · Ctrl+P 命令面板 · \
-             /theme [dark|light|toggle] · /entry-style rail|wash（左边轨|洗底）· Shift+Tab thinking-border · /help · /diff · ! bash · Ctrl+G $EDITOR · double Esc tree · \
+            "keys: Enter submit/steer · Alt+Enter follow-up · /md Markdown stream · Ctrl+P plate · \
+             /theme [dark|light|toggle] · /entry-style rail|wash · Shift+Tab thinking-border · /help · /diff · ! bash · Ctrl+G $EDITOR · double Esc tree · \
              (Ctrl+T) thinking · (Alt+E) tools · (Ctrl+O) tools viewport · Alt+G glyphs · \
              Alt+K compact-status · Alt+Y retry-status · Esc · Ctrl+C",
         );
         self.push_message(
             Role::ScrollNotice,
-            "命令面板流: md-full · stream-rust/python/typescript/json · diff-sbs · \
+            "stream plate: md-full · stream-rust/python/typescript/json · diff-sbs · \
              completion-dollar (c545 $) · expandable-head (c550) · playground-sync (c555) · \
              md-list-wrap · narrow-clamp · truncated-text · cancellable-loader · panel · \
              ask-single · ask-multi · ask-tabs · tree (c560) · tool-tints · theme-toggle · \
@@ -2767,7 +2758,7 @@ impl FakeCodingAgentApp {
     }
 
     fn inject_completion_dollar_tip(&mut self) {
-        self.push_message(Role::User, "命令面板 · completion-dollar · A10 skill-ref");
+        self.push_message(Role::User, "plate · completion-dollar · A10 skill-ref");
         self.push_message(
             Role::User,
             "Please run $demo and also $narrow-clamp-skill-with-a-very-long-identifier together.",
@@ -2788,7 +2779,7 @@ impl FakeCodingAgentApp {
     }
 
     fn inject_expandable_head_showcase(&mut self) {
-        self.push_message(Role::User, "命令面板 · expandable-head · c550");
+        self.push_message(Role::User, "plate · expandable-head · c550");
         self.push_message(
             Role::ScrollNotice,
             "c550: Read-style tools use TruncateFrom::Head — first N lines stay on top; \
@@ -2806,20 +2797,21 @@ impl FakeCodingAgentApp {
     }
 
     fn inject_playground_sync_tip(&mut self) {
-        self.push_message(Role::User, "命令面板 · playground-sync · c555");
+        self.push_message(Role::User, "plate · playground-sync · c555");
         self.push_message(
             Role::ScrollNotice,
-            "This demo (`just demo-tui`) is the product TUI live playground. \
-             Visual SSOT = `src/app/tui/DESIGN.md` only (no package HTML design tree). \
-             Browser static preview: `src/app/tui/design/playground/` — Agents ignore by default. \
-             Tokens: DESIGN.md frontmatter → `python3 …/sync_tokens.py` → tokens.css/js; keep \
-             `Palette` aligned. Runtime MD: `/md` · 命令面板 `md-list-wrap` / `narrow-clamp`.",
+            "This demo (`just demo-tui`) is the **package** interactive harness (`agent_demo`). \
+             It MAY differ from product chrome / copy. Product visual SSOT = \
+             `src/app/tui/DESIGN.md` + `design/` (+ static `design/playground/` — Agents ignore \
+             by default). Tokens: DESIGN.md → `just sync-tui-tokens` (`sync_tokens.py`) → \
+             tokens.css/js; keep `Palette` aligned. Runtime MD: `/md` · plates `md-list-wrap` / \
+             `narrow-clamp`.",
         );
         self.set_status("Ready · try /md for runtime MD");
     }
 
     fn inject_md_list_wrap_showcase(&mut self) {
-        self.push_message(Role::User, "命令面板 · md-list-wrap · list prewrapped");
+        self.push_message(Role::User, "plate · md-list-wrap · list prewrapped");
         self.push_message(
             Role::ScrollNotice,
             "Library reference: Markdown list/table/quote rows are `prewrapped` — one hanging-indent \
@@ -2838,7 +2830,7 @@ impl FakeCodingAgentApp {
     }
 
     fn inject_narrow_clamp_showcase(&mut self) {
-        self.push_message(Role::User, "命令面板 · narrow-clamp · widgets");
+        self.push_message(Role::User, "plate · narrow-clamp · widgets");
         self.push_message(
             Role::ScrollNotice,
             "Library reference: SelectList / SettingsList / Input / Loader clamp every row to the \
@@ -2902,7 +2894,7 @@ impl FakeCodingAgentApp {
     }
 
     fn inject_truncated_text_atom(&mut self) {
-        self.push_message(Role::User, "命令面板 · truncated-text · atom");
+        self.push_message(Role::User, "plate · truncated-text · atom");
         self.push_message(
             Role::ScrollNotice,
             "Library reference: TruncatedText keeps a single line, pads, and ellipsizes to the \
@@ -2912,7 +2904,7 @@ impl FakeCodingAgentApp {
     }
 
     fn inject_cancellable_loader_atom(&mut self) {
-        self.push_message(Role::User, "命令面板 · cancellable-loader · atom");
+        self.push_message(Role::User, "plate · cancellable-loader · atom");
         self.push_message(
             Role::ScrollNotice,
             "Library reference: CancellableLoader ticks like Loader; Esc matches \
@@ -2922,7 +2914,7 @@ impl FakeCodingAgentApp {
     }
 
     fn inject_panel_atom(&mut self) {
-        self.push_message(Role::User, "命令面板 · panel · atom");
+        self.push_message(Role::User, "plate · panel · atom");
         self.push_message(
             Role::ScrollNotice,
             "Library reference: Panel (pi Box) pads children and paints an optional background on \
@@ -2932,7 +2924,7 @@ impl FakeCodingAgentApp {
     }
 
     fn inject_ask_single(&mut self) {
-        self.push_message(Role::User, "命令面板 · ask-single · c565");
+        self.push_message(Role::User, "plate · ask-single · c565");
         self.push_message(
             Role::ScrollNotice,
             "ChoicePrompt Single + Other: ↑↓ · Enter · Tab focuses Other · Esc cancel. \
@@ -2953,7 +2945,7 @@ impl FakeCodingAgentApp {
     }
 
     fn inject_ask_multi(&mut self) {
-        self.push_message(Role::User, "命令面板 · ask-multi · c565");
+        self.push_message(Role::User, "plate · ask-multi · c565");
         self.push_message(
             Role::ScrollNotice,
             "ChoicePrompt Multi + Other: Space 勾选 · Enter 提交 · Tab→Other. Playground: Ask.",
@@ -2973,7 +2965,7 @@ impl FakeCodingAgentApp {
     }
 
     fn inject_ask_tabs(&mut self) {
-        self.push_message(Role::User, "命令面板 · ask-tabs · c565");
+        self.push_message(Role::User, "plate · ask-tabs · c565");
         self.push_message(
             Role::ScrollNotice,
             "ChoicePrompt 多题混搭：Q1 单选 · Q2 多选(+) · Q3 单选；←→ 切题；答完进 Submit。\
@@ -3020,7 +3012,7 @@ impl FakeCodingAgentApp {
     fn inject_diff_showcase(&mut self) {
         let demo_rs = format_edit_path("packages/xylitol-tui/examples/agent_demo.rs", &self.cwd);
         let ui_root = format_edit_path("src/app/tui/ui_root.rs", &self.cwd);
-        self.push_message(Role::User, "命令面板 · diff-sbs · c540 edges");
+        self.push_message(Role::User, "plate · diff-sbs · c540 edges");
         self.push_diff_ex(
             format!("edited {demo_rs} (+2 -2) unified edit-format"),
             sample_unified_pair(),
@@ -3060,7 +3052,7 @@ impl FakeCodingAgentApp {
     }
 
     fn inject_tool_tint_showcase(&mut self) {
-        self.push_message(Role::User, "命令面板 · tool-tints");
+        self.push_message(Role::User, "plate · tool-tints");
         self.push_thinking(
             "Plan: show tool status tints and long bash collapse. Toggle with (Ctrl+T)/(Alt+E).",
         );
@@ -3117,7 +3109,7 @@ impl FakeCodingAgentApp {
             "ask-tabs" => self.inject_ask_tabs(),
             "tool-tints" => self.inject_tool_tint_showcase(),
             "tree" => {
-                self.push_message(Role::User, "命令面板 · tree · c560");
+                self.push_message(Role::User, "plate · tree · c560");
                 self.push_message(
                     Role::ScrollNotice,
                     "c560: TreeSelector empty/no-match shows a dim hint (not a blank list). \
@@ -4566,10 +4558,10 @@ impl Component for FakeCodingAgentApp {
                 (0, f) => format!(" · q:s0|f{f}"),
                 (s, f) => format!(" · q:s{s}|f{f}"),
             };
-            // Compact cue strip — full list is in the seed 滚动提示.
+            // Compact cue strip — full list is in the seed ScrollNotice.
             footer_owned = format!(
-                // c535 pad4: metadata only — chords live in /help / 命令面板 help-keys.
-                "{} · {} · {} · 条目:{}{queue_hint}",
+                // c535 pad4: metadata only — chords live in /help / plate help-keys.
+                "{} · {} · {} · entry:{}{queue_hint}",
                 self.footer_note,
                 self.theme_label(),
                 self.glyph_set.label(),
