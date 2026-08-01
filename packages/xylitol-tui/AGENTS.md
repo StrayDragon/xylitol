@@ -15,15 +15,14 @@
 历史对齐源（行为参考，非逐文件镜像、非强制同步）：`../pi/packages/tui`。
 **刻意差异台账（整合时防覆盖）**：本包 [`PI_DELTAS.md`](PI_DELTAS.md)。
 
-## 设计与实验场（单份 SSOT）
+## 设计与实验场
 
-本仓 **视觉 MUST 只有一份**：[`src/app/tui/DESIGN.md`](../../src/app/tui/DESIGN.md) + [`src/app/tui/design/`](../../src/app/tui/design/)。
+本仓 **产品视觉 MUST 只有一份**：[`src/app/tui/DESIGN.md`](../../src/app/tui/DESIGN.md) + [`src/app/tui/design/`](../../src/app/tui/design/)。
 
 | 角色 | 路径 | 说明 |
 |---|---|---|
-| **SSOT** | app `DESIGN.md` + `design/*.md` | 色板 / 壳 / 键位 / 组件呈现 MUST |
-| **快速实验场** | `examples/agent_demo.rs`（`just demo-tui`） | **动态** playground：先在此试交互，再接线 `src/app/tui` |
-| **浏览器静图** | app `design/playground/` | **静态**固定状态对照；**不**在本包维护第二份 HTML design；不标实现分层 |
+| **产品视觉 SSOT** | app `DESIGN.md` + `design/*.md` + `design/playground/` | 色板 / 壳 / 键位 / 组件呈现；静图仅服务 `src/app/tui` |
+| **包交互演示** | `examples/agent_demo.rs`（`just demo-tui`） | 引擎 / 通用组件试跑；**允许与产品 chrome / 文案有差异**；**≠** design playground |
 | **运行时便利** | `Palette`（本包） | 对齐 DESIGN 的 Dark/Light 快照；组件仍只收闭包 |
 
 分发本库后：代码零依赖主 crate；文档与 `Palette` **继续引用** monorepo 的 app DESIGN 为活 SSOT（嵌入方也可自备 token 注入闭包）。**不要**在本包另起平行 design 文档树。
@@ -86,7 +85,7 @@
 
 **分工（勿混）**
 
-- **包 E2E / `agent_demo`**：引擎 + 通用组件 + 真终端协议；就绪探针 `DEMO_READY_NEEDLE`（`tests/tui_e2e.rs`，footer `theme:dark`——勿用易滚出视口的标题行）。PTY 上 plate/settings 宜用 `XYLITOL_AGENT_DEMO_INITIAL_PROMPT` + 足够行高；tmux 用 `C-p` / `C-s`。
+- **包 E2E / `agent_demo`**：引擎 + 通用组件 + 真终端协议；就绪探针 `DEMO_READY_NEEDLE`（`tests/tui_e2e.rs`，页脚 `theme:dark`——勿用易滚出视口的标题行）。PTY 上命令面板/settings 宜用 `XYLITOL_AGENT_DEMO_INITIAL_PROMPT` + 足够行高；tmux 用 `C-p` / `C-s`。
 - **产品 TUI**：Driver / bridge / layout / 键位 → 应用面 harness（`src/app/tui`）。层 5 另有 **`pty_product_*` Fake smoke**（隔离 HOME/config，不绑真 LLM）；日常仍勿把满闸默认绑完整配置/真 API。
 - 层 5 全 `#[ignore]`；缺 tmux 时用 `just test-tui-e2e-pty`。操作细则：`test-tui-harness` skill（how-to，非第二份边界文）。
 

@@ -1,14 +1,14 @@
 kind: llman.sdd.spec
 name: "package-tui-agent-demo"
-purpose: "xylitol-tui agent_demo 演示面：Command plate 预制触发、瘦 chrome、打字机 Markdown stub。"
+purpose: "xylitol-tui agent_demo 演示面：命令面板预制触发、瘦 chrome、打字机 Markdown stub。"
 valid_scope[2]: "packages/xylitol-tui/examples/agent_demo.rs","packages/xylitol-tui/tests/agent_demo_test.rs"
 requirements[6]{req_id,title,statement}:
-  pad1,"command-plate-slot",agent_demo MUST 提供 Command plate（经 Ctrl+P 或等价 slash），以替换 editor 槽的方式展示可选演示项；MUST NOT 做成居中大 overlay 仪表盘。
-  pad2,"canned-triggers",Command plate 每一项 MUST 绑定预制动作或预制 prompt；选中后 MUST 触发可重复的演示脚本（含 Markdown 全语法、流式代码高亮、Diff、工具三态、会话树等已支持场景中的子集）。
-  pad3,"slim-default-seed",默认 seed transcript MUST 保持短小（帮助指向 plate）；重型 showcase MUST 经 plate 或显式 slash（如 /md）注入，MUST NOT 仅依赖过长默认 seed。
-  pad4,"footer-no-key-wall",agent_demo footer MUST NOT 常驻多行或长键位墙；完整键位说明 MUST 经 plate 项或 /help 进入 transcript。
-  pad5,"demo-compaction-retry-chrome","agent_demo MUST 提供可触发的 Compacting 与 Retry n/m 单行 status 预览（和弦或 Command plate 或 slash），时序结束后 MUST 回到 Ready/Working 类空闲短词，并 MUST 向 transcript 追加对应 System 说明；MUST NOT 以 capturing overlay focus-restore 演示作为本预览的一部分。"
-  pad6,"thinking-border-cycle","agent_demo MUST 以 Shift+Tab 作为 thinking border level 的主 cycle 入口（可另保留 plate 或 /thinking-level 辅助）；每次 cycle MUST 经 Editor set_border_color（或 apply_thinking_border）应用对应 Palette 边框；bash 模式边框 MUST 仍优先 success，退出 bash 后 MUST 恢复当前 thinking 边框；MUST NOT 将本 cycle 实现为产品 src/app/tui 默认键位（产品 thinking 仅经 /model 槽，见 ati36）。"
+  pad1,"command-plate-slot",agent_demo MUST 提供命令面板（经 Ctrl+P 或等价 slash），以替换 editor 槽的方式展示可选演示项；MUST NOT 做成居中大 overlay 仪表盘。
+  pad2,"canned-triggers",命令面板每一项 MUST 绑定预制动作或预制 prompt；选中后 MUST 触发可重复的演示脚本（含 Markdown 全语法、流式代码高亮、Diff、工具三态、会话树等已支持场景中的子集）。
+  pad3,"slim-default-seed",默认 seed transcript MUST 保持短小（帮助指向命令面板）；重型 showcase MUST 经命令面板或显式 slash（如 /md）注入，MUST NOT 仅依赖过长默认 seed。
+  pad4,"footer-no-key-wall",agent_demo 页脚 MUST NOT 常驻多行或长键位墙；完整键位说明 MUST 经命令面板项或 /help 进入 transcript（滚动提示）。
+  pad5,"demo-compaction-retry-chrome","agent_demo MUST 提供可触发的 Compacting 与 Retry n/m 单行状态条预览（和弦或命令面板或 slash），时序结束后 MUST 回到 Ready/Working 类空闲短词，并 MUST 向 transcript 追加对应滚动提示；MUST NOT 以 capturing overlay focus-restore 演示作为本预览的一部分。"
+  pad6,"thinking-border-cycle","agent_demo MUST 以 Shift+Tab 作为 thinking border level 的主 cycle 入口（可另保留命令面板或 /thinking-level 辅助）；每次 cycle MUST 经 Editor set_border_color（或 apply_thinking_border）应用对应 Palette 边框；bash 模式边框 MUST 仍优先 success，退出 bash 后 MUST 恢复当前 thinking 边框；MUST NOT 将本 cycle 实现为产品 src/app/tui 默认键位（产品 thinking 仅经 /model 槽，见 ati36）。"
 scenarios[6]{req_id,id,given,when,then,feature}:
   pad1,pad1-unit,"command-plate-slot 约束由包级单测覆盖（非 BDD harness）",审查实现与对应测试,"行为符合本 requirement 陈述",false
   pad2,pad2-unit,"canned-triggers 约束由包级单测覆盖（非 BDD harness）",审查实现与对应测试,"行为符合本 requirement 陈述",false
