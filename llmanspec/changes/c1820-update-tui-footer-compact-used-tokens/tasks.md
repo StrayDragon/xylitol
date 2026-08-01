@@ -2,8 +2,8 @@
 
 ## 1. Specs landing
 
-- [ ] 1.1 `change start` + 绑定分支
-- [ ] 1.2 更新 live `app-tui-chrome` atc2 / atc13 / atc21（used 紧凑 = `format_compact_tokens`）与 `.feature` 期望
+- [x] 1.1 `change start` + 绑定分支
+- [x] 1.2 更新 live `app-tui-chrome` atc2 / atc13 / atc21（used 紧凑 = `format_compact_tokens`）与 `.feature` 期望
 - [ ] 1.3 commit Specs landing
 
 ## 2. 实现
