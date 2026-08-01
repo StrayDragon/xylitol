@@ -12,9 +12,15 @@ verbosity_default := env("JUST_VERBOSITY", "quiet")
 _default:
     @just --list
 
-# Install prek hooks.
+# Install prek hooks (+ optional complexity CLI into .tools/).
 setup:
+    #!/usr/bin/env bash
+    set -euo pipefail
     prek install
+    # Lazy install also happens in scripts/check_complexity.py; setup warms the cache.
+    if ! command -v cccc-rs >/dev/null && [[ ! -x .tools/bin/cccc-rs ]]; then
+      cargo install cccc-rs-cli --version 0.4.0 --locked --root .tools
+    fi
 
 # Run cargo fmt (write).
 fmt:
@@ -147,6 +153,18 @@ check-tui-tokens verbosity=verbosity_default:
     fi
     python3 src/app/tui/design/playground/sync_tokens.py "${args[@]}"
 
+# Soft complexity radar (cccc-rs top-cognitive). Not a hard gate — see
+# scripts/check_complexity.py (HARD entry limits run via check-scripts / qa).
+[arg('verbosity', pattern='quiet|normal|verbose')]
+complexity verbosity=verbosity_default:
+    #!/usr/bin/env bash
+    set -euo pipefail
+    extra=()
+    if [[ "{{verbosity}}" == "verbose" ]]; then
+      extra+=(--verbose)
+    fi
+    python3 scripts/check_complexity.py --radar "${extra[@]}"
+
 # --- scripts/ QA checks -------------------------------------------------
 # Convention (normative for this repo):
 #   - scripts/check_*.py or scripts/check-*.py = non-mutating gate scripts.
@@ -157,6 +175,7 @@ check-tui-tokens verbosity=verbosity_default:
 #
 # Meta-gate: every check_* script path must appear in this justfile, and `qa`
 # must depend on `check-scripts-wired` + `check-scripts`.
+# Complexity HARD gate: scripts/check_complexity.py (cccc-rs entry mods).
 [arg('verbosity', pattern='quiet|normal|verbose')]
 check-scripts-wired verbosity=verbosity_default:
     #!/usr/bin/env bash
