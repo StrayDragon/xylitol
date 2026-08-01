@@ -213,7 +213,9 @@ async fn run_host_loop(
     // host exit does not leave raw mode / keyboard protocol stuck.
     let host_result = async {
         while !session.should_quit() && !exit_requested() {
+            let t_drain = std::time::Instant::now();
             drain_pending(&mut session, driver, &mut agent_stream).await?;
+            crate::app::core::lag::note("host_drain_pending", t_drain);
 
             let want_busy_tick = session.is_busy();
             if want_busy_tick != tick_busy {
@@ -253,10 +255,14 @@ async fn run_host_loop(
                         session.step(HostEvent::FooterTokens { job_id, label })?;
                     }
                     if driver.poll_mcp_bootstrap().await {
+                        let t0 = std::time::Instant::now();
                         session.refresh_loaded_resources(driver).await;
                         session.set_mcp_blocks_agent(driver.mcp_blocks_agent());
+                        crate::app::core::lag::note("host_mcp_poll_refresh", t0);
                     }
+                    let t_tick = std::time::Instant::now();
                     session.step(HostEvent::Tick)?;
+                    crate::app::core::lag::note("host_tick", t_tick);
                 }
                 maybe = term_events.next() => {
                     match maybe {

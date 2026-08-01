@@ -87,6 +87,28 @@ python3 scripts/inspect_provider_trace.py --request-id RID lag
 | react span | `turns` → `lifecycle` |
 | thinking/text 通道混 | `channel` + 少量 `recent` |
 | 级别日志 / TUI 埋点 | `tail -n 80 "$LOG_DIR/xylitol.log"` |
+| **busy spinner 卡住不动** | `just obs-tui-lag`（见下） |
+
+### Spinner 冻结（host 环阻塞）
+
+复现：两 MCP 配置 → 进 TUI → 立刻发长 prompt；观察 Working 先静一下才转。
+
+```bash
+XYLITOL_DEBUG=1 cargo run --   # 或 RUST_LOG=xylitol::lag=info,xylitol=warn
+# 复现后：
+just obs-tui-lag
+```
+
+关注 `xylitol.log` 里 phase：
+
+| phase | 含义 |
+|-------|------|
+| `host_run_await` | 已画 spinner 后仍 await `XyDriver::run`（**此间无 Tick**） |
+| `run_ensure_session` / `run_load_history` / `run_build_tool_schemas` | run 启动分段 |
+| `mcp_settle_*` / `rebuild_system_prompt` | MCP 合并 tools + 重筑 system prompt（可堵 Tick） |
+| `host_drain_pending` / `host_tick` | 整拍是否偏慢 |
+
+≥80ms → warn（约一帧 Loader）；≥16ms → info。
 
 ### 阶段性基线（可选）
 
