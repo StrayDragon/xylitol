@@ -430,6 +430,38 @@ mod parse_tests {
             BusySlashPolicy::Reject
         );
         assert_eq!(
+            busy_slash_policy(&PendingSlash::Trust {
+                mode: crate::app::core::driver::ProjectTrustMode::TrustCwd
+            }),
+            BusySlashPolicy::Reject
+        );
+        assert_eq!(
+            busy_slash_policy(&PendingSlash::OpenTree),
+            BusySlashPolicy::Reject
+        );
+        assert_eq!(
+            busy_slash_policy(&PendingSlash::ForkAtLeaf),
+            BusySlashPolicy::Reject
+        );
+        assert_eq!(
+            busy_slash_policy(&PendingSlash::SessionNew),
+            BusySlashPolicy::Reject
+        );
+        assert_eq!(
+            busy_slash_policy(&PendingSlash::SessionClone),
+            BusySlashPolicy::Reject
+        );
+        assert_eq!(
+            busy_slash_policy(&PendingSlash::Import {
+                path: "/tmp/x.jsonl".into()
+            }),
+            BusySlashPolicy::Reject
+        );
+        assert_eq!(
+            busy_slash_policy(&PendingSlash::DebugScene(String::new())),
+            BusySlashPolicy::Reject
+        );
+        assert_eq!(
             busy_slash_policy(&PendingSlash::OpenModels),
             BusySlashPolicy::Allow
         );

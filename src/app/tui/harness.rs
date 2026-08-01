@@ -4468,6 +4468,162 @@ mod slice_tests {
     }
 
     #[tokio::test]
+    async fn c1780_busy_session_resume_rename_delete_refused() {
+        use crate::app::tui::commands::BUSY_SESSION_SWITCH_NOTICE;
+
+        let mut session = HostSession::new_product_ui(TestTerminal::new(100, 30));
+        let root = session.ui_root().expect("ui").clone();
+        let mut driver = ScriptedDriver::new();
+        *driver.active_session_id.lock().expect("sid") =
+            "aaaaaaaa-bbbb-cccc-dddd-eeeeeeeeeeee".into();
+        driver.set_session_list(vec![
+            SessionListEntry {
+                id: "aaaaaaaa-bbbb-cccc-dddd-eeeeeeeeeeee".into(),
+                name: Some("Parent chat".into()),
+                first_message: Some("parent preview".into()),
+                message_count: 5,
+                modified_unix: Some(1_700_000_200),
+                parent_session_id: None,
+                tree_prefix: String::new(),
+                cwd: Some(".".into()),
+                path: None,
+            },
+            SessionListEntry {
+                id: "child".into(),
+                name: None,
+                first_message: Some("child preview line".into()),
+                message_count: 2,
+                modified_unix: Some(1_700_000_100),
+                parent_session_id: Some("aaaaaaaa-bbbb-cccc-dddd-eeeeeeeeeeee".into()),
+                tree_prefix: String::new(),
+                cwd: Some(".".into()),
+                path: None,
+            },
+        ]);
+        let mut stream = None;
+
+        session.on_run_started("busy");
+        root.borrow_mut().set_editor_text("/session-resume");
+        session.step(HostEvent::Input(enter_event())).unwrap();
+        pump_host_driver(&mut session, &mut driver, &mut stream)
+            .await
+            .unwrap();
+        assert!(root.borrow().session_resume_open());
+
+        // Rename child while busy → refuse write + notice A.
+        session.step(HostEvent::Input(down_event())).unwrap();
+        session.step(HostEvent::Input(ctrl_key_event('r'))).unwrap();
+        for ch in "child-named".chars() {
+            session.step(HostEvent::Input(char_event(ch))).unwrap();
+        }
+        session.step(HostEvent::Input(enter_event())).unwrap();
+        pump_host_driver(&mut session, &mut driver, &mut stream)
+            .await
+            .unwrap();
+        assert!(
+            driver.set_session_name_for_calls().is_empty(),
+            "busy MUST NOT rename: {:?}",
+            driver.set_session_name_for_calls()
+        );
+        assert!(
+            system_notes(&session)
+                .iter()
+                .any(|t| t == BUSY_SESSION_SWITCH_NOTICE),
+            "expected notice A after rename: {:?}",
+            system_notes(&session)
+        );
+
+        // Delete child while busy → refuse + notice A.
+        session.step(HostEvent::Input(ctrl_key_event('d'))).unwrap();
+        session.step(HostEvent::Input(enter_event())).unwrap();
+        pump_host_driver(&mut session, &mut driver, &mut stream)
+            .await
+            .unwrap();
+        assert!(
+            driver.delete_session_calls().is_empty(),
+            "busy MUST NOT delete: {:?}",
+            driver.delete_session_calls()
+        );
+        assert!(
+            system_notes(&session)
+                .iter()
+                .filter(|t| *t == BUSY_SESSION_SWITCH_NOTICE)
+                .count()
+                >= 2,
+            "expected notice A after delete too: {:?}",
+            system_notes(&session)
+        );
+    }
+
+    #[tokio::test]
+    async fn c1780_bang_busy_session_resume_switch_refused() {
+        use crate::app::tui::commands::BUSY_SESSION_SWITCH_NOTICE;
+
+        let mut session = HostSession::new_product_ui(TestTerminal::new(80, 24));
+        let root = session.ui_root().expect("ui").clone();
+        let mut driver = ScriptedDriver::new();
+        driver.set_session_list(vec![
+            SessionListEntry {
+                id: "older".into(),
+                name: Some("Old chat".into()),
+                first_message: Some("hello from older".into()),
+                message_count: 4,
+                modified_unix: Some(1_700_000_000),
+                parent_session_id: None,
+                tree_prefix: String::new(),
+                cwd: Some(".".into()),
+                path: None,
+            },
+            SessionListEntry {
+                id: "newer".into(),
+                name: None,
+                first_message: Some("latest dialogue preview".into()),
+                message_count: 2,
+                modified_unix: Some(1_700_000_100),
+                parent_session_id: Some("older".into()),
+                tree_prefix: String::new(),
+                cwd: Some(".".into()),
+                path: None,
+            },
+        ]);
+        driver.set_session_messages(harness_sample_session_messages());
+        let mut stream = None;
+
+        session.begin_bash_exec("sleep 99", false);
+        assert!(session.bash_active());
+        assert!(session.is_busy());
+
+        root.borrow_mut().set_editor_text("/session-resume");
+        session.step(HostEvent::Input(enter_event())).unwrap();
+        pump_host_driver(&mut session, &mut driver, &mut stream)
+            .await
+            .unwrap();
+        assert!(
+            root.borrow().session_resume_open(),
+            "bang-busy MUST still open resume for browse"
+        );
+
+        session.step(HostEvent::Input(down_event())).unwrap();
+        session.step(HostEvent::Input(enter_event())).unwrap();
+        pump_host_driver(&mut session, &mut driver, &mut stream)
+            .await
+            .unwrap();
+
+        assert!(
+            driver.switch_calls().is_empty(),
+            "bang-busy MUST NOT SwitchSession: {:?}",
+            driver.switch_calls()
+        );
+        assert!(
+            system_notes(&session)
+                .iter()
+                .any(|t| t == BUSY_SESSION_SWITCH_NOTICE),
+            "expected notice A under bang busy: {:?}",
+            system_notes(&session)
+        );
+    }
+
+    #[tokio::test]
     async fn c1115_theme_bare_opens_slot() {
         let mut session = HostSession::new_product_ui(TestTerminal::new(80, 24));
         let root = session.ui_root().expect("ui").clone();
