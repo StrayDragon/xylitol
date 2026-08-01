@@ -145,14 +145,15 @@
   场景: heuristic-tilde
     假如 estimate provenance 为 Heuristic
     当 渲染 footer token 字段
-    那么 文案为 used ~N tokens
+    那么 文案为 used ~C tokens（C 为紧凑计数）
 
   @req:atc21
   @req:atc13
+  @req:atc24
   场景: derived-only
-    假如 estimate tokens 与 context_window>0 且 provenance 为 Api
+    假如 estimate tokens=42000 与 context_window=128000 且 provenance 为 Api
     当 渲染 footer token 字段
-    那么 文案含 used N tokens 与派生 p%/W 且 p 约等于 tokens/window*100
+    那么 文案含 used 42k tokens 与派生 p%/W 且 p 约等于 tokens/window*100
 
   @req:atc21
   场景: no-percent-when-no-window
@@ -165,13 +166,19 @@
   场景: heuristic-percent-tilde
     假如 estimate provenance 为 Heuristic 且 context_window>0
     当 渲染 footer token 字段
-    那么 文案含 used ~N tokens 与 ~p%/W
+    那么 文案含 used ~C tokens 与 ~p%/W
 
   @req:atc13
   场景: unknown-question
     假如 estimate provenance 为 Unknown
     当 渲染 footer token 字段
     那么 文案为 used ? tokens
+
+  @req:atc24
+  场景: used-compact-under-1k
+    假如 estimate tokens=42 且 provenance 为 Api 且 context_window 为 0
+    当 渲染 footer token 字段
+    那么 文案为 used 42 tokens
 
   @req:atc14
   场景: travel-refreshes-token
