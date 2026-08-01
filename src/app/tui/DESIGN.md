@@ -168,7 +168,8 @@ components:
 | **c1115** `/theme` | 产品 slash 切内建 `dark`/`light`（无参 Themes 槽；有参/`toggle`；busy 拒绝）；**不**默认开 theme auto；**不**抄 demo Ctrl+P | [`theme-tokens`](./design/theme-tokens.md) · [`keybindings`](./design/keybindings.md) |
 | **c635–c645** 树 power | 产品 filter → fold → fork（demo 已有；逐个接线） | [`session-tree`](./design/session-tree.md) · [`keybindings`](./design/keybindings.md) |
 | **c650** 真 `$EDITOR` | Ctrl+G：TTY 真编辑器；harness 仍 stub | [`bash-mode`](./design/bash-mode.md) |
-| **c1035** footer token usage | 带 provenance 的 `used N`/`~N`/`?`；travel 刷新 | [`footer`](./design/footer.md) |
+| **c1035** footer token usage | 带 provenance 的 `used C`/`~C`/`?`（C 紧凑见 c1820 / `format_compact_tokens`）；travel 刷新 | [`footer`](./design/footer.md) |
+| **c1820** footer used 紧凑 | used 计数与 window 共用 `format_compact_tokens`（如 `42k`） | [`footer`](./design/footer.md) |
 | **候补 M0** NextTurn 下轮预告 | busy 换模：footer=生效中；cue=`Next turn:`；切回清除；无滚动提示墙 | [`pending-runtime`](./design/pending-runtime.md) · [`footer`](./design/footer.md) |
 | **c660–c665** abort 质量 | 工具/bash 进程树取消 + status 反馈（非 computer-use） | [`status`](./design/status.md) · [`errors`](./design/errors.md) |
 

@@ -2,7 +2,8 @@
 depends_on: []
 branch: sdd/c1820-update-tui-footer-compact-used-tokens
 base_sha: fd765a6b2b1320a60ca3a413569deb2f4630c3dc
-checkpointed: false
+checkpointed: true
+checkpoint_sha: fd765a6b2b1320a60ca3a413569deb2f4630c3dc
 ---
 
 # Footer used 计数对齐紧凑 k/M 表达
