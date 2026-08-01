@@ -9,9 +9,9 @@
 
 ## 1. Specs landing
 
-- [ ] 1.1 Branch binding：`llman sdd change start c1780-update-tui-busy-instant-lists`
-- [ ] 1.2 改写 live `app-tui-commands`（atm1/10/15/16）与 `app-tui-input`（ati21；必要时 ati29）
-- [ ] 1.3 `validate c1780-… --strict --no-check`；commit specs landing
+- [x] 1.1 Branch binding：`llman sdd change start c1780-update-tui-busy-instant-lists`
+- [x] 1.2 改写 live `app-tui-commands`（atm1/10/15/16）与 `app-tui-input`（ati21；必要时 ati29）
+- [x] 1.3 `validate c1780-… --strict --no-check`；commit specs landing
 
 ## 2. Allow 表 + 开槽
 
