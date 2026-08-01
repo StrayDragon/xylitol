@@ -716,6 +716,10 @@ impl XyDriver for XyInProcessDriver {
         Self::map_str(self.store.delete_session(session_id).await)
     }
 
+    fn session_store(&self) -> Option<Arc<dyn XySessionStore>> {
+        Some(self.store.clone())
+    }
+
     fn dollar_skill_catalog(&self) -> Vec<(String, String)> {
         self.skill_catalog_pairs()
     }

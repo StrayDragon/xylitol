@@ -233,12 +233,39 @@ impl<T: Terminal> HostSession<T> {
     /// Replace editor send history from already-loaded entries (resume/switch).
     pub fn seed_editor_history_from_entries(&mut self, entries: &[SessionEntry]) {
         let texts = super::editor_history_seed::user_prompt_texts_from_entries(entries);
+        self.seed_editor_history_from_texts(texts);
+    }
+
+    /// Replace editor send history from prompt texts (background seed apply).
+    pub fn seed_editor_history_from_texts(&mut self, texts: Vec<String>) {
         if let Some(root) = self.ui_root.as_ref() {
             root.borrow_mut().replace_editor_send_history(texts);
         }
     }
 
-    /// Seed ↑/↓ history from prior same-cwd sessions (pure new session).
+    /// Spawn ↑/↓ history seed when the driver exposes a cloneable store.
+    ///
+    /// Returns `None` when `n == 0` or the driver has no store (caller may await
+    /// [`Self::seed_editor_history_for_new_session`] instead).
+    pub fn kick_editor_history_seed(
+        &self,
+        driver: &dyn XyDriver,
+    ) -> Option<tokio::task::JoinHandle<Vec<String>>> {
+        let n = self.editor_history_seed_sessions;
+        if n == 0 {
+            return None;
+        }
+        let store = driver.session_store()?;
+        let cwd = std::env::current_dir()
+            .map(|p| p.to_string_lossy().into_owned())
+            .unwrap_or_else(|_| self.layout_cwd.clone());
+        let current_id = driver.session_id();
+        Some(super::editor_history_seed::spawn_new_session_seed(
+            store, cwd, current_id, n,
+        ))
+    }
+
+    /// Seed ↑/↓ history from prior same-cwd sessions (pure new session; blocking).
     pub async fn seed_editor_history_for_new_session(&mut self, driver: &dyn XyDriver) {
         let t = std::time::Instant::now();
         let cwd = std::env::current_dir()
@@ -253,9 +280,7 @@ impl<T: Terminal> HostSession<T> {
         )
         .await
         .unwrap_or_default();
-        if let Some(root) = self.ui_root.as_ref() {
-            root.borrow_mut().replace_editor_send_history(texts);
-        }
+        self.seed_editor_history_from_texts(texts);
         crate::app::core::lag::note("tui_seed_editor_history", t);
     }
 

@@ -175,7 +175,6 @@ async fn run_host_loop(
     session.apply_thinking_level_ui(driver.thinking_level());
     session.set_model_arg_catalog_from_models(&driver.available_models());
     session.set_dollar_skill_catalog(driver.dollar_skill_catalog());
-    session.refresh_loaded_resources(driver).await;
     session.set_mcp_blocks_agent(driver.mcp_blocks_agent());
     if options.restored_session {
         match driver.get_messages().await {
@@ -191,12 +190,25 @@ async fn run_host_loop(
             }
         }
     }
-    // First paint before ↑/↓ history seed: list_sessions can scan many on-disk
-    // sessions (incl. legacy skips) and must not block the welcome chrome.
+    // First paint before loaded-resources refresh + ↑/↓ history seed so welcome
+    // chrome is not blocked by MCP snapshot / list_sessions work.
     session.render_now()?;
+
+    let mut editor_seed: Option<(std::time::Instant, tokio::task::JoinHandle<Vec<String>>)> = None;
     if !options.restored_session {
-        session.seed_editor_history_for_new_session(driver).await;
+        match session.kick_editor_history_seed(driver) {
+            Some(handle) => {
+                editor_seed = Some((std::time::Instant::now(), handle));
+            }
+            None => {
+                // Scripted / remote: no cloneable store — keep blocking seed.
+                session.seed_editor_history_for_new_session(driver).await;
+            }
+        }
     }
+    // Refresh while editor-history seed runs in the background (in-process).
+    session.refresh_loaded_resources(driver).await;
+    session.set_mcp_blocks_agent(driver.mcp_blocks_agent());
 
     let mut term_events = CrosstermEventStream::new();
     let mut agent_stream: Option<AgentEventStream> = None;
@@ -296,6 +308,18 @@ async fn run_host_loop(
                 maybe_footer = session.recv_footer_token() => {
                     if let Some((job_id, label)) = maybe_footer {
                         session.step(HostEvent::FooterTokens { job_id, label })?;
+                    }
+                }
+                maybe_seed = async {
+                    match editor_seed.as_mut() {
+                        Some((_, handle)) => handle.await,
+                        None => std::future::pending().await,
+                    }
+                } => {
+                    if let Some((started, _)) = editor_seed.take() {
+                        let texts = maybe_seed.unwrap_or_default();
+                        session.seed_editor_history_from_texts(texts);
+                        crate::app::core::lag::note("tui_seed_editor_history", started);
                     }
                 }
             }
