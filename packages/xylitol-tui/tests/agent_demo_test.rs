@@ -114,7 +114,7 @@ fn agent_demo_slash_command_popup_filters_and_completes() {
     h.render_result()
         .expect("slash popup must stay within width budget");
     h.assert_text_contains("help");
-    h.assert_text_contains("Show key help as 滚动提示 in transcript");
+    h.assert_text_contains("Show key help in transcript");
     // "palette" may be below SelectList max_visible; assert via filter instead.
 
     // Prefix filter: `/hel` should keep help, drop unrelated commands.
@@ -123,7 +123,7 @@ fn agent_demo_slash_command_popup_filters_and_completes() {
         .expect("filtered slash popup must stay within width");
     let filtered = h.tui.terminal.viewport().join("\n");
     assert!(
-        filtered.contains("help") && filtered.contains("Show key help as 滚动提示 in transcript"),
+        filtered.contains("help") && filtered.contains("Show key help in transcript"),
         "filtered popup should still show /help; got:\n{filtered}"
     );
     assert!(
@@ -159,13 +159,13 @@ fn agent_demo_slash_command_popup_backspace_to_slash_closes() {
         .expect("initial empty editor should render");
     h.keys("/h");
     h.render_result().expect("slash popup with filter");
-    h.assert_text_contains("Show key help as 滚动提示 in transcript");
+    h.assert_text_contains("Show key help in transcript");
     h.keys("\x7f"); // Backspace → `/` only → close popup, keep `/`
     h.render_result()
         .expect("backspace to lone slash must stay within width");
     let text = h.tui.terminal.viewport().join("\n");
     assert!(
-        !text.contains("Show key help as 滚动提示 in transcript"),
+        !text.contains("Show key help in transcript"),
         "backspacing to lone `/` should close CommandPopup; got:\n{text}"
     );
 }
@@ -183,12 +183,12 @@ fn agent_demo_slash_command_popup_esc_dismisses() {
         .expect("initial empty editor should render");
     h.keys("/");
     h.render_result().expect("slash popup open");
-    h.assert_text_contains("Show key help as 滚动提示 in transcript");
+    h.assert_text_contains("Show key help in transcript");
     h.keys("\x1b"); // Esc → Editor cancels autocomplete
     h.render_result().expect("Esc dismisses slash popup");
     let dismissed = h.tui.terminal.viewport().join("\n");
     assert!(
-        !dismissed.contains("Show key help as 滚动提示 in transcript"),
+        !dismissed.contains("Show key help in transcript"),
         "Esc should close CommandPopup and leave `/` in the editor; got:\n{dismissed}"
     );
 }
@@ -471,8 +471,8 @@ fn agent_demo_layout_is_minimal_single_column() {
         "user messages use a short glyph prefix; got:\n{text}"
     );
     assert!(
-        text.contains("Ctrl+P") && text.contains("命令面板") && text.contains("Markdown"),
-        "slim seed should point at 命令面板/md without a permanent chrome wall; got:\n{text}"
+        text.contains("Ctrl+P") && text.contains("command plate") && text.contains("Markdown"),
+        "slim seed should point at plate/md without a permanent chrome wall; got:\n{text}"
     );
     assert!(
         text.contains("thinking"),

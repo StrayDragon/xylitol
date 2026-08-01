@@ -67,5 +67,5 @@
 - 六个月后仍真？否则不要扩表。
 - 新 chrome 能力先归类 A–G，再选落点；禁止静默发明第四套同义词。
 - 面操作边界：[`src/app/tui/AGENTS.md`](../../src/app/tui/AGENTS.md)。
-- **归档 change**（`llmanspec/changes/archive/`）可保留当时旧词作史实；**新文 / 活 docs / 活 specs** 只准用本表。
-- **DESIGN playground**（`src/app/tui/design/playground/`）= 产品静图；`agent_demo` 可另有演示文案，勿把二者当成同一 SSOT。
+- **归档 change**（`llmanspec/changes/archive/`）可保留当时旧词作史实；**新文 / 活 docs / 活 specs（产品面）** 只准用本表。
+- **DESIGN playground**（`src/app/tui/design/playground/`）= 产品静图；`agent_demo` = 包演示，文案/chrome **允许不同**。**禁止**把本表当成「必须改写 demo 字符串」的闸。

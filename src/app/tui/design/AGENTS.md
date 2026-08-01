@@ -12,9 +12,16 @@ Token / 全局 Overview：上一级 [`../DESIGN.md`](../DESIGN.md)。引擎库�
 | **生产实现** | `src/app/tui/` | XyDriver / bridge / layout 真接线 | 不在本目录再实现通用引擎组件 |
 | **包交互演示**（可选） | `just demo-tui`（`packages/…/agent_demo`） | 引擎 / 通用组件可交互试跑 | **允许与产品 chrome / 文案有差异**；**不**充当本目录 playground；不替代产品 host |
 
+### Agent 防误导（硬）
+
+- **MUST NOT** 称 `agent_demo` 为「动态 playground / 产品 live playground」。
+- **MUST NOT** 把 demo seed / footer / plate 文案回写成产品中文 chrome 词表（队列条、滚动提示、命令面板…）——那是**产品面**约束；包 demo 用自己的英文/plate 用语即可。
+- **MUST NOT** 以 demo 行为否定 `design/*.md` MUST；冲突时以本目录合约 + 产品 host 为准。
+- 信息面用词（产品）：[`docs/architecture/TUI信息面与chrome词汇.md`](../../../../docs/architecture/TUI信息面与chrome词汇.md)。
+
 **UiEntry 默认**：tool/bash/diff = status 左边轨 + gutter；user / assistant / thinking = flush。合约：`app-tui-transcript` / `app-tui-chrome`（c1830）。
 
-**MUST（合约文）**：本目录 `*.md` + [`../DESIGN.md`](../DESIGN.md)。playground HTML 文案 **不是**合约。信息面用词：[`docs/architecture/TUI信息面与chrome词汇.md`](../../../../docs/architecture/TUI信息面与chrome词汇.md)。
+**MUST（合约文）**：本目录 `*.md` + [`../DESIGN.md`](../DESIGN.md)。playground HTML 文案 **不是**合约。
 
 包**不**另维护平行 design HTML。`Palette` = DESIGN 的运行时快照。
 
