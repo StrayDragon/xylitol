@@ -34,7 +34,7 @@ components:
 |---|---|---|
 | Models / Themes / Import | 1 | 0 |
 | MCP | 1 | 1 + diag 行 |
-| Resume | 4（+status 行） | 0 |
+| Resume | 4（+status 行） | 1（`(n/m)`） |
 | Tree | 4 | 1（scroll info） |
 
 ## 非目标
