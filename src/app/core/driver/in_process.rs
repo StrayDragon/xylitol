@@ -846,12 +846,26 @@ impl XyDriver for XyInProcessDriver {
         };
         match handle.await {
             Ok(Ok(Some((manager, tools)))) => {
+                let tool_n = tools.len();
+                let t_settle = std::time::Instant::now();
                 let old = self.reload.as_mut().and_then(|s| s.mcp.take_manager());
+                let t_rebuild = std::time::Instant::now();
                 let set = crate::agent::tools::ToolSet::rebuild_agent_tools(
                     crate::infra::tools::default_tools(),
                     tools,
                 );
+                crate::app::core::lag::note_detail(
+                    "mcp_settle_rebuild_tools",
+                    t_rebuild,
+                    &format!("mcp_tools={tool_n}"),
+                );
+                let t_set = std::time::Instant::now();
                 self.set_tools(set);
+                crate::app::core::lag::note_detail(
+                    "mcp_settle_set_tools",
+                    t_set,
+                    &format!("mcp_tools={tool_n}"),
+                );
                 if let Some(state) = self.reload.as_mut() {
                     state.mcp.set_manager(manager);
                 }
@@ -862,6 +876,11 @@ impl XyDriver for XyInProcessDriver {
                     });
                 }
                 self.mcp_boot = McpBootState::Settled;
+                crate::app::core::lag::note_detail(
+                    "mcp_settle_total",
+                    t_settle,
+                    &format!("mcp_tools={tool_n}"),
+                );
             }
             Ok(Ok(None)) => {
                 self.mcp_boot = McpBootState::Settled;
