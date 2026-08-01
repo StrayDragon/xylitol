@@ -225,6 +225,14 @@ pub trait XyDriver: Send {
         Vec::new()
     }
 
+    /// Cloneable session store for spawn-safe listing (editor ↑/↓ history seed).
+    ///
+    /// In-process returns the shared store; remote / scripted drivers return `None`
+    /// (caller falls back to awaiting [`Self::list_sessions`] on the host task).
+    fn session_store(&self) -> Option<std::sync::Arc<dyn crate::protocol::ports::XySessionStore>> {
+        None
+    }
+
     /// Skills + MCP summary for the product TUI loaded-resources slot (c1135).
     ///
     /// In-process reads Trust-filtered skill names and MCP connected/diagnostics.
