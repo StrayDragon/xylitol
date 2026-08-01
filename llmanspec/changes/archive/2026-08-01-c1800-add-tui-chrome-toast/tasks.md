@@ -14,15 +14,15 @@
 
 ## 2. Toast chrome
 
-- [ ] 2.1 host/layout：toast 槽 + `push_chrome_toast` + TTL clear
-- [ ] 2.2 渲染在 status/spinner 上方一行
-- [ ] 2.3 harness：显示与超时清除
+- [x] 2.1 host/layout：toast 槽 + `push_chrome_toast` + TTL clear
+- [x] 2.2 渲染在 status/spinner 上方一行
+- [x] 2.3 harness：显示与超时清除
 
 ## 3. 迁 c1780 拒闸
 
-- [ ] 3.1 `pending_ui` 改 toast；更新 `c1780_*` harness 断言
-- [ ] 3.2 词汇表 / `design` 一句：壳层通告已兑现（现行）
+- [x] 3.1 `pending_ui` 改 toast；更新 `c1780_*` harness 断言
+- [x] 3.2 词汇表 / `design` 一句：壳层通告已兑现（现行）
 
 ## 4. 校验
 
-- [ ] 4.1 相关 `cargo test` + `validate --strict`
+- [x] 4.1 相关 `cargo test` + `validate --strict`

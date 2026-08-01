@@ -56,10 +56,12 @@ just check-tui-tokens   # tokens.css/js + Palette ≡ DESIGN.md
 
 | 槽 | 说明 |
 |---|---|
-| Full shell · Layout · Keybindings · Models · Pending / NextTurn · **Mcp** (`/mcp` SelectList 定稿) · Tree power · Resume · Compaction | 产品整页 / 下一波形状 |
+| Full shell · Layout · Keybindings · Models · Pending / NextTurn · **Chrome toast**（壳层通告定稿） · **Mcp** (`/mcp` SelectList 定稿) · Tree power · Resume · Compaction | 产品整页 / 下一波形状 |
 
 
 | Tool · Diff · Markdown · Overlay · Palette | 呈现积木 |
 | Widgets · Atoms · Ask | 其它固定形状槽（与实现分层无关） |
 
 深链：`?slot=mcp-cue`（定稿 SelectList + `mcp pending (see /mcp)`；见 [`../mcp-input-cue.md`](../mcp-input-cue.md)）。
+
+深链：`?slot=chrome-toast&mode=focus`（壳层通告定稿 A：warning + `Error:`；见 [`../chrome-toast.md`](../chrome-toast.md)）。

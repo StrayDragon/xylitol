@@ -2902,6 +2902,13 @@ mod slice_tests {
             .collect()
     }
 
+    fn chrome_toast_body(session: &HostSession<TestTerminal>) -> Option<String> {
+        session
+            .ui_root()
+            .map(|r| r.borrow().chrome_toast_body().map(str::to_string))
+            .flatten()
+    }
+
     #[tokio::test]
     async fn h28_slash_session_compact_and_usage() {
         use crate::app::tui::commands::{PendingSlash, parse_slash_command};
@@ -4458,12 +4465,23 @@ mod slice_tests {
             root.borrow().session_resume_open(),
             "panel may stay open after refused switch"
         );
+        assert_eq!(
+            chrome_toast_body(&session).as_deref(),
+            Some(BUSY_SESSION_SWITCH_NOTICE),
+            "expected chrome toast body A"
+        );
         assert!(
-            system_notes(&session)
+            !system_notes(&session)
                 .iter()
                 .any(|t| t == BUSY_SESSION_SWITCH_NOTICE),
-            "expected notice A: {:?}",
+            "MUST NOT ScrollNotice A: {:?}",
             system_notes(&session)
+        );
+        let frame = root.borrow_mut().render(80);
+        let joined = frame.join("\n");
+        assert!(
+            joined.contains("Error: ") && joined.contains(BUSY_SESSION_SWITCH_NOTICE),
+            "frame MUST show Error: + body: {joined}"
         );
     }
 
@@ -4525,15 +4543,20 @@ mod slice_tests {
             "busy MUST NOT rename: {:?}",
             driver.set_session_name_for_calls()
         );
+        assert_eq!(
+            chrome_toast_body(&session).as_deref(),
+            Some(BUSY_SESSION_SWITCH_NOTICE),
+            "expected chrome toast A after rename"
+        );
         assert!(
-            system_notes(&session)
+            !system_notes(&session)
                 .iter()
                 .any(|t| t == BUSY_SESSION_SWITCH_NOTICE),
-            "expected notice A after rename: {:?}",
+            "MUST NOT ScrollNotice A after rename: {:?}",
             system_notes(&session)
         );
 
-        // Delete child while busy → refuse + notice A.
+        // Delete child while busy → refuse + toast A (replaces prior toast).
         session.step(HostEvent::Input(ctrl_key_event('d'))).unwrap();
         session.step(HostEvent::Input(enter_event())).unwrap();
         pump_host_driver(&mut session, &mut driver, &mut stream)
@@ -4544,13 +4567,16 @@ mod slice_tests {
             "busy MUST NOT delete: {:?}",
             driver.delete_session_calls()
         );
+        assert_eq!(
+            chrome_toast_body(&session).as_deref(),
+            Some(BUSY_SESSION_SWITCH_NOTICE),
+            "expected chrome toast A after delete"
+        );
         assert!(
-            system_notes(&session)
+            !system_notes(&session)
                 .iter()
-                .filter(|t| *t == BUSY_SESSION_SWITCH_NOTICE)
-                .count()
-                >= 2,
-            "expected notice A after delete too: {:?}",
+                .any(|t| t == BUSY_SESSION_SWITCH_NOTICE),
+            "MUST NOT ScrollNotice A after delete: {:?}",
             system_notes(&session)
         );
     }
@@ -4614,12 +4640,37 @@ mod slice_tests {
             "bang-busy MUST NOT SwitchSession: {:?}",
             driver.switch_calls()
         );
+        assert_eq!(
+            chrome_toast_body(&session).as_deref(),
+            Some(BUSY_SESSION_SWITCH_NOTICE),
+            "expected chrome toast A under bang busy"
+        );
         assert!(
-            system_notes(&session)
+            !system_notes(&session)
                 .iter()
                 .any(|t| t == BUSY_SESSION_SWITCH_NOTICE),
-            "expected notice A under bang busy: {:?}",
+            "MUST NOT ScrollNotice A under bang busy: {:?}",
             system_notes(&session)
+        );
+    }
+
+    #[tokio::test]
+    async fn c1800_chrome_toast_ttl_clears_on_tick() {
+        use crate::app::tui::commands::BUSY_SESSION_SWITCH_NOTICE;
+
+        let mut session = HostSession::new_product_ui(TestTerminal::new(80, 24));
+        let root = session.ui_root().expect("ui").clone();
+        session.push_chrome_toast(BUSY_SESSION_SWITCH_NOTICE);
+        assert_eq!(
+            chrome_toast_body(&session).as_deref(),
+            Some(BUSY_SESSION_SWITCH_NOTICE)
+        );
+        root.borrow_mut().expire_chrome_toast_now();
+        session.step(HostEvent::Tick).unwrap();
+        assert_eq!(
+            chrome_toast_body(&session),
+            None,
+            "expired toast MUST clear on idle_tick/Tick"
         );
     }
 

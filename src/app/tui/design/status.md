@@ -18,6 +18,7 @@ components:
 > Token 根源：`{colors.*}` / `{spacing.*}` → [`../DESIGN.md`](../DESIGN.md)。
 > **c475**：产品 host 必须落地本文件；playground 槽 Full shell / Layout 可预览。
 > **下轮预告**（next-turn cue）：[`pending-runtime.md`](./pending-runtime.md)；词表 [`docs/architecture/TUI信息面与chrome词汇.md`](../../../../docs/architecture/TUI信息面与chrome词汇.md)。
+> **壳层通告**（chrome toast）：status **上方**独立行，见 [`chrome-toast.md`](./chrome-toast.md)（≠ 本文件 status 行 / ≠ ScrollNotice）。
 
 ## MUST
 

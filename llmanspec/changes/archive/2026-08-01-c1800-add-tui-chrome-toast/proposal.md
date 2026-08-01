@@ -3,7 +3,8 @@ depends_on:
 - c1780-update-tui-busy-instant-lists
 branch: sdd/c1800-add-tui-chrome-toast
 base_sha: fd765a6b2b1320a60ca3a413569deb2f4630c3dc
-checkpointed: false
+checkpointed: true
+checkpoint_sha: fd765a6b2b1320a60ca3a413569deb2f4630c3dc
 ---
 
 # 壳层通告（chrome toast）：固定位瞬时提示
@@ -39,10 +40,10 @@ checkpointed: false
 
 ## What Changes
 
-- layout：chrome toast 行（muted）；host API `push_chrome_toast`（或等价）
+- layout：chrome toast 行（`{colors.warning}` + `Error: ` 前缀）；host API `push_chrome_toast`
 - 改写 c1780 拒闸路径：toast 替代 ScrollNotice
-- live specs：`app-tui-chrome` 新 req；`atm10` / `ati29` 改落点
-- 词汇表 / design：激活「壳层通告」现行说明
+- live specs：`app-tui-chrome` atc22；`atm10` / `ati29` 改落点
+- 词汇表 / `design/chrome-toast.md`：激活壳层通告现行说明
 - harness：拒闸无新 ScrollNotice；toast 可见且可超时清除
 
 ## Capabilities

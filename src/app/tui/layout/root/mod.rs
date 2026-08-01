@@ -79,6 +79,8 @@ pub struct UiRoot {
     footer_omit_thinking: bool,
     /// Agent-busy next-turn cue (`Next turn: …`); independent of status short-word.
     status_next_turn_cue: Option<String>,
+    /// Chrome toast body + deadline (atc22); not in `UiModel.entries`.
+    chrome_toast: Option<(String, Instant)>,
     /// Mutually exclusive editor-zone face (ati18).
     slot: EditorSlot,
     tree: TreeSelector,
@@ -178,6 +180,7 @@ impl UiRoot {
             thinking_level: ThinkingLevel::Off,
             footer_omit_thinking: false,
             status_next_turn_cue: None,
+            chrome_toast: None,
             slot: EditorSlot::Editor,
             tree: empty_tree_selector(theme),
             tree_filter: FilterMode::Default,
@@ -708,6 +711,50 @@ impl UiRoot {
         // If model/thinking cue cleared, restore MCP short cue when pending.
         if self.status_next_turn_cue.is_none() {
             self.refresh_mcp_short_cue();
+        }
+    }
+
+    /// Push / replace chrome toast body (TTL from [`crate::app::tui::commands::CHROME_TOAST_TTL`]).
+    pub fn push_chrome_toast(&mut self, body: impl Into<String>) {
+        self.chrome_toast = Some((
+            body.into(),
+            Instant::now() + crate::app::tui::commands::CHROME_TOAST_TTL,
+        ));
+    }
+
+    /// Body only (no `Error: ` prefix); `None` when cleared / expired.
+    pub fn chrome_toast_body(&self) -> Option<&str> {
+        self.chrome_toast.as_ref().map(|(b, _)| b.as_str())
+    }
+
+    pub fn clear_chrome_toast(&mut self) {
+        self.chrome_toast = None;
+    }
+
+    /// Test/harness: force deadline into the past so the next `tick` clears.
+    #[cfg(test)]
+    pub fn expire_chrome_toast_now(&mut self) {
+        if let Some((body, _)) = self.chrome_toast.take() {
+            self.chrome_toast = Some((
+                body,
+                Instant::now()
+                    .checked_sub(std::time::Duration::from_secs(1))
+                    .unwrap_or_else(Instant::now),
+            ));
+        }
+    }
+
+    /// Clear toast when past deadline; returns whether state changed.
+    pub(super) fn clear_chrome_toast_if_expired(&mut self) -> bool {
+        let expired = self
+            .chrome_toast
+            .as_ref()
+            .is_some_and(|(_, d)| Instant::now() >= *d);
+        if expired {
+            self.chrome_toast = None;
+            true
+        } else {
+            false
         }
     }
 
