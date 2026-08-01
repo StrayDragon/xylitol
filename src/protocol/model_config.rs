@@ -40,6 +40,18 @@ impl XyModelKind {
             Self::Fake => "fake",
         }
     }
+
+    /// Default adapter dialect string when YAML/`api` is omitted (c1598 / c1600).
+    ///
+    /// Keep in sync with infra `AdapterKind::default_for` → Display
+    /// (`openai-responses` / `anthropic-messages`). Lives in protocol so agent
+    /// manifest loading does not reach infra.
+    pub fn default_adapter_api(self) -> &'static str {
+        match self {
+            Self::OpenAi | Self::Fake => "openai-responses",
+            Self::Anthropic => "anthropic-messages",
+        }
+    }
 }
 
 /// Connection parameters for building an LLM provider instance.

@@ -1,5 +1,6 @@
 //! Product TUI host — event step machine (testable without a real TTY).
 
+mod editor_history;
 mod input_policy;
 mod pending;
 mod session_ops;
@@ -13,9 +14,8 @@ use std::sync::atomic::{AtomicBool, Ordering};
 
 use xylitol_tui::{InputEvent, RenderError, TUI, Terminal};
 
-use crate::app::core::driver::{XyDriver, XyDriverError, XyEvent};
+use crate::app::core::driver::{XyDriverError, XyEvent};
 use crate::protocol::ports::XyBashResult;
-use crate::protocol::session::SessionEntry;
 
 use super::bridge::{UiEntry, UiModel, UiPhase, apply_xy_event};
 use super::layout::{UiRoot, install_ui_root_key_listeners, shared_ui_root_rebuild};
@@ -126,6 +126,8 @@ pub struct HostSession<T: Terminal> {
     last_mid_turn_footer_refresh: Option<std::time::Instant>,
     /// `tui.editor_history_seed_sessions` (c1560).
     editor_history_seed_sessions: u32,
+    /// Background ↑/↓ history seed (startup / `/session-new`); host loop merges into select.
+    editor_history_seed_job: Option<(std::time::Instant, tokio::task::JoinHandle<Vec<String>>)>,
     /// MCP bootstrap in flight — gate agent prompt / bang / some slash (c1200).
     mcp_blocks_agent: bool,
 }
@@ -177,6 +179,7 @@ impl<T: Terminal> HostSession<T> {
             footer_token_rx,
             last_mid_turn_footer_refresh: None,
             editor_history_seed_sessions: 1,
+            editor_history_seed_job: None,
             mcp_blocks_agent: false,
         }
     }
@@ -223,65 +226,6 @@ impl<T: Terminal> HostSession<T> {
         session.quit_flag = quit_flag.clone();
         install_ui_root_key_listeners(&ui_root, &quit_flag, &mut session.tui);
         session
-    }
-
-    /// Configure how many prior sessions seed ↑/↓ history on new session (c1560).
-    pub fn set_editor_history_seed_sessions(&mut self, n: u32) {
-        self.editor_history_seed_sessions = n;
-    }
-
-    /// Replace editor send history from already-loaded entries (resume/switch).
-    pub fn seed_editor_history_from_entries(&mut self, entries: &[SessionEntry]) {
-        let texts = super::editor_history_seed::user_prompt_texts_from_entries(entries);
-        self.seed_editor_history_from_texts(texts);
-    }
-
-    /// Replace editor send history from prompt texts (background seed apply).
-    pub fn seed_editor_history_from_texts(&mut self, texts: Vec<String>) {
-        if let Some(root) = self.ui_root.as_ref() {
-            root.borrow_mut().replace_editor_send_history(texts);
-        }
-    }
-
-    /// Spawn ↑/↓ history seed when the driver exposes a cloneable store.
-    ///
-    /// Returns `None` when `n == 0` or the driver has no store (caller may await
-    /// [`Self::seed_editor_history_for_new_session`] instead).
-    pub fn kick_editor_history_seed(
-        &self,
-        driver: &dyn XyDriver,
-    ) -> Option<tokio::task::JoinHandle<Vec<String>>> {
-        let n = self.editor_history_seed_sessions;
-        if n == 0 {
-            return None;
-        }
-        let store = driver.session_store()?;
-        let cwd = std::env::current_dir()
-            .map(|p| p.to_string_lossy().into_owned())
-            .unwrap_or_else(|_| self.layout_cwd.clone());
-        let current_id = driver.session_id();
-        Some(super::editor_history_seed::spawn_new_session_seed(
-            store, cwd, current_id, n,
-        ))
-    }
-
-    /// Seed ↑/↓ history from prior same-cwd sessions (pure new session; blocking).
-    pub async fn seed_editor_history_for_new_session(&mut self, driver: &dyn XyDriver) {
-        let t = std::time::Instant::now();
-        let cwd = std::env::current_dir()
-            .map(|p| p.to_string_lossy().into_owned())
-            .unwrap_or_else(|_| self.layout_cwd.clone());
-        let current_id = driver.session_id();
-        let texts = super::editor_history_seed::collect_new_session_seed(
-            driver,
-            &cwd,
-            current_id.as_deref(),
-            self.editor_history_seed_sessions,
-        )
-        .await
-        .unwrap_or_default();
-        self.seed_editor_history_from_texts(texts);
-        crate::app::core::lag::note("tui_seed_editor_history", t);
     }
 
     pub fn mode(&self) -> LayoutMode {

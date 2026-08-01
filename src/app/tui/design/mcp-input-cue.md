@@ -22,8 +22,7 @@ components:
 
 > Token：`{colors.*}` → [`../DESIGN.md`](../DESIGN.md)。
 > 静图：[`playground/`](./playground/) 槽 **Mcp**（`?slot=mcp-cue`）。
-> 已归档：c1210（只读行文 + 短 cue + hot-merge ungate）。
-> **下一刀定稿**：SelectList 壳（对齐 `/model` / `/session-resume`）+ 开面板 perf；合约拟 `c1215-update-app-tui-mcp-select-list`。
+> 已归档：c1210（只读行文 + 短 cue + hot-merge ungate）；**c1215**（`/mcp` SelectList 壳 + 开面板走缓存快照）。
 > 对照：[`models-picker.md`](./models-picker.md) · [`session-resume.md`](./session-resume.md) · [`pending-runtime.md`](./pending-runtime.md) · [`loaded-resources.md`](./loaded-resources.md)。
 
 ## 产品意图

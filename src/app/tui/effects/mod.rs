@@ -9,6 +9,7 @@ use xylitol_tui::Terminal;
 
 use crate::app::core::driver::{
     EventStream, XyDriver, XyDriverError, estimate_from_session_entries,
+    tokenizer_override_from_app_config,
 };
 
 use super::host::HostSession;
@@ -80,11 +81,9 @@ pub async fn kick_footer_token_refresh<T: Terminal>(
         .current_model()
         .map(|m| m.context_window)
         .unwrap_or(0);
-    let tokenizer_override = model_id.as_deref().and_then(|id| {
-        crate::infra::config::loader::load_app_config(None)
-            .ok()
-            .and_then(|c| c.tokenizer_override_for(id))
-    });
+    let tokenizer_override = model_id
+        .as_deref()
+        .and_then(tokenizer_override_from_app_config);
 
     tokio::spawn(async move {
         let label = tokio::task::spawn_blocking(move || {
