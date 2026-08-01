@@ -4,8 +4,8 @@
 //! Not a Codex TranscriptView — lines go into the engine scrollback stack.
 
 use xylitol_tui::{
-    Component, DiffInput, DiffOptions, ExpandableOutputOptions, Markdown, TruncateFrom,
-    apply_background_to_line, bg_rgb, bold, fg_rgb, render_diff_lines, render_expandable_output,
+    Component, DiffInput, DiffOptions, ExpandableOutputOptions, Markdown, TruncateFrom, bold,
+    fg_rgb, mix_rgb, paint_left_rail_line, render_diff_lines, render_expandable_output,
     truncate_to_width, visible_width, wrap_text_with_ansi,
 };
 
@@ -55,7 +55,6 @@ fn push_viewport_diff_lines(
     diff: &str,
     width: usize,
     theme: LayoutTheme,
-    block_bg: Option<RgbColor>,
     viewport_full: bool,
 ) {
     let raw_lines = diff.lines().count();
@@ -65,10 +64,9 @@ fn push_viewport_diff_lines(
         word_level,
         ..DiffOptions::default()
     };
-    let diff_theme = match block_bg {
-        Some(bg) => theme.palette().diff_theme_on_block(bg),
-        None => theme.palette().diff_theme(),
-    };
+    // Rail: no tool wash envelope; identity row bg via on_block(surface) so no diff-*-bg stack.
+    let surface = theme.palette().surface;
+    let diff_theme = theme.palette().diff_theme_on_block(surface);
     let rendered = render_diff_lines(&input, width, &diff_theme, &opts);
     let body = if rendered.len() > MAX_DIFF_RENDER_LINES {
         let keep = MAX_DIFF_RENDER_LINES.saturating_sub(1);
@@ -203,9 +201,43 @@ fn inter_block_spacer(width: usize) -> String {
     format!("{}\x1b[49m", " ".repeat(width.max(1)))
 }
 
-/// Full-width tinted row (pad + `apply_background_to_line`).
-fn paint_bg_line(line: &str, width: usize, rgb: RgbColor) -> String {
-    apply_background_to_line(&fit(line, width), width, &|s| bg_rgb(rgb, s))
+/// Content width inside a railed block (rail 1 + gutter 1).
+fn rail_inner_width(width: usize) -> usize {
+    width.saturating_sub(2).max(1)
+}
+
+/// Status rail + gutter for tool/thinking/bash/diff blocks (c1830).
+fn push_railed(lines: &mut Vec<String>, content: &[String], width: usize, rgb: RgbColor) {
+    for line in content {
+        lines.push(paint_left_rail_line(line, width, rgb));
+    }
+}
+
+fn tool_rail_rgb(pending: bool, is_error: bool, theme: LayoutTheme) -> RgbColor {
+    let p = theme.palette();
+    let vivid = if pending {
+        p.accent
+    } else if is_error {
+        p.error
+    } else {
+        p.success
+    };
+    mix_rgb(p.surface, vivid, 0.72)
+}
+
+fn bash_rail_rgb(status: BashBlockStatus, theme: LayoutTheme) -> RgbColor {
+    let p = theme.palette();
+    let vivid = match status {
+        BashBlockStatus::Pending => p.accent,
+        BashBlockStatus::Success => p.success,
+        BashBlockStatus::Error | BashBlockStatus::Cancelled => p.error,
+    };
+    mix_rgb(p.surface, vivid, 0.72)
+}
+
+fn thinking_rail_rgb(theme: LayoutTheme) -> RgbColor {
+    let p = theme.palette();
+    mix_rgb(p.surface, p.muted, 0.88)
 }
 
 /// Hard system truncate (c1330/c1340): sidecar Full output footer present.
@@ -234,33 +266,6 @@ fn paint_output_with_full_footer(output: &str, theme: LayoutTheme, error: bool) 
         out.push('\n');
     }
     out
-}
-
-/// pi `Box` padding_y=1: tinted empty row above/below content; wash spans full terminal width.
-fn push_tinted(lines: &mut Vec<String>, content: &[String], width: usize, rgb: RgbColor) {
-    lines.push(paint_bg_line("", width, rgb));
-    for line in content {
-        lines.push(paint_bg_line(line, width, rgb));
-    }
-    lines.push(paint_bg_line("", width, rgb));
-}
-
-fn tool_bg_rgb(pending: bool, is_error: bool, theme: LayoutTheme) -> RgbColor {
-    if pending {
-        theme.palette().tool_pending_bg
-    } else if is_error {
-        theme.palette().tool_error_bg
-    } else {
-        theme.palette().tool_success_bg
-    }
-}
-
-fn bash_bg_rgb(status: BashBlockStatus, theme: LayoutTheme) -> RgbColor {
-    match status {
-        BashBlockStatus::Pending => theme.palette().tool_pending_bg,
-        BashBlockStatus::Success => theme.palette().tool_success_bg,
-        BashBlockStatus::Error | BashBlockStatus::Cancelled => theme.palette().tool_error_bg,
-    }
 }
 
 /// Paint `$name` with `skill_ref` (bold); leave other text unstyled (A10 / c1130).
@@ -558,8 +563,8 @@ pub fn render_scrollback(
                     let prefix = theme.paint_user(glyphs.user());
                     let painted = highlight_dollar_skill_refs(text, theme.palette().skill_ref);
                     let body = format!("{prefix} {painted}");
-                    let content = wrap_text_with_ansi(&body, width);
-                    push_tinted(&mut lines, &content, width, theme.palette().user_message_bg);
+                    // Flush — no user-message-bg wash, no status rail (atc8 / c1830).
+                    push_wrapped(&mut lines, &body, width);
                 }
                 UiEntry::Assistant { text } => {
                     let mut md =
@@ -569,6 +574,7 @@ pub fn render_scrollback(
                     }
                 }
                 UiEntry::Thinking { text } => {
+                    let inner = rail_inner_width(width);
                     let marker = if fold.thinking_expanded {
                         glyphs.unfold()
                     } else {
@@ -576,10 +582,12 @@ pub fn render_scrollback(
                     };
                     let header =
                         theme.paint_muted(&format!("{marker} thinking  {}", key_hint("Ctrl+T")));
-                    push_wrapped(&mut lines, &header, width);
+                    let mut block = Vec::new();
+                    push_wrapped(&mut block, &header, inner);
                     if fold.thinking_expanded {
-                        push_wrapped(&mut lines, &theme.paint_muted(text), width);
+                        push_wrapped(&mut block, &theme.paint_muted(text), inner);
                     }
+                    push_railed(&mut lines, &block, width, thinking_rail_rgb(theme));
                 }
                 UiEntry::Tool {
                     name,
@@ -591,19 +599,18 @@ pub fn render_scrollback(
                     done,
                     ..
                 } => {
+                    let inner = rail_inner_width(width);
                     let marker = if fold.tools_expanded {
                         glyphs.unfold()
                     } else {
                         glyphs.fold()
                     };
                     let header = paint_tool_header_line(theme, marker, name, args_preview);
-                    let rgb = tool_bg_rgb(!done, *is_error, theme);
+                    let rgb = tool_rail_rgb(!done, *is_error, theme);
                     let mut block = Vec::new();
-                    push_wrapped(&mut block, &header, width);
+                    push_wrapped(&mut block, &header, inner);
 
                     if fold.tools_expanded {
-                        // write: header + body share one pending/success/error wash (pi Box).
-                        // Tail viewport follows stream end (c1340); Ctrl+O still expands.
                         if let Some(content) = write_content
                             && !content.is_empty()
                         {
@@ -616,16 +623,14 @@ pub fn render_scrollback(
                             };
                             for line in render_expandable_output(
                                 content,
-                                width,
+                                inner,
                                 fold.tools_output_expanded,
                                 &opts,
                             ) {
-                                block.push(fit(&line, width));
+                                block.push(fit(&line, inner));
                             }
                         }
 
-                        // Error / other output behind Alt+E: still same wash when shown.
-                        // Hard-truncated: never expand viewport (att16).
                         if !output.is_empty() {
                             let painted = paint_output_with_full_footer(output, theme, *is_error);
                             let hard = output_is_hard_truncated(output);
@@ -640,35 +645,34 @@ pub fn render_scrollback(
                                 hint_style: None,
                             };
                             let expanded = fold.tools_output_expanded && !hard;
-                            for line in render_expandable_output(&painted, width, expanded, &opts) {
-                                block.push(line);
+                            for line in render_expandable_output(&painted, inner, expanded, &opts) {
+                                block.push(fit(&line, inner));
                             }
                         }
 
-                        // edit: header + diff share one tool-*-bg wash; MUST honor Alt+E.
                         if let Some(diff) = display_diff
                             && !diff.is_empty()
                         {
                             if !block.is_empty() {
-                                block.push(String::new()); // pi Spacer between title and body
+                                block.push(String::new());
                             }
                             push_viewport_diff_lines(
                                 &mut block,
                                 diff,
-                                width,
+                                inner,
                                 theme,
-                                Some(rgb),
                                 fold.tools_output_expanded,
                             );
                         }
                     }
 
-                    push_tinted(&mut lines, &block, width, rgb);
+                    push_railed(&mut lines, &block, width, rgb);
                 }
                 UiEntry::Diff {
                     summary,
                     display_diff,
                 } => {
+                    let inner = rail_inner_width(width);
                     let marker = if fold.tools_expanded {
                         glyphs.unfold()
                     } else {
@@ -676,20 +680,19 @@ pub fn render_scrollback(
                     };
                     let header = paint_tool_header_line(theme, marker, "diff", summary);
                     let mut block = Vec::new();
-                    push_wrapped(&mut block, &header, width);
-                    let rgb = tool_bg_rgb(false, false, theme);
+                    push_wrapped(&mut block, &header, inner);
+                    let rgb = tool_rail_rgb(false, false, theme);
                     if fold.tools_expanded && !display_diff.is_empty() {
                         block.push(String::new());
                         push_viewport_diff_lines(
                             &mut block,
                             display_diff,
-                            width,
+                            inner,
                             theme,
-                            Some(rgb),
                             fold.tools_output_expanded,
                         );
                     }
-                    push_tinted(&mut lines, &block, width, rgb);
+                    push_railed(&mut lines, &block, width, rgb);
                 }
                 UiEntry::Bash {
                     command,
@@ -697,11 +700,12 @@ pub fn render_scrollback(
                     output,
                     ..
                 } => {
+                    let inner = rail_inner_width(width);
                     let mut block = Vec::new();
                     push_wrapped(
                         &mut block,
                         &theme.paint_success(&format!("$ {command}")),
-                        width,
+                        inner,
                     );
                     if !output.is_empty() {
                         let body = paint_output_with_full_footer(
@@ -721,17 +725,17 @@ pub fn render_scrollback(
                             hint_style: None,
                         };
                         let expanded = fold.tools_output_expanded && !hard;
-                        for line in render_expandable_output(&body, width, expanded, &opts) {
-                            block.push(line);
+                        for line in render_expandable_output(&body, inner, expanded, &opts) {
+                            block.push(fit(&line, inner));
                         }
                     } else if matches!(status, BashBlockStatus::Pending) {
                         push_wrapped(
                             &mut block,
                             &theme.paint_muted(&format!("Running… {}", key_hint("Esc"))),
-                            width,
+                            inner,
                         );
                     }
-                    push_tinted(&mut lines, &block, width, bash_bg_rgb(*status, theme));
+                    push_railed(&mut lines, &block, width, bash_rail_rgb(*status, theme));
                 }
                 UiEntry::Compaction {
                     status,
@@ -809,6 +813,7 @@ pub fn render_scrollback(
         need_spacer = true;
         match kind {
             "thinking" => {
+                let inner = rail_inner_width(width);
                 let marker = if fold.thinking_expanded {
                     glyphs.unfold()
                 } else {
@@ -816,10 +821,12 @@ pub fn render_scrollback(
                 };
                 let header =
                     theme.paint_muted(&format!("{marker} thinking  {}", key_hint("Ctrl+T")));
-                push_wrapped(&mut lines, &header, width);
+                let mut block = Vec::new();
+                push_wrapped(&mut block, &header, inner);
                 if fold.thinking_expanded {
-                    push_wrapped(&mut lines, &theme.paint_muted(&format!("{text}…")), width);
+                    push_wrapped(&mut block, &theme.paint_muted(&format!("{text}…")), inner);
                 }
+                push_railed(&mut lines, &block, width, thinking_rail_rgb(theme));
             }
             "assistant" => {
                 lines.extend(paint_streaming_assistant(
@@ -931,7 +938,7 @@ mod tests {
         );
     }
 
-    fn assert_write_header_body_share_bg(done: bool, is_error: bool, expect: RgbColor) {
+    fn assert_write_header_body_share_rail(done: bool, is_error: bool, expect: RgbColor) {
         let mut model = UiModel::default();
         model.entries.push(UiEntry::Tool {
             id: "w1".into(),
@@ -945,7 +952,18 @@ mod tests {
             done,
         });
         let theme = LayoutTheme::product_dark();
-        let bg = format!("\x1b[48;2;{};{};{}m", expect.r, expect.g, expect.b);
+        let rail = format!("\x1b[48;2;{};{};{}m", expect.r, expect.g, expect.b);
+        let wash = {
+            let p = theme.palette();
+            let bg = if !done {
+                p.tool_pending_bg
+            } else if is_error {
+                p.tool_error_bg
+            } else {
+                p.tool_success_bg
+            };
+            format!("\x1b[48;2;{};{};{}m", bg.r, bg.g, bg.b)
+        };
         let lines = render_scrollback(
             &model,
             GlyphSet::from_env(),
@@ -959,27 +977,34 @@ mod tests {
             .find(|l| l.contains("Write") && l.contains("a.py"))
             .expect("header");
         let body = lines.iter().find(|l| l.contains("line-a")).expect("body");
-        assert!(header.contains(&bg), "write header must share wash");
+        assert!(
+            header.contains(&rail),
+            "write header must share status rail"
+        );
         assert!(
             !header.contains('⚙'),
             "tool header MUST NOT use gear glyph: {header}"
         );
         assert!(
-            body.contains(&bg),
-            "write body must share the same wash (no naked black split)"
+            body.contains(&rail),
+            "write body must share the same status rail"
+        );
+        assert!(
+            !header.contains(&wash) || wash == rail,
+            "write header MUST NOT use full tool-*-bg wash: {header}"
         );
     }
 
     #[test]
-    fn write_block_tints_header_and_body_together() {
+    fn write_block_rails_header_and_body_together() {
         let p = LayoutTheme::product_dark().palette();
-        assert_write_header_body_share_bg(false, false, p.tool_pending_bg);
-        assert_write_header_body_share_bg(true, false, p.tool_success_bg);
-        assert_write_header_body_share_bg(true, true, p.tool_error_bg);
+        assert_write_header_body_share_rail(false, false, mix_rgb(p.surface, p.accent, 0.72));
+        assert_write_header_body_share_rail(true, false, mix_rgb(p.surface, p.success, 0.72));
+        assert_write_header_body_share_rail(true, true, mix_rgb(p.surface, p.error, 0.72));
     }
 
     #[test]
-    fn edit_block_tints_header_and_diff_together() {
+    fn edit_block_rails_header_and_diff_without_wash() {
         let mut model = UiModel::default();
         model.entries.push(UiEntry::Tool {
             id: "e1".into(),
@@ -996,7 +1021,9 @@ mod tests {
         });
         let theme = LayoutTheme::product_dark();
         let p = theme.palette();
-        let success_bg = format!(
+        let rail = mix_rgb(p.surface, p.success, 0.72);
+        let rail_bg = format!("\x1b[48;2;{};{};{}m", rail.r, rail.g, rail.b);
+        let success_wash = format!(
             "\x1b[48;2;{};{};{}m",
             p.tool_success_bg.r, p.tool_success_bg.g, p.tool_success_bg.b
         );
@@ -1021,12 +1048,16 @@ mod tests {
             .find(|l| l.contains("new line") || l.contains("+new"))
             .expect("diff body");
         assert!(
-            header.contains(&success_bg),
-            "edit header must use tool-success-bg"
+            header.contains(&rail_bg),
+            "edit header must use success rail"
         );
         assert!(
-            body.contains(&success_bg),
-            "edit diff body must share tool-success-bg wash (no naked black split)"
+            body.contains(&rail_bg),
+            "edit diff body must share success rail (no naked split)"
+        );
+        assert!(
+            !header.contains(&success_wash) || success_wash == rail_bg,
+            "edit MUST NOT use tool-success-bg wash envelope"
         );
         assert!(
             !body.contains(&added_row_bg),

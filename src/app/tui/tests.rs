@@ -1749,7 +1749,7 @@ fn layout_busy_status_is_separate_from_footer() {
 }
 
 #[test]
-fn scrollback_user_message_applies_background() {
+fn scrollback_user_message_no_wash_bg() {
     use super::layout::UiRoot;
 
     let mut root = UiRoot::new();
@@ -1761,10 +1761,13 @@ fn scrollback_user_message_applies_background() {
     root.apply_ui_model(&model);
     let joined = root.render(80).join("\n");
     assert!(joined.contains("hello bg"), "user text missing: {joined}");
-    // bg_rgb emits CSI 48;2;r;g;b
+    let user_line = joined
+        .lines()
+        .find(|l| strip_ansi(l).contains("hello bg"))
+        .expect("user line");
     assert!(
-        joined.contains("\x1b[48;2;"),
-        "user-message-bg ANSI missing: {joined:?}"
+        !user_line.contains("\x1b[48;2;"),
+        "user row MUST NOT apply user-message-bg wash: {user_line:?}"
     );
 }
 
@@ -1808,12 +1811,27 @@ fn scrollback_bash_block_tint_and_gap() {
     let joined = lines.join("\n");
     assert!(
         joined.contains("\x1b[48;2;"),
-        "bash success tint missing: {joined:?}"
+        "bash success status rail missing: {joined:?}"
+    );
+    let bash_line = lines
+        .iter()
+        .find(|l| strip_ansi(l).contains("$ echo hi"))
+        .expect("$ echo");
+    let wash = {
+        let p = xylitol_tui::Palette::dark();
+        format!(
+            "\x1b[48;2;{};{};{}m",
+            p.tool_success_bg.r, p.tool_success_bg.g, p.tool_success_bg.b
+        )
+    };
+    assert!(
+        !bash_line.contains(&wash),
+        "bash MUST NOT use full tool-success-bg wash: {bash_line:?}"
     );
 }
 
 #[test]
-fn scrollback_bash_ctrl_o_viewport_full_width_tint() {
+fn scrollback_bash_ctrl_o_viewport_keeps_rail() {
     use super::bridge::BashBlockStatus;
     use super::layout::UiRoot;
 
@@ -1841,12 +1859,11 @@ fn scrollback_bash_ctrl_o_viewport_full_width_tint() {
         .expect("$ seq");
     assert!(
         bash_line.contains("\x1b[48;2;"),
-        "bash header must be tinted full-width wash"
+        "bash header must have status rail"
     );
-    // Background applies across the padded full terminal width (160 cols).
     assert!(
         xylitol_tui::visible_width(bash_line) >= 160,
-        "tinted row must span terminal width, got {}",
+        "railed row must span terminal width, got {}",
         xylitol_tui::visible_width(bash_line)
     );
 

@@ -76,7 +76,7 @@ Agent Edit 路径：优先 `DiffInput::from_edit_pair(old, new)`（或 `generate
 
 1. 当且仅当出现**恰好一对**相邻 `-` 行与 `+` 行时，对该对做词级（或字级）对比。
 2. 变更片段用 **`word_change_removed` / `word_change_added`**：
-   - **嵌在 tool / expandable 洗底内（Edit 默认）**：词底 = 当前块 bg（`tool-*-bg`）向极性色**轻量**混亮——`−` → 红系、`+` → 绿系（包 API：`word_wash_bg(block_bg, polarity)` ≈ `mix(block, lighten(polarity), **0.32**)`）；同行保持 added/removed **fg**；复位到**块 bg**（勿 `49m` 打断洗底）。要更醒目可提到 ~0.42，但默认保持淡洗。
+   - **嵌在 tool / expandable 块内（Edit 默认）**：词底 = surface（或块轨语境色）向极性色轻量混亮——`−` → 红系、`+` → 绿系（包 API：`word_wash_bg`）；同行保持 added/removed **fg**；**MUST NOT** 再叠 `diff-*-bg` 行底。
    - **独立 unified 行底路径**（可选）：可用 `diff-*-word-bg` token，复位到行底。
    - **MUST NOT** 默认用 terminal reverse / 白底反色；也 **MUST NOT** 只把块 bg 加深（对比度不足或方向反了）。
 3. 多行连续增减 **MUST NOT** 做词级对比，只做行级着色。
@@ -89,7 +89,7 @@ Agent Edit 路径：优先 `DiffInput::from_edit_pair(old, new)`（或 `generate
 2. Side-by-side：仅当调用方显式设置 `side_by_side_min_width` 且宽度达标时启用；列宽按**内容打包**（cap 半宽）；多行 replace hunk（`similar` 的 DD…II…）MUST **按行 zip** 成 L|R 同行，**MUST NOT** 先堆全部删除再堆全部添加。
 3. **MUST NOT** 使用 Unicode 表线 / 树连接符装饰；对齐用空格。
 4. 行宽按 `visible_width`（CJK/emoji）；超宽行 MUST 按 ANSI 感知宽度折行或截断策略与 Text/Markdown 一致，**MUST NOT** 按字节硬切。
-5. **Edit / demo 一体块**：`tool-*-bg` 洗底包住 **header +（展开时）正文**，上下各一空行 padding（pi `Box(1,1)`）；正文 **不再**叠 `diff-*-bg` 行底。SBS 半栏仍 **MUST NOT** 套行底（c464）。
+5. **Edit / demo 一体块**：header +（展开时）正文共用 **status 轨**（c1830）；**MUST NOT** 默认 `tool-*-bg` 洗底信封；正文 **不再**叠 `diff-*-bg` 行底。SBS 半栏仍 **MUST NOT** 套行底（c464）。
 
 ## 复制友好 MUST
 

@@ -1,6 +1,7 @@
 //! Truecolor SGR paint helpers (39 / 49 reset), shared by palette factories.
 
 use crate::terminal_colors::RgbColor;
+use crate::utils::{truncate_to_width, visible_width};
 
 /// Foreground truecolor + reset to default fg (`39`).
 pub fn fg_rgb(rgb: RgbColor, s: &str) -> String {
@@ -102,6 +103,32 @@ pub fn strikethrough(s: &str) -> String {
     format!("\x1b[9m{s}\x1b[29m")
 }
 
+/// Left status rail: `[1-cell bg][1 plain gutter][fitted content…]`.
+///
+/// Content is truncated/padded to `width - 2` (or less on narrow terminals).
+/// Does not panic when `width < 2` — prefix consumes the budget first.
+pub fn paint_left_rail_line(line: &str, width: usize, rgb: RgbColor) -> String {
+    const RAIL_COLS: usize = 1;
+    const GUTTER_COLS: usize = 1;
+    let width = width.max(1);
+    let prefix_w = (RAIL_COLS + GUTTER_COLS).min(width);
+    let rail_w = RAIL_COLS.min(prefix_w);
+    let gutter_w = prefix_w.saturating_sub(rail_w);
+    let content_w = width.saturating_sub(prefix_w);
+    let rail = bg_rgb(rgb, &" ".repeat(rail_w));
+    let gutter = " ".repeat(gutter_w);
+    if content_w == 0 {
+        return format!("{rail}{gutter}");
+    }
+    let clipped = if visible_width(line) > content_w {
+        truncate_to_width(line, content_w, "...", false)
+    } else {
+        line.to_string()
+    };
+    let pad = content_w.saturating_sub(visible_width(&clipped));
+    format!("{rail}{gutter}{clipped}{}", " ".repeat(pad))
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -158,5 +185,37 @@ mod tests {
         assert!(add.g > block.g, "added wash should lift green: {add:?}");
         assert!(rem.r > block.r, "removed wash should lift red: {rem:?}");
         assert_ne!(add, rem);
+    }
+
+    #[test]
+    fn paint_left_rail_has_rail_gutter_and_49_reset() {
+        let rgb = RgbColor {
+            r: 0xa6,
+            g: 0xe3,
+            b: 0xa1,
+        };
+        let s = paint_left_rail_line("hello", 20, rgb);
+        assert!(
+            s.contains("48;2;166;227;161"),
+            "rail must use status bg: {s:?}"
+        );
+        assert!(s.contains("\x1b[49m"), "rail bg must reset with 49: {s:?}");
+        assert!(s.contains("hello"), "content missing: {s:?}");
+        // After rail+reset, a plain gutter space then content.
+        let after_reset = s.split("\x1b[49m").nth(1).expect("49 reset");
+        assert!(
+            after_reset.starts_with(' '),
+            "gutter space required after rail: {after_reset:?}"
+        );
+        assert_eq!(visible_width(&s), 20);
+    }
+
+    #[test]
+    fn paint_left_rail_narrow_does_not_panic() {
+        let rgb = RgbColor { r: 1, g: 2, b: 3 };
+        let _ = paint_left_rail_line("x", 1, rgb);
+        let _ = paint_left_rail_line("x", 2, rgb);
+        let s = paint_left_rail_line("toolongcontent", 4, rgb);
+        assert_eq!(visible_width(&s), 4);
     }
 }
