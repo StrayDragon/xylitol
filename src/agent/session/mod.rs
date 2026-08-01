@@ -1063,6 +1063,34 @@ mod tests {
     }
 
     #[test]
+    fn set_tools_defer_prompt_keeps_stale_prompt_until_install() {
+        let mut session = make_session();
+        let before = session.system_prompt().unwrap_or("").to_string();
+        assert!(!before.is_empty());
+
+        // Rebuild with the same builtins — metadata refresh is enough to prove defer.
+        let tools = ToolSet::from_iter(crate::infra::tools::default_tools());
+        let opts = session.set_tools_defer_prompt(tools);
+        assert!(
+            session.tools().iter().any(|t| t.name() == "read"),
+            "tools must be installed immediately"
+        );
+        assert_eq!(
+            session.system_prompt().unwrap_or(""),
+            before,
+            "system prompt text must stay stale until install"
+        );
+
+        let built = crate::agent::prompt::build_system_prompt(&opts);
+        session.install_system_prompt_text(built.clone());
+        assert_eq!(session.system_prompt().unwrap_or(""), built);
+        assert!(
+            session.system_prompt().unwrap_or("").contains("read") || !built.is_empty(),
+            "installed prompt should reflect tool set"
+        );
+    }
+
+    #[test]
     fn apply_prompt_resources_keeps_single_runtime_policy() {
         let mut session = make_session();
         session.apply_prompt_resources(

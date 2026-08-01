@@ -691,6 +691,47 @@ fn pty_product_fake_session_tree_label_path() {
     assert_eq!(code, 0);
 }
 
+/// Product Fake — bang-busy + short terminal + `/model` keeps status lead in viewport (atc23).
+#[test]
+#[ignore = "E2E: product PTY + cargo build; run via `just test-tui-e2e-pty`"]
+fn pty_product_fake_busy_model_list_keeps_running_lead() {
+    // Short rows so an uncapped Models list could push status above content-end.
+    const COLS: usize = 80;
+    const ROWS: usize = 14;
+    let (mut session, _tmp) = spawn_product_fake_ready(COLS as u16, ROWS as u16);
+
+    session
+        .send_keys("\x15!sleep 30\r")
+        .expect("submit hanging bang");
+    session
+        .wait_for_raw("sleep 30", Duration::from_secs(15))
+        .expect("bang uplink");
+    session.drain(Duration::from_millis(400));
+    // Bang busy lead is `Running` (Working for agent turns).
+    session
+        .wait_for_raw("Running", Duration::from_secs(10))
+        .expect("bang busy status lead");
+
+    session
+        .send_keys("\x15/model\r")
+        .expect("open Models while busy");
+    session
+        .wait_for_raw("fake", Duration::from_secs(15))
+        .expect("Models slot should list fake");
+    assert!(
+        session.raw_contains(b"Running"),
+        "busy status lead MUST remain in PTY stream while Models open (chrome footprint)"
+    );
+
+    session.send_keys("\x1b").expect("Esc close Models");
+    session.drain(Duration::from_millis(150));
+    session.send_keys("\x1b").expect("Esc cancel bang");
+    let _ = session.wait_for_raw("(cancelled)", Duration::from_secs(15));
+    session.send_keys("\x15/exit\r").expect("/exit");
+    let code = session.wait_exit(Duration::from_secs(30)).expect("exit");
+    assert_eq!(code, 0);
+}
+
 /// Product Fake — tall scrollback fixture must still /exit cleanly (ath25 smoke).
 #[test]
 #[ignore = "E2E: product PTY + cargo build; run via `just test-tui-e2e-pty`"]
