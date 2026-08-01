@@ -8,9 +8,9 @@
 
 ## 1. Specs landing
 
-- [ ] 1.1 `change start c1810-add-tui-chrome-footprint`
-- [ ] 1.2 live：`app-tui-chrome` atc23（footprint + term-aware max_visible）
-- [ ] 1.3 validate；commit specs landing
+- [x] 1.1 `change start c1810-add-tui-chrome-footprint`
+- [x] 1.2 live：`app-tui-chrome` atc23（footprint + term-aware max_visible）
+- [x] 1.3 validate；commit specs landing
 
 ## 2. Manifest + host
 
