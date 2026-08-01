@@ -37,3 +37,9 @@
     假如 产品 Fake PTY 已就绪且已有至少一轮对话
     当 双 Esc 开树
     那么 屏幕含 Type to search 或 Search: 且含 fold/unfold 或 filters
+
+  @req:qg06
+  场景: complexity-check-in-qa
+    假如 仓库含 scripts/check_complexity.py
+    当 运行 just check-scripts 或 just qa
+    那么 check_complexity 硬闸被执行；入口超 cognitive/cyclomatic 阈值则整闸失败
