@@ -163,4 +163,95 @@ mod tests {
             vec!["hello".to_string(), "world".to_string()]
         );
     }
+
+    #[tokio::test]
+    async fn collect_seed_from_store_skips_other_cwd() {
+        use crate::infra::session::SessionManager;
+        use crate::protocol::ports::XySessionStore;
+        use std::sync::Arc;
+
+        let dir = tempfile::tempdir().unwrap();
+        let mgr = SessionManager::new(dir.path().join("sessions"));
+        let store: Arc<dyn XySessionStore> = Arc::new(mgr);
+
+        let here = format!("here-{}", uuid::Uuid::new_v4());
+        let other = format!("other-{}", uuid::Uuid::new_v4());
+        store.create(&here, Some("/proj-a"), None).await.unwrap();
+        store
+            .append_session_entry(
+                &here,
+                &SessionEntry::Message(MessageEntry {
+                    base: EntryBase {
+                        entry_type: "message".into(),
+                        id: "u1".into(),
+                        parent_id: None,
+                        timestamp: String::new(),
+                    },
+                    message: fixture_message_json("user", "seed me"),
+                }),
+            )
+            .await
+            .unwrap();
+        store.create(&other, Some("/proj-b"), None).await.unwrap();
+        store
+            .append_session_entry(
+                &other,
+                &SessionEntry::Message(MessageEntry {
+                    base: EntryBase {
+                        entry_type: "message".into(),
+                        id: "u2".into(),
+                        parent_id: None,
+                        timestamp: String::new(),
+                    },
+                    message: fixture_message_json("user", "wrong cwd"),
+                }),
+            )
+            .await
+            .unwrap();
+
+        let texts = collect_new_session_seed_from_store(store.as_ref(), "/proj-a", None, 3).await;
+        assert!(
+            texts.iter().any(|t| t == "seed me"),
+            "same-cwd prompts: {texts:?}"
+        );
+        assert!(
+            !texts.iter().any(|t| t == "wrong cwd"),
+            "other cwd must not seed: {texts:?}"
+        );
+    }
+
+    #[tokio::test]
+    async fn spawn_cli_session_load_returns_entries() {
+        use crate::infra::session::SessionManager;
+        use crate::protocol::ports::XySessionStore;
+        use std::sync::Arc;
+
+        let dir = tempfile::tempdir().unwrap();
+        let mgr = SessionManager::new(dir.path().join("sessions"));
+        let store: Arc<dyn XySessionStore> = Arc::new(mgr);
+        let sid = format!("cli-{}", uuid::Uuid::new_v4());
+        store.create(&sid, Some("."), None).await.unwrap();
+        store
+            .append_session_entry(
+                &sid,
+                &SessionEntry::Message(MessageEntry {
+                    base: EntryBase {
+                        entry_type: "message".into(),
+                        id: "u1".into(),
+                        parent_id: None,
+                        timestamp: String::new(),
+                    },
+                    message: fixture_message_json("user", "restored"),
+                }),
+            )
+            .await
+            .unwrap();
+
+        let entries = spawn_cli_session_load(store, sid).await.unwrap().unwrap();
+        assert!(
+            user_prompt_texts_from_entries(&entries)
+                .iter()
+                .any(|t| t == "restored")
+        );
+    }
 }
