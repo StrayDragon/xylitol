@@ -26,7 +26,7 @@ components:
 2. busy：`Loader` 形态 = **前导空行 +** 一行 `spinner + 短词`（Working / Running tool / Retry…），紧贴 input；**MUST NOT** strip 前导空行。
    - Spinner **MUST** 按 `Loader::interval_ms`（默认 ~80ms）推进；host ~16ms idle_tick **MUST NOT** 每 tick 都 `Loader::tick`（否则会异常快）。
 3. **MUST NOT** 放 turn 计数、耗时百分比、双列元数据。
-4. 队列徽章（steer/follow-up）：**不进** status 行；进 footer 前缀 `q:sN|fM`，全文进 **scrollback 与 status 之间** 的 dim 队列块（见 [`queue-steer.md`](./queue-steer.md)）。**MUST NOT** 写成 scrollback `[steer]` 滚动提示墙。
+4. **队列条**（steer/follow-up）：**不进** status 行；进 footer 前缀 `q:sN|fM`，全文进 **scrollback 与 status 之间** 的 dim 队列块（见 [`queue-steer.md`](./queue-steer.md)）。**MUST NOT** 写成 scrollback `[steer]` 滚动提示墙。
 
 ## 下轮预告（可复用槽）
 

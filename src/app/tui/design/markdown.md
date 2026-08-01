@@ -141,4 +141,4 @@ bob       28  design
 | `packages/xylitol-tui` Markdown 组件 | **已按本文收敛**（`c530-update-package-tui-markdown`；`heading(level)` API） |
 | `agent_demo` | `/md` theme：粗体 accent、斜体 warning、H3+/表头分色 |
 | playground Markdown 槽 | 已落地色增强示意；行为/折行以 `just demo-tui` → `/md` 为准（无 A/B 双轨） |
-| Command plate | `DEMO_PLATE` 表驱动（`c535-add-package-tui-agent-demo-plate`）；footer 无键墙，完整键位走 `/help` |
+| 命令面板（包 `agent_demo` Ctrl+P；≠ 产品静图） | `DEMO_PLATE` 表驱动（`c535-…`）；页脚无键墙，完整键位走 `/help` |

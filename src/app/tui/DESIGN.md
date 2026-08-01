@@ -16,7 +16,7 @@ colors:
   diff-removed: "#f38ba8"
   diff-context: "#6c7086"
   # Diff line / word backgrounds (Mocha).
-  # Edit-in-tool path: prefer word_wash_bg(tool-*-bg, polarity) mix≈0.32 (see design/diff-block.md).
+  # Edit-in-tool path: prefer word_wash_bg(surface, polarity) mix≈0.32 (see design/diff-block.md).
   # Fixed *-word-bg tokens: optional standalone unified row-bg path.
   diff-added-bg: "#1e2b22"
   diff-removed-bg: "#2b1e24"
@@ -82,13 +82,12 @@ components:
   tool-line:
     textColor: "{colors.tool}"
   tool-pending:
-    backgroundColor: "{colors.tool-pending-bg}"
+    textColor: "{colors.accent}"
   tool-success:
-    backgroundColor: "{colors.tool-success-bg}"
+    textColor: "{colors.success}"
   tool-error:
-    backgroundColor: "{colors.tool-error-bg}"
+    textColor: "{colors.error}"
   user-message:
-    backgroundColor: "{colors.user-message-bg}"
     textColor: "{colors.on-surface}"
   skill-ref:
     textColor: "{colors.skill-ref}"
@@ -143,7 +142,7 @@ components:
 
 情绪：安静、高效、像在普通 REPL 里聊天。用户应能向上翻历史、框选复制，再贴回下一轮提问——**复制友好优先于视觉热闹**。
 
-参考实现锚点：`agent_demo`（`just demo-tui`）= **动态** playground；浏览器 [`design/playground/`](./design/playground/) = **静态**设计图（固定状态）；生产接线在本目录 `src/app/tui`。当前主路径 c465–c493 已归档；模块为 `layout/` + `widgets/`。
+参考实现锚点：浏览器 [`design/playground/`](./design/playground/) = **产品**静态设计图（固定状态，本面专用）；生产接线在本目录 `src/app/tui`。包侧 `agent_demo`（`just demo-tui`）= 引擎交互演示，**允许与产品 chrome / 文案有差异**，**不**充当 design playground。当前主路径 c465–c493 已归档；模块为 `layout/` + `widgets/`。
 
 ## Track B 落地切片（设计闸）
 
@@ -191,7 +190,7 @@ components:
 | `error` / `warning` / `success` | 异常与结果，少用（**前景**） |
 | `diff-added` / `diff-removed` / `diff-context` | Diff 行 **fg**（见 [`design/diff-block.md`](./design/diff-block.md)） |
 | `diff-added-bg` / `diff-removed-bg` | Diff 增删行 **整行淡底**（**仅 unified**；铺满行宽；与 tool-*-bg 分离）。**Side-by-side MUST NOT 用行底**（c464） |
-| `diff-added-word-bg` / `diff-removed-word-bg` | 独立 unified 行底路径的词级底 token。**Edit 嵌在 `tool-*-bg` 时**改用 `word_wash_bg(block, polarity)`（块底→红/绿轻量混亮，默认 mix≈**0.32**）；复位到块/行底，**勿 reverse** |
+| `diff-added-word-bg` / `diff-removed-word-bg` | 独立 unified 行底路径的词级底 token。**Edit 在 rail 块内**改用 `word_wash_bg(surface, polarity)`（surface→红/绿轻量混亮，默认 mix≈**0.32**）；**MUST NOT** 叠 `diff-*-bg` 行底；**勿 reverse** |
 | `surface` | 默认底（终端常透明；需要垫底时用） |
 | `tool-pending-bg` / `tool-success-bg` / `tool-error-bg` | 历史 wash token（仍保留于 Palette）；**产品默认不**作整行洗底——成败用 accent/success/error **左边轨**（c1830） |
 | `user-message-bg` | 历史用户淡底 token；**产品默认不**启用全行淡底（c1830） |
@@ -292,8 +291,8 @@ footer            1 行 dim（cwd · model · 可选 context%）
 - Do 忙碌才出 status；idle 让出垂直空间给对话。
 - Do 用 editor 边框标出操作区（对齐 agent_demo）。
 - Do glyph 走应用配置，不探测字体。
-- Do thinking/tool 可展开（策略见 expandable；demo 优先于产品 Expandable 栈）。
-- Do 工具块用 `tool-*-bg` 表达 pending/success/error（吸取 pi）。
+- Do thinking/tool 可展开（策略见 expandable；thinking flush，tool 用左边轨）。
+- Do 工具块用 **status 左边轨**（accent/success/error，经 `paint_left_rail_line`）表达 pending/success/error；**MUST NOT** 默认整行 `tool-*-bg` 洗底（c1830）。
 - Do YAML frontmatter 中所有 token 值使用双引号（`common-design-md-zh`）。
 - Do 子文档用 `{colors.*}` 引用本文件，并声明 `tokens_from`。
 - Don't 做 Codex 式独立 transcript 浏览面 / 专用 TranscriptView 主 UX。

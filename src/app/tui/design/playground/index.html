@@ -5,8 +5,9 @@
   <meta name="viewport" content="width=device-width, initial-scale=1" />
   <title>Xylitol DESIGN playground</title>
   <!--
-    Static design mock (fixed states). Agents: ignore unless human cites this path.
-    Dynamic playground: just demo-tui. Production: src/app/tui.
+    Static product design mock (fixed states) for src/app/tui only.
+    Agents: ignore unless human cites this path.
+    Not agent_demo — package demo may differ. Production: src/app/tui.
     Tokens: sync_tokens.py ← ../../DESIGN.md → tokens.css + tokens.js
   -->
   <link rel="stylesheet" href="./tokens.css" />
@@ -173,30 +174,52 @@
     .fg-diff-removed { color: var(--diff-removed); }
     .fg-diff-context { color: var(--diff-context); }
 
-    .bg-user { background: var(--user-message-bg); }
-    .bg-tool-pending { background: var(--tool-pending-bg); }
+    .bg-user { background: var(--user-message-bg); } /* resume 选中行等壳层；transcript 用户行默认不用 */
+    .bg-tool-pending { background: var(--tool-pending-bg); } /* legacy wash token — transcript 默认不用 */
     .bg-tool-success { background: var(--tool-success-bg); }
     .bg-tool-error { background: var(--tool-error-bg); }
     .bg-diff-added { background: var(--diff-added-bg); }
     .bg-diff-removed { background: var(--diff-removed-bg); }
-    /* Bright polarity wash on block bg: + green / − red (not darken-only) */
+    /* Entry rail (c1830 SSOT): 3px status border + 1ch gutter; thinking/user/assistant flush */
+    .entry-rail {
+      border-left: 3px solid transparent;
+      padding-left: 0;
+      margin: 0.55em 0 0;
+      background: transparent;
+    }
+    .entry-rail:first-child { margin-top: 0; }
+    .entry-rail.rail-pending {
+      border-left-color: color-mix(in srgb, var(--accent) 72%, var(--surface));
+      padding-left: 1ch;
+    }
+    .entry-rail.rail-success {
+      border-left-color: color-mix(in srgb, var(--success) 72%, var(--surface));
+      padding-left: 1ch;
+    }
+    .entry-rail.rail-error {
+      border-left-color: color-mix(in srgb, var(--error) 72%, var(--surface));
+      padding-left: 1ch;
+    }
+    /* Bright polarity wash on surface (rail envelope — not tool-*-bg) */
     .word-added {
       color: var(--diff-added);
-      background: color-mix(in srgb, var(--tool-success-bg, var(--diff-added-bg)) 68%, var(--diff-added));
+      background: color-mix(in srgb, var(--surface) 68%, var(--diff-added));
     }
     .word-removed {
       color: var(--diff-removed);
-      background: color-mix(in srgb, var(--tool-success-bg, var(--diff-removed-bg)) 68%, var(--diff-removed));
+      background: color-mix(in srgb, var(--surface) 68%, var(--diff-removed));
     }
-    .stage-tool-wash {
-      background: var(--tool-success-bg);
-      padding: 0.35rem 0.4rem;
+    .stage-entry-rail {
+      border-left: 3px solid color-mix(in srgb, var(--success) 72%, var(--surface));
+      padding-left: 1ch;
+      margin: 0;
+      background: transparent;
     }
-    .stage-tool-wash .word-added {
-      background: color-mix(in srgb, var(--tool-success-bg) 68%, var(--diff-added));
+    .stage-entry-rail .word-added {
+      background: color-mix(in srgb, var(--surface) 68%, var(--diff-added));
     }
-    .stage-tool-wash .word-removed {
-      background: color-mix(in srgb, var(--tool-success-bg) 68%, var(--diff-removed));
+    .stage-entry-rail .word-removed {
+      background: color-mix(in srgb, var(--surface) 68%, var(--diff-removed));
     }
     .rev {
       background: var(--on-surface);
@@ -256,7 +279,7 @@
       white-space: nowrap;
       min-width: 0;
     }
-    /* Only the pending trail is end-aligned. */
+    /* Only the next-turn cue (下轮预告) is end-aligned. */
     .term-status .status-next-turn-cue {
       color: var(--muted);
       margin-left: auto;
@@ -415,8 +438,7 @@
     <span class="meta">
       静态设计图（固定状态） · <a href="../../DESIGN.md">DESIGN.md</a> ·
       <a href="./README.md">同步</a> ·
-      <a href="../AGENTS.md">AGENTS</a> ·
-      <a href="./uientry-remaster.html">UiEntry remaster</a>
+      <a href="../AGENTS.md">AGENTS</a>
     </span>
     <div class="modes" role="group" aria-label="视图模式">
       <button type="button" data-mode="tile" aria-pressed="true">平铺</button>
@@ -436,16 +458,16 @@
       <section class="panel is-active" id="panel-shell" data-id="shell">
         <h2>Full shell · 产品整壳（c475+c480）</h2>
         <p class="spec">
-          transcript → status 0|1 → editor|tree → footer <code>cwd · model</code> ·
-          <a href="../../DESIGN.md">DESIGN.md</a> Layout · 交互试跑 <code>just demo-tui</code>
+          transcript → 状态条 0|1 → editor|tree → 页脚 <code>cwd · model</code> ·
+          <a href="../../DESIGN.md">DESIGN.md</a> Layout · 产品静图（≠ <code>agent_demo</code>）
         </p>
         <div class="ctl">
           <button type="button" id="shell-busy" aria-pressed="true">busy</button>
-          <button type="button" id="shell-queue" aria-pressed="false">队列徽章</button>
+          <button type="button" id="shell-queue" aria-pressed="false">队列条</button>
           <button type="button" id="shell-pending" aria-pressed="false">换模下轮预告</button>
           <button type="button" id="shell-tree" aria-pressed="false">会话树槽</button>
           <button type="button" id="shell-tool" aria-pressed="true">工具块</button>
-          <span class="hint">idle → status 0 行 · footer=生效中 · Next turn 同行右侧</span>
+          <span class="hint">idle → 状态条 0 行 · 页脚=生效中 · 下轮预告同行右侧</span>
         </div>
         <div class="term term-tall" id="shell-term">
           <div class="term-content" id="shell-content"></div>
@@ -495,24 +517,26 @@
         </div>
         <div class="stage">
           <div class="rows">
-            <div class="row bg-user">
+            <div class="row">
               <span class="fg-user">❯</span> <span class="fg-on">跑测试并看工具块</span>
             </div>
             <div class="row fg-muted" id="think-line" role="button" tabindex="0">thinking  (Ctrl+T)</div>
             <div class="row fg-muted hidden" id="think-body"></div>
-            <div class="row" id="tool-summary" role="button" tabindex="0"></div>
-            <div class="rows hidden" id="tool-detail">
-              <div class="row fg-tool" id="tool-tail">ok 42  passed · 0 failed</div>
-              <div class="row fg-muted" id="tool-earlier">... (12 earlier lines, ctrl+o to expand)</div>
+            <div class="entry-rail rail-pending" id="tool-block">
+              <div class="row" id="tool-summary" role="button" tabindex="0"></div>
+              <div class="rows hidden" id="tool-detail">
+                <div class="row fg-tool" id="tool-tail">ok 42  passed · 0 failed</div>
+                <div class="row fg-muted" id="tool-earlier">... (12 earlier lines, ctrl+o to expand)</div>
+              </div>
             </div>
-            <!-- Diff-as-tool: header may use success tint; body MUST NOT -->
-            <div class="hidden" id="tool-diff-block">
-              <div class="row bg-tool-success" id="diff-as-tool-h">▶ <span class="fg-tool-name">Diff</span> <span class="fg-tool-path">src/x.rs</span>  <span class="fg-muted">(Alt+E)</span></div>
+            <!-- Diff-as-tool: status rail on envelope; body MUST NOT stack diff-*-bg row wash -->
+            <div class="hidden entry-rail rail-success" id="tool-diff-block">
+              <div class="row" id="diff-as-tool-h">▶ <span class="fg-tool-name">Diff</span> <span class="fg-tool-path">src/x.rs</span>  <span class="fg-muted">(Alt+E)</span></div>
               <div class="rows" id="diff-as-tool-body">
                 <div class="row fg-diff-context">@@ -1 +1 @@</div>
-                <div class="row bg-diff-removed fg-diff-removed">- old</div>
-                <div class="row bg-diff-added fg-diff-added">+ new</div>
-                <div class="row fg-muted">← Edit 一体块：整块 tool-success-bg；正文无 diff-*-bg 行底</div>
+                <div class="row fg-diff-removed">- old</div>
+                <div class="row fg-diff-added">+ new</div>
+                <div class="row fg-muted">← Edit：status 轨包住 header+正文；正文无 diff-*-bg 行底</div>
               </div>
             </div>
           </div>
@@ -530,12 +554,12 @@
           <button type="button" class="chip-btn" data-diff-view="unified" aria-pressed="true">unified</button>
           <button type="button" class="chip-btn" data-diff-view="sbs" aria-pressed="false">side-by-side</button>
           <button type="button" id="diff-words" aria-pressed="true">词级高亮</button>
-          <span class="hint">词级：块 bg→红/绿轻量混亮(~0.32) · 勿 reverse · SBS 无行底</span>
+          <span class="hint">词级：surface→红/绿轻量混亮(~0.32) · 勿 reverse · 无 tool 洗底信封 · SBS 无行底</span>
         </div>
-        <div id="diff-unified" class="stage stage-tool-wash">
+        <div id="diff-unified" class="stage stage-entry-rail">
           <div class="row fg-diff-context">@@ -10,4 +10,4 @@</div>
-          <div class="row bg-diff-removed fg-diff-removed" data-line="rem"></div>
-          <div class="row bg-diff-added fg-diff-added" data-line="add"></div>
+          <div class="row fg-diff-removed" data-line="rem"></div>
+          <div class="row fg-diff-added" data-line="add"></div>
           <div class="row fg-diff-context">  Ok(lines)</div>
         </div>
         <div id="diff-sbs" class="split hidden">
@@ -557,12 +581,12 @@
         <h2>Markdown</h2>
         <p class="spec">
           <a href="../markdown.md">markdown.md</a> · 无 # · text (url) · 无可见 ** / *
-          <span class="md-compare badge" style="border:none;padding:0">已落地 color enhance · 对照 just demo-tui → /md</span>
+          <span class="md-compare badge" style="border:none;padding:0">已落地 color enhance · 形状以本静图 + DESIGN 为准</span>
         </p>
         <div class="ctl">
           <button type="button" id="md-stream" aria-pressed="false">假流式逐行</button>
           <button type="button" id="md-reset" aria-pressed="false">重置</button>
-          <span class="hint">已落地 color enhance + 引用 │ gutter + 嵌套块 · 对照 just demo-tui → /md · md-list-wrap</span>
+          <span class="hint">已落地 color enhance + 引用 │ gutter + 嵌套块 · 形状以本静图 + DESIGN 为准</span>
         </div>
         <div class="md-compare" id="md-emphasis-compare">
           <div class="cell">
@@ -618,7 +642,7 @@
             <div class="row fg-assistant">   <span class="md-h3">列表下标题</span></div>
             <div class="row fg-assistant">   <span class="md-th">k  v</span></div>
             <div class="row fg-assistant">   a  1</div>
-            <div class="row fg-muted" style="font-size:11px;margin-top:0.25rem">prewrapped · demo: plate md-list-wrap / /md</div>
+            <div class="row fg-muted" style="font-size:11px;margin-top:0.25rem">prewrapped · demo: 命令面板 md-list-wrap / /md</div>
           </div>
         </div>
         <div class="stage hidden" id="md-stream-stage" style="margin-top:0.6rem">
@@ -643,12 +667,14 @@
         </div>
         <div class="term" id="layout-term">
           <div class="term-content" id="lay-content">
-            <div class="row bg-user" style="padding:0.15rem 0.35rem">
+            <div class="row">
               <span class="fg-user">❯</span> <span class="fg-on">少壳层、可复制</span>
             </div>
             <div class="row fg-assistant">当前轮进 scrollback。</div>
-            <div class="row bg-tool-success" style="padding:0.15rem 0.35rem">
-              <span class="fg-tool-name">Read</span> <span class="fg-tool-path">DESIGN.md</span>
+            <div class="entry-rail rail-success">
+              <div class="row">
+                <span class="fg-tool-name">Read</span> <span class="fg-tool-path">DESIGN.md</span>
+              </div>
             </div>
           </div>
           <div class="steer-hint hidden" id="lay-steer-line">↳ queued steer · Enter 发送</div>
@@ -730,7 +756,7 @@
         <h2>Pending · NextTurn 下轮预告</h2>
         <p class="spec">
           <a href="../pending-runtime.md">pending-runtime.md</a> ·
-          <strong>单槽</strong> Next-turn cue · footer=生效中 · 多 pending 拼接 · 切回/cleared 清除
+          <strong>单槽</strong> 下轮预告（next-turn cue）· 页脚=生效中 · 模型与 thinking <strong>互斥</strong>（不拼接）· 切回/cleared 清除
         </p>
         <div class="ctl">
           <button type="button" class="chip-btn" data-pending="nextTurn" aria-pressed="true">仅模型 /model</button>
@@ -842,7 +868,7 @@
         <p class="spec">
           <a href="../session-resume.md">session-resume.md</a> ·
           <a href="../keybindings.md">keybindings.md</a> ·
-          预览按终端比例软顶 · <strong>默认隐藏</strong> session id · <code>ctrl+u</code> 展开完整 id · 选中 wash
+          预览按终端比例软顶 · <strong>默认隐藏</strong> session id · <code>ctrl+u</code> 展开完整 id · 选中反色（reverse）
         </p>
         <div class="ctl">
           <button type="button" class="chip-btn" data-resume="default" aria-pressed="true">默认 · id 隐藏</button>
@@ -865,7 +891,7 @@
       <section class="panel" id="panel-widgets" data-id="widgets">
         <h2>Widgets</h2>
         <p class="spec">
-          空态 / 窄宽固定形状 · 细交互以 <code>just demo-tui</code> 为准
+          空态 / 窄宽固定形状 · 细交互以产品 host / 包 harness 为准（demo 可异）
         </p>
         <div class="ctl">
           <button type="button" class="chip-btn" data-widget="empty" aria-pressed="true">空态</button>
@@ -903,7 +929,7 @@
       <section class="panel" id="panel-atoms" data-id="atoms">
         <h2>Atoms</h2>
         <p class="spec">
-          TruncatedText / Panel / Loader 固定形状 · 细行为以 <code>just demo-tui</code> 为准
+          TruncatedText / Panel / Loader 固定形状 · 细行为以产品 host / 包 harness 为准（demo 可异）
         </p>
         <div class="ctl">
           <button type="button" class="chip-btn" data-atom="trunc" aria-pressed="true">TruncatedText</button>
@@ -967,7 +993,7 @@
       <section class="panel" id="panel-ask" data-id="ask">
         <h2>Ask</h2>
         <p class="spec">
-          ChoicePrompt 固定形状 · 细交互以 <code>just demo-tui</code> 为准 ·
+          ChoicePrompt 固定形状 · 细交互以产品 host / 包 harness 为准（demo 可异） ·
           <a href="../trust-prompt.md">trust-prompt.md</a>
         </p>
         <div class="ctl">
@@ -1200,10 +1226,10 @@
     });
 
     /* —— tool —— */
-    const toolBg = {
-      pending: "bg-tool-pending",
-      success: "bg-tool-success",
-      error: "bg-tool-error",
+    const toolRail = {
+      pending: "rail-pending",
+      success: "rail-success",
+      error: "rail-error",
     };
     const toolRows = {
       pending: { name: "Bash", path: "$ cargo test -p xylitol-tui", range: "" },
@@ -1227,9 +1253,11 @@
 
     function renderTool() {
       const t = state.tool;
+      const block = document.getElementById("tool-block");
       const sum = document.getElementById("tool-summary");
       const row = toolRows[t.status];
-      sum.className = `row ${toolBg[t.status]}`;
+      block.className = `entry-rail ${toolRail[t.status]}`;
+      sum.className = "row";
       sum.innerHTML =
         `▶ <span class="fg-tool-name">${row.name}</span> <span class="fg-tool-path">${row.path}</span><span class="fg-tool-range">${row.range}</span>  <span class="fg-muted">(Alt+E)</span>`;
       document.getElementById("tool-detail").classList.toggle("hidden", !t.expanded);
@@ -1441,17 +1469,17 @@
 
       const content = document.getElementById("shell-content");
       let html =
-        '<div class="row bg-user" style="padding:0.15rem 0.35rem">' +
+        '<div class="row">' +
         '<span class="fg-user">❯</span> <span class="fg-on">少壳层、可复制 · 整壳预览</span></div>' +
         '<div class="row fg-assistant">当前轮进 scrollback（非 Codex 浏览面）。</div>' +
-        '<div class="row fg-muted">thinking: 先读 DESIGN，再接线 bridge…</div>' +
+        '<div class="row fg-muted">▸ thinking  (Ctrl+T)</div>' +
         '<div class="row fg-assistant">assistant: 已对齐 Layout 栈。</div>';
       if (S.tool) {
         html +=
-          '<div class="row bg-tool-success" style="padding:0.15rem 0.35rem">' +
-          '<span class="fg-tool-name">Read</span> <span class="fg-tool-path">src/app/tui/DESIGN.md</span></div>' +
-          '<div class="row bg-tool-pending" style="padding:0.15rem 0.35rem">' +
-          '<span class="fg-tool-name">Bash</span> <span class="fg-tool-path">$ cargo test --lib app::tui</span></div>';
+          '<div class="entry-rail rail-success">' +
+          '<div class="row"><span class="fg-tool-name">Read</span> <span class="fg-tool-path">src/app/tui/DESIGN.md</span></div></div>' +
+          '<div class="entry-rail rail-pending">' +
+          '<div class="row"><span class="fg-tool-name">Bash</span> <span class="fg-tool-path">$ cargo test --lib app::tui</span></div></div>';
       }
       content.innerHTML = html;
 
@@ -1840,7 +1868,7 @@
       });
     });
 
-    /* Resume panel: preview soft-cap · default hide id · ctrl+u shows full uuid · selectedBg wash */
+    /* Resume panel: preview soft-cap · default hide id · ctrl+u shows full uuid · selectedBg reverse */
     const RESUME = {
       default: `<div class="row fg-muted">Resume Session (Current Folder)  ◉ Current | ○ All  Name: All  Sort: Threaded</div>
 <div class="row fg-muted">tab scope · ctrl+s sort · ctrl+n named · ctrl+d delete · ctrl+p path · ctrl+u id · ctrl+r rename</div>
