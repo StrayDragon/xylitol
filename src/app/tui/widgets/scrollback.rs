@@ -235,11 +235,6 @@ fn bash_rail_rgb(status: BashBlockStatus, theme: LayoutTheme) -> RgbColor {
     mix_rgb(p.surface, vivid, 0.72)
 }
 
-fn thinking_rail_rgb(theme: LayoutTheme) -> RgbColor {
-    let p = theme.palette();
-    mix_rgb(p.surface, p.muted, 0.88)
-}
-
 /// Hard system truncate (c1330/c1340): sidecar Full output footer present.
 fn output_is_hard_truncated(output: &str) -> bool {
     output.lines().any(|l| l.starts_with("[Full output:"))
@@ -574,7 +569,7 @@ pub fn render_scrollback(
                     }
                 }
                 UiEntry::Thinking { text } => {
-                    let inner = rail_inner_width(width);
+                    // Flush like assistant body — thinking is content, not a status tool block.
                     let marker = if fold.thinking_expanded {
                         glyphs.unfold()
                     } else {
@@ -582,12 +577,10 @@ pub fn render_scrollback(
                     };
                     let header =
                         theme.paint_muted(&format!("{marker} thinking  {}", key_hint("Ctrl+T")));
-                    let mut block = Vec::new();
-                    push_wrapped(&mut block, &header, inner);
+                    push_wrapped(&mut lines, &header, width);
                     if fold.thinking_expanded {
-                        push_wrapped(&mut block, &theme.paint_muted(text), inner);
+                        push_wrapped(&mut lines, &theme.paint_muted(text), width);
                     }
-                    push_railed(&mut lines, &block, width, thinking_rail_rgb(theme));
                 }
                 UiEntry::Tool {
                     name,
@@ -813,7 +806,6 @@ pub fn render_scrollback(
         need_spacer = true;
         match kind {
             "thinking" => {
-                let inner = rail_inner_width(width);
                 let marker = if fold.thinking_expanded {
                     glyphs.unfold()
                 } else {
@@ -821,12 +813,10 @@ pub fn render_scrollback(
                 };
                 let header =
                     theme.paint_muted(&format!("{marker} thinking  {}", key_hint("Ctrl+T")));
-                let mut block = Vec::new();
-                push_wrapped(&mut block, &header, inner);
+                push_wrapped(&mut lines, &header, width);
                 if fold.thinking_expanded {
-                    push_wrapped(&mut block, &theme.paint_muted(&format!("{text}…")), inner);
+                    push_wrapped(&mut lines, &theme.paint_muted(&format!("{text}…")), width);
                 }
-                push_railed(&mut lines, &block, width, thinking_rail_rgb(theme));
             }
             "assistant" => {
                 lines.extend(paint_streaming_assistant(
