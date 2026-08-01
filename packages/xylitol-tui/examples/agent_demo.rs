@@ -1205,7 +1205,7 @@ impl GlyphSet {
 enum EntryStyle {
     /// Full-row tool/user wash (legacy pi-ish).
     Wash,
-    /// 1-cell status bg strip on tools/thinking; user/assistant flush (❯ only).
+    /// 1-cell status bg strip on tools/diff/bash; user/assistant/thinking flush.
     Rail,
 }
 
@@ -4177,17 +4177,11 @@ impl FakeCodingAgentApp {
         mix_rgb(p.surface, vivid, 0.72)
     }
 
-    fn rail_rgb_thinking(&self) -> xylitol_tui::RgbColor {
-        let p = self.palette();
-        // Slightly cooler than plain muted — readable on Mocha without looking like a tool.
-        mix_rgb(p.surface, p.muted, 0.88)
-    }
-
     fn transcript_lines(&self, width: usize) -> Vec<String> {
         let mut lines = Vec::new();
         let g = self.glyph_set;
         let spacer = |w: usize| format!("{}\x1b[49m", " ".repeat(w.max(1)));
-        // Rail+gutter = 2 cols for tool/thinking/diff. User + assistant stay full-width flush.
+        // Rail+gutter = 2 cols for tool/diff/bash. User / assistant / thinking stay flush.
         let rail_inner = match self.entry_style {
             EntryStyle::Rail => width.saturating_sub(2).max(1),
             EntryStyle::Wash => width,
@@ -4251,27 +4245,12 @@ impl FakeCodingAgentApp {
                     }
                 }
                 TranscriptEntry::Thinking { expanded, body } => {
+                    // Flush like assistant — thinking is content; rail is for tools/bash/diff only.
                     let marker = if *expanded { g.unfold() } else { g.fold() };
                     let header = format!("{marker} thinking  {}", key_hint("Ctrl+T"));
-                    let mut block = Vec::new();
-                    Self::push_wrapped(&mut block, &header, rail_inner);
+                    Self::push_wrapped(&mut lines, &header, width);
                     if *expanded {
-                        Self::push_wrapped(&mut block, &dim(body), rail_inner);
-                    }
-                    match self.entry_style {
-                        EntryStyle::Wash => {
-                            for line in &block {
-                                lines.push(Self::fit(line, width));
-                            }
-                        }
-                        EntryStyle::Rail => {
-                            self.push_entry_block(
-                                &mut lines,
-                                &block,
-                                width,
-                                self.rail_rgb_thinking(),
-                            );
-                        }
+                        Self::push_wrapped(&mut lines, &dim(body), width);
                     }
                 }
                 TranscriptEntry::Tool {

@@ -114,7 +114,7 @@
     .style-current .entry { margin: 0; }
 
     /* rail = CSS border only (not a "|" glyph → 不进剪贴板) */
-    /* User/assistant flush; tools/thinking: rail + ~1ch gutter + content (matches demo). */
+    /* User/assistant/thinking flush; tools/bash/diff: rail + ~1ch gutter + content. */
     .style-rail .entry {
       border-left: 3px solid transparent;
       padding-left: 0;
@@ -127,10 +127,10 @@
       border-left-color: transparent;
       padding-left: 0;
     }
-    /* Soften rails toward surface (~demo mix_rgb 0.72 / thinking 0.88). */
+    /* Soften rails toward surface (~demo mix_rgb 0.72). Thinking is flush (no rail). */
     .style-rail .entry.kind-think {
-      border-left-color: color-mix(in srgb, var(--muted) 88%, var(--surface));
-      padding-left: 1ch;
+      border-left-color: transparent;
+      padding-left: 0;
     }
     .style-rail .entry.kind-tool-ok,
     .style-rail .entry.kind-bash-ok {
@@ -213,7 +213,7 @@
 
   <main>
     <p class="note">
-      <strong>rail</strong>：用户只留 <code>❯</code>；工具/thinking 用 1 列饱和色 bg 空格轨（拖选是否带空格看终端；不追求 ECH）。
+      <strong>rail</strong>：用户 / thinking flush；工具类用 1 列饱和色 bg 空格轨（拖选是否带空格看终端；不追求 ECH）。
       <code>just demo-tui-rail</code> · <code>/entry-style rail</code>。正文 <code>|</code> 是 markdown 引用，不是轨。
     </p>
 
