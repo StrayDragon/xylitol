@@ -8,9 +8,9 @@
 
 ## 1. Specs landing
 
-- [ ] 1.1 `change start c1800-add-tui-chrome-toast`
-- [ ] 1.2 live：`app-tui-chrome` 新 req；改写 `atm10` / `ati29`（拒闸 → 壳层通告）
-- [ ] 1.3 `validate --strict --no-check`；commit specs landing
+- [x] 1.1 `change start c1800-add-tui-chrome-toast`
+- [x] 1.2 live：`app-tui-chrome` 新 req；改写 `atm10` / `ati29`（拒闸 → 壳层通告）
+- [x] 1.3 `validate --strict --no-check`；commit specs landing
 
 ## 2. Toast chrome
 
