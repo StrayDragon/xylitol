@@ -416,11 +416,29 @@ pub fn enforce_session_version(entries: &[SessionEntry]) -> Result<(), String> {
     });
     match version {
         Some(v) if v == SESSION_VERSION => Ok(()),
-        Some(v) => Err(format!(
-            "session header version {v} is not supported (require {SESSION_VERSION}); refusing legacy migrate"
-        )),
+        Some(v) => Err(unsupported_session_version_msg(v)),
         None => Err("session has no header entry".into()),
     }
+}
+
+fn unsupported_session_version_msg(v: u32) -> String {
+    format!(
+        "session header version {v} is not supported (require {SESSION_VERSION}); refusing legacy migrate"
+    )
+}
+
+/// First JSONL object's session-header version (listing fast-path; no full parse).
+pub fn peek_session_header_version(content: &str) -> Option<u32> {
+    for line in content.lines() {
+        if line.trim().is_empty() {
+            continue;
+        }
+        return match serde_json::from_str::<SessionEntry>(line) {
+            Ok(SessionEntry::Header(h)) => Some(h.version),
+            _ => None,
+        };
+    }
+    None
 }
 
 /// Build a nested bash `SessionEntry::Message` for new bang writes (c1210 / be4).

@@ -1313,13 +1313,68 @@ impl SessionManager {
     /// Get the current session name from the latest session_info entry.
     pub async fn get_session_name(&self, session_id: &str) -> Result<Option<String>, String> {
         let entries = self.load(session_id).await?;
-        for entry in entries.iter().rev() {
-            if let SessionEntry::SessionInfo(si) = entry {
-                return Ok(si.name.clone().filter(|n| !n.is_empty()));
+        Ok(session_display_name_from_entries(&entries))
+    }
+
+    /// Load entries for [`XySessionStore::list_sessions`] without mutating leaf tracking.
+    ///
+    /// Disk sessions: peek header version first so legacy files skip without a full JSONL parse.
+    async fn load_entries_for_list(&self, session_id: &str) -> Result<Vec<SessionEntry>, String> {
+        use crate::protocol::session::{
+            SESSION_VERSION, enforce_session_version, parse_session_jsonl,
+            peek_session_header_version,
+        };
+
+        match &self.backend {
+            SessionBackend::InMemory { .. } => {
+                let entries = self
+                    .in_memory_store
+                    .read()
+                    .expect("RwLock not poisoned")
+                    .get(session_id)
+                    .cloned()
+                    .ok_or_else(|| format!("session not found: {session_id}"))?;
+                enforce_session_version(&entries)?;
+                Ok(entries)
+            }
+            SessionBackend::Persisted { .. } => {
+                if self.session_file_exists(session_id) {
+                    let path = self.session_path(session_id);
+                    let content = tokio::fs::read_to_string(&path)
+                        .await
+                        .map_err(|e| format!("read session: {e}"))?;
+                    if let Some(v) = peek_session_header_version(&content)
+                        && v != SESSION_VERSION
+                    {
+                        return Err(format!(
+                            "session header version {v} is not supported (require {SESSION_VERSION}); refusing legacy migrate"
+                        ));
+                    }
+                    parse_session_jsonl(&content)
+                } else {
+                    let entries = self
+                        .pending_store
+                        .read()
+                        .expect("RwLock not poisoned")
+                        .get(session_id)
+                        .cloned()
+                        .ok_or_else(|| format!("session not found: {session_id}"))?;
+                    enforce_session_version(&entries)?;
+                    Ok(entries)
+                }
             }
         }
-        Ok(None)
     }
+}
+
+/// Latest non-empty `session_info.name` (same rule as [`SessionManager::get_session_name`]).
+fn session_display_name_from_entries(entries: &[SessionEntry]) -> Option<String> {
+    for entry in entries.iter().rev() {
+        if let SessionEntry::SessionInfo(si) = entry {
+            return si.name.clone().filter(|n| !n.is_empty());
+        }
+    }
+    None
 }
 
 // ── CWD Validation ──────────────────────────────────────────────────
@@ -1438,6 +1493,8 @@ impl XySessionStore for SessionManager {
 
         let ids = SessionManager::list(self).await?;
         let mut out = Vec::with_capacity(ids.len());
+        let mut skipped = 0usize;
+        let mut skip_examples: Vec<String> = Vec::new();
         for id in ids {
             let path = self.session_path(&id);
             let path_str = if path.exists() {
@@ -1445,26 +1502,22 @@ impl XySessionStore for SessionManager {
             } else {
                 None
             };
-            let name = match SessionManager::get_session_name(self, &id).await {
-                Ok(n) => n,
-                Err(e) => {
-                    log::warn!(
-                        target: "xylitol::session",
-                        "list_sessions skip {id}: {e}"
-                    );
-                    continue;
-                }
-            };
-            let entries = match SessionManager::load(self, &id).await {
+            // One read per id; no leaf mutation (listing must not thrash active leaf).
+            let entries = match SessionManager::load_entries_for_list(self, &id).await {
                 Ok(e) => e,
                 Err(e) => {
-                    log::warn!(
+                    skipped += 1;
+                    if skip_examples.len() < 3 {
+                        skip_examples.push(format!("{id}: {e}"));
+                    }
+                    log::debug!(
                         target: "xylitol::session",
                         "list_sessions skip {id}: {e}"
                     );
                     continue;
                 }
             };
+            let name = session_display_name_from_entries(&entries);
             let mut message_count = 0usize;
             let mut first_message = None;
             let mut parent_session_id = None;
@@ -1526,6 +1579,13 @@ impl XySessionStore for SessionManager {
                 cwd,
                 path: path_str,
             });
+        }
+        if skipped > 0 {
+            log::warn!(
+                target: "xylitol::session",
+                "list_sessions skipped {skipped} unreadable/legacy session(s); examples: {}",
+                skip_examples.join("; ")
+            );
         }
         out.sort_by(|a, b| {
             b.modified_unix
@@ -2114,5 +2174,33 @@ mod fork_path_tests {
         let ids: Vec<_> = listed.iter().map(|e| e.id.as_str()).collect();
         assert!(ids.contains(&good.as_str()), "{ids:?}");
         assert!(!ids.iter().any(|id| *id == "bad-legacy"), "{ids:?}");
+    }
+
+    #[tokio::test]
+    async fn list_sessions_skips_many_legacy_with_one_summary() {
+        use crate::protocol::ports::XySessionStore;
+        let dir = tempfile::tempdir().unwrap();
+        let sessions = dir.path().join("sessions");
+        let mgr = SessionManager::new(sessions.clone());
+        let good = format!("good-{}", uuid::Uuid::new_v4());
+        mgr.create(&good, Some("."), None).await.unwrap();
+        mgr.flush_pending_to_disk(&good).await.unwrap();
+
+        for i in 0..20 {
+            let bad_path = sessions.join(format!("legacy-{i}.jsonl"));
+            tokio::fs::write(
+                &bad_path,
+                format!(
+                    r#"{{"type":"session","version":4,"id":"legacy-{i}","timestamp":"t","cwd":"."}}
+"#
+                ),
+            )
+            .await
+            .unwrap();
+        }
+
+        let listed = mgr.list_sessions().await.unwrap();
+        assert_eq!(listed.len(), 1, "{listed:?}");
+        assert_eq!(listed[0].id, good);
     }
 }
