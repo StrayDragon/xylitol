@@ -74,9 +74,16 @@ pub enum SlashPermit {
 /// Alias kept for call sites / specs that say «busy slash policy» (c1580).
 pub type BusySlashPolicy = SlashPermit;
 
-/// ScrollNotice when Resume Enter would switch/rename/delete while agent busy (c1780 / atm10).
+/// Chrome-toast body when Resume Enter would switch/rename/delete while busy
+/// (c1780 / c1800 / atm10). Render prefixes `Error: ` with warning paint.
 pub const BUSY_SESSION_SWITCH_NOTICE: &str =
     "agent busy — finish turn or Esc abort before switching session";
+
+/// Default TTL for chrome toast auto-clear (atc22 · ~3–5s).
+pub const CHROME_TOAST_TTL: std::time::Duration = std::time::Duration::from_secs(4);
+
+/// Visible prefix for chrome toast lines (atc22 / chrome-toast.md).
+pub const CHROME_TOAST_ERROR_PREFIX: &str = "Error: ";
 
 /// Per-slash allowances across host gates (c1210).
 ///

@@ -289,6 +289,19 @@
     .term-editor .cursor { background: var(--on-surface); color: var(--surface); }
     .term-footer { color: var(--muted); font-size: 12px; padding-top: 0.2rem; line-height: 1.25; }
     .steer-hint { color: var(--muted); font-size: 12px; padding: 0.05rem 0; line-height: 1.25; }
+    /* Chrome toast (chrome-toast.md): warning fg + Error: prefix above status. */
+    .term-chrome-toast {
+      color: var(--muted);
+      padding: 0.05rem 0;
+      line-height: 1.25;
+      white-space: nowrap;
+      overflow: hidden;
+      text-overflow: ellipsis;
+      min-width: 0;
+    }
+    .term-chrome-toast.toast-warning {
+      color: var(--warning);
+    }
 
     .md-h { color: var(--accent); }
     .md-h3 { color: var(--on-surface); font-weight: 700; }
@@ -741,6 +754,30 @@
         <span hidden data-design-fixture="pending-thinking.next-turn"></span>
       </section>
 
+      <!-- Chrome toast · 定稿 -->
+      <section class="panel" id="panel-chrome-toast" data-id="chrome-toast">
+        <h2>Chrome toast · 壳层通告</h2>
+        <p class="spec">
+          <a href="../chrome-toast.md">chrome-toast.md</a> · 词表
+          <a href="../../../../docs/architecture/TUI信息面与chrome词汇.md">壳层通告 ≠ 滚动提示</a>
+          · status 上方独立行 · <code>{colors.warning}</code> + <code>Error:</code> · TTL 自清 · 不进 entries
+        </p>
+        <div class="term term-slot" id="chrome-toast-term">
+          <div class="term-content">
+            <div class="row"><span class="fg-user">❯</span> 继续改这段</div>
+            <div class="row fg-assistant">正在流式输出很长一段助手回复……（scrollback 继续涨）</div>
+          </div>
+          <div class="steer-hint">Steering: 补充一句约束</div>
+          <div class="term-chrome-toast toast-warning">Error: agent busy — finish turn or Esc abort before switching session</div>
+          <div class="term-status">
+            <span class="status-lead"><span class="spin">⠋</span> Working</span>
+            <span class="status-next-turn-cue">Next turn: deepseek-v4-flash</span>
+          </div>
+          <div class="term-editor"><span class="fg-muted">❯ </span></div>
+          <div class="term-footer">~/xylitol · ornith · thinking off</div>
+        </div>
+      </section>
+
       <!-- MCP: /mcp panel primary + optional short cue -->
       <section class="panel" id="panel-mcp-cue" data-id="mcp-cue">
         <h2>Mcp · /mcp SelectList + 短 cue（定稿）</h2>
@@ -983,6 +1020,7 @@
       { id: "keys", label: "Keybindings", key: "k" },
       { id: "models", label: "Models /model", key: "m" },
       { id: "pending", label: "Pending / NextTurn", key: "n" },
+      { id: "chrome-toast", label: "Chrome toast", key: "h" },
       { id: "mcp-cue", label: "Mcp", key: "u" },
       { id: "tree-power", label: "Tree power", key: "p" },
       { id: "session-resume", label: "Resume /session-resume", key: "r" },

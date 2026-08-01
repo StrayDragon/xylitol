@@ -549,6 +549,14 @@ impl<T: Terminal> HostSession<T> {
         self.sync_ui_root_from_model();
     }
 
+    /// Push chrome toast (shell notice above status; not `UiEntry`).
+    pub fn push_chrome_toast(&mut self, text: impl Into<String>) {
+        if let Some(root) = self.ui_root.as_ref() {
+            root.borrow_mut().push_chrome_toast(text);
+            self.paint_dirty = true;
+        }
+    }
+
     /// Push a completed compaction transcript block (c1730 slash path).
     pub fn push_compaction_complete(&mut self, summary: String, tokens_before: u64) {
         self.ui_model.entries.push(UiEntry::Compaction {

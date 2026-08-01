@@ -30,6 +30,21 @@ impl UiRoot {
         )
     }
 
+    pub(super) fn render_chrome_toast_slot(&mut self, width: usize) -> Vec<String> {
+        let Some((body, _)) = self.chrome_toast.as_ref() else {
+            return Vec::new();
+        };
+        let line = format!(
+            "{}{body}",
+            crate::app::tui::commands::CHROME_TOAST_ERROR_PREFIX
+        );
+        let painted = self.theme.paint_warning(&line);
+        if width == 0 {
+            return vec![painted];
+        }
+        vec![truncate_to_width(&painted, width, "…", false)]
+    }
+
     pub(super) fn render_status_slot(&mut self, width: usize) -> Vec<String> {
         let paint_cue_line =
             |theme: &crate::app::tui::layout::LayoutTheme, cue: &str, width: usize| {
@@ -183,6 +198,7 @@ impl Component for UiRoot {
             }
             lines.extend(upper);
         }
+        lines.extend(self.render_chrome_toast_slot(width));
         lines.extend(self.render_status_slot(width));
         // Editor owns the operation-zone ─ borders (DESIGN editor.md / agent_demo).
         // Do NOT wrap with a second outer border pair.
@@ -212,6 +228,7 @@ impl Component for UiRoot {
 
     fn tick(&mut self) -> bool {
         let mut dirty = self.editor.tick();
+        dirty = self.clear_chrome_toast_if_expired() || dirty;
         if self.status_busy {
             let interval = self.status_loader.interval_ms() as u128;
             if self.loader_last_tick.elapsed().as_millis() >= interval {
