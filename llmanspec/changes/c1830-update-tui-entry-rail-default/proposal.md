@@ -1,5 +1,8 @@
 ---
 depends_on: []
+branch: sdd/c1830-update-tui-entry-rail-default
+base_sha: 5c66e84351b0ae6ff42f84e608143685b43ebbc9
+checkpointed: false
 ---
 
 # UiEntry rail 默认：边轨皮肤取代洗底

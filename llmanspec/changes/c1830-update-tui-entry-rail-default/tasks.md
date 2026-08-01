@@ -2,11 +2,11 @@
 
 ## 1. Specs landing（合约）
 
-- [ ] 1.1 Branch binding：`llman sdd change start c1830-update-tui-entry-rail-default`（须干净树；否则先提交/stash 调研与 demo）
-- [ ] 1.2 改写 `app-tui-transcript`：att4/5/9/10/11/14（及依赖场景）→ rail 默认；更新 `app-tui-transcript.feature`
-- [ ] 1.3 改写 `app-tui-chrome` atc8 + feature（取消默认 user-message-bg）
-- [ ] 1.4 扩展 `package-tui-theme`：rail paint helper req；修正/确认 `valid_scope` 含 `packages/xylitol-tui/`
-- [ ] 1.5 `llman sdd validate c1830-update-tui-entry-rail-default --strict`；commit Specs landing
+- [x] 1.1 Branch binding：`llman sdd change start c1830-update-tui-entry-rail-default`（须干净树；否则先提交/stash 调研与 demo）
+- [x] 1.2 改写 `app-tui-transcript`：att4/5/9/10/11/14（及依赖场景）→ rail 默认；更新 `app-tui-transcript.feature`
+- [x] 1.3 改写 `app-tui-chrome` atc8 + feature（取消默认 user-message-bg）
+- [x] 1.4 扩展 `package-tui-theme`：rail paint helper req；修正/确认 `valid_scope` 含 `packages/xylitol-tui/`
+- [x] 1.5 `llman sdd validate` specs + commit Specs landing
 
 ## 2. 包原语
 
