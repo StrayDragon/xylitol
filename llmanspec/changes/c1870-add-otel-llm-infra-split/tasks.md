@@ -12,6 +12,7 @@
 - [x] 2.2 `CompactionOrchestrator::compact`：prepare-first；Ok 后 span；Err 不建 OTLP
 - [x] 2.3 auto 路径经同一 span helper 继承 lane
 - [x] 2.4 CollectingReporter 单测：lane 断言；独立根改为 post-prepare 失败语义
+- [x] 2.5 CollectingReporter：`orchestrator.compact` prepare 早退 MUST NOT 导出 `agent.compaction`（otel19；不扩 BDD feature）
 
 ## 3. 运维示例
 
