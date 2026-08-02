@@ -1,0 +1,12 @@
+kind: llman.sdd.spec
+name: "app-tui-ask"
+purpose: 产品 TUI 内置工具 ask：澄清/分叉问卷、仅 TUI 装配、Choice 槽与 scrollback 人话摘要。
+valid_scope[1]: src/app/tui/
+requirements[6]{req_id,title,statement}:
+  ata1,"tui-only-registration","产品 TUI 装配的 ToolSet MUST 含内置工具 ask；Print 与非 TUI composition MUST NOT 注册 ask。"
+  ata2,"choice-slot-mount","当 ask 工具执行等待用户时，产品 TUI MUST 在 editor 槽挂载 ChoicePrompt（解冻 EditorSlot::Choice）；MUST NOT 使用 stderr 数字菜单。"
+  ata3,"skip-success","用户 Skip 或 Esc MUST 使 ask 以成功结构化结果返回（status=skipped）；MUST NOT 将 skip 表示为 tool error；Abort/取消整轮 MUST NOT 伪装为 skip。"
+  ata4,"answered-payload","用户提交 MUST 返回 status=answered 与 answers（含 question id 与所选 values/labels）；LLM 消费 JSON；人看 scrollback 人话。"
+  ata5,"scrollback-ask-rail","ask 相关 scrollback MUST 使用固定左边轨与人话摘要（waiting/answered/skipped 语义色）；MUST NOT 默认以 tool-*-bg 洗底或 raw JSON 作为人对人展示。"
+  ata6,"not-trust","ask MUST NOT 替代 Trust 闸；Trust 仍走 app-tui-trust / bootstrap ChoicePrompt。"
+scenarios[0]:
