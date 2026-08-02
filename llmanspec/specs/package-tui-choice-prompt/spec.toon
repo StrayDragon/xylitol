@@ -2,15 +2,21 @@ kind: llman.sdd.spec
 name: "package-tui-choice-prompt"
 purpose: 通用 ChoicePrompt：单选/多选、Other 自由输入、多题 Tab 混搭（AskQuestion 形态，供 agent_demo / 产品内联槽）。
 valid_scope[1]: "packages/xylitol-tui/"
-requirements[5]{req_id,title,statement}:
+requirements[8]{req_id,title,statement}:
   pcp01,"single-and-multi","ChoicePrompt MUST 支持每题 ChoiceMode::Single（互斥）与 ChoiceMode::Multi（可勾选多项）；提交结果 MUST 区分单值与多值；Single 行视觉 MUST NOT 使用 ●/○ 单选圆点（用 →/反色）。"
   pcp02,"other-free-text",当题目 allow_other 为真时 MUST 提供 Other 选项；用户 MUST 能经 Tab 聚焦自由输入并在提交中带回自定义文本。
   pcp03,"multi-question-tabs",当问卷含多题时 MUST 渲染可切换的题目标签与 Submit，且每题可独立为 Single 或 Multi；单题 MUST NOT 强制显示多题 Tab 条。
   pcp04,"inline-not-overlay",ChoicePrompt MUST 可作为 Component 嵌入宿主布局（如 editor 槽替换）；MUST NOT 要求以全屏 Overlay 仪表盘呈现。
   pcp05,cancel,Esc（tui.select.cancel）MUST 取消整份问卷并给出 cancelled 结果；MUST NOT 静默丢弃无回调。
-scenarios[5]{req_id,id,given,when,then,feature}:
+  pcp06,"skip-status","Esc/Skip 结束时 ChoiceResult.status MUST 为 Skipped，且 to_ask_payload_json MUST 产出 status=skipped 成功载荷；cancelled MUST 仍为真以兼容 Trust deny。"
+  pcp07,"review-unanswered-confirm","多题 Review 若存在未答题：首次 Enter MUST 提示有 tab 未填写且 MUST NOT 提交或 skip；同提示下再 Enter MUST 以 Skipped 结束；←/切题 MUST 取消该二次确认。"
+  pcp08,"optional-description","option.description MUST 可选；全部缺省时 MUST NOT 打开空的右侧说明栏；有 description 时窄宽在聚焦项下展示、宽屏可右侧说明栏。"
+scenarios[8]{req_id,id,given,when,then,feature}:
   pcp01,pcp01-unit,"single-and-multi 约束由包级单测覆盖（非 BDD harness）",审查实现与对应测试,"行为符合本 requirement 陈述",false
   pcp02,pcp02-unit,"other-free-text 约束由包级单测覆盖（非 BDD harness）",审查实现与对应测试,"行为符合本 requirement 陈述",false
   pcp03,pcp03-unit,"multi-question-tabs 约束由包级单测覆盖（非 BDD harness）",审查实现与对应测试,"行为符合本 requirement 陈述",false
   pcp04,pcp04-unit,"inline-not-overlay 约束由包级单测覆盖（非 BDD harness）",审查实现与对应测试,"行为符合本 requirement 陈述",false
   pcp05,pcp05-unit,"cancel 约束由包级单测覆盖（非 BDD harness）",审查实现与对应测试,"行为符合本 requirement 陈述",false
+  pcp06,pcp06-unit,"skip-status 约束由包级单测覆盖（非 BDD harness）",审查实现与对应测试,"行为符合本 requirement 陈述",false
+  pcp07,pcp07-unit,"review-unanswered-confirm 约束由包级单测覆盖（非 BDD harness）",审查实现与对应测试,"行为符合本 requirement 陈述",false
+  pcp08,pcp08-unit,"optional-description 约束由包级单测覆盖（非 BDD harness）",审查实现与对应测试,"行为符合本 requirement 陈述",false
