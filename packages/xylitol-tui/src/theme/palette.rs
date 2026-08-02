@@ -186,7 +186,8 @@ impl Palette {
         }
     }
 
-    /// ChoicePrompt chrome (selected uses reverse video).
+    /// ChoicePrompt chrome — accent select (not reverse); product Ask uses fixed left rail.
+    /// Demo MAY clear `rail` for wash/pi contrast via `/entry-style`.
     pub fn choice_prompt_theme(&self) -> ChoicePromptTheme {
         let accent = self.accent;
         let on_surface = self.on_surface;
@@ -195,12 +196,13 @@ impl Palette {
         ChoicePromptTheme {
             title: Box::new(move |s| bold(&fg_rgb(on_surface, s))),
             prompt: Box::new(move |s| fg_rgb(on_surface, s)),
-            selected: Box::new(|s| format!("\x1b[7m{s}\x1b[27m")),
+            selected: Box::new(move |s| bold(&fg_rgb(accent, s))),
             normal: Box::new(move |s| fg_rgb(on_surface, s)),
             muted: Box::new(move |s| fg_rgb(muted, s)),
-            tab_active: Box::new(move |s| fg_rgb(accent, s)),
+            tab_active: Box::new(move |s| bold(&fg_rgb(accent, s))),
             tab_idle: Box::new(move |s| fg_rgb(muted, s)),
             hint: Box::new(move |s| fg_rgb(muted, s)),
+            rail: Some(accent),
         }
     }
 }

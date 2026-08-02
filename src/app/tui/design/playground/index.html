@@ -312,6 +312,71 @@
     .term-editor .cursor { background: var(--on-surface); color: var(--surface); }
     .term-footer { color: var(--muted); font-size: 12px; padding-top: 0.2rem; line-height: 1.25; }
     .steer-hint { color: var(--muted); font-size: 12px; padding: 0.05rem 0; line-height: 1.25; }
+    /* Ask tool wrapper faces (playground ?slot=ask) */
+    .ask-body {
+      padding: 0.25rem 0.35rem 0.15rem;
+      gap: 0.05rem;
+    }
+    .ask-tabbar {
+      display: flex;
+      flex-wrap: wrap;
+      align-items: baseline;
+      gap: 0.35rem;
+      padding: 0.1rem 0 0.35rem;
+      border-bottom: 1px solid color-mix(in srgb, var(--muted) 55%, transparent);
+      margin-bottom: 0.35rem;
+      font-size: 12px;
+      line-height: 1.3;
+    }
+    .ask-tab { color: var(--muted); }
+    .ask-tab.active {
+      color: var(--accent);
+      font-weight: 600;
+    }
+    .ask-tab.done { color: var(--on-surface); }
+    .ask-tab.muted { opacity: 0.55; }
+    .ask-tab-sep { color: var(--muted); opacity: 0.45; }
+    .ask-progress { margin-bottom: 0.15rem; }
+    .ask-chrome {
+      display: flex;
+      align-items: baseline;
+      gap: 0.75rem;
+      padding: 0.25rem 0.35rem 0.1rem;
+      border-top: 1px solid color-mix(in srgb, var(--muted) 55%, transparent);
+      font-size: 12px;
+      line-height: 1.25;
+    }
+    .ask-skip {
+      color: var(--accent);
+      font-weight: 600;
+      flex: 0 0 auto;
+    }
+    .ask-hint {
+      color: var(--muted);
+      min-width: 0;
+      overflow: hidden;
+      text-overflow: ellipsis;
+      white-space: nowrap;
+    }
+    .ask-rail {
+      border-left: 3px solid var(--accent);
+      padding-left: 0.55rem;
+      margin: 0.15rem 0;
+    }
+    .ask-rail.answered { border-left-color: var(--success); }
+    .ask-rail.skipped { border-left-color: var(--muted); }
+    .ask-side {
+      display: grid;
+      grid-template-columns: 1.15fr 0.85fr;
+      gap: 0.75rem;
+      align-items: start;
+    }
+    .ask-side .ask-desc-panel {
+      border-left: 1px solid color-mix(in srgb, var(--muted) 45%, transparent);
+      padding-left: 0.55rem;
+      font-size: 12px;
+    }
+    .ask-rec { color: var(--accent); font-size: 11px; }
     /* Chrome toast (chrome-toast.md): warning fg + Error: prefix above status. */
     .term-chrome-toast {
       color: var(--muted);
@@ -989,45 +1054,164 @@
         </div>
       </section>
 
-      <!-- 0 ask: ChoicePrompt (c565) -->
+      <!-- 0 ask: tool `ask` wrapper faces (clarify / decision; Trust 仍见 trust-prompt) -->
       <section class="panel" id="panel-ask" data-id="ask">
         <h2>Ask</h2>
         <p class="spec">
-          ChoicePrompt 固定形状 · 细交互以产品 host / 包 harness 为准（demo 可异） ·
-          <a href="../trust-prompt.md">trust-prompt.md</a>
+          内置工具 <code>ask</code> ·
+          <a href="../ask.md">ask.md</a> ·
+          交互脸 + 结束后人话摘要（无 JSON / 无 tool 绿条）·
+          Trust 见 <a href="../trust-prompt.md">trust-prompt.md</a>
         </p>
         <div class="ctl">
-          <button type="button" class="chip-btn" data-ask="single" aria-pressed="true">Single + Other</button>
-          <button type="button" class="chip-btn" data-ask="multi" aria-pressed="false">Multi + Other</button>
-          <button type="button" class="chip-btn" data-ask="tabs" aria-pressed="false">混搭 Tabs</button>
-          <span class="hint">单选无 ●/○ · 多选 [x] · Tab 混搭 · ↑↓ Enter Tab Esc</span>
+          <button type="button" class="chip-btn" data-ask="single" aria-pressed="true">1题·单选</button>
+          <button type="button" class="chip-btn" data-ask="multi" aria-pressed="false">1题·多选</button>
+          <button type="button" class="chip-btn" data-ask="tabs" aria-pressed="false">多题·答题中</button>
+          <button type="button" class="chip-btn" data-ask="review" aria-pressed="false">多题·Review</button>
+          <button type="button" class="chip-btn" data-ask="review-gap" aria-pressed="false">Review·未答确认</button>
+          <button type="button" class="chip-btn" data-ask="done" aria-pressed="false">结束后·已选</button>
+          <button type="button" class="chip-btn" data-ask="skipped" aria-pressed="false">结束后·跳过</button>
+          <span class="hint">人看摘要 · 模型看 JSON · description 可选 · 产品仅 rail · demo `/entry-style`</span>
         </div>
-        <div id="ask-single" class="term">
-          <div class="row fg-muted" style="font-size:11px">本轮优先做什么？  · 单选</div>
-          <div class="row"><span class="fg-accent">→ 修 bug</span></div>
-          <div class="row">  加测试</div>
-          <div class="row">  写文档</div>
-          <div class="row">  Other…</div>
-          <div class="row fg-muted" style="font-size:11px">    Tab · type free text</div>
-        </div>
-        <div id="ask-multi" class="term hidden">
-          <div class="row fg-muted" style="font-size:11px">需要哪些验收？  · 多选</div>
-          <div class="row"><span class="fg-accent">→ [x] 单测</span></div>
-          <div class="row">  [ ] harness</div>
-          <div class="row">  [x] 手验 demo</div>
-          <div class="row">  [ ] Other…</div>
-        </div>
-        <div id="ask-tabs" class="term hidden">
-          <div class="row">
-            <span class="fg-accent">[Scope✓]</span>
-            <span class="fg-muted"> · </span>
-            <span class="fg-accent">[Checks+]</span>
-            <span class="fg-muted"> · [Priority] · Submit</span>
+        <!-- wrapper: 1× Single → no tab chrome -->
+        <div id="ask-single" class="term term-slot" data-design-fixture="ask.single">
+          <div class="term-editor-caption"><span class="fg-accent"> Ask</span></div>
+          <div class="term-content ask-body ask-rail">
+            <div class="ask-side">
+              <div>
+                <div class="row fg-muted" style="font-size:11px">实现分叉：先修哪条路径？  · 单选</div>
+                <div class="row">&nbsp;</div>
+                <div class="row"><span class="fg-accent">→ 最小可运行切片</span> <span class="ask-rec">· 推荐</span></div>
+                <div class="row fg-muted" style="font-size:11px;padding-left:1.25rem">先打通一条能跑的路径，再补合约与打磨。</div>
+                <div class="row">  先写合约/BDD</div>
+                <div class="row">  先打磨 Tabs UX</div>
+                <div class="row">  Other…</div>
+              </div>
+              <div class="ask-desc-panel">
+                <div class="col-h">说明</div>
+                <div class="row fg-muted">先打通一条能跑的路径，再补合约与打磨。适合想尽快看到反馈。</div>
+              </div>
+            </div>
           </div>
-          <div class="row fg-muted" style="font-size:11px;margin-top:0.35rem">需要哪些验收？  · 多选</div>
-          <div class="row"><span class="fg-accent">→ [x] 单测</span></div>
-          <div class="row">  [ ] harness</div>
-          <div class="row">  [ ] Other…</div>
+          <div class="ask-chrome">
+            <span class="ask-skip">Skip</span>
+            <span class="ask-hint">↑↓ · Enter · Tab→Other · Esc skip · 宽屏右侧说明</span>
+          </div>
+        </div>
+        <!-- wrapper: 1× Multi → no tab chrome -->
+        <div id="ask-multi" class="term term-slot hidden" data-design-fixture="ask.multi">
+          <div class="term-editor-caption"><span class="fg-accent"> Ask</span></div>
+          <div class="term-content ask-body">
+            <div class="row fg-muted" style="font-size:11px">这轮要先澄清哪些点？  · 多选</div>
+            <div class="row">&nbsp;</div>
+            <div class="row"><span class="fg-accent">→ [x] 目标范围</span></div>
+            <div class="row">  [ ] 验收标准</div>
+            <div class="row">  [x] 实现分叉</div>
+            <div class="row">  [ ] Other…</div>
+          </div>
+          <div class="ask-chrome">
+            <span class="ask-skip">Skip</span>
+            <span class="ask-hint">↑↓ · Space 勾选 · Enter 提交 · Esc skip</span>
+          </div>
+        </div>
+        <!-- wrapper: ≥2 Tabs — answering mid (q2); ← can return to q1 -->
+        <div id="ask-tabs" class="term term-slot hidden" data-design-fixture="ask.tabs">
+          <div class="term-editor-caption"><span class="fg-accent"> Ask</span></div>
+          <div class="term-content ask-body">
+            <div class="ask-tabbar">
+              <span class="ask-tab done">Scope ✓</span>
+              <span class="ask-tab-sep">·</span>
+              <span class="ask-tab active">Checks+</span>
+              <span class="ask-tab-sep">·</span>
+              <span class="ask-tab">Priority</span>
+              <span class="ask-tab-sep">·</span>
+              <span class="ask-tab muted">Review</span>
+            </div>
+            <div class="row fg-muted ask-progress" style="font-size:11px">2 / 3  · 需要哪些验收？  · 多选</div>
+            <div class="row">&nbsp;</div>
+            <div class="row"><span class="fg-accent">→ [x] 单测</span></div>
+            <div class="row">  [ ] harness</div>
+            <div class="row">  [x] 手验 demo</div>
+            <div class="row">  [ ] Other…</div>
+          </div>
+          <div class="ask-chrome">
+            <span class="ask-skip">Skip</span>
+            <span class="ask-hint">← 回 Scope 修正 · Enter 下一题 · Esc skip</span>
+          </div>
+        </div>
+        <!-- Review / Submit after last question -->
+        <div id="ask-review" class="term term-slot hidden" data-design-fixture="ask.review">
+          <div class="term-editor-caption"><span class="fg-accent"> Ask</span></div>
+          <div class="term-content ask-body">
+            <div class="ask-tabbar">
+              <span class="ask-tab done">Scope ✓</span>
+              <span class="ask-tab-sep">·</span>
+              <span class="ask-tab done">Checks+ ✓</span>
+              <span class="ask-tab-sep">·</span>
+              <span class="ask-tab done">Priority ✓</span>
+              <span class="ask-tab-sep">·</span>
+              <span class="ask-tab active">Review</span>
+            </div>
+            <div class="row fg-muted" style="font-size:11px;margin-top:0.35rem">核对后提交</div>
+            <div class="row">  Scope（单选）: 仅包</div>
+            <div class="row">  Checks（多选）: 单测, 手验 demo</div>
+            <div class="row">  Priority（单选）: P0 现在</div>
+          </div>
+          <div class="ask-chrome">
+            <span class="ask-skip">Skip</span>
+            <span class="ask-hint">Enter 提交 · ← 回 Priority 修正 · Esc skip</span>
+          </div>
+        </div>
+        <!-- Review incomplete: first Enter arms skip confirm -->
+        <div id="ask-review-gap" class="term term-slot hidden" data-design-fixture="ask.review-gap">
+          <div class="term-editor-caption"><span class="fg-accent"> Ask</span></div>
+          <div class="term-content ask-body">
+            <div class="ask-tabbar">
+              <span class="ask-tab done">Scope ✓</span>
+              <span class="ask-tab-sep">·</span>
+              <span class="ask-tab">Checks+</span>
+              <span class="ask-tab-sep">·</span>
+              <span class="ask-tab done">Priority ✓</span>
+              <span class="ask-tab-sep">·</span>
+              <span class="ask-tab active">Review</span>
+            </div>
+            <div class="row fg-muted" style="font-size:11px;margin-top:0.35rem">核对后提交</div>
+            <div class="row">  Scope（单选）: 仅包</div>
+            <div class="row">  Checks（多选）: (未答)</div>
+            <div class="row">  Priority（单选）: P0 现在</div>
+            <div class="row">&nbsp;</div>
+            <div class="row fg-accent"> 有 tab 未填写（Checks）</div>
+          </div>
+          <div class="ask-chrome">
+            <span class="ask-skip">Skip</span>
+            <span class="ask-hint">再按 Enter 确认 Skip · ← 回去填写 · Esc skip</span>
+          </div>
+        </div>
+        <!-- After submit: human summary in scrollback (flush; not tool wash) -->
+        <div id="ask-done" class="term term-tall hidden" data-design-fixture="ask.done">
+          <div class="term-content">
+            <div class="row">I'll use ask to clarify the implementation fork before coding.</div>
+            <div class="row" style="height:0.5rem"></div>
+            <div class="ask-rail answered">
+              <div class="row">▾ Ask · 已选  最小可运行切片<span class="fg-muted">  (Alt+E)</span></div>
+              <div class="row fg-muted">  fork → 最小可运行切片</div>
+            </div>
+          </div>
+          <div class="term-status"><span class="status-lead"> </span></div>
+          <div class="term-editor">❯ <span class="cursor"> </span></div>
+          <div class="term-footer">~/xylitol · model · thinking off</div>
+        </div>
+        <div id="ask-skipped" class="term term-tall hidden" data-design-fixture="ask.skipped">
+          <div class="term-content">
+            <div class="row">I'll use ask to clarify the implementation fork before coding.</div>
+            <div class="row" style="height:0.5rem"></div>
+            <div class="ask-rail skipped">
+              <div class="row">▸ Ask · 已跳过 · 按已有信息继续<span class="fg-muted">  (Alt+E)</span></div>
+            </div>
+          </div>
+          <div class="term-status"><span class="status-lead"> </span></div>
+          <div class="term-editor">❯ <span class="cursor"> </span></div>
+          <div class="term-footer">~/xylitol · model · thinking off</div>
         </div>
       </section>
     </main>
@@ -2003,7 +2187,7 @@
     });
 
     function renderAsk() {
-      ["single", "multi", "tabs"].forEach((id) => {
+      ["single", "multi", "tabs", "review", "review-gap", "done", "skipped"].forEach((id) => {
         document.getElementById("ask-" + id).classList.toggle("hidden", state.ask !== id);
       });
       document.querySelectorAll("[data-ask]").forEach((b) => {
