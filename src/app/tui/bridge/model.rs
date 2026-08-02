@@ -78,6 +78,14 @@ pub enum BashBlockStatus {
     Cancelled,
 }
 
+/// Builtin `ask` scrollback phase (c1850; rail semantic colors).
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
+pub enum AskPhase {
+    Waiting,
+    Answered,
+    Skipped,
+}
+
 /// Transcript compaction block phase (c1730; aligns pi CompactionSummaryMessageComponent).
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
 pub enum CompactionBlockStatus {
@@ -116,6 +124,14 @@ pub enum UiEntry {
         output: String,
         is_error: bool,
         done: bool,
+    },
+    /// Builtin `ask` questionnaire (c1850) — dedicated rail entry, not generic Tool wash.
+    Ask {
+        id: String,
+        summary: String,
+        detail_lines: Vec<String>,
+        phase: AskPhase,
+        expanded: bool,
     },
     Diff {
         summary: String,
@@ -275,6 +291,17 @@ impl UiModel {
                     lines.push(format!("bash[{status:?}]: $ {command}"));
                     if !output.is_empty() {
                         lines.push(output.clone());
+                    }
+                }
+                UiEntry::Ask {
+                    summary,
+                    phase,
+                    detail_lines,
+                    ..
+                } => {
+                    lines.push(format!("ask[{phase:?}]: {summary}"));
+                    for line in detail_lines {
+                        lines.push(line.clone());
                     }
                 }
                 UiEntry::Compaction {

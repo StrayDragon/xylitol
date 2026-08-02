@@ -451,11 +451,14 @@ pub async fn run() -> Result<(), Box<dyn std::error::Error>> {
         .unwrap_or(1);
         // c1200: do not await full MCP before opening the TUI.
         driver.begin_mcp_bootstrap().await;
+        let ask_gateway = std::sync::Arc::new(crate::app::tui::AskHostGateway::new());
+        driver.install_ask_tool(ask_gateway.clone());
         let tui_result = crate::app::tui::run(
             &mut driver,
             crate::app::tui::TuiRunOptions {
                 editor_history_seed_sessions: seed_n,
                 restored_session: surface.session.is_some(),
+                ask_gateway: Some(ask_gateway),
             },
         )
         .await;

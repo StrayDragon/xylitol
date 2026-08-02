@@ -7,6 +7,7 @@
 
 pub mod accumulator;
 pub mod args;
+pub mod ask;
 pub mod bash;
 pub mod edit;
 pub mod find;
@@ -20,6 +21,11 @@ pub mod read;
 pub mod truncate;
 pub mod typed;
 pub mod write;
+
+pub use ask::{
+    AskArgs, AskModeArg, AskOptionArg, AskQuestionArg, AskTool, AskUserGateway,
+    default_tools_with_ask,
+};
 
 use std::sync::Arc;
 

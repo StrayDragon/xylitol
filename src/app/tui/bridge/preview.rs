@@ -219,7 +219,95 @@ pub(crate) fn humanize_tool_result_for_tui(
         }
         "read" => humanize_read_tool_output(result),
         "bash" | "shell" => humanize_bash_tool_output(result),
+        "ask" => {
+            let (phase, summary, _) = humanize_ask_result(result, false);
+            let _ = phase;
+            Some(summary)
+        }
         _ => None,
+    }
+}
+
+/// Parse ask-tool JSON into scrollback phase + human lines (no raw JSON primary).
+pub(crate) fn humanize_ask_result(
+    result: &str,
+    is_error: bool,
+) -> (crate::app::tui::bridge::AskPhase, String, Vec<String>) {
+    use crate::app::tui::bridge::AskPhase;
+    if is_error {
+        return (
+            AskPhase::Skipped,
+            "Ask · 失败".into(),
+            vec![result.trim().to_string()],
+        );
+    }
+    let Ok(value) = serde_json::from_str::<Value>(result.trim()) else {
+        return (AskPhase::Answered, "Ask · 已答".into(), vec![]);
+    };
+    let status = value.get("status").and_then(Value::as_str).unwrap_or("");
+    match status {
+        "skipped" => (
+            AskPhase::Skipped,
+            "Ask · 已跳过 · 按已有信息继续".into(),
+            vec!["（用户跳过本题）".into()],
+        ),
+        "answered" => {
+            let answers = value
+                .get("answers")
+                .and_then(Value::as_array)
+                .cloned()
+                .unwrap_or_default();
+            let detail_lines: Vec<String> = answers
+                .iter()
+                .map(|a| {
+                    let id = a.get("id").and_then(Value::as_str).unwrap_or("?");
+                    let labels: Vec<&str> = a
+                        .get("labels")
+                        .and_then(Value::as_array)
+                        .map(|arr| arr.iter().filter_map(Value::as_str).collect::<Vec<_>>())
+                        .unwrap_or_default();
+                    if labels.is_empty() {
+                        format!("{id} → （空）")
+                    } else {
+                        format!("{id} → {}", labels.join(", "))
+                    }
+                })
+                .collect();
+            let summary = if answers.is_empty() {
+                "Ask · 已答".into()
+            } else if answers.len() == 1 {
+                let labels: Vec<&str> = answers[0]
+                    .get("labels")
+                    .and_then(Value::as_array)
+                    .map(|arr| arr.iter().filter_map(Value::as_str).collect())
+                    .unwrap_or_default();
+                if labels.is_empty() {
+                    "Ask · 已选".into()
+                } else {
+                    format!("Ask · 已选  {}", labels.join(", "))
+                }
+            } else {
+                let parts: Vec<String> = answers
+                    .iter()
+                    .map(|a| {
+                        let id = a.get("id").and_then(Value::as_str).unwrap_or("?");
+                        let labels: Vec<&str> = a
+                            .get("labels")
+                            .and_then(Value::as_array)
+                            .map(|arr| arr.iter().filter_map(Value::as_str).collect())
+                            .unwrap_or_default();
+                        if labels.is_empty() {
+                            id.to_string()
+                        } else {
+                            format!("{id}: {}", labels.join(", "))
+                        }
+                    })
+                    .collect();
+                format!("Ask · {}", parts.join(" · "))
+            };
+            (AskPhase::Answered, summary, detail_lines)
+        }
+        _ => (AskPhase::Answered, "Ask · 已答".into(), vec![]),
     }
 }
 

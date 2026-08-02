@@ -130,6 +130,8 @@ pub struct HostSession<T: Terminal> {
     editor_history_seed_job: Option<(std::time::Instant, tokio::task::JoinHandle<Vec<String>>)>,
     /// MCP bootstrap in flight — gate agent prompt / bang / some slash (c1200).
     mcp_blocks_agent: bool,
+    /// TUI-only ask host (c1850); polls pending asks → ChoicePrompt.
+    ask_gateway: Option<Arc<crate::app::tui::ask_host::AskHostGateway>>,
 }
 
 impl<T: Terminal> HostSession<T> {
@@ -181,6 +183,7 @@ impl<T: Terminal> HostSession<T> {
             editor_history_seed_sessions: 1,
             editor_history_seed_job: None,
             mcp_blocks_agent: false,
+            ask_gateway: None,
         }
     }
 
@@ -191,6 +194,11 @@ impl<T: Terminal> HostSession<T> {
 
     pub fn mcp_blocks_agent(&self) -> bool {
         self.mcp_blocks_agent
+    }
+
+    /// Attach TUI-only ask gateway for ChoicePrompt mounts (c1850).
+    pub fn set_ask_gateway(&mut self, gateway: Arc<crate::app::tui::ask_host::AskHostGateway>) {
+        self.ask_gateway = Some(gateway);
     }
 
     /// Product empty UI: shared `UiRoot` + Ctrl+C / Esc / idle-Enter listeners.
