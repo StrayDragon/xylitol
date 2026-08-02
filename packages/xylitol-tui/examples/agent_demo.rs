@@ -800,7 +800,7 @@ fn markdown_grammar_stub() -> &'static str {
 
 ## 二级标题
 
-二级同样 accent + underline。
+二级 accent + bold（无 underline）。
 
 ### 三级标题
 
