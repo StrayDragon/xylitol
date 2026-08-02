@@ -2,7 +2,7 @@
 
 use std::time::Instant;
 
-use xylitol_tui::{Component, InputEvent, fg_rgb, truncate_to_width};
+use xylitol_tui::{Component, InputEvent, truncate_to_width};
 
 use super::super::session_tree::{tree_help_line, tree_search_line, wrap_help_line};
 use super::super::slots::EditorSlot;
@@ -121,9 +121,8 @@ impl UiRoot {
             ],
             EditorSlot::Settings => vec![" Settings".to_string(), " (stub) Esc close".to_string()],
             EditorSlot::Choice => {
+                // Brand lives on scrollback header (`Ask · …`); no redundant slot caption.
                 let mut lines = Vec::new();
-                let accent = self.theme.palette().accent;
-                lines.push(fg_rgb(accent, " Ask"));
                 if let Some(ref mut prompt) = self.choice_prompt {
                     lines.extend(prompt.render(width.max(1)));
                 }

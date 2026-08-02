@@ -1305,8 +1305,8 @@ fn agent_demo_plate_ask_single_opens_choice_prompt() {
     h.render_result().expect("ask-single");
     let viewport = h.tui.terminal.viewport().join("\n");
     assert!(
-        viewport.contains(" Ask") && viewport.contains("实现分叉") && viewport.contains("Skip"),
-        "ask-single should open Ask slot with Skip chrome; got:\n{viewport}"
+        viewport.contains("实现分叉") && viewport.contains("Skip"),
+        "ask-single should open ChoicePrompt with Skip chrome; got:\n{viewport}"
     );
     assert!(
         !viewport.contains("Review"),
@@ -1341,8 +1341,8 @@ fn agent_demo_plate_ask_tool_fake_call_then_skip() {
     h.render_result().expect("ask-tool");
     let viewport = h.tui.terminal.viewport().join("\n");
     assert!(
-        viewport.contains("Ask · 等待回答") && viewport.contains(" Ask"),
-        "ask-tool should show waiting summary + Ask slot; got:\n{viewport}"
+        viewport.contains("Ask · 等待回答") && viewport.contains("Skip"),
+        "ask-tool should show waiting summary + ChoicePrompt; got:\n{viewport}"
     );
     assert!(
         !viewport.contains("{\"tool\""),
