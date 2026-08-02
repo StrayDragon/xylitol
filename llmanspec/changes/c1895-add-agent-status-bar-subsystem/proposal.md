@@ -1,13 +1,14 @@
 ---
 depends_on:
   - c1890-add-responses-context-policy-assembler
+  - c1930-update-session-provider-view-contract
 ---
 
 # Agent 状态栏子系统（可插拔 / 可验证）
 
 > **调研底稿**：[`docs/research/responses-context-layout-and-cache-2026.md`](../../../docs/research/responses-context-layout-and-cache-2026.md) §3；书 Ch2 状态栏两实现。
-> **波次**：Wave C（依赖 `c1890`；可与 `c1900`/`c1905`/`c1910` 并行）
-> **自包含**：只交付状态栏机制；不实现 MCP search / 压缩。
+> **波次**：Wave C（依赖 `c1890`+`c1930`；可与 `c1900`/`c1905`/`c1910` 并行）
+> **自包含**：只交付状态栏机制；不实现 MCP search / 压缩。持久化/投影标记遵守 `c1930`。
 
 ## Why
 
@@ -43,7 +44,7 @@ depends_on:
 
 ## Parallel / depends
 
-- **硬依赖**：`c1890`
+- **硬依赖**：`c1890`、`c1930`
 - 可与 Wave C 其它 change 并行（不同文件/模块优先）
 
 ## Open Questions
