@@ -20,6 +20,9 @@ pub(super) async fn drain_pending_ui<T: Terminal>(
     session: &mut HostSession<T>,
     driver: &mut dyn XyDriver,
 ) {
+    // Ask tool: mount Choice / complete oneshot before other UI pending (c1850).
+    session.poll_ask_host();
+
     if session.take_paste_image() {
         log::info!(target: "xylitol::tui", "XyDriver::stage_clipboard_image");
         let image_outcome = driver.stage_clipboard_image().await;

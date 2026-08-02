@@ -2,6 +2,7 @@
 //!
 //! See `AGENTS.md` in this directory. Engine: `packages/xylitol-tui`.
 
+mod ask_host;
 mod bridge;
 mod commands;
 mod editor_history_seed;
@@ -33,6 +34,7 @@ use self::effects::{drain_pending, run_interactive_bang};
 use self::host::{HostEvent, HostSession};
 use self::terminal_guard::{TerminalGuard, exit_requested, install_lifecycle_hooks};
 
+pub use self::ask_host::{AskHostGateway, ask_questions_to_choice, toolset_with_ask};
 pub use self::bridge::{QueueBadge, UiEntry, UiModel, UiPhase, apply_xy_event};
 pub use self::commands::{
     BangParse, PendingBash, PendingSlash as TuiPendingSlash, bash_result_entries,
@@ -112,12 +114,14 @@ pub fn preflight(driver: &dyn XyDriver) -> Result<(), TuiPreflightError> {
 }
 
 /// Options for [`run`] (c1560).
-#[derive(Debug, Clone)]
+#[derive(Clone)]
 pub struct TuiRunOptions {
     /// `tui.editor_history_seed_sessions` (default 1).
     pub editor_history_seed_sessions: u32,
     /// True when CLI restored an existing `--session` id.
     pub restored_session: bool,
+    /// Process-local ask gateway (TUI-only); host polls for Choice mounts (c1850).
+    pub ask_gateway: Option<std::sync::Arc<AskHostGateway>>,
 }
 
 impl Default for TuiRunOptions {
@@ -125,6 +129,7 @@ impl Default for TuiRunOptions {
         Self {
             editor_history_seed_sessions: 1,
             restored_session: false,
+            ask_gateway: None,
         }
     }
 }
@@ -172,6 +177,9 @@ async fn run_host_loop(
         .unwrap_or_else(|| crate::app::core::bootstrap::UNSET_MODEL_DISPLAY.into());
     let mut session = HostSession::new_product_ui_with_meta(terminal, host::display_cwd(), model);
     session.set_editor_history_seed_sessions(options.editor_history_seed_sessions);
+    if let Some(gw) = options.ask_gateway {
+        session.set_ask_gateway(gw);
+    }
     session.apply_thinking_level_ui(driver.thinking_level());
     session.set_model_arg_catalog_from_models(&driver.available_models());
     session.set_dollar_skill_catalog(driver.dollar_skill_catalog());

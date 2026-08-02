@@ -18,10 +18,13 @@ use empty_widgets::{
     empty_mcp_list, empty_models_list, empty_session_resume_panel, empty_themes_list,
     empty_tree_selector, import_confirm_list as make_import_confirm_list,
 };
+use std::cell::RefCell;
 use std::path::PathBuf;
+use std::rc::Rc;
 use std::sync::atomic::{AtomicBool, Ordering};
 use std::time::Instant;
 
+use tokio::sync::oneshot;
 #[cfg(test)]
 use xylitol_tui::Component;
 use xylitol_tui::components::editor::{Editor, EditorOptions};
@@ -29,8 +32,9 @@ use xylitol_tui::components::loader::{Loader, LoaderIndicatorOptions};
 use xylitol_tui::components::select_list::{SelectItem, SelectList, SelectListLayoutOptions};
 use xylitol_tui::components::text::Text;
 use xylitol_tui::{
-    AtPathSource, CompletionSource, Focusable, Input, SlashArgCompletionSource, SlashCommandSource,
-    SystemClock, TreeNode, TreeSelector, TreeSelectorOptions, fg_rgb,
+    AtPathSource, ChoicePrompt, ChoiceQuestion, ChoiceResult, CompletionSource, Focusable, Input,
+    SlashArgCompletionSource, SlashCommandSource, SystemClock, TreeNode, TreeSelector,
+    TreeSelectorOptions, fg_rgb,
 };
 
 use super::dollar_skill_source::DollarSkillSource;
@@ -46,6 +50,7 @@ use crate::app::tui::session_resume::SessionResumePanel;
 use crate::app::tui::widgets::{
     GlyphSet, ScrollbackFold, ScrollbackPaintCache, footer_thinking_label, format_footer_text,
 };
+use crate::protocol::error::XyToolError;
 use crate::protocol::types::ThinkingLevel;
 
 /// User choice from `/session-import` confirm slot (c1010).
@@ -121,6 +126,10 @@ pub struct UiRoot {
     import_confirm_list: SelectList,
     import_confirm_path: Option<String>,
     pending_import_decision: Option<ImportConfirmDecision>,
+    /// Builtin `ask` ChoicePrompt (c1850).
+    choice_prompt: Option<ChoicePrompt>,
+    choice_pending: Option<Rc<RefCell<Option<ChoiceResult>>>>,
+    ask_reply: Option<oneshot::Sender<Result<String, XyToolError>>>,
     /// `/session-resume` picker (c1015 / c1065).
     pub(crate) session_resume: SessionResumePanel,
     pending_session_resume_select: Option<String>,
@@ -209,6 +218,9 @@ impl UiRoot {
             import_confirm_list: make_import_confirm_list(theme),
             import_confirm_path: None,
             pending_import_decision: None,
+            choice_prompt: None,
+            choice_pending: None,
+            ask_reply: None,
             session_resume: empty_session_resume_panel(theme),
             pending_session_resume_select: None,
             pending_session_resume_rename: None,
@@ -561,6 +573,73 @@ impl UiRoot {
         if self.slot == EditorSlot::ImportConfirm {
             self.close_slot();
         }
+    }
+
+    /// Mount ChoicePrompt for builtin `ask` and park the oneshot reply (c1850).
+    pub fn mount_ask_choice(
+        &mut self,
+        questions: Vec<ChoiceQuestion>,
+        reply: oneshot::Sender<Result<String, XyToolError>>,
+    ) {
+        if questions.is_empty() {
+            let _ = reply.send(Err(XyToolError::InvalidArgs(
+                "ask requires at least one question".into(),
+            )));
+            return;
+        }
+        // Drop any prior unfinished ask (should not overlap under Barrier).
+        if let Some(prev) = self.ask_reply.take() {
+            let _ = prev.send(Err(XyToolError::Aborted));
+        }
+        let pending: Rc<RefCell<Option<ChoiceResult>>> = Rc::new(RefCell::new(None));
+        let slot = pending.clone();
+        let mut theme = self.theme.palette().choice_prompt_theme();
+        // Product Ask stays rail-on (demo may wash via /entry-style).
+        theme.rail = Some(self.theme.palette().accent);
+        let prompt = ChoicePrompt::new(questions, theme, move |r| {
+            *slot.borrow_mut() = Some(r);
+        });
+        self.choice_prompt = Some(prompt);
+        self.choice_pending = Some(pending);
+        self.ask_reply = Some(reply);
+        self.slot = EditorSlot::Choice;
+    }
+
+    /// If ChoicePrompt finished, complete oneshot with ask JSON and close the slot.
+    ///
+    /// Returns true when a result was delivered.
+    pub fn complete_ask_if_ready(&mut self) -> bool {
+        let Some(pending) = self.choice_pending.as_ref() else {
+            return false;
+        };
+        let Some(result) = pending.borrow_mut().take() else {
+            return false;
+        };
+        let json = result.to_ask_payload_json();
+        if let Some(tx) = self.ask_reply.take() {
+            let _ = tx.send(Ok(json));
+        }
+        self.choice_prompt = None;
+        self.choice_pending = None;
+        if self.slot == EditorSlot::Choice {
+            self.slot = EditorSlot::Editor;
+        }
+        true
+    }
+
+    pub fn close_ask_choice(&mut self) {
+        if let Some(tx) = self.ask_reply.take() {
+            let _ = tx.send(Err(XyToolError::Aborted));
+        }
+        self.choice_prompt = None;
+        self.choice_pending = None;
+        if self.slot == EditorSlot::Choice {
+            self.slot = EditorSlot::Editor;
+        }
+    }
+
+    pub fn ask_choice_open(&self) -> bool {
+        self.slot == EditorSlot::Choice && self.choice_prompt.is_some()
     }
 
     /// Mount built-in theme picker in the editor slot (c1115).

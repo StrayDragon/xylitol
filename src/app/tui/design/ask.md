@@ -119,6 +119,6 @@ Trust 闸 · 危险确认 · Settings · 默认展开 raw JSON · IDE 真·右�
 ## 落地
 
 1. ~~静图 / ask.md / demo（rail · 说明 · 人话摘要）~~
-2. `c1850-add-tui-ask-tool` → Specs landing → 产品接线（`llman-sdd-apply`）
+2. ~~`c1850-add-tui-ask-tool` 产品接线~~：TUI-only `AskTool` + Choice 槽 + scrollback Ask 轨；Print 不注册；Trust 不变。
 
-手验：`just demo-tui` → `ask-single`（看说明）· `ask-tool`（看轨色）· `/entry-style wash` 对照 pi 洗底 · 拉宽终端看右侧「说明」。
+手验：`just demo-tui` → `ask-single`（看说明）· `ask-tool`（看轨色）· `/entry-style wash` 对照 pi 洗底 · 拉宽终端看右侧「说明」。产品：`cargo run` TUI 路径下模型调用 `ask`。

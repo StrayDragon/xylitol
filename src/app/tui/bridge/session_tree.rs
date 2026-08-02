@@ -71,6 +71,35 @@ fn merge_persisted_tool_result(entries: &mut Vec<UiEntry>, entry_id: &str, messa
         .and_then(Value::as_str)
         .map(str::to_string);
 
+    if name == "ask" {
+        let (phase, summary, detail_lines) =
+            crate::app::tui::bridge::humanize_ask_result(&result, is_error);
+        if let Some(UiEntry::Ask {
+            summary: s,
+            detail_lines: d,
+            phase: p,
+            expanded,
+            ..
+        }) = entries.iter_mut().rev().find(|e| match e {
+            UiEntry::Ask { id: tid, .. } => tid == tool_call_id,
+            _ => false,
+        }) {
+            *s = summary;
+            *d = detail_lines;
+            *p = phase;
+            *expanded = false;
+        } else {
+            entries.push(UiEntry::Ask {
+                id: tool_call_id.to_string(),
+                summary,
+                detail_lines,
+                phase,
+                expanded: false,
+            });
+        }
+        return;
+    }
+
     if !apply_tool_result_to_entries(entries, tool_call_id, name, &result, is_error) {
         // Orphan: no matching call on path — still one done Tool row (id prefers toolCallId).
         entries.push(UiEntry::Tool {
@@ -318,6 +347,21 @@ fn assistant_parts_to_ui(entry_id: &str, message: &Value) -> Vec<UiEntry> {
                 use crate::app::tool_display::{is_mcp_tool_name, mcp_tool_body};
 
                 let name = tool_call_name(part).unwrap_or("tool");
+                let id = part
+                    .get("id")
+                    .and_then(Value::as_str)
+                    .unwrap_or(entry_id)
+                    .to_string();
+                if name == "ask" {
+                    out.push(UiEntry::Ask {
+                        id,
+                        summary: "Ask · 等待回答…".into(),
+                        detail_lines: vec![],
+                        phase: crate::app::tui::bridge::AskPhase::Waiting,
+                        expanded: false,
+                    });
+                    continue;
+                }
                 let args = part
                     .get("arguments")
                     .or_else(|| part.get("args"))
@@ -325,11 +369,7 @@ fn assistant_parts_to_ui(entry_id: &str, message: &Value) -> Vec<UiEntry> {
                     .unwrap_or(Value::Object(Default::default()));
                 let mcp = is_mcp_tool_name(name);
                 out.push(UiEntry::Tool {
-                    id: part
-                        .get("id")
-                        .and_then(Value::as_str)
-                        .unwrap_or(entry_id)
-                        .to_string(),
+                    id,
                     name: name.to_string(),
                     args_preview: if mcp {
                         String::new()

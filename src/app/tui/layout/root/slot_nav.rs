@@ -9,6 +9,7 @@ use super::empty_widgets::{
 };
 use super::{ImportConfirmDecision, UiRoot};
 use crate::app::tui::bridge::UiPhase;
+use crate::protocol::error::XyToolError;
 
 impl UiRoot {
     pub fn on_escape(&mut self) -> bool {
@@ -25,6 +26,22 @@ impl UiRoot {
         if self.slot == EditorSlot::ImportConfirm {
             self.pending_import_decision = Some(ImportConfirmDecision::Rejected);
             self.close_import_confirm();
+            return true;
+        }
+        if self.slot == EditorSlot::Choice {
+            // Esc → ChoicePrompt skip success when mounted; bare Choice shell still closes.
+            if let Some(ref mut prompt) = self.choice_prompt {
+                use crossterm::event::{KeyCode, KeyEvent, KeyModifiers};
+                use xylitol_tui::{Component, InputEvent};
+                if !prompt.finished() {
+                    prompt.handle_input(InputEvent::Key(KeyEvent::new(
+                        KeyCode::Esc,
+                        KeyModifiers::NONE,
+                    )));
+                }
+            } else {
+                self.close_slot();
+            }
             return true;
         }
         if self.slot == EditorSlot::SessionResume {
@@ -59,6 +76,14 @@ impl UiRoot {
     }
 
     pub fn close_slot(&mut self) {
+        if self.slot == EditorSlot::Choice {
+            // Silent close without ChoiceResult → abort oneshot (not skip JSON).
+            if let Some(tx) = self.ask_reply.take() {
+                let _ = tx.send(Err(XyToolError::Aborted));
+            }
+            self.choice_prompt = None;
+            self.choice_pending = None;
+        }
         self.slot = EditorSlot::Editor;
         self.models_filter.clear();
         self.models_items.clear();

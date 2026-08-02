@@ -10,7 +10,7 @@ use xylitol_tui::{
 };
 
 use super::glyphs::GlyphSet;
-use crate::app::tui::bridge::{BashBlockStatus, CompactionBlockStatus, UiEntry, UiModel};
+use crate::app::tui::bridge::{AskPhase, BashBlockStatus, CompactionBlockStatus, UiEntry, UiModel};
 use crate::app::tui::layout::LayoutTheme;
 use xylitol_tui::terminal_colors::RgbColor;
 
@@ -231,6 +231,16 @@ fn bash_rail_rgb(status: BashBlockStatus, theme: LayoutTheme) -> RgbColor {
         BashBlockStatus::Pending => p.accent,
         BashBlockStatus::Success => p.success,
         BashBlockStatus::Error | BashBlockStatus::Cancelled => p.error,
+    };
+    mix_rgb(p.surface, vivid, 0.72)
+}
+
+fn ask_rail_rgb(phase: AskPhase, theme: LayoutTheme) -> RgbColor {
+    let p = theme.palette();
+    let vivid = match phase {
+        AskPhase::Waiting => p.accent,
+        AskPhase::Answered => p.success,
+        AskPhase::Skipped => p.muted,
     };
     mix_rgb(p.surface, vivid, 0.72)
 }
@@ -502,6 +512,19 @@ fn entry_fingerprint(entry: &UiEntry) -> u64 {
             output.hash(&mut h);
             exclude_from_context.hash(&mut h);
         }
+        UiEntry::Ask {
+            id,
+            summary,
+            detail_lines,
+            phase,
+            expanded,
+        } => {
+            id.hash(&mut h);
+            summary.hash(&mut h);
+            detail_lines.hash(&mut h);
+            phase.hash(&mut h);
+            expanded.hash(&mut h);
+        }
         UiEntry::Compaction {
             status,
             summary,
@@ -729,6 +752,27 @@ pub fn render_scrollback(
                         );
                     }
                     push_railed(&mut lines, &block, width, bash_rail_rgb(*status, theme));
+                }
+                UiEntry::Ask {
+                    summary,
+                    detail_lines,
+                    phase,
+                    ..
+                } => {
+                    let inner = rail_inner_width(width);
+                    let marker = if fold.tools_expanded {
+                        glyphs.unfold()
+                    } else {
+                        glyphs.fold()
+                    };
+                    let header = format!("{marker} {summary}  {}", key_hint("Alt+E"));
+                    let mut block = vec![fit(&header, inner)];
+                    if fold.tools_expanded {
+                        for line in detail_lines {
+                            block.push(fit(&theme.paint_muted(line), inner));
+                        }
+                    }
+                    push_railed(&mut lines, &block, width, ask_rail_rgb(*phase, theme));
                 }
                 UiEntry::Compaction {
                     status,
