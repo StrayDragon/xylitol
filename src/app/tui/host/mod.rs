@@ -28,19 +28,23 @@ pub use super::commands::{PendingBash, PendingSlash, bash_block_status, bash_out
 pub const MIN_COLS: u16 = 40;
 pub const MIN_ROWS: u16 = 6;
 
-/// Compact cwd for footer (`$HOME` → `~`).
-pub fn display_cwd() -> String {
-    let cwd = std::env::current_dir()
-        .map(|p| p.display().to_string())
-        .unwrap_or_else(|_| ".".into());
+/// Compact path for chrome (`$HOME` / `%USERPROFILE%` → `~`).
+pub fn display_path(path: impl AsRef<std::path::Path>) -> String {
+    let abs = path.as_ref().display().to_string();
     let home = std::env::var_os("HOME").or_else(|| std::env::var_os("USERPROFILE"));
     if let Some(home) = home {
         let home = home.to_string_lossy();
-        if let Some(rest) = cwd.strip_prefix(home.as_ref()) {
+        if let Some(rest) = abs.strip_prefix(home.as_ref()) {
             return format!("~{rest}");
         }
     }
-    cwd
+    abs
+}
+
+/// Compact cwd for footer (`$HOME` → `~`).
+pub fn display_cwd() -> String {
+    let cwd = std::env::current_dir().unwrap_or_else(|_| std::path::PathBuf::from("."));
+    display_path(cwd)
 }
 
 /// Friendly prompt when the terminal is too small.

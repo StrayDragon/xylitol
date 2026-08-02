@@ -2014,9 +2014,11 @@ fn preflight_error_messages_are_cli_friendly() {
 fn harness_ready_narrow_with_long_cwd_does_not_hang() {
     // Regression: startup-card wrap_plain spun forever on long path tokens at
     // Ready widths 40–44 (felt like "shrink then dead").
+    // Use this checkout's path so each clone exercises its own cwd length.
+    let long_cwd = super::host::display_path(env!("CARGO_MANIFEST_DIR"));
     let mut session = HostSession::new_product_ui_with_meta(
         TestTerminal::new(80, 24),
-        "~/Projects/__straydragon__/xylitol".into(),
+        long_cwd,
         "fake-model-with-a-very-long-name".into(),
     );
     session.render_now().expect("warm");

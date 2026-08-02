@@ -1,7 +1,7 @@
 # A2UI × xylitol：规范目标、组件分类与 ROI（2026-08）
 
 > **范围**：评估「用 A2UI 约束 agent 产出固定人机组件、并做 `packages/xylitol-tui-a2ui`」是否值得。
-> **一手来源**：[A2UI 官方介绍](https://a2ui.org/introduction/what-is-a2ui/)、[A2UI Protocol v1.0 Candidate](https://a2ui.org/specification/v1.0-a2ui/)（本地镜像：`../a2ui-tui-rs/crates/gallery/a2ui/specification/v1_0/`）、[`a2ui-tui-rs`](file:///home/l8ng/Projects/__straydragon__/a2ui-tui-rs) README、本仓 `ask` / `Web与TUI同源` / `xylitol-tui` 边界。
+> **一手来源**：[A2UI 官方介绍](https://a2ui.org/introduction/what-is-a2ui/)、[A2UI Protocol v1.0 Candidate](https://a2ui.org/specification/v1.0-a2ui/)（本地镜像：同机 `a2ui-tui-rs` 的 `crates/gallery/a2ui/specification/v1_0/`）、本机 `a2ui-tui-rs` README、本仓 `ask` / `Web与TUI同源` / `xylitol-tui` 边界。
 > **非目标**：不定实现计划、不改 live specs、不嵌入 ratatui 后端。
 
 ## 一句话结论
@@ -164,5 +164,5 @@ packages/xylitol-tui — 只提供通用 widget；不拥有 A2UI 状态机
 - https://a2ui.org/introduction/what-is-a2ui/
 - https://a2ui.org/specification/v1.0-a2ui/
 - https://a2ui.org/ （版本状态表）
-- `/home/l8ng/Projects/__straydragon__/a2ui-tui-rs` README + `specification/v1_0/`
+- 本机 `a2ui-tui-rs` checkout：README + `specification/v1_0/`
 - 本仓：`docs/roadmaps/Web与TUI同源.md` · `src/app/tui/design/ask.md` · `packages/xylitol-tui/AGENTS.md` · `docs/research/ask-ui-ux-landscape-2026.md`

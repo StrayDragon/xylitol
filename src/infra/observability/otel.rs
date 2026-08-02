@@ -273,11 +273,11 @@ mod tests {
     fn otlp_uses_explicit_endpoint() {
         let cfg = OtelConfig {
             exporter: OtelExporterKind::OtlpHttp,
-            endpoint: Some("http://coral:3000/api/public/otel".into()),
+            endpoint: Some("http://127.0.0.1:3000/api/public/otel".into()),
             ..OtelConfig::default()
         };
         let (ep, _) = resolve_otlp_http_target(&cfg).expect("endpoint");
-        assert_eq!(ep, "http://coral:3000/api/public/otel/v1/traces");
+        assert_eq!(ep, "http://127.0.0.1:3000/api/public/otel/v1/traces");
     }
 
     #[test]
@@ -295,7 +295,7 @@ mod tests {
     #[test]
     #[serial_test::serial(otel_env)]
     fn langfuse_env_derives_endpoint_and_auth() {
-        let _b = EnvGuard::set("LANGFUSE_BASE_URL", "http://coral:3000/");
+        let _b = EnvGuard::set("LANGFUSE_BASE_URL", "http://127.0.0.1:3000/");
         let _p = EnvGuard::set("LANGFUSE_PUBLIC_KEY", "pk-test");
         let _s = EnvGuard::set("LANGFUSE_SECRET_KEY", "sk-test");
         let cfg = OtelConfig {
@@ -304,7 +304,7 @@ mod tests {
             ..OtelConfig::default()
         };
         let (ep, headers) = resolve_otlp_http_target(&cfg).expect("derived");
-        assert_eq!(ep, "http://coral:3000/api/public/otel/v1/traces");
+        assert_eq!(ep, "http://127.0.0.1:3000/api/public/otel/v1/traces");
         assert!(
             headers
                 .get("Authorization")
@@ -321,14 +321,14 @@ mod tests {
     #[test]
     fn normalize_appends_v1_traces_once() {
         assert_eq!(
-            normalize_otlp_http_traces_endpoint("http://coral:3000/api/public/otel".into()),
-            "http://coral:3000/api/public/otel/v1/traces"
+            normalize_otlp_http_traces_endpoint("http://127.0.0.1:3000/api/public/otel".into()),
+            "http://127.0.0.1:3000/api/public/otel/v1/traces"
         );
         assert_eq!(
             normalize_otlp_http_traces_endpoint(
-                "http://coral:3000/api/public/otel/v1/traces/".into()
+                "http://127.0.0.1:3000/api/public/otel/v1/traces/".into()
             ),
-            "http://coral:3000/api/public/otel/v1/traces"
+            "http://127.0.0.1:3000/api/public/otel/v1/traces"
         );
     }
 
