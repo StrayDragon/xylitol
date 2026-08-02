@@ -5,25 +5,24 @@ depends_on:
 
 # Session SSOT ↔ Provider view 契约
 
-> **调研底稿**：[`docs/research/responses-context-layout-and-cache-2026.md`](../../../docs/research/responses-context-layout-and-cache-2026.md)  
-> **波次**：Wave B+（依赖 `c1890`；可与 Epoch/thinking/obs 并行）  
+> **调研底稿**：[`docs/research/responses-context-layout-and-cache-2026.md`](../../../docs/research/responses-context-layout-and-cache-2026.md)
 > **自包含**：钉「什么进持久会话、什么只进请求投影」；供状态栏 / tool_search / 压缩冻结共用，避免并行实现各写标记。
 
 ## Why
 
 状态栏 meta、tool_search 注入、压缩替换串、Env 折叠消息若没有统一契约，会出现：
 
-- 导出/分享把 harness 注入当成用户话  
-- resume 后 meta 丢失或重复  
-- Assembler 与 `project_for_llm` 双份折叠逻辑  
+- 导出/分享把 harness 注入当成用户话
+- resume 后 meta 丢失或重复
+- Assembler 与 `project_for_llm` 双份折叠逻辑
 
 需要一层薄而硬的 **Session SSOT ↔ Provider view** 边界，不实现具体栏/search/压缩算法。
 
 ## What Changes
 
-- 规范性文档 +（若需）最小类型/标记：  
-  - **Session SSOT**：用户可见 transcript、Env、工具结果真值、冻结替换表等  
-  - **Provider view**：Assembler 输入；可含请求期投影的 harness-meta  
+- 规范性文档 +（若需）最小类型/标记：
+  - **Session SSOT**：用户可见 transcript、Env、工具结果真值、冻结替换表等
+  - **Provider view**：Assembler 输入；可含请求期投影的 harness-meta
   - **Harness-meta**：非终端用户话语（状态栏、search output 包装等）的标记与生命周期（持久 / 仅投影 / 可重建）
 - `project_for_llm` / Assembler：**唯一** Env→LLM 折叠主路径（呼应 `src/AGENTS.md`）；禁止 infra 再折。
 - 导出 / fork / resume：哪些 meta 带出、哪些重建——可测场景（至少文档场景 + 单测钩子）。
@@ -36,7 +35,7 @@ depends_on:
 
 ## Impact
 
-- 多 agent 并行 Wave C 时有共同「存哪」语言。
+- 并行实现时有共同「存哪」语言。
 - 减少状态栏写进 JSONL 却无法区分的事故。
 
 ## Out of scope

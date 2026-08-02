@@ -6,7 +6,6 @@ depends_on:
 # ContextPolicy + ResponsesAssembler（可配置请求布局）
 
 > **调研底稿**：[`docs/research/responses-context-layout-and-cache-2026.md`](../../../docs/research/responses-context-layout-and-cache-2026.md)
-> **波次**：Wave B（依赖 `c1880`）
 > **自包含**：本草案写清缝与验收；实现时只认 Responses 主 wire。状态栏/tool_search/压缩为后续挂载点，本 change **不实现**它们的完整行为。
 
 ## Why
@@ -44,8 +43,8 @@ Session SSOT → ContextPolicy → ResponsesAssembler(flavor) → /v1/responses 
 
 ## Impact
 
-- `c1895`/`c1900`/`c1905`/`c1910`/`c1915` 可并行挂在本缝上（Wave C/D），并继承 flavor 开关。
-- 多 agent 实现时：本 change 交付「缝 + 默认行为等价现状 + 日界/flavor 占位」，后继 change 填策略。
+- `c1895`/`c1900`/`c1905`/`c1910`/`c1915` 可并行挂在本缝上（见各自 `depends_on`），并继承 flavor 开关。
+- 实现时：本 change 交付「缝 + 默认行为等价现状 + 日界/flavor 占位」，后继 change 填策略。
 
 ## Out of scope
 

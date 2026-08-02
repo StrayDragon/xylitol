@@ -5,7 +5,6 @@ depends_on: []
 # Responses 默认主路径 + Completions 显式类型 + Anthropic 桩
 
 > **调研底稿**（非本 change）：[`docs/research/responses-context-layout-and-cache-2026.md`](../../../docs/research/responses-context-layout-and-cache-2026.md)（含 §5.1 flavor）
-> **波次**：Wave A（可与 `c1885` 并行）
 > **自包含**：本草案单独可认领；不依赖其它未归档 change。
 
 ## Why
@@ -53,13 +52,19 @@ depends_on: []
 ## Parallel / depends
 
 - `depends_on: []`
-- 可与 `c1885` 同波；`c1890`/`c1900`/`c1915` 依赖本 change 归档（或行为已落地）
+- 可与 `c1885` 并行；`c1890`/`c1900`/`c1915` 依赖本 change 归档（或行为已落地）
 
 ## Open Questions
 
-- capabilities / flavor 挂在 `models.*` 还是 `providers.*`（或两者合并视图）—— propose 时钉。
+- **同族行为差的正式配置名（propose 前钉死）**
+  - 草案正文暂用 **`flavor`（实现口味）** 仅为占位，便于与现有 research / 其它 draft 对齐。
+  - **推荐正式名：兼容档案 (compatibility profile)**——强调「OpenAI-compatible 形似 ≠ 行为等价」下的 quirk / 预设表；配置键意向如 `compatibility_profile` / `compat_profile`（以实现为准）。
+  - 备选：方言 (dialect)（本仓 bridge 已有 dialects 用语，偏协议形状差异；与「同 Responses 族内行为矩阵」略易混）。
+  - **propose / 定稿时**再统一把 `flavor` → 兼容档案，并同步调研文术语表；在此之前其它 draft **不必**批量改名。
+  - 仍与 `capabilities` 正交：档案给预设，能力声明可覆盖。
+- capabilities / flavor（或正式名）挂在 `models.*` 还是 `providers.*`（或两者合并视图）—— propose 时钉。
 - Completions 是否仍跑最小回归，还是仅编译 + 手工冒烟—— propose 时钉。
-- 内置 flavor 最小集合与 `generic` 默认降级表—— propose/design 钉。
+- 内置 flavor / 档案最小集合与 `generic` 默认降级表—— propose/design 钉。
 
 ## Ethics
 

@@ -5,8 +5,7 @@ depends_on:
 
 # Context Epoch（前缀 / 工具世代冻结）
 
-> **调研底稿**：[`docs/research/responses-context-layout-and-cache-2026.md`](../../../docs/research/responses-context-layout-and-cache-2026.md)  
-> **波次**：Wave B+（依赖 `c1890`；与 `c1925`/`c1930`/`c1935` 可并行）  
+> **调研底稿**：[`docs/research/responses-context-layout-and-cache-2026.md`](../../../docs/research/responses-context-layout-and-cache-2026.md)
 > **自包含**：统一「谁在何时允许改稳定前缀」；供 `c1900`/`c1915`/换模断链共用，避免各 change 私自定义「工具世代」。
 
 ## Why
