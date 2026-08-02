@@ -114,7 +114,8 @@ impl Palette {
 
         MarkdownTheme {
             heading: Box::new(move |level, s| match level {
-                1 | 2 => fg_rgb(accent, &bold(&underline(s))),
+                1 => fg_rgb(accent, &bold(&underline(s))),
+                2 => fg_rgb(accent, &bold(s)),
                 3 | 4 => fg_rgb(on_surface, &bold(s)),
                 _ => fg_rgb(muted, s),
             }),
@@ -245,6 +246,16 @@ mod tests {
         assert!((dark.heading)(1, "T").contains("38;2;137;180;250"));
         let light = Palette::light().markdown_theme();
         assert!((light.heading)(1, "T").contains("38;2;30;102;245"));
+    }
+
+    #[test]
+    fn markdown_h2_accent_bold_without_underline() {
+        let h1 = (Palette::dark().markdown_theme().heading)(1, "T");
+        let h2 = (Palette::dark().markdown_theme().heading)(2, "T");
+        assert!(h1.contains("\x1b[4m"), "H1 keeps underline: {h1:?}");
+        assert!(!h2.contains("\x1b[4m"), "H2 must not underline: {h2:?}");
+        assert!(h2.contains("\x1b[1m"), "H2 keeps bold: {h2:?}");
+        assert!(h2.contains("38;2;137;180;250"), "H2 keeps accent: {h2:?}");
     }
 
     #[test]

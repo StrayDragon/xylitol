@@ -48,7 +48,7 @@ components:
    - 行内代码：`` `code` `` — **保留**可见反引号（复制后仍可辨）
    - 删除线：`~~text~~` — **保留**可见波浪线
    - 粗体 / 斜体：**不再**输出可见 `**` / `*`；用 **色 + SGR**（bold / italic）。许多终端字重/斜体不可见，色是强调的可靠通道。粘贴进下一轮会丢强调——接受此权衡。验收 stub 可用 `（加粗）` / `（斜体）` 语义标注。
-5. **禁止用装饰换层级**。标题**MUST NOT**输出 `#` / `##` 前缀；用色组 + bold/underline 表达级别。
+5. **禁止用装饰换层级**。标题**MUST NOT**输出 `#` / `##` 前缀；用色组 + bold（H1 另加 underline）表达级别。
 6. **fg / bg 分相**：元素着色走 fg；若需消息底色，在行宽 padding 后再套 `bgColor`（`apply_background_to_line`）。
 
 ## 标题色组（显示）
@@ -56,7 +56,7 @@ components:
 | 级 | 色 | 属性 | 可见前缀 |
 |---|---|---|---|
 | H1 | `{colors.accent}`（`md-h1`） | bold + underline | 无 |
-| H2 | `{colors.accent}`（`md-h2`） | bold + underline | 无 |
+| H2 | `{colors.accent}`（`md-h2`） | bold | 无 |
 | H3 | `{colors.on-surface}`（`md-h3`） | bold | 无 |
 | H4 | `{colors.on-surface}`（`md-h4`） | bold | 无 |
 | H5 | `{colors.muted}`（`md-h5`） | bold 可选 | 无 |
