@@ -4460,7 +4460,19 @@ impl FakeCodingAgentApp {
                     phase,
                 } => {
                     let marker = if *expanded { g.unfold() } else { g.fold() };
-                    let header = format!("{marker} {summary}  {}", key_hint("Alt+E"));
+                    let accent = self.palette().accent;
+                    let ask = bold(&fg_rgb(accent, "Ask"));
+                    let rest = summary.strip_prefix("Ask").unwrap_or(summary);
+                    let hint = key_hint("Alt+E");
+                    let fixed =
+                        visible_width(marker) + 1 + visible_width("Ask") + 2 + visible_width(&hint);
+                    let rest_budget = rail_inner.saturating_sub(fixed).max(4);
+                    let rest_fit = if visible_width(rest) <= rest_budget {
+                        rest.to_string()
+                    } else {
+                        truncate_to_width(rest, rest_budget, "…", false)
+                    };
+                    let header = format!("{marker} {ask}{rest_fit}  {}", dim(&hint));
                     let mut block = vec![Self::fit(&header, rail_inner)];
                     if *expanded {
                         for line in detail_lines {
@@ -4590,8 +4602,7 @@ impl FakeCodingAgentApp {
     fn render_choice_slot(&mut self, width: usize) -> Vec<String> {
         let mut lines = Vec::new();
         let accent = self.palette().accent;
-        // Colored "Ask" caption (accent); demo rail follows /entry-style.
-        lines.push(Self::fit(&bold(&fg_rgb(accent, " Ask")), width));
+        // Brand on scrollback `Ask · …` only — no duplicate slot caption.
         let rail = match self.entry_style {
             EntryStyle::Rail => Some(accent),
             EntryStyle::Wash => None,

@@ -229,6 +229,9 @@ pub(crate) fn humanize_tool_result_for_tui(
 }
 
 /// Parse ask-tool JSON into scrollback phase + human lines (no raw JSON primary).
+///
+/// Header (`summary`) keeps a compact `Ask · q → a · …` shape with ellipsized
+/// question ids / answers; expandable `detail_lines` stay full.
 pub(crate) fn humanize_ask_result(
     result: &str,
     is_error: bool,
@@ -275,17 +278,6 @@ pub(crate) fn humanize_ask_result(
                 .collect();
             let summary = if answers.is_empty() {
                 "Ask · 已答".into()
-            } else if answers.len() == 1 {
-                let labels: Vec<&str> = answers[0]
-                    .get("labels")
-                    .and_then(Value::as_array)
-                    .map(|arr| arr.iter().filter_map(Value::as_str).collect())
-                    .unwrap_or_default();
-                if labels.is_empty() {
-                    "Ask · 已选".into()
-                } else {
-                    format!("Ask · 已选  {}", labels.join(", "))
-                }
             } else {
                 let parts: Vec<String> = answers
                     .iter()
@@ -296,10 +288,12 @@ pub(crate) fn humanize_ask_result(
                             .and_then(Value::as_array)
                             .map(|arr| arr.iter().filter_map(Value::as_str).collect())
                             .unwrap_or_default();
+                        let q = ellipsize_ask_frag(id, ASK_HEADER_Q_MAX);
                         if labels.is_empty() {
-                            id.to_string()
+                            format!("{q} → （空）")
                         } else {
-                            format!("{id}: {}", labels.join(", "))
+                            let a = ellipsize_ask_frag(&labels.join(", "), ASK_HEADER_A_MAX);
+                            format!("{q} → {a}")
                         }
                     })
                     .collect();
@@ -309,6 +303,19 @@ pub(crate) fn humanize_ask_result(
         }
         _ => (AskPhase::Answered, "Ask · 已答".into(), vec![]),
     }
+}
+
+/// Header budget for question id / answer labels (chars; body keeps full text).
+const ASK_HEADER_Q_MAX: usize = 14;
+const ASK_HEADER_A_MAX: usize = 22;
+
+fn ellipsize_ask_frag(s: &str, max: usize) -> String {
+    let n = s.chars().count();
+    if n <= max {
+        return s.to_string();
+    }
+    let take = max.saturating_sub(1);
+    format!("{}…", s.chars().take(take).collect::<String>())
 }
 
 /// True when `text` is a JSON object that still looks like tool wire chrome.
@@ -1331,5 +1338,32 @@ mod tests {
             );
             assert!(!output_looks_like_machine_json("src/a.rs\nsrc/b.rs\n"));
         }
+    }
+
+    #[test]
+    fn ask_header_ellipsizes_long_q_and_a_body_full() {
+        let long_a = "📊 看诊断, 📝 查符号, 🔍 搜代码, 🚀 跑命令, 更多选项";
+        let json = format!(
+            r#"{{"status":"answered","answers":[{{"id":"demo_multi","labels":[{}]}}]}}"#,
+            long_a
+                .split(", ")
+                .map(|s| format!(r#""{s}""#))
+                .collect::<Vec<_>>()
+                .join(",")
+        );
+        let (phase, summary, detail) = humanize_ask_result(&json, false);
+        assert_eq!(phase, crate::app::tui::bridge::AskPhase::Answered);
+        assert!(summary.starts_with("Ask · "), "{summary}");
+        assert!(summary.contains('…') || summary.contains('→'), "{summary}");
+        assert!(
+            !summary.contains("更多选项"),
+            "header must truncate long answers: {summary}"
+        );
+        assert_eq!(detail.len(), 1);
+        assert!(
+            detail[0].contains("更多选项"),
+            "body must keep full labels: {}",
+            detail[0]
+        );
     }
 }

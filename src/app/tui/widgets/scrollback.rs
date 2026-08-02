@@ -94,6 +94,32 @@ fn key_hint(chord: &str) -> String {
     format!("({chord})")
 }
 
+/// Ask scrollback header: accent **Ask** + ellipsized ` · q → a · …` rest; fits `inner`.
+fn paint_ask_header_line(theme: LayoutTheme, marker: &str, summary: &str, inner: usize) -> String {
+    let hint = theme.paint_muted(&key_hint("Alt+E"));
+    let ask = theme.paint_tool_name("Ask");
+    let rest = summary
+        .strip_prefix("Ask")
+        .map(str::to_string)
+        .unwrap_or_else(|| {
+            if summary.is_empty() {
+                String::new()
+            } else {
+                format!(" · {summary}")
+            }
+        });
+    // `{marker} {Ask}{rest}  {hint}`
+    let fixed =
+        visible_width(marker) + 1 + visible_width("Ask") + 2 + visible_width(&key_hint("Alt+E"));
+    let rest_budget = inner.saturating_sub(fixed).max(4);
+    let rest_fit = if visible_width(&rest) <= rest_budget {
+        rest
+    } else {
+        truncate_to_width(&rest, rest_budget, "…", false)
+    };
+    format!("{marker} {ask}{rest_fit}  {hint}")
+}
+
 /// Format token counts with thousands separators (pi / design fixture).
 fn format_token_count(n: u64) -> String {
     let s = n.to_string();
@@ -765,7 +791,7 @@ pub fn render_scrollback(
                     } else {
                         glyphs.fold()
                     };
-                    let header = format!("{marker} {summary}  {}", key_hint("Alt+E"));
+                    let header = paint_ask_header_line(theme, marker, summary, inner);
                     let mut block = vec![fit(&header, inner)];
                     if fold.tools_expanded {
                         for line in detail_lines {
@@ -880,7 +906,46 @@ pub fn render_scrollback(
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::app::tui::bridge::{CompactionBlockStatus, UiEntry};
+    use crate::app::tui::bridge::{AskPhase, CompactionBlockStatus, UiEntry};
+
+    #[test]
+    fn ask_header_paints_accent_ask_and_keeps_full_body() {
+        let mut model = UiModel::default();
+        model.entries.push(UiEntry::Ask {
+            id: "a1".into(),
+            summary: "Ask · demo_choice → aaa · demo_multi → 📊 看诊断, 📝 查符号".into(),
+            detail_lines: vec![
+                "demo_choice → aaa".into(),
+                "demo_multi → 📊 看诊断, 📝 查符号, 🔍 搜代码, 🚀 跑命令".into(),
+            ],
+            phase: AskPhase::Answered,
+            expanded: true,
+        });
+        let theme = LayoutTheme::product_dark();
+        let fold = ScrollbackFold {
+            tools_expanded: true,
+            ..ScrollbackFold::default()
+        };
+        let lines = render_scrollback(
+            &model,
+            GlyphSet::from_env(),
+            theme,
+            fold,
+            80,
+            &mut ScrollbackPaintCache::default(),
+        );
+        let joined = lines.join("\n");
+        let accent_ask = theme.paint_tool_name("Ask");
+        assert!(
+            joined.contains(&accent_ask),
+            "Ask brand must use accent paint; got:\n{joined}"
+        );
+        let plain = strip_ansi_local(&joined);
+        assert!(
+            plain.contains("🔍 搜代码") && plain.contains("🚀 跑命令"),
+            "expanded body must stay full; got:\n{plain}"
+        );
+    }
 
     #[test]
     fn compaction_block_defaults_collapsed() {
