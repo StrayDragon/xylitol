@@ -5,7 +5,7 @@ slot: models
 state: narrow
 source: models.narrow.editor
 must_contain:
-  - "› ornith-fast"
+  - "› &lt;model-fast&gt;"
   - "high"
 must_not_contain:
   - "[high]"

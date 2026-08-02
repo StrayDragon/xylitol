@@ -148,15 +148,15 @@ impl ScriptedDriver {
                     context_window: 8_000,
                 },
                 ModelInfo {
-                    id: "ornith-fast".into(),
-                    display_name: "Ornith Fast".into(),
+                    id: "model-fast".into(),
+                    display_name: "Model Fast".into(),
                     thinking: false,
                     thinking_levels: Vec::new(),
                     context_window: 8_000,
                 },
                 ModelInfo {
-                    id: "ornith-think".into(),
-                    display_name: "Ornith Think".into(),
+                    id: "model-think".into(),
+                    display_name: "Model Think".into(),
                     thinking: true,
                     thinking_levels: Vec::new(),
                     context_window: 32_000,
@@ -1493,7 +1493,7 @@ mod slice_tests {
         );
         let frame = root.borrow_mut().render(80);
         assert!(
-            frame.iter().any(|l| l.contains("Ornith Think")),
+            frame.iter().any(|l| l.contains("Model Think")),
             "expected models in frame: {frame:?}"
         );
     }
@@ -1539,7 +1539,7 @@ mod slice_tests {
         assert!(
             frame
                 .iter()
-                .any(|l| l.contains("ornith-think") || l.contains("Ornith Think")),
+                .any(|l| l.contains("model-think") || l.contains("Model Think")),
             "footer should show selected model: {frame:?}"
         );
     }
@@ -1580,13 +1580,13 @@ mod slice_tests {
         let root = session.ui_root().expect("ui").clone();
         let mut driver = ScriptedDriver::new();
         let mut stream = None;
-        root.borrow_mut().set_editor_text("/model ornith-think");
+        root.borrow_mut().set_editor_text("/model model-think");
         session.step(HostEvent::Input(enter_event())).unwrap();
         pump_host_driver(&mut session, &mut driver, &mut stream)
             .await
             .unwrap();
         assert!(!root.borrow().models_open());
-        assert_eq!(driver.model.id, "ornith-think");
+        assert_eq!(driver.model.id, "model-think");
     }
 
     #[tokio::test]
@@ -1631,20 +1631,20 @@ mod slice_tests {
         let root = session.ui_root().expect("ui").clone();
         let driver = ScriptedDriver::new();
         session.set_model_arg_catalog_from_models(&driver.available_models());
-        for ch in "/model orn".chars() {
+        for ch in "/model model-".chars() {
             session.step(HostEvent::Input(char_event(ch))).unwrap();
         }
         let frame = root.borrow_mut().render(80);
         assert!(
             frame
                 .iter()
-                .any(|l| l.contains("ornith-fast") || l.contains("ornith-think")),
+                .any(|l| l.contains("model-fast") || l.contains("model-think")),
             "expected model-id popup; got: {frame:?}"
         );
         session.step(HostEvent::Input(tab_event())).unwrap();
         let text = root.borrow().editor_text();
         assert!(
-            text.starts_with("/model ornith-"),
+            text.starts_with("/model model-"),
             "Tab must apply model id; got {text:?}"
         );
         assert_eq!(

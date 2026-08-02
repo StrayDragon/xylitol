@@ -43,7 +43,7 @@ author: agent
 
 在 Responses 下量 `ToolCallEnd(t0)` → `Done/MessageEnd(t1)` 空隙 vs 工具墙钟。仅当空隙经常 ≥ 工具耗时再 promote。
 
-### 结果（session `39d080fa-174d-489f-8107-11397d901f10`，Ornith / openai-responses）
+### 结果（session `39d080fa-174d-489f-8107-11397d901f10`，`<model-name>` / openai-responses）
 
 - 同消息 3×read；**无**同轮 tool 后 Text（长文在下一轮 llm）。
 - provider-trace：三个 `ToolCallEnd` 在 **0.2ms** 内连发，距 `Done`/`response.completed` **≈0.1–0.4ms**。
@@ -56,7 +56,7 @@ Completions 抢跑；结果流式回灌同轮 LLM；放开 MCP 并行。
 
 ## Status
 
-**shelved（2026-07-24）** — 实验 2 证明当前 Ornith/Responses 上 End→Done 空隙≈0，ROI≈0。不 promote。依赖与方言门闩结论保留；仅当其它端点测出稳定大空隙再 reopen。
+**shelved（2026-07-24）** — 实验 2 证明当前 `<model-name>` / Responses 上 End→Done 空隙≈0，ROI≈0。不 promote。依赖与方言门闩结论保留；仅当其它端点测出稳定大空隙再 reopen。
 
 ## Ethics
 

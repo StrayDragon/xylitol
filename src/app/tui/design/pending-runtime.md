@@ -62,20 +62,20 @@ idle / 无 in-flight：切换直接写入生效中（无下轮预告）；footer
 
 ## 形状（固定 · 下轮预告）
 
-**恒定示例 active**：footer = `ornith · thinking off`。
+**恒定示例 active**：footer = `<model-name> · thinking off`。
 
 ### 仅模型 pending（`/model` 之后）
 
 ```
 ⠋ Working                    Next turn: deepseek-v4-flash
-~/xylitol · ornith · thinking off
+~/xylitol · <model-name> · thinking off
 ```
 
 ### 仅 thinking pending（`/model` 同模型改 level）
 
 ```
 ⠋ Working                    Next turn thinking: high
-~/xylitol · ornith · thinking off
+~/xylitol · <model-name> · thinking off
 ```
 
 ### 一次 Enter 提交 model+level（模型优先）
