@@ -278,6 +278,7 @@ footer            1 行 dim（cwd · model · 可选 context%）
 | [`design/diff-block.md`](./design/diff-block.md) | Diff 渲染 |
 | [`design/glyphs.md`](./design/glyphs.md) | unicode / ascii 档 |
 | [`design/theme-tokens.md`](./design/theme-tokens.md) | 语义 → SGR；Palette；产品 `/theme` slash（c1115）；Ask/ChoicePrompt 见 playground（c565） |
+| [`design/ask.md`](./design/ask.md) | 内置工具 `ask`（澄清/分叉）；rail + 说明栏；Skip；静图 `?slot=ask`；≠ Trust |
 | [`design/keybindings.md`](./design/keybindings.md) | 已决议键位 |
 | [`design/markdown.md`](./design/markdown.md) | 复制友好 / token 效率 markdown（`c530-update-package-tui-markdown`） |
 | [`design/errors.md`](./design/errors.md) | 错误呈现 |

@@ -43,7 +43,7 @@ const SLASH_COMMANDS: &[(&str, &str)] = &[
     ("theme", "Switch chrome theme: /theme [dark|light|toggle]"),
     (
         "entry-style",
-        "Entry paint: /entry-style [rail|wash|toggle] (left rail vs full-row wash)",
+        "Entry paint: /entry-style [rail|wash|toggle] (tools + Ask; product Ask = rail only)",
     ),
     (
         "thinking-level",
@@ -295,18 +295,23 @@ const DEMO_PLATE: &[DemoPlateItem] = &[
     },
     DemoPlateItem {
         id: "ask-single",
-        label: "Ask single + Other",
-        description: "ChoicePrompt Single · Tab→Other · c565",
+        label: "Ask · 1题单选",
+        description: "ask wrapper face · Single + Other · Esc skip",
     },
     DemoPlateItem {
         id: "ask-multi",
-        label: "Ask multi + Other",
-        description: "ChoicePrompt Multi · Space toggle · c565",
+        label: "Ask · 1题多选",
+        description: "ask wrapper face · Multi + Other · Esc skip",
     },
     DemoPlateItem {
         id: "ask-tabs",
-        label: "Ask multi-question tabs",
-        description: "ChoicePrompt tabs + Submit · c565",
+        label: "Ask · Tabs+Review",
+        description: "≥2 questions · Enter advance · ←→ edit · Review",
+    },
+    DemoPlateItem {
+        id: "ask-tool",
+        label: "Ask · fake tool call",
+        description: "Simulate builtin ask → ChoicePrompt → tool JSON result",
     },
     DemoPlateItem {
         id: "tool-tints",
@@ -1264,6 +1269,21 @@ enum TranscriptEntry {
         /// `None` = always unified; `Some(n)` = side-by-side when width ≥ n.
         side_by_side_min_width: Option<usize>,
     },
+    /// Ask tool: human summary in scrollback with fixed left rail (not tool wash).
+    Ask {
+        expanded: bool,
+        summary: String,
+        detail_lines: Vec<String>,
+        /// pending | answered | skipped — drives rail color.
+        phase: AskPhase,
+    },
+}
+
+#[derive(Clone, Copy, PartialEq, Eq)]
+enum AskPhase {
+    Waiting,
+    Answered,
+    Skipped,
 }
 
 enum ScriptEvent {
@@ -1334,7 +1354,8 @@ pub struct FakeCodingAgentApp {
     atom_loader: Option<CancellableLoader>,
     /// Built once when opening `LibAtomKind::Panel`.
     atom_panel: Option<Panel>,
-    /// c565 ChoicePrompt (ask-single / ask-multi / ask-tabs).
+    /// Pending ask-tool demo: complete tool block when ChoicePrompt finishes.
+    ask_tool_pending_idx: Option<usize>,
     choice_prompt: Option<ChoicePrompt>,
     /// Shared slot filled by ChoicePrompt on_done.
     choice_pending: Option<Rc<RefCell<Option<ChoiceResult>>>>,
@@ -1647,7 +1668,12 @@ impl FakeCodingAgentApp {
     }
 
     fn choice_theme(&self) -> ChoicePromptTheme {
-        self.palette().choice_prompt_theme()
+        let mut theme = self.palette().choice_prompt_theme();
+        // Demo-only: wash = pi-style flush ChoicePrompt; product Ask stays rail.
+        if matches!(self.entry_style, EntryStyle::Wash) {
+            theme.rail = None;
+        }
+        theme
     }
 
     fn open_choice_prompt(&mut self, questions: Vec<ChoiceQuestion>) {
@@ -1662,29 +1688,54 @@ impl FakeCodingAgentApp {
         });
         self.choice_prompt = Some(prompt);
         self.choice_pending = Some(pending);
-        self.set_status("ChoicePrompt · Esc cancel");
+        self.set_status("Ask · Esc skip");
     }
 
     fn apply_choice_result(&mut self, result: ChoiceResult) {
         self.close_choice_prompt();
-        if result.cancelled {
-            self.push_message(Role::ScrollNotice, "ChoicePrompt · cancelled");
+        let summary = result.human_summary_line();
+        let detail_lines = result.human_detail_lines();
+        if let Some(idx) = self.ask_tool_pending_idx.take() {
+            if let Some(TranscriptEntry::Ask {
+                summary: slot_sum,
+                detail_lines: slot_det,
+                expanded,
+                phase,
+            }) = self.transcript.get_mut(idx)
+            {
+                *slot_sum = summary;
+                *slot_det = detail_lines;
+                *expanded = false;
+                *phase = if result.is_skipped() {
+                    AskPhase::Skipped
+                } else {
+                    AskPhase::Answered
+                };
+            } else {
+                self.transcript.push(TranscriptEntry::Ask {
+                    expanded: false,
+                    summary,
+                    detail_lines,
+                    phase: if result.is_skipped() {
+                        AskPhase::Skipped
+                    } else {
+                        AskPhase::Answered
+                    },
+                });
+            }
             self.set_status("Ready");
             return;
         }
-        let summary = result
-            .answers
-            .iter()
-            .map(|a| {
-                let custom = if a.was_custom { " (custom)" } else { "" };
-                format!("{}={}{custom}", a.question_id, a.labels.join("+"))
-            })
-            .collect::<Vec<_>>()
-            .join(" · ");
-        self.push_message(
-            Role::ScrollNotice,
-            format!("ChoicePrompt · answered: {summary}"),
-        );
+        self.transcript.push(TranscriptEntry::Ask {
+            expanded: false,
+            summary,
+            detail_lines,
+            phase: if result.is_skipped() {
+                AskPhase::Skipped
+            } else {
+                AskPhase::Answered
+            },
+        });
         self.set_status("Ready");
     }
 
@@ -2178,7 +2229,7 @@ impl FakeCodingAgentApp {
         self.push_message(
             Role::ScrollNotice,
             format!(
-                "entry-style → {} (rail = left bg strip, wash = full-row; demo-only toggle)",
+                "entry-style → {} (rail = left bg strip, wash = full-row / pi flush; applies to tools + Ask; demo-only)",
                 self.entry_style.label()
             ),
         );
@@ -2387,6 +2438,18 @@ impl FakeCodingAgentApp {
                 TranscriptEntry::Diff { summary, .. } => {
                     out.push_str(summary);
                     out.push('\n');
+                }
+                TranscriptEntry::Ask {
+                    summary,
+                    detail_lines,
+                    ..
+                } => {
+                    out.push_str(summary);
+                    out.push('\n');
+                    for line in detail_lines {
+                        out.push_str(line);
+                        out.push('\n');
+                    }
                 }
             }
         }
@@ -2620,6 +2683,7 @@ impl FakeCodingAgentApp {
             atom_panel: None,
             choice_prompt: None,
             choice_pending: None,
+            ask_tool_pending_idx: None,
             tree_open: false,
             tree: demo_tree_selector(sample_session_tree(), "u2", SessionTreeFilter::Default),
             tree_filter: SessionTreeFilter::Default,
@@ -2751,7 +2815,7 @@ impl FakeCodingAgentApp {
             "stream plate: md-full · stream-rust/python/typescript/json · diff-sbs · \
              completion-dollar (c545 $) · expandable-head (c550) · playground-sync (c555) · \
              md-list-wrap · narrow-clamp · truncated-text · cancellable-loader · panel · \
-             ask-single · ask-multi · ask-tabs · tree (c560) · tool-tints · theme-toggle · \
+             ask-single · ask-multi · ask-tabs · ask-tool · tree (c560) · tool-tints · theme-toggle · \
              help-keys · tests · compact-status · retry-status",
         );
         self.set_status("Ready");
@@ -2924,58 +2988,62 @@ impl FakeCodingAgentApp {
     }
 
     fn inject_ask_single(&mut self) {
-        self.push_message(Role::User, "plate · ask-single · c565");
+        self.push_message(Role::User, "plate · ask-single");
         self.push_message(
             Role::ScrollNotice,
-            "ChoicePrompt Single + Other: ↑↓ · Enter · Tab focuses Other · Esc cancel. \
-             Playground: slot Ask (key 0).",
+            "Ask wrapper · 1×Single（无 Tabs）· Other 默认开 · Esc→skipped. Playground: ?slot=ask",
         );
         self.open_choice_prompt(vec![ChoiceQuestion {
-            id: "scope".into(),
-            label: "Scope".into(),
-            prompt: "本轮优先做什么？".into(),
+            id: "fork".into(),
+            label: "Fork".into(),
+            prompt: "实现分叉：先修哪条路径？".into(),
             mode: ChoiceMode::Single,
             options: vec![
-                ChoiceOption::new("bug", "修 bug"),
-                ChoiceOption::new("test", "加测试"),
-                ChoiceOption::new("docs", "写文档"),
+                ChoiceOption::new("slice", "最小可运行切片")
+                    .with_description("先打通一条能跑的路径，再补合约与打磨。")
+                    .recommended(),
+                ChoiceOption::new("bdd", "先写合约/BDD")
+                    .with_description("先钉 MUST/场景，再实现。适合边界已清。"),
+                ChoiceOption::new("ux", "先打磨 Tabs UX")
+                    .with_description("先把问卷交互做顺手，再接产品工具。"),
             ],
             allow_other: true,
         }]);
     }
 
     fn inject_ask_multi(&mut self) {
-        self.push_message(Role::User, "plate · ask-multi · c565");
+        self.push_message(Role::User, "plate · ask-multi");
         self.push_message(
             Role::ScrollNotice,
-            "ChoicePrompt Multi + Other: Space 勾选 · Enter 提交 · Tab→Other. Playground: Ask.",
+            "Ask wrapper · 1×Multi（无 Tabs）· Space 勾选 · Esc skip",
         );
         self.open_choice_prompt(vec![ChoiceQuestion {
-            id: "checks".into(),
-            label: "Checks".into(),
-            prompt: "需要哪些验收？（可多选）".into(),
+            id: "clarify".into(),
+            label: "Clarify".into(),
+            prompt: "这轮要先澄清哪些点？".into(),
             mode: ChoiceMode::Multi,
             options: vec![
-                ChoiceOption::new("unit", "单测"),
-                ChoiceOption::new("harness", "harness"),
-                ChoiceOption::new("demo", "手验 demo"),
+                ChoiceOption::new("scope", "目标范围")
+                    .with_description("这轮要交付什么、不做什么。"),
+                ChoiceOption::new("acceptance", "验收标准")
+                    .with_description("怎样算完成：测、手验、演示。"),
+                ChoiceOption::new("fork", "实现分叉").with_description("多条路径时先定优先级。"),
             ],
             allow_other: true,
         }]);
     }
 
     fn inject_ask_tabs(&mut self) {
-        self.push_message(Role::User, "plate · ask-tabs · c565");
+        self.push_message(Role::User, "plate · ask-tabs");
         self.push_message(
             Role::ScrollNotice,
-            "ChoicePrompt 多题混搭：Q1 单选 · Q2 多选(+) · Q3 单选；←→ 切题；答完进 Submit。\
-             Tab 上 + 表示多选题，✓ 表示已答。",
+            "Ask wrapper · ≥2 Tabs：Enter 推进 · ←→ 回退修正 · Review 提交 · Esc skip",
         );
         self.open_choice_prompt(vec![
             ChoiceQuestion {
                 id: "scope".into(),
                 label: "Scope".into(),
-                prompt: "范围？".into(),
+                prompt: "本轮范围？".into(),
                 mode: ChoiceMode::Single,
                 options: vec![
                     ChoiceOption::new("pkg", "仅包"),
@@ -3004,9 +3072,42 @@ impl FakeCodingAgentApp {
                     ChoiceOption::new("p0", "P0 现在"),
                     ChoiceOption::new("p1", "P1 本周"),
                 ],
-                allow_other: false,
+                allow_other: true,
             },
         ]);
+    }
+
+    fn inject_ask_tool(&mut self) {
+        self.push_message(Role::User, "plate · ask-tool（假工具调用）");
+        self.push_message(
+            Role::Assistant,
+            "I'll use ask to clarify the implementation fork before coding.",
+        );
+        let idx = self.transcript.len();
+        self.transcript.push(TranscriptEntry::Ask {
+            expanded: false,
+            summary: "Ask · 等待回答…".into(),
+            detail_lines: Vec::new(),
+            phase: AskPhase::Waiting,
+        });
+        self.ask_tool_pending_idx = Some(idx);
+        self.set_status("Ask · waiting");
+        self.open_choice_prompt(vec![ChoiceQuestion {
+            id: "fork".into(),
+            label: "Fork".into(),
+            prompt: "实现分叉：先修哪条路径？".into(),
+            mode: ChoiceMode::Single,
+            options: vec![
+                ChoiceOption::new("slice", "最小可运行切片")
+                    .with_description("先打通一条能跑的路径，再补合约与打磨。适合想尽快看到反馈。")
+                    .recommended(),
+                ChoiceOption::new("bdd", "先写合约/BDD")
+                    .with_description("先钉 MUST/场景，再实现。适合边界已清、怕返工。"),
+                ChoiceOption::new("ux", "先打磨 Tabs UX")
+                    .with_description("先把问卷交互做顺手，再接产品工具。适合形态未定。"),
+            ],
+            allow_other: true,
+        }]);
     }
 
     fn inject_diff_showcase(&mut self) {
@@ -3107,6 +3208,7 @@ impl FakeCodingAgentApp {
             "ask-single" => self.inject_ask_single(),
             "ask-multi" => self.inject_ask_multi(),
             "ask-tabs" => self.inject_ask_tabs(),
+            "ask-tool" => self.inject_ask_tool(),
             "tool-tints" => self.inject_tool_tint_showcase(),
             "tree" => {
                 self.push_message(Role::User, "plate · tree · c560");
@@ -3205,11 +3307,14 @@ impl FakeCodingAgentApp {
                 e,
                 TranscriptEntry::Tool { expanded: true, .. }
                     | TranscriptEntry::Diff { expanded: true, .. }
+                    | TranscriptEntry::Ask { expanded: true, .. }
             )
         });
         for entry in &mut self.transcript {
             match entry {
-                TranscriptEntry::Tool { expanded, .. } | TranscriptEntry::Diff { expanded, .. } => {
+                TranscriptEntry::Tool { expanded, .. }
+                | TranscriptEntry::Diff { expanded, .. }
+                | TranscriptEntry::Ask { expanded, .. } => {
                     *expanded = !any_expanded;
                 }
                 _ => {}
@@ -4348,6 +4453,32 @@ impl FakeCodingAgentApp {
                     };
                     self.push_entry_block(&mut lines, &block, width, rgb);
                 }
+                TranscriptEntry::Ask {
+                    expanded,
+                    summary,
+                    detail_lines,
+                    phase,
+                } => {
+                    let marker = if *expanded { g.unfold() } else { g.fold() };
+                    let header = format!("{marker} {summary}  {}", key_hint("Alt+E"));
+                    let mut block = vec![Self::fit(&header, rail_inner)];
+                    if *expanded {
+                        for line in detail_lines {
+                            block.push(Self::fit(&dim(line), rail_inner));
+                        }
+                    }
+                    let vivid = match phase {
+                        AskPhase::Waiting => self.palette().accent,
+                        AskPhase::Answered => self.palette().success,
+                        AskPhase::Skipped => self.palette().muted,
+                    };
+                    // Demo honors /entry-style (rail|wash). Product src app: rail only.
+                    let rgb = match self.entry_style {
+                        EntryStyle::Rail => mix_rgb(self.palette().surface, vivid, 0.72),
+                        EntryStyle::Wash => mix_rgb(self.palette().surface, vivid, 0.22),
+                    };
+                    self.push_entry_block(&mut lines, &block, width, rgb);
+                }
             }
         }
         lines
@@ -4458,8 +4589,15 @@ impl FakeCodingAgentApp {
 
     fn render_choice_slot(&mut self, width: usize) -> Vec<String> {
         let mut lines = Vec::new();
-        lines.push(Self::fit(&bold(" ChoicePrompt"), width));
+        let accent = self.palette().accent;
+        // Colored "Ask" caption (accent); demo rail follows /entry-style.
+        lines.push(Self::fit(&bold(&fg_rgb(accent, " Ask")), width));
+        let rail = match self.entry_style {
+            EntryStyle::Rail => Some(accent),
+            EntryStyle::Wash => None,
+        };
         if let Some(ref mut prompt) = self.choice_prompt {
+            prompt.set_rail(rail);
             for line in prompt.render(width) {
                 lines.push(Self::fit(&line, width));
             }
@@ -4720,6 +4858,7 @@ impl Component for FakeCodingAgentApp {
                             | "ask-single"
                             | "ask-multi"
                             | "ask-tabs"
+                            | "ask-tool"
                             | "md-list-wrap"
                             | "theme-toggle"
                             | "thinking-level"
