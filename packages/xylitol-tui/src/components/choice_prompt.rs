@@ -134,6 +134,9 @@ impl ChoiceResult {
     }
 
     /// Human-facing one-line summary for TUI scrollback (no JSON).
+    ///
+    /// Compact header: `Ask · q → a · …` with ellipsized fragments; use
+    /// [`Self::human_detail_lines`] for full question → answer rows.
     pub fn human_summary_line(&self) -> String {
         match self.status {
             ChoiceStatus::Skipped => "Ask · 已跳过 · 按已有信息继续".into(),
@@ -141,29 +144,21 @@ impl ChoiceResult {
                 if self.answers.is_empty() {
                     return "Ask · 已答".into();
                 }
-                if self.answers.len() == 1 {
-                    let a = &self.answers[0];
-                    let labels = a.labels.join(", ");
-                    if labels.is_empty() {
-                        "Ask · 已选".into()
-                    } else {
-                        format!("Ask · 已选  {labels}")
-                    }
-                } else {
-                    let parts: Vec<String> = self
-                        .answers
-                        .iter()
-                        .map(|a| {
-                            let labels = a.labels.join(", ");
-                            if labels.is_empty() {
-                                a.question_id.clone()
-                            } else {
-                                format!("{}: {labels}", a.question_id)
-                            }
-                        })
-                        .collect();
-                    format!("Ask · {}", parts.join(" · "))
-                }
+                let parts: Vec<String> = self
+                    .answers
+                    .iter()
+                    .map(|a| {
+                        let q = ellipsize_ask_frag(&a.question_id, ASK_HEADER_Q_MAX);
+                        let labels = a.labels.join(", ");
+                        if labels.is_empty() {
+                            format!("{q} → （空）")
+                        } else {
+                            let ans = ellipsize_ask_frag(&labels, ASK_HEADER_A_MAX);
+                            format!("{q} → {ans}")
+                        }
+                    })
+                    .collect();
+                format!("Ask · {}", parts.join(" · "))
             }
         }
     }
@@ -190,6 +185,18 @@ impl ChoiceResult {
 
 fn escape_json_str(s: &str) -> String {
     s.replace('\\', "\\\\").replace('"', "\\\"")
+}
+
+const ASK_HEADER_Q_MAX: usize = 14;
+const ASK_HEADER_A_MAX: usize = 22;
+
+fn ellipsize_ask_frag(s: &str, max: usize) -> String {
+    let n = s.chars().count();
+    if n <= max {
+        return s.to_string();
+    }
+    let take = max.saturating_sub(1);
+    format!("{}…", s.chars().take(take).collect::<String>())
 }
 
 pub struct ChoicePromptTheme {

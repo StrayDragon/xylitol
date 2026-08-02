@@ -4,8 +4,6 @@ name: "ask"
 description: "TUI-only builtin tool ask — clarify/decision questionnaire via ChoicePrompt wrapper faces."
 tokens_from: "../DESIGN.md"
 components:
-  ask-caption:
-    textColor: "{colors.accent}"
   ask-prompt:
     textColor: "{colors.on-surface}"
   ask-selected:
@@ -69,7 +67,7 @@ Agent 在 **计划澄清 / 需求不清 / 实现分叉** 时调用 **一个** �
 | `recommended` | MAY | 有则尾随 ` · 推荐` |
 
 1. **左边轨（产品）**：问卷每一行经 `paint_left_rail_line`，轨色默认 `{colors.accent}`（与 waiting 一致）。**产品 `src/app/tui` 仅 rail**——无 wash 切换。Demo `agent_demo` 可用 `/entry-style rail|wash` 对照 pi 整行洗底。
-2. **标题「Ask」**：caption 用 `{colors.accent}`（可粗体）。
+2. **品牌「Ask」**：仅 scrollback 表头 accent；**MUST NOT** 在 editor 槽再叠一层「Ask」caption（与 waiting 摘要重复）。
 3. **选中态**：accent + **粗体**（`→` / `[x]` 与 label）；**MUST NOT** 默认整行 reverse 洗屏。
 4. **提问 ↔ 选项**：prompt 与选项列表之间 **MUST** 空一行（防挤）。
 5. **说明 / 易懂例子**（`option.description`，可选）：
@@ -82,9 +80,11 @@ Agent 在 **计划澄清 / 需求不清 / 实现分叉** 时调用 **一个** �
 
 | phase | 轨色 | 摘要例 |
 |---|---|---|
-| waiting | `{colors.accent}` | `Ask · 等待回答…` |
-| answered | `{colors.success}` | `Ask · 已选  最小可运行切片` |
-| skipped | `{colors.muted}` | `Ask · 已跳过 · 按已有信息继续` |
+| answered | `{colors.success}` 轨；**Ask** 字 `{colors.accent}` | `Ask · q → a…`（表头省略；展开正文全量） |
+| skipped | `{colors.muted}` 轨；**Ask** accent | `Ask · 已跳过 · 按已有信息继续` |
+| waiting | `{colors.accent}` 轨；**Ask** accent | `Ask · 等待回答…` |
+
+表头：**Ask** MUST accent（可粗体）；其后 ` · 问题… → 回答…` 可按宽省略；展开行 MUST 全量 `id → labels`。
 
 - **MUST** 左边轨 + gutter；**MUST NOT** `tool-*-bg` 整行洗底。
 - 默认一行摘要；**Alt+E** 展开 `id → labels`（人话）。
