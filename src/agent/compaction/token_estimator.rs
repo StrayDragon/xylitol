@@ -45,7 +45,7 @@ pub struct EstimateOpts {
     /// When false (default, c1420 / paa10), LocalTokenizer encode is skipped.
     pub allow_local_tokenizer: bool,
     /// When true, emit a `token.estimate` fastrace span (c1860). Default **false** —
-    /// settlement paths call [`emit_token_estimate_obs`] explicitly so callers do not
+    /// settlement paths call `emit_token_estimate_obs` explicitly so callers do not
     /// each create duplicate OTel observations.
     pub emit_obs: bool,
 }
