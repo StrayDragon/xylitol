@@ -33,7 +33,7 @@ pub use completion::{
 pub use components::cancellable_loader::CancellableLoader;
 pub use components::choice_prompt::{
     ChoiceAnswer, ChoiceMode, ChoiceOption, ChoicePrompt, ChoicePromptTheme, ChoiceQuestion,
-    ChoiceResult,
+    ChoiceResult, ChoiceStatus,
 };
 pub use components::container::Container;
 pub use components::diff::{

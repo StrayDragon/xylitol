@@ -1305,15 +1305,57 @@ fn agent_demo_plate_ask_single_opens_choice_prompt() {
     h.render_result().expect("ask-single");
     let viewport = h.tui.terminal.viewport().join("\n");
     assert!(
-        viewport.contains("ChoicePrompt") && viewport.contains("本轮优先"),
-        "ask-single should open ChoicePrompt; got:\n{viewport}"
+        viewport.contains(" Ask") && viewport.contains("实现分叉") && viewport.contains("Skip"),
+        "ask-single should open Ask slot with Skip chrome; got:\n{viewport}"
+    );
+    assert!(
+        !viewport.contains("Review"),
+        "1-question ask must not show Review tab; got:\n{viewport}"
     );
     h.keys("\x1b");
     h.render_result().expect("after esc");
     let after = h.tui.terminal.scroll_buffer().join("\n");
     assert!(
-        after.contains("cancelled"),
-        "Esc should cancel ChoicePrompt; got:\n{after}"
+        after.contains("skipped"),
+        "Esc should skip Ask; got:\n{after}"
+    );
+}
+
+#[test]
+fn agent_demo_plate_ask_tool_fake_call_then_skip() {
+    use std::cell::RefCell;
+    use std::rc::Rc;
+
+    use agent_demo_example::SharedFakeCodingAgentApp;
+
+    let app = Rc::new(RefCell::new(FakeCodingAgentApp::new_with_prompt(
+        Arc::new(AtomicBool::new(false)),
+        "",
+    )));
+    app.borrow_mut().freeze_script_for_test();
+    let mut h = TuiTestHarness::new(100, 40);
+    h.mount(Box::new(SharedFakeCodingAgentApp(app.clone())))
+        .focus(Some(0));
+    h.render_result().expect("initial");
+    h.keys("\x10ask-tool\r");
+    h.render_result().expect("ask-tool");
+    let viewport = h.tui.terminal.viewport().join("\n");
+    assert!(
+        viewport.contains("Ask · 等待回答") && viewport.contains(" Ask"),
+        "ask-tool should show waiting summary + Ask slot; got:\n{viewport}"
+    );
+    assert!(
+        !viewport.contains("{\"tool\""),
+        "must not dump ask tool JSON in viewport; got:\n{viewport}"
+    );
+    h.keys("\x1b");
+    h.render_result().expect("after esc");
+    let after = h.tui.terminal.viewport().join("\n");
+    let scroll = h.tui.terminal.scroll_buffer().join("\n");
+    let hay = format!("{after}\n{scroll}");
+    assert!(
+        hay.contains("已跳过") && !hay.contains("\"status\":\"skipped\""),
+        "skip should be human summary without JSON; got:\n{hay}"
     );
 }
 
