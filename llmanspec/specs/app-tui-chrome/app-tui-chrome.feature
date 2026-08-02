@@ -194,9 +194,15 @@
 
   @req:atc14
   场景: turn-end-refreshes-token
-    假如 发生 TurnEnd
+    假如 发生 TurnEnd 或 ContextTokenSettlement（TurnSettled）
     当 下一帧 footer
-    那么 token 字段经 estimate 刷新
+    那么 token 字段经 settlement 或 estimate 刷新
+
+  @req:atc14
+  场景: stream-close-skips-second-estimate
+    假如 本轮已应用 TurnSettled settlement 且 footer 已更新
+    当 on_run_stream_closed 后 drain
+    那么 MUST NOT 再触发第二次 estimate
 
   @req:atc14
   场景: mid-turn-api-usage-throttled
