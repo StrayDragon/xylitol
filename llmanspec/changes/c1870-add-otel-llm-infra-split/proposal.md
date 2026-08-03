@@ -3,7 +3,8 @@ depends_on:
 - c1860-refactor-context-token-settlement
 branch: sdd/c1870-add-otel-llm-infra-split
 base_sha: 36271222a6221e1edf59c09adb79d41711451acc
-checkpointed: false
+checkpointed: true
+checkpoint_sha: 7175e6b78f32e36eb7ecda5677ef1863f5a44084
 ---
 
 # OTel LLM / infra 车道（obs.lane + 门闸压缩）
