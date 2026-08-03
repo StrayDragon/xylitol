@@ -133,16 +133,30 @@ coding agent 默认：环境类（cwd）可留 system；高变读数（工具计
 
 | 方向 | change（草案） | 备注 |
 |---|---|---|
-| Responses 默认 + Completions 显式类型 + Anthropic 桩 + capabilities 配置 | [`c1880-update-responses-first-api-boundary`](../../llmanspec/changes/c1880-update-responses-first-api-boundary/proposal.md) | Wave A |
-| Responses cache usage 诚实透出 | [`c1885-add-responses-cache-usage-honesty`](../../llmanspec/changes/c1885-add-responses-cache-usage-honesty/proposal.md) | Wave A 可并行 |
-| ContextPolicy + ResponsesAssembler | [`c1890-add-responses-context-policy-assembler`](../../llmanspec/changes/c1890-add-responses-context-policy-assembler/proposal.md) | Wave B，依赖 c1880 |
-| Status bar 子系统 | [`c1895-add-agent-status-bar-subsystem`](../../llmanspec/changes/c1895-add-agent-status-bar-subsystem/proposal.md) | Wave C，依赖 c1890 |
-| tool_search + MCP 内部目录 | [`c1900-add-tool-search-mcp-discovery`](../../llmanspec/changes/c1900-add-tool-search-mcp-discovery/proposal.md) | Wave C，依赖 c1880+c1890 |
-| system 稳定/可变切分 | [`c1905-update-system-prompt-stable-volatile-split`](../../llmanspec/changes/c1905-update-system-prompt-stable-volatile-split/proposal.md) | Wave C，依赖 c1890 |
-| 压缩冻结替换串 | [`c1910-update-compaction-freeze-tool-replacements`](../../llmanspec/changes/c1910-update-compaction-freeze-tool-replacements/proposal.md) | Wave C，依赖 c1890 |
-| previous_response_id 可选链 | [`c1915-add-previous-response-id-optional-chain`](../../llmanspec/changes/c1915-add-previous-response-id-optional-chain/proposal.md) | Wave D，依赖 c1880+c1890 |
+| Responses 默认 + Completions 显式类型 + Anthropic 桩 + flavor/capabilities | [`c1880-…`](../../llmanspec/changes/c1880-update-responses-first-api-boundary/proposal.md) | Wave A |
+| Responses cache usage 诚实透出 | [`c1885-…`](../../llmanspec/changes/c1885-add-responses-cache-usage-honesty/proposal.md) | Wave A 可并行 |
+| ContextPolicy + ResponsesAssembler | [`c1890-…`](../../llmanspec/changes/c1890-add-responses-context-policy-assembler/proposal.md) | Wave B，依赖 c1880 |
+| Context Epoch（前缀/工具世代） | [`c1920-…`](../../llmanspec/changes/c1920-add-context-epoch-freeze/proposal.md) | Wave B+，依赖 c1890 |
+| Thinking/reasoning 回放 × flavor | [`c1925-…`](../../llmanspec/changes/c1925-update-responses-thinking-replay-flavor/proposal.md) | Wave B+ |
+| Session SSOT ↔ Provider view | [`c1930-…`](../../llmanspec/changes/c1930-update-session-provider-view-contract/proposal.md) | Wave B+ |
+| Assembler 布局决策可观测 | [`c1935-…`](../../llmanspec/changes/c1935-add-assembler-layout-observability/proposal.md) | Wave B+ |
+| Status bar 子系统 | [`c1895-…`](../../llmanspec/changes/c1895-add-agent-status-bar-subsystem/proposal.md) | Wave C，依赖 c1890+c1930 |
+| tool_search + MCP 内部目录 | [`c1900-…`](../../llmanspec/changes/c1900-add-tool-search-mcp-discovery/proposal.md) | Wave C，依赖 c1880+c1890+c1920 |
+| system 稳定/可变切分 | [`c1905-…`](../../llmanspec/changes/c1905-update-system-prompt-stable-volatile-split/proposal.md) | Wave C，依赖 c1890 |
+| 压缩冻结替换串 | [`c1910-…`](../../llmanspec/changes/c1910-update-compaction-freeze-tool-replacements/proposal.md) | Wave C，依赖 c1890+c1930 |
+| previous_response_id 可选链 | [`c1915-…`](../../llmanspec/changes/c1915-add-previous-response-id-optional-chain/proposal.md) | Wave D，依赖 c1880+c1890+c1920 |
 
 依赖以各 `proposal.md` frontmatter `depends_on` 为准；本文不钉实现细节。
+
+### 波次（多 agent 并行）
+
+```text
+A:  c1880 ∥ c1885
+B:  c1890
+B+: c1920 ∥ c1925 ∥ c1930 ∥ c1935
+C:  c1895 ∥ c1900 ∥ c1905 ∥ c1910
+D:  c1915
+```
 
 ---
 

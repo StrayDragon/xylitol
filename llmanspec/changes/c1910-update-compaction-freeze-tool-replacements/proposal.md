@@ -1,13 +1,14 @@
 ---
 depends_on:
   - c1890-add-responses-context-policy-assembler
+  - c1930-update-session-provider-view-contract
 ---
 
 # 压缩：工具结果替换串首次冻结
 
 > **调研底稿**：[`docs/research/responses-context-layout-and-cache-2026.md`](../../../docs/research/responses-context-layout-and-cache-2026.md) §6；书 Ch2 压缩/冻结替换。
-> **波次**：Wave C（依赖 `c1890`；可与 `c1895`/`c1900`/`c1905` 并行）
-> **自包含**：在已有 auto-compact 之上钉「冻结替换」与「不砍前缀」；不做 cache 命中优化本身。
+> **波次**：Wave C（依赖 `c1890`+`c1930`；可与 `c1895`/`c1900`/`c1905` 并行）
+> **自包含**：在已有 auto-compact 之上钉「冻结替换」与「不砍前缀」；不做 cache 命中优化本身。冻结表归属 Session SSOT（`c1930`）。
 
 ## Why
 
@@ -38,7 +39,7 @@ depends_on:
 
 ## Parallel / depends
 
-- **硬依赖**：`c1890`（布局边界：compact 只动轨迹）
+- **硬依赖**：`c1890`（布局边界：compact 只动轨迹）、`c1930`（冻结表在 SSOT 的位置）
 - 与 Wave C 并行时注意 compaction 模块所有权
 
 ## Open Questions
