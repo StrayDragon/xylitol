@@ -814,12 +814,25 @@ fn spawn_product_fake_ready(cols: u16, rows: u16) -> (PtySession, tempfile::Temp
 }
 
 /// Long nested project path — exercises startup-card wrap at narrow Ready widths.
+///
+/// Nest under the tempdir using this checkout's path relative to `$HOME`
+/// (fallback: crate dir name), so each clone uses its own path depth/length.
 fn spawn_product_fake_ready_long_path(cols: u16, rows: u16) -> (PtySession, tempfile::TempDir) {
-    spawn_product_fake_ready_in(
-        cols,
-        rows,
-        "Projects/__straydragon__/xylitol-very-long-path-segment",
-    )
+    spawn_product_fake_ready_in(cols, rows, &checkout_rel_under_home())
+}
+
+fn checkout_rel_under_home() -> String {
+    let root = std::path::PathBuf::from(env!("CARGO_MANIFEST_DIR"));
+    let home = std::env::var_os("HOME").or_else(|| std::env::var_os("USERPROFILE"));
+    if let Some(home) = home {
+        let home = std::path::PathBuf::from(home);
+        if let Ok(rel) = root.strip_prefix(&home) {
+            return rel.to_string_lossy().replace('\\', "/");
+        }
+    }
+    root.file_name()
+        .map(|s| s.to_string_lossy().into_owned())
+        .unwrap_or_else(|| "xylitol".into())
 }
 
 fn spawn_product_fake_ready_in(

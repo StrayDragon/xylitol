@@ -253,23 +253,14 @@ mod tests {
 
     #[test]
     fn card_at_narrow_widths_does_not_hang() {
+        // Use this checkout's path so each clone exercises its own cwd length.
+        let long_cwd = crate::app::tui::host::display_path(env!("CARGO_MANIFEST_DIR"));
+        let long_model = "fake-model-with-a-very-long-name";
         let cases: &[(usize, &str, &str)] = &[
             (72, "~/x", "m"),
-            (
-                50,
-                "~/Projects/__straydragon__/xylitol",
-                "fake-model-with-a-very-long-name",
-            ),
-            (
-                44,
-                "~/Projects/__straydragon__/xylitol",
-                "fake-model-with-a-very-long-name",
-            ),
-            (
-                40,
-                "~/Projects/__straydragon__/xylitol",
-                "fake-model-with-a-very-long-name",
-            ),
+            (50, long_cwd.as_str(), long_model),
+            (44, long_cwd.as_str(), long_model),
+            (40, long_cwd.as_str(), long_model),
             (8, "~/x", "m"),
         ];
         for &(w, cwd, model) in cases {
