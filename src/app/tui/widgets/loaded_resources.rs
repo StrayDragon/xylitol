@@ -14,7 +14,7 @@ const ACCENT_RGB: (u8, u8, u8) = (0x38, 0xbd, 0xf8);
 /// ╭──────────────────────────────────────────────╮
 /// │ >_ xylitol (v…)                              │
 /// │                                              │
-/// │ model:     ornith                            │
+/// │ model:     model-name                        │
 /// │ directory: ~/…                               │
 /// │ skills(N): a · b · c                         │
 /// │ mcp:       2 connected · …                   │
@@ -193,7 +193,7 @@ mod tests {
             LayoutTheme::product_dark(),
             &LoadedResourcesSnapshot::default(),
             "~/proj",
-            "ornith",
+            "model-name",
             72,
         );
         let joined = lines.join("\n");
@@ -201,7 +201,7 @@ mod tests {
         assert!(joined.contains("xylitol"), "{joined}");
         assert!(!joined.contains("木糖醇"), "{joined}");
         assert!(
-            joined.contains("model") && joined.contains("ornith"),
+            joined.contains("model") && joined.contains("model-name"),
             "{joined}"
         );
         assert!(

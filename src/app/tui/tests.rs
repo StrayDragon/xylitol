@@ -85,7 +85,7 @@ fn harness_resize_to_ready() {
     assert_eq!(session.mode(), LayoutMode::Ready);
     let joined = session.tui.terminal.frames.concat();
     assert!(
-        joined.contains('─') || joined.contains("ornith") || joined.contains("~/"),
+        joined.contains('─') || joined.contains("model-name") || joined.contains("~/"),
         "expected editor border or footer layout, got: {joined:?}"
     );
 }
@@ -1604,7 +1604,7 @@ fn layout_idle_status_is_one_blank_above_editor() {
     use super::layout::UiRoot;
 
     let mut root = UiRoot::new();
-    root.set_layout_meta("~/xylitol", "ornith");
+    root.set_layout_meta("~/xylitol", "model-name");
     root.apply_ui_model(&UiModel::new());
     let lines = root.render(80);
     assert!(
@@ -1623,7 +1623,7 @@ fn layout_idle_status_is_one_blank_above_editor() {
     );
     let footer = lines.last().expect("footer");
     assert!(footer.contains("~/xylitol"), "{footer}");
-    assert!(footer.contains("ornith"), "{footer}");
+    assert!(footer.contains("model-name"), "{footer}");
     assert!(
         !footer.contains("enter submit"),
         "footer must not be a key-chord wall: {footer}"
@@ -1635,7 +1635,7 @@ fn layout_busy_status_keeps_leading_blank() {
     use super::layout::UiRoot;
 
     let mut root = UiRoot::new();
-    root.set_layout_meta("~/xylitol", "ornith");
+    root.set_layout_meta("~/xylitol", "model-name");
     let mut model = UiModel::new();
     model.begin_run("hello");
     root.apply_ui_model(&model);
@@ -1655,7 +1655,7 @@ fn layout_compacting_and_retry_stay_single_status_row() {
     use super::layout::UiRoot;
 
     let mut root = UiRoot::new();
-    root.set_layout_meta("~/xylitol", "ornith");
+    root.set_layout_meta("~/xylitol", "model-name");
 
     let mut compacting = UiModel::new();
     compacting.begin_run("hi");
@@ -1700,7 +1700,7 @@ fn layout_busy_status_is_separate_from_footer() {
     use super::layout::UiRoot;
 
     let mut root = UiRoot::new();
-    root.set_layout_meta("~/xylitol", "ornith");
+    root.set_layout_meta("~/xylitol", "model-name");
     let mut model = UiModel::new();
     model.begin_run("hello");
     root.apply_ui_model(&model);
@@ -1735,7 +1735,7 @@ fn layout_busy_status_is_separate_from_footer() {
         "spinner must not live in footer: {footer}"
     );
     assert!(
-        footer.contains("~/xylitol") && footer.contains("ornith"),
+        footer.contains("~/xylitol") && footer.contains("model-name"),
         "{footer}"
     );
 
@@ -2093,7 +2093,7 @@ fn upper_cache_reused_across_spinner_ticks() {
     use super::layout::UiRoot;
 
     let mut root = UiRoot::new();
-    root.set_layout_meta("~/xylitol", "ornith");
+    root.set_layout_meta("~/xylitol", "model-name");
     let mut model = UiModel::new();
     model.begin_run("hello");
     for i in 0..40 {
