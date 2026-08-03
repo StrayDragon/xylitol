@@ -128,7 +128,8 @@ async fn render_stream<W: Write>(
             | XyEvent::QueueUpdate { .. }
             | XyEvent::AutoRetryStart { .. }
             | XyEvent::AutoRetryEnd { .. }
-            | XyEvent::SessionInfoChanged { .. } => {
+            | XyEvent::SessionInfoChanged { .. }
+            | XyEvent::ContextTokenSettlement { .. } => {
                 // Lifecycle metadata: silent in print mode.
             }
             XyEvent::AgentEnd { .. } => break,

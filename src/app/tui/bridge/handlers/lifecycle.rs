@@ -101,7 +101,9 @@ pub fn apply_lifecycle_family(model: &mut UiModel, event: &XyEvent) -> bool {
         }
         XyEvent::ModelSelect { .. }
         | XyEvent::ThinkingLevelChanged { .. }
-        | XyEvent::SessionInfoChanged { .. } => {
+        | XyEvent::SessionInfoChanged { .. }
+        | XyEvent::ContextTokenSettlement { .. } => {
+            // Settlement is applied by host footer (c1860), not UiModel.
             log::debug!(target: "xylitol::tui", "XyEvent ignored by bridge (metadata) event={}", event.description());
             true
         }

@@ -16,6 +16,7 @@ use serde::{Deserialize, Serialize};
 use serde_json::Value;
 
 use crate::protocol::message::AgentMessage;
+use crate::protocol::types::ContextTokenEstimate;
 
 // ── XyEvent ─────────────────────────────────────────────
 
@@ -106,6 +107,15 @@ pub enum XyEvent {
         tokens_before: Option<u64>,
     },
 
+    /// Shared context-token settlement (c1860) — compact + footer consume one snapshot.
+    ///
+    /// `reason` is a stable snake_case string (`turn_settled`, `after_compaction`, …).
+    ContextTokenSettlement {
+        estimate: ContextTokenEstimate,
+        reason: String,
+        generation: u64,
+    },
+
     // ── Model and settings ───────────────────────────────────────
     ModelSelect {
         provider: String,
@@ -160,6 +170,7 @@ impl XyEvent {
             XyEvent::ToolExecutionEnd { .. } => "tool_execution_end",
             XyEvent::CompactionStart { .. } => "compaction_start",
             XyEvent::CompactionEnd { .. } => "compaction_end",
+            XyEvent::ContextTokenSettlement { .. } => "context_token_settlement",
             XyEvent::ModelSelect { .. } => "model_select",
             XyEvent::ThinkingLevelChanged { .. } => "thinking_level_changed",
             XyEvent::QueueUpdate { .. } => "queue_update",

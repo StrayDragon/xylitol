@@ -189,6 +189,18 @@ async fn drain_footer_token_if_pending<T: Terminal>(
     session: &mut HostSession<T>,
     driver: &dyn XyDriver,
 ) {
+    // c1860: prefer settlement snapshot (no re-estimate / no OTel).
+    if let Some(est) = session.take_pending_settlement_estimate() {
+        let _ = session.take_pending_footer_token_refresh();
+        let window = driver
+            .current_model()
+            .map(|m| m.context_window)
+            .unwrap_or(0);
+        let label = footer_token_label(est.provenance, est.tokens, window);
+        session.set_footer_token_label(Some(label));
+        let _ = session.render_now();
+        return;
+    }
     if !session.take_pending_footer_token_refresh() {
         return;
     }

@@ -8,7 +8,7 @@
 
 use crate::agent::compaction::obs::AgentCompactionSpan;
 use crate::agent::compaction::overflow::{assistant_same_model, is_context_overflow_assistant};
-use crate::agent::compaction::token_estimator::{EstimateOpts, estimate_from_session_entries};
+use crate::agent::compaction::token_estimator::EstimateOpts;
 use crate::agent::compaction::{CompactionSettings, compact_session, prepare_compaction};
 use crate::protocol::lifecycle::XyEvent;
 use crate::protocol::message::{AgentMessage, LlmMessage, XyStopReason};
@@ -100,6 +100,10 @@ impl CompactionOrchestrator {
             })
             .await;
 
+        if result.is_ok() {
+            emit_after_compaction_settlement(store, sid, event_sink).await;
+        }
+
         result?;
         Ok(())
     }
@@ -185,6 +189,9 @@ impl CompactionOrchestrator {
     }
 
     /// Threshold auto-compact (pi Case2).
+    ///
+    /// When `precomputed` is `Some`, that estimate is used for the reserve gate
+    /// (c1860 settlement share with footer). Otherwise estimates quietly from the leaf.
     #[allow(clippy::too_many_arguments)]
     pub async fn maybe_auto_compact(
         &self,
@@ -195,6 +202,7 @@ impl CompactionOrchestrator {
         context_window: u64,
         estimate_opts: &EstimateOpts,
         last_assistant: Option<&AgentMessage>,
+        precomputed: Option<&crate::protocol::types::ContextTokenEstimate>,
     ) -> Result<bool, String> {
         if !self.settings.enabled {
             return Ok(false);
@@ -210,7 +218,13 @@ impl CompactionOrchestrator {
             return Ok(false);
         }
 
-        let estimate = estimate_from_session_entries(&entries, estimate_opts);
+        let estimate = match precomputed {
+            Some(e) => e.clone(),
+            None => {
+                use crate::agent::compaction::settlement::estimate_quiet;
+                estimate_quiet(&entries, estimate_opts)
+            }
+        };
         if estimate.tokens == 0 {
             return Ok(false);
         }
@@ -297,11 +311,40 @@ impl CompactionOrchestrator {
             })
             .await;
 
+        if result.is_ok() {
+            emit_after_compaction_settlement(store, sid, event_sink).await;
+        }
+
         match result {
             Ok(_) => Ok(true),
             Err(e) => Err(format!("auto-compaction: {e}")),
         }
     }
+}
+
+async fn emit_after_compaction_settlement(
+    store: &dyn XySessionStore,
+    sid: &str,
+    event_sink: &dyn XyEventSink,
+) {
+    use crate::agent::compaction::settlement::{
+        ContextTokenSettlementReason, settle_from_session_entries,
+    };
+    let Ok(fresh) = store.load_leaf_branch(sid).await else {
+        return;
+    };
+    let settled = settle_from_session_entries(
+        &fresh,
+        &EstimateOpts::default(),
+        ContextTokenSettlementReason::AfterCompaction,
+    );
+    event_sink
+        .emit(&XyEvent::ContextTokenSettlement {
+            estimate: settled.estimate,
+            reason: settled.reason.as_str().to_string(),
+            generation: settled.generation,
+        })
+        .await;
 }
 
 /// Check if compaction should trigger (pi-aligned reserve formula).

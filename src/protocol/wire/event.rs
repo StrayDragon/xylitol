@@ -87,6 +87,17 @@ pub enum Event {
     },
     /// Compaction completed.
     CompactionEnd,
+    /// Shared context-token settlement (c1860) for footer / cross-client chrome.
+    ContextTokenSettlement {
+        tokens: u64,
+        provenance: String,
+        usage_tokens: u64,
+        trailing_tokens: u64,
+        #[serde(default, skip_serializing_if = "Option::is_none")]
+        last_usage_index: Option<usize>,
+        reason: String,
+        generation: u64,
+    },
     /// Pending steer / follow-up queue depths (cross-client badge).
     QueueUpdate {
         steer_count: usize,
@@ -139,6 +150,19 @@ impl XyEvent {
                 reason: reason.clone(),
             }),
             XyEvent::CompactionEnd { .. } => Some(Event::CompactionEnd),
+            XyEvent::ContextTokenSettlement {
+                estimate,
+                reason,
+                generation,
+            } => Some(Event::ContextTokenSettlement {
+                tokens: estimate.tokens,
+                provenance: estimate.provenance.as_str().to_string(),
+                usage_tokens: estimate.usage_tokens,
+                trailing_tokens: estimate.trailing_tokens,
+                last_usage_index: estimate.last_usage_index,
+                reason: reason.clone(),
+                generation: *generation,
+            }),
             XyEvent::AgentEnd { .. } => Some(Event::AgentEnd),
             XyEvent::Error(msg) => Some(Event::Error {
                 id: None,
@@ -224,6 +248,35 @@ impl TryFrom<&Event> for XyEvent {
                 summary: None,
                 tokens_before: None,
             }),
+            Event::ContextTokenSettlement {
+                tokens,
+                provenance,
+                usage_tokens,
+                trailing_tokens,
+                last_usage_index,
+                reason,
+                generation,
+            } => {
+                use crate::protocol::types::{ContextTokenEstimate, TokenProvenance};
+                let provenance = match provenance.as_str() {
+                    "Api" => TokenProvenance::Api,
+                    "RemoteCount" => TokenProvenance::RemoteCount,
+                    "LocalTokenizer" => TokenProvenance::LocalTokenizer,
+                    "Heuristic" => TokenProvenance::Heuristic,
+                    _ => TokenProvenance::Unknown,
+                };
+                Ok(XyEvent::ContextTokenSettlement {
+                    estimate: ContextTokenEstimate {
+                        tokens: *tokens,
+                        provenance,
+                        usage_tokens: *usage_tokens,
+                        trailing_tokens: *trailing_tokens,
+                        last_usage_index: *last_usage_index,
+                    },
+                    reason: reason.clone(),
+                    generation: *generation,
+                })
+            }
             Event::AgentEnd => Ok(XyEvent::AgentEnd {
                 messages: Vec::new(),
             }),
@@ -293,11 +346,35 @@ mod tests {
     }
 
     #[test]
-    fn agent_start_degrades_off_wire() {
-        let domain = XyEvent::AgentStart {
-            session_id: "s".into(),
-            model: "m".into(),
+    fn context_token_settlement_roundtrips_through_wire_event() {
+        use crate::protocol::types::{ContextTokenEstimate, TokenProvenance};
+        let domain = XyEvent::ContextTokenSettlement {
+            estimate: ContextTokenEstimate {
+                tokens: 42,
+                provenance: TokenProvenance::Api,
+                usage_tokens: 40,
+                trailing_tokens: 2,
+                last_usage_index: Some(1),
+            },
+            reason: "turn_settled".into(),
+            generation: 9,
         };
-        assert!(domain.to_wire_event().is_none());
+        let wire = domain
+            .to_wire_event()
+            .expect("ContextTokenSettlement is wire-visible (c1860)");
+        let back = XyEvent::try_from(&wire).expect("roundtrip");
+        match back {
+            XyEvent::ContextTokenSettlement {
+                estimate,
+                reason,
+                generation,
+            } => {
+                assert_eq!(estimate.tokens, 42);
+                assert_eq!(estimate.provenance, TokenProvenance::Api);
+                assert_eq!(reason, "turn_settled");
+                assert_eq!(generation, 9);
+            }
+            other => panic!("unexpected: {other:?}"),
+        }
     }
 }

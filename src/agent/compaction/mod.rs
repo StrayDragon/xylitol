@@ -16,9 +16,10 @@ pub mod obs;
 pub mod orchestrator;
 pub mod overflow;
 pub mod settings;
+pub mod settlement;
+pub mod token_estimator;
 
 pub use orchestrator::{CompactionOrchestrator, OverflowCompactOutcome, should_compact};
-pub mod token_estimator;
 
 pub use cut_detector::{
     CutPointResult, estimate_tokens_entry, estimate_tokens_entry_for_cut,
@@ -32,6 +33,10 @@ pub use overflow::{
     assistant_same_model, error_message_is_context_overflow, is_context_overflow_assistant,
 };
 pub use settings::CompactionSettings;
+pub use settlement::{
+    ContextTokenSettlement, ContextTokenSettlementReason, estimate_quiet,
+    next_settlement_generation, settle_from_session_entries,
+};
 pub use token_estimator::{
     EstimateOpts, calculate_context_tokens, estimate_context_tokens, estimate_from_session_entries,
 };

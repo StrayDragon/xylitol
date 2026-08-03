@@ -44,6 +44,10 @@ pub struct EstimateOpts {
     pub remote_count_tokens: Option<u64>,
     /// When false (default, c1420 / paa10), LocalTokenizer encode is skipped.
     pub allow_local_tokenizer: bool,
+    /// When true, emit a `token.estimate` fastrace span (c1860). Default **false** —
+    /// settlement paths call [`emit_token_estimate_obs`] explicitly so callers do not
+    /// each create duplicate OTel observations.
+    pub emit_obs: bool,
 }
 
 /// Build a [`ContextTokenEstimate`] from persisted session entries (footer + compact).
@@ -165,24 +169,30 @@ pub fn estimate_context_tokens_with(
         trailing_tokens: est.trailing_tokens,
         last_usage_index: est.last_usage_index,
     };
-    emit_token_estimate_obs(&result, opts);
+    log::debug!(
+        target: "xylitol::token_estimate",
+        "token estimate backend={} tokens={} usage_tokens={} trailing={} allow_local={} allow_remote={} emit_obs={} model_id={:?}",
+        result.provenance.as_str(),
+        result.tokens,
+        result.usage_tokens,
+        result.trailing_tokens,
+        opts.allow_local_tokenizer,
+        opts.allow_remote_count,
+        opts.emit_obs,
+        opts.model_id,
+    );
+    if opts.emit_obs {
+        emit_token_estimate_obs(&result, opts);
+    }
     result
 }
 
-/// Record which estimate backend won (fastrace + level log), gated like provider-trace.
-fn emit_token_estimate_obs(est: &ContextTokenEstimate, opts: &EstimateOpts) {
+/// Record which estimate backend won (fastrace), gated like provider-trace.
+///
+/// Prefer [`super::settlement::settle_from_session_entries`] so compact + footer
+/// share one emit; do not call this from every estimate caller.
+pub(crate) fn emit_token_estimate_obs(est: &ContextTokenEstimate, opts: &EstimateOpts) {
     let backend = est.provenance.as_str();
-    log::debug!(
-        target: "xylitol::token_estimate",
-        "token estimate backend={backend} tokens={} usage_tokens={} trailing={} allow_local={} allow_remote={} model_id={:?}",
-        est.tokens,
-        est.usage_tokens,
-        est.trailing_tokens,
-        opts.allow_local_tokenizer,
-        opts.allow_remote_count,
-        opts.model_id,
-    );
-
     if !xylitol_ai_bridge::provider::trace::provider_trace_active() {
         return;
     }

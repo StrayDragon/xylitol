@@ -881,6 +881,7 @@ impl AgentCapabilities {
                 ctx_window,
                 estimate_opts,
                 last_assistant,
+                None,
             )
             .await?;
 
