@@ -41,7 +41,7 @@ impl XyModelKind {
         }
     }
 
-    /// Default adapter dialect string when YAML/`api` is omitted (c1598 / c1600).
+    /// Default adapter API protocol family when YAML/`api` is omitted (c1598 / c1600).
     ///
     /// Keep in sync with infra `AdapterKind::default_for` → Display
     /// (`openai-responses` / `anthropic-messages`). Lives in protocol so agent
