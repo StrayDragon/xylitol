@@ -22,15 +22,15 @@
 - [ ] 4.1 Host：消费 settlement 事件更新 footer（异步标签规则不变）
 - [ ] 4.2 `TurnEnd` 不再单独 `estimate`（若事件已覆盖）；`on_run_stream_closed` 在本 run 已有 TurnSettled generation 时 **跳过** kick
 - [ ] 4.3 保留：换叶 / CompactionEnd / mid-turn throttled / resume 等真实失效路径
-- [ ] 4.4 更新 `design/footer.md` 刷新时机措辞与 atc14 对齐
+- [x] 4.4 更新 `design/footer.md` 刷新时机措辞与 atc14 对齐
 - [ ] 4.5 Harness：改 `c1730_turn_end` / `c1035_stream_closed`；新增「TurnEnd+stream close 不双 estimate」断言
 
 ## 5. Specs landing
 
-- [ ] 5.1 `domain-compaction`：强化 c16 或新 req — turn 收尾 compact 与 footer 共用同一 settlement snapshot
-- [ ] 5.2 `app-tui-chrome`：改 atc14 — 禁止 TurnEnd 与 stream close 对同一次 idle 收尾双 estimate
-- [ ] 5.3 `infra-otel`：改 otel13 — settlement 收尾路径 MUST NOT 仅为 footer 再开独立根；真无 turn 的闲置路径仍 MAY
-- [ ] 5.4 对应 `.feature` 场景措辞（Partitioned；可执行仍以 harness/单测为主处标清）
+- [x] 5.1 `domain-compaction`：强化 c16 + 新 c26 — turn 收尾 compact 与 footer 共用同一 settlement snapshot
+- [x] 5.2 `app-tui-chrome`：改 atc14 — 禁止 TurnEnd 与 stream close 对同一次 idle 收尾双 estimate
+- [x] 5.3 `infra-otel`：改 otel13 + otel21 — settlement 收尾路径 MUST NOT 仅为 footer 再开独立根；真无 turn 的闲置路径仍 MAY
+- [x] 5.4 对应 `.feature` 场景措辞（Partitioned；可执行仍以 harness/单测为主处标清）
 
 ## 6. 校验
 

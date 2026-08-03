@@ -168,6 +168,12 @@
     那么 所用 token 数字与同源估计一致且 MUST NOT 另算独立 len/4 总和
     并且 触发比较式为占用大于窗口减 reserveTokens
 
+  @req:c26
+  场景: turn-settlement-once-shared
+    假如 单次 turn 收尾且未实际执行 compaction
+    当 compact 预检与 footer 刷新完成
+    那么 二者消费同一 settlement generation 且 MUST NOT 同秒重复独立 estimate 打点
+
   @req:c17
   @req:c2
   场景: auto-over-threshold

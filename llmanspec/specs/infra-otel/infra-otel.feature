@@ -80,7 +80,13 @@
   场景: token.estimate 挂 turn 或独立根
     假如 低频观测 span 已激活
     当 在活跃 agent.turn 内发生 token.estimate
-    那么 该 span 为该 turn 的子 span；当无 turn 上下文时可为独立根并在 session 已知时带同一 langfuse.session.id
+    那么 该 span 为该 turn 的子 span；当无 turn 上下文的真闲置路径时可为独立根并在 session 已知时带同一 langfuse.session.id；TurnSettled 后仅为 footer stream-close 不得再开 random 独立根
+
+  @req:otel21
+  场景: TurnSettled 至多一个 token.estimate
+    假如 低频观测 span 已激活且单次 turn 收尾未触发 AfterCompaction
+    当 收集 token.estimate SpanRecord
+    那么 恰好 1 条且挂在该 agent.turn 下
 
   @req:otel14
   场景: tool observation I/O 仅显式档
