@@ -74,6 +74,19 @@
 - 非变更闸脚本 `scripts/check_*.py` **MUST** 经 wiring 进 `qa`；维护脚本不进闸。
 - 探查：`cargo run -- --help`；文档：`cargo doc --no-deps --all-features`。
 
+## Worktree 并行开发
+
+多 worktree 并行（多个 SDD change / feature 分支同时开）时遵循：
+
+- **硬规则**：同 crate 的不同 worktree **禁止**共用 `CARGO_TARGET_DIR`。Cargo fingerprint 不区分包绝对路径，可错误标 `Fresh` 并跑到别的树编出的二进制（1.97.x 已复现）。
+- 每树独立 target：
+  ```bash
+  eval "$(just cargo-wt-env)"        # 或 source scripts/cargo_worktree_env.sh
+  ```
+  输出 `CARGO_TARGET_DIR=~/.cache/cargo-targets/<repo>/<wt-key>/`，按仓库根路径哈希隔离；脚本见 `scripts/cargo_worktree_env.sh`（维护脚本，不进 qa）。
+- **共享层**：`~/.cargo`（registry/git）+ sccache（`RUSTC_WRAPPER=sccache`）跨树安全；`SCCACHE_CACHE_SIZE` 防止缓存反噬磁盘。
+- 清盘：删除旧 worktree 后顺手 `rm -rf ~/.cache/cargo-targets/<repo>/<对应key>/`；大 target 内部结构（debuginfo / incremental）处置见 `docs/research/rust-disk-worktree-cache-2026.md` 与 skill `rust-build-tune`。
+
 ## 提交与测试
 
 - Conventional Commits；开 PR 前 `just qa`。
@@ -88,7 +101,7 @@
 
 ## Skills
 
-SDD：`llman-sdd-*`（含 `llman-sdd-quick` 快速路径）。应用面：`write-surface`、`audit-dead-code`、`write-tui`。TUI 验证：`test-tui-harness`。观测窄读：`xylitol-inspect-runtime-logs`。TUI 参考：`tui-expert-of-codex`、`terminal-tui-differential-rendering`。
+SDD：`llman-sdd-*`（含 `llman-sdd-quick` 快速路径）。应用面：`write-surface`、`audit-dead-code`、`write-tui`。TUI 验证：`test-tui-harness`。观测窄读：`xylitol-inspect-runtime-logs`。构建/磁盘：`rust-build-tune`。TUI 参考：`tui-expert-of-codex`、`terminal-tui-differential-rendering`。
 
 ## 编写与维护 AGENTS.md
 
