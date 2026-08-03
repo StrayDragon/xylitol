@@ -5,8 +5,7 @@ depends_on:
 
 # Assembler 布局决策可观测
 
-> **调研底稿**：[`docs/research/responses-context-layout-and-cache-2026.md`](../../../docs/research/responses-context-layout-and-cache-2026.md)；现有 provider-trace / fastrace。  
-> **波次**：Wave B+ / 可紧随 `c1890`（与 Epoch 等并行；**不**阻塞 Wave C 实现，但建议同迭代落地便于对照）  
+> **调研底稿**：[`docs/research/responses-context-layout-and-cache-2026.md`](../../../docs/research/responses-context-layout-and-cache-2026.md)；现有 provider-trace / fastrace。
 > **自包含**：只加「本轮用了哪套布局规则」的观测；不新建检视台 UI。
 
 ## Why
@@ -27,8 +26,8 @@ flavor、ContextPolicy 档、context epoch、tools 模式、date 放置、是否
 
 ## Impact
 
-- Wave C/D 策略变更可对照「规则 ↔ usage」。
-- 多 agent 并行时减少「我以为开了 search 档」类失误。
+- 后续策略变更可对照「规则 ↔ usage」。
+- 并行实现时减少「我以为开了 search 档」类失误。
 
 ## Out of scope
 

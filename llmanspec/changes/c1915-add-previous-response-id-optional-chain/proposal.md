@@ -8,7 +8,6 @@ depends_on:
 # previous_response_id 可选链式续跑（配置开启）
 
 > **调研底稿**：[`docs/research/responses-context-layout-and-cache-2026.md`](../../../docs/research/responses-context-layout-and-cache-2026.md) §5。
-> **波次**：Wave D（依赖 `c1880`+`c1890`+`c1920`；建议 Wave C 主要项稳定后再开）
 > **自包含**：默认仍全量重放；链式为 capability + 配置 opt-in。**断链条件含 context epoch bump**（以 `c1920` 为准）。
 
 ## Why
@@ -44,7 +43,7 @@ Responses 支持用 `previous_response_id` 只传增量 input，可减重复传�
 ## Parallel / depends
 
 - **硬依赖**：`c1880`、`c1890`、`c1920`
-- 建议不与 Wave C 抢同一 adapter 文件；或 Wave C 合并后再开本 change
+- 建议不与同层改同一 adapter 文件的 change 抢冲突；或相关项稳定后再开本 change
 
 ## Open Questions
 

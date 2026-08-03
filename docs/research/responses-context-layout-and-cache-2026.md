@@ -109,7 +109,7 @@ coding agent 默认：环境类（cwd）可留 system；高变读数（工具计
 
 工程要求（落地见 `c1880` / `c1890`）：
 
-- 配置分层：`api`（协议族，如 `openai-responses`）× **`flavor`**（实现口味，如 `openai-official` / `deepseek` / `llamacpp` / `generic`，名称以实现为准）
+- 配置分层：`api`（协议族，如 `openai-responses`）× **`flavor`**（实现口味，如 `openai-official` / `deepseek` / `llamacpp` / `generic`，名称以实现为准；**正式名推荐见 `c1880` Open Questions → 兼容档案 (compatibility profile)**）
 - 用户可 **flavor 覆盖**默认策略（及 capabilities），不靠自动探测
 - Assembler / adapter **保留适配层**：同一 `AiBridgeMessage` 投影，按 flavor 选字段子集、usage 映射、降级路径
 - **禁止**假设「凡 Responses 端点行为同 OpenAI 官方」
@@ -131,32 +131,43 @@ coding agent 默认：环境类（cwd）可留 system；高变读数（工具计
 
 ## 7. 与后续 draft change 的映射
 
-| 方向 | change（草案） | 备注 |
+> 开发顺序以各提案 `depends_on` 为准，用 `llman sdd graph` 查看；**不**在本文维护波次表。
+> 下表用**工程提案标题/方向**对齐 draft（非把 live specs 翻译成书语）；书中概念对照见下表后术语表。
+
+| 方向（工程） | change（草案） | `depends_on` 摘要 |
 |---|---|---|
-| Responses 默认 + Completions 显式类型 + Anthropic 桩 + flavor/capabilities | [`c1880-…`](../../llmanspec/changes/c1880-update-responses-first-api-boundary/proposal.md) | Wave A |
-| Responses cache usage 诚实透出 | [`c1885-…`](../../llmanspec/changes/c1885-add-responses-cache-usage-honesty/proposal.md) | Wave A 可并行 |
-| ContextPolicy + ResponsesAssembler | [`c1890-…`](../../llmanspec/changes/c1890-add-responses-context-policy-assembler/proposal.md) | Wave B，依赖 c1880 |
-| Context Epoch（前缀/工具世代） | [`c1920-…`](../../llmanspec/changes/c1920-add-context-epoch-freeze/proposal.md) | Wave B+，依赖 c1890 |
-| Thinking/reasoning 回放 × flavor | [`c1925-…`](../../llmanspec/changes/c1925-update-responses-thinking-replay-flavor/proposal.md) | Wave B+ |
-| Session SSOT ↔ Provider view | [`c1930-…`](../../llmanspec/changes/c1930-update-session-provider-view-contract/proposal.md) | Wave B+ |
-| Assembler 布局决策可观测 | [`c1935-…`](../../llmanspec/changes/c1935-add-assembler-layout-observability/proposal.md) | Wave B+ |
-| Status bar 子系统 | [`c1895-…`](../../llmanspec/changes/c1895-add-agent-status-bar-subsystem/proposal.md) | Wave C，依赖 c1890+c1930 |
-| tool_search + MCP 内部目录 | [`c1900-…`](../../llmanspec/changes/c1900-add-tool-search-mcp-discovery/proposal.md) | Wave C，依赖 c1880+c1890+c1920 |
-| system 稳定/可变切分 | [`c1905-…`](../../llmanspec/changes/c1905-update-system-prompt-stable-volatile-split/proposal.md) | Wave C，依赖 c1890 |
-| 压缩冻结替换串 | [`c1910-…`](../../llmanspec/changes/c1910-update-compaction-freeze-tool-replacements/proposal.md) | Wave C，依赖 c1890+c1930 |
-| previous_response_id 可选链 | [`c1915-…`](../../llmanspec/changes/c1915-add-previous-response-id-optional-chain/proposal.md) | Wave D，依赖 c1880+c1890+c1920 |
+| Responses 默认 + Completions 显式类型 + Anthropic 桩 + flavor/capabilities | [`c1880`](../../llmanspec/changes/c1880-update-responses-first-api-boundary/proposal.md) | `[]` |
+| Responses cache usage 诚实透出 | [`c1885`](../../llmanspec/changes/c1885-add-responses-cache-usage-honesty/proposal.md) | `[]`（可与 c1880 并行） |
+| ContextPolicy + ResponsesAssembler | [`c1890`](../../llmanspec/changes/c1890-add-responses-context-policy-assembler/proposal.md) | `c1880` |
+| Context Epoch（前缀/工具世代） | [`c1920`](../../llmanspec/changes/c1920-add-context-epoch-freeze/proposal.md) | `c1890` |
+| Thinking/reasoning 回放 × flavor | [`c1925`](../../llmanspec/changes/c1925-update-responses-thinking-replay-flavor/proposal.md) | `c1880`+`c1890` |
+| Session SSOT ↔ Provider view | [`c1930`](../../llmanspec/changes/c1930-update-session-provider-view-contract/proposal.md) | `c1890` |
+| Assembler 布局决策可观测 | [`c1935`](../../llmanspec/changes/c1935-add-assembler-layout-observability/proposal.md) | `c1890` |
+| Agent 状态栏子系统 | [`c1895`](../../llmanspec/changes/c1895-add-agent-status-bar-subsystem/proposal.md) | `c1890`+`c1930` |
+| tool_search + MCP 内部目录 | [`c1900`](../../llmanspec/changes/c1900-add-tool-search-mcp-discovery/proposal.md) | `c1880`+`c1890`+`c1920` |
+| system 稳定/可变切分 | [`c1905`](../../llmanspec/changes/c1905-update-system-prompt-stable-volatile-split/proposal.md) | `c1890` |
+| 压缩冻结替换串 | [`c1910`](../../llmanspec/changes/c1910-update-compaction-freeze-tool-replacements/proposal.md) | `c1890`+`c1930` |
+| previous_response_id 可选链 | [`c1915`](../../llmanspec/changes/c1915-add-previous-response-id-optional-chain/proposal.md) | `c1880`+`c1890`+`c1920` |
 
-依赖以各 `proposal.md` frontmatter `depends_on` 为准；本文不钉实现细节。
+依赖以各 `proposal.md` frontmatter `depends_on` 为准；本文不钉实现细节。**草稿不改 live specs**；propose 前才 specs landing。
 
-### 波次（多 agent 并行）
+### 术语对照（书中 / 白话 ↔ 工程）
 
-```text
-A:  c1880 ∥ c1885
-B:  c1890
-B+: c1920 ∥ c1925 ∥ c1930 ∥ c1935
-C:  c1895 ∥ c1900 ∥ c1905 ∥ c1910
-D:  c1915
-```
+| 书中 / 白话 | 工程（draft / 代码意向） |
+|---|---|
+| 静态前缀 / 轨迹 | ContextPolicy 切点；Assembler 输入布局 |
+| 系统提示词 / 工具定义 | system·`instructions` / Responses `tools` |
+| Prompt Cache / KV Cache | usage `cached_tokens`；本地推理侧另论 |
+| 实现口味 (flavor) | **草稿占位**；正式名推荐 **兼容档案 (compatibility profile)**（`c1880` Open Questions） |
+| 能力声明 | capabilities |
+| 静态前缀世代 | context epoch（`c1920`） |
+| 会话真源 / 发给模型的投影 | Session SSOT ↔ provider view（`c1930`） |
+| 框架元信息 | harness meta |
+| Agent 状态栏 · replace / append | StatusBar 模式（`c1895`） |
+| 主动工具发现 / 只增不改 | tool_search + append-only（`c1900`） |
+| 思考回放 | reasoning / thinking replay（`c1925`） |
+| 增量续跑 | `previous_response_id`（`c1915`） |
+| 本轮组装决策可观测 | layout observability（`c1935`） |
 
 ---
 
@@ -165,10 +176,11 @@ D:  c1915
 - 命中率最大化作为产品目标
 - 无配置的隐式每轮状态栏 append
 - 用同一套断点 API 假装 OpenAI ≡ Anthropic 缓存
-- **假设凡声明 Responses 兼容的端点 ≡ OpenAI 官方语义**（须 `api` × `flavor` + 可覆盖 capabilities）
+- **假设凡声明 Responses 兼容的端点 ≡ OpenAI 官方语义**（须 `api` × `flavor` + 可覆盖 capabilities；正式名见 `c1880`）
 - 首版自动探测网关能力
 - 以「阻塞用户至 MCP 全加载」为主路径（尤其 resume）
 - LLM 维护状态栏统计
+- 把 live specs「翻译」成书中话术来代替工程草案（书语只在术语对照 / research 叙事层）
 
 ## 相关
 

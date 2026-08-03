@@ -5,7 +5,6 @@ depends_on: []
 # Responses usage：Prompt Cache 诚实透出
 
 > **调研底稿**：[`docs/research/responses-context-layout-and-cache-2026.md`](../../../docs/research/responses-context-layout-and-cache-2026.md)
-> **波次**：Wave A（可与 `c1880` 并行）
 > **自包含**：只改 usage 映射与产品诚实叙事；不依赖 Assembler / Responses-only 边界落地。
 
 ## Why
@@ -43,7 +42,7 @@ depends_on: []
 ## Parallel / depends
 
 - `depends_on: []`
-- 与 `c1880` 无硬依赖；建议同波合并评审文档用语
+- 与 `c1880` 无硬依赖；建议同期合并评审文档用语
 
 ## Open Questions
 

@@ -6,7 +6,6 @@ depends_on:
 # System prompt：稳定 / 可变切分（配置化，不教条）
 
 > **调研底稿**：[`docs/research/responses-context-layout-and-cache-2026.md`](../../../docs/research/responses-context-layout-and-cache-2026.md) §5–6。
-> **波次**：Wave C（依赖 `c1890`；可与 `c1895`/`c1900`/`c1910` 并行）
 > **自包含**：只整理 prompt 片段分类与组装顺序；不实现状态栏/MCP search。
 
 ## Why
@@ -42,7 +41,7 @@ depends_on:
 ## Parallel / depends
 
 - **硬依赖**：`c1890`
-- 与 Wave C 其它并行时注意 prompt 文件冲突，可用任务切分（模板 vs 测）
+- 与同层并行时注意 prompt 文件冲突，可用任务切分（模板 vs 测）
 
 ## Open Questions
 
