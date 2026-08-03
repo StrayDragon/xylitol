@@ -88,8 +88,8 @@ components:
 
 ```
 models · ←→ level · shift+tab · enter
-› ornith-fast *     off  low  medium [high] max
-  ornith-think                          max
+› <model-fast> *     off  low  medium [high] max
+  <model-think>                          max
   other/gpt-mini                          —
 ```
 
@@ -99,8 +99,8 @@ models · ←→ level · shift+tab · enter
 
 ```
 models · ←→/shift+tab level · enter
-› ornith-fast *                      high
-  ornith-think                        max
+› <model-fast> *                      high
+  <model-think>                        max
   other/gpt-mini                        —
 ```
 
@@ -108,8 +108,8 @@ models · ←→/shift+tab level · enter
 
 ```
 models · enter
-  ornith-fast                         high
-  ornith-think                         max
+  <model-fast>                         high
+  <model-think>                         max
 › other/gpt-mini                         —
 ```
 

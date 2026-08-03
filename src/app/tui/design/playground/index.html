@@ -542,7 +542,7 @@
             <span class="status-next-turn-cue hidden" id="shell-pending-cue">Next turn: deepseek-v4-flash</span>
           </div>
           <div class="term-editor" id="shell-editor"></div>
-          <div class="term-footer" id="shell-footer">~/xylitol · ornith · thinking off</div>
+          <div class="term-footer" id="shell-footer">~/xylitol · &lt;model-name&gt; · thinking off</div>
         </div>
       </section>
 
@@ -810,7 +810,7 @@
             <div class="row fg-assistant">好的，用 /model 选一个。</div>
           </div>
           <div class="term-editor" id="models-editor"></div>
-          <div class="term-footer" id="models-footer">~/xylitol · ornith-fast · high</div>
+          <div class="term-footer" id="models-footer">~/xylitol · &lt;model-fast&gt; · high</div>
         </div>
         <span hidden data-design-fixture="models.narrow"></span>
         <span hidden data-design-fixture="models.no-thinking"></span>
@@ -833,14 +833,14 @@
         <div class="term term-slot" id="pending-term" data-design-fixture="pending-model.next-turn">
           <div class="term-content" id="pending-scroll">
             <div class="row"><span class="fg-user">❯</span> 继续改这块</div>
-            <div class="row fg-assistant" id="pending-assistant">正在用 ornith · thinking off 流式输出…</div>
+            <div class="row fg-assistant" id="pending-assistant">正在用 &lt;model-name&gt; · thinking off 流式输出…</div>
           </div>
           <div class="term-status" id="pending-status">
             <span class="status-lead"><span class="spin" id="pending-spin">⠋</span> Working</span>
             <span class="status-next-turn-cue" id="pending-cue">Next turn: deepseek-v4-flash</span>
           </div>
           <div class="term-editor" id="pending-editor"></div>
-          <div class="term-footer" id="pending-footer">~/xylitol · ornith · thinking off</div>
+          <div class="term-footer" id="pending-footer">~/xylitol · &lt;model-name&gt; · thinking off</div>
         </div>
         <!-- fixture anchors (L2 sources are PENDING_RUNTIME.* templates) -->
         <span hidden data-design-fixture="pending-thinking.next-turn"></span>
@@ -866,7 +866,7 @@
             <span class="status-next-turn-cue">Next turn: deepseek-v4-flash</span>
           </div>
           <div class="term-editor"><span class="fg-muted">❯ </span></div>
-          <div class="term-footer">~/xylitol · ornith · thinking off</div>
+          <div class="term-footer">~/xylitol · &lt;model-name&gt; · thinking off</div>
         </div>
       </section>
 
@@ -899,7 +899,7 @@
             <span class="status-next-turn-cue" id="mcp-cue-cue">mcp pending (see /mcp)</span>
           </div>
           <div class="term-editor" id="mcp-cue-editor"></div>
-          <div class="term-footer" id="mcp-cue-footer">~/xylitol · ornith</div>
+          <div class="term-footer" id="mcp-cue-footer">~/xylitol · &lt;model-name&gt;</div>
         </div>
         <span hidden data-design-fixture="mcp-cue.panel-mixed"></span>
         <span hidden data-design-fixture="mcp-cue.cue-short-busy"></span>
@@ -923,7 +923,7 @@
             <div class="row fg-assistant">助手回复摘要…</div>
           </div>
           <div class="term-editor" id="treep-editor"></div>
-          <div class="term-footer">~/xylitol · ornith</div>
+          <div class="term-footer">~/xylitol · &lt;model-name&gt;</div>
         </div>
       </section>
 
@@ -946,7 +946,7 @@
             <div class="row fg-assistant">打开 Resume 面板…</div>
           </div>
           <div class="term-editor" id="resume-editor"></div>
-          <div class="term-footer">~/xylitol · ornith · high</div>
+          <div class="term-footer">~/xylitol · &lt;model-name&gt; · high</div>
         </div>
         <span hidden data-design-fixture="session-resume.id-on"></span>
       </section>
@@ -1050,7 +1050,7 @@
             <span class="status-lead"><span class="spin">⠋</span> Compacting</span>
           </div>
           <div class="term-editor">❯ </div>
-          <div class="term-footer" id="compaction-footer">~/xylitol · ornith · used 186,842 tokens · 93.4%/200k</div>
+          <div class="term-footer" id="compaction-footer">~/xylitol · &lt;model-name&gt; · used 186,842 tokens · 93.4%/200k</div>
         </div>
       </section>
 
@@ -1675,7 +1675,7 @@
       }
 
       // footer MUST show active (in-flight) model even when pending successor exists
-      let footer = "~/xylitol · ornith · thinking off";
+      let footer = "~/xylitol · <model-name> · thinking off";
       if (S.queue) footer = "q:s1|f0 · " + footer;
       document.getElementById("shell-footer").textContent = footer;
     }
@@ -1750,14 +1750,14 @@
     /* —— layout 壳（c475） —— */
     const LAYOUT_SHELL = {
       ok: `<div class="row"><span class="fg-accent">⠋</span> <span class="fg-muted">Working · 仅 spinner 用 accent</span></div>
-<div class="row fg-muted">~/xylitol · ornith</div>
+<div class="row fg-muted">~/xylitol · &lt;model-name&gt;</div>
 <div class="row fg-muted" style="font-size:11px">c475 · Palette::dark · 一处 accent</div>`,
       bad: `<div class="row accent-bad"><span class="spin-a">⠋</span> <span class="fg-muted">working</span> &nbsp; <span class="spin-b">●</span> <span class="fg-accent">边框也抢戏</span></div>
 <div class="row fg-muted">✗ 一屏多处 accent — DESIGN 禁止</div>`,
       idle: `<div class="row fg-assistant">idle · 无 status 行（高度 0）</div>
-<div class="row fg-muted">~/xylitol · ornith</div>
+<div class="row fg-muted">~/xylitol · &lt;model-name&gt;</div>
 <div class="row fg-muted" style="font-size:11px">status.md · MUST NOT 空转 spinner</div>`,
-      footer: `<div class="row fg-muted">~/xylitol · ornith</div>
+      footer: `<div class="row fg-muted">~/xylitol · &lt;model-name&gt;</div>
 <div class="row fg-muted">q:s1|f0 · ~/proj · model-x</div>
 <div class="row fg-muted" style="font-size:11px">MVP = cwd · model · 可选 q: 前缀 · 无键位墙 · Working 不进 footer</div>`,
       glyph: `<div class="row"><span class="fg-user">❯</span> <span class="fg-on">unicode 默认</span> · <span class="fg-tool-name">Read</span> <span class="fg-tool-path">path.rs:10</span></div>
@@ -1817,40 +1817,40 @@
     const MODELS = {
       wide: {
         editor: `<div class="row fg-muted">models · ←→ level · shift+tab · enter</div>
-<div class="row rev">› ornith-fast *     off  low  medium [high] max</div>
-<div class="row fg-on">  ornith-think                          max</div>
+<div class="row rev">› &lt;model-fast&gt; *     off  low  medium [high] max</div>
+<div class="row fg-on">  &lt;model-think&gt;                          max</div>
 <div class="row fg-on">  other/gpt-mini                          —</div>`,
-        footer: "~/xylitol · ornith-fast · high",
+        footer: "~/xylitol · <model-fast> · high",
         legend: "够宽：焦点行铺开该模型全部 xylitol 档；[high]=暂定；非焦点只预览一档；— = 无思考",
       },
       narrow: {
         editor: `<div class="row fg-muted">models · ←→/shift+tab level · enter</div>
-<div class="row rev">› ornith-fast *                      high</div>
-<div class="row fg-on">  ornith-think                        max</div>
+<div class="row rev">› &lt;model-fast&gt; *                      high</div>
+<div class="row fg-on">  &lt;model-think&gt;                        max</div>
 <div class="row fg-on">  other/gpt-mini                        —</div>`,
-        footer: "~/xylitol · ornith-fast · high",
+        footer: "~/xylitol · <model-fast> · high",
         legend: "不够宽：只显示暂定一档；←→ / shift+tab 仍 cycle（不展示全档）",
       },
       noThinking: {
         editor: `<div class="row fg-muted">models · enter</div>
-<div class="row fg-on">  ornith-fast                         high</div>
-<div class="row fg-on">  ornith-think                         max</div>
+<div class="row fg-on">  &lt;model-fast&gt;                         high</div>
+<div class="row fg-on">  &lt;model-think&gt;                         max</div>
 <div class="row rev">› other/gpt-mini                         —</div>`,
         footer: "~/xylitol · other/gpt-mini",
         legend: "焦点无思考：等级区 —；←→/shift+tab 不改状态；footer 省略 thinking 段",
       },
       filter: {
         editor: `<div class="row fg-muted">filter: orn</div>
-<div class="row rev">› ornith-fast *     off  low  medium [high] max</div>
-<div class="row fg-on">  ornith-think                          max</div>`,
-        footer: "~/xylitol · ornith-fast · high",
+<div class="row rev">› &lt;model-fast&gt; *     off  low  medium [high] max</div>
+<div class="row fg-on">  &lt;model-think&gt;                          max</div>`,
+        footer: "~/xylitol · <model-fast> · high",
         legend: "fuzzy 过滤；焦点仍可 wide 铺档",
       },
       empty: {
         editor: `<div class="row fg-muted">filter: zzz</div>
 <div class="row fg-muted">  No entries found</div>
 <div class="row fg-muted">  (0/0)</div>`,
-        footer: "~/xylitol · ornith-fast · high",
+        footer: "~/xylitol · <model-fast> · high",
         legend: "无匹配：无等级交互",
       },
     };
@@ -1876,7 +1876,7 @@
       // 仅模型 pending（fixture pending-model.next-turn）— 入口 /model
       nextTurn: {
         editor: `<div class="row fg-muted"><span class="status-lead">⠋ Working</span>  <span class="status-next-turn-cue">Next turn: deepseek-v4-flash</span></div>`,
-        footer: "~/xylitol · ornith · thinking off",
+        footer: "~/xylitol · <model-name> · thinking off",
         busy: true,
         cue: "Next turn: deepseek-v4-flash",
         legend: "入口 /model · selected model≠active → 下轮预告仅模型（即使随后又改 level，仍只显示模型）",
@@ -1884,14 +1884,14 @@
       // 仅 thinking — 入口 Shift+Tab，模型未变
       thinking: {
         editor: `<div class="row fg-muted"><span class="status-lead">⠋ Working</span>  <span class="status-next-turn-cue">Next turn thinking: high</span></div>`,
-        footer: "~/xylitol · ornith · thinking off",
+        footer: "~/xylitol · <model-name> · thinking off",
         busy: true,
         cue: "Next turn thinking: high",
         legend: "入口 /model 改 level、模型未变 → 下轮预告仅 thinking（无全局 Shift+Tab）",
       },
       cleared: {
         editor: `<div class="row fg-muted"></div>`,
-        footer: "~/xylitol · ornith · thinking off",
+        footer: "~/xylitol · <model-name> · thinking off",
         busy: false,
         cue: "",
         legend: "selected == active（切回或 idle 收敛）→ 无下轮预告",
@@ -1962,10 +1962,10 @@
         cue: "mcp pending (see /mcp)",
       },
       cueBusyNextTurnWins: {
-        editor: `<div class="row fg-muted"><span class="status-lead">⠋ Working</span><span class="status-next-turn-cue">Next turn: model ornith · thinking high</span></div>`,
+        editor: `<div class="row fg-muted"><span class="status-lead">⠋ Working</span><span class="status-next-turn-cue">Next turn: model &lt;model-name&gt; · thinking high</span></div>`,
         legend: "优先级 · busy 已有 Next turn… 时不覆盖为 MCP cue",
         mode: "cueBusy",
-        cue: "Next turn: model ornith · thinking high",
+        cue: "Next turn: model <model-name> · thinking high",
       },
       cueArmedGone: {
         editor: `<div class="row fg-muted"></div>`,
@@ -1983,7 +1983,7 @@
       const legend = document.getElementById("mcp-cue-legend");
       const footer = document.getElementById("mcp-cue-footer");
       if (legend) legend.textContent = meta.legend || "";
-      footer.textContent = "~/xylitol · ornith";
+      footer.textContent = "~/xylitol · <model-name>";
 
       if (meta.mode === "panel") {
         status.classList.add("hidden");
@@ -2104,19 +2104,19 @@
     const COMPACTION_META = {
       progress: {
         busy: true,
-        footer: "~/xylitol · ornith · used 186,842 tokens · 93.4%/200k",
+        footer: "~/xylitol · <model-name> · used 186,842 tokens · 93.4%/200k",
       },
       collapsed: {
         busy: false,
-        footer: "~/xylitol · ornith · used 42,110 tokens · 21.1%/200k",
+        footer: "~/xylitol · <model-name> · used 42,110 tokens · 21.1%/200k",
       },
       expanded: {
         busy: false,
-        footer: "~/xylitol · ornith · used 42,110 tokens · 21.1%/200k",
+        footer: "~/xylitol · <model-name> · used 42,110 tokens · 21.1%/200k",
       },
       aborted: {
         busy: false,
-        footer: "~/xylitol · ornith · used 186,842 tokens · 93.4%/200k",
+        footer: "~/xylitol · <model-name> · used 186,842 tokens · 93.4%/200k",
       },
     };
     function renderCompaction() {

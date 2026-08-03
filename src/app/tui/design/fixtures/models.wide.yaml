@@ -6,7 +6,7 @@ state: wide
 source: models.wide.editor
 must_contain:
   - "models"
-  - "› ornith-fast"
+  - "› &lt;model-fast&gt;"
   - "[high]"
   - "off"
   - "max"
