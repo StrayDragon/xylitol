@@ -62,10 +62,10 @@ Auto threshold/overflow：已 prepare-first，补 `lane=llm`。
 
 | Seam | 方式 |
 |---|---|
-| prepare 早退无 `agent.compaction` SpanRecord | CollectingReporter 单测 |
-| 过闸 manual/auto span 含 `xylitol.obs.lane=llm` | 同上 |
+| prepare 早退无 `agent.compaction` SpanRecord | `orchestrator::tests::prepare_fail_exports_no_compaction_span`（CollectingReporter；程序化，非文档） |
+| 过闸 manual/auto span 含 `xylitol.obs.lane=llm` | CollectingReporter 单测 |
 | otel19 / lane 合约 | `infra-otel` toon；scenarios `feature: false` |
-| 不扩可执行 `.feature` BDD | 与 otel18–21 一致 |
+| 不扩可执行 `.feature` BDD | 与 otel18–21 一致（obs 静态存在性走单测） |
 
 ## 非目标
 

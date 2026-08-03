@@ -432,6 +432,112 @@ fn usage_anchor_stale_vs_compaction(entries: &[SessionEntry]) -> bool {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use std::sync::{Arc, Mutex};
+
+    use async_trait::async_trait;
+    use fastrace::collector::{Config, Reporter, SpanRecord};
+    use xylitol_ai_bridge::provider::obs_span_parent::clear_obs_span_parents;
+    use xylitol_ai_bridge::provider::trace::set_provider_trace_active;
+
+    use crate::protocol::error::XyError;
+    use crate::protocol::ports::{XyGenerateOptions, XyStream};
+    use crate::protocol::session::{ForkPosition, SessionContext};
+    use crate::protocol::types::XyToolSchema;
+
+    static OBS_TEST_LOCK: Mutex<()> = Mutex::new(());
+
+    struct CollectingReporter(Arc<Mutex<Vec<SpanRecord>>>);
+
+    impl Reporter for CollectingReporter {
+        fn report(&mut self, spans: Vec<SpanRecord>) {
+            self.0.lock().unwrap().extend(spans);
+        }
+    }
+
+    /// Empty leaf → `prepare_compaction` early-exit; model MUST NOT be touched.
+    struct EmptyLeafStore;
+
+    #[async_trait]
+    impl XySessionStore for EmptyLeafStore {
+        async fn exists(&self, _: &str) -> bool {
+            true
+        }
+        async fn load_entries(&self, _: &str) -> Result<Vec<SessionEntry>, String> {
+            Ok(Vec::new())
+        }
+        async fn append_session_entry(&self, _: &str, _: &SessionEntry) -> Result<(), String> {
+            unreachable!("prepare-fail path must not append")
+        }
+        async fn build_session_context(&self, _: &str) -> Result<SessionContext, String> {
+            unreachable!("prepare-fail path must not build context")
+        }
+        async fn create(&self, _: &str, _: Option<&str>, _: Option<&str>) -> Result<(), String> {
+            Ok(())
+        }
+        async fn fork(&self, _: &str, _: &str, _: &str, _: ForkPosition) -> Result<(), String> {
+            unreachable!("prepare-fail path must not fork")
+        }
+        fn set_leaf(&self, _: &str, _: Option<&str>) {}
+        fn leaf_id(&self, _: &str) -> Option<String> {
+            None
+        }
+    }
+
+    struct PanicModel;
+
+    #[async_trait]
+    impl XyModel for PanicModel {
+        fn name(&self) -> &str {
+            "panic-model"
+        }
+        async fn generate_stream(
+            &self,
+            _: Vec<LlmMessage>,
+            _: &[XyToolSchema],
+            _: bool,
+            _: XyGenerateOptions,
+        ) -> Result<XyStream, XyError> {
+            panic!("prepare-fail path must not call the model");
+        }
+    }
+
+    struct NoopSink;
+
+    #[async_trait]
+    impl XyEventSink for NoopSink {
+        async fn emit(&self, _: &XyEvent) {}
+    }
+
+    /// otel19: prepare early-exit MUST NOT export `agent.compaction` (CollectingReporter).
+    #[tokio::test]
+    async fn prepare_fail_exports_no_compaction_span() {
+        let _g = OBS_TEST_LOCK.lock().unwrap();
+        set_provider_trace_active(true);
+        clear_obs_span_parents();
+        let records = Arc::new(Mutex::new(Vec::new()));
+        fastrace::set_reporter(CollectingReporter(Arc::clone(&records)), Config::default());
+
+        let orch = CompactionOrchestrator::new(CompactionSettings::default());
+        let err = orch
+            .compact(&EmptyLeafStore, "sid", &PanicModel, &NoopSink, None)
+            .await
+            .expect_err("empty session must fail prepare");
+        assert!(
+            err.contains("Nothing to compact"),
+            "unexpected prepare error: {err}"
+        );
+
+        fastrace::flush();
+        set_provider_trace_active(false);
+        clear_obs_span_parents();
+
+        let spans = records.lock().unwrap().clone();
+        assert!(
+            spans.iter().all(|s| s.name != "agent.compaction"),
+            "prepare early-exit must not export agent.compaction; got: {:?}",
+            spans.iter().map(|s| s.name.as_ref()).collect::<Vec<_>>()
+        );
+    }
 
     #[test]
     fn should_compact_disabled() {
