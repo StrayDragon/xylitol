@@ -73,6 +73,8 @@ pub struct ScriptedDriver {
     delete_session_calls: Mutex<Vec<String>>,
     /// Optional fixed estimate for footer harness (c1035).
     estimate_override: Option<crate::protocol::types::ContextTokenEstimate>,
+    /// Count of [`XyDriver::estimate_context_tokens`] (c1860 double-kick guard).
+    estimate_calls: AtomicUsize,
     reload_runtime_calls: AtomicUsize,
     persist_project_trust_calls: Mutex<Vec<crate::app::core::driver::ProjectTrustMode>>,
     copy_text_calls: Mutex<Vec<String>>,
@@ -184,6 +186,7 @@ impl ScriptedDriver {
             set_session_name_for_calls: Mutex::new(Vec::new()),
             delete_session_calls: Mutex::new(Vec::new()),
             estimate_override: None,
+            estimate_calls: AtomicUsize::new(0),
             reload_runtime_calls: AtomicUsize::new(0),
             persist_project_trust_calls: Mutex::new(Vec::new()),
             copy_text_calls: Mutex::new(Vec::new()),
@@ -310,6 +313,10 @@ impl ScriptedDriver {
         estimate: Option<crate::protocol::types::ContextTokenEstimate>,
     ) {
         self.estimate_override = estimate;
+    }
+
+    pub fn estimate_calls(&self) -> usize {
+        self.estimate_calls.load(Ordering::SeqCst)
     }
 
     pub fn set_travel_override(&mut self, entry_id: impl Into<String>, travel: SessionTreeTravel) {
@@ -621,6 +628,7 @@ impl XyDriver for ScriptedDriver {
     async fn estimate_context_tokens(
         &self,
     ) -> Result<crate::protocol::types::ContextTokenEstimate, XyDriverError> {
+        self.estimate_calls.fetch_add(1, Ordering::SeqCst);
         if let Some(est) = self.estimate_override.clone() {
             return Ok(est);
         }
@@ -3847,6 +3855,20 @@ mod slice_tests {
             trailing_tokens: 0,
             last_usage_index: Some(0),
         }));
+        // c1860: settlement (not TurnEnd alone) drives footer.
+        session
+            .step(HostEvent::Xy(Box::new(XyEvent::ContextTokenSettlement {
+                estimate: ContextTokenEstimate {
+                    tokens: 11,
+                    provenance: TokenProvenance::Api,
+                    usage_tokens: 11,
+                    trailing_tokens: 0,
+                    last_usage_index: Some(0),
+                },
+                reason: "turn_settled".into(),
+                generation: 1,
+            })))
+            .unwrap();
         session
             .step(HostEvent::Xy(Box::new(XyEvent::TurnEnd { turn_index: 0 })))
             .unwrap();
@@ -3864,7 +3886,12 @@ mod slice_tests {
             .unwrap_or_default();
         assert!(
             footer.contains("used 11 tokens"),
-            "TurnEnd must refresh footer tokens: {footer}"
+            "TurnSettled settlement must refresh footer tokens: {footer}"
+        );
+        assert_eq!(
+            driver.estimate_calls(),
+            0,
+            "settlement path must not call estimate_context_tokens"
         );
     }
 
@@ -3886,7 +3913,7 @@ mod slice_tests {
             trailing_tokens: 7,
             last_usage_index: None,
         }));
-        // AgentEnd alone must not schedule estimate; stream close is the owner.
+        // AgentEnd alone must not schedule estimate; stream close is the fallback.
         session
             .step(HostEvent::Xy(Box::new(XyEvent::AgentEnd {
                 messages: Vec::new(),
@@ -3911,7 +3938,65 @@ mod slice_tests {
         let f = footer.last().expect("footer");
         assert!(
             f.contains("used 7 tokens"),
-            "stream closed + drain must refresh footer: {f}"
+            "stream closed + drain must refresh footer when no settlement: {f}"
+        );
+    }
+
+    #[tokio::test]
+    async fn c1860_stream_close_skips_estimate_after_turn_settled() {
+        use crate::protocol::types::{ContextTokenEstimate, TokenProvenance};
+
+        let mut session = HostSession::new_product_ui_with_meta(
+            TestTerminal::new(80, 24),
+            "~/x".into(),
+            "Fake".into(),
+        );
+        let mut driver = ScriptedDriver::new();
+        driver.set_session_messages(harness_sample_session_messages());
+        driver.set_estimate_override(Some(ContextTokenEstimate {
+            tokens: 99,
+            provenance: TokenProvenance::Api,
+            usage_tokens: 99,
+            trailing_tokens: 0,
+            last_usage_index: Some(0),
+        }));
+        session.on_run_started("hi");
+        session
+            .step(HostEvent::Xy(Box::new(XyEvent::ContextTokenSettlement {
+                estimate: ContextTokenEstimate {
+                    tokens: 42,
+                    provenance: TokenProvenance::Api,
+                    usage_tokens: 42,
+                    trailing_tokens: 0,
+                    last_usage_index: Some(0),
+                },
+                reason: "turn_settled".into(),
+                generation: 7,
+            })))
+            .unwrap();
+        let mut stream = None;
+        pump_host_driver(&mut session, &mut driver, &mut stream)
+            .await
+            .unwrap();
+        assert!(
+            session
+                .ui_root()
+                .expect("ui")
+                .borrow_mut()
+                .render(80)
+                .last()
+                .expect("f")
+                .contains("used 42 tokens")
+        );
+        let before = driver.estimate_calls();
+        session.on_run_stream_closed();
+        pump_host_driver(&mut session, &mut driver, &mut stream)
+            .await
+            .unwrap();
+        assert_eq!(
+            driver.estimate_calls(),
+            before,
+            "stream close must not re-estimate after TurnSettled"
         );
     }
 

@@ -124,6 +124,11 @@ pub struct HostSession<T: Terminal> {
     footer_token_rx: tokio::sync::mpsc::UnboundedReceiver<(u64, Option<String>)>,
     /// Throttle mid-turn Api usage footer refresh (c1730).
     last_mid_turn_footer_refresh: Option<std::time::Instant>,
+    /// c1860: this run already applied a TurnSettled (or AfterCompaction) settlement —
+    /// stream close must not kick a second estimate / independent-root span.
+    run_applied_token_settlement: bool,
+    /// Pending settlement snapshot to paint on next drain (with driver context_window).
+    pending_settlement_estimate: Option<crate::protocol::types::ContextTokenEstimate>,
     /// `tui.editor_history_seed_sessions` (c1560).
     editor_history_seed_sessions: u32,
     /// Background ↑/↓ history seed (startup / `/session-new`); host loop merges into select.
@@ -180,6 +185,8 @@ impl<T: Terminal> HostSession<T> {
             footer_token_tx,
             footer_token_rx,
             last_mid_turn_footer_refresh: None,
+            run_applied_token_settlement: false,
+            pending_settlement_estimate: None,
             editor_history_seed_sessions: 1,
             editor_history_seed_job: None,
             mcp_blocks_agent: false,
@@ -582,22 +589,42 @@ impl<T: Terminal> HostSession<T> {
         self.suppress_idle_esc = false;
         self.suppress_xy_until_stream_end = false;
         self.run_active = true;
+        self.run_applied_token_settlement = false;
         self.ui_model.begin_run(prompt);
         self.sync_ui_root_from_model();
     }
 
     /// Stream ended (None) — clear run flag; idle only if bridge already did.
     ///
-    /// **Sole** scheduler for post-run footer token refresh (c1035). Do not also
-    /// arm refresh on `AgentEnd`: production `drain_pending` often runs between
-    /// those two signals and would kick two `estimate_context_tokens` jobs
-    /// (duplicate `token.estimate` spans / wasted encode).
+    /// Footer refresh: only when this run did **not** already apply a token
+    /// settlement (c1860). Prefer TurnSettled / AfterCompaction events over a
+    /// post-close estimate (avoids independent-root `token.estimate`).
     pub fn on_run_stream_closed(&mut self) {
         self.run_active = false;
         self.suppress_xy_until_stream_end = false;
         self.ui_model.on_stream_closed_without_agent_end();
-        self.pending.footer_token_refresh = true;
+        if !self.run_applied_token_settlement {
+            self.pending.footer_token_refresh = true;
+        }
         self.sync_ui_root_from_model();
+    }
+
+    /// Apply a shared context-token settlement (c1860) — paint on next drain.
+    pub fn note_context_token_settlement(
+        &mut self,
+        estimate: crate::protocol::types::ContextTokenEstimate,
+        reason: &str,
+    ) {
+        self.pending_settlement_estimate = Some(estimate);
+        if matches!(reason, "turn_settled" | "after_compaction") {
+            self.run_applied_token_settlement = true;
+        }
+    }
+
+    pub fn take_pending_settlement_estimate(
+        &mut self,
+    ) -> Option<crate::protocol::types::ContextTokenEstimate> {
+        self.pending_settlement_estimate.take()
     }
 
     pub(crate) fn sync_ui_root_from_model(&mut self) {
@@ -667,12 +694,19 @@ impl<T: Terminal> HostSession<T> {
                     match xy.as_ref() {
                         XyEvent::AgentEnd { .. } => {
                             self.run_active = false;
-                            // Footer token refresh is owned by [`Self::on_run_stream_closed`]
-                            // (single end-of-run signal). Scheduling here as well caused two
-                            // estimate jobs when drain ran between AgentEnd and stream close.
+                            // Footer: settlement event or stream-close fallback (c1860).
                         }
-                        XyEvent::CompactionEnd { .. } | XyEvent::TurnEnd { .. } => {
+                        XyEvent::ContextTokenSettlement {
+                            estimate, reason, ..
+                        } => {
+                            self.note_context_token_settlement(estimate.clone(), reason);
+                        }
+                        XyEvent::CompactionEnd { .. } => {
+                            // Fallback if AfterCompaction settlement is absent (tests / older paths).
                             self.request_footer_token_refresh();
+                        }
+                        XyEvent::TurnEnd { .. } => {
+                            // Footer comes from ContextTokenSettlement before TurnEnd (c1860).
                         }
                         XyEvent::MessageEnd { role, message } => {
                             // Mid-turn Api usage: assistant MessageEnd often carries usage.
