@@ -6,17 +6,16 @@ depends_on:
 
 # Responses thinking / reasoning 回放 × flavor
 
-> **调研底稿**：[`docs/research/responses-context-layout-and-cache-2026.md`](../../../docs/research/responses-context-layout-and-cache-2026.md) §5.1；现有 bridge `thinking_signature` / `include: reasoning.encrypted_content`。  
-> **波次**：Wave B+（依赖 `c1880`+`c1890`；可与 Epoch/view/obs 并行）  
+> **调研底稿**：[`docs/research/responses-context-layout-and-cache-2026.md`](../../../docs/research/responses-context-layout-and-cache-2026.md) §5.1；现有 bridge `thinking_signature` / `include: reasoning.encrypted_content`。
 > **自包含**：多轮正确性（回放），不是可选优化；按 flavor 降级，禁止假设官方语义。
 
 ## Why
 
 Coding agent 多轮依赖 assistant 侧 thinking / reasoning 项回放（签名、encrypted_content、顺序）。今日有 pi 对齐路径，但不同 Responses 形似端（官方 / DeepSeek / llama.cpp / 网关）对：
 
-- 是否返回可回放的 reasoning 项  
-- 缺字段 SSE  
-- 是否要求后续请求原样带回  
+- 是否返回可回放的 reasoning 项
+- 缺字段 SSE
+- 是否要求后续请求原样带回
 
 差异很大。回放错误会破坏轨迹与工具环，严重性高于 cache 未命中。须在 Assembler 层按 **flavor + capabilities** 定义保留 / 剥离 / 降级合约。
 
