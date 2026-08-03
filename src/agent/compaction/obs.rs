@@ -25,7 +25,7 @@ pub(crate) struct AgentCompactionSpan {
 }
 
 impl AgentCompactionSpan {
-    /// Start when compaction actually begins (after prepare gate for auto; with Start for force).
+    /// Start after `prepare_compaction` succeeds (manual / threshold / overflow).
     pub(crate) fn start(reason: &str) -> Option<Self> {
         if !provider_trace_active() {
             return None;
@@ -165,12 +165,16 @@ mod tests {
             .collect();
         assert_eq!(props.get("reason"), Some(&"threshold"));
         assert_eq!(props.get("langfuse.observation.type"), Some(&"span"));
+        assert_eq!(
+            props.get("xylitol.obs.lane"),
+            Some(&xylitol_ai_bridge::provider::XYLITOL_OBS_LANE_LLM)
+        );
         assert_eq!(props.get("will_retry"), Some(&"false"));
         assert_eq!(props.get("aborted"), Some(&"false"));
     }
 
     #[test]
-    fn independent_root_carries_session_id() {
+    fn independent_root_carries_session_id_and_lane() {
         let _g = TEST_LOCK.lock().unwrap();
         set_provider_trace_active(true);
         clear_obs_span_parents();
@@ -180,8 +184,9 @@ mod tests {
         fastrace::set_reporter(CollectingReporter(Arc::clone(&records)), Config::default());
 
         {
+            // Post-prepare failure path (e.g. summarization error), not prepare early-exit.
             let c = AgentCompactionSpan::start("manual").expect("compact");
-            c.finish(false, false, Some("Nothing to compact (session too small)"));
+            c.finish(false, false, Some("compaction failed: model error"));
         }
         fastrace::flush();
         clear_obs_session();
@@ -199,11 +204,15 @@ mod tests {
             .collect();
         assert_eq!(props.get("reason"), Some(&"manual"));
         assert_eq!(props.get("langfuse.session.id"), Some(&"sess-compact-1"));
+        assert_eq!(
+            props.get("xylitol.obs.lane"),
+            Some(&xylitol_ai_bridge::provider::XYLITOL_OBS_LANE_LLM)
+        );
         assert_eq!(props.get("langfuse.observation.level"), Some(&"ERROR"));
         assert!(
             props
                 .get("langfuse.observation.status_message")
-                .is_some_and(|m| m.contains("Nothing to compact"))
+                .is_some_and(|m| m.contains("compaction failed"))
         );
     }
 

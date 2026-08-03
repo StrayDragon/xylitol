@@ -219,6 +219,9 @@ pub(crate) fn emit_token_estimate_obs(est: &ContextTokenEstimate, opts: &Estimat
         props.push(("model_id".into(), model.to_string()));
     }
     props.extend(xylitol_ai_bridge::provider::langfuse_session_properties());
+    props.extend(xylitol_ai_bridge::provider::xylitol_obs_lane_properties(
+        xylitol_ai_bridge::provider::XYLITOL_OBS_LANE_LLM,
+    ));
     // Prefer active agent.turn parent; otherwise independent root (same session attrs).
     let parent = xylitol_ai_bridge::provider::obs_turn_parent().unwrap_or_else(SpanContext::random);
     let span = Span::root("token.estimate", parent).with_properties(|| props);

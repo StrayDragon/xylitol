@@ -59,14 +59,27 @@ pub fn langfuse_session_properties() -> Vec<(String, String)> {
     out
 }
 
-/// Append Langfuse observation type (+ session) onto span property lists.
+/// Append Langfuse observation type (+ session + llm obs lane) onto span property lists.
 pub fn langfuse_observation_properties(observation_type: &str) -> Vec<(String, String)> {
     let mut out = vec![(
         "langfuse.observation.type".into(),
         observation_type.to_string(),
     )];
     out.extend(langfuse_session_properties());
+    out.extend(xylitol_obs_lane_properties(XYLITOL_OBS_LANE_LLM));
     out
+}
+
+/// Fastrace attribute for Collector / consumer routing (`llm` | `infra`).
+pub const XYLITOL_OBS_LANE_ATTR: &str = "xylitol.obs.lane";
+/// LLM / agent product process-tree lane.
+pub const XYLITOL_OBS_LANE_LLM: &str = "llm";
+/// Infra / client failure-experience lane (future spans; prepare-fail MUST NOT fake LLM spans).
+pub const XYLITOL_OBS_LANE_INFRA: &str = "infra";
+
+/// Property pairs for `xylitol.obs.lane`.
+pub fn xylitol_obs_lane_properties(lane: &str) -> Vec<(String, String)> {
+    vec![(XYLITOL_OBS_LANE_ATTR.into(), lane.to_string())]
 }
 
 /// Generation helpers: observation type + single model attribute.
@@ -135,5 +148,6 @@ mod tests {
                 .any(|(k, _)| k == "gen_ai.request.model" || k == "model")
         );
         assert!(p.contains(&("langfuse.session.id".into(), "sid-g".into())));
+        assert!(p.contains(&(XYLITOL_OBS_LANE_ATTR.into(), XYLITOL_OBS_LANE_LLM.into())));
     }
 }
