@@ -335,6 +335,15 @@ profile-suite scenarios="A,B,C,D" duration="20":
 profile-summary path:
     python3 scripts/summarize_samply_profile.py "{{path}}" --addr2line ./target/release/xylitol
 
+# --- Cargo worktree target isolation (maintenance; not in qa) ---
+# Per-worktree CARGO_TARGET_DIR under ~/.cache/cargo-targets/…
+# Docs: docs/research/rust-disk-worktree-cache-2026.md
+# Usage: eval "$(just cargo-wt-env)"   or   source scripts/cargo_worktree_env.sh
+cargo-wt-env:
+    #!/usr/bin/env bash
+    set -euo pipefail
+    scripts/cargo_worktree_env.sh --print
+
 # --- Observability / provider-trace inspect (maintenance; not in qa) ---
 # Token-efficient summaries. Skill: xylitol-inspect-runtime-logs.
 # Filters (--since / --request-id / --turn-id): pass via python CLI, not just kwargs
