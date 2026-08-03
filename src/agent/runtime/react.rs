@@ -462,7 +462,9 @@ impl crate::protocol::ports::XyEventSink for CompactionStreamTee {
         self.inner.emit(event).await;
         if matches!(
             event,
-            XyEvent::CompactionStart { .. } | XyEvent::CompactionEnd { .. }
+            XyEvent::CompactionStart { .. }
+                | XyEvent::CompactionEnd { .. }
+                | XyEvent::ContextTokenSettlement { .. }
         ) {
             let _ = self.tx.send(event.clone());
         }
@@ -577,10 +579,41 @@ fn queue_counts(
     (steer_count, follow_up_count)
 }
 
+/// Settle context tokens for turn-end (c1860) — emit via caller `yield`.
+async fn settle_turn_context(
+    store: &Arc<dyn XySessionStore>,
+    session_id: &str,
+    model_manager: &Arc<Mutex<crate::agent::model::manager::ModelManager>>,
+) -> Option<crate::agent::compaction::ContextTokenSettlement> {
+    use crate::agent::compaction::{
+        ContextTokenSettlementReason, EstimateOpts, settle_from_session_entries,
+    };
+    let entries = match store.load_leaf_branch(session_id).await {
+        Ok(e) => e,
+        Err(e) => {
+            log::warn!("turn-end settlement: load leaf failed: {e}");
+            return None;
+        }
+    };
+    let model_id = {
+        let mm = model_manager.lock().unwrap_or_else(|e| e.into_inner());
+        mm.current_model().map(|m| m.config.model.clone())
+    };
+    Some(settle_from_session_entries(
+        &entries,
+        &EstimateOpts {
+            model_id,
+            ..Default::default()
+        },
+        ContextTokenSettlementReason::TurnSettled,
+    ))
+}
+
 /// Turn-end compaction: Case1 overflow then Case2 threshold (c1640/c1660).
 ///
 /// Returns `true` when overflow recovery asks the ReAct loop to continue
 /// (compact succeeded with willRetry).
+#[allow(clippy::too_many_arguments)]
 async fn try_turn_end_compaction(
     store: &Arc<dyn XySessionStore>,
     session_id: &str,
@@ -589,6 +622,7 @@ async fn try_turn_end_compaction(
     settings: &crate::agent::compaction::CompactionSettings,
     history: &mut Vec<AgentMessage>,
     overflow_recovery_attempted: &mut bool,
+    precomputed: Option<&crate::protocol::types::ContextTokenEstimate>,
 ) -> bool {
     use crate::agent::compaction::{CompactionOrchestrator, EstimateOpts, OverflowCompactOutcome};
 
@@ -686,6 +720,7 @@ async fn try_turn_end_compaction(
             ctx_window,
             &opts,
             Some(&last_assistant),
+            precomputed,
         )
         .await
     {
@@ -921,6 +956,7 @@ fn run_react_loop(cfg: ReActConfig) -> impl Stream<Item = XyEvent> + Send {
                             &compaction_settings,
                             &mut history,
                             &mut overflow_recovery_attempted,
+                            None,
                         )
                         .await;
                         if will_continue {
@@ -1233,6 +1269,15 @@ fn run_react_loop(cfg: ReActConfig) -> impl Stream<Item = XyEvent> + Send {
 
                 if tool_calls.is_empty() {
                     let turn_index = turn as u32;
+                    let settlement =
+                        settle_turn_context(&store, &session_id, &model_manager).await;
+                    if let Some(s) = &settlement {
+                        yield XyEvent::ContextTokenSettlement {
+                            estimate: s.estimate.clone(),
+                            reason: s.reason.as_str().to_string(),
+                            generation: s.generation,
+                        };
+                    }
                     yield XyEvent::TurnEnd { turn_index };
                     if let Some(bus) = &hook_bus {
                         let (ty, phase, ctx) = super::script_hook_ctx::turn_end(turn as u32);
@@ -1247,6 +1292,7 @@ fn run_react_loop(cfg: ReActConfig) -> impl Stream<Item = XyEvent> + Send {
                         &compaction_settings,
                         &mut history,
                         &mut overflow_recovery_attempted,
+                        settlement.as_ref().map(|s| &s.estimate),
                     )
                     .await;
                     if will_continue {
@@ -1418,6 +1464,14 @@ fn run_react_loop(cfg: ReActConfig) -> impl Stream<Item = XyEvent> + Send {
                 }
 
                 let turn_index = turn as u32;
+                let settlement = settle_turn_context(&store, &session_id, &model_manager).await;
+                if let Some(s) = &settlement {
+                    yield XyEvent::ContextTokenSettlement {
+                        estimate: s.estimate.clone(),
+                        reason: s.reason.as_str().to_string(),
+                        generation: s.generation,
+                    };
+                }
                 yield XyEvent::TurnEnd { turn_index };
                 if let Some(bus) = &hook_bus {
                     let (ty, phase, ctx) = super::script_hook_ctx::turn_end(turn as u32);
@@ -1432,6 +1486,7 @@ fn run_react_loop(cfg: ReActConfig) -> impl Stream<Item = XyEvent> + Send {
                     &compaction_settings,
                     &mut history,
                     &mut overflow_recovery_attempted,
+                    settlement.as_ref().map(|s| &s.estimate),
                 )
                 .await;
                 if will_continue {

@@ -50,7 +50,8 @@ pub struct XyToolSchema {
 }
 
 /// Where a context-token estimate came from (c1030 accounting provenance).
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "snake_case")]
 pub enum TokenProvenance {
     Api,
     RemoteCount,
@@ -73,7 +74,7 @@ impl TokenProvenance {
 }
 
 /// Context occupancy estimate with provenance (XyDriver / compaction seam).
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct ContextTokenEstimate {
     pub tokens: u64,
     pub provenance: TokenProvenance,

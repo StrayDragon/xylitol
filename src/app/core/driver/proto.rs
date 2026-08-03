@@ -121,7 +121,9 @@ pub trait XyDriver: Send {
 
     /// Read-only context token estimate for the current leaf/path (c1030 / c1035).
     ///
-    /// Product footer polls this after travel / turn / compact.
+    /// Prefer consuming [`XyEvent::ContextTokenSettlement`] for turn-end / post-compact
+    /// footer updates (c1860). Use this for leaf travel, mid-turn throttle, and
+    /// stream-close **fallback** when no settlement was applied.
     async fn estimate_context_tokens(
         &self,
     ) -> Result<crate::protocol::types::ContextTokenEstimate, XyDriverError>;

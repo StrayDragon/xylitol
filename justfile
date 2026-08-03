@@ -352,14 +352,24 @@ cargo-wt-env:
 obs-summary:
     python3 scripts/inspect_provider_trace.py summary
 
+# Prefer positional: `just obs-recent 80` (Just 1.57 treats `n=80` as a literal arg value).
 obs-requests n="8":
-    python3 scripts/inspect_provider_trace.py requests -n {{n}}
+    #!/usr/bin/env bash
+    set -euo pipefail
+    n="{{n}}"; n="${n#n=}"
+    python3 scripts/inspect_provider_trace.py requests -n "$n"
 
 obs-recent n="40":
-    python3 scripts/inspect_provider_trace.py recent -n {{n}}
+    #!/usr/bin/env bash
+    set -euo pipefail
+    n="{{n}}"; n="${n#n=}"
+    python3 scripts/inspect_provider_trace.py recent -n "$n"
 
 obs-turns n="8":
-    python3 scripts/inspect_provider_trace.py turns -n {{n}}
+    #!/usr/bin/env bash
+    set -euo pipefail
+    n="{{n}}"; n="${n#n=}"
+    python3 scripts/inspect_provider_trace.py turns -n "$n"
 
 obs-lag REQUEST_ID="":
     #!/usr/bin/env bash
