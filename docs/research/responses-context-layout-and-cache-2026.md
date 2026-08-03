@@ -6,7 +6,7 @@
 
 ## 一句话结论
 
-**主线 = 只把 Responses 做到可配置、可观测、可测的「一类 API」；Completions 保留为显式 `api` 类型扩展点；Anthropic Messages 留桩不进默认。同协议族用 `flavor` 区分官方 / DeepSeek / llama.cpp 等实现差异并允许覆盖。缓存是架构约束之一，不是目标函数——注意力干净与策略可切换优先于盲目抬命中率。MCP 优选 `tool_search`（内部目录 + 搜索注入），避免「异步加载完就热改 `tools` 表」或「阻塞输入直到全加载」两条更重的路。**
+**主线 = 只把 `openai-responses` 做到可配置、可观测、可测的一类 API；Completions 保留为显式 YAML `api: openai-completions`；Anthropic Messages 留桩不进默认。同协议族用代码内 `compat`（首版 `generic`，`defaults.rs`）区分方言端保守策略，**不**本波扩 YAML/env。缓存是架构约束之一，不是目标函数。MCP 优选 `tool_search`（内部目录 + 搜索注入），避免「异步加载完就热改 `tools` 表」或「阻塞输入直到全加载」。**
 
 ---
 
@@ -103,20 +103,20 @@ coding agent 默认：环境类（cwd）可留 system；高变读数（工具计
 | **OpenAI Completions** | **保留**为显式 `api: openai-completions`（或等价），避免系统设计与 Responses 形状绑死；不为其扭曲 Responses Assembler |
 | **Anthropic Messages** | 桩 + 注释；需要时再开；**禁止**为 Anthropic 断点语义反向设计主 Assembler |
 
-### 5.1 易忘坑：同「Responses」面，不同 provider flavor
+### 5.1 易忘坑：同「Responses」面，方言 ≠ 第一语言
 
-声明实现 OpenAI Responses 的端点（官方 OpenAI、DeepSeek、llama.cpp、各类网关）**协议形似 ≠ 语义等价**：cache 字段是否回报、`tool_search`/`defer_loading` 是否真支持、`previous_response_id`/`store`、reasoning/include、缺字段 SSE 等均可迥异。
+**第一语言** = 厂商原生 API（OpenAI / Anthropic / Kimi 官方等）。**方言** = 他方实现该协议形状（DeepSeek / llama.cpp / 网关实现 `openai-responses`）。形似 ≠ 语义等价：cache 字段、`tool_search`/`defer_loading`、`previous_response_id`/`store`、reasoning/include、缺字段 SSE 等均可迥异。
 
-工程要求（落地见 `c1880` / `c1890`）：
+工程要求（落地见 `c1880` / `c1890`；**以 c1880 定稿为准**）：
 
-- 配置分层：`api`（协议族，如 `openai-responses`）× **`flavor`**（实现口味，如 `openai-official` / `deepseek` / `llamacpp` / `generic`，名称以实现为准；**正式名推荐见 `c1880` Open Questions → 兼容档案 (compatibility profile)**）
-- 用户可 **flavor 覆盖**默认策略（及 capabilities），不靠自动探测
-- Assembler / adapter **保留适配层**：同一 `AiBridgeMessage` 投影，按 flavor 选字段子集、usage 映射、降级路径
-- **禁止**假设「凡 Responses 端点行为同 OpenAI 官方」
+- 分层：YAML **`api`**（协议族全称，如 `openai-responses`）× 代码内 **`compat`**（兼容策略档；首版常量 `generic`）× 代码内 **`extra_policy`**（仅 API req/resp 布尔；非 agent 能力）
+- **本波 code-first**：`compat` / `extra_policy` 在 `xylitol-ai-bridge` 的 **`defaults.rs` 纯常量**；**不**新增 YAML 旋钮、**不**用 env 当配置面；调试改 defaults 文件
+- Assembler / adapter **保留适配层**：同一 `AiBridgeMessage` 投影，按 `api`×WirePolicy 选字段子集、usage 映射、降级
+- **禁止**假设「凡 `openai-responses` 端点 ≡ OpenAI 第一语言语义」
 
-模型档案 **capabilities**（首版手写配置，不做自动探测）：如 `prompt_cache_usage`、`tool_search`、`defer_loading`、`previous_response_id`、`prompt_cache_key`；可由 flavor 预设，再被用户覆盖。
+旧稿用语：`flavor` → **`compat`**；配置面 `capabilities`（易混）→ wire 侧 **`extra_policy`**（`tool_search` 等 agent 策略不进此块，见 `c1900`）。
 
-`previous_response_id`：公共能力之后的可选优化；默认全量重放 `input`；断链（compact / 换模 / fork / 工具世代变更）回退全量；仅当 flavor/capabilities 声明支持时才允许配置开启。
+`previous_response_id`：公共能力之后的可选优化；默认全量重放 `input`；断链回退全量；仅当 `extra_policy.previous_response_id`（代码默认板）允许时才开链式（→ `c1915`）。
 
 ---
 
@@ -136,7 +136,7 @@ coding agent 默认：环境类（cwd）可留 system；高变读数（工具计
 
 | 方向（工程） | change（草案） | `depends_on` 摘要 |
 |---|---|---|
-| Responses 默认 + Completions 显式类型 + Anthropic 桩 + flavor/capabilities | [`c1880`](../../llmanspec/changes/c1880-update-responses-first-api-boundary/proposal.md) | `[]` |
+| Responses 默认 + Completions 显式 `api` + Anthropic 桩 + code-first WirePolicy | [`c1880`](../../llmanspec/changes/c1880-update-responses-first-api-boundary/proposal.md) | `[]` |
 | Responses cache usage 诚实透出 | [`c1885`](../../llmanspec/changes/c1885-add-responses-cache-usage-honesty/proposal.md) | `[]`（可与 c1880 并行） |
 | ContextPolicy + ResponsesAssembler | [`c1890`](../../llmanspec/changes/c1890-add-responses-context-policy-assembler/proposal.md) | `c1880` |
 | Context Epoch（前缀/工具世代） | [`c1920`](../../llmanspec/changes/c1920-add-context-epoch-freeze/proposal.md) | `c1890` |
@@ -157,9 +157,10 @@ coding agent 默认：环境类（cwd）可留 system；高变读数（工具计
 |---|---|
 | 静态前缀 / 轨迹 | ContextPolicy 切点；Assembler 输入布局 |
 | 系统提示词 / 工具定义 | system·`instructions` / Responses `tools` |
+| 第一语言 / 方言 | 厂商原生 API vs 他方兼容实现（`c1880`） |
+| 实现口味 (flavor)（旧稿） | → 代码内 **`compat`**（`defaults.rs`；首版 `generic`） |
+| 能力声明 / capabilities（旧稿，易混） | wire → **`extra_policy`**（仅 req/resp）；agent 能力另案 |
 | Prompt Cache / KV Cache | usage `cached_tokens`；本地推理侧另论 |
-| 实现口味 (flavor) | **草稿占位**；正式名推荐 **兼容档案 (compatibility profile)**（`c1880` Open Questions） |
-| 能力声明 | capabilities |
 | 静态前缀世代 | context epoch（`c1920`） |
 | 会话真源 / 发给模型的投影 | Session SSOT ↔ provider view（`c1930`） |
 | 框架元信息 | harness meta |
@@ -176,9 +177,9 @@ coding agent 默认：环境类（cwd）可留 system；高变读数（工具计
 - 命中率最大化作为产品目标
 - 无配置的隐式每轮状态栏 append
 - 用同一套断点 API 假装 OpenAI ≡ Anthropic 缓存
-- **假设凡声明 Responses 兼容的端点 ≡ OpenAI 官方语义**（须 `api` × `flavor` + 可覆盖 capabilities；正式名见 `c1880`）
-- 首版自动探测网关能力
-- 以「阻塞用户至 MCP 全加载」为主路径（尤其 resume）
+- **假设凡声明 Responses 兼容的端点 ≡ OpenAI 第一语言语义**（须 `api` × 代码 `compat`/`extra_policy`；见 `c1880`；本波不扩 YAML/env）
+- 本波把未暴露策略做成 YAML 或散落 env 影子配置（默认板 = `defaults.rs`）
+- 首版自动探测网关能力- 以「阻塞用户至 MCP 全加载」为主路径（尤其 resume）
 - LLM 维护状态栏统计
 - 把 live specs「翻译」成书中话术来代替工程草案（书语只在术语对照 / research 叙事层）
 

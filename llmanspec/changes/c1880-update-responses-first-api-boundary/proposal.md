@@ -4,72 +4,93 @@ depends_on: []
 
 # Responses 默认主路径 + Completions 显式类型 + Anthropic 桩
 
-> **调研底稿**（非本 change）：[`docs/research/responses-context-layout-and-cache-2026.md`](../../../docs/research/responses-context-layout-and-cache-2026.md)（含 §5.1 flavor）
+> **调研底稿**（非本 change）：[`docs/research/responses-context-layout-and-cache-2026.md`](../../../docs/research/responses-context-layout-and-cache-2026.md)（§5.1；旧称 `flavor` → **`compat`**）
+> **工程约定（本波次）**：`compat` / `extra_policy` = **code-first**：`xylitol-ai-bridge` 内 **`defaults.rs` 纯常量**；**不**新增 YAML；**本波不做** env overlay。用户面 YAML **仅保留既有** `api` 等字段。
 > **自包含**：本草案单独可认领；不依赖其它未归档 change。
 
 ## Why
 
-要把上下文布局、Prompt Cache、工具披露等优化做到可配置、可复现，必须先钉死：**主交付只围绕 OpenAI Responses（含兼容端）**。若继续为 Anthropic Messages / Completions 共用同一套「断点与布局」假设，Assembler 会被双方言拖成不可维护的中间层。
+要把上下文布局、Prompt Cache、工具披露等优化做到可配置、可复现，必须先钉死：**主交付只围绕 `openai-responses`（含兼容端）**。若继续把 Anthropic Messages / `openai-completions` 与 Responses **不同协议族**揉进同一套「断点与布局」假设，Assembler 会拖成不可维护的中间层。
 
-同时完全删掉 Completions 有耦合风险：未来若某网关或本地栈只稳 Completions，系统会过度绑死 Responses 形状。折中：**Completions 保留为显式 `api` 类型**（配置一眼可见），Anthropic **留桩**不进默认。
+同时完全删掉 Completions 有耦合风险。折中：**Completions 保留为显式 YAML `api: openai-completions`**；Anthropic **留桩**不进默认开箱反设计。
 
-另一易忘坑：**多个 LLM provider 都「实现了 OpenAI Responses 风格」≠ 行为一致**（例：DeepSeek / llama.cpp / 网关 vs 官方 OpenAI）。cache 字段、tool_search、SSE 缺字段、`previous_response_id` 等细节可迥异。必须保留 **flavor（实现口味）配置 + 适配层**，允许用户覆盖默认策略；禁止写死「凡 Responses 即官方语义」。
+另一易忘坑：**方言端点形似第一语言 ≠ 语义等价**。须有与 `api` 正交的 **`compat` + `extra_policy`（仅 API req/resp）**，禁止「凡 `openai-responses` ≡ OpenAI 官方」。
+
+若本波（c1880–c1935）把每个旋钮都做成 YAML：serde / schema / bootstrap / 单测矩阵会先于行为爆炸。个人 harness 调试默认值应 **改一处代码重跑**。故本 change 交付 **代码内 Wire 默认板 + 只读契约**；不扩配置面。
+
+### 术语：第一语言 vs 方言
+
+| 概念 | 含义 | 例 |
+|---|---|---|
+| **第一语言** | 厂商**自己的**原生 API | OpenAI 官方 Responses/Completions；Anthropic Messages；Kimi 官方 API |
+| **方言** | 他方实现/兼容某一第一语言的协议形状 | DeepSeek / llama.cpp / 网关实现 `openai-responses` |
+| **`api`** | YAML 可选的协议族字符串（全称；**本波唯一相关用户旋钮**） | `openai-responses` / `openai-completions` / `anthropic-messages` |
+| **`compat`** | 代码内兼容策略档（方言端尤重要） | 首版常量 `generic` |
+| **`extra_policy`** | 代码内、仅 API req/resp 的布尔策略 | `prompt_cache_usage` 等；非 agent 能力 |
+
+叙事用「方言 / 第一语言」；配置键不用 `dialect`（避免与旧「dialect≈adapter」撞名）。
 
 ## What Changes
 
-- 默认装配 / 文档 / 开箱路径：`api` 缺省 = Responses（或等价 `openai-responses`）。
-- 模型/provider 配置：**显式**允许 `openai-responses` 与 `openai-completions` 两种 OpenAI 族类型；Completions 不享受 Responses 专用优化，但可工作（遗留/逃生）。
-- Anthropic Messages：保留模块骨架 + 清晰注释/桩（「未来 Claude 等」）；默认 CI/开箱不装配；**禁止**为 Anthropic `cache_control` 反向设计 Responses Assembler。
-- 引入配置维 **`flavor`**（名称以实现为准；例：`openai-official` / `deepseek` / `llamacpp` / `generic`）：
-  - 与 `api` 正交：`api` = 协议族，`flavor` = 同族下的实现口味；
-  - 首版提供少量内置预设 + **用户可覆盖**（capabilities / 字段策略）；
-  - **不做**自动探测；观测可记下本次实际 flavor，便于排障。
-- 模型档案 **capabilities 配置块**（手写；可由 flavor 预设再覆盖），字段意向例如：`prompt_cache_usage`、`tool_search`、`defer_loading`、`previous_response_id`、`prompt_cache_key`。
-- 适配层契约（本 change 钉边界，Assembler 细装在 `c1890`）：同一应用投影进入 bridge 后，**按 flavor 选择**发往上游的字段子集、usage 映射、降级（缺能力则关优化，不假装支持）。
-- 同步产品文：`docs/architecture/多厂商模型.md` / 相关 AGENTS：主优化轴 = Responses；Completions = 显式类型；Anthropic = 后置桩；**兼容端须配 flavor，勿假设官方语义**。
+- YAML：`models.*.api` 省略时 OpenAI → **`openai-responses`**；显式允许 **`openai-completions`**。全称；禁止真值简写。Completions 回归：**仅编译 + 冒烟**。
+- Anthropic：保留模块；**禁止**为 `cache_control` 反设计 Responses Assembler。
+- **代码内 Wire 默认板**（落点 **`packages/xylitol-ai-bridge`**；infra 只注入）：
+  - 形态：**纯 `defaults.rs`（或等价）常量 / `Default`**——未暴露策略的默认值 **只**出现在此文件；业务路径禁止散落魔法数或私自读 env。
+  - `compat = generic`；`extra_policy` 三 wire 位默认 **全 false**。
+  - **禁止**把 `tool_search` / `defer_loading` 等 agent 策略塞进此板（→ `c1900` 等，同样 code-first + defaults 文件）。
+  - 测试可构造 `WirePolicy { .. }` 覆盖；**无** YAML / schema / ModelEntry 新字段；**本波不做**环境变量 overlay（日后若要，须单点读入且标明 debug，另开确认）。
+- 适配层契约：按 `api`（YAML 既有）× `WirePolicy`（defaults）做 req/resp 字段子集、usage 期望、降级。
+- 产品文：第一语言 vs 方言；主轴 `openai-responses`；本波策略不进 YAML / 不进正式 env 配置面。
 
 ## Capabilities（意向）
 
-- `package-ai-bridge`（装配/类型边界/flavor 适配缝）
-- `infra-config` / `runtime-config`（api、flavor、capabilities）
-- 产品叙事：`多厂商模型` architecture（归档时迁）
+> SDD capability specs 意向；非配置键名。
+
+- `package-ai-bridge`（WirePolicy 默认板 + 适配只读契约）— **主**
+- `infra-provider`（装配时把 `api` 与默认板交给 adapter；**不**解析新 YAML 字段）
+- 产品叙事：`多厂商模型`（归档时迁）
+- **不**为本 change 扩 `runtime-config` 新字段 req
 
 ## Impact
 
-- 自定义模型（含 llama.cpp / DeepSeek 等 Responses 形似端）可显式选 flavor，避免被官方策略误伤。
-- Completions 用户须显式配置，避免误以为享受 Responses 缓存/tool_search 布局。
-- 后续 Assembler / cache / tool_search / 链式续跑 **必须读 flavor+capabilities**，不得只认 `api == responses`。
+- 开发者调 wire 默认：改默认板一处 → 编译验证；无配置矩阵 gap。
+- 用户仍用既有 `api` 选协议族 / Completions 逃生。
+- 后继 change（usage / Assembler / 链式）**读 WirePolicy**，不各自发明 YAML 旋钮（本波约定）。
 
 ## Out of scope
 
-- 实现 ContextPolicy / Assembler 全量（→ `c1890`；本 change 只钉 flavor/capabilities 配置与适配层边界）
-- cache usage 映射细节（→ `c1885`，但须按 flavor 决定是否期望有 cached_tokens）
-- 删除 Completions 代码史或 Anthropic 文件物理删除
-- 自动探测网关是否支持某 capability / flavor
-- 图片/视频多模态传输选型
-- 为每个网关手写完整第二套 HTTP 栈（仍走官方 SDK + byot/宽松 SSE 等既有开闭）
+- `models.*.compat` / `extra_policy`（及任何本波新 YAML 策略键）
+- ContextPolicy / Assembler 全量（→ `c1890`；其策略档同样 code-first）
+- cache usage 映射（→ `c1885`）
+- tool_search / defer_loading（→ `c1900`）
+- 厂商 `compat` 专档表、自动探测、`providers:` 表
+- 物理删除 Completions / Anthropic 源文件
+- 把默认板升格为用户 YAML 或正式 env 配置面（另开 change）
+- 本波实现 env overlay / `XYLITOL_*` 策略开关
 
 ## Parallel / depends
 
 - `depends_on: []`
-- 可与 `c1885` 并行；`c1890`/`c1900`/`c1915` 依赖本 change 归档（或行为已落地）
+- 可与 `c1885` 并行；`c1890` / `c1900` / `c1915` / `c1925` 依赖本 change
 
-## Open Questions
+## Decisions（已钉死）
 
-- **同族行为差的正式配置名（propose 前钉死）**
-  - 草案正文暂用 **`flavor`（实现口味）** 仅为占位，便于与现有 research / 其它 draft 对齐。
-  - **推荐正式名：兼容档案 (compatibility profile)**——强调「OpenAI-compatible 形似 ≠ 行为等价」下的 quirk / 预设表；配置键意向如 `compatibility_profile` / `compat_profile`（以实现为准）。
-  - 备选：方言 (dialect)（本仓 bridge 已有 dialects 用语，偏协议形状差异；与「同 Responses 族内行为矩阵」略易混）。
-  - **propose / 定稿时**再统一把 `flavor` → 兼容档案，并同步调研文术语表；在此之前其它 draft **不必**批量改名。
-  - 仍与 `capabilities` 正交：档案给预设，能力声明可覆盖。
-- capabilities / flavor（或正式名）挂在 `models.*` 还是 `providers.*`（或两者合并视图）—— propose 时钉。
-- Completions 是否仍跑最小回归，还是仅编译 + 手工冒烟—— propose 时钉。
-- 内置 flavor / 档案最小集合与 `generic` 默认降级表—— propose/design 钉。
+| 项 | 决定 |
+|---|---|
+| 用户 YAML | **仅既有 `api`（等）**；本波 **不**加 `compat`/`extra_policy` |
+| Wire 策略 | **code-first**：`defaults.rs` 纯常量 / `Default`；测试可注入 |
+| 环境变量 | **本波不做**；禁止业务路径散落 `env::var` 当影子配置 |
+| `compat` | 常量 **`generic`** |
+| `extra_policy` | 三 wire 位默认 false；不含 tool_search |
+| 概念 | 第一语言 vs 方言（见上表） |
+| `api` 字面量 | 全称 `openai-responses` / `openai-completions` |
+| Completions 回归 | 仅编译 + 冒烟 |
+| 默认板落点 | **`packages/xylitol-ai-bridge`**；infra 仅装配注入 |
 
 ## Ethics
 
-- risk_level: medium（收窄默认交付）
-- prohibited_actions: 为 Anthropic 断点语义改 Responses 主布局；静默把 Completions 当 Responses 优化；**假设所有 Responses 兼容端 ≡ OpenAI 官方**
-- required_evidence: 默认路径只装配 Responses；显式 Completions 仍可选；Anthropic 默认不进开箱；配置可设 flavor 并覆盖 capabilities
-- refusal_contract: 不承诺「所有厂商同一套 cache 断点 API」或「凡 Responses 行为一致」
-- escalation_policy: 若要物理删除 Anthropic/Completions 源文件，须单独确认
+- risk_level: medium
+- prohibited_actions: Anthropic 断点反设计 Responses；静默把 Completions 当 Responses 优化；方言≡第一语言；为本波堆 YAML 策略旋钮；agent 策略混进 `extra_policy`
+- required_evidence: 默认 `openai-responses`；显式 Completions 可选；WirePolicy 默认板可定位修改；无新 YAML 字段
+- refusal_contract: 不承诺凡 Responses 行为一致；不承诺本波用户可 YAML 拧满策略
+- escalation_policy: 升格 YAML 或物理删源文件须单独确认
