@@ -1,0 +1,45 @@
+# Optional: fan xylitol OTLP to Langfuse (llm) and Tempo (infra) by `xylitol.obs.lane`.
+#
+# Point xylitol `[otel].endpoint` at this collector's OTLP HTTP receiver
+# (e.g. http://127.0.0.1:4318) instead of Langfuse directly when you need infra traces.
+# Default xylitol still supports direct Langfuse; this file is ops-optional.
+#
+# Replace LANGFUSE_* / TEMPO_* placeholders before use.
+
+receivers:
+  otlp:
+    protocols:
+      http:
+        endpoint: 0.0.0.0:4318
+
+processors:
+  filter/llm:
+    error_mode: ignore
+    traces:
+      span:
+        - 'attributes["xylitol.obs.lane"] != "llm"'
+  filter/infra:
+    error_mode: ignore
+    traces:
+      span:
+        - 'attributes["xylitol.obs.lane"] != "infra"'
+
+exporters:
+  otlphttp/langfuse:
+    endpoint: ${LANGFUSE_OTLP_BASE}/v1/traces
+    headers:
+      Authorization: ${LANGFUSE_BASIC_AUTH}
+      x-langfuse-ingestion-version: "4"
+  otlphttp/tempo:
+    endpoint: ${TEMPO_OTLP_TRACES}
+
+service:
+  pipelines:
+    traces/llm:
+      receivers: [otlp]
+      processors: [filter/llm]
+      exporters: [otlphttp/langfuse]
+    traces/infra:
+      receivers: [otlp]
+      processors: [filter/infra]
+      exporters: [otlphttp/tempo]

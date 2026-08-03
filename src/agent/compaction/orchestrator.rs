@@ -44,6 +44,7 @@ impl CompactionOrchestrator {
     }
 
     /// Manual force compact (pi `compact(customInstructions?)`). Does **not** apply the reserve gate.
+    /// OTel `agent.compaction` starts only after `prepare_compaction` succeeds (otel19).
     pub async fn compact(
         &self,
         store: &dyn XySessionStore,
@@ -57,13 +58,9 @@ impl CompactionOrchestrator {
                 reason: "manual".to_string(),
             })
             .await;
-        let obs = AgentCompactionSpan::start("manual");
 
         let entries = store.load_leaf_branch(sid).await?;
         if let Some(err) = prepare_compaction(&entries, &self.settings).err() {
-            if let Some(obs) = obs {
-                obs.finish(false, false, Some(err.as_str()));
-            }
             event_sink
                 .emit(&XyEvent::CompactionEnd {
                     result: None,
@@ -77,6 +74,8 @@ impl CompactionOrchestrator {
                 .await;
             return Err(err);
         }
+
+        let obs = AgentCompactionSpan::start("manual");
 
         let mut force_settings = self.settings.clone();
         force_settings.enabled = true;

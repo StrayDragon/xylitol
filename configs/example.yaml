@@ -118,7 +118,10 @@ hooks:
 #   tool_observation_io: none     # no tool args/results
 #   export_timeout_secs: 60
 # Turning exporter on WITHOUT raising the I/O gates still sends only structural
-# metadata (session id, model name, span types, latency, usage when present).
+# metadata (session id, model name, span types, latency, usage when present,
+# xylitol.obs.lane=llm on agent/LLM spans).
+# For llm vs infra fan-out, point endpoint at a Collector; see
+# configs/examples/otel-collector-lane.yaml (ops-optional).
 # otel:
 #   exporter: otlp-http   # or omit / none
 #   # endpoint: "http://localhost:3000/api/public/otel"

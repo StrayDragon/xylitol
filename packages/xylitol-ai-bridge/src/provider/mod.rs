@@ -23,9 +23,10 @@ pub mod trace;
 
 pub use anthropic_messages::AnthropicMessagesAdapter;
 pub use obs_session::{
-    ObsSessionContext, clear_obs_session, langfuse_generation_properties,
-    langfuse_observation_properties, langfuse_session_properties, obs_session_context,
-    set_obs_session, set_obs_session_name,
+    ObsSessionContext, XYLITOL_OBS_LANE_ATTR, XYLITOL_OBS_LANE_INFRA, XYLITOL_OBS_LANE_LLM,
+    clear_obs_session, langfuse_generation_properties, langfuse_observation_properties,
+    langfuse_session_properties, obs_session_context, set_obs_session, set_obs_session_name,
+    xylitol_obs_lane_properties,
 };
 pub use obs_span_parent::{
     clear_obs_span_parents, obs_llm_parent, obs_turn_parent, set_obs_compaction_parent,
