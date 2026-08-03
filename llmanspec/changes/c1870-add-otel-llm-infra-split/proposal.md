@@ -25,7 +25,7 @@ depends_on:
 ### 复现证据（2026-08-03）
 
 - **Session**：`460ad16e-874f-418f-8ca0-dabc58f89320`（本地 `~/.xylitol/sessions/<id>.jsonl`）。
-- Langfuse（`LANGFUSE_HOST`，例 `http://coral:3000`）该 session：约 27 traces / 410+ observations。
+- Langfuse（`LANGFUSE_HOST`，例 `http://127.0.0.1:3000`）该 session：约 27 traces / 410+ observations。
 - 同日两次 idle 手动 compact：独立根 trace
   - `c11969b24fa9e149a8429e9843af0a9f`
   - `38dcd925aec7905bd179dbd9f0e0142f`

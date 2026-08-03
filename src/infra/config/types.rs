@@ -1402,7 +1402,7 @@ token_estimate:
 models: {}
 otel:
   exporter: otlp-http
-  endpoint: "http://coral:3000/api/public/otel"
+  endpoint: "http://127.0.0.1:3000/api/public/otel"
   protocol: http-binary
   environment: dev
   service_name: xylitol
@@ -1412,7 +1412,7 @@ otel:
         assert_eq!(cfg.otel.exporter, OtelExporterKind::OtlpHttp);
         assert_eq!(
             cfg.otel.endpoint.as_deref(),
-            Some("http://coral:3000/api/public/otel")
+            Some("http://127.0.0.1:3000/api/public/otel")
         );
         assert_eq!(cfg.otel.protocol, OtelHttpProtocol::HttpBinary);
         assert_eq!(cfg.otel.environment.as_deref(), Some("dev"));

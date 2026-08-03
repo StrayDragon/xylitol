@@ -24,6 +24,9 @@
 # Local configuration that shouldn't be shared
 *.local
 config.local.yaml
+# Machine / project AppConfig — use configs/example.yaml; keep secrets in secret.env
+.xylitol/config.yaml
+.xylitol/config.yml
 
 ### Rust ###
 # rust specific files

@@ -7,7 +7,7 @@
 //!
 //! # Live: one stream call via existing OpenAiResponsesAdapter + HttpHooks capture
 //! OPENAI_API_KEY=sk-local cargo run -p xylitol-ai-bridge --example evidence_responses_capture -- \
-//!   live http://tufa:50256/v1 Ornith-1.0-35B-APEX/I-Quality /tmp/xylitol-c1290-evidence
+//!   live http://127.0.0.1:8000/v1 my-model /tmp/xylitol-c1290-evidence
 //! ```
 
 use std::fs;
