@@ -95,11 +95,13 @@ otel = [
 # Future GUI placeholder.
 gui = []
 
+# Disk-first dev profile (see docs/research/rust-disk-worktree-cache-2026.md).
+# Trade: no variable-level DWARF; no incremental cache. Backtrace line info kept.
 [profile.dev]
 opt-level = 0
-codegen-units = 256
-debug = 2
-incremental = true
+codegen-units = 16
+debug = "line-tables-only"
+incremental = false
 
 [profile.dev.package."*"]
 opt-level = 3
