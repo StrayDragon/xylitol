@@ -2,7 +2,8 @@
 depends_on: []
 branch: sdd/c1860-refactor-context-token-settlement
 base_sha: 36271222a6221e1edf59c09adb79d41711451acc
-checkpointed: false
+checkpointed: true
+checkpoint_sha: 36271222a6221e1edf59c09adb79d41711451acc
 ---
 
 # 合流上下文 token settlement（一轮一次估计）
