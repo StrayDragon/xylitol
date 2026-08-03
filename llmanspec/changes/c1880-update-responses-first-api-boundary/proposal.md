@@ -1,5 +1,8 @@
 ---
 depends_on: []
+branch: sdd/c1880-update-responses-first-api-boundary
+base_sha: e1acc4bd196d2a87f71dae37174e64e99669838c
+checkpointed: false
 ---
 
 # Responses 默认主路径 + Completions 显式类型 + Anthropic 桩
