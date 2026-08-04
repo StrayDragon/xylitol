@@ -31,10 +31,10 @@ depends_on:
 
 ## What Changes（意向；调研后再切 Designed）
 
-- 识别契约：session/transcript 上 status 为 **独立 entry kind**（`c1895` Q7）；投影层可再包 `<agent_status>`——compact **认 kind**，不靠扫正文标签
+- 识别契约：session/transcript 上为 **`AgentStatusBar` entry kind**（`c1895` Q7）；投影层包 **`<agent_status_bar>`**——compact **认 kind**，不靠扫正文标签
 - compaction 管道钩子：在 cut / summarize 时对标记消息走 A 或 B（或可切换）
 - 与 `c1910` 冻结替换正交：status 不是工具结果替换串
-- 测试缝：假轨迹含 N 条 StatusBar kind → compact → 断言条数/内容符合所选策略
+- 测试缝：假轨迹含 N 条 `AgentStatusBar` → compact → 断言条数/内容符合所选策略
 
 ## Explicitly deferred
 

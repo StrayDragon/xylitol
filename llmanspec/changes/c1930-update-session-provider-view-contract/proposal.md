@@ -56,7 +56,7 @@ depends_on:
 ## Open Questions
 
 - harness-meta 用独立 `AgentMessage` 变体还是 part/属性标记—— propose 时钉（影响持久化格式，谨慎）。
-  - **上游意向（`c1895` Q7，2026-08-05）**：状态栏倾向 **独立 session entry kind** + 投影层再包 `<agent_status>`；本合约须消化该形状（或显式反驳）。
+  - **上游意向（`c1895` Q7，2026-08-05）**：状态栏倾向独立 entry kind **`AgentStatusBar`** + 投影标签 **`<agent_status_bar>`**；本合约须消化该形状（或显式反驳）。
 - Print 面导出默认是否剥离 meta—— 产品确认。
 
 ## Ethics
