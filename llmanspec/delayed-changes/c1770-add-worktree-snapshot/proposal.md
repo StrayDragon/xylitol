@@ -1,5 +1,8 @@
+> **⚠️ deferred（2026-08-05）**：移入 `llmanspec/delayed-changes/`，避免污染本期 SDD graph。本期实现线 = **c1920 → c1930/c1925 → c1900（MCP tool_search）**；Todo/状态栏等扩展后置。
+
 ---
 depends_on: []
+apply_band: P9-deferred
 ---
 
 ## Why

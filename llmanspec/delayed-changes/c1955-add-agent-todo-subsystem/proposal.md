@@ -1,8 +1,12 @@
 ---
 depends_on: []
+apply_band: P9-deferred
 ---
 
 # Agent Todo 子系统（TUI + 工具 + 内部流转）
+
+> **⚠️ deferred（2026-08-05）**：移入 `llmanspec/delayed-changes/`，避免污染本期 SDD graph。本期实现线 = **c1920 → c1930/c1925 → c1900（MCP tool_search）**；Todo/状态栏等扩展后置。
+
 
 > **产品优先于状态栏**：2026-08-05 ROI 深挖后，[`c1895` 状态栏族](../../delayed-changes/c1895-add-agent-status-bar-subsystem/proposal.md) 已 **deferred**；先立 Todo 产品 SSOT，状态栏仅作可选投影（有需要时再升格 delayed 稿）。
 > **书指针**：Ch2 实验 2-8「TODO 列表管理」（`rewrite_todo_list` / `update_todo_status`）；Ch5 coding 任务拆解。书语不进 live specs。

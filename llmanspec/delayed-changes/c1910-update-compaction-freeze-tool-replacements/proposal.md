@@ -2,9 +2,13 @@
 depends_on:
   - c1890-add-responses-context-policy-assembler
   - c1930-update-session-provider-view-contract
+apply_band: P9-deferred
 ---
 
 # 压缩：工具结果替换串首次冻结
+
+> **⚠️ deferred（2026-08-05）**：移入 `llmanspec/delayed-changes/`，避免污染本期 SDD graph。本期实现线 = **c1920 → c1930/c1925 → c1900（MCP tool_search）**；Todo/状态栏等扩展后置。
+
 
 > **调研底稿**：[`docs/research/responses-context-layout-and-cache-2026.md`](../../../docs/research/responses-context-layout-and-cache-2026.md) §6（术语对照 §7）
 > **书指针**：《深入理解 AI Agent》Ch2「上下文压缩策略」（姊妹仓 `ai-agent-book/book/chapter2.md`）；书语仅经 research §7 术语表映射，**禁止**写入 live specs。

@@ -7,7 +7,7 @@ depends_on:
 
 > **调研底稿**：[`docs/research/responses-context-layout-and-cache-2026.md`](../../../docs/research/responses-context-layout-and-cache-2026.md)（术语对照 §7）
 > **书指针**：《深入理解 AI Agent》Ch2「KV Cache 友好的上下文设计」前缀世代直觉（姊妹仓 `ai-agent-book/book/chapter2.md`）；书语仅经 research §7 术语表映射，**禁止**写入 live specs。
-> **自包含**：统一「谁在何时允许改稳定前缀」；供 `c1900`/`c1915`/换模断链共用，避免各 change 私自定义「工具世代」。
+> **自包含**：统一「谁在何时允许改稳定前缀」；供 `c1900`/delayed `c1915`/换模断链共用，避免各 change 私自定义「工具世代」。
 > **工程约定（本波次）**：策略默认 **code-first**：`defaults.rs` 纯常量（改文件调试）；**不**新增 YAML 旋钮；**不**用 env 当未暴露配置面。用户面 YAML 仅既有字段（如 `api`）。真源见 [`c1880`](../archive/2026-08-04-c1880-update-responses-first-api-boundary/proposal.md)。
 
 ## Why
@@ -25,7 +25,7 @@ depends_on:
 
 - Session（或等价运行时状态）维护 **context epoch**（最小：单一单调计数；或拆 `prompt_epoch` + `tools_epoch`，propose 时钉）。
 - 定义 **bump 表**（规范性）：哪些 API/用户动作 bump 哪一类 epoch；哪些禁止静默 bump（须用户可见 cue / 下轮预告）。
-- ContextPolicy / Assembler **读取当前 epoch** 并写入本轮布局决策（供 `c1935` 观测）。
+- ContextPolicy / Assembler **读取当前 epoch** 并写入本轮布局决策（供 delayed `c1935` 观测）。
 - NextTurn 换模：默认 bump（或按「WirePolicy / extra_policy 是否实质变化」）；规则写清，与产品「下轮生效」一致。
 - 文档：epoch 与 Prompt Cache「前缀变了」的关系（工程语义，不追命中率）。
 
@@ -43,15 +43,15 @@ depends_on:
 ## Out of scope
 
 - tool_search 实现（→ `c1900`）
-- previous_response_id（→ `c1915`）
-- 状态栏内容（→ `c1895`）
+- previous_response_id（→ delayed `c1915`）
+- 状态栏内容（→ delayed `c1895`）
 - 自动探测网关
 
 ## Parallel / depends
 
 - **硬依赖**：`c1890`
-- **下游应依赖本 change**：`c1900`、`c1915`（已改 frontmatter）；换模断链语义以本为准
-- 可与 `c1925`/`c1930`/`c1935` 并行
+- **下游应依赖本 change**：`c1900`；delayed `c1915` 日后接；换模断链语义以本为准
+- 可与 `c1925`/`c1930` 并行；`c1935` delayed
 
 ## Open Questions
 

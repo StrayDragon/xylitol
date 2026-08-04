@@ -72,7 +72,7 @@ Then 覆盖一致，且下一波次按关闭该能力装配
 | **事件闭集变更检查单** | 新生命周期词必须双面登记（流程向，非进度板） |
 | **Eval harness 面无关** | 回归跑 Print/CLI，不要求 TUI/Web 像素同源 |
 | **压缩/cache 状态同源** | 两面看到的「正在压缩 / cache 未知」语义一致 |
-| **Activity 折叠栈（expandNearest / collapseNearest）** | 旧 turn 中间操作 → L2/L3 摘要；从输入侧双向栈；与 `/session-compact` 分层；TUI 草案见 `llmanspec/changes/c1760-add-tui-activity-fold` |
+| **Activity 折叠栈（expandNearest / collapseNearest）** | 旧 turn 中间操作 → L2/L3 摘要；从输入侧双向栈；与 `/session-compact` 分层；TUI 草案见 `llmanspec/delayed-changes/c1760-add-tui-activity-fold` |
 
 ## 相关
 
@@ -81,5 +81,5 @@ Then 覆盖一致，且下一波次按关闭该能力装配
 - [OTEL与Langfuse观测.md](./OTEL与Langfuse观测.md)
 - [上下文缓存与极致压缩.md](./上下文缓存与极致压缩.md)
 - [TUI视觉与信息表达.md](./TUI视觉与信息表达.md)（减噪切片与 activity 折叠衔接）
-- 草案：`llmanspec/changes/c1760-add-tui-activity-fold`（前置 `c1755`）
+- 草案：`llmanspec/delayed-changes/c1760-add-tui-activity-fold`（前置 `c1755`）
 - 总索引：[README.md](./README.md)
