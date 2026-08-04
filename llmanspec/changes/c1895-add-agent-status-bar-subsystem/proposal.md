@@ -27,7 +27,7 @@ depends_on:
   - `ReadingProvider` 注册表（id / 优先级 / 估 token / 渲染 KV）
   - × **scenario profile**（code-first；coding 默认档对齐书 Ch5 环境感知意向）
   - × **每条 append 硬 token 预算**（超限按优先级丢低优字段）
-  - 本波：接口 + 预算 + **薄 coding profile** 可测实现（**默认含 clock**，深挖 Q5）；时间感操作手册 / git 深度 / 更多场景档后置迭代。对齐书实验 2-8「技术可独立开关」与「场景会变 + 省 token」。
+  - 本波：接口 + 预算 + **薄 coding profile** 可测实现；时间感操作手册 / git 深度 / 更多场景档后置迭代。对齐书实验 2-8「技术可独立开关」与「场景会变 + 省 token」。
 - 注入经 Assembler / Policy，**不**散落改 `build_system_prompt` 特例逻辑（system 内稳定 env 仍可由 `c1905` 管）。
 - 验证：假 provider → 预算截断可测；profile 切换可消融；可选「读数 + 短策略片段」成对配置（后置）。
 - **禁止**用 LLM 批量扫历史生成权威栏。
@@ -68,18 +68,19 @@ depends_on:
 - **Q2 Runtime 默认模式（2026-08-05）**：选 **`append` = 盲目尾插**（不查看轨迹中已有 status message，直接追加到末尾）。`replace`/`off` 仍为可切档。压缩时陈旧 status 堆积 → 策略延后调研，写入 `c1897`（最多保留一条 vs 全不保留，未定）。
 - **Q3 持久化（2026-08-05）**：选 **全部持久进 transcript**（非仅请求投影）。动机：保住常用 LLM provider 的跨请求 KV / Prompt Cache（append 前缀稳定）；仅投影会每轮替换末尾条、破坏命中。`c1897` 因此更关键。Agent 列（`c1896`）默认同源持久，除非后继另钉。
 - **Q4′ Runtime 读数地基（2026-08-05）**：选 **注册表 × scenario profile × 单条 token 预算**；本波薄 coding profile，**不**把具体键表钉成硬合约。书据：Ch2 实验 2-8 可独立开关；Ch5 coding 环境四件套为 profile 意向而非 SSOT；append 持久下省 token 靠单条预算 + 后继 `c1897`。
+- **Q5 时钟 / 日界（2026-08-05）**：选 **C — 栏内 clock provider，并进入默认 coding profile**（每轮盲目尾插带时间读数）。system/`c1905` 仍可保留稳定 env 策略，但「当前时刻 / 日历日」以栏为准避免改 system 前缀；单条预算须为 clock 留优先级；与 `c1905` 日界文案对齐时注明「动态时刻走栏」。
 
 ### 待钉
 
-- **日历日 `date` / 时钟**：走栏（Ch2 时间戳技术）还是仍由 system/`c1905` 管——与日界、前缀稳定性联调。
 - Runtime `refresh` 内置工具语义（触发重算并尾插 vs 仅返回给模型看）。
 - 特殊标记 / wire 形状（与 `c1930` 投影；TUI 是否展示）。
 - 短「操作策略」片段是否进默认 coding profile（书：读数+手册成对才改节奏；默认关以省 token？）。
+- 薄 coding profile 除 clock 外的默认开启集合（cwd / git 概览 / tool_calls 等——profile 意向，非死合约）。
 
 ## Ethics
 
 - risk_level: medium（高信任注入面；且持久后进入导出/resume）
 - prohibited_actions: LLM 维护权威栏；把外部不可信全文写入栏；不可审计的隐式投毒通道；无预算的无限膨胀 profile
-- required_evidence: off/replace/append 可测；provider 注册/预算截断可测；append 路径不依赖「扫旧 status」；持久条目带稳定特殊标记
+- required_evidence: off/replace/append 可测；provider 注册/预算截断可测；append 路径不依赖「扫旧 status」；持久条目带稳定特殊标记；默认 coding 含 clock 时预算仍可测
 - refusal_contract: 不宣称状态栏普遍提升正确率；不宣称某固定键表永远最优
 - escalation_policy: 若默认从 append 改为更强侵入策略，或默认预算显著放大，须用户确认
