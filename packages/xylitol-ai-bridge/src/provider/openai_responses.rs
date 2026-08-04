@@ -139,10 +139,10 @@ fn extract_balanced_json_object(s: &str) -> Option<String> {
 
 /// Assemble a Responses `/v1/responses` JSON body (pi-aligned store/strict/summary/include).
 ///
-/// Public for BDD / unit harness (c1290 pab16).
+/// Crate-private implementation for [`super::ResponsesAssembler`] (c1890 sole public seam).
 ///
 /// [`WirePolicy`] gates unexposed knobs (`previous_response_id`, `prompt_cache_key`).
-pub fn assemble_responses_body(
+pub(crate) fn assemble_responses_body(
     model: &str,
     messages: Vec<AiBridgeMessage>,
     tools: &[AiBridgeToolSchema],
@@ -198,8 +198,8 @@ pub fn assemble_responses_body(
 
 /// Strip wire knobs denied by [`WirePolicy`] (c1880).
 ///
-/// Public for unit harness: inject keys then assert strip under default policy.
-pub fn apply_responses_wire_policy(body: &mut Value, wire_policy: &WirePolicy) {
+/// Prefer [`super::ResponsesAssembler::apply_wire_policy`] outside this module.
+pub(crate) fn apply_responses_wire_policy(body: &mut Value, wire_policy: &WirePolicy) {
     let Some(obj) = body.as_object_mut() else {
         return;
     };

@@ -561,8 +561,12 @@ impl AgentCapabilities {
         &self.context_policy
     }
 
-    /// Replace layout policy for the next turn (does not rewrite in-flight tools).
-    pub fn set_context_policy(&mut self, policy: crate::agent::context_policy::ContextPolicy) {
+    /// Test / in-crate override (proposal Q1: no public session YAML override this wave).
+    #[cfg(test)]
+    pub(crate) fn set_context_policy_for_test(
+        &mut self,
+        policy: crate::agent::context_policy::ContextPolicy,
+    ) {
         self.context_policy = policy;
     }
 
@@ -682,7 +686,13 @@ impl AgentCapabilities {
     }
 
     /// Set the active tool set and rebuild the system prompt to reflect it.
+    ///
+    /// When an agent turn is in-flight and [`crate::agent::context_policy::ContextPolicy::allows_midturn_tools_rewrite`]
+    /// is false (Search default), the call is ignored so provider `tools` stay stable.
     pub fn set_tools(&mut self, tools: ToolSet) {
+        if !self.allow_tools_rewrite_now("set_tools") {
+            return;
+        }
         self.apply_tools_metadata(&tools);
         self.tools = tools;
         self.rebuild_system_prompt();
@@ -692,10 +702,26 @@ impl AgentCapabilities {
     ///
     /// Used by MCP settle so `build_system_prompt` can run off the TUI tick path.
     /// Returns a clone of [`SystemPromptOpts`] ready for [`prompt::build_system_prompt`].
+    /// Same mid-turn Search gate as [`Self::set_tools`].
     pub fn set_tools_defer_prompt(&mut self, tools: ToolSet) -> SystemPromptOpts {
+        if !self.allow_tools_rewrite_now("set_tools_defer_prompt") {
+            return self.prompt_opts.clone();
+        }
         self.apply_tools_metadata(&tools);
         self.tools = tools;
         self.prompt_opts.clone()
+    }
+
+    fn allow_tools_rewrite_now(&self, op: &str) -> bool {
+        if self.has_active_turn() && !self.context_policy.allows_midturn_tools_rewrite() {
+            log::warn!(
+                target: "xylitol::agent",
+                "{op} ignored: mid-turn tools rewrite denied by ContextPolicy (tools_mode={:?})",
+                self.context_policy.tools_mode
+            );
+            return false;
+        }
+        true
     }
 
     /// Install a prebuilt system prompt string (pair with [`Self::set_tools_defer_prompt`]).
@@ -1102,6 +1128,35 @@ mod tests {
             session.system_prompt().unwrap_or("").contains("read") || !built.is_empty(),
             "installed prompt should reflect tool set"
         );
+    }
+
+    #[test]
+    fn search_policy_blocks_midturn_set_tools() {
+        use crate::agent::context_policy::{ContextPolicy, ToolsMode};
+
+        let mut session = make_session();
+        let before_n = session.tools().iter().count();
+        session.set_context_policy_for_test(ContextPolicy {
+            tools_mode: ToolsMode::Search,
+            ..Default::default()
+        });
+        *session.active_turn_handle().lock().unwrap() = Some(ActiveTurnBinding {
+            model_id: "m".into(),
+            display_name: "m".into(),
+            thinking: ThinkingLevel::Off,
+            omit_thinking: true,
+        });
+
+        session.set_tools(ToolSet::empty());
+        assert_eq!(
+            session.tools().iter().count(),
+            before_n,
+            "Search + in-flight turn must not rewrite tools"
+        );
+
+        session.clear_active_turn();
+        session.set_tools(ToolSet::empty());
+        assert_eq!(session.tools().iter().count(), 0);
     }
 
     #[test]
