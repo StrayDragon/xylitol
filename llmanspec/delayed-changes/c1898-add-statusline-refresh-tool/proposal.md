@@ -1,11 +1,13 @@
 ---
 depends_on:
   - c1895-add-agent-status-bar-subsystem
+apply_band: P9-deferred
 ---
 
 # `statusline_refresh` 按需工具（仅 tool result）
 
-> **来源**：深挖 [`c1895`](../c1895-add-agent-status-bar-subsystem/proposal.md) Q6′（2026-08-05）——分类后选定：本波 **不做** refresh 工具；主路径 = 每个 outbound **generate 前**自动盲目尾插。本草案保存后置工具形态，避免与压缩/双写缠死后再改。
+> **⚠️ deferred（2026-08-05）**：随 `c1895` 族移入 `delayed-changes/`；低 ROI，默认不升格。
+> **来源**：深挖 [`c1895`](../c1895-add-agent-status-bar-subsystem/proposal.md) Q6′。
 > **书边界**：栏仍由 Harness 代码维护；工具不得变成「LLM 扫历史写权威栏」。
 > **工程约定**：code-first；未切 Designed 前禁止假实现进主路径。
 
