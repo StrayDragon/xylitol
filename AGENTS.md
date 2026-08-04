@@ -70,6 +70,7 @@
 ## 命令与验证
 
 - 日常：`just setup` / `fmt` / `lint` / `test` / `test-tui`；满闸 `just qa`（或 `ci`）；真终端协议再 `just qa-e2e`。
+- `just qa` 在 workspace 测试之后串行跑 `test-live-provider`（`--test-threads=1`，不进 nextest 并行矩阵）；专用配置 `configs/testing/live-provider.local.yaml`（从 `live-provider.example.yaml` 复制，`enabled: true` 才实打网关；缺失/关闭则 skip）。
 - 闸默认 quiet；`just qa normal` / `verbose` 或 `JUST_VERBOSITY=`。
 - 非变更闸脚本 `scripts/check_*.py` **MUST** 经 wiring 进 `qa`；维护脚本不进闸。
 - 探查：`cargo run -- --help`；文档：`cargo doc --no-deps --all-features`。

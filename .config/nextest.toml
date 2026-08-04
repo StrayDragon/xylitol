@@ -1,6 +1,10 @@
 [profile.ci]
 fail-fast = false
 slow-timeout = "60s"
+# Live HTTP provider suite is opted into `just qa` → `test-live-provider`
+# (serial --test-threads=1). Keep it out of the parallel matrix so local
+# llama.cpp / Ornith is not hammered alongside unit tests.
+default-filter = "not binary(live_responses_prompt_cache)"
 
 [profile.ci.junit]
 path = "junit.xml"
@@ -11,3 +15,4 @@ fail-fast = false
 slow-timeout = "60s"
 status-level = "fail"
 final-status-level = "fail"
+default-filter = "not binary(live_responses_prompt_cache)"

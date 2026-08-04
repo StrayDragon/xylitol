@@ -58,6 +58,7 @@ lint-all verbosity=verbosity_default:
     esac
 
 # Workspace tests (nextest profile agent/ci, or cargo test fallback).
+# Live provider binary is filtered out of nextest; see `test-live-provider`.
 [arg('verbosity', pattern='quiet|normal|verbose')]
 test verbosity=verbosity_default:
     #!/usr/bin/env bash
@@ -79,18 +80,48 @@ test verbosity=verbosity_default:
           ;;
       esac
     else
+      # Exclude live HTTP suite from parallel cargo test (same intent as nextest filter).
       case "{{verbosity}}" in
         quiet)
-          # cargo -q already forwards quiet to libtest; do not also pass --quiet.
-          if ! out=$(cargo test -q --all-features 2>&1); then
+          if ! out=$(cargo test -q --workspace --all-features --exclude xylitol-ai-bridge 2>&1); then
+            printf '%s\n' "$out"
+            exit 1
+          fi
+          if ! out=$(cargo test -q -p xylitol-ai-bridge --lib 2>&1); then
             printf '%s\n' "$out"
             exit 1
           fi
           ;;
-        normal)  cargo test --all-features ;;
-        verbose) cargo test -v --all-features ;;
+        normal)
+          cargo test --workspace --all-features --exclude xylitol-ai-bridge
+          cargo test -p xylitol-ai-bridge --lib
+          ;;
+        verbose)
+          cargo test -v --workspace --all-features --exclude xylitol-ai-bridge
+          cargo test -v -p xylitol-ai-bridge --lib
+          ;;
       esac
     fi
+
+# Live Responses prompt-cache counterexample (dedicated configs/testing config).
+# Strictly serial (--test-threads=1). Wired into `just qa` after workspace tests.
+# Missing/disabled local config → skip (pass). enabled=true → must hit gateway.
+alias test-live-responses-cache := test-live-provider
+[arg('verbosity', pattern='quiet|normal|verbose')]
+test-live-provider verbosity=verbosity_default:
+    #!/usr/bin/env bash
+    set -euo pipefail
+    # One binary, one thread: never fan out concurrent llama.cpp requests from this suite.
+    case "{{verbosity}}" in
+      quiet)
+        if ! out=$(cargo test -q -p xylitol-ai-bridge --test live_responses_prompt_cache -- --test-threads=1 --nocapture 2>&1); then
+          printf '%s\n' "$out"
+          exit 1
+        fi
+        ;;
+      normal)  cargo test -p xylitol-ai-bridge --test live_responses_prompt_cache -- --test-threads=1 --nocapture ;;
+      verbose) cargo test -v -p xylitol-ai-bridge --test live_responses_prompt_cache -- --test-threads=1 --nocapture ;;
+    esac
 
 # TUI end-to-end integration tests (layer 5: PTY/tmux). Slow + needs a real
 # PTY and/or tmux; gated #[ignore] so they never run under the default `test`.
@@ -264,14 +295,15 @@ test-tui verbosity=verbosity_default:
     esac
 
 # Unified daily / PR gate (no TUI layer-5 E2E — needs PTY/tmux).
-# Order: fmt → clippy → workspace tests → package TUI harness → docs → DESIGN tokens
-# → scripts/check_* (wired + run) → prek.
+# Order: fmt → clippy → workspace tests → live-provider (serial) → package TUI
+# harness → docs → DESIGN tokens → scripts/check_* → prek.
 # Default verbosity=quiet (agent-friendly). Pass `normal` / `verbose` for humans.
 [arg('verbosity', pattern='quiet|normal|verbose')]
 qa verbosity=verbosity_default: \
     (fmt-check verbosity) \
     (lint verbosity) \
     (test verbosity) \
+    (test-live-provider verbosity) \
     (test-tui verbosity) \
     (doc-check verbosity) \
     (check-tui-tokens verbosity) \
