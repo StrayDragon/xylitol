@@ -212,7 +212,7 @@
   场景: prompt-allowed-while-mcp-connecting
     假如 MCP 仍 connecting
     当 提交普通 agent prompt
-    那么 允许提交；头卡仍可显示 connecting 进度；slash 与滚历史仍可用
+    那么 允许提交；头卡仍可显示 connecting 进度；slash 与滚历史仍可用；generate 可按 mcp8 门闸等待定稿
 
   @req:ath23
   场景: in-tui-resume-no-mcp-reconnect-block

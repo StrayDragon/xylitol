@@ -1,7 +1,10 @@
 ---
 depends_on:
-  - c1880-update-responses-first-api-boundary
-  - c1890-add-responses-context-policy-assembler
+- c1880-update-responses-first-api-boundary
+- c1890-add-responses-context-policy-assembler
+branch: sdd/c1900-update-mcp-first-turn-tool-freeze
+base_sha: 863d8836dd09dc4e7d3a9c77e6f7f59d465019f2
+checkpointed: false
 ---
 
 # MCP 首条门闸 + 工具表定稿（移除 pending-turn 注入）
@@ -76,8 +79,8 @@ depends_on:
 
 ### 待钉
 
-- Available tools 散文是否枚举 mcp:——propose / design 时钉。
-- `c1960` 参考验证 provider 清单——升格实现时钉。
+- Available tools 散文：**已钉**（design）— 保持 pt11 builtins-only；引导改为「定稿后的请求 tools 列表」。
+- `c1960` 参考验证 provider 清单——实现时钉。
 
 ## Ethics
 
