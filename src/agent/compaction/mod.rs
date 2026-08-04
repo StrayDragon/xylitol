@@ -932,8 +932,7 @@ mod tests {
             output: 300,
             cache_read: 100,
             cache_write: 50,
-            cache_write_1h: 0,
-            cost: None,
+            ..Default::default()
         };
         assert_eq!(token_estimator::calculate_context_tokens(&usage), 500);
     }
@@ -945,11 +944,8 @@ mod tests {
         let usage = XyUsage {
             input: 10,
             output: 5,
-            cache_read: 0,
-            cache_write: 0,
-            cache_write_1h: 0,
             total_tokens: 9999,
-            cost: None,
+            ..Default::default()
         };
         let asst = AgentMessage::Llm(LlmMessage::AssistantMessage {
             content: vec![crate::protocol::message::AgentPart::text("hi")],

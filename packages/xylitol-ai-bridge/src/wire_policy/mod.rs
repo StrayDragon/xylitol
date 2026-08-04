@@ -87,11 +87,11 @@ mod tests {
     use super::*;
 
     #[test]
-    fn default_is_generic_with_wire_bits_off() {
+    fn default_is_generic_with_expected_cache_usage() {
         let p = WirePolicy::default();
         assert_eq!(p.compat, Compat::Generic);
         assert_eq!(p.compat.as_str(), "generic");
-        assert!(!p.expects_prompt_cache_usage());
+        assert!(p.expects_prompt_cache_usage());
         assert!(!p.allows_prompt_cache_key());
         assert!(!p.allows_previous_response_id());
         assert_eq!(p.compat, defaults::COMPAT_DEFAULT);

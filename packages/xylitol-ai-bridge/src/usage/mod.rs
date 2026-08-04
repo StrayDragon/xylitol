@@ -2,7 +2,7 @@
 
 use serde_json::Value;
 
-use crate::dto::AiBridgeUsage;
+use crate::dto::{AiBridgeUsage, PromptCacheRead};
 use crate::wire_policy::WirePolicy;
 
 /// OpenAI-style `{prompt_tokens, completion_tokens, ...}` → [`AiBridgeUsage`].
@@ -19,19 +19,21 @@ pub fn from_openai_usage(value: &Value) -> AiBridgeUsage {
         .get("total_tokens")
         .and_then(|v| v.as_u64())
         .unwrap_or(input + output);
+    let cache_read = value
+        .get("prompt_tokens_details")
+        .and_then(|d| d.get("cached_tokens"))
+        .and_then(|v| v.as_u64())
+        .unwrap_or(0);
     AiBridgeUsage {
         input,
         output,
-        cache_read: value
-            .get("prompt_tokens_details")
-            .and_then(|d| d.get("cached_tokens"))
-            .and_then(|v| v.as_u64())
-            .unwrap_or(0),
         cache_write: 0,
         cache_write_1h: 0,
         total_tokens: total,
         cost: None,
+        ..AiBridgeUsage::default()
     }
+    .with_prompt_cache_read(PromptCacheRead::Tokens(cache_read))
 }
 
 /// Anthropic-style `{input_tokens, output_tokens, cache_*}` → [`AiBridgeUsage`].
@@ -60,26 +62,27 @@ pub fn from_anthropic_usage(value: &Value) -> AiBridgeUsage {
     AiBridgeUsage {
         input,
         output,
-        cache_read,
         cache_write,
         cache_write_1h,
         total_tokens: input + output,
         cost: None,
+        ..AiBridgeUsage::default()
     }
+    .with_prompt_cache_read(PromptCacheRead::Tokens(cache_read))
 }
 
 /// OpenAI Responses `{input_tokens, output_tokens}` → [`AiBridgeUsage`].
 ///
-/// Uses [`WirePolicy::default()`] (cache_read stays 0 until policy expects it).
+/// Uses [`WirePolicy::default()`] (expects prompt-cache usage by default, c1885).
 pub fn from_responses_usage(value: &Value) -> AiBridgeUsage {
     from_responses_usage_with_policy(value, WirePolicy::default())
 }
 
-/// Responses usage mapping gated by [`WirePolicy`] (c1880).
+/// Responses usage mapping gated by [`WirePolicy`] (c1880 / c1885).
 ///
-/// When `!expects_prompt_cache_usage()`, `cache_read` is forced to 0 (do not
-/// pretend first-language cache fields). When true, map
-/// `input_tokens_details.cached_tokens` if present.
+/// - `!expects_prompt_cache_usage()` → [`PromptCacheRead::NotApplicable`]
+/// - expects + `input_tokens_details.cached_tokens` present → [`PromptCacheRead::Tokens`]
+/// - expects + field absent → [`PromptCacheRead::NotReported`]
 pub fn from_responses_usage_with_policy(value: &Value, policy: WirePolicy) -> AiBridgeUsage {
     let input = value
         .get("input_tokens")
@@ -89,24 +92,28 @@ pub fn from_responses_usage_with_policy(value: &Value, policy: WirePolicy) -> Ai
         .get("output_tokens")
         .and_then(|v| v.as_u64())
         .unwrap_or(0);
-    let cache_read = if policy.expects_prompt_cache_usage() {
-        value
+    let prompt_cache_read = if !policy.expects_prompt_cache_usage() {
+        PromptCacheRead::NotApplicable
+    } else {
+        match value
             .get("input_tokens_details")
             .and_then(|d| d.get("cached_tokens"))
             .and_then(|v| v.as_u64())
-            .unwrap_or(0)
-    } else {
-        0
+        {
+            Some(n) => PromptCacheRead::Tokens(n),
+            None => PromptCacheRead::NotReported,
+        }
     };
     AiBridgeUsage {
         input,
         output,
-        cache_read,
         cache_write: 0,
         cache_write_1h: 0,
         total_tokens: input + output,
         cost: None,
+        ..AiBridgeUsage::default()
     }
+    .with_prompt_cache_read(prompt_cache_read)
 }
 
 /// Optional cost fill from per-million token rates.
@@ -135,6 +142,7 @@ pub fn total_context_tokens(usage: &AiBridgeUsage) -> u64 {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::wire_policy::{Compat, ExtraPolicy};
 
     #[test]
     fn openai_usage_maps_prompt_and_completion() {
@@ -147,6 +155,7 @@ mod tests {
         assert_eq!(u.input, 100);
         assert_eq!(u.output, 50);
         assert_eq!(u.total_tokens, 150);
+        assert_eq!(u.prompt_cache_read, PromptCacheRead::Tokens(0));
     }
 
     #[test]
@@ -162,6 +171,7 @@ mod tests {
         assert_eq!(u.output, 80);
         assert_eq!(u.cache_read, 40);
         assert_eq!(u.cache_write, 10);
+        assert_eq!(u.prompt_cache_read, PromptCacheRead::Tokens(40));
     }
 
     #[test]
@@ -174,25 +184,35 @@ mod tests {
         assert_eq!(u.input, 30);
         assert_eq!(u.output, 20);
         assert_eq!(u.total_tokens, 50);
+        assert_eq!(u.prompt_cache_read, PromptCacheRead::NotReported);
         assert_eq!(u.cache_read, 0);
     }
 
     #[test]
-    fn responses_usage_ignores_cached_tokens_when_policy_off() {
+    fn responses_usage_not_applicable_when_policy_off() {
+        let policy = WirePolicy {
+            compat: Compat::Generic,
+            extra_policy: ExtraPolicy {
+                prompt_cache_usage: false,
+                prompt_cache_key: false,
+                previous_response_id: false,
+            },
+        };
         let json = serde_json::json!({
             "input_tokens": 30,
             "output_tokens": 20,
             "input_tokens_details": { "cached_tokens": 12 }
         });
-        let u = from_responses_usage_with_policy(&json, WirePolicy::default());
+        let u = from_responses_usage_with_policy(&json, policy);
+        assert_eq!(u.prompt_cache_read, PromptCacheRead::NotApplicable);
         assert_eq!(u.cache_read, 0);
     }
 
     #[test]
     fn responses_usage_maps_cached_tokens_when_policy_on() {
         let policy = WirePolicy {
-            compat: crate::wire_policy::Compat::Generic,
-            extra_policy: crate::wire_policy::ExtraPolicy {
+            compat: Compat::Generic,
+            extra_policy: ExtraPolicy {
                 prompt_cache_usage: true,
                 prompt_cache_key: false,
                 previous_response_id: false,
@@ -204,7 +224,24 @@ mod tests {
             "input_tokens_details": { "cached_tokens": 12 }
         });
         let u = from_responses_usage_with_policy(&json, policy);
+        assert_eq!(u.prompt_cache_read, PromptCacheRead::Tokens(12));
         assert_eq!(u.cache_read, 12);
+    }
+
+    #[test]
+    fn responses_usage_tokens_zero_is_not_not_reported() {
+        let json = serde_json::json!({
+            "input_tokens": 30,
+            "output_tokens": 20,
+            "input_tokens_details": { "cached_tokens": 0 }
+        });
+        let u = from_responses_usage(&json);
+        assert_eq!(u.prompt_cache_read, PromptCacheRead::Tokens(0));
+    }
+
+    #[test]
+    fn default_policy_expects_prompt_cache_usage() {
+        assert!(WirePolicy::default().expects_prompt_cache_usage());
     }
 
     #[test]
@@ -212,11 +249,8 @@ mod tests {
         let mut u = AiBridgeUsage {
             input: 1_000_000,
             output: 0,
-            cache_read: 0,
-            cache_write: 0,
-            cache_write_1h: 0,
             total_tokens: 1_000_000,
-            cost: None,
+            ..AiBridgeUsage::default()
         };
         apply_cost_rates(&mut u, 10.0, 30.0, 1.0, 5.0);
         let cost = u.cost.unwrap();

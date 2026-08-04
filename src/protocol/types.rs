@@ -419,11 +419,8 @@ mod tests {
         let usage = XyUsage {
             input: 100,
             output: 50,
-            cache_read: 0,
-            cache_write: 0,
-            cache_write_1h: 0,
             total_tokens: 150,
-            cost: None,
+            ..Default::default()
         };
         let chunk = XyChunk::Done {
             finish_reason: XyStopReason::MaxTokens,

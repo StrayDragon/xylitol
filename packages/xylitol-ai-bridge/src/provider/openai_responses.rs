@@ -491,15 +491,20 @@ pub fn map_responses_sse_event(
             let usage = usage.or_else(|| {
                 let usage_total = state.usage_input + state.usage_output;
                 if usage_total > 0 {
-                    Some(crate::dto::AiBridgeUsage {
-                        input: state.usage_input,
-                        output: state.usage_output,
-                        cache_read: 0,
-                        cache_write: 0,
-                        total_tokens: usage_total,
-                        cache_write_1h: 0,
-                        cost: None,
-                    })
+                    let pcr = if state.wire_policy.expects_prompt_cache_usage() {
+                        crate::dto::PromptCacheRead::NotReported
+                    } else {
+                        crate::dto::PromptCacheRead::NotApplicable
+                    };
+                    Some(
+                        crate::dto::AiBridgeUsage {
+                            input: state.usage_input,
+                            output: state.usage_output,
+                            total_tokens: usage_total,
+                            ..Default::default()
+                        }
+                        .with_prompt_cache_read(pcr),
+                    )
                 } else {
                     None
                 }
@@ -967,7 +972,7 @@ mod tests {
         let adapter = OpenAiResponsesAdapter::new("sk".into(), "gpt".into(), None, None);
         let p = adapter.wire_policy();
         assert_eq!(p, crate::wire_policy::WirePolicy::default());
-        assert!(!p.expects_prompt_cache_usage());
+        assert!(p.expects_prompt_cache_usage());
         assert!(!p.allows_previous_response_id());
     }
 

@@ -111,11 +111,8 @@ mod tests {
         let usage = AiBridgeUsage {
             input: 1000,
             output: 200,
-            cache_read: 0,
-            cache_write: 0,
-            cache_write_1h: 0,
             total_tokens: 1200,
-            cost: None,
+            ..Default::default()
         };
         // Usage-bearing assistant not in slice → whole slice is trailing (pi-aligned).
         let msgs = vec![AiBridgeMessage::user("trailing")];
@@ -139,11 +136,8 @@ mod tests {
         let usage = AiBridgeUsage {
             input: 1000,
             output: 200,
-            cache_read: 0,
-            cache_write: 0,
-            cache_write_1h: 0,
             total_tokens: 1200,
-            cost: None,
+            ..Default::default()
         };
         let history = AiBridgeMessage::user("x".repeat(8_000));
         let hist_alone = heuristic_tokens(std::slice::from_ref(&history));
@@ -186,11 +180,8 @@ mod tests {
         let usage = AiBridgeUsage {
             input: 500,
             output: 0,
-            cache_read: 0,
-            cache_write: 0,
-            cache_write_1h: 0,
             total_tokens: 500,
-            cost: None,
+            ..Default::default()
         };
         let msgs = vec![AiBridgeMessage::user("hello")];
         let est = estimate_context(

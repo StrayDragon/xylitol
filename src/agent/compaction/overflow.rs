@@ -172,11 +172,8 @@ mod tests {
             Some(XyUsage {
                 input: 210_000,
                 output: 10,
-                cache_read: 0,
-                cache_write: 0,
-                cache_write_1h: 0,
                 total_tokens: 210_010,
-                cost: None,
+                ..Default::default()
             }),
         );
         assert!(is_context_overflow_assistant(&m, 200_000));
@@ -191,11 +188,8 @@ mod tests {
             Some(XyUsage {
                 input: 199_000,
                 output: 0,
-                cache_read: 0,
-                cache_write: 0,
-                cache_write_1h: 0,
                 total_tokens: 199_000,
-                cost: None,
+                ..Default::default()
             }),
         );
         assert!(is_context_overflow_assistant(&m, 200_000));

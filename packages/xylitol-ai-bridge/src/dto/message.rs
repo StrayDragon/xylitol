@@ -234,6 +234,37 @@ pub struct AiBridgeImageContent {
     pub media_type: String,
 }
 
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Default, Serialize, Deserialize)]
+#[serde(rename_all = "snake_case")]
+pub enum PromptCacheRead {
+    /// WirePolicy does not expect first-language cache usage fields.
+    #[default]
+    NotApplicable,
+    /// Expected, but the response omitted cache detail fields.
+    NotReported,
+    /// Explicit token count from the provider (including zero).
+    Tokens(u64),
+}
+
+impl PromptCacheRead {
+    /// Derived `cache_read` tokens for accounting (`Tokens(n)` only).
+    pub fn tokens(self) -> u64 {
+        match self {
+            Self::Tokens(n) => n,
+            Self::NotApplicable | Self::NotReported => 0,
+        }
+    }
+
+    /// Stable observation label (`xylitol.prompt_cache_read`).
+    pub fn as_status_str(self) -> &'static str {
+        match self {
+            Self::NotApplicable => "not_applicable",
+            Self::NotReported => "not_reported",
+            Self::Tokens(_) => "tokens",
+        }
+    }
+}
+
 #[derive(Debug, Clone, Copy, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub struct AiBridgeUsage {
@@ -249,6 +280,9 @@ pub struct AiBridgeUsage {
     pub total_tokens: u64,
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub cost: Option<AiBridgeUsageCost>,
+    /// Authoritative Prompt Cache read provenance (c1885). `cache_read` is derived.
+    #[serde(default)]
+    pub prompt_cache_read: PromptCacheRead,
 }
 
 #[derive(Debug, Clone, Copy, Serialize, Deserialize)]
@@ -263,7 +297,29 @@ pub struct AiBridgeUsageCost {
     pub total: f64,
 }
 
+impl Default for AiBridgeUsage {
+    fn default() -> Self {
+        Self {
+            input: 0,
+            output: 0,
+            cache_read: 0,
+            cache_write: 0,
+            cache_write_1h: 0,
+            total_tokens: 0,
+            cost: None,
+            prompt_cache_read: PromptCacheRead::NotApplicable,
+        }
+    }
+}
+
 impl AiBridgeUsage {
+    /// Build usage with authoritative prompt-cache provenance; syncs `cache_read`.
+    pub fn with_prompt_cache_read(mut self, prompt_cache_read: PromptCacheRead) -> Self {
+        self.prompt_cache_read = prompt_cache_read;
+        self.cache_read = prompt_cache_read.tokens();
+        self
+    }
+
     pub fn compute_total(&mut self) {
         self.total_tokens = self.input + self.output;
     }
@@ -338,7 +394,7 @@ mod tests {
                 cache_write: 4,
                 cache_write_1h: 5,
                 total_tokens: 0,
-                cost: None,
+                ..Default::default()
             }),
             api: String::new(),
             provider: "openai".into(),

@@ -17,12 +17,12 @@
 
 ## 2. 实现（apply）
 
-- [ ] 2.1 DTO：`PromptCacheRead`（名以实现为准）接入 `AiBridgeUsage`；派生 `cache_read`
-- [ ] 2.2 usage：Responses `from_responses_usage_with_policy` 按闸门填三态；`PROMPT_CACHE_USAGE` 默认 true
-- [ ] 2.3 观测：`ProviderRequestTrace::attach_usage` 透出三态；禁止 NotReported/NotApplicable 写伪 cache_read
-- [ ] 2.4 单测：Tokens / NotReported / NotApplicable / default policy / attach_usage
+- [x] 2.1 DTO：`PromptCacheRead`（名以实现为准）接入 `AiBridgeUsage`；派生 `cache_read`
+- [x] 2.2 usage：Responses `from_responses_usage_with_policy` 按闸门填三态；`PROMPT_CACHE_USAGE` 默认 true
+- [x] 2.3 观测：`ProviderRequestTrace::attach_usage` 透出三态；禁止 NotReported/NotApplicable 写伪 cache_read
+- [x] 2.4 单测：Tokens / NotReported / NotApplicable / default policy / attach_usage
 
 ## 3. 校验
 
-- [ ] 3.1 `llman sdd validate`（change + package-ai-bridge）`--strict --no-check`
-- [ ] 3.2 `cargo test -p xylitol-ai-bridge`（usage / wire_policy / trace）+ 触及面 fmt/lint
+- [x] 3.1 `llman sdd validate`（change + package-ai-bridge）`--strict --no-check`
+- [x] 3.2 `cargo test -p xylitol-ai-bridge`（usage / wire_policy / trace）+ 触及面 fmt/lint
