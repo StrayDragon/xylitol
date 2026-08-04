@@ -31,3 +31,4 @@
 
 - [x] 4.1 specs `validate --strict --no-check`（package-ai-bridge / infra-provider）
 - [x] 4.2 apply：`cargo test`（wire_policy + factory）+ `just fmt` / lint 触及面
+- [x] 4.3 verify 建议：assemble/usage 显式消费 WirePolicy；`default_adapter_api` 注释改 API 协议族

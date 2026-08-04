@@ -69,7 +69,14 @@ impl OpenAiResponsesAdapter {
         stream: bool,
         options: &crate::thinking::AiBridgeGenerateOptions,
     ) -> Value {
-        assemble_responses_body(&self.model, messages, tools, stream, options)
+        assemble_responses_body(
+            &self.model,
+            messages,
+            tools,
+            stream,
+            options,
+            &self.wire_policy,
+        )
     }
 
     fn map_err(err: async_openai::error::OpenAIError) -> AiBridgeError {
@@ -133,12 +140,15 @@ fn extract_balanced_json_object(s: &str) -> Option<String> {
 /// Assemble a Responses `/v1/responses` JSON body (pi-aligned store/strict/summary/include).
 ///
 /// Public for BDD / unit harness (c1290 pab16).
+///
+/// [`WirePolicy`] gates unexposed knobs (`previous_response_id`, `prompt_cache_key`).
 pub fn assemble_responses_body(
     model: &str,
     messages: Vec<AiBridgeMessage>,
     tools: &[AiBridgeToolSchema],
     stream: bool,
     options: &crate::thinking::AiBridgeGenerateOptions,
+    wire_policy: &WirePolicy,
 ) -> Value {
     let mut input_items = convert_messages_to_input_items(&messages);
     prepend_system_prompt_item(
@@ -182,7 +192,23 @@ pub fn assemble_responses_body(
         body["include"] = serde_json::json!(["reasoning.encrypted_content"]);
     }
 
+    apply_responses_wire_policy(&mut body, wire_policy);
     body
+}
+
+/// Strip wire knobs denied by [`WirePolicy`] (c1880).
+///
+/// Public for unit harness: inject keys then assert strip under default policy.
+pub fn apply_responses_wire_policy(body: &mut Value, wire_policy: &WirePolicy) {
+    let Some(obj) = body.as_object_mut() else {
+        return;
+    };
+    if !wire_policy.allows_previous_response_id() {
+        obj.remove("previous_response_id");
+    }
+    if !wire_policy.allows_prompt_cache_key() {
+        obj.remove("prompt_cache_key");
+    }
 }
 
 #[async_trait]
@@ -211,7 +237,11 @@ impl AiBridgeLlmAdapter for OpenAiResponsesAdapter {
             .create_stream_byot::<_, Value>(body)
             .await
             .map_err(Self::map_err)?;
-        Ok(Box::pin(responses_sdk_stream(sdk_stream, trace)))
+        Ok(Box::pin(responses_sdk_stream(
+            sdk_stream,
+            trace,
+            self.wire_policy,
+        )))
     }
 
     async fn generate(
@@ -235,7 +265,7 @@ impl AiBridgeLlmAdapter for OpenAiResponsesAdapter {
         if let Some(t) = &trace {
             t.emit_raw("response.json", &json.to_string());
         }
-        let chunks = parse_responses_output(&json);
+        let chunks = parse_responses_output(&json, self.wire_policy);
         if let Some(t) = &trace {
             for c in &chunks {
                 t.emit_mapped_chunk(c);
@@ -251,9 +281,13 @@ fn responses_sdk_stream(
     + Unpin
     + 'static,
     trace: Option<crate::provider::trace::ProviderRequestTrace>,
+    wire_policy: WirePolicy,
 ) -> Pin<Box<dyn Stream<Item = Result<AiBridgeChunk, AiBridgeError>> + Send>> {
     Box::pin(async_stream::try_stream! {
-        let mut state = ResponsesStreamState::default();
+        let mut state = ResponsesStreamState {
+            wire_policy,
+            ..Default::default()
+        };
 
         while let Some(item) = sdk_stream.next().await {
             let data = item.map_err(|e| {
@@ -283,6 +317,10 @@ pub struct ResponsesStreamState {
     function_calls: HashMap<String, (String, String, bool)>,
     usage_input: u64,
     usage_output: u64,
+    /// Last usage JSON blob (for policy-aware cache_read mapping).
+    usage_value: Option<Value>,
+    /// Wire policy for usage honesty gates (c1880).
+    wire_policy: WirePolicy,
 }
 
 /// Map one Responses SSE JSON payload (lenient `Value`) into zero or more chunks.
@@ -424,6 +462,7 @@ pub fn map_responses_sse_event(
                     .get("output_tokens")
                     .and_then(|v| v.as_u64())
                     .unwrap_or(state.usage_output);
+                state.usage_value = Some(usage.clone());
             }
             Vec::new()
         }
@@ -441,21 +480,30 @@ pub fn map_responses_sse_event(
                     .get("output_tokens")
                     .and_then(|v| v.as_u64())
                     .unwrap_or(state.usage_output);
+                state.usage_value = Some(usage.clone());
             }
-            let usage_total = state.usage_input + state.usage_output;
-            let usage = if usage_total > 0 {
-                Some(crate::dto::AiBridgeUsage {
-                    input: state.usage_input,
-                    output: state.usage_output,
-                    cache_read: 0,
-                    cache_write: 0,
-                    total_tokens: usage_total,
-                    cache_write_1h: 0,
-                    cost: None,
-                })
-            } else {
-                None
-            };
+            let usage = state
+                .usage_value
+                .as_ref()
+                .map(|v| crate::usage::from_responses_usage_with_policy(v, state.wire_policy))
+                .filter(|u| u.total_tokens > 0 || u.input + u.output > 0);
+            // Prefer mapped usage; fall back to accumulated counters when blob missing.
+            let usage = usage.or_else(|| {
+                let usage_total = state.usage_input + state.usage_output;
+                if usage_total > 0 {
+                    Some(crate::dto::AiBridgeUsage {
+                        input: state.usage_input,
+                        output: state.usage_output,
+                        cache_read: 0,
+                        cache_write: 0,
+                        total_tokens: usage_total,
+                        cache_write_1h: 0,
+                        cost: None,
+                    })
+                } else {
+                    None
+                }
+            });
             vec![AiBridgeChunk::Done {
                 finish_reason: AiBridgeStopReason::Stop,
                 usage,
@@ -493,7 +541,7 @@ fn thinking_end_from_reasoning_item(item: &Value) -> AiBridgeChunk {
     }
 }
 
-fn parse_responses_output(json: &Value) -> Vec<AiBridgeChunk> {
+fn parse_responses_output(json: &Value, wire_policy: WirePolicy) -> Vec<AiBridgeChunk> {
     let mut chunks = Vec::new();
 
     if let Some(output) = json.get("output").and_then(|v| v.as_array()) {
@@ -540,19 +588,9 @@ fn parse_responses_output(json: &Value) -> Vec<AiBridgeChunk> {
     }
 
     let usage = json.get("usage").and_then(|u| {
-        let input = u.get("input_tokens").and_then(|v| v.as_u64()).unwrap_or(0);
-        let output = u.get("output_tokens").and_then(|v| v.as_u64()).unwrap_or(0);
-        let total = input + output;
-        if total > 0 {
-            Some(crate::dto::AiBridgeUsage {
-                input,
-                output,
-                cache_read: 0,
-                cache_write: 0,
-                total_tokens: total,
-                cache_write_1h: 0,
-                cost: None,
-            })
+        let mapped = crate::usage::from_responses_usage_with_policy(u, wire_policy);
+        if mapped.total_tokens > 0 || mapped.input + mapped.output > 0 {
+            Some(mapped)
         } else {
             None
         }
@@ -946,6 +984,51 @@ mod tests {
         let adapter =
             OpenAiResponsesAdapter::with_wire_policy("sk".into(), "gpt".into(), None, None, policy);
         assert!(adapter.wire_policy().expects_prompt_cache_usage());
+    }
+
+    #[test]
+    fn assemble_omits_wire_knobs_under_default_policy() {
+        let body = assemble_responses_body(
+            "m",
+            vec![AiBridgeMessage::user("hi")],
+            &[],
+            false,
+            &crate::thinking::AiBridgeGenerateOptions::default(),
+            &WirePolicy::default(),
+        );
+        assert!(body.get("previous_response_id").is_none());
+        assert!(body.get("prompt_cache_key").is_none());
+    }
+
+    #[test]
+    fn wire_policy_strips_denied_knobs() {
+        let mut body = serde_json::json!({
+            "model": "m",
+            "previous_response_id": "resp_1",
+            "prompt_cache_key": "ck",
+        });
+        apply_responses_wire_policy(&mut body, &WirePolicy::default());
+        assert!(body.get("previous_response_id").is_none());
+        assert!(body.get("prompt_cache_key").is_none());
+    }
+
+    #[test]
+    fn wire_policy_keeps_knobs_when_allowed() {
+        let policy = WirePolicy {
+            compat: crate::wire_policy::Compat::Generic,
+            extra_policy: crate::wire_policy::ExtraPolicy {
+                prompt_cache_usage: false,
+                prompt_cache_key: true,
+                previous_response_id: true,
+            },
+        };
+        let mut body = serde_json::json!({
+            "previous_response_id": "resp_1",
+            "prompt_cache_key": "ck",
+        });
+        apply_responses_wire_policy(&mut body, &policy);
+        assert_eq!(body["previous_response_id"], "resp_1");
+        assert_eq!(body["prompt_cache_key"], "ck");
     }
 
     #[test]

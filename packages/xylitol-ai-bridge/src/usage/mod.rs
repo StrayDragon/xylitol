@@ -3,6 +3,7 @@
 use serde_json::Value;
 
 use crate::dto::AiBridgeUsage;
+use crate::wire_policy::WirePolicy;
 
 /// OpenAI-style `{prompt_tokens, completion_tokens, ...}` → [`AiBridgeUsage`].
 pub fn from_openai_usage(value: &Value) -> AiBridgeUsage {
@@ -68,7 +69,18 @@ pub fn from_anthropic_usage(value: &Value) -> AiBridgeUsage {
 }
 
 /// OpenAI Responses `{input_tokens, output_tokens}` → [`AiBridgeUsage`].
+///
+/// Uses [`WirePolicy::default()`] (cache_read stays 0 until policy expects it).
 pub fn from_responses_usage(value: &Value) -> AiBridgeUsage {
+    from_responses_usage_with_policy(value, WirePolicy::default())
+}
+
+/// Responses usage mapping gated by [`WirePolicy`] (c1880).
+///
+/// When `!expects_prompt_cache_usage()`, `cache_read` is forced to 0 (do not
+/// pretend first-language cache fields). When true, map
+/// `input_tokens_details.cached_tokens` if present.
+pub fn from_responses_usage_with_policy(value: &Value, policy: WirePolicy) -> AiBridgeUsage {
     let input = value
         .get("input_tokens")
         .and_then(|v| v.as_u64())
@@ -77,10 +89,19 @@ pub fn from_responses_usage(value: &Value) -> AiBridgeUsage {
         .get("output_tokens")
         .and_then(|v| v.as_u64())
         .unwrap_or(0);
+    let cache_read = if policy.expects_prompt_cache_usage() {
+        value
+            .get("input_tokens_details")
+            .and_then(|d| d.get("cached_tokens"))
+            .and_then(|v| v.as_u64())
+            .unwrap_or(0)
+    } else {
+        0
+    };
     AiBridgeUsage {
         input,
         output,
-        cache_read: 0,
+        cache_read,
         cache_write: 0,
         cache_write_1h: 0,
         total_tokens: input + output,
@@ -153,6 +174,37 @@ mod tests {
         assert_eq!(u.input, 30);
         assert_eq!(u.output, 20);
         assert_eq!(u.total_tokens, 50);
+        assert_eq!(u.cache_read, 0);
+    }
+
+    #[test]
+    fn responses_usage_ignores_cached_tokens_when_policy_off() {
+        let json = serde_json::json!({
+            "input_tokens": 30,
+            "output_tokens": 20,
+            "input_tokens_details": { "cached_tokens": 12 }
+        });
+        let u = from_responses_usage_with_policy(&json, WirePolicy::default());
+        assert_eq!(u.cache_read, 0);
+    }
+
+    #[test]
+    fn responses_usage_maps_cached_tokens_when_policy_on() {
+        let policy = WirePolicy {
+            compat: crate::wire_policy::Compat::Generic,
+            extra_policy: crate::wire_policy::ExtraPolicy {
+                prompt_cache_usage: true,
+                prompt_cache_key: false,
+                previous_response_id: false,
+            },
+        };
+        let json = serde_json::json!({
+            "input_tokens": 30,
+            "output_tokens": 20,
+            "input_tokens_details": { "cached_tokens": 12 }
+        });
+        let u = from_responses_usage_with_policy(&json, policy);
+        assert_eq!(u.cache_read, 12);
     }
 
     #[test]
