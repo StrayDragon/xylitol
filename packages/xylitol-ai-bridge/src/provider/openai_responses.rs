@@ -69,13 +69,13 @@ impl OpenAiResponsesAdapter {
         stream: bool,
         options: &crate::thinking::AiBridgeGenerateOptions,
     ) -> Value {
-        assemble_responses_body(
+        // Sole business-layout path for Responses bodies (c1890).
+        super::ResponsesAssembler::new(self.wire_policy).assemble(
             &self.model,
             messages,
             tools,
             stream,
             options,
-            &self.wire_policy,
         )
     }
 

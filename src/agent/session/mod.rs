@@ -101,6 +101,8 @@ pub struct AgentCapabilities {
     queues: Arc<AsyncQueueRuntime>,
     /// Optional script hook bus (composition-root supplied).
     hook_bus: Option<Arc<dyn XyHookBus>>,
+    /// Request-layout hooks (c1890); default ≡ current full-tools / no status bar.
+    context_policy: crate::agent::context_policy::ContextPolicy,
 }
 
 impl AgentCapabilities {
@@ -162,6 +164,7 @@ impl AgentCapabilities {
             permission,
             queues: Arc::new(AsyncQueueRuntime::new(steering_mode, follow_up_mode)),
             hook_bus,
+            context_policy: crate::agent::context_policy::ContextPolicy::default(),
         };
         // Assemble full system prompt (tools + context + SYSTEM/APPEND + runtime
         // policy) once at construction so bootstrap-injected AGENTS.md is visible
@@ -551,6 +554,16 @@ impl AgentCapabilities {
 
     pub fn system_prompt(&self) -> Option<&str> {
         self.system_prompt.as_deref()
+    }
+
+    /// Request-layout policy (c1890). Default ≡ full tools / status bar off.
+    pub fn context_policy(&self) -> &crate::agent::context_policy::ContextPolicy {
+        &self.context_policy
+    }
+
+    /// Replace layout policy for the next turn (does not rewrite in-flight tools).
+    pub fn set_context_policy(&mut self, policy: crate::agent::context_policy::ContextPolicy) {
+        self.context_policy = policy;
     }
 
     pub fn model_registry(&self) -> ModelRegistry {

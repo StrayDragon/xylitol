@@ -9,6 +9,7 @@ use crate::error::AiBridgeError;
 use crate::thinking::AiBridgeGenerateOptions;
 
 pub mod anthropic_messages;
+pub mod assembler;
 pub mod factory;
 pub mod obs_session;
 pub mod obs_span_parent;
@@ -22,6 +23,7 @@ pub mod reqwest_bridge;
 pub mod trace;
 
 pub use anthropic_messages::AnthropicMessagesAdapter;
+pub use assembler::ResponsesAssembler;
 pub use obs_session::{
     ObsSessionContext, XYLITOL_OBS_LANE_ATTR, XYLITOL_OBS_LANE_INFRA, XYLITOL_OBS_LANE_LLM,
     clear_obs_session, langfuse_generation_properties, langfuse_observation_properties,
@@ -38,6 +40,7 @@ pub use openai_responses::{
     assemble_responses_body, extract_embedded_provider_error_message, format_responses_error,
     map_responses_sse_event, messages_to_responses_input, messages_to_responses_input_with_options,
 };
+// ResponsesAssembler re-exported above via `pub use assembler::ResponsesAssembler`.
 pub use remote_count::{
     AnthropicRemoteCounter, OpenAiResponsesRemoteCounter, RemoteCounter, StubRemoteCounter,
 };
