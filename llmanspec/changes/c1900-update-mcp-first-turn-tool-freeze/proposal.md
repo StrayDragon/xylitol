@@ -4,7 +4,8 @@ depends_on:
 - c1890-add-responses-context-policy-assembler
 branch: sdd/c1900-update-mcp-first-turn-tool-freeze
 base_sha: 863d8836dd09dc4e7d3a9c77e6f7f59d465019f2
-checkpointed: false
+checkpointed: true
+checkpoint_sha: c43e083e12a52e125d6799120fba02d982238686
 ---
 
 # MCP 首条门闸 + 工具表定稿（移除 pending-turn 注入）
