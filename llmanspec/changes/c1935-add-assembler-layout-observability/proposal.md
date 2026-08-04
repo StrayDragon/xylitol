@@ -5,17 +5,18 @@ depends_on:
 
 # Assembler 布局决策可观测
 
-> **调研底稿**：[`docs/research/responses-context-layout-and-cache-2026.md`](../../../docs/research/responses-context-layout-and-cache-2026.md)；现有 provider-trace / fastrace。
+> **调研底稿**：[`docs/research/responses-context-layout-and-cache-2026.md`](../../../docs/research/responses-context-layout-and-cache-2026.md)（术语对照 §7）
+> **书指针**：《深入理解 AI Agent》Ch2 上下文结构可观测性（姊妹仓 `ai-agent-book/book/chapter2.md`）；书语仅经 research §7 术语表映射，**禁止**写入 live specs。
 > **自包含**：只加「本轮用了哪套布局规则」的观测；不新建检视台 UI。
-> **工程约定（本波次）**：策略默认 **code-first**：`defaults.rs` 纯常量（改文件调试）；**不**新增 YAML 旋钮；**不**用 env 当未暴露配置面。用户面 YAML 仅既有字段（如 `api`）。真源见 [`c1880`](../c1880-update-responses-first-api-boundary/proposal.md)。
+> **工程约定（本波次）**：策略默认 **code-first**：`defaults.rs` 纯常量（改文件调试）；**不**新增 YAML 旋钮；**不**用 env 当未暴露配置面。用户面 YAML 仅既有字段（如 `api`）。真源见 [`c1880`](../archive/2026-08-04-c1880-update-responses-first-api-boundary/proposal.md)。
 
 ## Why
 
-flavor、ContextPolicy 档、context epoch、tools 模式、date 放置、是否 chained 若只在内存，排障与多 agent 对照无法复现「发出去的规则集」。cache usage（`c1885`）回答「命中了吗」；本 change 回答「**按什么规则组装的**」。
+WirePolicy/compat、ContextPolicy 档、context epoch、tools 模式、date 放置、是否 chained 若只在内存，排障与多 agent 对照无法复现「发出去的规则集」。cache usage（`c1885`）回答「命中了吗」；本 change 回答「**按什么规则组装的**」。
 
 ## What Changes
 
-- 每次 Responses 请求在既有观测栈记录结构化属性（意向）：`api`、`flavor`、`context_epoch`（若已有）、`tools_mode`、`status_bar_mode`、`date_placement`（若有）、`replay_mode`（thinking）、`wire_mode`=`full_replay|chained`（后者待 `c1915`）。
+- 每次 Responses 请求在既有观测栈记录结构化属性（意向）：`api`、`compat`、`context_epoch`（若已有）、`tools_mode`、`status_bar_mode`、`date_placement`（若有）、`replay_mode`（thinking）、`wire_mode`=`full_replay|chained`（后者待 `c1915`）。
 - 落点：provider-trace 与/或 fastrace span 属性；遵守「观测失败不挡主路径」「默认不乱出站敏感 body」。
 - 文档：`just obs-*` / skill 窄读指针加一例「如何对照 layout 决策与 cache 读数」。
 - **禁止**自研 Inspect 检视台；**禁止**第二套 tracing 栈。

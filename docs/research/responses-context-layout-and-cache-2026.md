@@ -1,7 +1,7 @@
 # OpenAI Responses 上下文布局与缓存权衡（2026-08）
 
 > **范围**：个人 coding agent（xylitol）在 **OpenAI Responses API**（含 llama.cpp 等兼容端）下，如何组织发给 provider 的 body，以及 KV Cache / Prompt Cache、状态栏、MCP/`tool_search`、压缩的工程取舍。
-> **一手来源**：本仓 `packages/xylitol-ai-bridge` / `src/agent` 现状；OpenAI Prompt caching / Responses / tool_search 文档；《深入理解 AI Agent》Ch2/Ch4/Ch5（状态栏两实现、工具只增不改、Cursor MCP 索引实践）。
+> **一手来源**：本仓 `packages/xylitol-ai-bridge` / `src/agent` 现状；OpenAI Prompt caching / Responses / tool_search 文档；《深入理解 AI Agent》姊妹仓 `ai-agent-book/book/chapter2.md`（及 Ch4/Ch5）（状态栏、KV/Prompt Cache、工具只增不改、Cursor MCP 索引实践）。书语仅经下文 §7 术语表进入工程名，**禁止**写入 live specs。
 > **非目标**：不定实现排期；不改 live specs；不把 hit rate 当唯一 KPI。
 
 ## 一句话结论
@@ -136,8 +136,8 @@ coding agent 默认：环境类（cwd）可留 system；高变读数（工具计
 
 | 方向（工程） | change（草案） | `depends_on` 摘要 |
 |---|---|---|
-| Responses 默认 + Completions 显式 `api` + Anthropic 桩 + code-first WirePolicy | [`c1880`](../../llmanspec/changes/c1880-update-responses-first-api-boundary/proposal.md) | `[]` |
-| Responses cache usage 诚实透出 | [`c1885`](../../llmanspec/changes/c1885-add-responses-cache-usage-honesty/proposal.md) | `[]`（可与 c1880 并行） |
+| Responses 默认 + Completions 显式 `api` + Anthropic 桩 + code-first WirePolicy | [`c1880`](../../llmanspec/changes/archive/2026-08-04-c1880-update-responses-first-api-boundary/proposal.md)（已归档） | `[]` |
+| Responses cache usage 诚实透出 | [`c1885`](../../llmanspec/changes/archive/2026-08-05-c1885-add-responses-cache-usage-honesty/proposal.md)（已归档） | `[]` |
 | ContextPolicy + ResponsesAssembler | [`c1890`](../../llmanspec/changes/c1890-add-responses-context-policy-assembler/proposal.md) | `c1880` |
 | Context Epoch（前缀/工具世代） | [`c1920`](../../llmanspec/changes/c1920-add-context-epoch-freeze/proposal.md) | `c1890` |
 | Thinking/reasoning 回放 × flavor | [`c1925`](../../llmanspec/changes/c1925-update-responses-thinking-replay-flavor/proposal.md) | `c1880`+`c1890` |

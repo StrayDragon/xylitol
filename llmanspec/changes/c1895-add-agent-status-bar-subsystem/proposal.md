@@ -6,9 +6,10 @@ depends_on:
 
 # Agent 状态栏子系统（可插拔 / 可验证）
 
-> **调研底稿**：[`docs/research/responses-context-layout-and-cache-2026.md`](../../../docs/research/responses-context-layout-and-cache-2026.md) §3；书 Ch2 状态栏两实现。
+> **调研底稿**：[`docs/research/responses-context-layout-and-cache-2026.md`](../../../docs/research/responses-context-layout-and-cache-2026.md) §3（术语对照 §7）
+> **书指针**：《深入理解 AI Agent》Ch2「Agent 状态栏：通过元信息增强 Agent 轨迹管理」（姊妹仓 `ai-agent-book/book/chapter2.md`）；书语仅经 research §7 术语表映射，**禁止**写入 live specs。
 > **自包含**：只交付状态栏机制；不实现 MCP search / 压缩。持久化/投影标记遵守 `c1930`。
-> **工程约定（本波次）**：策略默认 **code-first**：`defaults.rs` 纯常量（改文件调试）；**不**新增 YAML 旋钮；**不**用 env 当未暴露配置面。用户面 YAML 仅既有字段（如 `api`）。真源见 [`c1880`](../c1880-update-responses-first-api-boundary/proposal.md)。
+> **工程约定（本波次）**：策略默认 **code-first**：`defaults.rs` 纯常量（改文件调试）；**不**新增 YAML 旋钮；**不**用 env 当未暴露配置面。用户面 YAML 仅既有字段（如 `api`）。真源见 [`c1880`](../archive/2026-08-04-c1880-update-responses-first-api-boundary/proposal.md)。
 
 ## Why
 
