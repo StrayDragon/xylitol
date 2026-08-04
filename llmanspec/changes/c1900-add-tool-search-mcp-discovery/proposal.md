@@ -10,6 +10,7 @@ depends_on:
 > **调研底稿**：[`docs/research/responses-context-layout-and-cache-2026.md`](../../../docs/research/responses-context-layout-and-cache-2026.md) §4；书 Ch2/Ch4；OpenAI tool_search / defer_loading。
 > **自包含**：交付 MCP 披露主路径；明确**不**以「阻塞输入直到 MCP 全加载」为主方案。**工具世代 = `c1920` epoch**，本 change 不另发明。
 > **view 契约**：search 注入的持久化/投影标记遵守 [`c1930`](../c1930-update-session-provider-view-contract/proposal.md)（实现时对齐，不另开标记体系）。
+> **工程约定（本波次）**：策略默认 **code-first**：`defaults.rs` 纯常量（改文件调试）；**不**新增 YAML 旋钮；**不**用 env 当未暴露配置面。用户面 YAML 仅既有字段（如 `api`）。真源见 [`c1880`](../c1880-update-responses-first-api-boundary/proposal.md)。
 
 ## Why
 
