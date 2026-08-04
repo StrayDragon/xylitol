@@ -42,27 +42,35 @@ depends_on:
 
 ## Out of scope
 
-- 状态栏 UI/读数实现（→ `c1895`）
-- tool_search（→ `c1900`）
-- 压缩算法（→ `c1910`）
+- 状态栏 UI/读数实现（→ delayed `c1895`）
+- tool_search 实现（→ `c1960`；冻表开箱已由归档 `c1900`）
+- 压缩算法本体（→ delayed `c1910`；本契约只钉冻结表落点）
+- Todo 产品实现（→ delayed `c1955`；本契约只钉独立 kind）
 - 新插件式 meta 市场
 
 ## Parallel / depends
 
-- **硬依赖**：`c1890`
-- **下游**：`c1895`、`c1910`（及建议 `c1900` 遵守；`c1900` 以 Epoch 为主依赖，view 契约在正文 MUST 引用）
-- 可与 `c1925` 并行；本期主线 `c1900`；`c1920`/`c1935` delayed
+- **硬依赖**：`c1890`（已归档）
+- **下游**：delayed `c1895`、`c1910`；Todo [`c1955`](../../delayed-changes/c1955-add-agent-todo-subsystem/proposal.md)；`c1900` 已归档（冻表），view 契约仍供其后续轨与 `c1960` 引用
+- 可与 `c1925` 并行；`c1920`/`c1935` delayed
+
+## Decisions（explore 2026-08-05 · 已钉）
+
+1. **Harness-meta 形态**：**独立** `SessionEntry` / `AgentMessage` kind（与 deferred `c1895` Q7 同族：如 `AgentStatusBar` + 投影标签意向）。**禁止**用裸 `customMessage`/无标记 user 冒充。Todo（`c1955`）同族独立 kind；栏只投影、禁止冒充 Todo SSOT。
+2. **旧格式**：**一步到位**。无法识别 / 错误形状的 session **直接不解析**；**不做**兼容 shim / 静默降级（未发布、不稳定）。可抬 `SESSION_VERSION`。
+3. **导出**：
+   - **JSONL**：默认 **full**（与盘面同源）；显式 flag 可 **strip** harness-meta（按 kind）
+   - **HTML**：默认 **strip** harness-meta
+4. **压缩冻结替换表（供 `c1910`）**：落在 **JSONL 专用 entry / header 元数据**（跟 session 版本），不旁路文件、不「仅内存」。
 
 ## Open Questions
 
-- harness-meta 用独立 `AgentMessage` 变体还是 part/属性标记—— propose 时钉（影响持久化格式，谨慎）。
-  - **上游意向（曾 `c1895` Q7；现 deferred）**：若升格状态栏，倾向独立 entry kind **`AgentStatusBar`** + 投影标签 **`<agent_status_bar>`**。当前产品优先 [`c1955` Todo](../c1955-add-agent-todo-subsystem/proposal.md)。
-- Print 面导出默认是否剥离 meta—— 产品确认。
+- （已清空；上表为 explore 拍板。propose 时落入 design/specs。）
 
 ## Ethics
 
 - risk_level: medium（持久化格式）
-- prohibited_actions: 无标记地把框架注入持久化为普通 user；infra 平行折叠 Env
-- required_evidence: 导出/resume 场景可测；折叠单路径
+- prohibited_actions: 无标记地把框架注入持久化为普通 user；infra 平行折叠 Env；为旧错误 JSONL 写兼容解析路径
+- required_evidence: 导出/resume 场景可测；折叠单路径；未知 kind/版本拒绝可测
 - refusal_contract: 不为此预挖插件 meta API
-- escalation_policy: 改 JSONL 形状须显式迁移/版本策略
+- escalation_policy: 抬 `SESSION_VERSION` 或新增 kind 须在本 change / 后续 change 显式记录；不恢复「静默兼容旧错盘」

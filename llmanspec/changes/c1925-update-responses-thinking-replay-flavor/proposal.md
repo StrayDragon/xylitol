@@ -23,10 +23,11 @@ Coding agent 多轮依赖 assistant 侧 thinking / reasoning 项回放（签名�
 
 ## What Changes
 
-- 规范性：**回放模式**枚举（意向）`preserve` | `strip` | `best_effort`，由 WirePolicy/compat 预设、用户可覆盖。
-- Assembler 组装 input 时：thinking/reasoning 项顺序与现网 pi 对齐为默认（official）；`generic`/不支持端走 strip 或 best_effort，并诚实观测。
-- ReAct 落盘：需要回放的签名/材料按模式写入 `AiBridgeMessage`；不支持时不假装写入。
-- 单测：至少 official preserve 与 generic strip（或 best_effort）两条 golden。
+- 规范性：**回放模式**枚举 `preserve` | `strip` | `best_effort`，落在 **`ExtraPolicy.reasoning_replay`**（code-first）；`Compat` 只做预设映射，**不**扩 YAML/env。
+- Assembler 组装 input：按模式回放 / 剥离；顺序保持现网 pi（reasoning 项在 assistant/tool 前）。
+- **本波默认行为保持现状 ≈ preserve**（有合法 signature 则回放）；先立旋钮与双 golden，**不**把 `WirePolicy::default()` 默默改成 strip（另波须确认，见 Ethics）。
+- ReAct 落盘：需要回放的签名/材料按模式写入；不支持时不假装写入；**本波继续允许**含 `encrypted_content` 的 signature 整包进 JSONL（敏感文档化）；**不**改 `store:true`。
+- 单测：至少 **preserve** 与 **strip**（或 best_effort）两条 WirePolicy golden。
 - 与 `c1915` 关系：链式续跑仍依赖正确回放/全量重放；本 change **不**实现链式。
 
 ## Capabilities（意向）
@@ -52,15 +53,21 @@ Coding agent 多轮依赖 assistant 侧 thinking / reasoning 项回放（签名�
 - **硬依赖**：`c1880`、`c1890`
 - 可与 `c1930` 并行；`c1920`/`c1935` delayed；注意 bridge thinking 文件所有权
 
+## Decisions（explore 2026-08-05 · 已钉）
+
+1. **默认回放**：本波 **保持现状 ≈ preserve**；先加 `reasoning_replay` 旋钮 + 双 golden，**不**改 generic 默认行为。日后默认 preserve→strip 另开确认波。
+2. **`best_effort` 失败**：降级 **strip** + 记诊断（trace/diagnostics）；主路径不崩；**禁止**伪造 encrypted。
+3. **旋钮落点**：`ExtraPolicy.reasoning_replay: Preserve | Strip | BestEffort`；`Compat` 仅预设映射。
+4. **encrypted / 本地 JSONL**：本波 **继续允许** signature 整包落盘（工具环正确性优先）；文档标敏感；**不**为本波改 `store:true`；与 delayed `c1915` 隐私/链式 Q 交叉引用、本 change 不解。
+
 ## Open Questions
 
-- `best_effort` 失败时是否降级为 strip 并记诊断—— propose 时钉。
-- 与 `store`/encrypted_content 隐私—— 与 `c1915` Open Questions 交叉引用。
+- （已清空；上表为 explore 拍板。propose 时落入 design/specs。）
 
 ## Ethics
 
 - risk_level: medium
-- prohibited_actions: 对不支持端伪造 encrypted 回放；把官方 include 列表强加给所有 compat/WirePolicy
-- required_evidence: 双 WirePolicy golden；缺能力时不崩主路径
+- prohibited_actions: 对不支持端伪造 encrypted 回放；把官方 include 列表强加给所有 compat/WirePolicy；静默把默认从 preserve 改为 strip
+- required_evidence: 双 WirePolicy golden；缺能力 / best_effort 失败时不崩主路径且有诊断
 - refusal_contract: 不承诺一切兼容端可完整回放 thinking
 - escalation_policy: 默认从 preserve 改为 strip 须确认（影响强模型行为）
