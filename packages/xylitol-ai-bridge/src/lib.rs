@@ -11,6 +11,7 @@ pub mod registry;
 pub mod thinking;
 pub mod tokenize;
 pub mod usage;
+pub mod wire_policy;
 
 pub use dto::*;
 pub use error::AiBridgeError;
@@ -19,6 +20,7 @@ pub use thinking::{
     AiBridgeThinkingBudgets, apply_thinking_anthropic, apply_thinking_openai_completions,
     apply_thinking_openai_responses, resolve_from_options, resolve_thinking_for_request,
 };
+pub use wire_policy::{Compat, ExtraPolicy, WirePolicy};
 
 #[cfg(test)]
 mod boundary_tests {

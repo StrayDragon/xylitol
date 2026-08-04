@@ -19,6 +19,7 @@ use crate::dto::{AiBridgeMessage, AiBridgePart, AiBridgeStopReason};
 use crate::error::AiBridgeError;
 use crate::hooks::HttpHooks;
 use crate::provider::openai_client::{build_openai_client, normalize_openai_v1_base};
+use crate::wire_policy::WirePolicy;
 
 use super::AiBridgeLlmAdapter;
 
@@ -26,21 +27,39 @@ use super::AiBridgeLlmAdapter;
 pub struct OpenAiResponsesAdapter {
     client: Client<OpenAIConfig>,
     model: String,
+    wire_policy: WirePolicy,
 }
 
 impl OpenAiResponsesAdapter {
-    /// Create a new Responses API adapter.
+    /// Create a new Responses API adapter with [`WirePolicy::default`].
     pub fn new(
         api_key: String,
         model: String,
         base_url: Option<String>,
         hooks: Option<Arc<dyn HttpHooks>>,
     ) -> Self {
+        Self::with_wire_policy(api_key, model, base_url, hooks, WirePolicy::default())
+    }
+
+    /// Create a Responses adapter with an explicit wire policy (tests / inject).
+    pub fn with_wire_policy(
+        api_key: String,
+        model: String,
+        base_url: Option<String>,
+        hooks: Option<Arc<dyn HttpHooks>>,
+        wire_policy: WirePolicy,
+    ) -> Self {
         let base = base_url.map(|b| normalize_openai_v1_base(&b));
         Self {
             client: build_openai_client(api_key, base, hooks),
             model,
+            wire_policy,
         }
+    }
+
+    /// Wire policy used for req/resp field expectations (c1880).
+    pub fn wire_policy(&self) -> WirePolicy {
+        self.wire_policy
     }
 
     fn build_body(
@@ -903,6 +922,30 @@ mod tests {
             }
             other => panic!("expected ToolCallEnd only, got {other:?}"),
         }
+    }
+
+    #[test]
+    fn new_adapter_carries_default_wire_policy() {
+        let adapter = OpenAiResponsesAdapter::new("sk".into(), "gpt".into(), None, None);
+        let p = adapter.wire_policy();
+        assert_eq!(p, crate::wire_policy::WirePolicy::default());
+        assert!(!p.expects_prompt_cache_usage());
+        assert!(!p.allows_previous_response_id());
+    }
+
+    #[test]
+    fn with_wire_policy_override_is_retained() {
+        let policy = crate::wire_policy::WirePolicy {
+            compat: crate::wire_policy::Compat::Generic,
+            extra_policy: crate::wire_policy::ExtraPolicy {
+                prompt_cache_usage: true,
+                prompt_cache_key: false,
+                previous_response_id: false,
+            },
+        };
+        let adapter =
+            OpenAiResponsesAdapter::with_wire_policy("sk".into(), "gpt".into(), None, None, policy);
+        assert!(adapter.wire_policy().expects_prompt_cache_usage());
     }
 
     #[test]
