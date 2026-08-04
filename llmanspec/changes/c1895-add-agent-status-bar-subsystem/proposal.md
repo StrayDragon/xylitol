@@ -21,7 +21,7 @@ depends_on:
   - **Lane Runtime**：代码可观测状态 → 结构化键值；注入经 Assembler / Policy；内置 `refresh` 类工具 = **触发代码重算快照**（禁止 LLM 批量扫历史写栏）。
   - **Lane Agent**：可扩展 typed 尾插通道；本波只留扩展接口/空壳；业务 TODO → `c1896`。
 - StatusBar **provider 接口**（Runtime）：输入 = 代码可观测状态；输出 = 结构化键值（禁止散文堆砌为默认）。
-- 三种模式（Runtime 列）：`off` | `replace` | `append`（默认档深挖续钉）。
+- Runtime 默认模式：**`append`（深挖 Q2 已钉）**——**不**扫描轨迹中已有 status message；每轮在末尾直接追加最新快照（「盲目尾插」）。`replace` / `off` 仍可切。
 - 注入经 Assembler / Policy，**不**散落改 `build_system_prompt` 特例逻辑（system 内稳定 env 仍可由 `c1905` 管）。
 - 验证：给定假状态 → 栏内容单测；模式切换可消融；可选「读数 + 短策略片段」成对配置。
 - **禁止**用 LLM 批量扫历史生成权威栏。
@@ -43,12 +43,15 @@ depends_on:
 - 把 cwd/date **强制**迁出 system（本仓场景默认可留；`c1905` 可标 stable）
 - tool_search（→ `c1900`）
 - 完整 TODO / 即时计划产品形态（→ `c1896`；本波仅扩展壳）
+- 压缩时对特殊标记 status message 的保留策略（→ `c1897`；本波只保证可识别标记）
 - 子 agent 字节级对齐父栏（后置）
 
 ## Parallel / depends
 
 - **硬依赖**：`c1890`（已归档）、`c1930`
-- **分流草案**：[`c1896`](../c1896-add-status-bar-agent-lane/proposal.md)（Agent 列；sourced_from 本 change）
+- **分流草案**：
+  - [`c1896`](../c1896-add-status-bar-agent-lane/proposal.md)（Agent 列；sourced_from 本 change）
+  - [`c1897`](../c1897-update-compaction-status-bar-messages/proposal.md)（压缩 × status；sourced_from 本 change）
 - 可与同层无硬依赖冲突的 change 并行（不同文件/模块优先）
 
 ## Open Questions
@@ -56,18 +59,18 @@ depends_on:
 ### 已解决
 
 - **Q1 双列范围（2026-08-05）**：选 **双列 + 本波只通 Runtime**；Agent 列留可扩展接口/空壳；TODO 业务形态未定 → 想法写入 `c1896`（标记 sourced_from 本 change）。
+- **Q2 Runtime 默认模式（2026-08-05）**：选 **`append` = 盲目尾插**（不查看轨迹中已有 status message，直接追加到末尾）。`replace`/`off` 仍为可切档。压缩时陈旧 status 堆积 → 策略延后调研，写入 `c1897`（最多保留一条 vs 全不保留，未定）。
 
 ### 待钉
 
 - meta 是否写入持久 transcript，还是仅请求时投影—— propose 时钉（影响导出/resume；与 `c1930`）。
 - 首版 Runtime 内置读数最小集。
-- Runtime 默认模式：`append`（用户倾向 / cache 友好）vs `off`（旧草案更保守）——深挖续问。
 - **日历日 `date` 是否作为状态栏读数（与 `c1905` 联调深挖）**：隔日 resume 同一 session 时，system 内 date 过时 vs 改写前缀失效，是已知坑。若选型为「date 走栏」，须定 replace vs append 以及是否写入 transcript。若选型仍留 system，本 change 可不承载 date，但 design 须写明「不负责日界」。指针：research §1；`c1905` Open Questions。
 
 ## Ethics
 
 - risk_level: medium（高信任注入面）
 - prohibited_actions: LLM 维护权威栏；把外部不可信全文写入栏；不可审计的隐式投毒通道
-- required_evidence: off/replace/append 可测；Runtime provider 可消融
+- required_evidence: off/replace/append 可测；Runtime provider 可消融；append 路径不依赖「扫旧 status」
 - refusal_contract: 不宣称状态栏普遍提升正确率
-- escalation_policy: 若默认改为强 on（非 off），须用户确认
+- escalation_policy: 若默认从 append 改为更强侵入策略，须用户确认
