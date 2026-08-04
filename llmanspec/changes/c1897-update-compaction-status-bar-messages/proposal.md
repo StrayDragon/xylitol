@@ -76,6 +76,6 @@ depends_on:
 
 | 字段 | 值 |
 |---|---|
-| sourced_from | `c1895-add-agent-status-bar-subsystem`（深挖 Q2：append=盲目尾插） |
+| sourced_from | `c1895-add-agent-status-bar-subsystem`（深挖 Q2 append + Q3 持久 transcript） |
 | captured | 2026-08-05 |
 | status | purpose-draft（想法保险箱；策略 A/B 未定） |
