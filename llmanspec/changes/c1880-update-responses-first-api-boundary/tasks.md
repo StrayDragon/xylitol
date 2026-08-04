@@ -18,9 +18,9 @@
 
 ## 2. 默认板实现（apply）
 
-- [ ] 2.1 在 `xylitol-ai-bridge` 实现 `defaults.rs`（纯常量）+ `WirePolicy` / `Default`（只读 defaults；测试可字面量覆盖）
-- [ ] 2.2 装配路径注入；AdapterKind 不读 WirePolicy；**无** `env::var` 策略路径
-- [ ] 2.3 Completions：编译 + 可选冒烟
+- [x] 2.1 在 `xylitol-ai-bridge` 实现 `defaults.rs`（纯常量）+ `WirePolicy` / `Default`（只读 defaults；测试可字面量覆盖）
+- [x] 2.2 装配路径注入；AdapterKind 不读 WirePolicy；**无** `env::var` 策略路径
+- [x] 2.3 Completions：相关包编译通过（factory 单测覆盖显式 `openai-completions` 选型）
 
 ## 3. 文档
 
@@ -30,4 +30,4 @@
 ## 4. 校验
 
 - [x] 4.1 specs `validate --strict --no-check`（package-ai-bridge / infra-provider）
-- [ ] 4.2 apply 后：触及面 fmt/lint + bridge 单测
+- [x] 4.2 apply：`cargo test`（wire_policy + factory）+ `just fmt` / lint 触及面
