@@ -18,18 +18,19 @@ depends_on:
 ## What Changes
 
 - **双列地基（深挖 Q1，已钉）**：
-  - **Lane Runtime**：代码可观测状态 → 结构化键值；注入经 Assembler / Policy；内置 `refresh` 类工具 = **触发代码重算快照**（禁止 LLM 批量扫历史写栏）。
+  - **Lane Runtime**：代码可观测状态 → 结构化键值；**每个 outbound LLM generate 前**按 profile+预算盲目尾插并持久（深挖 Q6′）；本波 **无** refresh 工具（→ [`c1898`](../c1898-add-statusline-refresh-tool/proposal.md)）。
   - **Lane Agent**：可扩展 typed 尾插通道；本波只留扩展接口/空壳；业务 TODO → `c1896`。
 - StatusBar **provider 接口**（Runtime）：输入 = 代码可观测状态；输出 = 结构化键值（禁止散文堆砌为默认）。
-- Runtime 默认模式：**`append`（深挖 Q2 已钉）**——**不**扫描轨迹中已有 status message；每轮在末尾直接追加最新快照（「盲目尾插」）。`replace` / `off` 仍可切。
+- Runtime 默认模式：**`append`（深挖 Q2 已钉）**——**不**扫描轨迹中已有 status message；在自动缝上直接追加最新快照（「盲目尾插」）。`replace` / `off` 仍可切。
 - **持久化（深挖 Q3 已钉）**：**全部写入 session transcript**（SSOT），不是仅请求时投影。理由：常用 provider 的 KV / Prompt Cache 依赖跨请求前缀字节稳定；仅投影等于每轮换掉末尾条，破坏「只追加」命中。导出 / resume / compact（`c1897`）均可见这些特殊标记消息。
 - **Runtime 读数地基（深挖 Q4′ 已钉）**：**不**把字段表钉死为合约。做成
   - `ReadingProvider` 注册表（id / 优先级 / 估 token / 渲染 KV）
   - × **scenario profile**（code-first；coding 默认档对齐书 Ch5 环境感知意向）
   - × **每条 append 硬 token 预算**（超限按优先级丢低优字段）
-  - 本波：接口 + 预算 + **薄 coding profile** 可测实现；时间感操作手册 / git 深度 / 更多场景档后置迭代。对齐书实验 2-8「技术可独立开关」与「场景会变 + 省 token」。
+  - 本波：接口 + 预算 + **薄 coding profile** 可测实现（**默认含 clock**，深挖 Q5）；时间感操作手册 / git 深度 / 更多场景档后置迭代。对齐书实验 2-8「技术可独立开关」与「场景会变 + 省 token」。
+- **自动注入缝（深挖 Q6′ 已钉）**：① **每 outbound generate 前**自动尾插；② 本波不做按需工具。后置 `statusline_refresh` = **仅 tool result**、不写权威栏（`c1898`）。
 - 注入经 Assembler / Policy，**不**散落改 `build_system_prompt` 特例逻辑（system 内稳定 env 仍可由 `c1905` 管）。
-- 验证：假 provider → 预算截断可测；profile 切换可消融；可选「读数 + 短策略片段」成对配置（后置）。
+- 验证：假 provider → 预算截断可测；profile 切换可消融；generate 边界尾插可测；可选「读数 + 短策略片段」成对配置（后置）。
 - **禁止**用 LLM 批量扫历史生成权威栏。
 
 ## Capabilities（意向）
@@ -50,6 +51,7 @@ depends_on:
 - tool_search（→ `c1900`）
 - 完整 TODO / 即时计划产品形态（→ `c1896`；本波仅扩展壳）
 - 压缩时对特殊标记 status message 的保留策略（→ `c1897`；本波只保证可识别标记）
+- 按需 `statusline_refresh` 工具（→ `c1898`；仅 tool result，本波不做）
 - 子 agent 字节级对齐父栏（后置）
 
 ## Parallel / depends
@@ -58,6 +60,7 @@ depends_on:
 - **分流草案**：
   - [`c1896`](../c1896-add-status-bar-agent-lane/proposal.md)（Agent 列；sourced_from 本 change）
   - [`c1897`](../c1897-update-compaction-status-bar-messages/proposal.md)（压缩 × status；sourced_from 本 change）
+  - [`c1898`](../c1898-add-statusline-refresh-tool/proposal.md)（按需 refresh 工具；sourced_from 本 change）
 - 可与同层无硬依赖冲突的 change 并行（不同文件/模块优先）
 
 ## Open Questions
@@ -69,10 +72,10 @@ depends_on:
 - **Q3 持久化（2026-08-05）**：选 **全部持久进 transcript**（非仅请求投影）。动机：保住常用 LLM provider 的跨请求 KV / Prompt Cache（append 前缀稳定）；仅投影会每轮替换末尾条、破坏命中。`c1897` 因此更关键。Agent 列（`c1896`）默认同源持久，除非后继另钉。
 - **Q4′ Runtime 读数地基（2026-08-05）**：选 **注册表 × scenario profile × 单条 token 预算**；本波薄 coding profile，**不**把具体键表钉成硬合约。书据：Ch2 实验 2-8 可独立开关；Ch5 coding 环境四件套为 profile 意向而非 SSOT；append 持久下省 token 靠单条预算 + 后继 `c1897`。
 - **Q5 时钟 / 日界（2026-08-05）**：选 **C — 栏内 clock provider，并进入默认 coding profile**（每轮盲目尾插带时间读数）。system/`c1905` 仍可保留稳定 env 策略，但「当前时刻 / 日历日」以栏为准避免改 system 前缀；单条预算须为 clock 留优先级；与 `c1905` 日界文案对齐时注明「动态时刻走栏」。
+- **Q6′ 自动缝 × 按需工具（2026-08-05）**：分类后选 **① 每 outbound generate 前自动尾插 + ② 本波不做 refresh 工具**。后置工具若做：名 ≈ `statusline_refresh`，**仅 tool result、不 append 权威栏** → `c1898`。避免与 `c1897` 双写缠死。
 
 ### 待钉
 
-- Runtime `refresh` 内置工具语义（触发重算并尾插 vs 仅返回给模型看）。
 - 特殊标记 / wire 形状（与 `c1930` 投影；TUI 是否展示）。
 - 短「操作策略」片段是否进默认 coding profile（书：读数+手册成对才改节奏；默认关以省 token？）。
 - 薄 coding profile 除 clock 外的默认开启集合（cwd / git 概览 / tool_calls 等——profile 意向，非死合约）。
@@ -81,6 +84,6 @@ depends_on:
 
 - risk_level: medium（高信任注入面；且持久后进入导出/resume）
 - prohibited_actions: LLM 维护权威栏；把外部不可信全文写入栏；不可审计的隐式投毒通道；无预算的无限膨胀 profile
-- required_evidence: off/replace/append 可测；provider 注册/预算截断可测；append 路径不依赖「扫旧 status」；持久条目带稳定特殊标记；默认 coding 含 clock 时预算仍可测
+- required_evidence: off/replace/append 可测；provider 注册/预算截断可测；append 路径不依赖「扫旧 status」；持久条目带稳定特殊标记；默认 coding 含 clock 时预算仍可测；generate 边界自动尾插可测
 - refusal_contract: 不宣称状态栏普遍提升正确率；不宣称某固定键表永远最优
 - escalation_policy: 若默认从 append 改为更强侵入策略，或默认预算显著放大，须用户确认
