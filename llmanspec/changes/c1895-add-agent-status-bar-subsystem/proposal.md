@@ -99,18 +99,28 @@ depends_on:
 - **Q5 时钟 / 日界（2026-08-05）**：选 **C — 栏内 clock provider，并进入默认 coding profile**（每轮盲目尾插带时间读数）。system/`c1905` 仍可保留稳定 env 策略，但「当前时刻 / 日历日」以栏为准避免改 system 前缀；单条预算须为 clock 留优先级；与 `c1905` 日界文案对齐时注明「动态时刻走栏」。
 - **Q6′ 自动缝 × 按需工具（2026-08-05）**：分类后选 **① 每 outbound generate 前自动尾插 + ② 本波不做 refresh 工具**。后置工具若做：名 ≈ `statusline_refresh`，**仅 tool result、不 append 权威栏** → `c1898`。避免与 `c1897` 双写缠死。
 - **Q7 标记 / wire（2026-08-05）**：选 **A — 独立 session entry kind + 投影层包装**。工程命名统一：**`AgentStatusBar`** + **`<agent_status_bar>`**（不用混用 `StatusBar` / `<agent_status>` 短名）。压缩/导出认 kind；跟 `c1930` 联调投影细节。
-- **Q8 默认附加集（2026-08-05）**：默认开 **`clock` + `tool_calls`（累计）**；**实现但默认关** `cwd` / `git_branch`；其余后置。防循环主路径 = 书「工具调用计数器」（显式次数促换策略）；不在本波塞长 playbook。策略放置（栏内微型 vs system）整体后置。
+- **Q8 默认附加集（2026-08-05，已被 Q10 覆写）**：曾钉 `clock`+`tool_calls`；经 ROI 深挖后见 Q10。
+- **Q9 栏体形状（2026-08-05）**：选 **XML 子树**（非 JSON）。根 `<agent_status_bar>`；读数用子元素。
 
-### 待钉
+### ROI / 姿态复核（深挖 Q10，2026-08-05）
 
-- `tool_calls` 展示粒度：仅 `{name: count}` vs 另标「本 run 热点工具 / 软阈值」——可在 design 薄定，默认先 `{name: count}`。
-- TUI / 导出是否向**用户**展示 `AgentStatusBar` entry（默认倾向：模型可见、UI 默认折叠或不展示——可后置）。
-- 深挖是否收束、进入 `llman-sdd-propose`（design/tasks）——用户确认。
+**结论（待用户确认选档）**：对 xylitol **个人 coding agent**，默认 always-on 仪表盘（`clock` / 累计 `tool_calls`）**边际收益低**；append+persist 下每 generate 一条会堆 **陈旧税**。书里状态栏硬证据在「弱模型 + 显然约束的计数/状态跟踪」；coding 日常更吃 **硬闸（max attempts）+ 显式 Todo/事件 + 工具结果反馈**。高时效信息（刚变的 cwd、进行中后台任务）更适合 **事件触发注入或 tool result**，不宜当「过时仍权威」的栏优化。
+
+**更适合进栏（稀疏、代码真源）**：工具达 max-attempt 的约束帧；agent 登记的 follow-up/事件；Todo 完成度摘要（SSOT 在 Todo，栏只投影）；cron/后台完成、accounting 阈值等 **模型无法从轨迹可靠推断** 的外部事实。
+
+**Todo+TUI**：产品 SSOT；栏 / Agent 列只是模型注意力通道——**禁止**栏 auto 摘要当 Todo 真源。
+
+### 待钉（产品姿态）
+
+- 选 **(D)+(C)**：大幅降权 always-on；改为 **事件/Todo 驱动才出现**；c1895 最多薄缝且默认 `off`
+- 选 **(A)**：只留薄缝（kind / mode / 钩子），默认 `off`，内容全后置
+- 选 **(B)**：仍 ship 最小 always-on（不推荐）
+- Todo 产品是否升为优先 change（可扩 `c1896` 或新 id），状态栏跟其后
 
 ## Ethics
 
 - risk_level: medium（高信任注入面；且持久后进入导出/resume）
-- prohibited_actions: LLM 维护权威栏；把外部不可信全文写入栏；不可审计的隐式投毒通道；无预算的无限膨胀 profile；用普通 user 正文冒充 `AgentStatusBar` kind
-- required_evidence: off/replace/append 可测；provider 注册/预算截断可测；append 路径不依赖「扫旧 status」；持久 `AgentStatusBar`；默认含 `clock`+`tool_calls`；generate 边界自动尾插可测
-- refusal_contract: 不宣称状态栏普遍提升正确率；不宣称计数器 alone 能消灭所有循环；不宣称某固定键表永远最优
-- escalation_policy: 若默认从 append 改为更强侵入策略，或默认预算显著放大，须用户确认
+- prohibited_actions: LLM 维护权威栏；把外部不可信全文写入栏；不可审计的隐式投毒通道；无预算的无限膨胀 profile；用普通 user 正文冒充 `AgentStatusBar` kind；默认栏体用 JSON 对象冒充结构化读数；用栏冒充 Todo SSOT
+- required_evidence: 姿态选定后：mode 默认可测；事件触发注入可测（若选 C/D）；勿在策略未定前默认 always-on append
+- refusal_contract: 不宣称状态栏普遍提升正确率；不宣称计数器 alone 能消灭所有循环；不宣称调栏是高 ROI 默认投入
+- escalation_policy: 若默认从 `off` 改为 always-on append，或默认预算显著放大，须用户确认
