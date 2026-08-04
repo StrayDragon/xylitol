@@ -224,6 +224,7 @@ fn g_pab16_body(ai_bridge_bdd: &AiBridgeBdd) {
             thinking_level: "medium".into(),
             ..Default::default()
         },
+        &xylitol_ai_bridge::WirePolicy::default(),
     );
     ai_bridge_bdd.request_body.replace(Some(body));
 }
