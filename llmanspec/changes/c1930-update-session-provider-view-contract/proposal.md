@@ -7,6 +7,7 @@ depends_on:
 
 > **调研底稿**：[`docs/research/responses-context-layout-and-cache-2026.md`](../../../docs/research/responses-context-layout-and-cache-2026.md)
 > **自包含**：钉「什么进持久会话、什么只进请求投影」；供状态栏 / tool_search / 压缩冻结共用，避免并行实现各写标记。
+> **工程约定（本波次）**：策略默认 **code-first**：`defaults.rs` 纯常量（改文件调试）；**不**新增 YAML 旋钮；**不**用 env 当未暴露配置面。用户面 YAML 仅既有字段（如 `api`）。真源见 [`c1880`](../c1880-update-responses-first-api-boundary/proposal.md)。
 
 ## Why
 

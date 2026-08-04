@@ -7,6 +7,7 @@ depends_on:
 
 > **调研底稿**：[`docs/research/responses-context-layout-and-cache-2026.md`](../../../docs/research/responses-context-layout-and-cache-2026.md)
 > **自包含**：统一「谁在何时允许改稳定前缀」；供 `c1900`/`c1915`/换模断链共用，避免各 change 私自定义「工具世代」。
+> **工程约定（本波次）**：策略默认 **code-first**：`defaults.rs` 纯常量（改文件调试）；**不**新增 YAML 旋钮；**不**用 env 当未暴露配置面。用户面 YAML 仅既有字段（如 `api`）。真源见 [`c1880`](../c1880-update-responses-first-api-boundary/proposal.md)。
 
 ## Why
 
