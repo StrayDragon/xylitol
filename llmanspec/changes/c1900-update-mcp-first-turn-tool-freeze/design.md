@@ -19,13 +19,13 @@
                                       │
                     settle 再来 ──忽略扩表──► 仍 FROZEN
                     /reload idle ──► GATING ──► FROZEN' (upsert)
-                    resume 指纹一致 ──► 续 FROZEN
-                    resume 指纹不一致 ──► GATING/重定稿 upsert + cue
+                    resume/切会话（本波）──清冻再门闸──► GATING ──► FROZEN'
+                    （指纹一致续冻：持久化指纹后另波）
 ```
 
 - **可键入**：GATING 时用户可提交；generate **阻塞**至 FROZEN（或错误策略，本波子集放行不硬失败）。
 - **upsert**：按 tool **name** 对齐；有则替换 schema/description，无则 append；**禁止**同名多行。
-- **指纹**：至少覆盖「定稿后 provider 可见工具名有序列表 + 各 name 的 schema/description 摘要哈希」；与当前 armed MCP 比对。
+- **指纹**：至少覆盖「定稿后 provider 可见工具名有序列表 + 各 name 的 schema/description 摘要哈希」；类型可比较；**本波未持久化**，resume 一律清冻再门闸（见下）。
 
 ## 与现有行为的差分
 
@@ -33,7 +33,7 @@
 |---|---|
 | MCP settle → next turn 热并 tools | settle **不**扩已 FROZEN 表 |
 | ath23：未结算也可立刻跑 agent | 可提交，但 **首条 generate 门闸** |
-| resume 不显式比工具集 | 指纹不一致 → 重定稿 upsert + cue |
+| resume 不显式比工具集 | **本波**清冻再门闸；指纹一致续冻另波 |
 
 ## System prompt
 
