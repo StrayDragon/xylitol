@@ -2,76 +2,83 @@
 depends_on:
   - c1880-update-responses-first-api-boundary
   - c1890-add-responses-context-policy-assembler
-  - c1920-add-context-epoch-freeze
 ---
 
-# tool_search + MCP 内部目录（不热改 provider tools 表）
+# tool_search + MCP 内部目录（对齐 Codex：不热改 tools[]）
 
 > **调研底稿**：[`docs/research/responses-context-layout-and-cache-2026.md`](../../../docs/research/responses-context-layout-and-cache-2026.md) §4（术语对照 §7）
-> **书指针**：《深入理解 AI Agent》Ch2「动态提示词与 Agent Skills」/ 只增不改工具披露；Ch4 工具形态（姊妹仓 `ai-agent-book/book/chapter2.md`、`chapter4.md`）；书语仅经 research §7 术语表映射，**禁止**写入 live specs。
-> **自包含**：交付 MCP 披露主路径；明确**不**以「阻塞输入直到 MCP 全加载」为主方案。**工具世代 = `c1920` epoch**，本 change 不另发明。
-> **view 契约**：search 注入的持久化/投影标记遵守 [`c1930`](../c1930-update-session-provider-view-contract/proposal.md)（实现时对齐，不另开标记体系）。
-> **工程约定（本波次）**：策略默认 **code-first**：`defaults.rs` 纯常量（改文件调试）；**不**新增 YAML 旋钮；**不**用 env 当未暴露配置面。用户面 YAML 仅既有字段（如 `api`）。真源见 [`c1880`](../archive/2026-08-04-c1880-update-responses-first-api-boundary/proposal.md)。
+> **对照实现**：姊妹仓 `../codex`（`ToolExposure::Deferred` + `tool_search_call`/`tool_search_output` + `defer_loading`）；动态工具进**轨迹 item**，不进顶栏 `tools[]`。
+> **书指针**：《深入理解 AI Agent》Ch2 工具只增不改披露；书语仅经 research §7 映射，**禁止**写入 live specs。
+> **自包含**：Search 档对齐 Codex 主路径；Full 档保留逃生（可继续 next-turn 热并整表）。**不**依赖 `c1920` epoch（已 deferred）。
+> **view 契约**：search 注入的持久化/投影标记遵守 [`c1930`](../c1930-update-session-provider-view-contract/proposal.md)（实现时对齐）。
+> **工程约定（本波次）**：策略默认 **code-first**：`defaults.rs` 纯常量；**不**新增 YAML 旋钮；**不**用 env 当未暴露配置面。用户面 YAML 仅既有字段（如 `api`）。真源见 [`c1880`](../archive/2026-08-04-c1880-update-responses-first-api-boundary/proposal.md)。
+> **兼容验证**：形似 Responses 的端（DeepSeek、**llama.cpp**、本地 Ornith 等）对 `tool_search_*` / `defer_loading` **未必**一致；MUST 经 WirePolicy 显式声明，禁止仅因 `api=openai-responses` 假定官方行为。本 change 先对齐 Codex/官方形状 + 单测/假 provider；**llama.cpp + Ornith 真机验证列为后续门槛**（可挂 live provider 测或手工清单）。
 
 ## Why
 
-现状：MCP 异步 settle 后热合并进 `ToolSet`，每轮完整 schema 进 Responses `tools` → 改稳定前缀，且 MCP 一多伤害选择与 token。
+现状：MCP 异步 settle 后热合并进 `ToolSet`，每轮完整 schema 进 Responses `tools[]` → 改稳定前缀，且 MCP 一多伤害选择与 token。
 
-更简单且与 cache/注意力更合拍的路径：
+Codex（OpenAI Responses）路径更简单：
 
-1. 异步加载**照旧**（不挡 TTI）。
-2. 热合并只进**内部 registry**。
-3. 发给 provider 的 `tools` = 稳定子集（核心工具 + `tool_search` 元工具等）。
-4. 模型经 search 发现后，结果以「只增不改」进入主轨迹（固定首次位置）。
+1. 异步 MCP **照旧**（不挡 TTI）。
+2. MCP 工具 **Deferred**：只进内部 registry / 可搜目录，**不**进请求顶栏 `tools[]`。
+3. 顶栏 = 稳定 Direct 子集 + 元工具 `tool_search`（跨轮名表宜稳定；MCP source 变化最多改 search **description**，不把 MCP schema 塞进顶栏）。
+4. 模型 `tool_search_call` → 客户端回 `tool_search_output`（轨迹 item，内含 function/namespace schema 且 `defer_loading: true`）。
+5. 之后模型可直接 function_call；运行时从 registry dispatch。
 
-备选「禁止用户输入直到全部 MCP ready」在 resume / 历史已含中途工具痕迹时要做差分重放，复杂度高——**本 change 不采用为主路径**。
+「阻塞输入直到 MCP ready」不作为主方案。
 
 ## What Changes
 
-- ContextPolicy `tools` 暴露档：至少 `search`（本 change 主交付）与显式 `full`（逃生/兼容）。
+- ContextPolicy `tools_mode`：`search`（主交付）与显式 `full`（逃生/兼容）。
 - **search 档**：
-  - provider `tools` **不**因 MCP settle 自动变长；
-  - 内置元工具 `tool_search`（或 client-executed 等价名）；
-  - 发现逻辑查内部 registry（核心 + 已武装 MCP）；
-  - 发现请求：默认**当前用户 model 另开短请求**；配置可 `sidecar_model`；
-  - 主轨迹只吸收 search 结果（schema/引用），按 Responses/兼容约定固定位置，后续轮不删除、不搬到最新末尾。
-- capabilities：无 hosted `tool_search` 的兼容端走 client-executed；由 **WirePolicy + 配置**声明（接已归档 `c1880` WirePolicy），**禁止**因 `api=openai-responses` 就假定官方 `tool_search` / `defer_loading` 可用（DeepSeek 等形似端常见差异）。
-- `/reload`：更新内部 registry；provider 稳定 `tools` 表不变（除非用户显式切 `full` 或 **bump `c1920` tools/context epoch**——世代语义以 `c1920` 为准，本 change 只声明何种 MCP 动作请求 bump）。
-- 文档：相对「阻塞至全加载」的复杂度对比；推荐 search；并写明 WirePolicy 覆盖入口。
+  - provider `tools[]` **不**因 MCP settle 自动变长；Direct 顺序自首条起保持稳定（对齐 Codex prompt-cache 测法心智）。
+  - 内置元工具 `tool_search`（client-executed 为主；execution 字段对齐 Codex `client`）。
+  - 发现逻辑 BM25/等价查内部 registry（已武装 MCP + 可 Deferred 的扩展工具）；搜**触发时最新**条目。
+  - 主轨迹吸收 `tool_search_output`（或 wire 等价），schema 只增不改、固定首次位置，后续轮不删、不搬到末尾。
+  - **禁止**把「搜到的工具」再 append 进顶栏 `tools[]`（那是 Codex 刻意不做的捷径）。
+- **full 档**：可保留现有「MCP settle → next turn 注入 tools[]」行为（接受前缀变化）。
+- WirePolicy / capabilities：声明是否支持 hosted `tool_search`、`tool_search_output`、`defer_loading`；不支持则 client 伪造等价 input item 或降级 `full`。
+- `/reload`：更新内部 registry；search 档下顶栏 `tools[]` 不因 MCP 目录变化而变长（description 是否刷新钉在 design）。
+- 文档：Codex 对照要点；兼容端差异；Ornith/llama.cpp 验证清单指针。
 
 ## Capabilities（意向）
 
 - `agent-*` / 工具系统
 - `infra` MCP 装配与 registry
-- `package-ai-bridge`（Responses tools / tool_search_output 形状）
+- `package-ai-bridge`（Responses `tool_search_*` / `defer_loading` 形状）
 - 产品：`扩展能力-MCP` / 工具与权限
 
 ## Impact
 
-- 启动不挡 TTI 与 cache 友好可兼得。
-- 主上下文不被 MCP 全量 schema 淹没。
+- 与 Codex 同构：搜最新 + 顶栏稳 + 动态定义在轨迹里。
+- 兼容端需显式测；不能假设「挂了 openai-responses 标签就等于 OpenAI」。
 
 ## Out of scope
 
-- 阻塞输入直到 MCP ready 的完整 TUI 协议（刻意不做主路径）
-- resume 历史差分重放全量 tools 表（随「不做阻塞方案」一起放下）
+- `c1920` context epoch（deferred；本路径不需要）
+- 阻塞输入直到 MCP ready 的完整 TUI 协议
+- resume 历史差分重放全量 tools 表
 - 状态栏（→ delayed `c1895`）
 - Anthropic Tool Search 原生块
+- 本 change 内完成 llama.cpp/Ornith 真机通过（列为后续验证门槛，不挡 Codex 对齐落地）
 
 ## Parallel / depends
 
-- **硬依赖**：`c1880`（capabilities）、`c1890`（Assembler/Policy）、`c1920`（epoch / 工具世代）
-- 与 delayed `c1905`/`c1910` 等可并行（本期不进 graph）；实现标记对齐 `c1930`
+- **硬依赖**：`c1880`（WirePolicy/capabilities）、`c1890`（Assembler/Policy）
+- **软配合**：`c1930`（view 标记）；`c1925` 可并行
+- **不依赖**：delayed `c1920`
 
 ## Open Questions
 
-- 元工具对外名：`tool_search` vs `discover_tools`（兼容端）
-- `full` 档是否仅调试/配置显式，开箱 MCP 是否默认 `search`
+- 开箱默认 `search` vs `full`（弱模型不会搜时的降级）
+- MCP source 变化时是否刷新 `tool_search` description（Codex 会；会轻微动顶栏字节）
+- 兼容端无 `tool_search_output` 时：伪造 item vs 强制 `full` 的产品默认
 
 ## Ethics
 
 - risk_level: medium
-- prohibited_actions: search 档下静默热扩 provider `tools`；把 sidecar 整段思考并进主轨迹
-- required_evidence: settle 后 registry 有工具但 provider tools 表长度稳定；search 可加载并调用
-- refusal_contract: 不把「阻塞至全加载」写成 MUST
-- escalation_policy: 若开箱强制 search 导致弱模型不会搜，须可切 `full`
+- prohibited_actions: search 档下静默热扩 provider `tools[]`；因 `api=openai-responses` 假定 hosted tool_search 可用；把未声明兼容的端标成与 OpenAI 等价
+- required_evidence: settle 后 registry 有工具但顶栏 tools 长度稳定；经 `tool_search_output` 可加载并调用；WirePolicy 对「无 tool_search」端有明确降级；假 provider/单测覆盖 Codex 形状
+- refusal_contract: 不把「阻塞至全加载」写成 MUST；不把未测的 llama.cpp/Ornith 写成已支持
+- escalation_policy: 开箱强制 search 若伤弱模型，须可切 `full`；Ornith/llama.cpp 真机结果须回写 WirePolicy/文档后再声称兼容
