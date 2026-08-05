@@ -10,10 +10,10 @@
 
 ## 1. Specs landing（Branch binding 后）
 
-- [ ] 1.1 `package-ai-bridge`：修订 pab19（仅 `prompt_cache_usage` 默认 true）+ 场景
-- [ ] 1.2 `package-ai-bridge`：新增三态映射 req + 观测诚实 req（`feature: false` 场景）
-- [ ] 1.3 **跳过** `runtime-config` / TUI chrome / `infra-observability` 扩 valid_scope（观测落在 bridge trace）
-- [ ] 1.4 产品/research 短句：更新「cache_read 恒 0」过时表述（若触及）
+- [x] 1.1 `package-ai-bridge`：修订 pab19（仅 `prompt_cache_usage` 默认 true）+ 场景
+- [x] 1.2 `package-ai-bridge`：新增三态映射 req + 观测诚实 req（`feature: false` 场景）
+- [x] 1.3 **跳过** `runtime-config` / TUI chrome / `infra-observability` 扩 valid_scope（观测落在 bridge trace）
+- [x] 1.4 产品/research 短句：更新「cache_read 恒 0」过时表述（若触及）
 
 ## 2. 实现（apply）
 
