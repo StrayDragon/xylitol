@@ -32,7 +32,7 @@
 | 事实 | 含义 |
 |---|---|
 | Responses body 硬编码 `"store": false` | 未用 `previous_response_id` 链式续跑；靠全量 `input` + 自动前缀缓存 |
-| `from_responses_usage` 的 `cache_read` 恒 0 | Completions 路径可读 `cached_tokens`；Responses **看不见**命中 |
+| `from_responses_usage` 在默认关闸时强制 `cache_read=0`；开闸后可映射 `cached_tokens`（c1880 骨架；三态诚实见 c1885） | Completions 路径可读 `cached_tokens`；Responses 须按 WirePolicy 诚实区分未回报 |
 | `AssistantMessage.response_id` 字段有，ReAct 落盘常为 `None` | 链式续跑无锚点 |
 | `build_system_prompt` 末尾含 date + cwd | 单项目场景通常稳定；秒级时间会伤缓存 |
 | MCP settle / reload 热合并进 `ToolSet` → 每轮 `tools` 全表 | **改请求顶栏工具定义** = 动稳定前缀；与「会话早期已缓存前缀」冲突 |
