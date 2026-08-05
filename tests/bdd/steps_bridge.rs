@@ -207,7 +207,7 @@ fn t_pab15_text_only(ai_bridge_bdd: &AiBridgeBdd) {
 #[given("Responses 组装且 thinking_level 为 medium 且 tools 非空")]
 fn g_pab16_body(ai_bridge_bdd: &AiBridgeBdd) {
     use xylitol_ai_bridge::dto::{AiBridgeMessage, AiBridgeToolSchema};
-    use xylitol_ai_bridge::provider::assemble_responses_body;
+    use xylitol_ai_bridge::provider::ResponsesAssembler;
     use xylitol_ai_bridge::thinking::AiBridgeGenerateOptions;
 
     let tools = [AiBridgeToolSchema {
@@ -215,7 +215,7 @@ fn g_pab16_body(ai_bridge_bdd: &AiBridgeBdd) {
         description: "run".into(),
         parameters: serde_json::json!({"type": "object"}),
     }];
-    let body = assemble_responses_body(
+    let body = ResponsesAssembler::default().assemble(
         "m",
         vec![AiBridgeMessage::user("hi")],
         &tools,
@@ -224,7 +224,6 @@ fn g_pab16_body(ai_bridge_bdd: &AiBridgeBdd) {
             thinking_level: "medium".into(),
             ..Default::default()
         },
-        &xylitol_ai_bridge::WirePolicy::default(),
     );
     ai_bridge_bdd.request_body.replace(Some(body));
 }

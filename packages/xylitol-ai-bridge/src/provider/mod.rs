@@ -36,11 +36,12 @@ pub use obs_span_parent::{
 };
 pub use openai_completions::OpenAiCompletionsAdapter;
 pub use openai_responses::{
-    OpenAiResponsesAdapter, ResponsesStreamState, apply_responses_wire_policy,
-    assemble_responses_body, extract_embedded_provider_error_message, format_responses_error,
-    map_responses_sse_event, messages_to_responses_input, messages_to_responses_input_with_options,
+    OpenAiResponsesAdapter, ResponsesStreamState, extract_embedded_provider_error_message,
+    format_responses_error, map_responses_sse_event, messages_to_responses_input,
+    messages_to_responses_input_with_options,
 };
-// ResponsesAssembler re-exported above via `pub use assembler::ResponsesAssembler`.
+/// Crate-private layout helpers — public body entry is [`ResponsesAssembler`] only (c1890).
+pub(crate) use openai_responses::{apply_responses_wire_policy, assemble_responses_body};
 pub use remote_count::{
     AnthropicRemoteCounter, OpenAiResponsesRemoteCounter, RemoteCounter, StubRemoteCounter,
 };

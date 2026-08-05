@@ -82,6 +82,17 @@ ContextPolicy {
 
 **不**扩 BDD step（与 `c1880`/`c1885` 一致）；合约场景 `feature: false`。
 
+## 后继接线（verify WARNING 收束）
+
+| 后继 | 须读的 Policy 钩子 | 本波已立 |
+|---|---|---|
+| `c1895` | `status_bar_mode` | 枚举 + 默认 `Off` |
+| `c1900` | `tools_mode=Search`、`allows_midturn_tools_rewrite` | `set_tools*` 在 in-flight turn 且禁止改表时 **忽略** 写入 |
+| `c1905` / 日界 | `date_placement` | 占位 `SystemAsToday` |
+| `c1920` | epoch / settle | 不经本 Policy 字段；另案 |
+
+封装收束：`assemble_responses_body` / `apply_responses_wire_policy` → `pub(crate)`；对外唯一业务布局入口 = `ResponsesAssembler`。无公开 `set_context_policy`（Q1：会话覆盖后置）。
+
 ## 非目标
 
 - StatusBar / tool_search / compaction / previous_response_id / epoch 实现
