@@ -7,10 +7,11 @@ depends_on:
 
 # tool_search + MCP 内部目录（不热改 provider tools 表）
 
-> **调研底稿**：[`docs/research/responses-context-layout-and-cache-2026.md`](../../../docs/research/responses-context-layout-and-cache-2026.md) §4；书 Ch2/Ch4；OpenAI tool_search / defer_loading。
+> **调研底稿**：[`docs/research/responses-context-layout-and-cache-2026.md`](../../../docs/research/responses-context-layout-and-cache-2026.md) §4（术语对照 §7）
+> **书指针**：《深入理解 AI Agent》Ch2「动态提示词与 Agent Skills」/ 只增不改工具披露；Ch4 工具形态（姊妹仓 `ai-agent-book/book/chapter2.md`、`chapter4.md`）；书语仅经 research §7 术语表映射，**禁止**写入 live specs。
 > **自包含**：交付 MCP 披露主路径；明确**不**以「阻塞输入直到 MCP 全加载」为主方案。**工具世代 = `c1920` epoch**，本 change 不另发明。
 > **view 契约**：search 注入的持久化/投影标记遵守 [`c1930`](../c1930-update-session-provider-view-contract/proposal.md)（实现时对齐，不另开标记体系）。
-> **工程约定（本波次）**：策略默认 **code-first**：`defaults.rs` 纯常量（改文件调试）；**不**新增 YAML 旋钮；**不**用 env 当未暴露配置面。用户面 YAML 仅既有字段（如 `api`）。真源见 [`c1880`](../c1880-update-responses-first-api-boundary/proposal.md)。
+> **工程约定（本波次）**：策略默认 **code-first**：`defaults.rs` 纯常量（改文件调试）；**不**新增 YAML 旋钮；**不**用 env 当未暴露配置面。用户面 YAML 仅既有字段（如 `api`）。真源见 [`c1880`](../archive/2026-08-04-c1880-update-responses-first-api-boundary/proposal.md)。
 
 ## Why
 
@@ -34,9 +35,9 @@ depends_on:
   - 发现逻辑查内部 registry（核心 + 已武装 MCP）；
   - 发现请求：默认**当前用户 model 另开短请求**；配置可 `sidecar_model`；
   - 主轨迹只吸收 search 结果（schema/引用），按 Responses/兼容约定固定位置，后续轮不删除、不搬到最新末尾。
-- capabilities：无 hosted `tool_search` 的兼容端走 client-executed；由 **flavor + 配置**声明（接 `c1880`），**禁止**因 `api=openai-responses` 就假定官方 `tool_search` / `defer_loading` 可用（DeepSeek 等形似端常见差异）。
+- capabilities：无 hosted `tool_search` 的兼容端走 client-executed；由 **WirePolicy + 配置**声明（接已归档 `c1880` WirePolicy），**禁止**因 `api=openai-responses` 就假定官方 `tool_search` / `defer_loading` 可用（DeepSeek 等形似端常见差异）。
 - `/reload`：更新内部 registry；provider 稳定 `tools` 表不变（除非用户显式切 `full` 或 **bump `c1920` tools/context epoch**——世代语义以 `c1920` 为准，本 change 只声明何种 MCP 动作请求 bump）。
-- 文档：相对「阻塞至全加载」的复杂度对比；推荐 search；并写明 flavor 覆盖入口。
+- 文档：相对「阻塞至全加载」的复杂度对比；推荐 search；并写明 WirePolicy 覆盖入口。
 
 ## Capabilities（意向）
 
