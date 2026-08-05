@@ -163,11 +163,13 @@ impl AgentRuntime {
     }
 
     /// Replace the tool set. Takes effect on the next [`run`](Self::run) call.
+    /// Ignored while the tool table is FROZEN (c1900); use [`Self::freeze_tools`].
     pub fn set_tools(&mut self, tools: ToolSet) {
         self.inner.set_tools(tools);
     }
 
     /// Install tools without rebuilding system prompt text (MCP settle offload).
+    /// Ignored while FROZEN (c1900).
     pub fn set_tools_defer_prompt(
         &mut self,
         tools: ToolSet,
@@ -178,6 +180,48 @@ impl AgentRuntime {
     /// Install a prebuilt system prompt (pair with [`Self::set_tools_defer_prompt`]).
     pub fn install_system_prompt_text(&mut self, prompt: String) {
         self.inner.install_system_prompt_text(prompt);
+    }
+
+    /// Track-A freeze phase (c1900).
+    pub fn tool_freeze_phase(&self) -> crate::agent::tools::ToolFreezePhase {
+        self.inner.tool_freeze_phase()
+    }
+
+    /// True when provider-visible tools are frozen.
+    pub fn is_tools_frozen(&self) -> bool {
+        self.inner.is_tools_frozen()
+    }
+
+    pub fn frozen_tool_fingerprint(&self) -> Option<&crate::agent::tools::ToolTableFingerprint> {
+        self.inner.frozen_tool_fingerprint()
+    }
+
+    pub fn begin_tool_gating(&mut self) {
+        self.inner.begin_tool_gating();
+    }
+
+    pub fn reopen_tools_for_regate(&mut self) {
+        self.inner.reopen_tools_for_regate();
+    }
+
+    pub fn clear_tool_freeze(&mut self) {
+        self.inner.clear_tool_freeze();
+    }
+
+    /// Freeze provider-visible tools (bypasses FROZEN ignore on [`Self::set_tools`]).
+    pub fn freeze_tools(&mut self, tools: ToolSet) {
+        self.inner.freeze_tools(tools);
+    }
+
+    pub fn freeze_tools_defer_prompt(
+        &mut self,
+        tools: ToolSet,
+    ) -> crate::agent::prompt::SystemPromptOpts {
+        self.inner.freeze_tools_defer_prompt(tools)
+    }
+
+    pub fn frozen_fingerprint_matches_set(&self, candidate: &ToolSet) -> bool {
+        self.inner.frozen_fingerprint_matches_set(candidate)
     }
 
     /// Replace the hook set. Takes effect on the next [`run`](Self::run) call.
@@ -2302,7 +2346,9 @@ mod tests {
         }
         assert!(first_turn_executed);
 
-        // Replace tools with an empty set between turns.
+        // Replace tools with an empty set between turns (Unfrozen / non-FROZEN path).
+        // After c1900 freeze, settle/hot-merge MUST use freeze_tools / reopen — set_tools
+        // is ignored while FROZEN (see session::freeze_then_set_tools_does_not_expand).
         agent.set_tools(ToolSet::empty());
 
         // Second turn: the loop still saw mock_tool in the original snapshot if

@@ -4250,6 +4250,8 @@ mod slice_tests {
 
         let armed_snap = LoadedResourcesSnapshot {
             mcp_configured: 2,
+            mcp_bootstrap_complete: true,
+            tools_table_frozen: true,
             mcp_servers: vec![
                 McpServerSnapshot {
                     id: "fs".into(),
@@ -4272,6 +4274,56 @@ mod slice_tests {
             root.borrow().status_next_turn_cue_for_test(),
             None,
             "cue MUST hide when all armed"
+        );
+    }
+
+    #[tokio::test]
+    async fn c1900_assembling_keeps_mcp_pending_cue_while_pre_freeze() {
+        use crate::app::core::driver::{
+            LoadedResourcesSnapshot, McpServerPhase, McpServerSnapshot,
+        };
+
+        let mut session = HostSession::new_product_ui(TestTerminal::new(80, 24));
+        let root = session.ui_root().expect("ui").clone();
+        let driver = ScriptedDriver::new();
+        let settling_snap = LoadedResourcesSnapshot {
+            mcp_configured: 1,
+            mcp_bootstrap_complete: false,
+            tools_table_frozen: false,
+            mcp_servers: vec![McpServerSnapshot {
+                id: "fs".into(),
+                phase: McpServerPhase::Connected,
+                tools_armed: true,
+                tool_count: 2,
+            }],
+            ..LoadedResourcesSnapshot::default()
+        };
+        driver.set_loaded_resources_for_driver(settling_snap);
+        session.refresh_loaded_resources(&driver).await;
+        assert_eq!(
+            root.borrow().status_next_turn_cue_for_test().as_deref(),
+            Some(crate::app::core::driver::MCP_PENDING_CUE),
+            "idle resume MUST show mcp pending while re-gating"
+        );
+
+        session.ui_model_mut().set_busy_status("Assembling");
+        session.sync_ui_root_from_model();
+        root.borrow_mut().refresh_mcp_short_cue();
+        // Mimic sync_runtime_chrome clearing Next-turn when no active agent turn.
+        root.borrow_mut().set_status_next_turn_cue(None);
+        assert_eq!(
+            root.borrow().status_next_turn_cue_for_test().as_deref(),
+            Some(crate::app::core::driver::MCP_PENDING_CUE),
+            "Assembling MUST keep mcp pending on the right (resume gate)"
+        );
+        let frame = root.borrow_mut().render(80).join("\n");
+        assert!(
+            frame.contains("Assembling"),
+            "busy lead MUST paint Assembling: {frame}"
+        );
+        assert!(
+            frame.contains(crate::app::core::driver::MCP_PENDING_CUE),
+            "busy row MUST paint right-aligned mcp pending (Loader pad must not eat cue): {frame}"
         );
     }
 

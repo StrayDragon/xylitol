@@ -1,5 +1,10 @@
+pub mod freeze;
 pub mod toolset;
 
+pub use freeze::{
+    MCP_FIRST_TURN_GATE_TIMEOUT, ToolFreezePhase, ToolTableFingerprint, freeze_table_from_parts,
+    upsert_tools_by_name,
+};
 pub use toolset::ToolSet;
 
 use crate::protocol::ports::XyTool;

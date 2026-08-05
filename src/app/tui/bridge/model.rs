@@ -231,6 +231,14 @@ impl UiModel {
         self.queue.follow_up_count = self.pending_follow_up.len();
     }
 
+    /// Drop one follow-up strip entry (c1900: gate visual consumed when run starts).
+    pub fn pop_follow_up_strip_matching(&mut self, text: &str) {
+        if let Some(pos) = self.pending_follow_up.iter().rposition(|t| t == text) {
+            self.pending_follow_up.remove(pos);
+            self.queue.follow_up_count = self.pending_follow_up.len();
+        }
+    }
+
     /// Drain strip queues into one editor blob (pi Alt+Up restore).
     pub fn take_queued_for_editor(&mut self) -> Vec<String> {
         let mut all = Vec::new();

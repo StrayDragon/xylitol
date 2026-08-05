@@ -189,12 +189,17 @@ impl McpSession {
     }
 
     /// Reload MCP tools onto `driver` (empty servers → builtins only, zero-cost).
+    ///
+    /// c1900: reopens the freeze gate and **re-freezes** via upsert rebuild (not silent
+    /// mid-session `set_tools` expand).
     pub async fn reload(
         &mut self,
         driver: &mut crate::app::core::driver::XyInProcessDriver,
         servers: &[McpServerSpec],
     ) -> Result<(), XyDriverError> {
         use crate::infra::mcp::{connect_and_discover, mcp_enabled};
+
+        driver.reopen_tools_for_regate();
 
         // Take old first; shut down after new tools/manager are installed (c1210).
         let old = self.manager.take();
@@ -210,7 +215,7 @@ impl McpSession {
                 }
                 Ok(None) => {}
                 Err(e) => {
-                    driver.set_tools(tools);
+                    driver.freeze_tools(tools);
                     if let Some(old) = old {
                         old.shutdown().await;
                     }
@@ -219,7 +224,7 @@ impl McpSession {
             }
         }
 
-        driver.set_tools(tools);
+        driver.freeze_tools(tools);
         if let Some(old) = old {
             old.shutdown().await;
         }

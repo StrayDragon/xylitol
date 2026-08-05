@@ -66,13 +66,34 @@
 - 加载提示 ≠ 滚动 system 墙；优先 welcome / 下轮预告 / `/mcp`。
 - 队列条 ≠ 下轮预告（见 `docs/architecture/TUI信息面与chrome词汇.md`）。
 
+### Status lead / spinner（Q19）
+
+| 场景 | status lead（`spinner + 短词`） |
+|---|---|
+| MCP 连接中 / GATING，**未提交** | **无**（保持 idle 呼吸空行）；进度只在 welcome（新会话）/ 下轮预告（resume）/ `/mcp` |
+| **已提交**仍 GATING（待定稿；含 `/reload` 后再提交） | **有**：`Assembling` |
+| 定稿完成、真 generate / agent busy | 既有：`Working` → `Drafting reply` / tool / … |
+| idle `/reload` 再门闸、尚未再提交 | **无** spinner；短 cue + `/mcp` |
+
+- 队列条（follow-up 视觉）**MUST NOT** 自带 spinner。
+- **MUST NOT** 在未提交时用假 `Working` 冒充 agent 已跑。
+
 ## 超时常量
 
-code-first：`defaults.rs`（或 MCP 装配旁）单一超时；本波不扩 YAML。
+code-first：
+- 单 server 连接：`infra::mcp::MCP_SERVER_CONNECT_TIMEOUT`（8s）
+- 首条/重定稿门闸：`agent::MCP_FIRST_TURN_GATE_TIMEOUT`（15s）
+
+本波不扩 YAML。
+
+## Resume（本波）
+
+切会话 / resume：**清冻再门闸**（正确性优先）。指纹类型已可比较；**持久化指纹后的「一致续冻」另波**。用户可见进度走 `mcp pending` / 门闸超时 scroll notice。
 
 ## 观测 / cue
 
-- 门闸等待：短 cue（如「等待 MCP…」）——文案进 TUI 词汇表或既有 chrome 约定。
+- 未提交门闸：welcome / 下轮预告短 cue（如 `mcp pending (see /mcp)`）；**不**占 status lead。
+- 已提交门闸：status lead = `Assembling`（Q19）；右侧 `mcp pending` **MUST** 可与 lead 并存（未 FROZEN / bootstrap 未完成时，含 resume Settling）。
 - 超时子集放行 / resume 重定稿 / reload 重定稿：系统块或 status 短提示，含「可再 /reload」；**不**自动重试连接。
 
 ## 非目标
@@ -80,6 +101,14 @@ code-first：`defaults.rs`（或 MCP 装配旁）单一超时；本波不扩 YAM
 - 实现 `c1960` hosted/client tool_search
 - 禁用输入框
 - 用假 hosted 冒充 defer 轨
+
+## 双轨指针（task 6）
+
+- 轨 A（本 change）：`ToolsMode::Full` + 定稿冻表；见上文状态机。
+- 轨 B：`c1960-add-tool-search-mcp-discovery` + research
+  [`docs/research/responses-tools-stable-id-and-resume-mcp-2026.md`](../../../docs/research/responses-tools-stable-id-and-resume-mcp-2026.md)
+  （`defer_loading` / `tool_search`；用**声明支持**的 provider 验证，非 Ornith 冒充）。
+- Resume：本波切会话 **清冻再门闸**（正确性优先）。「指纹一致续冻」需持久化指纹后再升格；当前 fingerprint 类型已在会话侧可比较。
 
 ## 测试 seam
 
