@@ -9,7 +9,7 @@ LLM **provider 方言桥** + multi-source **token accounting**。Workspace 库�
 | 厂商官方 SDK Client 接线（OpenAI：`async-openai`；Anthropic：**暂 reqwest**，官方 Rust SDK 未成熟）+ middleware / 可移植 hooks | ReAct / session / TUI |
 | **LLM 投影 DTO**（只表达发给模型的形状）+ usage / accounting | 平行拷贝全量 `AgentMessage`（含 bash/compact/branch/custom） |
 | RemoteCount（Anthropic count_tokens、OpenAI Responses input_tokens）优先于本地 tokenizer | 产品 footer 文案；抽第三个 `xylitol-llm-types` |
-| **WirePolicy**（`wire_policy/defaults.rs` 纯常量）：`compat` + 仅 req/resp 的 `extra_policy`；默认 `generic` + 全 false；infra 只注入 | 本波 YAML/env 影子配置；把 `tool_search` 等 agent 能力塞进 WirePolicy |
+| **WirePolicy**（`wire_policy/defaults.rs` 纯常量）：`compat` + 仅 req/resp 的 `extra_policy`；默认 `generic`；`prompt_cache_usage` 默认 true，另两位 false；infra 只注入 | 本波 YAML/env 影子配置；把 `tool_search` 等 agent 能力塞进 WirePolicy |
 
 ## 与主仓概念分层（normative）
 

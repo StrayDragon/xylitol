@@ -289,9 +289,6 @@ mod tests {
             usage: Some(XyUsage {
                 input: 100,
                 output: 50,
-                cache_read: 0,
-                cache_write: 0,
-                cache_write_1h: 0,
                 total_tokens: 150,
                 cost: Some(XyUsageCost {
                     input: 0.001,
@@ -300,6 +297,7 @@ mod tests {
                     cache_write: 0.0,
                     total: 0.003,
                 }),
+                ..Default::default()
             }),
             api: "openai".into(),
             provider: "openai".into(),
@@ -359,8 +357,9 @@ mod tests {
             cache_write: 100,
             cache_write_1h: 50,
             total_tokens: 0,
-            cost: None,
-        };
+            ..Default::default()
+        }
+        .with_prompt_cache_read(xylitol_ai_bridge::dto::PromptCacheRead::Tokens(200));
         usage.compute_total();
         assert_eq!(usage.total_tokens, 1500);
 

@@ -128,11 +128,8 @@ mod tests {
             usage: Some(AiBridgeUsage {
                 input: 1,
                 output: 2,
-                cache_read: 0,
-                cache_write: 0,
-                cache_write_1h: 0,
                 total_tokens: 3,
-                cost: None,
+                ..Default::default()
             }),
         };
         match to_xy_chunk(chunk) {

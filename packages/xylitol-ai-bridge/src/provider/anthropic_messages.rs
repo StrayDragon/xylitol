@@ -342,15 +342,15 @@ fn anthropic_stream(
 
                         let usage_total = usage_input + usage_output;
                         let usage = if usage_total > 0 {
-                            Some(crate::dto::AiBridgeUsage {
-                                input: usage_input,
-                                output: usage_output,
-                                cache_read: 0,
-                                cache_write: 0,
-                                total_tokens: usage_total,
-                                cache_write_1h: 0,
-                                cost: None,
-                            })
+                            Some(
+                                crate::dto::AiBridgeUsage {
+                                    input: usage_input,
+                                    output: usage_output,
+                                    total_tokens: usage_total,
+                                    ..Default::default()
+                                }
+                                .with_prompt_cache_read(crate::dto::PromptCacheRead::Tokens(0)),
+                            )
                         } else {
                             None
                         };
@@ -430,15 +430,15 @@ fn parse_anthropic_response(json: &Value) -> Vec<AiBridgeChunk> {
         let output = u.get("output_tokens").and_then(|v| v.as_u64()).unwrap_or(0);
         let total = input + output;
         if total > 0 {
-            Some(crate::dto::AiBridgeUsage {
-                input,
-                output,
-                cache_read: 0,
-                cache_write: 0,
-                total_tokens: total,
-                cache_write_1h: 0,
-                cost: None,
-            })
+            Some(
+                crate::dto::AiBridgeUsage {
+                    input,
+                    output,
+                    total_tokens: total,
+                    ..Default::default()
+                }
+                .with_prompt_cache_read(crate::dto::PromptCacheRead::Tokens(0)),
+            )
         } else {
             None
         }

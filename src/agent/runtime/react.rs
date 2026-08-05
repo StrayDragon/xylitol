@@ -1948,11 +1948,8 @@ mod tests {
         let usage = XyUsage {
             input: 11,
             output: 7,
-            cache_read: 0,
-            cache_write: 0,
-            cache_write_1h: 0,
             total_tokens: 18,
-            cost: None,
+            ..Default::default()
         };
         let chunks = vec![
             crate::protocol::types::XyChunk::TextDelta("hi".into()),

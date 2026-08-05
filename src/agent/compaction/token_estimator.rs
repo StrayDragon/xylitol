@@ -300,11 +300,8 @@ mod tests {
         let usage = XyUsage {
             input: 100,
             output: 20,
-            cache_read: 0,
-            cache_write: 0,
-            cache_write_1h: 0,
             total_tokens: 120,
-            cost: None,
+            ..Default::default()
         };
         let asst = AgentMessage::Llm(LlmMessage::AssistantMessage {
             content: vec![crate::protocol::message::AgentPart::text("ok")],
