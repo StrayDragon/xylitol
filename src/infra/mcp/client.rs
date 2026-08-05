@@ -134,9 +134,23 @@ impl McpClientManager {
             let this = Arc::clone(self);
             futs.push(async move {
                 let name = server_config.name.clone();
-                let result = match server_config.transport {
-                    McpTransportKind::Stdio => this.connect_stdio(&name, &server_config).await,
-                    McpTransportKind::Sse => this.connect_sse(&name, &server_config).await,
+                let connect = async {
+                    match server_config.transport {
+                        McpTransportKind::Stdio => this.connect_stdio(&name, &server_config).await,
+                        McpTransportKind::Sse => this.connect_sse(&name, &server_config).await,
+                    }
+                };
+                let result = match tokio::time::timeout(
+                    crate::infra::mcp::MCP_SERVER_CONNECT_TIMEOUT,
+                    connect,
+                )
+                .await
+                {
+                    Ok(inner) => inner,
+                    Err(_) => Err(format!(
+                        "connect timed out after {:?}",
+                        crate::infra::mcp::MCP_SERVER_CONNECT_TIMEOUT
+                    )),
                 };
                 (name, result)
             });

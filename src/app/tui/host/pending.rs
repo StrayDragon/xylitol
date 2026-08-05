@@ -6,6 +6,8 @@ use super::super::commands::{PendingBash, PendingSlash};
 #[derive(Debug, Default)]
 pub struct PendingOps {
     pub submit: Option<String>,
+    /// Submit waiting for tool freeze (c1900 non-blocking gate).
+    pub gated_submit: Option<String>,
     pub steer: Option<String>,
     pub follow_up: Option<String>,
     pub abort: bool,
@@ -22,6 +24,12 @@ pub struct PendingOps {
 impl PendingOps {
     pub fn take_submit(&mut self) -> Option<String> {
         self.submit.take()
+    }
+    pub fn take_gated_submit(&mut self) -> Option<String> {
+        self.gated_submit.take()
+    }
+    pub fn peek_gated_submit(&self) -> bool {
+        self.gated_submit.is_some()
     }
     pub fn take_steer(&mut self) -> Option<String> {
         self.steer.take()

@@ -246,6 +246,20 @@ pub trait XyDriver: Send {
         false
     }
 
+    /// True when provider-visible tools are FROZEN (c1900). Default `true` =
+    /// no first-turn gate (remote/stub). In-process returns the real freeze phase.
+    fn is_tools_frozen(&self) -> bool {
+        true
+    }
+
+    /// Arm tool freeze gate without blocking (TUI). Default: no-op.
+    async fn arm_tool_freeze_gate(&mut self) {}
+
+    /// One-shot notice after MCP gate timeout subset freeze. Default: none.
+    fn take_mcp_gate_notice(&mut self) -> Option<String> {
+        None
+    }
+
     /// Start background MCP connect when configured (c1200). Idempotent.
     async fn begin_mcp_bootstrap(&mut self) {}
 

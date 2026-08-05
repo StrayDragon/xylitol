@@ -96,6 +96,11 @@ pub struct LoadedResourcesSnapshot {
     pub mcp_connecting_label: Option<String>,
     /// Per-server connection + tools-armed rows for `/mcp` (c1210).
     pub mcp_servers: Vec<McpServerSnapshot>,
+    /// True when bootstrap is no longer in-flight (`Settled` / empty idle).
+    pub mcp_bootstrap_complete: bool,
+    /// Provider-visible tools already FROZEN (c1900). While false, Connected-but-unarmed
+    /// still warrants `mcp pending` (resume / first-turn gate).
+    pub tools_table_frozen: bool,
 }
 
 /// Connection phase for one configured MCP server (c1210 `/mcp` panel).
@@ -130,14 +135,37 @@ impl LoadedResourcesSnapshot {
             || !self.mcp_servers.is_empty()
     }
 
-    /// MCP configured and not every configured server has tools armed in ToolSet.
+    /// MCP configured and still discovering / mid-settle arming / pre-freeze gap.
+    ///
+    /// - `connecting_label` or any `Connecting` → pending
+    /// - tools **not** frozen and bootstrap incomplete (Running→Settling; resume re-gate)
+    /// - `Connected && !tools_armed` while tools table **not** frozen
+    /// - After freeze: Failed / Connected-unarmed MUST NOT sticky (details in `/mcp`)
     pub fn mcp_tools_pending(&self) -> bool {
         if self.mcp_configured == 0 {
             return false;
         }
-        self.mcp_servers.len() != self.mcp_configured
-            || self.mcp_servers.iter().any(|s| !s.tools_armed)
-            || self.mcp_connecting_label.is_some()
+        if self.mcp_connecting_label.is_some() {
+            return true;
+        }
+        if self
+            .mcp_servers
+            .iter()
+            .any(|s| s.phase == McpServerPhase::Connecting)
+        {
+            return true;
+        }
+        if self.tools_table_frozen {
+            return false;
+        }
+        // Resume/re-gate: old tools may still look "armed" while Settling/Rebuilding —
+        // keep the short cue until bootstrap completes (then freeze on submit).
+        if !self.mcp_bootstrap_complete {
+            return true;
+        }
+        self.mcp_servers
+            .iter()
+            .any(|s| s.phase == McpServerPhase::Connected && !s.tools_armed)
     }
 }
 

@@ -67,10 +67,12 @@ components:
 | | |
 |---|---|
 | 文案 | **仅** `mcp pending (see /mcp)` |
-| 落点 | status **右对齐**（idle 整行 / busy 贴 Working\|Drafting 右侧） |
+| 落点 | status **右对齐**（idle 整行 / busy 贴 Working\|Drafting\|Assembling 右侧） |
 | 何时 | `mcp_tools_pending()`；可与头卡 `connecting i/n` 并存 |
 | 优先级 | busy 且已有 `Next turn…` 时不覆盖 |
 | 收起 | 全部 armed / 不再 pending |
+| 门闸 lead（c1900 Q19） | 已提交且尚未 FROZEN：status lead = **`Assembling`**（非假 `Working`）；未提交保持 idle + 本 cue / welcome |
+| busy 绘制 | Loader/`Text` 行会右填充至全宽；贴右侧 cue 前 **MUST** 去掉尾部填充空格再量宽，**MUST NOT** 因 `lead_w == width` 静默丢掉 cue |
 
 ## 静图芯片（playground）
 

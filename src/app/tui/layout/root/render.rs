@@ -69,18 +69,22 @@ impl UiRoot {
         if let Some(cue) = self.status_next_turn_cue.as_deref() {
             if let Some(content) = lines.last_mut() {
                 let cue_paint = self.theme.paint_muted(cue);
-                let lead_w = xylitol_tui::visible_width(content);
+                // Loader → Text pads each line to full `width` with trailing spaces.
+                // Measuring that padded line makes lead_w == width and silently drops the
+                // right-aligned cue (Assembling / Working + mcp pending / Next turn).
+                let lead = content.trim_end_matches(' ');
+                let lead_w = xylitol_tui::visible_width(lead);
                 let cue_w = xylitol_tui::visible_width(&cue_paint);
                 if lead_w + 1 + cue_w <= width {
                     let pad = width.saturating_sub(lead_w + cue_w);
-                    *content = format!("{content}{}{cue_paint}", " ".repeat(pad));
+                    *content = format!("{lead}{}{cue_paint}", " ".repeat(pad));
                 } else if cue_w < width {
                     let budget = width.saturating_sub(lead_w.saturating_add(1));
                     if budget > 3 {
                         let truncated = truncate_to_width(&cue_paint, budget, "…", false);
                         let pad =
                             width.saturating_sub(lead_w + xylitol_tui::visible_width(&truncated));
-                        *content = format!("{content}{}{truncated}", " ".repeat(pad.max(1)));
+                        *content = format!("{lead}{}{truncated}", " ".repeat(pad.max(1)));
                     }
                 }
             } else {

@@ -1,7 +1,8 @@
 //! ContextPolicy — request-layout hooks (c1890).
 //!
 //! Code-first defaults only; no YAML / env overlay this wave.
-//! Status bar / tool_search behavior is deferred (`c1895` / `c1900`).
+//! Status bar is deferred (`c1895`). Tool search / `ToolsMode::Search` is `c1960`.
+//! Track-A freeze (c1900) keeps `ToolsMode::Full` as the open-box default.
 
 mod defaults;
 
@@ -15,7 +16,7 @@ pub use defaults::{
 pub enum ToolsMode {
     /// Full tool schema list (current product default).
     Full,
-    /// Deferred discovery / search (implemented in `c1900`).
+    /// Deferred discovery / search (c1960; not delivered by c1900 freeze track).
     Search,
 }
 
