@@ -1,7 +1,9 @@
 //! Track-A tool-table freeze (c1900): phase + fingerprint + upsert helpers.
 //!
 //! Provider-visible `tools[]` becomes immutable after freeze until an explicit
-//! re-gate (`/reload` idle or resume fingerprint mismatch). Upsert = [`ToolSet::overlay_by_name`].
+//! re-gate (`/reload` idle, or resume/switch which **clears freeze** this wave).
+//! Fingerprint continue-freeze needs persisted fingerprint (later wave).
+//! Upsert = [`ToolSet::overlay_by_name`].
 
 use std::time::Duration;
 
