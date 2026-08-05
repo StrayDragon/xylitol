@@ -32,6 +32,7 @@ pub fn clear_active_turn(&self)
 pub fn clear_follow_up_queue(&self)
 pub fn clear_queues(&self, clear_steer: bool, clear_follow_up: bool)
 pub fn clear_steer_queue(&self)
+pub fn context_policy(&self) -> &crate::agent::context_policy::ContextPolicy
 pub fn current_model(&self) -> Option<XyModelMeta>
 pub fn cwd(&self) -> &str
 pub fn cycle_thinking_level(&mut self) -> Result<ThinkingLevel, String>
@@ -69,6 +70,7 @@ pub fn select_model(&mut self, model_id: &str) -> Result<(), String>
 pub fn select_model_with_source(&mut self, model_id: &str, source: &str) -> Result<(), String>
 pub fn session_id(&self) -> Option<&str>
 pub fn session_store(&self) -> Arc<dyn XySessionStore>
+pub fn set_context_policy(&mut self, policy: crate::agent::context_policy::ContextPolicy)
 pub fn set_mode(&mut self, mode: QueueMode)
 pub fn set_permission(&mut self, permission: std::sync::Arc<dyn XyPermission>)
 pub fn set_session(&mut self, session_id: String)
