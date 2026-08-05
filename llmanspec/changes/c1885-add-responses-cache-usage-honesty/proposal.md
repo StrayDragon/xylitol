@@ -2,7 +2,8 @@
 depends_on: []
 branch: sdd/c1885-add-responses-cache-usage-honesty
 base_sha: 777caa15d18bd30e8a21931f041e828093e11120
-checkpointed: false
+checkpointed: true
+checkpoint_sha: 98c02592743f799ff45b2690a154328312591732
 ---
 
 # Responses usage：Prompt Cache 诚实透出
