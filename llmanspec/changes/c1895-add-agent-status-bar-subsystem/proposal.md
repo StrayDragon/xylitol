@@ -29,8 +29,9 @@ depends_on:
   - × **每条 append 硬 token 预算**（超限按优先级丢低优字段）
   - 本波：接口 + 预算 + **薄 coding profile** 可测实现（**默认含 clock**，深挖 Q5）；时间感操作手册 / git 深度 / 更多场景档后置迭代。对齐书实验 2-8「技术可独立开关」与「场景会变 + 省 token」。
 - **自动注入缝（深挖 Q6′ 已钉）**：① **每 outbound generate 前**自动尾插；② 本波不做按需工具。后置 `statusline_refresh` = **仅 tool result**、不写权威栏（`c1898`）。
+- **标记 / wire（深挖 Q7 已钉）**：SSOT 使用 **独立 session entry kind**（名以实现为准，如 `StatusBar`）；发模型时由投影层包成书形 `<agent_status>…</agent_status>`（或等价）。**禁止**仅靠普通 user 正文标签当唯一识别（压缩易误伤）。与 `c1930` 对齐投影契约；本 change 可先立 kind + 标记，细节跟 session view 合约联调。
 - 注入经 Assembler / Policy，**不**散落改 `build_system_prompt` 特例逻辑（system 内稳定 env 仍可由 `c1905` 管）。
-- 验证：假 provider → 预算截断可测；profile 切换可消融；generate 边界尾插可测；可选「读数 + 短策略片段」成对配置（后置）。
+- 验证：假 provider → 预算截断可测；profile 切换可消融；generate 边界尾插可测；entry kind 可识别（供 `c1897`）；可选「读数 + 短策略片段」成对配置（后置）。
 - **禁止**用 LLM 批量扫历史生成权威栏。
 
 ## Capabilities（意向）
@@ -73,17 +74,18 @@ depends_on:
 - **Q4′ Runtime 读数地基（2026-08-05）**：选 **注册表 × scenario profile × 单条 token 预算**；本波薄 coding profile，**不**把具体键表钉成硬合约。书据：Ch2 实验 2-8 可独立开关；Ch5 coding 环境四件套为 profile 意向而非 SSOT；append 持久下省 token 靠单条预算 + 后继 `c1897`。
 - **Q5 时钟 / 日界（2026-08-05）**：选 **C — 栏内 clock provider，并进入默认 coding profile**（每轮盲目尾插带时间读数）。system/`c1905` 仍可保留稳定 env 策略，但「当前时刻 / 日历日」以栏为准避免改 system 前缀；单条预算须为 clock 留优先级；与 `c1905` 日界文案对齐时注明「动态时刻走栏」。
 - **Q6′ 自动缝 × 按需工具（2026-08-05）**：分类后选 **① 每 outbound generate 前自动尾插 + ② 本波不做 refresh 工具**。后置工具若做：名 ≈ `statusline_refresh`，**仅 tool result、不 append 权威栏** → `c1898`。避免与 `c1897` 双写缠死。
+- **Q7 标记 / wire（2026-08-05）**：选 **A — 独立 session entry kind + 投影层包装**（书形 `<agent_status>` 等）。压缩/导出认 kind；不以普通 user 正文标签为唯一 SSOT。跟 `c1930` 联调投影细节。
 
 ### 待钉
 
-- 特殊标记 / wire 形状（与 `c1930` 投影；TUI 是否展示）。
 - 短「操作策略」片段是否进默认 coding profile（书：读数+手册成对才改节奏；默认关以省 token？）。
 - 薄 coding profile 除 clock 外的默认开启集合（cwd / git 概览 / tool_calls 等——profile 意向，非死合约）。
+- TUI / 导出是否向**用户**展示 StatusBar entry（默认倾向：模型可见、UI 默认折叠或不展示——可后置）。
 
 ## Ethics
 
 - risk_level: medium（高信任注入面；且持久后进入导出/resume）
-- prohibited_actions: LLM 维护权威栏；把外部不可信全文写入栏；不可审计的隐式投毒通道；无预算的无限膨胀 profile
-- required_evidence: off/replace/append 可测；provider 注册/预算截断可测；append 路径不依赖「扫旧 status」；持久条目带稳定特殊标记；默认 coding 含 clock 时预算仍可测；generate 边界自动尾插可测
+- prohibited_actions: LLM 维护权威栏；把外部不可信全文写入栏；不可审计的隐式投毒通道；无预算的无限膨胀 profile；用普通 user 正文冒充 status kind
+- required_evidence: off/replace/append 可测；provider 注册/预算截断可测；append 路径不依赖「扫旧 status」；持久条目带稳定特殊标记 / entry kind；默认 coding 含 clock 时预算仍可测；generate 边界自动尾插可测
 - refusal_contract: 不宣称状态栏普遍提升正确率；不宣称某固定键表永远最优
 - escalation_policy: 若默认从 append 改为更强侵入策略，或默认预算显著放大，须用户确认
