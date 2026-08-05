@@ -13,7 +13,7 @@ apply_band: P9-deferred
 
 > **调研底稿**：[`docs/research/responses-context-layout-and-cache-2026.md`](../../../docs/research/responses-context-layout-and-cache-2026.md) §5（术语对照 §7）
 > **书指针**：《深入理解 AI Agent》Ch2「Agent 如何调用大模型」多轮轨迹（姊妹仓 `ai-agent-book/book/chapter2.md`）；书语仅经 research §7 术语表映射，**禁止**写入 live specs。
-> **自包含**：默认仍全量重放；链式为 capability + 配置 opt-in。**断链条件含 context epoch bump**（以 `c1920` 为准）。
+> **自包含**：默认仍全量重放；链式为 capability + 配置 opt-in。**断链条件含 context epoch bump**（以 delayed `c1920` 为准；二者皆 deferred，升格时再绑）。
 > **工程约定（本波次）**：策略默认 **code-first**：`defaults.rs` 纯常量（改文件调试）；**不**新增 YAML 旋钮；**不**用 env 当未暴露配置面。用户面 YAML 仅既有字段（如 `api`）。真源见 [`c1880`](../archive/2026-08-04-c1880-update-responses-first-api-boundary/proposal.md)。
 
 ## Why

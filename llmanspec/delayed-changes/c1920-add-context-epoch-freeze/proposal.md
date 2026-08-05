@@ -1,9 +1,13 @@
 ---
 depends_on:
   - c1890-add-responses-context-policy-assembler
+apply_band: P9-deferred
 ---
 
 # Context Epoch（前缀 / 工具世代冻结）
+
+> **⚠️ deferred（2026-08-05）**：Codex 对齐后确认——`tool_search` 搜最新 registry **不需要** epoch；动态工具经 `tool_search_output` 进轨迹，而非顶栏 `tools[]` 换代计数。本期主线改为 **`c1900`（对齐 Codex）**；epoch 仅当后续断链/可观测换代需要时再升格。
+
 
 > **调研底稿**：[`docs/research/responses-context-layout-and-cache-2026.md`](../../../docs/research/responses-context-layout-and-cache-2026.md)（术语对照 §7）
 > **书指针**：《深入理解 AI Agent》Ch2「KV Cache 友好的上下文设计」前缀世代直觉（姊妹仓 `ai-agent-book/book/chapter2.md`）；书语仅经 research §7 术语表映射，**禁止**写入 live specs。
