@@ -23,8 +23,13 @@ depends_on:
 - StatusBar **provider 接口**（Runtime）：输入 = 代码可观测状态；输出 = 结构化键值（禁止散文堆砌为默认）。
 - Runtime 默认模式：**`append`（深挖 Q2 已钉）**——**不**扫描轨迹中已有 status message；每轮在末尾直接追加最新快照（「盲目尾插」）。`replace` / `off` 仍可切。
 - **持久化（深挖 Q3 已钉）**：**全部写入 session transcript**（SSOT），不是仅请求时投影。理由：常用 provider 的 KV / Prompt Cache 依赖跨请求前缀字节稳定；仅投影等于每轮换掉末尾条，破坏「只追加」命中。导出 / resume / compact（`c1897`）均可见这些特殊标记消息。
+- **Runtime 读数地基（深挖 Q4′ 已钉）**：**不**把字段表钉死为合约。做成
+  - `ReadingProvider` 注册表（id / 优先级 / 估 token / 渲染 KV）
+  - × **scenario profile**（code-first；coding 默认档对齐书 Ch5 环境感知意向）
+  - × **每条 append 硬 token 预算**（超限按优先级丢低优字段）
+  - 本波：接口 + 预算 + **薄 coding profile** 可测实现；时间感操作手册 / git 深度 / 更多场景档后置迭代。对齐书实验 2-8「技术可独立开关」与「场景会变 + 省 token」。
 - 注入经 Assembler / Policy，**不**散落改 `build_system_prompt` 特例逻辑（system 内稳定 env 仍可由 `c1905` 管）。
-- 验证：给定假状态 → 栏内容单测；模式切换可消融；可选「读数 + 短策略片段」成对配置。
+- 验证：假 provider → 预算截断可测；profile 切换可消融；可选「读数 + 短策略片段」成对配置（后置）。
 - **禁止**用 LLM 批量扫历史生成权威栏。
 
 ## Capabilities（意向）
