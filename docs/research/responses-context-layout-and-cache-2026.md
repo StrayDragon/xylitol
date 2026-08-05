@@ -140,12 +140,13 @@ coding agent 默认：环境类（cwd）可留 system；高变读数（工具计
 |---|---|---|
 | Responses 默认 + Completions 显式 `api` + Anthropic 桩 + code-first WirePolicy | [`c1880`](../../llmanspec/changes/archive/2026-08-04-c1880-update-responses-first-api-boundary/proposal.md)（已归档） | `[]` |
 | Responses cache usage 诚实透出 | [`c1885`](../../llmanspec/changes/archive/2026-08-05-c1885-add-responses-cache-usage-honesty/proposal.md)（已归档） | `[]` |
-| ContextPolicy + ResponsesAssembler | [`c1890`](../../llmanspec/changes/c1890-add-responses-context-policy-assembler/proposal.md) | `c1880` |
+| ContextPolicy + ResponsesAssembler | [`c1890`](../../llmanspec/changes/archive/2026-08-05-c1890-add-responses-context-policy-assembler/proposal.md)（已归档） | `c1880` |
 | Context Epoch（前缀/工具世代） | [`c1920`](../../llmanspec/changes/c1920-add-context-epoch-freeze/proposal.md) | `c1890` |
 | Thinking/reasoning 回放 × flavor | [`c1925`](../../llmanspec/changes/c1925-update-responses-thinking-replay-flavor/proposal.md) | `c1880`+`c1890` |
 | Session SSOT ↔ Provider view | [`c1930`](../../llmanspec/changes/c1930-update-session-provider-view-contract/proposal.md) | `c1890` |
 | Assembler 布局决策可观测 | [`c1935`](../../llmanspec/changes/c1935-add-assembler-layout-observability/proposal.md) | `c1890` |
-| Agent 状态栏子系统 | [`c1895`](../../llmanspec/changes/c1895-add-agent-status-bar-subsystem/proposal.md) | `c1890`+`c1930` |
+| Agent 状态栏 · Runtime 列（+ Agent 列扩展壳） | [`c1895`](../../llmanspec/changes/c1895-add-agent-status-bar-subsystem/proposal.md) | `c1890`+`c1930` |
+| Agent 状态栏 · Agent 列 / TODO 通道（purpose-draft） | [`c1896`](../../llmanspec/changes/c1896-add-status-bar-agent-lane/proposal.md) | `c1895` |
 | tool_search + MCP 内部目录 | [`c1900`](../../llmanspec/changes/c1900-add-tool-search-mcp-discovery/proposal.md) | `c1880`+`c1890`+`c1920` |
 | system 稳定/可变切分 | [`c1905`](../../llmanspec/changes/c1905-update-system-prompt-stable-volatile-split/proposal.md) | `c1890` |
 | 压缩冻结替换串 | [`c1910`](../../llmanspec/changes/c1910-update-compaction-freeze-tool-replacements/proposal.md) | `c1890`+`c1930` |
