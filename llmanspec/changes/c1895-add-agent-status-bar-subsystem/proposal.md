@@ -35,8 +35,27 @@ depends_on:
   - **实现但默认关**（profile 可开）：`cwd`；`git_branch`。
   - **本波不做**：完整 git dirty、TODO、详细错误四层、长操作手册、`statusline_refresh` 等（见分流草案）。
   - 防循环：书证——显式次数（如 `read_file: 3`）能触发「多次失败后换策略/放弃」；电话实验里「3/3 到顶就停」规则足够显然时**只靠读数**即可纠偏。更细的「同参重复 streak / 微型策略」后置，不进本波默认。
+- **栏体形状（深挖 Q9 意向：XML 非 JSON）**：投影包装根标签 **`<agent_status_bar>`**；读数用子元素，**不用 JSON 对象当正文**。推荐骨架：
+
+```xml
+<agent_status_bar>
+  <clock>2026-08-05T14:25:00+08:00</clock>
+  <tool_calls>
+    <tool name="read" count="3"/>
+    <tool name="bash" count="5"/>
+  </tool_calls>
+  <!-- profile 开启时再出现：
+  <cwd>/path</cwd>
+  <git_branch>main</git_branch>
+  -->
+</agent_status_bar>
+```
+
+  - `tool/@name` 用属性（工具名可含非法 XML 名字符时仍安全）；`count` 为非负整数。
+  - 空 `tool_calls` 可写成 `<tool_calls/>` 或省略子节点（design 钉一种）。
+  - **禁止**把整段栏序列化成 `{...}` JSON 塞进 user 正文当默认形。
 - 注入经 Assembler / Policy，**不**散落改 `build_system_prompt` 特例逻辑（system 内稳定 env 仍可由 `c1905` 管）。
-- 验证：假 provider → 预算截断可测；profile 开/关 `cwd`/`git_branch` 可消融；generate 边界尾插含 `clock`+`tool_calls`；entry kind=`AgentStatusBar`。
+- 验证：假 provider → 预算截断可测；profile 开/关 `cwd`/`git_branch` 可消融；generate 边界尾插含 `clock`+`tool_calls`；entry kind=`AgentStatusBar`；投影 XML 可解析/快照。
 - **禁止**用 LLM 批量扫历史生成权威栏。
 
 ## Capabilities（意向）
@@ -80,16 +99,18 @@ depends_on:
 - **Q5 时钟 / 日界（2026-08-05）**：选 **C — 栏内 clock provider，并进入默认 coding profile**（每轮盲目尾插带时间读数）。system/`c1905` 仍可保留稳定 env 策略，但「当前时刻 / 日历日」以栏为准避免改 system 前缀；单条预算须为 clock 留优先级；与 `c1905` 日界文案对齐时注明「动态时刻走栏」。
 - **Q6′ 自动缝 × 按需工具（2026-08-05）**：分类后选 **① 每 outbound generate 前自动尾插 + ② 本波不做 refresh 工具**。后置工具若做：名 ≈ `statusline_refresh`，**仅 tool result、不 append 权威栏** → `c1898`。避免与 `c1897` 双写缠死。
 - **Q7 标记 / wire（2026-08-05）**：选 **A — 独立 session entry kind + 投影层包装**。工程命名统一：**`AgentStatusBar`** + **`<agent_status_bar>`**（不用混用 `StatusBar` / `<agent_status>` 短名）。压缩/导出认 kind；跟 `c1930` 联调投影细节。
+- **Q8 默认附加集（2026-08-05）**：默认开 **`clock` + `tool_calls`（累计）**；**实现但默认关** `cwd` / `git_branch`；其余后置。防循环主路径 = 书「工具调用计数器」（显式次数促换策略）；不在本波塞长 playbook。策略放置（栏内微型 vs system）整体后置。
 
 ### 待钉
 
-- **Q8 默认附加集 + 操作策略**：默认要开策略（用户倾向）；须钉（a）coding profile 默认开启哪些 ReadingProvider；（b）短操作策略放 **每条栏内** vs **system 稳定段一次 + 栏内只留读数/指针**（append 持久下 token 差一个数量级）；（c）代码书写：注册表 / `defaults.rs` / generate 边界调用点。
+- `tool_calls` 展示粒度：仅 `{name: count}` vs 另标「本 run 热点工具 / 软阈值」——可在 design 薄定，默认先 `{name: count}`。
 - TUI / 导出是否向**用户**展示 `AgentStatusBar` entry（默认倾向：模型可见、UI 默认折叠或不展示——可后置）。
+- 深挖是否收束、进入 `llman-sdd-propose`（design/tasks）——用户确认。
 
 ## Ethics
 
 - risk_level: medium（高信任注入面；且持久后进入导出/resume）
 - prohibited_actions: LLM 维护权威栏；把外部不可信全文写入栏；不可审计的隐式投毒通道；无预算的无限膨胀 profile；用普通 user 正文冒充 `AgentStatusBar` kind
-- required_evidence: off/replace/append 可测；provider 注册/预算截断可测；append 路径不依赖「扫旧 status」；持久条目带 `AgentStatusBar` kind；默认 coding 含 clock 时预算仍可测；generate 边界自动尾插可测
-- refusal_contract: 不宣称状态栏普遍提升正确率；不宣称某固定键表永远最优
+- required_evidence: off/replace/append 可测；provider 注册/预算截断可测；append 路径不依赖「扫旧 status」；持久 `AgentStatusBar`；默认含 `clock`+`tool_calls`；generate 边界自动尾插可测
+- refusal_contract: 不宣称状态栏普遍提升正确率；不宣称计数器 alone 能消灭所有循环；不宣称某固定键表永远最优
 - escalation_policy: 若默认从 append 改为更强侵入策略，或默认预算显著放大，须用户确认
