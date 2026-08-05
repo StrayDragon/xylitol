@@ -3,7 +3,7 @@
 > **范围**：个人 coding agent（xylitol）在 **OpenAI Responses API**（含 llama.cpp 等兼容端）下，如何组织发给 provider 的 body，以及 KV Cache / Prompt Cache、状态栏、MCP/`tool_search`、压缩的工程取舍。
 > **一手来源**：本仓 `packages/xylitol-ai-bridge` / `src/agent` 现状；OpenAI Prompt caching / Responses / tool_search 文档；《深入理解 AI Agent》姊妹仓 `ai-agent-book/book/chapter2.md`（及 Ch4/Ch5）（状态栏、KV/Prompt Cache、工具只增不改、Cursor MCP 索引实践）。书语仅经下文 §7 术语表进入工程名，**禁止**写入 live specs。
 >
-> **Assembler 缝（c1890）**：Responses 请求 body 经 `ResponsesAssembler`（`xylitol-ai-bridge`）唯一构造（底层 assemble 为 crate-private）；agent 侧 `ContextPolicy` 提供 hooks；`set_tools*` 已消费 mid-turn rewrite 闸。状态栏完整行为 **deferred**（`llmanspec/delayed-changes/c1895…`）；Todo **deferred**（[`c1955`](../../llmanspec/delayed-changes/c1955-add-agent-todo-subsystem/proposal.md)）；本期主线 **`c1900`（对齐 Codex：`tools[]` 冻结 + `tool_search_output`）**；`c1930`/`c1925` 软配合；`c1920` epoch **deferred**（搜最新不需要世代计数）。兼容端（含日后 llama.cpp/Ornith）须单独验证。
+> **Assembler 缝（c1890）**：Responses 请求 body 经 `ResponsesAssembler`（`xylitol-ai-bridge`）唯一构造（底层 assemble 为 crate-private）；agent 侧 `ContextPolicy` 提供 hooks；`set_tools*` 已消费 mid-turn rewrite 闸。状态栏完整行为 **deferred**（`llmanspec/delayed-changes/c1895…`）；Todo **deferred**（[`c1955`](../../llmanspec/delayed-changes/c1955-add-agent-todo-subsystem/proposal.md)）；本期主线 **`c1900`（MCP 首条门闸 + Full 工具定稿）**；`tool_search` → [`c1960`](../../llmanspec/changes/c1960-add-tool-search-mcp-discovery/proposal.md)；`c1930`/`c1925` 软配合；`c1920` deferred。Ornith lab：改 tools[] 必 cache miss → 宜首轮定稿后冻死。
 > **非目标**：不定实现排期；不改 live specs；不把 hit rate 当唯一 KPI。
 
 ## 一句话结论
@@ -71,7 +71,11 @@ coding agent 默认：环境类（cwd）可留 system；高变读数（工具计
 
 ### 4.2 推荐：`tool_search` 元工具（主路径）
 
-> **Codex 对照（2026-08 读码）**：MCP 在 search 可用时为 `ToolExposure::Deferred`（不进顶栏 `tools[]`）；发现结果经轨迹里的 `tool_search_output`（`defer_loading: true`）加载；跨轮顶栏工具名表保持稳定。形似 Responses 的本地端（llama.cpp 等）**不保证**同语义——须 WirePolicy + 真机验证（Ornith 计划另测）。
+> **Codex 对照（2026-08 读码）**：MCP 在 search 可用时为 `ToolExposure::Deferred`（不进顶栏 `tools[]`）；发现结果经轨迹里的 `tool_search_output`（`defer_loading: true`）加载；跨轮顶栏工具名表保持稳定。形似 Responses 的本地端（llama.cpp 等）**不保证**同语义——须 WirePolicy + 真机验证。
+>
+> **Ornith / llama.cpp lab（2026-08-05）**：网关可达；`type: tool_search` **静默剥离**；`function` 名 `tool_search` 可用；`defer_loading` 忽略；input `tool_search_*` **400**；普通 `function_call_output` 可用。compat 声明须 `hosted_tool_search=false`；方言 search 命中后 **append `tools[]`**（Q8）。forge 走 function 形 + 非 hosted item。
+>
+> **同名改 description × cache（重启后多臂）**：`input` 前缀 `[[session:UUID]]` 隔离。同 session 重复同 description → cache 升温；**只改 `tool_search` description → `cached_tokens` 掉回 0**（打断前缀缓存）。原始：`/tmp/tool-search-desc-cache-multi.jsonl`。
 
 
 ```text
@@ -150,7 +154,9 @@ coding agent 默认：环境类（cwd）可留 system；高变读数（工具计
 | Assembler 布局决策可观测（**deferred**） | [`delayed c1935`](../../llmanspec/delayed-changes/c1935-add-assembler-layout-observability/proposal.md) | `c1890` |
 | Agent Todo（**deferred**；扩展后置） | [`delayed c1955`](../../llmanspec/delayed-changes/c1955-add-agent-todo-subsystem/proposal.md) | — |
 | Agent 状态栏族（**deferred**） | [`delayed c1895`](../../llmanspec/delayed-changes/c1895-add-agent-status-bar-subsystem/proposal.md)（+ c1896/97/98） | 升格待 Todo/事件 |
-| tool_search + MCP（对齐 Codex）· **本期主线** | [`c1900`](../../llmanspec/changes/c1900-add-tool-search-mcp-discovery/proposal.md) | `c1880`+`c1890` |
+| MCP 首条门闸 + 工具定稿 · **本期主线** | [`c1900`](../../llmanspec/changes/c1900-update-mcp-first-turn-tool-freeze/proposal.md) | `c1880`+`c1890` |
+| tool_search + Deferred · **双轨 B（活跃草案，后实现）** | [`c1960`](../../llmanspec/changes/c1960-add-tool-search-mcp-discovery/proposal.md) | `c1900` |
+| tools 稳定 id / resume MCP（**调研**） | [`research`](responses-tools-stable-id-and-resume-mcp-2026.md) | — |
 | system 稳定/可变切分（**deferred**） | [`delayed c1905`](../../llmanspec/delayed-changes/c1905-update-system-prompt-stable-volatile-split/proposal.md) | `c1890` |
 | 压缩冻结替换串（**deferred**） | [`delayed c1910`](../../llmanspec/delayed-changes/c1910-update-compaction-freeze-tool-replacements/proposal.md) | `c1890`+`c1930` |
 | previous_response_id 可选链（**deferred**） | [`delayed c1915`](../../llmanspec/delayed-changes/c1915-add-previous-response-id-optional-chain/proposal.md) | `c1880`+`c1890`+`c1920` |
