@@ -163,26 +163,86 @@ pub async fn drain_pending<T: Terminal>(
     // up in the same cycle (flag is only checked once at the top otherwise).
     drain_footer_token_if_pending(session, driver).await;
 
+    if let Some(notice) = driver.take_mcp_gate_notice() {
+        session.push_scroll_notice(notice);
+    }
+
+    if agent_stream.is_none()
+        && driver.is_tools_frozen()
+        && let Some(prompt) = session.take_gated_submit()
+    {
+        start_run_after_tool_gate(session, driver, agent_stream, prompt).await;
+    }
+
     if agent_stream.is_none()
         && let Some(prompt) = session.take_submit()
     {
-        log::info!(target: "xylitol::tui", "XyDriver::run starting prompt_len={}", prompt.len());
-        session.on_run_started(&prompt);
-        let _ = session.render_now();
-        // Spinner freezes while this await holds the host select loop.
-        let t0 = std::time::Instant::now();
-        *agent_stream = Some(driver.run(&prompt).await);
-        super::super::core::lag::note_detail(
-            "host_run_await",
-            t0,
-            &format!("prompt_len={}", prompt.len()),
-        );
+        if !driver.is_tools_frozen() {
+            log::info!(
+                target: "xylitol::tui",
+                "tool freeze gate armed prompt_len={}",
+                prompt.len()
+            );
+            driver.arm_tool_freeze_gate().await;
+            session.set_gated_submit(prompt.clone());
+            session
+                .ui_model_mut()
+                .enqueue_follow_up_strip(prompt.clone());
+            session.ui_model_mut().set_busy_status("Assembling");
+            session.sync_ui_root_from_model();
+            // Assembling (busy lead) MUST keep right-aligned MCP cue when still pending
+            // (resume Settling/re-gate — see mcp_tools_pending).
+            if let Some(root) = session.ui_root() {
+                root.borrow_mut().refresh_mcp_short_cue();
+            }
+            let _ = session.render_now();
+            if driver.is_tools_frozen()
+                && let Some(prompt) = session.take_gated_submit()
+            {
+                start_run_after_tool_gate(session, driver, agent_stream, prompt).await;
+            }
+        } else {
+            log::info!(target: "xylitol::tui", "XyDriver::run starting prompt_len={}", prompt.len());
+            session.on_run_started(&prompt);
+            let _ = session.render_now();
+            let t0 = std::time::Instant::now();
+            *agent_stream = Some(driver.run(&prompt).await);
+            super::super::core::lag::note_detail(
+                "host_run_await",
+                t0,
+                &format!("prompt_len={}", prompt.len()),
+            );
+        }
     }
 
     session.sync_runtime_chrome(driver);
     let _ = session.render_now();
 
     Ok(())
+}
+
+async fn start_run_after_tool_gate<T: Terminal>(
+    session: &mut HostSession<T>,
+    driver: &mut dyn XyDriver,
+    agent_stream: &mut Option<EventStream>,
+    prompt: String,
+) {
+    session.ui_model_mut().pop_follow_up_strip_matching(&prompt);
+    session.sync_ui_root_from_model();
+    log::info!(
+        target: "xylitol::tui",
+        "XyDriver::run after tool freeze prompt_len={}",
+        prompt.len()
+    );
+    session.on_run_started(&prompt);
+    let _ = session.render_now();
+    let t0 = std::time::Instant::now();
+    *agent_stream = Some(driver.run(&prompt).await);
+    super::super::core::lag::note_detail(
+        "host_run_await",
+        t0,
+        &format!("prompt_len={}", prompt.len()),
+    );
 }
 
 async fn drain_footer_token_if_pending<T: Terminal>(

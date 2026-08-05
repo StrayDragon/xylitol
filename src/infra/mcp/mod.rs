@@ -8,6 +8,7 @@
 mod adapter;
 mod assemble;
 mod client;
+mod defaults;
 pub(crate) mod types;
 
 pub use adapter::McpToolAdapter;
@@ -16,4 +17,5 @@ pub use assemble::{
     connect_and_discover_with_progress, mcp_enabled,
 };
 pub use client::{ConnectedMcpServer, McpClientManager, McpConnectDiagnostic, McpConnectProgress};
+pub use defaults::MCP_SERVER_CONNECT_TIMEOUT;
 pub use types::{McpServerConfig, McpTransportKind};

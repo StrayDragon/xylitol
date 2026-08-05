@@ -78,6 +78,7 @@ checkpointed: false
 - **`/reload`（Q14）**：**idle** 时再次门闸（同 Q13 超时/子集规则）→ **按 name upsert 重定稿** + 短 cue（工具表已刷新；接受 cache bust）；**busy 拒绝**（对齐现有 reload 闸）。**不**自动重试 MCP 连接（仅提示；用户可再 `/reload`）。
 
 - **门闸提交 UI（Q18）**：**首条待跑与再次提交均用 follow-up 队列条视觉**（实现简单）。门闸结束后自动开跑首条；已入队的后续 follow-up 按既有 drain 语义。**不**在门闸期默认走 steer。
+- **门闸 spinner（Q19）**：未提交 = **无** status lead spinner（idle；进度只走 welcome / 下轮预告 / `/mcp`）。已提交仍 GATING（含 idle `/reload` 后再提交）= status lead **`spinner + Assembling`**；定稿开跑后恢复既有 `Working` 等短词。队列条本身 **永不**带 spinner。禁止未提交时装假 `Working`。
 
 ### 待钉
 
@@ -89,4 +90,4 @@ checkpointed: false
 - prohibited_actions: 定稿后静默再改 provider `tools[]`；用「禁用输入框」冒充门闸；把未就绪当成已定稿开跑
 - required_evidence: 门闸单测/BDD；定稿后 settle 不再扩表；超时/失败路径有明确行为；ath23 等冲突合约已改
 - refusal_contract: 不把「禁止键入」写成 MUST；不把 tool_search 写进本 change MUST
-- escalation_policy: Q13/Q14/Q16/Q17 已钉；双轨验证 provider 升格 c1960 时另确认
+- escalation_policy: Q13/Q14/Q16/Q17/Q18/Q19 已钉；双轨验证 provider 升格 c1960 时另确认

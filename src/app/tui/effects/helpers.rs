@@ -90,6 +90,9 @@ pub(super) async fn switch_and_rebuild_transcript<T: Terminal>(
             }
         }
     }
+    // Resume/import clears freeze + may restart MCP — refresh cue / /mcp cache now.
+    session.refresh_loaded_resources(driver).await;
+    session.set_mcp_blocks_agent(driver.mcp_blocks_agent());
 }
 
 /// Pi-aligned session info/stats text block for `/session` (c1015).

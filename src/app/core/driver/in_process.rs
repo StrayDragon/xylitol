@@ -87,6 +87,12 @@ pub struct XyInProcessDriver {
     reload: Option<InProcessReloadState>,
     /// Background MCP bootstrap (c1200); independent of agent busy.
     mcp_boot: McpBootState,
+    /// Discover finished after gate timeout detached `Running` (apply on poll).
+    late_mcp_discover: Option<tokio::task::JoinHandle<McpDiscoverOutcome>>,
+    /// User-visible notice after gate timeout subset freeze (TUI takes once).
+    mcp_gate_notice: Option<String>,
+    /// When set, [`Self::poll_mcp_bootstrap`] freezes tools at settle or this deadline (TUI gate).
+    tool_gate_deadline: Option<std::time::Instant>,
     /// TUI-only ask gateway; MCP reload MUST re-plus ask when this is set (c1850).
     ask_gateway: Option<Arc<dyn crate::infra::tools::AskUserGateway>>,
 }
@@ -107,6 +113,9 @@ impl XyInProcessDriver {
             store,
             reload: None,
             mcp_boot: McpBootState::Idle,
+            late_mcp_discover: None,
+            mcp_gate_notice: None,
+            tool_gate_deadline: None,
             ask_gateway: None,
         }
     }
@@ -208,8 +217,149 @@ impl XyInProcessDriver {
     }
 
     /// Replace the tool set (next `run`). Used by composition MCP reload.
+    /// Ignored while FROZEN (c1900); prefer [`Self::freeze_tools`].
     pub fn set_tools(&mut self, tools: crate::agent::tools::ToolSet) {
         self.agent.set_tools(tools);
+    }
+
+    /// Freeze provider-visible tools (c1900 轨 A). Used by MCP gate / `/reload` re-freeze.
+    pub fn freeze_tools(&mut self, tools: crate::agent::tools::ToolSet) {
+        self.agent.freeze_tools(tools);
+    }
+
+    pub fn reopen_tools_for_regate(&mut self) {
+        self.agent.reopen_tools_for_regate();
+    }
+
+    pub fn is_tools_frozen(&self) -> bool {
+        self.agent.is_tools_frozen()
+    }
+
+    /// Wait settle/timeout then freeze the current tool table if not already frozen.
+    ///
+    /// On gate timeout while still `Running`, detach the discover handle so UI leaves
+    /// `connecting i/n` immediately; late results apply via [`Self::poll_mcp_bootstrap`].
+    async fn ensure_tool_table_frozen(&mut self) {
+        use crate::agent::MCP_FIRST_TURN_GATE_TIMEOUT;
+
+        if self.agent.is_tools_frozen() {
+            return;
+        }
+        self.agent.begin_tool_gating();
+
+        if matches!(self.mcp_boot, McpBootState::Idle) {
+            if self
+                .reload
+                .as_ref()
+                .is_some_and(|s| !s.mcp_servers.is_empty())
+            {
+                self.begin_mcp_bootstrap().await;
+            } else {
+                self.mcp_boot = McpBootState::Settled;
+            }
+        }
+
+        let deadline = std::time::Instant::now() + MCP_FIRST_TURN_GATE_TIMEOUT;
+        while self.mcp_blocks_agent() && std::time::Instant::now() < deadline {
+            let _ = self.poll_mcp_bootstrap().await;
+            tokio::time::sleep(std::time::Duration::from_millis(10)).await;
+        }
+        if matches!(self.mcp_boot, McpBootState::Running { .. }) {
+            log::warn!(
+                target: "xylitol::mcp",
+                "MCP first-turn gate timed out after {:?}; detaching bootstrap and freezing subset",
+                MCP_FIRST_TURN_GATE_TIMEOUT
+            );
+            self.detach_running_bootstrap_after_gate_timeout();
+            self.mcp_gate_notice = Some(
+                "MCP gate timed out — tools frozen with armed subset (see /mcp). /reload to retry."
+                    .into(),
+            );
+        } else if self.mcp_blocks_agent() {
+            // Rebuilding/Settling past deadline: finish promptly (bounded).
+            let extra = std::time::Instant::now() + std::time::Duration::from_secs(2);
+            while self.mcp_blocks_agent() && std::time::Instant::now() < extra {
+                let _ = self.poll_mcp_bootstrap().await;
+                tokio::time::sleep(std::time::Duration::from_millis(10)).await;
+            }
+        }
+
+        let tools = self.agent.inner().tools().clone();
+        self.agent.freeze_tools(tools);
+    }
+
+    /// Detach in-flight `Running` discover so UI can show Settled; apply later on poll.
+    fn detach_running_bootstrap_after_gate_timeout(&mut self) {
+        let prev = std::mem::replace(&mut self.mcp_boot, McpBootState::Settled);
+        if let McpBootState::Running { handle, .. } = prev
+            && let Some(old) = self.late_mcp_discover.replace(handle)
+        {
+            old.abort();
+        }
+    }
+
+    /// Take one-shot gate timeout notice for TUI chrome / scroll.
+    fn take_mcp_gate_notice_inner(&mut self) -> Option<String> {
+        self.mcp_gate_notice.take()
+    }
+
+    /// Arm first-turn / re-gate freeze without blocking the host loop (TUI).
+    ///
+    /// [`Self::poll_mcp_bootstrap`] freezes at settle or [`crate::agent::MCP_FIRST_TURN_GATE_TIMEOUT`].
+    async fn arm_tool_freeze_gate_inner(&mut self) {
+        use crate::agent::MCP_FIRST_TURN_GATE_TIMEOUT;
+        if self.agent.is_tools_frozen() {
+            return;
+        }
+        self.agent.begin_tool_gating();
+        if self.tool_gate_deadline.is_none() {
+            self.tool_gate_deadline = Some(std::time::Instant::now() + MCP_FIRST_TURN_GATE_TIMEOUT);
+        }
+        if matches!(self.mcp_boot, McpBootState::Idle) {
+            if self
+                .reload
+                .as_ref()
+                .is_some_and(|s| !s.mcp_servers.is_empty())
+            {
+                self.begin_mcp_bootstrap().await;
+            } else {
+                self.mcp_boot = McpBootState::Settled;
+                let _ = self.try_complete_armed_tool_gate();
+            }
+        } else if matches!(self.mcp_boot, McpBootState::Settled) {
+            let _ = self.try_complete_armed_tool_gate();
+        }
+    }
+
+    fn try_complete_armed_tool_gate(&mut self) -> bool {
+        if self.agent.is_tools_frozen() {
+            self.tool_gate_deadline = None;
+            return false;
+        }
+        let Some(deadline) = self.tool_gate_deadline else {
+            return false;
+        };
+        let timed_out = std::time::Instant::now() >= deadline;
+        if self.mcp_blocks_agent() && !timed_out {
+            return false;
+        }
+        if matches!(self.mcp_boot, McpBootState::Running { .. }) && timed_out {
+            log::warn!(
+                target: "xylitol::mcp",
+                "MCP tool gate timed out; detaching bootstrap and freezing subset"
+            );
+            self.detach_running_bootstrap_after_gate_timeout();
+            self.mcp_gate_notice = Some(
+                "MCP gate timed out — tools frozen with armed subset (see /mcp). /reload to retry."
+                    .into(),
+            );
+        } else if self.mcp_blocks_agent() {
+            return false;
+        }
+        let tools = self.agent.inner().tools().clone();
+        self.agent.freeze_tools(tools);
+        self.tool_gate_deadline = None;
+        true
     }
 
     /// Replace context / SYSTEM / APPEND for the next `run` (c1100).
@@ -268,6 +418,7 @@ impl XyInProcessDriver {
 #[async_trait]
 impl XyDriver for XyInProcessDriver {
     async fn run(&mut self, prompt: &str) -> EventStream {
+        self.ensure_tool_table_frozen().await;
         let sid = self
             .agent
             .inner()
@@ -456,6 +607,20 @@ impl XyDriver for XyInProcessDriver {
             crate::agent::session::observe_hook(&bus, ty, phase, ctx).await;
         }
         self.agent.inner_mut().set_session(session_id.to_string());
+        // c1900: resume/switch starts a new tools epoch — next generate re-gates.
+        // Fingerprint match/continue-freeze needs persisted fingerprint (same change wave MAY
+        // add Custom/header storage); until then correctness prefers re-freeze.
+        self.agent.clear_tool_freeze();
+        self.mcp_boot = McpBootState::Idle;
+        if self
+            .reload
+            .as_ref()
+            .is_some_and(|s| !s.mcp_servers.is_empty())
+        {
+            self.begin_mcp_bootstrap().await;
+        } else {
+            self.mcp_boot = McpBootState::Settled;
+        }
         if let Ok(Some(name)) = self.store.get_session_name(session_id).await {
             xylitol_ai_bridge::provider::set_obs_session_name(Some(name.as_str()));
         }
@@ -766,6 +931,10 @@ impl XyDriver for XyInProcessDriver {
             _ => None,
         };
         let connecting = matches!(self.mcp_boot, McpBootState::Running { .. });
+        let mcp_bootstrap_complete =
+            matches!(self.mcp_boot, McpBootState::Settled | McpBootState::Idle)
+                && self.late_mcp_discover.is_none();
+        let tools_table_frozen = self.agent.is_tools_frozen();
         let tool_names: Vec<String> = self
             .agent
             .inner()
@@ -777,6 +946,8 @@ impl XyDriver for XyInProcessDriver {
             return LoadedResourcesSnapshot {
                 skill_names,
                 mcp_connecting_label,
+                mcp_bootstrap_complete: true,
+                tools_table_frozen,
                 ..LoadedResourcesSnapshot::default()
             };
         };
@@ -831,6 +1002,8 @@ impl XyDriver for XyInProcessDriver {
                 .collect(),
             mcp_connecting_label,
             mcp_servers,
+            mcp_bootstrap_complete,
+            tools_table_frozen,
         }
     }
 
@@ -841,6 +1014,18 @@ impl XyDriver for XyInProcessDriver {
                 | McpBootState::Rebuilding { .. }
                 | McpBootState::Settling { .. }
         )
+    }
+
+    fn is_tools_frozen(&self) -> bool {
+        self.agent.is_tools_frozen()
+    }
+
+    async fn arm_tool_freeze_gate(&mut self) {
+        self.arm_tool_freeze_gate_inner().await
+    }
+
+    fn take_mcp_gate_notice(&mut self) -> Option<String> {
+        self.take_mcp_gate_notice_inner()
     }
 
     async fn begin_mcp_bootstrap(&mut self) {
@@ -877,6 +1062,59 @@ impl XyDriver for XyInProcessDriver {
     }
 
     async fn poll_mcp_bootstrap(&mut self) -> bool {
+        // Late discover after gate timeout detached Running.
+        if let Some(handle) = self.late_mcp_discover.as_ref()
+            && handle.is_finished()
+        {
+            let handle = self.late_mcp_discover.take().expect("late handle");
+            let mut refreshed = false;
+            match handle.await {
+                Ok(Ok(Some((manager, tools)))) => {
+                    let tool_n = tools.len();
+                    let old = self.reload.as_mut().and_then(|s| s.mcp.take_manager());
+                    if let Some(old) = old {
+                        tokio::spawn(async move {
+                            old.shutdown().await;
+                        });
+                    }
+                    if let Some(state) = self.reload.as_mut() {
+                        state.mcp.set_manager(manager);
+                    }
+                    if self.agent.is_tools_frozen() {
+                        log::info!(
+                            target: "xylitol::mcp",
+                            "late MCP discover after gate: registry only (FROZEN) mcp_tools={tool_n}"
+                        );
+                        refreshed = true;
+                    } else {
+                        let builtins = self.builtins_for_reload();
+                        let set = tokio::task::spawn_blocking(move || {
+                            crate::agent::tools::ToolSet::rebuild_agent_tools(builtins, tools)
+                        })
+                        .await;
+                        if let Ok(set) = set {
+                            let opts = self.agent.set_tools_defer_prompt(set);
+                            let prompt = tokio::task::spawn_blocking(move || {
+                                crate::agent::prompt::build_system_prompt(&opts)
+                            })
+                            .await;
+                            if let Ok(prompt) = prompt {
+                                self.agent.install_system_prompt_text(prompt);
+                            }
+                            refreshed = true;
+                        }
+                    }
+                }
+                Ok(Ok(None)) | Ok(Err(_)) | Err(_) => {
+                    log::warn!(target: "xylitol::mcp", "late MCP discover after gate failed or empty");
+                    refreshed = true;
+                }
+            }
+            if refreshed {
+                return true;
+            }
+        }
+
         // Finish deferred system-prompt install before polling connect progress.
         if matches!(self.mcp_boot, McpBootState::Settling { .. }) {
             let finished = match &self.mcp_boot {
@@ -902,7 +1140,7 @@ impl XyDriver for XyInProcessDriver {
             }
             self.mcp_boot = McpBootState::Settled;
             // Tools/UI already refreshed when settle was kicked; no second refresh.
-            return false;
+            return self.try_complete_armed_tool_gate();
         }
 
         // Apply rebuilt ToolSet + kick deferred prompt (rebuild ran off-tick).
@@ -937,6 +1175,18 @@ impl XyDriver for XyInProcessDriver {
                 settle_started,
                 &format!("mcp_tools={tool_n}"),
             );
+            if let Some(state) = self.reload.as_mut() {
+                state.mcp.set_manager(manager);
+            }
+            // c1900: after FROZEN, settle updates registry only — no provider tools expand.
+            if self.agent.is_tools_frozen() {
+                log::info!(
+                    target: "xylitol::mcp",
+                    "MCP settle ignored for provider tools (FROZEN); registry updated mcp_tools={tool_n}"
+                );
+                self.mcp_boot = McpBootState::Settled;
+                return true;
+            }
             let t_set = std::time::Instant::now();
             let opts = self.agent.set_tools_defer_prompt(set);
             crate::app::core::lag::note_detail(
@@ -944,9 +1194,6 @@ impl XyDriver for XyInProcessDriver {
                 t_set,
                 &format!("mcp_tools={tool_n}"),
             );
-            if let Some(state) = self.reload.as_mut() {
-                state.mcp.set_manager(manager);
-            }
             let handle = tokio::task::spawn_blocking(move || {
                 crate::agent::prompt::build_system_prompt(&opts)
             });
@@ -970,16 +1217,20 @@ impl XyDriver for XyInProcessDriver {
                 McpBootState::Running { progress, .. } => progress.lock().await.connecting_label(),
                 _ => return false,
             };
-            if let McpBootState::Running { last_ui_label, .. } = &mut self.mcp_boot {
-                return mcp_progress_needs_ui_refresh(last_ui_label, label);
-            }
-            return false;
+            let progress_refresh =
+                if let McpBootState::Running { last_ui_label, .. } = &mut self.mcp_boot {
+                    mcp_progress_needs_ui_refresh(last_ui_label, label)
+                } else {
+                    false
+                };
+            let gated = self.try_complete_armed_tool_gate();
+            return progress_refresh || gated;
         }
         let prev = std::mem::replace(&mut self.mcp_boot, McpBootState::Idle);
         let McpBootState::Running { handle, .. } = prev else {
             return false;
         };
-        match handle.await {
+        let boot_refreshed = match handle.await {
             Ok(Ok(Some((manager, tools)))) => {
                 let tool_n = tools.len();
                 let settle_started = std::time::Instant::now();
@@ -1017,7 +1268,8 @@ impl XyDriver for XyInProcessDriver {
                 self.mcp_boot = McpBootState::Settled;
                 true
             }
-        }
+        };
+        self.try_complete_armed_tool_gate() || boot_refreshed
     }
 
     async fn reload_runtime(&mut self) -> Result<RuntimeReloadReport, XyDriverError> {
@@ -1063,6 +1315,8 @@ impl XyDriver for XyInProcessDriver {
 
         match state.mcp.reload(self, &state.mcp_servers).await {
             Ok(()) => {
+                // c1900: reload is an explicit re-freeze epoch; bootstrap mark settled.
+                self.mcp_boot = McpBootState::Settled;
                 let connected = state.mcp.connected_servers().await;
                 let diags = state.mcp.diagnostics().await;
                 if diags.is_empty() {
@@ -1699,5 +1953,147 @@ mod driver_session_tree_tests {
             Some("connecting 1/2".into())
         ));
         assert!(mcp_progress_needs_ui_refresh(&mut last, None));
+    }
+
+    #[test]
+    fn mcp_tools_pending_ignores_failed_when_bootstrap_complete() {
+        use crate::app::core::driver::{McpServerPhase, McpServerSnapshot};
+
+        let snap = LoadedResourcesSnapshot {
+            mcp_configured: 2,
+            mcp_bootstrap_complete: true,
+            tools_table_frozen: true,
+            mcp_servers: vec![
+                McpServerSnapshot {
+                    id: "ok".into(),
+                    phase: McpServerPhase::Connected,
+                    tools_armed: true,
+                    tool_count: 1,
+                },
+                McpServerSnapshot {
+                    id: "bad".into(),
+                    phase: McpServerPhase::Failed,
+                    tools_armed: false,
+                    tool_count: 0,
+                },
+            ],
+            ..Default::default()
+        };
+        assert!(!snap.mcp_tools_pending());
+    }
+
+    #[test]
+    fn mcp_tools_pending_while_connecting_label() {
+        let snap = LoadedResourcesSnapshot {
+            mcp_configured: 2,
+            mcp_connecting_label: Some("connecting 1/2".into()),
+            mcp_bootstrap_complete: false,
+            ..Default::default()
+        };
+        assert!(snap.mcp_tools_pending());
+    }
+
+    #[test]
+    fn mcp_tools_pending_pre_freeze_while_settling_even_if_armed() {
+        use crate::app::core::driver::{McpServerPhase, McpServerSnapshot};
+
+        // Resume: prior mcp tools still armed, bootstrap Settling (label cleared).
+        let snap = LoadedResourcesSnapshot {
+            mcp_configured: 1,
+            mcp_bootstrap_complete: false,
+            tools_table_frozen: false,
+            mcp_servers: vec![McpServerSnapshot {
+                id: "fs".into(),
+                phase: McpServerPhase::Connected,
+                tools_armed: true,
+                tool_count: 3,
+            }],
+            ..Default::default()
+        };
+        assert!(
+            snap.mcp_tools_pending(),
+            "pre-freeze incomplete bootstrap MUST keep mcp pending (Assembling + cue)"
+        );
+    }
+
+    #[test]
+    fn mcp_tools_pending_clears_after_freeze_when_complete() {
+        use crate::app::core::driver::{McpServerPhase, McpServerSnapshot};
+
+        let snap = LoadedResourcesSnapshot {
+            mcp_configured: 1,
+            mcp_bootstrap_complete: true,
+            tools_table_frozen: true,
+            mcp_servers: vec![McpServerSnapshot {
+                id: "fs".into(),
+                phase: McpServerPhase::Connected,
+                tools_armed: true,
+                tool_count: 3,
+            }],
+            ..Default::default()
+        };
+        assert!(!snap.mcp_tools_pending());
+    }
+
+    #[tokio::test]
+    async fn ensure_freeze_on_empty_mcp_and_ignore_expand() {
+        let dir = tempfile::tempdir().unwrap();
+        let store = Arc::new(SessionManager::new(dir.path().join("sessions")));
+        let mut driver = build_test_driver(store).await;
+        driver.enable_reload_state(
+            dir.path().to_path_buf(),
+            dir.path().join(".xylitol"),
+            true,
+            Vec::new(),
+        );
+        assert!(!driver.is_tools_frozen());
+        driver.begin_mcp_bootstrap().await;
+        driver.ensure_tool_table_frozen().await;
+        assert!(driver.is_tools_frozen());
+        let names = driver.tool_names_for_test();
+        assert!(names.iter().any(|n| n == "read"));
+        let n = names.len();
+
+        driver.set_tools(ToolSet::empty());
+        assert_eq!(driver.tool_names_for_test().len(), n);
+        assert!(driver.is_tools_frozen());
+    }
+
+    #[tokio::test]
+    async fn reload_re_freezes_tools() {
+        let dir = tempfile::tempdir().unwrap();
+        let store = Arc::new(SessionManager::new(dir.path().join("sessions")));
+        let mut driver = build_test_driver(store).await;
+        driver.enable_reload_state(
+            dir.path().to_path_buf(),
+            dir.path().join(".xylitol"),
+            true,
+            Vec::new(),
+        );
+        driver.ensure_tool_table_frozen().await;
+        assert!(driver.is_tools_frozen());
+        let report = driver.reload_runtime().await.expect("reload");
+        assert!(report.steps.iter().any(|s| s.step == "mcp"));
+        assert!(driver.is_tools_frozen());
+        assert!(driver.tool_names_for_test().iter().any(|n| n == "read"));
+    }
+
+    #[tokio::test]
+    async fn arm_tool_freeze_gate_empty_mcp_freezes_immediately() {
+        let dir = tempfile::tempdir().unwrap();
+        let store = Arc::new(SessionManager::new(dir.path().join("sessions")));
+        let mut driver = build_test_driver(store).await;
+        driver.enable_reload_state(
+            dir.path().to_path_buf(),
+            dir.path().join(".xylitol"),
+            true,
+            Vec::new(),
+        );
+        assert!(!driver.is_tools_frozen());
+        driver.arm_tool_freeze_gate_inner().await;
+        assert!(driver.is_tools_frozen());
+        let snap = driver.loaded_resources_snapshot().await;
+        assert!(snap.mcp_connecting_label.is_none());
+        assert!(snap.mcp_bootstrap_complete);
     }
 }

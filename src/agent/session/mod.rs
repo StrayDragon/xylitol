@@ -31,7 +31,7 @@ use crate::agent::model::manager::ModelManager;
 use crate::agent::prompt::commands::{SlashCommandInfo, get_all_commands};
 use crate::agent::prompt::{self, SystemPromptOpts};
 use crate::agent::runtime::AgentHooks;
-use crate::agent::tools::ToolSet;
+use crate::agent::tools::{ToolFreezePhase, ToolSet, ToolTableFingerprint};
 use crate::protocol::message::AgentMessage;
 use crate::protocol::ports::{
     XyBashExecutor, XyBatchMode, XyExportIo, XyHookBus, XyModel, XyPermission,
@@ -66,6 +66,10 @@ pub struct AgentCapabilities {
     active_turn: Arc<Mutex<Option<ActiveTurnBinding>>>,
     /// Tools available to the agent (construct-time final set).
     tools: ToolSet,
+    /// Track-A tool-table freeze (c1900): Unfrozen → Gating → Frozen.
+    tool_freeze: ToolFreezePhase,
+    /// Fingerprint while [`ToolFreezePhase::Frozen`]; `None` otherwise.
+    tool_fingerprint: Option<ToolTableFingerprint>,
     /// Runtime-mutable hooks consulted at tool-call boundaries.
     hooks: AgentHooks,
     /// Tool batch scheduling mode for the next run (c1545 / c1610).
@@ -134,6 +138,8 @@ impl AgentCapabilities {
             model_manager: Arc::new(Mutex::new(ModelManager::new(model_registry, model_builder))),
             active_turn: Arc::new(Mutex::new(None)),
             tools: tool_registry,
+            tool_freeze: ToolFreezePhase::Unfrozen,
+            tool_fingerprint: None,
             hooks: AgentHooks::empty(),
             batch_mode: XyBatchMode::BarrierParallel,
             runtime_fragment_ids: None,
@@ -689,7 +695,16 @@ impl AgentCapabilities {
     ///
     /// When an agent turn is in-flight and [`crate::agent::context_policy::ContextPolicy::allows_midturn_tools_rewrite`]
     /// is false (Search default), the call is ignored so provider `tools` stay stable.
+    /// When the tool table is [`ToolFreezePhase::Frozen`] (c1900 轨 A), settle/hot-merge
+    /// MUST NOT expand the provider-visible table — use [`Self::freeze_tools`] to re-gate.
     pub fn set_tools(&mut self, tools: ToolSet) {
+        if self.tool_freeze == ToolFreezePhase::Frozen {
+            log::warn!(
+                target: "xylitol::agent",
+                "set_tools ignored: tool table FROZEN (use freeze_tools / reopen_tools_for_regate)"
+            );
+            return;
+        }
         if !self.allow_tools_rewrite_now("set_tools") {
             return;
         }
@@ -702,14 +717,84 @@ impl AgentCapabilities {
     ///
     /// Used by MCP settle so `build_system_prompt` can run off the TUI tick path.
     /// Returns a clone of [`SystemPromptOpts`] ready for [`prompt::build_system_prompt`].
-    /// Same mid-turn Search gate as [`Self::set_tools`].
+    /// Same mid-turn Search gate as [`Self::set_tools`]. FROZEN sessions ignore expands.
     pub fn set_tools_defer_prompt(&mut self, tools: ToolSet) -> SystemPromptOpts {
+        if self.tool_freeze == ToolFreezePhase::Frozen {
+            log::warn!(
+                target: "xylitol::agent",
+                "set_tools_defer_prompt ignored: tool table FROZEN"
+            );
+            return self.prompt_opts.clone();
+        }
         if !self.allow_tools_rewrite_now("set_tools_defer_prompt") {
             return self.prompt_opts.clone();
         }
         self.apply_tools_metadata(&tools);
         self.tools = tools;
         self.prompt_opts.clone()
+    }
+
+    /// Current tool-table freeze phase (c1900).
+    pub fn tool_freeze_phase(&self) -> ToolFreezePhase {
+        self.tool_freeze
+    }
+
+    /// True when provider-visible tools are frozen.
+    pub fn is_tools_frozen(&self) -> bool {
+        self.tool_freeze == ToolFreezePhase::Frozen
+    }
+
+    /// Frozen fingerprint, if any.
+    pub fn frozen_tool_fingerprint(&self) -> Option<&ToolTableFingerprint> {
+        self.tool_fingerprint.as_ref()
+    }
+
+    /// Mark gate start (Unfrozen → Gating). No-op if already Frozen.
+    pub fn begin_tool_gating(&mut self) {
+        if self.tool_freeze != ToolFreezePhase::Frozen {
+            self.tool_freeze = ToolFreezePhase::Gating;
+        }
+    }
+
+    /// Leave Frozen so a subsequent [`Self::freeze_tools`] can re-freeze (idle `/reload`).
+    pub fn reopen_tools_for_regate(&mut self) {
+        self.tool_freeze = ToolFreezePhase::Gating;
+        self.tool_fingerprint = None;
+    }
+
+    /// Clear freeze state entirely (session switch / resume → next run re-gates).
+    pub fn clear_tool_freeze(&mut self) {
+        self.tool_freeze = ToolFreezePhase::Unfrozen;
+        self.tool_fingerprint = None;
+    }
+
+    /// Install `tools` as the frozen provider-visible table (upsert path for callers
+    /// that already built core ∪ armed). Bypasses the FROZEN ignore on [`Self::set_tools`].
+    pub fn freeze_tools(&mut self, tools: ToolSet) {
+        let fp = ToolTableFingerprint::from_toolset(&tools);
+        self.apply_tools_metadata(&tools);
+        self.tools = tools;
+        self.tool_fingerprint = Some(fp);
+        self.tool_freeze = ToolFreezePhase::Frozen;
+        self.rebuild_system_prompt();
+    }
+
+    /// Freeze without rebuilding system prompt text (pair with [`Self::install_system_prompt_text`]).
+    pub fn freeze_tools_defer_prompt(&mut self, tools: ToolSet) -> SystemPromptOpts {
+        let fp = ToolTableFingerprint::from_toolset(&tools);
+        self.apply_tools_metadata(&tools);
+        self.tools = tools;
+        self.tool_fingerprint = Some(fp);
+        self.tool_freeze = ToolFreezePhase::Frozen;
+        self.prompt_opts.clone()
+    }
+
+    /// Compare `candidate` to the frozen fingerprint (false if not frozen).
+    pub fn frozen_fingerprint_matches_set(&self, candidate: &ToolSet) -> bool {
+        match &self.tool_fingerprint {
+            Some(fp) => fp.matches(&ToolTableFingerprint::from_toolset(candidate)),
+            None => false,
+        }
     }
 
     fn allow_tools_rewrite_now(&self, op: &str) -> bool {
@@ -1157,6 +1242,74 @@ mod tests {
         session.clear_active_turn();
         session.set_tools(ToolSet::empty());
         assert_eq!(session.tools().iter().count(), 0);
+    }
+
+    #[test]
+    fn freeze_then_set_tools_does_not_expand() {
+        let mut session = make_session();
+        assert_eq!(session.tool_freeze_phase(), ToolFreezePhase::Unfrozen);
+        session.begin_tool_gating();
+        assert_eq!(session.tool_freeze_phase(), ToolFreezePhase::Gating);
+
+        let core = ToolSet::from_iter(crate::infra::tools::default_tools());
+        let n_core = core.iter().count();
+        session.freeze_tools(core);
+        assert!(session.is_tools_frozen());
+        let fp = session.frozen_tool_fingerprint().cloned().expect("fp");
+        assert_eq!(fp.names.len(), n_core);
+        assert!(session.frozen_fingerprint_matches_set(session.tools()));
+
+        let before = session.tools().iter().count();
+        session.set_tools(ToolSet::empty());
+        session.set_tools_defer_prompt(ToolSet::empty());
+        assert_eq!(session.tools().iter().count(), before);
+        assert!(session.is_tools_frozen());
+
+        session.reopen_tools_for_regate();
+        assert_eq!(session.tool_freeze_phase(), ToolFreezePhase::Gating);
+        assert!(session.frozen_tool_fingerprint().is_none());
+        session.freeze_tools(ToolSet::from_iter(crate::infra::tools::default_tools()));
+        assert!(session.is_tools_frozen());
+    }
+
+    #[test]
+    fn fingerprint_mismatch_when_schema_changes() {
+        use crate::protocol::ports::XyTool;
+        use std::sync::Arc;
+
+        struct Named(&'static str, &'static str, serde_json::Value);
+        #[async_trait::async_trait]
+        impl XyTool for Named {
+            fn name(&self) -> &str {
+                self.0
+            }
+            fn description(&self) -> &str {
+                self.1
+            }
+            fn parameters_schema(&self) -> serde_json::Value {
+                self.2.clone()
+            }
+            async fn execute(
+                &self,
+                _: &crate::protocol::ports::XyToolCtx,
+                _: serde_json::Value,
+            ) -> Result<String, crate::protocol::error::XyToolError> {
+                Ok("ok".into())
+            }
+        }
+
+        let mut session = make_session();
+        let a =
+            ToolSet::from_iter(vec![
+                Arc::new(Named("t", "d", serde_json::json!({"type": "object"}))) as Arc<dyn XyTool>,
+            ]);
+        session.freeze_tools(a);
+        let b = ToolSet::from_iter(vec![Arc::new(Named(
+            "t",
+            "d",
+            serde_json::json!({"type": "object", "required": ["x"]}),
+        )) as Arc<dyn XyTool>]);
+        assert!(!session.frozen_fingerprint_matches_set(&b));
     }
 
     #[test]

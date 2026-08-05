@@ -48,6 +48,10 @@ pub use crate::agent::runtime::hooks::{
 pub use crate::agent::runtime::{AgentHooks, XyEventStream};
 pub use crate::agent::session::AgentCapabilities;
 pub use crate::agent::session::{PendingMessageQueue, QueueMode, QueueStats};
+pub use crate::agent::tools::{
+    MCP_FIRST_TURN_GATE_TIMEOUT, ToolFreezePhase, ToolSet, ToolTableFingerprint,
+    freeze_table_from_parts, upsert_tools_by_name,
+};
 /// Semantic ownership: agent re-exports shared protocol vocabulary.
 pub use crate::protocol::lifecycle::XyEvent;
 pub use crate::protocol::message::AgentMessage;

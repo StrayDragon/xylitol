@@ -25,6 +25,7 @@ pub fn active_turn_binding(&self) -> Option<ActiveTurnBinding>
 pub fn apply_default_thinking_level(&mut self, raw: Option<&str>)
 pub fn apply_prompt_resources( &mut self, context_files: Vec<(String, String)>, system_prompt: Option<String>, append_system_prompt: Vec<String>, )
 pub fn apply_skills(&mut self, skills: Vec<crate::protocol::resource::SkillInfo>)
+pub fn begin_tool_gating(&mut self)
 pub fn bind_event_tx(&self, tx: EventTx)
 pub fn build_current_model(&self) -> Result<Arc<dyn XyModel>, String>
 pub fn clear(&mut self)
@@ -32,6 +33,7 @@ pub fn clear_active_turn(&self)
 pub fn clear_follow_up_queue(&self)
 pub fn clear_queues(&self, clear_steer: bool, clear_follow_up: bool)
 pub fn clear_steer_queue(&self)
+pub fn clear_tool_freeze(&mut self)
 pub fn context_policy(&self) -> &crate::agent::context_policy::ContextPolicy
 pub fn current_model(&self) -> Option<XyModelMeta>
 pub fn cwd(&self) -> &str
@@ -41,6 +43,10 @@ pub fn enqueue(&mut self, message: AgentMessage)
 pub fn estimate_tokens(messages: &[crate::protocol::message::AgentMessage]) -> u64
 pub fn follow_up(&self, message: impl Into<String>)
 pub fn follow_up_parts(&self, parts: Vec<crate::protocol::message::AgentPart>)
+pub fn freeze_tools(&mut self, tools: ToolSet)
+pub fn freeze_tools_defer_prompt(&mut self, tools: ToolSet) -> SystemPromptOpts
+pub fn frozen_fingerprint_matches_set(&self, candidate: &ToolSet) -> bool
+pub fn frozen_tool_fingerprint(&self) -> Option<&ToolTableFingerprint>
 pub fn get_context_usage( token_estimate: u64, context_window: u64, settings: &crate::agent::compaction::CompactionSettings, ) -> ContextUsage
 pub fn get_permission(&self) -> std::sync::Arc<dyn XyPermission>
 pub fn has_active_turn(&self) -> bool
@@ -48,6 +54,7 @@ pub fn has_items(&self) -> bool
 pub fn inflight_turn_binding(&self) -> Option<ActiveTurnBinding>
 pub fn install_system_prompt_text(&mut self, prompt: String)
 pub fn is_empty(&self) -> bool
+pub fn is_tools_frozen(&self) -> bool
 pub fn len(&self) -> usize
 pub fn loaded_skill_names(&self) -> Vec<String>
 pub fn loaded_skills(&self) -> &[crate::protocol::resource::SkillInfo]
@@ -64,6 +71,7 @@ pub fn queue_stats(&self) -> QueueStats
 pub fn rebuild_system_prompt(&mut self)
 pub fn render_html(session_id: &str, entries: &[SessionEntry]) -> String
 pub fn render_jsonl(entries: &[SessionEntry]) -> Result<String, String>
+pub fn reopen_tools_for_regate(&mut self)
 pub fn replace_hooks(&mut self, hooks: AgentHooks)
 pub fn save_trust_decision( cwd: &str, trust_store: &dyn XyTrustStore, trusted: bool, ) -> Result<bool, String>
 pub fn select_model(&mut self, model_id: &str) -> Result<(), String>
@@ -82,6 +90,7 @@ pub fn steer(&self, message: impl Into<String>)
 pub fn steer_parts(&self, parts: Vec<crate::protocol::message::AgentPart>)
 pub fn system_prompt(&self) -> Option<&str>
 pub fn thinking_level(&self) -> ThinkingLevel
+pub fn tool_freeze_phase(&self) -> ToolFreezePhase
 pub fn unbind_event_tx(&self)
 pub model_id: String, pub display_name: String, pub thinking: ThinkingLevel, /// True when footer should omit the thinking segment. pub omit_thinking: bool, } /// Capability aggregate — model, tools, session persistence, and events. pub struct AgentCapabilities
 pub session_id: String, pub user_messages: usize, pub assistant_messages: usize, pub total_messages: usize, pub thinking_level: String, pub model: Option<(String, String)>, } /// Aggregate message counts for a session by reading the session store. /// /// Moved out of the `AgentCapabilities` body (spec as32 / c320 T24) so the capability /// aggregate holds no aggregation logic. pub async fn compute(store: &dyn XySessionStore, session_id: &str) -> Result<SessionStats, String>

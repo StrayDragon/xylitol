@@ -361,6 +361,18 @@ impl<T: Terminal> HostSession<T> {
         self.pending.take_submit()
     }
 
+    pub fn take_gated_submit(&mut self) -> Option<String> {
+        self.pending.take_gated_submit()
+    }
+
+    pub fn set_gated_submit(&mut self, prompt: String) {
+        self.pending.gated_submit = Some(prompt);
+    }
+
+    pub fn has_gated_submit(&self) -> bool {
+        self.pending.peek_gated_submit()
+    }
+
     pub fn take_steer(&mut self) -> Option<String> {
         self.pending.take_steer()
     }
