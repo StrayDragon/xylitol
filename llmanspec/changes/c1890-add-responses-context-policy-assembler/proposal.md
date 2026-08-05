@@ -3,7 +3,8 @@ depends_on:
 - c1880-update-responses-first-api-boundary
 branch: sdd/c1890-add-responses-context-policy-assembler
 base_sha: 9008e7b94c4fdde14db21de4f2af9378d15781d3
-checkpointed: false
+checkpointed: true
+checkpoint_sha: 1c8c4d8ba3be207ca02ff3526d00cf9fb82de360
 ---
 
 # ContextPolicy + ResponsesAssembler（可配置请求布局）
