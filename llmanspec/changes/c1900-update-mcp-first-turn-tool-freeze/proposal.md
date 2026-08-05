@@ -77,9 +77,10 @@ checkpointed: false
   2. **`defer_loading` + `tool_search` 轨（`c1960`，声明支持的 provider）**：顶栏稳、发现走轨迹/output；日后用**已实现该语义的 model provider**做集成验证（非 Ornith 冒充）。两条线共享 registry / 门闸概念，**不以**假 hosted 混用。
 - **`/reload`（Q14）**：**idle** 时再次门闸（同 Q13 超时/子集规则）→ **按 name upsert 重定稿** + 短 cue（工具表已刷新；接受 cache bust）；**busy 拒绝**（对齐现有 reload 闸）。**不**自动重试 MCP 连接（仅提示；用户可再 `/reload`）。
 
+- **门闸提交 UI（Q18）**：**首条待跑与再次提交均用 follow-up 队列条视觉**（实现简单）。门闸结束后自动开跑首条；已入队的后续 follow-up 按既有 drain 语义。**不**在门闸期默认走 steer。
+
 ### 待钉
 
-- Available tools 散文：**已钉**（design）— 保持 pt11 builtins-only；引导改为「定稿后的请求 tools 列表」。
 - `c1960` 参考验证 provider 清单——实现时钉。
 
 ## Ethics
