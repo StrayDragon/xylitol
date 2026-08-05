@@ -50,7 +50,7 @@ Coding agent 多轮依赖 assistant 侧 thinking / reasoning 项回放（签名�
 ## Parallel / depends
 
 - **硬依赖**：`c1880`、`c1890`
-- 可与 `c1920`/`c1930`/`c1935` 并行；注意 bridge thinking 文件所有权
+- 可与 `c1930` 并行；`c1920`/`c1935` delayed；注意 bridge thinking 文件所有权
 
 ## Open Questions
 
