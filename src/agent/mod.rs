@@ -23,6 +23,7 @@
 
 pub mod builder;
 pub mod compaction;
+pub mod context_policy;
 pub mod llm_project;
 pub mod model;
 pub mod prompt;
@@ -36,6 +37,7 @@ pub mod tools;
 // 库用户应从 `crate::agent::*` import，而非 reach into 子模块。
 
 pub use crate::agent::builder::AgentBuilder;
+pub use crate::agent::context_policy::{ContextPolicy, DatePlacement, StatusBarMode, ToolsMode};
 pub use crate::agent::llm_project::project_for_llm;
 /// ReAct 循环运行时（驱动 [`AgentCapabilities`]）。
 pub use crate::agent::runtime::AgentRuntime;

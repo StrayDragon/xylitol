@@ -18,13 +18,13 @@
 
 ## 2. 实现（apply）
 
-- [ ] 2.1 `ContextPolicy` + `defaults.rs`（tools_mode / status_bar_mode / date_placement 占位；默认≡现状）
-- [ ] 2.2 `ResponsesAssembler`：收敛现有 `assemble_responses_body` / prepend system；注入 `WirePolicy`
-- [ ] 2.3 调用点：ReAct / infra Responses 路径只经 Assembler；禁止 adapter 二次业务布局
-- [ ] 2.4 Golden：默认 ≡ 旧路径；至少两套 WirePolicy 字段集 diff
-- [ ] 2.5 文档指针：research / architecture 一句「Assembler 缝已立」；不改书
+- [x] 2.1 `ContextPolicy` + `defaults.rs`（tools_mode / status_bar_mode / date_placement 占位；默认≡现状）
+- [x] 2.2 `ResponsesAssembler`：收敛现有 `assemble_responses_body` / prepend system；注入 `WirePolicy`
+- [x] 2.3 调用点：ReAct / infra Responses 路径只经 Assembler；禁止 adapter 二次业务布局
+- [x] 2.4 Golden：默认 ≡ 旧路径；至少两套 WirePolicy 字段集 diff
+- [x] 2.5 文档指针：research / architecture 一句「Assembler 缝已立」；不改书
 
 ## 3. 校验
 
-- [ ] 3.1 `cargo test -p xylitol-ai-bridge`（assembler / wire_policy）+ 触及 agent 单测
-- [ ] 3.2 `just qa`（含串行 live-provider；本 change 不改其行为）
+- [x] 3.1 `cargo test -p xylitol-ai-bridge`（assembler / wire_policy）+ 触及 agent 单测
+- [x] 3.2 `just qa`（含串行 live-provider；本 change 不改其行为）
