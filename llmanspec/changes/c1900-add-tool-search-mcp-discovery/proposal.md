@@ -55,13 +55,13 @@ depends_on:
 
 - 阻塞输入直到 MCP ready 的完整 TUI 协议（刻意不做主路径）
 - resume 历史差分重放全量 tools 表（随「不做阻塞方案」一起放下）
-- 状态栏（→ `c1895`）
+- 状态栏（→ delayed `c1895`）
 - Anthropic Tool Search 原生块
 
 ## Parallel / depends
 
 - **硬依赖**：`c1880`（capabilities）、`c1890`（Assembler/Policy）、`c1920`（epoch / 工具世代）
-- 与 `c1895`/`c1905`/`c1910` 可并行；实现标记对齐 `c1930`
+- 与 delayed `c1905`/`c1910` 等可并行（本期不进 graph）；实现标记对齐 `c1930`
 
 ## Open Questions
 
