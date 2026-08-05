@@ -104,7 +104,7 @@ test verbosity=verbosity_default:
     fi
 
 # Live Responses prompt-cache counterexample (dedicated configs/testing config).
-# Strictly serial (--test-threads=1). Wired into `just qa` after workspace tests.
+# Strictly serial (--test-threads=1). Always part of default `just qa` (any verbosity).
 # Missing/disabled local config → skip (pass). enabled=true → must hit gateway.
 alias test-live-responses-cache := test-live-provider
 [arg('verbosity', pattern='quiet|normal|verbose')]
@@ -114,9 +114,18 @@ test-live-provider verbosity=verbosity_default:
     # One binary, one thread: never fan out concurrent llama.cpp requests from this suite.
     case "{{verbosity}}" in
       quiet)
+        # Keep --nocapture so RUN/SKIP lines exist; surface a one-liner so quiet qa
+        # still shows the live gate ran (not only `just qa normal`).
         if ! out=$(cargo test -q -p xylitol-ai-bridge --test live_responses_prompt_cache -- --test-threads=1 --nocapture 2>&1); then
           printf '%s\n' "$out"
           exit 1
+        fi
+        if printf '%s\n' "$out" | rg -q 'live-provider: RUN'; then
+          printf '%s\n' "$(printf '%s\n' "$out" | rg 'live-provider: (RUN|cache_read)' | tail -n 2)"
+        elif printf '%s\n' "$out" | rg -q 'live-provider: SKIP'; then
+          printf '%s\n' "$(printf '%s\n' "$out" | rg 'live-provider: SKIP' | tail -n 1)"
+        else
+          echo "live-provider: ok"
         fi
         ;;
       normal)  cargo test -p xylitol-ai-bridge --test live_responses_prompt_cache -- --test-threads=1 --nocapture ;;
