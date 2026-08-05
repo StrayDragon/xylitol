@@ -8,56 +8,66 @@ depends_on:
 
 > **调研底稿**：[`docs/research/responses-context-layout-and-cache-2026.md`](../../../docs/research/responses-context-layout-and-cache-2026.md) §3（术语对照 §7）
 > **书指针**：《深入理解 AI Agent》Ch2「Agent 状态栏：通过元信息增强 Agent 轨迹管理」（姊妹仓 `ai-agent-book/book/chapter2.md`）；书语仅经 research §7 术语表映射，**禁止**写入 live specs。
-> **自包含**：只交付状态栏机制；不实现 MCP search / 压缩。持久化/投影标记遵守 `c1930`。
+> **自包含**：本波交付 **Lane Runtime**（Harness 观测 + 注入）与 **Lane Agent 扩展壳**（接口/空实现）；完整 TODO/计划业务 → [`c1896`](../c1896-add-status-bar-agent-lane/proposal.md)。不实现 MCP search / 压缩。持久化/投影标记遵守 `c1930`。
 > **工程约定（本波次）**：策略默认 **code-first**：`defaults.rs` 纯常量（改文件调试）；**不**新增 YAML 旋钮；**不**用 env 当未暴露配置面。用户面 YAML 仅既有字段（如 `api`）。真源见 [`c1880`](../archive/2026-08-04-c1880-update-responses-first-api-boundary/proposal.md)。
 
 ## Why
 
-状态栏不是银弹：coding agent 下 cwd/date 进 system 常常正确；但工具计数、TODO、git 等**高变读数**若塞进 system 或每轮无策略追加，会在「cache」与「注意力/冗余」之间失控。需要**独立、默认可关、可测**的子系统，由 ContextPolicy 选择 `off` | `replace` | `append`。
+状态栏不是银弹：coding agent 下 cwd/date 进 system 常常正确；但工具计数、TODO、git 等**高变读数**若塞进 system 或每轮无策略追加，会在「cache」与「注意力/冗余」之间失控。需要**独立、可测**的子系统，由 ContextPolicy 选择 `off` | `replace` | `append`。
 
 ## What Changes
 
-- StatusBar **provider 接口**：输入 = 代码可观测状态（会话计数、可选 git/TODO 等）；输出 = 结构化键值（禁止散文堆砌为默认）。
-- 三种模式（配置）：
-  - `off`（推荐默认）
-  - `replace`：每轮仅保留最新一条 meta（接受末尾局部 cache 失效）
-  - `append`：只追加不删（cache 友好；须文档警告陈旧条与注意力）
+- **双列地基（深挖 Q1，已钉）**：
+  - **Lane Runtime**：代码可观测状态 → 结构化键值；注入经 Assembler / Policy；内置 `refresh` 类工具 = **触发代码重算快照**（禁止 LLM 批量扫历史写栏）。
+  - **Lane Agent**：可扩展 typed 尾插通道；本波只留扩展接口/空壳；业务 TODO → `c1896`。
+- StatusBar **provider 接口**（Runtime）：输入 = 代码可观测状态；输出 = 结构化键值（禁止散文堆砌为默认）。
+- 三种模式（Runtime 列）：`off` | `replace` | `append`（默认档深挖续钉）。
 - 注入经 Assembler / Policy，**不**散落改 `build_system_prompt` 特例逻辑（system 内稳定 env 仍可由 `c1905` 管）。
 - 验证：给定假状态 → 栏内容单测；模式切换可消融；可选「读数 + 短策略片段」成对配置。
-- **禁止**用 LLM 批量扫历史生成栏。
+- **禁止**用 LLM 批量扫历史生成权威栏。
 
 ## Capabilities（意向）
 
-- `agent-*`（status bar）
-- 配置 / ContextPolicy 键
+- `agent-*`（status bar / runtime lane）
+- ContextPolicy `status_bar_mode` 真消费
 - 产品文：压缩与上下文 / 新 architecture 短节（归档时）
 
 ## Impact
 
-- 弱模型/长轨迹可按需打开；默认不强迫。
+- 弱模型/长轨迹可按需打开；默认策略以深挖钉板为准。
 - 与 cache 优化解耦：开栏不等于追求命中。
+- Agent 列扩展点避免后继挤进 Runtime。
 
 ## Out of scope
 
 - 把 cwd/date **强制**迁出 system（本仓场景默认可留；`c1905` 可标 stable）
 - tool_search（→ `c1900`）
+- 完整 TODO / 即时计划产品形态（→ `c1896`；本波仅扩展壳）
 - 子 agent 字节级对齐父栏（后置）
 
 ## Parallel / depends
 
-- **硬依赖**：`c1890`、`c1930`
+- **硬依赖**：`c1890`（已归档）、`c1930`
+- **分流草案**：[`c1896`](../c1896-add-status-bar-agent-lane/proposal.md)（Agent 列；sourced_from 本 change）
 - 可与同层无硬依赖冲突的 change 并行（不同文件/模块优先）
 
 ## Open Questions
 
-- meta 是否写入持久 transcript，还是仅请求时投影—— propose 时钉（影响导出/resume）。
-- 首版提供哪些内置读数最小集。
-- **日历日 `date` 是否作为状态栏读数（与 `c1905` 联调深挖）**：隔日 resume 同一 session 时，system 内 date 过时 vs 改写前缀失效，是已知坑。若选型为「date 走栏」，须定 replace vs append（append 会堆多日陈旧 date，模型须认最新条）以及是否写入 transcript。若选型仍留 system，本 change 可不承载 date，但 design 须写明「不负责日界」以免两 change 都不管。指针：research §1；`c1905` Open Questions。
+### 已解决
+
+- **Q1 双列范围（2026-08-05）**：选 **双列 + 本波只通 Runtime**；Agent 列留可扩展接口/空壳；TODO 业务形态未定 → 想法写入 `c1896`（标记 sourced_from 本 change）。
+
+### 待钉
+
+- meta 是否写入持久 transcript，还是仅请求时投影—— propose 时钉（影响导出/resume；与 `c1930`）。
+- 首版 Runtime 内置读数最小集。
+- Runtime 默认模式：`append`（用户倾向 / cache 友好）vs `off`（旧草案更保守）——深挖续问。
+- **日历日 `date` 是否作为状态栏读数（与 `c1905` 联调深挖）**：隔日 resume 同一 session 时，system 内 date 过时 vs 改写前缀失效，是已知坑。若选型为「date 走栏」，须定 replace vs append 以及是否写入 transcript。若选型仍留 system，本 change 可不承载 date，但 design 须写明「不负责日界」。指针：research §1；`c1905` Open Questions。
 
 ## Ethics
 
 - risk_level: medium（高信任注入面）
-- prohibited_actions: LLM 维护栏；不可关的隐式每轮 append；把外部不可信全文写入栏
-- required_evidence: off/replace/append 可测；默认 off 或等价不强迫
+- prohibited_actions: LLM 维护权威栏；把外部不可信全文写入栏；不可审计的隐式投毒通道
+- required_evidence: off/replace/append 可测；Runtime provider 可消融
 - refusal_contract: 不宣称状态栏普遍提升正确率
-- escalation_policy: 若默认改为 on，须用户确认
+- escalation_policy: 若默认改为强 on（非 off），须用户确认
