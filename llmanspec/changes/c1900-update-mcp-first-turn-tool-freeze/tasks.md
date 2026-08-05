@@ -28,6 +28,7 @@
 - [x] 5.1 改 `infra-mcp` / `app-tui-host`（ath23 等）与 `agent-prompt` pt11 引导句（定稿后 tools 列表为准）
 - [x] 5.2 可执行 `.feature` 或文档场景（Partitioned SSOT）；门闸 cue 与 chrome 词汇对齐
 - [ ] 5.3 `llman sdd validate c1900-update-mcp-first-turn-tool-freeze --strict`（apply 前满闸）
+- [ ] 5.4 UX：新 session welcome 显示 MCP 加载；resume 用下轮预告位；`/mcp` 可查；门闸期提交→队列条（follow-up 心智，见 Q18）
 
 ## 6. 双轨接线（不实现 B）
 
