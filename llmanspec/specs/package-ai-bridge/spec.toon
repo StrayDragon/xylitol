@@ -2,7 +2,7 @@ kind: llman.sdd.spec
 name: "package-ai-bridge"
 purpose: "packages/xylitol-ai-bridge：client→LLM provider 接线与 AiBridge* DTO 边界。"
 valid_scope[2]: "packages/xylitol-ai-bridge/",src/infra/provider/
-requirements[18]{req_id,title,statement}:
+requirements[19]{req_id,title,statement}:
   pab1,"workspace-包边界","仓库 MUST 提供 workspace 成员包 packages/xylitol-ai-bridge，作为 client 到上游 LLM model provider 的接线与计量库；该包 MUST NOT 依赖主 crate xylitol。"
   pab2,包内模块划分,"xylitol-ai-bridge MUST 按职责划分至少包含 provider、usage、accounting、tokenize、registry 模块（名称可等价），分别承担方言接线、usage 归一化、多源计量、本地/远程分词计数与模型到分词源注册。"
   pab3,"包内-DTO-独立","包对外流式与消息类型 MUST 使用包内自有 LLM DTO（如 AiBridgeMessage / AiBridgeChunk / AiBridgeUsage）作为 LLM 叶 SSOT；该 DTO MUST 仅表达发给模型的形状，MUST NOT 再定义与主仓 Env 平行的 bashExecution / compactionSummary / branchSummary / custom 等会话环境角色；包 MUST NOT 依赖主仓 xylitol。"
@@ -21,7 +21,8 @@ requirements[18]{req_id,title,statement}:
   pab21,"first-language-vs-dialect","产品与桥接叙事 MUST 区分第一语言（厂商原生 API）与方言（他方实现该协议形状，如 DeepSeek 实现 openai-responses）。AdapterKind/api 字符串（openai-responses、openai-completions、anthropic-messages）选择协议族；MUST NOT 把第一语言称作方言。方言端默认走 compat=generic 的保守 WirePolicy。由文档与单测约定覆盖，MUST NOT 单独扩 BDD step。"
   pab22,"responses-prompt-cache-read-tri-state","Responses usage 映射 MUST 提供可区分的 Prompt Cache 读数三态（名以实现为准，如 PromptCacheRead）：NotApplicable（expects_prompt_cache_usage 为 false）、NotReported（期望但 JSON 无 cached_tokens 细节）、Tokens(n)（含 n=0）。AiBridgeUsage.cache_read（或等价）MAY 保留为派生 u64（仅 Tokens(n)→n，其余→0）供 accounting。MUST NOT 将「字段缺失」映射为「命中 0」。由包内单测覆盖，MUST NOT 单独扩 BDD step。"
   pab23,"prompt-cache-usage-obs-honesty","当 ProviderRequestTrace（或等价）激活并附着 usage 时，MUST 将 Prompt Cache 三态透出到观测属性（Langfuse/trace 自定义 property 或等价）；langfuse.observation.usage_details 中的 cache_read 数字 MUST 仅在 Tokens(n) 语义下写入。MUST NOT 在 NotReported 或 NotApplicable 时写入 cache_read:0 冒充已回报命中。由包内单测覆盖，MUST NOT 单独扩 BDD step。本 req 不要求 TUI chrome。"
-scenarios[8]{req_id,id,given,when,then,feature}:
+  pab24,"responses-assembler-sole-body","包 MUST 提供 ResponsesAssembler（或等价）作为构造 openai-responses 请求 JSON body 的唯一业务布局入口：消费投影后的 AiBridgeMessage、工具 schema、AiBridgeGenerateOptions 与 WirePolicy；默认档 MUST 等价于既有 assemble_responses_body / prepend_system_prompt_item / apply_responses_wire_policy 行为（允许规范化后比较）。Adapter 内 MUST NOT 二次重排业务布局（WirePolicy 字段子集差异除外）。单测 MAY 用不同 WirePolicy 字面量覆盖证明字段集 diff。由包内 golden/单测覆盖，MUST NOT 单独扩 BDD step。"
+scenarios[10]{req_id,id,given,when,then,feature}:
   pab17,session-vs-llm-vocab-unit,"AgentMessage 位于 protocol 根","调用 project_for_llm / 检查 XyModel 签名","Llm+Env 组合；XyModel 只收 AiBridgeMessage；无平行 LLM 叶 enum",false
   pab18,"responses-embedded-error-message-unit","错误串含 content:{\"error\":{\"code\":400,\"message\":\"…exceeds…\",\"type\":\"exceed_context_size_error\"}}","map_err 或 extract","错误文案含 upstream message（及可选 type），非仅 deserialize 失败",false
   pab19,"wire-policy-default-unit","调用 WirePolicy::default()","检查 compat 与 extra_policy","compat 为 generic；prompt_cache_usage 为 true；prompt_cache_key 与 previous_response_id 为 false；默认值定义在 defaults.rs",false
@@ -30,3 +31,5 @@ scenarios[8]{req_id,id,given,when,then,feature}:
   pab22,"responses-cache-tokens-mapped-unit","expects_prompt_cache_usage 为 true 且 usage JSON 含 input_tokens_details.cached_tokens=12","from_responses_usage_with_policy","PromptCacheRead 为 Tokens(12)；派生 cache_read 为 12",false
   pab22,"responses-cache-not-reported-unit","expects_prompt_cache_usage 为 true 且 usage JSON 无 cached_tokens 细节","from_responses_usage_with_policy","PromptCacheRead 为 NotReported；派生 cache_read 为 0",false
   pab23,"trace-attach-usage-no-fake-cache-unit","NotReported 或 NotApplicable 的 usage","ProviderRequestTrace attach_usage","观测含三态属性且 usage_details 无伪 cache_read:0",false
+  pab24,"assembler-default-equiv-unit","固定投影与默认 WirePolicy","ResponsesAssembler 与旧 assemble 路径","规范化 body 等价",false
+  pab24,"assembler-wire-policy-diff-unit","同一投影两套 WirePolicy 字面量","ResponsesAssembler","字段集可预期 diff",false
