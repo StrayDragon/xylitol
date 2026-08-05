@@ -1,0 +1,19 @@
+# Dedicated live-provider integration config (Responses prompt-cache counterexample).
+#
+# Copy to `live-provider.local.yaml` in this directory and set `enabled: true`.
+# `just qa` runs the suite strictly serially AFTER workspace nextest; when
+# `enabled` is false or the local file is missing, the step skips (pass).
+#
+# Env overrides (optional):
+#   XYLITOL_LIVE_PROVIDER_CONFIG=/path/to.yaml
+#   XYLITOL_LIVE_PROVIDER=1|0          # force enable/disable
+#   XYLITOL_LIVE_BASE_URL / XYLITOL_LIVE_MODEL / XYLITOL_LIVE_API_KEY
+#   XYLITOL_LIVE_MAX_OUTPUT_TOKENS
+
+enabled: false
+base_url: http://127.0.0.1:50256/v1
+model: your-openai-responses-model
+api_key: sk-local
+max_output_tokens: 16
+# Documented intent only — the just recipe always uses --test-threads=1.
+serial: true

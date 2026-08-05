@@ -24,6 +24,8 @@
 # Local configuration that shouldn't be shared
 *.local
 config.local.yaml
+# Live provider lab (Responses / llama.cpp) — copy from live-provider.example.yaml
+configs/testing/live-provider.local.yaml
 # Machine / project AppConfig — use configs/example.yaml; keep secrets in secret.env
 .xylitol/config.yaml
 .xylitol/config.yml
