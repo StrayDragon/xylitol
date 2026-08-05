@@ -67,17 +67,19 @@ depends_on:
 - **Q1 双列范围（2026-08-05）**：选 **双列 + 本波只通 Runtime**；Agent 列留可扩展接口/空壳；TODO 业务形态未定 → 想法写入 `c1896`（标记 sourced_from 本 change）。
 - **Q2 Runtime 默认模式（2026-08-05）**：选 **`append` = 盲目尾插**（不查看轨迹中已有 status message，直接追加到末尾）。`replace`/`off` 仍为可切档。压缩时陈旧 status 堆积 → 策略延后调研，写入 `c1897`（最多保留一条 vs 全不保留，未定）。
 - **Q3 持久化（2026-08-05）**：选 **全部持久进 transcript**（非仅请求投影）。动机：保住常用 LLM provider 的跨请求 KV / Prompt Cache（append 前缀稳定）；仅投影会每轮替换末尾条、破坏命中。`c1897` 因此更关键。Agent 列（`c1896`）默认同源持久，除非后继另钉。
+- **Q4′ Runtime 读数地基（2026-08-05）**：选 **注册表 × scenario profile × 单条 token 预算**；本波薄 coding profile，**不**把具体键表钉成硬合约。书据：Ch2 实验 2-8 可独立开关；Ch5 coding 环境四件套为 profile 意向而非 SSOT；append 持久下省 token 靠单条预算 + 后继 `c1897`。
 
 ### 待钉
 
-- 首版 Runtime 内置读数最小集。
-- **日历日 `date` 是否作为状态栏读数（与 `c1905` 联调深挖）**：隔日 resume 同一 session 时，system 内 date 过时 vs 改写前缀失效，是已知坑。若选型为「date 走栏」，须定 replace vs append 以及是否写入 transcript。若选型仍留 system，本 change 可不承载 date，但 design 须写明「不负责日界」。指针：research §1；`c1905` Open Questions。
-- TUI / 导出是否向用户展示 status 条（vs 仅模型可见）——可后置。
+- **日历日 `date` / 时钟**：走栏（Ch2 时间戳技术）还是仍由 system/`c1905` 管——与日界、前缀稳定性联调。
+- Runtime `refresh` 内置工具语义（触发重算并尾插 vs 仅返回给模型看）。
+- 特殊标记 / wire 形状（与 `c1930` 投影；TUI 是否展示）。
+- 短「操作策略」片段是否进默认 coding profile（书：读数+手册成对才改节奏；默认关以省 token？）。
 
 ## Ethics
 
 - risk_level: medium（高信任注入面；且持久后进入导出/resume）
-- prohibited_actions: LLM 维护权威栏；把外部不可信全文写入栏；不可审计的隐式投毒通道
-- required_evidence: off/replace/append 可测；Runtime provider 可消融；append 路径不依赖「扫旧 status」；持久条目带稳定特殊标记
-- refusal_contract: 不宣称状态栏普遍提升正确率
-- escalation_policy: 若默认从 append 改为更强侵入策略，须用户确认
+- prohibited_actions: LLM 维护权威栏；把外部不可信全文写入栏；不可审计的隐式投毒通道；无预算的无限膨胀 profile
+- required_evidence: off/replace/append 可测；provider 注册/预算截断可测；append 路径不依赖「扫旧 status」；持久条目带稳定特殊标记
+- refusal_contract: 不宣称状态栏普遍提升正确率；不宣称某固定键表永远最优
+- escalation_policy: 若默认从 append 改为更强侵入策略，或默认预算显著放大，须用户确认
