@@ -6,7 +6,7 @@ depends_on:
 
 # 压缩 × StatusBar 特殊消息（保留策略后研）
 
-> **来源**：深挖 [`c1895`](../c1895-add-agent-status-bar-subsystem/proposal.md) Q2（2026-08-05）——Runtime 默认 **盲目尾插 `append`** 后，轨迹会堆积带特殊标记的 status message；压缩时如何处理需独立调研，**本草案只保存候选项，不定案**。
+> **来源**：深挖 [`c1895`](../c1895-add-agent-status-bar-subsystem/proposal.md) Q2（2026-08-05）——Runtime 默认 **盲目尾插 `append`**；Q3 钉 **status 全部持久进 transcript**（为保住跨请求 KV / Prompt Cache）。长会话堆积后，压缩如何处理特殊标记 status 需独立调研；**本草案只保存候选项，不定案**。
 > **调研底稿**：[`docs/research/responses-context-layout-and-cache-2026.md`](../../../docs/research/responses-context-layout-and-cache-2026.md) §3 / §6；书 Ch2 压缩与状态栏（陈旧条 vs 注意力）。
 > **工程约定**：code-first；策略未钉前 **禁止**假实现进主路径。
 
