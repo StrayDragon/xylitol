@@ -5904,6 +5904,7 @@ dependencies = [
  "tower",
  "uuid",
  "wiremock",
+ "yaml_serde",
 ]
 
 [[package]]

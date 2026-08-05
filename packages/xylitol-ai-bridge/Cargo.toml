@@ -40,3 +40,5 @@ partial-json-fixer = "0.5.3"
 [dev-dependencies]
 wiremock = "0.6"
 tempfile = "3"
+yaml_serde = "0.10.4"
+tokio = { version = "1", features = ["rt-multi-thread", "macros"] }
