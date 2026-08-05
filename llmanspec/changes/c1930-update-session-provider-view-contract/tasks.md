@@ -35,4 +35,4 @@
 
 - [x] 4.1 `change start` → specs land → validate specs
 - [x] 4.2 apply 单测 + lab 证据
-- [ ] 4.3 verify → archive
+- [x] 4.3 verify PASS（archive → `llman-sdd-archive`）
