@@ -30,8 +30,13 @@ depends_on:
   - 本波：接口 + 预算 + **薄 coding profile** 可测实现（**默认含 clock**，深挖 Q5）；时间感操作手册 / git 深度 / 更多场景档后置迭代。对齐书实验 2-8「技术可独立开关」与「场景会变 + 省 token」。
 - **自动注入缝（深挖 Q6′ 已钉）**：① **每 outbound generate 前**自动尾插；② 本波不做按需工具。后置 `statusline_refresh` = **仅 tool result**、不写权威栏（`c1898`）。
 - **标记 / wire（深挖 Q7 已钉；命名意向）**：SSOT 独立 entry kind 统一为 **`AgentStatusBar`**（名以实现为准）；投影包装标签统一为 **`<agent_status_bar>…</agent_status_bar>`**（书实验里的 `<agent_status>` 仅作概念同源，工程不混用短名）。压缩/导出认 kind；不以普通 user 正文标签为唯一 SSOT。与 `c1930` 对齐投影契约。
+- **薄 coding 默认附加集（深挖 Q8，已钉）**：
+  - **默认开**：`clock`；`tool_calls`（按工具名累计次数——书实验 2-8「工具调用计数器」，也是弱模型防空转/死循环的主读数）。
+  - **实现但默认关**（profile 可开）：`cwd`；`git_branch`。
+  - **本波不做**：完整 git dirty、TODO、详细错误四层、长操作手册、`statusline_refresh` 等（见分流草案）。
+  - 防循环：书证——显式次数（如 `read_file: 3`）能触发「多次失败后换策略/放弃」；电话实验里「3/3 到顶就停」规则足够显然时**只靠读数**即可纠偏。更细的「同参重复 streak / 微型策略」后置，不进本波默认。
 - 注入经 Assembler / Policy，**不**散落改 `build_system_prompt` 特例逻辑（system 内稳定 env 仍可由 `c1905` 管）。
-- 验证：假 provider → 预算截断可测；profile 切换可消融；generate 边界尾插可测；entry kind 可识别（供 `c1897`）；可选「读数 + 短策略片段」成对配置（后置）。
+- 验证：假 provider → 预算截断可测；profile 开/关 `cwd`/`git_branch` 可消融；generate 边界尾插含 `clock`+`tool_calls`；entry kind=`AgentStatusBar`。
 - **禁止**用 LLM 批量扫历史生成权威栏。
 
 ## Capabilities（意向）
