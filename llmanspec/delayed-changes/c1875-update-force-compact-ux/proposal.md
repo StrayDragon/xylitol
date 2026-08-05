@@ -1,9 +1,13 @@
 ---
 depends_on:
   - c1860-refactor-context-token-settlement
+apply_band: P9-deferred
 ---
 
 # 手动 force compact UX（too-small 澄清 / 带 focus 重压）
+
+> **⚠️ deferred（2026-08-05）**：移入 `llmanspec/delayed-changes/`，避免污染本期 SDD graph。本期实现线 = **c1920 → c1930/c1925 → c1900（MCP tool_search）**；Todo/状态栏等扩展后置。
+
 
 > **草案 · 后置**：产品 A/B 未确认前 **不** propose/apply。
 > **观测分流** 不在本 change —— 见 [`c1870-add-otel-llm-infra-split`](../c1870-add-otel-llm-infra-split/proposal.md)。
