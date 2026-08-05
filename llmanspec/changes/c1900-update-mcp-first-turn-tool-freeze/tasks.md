@@ -25,9 +25,9 @@
 
 ## 5. Specs landing + UX 文案
 
-- [ ] 5.1 改 `infra-mcp` / `app-tui-host`（ath23 等）与 `agent-prompt` pt11 引导句（定稿后 tools 列表为准）
-- [ ] 5.2 可执行 `.feature` 或文档场景（Partitioned SSOT）；门闸 cue 与 chrome 词汇对齐
-- [ ] 5.3 `llman sdd validate c1900-update-mcp-first-turn-tool-freeze --strict`
+- [x] 5.1 改 `infra-mcp` / `app-tui-host`（ath23 等）与 `agent-prompt` pt11 引导句（定稿后 tools 列表为准）
+- [x] 5.2 可执行 `.feature` 或文档场景（Partitioned SSOT）；门闸 cue 与 chrome 词汇对齐
+- [ ] 5.3 `llman sdd validate c1900-update-mcp-first-turn-tool-freeze --strict`（apply 前满闸）
 
 ## 6. 双轨接线（不实现 B）
 

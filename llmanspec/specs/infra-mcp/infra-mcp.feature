@@ -60,13 +60,19 @@
   场景: agent-prompt-allowed-while-connecting
     假如 MCP 仍在 connecting
     当 用户提交普通 agent prompt
-    那么 允许进入 run 或等价提交路径且 MUST NOT 因 connecting 短拒
+    那么 允许提交进队列或等价路径；MUST NOT 因 connecting 短拒；generate 门闸语义见 mcp8
 
   @req:mcp7
-  场景: settle-overlay-tools-unique-names
-    假如 MCP 结算或 reload 成功并热合并工具
-    当 查询 ToolSet 工具名
+  场景: settle-updates-registry-unique-names
+    假如 MCP 结算或 reload 成功并更新 registry
+    当 查询内部 armed / ToolSet 名（未谈 provider 定稿）
     那么 每个工具名唯一且内置工具仍在
+
+  @req:mcp8
+  场景: frozen-settle-does-not-expand-provider-tools
+    假如 会话工具表已 FROZEN
+    当 又有 MCP settle 发现新工具
+    那么 provider 可见 tools 表 MUST NOT 静默变长；用户可经 idle /reload 重定稿
 
   @req:mcp7
   场景: snapshot-exposes-tools-armed
