@@ -1,12 +1,13 @@
 ---
 depends_on:
   - c1895-add-agent-status-bar-subsystem
+apply_band: P9-deferred
 ---
 
 # StatusBar · Agent 列（可扩展通道；TODO/计划后挂）
 
-> **来源**：深挖 [`c1895`](../c1895-add-agent-status-bar-subsystem/proposal.md) Q1（2026-08-05）——双列地基中的 **Lane Agent**；本草案只保存扩展面与挂载点，**不**提前钉 TODO 产品形态。
-> **调研底稿**：[`docs/research/responses-context-layout-and-cache-2026.md`](../../../docs/research/responses-context-layout-and-cache-2026.md) §3；书 Ch2「任务规划 / TODO 列表管理」与「末尾 meta 通道」。
+> **⚠️ deferred（2026-08-05）**：随 `c1895` 族移入 `delayed-changes/`。**Todo 产品意向改由 [`c1955`](../../changes/c1955-add-agent-todo-subsystem/proposal.md)**；本文件仅保留「Agent 列 typed 尾插通道」工程想法，升格时再与 Todo 投影对齐。
+> **来源**：深挖 [`c1895`](../c1895-add-agent-status-bar-subsystem/proposal.md) Q1。
 > **书边界**：栏读数仍须代码/结构化权威；**禁止** LLM 批量扫 transcript 生成权威栏。Agent 列 = 经工具尾插的 **typed message**，不是散文「自己写状态」。
 > **工程约定**：code-first defaults；本草案阶段 **不**加 YAML；业务 TODO UX 未定前禁止假实现。
 
