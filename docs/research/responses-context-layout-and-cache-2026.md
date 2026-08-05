@@ -148,6 +148,22 @@ coding agent 默认：环境类（cwd）可留 system；高变读数（工具计
 
 **验证闸（c1925 apply）**：同 lab 重跑后，**主闸** `resume_full ≥ warm3`（同次 run）；§5.2 表上绝对数（medium ≥761 / off ≥747）为历史地板，网关抖动时先对照同次 warm3，勿以 Strip 臂当对照。
 
+### 5.3 Lab：session 前缀幂等 × resume/import（c1930 · 2026-08-06）
+
+> 维护脚本：`cargo run -p xylitol-ai-bridge --example lab_session_prefix_idempotency`（**不进 qa**）。规划/证据：[`landing.tmp.md`](../../llmanspec/changes/c1930-update-session-provider-view-contract/landing.tmp.md) §5。
+
+**主钉**：resume/import 后 Responses `input`（+tools）前缀与同进程续跑在固定旋钮下规范化相等；**本波不做**状态栏。
+
+| 闸 | 结果（Ornith 复跑） |
+|---|---|
+| offline serde/JSONL 哈希 | 相等 |
+| arm A 内存续跑 vs arm B 新 adapter+JSONL | `input[0..-1]` 相等；B `cache_read` ≥ A |
+| Langfuse | example 不 OTEL 导出；dump ≡ `observation.input` 同形；全量 xylitol 可对照 |
+
+固定旋钮：`Current date: 2026-08-06`、固定 cwd/tools/`thinking=medium`。date 日界产品化 → `c1905`。
+
+离线单测：`llm_project::resume_import_shaped_jsonl_matches_memory_assemble_prefix`；`ResponsesAssembler::assemble_prefix_idempotent_and_serde_roundtrip`。
+
 复验（2026-08-06 apply，Ornith 同网关）：medium warm3=694 resume=728（Δ+34，对齐基线 Δ）；off warm3=762 resume=792（Δ+30，绝对高于历史 747）。
 
 ---
@@ -173,7 +189,7 @@ coding agent 默认：环境类（cwd）可留 system；高变读数（工具计
 | ContextPolicy + ResponsesAssembler | [`c1890`](../../llmanspec/changes/archive/2026-08-05-c1890-add-responses-context-policy-assembler/proposal.md)（已归档） | `c1880` |
 | Context Epoch（前缀/工具世代）（**deferred**；非 search 前提） | [`delayed c1920`](../../llmanspec/delayed-changes/c1920-add-context-epoch-freeze/proposal.md) | `c1890` |
 | Thinking/reasoning 回放保真（JSONL→input） | [`c1925`](../../llmanspec/changes/c1925-update-responses-thinking-replay-flavor/proposal.md) | `c1880`+`c1890` |
-| Session SSOT ↔ Provider view | [`c1930`](../../llmanspec/changes/c1930-update-session-provider-view-contract/proposal.md) | `c1890` |
+| Session SSOT ↔ Provider view · **本波** | [`c1930`](../../llmanspec/changes/c1930-update-session-provider-view-contract/proposal.md)（§5.3 lab） | `c1890` |
 | Assembler 布局决策可观测（**deferred**） | [`delayed c1935`](../../llmanspec/delayed-changes/c1935-add-assembler-layout-observability/proposal.md) | `c1890` |
 | Agent Todo（**deferred**；扩展后置） | [`delayed c1955`](../../llmanspec/delayed-changes/c1955-add-agent-todo-subsystem/proposal.md) | — |
 | Agent 状态栏族（**deferred**） | [`delayed c1895`](../../llmanspec/delayed-changes/c1895-add-agent-status-bar-subsystem/proposal.md)（+ c1896/97/98） | 升格待 Todo/事件 |

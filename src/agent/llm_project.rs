@@ -3,10 +3,24 @@
 //! [`AgentMessage`] remains the session SSOT (`Llm` ∪ `Env`). Before any
 //! provider call, history MUST pass through [`project_for_llm`].
 //! Llm arm is passthrough (`LlmMessage` ≡ bridge `AiBridgeMessage`).
+//!
+//! Env fold **shapes** are part of the resume/import provider-prefix contract
+//! (c1930 / as48): changing the bash or context-summary templates breaks
+//! Responses `input` byte prefixes and prompt cache. Edit only via explicit change.
 
 use serde_json::Value;
 
 use crate::protocol::message::{AgentMessage, AgentPart, EnvMessage, LlmMessage, now_ms};
+
+/// Stable bash → LLM user-row fold (`$ {command}\n{output}`).
+pub(crate) fn fold_bash_for_llm(command: &str, output: &str) -> String {
+    format!("$ {command}\n{output}")
+}
+
+/// Stable compaction / branch summary → LLM user-row fold.
+pub(crate) fn fold_context_summary_for_llm(summary: &str) -> String {
+    format!("[Context summary: {summary}]")
+}
 
 /// Project session history into LLM-visible [`LlmMessage`] / `AiBridgeMessage` rows.
 pub fn project_for_llm(messages: &[AgentMessage]) -> Vec<LlmMessage> {
@@ -30,13 +44,13 @@ pub fn project_for_llm(messages: &[AgentMessage]) -> Vec<LlmMessage> {
                 if *exclude_from_context {
                     continue;
                 }
-                out.push(user_text(format!("$ {command}\n{output}")));
+                out.push(user_text(fold_bash_for_llm(command, output)));
             }
             AgentMessage::Env(
                 EnvMessage::CompactionSummaryMessage { summary, .. }
                 | EnvMessage::BranchSummaryMessage { summary, .. },
             ) => {
-                out.push(user_text(format!("[Context summary: {summary}]")));
+                out.push(user_text(fold_context_summary_for_llm(summary)));
             }
             AgentMessage::Env(EnvMessage::CustomMessage { content, .. }) => {
                 if let Some(text) = custom_text(content)
@@ -79,7 +93,11 @@ mod tests {
         let projected = project_for_llm(&history);
         assert_eq!(projected.len(), 2);
         assert_eq!(projected[1].role_name(), "user");
-        assert!(projected[1].text().contains("ls"));
+        assert_eq!(
+            projected[1].text(),
+            fold_bash_for_llm("ls", "a.txt"),
+            "bash fold shape is cache-prefix stable (c1930)"
+        );
     }
 
     #[test]
@@ -113,8 +131,16 @@ mod tests {
         ];
         let projected = project_for_llm(&history);
         assert_eq!(projected.len(), 2);
-        assert!(projected[0].text().contains("compressed"));
-        assert!(projected[1].text().contains("forked"));
+        assert_eq!(
+            projected[0].text(),
+            fold_context_summary_for_llm("compressed"),
+            "compaction fold shape is cache-prefix stable (c1930)"
+        );
+        assert_eq!(
+            projected[1].text(),
+            fold_context_summary_for_llm("forked"),
+            "branch-summary fold shape is cache-prefix stable (c1930)"
+        );
     }
 
     #[test]
@@ -280,5 +306,176 @@ mod tests {
             }
             other => panic!("expected kept assistant, got {other:?}"),
         }
+    }
+
+    /// c1930 / as48+pab27: memory history → project → assemble is idempotent;
+    /// JSONL render/parse → as_agent_message → same assemble `input`/`tools`.
+    #[test]
+    fn resume_import_shaped_jsonl_matches_memory_assemble_prefix() {
+        use crate::protocol::session::{
+            EntryBase, SESSION_VERSION, SessionEntry, SessionHeader, bash_execution_message_entry,
+            parse_session_jsonl,
+        };
+        use xylitol_ai_bridge::AiBridgeGenerateOptions;
+        use xylitol_ai_bridge::dto::AiBridgeToolSchema;
+        use xylitol_ai_bridge::provider::ResponsesAssembler;
+
+        let sig = r#"{"type":"reasoning","id":"rs_c1930","summary":[]}"#;
+        let memory: Vec<AgentMessage> = vec![
+            AgentMessage::user("hello"),
+            AgentMessage::bash("pwd", "/tmp/lab", Some(0)),
+            AgentMessage::Env(EnvMessage::CompactionSummaryMessage {
+                summary: "earlier turns".into(),
+                tokens_before: 1000,
+                tokens_after: 40,
+                read_files: None,
+                modified_files: None,
+            }),
+            AgentMessage::Llm(LlmMessage::AssistantMessage {
+                content: vec![
+                    AgentPart::Thinking {
+                        thinking: "plan".into(),
+                        redacted: false,
+                        thinking_signature: Some(sig.into()),
+                    },
+                    AgentPart::text("done"),
+                    AgentPart::ToolCall {
+                        id: "call_1".into(),
+                        name: "read".into(),
+                        arguments: serde_json::json!({"path": "a.rs"}),
+                    },
+                ],
+                stop_reason: None,
+                usage: None,
+                api: "openai-responses".into(),
+                provider: "test".into(),
+                model: "m".into(),
+                response_id: None,
+                error_message: None,
+                timestamp: now_ms(),
+                diagnostics: Vec::new(),
+            }),
+            AgentMessage::tool_result("call_1", "read", vec![AgentPart::text("ok")], false),
+        ];
+
+        let projected = project_for_llm(&memory);
+        let opts = AiBridgeGenerateOptions {
+            system_prompt: Some("Current date: 2026-08-06\ncwd: /tmp/lab".into()),
+            thinking_level: "medium".into(),
+            ..Default::default()
+        };
+        let tools = [AiBridgeToolSchema {
+            name: "read".into(),
+            description: "read a file".into(),
+            parameters: serde_json::json!({
+                "type": "object",
+                "properties": {"path": {"type": "string"}},
+            }),
+        }];
+        let asm = ResponsesAssembler::default();
+        let body_a = asm.assemble("lab-m", projected.clone(), &tools, false, &opts);
+        let body_b = asm.assemble("lab-m", projected.clone(), &tools, false, &opts);
+        assert_eq!(
+            body_a["input"], body_b["input"],
+            "assemble twice must be idempotent"
+        );
+        assert_eq!(body_a["tools"], body_b["tools"]);
+
+        let input = body_a["input"].as_array().expect("input");
+        // system/developer first, then history; reasoning before assistant text/tool in same turn.
+        assert!(
+            input
+                .iter()
+                .any(|i| i.get("role") == Some(&serde_json::json!("developer"))
+                    || i.get("role") == Some(&serde_json::json!("system"))),
+            "system prompt item present: {input:?}"
+        );
+        let asst_idx = input
+            .iter()
+            .position(|i| i.get("role") == Some(&serde_json::json!("assistant")))
+            .expect("assistant text item");
+        let reason_idx = input
+            .iter()
+            .position(|i| i.get("type") == Some(&serde_json::json!("reasoning")))
+            .expect("reasoning item");
+        assert!(
+            reason_idx < asst_idx,
+            "reasoning must precede assistant text (c1925/c1930): reason={reason_idx} asst={asst_idx}"
+        );
+
+        // JSONL import-shaped path (header + messages).
+        let mut entries = vec![SessionEntry::Header(SessionHeader {
+            entry_type: "session".into(),
+            version: SESSION_VERSION,
+            id: "c1930-lab".into(),
+            timestamp: "2026-08-06T00:00:00Z".into(),
+            cwd: "/tmp/lab".into(),
+            parent_session: None,
+        })];
+        for (i, msg) in memory.iter().enumerate() {
+            let base = EntryBase {
+                entry_type: "message".into(),
+                id: format!("e{i}"),
+                parent_id: None,
+                timestamp: "2026-08-06T00:00:00Z".into(),
+            };
+            match msg {
+                AgentMessage::Env(EnvMessage::BashExecutionMessage {
+                    command,
+                    output,
+                    exclude_from_context,
+                    ..
+                }) => {
+                    let mut e = bash_execution_message_entry(
+                        command.clone(),
+                        output.clone(),
+                        Some(0),
+                        false,
+                        false,
+                        None,
+                        *exclude_from_context,
+                    );
+                    if let SessionEntry::Message(m) = &mut e {
+                        m.base = base;
+                    }
+                    entries.push(e);
+                }
+                other => {
+                    entries.push(SessionEntry::Message(
+                        crate::protocol::session::MessageEntry {
+                            base,
+                            message: serde_json::to_value(other).expect("serialize AgentMessage"),
+                        },
+                    ));
+                }
+            }
+        }
+        let mut jsonl = String::new();
+        for entry in &entries {
+            jsonl.push_str(&serde_json::to_string(entry).expect("ser entry"));
+            jsonl.push('\n');
+        }
+        let parsed = parse_session_jsonl(&jsonl).expect("parse");
+        let imported: Vec<AgentMessage> =
+            parsed.iter().filter_map(|e| e.as_agent_message()).collect();
+        assert_eq!(
+            imported.len(),
+            memory.len(),
+            "import must recover all context messages"
+        );
+        let projected_import = project_for_llm(&imported);
+        let body_import = asm.assemble("lab-m", projected_import, &tools, false, &opts);
+        assert_eq!(
+            body_import["input"], body_a["input"],
+            "JSONL resume/import path must match memory assemble input prefix"
+        );
+        assert_eq!(body_import["tools"], body_a["tools"]);
+
+        // Serde round-trip of projected LLM rows (bridge DTO) must not drift input.
+        let wire = serde_json::to_value(&projected).expect("serde");
+        let back: Vec<xylitol_ai_bridge::dto::AiBridgeMessage> =
+            serde_json::from_value(wire).expect("de");
+        let body_serde = asm.assemble("lab-m", back, &tools, false, &opts);
+        assert_eq!(body_serde["input"], body_a["input"]);
     }
 }
