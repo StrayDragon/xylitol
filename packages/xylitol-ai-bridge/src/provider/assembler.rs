@@ -10,8 +10,8 @@ use super::{apply_responses_wire_policy, assemble_responses_body};
 
 /// Constructs OpenAI Responses JSON bodies under a fixed [`WirePolicy`].
 ///
-/// Adapters and harnesses SHOULD prefer this type over calling
-/// [`assemble_responses_body`] ad hoc so layout stays one seam.
+/// Sole public business-layout entry for `/v1/responses` bodies (c1890).
+/// Internal `assemble_responses_body` / `apply_responses_wire_policy` stay crate-private.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub struct ResponsesAssembler {
     wire_policy: WirePolicy,
