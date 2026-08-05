@@ -4,11 +4,12 @@ depends_on:
   - c1890-add-responses-context-policy-assembler
 ---
 
-# Responses thinking / reasoning 回放 × flavor
+# Responses thinking / reasoning 回放 × WirePolicy/compat
 
-> **调研底稿**：[`docs/research/responses-context-layout-and-cache-2026.md`](../../../docs/research/responses-context-layout-and-cache-2026.md) §5.1；现有 bridge `thinking_signature` / `include: reasoning.encrypted_content`。
-> **自包含**：多轮正确性（回放），不是可选优化；按 flavor 降级，禁止假设官方语义。
-> **工程约定（本波次）**：策略默认 **code-first**：`defaults.rs` 纯常量（改文件调试）；**不**新增 YAML 旋钮；**不**用 env 当未暴露配置面。用户面 YAML 仅既有字段（如 `api`）。真源见 [`c1880`](../c1880-update-responses-first-api-boundary/proposal.md)。
+> **调研底稿**：[`docs/research/responses-context-layout-and-cache-2026.md`](../../../docs/research/responses-context-layout-and-cache-2026.md) §5.1（术语对照 §7）
+> **书指针**：《深入理解 AI Agent》Ch2 思维链/工具环回放直觉（姊妹仓 `ai-agent-book/book/chapter2.md`）；书语仅经 research §7 术语表映射，**禁止**写入 live specs。
+> **自包含**：多轮正确性（回放），不是可选优化；按 WirePolicy/compat 降级，禁止假设官方语义。
+> **工程约定（本波次）**：策略默认 **code-first**：`defaults.rs` 纯常量（改文件调试）；**不**新增 YAML 旋钮；**不**用 env 当未暴露配置面。用户面 YAML 仅既有字段（如 `api`）。真源见 [`c1880`](../archive/2026-08-04-c1880-update-responses-first-api-boundary/proposal.md)。
 
 ## Why
 
@@ -18,11 +19,11 @@ Coding agent 多轮依赖 assistant 侧 thinking / reasoning 项回放（签名�
 - 缺字段 SSE
 - 是否要求后续请求原样带回
 
-差异很大。回放错误会破坏轨迹与工具环，严重性高于 cache 未命中。须在 Assembler 层按 **flavor + capabilities** 定义保留 / 剥离 / 降级合约。
+差异很大。回放错误会破坏轨迹与工具环，严重性高于 cache 未命中。须在 Assembler 层按 **WirePolicy（compat + extra_policy）** 定义保留 / 剥离 / 降级合约。
 
 ## What Changes
 
-- 规范性：**回放模式**枚举（意向）`preserve` | `strip` | `best_effort`，由 flavor 预设、用户可覆盖。
+- 规范性：**回放模式**枚举（意向）`preserve` | `strip` | `best_effort`，由 WirePolicy/compat 预设、用户可覆盖。
 - Assembler 组装 input 时：thinking/reasoning 项顺序与现网 pi 对齐为默认（official）；`generic`/不支持端走 strip 或 best_effort，并诚实观测。
 - ReAct 落盘：需要回放的签名/材料按模式写入 `AiBridgeMessage`；不支持时不假装写入。
 - 单测：至少 official preserve 与 generic strip（或 best_effort）两条 golden。
@@ -32,7 +33,7 @@ Coding agent 多轮依赖 assistant 侧 thinking / reasoning 项回放（签名�
 
 - `package-ai-bridge`（thinking / Responses 项）
 - `agent-runtime`（落盘）
-- flavor/capabilities（`c1880`）
+- WirePolicy / extra_policy（已归档 `c1880`）
 
 ## Impact
 
@@ -59,7 +60,7 @@ Coding agent 多轮依赖 assistant 侧 thinking / reasoning 项回放（签名�
 ## Ethics
 
 - risk_level: medium
-- prohibited_actions: 对不支持端伪造 encrypted 回放；把官方 include 列表强加给所有 flavor
-- required_evidence: 双 flavor golden；缺能力时不崩主路径
+- prohibited_actions: 对不支持端伪造 encrypted 回放；把官方 include 列表强加给所有 compat/WirePolicy
+- required_evidence: 双 WirePolicy golden；缺能力时不崩主路径
 - refusal_contract: 不承诺一切兼容端可完整回放 thinking
 - escalation_policy: 默认从 preserve 改为 strip 须确认（影响强模型行为）
