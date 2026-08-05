@@ -7,14 +7,14 @@
 - [x] 0.1 书引用 / WirePolicy 用语对齐（`flavor`→`compat`；姊妹仓 Ch2 指针；research §7）
 - [x] 0.2 深挖收束：Policy 仅全局 defaults；system 信道保持 prepend；日界默认≡现状
 - [x] 0.3 测试缝：Assembler golden + Policy 默认单测；`feature: false`；不扩 BDD step
-- [ ] 0.4 Branch binding：`change start`（干净 main）后再 Specs landing
+- [x] 0.4 Branch binding：`change start`（干净 main）后再 Specs landing（注意：llman 用 `origin/main` 算 base 时会偏旧；本 change 手动钉本地 main tip）
 
 ## 1. Specs landing（绑定分支后）
 
-- [ ] 1.1 `package-ai-bridge`：Assembler 唯一构造 Responses body + 消费 `WirePolicy`（新 req + `feature: false` 场景）
-- [ ] 1.2 `agent-*`（合适 capability，如 `agent-runtime` 或新建窄 capability）：ContextPolicy 钩子默认档 + ReAct/调用点经 Assembler
-- [ ] 1.3 **跳过** YAML / `runtime-config` 新键（code-first）
-- [ ] 1.4 校验：`llman sdd validate` change + 触及 specs `--strict --no-check`
+- [x] 1.1 `package-ai-bridge`：Assembler 唯一构造 Responses body + 消费 `WirePolicy`（新 req + `feature: false` 场景）
+- [x] 1.2 `agent-runtime`：ContextPolicy 钩子默认档 + Responses 路径经 Assembler（`ar33`）
+- [x] 1.3 **跳过** YAML / `runtime-config` 新键（code-first）
+- [x] 1.4 校验：`llman sdd validate` change + 触及 specs `--strict --no-check`
 
 ## 2. 实现（apply）
 
