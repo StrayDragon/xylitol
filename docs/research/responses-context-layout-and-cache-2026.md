@@ -3,7 +3,7 @@
 > **范围**：个人 coding agent（xylitol）在 **OpenAI Responses API**（含 llama.cpp 等兼容端）下，如何组织发给 provider 的 body，以及 KV Cache / Prompt Cache、状态栏、MCP/`tool_search`、压缩的工程取舍。
 > **一手来源**：本仓 `packages/xylitol-ai-bridge` / `src/agent` 现状；OpenAI Prompt caching / Responses / tool_search 文档；《深入理解 AI Agent》姊妹仓 `ai-agent-book/book/chapter2.md`（及 Ch4/Ch5）（状态栏、KV/Prompt Cache、工具只增不改、Cursor MCP 索引实践）。书语仅经下文 §7 术语表进入工程名，**禁止**写入 live specs。
 >
-> **Assembler 缝（c1890）**：Responses 请求 body 经 `ResponsesAssembler`（`xylitol-ai-bridge`）唯一构造（底层 assemble 为 crate-private）；agent 侧 `ContextPolicy` 提供 hooks；`set_tools*` 已消费 mid-turn rewrite 闸。状态栏 / tool_search 完整行为 → `c1895` / `c1900`。
+> **Assembler 缝（c1890）**：Responses 请求 body 经 `ResponsesAssembler`（`xylitol-ai-bridge`）唯一构造（底层 assemble 为 crate-private）；agent 侧 `ContextPolicy` 提供 hooks；`set_tools*` 已消费 mid-turn rewrite 闸。状态栏完整行为 **deferred**（`llmanspec/delayed-changes/c1895…`）；产品优先 [`c1955` Todo](../../llmanspec/changes/c1955-add-agent-todo-subsystem/proposal.md)；tool_search → `c1900`。
 > **非目标**：不定实现排期；不改 live specs；不把 hit rate 当唯一 KPI。
 
 ## 一句话结论
@@ -145,10 +145,8 @@ coding agent 默认：环境类（cwd）可留 system；高变读数（工具计
 | Thinking/reasoning 回放 × flavor | [`c1925`](../../llmanspec/changes/c1925-update-responses-thinking-replay-flavor/proposal.md) | `c1880`+`c1890` |
 | Session SSOT ↔ Provider view | [`c1930`](../../llmanspec/changes/c1930-update-session-provider-view-contract/proposal.md) | `c1890` |
 | Assembler 布局决策可观测 | [`c1935`](../../llmanspec/changes/c1935-add-assembler-layout-observability/proposal.md) | `c1890` |
-| Agent 状态栏 · Runtime 列（+ Agent 列扩展壳） | [`c1895`](../../llmanspec/changes/c1895-add-agent-status-bar-subsystem/proposal.md) | `c1890`+`c1930` |
-| Agent 状态栏 · Agent 列 / TODO 通道（purpose-draft） | [`c1896`](../../llmanspec/changes/c1896-add-status-bar-agent-lane/proposal.md) | `c1895` |
-| 压缩 × StatusBar 消息保留（purpose-draft；A keep-1 / B drop-all） | [`c1897`](../../llmanspec/changes/c1897-update-compaction-status-bar-messages/proposal.md) | `c1895`+`c1910` |
-| `statusline_refresh` 按需工具（purpose-draft；仅 tool result） | [`c1898`](../../llmanspec/changes/c1898-add-statusline-refresh-tool/proposal.md) | `c1895` |
+| Agent Todo（TUI + 工具 + 流转；purpose-draft） | [`c1955`](../../llmanspec/changes/c1955-add-agent-todo-subsystem/proposal.md) | `[]` |
+| Agent 状态栏族（**deferred**） | [`delayed c1895`](../../llmanspec/delayed-changes/c1895-add-agent-status-bar-subsystem/proposal.md)（+ c1896/97/98） | 升格待 Todo/事件 |
 | tool_search + MCP 内部目录 | [`c1900`](../../llmanspec/changes/c1900-add-tool-search-mcp-discovery/proposal.md) | `c1880`+`c1890`+`c1920` |
 | system 稳定/可变切分 | [`c1905`](../../llmanspec/changes/c1905-update-system-prompt-stable-volatile-split/proposal.md) | `c1890` |
 | 压缩冻结替换串 | [`c1910`](../../llmanspec/changes/c1910-update-compaction-freeze-tool-replacements/proposal.md) | `c1890`+`c1930` |
@@ -169,7 +167,7 @@ coding agent 默认：环境类（cwd）可留 system；高变读数（工具计
 | 静态前缀世代 | context epoch（`c1920`） |
 | 会话真源 / 发给模型的投影 | Session SSOT ↔ provider view（`c1930`） |
 | 框架元信息 | harness meta |
-| Agent 状态栏 · replace / append | StatusBar 模式（`c1895`） |
+| Agent 状态栏 · replace / append | StatusBar 模式（**deferred** `c1895`） |
 | 主动工具发现 / 只增不改 | tool_search + append-only（`c1900`） |
 | 思考回放 | reasoning / thinking replay（`c1925`） |
 | 增量续跑 | `previous_response_id`（`c1915`） |
