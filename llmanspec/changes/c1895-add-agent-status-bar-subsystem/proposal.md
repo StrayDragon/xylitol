@@ -22,6 +22,7 @@ depends_on:
   - **Lane Agent**：可扩展 typed 尾插通道；本波只留扩展接口/空壳；业务 TODO → `c1896`。
 - StatusBar **provider 接口**（Runtime）：输入 = 代码可观测状态；输出 = 结构化键值（禁止散文堆砌为默认）。
 - Runtime 默认模式：**`append`（深挖 Q2 已钉）**——**不**扫描轨迹中已有 status message；每轮在末尾直接追加最新快照（「盲目尾插」）。`replace` / `off` 仍可切。
+- **持久化（深挖 Q3 已钉）**：**全部写入 session transcript**（SSOT），不是仅请求时投影。理由：常用 provider 的 KV / Prompt Cache 依赖跨请求前缀字节稳定；仅投影等于每轮换掉末尾条，破坏「只追加」命中。导出 / resume / compact（`c1897`）均可见这些特殊标记消息。
 - 注入经 Assembler / Policy，**不**散落改 `build_system_prompt` 特例逻辑（system 内稳定 env 仍可由 `c1905` 管）。
 - 验证：给定假状态 → 栏内容单测；模式切换可消融；可选「读数 + 短策略片段」成对配置。
 - **禁止**用 LLM 批量扫历史生成权威栏。
@@ -60,17 +61,18 @@ depends_on:
 
 - **Q1 双列范围（2026-08-05）**：选 **双列 + 本波只通 Runtime**；Agent 列留可扩展接口/空壳；TODO 业务形态未定 → 想法写入 `c1896`（标记 sourced_from 本 change）。
 - **Q2 Runtime 默认模式（2026-08-05）**：选 **`append` = 盲目尾插**（不查看轨迹中已有 status message，直接追加到末尾）。`replace`/`off` 仍为可切档。压缩时陈旧 status 堆积 → 策略延后调研，写入 `c1897`（最多保留一条 vs 全不保留，未定）。
+- **Q3 持久化（2026-08-05）**：选 **全部持久进 transcript**（非仅请求投影）。动机：保住常用 LLM provider 的跨请求 KV / Prompt Cache（append 前缀稳定）；仅投影会每轮替换末尾条、破坏命中。`c1897` 因此更关键。Agent 列（`c1896`）默认同源持久，除非后继另钉。
 
 ### 待钉
 
-- meta 是否写入持久 transcript，还是仅请求时投影—— propose 时钉（影响导出/resume；与 `c1930`）。
 - 首版 Runtime 内置读数最小集。
 - **日历日 `date` 是否作为状态栏读数（与 `c1905` 联调深挖）**：隔日 resume 同一 session 时，system 内 date 过时 vs 改写前缀失效，是已知坑。若选型为「date 走栏」，须定 replace vs append 以及是否写入 transcript。若选型仍留 system，本 change 可不承载 date，但 design 须写明「不负责日界」。指针：research §1；`c1905` Open Questions。
+- TUI / 导出是否向用户展示 status 条（vs 仅模型可见）——可后置。
 
 ## Ethics
 
-- risk_level: medium（高信任注入面）
+- risk_level: medium（高信任注入面；且持久后进入导出/resume）
 - prohibited_actions: LLM 维护权威栏；把外部不可信全文写入栏；不可审计的隐式投毒通道
-- required_evidence: off/replace/append 可测；Runtime provider 可消融；append 路径不依赖「扫旧 status」
+- required_evidence: off/replace/append 可测；Runtime provider 可消融；append 路径不依赖「扫旧 status」；持久条目带稳定特殊标记
 - refusal_contract: 不宣称状态栏普遍提升正确率
 - escalation_policy: 若默认从 append 改为更强侵入策略，须用户确认
