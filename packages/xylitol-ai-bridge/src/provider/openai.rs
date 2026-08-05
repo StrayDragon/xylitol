@@ -162,15 +162,15 @@ fn completions_sdk_stream(
             }
 
             if let Some(u) = &chunk.usage {
-                pending_usage = Some(crate::dto::AiBridgeUsage {
-                    input: u.prompt_tokens as u64,
-                    output: u.completion_tokens as u64,
-                    cache_read: 0,
-                    cache_write: 0,
-                    cache_write_1h: 0,
-                    total_tokens: u.total_tokens as u64,
-                    cost: None,
-                });
+                pending_usage = Some(
+                    crate::dto::AiBridgeUsage {
+                        input: u.prompt_tokens as u64,
+                        output: u.completion_tokens as u64,
+                        total_tokens: u.total_tokens as u64,
+                        ..Default::default()
+                    }
+                    .with_prompt_cache_read(crate::dto::PromptCacheRead::Tokens(0)),
+                );
             }
 
             for choice in &chunk.choices {
@@ -297,17 +297,17 @@ fn convert_tools(tools: &[AiBridgeToolSchema]) -> Vec<ChatCompletionTools> {
 
 fn parse_nonstream_json(response: &Value) -> Vec<AiBridgeChunk> {
     let mut chunks = Vec::new();
-    let usage = response.get("usage").map(|u| crate::dto::AiBridgeUsage {
-        input: u.get("prompt_tokens").and_then(|v| v.as_u64()).unwrap_or(0),
-        output: u
-            .get("completion_tokens")
-            .and_then(|v| v.as_u64())
-            .unwrap_or(0),
-        cache_read: 0,
-        cache_write: 0,
-        total_tokens: u.get("total_tokens").and_then(|v| v.as_u64()).unwrap_or(0),
-        cache_write_1h: 0,
-        cost: None,
+    let usage = response.get("usage").map(|u| {
+        crate::dto::AiBridgeUsage {
+            input: u.get("prompt_tokens").and_then(|v| v.as_u64()).unwrap_or(0),
+            output: u
+                .get("completion_tokens")
+                .and_then(|v| v.as_u64())
+                .unwrap_or(0),
+            total_tokens: u.get("total_tokens").and_then(|v| v.as_u64()).unwrap_or(0),
+            ..Default::default()
+        }
+        .with_prompt_cache_read(crate::dto::PromptCacheRead::Tokens(0))
     });
 
     let Some(choices) = response.get("choices").and_then(|c| c.as_array()) else {

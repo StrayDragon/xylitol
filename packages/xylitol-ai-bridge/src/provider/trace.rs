@@ -241,8 +241,10 @@ impl ProviderRequestTrace {
             "output": u.output,
             "total": u.input.saturating_add(u.output),
         });
-        if u.cache_read > 0 {
-            details["cache_read"] = serde_json::json!(u.cache_read);
+        // Honesty (c1885): only write cache_read under Tokens(n); never fake 0
+        // for NotReported / NotApplicable.
+        if let crate::dto::PromptCacheRead::Tokens(n) = u.prompt_cache_read {
+            details["cache_read"] = serde_json::json!(n);
         }
         if u.cache_write > 0 {
             details["cache_write"] = serde_json::json!(u.cache_write);
@@ -253,6 +255,9 @@ impl ProviderRequestTrace {
         let details_s = details.to_string();
         self.root
             .add_property(|| ("langfuse.observation.usage_details", details_s));
+        let status = u.prompt_cache_read.as_status_str().to_string();
+        self.root
+            .add_property(|| ("xylitol.prompt_cache_read", status));
     }
 
     fn attach_observation_io(&self) {
@@ -375,11 +380,8 @@ mod tests {
             usage: Some(AiBridgeUsage {
                 input: 3,
                 output: 5,
-                cache_read: 0,
-                cache_write: 0,
-                cache_write_1h: 0,
                 total_tokens: 8,
-                cost: None,
+                ..Default::default()
             }),
         });
         drop(t);
@@ -403,11 +405,8 @@ mod tests {
                 usage: Some(AiBridgeUsage {
                     input: 1,
                     output: 1,
-                    cache_read: 0,
-                    cache_write: 0,
-                    cache_write_1h: 0,
                     total_tokens: 2,
-                    cost: None,
+                    ..Default::default()
                 }),
             });
             drop(t);
@@ -423,6 +422,78 @@ mod tests {
         assert_eq!(prop(llm, "langfuse.observation.output"), Some("hello"));
         assert!(prop(llm, "langfuse.observation.usage_details").is_some());
         assert!(prop(llm, "langfuse.observation.level").is_none());
+    }
+
+    #[test]
+    fn attach_usage_emits_tri_state_without_fake_cache_read() {
+        let _g = take_lock();
+        set_provider_trace_active(true);
+        set_observation_io_tier(ObservationIoTier::None);
+        let records = Arc::new(Mutex::new(Vec::new()));
+        fastrace::set_reporter(CollectingReporter(Arc::clone(&records)), Config::default());
+
+        {
+            let t = ProviderRequestTrace::start("openai-responses", "m").expect("active");
+            let usage = AiBridgeUsage {
+                input: 10,
+                output: 2,
+                total_tokens: 12,
+                ..Default::default()
+            }
+            .with_prompt_cache_read(crate::dto::PromptCacheRead::NotReported);
+            t.emit_mapped_chunk(&AiBridgeChunk::Done {
+                finish_reason: crate::dto::AiBridgeStopReason::Stop,
+                usage: Some(usage),
+            });
+            drop(t);
+        }
+        fastrace::flush();
+        set_provider_trace_active(false);
+
+        let spans = records.lock().unwrap_or_else(|e| e.into_inner()).clone();
+        let llm = latest_llm(&spans);
+        assert_eq!(prop(llm, "xylitol.prompt_cache_read"), Some("not_reported"));
+        let details = prop(llm, "langfuse.observation.usage_details").expect("details");
+        assert!(
+            !details.contains("cache_read"),
+            "must not forge cache_read for NotReported: {details}"
+        );
+    }
+
+    #[test]
+    fn attach_usage_writes_cache_read_for_tokens() {
+        let _g = take_lock();
+        set_provider_trace_active(true);
+        set_observation_io_tier(ObservationIoTier::None);
+        let records = Arc::new(Mutex::new(Vec::new()));
+        fastrace::set_reporter(CollectingReporter(Arc::clone(&records)), Config::default());
+
+        {
+            let t = ProviderRequestTrace::start("openai-responses", "m").expect("active");
+            let usage = AiBridgeUsage {
+                input: 10,
+                output: 2,
+                total_tokens: 12,
+                ..Default::default()
+            }
+            .with_prompt_cache_read(crate::dto::PromptCacheRead::Tokens(7));
+            t.emit_mapped_chunk(&AiBridgeChunk::Done {
+                finish_reason: crate::dto::AiBridgeStopReason::Stop,
+                usage: Some(usage),
+            });
+            drop(t);
+        }
+        fastrace::flush();
+        set_provider_trace_active(false);
+
+        let spans = records.lock().unwrap_or_else(|e| e.into_inner()).clone();
+        let llm = latest_llm(&spans);
+        assert_eq!(prop(llm, "xylitol.prompt_cache_read"), Some("tokens"));
+        let details = prop(llm, "langfuse.observation.usage_details").expect("details");
+        assert!(
+            details.contains("\"cache_read\":7"),
+            "expected Tokens(7) in usage_details: {details}"
+        );
     }
 
     #[test]
@@ -516,11 +587,8 @@ mod tests {
             usage: Some(AiBridgeUsage {
                 input: 1,
                 output: 1,
-                cache_read: 0,
-                cache_write: 0,
-                cache_write_1h: 0,
                 total_tokens: 2,
-                cost: None,
+                ..Default::default()
             }),
         });
         assert_eq!(
