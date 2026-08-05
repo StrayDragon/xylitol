@@ -36,7 +36,7 @@ depends_on:
 
 - 动态压缩档产品 UX 全集（roadmap M3 可后续切）
 - Eval 成功率闸（后置）
-- status bar 注入（→ `c1895`）；压缩时 status 消息保留策略（→ `c1897`）
+- status bar 注入（→ delayed `c1895`）；压缩时 status 消息保留策略（→ delayed `c1897`）
 - tool_search
 
 ## Parallel / depends
