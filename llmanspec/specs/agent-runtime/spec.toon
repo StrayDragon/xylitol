@@ -3,7 +3,7 @@ name: "agent-runtime"
 purpose: "薄编排 ReAct 运行时：AgentRuntime 循环、工具批执行、steer/follow-up 队列、abort 与 XyEvent 流（不含 adk / OutputGuard）。"
 valid_scope[3]: src/agent/,src/protocol/,tests/
 requirements[36]{req_id,title,statement}:
-  ar1,"thin-react-loop","agent/ 层 MUST 以 AgentRuntime（runtime/react.rs）驱动 ReAct：调用 XyModel、执行工具、直至无 tool_calls、abort、或可选 should_stop_after_turn 请求停；MUST NOT 以产品默认 max_iterations 或未配置的硬步数闸结束 run；可选 session.max_turns（见 ar30）MUST 仅通过 should_stop_after_turn 生效。MUST NOT 在循环文件内联 bash 实现或厂商 HTTP。"
+  ar1,"thin-react-loop","agent/ 层 MUST 以 AgentRuntime 驱动 ReAct：调用 XyModel、执行工具、直至无 tool_calls、abort、或可选 should_stop_after_turn 请求停；MUST NOT 以产品默认 max_iterations 或未配置的硬步数闸结束 run；可选 session.max_turns（见 ar30）MUST 仅通过 should_stop_after_turn 生效。MUST NOT 在循环实现内联 bash 执行或厂商 HTTP。"
   ar2,"xy-event-stream",运行时 MUST 以 XyEvent 异步流对外输出（TextDelta / ThinkingDelta / Tool* / Turn* / QueueUpdate / Error 等）；MUST NOT 再引入 AgentEvent 或 adk 事件类型。
   ar3,工具批后继续,"同一模型响应中的全部工具调用 MUST 在下一轮模型调用前执行完毕（可并行或串行）；MUST NOT 因流结束 Done 而提前结束含 tool_calls 的回合。该行为 MUST 有可执行 BDD 场景（live `.feature`，`@req`）。"
   ar21,"tool-intent-before-execution","ReAct 消费 XyChunk::ToolCallStart/Delta/End 时：流式阶段 MUST 经 MessageUpdate（message 含渐进 ToolCall 部分）暴露工具意图；MUST NOT 在流未结束（MessageEnd 前）发射 ToolExecutionStart 或执行工具副作用。ToolExecutionStart/Update/End MUST 仅在 MessageEnd 之后的执行路径发出。该行为 MUST 有可执行 BDD 或等价单测场景。"
