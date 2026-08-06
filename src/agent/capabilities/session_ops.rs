@@ -3,7 +3,7 @@
 use std::sync::Arc;
 
 use crate::agent::compaction::CompactionSettings;
-use crate::agent::prompt::commands::{SlashCommandInfo, get_all_commands};
+use crate::agent::prompt::commands::SlashCommandInfo;
 use crate::protocol::error::XyError;
 use crate::protocol::message::AgentMessage;
 use crate::protocol::ports::{XyPermission, XySessionStore};
@@ -11,9 +11,9 @@ use crate::protocol::ports::{XyPermission, XySessionStore};
 use super::{AgentCapabilities, SessionStats, cancel_hook, observe_hook};
 
 impl AgentCapabilities {
-    /// Get all available commands (builtin + extension).
-    pub(crate) fn get_commands(&self) -> Vec<SlashCommandInfo> {
-        get_all_commands(&self.extension_commands)
+    /// Skill/extension slash commands only (product builtins are app-owned).
+    pub(crate) fn extension_commands(&self) -> &[SlashCommandInfo] {
+        &self.extension_commands
     }
 
     // ── Session management ────────────────────────────────────────

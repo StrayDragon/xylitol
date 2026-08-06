@@ -5191,7 +5191,7 @@ mod slice_tests {
 
     #[tokio::test]
     async fn c1115_theme_catalog_lists_theme() {
-        use crate::app::core::product_commands::product_slash_commands;
+        use crate::app::product_commands::product_slash_commands;
         use crate::app::tui::layout::product_slash_commands_for_editor;
 
         let ssot: Vec<&str> = product_slash_commands().iter().map(|c| c.name).collect();
