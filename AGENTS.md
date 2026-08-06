@@ -100,6 +100,13 @@
 - capability = 领域名词、kebab-case；purpose / statement / scenario **中文**。
 - 前缀按层：`package-tui-*` / `app-tui-*` / `agent-*` / `infra-*` / `protocol-*` / `cli-*` / `server-*` / `test-*` 等。细则：`llmanspec/config.yaml` → `rules.proposal` 与 `llmanspec/AGENTS.md`。
 
+## Specs 约束层级（产品级优先）
+
+- specs 的 requirement 约束落在**产品级**：可观察行为、产品语义、数据契约、验证结果；**禁止硬约束代码组织**——具体路径、文件/模块名、类型名、行数、方法归属、迁移清单（除非是**大的组织方向**：分层依赖、端口 seam、crate 边界、组合根职责、跨面同源）。
+- 代码组织演进（重构、改名、移动）不要求改 spec；spec 只随产品行为变化而变。代码是真值源，spec 不追平组织细节。
+- 已删除对象（类型/模块/方法）的引用条款随删除一并清理，不保留「防复活」清单（除非真实回归风险）。
+- 细则：`llmanspec/AGENTS.md` → 「spec 约束层级」；组织细节维护落在 `src/AGENTS.md`，不落在 specs。
+
 ## Skills
 
 SDD：`llman-sdd-*`（含 `llman-sdd-quick` 快速路径）。应用面：`write-surface`、`audit-dead-code`、`write-tui`。TUI 验证：`test-tui-harness`。观测窄读：`xylitol-inspect-runtime-logs`。构建/磁盘：`rust-build-tune`。TUI 参考：`tui-expert-of-codex`、`terminal-tui-differential-rendering`。

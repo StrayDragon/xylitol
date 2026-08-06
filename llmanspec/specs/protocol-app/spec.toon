@@ -8,7 +8,7 @@ requirements[14]{req_id,title,statement}:
   ip3,信封与错误,"protocol/ MUST 定义统一 REST 响应信封 {code, msg, data, request_id} 与类型化错误码集；信封类型位于 protocol/ 且 MUST 传输无关（内部无 HTTP 或 WS 类型）。"
   ip6,Subscribe 命令,"protocol/ MUST 定义 Command::Subscribe {session_id, last_seq} 用于 WS 订阅，Event::Subscribed {session_id, seq} 作为确认。"
   ip7,Event 变体完整,"protocol::Event MUST 覆盖全部 AgentEvent 变体：TurnStart、TurnEnd、MessageStart、MessageEnd、MessageUpdate、ToolExecutionUpdate、CompactionEnd、TextDelta、ThinkingDelta；ThinkingDelta MUST 往返 XyEvent::ThinkingDelta 且不得降级为空 MessageUpdate。"
-  ip8,会话命令分发,RPC dispatch MUST 实现 SwitchSession：经 SessionStore 校验目标会话存在并切换上下文；GetMessages 返回已加载 SessionEntry 记录；ExportJsonl 与 ImportJsonl 委托 AgentSession；MUST NOT 交付 stub 或仅字符串实现。
+  ip8,会话命令分发,RPC dispatch MUST 实现 SwitchSession：经 SessionStore 校验目标会话存在并切换上下文；GetMessages 返回已加载 SessionEntry 记录；ExportJsonl 与 ImportJsonl 委托会话导出/导入实现；MUST NOT 交付 stub 或仅字符串实现。
   ip9,dispatch 归属,"protocol::Command 变体执行语义（Command 分发时做什么）MUST 位于 app::core::dispatch 并由 tui 消费；需活跃 WS 会话的传输专属变体（Subscribe、ApproveTool、AnswerQuestion）MUST 留在 server/ws 层，MUST NOT 泄漏到 app::core::dispatch。"
   "ip-q1",steer 与 followup 命令,"protocol::Command MUST 包含 Steer、FollowUp 与 ClearQueue（或语义等价变体）；client 经线协议入队或清队列 MUST 反序列化为这些变体。"
   "ip-q2",dispatch 队列命令,"app::core::dispatch MUST 将 Steer、FollowUp、ClearQueue 路由到 Driver 对应方法；这些变体 MUST NOT 留在仅 WS 层处理。"
