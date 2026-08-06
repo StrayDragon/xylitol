@@ -266,8 +266,9 @@ mod tests {
         ];
         let projected = project_for_llm(&working);
         assert_eq!(projected.len(), 3);
-        assert!(
-            projected[0].text().contains("prior turns summarized"),
+        assert_eq!(
+            projected[0].text(),
+            fold_context_summary_for_llm("prior turns summarized"),
             "compaction folds to context summary user row"
         );
         // No synthesized assistant for summarized-away turns (would be a 4th+ row).
