@@ -4,6 +4,7 @@ use super::*;
 use crate::agent::model::registry::ModelRegistry;
 use crate::agent::session::AgentCapabilities;
 use crate::infra::session::SessionManager;
+use crate::protocol::message::LlmMessage;
 use crate::protocol::model_config::XyModelConfig;
 use crate::protocol::ports::{XyEventSink, XyModel, XySessionStore, XyStream};
 use crate::protocol::session::SessionEntry;
@@ -531,7 +532,7 @@ async fn tool_execute_err_ends_with_tool_end_not_global_error() {
                 is_error,
                 ..
             } => tool_ends.push((name, result, is_error)),
-            XyEvent::Error(msg) => global_errors.push(msg),
+            XyEvent::Error(err) => global_errors.push(err.message),
             _ => {}
         }
     }
@@ -1031,7 +1032,7 @@ async fn abort_before_run_does_not_stick_to_next_run() {
     while let Some(evt) = stream.next().await {
         match evt {
             XyEvent::TextDelta(t) => texts.push(t),
-            XyEvent::Error(m) if m == "aborted" => aborted = true,
+            XyEvent::Error(err) if err.is_aborted() => aborted = true,
             _ => {}
         }
     }
@@ -1070,7 +1071,7 @@ async fn abort_after_completed_run_allows_second_run() {
     while let Some(evt) = second.next().await {
         match evt {
             XyEvent::TextDelta(t) => texts.push(t),
-            XyEvent::Error(m) if m == "aborted" => aborted = true,
+            XyEvent::Error(err) if err.is_aborted() => aborted = true,
             _ => {}
         }
     }
@@ -1160,7 +1161,7 @@ async fn abort_mid_stream_stops_polling_model_chunks() {
                     agent.abort();
                 }
             }
-            XyEvent::Error(m) if m == "aborted" => aborted = true,
+            XyEvent::Error(err) if err.is_aborted() => aborted = true,
             _ => {}
         }
     }

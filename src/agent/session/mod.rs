@@ -382,10 +382,13 @@ impl AgentCapabilities {
     }
 
     /// Ensure a session exists (create if needed).
-    pub async fn ensure_session(&self, id: &str, parent: Option<&str>) -> Result<(), String> {
+    pub async fn ensure_session(&self, id: &str, parent: Option<&str>) -> Result<(), XyError> {
         if !self.store.exists(id).await {
             let cwd_clone = self.cwd.clone();
-            self.store.create(id, Some(&cwd_clone), parent).await?;
+            self.store
+                .create(id, Some(&cwd_clone), parent)
+                .await
+                .map_err(|e| XyError::Session(anyhow::anyhow!(e)))?;
             if let Some(bus) = &self.hook_bus {
                 let reason = if parent.is_some() { "fork" } else { "new" };
                 let (ty, phase, ctx) =
@@ -400,8 +403,12 @@ impl AgentCapabilities {
     pub(crate) async fn load_conversation_history(
         &self,
         session_id: &str,
-    ) -> Result<Vec<AgentMessage>, String> {
-        let entries = self.store.load_leaf_branch(session_id).await?;
+    ) -> Result<Vec<AgentMessage>, XyError> {
+        let entries = self
+            .store
+            .load_leaf_branch(session_id)
+            .await
+            .map_err(|e| XyError::Session(anyhow::anyhow!(e)))?;
         let entries = crate::protocol::session::build_context_entries(&entries);
         Ok(entries
             .iter()
@@ -844,11 +851,13 @@ impl AgentCapabilities {
     // ── Session stats ────────────────────────────────────────────
 
     /// Get session statistics.
-    pub async fn get_session_stats(&self) -> Result<SessionStats, String> {
+    pub async fn get_session_stats(&self) -> Result<SessionStats, XyError> {
         let sid = self
             .session_id()
-            .ok_or_else(|| "no active session".to_string())?;
-        crate::agent::session::stats::compute(self.store.as_ref(), sid).await
+            .ok_or_else(|| XyError::Session(anyhow::anyhow!("no active session")))?;
+        crate::agent::session::stats::compute(self.store.as_ref(), sid)
+            .await
+            .map_err(|e| XyError::Session(anyhow::anyhow!(e)))
     }
 
     // ── Bash execution (`!cmd` / `!!cmd`) ───────────────────────
@@ -930,8 +939,11 @@ impl AgentCapabilities {
     pub async fn export_to_html(
         &self,
         path: &std::path::Path,
-    ) -> Result<std::path::PathBuf, String> {
-        let sid = self.session_id().ok_or("no active session")?.to_string();
+    ) -> Result<std::path::PathBuf, XyError> {
+        let sid = self
+            .session_id()
+            .ok_or_else(|| XyError::Session(anyhow::anyhow!("no active session")))?
+            .to_string();
         self.exporter
             .export_to_html(self.store.as_ref(), &sid, path)
             .await
@@ -941,8 +953,11 @@ impl AgentCapabilities {
     pub async fn export_to_jsonl(
         &self,
         path: &std::path::Path,
-    ) -> Result<std::path::PathBuf, String> {
-        let sid = self.session_id().ok_or("no active session")?.to_string();
+    ) -> Result<std::path::PathBuf, XyError> {
+        let sid = self
+            .session_id()
+            .ok_or_else(|| XyError::Session(anyhow::anyhow!("no active session")))?
+            .to_string();
         self.exporter
             .export_to_jsonl(self.store.as_ref(), &sid, path)
             .await
@@ -953,7 +968,7 @@ impl AgentCapabilities {
     /// The new session id is derived from the source header (re-used) to keep
     /// identities stable across export/import; the file lands without
     /// overwriting an existing session.
-    pub async fn import_from_jsonl(&self, path: &std::path::Path) -> Result<String, String> {
+    pub async fn import_from_jsonl(&self, path: &std::path::Path) -> Result<String, XyError> {
         self.exporter
             .import_from_jsonl(self.store.as_ref(), path)
             .await
@@ -961,7 +976,7 @@ impl AgentCapabilities {
 
     /// Check and perform auto-compaction if the context is full.
     /// Returns true if compaction was performed.
-    pub async fn maybe_auto_compact(&self) -> Result<bool, String> {
+    pub async fn maybe_auto_compact(&self) -> Result<bool, XyError> {
         self.maybe_auto_compact_with(
             &crate::agent::compaction::EstimateOpts {
                 model_id: self.current_model().map(|m| m.id.clone()),
@@ -979,14 +994,12 @@ impl AgentCapabilities {
         &self,
         estimate_opts: &crate::agent::compaction::EstimateOpts,
         last_assistant: Option<&crate::protocol::message::AgentMessage>,
-    ) -> Result<bool, String> {
+    ) -> Result<bool, XyError> {
         let sid = self
             .session_id()
-            .ok_or_else(|| "no active session".to_string())?;
+            .ok_or_else(|| XyError::Session(anyhow::anyhow!("no active session")))?;
 
-        let model = self
-            .build_current_model()
-            .map_err(|e| format!("no model: {e}"))?;
+        let model = self.build_current_model()?;
 
         let ctx_window = self
             .current_model()
@@ -1010,7 +1023,8 @@ impl AgentCapabilities {
                 last_assistant,
                 None,
             )
-            .await?;
+            .await
+            .map_err(|e| XyError::Session(anyhow::anyhow!(e)))?;
 
         if compacted && let Some(bus) = &self.hook_bus {
             let (ty, phase, ctx) = crate::agent::runtime::script_hook_ctx::session_compact();
@@ -1021,14 +1035,12 @@ impl AgentCapabilities {
     }
 
     /// Manual force compact (pi `compact(customInstructions?)`). Does not apply the reserve gate.
-    pub async fn force_compact(&self, instructions: Option<String>) -> Result<(), String> {
+    pub async fn force_compact(&self, instructions: Option<String>) -> Result<(), XyError> {
         let sid = self
             .session_id()
-            .ok_or_else(|| "no active session".to_string())?;
+            .ok_or_else(|| XyError::Session(anyhow::anyhow!("no active session")))?;
 
-        let model = self
-            .build_current_model()
-            .map_err(|e| format!("no model: {e}"))?;
+        let model = self.build_current_model()?;
 
         if let Some(bus) = &self.hook_bus {
             let (ty, phase, ctx) = crate::agent::runtime::script_hook_ctx::session_before_compact();
@@ -1043,7 +1055,8 @@ impl AgentCapabilities {
                 self.sink.as_ref(),
                 instructions,
             )
-            .await?;
+            .await
+            .map_err(|e| XyError::Session(anyhow::anyhow!(e)))?;
 
         if let Some(bus) = &self.hook_bus {
             let (ty, phase, ctx) = crate::agent::runtime::script_hook_ctx::session_compact();

@@ -175,7 +175,7 @@ fn user_message_start_commits_steer_to_scrollback() {
 fn aborted_error_is_system_note_and_idles() {
     let mut model = UiModel::new();
     model.begin_run("hi");
-    apply_xy_event(&mut model, &XyEvent::Error("aborted".into()));
+    apply_xy_event(&mut model, &XyEvent::aborted());
     assert_eq!(model.phase, UiPhase::Idle);
     assert!(model.status.is_none());
     assert!(model.entries.iter().any(|e| matches!(
@@ -241,7 +241,7 @@ fn note_user_abort_dedupes_with_error_aborted() {
     let mut model = UiModel::new();
     model.begin_run("hi");
     model.note_user_abort();
-    apply_xy_event(&mut model, &XyEvent::Error("aborted".into()));
+    apply_xy_event(&mut model, &XyEvent::aborted());
     let n = model
         .entries
         .iter()

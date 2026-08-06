@@ -42,7 +42,7 @@ pub mod protocol;
 
 pub use crate::app::core::driver::{XyDriver, XyDriverError, XyInProcessDriver};
 pub use crate::protocol::error::{XyError, XyToolError};
-pub use crate::protocol::lifecycle::XyEvent;
+pub use crate::protocol::lifecycle::{XyEvent, XyEventError};
 pub use crate::protocol::model_config::{XyModelConfig, XyModelKind};
 pub use crate::protocol::types::{XyChunk, XyModelMeta, XyToolSchema};
 pub use crate::protocol::{

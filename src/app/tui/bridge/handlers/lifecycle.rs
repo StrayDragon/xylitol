@@ -76,10 +76,10 @@ pub fn apply_lifecycle_family(model: &mut UiModel, event: &XyEvent) -> bool {
             }
             true
         }
-        XyEvent::Error(msg) => {
+        XyEvent::Error(err) => {
             // Esc abort used to emit Error("aborted"); treat as cancel note + idle
             // so a sticky Error wall cannot block further conversation (c482 / c665).
-            if msg == "aborted" {
+            if err.is_aborted() {
                 // c1595: keep partial (flush) + footer; do not wipe already-committed assistant.
                 model.flush_streaming();
                 if !trailing_aborted_note(&model.entries) {
@@ -95,7 +95,9 @@ pub fn apply_lifecycle_family(model: &mut UiModel, event: &XyEvent) -> bool {
                     model.status = None;
                 }
             } else {
-                model.entries.push(UiEntry::Error { text: msg.clone() });
+                model.entries.push(UiEntry::Error {
+                    text: err.message.clone(),
+                });
             }
             true
         }
