@@ -1,5 +1,6 @@
 //! xylitol-ai-bridge — client→LLM provider wiring + token accounting.
 pub mod accounting;
+pub mod config;
 pub mod dto;
 pub mod error;
 pub mod fake;

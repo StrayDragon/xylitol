@@ -18,6 +18,7 @@ depends_on: []
 - [x] 4. 仓库清理：删除本机 `configs/testing/live-provider.local.yaml`；删除 `.gitignore` 中 `configs/testing/live-provider.local.yaml` 条目；检查 `.config/nextest.toml` 注释是否需要同步。
 - [x] 5. 文档指针：根 `AGENTS.md` 命令段（live-provider 专用配置路径）、`docs/research/responses-context-layout-and-cache-2026.md`、`justfile` test-live-provider 注释同步新路径与生成命令。
 - [x] 6. 门禁验证：`just fmt` / `just lint` / `just test-live-provider`（本机 RUN 或 SKIP 语义正确）/ `llman sdd validate --all --strict` 全绿。
+- [x] 7. （verify SUGGESTION 1）共享解析抽到 lib：新增 `packages/xylitol-ai-bridge/src/config.rs`（`global_config_dir` / `resolve_global_config_dir` / `live_provider_config_path` + 单测）；测试二进制与两个 lab 改用 lib，删除本地重复实现。
 
 ## 仓库外（用户已授权，apply 完成后执行）
 

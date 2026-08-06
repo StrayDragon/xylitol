@@ -56,25 +56,6 @@ fn default_max_out() -> u64 {
     256
 }
 
-/// Global config dir, same priority as the main crate (`XYLITOL_CONFIG_DIR` →
-/// `$XDG_CONFIG_HOME/xylitol` → `~/.config/xylitol`).
-fn global_config_dir() -> Option<PathBuf> {
-    if let Ok(dir) = std::env::var("XYLITOL_CONFIG_DIR")
-        && !dir.is_empty()
-    {
-        return Some(PathBuf::from(dir));
-    }
-    if let Ok(xdg) = std::env::var("XDG_CONFIG_HOME")
-        && !xdg.is_empty()
-    {
-        return Some(PathBuf::from(xdg).join("xylitol"));
-    }
-    std::env::var("HOME")
-        .ok()
-        .filter(|s| !s.is_empty())
-        .map(|home| PathBuf::from(home).join(".config").join("xylitol"))
-}
-
 fn load_cfg() -> Result<LiveProviderFile, String> {
     let path = match std::env::var("XYLITOL_LIVE_PROVIDER_CONFIG")
         .ok()
@@ -82,7 +63,7 @@ fn load_cfg() -> Result<LiveProviderFile, String> {
         .map(PathBuf::from)
     {
         Some(p) => p,
-        None => global_config_dir()
+        None => xylitol_ai_bridge::config::global_config_dir()
             .map(|d| d.join("dev").join("live-provider.yaml"))
             .ok_or_else(|| {
                 "no XYLITOL_CONFIG_DIR/XDG_CONFIG_HOME/HOME to locate the global config dir"
