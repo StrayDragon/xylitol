@@ -4,6 +4,7 @@
 //! shared types (and MAY depend on `xylitol_ai_bridge::dto`). MUST NOT depend on
 //! [`crate::protocol::wire`], `agent/`, or `infra/` implementations.
 
+pub mod ask;
 pub mod bash;
 pub mod event;
 pub mod export;
@@ -21,6 +22,7 @@ pub mod trust;
 // Flat re-exports for the common case where callers import the boundary
 // trait directly from `protocol::ports` (or via `protocol` root) rather than
 // from its submodule.
+pub use ask::{AskArgs, AskModeArg, AskOptionArg, AskQuestionArg, AskUserGateway};
 pub use bash::{BashExecOpts, XyBashExecutor, XyBashResult};
 pub use event::{LifecycleHandler, XyEventSink};
 pub use export::XyExportIo;

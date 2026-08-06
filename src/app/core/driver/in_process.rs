@@ -101,7 +101,7 @@ pub struct XyInProcessDriver {
     /// When set, [`Self::poll_mcp_bootstrap`] freezes tools at settle or this deadline (TUI gate).
     tool_gate_deadline: Option<std::time::Instant>,
     /// TUI-only ask gateway; MCP reload MUST re-plus ask when this is set (c1850).
-    ask_gateway: Option<Arc<dyn crate::infra::tools::AskUserGateway>>,
+    ask_gateway: Option<Arc<dyn crate::protocol::ports::ask::AskUserGateway>>,
 }
 
 impl XyInProcessDriver {
@@ -160,7 +160,10 @@ impl XyInProcessDriver {
     }
 
     /// Install TUI-only `ask` tool and remember the gateway for MCP reload.
-    pub fn install_ask_tool(&mut self, gateway: Arc<dyn crate::infra::tools::AskUserGateway>) {
+    pub fn install_ask_tool(
+        &mut self,
+        gateway: Arc<dyn crate::protocol::ports::ask::AskUserGateway>,
+    ) {
         self.ask_gateway = Some(gateway.clone());
         self.set_tools(crate::agent::tools::ToolSet::from_iter(
             crate::infra::tools::default_tools_with_ask(gateway),
@@ -168,7 +171,7 @@ impl XyInProcessDriver {
     }
 
     /// Gateway used when rebuilding builtins during MCP settle / reload (c1850).
-    pub fn ask_gateway(&self) -> Option<Arc<dyn crate::infra::tools::AskUserGateway>> {
+    pub fn ask_gateway(&self) -> Option<Arc<dyn crate::protocol::ports::ask::AskUserGateway>> {
         self.ask_gateway.clone()
     }
 

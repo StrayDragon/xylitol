@@ -5,11 +5,11 @@ use std::sync::Arc;
 
 use rstest_bdd_macros::{given, then, when};
 use xylitol::agent::tools::ToolSet;
-use xylitol::infra::tools::{
-    AskArgs, AskModeArg, AskOptionArg, AskQuestionArg, AskUserGateway, default_tools,
-    default_tools_with_ask,
-};
+use xylitol::infra::tools::{default_tools, default_tools_with_ask};
 use xylitol::protocol::error::XyToolError;
+use xylitol::protocol::ports::ask::{
+    AskArgs, AskModeArg, AskOptionArg, AskQuestionArg, AskUserGateway,
+};
 use xylitol_tui::{ChoiceAnswer, ChoiceResult, ChoiceStatus};
 
 thread_local! {
