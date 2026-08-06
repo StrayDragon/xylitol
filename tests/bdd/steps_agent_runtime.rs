@@ -422,7 +422,7 @@ pub(crate) fn _t_ar11_second_run_ok() {
     let events = ar_events();
     let aborted = events
         .iter()
-        .any(|ev| matches!(ev, XyEvent::Error(m) if m == "aborted"));
+        .any(|ev| matches!(ev, XyEvent::Error(err) if err.is_aborted()));
     let ended = events
         .iter()
         .any(|ev| matches!(ev, XyEvent::TurnEnd { .. }));

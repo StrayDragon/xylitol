@@ -423,7 +423,7 @@ pub(crate) fn _t_agent_aborted_error(agent: &AgentState) {
             .events
             .borrow()
             .iter()
-            .any(|e| matches!(e, XyEvent::Error(m) if m == "aborted")),
+            .any(|e| matches!(e, XyEvent::Error(err) if err.is_aborted())),
         "expected Error(aborted), got {:?}",
         agent.events.borrow()
     );

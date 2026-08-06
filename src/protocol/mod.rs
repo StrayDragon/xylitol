@@ -38,7 +38,7 @@ pub use ports::{
 
 // Shared vocabulary commonly imported from protocol root.
 pub use error::{XyError, XyToolError};
-pub use lifecycle::XyEvent;
+pub use lifecycle::{XyEvent, XyEventError};
 pub use message::{AgentMessage, AgentPart, EnvMessage, LlmMessage};
 pub use model_config::{XyModelConfig, XyModelKind};
 pub use tool_timeout::{MAX_TOOL_TIMEOUT_SECS, ToolTimeout, ToolTimeoutError};

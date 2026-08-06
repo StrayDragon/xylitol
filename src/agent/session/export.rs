@@ -11,8 +11,13 @@ use std::sync::Arc;
 use serde_json::Value;
 
 use crate::agent::text::xml_escape;
+use crate::protocol::error::XyError;
 use crate::protocol::ports::{XyExportIo, XySessionStore};
 use crate::protocol::session::{MessageEntry, SessionEntry, message_role};
+
+fn session_err(e: impl Into<String>) -> XyError {
+    XyError::Session(anyhow::anyhow!(e.into()))
+}
 
 /// Stateful export/import collaborator — owns the [`XyExportIo`] port.
 ///
@@ -35,11 +40,14 @@ impl SessionExporter {
         store: &dyn XySessionStore,
         session_id: &str,
         path: &std::path::Path,
-    ) -> Result<std::path::PathBuf, String> {
-        let io = self.io.as_ref().ok_or("export io not configured")?;
-        let entries = store.load_entries(session_id).await?;
+    ) -> Result<std::path::PathBuf, XyError> {
+        let io = self
+            .io
+            .as_ref()
+            .ok_or_else(|| XyError::Config("export io not configured".into()))?;
+        let entries = store.load_entries(session_id).await.map_err(session_err)?;
         let html = render_html(session_id, &entries);
-        io.write_text(path, &html).await?;
+        io.write_text(path, &html).await.map_err(session_err)?;
         Ok(path.to_path_buf())
     }
 
@@ -49,11 +57,14 @@ impl SessionExporter {
         store: &dyn XySessionStore,
         session_id: &str,
         path: &std::path::Path,
-    ) -> Result<std::path::PathBuf, String> {
-        let io = self.io.as_ref().ok_or("export io not configured")?;
-        let entries = store.load_entries(session_id).await?;
-        let jsonl = render_jsonl(&entries)?;
-        io.write_text(path, &jsonl).await?;
+    ) -> Result<std::path::PathBuf, XyError> {
+        let io = self
+            .io
+            .as_ref()
+            .ok_or_else(|| XyError::Config("export io not configured".into()))?;
+        let entries = store.load_entries(session_id).await.map_err(session_err)?;
+        let jsonl = render_jsonl(&entries).map_err(session_err)?;
+        io.write_text(path, &jsonl).await.map_err(session_err)?;
         Ok(path.to_path_buf())
     }
 
@@ -66,19 +77,25 @@ impl SessionExporter {
         &self,
         store: &dyn XySessionStore,
         path: &std::path::Path,
-    ) -> Result<String, String> {
-        let io = self.io.as_ref().ok_or("export io not configured")?;
-        let bytes = io.read_bytes(path).await?;
-        let entries = parse_jsonl(&bytes)?;
+    ) -> Result<String, XyError> {
+        let io = self
+            .io
+            .as_ref()
+            .ok_or_else(|| XyError::Config("export io not configured".into()))?;
+        let bytes = io.read_bytes(path).await.map_err(session_err)?;
+        let entries = parse_jsonl(&bytes).map_err(session_err)?;
         let new_id = match entries.first() {
             Some(SessionEntry::Header(h)) => h.id.clone(),
-            _ => return Err("import: missing header".into()),
+            _ => return Err(session_err("import: missing header")),
         };
         if store.exists(&new_id).await {
-            return Err(format!("session already exists: {new_id}"));
+            return Err(session_err(format!("session already exists: {new_id}")));
         }
         for entry in &entries {
-            store.append_session_entry(&new_id, entry).await?;
+            store
+                .append_session_entry(&new_id, entry)
+                .await
+                .map_err(session_err)?;
         }
         Ok(new_id)
     }

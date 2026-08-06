@@ -104,13 +104,14 @@ async fn render_stream<W: Write>(
             XyEvent::ToolExecutionEnd { name, result, .. } => {
                 eprintln!("{}", format_tool_end_line(&name, &result));
             }
-            XyEvent::Error(msg) => {
+            XyEvent::Error(err) => {
+                let msg = &err.message;
                 eprintln!("\n[Error] {msg}");
                 if in_thinking_block && !thinking_has_tags {
                     let _ = write!(io::stderr(), "</think>");
                     let _ = io::stderr().flush();
                 }
-                return Err(XyDriverError::message(msg));
+                return Err(XyDriverError::message(msg.clone()));
             }
             XyEvent::CompactionStart { reason } => {
                 eprintln!("\n[Compaction] {reason}");
@@ -259,7 +260,7 @@ mod tests {
     async fn error_event_returns_driver_err() {
         let events = vec![
             XyEvent::TextDelta("partial".into()),
-            XyEvent::Error("provider blew up".into()),
+            XyEvent::error_msg("provider blew up"),
             XyEvent::AgentEnd { messages: vec![] },
         ];
         let mut stream = mock_stream(events);

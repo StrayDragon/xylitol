@@ -13,6 +13,8 @@ pub enum Event {
     Error {
         #[serde(skip_serializing_if = "Option::is_none")]
         id: Option<String>,
+        #[serde(default, skip_serializing_if = "Option::is_none")]
+        kind: Option<String>,
         message: String,
     },
     Response {
@@ -164,9 +166,10 @@ impl XyEvent {
                 generation: *generation,
             }),
             XyEvent::AgentEnd { .. } => Some(Event::AgentEnd),
-            XyEvent::Error(msg) => Some(Event::Error {
+            XyEvent::Error(err) => Some(Event::Error {
                 id: None,
-                message: msg.clone(),
+                kind: Some(err.kind.clone()),
+                message: err.message.clone(),
             }),
             XyEvent::QueueUpdate {
                 steer_count,
@@ -280,7 +283,13 @@ impl TryFrom<&Event> for XyEvent {
             Event::AgentEnd => Ok(XyEvent::AgentEnd {
                 messages: Vec::new(),
             }),
-            Event::Error { message, .. } => Ok(XyEvent::Error(message.clone())),
+            Event::Error { message, kind, .. } => Ok(XyEvent::Error({
+                let mut e = crate::protocol::lifecycle::XyEventError::message_only(message.clone());
+                if let Some(k) = kind.clone() {
+                    e.kind = k;
+                }
+                e
+            })),
             Event::QueueUpdate {
                 steer_count,
                 follow_up_count,
