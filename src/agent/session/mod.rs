@@ -30,6 +30,7 @@ use crate::agent::prompt::commands::{SlashCommandInfo, get_all_commands};
 use crate::agent::prompt::{self, SystemPromptOpts};
 use crate::agent::runtime::AgentHooks;
 use crate::agent::tools::{ToolFreezePhase, ToolSet, ToolTableFingerprint};
+use crate::protocol::error::XyError;
 use crate::protocol::message::AgentMessage;
 use crate::protocol::ports::{
     XyBashExecutor, XyBatchMode, XyExportIo, XyHookBus, XyModel, XyPermission,
@@ -205,7 +206,7 @@ impl AgentCapabilities {
     }
 
     /// Build the selected model instance.
-    pub fn build_current_model(&self) -> Result<Arc<dyn XyModel>, String> {
+    pub fn build_current_model(&self) -> Result<Arc<dyn XyModel>, XyError> {
         self.with_models(|mm| mm.build_current_model())
     }
 
@@ -257,7 +258,7 @@ impl AgentCapabilities {
     }
 
     /// Set thinking level.
-    pub fn set_thinking_level(&mut self, level: ThinkingLevel) -> Result<(), String> {
+    pub fn set_thinking_level(&mut self, level: ThinkingLevel) -> Result<(), XyError> {
         let previous = self.thinking_level();
         self.with_models_mut(|mm| mm.set_thinking_level(level))?;
         self.persist_thinking_level_change(previous, level);
@@ -265,7 +266,7 @@ impl AgentCapabilities {
     }
 
     /// Cycle to the next level in the current model's support list.
-    pub fn cycle_thinking_level(&mut self) -> Result<ThinkingLevel, String> {
+    pub fn cycle_thinking_level(&mut self) -> Result<ThinkingLevel, XyError> {
         let previous = self.thinking_level();
         let level = self.with_models_mut(|mm| mm.cycle_thinking_level())?;
         self.persist_thinking_level_change(previous, level);
@@ -314,12 +315,16 @@ impl AgentCapabilities {
     }
 
     /// Select a specific model by ID (`source` = `"set"`).
-    pub fn select_model(&mut self, model_id: &str) -> Result<(), String> {
+    pub fn select_model(&mut self, model_id: &str) -> Result<(), XyError> {
         self.select_model_with_source(model_id, "set")
     }
 
     /// Select a model and emit `model_select` with the given source (`set` | `cycle`).
-    pub fn select_model_with_source(&mut self, model_id: &str, source: &str) -> Result<(), String> {
+    pub fn select_model_with_source(
+        &mut self,
+        model_id: &str,
+        source: &str,
+    ) -> Result<(), XyError> {
         let previous = self.current_model().map(|m| m.id.clone());
         self.with_models_mut(|mm| mm.select_model(model_id))?;
         // Fire-and-forget persistence via the session store port.
@@ -1080,7 +1085,27 @@ pub(crate) async fn observe_hook(
     }
 }
 
+/// Process-wide runtime for sync observe hooks (model/thinking select).
+///
+/// Replaces per-call `thread::spawn` + ad-hoc runtime (c996 hot path).
+fn hook_observe_runtime() -> &'static tokio::runtime::Runtime {
+    use std::sync::OnceLock;
+    static RT: OnceLock<tokio::runtime::Runtime> = OnceLock::new();
+    RT.get_or_init(|| {
+        tokio::runtime::Builder::new_multi_thread()
+            .worker_threads(1)
+            .enable_all()
+            .thread_name("xy-hook-obs")
+            .build()
+            .expect("observe_hook_sync runtime")
+    })
+}
+
 /// Sync observe for XyDriver/agent APIs that are not async (c996).
+///
+/// Always schedules on the dedicated shared runtime and waits via channel so
+/// callers on `current_thread` test runtimes never hit `block_in_place` /
+/// nested `block_on` panics.
 fn observe_hook_sync(
     bus: &Arc<dyn XyHookBus>,
     event_type: &str,
@@ -1091,17 +1116,12 @@ fn observe_hook_sync(
     let event_type = event_type.to_string();
     let phase = phase.to_string();
     let (tx, rx) = std::sync::mpsc::channel();
-    std::thread::spawn(move || {
-        let result = tokio::runtime::Builder::new_current_thread()
-            .enable_all()
-            .build()
-            .map(|rt| rt.block_on(observe_hook(&bus, &event_type, &phase, context)));
-        let _ = tx.send(result.map(|_| ()));
+    hook_observe_runtime().spawn(async move {
+        observe_hook(&bus, &event_type, &phase, context).await;
+        let _ = tx.send(());
     });
-    match rx.recv() {
-        Ok(Ok(())) => {}
-        Ok(Err(e)) => log::warn!("observe_hook_sync runtime failed error={}", e),
-        Err(_) => log::warn!("observe_hook_sync worker disconnected"),
+    if rx.recv().is_err() {
+        log::warn!("observe_hook_sync worker disconnected");
     }
 }
 
