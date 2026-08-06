@@ -1,13 +1,13 @@
-//! AgentCapabilities — core agent lifecycle / capability aggregate.
+//! AgentCapabilities — engine-side capability aggregate.
 //!
-//! Handles:
-//! - Model registry and current model tracking
-//! - Thinking level toggle (low/medium/high, clamped to model)
-//! - Tool registry management
-//! - Session persistence integration
-//! - Compaction integration
-//! - Model switching (cycleForward/cycleBackward/select)
-//! - Context token estimation
+//! **In scope:** model / thinking, tools (+ freeze) / hooks / permission,
+//! session id + store (+ fork/stats), context_policy + prompt assembly,
+//! compaction gate, steer/follow-up queues. Optional skill/extension slash
+//! table (`extension_commands`) for Driver merge only.
+//!
+//! **Out of scope (app / [`XyDriver`](crate::app::core::driver::XyDriver)):**
+//! product slash catalog, bang (`!`/`!!`), session HTML/JSONL export-import.
+//! See `src/AGENTS.md` → `AgentCapabilities` 目标面.
 //!
 //! This is the **runtime capability aggregate**, not the persisted session
 //! vocabulary in [`crate::protocol::session`].
@@ -57,7 +57,9 @@ pub struct ActiveTurnBinding {
     pub omit_thinking: bool,
 }
 
-/// Capability aggregate — model, tools, session persistence, and events.
+/// Engine capability aggregate (model / tools / session / prompt / compaction / queues).
+///
+/// Product slash, bang, and session export live on [`XyDriver`](crate::app::core::driver::XyDriver).
 pub struct AgentCapabilities {
     /// Model management (registry, selection, thinking level). Shared so ReAct
     /// can refresh at turn boundaries while surfaces call `select_model`.
@@ -87,7 +89,7 @@ pub struct AgentCapabilities {
     cwd: String,
     /// System prompt options for dynamic building.
     prompt_opts: SystemPromptOpts,
-    /// Extension-registered slash commands.
+    /// Skill/extension slash table only (product builtins assembled by Driver).
     extension_commands: Vec<SlashCommandInfo>,
 
     /// Advisory permission port consulted by the ReAct loop for tool routing.
