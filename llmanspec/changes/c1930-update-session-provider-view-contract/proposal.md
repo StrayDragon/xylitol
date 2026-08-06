@@ -1,6 +1,9 @@
 ---
 depends_on:
-  - c1890-add-responses-context-policy-assembler
+- c1890-add-responses-context-policy-assembler
+branch: sdd/c1930-update-session-provider-view-contract
+base_sha: 04a201abb1499a71b67102fb4b2232d50cdb76b6
+checkpointed: false
 ---
 
 # Session SSOT ↔ Provider view：有序幂等转换契约

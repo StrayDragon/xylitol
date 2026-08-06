@@ -10,15 +10,15 @@
 - [x] 0.4 衔接 c1890 / c1925 / c1900（tools）/ c1905（date 声明）
 - [x] 0.5 离线单测意向 + 在线 lab（`lab_session_prefix_idempotency`；不进 qa）；不强制新 BDD step
 - [x] 0.6 Lab 首跑+复跑：offline/import 哈希相等；arm_b ≥ arm_a；Langfuse 抽样同形（landing §5）
-- [ ] 0.7 Branch binding（`change start`）
+- [x] 0.7 Branch binding（`change start` → `sdd/c1930-…`）
 
 ## 1. Specs landing（Branch binding 后）
 
-- [ ] 1.1 `package-ai-bridge`：assemble 前缀幂等 / 顺序（衔 pab15/17/24/25）
-- [ ] 1.2 `agent-session`：resume/import 加载路径 → 投影唯一；稳定折叠文案；compaction cut
-- [ ] 1.3 **跳过** AgentStatusBar 盘面 req
-- [ ] 1.4 指针：date→c1905；冻表→c1900；冻结替换→c1910
-- [ ] 1.5 `readyToImplement=true`
+- [x] 1.1 `package-ai-bridge`：`pab27` assemble 前缀幂等（衔 pab15/17/24/25）
+- [x] 1.2 `agent-session`：`as48` resume/import → 投影唯一；稳定折叠文案
+- [x] 1.3 **跳过** AgentStatusBar 盘面 req
+- [x] 1.4 指针：date→c1905；冻表→c1900；冻结替换→c1910（写在 as48/pab27 statement）
+- [x] 1.5 validate specs（`--no-check`）+ `readyToImplement=true`
 
 ## 2. Apply
 
