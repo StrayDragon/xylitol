@@ -11,12 +11,11 @@ use crate::agent::tools::ToolSet;
 use crate::app::core::driver_error::XyDriverError;
 use crate::infra::config::types::HooksConfig;
 use crate::infra::event::EventBus;
-use crate::infra::export::StdExportIo;
 use crate::infra::hooks::HookDispatcher;
 use crate::infra::permission;
 use crate::infra::session::SessionManager;
 use crate::protocol::ports::{
-    XyBatchMode, XyEventSink, XyExportIo, XyHookBus, XyModelBuilder, XyPermission, XySessionStore,
+    XyBatchMode, XyEventSink, XyHookBus, XyModelBuilder, XyPermission, XySessionStore,
 };
 
 pub use crate::app::core::mcp_spec::{McpServerSpec, McpTransportSpec};
@@ -69,7 +68,7 @@ impl Default for BuildAgentOptions {
 ///
 /// This is the single composition-root helper used by CLI, RPC, server, and
 /// future TUI/GUI modes. It injects the concrete infra implementations
-/// (`SessionManager`, `XyEventSink`, `StdExportIo`; bang via Driver) into the
+/// (`SessionManager`, `XyEventSink`, bang/export via Driver) into the
 /// agent without letting `agent/` know about `infra/` types.
 ///
 /// **Event paths:** turn progress is the `XyDriver::run` → `XyEvent` stream.
@@ -84,7 +83,6 @@ pub fn build_agent(options: BuildAgentOptions) -> Result<AgentRuntime, XyDriverE
     let sink: Arc<dyn XyEventSink> = options
         .event_sink
         .unwrap_or_else(|| Arc::new(EventBus::new()));
-    let export_io: Arc<dyn XyExportIo> = Arc::new(StdExportIo::new());
 
     let hook_dispatcher = Arc::new(HookDispatcher::new(&options.hooks_config));
     let hooks_for_provider = if hook_dispatcher.is_empty() {
@@ -121,7 +119,6 @@ pub fn build_agent(options: BuildAgentOptions) -> Result<AgentRuntime, XyDriverE
     .skills(options.skills)
     .compaction_settings(options.compaction_settings)
     .cwd(options.cwd)
-    .export_io(export_io)
     .steering_mode(options.steering_mode)
     .follow_up_mode(options.follow_up_mode)
     .hook_bus(hook_bus)

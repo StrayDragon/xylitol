@@ -31,3 +31,4 @@ pub(crate) mod driver_error;
 pub(crate) mod lag;
 pub(crate) mod mcp_spec;
 pub mod product_commands;
+pub mod session_export;

@@ -1,10 +1,7 @@
-//! Session export — HTML / JSONL rendering and JSONL import.
+//! Session export/import — app-surface collaborator (HTML / JSONL).
 //!
-//! Pure transformations over a loaded session's entries. No file mutation
-//! outside the injected [`XyExportIo`] port; import creates a brand-new session.
-//!
-//! [`SessionExporter`] is the stateful collaborator holding the [`XyExportIo`]
-//! port; the free functions below are the pure rendering/parsing layer.
+//! Held by [`XyInProcessDriver`](crate::app::core::driver::XyInProcessDriver).
+//! Pure transformations over loaded session entries; file I/O via [`XyExportIo`].
 
 use std::sync::Arc;
 
@@ -21,9 +18,7 @@ fn session_err(e: impl Into<String>) -> XyError {
 
 /// Stateful export/import collaborator — owns the [`XyExportIo`] port.
 ///
-/// The session store is borrowed per call (passed as `&dyn XySessionStore` +
-/// session id) so the [`crate::agent::capabilities::AgentCapabilities`] remains the single
-/// holder of session context (design §4.1).
+/// Session store is borrowed per call (`&dyn XySessionStore` + session id).
 pub struct SessionExporter {
     io: Option<Arc<dyn XyExportIo>>,
 }

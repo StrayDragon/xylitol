@@ -1,4 +1,4 @@
-//! Session identity, fork, export, and queue APIs on [`AgentCapabilities`].
+//! Session identity, fork, and queue APIs on [`AgentCapabilities`].
 
 use std::sync::Arc;
 
@@ -112,52 +112,13 @@ impl AgentCapabilities {
         Ok(child_id)
     }
 
+    // ── Session stats ────────────────────────────────────────────
+
     /// Get session statistics.
     pub async fn get_session_stats(&self) -> Result<SessionStats, XyError> {
         let sid = self
             .session_id()
             .ok_or_else(|| XyError::Session(anyhow::anyhow!("no active session")))?;
         crate::agent::capabilities::stats::compute(self.store.as_ref(), sid).await
-    }
-
-    // ── Export / import (delegated to SessionExporter) ─────────
-
-    /// Export the active session's entries to an HTML file. Returns the path.
-    pub async fn export_to_html(
-        &self,
-        path: &std::path::Path,
-    ) -> Result<std::path::PathBuf, XyError> {
-        let sid = self
-            .session_id()
-            .ok_or_else(|| XyError::Session(anyhow::anyhow!("no active session")))?
-            .to_string();
-        self.exporter
-            .export_to_html(self.store.as_ref(), &sid, path)
-            .await
-    }
-
-    /// Export the active session's entries as JSONL. Returns the path.
-    pub async fn export_to_jsonl(
-        &self,
-        path: &std::path::Path,
-    ) -> Result<std::path::PathBuf, XyError> {
-        let sid = self
-            .session_id()
-            .ok_or_else(|| XyError::Session(anyhow::anyhow!("no active session")))?
-            .to_string();
-        self.exporter
-            .export_to_jsonl(self.store.as_ref(), &sid, path)
-            .await
-    }
-
-    /// Import a JSONL file into a brand-new session. Returns the new session id.
-    ///
-    /// The new session id is derived from the source header (re-used) to keep
-    /// identities stable across export/import; the file lands without
-    /// overwriting an existing session.
-    pub async fn import_from_jsonl(&self, path: &std::path::Path) -> Result<String, XyError> {
-        self.exporter
-            .import_from_jsonl(self.store.as_ref(), path)
-            .await
     }
 }

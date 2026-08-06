@@ -1081,7 +1081,6 @@ pub(crate) async fn t_comp_agent_entry_written(agent: &AgentState, sess: &XySess
 pub(crate) fn make_test_capabilities(
     agent: &AgentState,
     store: Arc<dyn xylitol::protocol::ports::XySessionStore>,
-    export_io: Option<Arc<dyn xylitol::protocol::ports::XyExportIo>>,
 ) -> AgentCapabilities {
     let sink: Arc<dyn xylitol::protocol::ports::XyEventSink> =
         Arc::new(xylitol::infra::event::EventBus::new());
@@ -1097,7 +1096,6 @@ pub(crate) fn make_test_capabilities(
         None,
         Arc::new(xylitol::infra::provider::factory::build_provider),
         xylitol::infra::permission::allow_all_permission(),
-        export_io,
         xylitol::agent::capabilities::QueueMode::default(),
         xylitol::agent::capabilities::QueueMode::default(),
         None,

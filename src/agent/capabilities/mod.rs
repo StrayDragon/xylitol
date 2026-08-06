@@ -17,7 +17,6 @@ use std::sync::{Arc, Mutex};
 pub(crate) use crate::protocol::ports::{XyEventSink, XySessionStore};
 
 mod compact_ops;
-mod export;
 mod hook_bus;
 mod model_ops;
 mod prompt_ops;
@@ -41,7 +40,7 @@ use crate::agent::runtime::AgentHooks;
 use crate::agent::tools::{ToolFreezePhase, ToolSet, ToolTableFingerprint};
 use crate::protocol::message::AgentMessage;
 use crate::protocol::model::ThinkingLevel;
-use crate::protocol::ports::{XyBatchMode, XyExportIo, XyHookBus, XyPermission};
+use crate::protocol::ports::{XyBatchMode, XyHookBus, XyPermission};
 
 // ── Model Registry ──────────────────────────────────────────────────
 
@@ -90,8 +89,6 @@ pub struct AgentCapabilities {
     prompt_opts: SystemPromptOpts,
     /// Extension-registered slash commands.
     extension_commands: Vec<SlashCommandInfo>,
-    /// Export/import collaborator. Holds the optional [`XyExportIo`] port.
-    exporter: crate::agent::capabilities::export::SessionExporter,
 
     /// Advisory permission port consulted by the ReAct loop for tool routing.
     permission: Arc<dyn XyPermission>,
@@ -121,7 +118,6 @@ impl AgentCapabilities {
         compaction_settings: Option<CompactionSettings>,
         model_builder: crate::protocol::ports::XyModelBuilder,
         permission: Arc<dyn XyPermission>,
-        export_io: Option<Arc<dyn XyExportIo>>,
         steering_mode: QueueMode,
         follow_up_mode: QueueMode,
         hook_bus: Option<Arc<dyn XyHookBus>>,
@@ -160,7 +156,6 @@ impl AgentCapabilities {
                 ..Default::default()
             },
             extension_commands: Vec::new(),
-            exporter: crate::agent::capabilities::export::SessionExporter::new(export_io),
             store,
             sink,
             permission,
@@ -365,7 +360,6 @@ mod tests {
             None,
             std::sync::Arc::new(crate::infra::provider::factory::build_provider),
             crate::infra::permission::allow_all_permission(),
-            Some(std::sync::Arc::new(crate::infra::export::StdExportIo::new())),
             QueueMode::default(),
             QueueMode::default(),
             None,
