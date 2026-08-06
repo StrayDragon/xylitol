@@ -15,9 +15,6 @@ use crate::protocol::lifecycle::XyEvent;
 pub struct XyEventStream {
     pub(crate) inner: Pin<Box<dyn Stream<Item = XyEvent> + Send>>,
     pub(crate) done: bool,
-    /// Track turn number (set externally via event wrapping).
-    #[allow(dead_code)]
-    pub(crate) turn_index: u32,
 }
 
 impl XyEventStream {
@@ -25,11 +22,7 @@ impl XyEventStream {
         let inner: Pin<Box<dyn Stream<Item = XyEvent> + Send>> = Box::pin(async_stream::stream! {
             yield XyEvent::Error(msg);
         });
-        Self {
-            inner,
-            done: false,
-            turn_index: 0,
-        }
+        Self { inner, done: false }
     }
 }
 

@@ -185,12 +185,12 @@ pub(crate) struct ToolExecuteSpan {
 }
 
 impl ToolExecuteSpan {
-    #[allow(dead_code)] // kept for Sequential-style enter_with_parent call sites / tests
+    #[cfg(test)]
     pub(crate) fn start(name: &str, id: &str, parent: Option<&Span>) -> Option<Self> {
         Self::start_with_batch(name, id, parent, None, None)
     }
 
-    #[allow(dead_code)]
+    #[cfg(test)]
     pub(crate) fn start_with_batch(
         name: &str,
         id: &str,

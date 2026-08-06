@@ -58,7 +58,7 @@ impl BashExecHandler {
             .ok_or("bash executor not configured")?;
 
         let cancel = CancellationToken::new();
-        *self.cancel.lock().unwrap_or_else(|e| e.into_inner()) = Some(cancel.clone());
+        *crate::agent::lock::lock_mutex(&self.cancel) = Some(cancel.clone());
 
         let result = executor
             .execute(
@@ -71,7 +71,7 @@ impl BashExecHandler {
             )
             .await;
 
-        *self.cancel.lock().unwrap_or_else(|e| e.into_inner()) = None;
+        *crate::agent::lock::lock_mutex(&self.cancel) = None;
 
         // Record on disk.
         if let Some(sid) = session_id {
@@ -83,7 +83,7 @@ impl BashExecHandler {
 
     /// Abort any in-flight bash execution (`&self` for XyDriver / AgentRuntime abort).
     pub fn abort(&self) {
-        if let Some(cancel) = self.cancel.lock().unwrap_or_else(|e| e.into_inner()).take() {
+        if let Some(cancel) = crate::agent::lock::lock_mutex(&self.cancel).take() {
             cancel.cancel();
         }
     }

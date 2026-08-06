@@ -6,12 +6,10 @@
 //! - [`cut_detector`] — cut-point detection
 //! - [`file_ops`] — file operation tracking
 //! - [`llm_summarizer`] — LLM-based summarization
-//! - [`message_converter`] — SessionEntry → AgentMessage
 
 pub mod cut_detector;
 pub mod file_ops;
 pub mod llm_summarizer;
-pub mod message_converter;
 pub mod obs;
 pub mod orchestrator;
 pub mod overflow;
