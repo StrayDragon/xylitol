@@ -14,7 +14,7 @@ use futures::{Stream, StreamExt};
 use serde_json::Value;
 
 use crate::dto::AiBridgeStream;
-use crate::dto::{AiBridgeChunk, AiBridgeToolSchema};
+use crate::dto::{AiBridgeChunk, AiBridgeToolSchema, Diagnostic};
 use crate::dto::{AiBridgeMessage, AiBridgePart, AiBridgeStopReason};
 use crate::error::AiBridgeError;
 use crate::hooks::HttpHooks;
@@ -150,7 +150,8 @@ pub(crate) fn assemble_responses_body(
     options: &crate::thinking::AiBridgeGenerateOptions,
     wire_policy: &WirePolicy,
 ) -> Value {
-    let mut input_items = convert_messages_to_input_items(&messages);
+    let (mut input_items, _replay_diagnostics) =
+        messages_to_responses_input_with_diagnostics(&messages);
     prepend_system_prompt_item(
         &mut input_items,
         options.system_prompt.as_deref(),
@@ -315,6 +316,8 @@ fn responses_sdk_stream(
 pub struct ResponsesStreamState {
     /// item_id → (name, partial args json, started)
     function_calls: HashMap<String, (String, String, bool)>,
+    /// reasoning item id → last done item JSON (for encrypted_content backfill).
+    reasoning_items_by_id: HashMap<String, Value>,
     usage_input: u64,
     usage_output: u64,
     /// Last usage JSON blob (for policy-aware cache_read mapping).
@@ -407,6 +410,13 @@ pub fn map_responses_sse_event(
             };
             let item_type = item.get("type").and_then(|v| v.as_str()).unwrap_or("");
             if item_type == "reasoning" {
+                if let Some(id) = item.get("id").and_then(|v| v.as_str())
+                    && !id.is_empty()
+                {
+                    state
+                        .reasoning_items_by_id
+                        .insert(id.to_string(), item.clone());
+                }
                 return vec![thinking_end_from_reasoning_item(item)];
             }
             if item_type != "function_call" {
@@ -466,58 +476,118 @@ pub fn map_responses_sse_event(
             }
             Vec::new()
         }
-        "response.completed" => {
-            if let Some(usage) = data
-                .get("response")
-                .and_then(|r| r.get("usage"))
-                .or_else(|| data.get("usage"))
-            {
-                state.usage_input = usage
-                    .get("input_tokens")
-                    .and_then(|v| v.as_u64())
-                    .unwrap_or(state.usage_input);
-                state.usage_output = usage
-                    .get("output_tokens")
-                    .and_then(|v| v.as_u64())
-                    .unwrap_or(state.usage_output);
-                state.usage_value = Some(usage.clone());
-            }
-            let usage = state
-                .usage_value
-                .as_ref()
-                .map(|v| crate::usage::from_responses_usage_with_policy(v, state.wire_policy))
-                .filter(|u| u.total_tokens > 0 || u.input + u.output > 0);
-            // Prefer mapped usage; fall back to accumulated counters when blob missing.
-            let usage = usage.or_else(|| {
-                let usage_total = state.usage_input + state.usage_output;
-                if usage_total > 0 {
-                    let pcr = if state.wire_policy.expects_prompt_cache_usage() {
-                        crate::dto::PromptCacheRead::NotReported
-                    } else {
-                        crate::dto::PromptCacheRead::NotApplicable
-                    };
-                    Some(
-                        crate::dto::AiBridgeUsage {
-                            input: state.usage_input,
-                            output: state.usage_output,
-                            total_tokens: usage_total,
-                            ..Default::default()
-                        }
-                        .with_prompt_cache_read(pcr),
-                    )
-                } else {
-                    None
-                }
-            });
-            vec![AiBridgeChunk::Done {
-                finish_reason: AiBridgeStopReason::Stop,
-                usage,
-            }]
+        "response.completed" => finish_responses_terminal(data, state, AiBridgeStopReason::Stop),
+        "response.incomplete" => {
+            finish_responses_terminal(data, state, AiBridgeStopReason::MaxTokens)
         }
         // Partial lifecycle events (`response.created`, `response.in_progress`, …)
         // must not fail the stream on compatible APIs.
         _ => Vec::new(),
     }
+}
+
+/// Terminal `completed` / `incomplete`: backfill encrypted signatures then Done.
+fn finish_responses_terminal(
+    data: &Value,
+    state: &mut ResponsesStreamState,
+    finish_reason: AiBridgeStopReason,
+) -> Vec<AiBridgeChunk> {
+    if let Some(usage) = data
+        .get("response")
+        .and_then(|r| r.get("usage"))
+        .or_else(|| data.get("usage"))
+    {
+        state.usage_input = usage
+            .get("input_tokens")
+            .and_then(|v| v.as_u64())
+            .unwrap_or(state.usage_input);
+        state.usage_output = usage
+            .get("output_tokens")
+            .and_then(|v| v.as_u64())
+            .unwrap_or(state.usage_output);
+        state.usage_value = Some(usage.clone());
+    }
+
+    let mut out = backfill_reasoning_encrypted_from_terminal(data, state);
+
+    let usage = state
+        .usage_value
+        .as_ref()
+        .map(|v| crate::usage::from_responses_usage_with_policy(v, state.wire_policy))
+        .filter(|u| u.total_tokens > 0 || u.input + u.output > 0);
+    let usage = usage.or_else(|| {
+        let usage_total = state.usage_input + state.usage_output;
+        if usage_total > 0 {
+            let pcr = if state.wire_policy.expects_prompt_cache_usage() {
+                crate::dto::PromptCacheRead::NotReported
+            } else {
+                crate::dto::PromptCacheRead::NotApplicable
+            };
+            Some(
+                crate::dto::AiBridgeUsage {
+                    input: state.usage_input,
+                    output: state.usage_output,
+                    total_tokens: usage_total,
+                    ..Default::default()
+                }
+                .with_prompt_cache_read(pcr),
+            )
+        } else {
+            None
+        }
+    });
+    out.push(AiBridgeChunk::Done {
+        finish_reason,
+        usage,
+    });
+    out
+}
+
+/// Merge non-empty `encrypted_content` from terminal `response.output` into stored
+/// reasoning items (pi Azure / store:false backfill). Emits ThinkingEnd updates.
+fn backfill_reasoning_encrypted_from_terminal(
+    data: &Value,
+    state: &mut ResponsesStreamState,
+) -> Vec<AiBridgeChunk> {
+    let Some(output) = data
+        .get("response")
+        .and_then(|r| r.get("output"))
+        .or_else(|| data.get("output"))
+        .and_then(|v| v.as_array())
+    else {
+        return Vec::new();
+    };
+
+    let mut out = Vec::new();
+    for item in output {
+        if item.get("type").and_then(|v| v.as_str()) != Some("reasoning") {
+            continue;
+        }
+        let Some(enc) = item.get("encrypted_content").and_then(|v| v.as_str()) else {
+            continue;
+        };
+        if enc.is_empty() {
+            continue;
+        }
+        let Some(id) = item.get("id").and_then(|v| v.as_str()) else {
+            continue;
+        };
+        let Some(stored) = state.reasoning_items_by_id.get_mut(id) else {
+            continue;
+        };
+        let needs = match stored.get("encrypted_content").and_then(|v| v.as_str()) {
+            None => true,
+            Some(s) => s.is_empty(),
+        };
+        if !needs {
+            continue;
+        }
+        if let Some(obj) = stored.as_object_mut() {
+            obj.insert("encrypted_content".into(), Value::String(enc.to_string()));
+        }
+        out.push(thinking_end_from_reasoning_item(stored));
+    }
+    out
 }
 
 fn reasoning_item_display_text(item: &Value) -> String {
@@ -613,7 +683,17 @@ fn parse_responses_output(json: &Value, wire_policy: WirePolicy) -> Vec<AiBridge
 
 /// Convert a slice of [`AiBridgeMessage`] values to OpenAI Responses `input` items.
 pub fn messages_to_responses_input(messages: &[AiBridgeMessage]) -> Vec<Value> {
-    convert_messages_to_input_items(messages)
+    messages_to_responses_input_with_diagnostics(messages).0
+}
+
+/// Like [`messages_to_responses_input`], also returning omit/replay diagnostics
+/// (e.g. illegal `thinkingSignature` JSON omitted under full-replay).
+pub fn messages_to_responses_input_with_diagnostics(
+    messages: &[AiBridgeMessage],
+) -> (Vec<Value>, Vec<Diagnostic>) {
+    let mut diagnostics = Vec::new();
+    let items = convert_messages_to_input_items(messages, &mut diagnostics);
+    (items, diagnostics)
 }
 
 /// Build Responses `input` with optional system/developer prepend (c1270 / pi align).
@@ -621,7 +701,7 @@ pub fn messages_to_responses_input_with_options(
     messages: &[AiBridgeMessage],
     options: &crate::thinking::AiBridgeGenerateOptions,
 ) -> Vec<Value> {
-    let mut items = convert_messages_to_input_items(messages);
+    let (mut items, _) = messages_to_responses_input_with_diagnostics(messages);
     prepend_system_prompt_item(
         &mut items,
         options.system_prompt.as_deref(),
@@ -655,7 +735,10 @@ fn prepend_system_prompt_item(
 }
 
 /// Convert a slice of [`AiBridgeMessage`] values to OpenAI Responses `input` items.
-fn convert_messages_to_input_items(messages: &[AiBridgeMessage]) -> Vec<Value> {
+fn convert_messages_to_input_items(
+    messages: &[AiBridgeMessage],
+    diagnostics: &mut Vec<Diagnostic>,
+) -> Vec<Value> {
     let mut items: Vec<Value> = Vec::new();
 
     for msg in messages {
@@ -675,15 +758,29 @@ fn convert_messages_to_input_items(messages: &[AiBridgeMessage]) -> Vec<Value> {
                 }
             }
             AiBridgeMessage::AssistantMessage { content, .. } => {
-                // Replay thinking with signature as reasoning items first (pi).
+                // Full-replay only: opaque thinkingSignature → reasoning item (pi).
                 for part in content {
                     if let AiBridgePart::Thinking {
                         thinking_signature: Some(sig),
                         ..
                     } = part
-                        && let Ok(item) = serde_json::from_str::<Value>(sig)
                     {
-                        items.push(item);
+                        match serde_json::from_str::<Value>(sig) {
+                            Ok(item) => items.push(item),
+                            Err(e) => {
+                                let message = format!(
+                                    "omit illegal thinkingSignature JSON ({e}); full-replay requires parseable signature"
+                                );
+                                log::warn!(
+                                    target: "xylitol_ai_bridge::responses",
+                                    "{message}"
+                                );
+                                diagnostics.push(Diagnostic {
+                                    message,
+                                    source: Some("openai-responses".into()),
+                                });
+                            }
+                        }
                     }
                 }
 
@@ -773,7 +870,7 @@ mod tests {
             AiBridgeMessage::user("hello"),
             AiBridgeMessage::assistant("hi there"),
         ];
-        let items = convert_messages_to_input_items(&msgs);
+        let items = messages_to_responses_input(&msgs);
         for item in &items {
             assert!(item.get("type").is_some(), "item missing `type`: {item}");
         }
@@ -814,7 +911,7 @@ mod tests {
                 false,
             ),
         ];
-        let items = convert_messages_to_input_items(&msgs);
+        let items = messages_to_responses_input(&msgs);
         // user message, assistant message, function_call, function_call_output
         let types: Vec<&str> = items
             .iter()
@@ -859,7 +956,7 @@ mod tests {
             timestamp: 0,
             diagnostics: Vec::new(),
         }];
-        let items = convert_messages_to_input_items(&msgs);
+        let items = messages_to_responses_input(&msgs);
         assert_eq!(
             items.len(),
             1,
@@ -1167,7 +1264,7 @@ mod tests {
             timestamp: 0,
             diagnostics: Vec::new(),
         }];
-        let items = convert_messages_to_input_items(&msgs);
+        let items = messages_to_responses_input(&msgs);
         let text_item = items
             .iter()
             .find(|i| i.get("role") == Some(&serde_json::json!("assistant")))
@@ -1203,10 +1300,265 @@ mod tests {
             timestamp: 0,
             diagnostics: Vec::new(),
         }];
-        let items = convert_messages_to_input_items(&msgs);
+        let items = messages_to_responses_input(&msgs);
         assert_eq!(items[0]["type"], "reasoning");
         assert_eq!(items[0]["id"], "rs_1");
         assert_eq!(items[1]["role"], "assistant");
+    }
+
+    #[test]
+    fn empty_encrypted_signature_still_full_replays() {
+        let reasoning = serde_json::json!({
+            "type": "reasoning",
+            "id": "rs_empty",
+            "encrypted_content": "",
+            "summary": []
+        });
+        let msgs = vec![AiBridgeMessage::AssistantMessage {
+            content: vec![
+                AiBridgePart::Thinking {
+                    thinking: "t".into(),
+                    redacted: false,
+                    thinking_signature: Some(reasoning.to_string()),
+                },
+                AiBridgePart::text("hi"),
+            ],
+            stop_reason: Some(AiBridgeStopReason::Stop),
+            usage: None,
+            api: "openai-responses".into(),
+            provider: "test".into(),
+            model: "m".into(),
+            response_id: None,
+            error_message: None,
+            timestamp: 0,
+            diagnostics: Vec::new(),
+        }];
+        let items = messages_to_responses_input(&msgs);
+        assert_eq!(items[0]["type"], "reasoning");
+        assert_eq!(items[0]["encrypted_content"], "");
+        assert_eq!(items[0]["id"], "rs_empty");
+    }
+
+    #[test]
+    fn illegal_thinking_signature_omitted_not_merged_into_text() {
+        let msgs = vec![AiBridgeMessage::AssistantMessage {
+            content: vec![
+                AiBridgePart::Thinking {
+                    thinking: "should-not-leak".into(),
+                    redacted: false,
+                    thinking_signature: Some("not-json{{{{".into()),
+                },
+                AiBridgePart::text("visible"),
+            ],
+            stop_reason: Some(AiBridgeStopReason::Stop),
+            usage: None,
+            api: "openai-responses".into(),
+            provider: "test".into(),
+            model: "m".into(),
+            response_id: None,
+            error_message: None,
+            timestamp: 0,
+            diagnostics: Vec::new(),
+        }];
+        let (items, diags) = messages_to_responses_input_with_diagnostics(&msgs);
+        assert!(
+            items
+                .iter()
+                .all(|i| i.get("type") != Some(&serde_json::json!("reasoning"))),
+            "illegal signature must not invent reasoning item: {items:?}"
+        );
+        let text = items
+            .iter()
+            .find(|i| i.get("role") == Some(&serde_json::json!("assistant")))
+            .expect("assistant")["content"][0]["text"]
+            .as_str()
+            .unwrap();
+        assert_eq!(text, "visible");
+        assert!(!text.contains("should-not-leak"));
+        assert_eq!(diags.len(), 1, "expect omit diagnostic: {diags:?}");
+        assert!(
+            diags[0].message.contains("omit illegal thinkingSignature"),
+            "{diags:?}"
+        );
+        assert_eq!(diags[0].source.as_deref(), Some("openai-responses"));
+    }
+
+    /// c27 seam (bridge): post-compact working history has no summarized-away
+    /// thinkingSignature — assemble MUST NOT invent old reasoning ids.
+    #[test]
+    fn compact_shaped_history_does_not_invent_old_reasoning_signature() {
+        let msgs = vec![
+            AiBridgeMessage::user("[Context summary: prior turns summarized]"),
+            AiBridgeMessage::user("continue after compact"),
+            AiBridgeMessage::AssistantMessage {
+                content: vec![AiBridgePart::text("kept reply")],
+                stop_reason: Some(AiBridgeStopReason::Stop),
+                usage: None,
+                api: "openai-responses".into(),
+                provider: "test".into(),
+                model: "m".into(),
+                response_id: None,
+                error_message: None,
+                timestamp: 0,
+                diagnostics: Vec::new(),
+            },
+        ];
+        let items = messages_to_responses_input(&msgs);
+        assert!(
+            items
+                .iter()
+                .all(|i| i.get("id") != Some(&serde_json::json!("rs_summarized_away"))),
+            "must not invent summarized-away reasoning id: {items:?}"
+        );
+        assert!(
+            items
+                .iter()
+                .all(|i| i.get("type") != Some(&serde_json::json!("reasoning"))),
+            "compact-shaped history has no thinkingSignature to replay: {items:?}"
+        );
+    }
+
+    /// Positive control: kept assistant with signature still full-replays after
+    /// a compaction summary user row (c27 must not strip retained signatures).
+    #[test]
+    fn kept_signature_after_compact_summary_still_replays() {
+        let reasoning = serde_json::json!({
+            "type": "reasoning",
+            "id": "rs_kept",
+            "summary": [{"type": "summary_text", "text": "plan"}]
+        });
+        let msgs = vec![
+            AiBridgeMessage::user("[Context summary: prior turns summarized]"),
+            AiBridgeMessage::AssistantMessage {
+                content: vec![
+                    AiBridgePart::Thinking {
+                        thinking: "plan".into(),
+                        redacted: false,
+                        thinking_signature: Some(reasoning.to_string()),
+                    },
+                    AiBridgePart::text("kept"),
+                ],
+                stop_reason: Some(AiBridgeStopReason::Stop),
+                usage: None,
+                api: "openai-responses".into(),
+                provider: "test".into(),
+                model: "m".into(),
+                response_id: None,
+                error_message: None,
+                timestamp: 0,
+                diagnostics: Vec::new(),
+            },
+        ];
+        let items = messages_to_responses_input(&msgs);
+        assert_eq!(
+            items
+                .iter()
+                .filter(|i| i.get("type") == Some(&serde_json::json!("reasoning")))
+                .count(),
+            1
+        );
+        assert_eq!(
+            items
+                .iter()
+                .find(|i| i.get("type") == Some(&serde_json::json!("reasoning")))
+                .unwrap()["id"],
+            "rs_kept"
+        );
+    }
+
+    #[test]
+    fn completed_backfills_encrypted_before_done() {
+        let mut state = ResponsesStreamState::default();
+        let done = serde_json::json!({
+            "type": "response.output_item.done",
+            "item": {
+                "type": "reasoning",
+                "id": "rs_bf",
+                "summary": [{"type": "summary_text", "text": "plan"}],
+                "encrypted_content": ""
+            }
+        });
+        let chunks_done = map_responses_sse_event(&done, &mut state);
+        assert!(matches!(
+            &chunks_done[..],
+            [AiBridgeChunk::ThinkingEnd {
+                thinking_signature: Some(_),
+                ..
+            }]
+        ));
+
+        let completed = serde_json::json!({
+            "type": "response.completed",
+            "response": {
+                "output": [{
+                    "type": "reasoning",
+                    "id": "rs_bf",
+                    "summary": [{"type": "summary_text", "text": "plan"}],
+                    "encrypted_content": "enc_blob"
+                }],
+                "usage": {"input_tokens": 10, "output_tokens": 2}
+            }
+        });
+        let chunks = map_responses_sse_event(&completed, &mut state);
+        assert!(chunks.len() >= 2, "backfill ThinkingEnd + Done: {chunks:?}");
+        match &chunks[..] {
+            [
+                AiBridgeChunk::ThinkingEnd {
+                    thinking_signature: Some(sig),
+                    ..
+                },
+                AiBridgeChunk::Done { .. },
+            ] => {
+                let parsed: Value = serde_json::from_str(sig).unwrap();
+                assert_eq!(parsed["encrypted_content"], "enc_blob");
+            }
+            other => panic!("expected ThinkingEnd then Done, got {other:?}"),
+        }
+    }
+
+    #[test]
+    fn incomplete_also_backfills_encrypted() {
+        let mut state = ResponsesStreamState::default();
+        let _ = map_responses_sse_event(
+            &serde_json::json!({
+                "type": "response.output_item.done",
+                "item": {
+                    "type": "reasoning",
+                    "id": "rs_inc",
+                    "encrypted_content": null
+                }
+            }),
+            &mut state,
+        );
+        let chunks = map_responses_sse_event(
+            &serde_json::json!({
+                "type": "response.incomplete",
+                "response": {
+                    "output": [{
+                        "type": "reasoning",
+                        "id": "rs_inc",
+                        "encrypted_content": "later_enc"
+                    }]
+                }
+            }),
+            &mut state,
+        );
+        match &chunks[..] {
+            [
+                AiBridgeChunk::ThinkingEnd {
+                    thinking_signature: Some(sig),
+                    ..
+                },
+                AiBridgeChunk::Done {
+                    finish_reason: AiBridgeStopReason::MaxTokens,
+                    ..
+                },
+            ] => {
+                let parsed: Value = serde_json::from_str(sig).unwrap();
+                assert_eq!(parsed["encrypted_content"], "later_enc");
+            }
+            other => panic!("expected backfill+MaxTokens Done, got {other:?}"),
+        }
     }
 
     #[test]

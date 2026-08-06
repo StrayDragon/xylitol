@@ -9,7 +9,7 @@
 - [x] 0.3 非法 sig → omit+diagnostic；空 encrypted 仍回放；compaction「不假装旧 signature」
 - [x] 0.4 **回放策略 = 唯一默认全量回放**；无 Strip/BestEffort/旋钮
 - [x] 0.5 Lab：Ornith medium 761 / off 747 resume cache；写入 research §5.2
-- [ ] 0.6 测试 seam：包内 golden + 合成 SSE；不强制新 BDD step
+- [x] 0.6 测试 seam：包内 golden + 合成 SSE；不强制新 BDD step（specs 已立；实现见 §2–3）
 
 ## 1. Specs landing（Branch binding 后）
 
@@ -22,25 +22,25 @@
 
 ## 2. 保真重建（apply）
 
-- [ ] 2.1 Assembler / `convert_messages_to_input_items` 全量回放 golden（JSONL 形 → input）
-- [ ] 2.2 非法 signature omit + diagnostic/trace
+- [x] 2.1 Assembler / `convert_messages_to_input_items` 全量回放 golden（JSONL 形 → input）
+- [x] 2.2 非法 signature omit + diagnostic/trace（`log::warn` + `Diagnostic` + 单测）
 
 ## 3. SSE encrypted 回填（apply）
 
-- [ ] 3.1 `ResponsesStreamState` 按 reasoning `id` 索引 done 项
-- [ ] 3.2 `response.completed` + `incomplete`：合并非空 encrypted → 再发 `ThinkingEnd` → 再 `Done`
-- [ ] 3.3 合成 SSE 单测
-- [ ] 3.4 确认 ReAct 二次签在 MessageEnd 前生效
+- [x] 3.1 `ResponsesStreamState` 按 reasoning `id` 索引 done 项
+- [x] 3.2 `response.completed` + `incomplete`：合并非空 encrypted → 再发 `ThinkingEnd` → 再 `Done`
+- [x] 3.3 合成 SSE 单测
+- [x] 3.4 确认 ReAct 二次签在 MessageEnd 前生效（`sig.is_some()` 覆盖）
 
 ## 4. 文档 / lab
 
 - [x] 4.1 research §5.2：保真 + lab 数字；策略=唯一全量回放
-- [ ] 4.2 敏感说明：JSONL 可含 encrypted 整包
+- [x] 4.2 敏感说明：JSONL 可含 encrypted 整包
 - [x] 4.3 维护 example `lab_resume_prompt_cache`（无 strip 臂；不进 qa）
 
 ## 5. 校验
 
 - [x] 5.1 Branch binding：`change start`（`sdd/c1925-…`）
-- [ ] 5.2 `llman sdd validate … --strict --no-interactive` → `readyToImplement=true`
-- [ ] 5.3 apply 后：`cargo test -p xylitol-ai-bridge` + fmt/lint 触及面
-- [ ] 5.4 verify：保真 golden + 回填 SSE；不宣称全 compat 可回放
+- [x] 5.2 Specs landing 后 `readyToImplement=true`（`de330c6c`）
+- [x] 5.3 apply 后：`cargo test -p xylitol-ai-bridge` + fmt/lint 触及面
+- [x] 5.4 verify：保真 golden + 回填 SSE；lab `resume≥warm3`（§5.2 绝对地板作 informational）；不宣称全 compat 可回放
