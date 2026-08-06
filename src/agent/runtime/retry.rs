@@ -1,13 +1,12 @@
 //! Auto-retry for transient LLM errors.
 //!
 //! Uses regex-based pattern matching for retryable error detection,
-//! plus exponential backoff with cancellation support.
+//! plus exponential backoff.
 
 use regex::Regex;
 use std::sync::LazyLock;
 use std::sync::atomic::{AtomicU32, Ordering};
 use std::time::Duration;
-use tokio::sync::watch;
 
 // ── Pattern matching ───────────────────────────────────────────────
 
@@ -39,20 +38,14 @@ pub(crate) struct RetryState {
     max_retries: u32,
     base_delay_ms: u64,
     attempt: AtomicU32,
-    #[allow(dead_code)]
-    abort_tx: watch::Sender<bool>,
-    abort_rx: watch::Receiver<bool>,
 }
 
 impl RetryState {
     pub(crate) fn new(max_retries: u32, base_delay_ms: u64) -> Self {
-        let (tx, rx) = watch::channel(false);
         Self {
             max_retries,
             base_delay_ms,
             attempt: AtomicU32::new(0),
-            abort_tx: tx,
-            abort_rx: rx,
         }
     }
 
@@ -66,27 +59,8 @@ impl RetryState {
         Duration::from_millis(delay_ms)
     }
 
-    #[allow(dead_code)]
-    pub(crate) fn attempt(&self) -> u32 {
-        self.attempt.load(Ordering::Acquire)
-    }
-
-    /// Abort any in-progress backoff wait.
-    #[allow(dead_code)]
-    pub(crate) fn abort(&self) {
-        let _ = self.abort_tx.send(true);
-    }
-
-    /// Wait for the backoff duration, or return immediately if aborted.
-    pub async fn backoff(&self, delay: Duration) -> bool {
-        let mut rx = self.abort_rx.clone();
-        if *rx.borrow() {
-            return true; // Already aborted
-        }
-        tokio::select! {
-            _ = tokio::time::sleep(delay) => false,
-            _ = rx.changed() => *rx.borrow(),
-        }
+    pub async fn backoff(&self, delay: Duration) {
+        tokio::time::sleep(delay).await;
     }
 }
 
@@ -143,14 +117,5 @@ mod tests {
 
         let d4 = state.next_delay();
         assert_eq!(d4, Duration::from_millis(8000)); // attempt 4: base*8
-    }
-
-    #[tokio::test]
-    async fn test_retry_abort() {
-        let state = RetryState::new(3, 1000);
-        state.abort();
-        // When aborted, backoff should return true (aborted)
-        let aborted = state.backoff(Duration::from_millis(10)).await;
-        assert!(aborted);
     }
 }

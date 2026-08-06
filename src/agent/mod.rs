@@ -25,6 +25,7 @@ pub mod builder;
 pub mod compaction;
 pub mod context_policy;
 pub mod llm_project;
+pub(crate) mod lock;
 pub mod model;
 pub mod prompt;
 pub mod runtime;

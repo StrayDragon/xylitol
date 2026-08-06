@@ -1,8 +1,9 @@
 //! Agent execution loop — core ReAct loop with full event stream, hooks, and tool batch modes.
 //!
-//! NOTE: 本文件聚焦 ReAct 算法主体. 天花板: ~500 行 (含 inline tests), 因 run_react_loop
-//! 的 async_stream 宏块是原子逻辑单元, 跨函数 yield 不可行. 升级: 当工具执行/流处理逻辑
-//! 显著膨胀时, 考虑引入 sub-turn state machine 替代单宏块.
+//! `async_stream` keeps the turn loop as one yield-capable block; helpers below extract
+//! repeated MessageUpdate / turn-end / assistant assembly without a sub-turn state machine.
+//! Soft ~1200 / hard ~2000 LOC (see `src/AGENTS.md`); further split only when edit pain
+//! forces a state machine.
 //!
 //! Tool batch scheduling lives in `tool_batch` + `tool_exec` (c1545). Product default is
 //! Sequential (source-order await); BarrierParallel fans out ParallelSafe windows.
@@ -32,12 +33,12 @@ fn upsert_streaming_tool(
     }
 }
 
-fn partial_assistant_message(
+fn streaming_assistant_parts(
     text: &str,
     thinking: &str,
     thinking_signature: Option<&str>,
     tool_calls: &[(String, String, Value)],
-) -> AgentMessage {
+) -> Vec<AgentPart> {
     let mut parts = Vec::new();
     if !thinking.is_empty() || thinking_signature.is_some() {
         parts.push(AgentPart::Thinking {
@@ -56,18 +57,76 @@ fn partial_assistant_message(
             arguments: args.clone(),
         });
     }
+    parts
+}
+
+fn partial_assistant_message(
+    text: &str,
+    thinking: &str,
+    thinking_signature: Option<&str>,
+    tool_calls: &[(String, String, Value)],
+) -> AgentMessage {
+    build_assistant_message(
+        streaming_assistant_parts(text, thinking, thinking_signature, tool_calls),
+        None,
+        None,
+        String::new(),
+        String::new(),
+        None,
+    )
+}
+
+fn build_assistant_message(
+    content: Vec<AgentPart>,
+    stop_reason: Option<crate::protocol::message::XyStopReason>,
+    usage: Option<crate::protocol::message::XyUsage>,
+    provider: String,
+    model: String,
+    error_message: Option<String>,
+) -> AgentMessage {
     AgentMessage::Llm(LlmMessage::AssistantMessage {
-        content: parts,
-        stop_reason: None,
-        usage: None,
+        content,
+        stop_reason,
+        usage,
         api: String::new(),
-        provider: String::new(),
-        model: String::new(),
+        provider,
+        model,
         response_id: None,
-        error_message: None,
+        error_message,
         timestamp: crate::protocol::message::now_ms(),
         diagnostics: Vec::new(),
     })
+}
+
+fn streaming_message_update(
+    text: &str,
+    thinking: &str,
+    thinking_signature: Option<&str>,
+    tool_calls: &[(String, String, Value)],
+) -> XyEvent {
+    XyEvent::MessageUpdate {
+        text: text.to_string(),
+        thinking: if thinking.is_empty() {
+            None
+        } else {
+            Some(thinking.to_string())
+        },
+        message: Some(partial_assistant_message(
+            text,
+            thinking,
+            thinking_signature,
+            tool_calls,
+        )),
+    }
+}
+
+fn current_provider_model(
+    model_manager: &Mutex<crate::agent::model::manager::ModelManager>,
+) -> (String, String) {
+    let mm = crate::agent::lock::lock_mutex(model_manager);
+    mm.current_model()
+        .map(|m| (m.config.provider_name().to_string(), m.config.model.clone()))
+        .unwrap_or_default()
 }
 
 use super::hooks::ShouldStopAfterTurnCtx;
@@ -104,10 +163,7 @@ impl AgentRuntime {
 
     /// Get a reference to the cancellation token for the active (or last) run.
     pub fn cancel_token(&self) -> CancellationToken {
-        self.cancel
-            .lock()
-            .unwrap_or_else(|e| e.into_inner())
-            .clone()
+        crate::agent::lock::lock_mutex(&self.cancel).clone()
     }
 
     /// Signal cancellation to abort the agent loop.
@@ -120,10 +176,7 @@ impl AgentRuntime {
     /// loop and dropping the provider stream (c680; surfaces inherit via
     /// [`crate::app::core::driver::XyDriver::abort`]).
     pub fn abort(&self) {
-        self.cancel
-            .lock()
-            .unwrap_or_else(|e| e.into_inner())
-            .cancel();
+        crate::agent::lock::lock_mutex(&self.cancel).cancel();
         self.inner.clear_steer_queue();
         self.inner.abort_bash();
         self.inner.clear_active_turn();
@@ -417,7 +470,7 @@ impl AgentRuntime {
         }
 
         let cancel = {
-            let mut guard = self.cancel.lock().unwrap_or_else(|e| e.into_inner());
+            let mut guard = crate::agent::lock::lock_mutex(&self.cancel);
             *guard = CancellationToken::new();
             guard.clone()
         };
@@ -485,11 +538,7 @@ impl AgentRuntime {
             queues.unbind_event_tx();
         });
 
-        XyEventStream {
-            inner,
-            done: false,
-            turn_index: 0,
-        }
+        XyEventStream { inner, done: false }
     }
 }
 
@@ -558,7 +607,7 @@ fn prepare_turn_binding(
     system_prompt: &Option<String>,
     run_model: &mut Option<(String, Arc<dyn XyModel>)>,
 ) -> Result<(Arc<dyn XyModel>, crate::protocol::ports::XyGenerateOptions), String> {
-    let mm = model_manager.lock().unwrap_or_else(|e| e.into_inner());
+    let mm = crate::agent::lock::lock_mutex(model_manager);
     let meta = mm
         .current_model()
         .ok_or_else(|| "no model configured".to_string())?;
@@ -590,7 +639,7 @@ fn prepare_turn_binding(
         }
     };
     drop(mm);
-    *active_turn.lock().unwrap_or_else(|e| e.into_inner()) = Some(binding);
+    *crate::agent::lock::lock_mutex(active_turn) = Some(binding);
     Ok((model, generate_options))
 }
 
@@ -599,7 +648,7 @@ struct ClearActiveTurn(Arc<Mutex<Option<crate::agent::session::ActiveTurnBinding
 
 impl Drop for ClearActiveTurn {
     fn drop(&mut self) {
-        *self.0.lock().unwrap_or_else(|e| e.into_inner()) = None;
+        *crate::agent::lock::lock_mutex(&self.0) = None;
     }
 }
 
@@ -611,16 +660,110 @@ fn should_stop_after_turn(hooks: &AgentHooks, ctx: &ShouldStopAfterTurnCtx) -> b
 }
 
 fn drain_queue(queue: &Arc<Mutex<PendingMessageQueue>>) -> Vec<AgentMessage> {
-    queue.lock().unwrap_or_else(|e| e.into_inner()).drain()
+    crate::agent::lock::lock_mutex(queue).drain()
 }
 
 fn queue_counts(
     steer: &Arc<Mutex<PendingMessageQueue>>,
     follow_up: &Arc<Mutex<PendingMessageQueue>>,
 ) -> (usize, usize) {
-    let steer_count = steer.lock().unwrap_or_else(|e| e.into_inner()).len();
-    let follow_up_count = follow_up.lock().unwrap_or_else(|e| e.into_inner()).len();
+    let steer_count = crate::agent::lock::lock_mutex(steer).len();
+    let follow_up_count = crate::agent::lock::lock_mutex(follow_up).len();
     (steer_count, follow_up_count)
+}
+
+/// Events + control-flow decision after a turn settles (text-only or post-tools).
+enum FinishTurnOutcome {
+    ContinueOuterForCompaction,
+    StopRun,
+    Advanced {
+        pending: Vec<AgentMessage>,
+        queue_update: Option<(usize, usize)>,
+    },
+}
+
+struct FinishTurnResult {
+    events: Vec<XyEvent>,
+    outcome: FinishTurnOutcome,
+}
+
+/// Shared turn-end: settle → TurnEnd → hook → compaction → stop/steer poll.
+#[allow(clippy::too_many_arguments)]
+async fn finish_turn(
+    store: &Arc<dyn XySessionStore>,
+    session_id: &str,
+    model_manager: &Arc<Mutex<crate::agent::model::manager::ModelManager>>,
+    event_sink: &Arc<dyn crate::protocol::ports::XyEventSink>,
+    compaction_settings: &crate::agent::compaction::CompactionSettings,
+    history: &mut Vec<AgentMessage>,
+    overflow_recovery_attempted: &mut bool,
+    hooks: &AgentHooks,
+    hook_bus: &Option<Arc<dyn XyHookBus>>,
+    turn: usize,
+    run_baseline: usize,
+    assistant: Option<AgentMessage>,
+    tool_results: Vec<AgentMessage>,
+    steer_queue: &Arc<Mutex<PendingMessageQueue>>,
+    follow_up_queue: &Arc<Mutex<PendingMessageQueue>>,
+) -> FinishTurnResult {
+    let turn_index = turn as u32;
+    let settlement = settle_turn_context(store, session_id, model_manager).await;
+    let mut events = Vec::new();
+    if let Some(s) = &settlement {
+        events.push(XyEvent::ContextTokenSettlement {
+            estimate: s.estimate.clone(),
+            reason: s.reason.as_str().to_string(),
+            generation: s.generation,
+        });
+    }
+    events.push(XyEvent::TurnEnd { turn_index });
+    if let Some(bus) = hook_bus {
+        let (ty, phase, ctx) = super::script_hook_ctx::turn_end(turn as u32);
+        observe_script_hook(bus, ty, phase, ctx).await;
+    }
+    let will_continue = try_turn_end_compaction(
+        store,
+        session_id,
+        model_manager,
+        event_sink,
+        compaction_settings,
+        history,
+        overflow_recovery_attempted,
+        settlement.as_ref().map(|s| &s.estimate),
+    )
+    .await;
+    if will_continue {
+        return FinishTurnResult {
+            events,
+            outcome: FinishTurnOutcome::ContinueOuterForCompaction,
+        };
+    }
+    let stop_ctx = ShouldStopAfterTurnCtx {
+        turn_index,
+        assistant,
+        tool_results,
+        history: history.clone(),
+        new_messages: history[run_baseline..].to_vec(),
+    };
+    if should_stop_after_turn(hooks, &stop_ctx) {
+        return FinishTurnResult {
+            events,
+            outcome: FinishTurnOutcome::StopRun,
+        };
+    }
+    let pending = drain_queue(steer_queue);
+    let queue_update = if pending.is_empty() {
+        None
+    } else {
+        Some(queue_counts(steer_queue, follow_up_queue))
+    };
+    FinishTurnResult {
+        events,
+        outcome: FinishTurnOutcome::Advanced {
+            pending,
+            queue_update,
+        },
+    }
 }
 
 /// Settle context tokens for turn-end (c1860) — emit via caller `yield`.
@@ -640,7 +783,7 @@ async fn settle_turn_context(
         }
     };
     let model_id = {
-        let mm = model_manager.lock().unwrap_or_else(|e| e.into_inner());
+        let mm = crate::agent::lock::lock_mutex(model_manager);
         mm.current_model().map(|m| m.config.model.clone())
     };
     Some(settle_from_session_entries(
@@ -680,7 +823,7 @@ async fn try_turn_end_compaction(
     };
 
     let (model, ctx_window, model_id, provider) = {
-        let mm = model_manager.lock().unwrap_or_else(|e| e.into_inner());
+        let mm = crate::agent::lock::lock_mutex(model_manager);
         let meta = match mm.current_model() {
             Some(m) => m,
             None => return false,
@@ -844,9 +987,9 @@ fn run_react_loop(cfg: ReActConfig) -> impl Stream<Item = XyEvent> + Send {
         // c1660: at most one overflow compact-and-retry per run.
         let mut overflow_recovery_attempted = false;
         // One OTEL/fastrace tree per user-triggered run (c1495 / c1555 turn preview).
-        let user_preview = parts_preview_text(&user_parts);
+        let user_preview = super::tool_exec::parts_preview_text(&user_parts);
         let model_api = {
-            let mm = model_manager.lock().unwrap_or_else(|e| e.into_inner());
+            let mm = crate::agent::lock::lock_mutex(&model_manager);
             mm.current_model().map(|m| m.api.clone())
         };
         let agent_turn_span =
@@ -966,29 +1109,15 @@ fn run_react_loop(cfg: ReActConfig) -> impl Stream<Item = XyEvent> + Send {
                     Some(Err(e)) => {
                         // c1660: overflow on connect → synthesize error assistant + Case1.
                         let err_text = e.clone();
-                        let (provider, model_id) = {
-                            let mm = model_manager.lock().unwrap_or_else(|err| err.into_inner());
-                            mm.current_model()
-                                .map(|m| {
-                                    (
-                                        m.config.provider_name().to_string(),
-                                        m.config.model.clone(),
-                                    )
-                                })
-                                .unwrap_or_default()
-                        };
-                        let err_asst = AgentMessage::Llm(LlmMessage::AssistantMessage {
-                            content: vec![AgentPart::text("")],
-                            stop_reason: Some(crate::protocol::message::XyStopReason::Error),
-                            usage: None,
-                            api: String::new(),
+                        let (provider, model_id) = current_provider_model(&model_manager);
+                        let err_asst = build_assistant_message(
+                            vec![AgentPart::text("")],
+                            Some(crate::protocol::message::XyStopReason::Error),
+                            None,
                             provider,
-                            model: model_id,
-                            response_id: None,
-                            error_message: Some(err_text.clone()),
-                            timestamp: crate::protocol::message::now_ms(),
-                            diagnostics: Vec::new(),
-                        });
+                            model_id,
+                            Some(err_text.clone()),
+                        );
                         persist_agent_message(&store, &session_id, &err_asst).await;
                         history.push(err_asst);
                         yield XyEvent::Error(e);
@@ -1037,42 +1166,21 @@ fn run_react_loop(cfg: ReActConfig) -> impl Stream<Item = XyEvent> + Send {
                             // c1595 / pi: keep partial assistant in session with
                             // stop_reason=Aborted (skip empty); project_for_llm
                             // filters it from the next model call.
-                            let mut assistant_parts = Vec::new();
-                            if !thinking_acc.is_empty() || thinking_signature.is_some() {
-                                assistant_parts.push(AgentPart::Thinking {
-                                    thinking: std::mem::take(&mut thinking_acc),
-                                    redacted: false,
-                                    thinking_signature: thinking_signature.take(),
-                                });
-                            }
-                            if !text_acc.is_empty() {
-                                assistant_parts.push(AgentPart::text(std::mem::take(
-                                    &mut text_acc,
-                                )));
-                            }
-                            for (id, name, args) in &tool_calls {
-                                assistant_parts.push(AgentPart::ToolCall {
-                                    id: id.clone(),
-                                    name: name.clone(),
-                                    arguments: args.clone(),
-                                });
-                            }
+                            let assistant_parts = streaming_assistant_parts(
+                                &text_acc,
+                                &thinking_acc,
+                                thinking_signature.as_deref(),
+                                &tool_calls,
+                            );
                             if !assistant_parts.is_empty() {
-                                let assistant_msg =
-                                    AgentMessage::Llm(LlmMessage::AssistantMessage {
-                                        content: assistant_parts,
-                                        stop_reason: Some(
-                                            crate::protocol::message::XyStopReason::Aborted,
-                                        ),
-                                        usage: done_usage.take(),
-                                        api: String::new(),
-                                        provider: String::new(),
-                                        model: String::new(),
-                                        response_id: None,
-                                        error_message: None,
-                                        timestamp: crate::protocol::message::now_ms(),
-                                        diagnostics: Vec::new(),
-                                    });
+                                let assistant_msg = build_assistant_message(
+                                    assistant_parts,
+                                    Some(crate::protocol::message::XyStopReason::Aborted),
+                                    done_usage.take(),
+                                    String::new(),
+                                    String::new(),
+                                    None,
+                                );
                                 yield XyEvent::MessageEnd {
                                     role: "assistant".to_string(),
                                     message: Some(assistant_msg.clone()),
@@ -1093,34 +1201,22 @@ fn run_react_loop(cfg: ReActConfig) -> impl Stream<Item = XyEvent> + Send {
                             XyChunk::TextDelta(text) => {
                                 text_acc.push_str(&text);
                                 yield XyEvent::TextDelta(text.clone());
-                                yield XyEvent::MessageUpdate {
-                                    text: text_acc.clone(),
-                                    thinking: if thinking_acc.is_empty() {
-                                        None
-                                    } else {
-                                        Some(thinking_acc.clone())
-                                    },
-                                    message: Some(partial_assistant_message(
-                                        &text_acc,
-                                        &thinking_acc,
-                                        thinking_signature.as_deref(),
-                                        &tool_calls,
-                                    )),
-                                };
+                                yield streaming_message_update(
+                                    &text_acc,
+                                    &thinking_acc,
+                                    thinking_signature.as_deref(),
+                                    &tool_calls,
+                                );
                             }
                             XyChunk::ThinkingDelta(text) => {
                                 thinking_acc.push_str(&text);
                                 yield XyEvent::ThinkingDelta(text);
-                                yield XyEvent::MessageUpdate {
-                                    text: text_acc.clone(),
-                                    thinking: Some(thinking_acc.clone()),
-                                    message: Some(partial_assistant_message(
-                                        &text_acc,
-                                        &thinking_acc,
-                                        thinking_signature.as_deref(),
-                                        &tool_calls,
-                                    )),
-                                };
+                                yield streaming_message_update(
+                                    &text_acc,
+                                    &thinking_acc,
+                                    thinking_signature.as_deref(),
+                                    &tool_calls,
+                                );
                             }
                             XyChunk::ThinkingEnd {
                                 thinking,
@@ -1132,20 +1228,12 @@ fn run_react_loop(cfg: ReActConfig) -> impl Stream<Item = XyEvent> + Send {
                                 if sig.is_some() {
                                     thinking_signature = sig;
                                 }
-                                yield XyEvent::MessageUpdate {
-                                    text: text_acc.clone(),
-                                    thinking: if thinking_acc.is_empty() {
-                                        None
-                                    } else {
-                                        Some(thinking_acc.clone())
-                                    },
-                                    message: Some(partial_assistant_message(
-                                        &text_acc,
-                                        &thinking_acc,
-                                        thinking_signature.as_deref(),
-                                        &tool_calls,
-                                    )),
-                                };
+                                yield streaming_message_update(
+                                    &text_acc,
+                                    &thinking_acc,
+                                    thinking_signature.as_deref(),
+                                    &tool_calls,
+                                );
                             }
                             XyChunk::ToolCallStart { id, name } => {
                                 upsert_streaming_tool(
@@ -1154,20 +1242,12 @@ fn run_react_loop(cfg: ReActConfig) -> impl Stream<Item = XyEvent> + Send {
                                     name,
                                     Value::Object(Default::default()),
                                 );
-                                yield XyEvent::MessageUpdate {
-                                    text: text_acc.clone(),
-                                    thinking: if thinking_acc.is_empty() {
-                                        None
-                                    } else {
-                                        Some(thinking_acc.clone())
-                                    },
-                                    message: Some(partial_assistant_message(
-                                        &text_acc,
-                                        &thinking_acc,
-                                        thinking_signature.as_deref(),
-                                        &tool_calls,
-                                    )),
-                                };
+                                yield streaming_message_update(
+                                    &text_acc,
+                                    &thinking_acc,
+                                    thinking_signature.as_deref(),
+                                    &tool_calls,
+                                );
                             }
                             XyChunk::ToolCallDelta {
                                 id,
@@ -1176,38 +1256,22 @@ fn run_react_loop(cfg: ReActConfig) -> impl Stream<Item = XyEvent> + Send {
                                 ..
                             } => {
                                 upsert_streaming_tool(&mut tool_calls, id, name, args);
-                                yield XyEvent::MessageUpdate {
-                                    text: text_acc.clone(),
-                                    thinking: if thinking_acc.is_empty() {
-                                        None
-                                    } else {
-                                        Some(thinking_acc.clone())
-                                    },
-                                    message: Some(partial_assistant_message(
-                                        &text_acc,
-                                        &thinking_acc,
-                                        thinking_signature.as_deref(),
-                                        &tool_calls,
-                                    )),
-                                };
+                                yield streaming_message_update(
+                                    &text_acc,
+                                    &thinking_acc,
+                                    thinking_signature.as_deref(),
+                                    &tool_calls,
+                                );
                             }
                             XyChunk::ToolCallEnd { name, args, id } => {
                                 // Intent only — execute after MessageEnd (c1255 / ar21).
                                 upsert_streaming_tool(&mut tool_calls, id, name, args);
-                                yield XyEvent::MessageUpdate {
-                                    text: text_acc.clone(),
-                                    thinking: if thinking_acc.is_empty() {
-                                        None
-                                    } else {
-                                        Some(thinking_acc.clone())
-                                    },
-                                    message: Some(partial_assistant_message(
-                                        &text_acc,
-                                        &thinking_acc,
-                                        thinking_signature.as_deref(),
-                                        &tool_calls,
-                                    )),
-                                };
+                                yield streaming_message_update(
+                                    &text_acc,
+                                    &thinking_acc,
+                                    thinking_signature.as_deref(),
+                                    &tool_calls,
+                                );
                             }
                             XyChunk::Done {
                                 finish_reason,
@@ -1255,56 +1319,30 @@ fn run_react_loop(cfg: ReActConfig) -> impl Stream<Item = XyEvent> + Send {
                     observe_script_hook(bus, ty, phase, ctx).await;
                 }
 
-                let mut assistant_parts = Vec::new();
-                if !thinking_acc.is_empty() || thinking_signature.is_some() {
-                    assistant_parts.push(AgentPart::Thinking {
-                        thinking: thinking_acc,
-                        redacted: false,
-                        thinking_signature,
-                    });
-                }
-                if !text_acc.is_empty() {
-                    assistant_parts.push(AgentPart::text(text_acc));
-                }
-                for (id, name, args) in &tool_calls {
-                    assistant_parts.push(AgentPart::ToolCall {
-                        id: id.clone(),
-                        name: name.clone(),
-                        arguments: args.clone(),
-                    });
-                }
+                let mut assistant_parts = streaming_assistant_parts(
+                    &text_acc,
+                    &thinking_acc,
+                    thinking_signature.as_deref(),
+                    &tool_calls,
+                );
                 if !assistant_parts.is_empty()
                     || matches!(
                         done_stop_reason,
                         Some(crate::protocol::message::XyStopReason::Error)
                     )
                 {
-                    let (provider, model_id) = {
-                        let mm = model_manager.lock().unwrap_or_else(|e| e.into_inner());
-                        mm.current_model()
-                            .map(|m| {
-                                (
-                                    m.config.provider_name().to_string(),
-                                    m.config.model.clone(),
-                                )
-                            })
-                            .unwrap_or_default()
-                    };
+                    let (provider, model_id) = current_provider_model(&model_manager);
                     if assistant_parts.is_empty() {
                         assistant_parts.push(AgentPart::text(""));
                     }
-                    let assistant_msg = AgentMessage::Llm(LlmMessage::AssistantMessage {
-                        content: assistant_parts,
-                        stop_reason: done_stop_reason,
-                        usage: done_usage,
-                        api: String::new(),
+                    let assistant_msg = build_assistant_message(
+                        assistant_parts,
+                        done_stop_reason,
+                        done_usage,
                         provider,
-                        model: model_id,
-                        response_id: None,
-                        error_message: done_error_message,
-                        timestamp: crate::protocol::message::now_ms(),
-                        diagnostics: Vec::new(),
-                    });
+                        model_id,
+                        done_error_message,
+                    );
                     persist_agent_message(&store, &session_id, &assistant_msg).await;
                     history.push(assistant_msg);
                 }
@@ -1312,23 +1350,12 @@ fn run_react_loop(cfg: ReActConfig) -> impl Stream<Item = XyEvent> + Send {
                 continue_after_tools = !tool_calls.is_empty();
 
                 if tool_calls.is_empty() {
-                    let turn_index = turn as u32;
-                    let settlement =
-                        settle_turn_context(&store, &session_id, &model_manager).await;
-                    if let Some(s) = &settlement {
-                        yield XyEvent::ContextTokenSettlement {
-                            estimate: s.estimate.clone(),
-                            reason: s.reason.as_str().to_string(),
-                            generation: s.generation,
-                        };
-                    }
-                    yield XyEvent::TurnEnd { turn_index };
-                    if let Some(bus) = &hook_bus {
-                        let (ty, phase, ctx) = super::script_hook_ctx::turn_end(turn as u32);
-                        observe_script_hook(bus, ty, phase, ctx).await;
-                    }
-                    // c1640/c1660: pi `_checkCompaction` after settled assistant.
-                    let will_continue = try_turn_end_compaction(
+                    let assistant = history
+                        .iter()
+                        .rev()
+                        .find(|m| m.role_name() == "assistant")
+                        .cloned();
+                    let finished = finish_turn(
                         &store,
                         &session_id,
                         &model_manager,
@@ -1336,40 +1363,37 @@ fn run_react_loop(cfg: ReActConfig) -> impl Stream<Item = XyEvent> + Send {
                         &compaction_settings,
                         &mut history,
                         &mut overflow_recovery_attempted,
-                        settlement.as_ref().map(|s| &s.estimate),
+                        &hooks,
+                        &hook_bus,
+                        turn,
+                        run_baseline,
+                        assistant,
+                        Vec::new(),
+                        &steer_queue,
+                        &follow_up_queue,
                     )
                     .await;
-                    if will_continue {
-                        continue 'outer;
+                    for event in finished.events {
+                        yield event;
                     }
-                    turn += 1;
-                    let stop_ctx = ShouldStopAfterTurnCtx {
-                        turn_index,
-                        assistant: history
-                            .iter()
-                            .rev()
-                            .find(|m| m.role_name() == "assistant")
-                            .cloned(),
-                        tool_results: Vec::new(),
-                        history: history.clone(),
-                        new_messages: history[run_baseline..].to_vec(),
-                    };
-                    if should_stop_after_turn(&hooks, &stop_ctx) {
-                        // pi: agent_end without polling steer / follow-up.
-                        break 'outer;
+                    match finished.outcome {
+                        FinishTurnOutcome::ContinueOuterForCompaction => continue 'outer,
+                        FinishTurnOutcome::StopRun => break 'outer,
+                        FinishTurnOutcome::Advanced {
+                            pending: next_pending,
+                            queue_update,
+                        } => {
+                            turn += 1;
+                            pending = next_pending;
+                            if let Some((steer_count, follow_up_count)) = queue_update {
+                                yield XyEvent::QueueUpdate {
+                                    steer_count,
+                                    follow_up_count,
+                                };
+                            }
+                            continue;
+                        }
                     }
-                    // Poll steering even when there were no tools (pi: pending
-                    // after turn may restart the inner loop).
-                    pending = drain_queue(&steer_queue);
-                    if !pending.is_empty() {
-                        let (steer_count, follow_up_count) =
-                            queue_counts(&steer_queue, &follow_up_queue);
-                        yield XyEvent::QueueUpdate {
-                            steer_count,
-                            follow_up_count,
-                        };
-                    }
-                    continue;
                 }
 
                 let mut turn_tool_results: Vec<AgentMessage> = Vec::new();
@@ -1507,22 +1531,7 @@ fn run_react_loop(cfg: ReActConfig) -> impl Stream<Item = XyEvent> + Send {
                     }
                 }
 
-                let turn_index = turn as u32;
-                let settlement = settle_turn_context(&store, &session_id, &model_manager).await;
-                if let Some(s) = &settlement {
-                    yield XyEvent::ContextTokenSettlement {
-                        estimate: s.estimate.clone(),
-                        reason: s.reason.as_str().to_string(),
-                        generation: s.generation,
-                    };
-                }
-                yield XyEvent::TurnEnd { turn_index };
-                if let Some(bus) = &hook_bus {
-                    let (ty, phase, ctx) = super::script_hook_ctx::turn_end(turn as u32);
-                    observe_script_hook(bus, ty, phase, ctx).await;
-                }
-                // c1640/c1660: pi `_checkCompaction` after settled assistant.
-                let will_continue = try_turn_end_compaction(
+                let finished = finish_turn(
                     &store,
                     &session_id,
                     &model_manager,
@@ -1530,36 +1539,35 @@ fn run_react_loop(cfg: ReActConfig) -> impl Stream<Item = XyEvent> + Send {
                     &compaction_settings,
                     &mut history,
                     &mut overflow_recovery_attempted,
-                    settlement.as_ref().map(|s| &s.estimate),
+                    &hooks,
+                    &hook_bus,
+                    turn,
+                    run_baseline,
+                    turn_assistant,
+                    turn_tool_results,
+                    &steer_queue,
+                    &follow_up_queue,
                 )
                 .await;
-                if will_continue {
-                    continue 'outer;
+                for event in finished.events {
+                    yield event;
                 }
-                turn += 1;
-
-                let stop_ctx = ShouldStopAfterTurnCtx {
-                    turn_index,
-                    assistant: turn_assistant,
-                    tool_results: turn_tool_results,
-                    history: history.clone(),
-                    new_messages: history[run_baseline..].to_vec(),
-                };
-                if should_stop_after_turn(&hooks, &stop_ctx) {
-                    // pi: agent_end without polling steer / follow-up.
-                    break 'outer;
-                }
-
-                // After tools (or a text-only turn handled above), poll steering
-                // for the next model round.
-                pending = drain_queue(&steer_queue);
-                if !pending.is_empty() {
-                    let (steer_count, follow_up_count) =
-                        queue_counts(&steer_queue, &follow_up_queue);
-                    yield XyEvent::QueueUpdate {
-                        steer_count,
-                        follow_up_count,
-                    };
+                match finished.outcome {
+                    FinishTurnOutcome::ContinueOuterForCompaction => continue 'outer,
+                    FinishTurnOutcome::StopRun => break 'outer,
+                    FinishTurnOutcome::Advanced {
+                        pending: next_pending,
+                        queue_update,
+                    } => {
+                        turn += 1;
+                        pending = next_pending;
+                        if let Some((steer_count, follow_up_count)) = queue_update {
+                            yield XyEvent::QueueUpdate {
+                                steer_count,
+                                follow_up_count,
+                            };
+                        }
+                    }
                 }
             }
 
@@ -1595,20 +1603,6 @@ fn run_react_loop(cfg: ReActConfig) -> impl Stream<Item = XyEvent> + Send {
         }
         yield XyEvent::AgentEnd { messages: history };
     }
-}
-
-/// UI / event preview for tool results — text notes only; never dump image base64.
-fn parts_preview_text(parts: &[AgentPart]) -> String {
-    let mut out = Vec::new();
-    for part in parts {
-        match part {
-            AgentPart::Text { text } => out.push(text.clone()),
-            AgentPart::Image(_) => out.push("[image]".into()),
-            AgentPart::Thinking { thinking, .. } => out.push(thinking.clone()),
-            AgentPart::ToolCall { name, .. } => out.push(format!("[toolCall:{name}]")),
-        }
-    }
-    out.join("\n")
 }
 
 async fn observe_script_hook(

@@ -73,7 +73,6 @@ pub fn render_html(session_id: &str, entries: &[SessionEntry]) -> String
 pub fn render_jsonl(entries: &[SessionEntry]) -> Result<String, String>
 pub fn reopen_tools_for_regate(&mut self)
 pub fn replace_hooks(&mut self, hooks: AgentHooks)
-pub fn save_trust_decision( cwd: &str, trust_store: &dyn XyTrustStore, trusted: bool, ) -> Result<bool, String>
 pub fn select_model(&mut self, model_id: &str) -> Result<(), String>
 pub fn select_model_with_source(&mut self, model_id: &str, source: &str) -> Result<(), String>
 pub fn session_id(&self) -> Option<&str>
@@ -109,4 +108,3 @@ pub type QueueChannel = PendingMessageQueue
 pub use crate::agent::model::registry::ModelRegistry
 pub use self::queue::
 pub use self::stats::{ContextUsage, SessionStats, estimate_tokens, get_context_usage}
-pub use self::trust::save_trust_decision

@@ -17,13 +17,11 @@ mod bash;
 mod export;
 mod queue;
 mod stats;
-mod trust;
 
 pub use self::queue::{
     AsyncQueueRuntime, PendingMessageQueue, QueueChannel, QueueMode, QueueStats,
 };
 pub use self::stats::{ContextUsage, SessionStats, estimate_tokens, get_context_usage};
-pub use self::trust::save_trust_decision;
 
 use crate::agent::compaction::CompactionSettings;
 use crate::agent::compaction::orchestrator::CompactionOrchestrator;
@@ -182,12 +180,12 @@ impl AgentCapabilities {
     // ── Model management (delegated to ModelManager) ──────────────
 
     fn with_models<R>(&self, f: impl FnOnce(&ModelManager) -> R) -> R {
-        let guard = self.model_manager.lock().unwrap_or_else(|e| e.into_inner());
+        let guard = crate::agent::lock::lock_mutex(&self.model_manager);
         f(&guard)
     }
 
     fn with_models_mut<R>(&self, f: impl FnOnce(&mut ModelManager) -> R) -> R {
-        let mut guard = self.model_manager.lock().unwrap_or_else(|e| e.into_inner());
+        let mut guard = crate::agent::lock::lock_mutex(&self.model_manager);
         f(&mut guard)
     }
 
@@ -255,7 +253,7 @@ impl AgentCapabilities {
 
     /// Converge active → selected (idle / abort / run end).
     pub fn clear_active_turn(&self) {
-        *self.active_turn.lock().unwrap_or_else(|e| e.into_inner()) = None;
+        *crate::agent::lock::lock_mutex(&self.active_turn) = None;
     }
 
     /// Set thinking level.

@@ -109,12 +109,8 @@ impl AsyncQueueRuntime {
     }
 
     pub fn stats(&self) -> QueueStats {
-        let steer_count = self.steer.lock().unwrap_or_else(|e| e.into_inner()).len();
-        let follow_up_count = self
-            .follow_up
-            .lock()
-            .unwrap_or_else(|e| e.into_inner())
-            .len();
+        let steer_count = crate::agent::lock::lock_mutex(&self.steer).len();
+        let follow_up_count = crate::agent::lock::lock_mutex(&self.follow_up).len();
         QueueStats {
             steer_count,
             follow_up_count,
@@ -123,12 +119,12 @@ impl AsyncQueueRuntime {
 
     /// Bind the active run's EventStream sender (replaces any previous).
     pub fn bind_event_tx(&self, tx: EventTx) {
-        *self.event_tx.lock().unwrap_or_else(|e| e.into_inner()) = Some(tx);
+        *crate::agent::lock::lock_mutex(&self.event_tx) = Some(tx);
     }
 
     /// Clear the active-run sender (no-op enqueue notify after this).
     pub fn unbind_event_tx(&self) {
-        *self.event_tx.lock().unwrap_or_else(|e| e.into_inner()) = None;
+        *crate::agent::lock::lock_mutex(&self.event_tx) = None;
     }
 
     /// Notify the active EventStream with current depths (no-op if unbound).
@@ -138,7 +134,7 @@ impl AsyncQueueRuntime {
             steer_count: stats.steer_count,
             follow_up_count: stats.follow_up_count,
         };
-        let guard = self.event_tx.lock().unwrap_or_else(|e| e.into_inner());
+        let guard = crate::agent::lock::lock_mutex(&self.event_tx);
         if let Some(tx) = guard.as_ref() {
             let _ = tx.send(event);
         }

@@ -6,9 +6,8 @@
 //! `is_empty()` check. This is the "open for extension" seam of the runtime.
 //!
 //! Steering / follow-up injection is owned by [`crate::agent::session::PendingMessageQueue`]
-//! on [`crate::agent::session::AgentCapabilities`] (c461). [`SteeringHooks`] remains as an
-//! optional external message-source adapter and is **not** wired into the ReAct
-//! loop; product paths must use `AgentCapabilities::steer` / `AgentCapabilities::follow_up` (via XyDriver).
+//! on [`crate::agent::session::AgentCapabilities`] (c461). Product paths use
+//! `AgentCapabilities::steer` / `AgentCapabilities::follow_up` (via XyDriver).
 
 use std::sync::Arc;
 
@@ -31,10 +30,6 @@ pub type AfterToolHook =
 /// Context-transform callback. Receives the message history before the model
 /// call and returns the transformed history.
 pub type TransformCtxHook = Arc<dyn Fn(Vec<AgentMessage>) -> Vec<AgentMessage> + Send + Sync>;
-
-/// Message-injection callback (steering / follow-up). Takes no arguments and
-/// returns messages to prepend to the turn.
-pub type GetMessagesHook = Arc<dyn Fn() -> Vec<AgentMessage> + Send + Sync>;
 
 /// Context passed to [`ShouldStopAfterTurnHook`] after each `TurnEnd` (pi-aligned).
 #[derive(Debug, Clone)]
@@ -129,19 +124,4 @@ impl AgentHooks {
     pub fn set_should_stop_after_turn(&mut self, hook: Option<ShouldStopAfterTurnHook>) {
         self.should_stop_after_turn = hook;
     }
-}
-
-// ── SteeringHooks ───────────────────────────────────────────────────
-
-/// Optional external message-source adapter (steering / follow-up).
-///
-/// **Not wired into the ReAct loop.** The authoritative path is
-/// [`crate::agent::session::PendingMessageQueue`] on the session
-/// [`crate::agent::session::AgentCapabilities`]
-/// (`steer` / `follow_up` / XyDriver APIs). Keep this type only if an extension
-/// needs a pull-based message source; do not dual-wire both paths.
-#[derive(Default)]
-pub struct SteeringHooks {
-    pub get_steering_messages: Option<GetMessagesHook>,
-    pub get_follow_up_messages: Option<GetMessagesHook>,
 }

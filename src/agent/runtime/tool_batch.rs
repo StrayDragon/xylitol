@@ -1,7 +1,7 @@
 //! Tool-batch classify + window planning (c1545).
 //!
-//! Pure data helpers — no I/O. ReAct BarrierParallel wiring consumes these next.
-#![allow(dead_code)] // used by unit tests now; ReAct flush path lands in follow-up
+//! Pure data helpers — no I/O. ReAct BarrierParallel flush path consumes
+//! [`classify`] and [`plan_windows`] when batch mode is BarrierParallel.
 
 use crate::protocol::ports::{XyTool, XyToolExecutionMode};
 
@@ -58,6 +58,7 @@ pub(crate) fn plan_windows(classes: &[XyToolExecutionMode]) -> Vec<PlannedWindow
 }
 
 /// Classify each `(name, tool)` then [`plan_windows`].
+#[cfg(test)]
 pub(crate) fn plan_windows_for_calls<'a, I>(calls: I) -> Vec<PlannedWindow>
 where
     I: IntoIterator<Item = (&'a str, Option<&'a dyn XyTool>)>,
