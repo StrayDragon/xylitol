@@ -2,7 +2,7 @@ kind: llman.sdd.spec
 name: "package-ai-bridge"
 purpose: "packages/xylitol-ai-bridge：client→LLM provider 接线与 AiBridge* DTO 边界。"
 valid_scope[2]: "packages/xylitol-ai-bridge/",src/infra/provider/
-requirements[21]{req_id,title,statement}:
+requirements[22]{req_id,title,statement}:
   pab1,"workspace-包边界","仓库 MUST 提供 workspace 成员包 packages/xylitol-ai-bridge，作为 client 到上游 LLM model provider 的接线与计量库；该包 MUST NOT 依赖主 crate xylitol。"
   pab2,包内模块划分,"xylitol-ai-bridge MUST 按职责划分至少包含 provider、usage、accounting、tokenize、registry 模块（名称可等价），分别承担方言接线、usage 归一化、多源计量、本地/远程分词计数与模型到分词源注册。"
   pab3,"包内-DTO-独立","包对外流式与消息类型 MUST 使用包内自有 LLM DTO（如 AiBridgeMessage / AiBridgeChunk / AiBridgeUsage）作为 LLM 叶 SSOT；该 DTO MUST 仅表达发给模型的形状，MUST NOT 再定义与主仓 Env 平行的 bashExecution / compactionSummary / branchSummary / custom 等会话环境角色；包 MUST NOT 依赖主仓 xylitol。"
@@ -24,7 +24,8 @@ requirements[21]{req_id,title,statement}:
   pab24,"responses-assembler-sole-body","包 MUST 提供 ResponsesAssembler（或等价）作为构造 openai-responses 请求 JSON body 的唯一业务布局入口：消费投影后的 AiBridgeMessage、工具 schema、AiBridgeGenerateOptions 与 WirePolicy；默认档 MUST 等价于既有 assemble_responses_body / prepend_system_prompt_item / apply_responses_wire_policy 行为（允许规范化后比较）。Adapter 内 MUST NOT 二次重排业务布局（WirePolicy 字段子集差异除外）。单测 MAY 用不同 WirePolicy 字面量覆盖证明字段集 diff。由包内 golden/单测覆盖，MUST NOT 单独扩 BDD step。"
   pab25,"responses-reasoning-full-replay-only","从 session 形 AiBridgeMessage（含 thinkingSignature）经 ResponsesAssembler 重建 input 时，回放策略 MUST 仅为全量回放：有合法 signature 则原样推入 reasoning item；MUST NOT 提供 Strip/BestEffort 产品旋钮或 ExtraPolicy 回放模式枚举；空字符串 encrypted_content 的 signature MUST 仍整包回放。由包内 golden/单测覆盖，MUST NOT 单独扩 BDD step。"
   pab26,"responses-reasoning-encrypted-backfill","流式 Responses 路径在 response.completed 或 response.incomplete 时，若能按 reasoning id 将终端 output 中的非空 encrypted_content 合并进先前 ThinkingEnd 的 thinkingSignature，MUST 在随后的 Done 之前发出更新后的 ThinkingEnd（或文档化等价）；主路径 MUST NOT 因缺 encrypted 而崩溃。由包内合成 SSE 单测覆盖，MUST NOT 单独扩 BDD step。"
-scenarios[13]{req_id,id,given,when,then,feature}:
+  pab27,"responses-assemble-prefix-idempotent","对同一 Vec<AiBridgeMessage>、同一 AiBridgeGenerateOptions（含 system_prompt）、同一 tools schema 与 WirePolicy，ResponsesAssembler 构造的 openai-responses 请求体中业务布局（至少 input 项序列与 tools）MUST 规范化后幂等：连续组装两次相等；消息经 serde 或 JSONL 行往返后再组装 MUST 仍得相等前缀。MUST NOT 因仅序列化往返而重排或改写历史 input。由包内单测与维护 lab（lab_session_prefix_idempotency）覆盖，MUST NOT 单独扩 BDD step。"
+scenarios[14]{req_id,id,given,when,then,feature}:
   pab17,session-vs-llm-vocab-unit,"AgentMessage 位于 protocol 根","调用 project_for_llm / 检查 XyModel 签名","Llm+Env 组合；XyModel 只收 AiBridgeMessage；无平行 LLM 叶 enum",false
   pab18,"responses-embedded-error-message-unit","错误串含 content:{\"error\":{\"code\":400,\"message\":\"…exceeds…\",\"type\":\"exceed_context_size_error\"}}","map_err 或 extract","错误文案含 upstream message（及可选 type），非仅 deserialize 失败",false
   pab19,"wire-policy-default-unit","调用 WirePolicy::default()","检查 compat 与 extra_policy","compat 为 generic；prompt_cache_usage 为 true；prompt_cache_key 与 previous_response_id 为 false；默认值定义在 defaults.rs",false
@@ -38,3 +39,4 @@ scenarios[13]{req_id,id,given,when,then,feature}:
   pab25,"full-replay-signature-golden-unit","assistant 含合法 thinkingSignature 的 reasoning JSON","ResponsesAssembler 或 convert_messages_to_input","input 含等价 type=reasoning 项且顺序在同轮 text/tool 前",false
   pab25,"empty-encrypted-still-replays-unit","signature JSON 含 encrypted_content 空串","组装 input","仍推入整包 reasoning item",false
   pab26,"completed-backfills-encrypted-unit","output_item.done 无 encrypted 且 completed.output 同 id 有非空 encrypted","map_responses_sse_event","Done 前有更新 signature 的 ThinkingEnd",false
+  pab27,"assemble-prefix-idempotent-unit","固定 messages/options/tools/WirePolicy","ResponsesAssembler 组装两次及 serde/JSONL 往返后再组装","规范化 input 与 tools 相等",false
