@@ -134,7 +134,7 @@
   @req:s11
   场景: agent-fork
     假如 agent 会话活动
-    当 调用 AgentSession.fork_session(e4)
+    当 调用 fork_session(e4)
     那么 返回新子 session id 且磁盘存在子会话文件
 
   @req:s16
