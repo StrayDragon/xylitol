@@ -395,9 +395,6 @@ pub(crate) fn w_switch_model_cycle(agent: &AgentState) {
         std::sync::Arc::new(xylitol::infra::provider::factory::build_provider),
         xylitol::infra::permission::allow_all_permission(),
         Some(std::sync::Arc::new(
-            xylitol::infra::bash_exec::InfraBashExecutor::new(),
-        )),
-        Some(std::sync::Arc::new(
             xylitol::infra::export::StdExportIo::new(),
         )),
         xylitol::agent::capabilities::QueueMode::default(),
@@ -655,7 +652,7 @@ pub(crate) async fn g_sess_persist_turn(agent: &AgentState, sess: &XySessionStor
     reset_fake_state();
     set_fake_text("assistant reply");
     let store: Arc<dyn xylitol::protocol::ports::XySessionStore> = Arc::new(mgr);
-    let mut caps = make_test_capabilities(agent, store.clone(), None, None);
+    let mut caps = make_test_capabilities(agent, store.clone(), None);
     if let Some(id) = agent.registry.borrow().list().first().map(|m| m.id.clone()) {
         let _ = caps.select_model(&id);
     }
@@ -705,7 +702,7 @@ pub(crate) async fn g_sess_persist_tool(agent: &AgentState, sess: &XySessionStor
     let mgr = sess.mgr.borrow().as_ref().unwrap().clone();
     let _ = mgr.create(sid, Some("."), None).await;
     let store: Arc<dyn xylitol::protocol::ports::XySessionStore> = Arc::new(mgr);
-    let mut caps = make_test_capabilities(agent, store, None, None);
+    let mut caps = make_test_capabilities(agent, store, None);
     if let Some(id) = agent.registry.borrow().list().first().map(|m| m.id.clone()) {
         let _ = caps.select_model(&id);
     }
@@ -863,7 +860,6 @@ pub(crate) fn g_sess_resp_separated(agent: &AgentState) {
     let _caps = make_test_capabilities(
         agent,
         store,
-        Some(Arc::new(xylitol::infra::bash_exec::InfraBashExecutor::new())),
         Some(Arc::new(xylitol::infra::export::StdExportIo::new())),
     );
     agent.last_result.replace(Some(Ok("constructed".into())));
@@ -893,7 +889,7 @@ pub(crate) fn g_sess_api_retained(agent: &AgentState) {
     let dir = tempfile::tempdir().unwrap();
     let mgr = SessionManager::new(dir.keep());
     let store: Arc<dyn xylitol::protocol::ports::XySessionStore> = Arc::new(mgr);
-    let mut session = make_test_capabilities(agent, store, None, None);
+    let mut session = make_test_capabilities(agent, store, None);
     let _ = session.set_thinking_level(ThinkingLevel::Low);
     let cmds = product_slash_commands();
     let type_name = std::any::type_name::<AgentCapabilities>().to_string();
@@ -946,7 +942,6 @@ pub(crate) fn g_sess_mock_export(agent: &AgentState) {
     let _session = make_test_capabilities(
         agent,
         store,
-        None,
         Some(mock as Arc<dyn xylitol::protocol::ports::XyExportIo>),
     );
 }
@@ -965,7 +960,6 @@ pub(crate) async fn w_sess_export_html(agent: &AgentState, _sess: &XySessionStor
     let mut session = make_test_capabilities(
         agent,
         store,
-        None,
         Some(mock as Arc<dyn xylitol::protocol::ports::XyExportIo>),
     );
     session.set_session(sid.to_string());
@@ -1010,11 +1004,14 @@ pub(crate) fn g_sess_no_bash(_agent: &AgentState) {}
 
 #[when("调用 execute_bash")]
 pub(crate) async fn w_sess_execute_bash_no_executor(agent: &AgentState) {
+    use xylitol::app::bang_exec::BangExecHandler;
     let dir = tempfile::tempdir().unwrap();
     let mgr = SessionManager::new(dir.keep());
     let store: Arc<dyn xylitol::protocol::ports::XySessionStore> = Arc::new(mgr);
-    let session = make_test_capabilities(agent, store, None, None);
-    let result = session.execute_bash("echo hi", false, None).await;
+    let bang = BangExecHandler::new(None);
+    let result = bang
+        .execute(store.as_ref(), None, "echo hi", false, None)
+        .await;
     agent.last_result.replace(Some(
         result
             .map(|_| "ok".into())

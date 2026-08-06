@@ -7,6 +7,7 @@ use async_trait::async_trait;
 use tokio_util::sync::CancellationToken;
 
 use crate::agent::AgentRuntime;
+use crate::app::core::bang_exec::BangExecHandler;
 use crate::protocol::model::ThinkingLevel;
 use crate::protocol::ports::{XyBashResult, XySessionStore};
 use crate::protocol::session::{
@@ -83,6 +84,8 @@ pub struct XyInProcessDriver {
     /// agent holds its own clone internally; this one is the surface's handle
     /// for session-management commands.
     store: Arc<dyn XySessionStore>,
+    /// Interactive bang (`!` / `!!`) executor — app-surface, not agent.
+    bang: BangExecHandler,
     /// Optional reload state for `/reload` and MCP ownership (c1120).
     reload: Option<InProcessReloadState>,
     /// Background MCP bootstrap (c1200); independent of agent busy.
@@ -104,13 +107,28 @@ impl XyInProcessDriver {
 
     /// Construct from a built agent plus the store used to build it.
     ///
-    /// `store` is the same instance injected into the agent at construction;
-    /// holding it here lets session commands operate without reaching into
-    /// agent internals.
+    /// Installs a default [`InfraBashExecutor`](crate::infra::bash_exec::InfraBashExecutor)
+    /// for product bang. Use [`Self::with_bang`] to override.
     pub fn new(agent: AgentRuntime, store: Arc<dyn XySessionStore>) -> Self {
+        Self::with_bang(
+            agent,
+            store,
+            BangExecHandler::new(Some(Arc::new(
+                crate::infra::bash_exec::InfraBashExecutor::new(),
+            ))),
+        )
+    }
+
+    /// Construct with an explicit bang handler (tests / embed without shell).
+    pub fn with_bang(
+        agent: AgentRuntime,
+        store: Arc<dyn XySessionStore>,
+        bang: BangExecHandler,
+    ) -> Self {
         Self {
             agent,
             store,
+            bang,
             reload: None,
             mcp_boot: McpBootState::Idle,
             late_mcp_discover: None,
@@ -434,6 +452,7 @@ impl XyDriver for XyInProcessDriver {
     }
 
     fn abort(&self) {
+        self.bang.abort();
         self.agent.abort();
     }
 
@@ -542,9 +561,24 @@ impl XyDriver for XyInProcessDriver {
         exclude_from_context: bool,
         chunk_tx: Option<tokio::sync::mpsc::Sender<Vec<u8>>>,
     ) -> Result<XyBashResult, XyDriverError> {
-        self.agent
-            .inner()
-            .execute_bash(command, exclude_from_context, chunk_tx)
+        if let Some(bus) = self.agent.inner().hook_bus() {
+            let (ty, phase, ctx) = crate::agent::runtime::script_hook_ctx::user_bash(
+                command,
+                exclude_from_context,
+                self.agent.inner().cwd(),
+            );
+            crate::agent::capabilities::cancel_hook(&bus, ty, phase, ctx)
+                .await
+                .map_err(XyDriverError::from_opaque)?;
+        }
+        self.bang
+            .execute(
+                self.store.as_ref(),
+                self.agent.inner().session_id(),
+                command,
+                exclude_from_context,
+                chunk_tx,
+            )
             .await
             .map_err(XyDriverError::from)
     }
@@ -1492,16 +1526,13 @@ mod driver_session_tree_tests {
     use super::*;
     use crate::agent::AgentBuilder;
     use crate::agent::tools::ToolSet;
-    use crate::infra::bash_exec::InfraBashExecutor;
     use crate::infra::config::value::InfraSecretResolver;
     use crate::infra::event::EventBus;
     use crate::infra::export::StdExportIo;
     use crate::infra::permission;
     use crate::infra::session::SessionManager;
     use crate::protocol::model::XyModelConfig;
-    use crate::protocol::ports::{
-        XyBashExecutor, XyEventSink, XyExportIo, XyModel, XySessionStore,
-    };
+    use crate::protocol::ports::{XyEventSink, XyExportIo, XyModel, XySessionStore};
     use crate::protocol::session::{EntryBase, MessageEntry, SessionEntry, SessionTreeKind};
 
     type ModelBuilderFn =
@@ -1530,7 +1561,6 @@ mod driver_session_tree_tests {
         )
         .cwd(".")
         .tools(ToolSet::from_iter(crate::infra::tools::default_tools()))
-        .bash(Arc::new(InfraBashExecutor::new()) as Arc<dyn XyBashExecutor>)
         .export_io(Arc::new(StdExportIo::new()) as Arc<dyn XyExportIo>)
         .build()
         .expect("build agent");
@@ -1557,7 +1587,6 @@ mod driver_session_tree_tests {
         )
         .cwd(".")
         .tools(ToolSet::from_iter(crate::infra::tools::default_tools()))
-        .bash(Arc::new(InfraBashExecutor::new()) as Arc<dyn XyBashExecutor>)
         .export_io(Arc::new(StdExportIo::new()) as Arc<dyn XyExportIo>)
         .build()
         .expect("build agent");
@@ -1775,7 +1804,6 @@ mod driver_session_tree_tests {
         )
         .cwd(".")
         .tools(ToolSet::empty())
-        .bash(Arc::new(InfraBashExecutor::new()) as Arc<dyn XyBashExecutor>)
         .export_io(Arc::new(StdExportIo::new()) as Arc<dyn XyExportIo>)
         .build()
         .expect("build agent");

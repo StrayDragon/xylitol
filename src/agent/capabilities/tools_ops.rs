@@ -150,6 +150,11 @@ impl AgentCapabilities {
         self.hooks = hooks;
     }
 
+    /// Get a reference to the permission engine (injected at construction).
+    pub fn get_permission(&self) -> std::sync::Arc<dyn XyPermission> {
+        self.permission.clone()
+    }
+
     /// Set the permission port.
     pub fn set_permission(&mut self, permission: std::sync::Arc<dyn XyPermission>) {
         self.permission = permission;
