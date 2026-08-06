@@ -504,7 +504,7 @@ mod tests {
             other => panic!("expected excluded bash, got {other:?}"),
         }
 
-        let v = serde_json::to_value(&AgentMessage::bash("pwd", "/tmp", Some(0))).unwrap();
+        let v = serde_json::to_value(AgentMessage::bash("pwd", "/tmp", Some(0))).unwrap();
         assert_eq!(v.get("excludeFromContext"), Some(&serde_json::json!(false)));
         assert!(v.get("exclude_from_context").is_none(), "{v}");
         assert_eq!(v.get("exitCode"), Some(&serde_json::json!(0)));

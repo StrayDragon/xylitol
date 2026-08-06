@@ -66,16 +66,14 @@ pub(crate) fn compaction_entry_from_sess(
     if let Some(e) = comp_fixture::LAST_COMPACTION.with(|c| c.borrow().clone()) {
         return e;
     }
-    let entry = sess
-        .entries
+    sess.entries
         .borrow()
         .iter()
         .find_map(|e| match e {
             SessionEntry::Compaction(c) => Some(c.clone()),
             _ => None,
         })
-        .expect("expected CompactionEntry in session");
-    entry
+        .expect("expected CompactionEntry in session")
 }
 
 /// Active context after compaction: one CompactionEntry plus message turns from `firstKeptEntryId`.

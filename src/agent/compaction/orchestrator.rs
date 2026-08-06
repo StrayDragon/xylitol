@@ -444,7 +444,7 @@ mod tests {
     use crate::protocol::ports::{XyGenerateOptions, XyStream};
     use crate::protocol::session::{ForkPosition, SessionContext};
 
-    static OBS_TEST_LOCK: Mutex<()> = Mutex::new(());
+    static OBS_TEST_LOCK: tokio::sync::Mutex<()> = tokio::sync::Mutex::const_new(());
 
     struct CollectingReporter(Arc<Mutex<Vec<SpanRecord>>>);
 
@@ -511,7 +511,7 @@ mod tests {
     /// otel19: prepare early-exit MUST NOT export `agent.compaction` (CollectingReporter).
     #[tokio::test]
     async fn prepare_fail_exports_no_compaction_span() {
-        let _g = OBS_TEST_LOCK.lock().unwrap();
+        let _g = OBS_TEST_LOCK.lock().await;
         set_provider_trace_active(true);
         clear_obs_span_parents();
         let records = Arc::new(Mutex::new(Vec::new()));

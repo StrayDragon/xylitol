@@ -2214,27 +2214,94 @@ async fn queue_after_run_fifo_and_drop_revokes() {
 
 #[tokio::test]
 async fn bind_session_rejects_while_busy() {
+    use crate::agent::runtime::RuntimeControlError;
     use futures::StreamExt;
+    use std::sync::atomic::{AtomicUsize, Ordering};
 
-    let rounds = vec![vec![
-        crate::protocol::model::XyChunk::TextDelta("ok".into()),
-        crate::protocol::model::XyChunk::Done {
-            finish_reason: crate::protocol::message::XyStopReason::Stop,
-            usage: None,
-        },
-    ]];
-    // Use slow path via sleep in a custom mock is heavy; instead start a normal
-    // run and bind while has_active_turn after AgentStart isn't guaranteed.
-    // Cover the idle-only API contract directly via coordinator has_work:
-    let mut agent = make_agent_with_rounds(rounds, ToolSet::empty());
+    struct SlowMock {
+        calls: Arc<AtomicUsize>,
+    }
+
+    #[async_trait::async_trait]
+    impl XyModel for SlowMock {
+        fn name(&self) -> &str {
+            "slow-mock"
+        }
+        async fn generate_stream(
+            &self,
+            _messages: Vec<crate::protocol::message::LlmMessage>,
+            _tools: &[crate::protocol::model::XyToolSchema],
+            _stream: bool,
+            _options: crate::protocol::ports::XyGenerateOptions,
+        ) -> Result<XyStream, XyError> {
+            self.calls.fetch_add(1, Ordering::SeqCst);
+            Ok(Box::pin(async_stream::stream! {
+                for i in 0..40u32 {
+                    tokio::time::sleep(std::time::Duration::from_millis(20)).await;
+                    yield Ok(crate::protocol::model::XyChunk::TextDelta(format!("c{i}")));
+                }
+                yield Ok(crate::protocol::model::XyChunk::Done {
+                    finish_reason: crate::protocol::message::XyStopReason::Stop,
+                    usage: None,
+                });
+            }))
+        }
+    }
+
+    let calls = Arc::new(AtomicUsize::new(0));
+    let calls_b = calls.clone();
+    let reg = mock_model_registry();
+    let session_mgr = SessionManager::new(tempfile::tempdir().unwrap().path().join("sessions"));
+    let store: Arc<dyn XySessionStore> = Arc::new(session_mgr);
+    let sink: Arc<dyn XyEventSink> = Arc::new(crate::infra::event::EventBus::new());
+    let builder: crate::protocol::ports::XyModelBuilder = Arc::new(move |_| {
+        Ok(Arc::new(SlowMock {
+            calls: calls_b.clone(),
+        }) as Arc<dyn XyModel>)
+    });
+    let session = select_mock(AgentCapabilities::new(
+        reg,
+        ToolSet::empty(),
+        store,
+        sink,
+        None,
+        Vec::new(),
+        Vec::new(),
+        ".".into(),
+        None,
+        builder,
+        crate::infra::permission::allow_all_permission(),
+        crate::agent::capabilities::QueueMode::default(),
+        crate::agent::capabilities::QueueMode::default(),
+        None,
+    ));
+    let mut agent = AgentRuntime::new(session);
     bind_session_or_panic(&mut agent, "bind-a");
+    // Idle rebind is allowed.
     assert!(agent.bind_session("bind-b").is_ok());
 
-    // After a completed run, rebind is allowed.
     let mut stream = agent.submit_root("hi", RunPolicy::Reject).await;
+    let mut saw = false;
+    while let Some(ev) = stream.next().await {
+        if matches!(ev, crate::protocol::lifecycle::XyEvent::TextDelta(_)) {
+            saw = true;
+            break;
+        }
+    }
+    assert!(saw, "must be mid-run before busy bind check");
+    assert!(
+        matches!(
+            agent.bind_session("bind-c"),
+            Err(RuntimeControlError::SessionBusy)
+        ),
+        "rebind while live must be SessionBusy"
+    );
+    assert_eq!(agent.session_id(), Some("bind-b"));
+
     while stream.next().await.is_some() {}
     assert!(agent.bind_session("bind-c").is_ok());
     assert_eq!(agent.session_id(), Some("bind-c"));
+    assert_eq!(calls.load(Ordering::SeqCst), 1);
 }
 
 #[tokio::test]

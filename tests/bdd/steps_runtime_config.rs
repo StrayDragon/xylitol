@@ -461,7 +461,7 @@ fn t_rc_meta(rc_snap: &RcSnap) {
         Some("max")
     );
     assert!(
-        meta.thinking_level_map.get("off").is_none()
+        !meta.thinking_level_map.contains_key("off")
             || meta.thinking_level_map.get("off") == Some(&None)
     );
 }

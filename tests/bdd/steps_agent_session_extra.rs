@@ -1001,9 +1001,7 @@ pub(crate) async fn w_sess_execute_bash_no_executor(agent: &AgentState) {
         .execute(store.as_ref(), None, "echo hi", false, None)
         .await;
     agent.last_result.replace(Some(
-        result
-            .map(|_| "ok".into())
-            .map_err(|e| XyDriverError::from(e)),
+        result.map(|_| "ok".into()).map_err(XyDriverError::from),
     ));
 }
 
