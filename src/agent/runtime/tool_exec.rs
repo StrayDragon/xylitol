@@ -46,7 +46,7 @@ fn batch_mode_label(mode: XyBatchMode) -> &'static str {
     }
 }
 
-fn parts_preview_text(parts: &[AgentPart]) -> String {
+pub(crate) fn parts_preview_text(parts: &[AgentPart]) -> String {
     let mut out = Vec::new();
     for part in parts {
         match part {

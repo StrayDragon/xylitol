@@ -304,8 +304,6 @@ pub(crate) fn build_fallback_model(
     })
 }
 
-// ── Model Filtering (enabledModels) ─────────────────────────────────
-
 // ── Helper: apply thinking level to ResolvedModel ───────────────────
 
 impl ResolvedModel {
