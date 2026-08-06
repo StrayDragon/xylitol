@@ -15,10 +15,74 @@
 use serde::{Deserialize, Serialize};
 use serde_json::Value;
 
+use crate::protocol::error::XyError;
 use crate::protocol::message::AgentMessage;
 use crate::protocol::types::ContextTokenEstimate;
 
 // ── XyEvent ─────────────────────────────────────────────
+
+/// Structured agent-stream error (surfaces can branch on [`Self::kind`]).
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct XyEventError {
+    /// Stable kind aligned with [`XyError::kind`] when sourced from hot-path errors
+    /// (`Aborted`, `Provider`, `Session`, `Config`, …). Opaque strings use `Message`.
+    #[serde(default = "default_event_error_kind")]
+    pub kind: String,
+    pub message: String,
+}
+
+fn default_event_error_kind() -> String {
+    "Message".into()
+}
+
+impl XyEventError {
+    pub fn new(kind: impl Into<String>, message: impl Into<String>) -> Self {
+        Self {
+            kind: kind.into(),
+            message: message.into(),
+        }
+    }
+
+    pub fn aborted() -> Self {
+        Self::new("Aborted", "aborted")
+    }
+
+    pub fn from_xy(err: &XyError) -> Self {
+        Self::new(err.kind(), err.to_string())
+    }
+
+    /// Classify a bare message (legacy emitters / remote strings).
+    pub fn message_only(message: impl Into<String>) -> Self {
+        let message = message.into();
+        if message == "aborted" {
+            return Self::aborted();
+        }
+        Self::new("Message", message)
+    }
+
+    pub fn is_aborted(&self) -> bool {
+        self.kind == "Aborted" || self.message == "aborted"
+    }
+}
+
+impl From<String> for XyEventError {
+    fn from(message: String) -> Self {
+        Self::message_only(message)
+    }
+}
+
+impl From<&str> for XyEventError {
+    fn from(message: &str) -> Self {
+        Self::message_only(message)
+    }
+}
+
+impl From<&XyError> for XyEventError {
+    fn from(err: &XyError) -> Self {
+        Self::from_xy(err)
+    }
+}
 
 /// All possible events emitted during agent execution.
 ///
@@ -143,7 +207,7 @@ pub enum XyEvent {
     },
 
     // ── Error ────────────────────────────────────────────────────
-    Error(String),
+    Error(XyEventError),
 
     // ── Session info ─────────────────────────────────────────────
     SessionInfoChanged {
@@ -153,6 +217,18 @@ pub enum XyEvent {
 }
 
 impl XyEvent {
+    pub fn aborted() -> Self {
+        Self::Error(XyEventError::aborted())
+    }
+
+    pub fn error_msg(message: impl Into<String>) -> Self {
+        Self::Error(XyEventError::message_only(message))
+    }
+
+    pub fn error_xy(err: &XyError) -> Self {
+        Self::Error(XyEventError::from_xy(err))
+    }
+
     /// A short human-readable description of the event.
     pub fn description(&self) -> &'static str {
         match self {

@@ -18,9 +18,10 @@ pub struct XyEventStream {
 }
 
 impl XyEventStream {
-    pub(crate) fn error(msg: String) -> Self {
+    pub(crate) fn error(msg: impl Into<crate::protocol::lifecycle::XyEventError>) -> Self {
+        let err = msg.into();
         let inner: Pin<Box<dyn Stream<Item = XyEvent> + Send>> = Box::pin(async_stream::stream! {
-            yield XyEvent::Error(msg);
+            yield XyEvent::Error(err);
         });
         Self { inner, done: false }
     }

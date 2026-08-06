@@ -552,13 +552,12 @@ impl XyDriver for XyInProcessDriver {
 
     async fn compact(&mut self, instructions: Option<String>) -> Result<bool, XyDriverError> {
         // Force path (c1640 / pi compact) — MUST NOT use maybe_auto_compact.
-        Self::map_str(
-            self.agent
-                .inner()
-                .force_compact(instructions)
-                .await
-                .map(|()| true),
-        )
+        self.agent
+            .inner()
+            .force_compact(instructions)
+            .await
+            .map(|()| true)
+            .map_err(XyDriverError::from)
     }
 
     async fn export_html(&mut self, path: &Path) -> Result<String, XyDriverError> {
@@ -580,7 +579,11 @@ impl XyDriver for XyInProcessDriver {
     }
 
     async fn import_jsonl(&mut self, path: &Path) -> Result<String, XyDriverError> {
-        Self::map_str(self.agent.inner_mut().import_from_jsonl(path).await)
+        self.agent
+            .inner_mut()
+            .import_from_jsonl(path)
+            .await
+            .map_err(XyDriverError::from)
     }
 
     async fn fork_session(
@@ -643,7 +646,11 @@ impl XyDriver for XyInProcessDriver {
     }
 
     async fn get_session_stats(&self) -> Result<SessionStats, XyDriverError> {
-        Self::map_str(self.agent.inner().get_session_stats().await)
+        self.agent
+            .inner()
+            .get_session_stats()
+            .await
+            .map_err(XyDriverError::from)
     }
 
     async fn estimate_context_tokens(
@@ -714,7 +721,11 @@ impl XyDriver for XyInProcessDriver {
         }
         // Bootstrap may assign a fresh id before any persist; wiped HOME may leave
         // an orphan id. Ensure an empty session so double-Esc opens an empty tree.
-        self.agent.inner().ensure_session(sid, None).await?;
+        self.agent
+            .inner()
+            .ensure_session(sid, None)
+            .await
+            .map_err(XyDriverError::from)?;
         let tree = match kind {
             SessionTreeKind::MessageHistory => self.store.message_history_tree(sid).await?,
             SessionTreeKind::FileBrowser => {
@@ -786,7 +797,11 @@ impl XyDriver for XyInProcessDriver {
             .inner()
             .session_id()
             .ok_or_else(|| XyDriverError::not_found("no active session"))?;
-        self.agent.inner().ensure_session(sid, None).await?;
+        self.agent
+            .inner()
+            .ensure_session(sid, None)
+            .await
+            .map_err(XyDriverError::from)?;
         let entries = self.store.load_entries(sid).await?;
         if !entries.iter().any(|e| e.entry_id() == Some(target_id)) {
             return Err(XyDriverError::not_found(format!(

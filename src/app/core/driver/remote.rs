@@ -193,11 +193,11 @@ impl XyDriver for XyRemoteDriver {
             match client.post(&run_url).json(&payload).send().await {
                 Ok(resp) if !resp.status().is_success() => {
                     let status = resp.status();
-                    yield XyEvent::Error(format!("server returned {status}"));
+                    yield XyEvent::error_msg(format!("server returned {status}"));
                     return;
                 }
                 Err(e) => {
-                    yield XyEvent::Error(format!("connection failed: {e}"));
+                    yield XyEvent::error_msg(format!("connection failed: {e}"));
                     return;
                 }
                 _ => {} // success
@@ -207,7 +207,7 @@ impl XyDriver for XyRemoteDriver {
             let ws_stream = match connect_async(&ws_url).await {
                 Ok((ws, _)) => ws,
                 Err(e) => {
-                    yield XyEvent::Error(format!("WS connect failed: {e}"));
+                    yield XyEvent::error_msg(format!("WS connect failed: {e}"));
                     return;
                 }
             };
@@ -221,7 +221,7 @@ impl XyDriver for XyRemoteDriver {
             })
             .unwrap();
             if ws_writer.send(Message::Text(subscribe.into())).await.is_err() {
-                yield XyEvent::Error("WS send failed".into());
+                yield XyEvent::error_msg("WS send failed");
                 return;
             }
 
@@ -250,7 +250,7 @@ impl XyDriver for XyRemoteDriver {
                                             }
                                         }
                                         ServerFrame::ResyncRequired { .. } => {
-                                            yield XyEvent::Error("journal truncated, resync required".into());
+                                            yield XyEvent::error_msg("journal truncated, resync required");
                                             break;
                                         }
                                     }
