@@ -479,4 +479,204 @@ mod tests {
         let body_serde = asm.assemble("lab-m", back, &tools, false, &opts);
         assert_eq!(body_serde["input"], body_a["input"]);
     }
+
+    /// c1930: after `build_context_entries` cut, assemble prefix equals the
+    /// expected working history (summary + firstKept…) and never resurrects
+    /// summarized-away reasoning ids.
+    #[test]
+    fn compaction_cut_path_assemble_prefix_matches_working_history() {
+        use crate::protocol::session::{
+            CompactionEntry, EntryBase, MessageEntry, SessionEntry, build_context_entries,
+        };
+        use xylitol_ai_bridge::AiBridgeGenerateOptions;
+        use xylitol_ai_bridge::provider::ResponsesAssembler;
+
+        fn msg(id: &str, parent: Option<&str>, agent: AgentMessage) -> SessionEntry {
+            SessionEntry::Message(MessageEntry {
+                base: EntryBase {
+                    entry_type: "message".into(),
+                    id: id.into(),
+                    parent_id: parent.map(str::to_string),
+                    timestamp: "t".into(),
+                },
+                message: serde_json::to_value(&agent).expect("ser"),
+            })
+        }
+
+        let away_sig = r#"{"type":"reasoning","id":"rs_summarized_away","summary":[]}"#;
+        let kept_sig = r#"{"type":"reasoning","id":"rs_kept_cut","summary":[]}"#;
+
+        let leaf = vec![
+            msg("u_old", None, AgentMessage::user("summarized away prompt")),
+            msg(
+                "a_old",
+                Some("u_old"),
+                AgentMessage::Llm(LlmMessage::AssistantMessage {
+                    content: vec![
+                        AgentPart::Thinking {
+                            thinking: "old".into(),
+                            redacted: false,
+                            thinking_signature: Some(away_sig.into()),
+                        },
+                        AgentPart::text("old reply"),
+                    ],
+                    stop_reason: None,
+                    usage: None,
+                    api: "openai-responses".into(),
+                    provider: "test".into(),
+                    model: "m".into(),
+                    response_id: None,
+                    error_message: None,
+                    timestamp: now_ms(),
+                    diagnostics: Vec::new(),
+                }),
+            ),
+            msg(
+                "u_keep",
+                Some("a_old"),
+                AgentMessage::user("kept after cut"),
+            ),
+            msg(
+                "a_keep",
+                Some("u_keep"),
+                AgentMessage::Llm(LlmMessage::AssistantMessage {
+                    content: vec![
+                        AgentPart::Thinking {
+                            thinking: "kept".into(),
+                            redacted: false,
+                            thinking_signature: Some(kept_sig.into()),
+                        },
+                        AgentPart::text("kept reply"),
+                    ],
+                    stop_reason: None,
+                    usage: None,
+                    api: "openai-responses".into(),
+                    provider: "test".into(),
+                    model: "m".into(),
+                    response_id: None,
+                    error_message: None,
+                    timestamp: now_ms(),
+                    diagnostics: Vec::new(),
+                }),
+            ),
+            SessionEntry::Compaction(CompactionEntry {
+                base: EntryBase {
+                    entry_type: "compaction".into(),
+                    id: "c1".into(),
+                    parent_id: Some("a_keep".into()),
+                    timestamp: "t".into(),
+                },
+                summary: "prior turns summarized".into(),
+                first_kept_entry_id: "u_keep".into(),
+                tokens_before: 9000,
+                details: None,
+                from_hook: None,
+            }),
+            msg(
+                "u_new",
+                Some("c1"),
+                AgentMessage::user("continue after compact"),
+            ),
+        ];
+
+        let cut = build_context_entries(&leaf);
+        let cut_ids: Vec<_> = cut.iter().filter_map(|e| e.entry_id()).collect();
+        assert_eq!(
+            cut_ids,
+            vec!["c1", "u_keep", "a_keep", "u_new"],
+            "cut must drop summarized-away entries"
+        );
+
+        let from_cut: Vec<AgentMessage> = cut.iter().filter_map(|e| e.as_agent_message()).collect();
+        let expected_working = vec![
+            AgentMessage::Env(EnvMessage::CompactionSummaryMessage {
+                summary: "prior turns summarized".into(),
+                tokens_before: 9000,
+                tokens_after: 0,
+                read_files: None,
+                modified_files: None,
+            }),
+            AgentMessage::user("kept after cut"),
+            AgentMessage::Llm(LlmMessage::AssistantMessage {
+                content: vec![
+                    AgentPart::Thinking {
+                        thinking: "kept".into(),
+                        redacted: false,
+                        thinking_signature: Some(kept_sig.into()),
+                    },
+                    AgentPart::text("kept reply"),
+                ],
+                stop_reason: None,
+                usage: None,
+                api: "openai-responses".into(),
+                provider: "test".into(),
+                model: "m".into(),
+                response_id: None,
+                error_message: None,
+                timestamp: now_ms(),
+                diagnostics: Vec::new(),
+            }),
+            AgentMessage::user("continue after compact"),
+        ];
+
+        let opts = AiBridgeGenerateOptions {
+            system_prompt: Some("Current date: 2026-08-06".into()),
+            thinking_level: "medium".into(),
+            ..Default::default()
+        };
+        let asm = ResponsesAssembler::default();
+        let body_cut = asm.assemble("lab-m", project_for_llm(&from_cut), &[], false, &opts);
+        let body_expected = asm.assemble(
+            "lab-m",
+            project_for_llm(&expected_working),
+            &[],
+            false,
+            &opts,
+        );
+        assert_eq!(
+            body_cut["input"], body_expected["input"],
+            "cut path must match explicit working-history assemble prefix"
+        );
+        let body_cut2 = asm.assemble("lab-m", project_for_llm(&from_cut), &[], false, &opts);
+        assert_eq!(body_cut2["input"], body_cut["input"]);
+
+        let input = body_cut["input"].as_array().expect("input");
+        assert!(
+            input
+                .iter()
+                .all(|i| i.get("id") != Some(&serde_json::json!("rs_summarized_away"))),
+            "must not resurrect summarized-away reasoning: {input:?}"
+        );
+        assert!(
+            input
+                .iter()
+                .any(|i| i.get("id") == Some(&serde_json::json!("rs_kept_cut"))),
+            "kept signature must full-replay: {input:?}"
+        );
+        assert!(
+            input.iter().any(|i| {
+                i.get("role") == Some(&serde_json::json!("user"))
+                    && i.get("content")
+                        .and_then(|c| c.as_array())
+                        .and_then(|a| a.first())
+                        .and_then(|p| p.get("text"))
+                        .and_then(|t| t.as_str())
+                        == Some(&fold_context_summary_for_llm("prior turns summarized"))
+            }),
+            "compaction fold must lead cut prefix: {input:?}"
+        );
+        assert!(
+            input.iter().all(|i| {
+                let text = i
+                    .get("content")
+                    .and_then(|c| c.as_array())
+                    .and_then(|a| a.first())
+                    .and_then(|p| p.get("text"))
+                    .and_then(|t| t.as_str())
+                    .unwrap_or("");
+                !text.contains("summarized away prompt") && !text.contains("old reply")
+            }),
+            "summarized-away user/assistant text must be absent: {input:?}"
+        );
+    }
 }
