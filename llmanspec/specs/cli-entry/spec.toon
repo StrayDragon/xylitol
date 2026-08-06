@@ -10,7 +10,7 @@ requirements[22]{req_id,title,statement}:
   ce1,"app-directory","CLI 模块 MUST 位于 src/app/cli/，print MUST 为其子模式；app 面 MUST NOT reach agent::runtime / agent::capabilities / agent::tools。"
   ce2,"no-silent-fallback","配置文件存在但零可加载模型时，经 bootstrap 的表面（TUI/print/--list-models/server）MUST 硬失败并明确报错指向配置，MUST NOT 静默回退到 env 占位默认（如 gpt-4o）后继续。"
   ce6,"driver-abstraction","MUST 提供 app::Driver；InProcessDriver 与 RemoteDriver MUST 同实现；切换本地/远程 MUST 只换构造。"
-  ce7,"composition-root-ports","组合根 MUST 从 infra 构造 SessionStore/EventSink 注入装配；MUST NOT 经已删除的 agent::facade。"
+  ce7,"composition-root-ports","组合根 MUST 从 infra 构造 SessionStore/EventSink 注入装配。"
   ce8,"server-subcommands",CLI MUST 提供 server run/install/stop 子命令。
   ce9,"assembly-via-bootstrap","cli 与 server MUST 经 app::core::bootstrap 装配，MUST NOT 内联第二套装配。"
   ce10,"dispatch-via-shared",产品 TUI 命令执行 MUST 委托 dispatch/Driver，MUST NOT 复制第二套语义。
