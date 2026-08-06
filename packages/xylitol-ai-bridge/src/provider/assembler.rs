@@ -154,4 +154,58 @@ mod tests {
         assert!(diags[0].message.contains("omit illegal thinkingSignature"));
         assert_eq!(diags[0].source.as_deref(), Some("openai-responses"));
     }
+
+    #[test]
+    fn assemble_prefix_idempotent_and_serde_roundtrip() {
+        use crate::dto::{AiBridgePart, AiBridgeStopReason, AiBridgeToolSchema};
+
+        let sig = r#"{"type":"reasoning","id":"rs_pab27","summary":[]}"#;
+        let msgs = vec![
+            AiBridgeMessage::user("hi"),
+            AiBridgeMessage::AssistantMessage {
+                content: vec![
+                    AiBridgePart::Thinking {
+                        thinking: "t".into(),
+                        redacted: false,
+                        thinking_signature: Some(sig.into()),
+                    },
+                    AiBridgePart::text("reply"),
+                ],
+                stop_reason: Some(AiBridgeStopReason::Stop),
+                usage: None,
+                api: "openai-responses".into(),
+                provider: "test".into(),
+                model: "m".into(),
+                response_id: None,
+                error_message: None,
+                timestamp: 0,
+                diagnostics: Vec::new(),
+            },
+            AiBridgeMessage::user("$ ls\na.txt"),
+        ];
+        let opts = AiBridgeGenerateOptions {
+            system_prompt: Some("Current date: 2026-08-06".into()),
+            thinking_level: "medium".into(),
+            ..Default::default()
+        };
+        let tools = [AiBridgeToolSchema {
+            name: "read".into(),
+            description: "read".into(),
+            parameters: serde_json::json!({"type": "object", "properties": {}}),
+        }];
+        let asm = ResponsesAssembler::default();
+        let a = asm.assemble("m", msgs.clone(), &tools, false, &opts);
+        let b = asm.assemble("m", msgs.clone(), &tools, false, &opts);
+        assert_eq!(a["input"], b["input"]);
+        assert_eq!(a["tools"], b["tools"]);
+
+        let wire = serde_json::to_value(&msgs).expect("ser");
+        let back: Vec<AiBridgeMessage> = serde_json::from_value(wire).expect("de");
+        let c = asm.assemble("m", back, &tools, false, &opts);
+        assert_eq!(
+            c["input"], a["input"],
+            "serde round-trip must not change assemble input (pab27)"
+        );
+        assert_eq!(c["tools"], a["tools"]);
+    }
 }
