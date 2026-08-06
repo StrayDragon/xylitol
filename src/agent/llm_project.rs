@@ -203,10 +203,12 @@ mod tests {
         let _: xylitol_ai_bridge::dto::AiBridgeMessage = projected[0].clone();
     }
 
-    /// c27 (agent seam): post-compact working history projects CompactionSummary
-    /// + firstKept onwards — no Thinking / thinkingSignature from summarized turns.
+    /// c27 (agent seam): post-compact working history is CompactionSummary + firstKept.
+    /// Summarized-away assistants are absent from the leaf — projection must not
+    /// resurrect their Thinking; kept assistants with signature still pass through.
     #[test]
-    fn compact_working_history_projects_without_summarized_thinking() {
+    fn compact_working_history_projects_summary_and_keeps_retained_signature() {
+        let kept_sig = r#"{"type":"reasoning","id":"rs_kept","summary":[]}"#;
         let working = vec![
             AgentMessage::Env(EnvMessage::CompactionSummaryMessage {
                 summary: "prior turns summarized".into(),
@@ -216,7 +218,25 @@ mod tests {
                 modified_files: None,
             }),
             AgentMessage::user("continue after compact"),
-            AgentMessage::assistant("kept reply"),
+            AgentMessage::Llm(LlmMessage::AssistantMessage {
+                content: vec![
+                    AgentPart::Thinking {
+                        thinking: "kept plan".into(),
+                        redacted: false,
+                        thinking_signature: Some(kept_sig.into()),
+                    },
+                    AgentPart::text("kept reply"),
+                ],
+                stop_reason: None,
+                usage: None,
+                api: String::new(),
+                provider: String::new(),
+                model: String::new(),
+                response_id: None,
+                error_message: None,
+                timestamp: now_ms(),
+                diagnostics: Vec::new(),
+            }),
         ];
         let projected = project_for_llm(&working);
         assert_eq!(projected.len(), 3);
@@ -224,22 +244,41 @@ mod tests {
             projected[0].text().contains("prior turns summarized"),
             "compaction folds to context summary user row"
         );
+        // No synthesized assistant for summarized-away turns (would be a 4th+ row).
         assert!(
-            projected.iter().all(|m| {
-                match m {
-                    LlmMessage::AssistantMessage { content, .. } => content.iter().all(|p| {
-                        !matches!(
-                            p,
-                            AgentPart::Thinking {
-                                thinking_signature: Some(_),
-                                ..
-                            }
-                        )
-                    }),
-                    _ => true,
-                }
-            }),
-            "projected history must not carry thinkingSignature from summarized-away turns: {projected:?}"
+            projected
+                .iter()
+                .filter(|m| m.role_name() == "assistant")
+                .count()
+                == 1,
+            "only kept assistant remains: {projected:?}"
         );
+        match &projected[2] {
+            LlmMessage::AssistantMessage { content, .. } => {
+                let sig = content.iter().find_map(|p| match p {
+                    AgentPart::Thinking {
+                        thinking_signature: Some(s),
+                        ..
+                    } => Some(s.as_str()),
+                    _ => None,
+                });
+                assert_eq!(
+                    sig,
+                    Some(kept_sig),
+                    "retained thinkingSignature must survive project_for_llm"
+                );
+                assert!(
+                    !content.iter().any(|p| matches!(
+                        p,
+                        AgentPart::Thinking {
+                            thinking_signature: Some(s),
+                            ..
+                        } if s.contains("rs_summarized_away")
+                    )),
+                    "must not invent summarized-away signature: {content:?}"
+                );
+            }
+            other => panic!("expected kept assistant, got {other:?}"),
+        }
     }
 }

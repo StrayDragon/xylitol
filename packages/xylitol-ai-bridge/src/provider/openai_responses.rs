@@ -142,16 +142,24 @@ fn extract_balanced_json_object(s: &str) -> Option<String> {
 /// Crate-private implementation for [`super::ResponsesAssembler`] (c1890 sole public seam).
 ///
 /// [`WirePolicy`] gates unexposed knobs (`previous_response_id`, `prompt_cache_key`).
-pub(crate) fn assemble_responses_body(
+/// Also returns full-replay omit diagnostics (illegal `thinkingSignature`).
+pub(crate) fn assemble_responses_body_with_diagnostics(
     model: &str,
     messages: Vec<AiBridgeMessage>,
     tools: &[AiBridgeToolSchema],
     stream: bool,
     options: &crate::thinking::AiBridgeGenerateOptions,
     wire_policy: &WirePolicy,
-) -> Value {
-    let (mut input_items, _replay_diagnostics) =
+) -> (Value, Vec<Diagnostic>) {
+    let (mut input_items, replay_diagnostics) =
         messages_to_responses_input_with_diagnostics(&messages);
+    if !replay_diagnostics.is_empty() {
+        log::debug!(
+            target: "xylitol_ai_bridge::responses",
+            "Responses assemble: {} thinkingSignature omit diagnostic(s)",
+            replay_diagnostics.len()
+        );
+    }
     prepend_system_prompt_item(
         &mut input_items,
         options.system_prompt.as_deref(),
@@ -194,7 +202,7 @@ pub(crate) fn assemble_responses_body(
     }
 
     apply_responses_wire_policy(&mut body, wire_policy);
-    body
+    (body, replay_diagnostics)
 }
 
 /// Strip wire knobs denied by [`WirePolicy`] (c1880).
@@ -1090,7 +1098,7 @@ mod tests {
 
     #[test]
     fn assemble_omits_wire_knobs_under_default_policy() {
-        let body = assemble_responses_body(
+        let (body, _) = assemble_responses_body_with_diagnostics(
             "m",
             vec![AiBridgeMessage::user("hi")],
             &[],
