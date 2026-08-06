@@ -1,22 +1,23 @@
 ---
 source: tests/agent_session_api_baseline.rs
+assertion_line: 138
 expression: "all_items.join(\"\\n\")"
 ---
 pub async fn ensure_session(&self, id: &str, parent: Option<&str>) -> Result<(), XyError>
-pub async fn execute( &self, store: &dyn XySessionStore, session_id: Option<&str>, command: &str, exclude_from_context: bool, chunk_tx: Option<mpsc::Sender<Vec<u8>>>, ) -> Result<XyBashResult, String>
-pub async fn execute_bash( &self, command: &str, exclude_from_context: bool, chunk_tx: Option<tokio::sync::mpsc::Sender<Vec<u8>>>, ) -> Result<crate::protocol::ports::XyBashResult, String>
+pub async fn execute( &self, store: &dyn XySessionStore, session_id: Option<&str>, command: &str, exclude_from_context: bool, chunk_tx: Option<mpsc::Sender<Vec<u8>>>, ) -> Result<XyBashResult, XyError>
+pub async fn execute_bash( &self, command: &str, exclude_from_context: bool, chunk_tx: Option<tokio::sync::mpsc::Sender<Vec<u8>>>, ) -> Result<crate::protocol::ports::XyBashResult, XyError>
 pub async fn export_to_html( &self, path: &std::path::Path, ) -> Result<std::path::PathBuf, XyError>
 pub async fn export_to_html( &self, store: &dyn XySessionStore, session_id: &str, path: &std::path::Path, ) -> Result<std::path::PathBuf, XyError>
 pub async fn export_to_jsonl( &self, path: &std::path::Path, ) -> Result<std::path::PathBuf, XyError>
 pub async fn export_to_jsonl( &self, store: &dyn XySessionStore, session_id: &str, path: &std::path::Path, ) -> Result<std::path::PathBuf, XyError>
 pub async fn force_compact(&self, instructions: Option<String>) -> Result<(), XyError>
-pub async fn fork_session( &self, at_entry_id: &str, position: crate::protocol::session::ForkPosition, ) -> Result<String, String>
+pub async fn fork_session( &self, at_entry_id: &str, position: crate::protocol::session::ForkPosition, ) -> Result<String, XyError>
 pub async fn get_session_stats(&self) -> Result<SessionStats, XyError>
 pub async fn import_from_jsonl( &self, store: &dyn XySessionStore, path: &std::path::Path, ) -> Result<String, XyError>
 pub async fn import_from_jsonl(&self, path: &std::path::Path) -> Result<String, XyError>
 pub async fn maybe_auto_compact(&self) -> Result<bool, XyError>
 pub async fn maybe_auto_compact_with( &self, estimate_opts: &crate::agent::compaction::EstimateOpts, last_assistant: Option<&crate::protocol::message::AgentMessage>, ) -> Result<bool, XyError>
-pub async fn record_bash_result( &self, command: &str, result: &crate::protocol::ports::XyBashResult, exclude_from_context: bool, session_id: Option<&str>, ) -> Result<(), String>
+pub async fn record_bash_result( &self, command: &str, result: &crate::protocol::ports::XyBashResult, exclude_from_context: bool, session_id: Option<&str>, ) -> Result<(), XyError>
 pub enum QueueMode
 pub fn abort(&self)
 pub fn abort_bash(&self)
@@ -65,11 +66,11 @@ pub fn new(io: Option<Arc<dyn XyExportIo>>) -> Self
 pub fn new(mode: QueueMode) -> Self
 pub fn new(steering_mode: QueueMode, follow_up_mode: QueueMode) -> Self
 pub fn notify_queue_update(&self)
-pub fn parse_jsonl(bytes: &[u8]) -> Result<Vec<SessionEntry>, String>
+pub fn parse_jsonl(bytes: &[u8]) -> Result<Vec<SessionEntry>, XyError>
 pub fn queue_stats(&self) -> QueueStats
 pub fn rebuild_system_prompt(&mut self)
 pub fn render_html(session_id: &str, entries: &[SessionEntry]) -> String
-pub fn render_jsonl(entries: &[SessionEntry]) -> Result<String, String>
+pub fn render_jsonl(entries: &[SessionEntry]) -> Result<String, XyError>
 pub fn reopen_tools_for_regate(&mut self)
 pub fn replace_hooks(&mut self, hooks: AgentHooks)
 pub fn select_model(&mut self, model_id: &str) -> Result<(), XyError>
@@ -91,7 +92,7 @@ pub fn thinking_level(&self) -> ThinkingLevel
 pub fn tool_freeze_phase(&self) -> ToolFreezePhase
 pub fn unbind_event_tx(&self)
 pub model_id: String, pub display_name: String, pub thinking: ThinkingLevel, /// True when footer should omit the thinking segment. pub omit_thinking: bool, } /// Capability aggregate — model, tools, session persistence, and events. pub struct AgentCapabilities
-pub session_id: String, pub user_messages: usize, pub assistant_messages: usize, pub total_messages: usize, pub thinking_level: String, pub model: Option<(String, String)>, } /// Aggregate message counts for a session by reading the session store. /// /// Moved out of the `AgentCapabilities` body (spec as32 / c320 T24) so the capability /// aggregate holds no aggregation logic. pub async fn compute(store: &dyn XySessionStore, session_id: &str) -> Result<SessionStats, String>
+pub session_id: String, pub user_messages: usize, pub assistant_messages: usize, pub total_messages: usize, pub thinking_level: String, pub model: Option<(String, String)>, } /// Aggregate message counts for a session by reading the session store. /// /// Moved out of the `AgentCapabilities` body (spec as32 / c320 T24) so the capability /// aggregate holds no aggregation logic. pub async fn compute( store: &dyn XySessionStore, session_id: &str, ) -> Result<SessionStats, XyError>
 pub steer: Arc<Mutex<PendingMessageQueue>>, pub follow_up: Arc<Mutex<PendingMessageQueue>>, event_tx: Arc<Mutex<Option<EventTx>>>, } impl AsyncQueueRuntime
 pub steer_count: usize, pub follow_up_count: usize, } /// Sender bound to the active `XyDriver::run` / ReAct EventStream (may be absent). pub type EventTx = tokio::sync::mpsc::UnboundedSender<XyEvent>
 pub struct ActiveTurnBinding
