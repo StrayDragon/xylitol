@@ -24,7 +24,7 @@
 
 - [x] 2.1 离线 golden：fixture → project → assemble 两次哈希相等
 - [x] 2.2 JSONL import 形（parse→投影→assemble）与内存史相等
-- [x] 2.3 reasoning 序 + 折叠文案钉死
+- [x] 2.3 reasoning 序 + 折叠文案钉死（含 `build_context_entries` cut 前缀 golden）
 - [x] 2.4 Lab：`lab_session_prefix_idempotency`（live-provider）；Langfuse dump 同形对照（landing §5）
 
 ## 3. 文档
