@@ -33,6 +33,6 @@
 
 ## 4. 校验
 
-- [ ] 4.1 `change start` → specs land → validate
+- [x] 4.1 `change start` → specs land → validate specs
 - [ ] 4.2 apply 单测 + lab 证据
 - [ ] 4.3 verify → archive
