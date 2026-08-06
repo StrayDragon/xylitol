@@ -3,74 +3,89 @@ depends_on:
   - c1890-add-responses-context-policy-assembler
 ---
 
-# Session SSOT ↔ Provider view 契约
+# Session SSOT ↔ Provider view：有序幂等转换契约
 
-> **调研底稿**：[`docs/research/responses-context-layout-and-cache-2026.md`](../../../docs/research/responses-context-layout-and-cache-2026.md)（术语对照 §7）
-> **书指针**：《深入理解 AI Agent》Ch2「上下文：决定 Agent 能力上限」轨迹 vs 投影（姊妹仓 `ai-agent-book/book/chapter2.md`）；书语仅经 research §7 术语表映射，**禁止**写入 live specs。
-> **自包含**：钉「什么进持久会话、什么只进请求投影」；供状态栏 / tool_search / 压缩冻结共用，避免并行实现各写标记。
-> **工程约定（本波次）**：策略默认 **code-first**：`defaults.rs` 纯常量（改文件调试）；**不**新增 YAML 旋钮；**不**用 env 当未暴露配置面。用户面 YAML 仅既有字段（如 `api`）。真源见 [`c1880`](../archive/2026-08-04-c1880-update-responses-first-api-boundary/proposal.md)。
+> **调研底稿**：[`docs/research/responses-context-layout-and-cache-2026.md`](../../../docs/research/responses-context-layout-and-cache-2026.md)（术语对照 §7）；落点备忘 [`landing.tmp.md`](./landing.tmp.md)
+> **书指针**：《深入理解 AI Agent》Ch2 轨迹 vs 投影；书语仅经 research §7 映射，**禁止**写入 live specs。
+> **自包含**：钉 **protocol Session JSONL ↔ agent 投影 ↔ xylitol-ai-bridge Assembler** 的互转边界——**顺序稳定、可重复（幂等）**，服务 Prompt Cache / KV 前缀；不实现状态栏 / search / 压缩算法。
+> **工程约定（本波次）**：策略默认 **code-first**；**不**新增 YAML/env 旋钮。真源见 [`c1880`](../archive/2026-08-04-c1880-update-responses-first-api-boundary/proposal.md)。
 
 ## Why
 
-状态栏 meta、tool_search 注入、压缩替换串、Env 折叠消息若没有统一契约，会出现：
+主仓同时持有：
 
-- 导出/分享把 harness 注入当成用户话
-- resume 后 meta 丢失或重复
-- Assembler 与 `project_for_llm` 双份折叠逻辑
+- **Session SSOT**：`SessionEntry` JSONL（`SESSION_VERSION`）+ `AgentMessage`（Llm∪Env）
+- **Provider view**：`AiBridgeMessage` → Responses `input`（`ResponsesAssembler`，包 `xylitol-ai-bridge`）
 
-需要一层薄而硬的 **Session SSOT ↔ Provider view** 边界，不实现具体栏/search/压缩算法。
+用户 **resume** / **import session** 后，最终打到 API 的消息前缀若与「同进程续跑」不一致，Prompt Cache / KV 会无故失效（比状态栏问题更常见、更可测）。
+
+需要一层薄而硬的 **转换 + 前缀幂等合约**（字段级：system / tools / input 历史序与内容），并用 **同库 lab + 默认 live-provider 模型 + Langfuse**（`observation.input` / `cache_read`）做证据——而不是再造 Codex `ResponseItem` 史，也不是本波做状态栏。
 
 ## What Changes
 
-- 规范性文档 +（若需）最小类型/标记：
-  - **Session SSOT**：用户可见 transcript、Env、工具结果真值、冻结替换表等
-  - **Provider view**：Assembler 输入；可含请求期投影的 harness-meta
-  - **Harness-meta**：非终端用户话语（状态栏、search output 包装等）的标记与生命周期（持久 / 仅投影 / 可重建）
-- `project_for_llm` / Assembler：**唯一** Env→LLM 折叠主路径（呼应 `src/AGENTS.md`）；禁止 infra 再折。
-- 导出 / fork / resume：哪些 meta 带出、哪些重建——可测场景（至少文档场景 + 单测钩子）。
-- 被引用方：`c1895`、`c1900`、`c1910` 实现时 MUST 遵守本契约（已加 `depends_on`）。
+- **规范性**：Session SSOT vs Provider view；resume/import 与同进程续跑的前缀对齐目标；转换矩阵（无损/有损）；顺序不变量。
+- **路径唯一**：`load`/`import` → `build_context_entries` → `as_agent_message` → `project_for_llm` → `ResponsesAssembler`；禁止 infra 平行 Env 折叠。
+- **可测**：
+  - 离线：JSONL/fixture → assemble `input`（+tools）规范化哈希相等（跑两次 / resume 形）。
+  - 在线（维护 lab，不进 qa）：`live-provider.local.yaml` + 可选 Langfuse；resume 臂 `cache_read` 不低于同条件续跑。
+- **指针**：system date 日界 → `c1905`；tools 冻表 → `c1900`；状态栏 → `c1895`（本波不做）。
+- 被引用方：后续 harness-meta / 冻结表实现时 MUST 遵守本前缀纪律。
 
 ## Capabilities（意向）
 
-- `agent-session` / `protocol` 消息边界
-- 产品：会话与持久化（归档时一句）
+- `agent-session`（加载 / 投影边界）
+- `package-ai-bridge`（Assembler `input` 顺序与幂等；衔接 pab15/17/24/25）
+- 必要时一句 `domain-compaction` / `agent-runtime` 交叉引用（不扩产品）
 
 ## Impact
 
-- 并行实现时有共同「存哪」语言。
-- 减少状态栏写进 JSONL 却无法区分的事故。
+- resume / 多轮：同盘面可预期重建 Responses 前缀。
+- 下游 harness-meta / 冻结表有共同「存哪 / 怎么折」语言，而不绑架本波实现栏。
 
 ## Out of scope
 
-- 状态栏 UI/读数实现（→ delayed `c1895`）
-- tool_search 实现（→ `c1960`；冻表开箱已由归档 `c1900`）
-- 压缩算法本体（→ delayed `c1910`；本契约只钉冻结表落点）
-- Todo 产品实现（→ delayed `c1955`；本契约只钉独立 kind）
+- **Agent 状态栏** UI / 读数 / `AgentStatusBar` 落盘（→ delayed `c1895`）
+- tool_search 实现（→ `c1960`）
+- 压缩算法与冻结表实现（→ delayed `c1910`；本波最多文档指针）
+- Todo 产品（→ delayed `c1955`）
+- Session SSOT 改为 Codex `ResponseItem` 数组
+- `previous_response_id` 链式（→ delayed `c1915`）
+- 导出 strip 产品旋钮（无本波新 kind 则无强制实现）
 - 新插件式 meta 市场
 
 ## Parallel / depends
 
 - **硬依赖**：`c1890`（已归档）
-- **下游**：delayed `c1895`、`c1910`；Todo [`c1955`](../../delayed-changes/c1955-add-agent-todo-subsystem/proposal.md)；`c1900` 已归档（冻表），view 契约仍供其后续轨与 `c1960` 引用
-- 可与 `c1925` 并行；`c1920`/`c1935` delayed
+- **已衔接**：`c1925`（已归档）——thinking 全量回放与同轮顺序
+- **下游**：delayed `c1895`、`c1910`；`c1960`；Todo `c1955`
+- `c1920` / `c1935` delayed
 
-## Decisions（explore 2026-08-05 · 已钉）
+## Decisions
 
-1. **Harness-meta 形态**：**独立** `SessionEntry` / `AgentMessage` kind（与 deferred `c1895` Q7 同族：如 `AgentStatusBar` + 投影标签意向）。**禁止**用裸 `customMessage`/无标记 user 冒充。Todo（`c1955`）同族独立 kind；栏只投影、禁止冒充 Todo SSOT。
-2. **旧格式**：**一步到位**。无法识别 / 错误形状的 session **直接不解析**；**不做**兼容 shim / 静默降级（未发布、不稳定）。可抬 `SESSION_VERSION`。
-3. **导出**：
-   - **JSONL**：默认 **full**（与盘面同源）；显式 flag 可 **strip** harness-meta（按 kind）
-   - **HTML**：默认 **strip** harness-meta
-4. **压缩冻结替换表（供 `c1910`）**：落在 **JSONL 专用 entry / header 元数据**（跟 session 版本），不旁路文件、不「仅内存」。
+### Explore 2026-08-05（仍有效的指针；本波不落地产品）
+
+1. 未来 harness-meta：**独立** kind（非裸 `customMessage`/user）；细节 → `c1895`。
+2. 旧错盘：版本≠`SESSION_VERSION` **拒绝**（已有）；不做静默 migrate。
+3. 导出 strip / HTML strip：留给有独立 kind 之后。
+4. 冻结表：JSONL entry/header → `c1910`。
+
+### 收窄 2026-08-06（本波主钉）
+
+5. **主目标** = resume/import 后 API **消息前缀**与同进程续跑尽可能一致（为 cache），**不是**状态栏。
+6. **幂等**：同 leaf + 同 `(system_prompt, tools, thinking_level, WirePolicy)` → assemble 的 `input`（及约定的 tools/reasoning 闸）规范化相等。
+7. **顺序**：叶序保留；同轮 `reasoning` → text → `function_call`（c1925）；system/developer 前置。
+8. **有损折叠**文案必须形状稳定；改文案 = 破坏前缀，须显式 change。
+9. **证据**：离线哈希单测 + 维护 lab（live-provider 默认模型）；Langfuse 观测 `observation.input` / `cache_read`（不进 qa）。
+10. **禁止** infra 第二套 Env 折叠；禁止展示 thinking 冒充 signature。
 
 ## Open Questions
 
-- （已清空；上表为 explore 拍板。propose 时落入 design/specs。）
+- （主线已收窄；specs landing 时复核 s20「未知 type 跳行」与「版本硬拒」边界是否写进本 change 还是保持既有。）
 
 ## Ethics
 
-- risk_level: medium（持久化格式）
-- prohibited_actions: 无标记地把框架注入持久化为普通 user；infra 平行折叠 Env；为旧错误 JSONL 写兼容解析路径
-- required_evidence: 导出/resume 场景可测；折叠单路径；未知 kind/版本拒绝可测
-- refusal_contract: 不为此预挖插件 meta API
-- escalation_policy: 抬 `SESSION_VERSION` 或新增 kind 须在本 change / 后续 change 显式记录；不恢复「静默兼容旧错盘」
+- risk_level: medium（持久化与请求前缀）
+- prohibited_actions: infra 平行折叠；无故改稳定折叠文案；把 SSOT 改成 ResponseItem 史；本波实现状态栏冒充进度
+- required_evidence: 转换矩阵入 design；幂等 / 顺序 golden 或单测；与 c1925 顺序一致
+- refusal_contract: 不承诺一切 Env 投影可逆；不承诺兼容端 cache 语义 ≡ 官方
+- escalation_policy: 改折叠文案或抬 `SESSION_VERSION` / 新增盘面 kind 须显式 change
