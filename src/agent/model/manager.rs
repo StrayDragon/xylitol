@@ -6,6 +6,7 @@
 use std::sync::Arc;
 
 use crate::agent::model::registry::ModelRegistry;
+use crate::protocol::error::XyError;
 use crate::protocol::model_config::XyModelConfig;
 use crate::protocol::ports::XyModel;
 use crate::protocol::types::{ThinkingLevel, XyModelMeta};
@@ -60,11 +61,11 @@ impl ModelManager {
 
     /// Build a provider instance from the current model config (via the
     /// injected builder).
-    pub fn build_current_model(&self) -> Result<Arc<dyn XyModel>, String> {
+    pub fn build_current_model(&self) -> Result<Arc<dyn XyModel>, XyError> {
         let meta = self
             .current_model()
-            .ok_or_else(|| "no model configured".to_string())?;
-        (self.model_builder)(&meta.config)
+            .ok_or_else(|| XyError::Config("no model configured".into()))?;
+        (self.model_builder)(&meta.config).map_err(|e| XyError::Provider(anyhow::anyhow!(e)))
     }
 
     // ── Thinking level ───────────────────────────────────────────
@@ -108,14 +109,14 @@ impl ModelManager {
 
     /// Set a new thinking level. Rejects if current model has a support set
     /// that does not include `level` (current value unchanged).
-    pub fn set_thinking_level(&mut self, level: ThinkingLevel) -> Result<(), String> {
+    pub fn set_thinking_level(&mut self, level: ThinkingLevel) -> Result<(), XyError> {
         if let Some(levels) = self.supported_levels()
             && !levels.contains(&level)
         {
-            return Err(format!(
+            return Err(XyError::Config(format!(
                 "thinking level `{}` is not supported by the current model",
                 level.as_str()
-            ));
+            )));
         }
         self.thinking_level = level;
         Ok(())
@@ -159,12 +160,14 @@ impl ModelManager {
     }
 
     /// Cycle to the next level in the current model's support list.
-    pub fn cycle_thinking_level(&mut self) -> Result<ThinkingLevel, String> {
+    pub fn cycle_thinking_level(&mut self) -> Result<ThinkingLevel, XyError> {
         let levels = self
             .supported_levels()
-            .ok_or_else(|| "no model configured".to_string())?;
+            .ok_or_else(|| XyError::Config("no model configured".into()))?;
         if levels.is_empty() {
-            return Err("current model has no thinking levels".into());
+            return Err(XyError::Config(
+                "current model has no thinking levels".into(),
+            ));
         }
         let cur = self.thinking_level();
         let idx = levels.iter().position(|l| *l == cur).unwrap_or(0);
@@ -176,11 +179,11 @@ impl ModelManager {
     // ── Model switching ──────────────────────────────────────────
 
     /// Select a model by its ID. Thinking defaults to support-set highest (m10).
-    pub fn select_model(&mut self, model_id: &str) -> Result<(), String> {
+    pub fn select_model(&mut self, model_id: &str) -> Result<(), XyError> {
         let model = self
             .registry
             .find(model_id)
-            .ok_or_else(|| format!("model not found: {model_id}"))?;
+            .ok_or_else(|| XyError::Config(format!("model not found: {model_id}")))?;
         // Find index by identity
         let idx = self
             .registry
@@ -218,6 +221,7 @@ mod tests {
 
     use super::ModelManager;
     use crate::agent::model::registry::ModelRegistry;
+    use crate::protocol::error::XyError;
     use crate::protocol::model_config::{XyModelConfig, XyModelKind};
     use crate::protocol::ports::XyModel;
     use crate::protocol::types::{ThinkingLevel, XyModelMeta};
@@ -416,7 +420,7 @@ mod tests {
         let mut mm = ModelManager::new(empty_registry(), fake_builder());
         let result = mm.select_model("nonexistent");
         assert!(result.is_err());
-        assert!(result.unwrap_err().contains("model not found"));
+        assert!(result.unwrap_err().to_string().contains("model not found"),);
     }
 
     #[test]
@@ -435,6 +439,10 @@ mod tests {
     fn build_current_model_empty_registry_returns_error() {
         let mm = ModelManager::new(empty_registry(), fake_builder());
         let result = mm.build_current_model();
-        assert_eq!(result.err().as_deref(), Some("no model configured"));
+        let err = result.err().expect("expected error");
+        assert!(matches!(
+            err,
+            XyError::Config(ref s) if s == "no model configured"
+        ));
     }
 }

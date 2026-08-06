@@ -27,7 +27,7 @@ pub fn apply_prompt_resources( &mut self, context_files: Vec<(String, String)>, 
 pub fn apply_skills(&mut self, skills: Vec<crate::protocol::resource::SkillInfo>)
 pub fn begin_tool_gating(&mut self)
 pub fn bind_event_tx(&self, tx: EventTx)
-pub fn build_current_model(&self) -> Result<Arc<dyn XyModel>, String>
+pub fn build_current_model(&self) -> Result<Arc<dyn XyModel>, XyError>
 pub fn clear(&mut self)
 pub fn clear_active_turn(&self)
 pub fn clear_follow_up_queue(&self)
@@ -37,7 +37,7 @@ pub fn clear_tool_freeze(&mut self)
 pub fn context_policy(&self) -> &crate::agent::context_policy::ContextPolicy
 pub fn current_model(&self) -> Option<XyModelMeta>
 pub fn cwd(&self) -> &str
-pub fn cycle_thinking_level(&mut self) -> Result<ThinkingLevel, String>
+pub fn cycle_thinking_level(&mut self) -> Result<ThinkingLevel, XyError>
 pub fn drain(&mut self) -> Vec<AgentMessage>
 pub fn enqueue(&mut self, message: AgentMessage)
 pub fn estimate_tokens(messages: &[crate::protocol::message::AgentMessage]) -> u64
@@ -73,15 +73,15 @@ pub fn render_html(session_id: &str, entries: &[SessionEntry]) -> String
 pub fn render_jsonl(entries: &[SessionEntry]) -> Result<String, String>
 pub fn reopen_tools_for_regate(&mut self)
 pub fn replace_hooks(&mut self, hooks: AgentHooks)
-pub fn select_model(&mut self, model_id: &str) -> Result<(), String>
-pub fn select_model_with_source(&mut self, model_id: &str, source: &str) -> Result<(), String>
+pub fn select_model(&mut self, model_id: &str) -> Result<(), XyError>
+pub fn select_model_with_source( &mut self, model_id: &str, source: &str, ) -> Result<(), XyError>
 pub fn session_id(&self) -> Option<&str>
 pub fn session_store(&self) -> Arc<dyn XySessionStore>
 pub fn set_mode(&mut self, mode: QueueMode)
 pub fn set_permission(&mut self, permission: std::sync::Arc<dyn XyPermission>)
 pub fn set_session(&mut self, session_id: String)
 pub fn set_system_prompt(&mut self, prompt: Option<String>)
-pub fn set_thinking_level(&mut self, level: ThinkingLevel) -> Result<(), String>
+pub fn set_thinking_level(&mut self, level: ThinkingLevel) -> Result<(), XyError>
 pub fn set_tools(&mut self, tools: ToolSet)
 pub fn set_tools_defer_prompt(&mut self, tools: ToolSet) -> SystemPromptOpts
 pub fn stats(&self) -> QueueStats

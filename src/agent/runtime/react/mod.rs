@@ -1,0 +1,1645 @@
+//! Agent execution loop — core ReAct loop with full event stream, hooks, and tool batch modes.
+//!
+//! `async_stream` keeps the turn loop as one yield-capable block; helpers below extract
+//! repeated MessageUpdate / turn-end / assistant assembly without a sub-turn state machine.
+//! Soft ~1200 / hard ~2000 LOC (see `src/AGENTS.md`); further split only when edit pain
+//! forces a state machine.
+//!
+//! Tool batch scheduling lives in `tool_batch` + `tool_exec` (c1545). Product default is
+//! Sequential (source-order await); BarrierParallel fans out ParallelSafe windows.
+
+use std::pin::Pin;
+use std::sync::{Arc, Mutex};
+
+use futures::Stream;
+use futures::StreamExt;
+use serde_json::Value;
+use tokio_util::sync::CancellationToken;
+
+fn upsert_streaming_tool(
+    tools: &mut Vec<(String, String, Value)>,
+    id: String,
+    name: String,
+    args: Value,
+) {
+    if let Some(slot) = tools
+        .iter_mut()
+        .find(|(existing_id, _, _)| existing_id == &id)
+    {
+        slot.1 = name;
+        slot.2 = args;
+    } else {
+        tools.push((id, name, args));
+    }
+}
+
+fn streaming_assistant_parts(
+    text: &str,
+    thinking: &str,
+    thinking_signature: Option<&str>,
+    tool_calls: &[(String, String, Value)],
+) -> Vec<AgentPart> {
+    let mut parts = Vec::new();
+    if !thinking.is_empty() || thinking_signature.is_some() {
+        parts.push(AgentPart::Thinking {
+            thinking: thinking.to_string(),
+            redacted: false,
+            thinking_signature: thinking_signature.map(str::to_string),
+        });
+    }
+    if !text.is_empty() {
+        parts.push(AgentPart::text(text.to_string()));
+    }
+    for (id, name, args) in tool_calls {
+        parts.push(AgentPart::ToolCall {
+            id: id.clone(),
+            name: name.clone(),
+            arguments: args.clone(),
+        });
+    }
+    parts
+}
+
+fn partial_assistant_message(
+    text: &str,
+    thinking: &str,
+    thinking_signature: Option<&str>,
+    tool_calls: &[(String, String, Value)],
+) -> AgentMessage {
+    build_assistant_message(
+        streaming_assistant_parts(text, thinking, thinking_signature, tool_calls),
+        None,
+        None,
+        String::new(),
+        String::new(),
+        None,
+    )
+}
+
+fn build_assistant_message(
+    content: Vec<AgentPart>,
+    stop_reason: Option<crate::protocol::message::XyStopReason>,
+    usage: Option<crate::protocol::message::XyUsage>,
+    provider: String,
+    model: String,
+    error_message: Option<String>,
+) -> AgentMessage {
+    AgentMessage::Llm(LlmMessage::AssistantMessage {
+        content,
+        stop_reason,
+        usage,
+        api: String::new(),
+        provider,
+        model,
+        response_id: None,
+        error_message,
+        timestamp: crate::protocol::message::now_ms(),
+        diagnostics: Vec::new(),
+    })
+}
+
+fn streaming_message_update(
+    text: &str,
+    thinking: &str,
+    thinking_signature: Option<&str>,
+    tool_calls: &[(String, String, Value)],
+) -> XyEvent {
+    XyEvent::MessageUpdate {
+        text: text.to_string(),
+        thinking: if thinking.is_empty() {
+            None
+        } else {
+            Some(thinking.to_string())
+        },
+        message: Some(partial_assistant_message(
+            text,
+            thinking,
+            thinking_signature,
+            tool_calls,
+        )),
+    }
+}
+
+fn current_provider_model(
+    model_manager: &Mutex<crate::agent::model::manager::ModelManager>,
+) -> (String, String) {
+    let mm = crate::agent::lock::lock_mutex(model_manager);
+    mm.current_model()
+        .map(|m| (m.config.provider_name().to_string(), m.config.model.clone()))
+        .unwrap_or_default()
+}
+
+use super::hooks::ShouldStopAfterTurnCtx;
+use super::retry::{RetryState, is_retryable_error};
+use super::{AgentHooks, XyEvent, XyEventStream};
+use crate::agent::llm_project::project_for_llm;
+use crate::agent::prompt::expand_skills_in_agent_messages;
+use crate::agent::session::{AgentCapabilities, PendingMessageQueue};
+use crate::agent::tools::ToolSet;
+use crate::protocol::error::XyError;
+use crate::protocol::message::{AgentMessage, AgentPart, LlmMessage};
+use crate::protocol::ports::{XyBatchMode, XyHookBus, XyHookOutcome, XyModel, XySessionStore};
+use crate::protocol::resource::SkillInfo;
+use crate::protocol::session::{EntryBase, MessageEntry, SessionEntry};
+use crate::protocol::types::{XyChunk, XyToolSchema};
+
+// ── AgentRuntime ───────────────────────────────────────────────────────
+
+pub struct AgentRuntime {
+    pub(crate) inner: AgentCapabilities,
+    /// Current-run cancel token. Replaced at each [`Self::run`] so abort is not sticky.
+    cancel: Mutex<CancellationToken>,
+}
+
+impl AgentRuntime {
+    pub fn new(inner: AgentCapabilities) -> Self {
+        Self {
+            inner,
+            cancel: Mutex::new(CancellationToken::new()),
+        }
+    }
+
+    /// Get a reference to the cancellation token for the active (or last) run.
+    pub fn cancel_token(&self) -> CancellationToken {
+        crate::agent::lock::lock_mutex(&self.cancel).clone()
+    }
+
+    /// Signal cancellation to abort the agent loop.
+    ///
+    /// Clears the steering queue and keeps follow-up messages so the UI can
+    /// restore them (c461 design D4). Only cancels the **current** run token;
+    /// the next [`Self::run`] installs a fresh one (c482). Also cancels any
+    /// in-flight interactive `!`/`!!` bash (c660; aligns with pi `abortBash`).
+    /// Mid-stream model HTTP is aborted by racing this token in the ReAct chunk
+    /// loop and dropping the provider stream (c680; surfaces inherit via
+    /// [`crate::app::core::driver::XyDriver::abort`]).
+    pub fn abort(&self) {
+        crate::agent::lock::lock_mutex(&self.cancel).cancel();
+        self.inner.clear_steer_queue();
+        self.inner.abort_bash();
+        self.inner.clear_active_turn();
+    }
+
+    /// Enqueue a steering message for the active (or next) run.
+    pub fn steer(&self, message: impl Into<String>) {
+        self.inner.steer(message);
+    }
+
+    /// Enqueue a follow-up message delivered when the run would otherwise stop.
+    pub fn follow_up(&self, message: impl Into<String>) {
+        self.inner.follow_up(message);
+    }
+
+    /// Clear one or both pending-message queues.
+    pub fn clear_queues(&self, clear_steer: bool, clear_follow_up: bool) {
+        self.inner.clear_queues(clear_steer, clear_follow_up);
+    }
+
+    /// Queue depths.
+    pub fn queue_stats(&self) -> crate::agent::session::QueueStats {
+        self.inner.queue_stats()
+    }
+
+    pub fn inner(&self) -> &AgentCapabilities {
+        &self.inner
+    }
+
+    pub fn inner_mut(&mut self) -> &mut AgentCapabilities {
+        &mut self.inner
+    }
+
+    /// Session store shared with the XyDriver seam.
+    pub fn session_store(&self) -> Arc<dyn crate::protocol::ports::XySessionStore> {
+        self.inner.session_store()
+    }
+
+    /// Replace the tool set. Takes effect on the next [`run`](Self::run) call.
+    /// Ignored while the tool table is FROZEN (c1900); use [`Self::freeze_tools`].
+    pub fn set_tools(&mut self, tools: ToolSet) {
+        self.inner.set_tools(tools);
+    }
+
+    /// Install tools without rebuilding system prompt text (MCP settle offload).
+    /// Ignored while FROZEN (c1900).
+    pub fn set_tools_defer_prompt(
+        &mut self,
+        tools: ToolSet,
+    ) -> crate::agent::prompt::SystemPromptOpts {
+        self.inner.set_tools_defer_prompt(tools)
+    }
+
+    /// Install a prebuilt system prompt (pair with [`Self::set_tools_defer_prompt`]).
+    pub fn install_system_prompt_text(&mut self, prompt: String) {
+        self.inner.install_system_prompt_text(prompt);
+    }
+
+    /// Track-A freeze phase (c1900).
+    pub fn tool_freeze_phase(&self) -> crate::agent::tools::ToolFreezePhase {
+        self.inner.tool_freeze_phase()
+    }
+
+    /// True when provider-visible tools are frozen.
+    pub fn is_tools_frozen(&self) -> bool {
+        self.inner.is_tools_frozen()
+    }
+
+    pub fn frozen_tool_fingerprint(&self) -> Option<&crate::agent::tools::ToolTableFingerprint> {
+        self.inner.frozen_tool_fingerprint()
+    }
+
+    pub fn begin_tool_gating(&mut self) {
+        self.inner.begin_tool_gating();
+    }
+
+    pub fn reopen_tools_for_regate(&mut self) {
+        self.inner.reopen_tools_for_regate();
+    }
+
+    pub fn clear_tool_freeze(&mut self) {
+        self.inner.clear_tool_freeze();
+    }
+
+    /// Freeze provider-visible tools (bypasses FROZEN ignore on [`Self::set_tools`]).
+    pub fn freeze_tools(&mut self, tools: ToolSet) {
+        self.inner.freeze_tools(tools);
+    }
+
+    pub fn freeze_tools_defer_prompt(
+        &mut self,
+        tools: ToolSet,
+    ) -> crate::agent::prompt::SystemPromptOpts {
+        self.inner.freeze_tools_defer_prompt(tools)
+    }
+
+    pub fn frozen_fingerprint_matches_set(&self, candidate: &ToolSet) -> bool {
+        self.inner.frozen_fingerprint_matches_set(candidate)
+    }
+
+    /// Replace the hook set. Takes effect on the next [`run`](Self::run) call.
+    pub fn replace_hooks(&mut self, hooks: AgentHooks) {
+        self.inner.replace_hooks(hooks);
+    }
+
+    /// Add a before-tool hook. Takes effect on the next [`run`](Self::run) call.
+    pub fn add_hook(&mut self, hook: super::hooks::BeforeToolHook) {
+        self.inner.hooks_mut().add_before(hook);
+    }
+
+    /// Set the optional after-turn stop callback (pi `shouldStopAfterTurn`).
+    ///
+    /// Takes effect on the next [`run`](Self::run) call. Single slot — not a chain.
+    pub fn set_should_stop_after_turn(
+        &mut self,
+        hook: Option<super::hooks::ShouldStopAfterTurnHook>,
+    ) {
+        self.inner.hooks_mut().set_should_stop_after_turn(hook);
+    }
+
+    /// Set the permission port. Takes effect on the next [`run`](Self::run) call.
+    pub fn set_permission(&mut self, permission: Arc<dyn crate::protocol::ports::XyPermission>) {
+        self.inner.set_permission(permission);
+    }
+
+    /// Set the tool batch mode. Takes effect on the next [`run`](Self::run) call.
+    pub fn set_tool_mode(&mut self, mode: crate::protocol::ports::XyBatchMode) {
+        self.inner.set_tool_mode(mode);
+    }
+
+    /// Set the tool batch mode (alias of [`Self::set_tool_mode`]).
+    pub fn set_batch_mode(&mut self, mode: crate::protocol::ports::XyBatchMode) {
+        self.inner.set_tool_mode(mode);
+    }
+
+    /// Set the system prompt. Takes effect on the next [`run`](Self::run) call.
+    pub fn set_system_prompt(&mut self, prompt: Option<String>) {
+        self.inner.set_system_prompt(prompt);
+    }
+
+    /// Replace context / SYSTEM / APPEND and rebuild system prompt (c1100).
+    /// Takes effect on the next [`run`](Self::run); does not mutate history.
+    pub fn apply_prompt_resources(
+        &mut self,
+        context_files: Vec<(String, String)>,
+        system_prompt: Option<String>,
+        append_system_prompt: Vec<String>,
+    ) {
+        self.inner
+            .apply_prompt_resources(context_files, system_prompt, append_system_prompt);
+    }
+
+    /// Replace skills catalog and rebuild system prompt (c1085).
+    pub fn apply_skills(&mut self, skills: Vec<crate::protocol::resource::SkillInfo>) {
+        self.inner.apply_skills(skills);
+    }
+
+    /// Names currently injected into the system prompt (c1085).
+    pub fn loaded_skill_names(&self) -> Vec<String> {
+        self.inner.loaded_skill_names()
+    }
+
+    /// Full skill catalog for `$` completion / expand (c1130).
+    pub fn loaded_skills(&self) -> &[crate::protocol::resource::SkillInfo] {
+        self.inner.loaded_skills()
+    }
+
+    /// Run a turn with an auto-generated session_id.
+    pub async fn run(&mut self, prompt: &str) -> XyEventStream {
+        self.run_parts_with_id(
+            vec![crate::protocol::message::AgentPart::text(prompt)],
+            &uuid::Uuid::new_v4().to_string(),
+        )
+        .await
+    }
+
+    /// Run a multi-part user turn (text + images, c1155).
+    pub async fn run_parts(
+        &mut self,
+        parts: Vec<crate::protocol::message::AgentPart>,
+    ) -> XyEventStream {
+        self.run_parts_with_id(parts, &uuid::Uuid::new_v4().to_string())
+            .await
+    }
+
+    /// Run a turn with an explicit session_id.
+    #[allow(clippy::type_complexity)]
+    pub async fn run_with_id(&mut self, prompt: &str, session_id: &str) -> XyEventStream {
+        self.run_parts_with_id(
+            vec![crate::protocol::message::AgentPart::text(prompt)],
+            session_id,
+        )
+        .await
+    }
+
+    /// Run a multi-part user turn with an explicit session_id (c1155).
+    #[allow(clippy::type_complexity)]
+    pub async fn run_parts_with_id(
+        &mut self,
+        parts: Vec<crate::protocol::message::AgentPart>,
+        session_id: &str,
+    ) -> XyEventStream {
+        // Build permission check callback from session (capability map in permission_router).
+        let permission_check: Option<
+            std::sync::Arc<dyn Fn(&str, &str) -> Option<String> + Send + Sync>,
+        >;
+        {
+            let engine = self.inner.get_permission();
+            permission_check = Some(std::sync::Arc::new(
+                move |tool_name: &str, tool_path: &str| -> Option<String> {
+                    super::permission_router::check_tool_permission(
+                        engine.as_ref(),
+                        tool_name,
+                        tool_path,
+                    )
+                },
+            ));
+        }
+        // Ensure session exists
+        let sid = session_id.to_string();
+        self.inner.set_session(sid.clone());
+        let t_ensure = std::time::Instant::now();
+        if let Err(e) = self.inner.ensure_session(&sid, None).await {
+            return XyEventStream::error(format!("session error: {e}"));
+        }
+        {
+            let ms = t_ensure.elapsed().as_millis();
+            if ms >= 16 {
+                log::info!(target: "xylitol::lag", "run_ensure_session {ms}ms");
+            } else {
+                log::debug!(target: "xylitol::lag", "run_ensure_session {ms}ms");
+            }
+        }
+
+        let t_hist = std::time::Instant::now();
+        let seeded_history = match self.inner.load_conversation_history(&sid).await {
+            Ok(h) => h,
+            Err(e) => return XyEventStream::error(format!("session load error: {e}")),
+        };
+        {
+            let ms = t_hist.elapsed().as_millis();
+            let n = seeded_history.len();
+            if ms >= 16 {
+                log::info!(target: "xylitol::lag", "run_load_history {ms}ms entries={n}");
+            } else {
+                log::debug!(target: "xylitol::lag", "run_load_history {ms}ms entries={n}");
+            }
+        }
+
+        let tools = self.inner.tools().clone();
+        let hooks = self.inner.hooks().clone();
+        let hook_bus = self.inner.hook_bus();
+        let batch_mode = self.inner.tool_mode();
+        let user_parts = parts;
+        let model_manager = self.inner.model_manager_handle();
+        let active_turn = self.inner.active_turn_handle();
+        let system_prompt = self.inner.system_prompt().map(|s| s.to_string());
+
+        // Build tool schemas
+        let t_schemas = std::time::Instant::now();
+        let tool_schemas: Vec<XyToolSchema> = tools
+            .iter()
+            .map(|t| XyToolSchema {
+                name: t.name().to_string(),
+                description: t.description().to_string(),
+                parameters: t.parameters_schema(),
+            })
+            .collect();
+        {
+            let ms = t_schemas.elapsed().as_millis();
+            let n = tool_schemas.len();
+            if ms >= 16 {
+                log::info!(target: "xylitol::lag", "run_build_tool_schemas {ms}ms tools={n}");
+            } else {
+                log::debug!(target: "xylitol::lag", "run_build_tool_schemas {ms}ms tools={n}");
+            }
+        }
+
+        let cancel = {
+            let mut guard = crate::agent::lock::lock_mutex(&self.cancel);
+            *guard = CancellationToken::new();
+            guard.clone()
+        };
+        let steer_queue = self.inner.steer_queue();
+        let follow_up_queue = self.inner.follow_up_queue();
+        let queues = self.inner.queues();
+        let store = self.inner.session_store();
+        let skills = self.inner.loaded_skills().to_vec();
+        let (side_tx, mut side_rx) = tokio::sync::mpsc::unbounded_channel::<XyEvent>();
+        let event_sink: Arc<dyn crate::protocol::ports::XyEventSink> =
+            Arc::new(CompactionStreamTee {
+                inner: self.inner.event_sink(),
+                tx: side_tx,
+            });
+        let compaction_settings = self.inner.compaction_settings();
+
+        let (queue_tx, mut queue_rx) = tokio::sync::mpsc::unbounded_channel();
+        queues.bind_event_tx(queue_tx);
+
+        let react = Box::pin(run_react_loop(ReActConfig {
+            model_manager,
+            active_turn,
+            system_prompt,
+            tools,
+            tool_schemas,
+            user_parts,
+            cancel,
+            permission_check,
+            hooks,
+            hook_bus,
+            batch_mode,
+            steer_queue,
+            follow_up_queue,
+            store,
+            session_id: sid,
+            seeded_history,
+            skills,
+            event_sink,
+            compaction_settings,
+        }));
+
+        let inner: Pin<Box<dyn Stream<Item = XyEvent> + Send>> = Box::pin(async_stream::stream! {
+            let mut react = react;
+            loop {
+                tokio::select! {
+                    biased;
+                    ev = react.next() => {
+                        match ev {
+                            Some(e) => yield e,
+                            None => break,
+                        }
+                    }
+                    ev = queue_rx.recv() => {
+                        if let Some(e) = ev {
+                            yield e;
+                        }
+                    }
+                    ev = side_rx.recv() => {
+                        if let Some(e) = ev {
+                            yield e;
+                        }
+                    }
+                }
+            }
+            queues.unbind_event_tx();
+        });
+
+        XyEventStream { inner, done: false }
+    }
+}
+
+/// Forward CompactionStart/End from the side lifecycle sink onto the turn stream
+/// so product TUI bridge can render the compaction block mid-run (c1730).
+struct CompactionStreamTee {
+    inner: Arc<dyn crate::protocol::ports::XyEventSink>,
+    tx: tokio::sync::mpsc::UnboundedSender<XyEvent>,
+}
+
+#[async_trait::async_trait]
+impl crate::protocol::ports::XyEventSink for CompactionStreamTee {
+    async fn emit(&self, event: &XyEvent) {
+        self.inner.emit(event).await;
+        if matches!(
+            event,
+            XyEvent::CompactionStart { .. }
+                | XyEvent::CompactionEnd { .. }
+                | XyEvent::ContextTokenSettlement { .. }
+        ) {
+            let _ = self.tx.send(event.clone());
+        }
+    }
+}
+
+// ── Core ReAct loop config ─────────────────────────────────────────
+
+/// Parameters for the ReAct agent loop.
+struct ReActConfig {
+    /// Shared selected model/thinking; refreshed at each turn boundary (c1470).
+    model_manager: Arc<Mutex<crate::agent::model::manager::ModelManager>>,
+    /// Active in-flight binding for chrome; cleared when the run ends.
+    active_turn: Arc<Mutex<Option<crate::agent::session::ActiveTurnBinding>>>,
+    /// System prompt snapshot for this run (ar6: next-run only).
+    system_prompt: Option<String>,
+    tools: ToolSet,
+    tool_schemas: Vec<XyToolSchema>,
+    user_parts: Vec<crate::protocol::message::AgentPart>,
+    cancel: CancellationToken,
+    /// Optional permission check. Called with (tool_name, target_path_or_domain).
+    /// Returns Some(reason) if the operation is denied.
+    #[allow(clippy::type_complexity)]
+    permission_check: Option<std::sync::Arc<dyn Fn(&str, &str) -> Option<String> + Send + Sync>>,
+    /// Hooks consulted at tool-call boundaries and optional after-turn stop.
+    hooks: AgentHooks,
+    /// Optional script hook bus (pi-aligned lifecycle + tool/context bridge).
+    hook_bus: Option<Arc<dyn XyHookBus>>,
+    /// Tool batch scheduling mode snapshot for this run (c1545).
+    batch_mode: XyBatchMode,
+    steer_queue: Arc<Mutex<PendingMessageQueue>>,
+    follow_up_queue: Arc<Mutex<PendingMessageQueue>>,
+    store: Arc<dyn XySessionStore>,
+    session_id: String,
+    seeded_history: Vec<AgentMessage>,
+    /// Trust-filtered catalog for `$skill` expand (c1130); clone kept raw in history.
+    skills: Vec<SkillInfo>,
+    /// Compaction lifecycle sink (Start/End).
+    event_sink: Arc<dyn crate::protocol::ports::XyEventSink>,
+    /// Snapshot of compaction settings for turn-end threshold auto (c1640).
+    compaction_settings: crate::agent::compaction::CompactionSettings,
+}
+
+fn prepare_turn_binding(
+    model_manager: &Arc<Mutex<crate::agent::model::manager::ModelManager>>,
+    active_turn: &Arc<Mutex<Option<crate::agent::session::ActiveTurnBinding>>>,
+    system_prompt: &Option<String>,
+    run_model: &mut Option<(String, Arc<dyn XyModel>)>,
+) -> Result<(Arc<dyn XyModel>, crate::protocol::ports::XyGenerateOptions), XyError> {
+    let mm = crate::agent::lock::lock_mutex(model_manager);
+    let meta = mm
+        .current_model()
+        .ok_or_else(|| XyError::Config("no model configured".into()))?;
+    let model_id = meta.id.clone();
+    let thinking = mm.thinking_level();
+    let levels = crate::agent::model::manager::ModelManager::levels_for_meta(meta);
+    let binding = crate::agent::session::ActiveTurnBinding {
+        model_id: meta.id.clone(),
+        display_name: if meta.display_name.is_empty() {
+            meta.id.clone()
+        } else {
+            meta.display_name.clone()
+        },
+        thinking,
+        omit_thinking: !crate::protocol::types::ThinkingLevel::is_adjustable(&levels),
+    };
+    let generate_options = crate::protocol::ports::XyGenerateOptions {
+        thinking_level: thinking,
+        level_map: meta.thinking_level_map.clone(),
+        thinking_budgets: None,
+        system_prompt: system_prompt.clone(),
+    };
+    let model = match run_model.as_ref() {
+        Some((id, model)) if id == &model_id => Arc::clone(model),
+        _ => {
+            let built = mm.build_current_model()?;
+            *run_model = Some((model_id, Arc::clone(&built)));
+            built
+        }
+    };
+    drop(mm);
+    *crate::agent::lock::lock_mutex(active_turn) = Some(binding);
+    Ok((model, generate_options))
+}
+
+/// Clears active-turn binding when the ReAct stream drops (normal end or abort).
+struct ClearActiveTurn(Arc<Mutex<Option<crate::agent::session::ActiveTurnBinding>>>);
+
+impl Drop for ClearActiveTurn {
+    fn drop(&mut self) {
+        *crate::agent::lock::lock_mutex(&self.0) = None;
+    }
+}
+
+fn should_stop_after_turn(hooks: &AgentHooks, ctx: &ShouldStopAfterTurnCtx) -> bool {
+    hooks
+        .should_stop_after_turn
+        .as_ref()
+        .is_some_and(|hook| hook(ctx))
+}
+
+fn drain_queue(queue: &Arc<Mutex<PendingMessageQueue>>) -> Vec<AgentMessage> {
+    crate::agent::lock::lock_mutex(queue).drain()
+}
+
+fn queue_counts(
+    steer: &Arc<Mutex<PendingMessageQueue>>,
+    follow_up: &Arc<Mutex<PendingMessageQueue>>,
+) -> (usize, usize) {
+    let steer_count = crate::agent::lock::lock_mutex(steer).len();
+    let follow_up_count = crate::agent::lock::lock_mutex(follow_up).len();
+    (steer_count, follow_up_count)
+}
+
+/// Events + control-flow decision after a turn settles (text-only or post-tools).
+enum FinishTurnOutcome {
+    ContinueOuterForCompaction,
+    StopRun,
+    Advanced {
+        pending: Vec<AgentMessage>,
+        queue_update: Option<(usize, usize)>,
+    },
+}
+
+struct FinishTurnResult {
+    events: Vec<XyEvent>,
+    outcome: FinishTurnOutcome,
+}
+
+/// Shared turn-end: settle → TurnEnd → hook → compaction → stop/steer poll.
+#[allow(clippy::too_many_arguments)]
+async fn finish_turn(
+    store: &Arc<dyn XySessionStore>,
+    session_id: &str,
+    model_manager: &Arc<Mutex<crate::agent::model::manager::ModelManager>>,
+    event_sink: &Arc<dyn crate::protocol::ports::XyEventSink>,
+    compaction_settings: &crate::agent::compaction::CompactionSettings,
+    history: &mut Vec<AgentMessage>,
+    overflow_recovery_attempted: &mut bool,
+    hooks: &AgentHooks,
+    hook_bus: &Option<Arc<dyn XyHookBus>>,
+    turn: usize,
+    run_baseline: usize,
+    assistant: Option<AgentMessage>,
+    tool_results: Vec<AgentMessage>,
+    steer_queue: &Arc<Mutex<PendingMessageQueue>>,
+    follow_up_queue: &Arc<Mutex<PendingMessageQueue>>,
+) -> FinishTurnResult {
+    let turn_index = turn as u32;
+    let settlement = settle_turn_context(store, session_id, model_manager).await;
+    let mut events = Vec::new();
+    if let Some(s) = &settlement {
+        events.push(XyEvent::ContextTokenSettlement {
+            estimate: s.estimate.clone(),
+            reason: s.reason.as_str().to_string(),
+            generation: s.generation,
+        });
+    }
+    events.push(XyEvent::TurnEnd { turn_index });
+    if let Some(bus) = hook_bus {
+        let (ty, phase, ctx) = super::script_hook_ctx::turn_end(turn as u32);
+        observe_script_hook(bus, ty, phase, ctx).await;
+    }
+    let will_continue = try_turn_end_compaction(
+        store,
+        session_id,
+        model_manager,
+        event_sink,
+        compaction_settings,
+        history,
+        overflow_recovery_attempted,
+        settlement.as_ref().map(|s| &s.estimate),
+    )
+    .await;
+    if will_continue {
+        return FinishTurnResult {
+            events,
+            outcome: FinishTurnOutcome::ContinueOuterForCompaction,
+        };
+    }
+    let stop_ctx = ShouldStopAfterTurnCtx {
+        turn_index,
+        assistant,
+        tool_results,
+        history: history.clone(),
+        new_messages: history[run_baseline..].to_vec(),
+    };
+    if should_stop_after_turn(hooks, &stop_ctx) {
+        return FinishTurnResult {
+            events,
+            outcome: FinishTurnOutcome::StopRun,
+        };
+    }
+    let pending = drain_queue(steer_queue);
+    let queue_update = if pending.is_empty() {
+        None
+    } else {
+        Some(queue_counts(steer_queue, follow_up_queue))
+    };
+    FinishTurnResult {
+        events,
+        outcome: FinishTurnOutcome::Advanced {
+            pending,
+            queue_update,
+        },
+    }
+}
+
+/// Settle context tokens for turn-end (c1860) — emit via caller `yield`.
+async fn settle_turn_context(
+    store: &Arc<dyn XySessionStore>,
+    session_id: &str,
+    model_manager: &Arc<Mutex<crate::agent::model::manager::ModelManager>>,
+) -> Option<crate::agent::compaction::ContextTokenSettlement> {
+    use crate::agent::compaction::{
+        ContextTokenSettlementReason, EstimateOpts, settle_from_session_entries,
+    };
+    let entries = match store.load_leaf_branch(session_id).await {
+        Ok(e) => e,
+        Err(e) => {
+            log::warn!("turn-end settlement: load leaf failed: {e}");
+            return None;
+        }
+    };
+    let model_id = {
+        let mm = crate::agent::lock::lock_mutex(model_manager);
+        mm.current_model().map(|m| m.config.model.clone())
+    };
+    Some(settle_from_session_entries(
+        &entries,
+        &EstimateOpts {
+            model_id,
+            ..Default::default()
+        },
+        ContextTokenSettlementReason::TurnSettled,
+    ))
+}
+
+/// Turn-end compaction: Case1 overflow then Case2 threshold (c1640/c1660).
+///
+/// Returns `true` when overflow recovery asks the ReAct loop to continue
+/// (compact succeeded with willRetry).
+#[allow(clippy::too_many_arguments)]
+async fn try_turn_end_compaction(
+    store: &Arc<dyn XySessionStore>,
+    session_id: &str,
+    model_manager: &Arc<Mutex<crate::agent::model::manager::ModelManager>>,
+    event_sink: &Arc<dyn crate::protocol::ports::XyEventSink>,
+    settings: &crate::agent::compaction::CompactionSettings,
+    history: &mut Vec<AgentMessage>,
+    overflow_recovery_attempted: &mut bool,
+    precomputed: Option<&crate::protocol::types::ContextTokenEstimate>,
+) -> bool {
+    use crate::agent::compaction::{CompactionOrchestrator, EstimateOpts, OverflowCompactOutcome};
+
+    let last_assistant = history
+        .iter()
+        .rev()
+        .find(|m| m.role_name() == "assistant")
+        .cloned();
+    let Some(last_assistant) = last_assistant else {
+        return false;
+    };
+
+    let (model, ctx_window, model_id, provider) = {
+        let mm = crate::agent::lock::lock_mutex(model_manager);
+        let meta = match mm.current_model() {
+            Some(m) => m,
+            None => return false,
+        };
+        let ctx_window = meta.context_window;
+        let model_id = meta.config.model.clone();
+        let provider = meta.config.provider_name().to_string();
+        let model = match mm.build_current_model() {
+            Ok(m) => m,
+            Err(e) => {
+                log::warn!("turn-end compaction: no model: {e}");
+                return false;
+            }
+        };
+        (model, ctx_window, model_id, provider)
+    };
+
+    let orch = CompactionOrchestrator::new(settings.clone());
+
+    match orch
+        .maybe_overflow_compact(
+            store.as_ref(),
+            session_id,
+            model.as_ref(),
+            event_sink.as_ref(),
+            ctx_window,
+            &last_assistant,
+            &provider,
+            &model_id,
+            *overflow_recovery_attempted,
+        )
+        .await
+    {
+        Ok(OverflowCompactOutcome::Ran { will_retry }) => {
+            if will_retry {
+                *overflow_recovery_attempted = true;
+                // Reload compaction-aware leaf context (pi: rebuild after compact).
+                match store.load_leaf_branch(session_id).await {
+                    Ok(entries) => {
+                        let cut = crate::protocol::session::build_context_entries(&entries);
+                        *history = cut.iter().filter_map(|e| e.as_agent_message()).collect();
+                    }
+                    Err(e) => {
+                        log::warn!(
+                            "overflow retry: reload history failed ({e}); falling back to pop"
+                        );
+                        if matches!(
+                            history.last(),
+                            Some(AgentMessage::Llm(LlmMessage::AssistantMessage {
+                                stop_reason: Some(crate::protocol::message::XyStopReason::Error),
+                                ..
+                            }))
+                        ) {
+                            history.pop();
+                        }
+                    }
+                }
+                return true;
+            }
+            return false;
+        }
+        Ok(OverflowCompactOutcome::FailedOnce) => {
+            return false;
+        }
+        Ok(OverflowCompactOutcome::Skipped) => {}
+        Err(e) => {
+            log::warn!("turn-end overflow compaction failed: {e}");
+        }
+    }
+
+    let opts = EstimateOpts {
+        model_id: Some(model_id),
+        ..Default::default()
+    };
+    if let Err(e) = orch
+        .maybe_auto_compact(
+            store.as_ref(),
+            session_id,
+            model.as_ref(),
+            event_sink.as_ref(),
+            ctx_window,
+            &opts,
+            Some(&last_assistant),
+            precomputed,
+        )
+        .await
+    {
+        log::warn!("turn-end compaction failed: {e}");
+    }
+    false
+}
+
+async fn persist_agent_message(
+    store: &Arc<dyn XySessionStore>,
+    session_id: &str,
+    message: &AgentMessage,
+) {
+    let Ok(message) = serde_json::to_value(message) else {
+        return;
+    };
+    let entry = SessionEntry::Message(MessageEntry {
+        base: EntryBase {
+            entry_type: "message".into(),
+            id: String::new(),
+            parent_id: None,
+            timestamp: String::new(),
+        },
+        message,
+    });
+    let _ = store.append_session_entry(session_id, &entry).await;
+}
+
+// ── Core ReAct loop ─────────────────────────────────────────────────
+
+fn run_react_loop(cfg: ReActConfig) -> impl Stream<Item = XyEvent> + Send {
+    let ReActConfig {
+        model_manager,
+        active_turn,
+        system_prompt,
+        tools,
+        tool_schemas,
+        user_parts,
+        cancel,
+        permission_check,
+        hooks,
+        hook_bus,
+        batch_mode,
+        steer_queue,
+        follow_up_queue,
+        store,
+        session_id,
+        seeded_history,
+        skills,
+        event_sink,
+        compaction_settings,
+    } = cfg;
+    async_stream::stream! {
+        let _clear_active = ClearActiveTurn(active_turn.clone());
+
+        if let Some(bus) = &hook_bus {
+            let (ty, phase, ctx) = super::script_hook_ctx::agent_start();
+            observe_script_hook(bus, ty, phase, ctx).await;
+        }
+
+        let mut history: Vec<AgentMessage> = seeded_history;
+        // System prompt rides on `generate_options.system_prompt` (c1270 / pi align).
+        // MUST NOT stuff it into history as a fake user turn.
+        // pi `newMessages`: everything this run appends (exclude pre-seed).
+        let run_baseline = history.len();
+
+        // Add user message (text and/or images, c1155).
+        history.push(AgentMessage::user_parts(user_parts.clone()));
+        persist_agent_message(&store, &session_id, history.last().expect("user message")).await;
+
+        let retry_state = RetryState::new(3, 1000);
+        // Steering queued before/at run start is injected before the first model call.
+        let mut pending: Vec<AgentMessage> = drain_queue(&steer_queue);
+        let mut turn: usize = 0;
+        // Per-run model instance: reuse while selected id is unchanged (NextTurn).
+        let mut run_model: Option<(String, Arc<dyn XyModel>)> = None;
+        // c1660: at most one overflow compact-and-retry per run.
+        let mut overflow_recovery_attempted = false;
+        // One OTEL/fastrace tree per user-triggered run (c1495 / c1555 turn preview).
+        let user_preview = super::tool_exec::parts_preview_text(&user_parts);
+        let model_api = {
+            let mm = crate::agent::lock::lock_mutex(&model_manager);
+            mm.current_model().map(|m| m.api.clone())
+        };
+        let agent_turn_span =
+            super::obs::AgentTurnSpan::start(Some(user_preview.as_str()), model_api.as_deref());
+        // c1720: mark turn root aborted when cancel token ends the run.
+        let mut turn_aborted = false;
+
+        // Outer loop: continues when follow-up messages arrive after the agent
+        // would otherwise stop (pi runLoop semantics).
+        'outer: loop {
+            let mut continue_after_tools = true;
+
+            while continue_after_tools || !pending.is_empty() {
+                if cancel.is_cancelled() {
+                    // Bridge maps this to a dim scroll notice + idle (not a sticky fault).
+                    turn_aborted = true;
+                    yield XyEvent::Error("aborted".to_string());
+                    break 'outer;
+                }
+
+                yield XyEvent::TurnStart { turn_index: turn as u32 };
+                if let Some(bus) = &hook_bus {
+                    let (ty, phase, ctx) = super::script_hook_ctx::turn_start(turn as u32);
+                    observe_script_hook(bus, ty, phase, ctx).await;
+                }
+                let iteration_span =
+                    super::obs::AgentIterationSpan::start(agent_turn_span.as_ref(), turn);
+                let turn_id = iteration_span
+                    .as_ref()
+                    .map(|t| t.turn_id().to_string())
+                    .or_else(|| agent_turn_span.as_ref().map(|t| t.turn_id().to_string()));
+
+                // Inject pending messages (steering / follow-up) before the model call.
+                // Emit user MessageStart/End so surfaces can 上行 scrollback (pi chat).
+                if !pending.is_empty() {
+                    for message in pending.drain(..) {
+                        yield XyEvent::MessageStart {
+                            role: "user".to_string(),
+                            message: Some(message.clone()),
+                        };
+                        if let Some(bus) = &hook_bus {
+                            let (ty, phase, ctx) = super::script_hook_ctx::message_start("user");
+                            observe_script_hook(bus, ty, phase, ctx).await;
+                        }
+                        yield XyEvent::MessageEnd {
+                            role: "user".to_string(),
+                            message: Some(message.clone()),
+                        };
+                        if let Some(bus) = &hook_bus {
+                            let (ty, phase, ctx) = super::script_hook_ctx::message_end("user");
+                            observe_script_hook(bus, ty, phase, ctx).await;
+                        }
+                        history.push(message.clone());
+                        persist_agent_message(&store, &session_id, &message).await;
+                    }
+                    let (steer_count, follow_up_count) =
+                        queue_counts(&steer_queue, &follow_up_queue);
+                    yield XyEvent::QueueUpdate {
+                        steer_count,
+                        follow_up_count,
+                    };
+                }
+
+                let mut messages = history.clone();
+                if !hooks.transform_context.is_empty() {
+                    for hook in &hooks.transform_context {
+                        messages = hook(messages);
+                    }
+                }
+                // Expand `$skill` only on the model-bound clone (history stays raw).
+                expand_skills_in_agent_messages(&mut messages, &skills);
+                if let Some(bus) = &hook_bus
+                    && let (ty, phase, ctx) =
+                        super::script_hook_ctx::context_pre(messages.len())
+                    && let XyHookOutcome::Blocked { reason } =
+                        bus.dispatch(ty, phase, ctx).await
+                {
+                    yield XyEvent::Error(format!("context hook blocked: {reason}"));
+                    break 'outer;
+                }
+
+                // NextTurn: re-read selected model + thinking at turn boundary (c1470).
+                let (model, generate_options) = match prepare_turn_binding(
+                    &model_manager,
+                    &active_turn,
+                    &system_prompt,
+                    &mut run_model,
+                ) {
+                    Ok(v) => v,
+                    Err(e) => {
+                        yield XyEvent::Error(format!("model build error: {e}"));
+                        break 'outer;
+                    }
+                };
+
+                // Race cancel against connect/retry so Esc aborts hung `send()`
+                // (reqwest drop-cancels the in-flight HTTP future).
+                let stream_result = tokio::select! {
+                    biased;
+                    _ = cancel.cancelled() => None,
+                    result = call_with_retry(
+                        &model, messages, &tool_schemas, &retry_state, &generate_options,
+                        turn_id.as_deref(),
+                    ) => Some(result),
+                };
+
+                let mut chunk_stream: Pin<Box<dyn Stream<Item = Result<XyChunk, XyError>> + Send>>;
+                match stream_result {
+                    None => {
+                        turn_aborted = true;
+                        yield XyEvent::Error("aborted".to_string());
+                        break 'outer;
+                    }
+                    Some(Ok(s)) => {
+                        chunk_stream = s;
+                    }
+                    Some(Err(e)) => {
+                        // c1660: overflow on connect → synthesize error assistant + Case1.
+                        let err_text = e.to_string();
+                        let (provider, model_id) = current_provider_model(&model_manager);
+                        let err_asst = build_assistant_message(
+                            vec![AgentPart::text("")],
+                            Some(crate::protocol::message::XyStopReason::Error),
+                            None,
+                            provider,
+                            model_id,
+                            Some(err_text.clone()),
+                        );
+                        persist_agent_message(&store, &session_id, &err_asst).await;
+                        history.push(err_asst);
+                        yield XyEvent::Error(err_text);
+                        let will_continue = try_turn_end_compaction(
+                            &store,
+                            &session_id,
+                            &model_manager,
+                            &event_sink,
+                            &compaction_settings,
+                            &mut history,
+                            &mut overflow_recovery_attempted,
+                            None,
+                        )
+                        .await;
+                        if will_continue {
+                            continue 'outer;
+                        }
+                        break 'outer;
+                    }
+                }
+
+                yield XyEvent::MessageStart {
+                    role: "assistant".to_string(),
+                    message: None,
+                };
+                if let Some(bus) = &hook_bus {
+                    let (ty, phase, ctx) = super::script_hook_ctx::message_start("assistant");
+                    observe_script_hook(bus, ty, phase, ctx).await;
+                }
+
+                let mut text_acc = String::new();
+                let mut thinking_acc = String::new();
+                let mut thinking_signature: Option<String> = None;
+                let mut tool_calls: Vec<(String, String, Value)> = Vec::new();
+                let mut done_usage: Option<crate::protocol::message::XyUsage> = None;
+                let mut done_stop_reason: Option<crate::protocol::message::XyStopReason> = None;
+                let mut done_error_message: Option<String> = None;
+
+                // Mid-stream abort: drop `chunk_stream` so adapter/reqwest closes
+                // the HTTP body (c680). Surfaces inherit via XyDriver::abort → token.
+                loop {
+                    let chunk_result = tokio::select! {
+                        biased;
+                        _ = cancel.cancelled() => {
+                            drop(chunk_stream);
+                            // c1595 / pi: keep partial assistant in session with
+                            // stop_reason=Aborted (skip empty); project_for_llm
+                            // filters it from the next model call.
+                            let assistant_parts = streaming_assistant_parts(
+                                &text_acc,
+                                &thinking_acc,
+                                thinking_signature.as_deref(),
+                                &tool_calls,
+                            );
+                            if !assistant_parts.is_empty() {
+                                let assistant_msg = build_assistant_message(
+                                    assistant_parts,
+                                    Some(crate::protocol::message::XyStopReason::Aborted),
+                                    done_usage.take(),
+                                    String::new(),
+                                    String::new(),
+                                    None,
+                                );
+                                yield XyEvent::MessageEnd {
+                                    role: "assistant".to_string(),
+                                    message: Some(assistant_msg.clone()),
+                                };
+                                persist_agent_message(&store, &session_id, &assistant_msg)
+                                    .await;
+                                history.push(assistant_msg);
+                            }
+                            turn_aborted = true;
+                            yield XyEvent::Error("aborted".to_string());
+                            break 'outer;
+                        }
+                        next = chunk_stream.next() => next,
+                    };
+                    match chunk_result {
+                        None => break,
+                        Some(Ok(chunk)) => match chunk {
+                            XyChunk::TextDelta(text) => {
+                                text_acc.push_str(&text);
+                                yield XyEvent::TextDelta(text.clone());
+                                yield streaming_message_update(
+                                    &text_acc,
+                                    &thinking_acc,
+                                    thinking_signature.as_deref(),
+                                    &tool_calls,
+                                );
+                            }
+                            XyChunk::ThinkingDelta(text) => {
+                                thinking_acc.push_str(&text);
+                                yield XyEvent::ThinkingDelta(text);
+                                yield streaming_message_update(
+                                    &text_acc,
+                                    &thinking_acc,
+                                    thinking_signature.as_deref(),
+                                    &tool_calls,
+                                );
+                            }
+                            XyChunk::ThinkingEnd {
+                                thinking,
+                                thinking_signature: sig,
+                            } => {
+                                if !thinking.is_empty() {
+                                    thinking_acc = thinking;
+                                }
+                                if sig.is_some() {
+                                    thinking_signature = sig;
+                                }
+                                yield streaming_message_update(
+                                    &text_acc,
+                                    &thinking_acc,
+                                    thinking_signature.as_deref(),
+                                    &tool_calls,
+                                );
+                            }
+                            XyChunk::ToolCallStart { id, name } => {
+                                upsert_streaming_tool(
+                                    &mut tool_calls,
+                                    id,
+                                    name,
+                                    Value::Object(Default::default()),
+                                );
+                                yield streaming_message_update(
+                                    &text_acc,
+                                    &thinking_acc,
+                                    thinking_signature.as_deref(),
+                                    &tool_calls,
+                                );
+                            }
+                            XyChunk::ToolCallDelta {
+                                id,
+                                name,
+                                args,
+                                ..
+                            } => {
+                                upsert_streaming_tool(&mut tool_calls, id, name, args);
+                                yield streaming_message_update(
+                                    &text_acc,
+                                    &thinking_acc,
+                                    thinking_signature.as_deref(),
+                                    &tool_calls,
+                                );
+                            }
+                            XyChunk::ToolCallEnd { name, args, id } => {
+                                // Intent only — execute after MessageEnd (c1255 / ar21).
+                                upsert_streaming_tool(&mut tool_calls, id, name, args);
+                                yield streaming_message_update(
+                                    &text_acc,
+                                    &thinking_acc,
+                                    thinking_signature.as_deref(),
+                                    &tool_calls,
+                                );
+                            }
+                            XyChunk::Done {
+                                finish_reason,
+                                usage,
+                            } => {
+                                // Persist usage/stop for Api-anchor estimates (c1420 / ar23).
+                                done_stop_reason = Some(finish_reason);
+                                if usage.is_some() {
+                                    done_usage = usage;
+                                }
+                            }
+                        },
+                        Some(Err(e)) => {
+                            super::obs::record_xy_error("model.stream", &e, turn_id.as_deref());
+                            let err_text = format!("stream error: {e}");
+                            done_stop_reason =
+                                Some(crate::protocol::message::XyStopReason::Error);
+                            done_error_message = Some(err_text.clone());
+                            yield XyEvent::Error(err_text);
+                            break;
+                        }
+                    }
+                }
+
+                let assistant_partial = if text_acc.is_empty()
+                    && thinking_acc.is_empty()
+                    && thinking_signature.is_none()
+                    && tool_calls.is_empty()
+                {
+                    None
+                } else {
+                    Some(partial_assistant_message(
+                        &text_acc,
+                        &thinking_acc,
+                        thinking_signature.as_deref(),
+                        &tool_calls,
+                    ))
+                };
+                yield XyEvent::MessageEnd {
+                    role: "assistant".to_string(),
+                    message: assistant_partial,
+                };
+                if let Some(bus) = &hook_bus {
+                    let (ty, phase, ctx) = super::script_hook_ctx::message_end("assistant");
+                    observe_script_hook(bus, ty, phase, ctx).await;
+                }
+
+                let mut assistant_parts = streaming_assistant_parts(
+                    &text_acc,
+                    &thinking_acc,
+                    thinking_signature.as_deref(),
+                    &tool_calls,
+                );
+                if !assistant_parts.is_empty()
+                    || matches!(
+                        done_stop_reason,
+                        Some(crate::protocol::message::XyStopReason::Error)
+                    )
+                {
+                    let (provider, model_id) = current_provider_model(&model_manager);
+                    if assistant_parts.is_empty() {
+                        assistant_parts.push(AgentPart::text(""));
+                    }
+                    let assistant_msg = build_assistant_message(
+                        assistant_parts,
+                        done_stop_reason,
+                        done_usage,
+                        provider,
+                        model_id,
+                        done_error_message,
+                    );
+                    persist_agent_message(&store, &session_id, &assistant_msg).await;
+                    history.push(assistant_msg);
+                }
+
+                continue_after_tools = !tool_calls.is_empty();
+
+                if tool_calls.is_empty() {
+                    let assistant = history
+                        .iter()
+                        .rev()
+                        .find(|m| m.role_name() == "assistant")
+                        .cloned();
+                    let finished = finish_turn(
+                        &store,
+                        &session_id,
+                        &model_manager,
+                        &event_sink,
+                        &compaction_settings,
+                        &mut history,
+                        &mut overflow_recovery_attempted,
+                        &hooks,
+                        &hook_bus,
+                        turn,
+                        run_baseline,
+                        assistant,
+                        Vec::new(),
+                        &steer_queue,
+                        &follow_up_queue,
+                    )
+                    .await;
+                    for event in finished.events {
+                        yield event;
+                    }
+                    match finished.outcome {
+                        FinishTurnOutcome::ContinueOuterForCompaction => continue 'outer,
+                        FinishTurnOutcome::StopRun => break 'outer,
+                        FinishTurnOutcome::Advanced {
+                            pending: next_pending,
+                            queue_update,
+                        } => {
+                            turn += 1;
+                            pending = next_pending;
+                            if let Some((steer_count, follow_up_count)) = queue_update {
+                                yield XyEvent::QueueUpdate {
+                                    steer_count,
+                                    follow_up_count,
+                                };
+                            }
+                            continue;
+                        }
+                    }
+                }
+
+                let mut turn_tool_results: Vec<AgentMessage> = Vec::new();
+                let turn_assistant = history.last().cloned();
+
+                let tool_env = super::tool_exec::ToolExecEnv {
+                    tools: &tools,
+                    hooks: &hooks,
+                    hook_bus: &hook_bus,
+                    permission_check: &permission_check,
+                    cancel: &cancel,
+                    turn_id: turn_id.as_deref(),
+                    batch_mode,
+                };
+                let parent_ctx = super::tool_exec::capture_iteration_parent(
+                    iteration_span.as_ref().map(|s| s.span()),
+                );
+
+                // Collect (window_index, call indices) for Sequential as one Barrier each,
+                // or BarrierParallel via plan_windows.
+                let planned: Vec<super::tool_batch::PlannedWindow> = match batch_mode {
+                    XyBatchMode::Sequential => tool_calls
+                        .iter()
+                        .enumerate()
+                        .map(|(i, _)| super::tool_batch::PlannedWindow::Barrier(i))
+                        .collect(),
+                    XyBatchMode::BarrierParallel => {
+                        let classes: Vec<_> = tool_calls
+                            .iter()
+                            .map(|(_, name, _)| {
+                                let tool = tools.get(name);
+                                super::tool_batch::classify(
+                                    name,
+                                    tool.as_ref().map(|t| t.as_ref() as &dyn crate::protocol::ports::XyTool),
+                                )
+                            })
+                            .collect();
+                        super::tool_batch::plan_windows(&classes)
+                    }
+                };
+
+                for (barrier_index, window) in planned.into_iter().enumerate() {
+                    let barrier_index = barrier_index as u32;
+                    match window {
+                        super::tool_batch::PlannedWindow::Barrier(i) => {
+                            let (id, name, args) = &tool_calls[i];
+                            let (tx, mut rx) = tokio::sync::mpsc::unbounded_channel();
+                            let fut = super::tool_exec::run_one(
+                                &tool_env,
+                                id,
+                                name,
+                                args,
+                                tx,
+                                parent_ctx,
+                                barrier_index,
+                            );
+                            tokio::pin!(fut);
+                            let msg = loop {
+                                tokio::select! {
+                                    biased;
+                                    ev = rx.recv() => {
+                                        match ev {
+                                            Some(e) => yield e,
+                                            None => break fut.await,
+                                        }
+                                    }
+                                    result = &mut fut => {
+                                        while let Ok(e) = rx.try_recv() {
+                                            yield e;
+                                        }
+                                        break result;
+                                    }
+                                }
+                            };
+                            history.push(msg.clone());
+                            persist_agent_message(
+                                &store,
+                                &session_id,
+                                history.last().expect("tool result"),
+                            )
+                            .await;
+                            turn_tool_results.push(msg);
+                        }
+                        super::tool_batch::PlannedWindow::Parallel(idxs) => {
+                            let (tx, mut rx) = tokio::sync::mpsc::unbounded_channel();
+                            let mut futs = Vec::with_capacity(idxs.len());
+                            for &i in &idxs {
+                                let (id, name, args) = &tool_calls[i];
+                                let tx = tx.clone();
+                                futs.push(async {
+                                    super::tool_exec::run_one(
+                                        &tool_env,
+                                        id,
+                                        name,
+                                        args,
+                                        tx,
+                                        parent_ctx,
+                                        barrier_index,
+                                    )
+                                    .await
+                                });
+                            }
+                            drop(tx);
+                            let join = futures::future::join_all(futs);
+                            tokio::pin!(join);
+                            let msgs = loop {
+                                tokio::select! {
+                                    biased;
+                                    ev = rx.recv() => {
+                                        match ev {
+                                            Some(e) => yield e,
+                                            None => break join.await,
+                                        }
+                                    }
+                                    results = &mut join => {
+                                        while let Ok(e) = rx.try_recv() {
+                                            yield e;
+                                        }
+                                        break results;
+                                    }
+                                }
+                            };
+                            // History / toolResults: source order (join_all preserves idxs order).
+                            for msg in msgs {
+                                history.push(msg.clone());
+                                persist_agent_message(
+                                    &store,
+                                    &session_id,
+                                    history.last().expect("tool result"),
+                                )
+                                .await;
+                                turn_tool_results.push(msg);
+                            }
+                        }
+                    }
+                }
+
+                let finished = finish_turn(
+                    &store,
+                    &session_id,
+                    &model_manager,
+                    &event_sink,
+                    &compaction_settings,
+                    &mut history,
+                    &mut overflow_recovery_attempted,
+                    &hooks,
+                    &hook_bus,
+                    turn,
+                    run_baseline,
+                    turn_assistant,
+                    turn_tool_results,
+                    &steer_queue,
+                    &follow_up_queue,
+                )
+                .await;
+                for event in finished.events {
+                    yield event;
+                }
+                match finished.outcome {
+                    FinishTurnOutcome::ContinueOuterForCompaction => continue 'outer,
+                    FinishTurnOutcome::StopRun => break 'outer,
+                    FinishTurnOutcome::Advanced {
+                        pending: next_pending,
+                        queue_update,
+                    } => {
+                        turn += 1;
+                        pending = next_pending;
+                        if let Some((steer_count, follow_up_count)) = queue_update {
+                            yield XyEvent::QueueUpdate {
+                                steer_count,
+                                follow_up_count,
+                            };
+                        }
+                    }
+                }
+            }
+
+            // Would stop — drain follow-up; if non-empty, continue outer loop.
+            let follow_ups = drain_queue(&follow_up_queue);
+            if follow_ups.is_empty() {
+                break;
+            }
+            pending = follow_ups;
+            let (steer_count, follow_up_count) = queue_counts(&steer_queue, &follow_up_queue);
+            yield XyEvent::QueueUpdate {
+                steer_count,
+                follow_up_count,
+            };
+        }
+
+        if let Some(bus) = &hook_bus {
+            // pi agent_settled: no retry/compaction/follow-up left before AgentEnd.
+            let (ty, phase, ctx) = super::script_hook_ctx::agent_settled();
+            observe_script_hook(bus, ty, phase, ctx).await;
+            let (ty, phase, ctx) = super::script_hook_ctx::agent_end();
+            observe_script_hook(bus, ty, phase, ctx).await;
+        }
+        // Keep `agent.turn` open for the whole run (NLL would otherwise drop early).
+        // c1720 / otel20: explicit terminal status before parent slots clear.
+        if let Some(span) = agent_turn_span {
+            use super::obs::TurnEndReason;
+            span.finish(if turn_aborted {
+                TurnEndReason::Aborted
+            } else {
+                TurnEndReason::Ok
+            });
+        }
+        yield XyEvent::AgentEnd { messages: history };
+    }
+}
+
+async fn observe_script_hook(
+    bus: &Arc<dyn XyHookBus>,
+    event_type: &str,
+    phase: &str,
+    context: serde_json::Value,
+) {
+    if let XyHookOutcome::Blocked { reason } = bus.dispatch(event_type, phase, context).await {
+        log::warn!(
+            "Script hook blocked observe-only lifecycle event (fail-open) event={} phase={} reason={}",
+            event_type,
+            phase,
+            reason
+        );
+    }
+}
+
+/// Helper: call model with retry for transient errors.
+async fn call_with_retry(
+    model: &Arc<dyn XyModel>,
+    messages: Vec<AgentMessage>,
+    tool_schemas: &[XyToolSchema],
+    retry_state: &RetryState,
+    options: &crate::protocol::ports::XyGenerateOptions,
+    turn_id: Option<&str>,
+) -> Result<Pin<Box<dyn Stream<Item = Result<XyChunk, XyError>> + Send>>, XyError> {
+    let llm_messages = project_for_llm(&messages);
+    loop {
+        match model
+            .generate_stream(llm_messages.clone(), tool_schemas, true, options.clone())
+            .await
+        {
+            Ok(stream) => return Ok(stream),
+            Err(e) => {
+                let err_msg = e.to_string();
+                if is_retryable_error(&err_msg) && retry_state.can_retry() {
+                    log::warn!(
+                        target: "xylitol::react",
+                        "model.generate_stream retrying error.kind={} turn_id={} error={e}",
+                        e.kind(),
+                        turn_id.unwrap_or("")
+                    );
+                    let delay = retry_state.next_delay();
+                    retry_state.backoff(delay).await;
+                    continue;
+                }
+                super::obs::record_xy_error("model.generate_stream", &e, turn_id);
+                return Err(e);
+            }
+        }
+    }
+}
+
+#[cfg(test)]
+mod tests;

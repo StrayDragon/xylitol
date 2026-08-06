@@ -515,7 +515,10 @@ impl XyDriver for XyInProcessDriver {
     }
 
     fn set_thinking_level(&mut self, level: ThinkingLevel) -> Result<(), XyDriverError> {
-        Self::map_str(self.agent.inner_mut().set_thinking_level(level))
+        self.agent
+            .inner_mut()
+            .set_thinking_level(level)
+            .map_err(XyDriverError::from)
     }
 
     fn thinking_level(&self) -> ThinkingLevel {
@@ -523,7 +526,10 @@ impl XyDriver for XyInProcessDriver {
     }
 
     fn cycle_thinking_level(&mut self) -> Result<ThinkingLevel, XyDriverError> {
-        Self::map_str(self.agent.inner_mut().cycle_thinking_level())
+        self.agent
+            .inner_mut()
+            .cycle_thinking_level()
+            .map_err(XyDriverError::from)
     }
 
     fn session_id(&self) -> Option<String> {
