@@ -44,3 +44,4 @@
 - [x] 5.2 Specs landing 后 `readyToImplement=true`（`de330c6c`）
 - [x] 5.3 apply 后：`cargo test -p xylitol-ai-bridge` + fmt/lint 触及面
 - [x] 5.4 verify：保真 golden + 回填 SSE；lab `resume≥warm3`（§5.2 绝对地板作 informational）；不宣称全 compat 可回放
+- [x] 5.5 verify SUGGESTION：Assembler `assemble_with_diagnostics`；agent c27 投影夹具含保留 signature 正例

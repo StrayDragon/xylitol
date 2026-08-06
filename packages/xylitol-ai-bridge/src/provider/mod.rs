@@ -41,7 +41,9 @@ pub use openai_responses::{
     messages_to_responses_input_with_diagnostics, messages_to_responses_input_with_options,
 };
 /// Crate-private layout helpers — public body entry is [`ResponsesAssembler`] only (c1890).
-pub(crate) use openai_responses::{apply_responses_wire_policy, assemble_responses_body};
+pub(crate) use openai_responses::{
+    apply_responses_wire_policy, assemble_responses_body_with_diagnostics,
+};
 pub use remote_count::{
     AnthropicRemoteCounter, OpenAiResponsesRemoteCounter, RemoteCounter, StubRemoteCounter,
 };

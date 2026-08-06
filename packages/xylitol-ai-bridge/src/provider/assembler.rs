@@ -6,12 +6,12 @@ use crate::dto::{AiBridgeMessage, AiBridgeToolSchema};
 use crate::thinking::AiBridgeGenerateOptions;
 use crate::wire_policy::WirePolicy;
 
-use super::{apply_responses_wire_policy, assemble_responses_body};
+use super::{apply_responses_wire_policy, assemble_responses_body_with_diagnostics};
 
 /// Constructs OpenAI Responses JSON bodies under a fixed [`WirePolicy`].
 ///
 /// Sole public business-layout entry for `/v1/responses` bodies (c1890).
-/// Internal `assemble_responses_body` / `apply_responses_wire_policy` stay crate-private.
+/// Internal `assemble_responses_body_with_diagnostics` / `apply_responses_wire_policy` stay crate-private.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub struct ResponsesAssembler {
     wire_policy: WirePolicy,
@@ -41,7 +41,28 @@ impl ResponsesAssembler {
         stream: bool,
         options: &AiBridgeGenerateOptions,
     ) -> Value {
-        assemble_responses_body(model, messages, tools, stream, options, &self.wire_policy)
+        self.assemble_with_diagnostics(model, messages, tools, stream, options)
+            .0
+    }
+
+    /// Like [`Self::assemble`], also returning full-replay omit diagnostics
+    /// (illegal `thinkingSignature` JSON omitted from `input`).
+    pub fn assemble_with_diagnostics(
+        self,
+        model: &str,
+        messages: Vec<AiBridgeMessage>,
+        tools: &[AiBridgeToolSchema],
+        stream: bool,
+        options: &AiBridgeGenerateOptions,
+    ) -> (Value, Vec<crate::dto::Diagnostic>) {
+        assemble_responses_body_with_diagnostics(
+            model,
+            messages,
+            tools,
+            stream,
+            options,
+            &self.wire_policy,
+        )
     }
 
     /// Apply wire-policy stripping to an already-built body (test / inject harness).
@@ -60,8 +81,14 @@ mod tests {
     fn default_assembler_matches_assemble_fn() {
         let msgs = vec![AiBridgeMessage::user("hi")];
         let opts = AiBridgeGenerateOptions::default();
-        let via_fn =
-            assemble_responses_body("m", msgs.clone(), &[], false, &opts, &WirePolicy::default());
+        let (via_fn, _) = assemble_responses_body_with_diagnostics(
+            "m",
+            msgs.clone(),
+            &[],
+            false,
+            &opts,
+            &WirePolicy::default(),
+        );
         let via_asm = ResponsesAssembler::default().assemble("m", msgs, &[], false, &opts);
         assert_eq!(via_asm, via_fn);
     }
@@ -88,5 +115,43 @@ mod tests {
         assert!(denied.get("prompt_cache_key").is_none());
         assert_eq!(allowed["previous_response_id"], "resp_1");
         assert_eq!(allowed["prompt_cache_key"], "ck");
+    }
+
+    #[test]
+    fn assemble_with_diagnostics_reports_illegal_signature_omit() {
+        use crate::dto::{AiBridgePart, AiBridgeStopReason};
+
+        let msgs = vec![AiBridgeMessage::AssistantMessage {
+            content: vec![
+                AiBridgePart::Thinking {
+                    thinking: "x".into(),
+                    redacted: false,
+                    thinking_signature: Some("not-json".into()),
+                },
+                AiBridgePart::text("ok"),
+            ],
+            stop_reason: Some(AiBridgeStopReason::Stop),
+            usage: None,
+            api: String::new(),
+            provider: String::new(),
+            model: String::new(),
+            response_id: None,
+            error_message: None,
+            timestamp: 0,
+            diagnostics: Vec::new(),
+        }];
+        let opts = AiBridgeGenerateOptions::default();
+        let (body, diags) =
+            ResponsesAssembler::default().assemble_with_diagnostics("m", msgs, &[], false, &opts);
+        let input = body["input"].as_array().expect("input");
+        assert!(
+            input
+                .iter()
+                .all(|i| i.get("type") != Some(&serde_json::json!("reasoning"))),
+            "{input:?}"
+        );
+        assert_eq!(diags.len(), 1);
+        assert!(diags[0].message.contains("omit illegal thinkingSignature"));
+        assert_eq!(diags[0].source.as_deref(), Some("openai-responses"));
     }
 }
