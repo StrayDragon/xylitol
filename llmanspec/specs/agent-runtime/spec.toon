@@ -2,7 +2,7 @@ kind: llman.sdd.spec
 name: "agent-runtime"
 purpose: "薄编排 ReAct 运行时：AgentRuntime 循环、工具批执行、steer/follow-up 队列、abort 与 XyEvent 流（不含 adk / OutputGuard）。"
 valid_scope[3]: src/agent/,src/protocol/,tests/
-requirements[35]{req_id,title,statement}:
+requirements[36]{req_id,title,statement}:
   ar1,"thin-react-loop","agent/ 层 MUST 以 AgentRuntime（runtime/react.rs）驱动 ReAct：调用 XyModel、执行工具、直至无 tool_calls、abort、或可选 should_stop_after_turn 请求停；MUST NOT 以产品默认 max_iterations 或未配置的硬步数闸结束 run；可选 session.max_turns（见 ar30）MUST 仅通过 should_stop_after_turn 生效。MUST NOT 在循环文件内联 bash 实现或厂商 HTTP。"
   ar2,"xy-event-stream",运行时 MUST 以 XyEvent 异步流对外输出（TextDelta / ThinkingDelta / Tool* / Turn* / QueueUpdate / Error 等）；MUST NOT 再引入 AgentEvent 或 adk 事件类型。
   ar3,工具批后继续,"同一模型响应中的全部工具调用 MUST 在下一轮模型调用前执行完毕（可并行或串行）；MUST NOT 因流结束 Done 而提前结束含 tool_calls 的回合。该行为 MUST 有可执行 BDD 场景（live `.feature`，`@req`）。"
@@ -38,7 +38,8 @@ requirements[35]{req_id,title,statement}:
   ar32,"turn-end-overflow-compact-retry","ReAct 在非 abort 的 assistant 回合落定后 MUST 先于 threshold（ar31）评估 overflow Case1（domain-compaction c21–c23）：sameModel 且 is_context_overflow 时执行一次 compact-and-retry；willRetry 为 true 时 MUST 从 store 重载与 as45 同源的 compaction-aware 工作 history（含摘掉错误 assistant 的效果，因 error/aborted 投影跳过或重载不含未裁切旧链）并继续本 run 的下一模型调用；MUST NOT 仅 pop 错误行却继续握持 firstKept 之前的膨胀 history；二次 overflow MUST 失败并结束 recovery；overflow MUST NOT 走 AutoRetry 瞬态重试。该行为 MUST 有可执行 BDD 场景（见 domain-compaction.feature 锚点）。"
   ar33,"context-policy-responses-assembler","agent 层 MUST 提供 ContextPolicy（或等价）code-first 默认板：至少含 tools_mode（默认 full）、status_bar_mode（默认 off）、date_placement 占位（默认等价现状 system date）；MUST NOT 本 change 实现 search/状态栏完整行为。openai-responses 主路径 MUST 经 ResponsesAssembler（bridge）构造请求 body，并传入 WirePolicy；MUST NOT 在 ReAct/adapter 散落第二套业务布局。默认档 MUST 不改变用户可见请求语义。由单测覆盖，MUST NOT 单独扩 BDD step。"
   ar34,"mcp-tool-table-freeze-gate","轨 A：Agent/session MUST 在首次 generate（会话尚未工具定稿）前执行 MCP 门闸（对齐 infra-mcp mcp8）：等待 settle 或超时后定稿 provider 可见工具表；定稿后 MUST 忽略会扩表的 settle 热并；idle `/reload` MUST 按 name upsert 重定稿；本波 resume/切会话 MUST 清冻再门闸（指纹持久化后的一致续冻另波，对齐 mcp8）。tools_mode=search（c1960）不在本要求交付范围。由单测覆盖，MUST NOT 单独扩 BDD step。"
-scenarios[19]{req_id,id,given,when,then,feature}:
+  ar35,"stream-error-carries-kind","ReAct / session 热路径在将 XyError 投影为 XyEvent::Error 时 MUST 经 XyEventError::from_xy（或等价）保留稳定 kind（对齐 XyError::kind）；MUST NOT 仅把 Display 字符串塞进无 kind 的 Error。Abort 路径 MUST 使用 Aborted kind（或 is_aborted 可识别）。由单测覆盖，MUST NOT 单独扩 BDD step。"
+scenarios[20]{req_id,id,given,when,then,feature}:
   ar13,"no-rloop",在 src 中搜索 loop raw identifier,运行检查,零匹配,false
   ar14,"no-facade",检查 agent/facade.rs,不存在该模块,facade 保持移除,false
   ar15,"unknown-ok",构造内部专用 XyEvent 变体,经 to_wire_event 降级,返回 None 且不 panic,false
@@ -58,3 +59,4 @@ scenarios[19]{req_id,id,given,when,then,feature}:
   ar32,"overflow-before-threshold","turn-end 同时可判 overflow 与超 reserve","执行 turn 后 compaction 检查","先走 overflow Case1（见 domain-compaction.feature），MUST NOT 仅当 threshold",false
   ar33,"context-policy-default-unit","调用 ContextPolicy::default()","检查 hooks","tools_mode=full；status_bar_mode=off；date_placement 等价现状",false
   ar34,"freeze-gate-unit","未定稿会话首次 generate","门闸超时或 settle 后","工具表 FROZEN；其后 settle 不扩 provider 表",false
+  ar35,"stream-error-kind-unit","热路径 XyError::Provider 投影为 XyEvent::Error","检查 XyEventError","kind=Provider 且 message 含 Display",false

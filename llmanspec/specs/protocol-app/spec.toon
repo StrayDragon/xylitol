@@ -2,7 +2,7 @@ kind: llman.sdd.spec
 name: "protocol-app"
 purpose: Client↔core 线协议词汇（Command/Event 枚举 + 传输辅助），传输无关。
 valid_scope[2]: src/,tests/
-requirements[13]{req_id,title,statement}:
+requirements[14]{req_id,title,statement}:
   ip1,Command 枚举,protocol MUST 定义 Command 枚举，至少覆盖 Run、Cancel、SwitchModel、SetThinking、ListCommands、ApproveTool、AnswerQuestion、SwitchSession、GetMessages、ExportHtml、ExportJsonl、ImportJsonl；每个 client→core 消息 MUST 反序列化为此枚举。
   ip2,Event 枚举,protocol/ MUST 定义 Event 枚举，至少覆盖 TurnStart、Delta、ToolCall、ApprovalRequired、QuestionRequired、TurnEnd、Usage；每个 core→client 消息 MUST 反序列化为此枚举。
   ip3,信封与错误,"protocol/ MUST 定义统一 REST 响应信封 {code, msg, data, request_id} 与类型化错误码集；信封类型位于 protocol/ 且 MUST 传输无关（内部无 HTTP 或 WS 类型）。"
@@ -16,7 +16,8 @@ requirements[13]{req_id,title,statement}:
   "pa-wire1",线协议映射队列与闭集,protocol Event MUST 能表达跨面所需的 XyEvent 闭集子集（至少含 QueueUpdate）；未映射变体 MUST 可降级忽略，MUST NOT panic。
   pa-m1,"agent-part-tagged-wire","AgentPart 序列化到 JSONL/session message.content 时 MUST 使用带 type 判别的自描述形态（对齐 pi ThinkingContent/TextContent/ToolCall）：thinking MUST 为 {type:thinking, thinking, thinkingSignature?, redacted?}；text MUST 为 {type:text, text}；toolCall MUST 为 {type:toolCall, id, name, arguments}。MUST NOT 使用 serde untagged；MUST NOT 将 Text 写成裸字符串；MUST NOT 将 Thinking 写成无 type 且字段名为 text 的对象。"
   pa-m2,"preview-text-excludes-thinking",用于 editor 预填与树摘要的 message 纯文本提取（message_text 或等价）MUST 只聚合 type=text 的正文；MUST NOT 把 type=thinking 的正文拼进预填/摘要。
-scenarios[13]{req_id,id,given,when,then,feature}:
+  pa-e1,"xy-event-error-kind","XyEvent::Error MUST 携带结构化 XyEventError（kind + message）；kind 在源自 XyError 时 MUST 对齐 XyError::kind（Aborted/Provider/Session/Config/Tool/…），裸字符串 MUST 归类为 Message（message==aborted 除外，归 Aborted）。wire Event::Error MUST 可选携带 kind；有 kind 时往返 MUST 保留；缺省反序列化 MUST 不 panic（可回落 Message 或由 message 推断 Aborted）。"
+scenarios[15]{req_id,id,given,when,then,feature}:
   ip1,command-enum-roundtrip,"构造含 ExportJsonl 与 ImportJsonl 的 Command","serde JSON 往返",变体与字段保持一致,false
   ip2,event-enum-covers-lifecycle,"检查 protocol::Event 变体集","对照 TurnStart/Delta/ToolCall/ApprovalRequired/QuestionRequired/TurnEnd/Usage",所需生命周期变体均存在,false
   ip3,envelope-serializes,"构造含 code Ok 与 data 的统一信封","序列化为 JSON","含 code、msg、data、request_id 且无 HTTP/WS 类型泄漏",false
@@ -30,3 +31,5 @@ scenarios[13]{req_id,id,given,when,then,feature}:
   pa-wire1,queue-update-on-wire,需要跨面表达队列状态,"映射 XyEvent 子集到 wire Event","至少可表达 QueueUpdate；未映射可降级忽略且不 panic",false
   pa-m1,agent-part-tagged-wire,"序列化含 thinking/text/toolCall 的 AgentPart","写入 JSONL/session content","带 type 判别；拒绝 untagged 与裸字符串 Text",false
   pa-m2,preview-text-excludes-thinking,"assistant content 含 thinking 与 text","提取 message_text 预填/摘要","仅聚合 type=text 正文",false
+  pa-e1,xy-event-error-kind-roundtrip,"构造 XyEvent::Error(kind=Provider,message=…)","经 wire Event 映射往返","kind 与 message 保留",false
+  pa-e1,xy-event-error-legacy-message,"wire Event::Error 仅有 message=aborted 且无 kind","反序列化为 XyEvent::Error","is_aborted 为真",false

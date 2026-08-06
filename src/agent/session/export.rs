@@ -63,7 +63,7 @@ impl SessionExporter {
             .as_ref()
             .ok_or_else(|| XyError::Config("export io not configured".into()))?;
         let entries = store.load_entries(session_id).await.map_err(session_err)?;
-        let jsonl = render_jsonl(&entries).map_err(session_err)?;
+        let jsonl = render_jsonl(&entries)?;
         io.write_text(path, &jsonl).await.map_err(session_err)?;
         Ok(path.to_path_buf())
     }
@@ -83,7 +83,7 @@ impl SessionExporter {
             .as_ref()
             .ok_or_else(|| XyError::Config("export io not configured".into()))?;
         let bytes = io.read_bytes(path).await.map_err(session_err)?;
-        let entries = parse_jsonl(&bytes).map_err(session_err)?;
+        let entries = parse_jsonl(&bytes)?;
         let new_id = match entries.first() {
             Some(SessionEntry::Header(h)) => h.id.clone(),
             _ => return Err(session_err("import: missing header")),
@@ -198,10 +198,11 @@ fn message_text(msg: &Value) -> String {
 }
 
 /// Render a session's entries as JSONL (one JSON object per line).
-pub fn render_jsonl(entries: &[SessionEntry]) -> Result<String, String> {
+pub fn render_jsonl(entries: &[SessionEntry]) -> Result<String, XyError> {
     let mut out = String::new();
     for entry in entries {
-        let line = serde_json::to_string(entry).map_err(|e| format!("serialize entry: {e}"))?;
+        let line = serde_json::to_string(entry)
+            .map_err(|e| session_err(format!("serialize entry: {e}")))?;
         out.push_str(&line);
         out.push('\n');
     }
@@ -212,18 +213,19 @@ pub fn render_jsonl(entries: &[SessionEntry]) -> Result<String, String> {
 ///
 /// Validates that the first non-empty line is a session header carrying a
 /// compatible `version`. Returns an error otherwise.
-pub fn parse_jsonl(bytes: &[u8]) -> Result<Vec<SessionEntry>, String> {
-    let text = std::str::from_utf8(bytes).map_err(|e| format!("jsonl is not utf-8: {e}"))?;
-    let entries = crate::protocol::session::parse_session_jsonl(text)?;
+pub fn parse_jsonl(bytes: &[u8]) -> Result<Vec<SessionEntry>, XyError> {
+    let text =
+        std::str::from_utf8(bytes).map_err(|e| session_err(format!("jsonl is not utf-8: {e}")))?;
+    let entries = crate::protocol::session::parse_session_jsonl(text).map_err(session_err)?;
     if entries.is_empty() {
-        return Err("jsonl contained no entries".into());
+        return Err(session_err("jsonl contained no entries"));
     }
     // The first entry must be a Header.
     if !matches!(entries.first(), Some(SessionEntry::Header(_))) {
-        return Err(format!(
+        return Err(session_err(format!(
             "import: first entry must be a session header, got {:?}",
             entries.first().map(|e| e.entry_type()).unwrap_or("none")
-        ));
+        )));
     }
     Ok(entries)
 }
@@ -305,7 +307,7 @@ mod tests {
         let only_message = serde_json::to_string(&message("user", "x")).unwrap();
         let res = parse_jsonl(only_message.as_bytes());
         assert!(res.is_err());
-        assert!(res.unwrap_err().contains("header"));
+        assert!(res.unwrap_err().to_string().contains("header"));
     }
 
     #[test]

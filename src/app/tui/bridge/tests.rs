@@ -285,6 +285,50 @@ fn note_user_abort_keeps_flushed_partial() {
 }
 
 #[test]
+fn config_error_is_sticky_error_row() {
+    use crate::protocol::lifecycle::XyEventError;
+    let mut model = UiModel::new();
+    model.begin_run("hi");
+    apply_xy_event(
+        &mut model,
+        &XyEvent::Error(XyEventError::new(
+            "Config",
+            "agent config error: no model configured",
+        )),
+    );
+    assert!(
+        model.entries.iter().any(|e| matches!(
+            e,
+            UiEntry::Error { text } if text.contains("no model configured")
+        )),
+        "Config kind must be sticky Error: {:?}",
+        model.entries
+    );
+    assert!(
+        !model.entries.iter().any(|e| matches!(
+            e,
+            UiEntry::ScrollNotice { text } if text.contains("aborted") || text.contains("Aborted")
+        )),
+        "Config must not look like abort: {:?}",
+        model.entries
+    );
+}
+
+#[test]
+fn provider_error_is_sticky_error_row() {
+    use crate::protocol::lifecycle::XyEventError;
+    let mut model = UiModel::new();
+    apply_xy_event(
+        &mut model,
+        &XyEvent::Error(XyEventError::new("Provider", "provider error: 503")),
+    );
+    assert!(model.entries.iter().any(|e| matches!(
+        e,
+        UiEntry::Error { text } if text.contains("503")
+    )));
+}
+
+#[test]
 fn metadata_events_do_not_panic() {
     let mut model = UiModel::new();
     apply_xy_event(

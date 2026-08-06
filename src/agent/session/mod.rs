@@ -605,10 +605,10 @@ impl AgentCapabilities {
         &self,
         at_entry_id: &str,
         position: crate::protocol::session::ForkPosition,
-    ) -> Result<String, String> {
+    ) -> Result<String, XyError> {
         let parent_id = self
             .session_id()
-            .ok_or_else(|| "no active session".to_string())?;
+            .ok_or_else(|| XyError::Session(anyhow::anyhow!("no active session")))?;
 
         if let Some(bus) = &self.hook_bus {
             let (ty, phase, ctx) = crate::agent::runtime::script_hook_ctx::session_before_fork(
@@ -623,7 +623,7 @@ impl AgentCapabilities {
         self.store
             .fork(parent_id, &child_id, at_entry_id, position)
             .await
-            .map_err(|e| format!("fork failed: {e}"))?;
+            .map_err(|e| XyError::Session(anyhow::anyhow!("fork failed: {e}")))?;
 
         Ok(child_id)
     }
@@ -855,9 +855,7 @@ impl AgentCapabilities {
         let sid = self
             .session_id()
             .ok_or_else(|| XyError::Session(anyhow::anyhow!("no active session")))?;
-        crate::agent::session::stats::compute(self.store.as_ref(), sid)
-            .await
-            .map_err(|e| XyError::Session(anyhow::anyhow!(e)))
+        crate::agent::session::stats::compute(self.store.as_ref(), sid).await
     }
 
     // ── Bash execution (`!cmd` / `!!cmd`) ───────────────────────
@@ -874,14 +872,16 @@ impl AgentCapabilities {
         command: &str,
         exclude_from_context: bool,
         chunk_tx: Option<tokio::sync::mpsc::Sender<Vec<u8>>>,
-    ) -> Result<crate::protocol::ports::XyBashResult, String> {
+    ) -> Result<crate::protocol::ports::XyBashResult, XyError> {
         if let Some(bus) = &self.hook_bus {
             let (ty, phase, ctx) = crate::agent::runtime::script_hook_ctx::user_bash(
                 command,
                 exclude_from_context,
                 &self.cwd,
             );
-            cancel_hook(bus, ty, phase, ctx).await?;
+            cancel_hook(bus, ty, phase, ctx)
+                .await
+                .map_err(|e| XyError::Session(anyhow::anyhow!(e)))?;
         }
         let store: &dyn XySessionStore = self.store.as_ref();
         let sid = self.session_id().map(str::to_string);
@@ -903,12 +903,12 @@ impl AgentCapabilities {
         result: &crate::protocol::ports::XyBashResult,
         exclude_from_context: bool,
         session_id: Option<&str>,
-    ) -> Result<(), String> {
+    ) -> Result<(), XyError> {
         let sid = match session_id {
             Some(s) => s.to_string(),
             None => self
                 .session_id()
-                .ok_or_else(|| "no active session".to_string())?
+                .ok_or_else(|| XyError::Session(anyhow::anyhow!("no active session")))?
                 .to_string(),
         };
         crate::agent::session::bash::record_bash_result(
