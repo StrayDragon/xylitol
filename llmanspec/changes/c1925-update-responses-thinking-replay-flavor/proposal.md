@@ -1,10 +1,11 @@
 ---
 depends_on:
-  - c1880-update-responses-first-api-boundary
-  - c1890-add-responses-context-policy-assembler
+- c1880-update-responses-first-api-boundary
+- c1890-add-responses-context-policy-assembler
 branch: sdd/c1925-update-responses-thinking-replay-flavor
 base_sha: 04a201abb1499a71b67102fb4b2232d50cdb76b6
-checkpointed: false
+checkpointed: true
+checkpoint_sha: f908f74fa07308f0342cfed8c3c1f55c77928048
 ---
 
 # Responses thinking / reasoning：Session JSONL → API body 保真重建
