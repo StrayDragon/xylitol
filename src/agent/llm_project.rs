@@ -202,4 +202,44 @@ mod tests {
         // Same type as bridge DTO (alias).
         let _: xylitol_ai_bridge::dto::AiBridgeMessage = projected[0].clone();
     }
+
+    /// c27 (agent seam): post-compact working history projects CompactionSummary
+    /// + firstKept onwards — no Thinking / thinkingSignature from summarized turns.
+    #[test]
+    fn compact_working_history_projects_without_summarized_thinking() {
+        let working = vec![
+            AgentMessage::Env(EnvMessage::CompactionSummaryMessage {
+                summary: "prior turns summarized".into(),
+                tokens_before: 9_000,
+                tokens_after: 400,
+                read_files: None,
+                modified_files: None,
+            }),
+            AgentMessage::user("continue after compact"),
+            AgentMessage::assistant("kept reply"),
+        ];
+        let projected = project_for_llm(&working);
+        assert_eq!(projected.len(), 3);
+        assert!(
+            projected[0].text().contains("prior turns summarized"),
+            "compaction folds to context summary user row"
+        );
+        assert!(
+            projected.iter().all(|m| {
+                match m {
+                    LlmMessage::AssistantMessage { content, .. } => content.iter().all(|p| {
+                        !matches!(
+                            p,
+                            AgentPart::Thinking {
+                                thinking_signature: Some(_),
+                                ..
+                            }
+                        )
+                    }),
+                    _ => true,
+                }
+            }),
+            "projected history must not carry thinkingSignature from summarized-away turns: {projected:?}"
+        );
+    }
 }

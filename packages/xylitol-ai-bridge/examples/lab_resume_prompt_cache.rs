@@ -488,6 +488,8 @@ async fn run_lab() -> Result<(), String> {
     eprintln!("lab: {}", serde_json::to_string_pretty(&summary).unwrap());
 
     // Soft expectations (lab, not CI assert): warm3 should show some cache if endpoint supports it.
+    let warm3_n = cache_tokens(&w3.usage);
+    let resume_n = cache_tokens(&r_resume.usage);
     if let Some(u) = &w3.usage {
         match u.prompt_cache_read {
             PromptCacheRead::Tokens(n) if n > 0 => {
@@ -495,6 +497,27 @@ async fn run_lab() -> Result<(), String> {
             }
             other => eprintln!("lab: NOTE warm3 pcr={other:?} (endpoint may lack prompt cache)"),
         }
+    }
+    // c1925 gate: full-replay resume must not regress vs same-run warm3 (prefix break).
+    // Absolute floors from research §5.2 (medium≥761 / off≥747) may drift with gateway;
+    // primary check is resume >= warm3. Print floors for human compare.
+    let floor = match opts.thinking_level.as_str() {
+        "off" => 747u64,
+        _ => 761u64,
+    };
+    if resume_n < warm3_n {
+        return Err(format!(
+            "lab FAIL: resume_full cache_read={resume_n} < warm3={warm3_n} (full-replay prefix broken?)"
+        ));
+    }
+    eprintln!(
+        "lab: OK resume_full={resume_n} >= warm3={warm3_n} (delta {}); research floor≈{floor} (informational)",
+        resume_n.saturating_sub(warm3_n)
+    );
+    if resume_n < floor {
+        eprintln!(
+            "lab: NOTE resume_full={resume_n} below historical floor {floor} — check gateway drift vs same-run warm3 before calling regression"
+        );
     }
 
     Ok(())

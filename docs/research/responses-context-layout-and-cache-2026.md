@@ -142,7 +142,13 @@ coding agent 默认：环境类（cwd）可留 system；高变读数（工具计
 
 早期对照臂曾测「Strip 历史 reasoning」resume → cache_read **404**（相对 Preserve 761 腰斩）——仅作否决三态的证据，**不**产品化。原始目录：`/tmp/xylitol-lab-resume-cache-*`。
 
+**敏感**：thinking 开时 `include: reasoning.encrypted_content`，`thinkingSignature` 可为 **含 `encrypted_content` 的整包 reasoning JSON** 并写入 session JSONL。本地磁盘视为敏感材料（勿贴公共 issue / 日志）；本波不为改 `store:true` 而剥落盘。
+
 隔天 resume 另有 system **date** 日界前缀漂移风险（→ `c1905`）；与 reasoning 回放正交。
+
+**验证闸（c1925 apply）**：同 lab 重跑后，**主闸** `resume_full ≥ warm3`（同次 run）；§5.2 表上绝对数（medium ≥761 / off ≥747）为历史地板，网关抖动时先对照同次 warm3，勿以 Strip 臂当对照。
+
+复验（2026-08-06 apply，Ornith 同网关）：medium warm3=694 resume=728（Δ+34，对齐基线 Δ）；off warm3=762 resume=792（Δ+30，绝对高于历史 747）。
 
 ---
 
