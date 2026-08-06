@@ -77,8 +77,7 @@ pub fn apply_lifecycle_family(model: &mut UiModel, event: &XyEvent) -> bool {
             true
         }
         XyEvent::Error(err) => {
-            // Esc abort used to emit Error("aborted"); treat as cancel note + idle
-            // so a sticky Error wall cannot block further conversation (c482 / c665).
+            // Esc abort: cancel note + idle — not a sticky Error wall (c482 / c665).
             if err.is_aborted() {
                 // c1595: keep partial (flush) + footer; do not wipe already-committed assistant.
                 model.flush_streaming();
@@ -95,6 +94,14 @@ pub fn apply_lifecycle_family(model: &mut UiModel, event: &XyEvent) -> bool {
                     model.status = None;
                 }
             } else {
+                log::warn!(
+                    target: "xylitol::tui",
+                    "XyEvent::Error error.kind={} message={}",
+                    err.kind,
+                    err.message
+                );
+                // Non-abort kinds stay sticky Error rows; message is Display-shaped
+                // when sourced from XyError (Config/Session/Provider/Tool/…).
                 model.entries.push(UiEntry::Error {
                     text: err.message.clone(),
                 });

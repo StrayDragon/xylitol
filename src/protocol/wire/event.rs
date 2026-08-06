@@ -386,4 +386,43 @@ mod tests {
             other => panic!("unexpected: {other:?}"),
         }
     }
+
+    #[test]
+    fn error_kind_roundtrips_through_wire_event() {
+        let domain = XyEvent::Error(crate::protocol::lifecycle::XyEventError::new(
+            "Provider",
+            "provider error: 503",
+        ));
+        let wire = domain.to_wire_event().expect("Error is wire-visible");
+        assert!(matches!(
+            wire,
+            Event::Error {
+                kind: Some(ref k),
+                ref message,
+                ..
+            } if k == "Provider" && message == "provider error: 503"
+        ));
+        let back = XyEvent::try_from(&wire).expect("roundtrip");
+        match back {
+            XyEvent::Error(err) => {
+                assert_eq!(err.kind, "Provider");
+                assert_eq!(err.message, "provider error: 503");
+            }
+            other => panic!("unexpected: {other:?}"),
+        }
+    }
+
+    #[test]
+    fn error_legacy_aborted_message_without_kind() {
+        let wire = Event::Error {
+            id: None,
+            kind: None,
+            message: "aborted".into(),
+        };
+        let back = XyEvent::try_from(&wire).expect("legacy error ok");
+        match back {
+            XyEvent::Error(err) => assert!(err.is_aborted()),
+            other => panic!("unexpected: {other:?}"),
+        }
+    }
 }

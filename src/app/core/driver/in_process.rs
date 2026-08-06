@@ -542,12 +542,11 @@ impl XyDriver for XyInProcessDriver {
         exclude_from_context: bool,
         chunk_tx: Option<tokio::sync::mpsc::Sender<Vec<u8>>>,
     ) -> Result<XyBashResult, XyDriverError> {
-        Self::map_str(
-            self.agent
-                .inner()
-                .execute_bash(command, exclude_from_context, chunk_tx)
-                .await,
-        )
+        self.agent
+            .inner()
+            .execute_bash(command, exclude_from_context, chunk_tx)
+            .await
+            .map_err(XyDriverError::from)
     }
 
     async fn compact(&mut self, instructions: Option<String>) -> Result<bool, XyDriverError> {
@@ -591,12 +590,11 @@ impl XyDriver for XyInProcessDriver {
         entry_id: &str,
         position: crate::protocol::session::ForkPosition,
     ) -> Result<String, XyDriverError> {
-        Self::map_str(
-            self.agent
-                .inner_mut()
-                .fork_session(entry_id, position)
-                .await,
-        )
+        self.agent
+            .inner_mut()
+            .fork_session(entry_id, position)
+            .await
+            .map_err(XyDriverError::from)
     }
 
     async fn switch_session(&mut self, session_id: &str) -> Result<String, XyDriverError> {

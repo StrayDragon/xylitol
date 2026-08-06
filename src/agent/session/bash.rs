@@ -10,8 +10,13 @@ use std::sync::{Arc, Mutex};
 use tokio::sync::mpsc;
 use tokio_util::sync::CancellationToken;
 
+use crate::protocol::error::XyError;
 use crate::protocol::ports::{BashExecOpts, XyBashExecutor, XyBashResult, XySessionStore};
 use crate::protocol::session::bash_execution_message_entry;
+
+fn session_err(e: impl Into<String>) -> XyError {
+    XyError::Session(anyhow::anyhow!(e.into()))
+}
 
 /// Stateful bash-execution collaborator.
 pub struct BashExecHandler {
@@ -51,11 +56,11 @@ impl BashExecHandler {
         command: &str,
         exclude_from_context: bool,
         chunk_tx: Option<mpsc::Sender<Vec<u8>>>,
-    ) -> Result<XyBashResult, String> {
+    ) -> Result<XyBashResult, XyError> {
         let executor = self
             .executor
             .as_ref()
-            .ok_or("bash executor not configured")?;
+            .ok_or_else(|| XyError::Config("bash executor not configured".into()))?;
 
         let cancel = CancellationToken::new();
         *crate::agent::lock::lock_mutex(&self.cancel) = Some(cancel.clone());
@@ -96,7 +101,7 @@ pub(crate) async fn record_bash_result(
     result: &XyBashResult,
     exclude_from_context: bool,
     session_id: &str,
-) -> Result<(), String> {
+) -> Result<(), XyError> {
     let entry = bash_execution_message_entry(
         command,
         result.output.clone(),
@@ -106,7 +111,10 @@ pub(crate) async fn record_bash_result(
         result.full_output_path.clone(),
         exclude_from_context,
     );
-    store.append_session_entry(session_id, &entry).await
+    store
+        .append_session_entry(session_id, &entry)
+        .await
+        .map_err(session_err)
 }
 
 #[cfg(test)]

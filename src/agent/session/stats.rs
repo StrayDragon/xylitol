@@ -1,6 +1,11 @@
 //! Session statistics and context-usage estimation (spec c255 / as32).
 
+use crate::protocol::error::XyError;
 use crate::protocol::ports::XySessionStore;
+
+fn session_err(e: impl Into<String>) -> XyError {
+    XyError::Session(anyhow::anyhow!(e.into()))
+}
 
 /// Statistics for a session.
 #[derive(Debug, Clone)]
@@ -17,8 +22,14 @@ pub struct SessionStats {
 ///
 /// Moved out of the `AgentCapabilities` body (spec as32 / c320 T24) so the capability
 /// aggregate holds no aggregation logic.
-pub async fn compute(store: &dyn XySessionStore, session_id: &str) -> Result<SessionStats, String> {
-    let ctx = store.build_session_context(session_id).await?;
+pub async fn compute(
+    store: &dyn XySessionStore,
+    session_id: &str,
+) -> Result<SessionStats, XyError> {
+    let ctx = store
+        .build_session_context(session_id)
+        .await
+        .map_err(session_err)?;
     let user_messages = ctx
         .messages
         .iter()
