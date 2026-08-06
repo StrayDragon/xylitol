@@ -127,6 +127,23 @@ coding agent 默认：环境类（cwd）可留 system；高变读数（工具计
 
 `previous_response_id`：公共能力之后的可选优化；默认全量重放 `input`；断链回退全量；仅当 `extra_policy.previous_response_id`（代码默认板）允许时才开链式（→ `c1915`）。
 
+### 5.2 Lab：resume × reasoning 回放 × prompt cache（c1925 · 2026-08-06）
+
+> 维护脚本：`cargo run -p xylitol-ai-bridge --example lab_resume_prompt_cache`（**不进 qa**）。配置：`configs/testing/live-provider.local.yaml`（Ornith / llama.cpp）。
+
+**产品策略（钉死）**：回放 **只有默认全量**——有合法 `thinkingSignature` 则原样进 `input`；**不**做 Strip/BestEffort 旋钮（改前缀易破 cache）。
+
+流程：热身多轮（普通对话 + 只读 tool / skill 提示）→ 序列化历史 → **新 adapter 实例**（模拟进程退出）→ Preserve 续跑；记 `usage.cached_tokens`。
+
+| 条件 | warm1 | warm3 | resume Preserve |
+|---|---|---|---|
+| `thinking=medium` | 0 | 727 | **761** |
+| `thinking=off`（`XYLITOL_LAB_THINKING=off`） | 0 | 710 | **747** |
+
+早期对照臂曾测「Strip 历史 reasoning」resume → cache_read **404**（相对 Preserve 761 腰斩）——仅作否决三态的证据，**不**产品化。原始目录：`/tmp/xylitol-lab-resume-cache-*`。
+
+隔天 resume 另有 system **date** 日界前缀漂移风险（→ `c1905`）；与 reasoning 回放正交。
+
 ---
 
 ## 6. 压缩
@@ -149,7 +166,7 @@ coding agent 默认：环境类（cwd）可留 system；高变读数（工具计
 | Responses cache usage 诚实透出 | [`c1885`](../../llmanspec/changes/archive/2026-08-05-c1885-add-responses-cache-usage-honesty/proposal.md)（已归档） | `[]` |
 | ContextPolicy + ResponsesAssembler | [`c1890`](../../llmanspec/changes/archive/2026-08-05-c1890-add-responses-context-policy-assembler/proposal.md)（已归档） | `c1880` |
 | Context Epoch（前缀/工具世代）（**deferred**；非 search 前提） | [`delayed c1920`](../../llmanspec/delayed-changes/c1920-add-context-epoch-freeze/proposal.md) | `c1890` |
-| Thinking/reasoning 回放 × flavor | [`c1925`](../../llmanspec/changes/c1925-update-responses-thinking-replay-flavor/proposal.md) | `c1880`+`c1890` |
+| Thinking/reasoning 回放保真（JSONL→input） | [`c1925`](../../llmanspec/changes/c1925-update-responses-thinking-replay-flavor/proposal.md) | `c1880`+`c1890` |
 | Session SSOT ↔ Provider view | [`c1930`](../../llmanspec/changes/c1930-update-session-provider-view-contract/proposal.md) | `c1890` |
 | Assembler 布局决策可观测（**deferred**） | [`delayed c1935`](../../llmanspec/delayed-changes/c1935-add-assembler-layout-observability/proposal.md) | `c1890` |
 | Agent Todo（**deferred**；扩展后置） | [`delayed c1955`](../../llmanspec/delayed-changes/c1955-add-agent-todo-subsystem/proposal.md) | — |
@@ -178,7 +195,7 @@ coding agent 默认：环境类（cwd）可留 system；高变读数（工具计
 | 框架元信息 | harness meta |
 | Agent 状态栏 · replace / append | StatusBar 模式（**deferred** `c1895`） |
 | 主动工具发现 / 只增不改 | tool_search + append-only（`c1900`） |
-| 思考回放 | reasoning / thinking replay（`c1925`） |
+| 思考回放（全量） | reasoning full replay（`c1925`） |
 | 增量续跑 | `previous_response_id`（`c1915`） |
 | 本轮组装决策可观测 | layout observability（`c1935`） |
 
