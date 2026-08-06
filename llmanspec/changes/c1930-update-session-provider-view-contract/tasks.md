@@ -22,17 +22,17 @@
 
 ## 2. Apply
 
-- [ ] 2.1 离线 golden：fixture → project → assemble 两次哈希相等
-- [ ] 2.2 JSONL import 形（parse→投影→assemble）与内存史相等
-- [ ] 2.3 reasoning 序 + 折叠文案钉死
-- [ ] 2.4 Lab：扩展/新增 example（live-provider）；可选 Langfuse 对比 observation.input；resume cache 闸
+- [x] 2.1 离线 golden：fixture → project → assemble 两次哈希相等
+- [x] 2.2 JSONL import 形（parse→投影→assemble）与内存史相等
+- [x] 2.3 reasoning 序 + 折叠文案钉死
+- [x] 2.4 Lab：`lab_session_prefix_idempotency`（live-provider）；Langfuse dump 同形对照（landing §5）
 
 ## 3. 文档
 
-- [ ] 3.1 research 交叉链；landing 吸收或随 archive 保留
+- [x] 3.1 research §5.3 交叉链；landing 随 change 保留
 
 ## 4. 校验
 
 - [x] 4.1 `change start` → specs land → validate specs
-- [ ] 4.2 apply 单测 + lab 证据
+- [x] 4.2 apply 单测 + lab 证据
 - [ ] 4.3 verify → archive
