@@ -1,4 +1,6 @@
-//! Session identity, fork, and queue APIs on [`AgentCapabilities`].
+//! Session identity, fork, stats, and extension slash table on [`AgentCapabilities`].
+//!
+//! Product builtins / bang / export are **not** here — see `app/core` + `XyDriver`.
 
 use std::sync::Arc;
 
