@@ -3,7 +3,7 @@
 //! Maintenance only — **not** wired into `just qa`.
 //!
 //! ```bash
-//! # Uses configs/testing/live-provider.local.yaml (or env overrides)
+//! # Uses <global-dir>/dev/live-provider.yaml (or env overrides)
 //! cargo run -p xylitol-ai-bridge --example lab_resume_prompt_cache
 //!
 //! # Optional thinking level (default medium):
@@ -17,7 +17,7 @@
 //! 4. Continue with **full replay** (only strategy); print cached_tokens each round
 
 use std::fs;
-use std::path::{Path, PathBuf};
+use std::path::PathBuf;
 use std::sync::Arc;
 use std::time::{SystemTime, UNIX_EPOCH};
 
@@ -52,27 +52,42 @@ fn default_max_out() -> u64 {
     256
 }
 
-fn workspace_root() -> PathBuf {
-    Path::new(env!("CARGO_MANIFEST_DIR"))
-        .join("../..")
-        .canonicalize()
-        .unwrap_or_else(|_| Path::new(env!("CARGO_MANIFEST_DIR")).join("../.."))
+/// Global config dir, same priority as the main crate (`XYLITOL_CONFIG_DIR` →
+/// `$XDG_CONFIG_HOME/xylitol` → `~/.config/xylitol`).
+fn global_config_dir() -> Option<PathBuf> {
+    if let Ok(dir) = std::env::var("XYLITOL_CONFIG_DIR")
+        && !dir.is_empty()
+    {
+        return Some(PathBuf::from(dir));
+    }
+    if let Ok(xdg) = std::env::var("XDG_CONFIG_HOME")
+        && !xdg.is_empty()
+    {
+        return Some(PathBuf::from(xdg).join("xylitol"));
+    }
+    std::env::var("HOME")
+        .ok()
+        .filter(|s| !s.is_empty())
+        .map(|home| PathBuf::from(home).join(".config").join("xylitol"))
 }
 
 fn load_cfg() -> Result<LiveProviderFile, String> {
-    let path = std::env::var("XYLITOL_LIVE_PROVIDER_CONFIG")
+    let path = match std::env::var("XYLITOL_LIVE_PROVIDER_CONFIG")
         .ok()
         .filter(|s| !s.is_empty())
         .map(PathBuf::from)
-        .unwrap_or_else(|| {
-            workspace_root()
-                .join("configs")
-                .join("testing")
-                .join("live-provider.local.yaml")
-        });
+    {
+        Some(p) => p,
+        None => global_config_dir()
+            .map(|d| d.join("dev").join("live-provider.yaml"))
+            .ok_or_else(|| {
+                "no XYLITOL_CONFIG_DIR/XDG_CONFIG_HOME/HOME to locate the global config dir"
+                    .to_string()
+            })?,
+    };
     if !path.is_file() {
         return Err(format!(
-            "missing {}; copy from live-provider.example.yaml",
+            "missing {}; copy configs/testing/live-provider.example.yaml → <global-dir>/dev/live-provider.yaml",
             path.display()
         ));
     }

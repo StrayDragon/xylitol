@@ -129,7 +129,7 @@ coding agent 默认：环境类（cwd）可留 system；高变读数（工具计
 
 ### 5.2 Lab：resume × reasoning 回放 × prompt cache（c1925 · 2026-08-06）
 
-> 维护脚本：`cargo run -p xylitol-ai-bridge --example lab_resume_prompt_cache`（**不进 qa**）。配置：`configs/testing/live-provider.local.yaml`（Ornith / llama.cpp）。
+> 维护脚本：`cargo run -p xylitol-ai-bridge --example lab_resume_prompt_cache`（**不进 qa**）。配置：`<global-dir>/dev/live-provider.yaml`（Ornith / llama.cpp）。
 
 **产品策略（钉死）**：回放 **只有默认全量**——有合法 `thinkingSignature` 则原样进 `input`；**不**做 Strip/BestEffort 旋钮（改前缀易破 cache）。
 
