@@ -250,8 +250,8 @@ mod tests {
 
     #[tokio::test]
     async fn reload_preserves_tui_ask_tool() {
-        use crate::infra::tools::{AskArgs, AskUserGateway};
         use crate::protocol::error::XyToolError;
+        use crate::protocol::ports::ask::{AskArgs, AskUserGateway};
         use async_trait::async_trait;
 
         struct SkipGateway;

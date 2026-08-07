@@ -1,16 +1,13 @@
 //! Process-local ask gateway: tool execute ↔ ChoicePrompt oneshot (c1850).
 
-use std::sync::{Arc, Mutex};
+use std::sync::Mutex;
 
 use async_trait::async_trait;
 use tokio::sync::oneshot;
 use xylitol_tui::{ChoiceMode, ChoiceOption, ChoiceQuestion};
 
-use crate::agent::tools::ToolSet;
-use crate::infra::tools::{
-    AskArgs, AskModeArg, AskQuestionArg, AskUserGateway, default_tools_with_ask,
-};
 use crate::protocol::error::XyToolError;
+use crate::protocol::ports::ask::{AskArgs, AskModeArg, AskQuestionArg, AskUserGateway};
 
 /// Pending ask waiting for the TUI Choice slot.
 pub struct PendingAsk {
@@ -65,11 +62,6 @@ impl AskUserGateway for AskHostGateway {
             Err(_) => Err(XyToolError::Aborted),
         }
     }
-}
-
-/// `default_tools` + ask — TUI composition / MCP reload only.
-pub fn toolset_with_ask(gateway: Arc<dyn AskUserGateway>) -> ToolSet {
-    ToolSet::from_iter(default_tools_with_ask(gateway))
 }
 
 /// Convert ask tool args → package ChoicePrompt questions.

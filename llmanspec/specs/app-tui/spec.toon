@@ -5,7 +5,7 @@ valid_scope[2]: src/,tests/
 requirements[5]{req_id,title,statement}:
   tui2,"in-process-default","产品 TUI 默认 MUST 经 app::core::driver::InProcessDriver 驱动 agent；MUST NOT 默认 RemoteDriver 或自动拉起 daemon。RemoteDriver 类型 MUST 保留以支持日后远控。"
   tui3,"three-surfaces-coexist",print（cli）、server（REST+WS）与 tui（inline）应用面 MUST 共存；不得以统一为名删除任一传输面。
-  tui4,"reuse-contract","产品 TUI MUST 仅从 crate::agent（mod 级）、crate::app::core、crate::protocol 导入；MUST NOT 导入 crate::agent::capabilities、crate::agent::runtime 或 crate::infra；MUST NOT 依赖已删除的 crate::domain。斜杠语义 MUST 复用 protocol::Command。"
+  tui4,"reuse-contract","产品 TUI MUST 仅从 crate::agent（mod 级）、crate::app::core、crate::protocol 导入；MUST NOT 导入 crate::agent::capabilities、crate::agent::runtime、crate::agent::tools 或 crate::infra；MUST NOT 依赖已删除的 crate::domain。斜杠语义 MUST 复用 protocol::Command。"
   tui5,"no-skeleton-spray","src/app/tui/ 下每个新增源文件 MUST 在同一变更内由真实入口 tui::run 驱动；MUST NOT 用 #[allow(dead_code)] 落地未驱动骨架。"
   "tui-index","capability-index","产品 TUI 行为细节 MUST 由 app-tui-host / app-tui-bridge / app-tui-transcript / app-tui-chrome / app-tui-input / app-tui-commands 各自约束；引擎与五层 harness MUST 由 package-tui-*（含 package-tui-testing）约束，不得在本索引重复实现史细节。"
 scenarios[0]:

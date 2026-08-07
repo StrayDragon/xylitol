@@ -6,63 +6,12 @@
 use std::sync::Arc;
 
 use async_trait::async_trait;
-use serde::Deserialize;
 use serde_json::{Value, json};
 
 use super::typed::TypedTool;
 use crate::protocol::error::XyToolError;
+use crate::protocol::ports::ask::{AskArgs, AskUserGateway};
 use crate::protocol::ports::{XyToolCtx, XyToolExecutionMode};
-
-/// Host callback that presents the questionnaire and returns ask-tool JSON.
-///
-/// Implemented by the TUI host (process-local oneshot). Infra MUST NOT reach into
-/// `app::tui`; the composition root injects the gateway.
-#[async_trait]
-pub trait AskUserGateway: Send + Sync {
-    async fn prompt(&self, args: AskArgs) -> Result<String, XyToolError>;
-}
-
-/// One option inside an ask question.
-#[derive(Debug, Clone, Deserialize)]
-pub struct AskOptionArg {
-    pub value: String,
-    pub label: String,
-    #[serde(default)]
-    pub description: Option<String>,
-    #[serde(default)]
-    pub recommended: bool,
-}
-
-/// Selection mode for one question.
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Deserialize)]
-#[serde(rename_all = "lowercase")]
-pub enum AskModeArg {
-    Single,
-    Multi,
-}
-
-/// One question in an `ask` call.
-#[derive(Debug, Clone, Deserialize)]
-pub struct AskQuestionArg {
-    pub id: String,
-    pub prompt: String,
-    #[serde(default)]
-    pub label: Option<String>,
-    pub mode: AskModeArg,
-    pub options: Vec<AskOptionArg>,
-    #[serde(default = "default_allow_other")]
-    pub allow_other: bool,
-}
-
-fn default_allow_other() -> bool {
-    true
-}
-
-/// Typed args for the `ask` tool.
-#[derive(Debug, Clone, Deserialize)]
-pub struct AskArgs {
-    pub questions: Vec<AskQuestionArg>,
-}
 
 /// Builtin `ask` — Barrier / Sequential; not in [`super::default_tools`].
 pub struct AskTool {
@@ -184,6 +133,7 @@ pub fn default_tools_with_ask(
 mod tests {
     use super::*;
     use crate::infra::tools::default_tools;
+    use crate::protocol::ports::ask::{AskArgs, AskModeArg, AskOptionArg, AskQuestionArg};
 
     struct MockGateway {
         payload: String,

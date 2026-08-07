@@ -34,7 +34,7 @@ use self::effects::{drain_pending, run_interactive_bang};
 use self::host::{HostEvent, HostSession};
 use self::terminal_guard::{TerminalGuard, exit_requested, install_lifecycle_hooks};
 
-pub use self::ask_host::{AskHostGateway, ask_questions_to_choice, toolset_with_ask};
+pub use self::ask_host::{AskHostGateway, ask_questions_to_choice};
 pub use self::bridge::{QueueBadge, UiEntry, UiModel, UiPhase, apply_xy_event};
 pub use self::commands::{
     BangParse, PendingBash, PendingSlash as TuiPendingSlash, bash_result_entries,
