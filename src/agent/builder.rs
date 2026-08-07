@@ -3,19 +3,22 @@
 //! [`AgentBuilder`] takes only the minimal runtime-protocol ports in its
 //! constructor. Every other capability is attached via consuming builder
 //! methods, with safe defaults (empty tool set, no optional surface I/O). This keeps the agent layer free of concrete `infra/` types.
+//!
+//! [`AgentBuilder::build_ports`] yields a clonable [`RuntimePorts`] baseline;
+//! [`AgentBuilder::build`] materializes one [`AgentRuntime`] from it.
 
 use std::sync::Arc;
 
-use crate::agent::capabilities::{AgentCapabilities, QueueMode};
+use crate::agent::capabilities::QueueMode;
 use crate::agent::compaction::CompactionSettings;
 use crate::agent::model::registry::ModelRegistry;
-use crate::agent::runtime::AgentRuntime;
+use crate::agent::runtime::{AgentRuntime, RuntimePorts};
 use crate::agent::tools::ToolSet;
 use crate::protocol::ports::{
     XyBatchMode, XyEventSink, XyHookBus, XyModelBuilder, XyPermission, XySessionStore,
 };
 
-/// Builder for [`AgentCapabilities`].
+/// Builder for [`crate::agent::AgentCapabilities`] / [`crate::agent::AgentRuntime`].
 pub struct AgentBuilder {
     // Required ports for a minimal conversation agent.
     model_registry: ModelRegistry,
@@ -139,28 +142,36 @@ impl AgentBuilder {
         self
     }
 
-    /// Build the [`AgentRuntime`] (ReAct-loop runtime over [`AgentCapabilities`]).
-    pub fn build(self) -> Result<AgentRuntime, String> {
-        let mut session = AgentCapabilities::new(
-            self.model_registry,
-            self.tools,
-            self.store,
-            self.sink,
-            self.system_prompt,
-            self.context_files,
-            self.append_system_prompt,
-            self.cwd,
-            self.compaction_settings,
-            self.model_builder,
-            self.permission,
-            self.steering_mode,
-            self.follow_up_mode,
-            self.hook_bus,
-        );
-        session.set_tool_mode(self.batch_mode);
-        if !self.skills.is_empty() {
-            session.apply_skills(self.skills);
+    /// Build a clonable [`RuntimePorts`] baseline (skills / batch_mode baked in).
+    ///
+    /// Call [`RuntimePorts::materialize_runtime`] (or clone then materialize) to
+    /// obtain isolated session actors that do not share ModelManager selection,
+    /// queues, session id, coordinator, or compaction orchestrator state.
+    pub fn build_ports(self) -> RuntimePorts {
+        RuntimePorts {
+            store: self.store,
+            sink: self.sink,
+            permission: self.permission,
+            hook_bus: self.hook_bus,
+            model_registry: self.model_registry,
+            model_builder: self.model_builder,
+            cwd: self.cwd,
+            steering_mode: self.steering_mode,
+            follow_up_mode: self.follow_up_mode,
+            compaction_settings: self.compaction_settings,
+            tools: self.tools,
+            system_prompt: self.system_prompt,
+            context_files: self.context_files,
+            append_system_prompt: self.append_system_prompt,
+            skills: self.skills,
+            batch_mode: self.batch_mode,
         }
-        Ok(AgentRuntime::new(session))
+    }
+
+    /// Build the [`AgentRuntime`] (ReAct-loop runtime over capabilities).
+    ///
+    /// Internally builds [`RuntimePorts`] then materializes one actor.
+    pub fn build(self) -> Result<AgentRuntime, String> {
+        Ok(self.build_ports().materialize_runtime())
     }
 }
