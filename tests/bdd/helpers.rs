@@ -2,8 +2,8 @@ use std::cell::RefCell;
 use std::sync::Arc;
 
 use xylitol::XyDriverError;
+use xylitol::agent::capabilities::AgentCapabilities;
 use xylitol::agent::runtime::AgentRuntime;
-use xylitol::agent::session::AgentCapabilities;
 use xylitol::agent::tools::ToolSet;
 use xylitol::infra::hooks::{HookDispatcher, HookEvent, HookPhase};
 use xylitol::infra::session::SessionManager;
@@ -75,8 +75,8 @@ pub(crate) fn make_agent_with_store(
         Some(std::sync::Arc::new(
             xylitol::infra::export::StdExportIo::new(),
         )),
-        xylitol::agent::session::QueueMode::default(),
-        xylitol::agent::session::QueueMode::default(),
+        xylitol::agent::capabilities::QueueMode::default(),
+        xylitol::agent::capabilities::QueueMode::default(),
         hook_bus,
     );
     // Harness often registers models without select; pick the first so ReAct can build.
@@ -95,8 +95,8 @@ pub(crate) async fn run_wiring_operation(
     op: &str,
 ) -> Result<(), XyDriverError> {
     use xylitol::embed::{XyDriver, XyInProcessDriver};
+    use xylitol::protocol::model::ThinkingLevel;
     use xylitol::protocol::session::SessionTreeKind;
-    use xylitol::protocol::types::ThinkingLevel;
 
     match op {
         "确保新会话" => {
@@ -162,8 +162,8 @@ pub(crate) async fn run_wiring_operation(
 }
 
 pub(crate) fn ensure_wiring_fake_model(agent: &AgentState, thinking: bool) {
-    use xylitol::protocol::model_config::{XyModelConfig, XyModelKind};
-    use xylitol::protocol::types::XyModelMeta;
+    use xylitol::protocol::model::XyModelMeta;
+    use xylitol::protocol::model::{XyModelConfig, XyModelKind};
     let mut reg = agent.registry.borrow_mut();
     if reg.find("fake").is_some() {
         return;

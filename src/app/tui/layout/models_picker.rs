@@ -1,7 +1,7 @@
 //! Models picker: model + xylitol thinking levels (c1470).
 
 use crate::app::core::driver::ModelInfo;
-use crate::protocol::types::ThinkingLevel;
+use crate::protocol::model::ThinkingLevel;
 use xylitol_tui::SelectItem;
 use xylitol_tui::visible_width;
 

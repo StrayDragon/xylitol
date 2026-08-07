@@ -2,7 +2,7 @@
 //!
 //! [`BashExecHandler`] owns the optional [`XyBashExecutor`] port and the
 //! in-flight cancellation token. The session store is borrowed per call so the
-//! [`crate::agent::session::AgentCapabilities`] remains the single holder of session
+//! [`crate::agent::capabilities::AgentCapabilities`] remains the single holder of session
 //! context (design §4.1).
 
 use std::sync::{Arc, Mutex};
@@ -63,7 +63,7 @@ impl BashExecHandler {
             .ok_or_else(|| XyError::Config("bash executor not configured".into()))?;
 
         let cancel = CancellationToken::new();
-        *crate::agent::lock::lock_mutex(&self.cancel) = Some(cancel.clone());
+        *crate::utils::lock_mutex(&self.cancel) = Some(cancel.clone());
 
         let result = executor
             .execute(
@@ -76,7 +76,7 @@ impl BashExecHandler {
             )
             .await;
 
-        *crate::agent::lock::lock_mutex(&self.cancel) = None;
+        *crate::utils::lock_mutex(&self.cancel) = None;
 
         // Record on disk.
         if let Some(sid) = session_id {
@@ -88,7 +88,7 @@ impl BashExecHandler {
 
     /// Abort any in-flight bash execution (`&self` for XyDriver / AgentRuntime abort).
     pub fn abort(&self) {
-        if let Some(cancel) = crate::agent::lock::lock_mutex(&self.cancel).take() {
+        if let Some(cancel) = crate::utils::lock_mutex(&self.cancel).take() {
             cancel.cancel();
         }
     }

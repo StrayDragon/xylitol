@@ -26,15 +26,15 @@
 
 use std::sync::Arc;
 
+use crate::agent::capabilities::ModelRegistry;
 use crate::agent::model::resolver;
-use crate::agent::session::ModelRegistry;
 use crate::app::core::composition::{BuildAgentOptions, build_agent};
 use crate::infra::config::loader::load_app_config_detailed;
 use crate::infra::config::value::InfraSecretResolver;
 use crate::infra::permission;
 use crate::infra::session::SessionManager;
 use crate::infra::timing;
-use crate::protocol::types::XyModelMeta;
+use crate::protocol::model::XyModelMeta;
 
 /// Inputs to [`bootstrap`] / `resolve_assembly`, mirroring the CLI flags that
 /// drive assembly.
@@ -165,8 +165,8 @@ pub struct ResolvedAssembly {
     pub cwd: String,
     pub compaction_settings: Option<crate::agent::compaction::CompactionSettings>,
     pub permission: Option<Arc<dyn crate::protocol::ports::XyPermission>>,
-    pub steering_mode: crate::agent::session::QueueMode,
-    pub follow_up_mode: crate::agent::session::QueueMode,
+    pub steering_mode: crate::agent::capabilities::QueueMode,
+    pub follow_up_mode: crate::agent::capabilities::QueueMode,
     /// Resolved default profile's model id, if any (for startup model selection
     /// when `BootstrapInput::model` is absent).
     pub default_profile_model: Option<String>,
@@ -277,7 +277,7 @@ pub fn resolve_assembly(input: &BootstrapInput) -> Result<ResolvedAssembly, Boot
                 crate::agent::model::registry::default_context_window_for(entry.provider)
             };
 
-            let levels = match crate::protocol::types::ThinkingLevel::resolve_configured_levels(
+            let levels = match crate::protocol::model::ThinkingLevel::resolve_configured_levels(
                 entry.thinking,
                 entry.thinking_levels.as_deref(),
             ) {
@@ -290,7 +290,7 @@ pub fn resolve_assembly(input: &BootstrapInput) -> Result<ResolvedAssembly, Boot
                 }
             };
             if let Some(map) = &entry.thinking_level_map
-                && let Err(e) = crate::protocol::types::validate_thinking_level_map(map)
+                && let Err(e) = crate::protocol::model::validate_thinking_level_map(map)
             {
                 warnings.push(BootstrapWarning::ModelEntrySkipped(format!(
                     "models.{alias}: {e}"
@@ -302,7 +302,7 @@ pub fn resolve_assembly(input: &BootstrapInput) -> Result<ResolvedAssembly, Boot
 
             model_registry.register(XyModelMeta {
                 id: alias.clone(),
-                config: crate::protocol::model_config::XyModelConfig {
+                config: crate::protocol::model::XyModelConfig {
                     kind: entry.provider,
                     api_key: api_key.expect("checked above"),
                     model: entry.model.clone(),
@@ -338,12 +338,12 @@ pub fn resolve_assembly(input: &BootstrapInput) -> Result<ResolvedAssembly, Boot
             (
                 "openai",
                 "OPENAI_API_KEY",
-                crate::protocol::model_config::XyModelKind::OpenAi,
+                crate::protocol::model::XyModelKind::OpenAi,
             ),
             (
                 "anthropic",
                 "ANTHROPIC_API_KEY",
-                crate::protocol::model_config::XyModelKind::Anthropic,
+                crate::protocol::model::XyModelKind::Anthropic,
             ),
         ] {
             if let Ok(key) = std::env::var(env_var)
@@ -352,7 +352,7 @@ pub fn resolve_assembly(input: &BootstrapInput) -> Result<ResolvedAssembly, Boot
             {
                 model_registry.register(XyModelMeta {
                     id: model_id.to_string(),
-                    config: crate::protocol::model_config::XyModelConfig {
+                    config: crate::protocol::model::XyModelConfig {
                         kind,
                         api_key: key,
                         model: model_id.to_string(),
@@ -369,7 +369,7 @@ pub fn resolve_assembly(input: &BootstrapInput) -> Result<ResolvedAssembly, Boot
                     cost_cache_read: 0.0,
                     cost_cache_write: 0.0,
                     max_tokens: 0,
-                    thinking_levels: crate::protocol::types::ThinkingLevel::STANDARD
+                    thinking_levels: crate::protocol::model::ThinkingLevel::STANDARD
                         .iter()
                         .map(|l| l.as_str().to_string())
                         .collect(),
@@ -711,25 +711,27 @@ pub fn reload_prompt_context(
 }
 
 /// Read the API key for a provider from environment variables.
-fn resolve_api_key(kind: crate::protocol::model_config::XyModelKind) -> Option<String> {
+fn resolve_api_key(kind: crate::protocol::model::XyModelKind) -> Option<String> {
     match kind {
-        crate::protocol::model_config::XyModelKind::OpenAi => std::env::var("OPENAI_API_KEY")
+        crate::protocol::model::XyModelKind::OpenAi => std::env::var("OPENAI_API_KEY")
             .or_else(|_| std::env::var("OPENAI_KEY"))
             .ok(),
-        crate::protocol::model_config::XyModelKind::Anthropic => std::env::var("ANTHROPIC_API_KEY")
+        crate::protocol::model::XyModelKind::Anthropic => std::env::var("ANTHROPIC_API_KEY")
             .or_else(|_| std::env::var("ANTHROPIC_KEY"))
             .ok(),
-        crate::protocol::model_config::XyModelKind::Fake => Some(String::new()),
+        crate::protocol::model::XyModelKind::Fake => Some(String::new()),
     }
 }
 
 fn queue_mode_from_settings(
     mode: crate::infra::settings::types::SteeringMode,
-) -> crate::agent::session::QueueMode {
+) -> crate::agent::capabilities::QueueMode {
     match mode {
-        crate::infra::settings::types::SteeringMode::All => crate::agent::session::QueueMode::All,
+        crate::infra::settings::types::SteeringMode::All => {
+            crate::agent::capabilities::QueueMode::All
+        }
         crate::infra::settings::types::SteeringMode::OneAtATime => {
-            crate::agent::session::QueueMode::OneAtATime
+            crate::agent::capabilities::QueueMode::OneAtATime
         }
     }
 }

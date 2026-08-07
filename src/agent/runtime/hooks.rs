@@ -5,8 +5,8 @@
 //! slot. The loop consults them when non-empty; empty chains are a cheap
 //! `is_empty()` check. This is the "open for extension" seam of the runtime.
 //!
-//! Steering / follow-up injection is owned by [`crate::agent::session::PendingMessageQueue`]
-//! on [`crate::agent::session::AgentCapabilities`] (c461). Product paths use
+//! Steering / follow-up injection is owned by [`crate::agent::capabilities::PendingMessageQueue`]
+//! on [`crate::agent::capabilities::AgentCapabilities`] (c461). Product paths use
 //! `AgentCapabilities::steer` / `AgentCapabilities::follow_up` (via XyDriver).
 
 use std::sync::Arc;

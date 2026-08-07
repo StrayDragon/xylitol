@@ -201,7 +201,7 @@ impl CompactionOrchestrator {
         context_window: u64,
         estimate_opts: &EstimateOpts,
         last_assistant: Option<&AgentMessage>,
-        precomputed: Option<&crate::protocol::types::ContextTokenEstimate>,
+        precomputed: Option<&crate::protocol::model::ContextTokenEstimate>,
     ) -> Result<bool, String> {
         if !self.settings.enabled {
             return Ok(false);
@@ -440,9 +440,9 @@ mod tests {
     use xylitol_ai_bridge::provider::trace::set_provider_trace_active;
 
     use crate::protocol::error::XyError;
+    use crate::protocol::model::XyToolSchema;
     use crate::protocol::ports::{XyGenerateOptions, XyStream};
     use crate::protocol::session::{ForkPosition, SessionContext};
-    use crate::protocol::types::XyToolSchema;
 
     static OBS_TEST_LOCK: Mutex<()> = Mutex::new(());
 

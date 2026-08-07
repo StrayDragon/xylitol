@@ -8,7 +8,7 @@ use xylitol_ai_bridge::tokenize::{BuiltinTokenizer, estimate_messages};
 
 use crate::agent::llm_project::project_for_llm;
 use crate::protocol::message::{AgentMessage, LlmMessage, XyStopReason, XyUsage};
-use crate::protocol::types::{ContextTokenEstimate, TokenProvenance};
+use crate::protocol::model::{ContextTokenEstimate, TokenProvenance};
 
 /// Calculate total context tokens from a XyUsage struct.
 /// Priority: total_tokens > input+output+cache_read+cache_write sum.
@@ -240,7 +240,7 @@ pub(crate) fn emit_token_estimate_obs(est: &ContextTokenEstimate, opts: &Estimat
 mod tests {
     use super::*;
     use crate::protocol::message::AgentMessage;
-    use crate::protocol::types::TokenProvenance;
+    use crate::protocol::model::TokenProvenance;
     use xylitol_ai_bridge::registry::TokenizerOverride;
 
     #[test]
@@ -294,8 +294,8 @@ mod tests {
     #[test]
     fn session_entries_api_usage_anchors_estimate() {
         use crate::protocol::message::{LlmMessage, XyStopReason, XyUsage};
+        use crate::protocol::model::TokenProvenance;
         use crate::protocol::session::{EntryBase, MessageEntry, SessionEntry};
-        use crate::protocol::types::TokenProvenance;
 
         let usage = XyUsage {
             input: 100,

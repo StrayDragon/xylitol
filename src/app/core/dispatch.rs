@@ -29,9 +29,9 @@ use std::path::PathBuf;
 use crate::app::core::driver::{CommandInfo, ModelInfo, SessionState, XyDriver};
 pub use crate::app::core::driver_error::XyDriverError;
 use crate::protocol::Command;
+use crate::protocol::model::ThinkingLevel;
 use crate::protocol::ports::XyBashResult;
 use crate::protocol::session::SessionEntry;
-use crate::protocol::types::ThinkingLevel;
 
 /// The result of executing a (non-Prompt, non-Quit, non-WS) Command.
 ///
@@ -286,9 +286,9 @@ fn cmd_variant_name(cmd: &Command) -> &'static str {
 mod tests {
     use super::*;
     use crate::app::core::driver::{CommandInfo, ModelInfo, SessionState};
+    use crate::protocol::model::ThinkingLevel;
     use crate::protocol::ports::XyBashResult;
     use crate::protocol::session::SessionTreeKind;
-    use crate::protocol::types::ThinkingLevel;
     use async_trait::async_trait;
 
     /// A stub XyDriver that records calls and returns canned responses, so the
@@ -388,10 +388,10 @@ mod tests {
         }
         async fn estimate_context_tokens(
             &self,
-        ) -> Result<crate::protocol::types::ContextTokenEstimate, XyDriverError> {
-            Ok(crate::protocol::types::ContextTokenEstimate {
+        ) -> Result<crate::protocol::model::ContextTokenEstimate, XyDriverError> {
+            Ok(crate::protocol::model::ContextTokenEstimate {
                 tokens: 0,
-                provenance: crate::protocol::types::TokenProvenance::Unknown,
+                provenance: crate::protocol::model::TokenProvenance::Unknown,
                 usage_tokens: 0,
                 trailing_tokens: 0,
                 last_usage_index: None,
@@ -424,8 +424,8 @@ mod tests {
             }
             Ok(())
         }
-        fn queue_stats(&self) -> crate::agent::session::QueueStats {
-            crate::agent::session::QueueStats {
+        fn queue_stats(&self) -> crate::agent::capabilities::QueueStats {
+            crate::agent::capabilities::QueueStats {
                 steer_count: self.steer,
                 follow_up_count: self.follow_up,
             }
@@ -569,7 +569,7 @@ mod tests {
     /// c1165: XyDriver level after SetThinkingLevel / cycle MUST map to OpenAI effort.
     #[tokio::test]
     async fn cycle_thinking_level_maps_to_openai_reasoning_effort() {
-        use crate::protocol::types::{
+        use crate::protocol::model::{
             ResolvedThinking, ThinkingAdapterKind, resolve_thinking_for_request,
         };
 

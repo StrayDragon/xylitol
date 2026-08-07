@@ -2,7 +2,7 @@
 //!
 //! All interactive clients (cli/print/tui) interact with the core through a
 //! [`XyDriver`]; they import agent symbols only from `agent` (mod-level),
-//! never reaching into `agent::session`/`agent::runtime` internals or `infra`.
+//! never reaching into `agent::capabilities`/`agent::runtime` internals or `infra`.
 //!
 //! - [`XyInProcessDriver`]: wraps the local agent module (composition root wires
 //!   ports and agent together).

@@ -308,8 +308,8 @@ pub(crate) async fn g_comp_tokens_before_done(agent: &AgentState, sess: &XySessi
             .await;
     }
     let model = xylitol::infra::provider::factory::build_provider(
-        &xylitol::protocol::model_config::XyModelConfig {
-            kind: xylitol::protocol::model_config::XyModelKind::Fake,
+        &xylitol::protocol::model::XyModelConfig {
+            kind: xylitol::protocol::model::XyModelKind::Fake,
             model: "fake".into(),
             api_key: String::new(),
             base_url: None,
@@ -868,8 +868,8 @@ pub(crate) async fn w_compact_summarize(agent: &AgentState, sess: &XySessionStor
     sess.ensure_mgr();
     let mgr = sess.mgr.borrow().as_ref().unwrap().clone();
     let model = xylitol::infra::provider::factory::build_provider(
-        &xylitol::protocol::model_config::XyModelConfig {
-            kind: xylitol::protocol::model_config::XyModelKind::Fake,
+        &xylitol::protocol::model::XyModelConfig {
+            kind: xylitol::protocol::model::XyModelKind::Fake,
             model: "fake".into(),
             api_key: String::new(),
             base_url: None,
@@ -970,8 +970,8 @@ Edit src/file5.rs and update Cargo.toml
 "#;
     set_fake_text(fake_summary);
     let model = xylitol::infra::provider::factory::build_provider(
-        &xylitol::protocol::model_config::XyModelConfig {
-            kind: xylitol::protocol::model_config::XyModelKind::Fake,
+        &xylitol::protocol::model::XyModelConfig {
+            kind: xylitol::protocol::model::XyModelKind::Fake,
             model: "fake".into(),
             api_key: String::new(),
             base_url: None,
@@ -1033,8 +1033,8 @@ pub(crate) async fn w_comp_agent_compact(agent: &AgentState, sess: &XySessionSto
         let _ = mgr.append(sid, &e).await;
     }
     let model = xylitol::infra::provider::factory::build_provider(
-        &xylitol::protocol::model_config::XyModelConfig {
-            kind: xylitol::protocol::model_config::XyModelKind::Fake,
+        &xylitol::protocol::model::XyModelConfig {
+            kind: xylitol::protocol::model::XyModelKind::Fake,
             model: "fake".into(),
             api_key: String::new(),
             base_url: None,
@@ -1100,8 +1100,8 @@ pub(crate) fn make_test_capabilities(
         xylitol::infra::permission::allow_all_permission(),
         bash,
         export_io,
-        xylitol::agent::session::QueueMode::default(),
-        xylitol::agent::session::QueueMode::default(),
+        xylitol::agent::capabilities::QueueMode::default(),
+        xylitol::agent::capabilities::QueueMode::default(),
         None,
     )
 }
@@ -1185,8 +1185,8 @@ pub(crate) async fn w_comp_iterative_summary(agent: &AgentState, sess: &XySessio
         "## Goal\nContinue\n\n## Progress\n### Done\n- [x] prior item\n\n## Next Steps\n1. New work\n",
     );
     let model = xylitol::infra::provider::factory::build_provider(
-        &xylitol::protocol::model_config::XyModelConfig {
-            kind: xylitol::protocol::model_config::XyModelKind::Fake,
+        &xylitol::protocol::model::XyModelConfig {
+            kind: xylitol::protocol::model::XyModelKind::Fake,
             model: "fake".into(),
             api_key: String::new(),
             base_url: None,

@@ -10,7 +10,7 @@ use std::sync::Arc;
 
 use crate::infra::provider::adapter::{AdapterXyModel, factory::build_adapter};
 use crate::infra::provider::{FakeProvider, ScenarioStep};
-use crate::protocol::model_config::{XyModelConfig, XyModelKind};
+use crate::protocol::model::{XyModelConfig, XyModelKind};
 use crate::protocol::ports::XyModel;
 
 thread_local! {

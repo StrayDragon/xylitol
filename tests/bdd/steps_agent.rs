@@ -188,8 +188,8 @@ pub(crate) async fn _w_agent_switch_thinking(agent: &AgentState, verb: String, l
         Some(std::sync::Arc::new(
             xylitol::infra::export::StdExportIo::new(),
         )),
-        xylitol::agent::session::QueueMode::default(),
-        xylitol::agent::session::QueueMode::default(),
+        xylitol::agent::capabilities::QueueMode::default(),
+        xylitol::agent::capabilities::QueueMode::default(),
         None,
     );
     if session.current_model().is_none()
@@ -455,8 +455,8 @@ pub(crate) fn _w_agent_try_thinking_level(agent: &AgentState, level: String) {
         Some(std::sync::Arc::new(
             xylitol::infra::export::StdExportIo::new(),
         )),
-        xylitol::agent::session::QueueMode::default(),
-        xylitol::agent::session::QueueMode::default(),
+        xylitol::agent::capabilities::QueueMode::default(),
+        xylitol::agent::capabilities::QueueMode::default(),
         None,
     );
     if session.current_model().is_none()

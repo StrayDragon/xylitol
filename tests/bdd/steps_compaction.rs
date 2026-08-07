@@ -31,8 +31,8 @@ pub(crate) async fn comp_run_compact(
     sess.ensure_mgr();
     let mgr = sess.mgr.borrow().as_ref().unwrap().clone();
     let model = xylitol::infra::provider::factory::build_provider(
-        &xylitol::protocol::model_config::XyModelConfig {
-            kind: xylitol::protocol::model_config::XyModelKind::Fake,
+        &xylitol::protocol::model::XyModelConfig {
+            kind: xylitol::protocol::model::XyModelKind::Fake,
             model: "fake".into(),
             api_key: String::new(),
             base_url: None,

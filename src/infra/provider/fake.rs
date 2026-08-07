@@ -5,8 +5,8 @@ use async_trait::async_trait;
 use crate::infra::provider::map::{to_bridge_tools, to_xy_error, to_xy_stream};
 use crate::protocol::error::XyError;
 use crate::protocol::message::LlmMessage;
+use crate::protocol::model::XyToolSchema;
 use crate::protocol::ports::{XyGenerateOptions, XyModel, XyStream};
-use crate::protocol::types::XyToolSchema;
 
 pub use xylitol_ai_bridge::fake::{
     FakeProvider as AiBridgeFakeProvider, FakeProviderBuilder, FakeProviderMode, ScenarioStep,
@@ -91,7 +91,7 @@ mod tests {
         let chunk = stream.next().await.unwrap().unwrap();
         assert!(matches!(
             chunk,
-            crate::protocol::types::XyChunk::TextDelta(t) if t == "Hello world"
+            crate::protocol::model::XyChunk::TextDelta(t) if t == "Hello world"
         ));
     }
 

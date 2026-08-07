@@ -604,7 +604,7 @@ impl XyTool for BddSlowTool {
 }
 
 struct BddMultiToolModel {
-    rounds: std::sync::Mutex<Vec<Vec<xylitol::protocol::types::XyChunk>>>,
+    rounds: std::sync::Mutex<Vec<Vec<xylitol::protocol::model::XyChunk>>>,
 }
 
 #[async_trait::async_trait]
@@ -615,7 +615,7 @@ impl xylitol::protocol::ports::XyModel for BddMultiToolModel {
     async fn generate_stream(
         &self,
         _messages: Vec<xylitol::protocol::message::LlmMessage>,
-        _tools: &[xylitol::protocol::types::XyToolSchema],
+        _tools: &[xylitol::protocol::model::XyToolSchema],
         _stream: bool,
         _options: xylitol::protocol::ports::XyGenerateOptions,
     ) -> Result<xylitol::protocol::ports::XyStream, xylitol::protocol::error::XyError> {
@@ -626,8 +626,8 @@ impl xylitol::protocol::ports::XyModel for BddMultiToolModel {
 
 pub(crate) fn bdd_batch_rounds(
     calls: &[(&str, &str)],
-) -> Vec<Vec<xylitol::protocol::types::XyChunk>> {
-    let done = || xylitol::protocol::types::XyChunk::Done {
+) -> Vec<Vec<xylitol::protocol::model::XyChunk>> {
+    let done = || xylitol::protocol::model::XyChunk::Done {
         finish_reason: xylitol::protocol::message::XyStopReason::Stop,
         usage: None,
     };
@@ -635,7 +635,7 @@ pub(crate) fn bdd_batch_rounds(
     for (i, (name, args_json)) in calls.iter().enumerate() {
         let args: serde_json::Value =
             serde_json::from_str(args_json).unwrap_or(serde_json::json!({}));
-        round1.push(xylitol::protocol::types::XyChunk::ToolCallEnd {
+        round1.push(xylitol::protocol::model::XyChunk::ToolCallEnd {
             id: format!("call-{i}"),
             name: (*name).into(),
             args,
@@ -645,7 +645,7 @@ pub(crate) fn bdd_batch_rounds(
     vec![
         round1,
         vec![
-            xylitol::protocol::types::XyChunk::TextDelta("ok".into()),
+            xylitol::protocol::model::XyChunk::TextDelta("ok".into()),
             done(),
         ],
     ]
@@ -686,8 +686,8 @@ pub(crate) fn bdd_batch_make_runner(
         xylitol::infra::permission::allow_all_permission(),
         None,
         None,
-        xylitol::agent::session::QueueMode::default(),
-        xylitol::agent::session::QueueMode::default(),
+        xylitol::agent::capabilities::QueueMode::default(),
+        xylitol::agent::capabilities::QueueMode::default(),
         None,
     );
     session

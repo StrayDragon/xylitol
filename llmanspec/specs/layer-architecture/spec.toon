@@ -24,7 +24,7 @@ requirements[34]{req_id,title,statement}:
   la19,缝与表面分离,app/ MUST 将跨面缝分组于 src/app/core/：组合根（composition.rs）与运行时 driver 边界（driver.rs）MUST 均位于 app/core/，与自包含应用表面（cli/、server/、tui/、gui.rs）分离。应用表面 MUST NOT 直接托管 build_agent 接线或 Driver trait。
   la20,共享 bootstrap 与 dispatch,"app::core MUST 托管共享 bootstrap 模块（app::core::bootstrap），集中从 CLI args 到 AgentRuntime 的完整装配路径（config load、ModelRegistry build、trust resolution、resource discovery 含 templates/context_files/system_prompt/append_system_prompt、compaction settings、permission、build_agent、model select），以及共享 dispatch 模块（app::core::dispatch）集中 Command 变体执行语义；print（cli）、server、tui MUST 调用 bootstrap，tui MUST 调用 dispatch，任何表面 MAY NOT 内联自有装配或命令分发实现。"
   la21,禁止死包装协作者,agent/ 内对端口的纯转发壳（无附加状态或行为，且无生产调用方）MUST 删除；Agent MUST 直接持有 Arc<dyn Port> 或经有真实职责的协作者访问，MUST NOT 保留 SessionIO 类零逻辑包装。
-  "la-embed1","嵌入缝与公开入口","System MUST 向库用户提供文档化的嵌入入口（含 bootstrap/Driver 或等价），使外部 crate 无需 reach-in agent::session 或 infra 具体类型即可装配并驱动一轮对话。嵌入路径 MUST 仅依赖精选 Xy 契约与文档化应用缝；MUST NOT 要求嵌入方 import infra 具体实现或 agent 子模块内部类型以完成标准装配。"
+  "la-embed1","嵌入缝与公开入口","System MUST 向库用户提供文档化的嵌入入口（含 bootstrap/Driver 或等价），使外部 crate 无需 reach-in agent::capabilities 或 infra 具体类型即可装配并驱动一轮对话。嵌入路径 MUST 仅依赖精选 Xy 契约与文档化应用缝；MUST NOT 要求嵌入方 import infra 具体实现或 agent 子模块内部类型以完成标准装配。"
   "la-server-driver",Server 与 Print 同缝,Server 与 Print MUST 共享同一应用缝（Driver/bootstrap）；新增 server 能力时优先扩缝，禁止为 server 单独复制一套 agent 编排。
   "la-mcp-seam",MCP 经嵌入缝,"System MUST 向嵌入方提供不依赖 infra 路径的 MCP 服务器描述（或等价句柄），使 bootstrap/reload 可在不 reach-in infra::mcp 的情况下传递配置。composition/McpSession MUST 在缝边界内将嵌入缝 MCP 描述转为 infra 实现；应用面 MUST NOT 为 MCP 装配单独 reach-in infra 类型。"
   "la-dispatch-consume",dispatch 有消费方,跨面命令执行缝 dispatch MUST 至少被一个生产应用面消费（Server 或 TUI）；禁止长期仅单测覆盖而无面接线。
