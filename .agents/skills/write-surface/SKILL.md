@@ -23,6 +23,7 @@ composition::build_agent  →  XyInProcessDriver  →  XyDriver::run(prompt)
 | **复用，绝不重写** | 共享，所有面走同一条 | `app/core/composition.rs::build_agent`（组合根，唯一允许同时 import agent+infra，见 `src/AGENTS.md`）；`XyDriver` trait + `XyInProcessDriver`；`AgentRuntime::run/run_with_id → XyEventStream`；`protocol::Command` 的语义；`XyEvent` 变体集（`protocol/lifecycle`；agent 再导出） |
 | **每面重写，绝不共享** | 面内独占 | 输入采集（REPL 循环 / HTTP handler / 行编辑器）；渲染（stdout / TUI widget / HTTP JSON）；slash 命令 → driver 调用的本地分派 |
 | **新 agent 能力** | 进 `agent/`，不进面 | 若新面需要 agent 还没有的行为，那是 agent 层的 port 扩容（先在 `protocol/ports/` 加 trait，再在 `infra/` 实现），不是在面里 reach into `agent::capabilities` |
+| **跨面产品能力** | 进 `app/core` + `XyDriver` | 产品 slash 目录、bang、session export —— **不要**塞回 `AgentCapabilities`（见 `src/AGENTS.md` 目标面） |
 
 判定原则：一段逻辑「任何面都需要」→ 复用侧；「只有这个面才需要」→ 重写侧；「需要 agent/infra 内部」→ 不属于面，上提到 agent/infra。
 

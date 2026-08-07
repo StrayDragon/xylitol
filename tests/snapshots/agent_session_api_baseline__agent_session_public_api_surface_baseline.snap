@@ -74,7 +74,7 @@ pub fn system_prompt(&self) -> Option<&str>
 pub fn thinking_level(&self) -> ThinkingLevel
 pub fn tool_freeze_phase(&self) -> ToolFreezePhase
 pub fn unbind_event_tx(&self)
-pub model_id: String, pub display_name: String, pub thinking: ThinkingLevel, /// True when footer should omit the thinking segment. pub omit_thinking: bool, } /// Capability aggregate — model, tools, session persistence, and events. pub struct AgentCapabilities
+pub model_id: String, pub display_name: String, pub thinking: ThinkingLevel, /// True when footer should omit the thinking segment. pub omit_thinking: bool, } /// Engine capability aggregate (model / tools / session / prompt / compaction / queues). /// /// Product slash, bang, and session export live on [`XyDriver`](crate::app::core::driver::XyDriver). pub struct AgentCapabilities
 pub session_id: String, pub user_messages: usize, pub assistant_messages: usize, pub total_messages: usize, pub thinking_level: String, pub model: Option<(String, String)>, } /// Aggregate message counts for a session by reading the session store. /// /// Moved out of the `AgentCapabilities` body (spec as32 / c320 T24) so the capability /// aggregate holds no aggregation logic. pub async fn compute( store: &dyn XySessionStore, session_id: &str, ) -> Result<SessionStats, XyError>
 pub steer: Arc<Mutex<PendingMessageQueue>>, pub follow_up: Arc<Mutex<PendingMessageQueue>>, event_tx: Arc<Mutex<Option<EventTx>>>, } impl AsyncQueueRuntime
 pub steer_count: usize, pub follow_up_count: usize, } /// Sender bound to the active `XyDriver::run` / ReAct EventStream (may be absent). pub type EventTx = tokio::sync::mpsc::UnboundedSender<XyEvent>
