@@ -69,9 +69,6 @@ pub(crate) fn make_agent_with_store(
         None,
         std::sync::Arc::new(xylitol::infra::provider::factory::build_provider),
         xylitol::infra::permission::allow_all_permission(),
-        Some(std::sync::Arc::new(
-            xylitol::infra::export::StdExportIo::new(),
-        )),
         xylitol::agent::capabilities::QueueMode::default(),
         xylitol::agent::capabilities::QueueMode::default(),
         hook_bus,

@@ -684,7 +684,6 @@ pub(crate) fn bdd_batch_make_runner(
         None,
         builder,
         xylitol::infra::permission::allow_all_permission(),
-        None,
         xylitol::agent::capabilities::QueueMode::default(),
         xylitol::agent::capabilities::QueueMode::default(),
         None,

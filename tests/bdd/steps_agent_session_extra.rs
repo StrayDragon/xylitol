@@ -394,9 +394,6 @@ pub(crate) fn w_switch_model_cycle(agent: &AgentState) {
         None,
         std::sync::Arc::new(xylitol::infra::provider::factory::build_provider),
         xylitol::infra::permission::allow_all_permission(),
-        Some(std::sync::Arc::new(
-            xylitol::infra::export::StdExportIo::new(),
-        )),
         xylitol::agent::capabilities::QueueMode::default(),
         xylitol::agent::capabilities::QueueMode::default(),
         None,
@@ -652,7 +649,7 @@ pub(crate) async fn g_sess_persist_turn(agent: &AgentState, sess: &XySessionStor
     reset_fake_state();
     set_fake_text("assistant reply");
     let store: Arc<dyn xylitol::protocol::ports::XySessionStore> = Arc::new(mgr);
-    let mut caps = make_test_capabilities(agent, store.clone(), None);
+    let mut caps = make_test_capabilities(agent, store.clone());
     if let Some(id) = agent.registry.borrow().list().first().map(|m| m.id.clone()) {
         let _ = caps.select_model(&id);
     }
@@ -702,7 +699,7 @@ pub(crate) async fn g_sess_persist_tool(agent: &AgentState, sess: &XySessionStor
     let mgr = sess.mgr.borrow().as_ref().unwrap().clone();
     let _ = mgr.create(sid, Some("."), None).await;
     let store: Arc<dyn xylitol::protocol::ports::XySessionStore> = Arc::new(mgr);
-    let mut caps = make_test_capabilities(agent, store, None);
+    let mut caps = make_test_capabilities(agent, store);
     if let Some(id) = agent.registry.borrow().list().first().map(|m| m.id.clone()) {
         let _ = caps.select_model(&id);
     }
@@ -857,11 +854,7 @@ pub(crate) fn g_sess_resp_separated(agent: &AgentState) {
     let dir = tempfile::tempdir().unwrap();
     let mgr = SessionManager::new(dir.keep());
     let store: Arc<dyn xylitol::protocol::ports::XySessionStore> = Arc::new(mgr);
-    let _caps = make_test_capabilities(
-        agent,
-        store,
-        Some(Arc::new(xylitol::infra::export::StdExportIo::new())),
-    );
+    let _caps = make_test_capabilities(agent, store);
     agent.last_result.replace(Some(Ok("constructed".into())));
 }
 
@@ -889,7 +882,7 @@ pub(crate) fn g_sess_api_retained(agent: &AgentState) {
     let dir = tempfile::tempdir().unwrap();
     let mgr = SessionManager::new(dir.keep());
     let store: Arc<dyn xylitol::protocol::ports::XySessionStore> = Arc::new(mgr);
-    let mut session = make_test_capabilities(agent, store, None);
+    let mut session = make_test_capabilities(agent, store);
     let _ = session.set_thinking_level(ThinkingLevel::Low);
     let cmds = product_slash_commands();
     let type_name = std::any::type_name::<AgentCapabilities>().to_string();
@@ -931,23 +924,17 @@ impl xylitol::protocol::ports::XyExportIo for MockExportIo {
 }
 
 #[given("构造含 MockExportIo 的 Agent")]
-pub(crate) fn g_sess_mock_export(agent: &AgentState) {
+pub(crate) fn g_sess_mock_export(_agent: &AgentState) {
     let mock = Arc::new(MockExportIo {
         writes: std::sync::Mutex::new(Vec::new()),
     });
-    sess_export::MOCK.with(|m| m.replace(Some(mock.clone())));
-    let dir = tempfile::tempdir().unwrap();
-    let mgr = SessionManager::new(dir.keep());
-    let store: Arc<dyn xylitol::protocol::ports::XySessionStore> = Arc::new(mgr);
-    let _session = make_test_capabilities(
-        agent,
-        store,
-        Some(mock as Arc<dyn xylitol::protocol::ports::XyExportIo>),
-    );
+    sess_export::MOCK.with(|m| m.replace(Some(mock)));
 }
 
 #[when("调用 export_to_html")]
 pub(crate) async fn w_sess_export_html(agent: &AgentState, _sess: &XySessionStore) {
+    use xylitol::app::session_export::SessionExporter;
+
     let dir = tempfile::tempdir().unwrap();
     let out = dir.path().join("out.html");
     let mgr = SessionManager::new(dir.path().join("sessions"));
@@ -957,13 +944,11 @@ pub(crate) async fn w_sess_export_html(agent: &AgentState, _sess: &XySessionStor
         .with(|m| m.borrow().clone())
         .expect("mock export");
     let store: Arc<dyn xylitol::protocol::ports::XySessionStore> = Arc::new(mgr);
-    let mut session = make_test_capabilities(
-        agent,
-        store,
-        Some(mock as Arc<dyn xylitol::protocol::ports::XyExportIo>),
-    );
-    session.set_session(sid.to_string());
-    let result = session.export_to_html(out.as_path()).await;
+    let exporter =
+        SessionExporter::new(Some(mock as Arc<dyn xylitol::protocol::ports::XyExportIo>));
+    let result = exporter
+        .export_to_html(store.as_ref(), sid, out.as_path())
+        .await;
     agent.last_result.replace(Some(
         result
             .map(|_| "exported".into())

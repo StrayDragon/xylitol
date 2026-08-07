@@ -8,6 +8,7 @@ use tokio_util::sync::CancellationToken;
 
 use crate::agent::AgentRuntime;
 use crate::app::core::bang_exec::BangExecHandler;
+use crate::app::core::session_export::SessionExporter;
 use crate::protocol::model::ThinkingLevel;
 use crate::protocol::ports::{XyBashResult, XySessionStore};
 use crate::protocol::session::{
@@ -86,6 +87,8 @@ pub struct XyInProcessDriver {
     store: Arc<dyn XySessionStore>,
     /// Interactive bang (`!` / `!!`) executor — app-surface, not agent.
     bang: BangExecHandler,
+    /// Session HTML/JSONL export-import — app-surface.
+    exporter: SessionExporter,
     /// Optional reload state for `/reload` and MCP ownership (c1120).
     reload: Option<InProcessReloadState>,
     /// Background MCP bootstrap (c1200); independent of agent busy.
@@ -107,16 +110,38 @@ impl XyInProcessDriver {
 
     /// Construct from a built agent plus the store used to build it.
     ///
-    /// Installs a default [`InfraBashExecutor`](crate::infra::bash_exec::InfraBashExecutor)
-    /// for product bang. Use [`Self::with_bang`] to override.
+    /// Installs default bang + export I/O for product surfaces.
+    /// Use [`Self::with_surface_ops`] to override.
     pub fn new(agent: AgentRuntime, store: Arc<dyn XySessionStore>) -> Self {
-        Self::with_bang(
+        Self::with_surface_ops(
             agent,
             store,
             BangExecHandler::new(Some(Arc::new(
                 crate::infra::bash_exec::InfraBashExecutor::new(),
             ))),
+            SessionExporter::new(Some(Arc::new(crate::infra::export::StdExportIo::new()))),
         )
+    }
+
+    /// Construct with explicit bang + export collaborators (tests / embed).
+    pub fn with_surface_ops(
+        agent: AgentRuntime,
+        store: Arc<dyn XySessionStore>,
+        bang: BangExecHandler,
+        exporter: SessionExporter,
+    ) -> Self {
+        Self {
+            agent,
+            store,
+            bang,
+            exporter,
+            reload: None,
+            mcp_boot: McpBootState::Idle,
+            late_mcp_discover: None,
+            mcp_gate_notice: None,
+            tool_gate_deadline: None,
+            ask_gateway: None,
+        }
     }
 
     /// Construct with an explicit bang handler (tests / embed without shell).
@@ -125,17 +150,12 @@ impl XyInProcessDriver {
         store: Arc<dyn XySessionStore>,
         bang: BangExecHandler,
     ) -> Self {
-        Self {
+        Self::with_surface_ops(
             agent,
             store,
             bang,
-            reload: None,
-            mcp_boot: McpBootState::Idle,
-            late_mcp_discover: None,
-            mcp_gate_notice: None,
-            tool_gate_deadline: None,
-            ask_gateway: None,
-        }
+            SessionExporter::new(Some(Arc::new(crate::infra::export::StdExportIo::new()))),
+        )
     }
 
     /// Install TUI-only `ask` tool and remember the gateway for MCP reload.
@@ -594,27 +614,36 @@ impl XyDriver for XyInProcessDriver {
     }
 
     async fn export_html(&mut self, path: &Path) -> Result<String, XyDriverError> {
-        self.agent
-            .inner_mut()
-            .export_to_html(path)
+        let sid = self
+            .agent
+            .inner()
+            .session_id()
+            .ok_or_else(|| XyDriverError::from_opaque("no active session"))?
+            .to_string();
+        self.exporter
+            .export_to_html(self.store.as_ref(), &sid, path)
             .await
             .map_err(XyDriverError::from)?;
         Ok(path.to_string_lossy().into_owned())
     }
 
     async fn export_jsonl(&mut self, path: &Path) -> Result<String, XyDriverError> {
-        self.agent
-            .inner_mut()
-            .export_to_jsonl(path)
+        let sid = self
+            .agent
+            .inner()
+            .session_id()
+            .ok_or_else(|| XyDriverError::from_opaque("no active session"))?
+            .to_string();
+        self.exporter
+            .export_to_jsonl(self.store.as_ref(), &sid, path)
             .await
             .map_err(XyDriverError::from)?;
         Ok(path.to_string_lossy().into_owned())
     }
 
     async fn import_jsonl(&mut self, path: &Path) -> Result<String, XyDriverError> {
-        self.agent
-            .inner_mut()
-            .import_from_jsonl(path)
+        self.exporter
+            .import_from_jsonl(self.store.as_ref(), path)
             .await
             .map_err(XyDriverError::from)
     }
@@ -1528,11 +1557,10 @@ mod driver_session_tree_tests {
     use crate::agent::tools::ToolSet;
     use crate::infra::config::value::InfraSecretResolver;
     use crate::infra::event::EventBus;
-    use crate::infra::export::StdExportIo;
     use crate::infra::permission;
     use crate::infra::session::SessionManager;
     use crate::protocol::model::XyModelConfig;
-    use crate::protocol::ports::{XyEventSink, XyExportIo, XyModel, XySessionStore};
+    use crate::protocol::ports::{XyEventSink, XyModel, XySessionStore};
     use crate::protocol::session::{EntryBase, MessageEntry, SessionEntry, SessionTreeKind};
 
     type ModelBuilderFn =
@@ -1561,7 +1589,6 @@ mod driver_session_tree_tests {
         )
         .cwd(".")
         .tools(ToolSet::from_iter(crate::infra::tools::default_tools()))
-        .export_io(Arc::new(StdExportIo::new()) as Arc<dyn XyExportIo>)
         .build()
         .expect("build agent");
         let sid = uuid::Uuid::new_v4().to_string();
@@ -1587,7 +1614,6 @@ mod driver_session_tree_tests {
         )
         .cwd(".")
         .tools(ToolSet::from_iter(crate::infra::tools::default_tools()))
-        .export_io(Arc::new(StdExportIo::new()) as Arc<dyn XyExportIo>)
         .build()
         .expect("build agent");
         // Orphan id: set on agent but never created on disk (wipe / pre-persist).
@@ -1804,7 +1830,6 @@ mod driver_session_tree_tests {
         )
         .cwd(".")
         .tools(ToolSet::empty())
-        .export_io(Arc::new(StdExportIo::new()) as Arc<dyn XyExportIo>)
         .build()
         .expect("build agent");
         agent.inner_mut().select_model("mock").expect("select mock");

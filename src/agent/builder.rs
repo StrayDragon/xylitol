@@ -2,7 +2,7 @@
 //!
 //! [`AgentBuilder`] takes only the minimal runtime-protocol ports in its
 //! constructor. Every other capability is attached via consuming builder
-//! methods, with safe defaults (empty tool set, no export I/O). This keeps the agent layer free of concrete `infra/` types.
+//! methods, with safe defaults (empty tool set, no optional surface I/O). This keeps the agent layer free of concrete `infra/` types.
 
 use std::sync::Arc;
 
@@ -12,7 +12,7 @@ use crate::agent::model::registry::ModelRegistry;
 use crate::agent::runtime::AgentRuntime;
 use crate::agent::tools::ToolSet;
 use crate::protocol::ports::{
-    XyBatchMode, XyEventSink, XyExportIo, XyHookBus, XyModelBuilder, XyPermission, XySessionStore,
+    XyBatchMode, XyEventSink, XyHookBus, XyModelBuilder, XyPermission, XySessionStore,
 };
 
 /// Builder for [`AgentCapabilities`].
@@ -32,7 +32,6 @@ pub struct AgentBuilder {
     skills: Vec<crate::protocol::resource::SkillInfo>,
     compaction_settings: Option<CompactionSettings>,
     cwd: String,
-    export_io: Option<Arc<dyn XyExportIo>>,
     steering_mode: QueueMode,
     follow_up_mode: QueueMode,
     hook_bus: Option<Arc<dyn XyHookBus>>,
@@ -61,7 +60,6 @@ impl AgentBuilder {
             skills: Vec::new(),
             compaction_settings: None,
             cwd: ".".into(),
-            export_io: None,
             steering_mode: QueueMode::default(),
             follow_up_mode: QueueMode::default(),
             hook_bus: None,
@@ -111,12 +109,6 @@ impl AgentBuilder {
         self
     }
 
-    /// Set the export I/O port (default: none).
-    pub fn export_io(mut self, io: Arc<dyn XyExportIo>) -> Self {
-        self.export_io = Some(io);
-        self
-    }
-
     /// Override the permission port (default: the one passed to [`new`](Self::new)).
     pub fn permission(mut self, permission: Arc<dyn XyPermission>) -> Self {
         self.permission = permission;
@@ -161,7 +153,6 @@ impl AgentBuilder {
             self.compaction_settings,
             self.model_builder,
             self.permission,
-            self.export_io,
             self.steering_mode,
             self.follow_up_mode,
             self.hook_bus,
