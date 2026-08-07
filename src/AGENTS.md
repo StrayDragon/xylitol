@@ -19,9 +19,9 @@ app → agent → protocol/{wire, ports, model, session, …}
 | 层 | 做什么 | 硬约束 |
 |---|---|---|
 | `protocol` | 线协议 `wire` + 可替换口 `ports` + 跨层共享类型（根模块及 `model/`/`session/` 等聚类） | ↛ `agent`/`infra`；MAY 依赖 bridge **DTO only**；`wire` ↛ `ports`；`ports` ↛ `wire`；禁止再建 `domain`/`vocab`/`types` 第三顶栏；根下可按领域聚子树（`model/`、`session/`），**不是**新顶栏 |
-| `agent` | ReAct / `capabilities`（能力聚合）/ 编排 / `project_for_llm` | ↛ `infra`；运行时能力在 `agent::capabilities`（原误称 session）；持久化词表在 `protocol::session` |
+| `agent` | ReAct / `capabilities`（能力聚合）/ 编排 / `project_for_llm` | ↛ `infra`；运行时能力在 `agent::capabilities`；持久化词表在 `protocol::session`；**不得**再扩 bang / export / 产品 slash 目录（属 app） |
 | `infra` | ports 实现（provider、tools、session、config…）；vendor SDK 关在此层 | ↛ `agent` |
-| `app` | 应用面 + `core` 跨面 seam | 走 seam，不 reach `agent`/`infra` 内部 |
+| `app` | 应用面 + `core` 跨面 seam | 走 seam，不 reach `agent`/`infra` 内部；**产品 slash 目录 / bang / session export** 归 `app/core` + `XyDriver`（实现正从 capabilities 迁出） |
 | `utils` | 纯叶工具（如 `xml_escape`、poison-tolerant mutex） | ↛ `agent`/`infra`/`app`/`protocol`；各层 MAY 依赖 |
 
 - **组合根**才同时 import `agent` + `infra` 做装配（`app/core` 与各面入口）。靠 review + 行为测守住；**禁止**源码 grep 元测试卡 import。

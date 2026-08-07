@@ -29,4 +29,4 @@ pub(crate) mod driver;
 pub(crate) mod driver_error;
 pub(crate) mod lag;
 pub(crate) mod mcp_spec;
-pub(crate) mod product_commands;
+pub mod product_commands;

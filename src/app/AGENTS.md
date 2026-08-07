@@ -9,3 +9,5 @@
 | TUI 产品面 | `tui/AGENTS.md` + `write-tui`；刻意差异 → `tui/PI_DELTAS.md` |
 | TUI 包内验证 | `test-tui-harness`；包 `AGENTS.md` |
 | steer / follow-up | `XyDriver` 队列；产品语义见 `docs/architecture/插话续跑与中止.md` |
+| 产品 slash 目录 | `app::product_commands`（SSOT）+ `XyDriver::get_commands` |
+| bang / session export | API 在 `XyDriver`；实现迁往 `app/core`（勿再扩 `agent::capabilities`） |

@@ -668,15 +668,20 @@ impl XyDriver for XyInProcessDriver {
     }
 
     fn get_commands(&self) -> Vec<CommandInfo> {
-        self.agent
-            .inner()
-            .get_commands()
+        let mut cmds: Vec<CommandInfo> = crate::app::product_commands::product_slash_commands()
             .into_iter()
             .map(|c| CommandInfo {
-                name: c.name,
-                description: c.description,
+                name: c.name.to_string(),
+                description: c.description.to_string(),
             })
-            .collect()
+            .collect();
+        for c in self.agent.inner().extension_commands() {
+            cmds.push(CommandInfo {
+                name: c.name.clone(),
+                description: c.description.clone(),
+            });
+        }
+        cmds
     }
 
     fn steer(&mut self, message: &str) -> Result<(), XyDriverError> {
