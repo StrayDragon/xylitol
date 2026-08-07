@@ -16,7 +16,6 @@ use std::sync::{Arc, Mutex};
 
 pub(crate) use crate::protocol::ports::{XyEventSink, XySessionStore};
 
-mod bash;
 mod compact_ops;
 mod export;
 mod hook_bus;
@@ -42,7 +41,7 @@ use crate::agent::runtime::AgentHooks;
 use crate::agent::tools::{ToolFreezePhase, ToolSet, ToolTableFingerprint};
 use crate::protocol::message::AgentMessage;
 use crate::protocol::model::ThinkingLevel;
-use crate::protocol::ports::{XyBashExecutor, XyBatchMode, XyExportIo, XyHookBus, XyPermission};
+use crate::protocol::ports::{XyBatchMode, XyExportIo, XyHookBus, XyPermission};
 
 // ── Model Registry ──────────────────────────────────────────────────
 
@@ -91,9 +90,6 @@ pub struct AgentCapabilities {
     prompt_opts: SystemPromptOpts,
     /// Extension-registered slash commands.
     extension_commands: Vec<SlashCommandInfo>,
-    /// Bash-execution collaborator. Holds the optional [`XyBashExecutor`]
-    /// port and the in-flight cancellation token.
-    bash: crate::agent::capabilities::bash::BashExecHandler,
     /// Export/import collaborator. Holds the optional [`XyExportIo`] port.
     exporter: crate::agent::capabilities::export::SessionExporter,
 
@@ -125,7 +121,6 @@ impl AgentCapabilities {
         compaction_settings: Option<CompactionSettings>,
         model_builder: crate::protocol::ports::XyModelBuilder,
         permission: Arc<dyn XyPermission>,
-        bash_executor: Option<Arc<dyn XyBashExecutor>>,
         export_io: Option<Arc<dyn XyExportIo>>,
         steering_mode: QueueMode,
         follow_up_mode: QueueMode,
@@ -165,7 +160,6 @@ impl AgentCapabilities {
                 ..Default::default()
             },
             extension_commands: Vec::new(),
-            bash: crate::agent::capabilities::bash::BashExecHandler::new(bash_executor),
             exporter: crate::agent::capabilities::export::SessionExporter::new(export_io),
             store,
             sink,
@@ -371,9 +365,6 @@ mod tests {
             None,
             std::sync::Arc::new(crate::infra::provider::factory::build_provider),
             crate::infra::permission::allow_all_permission(),
-            Some(std::sync::Arc::new(
-                crate::infra::bash_exec::InfraBashExecutor::new(),
-            )),
             Some(std::sync::Arc::new(crate::infra::export::StdExportIo::new())),
             QueueMode::default(),
             QueueMode::default(),
@@ -651,29 +642,6 @@ mod tests {
                 steer_count: 0,
                 follow_up_count: 1
             }
-        );
-    }
-
-    #[tokio::test]
-    async fn runtime_abort_cancels_interactive_bash() {
-        use std::sync::Arc;
-        use std::time::Duration;
-
-        let agent = Arc::new(crate::agent::runtime::AgentRuntime::new(make_session()));
-        let agent_exec = Arc::clone(&agent);
-        let join = tokio::spawn(async move {
-            agent_exec
-                .inner()
-                .execute_bash("sleep 30", false, None)
-                .await
-        });
-
-        tokio::time::sleep(Duration::from_millis(150)).await;
-        agent.abort();
-        let result = join.await.expect("join").expect("execute_bash");
-        assert!(
-            result.cancelled,
-            "AgentRuntime::abort must cancel in-flight interactive bash"
         );
     }
 }

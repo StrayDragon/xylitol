@@ -3,6 +3,9 @@ pub(crate) mod core;
 /// Product slash-command catalog (app-surface SSOT; c1175).
 pub use core::product_commands;
 
+/// Interactive bang (`!` / `!!`) executor (app-surface).
+pub use core::bang_exec;
+
 /// Shared tool call/result presentation (TUI + Print; c1460).
 pub(crate) mod tool_display;
 

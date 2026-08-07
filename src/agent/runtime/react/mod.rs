@@ -71,14 +71,14 @@ impl AgentRuntime {
     /// Clears the steering queue and keeps follow-up messages so the UI can
     /// restore them (c461 design D4). Only cancels the **current** run token;
     /// the next [`Self::run`] installs a fresh one (c482). Also cancels any
-    /// in-flight interactive `!`/`!!` bash (c660; aligns with pi `abortBash`).
     /// Mid-stream model HTTP is aborted by racing this token in the ReAct chunk
     /// loop and dropping the provider stream (c680; surfaces inherit via
-    /// [`crate::app::core::driver::XyDriver::abort`]).
+    /// [`crate::app::core::driver::XyDriver::abort`]). Interactive bang cancel
+    /// is owned by [`XyInProcessDriver::abort`](crate::app::core::driver::XyInProcessDriver)
+    /// (app-surface), not the ReAct runtime.
     pub fn abort(&self) {
         crate::utils::lock_mutex(&self.cancel).cancel();
         self.inner.clear_steer_queue();
-        self.inner.abort_bash();
         self.inner.clear_active_turn();
     }
 

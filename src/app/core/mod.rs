@@ -22,6 +22,7 @@
 //!   `XyInProcessDriver` MAY call documented surface infra (trust / clipboard /
 //!   config read); full agent+tool assembly stays in `composition`.
 
+pub mod bang_exec;
 pub(crate) mod bootstrap;
 pub(crate) mod composition;
 pub(crate) mod dispatch;

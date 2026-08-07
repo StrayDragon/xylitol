@@ -1,9 +1,8 @@
-//! Bash execution collaborator — runs user-initiated `!cmd` / `!!cmd`.
+//! Bang execution (`!cmd` / `!!cmd`) — app-surface collaborator.
 //!
-//! [`BashExecHandler`] owns the optional [`XyBashExecutor`] port and the
-//! in-flight cancellation token. The session store is borrowed per call so the
-//! [`crate::agent::capabilities::AgentCapabilities`] remains the single holder of session
-//! context (design §4.1).
+//! [`BangExecHandler`] owns the optional [`XyBashExecutor`] port and the
+//! in-flight cancellation token. Held by [`XyInProcessDriver`](crate::app::core::driver::XyInProcessDriver);
+//! session store is borrowed per call.
 
 use std::sync::{Arc, Mutex};
 
@@ -19,16 +18,16 @@ fn session_err(e: impl Into<String>) -> XyError {
 }
 
 /// Stateful bash-execution collaborator.
-pub struct BashExecHandler {
+pub struct BangExecHandler {
     /// Injected bash executor port. `None` means `!cmd` is unavailable.
     executor: Option<Arc<dyn XyBashExecutor>>,
     /// Active bash-execution cancellation token (`Some` while a `!`/`!!` runs).
-    /// `Arc` so [`crate::agent::AgentRuntime::abort`] can cancel without `&mut`
-    /// (and tests can abort concurrent with [`Self::execute`]).
+    /// `Arc` so [`XyDriver::abort`](crate::app::core::driver::XyDriver::abort) can cancel
+    /// without `&mut` (and tests can abort concurrent with [`Self::execute`]).
     cancel: Arc<Mutex<Option<CancellationToken>>>,
 }
 
-impl BashExecHandler {
+impl BangExecHandler {
     /// Construct with an optional bash executor port.
     pub fn new(executor: Option<Arc<dyn XyBashExecutor>>) -> Self {
         Self {
@@ -86,7 +85,7 @@ impl BashExecHandler {
         Ok(result)
     }
 
-    /// Abort any in-flight bash execution (`&self` for XyDriver / AgentRuntime abort).
+    /// Abort any in-flight bash execution (`&self` for [`XyDriver::abort`](crate::app::core::driver::XyDriver::abort)).
     pub fn abort(&self) {
         if let Some(cancel) = crate::utils::lock_mutex(&self.cancel).take() {
             cancel.cancel();
@@ -127,13 +126,13 @@ mod tests {
 
     #[tokio::test]
     async fn abort_cancels_in_flight_sleep() {
-        let handler = BashExecHandler::new(Some(Arc::new(InfraBashExecutor::new())));
+        let handler = BangExecHandler::new(Some(Arc::new(InfraBashExecutor::new())));
         let store = crate::infra::session::SessionManager::new(
             tempfile::tempdir().unwrap().path().join("sessions"),
         );
         let store: Arc<dyn XySessionStore> = Arc::new(store);
 
-        let handler_exec = BashExecHandler {
+        let handler_exec = BangExecHandler {
             executor: handler.executor.clone(),
             cancel: handler.cancel_slot(),
         };
