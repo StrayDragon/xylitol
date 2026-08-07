@@ -41,7 +41,7 @@ pub(crate) async fn _w_ar_react_run(agent: &AgentState) {
     let mut runner = AR_RUNNER
         .with(|r| r.borrow_mut().take())
         .unwrap_or_else(|| make_agent(agent));
-    let mut stream = runner.run("读取文件").await;
+    let mut stream = agent_submit_root(&mut runner, "读取文件").await;
     let mut local_events = Vec::new();
     while let Some(e) = stream.next().await {
         local_events.push(e);
@@ -152,7 +152,7 @@ pub(crate) fn _g_ar_stream_setup(agent: &AgentState, ws: &Workspace) {
 #[when("轮询")]
 pub(crate) async fn _w_ar_stream_poll(agent: &AgentState) {
     let mut runner = make_agent(agent);
-    let mut stream = runner.run("hi").await;
+    let mut stream = agent_submit_root(&mut runner, "hi").await;
     let mut local_events = Vec::new();
     while let Some(e) = stream.next().await {
         local_events.push(e);
@@ -246,7 +246,6 @@ pub(crate) fn ar_make_runner(agent: &AgentState, ws: &Workspace) -> AgentRuntime
     ar_register_fake(agent, "ar-queue");
     let mut runtime = make_agent(agent);
     runtime
-        .inner_mut()
         .select_model("ar-queue")
         .expect("select ar-queue fake model");
     runtime
@@ -277,7 +276,7 @@ pub(crate) fn ar_events() -> Vec<XyEvent> {
 }
 
 pub(crate) async fn ar_run_capture(runner: &mut AgentRuntime, prompt: &str) -> Vec<XyEvent> {
-    let mut stream = runner.run(prompt).await;
+    let mut stream = agent_submit_root(runner, prompt).await;
     let mut local = Vec::new();
     while let Some(e) = stream.next().await {
         local.push(e);
@@ -396,10 +395,9 @@ pub(crate) async fn _g_ar11_second_run_after_abort(agent: &AgentState, ws: &Work
     set_fake_slow_stream(20, 10);
     let mut runner = make_agent(agent);
     runner
-        .inner_mut()
         .select_model("ar-abort-second")
         .expect("select ar-abort-second fake model");
-    let mut stream = runner.run("首轮").await;
+    let mut stream = agent_submit_root(&mut runner, "首轮").await;
     let mut saw_delta = false;
     while let Some(e) = stream.next().await {
         if !saw_delta && matches!(e, XyEvent::TextDelta(_)) {

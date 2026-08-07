@@ -40,7 +40,7 @@ pub(crate) fn _g_agent_tools_ready(_agent: &AgentState) {
 #[when("启动 agent 会话并发送提示 {prompt:string}")]
 pub(crate) async fn _w_agent_start(agent: &AgentState, prompt: String) {
     let mut runner = make_agent(agent);
-    let mut stream = runner.run(&prompt).await;
+    let mut stream = agent_submit_root(&mut runner, &prompt).await;
     let mut local_events = Vec::new();
     while let Some(e) = stream.next().await {
         local_events.push(e);

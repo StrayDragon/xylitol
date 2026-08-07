@@ -224,9 +224,9 @@ pub use crate::protocol::lifecycle::XyEvent;
 /// A stream of [`XyEvent`] items.
 pub type EventStream = Pin<Box<dyn Stream<Item = XyEvent> + Send>>;
 
-/// Minimal info about a slash command (for `GetCommands`), decoupled from the
-/// agent's internal `SlashCommandInfo` so the XyDriver trait does not leak
-/// `pub(crate)` agent types.
+/// Minimal info about a slash command (for `GetCommands`).
+/// Decoupled from any agent-internal types so the XyDriver trait stays
+/// surface-facing.
 #[derive(Debug, Clone)]
 pub struct CommandInfo {
     pub name: String,

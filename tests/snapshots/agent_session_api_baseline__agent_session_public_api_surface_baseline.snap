@@ -1,5 +1,6 @@
 ---
 source: tests/agent_session_api_baseline.rs
+assertion_line: 127
 expression: "all_items.join(\"\\n\")"
 ---
 pub async fn ensure_session(&self, id: &str, parent: Option<&str>) -> Result<(), XyError>
@@ -9,15 +10,13 @@ pub async fn get_session_stats(&self) -> Result<SessionStats, XyError>
 pub async fn maybe_auto_compact(&self) -> Result<bool, XyError>
 pub async fn maybe_auto_compact_with( &self, estimate_opts: &crate::agent::compaction::EstimateOpts, last_assistant: Option<&crate::protocol::message::AgentMessage>, ) -> Result<bool, XyError>
 pub enum QueueMode
-pub fn active_turn_binding(&self) -> Option<ActiveTurnBinding>
 pub fn apply_default_thinking_level(&mut self, raw: Option<&str>)
 pub fn apply_prompt_resources( &mut self, context_files: Vec<(String, String)>, system_prompt: Option<String>, append_system_prompt: Vec<String>, )
 pub fn apply_skills(&mut self, skills: Vec<crate::protocol::resource::SkillInfo>)
 pub fn begin_tool_gating(&mut self)
-pub fn bind_event_tx(&self, tx: EventTx)
+pub fn bind_event_tx(&self, run_id: RunId, tx: EventTx)
 pub fn build_current_model(&self) -> Result<Arc<dyn XyModel>, XyError>
 pub fn clear(&mut self)
-pub fn clear_active_turn(&self)
 pub fn clear_follow_up_queue(&self)
 pub fn clear_queues(&self, clear_steer: bool, clear_follow_up: bool)
 pub fn clear_steer_queue(&self)
@@ -39,7 +38,6 @@ pub fn get_context_usage( token_estimate: u64, context_window: u64, settings: &c
 pub fn get_permission(&self) -> std::sync::Arc<dyn XyPermission>
 pub fn has_active_turn(&self) -> bool
 pub fn has_items(&self) -> bool
-pub fn inflight_turn_binding(&self) -> Option<ActiveTurnBinding>
 pub fn install_system_prompt_text(&mut self, prompt: String)
 pub fn is_empty(&self) -> bool
 pub fn is_tools_frozen(&self) -> bool
@@ -58,6 +56,7 @@ pub fn reopen_tools_for_regate(&mut self)
 pub fn replace_hooks(&mut self, hooks: AgentHooks)
 pub fn select_model(&mut self, model_id: &str) -> Result<(), XyError>
 pub fn select_model_with_source( &mut self, model_id: &str, source: &str, ) -> Result<(), XyError>
+pub fn selected_turn_binding(&self) -> Option<ActiveTurnBinding>
 pub fn session_id(&self) -> Option<&str>
 pub fn session_store(&self) -> Arc<dyn XySessionStore>
 pub fn set_mode(&mut self, mode: QueueMode)
@@ -73,10 +72,10 @@ pub fn steer_parts(&self, parts: Vec<crate::protocol::message::AgentPart>)
 pub fn system_prompt(&self) -> Option<&str>
 pub fn thinking_level(&self) -> ThinkingLevel
 pub fn tool_freeze_phase(&self) -> ToolFreezePhase
-pub fn unbind_event_tx(&self)
+pub fn unbind_event_tx(&self, run_id: RunId)
 pub model_id: String, pub display_name: String, pub thinking: ThinkingLevel, /// True when footer should omit the thinking segment. pub omit_thinking: bool, } /// Engine capability aggregate (model / tools / session / prompt / compaction / queues). /// /// Product slash, bang, and session export live on [`XyDriver`](crate::app::core::driver::XyDriver). pub struct AgentCapabilities
 pub session_id: String, pub user_messages: usize, pub assistant_messages: usize, pub total_messages: usize, pub thinking_level: String, pub model: Option<(String, String)>, } /// Aggregate message counts for a session by reading the session store. /// /// Moved out of the `AgentCapabilities` body (spec as32 / c320 T24) so the capability /// aggregate holds no aggregation logic. pub async fn compute( store: &dyn XySessionStore, session_id: &str, ) -> Result<SessionStats, XyError>
-pub steer: Arc<Mutex<PendingMessageQueue>>, pub follow_up: Arc<Mutex<PendingMessageQueue>>, event_tx: Arc<Mutex<Option<EventTx>>>, } impl AsyncQueueRuntime
+pub steer: Arc<Mutex<PendingMessageQueue>>, pub follow_up: Arc<Mutex<PendingMessageQueue>>, /// Bound as `(RunId, tx)` so a stale stream cannot clear a newer run's sender. event_tx: Arc<Mutex<Option<(RunId, EventTx)>>>, } impl AsyncQueueRuntime
 pub steer_count: usize, pub follow_up_count: usize, } /// Sender bound to the active `XyDriver::run` / ReAct EventStream (may be absent). pub type EventTx = tokio::sync::mpsc::UnboundedSender<XyEvent>
 pub struct ActiveTurnBinding
 pub struct AsyncQueueRuntime
