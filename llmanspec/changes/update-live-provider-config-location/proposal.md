@@ -2,7 +2,8 @@
 depends_on: []
 branch: sdd/update-live-provider-config-location
 base_sha: 263c9aab6b25932b7ad1805e906b82e4068bc4cf
-checkpointed: false
+checkpointed: true
+checkpoint_sha: 749c84b71ed3a86ee56be7213c49f87ca27db121
 ---
 
 # live-provider 测试配置迁移到全局共享目录（`~/.config/xylitol/dev/`）
