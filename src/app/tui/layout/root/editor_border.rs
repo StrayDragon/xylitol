@@ -3,7 +3,7 @@
 use xylitol_tui::{ThinkingBorderLevel, apply_thinking_border};
 
 use super::UiRoot;
-use crate::protocol::types::ThinkingLevel;
+use crate::protocol::model::ThinkingLevel;
 
 impl UiRoot {
     /// Sync UI thinking level (border + footer); silent — no transcript.

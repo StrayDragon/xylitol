@@ -1,19 +1,19 @@
 //! ModelManager — model registry, selection, and thinking level.
 //!
-//! Extracted from [`AgentCapabilities`](crate::agent::session::AgentCapabilities) to isolate
+//! Extracted from [`AgentCapabilities`](crate::agent::capabilities::AgentCapabilities) to isolate
 //! model-related responsibilities into a focused component.
 
 use std::sync::Arc;
 
 use crate::agent::model::registry::ModelRegistry;
 use crate::protocol::error::XyError;
-use crate::protocol::model_config::XyModelConfig;
+use crate::protocol::model::XyModelConfig;
+use crate::protocol::model::{ThinkingLevel, XyModelMeta};
 use crate::protocol::ports::XyModel;
-use crate::protocol::types::{ThinkingLevel, XyModelMeta};
 
 /// Manages model registry, current model selection, and thinking level.
 ///
-/// Owned by [`AgentCapabilities`](crate::agent::session::AgentCapabilities) as a composed field.
+/// Owned by [`AgentCapabilities`](crate::agent::capabilities::AgentCapabilities) as a composed field.
 /// The provider is built via an injected `model_builder` (the agent layer must
 /// not call `infra::provider::factory::build_provider` directly; the composition
 /// root supplies the builder).
@@ -222,9 +222,9 @@ mod tests {
     use super::ModelManager;
     use crate::agent::model::registry::ModelRegistry;
     use crate::protocol::error::XyError;
-    use crate::protocol::model_config::{XyModelConfig, XyModelKind};
+    use crate::protocol::model::{ThinkingLevel, XyModelMeta};
+    use crate::protocol::model::{XyModelConfig, XyModelKind};
     use crate::protocol::ports::XyModel;
-    use crate::protocol::types::{ThinkingLevel, XyModelMeta};
 
     type ModelBuilderFn =
         Arc<dyn Fn(&XyModelConfig) -> Result<Arc<dyn XyModel>, String> + Send + Sync>;
@@ -381,7 +381,7 @@ mod tests {
     /// the matching OpenAI `reasoning_effort` (or Omit when Off).
     #[test]
     fn cycle_then_resolve_openai_effort_matches_level() {
-        use crate::protocol::types::{
+        use crate::protocol::model::{
             ResolvedThinking, ThinkingAdapterKind, resolve_thinking_for_request,
         };
 

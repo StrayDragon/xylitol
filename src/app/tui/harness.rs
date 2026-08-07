@@ -19,11 +19,11 @@ use crate::app::core::driver::{
     ReloadStepReport, RuntimeReloadReport, SessionListEntry, SessionStats, XyDriver, XyDriverError,
     XyEvent,
 };
+use crate::protocol::model::ThinkingLevel;
 use crate::protocol::ports::XyBashResult;
 use crate::protocol::session::{
     SessionEntry, SessionTreeKind, SessionTreeNode, SessionTreeTravel, plan_message_history_travel,
 };
-use crate::protocol::types::ThinkingLevel;
 
 use super::effects::{drain_pending, refresh_footer_tokens, run_interactive_bang};
 use super::host::{HostEvent, HostSession};
@@ -72,7 +72,7 @@ pub struct ScriptedDriver {
     set_session_name_for_calls: Mutex<Vec<(String, String)>>,
     delete_session_calls: Mutex<Vec<String>>,
     /// Optional fixed estimate for footer harness (c1035).
-    estimate_override: Option<crate::protocol::types::ContextTokenEstimate>,
+    estimate_override: Option<crate::protocol::model::ContextTokenEstimate>,
     /// Count of [`XyDriver::estimate_context_tokens`] (c1860 double-kick guard).
     estimate_calls: AtomicUsize,
     reload_runtime_calls: AtomicUsize,
@@ -310,7 +310,7 @@ impl ScriptedDriver {
     /// Fixed [`XyDriver::estimate_context_tokens`] result for footer harness (c1035).
     pub fn set_estimate_override(
         &mut self,
-        estimate: Option<crate::protocol::types::ContextTokenEstimate>,
+        estimate: Option<crate::protocol::model::ContextTokenEstimate>,
     ) {
         self.estimate_override = estimate;
     }
@@ -627,7 +627,7 @@ impl XyDriver for ScriptedDriver {
 
     async fn estimate_context_tokens(
         &self,
-    ) -> Result<crate::protocol::types::ContextTokenEstimate, XyDriverError> {
+    ) -> Result<crate::protocol::model::ContextTokenEstimate, XyDriverError> {
         self.estimate_calls.fetch_add(1, Ordering::SeqCst);
         if let Some(est) = self.estimate_override.clone() {
             return Ok(est);
@@ -3596,7 +3596,7 @@ mod slice_tests {
     #[tokio::test]
     async fn c1035_heuristic_shows_tilde() {
         use crate::app::tui::effects::refresh_footer_tokens;
-        use crate::protocol::types::{ContextTokenEstimate, TokenProvenance};
+        use crate::protocol::model::{ContextTokenEstimate, TokenProvenance};
 
         let mut session = HostSession::new_product_ui_with_meta(
             TestTerminal::new(80, 24),
@@ -3628,7 +3628,7 @@ mod slice_tests {
     #[tokio::test]
     async fn c1680_no_percent_when_window_zero() {
         use crate::app::tui::effects::refresh_footer_tokens;
-        use crate::protocol::types::{ContextTokenEstimate, TokenProvenance};
+        use crate::protocol::model::{ContextTokenEstimate, TokenProvenance};
 
         let mut session = HostSession::new_product_ui_with_meta(
             TestTerminal::new(80, 24),
@@ -3667,7 +3667,7 @@ mod slice_tests {
     #[tokio::test]
     async fn c1680_api_derived_percent() {
         use crate::app::tui::effects::refresh_footer_tokens;
-        use crate::protocol::types::{ContextTokenEstimate, TokenProvenance};
+        use crate::protocol::model::{ContextTokenEstimate, TokenProvenance};
 
         let mut session = HostSession::new_product_ui_with_meta(
             TestTerminal::new(80, 24),
@@ -3702,7 +3702,7 @@ mod slice_tests {
     #[tokio::test]
     async fn c1035_api_shows_exact_used() {
         use crate::app::tui::effects::refresh_footer_tokens;
-        use crate::protocol::types::{ContextTokenEstimate, TokenProvenance};
+        use crate::protocol::model::{ContextTokenEstimate, TokenProvenance};
 
         let mut session = HostSession::new_product_ui_with_meta(
             TestTerminal::new(80, 24),
@@ -3733,7 +3733,7 @@ mod slice_tests {
 
     #[tokio::test]
     async fn c1035_travel_refreshes_footer_token() {
-        use crate::protocol::types::{ContextTokenEstimate, TokenProvenance};
+        use crate::protocol::model::{ContextTokenEstimate, TokenProvenance};
 
         let mut session = HostSession::new_product_ui_with_meta(
             TestTerminal::new(80, 24),
@@ -3792,7 +3792,7 @@ mod slice_tests {
 
     #[tokio::test]
     async fn c1730_compaction_end_refreshes_footer_token() {
-        use crate::protocol::types::{ContextTokenEstimate, TokenProvenance};
+        use crate::protocol::model::{ContextTokenEstimate, TokenProvenance};
 
         let mut session = HostSession::new_product_ui_with_meta(
             TestTerminal::new(80, 24),
@@ -3839,7 +3839,7 @@ mod slice_tests {
 
     #[tokio::test]
     async fn c1730_turn_end_refreshes_footer_token() {
-        use crate::protocol::types::{ContextTokenEstimate, TokenProvenance};
+        use crate::protocol::model::{ContextTokenEstimate, TokenProvenance};
 
         let mut session = HostSession::new_product_ui_with_meta(
             TestTerminal::new(80, 24),
@@ -3897,7 +3897,7 @@ mod slice_tests {
 
     #[tokio::test]
     async fn c1035_stream_closed_requests_footer_refresh() {
-        use crate::protocol::types::{ContextTokenEstimate, TokenProvenance};
+        use crate::protocol::model::{ContextTokenEstimate, TokenProvenance};
 
         let mut session = HostSession::new_product_ui_with_meta(
             TestTerminal::new(80, 24),
@@ -3944,7 +3944,7 @@ mod slice_tests {
 
     #[tokio::test]
     async fn c1860_stream_close_skips_estimate_after_turn_settled() {
-        use crate::protocol::types::{ContextTokenEstimate, TokenProvenance};
+        use crate::protocol::model::{ContextTokenEstimate, TokenProvenance};
 
         let mut session = HostSession::new_product_ui_with_meta(
             TestTerminal::new(80, 24),
@@ -4002,7 +4002,7 @@ mod slice_tests {
 
     #[tokio::test]
     async fn c1035_cli_restore_and_resume_refresh_footer_token() {
-        use crate::protocol::types::{ContextTokenEstimate, TokenProvenance};
+        use crate::protocol::model::{ContextTokenEstimate, TokenProvenance};
 
         let mut session = HostSession::new_product_ui_with_meta(
             TestTerminal::new(80, 24),

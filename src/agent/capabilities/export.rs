@@ -10,10 +10,10 @@ use std::sync::Arc;
 
 use serde_json::Value;
 
-use crate::agent::text::xml_escape;
 use crate::protocol::error::XyError;
 use crate::protocol::ports::{XyExportIo, XySessionStore};
 use crate::protocol::session::{MessageEntry, SessionEntry, message_role};
+use crate::utils::xml_escape;
 
 fn session_err(e: impl Into<String>) -> XyError {
     XyError::Session(anyhow::anyhow!(e.into()))
@@ -22,7 +22,7 @@ fn session_err(e: impl Into<String>) -> XyError {
 /// Stateful export/import collaborator — owns the [`XyExportIo`] port.
 ///
 /// The session store is borrowed per call (passed as `&dyn XySessionStore` +
-/// session id) so the [`crate::agent::session::AgentCapabilities`] remains the single
+/// session id) so the [`crate::agent::capabilities::AgentCapabilities`] remains the single
 /// holder of session context (design §4.1).
 pub struct SessionExporter {
     io: Option<Arc<dyn XyExportIo>>,

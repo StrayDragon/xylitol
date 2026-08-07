@@ -1,7 +1,7 @@
 kind: llman.sdd.spec
 name: "agent-session"
 purpose: Agent 会话管理 — 会话生命周期、能力状态、prompt 构造与回合编排。
-valid_scope[2]: src/agent/session/,src/protocol/
+valid_scope[2]: src/agent/capabilities/,src/protocol/
 requirements[36]{req_id,title,statement}:
   a1,"agent-session",System MUST 提供 AgentSession，封装 prompt→model→tools→loop 与完整事件流，仅持有编排状态；system prompt MUST 由组合根注入的上下文（AGENTS.md、配置 system prompt、append prompts）组装，MUST NOT 使用硬编码回退。
   a2,回合事件,AgentSession MUST 每轮发出：turn_start、message_start、message_update（流式）、message_end。
@@ -26,14 +26,14 @@ requirements[36]{req_id,title,statement}:
   as33,管理器提取到兄弟模块,AgentSession 协作者（ModelManager、CompactionOrchestrator、SkillManager）MUST 位于所属子系统专用模块（model/manager.rs、compaction/orchestrator.rs、prompt/skills.rs），不得作为 agent/ 顶层孤儿文件；AgentSession 以字段组合它们。
   as34,SessionStore 端口,"System MUST 在 protocol 定义 SessionStore 抽象会话持久化；infra::session::SessionManager MUST 实现它，tests/support/ MUST 存在测试内存双实现；agent/ MUST 以 Arc<dyn SessionStore> 持有 store。"
   as35,导出 IO 端口,"AgentSession 的 export_to_html、export_to_jsonl、import_from_jsonl MUST 经注入的 Arc<dyn protocol::export::ExportIo> 做文件 I/O，不得直接调用 std::fs，使 agent 层无文件系统副作用且未来后端（gist、S3）可不改 agent 代码。"
-  as36,bang 前缀在 agent,"用户输入 bang 解析器（!cmd / !!cmd）MUST 位于 agent::session::bang，MUST 与 AgentSession 同住 agent，因其编码 CLI/agent 交互语法。"
-  as37,SessionExporter 在 agent,"会话导出/导入渲染与解析辅助（render_html、render_jsonl、parse_jsonl）MUST 位于 agent::session::export，MUST 与 AgentSession 同住 agent，因其属于导出命令编排。"
+  as36,bang 前缀在 agent,"用户输入 bang 解析器（!cmd / !!cmd）MUST 位于 agent::capabilities::bang，MUST 与 AgentSession 同住 agent，因其编码 CLI/agent 交互语法。"
+  as37,SessionExporter 在 agent,"会话导出/导入渲染与解析辅助（render_html、render_jsonl、parse_jsonl）MUST 位于 agent::capabilities::export，MUST 与 AgentSession 同住 agent，因其属于导出命令编排。"
   as38,可选 bash 导出,AgentSession MUST 将 bash_executor 与 export_io 持有为 Option<Arc<端口 trait>>；execute_bash 与 export_to_html/export_to_jsonl/import_from_jsonl 在对应槽为 None 时 MUST 返回清晰未配置错误，使最小对话 agent 不必强制携带 bash 或导出能力。
   as39,能力状态在 Session,AgentSession MUST 拥有运行时可变能力状态（tools ToolSet、permission engine、hooks、active system prompt），使 Agent facade setter 可变更且 run 每轮快照；AgentLoop MUST NOT 重复此状态，且 AgentLoop 上 hooks 与 tool_mode 字段重复 MUST 移除。
   as40,Agent 重命名调用点,AgentSession→Agent 重命名 MUST 更新全部调用点（agent/builder.rs、agent/runtime/react.rs、app/core/composition.rs、app/core/driver.rs、app/rpc.rs、app/server/rest.rs、tests/bdd.rs、公共 API 快照测试）；快照 MUST 重新生成且重命名 MUST NOT 改变行为。
   as41,PermissionGate 提取,PermissionGate 协作者 MUST 持有 permission 端口并暴露 get_permission 返回 Arc<dyn XyPermission>，使 react.rs 继续做 tool_name→capability 路由；三个无生产调用点的死方法 check_permission_read/write/network MUST 移除。
-  as42,stats 计算外移,get_session_stats 聚合逻辑 MUST 移出 Agent 主体至 agent/session/stats.rs 的 compute 函数（接收 session store 与 session id）；Agent 方法 MUST 变为一行委托，主体不含聚合逻辑。
-  as43,trust 不在 agent 层,"项目 trust 决策 MUST 经 infra trust store + 应用面（Driver / `/trust`）路径；agent 层 MUST NOT 暴露 save_trust_decision 或 agent/session/trust.rs（曾为无生产调用方的预留自由函数，已删除）。"
+  as42,stats 计算外移,get_session_stats 聚合逻辑 MUST 移出 Agent 主体至 agent/capabilities/stats.rs 的 compute 函数（接收 session store 与 session id）；Agent 方法 MUST 变为一行委托，主体不含聚合逻辑。
+  as43,trust 不在 agent 层,"项目 trust 决策 MUST 经 infra trust store + 应用面（Driver / `/trust`）路径；agent 层 MUST NOT 暴露 save_trust_decision 或 agent/capabilities/trust.rs（曾为无生产调用方的预留自由函数，已删除）。"
   as44,死代码清理,"经 grep 确认零生产调用点后，Agent 上死方法 MUST 移除：整个 steering 域（steer、follow_up、clear_queue、pending_message_count、has_pending_steer、get_steering_messages、get_follow_up_messages、drain_queued_messages、message_queue、message_queue_mut）、process_prompt、cycle_forward、cycle_backward、share_as_gist、registry_clone、set_append_prompt、compact_current_session、compaction_threshold、compaction_settings、register_template、register_templates、register_command、register_skill_commands；死 #[allow(dead_code)] MUST 一并移除。"
   as45,从 store 播种 history,"AgentRuntime::run_with_id（或等价入口）在已有 session 上开新一轮时 MUST 经 leaf 分支路径、经与 pi buildContextEntries 同构的 compaction-aware 裁切（取路径上最新 CompactionEntry：保留该摘要，并仅保留 firstKeptEntryId 起至该 compaction 前的条目及 compaction 之后的条目；无 compaction 则保留整条 leaf），再经统一 SessionEntry→AgentMessage 投影灌入 history（含 type=message 内的 LLM/Env 角色，以及 compaction/branchSummary 投影；bang-bash 仅接受 message+role=bashExecution），再追加本轮 user prompt；MUST 尊重 exclude_from_context。MUST NOT 把 firstKept 之前已被摘要的消息再送入工作 history；MUST NOT 每轮从空 history 起步；MUST NOT 仅过滤 Message 行而永久丢弃合法 bang-bash 或摘要上下文；MUST NOT 将旧顶层 type=bashExecution/bash_execution 提升为合法 history（此类行由 agent-session-store s20 跳过）。"
   as46,持久化带 tag 的 agent 部件,"ReAct/session 将 AssistantMessage/UserMessage 持久化为 SessionEntry::Message 时 MUST 写出 domain-message dm1 的 tagged content；从 store 恢复为 AgentMessage（as_agent_message 或等价）时 MUST 只接受 tagged 部件；遇旧 untagged/裸字符串 content MUST NOT 静默当成合法对话上下文（MUST 跳过该条目并可观测，对齐 agent-session-store s20），MUST NOT 把 thinking 与 text 糊成单一 Text。"
@@ -46,8 +46,8 @@ scenarios[15]{req_id,id,given,when,then,feature}:
   as31,"agent-renamed-capabilities-unit",能力聚合体,检查命名,为 AgentCapabilities（单测维护）,false
   as33,"no-orphan-managers-unit",src/agent/ 顶层,列表文件,无 manager.rs 孤子（单测维护）,false
   as34,"store-trait-field-unit",Agent 字段,检查类型,为 Arc<dyn SessionStore>,false
-  as36,"bang-in-agent-unit",bang 解析器,检查模块路径,位于 agent/session/bang.rs,false
-  as37,"exporter-in-agent-unit",导出渲染辅助,检查模块路径,位于 agent/session/export.rs,false
+  as36,"bang-in-agent-unit",bang 解析器,检查模块路径,位于 agent/capabilities/bang.rs,false
+  as37,"exporter-in-agent-unit",导出渲染辅助,检查模块路径,位于 agent/capabilities/export.rs,false
   as39,"loop-no-dup-state-unit",AgentLoop 字段,检查重复状态,工具与 hooks 仅在 AgentSession,false
   as41,"permission-gate-extracted-unit",PermissionGate 协作者,检查 get_permission,返回 Arc（单测维护）,false
   as42,"stats-delegated-unit",get_session_stats,检查主体,为一行委托至 stats::compute,false

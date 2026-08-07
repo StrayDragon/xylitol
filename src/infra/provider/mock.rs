@@ -3,8 +3,8 @@ use async_trait::async_trait;
 use crate::protocol::error::XyError;
 use crate::protocol::message::LlmMessage;
 use crate::protocol::message::XyStopReason;
+use crate::protocol::model::{XyChunk, XyToolSchema};
 use crate::protocol::ports::{XyGenerateOptions, XyModel, XyStream};
-use crate::protocol::types::{XyChunk, XyToolSchema};
 
 /// Drop-in mock for tests. Returns a fixed text response.
 pub struct MockXyModel {

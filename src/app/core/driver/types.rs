@@ -4,8 +4,8 @@ use std::pin::Pin;
 
 use futures::Stream;
 
+use crate::protocol::model::{ThinkingLevel, XyModelMeta};
 use crate::protocol::session::{SessionEntry, SessionTreeKind};
-use crate::protocol::types::{ThinkingLevel, XyModelMeta};
 
 /// One step in a [`RuntimeReloadReport`] (c1120).
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -170,10 +170,10 @@ impl LoadedResourcesSnapshot {
 }
 
 /// Re-export so XyDriver implementors under surfaces can name the return type
-/// without importing `crate::agent::session` directly (layering: surfaces use
+/// without importing `crate::agent::capabilities` directly (layering: surfaces use
 /// the XyDriver seam). Surfaces reference this as
 /// `crate::app::core::driver::SessionStats`.
-pub use crate::agent::session::{QueueStats, SessionStats};
+pub use crate::agent::capabilities::{QueueStats, SessionStats};
 
 /// Session resume list row (from [`XySessionStore::list_sessions`]).
 pub use crate::protocol::ports::SessionListEntry;
@@ -186,7 +186,7 @@ pub fn estimate_from_session_entries(
     entries: &[SessionEntry],
     model_id: Option<String>,
     tokenizer_override: Option<xylitol_ai_bridge::registry::TokenizerOverride>,
-) -> crate::protocol::types::ContextTokenEstimate {
+) -> crate::protocol::model::ContextTokenEstimate {
     use crate::agent::compaction::{EstimateOpts, estimate_from_session_entries as estimate};
     estimate(
         entries,

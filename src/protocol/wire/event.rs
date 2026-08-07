@@ -260,7 +260,7 @@ impl TryFrom<&Event> for XyEvent {
                 reason,
                 generation,
             } => {
-                use crate::protocol::types::{ContextTokenEstimate, TokenProvenance};
+                use crate::protocol::model::{ContextTokenEstimate, TokenProvenance};
                 let provenance = match provenance.as_str() {
                     "Api" => TokenProvenance::Api,
                     "RemoteCount" => TokenProvenance::RemoteCount,
@@ -356,7 +356,7 @@ mod tests {
 
     #[test]
     fn context_token_settlement_roundtrips_through_wire_event() {
-        use crate::protocol::types::{ContextTokenEstimate, TokenProvenance};
+        use crate::protocol::model::{ContextTokenEstimate, TokenProvenance};
         let domain = XyEvent::ContextTokenSettlement {
             estimate: ContextTokenEstimate {
                 tokens: 42,

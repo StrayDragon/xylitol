@@ -132,7 +132,7 @@ pub struct HostSession<T: Terminal> {
     /// stream close must not kick a second estimate / independent-root span.
     run_applied_token_settlement: bool,
     /// Pending settlement snapshot to paint on next drain (with driver context_window).
-    pending_settlement_estimate: Option<crate::protocol::types::ContextTokenEstimate>,
+    pending_settlement_estimate: Option<crate::protocol::model::ContextTokenEstimate>,
     /// `tui.editor_history_seed_sessions` (c1560).
     editor_history_seed_sessions: u32,
     /// Background ↑/↓ history seed (startup / `/session-new`); host loop merges into select.
@@ -435,7 +435,7 @@ impl<T: Terminal> HostSession<T> {
     }
 
     /// Silent UI sync for thinking level (border + footer only).
-    pub fn apply_thinking_level_ui(&mut self, level: crate::protocol::types::ThinkingLevel) {
+    pub fn apply_thinking_level_ui(&mut self, level: crate::protocol::model::ThinkingLevel) {
         let Some(root) = self.ui_root.as_ref() else {
             return;
         };
@@ -628,7 +628,7 @@ impl<T: Terminal> HostSession<T> {
     /// Apply a shared context-token settlement (c1860) — paint on next drain.
     pub fn note_context_token_settlement(
         &mut self,
-        estimate: crate::protocol::types::ContextTokenEstimate,
+        estimate: crate::protocol::model::ContextTokenEstimate,
         reason: &str,
     ) {
         self.pending_settlement_estimate = Some(estimate);
@@ -639,7 +639,7 @@ impl<T: Terminal> HostSession<T> {
 
     pub fn take_pending_settlement_estimate(
         &mut self,
-    ) -> Option<crate::protocol::types::ContextTokenEstimate> {
+    ) -> Option<crate::protocol::model::ContextTokenEstimate> {
         self.pending_settlement_estimate.take()
     }
 

@@ -20,7 +20,7 @@ description: >-
 
 - **渲染/组件/键协议**：只用 `xylitol_tui`。产品面 host 驱动（`dispatch_input` / `request_render` / `try_render` / `idle_tick`）；勿在产品路径调 `TUI::start()`。
 - **事件合流**：本面异步 host（如 `tokio::select!`）；不把 tokio 绑进 `xylitol-tui`。
-- **Agent**：只经 `app/core/driver::XyDriver` 与 `composition::build_agent`；禁止 `agent::session` / `runtime` / `infra`。
+- **Agent**：只经 `app/core/driver::XyDriver` 与 `composition::build_agent`；禁止 `agent::capabilities` / `runtime` / `infra`。
 - **slash**：本面解析；执行经 `app/core/dispatch` + `protocol::Command`。
 
 ## 2. 分工

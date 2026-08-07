@@ -103,9 +103,9 @@ pub fn build_system_prompt(opts: &SystemPromptOpts) -> String {
              <available_skills>\n",
         );
         for skill in visible_skills {
-            let name = crate::agent::text::xml_escape(&skill.name);
-            let desc = crate::agent::text::xml_escape(skill.description.as_deref().unwrap_or(""));
-            let loc = crate::agent::text::xml_escape(&skill.source_info.path.to_string_lossy());
+            let name = crate::utils::xml_escape(&skill.name);
+            let desc = crate::utils::xml_escape(skill.description.as_deref().unwrap_or(""));
+            let loc = crate::utils::xml_escape(&skill.source_info.path.to_string_lossy());
             prompt.push_str(&format!(
                 "  <skill>\n    <name>{name}</name>\n    <description>{desc}</description>\n    <location>{loc}</location>\n  </skill>\n"
             ));

@@ -8,9 +8,9 @@ use tokio_tungstenite::{connect_async, tungstenite::Message};
 use tokio_util::sync::CancellationToken;
 
 use crate::app::server::ws::{ClientFrame, ServerFrame};
+use crate::protocol::model::ThinkingLevel;
 use crate::protocol::ports::XyBashResult;
 use crate::protocol::session::{SessionEntry, SessionTreeKind, SessionTreeNode, SessionTreeTravel};
-use crate::protocol::types::ThinkingLevel;
 
 use super::XyDriver;
 use super::XyDriverError;
@@ -554,7 +554,7 @@ impl XyDriver for XyRemoteDriver {
 
     async fn estimate_context_tokens(
         &self,
-    ) -> Result<crate::protocol::types::ContextTokenEstimate, XyDriverError> {
+    ) -> Result<crate::protocol::model::ContextTokenEstimate, XyDriverError> {
         let entries = self.get_messages().await.unwrap_or_default();
         // Remote surface: tokenizer mapping lives on the server; do not inject
         // local AppConfig override here.
@@ -624,10 +624,10 @@ impl XyDriver for XyRemoteDriver {
         })
     }
 
-    fn queue_stats(&self) -> crate::agent::session::QueueStats {
+    fn queue_stats(&self) -> crate::agent::capabilities::QueueStats {
         self.block_on(async {
             let data = self.get_data("queue").await?;
-            Ok(crate::agent::session::QueueStats {
+            Ok(crate::agent::capabilities::QueueStats {
                 steer_count: data
                     .get("steer_count")
                     .and_then(|n| n.as_u64())

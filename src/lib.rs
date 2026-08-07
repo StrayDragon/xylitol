@@ -26,7 +26,7 @@
 //! [`embed::XyInProcessDriver`], [`embed::XyDriver`], [`embed::BuildAgentOptions`],
 //! [`embed::McpSession`]. Script hooks are configured via
 //! [`embed::BuildAgentOptions::hooks_config`]; replaceable port is [`XyHookBus`].
-//! Do **not** treat `infra::*` or `agent::session::*` as a stability promise —
+//! Do **not** treat `infra::*` or `agent::capabilities::*` as a stability promise —
 //! extend the seam instead.
 //!
 //! Not exported from `embed`: `dispatch`, `XyRemoteDriver`, infra concrete types
@@ -37,14 +37,15 @@ pub mod app;
 pub mod embed;
 pub mod infra;
 pub mod protocol;
+pub mod utils;
 
 // ── Curated `pub use` (c500 / architecture.ar09) ─────────────────────
 
 pub use crate::app::core::driver::{XyDriver, XyDriverError, XyInProcessDriver};
 pub use crate::protocol::error::{XyError, XyToolError};
 pub use crate::protocol::lifecycle::{XyEvent, XyEventError};
-pub use crate::protocol::model_config::{XyModelConfig, XyModelKind};
-pub use crate::protocol::types::{XyChunk, XyModelMeta, XyToolSchema};
+pub use crate::protocol::model::{XyChunk, XyModelMeta, XyToolSchema};
+pub use crate::protocol::model::{XyModelConfig, XyModelKind};
 pub use crate::protocol::{
     NoopHookBus, XyBashExecutor, XyEventSink, XyExportIo, XyHookBus, XyHookOutcome, XyModel,
     XyModelBuilder, XyPermission, XySecretResolver, XySessionStore, XyStream, XyTool,

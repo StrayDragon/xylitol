@@ -382,7 +382,7 @@ pub(crate) fn w_switch_model_cycle(agent: &AgentState) {
         std::sync::Arc::new(mgr);
     let sink: std::sync::Arc<dyn xylitol::XyEventSink> =
         std::sync::Arc::new(xylitol::infra::event::EventBus::new());
-    let mut session = xylitol::agent::session::AgentCapabilities::new(
+    let mut session = xylitol::agent::capabilities::AgentCapabilities::new(
         agent.registry.borrow().clone(),
         xylitol::agent::tools::ToolSet::from_iter(xylitol::infra::tools::default_tools()),
         store,
@@ -400,8 +400,8 @@ pub(crate) fn w_switch_model_cycle(agent: &AgentState) {
         Some(std::sync::Arc::new(
             xylitol::infra::export::StdExportIo::new(),
         )),
-        xylitol::agent::session::QueueMode::default(),
-        xylitol::agent::session::QueueMode::default(),
+        xylitol::agent::capabilities::QueueMode::default(),
+        xylitol::agent::capabilities::QueueMode::default(),
         None,
     );
     // Select first model then cycle to the next

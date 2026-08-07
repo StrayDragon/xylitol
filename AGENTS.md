@@ -43,7 +43,7 @@
 | 层 | 角色 |
 |---|---|
 | `protocol/` | wire + ports + 根上共享类型 |
-| `agent/` | 薄编排（ReAct、session、投影） |
+| `agent/` | 薄编排（ReAct、capabilities、投影） |
 | `infra/` | ports 实现与 vendor |
 | `app/` | 应用面 + `core` seam |
 | `packages/xylitol-tui` | 通用 TUI 引擎（零引用主 crate） |

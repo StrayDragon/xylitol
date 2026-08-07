@@ -3,8 +3,8 @@
 //! Layout (scheme B):
 //! - [`wire`] — client ↔ core `Command` / `Event` (transport-agnostic)
 //! - [`ports`] — agent ↔ infra replaceable traits (`XyModel`, `XyTool`, …)
-//! - root modules — types that appear in port/wire signatures (`AgentMessage`,
-//!   `XyEvent`, session entries, …)
+//! - clustered root types — [`model`], [`session`], plus flat modules
+//!   (`message`, `lifecycle`, …) that appear in port/wire signatures
 //!
 //! Dependency: root types MUST NOT depend on `wire`/`ports`; `wire` MUST NOT
 //! depend on `ports`; `ports` MAY use root types + bridge DTO. This module
@@ -17,12 +17,11 @@ pub mod compaction_config;
 pub mod error;
 pub mod lifecycle;
 pub mod message;
-pub mod model_config;
+pub mod model;
 pub mod resource;
 pub mod session;
 pub mod source_info;
 pub mod tool_timeout;
-pub mod types;
 
 // Wire Command/Event at protocol root (legacy call sites).
 pub use wire::{Command, Envelope, ErrorCode, Event};
@@ -40,6 +39,6 @@ pub use ports::{
 pub use error::{XyError, XyToolError};
 pub use lifecycle::{XyEvent, XyEventError};
 pub use message::{AgentMessage, AgentPart, EnvMessage, LlmMessage};
-pub use model_config::{XyModelConfig, XyModelKind};
+pub use model::{XyChunk, XyModelMeta, XyToolSchema};
+pub use model::{XyModelConfig, XyModelKind};
 pub use tool_timeout::{MAX_TOOL_TIMEOUT_SECS, ToolTimeout, ToolTimeoutError};
-pub use types::{XyChunk, XyModelMeta, XyToolSchema};

@@ -3,8 +3,8 @@ use std::cell::{Cell, RefCell};
 use std::sync::Arc;
 
 use xylitol::XyDriverError;
+use xylitol::agent::capabilities::{ContextUsage, ModelRegistry};
 use xylitol::agent::runtime::XyEvent;
-use xylitol::agent::session::{ContextUsage, ModelRegistry};
 use xylitol::infra::config::types::HookEntry;
 use xylitol::infra::config::value::InfraSecretResolver;
 use xylitol::infra::hooks::DispatchResult;

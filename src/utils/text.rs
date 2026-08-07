@@ -1,4 +1,4 @@
-//! Pure text utilities shared by the vocabulary layer.
+//! Pure text utilities (XML escape, etc.).
 
 /// Escape a string for safe inclusion in XML/HTML text content.
 pub fn xml_escape(s: &str) -> String {

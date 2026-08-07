@@ -11,8 +11,8 @@
 
 use std::sync::atomic::{AtomicU64, Ordering};
 
+use crate::protocol::model::ContextTokenEstimate;
 use crate::protocol::session::SessionEntry;
-use crate::protocol::types::ContextTokenEstimate;
 
 use super::token_estimator::{
     EstimateOpts, emit_token_estimate_obs, estimate_from_session_entries,

@@ -6,7 +6,7 @@ use super::super::models_picker::{ModelPickerRow, PendingModelChoice};
 use super::super::slots::EditorSlot;
 use super::UiRoot;
 use super::empty_widgets::empty_models_list;
-use crate::protocol::types::ThinkingLevel;
+use crate::protocol::model::ThinkingLevel;
 
 impl UiRoot {
     /// Mount fuzzy model picker in the editor slot (c630 / c1470 levels).

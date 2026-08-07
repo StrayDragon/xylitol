@@ -51,7 +51,7 @@ use crate::app::tui::widgets::{
     GlyphSet, ScrollbackFold, ScrollbackPaintCache, footer_thinking_label, format_footer_text,
 };
 use crate::protocol::error::XyToolError;
-use crate::protocol::types::ThinkingLevel;
+use crate::protocol::model::ThinkingLevel;
 
 /// User choice from `/session-import` confirm slot (c1010).
 #[derive(Debug, Clone, PartialEq, Eq)]

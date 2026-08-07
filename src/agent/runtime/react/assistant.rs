@@ -114,7 +114,7 @@ pub(crate) fn streaming_message_update(
 pub(crate) fn current_provider_model(
     model_manager: &Mutex<crate::agent::model::manager::ModelManager>,
 ) -> (String, String) {
-    let mm = crate::agent::lock::lock_mutex(model_manager);
+    let mm = crate::utils::lock_mutex(model_manager);
     mm.current_model()
         .map(|m| (m.config.provider_name().to_string(), m.config.model.clone()))
         .unwrap_or_default()

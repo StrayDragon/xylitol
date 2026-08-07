@@ -7,8 +7,8 @@ use async_trait::async_trait;
 
 use crate::protocol::error::XyError;
 use crate::protocol::message::LlmMessage;
-use crate::protocol::model_config::XyModelConfig;
-use crate::protocol::types::{ThinkingBudgets, ThinkingLevel, ThinkingLevelMap, XyChunk};
+use crate::protocol::model::XyModelConfig;
+use crate::protocol::model::{ThinkingBudgets, ThinkingLevel, ThinkingLevelMap, XyChunk};
 
 /// Streaming response from an LLM provider.
 pub type XyStream = Pin<Box<dyn futures::Stream<Item = Result<XyChunk, XyError>> + Send>>;
@@ -62,7 +62,7 @@ pub trait XyModel: Send + Sync {
     async fn generate_stream(
         &self,
         messages: Vec<LlmMessage>,
-        tools: &[crate::protocol::types::XyToolSchema],
+        tools: &[crate::protocol::model::XyToolSchema],
         stream: bool,
         options: XyGenerateOptions,
     ) -> Result<XyStream, XyError>;

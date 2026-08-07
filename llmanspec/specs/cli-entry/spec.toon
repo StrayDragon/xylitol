@@ -7,7 +7,7 @@ requirements[22]{req_id,title,statement}:
   r68,"source-enum",SlashCommandSource MUST 恰为 prompt 或 skill 之一（extension 若未实现 MUST NOT 作为产品必选项）。
   r69,"builtin-table","产品对外 slash 与 GetCommands 内建表 MUST 同源自同一产品命令 SSOT（见 app-tui-commands）；名称 MUST 以 session-* /model /exit 等产品名为准（PI_DELTAS A03）；MUST NOT 再以 pi 短名表（/tree /fork /export /compact /resume /new 等）作为 GetCommands 或文档的权威清单；产品解析 MUST NOT 将上述废弃短名识别为有效命令入口。"
   r70,dispatch,产品 TUI idle slash MUST 经 commands→effects→Driver/dispatch；MUST NOT 依赖已移除的 stdio rpc。
-  ce1,"app-directory","CLI 模块 MUST 位于 src/app/cli/，print MUST 为其子模式；app 面 MUST NOT reach agent::runtime / agent::session / agent::tools。"
+  ce1,"app-directory","CLI 模块 MUST 位于 src/app/cli/，print MUST 为其子模式；app 面 MUST NOT reach agent::runtime / agent::capabilities / agent::tools。"
   ce2,"no-silent-fallback","配置文件存在但零可加载模型时，经 bootstrap 的表面（TUI/print/--list-models/server）MUST 硬失败并明确报错指向配置，MUST NOT 静默回退到 env 占位默认（如 gpt-4o）后继续。"
   ce6,"driver-abstraction","MUST 提供 app::Driver；InProcessDriver 与 RemoteDriver MUST 同实现；切换本地/远程 MUST 只换构造。"
   ce7,"composition-root-ports","组合根 MUST 从 infra 构造 SessionStore/EventSink 注入装配；MUST NOT 经已删除的 agent::facade。"

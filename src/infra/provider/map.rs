@@ -19,8 +19,8 @@ use xylitol_ai_bridge::error::AiBridgeError;
 
 use crate::protocol::error::XyError;
 use crate::protocol::message::XyUsage;
+use crate::protocol::model::{ContextTokenEstimate, TokenProvenance, XyChunk, XyToolSchema};
 use crate::protocol::ports::XyStream;
-use crate::protocol::types::{ContextTokenEstimate, TokenProvenance, XyChunk, XyToolSchema};
 
 impl From<AiBridgeTokenProvenance> for TokenProvenance {
     fn from(value: AiBridgeTokenProvenance) -> Self {

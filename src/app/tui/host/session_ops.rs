@@ -208,7 +208,7 @@ impl<T: Terminal> HostSession<T> {
         &mut self,
         models: Vec<ModelInfo>,
         current_id: Option<String>,
-        current_thinking: crate::protocol::types::ThinkingLevel,
+        current_thinking: crate::protocol::model::ThinkingLevel,
     ) {
         let Some(root) = self.ui_root.as_ref() else {
             return;

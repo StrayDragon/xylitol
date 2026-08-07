@@ -2303,7 +2303,7 @@ fn streaming_paint_does_not_break_bash_ctrl_o_viewport() {
 #[test]
 fn models_picker_left_right_cycle_thinking_levels() {
     use super::layout::{ModelPickerRow, UiRoot};
-    use crate::protocol::types::ThinkingLevel;
+    use crate::protocol::model::ThinkingLevel;
     use crossterm::event::{KeyCode, KeyEvent, KeyModifiers};
     use xylitol_tui::{Component, InputEvent};
 

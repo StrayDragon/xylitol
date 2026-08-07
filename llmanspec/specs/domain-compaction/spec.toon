@@ -1,7 +1,7 @@
 kind: llman.sdd.spec
 name: "domain-compaction"
 purpose: "对话 compaction — n-gram 切点检测、LLM 摘要与 token 估计。"
-valid_scope[3]: src/agent/compaction/,src/agent/session/,src/infra/session/
+valid_scope[3]: src/agent/compaction/,src/agent/capabilities/,src/infra/session/
 requirements[27]{req_id,title,statement}:
   c1,token 估算使用统一 Usage 与多源计量,"System MUST 基于当前消息与可选 XyUsage 锚点估计上下文占用，并经 xylitol-ai-bridge accounting（或等价注入端口）按 Api 然后 RemoteCount 然后 LocalTokenizer 然后 Heuristic 的优先级解析；MUST 继续使用 canonical XyUsage，MUST NOT 再引入并行的第二套 usage 结构。"
   c2,应触发 compact,"当 CompactionSettings.enabled 为 true 且 context_window > 0 时，System MUST 在 contextTokens > contextWindow - reserveTokens（与 pi 同构；reserveTokens 来自 CompactionSettings）时判定应触发 compaction；enabled 为 false 时 MUST NOT 因用量触发；该判定所用 contextTokens MUST 与产品 footer / Driver 只读估计同源（同一 paa1 入口与 LocalTokenizer 闸），MUST NOT 另用独立的 message 字符串 len/4 总和，MUST NOT 再使用独立的百分比阈值（如 compaction_threshold / usage_ratio）作为触发 SSOT。"

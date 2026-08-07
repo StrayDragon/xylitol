@@ -238,7 +238,7 @@ impl LocalTokenizerGate {
 // ---------------------------------------------------------------------------
 
 /// Top-level model configuration section.
-/// Split from agent-level [`XyModelConfig`](crate::protocol::model_config::XyModelConfig) —
+/// Split from agent-level [`XyModelConfig`](crate::protocol::model::XyModelConfig) —
 /// this is YAML-facing; [`ModelEntry`] aliases resolve into runtime config.
 #[derive(Clone, Debug, Default, Serialize, Deserialize, JsonSchema)]
 #[serde(default)]
@@ -251,13 +251,13 @@ pub struct ModelsConfig {
 
 /// A single model alias entry.
 ///
-/// References [`XyModelKind`](crate::protocol::model_config::XyModelKind) for the provider;
+/// References [`XyModelKind`](crate::protocol::model::XyModelKind) for the provider;
 /// the kind's serde representation is the YAML wire format. Schema uses a string
 /// twin so domain stays free of schemars (c510).
 #[derive(Clone, Debug, Default, Serialize, Deserialize, JsonSchema)]
 pub struct ModelEntry {
     #[schemars(with = "String")]
-    pub provider: crate::protocol::model_config::XyModelKind,
+    pub provider: crate::protocol::model::XyModelKind,
     pub model: String,
     /// Optional custom base URL for OpenAI-compatible or Anthropic-compatible APIs.
     #[serde(default)]
@@ -464,13 +464,13 @@ impl AppConfig {
     /// Validate optional `thinking_levels` on every model entry (unknown names fail).
     pub fn validate_thinking_levels(&self) -> Result<(), String> {
         for (alias, entry) in &self.model.models {
-            crate::protocol::types::ThinkingLevel::resolve_configured_levels(
+            crate::protocol::model::ThinkingLevel::resolve_configured_levels(
                 entry.thinking,
                 entry.thinking_levels.as_deref(),
             )
             .map_err(|e| format!("models.{alias}: {e}"))?;
             if let Some(map) = &entry.thinking_level_map {
-                crate::protocol::types::validate_thinking_level_map(map)
+                crate::protocol::model::validate_thinking_level_map(map)
                     .map_err(|e| format!("models.{alias}: {e}"))?;
             }
         }
@@ -506,12 +506,12 @@ impl AppConfig {
         resolve_tokenizer_ref(&self.tokenizers, raw).ok()
     }
 
-    /// Resolve a model alias to a runtime [`XyModelConfig`](crate::protocol::model_config::XyModelConfig).
+    /// Resolve a model alias to a runtime [`XyModelConfig`](crate::protocol::model::XyModelConfig).
     pub fn resolve_model(
         &self,
         model_id: &str,
-    ) -> Result<crate::protocol::model_config::XyModelConfig, String> {
-        use crate::protocol::model_config::{XyModelConfig, XyModelKind};
+    ) -> Result<crate::protocol::model::XyModelConfig, String> {
+        use crate::protocol::model::{XyModelConfig, XyModelKind};
 
         let (kind, model_name, base_url, api) = if let Some(entry) = self.model.models.get(model_id)
         {
@@ -544,16 +544,16 @@ impl AppConfig {
         })
     }
 
-    /// Resolve a model alias to [`XyModelMeta`](crate::protocol::types::XyModelMeta) for the registry.
+    /// Resolve a model alias to [`XyModelMeta`](crate::protocol::model::XyModelMeta) for the registry.
     ///
     /// Composes [`resolve_model`](Self::resolve_model) with per‑model metadata (thinking support,
     /// context window size) from [`ModelEntry`] or sensible defaults.
     pub fn resolve_model_meta(
         &self,
         model_id: &str,
-    ) -> Result<crate::protocol::types::XyModelMeta, String> {
-        use crate::protocol::model_config::default_context_window_for;
-        use crate::protocol::types::XyModelMeta;
+    ) -> Result<crate::protocol::model::XyModelMeta, String> {
+        use crate::protocol::model::XyModelMeta;
+        use crate::protocol::model::default_context_window_for;
 
         let model_config = self.resolve_model(model_id)?;
         let entry = self.model.models.get(model_id);
@@ -563,7 +563,7 @@ impl AppConfig {
             .and_then(|e| (e.context_window > 0).then_some(e.context_window))
             .unwrap_or_else(|| default_context_window_for(model_config.kind));
 
-        let levels = crate::protocol::types::ThinkingLevel::resolve_configured_levels(
+        let levels = crate::protocol::model::ThinkingLevel::resolve_configured_levels(
             thinking,
             entry.and_then(|e| e.thinking_levels.as_deref()),
         )?;
@@ -590,11 +590,11 @@ impl AppConfig {
         })
     }
 
-    /// Resolve a named agent profile to a [`crate::protocol::model_config::ResolvedProfile`].
+    /// Resolve a named agent profile to a [`crate::protocol::model::ResolvedProfile`].
     pub fn resolve_profile(
         &self,
         name: &str,
-    ) -> Result<crate::protocol::model_config::ResolvedProfile, String> {
+    ) -> Result<crate::protocol::model::ResolvedProfile, String> {
         let profile = self.agents.profiles.get(name);
 
         let (model_ref, system_prompt, allowed_tools) = match profile {
@@ -616,7 +616,7 @@ impl AppConfig {
             })?;
         let model_config = self.resolve_model(model_id)?;
 
-        Ok(crate::protocol::model_config::ResolvedProfile {
+        Ok(crate::protocol::model::ResolvedProfile {
             model_config,
             system_prompt,
             allowed_tools,
@@ -627,7 +627,7 @@ impl AppConfig {
     /// Resolve the default agent profile.
     pub fn resolve_default_profile(
         &self,
-    ) -> Result<crate::protocol::model_config::ResolvedProfile, String> {
+    ) -> Result<crate::protocol::model::ResolvedProfile, String> {
         let name = if self.agents.default_profile.is_empty() {
             "default"
         } else {
@@ -1194,8 +1194,8 @@ session:
 #[cfg(test)]
 mod thinking_levels_tests {
     use super::*;
-    use crate::protocol::model_config::XyModelKind;
-    use crate::protocol::types::ThinkingLevel;
+    use crate::protocol::model::ThinkingLevel;
+    use crate::protocol::model::XyModelKind;
 
     fn fake_entry(thinking: bool, levels: Option<Vec<&str>>) -> ModelEntry {
         ModelEntry {

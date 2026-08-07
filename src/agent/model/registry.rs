@@ -10,9 +10,9 @@
 use std::collections::HashMap;
 use std::sync::Arc;
 
-use crate::protocol::model_config::{XyModelConfig, XyModelKind};
+use crate::protocol::model::XyModelMeta;
+use crate::protocol::model::{XyModelConfig, XyModelKind};
 use crate::protocol::ports::XySecretResolver;
-use crate::protocol::types::XyModelMeta;
 
 // ── Provider Config ─────────────────────────────────────────────────
 
@@ -308,7 +308,7 @@ pub fn build_default_model_meta(provider: &ProviderConfig) -> Option<XyModelMeta
     })
 }
 
-pub use crate::protocol::model_config::default_context_window_for;
+pub use crate::protocol::model::default_context_window_for;
 
 #[cfg(test)]
 mod tests {

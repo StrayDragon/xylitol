@@ -4,9 +4,9 @@ use std::path::Path;
 
 use async_trait::async_trait;
 
+use crate::protocol::model::ThinkingLevel;
 use crate::protocol::ports::XyBashResult;
 use crate::protocol::session::{SessionEntry, SessionTreeKind, SessionTreeNode, SessionTreeTravel};
-use crate::protocol::types::ThinkingLevel;
 
 use super::XyDriverError;
 use super::types::{
@@ -126,7 +126,7 @@ pub trait XyDriver: Send {
     /// mid-turn throttle, and stream-close **fallback** when no settlement was applied.
     async fn estimate_context_tokens(
         &self,
-    ) -> Result<crate::protocol::types::ContextTokenEstimate, XyDriverError>;
+    ) -> Result<crate::protocol::model::ContextTokenEstimate, XyDriverError>;
 
     /// List available slash commands.
     fn get_commands(&self) -> Vec<CommandInfo>;

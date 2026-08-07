@@ -5,8 +5,8 @@ use futures::StreamExt;
 
 use crate::agent::llm_project::project_for_llm;
 use crate::protocol::message::{AgentMessage, AgentPart, LlmMessage};
+use crate::protocol::model::XyChunk;
 use crate::protocol::ports::XyModel;
-use crate::protocol::types::XyChunk;
 
 // ── Prompt constants ───────────────────────────────────────────────
 
@@ -263,8 +263,8 @@ mod tests {
     use super::*;
     use crate::protocol::error::XyError;
     use crate::protocol::message::XyStopReason;
+    use crate::protocol::model::XyToolSchema;
     use crate::protocol::ports::{XyGenerateOptions, XyStream};
-    use crate::protocol::types::XyToolSchema;
     use async_trait::async_trait;
     use std::sync::Mutex;
 
