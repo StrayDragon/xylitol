@@ -1,8 +1,8 @@
 //! Live counterexample: Responses prompt-cache hit → prefix break → miss.
 //!
-//! Config (programmatic; dedicated, not `~/.config/xylitol`):
+//! Config (programmatic; dedicated file, never the global AppConfig):
 //! 1. `XYLITOL_LIVE_PROVIDER_CONFIG` path, else
-//! 2. `<repo>/configs/testing/live-provider.local.yaml`, else skip
+//! 2. `<global-dir>/dev/live-provider.yaml` (shared via ~/.config/xylitol), else skip
 //! 3. Field overrides: `XYLITOL_LIVE_*` / `OPENAI_API_KEY`
 //! 4. `XYLITOL_LIVE_PROVIDER=0|1` forces disable/enable
 //!
@@ -62,17 +62,6 @@ fn default_true() -> bool {
     true
 }
 
-fn workspace_root() -> PathBuf {
-    Path::new(env!("CARGO_MANIFEST_DIR"))
-        .join("../..")
-        .canonicalize()
-        .unwrap_or_else(|_| Path::new(env!("CARGO_MANIFEST_DIR")).join("../.."))
-}
-
-fn testing_config_dir() -> PathBuf {
-    workspace_root().join("configs").join("testing")
-}
-
 fn env_truthy(name: &str) -> Option<bool> {
     std::env::var(name).ok().map(|v| {
         matches!(
@@ -80,6 +69,33 @@ fn env_truthy(name: &str) -> Option<bool> {
             "1" | "true" | "yes" | "on"
         )
     })
+}
+
+/// Resolve the global config directory, same priority as the main crate's
+/// `infra::config::paths::resolve_global_dir`:
+/// 1. `$XYLITOL_CONFIG_DIR`
+/// 2. `$XDG_CONFIG_HOME/xylitol`
+/// 3. `~/.config/xylitol`
+///
+/// `get_env` is injected so unit tests can drive resolution deterministically
+/// without touching the process environment.
+fn resolve_global_dir(get_env: impl Fn(&str) -> Option<String>) -> Option<PathBuf> {
+    if let Some(dir) = get_env("XYLITOL_CONFIG_DIR").filter(|s| !s.is_empty()) {
+        return Some(PathBuf::from(dir));
+    }
+    if let Some(xdg) = get_env("XDG_CONFIG_HOME").filter(|s| !s.is_empty()) {
+        return Some(PathBuf::from(xdg).join("xylitol"));
+    }
+    get_env("HOME")
+        .filter(|s| !s.is_empty())
+        .map(|home| PathBuf::from(home).join(".config").join("xylitol"))
+}
+
+/// Dedicated live-provider config path: explicit env path wins, otherwise the
+/// shared `dev/live-provider.yaml` under the global config dir. `None` when
+/// neither is available (caller then skips).
+fn resolve_config_path(explicit: Option<PathBuf>, global_dir: Option<PathBuf>) -> Option<PathBuf> {
+    explicit.or_else(|| global_dir.map(|d| d.join("dev").join("live-provider.yaml")))
 }
 
 fn load_file(path: &Path) -> Result<LiveProviderFile, String> {
@@ -117,25 +133,26 @@ fn apply_env_overrides(file: &mut LiveProviderFile) {
     }
 }
 
-/// Resolve dedicated live-provider config. Never reads `~/.config/xylitol`.
-fn resolve_live_provider() -> ResolveOutcome {
-    let explicit = std::env::var("XYLITOL_LIVE_PROVIDER_CONFIG")
-        .ok()
-        .filter(|s| !s.is_empty())
-        .map(PathBuf::from);
-    let default_local = testing_config_dir().join("live-provider.local.yaml");
-    let path = match explicit {
-        Some(p) => p,
-        None => {
-            if !default_local.is_file() {
-                return ResolveOutcome::Skip(format!(
-                    "no dedicated config (copy configs/testing/live-provider.example.yaml → {})",
-                    default_local.display()
-                ));
-            }
-            default_local
-        }
+/// Resolve dedicated live-provider config. Never reads the global AppConfig
+/// (`~/.config/xylitol/config.yaml`); only the dedicated `dev/live-provider.yaml`.
+///
+/// `explicit` / `global_dir` are injected so unit tests can cover the full
+/// resolve matrix without touching the process environment.
+fn resolve_live_provider_from(
+    explicit: Option<PathBuf>,
+    global_dir: Option<PathBuf>,
+) -> ResolveOutcome {
+    let Some(path) = resolve_config_path(explicit, global_dir) else {
+        return ResolveOutcome::Skip(
+            "no XYLITOL_CONFIG_DIR/XDG_CONFIG_HOME/HOME to locate the global config dir".into(),
+        );
     };
+    if !path.is_file() {
+        return ResolveOutcome::Skip(format!(
+            "no dedicated config at {} (copy configs/testing/live-provider.example.yaml → <global-dir>/dev/live-provider.yaml, or run `just gen-live-provider-example`)",
+            path.display()
+        ));
+    }
 
     let mut file = match load_file(&path) {
         Ok(f) => f,
@@ -163,6 +180,15 @@ fn resolve_live_provider() -> ResolveOutcome {
         max_output_tokens: file.max_output_tokens,
         source: path,
     })
+}
+
+fn resolve_live_provider() -> ResolveOutcome {
+    let explicit = std::env::var("XYLITOL_LIVE_PROVIDER_CONFIG")
+        .ok()
+        .filter(|s| !s.is_empty())
+        .map(PathBuf::from);
+    let global_dir = resolve_global_dir(|k| std::env::var(k).ok());
+    resolve_live_provider_from(explicit, global_dir)
 }
 
 struct CapTokens {
@@ -303,4 +329,163 @@ async fn live_responses_prompt_cache_break_prefix_drops_cache_read() {
         "expected full cache miss after prefix break (miss={})",
         miss.cache_read
     );
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use std::fs;
+
+    fn env_map<'a>(entries: &'a [(&'a str, &'a str)]) -> impl Fn(&str) -> Option<String> + 'a {
+        move |k: &str| {
+            entries
+                .iter()
+                .find(|(name, _)| *name == k)
+                .map(|(_, v)| v.to_string())
+        }
+    }
+
+    fn temp_dir(tag: &str) -> PathBuf {
+        let dir =
+            std::env::temp_dir().join(format!("xylitol-live-cfg-{tag}-{}", std::process::id()));
+        let _ = fs::remove_dir_all(&dir);
+        fs::create_dir_all(&dir).unwrap();
+        dir
+    }
+
+    #[test]
+    fn global_dir_prefers_xy_config_dir() {
+        let env = env_map(&[
+            ("XYLITOL_CONFIG_DIR", "/custom/cfg"),
+            ("XDG_CONFIG_HOME", "/xdg"),
+            ("HOME", "/home/u"),
+        ]);
+        assert_eq!(resolve_global_dir(env), Some(PathBuf::from("/custom/cfg")));
+    }
+
+    #[test]
+    fn global_dir_falls_back_to_xdg() {
+        let env = env_map(&[("XDG_CONFIG_HOME", "/xdg"), ("HOME", "/home/u")]);
+        assert_eq!(resolve_global_dir(env), Some(PathBuf::from("/xdg/xylitol")));
+    }
+
+    #[test]
+    fn global_dir_falls_back_to_home_config() {
+        let env = env_map(&[("HOME", "/home/u")]);
+        assert_eq!(
+            resolve_global_dir(env),
+            Some(PathBuf::from("/home/u/.config/xylitol"))
+        );
+    }
+
+    #[test]
+    fn global_dir_none_without_any_anchor() {
+        assert_eq!(resolve_global_dir(|_| None), None);
+        // Empty values are treated as unset.
+        let env = env_map(&[("XYLITOL_CONFIG_DIR", ""), ("XDG_CONFIG_HOME", "")]);
+        assert_eq!(resolve_global_dir(env), None);
+    }
+
+    #[test]
+    fn config_path_explicit_wins_over_global_dir() {
+        let explicit = Some(PathBuf::from("/tmp/explicit.yaml"));
+        let global = Some(PathBuf::from("/g"));
+        assert_eq!(
+            resolve_config_path(explicit, global),
+            Some(PathBuf::from("/tmp/explicit.yaml"))
+        );
+        // Explicit path wins even when no global dir can be located.
+        assert_eq!(
+            resolve_config_path(Some(PathBuf::from("/tmp/explicit.yaml")), None),
+            Some(PathBuf::from("/tmp/explicit.yaml"))
+        );
+    }
+
+    #[test]
+    fn config_path_defaults_to_dev_live_provider() {
+        assert_eq!(
+            resolve_config_path(None, Some(PathBuf::from("/g"))),
+            Some(PathBuf::from("/g/dev/live-provider.yaml"))
+        );
+        assert_eq!(resolve_config_path(None, None), None);
+    }
+
+    fn write_live_provider(dir: &Path, enabled: bool) -> PathBuf {
+        let path = dir.join("dev").join("live-provider.yaml");
+        fs::create_dir_all(path.parent().unwrap()).unwrap();
+        fs::write(
+            &path,
+            format!(
+                "enabled: {enabled}\nbase_url: http://127.0.0.1:9/v1\nmodel: test-model\napi_key: sk-local\nmax_output_tokens: 16\nserial: true\n"
+            ),
+        )
+        .unwrap();
+        path
+    }
+
+    #[test]
+    fn resolve_runs_when_global_dev_config_enabled() {
+        let dir = temp_dir("run-enabled");
+        let path = write_live_provider(&dir, true);
+        match resolve_live_provider_from(None, Some(dir.clone())) {
+            ResolveOutcome::Run(cfg) => {
+                assert_eq!(cfg.source, path);
+                assert_eq!(cfg.model, "test-model");
+                assert_eq!(cfg.base_url, "http://127.0.0.1:9/v1");
+            }
+            ResolveOutcome::Skip(reason) => panic!("expected Run, got Skip: {reason}"),
+        }
+        fs::remove_dir_all(&dir).unwrap();
+    }
+
+    #[test]
+    fn resolve_skips_when_global_dev_config_disabled() {
+        let dir = temp_dir("run-disabled");
+        write_live_provider(&dir, false);
+        match resolve_live_provider_from(None, Some(dir.clone())) {
+            ResolveOutcome::Skip(reason) => assert!(reason.contains("enabled=false"), "{reason}"),
+            ResolveOutcome::Run(cfg) => {
+                panic!("expected Skip, got Run at {}", cfg.source.display())
+            }
+        }
+        fs::remove_dir_all(&dir).unwrap();
+    }
+
+    #[test]
+    fn resolve_skips_when_config_missing() {
+        let dir = temp_dir("missing");
+        fs::create_dir_all(dir.join("dev")).unwrap();
+        match resolve_live_provider_from(None, Some(dir.clone())) {
+            ResolveOutcome::Skip(reason) => {
+                assert!(reason.contains("no dedicated config"), "{reason}")
+            }
+            ResolveOutcome::Run(cfg) => {
+                panic!("expected Skip, got Run at {}", cfg.source.display())
+            }
+        }
+        fs::remove_dir_all(&dir).unwrap();
+    }
+
+    #[test]
+    fn resolve_skips_without_any_config_dir() {
+        match resolve_live_provider_from(None, None) {
+            ResolveOutcome::Skip(reason) => {
+                assert!(reason.contains("global config dir"), "{reason}")
+            }
+            ResolveOutcome::Run(cfg) => {
+                panic!("expected Skip, got Run at {}", cfg.source.display())
+            }
+        }
+    }
+
+    #[test]
+    fn resolve_explicit_env_path_wins() {
+        let dir = temp_dir("explicit");
+        let path = write_live_provider(&dir, true);
+        match resolve_live_provider_from(Some(path.clone()), None) {
+            ResolveOutcome::Run(cfg) => assert_eq!(cfg.source, path),
+            ResolveOutcome::Skip(reason) => panic!("expected Run, got Skip: {reason}"),
+        }
+        fs::remove_dir_all(&dir).unwrap();
+    }
 }

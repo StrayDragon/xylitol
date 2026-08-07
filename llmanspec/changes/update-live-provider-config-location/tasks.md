@@ -12,12 +12,12 @@ depends_on: []
 
 ## Tasks
 
-- [ ] 1. 测试二进制路径迁移：`packages/xylitol-ai-bridge/tests/live_responses_prompt_cache.rs` 默认路径改为 `<global_dir>/dev/live-provider.yaml`（解析优先级 XYLITOL_CONFIG_DIR → XDG_CONFIG_HOME/xylitol → ~/.config/xylitol）；`XYLITOL_LIVE_PROVIDER_CONFIG` env override 保留；SKIP 文案指向全局路径；抽纯函数并加单测（seam 上表）。
-- [ ] 2. lab 同源迁移：`packages/xylitol-ai-bridge/examples/lab_resume_prompt_cache.rs` 与 `lab_session_prefix_idempotency.rs` 的 `load_cfg()` 默认路径同步为全局 `dev/live-provider.yaml`，env override 保留；两 example 的 doc 注释更新。
-- [ ] 3. example 自动生成：新增 `scripts/gen_live_provider_example.py`（维护脚本，不进 qa）+ `just gen-live-provider-example` recipe；运行生成/覆盖 `configs/testing/live-provider.example.yaml`（字段与 LiveProviderFile 对齐：enabled/base_url/model/api_key/max_output_tokens/serial），脚本自校验 YAML 可解析。
-- [ ] 4. 仓库清理：删除本机 `configs/testing/live-provider.local.yaml`；删除 `.gitignore` 中 `configs/testing/live-provider.local.yaml` 条目；检查 `.config/nextest.toml` 注释是否需要同步。
-- [ ] 5. 文档指针：根 `AGENTS.md` 命令段（live-provider 专用配置路径）、`docs/research/responses-context-layout-and-cache-2026.md`、`justfile` test-live-provider 注释同步新路径与生成命令。
-- [ ] 6. 门禁验证：`just fmt` / `just lint` / `just test-live-provider`（本机 RUN 或 SKIP 语义正确）/ `llman sdd validate --all --strict` 全绿。
+- [x] 1. 测试二进制路径迁移：`packages/xylitol-ai-bridge/tests/live_responses_prompt_cache.rs` 默认路径改为 `<global_dir>/dev/live-provider.yaml`（解析优先级 XYLITOL_CONFIG_DIR → XDG_CONFIG_HOME/xylitol → ~/.config/xylitol）；`XYLITOL_LIVE_PROVIDER_CONFIG` env override 保留；SKIP 文案指向全局路径；抽纯函数并加单测（seam 上表）。
+- [x] 2. lab 同源迁移：`packages/xylitol-ai-bridge/examples/lab_resume_prompt_cache.rs` 与 `lab_session_prefix_idempotency.rs` 的 `load_cfg()` 默认路径同步为全局 `dev/live-provider.yaml`，env override 保留；两 example 的 doc 注释更新。
+- [x] 3. example 自动生成：新增 `scripts/gen_live_provider_example.py`（维护脚本，不进 qa）+ `just gen-live-provider-example` recipe；运行生成/覆盖 `configs/testing/live-provider.example.yaml`（字段与 LiveProviderFile 对齐：enabled/base_url/model/api_key/max_output_tokens/serial），脚本自校验 YAML 可解析。
+- [x] 4. 仓库清理：删除本机 `configs/testing/live-provider.local.yaml`；删除 `.gitignore` 中 `configs/testing/live-provider.local.yaml` 条目；检查 `.config/nextest.toml` 注释是否需要同步。
+- [x] 5. 文档指针：根 `AGENTS.md` 命令段（live-provider 专用配置路径）、`docs/research/responses-context-layout-and-cache-2026.md`、`justfile` test-live-provider 注释同步新路径与生成命令。
+- [x] 6. 门禁验证：`just fmt` / `just lint` / `just test-live-provider`（本机 RUN 或 SKIP 语义正确）/ `llman sdd validate --all --strict` 全绿。
 
 ## 仓库外（用户已授权，apply 完成后执行）
 

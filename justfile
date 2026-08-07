@@ -103,9 +103,10 @@ test verbosity=verbosity_default:
       esac
     fi
 
-# Live Responses prompt-cache counterexample (dedicated configs/testing config).
+# Live Responses prompt-cache counterexample (dedicated <global-dir>/dev config).
 # Strictly serial (--test-threads=1). Always part of default `just qa` (any verbosity).
-# Missing/disabled local config → skip (pass). enabled=true → must hit gateway.
+# Missing/disabled global dev config → skip (pass). enabled=true → must hit gateway.
+# Example (auto-generated): `just gen-live-provider-example` → configs/testing/live-provider.example.yaml
 alias test-live-responses-cache := test-live-provider
 [arg('verbosity', pattern='quiet|normal|verbose')]
 test-live-provider verbosity=verbosity_default:
@@ -131,6 +132,12 @@ test-live-provider verbosity=verbosity_default:
       normal)  cargo test -p xylitol-ai-bridge --test live_responses_prompt_cache -- --test-threads=1 --nocapture ;;
       verbose) cargo test -v -p xylitol-ai-bridge --test live_responses_prompt_cache -- --test-threads=1 --nocapture ;;
     esac
+
+# Generate configs/testing/live-provider.example.yaml (maintenance; not in qa).
+# Live-provider config lives at <global-dir>/dev/live-provider.yaml (shared via
+# dotxylitol); the repo only ships this auto-generated example.
+gen-live-provider-example:
+    python3 scripts/gen_live_provider_example.py
 
 # TUI end-to-end integration tests (layer 5: PTY/tmux). Slow + needs a real
 # PTY and/or tmux; gated #[ignore] so they never run under the default `test`.
