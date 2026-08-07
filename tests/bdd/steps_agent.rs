@@ -183,9 +183,6 @@ pub(crate) async fn _w_agent_switch_thinking(agent: &AgentState, verb: String, l
         std::sync::Arc::new(xylitol::infra::provider::factory::build_provider),
         xylitol::infra::permission::allow_all_permission(),
         Some(std::sync::Arc::new(
-            xylitol::infra::bash_exec::InfraBashExecutor::new(),
-        )),
-        Some(std::sync::Arc::new(
             xylitol::infra::export::StdExportIo::new(),
         )),
         xylitol::agent::capabilities::QueueMode::default(),
@@ -449,9 +446,6 @@ pub(crate) fn _w_agent_try_thinking_level(agent: &AgentState, level: String) {
         None,
         std::sync::Arc::new(xylitol::infra::provider::factory::build_provider),
         xylitol::infra::permission::allow_all_permission(),
-        Some(std::sync::Arc::new(
-            xylitol::infra::bash_exec::InfraBashExecutor::new(),
-        )),
         Some(std::sync::Arc::new(
             xylitol::infra::export::StdExportIo::new(),
         )),

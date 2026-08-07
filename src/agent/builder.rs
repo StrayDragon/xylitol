@@ -2,8 +2,7 @@
 //!
 //! [`AgentBuilder`] takes only the minimal runtime-protocol ports in its
 //! constructor. Every other capability is attached via consuming builder
-//! methods, with safe defaults (empty tool set, no bash executor, no export
-//! I/O). This keeps the agent layer free of concrete `infra/` types.
+//! methods, with safe defaults (empty tool set, no export I/O). This keeps the agent layer free of concrete `infra/` types.
 
 use std::sync::Arc;
 
@@ -13,8 +12,7 @@ use crate::agent::model::registry::ModelRegistry;
 use crate::agent::runtime::AgentRuntime;
 use crate::agent::tools::ToolSet;
 use crate::protocol::ports::{
-    XyBashExecutor, XyBatchMode, XyEventSink, XyExportIo, XyHookBus, XyModelBuilder, XyPermission,
-    XySessionStore,
+    XyBatchMode, XyEventSink, XyExportIo, XyHookBus, XyModelBuilder, XyPermission, XySessionStore,
 };
 
 /// Builder for [`AgentCapabilities`].
@@ -34,7 +32,6 @@ pub struct AgentBuilder {
     skills: Vec<crate::protocol::resource::SkillInfo>,
     compaction_settings: Option<CompactionSettings>,
     cwd: String,
-    bash_executor: Option<Arc<dyn XyBashExecutor>>,
     export_io: Option<Arc<dyn XyExportIo>>,
     steering_mode: QueueMode,
     follow_up_mode: QueueMode,
@@ -64,7 +61,6 @@ impl AgentBuilder {
             skills: Vec::new(),
             compaction_settings: None,
             cwd: ".".into(),
-            bash_executor: None,
             export_io: None,
             steering_mode: QueueMode::default(),
             follow_up_mode: QueueMode::default(),
@@ -112,12 +108,6 @@ impl AgentBuilder {
     /// Set the working directory used in the session header.
     pub fn cwd(mut self, cwd: impl Into<String>) -> Self {
         self.cwd = cwd.into();
-        self
-    }
-
-    /// Set the bash executor port (default: none).
-    pub fn bash(mut self, executor: Arc<dyn XyBashExecutor>) -> Self {
-        self.bash_executor = Some(executor);
         self
     }
 
@@ -171,7 +161,6 @@ impl AgentBuilder {
             self.compaction_settings,
             self.model_builder,
             self.permission,
-            self.bash_executor,
             self.export_io,
             self.steering_mode,
             self.follow_up_mode,

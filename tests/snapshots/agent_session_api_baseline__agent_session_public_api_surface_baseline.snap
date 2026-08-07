@@ -1,11 +1,9 @@
 ---
 source: tests/agent_session_api_baseline.rs
-assertion_line: 138
+assertion_line: 127
 expression: "all_items.join(\"\\n\")"
 ---
 pub async fn ensure_session(&self, id: &str, parent: Option<&str>) -> Result<(), XyError>
-pub async fn execute( &self, store: &dyn XySessionStore, session_id: Option<&str>, command: &str, exclude_from_context: bool, chunk_tx: Option<mpsc::Sender<Vec<u8>>>, ) -> Result<XyBashResult, XyError>
-pub async fn execute_bash( &self, command: &str, exclude_from_context: bool, chunk_tx: Option<tokio::sync::mpsc::Sender<Vec<u8>>>, ) -> Result<crate::protocol::ports::XyBashResult, XyError>
 pub async fn export_to_html( &self, path: &std::path::Path, ) -> Result<std::path::PathBuf, XyError>
 pub async fn export_to_html( &self, store: &dyn XySessionStore, session_id: &str, path: &std::path::Path, ) -> Result<std::path::PathBuf, XyError>
 pub async fn export_to_jsonl( &self, path: &std::path::Path, ) -> Result<std::path::PathBuf, XyError>
@@ -17,10 +15,7 @@ pub async fn import_from_jsonl( &self, store: &dyn XySessionStore, path: &std::p
 pub async fn import_from_jsonl(&self, path: &std::path::Path) -> Result<String, XyError>
 pub async fn maybe_auto_compact(&self) -> Result<bool, XyError>
 pub async fn maybe_auto_compact_with( &self, estimate_opts: &crate::agent::compaction::EstimateOpts, last_assistant: Option<&crate::protocol::message::AgentMessage>, ) -> Result<bool, XyError>
-pub async fn record_bash_result( &self, command: &str, result: &crate::protocol::ports::XyBashResult, exclude_from_context: bool, session_id: Option<&str>, ) -> Result<(), XyError>
 pub enum QueueMode
-pub fn abort(&self)
-pub fn abort_bash(&self)
 pub fn active_turn_binding(&self) -> Option<ActiveTurnBinding>
 pub fn apply_default_thinking_level(&mut self, raw: Option<&str>)
 pub fn apply_prompt_resources( &mut self, context_files: Vec<(String, String)>, system_prompt: Option<String>, append_system_prompt: Vec<String>, )
@@ -60,8 +55,7 @@ pub fn loaded_skill_names(&self) -> Vec<String>
 pub fn loaded_skills(&self) -> &[crate::protocol::resource::SkillInfo]
 pub fn mode(&self) -> QueueMode
 pub fn model_registry(&self) -> ModelRegistry
-pub fn new( model_registry: ModelRegistry, tool_registry: ToolSet, store: Arc<dyn XySessionStore>, sink: Arc<dyn XyEventSink>, system_prompt: Option<String>, context_files: Vec<(String, String)>, append_system_prompt: Vec<String>, cwd: String, compaction_settings: Option<CompactionSettings>, model_builder: crate::protocol::ports::XyModelBuilder, permission: Arc<dyn XyPermission>, bash_executor: Option<Arc<dyn XyBashExecutor>>, export_io: Option<Arc<dyn XyExportIo>>, steering_mode: QueueMode, follow_up_mode: QueueMode, hook_bus: Option<Arc<dyn XyHookBus>>, ) -> Self
-pub fn new(executor: Option<Arc<dyn XyBashExecutor>>) -> Self
+pub fn new( model_registry: ModelRegistry, tool_registry: ToolSet, store: Arc<dyn XySessionStore>, sink: Arc<dyn XyEventSink>, system_prompt: Option<String>, context_files: Vec<(String, String)>, append_system_prompt: Vec<String>, cwd: String, compaction_settings: Option<CompactionSettings>, model_builder: crate::protocol::ports::XyModelBuilder, permission: Arc<dyn XyPermission>, export_io: Option<Arc<dyn XyExportIo>>, steering_mode: QueueMode, follow_up_mode: QueueMode, hook_bus: Option<Arc<dyn XyHookBus>>, ) -> Self
 pub fn new(io: Option<Arc<dyn XyExportIo>>) -> Self
 pub fn new(mode: QueueMode) -> Self
 pub fn new(steering_mode: QueueMode, follow_up_mode: QueueMode) -> Self
@@ -97,7 +91,6 @@ pub steer: Arc<Mutex<PendingMessageQueue>>, pub follow_up: Arc<Mutex<PendingMess
 pub steer_count: usize, pub follow_up_count: usize, } /// Sender bound to the active `XyDriver::run` / ReAct EventStream (may be absent). pub type EventTx = tokio::sync::mpsc::UnboundedSender<XyEvent>
 pub struct ActiveTurnBinding
 pub struct AsyncQueueRuntime
-pub struct BashExecHandler
 pub struct ContextUsage
 pub struct PendingMessageQueue
 pub struct QueueStats

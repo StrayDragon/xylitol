@@ -1,4 +1,4 @@
-//! Session identity, fork, bash, export, and queue APIs on [`AgentCapabilities`].
+//! Session identity, fork, export, and queue APIs on [`AgentCapabilities`].
 
 use std::sync::Arc;
 
@@ -6,9 +6,9 @@ use crate::agent::compaction::CompactionSettings;
 use crate::agent::prompt::commands::SlashCommandInfo;
 use crate::protocol::error::XyError;
 use crate::protocol::message::AgentMessage;
-use crate::protocol::ports::{XyPermission, XySessionStore};
+use crate::protocol::ports::XySessionStore;
 
-use super::{AgentCapabilities, SessionStats, cancel_hook, observe_hook};
+use super::{AgentCapabilities, SessionStats, observe_hook};
 
 impl AgentCapabilities {
     /// Skill/extension slash commands only (product builtins are app-owned).
@@ -119,81 +119,6 @@ impl AgentCapabilities {
             .ok_or_else(|| XyError::Session(anyhow::anyhow!("no active session")))?;
         crate::agent::capabilities::stats::compute(self.store.as_ref(), sid).await
     }
-
-    // ── Bash execution (`!cmd` / `!!cmd`) ───────────────────────
-
-    /// Execute a user-initiated bash command and record the result.
-    ///
-    /// `exclude_from_context=true` (the `!!` prefix) stores the entry on disk
-    /// but omits it from LLM context (see `build_session_context`).
-    ///
-    /// Takes `&self` so an in-flight bash can be cancelled via [`Self::abort_bash`]
-    /// / [`crate::agent::AgentRuntime::abort`] without an exclusive borrow.
-    pub async fn execute_bash(
-        &self,
-        command: &str,
-        exclude_from_context: bool,
-        chunk_tx: Option<tokio::sync::mpsc::Sender<Vec<u8>>>,
-    ) -> Result<crate::protocol::ports::XyBashResult, XyError> {
-        if let Some(bus) = &self.hook_bus {
-            let (ty, phase, ctx) = crate::agent::runtime::script_hook_ctx::user_bash(
-                command,
-                exclude_from_context,
-                &self.cwd,
-            );
-            cancel_hook(bus, ty, phase, ctx)
-                .await
-                .map_err(|e| XyError::Session(anyhow::anyhow!(e)))?;
-        }
-        let store: &dyn XySessionStore = self.store.as_ref();
-        let sid = self.session_id().map(str::to_string);
-        self.bash
-            .execute(
-                store,
-                sid.as_deref(),
-                command,
-                exclude_from_context,
-                chunk_tx,
-            )
-            .await
-    }
-
-    /// Persist a bash result as `SessionEntry::Message` with `role=bashExecution`.
-    pub async fn record_bash_result(
-        &self,
-        command: &str,
-        result: &crate::protocol::ports::XyBashResult,
-        exclude_from_context: bool,
-        session_id: Option<&str>,
-    ) -> Result<(), XyError> {
-        let sid = match session_id {
-            Some(s) => s.to_string(),
-            None => self
-                .session_id()
-                .ok_or_else(|| XyError::Session(anyhow::anyhow!("no active session")))?
-                .to_string(),
-        };
-        crate::agent::capabilities::bash::record_bash_result(
-            self.store.as_ref(),
-            command,
-            result,
-            exclude_from_context,
-            &sid,
-        )
-        .await
-    }
-
-    /// Get a reference to the permission engine (injected at construction).
-    pub fn get_permission(&self) -> std::sync::Arc<dyn XyPermission> {
-        self.permission.clone()
-    }
-
-    /// Abort any in-flight bash execution (`&self` so [`crate::agent::AgentRuntime::abort`] can call it).
-    pub fn abort_bash(&self) {
-        self.bash.abort();
-    }
-
-    // ── Lifecycle management ───────────────────────────────────────
 
     // ── Export / import (delegated to SessionExporter) ─────────
 
