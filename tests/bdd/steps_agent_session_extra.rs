@@ -1,5 +1,8 @@
 use crate::fixtures::*;
-use crate::helpers::{make_agent, make_agent_with_store, result_ok_str};
+use crate::helpers::{
+    agent_submit_root, agent_submit_root_with_id, bind_session_or_panic, make_agent,
+    make_agent_with_store, result_ok_str,
+};
 use crate::prelude::*;
 use crate::steps_agent::{_g_agent_mock_model, _g_agent_thinking_level, _w_agent_switch_thinking};
 use crate::steps_agent_runtime::ar_register_fake;
@@ -259,7 +262,7 @@ pub(crate) fn g_turn_events_setup(_agent: &AgentState, _ws: &Workspace) {
 #[when("回合开始")]
 pub(crate) async fn w_turn_events_run(agent: &AgentState) {
     let mut runner = make_agent(agent);
-    let mut stream = runner.run("读取文件").await;
+    let mut stream = agent_submit_root(&mut runner, "读取文件").await;
     let mut local_events = Vec::new();
     while let Some(e) = stream.next().await {
         local_events.push(e);
@@ -297,7 +300,7 @@ pub(crate) fn g_tool_stream_setup(_agent: &AgentState, _ws: &Workspace) {
 #[when("tool_execution_start 触发")]
 pub(crate) async fn w_tool_stream_run(agent: &AgentState) {
     let mut runner = make_agent(agent);
-    let mut stream = runner.run("执行命令").await;
+    let mut stream = agent_submit_root(&mut runner, "执行命令").await;
     let mut local_events = Vec::new();
     while let Some(e) = stream.next().await {
         local_events.push(e);
@@ -534,7 +537,7 @@ pub(crate) async fn w_slash_intercepted(agent: &AgentState, _ws: &Workspace) {
     let (mut runtime, store) = make_agent_with_store(agent);
     let sid = uuid::Uuid::new_v4().to_string();
     let _ = store.create(&sid, Some("."), None).await;
-    runtime.inner_mut().set_session(sid);
+    bind_session_or_panic(&mut runtime, sid);
     let mut driver = XyInProcessDriver::new(runtime, store);
     // Force compact on an empty session hits prepare gates (Nothing to compact /
     // Already compacted) — that still proves slash→Driver::compact dispatch.
@@ -655,7 +658,7 @@ pub(crate) async fn g_sess_persist_turn(agent: &AgentState, sess: &XySessionStor
     }
     caps.set_session(sid.to_string());
     let mut runtime = AgentRuntime::new(caps);
-    let mut stream = runtime.run_with_id("hello user", sid).await;
+    let mut stream = agent_submit_root_with_id(&mut runtime, "hello user", sid).await;
     while stream.next().await.is_some() {}
     sess.current_id.replace(Some(sid.to_string()));
 }
@@ -705,7 +708,7 @@ pub(crate) async fn g_sess_persist_tool(agent: &AgentState, sess: &XySessionStor
     }
     caps.set_session(sid.to_string());
     let mut runtime = AgentRuntime::new(caps);
-    let mut stream = runtime.run_with_id("read file", sid).await;
+    let mut stream = agent_submit_root_with_id(&mut runtime, "read file", sid).await;
     while stream.next().await.is_some() {}
     sess.current_id.replace(Some(sid.to_string()));
 }
@@ -741,7 +744,7 @@ pub(crate) async fn w_sess_start_turn(agent: &AgentState, ws: &Workspace) {
     set_fake_text("ok");
     _g_agent_mock_model(agent, ws, "test-model".into());
     let mut runner = make_agent(agent);
-    let mut stream = runner.run("do work").await;
+    let mut stream = agent_submit_root(&mut runner, "do work").await;
     let mut local_events = Vec::new();
     while let Some(e) = stream.next().await {
         local_events.push(e);

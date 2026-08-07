@@ -6,6 +6,7 @@
 use std::collections::VecDeque;
 use std::sync::{Arc, Mutex};
 
+use crate::agent::runtime::state::RunId;
 use crate::protocol::lifecycle::XyEvent;
 use crate::protocol::message::AgentMessage;
 
@@ -96,7 +97,8 @@ impl PendingMessageQueue {
 pub struct AsyncQueueRuntime {
     pub steer: Arc<Mutex<PendingMessageQueue>>,
     pub follow_up: Arc<Mutex<PendingMessageQueue>>,
-    event_tx: Arc<Mutex<Option<EventTx>>>,
+    /// Bound as `(RunId, tx)` so a stale stream cannot clear a newer run's sender.
+    event_tx: Arc<Mutex<Option<(RunId, EventTx)>>>,
 }
 
 impl AsyncQueueRuntime {
@@ -118,13 +120,16 @@ impl AsyncQueueRuntime {
     }
 
     /// Bind the active run's EventStream sender (replaces any previous).
-    pub fn bind_event_tx(&self, tx: EventTx) {
-        *crate::utils::lock_mutex(&self.event_tx) = Some(tx);
+    pub fn bind_event_tx(&self, run_id: RunId, tx: EventTx) {
+        *crate::utils::lock_mutex(&self.event_tx) = Some((run_id, tx));
     }
 
-    /// Clear the active-run sender (no-op enqueue notify after this).
-    pub fn unbind_event_tx(&self) {
-        *crate::utils::lock_mutex(&self.event_tx) = None;
+    /// Clear the active-run sender only when `run_id` still owns the binding.
+    pub fn unbind_event_tx(&self, run_id: RunId) {
+        let mut guard = crate::utils::lock_mutex(&self.event_tx);
+        if guard.as_ref().is_some_and(|(id, _)| *id == run_id) {
+            *guard = None;
+        }
     }
 
     /// Notify the active EventStream with current depths (no-op if unbound).
@@ -135,7 +140,7 @@ impl AsyncQueueRuntime {
             follow_up_count: stats.follow_up_count,
         };
         let guard = crate::utils::lock_mutex(&self.event_tx);
-        if let Some(tx) = guard.as_ref() {
+        if let Some((_, tx)) = guard.as_ref() {
             let _ = tx.send(event);
         }
     }
@@ -195,7 +200,8 @@ mod tests {
     fn concurrent_enqueue_via_runtime() {
         let rt = AsyncQueueRuntime::new(QueueMode::All, QueueMode::All);
         let (tx, mut rx) = tokio::sync::mpsc::unbounded_channel();
-        rt.bind_event_tx(tx);
+        let run = RunId::from_raw_for_test(1);
+        rt.bind_event_tx(run, tx);
         {
             let mut q = rt.steer.lock().unwrap();
             q.enqueue(user("a"));
@@ -213,8 +219,15 @@ mod tests {
             }
             other => panic!("unexpected {other:?}"),
         }
-        rt.unbind_event_tx();
+        // Stale unbind must not clear a newer binding.
+        let (tx2, mut rx2) = tokio::sync::mpsc::unbounded_channel();
+        let run2 = RunId::from_raw_for_test(2);
+        rt.bind_event_tx(run2, tx2);
+        rt.unbind_event_tx(run);
         rt.notify_queue_update();
-        assert!(rx.try_recv().is_err());
+        assert!(rx2.try_recv().is_ok());
+        rt.unbind_event_tx(run2);
+        rt.notify_queue_update();
+        assert!(rx2.try_recv().is_err());
     }
 }

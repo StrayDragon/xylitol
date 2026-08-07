@@ -296,7 +296,7 @@ pub async fn compact_session(
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::infra::session::SessionEntry;
+    use crate::protocol::session::SessionEntry;
 
     // ── Helpers for building test entries ──────────────────────────
 
@@ -319,8 +319,8 @@ mod tests {
                 "timestamp": 0u64,
             }),
         };
-        SessionEntry::Message(crate::infra::session::MessageEntry {
-            base: crate::infra::session::EntryBase {
+        SessionEntry::Message(crate::protocol::session::MessageEntry {
+            base: crate::protocol::session::EntryBase {
                 entry_type: "message".into(),
                 id: id.into(),
                 parent_id: None,
@@ -332,8 +332,8 @@ mod tests {
 
     fn make_model_change_entry(id: &str, provider: &str, model_id: &str) -> SessionEntry {
         let now = chrono::Utc::now().to_rfc3339();
-        SessionEntry::ModelChange(crate::infra::session::ModelChangeEntry {
-            base: crate::infra::session::EntryBase {
+        SessionEntry::ModelChange(crate::protocol::session::ModelChangeEntry {
+            base: crate::protocol::session::EntryBase {
                 entry_type: "model_change".into(),
                 id: id.into(),
                 parent_id: None,
@@ -346,8 +346,8 @@ mod tests {
 
     fn make_thinking_entry(id: &str, level: &str) -> SessionEntry {
         let now = chrono::Utc::now().to_rfc3339();
-        SessionEntry::ThinkingLevelChange(crate::infra::session::ThinkingLevelChangeEntry {
-            base: crate::infra::session::EntryBase {
+        SessionEntry::ThinkingLevelChange(crate::protocol::session::ThinkingLevelChangeEntry {
+            base: crate::protocol::session::EntryBase {
                 entry_type: "thinking_level_change".into(),
                 id: id.into(),
                 parent_id: None,
@@ -359,8 +359,8 @@ mod tests {
 
     fn make_compaction_entry(id: &str, summary: &str) -> SessionEntry {
         let now = chrono::Utc::now().to_rfc3339();
-        SessionEntry::Compaction(crate::infra::session::CompactionEntry {
-            base: crate::infra::session::EntryBase {
+        SessionEntry::Compaction(crate::protocol::session::CompactionEntry {
+            base: crate::protocol::session::EntryBase {
                 entry_type: "compaction".into(),
                 id: id.into(),
                 parent_id: None,
@@ -604,8 +604,8 @@ mod tests {
             timestamp: 1,
             diagnostics: Vec::new(),
         });
-        SessionEntry::Message(crate::infra::session::MessageEntry {
-            base: crate::infra::session::EntryBase {
+        SessionEntry::Message(crate::protocol::session::MessageEntry {
+            base: crate::protocol::session::EntryBase {
                 entry_type: "message".into(),
                 id: id.into(),
                 parent_id: None,
@@ -630,8 +630,8 @@ mod tests {
         let img = {
             use crate::protocol::message::{AgentMessage, AgentPart};
             let now = chrono::Utc::now().to_rfc3339();
-            SessionEntry::Message(crate::infra::session::MessageEntry {
-                base: crate::infra::session::EntryBase {
+            SessionEntry::Message(crate::protocol::session::MessageEntry {
+                base: crate::protocol::session::EntryBase {
                     entry_type: "message".into(),
                     id: "img".into(),
                     parent_id: None,
@@ -960,8 +960,8 @@ mod tests {
         let now = chrono::Utc::now().to_rfc3339();
         let entries = vec![
             make_message_entry("u1", "user", "hello"),
-            SessionEntry::Message(crate::infra::session::MessageEntry {
-                base: crate::infra::session::EntryBase {
+            SessionEntry::Message(crate::protocol::session::MessageEntry {
+                base: crate::protocol::session::EntryBase {
                     entry_type: "message".into(),
                     id: "a1".into(),
                     parent_id: None,

@@ -1,11 +1,10 @@
-//! Session identity, fork, stats, and extension slash table on [`AgentCapabilities`].
+//! Session identity, fork, and stats on [`AgentCapabilities`].
 //!
 //! Product builtins / bang / export are **not** here — see `app/core` + `XyDriver`.
 
 use std::sync::Arc;
 
 use crate::agent::compaction::CompactionSettings;
-use crate::agent::prompt::commands::SlashCommandInfo;
 use crate::protocol::error::XyError;
 use crate::protocol::message::AgentMessage;
 use crate::protocol::ports::XySessionStore;
@@ -13,11 +12,6 @@ use crate::protocol::ports::XySessionStore;
 use super::{AgentCapabilities, SessionStats, observe_hook};
 
 impl AgentCapabilities {
-    /// Skill/extension slash commands only (product builtins are app-owned).
-    pub(crate) fn extension_commands(&self) -> &[SlashCommandInfo] {
-        &self.extension_commands
-    }
-
     // ── Session management ────────────────────────────────────────
 
     /// Set the active session ID.

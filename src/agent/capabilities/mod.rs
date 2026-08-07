@@ -2,11 +2,12 @@
 //!
 //! **In scope:** model / thinking, tools (+ freeze) / hooks / permission,
 //! session id + store (+ fork/stats), context_policy + prompt assembly,
-//! compaction gate, steer/follow-up queues. Optional skill/extension slash
-//! table (`extension_commands`) for Driver merge only.
+//! compaction gate, steer/follow-up queues.
 //!
 //! **Out of scope (app / [`XyDriver`](crate::app::core::driver::XyDriver)):**
 //! product slash catalog, bang (`!`/`!!`), session HTML/JSONL export-import.
+//! Skill/extension slash registration, when delivered, belongs on the Driver /
+//! app surface — not this aggregate.
 //! See `src/AGENTS.md` → `AgentCapabilities` 目标面.
 //!
 //! This is the **runtime capability aggregate**, not the persisted session
@@ -34,7 +35,6 @@ pub use self::stats::{ContextUsage, SessionStats, estimate_tokens, get_context_u
 use crate::agent::compaction::CompactionSettings;
 use crate::agent::compaction::orchestrator::CompactionOrchestrator;
 use crate::agent::model::manager::ModelManager;
-use crate::agent::prompt::commands::SlashCommandInfo;
 use crate::agent::prompt::{self, SystemPromptOpts};
 use crate::agent::runtime::AgentHooks;
 use crate::agent::tools::{ToolFreezePhase, ToolSet, ToolTableFingerprint};
@@ -64,8 +64,8 @@ pub struct AgentCapabilities {
     /// Model management (registry, selection, thinking level). Shared so ReAct
     /// can refresh at turn boundaries while surfaces call `select_model`.
     model_manager: Arc<Mutex<ModelManager>>,
-    /// Set for the duration of an agent `run`; `None` when idle / converged.
-    active_turn: Arc<Mutex<Option<ActiveTurnBinding>>>,
+    /// True while a root turn is live (supplied by [`crate::agent::runtime::state::SharedRunCoordinator`]).
+    midturn_active: Arc<dyn Fn() -> bool + Send + Sync>,
     /// Tools available to the agent (construct-time final set).
     tools: ToolSet,
     /// Track-A tool-table freeze (c1900): Unfrozen → Gating → Frozen.
@@ -89,8 +89,6 @@ pub struct AgentCapabilities {
     cwd: String,
     /// System prompt options for dynamic building.
     prompt_opts: SystemPromptOpts,
-    /// Skill/extension slash table only (product builtins assembled by Driver).
-    extension_commands: Vec<SlashCommandInfo>,
 
     /// Advisory permission port consulted by the ReAct loop for tool routing.
     permission: Arc<dyn XyPermission>,
@@ -131,7 +129,7 @@ impl AgentCapabilities {
 
         let mut session = Self {
             model_manager: Arc::new(Mutex::new(ModelManager::new(model_registry, model_builder))),
-            active_turn: Arc::new(Mutex::new(None)),
+            midturn_active: Arc::new(|| false),
             tools: tool_registry,
             tool_freeze: ToolFreezePhase::Unfrozen,
             tool_fingerprint: None,
@@ -157,7 +155,6 @@ impl AgentCapabilities {
                 runtime_policy_fragments: Vec::new(),
                 ..Default::default()
             },
-            extension_commands: Vec::new(),
             store,
             sink,
             permission,
@@ -217,14 +214,6 @@ impl AgentCapabilities {
         bodies.retain(|b| seen.insert(b.clone()));
         self.prompt_opts.runtime_policy_fragments = bodies;
         self.rebuild_system_prompt();
-    }
-
-    pub(crate) fn steer_queue(&self) -> Arc<Mutex<PendingMessageQueue>> {
-        self.queues.steer.clone()
-    }
-
-    pub(crate) fn follow_up_queue(&self) -> Arc<Mutex<PendingMessageQueue>> {
-        self.queues.follow_up.clone()
     }
 
     pub(crate) fn queues(&self) -> Arc<AsyncQueueRuntime> {
@@ -335,6 +324,16 @@ impl AgentCapabilities {
     pub fn cwd(&self) -> &str {
         &self.cwd
     }
+
+    /// Wire the run-coordinator mid-turn probe (called from [`crate::agent::AgentRuntime::new`]).
+    pub(crate) fn set_midturn_active_probe(&mut self, probe: Arc<dyn Fn() -> bool + Send + Sync>) {
+        self.midturn_active = probe;
+    }
+
+    #[cfg(test)]
+    pub(crate) fn set_midturn_active_for_test(&mut self, active: bool) {
+        self.midturn_active = Arc::new(move || active);
+    }
 }
 
 #[cfg(test)]
@@ -366,12 +365,6 @@ mod tests {
             QueueMode::default(),
             None,
         )
-    }
-
-    #[test]
-    fn extension_commands_default_empty() {
-        let session = make_session();
-        assert!(session.extension_commands().is_empty());
     }
 
     #[test]
@@ -442,12 +435,7 @@ mod tests {
             tools_mode: ToolsMode::Search,
             ..Default::default()
         });
-        *session.active_turn_handle().lock().unwrap() = Some(ActiveTurnBinding {
-            model_id: "m".into(),
-            display_name: "m".into(),
-            thinking: ThinkingLevel::Off,
-            omit_thinking: true,
-        });
+        session.set_midturn_active_for_test(true);
 
         session.set_tools(ToolSet::empty());
         assert_eq!(
@@ -456,7 +444,7 @@ mod tests {
             "Search + in-flight turn must not rewrite tools"
         );
 
-        session.clear_active_turn();
+        session.set_midturn_active_for_test(false);
         session.set_tools(ToolSet::empty());
         assert_eq!(session.tools().iter().count(), 0);
     }

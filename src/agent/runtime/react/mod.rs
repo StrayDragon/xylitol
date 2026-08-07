@@ -35,6 +35,9 @@ use serde_json::Value;
 use tokio_util::sync::CancellationToken;
 
 use super::retry::RetryState;
+use super::state::{
+    FrozenRootConfig, RunId, RunLease, RunPolicy, RuntimeControlError, SharedRunCoordinator,
+};
 use super::{AgentHooks, XyEvent, XyEventStream};
 use crate::agent::capabilities::{AgentCapabilities, PendingMessageQueue};
 use crate::agent::prompt::expand_skills_in_agent_messages;
@@ -47,82 +50,79 @@ use crate::protocol::resource::SkillInfo;
 
 // ── AgentRuntime ───────────────────────────────────────────────────────
 
+/// Session-bound ReAct actor: one bound session, one live root turn at a time.
 pub struct AgentRuntime {
-    pub(crate) inner: AgentCapabilities,
-    /// Current-run cancel token. Replaced at each [`Self::run`] so abort is not sticky.
-    cancel: Mutex<CancellationToken>,
+    inner: AgentCapabilities,
+    coordinator: SharedRunCoordinator,
 }
 
 impl AgentRuntime {
-    pub fn new(inner: AgentCapabilities) -> Self {
-        Self {
-            inner,
-            cancel: Mutex::new(CancellationToken::new()),
+    pub fn new(mut inner: AgentCapabilities) -> Self {
+        let coordinator = SharedRunCoordinator::new();
+        let probe_coord = coordinator.clone();
+        inner.set_midturn_active_probe(Arc::new(move || {
+            probe_coord.with(|c| c.has_active_run() || c.has_active_turn())
+        }));
+        Self { inner, coordinator }
+    }
+
+    /// Explicitly bind this actor to a session. Only allowed while idle.
+    pub fn bind_session(
+        &mut self,
+        session_id: impl Into<String>,
+    ) -> Result<(), RuntimeControlError> {
+        if self.coordinator.with(|c| c.has_work()) {
+            return Err(RuntimeControlError::SessionBusy);
         }
+        self.inner.set_session(session_id.into());
+        Ok(())
     }
 
-    /// Get a reference to the cancellation token for the active (or last) run.
+    /// Currently bound session id, if any.
+    pub fn session_id(&self) -> Option<&str> {
+        self.inner.session_id()
+    }
+
+    /// Cancellation token for the active (or last) root turn.
     pub fn cancel_token(&self) -> CancellationToken {
-        crate::utils::lock_mutex(&self.cancel).clone()
+        self.coordinator.with(|c| c.cancel_token())
     }
 
-    /// Signal cancellation to abort the agent loop.
-    ///
-    /// Clears the steering queue and keeps follow-up messages so the UI can
-    /// restore them (c461 design D4). Only cancels the **current** run token;
-    /// the next [`Self::run`] installs a fresh one (c482). Also cancels any
-    /// Mid-stream model HTTP is aborted by racing this token in the ReAct chunk
-    /// loop and dropping the provider stream (c680; surfaces inherit via
-    /// [`crate::app::core::driver::XyDriver::abort`]). Interactive bang cancel
-    /// is owned by [`XyInProcessDriver::abort`](crate::app::core::driver::XyInProcessDriver)
-    /// (app-surface), not the ReAct runtime.
+    /// Abort the active root turn. Clears steer; keeps follow-up and queued roots.
     pub fn abort(&self) {
-        crate::utils::lock_mutex(&self.cancel).cancel();
+        self.coordinator.with_mut(|c| {
+            c.cancel_active(false);
+            if let Some(id) = c.phase().active_run_id() {
+                c.clear_active_turn_if(id);
+            }
+        });
         self.inner.clear_steer_queue();
-        self.inner.clear_active_turn();
     }
 
-    /// Enqueue a steering message for the active (or next) run.
     pub fn steer(&self, message: impl Into<String>) {
         self.inner.steer(message);
     }
 
-    /// Enqueue a follow-up message delivered when the run would otherwise stop.
     pub fn follow_up(&self, message: impl Into<String>) {
         self.inner.follow_up(message);
     }
 
-    /// Clear one or both pending-message queues.
     pub fn clear_queues(&self, clear_steer: bool, clear_follow_up: bool) {
         self.inner.clear_queues(clear_steer, clear_follow_up);
     }
 
-    /// Queue depths.
     pub fn queue_stats(&self) -> crate::agent::capabilities::QueueStats {
         self.inner.queue_stats()
     }
 
-    pub fn inner(&self) -> &AgentCapabilities {
-        &self.inner
-    }
-
-    pub fn inner_mut(&mut self) -> &mut AgentCapabilities {
-        &mut self.inner
-    }
-
-    /// Session store shared with the XyDriver seam.
     pub fn session_store(&self) -> Arc<dyn crate::protocol::ports::XySessionStore> {
         self.inner.session_store()
     }
 
-    /// Replace the tool set. Takes effect on the next [`run`](Self::run) call.
-    /// Ignored while the tool table is FROZEN (c1900); use [`Self::freeze_tools`].
     pub fn set_tools(&mut self, tools: ToolSet) {
         self.inner.set_tools(tools);
     }
 
-    /// Install tools without rebuilding system prompt text (MCP settle offload).
-    /// Ignored while FROZEN (c1900).
     pub fn set_tools_defer_prompt(
         &mut self,
         tools: ToolSet,
@@ -130,23 +130,20 @@ impl AgentRuntime {
         self.inner.set_tools_defer_prompt(tools)
     }
 
-    /// Install a prebuilt system prompt (pair with [`Self::set_tools_defer_prompt`]).
     pub fn install_system_prompt_text(&mut self, prompt: String) {
         self.inner.install_system_prompt_text(prompt);
     }
 
-    /// Track-A freeze phase (c1900).
     pub fn tool_freeze_phase(&self) -> crate::agent::tools::ToolFreezePhase {
         self.inner.tool_freeze_phase()
     }
 
-    /// True when provider-visible tools are frozen.
     pub fn is_tools_frozen(&self) -> bool {
         self.inner.is_tools_frozen()
     }
 
-    pub fn frozen_tool_fingerprint(&self) -> Option<&crate::agent::tools::ToolTableFingerprint> {
-        self.inner.frozen_tool_fingerprint()
+    pub fn frozen_tool_fingerprint(&self) -> Option<crate::agent::tools::ToolTableFingerprint> {
+        self.inner.frozen_tool_fingerprint().cloned()
     }
 
     pub fn begin_tool_gating(&mut self) {
@@ -161,7 +158,6 @@ impl AgentRuntime {
         self.inner.clear_tool_freeze();
     }
 
-    /// Freeze provider-visible tools (bypasses FROZEN ignore on [`Self::set_tools`]).
     pub fn freeze_tools(&mut self, tools: ToolSet) {
         self.inner.freeze_tools(tools);
     }
@@ -177,19 +173,14 @@ impl AgentRuntime {
         self.inner.frozen_fingerprint_matches_set(candidate)
     }
 
-    /// Replace the hook set. Takes effect on the next [`run`](Self::run) call.
     pub fn replace_hooks(&mut self, hooks: AgentHooks) {
         self.inner.replace_hooks(hooks);
     }
 
-    /// Add a before-tool hook. Takes effect on the next [`run`](Self::run) call.
     pub fn add_hook(&mut self, hook: super::hooks::BeforeToolHook) {
         self.inner.hooks_mut().add_before(hook);
     }
 
-    /// Set the optional after-turn stop callback (pi `shouldStopAfterTurn`).
-    ///
-    /// Takes effect on the next [`run`](Self::run) call. Single slot — not a chain.
     pub fn set_should_stop_after_turn(
         &mut self,
         hook: Option<super::hooks::ShouldStopAfterTurnHook>,
@@ -197,28 +188,22 @@ impl AgentRuntime {
         self.inner.hooks_mut().set_should_stop_after_turn(hook);
     }
 
-    /// Set the permission port. Takes effect on the next [`run`](Self::run) call.
     pub fn set_permission(&mut self, permission: Arc<dyn crate::protocol::ports::XyPermission>) {
         self.inner.set_permission(permission);
     }
 
-    /// Set the tool batch mode. Takes effect on the next [`run`](Self::run) call.
     pub fn set_tool_mode(&mut self, mode: crate::protocol::ports::XyBatchMode) {
         self.inner.set_tool_mode(mode);
     }
 
-    /// Set the tool batch mode (alias of [`Self::set_tool_mode`]).
     pub fn set_batch_mode(&mut self, mode: crate::protocol::ports::XyBatchMode) {
         self.inner.set_tool_mode(mode);
     }
 
-    /// Set the system prompt. Takes effect on the next [`run`](Self::run) call.
     pub fn set_system_prompt(&mut self, prompt: Option<String>) {
         self.inner.set_system_prompt(prompt);
     }
 
-    /// Replace context / SYSTEM / APPEND and rebuild system prompt (c1100).
-    /// Takes effect on the next [`run`](Self::run); does not mutate history.
     pub fn apply_prompt_resources(
         &mut self,
         context_files: Vec<(String, String)>,
@@ -229,77 +214,291 @@ impl AgentRuntime {
             .apply_prompt_resources(context_files, system_prompt, append_system_prompt);
     }
 
-    /// Replace skills catalog and rebuild system prompt (c1085).
     pub fn apply_skills(&mut self, skills: Vec<crate::protocol::resource::SkillInfo>) {
         self.inner.apply_skills(skills);
     }
 
-    /// Names currently injected into the system prompt (c1085).
     pub fn loaded_skill_names(&self) -> Vec<String> {
         self.inner.loaded_skill_names()
     }
 
-    /// Full skill catalog for `$` completion / expand (c1130).
-    pub fn loaded_skills(&self) -> &[crate::protocol::resource::SkillInfo] {
-        self.inner.loaded_skills()
+    pub fn loaded_skills(&self) -> Vec<crate::protocol::resource::SkillInfo> {
+        self.inner.loaded_skills().to_vec()
     }
 
-    /// Run a turn with an auto-generated session_id.
-    pub async fn run(&mut self, prompt: &str) -> XyEventStream {
-        self.run_parts_with_id(
-            vec![crate::protocol::message::AgentPart::text(prompt)],
-            &uuid::Uuid::new_v4().to_string(),
-        )
-        .await
+    pub fn system_prompt(&self) -> Option<&str> {
+        self.inner.system_prompt()
     }
 
-    /// Run a multi-part user turn (text + images, c1155).
-    pub async fn run_parts(
+    pub fn tools_snapshot(&self) -> ToolSet {
+        self.inner.tools().clone()
+    }
+
+    pub fn tool_names(&self) -> Vec<String> {
+        self.inner
+            .tools()
+            .iter()
+            .map(|t| t.name().to_string())
+            .collect()
+    }
+
+    pub fn cwd(&self) -> &str {
+        self.inner.cwd()
+    }
+
+    pub fn hook_bus(&self) -> Option<Arc<dyn XyHookBus>> {
+        self.inner.hook_bus()
+    }
+
+    pub fn current_model(&self) -> Option<crate::protocol::model::XyModelMeta> {
+        self.inner.current_model()
+    }
+
+    pub fn model_registry(&self) -> crate::agent::model::registry::ModelRegistry {
+        self.inner.model_registry()
+    }
+
+    pub fn select_model(&mut self, model_id: &str) -> Result<(), XyError> {
+        self.inner.select_model(model_id)
+    }
+
+    pub fn select_model_with_source(
         &mut self,
-        parts: Vec<crate::protocol::message::AgentPart>,
-    ) -> XyEventStream {
-        self.run_parts_with_id(parts, &uuid::Uuid::new_v4().to_string())
-            .await
+        model_id: &str,
+        source: &str,
+    ) -> Result<(), XyError> {
+        self.inner.select_model_with_source(model_id, source)
     }
 
-    /// Run a turn with an explicit session_id.
-    #[allow(clippy::type_complexity)]
-    pub async fn run_with_id(&mut self, prompt: &str, session_id: &str) -> XyEventStream {
-        self.run_parts_with_id(
-            vec![crate::protocol::message::AgentPart::text(prompt)],
-            session_id,
-        )
-        .await
+    pub fn thinking_level(&self) -> crate::protocol::model::ThinkingLevel {
+        self.inner.thinking_level()
     }
 
-    /// Run a multi-part user turn with an explicit session_id (c1155).
-    #[allow(clippy::type_complexity)]
-    pub async fn run_parts_with_id(
+    pub fn set_thinking_level(
         &mut self,
-        parts: Vec<crate::protocol::message::AgentPart>,
-        session_id: &str,
-    ) -> XyEventStream {
-        // Build permission check callback from session (capability map in permission_router).
-        let permission_check: Option<
-            std::sync::Arc<dyn Fn(&str, &str) -> Option<String> + Send + Sync>,
-        >;
-        {
-            let engine = self.inner.get_permission();
-            permission_check = Some(std::sync::Arc::new(
-                move |tool_name: &str, tool_path: &str| -> Option<String> {
-                    super::permission_router::check_tool_permission(
-                        engine.as_ref(),
-                        tool_name,
-                        tool_path,
-                    )
-                },
-            ));
+        level: crate::protocol::model::ThinkingLevel,
+    ) -> Result<(), XyError> {
+        self.inner.set_thinking_level(level)
+    }
+
+    pub fn cycle_thinking_level(
+        &mut self,
+    ) -> Result<crate::protocol::model::ThinkingLevel, XyError> {
+        self.inner.cycle_thinking_level()
+    }
+
+    pub fn apply_default_thinking_level(&mut self, raw: Option<&str>) {
+        self.inner.apply_default_thinking_level(raw);
+    }
+
+    pub fn inflight_turn_binding(&self) -> Option<crate::agent::capabilities::ActiveTurnBinding> {
+        self.coordinator.with(|c| c.inflight_turn_binding())
+    }
+
+    pub fn has_active_turn(&self) -> bool {
+        self.coordinator
+            .with(|c| c.has_active_turn() || c.has_active_run())
+    }
+
+    pub fn active_turn_binding(&self) -> Option<crate::agent::capabilities::ActiveTurnBinding> {
+        if let Some(active) = self.inflight_turn_binding() {
+            return Some(active);
         }
-        // Ensure session exists
-        let sid = session_id.to_string();
-        self.inner.set_session(sid.clone());
+        self.inner.selected_turn_binding()
+    }
+
+    pub async fn ensure_session(&self, id: &str, parent: Option<&str>) -> Result<(), XyError> {
+        self.inner.ensure_session(id, parent).await
+    }
+
+    pub async fn fork_session(
+        &self,
+        at_entry_id: &str,
+        position: crate::protocol::session::ForkPosition,
+    ) -> Result<String, XyError> {
+        if self.coordinator.with(|c| c.has_work()) {
+            return Err(XyError::Session(anyhow::anyhow!(
+                "session mutation unavailable while busy"
+            )));
+        }
+        self.inner.fork_session(at_entry_id, position).await
+    }
+
+    pub async fn get_session_stats(
+        &self,
+    ) -> Result<crate::agent::capabilities::SessionStats, XyError> {
+        self.inner.get_session_stats().await
+    }
+
+    pub async fn force_compact(&self, instructions: Option<String>) -> Result<(), XyError> {
+        if self.coordinator.with(|c| c.has_work()) {
+            return Err(XyError::Session(anyhow::anyhow!(
+                "compact unavailable while busy"
+            )));
+        }
+        self.inner.force_compact(instructions).await
+    }
+
+    pub async fn maybe_auto_compact(&self) -> Result<bool, XyError> {
+        self.inner.maybe_auto_compact().await
+    }
+
+    /// Submit a text root turn for the bound session.
+    pub async fn submit_root(&mut self, prompt: &str, policy: RunPolicy) -> XyEventStream {
+        self.submit_parts(
+            vec![crate::protocol::message::AgentPart::text(prompt)],
+            policy,
+        )
+        .await
+    }
+
+    /// Submit a multi-part root turn for the bound session.
+    pub async fn submit_parts(
+        &mut self,
+        parts: Vec<crate::protocol::message::AgentPart>,
+        policy: RunPolicy,
+    ) -> XyEventStream {
+        let Some(session_id) = self.inner.session_id().map(str::to_string) else {
+            return XyEventStream::error(crate::protocol::lifecycle::XyEventError::new(
+                "NoSession",
+                "no session bound; call bind_session first",
+            ));
+        };
+
+        let frozen = self.freeze_root_config(parts);
+
+        // Policy decision before any await / mutation beyond the frozen snapshot.
+        enum Admit {
+            Immediate {
+                run_id: RunId,
+                cancel: CancellationToken,
+            },
+            Pending {
+                run_id: RunId,
+                rx: tokio::sync::oneshot::Receiver<FrozenRootConfig>,
+            },
+            Busy,
+        }
+
+        let admit = self.coordinator.with_mut(|c| {
+            if c.phase().is_idle() {
+                let (run_id, cancel) = c.try_begin_immediate().expect("idle begin");
+                return Admit::Immediate { run_id, cancel };
+            }
+            match policy {
+                RunPolicy::Reject => Admit::Busy,
+                RunPolicy::AbortAndReplace => {
+                    c.cancel_active(true);
+                    let (run_id, rx) = c.enqueue_pending(frozen.clone(), false);
+                    Admit::Pending { run_id, rx }
+                }
+                RunPolicy::QueueAfterRun => {
+                    let (run_id, rx) = c.enqueue_pending(frozen.clone(), false);
+                    Admit::Pending { run_id, rx }
+                }
+            }
+        });
+
+        match admit {
+            Admit::Busy => XyEventStream::busy(),
+            Admit::Immediate { run_id, cancel } => {
+                self.start_root_stream(session_id, run_id, cancel, frozen)
+                    .await
+            }
+            Admit::Pending { run_id, rx } => self.pending_root_stream(session_id, run_id, rx).await,
+        }
+    }
+
+    fn freeze_root_config(&self, user_parts: Vec<AgentPart>) -> FrozenRootConfig {
+        FrozenRootConfig {
+            user_parts,
+            system_prompt: self.inner.system_prompt().map(str::to_string),
+            tools: self.inner.tools().clone(),
+            hooks: self.inner.hooks().clone(),
+            batch_mode: self.inner.tool_mode(),
+            skills: self.inner.loaded_skills().to_vec(),
+            compaction_settings: self.inner.compaction_settings(),
+            permission: self.inner.get_permission(),
+            hook_bus: self.inner.hook_bus(),
+        }
+    }
+
+    async fn pending_root_stream(
+        &self,
+        session_id: String,
+        run_id: RunId,
+        rx: tokio::sync::oneshot::Receiver<FrozenRootConfig>,
+    ) -> XyEventStream {
+        let coordinator = self.coordinator.clone();
+        let store = self.inner.session_store();
+        let model_manager = self.inner.model_manager_handle();
+        let queues = self.inner.queues();
+        let event_sink_inner = self.inner.event_sink();
+        let cwd = self.inner.cwd().to_string();
+
+        let lease = RunLease::new(coordinator.clone(), run_id, Some(queues.clone()));
+
+        let inner: Pin<Box<dyn Stream<Item = XyEvent> + Send>> = Box::pin(async_stream::stream! {
+            let Ok(frozen) = rx.await else {
+                // Revoked (drop) or replace cleared pending — end quietly.
+                return;
+            };
+            let cancel = match coordinator.with(|c| c.take_started_token(run_id)) {
+                Some(t) => t,
+                None => return,
+            };
+
+            if !store.exists(&session_id).await
+                && let Err(e) = store.create(&session_id, Some(&cwd), None).await
+            {
+                yield XyEvent::Error(crate::protocol::lifecycle::XyEventError::from_xy(
+                    &XyError::Session(anyhow::anyhow!(e)),
+                ));
+                return;
+            }
+
+            let seeded_history = match load_history(&store, &session_id).await {
+                Ok(h) => h,
+                Err(e) => {
+                    yield XyEvent::Error(crate::protocol::lifecycle::XyEventError::from_xy(&e));
+                    return;
+                }
+            };
+
+            coordinator.with_mut(|c| c.mark_streaming(run_id));
+            let stream = build_live_react_stream(LiveReactArgs {
+                run_id,
+                coordinator: coordinator.clone(),
+                cancel,
+                frozen,
+                model_manager,
+                queues: queues.clone(),
+                store,
+                session_id,
+                seeded_history,
+                event_sink_inner,
+            });
+            let mut stream = std::pin::pin!(stream);
+            while let Some(ev) = stream.next().await {
+                yield ev;
+            }
+        });
+
+        XyEventStream::with_lease(inner, lease)
+    }
+
+    async fn start_root_stream(
+        &self,
+        session_id: String,
+        run_id: RunId,
+        cancel: CancellationToken,
+        frozen: FrozenRootConfig,
+    ) -> XyEventStream {
         let t_ensure = std::time::Instant::now();
-        if let Err(e) = self.inner.ensure_session(&sid, None).await {
+        if let Err(e) = self.inner.ensure_session(&session_id, None).await {
+            self.coordinator.with_mut(|c| {
+                let _ = c.finish_run(run_id);
+            });
             return XyEventStream::error(crate::protocol::lifecycle::XyEventError::from_xy(&e));
         }
         {
@@ -312,9 +511,12 @@ impl AgentRuntime {
         }
 
         let t_hist = std::time::Instant::now();
-        let seeded_history = match self.inner.load_conversation_history(&sid).await {
+        let seeded_history = match self.inner.load_conversation_history(&session_id).await {
             Ok(h) => h,
             Err(e) => {
+                self.coordinator.with_mut(|c| {
+                    let _ = c.finish_run(run_id);
+                });
                 return XyEventStream::error(crate::protocol::lifecycle::XyEventError::from_xy(&e));
             }
         };
@@ -328,105 +530,168 @@ impl AgentRuntime {
             }
         }
 
-        let tools = self.inner.tools().clone();
-        let hooks = self.inner.hooks().clone();
-        let hook_bus = self.inner.hook_bus();
-        let batch_mode = self.inner.tool_mode();
-        let user_parts = parts;
-        let model_manager = self.inner.model_manager_handle();
-        let active_turn = self.inner.active_turn_handle();
-        let system_prompt = self.inner.system_prompt().map(|s| s.to_string());
-
-        // Build tool schemas
-        let t_schemas = std::time::Instant::now();
-        let tool_schemas: Vec<XyToolSchema> = tools
-            .iter()
-            .map(|t| XyToolSchema {
-                name: t.name().to_string(),
-                description: t.description().to_string(),
-                parameters: t.parameters_schema(),
-            })
-            .collect();
-        {
-            let ms = t_schemas.elapsed().as_millis();
-            let n = tool_schemas.len();
-            if ms >= 16 {
-                log::info!(target: "xylitol::lag", "run_build_tool_schemas {ms}ms tools={n}");
-            } else {
-                log::debug!(target: "xylitol::lag", "run_build_tool_schemas {ms}ms tools={n}");
-            }
-        }
-
-        let cancel = {
-            let mut guard = crate::utils::lock_mutex(&self.cancel);
-            *guard = CancellationToken::new();
-            guard.clone()
-        };
-        let steer_queue = self.inner.steer_queue();
-        let follow_up_queue = self.inner.follow_up_queue();
         let queues = self.inner.queues();
-        let store = self.inner.session_store();
-        let skills = self.inner.loaded_skills().to_vec();
-        let (side_tx, mut side_rx) = tokio::sync::mpsc::unbounded_channel::<XyEvent>();
-        let event_sink: Arc<dyn crate::protocol::ports::XyEventSink> =
-            Arc::new(CompactionStreamTee {
-                inner: self.inner.event_sink(),
-                tx: side_tx,
-            });
-        let compaction_settings = self.inner.compaction_settings();
-
-        let (queue_tx, mut queue_rx) = tokio::sync::mpsc::unbounded_channel();
-        queues.bind_event_tx(queue_tx);
-
-        let react = Box::pin(run_react_loop(ReActConfig {
-            model_manager,
-            active_turn,
-            system_prompt,
-            tools,
-            tool_schemas,
-            user_parts,
+        let lease = RunLease::new(self.coordinator.clone(), run_id, Some(queues.clone()));
+        let stream = build_live_react_stream(LiveReactArgs {
+            run_id,
+            coordinator: self.coordinator.clone(),
             cancel,
-            permission_check,
-            hooks,
-            hook_bus,
-            batch_mode,
-            steer_queue,
-            follow_up_queue,
-            store,
-            session_id: sid,
+            frozen,
+            model_manager: self.inner.model_manager_handle(),
+            queues,
+            store: self.inner.session_store(),
+            session_id,
             seeded_history,
-            skills,
-            event_sink,
-            compaction_settings,
-        }));
+            event_sink_inner: self.inner.event_sink(),
+        });
+        self.coordinator.with_mut(|c| c.mark_streaming(run_id));
+        XyEventStream::with_lease(Box::pin(stream), lease)
+    }
+}
 
-        let inner: Pin<Box<dyn Stream<Item = XyEvent> + Send>> = Box::pin(async_stream::stream! {
-            let mut react = react;
-            loop {
-                tokio::select! {
-                    biased;
-                    ev = react.next() => {
-                        match ev {
-                            Some(e) => yield e,
-                            None => break,
-                        }
+async fn load_history(
+    store: &Arc<dyn XySessionStore>,
+    session_id: &str,
+) -> Result<Vec<AgentMessage>, XyError> {
+    let entries = store
+        .load_leaf_branch(session_id)
+        .await
+        .map_err(|e| XyError::Session(anyhow::anyhow!(e)))?;
+    let entries = crate::protocol::session::build_context_entries(&entries);
+    Ok(entries
+        .iter()
+        .filter_map(|e| e.as_agent_message())
+        .collect())
+}
+
+struct LiveReactArgs {
+    run_id: RunId,
+    coordinator: SharedRunCoordinator,
+    cancel: CancellationToken,
+    frozen: FrozenRootConfig,
+    model_manager: Arc<Mutex<crate::agent::model::manager::ModelManager>>,
+    queues: Arc<crate::agent::capabilities::AsyncQueueRuntime>,
+    store: Arc<dyn XySessionStore>,
+    session_id: String,
+    seeded_history: Vec<AgentMessage>,
+    event_sink_inner: Arc<dyn crate::protocol::ports::XyEventSink>,
+}
+
+fn build_live_react_stream(args: LiveReactArgs) -> impl Stream<Item = XyEvent> + Send {
+    let LiveReactArgs {
+        run_id,
+        coordinator,
+        cancel,
+        frozen,
+        model_manager,
+        queues,
+        store,
+        session_id,
+        seeded_history,
+        event_sink_inner,
+    } = args;
+
+    let FrozenRootConfig {
+        user_parts,
+        system_prompt,
+        tools,
+        hooks,
+        batch_mode,
+        skills,
+        compaction_settings,
+        permission,
+        hook_bus,
+    } = frozen;
+
+    type PermissionCheck = Arc<dyn Fn(&str, &str) -> Option<String> + Send + Sync>;
+    let permission_check: Option<PermissionCheck> = Some(Arc::new(
+        move |tool_name: &str, tool_path: &str| -> Option<String> {
+            super::permission_router::check_tool_permission(
+                permission.as_ref(),
+                tool_name,
+                tool_path,
+            )
+        },
+    ));
+
+    let t_schemas = std::time::Instant::now();
+    let tool_schemas: Vec<XyToolSchema> = tools
+        .iter()
+        .map(|t| XyToolSchema {
+            name: t.name().to_string(),
+            description: t.description().to_string(),
+            parameters: t.parameters_schema(),
+        })
+        .collect();
+    {
+        let ms = t_schemas.elapsed().as_millis();
+        let n = tool_schemas.len();
+        if ms >= 16 {
+            log::info!(target: "xylitol::lag", "run_build_tool_schemas {ms}ms tools={n}");
+        } else {
+            log::debug!(target: "xylitol::lag", "run_build_tool_schemas {ms}ms tools={n}");
+        }
+    }
+
+    let steer_queue = queues.steer.clone();
+    let follow_up_queue = queues.follow_up.clone();
+    let (side_tx, mut side_rx) = tokio::sync::mpsc::unbounded_channel::<XyEvent>();
+    let event_sink: Arc<dyn crate::protocol::ports::XyEventSink> = Arc::new(CompactionStreamTee {
+        inner: event_sink_inner,
+        tx: side_tx,
+    });
+
+    let (queue_tx, mut queue_rx) = tokio::sync::mpsc::unbounded_channel();
+    queues.bind_event_tx(run_id, queue_tx);
+
+    let react = Box::pin(run_react_loop(ReActConfig {
+        run_id,
+        coordinator,
+        model_manager,
+        system_prompt,
+        tools,
+        tool_schemas,
+        user_parts,
+        cancel,
+        permission_check,
+        hooks,
+        hook_bus,
+        batch_mode,
+        steer_queue,
+        follow_up_queue,
+        store,
+        session_id,
+        seeded_history,
+        skills,
+        event_sink,
+        compaction_settings,
+    }));
+
+    async_stream::stream! {
+        let mut react = react;
+        loop {
+            tokio::select! {
+                biased;
+                ev = react.next() => {
+                    match ev {
+                        Some(e) => yield e,
+                        None => break,
                     }
-                    ev = queue_rx.recv() => {
-                        if let Some(e) = ev {
-                            yield e;
-                        }
+                }
+                ev = queue_rx.recv() => {
+                    if let Some(e) = ev {
+                        yield e;
                     }
-                    ev = side_rx.recv() => {
-                        if let Some(e) = ev {
-                            yield e;
-                        }
+                }
+                ev = side_rx.recv() => {
+                    if let Some(e) = ev {
+                        yield e;
                     }
                 }
             }
-            queues.unbind_event_tx();
-        });
-
-        XyEventStream { inner, done: false }
+        }
+        // Queue unbind is owned by RunLease (AgentEnd / Drop), not this tail —
+        // XyEventStream stops polling after AgentEnd so this block may not run.
     }
 }
 
@@ -456,10 +721,10 @@ impl crate::protocol::ports::XyEventSink for CompactionStreamTee {
 
 /// Parameters for the ReAct agent loop.
 struct ReActConfig {
+    run_id: RunId,
+    coordinator: SharedRunCoordinator,
     /// Shared selected model/thinking; refreshed at each turn boundary (c1470).
     model_manager: Arc<Mutex<crate::agent::model::manager::ModelManager>>,
-    /// Active in-flight binding for chrome; cleared when the run ends.
-    active_turn: Arc<Mutex<Option<crate::agent::capabilities::ActiveTurnBinding>>>,
     /// System prompt snapshot for this run (ar6: next-run only).
     system_prompt: Option<String>,
     tools: ToolSet,
@@ -493,8 +758,9 @@ struct ReActConfig {
 
 fn run_react_loop(cfg: ReActConfig) -> impl Stream<Item = XyEvent> + Send {
     let ReActConfig {
+        run_id,
+        coordinator,
         model_manager,
-        active_turn,
         system_prompt,
         tools,
         tool_schemas,
@@ -514,7 +780,10 @@ fn run_react_loop(cfg: ReActConfig) -> impl Stream<Item = XyEvent> + Send {
         compaction_settings,
     } = cfg;
     async_stream::stream! {
-        let _clear_active = ClearActiveTurn(active_turn.clone());
+        let _clear_active = ClearActiveTurn {
+            coordinator: coordinator.clone(),
+            run_id,
+        };
 
         if let Some(bus) = &hook_bus {
             let (ty, phase, ctx) = super::script_hook_ctx::agent_start();
@@ -627,7 +896,8 @@ fn run_react_loop(cfg: ReActConfig) -> impl Stream<Item = XyEvent> + Send {
                 // NextTurn: re-read selected model + thinking at turn boundary (c1470).
                 let (model, generate_options) = match prepare_turn_binding(
                     &model_manager,
-                    &active_turn,
+                    &coordinator,
+                    run_id,
                     &system_prompt,
                     &mut run_model,
                 ) {

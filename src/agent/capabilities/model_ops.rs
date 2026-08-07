@@ -28,11 +28,6 @@ impl AgentCapabilities {
         self.model_manager.clone()
     }
 
-    /// Shared active-turn binding for chrome (footer active / next-turn cue).
-    pub(crate) fn active_turn_handle(&self) -> Arc<Mutex<Option<ActiveTurnBinding>>> {
-        self.active_turn.clone()
-    }
-
     /// Get the currently selected model metadata (clone for lock safety).
     pub fn current_model(&self) -> Option<XyModelMeta> {
         self.with_models(|mm| mm.current_model().cloned())
@@ -48,19 +43,9 @@ impl AgentCapabilities {
         self.with_models(|mm| mm.thinking_level())
     }
 
-    /// Active (in-flight) binding only — `None` when idle / converged.
-    pub fn inflight_turn_binding(&self) -> Option<ActiveTurnBinding> {
-        self.active_turn
-            .lock()
-            .unwrap_or_else(|e| e.into_inner())
-            .clone()
-    }
-
-    /// Active (in-flight) binding, or selected when idle.
-    pub fn active_turn_binding(&self) -> Option<ActiveTurnBinding> {
-        if let Some(active) = self.inflight_turn_binding() {
-            return Some(active);
-        }
+    /// Selected binding when idle (no in-flight turn). Live chrome uses the
+    /// run coordinator via [`crate::agent::runtime::AgentRuntime`].
+    pub fn selected_turn_binding(&self) -> Option<ActiveTurnBinding> {
         self.with_models(|mm| {
             let meta = mm.current_model()?;
             let levels = crate::agent::model::manager::ModelManager::levels_for_meta(meta);
@@ -77,17 +62,9 @@ impl AgentCapabilities {
         })
     }
 
-    /// True while an agent run has an active turn binding (in-flight).
+    /// True while a root turn is live (coordinator probe).
     pub fn has_active_turn(&self) -> bool {
-        self.active_turn
-            .lock()
-            .unwrap_or_else(|e| e.into_inner())
-            .is_some()
-    }
-
-    /// Converge active → selected (idle / abort / run end).
-    pub fn clear_active_turn(&self) {
-        *crate::utils::lock_mutex(&self.active_turn) = None;
+        (self.midturn_active)()
     }
 
     /// Set thinking level.

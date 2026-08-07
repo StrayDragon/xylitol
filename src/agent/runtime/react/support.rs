@@ -7,6 +7,7 @@ use futures::Stream;
 
 use super::super::obs;
 use super::super::retry::{RetryState, is_retryable_error};
+use super::super::state::{RunId, SharedRunCoordinator};
 use crate::agent::llm_project::project_for_llm;
 use crate::protocol::error::XyError;
 use crate::protocol::message::AgentMessage;
@@ -16,7 +17,8 @@ use crate::protocol::session::{EntryBase, MessageEntry, SessionEntry};
 
 pub(crate) fn prepare_turn_binding(
     model_manager: &Arc<Mutex<crate::agent::model::manager::ModelManager>>,
-    active_turn: &Arc<Mutex<Option<crate::agent::capabilities::ActiveTurnBinding>>>,
+    coordinator: &SharedRunCoordinator,
+    run_id: RunId,
     system_prompt: &Option<String>,
     run_model: &mut Option<(String, Arc<dyn XyModel>)>,
 ) -> Result<(Arc<dyn XyModel>, crate::protocol::ports::XyGenerateOptions), XyError> {
@@ -52,18 +54,20 @@ pub(crate) fn prepare_turn_binding(
         }
     };
     drop(mm);
-    *crate::utils::lock_mutex(active_turn) = Some(binding);
+    coordinator.with_mut(|c| c.set_active_turn(run_id, binding));
     Ok((model, generate_options))
 }
 
-/// Clears active-turn binding when the ReAct stream drops (normal end or abort).
-pub(crate) struct ClearActiveTurn(
-    pub(crate) Arc<Mutex<Option<crate::agent::capabilities::ActiveTurnBinding>>>,
-);
+/// Clears active-turn binding for `run_id` when the ReAct stream drops.
+pub(crate) struct ClearActiveTurn {
+    pub(crate) coordinator: SharedRunCoordinator,
+    pub(crate) run_id: RunId,
+}
 
 impl Drop for ClearActiveTurn {
     fn drop(&mut self) {
-        *crate::utils::lock_mutex(&self.0) = None;
+        self.coordinator
+            .with_mut(|c| c.clear_active_turn_if(self.run_id));
     }
 }
 

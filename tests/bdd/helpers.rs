@@ -3,7 +3,7 @@ use std::sync::Arc;
 
 use xylitol::XyDriverError;
 use xylitol::agent::capabilities::AgentCapabilities;
-use xylitol::agent::runtime::AgentRuntime;
+use xylitol::agent::runtime::{AgentRuntime, RunPolicy};
 use xylitol::agent::tools::ToolSet;
 use xylitol::infra::hooks::{HookDispatcher, HookEvent, HookPhase};
 use xylitol::infra::session::SessionManager;
@@ -82,6 +82,29 @@ pub(crate) fn make_agent_with_store(
     (AgentRuntime::new(session), store)
 }
 
+pub(crate) fn bind_session_or_panic(agent: &mut AgentRuntime, session_id: impl Into<String>) {
+    agent.bind_session(session_id).expect("bind_session");
+}
+
+pub(crate) async fn agent_submit_root(
+    agent: &mut AgentRuntime,
+    prompt: &str,
+) -> xylitol::agent::XyEventStream {
+    if agent.session_id().is_none() {
+        bind_session_or_panic(agent, uuid::Uuid::new_v4().to_string());
+    }
+    agent.submit_root(prompt, RunPolicy::Reject).await
+}
+
+pub(crate) async fn agent_submit_root_with_id(
+    agent: &mut AgentRuntime,
+    prompt: &str,
+    session_id: &str,
+) -> xylitol::agent::XyEventStream {
+    bind_session_or_panic(agent, session_id.to_string());
+    agent.submit_root(prompt, RunPolicy::Reject).await
+}
+
 /// Library-seam operation dictionary (c990+). Unknown names return a readable Err.
 /// Must not call `HookDispatcher::dispatch` directly — only XyDriver/agent APIs.
 pub(crate) async fn run_wiring_operation(
@@ -97,7 +120,7 @@ pub(crate) async fn run_wiring_operation(
             let _ = agent.ensure_wiring_hook_log();
             let (mut runtime, store) = make_agent_with_store(agent);
             let orphan = uuid::Uuid::new_v4().to_string();
-            runtime.inner_mut().set_session(orphan);
+            bind_session_or_panic(&mut runtime, orphan);
             let driver = XyInProcessDriver::new(runtime, store);
             driver.session_tree(SessionTreeKind::MessageHistory).await?;
             Ok(())
@@ -127,7 +150,7 @@ pub(crate) async fn run_wiring_operation(
             let _ = agent.ensure_wiring_hook_log();
             let (mut runtime, store) = make_agent_with_store(agent);
             let orphan = uuid::Uuid::new_v4().to_string();
-            runtime.inner_mut().set_session(orphan);
+            bind_session_or_panic(&mut runtime, orphan);
             let driver = XyInProcessDriver::new(runtime, store);
             driver
                 .session_tree(SessionTreeKind::MessageHistory)
@@ -141,7 +164,7 @@ pub(crate) async fn run_wiring_operation(
             let target = "target".to_string();
             store.create(&current, Some("."), None).await?;
             store.create(&target, Some("."), None).await?;
-            runtime.inner_mut().set_session(current);
+            bind_session_or_panic(&mut runtime, current);
             let mut driver = XyInProcessDriver::new(runtime, store);
             driver.switch_session(&target).await.map(|_| ())
         }

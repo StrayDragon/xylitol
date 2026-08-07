@@ -122,7 +122,9 @@ pub struct BootstrappedRuntime {
 impl BootstrappedAgent {
     /// Consume into an [`crate::app::core::driver::XyInProcessDriver`] plus side-products (preferred path).
     pub fn into_runtime(mut self) -> BootstrappedRuntime {
-        self.agent.inner_mut().set_session(self.session_id.clone());
+        self.agent
+            .bind_session(self.session_id.clone())
+            .expect("bootstrap bind_session");
         if let Ok(handle) = tokio::runtime::Handle::try_current() {
             let store = Arc::clone(&self.store);
             let sid = self.session_id.clone();
@@ -594,14 +596,14 @@ pub fn bootstrap(input: BootstrapInput) -> Result<BootstrappedAgent, BootstrapEr
     timing::time("session.create");
 
     if let Some(mid) = target_model {
-        let available_owned = agent.inner().model_registry();
+        let available_owned = agent.model_registry();
         let available: Vec<&XyModelMeta> = available_owned.list().iter().collect();
         match resolver::resolve_model(&mid, &available, None) {
             Ok(resolved) => {
                 if let Some(ref warning) = resolved.warning {
                     warnings.push(BootstrapWarning::ModelResolutionWarning(warning.clone()));
                 }
-                let _ = agent.inner_mut().select_model(&resolved.model.id);
+                let _ = agent.select_model(&resolved.model.id);
             }
             Err(msg) => {
                 warnings.push(BootstrapWarning::ModelResolutionFailed(msg));
@@ -609,9 +611,7 @@ pub fn bootstrap(input: BootstrapInput) -> Result<BootstrappedAgent, BootstrapEr
         }
     }
 
-    agent
-        .inner_mut()
-        .apply_default_thinking_level(default_thinking_level.as_deref());
+    agent.apply_default_thinking_level(default_thinking_level.as_deref());
 
     // Reuse the same session store injected into the agent at composition time.
     let store = agent.session_store();
@@ -969,7 +969,7 @@ mod tests {
         })
         .expect("bootstrap without --model");
         assert!(
-            boot.agent.inner().current_model().is_none(),
+            boot.agent.current_model().is_none(),
             "must not silent-select gpt-4o"
         );
         assert_eq!(UNSET_MODEL_DISPLAY, "NOT-SET");
@@ -1080,7 +1080,7 @@ mod tests {
             ..Default::default()
         };
         let agent = build_agent(opts).expect("build");
-        let sp = agent.inner().system_prompt().unwrap_or("");
+        let sp = agent.system_prompt().unwrap_or("");
         assert!(sp.contains("<available_skills>"));
         assert!(sp.contains("boot-skill"));
         assert!(sp.contains("Use the read tool"));

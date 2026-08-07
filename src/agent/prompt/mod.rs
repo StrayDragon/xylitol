@@ -1,7 +1,8 @@
-//! Prompt/input shaping — system prompt assembly and slash commands. The agent
-//! loop consumes these to build the input it sends to the model.
+//! Prompt/input shaping — system prompt assembly. The agent loop consumes
+//! these to build the input it sends to the model.
+//!
+//! Product slash catalogs live in `app::product_commands` (not here).
 
-pub mod commands;
 pub mod fragments;
 pub(crate) mod sandbox;
 pub mod skill_expand;

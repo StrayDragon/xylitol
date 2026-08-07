@@ -37,7 +37,7 @@ app → agent → protocol/{wire, ports, model, session, …}
 | compaction 闸 | — |
 | steer / follow-up queues | — |
 
-Skill/extension slash **表**可暂留在 capabilities（`extension_commands`，仅合并用）；**产品 builtin 列表只在 `XyDriver::get_commands` 组装**。禁止 `agent` → `app`。
+Skill/extension slash 尚未交付：需要时在 **app / `XyDriver`** 侧注册并并入 `get_commands`，**不要**再塞回 `AgentCapabilities`。产品 builtin 列表只在 `XyDriver::get_commands` 组装。禁止 `agent` → `app`。
 
 - **组合根**才同时 import `agent` + `infra` 做装配（`app/core` 与各面入口）。靠 review + 行为测守住；**禁止**源码 grep 元测试卡 import。
 - **应用面**：只经 `crate::agent`（mod 级）与 `crate::app::core`；共享流水线 = 装配 → `XyDriver::run` → `XyEvent` 流 → 面渲染。不够就扩 seam（`write-surface`），不绕过。
