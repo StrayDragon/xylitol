@@ -15,7 +15,7 @@
   @req:tui4
   场景: no-infra-import
     当 检查 src/app/tui 导入
-    那么 无 agent::session / runtime / infra 直达
+    那么 无 agent::capabilities / runtime / infra 直达
 
   @req:tui5
   场景: driven-on-land

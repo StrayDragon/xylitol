@@ -1,7 +1,7 @@
 //! Documented embed seam for external crates and custom clients.
 //!
 //! Prefer this module plus the curated `Xy*` re-exports in the crate root over
-//! reaching into `agent::session` or `infra` concrete types.
+//! reaching into `agent::capabilities` or `infra` concrete types.
 //!
 //! Typical path:
 //!

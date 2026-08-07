@@ -5,8 +5,8 @@ use async_trait::async_trait;
 use crate::infra::provider::adapter::AdapterRef;
 use crate::protocol::error::XyError;
 use crate::protocol::message::LlmMessage;
+use crate::protocol::model::XyToolSchema;
 use crate::protocol::ports::{XyGenerateOptions, XyModel, XyStream};
-use crate::protocol::types::XyToolSchema;
 
 /// An [`XyModel`] backed by an [`AdapterRef`].
 pub struct AdapterXyModel {

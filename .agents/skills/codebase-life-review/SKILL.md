@@ -193,7 +193,7 @@ Life Review Progress:
 - 产品心智：`docs/architecture/一轮对话.md`、`插话续跑与中止.md`、`用户可见事件.md`
 - 实现入口（走查起点，以代码为准）：
   - 面 → `XyDriver::run` / 队列 API（`src/app/core/driver/`）
-  - 编排 → `AgentRuntime` / ReAct（`src/agent/session/`、`src/agent/runtime/react.rs`）
+  - 编排 → `AgentRuntime` / ReAct（`src/agent/capabilities/`、`src/agent/runtime/react.rs`）
   - 投影 → session → LLM（`src/agent/llm_project.rs`）
   - 工具批 → `tool_batch` / `tool_exec`
 - 探针重点：steer/follow-up/abort 是否只经 Driver；工具「意图收齐再批」；事件流 vs

@@ -5,7 +5,7 @@ use std::sync::Arc;
 use crate::infra::hooks::HookDispatcher;
 use crate::infra::provider::adapter::{AdapterKind, AdapterRef, MappedBridgeAdapter};
 use crate::infra::provider::hooks_port::to_http_hooks;
-use crate::protocol::model_config::XyModelConfig;
+use crate::protocol::model::XyModelConfig;
 
 /// Resolve the adapter kind for a model config.
 pub fn resolve_adapter_kind(config: &XyModelConfig) -> AdapterKind {
@@ -42,7 +42,7 @@ pub fn build_adapter(
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::protocol::model_config::{XyModelConfig, XyModelKind};
+    use crate::protocol::model::{XyModelConfig, XyModelKind};
 
     #[test]
     fn resolve_adapter_kind_ignores_wire_policy_uses_api_only() {

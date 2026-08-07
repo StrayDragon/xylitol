@@ -2,8 +2,8 @@
 
 use std::sync::{Arc, Mutex};
 
+use crate::agent::capabilities::{PendingMessageQueue, observe_hook};
 use crate::agent::runtime::hooks::{AgentHooks, ShouldStopAfterTurnCtx};
-use crate::agent::session::{PendingMessageQueue, observe_hook};
 use crate::protocol::lifecycle::XyEvent;
 use crate::protocol::message::{AgentMessage, LlmMessage};
 use crate::protocol::ports::{XyHookBus, XySessionStore};
@@ -16,15 +16,15 @@ pub(crate) fn should_stop_after_turn(hooks: &AgentHooks, ctx: &ShouldStopAfterTu
 }
 
 pub(crate) fn drain_queue(queue: &Arc<Mutex<PendingMessageQueue>>) -> Vec<AgentMessage> {
-    crate::agent::lock::lock_mutex(queue).drain()
+    crate::utils::lock_mutex(queue).drain()
 }
 
 pub(crate) fn queue_counts(
     steer: &Arc<Mutex<PendingMessageQueue>>,
     follow_up: &Arc<Mutex<PendingMessageQueue>>,
 ) -> (usize, usize) {
-    let steer_count = crate::agent::lock::lock_mutex(steer).len();
-    let follow_up_count = crate::agent::lock::lock_mutex(follow_up).len();
+    let steer_count = crate::utils::lock_mutex(steer).len();
+    let follow_up_count = crate::utils::lock_mutex(follow_up).len();
     (steer_count, follow_up_count)
 }
 
@@ -139,7 +139,7 @@ pub(crate) async fn settle_turn_context(
         }
     };
     let model_id = {
-        let mm = crate::agent::lock::lock_mutex(model_manager);
+        let mm = crate::utils::lock_mutex(model_manager);
         mm.current_model().map(|m| m.config.model.clone())
     };
     Some(settle_from_session_entries(
@@ -165,7 +165,7 @@ pub(crate) async fn try_turn_end_compaction(
     settings: &crate::agent::compaction::CompactionSettings,
     history: &mut Vec<AgentMessage>,
     overflow_recovery_attempted: &mut bool,
-    precomputed: Option<&crate::protocol::types::ContextTokenEstimate>,
+    precomputed: Option<&crate::protocol::model::ContextTokenEstimate>,
 ) -> bool {
     use crate::agent::compaction::{CompactionOrchestrator, EstimateOpts, OverflowCompactOutcome};
 
@@ -179,7 +179,7 @@ pub(crate) async fn try_turn_end_compaction(
     };
 
     let (model, ctx_window, model_id, provider) = {
-        let mm = crate::agent::lock::lock_mutex(model_manager);
+        let mm = crate::utils::lock_mutex(model_manager);
         let meta = match mm.current_model() {
             Some(m) => m,
             None => return false,

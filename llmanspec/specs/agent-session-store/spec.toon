@@ -4,7 +4,7 @@ purpose: 会话持久化 — 基于 JSONL 文件的会话存储，含树操作�
 valid_scope[1]: src/infra/session/
 requirements[33]{req_id,title,statement}:
   r31,快照操作,System MUST 支持对不可变会话快照执行 snapshot、restore、spawn、list、prune、diff、merge 操作。
-  r41,compaction,"当 CompactionSettings.enabled 且上下文占用超过 window−reserve（c1630）时，System MUST 在 agent/session 回合落定后自动 compact（c1640）；MUST NOT 仅依赖百分比闸或仅 TUI 轮询。"
+  r41,compaction,"当 CompactionSettings.enabled 且上下文占用超过 window−reserve（c1630）时，System MUST 在 agent/capabilities 回合落定后自动 compact（c1640）；MUST NOT 仅依赖百分比闸或仅 TUI 轮询。"
   s1,JSONL 存储,SessionManager MUST 将会话持久化为 JSONL 文件（每行一个带版本标签的 JSON 对象），位于 ~/.xylitol/sessions/。
   s2,条目类型,"SessionManager MUST 支持条目类型（JSONL type 判别为 camelCase）：message、compaction、branchSummary、modelChange、thinkingLevelChange、custom、customMessage、label、sessionInfo；bang-bash 不作为顶层 type，而走 message+role=bashExecution。MUST NOT 将 snake_case type 标签（如 branch_summary、bash_execution）视为合法 SSOT。"
   s3,CRUD,SessionManager MUST 支持 create、append、load、list、exists 操作。

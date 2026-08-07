@@ -295,7 +295,7 @@ fn resolve_download_target(
 mod tests {
     use super::*;
     use crate::infra::config::types::{ModelEntry, ModelsConfig, TokenizerEntry};
-    use crate::protocol::model_config::XyModelKind;
+    use crate::protocol::model::XyModelKind;
 
     fn cfg_with_shared_tok(alias: &str, tok_name: &str, repo: &str) -> AppConfig {
         let mut models = std::collections::HashMap::new();

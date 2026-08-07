@@ -1,21 +1,17 @@
 //! Regression baseline for the `Agent` public API surface (spec as31 / c320).
 //!
 //! This is NOT behavioral coverage. It snapshots the *normalized textual
-//! signature list* of every `pub` item exposed by `agent::session`. After the
+//! signature list* of every `pub` item exposed by `agent::capabilities`. After the
 //! c255 session refactor (extraction of collaborators + module reorg), this
 //! snapshot MUST remain byte-identical — directly verifying spec as31
 //! ("facade-retained": public API unchanged).
 //!
-//! Mechanism: at test time we read `src/agent/session.rs`, extract every line
+//! Mechanism: at test time we read `src/agent/capabilities/`, extract every line
 //! beginning a `pub` item, normalize trailing args, sort, and compare against
 //! the accepted insta snapshot. A signature change fails the test until the
 //! snapshot is intentionally reviewed and accepted.
 //!
-//! Note: this deliberately reads the SINGLE source file `session.rs`. Once c255
-//! reorganizes `session.rs` into a `session/` directory, this baseline test
-//! must be updated to aggregate signatures across the new submodules — at which
-//! point the snapshot is regenerated against the post-refactor tree and
-//! re-baselined (signatures themselves must still match).
+//! Note: signatures are aggregated across the `capabilities/` subdirectory tree.
 
 #![cfg(test)]
 
@@ -24,24 +20,17 @@ use std::path::PathBuf;
 
 use insta::assert_snapshot;
 
-/// Locate the session module sources regardless of test working directory.
-/// Returns the single-file path (pre-refactor) or all `.rs` files in the
-/// `session/` directory (post-c255 layout).
+/// Locate the capabilities module sources regardless of test working directory.
 fn session_sources() -> Vec<PathBuf> {
-    let mut single = PathBuf::from(env!("CARGO_MANIFEST_DIR"));
-    single.push("src/agent/session.rs");
-    if single.exists() {
-        return vec![single];
-    }
     let mut dir = PathBuf::from(env!("CARGO_MANIFEST_DIR"));
-    dir.push("src/agent/session");
+    dir.push("src/agent/capabilities");
     assert!(
         dir.is_dir(),
-        "cannot locate session module at {}",
+        "cannot locate capabilities module at {}",
         dir.display()
     );
     let mut files: Vec<PathBuf> = std::fs::read_dir(&dir)
-        .expect("read session dir")
+        .expect("read capabilities dir")
         .filter_map(|e| e.ok())
         .map(|e| e.path())
         .filter(|p| p.extension().is_some_and(|x| x == "rs"))

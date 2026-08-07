@@ -15,7 +15,7 @@ pub use queue::render_queue_strip;
 pub use scrollback::find_stable_markdown_prefix_end;
 pub use scrollback::{ScrollbackFold, ScrollbackPaintCache, render_scrollback};
 
-use crate::protocol::types::{ThinkingLevel, TokenProvenance};
+use crate::protocol::model::{ThinkingLevel, TokenProvenance};
 
 /// Compact token/window counts for footer (pi `formatTokens`).
 pub fn format_compact_tokens(count: u64) -> String {
@@ -98,7 +98,7 @@ pub fn format_footer_text(
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::protocol::types::TokenProvenance;
+    use crate::protocol::model::TokenProvenance;
 
     #[test]
     fn format_compact_tokens_boundaries() {

@@ -9,17 +9,20 @@
 单 crate 逻辑分层（**不**为分层拆 crate；**禁止**再抽 `xylitol-domain` / 把 LLM 叶从 bridge 挪进主仓）：
 
 ```text
-app → agent → protocol/{wire, ports, root types}
-  ↓     ↑
-  └──── infra ───────────────────┘
+app → agent → protocol/{wire, ports, model, session, …}
+  ↓     ↑         ↑
+  └──── infra ────┘
+         ↘
+        utils   (叶：仅 std；各层可依赖；非 Xy* 稳定面)
 ```
 
 | 层 | 做什么 | 硬约束 |
 |---|---|---|
-| `protocol` | 线协议 `wire` + 可替换口 `ports` + 跨层共享类型（根模块） | ↛ `agent`/`infra`；MAY 依赖 bridge **DTO only**；`wire` ↛ `ports`；`ports` ↛ `wire`；禁止再建 `domain`/`vocab`/`types` 第三顶栏 |
-| `agent` | ReAct / session / 编排 / `project_for_llm` | ↛ `infra` |
+| `protocol` | 线协议 `wire` + 可替换口 `ports` + 跨层共享类型（根模块及 `model/`/`session/` 等聚类） | ↛ `agent`/`infra`；MAY 依赖 bridge **DTO only**；`wire` ↛ `ports`；`ports` ↛ `wire`；禁止再建 `domain`/`vocab`/`types` 第三顶栏；根下可按领域聚子树（`model/`、`session/`），**不是**新顶栏 |
+| `agent` | ReAct / `capabilities`（能力聚合）/ 编排 / `project_for_llm` | ↛ `infra`；运行时能力在 `agent::capabilities`（原误称 session）；持久化词表在 `protocol::session` |
 | `infra` | ports 实现（provider、tools、session、config…）；vendor SDK 关在此层 | ↛ `agent` |
 | `app` | 应用面 + `core` 跨面 seam | 走 seam，不 reach `agent`/`infra` 内部 |
+| `utils` | 纯叶工具（如 `xml_escape`、poison-tolerant mutex） | ↛ `agent`/`infra`/`app`/`protocol`；各层 MAY 依赖 |
 
 - **组合根**才同时 import `agent` + `infra` 做装配（`app/core` 与各面入口）。靠 review + 行为测守住；**禁止**源码 grep 元测试卡 import。
 - **应用面**：只经 `crate::agent`（mod 级）与 `crate::app::core`；共享流水线 = 装配 → `XyDriver::run` → `XyEvent` 流 → 面渲染。不够就扩 seam（`write-surface`），不绕过。

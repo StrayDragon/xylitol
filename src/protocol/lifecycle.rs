@@ -8,7 +8,7 @@
 //!
 //! **Closed set:** `XyEvent` is the agent lifecycle vocabulary (Agent/Turn/Message/
 //! Tool/Compaction/Queue…), not a dump of provider SSE names. Provider streams map
-//! to [`crate::protocol::types::XyChunk`] in adapters, then the ReAct loop emits
+//! to [`crate::protocol::model::XyChunk`] in adapters, then the ReAct loop emits
 //! standard `XyEvent`s. See
 //! `llmanspec/changes/archive/2026-07-11-c520-update-xy-event-extensibility/design.md`.
 
@@ -17,7 +17,7 @@ use serde_json::Value;
 
 use crate::protocol::error::XyError;
 use crate::protocol::message::AgentMessage;
-use crate::protocol::types::ContextTokenEstimate;
+use crate::protocol::model::ContextTokenEstimate;
 
 // ── XyEvent ─────────────────────────────────────────────
 

@@ -4,9 +4,9 @@ use std::sync::Arc;
 
 use crate::agent::AgentBuilder;
 use crate::agent::AgentRuntime;
+use crate::agent::capabilities::QueueMode;
 use crate::agent::compaction::CompactionSettings;
 use crate::agent::model::registry::ModelRegistry;
-use crate::agent::session::QueueMode;
 use crate::agent::tools::ToolSet;
 use crate::app::core::driver_error::XyDriverError;
 use crate::infra::bash_exec::InfraBashExecutor;

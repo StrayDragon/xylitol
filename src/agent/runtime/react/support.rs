@@ -10,24 +10,24 @@ use super::super::retry::{RetryState, is_retryable_error};
 use crate::agent::llm_project::project_for_llm;
 use crate::protocol::error::XyError;
 use crate::protocol::message::AgentMessage;
+use crate::protocol::model::{XyChunk, XyToolSchema};
 use crate::protocol::ports::{XyHookBus, XyHookOutcome, XyModel, XySessionStore};
 use crate::protocol::session::{EntryBase, MessageEntry, SessionEntry};
-use crate::protocol::types::{XyChunk, XyToolSchema};
 
 pub(crate) fn prepare_turn_binding(
     model_manager: &Arc<Mutex<crate::agent::model::manager::ModelManager>>,
-    active_turn: &Arc<Mutex<Option<crate::agent::session::ActiveTurnBinding>>>,
+    active_turn: &Arc<Mutex<Option<crate::agent::capabilities::ActiveTurnBinding>>>,
     system_prompt: &Option<String>,
     run_model: &mut Option<(String, Arc<dyn XyModel>)>,
 ) -> Result<(Arc<dyn XyModel>, crate::protocol::ports::XyGenerateOptions), XyError> {
-    let mm = crate::agent::lock::lock_mutex(model_manager);
+    let mm = crate::utils::lock_mutex(model_manager);
     let meta = mm
         .current_model()
         .ok_or_else(|| XyError::Config("no model configured".into()))?;
     let model_id = meta.id.clone();
     let thinking = mm.thinking_level();
     let levels = crate::agent::model::manager::ModelManager::levels_for_meta(meta);
-    let binding = crate::agent::session::ActiveTurnBinding {
+    let binding = crate::agent::capabilities::ActiveTurnBinding {
         model_id: meta.id.clone(),
         display_name: if meta.display_name.is_empty() {
             meta.id.clone()
@@ -35,7 +35,7 @@ pub(crate) fn prepare_turn_binding(
             meta.display_name.clone()
         },
         thinking,
-        omit_thinking: !crate::protocol::types::ThinkingLevel::is_adjustable(&levels),
+        omit_thinking: !crate::protocol::model::ThinkingLevel::is_adjustable(&levels),
     };
     let generate_options = crate::protocol::ports::XyGenerateOptions {
         thinking_level: thinking,
@@ -52,18 +52,18 @@ pub(crate) fn prepare_turn_binding(
         }
     };
     drop(mm);
-    *crate::agent::lock::lock_mutex(active_turn) = Some(binding);
+    *crate::utils::lock_mutex(active_turn) = Some(binding);
     Ok((model, generate_options))
 }
 
 /// Clears active-turn binding when the ReAct stream drops (normal end or abort).
 pub(crate) struct ClearActiveTurn(
-    pub(crate) Arc<Mutex<Option<crate::agent::session::ActiveTurnBinding>>>,
+    pub(crate) Arc<Mutex<Option<crate::agent::capabilities::ActiveTurnBinding>>>,
 );
 
 impl Drop for ClearActiveTurn {
     fn drop(&mut self) {
-        *crate::agent::lock::lock_mutex(&self.0) = None;
+        *crate::utils::lock_mutex(&self.0) = None;
     }
 }
 

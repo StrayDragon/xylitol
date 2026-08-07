@@ -14,9 +14,9 @@ use xylitol_ai_bridge::provider::{
 use crate::infra::provider::map::{to_bridge_tools, to_xy_error, to_xy_stream};
 use crate::protocol::error::XyError;
 use crate::protocol::message::LlmMessage;
-use crate::protocol::model_config::XyModelKind;
+use crate::protocol::model::XyModelKind;
+use crate::protocol::model::XyToolSchema;
 use crate::protocol::ports::{XyGenerateOptions, XyStream};
-use crate::protocol::types::XyToolSchema;
 
 pub mod factory;
 pub mod xy_model;
@@ -69,7 +69,7 @@ impl std::fmt::Display for AdapterKind {
     }
 }
 
-/// Domain-facing adapter: AiBridge DTO in, [`crate::protocol::types::XyChunk`] stream out.
+/// Domain-facing adapter: AiBridge DTO in, [`crate::protocol::model::XyChunk`] stream out.
 #[async_trait]
 pub trait LlmAdapter: Send + Sync {
     fn name(&self) -> &str;

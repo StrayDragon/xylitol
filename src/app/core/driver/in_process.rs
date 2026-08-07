@@ -7,11 +7,11 @@ use async_trait::async_trait;
 use tokio_util::sync::CancellationToken;
 
 use crate::agent::AgentRuntime;
+use crate::protocol::model::ThinkingLevel;
 use crate::protocol::ports::{XyBashResult, XySessionStore};
 use crate::protocol::session::{
     SessionEntry, SessionTreeKind, SessionTreeNode, SessionTreeTravel, plan_message_history_travel,
 };
-use crate::protocol::types::ThinkingLevel;
 
 use super::XyDriver;
 use super::XyDriverError;
@@ -606,12 +606,12 @@ impl XyDriver for XyInProcessDriver {
         if let Some(bus) = self.agent.inner().hook_bus() {
             let (ty, phase, ctx) =
                 crate::agent::runtime::script_hook_ctx::session_before_switch("resume", session_id);
-            crate::agent::session::cancel_hook(&bus, ty, phase, ctx).await?;
+            crate::agent::capabilities::cancel_hook(&bus, ty, phase, ctx).await?;
             let (ty, phase, ctx) = crate::agent::runtime::script_hook_ctx::session_shutdown_resume(
                 session_id,
                 self.agent.inner().session_id(),
             );
-            crate::agent::session::observe_hook(&bus, ty, phase, ctx).await;
+            crate::agent::capabilities::observe_hook(&bus, ty, phase, ctx).await;
         }
         self.agent.inner_mut().set_session(session_id.to_string());
         // c1900: resume/switch starts a new tools epoch — next generate re-gates.
@@ -653,7 +653,7 @@ impl XyDriver for XyInProcessDriver {
 
     async fn estimate_context_tokens(
         &self,
-    ) -> Result<crate::protocol::types::ContextTokenEstimate, XyDriverError> {
+    ) -> Result<crate::protocol::model::ContextTokenEstimate, XyDriverError> {
         let entries = self.get_messages().await?;
         let model_id = self.current_model().map(|m| m.id);
         let tokenizer_override = model_id
@@ -698,7 +698,7 @@ impl XyDriver for XyInProcessDriver {
         Ok(())
     }
 
-    fn queue_stats(&self) -> crate::agent::session::QueueStats {
+    fn queue_stats(&self) -> crate::agent::capabilities::QueueStats {
         self.agent.queue_stats()
     }
 
@@ -715,7 +715,7 @@ impl XyDriver for XyInProcessDriver {
             let kind = format!("{kind:?}");
             let (ty, phase, ctx) =
                 crate::agent::runtime::script_hook_ctx::session_before_tree(&kind);
-            crate::agent::session::cancel_hook(&bus, ty, phase, ctx).await?;
+            crate::agent::capabilities::cancel_hook(&bus, ty, phase, ctx).await?;
         }
         // Bootstrap may assign a fresh id before any persist; wiped HOME may leave
         // an orphan id. Ensure an empty session so double-Esc opens an empty tree.
@@ -735,7 +735,7 @@ impl XyDriver for XyInProcessDriver {
         if let Some(bus) = self.agent.inner().hook_bus() {
             let kind = format!("{kind:?}");
             let (ty, phase, ctx) = crate::agent::runtime::script_hook_ctx::session_tree(&kind);
-            crate::agent::session::observe_hook(&bus, ty, phase, ctx).await;
+            crate::agent::capabilities::observe_hook(&bus, ty, phase, ctx).await;
         }
         Ok(tree)
     }
@@ -756,7 +756,7 @@ impl XyDriver for XyInProcessDriver {
                 crate::agent::runtime::script_hook_ctx::session_before_tree_travel(
                     &kind_s, entry_id,
                 );
-            crate::agent::session::cancel_hook(&bus, ty, phase, ctx).await?;
+            crate::agent::capabilities::cancel_hook(&bus, ty, phase, ctx).await?;
         }
         let travel = match kind {
             SessionTreeKind::MessageHistory => {
@@ -778,7 +778,7 @@ impl XyDriver for XyInProcessDriver {
                 entry_id,
                 travel.leaf_id.as_deref(),
             );
-            crate::agent::session::observe_hook(&bus, ty, phase, ctx).await;
+            crate::agent::capabilities::observe_hook(&bus, ty, phase, ctx).await;
         }
         Ok(travel)
     }
@@ -1493,7 +1493,7 @@ mod driver_session_tree_tests {
     use crate::infra::export::StdExportIo;
     use crate::infra::permission;
     use crate::infra::session::SessionManager;
-    use crate::protocol::model_config::XyModelConfig;
+    use crate::protocol::model::XyModelConfig;
     use crate::protocol::ports::{
         XyBashExecutor, XyEventSink, XyExportIo, XyModel, XySessionStore,
     };
@@ -1701,9 +1701,9 @@ mod driver_session_tree_tests {
 
         use crate::protocol::error::XyError;
         use crate::protocol::message::XyStopReason;
-        use crate::protocol::model_config::XyModelConfig;
+        use crate::protocol::model::XyModelConfig;
+        use crate::protocol::model::{XyChunk, XyModelMeta, XyToolSchema};
         use crate::protocol::ports::{XyModel, XyStream};
-        use crate::protocol::types::{XyChunk, XyModelMeta, XyToolSchema};
 
         struct TextMockModel;
         #[async_trait]
@@ -1741,7 +1741,7 @@ mod driver_session_tree_tests {
         reg.register(XyModelMeta {
             id: "mock".into(),
             config: XyModelConfig {
-                kind: crate::protocol::model_config::XyModelKind::Fake,
+                kind: crate::protocol::model::XyModelKind::Fake,
                 api_key: String::new(),
                 model: "mock".into(),
                 base_url: None,

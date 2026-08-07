@@ -7,10 +7,10 @@
 
 use std::sync::Arc;
 
+use crate::agent::capabilities::{AgentCapabilities, QueueMode};
 use crate::agent::compaction::CompactionSettings;
 use crate::agent::model::registry::ModelRegistry;
 use crate::agent::runtime::AgentRuntime;
-use crate::agent::session::{AgentCapabilities, QueueMode};
 use crate::agent::tools::ToolSet;
 use crate::protocol::ports::{
     XyBashExecutor, XyBatchMode, XyEventSink, XyExportIo, XyHookBus, XyModelBuilder, XyPermission,

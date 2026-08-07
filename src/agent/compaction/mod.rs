@@ -974,7 +974,7 @@ mod tests {
         let len4: u64 = entries.iter().map(estimate_tokens_entry).sum();
         assert_eq!(
             estimated.provenance,
-            crate::protocol::types::TokenProvenance::Api
+            crate::protocol::model::TokenProvenance::Api
         );
         assert!(estimated.tokens > 0);
         assert_ne!(

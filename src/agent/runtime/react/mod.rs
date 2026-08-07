@@ -36,14 +36,14 @@ use tokio_util::sync::CancellationToken;
 
 use super::retry::RetryState;
 use super::{AgentHooks, XyEvent, XyEventStream};
+use crate::agent::capabilities::{AgentCapabilities, PendingMessageQueue};
 use crate::agent::prompt::expand_skills_in_agent_messages;
-use crate::agent::session::{AgentCapabilities, PendingMessageQueue};
 use crate::agent::tools::ToolSet;
 use crate::protocol::error::XyError;
 use crate::protocol::message::{AgentMessage, AgentPart};
+use crate::protocol::model::{XyChunk, XyToolSchema};
 use crate::protocol::ports::{XyBatchMode, XyHookBus, XyHookOutcome, XyModel, XySessionStore};
 use crate::protocol::resource::SkillInfo;
-use crate::protocol::types::{XyChunk, XyToolSchema};
 
 // ── AgentRuntime ───────────────────────────────────────────────────────
 
@@ -63,7 +63,7 @@ impl AgentRuntime {
 
     /// Get a reference to the cancellation token for the active (or last) run.
     pub fn cancel_token(&self) -> CancellationToken {
-        crate::agent::lock::lock_mutex(&self.cancel).clone()
+        crate::utils::lock_mutex(&self.cancel).clone()
     }
 
     /// Signal cancellation to abort the agent loop.
@@ -76,7 +76,7 @@ impl AgentRuntime {
     /// loop and dropping the provider stream (c680; surfaces inherit via
     /// [`crate::app::core::driver::XyDriver::abort`]).
     pub fn abort(&self) {
-        crate::agent::lock::lock_mutex(&self.cancel).cancel();
+        crate::utils::lock_mutex(&self.cancel).cancel();
         self.inner.clear_steer_queue();
         self.inner.abort_bash();
         self.inner.clear_active_turn();
@@ -98,7 +98,7 @@ impl AgentRuntime {
     }
 
     /// Queue depths.
-    pub fn queue_stats(&self) -> crate::agent::session::QueueStats {
+    pub fn queue_stats(&self) -> crate::agent::capabilities::QueueStats {
         self.inner.queue_stats()
     }
 
@@ -358,7 +358,7 @@ impl AgentRuntime {
         }
 
         let cancel = {
-            let mut guard = crate::agent::lock::lock_mutex(&self.cancel);
+            let mut guard = crate::utils::lock_mutex(&self.cancel);
             *guard = CancellationToken::new();
             guard.clone()
         };
@@ -459,7 +459,7 @@ struct ReActConfig {
     /// Shared selected model/thinking; refreshed at each turn boundary (c1470).
     model_manager: Arc<Mutex<crate::agent::model::manager::ModelManager>>,
     /// Active in-flight binding for chrome; cleared when the run ends.
-    active_turn: Arc<Mutex<Option<crate::agent::session::ActiveTurnBinding>>>,
+    active_turn: Arc<Mutex<Option<crate::agent::capabilities::ActiveTurnBinding>>>,
     /// System prompt snapshot for this run (ar6: next-run only).
     system_prompt: Option<String>,
     tools: ToolSet,
@@ -542,7 +542,7 @@ fn run_react_loop(cfg: ReActConfig) -> impl Stream<Item = XyEvent> + Send {
         // One OTEL/fastrace tree per user-triggered run (c1495 / c1555 turn preview).
         let user_preview = super::tool_exec::parts_preview_text(&user_parts);
         let model_api = {
-            let mm = crate::agent::lock::lock_mutex(&model_manager);
+            let mm = crate::utils::lock_mutex(&model_manager);
             mm.current_model().map(|m| m.api.clone())
         };
         let agent_turn_span =
