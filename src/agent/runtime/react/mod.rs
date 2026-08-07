@@ -286,6 +286,13 @@ impl AgentRuntime {
         self.inner.apply_default_thinking_level(raw);
     }
 
+    pub fn set_thinking_budgets(
+        &mut self,
+        budgets: Option<crate::protocol::model::ThinkingBudgets>,
+    ) {
+        self.inner.set_thinking_budgets(budgets);
+    }
+
     pub fn restore_thinking_level(&mut self, level: String) {
         self.inner.restore_thinking_level(level);
     }

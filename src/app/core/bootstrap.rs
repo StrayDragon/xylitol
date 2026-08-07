@@ -220,6 +220,8 @@ pub struct ResolvedAssembly {
     pub hooks_config: crate::infra::config::types::HooksConfig,
     /// Settings `defaultThinkingLevel` (camelCase JSON), if any.
     pub default_thinking_level: Option<String>,
+    /// Settings `thinkingBudgets` (camelCase JSON), if any.
+    pub thinking_budgets: Option<crate::protocol::model::ThinkingBudgets>,
     /// `AppConfig.tool_batch.mode` (c1545).
     pub batch_mode: crate::protocol::ports::XyBatchMode,
     /// `AppConfig.session.max_turns` when set (c1620).
@@ -522,7 +524,13 @@ pub fn resolve_assembly(input: &BootstrapInput) -> Result<ResolvedAssembly, Boot
     }
 
     // ── Step 3b2: compaction + queue settings ─────────────────────
-    let (compaction_settings, steering_mode, follow_up_mode, default_thinking_level) = {
+    let (
+        compaction_settings,
+        steering_mode,
+        follow_up_mode,
+        default_thinking_level,
+        thinking_budgets,
+    ) = {
         let agent_dir = crate::infra::resource::DefaultResourceLoader::default_agent_dir();
         let settings_cwd = if project_trusted {
             std::path::PathBuf::from(&cwd)
@@ -542,11 +550,21 @@ pub fn resolve_assembly(input: &BootstrapInput) -> Result<ResolvedAssembly, Boot
         let steering_mode = queue_mode_from_settings(settings_mgr.get_steering_mode());
         let follow_up_mode = queue_mode_from_settings(settings_mgr.get_follow_up_mode());
         let default_thinking_level = settings_mgr.get_settings().default_thinking_level.clone();
+        let thinking_budgets =
+            settings_mgr
+                .get_thinking_budgets()
+                .map(|b| crate::protocol::model::ThinkingBudgets {
+                    minimal: b.minimal,
+                    low: b.low,
+                    medium: b.medium,
+                    high: b.high,
+                });
         (
             compaction,
             steering_mode,
             follow_up_mode,
             default_thinking_level,
+            thinking_budgets,
         )
     };
 
@@ -603,6 +621,7 @@ pub fn resolve_assembly(input: &BootstrapInput) -> Result<ResolvedAssembly, Boot
         mcp_servers,
         hooks_config,
         default_thinking_level,
+        thinking_budgets,
         batch_mode,
         max_turns,
     })
@@ -619,6 +638,7 @@ pub fn bootstrap(input: BootstrapInput) -> Result<BootstrappedAgent, BootstrapEr
     let session_id = assembly.session_id.clone();
     let mcp_servers = assembly.mcp_servers.clone();
     let default_thinking_level = assembly.default_thinking_level.clone();
+    let thinking_budgets = assembly.thinking_budgets.clone();
     let max_turns = assembly.max_turns;
     let target_model = model.or_else(|| assembly.default_profile_model.clone());
     let mut warnings = std::mem::take(&mut assembly.warnings);
@@ -654,6 +674,7 @@ pub fn bootstrap(input: BootstrapInput) -> Result<BootstrappedAgent, BootstrapEr
     if input.session.is_none() {
         agent.apply_default_thinking_level(default_thinking_level.as_deref());
     }
+    agent.set_thinking_budgets(thinking_budgets);
 
     // Reuse the same session store injected into the agent at composition time.
     let store = agent.session_store();

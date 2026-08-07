@@ -8,7 +8,7 @@ use std::sync::Arc;
 use crate::agent::model::registry::ModelRegistry;
 use crate::protocol::error::XyError;
 use crate::protocol::model::{
-    THINKING_OFF, XyModelConfig, XyModelMeta, last_declared_thinking_level,
+    THINKING_OFF, ThinkingBudgets, XyModelConfig, XyModelMeta, last_declared_thinking_level,
     thinking_levels_are_adjustable,
 };
 use crate::protocol::ports::XyModel;
@@ -29,6 +29,8 @@ pub struct ModelManager {
     pub(crate) thinking_level: String,
     /// Preferred default from Settings (`default_thinking_level`), if any.
     preferred_default: Option<String>,
+    /// Optional Settings Anthropic budget overrides for known level names.
+    thinking_budgets: Option<ThinkingBudgets>,
     /// Injected provider factory (composition-root-supplied).
     pub(crate) model_builder: crate::protocol::ports::XyModelBuilder,
 }
@@ -45,6 +47,7 @@ impl ModelManager {
             current_index: None,
             thinking_level: THINKING_OFF.into(),
             preferred_default: None,
+            thinking_budgets: None,
             model_builder,
         }
     }
@@ -52,6 +55,16 @@ impl ModelManager {
     /// Store Settings `default_thinking_level` for initial session assembly.
     pub fn set_preferred_default(&mut self, level: Option<String>) {
         self.preferred_default = level;
+    }
+
+    /// Store Settings `thinkingBudgets` for Anthropic (and mapped) budget resolve.
+    pub fn set_thinking_budgets(&mut self, budgets: Option<ThinkingBudgets>) {
+        self.thinking_budgets = budgets;
+    }
+
+    /// Current Settings thinking budgets, if any.
+    pub fn thinking_budgets(&self) -> Option<&ThinkingBudgets> {
+        self.thinking_budgets.as_ref()
     }
 
     // ── Current model ────────────────────────────────────────────
@@ -270,6 +283,22 @@ mod tests {
             mm.select_model(&id).unwrap();
         }
         mm
+    }
+
+    #[test]
+    fn thinking_budgets_round_trip_on_manager() {
+        let mut mm = manager_with(vec![meta("m1", true, &["off", "high"])]);
+        assert!(mm.thinking_budgets().is_none());
+        mm.set_thinking_budgets(Some(crate::protocol::model::ThinkingBudgets {
+            minimal: Some(111),
+            low: None,
+            medium: Some(222),
+            high: Some(333),
+        }));
+        let b = mm.thinking_budgets().expect("budgets");
+        assert_eq!(b.minimal, Some(111));
+        assert_eq!(b.medium, Some(222));
+        assert_eq!(b.high, Some(333));
     }
 
     #[test]

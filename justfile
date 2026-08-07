@@ -139,6 +139,11 @@ test-live-provider verbosity=verbosity_default:
 gen-live-provider-example:
     python3 scripts/gen_live_provider_example.py
 
+# Generate configs/example.yaml (maintenance; not in qa).
+# Edit scripts/gen_config_example.py TEMPLATE, then re-run this recipe.
+gen-config-example:
+    python3 scripts/gen_config_example.py
+
 # Provider-safe MCP tool naming gate (registry SSOT + wire encode on all three APIs).
 # Not live-network; safe in qa loops. Prefer this after changing MCP_PUBLIC_DELIMITER.
 [arg('verbosity', pattern='quiet|normal|verbose')]

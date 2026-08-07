@@ -124,6 +124,14 @@ impl AgentCapabilities {
         });
     }
 
+    /// Apply Settings `thinkingBudgets` (Anthropic budget overrides) for generate.
+    pub fn set_thinking_budgets(
+        &mut self,
+        budgets: Option<crate::protocol::model::ThinkingBudgets>,
+    ) {
+        self.with_models_mut(|mm| mm.set_thinking_budgets(budgets));
+    }
+
     /// Restore a persisted session level verbatim, without emitting a new entry.
     pub fn restore_thinking_level(&mut self, level: String) {
         self.with_models_mut(|mm| mm.restore_thinking_level(level));
