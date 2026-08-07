@@ -6,6 +6,9 @@ pub use core::product_commands;
 /// Interactive bang (`!` / `!!`) executor (app-surface).
 pub use core::bang_exec;
 
+/// Session HTML/JSONL export-import (app-surface).
+pub use core::session_export;
+
 /// Shared tool call/result presentation (TUI + Print; c1460).
 pub(crate) mod tool_display;
 
