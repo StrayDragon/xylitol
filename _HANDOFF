@@ -16,11 +16,13 @@ specs 的 requirement 约束收敛到**产品级**（可观察行为/数据契�
 | B | `365eee5` | layer-architecture 34→26（合并 la1+la5、la3+la9+la12、la16+la14；删 la10/la11/la18/ar02；改写 la4/la19）；agent-runtime ar1 删路径括号 | validate 2 spec 绿 |
 | C | `74a3979` | ask 回调端口上移 `protocol::ports::ask`（AskUserGateway+4 DTO）；infra::tools::ask 只留 AskTool+default_tools_with_ask；删死代码 toolset_with_ask（无生产调用方）；tui4 补 agent::tools 禁词 | check 零警告；ask 单测 6 passed；BDD 270 passed |
 | D | `5378aa5` | 删 app-tui-host ath9（QA 基线前置，一次性条款）+ 2 死场景（shared-bang-helper / bdd-features-present，无 binding） | validate app-tui-host 绿 |
-| E | （待提交） | 删 agent-runtime ar14（禁 facade，重复且风险低）；ce7 删 facade 尾巴；保留 r69（禁 pi 短名=产品语义）、ce11（无 --rpc）、s4（数据兼容）、as43（trust 分层方向） | validate agent-runtime/cli-entry 绿 |
+| E | `6c3dfbc` | 删 agent-runtime ar14（禁 facade，重复且风险低）；ce7 删 facade 尾巴；保留 r69（禁 pi 短名=产品语义）、ce11（无 --rpc）、s4（数据兼容）、as43（trust 分层方向） | validate agent-runtime/cli-entry 绿 |
 
-## 待办
+## 状态：✅ 全部档位完成
 
-- 全部档位完成（A/B/C/D/E）。收尾：可考虑合并 E 档遗留为"已删除物清单"（可选，非必须）
+- `llman sdd validate --all` = 63 passed / 0 failed
+- BDD = 270 passed
+- 后续规格维护按 AGENTS.md「Specs 约束层级」执行（产品级、不硬约束代码组织、直接编辑免 change）
 
 ## 验证基线
 
