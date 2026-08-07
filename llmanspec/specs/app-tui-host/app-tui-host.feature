@@ -70,18 +70,6 @@
     当 审计文档结构
     那么 含文件布局表、模块职责、硬约束与验证指针，且无进度表
 
-  @req:ath9
-  场景: shared-bang-helper
-    假如 生产 mod.rs bang 环与 harness bang Esc 测并存
-    当 审查 bang Esc 消费路径
-    那么 两侧调用同一共享 helper 或同序同分支入口，无第三份手写 select
-
-  @req:ath9
-  场景: bdd-features-present
-    假如 tests/features 含 app-tui abort/bang/esc/queue feature
-    当 cargo test --test bdd
-    那么 新增 app-tui 场景全部通过且既有核心 BDD 不回归
-
   @req:ath11
   场景: bang-abort-unchanged
     假如 hanging bang 中 Esc
