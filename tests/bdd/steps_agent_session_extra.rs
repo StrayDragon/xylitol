@@ -488,8 +488,8 @@ pub(crate) fn g_sess_review_no_template(ws: &Workspace, agent: &AgentState) {
 pub(crate) fn w_prompt_process(agent: &AgentState, ws: &Workspace) {
     use std::path::PathBuf;
 
-    use xylitol::agent::prompt::product_commands::product_slash_commands;
     use xylitol::app::cli::resources::{ResourcesAction, run_with_dirs};
+    use xylitol::app::product_commands::product_slash_commands;
 
     let cwd = PathBuf::from(ws.ws("."));
     let agent_dir = cwd.join(".xylitol");
@@ -766,7 +766,7 @@ pub(crate) fn t_sess_prompt_build_order(agent: &AgentState) {
 
 #[given("空扩展命令的 AgentSession")]
 pub(crate) fn g_sess_get_commands(_agent: &AgentState) {
-    use xylitol::agent::prompt::product_commands::product_slash_commands;
+    use xylitol::app::product_commands::product_slash_commands;
     let names: Vec<String> = product_slash_commands()
         .iter()
         .map(|c| c.name.to_string())
@@ -888,7 +888,7 @@ pub(crate) fn t_sess_resp_ok(agent: &AgentState) {
 
 #[given("使用默认依赖构造 AgentCapabilities")]
 pub(crate) fn g_sess_api_retained(agent: &AgentState) {
-    use xylitol::agent::prompt::product_commands::product_slash_commands;
+    use xylitol::app::product_commands::product_slash_commands;
 
     let dir = tempfile::tempdir().unwrap();
     let mgr = SessionManager::new(dir.keep());

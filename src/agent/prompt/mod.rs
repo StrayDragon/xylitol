@@ -3,7 +3,6 @@
 
 pub mod commands;
 pub mod fragments;
-pub mod product_commands;
 pub(crate) mod sandbox;
 pub mod skill_expand;
 pub mod system;

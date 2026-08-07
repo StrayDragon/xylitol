@@ -382,18 +382,9 @@ mod tests {
     }
 
     #[test]
-    fn get_commands_includes_product_builtins() {
+    fn extension_commands_default_empty() {
         let session = make_session();
-        let names: Vec<String> = session.get_commands().into_iter().map(|c| c.name).collect();
-        // Product builtins from SSOT (c1175).
-        assert!(names.iter().any(|n| n == "model"));
-        assert!(names.iter().any(|n| n == "session-export"));
-        assert!(names.iter().any(|n| n == "session-compact"));
-        assert!(names.iter().any(|n| n == "session-tree"));
-        assert!(!names.iter().any(|n| n == "tree"));
-        assert!(!names.iter().any(|n| n == "compact"));
-        assert!(!names.iter().any(|n| n == "export"));
-        assert!(!names.iter().any(|n| n.starts_with("template:")));
+        assert!(session.extension_commands().is_empty());
     }
 
     #[test]
