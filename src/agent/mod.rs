@@ -29,7 +29,6 @@ pub mod llm_project;
 pub mod model;
 pub mod prompt;
 pub mod runtime;
-pub mod tool_result_quiet;
 pub mod tools;
 
 // ── 公共入口（mod 级 re-export）──────────────────────────────────
@@ -46,7 +45,7 @@ pub use crate::agent::runtime::hooks::BeforeToolHook;
 pub use crate::agent::runtime::hooks::{
     ShouldStopAfterTurnCtx, ShouldStopAfterTurnHook, max_turns_stop_hook,
 };
-pub use crate::agent::runtime::{AgentHooks, XyEventStream};
+pub use crate::agent::runtime::{AgentHooks, RunPolicy, RuntimeControlError, XyEventStream};
 pub use crate::agent::tools::{
     MCP_FIRST_TURN_GATE_TIMEOUT, ToolFreezePhase, ToolSet, ToolTableFingerprint,
     freeze_table_from_parts, upsert_tools_by_name,

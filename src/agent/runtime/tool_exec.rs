@@ -287,7 +287,11 @@ pub(crate) async fn run_one(
     );
 
     let (history_parts, details) =
-        crate::agent::tool_result_quiet::quiet_write_edit_for_history(name, &result_text, result.1);
+        crate::agent::runtime::tool_result_quiet::quiet_write_edit_for_history(
+            name,
+            &result_text,
+            result.1,
+        );
     AgentMessage::tool_result_with_details(
         id.to_string(),
         name.to_string(),
