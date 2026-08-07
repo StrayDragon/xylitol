@@ -14,7 +14,7 @@ requirements[27]{req_id,title,statement}:
   c9,迭代摘要,存在先前 CompactionEntry 时，System MUST 使用更新 prompt 保留既有结构化信息并合并新进展，而非从头开始。
   c10,文件跟踪,"Compaction 摘要 MUST 在摘要消息内工具调用引用的文件后追加 <read-files> 与 <modified-files> XML 标签列表。"
   c11,compact 条目,Compaction MUST 产出含 summary 字符串、firstKeptEntryId（切点后首条保留条目）、tokensBefore 计数及含 readFiles 与 modifiedFiles 列表的 details 对象的 CompactionEntry。
-  c12,agent 集成,AgentSession MUST 暴露 compact_current_session()：估计上下文用量、找切点、调用 LLM 摘要、写入 CompactionEntry、重载会话状态。
+  c12,agent 集成,System MUST 提供会话压缩入口（compact_current_session 或等价）：估计上下文用量、找切点、调用 LLM 摘要、写入 CompactionEntry、重载会话状态。
   c13,模块拆分,compaction 子系统 MUST 按职责拆分为内聚模块，覆盖 token 估计、切点检测、文件操作跟踪、LLM 摘要与分支摘要，而非单一超大文件。
   c14,单一配置来源,"Compaction 配置 MUST 有且仅有一个 serde 面向类型 XyCompactionSettingsConfig 与一个运行时类型 CompactionSettings（字段 enabled / reserve_tokens / keep_recent_tokens）；MUST NOT 再保留 compaction_threshold 或重复 CompactionConfig 定义。"
   c15,token 使用量类型统一与来源标注,Compaction 与会话侧上下文估计 MUST 使用 domain 的 XyUsage 作为厂商/归一化用量类型；估计结果 MUST 能暴露 TokenProvenance（或经映射的等价来源标注）供上层区分 Api 与降级估计；token_estimator 内 MUST NOT 再定义重复的 XyUsage。

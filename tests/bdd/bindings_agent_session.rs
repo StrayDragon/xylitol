@@ -155,12 +155,6 @@ fn test_sess_responsibilities(agent: AgentState, ws: Workspace) {}
 
 #[scenario(
     path = "llmanspec/specs/agent-session/agent-session.feature",
-    name = "api-retained"
-)]
-fn test_sess_api_retained(agent: AgentState, ws: Workspace) {}
-
-#[scenario(
-    path = "llmanspec/specs/agent-session/agent-session.feature",
     name = "export-io-injected"
 )]
 async fn test_sess_export_io(agent: AgentState, sess: XySessionStore, ws: Workspace) {}
@@ -170,9 +164,3 @@ async fn test_sess_export_io(agent: AgentState, sess: XySessionStore, ws: Worksp
     name = "no-bash-configured"
 )]
 async fn test_sess_no_bash(agent: AgentState, ws: Workspace) {}
-
-#[scenario(
-    path = "llmanspec/specs/agent-session/agent-session.feature",
-    name = "snapshot-regenerated"
-)]
-fn test_sess_snapshot_regenerated(agent: AgentState, ws: Workspace) {}

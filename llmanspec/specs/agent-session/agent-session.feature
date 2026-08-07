@@ -148,12 +148,6 @@
     当 分别调用 get_context_usage 与 export_to_html 入口
     那么 各 API 可独立调用且不 panic
 
-  @req:as32
-  场景: api-retained
-    假如 使用默认依赖构造 AgentCapabilities
-    当 调用 get_commands 与 set_thinking_level
-    那么 公共 API 可调用且返回非空命令列表
-
   @req:as35
   场景: export-io-injected
     假如 构造含 MockExportIo 的 Agent
@@ -165,12 +159,6 @@
     假如 构建无 bash executor 的 agent
     当 调用 execute_bash
     那么 返回提及 bash executor 未配置的错误且不 panic
-
-  @req:as40
-  场景: snapshot-regenerated
-    假如 使用默认依赖构造 AgentCapabilities
-    当 读取类型名
-    那么 类型名为 AgentCapabilities
 
   @req:as45
   场景: second-turn-sees-first

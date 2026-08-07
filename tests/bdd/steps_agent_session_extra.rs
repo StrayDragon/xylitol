@@ -878,39 +878,6 @@ pub(crate) fn t_sess_resp_ok(agent: &AgentState) {
     assert!(result_ok_str(&agent.last_result).starts_with("usage:"));
 }
 
-#[given("使用默认依赖构造 AgentCapabilities")]
-pub(crate) fn g_sess_api_retained(agent: &AgentState) {
-    use xylitol::app::product_commands::product_slash_commands;
-
-    let dir = tempfile::tempdir().unwrap();
-    let mgr = SessionManager::new(dir.keep());
-    let store: Arc<dyn xylitol::protocol::ports::XySessionStore> = Arc::new(mgr);
-    let mut session = make_test_capabilities(agent, store);
-    let _ = session.set_thinking_level(ThinkingLevel::Low);
-    let cmds = product_slash_commands();
-    let type_name = std::any::type_name::<AgentCapabilities>().to_string();
-    agent
-        .last_result
-        .replace(Some(Ok(format!("cmds:{} type:{type_name}", cmds.len()))));
-}
-
-#[when("调用 get_commands 与 set_thinking_level")]
-pub(crate) fn w_sess_api_calls(agent: &AgentState) {
-    let _ = agent;
-}
-
-#[then("公共 API 可调用且返回非空命令列表")]
-pub(crate) fn t_sess_api_ok(agent: &AgentState) {
-    let msg = result_ok_str(&agent.last_result);
-    let n: usize = msg
-        .split(" type:")
-        .next()
-        .and_then(|prefix| prefix.strip_prefix("cmds:"))
-        .and_then(|s| s.parse().ok())
-        .unwrap_or(0);
-    assert!(n > 0, "get_commands must return commands, got: {msg}");
-}
-
 struct MockExportIo {
     writes: std::sync::Mutex<Vec<String>>,
 }
@@ -1020,18 +987,5 @@ pub(crate) fn t_sess_no_bash_err(agent: &AgentState) {
         err.contains("bash")
             && (err.contains("not") || err.contains("未") || err.contains("config")),
         "expected bash executor missing error, got: {err}"
-    );
-}
-
-#[when("读取类型名")]
-pub(crate) fn w_sess_type_name(agent: &AgentState) {
-    let _ = agent;
-}
-
-#[then("类型名为 AgentCapabilities")]
-pub(crate) fn t_sess_type_name(agent: &AgentState) {
-    assert!(
-        result_ok_str(&agent.last_result).contains("AgentCapabilities"),
-        "type name must be AgentCapabilities"
     );
 }

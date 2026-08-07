@@ -42,6 +42,20 @@ change/spec 的命名、ID、依赖、原子性、语言。架构事实（分层
 - spec 的 `purpose` / requirement `title`+`statement` / scenario `given`/`when`/`then` **MUST 中文**；技术标识符（类型名、路径、命令、req_id）保留英文。
 - Gherkin `.feature`：BDD-on（Partitioned SSOT）下 `spec.toon` = 约束/不可执行场景；live `llmanspec/specs/<capability>/*.feature` = 可执行 GWT（`@req:`）。在非默认 feature 分支直接编辑二者 → `llman sdd change attach` / `checkpoint` → docs-only `change archive` → Git merge。**禁止** `solidify`、`change delta`、新建 `*.feature.delta.toon`。场景标题 MUST 用英文 `scenario.id`；可保留 rich Gherkin（Background / docstring / 并且）。与 `tests/features/` 手写链路可并存。
 
+## spec 约束层级（产品级优先）
+
+- requirement statement MUST 描述**产品可观察行为 / 数据契约**（WHAT），中文；**禁止硬约束代码组织**：具体路径、文件/模块名、类型名、行数、方法归属、迁移清单。
+- 例外——**大的组织方向**可保留：分层依赖方向、端口 seam、crate 边界、组合根职责、跨面同源（如产品 slash SSOT）。
+- 代码组织演进（重构、改名、移动）不要求改 spec；spec 只随产品行为变化而变。
+- 已删除对象（类型/模块/方法）的引用条款随删除一并清理，不保留「防复活」清单（除非有真实回归风险）。
+
+## spec 维护（产品级同步，直接编辑）
+
+- 因代码组织演进导致 spec 过期（主语/路径/迁移条款）→ **直接编辑** spec.toon / .feature 并直接 commit，**免 change 生命周期**（无需 attach/checkpoint/finalize/archive）。
+- 新增/变更**产品行为**仍走标准 change 流程（propose → apply → verify → archive）。
+- 直接编辑仍 MUST 过结构门禁：`llman sdd validate <cap>`（或 `--all`）与相关 BDD 测试绿。
+- 删除 req 时同步清理：`.feature` 的 `@req:` 场景与 `tests/bdd` 的 scenario binding、toon 的 `feature: false` 场景。
+
 ## BDD-on 操作闸（字段经验；上游正在收口）
 
 Partitioned 双写与 checkpoint 时序已部分吸收进上游 llman（`improve-partitioned-ssot-agent-friction`）。
