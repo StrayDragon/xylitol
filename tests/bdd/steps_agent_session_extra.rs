@@ -761,7 +761,7 @@ pub(crate) fn t_sess_prompt_build_order(agent: &AgentState) {
     );
 }
 
-#[given("空扩展命令的 AgentSession")]
+#[given("空扩展命令的能力聚合体")]
 pub(crate) fn g_sess_get_commands(_agent: &AgentState) {
     use xylitol::app::product_commands::product_slash_commands;
     let names: Vec<String> = product_slash_commands()

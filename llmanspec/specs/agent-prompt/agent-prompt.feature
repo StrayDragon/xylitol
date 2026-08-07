@@ -23,7 +23,7 @@
   @req:pt3
   场景: no-slash-prompt-templates
     假如 项目或全局 prompts 目录存在 greet.md
-    当 装配 AgentSession 或 ResourceLoader 发现
+    当 装配资源加载器并发现
     那么 get_commands MUST NOT 含 template:greet 或 /greet 模板命令且 loader MUST NOT 将 greet 注册为 prompt 模板
 
   @req:pt6

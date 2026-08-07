@@ -398,7 +398,7 @@ fn g_pt3_prompts_dir(ws: &crate::fixtures::Workspace) {
     std::fs::write(&path, "---\ndescription: greet\n---\nHello $1\n").ok();
 }
 
-#[when("装配 AgentSession 或 ResourceLoader 发现")]
+#[when("装配资源加载器并发现")]
 fn w_pt3_discover(ws: &crate::fixtures::Workspace, prompt_bdd: &PromptBdd) {
     use std::path::PathBuf;
 

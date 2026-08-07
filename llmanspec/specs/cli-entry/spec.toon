@@ -33,7 +33,7 @@ scenarios[22]{req_id,id,given,when,then,feature}:
   ce1,cli-under-app-unit,源码布局,"定位 CLI 模块","位于 src/app/cli/；面不 reach agent 内部",false
   ce2,no-silent-fallback-unit,配置存在但零可加载模型,"经 bootstrap 启动表面",硬失败并指向配置,false
   ce6,driver-abstraction-unit,"InProcessDriver 与 RemoteDriver",切换构造,"同实现 Driver trait",false
-  ce7,composition-ports-unit,组合根装配,"注入 SessionStore/EventSink","从 infra 构造；无 agent::facade",false
+  ce7,composition-ports-unit,组合根装配,"注入 SessionStore/EventSink","从 infra 构造并注入",false
   ce8,server-subcommands-unit,"CLI server 子命令","解析 run/install/stop",子命令存在,false
   ce9,assembly-via-bootstrap-unit,"cli 与 server 装配",跟踪调用,"经 app::core::bootstrap",false
   ce10,dispatch-via-shared-unit,"产品 TUI 命令执行",跟踪调用,"委托 dispatch/Driver",false

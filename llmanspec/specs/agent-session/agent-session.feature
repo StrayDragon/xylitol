@@ -108,7 +108,7 @@
 
   @req:a23
   场景: product-names-in-get-commands
-    假如 空扩展命令的 AgentSession
+    假如 空扩展命令的能力聚合体
     当 调用 get_commands
     那么 含 session-tree 且不含短名 tree 作为内建主名
 

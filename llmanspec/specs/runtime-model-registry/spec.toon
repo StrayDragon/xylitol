@@ -7,7 +7,7 @@ requirements[14]{req_id,title,statement}:
   m2,模型发现,ModelRegistry MUST 支持 get_available()，返回已注册 provider 的全部配置模型，按 provider 优先级排序。
   m3,模型默认值,"ModelRegistry MUST 仅为 openai 与 anthropic provider 维护默认模型 ID。Pre-1.0.0 其它 provider MUST NOT 有默认模型条目。默认模型 ID MUST 为有效、当前可用的模型标识（如 gpt-4o、claude-sonnet-4-20250514），不得为占位或不存在的模型名。该默认 ID 仅作显式解析/回退辅助，MUST NOT 单独构成「用户已配置默认模型」的产品选中态。"
   m4,模型解析器,"System MUST 提供 resolve_model(pattern, available)，支持 provider/modelId 规范形式、裸 id 匹配、别名优先于带日期版本、以及 thinking-level:model pattern 解析。"
-  m5,作用域模型,"AgentSession MUST 支持 scoped_models（来自 CLI --models 标志），用于 Ctrl+P 模型循环，将可用模型限制为用户指定子集并可含每模型 thinking level。"
+  m5,作用域模型,"System MUST 支持 scoped_models（来自 CLI --models 标志），用于模型循环，将可用模型限制为用户指定子集并可含每模型 thinking level。"
   m6,模型回退,目标模型 ID 不在 provider 可用列表时，ModelResolver MUST 构建回退 Model，保留用户意图并回退到同 provider 基础模型。
   m7,鉴权指引,未配置模型 API key 时，ModelRegistry MUST 返回面向用户的错误消息，指引正确环境变量名。
   m8,BDD model,模型注册表与解析的 BDD 测试 MUST 全部通过。

@@ -7,7 +7,7 @@ requirements[11]{req_id,title,statement}:
   be2,中止与取消,BashExecutor MUST 支持取消，杀死整个进程组并将结果标为 cancelled。
   be3,输出截断,"BashExecutor MUST 将输出截断到配置 max bytes，超限时将完整输出溢出到临时文件；返回给调用方/会话的 output MUST 为截断尾部，并 MUST 追加 pi 形脚注 `[Full output: <path>. Truncated: <N> lines shown (<limit> limit)]`（path 不可用时用 `(unavailable)`）；未截断 MUST NOT 追加该脚注。"
   be4,会话条目,"新写入的 bang-bash MUST 持久化为 SessionEntry::Message（type=message），其 message 为 Env bashExecution（role=bashExecution），携带 command、output、exit_code、cancelled、truncated、full_output_path、exclude_from_context。MUST NOT 再对新写入使用顶层 type=bashExecution 变体。读路径 MUST NOT 将旧顶层 bashExecution/bash_execution 提升为合法上下文（按 agent-session-store s20 跳过该行并可观测 warn）。"
-  be5,AgentSession API,AgentSession MUST 暴露 execute_bash、record_bash_result、abort_bash，并将单/双 bang 前缀路由到执行器。
+  be5,bash 执行入口,System MUST 经 Driver（或等价缝）暴露 bash 执行入口（execute_bash 或等价，含结果记录与中止）；单/双 bang 前缀 MUST 在产品面路由到执行器。
   be6,上下文过滤,"构建 LLM 上下文（含 ReAct 从 store 播种的 history）时 System MUST 省略 exclude_from_context 为 true 的 bashExecution（Message 内 nested）；单 bang 默认纳入。MUST NOT 依赖旧顶层 BashExecution 读提升。"
   b1,bash trait,System MUST 在 BashOperations trait 后抽象 bash 执行，支持真实与 mock 实现供测试。
   b2,bash hooks,"System MUST 支持 bash 执行的 pre-spawn 与 post-spawn hooks 以供扩展集成。"
