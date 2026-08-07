@@ -2,15 +2,15 @@
 //!
 //! ## 入口（库用户从这里进门）
 //!
-//! - [`AgentRuntime`]（[`runtime::AgentRuntime`]）：ReAct 循环运行时，驱动
-//!   [`AgentCapabilities`] 跑 turn。交互层（cli/rpc/server/tui）经 `XyDriver` 持有它，
-//!   调用 `run` / `abort` / `set_tools` 等方法。
+//! - [`AgentRuntime`]（[`runtime::AgentRuntime`]）：会话绑定的 ReAct actor。
+//!   交互层（cli/rpc/server/tui）经 `XyDriver` 持有它，调用
+//!   `bind_session` / `submit_root` / `abort` / `set_tools` 等方法。
 //! - [`AgentCapabilities`]（[`capabilities::AgentCapabilities`]）：可插拔的能力聚合体
 //!   （models + io + tools + 编排状态）。被 `AgentRuntime` 持有；构造期由
 //!   [`AgentBuilder`] 装配。**不是** [`crate::protocol::message::AgentContext`]
 //!   （那是 LLM 请求快照）。
 //!
-//! 两者关系是 Runtime + Capabilities：`AgentRuntime` 跑 ReAct 循环，
+//! 两者关系是 Runtime + Capabilities：`AgentRuntime` 跑单飞 ReAct，
 //! `AgentCapabilities` 是被驱动的能力体。
 //!
 //! ## 分层约束

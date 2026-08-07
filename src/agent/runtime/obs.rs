@@ -401,11 +401,11 @@ mod tests {
             .map(|(k, v)| (k.as_ref(), v.as_ref()))
             .collect();
         assert!(
-            props.get("langfuse.observation.level").is_none(),
+            !props.contains_key("langfuse.observation.level"),
             "ok finish must not mark ERROR: {props:?}"
         );
         assert!(
-            props.get("langfuse.observation.status_message").is_none(),
+            !props.contains_key("langfuse.observation.status_message"),
             "ok finish must not set status_message: {props:?}"
         );
     }

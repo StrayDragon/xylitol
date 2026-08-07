@@ -97,11 +97,11 @@ fn test_wrap_ansi_ascii_matches_plain_breaks() {
             let mut i = 0;
             let bytes = s.as_bytes();
             while i < bytes.len() {
-                if bytes[i] == 0x1b {
-                    if let Some((_, len)) = extract_ansi_code(&s[i..], 0) {
-                        i += len;
-                        continue;
-                    }
+                if bytes[i] == 0x1b
+                    && let Some((_, len)) = extract_ansi_code(&s[i..], 0)
+                {
+                    i += len;
+                    continue;
                 }
                 out.push(s[i..].chars().next().unwrap());
                 i += s[i..].chars().next().unwrap().len_utf8();
