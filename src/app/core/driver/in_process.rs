@@ -2137,4 +2137,129 @@ mod driver_session_tree_tests {
         assert!(snap.mcp_connecting_label.is_none());
         assert!(snap.mcp_bootstrap_complete);
     }
+
+    /// Default `XyDriver::run` path is Reject: concurrent root while live → Busy, one provider stream.
+    #[tokio::test]
+    async fn concurrent_run_rejects_second_with_busy() {
+        use std::pin::Pin;
+        use std::sync::atomic::{AtomicUsize, Ordering};
+
+        use async_trait::async_trait;
+        use futures::StreamExt;
+
+        use crate::protocol::error::XyError;
+        use crate::protocol::message::XyStopReason;
+        use crate::protocol::model::{XyChunk, XyModelConfig, XyModelMeta, XyToolSchema};
+        use crate::protocol::ports::{XyModel, XyStream};
+
+        struct SlowMock {
+            calls: Arc<AtomicUsize>,
+        }
+        #[async_trait]
+        impl XyModel for SlowMock {
+            fn name(&self) -> &str {
+                "slow-mock"
+            }
+            async fn generate_stream(
+                &self,
+                _messages: Vec<crate::protocol::message::LlmMessage>,
+                _tools: &[XyToolSchema],
+                _stream: bool,
+                _options: crate::protocol::ports::XyGenerateOptions,
+            ) -> Result<XyStream, XyError> {
+                self.calls.fetch_add(1, Ordering::SeqCst);
+                Ok(Box::pin(async_stream::stream! {
+                    for i in 0..40u32 {
+                        tokio::time::sleep(std::time::Duration::from_millis(20)).await;
+                        yield Ok(XyChunk::TextDelta(format!("c{i}")));
+                    }
+                    yield Ok(XyChunk::Done {
+                        finish_reason: XyStopReason::Stop,
+                        usage: None,
+                    });
+                })
+                    as Pin<
+                        Box<dyn futures::Stream<Item = Result<XyChunk, XyError>> + Send>,
+                    >)
+            }
+        }
+
+        let calls = Arc::new(AtomicUsize::new(0));
+        let calls_b = calls.clone();
+        let dir = tempfile::tempdir().unwrap();
+        let store = Arc::new(SessionManager::new(dir.path().join("sessions")));
+        let store_trait: Arc<dyn XySessionStore> = store.clone();
+        let mut reg =
+            crate::agent::model::registry::ModelRegistry::new(Arc::new(InfraSecretResolver::new()));
+        reg.register(XyModelMeta {
+            id: "mock".into(),
+            config: XyModelConfig {
+                kind: crate::protocol::model::XyModelKind::Fake,
+                api_key: String::new(),
+                model: "mock".into(),
+                base_url: None,
+                api: None,
+            },
+            display_name: "Mock".into(),
+            thinking: false,
+            context_window: 128000,
+            api: String::new(),
+            provider: String::new(),
+            cost_input: 0.0,
+            cost_output: 0.0,
+            cost_cache_read: 0.0,
+            cost_cache_write: 0.0,
+            max_tokens: 0,
+            thinking_levels: Vec::new(),
+            thinking_level_map: Default::default(),
+        });
+        let builder: ModelBuilderFn = Arc::new(move |_| {
+            Ok(Arc::new(SlowMock {
+                calls: calls_b.clone(),
+            }) as Arc<dyn XyModel>)
+        });
+        let mut agent = AgentBuilder::new(
+            reg,
+            builder,
+            store_trait.clone(),
+            Arc::new(EventBus::new()) as Arc<dyn crate::protocol::ports::XyEventSink>,
+            permission::allow_all_permission(),
+        )
+        .cwd(".")
+        .tools(ToolSet::empty())
+        .build()
+        .expect("build agent");
+        agent.select_model("mock").expect("select mock");
+        let sid = uuid::Uuid::new_v4().to_string();
+        agent.bind_session(sid).expect("bind_session");
+        let mut driver = XyInProcessDriver::new(agent, store_trait);
+
+        let mut first = driver.run("one").await;
+        let mut saw = false;
+        while let Some(ev) = first.next().await {
+            if matches!(ev, crate::protocol::lifecycle::XyEvent::TextDelta(_)) {
+                saw = true;
+                break;
+            }
+        }
+        assert!(saw, "first driver run must emit text");
+
+        let mut second = driver.run("two").await;
+        let mut busy = false;
+        let mut second_text = false;
+        while let Some(ev) = second.next().await {
+            match ev {
+                crate::protocol::lifecycle::XyEvent::Error(err) if err.kind == "Busy" => {
+                    busy = true
+                }
+                crate::protocol::lifecycle::XyEvent::TextDelta(_) => second_text = true,
+                _ => {}
+            }
+        }
+        assert!(busy, "second XyDriver::run must Busy");
+        assert!(!second_text, "rejected run must not stream model text");
+        assert_eq!(calls.load(Ordering::SeqCst), 1, "only one provider stream");
+
+        while first.next().await.is_some() {}
+    }
 }

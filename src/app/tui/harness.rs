@@ -1378,6 +1378,11 @@ mod slice_tests {
             .await
             .unwrap();
         assert_eq!(driver.steer_calls, vec!["nudge".to_string()]);
+        assert!(
+            driver.runs.is_empty(),
+            "busy Enter MUST steer, not start a second root run: {:?}",
+            driver.runs
+        );
         let frame = root.borrow_mut().render(80);
         assert!(frame.iter().any(|l| l.contains("Steering: nudge")));
         assert!(
@@ -1402,6 +1407,11 @@ mod slice_tests {
             .await
             .unwrap();
         assert_eq!(driver.follow_up_calls, vec!["later".to_string()]);
+        assert!(
+            driver.runs.is_empty(),
+            "busy Alt+Enter MUST follow-up, not start a second root run: {:?}",
+            driver.runs
+        );
         let frame = root.borrow_mut().render(80);
         assert!(frame.iter().any(|l| l.contains("Follow-up: later")));
     }
@@ -2917,8 +2927,7 @@ mod slice_tests {
     fn chrome_toast_body(session: &HostSession<TestTerminal>) -> Option<String> {
         session
             .ui_root()
-            .map(|r| r.borrow().chrome_toast_body().map(str::to_string))
-            .flatten()
+            .and_then(|r| r.borrow().chrome_toast_body().map(str::to_string))
     }
 
     #[tokio::test]
@@ -4508,7 +4517,7 @@ mod slice_tests {
             .unwrap();
 
         assert_eq!(root.borrow().layout_theme().palette(), Palette::light());
-        assert_eq!(session.theme_preference().as_deref(), Some("light"));
+        assert_eq!(session.theme_preference(), Some("light"));
         assert!(
             !system_notes(&session)
                 .iter()

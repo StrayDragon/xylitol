@@ -2173,7 +2173,7 @@ mod fork_path_tests {
         let listed = mgr.list_sessions().await.unwrap();
         let ids: Vec<_> = listed.iter().map(|e| e.id.as_str()).collect();
         assert!(ids.contains(&good.as_str()), "{ids:?}");
-        assert!(!ids.iter().any(|id| *id == "bad-legacy"), "{ids:?}");
+        assert!(!ids.contains(&"bad-legacy"), "{ids:?}");
     }
 
     #[tokio::test]
