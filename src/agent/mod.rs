@@ -9,6 +9,9 @@
 //!   （models + io + tools + 编排状态）。被 `AgentRuntime` 持有；构造期由
 //!   [`AgentBuilder`] 装配。**不是** [`crate::protocol::message::AgentContext`]
 //!   （那是 LLM 请求快照）。
+//! - [`RuntimePorts`]（[`runtime::RuntimePorts`]）：可克隆的构造基线；
+//!   `AgentBuilder::build_ports` → `materialize_runtime` 物化隔离 actor
+//!   （未来 sub-agent factory 接缝；不共享 history / cancel / active turn）。
 //!
 //! 两者关系是 Runtime + Capabilities：`AgentRuntime` 跑单飞 ReAct，
 //! `AgentCapabilities` 是被驱动的能力体。
@@ -41,6 +44,8 @@ pub use crate::agent::context_policy::{ContextPolicy, DatePlacement, StatusBarMo
 pub use crate::agent::llm_project::project_for_llm;
 /// ReAct 循环运行时（驱动 [`AgentCapabilities`]）。
 pub use crate::agent::runtime::AgentRuntime;
+/// Clonable construction baseline for materializing isolated [`AgentRuntime`]s.
+pub use crate::agent::runtime::RuntimePorts;
 pub use crate::agent::runtime::hooks::BeforeToolHook;
 pub use crate::agent::runtime::hooks::{
     ShouldStopAfterTurnCtx, ShouldStopAfterTurnHook, max_turns_stop_hook,

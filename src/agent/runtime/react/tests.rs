@@ -2212,6 +2212,375 @@ async fn queue_after_run_fifo_and_drop_revokes() {
     assert_eq!(calls.load(Ordering::SeqCst), 2);
 }
 
+/// Esc/abort cancels the active root but MUST keep an explicit QueueAfterRun pending.
+#[tokio::test]
+async fn abort_keeps_queued_root_after_active_cancels() {
+    use crate::protocol::lifecycle::XyEvent;
+    use futures::StreamExt;
+    use std::sync::atomic::{AtomicUsize, Ordering};
+
+    struct SlowThenFast {
+        calls: Arc<AtomicUsize>,
+    }
+
+    #[async_trait::async_trait]
+    impl XyModel for SlowThenFast {
+        fn name(&self) -> &str {
+            "slow-then-fast"
+        }
+        async fn generate_stream(
+            &self,
+            _messages: Vec<crate::protocol::message::LlmMessage>,
+            _tools: &[crate::protocol::model::XyToolSchema],
+            _stream: bool,
+            _options: crate::protocol::ports::XyGenerateOptions,
+        ) -> Result<XyStream, XyError> {
+            let n = self.calls.fetch_add(1, Ordering::SeqCst);
+            Ok(Box::pin(async_stream::stream! {
+                if n == 0 {
+                    for i in 0..80u32 {
+                        tokio::time::sleep(std::time::Duration::from_millis(15)).await;
+                        yield Ok(crate::protocol::model::XyChunk::TextDelta(format!("live{i}")));
+                    }
+                } else {
+                    yield Ok(crate::protocol::model::XyChunk::TextDelta(format!(
+                        "call-{n}"
+                    )));
+                }
+                yield Ok(crate::protocol::model::XyChunk::Done {
+                    finish_reason: crate::protocol::message::XyStopReason::Stop,
+                    usage: None,
+                });
+            }))
+        }
+    }
+
+    let calls = Arc::new(AtomicUsize::new(0));
+    let calls_b = calls.clone();
+    let reg = mock_model_registry();
+    let session_mgr = SessionManager::new(tempfile::tempdir().unwrap().path().join("sessions"));
+    let store: Arc<dyn XySessionStore> = Arc::new(session_mgr);
+    let sink: Arc<dyn XyEventSink> = Arc::new(crate::infra::event::EventBus::new());
+    let builder: crate::protocol::ports::XyModelBuilder = Arc::new(move |_| {
+        Ok(Arc::new(SlowThenFast {
+            calls: calls_b.clone(),
+        }) as Arc<dyn XyModel>)
+    });
+    let session = select_mock(AgentCapabilities::new(
+        reg,
+        ToolSet::empty(),
+        store,
+        sink,
+        None,
+        Vec::new(),
+        Vec::new(),
+        ".".into(),
+        None,
+        builder,
+        crate::infra::permission::allow_all_permission(),
+        crate::agent::capabilities::QueueMode::default(),
+        crate::agent::capabilities::QueueMode::default(),
+        None,
+    ));
+    let mut agent = AgentRuntime::new(session);
+    bind_session_or_panic(&mut agent, "abort-queue-sess");
+
+    let mut first = agent.submit_root("live", RunPolicy::Reject).await;
+    while let Some(ev) = first.next().await {
+        if matches!(ev, XyEvent::TextDelta(_)) {
+            break;
+        }
+    }
+
+    let mut queued = agent.submit_root("next", RunPolicy::QueueAfterRun).await;
+    agent.abort();
+
+    let mut first_aborted = false;
+    while let Some(ev) = first.next().await {
+        if matches!(ev, XyEvent::Error(err) if err.is_aborted()) {
+            first_aborted = true;
+        }
+    }
+    assert!(first_aborted, "active root must abort");
+
+    let mut texts = Vec::new();
+    while let Some(ev) = queued.next().await {
+        if let XyEvent::TextDelta(t) = ev {
+            texts.push(t);
+        }
+    }
+    assert!(
+        texts.iter().any(|t| t == "call-1"),
+        "queued root must run after abort: {texts:?}"
+    );
+    assert!(
+        !texts.iter().any(|t| t.starts_with("live")),
+        "queued stream must not carry aborted live text: {texts:?}"
+    );
+    assert!(
+        calls.load(Ordering::SeqCst) >= 2,
+        "active + queued provider calls"
+    );
+}
+
+/// AbortAndReplace: stale first-stream cleanup must not clear replacement active_turn /
+/// event_tx (steer QueueUpdate still reaches the new stream).
+#[tokio::test]
+async fn abort_and_replace_keeps_new_run_event_tx_and_active_turn() {
+    use crate::protocol::lifecycle::XyEvent;
+    use futures::StreamExt;
+    use std::sync::atomic::{AtomicUsize, Ordering};
+
+    struct SlowMock {
+        calls: Arc<AtomicUsize>,
+    }
+
+    #[async_trait::async_trait]
+    impl XyModel for SlowMock {
+        fn name(&self) -> &str {
+            "slow-mock"
+        }
+        async fn generate_stream(
+            &self,
+            _messages: Vec<crate::protocol::message::LlmMessage>,
+            _tools: &[crate::protocol::model::XyToolSchema],
+            _stream: bool,
+            _options: crate::protocol::ports::XyGenerateOptions,
+        ) -> Result<XyStream, XyError> {
+            let n = self.calls.fetch_add(1, Ordering::SeqCst);
+            Ok(Box::pin(async_stream::stream! {
+                if n == 0 {
+                    for i in 0..80u32 {
+                        tokio::time::sleep(std::time::Duration::from_millis(15)).await;
+                        yield Ok(crate::protocol::model::XyChunk::TextDelta(format!("old{i}")));
+                    }
+                } else {
+                    yield Ok(crate::protocol::model::XyChunk::TextDelta("replaced".into()));
+                    // Yield to the event merge select so QueueUpdate can surface.
+                    tokio::time::sleep(std::time::Duration::from_millis(50)).await;
+                }
+                yield Ok(crate::protocol::model::XyChunk::Done {
+                    finish_reason: crate::protocol::message::XyStopReason::Stop,
+                    usage: None,
+                });
+            }))
+        }
+    }
+
+    let calls = Arc::new(AtomicUsize::new(0));
+    let calls_b = calls.clone();
+    let reg = mock_model_registry();
+    let session_mgr = SessionManager::new(tempfile::tempdir().unwrap().path().join("sessions"));
+    let store: Arc<dyn XySessionStore> = Arc::new(session_mgr);
+    let sink: Arc<dyn XyEventSink> = Arc::new(crate::infra::event::EventBus::new());
+    let builder: crate::protocol::ports::XyModelBuilder = Arc::new(move |_| {
+        Ok(Arc::new(SlowMock {
+            calls: calls_b.clone(),
+        }) as Arc<dyn XyModel>)
+    });
+    let session = select_mock(AgentCapabilities::new(
+        reg,
+        ToolSet::empty(),
+        store,
+        sink,
+        None,
+        Vec::new(),
+        Vec::new(),
+        ".".into(),
+        None,
+        builder,
+        crate::infra::permission::allow_all_permission(),
+        crate::agent::capabilities::QueueMode::default(),
+        crate::agent::capabilities::QueueMode::default(),
+        None,
+    ));
+    let mut agent = AgentRuntime::new(session);
+    bind_session_or_panic(&mut agent, "replace-event-tx");
+
+    let mut first = agent.submit_root("old", RunPolicy::Reject).await;
+    while let Some(ev) = first.next().await {
+        if matches!(ev, XyEvent::TextDelta(_)) {
+            break;
+        }
+    }
+
+    let mut second = agent.submit_root("new", RunPolicy::AbortAndReplace).await;
+
+    let mut first_aborted = false;
+    while let Some(ev) = first.next().await {
+        if matches!(ev, XyEvent::Error(err) if err.is_aborted()) {
+            first_aborted = true;
+        }
+    }
+    assert!(first_aborted, "first root must abort under AbortAndReplace");
+
+    let mut texts = Vec::new();
+    let mut saw_queue = false;
+    let mut steered = false;
+    while let Some(ev) = second.next().await {
+        match ev {
+            XyEvent::TextDelta(t) => {
+                if !steered {
+                    assert!(
+                        agent.has_active_turn(),
+                        "replacement must own active_turn after stale first cleanup"
+                    );
+                    assert!(
+                        agent.inflight_turn_binding().is_some(),
+                        "replacement must expose inflight binding once live"
+                    );
+                    agent.steer("nudge-during-replace");
+                    steered = true;
+                }
+                texts.push(t);
+            }
+            XyEvent::QueueUpdate { steer_count, .. } if steer_count >= 1 => {
+                saw_queue = true;
+            }
+            _ => {}
+        }
+    }
+    assert!(
+        texts.iter().any(|t| t == "replaced"),
+        "replacement must emit text: {texts:?}"
+    );
+    assert!(steered, "must have steered during replacement");
+    assert!(
+        saw_queue,
+        "replacement event_tx must still receive QueueUpdate after stale cleanup"
+    );
+    assert!(calls.load(Ordering::SeqCst) >= 2);
+}
+
+/// QueueAfterRun second root MUST see first root's persisted user/assistant history.
+#[tokio::test]
+async fn queue_after_run_second_reads_persisted_history() {
+    use crate::protocol::lifecycle::XyEvent;
+    use crate::protocol::message::AgentPart;
+    use futures::StreamExt;
+    use std::sync::atomic::{AtomicUsize, Ordering};
+
+    struct HistoryMock {
+        calls: Arc<AtomicUsize>,
+        seen: Arc<std::sync::Mutex<Vec<Vec<LlmMessage>>>>,
+    }
+
+    #[async_trait::async_trait]
+    impl XyModel for HistoryMock {
+        fn name(&self) -> &str {
+            "history-mock"
+        }
+        async fn generate_stream(
+            &self,
+            messages: Vec<crate::protocol::message::LlmMessage>,
+            _tools: &[crate::protocol::model::XyToolSchema],
+            _stream: bool,
+            _options: crate::protocol::ports::XyGenerateOptions,
+        ) -> Result<XyStream, XyError> {
+            let n = self.calls.fetch_add(1, Ordering::SeqCst);
+            self.seen.lock().unwrap().push(messages);
+            let label = if n == 0 {
+                "first-reply"
+            } else {
+                "queued-reply"
+            };
+            Ok(Box::pin(async_stream::stream! {
+                if n == 0 {
+                    tokio::time::sleep(std::time::Duration::from_millis(80)).await;
+                }
+                yield Ok(crate::protocol::model::XyChunk::TextDelta(label.into()));
+                yield Ok(crate::protocol::model::XyChunk::Done {
+                    finish_reason: crate::protocol::message::XyStopReason::Stop,
+                    usage: None,
+                });
+            }))
+        }
+    }
+
+    let calls = Arc::new(AtomicUsize::new(0));
+    let seen = Arc::new(std::sync::Mutex::new(Vec::new()));
+    let calls_b = calls.clone();
+    let seen_b = seen.clone();
+    let reg = mock_model_registry();
+    let session_mgr = SessionManager::new(tempfile::tempdir().unwrap().path().join("sessions"));
+    let store: Arc<dyn XySessionStore> = Arc::new(session_mgr);
+    let sink: Arc<dyn XyEventSink> = Arc::new(crate::infra::event::EventBus::new());
+    let builder: crate::protocol::ports::XyModelBuilder = Arc::new(move |_| {
+        Ok(Arc::new(HistoryMock {
+            calls: calls_b.clone(),
+            seen: seen_b.clone(),
+        }) as Arc<dyn XyModel>)
+    });
+    let session = select_mock(AgentCapabilities::new(
+        reg,
+        ToolSet::empty(),
+        store,
+        sink,
+        None,
+        Vec::new(),
+        Vec::new(),
+        ".".into(),
+        None,
+        builder,
+        crate::infra::permission::allow_all_permission(),
+        crate::agent::capabilities::QueueMode::default(),
+        crate::agent::capabilities::QueueMode::default(),
+        None,
+    ));
+    let mut agent = AgentRuntime::new(session);
+    bind_session_or_panic(&mut agent, "queue-history");
+
+    let mut first = agent.submit_root("turn-one", RunPolicy::Reject).await;
+    while let Some(ev) = first.next().await {
+        if matches!(ev, XyEvent::TextDelta(_)) {
+            break;
+        }
+    }
+
+    let mut queued = agent
+        .submit_root("turn-two", RunPolicy::QueueAfterRun)
+        .await;
+    while first.next().await.is_some() {}
+
+    let mut texts = Vec::new();
+    while let Some(ev) = queued.next().await {
+        if let XyEvent::TextDelta(t) = ev {
+            texts.push(t);
+        }
+    }
+    assert_eq!(texts, vec!["queued-reply".to_string()]);
+    assert_eq!(calls.load(Ordering::SeqCst), 2);
+
+    let rounds = seen.lock().unwrap();
+    assert_eq!(rounds.len(), 2);
+    let second_input = &rounds[1];
+    let user_texts: Vec<String> = second_input
+        .iter()
+        .filter_map(|m| match m {
+            LlmMessage::UserMessage { content, .. } => content.iter().find_map(|p| match p {
+                AgentPart::Text { text: t } => Some(t.clone()),
+                _ => None,
+            }),
+            _ => None,
+        })
+        .collect();
+    assert!(
+        user_texts.iter().any(|t| t == "turn-one"),
+        "queued root must see first persisted user: {user_texts:?}"
+    );
+    assert!(
+        user_texts.iter().any(|t| t == "turn-two"),
+        "queued root must include its own prompt: {user_texts:?}"
+    );
+    let has_assistant = second_input
+        .iter()
+        .any(|m| matches!(m, LlmMessage::AssistantMessage { .. }));
+    assert!(
+        has_assistant,
+        "queued root must see first assistant in history: {second_input:?}"
+    );
+}
+
 #[tokio::test]
 async fn bind_session_rejects_while_busy() {
     use crate::agent::runtime::RuntimeControlError;

@@ -43,7 +43,7 @@ Skill/extension slash 尚未交付：需要时在 **app / `XyDriver`** 侧注册
 - **应用面**：只经 `crate::agent`（mod 级）与 `crate::app::core`；共享流水线 = 装配 → `XyDriver::run` → `XyEvent` 流 → 面渲染。不够就扩 seam（`write-surface`），不绕过。
 - **进程内 Driver** 可调 `infra` 做 trust/clipboard/config 等表面能力；默认工具集 / provider / session 仍归组合根。面仍禁止 reach。
 - **steer / follow-up / abort**：只经 `XyDriver` 队列 API；面不得改 ReAct 内部队列。产品语义：`docs/architecture/插话续跑与中止.md`。
-- **`AgentRuntime` 会话 actor（硬约束）**：一个 runtime **显式绑定一个 session** 后才可根提交；任意时刻至多一个 ReAct worker 可写该 session（单飞）。根提交默认拒绝忙碌并发；`steer`/`follow_up` 是轮内改道，**不是**第二次根提交。`RunId` 仅运行时内部，不进 `XyEvent`/wire。未来子 agent = **另建隔离 runtime**，不得在同一 runtime 按 session id 多路复用，也不得共享 history / cancel / active turn / 插话队列。
+- **`AgentRuntime` 会话 actor（硬约束）**：一个 runtime **显式绑定一个 session** 后才可根提交；任意时刻至多一个 ReAct worker 可写该 session（单飞）。根提交默认拒绝忙碌并发；`steer`/`follow_up` 是轮内改道，**不是**第二次根提交。`RunId` 仅运行时内部，不进 `XyEvent`/wire。未来子 agent = **另建隔离 runtime**，不得在同一 runtime 按 session id 多路复用，也不得共享 history / cancel / active turn / 插话队列。构造基线用可克隆的 `RuntimePorts`（`AgentBuilder::build_ports` → `materialize_runtime`），每次物化得到独立 ModelManager / queues / session / coordinator / compaction。
 
 开箱主线 vs 配置后置（Server / MCP / 更多 adapter）见根 `AGENTS.md` 与 `docs/architecture/`。库嵌入：`xylitol::embed`。
 
