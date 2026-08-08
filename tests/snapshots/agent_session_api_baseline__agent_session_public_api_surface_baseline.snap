@@ -1,5 +1,6 @@
 ---
 source: tests/agent_session_api_baseline.rs
+assertion_line: 127
 expression: "all_items.join(\"\\n\")"
 ---
 pub async fn ensure_session(&self, id: &str, parent: Option<&str>) -> Result<(), XyError>
@@ -73,11 +74,12 @@ pub fn system_prompt(&self) -> Option<&str>
 pub fn thinking_level(&self) -> String
 pub fn tool_freeze_phase(&self) -> ToolFreezePhase
 pub fn unbind_event_tx(&self, run_id: RunId)
-pub model_id: String, pub display_name: String, /// Exact configured or restored thinking level name for this turn. pub thinking: String, /// True when footer should omit the thinking segment. pub omit_thinking: bool, } /// Engine capability aggregate (model / tools / session / prompt / compaction / queues). /// /// Product slash, bang, and session export live on [`XyDriver`](crate::app::core::driver::XyDriver). pub struct AgentCapabilities
+pub model_id: String, pub display_name: String, /// Exact configured or restored thinking level name for this turn. pub thinking: String, /// True when footer should omit the thinking segment. pub omit_thinking: bool, } impl ActiveTurnBinding
 pub session_id: String, pub user_messages: usize, pub assistant_messages: usize, pub total_messages: usize, pub thinking_level: String, pub model: Option<(String, String)>, } /// Aggregate message counts for a session by reading the session store. /// /// Moved out of the `AgentCapabilities` body (spec as32 / c320 T24) so the capability /// aggregate holds no aggregation logic. pub async fn compute( store: &dyn XySessionStore, session_id: &str, ) -> Result<SessionStats, XyError>
 pub steer: Arc<Mutex<PendingMessageQueue>>, pub follow_up: Arc<Mutex<PendingMessageQueue>>, /// Bound as `(RunId, tx)` so a stale stream cannot clear a newer run's sender. event_tx: Arc<Mutex<Option<(RunId, EventTx)>>>, } impl AsyncQueueRuntime
 pub steer_count: usize, pub follow_up_count: usize, } /// Sender bound to the active `XyDriver::run` / ReAct EventStream (may be absent). pub type EventTx = tokio::sync::mpsc::UnboundedSender<XyEvent>
 pub struct ActiveTurnBinding
+pub struct AgentCapabilities
 pub struct AsyncQueueRuntime
 pub struct ContextUsage
 pub struct PendingMessageQueue
