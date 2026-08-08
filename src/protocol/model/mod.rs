@@ -115,7 +115,7 @@ mod tests {
         .unwrap();
         assert_eq!(declared, vec!["off", "bogon-level", "max"]);
         assert!(thinking_levels_are_adjustable(&declared));
-        assert!(!thinking_levels_are_adjustable(&["OFF".into()]));
+        assert!(thinking_levels_are_adjustable(&["OFF".into()]));
         assert!(!thinking_levels_are_adjustable(&["off".into()]));
         assert!(thinking_levels_are_adjustable(&[
             "off".into(),

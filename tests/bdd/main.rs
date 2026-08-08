@@ -18,6 +18,7 @@ mod bindings_domain_compaction;
 mod bindings_domain_security;
 mod bindings_misc;
 mod bindings_runtime_config;
+mod bindings_runtime_model_registry;
 mod bindings_server;
 mod fixtures;
 mod prelude;

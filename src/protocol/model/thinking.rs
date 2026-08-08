@@ -32,12 +32,10 @@ pub fn resolve_configured_levels(
 
 /// Whether a declared list exposes an adjustable thinking level.
 ///
-/// Any entry other than case-insensitive `off` counts as adjustable, including
-/// freeform vendor literals outside the legacy presentation enum.
+/// Any entry other than exact `off` counts as adjustable, including freeform
+/// vendor literals outside the legacy presentation enum.
 pub fn thinking_levels_are_adjustable(levels: &[String]) -> bool {
-    levels
-        .iter()
-        .any(|level| !level.trim().eq_ignore_ascii_case(THINKING_OFF))
+    levels.iter().any(|level| level != THINKING_OFF)
 }
 
 /// Selection default: the final configured entry, never an ordinal "highest".
