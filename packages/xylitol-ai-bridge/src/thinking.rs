@@ -291,6 +291,21 @@ mod tests {
     }
 
     #[test]
+    fn anthropic_budget_honors_settings_override() {
+        let budgets = AiBridgeThinkingBudgets {
+            low: Some(4096),
+            ..Default::default()
+        };
+        let r = resolve_thinking_for_request(
+            "low",
+            &HashMap::new(),
+            Some(&budgets),
+            AiBridgeThinkingAdapterKind::Anthropic,
+        );
+        assert_eq!(r, AiBridgeResolvedThinking::AnthropicBudget(4096));
+    }
+
+    #[test]
     fn freeform_anthropic_level_is_invalid_without_map() {
         let r = resolve_thinking_for_request(
             "vendor-max",

@@ -24,6 +24,7 @@
 //! surfaces decide how to render warnings. This keeps `app::core` free of
 //! reverse dependencies on surfaces.
 
+use std::future::Future;
 use std::sync::Arc;
 
 use crate::agent::capabilities::ModelRegistry;
@@ -119,35 +120,74 @@ pub struct BootstrappedRuntime {
     pub mcp_servers: Option<Vec<crate::app::core::mcp_spec::McpServerSpec>>,
 }
 
+/// Run a short async bootstrap operation from synchronous assembly code.
+///
+/// Tokio permits `block_in_place` only on a multi-thread runtime. Current-thread
+/// callers instead use a one-shot worker runtime so bootstrap remains usable in
+/// current-thread tests and embedded callers.
+fn block_on_bootstrap_task<T>(
+    operation: &'static str,
+    task: impl Future<Output = T> + Send + 'static,
+) -> Option<T>
+where
+    T: Send + 'static,
+{
+    if let Ok(handle) = tokio::runtime::Handle::try_current()
+        && handle.runtime_flavor() == tokio::runtime::RuntimeFlavor::MultiThread
+    {
+        return Some(tokio::task::block_in_place(|| handle.block_on(task)));
+    }
+
+    let worker = std::thread::Builder::new()
+        .name("xy-bootstrap-sync".into())
+        .spawn(move || {
+            tokio::runtime::Builder::new_current_thread()
+                .enable_all()
+                .build()
+                .map(|runtime| runtime.block_on(task))
+        });
+
+    match worker {
+        Ok(worker) => match worker.join() {
+            Ok(Ok(value)) => Some(value),
+            Ok(Err(error)) => {
+                log::warn!("bootstrap async operation failed operation={operation} error={error}");
+                None
+            }
+            Err(_) => {
+                log::warn!("bootstrap async operation panicked operation={operation}");
+                None
+            }
+        },
+        Err(error) => {
+            log::warn!("bootstrap async worker failed operation={operation} error={error}");
+            None
+        }
+    }
+}
+
 fn load_restored_thinking_level(
     store: &Arc<dyn crate::protocol::ports::XySessionStore>,
     session_id: &str,
 ) -> Option<String> {
-    let load = || {
-        let store = Arc::clone(store);
-        let session_id = session_id.to_string();
-        async move {
-            if store.exists(&session_id).await {
-                store
-                    .build_session_context(&session_id)
-                    .await
-                    .ok()
-                    .map(|context| context.thinking_level)
-            } else {
+    let store = Arc::clone(store);
+    let session_id = session_id.to_string();
+    block_on_bootstrap_task("restore session thinking level", async move {
+        if !store.exists(&session_id).await {
+            return None;
+        }
+        match store.build_session_context(&session_id).await {
+            Ok(context) => Some(context.thinking_level),
+            Err(error) => {
+                log::warn!(
+                    "session thinking restore skipped session_id={} error={error}",
+                    session_id
+                );
                 None
             }
         }
-    };
-
-    if let Ok(handle) = tokio::runtime::Handle::try_current() {
-        tokio::task::block_in_place(|| handle.block_on(load()))
-    } else {
-        tokio::runtime::Builder::new_current_thread()
-            .enable_all()
-            .build()
-            .ok()
-            .and_then(|runtime| runtime.block_on(load()))
-    }
+    })
+    .flatten()
 }
 
 impl BootstrappedAgent {
@@ -163,16 +203,23 @@ impl BootstrappedAgent {
             // compensating history entry.
             self.agent.restore_thinking_level(level);
         }
-        if let Ok(handle) = tokio::runtime::Handle::try_current() {
-            let store = Arc::clone(&self.store);
-            let sid = self.session_id.clone();
-            tokio::task::block_in_place(|| {
-                handle.block_on(async move {
-                    if let Ok(Some(name)) = store.get_session_name(&sid).await {
-                        xylitol_ai_bridge::provider::set_obs_session_name(Some(name.as_str()));
+        let store = Arc::clone(&self.store);
+        let session_id = self.session_id.clone();
+        if let Some(Some(name)) =
+            block_on_bootstrap_task("load observability session name", async move {
+                match store.get_session_name(&session_id).await {
+                    Ok(name) => name,
+                    Err(error) => {
+                        log::warn!(
+                            "observability session-name load skipped session_id={} error={error}",
+                            session_id
+                        );
+                        None
                     }
-                });
-            });
+                }
+            })
+        {
+            xylitol_ai_bridge::provider::set_obs_session_name(Some(name.as_str()));
         }
         BootstrappedRuntime {
             driver: crate::app::core::driver::XyInProcessDriver::new(self.agent, self.store),
@@ -212,6 +259,8 @@ pub struct ResolvedAssembly {
     pub default_profile_model: Option<String>,
     /// Resolved session id (restored or freshly generated).
     pub session_id: String,
+    /// Whether the requested `--session` already exists on disk.
+    pub session_file_exists: bool,
     /// Diagnostics produced during resolution.
     pub warnings: Vec<BootstrapWarning>,
     /// MCP servers from YAML (`None` / empty = not enabled).
@@ -429,8 +478,12 @@ pub fn resolve_assembly(input: &BootstrapInput) -> Result<ResolvedAssembly, Boot
     let sessions_dir = SessionManager::default_dir();
     std::fs::create_dir_all(&sessions_dir).ok();
     let session_mgr = SessionManager::new(sessions_dir.clone());
+    let session_file_exists = input
+        .session
+        .as_deref()
+        .is_some_and(|session_id| session_mgr.exists(session_id));
     if let Some(ref session_arg) = input.session
-        && session_mgr.exists(session_arg)
+        && session_file_exists
     {
         warnings.push(BootstrapWarning::RestoringSession {
             session: session_arg.clone(),
@@ -617,6 +670,7 @@ pub fn resolve_assembly(input: &BootstrapInput) -> Result<ResolvedAssembly, Boot
         follow_up_mode,
         default_profile_model,
         session_id,
+        session_file_exists,
         warnings,
         mcp_servers,
         hooks_config,
@@ -640,6 +694,7 @@ pub fn bootstrap(input: BootstrapInput) -> Result<BootstrappedAgent, BootstrapEr
     let default_thinking_level = assembly.default_thinking_level.clone();
     let thinking_budgets = assembly.thinking_budgets.clone();
     let max_turns = assembly.max_turns;
+    let session_file_exists = assembly.session_file_exists;
     let target_model = model.or_else(|| assembly.default_profile_model.clone());
     let mut warnings = std::mem::take(&mut assembly.warnings);
 
@@ -652,6 +707,7 @@ pub fn bootstrap(input: BootstrapInput) -> Result<BootstrappedAgent, BootstrapEr
 
     timing::time("session.create");
 
+    let mut requested_thinking_level = None;
     if let Some(mid) = target_model {
         let available_owned = agent.model_registry();
         let available: Vec<&XyModelMeta> = available_owned.list().iter().collect();
@@ -661,6 +717,7 @@ pub fn bootstrap(input: BootstrapInput) -> Result<BootstrappedAgent, BootstrapEr
                     warnings.push(BootstrapWarning::ModelResolutionWarning(warning.clone()));
                 }
                 let _ = agent.select_model(&resolved.model.id);
+                requested_thinking_level = resolved.thinking_level;
             }
             Err(msg) => {
                 warnings.push(BootstrapWarning::ModelResolutionFailed(msg));
@@ -671,8 +728,14 @@ pub fn bootstrap(input: BootstrapInput) -> Result<BootstrappedAgent, BootstrapEr
     // Settings are only a first-session preference. A resumed session restores
     // its exact persisted level later, and model switching always uses the
     // declared list's final item.
-    if input.session.is_none() {
+    if !session_file_exists {
         agent.apply_default_thinking_level(default_thinking_level.as_deref());
+    }
+    // A `model:thinkingLevel` request is more specific than the Settings
+    // first-session preference. Unsupported values leave the selected model
+    // default unchanged.
+    if let Some(level) = requested_thinking_level {
+        let _ = agent.set_thinking_level(level);
     }
     agent.set_thinking_budgets(thinking_budgets);
 
@@ -1288,5 +1351,68 @@ session:
         })
         .expect("assembly");
         assert_eq!(assembly.max_turns, Some(7));
+    }
+
+    #[test]
+    fn bootstrap_block_on_runs_from_current_thread_runtime() {
+        let runtime = tokio::runtime::Builder::new_current_thread()
+            .enable_all()
+            .build()
+            .expect("current-thread runtime");
+        let result =
+            runtime.block_on(async { block_on_bootstrap_task("test current-thread", async { 7 }) });
+        assert_eq!(result, Some(7));
+    }
+
+    #[test]
+    fn missing_session_still_applies_settings_thinking_default() {
+        let home = tempfile::tempdir().unwrap();
+        let project = home.path().join("proj");
+        let project_xylitol = project.join(".xylitol");
+        let global_config = home.path().join(".config").join("xylitol");
+        let agent_dir = home.path().join(".xylitol");
+        std::fs::create_dir_all(&project_xylitol).unwrap();
+        std::fs::create_dir_all(&global_config).unwrap();
+        std::fs::create_dir_all(&agent_dir).unwrap();
+
+        std::fs::write(
+            project_xylitol.join("config.yaml"),
+            r#"models:
+  default_model: m1
+  models:
+    m1:
+      provider: fake
+      model: m1
+      thinking: true
+      thinking_levels: [off, high, max]
+"#,
+        )
+        .unwrap();
+        std::fs::write(
+            agent_dir.join("settings.json"),
+            r#"{"defaultThinkingLevel":"high"}"#,
+        )
+        .unwrap();
+
+        let _home = EnvGuard::set("HOME", home.path().to_str().unwrap());
+        let _project = EnvGuard::set("XYLITOL_PROJECT_DIR", project.to_str().unwrap());
+        let _config = EnvGuard::set(
+            "XYLITOL_CONFIG_DIR",
+            global_config.to_str().expect("UTF-8 config path"),
+        );
+
+        let input = || BootstrapInput {
+            config_path: None,
+            session: Some("missing-session".into()),
+            model: None,
+            trust_override: Some(true),
+            interactive: false,
+            caller: "test",
+        };
+        let assembly = resolve_assembly(&input()).expect("assembly");
+        assert!(!assembly.session_file_exists);
+
+        let boot = bootstrap(input()).expect("bootstrap");
+        assert_eq!(boot.agent.thinking_level(), "high");
     }
 }

@@ -10,7 +10,7 @@
 use crate::protocol::model::XyModelConfig;
 #[cfg(test)]
 use crate::protocol::model::XyModelKind;
-use crate::protocol::model::{ThinkingLevel, XyModelMeta};
+use crate::protocol::model::XyModelMeta;
 
 // ── Resolved Model ──────────────────────────────────────────────────
 
@@ -20,7 +20,7 @@ pub(crate) struct ResolvedModel {
     /// The resolved model metadata.
     pub(crate) model: XyModelMeta,
     /// Optional thinking level parsed from `model:level` suffix.
-    pub(crate) thinking_level: Option<ThinkingLevel>,
+    pub(crate) thinking_level: Option<String>,
     /// Warning message, e.g., when using a fallback.
     pub(crate) warning: Option<String>,
 }
@@ -45,12 +45,11 @@ impl ResolvedModel {
 /// Resolve a model by pattern string against available models.
 ///
 /// Resolution order:
-/// 1. Parse `model:thinkingLevel` suffix from pattern
-/// 2. Try exact match: `provider/modelId` form
-/// 3. Try bare id exact match
-/// 4. Try fuzzy match (partial id or display_name substring)
-/// 5. Prefer aliases (no version suffix) over dated versions
-/// 6. Fallback to first available model
+/// 1. Try the complete pattern as an exact model id.
+/// 2. For a non-empty `model:thinkingLevel` suffix, resolve the base model and
+///    retain the suffix verbatim.
+/// 3. Try exact and fuzzy model matching.
+/// 4. Fallback to the requested complete pattern.
 pub(crate) fn resolve_model(
     pattern: &str,
     available: &[&XyModelMeta],
@@ -60,75 +59,86 @@ pub(crate) fn resolve_model(
         return Err("no models available".to_string());
     }
 
-    // Step 1: Parse thinking level suffix: "model:level"
-    let (model_pattern, thinking_level) = parse_thinking_suffix(pattern);
-
-    // Step 2: Try exact match by "provider/modelId"
-    if let Some(found) = exact_match_provider_model(&model_pattern, available) {
-        return Ok(ResolvedModel::new(found.clone()).with_thinking_level_opt(thinking_level));
+    // Preserve a colon-bearing configured model id before treating the final
+    // segment as a thinking-level suffix.
+    if let Some(found) = exact_match_bare_id(pattern, available) {
+        return Ok(ResolvedModel::new(found.clone()));
     }
 
-    // Step 3: Try exact match by bare id
-    if let Some(found) = exact_match_bare_id(&model_pattern, available) {
-        return Ok(ResolvedModel::new(found.clone()).with_thinking_level_opt(thinking_level));
+    if let Some((base_pattern, thinking_level)) = parse_thinking_suffix(pattern)
+        && let Some(resolved) = resolve_existing_model(base_pattern, available)
+    {
+        return Ok(resolved.with_thinking_level(thinking_level.to_string()));
     }
 
-    // Step 4: Try fuzzy match (substring in id or display_name)
-    if let Some(found) = fuzzy_match(&model_pattern, available) {
-        return Ok(ResolvedModel::new(found.clone())
-            .with_thinking_level_opt(thinking_level)
-            .with_warning(format!(
-                "Fuzzy-matched model '{}' for pattern '{}'",
-                found.id, model_pattern
-            )));
+    Ok(resolve_model_with_fallback(
+        pattern,
+        available,
+        default_provider,
+    ))
+}
+
+/// Resolve an already configured model, without synthesizing a fallback.
+///
+/// This distinction keeps an unknown `model:variant` intact as a model pattern
+/// instead of incorrectly treating `variant` as a thinking level.
+fn resolve_existing_model(pattern: &str, available: &[&XyModelMeta]) -> Option<ResolvedModel> {
+    if let Some(found) = provider_model_match(pattern, available) {
+        return Some(ResolvedModel::new(found.clone()));
+    }
+    if let Some(found) = exact_match_bare_id(pattern, available) {
+        return Some(ResolvedModel::new(found.clone()));
+    }
+    fuzzy_match(pattern, available).map(|found| {
+        ResolvedModel::new(found.clone()).with_warning(format!(
+            "Fuzzy-matched model '{}' for pattern '{}'",
+            found.id, pattern
+        ))
+    })
+}
+
+/// Resolve a pattern while retaining the existing fallback behavior.
+fn resolve_model_with_fallback(
+    pattern: &str,
+    available: &[&XyModelMeta],
+    default_provider: Option<&str>,
+) -> ResolvedModel {
+    // Keep the legacy provider-pattern fallback for a complete model request.
+    // Suffix parsing uses `resolve_existing_model` above so this fallback cannot
+    // make an unknown base look like a resolved model.
+    if let Some(found) = exact_match_provider_model(pattern, available) {
+        return ResolvedModel::new(found.clone());
+    }
+    if let Some(found) = exact_match_bare_id(pattern, available) {
+        return ResolvedModel::new(found.clone());
+    }
+    if let Some(found) = fuzzy_match(pattern, available) {
+        return ResolvedModel::new(found.clone()).with_warning(format!(
+            "Fuzzy-matched model '{}' for pattern '{}'",
+            found.id, pattern
+        ));
+    }
+    if let Some(fallback) = build_fallback_model(pattern, available, default_provider) {
+        return ResolvedModel::new(fallback)
+            .with_warning(format!("Model '{}' not found. Using fallback.", pattern));
     }
 
-    // Step 5: Build fallback model
-    if let Some(fallback) = build_fallback_model(&model_pattern, available, default_provider) {
-        return Ok(ResolvedModel::new(fallback)
-            .with_thinking_level_opt(thinking_level)
-            .with_warning(format!(
-                "Model '{}' not found. Using fallback.",
-                model_pattern
-            )));
-    }
-
-    // Step 6: Last resort — first available
+    // Last resort — first available. `available` was checked by resolve_model.
     let first = available.first().expect("non-empty: checked above");
-    Ok(ResolvedModel::new((*first).clone())
-        .with_thinking_level_opt(thinking_level)
-        .with_warning(format!(
-            "Model '{}' not found. Using first available: {}",
-            model_pattern, first.id
-        )))
+    ResolvedModel::new((*first).clone()).with_warning(format!(
+        "Model '{}' not found. Using first available: {}",
+        pattern, first.id
+    ))
 }
 
 // ── Thinking Level Parsing ──────────────────────────────────────────
 
 /// Parse `model:thinkingLevel` suffix.
 ///
-/// Returns `(base_model_pattern, optional_thinking_level)`.
-fn parse_thinking_suffix(pattern: &str) -> (String, Option<ThinkingLevel>) {
-    let colon_pos = pattern.rfind(':');
-    match colon_pos {
-        None => (pattern.to_string(), None),
-        Some(pos) => {
-            let base = &pattern[..pos];
-            let suffix = &pattern[pos + 1..];
-            let level = parse_thinking_level(suffix);
-            if level.is_some() || suffix.is_empty() {
-                (base.to_string(), level)
-            } else {
-                // The colon is part of the model ID (e.g., "claude-3:opus")
-                (pattern.to_string(), None)
-            }
-        }
-    }
-}
-
-/// Parse a thinking level string.
-fn parse_thinking_level(s: &str) -> Option<ThinkingLevel> {
-    ThinkingLevel::parse(s)
+/// Returns a base model pattern and a non-empty freeform suffix.
+fn parse_thinking_suffix(pattern: &str) -> Option<(&str, &str)> {
+    let (base, suffix) = pattern.rsplit_once(':')?;
+    (!base.is_empty() && !suffix.is_empty()).then_some((base, suffix))
 }
 
 // ── Exact Matching ──────────────────────────────────────────────────
@@ -140,46 +150,39 @@ fn exact_match_provider_model<'a>(
     pattern: &str,
     available: &'a [&'a XyModelMeta],
 ) -> Option<&'a XyModelMeta> {
-    // Try "provider/modelId" exact match
-    if let Some(slash_pos) = pattern.find('/') {
-        let provider = &pattern[..slash_pos];
-        let model_id_part = &pattern[slash_pos + 1..];
-
-        // Full id match: e.g., "openai/gpt-4o" matches id "openai/gpt-4o"
-        if let Some(found) = available.iter().find(|m| m.id == pattern) {
-            return Some(found);
-        }
-
-        // Provider + model part match: e.g., "openai/gpt-4o" matches when
-        // the model's config.provider_name() == "openai" and id contains "gpt-4o"
-        let candidates: Vec<&&XyModelMeta> = available
-            .iter()
-            .filter(|m| m.config.provider_name() == provider)
-            .collect();
-
-        if !candidates.is_empty() {
-            // Try exact model id part within that provider
-            if let Some(found) = candidates.iter().find(|m| {
-                let model_cfg = &m.config.model;
-                model_cfg == model_id_part || m.id.ends_with(model_id_part)
-            }) {
-                return Some(found);
-            }
-
-            // Try partial model id match
-            if let Some(found) = candidates
-                .iter()
-                .find(|m| m.config.model.contains(model_id_part) || m.id.contains(model_id_part))
-            {
-                return Some(found);
-            }
-
-            // Return first from this provider
-            return candidates.first().copied().copied();
-        }
+    if let Some(found) = provider_model_match(pattern, available) {
+        return Some(found);
     }
+    let (provider, _) = pattern.split_once('/')?;
+    available
+        .iter()
+        .copied()
+        .find(|model| model.config.provider_name() == provider)
+}
 
-    None
+/// Match a configured provider/model without falling back to another model.
+fn provider_model_match<'a>(
+    pattern: &str,
+    available: &'a [&'a XyModelMeta],
+) -> Option<&'a XyModelMeta> {
+    let (provider, model_id_part) = pattern.split_once('/')?;
+    if let Some(found) = available.iter().copied().find(|model| model.id == pattern) {
+        return Some(found);
+    }
+    let candidates: Vec<&XyModelMeta> = available
+        .iter()
+        .copied()
+        .filter(|model| model.config.provider_name() == provider)
+        .collect();
+    candidates
+        .iter()
+        .copied()
+        .find(|model| model.config.model == model_id_part || model.id.ends_with(model_id_part))
+        .or_else(|| {
+            candidates.iter().copied().find(|model| {
+                model.config.model.contains(model_id_part) || model.id.contains(model_id_part)
+            })
+        })
 }
 
 /// Exact match by bare model id (no provider prefix).
@@ -317,8 +320,8 @@ pub(crate) fn build_fallback_model(
 // ── Helper: apply thinking level to ResolvedModel ───────────────────
 
 impl ResolvedModel {
-    fn with_thinking_level_opt(mut self, level: Option<ThinkingLevel>) -> Self {
-        self.thinking_level = level;
+    fn with_thinking_level(mut self, level: String) -> Self {
+        self.thinking_level = Some(level);
         self
     }
 }
@@ -531,33 +534,65 @@ mod tests {
 
     #[test]
     fn test_parse_thinking_suffix_high() {
-        let (base, level) = parse_thinking_suffix("gpt-4o:high");
-        assert_eq!(base, "gpt-4o");
-        assert_eq!(level, Some(ThinkingLevel::High));
+        assert_eq!(
+            parse_thinking_suffix("gpt-4o:high"),
+            Some(("gpt-4o", "high"))
+        );
     }
 
     #[test]
     fn test_parse_thinking_suffix_no_colon() {
-        let (base, level) = parse_thinking_suffix("gpt-4o");
-        assert_eq!(base, "gpt-4o");
-        assert_eq!(level, None);
+        assert_eq!(parse_thinking_suffix("gpt-4o"), None);
     }
 
     #[test]
-    fn test_parse_thinking_suffix_not_a_level() {
-        // "claude-3:opus" — colon but "opus" is not a thinking level
-        let (base, level) = parse_thinking_suffix("claude-3:opus");
-        assert_eq!(base, "claude-3:opus");
-        assert_eq!(level, None);
+    fn test_parse_thinking_suffix_is_freeform() {
+        assert_eq!(
+            parse_thinking_suffix("claude-3:opus"),
+            Some(("claude-3", "opus"))
+        );
     }
 
     #[test]
     fn test_resolve_with_thinking_level() {
         let models = make_available();
         let available = refs(&models);
-        let result = resolve_model("openai/gpt-4o:low", &available, None).unwrap();
+        let result = resolve_model("openai/gpt-4o:vendor-fast", &available, None).unwrap();
         assert_eq!(result.model.id, "openai/gpt-4o");
-        assert_eq!(result.thinking_level, Some(ThinkingLevel::Low));
+        assert_eq!(result.thinking_level.as_deref(), Some("vendor-fast"));
+    }
+
+    #[test]
+    fn test_full_colon_model_id_wins_over_suffix_parsing() {
+        let mut models = make_available();
+        let mut full_id_model = models[0].clone();
+        full_id_model.id = "claude-3:opus".into();
+        full_id_model.config.model = "claude-3:opus".into();
+        models.push(full_id_model);
+        let available = refs(&models);
+
+        let result = resolve_model("claude-3:opus", &available, None).unwrap();
+        assert_eq!(result.model.id, "claude-3:opus");
+        assert_eq!(result.thinking_level, None);
+    }
+
+    #[test]
+    fn test_unknown_colon_base_remains_full_fallback_pattern() {
+        let models = make_available();
+        let available = refs(&models);
+
+        let result = resolve_model("unconfigured:opus", &available, None).unwrap();
+        assert_eq!(result.model.id, "unconfigured:opus");
+        assert_eq!(result.thinking_level, None);
+    }
+
+    #[test]
+    fn test_unknown_provider_base_does_not_take_suffix() {
+        let models = make_available();
+        let available = refs(&models);
+
+        let result = resolve_model("openai/not-configured:opus", &available, None).unwrap();
+        assert_eq!(result.thinking_level, None);
     }
 
     #[test]

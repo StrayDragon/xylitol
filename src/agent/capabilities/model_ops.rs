@@ -133,7 +133,7 @@ impl AgentCapabilities {
     }
 
     /// Restore a persisted session level verbatim, without emitting a new entry.
-    pub fn restore_thinking_level(&mut self, level: String) {
+    pub(crate) fn restore_thinking_level(&mut self, level: String) {
         self.with_models_mut(|mm| mm.restore_thinking_level(level));
     }
 
