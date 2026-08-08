@@ -60,7 +60,7 @@ components:
 | 字段 | 含义 |
 |---|---|
 | phase | transport / 配置态：`Connecting` / `Connected` / `Failed` |
-| armed | ToolSet 已含 `mcp:{id}:…` → 下轮 provider `tools` 会带 |
+| armed | ToolSet 已含 `mcp__{id}__…` → 下轮 provider `tools` 会带 |
 
 ## 短 cue（已落地 · 保持）
 
@@ -70,7 +70,7 @@ components:
 | 落点 | status **右对齐**（idle 整行 / busy 贴 Working\|Drafting\|Assembling 右侧） |
 | 何时 | `mcp_tools_pending()`；可与头卡 `connecting i/n` 并存 |
 | 优先级 | busy 且已有 `Next turn…` 时不覆盖 |
-| 收起 | 全部 armed / 不再 pending |
+| 收起 | bootstrap complete 且无 Connecting、且（已 FROZEN **或** 无 Connected-unarmed）——头卡已 `connected` 不等于 cue 可留；Settling→Settled 后 host MUST refresh snap（见 `XyDriver::poll_mcp_bootstrap` 合约） |
 | 门闸 lead（c1900 Q19） | 已提交且尚未 FROZEN：status lead = **`Assembling`**（非假 `Working`）；未提交保持 idle + 本 cue / welcome |
 | busy 绘制 | Loader/`Text` 行会右填充至全宽；贴右侧 cue 前 **MUST** 去掉尾部填充空格再量宽，**MUST NOT** 因 `lead_w == width` 静默丢掉 cue |
 

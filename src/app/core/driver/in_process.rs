@@ -1959,38 +1959,100 @@ mod driver_session_tree_tests {
         driver.begin_mcp_bootstrap().await;
         assert!(driver.mcp_blocks_agent(), "Running must gate wait_mcp");
 
-        let mut saw_refresh = false;
-        for _ in 0..200 {
-            if driver.poll_mcp_bootstrap().await {
-                saw_refresh = true;
+        // Durable sticky-cue contract: any poll that leaves mcp_blocks_agent
+        // (Settling→Settled, or failed Running→Settled) MUST return true so the
+        // TUI host refreshes loaded-resources (mcp_bootstrap_complete flips).
+        let mut saw_ungate_with_refresh = false;
+        let mut saw_tools_while_gated = false;
+        for _ in 0..500 {
+            let before = driver.mcp_blocks_agent();
+            let refresh = driver.poll_mcp_bootstrap().await;
+            let after = driver.mcp_blocks_agent();
+            if before
+                && driver.tool_names_for_test().iter().any(|n| n == "read")
+                && !driver
+                    .loaded_resources_snapshot()
+                    .await
+                    .mcp_bootstrap_complete
+            {
+                saw_tools_while_gated = true;
+            }
+            if before && !after {
+                assert!(
+                    refresh,
+                    "leaving mcp_blocks_agent MUST return true (Settling→Settled sticky cue)"
+                );
+                saw_ungate_with_refresh = true;
                 break;
             }
             tokio::task::yield_now().await;
         }
         assert!(
-            saw_refresh,
-            "invalid MCP bootstrap must finish Running→Rebuilding→Settling and refresh UI"
+            saw_tools_while_gated,
+            "must observe tools applied while still gated (Settling)"
         );
         assert!(
-            driver.mcp_blocks_agent(),
-            "Settling must keep wait_mcp gated until prompt install"
+            saw_ungate_with_refresh,
+            "must observe gated→ungated poll with refresh=true"
+        );
+        assert!(!driver.mcp_blocks_agent());
+        let snap = driver.loaded_resources_snapshot().await;
+        assert!(
+            snap.mcp_bootstrap_complete,
+            "after ungate, bootstrap MUST be complete"
         );
         assert!(
-            driver.tool_names_for_test().iter().any(|n| n == "read"),
-            "tools must be applied before prompt install"
+            !snap.mcp_tools_pending(),
+            "settled+complete MUST clear mcp_tools_pending"
         );
-        assert_eq!(
-            driver.system_prompt_for_test(),
-            prompt_before,
-            "system prompt must stay deferred until Settling completes"
-        );
+        assert!(driver.system_prompt_for_test().is_some());
+    }
 
-        driver.wait_mcp_bootstrap().await;
-        assert!(!driver.mcp_blocks_agent());
-        let after = driver.system_prompt_for_test();
-        assert!(after.is_some());
-        // Prompt install may be identical text for builtins-only; just ensure Settled.
-        assert!(!driver.mcp_blocks_agent());
+    #[tokio::test]
+    async fn leaving_mcp_gate_must_signal_ui_refresh() {
+        use crate::app::core::mcp_spec::{McpServerSpec, McpTransportSpec};
+
+        // Narrow regression for sticky "mcp pending" after welcome shows connected:
+        // host only refreshes when poll_mcp_bootstrap returns true.
+        let dir = tempfile::tempdir().unwrap();
+        let store = Arc::new(SessionManager::new(dir.path().join("sessions")));
+        let mut driver = build_test_driver(store).await;
+        driver.enable_reload_state(
+            dir.path().to_path_buf(),
+            dir.path().join(".xylitol"),
+            true,
+            vec![McpServerSpec {
+                name: "bad".into(),
+                transport: McpTransportSpec::Stdio,
+                command: None,
+                args: None,
+                url: None,
+                env: None,
+                headers: None,
+            }],
+        );
+        driver.begin_mcp_bootstrap().await;
+        assert!(driver.mcp_blocks_agent());
+
+        let mut ok = false;
+        for _ in 0..500 {
+            let before = driver.mcp_blocks_agent();
+            let refresh = driver.poll_mcp_bootstrap().await;
+            let after = driver.mcp_blocks_agent();
+            if before && !after {
+                assert!(
+                    refresh,
+                    "Settling→Settled (or Running fail→Settled) MUST signal UI refresh"
+                );
+                ok = true;
+                break;
+            }
+            tokio::task::yield_now().await;
+        }
+        assert!(ok, "gated→ungated transition not observed");
+        let snap = driver.loaded_resources_snapshot().await;
+        assert!(snap.mcp_bootstrap_complete);
+        assert!(!snap.mcp_tools_pending());
     }
 
     #[test]
