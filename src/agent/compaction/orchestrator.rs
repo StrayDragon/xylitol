@@ -475,25 +475,14 @@ fn usage_anchor_stale_vs_compaction(entries: &[SessionEntry]) -> bool {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use serial_test::serial;
-    use std::sync::{Arc, Mutex};
 
     use async_trait::async_trait;
-    use fastrace::collector::{Config, Reporter, SpanRecord};
-    use xylitol_ai_bridge::provider::trace::set_provider_trace_active;
+    use xylitol_ai_bridge::provider::trace::{ObsGateScope, ObsGateState, SpanCollectScope};
 
     use crate::protocol::error::XyError;
     use crate::protocol::model::XyToolSchema;
     use crate::protocol::ports::{XyGenerateOptions, XyStream};
     use crate::protocol::session::{ForkPosition, SessionContext};
-
-    struct CollectingReporter(Arc<Mutex<Vec<SpanRecord>>>);
-
-    impl Reporter for CollectingReporter {
-        fn report(&mut self, spans: Vec<SpanRecord>) {
-            self.0.lock().unwrap().extend(spans);
-        }
-    }
 
     /// Empty leaf → `prepare_compaction` early-exit; model MUST NOT be touched.
     struct EmptyLeafStore;
@@ -549,14 +538,12 @@ mod tests {
         async fn emit(&self, _: &XyEvent) {}
     }
 
-    /// otel19: prepare early-exit MUST NOT export `agent.compaction` (CollectingReporter).
-    #[tokio::test]
-    #[serial(obs_global)]
-
+    /// otel19: prepare early-exit MUST NOT export `agent.compaction`.
+    /// `current_thread` so scoped gates / collect stay on the worker that entered them.
+    #[tokio::test(flavor = "current_thread")]
     async fn prepare_fail_exports_no_compaction_span() {
-        set_provider_trace_active(true);
-        let records = Arc::new(Mutex::new(Vec::new()));
-        fastrace::set_reporter(CollectingReporter(Arc::clone(&records)), Config::default());
+        let _g = ObsGateScope::enter(ObsGateState::active_none_io());
+        let collect = SpanCollectScope::enter();
 
         let orch = CompactionOrchestrator::new(CompactionSettings::default());
         let err = orch
@@ -569,9 +556,8 @@ mod tests {
         );
 
         fastrace::flush();
-        set_provider_trace_active(false);
 
-        let spans = records.lock().unwrap().clone();
+        let spans = collect.records();
         assert!(
             spans.iter().all(|s| s.name != "agent.compaction"),
             "prepare early-exit must not export agent.compaction; got: {:?}",

@@ -338,47 +338,32 @@ pub(crate) fn record_tool_error(
 #[cfg(test)]
 mod tests {
     use super::*;
-    use serial_test::serial;
-    use std::sync::{Arc, Mutex};
 
-    use fastrace::collector::{Config, Reporter, SpanRecord};
     use xylitol_ai_bridge::provider::trace::{
-        ObservationIoTier, set_observation_io_tier, set_provider_trace_active,
+        ObsGateScope, ObsGateState, ObservationIoTier, SpanCollectScope, set_observation_io_tier,
         set_tool_observation_io_tier,
     };
 
-    struct CollectingReporter(Arc<Mutex<Vec<SpanRecord>>>);
-
-    impl Reporter for CollectingReporter {
-        fn report(&mut self, spans: Vec<SpanRecord>) {
-            self.0.lock().unwrap().extend(spans);
-        }
-    }
-
     #[test]
-    #[serial(obs_global)]
     fn inactive_helpers_are_none() {
-        set_provider_trace_active(false);
+        let _g = ObsGateScope::enter(ObsGateState::OFF);
         assert!(AgentTurnSpan::start(None, None).is_none());
         assert!(AgentIterationSpan::start(None, 0).is_none());
         assert!(ToolExecuteSpan::start("bash", "1", None).is_none());
     }
 
     #[test]
-    #[serial(obs_global)]
     fn turn_finish_ok_has_no_error_level() {
-        set_provider_trace_active(true);
-        let records = Arc::new(Mutex::new(Vec::new()));
-        fastrace::set_reporter(CollectingReporter(Arc::clone(&records)), Config::default());
+        let _g = ObsGateScope::enter(ObsGateState::active_none_io());
+        let collect = SpanCollectScope::enter();
 
         {
             let turn = AgentTurnSpan::start(Some("hello"), None).expect("turn");
             turn.finish(TurnEndReason::Ok);
         }
         fastrace::flush();
-        set_provider_trace_active(false);
 
-        let spans = records.lock().unwrap().clone();
+        let spans = collect.records();
         let turn = spans
             .iter()
             .find(|s| s.name == "agent.turn")
@@ -399,20 +384,17 @@ mod tests {
     }
 
     #[test]
-    #[serial(obs_global)]
     fn turn_finish_aborted_marks_error() {
-        set_provider_trace_active(true);
-        let records = Arc::new(Mutex::new(Vec::new()));
-        fastrace::set_reporter(CollectingReporter(Arc::clone(&records)), Config::default());
+        let _g = ObsGateScope::enter(ObsGateState::active_none_io());
+        let collect = SpanCollectScope::enter();
 
         {
             let turn = AgentTurnSpan::start(Some("hello"), None).expect("turn");
             turn.finish(TurnEndReason::Aborted);
         }
         fastrace::flush();
-        set_provider_trace_active(false);
 
-        let spans = records.lock().unwrap().clone();
+        let spans = collect.records();
         let turn = spans
             .iter()
             .find(|s| s.name == "agent.turn")
@@ -430,11 +412,9 @@ mod tests {
     }
 
     #[test]
-    #[serial(obs_global)]
     fn turn_iteration_llm_share_trace_id() {
-        set_provider_trace_active(true);
-        let records = Arc::new(Mutex::new(Vec::new()));
-        fastrace::set_reporter(CollectingReporter(Arc::clone(&records)), Config::default());
+        let _g = ObsGateScope::enter(ObsGateState::active_none_io());
+        let collect = SpanCollectScope::enter();
 
         {
             let turn = AgentTurnSpan::start(Some("hello turn"), None).expect("turn");
@@ -454,9 +434,8 @@ mod tests {
             turn.finish(TurnEndReason::Ok);
         }
         fastrace::flush();
-        set_provider_trace_active(false);
 
-        let spans = records.lock().unwrap().clone();
+        let spans = collect.records();
         let turn = spans
             .iter()
             .find(|s| s.name == "agent.turn")
@@ -506,19 +485,16 @@ mod tests {
     }
 
     #[test]
-    #[serial(obs_global)]
     fn turn_root_input_only_when_observation_io_set() {
-        set_provider_trace_active(true);
-        set_observation_io_tier(ObservationIoTier::None);
-        let records = Arc::new(Mutex::new(Vec::new()));
-        fastrace::set_reporter(CollectingReporter(Arc::clone(&records)), Config::default());
+        let _g = ObsGateScope::enter(ObsGateState::active_none_io());
         {
-            let turn = AgentTurnSpan::start(Some("secret prompt"), None).expect("turn");
-            turn.finish(TurnEndReason::Ok);
-        }
-        fastrace::flush();
-        {
-            let spans = records.lock().unwrap_or_else(|e| e.into_inner());
+            let collect = SpanCollectScope::enter();
+            {
+                let turn = AgentTurnSpan::start(Some("secret prompt"), None).expect("turn");
+                turn.finish(TurnEndReason::Ok);
+            }
+            fastrace::flush();
+            let spans = collect.records();
             let turn = spans.iter().find(|s| s.name == "agent.turn").expect("turn");
             assert!(
                 !turn
@@ -528,40 +504,38 @@ mod tests {
                 "none tier must not write turn input"
             );
         }
-        records.lock().unwrap().clear();
         set_observation_io_tier(ObservationIoTier::Truncated);
         {
-            let turn = AgentTurnSpan::start(Some("secret prompt"), None).expect("turn");
-            turn.finish(TurnEndReason::Ok);
+            let collect = SpanCollectScope::enter();
+            {
+                let turn = AgentTurnSpan::start(Some("secret prompt"), None).expect("turn");
+                turn.finish(TurnEndReason::Ok);
+            }
+            fastrace::flush();
+            let spans = collect.records();
+            let turn = spans.iter().find(|s| s.name == "agent.turn").expect("turn");
+            let input = turn
+                .properties
+                .iter()
+                .find(|(k, _)| k.as_ref() == "langfuse.observation.input")
+                .map(|(_, v)| v.as_ref());
+            assert_eq!(input, Some("secret prompt"));
         }
-        fastrace::flush();
         set_observation_io_tier(ObservationIoTier::None);
-        set_provider_trace_active(false);
-        let spans = records.lock().unwrap().clone();
-        let turn = spans.iter().find(|s| s.name == "agent.turn").expect("turn");
-        let input = turn
-            .properties
-            .iter()
-            .find(|(k, _)| k.as_ref() == "langfuse.observation.input")
-            .map(|(_, v)| v.as_ref());
-        assert_eq!(input, Some("secret prompt"));
     }
 
     #[test]
-    #[serial(obs_global)]
     fn tool_io_only_when_tool_observation_io_set() {
-        set_provider_trace_active(true);
-        set_tool_observation_io_tier(ObservationIoTier::None);
-        let records = Arc::new(Mutex::new(Vec::new()));
-        fastrace::set_reporter(CollectingReporter(Arc::clone(&records)), Config::default());
+        let _g = ObsGateScope::enter(ObsGateState::active_none_io());
         {
-            let tool = ToolExecuteSpan::start("bash", "t1", None).expect("tool");
-            tool.attach_io(r#"{"x":1}"#, "out");
-            drop(tool);
-        }
-        fastrace::flush();
-        {
-            let spans = records.lock().unwrap_or_else(|e| e.into_inner());
+            let collect = SpanCollectScope::enter();
+            {
+                let tool = ToolExecuteSpan::start("bash", "t1", None).expect("tool");
+                tool.attach_io(r#"{"x":1}"#, "out");
+                drop(tool);
+            }
+            fastrace::flush();
+            let spans = collect.records();
             let tool = spans
                 .iter()
                 .find(|s| s.name == "tool.execute")
@@ -576,32 +550,31 @@ mod tests {
                 "none tier must not write tool I/O"
             );
         }
-        records.lock().unwrap().clear();
         set_tool_observation_io_tier(ObservationIoTier::Truncated);
         {
-            let tool = ToolExecuteSpan::start("bash", "t2", None).expect("tool");
-            tool.attach_io(r#"{"x":1}"#, "out");
-            drop(tool);
+            let collect = SpanCollectScope::enter();
+            {
+                let tool = ToolExecuteSpan::start("bash", "t2", None).expect("tool");
+                tool.attach_io(r#"{"x":1}"#, "out");
+                drop(tool);
+            }
+            fastrace::flush();
+            let spans = collect.records();
+            let tool = spans
+                .iter()
+                .find(|s| s.name == "tool.execute")
+                .expect("tool");
+            let keys: Vec<&str> = tool.properties.iter().map(|(k, _)| k.as_ref()).collect();
+            assert!(keys.contains(&"langfuse.observation.input"), "{keys:?}");
+            assert!(keys.contains(&"langfuse.observation.output"), "{keys:?}");
         }
-        fastrace::flush();
         set_tool_observation_io_tier(ObservationIoTier::None);
-        set_provider_trace_active(false);
-        let spans = records.lock().unwrap().clone();
-        let tool = spans
-            .iter()
-            .find(|s| s.name == "tool.execute")
-            .expect("tool");
-        let keys: Vec<&str> = tool.properties.iter().map(|(k, _)| k.as_ref()).collect();
-        assert!(keys.contains(&"langfuse.observation.input"), "{keys:?}");
-        assert!(keys.contains(&"langfuse.observation.output"), "{keys:?}");
     }
 
     #[test]
-    #[serial(obs_global)]
     fn parallel_tool_spans_share_iteration_parent_via_captured_ctx() {
-        set_provider_trace_active(true);
-        let records = Arc::new(Mutex::new(Vec::new()));
-        fastrace::set_reporter(CollectingReporter(Arc::clone(&records)), Config::default());
+        let _g = ObsGateScope::enter(ObsGateState::active_none_io());
+        let collect = SpanCollectScope::enter();
 
         {
             let turn = AgentTurnSpan::start(None, Some("openai-responses")).expect("turn");
@@ -629,9 +602,8 @@ mod tests {
             turn.finish(TurnEndReason::Ok);
         }
         fastrace::flush();
-        set_provider_trace_active(false);
 
-        let spans = records.lock().unwrap().clone();
+        let spans = collect.records();
         let turn = spans.iter().find(|s| s.name == "agent.turn").expect("turn");
         let turn_props: std::collections::HashMap<_, _> = turn
             .properties

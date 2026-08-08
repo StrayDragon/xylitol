@@ -2,10 +2,24 @@
 //!
 //! Runtime gate via [`provider_trace_active`]; when inactive, emit helpers are
 //! no-ops and must not allocate large SSE strings.
+//!
+//! Gate resolution (Keybindings / ObsSession-style):
+//! 1. thread-local [`ObsGateScope`] if entered (unit tests)
+//! 2. else process atomics (composition root / `init_logging`)
+//!
+//! Span collection for unit tests: [`SpanCollectScope`] + once-installed process
+//! demux reporter (do not call `fastrace::set_reporter` from unit tests).
+//!
+//! Note: `fastrace::flush` reports on a helper thread, so the demux sink MUST be
+//! process-global — not thread-local.
 
+use std::cell::RefCell;
 use std::sync::Mutex;
+use std::sync::MutexGuard;
+use std::sync::OnceLock;
 use std::sync::atomic::{AtomicBool, AtomicU8, Ordering};
 
+use fastrace::collector::{Config, Reporter, SpanRecord};
 use fastrace::prelude::*;
 
 use crate::dto::{AiBridgeChunk, AiBridgeUsage};
@@ -49,34 +63,183 @@ impl ObservationIoTier {
     }
 }
 
+/// Snapshot of process-level obs gates for [`ObsGateScope`].
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub struct ObsGateState {
+    pub active: bool,
+    pub observation_io: ObservationIoTier,
+    pub tool_observation_io: ObservationIoTier,
+}
+
+impl ObsGateState {
+    pub const OFF: Self = Self {
+        active: false,
+        observation_io: ObservationIoTier::None,
+        tool_observation_io: ObservationIoTier::None,
+    };
+
+    pub fn active_none_io() -> Self {
+        Self {
+            active: true,
+            observation_io: ObservationIoTier::None,
+            tool_observation_io: ObservationIoTier::None,
+        }
+    }
+
+    pub fn active_truncated() -> Self {
+        Self {
+            active: true,
+            observation_io: ObservationIoTier::Truncated,
+            tool_observation_io: ObservationIoTier::Truncated,
+        }
+    }
+}
+
+thread_local! {
+    static SCOPED_GATES: RefCell<Option<ObsGateState>> = const { RefCell::new(None) };
+}
+
+/// RAII install of thread-local obs gates (unit tests / sync inject).
+///
+/// Production MUST keep writing process atomics via [`set_provider_trace_active`]
+/// etc. — do not wrap HTTP / tokio multi-thread paths in this scope.
+pub struct ObsGateScope {
+    prev: Option<ObsGateState>,
+}
+
+impl ObsGateScope {
+    pub fn enter(state: ObsGateState) -> Self {
+        let prev = SCOPED_GATES.with(|c| c.borrow_mut().replace(state));
+        Self { prev }
+    }
+}
+
+impl Drop for ObsGateScope {
+    fn drop(&mut self) {
+        SCOPED_GATES.with(|c| {
+            *c.borrow_mut() = self.prev.take();
+        });
+    }
+}
+
+fn with_gates_mut<R>(f: impl FnOnce(&mut ObsGateState) -> R) -> Option<R> {
+    SCOPED_GATES.with(|c| {
+        let mut g = c.borrow_mut();
+        g.as_mut().map(f)
+    })
+}
+
 /// Called from composition-root logging init when the FileReporter is installed.
 pub fn set_provider_trace_active(active: bool) {
+    if with_gates_mut(|s| s.active = active).is_some() {
+        return;
+    }
     PROVIDER_TRACE_ACTIVE.store(active, Ordering::Relaxed);
 }
 
 #[inline]
 pub fn provider_trace_active() -> bool {
+    if let Some(s) = SCOPED_GATES.with(|c| *c.borrow()) {
+        return s.active;
+    }
     PROVIDER_TRACE_ACTIVE.load(Ordering::Relaxed)
 }
 
 /// Called from composition root when `[otel].observation_io` is resolved.
 pub fn set_observation_io_tier(tier: ObservationIoTier) {
+    if with_gates_mut(|s| s.observation_io = tier).is_some() {
+        return;
+    }
     OBSERVATION_IO_TIER.store(tier as u8, Ordering::Relaxed);
 }
 
 #[inline]
 pub fn observation_io_tier() -> ObservationIoTier {
+    if let Some(s) = SCOPED_GATES.with(|c| *c.borrow()) {
+        return s.observation_io;
+    }
     ObservationIoTier::from_u8(OBSERVATION_IO_TIER.load(Ordering::Relaxed))
 }
 
 /// Called from composition root when `[otel].tool_observation_io` is resolved (c1550).
 pub fn set_tool_observation_io_tier(tier: ObservationIoTier) {
+    if with_gates_mut(|s| s.tool_observation_io = tier).is_some() {
+        return;
+    }
     TOOL_OBSERVATION_IO_TIER.store(tier as u8, Ordering::Relaxed);
 }
 
 #[inline]
 pub fn tool_observation_io_tier() -> ObservationIoTier {
+    if let Some(s) = SCOPED_GATES.with(|c| *c.borrow()) {
+        return s.tool_observation_io;
+    }
     ObservationIoTier::from_u8(TOOL_OBSERVATION_IO_TIER.load(Ordering::Relaxed))
+}
+
+/// Process-global active collect buffer. Must not be TLS: `fastrace::flush`
+/// invokes the reporter on a helper thread.
+static SPAN_SINK: Mutex<Option<std::sync::Arc<Mutex<Vec<SpanRecord>>>>> = Mutex::new(None);
+
+/// Serialize overlapping [`SpanCollectScope`] under in-process `cargo test`
+/// parallelism (nextest is one-test-per-process and does not contend).
+static SPAN_COLLECT_EXCL: Mutex<()> = Mutex::new(());
+
+struct DemuxReporter;
+
+impl Reporter for DemuxReporter {
+    fn report(&mut self, spans: Vec<SpanRecord>) {
+        if let Some(buf) = SPAN_SINK.lock().unwrap_or_else(|e| e.into_inner()).as_ref() {
+            buf.lock().unwrap_or_else(|e| e.into_inner()).extend(spans);
+        }
+    }
+}
+
+fn ensure_demux_reporter() {
+    static ONCE: OnceLock<()> = OnceLock::new();
+    ONCE.get_or_init(|| {
+        fastrace::set_reporter(DemuxReporter, Config::default());
+    });
+}
+
+/// Unit-test span collector: installs a process demux reporter once.
+///
+/// Prefer this over calling `fastrace::set_reporter` from tests (which races under
+/// `cargo test`). Live OTLP smoke may still call `set_reporter` in its own process.
+///
+/// Holds a process-wide exclusive permit for the scope lifetime so parallel
+/// in-process collectors do not steal each other's sink (flush reports off-thread).
+pub struct SpanCollectScope {
+    buf: std::sync::Arc<Mutex<Vec<SpanRecord>>>,
+    prev: Option<std::sync::Arc<Mutex<Vec<SpanRecord>>>>,
+    _excl: MutexGuard<'static, ()>,
+}
+
+impl SpanCollectScope {
+    pub fn enter() -> Self {
+        let excl = SPAN_COLLECT_EXCL.lock().unwrap_or_else(|e| e.into_inner());
+        ensure_demux_reporter();
+        let buf = std::sync::Arc::new(Mutex::new(Vec::new()));
+        let prev = SPAN_SINK
+            .lock()
+            .unwrap_or_else(|e| e.into_inner())
+            .replace(std::sync::Arc::clone(&buf));
+        Self {
+            buf,
+            prev,
+            _excl: excl,
+        }
+    }
+
+    pub fn records(&self) -> Vec<SpanRecord> {
+        self.buf.lock().unwrap_or_else(|e| e.into_inner()).clone()
+    }
+}
+
+impl Drop for SpanCollectScope {
+    fn drop(&mut self) {
+        *SPAN_SINK.lock().unwrap_or_else(|e| e.into_inner()) = self.prev.take();
+    }
 }
 
 /// Truncate for Langfuse observation I/O (shared by generation / tool / turn).
@@ -319,21 +482,7 @@ fn append_capped(buf: &mut String, chunk: &str, max: usize) {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use fastrace::collector::{Config, Reporter, SpanRecord};
-    use serial_test::serial;
-    use std::sync::{Arc, Mutex};
-
-    // Process provider_trace / fastrace reporter — share obs_global with main-crate collectors.
-    struct CollectingReporter(Arc<Mutex<Vec<SpanRecord>>>);
-
-    impl Reporter for CollectingReporter {
-        fn report(&mut self, spans: Vec<SpanRecord>) {
-            self.0
-                .lock()
-                .unwrap_or_else(|e| e.into_inner())
-                .extend(spans);
-        }
-    }
+    use fastrace::collector::SpanRecord;
 
     fn prop<'a>(span: &'a SpanRecord, key: &str) -> Option<&'a str> {
         span.properties
@@ -359,18 +508,15 @@ mod tests {
     }
 
     #[test]
-    #[serial(obs_global)]
     fn inactive_start_returns_none() {
-        set_provider_trace_active(false);
-        set_observation_io_tier(ObservationIoTier::None);
+        let _g = ObsGateScope::enter(ObsGateState::OFF);
         assert!(ProviderRequestTrace::start("openai-responses", "m").is_none());
     }
 
     #[test]
-    #[serial(obs_global)]
     fn usage_and_io_none_do_not_panic() {
-        set_provider_trace_active(true);
-        set_observation_io_tier(ObservationIoTier::None);
+        let _g = ObsGateScope::enter(ObsGateState::active_none_io());
+        let _collect = SpanCollectScope::enter();
         let t = ProviderRequestTrace::start("openai-responses", "m").expect("active");
         t.emit_mapped_chunk(&AiBridgeChunk::Done {
             finish_reason: crate::dto::AiBridgeStopReason::Stop,
@@ -382,17 +528,16 @@ mod tests {
             }),
         });
         drop(t);
-        set_provider_trace_active(false);
     }
 
     #[test]
-    #[serial(obs_global)]
     fn capture_request_input_and_done_flush_io() {
-        set_provider_trace_active(true);
-        set_observation_io_tier(ObservationIoTier::Truncated);
-        let records = Arc::new(Mutex::new(Vec::new()));
-        fastrace::set_reporter(CollectingReporter(Arc::clone(&records)), Config::default());
-
+        let _g = ObsGateScope::enter(ObsGateState {
+            active: true,
+            observation_io: ObservationIoTier::Truncated,
+            tool_observation_io: ObservationIoTier::None,
+        });
+        let collect = SpanCollectScope::enter();
         {
             let t = ProviderRequestTrace::start("openai-responses", "m").expect("active");
             t.capture_request_input(r#"{"model":"m","input":[{"role":"user","content":"hi"}]}"#);
@@ -409,10 +554,7 @@ mod tests {
             drop(t);
         }
         fastrace::flush();
-        set_observation_io_tier(ObservationIoTier::None);
-        set_provider_trace_active(false);
-
-        let spans = records.lock().unwrap_or_else(|e| e.into_inner()).clone();
+        let spans = collect.records();
         let llm = latest_llm(&spans);
         let input = prop(llm, "langfuse.observation.input").expect("input");
         assert!(input.contains("\"role\":\"user\""), "{input}");
@@ -422,13 +564,9 @@ mod tests {
     }
 
     #[test]
-    #[serial(obs_global)]
     fn attach_usage_emits_tri_state_without_fake_cache_read() {
-        set_provider_trace_active(true);
-        set_observation_io_tier(ObservationIoTier::None);
-        let records = Arc::new(Mutex::new(Vec::new()));
-        fastrace::set_reporter(CollectingReporter(Arc::clone(&records)), Config::default());
-
+        let _g = ObsGateScope::enter(ObsGateState::active_none_io());
+        let collect = SpanCollectScope::enter();
         {
             let t = ProviderRequestTrace::start("openai-responses", "m").expect("active");
             let usage = AiBridgeUsage {
@@ -445,9 +583,7 @@ mod tests {
             drop(t);
         }
         fastrace::flush();
-        set_provider_trace_active(false);
-
-        let spans = records.lock().unwrap_or_else(|e| e.into_inner()).clone();
+        let spans = collect.records();
         let llm = latest_llm(&spans);
         assert_eq!(prop(llm, "xylitol.prompt_cache_read"), Some("not_reported"));
         let details = prop(llm, "langfuse.observation.usage_details").expect("details");
@@ -458,13 +594,9 @@ mod tests {
     }
 
     #[test]
-    #[serial(obs_global)]
     fn attach_usage_writes_cache_read_for_tokens() {
-        set_provider_trace_active(true);
-        set_observation_io_tier(ObservationIoTier::None);
-        let records = Arc::new(Mutex::new(Vec::new()));
-        fastrace::set_reporter(CollectingReporter(Arc::clone(&records)), Config::default());
-
+        let _g = ObsGateScope::enter(ObsGateState::active_none_io());
+        let collect = SpanCollectScope::enter();
         {
             let t = ProviderRequestTrace::start("openai-responses", "m").expect("active");
             let usage = AiBridgeUsage {
@@ -481,9 +613,7 @@ mod tests {
             drop(t);
         }
         fastrace::flush();
-        set_provider_trace_active(false);
-
-        let spans = records.lock().unwrap_or_else(|e| e.into_inner()).clone();
+        let spans = collect.records();
         let llm = latest_llm(&spans);
         assert_eq!(prop(llm, "xylitol.prompt_cache_read"), Some("tokens"));
         let details = prop(llm, "langfuse.observation.usage_details").expect("details");
@@ -494,25 +624,21 @@ mod tests {
     }
 
     #[test]
-    #[serial(obs_global)]
     fn abort_drop_flushes_partial_and_marks_error() {
-        set_provider_trace_active(true);
-        set_observation_io_tier(ObservationIoTier::Truncated);
-        let records = Arc::new(Mutex::new(Vec::new()));
-        fastrace::set_reporter(CollectingReporter(Arc::clone(&records)), Config::default());
-
+        let _g = ObsGateScope::enter(ObsGateState {
+            active: true,
+            observation_io: ObservationIoTier::Truncated,
+            tool_observation_io: ObservationIoTier::None,
+        });
+        let collect = SpanCollectScope::enter();
         {
             let t = ProviderRequestTrace::start("openai-responses", "m").expect("active");
             t.capture_request_input(r#"{"model":"m","stream":true}"#);
             t.emit_mapped_chunk(&AiBridgeChunk::TextDelta("partial…".into()));
-            // No Done — Drop ⇒ aborted finalize.
             drop(t);
         }
         fastrace::flush();
-        set_observation_io_tier(ObservationIoTier::None);
-        set_provider_trace_active(false);
-
-        let spans = records.lock().unwrap_or_else(|e| e.into_inner()).clone();
+        let spans = collect.records();
         let llm = latest_llm(&spans);
         assert!(
             prop(llm, "langfuse.observation.input").is_some_and(|s| s.contains("stream")),
@@ -532,13 +658,13 @@ mod tests {
     }
 
     #[test]
-    #[serial(obs_global)]
     fn done_without_usage_still_flushes_io() {
-        set_provider_trace_active(true);
-        set_observation_io_tier(ObservationIoTier::Truncated);
-        let records = Arc::new(Mutex::new(Vec::new()));
-        fastrace::set_reporter(CollectingReporter(Arc::clone(&records)), Config::default());
-
+        let _g = ObsGateScope::enter(ObsGateState {
+            active: true,
+            observation_io: ObservationIoTier::Truncated,
+            tool_observation_io: ObservationIoTier::None,
+        });
+        let collect = SpanCollectScope::enter();
         {
             let t = ProviderRequestTrace::start("openai-completions", "m").expect("active");
             t.capture_request_input(r#"{"messages":[],"marker":"done-no-usage"}"#);
@@ -550,10 +676,7 @@ mod tests {
             drop(t);
         }
         fastrace::flush();
-        set_observation_io_tier(ObservationIoTier::None);
-        set_provider_trace_active(false);
-
-        let spans = records.lock().unwrap_or_else(|e| e.into_inner()).clone();
+        let spans = collect.records();
         let llm = spans
             .iter()
             .rev()
@@ -569,10 +692,13 @@ mod tests {
     }
 
     #[test]
-    #[serial(obs_global)]
     fn truncated_io_buffers_request_and_output() {
-        set_provider_trace_active(true);
-        set_observation_io_tier(ObservationIoTier::Truncated);
+        let _g = ObsGateScope::enter(ObsGateState {
+            active: true,
+            observation_io: ObservationIoTier::Truncated,
+            tool_observation_io: ObservationIoTier::None,
+        });
+        let _collect = SpanCollectScope::enter();
         let t = ProviderRequestTrace::start("openai-completions", "m").expect("active");
         t.emit_raw(
             "chat.completion.json",
@@ -594,7 +720,5 @@ mod tests {
         );
         assert_eq!(t.output_buf.lock().unwrap().as_str(), "hello");
         drop(t);
-        set_observation_io_tier(ObservationIoTier::None);
-        set_provider_trace_active(false);
     }
 }
