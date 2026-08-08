@@ -25,17 +25,41 @@
 //! reverse dependencies on surfaces.
 
 use std::future::Future;
+use std::path::{Path, PathBuf};
 use std::sync::Arc;
 
 use crate::agent::capabilities::ModelRegistry;
 use crate::agent::model::resolver;
 use crate::app::core::composition::{BuildAgentOptions, build_agent};
-use crate::infra::config::loader::load_app_config_detailed;
+use crate::infra::config::loader::load_app_config_detailed_with;
 use crate::infra::config::value::InfraSecretResolver;
 use crate::infra::permission;
 use crate::infra::session::SessionManager;
 use crate::infra::timing;
 use crate::protocol::model::XyModelMeta;
+
+/// Process-env getter matching [`crate::infra::config::paths::ConfigPaths::discover`]:
+/// real `std::env`, with `HOME` falling back to `dirs::home_dir` when unset.
+fn process_get_env(k: &str) -> Option<String> {
+    if let Ok(v) = std::env::var(k) {
+        return Some(v);
+    }
+    if k == "HOME" {
+        return dirs::home_dir().map(|p| p.to_string_lossy().into_owned());
+    }
+    None
+}
+
+/// `~/.xylitol` from injectable `HOME`, with `dirs::home_dir` fallback (same as
+/// `SessionManager::default_dir` / trust / agent dir defaults — without calling them).
+fn xylitol_home_dir(get_env: &impl Fn(&str) -> Option<String>) -> PathBuf {
+    get_env("HOME")
+        .filter(|s| !s.is_empty())
+        .map(PathBuf::from)
+        .or_else(dirs::home_dir)
+        .unwrap_or_else(|| PathBuf::from("."))
+        .join(".xylitol")
+}
 
 /// Inputs to [`bootstrap`] / `resolve_assembly`, mirroring the CLI flags that
 /// drive assembly.
@@ -340,11 +364,26 @@ impl std::error::Error for BootstrapError {}
 /// Shared by [`bootstrap`] (build-once surfaces) and ingredient-only callers (e.g. --list-models).
 /// Surfaces that need a single agent should call [`bootstrap`] directly.
 pub fn resolve_assembly(input: &BootstrapInput) -> Result<ResolvedAssembly, BootstrapError> {
+    resolve_assembly_with(
+        input,
+        process_get_env,
+        std::env::current_dir().ok().as_deref(),
+    )
+}
+
+/// Injectable [`resolve_assembly`] for tests: config discovery, `~/.xylitol`
+/// paths, and trust/resource cwd come from `get_env` / `cwd` instead of the
+/// process environment.
+pub fn resolve_assembly_with(
+    input: &BootstrapInput,
+    get_env: impl Fn(&str) -> Option<String>,
+    cwd: Option<&Path>,
+) -> Result<ResolvedAssembly, BootstrapError> {
     let cli_config_path = input.config_path.as_deref();
     let mut warnings: Vec<BootstrapWarning> = Vec::new();
 
     // ── Step 1: load YAML config ──────────────────────────────────
-    let loaded = match load_app_config_detailed(cli_config_path) {
+    let loaded = match load_app_config_detailed_with(cli_config_path, &get_env, cwd) {
         Ok(loaded) => loaded,
         Err(e) => return Err(BootstrapError::ConfigLoadFailed(e.to_string())),
     };
@@ -425,7 +464,8 @@ pub fn resolve_assembly(input: &BootstrapInput) -> Result<ResolvedAssembly, Boot
     }
 
     // ── Session dir + restore info ────────────────────────────────
-    let sessions_dir = SessionManager::default_dir();
+    let agent_home = xylitol_home_dir(&get_env);
+    let sessions_dir = agent_home.join("sessions");
     std::fs::create_dir_all(&sessions_dir).ok();
     let session_mgr = SessionManager::new(sessions_dir.clone());
     let session_file_exists = input
@@ -453,14 +493,14 @@ pub fn resolve_assembly(input: &BootstrapInput) -> Result<ResolvedAssembly, Boot
         .as_ref()
         .map(|p| p.model_config.model.clone());
 
-    let cwd = std::env::current_dir()
-        .unwrap_or_default()
-        .to_string_lossy()
-        .to_string();
+    let cwd_path = cwd
+        .map(Path::to_path_buf)
+        .or_else(|| std::env::current_dir().ok())
+        .unwrap_or_default();
+    let cwd = cwd_path.to_string_lossy().to_string();
 
     // ── Step 3b: resolve trust + discover resources ───────────────
-    let trust_manager =
-        crate::infra::trust::TrustManager::new(crate::infra::trust::TrustManager::default_dir());
+    let trust_manager = crate::infra::trust::TrustManager::new(&agent_home);
     let trust_cwd = cwd.clone();
     let trust_resolution = crate::infra::trust::resolve_project_trusted(
         &trust_manager,
@@ -491,9 +531,9 @@ pub fn resolve_assembly(input: &BootstrapInput) -> Result<ResolvedAssembly, Boot
     }
 
     let (context_files, loader_system_prompt, append_system_prompt, skills) = {
-        let agent_dir = crate::infra::resource::DefaultResourceLoader::default_agent_dir();
+        let agent_dir = agent_home.clone();
         let loader_cwd = if project_trusted {
-            std::path::PathBuf::from(&cwd)
+            cwd_path.clone()
         } else {
             std::env::temp_dir()
         };
@@ -534,9 +574,9 @@ pub fn resolve_assembly(input: &BootstrapInput) -> Result<ResolvedAssembly, Boot
         default_thinking_level,
         thinking_budgets,
     ) = {
-        let agent_dir = crate::infra::resource::DefaultResourceLoader::default_agent_dir();
+        let agent_dir = agent_home;
         let settings_cwd = if project_trusted {
-            std::path::PathBuf::from(&cwd)
+            cwd_path
         } else {
             std::env::temp_dir()
         };
@@ -629,9 +669,23 @@ pub fn resolve_assembly(input: &BootstrapInput) -> Result<ResolvedAssembly, Boot
 /// Used by print / tui / server — surfaces that hold a single agent for their
 /// lifetime. Ingredient-only paths (e.g. --list-models) use `resolve_assembly` directly.
 pub fn bootstrap(input: BootstrapInput) -> Result<BootstrappedAgent, BootstrapError> {
+    bootstrap_with(
+        input,
+        process_get_env,
+        std::env::current_dir().ok().as_deref(),
+    )
+}
+
+/// Injectable [`bootstrap`] for tests (same `get_env` / `cwd` semantics as
+/// [`resolve_assembly_with`]).
+pub fn bootstrap_with(
+    input: BootstrapInput,
+    get_env: impl Fn(&str) -> Option<String>,
+    cwd: Option<&Path>,
+) -> Result<BootstrappedAgent, BootstrapError> {
     let model = input.model.clone();
 
-    let mut assembly = resolve_assembly(&input)?;
+    let mut assembly = resolve_assembly_with(&input, get_env, cwd)?;
     let session_id = assembly.session_id.clone();
     let mcp_servers = assembly.mcp_servers.clone();
     let default_thinking_level = assembly.default_thinking_level.clone();
