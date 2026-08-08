@@ -1,4 +1,6 @@
-# Design: c1940（改道）三协议 × named compat
+# Design: c1940 三协议 × named compat
+
+> Change id：`c1940-update-multi-api-named-compat`（原 `…-remove-openai-completions` 已改名）。
 
 ## Pi 学到什么
 

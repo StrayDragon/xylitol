@@ -1,13 +1,13 @@
 ---
 depends_on: []
-branch: sdd/c1940-remove-openai-completions
+branch: sdd/c1940-update-multi-api-named-compat
 base_sha: b0a3aa0cc399d6861b0bc1173dfdde12407b08c4
 checkpointed: false
 ---
 
-# 三协议族 + 命名 compat（恢复 Completions；Zen free / DeepSeek 官方）
+# 三协议族 + 命名 compat（Completions 一等公民；Zen / DeepSeek）
 
-> **改道说明**：原「删除 Completions」作废。OpenCode Zen free 与多数 openai-compatible 端点走 Chat Completions；DeepSeek 官方本波按用户指定走 Responses（部分实现）。id 目录名历史遗留，以本文为准。
+> **Rename**：原 id `c1940-remove-openai-completions` 误导（曾拟删 Completions）；本 change **保留并一等支持** `openai-completions`，与 Responses / Anthropic Messages 并列。
 > **Pi 对照**：`api` = 协议族；`compat` = 同族 quirk；auth ≠ model table；勿 URL 自动探测大表。详见 `design.md`。
 
 ## Why
@@ -20,7 +20,7 @@ checkpointed: false
 
 ## What Changes
 
-- **恢复** `openai-completions` 为一等 `api`（与 `openai-responses` / `anthropic-messages` 并列）。
+- **`openai-completions` 为一等 `api`**（与 `openai-responses` / `anthropic-messages` 并列）；**禁止**从产品/合约面删除或降级 Completions。
 - **分层**：bridge `provider/native` = L1 第一语言实现；`provider/dialect` = L2 命名方言增量（首版 `deepseek`）。
 - **新增** `models.*.compat`（命名轮廓 → `WirePolicy`）：首版 `generic` | `deepseek`。
 - **新增** `models.*.api_key`（可选；支持 `{{ secret.* }}`），解决 Zen / DeepSeek / 全局 `OPENAI_API_KEY` 冲突。
