@@ -131,10 +131,7 @@ async fn switch_model(
         )
         .await,
         |o| match o {
-            DispatchOutcome::Model(model) => Some(serde_json::json!({
-                "model": model.id,
-                "display_name": model.display_name,
-            })),
+            DispatchOutcome::Model(model) => Some(model_data(&model)),
             _ => None,
         },
         dispatch_err,
@@ -188,6 +185,7 @@ fn model_data(m: &crate::app::core::driver::ModelInfo) -> Value {
         "id": m.id,
         "display_name": m.display_name,
         "thinking": m.thinking,
+        "thinking_levels": m.thinking_levels,
         "context_window": m.context_window,
     })
 }
