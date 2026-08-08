@@ -574,30 +574,29 @@ mod tests {
     /// c1165: XyDriver level after SetThinkingLevel / cycle MUST map to OpenAI effort.
     #[tokio::test]
     async fn cycle_thinking_level_maps_to_openai_reasoning_effort() {
-        use crate::protocol::model::{
-            ResolvedThinking, ThinkingAdapterKind, resolve_thinking_for_request,
+        use xylitol_ai_bridge::{
+            AiBridgeResolvedThinking, AiBridgeThinkingAdapterKind, resolve_thinking_for_request,
         };
 
         let mut d = stub();
+        let level_map = std::collections::HashMap::new();
         assert_eq!(d.thinking_level(), "medium");
         let mid = resolve_thinking_for_request(
             &d.thinking_level(),
+            &level_map,
             None,
-            None,
-            ThinkingAdapterKind::OpenAi,
-        )
-        .unwrap();
-        assert_eq!(mid, ResolvedThinking::OpenAiEffort("medium".into()));
+            AiBridgeThinkingAdapterKind::OpenAi,
+        );
+        assert_eq!(mid, AiBridgeResolvedThinking::OpenAiEffort("medium".into()));
 
         assert_eq!(d.cycle_thinking_level().unwrap(), "high");
         let high = resolve_thinking_for_request(
             &d.thinking_level(),
+            &level_map,
             None,
-            None,
-            ThinkingAdapterKind::OpenAi,
-        )
-        .unwrap();
-        assert_eq!(high, ResolvedThinking::OpenAiEffort("high".into()));
+            AiBridgeThinkingAdapterKind::OpenAi,
+        );
+        assert_eq!(high, AiBridgeResolvedThinking::OpenAiEffort("high".into()));
 
         dispatch(
             &mut d,
@@ -610,12 +609,11 @@ mod tests {
         .unwrap();
         let off = resolve_thinking_for_request(
             &d.thinking_level(),
+            &level_map,
             None,
-            None,
-            ThinkingAdapterKind::OpenAi,
-        )
-        .unwrap();
-        assert_eq!(off, ResolvedThinking::Omit);
+            AiBridgeThinkingAdapterKind::OpenAi,
+        );
+        assert_eq!(off, AiBridgeResolvedThinking::Omit);
     }
 
     #[tokio::test]

@@ -122,7 +122,7 @@ impl ModelManager {
     }
 
     /// Restore an exact session value without validation or persistence.
-    pub fn restore_thinking_level(&mut self, level: String) {
+    pub(crate) fn restore_thinking_level(&mut self, level: String) {
         self.thinking_level = level;
     }
 
@@ -399,8 +399,8 @@ mod tests {
     /// The generate options path preserves freeform strings after set/cycle.
     #[test]
     fn cycle_then_resolve_openai_effort_matches_level() {
-        use crate::protocol::model::{
-            ResolvedThinking, ThinkingAdapterKind, resolve_thinking_for_request,
+        use xylitol_ai_bridge::{
+            AiBridgeResolvedThinking, AiBridgeThinkingAdapterKind, resolve_thinking_for_request,
         };
 
         let mut mm = manager_with(vec![meta("m1", true, &["off", "vendor-mid", "high"])]);
@@ -408,32 +408,38 @@ mod tests {
 
         let off = resolve_thinking_for_request(
             &mm.thinking_level(),
-            mm.current_model().map(|m| &m.thinking_level_map),
+            &mm.current_model()
+                .expect("selected model")
+                .thinking_level_map,
             None,
-            ThinkingAdapterKind::OpenAi,
-        )
-        .unwrap();
-        assert_eq!(off, ResolvedThinking::Omit);
+            AiBridgeThinkingAdapterKind::OpenAi,
+        );
+        assert_eq!(off, AiBridgeResolvedThinking::Omit);
 
         assert_eq!(mm.cycle_thinking_level().unwrap(), "vendor-mid");
         let mid = resolve_thinking_for_request(
             &mm.thinking_level(),
-            mm.current_model().map(|m| &m.thinking_level_map),
+            &mm.current_model()
+                .expect("selected model")
+                .thinking_level_map,
             None,
-            ThinkingAdapterKind::OpenAi,
-        )
-        .unwrap();
-        assert_eq!(mid, ResolvedThinking::OpenAiEffort("vendor-mid".into()));
+            AiBridgeThinkingAdapterKind::OpenAi,
+        );
+        assert_eq!(
+            mid,
+            AiBridgeResolvedThinking::OpenAiEffort("vendor-mid".into())
+        );
 
         assert_eq!(mm.cycle_thinking_level().unwrap(), "high");
         let high = resolve_thinking_for_request(
             &mm.thinking_level(),
-            mm.current_model().map(|m| &m.thinking_level_map),
+            &mm.current_model()
+                .expect("selected model")
+                .thinking_level_map,
             None,
-            ThinkingAdapterKind::OpenAi,
-        )
-        .unwrap();
-        assert_eq!(high, ResolvedThinking::OpenAiEffort("high".into()));
+            AiBridgeThinkingAdapterKind::OpenAi,
+        );
+        assert_eq!(high, AiBridgeResolvedThinking::OpenAiEffort("high".into()));
     }
 
     #[test]

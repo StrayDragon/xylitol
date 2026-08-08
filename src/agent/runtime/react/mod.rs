@@ -293,7 +293,7 @@ impl AgentRuntime {
         self.inner.set_thinking_budgets(budgets);
     }
 
-    pub fn restore_thinking_level(&mut self, level: String) {
+    pub(crate) fn restore_thinking_level(&mut self, level: String) {
         self.inner.restore_thinking_level(level);
     }
 

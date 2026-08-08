@@ -53,7 +53,6 @@ pub fn queue_stats(&self) -> QueueStats
 pub fn rebuild_system_prompt(&mut self)
 pub fn reopen_tools_for_regate(&mut self)
 pub fn replace_hooks(&mut self, hooks: AgentHooks)
-pub fn restore_thinking_level(&mut self, level: String)
 pub fn select_model(&mut self, model_id: &str) -> Result<(), XyError>
 pub fn select_model_with_source( &mut self, model_id: &str, source: &str, ) -> Result<(), XyError>
 pub fn selected_turn_binding(&self) -> Option<ActiveTurnBinding>
