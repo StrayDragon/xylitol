@@ -39,7 +39,6 @@ use crate::agent::prompt::{self, SystemPromptOpts};
 use crate::agent::runtime::AgentHooks;
 use crate::agent::tools::{ToolFreezePhase, ToolSet, ToolTableFingerprint};
 use crate::protocol::message::AgentMessage;
-use crate::protocol::model::ThinkingLevel;
 use crate::protocol::ports::{XyBatchMode, XyHookBus, XyPermission};
 
 // ── Model Registry ──────────────────────────────────────────────────
@@ -52,7 +51,8 @@ pub use crate::agent::model::registry::ModelRegistry;
 pub struct ActiveTurnBinding {
     pub model_id: String,
     pub display_name: String,
-    pub thinking: ThinkingLevel,
+    /// Exact configured or restored thinking level name for this turn.
+    pub thinking: String,
     /// True when footer should omit the thinking segment.
     pub omit_thinking: bool,
 }

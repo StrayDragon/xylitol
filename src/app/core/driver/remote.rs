@@ -8,7 +8,7 @@ use tokio_tungstenite::{connect_async, tungstenite::Message};
 use tokio_util::sync::CancellationToken;
 
 use crate::app::server::ws::{ClientFrame, ServerFrame};
-use crate::protocol::model::ThinkingLevel;
+use crate::protocol::model::THINKING_OFF;
 use crate::protocol::ports::XyBashResult;
 use crate::protocol::session::{SessionEntry, SessionTreeKind, SessionTreeNode, SessionTreeTravel};
 
@@ -36,7 +36,7 @@ pub struct XyRemoteDriver {
     /// Cached thinking level (server does not expose a getter; tracked locally
     /// so get_state returns something sensible). NOTE: ceiling: server gains a
     /// state endpoint. upgrade: when server exposes GET /state.
-    thinking: std::sync::Mutex<ThinkingLevel>,
+    thinking: std::sync::Mutex<String>,
 }
 
 #[cfg(feature = "server")]
@@ -51,7 +51,7 @@ impl XyRemoteDriver {
             session_id: session_id.into(),
             client: reqwest::Client::new(),
             cancel: CancellationToken::new(),
-            thinking: std::sync::Mutex::new(ThinkingLevel::Medium),
+            thinking: std::sync::Mutex::new(THINKING_OFF.into()),
         }
     }
 
@@ -144,16 +144,7 @@ impl XyRemoteDriver {
                     .filter_map(|x| x.as_str().map(str::to_string))
                     .collect()
             })
-            .unwrap_or_else(|| {
-                if thinking {
-                    ThinkingLevel::STANDARD
-                        .iter()
-                        .map(|l| l.as_str().to_string())
-                        .collect()
-                } else {
-                    Vec::new()
-                }
-            });
+            .unwrap_or_else(|| vec![THINKING_OFF.into()]);
         Ok(ModelInfo {
             id: v
                 .get("id")
@@ -309,7 +300,7 @@ impl XyDriver for XyRemoteDriver {
             self.session_id,
             urlencoding_loose(&model_id)
         );
-        self.block_on(async {
+        let selected = self.block_on(async {
             let resp = self
                 .client
                 .post(&url)
@@ -337,37 +328,60 @@ impl XyDriver for XyRemoteDriver {
                     context_window: 0,
                 })
             }
-        })
+        })?;
+        let default = selected
+            .thinking_levels
+            .last()
+            .cloned()
+            .unwrap_or_else(|| THINKING_OFF.into());
+        *self.thinking.lock().unwrap() = default;
+        Ok(selected)
     }
 
     fn cycle_model(&mut self) -> Result<ModelInfo, XyDriverError> {
-        self.block_on(async {
+        let selected = self.block_on(async {
             let data = self.post_data("model/cycle", serde_json::json!({})).await?;
             Self::model_from_value(&data)
-        })
+        })?;
+        *self.thinking.lock().unwrap() = selected
+            .thinking_levels
+            .last()
+            .cloned()
+            .unwrap_or_else(|| THINKING_OFF.into());
+        Ok(selected)
     }
 
-    fn set_thinking_level(&mut self, level: ThinkingLevel) -> Result<(), XyDriverError> {
-        *self.thinking.lock().unwrap() = level;
-        let level_str = level.as_str();
+    fn set_thinking_level(&mut self, level: String) -> Result<(), XyDriverError> {
+        let request_level = level.clone();
         self.block_on(async {
-            self.post_data("thinking", serde_json::json!({ "level": level_str }))
+            self.post_data("thinking", serde_json::json!({ "level": request_level }))
                 .await
         })?;
+        *self.thinking.lock().unwrap() = level;
         Ok(())
     }
 
-    fn thinking_level(&self) -> ThinkingLevel {
-        *self.thinking.lock().unwrap()
+    fn thinking_level(&self) -> String {
+        self.thinking.lock().unwrap().clone()
     }
 
-    fn cycle_thinking_level(&mut self) -> Result<ThinkingLevel, XyDriverError> {
-        // Remote REST has set-only; cycle locally over STANDARD then POST.
-        let levels = ThinkingLevel::STANDARD;
+    fn cycle_thinking_level(&mut self) -> Result<String, XyDriverError> {
+        // Remote REST has set-only; cycle locally over the selected model's
+        // declared support list.
+        let levels = self
+            .current_model()
+            .map(|model| model.thinking_levels)
+            .filter(|levels| !levels.is_empty())
+            .unwrap_or_else(|| vec![THINKING_OFF.into()]);
         let cur = self.thinking_level();
-        let idx = levels.iter().position(|l| *l == cur).unwrap_or(0);
-        let next = levels[(idx + 1) % levels.len()];
-        self.set_thinking_level(next)?;
+        let next = match levels.iter().position(|level| level == &cur) {
+            Some(index) => levels[(index + 1) % levels.len()].clone(),
+            None => levels
+                .last()
+                .cloned()
+                .unwrap_or_else(|| THINKING_OFF.into()),
+        };
+        self.set_thinking_level(next.clone())?;
         Ok(next)
     }
 

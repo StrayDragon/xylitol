@@ -10,7 +10,6 @@ use crate::agent::AgentRuntime;
 use crate::agent::runtime::RunPolicy;
 use crate::app::core::bang_exec::BangExecHandler;
 use crate::app::core::session_export::SessionExporter;
-use crate::protocol::model::ThinkingLevel;
 use crate::protocol::ports::{XyBashResult, XySessionStore};
 use crate::protocol::session::{
     SessionEntry, SessionTreeKind, SessionTreeNode, SessionTreeTravel, plan_message_history_travel,
@@ -482,7 +481,7 @@ impl XyDriver for XyInProcessDriver {
         self.agent.current_model().map(|m| ModelInfo::from(&m))
     }
 
-    fn active_turn(&self) -> Option<(String, ThinkingLevel, bool)> {
+    fn active_turn(&self) -> Option<(String, String, bool)> {
         let binding = self.agent.inflight_turn_binding()?;
         Some((
             binding.display_name,
@@ -559,17 +558,17 @@ impl XyDriver for XyInProcessDriver {
         Ok(ModelInfo::from(&list[next_idx]))
     }
 
-    fn set_thinking_level(&mut self, level: ThinkingLevel) -> Result<(), XyDriverError> {
+    fn set_thinking_level(&mut self, level: String) -> Result<(), XyDriverError> {
         self.agent
             .set_thinking_level(level)
             .map_err(XyDriverError::from)
     }
 
-    fn thinking_level(&self) -> ThinkingLevel {
+    fn thinking_level(&self) -> String {
         self.agent.thinking_level()
     }
 
-    fn cycle_thinking_level(&mut self) -> Result<ThinkingLevel, XyDriverError> {
+    fn cycle_thinking_level(&mut self) -> Result<String, XyDriverError> {
         self.agent
             .cycle_thinking_level()
             .map_err(XyDriverError::from)
@@ -676,7 +675,12 @@ impl XyDriver for XyInProcessDriver {
             );
             crate::agent::capabilities::observe_hook(&bus, ty, phase, ctx).await;
         }
+        let context = Self::map_str(self.store.build_session_context(session_id).await)?;
         bind_session_or_err(&mut self.agent, session_id.to_string())?;
+        // Restore precisely what the session recorded. Do not validate, clamp, or
+        // append a replacement event: a stale vendor level is intentionally sticky
+        // until the user changes or cycles it.
+        self.agent.restore_thinking_level(context.thinking_level);
         // c1900: resume/switch starts a new tools epoch — next generate re-gates.
         // Fingerprint match/continue-freeze needs persisted fingerprint (same change wave MAY
         // add Custom/header storage); until then correctness prefers re-freeze.
@@ -1543,7 +1547,9 @@ mod driver_session_tree_tests {
     use crate::infra::session::SessionManager;
     use crate::protocol::model::XyModelConfig;
     use crate::protocol::ports::{XyEventSink, XyModel, XySessionStore};
-    use crate::protocol::session::{EntryBase, MessageEntry, SessionEntry, SessionTreeKind};
+    use crate::protocol::session::{
+        EntryBase, MessageEntry, SessionEntry, SessionTreeKind, ThinkingLevelChangeEntry,
+    };
 
     type ModelBuilderFn =
         Arc<dyn Fn(&XyModelConfig) -> Result<Arc<dyn XyModel>, String> + Send + Sync>;
@@ -1580,6 +1586,41 @@ mod driver_session_tree_tests {
             .expect("create session");
         agent.bind_session(sid).expect("bind_session");
         XyInProcessDriver::new(agent, store)
+    }
+
+    #[tokio::test]
+    async fn switch_session_restores_sticky_thinking_without_rewriting() {
+        let dir = tempfile::tempdir().unwrap();
+        let store = Arc::new(SessionManager::new(dir.path().join("sessions")));
+        let mut driver = build_test_driver(store.clone()).await;
+        let target = "restored-thinking";
+        store.create(target, Some("."), None).await.unwrap();
+        store
+            .append(
+                target,
+                &SessionEntry::ThinkingLevelChange(ThinkingLevelChangeEntry {
+                    base: EntryBase {
+                        entry_type: "thinking_level_change".into(),
+                        id: String::new(),
+                        parent_id: None,
+                        timestamp: String::new(),
+                    },
+                    thinking_level: "vendor-retired".into(),
+                }),
+            )
+            .await
+            .unwrap();
+        store
+            .append(target, &msg_entry("a1", None, "assistant", "flush"))
+            .await
+            .unwrap();
+        let session_file = store.get_session_file(target).unwrap();
+        let before = std::fs::read(&session_file).unwrap();
+
+        driver.switch_session(target).await.unwrap();
+
+        assert_eq!(driver.thinking_level(), "vendor-retired");
+        assert_eq!(std::fs::read(session_file).unwrap(), before);
     }
 
     #[tokio::test]

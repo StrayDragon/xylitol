@@ -14,14 +14,14 @@
 
 ## 2. 实现切片
 
-- [ ] 2.1 配置解析与 meta：字符串列表 / map 校验；缺省 → `[off]`
-- [ ] 2.2 ModelManager / Driver：set 拒绝、换模末项、cycle、sticky resume、无条目默认 `off`
-- [ ] 2.3 Session load 路径：原样还原；禁止 clamp 写回 JSONL
-- [ ] 2.4 Bridge：自由串缺 map 的可观测失败；DeepSeek dialect 回归单测
-- [ ] 2.5 TUI `/model` 槽与 footer 跟随声明列表
+- [x] 2.1 配置解析与 meta：字符串列表 / map 校验；缺省 → `[off]`
+- [x] 2.2 ModelManager / Driver：set 拒绝、换模末项、cycle、sticky resume、无条目默认 `off`
+- [x] 2.3 Session load 路径：原样还原；禁止 clamp 写回 JSONL
+- [x] 2.4 Bridge：自由串缺 map 的可观测失败；DeepSeek dialect 回归单测
+- [x] 2.5 TUI `/model` 槽与 footer 跟随声明列表
 
 ## 3. 验证
 
-- [ ] 3.1 相关 BDD + `just test` 目标切片绿
-- [ ] 3.2 `just qa`（或约定门禁）绿
-- [ ] 3.3 文档：架构/示例 YAML 补 DeepSeek `[off, high, max]` 与 breaking 说明
+- [x] 3.1 相关 BDD + `just test` 目标切片绿
+- [x] 3.2 `just qa`（或约定门禁）绿
+- [x] 3.3 文档：架构/示例 YAML 补 DeepSeek `[off, high, max]` 与 breaking 说明

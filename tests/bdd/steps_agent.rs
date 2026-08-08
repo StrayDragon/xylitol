@@ -196,13 +196,7 @@ pub(crate) async fn _w_agent_switch_thinking(agent: &AgentState, verb: String, l
     }
     let _ = store.create(&sid, Some("."), None).await;
     session.set_session(sid.clone());
-    let tl = match level.as_str() {
-        "high" => ThinkingLevel::High,
-        "medium" => ThinkingLevel::Medium,
-        "low" => ThinkingLevel::Low,
-        _ => ThinkingLevel::Off,
-    };
-    session.set_thinking_level(tl).unwrap();
+    session.set_thinking_level(level.clone()).unwrap();
     let entry = SessionEntry::ThinkingLevelChange(ThinkingLevelChangeEntry {
         base: EntryBase {
             entry_type: "thinking_level_change".into(),
@@ -210,13 +204,12 @@ pub(crate) async fn _w_agent_switch_thinking(agent: &AgentState, verb: String, l
             parent_id: None,
             timestamp: chrono::Utc::now().to_rfc3339(),
         },
-        thinking_level: session.thinking_level().as_str().to_string(),
+        thinking_level: session.thinking_level(),
     });
     let _ = store.append_session_entry(&sid, &entry).await;
-    agent.last_result.replace(Some(Ok(format!(
-        "level:{}",
-        session.thinking_level().as_str()
-    ))));
+    agent
+        .last_result
+        .replace(Some(Ok(format!("level:{}", session.thinking_level()))));
     thinking_persist::MGR.with(|m| m.replace(Some(mgr)));
     thinking_persist::SID.with(|s| s.replace(Some(sid)));
 }
@@ -455,18 +448,9 @@ pub(crate) fn _w_agent_try_thinking_level(agent: &AgentState, level: String) {
     {
         let _ = session.select_model(&id);
     }
-    let tl = match level.as_str() {
-        "high" => ThinkingLevel::High,
-        "medium" => ThinkingLevel::Medium,
-        "low" => ThinkingLevel::Low,
-        "minimal" => ThinkingLevel::Minimal,
-        "xhigh" => ThinkingLevel::Xhigh,
-        "max" => ThinkingLevel::Max,
-        _ => ThinkingLevel::Off,
-    };
-    let payload = match session.set_thinking_level(tl) {
-        Ok(()) => format!("level:{}", session.thinking_level().as_str()),
-        Err(_) => format!("rejected:level:{}", session.thinking_level().as_str()),
+    let payload = match session.set_thinking_level(level) {
+        Ok(()) => format!("level:{}", session.thinking_level()),
+        Err(_) => format!("rejected:level:{}", session.thinking_level()),
     };
     agent.last_result.replace(Some(Ok(payload)));
 }

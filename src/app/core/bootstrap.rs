@@ -119,12 +119,50 @@ pub struct BootstrappedRuntime {
     pub mcp_servers: Option<Vec<crate::app::core::mcp_spec::McpServerSpec>>,
 }
 
+fn load_restored_thinking_level(
+    store: &Arc<dyn crate::protocol::ports::XySessionStore>,
+    session_id: &str,
+) -> Option<String> {
+    let load = || {
+        let store = Arc::clone(store);
+        let session_id = session_id.to_string();
+        async move {
+            if store.exists(&session_id).await {
+                store
+                    .build_session_context(&session_id)
+                    .await
+                    .ok()
+                    .map(|context| context.thinking_level)
+            } else {
+                None
+            }
+        }
+    };
+
+    if let Ok(handle) = tokio::runtime::Handle::try_current() {
+        tokio::task::block_in_place(|| handle.block_on(load()))
+    } else {
+        tokio::runtime::Builder::new_current_thread()
+            .enable_all()
+            .build()
+            .ok()
+            .and_then(|runtime| runtime.block_on(load()))
+    }
+}
+
 impl BootstrappedAgent {
     /// Consume into an [`crate::app::core::driver::XyInProcessDriver`] plus side-products (preferred path).
     pub fn into_runtime(mut self) -> BootstrappedRuntime {
+        let restored_thinking_level = load_restored_thinking_level(&self.store, &self.session_id);
         self.agent
             .bind_session(self.session_id.clone())
             .expect("bootstrap bind_session");
+        if let Some(level) = restored_thinking_level {
+            // Session restoration is observational: retain the persisted literal
+            // without validating it against today's support set or writing a
+            // compensating history entry.
+            self.agent.restore_thinking_level(level);
+        }
         if let Ok(handle) = tokio::runtime::Handle::try_current() {
             let store = Arc::clone(&self.store);
             let sid = self.session_id.clone();
@@ -279,7 +317,7 @@ pub fn resolve_assembly(input: &BootstrapInput) -> Result<ResolvedAssembly, Boot
                 crate::agent::model::registry::default_context_window_for(entry.provider)
             };
 
-            let levels = match crate::protocol::model::ThinkingLevel::resolve_configured_levels(
+            let levels = match crate::protocol::model::resolve_configured_levels(
                 entry.thinking,
                 entry.thinking_levels.as_deref(),
             ) {
@@ -292,14 +330,14 @@ pub fn resolve_assembly(input: &BootstrapInput) -> Result<ResolvedAssembly, Boot
                 }
             };
             if let Some(map) = &entry.thinking_level_map
-                && let Err(e) = crate::protocol::model::validate_thinking_level_map(map)
+                && let Err(e) = crate::protocol::model::validate_thinking_level_map(map, &levels)
             {
                 warnings.push(BootstrapWarning::ModelEntrySkipped(format!(
                     "models.{alias}: {e}"
                 )));
                 continue;
             }
-            let thinking_levels = levels.iter().map(|l| l.as_str().to_string()).collect();
+            let thinking_levels = levels;
             let thinking_level_map = entry.thinking_level_map.clone().unwrap_or_default();
 
             model_registry.register(XyModelMeta {
@@ -373,10 +411,7 @@ pub fn resolve_assembly(input: &BootstrapInput) -> Result<ResolvedAssembly, Boot
                     cost_cache_read: 0.0,
                     cost_cache_write: 0.0,
                     max_tokens: 0,
-                    thinking_levels: crate::protocol::model::ThinkingLevel::STANDARD
-                        .iter()
-                        .map(|l| l.as_str().to_string())
-                        .collect(),
+                    thinking_levels: vec![crate::protocol::model::THINKING_OFF.into()],
                     thinking_level_map: Default::default(),
                 });
             }
@@ -613,7 +648,12 @@ pub fn bootstrap(input: BootstrapInput) -> Result<BootstrappedAgent, BootstrapEr
         }
     }
 
-    agent.apply_default_thinking_level(default_thinking_level.as_deref());
+    // Settings are only a first-session preference. A resumed session restores
+    // its exact persisted level later, and model switching always uses the
+    // declared list's final item.
+    if input.session.is_none() {
+        agent.apply_default_thinking_level(default_thinking_level.as_deref());
+    }
 
     // Reuse the same session store injected into the agent at composition time.
     let store = agent.session_store();

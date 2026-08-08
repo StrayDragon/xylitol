@@ -23,7 +23,7 @@ pub fn apply_completions_thinking(body: &mut Value, resolved: &AiBridgeResolvedT
             body["thinking"] = json!({ "type": "enabled" });
             body["reasoning_effort"] = Value::String(effort.clone());
         }
-        AiBridgeResolvedThinking::AnthropicBudget(_) => {}
+        AiBridgeResolvedThinking::AnthropicBudget(_) | AiBridgeResolvedThinking::Invalid(_) => {}
     }
 }
 
@@ -39,7 +39,7 @@ pub fn apply_anthropic_thinking(body: &mut Value, resolved: &AiBridgeResolvedThi
             // Server ignores budget_tokens; still enable thinking without claiming a budget.
             body["thinking"] = json!({ "type": "enabled" });
         }
-        AiBridgeResolvedThinking::OpenAiEffort(_) => {}
+        AiBridgeResolvedThinking::OpenAiEffort(_) | AiBridgeResolvedThinking::Invalid(_) => {}
     }
 }
 

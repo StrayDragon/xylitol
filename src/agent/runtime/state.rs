@@ -392,7 +392,7 @@ mod tests {
             ActiveTurnBinding {
                 model_id: "m".into(),
                 display_name: "m".into(),
-                thinking: crate::protocol::model::ThinkingLevel::Off,
+                thinking: "off".into(),
                 omit_thinking: true,
             },
         );

@@ -435,7 +435,7 @@ impl<T: Terminal> HostSession<T> {
     }
 
     /// Silent UI sync for thinking level (border + footer only).
-    pub fn apply_thinking_level_ui(&mut self, level: crate::protocol::model::ThinkingLevel) {
+    pub fn apply_thinking_level_ui(&mut self, level: String) {
         let Some(root) = self.ui_root.as_ref() else {
             return;
         };
@@ -463,16 +463,20 @@ impl<T: Terminal> HostSession<T> {
             if let Some((label, thinking, omit_thinking)) = driver.active_turn() {
                 (label, thinking, omit_thinking)
             } else {
-                (selected_label.clone(), selected_thinking, selected_omit)
+                (
+                    selected_label.clone(),
+                    selected_thinking.clone(),
+                    selected_omit,
+                )
             };
 
         let cue = if agent_run {
             if let Some((active_label, active_thinking, _)) = driver.active_turn() {
                 crate::app::tui::layout::status_next_turn_cue_text(
                     &active_label,
-                    active_thinking,
+                    &active_thinking,
                     &selected_label,
-                    selected_thinking,
+                    &selected_thinking,
                 )
             } else {
                 None

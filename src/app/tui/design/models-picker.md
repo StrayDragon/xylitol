@@ -26,7 +26,7 @@ components:
 
 ## 产品意图
 
-换模型与思考等级走**同一入口**（`/model`）。等级只用 **xylitol 档名**；厂商差异关在 `thinking_level_map`。
+换模型与思考等级走**同一入口**（`/model`）。等级来自**该模型配置声明的** `thinking_levels`；厂商 wire 差异关在 `thinking_level_map` / api×compat。
 
 - **禁止**全局 Shift+Tab cycle thinking。
 - **↑↓** 选模型；**←→** 在焦点模型的支持集上选等级；**Shift+Tab** 亦可 cycle（与 ←→ 同槽，不另开全局绑定）。
@@ -34,19 +34,19 @@ components:
 - **宽度不够**：退化为单档标签 + ←→ / Shift+Tab cycle（不挤爆一行）。
 - **不支持思考**的模型：无等级可选；行上明确「不可调」。
 
-## xylitol 等级体系（产品面）
+## 档位体系（产品面）
 
 | 原则 | MUST |
 |---|---|
-| 用户可见名 | 仅 xylitol `ThinkingLevel`（`off` … `max`）；**MUST NOT** 显示 provider 专有名 |
-| 支持集 | 每模型子集；`thinking: false` / 仅 off → **无思考可调** |
-| Provider | 仅边界 map；UI 不泄漏 |
-| 默认 | 可调模型：支持集 **最高档**；不可调：固定 `off`（或不展示等级语义） |
-| 全序 | `off < minimal < low < medium < high < xhigh < max`；最高 = 支持集最大元 |
+| 用户可见名 | 当前模型 `thinking_levels` **声明字符串**（可厂商字面量）；未声明 → 仅 `off` |
+| 支持集 | 配置有序列表；`thinking: false` / 仅 off → **无思考可调** |
+| Provider | 仅边界 `thinking_level_map` / api×compat；UI 展示声明档 |
+| 默认 | 可调模型：声明列表 **末项**；不可调：固定 `off` |
+| 无全球全序 | 不以封闭枚举超集定义「最高」；换模默认 = 末项 |
 
 ## 布局：宽 / 窄 / 无思考
 
-记 `levels(m)` = 模型 `m` 的 xylitol 支持集（可调 ⟺ `levels(m)` 含至少一档且非「仅 off 占位不可调」——产品定义：**仅 `off` 或空 = 不支持思考设置**）。
+记 `levels(m)` = 模型 `m` 的声明支持集（可调 ⟺ `levels(m)` 含至少一档且非「仅 off」——产品定义：**仅 `off` 或空 = 不支持思考设置**）。
 
 ### 宽度判定（实现 MUST 可测）
 
@@ -57,7 +57,7 @@ components:
 - **不够宽**或窄终端：**narrow** 模式——只显示当前暂定档一个标签；←→ / Shift+Tab 仍 cycle。
 - 换焦点模型时重新判定（支持集长度不同）。
 
-静图定形：**焦点行**在 wide 下铺开该模型全部档；**非焦点行**只显示一个预览档（默认可为该模型最高档，或 `—` 若不可调），避免多行都铺满导致噪声。
+静图定形：**焦点行**在 wide 下铺开该模型全部档；**非焦点行**只显示一个预览档（默认可为该模型声明末项，或 `—` 若不可调），避免多行都铺满导致噪声。
 
 ### 不支持思考（MUST）
 

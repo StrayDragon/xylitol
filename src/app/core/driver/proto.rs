@@ -4,7 +4,6 @@ use std::path::Path;
 
 use async_trait::async_trait;
 
-use crate::protocol::model::ThinkingLevel;
 use crate::protocol::ports::XyBashResult;
 use crate::protocol::session::{SessionEntry, SessionTreeKind, SessionTreeNode, SessionTreeTravel};
 
@@ -33,7 +32,7 @@ pub trait XyDriver: Send {
 
     /// In-flight turn binding `(display_label, thinking, omit_thinking)` while an agent run is active.
     /// `None` when idle / converged (footer uses selected).
-    fn active_turn(&self) -> Option<(String, ThinkingLevel, bool)> {
+    fn active_turn(&self) -> Option<(String, String, bool)> {
         None
     }
 
@@ -55,16 +54,16 @@ pub trait XyDriver: Send {
     /// Set the thinking level.
     ///
     /// Returns `Err` if the level is not in the current model's support set.
-    fn set_thinking_level(&mut self, level: ThinkingLevel) -> Result<(), XyDriverError>;
+    fn set_thinking_level(&mut self, level: String) -> Result<(), XyDriverError>;
 
     /// Current thinking level.
-    fn thinking_level(&self) -> ThinkingLevel;
+    fn thinking_level(&self) -> String;
 
     /// Cycle to the next level in the current model's thinking support list.
     ///
     /// Returns the level now in effect. Demo / legacy callers only; product TUI
     /// changes thinking solely via `/model` (ati36).
-    fn cycle_thinking_level(&mut self) -> Result<ThinkingLevel, XyDriverError>;
+    fn cycle_thinking_level(&mut self) -> Result<String, XyDriverError>;
 
     /// Current session id (the id the next `run`/export acts on).
     fn session_id(&self) -> Option<String>;

@@ -328,9 +328,9 @@ fn w_rc_assembly(rc_snap: &RcSnap) {
         .borrow()
         .default_thinking_level
         .as_deref()
-        .and_then(ThinkingLevel::parse);
+        .map(str::to_owned);
     mm.set_preferred_default(pref);
-    mm.apply_preferred_or_highest();
+    mm.apply_preferred_or_last();
     rc_snap.mm.replace(Some(mm));
 }
 #[when("select_model 到该模型")]
@@ -342,7 +342,7 @@ fn w_rc_select(rc_snap: &RcSnap) {
         .borrow()
         .default_thinking_level
         .as_deref()
-        .and_then(ThinkingLevel::parse);
+        .map(str::to_owned);
     mm.set_preferred_default(pref);
     mm.select_model("m").expect("select model");
     rc_snap.mm.replace(Some(mm));
@@ -457,19 +457,19 @@ fn t_rc_levels(rc_snap: &RcSnap) {
 fn t_rc_thinking_high_assembly(rc_snap: &RcSnap) {
     let mm = rc_snap.mm.borrow();
     let mm = mm.as_ref().expect("model manager");
-    assert_eq!(mm.thinking_level(), ThinkingLevel::High);
+    assert_eq!(mm.thinking_level(), "high");
 }
 #[then("thinking level 为 high")]
 fn t_rc_thinking_high(rc_snap: &RcSnap) {
     let mm = rc_snap.mm.borrow();
     let mm = mm.as_ref().expect("model manager");
-    assert_eq!(mm.thinking_level(), ThinkingLevel::High);
+    assert_eq!(mm.thinking_level(), "high");
 }
 #[then("thinking level 为 max")]
 fn t_rc_thinking_max(rc_snap: &RcSnap) {
     let mm = rc_snap.mm.borrow();
     let mm = mm.as_ref().expect("model manager");
-    assert_eq!(mm.thinking_level(), ThinkingLevel::Max);
+    assert_eq!(mm.thinking_level(), "max");
 }
 #[then("成功且支持集含 bogon-level")]
 fn t_rc_freeform_ok(tokenizer_bdd: &TokenizerBdd) {

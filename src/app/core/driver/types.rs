@@ -4,7 +4,7 @@ use std::pin::Pin;
 
 use futures::Stream;
 
-use crate::protocol::model::{ThinkingLevel, XyModelMeta};
+use crate::protocol::model::{THINKING_OFF, XyModelMeta, thinking_levels_are_adjustable};
 use crate::protocol::session::{SessionEntry, SessionTreeKind};
 
 /// One step in a [`RuntimeReloadReport`] (c1120).
@@ -238,7 +238,7 @@ pub struct CommandInfo {
 pub struct SessionState {
     pub session_id: String,
     pub model: Option<ModelInfo>,
-    pub thinking_level: ThinkingLevel,
+    pub thinking_level: String,
 }
 
 /// Minimal model info returned by the XyDriver, decoupled from `XyModelMeta`'s
@@ -248,23 +248,23 @@ pub struct ModelInfo {
     pub id: String,
     pub display_name: String,
     pub thinking: bool,
-    /// Xylitol thinking levels supported by this model (`off`-only when not adjustable).
+    /// Exact model-declared thinking levels (`off`-only when not adjustable).
     pub thinking_levels: Vec<String>,
     pub context_window: u64,
 }
 
 impl From<&XyModelMeta> for ModelInfo {
     fn from(m: &XyModelMeta) -> Self {
-        let levels = ThinkingLevel::resolve_configured_levels(
-            m.thinking,
-            (!m.thinking_levels.is_empty()).then_some(m.thinking_levels.as_slice()),
-        )
-        .unwrap_or_else(|_| vec![ThinkingLevel::Off]);
+        let thinking_levels = if !m.thinking || m.thinking_levels.is_empty() {
+            vec![THINKING_OFF.into()]
+        } else {
+            m.thinking_levels.clone()
+        };
         Self {
             id: m.id.clone(),
             display_name: m.display_name.clone(),
-            thinking: m.thinking && ThinkingLevel::is_adjustable(&levels),
-            thinking_levels: levels.iter().map(|l| l.as_str().to_string()).collect(),
+            thinking: thinking_levels_are_adjustable(&thinking_levels),
+            thinking_levels,
             context_window: m.context_window,
         }
     }

@@ -29,7 +29,6 @@ use std::path::PathBuf;
 use crate::app::core::driver::{CommandInfo, ModelInfo, SessionState, XyDriver};
 pub use crate::app::core::driver_error::XyDriverError;
 use crate::protocol::Command;
-use crate::protocol::model::ThinkingLevel;
 use crate::protocol::ports::XyBashResult;
 use crate::protocol::session::SessionEntry;
 
@@ -52,7 +51,7 @@ pub enum DispatchOutcome {
     /// `GetAvailableModels` — the registered models.
     Models(Vec<ModelInfo>),
     /// `SetThinkingLevel` — the level now in effect.
-    ThinkingLevel(ThinkingLevel),
+    ThinkingLevel(String),
     /// `Bash` — the execution result.
     Bash(XyBashResult),
     /// `Compact` — whether a compaction occurred.
@@ -81,10 +80,14 @@ pub enum DispatchOutcome {
     },
 }
 
-/// Parse a thinking-level string into the typed enum.
-pub fn parse_thinking_level(s: &str) -> Result<ThinkingLevel, XyDriverError> {
-    ThinkingLevel::parse(s)
-        .ok_or_else(|| XyDriverError::invalid_input(format!("unknown thinking level: {s}")))
+/// Validate a freeform thinking-level request without changing its spelling.
+pub fn parse_thinking_level(s: &str) -> Result<String, XyDriverError> {
+    if s.trim().is_empty() {
+        return Err(XyDriverError::invalid_input(
+            "thinking level must not be empty",
+        ));
+    }
+    Ok(s.to_string())
 }
 
 /// Dispatch a non-Prompt, non-Quit, non-WS Command against `driver`.
@@ -133,7 +136,7 @@ async fn dispatch_inner(
         }
         Command::SetThinkingLevel { level, .. } => {
             let tl = parse_thinking_level(&level)?;
-            driver.set_thinking_level(tl)?;
+            driver.set_thinking_level(tl.clone())?;
             Ok(DispatchOutcome::ThinkingLevel(tl))
         }
         Command::Bash {
@@ -286,7 +289,6 @@ fn cmd_variant_name(cmd: &Command) -> &'static str {
 mod tests {
     use super::*;
     use crate::app::core::driver::{CommandInfo, ModelInfo, SessionState};
-    use crate::protocol::model::ThinkingLevel;
     use crate::protocol::ports::XyBashResult;
     use crate::protocol::session::SessionTreeKind;
     use async_trait::async_trait;
@@ -294,7 +296,7 @@ mod tests {
     /// A stub XyDriver that records calls and returns canned responses, so the
     /// dispatcher's Command→method mapping can be asserted without an agent.
     struct StubDriver {
-        thinking: ThinkingLevel,
+        thinking: String,
         session_id: Option<String>,
         steer: usize,
         follow_up: usize,
@@ -330,18 +332,21 @@ mod tests {
         fn cycle_model(&mut self) -> Result<ModelInfo, XyDriverError> {
             Ok(self.current_model().unwrap())
         }
-        fn set_thinking_level(&mut self, level: ThinkingLevel) -> Result<(), XyDriverError> {
+        fn set_thinking_level(&mut self, level: String) -> Result<(), XyDriverError> {
             self.thinking = level;
             Ok(())
         }
-        fn thinking_level(&self) -> ThinkingLevel {
-            self.thinking
+        fn thinking_level(&self) -> String {
+            self.thinking.clone()
         }
-        fn cycle_thinking_level(&mut self) -> Result<ThinkingLevel, XyDriverError> {
-            let levels = ThinkingLevel::STANDARD;
-            let idx = levels.iter().position(|l| *l == self.thinking).unwrap_or(0);
-            let next = levels[(idx + 1) % levels.len()];
-            self.thinking = next;
+        fn cycle_thinking_level(&mut self) -> Result<String, XyDriverError> {
+            let levels = ["off", "minimal", "low", "medium", "high"];
+            let idx = levels
+                .iter()
+                .position(|level| *level == self.thinking)
+                .unwrap_or(0);
+            let next = levels[(idx + 1) % levels.len()].to_string();
+            self.thinking = next.clone();
             Ok(next)
         }
         fn session_id(&self) -> Option<String> {
@@ -523,7 +528,7 @@ mod tests {
 
     fn stub() -> StubDriver {
         StubDriver {
-            thinking: ThinkingLevel::Medium,
+            thinking: "medium".into(),
             session_id: Some("s1".into()),
             steer: 0,
             follow_up: 0,
@@ -560,10 +565,10 @@ mod tests {
         .await
         .unwrap();
         match outcome {
-            DispatchOutcome::ThinkingLevel(ThinkingLevel::High) => {}
+            DispatchOutcome::ThinkingLevel(level) if level == "high" => {}
             _ => panic!("expected ThinkingLevel High"),
         }
-        assert_eq!(d.thinking_level(), ThinkingLevel::High);
+        assert_eq!(d.thinking_level(), "high");
     }
 
     /// c1165: XyDriver level after SetThinkingLevel / cycle MUST map to OpenAI effort.
@@ -574,22 +579,24 @@ mod tests {
         };
 
         let mut d = stub();
-        assert_eq!(d.thinking_level(), ThinkingLevel::Medium);
+        assert_eq!(d.thinking_level(), "medium");
         let mid = resolve_thinking_for_request(
-            d.thinking_level(),
+            &d.thinking_level(),
             None,
             None,
             ThinkingAdapterKind::OpenAi,
-        );
+        )
+        .unwrap();
         assert_eq!(mid, ResolvedThinking::OpenAiEffort("medium".into()));
 
-        assert_eq!(d.cycle_thinking_level().unwrap(), ThinkingLevel::High);
+        assert_eq!(d.cycle_thinking_level().unwrap(), "high");
         let high = resolve_thinking_for_request(
-            d.thinking_level(),
+            &d.thinking_level(),
             None,
             None,
             ThinkingAdapterKind::OpenAi,
-        );
+        )
+        .unwrap();
         assert_eq!(high, ResolvedThinking::OpenAiEffort("high".into()));
 
         dispatch(
@@ -602,27 +609,30 @@ mod tests {
         .await
         .unwrap();
         let off = resolve_thinking_for_request(
-            d.thinking_level(),
+            &d.thinking_level(),
             None,
             None,
             ThinkingAdapterKind::OpenAi,
-        );
+        )
+        .unwrap();
         assert_eq!(off, ResolvedThinking::Omit);
     }
 
     #[tokio::test]
-    async fn reject_invalid_thinking_level() {
+    async fn accepts_freeform_thinking_level() {
         let mut d = stub();
-        let err = dispatch(
+        let outcome = dispatch(
             &mut d,
             Command::SetThinkingLevel {
                 id: None,
-                level: "bogus".into(),
+                level: "vendor-max".into(),
             },
         )
         .await
-        .unwrap_err();
-        assert!(err.to_string().contains("unknown thinking level"));
+        .unwrap();
+        assert!(
+            matches!(outcome, DispatchOutcome::ThinkingLevel(ref level) if level == "vendor-max")
+        );
     }
 
     #[tokio::test]

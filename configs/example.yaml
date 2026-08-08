@@ -18,26 +18,12 @@ tokenizers:
     # file: tokenizer.json
 
 models:
-  default_model: "claude"
-  models:
-    claude:
-      provider: anthropic
-      model: claude-sonnet-4-20250514
-    gpt:
-      provider: openai
-      model: gpt-4o
-      fallback: claude
-    # OpenCode Zen free（Completions）/ DeepSeek 官方 flash（Responses / Anthropic）：
-    # 别名用后缀区分通道：*-zen / *-anthropic；上游 wire `model:` 可相同。
-    # deepseek-v4-flash-free-zen:
-    #   provider: openai
-    #   model: deepseek-v4-flash-free
-    #   base_url: https://opencode.ai/zen/v1
-    #   api: openai-completions
-    #   compat: deepseek
-    #   api_key: "{{ secret.OPENCODE_ZEN_API_KEY }}"
-    #   thinking: true
-    #   thinking_levels: [off, high, max]
+  # Uncomment default_model + at least one entry under models before first use
+  # (avoids accidental live calls from a checked-in example).
+  # DeepSeek flash is the recommended starter; thinking_levels must be explicit
+  # (omit → only off). Switch-model default = last list item (max here).
+  # default_model: "deepseek-v4-flash"
+  models: {}
     # deepseek-v4-flash:
     #   provider: openai
     #   model: deepseek-v4-flash
@@ -56,6 +42,21 @@ models:
     #   api_key: "{{ secret.DEEPSEEK_API_KEY }}"
     #   thinking: true
     #   thinking_levels: [off, high, max]
+    # OpenCode Zen free（Completions）；别名用 *-zen 后缀：
+    # deepseek-v4-flash-free-zen:
+    #   provider: openai
+    #   model: deepseek-v4-flash-free
+    #   base_url: https://opencode.ai/zen/v1
+    #   api: openai-completions
+    #   compat: deepseek
+    #   api_key: "{{ secret.OPENCODE_ZEN_API_KEY }}"
+    #   thinking: true
+    #   thinking_levels: [off, high, max]
+    # Optional Anthropic / OpenAI (uncomment only if you intend to use them):
+    # claude:
+    #   provider: anthropic
+    #   model: claude-sonnet-4-20250514
+    #   api_key: "{{ secret.ANTHROPIC_API_KEY }}"
     # Inference id ≠ tokenizer repo — share via tokenizers.qwen36:
     # qwen:
     #   provider: openai
@@ -74,7 +75,7 @@ models:
 execution:
   max_retries: 3
   # system_prompt: "Custom system prompt override"
-  # model: "claude"  # override default per-execution
+  # model: "deepseek-v4-flash"  # override default per-execution
 
 security:
   enabled: true

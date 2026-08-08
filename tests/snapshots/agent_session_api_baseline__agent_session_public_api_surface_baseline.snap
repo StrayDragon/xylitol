@@ -1,6 +1,5 @@
 ---
 source: tests/agent_session_api_baseline.rs
-assertion_line: 127
 expression: "all_items.join(\"\\n\")"
 ---
 pub async fn ensure_session(&self, id: &str, parent: Option<&str>) -> Result<(), XyError>
@@ -24,7 +23,7 @@ pub fn clear_tool_freeze(&mut self)
 pub fn context_policy(&self) -> &crate::agent::context_policy::ContextPolicy
 pub fn current_model(&self) -> Option<XyModelMeta>
 pub fn cwd(&self) -> &str
-pub fn cycle_thinking_level(&mut self) -> Result<ThinkingLevel, XyError>
+pub fn cycle_thinking_level(&mut self) -> Result<String, XyError>
 pub fn drain(&mut self) -> Vec<AgentMessage>
 pub fn enqueue(&mut self, message: AgentMessage)
 pub fn estimate_tokens(messages: &[crate::protocol::message::AgentMessage]) -> u64
@@ -54,6 +53,7 @@ pub fn queue_stats(&self) -> QueueStats
 pub fn rebuild_system_prompt(&mut self)
 pub fn reopen_tools_for_regate(&mut self)
 pub fn replace_hooks(&mut self, hooks: AgentHooks)
+pub fn restore_thinking_level(&mut self, level: String)
 pub fn select_model(&mut self, model_id: &str) -> Result<(), XyError>
 pub fn select_model_with_source( &mut self, model_id: &str, source: &str, ) -> Result<(), XyError>
 pub fn selected_turn_binding(&self) -> Option<ActiveTurnBinding>
@@ -63,17 +63,17 @@ pub fn set_mode(&mut self, mode: QueueMode)
 pub fn set_permission(&mut self, permission: std::sync::Arc<dyn XyPermission>)
 pub fn set_session(&mut self, session_id: String)
 pub fn set_system_prompt(&mut self, prompt: Option<String>)
-pub fn set_thinking_level(&mut self, level: ThinkingLevel) -> Result<(), XyError>
+pub fn set_thinking_level(&mut self, level: String) -> Result<(), XyError>
 pub fn set_tools(&mut self, tools: ToolSet)
 pub fn set_tools_defer_prompt(&mut self, tools: ToolSet) -> SystemPromptOpts
 pub fn stats(&self) -> QueueStats
 pub fn steer(&self, message: impl Into<String>)
 pub fn steer_parts(&self, parts: Vec<crate::protocol::message::AgentPart>)
 pub fn system_prompt(&self) -> Option<&str>
-pub fn thinking_level(&self) -> ThinkingLevel
+pub fn thinking_level(&self) -> String
 pub fn tool_freeze_phase(&self) -> ToolFreezePhase
 pub fn unbind_event_tx(&self, run_id: RunId)
-pub model_id: String, pub display_name: String, pub thinking: ThinkingLevel, /// True when footer should omit the thinking segment. pub omit_thinking: bool, } /// Engine capability aggregate (model / tools / session / prompt / compaction / queues). /// /// Product slash, bang, and session export live on [`XyDriver`](crate::app::core::driver::XyDriver). pub struct AgentCapabilities
+pub model_id: String, pub display_name: String, /// Exact configured or restored thinking level name for this turn. pub thinking: String, /// True when footer should omit the thinking segment. pub omit_thinking: bool, } /// Engine capability aggregate (model / tools / session / prompt / compaction / queues). /// /// Product slash, bang, and session export live on [`XyDriver`](crate::app::core::driver::XyDriver). pub struct AgentCapabilities
 pub session_id: String, pub user_messages: usize, pub assistant_messages: usize, pub total_messages: usize, pub thinking_level: String, pub model: Option<(String, String)>, } /// Aggregate message counts for a session by reading the session store. /// /// Moved out of the `AgentCapabilities` body (spec as32 / c320 T24) so the capability /// aggregate holds no aggregation logic. pub async fn compute( store: &dyn XySessionStore, session_id: &str, ) -> Result<SessionStats, XyError>
 pub steer: Arc<Mutex<PendingMessageQueue>>, pub follow_up: Arc<Mutex<PendingMessageQueue>>, /// Bound as `(RunId, tx)` so a stale stream cannot clear a newer run's sender. event_tx: Arc<Mutex<Option<(RunId, EventTx)>>>, } impl AsyncQueueRuntime
 pub steer_count: usize, pub follow_up_count: usize, } /// Sender bound to the active `XyDriver::run` / ReAct EventStream (may be absent). pub type EventTx = tokio::sync::mpsc::UnboundedSender<XyEvent>

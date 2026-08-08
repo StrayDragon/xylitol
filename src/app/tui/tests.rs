@@ -2303,16 +2303,21 @@ fn streaming_paint_does_not_break_bash_ctrl_o_viewport() {
 #[test]
 fn models_picker_left_right_cycle_thinking_levels() {
     use super::layout::{ModelPickerRow, UiRoot};
-    use crate::protocol::model::ThinkingLevel;
     use crossterm::event::{KeyCode, KeyEvent, KeyModifiers};
     use xylitol_tui::{Component, InputEvent};
 
-    let levels = ThinkingLevel::STANDARD.to_vec();
+    let levels = vec![
+        "off".into(),
+        "minimal".into(),
+        "low".into(),
+        "medium".into(),
+        "high".into(),
+    ];
     let row = ModelPickerRow {
         id: "qwen".into(),
         label: "qwen".into(),
         levels: levels.clone(),
-        provisional: ThinkingLevel::Medium,
+        provisional: "medium".into(),
     };
     let mut root = UiRoot::new();
     let _ = root.render(120);
@@ -2328,13 +2333,13 @@ fn models_picker_left_right_cycle_thinking_levels() {
     )));
     let left = root.take_pending_model_select().expect("left confirm");
     assert_eq!(left.model_id, "qwen");
-    assert_eq!(left.thinking, ThinkingLevel::Low);
+    assert_eq!(left.thinking, "low");
 
     let row = ModelPickerRow {
         id: "qwen".into(),
         label: "qwen".into(),
         levels,
-        provisional: ThinkingLevel::Medium,
+        provisional: "medium".into(),
     };
     root.mount_models_picker(vec![row]);
     root.handle_input(InputEvent::Key(KeyEvent::new(
@@ -2346,5 +2351,5 @@ fn models_picker_left_right_cycle_thinking_levels() {
         KeyModifiers::NONE,
     )));
     let right = root.take_pending_model_select().expect("right confirm");
-    assert_eq!(right.thinking, ThinkingLevel::High);
+    assert_eq!(right.thinking, "high");
 }

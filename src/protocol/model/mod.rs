@@ -9,8 +9,9 @@ pub use chunk::{XyChunk, XyToolSchema};
 pub use config::{ResolvedProfile, XyModelConfig, XyModelKind, default_context_window_for};
 pub use meta::{ContextTokenEstimate, TokenProvenance, XyModelMeta};
 pub use thinking::{
-    ResolvedThinking, ThinkingAdapterKind, ThinkingBudgets, ThinkingLevel, ThinkingLevelMap,
-    resolve_thinking_for_request, validate_thinking_level_map,
+    ResolvedThinking, THINKING_OFF, ThinkingAdapterKind, ThinkingBudgets, ThinkingLevel,
+    ThinkingLevelMap, last_declared_thinking_level, resolve_configured_levels,
+    resolve_thinking_for_request, thinking_levels_are_adjustable, validate_thinking_level_map,
 };
 
 #[cfg(test)]
@@ -101,8 +102,8 @@ mod tests {
     // ── ThinkingLevel ───────────────────────────────────────────────
 
     #[test]
-    fn thinking_level_default_is_medium() {
-        assert_eq!(ThinkingLevel::default(), ThinkingLevel::Medium);
+    fn thinking_level_default_is_off() {
+        assert_eq!(ThinkingLevel::default(), ThinkingLevel::Off);
     }
 
     #[test]
@@ -142,40 +143,30 @@ mod tests {
     }
 
     #[test]
-    fn thinking_level_resolve_configured_defaults_and_holes() {
-        let std = ThinkingLevel::resolve_configured_levels(true, None).unwrap();
-        assert_eq!(std, ThinkingLevel::STANDARD.to_vec());
-        assert!(!std.contains(&ThinkingLevel::Xhigh));
-
-        let hole =
-            ThinkingLevel::resolve_configured_levels(true, Some(&["high".into(), "max".into()]))
-                .unwrap();
-        assert_eq!(hole, vec![ThinkingLevel::High, ThinkingLevel::Max]);
-
-        assert!(
-            ThinkingLevel::resolve_configured_levels(true, Some(&["bogon".into()]))
-                .unwrap_err()
-                .contains("unknown")
-        );
-
+    fn configured_levels_are_freeform_ordered_and_default_to_off() {
         assert_eq!(
-            ThinkingLevel::resolve_configured_levels(false, Some(&["high".into()])).unwrap(),
-            vec![ThinkingLevel::Off]
+            resolve_configured_levels(true, None).unwrap(),
+            vec!["off".to_string()]
         );
-    }
-
-    #[test]
-    fn thinking_level_clamp_off_when_no_thinking() {
-        assert_eq!(ThinkingLevel::High.clamp(false), ThinkingLevel::Off);
-        assert_eq!(ThinkingLevel::Medium.clamp(false), ThinkingLevel::Off);
-        assert_eq!(ThinkingLevel::Off.clamp(false), ThinkingLevel::Off);
-    }
-
-    #[test]
-    fn thinking_level_passthrough_when_supported() {
-        assert_eq!(ThinkingLevel::High.clamp(true), ThinkingLevel::High);
-        assert_eq!(ThinkingLevel::Medium.clamp(true), ThinkingLevel::Medium);
-        assert_eq!(ThinkingLevel::Off.clamp(true), ThinkingLevel::Off);
+        assert_eq!(
+            resolve_configured_levels(true, Some(&[])).unwrap(),
+            vec!["off".to_string()]
+        );
+        let declared = resolve_configured_levels(
+            true,
+            Some(&["off".into(), "bogon-level".into(), "max".into()]),
+        )
+        .unwrap();
+        assert_eq!(declared, vec!["off", "bogon-level", "max"]);
+        assert!(thinking_levels_are_adjustable(&declared));
+        assert!(!thinking_levels_are_adjustable(&["OFF".into()]));
+        assert_eq!(last_declared_thinking_level(&declared), "max");
+        assert!(resolve_configured_levels(true, Some(&[" \t".into()])).is_err());
+        assert_eq!(
+            resolve_configured_levels(false, Some(&["high".into()])).unwrap(),
+            vec!["off".to_string()]
+        );
+        assert!(resolve_configured_levels(false, Some(&["".into()])).is_err());
     }
 
     #[test]
@@ -238,23 +229,15 @@ mod tests {
 
     #[test]
     fn resolve_openai_absent_key_uses_identity() {
-        let r = resolve_thinking_for_request(
-            ThinkingLevel::Medium,
-            None,
-            None,
-            ThinkingAdapterKind::OpenAi,
-        );
+        let r = resolve_thinking_for_request("medium", None, None, ThinkingAdapterKind::OpenAi)
+            .unwrap();
         assert_eq!(r, ResolvedThinking::OpenAiEffort("medium".into()));
     }
 
     #[test]
     fn resolve_openai_off_omits() {
-        let r = resolve_thinking_for_request(
-            ThinkingLevel::Off,
-            None,
-            None,
-            ThinkingAdapterKind::OpenAi,
-        );
+        let r =
+            resolve_thinking_for_request("off", None, None, ThinkingAdapterKind::OpenAi).unwrap();
         assert_eq!(r, ResolvedThinking::Omit);
     }
 
@@ -262,12 +245,8 @@ mod tests {
     fn resolve_null_omits() {
         let mut map = ThinkingLevelMap::new();
         map.insert("high".into(), None);
-        let r = resolve_thinking_for_request(
-            ThinkingLevel::High,
-            Some(&map),
-            None,
-            ThinkingAdapterKind::OpenAi,
-        );
+        let r = resolve_thinking_for_request("high", Some(&map), None, ThinkingAdapterKind::OpenAi)
+            .unwrap();
         assert_eq!(r, ResolvedThinking::Omit);
     }
 
@@ -275,23 +254,15 @@ mod tests {
     fn resolve_map_overrides_default() {
         let mut map = ThinkingLevelMap::new();
         map.insert("high".into(), Some("max".into()));
-        let r = resolve_thinking_for_request(
-            ThinkingLevel::High,
-            Some(&map),
-            None,
-            ThinkingAdapterKind::OpenAi,
-        );
+        let r = resolve_thinking_for_request("high", Some(&map), None, ThinkingAdapterKind::OpenAi)
+            .unwrap();
         assert_eq!(r, ResolvedThinking::OpenAiEffort("max".into()));
     }
 
     #[test]
     fn resolve_anthropic_budget_defaults_and_settings() {
-        let r = resolve_thinking_for_request(
-            ThinkingLevel::Low,
-            None,
-            None,
-            ThinkingAdapterKind::Anthropic,
-        );
+        let r = resolve_thinking_for_request("low", None, None, ThinkingAdapterKind::Anthropic)
+            .unwrap();
         assert_eq!(r, ResolvedThinking::AnthropicBudget(2048));
 
         let budgets = ThinkingBudgets {
@@ -299,22 +270,31 @@ mod tests {
             ..Default::default()
         };
         let r2 = resolve_thinking_for_request(
-            ThinkingLevel::Low,
+            "low",
             None,
             Some(&budgets),
             ThinkingAdapterKind::Anthropic,
-        );
+        )
+        .unwrap();
         assert_eq!(r2, ResolvedThinking::AnthropicBudget(4096));
     }
 
     #[test]
-    fn validate_thinking_level_map_rejects_unknown() {
+    fn validate_thinking_level_map_requires_declared_key() {
         let mut map = ThinkingLevelMap::new();
         map.insert("bogon".into(), Some("x".into()));
         assert!(
-            validate_thinking_level_map(&map)
+            validate_thinking_level_map(&map, &["off".into(), "high".into()])
                 .unwrap_err()
                 .contains("bogon")
         );
+    }
+
+    #[test]
+    fn freeform_anthropic_level_requires_a_map() {
+        let err =
+            resolve_thinking_for_request("vendor-max", None, None, ThinkingAdapterKind::Anthropic)
+                .unwrap_err();
+        assert!(err.contains("requires"), "{err}");
     }
 }

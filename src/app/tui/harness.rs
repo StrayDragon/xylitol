@@ -19,7 +19,7 @@ use crate::app::core::driver::{
     ReloadStepReport, RuntimeReloadReport, SessionListEntry, SessionStats, XyDriver, XyDriverError,
     XyEvent,
 };
-use crate::protocol::model::ThinkingLevel;
+use crate::protocol::model::THINKING_OFF;
 use crate::protocol::ports::XyBashResult;
 use crate::protocol::session::{
     SessionEntry, SessionTreeKind, SessionTreeNode, SessionTreeTravel, plan_message_history_travel,
@@ -86,9 +86,9 @@ pub struct ScriptedDriver {
     /// Count of [`XyDriver::loaded_resources_snapshot`] awaits (c1215 cache seam).
     loaded_resources_snapshot_calls: AtomicUsize,
     /// Current thinking level (c1150); mutable via set/cycle.
-    thinking_level: ThinkingLevel,
-    /// Support list for cycle (default STANDARD; tests may narrow e.g. `[Off, High]`).
-    thinking_levels: Vec<ThinkingLevel>,
+    thinking_level: String,
+    /// Declared support list for cycle; tests may narrow it.
+    thinking_levels: Vec<String>,
     /// Injectable clipboard image bytes for paste staging (c1155); `None` = no image.
     clipboard_image: Mutex<Option<(Vec<u8>, String)>>,
     /// Paths written by [`XyDriver::stage_clipboard_image`].
@@ -194,8 +194,14 @@ impl ScriptedDriver {
             dollar_skill_catalog: Mutex::new(Vec::new()),
             loaded_resources: Mutex::new(LoadedResourcesSnapshot::default()),
             loaded_resources_snapshot_calls: AtomicUsize::new(0),
-            thinking_level: ThinkingLevel::Off,
-            thinking_levels: ThinkingLevel::STANDARD.to_vec(),
+            thinking_level: THINKING_OFF.into(),
+            thinking_levels: vec![
+                "off".into(),
+                "minimal".into(),
+                "low".into(),
+                "medium".into(),
+                "high".into(),
+            ],
             clipboard_image: Mutex::new(None),
             staged_paste_paths: Mutex::new(Vec::new()),
             clipboard_image_error: Mutex::new(None),
@@ -229,11 +235,15 @@ impl ScriptedDriver {
     }
 
     /// Replace the thinking support list used by [`XyDriver::cycle_thinking_level`].
-    pub fn set_thinking_levels(&mut self, levels: Vec<ThinkingLevel>) {
+    pub fn set_thinking_levels(&mut self, levels: Vec<String>) {
         self.thinking_levels = levels;
-        if !self.thinking_levels.is_empty() && !self.thinking_levels.contains(&self.thinking_level)
+        if !self.thinking_levels.is_empty()
+            && !self
+                .thinking_levels
+                .iter()
+                .any(|level| level == &self.thinking_level)
         {
-            self.thinking_level = self.thinking_levels[0];
+            self.thinking_level = self.thinking_levels[0].clone();
         }
     }
 
@@ -481,11 +491,16 @@ impl XyDriver for ScriptedDriver {
         Ok(self.model.clone())
     }
 
-    fn set_thinking_level(&mut self, level: ThinkingLevel) -> Result<(), XyDriverError> {
-        if !self.thinking_levels.is_empty() && !self.thinking_levels.contains(&level) {
+    fn set_thinking_level(&mut self, level: String) -> Result<(), XyDriverError> {
+        if !self.thinking_levels.is_empty()
+            && !self
+                .thinking_levels
+                .iter()
+                .any(|supported| supported == &level)
+        {
             return Err(format!(
                 "thinking level `{}` is not supported by the current model",
-                level.as_str()
+                level
             )
             .into());
         }
@@ -493,21 +508,27 @@ impl XyDriver for ScriptedDriver {
         Ok(())
     }
 
-    fn thinking_level(&self) -> ThinkingLevel {
-        self.thinking_level
+    fn thinking_level(&self) -> String {
+        self.thinking_level.clone()
     }
 
-    fn cycle_thinking_level(&mut self) -> Result<ThinkingLevel, XyDriverError> {
+    fn cycle_thinking_level(&mut self) -> Result<String, XyDriverError> {
         if self.thinking_levels.is_empty() {
             return Err("current model has no thinking levels".into());
         }
         let idx = self
             .thinking_levels
             .iter()
-            .position(|l| *l == self.thinking_level)
-            .unwrap_or(0);
-        let next = self.thinking_levels[(idx + 1) % self.thinking_levels.len()];
-        self.thinking_level = next;
+            .position(|level| level == &self.thinking_level);
+        let next = match idx {
+            Some(index) => self.thinking_levels[(index + 1) % self.thinking_levels.len()].clone(),
+            None => self
+                .thinking_levels
+                .last()
+                .cloned()
+                .expect("non-empty: checked above"),
+        };
+        self.thinking_level = next.clone();
         Ok(next)
     }
 
@@ -1758,7 +1779,7 @@ mod slice_tests {
         let session = HostSession::new_product_ui(TestTerminal::new(80, 24));
         let root = session.ui_root().expect("ui").clone();
         // Seed a non-off thinking level so restore is distinguishable from muted.
-        root.borrow_mut().set_thinking_level_ui(ThinkingLevel::Low);
+        root.borrow_mut().set_thinking_level_ui("low".into());
         root.borrow_mut().set_editor_text("!ls");
         assert!(root.borrow().bash_mode(), "B1: !ls enables bash border");
         let bash = root.borrow_mut().editor_render_for_test(40).join("\n");
@@ -5375,16 +5396,12 @@ mod slice_tests {
     #[test]
     fn c1470_scripted_driver_cycle_wraps_support_list() {
         let mut driver = ScriptedDriver::new();
-        driver.set_thinking_levels(vec![ThinkingLevel::Off, ThinkingLevel::High]);
-        assert_eq!(driver.thinking_level(), ThinkingLevel::Off);
-        assert_eq!(driver.cycle_thinking_level().unwrap(), ThinkingLevel::High);
-        assert_eq!(
-            driver.cycle_thinking_level().unwrap(),
-            ThinkingLevel::Off,
-            "must wrap"
-        );
-        assert!(driver.set_thinking_level(ThinkingLevel::Xhigh).is_err());
-        assert_eq!(driver.thinking_level(), ThinkingLevel::Off);
+        driver.set_thinking_levels(vec!["off".into(), "high".into()]);
+        assert_eq!(driver.thinking_level(), "off");
+        assert_eq!(driver.cycle_thinking_level().unwrap(), "high");
+        assert_eq!(driver.cycle_thinking_level().unwrap(), "off", "must wrap");
+        assert!(driver.set_thinking_level("xhigh".into()).is_err());
+        assert_eq!(driver.thinking_level(), "off");
     }
 
     #[tokio::test]
@@ -5392,7 +5409,7 @@ mod slice_tests {
         let mut session = HostSession::new_product_ui(TestTerminal::new(80, 24));
         let root = session.ui_root().expect("ui").clone();
         let mut driver = ScriptedDriver::new();
-        driver.set_thinking_levels(vec![ThinkingLevel::Off, ThinkingLevel::High]);
+        driver.set_thinking_levels(vec!["off".into(), "high".into()]);
         session.apply_thinking_level_ui(driver.thinking_level());
         let mut stream = None;
 
@@ -5402,8 +5419,8 @@ mod slice_tests {
             .await
             .unwrap();
 
-        assert_eq!(driver.thinking_level(), ThinkingLevel::Off);
-        assert_eq!(root.borrow().thinking_level_for_test(), ThinkingLevel::Off);
+        assert_eq!(driver.thinking_level(), "off");
+        assert_eq!(root.borrow().thinking_level_for_test(), "off");
         assert_eq!(
             root.borrow().ui_model_entries_len_for_test(),
             entries_before,
@@ -5416,7 +5433,7 @@ mod slice_tests {
         let mut session = HostSession::new_product_ui(TestTerminal::new(80, 24));
         let root = session.ui_root().expect("ui").clone();
         let mut driver = ScriptedDriver::new();
-        driver.set_thinking_levels(vec![ThinkingLevel::Off, ThinkingLevel::High]);
+        driver.set_thinking_levels(vec!["off".into(), "high".into()]);
         session.apply_thinking_level_ui(driver.thinking_level());
         session.on_run_started("busy");
         assert!(session.is_busy());
@@ -5428,7 +5445,7 @@ mod slice_tests {
             .await
             .unwrap();
 
-        assert_eq!(driver.thinking_level(), ThinkingLevel::Off);
+        assert_eq!(driver.thinking_level(), "off");
         assert_eq!(
             root.borrow().ui_model_entries_len_for_test(),
             entries_before,

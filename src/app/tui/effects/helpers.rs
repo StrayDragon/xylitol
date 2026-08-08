@@ -119,7 +119,7 @@ pub(super) fn format_session_stats_dump(
     let thinking = stats
         .get("thinking_level")
         .and_then(|v| v.as_str())
-        .unwrap_or_else(|| state.thinking_level.as_str());
+        .unwrap_or(state.thinking_level.as_str());
     let mut lines = vec![
         "Session Info".to_string(),
         format!("  Session: {session_id}"),

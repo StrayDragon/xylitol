@@ -15,7 +15,7 @@ pub use queue::render_queue_strip;
 pub use scrollback::find_stable_markdown_prefix_end;
 pub use scrollback::{ScrollbackFold, ScrollbackPaintCache, render_scrollback};
 
-use crate::protocol::model::{ThinkingLevel, TokenProvenance};
+use crate::protocol::model::{THINKING_OFF, TokenProvenance};
 
 /// Compact token/window counts for footer (pi `formatTokens`).
 pub fn format_compact_tokens(count: u64) -> String {
@@ -62,12 +62,12 @@ pub fn footer_token_label(provenance: TokenProvenance, tokens: u64, context_wind
     }
 }
 
-/// Footer thinking-level label (`thinking off` for Off, else `as_str`).
-pub fn footer_thinking_label(level: ThinkingLevel) -> String {
-    if level == ThinkingLevel::Off {
+/// Footer thinking-level label (`thinking off` for `off`, else the declared name).
+pub fn footer_thinking_label(level: &str) -> String {
+    if level == THINKING_OFF {
         "thinking off".into()
     } else {
-        level.as_str().to_string()
+        level.to_string()
     }
 }
 
@@ -159,9 +159,9 @@ mod tests {
 
     #[test]
     fn footer_thinking_label_off_and_levels() {
-        assert_eq!(footer_thinking_label(ThinkingLevel::Off), "thinking off");
-        assert_eq!(footer_thinking_label(ThinkingLevel::Medium), "medium");
-        assert_eq!(footer_thinking_label(ThinkingLevel::Xhigh), "xhigh");
+        assert_eq!(footer_thinking_label("off"), "thinking off");
+        assert_eq!(footer_thinking_label("vendor-mid"), "vendor-mid");
+        assert_eq!(footer_thinking_label("xhigh"), "xhigh");
     }
 
     #[test]
