@@ -168,7 +168,7 @@
 
   @req:ath22
   场景: model-switch-resync
-    假如 已切换到支持集不同的模型且 level 被设为最高档
+    假如 已切换到支持集不同的模型且 level 被设为声明列表末项
     当 下一帧 render
     那么 footer 与边框反映 Driver::thinking_level 结果
 

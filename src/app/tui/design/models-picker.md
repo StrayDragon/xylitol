@@ -67,13 +67,13 @@ components:
 | 行展示 | 等级区为 muted `—`（或 `no thinking`，宜短；静图用 `—`） |
 | ←→ / Shift+Tab | **MUST NOT** 改变任何等级；**MUST NOT** 假高亮 |
 | Enter | 只提交模型；thinking 固定 `off` |
-| 默认 | 无「最高档」选择问题 |
+| 默认 | 无「末项 vs 最高档」歧义：默认 = 声明列表末项 |
 
 ## MUST
 
 1. **`/model`（无参）** 打开选择器（替换 editor 槽）；**MUST NOT** 居中 overlay。
-2. **`/model <精确 id>`** 直设模型；可调 → thinking = **最高档**；不可调 → `off`；未知 id 短错误。
-3. **↑↓**：移动焦点；进入可调模型时暂定等级 =（若为当前模型且当前 thinking 仍在支持集）当前 thinking，否则 **最高档**；进入不可调模型时暂定 = `off`。
+2. **`/model <精确 id>`** 直设模型；可调 → thinking = **声明列表末项**；不可调 → `off`；未知 id 短错误。
+3. **↑↓**：移动焦点；进入可调模型时暂定等级 =（若为当前模型且当前 thinking 仍在支持集）当前 thinking，否则 **声明列表末项**；进入不可调模型时暂定 = `off`。
 4. **←→**（焦点可调）：在 `levels(焦点)` 上移动暂定档（左更低、右更高，按全序）；到端不再绕或绕回——静图/实现取 **循环**（与 Shift+Tab 一致，避免卡死）。
 5. **Shift+Tab**（仅 picker 开、焦点可调）：与 ←→ 同为 cycle 暂定档（单向即可）；**MUST NOT** 全局绑定。
 6. **Enter**：提交 `(焦点模型, 暂定等级)`；不可调则 level=`off`。
@@ -141,4 +141,4 @@ models · enter
 
 - playground：`wide` / `narrow` / `no-thinking` / `filter` / `empty`。
 - 够宽见全部档 + ←→；不够宽单档；无思考为 `—` 且 ←→ 无改。
-- 默认最高档；精确 id 直设同规则。
+- 默认声明列表末项；精确 id 直设同规则。

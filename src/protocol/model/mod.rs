@@ -159,6 +159,11 @@ mod tests {
         assert_eq!(declared, vec!["off", "bogon-level", "max"]);
         assert!(thinking_levels_are_adjustable(&declared));
         assert!(!thinking_levels_are_adjustable(&["OFF".into()]));
+        assert!(!thinking_levels_are_adjustable(&["off".into()]));
+        assert!(thinking_levels_are_adjustable(&[
+            "off".into(),
+            "bogon-level".into()
+        ]));
         assert_eq!(last_declared_thinking_level(&declared), "max");
         assert!(resolve_configured_levels(true, Some(&[" \t".into()])).is_err());
         assert_eq!(

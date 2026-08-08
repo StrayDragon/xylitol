@@ -734,8 +734,10 @@ pub fn bootstrap(input: BootstrapInput) -> Result<BootstrappedAgent, BootstrapEr
     // A `model:thinkingLevel` request is more specific than the Settings
     // first-session preference. Unsupported values leave the selected model
     // default unchanged.
-    if let Some(level) = requested_thinking_level {
-        let _ = agent.set_thinking_level(level);
+    if let Some(level) = requested_thinking_level
+        && let Err(error) = agent.set_thinking_level(level.clone())
+    {
+        log::warn!("bootstrap model:thinkingLevel rejected level={level} error={error}");
     }
     agent.set_thinking_budgets(thinking_budgets);
 

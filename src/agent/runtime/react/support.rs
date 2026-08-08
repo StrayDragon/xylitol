@@ -23,22 +23,13 @@ pub(crate) fn prepare_turn_binding(
     run_model: &mut Option<(String, Arc<dyn XyModel>)>,
 ) -> Result<(Arc<dyn XyModel>, crate::protocol::ports::XyGenerateOptions), XyError> {
     let mm = crate::utils::lock_mutex(model_manager);
+    let thinking = mm.thinking_level();
+    let binding = crate::agent::capabilities::ActiveTurnBinding::from_manager(&mm)
+        .ok_or_else(|| XyError::Config("no model configured".into()))?;
     let meta = mm
         .current_model()
         .ok_or_else(|| XyError::Config("no model configured".into()))?;
     let model_id = meta.id.clone();
-    let thinking = mm.thinking_level();
-    let levels = crate::agent::model::manager::ModelManager::levels_for_meta(meta);
-    let binding = crate::agent::capabilities::ActiveTurnBinding {
-        model_id: meta.id.clone(),
-        display_name: if meta.display_name.is_empty() {
-            meta.id.clone()
-        } else {
-            meta.display_name.clone()
-        },
-        thinking: thinking.clone(),
-        omit_thinking: !crate::protocol::model::thinking_levels_are_adjustable(&levels),
-    };
     let generate_options = crate::protocol::ports::XyGenerateOptions {
         thinking_level: thinking,
         level_map: meta.thinking_level_map.clone(),
