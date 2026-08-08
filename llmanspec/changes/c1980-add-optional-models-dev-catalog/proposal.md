@@ -57,6 +57,12 @@ c1940 已把「api×compat 显式接线、勿 URL 自动探测大表」钉成主
 - **本分支**：仅本草案 `proposal.md`；**禁止**实现、tasks、design、specs、attach。
 - **下一步**：c1940 归档后评估是否 `ff`/`propose`；映射表与 models.dev schema 漂移策略在 propose 时钉。
 
+## Research attach（2026-08-08）
+
+预调研落在 `research/`：上游 schema/README 快照、openai/anthropic/deepseek provider+model TOML 样例、字段对照表。
+关键发现：源仓 model TOML 已有结构化 `reasoning_options`（`toggle` / `effort.values` / `budget_tokens`），可作 `thinking_levels` **建议原料**；`npm`/`api` **不能**直接当 xylitol `api`×`compat`。
+本机直连 models.dev 失败；完整 `api.json` 待 `catalog.proxy` 再拉。详见 `research/README.md`。
+
 ## Open Questions
 
 - 启用开关粒度：全局 `catalog.enabled` vs 按 pack 启用？

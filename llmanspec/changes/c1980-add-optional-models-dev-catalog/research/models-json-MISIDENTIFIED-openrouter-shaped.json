@@ -1,0 +1,84 @@
+{
+  "warning": "This file is NOT models.dev provider-agnostic models.json SSOT. Raw GitHub models.json returned an OpenRouter-shaped {data:[...]} payload. Re-fetch via catalog.proxy from https://models.dev/models.json before trusting.",
+  "source_url_attempted": "https://raw.githubusercontent.com/anomalyco/models.dev/dev/models.json",
+  "count": 364,
+  "field_frequency": {
+    "id": 364,
+    "canonical_slug": 364,
+    "hugging_face_id": 364,
+    "name": 364,
+    "created": 364,
+    "description": 364,
+    "context_length": 364,
+    "architecture": 364,
+    "pricing": 364,
+    "top_provider": 364,
+    "per_request_limits": 364,
+    "supported_parameters": 364,
+    "default_parameters": 364,
+    "supported_voices": 364,
+    "knowledge_cutoff": 364,
+    "expiration_date": 364,
+    "links": 364
+  },
+  "sample": {
+    "id": "anthropic/claude-opus-4.7-fast",
+    "canonical_slug": "anthropic/claude-4.7-opus-fast-20260512",
+    "hugging_face_id": null,
+    "name": "Anthropic: Claude Opus 4.7 (Fast)",
+    "created": 1778613011,
+    "description": "Fast-mode variant of [Opus 4.7](/anthropic/claude-opus-4.7) - identical capabilities with higher output speed at premium 6x pricing.\n\nLearn more in Anthropic's docs: https://platform.claude.com/docs/en/build-with-claude/fast-mode",
+    "context_length": 1000000,
+    "architecture": {
+      "modality": "text+image+file->text",
+      "input_modalities": [
+        "text",
+        "image",
+        "file"
+      ],
+      "output_modalities": [
+        "text"
+      ],
+      "tokenizer": "Claude",
+      "instruct_type": null
+    },
+    "pricing": {
+      "prompt": "0.00003",
+      "completion": "0.00015",
+      "web_search": "0.01",
+      "input_cache_read": "0.000003",
+      "input_cache_write": "0.0000375"
+    },
+    "top_provider": {
+      "context_length": 1000000,
+      "max_completion_tokens": 128000,
+      "is_moderated": true
+    },
+    "per_request_limits": null,
+    "supported_parameters": [
+      "include_reasoning",
+      "max_tokens",
+      "reasoning",
+      "response_format",
+      "stop",
+      "structured_outputs",
+      "tool_choice",
+      "tools",
+      "verbosity"
+    ],
+    "default_parameters": {
+      "temperature": null,
+      "top_p": null,
+      "top_k": null,
+      "frequency_penalty": null,
+      "presence_penalty": null,
+      "repetition_penalty": null
+    },
+    "supported_voices": null,
+    "knowledge_cutoff": null,
+    "expiration_date": null,
+    "links": {
+      "details": "/api/v1/models/anthropic/claude-4.7-opus-fast-20260512/endpoints"
+    }
+  }
+}
