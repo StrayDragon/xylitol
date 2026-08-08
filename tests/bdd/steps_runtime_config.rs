@@ -134,18 +134,18 @@ fn g_rc_compaction(rc_snap: &RcSnap) {
         Err(e) => panic!("compaction yaml: {e}"),
     }
 }
-#[given("Settings.default_thinking_level 为 low 且模型支持 low")]
+#[given("Settings.default_thinking_level 为 high 且模型支持集为 off 与 high 与 max")]
 fn g_rc_thinking_default(rc_snap: &RcSnap) {
-    rc_snap.settings.borrow_mut().default_thinking_level = Some("low".into());
-    let yaml = "models:\n  models:\n    m:\n      provider: fake\n      model: x\n      thinking: true\n      thinking_levels: [off, low, high]\n";
+    rc_snap.settings.borrow_mut().default_thinking_level = Some("high".into());
+    let yaml = "models:\n  models:\n    m:\n      provider: fake\n      model: x\n      thinking: true\n      thinking_levels: [off, high, max]\n";
     rc_snap
         .app_config
         .replace(Some(parse_app_config_yaml(yaml).expect("thinking yaml")));
 }
-#[given("Settings.default_thinking_level 为 low 且模型支持至 high")]
+#[given("Settings.default_thinking_level 为 off 且模型支持集为 off 与 high 与 max")]
 fn g_rc_thinking_select(rc_snap: &RcSnap) {
-    rc_snap.settings.borrow_mut().default_thinking_level = Some("low".into());
-    let yaml = "models:\n  models:\n    m:\n      provider: fake\n      model: x\n      thinking: true\n      thinking_levels: [off, low, high]\n";
+    rc_snap.settings.borrow_mut().default_thinking_level = Some("off".into());
+    let yaml = "models:\n  models:\n    m:\n      provider: fake\n      model: x\n      thinking: true\n      thinking_levels: [off, high, max]\n";
     rc_snap
         .app_config
         .replace(Some(parse_app_config_yaml(yaml).expect("thinking yaml")));
@@ -159,10 +159,10 @@ fn g_rc_docs(rc_snap: &RcSnap) {
 }
 
 // TokenizerBdd-backed givens for rc config-load scenarios
-#[given("YAML 模型条目含 thinking_levels [off, high, xhigh]")]
+#[given("YAML 模型条目含 thinking_levels [off, high, max]")]
 fn g_rc_parse_list(tokenizer_bdd: &TokenizerBdd) {
     match parse_app_config_yaml(
-        "models:\n  models:\n    m:\n      provider: fake\n      model: x\n      thinking: true\n      thinking_levels: [off, high, xhigh]\n",
+        "models:\n  models:\n    m:\n      provider: fake\n      model: x\n      thinking: true\n      thinking_levels: [off, high, max]\n",
     ) {
         Ok(cfg) => {
             tokenizer_bdd.config.replace(cfg);
@@ -174,10 +174,10 @@ fn g_rc_parse_list(tokenizer_bdd: &TokenizerBdd) {
         }
     }
 }
-#[given("thinking_levels 含未知名 bogon")]
-fn g_rc_unknown_fails(tokenizer_bdd: &TokenizerBdd) {
+#[given("thinking_levels 含空字符串")]
+fn g_rc_empty_token_fails(tokenizer_bdd: &TokenizerBdd) {
     match parse_app_config_yaml(
-        "models:\n  models:\n    m:\n      provider: fake\n      model: x\n      thinking: true\n      thinking_levels: [bogon]\n",
+        "models:\n  models:\n    m:\n      provider: fake\n      model: x\n      thinking: true\n      thinking_levels: [\"\"]\n",
     ) {
         Ok(cfg) => {
             tokenizer_bdd.config.replace(cfg);
@@ -189,10 +189,25 @@ fn g_rc_unknown_fails(tokenizer_bdd: &TokenizerBdd) {
         }
     }
 }
-#[given("thinking_level_map 含未知名 bogon")]
-fn g_rc_unknown_key_fails(tokenizer_bdd: &TokenizerBdd) {
+#[given("thinking_levels 含厂商字面量 bogon-level")]
+fn g_rc_freeform_ok(tokenizer_bdd: &TokenizerBdd) {
     match parse_app_config_yaml(
-        "models:\n  models:\n    m:\n      provider: fake\n      model: x\n      thinking: true\n      thinking_levels: [off]\n      thinking_level_map:\n        bogon: max\n",
+        "models:\n  models:\n    m:\n      provider: fake\n      model: x\n      thinking: true\n      thinking_levels: [off, bogon-level]\n",
+    ) {
+        Ok(cfg) => {
+            tokenizer_bdd.config.replace(cfg);
+            tokenizer_bdd.cfg_ok.set(true);
+        }
+        Err(e) => {
+            tokenizer_bdd.cfg_ok.set(false);
+            tokenizer_bdd.cfg_err.replace(e.to_string());
+        }
+    }
+}
+#[given("thinking_levels 为 [off, high] 且 thinking_level_map 含 max: high")]
+fn g_rc_map_key_outside_list_fails(tokenizer_bdd: &TokenizerBdd) {
+    match parse_app_config_yaml(
+        "models:\n  models:\n    m:\n      provider: fake\n      model: x\n      thinking: true\n      thinking_levels: [off, high]\n      thinking_level_map:\n        max: high\n",
     ) {
         Ok(cfg) => {
             tokenizer_bdd.config.replace(cfg);
@@ -219,10 +234,10 @@ fn g_rc_absent_key_ok(tokenizer_bdd: &TokenizerBdd) {
         }
     }
 }
-#[given("YAML 含 thinking_level_map high: max 与 off: null")]
+#[given("YAML 含 thinking_levels [off, high] 与 thinking_level_map high: max 与 off: null")]
 fn g_rc_parse_map(tokenizer_bdd: &TokenizerBdd) {
     match parse_app_config_yaml(
-        "models:\n  models:\n    m:\n      provider: fake\n      model: x\n      thinking: true\n      thinking_levels: [off]\n      thinking_level_map:\n        high: max\n        off: null\n",
+        "models:\n  models:\n    m:\n      provider: fake\n      model: x\n      thinking: true\n      thinking_levels: [off, high]\n      thinking_level_map:\n        high: max\n        off: null\n",
     ) {
         Ok(cfg) => {
             tokenizer_bdd.config.replace(cfg);
@@ -435,20 +450,41 @@ fn t_rc_levels(rc_snap: &RcSnap) {
     let meta = meta.as_ref().expect("model meta");
     assert_eq!(
         meta.thinking_levels,
-        vec!["off".to_string(), "high".to_string(), "xhigh".to_string()]
+        vec!["off".to_string(), "high".to_string(), "max".to_string()]
     );
 }
-#[then("当前 thinking level 为 Low")]
-fn t_rc_thinking_low(rc_snap: &RcSnap) {
+#[then("当前 thinking level 为 high")]
+fn t_rc_thinking_high_assembly(rc_snap: &RcSnap) {
     let mm = rc_snap.mm.borrow();
     let mm = mm.as_ref().expect("model manager");
-    assert_eq!(mm.thinking_level(), ThinkingLevel::Low);
+    assert_eq!(mm.thinking_level(), ThinkingLevel::High);
 }
 #[then("thinking level 为 high")]
 fn t_rc_thinking_high(rc_snap: &RcSnap) {
     let mm = rc_snap.mm.borrow();
     let mm = mm.as_ref().expect("model manager");
     assert_eq!(mm.thinking_level(), ThinkingLevel::High);
+}
+#[then("thinking level 为 max")]
+fn t_rc_thinking_max(rc_snap: &RcSnap) {
+    let mm = rc_snap.mm.borrow();
+    let mm = mm.as_ref().expect("model manager");
+    assert_eq!(mm.thinking_level(), ThinkingLevel::Max);
+}
+#[then("成功且支持集含 bogon-level")]
+fn t_rc_freeform_ok(tokenizer_bdd: &TokenizerBdd) {
+    assert!(
+        tokenizer_bdd.cfg_ok.get(),
+        "{}",
+        tokenizer_bdd.cfg_err.borrow()
+    );
+    let cfg = tokenizer_bdd.config.borrow();
+    let meta = cfg.resolve_model_meta("m").expect("meta");
+    assert!(
+        meta.thinking_levels.iter().any(|l| l == "bogon-level"),
+        "expected bogon-level in {:?}",
+        meta.thinking_levels
+    );
 }
 #[then("meta 含 high→max 与 off→null")]
 fn t_rc_meta(rc_snap: &RcSnap) {

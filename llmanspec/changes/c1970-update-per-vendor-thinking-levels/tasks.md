@@ -7,10 +7,10 @@
 
 ## 1. 合约落地（Specs landing）
 
-- [ ] 1.1 更新 `runtime-config`：`rc16`/`rc17` — 声明列表为 SSOT；取消「未知枚举名必失败」；map 键相对声明列表
-- [ ] 1.2 更新 `runtime-model-registry`：`m9`/`m10`/`m11` — 无 STANDARD；换模末项；resume/sticky；字符串进 generate
-- [ ] 1.3 更新相关 `.feature`（config / model-registry / session resume）对齐新语义
-- [ ] 1.4 更新 `app-tui-commands`（及必要 chrome）：UI 展示声明档，去掉「禁止厂商档名」义务
+- [x] 1.1 更新 `runtime-config`：`rc16`/`rc17` — 声明列表为 SSOT；取消「未知枚举名必失败」；map 键相对声明列表
+- [x] 1.2 更新 `runtime-model-registry`：`m9`/`m10`/`m11` — 无 STANDARD；换模末项；resume/sticky；字符串进 generate
+- [x] 1.3 更新相关 `.feature`（config / model-registry / session resume）对齐新语义
+- [x] 1.4 更新 `app-tui-commands`（及必要 chrome）：UI 展示声明档，去掉「禁止厂商档名」义务
 
 ## 2. 实现切片
 
