@@ -36,7 +36,7 @@ impl ToolSet {
         self.tools.iter()
     }
 
-    /// Get a tool by registry name, or by provider wire name (`:` → `_`).
+    /// Get a tool by registry name, or by provider wire name (`:` → `__`).
     pub fn get(&self, name: &str) -> Option<Arc<dyn XyTool>> {
         self.tools
             .iter()
