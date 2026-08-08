@@ -82,6 +82,6 @@
 
   @req:pt11
   场景: builtins-only-available-tools-mcp-discover
-    假如 ToolSet 含 builtins 与至少一个 mcp: 工具且使用默认正文
+    假如 ToolSet 含 builtins 与至少一个 mcp_ 工具且使用默认正文
     当 build_system_prompt
-    那么 Available tools 段无 mcp: 工具名且含按本轮 tools 列表发现并精确调用的引导句
+    那么 Available tools 段无 mcp__ 工具名且含按本轮 tools 列表发现并精确调用的引导句

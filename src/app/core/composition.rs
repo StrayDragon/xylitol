@@ -242,7 +242,7 @@ mod tests {
         assert!(!mcp.has_manager());
         assert!(!mcp_enabled(&Some(vec![])));
         let names: Vec<_> = driver.tool_names_for_test();
-        assert!(names.iter().all(|n| !n.starts_with("mcp:")));
+        assert!(names.iter().all(|n| !crate::protocol::is_mcp_tool_name(n)));
         assert!(names.iter().any(|n| n == "read"));
         assert!(mcp.connected_servers().await.is_empty());
         assert!(mcp.diagnostics().await.is_empty());

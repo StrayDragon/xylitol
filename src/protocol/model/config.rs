@@ -65,8 +65,10 @@ pub struct XyModelConfig {
     pub api_key: String,
     pub model: String,
     pub base_url: Option<String>,
-    /// Adapter API type, e.g. `openai-responses` or `anthropic-messages`.
+    /// Adapter API type, e.g. `openai-responses` or `openai-completions`.
     pub api: Option<String>,
+    /// Named wire/thinking dialect profile (`generic` | `deepseek`); omit → generic.
+    pub compat: Option<String>,
 }
 
 impl XyModelConfig {
@@ -179,6 +181,7 @@ mod tests {
             model: "claude-3".into(),
             base_url: None,
             api: None,
+            compat: None,
         };
         assert_eq!(config.provider_name(), "anthropic");
     }
@@ -191,6 +194,7 @@ mod tests {
             model: "gpt-4".into(),
             base_url: Some("https://proxy.example.com/v1".into()),
             api: None,
+            compat: None,
         };
         assert_eq!(
             config.base_url.as_deref(),
@@ -221,6 +225,7 @@ mod tests {
             model: "gpt-4o".into(),
             base_url: None,
             api: None,
+            compat: None,
         };
         let profile = ResolvedProfile {
             model_config: config,

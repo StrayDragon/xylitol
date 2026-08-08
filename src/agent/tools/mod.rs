@@ -1,4 +1,5 @@
 pub mod freeze;
+pub mod provider_safe_names;
 pub mod toolset;
 
 pub use freeze::{
@@ -174,8 +175,8 @@ mod tests {
             || -> Vec<Arc<dyn XyTool>> { vec![Arc::new(Named("read")), Arc::new(Named("bash"))] };
         let mcp = || -> Vec<Arc<dyn XyTool>> {
             vec![
-                Arc::new(Named("mcp:fs:read")),
-                Arc::new(Named("mcp:git:status")),
+                Arc::new(Named("mcp_fs_read")),
+                Arc::new(Named("mcp_git_status")),
             ]
         };
         let once = ToolSet::rebuild_agent_tools(builtins(), mcp());
@@ -188,7 +189,7 @@ mod tests {
         sorted.dedup();
         assert_eq!(names.len(), sorted.len(), "duplicate names: {names:?}");
         assert_eq!(names.len(), 4);
-        assert!(names.contains(&"mcp:fs:read"));
+        assert!(names.contains(&"mcp_fs_read"));
         assert!(names.contains(&"read"));
     }
 }

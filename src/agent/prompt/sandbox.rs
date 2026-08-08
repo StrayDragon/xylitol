@@ -32,7 +32,7 @@ fn sandbox_env() -> Environment<'static> {
 
 /// Render the default system base (intro + Available tools + MCP discover).
 ///
-/// `tools` must already be filtered (no `mcp:` names). Failures are programming
+/// `tools` must already be filtered (no MCP names). Failures are programming
 /// errors (bad embed / ctx shape) and panic in production paths after expect —
 /// unit tests cover strict/unknown-include via [`try_render_default`].
 pub(crate) fn render_default_base(tools: &[(String, String)]) -> String {
@@ -82,6 +82,9 @@ mod tests {
         assert!(out.contains("- read: Read file"));
         assert!(out.contains("- bash: Run bash"));
         assert!(out.contains("MCP/custom tools are provided"));
+        assert!(!out.contains("mcp_"));
+        assert!(!out.contains("mcp-"));
+        assert!(!out.contains("mcp__"));
         assert!(!out.contains("mcp:"));
     }
 

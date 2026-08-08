@@ -106,6 +106,7 @@ mod tests {
                 model: "mock".into(),
                 base_url: None,
                 api: None,
+                compat: None,
             },
             display_name: "Mock".into(),
             thinking: false,

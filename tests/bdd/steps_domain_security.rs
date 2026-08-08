@@ -315,11 +315,11 @@ fn w_ds_grep() {
         xs_sec::V.with(|v| v.replace(Some(eng.as_ref().unwrap().check_read("/etc/passwd"))));
     });
 }
-#[when("agent 调用 mcp:server:tool")]
+#[when("agent 调用 mcp_server_tool")]
 fn w_ds_mcp() {
     xs_sec::SEC.with(|e| {
         let eng = e.borrow();
-        xs_sec::V.with(|v| v.replace(Some(eng.as_ref().unwrap().check_process("mcp:server:tool"))));
+        xs_sec::V.with(|v| v.replace(Some(eng.as_ref().unwrap().check_process("mcp_server_tool"))));
     });
 }
 #[when("SecurityEngine 初始化")]

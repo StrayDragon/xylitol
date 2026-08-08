@@ -171,6 +171,9 @@ pub async fn drain_pending<T: Terminal>(
         && driver.is_tools_frozen()
         && let Some(prompt) = session.take_gated_submit()
     {
+        // Freeze may have completed this tick; refresh snap so mcp pending cue clears
+        // (stale tools_table_frozen:false would sticky-restore the cue on idle sync).
+        session.refresh_loaded_resources(driver).await;
         start_run_after_tool_gate(session, driver, agent_stream, prompt).await;
     }
 
@@ -199,6 +202,7 @@ pub async fn drain_pending<T: Terminal>(
             if driver.is_tools_frozen()
                 && let Some(prompt) = session.take_gated_submit()
             {
+                session.refresh_loaded_resources(driver).await;
                 start_run_after_tool_gate(session, driver, agent_stream, prompt).await;
             }
         } else {

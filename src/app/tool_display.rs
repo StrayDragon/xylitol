@@ -5,9 +5,10 @@
 
 use serde_json::Value;
 
-/// MCP tools are registered as `mcp:{server_id}:{tool_name}`.
+/// MCP tools are registered as `mcp__{server_id}__{tool_name}` (legacy `mcp:` /
+/// transition `mcp-` / `mcp_` still detected).
 pub(crate) fn is_mcp_tool_name(name: &str) -> bool {
-    name.starts_with("mcp:")
+    crate::protocol::is_mcp_tool_name(name)
 }
 
 /// Pretty-print a JSON [`Value`]; falls back to compact `to_string` on failure.
@@ -57,7 +58,9 @@ mod tests {
 
     #[test]
     fn detects_mcp_prefix() {
-        assert!(is_mcp_tool_name("mcp:lspz:get_diagnostics"));
+        assert!(is_mcp_tool_name("mcp__lspz__get_diagnostics"));
+        assert!(is_mcp_tool_name("mcp-lspz-get_diagnostics")); // transition hyphen
+        assert!(is_mcp_tool_name("mcp_lspz_get_diagnostics")); // transition underscore
         assert!(!is_mcp_tool_name("read"));
         assert!(!is_mcp_tool_name("mcp"));
     }

@@ -15,11 +15,11 @@ use crate::hooks::{
 };
 use crate::provider::reqwest_bridge::{from_reqwest_headers, to_reqwest_headers};
 
-use super::AiBridgeLlmAdapter;
+use crate::provider::AiBridgeLlmAdapter;
 
 const ANTHROPIC_VERSION: &str = "2023-06-01";
 
-/// Anthropic Messages API adapter.
+/// Anthropic Messages API adapter (L1 native).
 pub struct AnthropicMessagesAdapter {
     client: reqwest::Client,
     api_key: String,
@@ -27,23 +27,46 @@ pub struct AnthropicMessagesAdapter {
     base_url: String,
     max_tokens: u32,
     hooks: Option<Arc<dyn HttpHooks>>,
+    wire_policy: crate::wire_policy::WirePolicy,
 }
 
 impl AnthropicMessagesAdapter {
-    /// Create a new Anthropic Messages adapter.
+    /// Create a new Anthropic Messages adapter with [`WirePolicy::default`].
     pub fn new(
         api_key: String,
         model: String,
         base_url: Option<String>,
         hooks: Option<Arc<dyn HttpHooks>>,
     ) -> Self {
+        Self::with_wire_policy(
+            api_key,
+            model,
+            base_url,
+            hooks,
+            crate::wire_policy::WirePolicy::default(),
+        )
+    }
+
+    /// Create with an explicit dialect / wire profile (L2).
+    pub fn with_wire_policy(
+        api_key: String,
+        model: String,
+        base_url: Option<String>,
+        hooks: Option<Arc<dyn HttpHooks>>,
+        wire_policy: crate::wire_policy::WirePolicy,
+    ) -> Self {
+        let client = reqwest::Client::builder()
+            .user_agent(crate::provider::native::openai_client::DEFAULT_HTTP_USER_AGENT)
+            .build()
+            .unwrap_or_else(|_| reqwest::Client::new());
         Self {
-            client: reqwest::Client::new(),
+            client,
             api_key,
             model,
             base_url: base_url.unwrap_or_else(|| "https://api.anthropic.com".into()),
             max_tokens: 8192,
             hooks,
+            wire_policy,
         }
     }
 
@@ -58,6 +81,7 @@ impl AnthropicMessagesAdapter {
             "anthropic-version".into(),
             Value::String(ANTHROPIC_VERSION.into()),
         );
+        crate::provider::attribution::merge_opencode_attribution(&mut headers, &self.base_url);
         headers
     }
 }
@@ -114,7 +138,7 @@ impl AnthropicMessagesAdapter {
                 .iter()
                 .map(|t| {
                     serde_json::json!({
-                        "name": t.name,
+                        "name": crate::provider::tool_wire::to_wire_tool_name(&t.name),
                         "description": t.description,
                         "input_schema": t.parameters,
                     })
@@ -127,7 +151,11 @@ impl AnthropicMessagesAdapter {
             &options,
             crate::thinking::AiBridgeThinkingAdapterKind::Anthropic,
         );
-        crate::thinking::apply_thinking_anthropic(&mut body, &resolved);
+        crate::provider::dialect::apply_anthropic_thinking(
+            &mut body,
+            &resolved,
+            self.wire_policy.compat,
+        );
 
         let url = format!("{}/v1/messages", self.base_url);
 
@@ -557,7 +585,7 @@ fn agent_parts_to_anthropic_blocks(parts: &[AiBridgePart]) -> Vec<Value> {
             } => serde_json::json!({
                 "type": "tool_use",
                 "id": id,
-                "name": name,
+                "name": crate::provider::tool_wire::to_wire_tool_name(name),
                 "input": arguments,
             }),
         })
@@ -800,5 +828,170 @@ mod tests {
         let body = captured.lock().unwrap().clone().expect("body");
         assert_eq!(body["thinking"]["type"], "enabled");
         assert_eq!(body["thinking"]["budget_tokens"], 8192);
+    }
+
+    #[tokio::test]
+    async fn deepseek_compat_omits_budget_tokens() {
+        use std::sync::Arc;
+        use wiremock::matchers::{method, path};
+        use wiremock::{Mock, MockServer, ResponseTemplate};
+
+        use crate::hooks::{HeaderBag, HttpHooks};
+
+        struct CaptureHooks {
+            body: std::sync::Arc<std::sync::Mutex<Option<Value>>>,
+        }
+
+        #[async_trait]
+        impl HttpHooks for CaptureHooks {
+            async fn before_headers(&self, _headers: &mut HeaderBag) -> Result<(), AiBridgeError> {
+                Ok(())
+            }
+
+            async fn before_request(
+                &self,
+                _model: &str,
+                body: &mut Value,
+            ) -> Result<(), AiBridgeError> {
+                *self.body.lock().unwrap() = Some(body.clone());
+                Ok(())
+            }
+
+            async fn after_response(&self, _status: u16, _headers: &HeaderBag) {}
+        }
+
+        let captured = Arc::new(std::sync::Mutex::new(None));
+        let server = MockServer::start().await;
+        Mock::given(method("POST"))
+            .and(path("/v1/messages"))
+            .respond_with(ResponseTemplate::new(200).set_body_json(serde_json::json!({
+                "id": "msg",
+                "type": "message",
+                "role": "assistant",
+                "content": [{"type": "text", "text": "hi"}],
+                "stop_reason": "end_turn",
+                "usage": {"input_tokens": 1, "output_tokens": 1}
+            })))
+            .mount(&server)
+            .await;
+
+        let adapter = AnthropicMessagesAdapter::with_wire_policy(
+            "sk-test".into(),
+            "deepseek-v4-flash".into(),
+            Some(server.uri()),
+            Some(Arc::new(CaptureHooks {
+                body: captured.clone(),
+            })),
+            crate::wire_policy::WirePolicy::for_compat(crate::wire_policy::Compat::Deepseek),
+        );
+        let opts = crate::thinking::AiBridgeGenerateOptions {
+            thinking_level: "medium".into(),
+            ..Default::default()
+        };
+        let _ = adapter
+            .generate(vec![AiBridgeMessage::user("hi")], &[], opts)
+            .await
+            .expect("generate medium deepseek");
+
+        let body = captured.lock().unwrap().clone().expect("body");
+        assert_eq!(body["thinking"]["type"], "enabled");
+        assert!(
+            body["thinking"].get("budget_tokens").is_none(),
+            "DeepSeek Anthropic dialect must omit budget_tokens, got {body}"
+        );
+    }
+
+    #[tokio::test]
+    async fn anthropic_mcp_tool_names_are_provider_safe() {
+        use std::sync::Arc;
+        use wiremock::matchers::{method, path};
+        use wiremock::{Mock, MockServer, ResponseTemplate};
+
+        use crate::hooks::{HeaderBag, HttpHooks};
+
+        struct CaptureHooks {
+            body: std::sync::Arc<std::sync::Mutex<Option<Value>>>,
+        }
+
+        #[async_trait]
+        impl HttpHooks for CaptureHooks {
+            async fn before_headers(&self, _headers: &mut HeaderBag) -> Result<(), AiBridgeError> {
+                Ok(())
+            }
+
+            async fn before_request(
+                &self,
+                _model: &str,
+                body: &mut Value,
+            ) -> Result<(), AiBridgeError> {
+                *self.body.lock().unwrap() = Some(body.clone());
+                Ok(())
+            }
+
+            async fn after_response(&self, _status: u16, _headers: &HeaderBag) {}
+        }
+
+        let captured = Arc::new(std::sync::Mutex::new(None));
+        let server = MockServer::start().await;
+        Mock::given(method("POST"))
+            .and(path("/v1/messages"))
+            .respond_with(ResponseTemplate::new(200).set_body_json(serde_json::json!({
+                "id": "msg",
+                "type": "message",
+                "role": "assistant",
+                "content": [{"type": "text", "text": "hi"}],
+                "stop_reason": "end_turn",
+                "usage": {"input_tokens": 1, "output_tokens": 1}
+            })))
+            .mount(&server)
+            .await;
+
+        let adapter = AnthropicMessagesAdapter::new(
+            "sk-test".into(),
+            "claude-test".into(),
+            Some(server.uri()),
+            Some(Arc::new(CaptureHooks {
+                body: captured.clone(),
+            })),
+        );
+        let tools = [
+            crate::dto::AiBridgeToolSchema {
+                name: "read".into(),
+                description: "r".into(),
+                parameters: serde_json::json!({"type": "object"}),
+            },
+            crate::dto::AiBridgeToolSchema {
+                name: "mcp__context7__resolve-library-id".into(),
+                description: "docs".into(),
+                parameters: serde_json::json!({"type": "object"}),
+            },
+            crate::dto::AiBridgeToolSchema {
+                name: "mcp:legacy:colon".into(),
+                description: "legacy".into(),
+                parameters: serde_json::json!({"type": "object"}),
+            },
+        ];
+        let _ = adapter
+            .generate(
+                vec![AiBridgeMessage::user("hi")],
+                &tools,
+                Default::default(),
+            )
+            .await
+            .expect("generate with tools");
+
+        let body = captured.lock().unwrap().clone().expect("body");
+        let arr = body["tools"].as_array().expect("tools");
+        assert_eq!(arr.len(), 3);
+        for (i, t) in arr.iter().enumerate() {
+            let name = t["name"].as_str().unwrap_or("");
+            assert!(
+                crate::provider::tool_wire::is_provider_safe_tool_name(name),
+                "tools[{i}].name={name:?}"
+            );
+            assert!(!name.contains(':'), "colon on wire: {name}");
+            assert!(!name.contains('.'), "dot on wire: {name}");
+        }
+        assert_eq!(arr[2]["name"].as_str(), Some("mcp__legacy__colon"));
     }
 }

@@ -183,18 +183,27 @@ fn exact_match_provider_model<'a>(
 }
 
 /// Exact match by bare model id (no provider prefix).
+///
+/// Prefer `XyModelMeta.id` (alias / registry key). Only fall back to
+/// `config.model` (upstream wire id) when that match is **unique** — otherwise
+/// two aliases sharing one upstream id (e.g. `deepseek-v4-flash` vs
+/// `deepseek-v4-flash-anthropic`) would pick whichever HashMap/list order wins.
 fn exact_match_bare_id<'a>(
     pattern: &str,
     available: &'a [&'a XyModelMeta],
 ) -> Option<&'a XyModelMeta> {
-    // Match against config.model (the provider-specific id part)
-    let found = available.iter().find(|m| m.config.model == pattern);
-    if let Some(m) = found {
-        return Some(m);
+    if let Some(found) = available.iter().find(|m| m.id == pattern) {
+        return Some(*found);
     }
 
-    // Match against full id
-    available.iter().find(|m| m.id == pattern).copied()
+    let by_upstream: Vec<&&XyModelMeta> = available
+        .iter()
+        .filter(|m| m.config.model == pattern)
+        .collect();
+    match by_upstream.as_slice() {
+        [only] => Some(**only),
+        _ => None,
+    }
 }
 
 // ── Fuzzy Matching ──────────────────────────────────────────────────
@@ -269,6 +278,7 @@ pub(crate) fn build_fallback_model(
                 model: template.config.model.clone(),
                 base_url: template.config.base_url.clone(),
                 api: None,
+                compat: None,
             },
             display_name: format!("{} (fallback)", pattern),
             thinking: template.thinking,
@@ -328,6 +338,7 @@ mod tests {
                     model: "gpt-4o".into(),
                     base_url: None,
                     api: None,
+                    compat: None,
                 },
                 display_name: "GPT-4o".into(),
                 thinking: true,
@@ -350,6 +361,7 @@ mod tests {
                     model: "gpt-4o-mini".into(),
                     base_url: None,
                     api: None,
+                    compat: None,
                 },
                 display_name: "GPT-4o Mini".into(),
                 thinking: true,
@@ -372,6 +384,7 @@ mod tests {
                     model: "claude-sonnet-4-20250514".into(),
                     base_url: None,
                     api: None,
+                    compat: None,
                 },
                 display_name: "Claude Sonnet 4".into(),
                 thinking: true,
@@ -394,6 +407,7 @@ mod tests {
                     model: "claude-sonnet-4-20250514".into(),
                     base_url: None,
                     api: None,
+                    compat: None,
                 },
                 display_name: "Claude Sonnet 4".into(),
                 thinking: true,
@@ -421,6 +435,64 @@ mod tests {
         let available = refs(&models);
         let result = resolve_model("openai/gpt-4o", &available, None).unwrap();
         assert_eq!(result.model.id, "openai/gpt-4o");
+        assert!(result.warning.is_none());
+    }
+
+    #[test]
+    fn test_resolve_bare_id_prefers_alias_over_shared_upstream_model() {
+        // Two aliases share upstream wire id `deepseek-v4-flash`; selecting the
+        // shorter alias must not land on the anthropic variant via HashMap order.
+        let models = vec![
+            XyModelMeta {
+                id: "deepseek-v4-flash-anthropic".into(),
+                config: XyModelConfig {
+                    kind: XyModelKind::Anthropic,
+                    api_key: "sk".into(),
+                    model: "deepseek-v4-flash".into(),
+                    base_url: Some("https://api.deepseek.com/anthropic".into()),
+                    api: None,
+                    compat: None,
+                },
+                display_name: "DeepSeek V4 Flash (Anthropic)".into(),
+                thinking: true,
+                context_window: 128_000,
+                api: String::new(),
+                provider: String::new(),
+                cost_input: 0.0,
+                cost_output: 0.0,
+                cost_cache_read: 0.0,
+                cost_cache_write: 0.0,
+                max_tokens: 0,
+                thinking_levels: Vec::new(),
+                thinking_level_map: Default::default(),
+            },
+            XyModelMeta {
+                id: "deepseek-v4-flash".into(),
+                config: XyModelConfig {
+                    kind: XyModelKind::OpenAi,
+                    api_key: "sk".into(),
+                    model: "deepseek-v4-flash".into(),
+                    base_url: Some("https://api.deepseek.com".into()),
+                    api: None,
+                    compat: None,
+                },
+                display_name: "DeepSeek V4 Flash".into(),
+                thinking: true,
+                context_window: 128_000,
+                api: String::new(),
+                provider: String::new(),
+                cost_input: 0.0,
+                cost_output: 0.0,
+                cost_cache_read: 0.0,
+                cost_cache_write: 0.0,
+                max_tokens: 0,
+                thinking_levels: Vec::new(),
+                thinking_level_map: Default::default(),
+            },
+        ];
+        let available = refs(&models);
+        let result = resolve_model("deepseek-v4-flash", &available, None).unwrap();
+        assert_eq!(result.model.id, "deepseek-v4-flash");
         assert!(result.warning.is_none());
     }
 
@@ -520,6 +592,7 @@ mod tests {
                     model: "claude-sonnet-4-20250514".into(),
                     base_url: None,
                     api: None,
+                    compat: None,
                 },
                 display_name: "Claude Sonnet".into(),
                 thinking: true,
@@ -542,6 +615,7 @@ mod tests {
                     model: "claude-sonnet-4-20250514".into(),
                     base_url: None,
                     api: None,
+                    compat: None,
                 },
                 display_name: "Claude Sonnet 4 (2025-05-14)".into(),
                 thinking: true,

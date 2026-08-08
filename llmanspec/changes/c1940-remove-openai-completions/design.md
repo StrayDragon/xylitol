@@ -1,54 +1,85 @@
-# Design: c1940-remove-openai-completions
+# Design: c1940（改道）三协议 × named compat
 
-## 状态策略（官方对照）
+## Pi 学到什么
 
-| 模式 | 官方 | 本产品 |
-|---|---|---|
-| ① `store:true` + `previous_response_id` | 服务端串链；依赖可存储账号 | **不做**（跨厂商不可用；与本地 SSOT / resume 冲突） |
-| ② `store:false` + 完整 Item 回放 | ZDR / 客户端持态 | **唯一 OpenAI 兼容路径**（已有 Assembler + `thinkingSignature`） |
-| ③ Conversations API | 持久 conversation 对象 | 不做 |
+| Pi | xylitol 采纳 |
+|---|---|
+| `api` 在 **model** 上选协议族 | 已有 `ModelEntry.api` |
+| `compat` quirk bag（Completions 更厚） | 命名轮廓 → `WirePolicy`，**不**抄 URL auto-detect |
+| auth 与 catalog 分离 | `api_key` 可写在 model，或 env；secret 插值 |
+| DeepSeek 官方在 pi 用 Completions | **本波按产品选择**：官方 flash → Responses；Zen free → Completions |
+| llama.cpp 在 pi 用 Completions | **不改**用户现网 Responses |
 
-默认 WirePolicy 保持：`previous_response_id=false`、`prompt_cache_key=false`、`prompt_cache_usage=true`。
-
-## 装配选择（删除后）
+## 字段模型
 
 ```text
-resolve(kind, api):
-  anthropic-messages → AnthropicMessages
-  openai-responses   → OpenAiResponses
-  openai-completions →（不再是合法选型）→ 与未知 api 相同
-  省略 / 未知（OpenAI kind）→ OpenAiResponses
-  省略（Anthropic kind）→ AnthropicMessages
+ModelEntry:
+  provider: openai | anthropic | fake
+  model: <upstream id>
+  base_url?: URL
+  api?: openai-responses | openai-completions | anthropic-messages   # L1 协议族
+  compat?: generic | deepseek     # L2 方言轮廓 → WirePolicy + body 调整
+  api_key?: string                # 插值后明文；省略 = kind env
+  thinking / thinking_level_map / context_window / tokenizer / …
 ```
 
-`config.api` 字符串 MAY 原样保留用户写入值（观测诚实）；**AdapterKind 选型**不得再产生 Completions 实例。
+### 代码组织（bridge）
 
-## 删除边界
+```text
+provider/
+  native/     # L1 第一语言：Responses / Completions / Anthropic Messages
+  dialect/    # L2 命名方言：deepseek（…）只做 L1 之上的增量调整
+  factory.rs  # api × WirePolicy(compat) → Adapter
+```
 
-| 删 | 留 |
+### `compat: deepseek` 行为
+
+| 族 | 行为 |
 |---|---|
-| `openai.rs` / `openai_completions.rs` 及主仓 Completions 外壳 | `openai_responses.rs` / `assembler` / `openai_client`（Responses 共用 Client） |
-| `AdapterKind::OpenAiCompletions` | `OpenAiResponses` + `AnthropicMessages` |
-| `apply_thinking_openai_completions` | `apply_thinking_openai_responses` + Anthropic |
-| Cargo feature `chat-completion` | `responses` + `byot` + `middleware` + `rustls` |
-| 文档「Completions 遗留逃生」 | 多厂商 = Responses 方言 + Anthropic |
+| Responses | 不发 `include: [reasoning.encrypted_content]`；`store:false`；不发 `previous_response_id` / `prompt_cache_key` |
+| Completions | `thinking: { type: enabled\|disabled }` + 可选 `reasoning_effort` |
+| Anthropic Messages | `thinking: { type: enabled }`；**不发** `budget_tokens`（上游忽略） |
 
-共享 `openai_client` 在删 Completions 后仍服务 Responses；确认无 Completions-only 类型泄漏。
+### 目标配置（用户本波）
 
-## 测试缝（harness）
+```yaml
+deepseek-v4-flash-free-zen:     # Completions / Zen（别名后缀 *-zen）
+  api: openai-completions
+  compat: deepseek
+  model: deepseek-v4-flash-free
+  base_url: https://opencode.ai/zen/v1
+  api_key: "{{ secret.OPENCODE_ZEN_API_KEY }}"
 
-| 缝 | 覆盖 |
-|---|---|
-| `AdapterKind::from_config_str` / `resolve_adapter_kind` | `openai-completions` → 等价省略 → Responses；省略默认 Responses |
-| bridge `build_adapter*` | 无 Completions 分支；factory 单测改写 |
-| `package-ai-bridge` feature / toon | 去掉 Completions effort 场景；pab* 措辞去 Completions |
-| `infra-provider` / `runtime-model-registry` / `agent-hooks` | 删 Completions 场景与 req 措辞 |
-| `package-ai-bridge-accounting` | Completions-only 远程计数场景改为「非 Responses 路径」或删 |
-| 文档 / example.yaml | 去掉 Completions 注释档 |
+deepseek-v4-flash:              # Responses / 官方（主别名，无通道后缀）
+  api: openai-responses
+  compat: deepseek
+  model: deepseek-v4-flash
+  base_url: https://api.deepseek.com
+  api_key: "{{ secret.DEEPSEEK_API_KEY }}"
 
-不新扩 BDD step；以改写/删除既有 `@req` 场景 + 单测为主。
+deepseek-v4-flash-anthropic:    # Anthropic Messages / 官方兼容端（*-anthropic）
+  provider: anthropic
+  model: deepseek-v4-flash
+  api: anthropic-messages
+  compat: deepseek
+  base_url: https://api.deepseek.com/anthropic
+  api_key: "{{ secret.DEEPSEEK_API_KEY }}"
+```
 
-## 风险
+命名约定：YAML 键 = registry id = 显示名；通道用**后缀**（`*-zen` / `*-anthropic`），不用 `zen-*` 前缀。上游 wire `model:` 可与别名不同、也可多别名共用。
 
-- 方言端若**仅**实现 Chat Completions：本波后不再有产品路径——接受；用户改用支持 Responses 的端点或 Anthropic。
-- `meta.api` 仍显示 `openai-completions` 时可能误导排障——可接受（开发阶段）；后续可选规范化（out of scope）。
+MCP 公开工具名统一为 `mcp__{server_id}__{tool_name}`（`MCP_PUBLIC_DELIMITER="__"` 单点；Claude/Codex 风格；仅 `[a-zA-Z0-9_-]`；段内可含 `-`/`_`，**不** sanitize 掉 hyphen）。**禁止** `mcp:server:tool` 冒号与点号分隔。execute **不得**反解析公开名，adapter 保存 `server_id`/`tool_name`。对照：`docs/research/mcp-tool-public-naming-hyphen-2026.md`。
+
+## 装配
+
+```text
+resolve(api, compat) → AdapterKind + WirePolicy
+build_adapter_with_wire_policy(...)
+```
+
+infra 注入：不再永远 `WirePolicy::default()`，而由 `compat` 解析。
+
+## 不做
+
+- 自动下载 models.dev 全表（后置；本波 YAML 显式条目足够）
+- Zen 全模型表 / Gemini

@@ -21,7 +21,7 @@ pub fn build_adapter(
     build_adapter_with_wire_policy(api_key, model, base_url, kind, hooks, WirePolicy::default())
 }
 
-/// Build an adapter; `wire_policy` applies to all three native L1 paths (dialect L2).
+/// Build an adapter; `wire_policy` applies to all three native L1 paths (c1940 dialects).
 pub fn build_adapter_with_wire_policy(
     api_key: String,
     model: String,
@@ -39,18 +39,10 @@ pub fn build_adapter_with_wire_policy(
             wire_policy,
         )),
         AdapterKind::OpenAiCompletions => Arc::new(OpenAiCompletionsAdapter::with_wire_policy(
-            api_key,
-            model,
-            base_url,
-            hooks,
-            wire_policy,
+            api_key, model, base_url, hooks, wire_policy,
         )),
         AdapterKind::AnthropicMessages => Arc::new(AnthropicMessagesAdapter::with_wire_policy(
-            api_key,
-            model,
-            base_url,
-            hooks,
-            wire_policy,
+            api_key, model, base_url, hooks, wire_policy,
         )),
     }
 }

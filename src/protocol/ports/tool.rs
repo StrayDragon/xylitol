@@ -68,8 +68,8 @@ pub enum XyBatchMode {
 ///
 /// Default for undeclared / self-registered tools is Barrier ([`Self::Sequential`]).
 /// Built-in read-family tools opt into ParallelSafe via [`XyTool::execution_mode`].
-/// MCP / unknown names are forced to Barrier by the scheduler (`mcp:` prefix / missing
-/// tool), independent of this trait value.
+/// MCP / unknown names are forced to Barrier by the scheduler (`mcp__` / transition
+/// `mcp-` / `mcp_` / legacy `mcp:` prefix / missing tool), independent of this trait value.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Default, serde::Serialize)]
 pub enum XyToolExecutionMode {
     /// ParallelSafe — may run concurrently with other ParallelSafe tools in a window.

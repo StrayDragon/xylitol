@@ -174,37 +174,37 @@ mod tests {
     #[test]
     fn upsert_replaces_same_name_no_dup() {
         let base = ToolSet::from_iter(vec![tool(
-            "mcp:fs:read",
+            "mcp_fs_read",
             "old",
             serde_json::json!({"type": "object"}),
         )]);
         let incoming = ToolSet::from_iter(vec![
             tool(
-                "mcp:fs:read",
+                "mcp_fs_read",
                 "new",
                 serde_json::json!({"type": "object", "properties": {"path": {"type": "string"}}}),
             ),
-            tool("mcp:fs:write", "w", serde_json::json!({"type": "object"})),
+            tool("mcp_fs_write", "w", serde_json::json!({"type": "object"})),
         ]);
         let merged = upsert_tools_by_name(base, incoming);
         let names: Vec<_> = merged.iter().map(|t| t.name().to_string()).collect();
         assert_eq!(
             names,
-            vec!["mcp:fs:read".to_string(), "mcp:fs:write".to_string()]
+            vec!["mcp_fs_read".to_string(), "mcp_fs_write".to_string()]
         );
-        assert_eq!(merged.get("mcp:fs:read").unwrap().description(), "new");
+        assert_eq!(merged.get("mcp_fs_read").unwrap().description(), "new");
     }
 
     #[test]
     fn freeze_table_core_then_armed_unique() {
         let core = vec![tool("read", "r", serde_json::json!({}))];
         let armed = vec![
-            tool("mcp:x:t", "m", serde_json::json!({})),
+            tool("mcp_x_t", "m", serde_json::json!({})),
             tool("read", "override-should-win", serde_json::json!({})),
         ];
         let frozen = freeze_table_from_parts(core, armed);
         let names: Vec<_> = frozen.iter().map(|t| t.name().to_string()).collect();
-        assert_eq!(names, vec!["read".to_string(), "mcp:x:t".to_string()]);
+        assert_eq!(names, vec!["read".to_string(), "mcp_x_t".to_string()]);
         assert_eq!(
             frozen.get("read").unwrap().description(),
             "override-should-win"

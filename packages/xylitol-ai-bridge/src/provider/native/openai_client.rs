@@ -6,7 +6,11 @@ use async_openai::Client;
 use async_openai::config::OpenAIConfig;
 
 use crate::hooks::HttpHooks;
-use crate::provider::openai_hooks_mw::HooksHttpService;
+use crate::provider::native::openai_hooks_mw::HooksHttpService;
+
+/// Default User-Agent for OpenAI-compatible HTTP (Cloudflare / gateway friendly).
+pub const DEFAULT_HTTP_USER_AGENT: &str =
+    "Mozilla/5.0 (compatible; xylitol-ai-bridge/0.1; +https://github.com/straydragon/xylitol)";
 
 /// Build an OpenAI-compatible [`Client`] with xylitol hook middleware.
 pub fn build_openai_client(

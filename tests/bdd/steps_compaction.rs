@@ -37,6 +37,7 @@ pub(crate) async fn comp_run_compact(
             api_key: String::new(),
             base_url: None,
             api: None,
+            compat: None,
         },
     )
     .expect("build fake provider");

@@ -18,6 +18,7 @@ pub(crate) fn _g_ar_react_setup(agent: &AgentState, ws: &Workspace) {
             model: "fake-model".into(),
             base_url: None,
             api: None,
+            compat: None,
         },
         display_name: "Fake Mock".into(),
         thinking: false,
@@ -133,6 +134,7 @@ pub(crate) fn _g_ar_stream_setup(agent: &AgentState, ws: &Workspace) {
             model: "fake-model".into(),
             base_url: None,
             api: None,
+            compat: None,
         },
         display_name: "Fake Mock".into(),
         thinking: false,
@@ -186,6 +188,7 @@ pub(crate) fn _g_ar_abort_slow_stream(agent: &AgentState, ws: &Workspace) {
             model: "fake-model".into(),
             base_url: None,
             api: None,
+            compat: None,
         },
         display_name: "Fake Mock".into(),
         thinking: false,
@@ -223,6 +226,7 @@ pub(crate) fn ar_register_fake(agent: &AgentState, id: &str) {
             model: "fake-model".into(),
             base_url: None,
             api: None,
+            compat: None,
         },
         display_name: "Fake Mock".into(),
         thinking: false,
@@ -787,7 +791,7 @@ pub(crate) fn _g_ar28_mcp(agent: &AgentState, ws: &Workspace) {
             sleep_ms: 80,
         }) as Arc<dyn XyTool>,
         Arc::new(BddSlowTool {
-            name: "mcp:fake:x",
+            name: "mcp_fake_x",
             mode: xylitol::protocol::ports::XyToolExecutionMode::Parallel,
             sleep_ms: 80,
         }) as Arc<dyn XyTool>,
@@ -797,7 +801,7 @@ pub(crate) fn _g_ar28_mcp(agent: &AgentState, ws: &Workspace) {
         tools,
         &[
             ("slow_safe", r#"{"n":1}"#),
-            ("mcp:fake:x", r#"{}"#),
+            ("mcp_fake_x", r#"{}"#),
             ("slow_safe", r#"{"n":2}"#),
         ],
         xylitol::protocol::ports::XyBatchMode::BarrierParallel,
@@ -900,10 +904,10 @@ pub(crate) fn _t_ar28_mcp_no_overlap() {
     let entries = BATCH_TIMING.with(|t| t.borrow().clone());
     let mcp = entries
         .iter()
-        .find(|(n, _, _)| n == "mcp:fake:x")
+        .find(|(n, _, _)| n == "mcp_fake_x")
         .expect("mcp");
     for (n, s, e) in &entries {
-        if n == "mcp:fake:x" {
+        if n == "mcp_fake_x" {
             continue;
         }
         assert!(

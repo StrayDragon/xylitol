@@ -265,7 +265,7 @@ pub fn resolve_assembly(input: &BootstrapInput) -> Result<ResolvedAssembly, Boot
 
     if let Some(ref cfg) = app_config {
         for (alias, entry) in &cfg.model.models {
-            let api_key = resolve_api_key(entry.provider);
+            let api_key = resolve_entry_api_key(entry);
             if api_key.is_none() {
                 warnings.push(BootstrapWarning::NoApiKey {
                     provider: entry.provider.provider_name().to_string(),
@@ -311,6 +311,7 @@ pub fn resolve_assembly(input: &BootstrapInput) -> Result<ResolvedAssembly, Boot
                     base_url: entry.base_url.clone(),
                     // c1598: honor YAML `models.*.api`; None → AdapterKind::default_for
                     api: entry.api.clone(),
+                    compat: entry.compat.clone(),
                 },
                 display_name: alias.clone(),
                 thinking: entry.thinking,
@@ -360,6 +361,7 @@ pub fn resolve_assembly(input: &BootstrapInput) -> Result<ResolvedAssembly, Boot
                         model: model_id.to_string(),
                         base_url: None,
                         api: None,
+                        compat: None,
                     },
                     display_name: model_id.to_string(),
                     thinking: true,
@@ -710,6 +712,16 @@ pub fn reload_prompt_context(
     report
 }
 
+/// Per-model `api_key` (post secret interpolation) wins when non-empty.
+/// Explicit empty `api_key:` MUST NOT fall back to kind-level env (avoid Zen↔DeepSeek mix-up).
+fn resolve_entry_api_key(entry: &crate::infra::config::types::ModelEntry) -> Option<String> {
+    match &entry.api_key {
+        Some(k) if !k.is_empty() => Some(k.clone()),
+        Some(_) => None,
+        None => resolve_api_key(entry.provider),
+    }
+}
+
 /// Read the API key for a provider from environment variables.
 fn resolve_api_key(kind: crate::protocol::model::XyModelKind) -> Option<String> {
     match kind {
@@ -1031,6 +1043,7 @@ mod tests {
             Some("openai-completions")
         );
         assert_eq!(by_id("completions-model").api, "openai-completions");
+        // c1940: explicit Completions is first-class
         assert_eq!(
             crate::infra::provider::adapter::factory::resolve_adapter_kind(
                 &by_id("completions-model").config

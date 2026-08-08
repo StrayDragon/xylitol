@@ -48,7 +48,7 @@
   场景: no-dual-impl
     假如 OpenAI 兼容与 Anthropic 装配可用
     当 搜索主仓与包内的重复 adapter 实现
-    那么 主仓无并行完整实现体且无 Chat Completions 适配实现
+    那么 主仓无并行完整实现体且 Completions/Responses 实现归属 xylitol-ai-bridge
 
   @req:pa20
   场景: bash-folded

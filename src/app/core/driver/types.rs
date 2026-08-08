@@ -116,7 +116,7 @@ pub enum McpServerPhase {
 pub struct McpServerSnapshot {
     pub id: String,
     pub phase: McpServerPhase,
-    /// True when ToolSet already contains at least one `mcp:{id}:…` tool.
+    /// True when ToolSet already contains at least one `mcp__{id}__…` tool.
     pub tools_armed: bool,
     pub tool_count: usize,
 }

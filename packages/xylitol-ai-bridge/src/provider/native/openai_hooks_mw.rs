@@ -27,10 +27,11 @@ pub struct HooksHttpService {
 
 impl HooksHttpService {
     pub fn new(hooks: Option<Arc<dyn HttpHooks>>) -> Self {
-        Self {
-            client: reqwest::Client::new(),
-            hooks,
-        }
+        let client = reqwest::Client::builder()
+            .user_agent(crate::provider::native::openai_client::DEFAULT_HTTP_USER_AGENT)
+            .build()
+            .unwrap_or_else(|_| reqwest::Client::new());
+        Self { client, hooks }
     }
 }
 
@@ -64,11 +65,15 @@ async fn apply_hooks_to_request(
     hooks: &Option<Arc<dyn HttpHooks>>,
     request: &mut reqwest::Request,
 ) -> Result<(), OpenAIError> {
+    let mut headers: HeaderBag = from_reqwest_headers(request.headers());
+    // OpenCode Zen attribution (session + client). Hooks run after and may override.
+    crate::provider::attribution::merge_opencode_attribution(&mut headers, request.url().as_str());
+
     if hooks.is_none() {
+        *request.headers_mut() = to_reqwest_headers(&headers);
         return Ok(());
     }
 
-    let mut headers: HeaderBag = from_reqwest_headers(request.headers());
     run_before_headers(hooks, &mut headers)
         .await
         .map_err(|e| OpenAIError::InvalidArgument(e.to_string()))?;

@@ -753,7 +753,7 @@ fn mcp_tool_shows_pretty_args_and_result() {
         &mut model,
         &XyEvent::ToolExecutionStart {
             id: "m1".into(),
-            name: "mcp:lspz:get_diagnostics".into(),
+            name: "mcp_lspz_get_diagnostics".into(),
             args: serde_json::json!({"uri": "file:///tmp/a.rs"}),
         },
     );
@@ -799,7 +799,7 @@ fn mcp_tool_shows_pretty_args_and_result() {
         &mut model,
         &XyEvent::ToolExecutionEnd {
             id: "m1".into(),
-            name: "mcp:lspz:get_diagnostics".into(),
+            name: "mcp_lspz_get_diagnostics".into(),
             result: raw.into(),
             is_error: false,
         },
@@ -836,7 +836,7 @@ fn mcp_end_rebuilds_even_if_buffer_was_polluted() {
         &mut model,
         &XyEvent::ToolExecutionStart {
             id: "m2".into(),
-            name: "mcp:lspz:get_diagnostics".into(),
+            name: "mcp_lspz_get_diagnostics".into(),
             args: serde_json::json!({}),
         },
     );
@@ -852,7 +852,7 @@ fn mcp_end_rebuilds_even_if_buffer_was_polluted() {
         &mut model,
         &XyEvent::ToolExecutionEnd {
             id: "m2".into(),
-            name: "mcp:lspz:get_diagnostics".into(),
+            name: "mcp_lspz_get_diagnostics".into(),
             result: r#"{"content":[{"type":"text","text":"ok"}],"isError":false}"#.into(),
             is_error: false,
         },

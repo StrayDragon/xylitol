@@ -5,52 +5,48 @@ base_sha: b0a3aa0cc399d6861b0bc1173dfdde12407b08c4
 checkpointed: false
 ---
 
-# 移除 OpenAI Completions：OpenAI 兼容族仅 Responses（客户端持态）
+# 三协议族 + 命名 compat（恢复 Completions；Zen free / DeepSeek 官方）
 
-> **Explore 结论**：官方 Responses 状态策略取 **②** `store:false` + 完整 output Item / `thinkingSignature` 回放（本地 SSOT / 多厂商 / resume）；**①** `previous_response_id`（需官方账号可 store）本波不做。参考 `openai-developers` → `developers.openai.com`（Migrate / Conversation state / Reasoning / Prompt caching）。
-> **前置**：c1880 曾把 Completions 留作显式遗留档；本 change **撤销**该逃生口，一步删净。
+> **改道说明**：原「删除 Completions」作废。OpenCode Zen free 与多数 openai-compatible 端点走 Chat Completions；DeepSeek 官方本波按用户指定走 Responses（部分实现）。id 目录名历史遗留，以本文为准。
+> **Pi 对照**：`api` = 协议族；`compat` = 同族 quirk；auth ≠ model table；勿 URL 自动探测大表。详见 `design.md`。
 
 ## Why
 
-- Completions 与 Responses 是两套协议族（消息布局、流式事件、reasoning 跨轮语义均不同）。双路径迫使 thinking / hooks / 观测 / 测试矩阵分叉，阻碍「DeepSeek / Qwen 等方言端统一吃 `/v1/responses`」的简化目标。
-- 官方推荐新项目走 Responses；Completions 跨轮丢 reasoning。xylitol 已以 Assembler + encrypted replay 实现 ②，Completions 不再提供产品价值。
-- Pre-1.0、未发布：可硬切，不做兼容 shim / 迁移警告。
+- Zen `deepseek-v4-flash-free` → `https://opencode.ai/zen/v1/chat/completions`：**必须** Completions（别名 `deepseek-v4-flash-free-zen`）。
+- DeepSeek 官方 `deepseek-v4-flash` → Responses（用户指定；`store` 恒 false、无 `previous_response_id`/`include`）：**方言** Responses。
+- 同 upstream 多通道：YAML 键 = 显示 id，后缀 `*-zen` / `*-anthropic`；`model:` 字段可共享。
+- 自建 llama.cpp（Ornith）已跑 Responses：保持。
+- 静默把 Completions 吞成 Responses 会错路由 Zen free。
 
 ## What Changes
 
-- **删除** OpenAI Chat Completions 适配实现、选型、`async-openai` 的 `chat-completion` feature 依赖面、相关单测 / BDD 场景 / 文档逃生说明。
-- **OpenAI 兼容装配**：唯一协议族 `openai-responses`（省略 `api` 时仍默认）；配置中残留 `api: openai-completions`（或其它未识别 OpenAI 族字符串）**静默按省略处理** → 装配 Responses，**不**为此单独报错或告警。
-- **钉死 ②**：继续 `store:false` + full-replay；`WirePolicy.previous_response_id` 默认 false；产品不交付 ①。
-- **保留** Anthropic Messages（独立第一语言）。
-- **叙事**：OpenAI 兼容多 provider = 同一 Responses 形状 + `compat=generic`；不把 Completions 当方言逃生。
+- **恢复** `openai-completions` 为一等 `api`（与 `openai-responses` / `anthropic-messages` 并列）。
+- **分层**：bridge `provider/native` = L1 第一语言实现；`provider/dialect` = L2 命名方言增量（首版 `deepseek`）。
+- **新增** `models.*.compat`（命名轮廓 → `WirePolicy`）：首版 `generic` | `deepseek`。
+- **新增** `models.*.api_key`（可选；支持 `{{ secret.* }}`），解决 Zen / DeepSeek / 全局 `OPENAI_API_KEY` 冲突。
+- Responses × `compat: deepseek`：不发 `include: reasoning.encrypted_content`；保持 `store:false`。
+- Completions × `compat: deepseek`：thinking 体对齐 pi `thinkingFormat: deepseek`。
+- Anthropic × `compat: deepseek`：`thinking.type=enabled`，不发 `budget_tokens`（DeepSeek Anthropic 兼容端）。
+- 用户配置：Zen free Completions + DeepSeek 官方 Responses + DeepSeek 官方 Anthropic（`-anthropic` 别名）。
 
 ## Capabilities
 
-- `package-ai-bridge`
-- `infra-provider`
-- `runtime-model-registry`
-- `agent-hooks`（去掉 Completions 接线条款）
-- `package-ai-bridge-accounting`（去掉 Completions-only 措辞）
-- 文档：`docs/architecture/多厂商模型.md`、`配置与档案.md`、`configs/example.yaml`、bridge `AGENTS.md`
-
-## Impact
-
-- 用户 YAML 若仍写 `openai-completions`：开发阶段行为变为走 Responses（用户自行改配置；产品不专项报错）。
-- 仅支持 Responses 形状的兼容端成为 OpenAI 族唯一路径；Anthropic 不变。
-- 测试与观测矩阵缩小一档。
+- `package-ai-bridge` / `infra-provider` / `runtime-model-registry` / `runtime-config`
 
 ## Out of scope
 
-- 实现 / 产品化 `previous_response_id` 链式（①）
-- 打开 `prompt_cache_key` 产品旋钮（可后续 change）
-- 新增 `reasoning.context`（`all_turns`）字段（可后续）
-- 砍 Anthropic
-- 削 `XyChunk` / `LlmAdapter` 镜像层（可并行 quick / 另 change）
-- 为废弃 `api` 字符串加用户可见警告 / 迁移工具
+- models.dev 自动拉全表 / pi 式远程 catalog（可后置）
+- Gemini / Zen 全量模型矩阵
+- `previous_response_id` 产品化
+- 把 llama.cpp 改回 Completions（用户现网已是 Responses）
 
 ## Decisions
 
-1. 状态机：**仅 ②**；① 延期且文档写「暂不支持」。
-2. Anthropic：**保留** Messages。
-3. 废弃 `api`：**静默回落** Responses（等同省略），不报错。
-4. Completions：**物理删除**，无 fallback 实现。
+1. `api` 仅三值：`openai-responses` | `openai-completions` | `anthropic-messages`（全称 kebab，不改点号）。
+2. `compat` 正交于 `api`；默认 `generic`；DeepSeek 官方 Responses / Zen DeepSeek 形 Completions 用 `deepseek`。
+3. 鉴权：优先 `models.*.api_key`，否则回落 kind 级 env（`OPENAI_API_KEY` / `ANTHROPIC_API_KEY`）。
+4. 不引入 URL 自动探测表（pi 的 detect 表 xylitol 不抄）。
+
+## Further Notes
+
+- MCP 公开名：`mcp__{server}__{tool}`（`MCP_PUBLIC_DELIMITER`）；含 `-` 时的行业做法见 [`docs/research/mcp-tool-public-naming-hyphen-2026.md`](../../../docs/research/mcp-tool-public-naming-hyphen-2026.md)（[MCP tool naming research](daf6214f-51be-41e0-8c62-648428d34014)）。

@@ -6,13 +6,13 @@
   场景: zero-cost
     假如 配置无 mcp_servers
     当 bootstrap/composition 装配 agent
-    那么 无 McpClientManager 实例且工具列表无 mcp: 前缀
+    那么 无 McpClientManager 实例且工具列表无 mcp__ 前缀
 
   @req:mcp2
   场景: wired
     假如 配置含一个可用 mcp server
     当 装配完成
-    那么 ToolSet 含对应 mcp: 工具且可经 XyTool 执行
+    那么 ToolSet 含对应 mcp__ 工具且可经 XyTool 执行
 
   @req:mcp3
   场景: reload

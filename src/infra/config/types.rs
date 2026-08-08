@@ -262,9 +262,17 @@ pub struct ModelEntry {
     /// Optional custom base URL for OpenAI-compatible or Anthropic-compatible APIs.
     #[serde(default)]
     pub base_url: Option<String>,
-    /// Optional adapter API type, e.g. `openai-responses` or `openai-completions`.
+    /// Optional adapter API type: `openai-responses` | `openai-completions` | `anthropic-messages`.
     #[serde(default)]
     pub api: Option<String>,
+    /// Named wire/thinking dialect (`generic` | `deepseek`). Omit → generic WirePolicy.
+    /// Free-form `extra_policy` YAML is not accepted — profiles live in bridge.
+    #[serde(default)]
+    pub compat: Option<String>,
+    /// Optional per-model API key (supports `{{ secret.* }}` after config render).
+    /// When set, wins over kind-level `OPENAI_API_KEY` / `ANTHROPIC_API_KEY`.
+    #[serde(default)]
+    pub api_key: Option<String>,
     /// Optional fallback model ID (must be another key in `models`).
     #[serde(default)]
     pub fallback: Option<String>,
@@ -513,26 +521,43 @@ impl AppConfig {
     ) -> Result<crate::protocol::model::XyModelConfig, String> {
         use crate::protocol::model::{XyModelConfig, XyModelKind};
 
-        let (kind, model_name, base_url, api) = if let Some(entry) = self.model.models.get(model_id)
-        {
-            (
-                entry.provider,
-                entry.model.clone(),
-                entry.base_url.clone(),
-                entry.api.clone(),
-            )
-        } else {
-            (XyModelKind::OpenAi, model_id.to_string(), None, None)
-        };
+        let (kind, model_name, base_url, api, compat, entry_api_key) =
+            if let Some(entry) = self.model.models.get(model_id) {
+                (
+                    entry.provider,
+                    entry.model.clone(),
+                    entry.base_url.clone(),
+                    entry.api.clone(),
+                    entry.compat.clone(),
+                    entry.api_key.clone(),
+                )
+            } else {
+                (
+                    XyModelKind::OpenAi,
+                    model_id.to_string(),
+                    None,
+                    None,
+                    None,
+                    None,
+                )
+            };
 
-        let api_key = match kind {
-            XyModelKind::OpenAi => std::env::var("OPENAI_API_KEY")
-                .or_else(|_| std::env::var("OPENAI_KEY"))
-                .map_err(|_| "OPENAI_API_KEY environment variable is not set".to_string())?,
-            XyModelKind::Anthropic => std::env::var("ANTHROPIC_API_KEY")
-                .or_else(|_| std::env::var("ANTHROPIC_KEY"))
-                .map_err(|_| "ANTHROPIC_API_KEY environment variable is not set".to_string())?,
-            XyModelKind::Fake => String::new(),
+        let api_key = match &entry_api_key {
+            Some(k) if !k.is_empty() => k.clone(),
+            Some(_) => {
+                return Err(format!(
+                    "models.{model_id}.api_key is set but empty (check secret.env / interpolation)"
+                ));
+            }
+            None => match kind {
+                XyModelKind::OpenAi => std::env::var("OPENAI_API_KEY")
+                    .or_else(|_| std::env::var("OPENAI_KEY"))
+                    .map_err(|_| "OPENAI_API_KEY environment variable is not set".to_string())?,
+                XyModelKind::Anthropic => std::env::var("ANTHROPIC_API_KEY")
+                    .or_else(|_| std::env::var("ANTHROPIC_KEY"))
+                    .map_err(|_| "ANTHROPIC_API_KEY environment variable is not set".to_string())?,
+                XyModelKind::Fake => String::new(),
+            },
         };
 
         Ok(XyModelConfig {
@@ -541,6 +566,7 @@ impl AppConfig {
             model: model_name,
             base_url,
             api,
+            compat,
         })
     }
 
@@ -1203,6 +1229,8 @@ mod thinking_levels_tests {
             model: "fake-1".into(),
             base_url: None,
             api: None,
+            compat: None,
+            api_key: None,
             fallback: None,
             thinking,
             thinking_levels: levels.map(|v| v.into_iter().map(str::to_string).collect()),

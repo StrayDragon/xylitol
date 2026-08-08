@@ -14,9 +14,10 @@ use crate::dto::AiBridgeStream;
 use crate::dto::AiBridgeToolSchema;
 use crate::error::AiBridgeError;
 use crate::hooks::HttpHooks;
-use crate::provider::openai::OpenAIProvider;
+use crate::provider::native::openai::OpenAIProvider;
+use crate::wire_policy::WirePolicy;
 
-use super::AiBridgeLlmAdapter;
+use crate::provider::AiBridgeLlmAdapter;
 
 /// Adapter for the OpenAI Chat Completions API.
 pub struct OpenAiCompletionsAdapter {
@@ -24,15 +25,26 @@ pub struct OpenAiCompletionsAdapter {
 }
 
 impl OpenAiCompletionsAdapter {
-    /// Create a new Chat Completions adapter.
+    /// Create a new Chat Completions adapter with [`WirePolicy::default`].
     pub fn new(
         api_key: String,
         model: String,
         base_url: Option<String>,
         hooks: Option<Arc<dyn HttpHooks>>,
     ) -> Self {
+        Self::with_wire_policy(api_key, model, base_url, hooks, WirePolicy::default())
+    }
+
+    /// Create with an explicit wire / thinking compat profile.
+    pub fn with_wire_policy(
+        api_key: String,
+        model: String,
+        base_url: Option<String>,
+        hooks: Option<Arc<dyn HttpHooks>>,
+        wire_policy: WirePolicy,
+    ) -> Self {
         Self {
-            inner: OpenAIProvider::new(api_key, model, base_url, hooks),
+            inner: OpenAIProvider::with_wire_policy(api_key, model, base_url, hooks, wire_policy),
         }
     }
 }
@@ -417,6 +429,104 @@ mod tests {
             bodies[1].get("reasoning_effort"),
             Some(&serde_json::json!("high")),
             "after switch to high: {bodies:?}"
+        );
+    }
+
+    #[tokio::test]
+    async fn completions_mcp_tool_names_are_provider_safe() {
+        use std::sync::{Arc as StdArc, Mutex};
+
+        let captured: StdArc<Mutex<Option<Value>>> = StdArc::new(Mutex::new(None));
+
+        struct CaptureHooks {
+            body: StdArc<Mutex<Option<Value>>>,
+        }
+
+        #[async_trait]
+        impl HttpHooks for CaptureHooks {
+            async fn before_headers(&self, _headers: &mut HeaderBag) -> Result<(), AiBridgeError> {
+                Ok(())
+            }
+
+            async fn before_request(
+                &self,
+                _model: &str,
+                body: &mut Value,
+            ) -> Result<(), AiBridgeError> {
+                *self.body.lock().unwrap() = Some(body.clone());
+                Ok(())
+            }
+
+            async fn after_response(&self, _status: u16, _headers: &HeaderBag) {}
+        }
+
+        let server = MockServer::start().await;
+        Mock::given(method("POST"))
+            .and(path("/chat/completions"))
+            .respond_with(ResponseTemplate::new(200).set_body_json(serde_json::json!({
+                "id": "x",
+                "choices": [{
+                    "index": 0,
+                    "message": {"role": "assistant", "content": "ok"},
+                    "finish_reason": "stop"
+                }],
+                "usage": {"prompt_tokens": 1, "completion_tokens": 1, "total_tokens": 2}
+            })))
+            .mount(&server)
+            .await;
+
+        let adapter = OpenAiCompletionsAdapter::new(
+            "sk-test".into(),
+            "gpt-test".into(),
+            Some(server.uri()),
+            Some(Arc::new(CaptureHooks {
+                body: captured.clone(),
+            })),
+        );
+        let tools = [
+            AiBridgeToolSchema {
+                name: "read".into(),
+                description: "r".into(),
+                parameters: serde_json::json!({"type": "object"}),
+            },
+            AiBridgeToolSchema {
+                name: "mcp__context7__resolve-library-id".into(),
+                description: "docs".into(),
+                parameters: serde_json::json!({"type": "object"}),
+            },
+            AiBridgeToolSchema {
+                name: "mcp:legacy:colon".into(),
+                description: "legacy".into(),
+                parameters: serde_json::json!({"type": "object"}),
+            },
+        ];
+        let _ = adapter
+            .generate(
+                vec![AiBridgeMessage::user("hi")],
+                &tools,
+                Default::default(),
+            )
+            .await
+            .expect("generate with tools");
+
+        let body = captured.lock().unwrap().clone().expect("body");
+        let arr = body["tools"].as_array().expect("tools");
+        assert_eq!(arr.len(), 3);
+        for (i, t) in arr.iter().enumerate() {
+            let name = t
+                .pointer("/function/name")
+                .and_then(|v| v.as_str())
+                .unwrap_or("");
+            assert!(
+                crate::provider::tool_wire::is_provider_safe_tool_name(name),
+                "tools[{i}].function.name={name:?}"
+            );
+            assert!(!name.contains(':'), "colon on wire: {name}");
+            assert!(!name.contains('.'), "dot on wire: {name}");
+        }
+        assert_eq!(
+            arr[2].pointer("/function/name").and_then(|v| v.as_str()),
+            Some("mcp__legacy__colon")
         );
     }
 }

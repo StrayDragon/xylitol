@@ -193,6 +193,7 @@ pub(crate) fn ensure_wiring_fake_model(agent: &AgentState, thinking: bool) {
             model: "fake-model".into(),
             base_url: None,
             api: None,
+            compat: None,
         },
         display_name: "Fake".into(),
         thinking,

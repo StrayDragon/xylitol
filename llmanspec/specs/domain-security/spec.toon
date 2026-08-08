@@ -6,7 +6,7 @@ requirements[19]{req_id,title,statement}:
   r35,Security 包装器,"SecurityToolWrapper MUST 包装 XyTool（非 adk_core::Tool），并在工具执行前强制审批策略。"
   r44,仅收紧,System MUST 仅允许三层配置覆盖收紧规则，不得放宽。
   r50,统一 path 字段检查,SecurityEngine MUST 在评估文件系统工具访问时同时检查 'file_path' 与 'path' 参数字段。
-  r53,MCP 工具安全策略,"SecurityEngine MUST 对 MCP 工具（名称前缀 'mcp:'）应用专用策略分支，含显式 server/tool 允许列表与默认拒绝语义。"
+  r53,MCP 工具安全策略,"SecurityEngine MUST 对 MCP 工具（名称前缀 'mcp__'（及过渡期遗留 'mcp-' / 'mcp_' / 'mcp:'））应用专用策略分支，含显式 server/tool 允许列表与默认拒绝语义。"
   r56,安全默认启用,生产构建中 SecurityConfig.enabled MUST 默认为 true。
   r59,hook 超时杀进程,"Hook 执行器 MUST 在超时时杀死子进程，并 MUST 支持可配置 fail-open 或 fail-closed 行为。"
   r61,网络域强制,"SecurityEngine MUST 对 bash/curl 与 MCP SSE URL 强制 network.allowed_domains 与 network.blocked_domains。该行为 MUST 有可执行 BDD 场景（live domain-security.feature / network-domain-block）。"

@@ -6,13 +6,18 @@ use async_trait::async_trait;
 use serde_json::Value;
 
 use super::client::McpClientManager;
+use crate::protocol::tool_name::{is_provider_safe_tool_name, mcp_tool_public_name};
 
 /// Adapter wrapping an MCP tool as an [`crate::protocol::ports::XyTool`].
 ///
-/// The publicly-facing name follows the convention `mcp:{server_id}:{name}`
-/// to avoid naming conflicts with built-in tools.
+/// Public name via [`mcp_tool_public_name`] (provider-safe `[a-zA-Z0-9_-]+`).
+///
+/// `server_id` / `tool_name` are stored for execute — public names MUST NOT be
+/// reverse-parsed (`SEP` and tool names can both contain `-` / `_`).
 pub struct McpToolAdapter {
     full_name: String,
+    server_id: String,
+    tool_name: String,
     description: String,
     parameters_schema: Option<Value>,
     manager: Arc<McpClientManager>,
@@ -26,9 +31,15 @@ impl McpToolAdapter {
         parameters_schema: Option<Value>,
         manager: Arc<McpClientManager>,
     ) -> Self {
-        let full_name = format!("mcp:{server_id}:{tool_name}");
+        let full_name = mcp_tool_public_name(&server_id, &tool_name);
+        debug_assert!(
+            is_provider_safe_tool_name(&full_name),
+            "MCP tool name must be provider-safe: {full_name}"
+        );
         Self {
             full_name,
+            server_id,
+            tool_name,
             description,
             parameters_schema,
             manager,
@@ -57,13 +68,9 @@ impl crate::protocol::ports::XyTool for McpToolAdapter {
         _ctx: &crate::protocol::ports::XyToolCtx,
         args: Value,
     ) -> Result<String, crate::protocol::error::XyToolError> {
-        let parts: Vec<&str> = self.full_name.splitn(3, ':').collect();
-        let server_id = parts.get(1).unwrap_or(&"unknown");
-        let tool_name = parts.get(2).unwrap_or(&"unknown");
-
         let result = self
             .manager
-            .call_tool(server_id, tool_name, args)
+            .call_tool(&self.server_id, &self.tool_name, args)
             .await
             .map_err(|e| {
                 crate::protocol::error::XyToolError::ExecutionFailed(anyhow::anyhow!(
@@ -102,7 +109,8 @@ mod tests {
             None,
             manager,
         );
-        assert_eq!(adapter.name(), "mcp:filesystem:read_file");
+        assert_eq!(adapter.name(), "mcp__filesystem__read_file");
+        assert!(crate::protocol::is_provider_safe_tool_name(adapter.name()));
         assert_eq!(adapter.description(), "Read a file");
         assert_eq!(adapter.parameters_schema(), serde_json::json!({}));
     }
@@ -123,7 +131,7 @@ mod tests {
             Some(schema.clone()),
             manager,
         );
-        assert_eq!(adapter.name(), "mcp:git:status");
+        assert_eq!(adapter.name(), "mcp__git__status");
         assert_eq!(adapter.parameters_schema(), schema);
     }
 
