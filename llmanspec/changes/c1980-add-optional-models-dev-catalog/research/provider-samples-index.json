@@ -1,0 +1,26 @@
+{
+  "openai": {
+    "provider_toml_path": "provider-openai.toml",
+    "sample_models": [
+      "chatgpt-image-latest.toml",
+      "gpt-3.5-turbo.toml",
+      "gpt-4-turbo.toml"
+    ]
+  },
+  "anthropic": {
+    "provider_toml_path": "provider-anthropic.toml",
+    "sample_models": [
+      "claude-fable-5.toml",
+      "claude-haiku-4-5-20251001.toml",
+      "claude-haiku-4-5.toml"
+    ]
+  },
+  "deepseek": {
+    "provider_toml_path": "provider-deepseek.toml",
+    "sample_models": [
+      "deepseek-chat.toml",
+      "deepseek-reasoner.toml",
+      "deepseek-v4-flash.toml"
+    ]
+  }
+}
