@@ -46,9 +46,9 @@
 
   @req:pa6
   场景: no-dual-impl
-    假如 OpenAI Completions 与 Responses 均可用
+    假如 OpenAI 兼容与 Anthropic 装配可用
     当 搜索主仓与包内的重复 adapter 实现
-    那么 主仓无并行完整实现体
+    那么 主仓无并行完整实现体且无 Chat Completions 适配实现
 
   @req:pa20
   场景: bash-folded

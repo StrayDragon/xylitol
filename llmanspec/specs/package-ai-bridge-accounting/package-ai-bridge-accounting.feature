@@ -100,7 +100,7 @@
     那么 provenance 不是 RemoteCount 也不是 Api
 
   @req:paa7
-  场景: completions-no-fake-remote
-    假如 仅 Completions adapter 且未声明 input_tokens
+  场景: non-responses-no-fake-remote
+    假如 非 Responses 路径且未声明 input_tokens
     当 未注入 remote_count_tokens
     那么 不声称 OpenAI RemoteCount 成功

@@ -15,11 +15,11 @@ requirements[14]{req_id,title,statement}:
   m10,"thinking-level-validate-clamp","set_thinking_level（或 Driver 等价）在目标 level 不在当前模型支持集时 MUST 拒绝且 MUST NOT 更改当前值。换模、精确 /model <id> 或启动时若当前 level 不在新支持集、或路径要求默认档：可调模型 MUST 采用支持集全序（off < minimal < low < medium < high < xhigh < max）中的最高档；仅 off 或不可调 MUST 为 off。MUST NOT 因 Settings.default_thinking_level 覆盖换模默认最高档策略；产品面 MUST 仅暴露 xylitol ThinkingLevel 名，provider 差异仅经 thinking_level_map 在请求边界生效。"
   m11,"thinking-level-on-generate","Agent 在调用 XyModel::generate_stream（或等价）时 MUST 传入当前 ThinkingLevel 与模型 thinking_level_map（及可用的 thinking_budgets）；resolve 后 MUST 影响下一轮 provider 请求体；MUST NOT 仅更新会话/UI 状态而不影响请求组装。"
   m12,"no-silent-env-select","bootstrap 在仅有 provider API key、无配置模型别名且无显式 --model（或等价选中源）时，MUST NOT 自动将 default_model_id_for_provider 的返回值设为当前选中模型；未选中 MUST 保持为空并由应用面按 cli-entry ce18 展示。"
-  m13,"honor-model-entry-api","bootstrap / resolve_model_meta（或等价装配）注册 XyModelMeta 时 MUST 保留 ModelsConfig ModelEntry 的可选 api 字段：显式值 MUST 写入 config.api 与 meta.api 并参与 adapter 选择；省略 api 时 MUST 走 AdapterKind::default_for（或等价）而非静默丢弃后再伪造其它方言。MUST NOT 在注册路径把已配置的 api 写成 None。由单测覆盖，MUST NOT 为静态接线单独扩 BDD step。"
-  m14,"manifest-api-kind-default","JSON model manifest 省略 api 时 MUST 按 provider 选用与 AdapterKind::default_for 一致的方言字符串（OpenAI→openai-responses，Anthropic→anthropic-messages）；MUST NOT 写死 openai-completions。显式 api MUST 保留。由单测覆盖，MUST NOT 为静态缺省单独扩 BDD step。"
+  m13,"honor-model-entry-api","bootstrap / resolve_model_meta（或等价装配）注册 XyModelMeta 时 MUST 保留 ModelsConfig ModelEntry 的可选 api 字段写入 config.api 与 meta.api：省略 api 时 MUST 走 AdapterKind::default_for（或等价）。显式可识别 api MUST 参与 adapter 选择；值为 openai-completions 或其它未识别字符串时，adapter 选择 MUST 静默等同省略（OpenAI→Responses），MUST NOT 为此单独报错。MUST NOT 在注册路径把已配置的 api 字段写成 None。由单测覆盖，MUST NOT 为静态接线单独扩 BDD step。"
+  m14,"manifest-api-kind-default","JSON model manifest 省略 api 时 MUST 按 provider 选用与 AdapterKind::default_for 一致的协议族字符串（OpenAI→openai-responses，Anthropic→anthropic-messages）；MUST NOT 写死或再引入 openai-completions 作为可识别装配目标。由单测覆盖，MUST NOT 为静态缺省单独扩 BDD step。"
 scenarios[5]{req_id,id,given,when,then,feature}:
-  m13,"yaml-explicit-completions-honored","YAML 模型条目 api 为 openai-completions","bootstrap 注册 registry","config.api 与 meta.api 为 openai-completions 且 adapter 为 Completions",false
-  m13,"yaml-omitted-api-uses-kind-default","YAML OpenAI 模型条目省略 api","bootstrap 注册后 resolve_adapter_kind","选用 OpenAI Responses 默认（非静默 Completions）",false
+  m13,"yaml-stale-completions-api-uses-responses","YAML 模型条目 api 为 openai-completions","bootstrap 后 resolve_adapter_kind","选用 OpenAI Responses（静默等同省略）",false
+  m13,"yaml-omitted-api-uses-kind-default","YAML OpenAI 模型条目省略 api","bootstrap 注册后 resolve_adapter_kind","选用 OpenAI Responses 默认",false
   m14,"manifest-openai-omitted-api-responses","JSON manifest OpenAI 模型省略 api","load_models_from_manifest","meta.api 为 openai-responses",false
   m14,"manifest-anthropic-omitted-api-messages","JSON manifest Anthropic 模型省略 api","load_models_from_manifest","meta.api 为 anthropic-messages",false
   m8,"bdd-model-pass",model BDD 套件,执行,全通过（由 CI 保证）,false
