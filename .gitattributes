@@ -1,4 +1,4 @@
 # Binary/large files — skip text normalization and large-file checks
-*.7z.archived binary
+# Freeze archives: tracked via Git LFS (history migrated 2026-08-09).
+*.7z.archived filter=lfs diff=lfs merge=lfs -text
 *.7z binary
-llmanspec/changes/archive/freezed_changes.7z.archived filter=lfs diff=lfs merge=lfs -text

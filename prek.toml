@@ -46,6 +46,15 @@ pass_filenames = false
 require_serial = true
 stages = ["pre-push"]
 
+[[repos.hooks]]
+id = "git-lfs-pre-push"
+name = "git lfs pre-push (upload objects)"
+language = "system"
+entry = "git-lfs pre-push"
+stages = ["pre-push"]
+always_run = true
+pass_filenames = false
+
 [[repos]]
 repo = "https://github.com/compilerla/conventional-pre-commit"
 rev = "v4.4.0"
