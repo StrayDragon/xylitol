@@ -6,7 +6,9 @@ use crate::dto::{AiBridgeMessage, AiBridgeToolSchema};
 use crate::thinking::AiBridgeGenerateOptions;
 use crate::wire_policy::WirePolicy;
 
-use super::{apply_responses_wire_policy, assemble_responses_body_with_diagnostics};
+use crate::provider::native::openai_responses::{
+    apply_responses_wire_policy, assemble_responses_body_with_diagnostics,
+};
 
 /// Constructs OpenAI Responses JSON bodies under a fixed [`WirePolicy`].
 ///

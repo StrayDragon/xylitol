@@ -139,6 +139,27 @@ test-live-provider verbosity=verbosity_default:
 gen-live-provider-example:
     python3 scripts/gen_live_provider_example.py
 
+# Provider-safe MCP tool naming gate (registry SSOT + wire encode on all three APIs).
+# Not live-network; safe in qa loops. Prefer this after changing MCP_PUBLIC_DELIMITER.
+[arg('verbosity', pattern='quiet|normal|verbose')]
+test-provider-safe-tool-names verbosity=verbosity_default:
+    #!/usr/bin/env bash
+    set -euo pipefail
+    # Note: justfile treats `(...)` specially — keep filter lists as space-separated strings.
+    qflag=(); vflag=()
+    case "{{verbosity}}" in
+      quiet) qflag=(-q) ;;
+      verbose) vflag=(-v) ;;
+    esac
+    main_filters="tool_name:: provider_safe_names:: test_mcp_tool_adapter_name_format adapters_from_discovered_names"
+    bridge_filters="tool_wire:: build_body_mcp_tool_names_are_provider_safe completions_mcp_tool_names_are_provider_safe anthropic_mcp_tool_names_are_provider_safe"
+    for f in $main_filters; do
+      cargo test "${qflag[@]}" "${vflag[@]}" --lib --all-features -- "$f"
+    done
+    for f in $bridge_filters; do
+      cargo test "${qflag[@]}" "${vflag[@]}" -p xylitol-ai-bridge --lib -- "$f"
+    done
+
 # TUI end-to-end integration tests (layer 5: PTY/tmux). Slow + needs a real
 # PTY and/or tmux; gated #[ignore] so they never run under the default `test`.
 [arg('verbosity', pattern='quiet|normal|verbose')]

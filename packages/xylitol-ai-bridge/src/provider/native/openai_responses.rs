@@ -18,10 +18,10 @@ use crate::dto::{AiBridgeChunk, AiBridgeToolSchema, Diagnostic};
 use crate::dto::{AiBridgeMessage, AiBridgePart, AiBridgeStopReason};
 use crate::error::AiBridgeError;
 use crate::hooks::HttpHooks;
-use crate::provider::openai_client::{build_openai_client, normalize_openai_v1_base};
+use crate::provider::native::openai_client::{build_openai_client, normalize_openai_v1_base};
 use crate::wire_policy::WirePolicy;
 
-use super::AiBridgeLlmAdapter;
+use crate::provider::AiBridgeLlmAdapter;
 
 /// Adapter for the OpenAI Responses API (`/v1/responses`).
 pub struct OpenAiResponsesAdapter {
@@ -70,7 +70,7 @@ impl OpenAiResponsesAdapter {
         options: &crate::thinking::AiBridgeGenerateOptions,
     ) -> Value {
         // Sole business-layout path for Responses bodies (c1890).
-        super::ResponsesAssembler::new(self.wire_policy).assemble(
+        super::assembler::ResponsesAssembler::new(self.wire_policy).assemble(
             &self.model,
             messages,
             tools,
@@ -178,7 +178,7 @@ pub(crate) fn assemble_responses_body_with_diagnostics(
             .map(|t| {
                 serde_json::json!({
                     "type": "function",
-                    "name": t.name,
+                    "name": crate::provider::tool_wire::to_wire_tool_name(&t.name),
                     "description": t.description,
                     "parameters": t.parameters,
                     "strict": false,
@@ -197,7 +197,8 @@ pub(crate) fn assemble_responses_body_with_diagnostics(
     if matches!(
         resolved,
         crate::thinking::AiBridgeResolvedThinking::OpenAiEffort(_)
-    ) {
+    ) && wire_policy.allows_reasoning_encrypted_include()
+    {
         body["include"] = serde_json::json!(["reasoning.encrypted_content"]);
     }
 
@@ -207,7 +208,7 @@ pub(crate) fn assemble_responses_body_with_diagnostics(
 
 /// Strip wire knobs denied by [`WirePolicy`] (c1880).
 ///
-/// Prefer [`super::ResponsesAssembler::apply_wire_policy`] outside this module.
+/// Prefer [`super::assembler::ResponsesAssembler::apply_wire_policy`] outside this module.
 pub(crate) fn apply_responses_wire_policy(body: &mut Value, wire_policy: &WirePolicy) {
     let Some(obj) = body.as_object_mut() else {
         return;
@@ -804,7 +805,7 @@ fn convert_messages_to_input_items(
                             "type": "function_call",
                             "id": id,
                             "call_id": id,
-                            "name": name,
+                            "name": crate::provider::tool_wire::to_wire_tool_name(name),
                             "arguments": arguments.to_string(),
                         })),
                         _ => None,
@@ -1174,6 +1175,77 @@ mod tests {
         let body_map = adapter.build_body(vec![AiBridgeMessage::user("hi")], &[], false, &mapped);
         assert_eq!(body_map["reasoning"]["effort"], "max");
         assert_eq!(body_map["reasoning"]["summary"], "auto");
+    }
+
+    #[test]
+    fn deepseek_compat_omits_encrypted_include() {
+        let adapter = OpenAiResponsesAdapter::with_wire_policy(
+            "sk".into(),
+            "deepseek-v4-flash".into(),
+            None,
+            None,
+            crate::wire_policy::WirePolicy::for_compat(crate::wire_policy::Compat::Deepseek),
+        );
+        let opts = crate::thinking::AiBridgeGenerateOptions {
+            thinking_level: "medium".into(),
+            ..Default::default()
+        };
+        let body = adapter.build_body(vec![AiBridgeMessage::user("hi")], &[], false, &opts);
+        assert_eq!(body["reasoning"]["effort"], "medium");
+        assert_eq!(body["store"], false);
+        assert!(
+            body.get("include").is_none(),
+            "deepseek Responses must not send include encrypted_content, got {body}"
+        );
+    }
+
+    #[test]
+    fn build_body_mcp_tool_names_are_provider_safe() {
+        let adapter =
+            OpenAiResponsesAdapter::new("sk".into(), "deepseek-v4-flash".into(), None, None);
+        let tools = [
+            AiBridgeToolSchema {
+                name: "read".into(),
+                description: "r".into(),
+                parameters: serde_json::json!({"type": "object"}),
+            },
+            AiBridgeToolSchema {
+                name: "mcp__context7__resolve-library-id".into(),
+                description: "docs".into(),
+                parameters: serde_json::json!({"type": "object"}),
+            },
+            AiBridgeToolSchema {
+                name: "mcp__lspz__get_diagnostics".into(),
+                description: "lsp".into(),
+                parameters: serde_json::json!({"type": "object"}),
+            },
+        ];
+        let body = adapter.build_body(
+            vec![AiBridgeMessage::user("hi")],
+            &tools,
+            false,
+            &crate::thinking::AiBridgeGenerateOptions {
+                thinking_level: "high".into(),
+                ..Default::default()
+            },
+        );
+        let arr = body["tools"].as_array().expect("tools array");
+        assert_eq!(arr.len(), 3);
+        for (i, t) in arr.iter().enumerate() {
+            let name = t["name"].as_str().unwrap_or("");
+            assert!(
+                crate::provider::tool_wire::is_provider_safe_tool_name(name),
+                "tools[{i}].name={name:?} must match ^[a-zA-Z0-9_-]+$"
+            );
+            assert!(
+                !name.contains(':'),
+                "tools[{i}].name must not contain colon: {name}"
+            );
+            assert!(
+                !name.contains('.'),
+                "tools[{i}].name must not contain dot: {name}"
+            );
+        }
     }
 
     #[test]

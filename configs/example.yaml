@@ -27,14 +27,41 @@ models:
       provider: openai
       model: gpt-4o
       fallback: claude
+    # OpenCode Zen free（Completions）/ DeepSeek 官方 flash（Responses / Anthropic）：
+    # 别名用后缀区分通道：*-zen / *-anthropic；上游 wire `model:` 可相同。
+    # deepseek-v4-flash-free-zen:
+    #   provider: openai
+    #   model: deepseek-v4-flash-free
+    #   base_url: https://opencode.ai/zen/v1
+    #   api: openai-completions
+    #   compat: deepseek
+    #   api_key: "{{ secret.OPENCODE_ZEN_API_KEY }}"
+    #   thinking: true
+    #   thinking_levels: [off, high, max]
+    # deepseek-v4-flash:
+    #   provider: openai
+    #   model: deepseek-v4-flash
+    #   base_url: https://api.deepseek.com
+    #   api: openai-responses
+    #   compat: deepseek
+    #   api_key: "{{ secret.DEEPSEEK_API_KEY }}"
+    #   thinking: true
+    #   thinking_levels: [off, high, max]
+    # deepseek-v4-flash-anthropic:
+    #   provider: anthropic
+    #   model: deepseek-v4-flash
+    #   base_url: https://api.deepseek.com/anthropic
+    #   api: anthropic-messages
+    #   compat: deepseek
+    #   api_key: "{{ secret.DEEPSEEK_API_KEY }}"
+    #   thinking: true
+    #   thinking_levels: [off, high, max]
     # Inference id ≠ tokenizer repo — share via tokenizers.qwen36:
     # qwen:
     #   provider: openai
     #   model: Qwen3.6-35B-A3B/UD-Q5_K_XL-think-coding
     #   base_url: "http://127.0.0.1:8000/v1"
     #   api: openai-responses
-    #   # legacy escape when endpoint has no /v1/responses:
-    #   # api: openai-completions
     #   tokenizer: qwen36
     # Or inline HF repo: tokenizer: Qwen/Qwen3.6-35B-A3B
     # Or local file:     tokenizer: ./path/to/tokenizer.json

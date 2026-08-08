@@ -26,11 +26,13 @@ use crate::dto::{AiBridgeChunk, AiBridgeToolSchema};
 use crate::dto::{AiBridgeMessage, AiBridgePart, AiBridgeStopReason, collect_text_parts};
 use crate::error::AiBridgeError;
 use crate::hooks::HttpHooks;
-use crate::provider::openai_client::build_openai_client;
+use crate::provider::native::openai_client::build_openai_client;
+use crate::wire_policy::WirePolicy;
 
 pub struct OpenAIProvider {
     client: Client<OpenAIConfig>,
     model: String,
+    wire_policy: WirePolicy,
 }
 
 impl OpenAIProvider {
@@ -40,9 +42,20 @@ impl OpenAIProvider {
         base_url: Option<String>,
         hooks: Option<Arc<dyn HttpHooks>>,
     ) -> Self {
+        Self::with_wire_policy(api_key, model, base_url, hooks, WirePolicy::default())
+    }
+
+    pub fn with_wire_policy(
+        api_key: String,
+        model: String,
+        base_url: Option<String>,
+        hooks: Option<Arc<dyn HttpHooks>>,
+        wire_policy: WirePolicy,
+    ) -> Self {
         Self {
             client: build_openai_client(api_key, base_url, hooks),
             model,
+            wire_policy,
         }
     }
 
@@ -84,7 +97,11 @@ impl OpenAIProvider {
             let mut body = serde_json::to_value(&request).map_err(|e| {
                 AiBridgeError::Provider(anyhow::anyhow!("serialize completions request: {e}"))
             })?;
-            crate::thinking::apply_thinking_openai_completions(&mut body, &resolved);
+            crate::provider::dialect::apply_completions_thinking(
+                &mut body,
+                &resolved,
+                self.wire_policy.compat,
+            );
             if let Some(t) = &trace {
                 t.capture_request_input(&body.to_string());
             }
@@ -109,7 +126,11 @@ impl OpenAIProvider {
             let mut body = serde_json::to_value(&request).map_err(|e| {
                 AiBridgeError::Provider(anyhow::anyhow!("serialize completions request: {e}"))
             })?;
-            crate::thinking::apply_thinking_openai_completions(&mut body, &resolved);
+            crate::provider::dialect::apply_completions_thinking(
+                &mut body,
+                &resolved,
+                self.wire_policy.compat,
+            );
             if let Some(t) = &trace {
                 t.capture_request_input(&body.to_string());
             }
@@ -283,7 +304,7 @@ fn convert_tools(tools: &[AiBridgeToolSchema]) -> Vec<ChatCompletionTools> {
         .map(|t| {
             ChatCompletionTools::Function(ChatCompletionTool {
                 function: FunctionObject {
-                    name: t.name.clone(),
+                    name: crate::provider::tool_wire::to_wire_tool_name(&t.name),
                     description: Some(t.description.clone()),
                     parameters: Some(t.parameters.clone()),
                     strict: None,
@@ -414,7 +435,7 @@ pub fn convert_agent_messages(
                             async_openai::types::chat::ChatCompletionMessageToolCall {
                                 id: id.clone(),
                                 function: FunctionCall {
-                                    name: name.clone(),
+                                    name: crate::provider::tool_wire::to_wire_tool_name(name),
                                     arguments: arguments.to_string(),
                                 },
                             },

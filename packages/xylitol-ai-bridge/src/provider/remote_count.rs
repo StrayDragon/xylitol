@@ -8,7 +8,7 @@ use serde_json::Value;
 use crate::dto::AiBridgeMessage;
 use crate::error::AiBridgeError;
 use crate::hooks::{HeaderBag, HttpHooks, run_before_headers, run_before_request};
-use crate::provider::openai_responses::messages_to_responses_input;
+use crate::provider::native::openai_responses::messages_to_responses_input;
 use crate::provider::reqwest_bridge::{from_reqwest_headers, to_reqwest_headers};
 
 const ANTHROPIC_VERSION: &str = "2023-06-01";
@@ -85,6 +85,7 @@ impl RemoteCounter for AnthropicRemoteCounter {
             "anthropic-version".into(),
             Value::String(ANTHROPIC_VERSION.into()),
         );
+        crate::provider::attribution::merge_opencode_attribution(&mut headers, &self.base_url);
         run_before_headers(&self.hooks, &mut headers).await?;
         run_before_request(&self.hooks, &self.model, &mut body).await?;
 
@@ -137,9 +138,12 @@ impl OpenAiResponsesRemoteCounter {
         base_url: Option<String>,
         hooks: Option<Arc<dyn HttpHooks>>,
     ) -> Self {
-        let base = base_url.map(|b| crate::provider::openai_client::normalize_openai_v1_base(&b));
+        let base =
+            base_url.map(|b| crate::provider::native::openai_client::normalize_openai_v1_base(&b));
         Self {
-            client: crate::provider::openai_client::build_openai_client(api_key, base, hooks),
+            client: crate::provider::native::openai_client::build_openai_client(
+                api_key, base, hooks,
+            ),
             model,
         }
     }

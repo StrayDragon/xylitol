@@ -4287,6 +4287,68 @@ mod slice_tests {
     }
 
     #[tokio::test]
+    async fn c1900_idle_next_turn_clear_must_not_restore_mcp_cue_after_freeze() {
+        use crate::app::core::driver::{
+            LoadedResourcesSnapshot, MCP_PENDING_CUE, McpServerPhase, McpServerSnapshot,
+        };
+
+        // Repro: freeze completed but UiRoot still had tools_table_frozen=false;
+        // idle sync_runtime_chrome clears next-turn then refresh_mcp_short_cue
+        // would sticky-restore MCP_PENDING_CUE from the stale snap.
+        let mut session = HostSession::new_product_ui(TestTerminal::new(80, 24));
+        let root = session.ui_root().expect("ui").clone();
+        let driver = ScriptedDriver::new();
+
+        let stale = LoadedResourcesSnapshot {
+            mcp_configured: 2,
+            mcp_bootstrap_complete: true,
+            tools_table_frozen: false,
+            mcp_servers: vec![
+                McpServerSnapshot {
+                    id: "context7".into(),
+                    phase: McpServerPhase::Connected,
+                    tools_armed: true,
+                    tool_count: 2,
+                },
+                McpServerSnapshot {
+                    id: "lspz".into(),
+                    phase: McpServerPhase::Connected,
+                    tools_armed: true,
+                    tool_count: 4,
+                },
+            ],
+            ..LoadedResourcesSnapshot::default()
+        };
+        // Armed+complete+!frozen: pending is false already under current rules…
+        // Force the sticky path with incomplete bootstrap (pre-freeze stale).
+        let sticky = LoadedResourcesSnapshot {
+            mcp_bootstrap_complete: false,
+            ..stale.clone()
+        };
+        driver.set_loaded_resources_for_driver(sticky);
+        session.refresh_loaded_resources(&driver).await;
+        assert_eq!(
+            root.borrow().status_next_turn_cue_for_test().as_deref(),
+            Some(MCP_PENDING_CUE)
+        );
+
+        let frozen = LoadedResourcesSnapshot {
+            mcp_bootstrap_complete: true,
+            tools_table_frozen: true,
+            ..stale
+        };
+        driver.set_loaded_resources_for_driver(frozen);
+        session.refresh_loaded_resources(&driver).await;
+        // Same as idle sync_runtime_chrome: clear next-turn, then mcp refresh.
+        root.borrow_mut().set_status_next_turn_cue(None);
+        assert_eq!(
+            root.borrow().status_next_turn_cue_for_test(),
+            None,
+            "after freeze snap refresh, idle next-turn clear MUST NOT restore mcp pending"
+        );
+    }
+
+    #[tokio::test]
     async fn c1900_assembling_keeps_mcp_pending_cue_while_pre_freeze() {
         use crate::app::core::driver::{
             LoadedResourcesSnapshot, McpServerPhase, McpServerSnapshot,

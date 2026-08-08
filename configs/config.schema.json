@@ -363,7 +363,15 @@
       "type": "object",
       "properties": {
         "api": {
-          "description": "Optional adapter API type, e.g. `openai-responses` or `openai-completions`.",
+          "description": "Optional adapter API type: `openai-responses` | `openai-completions` | `anthropic-messages`.",
+          "type": [
+            "string",
+            "null"
+          ],
+          "default": null
+        },
+        "api_key": {
+          "description": "Optional per-model API key (supports secret interpolation). When set non-empty, wins over kind-level env.",
           "type": [
             "string",
             "null"
@@ -372,6 +380,14 @@
         },
         "base_url": {
           "description": "Optional custom base URL for OpenAI-compatible or Anthropic-compatible APIs.",
+          "type": [
+            "string",
+            "null"
+          ],
+          "default": null
+        },
+        "compat": {
+          "description": "Named wire/thinking dialect (`generic` | `deepseek`). Omit → generic.",
           "type": [
             "string",
             "null"

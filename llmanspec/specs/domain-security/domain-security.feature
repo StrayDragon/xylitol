@@ -43,7 +43,7 @@
   @req:r53
   场景: mcp-default-deny
     假如 安全启用且无 MCP 允许列表
-    当 agent 调用 mcp:server:tool
+    当 agent 调用 mcp_server_tool
     那么 SecurityEngine 返回 Blocked 并附理由
 
   @req:r56

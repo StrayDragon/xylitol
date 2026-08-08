@@ -44,7 +44,7 @@ requirements[43]{req_id,title,statement}:
   t21,"read-image-parts","Read 工具在路径为支持的图片文件时 MUST 经 resize/multimodal 准备产出含 AgentPart::Image（base64 data + media_type）的 tool result parts，并附简短 text note；MUST NOT 仅返回「[Image file: …]」占位字符串作为唯一结果。文本文件行为保持既有截断语义。工具端口 MUST 允许 execute 结果以 parts 形式进入 history（默认实现可将纯文本包成 Text part）。"
   t22,"write-edit-llm-result-quiet","write/edit 成功时，进入会话 history 并经 project_for_llm 发往模型的 tool result 正文 MUST 为短成功句（对齐 pi）；MUST NOT 把完整 content 回灌或嵌入 unified/display_diff。失败时 MUST 保留可读错误原因。UI 仍 MUST 能取得 display_diff（或等价）以渲染编辑块。"
   t26,"builtin-tool-concurrency-class","内置工具 MUST 声明并发类：read/grep/find/ls 为 ParallelSafe；write/edit/bash 为 Barrier（或等价 Sequential 映射）。调度层在 barrier_parallel 下 MUST 尊重该类；FileMutationQueue 可并存作同 path 纵深防御。由单测覆盖 default_tools 分类表，MUST NOT 为静态表单独扩 BDD step。"
-  t27,"dynamic-tool-mcp-hard-barrier","公开名以 `mcp:` 为前缀的工具（含 McpToolAdapter 与任何同前缀注册）在批调度分类中 MUST 为 Barrier，无论其 trait 并发声明或配置如何；MUST NOT 提供 glob、配置名名单或 MCP annotation 将其升为 ParallelSafe。非 mcp 自注册工具缺省 MUST 为 Barrier，MAY 经 ToolConcurrency 显式标 ParallelSafe。由单测覆盖，MUST NOT 为静态默认单独扩 BDD step。"
+  t27,"dynamic-tool-mcp-hard-barrier","公开名以 `mcp__` 为前缀（过渡期可识别遗留 `mcp-` / `mcp_` / `mcp:`）的工具（含 McpToolAdapter 与任何同前缀注册）在批调度分类中 MUST 为 Barrier，无论其 trait 并发声明或配置如何；MUST NOT 提供 glob、配置名名单或 MCP annotation 将其升为 ParallelSafe。非 mcp 自注册工具缺省 MUST 为 Barrier，MAY 经 ToolConcurrency 显式标 ParallelSafe。由单测覆盖，MUST NOT 为静态默认单独扩 BDD step。"
   t28,"ask-tui-only-builtin","内置工具 ask MUST 以 TypedTool 存在于 infra；schema MUST 含 questions 数组（每题 id/prompt/mode/options，option.description 可选）；execute 成功结果 MUST 为 status 为 skipped 或 answered 的 JSON。default_tools MUST NOT 包含 ask；仅 TUI 装配路径 MAY 经 ToolSet plus 注入。ask MUST 为 Barrier Sequential。Abort MUST NOT 伪装为 skipped。"
 scenarios[16]{req_id,id,given,when,then,feature}:
   t22,"edit-success-short-llm",edit 成功后,project_for_llm 的 tool result 正文,为短成功句且不含 display_diff,false
@@ -53,7 +53,7 @@ scenarios[16]{req_id,id,given,when,then,feature}:
   t25,"grep-find-schema-timeout",查阅 grep/find schema,检查 parameters,含可选 timeout 字段,false
   r6,"zero-not-unlimited",传入 timeout=0,校验参数,拒绝为无效 timeout,false
   t26,"builtin-class-table",查询 default_tools 各工具 execution_mode,对照分类表,读族 ParallelSafe 且 write/edit/bash Barrier,false
-  t27,"mcp-hard-barrier",构造 mcp: 名工具即便 trait 声称 ParallelSafe,经 classify,仍为 Barrier,false
+  t27,"mcp-hard-barrier",构造 mcp__ 名工具即便 trait 声称 ParallelSafe,经 classify,仍为 Barrier,false
   t28,"ask-not-in-default-tools",查询 default_tools 名称列表,检查 ask,不在列表中,false
   r32,"tool-trait-prefix-unit",XyTool trait 已定义,检查名称前缀,以 Xy 开头,false
   r10,"no-global-dead-code-unit",crate 根,检查 #![allow(dead_code)],不存在或附理由,false

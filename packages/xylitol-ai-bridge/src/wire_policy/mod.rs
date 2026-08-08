@@ -7,19 +7,37 @@ pub mod defaults;
 /// Compatibility profile for a chosen `api` protocol family.
 ///
 /// First language = vendor-native API. Dialect = third-party shape of that API.
-/// This profile tunes how conservatively we treat dialect endpoints.
+/// Named profiles map YAML `models.*.compat` → [`WirePolicy`] (c1940).
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
 pub enum Compat {
     /// Conservative: do not assume first-language wire semantics.
     #[default]
     Generic,
+    /// DeepSeek-shaped dialect (Responses: no encrypted include; Completions: `thinking.type`;
+    /// Anthropic Messages: `thinking.type` without `budget_tokens`).
+    Deepseek,
 }
 
 impl Compat {
     pub fn as_str(self) -> &'static str {
         match self {
             Self::Generic => "generic",
+            Self::Deepseek => "deepseek",
         }
+    }
+
+    /// Parse a YAML / config `compat` string (`generic` | `deepseek`). Empty → Generic.
+    pub fn parse(s: &str) -> Option<Self> {
+        match s.trim().to_ascii_lowercase().as_str() {
+            "" | "generic" => Some(Self::Generic),
+            "deepseek" => Some(Self::Deepseek),
+            _ => None,
+        }
+    }
+
+    /// Whether Responses assemble may request `include: reasoning.encrypted_content`.
+    pub fn allows_reasoning_encrypted_include(self) -> bool {
+        matches!(self, Self::Generic)
     }
 }
 
@@ -66,6 +84,22 @@ impl Default for WirePolicy {
 }
 
 impl WirePolicy {
+    /// Named profile → WirePolicy (defaults board + dialect quirks).
+    pub fn for_compat(compat: Compat) -> Self {
+        match compat {
+            Compat::Generic => Self::default(),
+            Compat::Deepseek => Self {
+                compat: Compat::Deepseek,
+                extra_policy: ExtraPolicy {
+                    // DeepSeek Responses/Completions do not claim OpenAI first-language cache fields.
+                    prompt_cache_usage: false,
+                    prompt_cache_key: false,
+                    previous_response_id: false,
+                },
+            },
+        }
+    }
+
     /// Whether usage mapping may expect first-language cache read fields.
     pub fn expects_prompt_cache_usage(self) -> bool {
         self.extra_policy.prompt_cache_usage
@@ -79,6 +113,11 @@ impl WirePolicy {
     /// Whether chained `previous_response_id` may be enabled.
     pub fn allows_previous_response_id(self) -> bool {
         self.extra_policy.previous_response_id
+    }
+
+    /// Whether Responses assemble may request encrypted reasoning include.
+    pub fn allows_reasoning_encrypted_include(self) -> bool {
+        self.compat.allows_reasoning_encrypted_include()
     }
 }
 
@@ -119,6 +158,17 @@ mod tests {
         assert!(p.expects_prompt_cache_usage());
         assert!(!p.allows_prompt_cache_key());
         assert!(p.allows_previous_response_id());
+        assert!(p.allows_reasoning_encrypted_include());
+    }
+
+    #[test]
+    fn deepseek_profile_skips_encrypted_include_and_cache_assumptions() {
+        let p = WirePolicy::for_compat(Compat::Deepseek);
+        assert_eq!(p.compat, Compat::Deepseek);
+        assert_eq!(Compat::parse("deepseek"), Some(Compat::Deepseek));
+        assert!(!p.expects_prompt_cache_usage());
+        assert!(!p.allows_reasoning_encrypted_include());
+        assert!(!p.allows_previous_response_id());
     }
 
     #[test]

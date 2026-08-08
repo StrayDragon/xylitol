@@ -18,11 +18,11 @@ pub(crate) enum PlannedWindow {
 
 /// Classify a tool call for barrier-parallel scheduling.
 ///
-/// Hard rule: names starting with `mcp:` are **always** Barrier
+/// Hard rule: MCP tools (`mcp_` / legacy `mcp:` prefix) are **always** Barrier
 /// ([`XyToolExecutionMode::Sequential`]), even if the trait claims ParallelSafe.
 /// Missing / unknown tools are Barrier.
 pub(crate) fn classify(name: &str, tool: Option<&dyn XyTool>) -> XyToolExecutionMode {
-    if name.starts_with("mcp:") {
+    if crate::protocol::is_mcp_tool_name(name) {
         return XyToolExecutionMode::Sequential;
     }
     match tool {
@@ -124,11 +124,11 @@ mod tests {
     #[test]
     fn classify_mcp_prefix_hard_barrier_even_if_trait_lies() {
         let lying = ModeTool {
-            name: "mcp:fake:x",
+            name: "mcp_fake_x",
             mode: XyToolExecutionMode::Parallel,
         };
         assert_eq!(
-            classify("mcp:fake:x", Some(&lying)),
+            classify("mcp_fake_x", Some(&lying)),
             XyToolExecutionMode::Sequential
         );
     }
@@ -194,12 +194,12 @@ mod tests {
     fn plan_mcp_in_middle_forced_barrier() {
         let read = safe("read");
         let lying_mcp = ModeTool {
-            name: "mcp:srv:t",
+            name: "mcp_srv_t",
             mode: XyToolExecutionMode::Parallel,
         };
         let windows = plan_windows_for_calls([
             ("read", Some(&read as &dyn XyTool)),
-            ("mcp:srv:t", Some(&lying_mcp)),
+            ("mcp_srv_t", Some(&lying_mcp)),
             ("read", Some(&read)),
         ]);
         assert_eq!(

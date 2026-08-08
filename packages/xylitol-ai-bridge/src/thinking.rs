@@ -138,7 +138,7 @@ fn resolve_anthropic_map_string(
     AiBridgeResolvedThinking::AnthropicBudget(budget_for_level(level, budgets))
 }
 
-/// Inject OpenAI Completions `reasoning_effort`.
+/// Inject OpenAI Completions `reasoning_effort` (generic / OpenAI-shaped).
 pub fn apply_thinking_openai_completions(body: &mut Value, resolved: &AiBridgeResolvedThinking) {
     match resolved {
         AiBridgeResolvedThinking::Omit => {
@@ -151,6 +151,27 @@ pub fn apply_thinking_openai_completions(body: &mut Value, resolved: &AiBridgeRe
         }
         AiBridgeResolvedThinking::AnthropicBudget(_) => {}
     }
+}
+
+/// Completions thinking inject gated by [`crate::wire_policy::Compat`].
+///
+/// Prefer [`crate::provider::dialect::apply_completions_thinking`] at call sites;
+/// this remains a thin public alias.
+pub fn apply_thinking_openai_completions_with_compat(
+    body: &mut Value,
+    resolved: &AiBridgeResolvedThinking,
+    compat: crate::wire_policy::Compat,
+) {
+    crate::provider::dialect::apply_completions_thinking(body, resolved, compat);
+}
+
+/// Anthropic thinking inject gated by compat (DeepSeek omits `budget_tokens`).
+pub fn apply_thinking_anthropic_with_compat(
+    body: &mut Value,
+    resolved: &AiBridgeResolvedThinking,
+    compat: crate::wire_policy::Compat,
+) {
+    crate::provider::dialect::apply_anthropic_thinking(body, resolved, compat);
 }
 
 /// Inject OpenAI Responses `reasoning: { effort, summary }` (summary aligns with pi default `auto`).
@@ -262,6 +283,26 @@ mod tests {
             &AiBridgeResolvedThinking::OpenAiEffort("medium".into()),
         );
         assert_eq!(body["reasoning_effort"], json!("medium"));
+    }
+
+    #[test]
+    fn apply_completions_deepseek_thinking_format() {
+        let mut body = json!({"model": "m"});
+        apply_thinking_openai_completions_with_compat(
+            &mut body,
+            &AiBridgeResolvedThinking::OpenAiEffort("medium".into()),
+            crate::wire_policy::Compat::Deepseek,
+        );
+        assert_eq!(body["thinking"]["type"], json!("enabled"));
+        assert_eq!(body["reasoning_effort"], json!("medium"));
+
+        apply_thinking_openai_completions_with_compat(
+            &mut body,
+            &AiBridgeResolvedThinking::Omit,
+            crate::wire_policy::Compat::Deepseek,
+        );
+        assert_eq!(body["thinking"]["type"], json!("disabled"));
+        assert!(body.get("reasoning_effort").is_none());
     }
 
     #[test]

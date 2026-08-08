@@ -36,9 +36,20 @@ impl ToolSet {
         self.tools.iter()
     }
 
-    /// Get a tool by name.
+    /// Get a tool by registry name, or by provider wire name (`:` → `_`).
     pub fn get(&self, name: &str) -> Option<Arc<dyn XyTool>> {
-        self.tools.iter().find(|t| t.name() == name).cloned()
+        self.tools
+            .iter()
+            .find(|t| t.name() == name)
+            .cloned()
+            .or_else(|| {
+                self.tools
+                    .iter()
+                    .find(|t| {
+                        xylitol_ai_bridge::provider::tool_wire::to_wire_tool_name(t.name()) == name
+                    })
+                    .cloned()
+            })
     }
 
     /// Add a single tool, returning the updated set.

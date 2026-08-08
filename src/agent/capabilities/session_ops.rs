@@ -25,20 +25,26 @@ impl AgentCapabilities {
         self.session_id.as_deref()
     }
 
-    /// Ensure a session exists (create if needed).
+    /// Ensure a session exists with a header (create / repair if needed).
+    ///
+    /// `create` is idempotent: bind-then-`/model` may have already written body
+    /// rows into pending; a missing header is inserted without wiping them.
     pub async fn ensure_session(&self, id: &str, parent: Option<&str>) -> Result<(), XyError> {
-        if !self.store.exists(id).await {
-            let cwd_clone = self.cwd.clone();
-            self.store
-                .create(id, Some(&cwd_clone), parent)
-                .await
-                .map_err(|e| XyError::Session(anyhow::anyhow!(e)))?;
-            if let Some(bus) = &self.hook_bus {
-                let reason = if parent.is_some() { "fork" } else { "new" };
-                let (ty, phase, ctx) =
-                    crate::agent::runtime::script_hook_ctx::session_start(reason);
-                observe_hook(bus, ty, phase, ctx).await;
-            }
+        let had_header = match self.store.load_entries(id).await {
+            Ok(entries) => entries
+                .iter()
+                .any(|e| matches!(e, crate::protocol::session::SessionEntry::Header(_))),
+            Err(_) => false,
+        };
+        let cwd_clone = self.cwd.clone();
+        self.store
+            .create(id, Some(&cwd_clone), parent)
+            .await
+            .map_err(|e| XyError::Session(anyhow::anyhow!(e)))?;
+        if !had_header && let Some(bus) = &self.hook_bus {
+            let reason = if parent.is_some() { "fork" } else { "new" };
+            let (ty, phase, ctx) = crate::agent::runtime::script_hook_ctx::session_start(reason);
+            observe_hook(bus, ty, phase, ctx).await;
         }
         Ok(())
     }

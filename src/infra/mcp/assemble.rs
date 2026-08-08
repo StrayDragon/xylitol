@@ -105,7 +105,7 @@ mod tests {
         )];
         let tools = adapters_from_discovered(manager, &rows);
         assert_eq!(tools.len(), 1);
-        assert_eq!(tools[0].name(), "mcp:fs:read");
+        assert_eq!(tools[0].name(), "mcp__fs__read");
     }
 
     #[tokio::test]

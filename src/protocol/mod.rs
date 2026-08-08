@@ -21,6 +21,7 @@ pub mod model;
 pub mod resource;
 pub mod session;
 pub mod source_info;
+pub mod tool_name;
 pub mod tool_timeout;
 
 // Wire Command/Event at protocol root (legacy call sites).
@@ -41,4 +42,8 @@ pub use lifecycle::{XyEvent, XyEventError};
 pub use message::{AgentMessage, AgentPart, EnvMessage, LlmMessage};
 pub use model::{XyChunk, XyModelMeta, XyToolSchema};
 pub use model::{XyModelConfig, XyModelKind};
+pub use tool_name::{
+    MCP_PUBLIC_DELIMITER, is_mcp_tool_name, is_provider_safe_tool_name, mcp_tool_armed_prefix,
+    mcp_tool_public_name,
+};
 pub use tool_timeout::{MAX_TOOL_TIMEOUT_SECS, ToolTimeout, ToolTimeoutError};

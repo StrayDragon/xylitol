@@ -248,6 +248,7 @@ mod tests {
                 model: id.into(),
                 base_url: None,
                 api: None,
+                compat: None,
             },
             display_name: id.into(),
             thinking,

@@ -63,7 +63,7 @@
 
 ## Provider（Pre-1.0.0）
 
-**交付**：仅 OpenAI 兼容（Chat Completions / Responses）与 Anthropic Messages。OAuth、厂商专属 attribution 等 1.0 前不做。
+**交付**：仅 OpenAI 兼容（Chat Completions / Responses）与 Anthropic Messages。OAuth 等 1.0 前不做。OpenCode Zen（`opencode.ai`）的 `x-opencode-*` 会话归因属于网关 courtesy，允许。
 
 **开闭**：业务只依赖 `XyModel`；方言在 `xylitol-ai-bridge`。新兼容端 = adapter/配置，**不改** ReAct / `AgentMessage`。禁止「已是 `XyModel` 再包一层」。消息投影细则：`src/AGENTS.md`。
 

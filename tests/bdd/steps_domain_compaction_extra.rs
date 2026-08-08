@@ -314,6 +314,7 @@ pub(crate) async fn g_comp_tokens_before_done(agent: &AgentState, sess: &XySessi
             api_key: String::new(),
             base_url: None,
             api: None,
+            compat: None,
         },
     )
     .expect("fake");
@@ -874,6 +875,7 @@ pub(crate) async fn w_compact_summarize(agent: &AgentState, sess: &XySessionStor
             api_key: String::new(),
             base_url: None,
             api: None,
+            compat: None,
         },
     )
     .expect("build fake provider");
@@ -976,6 +978,7 @@ Edit src/file5.rs and update Cargo.toml
             api_key: String::new(),
             base_url: None,
             api: None,
+            compat: None,
         },
     )
     .expect("build fake provider");
@@ -1039,6 +1042,7 @@ pub(crate) async fn w_comp_agent_compact(agent: &AgentState, sess: &XySessionSto
             api_key: String::new(),
             base_url: None,
             api: None,
+            compat: None,
         },
     )
     .expect("build fake provider");
@@ -1187,6 +1191,7 @@ pub(crate) async fn w_comp_iterative_summary(agent: &AgentState, sess: &XySessio
             api_key: String::new(),
             base_url: None,
             api: None,
+            compat: None,
         },
     )
     .expect("fake provider");

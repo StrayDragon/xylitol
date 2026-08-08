@@ -505,13 +505,24 @@ impl XyDriver for XyInProcessDriver {
     }
 
     fn select_model(&mut self, model_id: &str) -> Result<ModelInfo, XyDriverError> {
-        // Match by exact id or by config.model alias.
+        // Prefer registry id; only use unique upstream `config.model` as alias.
         let registry = self.agent.model_registry();
         let found = registry
             .list()
             .iter()
-            .find(|m| m.config.model == model_id || m.id == model_id)
+            .find(|m| m.id == model_id)
             .map(|m| m.id.clone())
+            .or_else(|| {
+                let hits: Vec<_> = registry
+                    .list()
+                    .iter()
+                    .filter(|m| m.config.model == model_id)
+                    .collect();
+                match hits.as_slice() {
+                    [only] => Some(only.id.clone()),
+                    _ => None,
+                }
+            })
             .ok_or_else(|| XyDriverError::not_found(format!("model not found: {model_id}")))?;
         self.agent
             .select_model(&found)
@@ -1023,7 +1034,7 @@ impl XyDriver for XyInProcessDriver {
                 let id = spec.name.clone();
                 let connected_info = connected.iter().find(|s| s.id == id);
                 let failed = diags.iter().any(|d| d.server == id);
-                let prefix = format!("mcp:{id}:");
+                let prefix = crate::protocol::mcp_tool_armed_prefix(&id);
                 let armed_count = tool_names.iter().filter(|n| n.starts_with(&prefix)).count();
                 let tools_armed = armed_count > 0;
                 let phase = if connected_info.is_some() {
@@ -1773,6 +1784,7 @@ mod driver_session_tree_tests {
                 model: "mock".into(),
                 base_url: None,
                 api: None,
+                compat: None,
             },
             display_name: "Mock".into(),
             thinking: false,
@@ -2202,6 +2214,7 @@ mod driver_session_tree_tests {
                 model: "mock".into(),
                 base_url: None,
                 api: None,
+                compat: None,
             },
             display_name: "Mock".into(),
             thinking: false,

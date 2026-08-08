@@ -153,7 +153,7 @@ pub fn build_system_prompt(opts: &SystemPromptOpts) -> String {
 fn default_prompt_base(selected_tools: &[String], snippets: &[(String, String)]) -> String {
     let tools: Vec<(String, String)> = selected_tools
         .iter()
-        .filter(|name| !name.starts_with("mcp:"))
+        .filter(|name| !crate::protocol::is_mcp_tool_name(name))
         .filter_map(|name| {
             snippets
                 .iter()
@@ -424,15 +424,15 @@ mod tests {
         let opts = SystemPromptOpts {
             selected_tools: vec![
                 "read".into(),
-                "mcp:fs:read".into(),
+                "mcp_fs_read".into(),
                 "bash".into(),
-                "mcp:git:status".into(),
+                "mcp_git_status".into(),
             ],
             tool_snippets: vec![
                 ("read".into(), "Read file".into()),
                 ("bash".into(), "Run bash".into()),
-                ("mcp:fs:read".into(), "MCP read".into()),
-                ("mcp:git:status".into(), "MCP git".into()),
+                ("mcp_fs_read".into(), "MCP read".into()),
+                ("mcp_git_status".into(), "MCP git".into()),
             ],
             cwd: "/tmp".into(),
             ..Default::default()
@@ -441,10 +441,10 @@ mod tests {
         assert!(prompt.contains("- read: Read file"));
         assert!(prompt.contains("- bash: Run bash"));
         assert!(
-            !prompt.contains("mcp:fs:read"),
-            "Available tools MUST NOT enumerate mcp: names: {prompt}"
+            !prompt.contains("mcp_fs_read"),
+            "Available tools MUST NOT enumerate mcp_ names: {prompt}"
         );
-        assert!(!prompt.contains("mcp:git:status"));
+        assert!(!prompt.contains("mcp_git_status"));
         assert!(prompt.contains("MCP/custom tools are provided in this turn's tools list"));
         assert!(prompt.contains("`/mcp`"));
     }
@@ -453,10 +453,10 @@ mod tests {
     fn custom_prompt_still_skips_default_tools_backfill() {
         let opts = SystemPromptOpts {
             custom_prompt: Some("Only custom".into()),
-            selected_tools: vec!["mcp:fs:read".into(), "read".into()],
+            selected_tools: vec!["mcp_fs_read".into(), "read".into()],
             tool_snippets: vec![
                 ("read".into(), "Read".into()),
-                ("mcp:fs:read".into(), "MCP".into()),
+                ("mcp_fs_read".into(), "MCP".into()),
             ],
             cwd: ".".into(),
             ..Default::default()

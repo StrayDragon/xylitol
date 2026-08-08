@@ -210,6 +210,7 @@ mod tests {
             model: "claude-3".into(),
             base_url: None,
             api: None,
+            compat: None,
         };
         let meta = XyModelMeta {
             id: "claude-3".into(),

@@ -306,6 +306,8 @@ mod tests {
                 model: "local-quant-id".into(),
                 base_url: None,
                 api: None,
+                compat: None,
+                api_key: None,
                 fallback: None,
                 thinking: true,
                 thinking_levels: None,

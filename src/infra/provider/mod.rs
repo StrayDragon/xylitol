@@ -2,7 +2,7 @@
 //!
 //! Dialect HTTP/SSE implementations live in [`xylitol_ai_bridge`]. This module
 //! owns domain mapping, Fake/`XyModel` assembly, and the composition-root factory.
-//! - OpenAI Responses / Completions / Anthropic Messages → `adapter::*` wrappers
+//! - OpenAI Responses / Completions / Anthropic Messages → `adapter::MappedBridgeAdapter`
 //! - [`FakeProvider`]: scenario-based mock for offline testing
 //! - `MockXyModel` (test-only): returns a fixed text response
 

@@ -53,6 +53,7 @@ async fn test_agent_session_builds_model() {
             model: "mock-model".into(),
             base_url: None,
             api: None,
+            compat: None,
         },
         display_name: "Mock".into(),
         thinking: false,
@@ -106,6 +107,7 @@ async fn test_agent_loop_emits_events() {
             model: "mock-model".into(),
             base_url: None,
             api: None,
+            compat: None,
         },
         display_name: "Mock".into(),
         thinking: false,
@@ -258,6 +260,7 @@ fn mock_model_registry() -> ModelRegistry {
             model: "mock".into(),
             base_url: None,
             api: None,
+            compat: None,
         },
         display_name: "Mock".into(),
         thinking: false,
@@ -1821,7 +1824,7 @@ async fn batch_mcp_never_parallel_even_if_trait_lies() {
             epoch,
         }) as Arc<dyn crate::protocol::ports::XyTool>,
         Arc::new(SlowTool {
-            name: "mcp:fake:x",
+            name: "mcp_fake_x",
             mode: crate::protocol::ports::XyToolExecutionMode::Parallel, // lie
             sleep_ms: 80,
             log: log.clone(),
@@ -1830,7 +1833,7 @@ async fn batch_mcp_never_parallel_even_if_trait_lies() {
     ]);
     let rounds = multi_tool_rounds(vec![
         ("slow_safe", r#"{"n":1}"#),
-        ("mcp:fake:x", r#"{}"#),
+        ("mcp_fake_x", r#"{}"#),
         ("slow_safe", r#"{"n":2}"#),
     ]);
     let mut agent = make_agent_with_rounds(rounds, tools);
@@ -1839,9 +1842,9 @@ async fn batch_mcp_never_parallel_even_if_trait_lies() {
     while stream.next().await.is_some() {}
     let entries = log.lock().unwrap().clone();
     assert_eq!(entries.len(), 3, "{entries:?}");
-    let mcp = entries.iter().find(|(n, _, _)| n == "mcp:fake:x").unwrap();
+    let mcp = entries.iter().find(|(n, _, _)| n == "mcp_fake_x").unwrap();
     for (n, s, e) in &entries {
-        if n == "mcp:fake:x" {
+        if n == "mcp_fake_x" {
             continue;
         }
         assert!(

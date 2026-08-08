@@ -1,10 +1,12 @@
 //! Unexposed wire-strategy defaults — **only** edit this file to change defaults.
 //!
-//! Product YAML / env MUST NOT shadow these values (c1880).
+//! Named YAML `models.*.compat` selects a [`super::WirePolicy`] profile (c1940);
+//! free-form `extra_policy` YAML remains forbidden — edit these constants or
+//! profile constructors instead.
 
 use super::Compat;
 
-/// Default compatibility profile for dialect endpoints.
+/// Default compatibility profile when YAML `compat` is omitted.
 pub const COMPAT_DEFAULT: Compat = Compat::Generic;
 
 /// When false, do not assume first-language prompt-cache usage fields.

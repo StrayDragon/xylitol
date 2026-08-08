@@ -250,12 +250,21 @@ impl SessionManager {
     }
 
     /// Create a new session and record the header entry.
+    ///
+    /// Idempotent: if the session already has a header (pending / in-memory /
+    /// on-disk), this is a no-op. If body rows were appended before `create`
+    /// (bind-then-`/model` race), a missing header is inserted ahead of them
+    /// instead of wiping those rows.
     pub async fn create(
         &self,
         id: &str,
         cwd: Option<&str>,
         parent_session: Option<&str>,
     ) -> Result<(), String> {
+        if self.session_has_header(id).await {
+            return Ok(());
+        }
+
         let header = SessionEntry::Header(SessionHeader {
             entry_type: "session".into(),
             version: SESSION_VERSION,
@@ -267,21 +276,66 @@ impl SessionManager {
 
         match &self.backend {
             SessionBackend::Persisted { .. } => {
-                self.pending_store
-                    .write()
-                    .expect("RwLock not poisoned")
-                    .insert(id.to_string(), vec![header]);
+                if self.session_file_exists(id) {
+                    // Corrupt / headerless JSONL: prepend header on disk.
+                    let path = self.session_path(id);
+                    let content = tokio::fs::read_to_string(&path)
+                        .await
+                        .map_err(|e| format!("read session before header repair: {e}"))?;
+                    let (disk, _) = crate::protocol::session::parse_session_jsonl_lines(&content);
+                    let mut merged = Vec::with_capacity(disk.len() + 1);
+                    merged.push(header);
+                    merged.extend(disk);
+                    self.write_entries_to_disk(id, &merged).await?;
+                } else {
+                    let mut store = self.pending_store.write().expect("RwLock not poisoned");
+                    let entries = store.entry(id.to_string()).or_default();
+                    entries.insert(0, header);
+                }
             }
             SessionBackend::InMemory { .. } => {
-                self.in_memory_store
-                    .write()
-                    .expect("RwLock not poisoned")
-                    .insert(id.to_string(), vec![header]);
+                let mut store = self.in_memory_store.write().expect("RwLock not poisoned");
+                let entries = store.entry(id.to_string()).or_default();
+                entries.insert(0, header);
             }
         }
 
-        self.set_leaf(id, None);
+        // Only reset leaf when this is a brand-new empty session.
+        if self.get_leaf(id).is_none() {
+            self.set_leaf(id, None);
+        }
         Ok(())
+    }
+
+    async fn session_has_header(&self, session_id: &str) -> bool {
+        match &self.backend {
+            SessionBackend::Persisted { .. } => {
+                if self.session_file_exists(session_id) {
+                    let path = self.session_path(session_id);
+                    if let Ok(content) = tokio::fs::read_to_string(&path).await {
+                        let (entries, _) =
+                            crate::protocol::session::parse_session_jsonl_lines(&content);
+                        return entries.iter().any(|e| matches!(e, SessionEntry::Header(_)));
+                    }
+                    return false;
+                }
+                self.pending_store
+                    .read()
+                    .expect("RwLock not poisoned")
+                    .get(session_id)
+                    .is_some_and(|entries| {
+                        entries.iter().any(|e| matches!(e, SessionEntry::Header(_)))
+                    })
+            }
+            SessionBackend::InMemory { .. } => self
+                .in_memory_store
+                .read()
+                .expect("RwLock not poisoned")
+                .get(session_id)
+                .is_some_and(|entries| {
+                    entries.iter().any(|e| matches!(e, SessionEntry::Header(_)))
+                }),
+        }
     }
 
     /// Append an entry to a session.
@@ -316,10 +370,23 @@ impl SessionManager {
                         crate::protocol::session::is_assistant_message(&entry_with_ids);
                     {
                         let mut pending = self.pending_store.write().expect("RwLock not poisoned");
-                        pending
-                            .entry(session_id.to_string())
-                            .or_default()
-                            .push(entry_with_ids.clone());
+                        let entries = pending.entry(session_id.to_string()).or_default();
+                        // Defense: body rows must never sit in pending without a header
+                        // (bind-then-append before `create` / `ensure_session`).
+                        if !entries.iter().any(|e| matches!(e, SessionEntry::Header(_))) {
+                            entries.insert(
+                                0,
+                                SessionEntry::Header(SessionHeader {
+                                    entry_type: "session".into(),
+                                    version: SESSION_VERSION,
+                                    id: session_id.to_string(),
+                                    timestamp: Utc::now().to_rfc3339(),
+                                    cwd: ".".into(),
+                                    parent_session: None,
+                                }),
+                            );
+                        }
+                        entries.push(entry_with_ids.clone());
                     }
                     if is_assistant {
                         self.flush_pending_to_disk(session_id).await?;
@@ -1661,6 +1728,34 @@ mod deferred_persist_tests {
             .collect();
         assert!(roles.contains(&"user"));
         assert!(roles.contains(&"assistant"));
+    }
+
+    #[tokio::test]
+    async fn append_before_create_auto_inserts_header_and_create_is_idempotent() {
+        // Reproduce bind-then-`/model` race: body row lands in pending before
+        // `create` / `ensure_session`. Load must still see a session header.
+        let dir = tempfile::tempdir().unwrap();
+        let mgr = SessionManager::new(dir.path().join("sessions"));
+        let sid = "bind-before-create";
+
+        mgr.append(sid, &user_message("hi")).await.unwrap();
+        let before = mgr.load(sid).await.unwrap();
+        assert!(
+            before.iter().any(|e| matches!(e, SessionEntry::Header(_))),
+            "append must auto-insert header: {before:?}"
+        );
+
+        mgr.create(sid, Some("/tmp/cwd"), None).await.unwrap();
+        let after = mgr.load(sid).await.unwrap();
+        let headers: Vec<_> = after
+            .iter()
+            .filter(|e| matches!(e, SessionEntry::Header(_)))
+            .collect();
+        assert_eq!(headers.len(), 1, "create must not duplicate header");
+        assert!(
+            after.iter().any(|e| matches!(e, SessionEntry::Message(_))),
+            "create must not wipe body rows"
+        );
     }
 
     #[tokio::test]

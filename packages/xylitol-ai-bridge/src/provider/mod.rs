@@ -1,4 +1,11 @@
-//! Provider adapter layer — vendor-specific LLM API dialects.
+//! Provider adapter layer — L1 native APIs + L2 dialect overlays.
+//!
+//! ```text
+//! YAML api × compat
+//!        │
+//!        ├─► native/     first-language HTTP (Responses / Completions / Anthropic)
+//!        └─► dialect/    named quirks (deepseek, …) adjusting L1 bodies / WirePolicy
+//! ```
 
 use std::sync::Arc;
 
@@ -8,22 +15,25 @@ use crate::dto::{AiBridgeMessage, AiBridgeStream, AiBridgeToolSchema};
 use crate::error::AiBridgeError;
 use crate::thinking::AiBridgeGenerateOptions;
 
-pub mod anthropic_messages;
-pub mod assembler;
+pub mod attribution;
+pub mod dialect;
 pub mod factory;
+pub mod native;
 pub mod obs_session;
 pub mod obs_span_parent;
-pub mod openai;
-pub mod openai_client;
-pub mod openai_completions;
-pub mod openai_hooks_mw;
-pub mod openai_responses;
 pub mod remote_count;
 pub mod reqwest_bridge;
+pub mod tool_wire;
 pub mod trace;
 
-pub use anthropic_messages::AnthropicMessagesAdapter;
-pub use assembler::ResponsesAssembler;
+pub use attribution::{is_opencode_host, merge_opencode_attribution};
+pub use dialect::{apply_anthropic_thinking, apply_completions_thinking};
+pub use native::{
+    AnthropicMessagesAdapter, OpenAiCompletionsAdapter, OpenAiResponsesAdapter, ResponsesAssembler,
+    ResponsesStreamState, extract_embedded_provider_error_message, format_responses_error,
+    map_responses_sse_event, messages_to_responses_input,
+    messages_to_responses_input_with_diagnostics, messages_to_responses_input_with_options,
+};
 pub use obs_session::{
     ObsSessionContext, XYLITOL_OBS_LANE_ATTR, XYLITOL_OBS_LANE_INFRA, XYLITOL_OBS_LANE_LLM,
     clear_obs_session, langfuse_generation_properties, langfuse_observation_properties,
@@ -34,21 +44,14 @@ pub use obs_span_parent::{
     clear_obs_span_parents, obs_llm_parent, obs_turn_parent, set_obs_compaction_parent,
     set_obs_iteration_parent, set_obs_turn_parent,
 };
-pub use openai_completions::OpenAiCompletionsAdapter;
-pub use openai_responses::{
-    OpenAiResponsesAdapter, ResponsesStreamState, extract_embedded_provider_error_message,
-    format_responses_error, map_responses_sse_event, messages_to_responses_input,
-    messages_to_responses_input_with_diagnostics, messages_to_responses_input_with_options,
-};
-/// Crate-private layout helpers — public body entry is [`ResponsesAssembler`] only (c1890).
-pub(crate) use openai_responses::{
-    apply_responses_wire_policy, assemble_responses_body_with_diagnostics,
-};
 pub use remote_count::{
     AnthropicRemoteCounter, OpenAiResponsesRemoteCounter, RemoteCounter, StubRemoteCounter,
 };
+pub use tool_wire::{
+    canonical_tool_names, from_wire_tool_name, is_provider_safe_tool_name, to_wire_tool_name,
+};
 
-/// Supported adapter kinds.
+/// Supported adapter kinds (L1 protocol family).
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum AdapterKind {
     OpenAiResponses,

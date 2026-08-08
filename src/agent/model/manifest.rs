@@ -118,6 +118,7 @@ pub fn load_models_from_manifest(
                 base_url: m.base_url.clone(),
                 // Keep in sync with meta.api (c1598 / adapter resolve uses config.api).
                 api: Some(api.clone()),
+                compat: None,
             },
             display_name: m.display_name.clone().unwrap_or_else(|| m.id.clone()),
             thinking: m.thinking,
@@ -196,12 +197,12 @@ mod tests {
     }
 
     #[test]
-    fn manifest_explicit_completions_is_preserved() {
+    fn manifest_completions_api_selects_completions_adapter() {
         let json = r#"
         {
             "models": [
                 {
-                    "id": "legacy",
+                    "id": "zen-free",
                     "provider": "openai",
                     "api": "openai-completions"
                 }
@@ -212,9 +213,13 @@ mod tests {
         std::fs::write(file.path(), json).unwrap();
         let mut reg = empty_registry();
         load_models_from_manifest(file.path(), &mut reg, None).unwrap();
-        let m = reg.find("legacy").unwrap();
+        let m = reg.find("zen-free").unwrap();
         assert_eq!(m.api, "openai-completions");
         assert_eq!(m.config.api.as_deref(), Some("openai-completions"));
+        assert_eq!(
+            crate::infra::provider::adapter::factory::resolve_adapter_kind(&m.config),
+            crate::infra::provider::adapter::AdapterKind::OpenAiCompletions
+        );
     }
 
     #[test]
