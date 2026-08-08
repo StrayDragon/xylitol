@@ -18,4 +18,4 @@
 
 - [x] 3.1 `cargo test -p xylitol-ai-bridge`（133）+ factory/manifest/thinking 触及单测
 - [x] 3.2 `just lint` + specs validate `--no-check`（package-ai-bridge / infra-provider / runtime-model-registry）
-- [ ] 3.3 全闸 `just qa`（待用户填 Zen/DeepSeek key 后可加 live 探查）
+- [x] 3.3 全闸 `just qa`（含 live-provider Ornith；用户已手测 DeepSeek/Zen MCP）
