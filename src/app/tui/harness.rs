@@ -4349,6 +4349,66 @@ mod slice_tests {
     }
 
     #[tokio::test]
+    async fn mcp_pending_clears_when_welcome_shows_connected_and_armed() {
+        use crate::app::core::driver::{
+            LoadedResourcesSnapshot, MCP_PENDING_CUE, McpServerPhase, McpServerSnapshot,
+        };
+
+        // Welcome card "2 connected · …" can appear while Settling still has
+        // mcp_bootstrap_complete=false (pending cue). After Settled refresh,
+        // connected+armed+complete MUST clear the cue (not sticky).
+        let mut session = HostSession::new_product_ui(TestTerminal::new(80, 24));
+        let root = session.ui_root().expect("ui").clone();
+        let driver = ScriptedDriver::new();
+
+        let servers = vec![
+            McpServerSnapshot {
+                id: "context7".into(),
+                phase: McpServerPhase::Connected,
+                tools_armed: true,
+                tool_count: 2,
+            },
+            McpServerSnapshot {
+                id: "lspz".into(),
+                phase: McpServerPhase::Connected,
+                tools_armed: true,
+                tool_count: 4,
+            },
+        ];
+        let connected = vec![("context7".into(), 2), ("lspz".into(), 4)];
+
+        driver.set_loaded_resources_for_driver(LoadedResourcesSnapshot {
+            mcp_configured: 2,
+            mcp_bootstrap_complete: false,
+            tools_table_frozen: false,
+            mcp_connected: connected.clone(),
+            mcp_servers: servers.clone(),
+            ..LoadedResourcesSnapshot::default()
+        });
+        session.refresh_loaded_resources(&driver).await;
+        assert_eq!(
+            root.borrow().status_next_turn_cue_for_test().as_deref(),
+            Some(MCP_PENDING_CUE),
+            "Settling (bootstrap incomplete) keeps cue even when connected+armed"
+        );
+
+        driver.set_loaded_resources_for_driver(LoadedResourcesSnapshot {
+            mcp_configured: 2,
+            mcp_bootstrap_complete: true,
+            tools_table_frozen: false,
+            mcp_connected: connected,
+            mcp_servers: servers,
+            ..LoadedResourcesSnapshot::default()
+        });
+        session.refresh_loaded_resources(&driver).await;
+        assert_eq!(
+            root.borrow().status_next_turn_cue_for_test().as_deref(),
+            None,
+            "welcome connected+armed+bootstrap complete MUST clear mcp pending"
+        );
+    }
+
+    #[tokio::test]
     async fn c1900_assembling_keeps_mcp_pending_cue_while_pre_freeze() {
         use crate::app::core::driver::{
             LoadedResourcesSnapshot, McpServerPhase, McpServerSnapshot,

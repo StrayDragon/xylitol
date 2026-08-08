@@ -1204,8 +1204,12 @@ impl XyDriver for XyInProcessDriver {
                 }
             }
             self.mcp_boot = McpBootState::Settled;
-            // Tools/UI already refreshed when settle was kicked; no second refresh.
-            return self.try_complete_armed_tool_gate();
+            // MUST refresh UI: bootstrap_complete flips Settling→Settled. Skipping
+            // left a stale snap with mcp_bootstrap_complete=false so idle cue
+            // sticky-restored "mcp pending" while the welcome card already showed
+            // connected (manager/tools applied one phase earlier).
+            let _ = self.try_complete_armed_tool_gate();
+            return true;
         }
 
         // Apply rebuilt ToolSet + kick deferred prompt (rebuild ran off-tick).
