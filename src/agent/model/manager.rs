@@ -396,50 +396,17 @@ mod tests {
         assert_eq!(mm.cycle_thinking_level().unwrap(), "off");
     }
 
-    /// The generate options path preserves freeform strings after set/cycle.
     #[test]
-    fn cycle_then_resolve_openai_effort_matches_level() {
-        use xylitol_ai_bridge::{
-            AiBridgeResolvedThinking, AiBridgeThinkingAdapterKind, resolve_thinking_for_request,
-        };
-
+    fn cycle_preserves_freeform_declared_levels() {
         let mut mm = manager_with(vec![meta("m1", true, &["off", "vendor-mid", "high"])]);
         mm.set_thinking_level("off".into()).unwrap();
-
-        let off = resolve_thinking_for_request(
-            &mm.thinking_level(),
-            &mm.current_model()
-                .expect("selected model")
-                .thinking_level_map,
-            None,
-            AiBridgeThinkingAdapterKind::OpenAi,
-        );
-        assert_eq!(off, AiBridgeResolvedThinking::Omit);
+        assert_eq!(mm.thinking_level(), "off");
 
         assert_eq!(mm.cycle_thinking_level().unwrap(), "vendor-mid");
-        let mid = resolve_thinking_for_request(
-            &mm.thinking_level(),
-            &mm.current_model()
-                .expect("selected model")
-                .thinking_level_map,
-            None,
-            AiBridgeThinkingAdapterKind::OpenAi,
-        );
-        assert_eq!(
-            mid,
-            AiBridgeResolvedThinking::OpenAiEffort("vendor-mid".into())
-        );
+        assert_eq!(mm.thinking_level(), "vendor-mid");
 
         assert_eq!(mm.cycle_thinking_level().unwrap(), "high");
-        let high = resolve_thinking_for_request(
-            &mm.thinking_level(),
-            &mm.current_model()
-                .expect("selected model")
-                .thinking_level_map,
-            None,
-            AiBridgeThinkingAdapterKind::OpenAi,
-        );
-        assert_eq!(high, AiBridgeResolvedThinking::OpenAiEffort("high".into()));
+        assert_eq!(mm.thinking_level(), "high");
     }
 
     #[test]

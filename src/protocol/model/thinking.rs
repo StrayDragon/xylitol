@@ -2,55 +2,8 @@
 
 use std::collections::HashMap;
 
-use serde::{Deserialize, Serialize};
-
 /// The literal which disables thinking for every adapter.
 pub const THINKING_OFF: &str = "off";
-
-/// Known legacy names used only for presentation and known Anthropic budgets.
-///
-/// Runtime support sets intentionally use `String`: configured vendors may
-/// declare names outside this helper enum.
-#[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Serialize, Deserialize, Default)]
-#[serde(rename_all = "lowercase")]
-pub enum ThinkingLevel {
-    #[default]
-    Off,
-    Minimal,
-    Low,
-    Medium,
-    High,
-    Xhigh,
-    Max,
-}
-
-impl ThinkingLevel {
-    pub fn as_str(&self) -> &'static str {
-        match self {
-            Self::Off => THINKING_OFF,
-            Self::Minimal => "minimal",
-            Self::Low => "low",
-            Self::Medium => "medium",
-            Self::High => "high",
-            Self::Xhigh => "xhigh",
-            Self::Max => "max",
-        }
-    }
-
-    /// Parse a known display/palette name (case-insensitive).
-    pub fn parse(s: &str) -> Option<Self> {
-        match s.trim().to_ascii_lowercase().as_str() {
-            THINKING_OFF => Some(Self::Off),
-            "minimal" => Some(Self::Minimal),
-            "low" => Some(Self::Low),
-            "medium" => Some(Self::Medium),
-            "high" => Some(Self::High),
-            "xhigh" => Some(Self::Xhigh),
-            "max" => Some(Self::Max),
-            _ => None,
-        }
-    }
-}
 
 /// Resolve a model's declared support list without imposing a global enum.
 ///
@@ -114,10 +67,4 @@ pub fn validate_thinking_level_map(
 }
 
 /// Optional Settings-style thinking budget overrides (Anthropic budget path).
-#[derive(Debug, Clone, Default, PartialEq, Eq)]
-pub struct ThinkingBudgets {
-    pub minimal: Option<u64>,
-    pub low: Option<u64>,
-    pub medium: Option<u64>,
-    pub high: Option<u64>,
-}
+pub use xylitol_ai_bridge::AiBridgeThinkingBudgets as ThinkingBudgets;
