@@ -49,6 +49,22 @@ pub enum AiBridgeResolvedThinking {
     Omit,
     OpenAiEffort(String),
     AnthropicBudget(u64),
+    /// A configured level cannot be represented by Anthropic's token-budget
+    /// protocol. Providers turn this into an observable request error.
+    Invalid(String),
+}
+
+fn canonical_known_level(level: &str) -> Option<&'static str> {
+    match level.trim().to_ascii_lowercase().as_str() {
+        "off" => Some("off"),
+        "minimal" => Some("minimal"),
+        "low" => Some("low"),
+        "medium" => Some("medium"),
+        "high" => Some("high"),
+        "xhigh" => Some("xhigh"),
+        "max" => Some("max"),
+        _ => None,
+    }
 }
 
 fn builtin_anthropic_budget(level: &str) -> u64 {
@@ -58,7 +74,7 @@ fn builtin_anthropic_budget(level: &str) -> u64 {
         "medium" => 8192,
         "high" => 16384,
         "xhigh" | "max" => 32768,
-        _ => 8192,
+        _ => unreachable!("budget only requested for canonical known level"),
     }
 }
 
@@ -73,13 +89,6 @@ fn budget_for_level(level: &str, budgets: Option<&AiBridgeThinkingBudgets>) -> u
     override_budget.unwrap_or_else(|| builtin_anthropic_budget(level))
 }
 
-fn is_known_level(s: &str) -> bool {
-    matches!(
-        s,
-        "off" | "minimal" | "low" | "medium" | "high" | "xhigh" | "max"
-    )
-}
-
 /// Resolve thinking options into a concrete request-body directive.
 pub fn resolve_thinking_for_request(
     level: &str,
@@ -87,8 +96,9 @@ pub fn resolve_thinking_for_request(
     budgets: Option<&AiBridgeThinkingBudgets>,
     adapter: AiBridgeThinkingAdapterKind,
 ) -> AiBridgeResolvedThinking {
-    let level = level.trim().to_ascii_lowercase();
-    if let Some(entry) = map.get(level.as_str()) {
+    // Map keys are declared level names, so preserve the configured spelling
+    // for lookup and OpenAI effort values.
+    if let Some(entry) = map.get(level) {
         return match entry {
             None => AiBridgeResolvedThinking::Omit,
             Some(raw) => match adapter {
@@ -96,7 +106,7 @@ pub fn resolve_thinking_for_request(
                     AiBridgeResolvedThinking::OpenAiEffort(raw.clone())
                 }
                 AiBridgeThinkingAdapterKind::Anthropic => {
-                    resolve_anthropic_map_string(&level, raw, budgets)
+                    resolve_anthropic_map_string(level, raw, budgets)
                 }
             },
         };
@@ -104,17 +114,21 @@ pub fn resolve_thinking_for_request(
 
     match adapter {
         AiBridgeThinkingAdapterKind::OpenAi => {
-            if level == "off" {
+            if canonical_known_level(level) == Some("off") {
                 AiBridgeResolvedThinking::Omit
             } else {
-                AiBridgeResolvedThinking::OpenAiEffort(level)
+                AiBridgeResolvedThinking::OpenAiEffort(level.to_string())
             }
         }
         AiBridgeThinkingAdapterKind::Anthropic => {
-            if level == "off" {
+            if canonical_known_level(level) == Some("off") {
                 AiBridgeResolvedThinking::Omit
+            } else if let Some(known) = canonical_known_level(level) {
+                AiBridgeResolvedThinking::AnthropicBudget(budget_for_level(known, budgets))
             } else {
-                AiBridgeResolvedThinking::AnthropicBudget(budget_for_level(&level, budgets))
+                AiBridgeResolvedThinking::Invalid(format!(
+                    "Anthropic thinking level `{level}` requires a numeric or known-level thinking_level_map entry"
+                ))
             }
         }
     }
@@ -128,14 +142,15 @@ fn resolve_anthropic_map_string(
     if let Ok(n) = raw.parse::<u64>() {
         return AiBridgeResolvedThinking::AnthropicBudget(n);
     }
-    let as_level = raw.trim().to_ascii_lowercase();
+    let Some(as_level) = canonical_known_level(raw) else {
+        return AiBridgeResolvedThinking::Invalid(format!(
+            "Anthropic thinking_level_map `{level}: {raw}` must map to a token budget or known level"
+        ));
+    };
     if as_level == "off" {
         return AiBridgeResolvedThinking::Omit;
     }
-    if is_known_level(&as_level) {
-        return AiBridgeResolvedThinking::AnthropicBudget(budget_for_level(&as_level, budgets));
-    }
-    AiBridgeResolvedThinking::AnthropicBudget(budget_for_level(level, budgets))
+    AiBridgeResolvedThinking::AnthropicBudget(budget_for_level(as_level, budgets))
 }
 
 /// Inject OpenAI Completions `reasoning_effort` (generic / OpenAI-shaped).
@@ -149,7 +164,7 @@ pub fn apply_thinking_openai_completions(body: &mut Value, resolved: &AiBridgeRe
         AiBridgeResolvedThinking::OpenAiEffort(effort) => {
             body["reasoning_effort"] = Value::String(effort.clone());
         }
-        AiBridgeResolvedThinking::AnthropicBudget(_) => {}
+        AiBridgeResolvedThinking::AnthropicBudget(_) | AiBridgeResolvedThinking::Invalid(_) => {}
     }
 }
 
@@ -185,7 +200,7 @@ pub fn apply_thinking_openai_responses(body: &mut Value, resolved: &AiBridgeReso
         AiBridgeResolvedThinking::OpenAiEffort(effort) => {
             body["reasoning"] = json!({ "effort": effort, "summary": "auto" });
         }
-        AiBridgeResolvedThinking::AnthropicBudget(_) => {}
+        AiBridgeResolvedThinking::AnthropicBudget(_) | AiBridgeResolvedThinking::Invalid(_) => {}
     }
 }
 
@@ -203,7 +218,7 @@ pub fn apply_thinking_anthropic(body: &mut Value, resolved: &AiBridgeResolvedThi
                 "budget_tokens": tokens,
             });
         }
-        AiBridgeResolvedThinking::OpenAiEffort(_) => {}
+        AiBridgeResolvedThinking::OpenAiEffort(_) | AiBridgeResolvedThinking::Invalid(_) => {}
     }
 }
 
@@ -273,6 +288,39 @@ mod tests {
             AiBridgeThinkingAdapterKind::Anthropic,
         );
         assert_eq!(r, AiBridgeResolvedThinking::AnthropicBudget(2048));
+    }
+
+    #[test]
+    fn freeform_anthropic_level_is_invalid_without_map() {
+        let r = resolve_thinking_for_request(
+            "vendor-max",
+            &HashMap::new(),
+            None,
+            AiBridgeThinkingAdapterKind::Anthropic,
+        );
+        assert!(matches!(r, AiBridgeResolvedThinking::Invalid(_)));
+    }
+
+    #[test]
+    fn openai_preserves_declared_level_spelling() {
+        let r = resolve_thinking_for_request(
+            "HIGH",
+            &HashMap::new(),
+            None,
+            AiBridgeThinkingAdapterKind::OpenAi,
+        );
+        assert_eq!(r, AiBridgeResolvedThinking::OpenAiEffort("HIGH".into()));
+    }
+
+    #[test]
+    fn anthropic_known_level_parsing_is_case_insensitive() {
+        let r = resolve_thinking_for_request(
+            "HIGH",
+            &HashMap::new(),
+            None,
+            AiBridgeThinkingAdapterKind::Anthropic,
+        );
+        assert_eq!(r, AiBridgeResolvedThinking::AnthropicBudget(16_384));
     }
 
     #[test]

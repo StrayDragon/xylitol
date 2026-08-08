@@ -3,11 +3,10 @@
 use xylitol_tui::{ThinkingBorderLevel, apply_thinking_border};
 
 use super::UiRoot;
-use crate::protocol::model::ThinkingLevel;
 
 impl UiRoot {
     /// Sync UI thinking level (border + footer); silent — no transcript.
-    pub fn set_thinking_level_ui(&mut self, level: ThinkingLevel) {
+    pub fn set_thinking_level_ui(&mut self, level: String) {
         self.thinking_level = level;
         self.sync_editor_border();
         self.refresh_footer_from_queue(
@@ -16,13 +15,14 @@ impl UiRoot {
         );
     }
 
-    pub fn thinking_level(&self) -> ThinkingLevel {
-        self.thinking_level
+    pub fn thinking_level(&self) -> String {
+        self.thinking_level.clone()
     }
 
-    /// Map domain thinking level → package border level by `as_str`.
+    /// Map known level names to the package border palette; freeform names use
+    /// the neutral off palette but remain visible in the footer/picker.
     fn thinking_border_level(&self) -> ThinkingBorderLevel {
-        ThinkingBorderLevel::parse(self.thinking_level.as_str()).unwrap_or(ThinkingBorderLevel::Off)
+        ThinkingBorderLevel::parse(&self.thinking_level).unwrap_or(ThinkingBorderLevel::Off)
     }
 
     /// Sync operation-zone border: bash accent overrides; else thinking level.

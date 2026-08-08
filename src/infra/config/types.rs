@@ -279,11 +279,11 @@ pub struct ModelEntry {
     /// Whether this model supports thinking/reasoning. Default: true for all.
     #[serde(default = "default_thinking")]
     pub thinking: bool,
-    /// Optional explicit thinking levels (may contain holes). Unknown names fail load.
+    /// Ordered, vendor-declared thinking level names. Empty tokens fail load.
     #[serde(default)]
     pub thinking_levels: Option<Vec<String>>,
     /// Optional level → provider effort/budget string map (`null` value = omit that level).
-    /// Unknown keys fail load. Missing keys use adapter built-in defaults at request time.
+    /// Keys must be declared by this model's `thinking_levels` support list.
     #[serde(default)]
     pub thinking_level_map: Option<std::collections::HashMap<String, Option<String>>>,
     /// Context window size in tokens. Default: 0 (auto-detect from provider).
@@ -469,16 +469,16 @@ fn default_profile_name() -> String {
 }
 
 impl AppConfig {
-    /// Validate optional `thinking_levels` on every model entry (unknown names fail).
+    /// Validate freeform thinking lists and maps for every model entry.
     pub fn validate_thinking_levels(&self) -> Result<(), String> {
         for (alias, entry) in &self.model.models {
-            crate::protocol::model::ThinkingLevel::resolve_configured_levels(
+            let levels = crate::protocol::model::resolve_configured_levels(
                 entry.thinking,
                 entry.thinking_levels.as_deref(),
             )
             .map_err(|e| format!("models.{alias}: {e}"))?;
             if let Some(map) = &entry.thinking_level_map {
-                crate::protocol::model::validate_thinking_level_map(map)
+                crate::protocol::model::validate_thinking_level_map(map, &levels)
                     .map_err(|e| format!("models.{alias}: {e}"))?;
             }
         }
@@ -589,14 +589,14 @@ impl AppConfig {
             .and_then(|e| (e.context_window > 0).then_some(e.context_window))
             .unwrap_or_else(|| default_context_window_for(model_config.kind));
 
-        let levels = crate::protocol::model::ThinkingLevel::resolve_configured_levels(
+        let thinking_levels = crate::protocol::model::resolve_configured_levels(
             thinking,
             entry.and_then(|e| e.thinking_levels.as_deref()),
         )?;
-        let thinking_levels = levels.iter().map(|l| l.as_str().to_string()).collect();
         let thinking_level_map = entry
             .and_then(|e| e.thinking_level_map.clone())
             .unwrap_or_default();
+        crate::protocol::model::validate_thinking_level_map(&thinking_level_map, &thinking_levels)?;
 
         Ok(XyModelMeta {
             id: model_id.to_string(),
@@ -1220,7 +1220,6 @@ session:
 #[cfg(test)]
 mod thinking_levels_tests {
     use super::*;
-    use crate::protocol::model::ThinkingLevel;
     use crate::protocol::model::XyModelKind;
 
     fn fake_entry(thinking: bool, levels: Option<Vec<&str>>) -> ModelEntry {
@@ -1241,21 +1240,11 @@ mod thinking_levels_tests {
     }
 
     #[test]
-    fn resolve_model_meta_default_standard_levels() {
+    fn resolve_model_meta_default_levels_are_off_only() {
         let mut cfg = AppConfig::default();
         cfg.model.models.insert("f".into(), fake_entry(true, None));
         let meta = cfg.resolve_model_meta("f").unwrap();
-        assert_eq!(
-            meta.thinking_levels,
-            vec![
-                "off".to_string(),
-                "minimal".to_string(),
-                "low".to_string(),
-                "medium".to_string(),
-                "high".to_string(),
-            ]
-        );
-        assert!(!meta.thinking_levels.iter().any(|l| l == "xhigh"));
+        assert_eq!(meta.thinking_levels, vec!["off".to_string()]);
     }
 
     #[test]
@@ -1282,24 +1271,18 @@ mod thinking_levels_tests {
     }
 
     #[test]
-    fn validate_thinking_levels_rejects_unknown() {
+    fn validate_thinking_levels_accepts_freeform_names() {
         let mut cfg = AppConfig::default();
         cfg.model
             .models
             .insert("f".into(), fake_entry(true, Some(vec!["bogon"])));
-        let err = cfg.validate_thinking_levels().unwrap_err();
-        assert!(err.contains("unknown"));
-    }
-
-    #[test]
-    fn thinking_level_parse_xhigh() {
-        assert_eq!(ThinkingLevel::parse("xhigh"), Some(ThinkingLevel::Xhigh));
+        cfg.validate_thinking_levels().unwrap();
     }
 
     #[test]
     fn resolve_model_meta_thinking_level_map() {
         let mut cfg = AppConfig::default();
-        let mut entry = fake_entry(true, None);
+        let mut entry = fake_entry(true, Some(vec!["off", "high"]));
         let mut map = std::collections::HashMap::new();
         map.insert("high".into(), Some("max".into()));
         map.insert("off".into(), None);
@@ -1318,15 +1301,15 @@ mod thinking_levels_tests {
     }
 
     #[test]
-    fn validate_thinking_level_map_rejects_unknown() {
+    fn validate_thinking_level_map_rejects_key_outside_declared_list() {
         let mut cfg = AppConfig::default();
-        let mut entry = fake_entry(true, None);
+        let mut entry = fake_entry(true, Some(vec!["off", "high"]));
         let mut map = std::collections::HashMap::new();
-        map.insert("bogon".into(), Some("x".into()));
+        map.insert("max".into(), Some("x".into()));
         entry.thinking_level_map = Some(map);
         cfg.model.models.insert("f".into(), entry);
         let err = cfg.validate_thinking_levels().unwrap_err();
-        assert!(err.contains("bogon"));
+        assert!(err.contains("max"));
     }
 
     #[test]

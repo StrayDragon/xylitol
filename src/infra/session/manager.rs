@@ -772,12 +772,11 @@ impl SessionManager {
     pub async fn build_session_context(&self, session_id: &str) -> Result<SessionContext, String> {
         let leaf_id = self.get_leaf(session_id);
         let branch = self.get_branch(session_id, leaf_id.as_deref()).await?;
-        let branch = crate::protocol::session::build_context_entries(&branch);
 
-        let mut messages = Vec::new();
-        let mut thinking_level = String::from("medium");
+        // No recorded choice starts disabled. A recorded string is restored
+        // verbatim below, even if a newer config no longer declares it.
+        let mut thinking_level = String::from("off");
         let mut model: Option<(String, String)> = None;
-
         for entry in &branch {
             match entry {
                 SessionEntry::ModelChange(mc) => {
@@ -786,14 +785,18 @@ impl SessionManager {
                 SessionEntry::ThinkingLevelChange(tc) => {
                     thinking_level = tc.thinking_level.clone();
                 }
-                other => {
-                    // Unified entry→AgentMessage (honors exclude; nested bang-bash only).
-                    if let Some(msg) = other.as_agent_message()
-                        && let Ok(v) = serde_json::to_value(&msg)
-                    {
-                        messages.push(v);
-                    }
-                }
+                _ => {}
+            }
+        }
+
+        let context_entries = crate::protocol::session::build_context_entries(&branch);
+        let mut messages = Vec::new();
+        for entry in &context_entries {
+            // Unified entry→AgentMessage (honors exclude; nested bang-bash only).
+            if let Some(msg) = entry.as_agent_message()
+                && let Ok(v) = serde_json::to_value(&msg)
+            {
+                messages.push(v);
             }
         }
 
@@ -1670,7 +1673,7 @@ impl XySessionStore for SessionManager {
 #[cfg(test)]
 mod deferred_persist_tests {
     use super::*;
-    use crate::protocol::session::{EntryBase, MessageEntry};
+    use crate::protocol::session::{EntryBase, MessageEntry, ThinkingLevelChangeEntry};
 
     fn user_message(text: &str) -> SessionEntry {
         SessionEntry::Message(MessageEntry {
@@ -1694,6 +1697,44 @@ mod deferred_persist_tests {
             },
             message: crate::protocol::session::fixture_message_json("assistant", text),
         })
+    }
+
+    #[tokio::test]
+    async fn session_context_defaults_thinking_to_off() {
+        let dir = tempfile::tempdir().unwrap();
+        let mgr = SessionManager::new(dir.path().join("sessions"));
+        mgr.create("fresh", Some("."), None).await.unwrap();
+
+        let context = mgr.build_session_context("fresh").await.unwrap();
+        assert_eq!(context.thinking_level, "off");
+    }
+
+    #[tokio::test]
+    async fn session_context_restores_thinking_literal_without_rewriting() {
+        let dir = tempfile::tempdir().unwrap();
+        let mgr = SessionManager::new(dir.path().join("sessions"));
+        let sid = "sticky-thinking";
+        mgr.create(sid, Some("."), None).await.unwrap();
+        mgr.append(
+            sid,
+            &SessionEntry::ThinkingLevelChange(ThinkingLevelChangeEntry {
+                base: EntryBase {
+                    entry_type: "thinking_level_change".into(),
+                    id: String::new(),
+                    parent_id: None,
+                    timestamp: String::new(),
+                },
+                thinking_level: "vendor-retired".into(),
+            }),
+        )
+        .await
+        .unwrap();
+        mgr.append(sid, &assistant_message("flush")).await.unwrap();
+        let before = std::fs::read(mgr.session_path(sid)).unwrap();
+
+        let context = mgr.build_session_context(sid).await.unwrap();
+        assert_eq!(context.thinking_level, "vendor-retired");
+        assert_eq!(std::fs::read(mgr.session_path(sid)).unwrap(), before);
     }
 
     #[tokio::test]

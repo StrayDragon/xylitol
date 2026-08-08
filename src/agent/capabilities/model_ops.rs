@@ -4,7 +4,7 @@ use std::sync::{Arc, Mutex};
 
 use crate::agent::model::manager::ModelManager;
 use crate::protocol::error::XyError;
-use crate::protocol::model::{ThinkingLevel, XyModelMeta};
+use crate::protocol::model::{XyModelMeta, thinking_levels_are_adjustable};
 use crate::protocol::ports::XyModel;
 use crate::protocol::session::{
     EntryBase, ModelChangeEntry, SessionEntry, ThinkingLevelChangeEntry,
@@ -38,8 +38,8 @@ impl AgentCapabilities {
         self.with_models(|mm| mm.build_current_model())
     }
 
-    /// Selected thinking level (clamped).
-    pub fn thinking_level(&self) -> ThinkingLevel {
+    /// Selected thinking level, including a sticky out-of-set restored value.
+    pub fn thinking_level(&self) -> String {
         self.with_models(|mm| mm.thinking_level())
     }
 
@@ -57,7 +57,7 @@ impl AgentCapabilities {
                     meta.display_name.clone()
                 },
                 thinking: mm.thinking_level(),
-                omit_thinking: !ThinkingLevel::is_adjustable(&levels),
+                omit_thinking: !thinking_levels_are_adjustable(&levels),
             })
         })
     }
@@ -68,27 +68,27 @@ impl AgentCapabilities {
     }
 
     /// Set thinking level.
-    pub fn set_thinking_level(&mut self, level: ThinkingLevel) -> Result<(), XyError> {
+    pub fn set_thinking_level(&mut self, level: String) -> Result<(), XyError> {
         let previous = self.thinking_level();
-        self.with_models_mut(|mm| mm.set_thinking_level(level))?;
+        self.with_models_mut(|mm| mm.set_thinking_level(level.clone()))?;
         self.persist_thinking_level_change(previous, level);
         Ok(())
     }
 
     /// Cycle to the next level in the current model's support list.
-    pub fn cycle_thinking_level(&mut self) -> Result<ThinkingLevel, XyError> {
+    pub fn cycle_thinking_level(&mut self) -> Result<String, XyError> {
         let previous = self.thinking_level();
         let level = self.with_models_mut(|mm| mm.cycle_thinking_level())?;
-        self.persist_thinking_level_change(previous, level);
+        self.persist_thinking_level_change(previous, level.clone());
         Ok(level)
     }
 
-    fn persist_thinking_level_change(&self, previous: ThinkingLevel, level: ThinkingLevel) {
+    fn persist_thinking_level_change(&self, previous: String, level: String) {
         // Fire-and-forget persistence via the session store port.
         if let Some(ref sid) = self.session_id {
             let store = self.store.clone();
             let sid = sid.clone();
-            let level_str = level.as_str().to_string();
+            let level_str = level.clone();
             tokio::spawn(async move {
                 let entry = SessionEntry::ThinkingLevelChange(ThinkingLevelChangeEntry {
                     base: EntryBase {
@@ -108,20 +108,25 @@ impl AgentCapabilities {
                 "thinking_level_select",
                 "",
                 serde_json::json!({
-                    "level": level.as_str(),
-                    "previous": previous.as_str(),
+                    "level": level,
+                    "previous": previous,
                 }),
             );
         }
     }
 
-    /// Apply Settings `default_thinking_level` (if parseable) then preferred-or-highest.
+    /// Apply Settings `default_thinking_level` for initial session assembly.
     pub fn apply_default_thinking_level(&mut self, raw: Option<&str>) {
-        let preferred = raw.and_then(ThinkingLevel::parse);
+        let preferred = raw.map(str::to_owned);
         self.with_models_mut(|mm| {
             mm.set_preferred_default(preferred);
-            mm.apply_preferred_or_highest();
+            mm.apply_preferred_or_last();
         });
+    }
+
+    /// Restore a persisted session level verbatim, without emitting a new entry.
+    pub fn restore_thinking_level(&mut self, level: String) {
+        self.with_models_mut(|mm| mm.restore_thinking_level(level));
     }
 
     /// Select a specific model by ID (`source` = `"set"`).

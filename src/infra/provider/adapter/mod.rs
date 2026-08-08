@@ -93,7 +93,7 @@ pub type AdapterRef = Arc<dyn LlmAdapter>;
 
 fn to_bridge_options(options: XyGenerateOptions) -> xylitol_ai_bridge::AiBridgeGenerateOptions {
     xylitol_ai_bridge::AiBridgeGenerateOptions {
-        thinking_level: options.thinking_level.as_str().to_string(),
+        thinking_level: options.thinking_level,
         level_map: options.level_map,
         thinking_budgets: options.thinking_budgets.map(|b| {
             xylitol_ai_bridge::AiBridgeThinkingBudgets {

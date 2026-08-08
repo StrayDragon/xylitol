@@ -208,7 +208,7 @@ impl<T: Terminal> HostSession<T> {
         &mut self,
         models: Vec<ModelInfo>,
         current_id: Option<String>,
-        current_thinking: crate::protocol::model::ThinkingLevel,
+        current_thinking: String,
     ) {
         let Some(root) = self.ui_root.as_ref() else {
             return;
@@ -230,7 +230,7 @@ impl<T: Terminal> HostSession<T> {
                 crate::app::tui::layout::ModelPickerRow::from_info(
                     m,
                     current_id.as_deref(),
-                    current_thinking,
+                    current_thinking.clone(),
                 )
             })
             .collect();

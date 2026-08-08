@@ -6,7 +6,7 @@ use super::super::models_picker::{ModelPickerRow, PendingModelChoice};
 use super::super::slots::EditorSlot;
 use super::UiRoot;
 use super::empty_widgets::empty_models_list;
-use crate::protocol::model::ThinkingLevel;
+use crate::protocol::model::THINKING_OFF;
 
 impl UiRoot {
     /// Mount fuzzy model picker in the editor slot (c630 / c1470 levels).
@@ -90,8 +90,8 @@ impl UiRoot {
             .models_rows
             .iter()
             .find(|r| r.id == id)
-            .map(|r| r.provisional)
-            .unwrap_or(ThinkingLevel::Off);
+            .map(|r| r.provisional.clone())
+            .unwrap_or_else(|| THINKING_OFF.into());
         self.pending_model_select = Some(PendingModelChoice {
             model_id: id,
             thinking,

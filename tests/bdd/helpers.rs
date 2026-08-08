@@ -112,7 +112,6 @@ pub(crate) async fn run_wiring_operation(
     op: &str,
 ) -> Result<(), XyDriverError> {
     use xylitol::embed::{XyDriver, XyInProcessDriver};
-    use xylitol::protocol::model::ThinkingLevel;
     use xylitol::protocol::session::SessionTreeKind;
 
     match op {
@@ -138,12 +137,12 @@ pub(crate) async fn run_wiring_operation(
             let (runtime, store) = make_agent_with_store(agent);
             // Select fake first so a model exists; then change thinking.
             let mut driver = XyInProcessDriver::new(runtime, store);
-            let _ = driver.select_model("fake");
+            driver.select_model("fake")?;
             // Clear recorder so only thinking_level_select remains for key asserts.
             if let Some(log) = agent.wiring_hook_log.borrow().as_ref() {
                 log.calls.lock().unwrap_or_else(|e| e.into_inner()).clear();
             }
-            driver.set_thinking_level(ThinkingLevel::High).unwrap();
+            driver.set_thinking_level("high".into()).unwrap();
             Ok(())
         }
         "打开会话树" => {
@@ -205,7 +204,11 @@ pub(crate) fn ensure_wiring_fake_model(agent: &AgentState, thinking: bool) {
         cost_cache_read: 0.0,
         cost_cache_write: 0.0,
         max_tokens: 0,
-        thinking_levels: Vec::new(),
+        thinking_levels: if thinking {
+            vec!["off".into(), "high".into()]
+        } else {
+            vec!["off".into()]
+        },
         thinking_level_map: Default::default(),
     });
 }

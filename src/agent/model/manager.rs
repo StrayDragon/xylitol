@@ -7,8 +7,10 @@ use std::sync::Arc;
 
 use crate::agent::model::registry::ModelRegistry;
 use crate::protocol::error::XyError;
-use crate::protocol::model::XyModelConfig;
-use crate::protocol::model::{ThinkingLevel, XyModelMeta};
+use crate::protocol::model::{
+    THINKING_OFF, XyModelConfig, XyModelMeta, last_declared_thinking_level,
+    thinking_levels_are_adjustable,
+};
 use crate::protocol::ports::XyModel;
 
 /// Manages model registry, current model selection, and thinking level.
@@ -22,10 +24,11 @@ pub struct ModelManager {
     pub(crate) registry: ModelRegistry,
     /// Index of the currently selected model in the registry (`None` = unset).
     pub(crate) current_index: Option<usize>,
-    /// Current thinking level (clamped to model capabilities).
-    pub(crate) thinking_level: ThinkingLevel,
+    /// Current session level. This is intentionally a raw, vendor-declared string:
+    /// a restored level may remain sticky after the configuration support set changes.
+    pub(crate) thinking_level: String,
     /// Preferred default from Settings (`default_thinking_level`), if any.
-    preferred_default: Option<ThinkingLevel>,
+    preferred_default: Option<String>,
     /// Injected provider factory (composition-root-supplied).
     pub(crate) model_builder: crate::protocol::ports::XyModelBuilder,
 }
@@ -40,14 +43,14 @@ impl ModelManager {
         Self {
             registry,
             current_index: None,
-            thinking_level: ThinkingLevel::default(),
+            thinking_level: THINKING_OFF.into(),
             preferred_default: None,
             model_builder,
         }
     }
 
-    /// Store Settings `default_thinking_level` for clamp/startup.
-    pub fn set_preferred_default(&mut self, level: Option<ThinkingLevel>) {
+    /// Store Settings `default_thinking_level` for initial session assembly.
+    pub fn set_preferred_default(&mut self, level: Option<String>) {
         self.preferred_default = level;
     }
 
@@ -70,97 +73,78 @@ impl ModelManager {
 
     // ── Thinking level ───────────────────────────────────────────
 
-    /// Levels supported by the current model (`Off`-only when no thinking).
-    pub fn supported_levels(&self) -> Option<Vec<ThinkingLevel>> {
+    /// Declared levels supported by the current model (`off`-only when disabled).
+    pub fn supported_levels(&self) -> Option<Vec<String>> {
         let meta = self.current_model()?;
         Some(Self::levels_for_meta(meta))
     }
 
     /// Levels for an arbitrary meta (picker / UI).
-    pub fn levels_for_meta(meta: &XyModelMeta) -> Vec<ThinkingLevel> {
-        if !meta.thinking {
-            return vec![ThinkingLevel::Off];
+    pub fn levels_for_meta(meta: &XyModelMeta) -> Vec<String> {
+        if !meta.thinking || meta.thinking_levels.is_empty() {
+            return vec![THINKING_OFF.into()];
         }
-        if meta.thinking_levels.is_empty() {
-            return ThinkingLevel::STANDARD.to_vec();
-        }
-        meta.thinking_levels
-            .iter()
-            .filter_map(|s| ThinkingLevel::parse(s))
-            .collect()
+        meta.thinking_levels.clone()
     }
 
-    /// Get the current thinking level (already clamped to support / bool).
-    pub fn thinking_level(&self) -> ThinkingLevel {
-        match self.supported_levels() {
-            Some(levels) => {
-                if levels.contains(&self.thinking_level) {
-                    self.thinking_level
-                } else {
-                    ThinkingLevel::highest_in(&levels)
-                }
-            }
-            None => {
-                let supports = false;
-                self.thinking_level.clamp(supports)
-            }
-        }
+    /// Get the exact current level, including a sticky out-of-set restored value.
+    pub fn thinking_level(&self) -> String {
+        self.thinking_level.clone()
     }
 
     /// Set a new thinking level. Rejects if current model has a support set
     /// that does not include `level` (current value unchanged).
-    pub fn set_thinking_level(&mut self, level: ThinkingLevel) -> Result<(), XyError> {
-        if let Some(levels) = self.supported_levels()
-            && !levels.contains(&level)
-        {
+    pub fn set_thinking_level(&mut self, level: String) -> Result<(), XyError> {
+        let levels = self
+            .supported_levels()
+            .ok_or_else(|| XyError::Config("no model configured".into()))?;
+        if !levels.iter().any(|supported| supported == &level) {
             return Err(XyError::Config(format!(
                 "thinking level `{}` is not supported by the current model",
-                level.as_str()
+                level
             )));
         }
         self.thinking_level = level;
         Ok(())
     }
 
-    /// After startup when current is illegal: keep if legal, else support-set highest.
-    /// Does **not** apply Settings preferred (that is only [`Self::apply_preferred_or_highest`]).
-    pub fn clamp_thinking_to_model(&mut self) {
-        let Some(levels) = self.supported_levels() else {
-            self.thinking_level = ThinkingLevel::Off;
-            return;
-        };
-        if levels.contains(&self.thinking_level) {
-            return;
-        }
-        self.thinking_level = ThinkingLevel::highest_in(&levels);
+    /// Restore an exact session value without validation or persistence.
+    pub fn restore_thinking_level(&mut self, level: String) {
+        self.thinking_level = level;
     }
 
-    /// Session-first assembly: preferred Settings default if legal, else highest.
-    pub fn apply_preferred_or_highest(&mut self) {
+    /// Session-first assembly: Settings default if declared, otherwise the
+    /// final configured list item. Never use this after a model switch.
+    pub fn apply_preferred_or_last(&mut self) {
         let Some(levels) = self.supported_levels() else {
-            self.thinking_level = ThinkingLevel::Off;
+            self.thinking_level = THINKING_OFF.into();
             return;
         };
-        if let Some(d) = self.preferred_default
-            && levels.contains(&d)
+        if let Some(default) = self
+            .preferred_default
+            .as_ref()
+            .filter(|default| levels.iter().any(|level| level == *default))
         {
-            self.thinking_level = d;
+            self.thinking_level = default.clone();
             return;
         }
-        self.thinking_level = ThinkingLevel::highest_in(&levels);
+        self.thinking_level = last_declared_thinking_level(&levels);
     }
 
-    /// Default thinking for a freshly selected model (always highest / off).
+    /// Default thinking for a freshly selected model (the declared final item).
     pub fn default_thinking_for_current(&mut self) {
         let Some(levels) = self.supported_levels() else {
-            self.thinking_level = ThinkingLevel::Off;
+            self.thinking_level = THINKING_OFF.into();
             return;
         };
-        self.thinking_level = ThinkingLevel::highest_in(&levels);
+        self.thinking_level = last_declared_thinking_level(&levels);
     }
 
     /// Cycle to the next level in the current model's support list.
-    pub fn cycle_thinking_level(&mut self) -> Result<ThinkingLevel, XyError> {
+    ///
+    /// A sticky out-of-set level lands on the list's final item before normal
+    /// cyclic traversal resumes.
+    pub fn cycle_thinking_level(&mut self) -> Result<String, XyError> {
         let levels = self
             .supported_levels()
             .ok_or_else(|| XyError::Config("no model configured".into()))?;
@@ -169,16 +153,20 @@ impl ModelManager {
                 "current model has no thinking levels".into(),
             ));
         }
-        let cur = self.thinking_level();
-        let idx = levels.iter().position(|l| *l == cur).unwrap_or(0);
-        let next = levels[(idx + 1) % levels.len()];
-        self.thinking_level = next;
+        let next = match levels
+            .iter()
+            .position(|level| level == &self.thinking_level)
+        {
+            Some(index) => levels[(index + 1) % levels.len()].clone(),
+            None => last_declared_thinking_level(&levels),
+        };
+        self.thinking_level = next.clone();
         Ok(next)
     }
 
     // ── Model switching ──────────────────────────────────────────
 
-    /// Select a model by its ID. Thinking defaults to support-set highest (m10).
+    /// Select a model by its ID. Thinking defaults to the final declared item (m10).
     pub fn select_model(&mut self, model_id: &str) -> Result<(), XyError> {
         let model = self
             .registry
@@ -213,6 +201,12 @@ impl ModelManager {
         let idx = self.current_index?;
         self.registry.list().get(idx).map(|m| m.config.clone())
     }
+
+    /// Whether the selected model has a declared adjustable option.
+    pub fn thinking_is_adjustable(&self) -> bool {
+        self.supported_levels()
+            .is_some_and(|levels| thinking_levels_are_adjustable(&levels))
+    }
 }
 
 #[cfg(test)]
@@ -222,7 +216,7 @@ mod tests {
     use super::ModelManager;
     use crate::agent::model::registry::ModelRegistry;
     use crate::protocol::error::XyError;
-    use crate::protocol::model::{ThinkingLevel, XyModelMeta};
+    use crate::protocol::model::XyModelMeta;
     use crate::protocol::model::{XyModelConfig, XyModelKind};
     use crate::protocol::ports::XyModel;
 
@@ -292,72 +286,67 @@ mod tests {
         let mm = ModelManager::new(empty_registry(), fake_builder());
         assert!(mm.current_model().is_none());
         assert_eq!(mm.current_index(), None);
-        assert_eq!(mm.thinking_level(), ThinkingLevel::Off);
+        assert_eq!(mm.thinking_level(), "off");
     }
 
     #[test]
-    fn new_model_manager_default_thinking() {
+    fn new_model_manager_default_thinking_is_off() {
         let mm = ModelManager::new(empty_registry(), fake_builder());
-        assert_eq!(mm.thinking_level, ThinkingLevel::Medium);
+        assert_eq!(mm.thinking_level, "off");
     }
 
     #[test]
-    fn set_thinking_level_without_model_ok() {
+    fn set_thinking_level_without_model_is_rejected() {
         let mut mm = ModelManager::new(empty_registry(), fake_builder());
-        mm.set_thinking_level(ThinkingLevel::Low).unwrap();
-        assert_eq!(mm.thinking_level, ThinkingLevel::Low);
+        assert!(mm.set_thinking_level("low".into()).is_err());
+        assert_eq!(mm.thinking_level(), "off");
     }
 
     #[test]
     fn set_thinking_level_rejects_unsupported() {
         let mut mm = manager_with(vec![meta("m1", true, &["off", "high"])]);
-        // select_model clamps Medium → High for this support set
-        assert_eq!(mm.thinking_level(), ThinkingLevel::High);
-        assert!(mm.set_thinking_level(ThinkingLevel::Xhigh).is_err());
-        assert_eq!(mm.thinking_level, ThinkingLevel::High);
-        mm.set_thinking_level(ThinkingLevel::Off).unwrap();
-        assert_eq!(mm.thinking_level(), ThinkingLevel::Off);
-        mm.set_thinking_level(ThinkingLevel::High).unwrap();
-        assert_eq!(mm.thinking_level(), ThinkingLevel::High);
+        assert_eq!(mm.thinking_level(), "high");
+        assert!(mm.set_thinking_level("xhigh".into()).is_err());
+        assert_eq!(mm.thinking_level(), "high");
+        mm.set_thinking_level("off".into()).unwrap();
+        assert_eq!(mm.thinking_level(), "off");
+        mm.set_thinking_level("high".into()).unwrap();
+        assert_eq!(mm.thinking_level(), "high");
     }
 
     #[test]
-    fn clamp_on_switch_from_xhigh() {
+    fn restored_out_of_set_level_stays_sticky_until_cycle() {
         let mut mm = manager_with(vec![
-            meta("wide", true, &["off", "high", "xhigh"]),
+            meta("wide", true, &["off", "high", "vendor-max"]),
             meta("narrow", true, &["off", "high"]),
         ]);
-        mm.set_thinking_level(ThinkingLevel::Xhigh).unwrap();
+        mm.set_thinking_level("vendor-max".into()).unwrap();
         mm.select_model("narrow").unwrap();
-        assert_ne!(mm.thinking_level(), ThinkingLevel::Xhigh);
-        assert!(matches!(
-            mm.thinking_level(),
-            ThinkingLevel::Off | ThinkingLevel::High | ThinkingLevel::Medium
-        ));
-        assert_eq!(mm.thinking_level(), ThinkingLevel::High);
+        assert_eq!(mm.thinking_level(), "high");
+        mm.restore_thinking_level("vendor-max".into());
+        assert_eq!(mm.thinking_level(), "vendor-max");
+        assert_eq!(mm.cycle_thinking_level().unwrap(), "high");
     }
 
     #[test]
-    fn preferred_default_only_on_apply_preferred() {
+    fn preferred_default_only_applies_to_first_session_assembly() {
         let mut mm = manager_with(vec![meta("m1", true, &["off", "low", "high"])]);
-        mm.thinking_level = ThinkingLevel::Xhigh;
-        mm.set_preferred_default(Some(ThinkingLevel::Low));
-        mm.clamp_thinking_to_model();
-        // Illegal current → highest, not Settings low.
-        assert_eq!(mm.thinking_level(), ThinkingLevel::High);
-        mm.apply_preferred_or_highest();
-        assert_eq!(mm.thinking_level(), ThinkingLevel::Low);
+        mm.set_preferred_default(Some("low".into()));
+        mm.apply_preferred_or_last();
+        assert_eq!(mm.thinking_level(), "low");
+        mm.select_model("m1").unwrap();
+        assert_eq!(mm.thinking_level(), "high");
     }
 
     #[test]
-    fn select_model_defaults_to_highest() {
+    fn select_model_defaults_to_last_declared_level() {
         let mut mm = manager_with(vec![
             meta("a", true, &["off", "low", "high"]),
-            meta("b", true, &["off", "minimal", "medium"]),
+            meta("b", true, &["off", "max", "low"]),
         ]);
-        mm.set_thinking_level(ThinkingLevel::Low).unwrap();
+        mm.set_thinking_level("low".into()).unwrap();
         mm.select_model("b").unwrap();
-        assert_eq!(mm.thinking_level(), ThinkingLevel::Medium);
+        assert_eq!(mm.thinking_level(), "low");
     }
 
     #[test]
@@ -367,52 +356,54 @@ mod tests {
             meta("plain", false, &[]),
         ]);
         mm.select_model("plain").unwrap();
-        assert_eq!(mm.thinking_level(), ThinkingLevel::Off);
+        assert_eq!(mm.thinking_level(), "off");
     }
 
     #[test]
     fn cycle_thinking_level_wraps() {
         let mut mm = manager_with(vec![meta("m1", true, &["off", "high"])]);
-        mm.set_thinking_level(ThinkingLevel::Off).unwrap();
-        assert_eq!(mm.cycle_thinking_level().unwrap(), ThinkingLevel::High);
-        assert_eq!(mm.cycle_thinking_level().unwrap(), ThinkingLevel::Off);
+        mm.set_thinking_level("off".into()).unwrap();
+        assert_eq!(mm.cycle_thinking_level().unwrap(), "high");
+        assert_eq!(mm.cycle_thinking_level().unwrap(), "off");
     }
 
-    /// c1165: after cycle/set, the same options path ReAct uses MUST resolve to
-    /// the matching OpenAI `reasoning_effort` (or Omit when Off).
+    /// The generate options path preserves freeform strings after set/cycle.
     #[test]
     fn cycle_then_resolve_openai_effort_matches_level() {
         use crate::protocol::model::{
             ResolvedThinking, ThinkingAdapterKind, resolve_thinking_for_request,
         };
 
-        let mut mm = manager_with(vec![meta("m1", true, &["off", "medium", "high"])]);
-        mm.set_thinking_level(ThinkingLevel::Off).unwrap();
+        let mut mm = manager_with(vec![meta("m1", true, &["off", "vendor-mid", "high"])]);
+        mm.set_thinking_level("off".into()).unwrap();
 
         let off = resolve_thinking_for_request(
-            mm.thinking_level(),
+            &mm.thinking_level(),
             mm.current_model().map(|m| &m.thinking_level_map),
             None,
             ThinkingAdapterKind::OpenAi,
-        );
+        )
+        .unwrap();
         assert_eq!(off, ResolvedThinking::Omit);
 
-        assert_eq!(mm.cycle_thinking_level().unwrap(), ThinkingLevel::Medium);
+        assert_eq!(mm.cycle_thinking_level().unwrap(), "vendor-mid");
         let mid = resolve_thinking_for_request(
-            mm.thinking_level(),
+            &mm.thinking_level(),
             mm.current_model().map(|m| &m.thinking_level_map),
             None,
             ThinkingAdapterKind::OpenAi,
-        );
-        assert_eq!(mid, ResolvedThinking::OpenAiEffort("medium".into()));
+        )
+        .unwrap();
+        assert_eq!(mid, ResolvedThinking::OpenAiEffort("vendor-mid".into()));
 
-        assert_eq!(mm.cycle_thinking_level().unwrap(), ThinkingLevel::High);
+        assert_eq!(mm.cycle_thinking_level().unwrap(), "high");
         let high = resolve_thinking_for_request(
-            mm.thinking_level(),
+            &mm.thinking_level(),
             mm.current_model().map(|m| &m.thinking_level_map),
             None,
             ThinkingAdapterKind::OpenAi,
-        );
+        )
+        .unwrap();
         assert_eq!(high, ResolvedThinking::OpenAiEffort("high".into()));
     }
 

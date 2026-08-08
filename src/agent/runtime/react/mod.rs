@@ -270,25 +270,24 @@ impl AgentRuntime {
         self.inner.select_model_with_source(model_id, source)
     }
 
-    pub fn thinking_level(&self) -> crate::protocol::model::ThinkingLevel {
+    pub fn thinking_level(&self) -> String {
         self.inner.thinking_level()
     }
 
-    pub fn set_thinking_level(
-        &mut self,
-        level: crate::protocol::model::ThinkingLevel,
-    ) -> Result<(), XyError> {
+    pub fn set_thinking_level(&mut self, level: String) -> Result<(), XyError> {
         self.inner.set_thinking_level(level)
     }
 
-    pub fn cycle_thinking_level(
-        &mut self,
-    ) -> Result<crate::protocol::model::ThinkingLevel, XyError> {
+    pub fn cycle_thinking_level(&mut self) -> Result<String, XyError> {
         self.inner.cycle_thinking_level()
     }
 
     pub fn apply_default_thinking_level(&mut self, raw: Option<&str>) {
         self.inner.apply_default_thinking_level(raw);
+    }
+
+    pub fn restore_thinking_level(&mut self, level: String) {
+        self.inner.restore_thinking_level(level);
     }
 
     pub fn inflight_turn_binding(&self) -> Option<crate::agent::capabilities::ActiveTurnBinding> {

@@ -36,8 +36,8 @@ pub(crate) fn prepare_turn_binding(
         } else {
             meta.display_name.clone()
         },
-        thinking,
-        omit_thinking: !crate::protocol::model::ThinkingLevel::is_adjustable(&levels),
+        thinking: thinking.clone(),
+        omit_thinking: !crate::protocol::model::thinking_levels_are_adjustable(&levels),
     };
     let generate_options = crate::protocol::ports::XyGenerateOptions {
         thinking_level: thinking,

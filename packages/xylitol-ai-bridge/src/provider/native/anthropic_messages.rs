@@ -151,6 +151,9 @@ impl AnthropicMessagesAdapter {
             &options,
             crate::thinking::AiBridgeThinkingAdapterKind::Anthropic,
         );
+        if let crate::thinking::AiBridgeResolvedThinking::Invalid(reason) = &resolved {
+            return Err(AiBridgeError::Provider(anyhow::anyhow!(reason.clone())));
+        }
         crate::provider::dialect::apply_anthropic_thinking(
             &mut body,
             &resolved,
@@ -828,6 +831,34 @@ mod tests {
         let body = captured.lock().unwrap().clone().expect("body");
         assert_eq!(body["thinking"]["type"], "enabled");
         assert_eq!(body["thinking"]["budget_tokens"], 8192);
+    }
+
+    #[tokio::test]
+    async fn freeform_thinking_without_map_fails_before_request() {
+        let adapter = AnthropicMessagesAdapter::new(
+            "sk-test".into(),
+            "claude-test".into(),
+            Some("http://127.0.0.1:1".into()),
+            None,
+        );
+        let result = adapter
+            .generate(
+                vec![AiBridgeMessage::user("hi")],
+                &[],
+                crate::thinking::AiBridgeGenerateOptions {
+                    thinking_level: "vendor-max".into(),
+                    ..Default::default()
+                },
+            )
+            .await;
+        let Err(err) = result else {
+            panic!("freeform Anthropic level must fail before request");
+        };
+        assert!(
+            err.to_string()
+                .contains("requires a numeric or known-level"),
+            "{err}"
+        );
     }
 
     #[tokio::test]

@@ -23,7 +23,7 @@ pub use xylitol::infra::tools::{
     bash::BashTool, edit::EditTool, find::FindTool, grep::GrepTool, ls::LsTool,
     mutation::FileMutationQueue, read::ReadTool, write::WriteTool,
 };
-pub use xylitol::protocol::model::{ThinkingLevel, XyModelMeta};
+pub use xylitol::protocol::model::XyModelMeta;
 pub use xylitol::protocol::model::{XyModelConfig, XyModelKind};
 pub use xylitol::protocol::ports::{XyTool, XyToolCtx};
 pub use xylitol::protocol::session::ForkPosition;

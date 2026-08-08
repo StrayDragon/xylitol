@@ -51,7 +51,7 @@ use crate::app::tui::widgets::{
     GlyphSet, ScrollbackFold, ScrollbackPaintCache, footer_thinking_label, format_footer_text,
 };
 use crate::protocol::error::XyToolError;
-use crate::protocol::model::ThinkingLevel;
+use crate::protocol::model::THINKING_OFF;
 
 /// User choice from `/session-import` confirm slot (c1010).
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -80,7 +80,7 @@ pub struct UiRoot {
     /// Optional `used N|~N|? tokens` fragment (c1035); omitted when unknown/empty.
     footer_token: Option<String>,
     /// Current XyDriver thinking level mirrored for border + footer (c1150).
-    thinking_level: ThinkingLevel,
+    thinking_level: String,
     /// When true, footer omits the thinking segment (no-thinking active model).
     footer_omit_thinking: bool,
     /// Agent-busy next-turn cue (`Next turn: …`); independent of status short-word.
@@ -189,7 +189,7 @@ impl UiRoot {
             cwd: ".".into(),
             model: crate::app::core::bootstrap::UNSET_MODEL_DISPLAY.into(),
             footer_token: None,
-            thinking_level: ThinkingLevel::Off,
+            thinking_level: THINKING_OFF.into(),
             footer_omit_thinking: false,
             status_next_turn_cue: None,
             chrome_toast: None,
@@ -761,7 +761,7 @@ impl UiRoot {
         let thinking = if self.footer_omit_thinking {
             String::new()
         } else {
-            footer_thinking_label(self.thinking_level)
+            footer_thinking_label(&self.thinking_level)
         };
         let base = format_footer_text(
             &self.cwd,
@@ -778,7 +778,7 @@ impl UiRoot {
     pub fn set_active_chrome(
         &mut self,
         model_label: impl Into<String>,
-        thinking: ThinkingLevel,
+        thinking: String,
         omit_thinking: bool,
     ) {
         self.model = model_label.into();
@@ -882,8 +882,8 @@ impl UiRoot {
     }
 
     #[cfg(test)]
-    pub fn thinking_level_for_test(&self) -> ThinkingLevel {
-        self.thinking_level
+    pub fn thinking_level_for_test(&self) -> String {
+        self.thinking_level.clone()
     }
 
     #[cfg(test)]
