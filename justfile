@@ -18,6 +18,9 @@ setup:
     set -euo pipefail
     # prek defaults to pre-commit only; install all stages declared in prek.toml
     prek install -t pre-commit -t commit-msg -t pre-push
+    # Git LFS pre-push via prek legacy-hook (stdin forwarding): prek.toml can't
+    # feed git's pre-push stdin to git-lfs, so install the legacy file here.
+    install -m 0755 scripts/pre-push.lfs.sh .git/hooks/pre-push.legacy
     # Lazy install also happens in scripts/check_complexity.py; setup warms the cache.
     if ! command -v cccc-rs >/dev/null && [[ ! -x .tools/bin/cccc-rs ]]; then
       cargo install cccc-rs-cli --version 0.4.0 --locked --root .tools
