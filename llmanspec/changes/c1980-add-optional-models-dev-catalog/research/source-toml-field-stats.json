@@ -1,0 +1,248 @@
+{
+  "source": "git clone anomalyco/models.dev@dev (providers/**/*.toml)",
+  "fetched_at": "2026-08-08",
+  "provider_count": 181,
+  "model_toml_count": 2913,
+  "parse_errors": 2,
+  "provider_field_frequency": {
+    "name": 181,
+    "env": 181,
+    "npm": 181,
+    "doc": 181,
+    "api": 155
+  },
+  "providers_with_api_url": 155,
+  "npm_package_counts": {
+    "@ai-sdk/openai-compatible": 143,
+    "@ai-sdk/anthropic": 9,
+    "@ai-sdk/openai": 4,
+    "@ai-sdk/azure": 2,
+    "@aihubmix/ai-sdk-provider": 1,
+    "@ai-sdk/amazon-bedrock": 1,
+    "@ai-sdk/cerebras": 1,
+    "ai-gateway-provider": 1,
+    "@ai-sdk/cohere": 1,
+    "@ai-sdk/deepinfra": 1,
+    "gitlab-ai-provider": 1,
+    "@ai-sdk/google": 1,
+    "@ai-sdk/google-vertex": 1,
+    "@ai-sdk/google-vertex/anthropic": 1,
+    "@ai-sdk/groq": 1,
+    "merge-gateway-ai-sdk-provider": 1,
+    "@ai-sdk/mistral": 1,
+    "@openrouter/ai-sdk-provider": 1,
+    "@ai-sdk/perplexity": 1,
+    "@qvac/ai-sdk-provider": 1,
+    "@saladtechnologies-oss/ai-sdk-provider": 1,
+    "@jerome-benoit/sap-ai-provider-v2": 1,
+    "@ai-sdk/togetherai": 1,
+    "@ai-sdk/vercel": 1,
+    "venice-ai-sdk-provider": 1,
+    "@ai-sdk/gateway": 1,
+    "@ai-sdk/xai": 1
+  },
+  "model_field_frequency": {
+    "cost": 2732,
+    "cost.input": 2732,
+    "cost.output": 2732,
+    "limit": 2153,
+    "name": 1889,
+    "modalities": 1856,
+    "last_updated": 1697,
+    "cost.cache_read": 1678,
+    "release_date": 1656,
+    "reasoning": 1651,
+    "description": 1650,
+    "attachment": 1618,
+    "tool_call": 1601,
+    "open_weights": 1584,
+    "temperature": 1390,
+    "family": 1349,
+    "base_model": 1346,
+    "structured_output": 948,
+    "knowledge": 833,
+    "cost.cache_write": 637,
+    "interleaved": 407,
+    "cost.tiers": 185,
+    "status": 154,
+    "provider": 151,
+    "base_model_omit": 61,
+    "cost.input_audio": 52,
+    "cost.reasoning": 47,
+    "experimental": 23,
+    "cost.output_audio": 12
+  },
+  "reasoning_option_type_counts": {
+    "effort": 1050,
+    "toggle": 467,
+    "budget_tokens": 349
+  },
+  "effort_value_counts": {
+    "high": 1033,
+    "low": 945,
+    "medium": 927,
+    "max": 377,
+    "none": 361,
+    "xhigh": 327,
+    "minimal": 155,
+    "null": 2
+  },
+  "models_budget_tokens_only_approx": 76,
+  "models_toggle_only": 215,
+  "models_with_mixed_reasoning_option_types": 361,
+  "sample_effort_models": [
+    {
+      "provider": "302ai",
+      "file": "grok-4.20-multi-agent-beta-0309.toml",
+      "name": "grok-4.20-multi-agent-beta-0309",
+      "reasoning_options": [
+        {
+          "type": "effort",
+          "values": [
+            "low",
+            "medium",
+            "high",
+            "xhigh"
+          ]
+        }
+      ],
+      "npm": "@ai-sdk/openai-compatible",
+      "api": "https://api.302.ai/v1"
+    },
+    {
+      "provider": "302ai",
+      "file": "gpt-5.toml",
+      "name": "gpt-5",
+      "reasoning_options": [
+        {
+          "type": "effort",
+          "values": [
+            "minimal",
+            "low",
+            "medium",
+            "high"
+          ]
+        }
+      ],
+      "npm": "@ai-sdk/openai-compatible",
+      "api": "https://api.302.ai/v1"
+    },
+    {
+      "provider": "302ai",
+      "file": "gpt-5.4.toml",
+      "name": "gpt-5.4",
+      "reasoning_options": [
+        {
+          "type": "effort",
+          "values": [
+            "none",
+            "low",
+            "medium",
+            "high",
+            "xhigh"
+          ]
+        }
+      ],
+      "npm": "@ai-sdk/openai-compatible",
+      "api": "https://api.302.ai/v1"
+    },
+    {
+      "provider": "302ai",
+      "file": "gpt-5.4-pro.toml",
+      "name": "gpt-5.4-pro",
+      "reasoning_options": [
+        {
+          "type": "effort",
+          "values": [
+            "medium",
+            "high",
+            "xhigh"
+          ]
+        }
+      ],
+      "npm": "@ai-sdk/openai-compatible",
+      "api": "https://api.302.ai/v1"
+    },
+    {
+      "provider": "302ai",
+      "file": "gpt-5.4-nano.toml",
+      "name": "gpt-5.4-nano",
+      "reasoning_options": [
+        {
+          "type": "effort",
+          "values": [
+            "none",
+            "low",
+            "medium",
+            "high",
+            "xhigh"
+          ]
+        }
+      ],
+      "npm": "@ai-sdk/openai-compatible",
+      "api": "https://api.302.ai/v1"
+    },
+    {
+      "provider": "302ai",
+      "file": "gpt-5.4-nano-2026-03-17.toml",
+      "name": "gpt-5.4-nano-2026-03-17",
+      "reasoning_options": [
+        {
+          "type": "effort",
+          "values": [
+            "none",
+            "low",
+            "medium",
+            "high",
+            "xhigh"
+          ]
+        }
+      ],
+      "npm": "@ai-sdk/openai-compatible",
+      "api": "https://api.302.ai/v1"
+    },
+    {
+      "provider": "302ai",
+      "file": "gpt-5.4-mini.toml",
+      "name": "gpt-5.4-mini",
+      "reasoning_options": [
+        {
+          "type": "effort",
+          "values": [
+            "none",
+            "low",
+            "medium",
+            "high",
+            "xhigh"
+          ]
+        }
+      ],
+      "npm": "@ai-sdk/openai-compatible",
+      "api": "https://api.302.ai/v1"
+    },
+    {
+      "provider": "302ai",
+      "file": "gpt-5.4-mini-2026-03-17.toml",
+      "name": "gpt-5.4-mini-2026-03-17",
+      "reasoning_options": [
+        {
+          "type": "effort",
+          "values": [
+            "none",
+            "low",
+            "medium",
+            "high",
+            "xhigh"
+          ]
+        }
+      ],
+      "npm": "@ai-sdk/openai-compatible",
+      "api": "https://api.302.ai/v1"
+    }
+  ],
+  "xylitol_mapping_notes": {
+    "api_x_compat": "npm/api URL cannot become AdapterKind; need explicit map table",
+    "thinking_levels": "prefer effort.values + leading off; budget_tokens alone cannot invent discrete levels",
+    "suggestion_only": true
+  }
+}
