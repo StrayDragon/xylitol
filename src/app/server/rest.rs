@@ -862,6 +862,23 @@ mod tests {
         })
     }
 
+    #[test]
+    fn model_data_includes_thinking_levels() {
+        let m = crate::app::core::driver::ModelInfo {
+            id: "deepseek-v4-flash".into(),
+            display_name: "flash".into(),
+            thinking: true,
+            thinking_levels: vec!["off".into(), "high".into(), "max".into()],
+            context_window: 128_000,
+        };
+        let v = model_data(&m);
+        assert_eq!(v["id"], "deepseek-v4-flash");
+        assert_eq!(
+            v["thinking_levels"],
+            serde_json::json!(["off", "high", "max"])
+        );
+    }
+
     #[tokio::test]
     async fn steer_queue_counts_visible_for_remote_clients() {
         let state = test_state();
