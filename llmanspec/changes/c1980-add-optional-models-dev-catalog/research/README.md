@@ -10,10 +10,10 @@
 | 本机直连 `https://models.dev/api.json` | **失败**（TCP 连不上 :443） |
 | 本机常见本地代理端口（7890/7897/10809/8080/6152/8888 HTTP；7891/1080/10808 SOCKS） | **无响应** |
 | Cursor WebFetch → `api.json` | 拉到约 **1MB 截断**，无法整文件 `json.load` |
-| GitHub `anomalyco/models.dev` `dev` 分支 | **成功**：`packages/core/src/schema.ts`、`providers/*/provider.toml`、`providers/*/models/*.toml` |
-| `raw.githubusercontent.com/.../models.json` | 200 但内容为 OpenRouter 形 `{data:[...]}`，**不宜**当作 models.dev `models.json` SSOT（与 README 描述的 provider-agnostic catalog 不符；待有 catalog.proxy 后重拉官方端点核对） |
+| GitHub `anomalyco/models.dev` `dev` 分支 | **成功**：schema、样例 TOML；另 shallow clone 解析 **181 providers / 2913 models** → `source-toml-field-stats.json` + `api-json-via-source-toml.md` |
+| `raw.githubusercontent.com/.../models.json` | 200 但内容为 OpenRouter 形 `{data:[...]}`，**不宜**当作 models.dev SSOT |
 
-结论：草案里 **catalog 专用代理** 不是空想——本环境已复现「LLM 网关可达、catalog 源不可达」。正式实现前用用户提供的 `catalog.proxy` 再拉全量 `api.json` / `models.json` / `catalog.json` 钉死键空间。
+结论：无 catalog.proxy 时以**源仓 TOML 全量统计**作为字段证据；有 proxy 后再拉官方三端点交叉校验。
 
 本目录保留：schema 快照、openai/anthropic/deepseek 的 `provider.toml` + 若干 model TOML 样例、字段统计 JSON。
 
