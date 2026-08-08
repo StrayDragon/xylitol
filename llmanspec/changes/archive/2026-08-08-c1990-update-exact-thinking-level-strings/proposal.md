@@ -3,7 +3,8 @@ depends_on:
 - c1970-update-per-vendor-thinking-levels
 branch: sdd/c1990-update-exact-thinking-level-strings
 base_sha: b0a3aa0cc399d6861b0bc1173dfdde12407b08c4
-checkpointed: false
+checkpointed: true
+checkpoint_sha: b0a3aa0cc399d6861b0bc1173dfdde12407b08c4
 ---
 
 # thinking 档名全链路精确 opaque
