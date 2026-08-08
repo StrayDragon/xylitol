@@ -12,7 +12,7 @@ requirements[10]{req_id,title,statement}:
   pa7,"vendor-类型不出-infra与agent","async-openai 与各厂商 HTTP/SSE 具体类型 MUST 仅出现在 packages/xylitol-ai-bridge（及其测试）与必要的主仓映射边界内；agent/ MUST NOT import 这些 vendor crate；主仓 infra 若保留映射模块 MUST NOT 把 vendor 类型再导出给 agent。"
   pa20,"agent-projects-before-model","XyModel 端口的消息入参 MUST 为 Vec<AiBridgeMessage>（或等价 LLM DTO），MUST NOT 再接受 AgentMessage。agent 在调用 XyModel 之前 MUST 经 project_for_llm（或等价）完成 Env 折叠；infra provider 装配 MUST NOT 再以 AgentMessage→bridge 孪生映射为主路径。投影 MUST 保留开闭：新环境消息变体的折叠策略落在 agent 投影层，MUST NOT 要求 bridge 同步增加平行 session 角色。"
   pa21,"wire-policy-named-compat","主仓装配 MUST 将 YAML models.*.compat（命名轮廓，如 generic / deepseek）解析为 bridge WirePolicy 配置文件并注入 Responses/Completions；省略 compat MUST 等价 generic 默认板。MUST NOT 另建并行默认值真源；MUST NOT 接受自由形式 extra_policy YAML 或正式 env 覆盖板。由装配单测覆盖，MUST NOT 为静态缺省单独扩 BDD step。"
-  pa22,"api-fullname-full-names","配置与装配中可识别的 api 字面量 MUST 使用全称 openai-responses 与 anthropic-messages；产品文档 MUST NOT 把配置真值简写成 responses 或 messages。省略 api→默认 openai-responses（OpenAI 兼容）行为保持（见 pa4 / m13）。由单测与文档覆盖，MUST NOT 单独扩 BDD step。"
+  pa22,"api-fullname-full-names","配置与装配中可识别的 api 字面量 MUST 使用全称 openai-responses、openai-completions 与 anthropic-messages；产品文档 MUST NOT 把配置真值简写成 responses、completions 或 messages。省略 api→默认 openai-responses（OpenAI 兼容）行为保持（见 pa4 / m13）。由单测与文档覆盖，MUST NOT 单独扩 BDD step。"
 scenarios[5]{req_id,id,given,when,then,feature}:
   pa7,"no-async-openai-in-agent-unit",agent/ 代码,搜索 async_openai 导入,零匹配,false
   pa7,"no-vendor-leak-unit",agent/ 与 protocol/,搜索 async_openai,零匹配,false
