@@ -54,8 +54,9 @@ pub enum AiBridgeResolvedThinking {
     Invalid(String),
 }
 
+/// Return a built-in level only when its configured spelling matches exactly.
 fn canonical_known_level(level: &str) -> Option<&'static str> {
-    match level.trim().to_ascii_lowercase().as_str() {
+    match level {
         "off" => Some("off"),
         "minimal" => Some("minimal"),
         "low" => Some("low"),
@@ -96,9 +97,8 @@ pub fn resolve_thinking_for_request(
     budgets: Option<&AiBridgeThinkingBudgets>,
     adapter: AiBridgeThinkingAdapterKind,
 ) -> AiBridgeResolvedThinking {
-    // Product support sets, map keys, and set_thinking_level values are exact
-    // strings. Only the known Anthropic/OpenAI built-in fallback below is ASCII
-    // case-insensitive; configuration is never normalized.
+    // Product support sets, map keys, and known built-in fallbacks all use exact
+    // strings. No thinking-level spelling is normalized at this request boundary.
     if let Some(entry) = map.get(level) {
         return match entry {
             None => AiBridgeResolvedThinking::Omit,
@@ -329,14 +329,35 @@ mod tests {
     }
 
     #[test]
-    fn anthropic_known_level_parsing_is_case_insensitive() {
-        let r = resolve_thinking_for_request(
-            "HIGH",
+    fn anthropic_known_levels_require_exact_spelling() {
+        let high = resolve_thinking_for_request(
+            "high",
             &HashMap::new(),
             None,
             AiBridgeThinkingAdapterKind::Anthropic,
         );
-        assert_eq!(r, AiBridgeResolvedThinking::AnthropicBudget(16_384));
+        assert_eq!(high, AiBridgeResolvedThinking::AnthropicBudget(16_384));
+
+        let off = resolve_thinking_for_request(
+            "off",
+            &HashMap::new(),
+            None,
+            AiBridgeThinkingAdapterKind::Anthropic,
+        );
+        assert_eq!(off, AiBridgeResolvedThinking::Omit);
+
+        for level in ["HIGH", " high "] {
+            let resolved = resolve_thinking_for_request(
+                level,
+                &HashMap::new(),
+                None,
+                AiBridgeThinkingAdapterKind::Anthropic,
+            );
+            assert!(
+                matches!(resolved, AiBridgeResolvedThinking::Invalid(_)),
+                "{level:?} must not resolve as an Anthropic built-in level"
+            );
+        }
     }
 
     #[test]

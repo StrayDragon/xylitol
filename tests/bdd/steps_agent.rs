@@ -418,6 +418,22 @@ pub(crate) fn _t_agent_aborted_error(agent: &AgentState) {
         agent.events.borrow()
     );
 }
+
+#[given("当前模型支持集为 off 与 high")]
+pub(crate) fn g_m10_thinking_levels(agent: &AgentState) {
+    ensure_wiring_fake_model(agent, true);
+}
+
+#[when("set_thinking_level 为 {level}")]
+pub(crate) fn w_m10_set_thinking_level(agent: &AgentState, level: String) {
+    _w_agent_try_thinking_level(agent, level);
+}
+
+#[then("失败且当前 level 不变")]
+pub(crate) fn t_m10_rejected_thinking_level(agent: &AgentState) {
+    assert_eq!(result_ok_str(&agent.last_result), "rejected:level:high");
+}
+
 #[when("尝试将思考级别设为 {level}")]
 pub(crate) fn _w_agent_try_thinking_level(agent: &AgentState, level: String) {
     let level = strip_quotes(&level);

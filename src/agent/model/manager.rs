@@ -344,6 +344,14 @@ mod tests {
     }
 
     #[test]
+    fn set_thinking_level_rejects_case_variant() {
+        let mut mm = manager_with(vec![meta("m1", true, &["off", "high"])]);
+
+        assert!(mm.set_thinking_level("HIGH".into()).is_err());
+        assert_eq!(mm.thinking_level(), "high");
+    }
+
+    #[test]
     fn restored_out_of_set_level_stays_sticky_until_cycle() {
         let mut mm = manager_with(vec![
             meta("wide", true, &["off", "high", "vendor-max"]),
