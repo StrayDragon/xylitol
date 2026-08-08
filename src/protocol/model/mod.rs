@@ -9,7 +9,7 @@ pub use chunk::{XyChunk, XyToolSchema};
 pub use config::{ResolvedProfile, XyModelConfig, XyModelKind, default_context_window_for};
 pub use meta::{ContextTokenEstimate, TokenProvenance, XyModelMeta};
 pub use thinking::{
-    THINKING_OFF, ThinkingBudgets, ThinkingLevel, ThinkingLevelMap, last_declared_thinking_level,
+    THINKING_OFF, ThinkingBudgets, ThinkingLevelMap, last_declared_thinking_level,
     resolve_configured_levels, thinking_levels_are_adjustable, validate_thinking_level_map,
 };
 
@@ -98,49 +98,6 @@ mod tests {
         }
     }
 
-    // ── ThinkingLevel ───────────────────────────────────────────────
-
-    #[test]
-    fn thinking_level_default_is_off() {
-        assert_eq!(ThinkingLevel::default(), ThinkingLevel::Off);
-    }
-
-    #[test]
-    fn thinking_level_as_str() {
-        assert_eq!(ThinkingLevel::Off.as_str(), "off");
-        assert_eq!(ThinkingLevel::Minimal.as_str(), "minimal");
-        assert_eq!(ThinkingLevel::Low.as_str(), "low");
-        assert_eq!(ThinkingLevel::Medium.as_str(), "medium");
-        assert_eq!(ThinkingLevel::High.as_str(), "high");
-        assert_eq!(ThinkingLevel::Xhigh.as_str(), "xhigh");
-        assert_eq!(ThinkingLevel::Max.as_str(), "max");
-    }
-
-    #[test]
-    fn thinking_level_parse_covers_all_and_rejects_unknown() {
-        assert_eq!(ThinkingLevel::parse("xhigh"), Some(ThinkingLevel::Xhigh));
-        assert_eq!(ThinkingLevel::parse("MAX"), Some(ThinkingLevel::Max));
-        assert_eq!(ThinkingLevel::parse("bogon"), None);
-    }
-
-    #[test]
-    fn thinking_level_serde_round_trip() {
-        let levels = [
-            ThinkingLevel::Off,
-            ThinkingLevel::Minimal,
-            ThinkingLevel::Low,
-            ThinkingLevel::Medium,
-            ThinkingLevel::High,
-            ThinkingLevel::Xhigh,
-            ThinkingLevel::Max,
-        ];
-        for level in &levels {
-            let json = serde_json::to_string(level).unwrap();
-            let deserialized: ThinkingLevel = serde_json::from_str(&json).unwrap();
-            assert_eq!(*level, deserialized);
-        }
-    }
-
     #[test]
     fn configured_levels_are_freeform_ordered_and_default_to_off() {
         assert_eq!(
@@ -171,14 +128,6 @@ mod tests {
             vec!["off".to_string()]
         );
         assert!(resolve_configured_levels(false, Some(&["".into()])).is_err());
-    }
-
-    #[test]
-    fn thinking_level_serde_lowercase() {
-        let json = serde_json::to_string(&ThinkingLevel::Medium).unwrap();
-        assert_eq!(json, "\"medium\"");
-        let deserialized: ThinkingLevel = serde_json::from_str("\"high\"").unwrap();
-        assert_eq!(deserialized, ThinkingLevel::High);
     }
 
     // ── XyToolSchema ────────────────────────────────────────────────

@@ -95,14 +95,7 @@ fn to_bridge_options(options: XyGenerateOptions) -> xylitol_ai_bridge::AiBridgeG
     xylitol_ai_bridge::AiBridgeGenerateOptions {
         thinking_level: options.thinking_level,
         level_map: options.level_map,
-        thinking_budgets: options.thinking_budgets.map(|b| {
-            xylitol_ai_bridge::AiBridgeThinkingBudgets {
-                minimal: b.minimal,
-                low: b.low,
-                medium: b.medium,
-                high: b.high,
-            }
-        }),
+        thinking_budgets: options.thinking_budgets,
         system_prompt: options.system_prompt,
     }
 }

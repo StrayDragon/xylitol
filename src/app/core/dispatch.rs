@@ -81,13 +81,13 @@ pub enum DispatchOutcome {
 }
 
 /// Validate a freeform thinking-level request without changing its spelling.
-pub fn parse_thinking_level(s: &str) -> Result<String, XyDriverError> {
+pub fn validate_nonempty_thinking_level(s: &str) -> Result<(), XyDriverError> {
     if s.trim().is_empty() {
         return Err(XyDriverError::invalid_input(
             "thinking level must not be empty",
         ));
     }
-    Ok(s.to_string())
+    Ok(())
 }
 
 /// Dispatch a non-Prompt, non-Quit, non-WS Command against `driver`.
@@ -135,9 +135,9 @@ async fn dispatch_inner(
             Ok(DispatchOutcome::Models(driver.available_models()))
         }
         Command::SetThinkingLevel { level, .. } => {
-            let tl = parse_thinking_level(&level)?;
-            driver.set_thinking_level(tl.clone())?;
-            Ok(DispatchOutcome::ThinkingLevel(tl))
+            validate_nonempty_thinking_level(&level)?;
+            driver.set_thinking_level(level.clone())?;
+            Ok(DispatchOutcome::ThinkingLevel(level))
         }
         Command::Bash {
             command,
@@ -571,34 +571,14 @@ mod tests {
         assert_eq!(d.thinking_level(), "high");
     }
 
-    /// c1165: XyDriver level after SetThinkingLevel / cycle MUST map to OpenAI effort.
     #[tokio::test]
-    async fn cycle_thinking_level_maps_to_openai_reasoning_effort() {
-        use xylitol_ai_bridge::{
-            AiBridgeResolvedThinking, AiBridgeThinkingAdapterKind, resolve_thinking_for_request,
-        };
-
+    async fn cycle_and_dispatch_preserve_local_thinking_levels() {
         let mut d = stub();
-        let level_map = std::collections::HashMap::new();
         assert_eq!(d.thinking_level(), "medium");
-        let mid = resolve_thinking_for_request(
-            &d.thinking_level(),
-            &level_map,
-            None,
-            AiBridgeThinkingAdapterKind::OpenAi,
-        );
-        assert_eq!(mid, AiBridgeResolvedThinking::OpenAiEffort("medium".into()));
-
         assert_eq!(d.cycle_thinking_level().unwrap(), "high");
-        let high = resolve_thinking_for_request(
-            &d.thinking_level(),
-            &level_map,
-            None,
-            AiBridgeThinkingAdapterKind::OpenAi,
-        );
-        assert_eq!(high, AiBridgeResolvedThinking::OpenAiEffort("high".into()));
+        assert_eq!(d.thinking_level(), "high");
 
-        dispatch(
+        let outcome = dispatch(
             &mut d,
             Command::SetThinkingLevel {
                 id: None,
@@ -607,13 +587,11 @@ mod tests {
         )
         .await
         .unwrap();
-        let off = resolve_thinking_for_request(
-            &d.thinking_level(),
-            &level_map,
-            None,
-            AiBridgeThinkingAdapterKind::OpenAi,
-        );
-        assert_eq!(off, AiBridgeResolvedThinking::Omit);
+        assert!(matches!(
+            outcome,
+            DispatchOutcome::ThinkingLevel(ref level) if level == "off"
+        ));
+        assert_eq!(d.thinking_level(), "off");
     }
 
     #[tokio::test]
@@ -631,6 +609,12 @@ mod tests {
         assert!(
             matches!(outcome, DispatchOutcome::ThinkingLevel(ref level) if level == "vendor-max")
         );
+    }
+
+    #[test]
+    fn thinking_level_validation_rejects_only_blank_input() {
+        assert!(validate_nonempty_thinking_level(" \t").is_err());
+        assert!(validate_nonempty_thinking_level(" vendor-max ").is_ok());
     }
 
     #[tokio::test]

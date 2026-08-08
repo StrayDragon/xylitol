@@ -210,6 +210,17 @@ pub struct ThinkingBudgets {
     pub high: Option<u64>,
 }
 
+impl From<&ThinkingBudgets> for crate::protocol::model::ThinkingBudgets {
+    fn from(value: &ThinkingBudgets) -> Self {
+        Self {
+            minimal: value.minimal,
+            low: value.low,
+            medium: value.medium,
+            high: value.high,
+        }
+    }
+}
+
 /// Transport mode.
 #[derive(Debug, Clone, Default, PartialEq, Eq, Serialize, Deserialize, JsonSchema)]
 #[serde(rename_all = "kebab-case")]

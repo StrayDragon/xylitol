@@ -9,7 +9,7 @@ use crate::terminal_colors::RgbColor;
 use crate::theme::paint::fg_rgb;
 use crate::theme::palette::Palette;
 
-/// Package-local thinking border level (maps to product `ThinkingLevel` in c1150 / c1145).
+/// Package-local thinking border palette level, independent of product config strings.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, Default)]
 pub enum ThinkingBorderLevel {
     Off,

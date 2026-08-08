@@ -16,7 +16,7 @@ pub struct AiBridgeThinkingBudgets {
 /// Options carried into [`crate::provider::AiBridgeLlmAdapter::generate_stream`].
 #[derive(Debug, Clone)]
 pub struct AiBridgeGenerateOptions {
-    /// Level name (`off`, `medium`, …) matching domain `ThinkingLevel::as_str`.
+    /// Freeform configured level string; known names have Anthropic budget fallbacks.
     pub thinking_level: String,
     pub level_map: HashMap<String, Option<String>>,
     pub thinking_budgets: Option<AiBridgeThinkingBudgets>,
@@ -96,8 +96,9 @@ pub fn resolve_thinking_for_request(
     budgets: Option<&AiBridgeThinkingBudgets>,
     adapter: AiBridgeThinkingAdapterKind,
 ) -> AiBridgeResolvedThinking {
-    // Map keys are declared level names, so preserve the configured spelling
-    // for lookup and OpenAI effort values.
+    // Product support sets, map keys, and set_thinking_level values are exact
+    // strings. Only the known Anthropic/OpenAI built-in fallback below is ASCII
+    // case-insensitive; configuration is never normalized.
     if let Some(entry) = map.get(level) {
         return match entry {
             None => AiBridgeResolvedThinking::Omit,

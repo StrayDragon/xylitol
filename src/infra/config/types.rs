@@ -295,6 +295,21 @@ pub struct ModelEntry {
     pub tokenizer: Option<String>,
 }
 
+impl ModelEntry {
+    /// Resolve and validate this model's freeform thinking configuration once.
+    pub fn resolve_thinking_config(
+        &self,
+    ) -> Result<(Vec<String>, crate::protocol::model::ThinkingLevelMap), String> {
+        let levels = crate::protocol::model::resolve_configured_levels(
+            self.thinking,
+            self.thinking_levels.as_deref(),
+        )?;
+        let map = self.thinking_level_map.clone().unwrap_or_default();
+        crate::protocol::model::validate_thinking_level_map(&map, &levels)?;
+        Ok((levels, map))
+    }
+}
+
 /// Shared tokenizer definition under top-level `tokenizers:` (c1380).
 ///
 /// Prefer `repo` (HF). If `path` is set, load local file and ignore `repo`.
@@ -472,15 +487,9 @@ impl AppConfig {
     /// Validate freeform thinking lists and maps for every model entry.
     pub fn validate_thinking_levels(&self) -> Result<(), String> {
         for (alias, entry) in &self.model.models {
-            let levels = crate::protocol::model::resolve_configured_levels(
-                entry.thinking,
-                entry.thinking_levels.as_deref(),
-            )
-            .map_err(|e| format!("models.{alias}: {e}"))?;
-            if let Some(map) = &entry.thinking_level_map {
-                crate::protocol::model::validate_thinking_level_map(map, &levels)
-                    .map_err(|e| format!("models.{alias}: {e}"))?;
-            }
+            entry
+                .resolve_thinking_config()
+                .map_err(|e| format!("models.{alias}: {e}"))?;
         }
         Ok(())
     }
@@ -589,14 +598,13 @@ impl AppConfig {
             .and_then(|e| (e.context_window > 0).then_some(e.context_window))
             .unwrap_or_else(|| default_context_window_for(model_config.kind));
 
-        let thinking_levels = crate::protocol::model::resolve_configured_levels(
-            thinking,
-            entry.and_then(|e| e.thinking_levels.as_deref()),
-        )?;
-        let thinking_level_map = entry
-            .and_then(|e| e.thinking_level_map.clone())
-            .unwrap_or_default();
-        crate::protocol::model::validate_thinking_level_map(&thinking_level_map, &thinking_levels)?;
+        let (thinking_levels, thinking_level_map) = match entry {
+            Some(entry) => entry.resolve_thinking_config()?,
+            None => (
+                vec![crate::protocol::model::THINKING_OFF.into()],
+                Default::default(),
+            ),
+        };
 
         Ok(XyModelMeta {
             id: model_id.to_string(),
