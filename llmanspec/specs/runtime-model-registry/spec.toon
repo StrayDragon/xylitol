@@ -2,7 +2,7 @@ kind: llman.sdd.spec
 name: "runtime-model-registry"
 purpose: "模型注册表 — provider 注册、鉴权检查、模型发现与解析。Pre-1.0.0 仅支持 OpenAI 兼容与 Anthropic provider。"
 valid_scope[3]: src/agent/model/,src/protocol/,src/app/core/bootstrap.rs
-requirements[14]{req_id,title,statement}:
+requirements[15]{req_id,title,statement}:
   m1,ModelRegistry provider,"ModelRegistry MUST 支持 register_provider(name, config) 与 has_configured_auth(model) / has_resolved_auth(model) 检查 API key 可用性。"
   m2,模型发现,ModelRegistry MUST 支持 get_available()，返回已注册 provider 的全部配置模型，按 provider 优先级排序。
   m3,模型默认值,"ModelRegistry MUST 仅为 openai 与 anthropic provider 维护默认模型 ID。Pre-1.0.0 其它 provider MUST NOT 有默认模型条目。默认模型 ID MUST 为有效、当前可用的模型标识（如 gpt-4o、claude-sonnet-4-20250514），不得为占位或不存在的模型名。该默认 ID 仅作显式解析/回退辅助，MUST NOT 单独构成「用户已配置默认模型」的产品选中态。"
@@ -12,12 +12,14 @@ requirements[14]{req_id,title,statement}:
   m7,鉴权指引,未配置模型 API key 时，ModelRegistry MUST 返回面向用户的错误消息，指引正确环境变量名。
   m8,BDD model,模型注册表与解析的 BDD 测试 MUST 全部通过。
   m9,"thinking-levels-on-meta","ModelRegistry / resolve_model_meta（或等价）MUST 将配置中的 thinking_levels 字符串列表填入模型 meta 支持集并保留配置顺序；thinking 为 false 或未声明可调列表时支持集 MUST 仅为 off（不可调）。MUST NOT 在未声明列表时静默展开历史 STANDARD（off…high）或其它全球超集；MUST NOT 要求档名属于封闭枚举超集；MUST NOT 依赖 xylitol-tui ThinkingBorderLevel。"
-  m10,"thinking-level-validate-clamp","set_thinking_level（或 Driver 等价）在目标 level 不在当前模型支持集时 MUST 拒绝且 MUST NOT 更改当前值。换模、精确 /model <id> 或路径要求默认档时：可调模型 MUST 采用支持集配置顺序的末项；仅 off 或不可调 MUST 为 off。MUST NOT 因 Settings.default_thinking_level 覆盖换模末项策略。会话 load/resume 还原分支末次 thinkingLevelChange 字符串时 MUST 原样恢复，MUST NOT 因集外而改写 JSONL 或自动追加 clamp 条目；配置漂移时 MAY 短暂 sticky 集外直至用户显式改档。产品面 MUST 展示当前模型声明的档名列表；provider wire 差异经 thinking_level_map 与 api×compat 在请求边界生效。"
+  m10,"thinking-level-validate-clamp","set_thinking_level（或 Driver 等价）在目标 level 不在当前模型支持集时 MUST 拒绝且 MUST NOT 更改当前值。匹配 MUST 为精确字符串相等（与配置声明字面量一致）；MUST NOT 因仅大小写或首尾空白差异而接受（例如声明 high 时 MUST 拒绝 HIGH 与「 high 」）。换模、精确 /model <id> 或路径要求默认档时：可调模型 MUST 采用支持集配置顺序的末项；仅精确 off 或不可调 MUST 为 off。MUST NOT 因 Settings.default_thinking_level 覆盖换模末项策略。会话 load/resume 还原分支末次 thinkingLevelChange 字符串时 MUST 原样恢复，MUST NOT 因集外而改写 JSONL 或自动追加 clamp 条目；配置漂移时 MAY 短暂 sticky 集外直至用户显式改档。产品面 MUST 展示当前模型声明的档名列表；provider wire 差异经 thinking_level_map 与 api×compat 在请求边界生效。"
   m11,"thinking-level-on-generate","Agent 在调用 generate_stream（或等价）时 MUST 传入当前 thinking 档名字符串与模型 thinking_level_map（及可用的 thinking_budgets）；resolve 后 MUST 影响下一轮 provider 请求体；MUST NOT 仅更新会话/UI 状态而不影响请求组装。"
+  m15,"thinking-level-exact-opaque","运行时对 thinking 档名（支持集成员、set/cycle、Settings 默认是否 ∈ 支持集、可调判定中的关档字面量）MUST 使用精确 opaque 字符串；关档约定字面量 MUST 为精确 off。MUST NOT 在匹配或可调判定中对档名做 ASCII 大小写折叠或 trim 归一。"
   m12,"no-silent-env-select","bootstrap 在仅有 provider API key、无配置模型别名且无显式 --model（或等价选中源）时，MUST NOT 自动将 default_model_id_for_provider 的返回值设为当前选中模型；未选中 MUST 保持为空并由应用面按 cli-entry ce18 展示。"
   m13,"honor-model-entry-api","bootstrap / resolve_model_meta（或等价装配）注册 XyModelMeta 时 MUST 保留 ModelsConfig ModelEntry 的可选 api 字段写入 config.api 与 meta.api：省略 api 时 MUST 走 AdapterKind::default_for（或等价）。显式可识别 api（含 openai-completions）MUST 参与 adapter 选择；未识别字符串 MUST 静默等同省略，MUST NOT 为此单独报错。MUST NOT 在注册路径把已配置的 api 字段写成 None。由单测覆盖，MUST NOT 为静态接线单独扩 BDD step。"
   m14,"manifest-api-kind-default","JSON model manifest 省略 api 时 MUST 按 provider 选用与 AdapterKind::default_for 一致的协议族字符串（OpenAI→openai-responses，Anthropic→anthropic-messages）；显式 openai-completions MUST 可选且参与装配。由单测覆盖，MUST NOT 为静态缺省单独扩 BDD step。"
-scenarios[5]{req_id,id,given,when,then,feature}:
+scenarios[6]{req_id,id,given,when,then,feature}:
+  m15,"set-rejects-case-variant-unit","支持集含精确 high","set_thinking_level 为 HIGH","拒绝且当前值不变",false
   m13,"yaml-explicit-completions-api","YAML 模型条目 api 为 openai-completions","bootstrap 后 resolve_adapter_kind","选用 OpenAI Completions",false
   m13,"yaml-omitted-api-uses-kind-default","YAML OpenAI 模型条目省略 api","bootstrap 注册后 resolve_adapter_kind","选用 OpenAI Responses 默认",false
   m14,"manifest-openai-omitted-api-responses","JSON manifest OpenAI 模型省略 api","load_models_from_manifest","meta.api 为 openai-responses",false

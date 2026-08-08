@@ -2,8 +2,8 @@
 
 ## 1. 合约
 
-- [ ] 1.1 更新 `runtime-model-registry` / `package-ai-bridge`（及必要 `runtime-config`）requirement：档名匹配 MUST 精确；MUST NOT casefold/trim 归一
-- [ ] 1.2 相关 `.feature` 或文档场景：大小写变体拒绝 / bridge 不折叠
+- [x] 1.1 更新 `runtime-model-registry` / `package-ai-bridge`（及必要 `runtime-config`）requirement：档名匹配 MUST 精确；MUST NOT casefold/trim 归一
+- [x] 1.2 相关 `.feature` 或文档场景：大小写变体拒绝 / bridge 不折叠
 
 ## 2. 实现
 
