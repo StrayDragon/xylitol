@@ -107,9 +107,14 @@ fn test_rc_config_docs(rc_snap: RcSnap) {}
 fn test_rc_parse_list(tokenizer_bdd: TokenizerBdd, rc_snap: RcSnap) {}
 #[scenario(
     path = "llmanspec/specs/runtime-config/runtime-config.feature",
-    name = "unknown-fails"
+    name = "empty-token-fails"
 )]
-fn test_rc_unknown_fails(tokenizer_bdd: TokenizerBdd) {}
+fn test_rc_empty_token_fails(tokenizer_bdd: TokenizerBdd) {}
+#[scenario(
+    path = "llmanspec/specs/runtime-config/runtime-config.feature",
+    name = "freeform-ok"
+)]
+fn test_rc_freeform_ok(tokenizer_bdd: TokenizerBdd, rc_snap: RcSnap) {}
 #[scenario(
     path = "llmanspec/specs/runtime-config/runtime-config.feature",
     name = "parse-map"
@@ -117,9 +122,9 @@ fn test_rc_unknown_fails(tokenizer_bdd: TokenizerBdd) {}
 fn test_rc_parse_map(tokenizer_bdd: TokenizerBdd, rc_snap: RcSnap) {}
 #[scenario(
     path = "llmanspec/specs/runtime-config/runtime-config.feature",
-    name = "unknown-key-fails"
+    name = "map-key-outside-list-fails"
 )]
-fn test_rc_unknown_key_fails(tokenizer_bdd: TokenizerBdd) {}
+fn test_rc_map_key_outside_list_fails(tokenizer_bdd: TokenizerBdd) {}
 #[scenario(
     path = "llmanspec/specs/runtime-config/runtime-config.feature",
     name = "absent-key-ok"

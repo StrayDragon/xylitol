@@ -1,6 +1,9 @@
 ---
 depends_on:
 - c1940-update-multi-api-named-compat
+branch: sdd/c1970-update-per-vendor-thinking-levels
+base_sha: 77d4be5d7dbaed6e529681363c828c5b0743bdc5
+checkpointed: false
 ---
 
 # 按厂商暴露 thinking levels（配置声明，取消 STANDARD 默认）

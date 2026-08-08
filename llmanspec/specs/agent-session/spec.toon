@@ -7,7 +7,7 @@ requirements[26]{req_id,title,statement}:
   a2,回合事件,System MUST 每轮发出：turn_start、message_start、message_update（流式）、message_end。
   a3,工具事件,System MUST 每次工具调用在 MessageEnd 之后发出 tool_execution_start，执行期发出至少一次 tool_execution_update（长输出工具宜多段），再 tool_execution_end；MUST NOT 在助手消息流式阶段（MessageEnd 前）发出 tool_execution_start。
   a4,模型切换,System MUST 支持运行时切换模型（select_model 或等价），切换 MUST 钳制到可用模型集。
-  a5,thinking 级别,System MUST 支持 thinking level 切换（low/medium/high），并钳制到模型能力。
+  a5,thinking 级别,"System MUST 支持按当前模型声明的 thinking_levels 切换档位；显式 set 时目标∉支持集 MUST 拒绝；会话 resume MUST 原样还原末次落盘档名字符串（见 m10），MUST NOT 静默改写历史条目。"
   a6,abort,System MUST 支持中止当前 agent 操作（abort 或等价），并清理进行中的回合。
   a7,上下文用量,System MUST 暴露上下文用量估计（get_context_usage 或等价），返回估计 token 数与上下文窗口百分比。
   a8,"agent-session-store","AgentCapabilities 或 ReAct 运行时 MUST 在每条 user、assistant、toolResult 消息完成时（对齐 pi message_end）经 XySessionStore::append_session_entry 写入当前 session；tool 执行结束后 MUST 持久化对应 toolResult；一轮结束后 session 文件或内存 backend MUST 含本轮消息。MUST NOT 仅把对话留在 ReAct 本地 history 而不写入 store。"

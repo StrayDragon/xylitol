@@ -68,39 +68,34 @@
     那么 消息含 ANTHROPIC_API_KEY
 
   @req:m9
-  场景: default-standard
+  场景: default-off-when-unset
     假如 模型 thinking true 且无 thinking_levels
     当 resolve_model_meta
-    那么 thinking_levels 含 off 至 high 且不含 xhigh
+    那么 thinking_levels 仅为 off
 
   @req:m9
-  场景: explicit-hole
-    假如 配置 thinking_levels 为 high 与 max
+  场景: explicit-vendor-list
+    假如 配置 thinking_levels 为 off 与 high 与 max
     当 resolve_model_meta
-    那么 列表为 high 与 max 且无 xhigh
+    那么 列表为 off 与 high 与 max 且顺序一致
 
   @req:m9
-  场景: xhigh-parse
-    当 解析 ThinkingLevel 字符串 xhigh
-    那么 得到 Xhigh 变体
+  场景: freeform-level-name
+    假如 配置 thinking_levels 含厂商字面量 xhigh
+    当 resolve_model_meta
+    那么 支持集含 xhigh
 
   @req:m10
   场景: reject-unsupported
-    假如 当前模型支持集无 xhigh
-    当 set_thinking_level(Xhigh)
+    假如 当前模型支持集为 off 与 high
+    当 set_thinking_level 为 max
     那么 失败且当前 level 不变
 
   @req:m10
-  场景: clamp-on-switch
-    假如 当前为 xhigh 后切换到仅支持至 high 的模型
-    当 select_model 完成
-    那么 thinking level 为支持集最高档 high
-
-  @req:m10
-  场景: default-highest-on-select
-    假如 目标模型支持 off minimal low medium high
+  场景: default-last-on-select
+    假如 目标模型支持 off 与 high 与 max
     当 select_model 到该模型
-    那么 thinking level 为 high 而非 Settings 低档默认
+    那么 thinking level 为 max 而非 Settings 低档默认
 
   @req:m10
   场景: no-thinking-is-off
@@ -108,11 +103,23 @@
     当 select_model 到该模型
     那么 thinking level 为 off
 
+  @req:m10
+  场景: resume-restores-exact-level
+    假如 会话分支末次 thinkingLevelChange 为 high 且当前模型支持集含 high
+    当 resume 或装载会话上下文
+    那么 当前 thinking level 为 high 且未因装载追加新的 thinkingLevelChange
+
+  @req:m10
+  场景: resume-sticky-out-of-set
+    假如 会话末次 thinkingLevelChange 为 high 且当前模型支持集仅为 off 与 max
+    当 resume 装载
+    那么 内存 thinking level 仍为 high 且会话文件未被改写为 max 或 off
+
   @req:m11
   场景: level-reaches-options
     假如 当前 thinking level 为 high
     当 发起一轮 generate_stream
-    那么 调用携带 ThinkingLevel::High（或等价 options）
+    那么 调用携带 thinking_level 字符串 high（或等价 options）
 
   @req:m11
   场景: map-from-meta

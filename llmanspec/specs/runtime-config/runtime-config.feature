@@ -60,37 +60,43 @@
 
   @req:rc16
   场景: parse-list
-    假如 YAML 模型条目含 thinking_levels [off, high, xhigh]
+    假如 YAML 模型条目含 thinking_levels [off, high, max]
     当 加载配置并 resolve_model_meta
     那么 XyModelMeta.thinking_levels 与列表一致
 
   @req:rc16
-  场景: unknown-fails
-    假如 thinking_levels 含未知名 bogon
+  场景: empty-token-fails
+    假如 thinking_levels 含空字符串
     当 加载配置
     那么 失败
 
   @req:rc16
+  场景: freeform-ok
+    假如 thinking_levels 含厂商字面量 bogon-level
+    当 加载配置
+    那么 成功且支持集含 bogon-level
+
+  @req:rc16
   场景: default-setting
-    假如 Settings.default_thinking_level 为 low 且模型支持 low
+    假如 Settings.default_thinking_level 为 high 且模型支持集为 off 与 high 与 max
     当 会话首次装配
-    那么 当前 thinking level 为 Low
+    那么 当前 thinking level 为 high
 
   @req:rc16
   场景: select-ignores-settings-default
-    假如 Settings.default_thinking_level 为 low 且模型支持至 high
+    假如 Settings.default_thinking_level 为 off 且模型支持集为 off 与 high 与 max
     当 select_model 到该模型
-    那么 thinking level 为 high
+    那么 thinking level 为 max
 
   @req:rc17
   场景: parse-map
-    假如 YAML 含 thinking_level_map high: max 与 off: null
+    假如 YAML 含 thinking_levels [off, high] 与 thinking_level_map high: max 与 off: null
     当 加载并 resolve_model_meta
     那么 meta 含 high→max 与 off→null
 
   @req:rc17
-  场景: unknown-key-fails
-    假如 thinking_level_map 含未知名 bogon
+  场景: map-key-outside-list-fails
+    假如 thinking_levels 为 [off, high] 且 thinking_level_map 含 max: high
     当 加载配置
     那么 失败
 
