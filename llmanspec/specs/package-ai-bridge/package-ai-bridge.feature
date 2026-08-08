@@ -40,7 +40,7 @@
 
   @req:pab11
   场景: openai-via-sdk
-    假如 Completions 或 Responses 请求
+    假如 Responses 请求
     当 实现归属
     那么 经 async-openai Client（非手写重复 SSE 栈为默认路径）
 
@@ -51,10 +51,10 @@
     那么 仅增配置/薄 adapter 不改 AgentMessage
 
   @req:pab12
-  场景: openai-completions-effort
+  场景: openai-responses-effort
     假如 level=medium 且无自定义 map
-    当 组装 Completions 请求
-    那么 body 含 reasoning_effort 为 medium
+    当 组装 Responses 请求
+    那么 body.reasoning.effort 为 medium
 
   @req:pab12
   场景: anthropic-budget-off

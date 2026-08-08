@@ -1,5 +1,8 @@
 ---
 depends_on: []
+branch: sdd/c1940-remove-openai-completions
+base_sha: b0a3aa0cc399d6861b0bc1173dfdde12407b08c4
+checkpointed: false
 ---
 
 # 移除 OpenAI Completions：OpenAI 兼容族仅 Responses（客户端持态）
