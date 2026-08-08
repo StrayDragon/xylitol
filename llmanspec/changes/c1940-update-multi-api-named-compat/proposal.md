@@ -2,7 +2,8 @@
 depends_on: []
 branch: sdd/c1940-update-multi-api-named-compat
 base_sha: b0a3aa0cc399d6861b0bc1173dfdde12407b08c4
-checkpointed: false
+checkpointed: true
+checkpoint_sha: 8ba0cf1c19da63e54ab764ced57a6fc568e5ddb7
 ---
 
 # 三协议族 + 命名 compat（Completions 一等公民；Zen / DeepSeek）
