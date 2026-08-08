@@ -48,7 +48,7 @@ DeepSeek：带 `tools` 时后续请求 **必须**回传 `reasoning_content`，�
 | Bridge 已字符串化 | `AiBridgeGenerateOptions.thinking_level: String`；map 键为字符串 |
 | 会话档位条目 | `ThinkingLevelChangeEntry { thinking_level: String }` |
 | 上下文还原 | `SessionManager::build_session_context`：扫分支，末次 ThinkingLevelChange 覆盖；缺省字面量 `"medium"`（无条目时） |
-| 换模默认 | m10：支持集全序最高档；Settings.default 不得覆盖换模最高档 |
+| 换模默认 | m10：声明列表末项；Settings.default 不得覆盖换模末项策略 |
 
 ## 对本 change 的设计含义
 

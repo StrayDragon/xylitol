@@ -4,7 +4,7 @@ use std::sync::{Arc, Mutex};
 
 use crate::agent::model::manager::ModelManager;
 use crate::protocol::error::XyError;
-use crate::protocol::model::{XyModelMeta, thinking_levels_are_adjustable};
+use crate::protocol::model::XyModelMeta;
 use crate::protocol::ports::XyModel;
 use crate::protocol::session::{
     EntryBase, ModelChangeEntry, SessionEntry, ThinkingLevelChangeEntry,
@@ -46,20 +46,7 @@ impl AgentCapabilities {
     /// Selected binding when idle (no in-flight turn). Live chrome uses the
     /// run coordinator via [`crate::agent::runtime::AgentRuntime`].
     pub fn selected_turn_binding(&self) -> Option<ActiveTurnBinding> {
-        self.with_models(|mm| {
-            let meta = mm.current_model()?;
-            let levels = crate::agent::model::manager::ModelManager::levels_for_meta(meta);
-            Some(ActiveTurnBinding {
-                model_id: meta.id.clone(),
-                display_name: if meta.display_name.is_empty() {
-                    meta.id.clone()
-                } else {
-                    meta.display_name.clone()
-                },
-                thinking: mm.thinking_level(),
-                omit_thinking: !thinking_levels_are_adjustable(&levels),
-            })
-        })
+        self.with_models(ActiveTurnBinding::from_manager)
     }
 
     /// True while a root turn is live (coordinator probe).

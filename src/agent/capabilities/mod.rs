@@ -39,6 +39,7 @@ use crate::agent::prompt::{self, SystemPromptOpts};
 use crate::agent::runtime::AgentHooks;
 use crate::agent::tools::{ToolFreezePhase, ToolSet, ToolTableFingerprint};
 use crate::protocol::message::AgentMessage;
+use crate::protocol::model::thinking_levels_are_adjustable;
 use crate::protocol::ports::{XyBatchMode, XyHookBus, XyPermission};
 
 // ── Model Registry ──────────────────────────────────────────────────
@@ -55,6 +56,24 @@ pub struct ActiveTurnBinding {
     pub thinking: String,
     /// True when footer should omit the thinking segment.
     pub omit_thinking: bool,
+}
+
+impl ActiveTurnBinding {
+    /// Snapshot the currently selected model + thinking level for chrome / ReAct.
+    pub(crate) fn from_manager(mm: &ModelManager) -> Option<Self> {
+        let meta = mm.current_model()?;
+        let levels = ModelManager::levels_for_meta(meta);
+        Some(Self {
+            model_id: meta.id.clone(),
+            display_name: if meta.display_name.is_empty() {
+                meta.id.clone()
+            } else {
+                meta.display_name.clone()
+            },
+            thinking: mm.thinking_level(),
+            omit_thinking: !thinking_levels_are_adjustable(&levels),
+        })
+    }
 }
 
 /// Engine capability aggregate (model / tools / session / prompt / compaction / queues).
