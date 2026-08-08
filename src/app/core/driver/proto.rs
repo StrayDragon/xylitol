@@ -264,8 +264,13 @@ pub trait XyDriver: Send {
     async fn begin_mcp_bootstrap(&mut self) {}
 
     /// Poll background MCP bootstrap; returns true when loaded-resources should refresh
-    /// (connecting label changed, or bootstrap just settled). Unchanged progress ticks
-    /// return false so the TUI can skip upper invalidation while the spinner runs.
+    /// (connecting label changed, tools applied, or bootstrap phase advanced).
+    ///
+    /// **Contract (sticky cue)**: `Settling → Settled` (deferred system-prompt install
+    /// finished) MUST return `true` even when no tool-freeze gate is armed. Hosts only
+    /// call `refresh_loaded_resources` when this is true; skipping the signal leaves a
+    /// stale snap with `mcp_bootstrap_complete=false` and sticky-restores
+    /// `mcp pending (see /mcp)` after the welcome card already shows connected.
     async fn poll_mcp_bootstrap(&mut self) -> bool {
         false
     }
