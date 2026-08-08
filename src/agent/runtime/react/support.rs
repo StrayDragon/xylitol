@@ -42,7 +42,7 @@ pub(crate) fn prepare_turn_binding(
     let generate_options = crate::protocol::ports::XyGenerateOptions {
         thinking_level: thinking,
         level_map: meta.thinking_level_map.clone(),
-        thinking_budgets: None,
+        thinking_budgets: mm.thinking_budgets().cloned(),
         system_prompt: system_prompt.clone(),
     };
     let model = match run_model.as_ref() {
