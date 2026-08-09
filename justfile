@@ -16,7 +16,8 @@ _default:
 setup:
     #!/usr/bin/env bash
     set -euo pipefail
-    prek install
+    # prek defaults to pre-commit only; install all stages declared in prek.toml
+    prek install -t pre-commit -t commit-msg -t pre-push
     # Lazy install also happens in scripts/check_complexity.py; setup warms the cache.
     if ! command -v cccc-rs >/dev/null && [[ ! -x .tools/bin/cccc-rs ]]; then
       cargo install cccc-rs-cli --version 0.4.0 --locked --root .tools
