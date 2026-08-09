@@ -59,8 +59,6 @@ mod tests {
     use serial_test::serial;
 
     #[test]
-    #[serial(obs_global)]
-
     fn detects_opencode_host() {
         assert!(is_opencode_host("https://opencode.ai/zen/v1"));
         assert!(is_opencode_host(

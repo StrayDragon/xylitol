@@ -281,8 +281,7 @@ mod tests {
     }
 
     #[test]
-    #[serial_test::serial(env_global, obs_global)]
-
+    #[serial_test::serial(env_global)]
     fn otlp_without_endpoint_or_env_is_off() {
         let cfg = OtelConfig {
             exporter: OtelExporterKind::OtlpHttp,
@@ -294,8 +293,7 @@ mod tests {
     }
 
     #[test]
-    #[serial_test::serial(env_global, obs_global)]
-
+    #[serial_test::serial(env_global)]
     fn langfuse_env_derives_endpoint_and_auth() {
         let _b = EnvGuard::set("LANGFUSE_BASE_URL", "http://127.0.0.1:3000/");
         let _p = EnvGuard::set("LANGFUSE_PUBLIC_KEY", "pk-test");

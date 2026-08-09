@@ -13,7 +13,6 @@ fn make_driver() -> XyInProcessDriver {
     XyInProcessDriver::new(agent, store)
 }
 
-#[serial(env_global)]
 #[test]
 fn reload_prompt_context_trusted_injects_agents() {
     let project = tempfile::tempdir().unwrap();
@@ -30,7 +29,6 @@ fn reload_prompt_context_trusted_injects_agents() {
     );
 }
 
-#[serial(env_global)]
 #[test]
 fn reload_prompt_context_untrusted_skips_project_agents() {
     let project = tempfile::tempdir().unwrap();
@@ -56,7 +54,6 @@ fn write_skill(dir: &std::path::Path, name: &str) {
     .unwrap();
 }
 
-#[serial(env_global)]
 #[test]
 fn reload_skills_trusted_injects_into_system_prompt() {
     let project = tempfile::tempdir().unwrap();
@@ -78,7 +75,6 @@ fn reload_skills_trusted_injects_into_system_prompt() {
     );
 }
 
-#[serial(env_global)]
 #[test]
 fn reload_skills_untrusted_skips_project_skill() {
     let project = tempfile::tempdir().unwrap();
@@ -381,7 +377,6 @@ fn yaml_model_api_is_honored_in_registry_config() {
     );
 }
 
-#[serial(env_global)]
 #[test]
 fn build_agent_with_skills_injects_available_skills_section() {
     use crate::protocol::resource::SkillInfo;
@@ -410,7 +405,6 @@ fn build_agent_with_skills_injects_available_skills_section() {
     assert_eq!(agent.loaded_skill_names(), vec!["boot-skill".to_string()]);
 }
 
-#[serial(env_global)]
 #[test]
 fn untrusted_reload_still_loads_user_global_skills() {
     let project = tempfile::tempdir().unwrap();
@@ -557,7 +551,6 @@ session:
     assert_eq!(assembly.max_turns, Some(7));
 }
 
-#[serial(env_global)]
 #[test]
 fn bootstrap_block_on_runs_from_current_thread_runtime() {
     let runtime = tokio::runtime::Builder::new_current_thread()

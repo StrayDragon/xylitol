@@ -88,13 +88,10 @@ mod tests {
     use super::*;
     use serial_test::serial;
     use std::path::PathBuf;
-    use std::sync::Mutex;
-
-    static ENV_LOCK: Mutex<()> = Mutex::new(());
 
     #[test]
+    #[serial(env_global)]
     fn renders_env_and_secret() {
-        let _guard = ENV_LOCK.lock().unwrap();
         let path = PathBuf::from("config.yaml");
         unsafe {
             std::env::set_var("XYLITOL_TEST_TMPL_ENV", "from-env");
@@ -136,8 +133,8 @@ mod tests {
     }
 
     #[test]
+    #[serial(env_global)]
     fn renders_inside_yaml_double_quotes() {
-        let _guard = ENV_LOCK.lock().unwrap_or_else(|e| e.into_inner());
         let path = PathBuf::from("config.yaml");
         // Process env wins over secret.env for the same key — isolate this test.
         let prev = std::env::var("CONTEXT7_API_KEY").ok();
@@ -162,8 +159,6 @@ mod tests {
     }
 
     #[test]
-    #[serial(env_global)]
-
     fn renders_vars_home() {
         let home = dirs::home_dir().expect("home_dir for test");
         let home_str = home.to_string_lossy();

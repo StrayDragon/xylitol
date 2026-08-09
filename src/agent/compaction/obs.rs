@@ -110,7 +110,6 @@ mod tests {
     }
 
     #[test]
-    #[serial(obs_global)]
     fn reason_kind_maps() {
         assert_eq!(compaction_reason_kind("manual"), "manual");
         assert_eq!(compaction_reason_kind("overflow"), "overflow");
