@@ -16,7 +16,6 @@ impl UiRoot {
             self.theme,
             &self.loaded_resources,
             &self.cwd,
-            &self.model,
             width,
         )
     }
