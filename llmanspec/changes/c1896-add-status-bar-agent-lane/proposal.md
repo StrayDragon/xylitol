@@ -23,7 +23,7 @@ depends_on:
 
 - **AgentLane API（扩展点）**：至少
   - `append(typed_message)`：尾插一条 schema 校验过的消息（只增为默认）
-  - `list` / `clear`（或 epoch 界，与 `c1920` 对齐时再钉）
+  - `list` / `clear`（是否按会话/轮次清，propose 时钉）
   - 注册表式 **message kind**（`kind: todo | plan | note | …`），新业务 = 新 kind + 渲染器，不改注入主干
 - **工具面**：内置工具（如 `status_bar_publish` / 未来 `todo_*`）只写 Agent 列；不直写 Runtime 观测 KV
 - **与 Runtime 列边界**：Assembler 合并顺序钉死（建议：轨迹 → Runtime 条 → Agent 条，或文档化可测顺序）；两列不得互相冒充
@@ -55,7 +55,7 @@ depends_on:
 ## Parallel / depends
 
 - **硬依赖**：`c1895`（Runtime 列与注入缝先立）
-- 软相关：`c1930`（投影/持久）、`c1920`（epoch）
+- 软相关：`c1930`（投影/持久）
 
 ## Open Questions
 

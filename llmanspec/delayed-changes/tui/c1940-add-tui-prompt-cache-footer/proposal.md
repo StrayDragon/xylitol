@@ -7,7 +7,7 @@ summary: "TUI footer 显示 Prompt Cache 命中/未回报/不适用三态读数�
 
 # TUI footer：Prompt Cache 三态读数（延后）
 
-> **⚠️ deferred（2026-08-05）**：移入 `llmanspec/delayed-changes/`，避免污染本期 SDD graph。本期实现线 = **c1920 → c1930/c1925 → c1900（MCP tool_search）**；Todo/状态栏等扩展后置。
+> **⚠️ deferred（2026-08-05）**：移入 `llmanspec/delayed-changes/`，避免污染本期 SDD graph。前置已落地/归档：`c1885`（cache usage）、`c1890`/`c1930`/`c1925`/`c1900`；`tool_search` → `c1960`。Todo/状态栏等扩展后置。
 
 
 > **占位草案**：避免遗忘。实现前置依赖 [`c1885`](../../../changes/archive/2026-08-05-c1885-add-responses-cache-usage-honesty/proposal.md)（Responses usage 三态 + 观测）。**本草案不做** Specs landing / apply，直至 c1885 归档且产品确认要 chrome。
