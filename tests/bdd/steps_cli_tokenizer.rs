@@ -23,10 +23,8 @@ pub struct TokenizerBdd {
     pub(crate) cfg_err: RefCell<String>,
     pub(crate) resolved_hf_repo: RefCell<String>,
     pub(crate) mock_uri: RefCell<String>,
-    /// When set, URL assembly uses this instead of process env.
+    /// When set, URL assembly / `run_with_hf_endpoint` use this instead of process env.
     hf_inject: RefCell<Option<HfEndpointInject>>,
-    /// Previous `HF_ENDPOINT` when this fixture owns a process-env mutation (download scenarios).
-    hf_endpoint_prev: RefCell<Option<Option<String>>>,
 }
 
 impl TokenizerBdd {
@@ -44,24 +42,7 @@ impl TokenizerBdd {
             resolved_hf_repo: RefCell::new(String::new()),
             mock_uri: RefCell::new(String::new()),
             hf_inject: RefCell::new(None),
-            hf_endpoint_prev: RefCell::new(None),
         }
-    }
-
-    fn take_hf_endpoint_guard(&self) {
-        if let Some(prev) = self.hf_endpoint_prev.borrow_mut().take() {
-            match prev {
-                Some(v) => unsafe { std::env::set_var("HF_ENDPOINT", v) },
-                None => unsafe { std::env::remove_var("HF_ENDPOINT") },
-            }
-        }
-    }
-
-    fn set_hf_endpoint_owned(&self, value: &str) {
-        self.take_hf_endpoint_guard();
-        let prev = std::env::var("HF_ENDPOINT").ok();
-        unsafe { std::env::set_var("HF_ENDPOINT", value) };
-        self.hf_endpoint_prev.replace(Some(prev));
     }
 
     fn hf_base_for_url(&self) -> String {
@@ -75,6 +56,14 @@ impl TokenizerBdd {
         }
     }
 
+    /// `Some(base)` for [`run_with_hf_endpoint`] when inject is an endpoint; else process env.
+    fn hf_endpoint_override(&self) -> Option<String> {
+        match self.hf_inject.borrow().as_ref() {
+            Some(HfEndpointInject::Endpoint(ep)) => Some(ep.clone()),
+            _ => None,
+        }
+    }
+
     fn ensure_cache(&self) -> xylitol_ai_bridge::tokenize::HfTokenizerCache {
         if self.cache.borrow().is_none() {
             let dir = tempfile::tempdir().expect("temp cache");
@@ -84,12 +73,6 @@ impl TokenizerBdd {
             self.cache.replace(Some(cache));
         }
         self.cache.borrow().as_ref().unwrap().clone()
-    }
-}
-
-impl Drop for TokenizerBdd {
-    fn drop(&mut self) {
-        self.take_hf_endpoint_guard();
     }
 }
 
@@ -222,7 +205,7 @@ async fn w_ce15_download_yes(tokenizer_bdd: &TokenizerBdd) {
     use std::process::ExitCode;
     use wiremock::matchers::{method, path};
     use wiremock::{Mock, MockServer, ResponseTemplate};
-    use xylitol::app::cli::tokenizer::{TokenizerAction, run_with};
+    use xylitol::app::cli::tokenizer::{TokenizerAction, run_with_hf_endpoint};
 
     let server = MockServer::start().await;
     Mock::given(method("GET"))
@@ -246,11 +229,14 @@ models:
     let cfg = parse_app_config_yaml(yaml).expect("cfg");
     tokenizer_bdd.config.replace(cfg);
     tokenizer_bdd.mock_uri.replace(server.uri());
+    tokenizer_bdd
+        .hf_inject
+        .replace(Some(HfEndpointInject::Endpoint(server.uri())));
 
     let cache = tokenizer_bdd.ensure_cache();
-    tokenizer_bdd.set_hf_endpoint_owned(&server.uri());
     let cfg = tokenizer_bdd.config.borrow().clone();
-    let (code, out) = run_with(
+    let inject = tokenizer_bdd.hf_endpoint_override();
+    let (code, out) = run_with_hf_endpoint(
         TokenizerAction::Download {
             target: "qwen".into(),
             file: None,
@@ -259,9 +245,9 @@ models:
         &cache,
         &cfg,
         false,
+        inject.as_deref(),
     )
     .await;
-    tokenizer_bdd.take_hf_endpoint_guard();
     tokenizer_bdd.cli_out.replace(out);
     tokenizer_bdd.cli_code_ok.set(code == ExitCode::SUCCESS);
 }
@@ -346,19 +332,20 @@ fn g_ce15_hf_mirror_mapped(tokenizer_bdd: &TokenizerBdd) {
     // Fast-fail local "mirror" so summary is asserted without waiting on real HF.
     let mirror = "http://127.0.0.1:9";
     tokenizer_bdd.mock_uri.replace(mirror.into());
-    // Process env still required: `run_with` → `build_hf_resolve_url` reads `HF_ENDPOINT`.
-    // Scenario is `#[serial_test::serial(bdd_hf_env)]`; fixture Drop restores.
-    tokenizer_bdd.set_hf_endpoint_owned(mirror);
+    tokenizer_bdd
+        .hf_inject
+        .replace(Some(HfEndpointInject::Endpoint(mirror.into())));
 }
 
 #[when("xylitol tokenizer download <target> 进入确认摘要（或 --yes 的等价日志）")]
 async fn w_ce15_download_summary(tokenizer_bdd: &TokenizerBdd) {
-    use xylitol::app::cli::tokenizer::{TokenizerAction, run_with};
+    use xylitol::app::cli::tokenizer::{TokenizerAction, run_with_hf_endpoint};
 
     let cache = tokenizer_bdd.ensure_cache();
     let cfg = tokenizer_bdd.config.borrow().clone();
+    let inject = tokenizer_bdd.hf_endpoint_override();
     // Download may fail (closed port); summary is printed first.
-    let (_code, out) = run_with(
+    let (_code, out) = run_with_hf_endpoint(
         TokenizerAction::Download {
             target: "qwen".into(),
             file: None,
@@ -367,9 +354,9 @@ async fn w_ce15_download_summary(tokenizer_bdd: &TokenizerBdd) {
         &cache,
         &cfg,
         false,
+        inject.as_deref(),
     )
     .await;
-    tokenizer_bdd.take_hf_endpoint_guard();
     tokenizer_bdd.cli_out.replace(out);
 }
 
