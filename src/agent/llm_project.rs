@@ -315,6 +315,129 @@ mod tests {
         );
     }
 
+    /// Contrast to MCP-only remove: dropping a built-in tool rewrites Available-tools in
+    /// the system/developer item, so Responses `input` prefix changes even when history
+    /// items are unchanged — another prompt-cache bust on top of `tools[]`.
+    #[test]
+    fn responses_assemble_after_builtin_remove_rewrites_input_and_tools() {
+        use crate::agent::prompt::{SystemPromptOpts, build_system_prompt};
+        use xylitol_ai_bridge::AiBridgeGenerateOptions;
+        use xylitol_ai_bridge::dto::AiBridgeToolSchema;
+        use xylitol_ai_bridge::provider::ResponsesAssembler;
+
+        let history = vec![
+            AgentMessage::user("use bash"),
+            AgentMessage::Llm(LlmMessage::AssistantMessage {
+                content: vec![AgentPart::ToolCall {
+                    id: "call-bash".into(),
+                    name: "bash".into(),
+                    arguments: serde_json::json!({"command": "true"}),
+                }],
+                stop_reason: Some(crate::protocol::message::XyStopReason::ToolUse),
+                usage: None,
+                api: "openai-responses".into(),
+                provider: "test".into(),
+                model: "m".into(),
+                response_id: None,
+                error_message: None,
+                timestamp: 1,
+                diagnostics: Vec::new(),
+            }),
+            AgentMessage::tool_result("call-bash", "bash", vec![AgentPart::text("ok")], false),
+            AgentMessage::user("continue"),
+        ];
+        let projected = project_for_llm(&history);
+
+        let read = AiBridgeToolSchema {
+            name: "read".into(),
+            description: "read a file".into(),
+            parameters: serde_json::json!({
+                "type": "object",
+                "properties": {"path": {"type": "string"}},
+            }),
+        };
+        let bash = AiBridgeToolSchema {
+            name: "bash".into(),
+            description: "run shell".into(),
+            parameters: serde_json::json!({
+                "type": "object",
+                "properties": {"command": {"type": "string"}},
+            }),
+        };
+
+        let prompt_with = build_system_prompt(&SystemPromptOpts {
+            selected_tools: vec!["read".into(), "bash".into()],
+            tool_snippets: vec![
+                ("read".into(), "Read file".into()),
+                ("bash".into(), "Run shell".into()),
+            ],
+            cwd: "/tmp".into(),
+            date: Some("2026-08-10".into()),
+            ..Default::default()
+        });
+        let prompt_without = build_system_prompt(&SystemPromptOpts {
+            selected_tools: vec!["read".into()],
+            tool_snippets: vec![("read".into(), "Read file".into())],
+            cwd: "/tmp".into(),
+            date: Some("2026-08-10".into()),
+            ..Default::default()
+        });
+        assert_ne!(
+            prompt_with, prompt_without,
+            "built-in remove MUST rewrite system Available tools"
+        );
+        assert!(
+            prompt_with.contains("bash") && !prompt_without.contains("bash"),
+            "Available tools must drop bash after remove:\nwith={prompt_with}\nwithout={prompt_without}"
+        );
+
+        let asm = ResponsesAssembler::default();
+        let before = asm.assemble(
+            "lab-m",
+            projected.clone(),
+            &[read.clone(), bash],
+            false,
+            &AiBridgeGenerateOptions {
+                system_prompt: Some(prompt_with),
+                thinking_level: "medium".into(),
+                ..Default::default()
+            },
+        );
+        let after = asm.assemble(
+            "lab-m",
+            projected,
+            &[read],
+            false,
+            &AiBridgeGenerateOptions {
+                system_prompt: Some(prompt_without),
+                thinking_level: "medium".into(),
+                ..Default::default()
+            },
+        );
+
+        assert_ne!(
+            before["input"], after["input"],
+            "system rewrite MUST change Responses input prefix after built-in remove"
+        );
+        assert_ne!(
+            before["tools"], after["tools"],
+            "tools[] MUST change after built-in remove"
+        );
+        let tools_after = after["tools"].as_array().expect("tools");
+        assert!(
+            !tools_after
+                .iter()
+                .any(|t| t.get("name").and_then(|n| n.as_str()) == Some("bash")),
+            "removed built-in MUST NOT remain in Responses tools[]: {tools_after:?}"
+        );
+        // History function_call for bash still sits in input after remove.
+        let input_s = serde_json::to_string(&after["input"]).unwrap();
+        assert!(
+            input_s.contains("bash") || input_s.contains("call-bash"),
+            "input MUST still carry historical built-in tool call: {input_s}"
+        );
+    }
+
     #[test]
     fn edit_tool_result_content_short_details_not_in_text() {
         let history = vec![AgentMessage::tool_result_with_details(
