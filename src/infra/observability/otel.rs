@@ -11,6 +11,14 @@ use crate::infra::config::types::{OtelConfig, OtelExporterKind};
 pub(crate) fn resolve_otlp_http_target(
     cfg: &OtelConfig,
 ) -> Option<(String, std::collections::HashMap<String, String>)> {
+    resolve_otlp_http_target_with(cfg, |k| std::env::var(k).ok())
+}
+
+/// Injectable variant — `get_env` supplies Langfuse base URL / auth keys.
+pub(crate) fn resolve_otlp_http_target_with(
+    cfg: &OtelConfig,
+    get_env: impl Fn(&str) -> Option<String>,
+) -> Option<(String, std::collections::HashMap<String, String>)> {
     if !matches!(cfg.exporter, OtelExporterKind::OtlpHttp) {
         return None;
     }
@@ -21,11 +29,11 @@ pub(crate) fn resolve_otlp_http_target(
         .map(str::trim)
         .filter(|s| !s.is_empty())
         .map(str::to_string)
-        .or_else(endpoint_from_langfuse_env)
+        .or_else(|| endpoint_from_langfuse_env(&get_env))
         .map(normalize_otlp_http_traces_endpoint)?;
 
     let mut headers = cfg.headers.clone();
-    inject_langfuse_auth_headers(&mut headers);
+    inject_langfuse_auth_headers(&mut headers, &get_env);
     Some((endpoint, headers))
 }
 
@@ -41,8 +49,8 @@ fn normalize_otlp_http_traces_endpoint(endpoint: String) -> String {
     }
 }
 
-fn endpoint_from_langfuse_env() -> Option<String> {
-    let base = std::env::var("LANGFUSE_BASE_URL").ok()?;
+fn endpoint_from_langfuse_env(get_env: impl Fn(&str) -> Option<String>) -> Option<String> {
+    let base = get_env("LANGFUSE_BASE_URL")?;
     let base = base.trim().trim_end_matches('/');
     if base.is_empty() {
         return None;
@@ -50,14 +58,17 @@ fn endpoint_from_langfuse_env() -> Option<String> {
     Some(format!("{base}/api/public/otel"))
 }
 
-fn inject_langfuse_auth_headers(headers: &mut std::collections::HashMap<String, String>) {
+fn inject_langfuse_auth_headers(
+    headers: &mut std::collections::HashMap<String, String>,
+    get_env: impl Fn(&str) -> Option<String>,
+) {
     let has_auth = headers
         .keys()
         .any(|k| k.eq_ignore_ascii_case("authorization"));
     if !has_auth
-        && let (Ok(pk), Ok(sk)) = (
-            std::env::var("LANGFUSE_PUBLIC_KEY"),
-            std::env::var("LANGFUSE_SECRET_KEY"),
+        && let (Some(pk), Some(sk)) = (
+            get_env("LANGFUSE_PUBLIC_KEY"),
+            get_env("LANGFUSE_SECRET_KEY"),
         )
     {
         let pk = pk.trim();
@@ -281,29 +292,29 @@ mod tests {
     }
 
     #[test]
-    #[serial_test::serial(env_global)]
     fn otlp_without_endpoint_or_env_is_off() {
         let cfg = OtelConfig {
             exporter: OtelExporterKind::OtlpHttp,
             endpoint: None,
             ..OtelConfig::default()
         };
-        let _guard_base = EnvGuard::remove("LANGFUSE_BASE_URL");
-        assert!(resolve_otlp_http_target(&cfg).is_none());
+        assert!(resolve_otlp_http_target_with(&cfg, |_| None).is_none());
     }
 
     #[test]
-    #[serial_test::serial(env_global)]
     fn langfuse_env_derives_endpoint_and_auth() {
-        let _b = EnvGuard::set("LANGFUSE_BASE_URL", "http://127.0.0.1:3000/");
-        let _p = EnvGuard::set("LANGFUSE_PUBLIC_KEY", "pk-test");
-        let _s = EnvGuard::set("LANGFUSE_SECRET_KEY", "sk-test");
         let cfg = OtelConfig {
             exporter: OtelExporterKind::OtlpHttp,
             endpoint: None,
             ..OtelConfig::default()
         };
-        let (ep, headers) = resolve_otlp_http_target(&cfg).expect("derived");
+        let get_env = |k: &str| match k {
+            "LANGFUSE_BASE_URL" => Some("http://127.0.0.1:3000/".into()),
+            "LANGFUSE_PUBLIC_KEY" => Some("pk-test".into()),
+            "LANGFUSE_SECRET_KEY" => Some("sk-test".into()),
+            _ => None,
+        };
+        let (ep, headers) = resolve_otlp_http_target_with(&cfg, get_env).expect("derived");
         assert_eq!(ep, "http://127.0.0.1:3000/api/public/otel/v1/traces");
         assert!(
             headers
@@ -332,41 +343,9 @@ mod tests {
         );
     }
 
-    /// Minimal env guard for unit tests (set/remove + restore).
-    struct EnvGuard {
-        key: &'static str,
-        prev: Option<std::ffi::OsString>,
-    }
-
-    impl EnvGuard {
-        fn set(key: &'static str, val: &str) -> Self {
-            let prev = std::env::var_os(key);
-            unsafe { std::env::set_var(key, val) };
-            Self { key, prev }
-        }
-
-        fn remove(key: &'static str) -> Self {
-            let prev = std::env::var_os(key);
-            unsafe { std::env::remove_var(key) };
-            Self { key, prev }
-        }
-    }
-
-    impl Drop for EnvGuard {
-        fn drop(&mut self) {
-            unsafe {
-                match &self.prev {
-                    Some(v) => std::env::set_var(self.key, v),
-                    None => std::env::remove_var(self.key),
-                }
-            }
-        }
-    }
-
     #[test]
     #[ignore = "live Langfuse; needs LANGFUSE_* + network"]
     #[serial_test::serial(env_global, obs_global)]
-
     fn live_langfuse_otlp_json_http1_smoke() {
         let cfg = OtelConfig {
             exporter: OtelExporterKind::OtlpHttp,

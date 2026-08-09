@@ -16,5 +16,5 @@ pub use native::{
     ClipboardPlan, apply_clipboard_plan_stdout, copy_to_clipboard, copy_to_clipboard_async,
     plan_clipboard_copy, plan_clipboard_copy_async,
 };
-pub use osc52::format_osc52;
+pub use osc52::{format_osc52, is_remote_session};
 pub use text::read_clipboard_text;

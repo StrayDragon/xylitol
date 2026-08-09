@@ -12,8 +12,6 @@ pub struct RcSnap {
     pub(crate) compaction: RefCell<Option<xylitol::agent::compaction::CompactionSettings>>,
     pub(crate) meta: RefCell<Option<XyModelMeta>>,
     pub(crate) mm: RefCell<Option<xylitol::agent::model::ModelManager>>,
-    pub(crate) loader_home: RefCell<Option<tempfile::TempDir>>,
-    pub(crate) loader_env: RefCell<Vec<(String, Option<String>)>>,
 }
 impl RcSnap {
     fn new() -> Self {
@@ -25,8 +23,6 @@ impl RcSnap {
             compaction: RefCell::new(None),
             meta: RefCell::new(None),
             mm: RefCell::new(None),
-            loader_home: RefCell::new(None),
-            loader_env: RefCell::new(Vec::new()),
         }
     }
 
@@ -36,34 +32,6 @@ impl RcSnap {
             .replace(Some(xylitol::infra::settings::SettingsManager::in_memory(
                 s,
             )));
-    }
-
-    fn set_loader_env(&self, home: &std::path::Path, project: &std::path::Path) {
-        let global = home.join(".config").join("xylitol");
-        std::fs::create_dir_all(&global).ok();
-        let mut saved = Vec::new();
-        for (key, value) in [
-            ("HOME", home.to_str().unwrap()),
-            ("XYLITOL_CONFIG_DIR", global.to_str().unwrap()),
-            ("XYLITOL_PROJECT_DIR", project.to_str().unwrap()),
-        ] {
-            saved.push((key.to_string(), std::env::var(key).ok()));
-            unsafe { std::env::set_var(key, value) };
-        }
-        self.loader_env.replace(saved);
-        self.loader_home
-            .replace(Some(tempfile::tempdir().expect("loader home")));
-    }
-}
-
-impl Drop for RcSnap {
-    fn drop(&mut self) {
-        for (key, prev) in self.loader_env.borrow().iter() {
-            match prev {
-                Some(v) => unsafe { std::env::set_var(key, v) },
-                None => unsafe { std::env::remove_var(key) },
-            }
-        }
     }
 }
 
@@ -152,10 +120,9 @@ fn g_rc_thinking_select(rc_snap: &RcSnap) {
 }
 #[given("配置加载器已就绪")]
 fn g_rc_docs(rc_snap: &RcSnap) {
-    let home = tempfile::tempdir().expect("home");
-    let project = home.path().join("proj");
-    std::fs::create_dir_all(project.join(".xylitol")).ok();
-    rc_snap.set_loader_env(home.path(), &project);
+    // Narrative scenario only needs in-memory AppConfig (see w_rc_narrative);
+    // no process-env loader injection.
+    let _ = rc_snap;
 }
 
 // TokenizerBdd-backed givens for rc config-load scenarios
@@ -251,16 +218,12 @@ fn g_rc_parse_map(tokenizer_bdd: &TokenizerBdd) {
 }
 #[given("仅存在 config.local.yaml 含可观测字段而无同层 config.yaml")]
 fn g_rc_local_not_merged(tokenizer_bdd: &TokenizerBdd, rc_snap: &RcSnap) {
-    let home = tempfile::tempdir().expect("home");
-    let project = home.path().join("proj");
-    let xylitol_dir = project.join(".xylitol");
-    std::fs::create_dir_all(&xylitol_dir).ok();
+    // Asserts local-only content is ignored via default AppConfig + parse of the
+    // local body (t_rc_local) — no process-env loader side effects.
     let local_yaml = "models:\n  default_model: from-local\n  models:\n    from-local:\n      provider: fake\n      model: fake\n";
-    std::fs::write(xylitol_dir.join("config.local.yaml"), local_yaml).ok();
     rc_snap.local_yaml.replace(Some(local_yaml.to_string()));
     rc_load_flag::LOCAL_YAML.with(|l| l.replace(Some(local_yaml.to_string())));
     rc_load_flag::LOCAL_ONLY.with(|f| f.set(true));
-    rc_snap.set_loader_env(home.path(), &project);
     tokenizer_bdd.cfg_ok.set(true);
 }
 
