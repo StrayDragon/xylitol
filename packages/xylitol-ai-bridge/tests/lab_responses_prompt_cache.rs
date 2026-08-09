@@ -1,4 +1,4 @@
-//! Live counterexample: Responses prompt-cache hit → prefix break → miss.
+//! Lab (qa-wired): Responses prompt-cache hit → prefix break → miss.
 //!
 //! Config (programmatic; dedicated file, never the global AppConfig):
 //! 1. `XYLITOL_LIVE_PROVIDER_CONFIG` path, else
@@ -8,6 +8,7 @@
 //!
 //! Wired into `just qa` via `test-live-provider` (**serial**, `--test-threads=1`).
 //! Excluded from nextest parallel matrix (see `.config/nextest.toml`).
+//! Naming: unified `lab_` prefix (was `live_responses_prompt_cache`).
 
 use std::path::{Path, PathBuf};
 use std::sync::Arc;
@@ -219,7 +220,7 @@ async fn one_call(
 /// `just qa` still invokes the binary serially so a local `enabled: true`
 /// config is actually verified.
 #[tokio::test]
-async fn live_responses_prompt_cache_break_prefix_drops_cache_read() {
+async fn lab_responses_prompt_cache_break_prefix_drops_cache_read() {
     let cfg = match resolve_live_provider() {
         ResolveOutcome::Skip(reason) => {
             eprintln!("live-provider: SKIP — {reason}");

@@ -121,7 +121,7 @@ test-live-provider verbosity=verbosity_default:
       quiet)
         # Keep --nocapture so RUN/SKIP lines exist; surface a one-liner so quiet qa
         # still shows the live gate ran (not only `just qa normal`).
-        if ! out=$(cargo test -q -p xylitol-ai-bridge --test live_responses_prompt_cache -- --test-threads=1 --nocapture 2>&1); then
+        if ! out=$(cargo test -q -p xylitol-ai-bridge --test lab_responses_prompt_cache -- --test-threads=1 --nocapture 2>&1); then
           printf '%s\n' "$out"
           exit 1
         fi
@@ -133,8 +133,8 @@ test-live-provider verbosity=verbosity_default:
           echo "live-provider: ok"
         fi
         ;;
-      normal)  cargo test -p xylitol-ai-bridge --test live_responses_prompt_cache -- --test-threads=1 --nocapture ;;
-      verbose) cargo test -v -p xylitol-ai-bridge --test live_responses_prompt_cache -- --test-threads=1 --nocapture ;;
+      normal)  cargo test -p xylitol-ai-bridge --test lab_responses_prompt_cache -- --test-threads=1 --nocapture ;;
+      verbose) cargo test -v -p xylitol-ai-bridge --test lab_responses_prompt_cache -- --test-threads=1 --nocapture ;;
     esac
 
 # Generate configs/testing/live-provider.example.yaml (maintenance; not in qa).
