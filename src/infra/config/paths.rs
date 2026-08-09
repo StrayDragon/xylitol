@@ -18,7 +18,7 @@ pub(crate) struct ConfigPaths {
 }
 
 impl ConfigPaths {
-    /// Discover all config paths.
+    /// Discover all config paths from the process environment and CWD.
     ///
     /// Uses:
     /// - `XYLITOL_CONFIG_DIR` env var to override global config dir.
@@ -30,9 +30,23 @@ impl ConfigPaths {
     /// On discover, missing global config files are one-shot copied from legacy
     /// `~/.xylitol/{config.yaml,config.yml,secret.env}` when present (`config.local.*` skipped).
     pub(crate) fn discover() -> Self {
-        let global_dir = resolve_global_dir();
+        Self::discover_with(
+            |k| std::env::var(k).ok(),
+            std::env::current_dir().ok().as_deref(),
+        )
+    }
+
+    /// Injectable discovery for tests (no `std::env::set_var`).
+    ///
+    /// `get_env` should return `None` for unset keys. `cwd` is used only when
+    /// `XYLITOL_PROJECT_DIR` is unset.
+    pub(crate) fn discover_with(
+        get_env: impl Fn(&str) -> Option<String>,
+        cwd: Option<&Path>,
+    ) -> Self {
+        let global_dir = resolve_global_dir_with(&get_env);
         super::migrate::migrate_legacy_global_config_files(&global_dir);
-        let (project_dir, agents_dir) = resolve_project_dirs();
+        let (project_dir, agents_dir) = resolve_project_dirs_with(&get_env, cwd);
         Self {
             global_dir,
             project_dir,
@@ -41,41 +55,37 @@ impl ConfigPaths {
     }
 }
 
-/// Resolve the global config directory.
+/// Resolve the global config directory from an env getter.
 ///
 /// Priority:
-/// 1. `$XYLITOL_CONFIG_DIR` env var
+/// 1. `$XYLITOL_CONFIG_DIR`
 /// 2. `$XDG_CONFIG_HOME/xylitol/`
-/// 3. `~/.config/xylitol/`
-fn resolve_global_dir() -> PathBuf {
-    if let Ok(dir) = std::env::var("XYLITOL_CONFIG_DIR")
-        && !dir.is_empty()
-    {
+/// 3. `$HOME/.config/xylitol/` (or `dirs::home_dir` when `HOME` unset)
+fn resolve_global_dir_with(get_env: &impl Fn(&str) -> Option<String>) -> PathBuf {
+    if let Some(dir) = get_env("XYLITOL_CONFIG_DIR").filter(|s| !s.is_empty()) {
         return PathBuf::from(dir);
     }
 
-    // Try XDG_CONFIG_HOME, fall back to ~/.config
-    let base = if let Ok(xdg) = std::env::var("XDG_CONFIG_HOME") {
+    let base = if let Some(xdg) = get_env("XDG_CONFIG_HOME").filter(|s| !s.is_empty()) {
         PathBuf::from(xdg)
-    } else if let Some(home) = dirs::home_dir() {
+    } else if let Some(home) = get_env("HOME")
+        .filter(|s| !s.is_empty())
+        .map(PathBuf::from)
+        .or_else(dirs::home_dir)
+    {
         home.join(".config")
     } else {
-        // Last resort: current dir
         return PathBuf::from(".xylitol");
     };
 
     base.join("xylitol")
 }
 
-/// Resolve project directories (`.xylitol/` and `.agents/`).
-///
-/// If `XYLITOL_PROJECT_DIR` is set, use that directly.
-/// Otherwise walk up from CWD looking for `.xylitol/` or `.agents/`.
-fn resolve_project_dirs() -> (Option<PathBuf>, Option<PathBuf>) {
-    // Explicit override via env.
-    if let Ok(dir) = std::env::var("XYLITOL_PROJECT_DIR")
-        && !dir.is_empty()
-    {
+fn resolve_project_dirs_with(
+    get_env: &impl Fn(&str) -> Option<String>,
+    cwd: Option<&Path>,
+) -> (Option<PathBuf>, Option<PathBuf>) {
+    if let Some(dir) = get_env("XYLITOL_PROJECT_DIR").filter(|s| !s.is_empty()) {
         let root = PathBuf::from(dir);
         let proj = root.join(".xylitol");
         let agents = root.join(".agents");
@@ -85,13 +95,12 @@ fn resolve_project_dirs() -> (Option<PathBuf>, Option<PathBuf>) {
         );
     }
 
-    // Walk up from CWD.
-    let cwd = match std::env::current_dir() {
-        Ok(d) => d,
-        Err(_) => return (None, None),
+    let cwd = match cwd {
+        Some(d) => d,
+        None => return (None, None),
     };
 
-    let mut current: Option<&Path> = Some(cwd.as_path());
+    let mut current: Option<&Path> = Some(cwd);
 
     while let Some(dir) = current {
         let proj = dir.join(".xylitol");
@@ -111,4 +120,69 @@ fn resolve_project_dirs() -> (Option<PathBuf>, Option<PathBuf>) {
     }
 
     (None, None)
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    fn env_map<'a>(entries: &'a [(&'a str, &'a str)]) -> impl Fn(&str) -> Option<String> + 'a {
+        move |k: &str| {
+            entries
+                .iter()
+                .find(|(name, _)| *name == k)
+                .map(|(_, v)| (*v).to_string())
+        }
+    }
+
+    #[test]
+    fn discover_with_prefers_xy_config_dir() {
+        let home = tempfile::tempdir().unwrap();
+        let custom = home.path().join("custom-cfg");
+        std::fs::create_dir_all(&custom).unwrap();
+        let custom_s = custom.to_str().unwrap().to_string();
+        let entries = [
+            ("XYLITOL_CONFIG_DIR", custom_s.as_str()),
+            ("XDG_CONFIG_HOME", "/xdg"),
+            ("HOME", "/home/u"),
+        ];
+        let env = env_map(&entries);
+        let paths = ConfigPaths::discover_with(env, None);
+        assert_eq!(paths.global_dir, custom);
+        assert!(paths.project_dir.is_none());
+    }
+
+    #[test]
+    fn discover_with_project_dir_env() {
+        let root = tempfile::tempdir().unwrap();
+        let proj = root.path().join(".xylitol");
+        std::fs::create_dir_all(&proj).unwrap();
+        let global = root.path().join("global");
+        std::fs::create_dir_all(&global).unwrap();
+        let global_s = global.to_str().unwrap().to_string();
+        let root_s = root.path().to_str().unwrap().to_string();
+        let entries = [
+            ("XYLITOL_CONFIG_DIR", global_s.as_str()),
+            ("XYLITOL_PROJECT_DIR", root_s.as_str()),
+        ];
+        let env = env_map(&entries);
+        let paths = ConfigPaths::discover_with(env, None);
+        assert_eq!(paths.project_dir.as_deref(), Some(proj.as_path()));
+    }
+
+    #[test]
+    fn discover_with_walks_cwd_when_no_project_env() {
+        let root = tempfile::tempdir().unwrap();
+        let nested = root.path().join("a").join("b");
+        std::fs::create_dir_all(&nested).unwrap();
+        let proj = root.path().join(".xylitol");
+        std::fs::create_dir_all(&proj).unwrap();
+        let global = root.path().join("global");
+        std::fs::create_dir_all(&global).unwrap();
+        let global_s = global.to_str().unwrap().to_string();
+        let entries = [("XYLITOL_CONFIG_DIR", global_s.as_str())];
+        let env = env_map(&entries);
+        let paths = ConfigPaths::discover_with(env, Some(nested.as_path()));
+        assert_eq!(paths.project_dir.as_deref(), Some(proj.as_path()));
+    }
 }
