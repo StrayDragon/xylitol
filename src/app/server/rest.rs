@@ -846,6 +846,7 @@ mod tests {
     use super::*;
     use crate::app::core::composition::{BuildAgentOptions, build_agent};
     use crate::protocol::ports::XySessionStore;
+    use serial_test::serial;
 
     fn test_state() -> Arc<AppState> {
         let agent = build_agent(BuildAgentOptions::default()).expect("build");
@@ -863,6 +864,7 @@ mod tests {
     }
 
     #[test]
+    #[serial]
     fn model_data_includes_thinking_levels() {
         let m = crate::app::core::driver::ModelInfo {
             id: "deepseek-v4-flash".into(),
@@ -880,6 +882,7 @@ mod tests {
     }
 
     #[tokio::test]
+    #[serial]
     async fn steer_queue_counts_visible_for_remote_clients() {
         let state = test_state();
         let outcome = run_dispatch(
@@ -906,6 +909,7 @@ mod tests {
     }
 
     #[test]
+    #[serial]
     fn queue_update_is_appended_to_journal_via_wire() {
         let mut journal = crate::app::server::ws::EventJournal::with_default_capacity("test");
         let wire = XyEvent::QueueUpdate {

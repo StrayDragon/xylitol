@@ -349,6 +349,7 @@ pub(crate) fn record_tool_error(tool: &str, err: &XyToolError, turn_id: Option<&
 #[cfg(test)]
 mod tests {
     use super::*;
+    use serial_test::serial;
     use std::sync::{Arc, Mutex};
 
     use fastrace::collector::{Config, Reporter, SpanRecord};
@@ -368,8 +369,9 @@ mod tests {
     }
 
     #[test]
+    #[serial]
     fn inactive_helpers_are_none() {
-        let _g = TEST_LOCK.lock().unwrap();
+        let _g = TEST_LOCK.lock().unwrap_or_else(|e| e.into_inner());
         set_provider_trace_active(false);
         assert!(AgentTurnSpan::start(None, None).is_none());
         assert!(AgentIterationSpan::start(None, 0).is_none());
@@ -377,9 +379,11 @@ mod tests {
     }
 
     #[test]
+    #[serial]
     fn turn_finish_ok_has_no_error_level() {
-        let _g = TEST_LOCK.lock().unwrap();
+        let _g = TEST_LOCK.lock().unwrap_or_else(|e| e.into_inner());
         set_provider_trace_active(true);
+        clear_obs_span_parents();
         let records = Arc::new(Mutex::new(Vec::new()));
         fastrace::set_reporter(CollectingReporter(Arc::clone(&records)), Config::default());
 
@@ -411,9 +415,11 @@ mod tests {
     }
 
     #[test]
+    #[serial]
     fn turn_finish_aborted_marks_error() {
-        let _g = TEST_LOCK.lock().unwrap();
+        let _g = TEST_LOCK.lock().unwrap_or_else(|e| e.into_inner());
         set_provider_trace_active(true);
+        clear_obs_span_parents();
         let records = Arc::new(Mutex::new(Vec::new()));
         fastrace::set_reporter(CollectingReporter(Arc::clone(&records)), Config::default());
 
@@ -442,9 +448,11 @@ mod tests {
     }
 
     #[test]
+    #[serial]
     fn turn_iteration_llm_share_trace_id() {
-        let _g = TEST_LOCK.lock().unwrap();
+        let _g = TEST_LOCK.lock().unwrap_or_else(|e| e.into_inner());
         set_provider_trace_active(true);
+        clear_obs_span_parents();
         let records = Arc::new(Mutex::new(Vec::new()));
         fastrace::set_reporter(CollectingReporter(Arc::clone(&records)), Config::default());
 
@@ -516,9 +524,11 @@ mod tests {
     }
 
     #[test]
+    #[serial]
     fn turn_root_input_only_when_observation_io_set() {
-        let _g = TEST_LOCK.lock().unwrap();
+        let _g = TEST_LOCK.lock().unwrap_or_else(|e| e.into_inner());
         set_provider_trace_active(true);
+        clear_obs_span_parents();
         set_observation_io_tier(ObservationIoTier::None);
         let records = Arc::new(Mutex::new(Vec::new()));
         fastrace::set_reporter(CollectingReporter(Arc::clone(&records)), Config::default());
@@ -528,7 +538,7 @@ mod tests {
         }
         fastrace::flush();
         {
-            let spans = records.lock().unwrap();
+            let spans = records.lock().unwrap_or_else(|e| e.into_inner());
             let turn = spans.iter().find(|s| s.name == "agent.turn").expect("turn");
             assert!(
                 !turn
@@ -558,9 +568,11 @@ mod tests {
     }
 
     #[test]
+    #[serial]
     fn tool_io_only_when_tool_observation_io_set() {
-        let _g = TEST_LOCK.lock().unwrap();
+        let _g = TEST_LOCK.lock().unwrap_or_else(|e| e.into_inner());
         set_provider_trace_active(true);
+        clear_obs_span_parents();
         set_tool_observation_io_tier(ObservationIoTier::None);
         let records = Arc::new(Mutex::new(Vec::new()));
         fastrace::set_reporter(CollectingReporter(Arc::clone(&records)), Config::default());
@@ -571,7 +583,7 @@ mod tests {
         }
         fastrace::flush();
         {
-            let spans = records.lock().unwrap();
+            let spans = records.lock().unwrap_or_else(|e| e.into_inner());
             let tool = spans
                 .iter()
                 .find(|s| s.name == "tool.execute")
@@ -607,9 +619,11 @@ mod tests {
     }
 
     #[test]
+    #[serial]
     fn parallel_tool_spans_share_iteration_parent_via_captured_ctx() {
-        let _g = TEST_LOCK.lock().unwrap();
+        let _g = TEST_LOCK.lock().unwrap_or_else(|e| e.into_inner());
         set_provider_trace_active(true);
+        clear_obs_span_parents();
         let records = Arc::new(Mutex::new(Vec::new()));
         fastrace::set_reporter(CollectingReporter(Arc::clone(&records)), Config::default());
 

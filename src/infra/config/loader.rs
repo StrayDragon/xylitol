@@ -177,6 +177,7 @@ pub(crate) fn deep_merge(base: &mut Value, overlay: Value) {
 mod tests {
     use super::*;
     use serde_json::json;
+    use serial_test::serial;
 
     #[test]
     fn test_deep_merge_object() {
@@ -221,6 +222,7 @@ mod tests {
     }
 
     #[test]
+    #[serial]
     fn loads_yml_alias_and_renders_mcp_secret_headers() {
         let home = tempfile::tempdir().unwrap();
         // Isolate migrate_legacy (reads `$HOME/.xylitol`) from the real home tree.
@@ -249,6 +251,7 @@ mod tests {
     }
 
     #[test]
+    #[serial]
     fn ignores_config_local_yaml() {
         let home = tempfile::tempdir().unwrap();
         let _home = EnvGuard::set("HOME", home.path().to_str().unwrap());

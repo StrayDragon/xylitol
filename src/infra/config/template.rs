@@ -86,6 +86,7 @@ fn format_template_error(path: &Path, err: &minijinja::Error) -> String {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use serial_test::serial;
     use std::path::PathBuf;
     use std::sync::Mutex;
 
@@ -161,6 +162,7 @@ mod tests {
     }
 
     #[test]
+    #[serial]
     fn renders_vars_home() {
         let home = dirs::home_dir().expect("home_dir for test");
         let home_str = home.to_string_lossy();

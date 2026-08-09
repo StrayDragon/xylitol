@@ -71,18 +71,22 @@ pub fn write_osc52_stdout(sequence: &str) -> Result<(), std::io::Error> {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use serial_test::serial;
 
     #[test]
+    #[serial]
     fn test_base64_encode_basic() {
         assert_eq!(base64_encode(b"hello world"), "aGVsbG8gd29ybGQ=");
     }
 
     #[test]
+    #[serial]
     fn test_base64_encode_empty() {
         assert_eq!(base64_encode(b""), "");
     }
 
     #[test]
+    #[serial]
     fn test_base64_encode_padding() {
         assert_eq!(base64_encode(b"f"), "Zg==");
         assert_eq!(base64_encode(b"fo"), "Zm8=");
@@ -90,12 +94,14 @@ mod tests {
     }
 
     #[test]
+    #[serial]
     fn test_small_text_fits_in_osc52_limit() {
         let encoded = base64_encode(b"hello world");
         assert!(encoded.len() < MAX_OSC52_ENCODED_LENGTH);
     }
 
     #[test]
+    #[serial]
     fn test_large_text_exceeds_osc52_limit() {
         let large = vec![b'a'; MAX_OSC52_ENCODED_LENGTH * 2];
         let encoded = base64_encode(&large);
@@ -103,6 +109,7 @@ mod tests {
     }
 
     #[test]
+    #[serial]
     fn format_osc52_matches_emit_shape() {
         let seq = format_osc52("hi").expect("fits");
         assert!(seq.starts_with("\x1b]52;c;"));
@@ -111,12 +118,14 @@ mod tests {
     }
 
     #[test]
+    #[serial]
     fn format_osc52_rejects_oversize() {
         let large = "a".repeat(MAX_OSC52_ENCODED_LENGTH);
         assert!(format_osc52(&large).is_none());
     }
 
     #[test]
+    #[serial]
     fn test_is_remote_session_negative_when_no_env() {
         // SAFETY: test-only env manipulation — single-threaded test context
         let old_ssh = std::env::var("SSH_CONNECTION").ok();
@@ -140,6 +149,7 @@ mod tests {
     }
 
     #[test]
+    #[serial]
     fn test_write_osc52_stdout_ok_for_formatted_sequence() {
         let seq = format_osc52("small").expect("fits");
         // In test context stdout is captured.

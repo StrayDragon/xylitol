@@ -3,6 +3,7 @@
 //! Only compiled in unit tests (`cfg(test)`). Stays inside `app/tui` and talks
 //! to the core solely via [`crate::app::core::driver::XyDriver`] (layering seam).
 
+use serial_test::serial;
 use std::collections::HashMap;
 use std::collections::VecDeque;
 use std::path::Path;
@@ -1289,6 +1290,7 @@ mod slice_tests {
     }
 
     #[tokio::test]
+    #[serial]
     async fn h1_idle_enter_runs_driver() {
         let mut session = HostSession::new_product_ui(TestTerminal::new(80, 24));
         let root = session.ui_root().expect("ui").clone();
@@ -1331,6 +1333,7 @@ mod slice_tests {
     }
 
     #[tokio::test]
+    #[serial]
     async fn h2_stream_then_idle() {
         let mut session = HostSession::new_product_ui(TestTerminal::new(80, 24));
         session.on_run_started("prompt");
@@ -1353,6 +1356,7 @@ mod slice_tests {
     }
 
     #[tokio::test]
+    #[serial]
     async fn h3_tool_entry_visible() {
         let mut session = HostSession::new_product_ui(TestTerminal::new(80, 24));
         let root = session.ui_root().expect("ui").clone();
@@ -1387,6 +1391,7 @@ mod slice_tests {
     }
 
     #[tokio::test]
+    #[serial]
     async fn h4_busy_steer_calls_driver() {
         let mut session = HostSession::new_product_ui(TestTerminal::new(80, 24));
         let root = session.ui_root().expect("ui").clone();
@@ -1416,6 +1421,7 @@ mod slice_tests {
     }
 
     #[tokio::test]
+    #[serial]
     async fn h5_follow_up_calls_driver() {
         let mut session = HostSession::new_product_ui(TestTerminal::new(80, 24));
         let root = session.ui_root().expect("ui").clone();
@@ -1438,6 +1444,7 @@ mod slice_tests {
     }
 
     #[tokio::test]
+    #[serial]
     async fn h6_alt_up_clears_both_queues() {
         let mut session = HostSession::new_product_ui(TestTerminal::new(80, 24));
         let root = session.ui_root().expect("ui").clone();
@@ -1463,6 +1470,7 @@ mod slice_tests {
     }
 
     #[tokio::test]
+    #[serial]
     async fn h7_abort_then_second_run() {
         let mut session = HostSession::new_product_ui(TestTerminal::new(80, 24));
         let root = session.ui_root().expect("ui").clone();
@@ -1490,6 +1498,7 @@ mod slice_tests {
     }
 
     #[tokio::test]
+    #[serial]
     async fn h8_exit_finish_inline() {
         let mut session = HostSession::new_product_ui(TestTerminal::new(80, 24));
         let root = session.ui_root().expect("ui").clone();
@@ -1508,6 +1517,7 @@ mod slice_tests {
     }
 
     #[tokio::test]
+    #[serial]
     async fn h9_model_slash_opens_picker() {
         let mut session = HostSession::new_product_ui(TestTerminal::new(80, 24));
         let root = session.ui_root().expect("ui").clone();
@@ -1540,6 +1550,7 @@ mod slice_tests {
     }
 
     #[tokio::test]
+    #[serial]
     async fn c630_model_filter_select_updates_footer() {
         let mut session = HostSession::new_product_ui(TestTerminal::new(80, 24));
         let root = session.ui_root().expect("ui").clone();
@@ -1576,6 +1587,7 @@ mod slice_tests {
     }
 
     #[tokio::test]
+    #[serial]
     async fn c630_model_esc_keeps_model() {
         let mut session = HostSession::new_product_ui(TestTerminal::new(80, 24));
         let root = session.ui_root().expect("ui").clone();
@@ -1606,6 +1618,7 @@ mod slice_tests {
     }
 
     #[tokio::test]
+    #[serial]
     async fn c630_model_id_direct_set() {
         let mut session = HostSession::new_product_ui(TestTerminal::new(80, 24));
         let root = session.ui_root().expect("ui").clone();
@@ -1621,6 +1634,7 @@ mod slice_tests {
     }
 
     #[tokio::test]
+    #[serial]
     async fn c630_bare_model_not_cycle() {
         let mut session = HostSession::new_product_ui(TestTerminal::new(80, 24));
         let root = session.ui_root().expect("ui").clone();
@@ -1633,6 +1647,7 @@ mod slice_tests {
     }
 
     #[tokio::test]
+    #[serial]
     async fn c1130_dollar_skill_tab_applies_name() {
         let mut session = HostSession::new_product_ui(TestTerminal::new(80, 24));
         let root = session.ui_root().expect("ui").clone();
@@ -1657,6 +1672,7 @@ mod slice_tests {
     }
 
     #[tokio::test]
+    #[serial]
     async fn c999_model_arg_tab_applies_id() {
         let mut session = HostSession::new_product_ui(TestTerminal::new(80, 24));
         let root = session.ui_root().expect("ui").clone();
@@ -1687,6 +1703,7 @@ mod slice_tests {
     }
 
     #[tokio::test]
+    #[serial]
     async fn c1105_trust_arg_space_shows_self_parent_deny() {
         let mut session = HostSession::new_product_ui(TestTerminal::new(80, 24));
         let root = session.ui_root().expect("ui").clone();
@@ -1713,6 +1730,7 @@ mod slice_tests {
     }
 
     #[tokio::test]
+    #[serial]
     async fn c999_model_arg_esc_keeps_model() {
         let mut session = HostSession::new_product_ui(TestTerminal::new(80, 24));
         let root = session.ui_root().expect("ui").clone();
@@ -1735,6 +1753,7 @@ mod slice_tests {
     }
 
     #[tokio::test]
+    #[serial]
     async fn c1125_at_path_popup_and_tab_insert() {
         let dir = tempfile::tempdir().expect("tempdir");
         std::fs::write(dir.path().join("hello.rs"), b"fn main() {}\n").expect("write");
@@ -1758,6 +1777,7 @@ mod slice_tests {
     }
 
     #[tokio::test]
+    #[serial]
     async fn c1125_at_path_esc_keeps_prefix() {
         let dir = tempfile::tempdir().expect("tempdir");
         std::fs::write(dir.path().join("hello.rs"), b"").expect("write");
@@ -1775,6 +1795,7 @@ mod slice_tests {
     // ── c492 bang-bash (B1–B7) ─────────────────────────────────────
 
     #[test]
+    #[serial]
     fn b1_b2_bang_border_toggles() {
         let session = HostSession::new_product_ui(TestTerminal::new(80, 24));
         let root = session.ui_root().expect("ui").clone();
@@ -1802,6 +1823,7 @@ mod slice_tests {
     }
 
     #[tokio::test]
+    #[serial]
     async fn b3_idle_bang_execute_bash_not_run() {
         let mut session = HostSession::new_product_ui(TestTerminal::new(80, 24));
         let root = session.ui_root().expect("ui").clone();
@@ -1825,6 +1847,7 @@ mod slice_tests {
     }
 
     #[tokio::test]
+    #[serial]
     async fn b4_bangbang_exclude_from_context() {
         let mut session = HostSession::new_product_ui(TestTerminal::new(80, 24));
         let root = session.ui_root().expect("ui").clone();
@@ -1839,6 +1862,7 @@ mod slice_tests {
     }
 
     #[tokio::test]
+    #[serial]
     async fn b5_bash_ok_in_scrollback() {
         let mut session = HostSession::new_product_ui(TestTerminal::new(80, 24));
         let root = session.ui_root().expect("ui").clone();
@@ -1873,6 +1897,7 @@ mod slice_tests {
     }
 
     #[tokio::test]
+    #[serial]
     async fn b6_bash_nonzero_error_entry() {
         let mut session = HostSession::new_product_ui(TestTerminal::new(80, 24));
         let root = session.ui_root().expect("ui").clone();
@@ -1903,6 +1928,7 @@ mod slice_tests {
     }
 
     #[test]
+    #[serial]
     fn b7_ctrl_g_stub() {
         let mut session = HostSession::new_product_ui(TestTerminal::new(80, 24));
         let root = session.ui_root().expect("ui").clone();
@@ -1926,6 +1952,7 @@ mod slice_tests {
     }
 
     #[test]
+    #[serial]
     fn c650_ctrl_g_missing_editor_is_error() {
         let mut session = HostSession::new_product_ui(TestTerminal::new(80, 24));
         let root = session.ui_root().expect("ui").clone();
@@ -1951,6 +1978,7 @@ mod slice_tests {
     }
 
     #[test]
+    #[serial]
     fn c650_ctrl_g_spawn_fail_is_error() {
         let mut session = HostSession::new_product_ui(TestTerminal::new(80, 24));
         let root = session.ui_root().expect("ui").clone();
@@ -1971,6 +1999,7 @@ mod slice_tests {
     }
 
     #[tokio::test]
+    #[serial]
     async fn c665_busy_esc_shows_aborted_and_idles() {
         let mut session = HostSession::new_product_ui(TestTerminal::new(80, 24));
         let mut driver = ScriptedDriver::new();
@@ -1999,6 +2028,7 @@ mod slice_tests {
     }
 
     #[tokio::test]
+    #[serial]
     async fn c720_esc_suppresses_xy_before_drain() {
         let mut session = HostSession::new_product_ui(TestTerminal::new(80, 24));
         let mut driver = ScriptedDriver::new();
@@ -2046,6 +2076,7 @@ mod slice_tests {
     }
 
     #[tokio::test]
+    #[serial]
     async fn c670_abort_drops_late_deltas() {
         let mut session = HostSession::new_product_ui(TestTerminal::new(80, 24));
         let root = session.ui_root().expect("ui").clone();
@@ -2116,6 +2147,7 @@ mod slice_tests {
     }
 
     #[tokio::test]
+    #[serial]
     async fn c665_bang_esc_cancels_hanging_bash() {
         let mut session = HostSession::new_product_ui(TestTerminal::new(80, 24));
         let root = session.ui_root().expect("ui").clone();
@@ -2159,6 +2191,7 @@ mod slice_tests {
     }
 
     #[tokio::test]
+    #[serial]
     async fn c665_bang_after_esc_abort_runs_again() {
         let mut session = HostSession::new_product_ui(TestTerminal::new(80, 24));
         let root = session.ui_root().expect("ui").clone();
@@ -2202,6 +2235,7 @@ mod slice_tests {
     /// After abort + Esc backlog, a second hanging bang must still be Esc-abortable
     /// (regression: `suppress_busy_esc` used to eat busy Esc forever).
     #[tokio::test]
+    #[serial]
     async fn c665_second_bang_esc_still_aborts() {
         let mut session = HostSession::new_product_ui(TestTerminal::new(80, 24));
         let root = session.ui_root().expect("ui").clone();
@@ -2306,6 +2340,7 @@ mod slice_tests {
     }
 
     #[tokio::test]
+    #[serial]
     async fn c669_second_bang_hard_reject_while_bash_active() {
         let mut session = HostSession::new_product_ui(TestTerminal::new(80, 24));
         let root = session.ui_root().expect("ui").clone();
@@ -2333,6 +2368,7 @@ mod slice_tests {
     }
 
     #[tokio::test]
+    #[serial]
     async fn ati32_agent_busy_bang_prefix_rejected_not_steer() {
         let mut session = HostSession::new_product_ui(TestTerminal::new(80, 24));
         let root = session.ui_root().expect("ui").clone();
@@ -2362,6 +2398,7 @@ mod slice_tests {
     }
 
     #[tokio::test]
+    #[serial]
     async fn h10_double_esc_fetches_live_tree() {
         let mut session = HostSession::new_product_ui(TestTerminal::new(80, 24));
         let root = session.ui_root().expect("ui").clone();
@@ -2385,6 +2422,7 @@ mod slice_tests {
     }
 
     #[tokio::test]
+    #[serial]
     async fn h11_tree_enter_user_travel_prefills() {
         let mut session = HostSession::new_product_ui(TestTerminal::new(80, 24));
         let root = session.ui_root().expect("ui").clone();
@@ -2405,6 +2443,7 @@ mod slice_tests {
     }
 
     #[tokio::test]
+    #[serial]
     async fn h12_tree_filter_no_tools_toggle() {
         let mut session = HostSession::new_product_ui(TestTerminal::new(80, 24));
         let root = open_sample_tree(&mut session);
@@ -2435,6 +2474,7 @@ mod slice_tests {
     }
 
     #[tokio::test]
+    #[serial]
     async fn h13_tree_filter_user_only() {
         let mut session = HostSession::new_product_ui(TestTerminal::new(80, 24));
         let root = open_sample_tree(&mut session);
@@ -2451,6 +2491,7 @@ mod slice_tests {
     }
 
     #[tokio::test]
+    #[serial]
     async fn h14_tree_filter_labeled_only() {
         let mut session = HostSession::new_product_ui(TestTerminal::new(80, 24));
         let root = open_sample_tree(&mut session);
@@ -2467,6 +2508,7 @@ mod slice_tests {
     }
 
     #[tokio::test]
+    #[serial]
     async fn h15_tree_filter_cycle_ctrl_o() {
         let mut session = HostSession::new_product_ui(TestTerminal::new(80, 24));
         let root = open_sample_tree(&mut session);
@@ -2487,6 +2529,7 @@ mod slice_tests {
     }
 
     #[tokio::test]
+    #[serial]
     async fn h16_tree_search_esc_then_close() {
         let mut session = HostSession::new_product_ui(TestTerminal::new(80, 24));
         let root = open_sample_tree(&mut session);
@@ -2509,6 +2552,7 @@ mod slice_tests {
     }
 
     #[tokio::test]
+    #[serial]
     async fn h17_tree_ctrl_left_folds_hides_descendants() {
         let mut session = HostSession::new_product_ui(TestTerminal::new(80, 24));
         let root = session.ui_root().expect("ui").clone();
@@ -2548,6 +2592,7 @@ mod slice_tests {
     }
 
     #[tokio::test]
+    #[serial]
     async fn h18_tree_bare_left_does_not_fold() {
         let mut session = HostSession::new_product_ui(TestTerminal::new(80, 24));
         let root = session.ui_root().expect("ui").clone();
@@ -2568,6 +2613,7 @@ mod slice_tests {
     }
 
     #[tokio::test]
+    #[serial]
     async fn h19_tree_shift_f_forks_user_before() {
         use crate::protocol::session::ForkPosition;
 
@@ -2623,6 +2669,7 @@ mod slice_tests {
     }
 
     #[tokio::test]
+    #[serial]
     async fn h20_tree_shift_f_forks_assistant_at() {
         use crate::protocol::session::ForkPosition;
 
@@ -2654,6 +2701,7 @@ mod slice_tests {
     }
 
     #[tokio::test]
+    #[serial]
     async fn h21_tree_slot_search_and_help() {
         let mut session = HostSession::new_product_ui(TestTerminal::new(80, 24));
         let root = open_sample_tree(&mut session);
@@ -2681,6 +2729,7 @@ mod slice_tests {
     }
 
     #[tokio::test]
+    #[serial]
     async fn h22_tree_filter_cycle_backward_ctrl_shift_o() {
         let mut session = HostSession::new_product_ui(TestTerminal::new(80, 24));
         let root = open_sample_tree(&mut session);
@@ -2703,6 +2752,7 @@ mod slice_tests {
     }
 
     #[tokio::test]
+    #[serial]
     async fn h23_tree_shift_l_persists_annotation() {
         let mut session = HostSession::new_product_ui(TestTerminal::new(80, 24));
         let root = session.ui_root().expect("ui").clone();
@@ -2738,6 +2788,7 @@ mod slice_tests {
     }
 
     #[tokio::test]
+    #[serial]
     async fn h24_tree_shift_t_toggles_timestamps() {
         let mut session = HostSession::new_product_ui(TestTerminal::new(80, 24));
         let root = open_sample_tree(&mut session);
@@ -2753,6 +2804,7 @@ mod slice_tests {
     }
 
     #[tokio::test]
+    #[serial]
     async fn h25_debug_list_load_and_arg_completion() {
         use crate::app::tui::commands::{PendingSlash, parse_slash_command};
         assert_eq!(
@@ -2827,6 +2879,7 @@ mod slice_tests {
     }
 
     #[tokio::test]
+    #[serial]
     async fn h26_slash_session_tree_opens_session_tree() {
         use crate::app::tui::commands::{PendingSlash, parse_slash_command};
         assert_eq!(
@@ -2855,6 +2908,7 @@ mod slice_tests {
     }
 
     #[tokio::test]
+    #[serial]
     async fn h27_slash_session_fork_at_leaf() {
         use crate::app::tui::commands::{PendingSlash, parse_slash_command};
         use crate::protocol::session::ForkPosition;
@@ -2896,6 +2950,7 @@ mod slice_tests {
     }
 
     #[tokio::test]
+    #[serial]
     async fn h26b_old_tree_fork_slash_unknown() {
         let mut session = HostSession::new_product_ui(TestTerminal::new(80, 24));
         let root = session.ui_root().expect("ui").clone();
@@ -2952,6 +3007,7 @@ mod slice_tests {
     }
 
     #[tokio::test]
+    #[serial]
     async fn h28_slash_session_compact_and_usage() {
         use crate::app::tui::commands::{PendingSlash, parse_slash_command};
         assert_eq!(
@@ -3001,6 +3057,7 @@ mod slice_tests {
     }
 
     #[tokio::test]
+    #[serial]
     async fn h29_slash_session_export_html_and_jsonl() {
         use crate::app::tui::commands::{PendingSlash, parse_slash_command};
         assert_eq!(
@@ -3048,6 +3105,7 @@ mod slice_tests {
     }
 
     #[tokio::test]
+    #[serial]
     async fn h30_slash_session_import_confirm_cancel_and_accept() {
         use crate::app::tui::commands::{PendingSlash, parse_slash_command};
         assert_eq!(
@@ -3121,6 +3179,7 @@ mod slice_tests {
     }
 
     #[tokio::test]
+    #[serial]
     async fn h31_slash_session_dumps_stats() {
         use crate::app::tui::commands::{PendingSlash, parse_slash_command};
         assert_eq!(
@@ -3161,6 +3220,7 @@ mod slice_tests {
     }
 
     #[tokio::test]
+    #[serial]
     async fn h32_slash_session_resume_list_switch_and_esc() {
         use crate::app::tui::commands::{PendingSlash, parse_slash_command};
         assert_eq!(
@@ -3245,6 +3305,7 @@ mod slice_tests {
     }
 
     #[tokio::test]
+    #[serial]
     async fn h37_session_resume_panel_scope_sort_rename_delete_fold() {
         let mut session = HostSession::new_product_ui(TestTerminal::new(100, 30));
         let root = session.ui_root().expect("ui").clone();
@@ -3399,6 +3460,7 @@ mod slice_tests {
     }
 
     #[tokio::test]
+    #[serial]
     async fn h33_slash_session_new() {
         use crate::app::tui::commands::{PendingSlash, parse_slash_command};
         assert_eq!(
@@ -3432,6 +3494,7 @@ mod slice_tests {
     }
 
     #[tokio::test]
+    #[serial]
     async fn h34_slash_session_clone_at_and_no_leaf() {
         use crate::app::tui::commands::{PendingSlash, parse_slash_command};
         use crate::protocol::session::ForkPosition;
@@ -3482,6 +3545,7 @@ mod slice_tests {
     }
 
     #[tokio::test]
+    #[serial]
     async fn h35_slash_session_name_show_and_set() {
         use crate::app::tui::commands::{PendingSlash, parse_slash_command};
         assert_eq!(
@@ -3551,6 +3615,7 @@ mod slice_tests {
     }
 
     #[tokio::test]
+    #[serial]
     async fn h36_slash_fuzzy_enter_applies_before_host_parse() {
         // Regression: host stole Enter while popup showed `session-new` for typed `/new`
         // → unknown command. Must apply selection then parse.
@@ -3596,6 +3661,7 @@ mod slice_tests {
     }
 
     #[tokio::test]
+    #[serial]
     async fn c1035_empty_session_omits_footer_token() {
         use crate::app::tui::effects::refresh_footer_tokens;
 
@@ -3624,6 +3690,7 @@ mod slice_tests {
     }
 
     #[tokio::test]
+    #[serial]
     async fn c1035_heuristic_shows_tilde() {
         use crate::app::tui::effects::refresh_footer_tokens;
         use crate::protocol::model::{ContextTokenEstimate, TokenProvenance};
@@ -3656,6 +3723,7 @@ mod slice_tests {
     }
 
     #[tokio::test]
+    #[serial]
     async fn c1680_no_percent_when_window_zero() {
         use crate::app::tui::effects::refresh_footer_tokens;
         use crate::protocol::model::{ContextTokenEstimate, TokenProvenance};
@@ -3695,6 +3763,7 @@ mod slice_tests {
     }
 
     #[tokio::test]
+    #[serial]
     async fn c1680_api_derived_percent() {
         use crate::app::tui::effects::refresh_footer_tokens;
         use crate::protocol::model::{ContextTokenEstimate, TokenProvenance};
@@ -3730,6 +3799,7 @@ mod slice_tests {
     }
 
     #[tokio::test]
+    #[serial]
     async fn c1035_api_shows_exact_used() {
         use crate::app::tui::effects::refresh_footer_tokens;
         use crate::protocol::model::{ContextTokenEstimate, TokenProvenance};
@@ -3762,6 +3832,7 @@ mod slice_tests {
     }
 
     #[tokio::test]
+    #[serial]
     async fn c1035_travel_refreshes_footer_token() {
         use crate::protocol::model::{ContextTokenEstimate, TokenProvenance};
 
@@ -3821,6 +3892,7 @@ mod slice_tests {
     }
 
     #[tokio::test]
+    #[serial]
     async fn c1730_compaction_end_refreshes_footer_token() {
         use crate::protocol::model::{ContextTokenEstimate, TokenProvenance};
 
@@ -3868,6 +3940,7 @@ mod slice_tests {
     }
 
     #[tokio::test]
+    #[serial]
     async fn c1730_turn_end_refreshes_footer_token() {
         use crate::protocol::model::{ContextTokenEstimate, TokenProvenance};
 
@@ -3926,6 +3999,7 @@ mod slice_tests {
     }
 
     #[tokio::test]
+    #[serial]
     async fn c1035_stream_closed_requests_footer_refresh() {
         use crate::protocol::model::{ContextTokenEstimate, TokenProvenance};
 
@@ -3973,6 +4047,7 @@ mod slice_tests {
     }
 
     #[tokio::test]
+    #[serial]
     async fn c1860_stream_close_skips_estimate_after_turn_settled() {
         use crate::protocol::model::{ContextTokenEstimate, TokenProvenance};
 
@@ -4031,6 +4106,7 @@ mod slice_tests {
     }
 
     #[tokio::test]
+    #[serial]
     async fn c1035_cli_restore_and_resume_refresh_footer_token() {
         use crate::protocol::model::{ContextTokenEstimate, TokenProvenance};
 
@@ -4090,6 +4166,7 @@ mod slice_tests {
     }
 
     #[tokio::test]
+    #[serial]
     async fn c1120_reload_preserves_session_message_count() {
         use crate::app::tui::commands::{PendingSlash, parse_slash_command};
 
@@ -4118,6 +4195,7 @@ mod slice_tests {
     }
 
     #[tokio::test]
+    #[serial]
     async fn c1120_reload_busy_refused() {
         let mut session = HostSession::new_product_ui(TestTerminal::new(80, 24));
         let root = session.ui_root().expect("ui").clone();
@@ -4142,6 +4220,7 @@ mod slice_tests {
     }
 
     #[tokio::test]
+    #[serial]
     async fn c1210_mcp_connecting_allows_prompt_and_reload() {
         let mut session = HostSession::new_product_ui(TestTerminal::new(80, 24));
         let root = session.ui_root().expect("ui").clone();
@@ -4205,6 +4284,7 @@ mod slice_tests {
     }
 
     #[tokio::test]
+    #[serial]
     async fn c1210_mcp_panel_open_and_short_cue() {
         use crate::app::core::driver::{
             LoadedResourcesSnapshot, McpServerPhase, McpServerSnapshot,
@@ -4308,6 +4388,7 @@ mod slice_tests {
     }
 
     #[tokio::test]
+    #[serial]
     async fn c1900_idle_next_turn_clear_must_not_restore_mcp_cue_after_freeze() {
         use crate::app::core::driver::{
             LoadedResourcesSnapshot, MCP_PENDING_CUE, McpServerPhase, McpServerSnapshot,
@@ -4370,6 +4451,7 @@ mod slice_tests {
     }
 
     #[tokio::test]
+    #[serial]
     async fn mcp_pending_clears_when_welcome_shows_connected_and_armed() {
         use crate::app::core::driver::{
             LoadedResourcesSnapshot, MCP_PENDING_CUE, McpServerPhase, McpServerSnapshot,
@@ -4430,6 +4512,7 @@ mod slice_tests {
     }
 
     #[tokio::test]
+    #[serial]
     async fn c1900_assembling_keeps_mcp_pending_cue_while_pre_freeze() {
         use crate::app::core::driver::{
             LoadedResourcesSnapshot, McpServerPhase, McpServerSnapshot,
@@ -4480,6 +4563,7 @@ mod slice_tests {
     }
 
     #[tokio::test]
+    #[serial]
     async fn c1215_mcp_select_list_nav_enter_closes() {
         use crate::app::core::driver::{
             LoadedResourcesSnapshot, McpServerPhase, McpServerSnapshot,
@@ -4546,6 +4630,7 @@ mod slice_tests {
     }
 
     #[tokio::test]
+    #[serial]
     async fn c1215_mcp_open_awaits_when_cache_empty() {
         use crate::app::core::driver::{
             LoadedResourcesSnapshot, McpServerPhase, McpServerSnapshot,
@@ -4593,6 +4678,7 @@ mod slice_tests {
     }
 
     #[tokio::test]
+    #[serial]
     async fn c1115_theme_light_applies() {
         use xylitol_tui::Palette;
 
@@ -4618,6 +4704,7 @@ mod slice_tests {
     }
 
     #[tokio::test]
+    #[serial]
     async fn c1115_theme_bad_name_keeps_palette() {
         use xylitol_tui::Palette;
 
@@ -4644,6 +4731,7 @@ mod slice_tests {
     }
 
     #[tokio::test]
+    #[serial]
     async fn c1780_theme_busy_allows_apply() {
         use xylitol_tui::Palette;
 
@@ -4671,6 +4759,7 @@ mod slice_tests {
     }
 
     #[tokio::test]
+    #[serial]
     async fn c1780_busy_model_opens_picker() {
         let mut session = HostSession::new_product_ui(TestTerminal::new(80, 24));
         let root = session.ui_root().expect("ui").clone();
@@ -4698,6 +4787,7 @@ mod slice_tests {
     }
 
     #[tokio::test]
+    #[serial]
     async fn c1780_busy_session_resume_browse_but_switch_refused() {
         use crate::app::tui::commands::BUSY_SESSION_SWITCH_NOTICE;
 
@@ -4779,6 +4869,7 @@ mod slice_tests {
     }
 
     #[tokio::test]
+    #[serial]
     async fn c1780_busy_session_resume_rename_delete_refused() {
         use crate::app::tui::commands::BUSY_SESSION_SWITCH_NOTICE;
 
@@ -4875,6 +4966,7 @@ mod slice_tests {
     }
 
     #[tokio::test]
+    #[serial]
     async fn c1780_bang_busy_session_resume_switch_refused() {
         use crate::app::tui::commands::BUSY_SESSION_SWITCH_NOTICE;
 
@@ -4948,6 +5040,7 @@ mod slice_tests {
     }
 
     #[tokio::test]
+    #[serial]
     async fn c1800_chrome_toast_ttl_clears_on_tick() {
         use crate::app::tui::commands::BUSY_SESSION_SWITCH_NOTICE;
 
@@ -4969,6 +5062,7 @@ mod slice_tests {
 
     /// Short terminal + busy Resume: Working stays in content-end viewport (atc23 / c1810).
     #[tokio::test]
+    #[serial]
     async fn busy_resume_short_terminal_keeps_working_in_viewport() {
         let term_rows = 16usize;
         let mut session = HostSession::new_product_ui(TestTerminal::new(80, term_rows as u16));
@@ -5017,6 +5111,7 @@ mod slice_tests {
 
     /// Short terminal + busy Models: Working stays in content-end viewport (atc23 / c1810).
     #[tokio::test]
+    #[serial]
     async fn busy_models_short_terminal_keeps_working_in_viewport() {
         let term_rows = 12usize;
         let mut session = HostSession::new_product_ui(TestTerminal::new(80, term_rows as u16));
@@ -5049,6 +5144,7 @@ mod slice_tests {
 
     /// Short terminal + busy Themes: Working stays in content-end viewport (atc23).
     #[tokio::test]
+    #[serial]
     async fn busy_themes_short_terminal_keeps_working_in_viewport() {
         let term_rows = 10usize;
         let mut session = HostSession::new_product_ui(TestTerminal::new(80, term_rows as u16));
@@ -5070,6 +5166,7 @@ mod slice_tests {
 
     /// Short terminal + busy MCP list: Working stays in content-end viewport (atc23).
     #[tokio::test]
+    #[serial]
     async fn busy_mcp_short_terminal_keeps_working_in_viewport() {
         use crate::app::core::driver::{
             LoadedResourcesSnapshot, McpServerPhase, McpServerSnapshot,
@@ -5109,6 +5206,7 @@ mod slice_tests {
 
     /// Short terminal + busy Import confirm: Working stays in content-end viewport (atc23).
     #[tokio::test]
+    #[serial]
     async fn busy_import_short_terminal_keeps_working_in_viewport() {
         let term_rows = 10usize;
         let mut session = HostSession::new_product_ui(TestTerminal::new(80, term_rows as u16));
@@ -5140,6 +5238,7 @@ mod slice_tests {
 
     /// Toast occupies reserved: short terminal keeps Working **and** chrome toast in viewport.
     #[tokio::test]
+    #[serial]
     async fn busy_resume_short_terminal_with_toast_keeps_working_and_toast_in_viewport() {
         use crate::app::tui::commands::{BUSY_SESSION_SWITCH_NOTICE, CHROME_TOAST_ERROR_PREFIX};
 
@@ -5193,6 +5292,7 @@ mod slice_tests {
 
     /// Queue strip occupies reserved: short terminal keeps Working **and** Steering line in viewport.
     #[tokio::test]
+    #[serial]
     async fn busy_resume_short_terminal_with_queue_keeps_working_and_steer_in_viewport() {
         let term_rows = 16usize;
         let mut session = HostSession::new_product_ui(TestTerminal::new(80, term_rows as u16));
@@ -5244,6 +5344,7 @@ mod slice_tests {
     }
 
     #[tokio::test]
+    #[serial]
     async fn c1115_theme_bare_opens_slot() {
         let mut session = HostSession::new_product_ui(TestTerminal::new(80, 24));
         let root = session.ui_root().expect("ui").clone();
@@ -5272,6 +5373,7 @@ mod slice_tests {
     }
 
     #[tokio::test]
+    #[serial]
     async fn c1115_theme_slot_select_light() {
         use xylitol_tui::Palette;
 
@@ -5300,6 +5402,7 @@ mod slice_tests {
     }
 
     #[tokio::test]
+    #[serial]
     async fn c1115_theme_slot_esc_keeps_dark() {
         use xylitol_tui::Palette;
 
@@ -5321,6 +5424,7 @@ mod slice_tests {
     }
 
     #[tokio::test]
+    #[serial]
     async fn c1115_theme_toggle_from_dark() {
         use xylitol_tui::Palette;
 
@@ -5356,6 +5460,7 @@ mod slice_tests {
     }
 
     #[test]
+    #[serial]
     fn c1115_product_host_no_theme_auto() {
         use xylitol_tui::Palette;
 
@@ -5405,6 +5510,7 @@ mod slice_tests {
     }
 
     #[tokio::test]
+    #[serial]
     async fn c1470_shift_tab_does_not_cycle_outside_picker() {
         let mut session = HostSession::new_product_ui(TestTerminal::new(80, 24));
         let root = session.ui_root().expect("ui").clone();
@@ -5429,6 +5535,7 @@ mod slice_tests {
     }
 
     #[tokio::test]
+    #[serial]
     async fn c1470_busy_shift_tab_does_not_cycle() {
         let mut session = HostSession::new_product_ui(TestTerminal::new(80, 24));
         let root = session.ui_root().expect("ui").clone();
@@ -5457,6 +5564,7 @@ mod slice_tests {
     }
 
     #[tokio::test]
+    #[serial]
     async fn c1135_skills_visible_above_scrollback() {
         let mut session = HostSession::new_product_ui(TestTerminal::new(80, 24));
         let root = session.ui_root().expect("ui").clone();
@@ -5496,6 +5604,7 @@ mod slice_tests {
     }
 
     #[tokio::test]
+    #[serial]
     async fn c1135_mcp_visible_when_scripted() {
         let mut session = HostSession::new_product_ui(TestTerminal::new(80, 24));
         let root = session.ui_root().expect("ui").clone();
@@ -5515,6 +5624,7 @@ mod slice_tests {
     }
 
     #[tokio::test]
+    #[serial]
     async fn c1135_empty_snapshot_keeps_brand_only() {
         let mut session = HostSession::new_product_ui(TestTerminal::new(80, 24));
         let root = session.ui_root().expect("ui").clone();
@@ -5531,6 +5641,7 @@ mod slice_tests {
     }
 
     #[tokio::test]
+    #[serial]
     async fn c1135_reload_refreshes_header() {
         let mut session = HostSession::new_product_ui(TestTerminal::new(80, 24));
         let root = session.ui_root().expect("ui").clone();

@@ -1,3 +1,4 @@
+use serial_test::serial;
 use std::sync::Arc;
 
 use super::*;
@@ -41,6 +42,7 @@ fn fake_model_builder() -> ModelBuilderFn {
 }
 
 #[tokio::test]
+#[serial]
 async fn test_agent_session_builds_model() {
     let mut reg = ModelRegistry::new(std::sync::Arc::new(
         crate::infra::config::value::InfraSecretResolver::new(),
@@ -95,6 +97,7 @@ async fn test_agent_session_builds_model() {
 }
 
 #[tokio::test]
+#[serial]
 async fn test_agent_loop_emits_events() {
     let mut reg = ModelRegistry::new(std::sync::Arc::new(
         crate::infra::config::value::InfraSecretResolver::new(),
@@ -332,6 +335,7 @@ fn make_agent_with_tools_and_store(
 }
 
 #[tokio::test]
+#[serial]
 async fn test_persist_done_usage() {
     use crate::protocol::message::{AgentMessage, LlmMessage, XyStopReason, XyUsage};
     use futures::StreamExt;
@@ -375,6 +379,7 @@ async fn test_persist_done_usage() {
 }
 
 #[tokio::test]
+#[serial]
 async fn test_tool_intent_before_execution() {
     use crate::protocol::lifecycle::XyEvent;
     use crate::protocol::message::{AgentMessage, AgentPart, LlmMessage};
@@ -474,6 +479,7 @@ async fn test_tool_intent_before_execution() {
 }
 
 #[tokio::test]
+#[serial]
 async fn test_tool_execution_streams_multiple_updates() {
     use crate::protocol::lifecycle::XyEvent;
     use futures::StreamExt;
@@ -517,6 +523,7 @@ async fn test_tool_execution_streams_multiple_updates() {
 }
 
 #[tokio::test]
+#[serial]
 async fn tool_execute_err_ends_with_tool_end_not_global_error() {
     use crate::protocol::lifecycle::XyEvent;
     use futures::StreamExt;
@@ -569,6 +576,7 @@ async fn tool_execute_err_ends_with_tool_end_not_global_error() {
 }
 
 #[tokio::test]
+#[serial]
 async fn test_before_hook_denies_tool_call() {
     use crate::agent::runtime::hooks::BeforeToolHook;
     use crate::protocol::lifecycle::XyEvent;
@@ -615,6 +623,7 @@ async fn test_before_hook_denies_tool_call() {
 }
 
 #[tokio::test]
+#[serial]
 async fn test_after_hook_modifies_tool_result() {
     use crate::agent::runtime::hooks::AfterToolHook;
     use crate::protocol::lifecycle::XyEvent;
@@ -662,6 +671,7 @@ async fn test_after_hook_modifies_tool_result() {
 }
 
 #[tokio::test]
+#[serial]
 async fn test_set_tools_takes_effect_on_next_turn() {
     use crate::protocol::lifecycle::XyEvent;
     use futures::StreamExt;
@@ -786,6 +796,7 @@ fn make_agent_with_rounds(
 }
 
 #[tokio::test]
+#[serial]
 async fn tool_call_then_continuation_round_reaches_final_text() {
     use crate::protocol::lifecycle::XyEvent;
     use futures::StreamExt;
@@ -843,6 +854,7 @@ async fn tool_call_then_continuation_round_reaches_final_text() {
 }
 
 #[tokio::test]
+#[serial]
 async fn steer_before_run_is_injected_into_history() {
     use crate::protocol::lifecycle::XyEvent;
     use futures::StreamExt;
@@ -885,6 +897,7 @@ async fn steer_before_run_is_injected_into_history() {
 }
 
 #[tokio::test]
+#[serial]
 async fn follow_up_continues_after_text_only_turn() {
     use crate::protocol::lifecycle::XyEvent;
     use futures::StreamExt;
@@ -925,6 +938,7 @@ async fn follow_up_continues_after_text_only_turn() {
 }
 
 #[tokio::test]
+#[serial]
 async fn should_stop_after_turn_skips_follow_up_and_ends() {
     use crate::protocol::lifecycle::XyEvent;
     use futures::StreamExt;
@@ -1022,6 +1036,7 @@ async fn should_stop_after_turn_skips_follow_up_and_ends() {
 }
 
 #[tokio::test]
+#[serial]
 async fn abort_before_run_does_not_stick_to_next_run() {
     use crate::protocol::lifecycle::XyEvent;
     use futures::StreamExt;
@@ -1056,6 +1071,7 @@ async fn abort_before_run_does_not_stick_to_next_run() {
 }
 
 #[tokio::test]
+#[serial]
 async fn abort_after_completed_run_allows_second_run() {
     use crate::protocol::lifecycle::XyEvent;
     use futures::StreamExt;
@@ -1095,6 +1111,7 @@ async fn abort_after_completed_run_allows_second_run() {
 /// `select!` on cancel inside the chunk loop, the consumer would drain all
 /// slow chunks even after `abort()` — proving UI-only abort is insufficient.
 #[tokio::test]
+#[serial]
 async fn abort_mid_stream_stops_polling_model_chunks() {
     use crate::protocol::lifecycle::XyEvent;
     use futures::StreamExt;
@@ -1212,6 +1229,7 @@ async fn abort_mid_stream_stops_polling_model_chunks() {
 }
 
 #[tokio::test]
+#[serial]
 async fn persist_turn_writes_user_and_assistant_messages() {
     use futures::StreamExt;
 
@@ -1244,6 +1262,7 @@ async fn persist_turn_writes_user_and_assistant_messages() {
 }
 
 #[tokio::test]
+#[serial]
 async fn second_turn_model_input_includes_first_turn_messages() {
     use futures::StreamExt;
 
@@ -1339,6 +1358,7 @@ async fn second_turn_model_input_includes_first_turn_messages() {
 }
 
 #[tokio::test]
+#[serial]
 async fn system_prompt_via_options_not_user_history() {
     use futures::StreamExt;
 
@@ -1436,6 +1456,7 @@ async fn system_prompt_via_options_not_user_history() {
 }
 
 #[tokio::test]
+#[serial]
 async fn dollar_skill_expanded_for_model_history_stays_raw() {
     use crate::protocol::resource::SkillInfo;
     use crate::protocol::source_info::{SourceInfo, SourceOrigin, SourceScope};
@@ -1652,6 +1673,7 @@ fn overlaps(a: (u128, u128), b: (u128, u128)) -> bool {
 }
 
 #[tokio::test]
+#[serial]
 async fn batch_default_sequential_no_overlap() {
     let log = Arc::new(Mutex::new(Vec::new()));
     let epoch = Instant::now();
@@ -1690,6 +1712,7 @@ async fn batch_default_sequential_no_overlap() {
 }
 
 #[tokio::test]
+#[serial]
 async fn batch_barrier_parallel_overlap_then_barrier() {
     let log = Arc::new(Mutex::new(Vec::new()));
     let epoch = Instant::now();
@@ -1754,6 +1777,7 @@ async fn batch_barrier_parallel_overlap_then_barrier() {
 }
 
 #[tokio::test]
+#[serial]
 async fn batch_barrier_preserves_source_windows() {
     let log = Arc::new(Mutex::new(Vec::new()));
     let epoch = Instant::now();
@@ -1812,6 +1836,7 @@ async fn batch_barrier_preserves_source_windows() {
 }
 
 #[tokio::test]
+#[serial]
 async fn batch_mcp_never_parallel_even_if_trait_lies() {
     let log = Arc::new(Mutex::new(Vec::new()));
     let epoch = Instant::now();
@@ -1855,6 +1880,7 @@ async fn batch_mcp_never_parallel_even_if_trait_lies() {
 }
 
 #[tokio::test]
+#[serial]
 async fn batch_history_source_order_despite_completion_order() {
     let log = Arc::new(Mutex::new(Vec::new()));
     let epoch = Instant::now();
@@ -1910,6 +1936,7 @@ async fn batch_history_source_order_despite_completion_order() {
 // ── Session-bound single-flight / RunPolicy regressions ───────────────
 
 #[tokio::test]
+#[serial]
 async fn reject_second_root_while_first_live() {
     use crate::protocol::lifecycle::XyEvent;
     use futures::StreamExt;
@@ -2020,6 +2047,7 @@ async fn reject_second_root_while_first_live() {
 }
 
 #[tokio::test]
+#[serial]
 async fn abort_and_replace_starts_after_cancel() {
     use crate::protocol::lifecycle::XyEvent;
     use futures::StreamExt;
@@ -2117,6 +2145,7 @@ async fn abort_and_replace_starts_after_cancel() {
 }
 
 #[tokio::test]
+#[serial]
 async fn queue_after_run_fifo_and_drop_revokes() {
     use crate::protocol::lifecycle::XyEvent;
     use futures::StreamExt;
@@ -2217,6 +2246,7 @@ async fn queue_after_run_fifo_and_drop_revokes() {
 
 /// Esc/abort cancels the active root but MUST keep an explicit QueueAfterRun pending.
 #[tokio::test]
+#[serial]
 async fn abort_keeps_queued_root_after_active_cancels() {
     use crate::protocol::lifecycle::XyEvent;
     use futures::StreamExt;
@@ -2329,6 +2359,7 @@ async fn abort_keeps_queued_root_after_active_cancels() {
 /// AbortAndReplace: stale first-stream cleanup must not clear replacement active_turn /
 /// event_tx (steer QueueUpdate still reaches the new stream).
 #[tokio::test]
+#[serial]
 async fn abort_and_replace_keeps_new_run_event_tx_and_active_turn() {
     use crate::protocol::lifecycle::XyEvent;
     use futures::StreamExt;
@@ -2457,6 +2488,7 @@ async fn abort_and_replace_keeps_new_run_event_tx_and_active_turn() {
 
 /// QueueAfterRun second root MUST see first root's persisted user/assistant history.
 #[tokio::test]
+#[serial]
 async fn queue_after_run_second_reads_persisted_history() {
     use crate::protocol::lifecycle::XyEvent;
     use crate::protocol::message::AgentPart;
@@ -2585,6 +2617,7 @@ async fn queue_after_run_second_reads_persisted_history() {
 }
 
 #[tokio::test]
+#[serial]
 async fn bind_session_rejects_while_busy() {
     use crate::agent::runtime::RuntimeControlError;
     use futures::StreamExt;
@@ -2677,6 +2710,7 @@ async fn bind_session_rejects_while_busy() {
 }
 
 #[tokio::test]
+#[serial]
 async fn submit_without_bind_returns_no_session_error() {
     use crate::protocol::lifecycle::XyEvent;
     use futures::StreamExt;

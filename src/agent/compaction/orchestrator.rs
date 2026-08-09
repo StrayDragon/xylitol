@@ -432,6 +432,7 @@ fn usage_anchor_stale_vs_compaction(entries: &[SessionEntry]) -> bool {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use serial_test::serial;
     use std::sync::{Arc, Mutex};
 
     use async_trait::async_trait;
@@ -510,6 +511,7 @@ mod tests {
 
     /// otel19: prepare early-exit MUST NOT export `agent.compaction` (CollectingReporter).
     #[tokio::test]
+    #[serial]
     async fn prepare_fail_exports_no_compaction_span() {
         let _g = OBS_TEST_LOCK.lock().await;
         set_provider_trace_active(true);
@@ -540,6 +542,7 @@ mod tests {
     }
 
     #[test]
+    #[serial]
     fn should_compact_disabled() {
         let s = CompactionSettings {
             enabled: false,
@@ -549,18 +552,21 @@ mod tests {
     }
 
     #[test]
+    #[serial]
     fn should_compact_window_zero() {
         let s = CompactionSettings::default();
         assert!(!should_compact(100_000, 0, &s));
     }
 
     #[test]
+    #[serial]
     fn should_compact_not_exceeded() {
         let s = CompactionSettings::default();
         assert!(!should_compact(50_000, 200_000, &s));
     }
 
     #[test]
+    #[serial]
     fn should_compact_exceeded() {
         let s = CompactionSettings {
             reserve_tokens: 1000,
@@ -570,18 +576,21 @@ mod tests {
     }
 
     #[test]
+    #[serial]
     fn should_compact_exact_boundary_not_trigger() {
         let s = CompactionSettings::default();
         assert!(!should_compact(183_616, 200_000, &s));
     }
 
     #[test]
+    #[serial]
     fn should_compact_one_over_boundary() {
         let s = CompactionSettings::default();
         assert!(should_compact(183_617, 200_000, &s));
     }
 
     #[test]
+    #[serial]
     fn aborted_assistant_detected() {
         let msg = AgentMessage::Llm(LlmMessage::AssistantMessage {
             content: vec![crate::protocol::message::AgentPart::text("x")],

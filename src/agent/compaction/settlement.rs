@@ -98,6 +98,7 @@ pub fn settle_from_session_entries(
 #[cfg(test)]
 mod tests {
     use super::*;
+    use serial_test::serial;
     use std::sync::{Arc, Mutex};
 
     use fastrace::collector::{Config, Reporter, SpanRecord};
@@ -133,8 +134,9 @@ mod tests {
     }
 
     #[test]
+    #[serial]
     fn turn_settled_emits_one_token_estimate_under_turn() {
-        let _g = TEST_LOCK.lock().unwrap();
+        let _g = TEST_LOCK.lock().unwrap_or_else(|e| e.into_inner());
         set_provider_trace_active(true);
         clear_obs_span_parents();
         let records = Arc::new(Mutex::new(Vec::new()));
@@ -173,8 +175,9 @@ mod tests {
     }
 
     #[test]
+    #[serial]
     fn mid_turn_usage_does_not_emit_obs() {
-        let _g = TEST_LOCK.lock().unwrap();
+        let _g = TEST_LOCK.lock().unwrap_or_else(|e| e.into_inner());
         set_provider_trace_active(true);
         clear_obs_span_parents();
         let records = Arc::new(Mutex::new(Vec::new()));
