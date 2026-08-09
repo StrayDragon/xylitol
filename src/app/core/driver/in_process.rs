@@ -2122,8 +2122,6 @@ mod driver_session_tree_tests {
     }
 
     #[test]
-    #[serial(obs_global)]
-
     fn mcp_progress_needs_ui_refresh_only_on_label_change() {
         let mut last = None;
         assert!(mcp_progress_needs_ui_refresh(
@@ -2146,8 +2144,6 @@ mod driver_session_tree_tests {
     }
 
     #[test]
-    #[serial(obs_global)]
-
     fn mcp_tools_pending_ignores_failed_when_bootstrap_complete() {
         use crate::app::core::driver::{McpServerPhase, McpServerSnapshot};
 
@@ -2175,8 +2171,6 @@ mod driver_session_tree_tests {
     }
 
     #[test]
-    #[serial(obs_global)]
-
     fn mcp_tools_pending_while_connecting_label() {
         let snap = LoadedResourcesSnapshot {
             mcp_configured: 2,
@@ -2188,8 +2182,6 @@ mod driver_session_tree_tests {
     }
 
     #[test]
-    #[serial(obs_global)]
-
     fn mcp_tools_pending_pre_freeze_while_settling_even_if_armed() {
         use crate::app::core::driver::{McpServerPhase, McpServerSnapshot};
 
@@ -2213,8 +2205,6 @@ mod driver_session_tree_tests {
     }
 
     #[test]
-    #[serial(obs_global)]
-
     fn mcp_tools_pending_clears_after_freeze_when_complete() {
         use crate::app::core::driver::{McpServerPhase, McpServerSnapshot};
 
