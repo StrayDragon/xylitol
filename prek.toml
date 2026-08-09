@@ -46,11 +46,7 @@ pass_filenames = false
 require_serial = true
 stages = ["pre-push"]
 
-[[repos.hooks]]
-id = "conventional-commits"
-name = "conventional commits"
-language = "system"
-entry = "prek hook-conventional-commits"
-stages = ["commit-msg"]
-always_run = true
-pass_filenames = false
+[[repos]]
+repo = "https://github.com/compilerla/conventional-pre-commit"
+rev = "v4.4.0"
+hooks = [{ id = "conventional-pre-commit", stages = ["commit-msg"] }]
