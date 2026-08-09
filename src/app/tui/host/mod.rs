@@ -389,6 +389,17 @@ impl<T: Terminal> HostSession<T> {
         self.pending.peek_gated_submit()
     }
 
+    /// Cancel MCP first-turn Assembling wait (Alt+Up withdrew gated prompt).
+    /// Returns to idle when no agent/bash run is active.
+    pub fn end_gated_assemble_idle(&mut self) {
+        if self.run_active || self.bash_active {
+            return;
+        }
+        self.ui_model.phase = UiPhase::Idle;
+        self.ui_model.status = None;
+        self.sync_ui_root_from_model();
+    }
+
     pub fn take_steer(&mut self) -> Option<String> {
         self.pending.take_steer()
     }
