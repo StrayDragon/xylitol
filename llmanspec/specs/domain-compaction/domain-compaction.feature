@@ -207,7 +207,7 @@
     当 调用 Driver 或 slash force compact
     那么 仍执行 compaction 或仅在末条已是 CompactionEntry 时返回 Already compacted
     并且 MUST NOT 经 maybe_auto_compact 闸
-    并且 MUST NOT 因切点 JSON 低估把仍有可摘要历史误报为 Nothing to compact
+    并且 MUST NOT 因切点 JSON 低估把仍有可摘要历史误报为 Nothing to compact (no summarizable history beyond keep window) 或 session too small
 
   @req:c17
   @req:c25

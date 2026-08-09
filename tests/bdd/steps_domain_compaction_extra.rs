@@ -712,6 +712,9 @@ pub(crate) fn t_comp_force_not_maybe(agent: &AgentState) {
 }
 
 #[then("MUST NOT 因切点 JSON 低估把仍有可摘要历史误报为 Nothing to compact")]
+#[then(
+    "MUST NOT 因切点 JSON 低估把仍有可摘要历史误报为 Nothing to compact (no summarizable history beyond keep window) 或 session too small"
+)]
 pub(crate) fn t_comp_force_not_undercount(agent: &AgentState) {
     let s = result_ok_str(&agent.last_result);
     assert!(

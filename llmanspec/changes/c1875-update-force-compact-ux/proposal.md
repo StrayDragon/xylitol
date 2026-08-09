@@ -2,7 +2,7 @@
 depends_on:
 - c1860-refactor-context-token-settlement
 branch: sdd/c1875-update-force-compact-ux
-base_sha: f1611239f68c0200259abe6f67724ed4fa17ba77
+base_sha: 1ed6c0348dbca72c8c2e1058f69a2eef4fadffdc
 checkpointed: false
 ---
 
