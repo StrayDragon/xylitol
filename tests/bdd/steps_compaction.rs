@@ -78,18 +78,31 @@ pub(crate) fn compaction_entry_from_sess(
 }
 
 /// Active context after compaction: one CompactionEntry plus message turns from `firstKeptEntryId`.
+///
+/// `session_env` bootstrap rows (c1906 post-compact ensure) count toward total active
+/// records but **not** toward the "轮" (turn) count in retain-recent assertions.
 pub(crate) fn comp_active_record_counts(entries: &[SessionEntry]) -> (usize, usize) {
     use xylitol::protocol::session::build_context_entries;
     let ctx = build_context_entries(entries);
-    let msgs = ctx
-        .iter()
-        .filter(|e| matches!(e, SessionEntry::Message(_)))
-        .count();
+    let mut msgs = 0usize;
+    let mut turn_msgs = 0usize;
+    for e in &ctx {
+        if !matches!(e, SessionEntry::Message(_)) {
+            continue;
+        }
+        msgs += 1;
+        let is_session_env = e
+            .as_agent_message()
+            .is_some_and(|m| xylitol::agent::prompt::session_env_from_message(&m).is_some());
+        if !is_session_env {
+            turn_msgs += 1;
+        }
+    }
     let has_compaction = ctx.iter().any(|e| matches!(e, SessionEntry::Compaction(_)));
     if has_compaction {
-        (1 + msgs, msgs)
+        (1 + msgs, turn_msgs)
     } else {
-        (msgs, msgs)
+        (msgs, turn_msgs)
     }
 }
 

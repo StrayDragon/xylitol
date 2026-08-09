@@ -1,13 +1,17 @@
 ---
 depends_on:
-  - c1905-update-system-prompt-stable-volatile-split
+- c1905-update-system-prompt-stable-volatile-split
+branch: sdd/c1906-ensure-session-env-after-compaction
+base_sha: f1611239f68c0200259abe6f67724ed4fa17ba77
+checkpointed: true
+checkpoint_sha: f1611239f68c0200259abe6f67724ed4fa17ba77
 ---
 
 # Compact / overflow 后保证 session_env
 
 > **一句话**：压缩裁掉或同轮 overflow reload 后，LLM 上下文 MUST 仍有校正后的 session_env（状态栏族 bootstrap）
-> **sourced_from**：[`c1905`](../c1905-update-system-prompt-stable-volatile-split/design.md) compact 缺口分析（2026-08-10）
-> **与 c1897**：本 change 只钉 **已落地** 的 `session_env`；全栏 `AgentStatusBar` 堆积策略仍归 [`c1897`](../c1897-update-compaction-status-bar-messages/proposal.md)
+> **sourced_from**：[`c1905` archive design](../2026-08-10-c1905-update-system-prompt-stable-volatile-split/design.md) D8（2026-08-10）
+> **与 c1897**：本 change 只钉 **已落地** 的 `session_env`；全栏 `AgentStatusBar` 堆积策略仍归 [`c1897`](../../c1897-update-compaction-status-bar-messages/proposal.md)
 
 ## Why
 
@@ -53,16 +57,13 @@ depends_on:
 
 ## Open Questions
 
-### 已钉（随 c1905 分析）
+### 已钉（design 0.3）
 
 - **不写回 system pwd**。
 - **异 cwd resume 允许**（非硬禁）→ env 追加校正，不改 system。
 - **与 c1897 分工**：bootstrap=`session_env` 本 change；全栏堆积=c1897。
-
-### 待 design 钉
-
-- compact **完成时立刻 persist** env，还是仅在「下次组装 history」ensure？（倾向：overflow 路径必须 ensure；persist 可一并做以免空窗）
-- ensure 是否写 store，还是仅内存 history？（overflow 重试若只改内存，下次 run 仍靠 should_append——两处都要测）
+- **三缝一致**：ReAct / overflow reload / `compact_session` 均 `ensure`；若追加则 **persist**（非仅内存）。
+- cwd：ReAct/overflow = 进程 cwd；`compact_session` = session header cwd。
 
 ## Ethics
 

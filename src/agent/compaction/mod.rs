@@ -43,7 +43,7 @@ use anyhow::Result;
 use serde_json::json;
 
 use crate::protocol::ports::{XyModel, XySessionStore};
-use crate::protocol::session::{CompactionEntry, EntryBase, SessionEntry};
+use crate::protocol::session::{CompactionEntry, EntryBase, MessageEntry, SessionEntry};
 
 /// pi `prepareCompaction` gate: whether there is content worth summarizing.
 ///
@@ -296,7 +296,58 @@ pub async fn compact_session(
         .await
         .map_err(|e| format!("write compaction entry: {e}"))?;
 
+    // c1906: after cut, leaf context may lack session_env — ensure + persist.
+    ensure_session_env_after_compact(store, session_id, &entries).await;
+
     Ok(entry)
+}
+
+fn session_cwd_from_entries(entries: &[SessionEntry]) -> Option<&str> {
+    entries.iter().find_map(|e| match e {
+        SessionEntry::Header(h) => Some(h.cwd.as_str()),
+        _ => None,
+    })
+}
+
+async fn ensure_session_env_after_compact(
+    store: &dyn XySessionStore,
+    session_id: &str,
+    entries_before_reload: &[SessionEntry],
+) {
+    let entries = match store.load_leaf_branch(session_id).await {
+        Ok(e) => e,
+        Err(e) => {
+            log::warn!("post-compact session_env ensure: reload failed ({e})");
+            return;
+        }
+    };
+    let cut = crate::protocol::session::build_context_entries(&entries);
+    let mut history: Vec<_> = cut.iter().filter_map(|e| e.as_agent_message()).collect();
+    let cwd = session_cwd_from_entries(&entries)
+        .or_else(|| session_cwd_from_entries(entries_before_reload))
+        .unwrap_or(".");
+    let snap = crate::agent::prompt::snapshot_for_cwd(cwd);
+    if !crate::agent::prompt::ensure_session_env_in_history(&mut history, &snap) {
+        return;
+    }
+    let Some(msg) = history.last() else {
+        return;
+    };
+    let Ok(message) = serde_json::to_value(msg) else {
+        return;
+    };
+    let entry = SessionEntry::Message(MessageEntry {
+        base: EntryBase {
+            entry_type: "message".into(),
+            id: String::new(),
+            parent_id: None,
+            timestamp: String::new(),
+        },
+        message,
+    });
+    if let Err(e) = store.append_session_entry(session_id, &entry).await {
+        log::warn!("post-compact session_env persist failed: {e}");
+    }
 }
 
 #[cfg(test)]

@@ -1,7 +1,7 @@
 # Design: c1906 ensure session_env after compaction
 
-> 上游：[`c1905/design.md`](../c1905-update-system-prompt-stable-volatile-split/design.md) D8。
-> 分工：本 change = **`session_env` bootstrap**；全栏堆积 = [`c1897`](../c1897-update-compaction-status-bar-messages/proposal.md)。
+> 上游：[`c1905` archive design](../2026-08-10-c1905-update-system-prompt-stable-volatile-split/design.md) D8。
+> 分工：本 change = **`session_env` bootstrap**；全栏堆积 = [`c1897`](../../c1897-update-compaction-status-bar-messages/proposal.md)。
 
 ## 不变量
 
@@ -15,9 +15,14 @@
 
 | 缝 | 动作 |
 |---|---|
-| ReAct 用户落盘前 | 已有注入 → 改为调用共享 `ensure_session_env_*` |
-| overflow reload 后 | **必须** ensure（内存；persist 可选但建议） |
-| `compact_session` 成功后 | 若 leaf 上下文无有效 env → persist 一条（减空窗） |
+| ReAct 用户落盘前 | 调用共享 `ensure_session_env_in_history`；若追加则 **persist** |
+| overflow reload 后 | **必须** ensure；若追加则 **persist**（同轮重试可见且写盘） |
+| `compact_session` 成功后 | 对 leaf `build_context_entries` 视图 ensure；若追加则 **persist**（减空窗） |
+
+## 已钉（0.3）
+
+- **组装时 ensure + 追加则 persist**（三缝一致）；不在仅内存里偷偷补一条却不写 transcript。
+- cwd 来源：ReAct/overflow 用 FrozenRoot / 进程 cwd；`compact_session` 用 session header cwd（缺省 `"."`）。
 
 ## 非目标
 

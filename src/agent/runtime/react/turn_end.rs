@@ -62,6 +62,7 @@ pub(crate) async fn finish_turn(
     steer_queue: &Arc<Mutex<PendingMessageQueue>>,
     follow_up_queue: &Arc<Mutex<PendingMessageQueue>>,
     turn_obs_parent: Option<fastrace::prelude::SpanContext>,
+    cwd: &str,
 ) -> FinishTurnResult {
     let turn_index = turn as u32;
     let settlement = settle_turn_context(store, session_id, model_manager, turn_obs_parent).await;
@@ -88,6 +89,7 @@ pub(crate) async fn finish_turn(
         overflow_recovery_attempted,
         settlement.as_ref().map(|s| &s.estimate),
         turn_obs_parent,
+        cwd,
     )
     .await;
     if will_continue {
@@ -171,6 +173,7 @@ pub(crate) async fn try_turn_end_compaction(
     overflow_recovery_attempted: &mut bool,
     precomputed: Option<&crate::protocol::model::ContextTokenEstimate>,
     turn_obs_parent: Option<fastrace::prelude::SpanContext>,
+    cwd: &str,
 ) -> bool {
     use crate::agent::compaction::{CompactionOrchestrator, EstimateOpts, OverflowCompactOutcome};
 
@@ -227,6 +230,16 @@ pub(crate) async fn try_turn_end_compaction(
                     Ok(entries) => {
                         let cut = crate::protocol::session::build_context_entries(&entries);
                         *history = cut.iter().filter_map(|e| e.as_agent_message()).collect();
+                        // c1906: cut may drop early session_env — ensure before retry generate.
+                        let env_snap = crate::agent::prompt::snapshot_for_cwd(cwd);
+                        if crate::agent::prompt::ensure_session_env_in_history(history, &env_snap) {
+                            super::support::persist_agent_message(
+                                store,
+                                session_id,
+                                history.last().expect("session_env"),
+                            )
+                            .await;
+                        }
                     }
                     Err(e) => {
                         log::warn!(

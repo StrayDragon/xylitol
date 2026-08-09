@@ -9,7 +9,7 @@
 //! Sequential (source-order await); BarrierParallel fans out ParallelSafe windows.
 
 mod assistant;
-mod support;
+pub(crate) mod support;
 #[cfg(test)]
 mod tests;
 mod turn_end;
@@ -808,12 +808,9 @@ fn run_react_loop(cfg: ReActConfig) -> impl Stream<Item = XyEvent> + Send {
         // pi `newMessages`: everything this run appends (exclude pre-seed).
         let run_baseline = history.len();
 
-        // c1905: session_env = special status-bar type (bootstrap date/clock/cwd).
-        // Append-only when missing or date/cwd changed; c1895 scans this family.
+        // c1905/c1906: session_env bootstrap — ensure then persist when appended.
         let env_snap = crate::agent::prompt::snapshot_for_cwd(&cwd);
-        if crate::agent::prompt::should_append_session_env(&history, &env_snap) {
-            let env_msg = env_snap.to_agent_message();
-            history.push(env_msg);
+        if crate::agent::prompt::ensure_session_env_in_history(&mut history, &env_snap) {
             persist_agent_message(&store, &session_id, history.last().expect("session_env")).await;
         }
 
@@ -982,6 +979,7 @@ fn run_react_loop(cfg: ReActConfig) -> impl Stream<Item = XyEvent> + Send {
                             &mut overflow_recovery_attempted,
                             None,
                             turn_obs_parent,
+                            &cwd,
                         )
                         .await;
                         if will_continue {
@@ -1229,6 +1227,7 @@ fn run_react_loop(cfg: ReActConfig) -> impl Stream<Item = XyEvent> + Send {
                         &steer_queue,
                         &follow_up_queue,
                         turn_obs_parent,
+                        &cwd,
                     )
                     .await;
                     for event in finished.events {
@@ -1404,6 +1403,7 @@ fn run_react_loop(cfg: ReActConfig) -> impl Stream<Item = XyEvent> + Send {
                     &steer_queue,
                     &follow_up_queue,
                     turn_obs_parent,
+                    &cwd,
                 )
                 .await;
                 for event in finished.events {
