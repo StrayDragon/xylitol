@@ -5,6 +5,8 @@ use std::pin::Pin;
 
 use async_trait::async_trait;
 
+use fastrace::prelude::SpanContext;
+
 use crate::protocol::error::XyError;
 use crate::protocol::message::LlmMessage;
 use crate::protocol::model::XyModelConfig;
@@ -35,6 +37,8 @@ pub struct XyGenerateOptions {
     pub thinking_budgets: Option<ThinkingBudgets>,
     /// Formal system prompt for the adapter (not stuffed into user history).
     pub system_prompt: Option<String>,
+    /// Optional fastrace parent for `llm.request` nesting (iteration / compaction).
+    pub obs_parent: Option<SpanContext>,
 }
 
 impl Default for XyGenerateOptions {
@@ -44,6 +48,7 @@ impl Default for XyGenerateOptions {
             level_map: HashMap::new(),
             thinking_budgets: None,
             system_prompt: None,
+            obs_parent: None,
         }
     }
 }

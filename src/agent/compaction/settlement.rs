@@ -103,9 +103,6 @@ mod tests {
 
     use fastrace::collector::{Config, Reporter, SpanRecord};
     use fastrace::prelude::*;
-    use xylitol_ai_bridge::provider::obs_span_parent::{
-        clear_obs_span_parents, set_obs_turn_parent,
-    };
     use xylitol_ai_bridge::provider::trace::set_provider_trace_active;
 
     use crate::protocol::message::AgentMessage;
@@ -135,27 +132,26 @@ mod tests {
 
     #[test]
     #[serial(obs_global)]
-
     fn turn_settled_emits_one_token_estimate_under_turn() {
         let _g = TEST_LOCK.lock().unwrap_or_else(|e| e.into_inner());
         set_provider_trace_active(true);
-        clear_obs_span_parents();
         let records = Arc::new(Mutex::new(Vec::new()));
         fastrace::set_reporter(CollectingReporter(Arc::clone(&records)), Config::default());
 
         {
             let turn = Span::root("agent.turn", SpanContext::random());
-            let turn_ctx = SpanContext::from_span(&turn).unwrap();
-            set_obs_turn_parent(Some(turn_ctx));
+            let turn_ctx = SpanContext::from_span(&turn);
             let _s = settle_from_session_entries(
                 &sample_entries(),
-                &EstimateOpts::default(),
+                &EstimateOpts {
+                    obs_parent: turn_ctx,
+                    ..Default::default()
+                },
                 ContextTokenSettlementReason::TurnSettled,
             );
             // Mid-path quiet must not add a second span.
             let _ = estimate_quiet(&sample_entries(), &EstimateOpts::default());
             drop(turn);
-            clear_obs_span_parents();
         }
         fastrace::flush();
         set_provider_trace_active(false);
@@ -177,11 +173,9 @@ mod tests {
 
     #[test]
     #[serial(obs_global)]
-
     fn mid_turn_usage_does_not_emit_obs() {
         let _g = TEST_LOCK.lock().unwrap_or_else(|e| e.into_inner());
         set_provider_trace_active(true);
-        clear_obs_span_parents();
         let records = Arc::new(Mutex::new(Vec::new()));
         fastrace::set_reporter(CollectingReporter(Arc::clone(&records)), Config::default());
         {

@@ -233,8 +233,11 @@ impl AiBridgeLlmAdapter for OpenAiResponsesAdapter {
         tools: &[AiBridgeToolSchema],
         options: crate::thinking::AiBridgeGenerateOptions,
     ) -> Result<AiBridgeStream, AiBridgeError> {
-        let trace =
-            crate::provider::trace::ProviderRequestTrace::start("openai-responses", &self.model);
+        let trace = crate::provider::trace::ProviderRequestTrace::start_with_parent(
+            "openai-responses",
+            &self.model,
+            options.obs_parent,
+        );
         let body = self.build_body(messages, tools, true, &options);
         if let Some(t) = &trace {
             t.capture_request_input(&body.to_string());
@@ -260,8 +263,11 @@ impl AiBridgeLlmAdapter for OpenAiResponsesAdapter {
         tools: &[AiBridgeToolSchema],
         options: crate::thinking::AiBridgeGenerateOptions,
     ) -> Result<AiBridgeStream, AiBridgeError> {
-        let trace =
-            crate::provider::trace::ProviderRequestTrace::start("openai-responses", &self.model);
+        let trace = crate::provider::trace::ProviderRequestTrace::start_with_parent(
+            "openai-responses",
+            &self.model,
+            options.obs_parent,
+        );
         let body = self.build_body(messages, tools, false, &options);
         if let Some(t) = &trace {
             t.capture_request_input(&body.to_string());
@@ -1171,6 +1177,7 @@ mod tests {
             level_map: map,
             thinking_budgets: None,
             system_prompt: None,
+            obs_parent: None,
         };
         let body_map = adapter.build_body(vec![AiBridgeMessage::user("hi")], &[], false, &mapped);
         assert_eq!(body_map["reasoning"]["effort"], "max");

@@ -192,8 +192,11 @@ impl AnthropicMessagesAdapter {
             return Err(AiBridgeError::Provider(anyhow::anyhow!(msg)));
         }
 
-        let trace =
-            crate::provider::trace::ProviderRequestTrace::start("anthropic-messages", &self.model);
+        let trace = crate::provider::trace::ProviderRequestTrace::start_with_parent(
+            "anthropic-messages",
+            &self.model,
+            options.obs_parent,
+        );
         if let Some(t) = &trace {
             t.capture_request_input(&body.to_string());
         }

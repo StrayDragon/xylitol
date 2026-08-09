@@ -216,7 +216,7 @@ pub(crate) async fn run_one(
             (vec![AgentPart::text(err)], true)
         }
         Err(e) => {
-            super::obs::record_tool_error(name, &e, env.turn_id);
+            super::obs::record_tool_error(name, &e, env.turn_id, parent_ctx);
             let err = if tool_missing {
                 format!("Unknown tool: {name}")
             } else {

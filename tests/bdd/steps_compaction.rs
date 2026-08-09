@@ -46,7 +46,7 @@ pub(crate) async fn comp_run_compact(
         reserve_tokens: 1024,
         keep_recent_tokens,
     };
-    let result = compact_session(&mgr, sid, model.as_ref(), &settings, None).await;
+    let result = compact_session(&mgr, sid, model.as_ref(), &settings, None, None).await;
     agent.last_result.replace(Some(
         result
             .as_ref()

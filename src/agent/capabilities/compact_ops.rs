@@ -52,6 +52,7 @@ impl AgentCapabilities {
                 estimate_opts,
                 last_assistant,
                 None,
+                None,
             )
             .await
             .map_err(|e| XyError::Session(anyhow::anyhow!(e)))?;

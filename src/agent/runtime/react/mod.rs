@@ -822,6 +822,9 @@ fn run_react_loop(cfg: ReActConfig) -> impl Stream<Item = XyEvent> + Send {
         };
         let agent_turn_span =
             super::obs::AgentTurnSpan::start(Some(user_preview.as_str()), model_api.as_deref());
+        let turn_obs_parent = super::tool_exec::capture_iteration_parent(
+            agent_turn_span.as_ref().map(|s| s.span()),
+        );
         // c1720: mark turn root aborted when cancel token ends the run.
         let mut turn_aborted = false;
 
@@ -845,6 +848,9 @@ fn run_react_loop(cfg: ReActConfig) -> impl Stream<Item = XyEvent> + Send {
                 }
                 let iteration_span =
                     super::obs::AgentIterationSpan::start(agent_turn_span.as_ref(), turn);
+                let iteration_parent = super::tool_exec::capture_iteration_parent(
+                    iteration_span.as_ref().map(|s| s.span()),
+                );
                 let turn_id = iteration_span
                     .as_ref()
                     .map(|t| t.turn_id().to_string())
@@ -900,7 +906,7 @@ fn run_react_loop(cfg: ReActConfig) -> impl Stream<Item = XyEvent> + Send {
                 }
 
                 // NextTurn: re-read selected model + thinking at turn boundary (c1470).
-                let (model, generate_options) = match prepare_turn_binding(
+                let (model, mut generate_options) = match prepare_turn_binding(
                     &model_manager,
                     &coordinator,
                     run_id,
@@ -913,6 +919,7 @@ fn run_react_loop(cfg: ReActConfig) -> impl Stream<Item = XyEvent> + Send {
                         break 'outer;
                     }
                 };
+                generate_options.obs_parent = iteration_parent;
 
                 // Race cancel against connect/retry so Esc aborts hung `send()`
                 // (reqwest drop-cancels the in-flight HTTP future).
@@ -959,6 +966,7 @@ fn run_react_loop(cfg: ReActConfig) -> impl Stream<Item = XyEvent> + Send {
                             &mut history,
                             &mut overflow_recovery_attempted,
                             None,
+                            turn_obs_parent,
                         )
                         .await;
                         if will_continue {
@@ -1114,7 +1122,12 @@ fn run_react_loop(cfg: ReActConfig) -> impl Stream<Item = XyEvent> + Send {
                             }
                         },
                         Some(Err(e)) => {
-                            super::obs::record_xy_error("model.stream", &e, turn_id.as_deref());
+                            super::obs::record_xy_error(
+                                "model.stream",
+                                &e,
+                                turn_id.as_deref(),
+                                iteration_parent,
+                            );
                             let err_text = format!("stream error: {e}");
                             done_stop_reason =
                                 Some(crate::protocol::message::XyStopReason::Error);
@@ -1200,6 +1213,7 @@ fn run_react_loop(cfg: ReActConfig) -> impl Stream<Item = XyEvent> + Send {
                         Vec::new(),
                         &steer_queue,
                         &follow_up_queue,
+                        turn_obs_parent,
                     )
                     .await;
                     for event in finished.events {
@@ -1237,9 +1251,7 @@ fn run_react_loop(cfg: ReActConfig) -> impl Stream<Item = XyEvent> + Send {
                     turn_id: turn_id.as_deref(),
                     batch_mode,
                 };
-                let parent_ctx = super::tool_exec::capture_iteration_parent(
-                    iteration_span.as_ref().map(|s| s.span()),
-                );
+                let parent_ctx = iteration_parent;
 
                 // Collect (window_index, call indices) for Sequential as one Barrier each,
                 // or BarrierParallel via plan_windows.
@@ -1376,6 +1388,7 @@ fn run_react_loop(cfg: ReActConfig) -> impl Stream<Item = XyEvent> + Send {
                     turn_tool_results,
                     &steer_queue,
                     &follow_up_queue,
+                    turn_obs_parent,
                 )
                 .await;
                 for event in finished.events {
@@ -1421,7 +1434,7 @@ fn run_react_loop(cfg: ReActConfig) -> impl Stream<Item = XyEvent> + Send {
             observe_script_hook(bus, ty, phase, ctx).await;
         }
         // Keep `agent.turn` open for the whole run (NLL would otherwise drop early).
-        // c1720 / otel20: explicit terminal status before parent slots clear.
+        // c1720 / otel20: explicit terminal status before span drop.
         if let Some(span) = agent_turn_span {
             use super::obs::TurnEndReason;
             span.finish(if turn_aborted {

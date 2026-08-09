@@ -267,7 +267,7 @@ pub(crate) async fn w_comp_session_split(agent: &AgentState, sess: &XySessionSto
         reserve_tokens: 1024,
         keep_recent_tokens: 80,
     };
-    let result = compact_session(&mgr, &sid, &model, &settings, None).await;
+    let result = compact_session(&mgr, &sid, &model, &settings, None, None).await;
     agent.last_result.replace(Some(
         result
             .map(|e| format!("summary:{}", e.summary))
@@ -323,7 +323,7 @@ pub(crate) async fn g_comp_tokens_before_done(agent: &AgentState, sess: &XySessi
         reserve_tokens: 1024,
         keep_recent_tokens: 200,
     };
-    let entry = compact_session(&mgr, sid, model.as_ref(), &settings, None)
+    let entry = compact_session(&mgr, sid, model.as_ref(), &settings, None, None)
         .await
         .expect("compact");
     let loaded = mgr.load(sid).await.unwrap_or_default();
@@ -884,7 +884,7 @@ pub(crate) async fn w_compact_summarize(agent: &AgentState, sess: &XySessionStor
         reserve_tokens: 1024,
         keep_recent_tokens: 4_000,
     };
-    let result = compact_session(&mgr, sid, model.as_ref(), &settings, None).await;
+    let result = compact_session(&mgr, sid, model.as_ref(), &settings, None, None).await;
     agent.last_result.replace(Some(
         result
             .map(|e| format!("compacted:{}", e.summary.len()))
@@ -982,7 +982,7 @@ Edit src/file5.rs and update Cargo.toml
         },
     )
     .expect("build fake provider");
-    let result = generate_summary(&messages, model.as_ref(), 4096, None, None).await;
+    let result = generate_summary(&messages, model.as_ref(), 4096, None, None, None).await;
     agent
         .last_result
         .replace(Some(result.map_err(|e| XyDriverError::from(e.to_string()))));
@@ -1051,7 +1051,7 @@ pub(crate) async fn w_comp_agent_compact(agent: &AgentState, sess: &XySessionSto
         reserve_tokens: 1024,
         keep_recent_tokens: 4_000,
     };
-    let result = compact_session(&mgr, sid, model.as_ref(), &settings, None).await;
+    let result = compact_session(&mgr, sid, model.as_ref(), &settings, None, None).await;
     agent.last_result.replace(Some(
         result
             .map(|_| "compact:true".to_string())
@@ -1195,7 +1195,8 @@ pub(crate) async fn w_comp_iterative_summary(agent: &AgentState, sess: &XySessio
         },
     )
     .expect("fake provider");
-    let result = generate_summary(&messages, model.as_ref(), 4096, prev.as_deref(), None).await;
+    let result =
+        generate_summary(&messages, model.as_ref(), 4096, prev.as_deref(), None, None).await;
     agent
         .last_result
         .replace(Some(result.map_err(|e| XyDriverError::from(e.to_string()))));

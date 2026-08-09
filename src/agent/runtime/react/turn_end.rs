@@ -61,9 +61,10 @@ pub(crate) async fn finish_turn(
     tool_results: Vec<AgentMessage>,
     steer_queue: &Arc<Mutex<PendingMessageQueue>>,
     follow_up_queue: &Arc<Mutex<PendingMessageQueue>>,
+    turn_obs_parent: Option<fastrace::prelude::SpanContext>,
 ) -> FinishTurnResult {
     let turn_index = turn as u32;
-    let settlement = settle_turn_context(store, session_id, model_manager).await;
+    let settlement = settle_turn_context(store, session_id, model_manager, turn_obs_parent).await;
     let mut events = Vec::new();
     if let Some(s) = &settlement {
         events.push(XyEvent::ContextTokenSettlement {
@@ -86,6 +87,7 @@ pub(crate) async fn finish_turn(
         history,
         overflow_recovery_attempted,
         settlement.as_ref().map(|s| &s.estimate),
+        turn_obs_parent,
     )
     .await;
     if will_continue {
@@ -127,6 +129,7 @@ pub(crate) async fn settle_turn_context(
     store: &Arc<dyn XySessionStore>,
     session_id: &str,
     model_manager: &Arc<Mutex<crate::agent::model::manager::ModelManager>>,
+    turn_obs_parent: Option<fastrace::prelude::SpanContext>,
 ) -> Option<crate::agent::compaction::ContextTokenSettlement> {
     use crate::agent::compaction::{
         ContextTokenSettlementReason, EstimateOpts, settle_from_session_entries,
@@ -146,6 +149,7 @@ pub(crate) async fn settle_turn_context(
         &entries,
         &EstimateOpts {
             model_id,
+            obs_parent: turn_obs_parent,
             ..Default::default()
         },
         ContextTokenSettlementReason::TurnSettled,
@@ -166,6 +170,7 @@ pub(crate) async fn try_turn_end_compaction(
     history: &mut Vec<AgentMessage>,
     overflow_recovery_attempted: &mut bool,
     precomputed: Option<&crate::protocol::model::ContextTokenEstimate>,
+    turn_obs_parent: Option<fastrace::prelude::SpanContext>,
 ) -> bool {
     use crate::agent::compaction::{CompactionOrchestrator, EstimateOpts, OverflowCompactOutcome};
 
@@ -210,6 +215,7 @@ pub(crate) async fn try_turn_end_compaction(
             &provider,
             &model_id,
             *overflow_recovery_attempted,
+            turn_obs_parent,
         )
         .await
     {
@@ -252,6 +258,7 @@ pub(crate) async fn try_turn_end_compaction(
 
     let opts = EstimateOpts {
         model_id: Some(model_id),
+        obs_parent: turn_obs_parent,
         ..Default::default()
     };
     if let Err(e) = orch
@@ -264,6 +271,7 @@ pub(crate) async fn try_turn_end_compaction(
             &opts,
             Some(&last_assistant),
             precomputed,
+            turn_obs_parent,
         )
         .await
     {
