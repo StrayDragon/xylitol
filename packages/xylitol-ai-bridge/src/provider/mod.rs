@@ -45,6 +45,7 @@ pub use remote_count::{
 pub use tool_wire::{
     canonical_tool_names, from_wire_tool_name, is_provider_safe_tool_name, to_wire_tool_name,
 };
+pub use trace::{ObsGateScope, ObsGateState, SpanCollectScope};
 
 /// Supported adapter kinds (L1 protocol family).
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]

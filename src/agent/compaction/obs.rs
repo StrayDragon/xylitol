@@ -92,22 +92,11 @@ impl AgentCompactionSpan {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use serial_test::serial;
-    use std::sync::{Arc, Mutex};
 
-    use fastrace::collector::{Config, Reporter, SpanRecord};
     use xylitol_ai_bridge::provider::obs_session::{
         ObsSessionContext, ObsSessionScope, set_obs_session,
     };
-    use xylitol_ai_bridge::provider::trace::set_provider_trace_active;
-
-    struct CollectingReporter(Arc<Mutex<Vec<SpanRecord>>>);
-
-    impl Reporter for CollectingReporter {
-        fn report(&mut self, spans: Vec<SpanRecord>) {
-            self.0.lock().unwrap().extend(spans);
-        }
-    }
+    use xylitol_ai_bridge::provider::trace::{ObsGateScope, ObsGateState, SpanCollectScope};
 
     #[test]
     fn reason_kind_maps() {
@@ -120,18 +109,15 @@ mod tests {
     }
 
     #[test]
-    #[serial(obs_global)]
     fn inactive_start_is_none() {
-        set_provider_trace_active(false);
+        let _g = ObsGateScope::enter(ObsGateState::OFF);
         assert!(AgentCompactionSpan::start("manual", None).is_none());
     }
 
     #[test]
-    #[serial(obs_global)]
     fn compaction_under_turn_shares_trace() {
-        set_provider_trace_active(true);
-        let records = Arc::new(Mutex::new(Vec::new()));
-        fastrace::set_reporter(CollectingReporter(Arc::clone(&records)), Config::default());
+        let _g = ObsGateScope::enter(ObsGateState::active_none_io());
+        let collect = SpanCollectScope::enter();
 
         {
             let turn = Span::root("agent.turn", SpanContext::random());
@@ -141,9 +127,8 @@ mod tests {
             drop(turn);
         }
         fastrace::flush();
-        set_provider_trace_active(false);
 
-        let spans = records.lock().unwrap().clone();
+        let spans = collect.records();
         let turn = spans.iter().find(|s| s.name == "agent.turn").expect("turn");
         let compact = spans
             .iter()
@@ -167,13 +152,11 @@ mod tests {
     }
 
     #[test]
-    #[serial(obs_global)]
     fn independent_root_carries_session_id_and_lane() {
         let _obs = ObsSessionScope::enter(ObsSessionContext::default());
-        set_provider_trace_active(true);
+        let _g = ObsGateScope::enter(ObsGateState::active_none_io());
         set_obs_session("sess-compact-1", None);
-        let records = Arc::new(Mutex::new(Vec::new()));
-        fastrace::set_reporter(CollectingReporter(Arc::clone(&records)), Config::default());
+        let collect = SpanCollectScope::enter();
 
         {
             // Post-prepare failure path (e.g. summarization error), not prepare early-exit.
@@ -181,9 +164,8 @@ mod tests {
             c.finish(false, false, Some("compaction failed: model error"));
         }
         fastrace::flush();
-        set_provider_trace_active(false);
 
-        let spans = records.lock().unwrap().clone();
+        let spans = collect.records();
         let compact = spans
             .iter()
             .find(|s| s.name == "agent.compaction")
@@ -208,11 +190,9 @@ mod tests {
     }
 
     #[test]
-    #[serial(obs_global)]
     fn summarization_llm_nests_under_compaction() {
-        set_provider_trace_active(true);
-        let records = Arc::new(Mutex::new(Vec::new()));
-        fastrace::set_reporter(CollectingReporter(Arc::clone(&records)), Config::default());
+        let _g = ObsGateScope::enter(ObsGateState::active_none_io());
+        let collect = SpanCollectScope::enter();
 
         {
             let turn = Span::root("agent.turn", SpanContext::random());
@@ -230,9 +210,8 @@ mod tests {
             drop(turn);
         }
         fastrace::flush();
-        set_provider_trace_active(false);
 
-        let spans = records.lock().unwrap().clone();
+        let spans = collect.records();
         let compact = spans
             .iter()
             .find(|s| s.name == "agent.compaction")

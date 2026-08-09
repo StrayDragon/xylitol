@@ -98,23 +98,12 @@ pub fn settle_from_session_entries(
 #[cfg(test)]
 mod tests {
     use super::*;
-    use serial_test::serial;
-    use std::sync::{Arc, Mutex};
 
-    use fastrace::collector::{Config, Reporter, SpanRecord};
     use fastrace::prelude::*;
-    use xylitol_ai_bridge::provider::trace::set_provider_trace_active;
+    use xylitol_ai_bridge::provider::trace::{ObsGateScope, ObsGateState, SpanCollectScope};
 
     use crate::protocol::message::AgentMessage;
     use crate::protocol::session::{EntryBase, MessageEntry, SessionEntry};
-
-    struct CollectingReporter(Arc<Mutex<Vec<SpanRecord>>>);
-
-    impl Reporter for CollectingReporter {
-        fn report(&mut self, spans: Vec<SpanRecord>) {
-            self.0.lock().unwrap().extend(spans);
-        }
-    }
 
     fn sample_entries() -> Vec<SessionEntry> {
         vec![SessionEntry::Message(MessageEntry {
@@ -129,11 +118,9 @@ mod tests {
     }
 
     #[test]
-    #[serial(obs_global)]
     fn turn_settled_emits_one_token_estimate_under_turn() {
-        set_provider_trace_active(true);
-        let records = Arc::new(Mutex::new(Vec::new()));
-        fastrace::set_reporter(CollectingReporter(Arc::clone(&records)), Config::default());
+        let _g = ObsGateScope::enter(ObsGateState::active_none_io());
+        let collect = SpanCollectScope::enter();
 
         {
             let turn = Span::root("agent.turn", SpanContext::random());
@@ -151,9 +138,8 @@ mod tests {
             drop(turn);
         }
         fastrace::flush();
-        set_provider_trace_active(false);
 
-        let spans = records.lock().unwrap().clone();
+        let spans = collect.records();
         let estimates: Vec<_> = spans
             .iter()
             .filter(|s| s.name == "token.estimate")
@@ -169,11 +155,9 @@ mod tests {
     }
 
     #[test]
-    #[serial(obs_global)]
     fn mid_turn_usage_does_not_emit_obs() {
-        set_provider_trace_active(true);
-        let records = Arc::new(Mutex::new(Vec::new()));
-        fastrace::set_reporter(CollectingReporter(Arc::clone(&records)), Config::default());
+        let _g = ObsGateScope::enter(ObsGateState::active_none_io());
+        let collect = SpanCollectScope::enter();
         {
             let _s = settle_from_session_entries(
                 &sample_entries(),
@@ -182,8 +166,7 @@ mod tests {
             );
         }
         fastrace::flush();
-        set_provider_trace_active(false);
-        let spans = records.lock().unwrap().clone();
+        let spans = collect.records();
         assert!(
             !spans.iter().any(|s| s.name == "token.estimate"),
             "MidTurnUsage must not emit token.estimate"
