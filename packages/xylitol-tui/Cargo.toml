@@ -33,7 +33,6 @@ insta = { version = "1", features = ["filters"] }
 # proptest: state-machine property tests (c405 layer 4) — random key sequences.
 proptest = "1"
 tempfile = "3"
-serial_test = "3.5.0"
 
 [[example]]
 name = "agent_demo"
