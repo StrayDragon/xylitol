@@ -23,12 +23,7 @@ impl ServerTest {
         }
     }
     fn random_path(&self) -> std::path::PathBuf {
-        let port = std::net::UdpSocket::bind("127.0.0.1:0")
-            .unwrap()
-            .local_addr()
-            .unwrap()
-            .port();
-        std::env::temp_dir().join(format!("xylitol-bdd-lock-{port}"))
+        std::env::temp_dir().join(format!("xylitol-bdd-lock-{}", uuid::Uuid::new_v4()))
     }
     fn info(&self, port: u16) -> LockInfo {
         LockInfo {
