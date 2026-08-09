@@ -13,6 +13,9 @@
 *.log
 # Temporary files
 *.tmp
+*.tmp.md
+# Temp notes (AGENTS: _HANDOFF / *.tmp.md, don't promote to norms)
+_HANDOFF/
 *~
 
 *.bak
