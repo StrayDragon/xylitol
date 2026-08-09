@@ -2,7 +2,8 @@
 depends_on: []
 branch: sdd/c1205-update-app-tui-reload-ux
 base_sha: f1611239f68c0200259abe6f67724ed4fa17ba77
-checkpointed: false
+checkpointed: true
+checkpoint_sha: f1611239f68c0200259abe6f67724ed4fa17ba77
 ---
 
 # /reload 进行中交互体验
