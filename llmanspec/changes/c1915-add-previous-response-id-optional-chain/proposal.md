@@ -80,7 +80,13 @@ Responses 支持用 `previous_response_id` 只传增量 input，可减重复传�
 
 ## Open Questions
 
-- `store: true` 与本地 session SSOT 的隐私/磁盘—— propose 时钉默认 false + 链式是否仍可能。
+### 已钉（深挖 2026-08-10）
+
+- **`store` 默认**：产品默认 **`store: false`**（与今日 Assembler 硬编码一致）。**链式仍可试**：有上一轮 `response_id` 且非 input 快照可比 → 发增量 + `previous_response_id`；网关未持久 / 报错 / 找不到 id → **断链回全量**（禁止静默丢上下文）。**不**为链式默认改 `store: true`（隐私/上游磁盘门槛另议；若日后要开须产品确认，见 ethics escalation）。
+
+### 仍开
+
+- （暂无）propose/design 阶段若实测发现「`store:false` 下官方 OpenAI 链式不可用」，再开例外分支，不预先抬默认 store。
 
 ## Ethics
 
