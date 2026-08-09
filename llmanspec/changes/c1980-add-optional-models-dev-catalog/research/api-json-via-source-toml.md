@@ -2,7 +2,7 @@
 
 > 生成自 `anomalyco/models.dev@dev` shallow clone：`providers/**/{provider.toml,models/*.toml}`。
 > **不是**运行时 `https://models.dev/api.json` 字节级副本；发布 JSON 由上游构建流水线生成，字段应对齐 schema。
-> 本机无 catalog.proxy 时用此作为正式 propose 的字段证据；有 proxy 后应再拉官方三端点交叉校验。
+> 官方端点已交叉校验：见 `api-json-official-cross-check.md` / `api-json-field-stats.json`（providers=181 对齐；nested models 6231 ≫ TOML 2913）。
 
 ## 规模
 

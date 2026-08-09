@@ -1,0 +1,265 @@
+{
+  "source": "https://models.dev/{api,models,catalog}.json",
+  "fetched_at": "2026-08-08",
+  "egress": "local HTTPS_PROXY (machine-only; not written into xylitol config)",
+  "endpoints": {
+    "api.json": {
+      "url": "https://models.dev/api.json",
+      "bytes": 3612257,
+      "sha256": "465120d3c644c3f58323d3c2d0c96d8bc9875e155aec52bf351c314c7196579c",
+      "shape": "provider_id -> provider (+ nested models)",
+      "provider_count": 181,
+      "nested_model_count": 6231
+    },
+    "models.json": {
+      "url": "https://models.dev/models.json",
+      "bytes": 254501,
+      "sha256": "1ec23193e355b9350e0c0007628f8769e08f8d5dbd7aa8c6ef58b7819744ef03",
+      "shape": "flat provider/model id -> model",
+      "count": 301
+    },
+    "catalog.json": {
+      "url": "https://models.dev/catalog.json",
+      "bytes": 3866782,
+      "sha256": "0e15d207a664b945c20d70901f379fbef4d4985ac1bacb5774b9600717dedb20",
+      "shape": "{models, providers}",
+      "models_count": 301,
+      "providers_count": 181
+    },
+    "providers.json": {
+      "url": "https://models.dev/providers.json",
+      "note": "returns HTML SPA; NOT a catalog JSON endpoint"
+    }
+  },
+  "api_json_stats": {
+    "providers_with_api_url": 155,
+    "provider_field_frequency": {
+      "id": 181,
+      "env": 181,
+      "npm": 181,
+      "name": 181,
+      "doc": 181,
+      "api": 155
+    },
+    "npm_package_counts": {
+      "@ai-sdk/openai-compatible": 143,
+      "@ai-sdk/anthropic": 9,
+      "@ai-sdk/openai": 4,
+      "@ai-sdk/azure": 2,
+      "@ai-sdk/cohere": 1,
+      "@ai-sdk/google": 1,
+      "@qvac/ai-sdk-provider": 1,
+      "@saladtechnologies-oss/ai-sdk-provider": 1,
+      "@jerome-benoit/sap-ai-provider-v2": 1,
+      "gitlab-ai-provider": 1,
+      "venice-ai-sdk-provider": 1,
+      "@ai-sdk/togetherai": 1,
+      "@ai-sdk/google-vertex/anthropic": 1,
+      "@ai-sdk/xai": 1,
+      "@aihubmix/ai-sdk-provider": 1,
+      "@ai-sdk/mistral": 1,
+      "@ai-sdk/vercel": 1,
+      "@ai-sdk/google-vertex": 1,
+      "@ai-sdk/amazon-bedrock": 1,
+      "@ai-sdk/groq": 1,
+      "merge-gateway-ai-sdk-provider": 1,
+      "@ai-sdk/gateway": 1,
+      "@openrouter/ai-sdk-provider": 1,
+      "@ai-sdk/deepinfra": 1,
+      "ai-gateway-provider": 1,
+      "@ai-sdk/cerebras": 1,
+      "@ai-sdk/perplexity": 1
+    },
+    "model_field_frequency": {
+      "id": 6231,
+      "name": 6231,
+      "description": 6231,
+      "attachment": 6231,
+      "reasoning": 6231,
+      "tool_call": 6231,
+      "release_date": 6231,
+      "last_updated": 6231,
+      "modalities": 6231,
+      "modalities.input": 6231,
+      "modalities.output": 6231,
+      "open_weights": 6231,
+      "limit": 6231,
+      "limit.context": 6231,
+      "limit.output": 6231,
+      "cost": 5816,
+      "cost.input": 5816,
+      "cost.output": 5816,
+      "temperature": 5772,
+      "family": 5591,
+      "reasoning_options": 4162,
+      "structured_output": 3887,
+      "cost.cache_read": 3611,
+      "knowledge": 3332,
+      "limit.input": 1202,
+      "cost.cache_write": 1195,
+      "interleaved": 721,
+      "cost.tiers": 316,
+      "cost.context_over_200k": 283,
+      "provider": 228,
+      "status": 227,
+      "cost.reasoning": 107,
+      "cost.input_audio": 77,
+      "experimental": 38,
+      "cost.output_audio": 18
+    },
+    "reasoning_option_type_counts": {
+      "effort": 2072,
+      "toggle": 987,
+      "budget_tokens": 524
+    },
+    "effort_value_counts": {
+      "high": 2040,
+      "low": 1715,
+      "medium": 1679,
+      "none": 723,
+      "xhigh": 657,
+      "max": 621,
+      "minimal": 299,
+      "None": 2,
+      "default": 1
+    },
+    "models_toggle_only": 550,
+    "models_effort_only_approx": 1738,
+    "models_budget_tokens_only_approx": 130,
+    "models_with_mixed_reasoning_option_types": 555,
+    "sample_effort_models": [
+      {
+        "id": "zhipuai/glm-5.2",
+        "values": [
+          "high",
+          "max"
+        ]
+      },
+      {
+        "id": "anyapi/anthropic/claude-sonnet-4-6",
+        "values": [
+          "low",
+          "medium",
+          "high"
+        ]
+      },
+      {
+        "id": "anyapi/anthropic/claude-haiku-4-5",
+        "values": [
+          "low",
+          "medium",
+          "high"
+        ]
+      },
+      {
+        "id": "anyapi/anthropic/claude-opus-4-6",
+        "values": [
+          "low",
+          "medium",
+          "high"
+        ]
+      },
+      {
+        "id": "anyapi/anthropic/claude-sonnet-4-5",
+        "values": [
+          "low",
+          "medium",
+          "high"
+        ]
+      },
+      {
+        "id": "anyapi/anthropic/claude-opus-4-7",
+        "values": [
+          "low",
+          "medium",
+          "high"
+        ]
+      },
+      {
+        "id": "anyapi/openai/o3-mini",
+        "values": [
+          "low",
+          "medium",
+          "high"
+        ]
+      },
+      {
+        "id": "anyapi/openai/gpt-5",
+        "values": [
+          "low",
+          "medium",
+          "high"
+        ]
+      }
+    ]
+  },
+  "cross_check_vs_source_toml": {
+    "provider_count": {
+      "toml": 181,
+      "api": 181,
+      "delta": 0
+    },
+    "model_count": {
+      "toml_files": 2913,
+      "api_nested": 6231,
+      "models_json_flat": 301,
+      "delta_api_minus_toml": 3318
+    },
+    "providers_with_api_url": {
+      "toml": 155,
+      "api": 155
+    },
+    "npm_openai_compatible": {
+      "toml": 143,
+      "api": 143
+    },
+    "reasoning_option_types": {
+      "toml": {
+        "effort": 1050,
+        "toggle": 467,
+        "budget_tokens": 349
+      },
+      "api": {
+        "effort": 2072,
+        "toggle": 987,
+        "budget_tokens": 524
+      }
+    },
+    "effort_values": {
+      "toml": {
+        "high": 1033,
+        "low": 945,
+        "medium": 927,
+        "max": 377,
+        "none": 361,
+        "xhigh": 327,
+        "minimal": 155,
+        "null": 2
+      },
+      "api": {
+        "high": 2040,
+        "low": 1715,
+        "medium": 1679,
+        "none": 723,
+        "xhigh": 657,
+        "max": 621,
+        "minimal": 299,
+        "None": 2,
+        "default": 1
+      }
+    },
+    "interpretation": [
+      "Provider count matches TOML (181); npm openai-compatible count matches (143).",
+      "api.json nested model count (6231) >> TOML files (2913): published JSON expands/aliases or includes gateway mirrors beyond one-file-per-model source.",
+      "models.json / catalog.json.models (~301) are curated/subset feeds, not full api.json nest.",
+      "reasoning_options in api.json is an ARRAY of typed objects (effort/toggle/budget_tokens), same semantics as source TOML.",
+      "Product MVP should treat api.json as SSOT merge feedstock; models.json/catalog.json optional slim views."
+    ]
+  },
+  "xylitol_mapping_notes": {
+    "merge_ssot": "api.json provider→models nest",
+    "thinking_levels_suggestion": "for effort type: exact off + values[] (preserve order); toggle → off/on or document as non-effort; budget_tokens → not discrete levels",
+    "npm_to_api_compat": "map @ai-sdk/openai-compatible / openai / anthropic via small explicit table; unknown npm → suggest metadata only, require hand-written api",
+    "do_not_commit_blobs": "full JSON kept under /tmp only; research stores stats + sha256"
+  }
+}
