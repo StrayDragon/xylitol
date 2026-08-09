@@ -100,7 +100,7 @@ pub async fn start(
     })
     .map_err(|e| match e {
         BootstrapError::NoModelsAvailable => {
-            "no models available: set OPENAI_API_KEY/ANTHROPIC_API_KEY or a config file".to_string()
+            "no models available: add explicit models.models entries in config.yaml".to_string()
         }
         BootstrapError::ConfigLoadFailed(msg) => format!("config load failed: {msg}"),
         BootstrapError::ConfigLoadedZeroModels => {

@@ -8,12 +8,12 @@
 
 ## 2. 实现
 
-- [ ] 2.1 bootstrap：YAML 条目始终 register；`resolve_entry_api_key` 去掉 kind-env 回落
-- [ ] 2.2 删除「registry 空时用 OPENAI_/ANTHROPIC_ 注入 default id」分支
-- [ ] 2.3 调整 `ModelEntry` / 文档注释；引导文案若仍提「设 OPENAI_API_KEY 即可用」则改为「YAML 显式 + 每模 api_key/secret」
-- [ ] 2.4 单测：无 key 仍注册；无 YAML+env 不造模；有 YAML 空 map → ConfigLoadedZeroModels
+- [x] 2.1 bootstrap：YAML 条目始终 register；`resolve_entry_api_key` 去掉 kind-env 回落
+- [x] 2.2 删除「registry 空时用 OPENAI_/ANTHROPIC_ 注入 default id」分支
+- [x] 2.3 调整 `ModelEntry` / 引导文案 / `AppConfig::resolve_model`
+- [x] 2.4 单测：无 key 仍注册；无 YAML+env 不造模；有 YAML 空 map → ConfigLoadedZeroModels
 
 ## 3. 验证
 
-- [ ] 3.1 相关单测 / BDD 绿
-- [ ] 3.2 手工：`tui --list-models` 在无 `OPENAI_API_KEY` 时仍列出本地 openai-compat 别名
+- [x] 3.1 相关单测绿（bootstrap / provider_guidance / thinking_levels）
+- [x] 3.2 手工：`tui --list-models` 在无 `OPENAI_API_KEY` 时仍列出本地 openai-compat 别名

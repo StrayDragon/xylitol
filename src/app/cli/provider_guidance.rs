@@ -11,11 +11,11 @@ use crate::protocol::model::XyModelKind;
 ///
 /// References the `/login` command and the provider/model docs (ux1).
 pub fn get_provider_login_help() -> String {
-    "Run /login to configure an API key, or set one of these environment variables:\n\
-     \x20 OPENAI_API_KEY=sk-...  (for OpenAI-like providers)\n\
-     \x20 ANTHROPIC_API_KEY=...   (for Anthropic)\n\
-     \x20 Or edit providers.md / models.md (see /login docs).\n\
-     \x20 You can also use `xylitol config set api_key <your-key>` to persist a key."
+    "Configure models in config.yaml under models.models, and set each entry's\n\
+     \x20 api_key (or {{ secret.NAME }} in secret.env). Examples:\n\
+     \x20 DEEPSEEK_API_KEY / OPENCODE_ZEN_API_KEY / a local llama.cpp placeholder.\n\
+     \x20 Kind-level OPENAI_API_KEY / ANTHROPIC_API_KEY alone do not invent models.\n\
+     \x20 See providers.md / models.md; /login docs are pre-1.0 guidance only."
         .to_string()
 }
 
@@ -41,8 +41,9 @@ pub fn format_no_api_key_found_message(provider: &str) -> String {
     };
     format!(
         "No API key found for {provider}.\n\n\
-         Run /login to configure a key, or set the {env_var} environment variable\n\
-         and restart xylitol (see providers.md / models.md).",
+         Set models.<alias>.api_key in config.yaml (e.g. {{{{ secret.NAME }}}}),\n\
+         or put the secret in secret.env. Kind-level {env_var} is not used as a\n\
+         silent fallback for omitted per-model keys (see models.md).",
     )
 }
 
@@ -53,18 +54,18 @@ mod tests {
     #[test]
     fn test_login_help() {
         let help = get_provider_login_help();
-        assert!(help.contains("API key"));
+        assert!(help.contains("api_key"));
+        assert!(help.contains("models.models"));
         assert!(!help.contains("OAuth"));
-        assert!(help.contains("/login"));
-        assert!(help.contains("providers.md"));
+        assert!(help.contains("models.md"));
     }
 
     #[test]
     fn test_no_models_message() {
         let msg = format_no_models_available_message();
         assert!(msg.contains("No models"));
-        assert!(msg.contains("/login"));
-        assert!(msg.contains("providers.md"));
+        assert!(msg.contains("models.models"));
+        assert!(msg.contains("models.md"));
     }
 
     #[test]
@@ -72,7 +73,7 @@ mod tests {
         let msg = format_no_model_selected_message();
         assert!(msg.contains("No model selected"));
         assert!(msg.contains("/model"));
-        assert!(msg.contains("/login"));
+        assert!(msg.contains("api_key"));
     }
 
     #[test]
@@ -80,7 +81,8 @@ mod tests {
         let msg = format_no_api_key_found_message("openai");
         assert!(msg.contains("openai"));
         assert!(msg.contains("OPENAI_API_KEY"));
-        assert!(msg.contains("/login"));
+        assert!(msg.contains("api_key"));
+        assert!(msg.contains("silent fallback"));
     }
 
     #[test]
@@ -88,7 +90,7 @@ mod tests {
         let msg = format_no_api_key_found_message("anthropic");
         assert!(msg.contains("anthropic"));
         assert!(msg.contains("ANTHROPIC_API_KEY"));
-        assert!(msg.contains("/login"));
+        assert!(msg.contains("api_key"));
     }
 
     #[test]

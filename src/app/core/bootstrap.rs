@@ -358,13 +358,12 @@ pub fn resolve_assembly(input: &BootstrapInput) -> Result<ResolvedAssembly, Boot
     let mut model_registry = ModelRegistry::new(secret_resolver);
 
     if let Some(ref cfg) = app_config {
+        let mut missing_key_providers = std::collections::BTreeSet::new();
         for (alias, entry) in &cfg.model.models {
+            // m17: explicit YAML aliases always register; missing key → empty (no kind-env fallback).
             let api_key = resolve_entry_api_key(entry);
-            if api_key.is_none() {
-                warnings.push(BootstrapWarning::NoApiKey {
-                    provider: entry.provider.provider_name().to_string(),
-                });
-                continue;
+            if api_key.is_empty() {
+                missing_key_providers.insert(entry.provider.provider_name().to_string());
             }
 
             let context_window = if entry.context_window > 0 {
@@ -387,7 +386,7 @@ pub fn resolve_assembly(input: &BootstrapInput) -> Result<ResolvedAssembly, Boot
                 id: alias.clone(),
                 config: crate::protocol::model::XyModelConfig {
                     kind: entry.provider,
-                    api_key: api_key.expect("checked above"),
+                    api_key,
                     model: entry.model.clone(),
                     base_url: entry.base_url.clone(),
                     // c1598: honor YAML `models.*.api`; None → AdapterKind::default_for
@@ -408,58 +407,17 @@ pub fn resolve_assembly(input: &BootstrapInput) -> Result<ResolvedAssembly, Boot
                 thinking_level_map,
             });
         }
+        for provider in missing_key_providers {
+            warnings.push(BootstrapWarning::NoApiKey { provider });
+        }
     }
 
-    // ce2: YAML present but zero registerable models → hard fail (no env gpt-4o).
+    // ce2: YAML present but zero explicit model aliases → hard fail (no env gpt-4o).
     if from_yaml_layers && model_registry.is_empty() {
         return Err(BootstrapError::ConfigLoadedZeroModels);
     }
 
-    // No YAML layers: env keys may populate the registry for discovery / --model.
-    // MUST NOT auto-select here (m12); selection only via --model or profile model.
-    if model_registry.is_empty() {
-        for (provider_name, env_var, kind) in [
-            (
-                "openai",
-                "OPENAI_API_KEY",
-                crate::protocol::model::XyModelKind::OpenAi,
-            ),
-            (
-                "anthropic",
-                "ANTHROPIC_API_KEY",
-                crate::protocol::model::XyModelKind::Anthropic,
-            ),
-        ] {
-            if let Ok(key) = std::env::var(env_var)
-                && let Some(model_id) =
-                    crate::agent::model::registry::default_model_id_for_provider(provider_name)
-            {
-                model_registry.register(XyModelMeta {
-                    id: model_id.to_string(),
-                    config: crate::protocol::model::XyModelConfig {
-                        kind,
-                        api_key: key,
-                        model: model_id.to_string(),
-                        base_url: None,
-                        api: None,
-                        compat: None,
-                    },
-                    display_name: model_id.to_string(),
-                    thinking: true,
-                    context_window: crate::agent::model::registry::default_context_window_for(kind),
-                    api: String::new(),
-                    provider: String::new(),
-                    cost_input: 0.0,
-                    cost_output: 0.0,
-                    cost_cache_read: 0.0,
-                    cost_cache_write: 0.0,
-                    max_tokens: 0,
-                    thinking_levels: vec![crate::protocol::model::THINKING_OFF.into()],
-                    thinking_level_map: Default::default(),
-                });
-            }
-        }
-    }
+    // m12: never invent registry entries from OPENAI_/ANTHROPIC_ env alone.
     timing::time("model_registry.load");
 
     if model_registry.is_empty() {
@@ -823,26 +781,12 @@ pub fn reload_prompt_context(
     report
 }
 
-/// Per-model `api_key` (post secret interpolation) wins when non-empty.
-/// Explicit empty `api_key:` MUST NOT fall back to kind-level env (avoid Zen↔DeepSeek mix-up).
-fn resolve_entry_api_key(entry: &crate::infra::config::types::ModelEntry) -> Option<String> {
+/// Per-model `api_key` after config/secret render.
+/// Omit or empty → empty string. MUST NOT fall back to kind-level env (m17).
+fn resolve_entry_api_key(entry: &crate::infra::config::types::ModelEntry) -> String {
     match &entry.api_key {
-        Some(k) if !k.is_empty() => Some(k.clone()),
-        Some(_) => None,
-        None => resolve_api_key(entry.provider),
-    }
-}
-
-/// Read the API key for a provider from environment variables.
-fn resolve_api_key(kind: crate::protocol::model::XyModelKind) -> Option<String> {
-    match kind {
-        crate::protocol::model::XyModelKind::OpenAi => std::env::var("OPENAI_API_KEY")
-            .or_else(|_| std::env::var("OPENAI_KEY"))
-            .ok(),
-        crate::protocol::model::XyModelKind::Anthropic => std::env::var("ANTHROPIC_API_KEY")
-            .or_else(|_| std::env::var("ANTHROPIC_KEY"))
-            .ok(),
-        crate::protocol::model::XyModelKind::Fake => Some(String::new()),
+        Some(k) if !k.is_empty() => k.clone(),
+        _ => String::new(),
     }
 }
 
