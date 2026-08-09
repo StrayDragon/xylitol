@@ -130,4 +130,4 @@ Hook 三缝只认可移植 JSON（headers map + body Value）；不把 reqwest/�
 - 同域内「只写等价默认值、可与破坏者互斥」的测可用 `#[parallel(<domain>_global)]`（与同名 `serial` 互斥、彼此可并行）。
 - 主闸 `just qa` 走 nextest（一测一进程）：跨测互斥优先考虑 nextest `test-groups`（共享 FS/端口等外部资源）；勿假设 in-process `#[serial]` 在 nextest 下跨测生效。
 - `cargo test` 回退与 `just test-tui` 仍依赖 in-process 命名组。
-- 产品 `HostSession` 经 `KeybindingsScope`（thread-local）持有键位；勿在 `new_product_ui` 路径无必要写 `GLOBAL_KEYBINDINGS`。配置发现优先 `ConfigPaths::discover_with` 注入，少用 `set_var`。
+- 产品 `HostSession` 经 `KeybindingsScope`（thread-local）持有键位；勿在 `new_product_ui` 路径无必要写 `GLOBAL_KEYBINDINGS`。配置发现优先 `ConfigPaths::discover_with` / `load_app_config_*_with` 注入，少用 `set_var`；`secret.env` 注入进程环境的测仍走 `env_global`。

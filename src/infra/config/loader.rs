@@ -66,9 +66,49 @@ pub(crate) fn load_app_config(cli_config: Option<&Path>) -> Result<AppConfig, Lo
 pub(crate) fn load_app_config_detailed(
     cli_config: Option<&Path>,
 ) -> Result<LoadedAppConfig, LoadError> {
-    let paths = ConfigPaths::discover();
+    load_app_config_detailed_with(
+        cli_config,
+        |k| {
+            if let Ok(v) = std::env::var(k) {
+                return Some(v);
+            }
+            if k == "HOME" {
+                return dirs::home_dir().map(|p| p.to_string_lossy().into_owned());
+            }
+            None
+        },
+        std::env::current_dir().ok().as_deref(),
+    )
+}
 
-    let (secrets, injected) = super::secret_env::load_secret_env_files(&paths);
+/// Injectable load: path discovery via `get_env` / `cwd` (see [`ConfigPaths::discover_with`]).
+///
+/// Still injects missing `secret.env` keys into the process environment (product
+/// parity). Tests that exercise that side effect remain on `env_global`.
+#[cfg(test)]
+pub(crate) fn load_app_config_with(
+    cli_config: Option<&Path>,
+    get_env: impl Fn(&str) -> Option<String>,
+    cwd: Option<&Path>,
+) -> Result<AppConfig, LoadError> {
+    Ok(load_app_config_detailed_with(cli_config, get_env, cwd)?.config)
+}
+
+/// Like [`load_app_config_detailed`], but path discovery is injectable.
+pub(crate) fn load_app_config_detailed_with(
+    cli_config: Option<&Path>,
+    get_env: impl Fn(&str) -> Option<String>,
+    cwd: Option<&Path>,
+) -> Result<LoadedAppConfig, LoadError> {
+    let paths = ConfigPaths::discover_with(get_env, cwd);
+    load_from_paths(&paths, cli_config)
+}
+
+fn load_from_paths(
+    paths: &ConfigPaths,
+    cli_config: Option<&Path>,
+) -> Result<LoadedAppConfig, LoadError> {
+    let (secrets, injected) = super::secret_env::load_secret_env_files(paths);
     if injected > 0 {
         log::debug!(
             target: "xylitol::config",
@@ -178,6 +218,12 @@ mod tests {
     use super::*;
     use serde_json::json;
     use serial_test::serial;
+    use std::collections::HashMap;
+
+    fn env_map<'a>(entries: &'a [(&str, &str)]) -> impl Fn(&str) -> Option<String> + 'a {
+        let map: HashMap<&str, &str> = entries.iter().copied().collect();
+        move |k| map.get(k).map(|v| (*v).to_string())
+    }
 
     #[test]
     fn test_deep_merge_object() {
@@ -223,13 +269,8 @@ mod tests {
 
     #[test]
     #[serial(env_global)]
-
     fn loads_yml_alias_and_renders_mcp_secret_headers() {
         let home = tempfile::tempdir().unwrap();
-        // Isolate migrate_legacy (reads `$HOME/.xylitol`) from the real home tree.
-        let _home = EnvGuard::set("HOME", home.path().to_str().unwrap());
-        // Avoid merging the repo's project `.xylitol/` while tests run from workspace cwd.
-        let _proj = EnvGuard::set("XYLITOL_PROJECT_DIR", home.path().to_str().unwrap());
         let global = home.path().join(".config").join("xylitol");
         std::fs::create_dir_all(&global).unwrap();
         std::fs::write(global.join("secret.env"), "CTX_KEY=secret-value\n").unwrap();
@@ -239,8 +280,15 @@ mod tests {
             "mcp_servers:\n  - name: demo\n    transport: sse\n    url: https://example.com/mcp\n    headers:\n      CONTEXT7_API_KEY: \"{{ secret.CTX_KEY }}\"\n",
         )
         .unwrap();
-        let _cfg_dir = EnvGuard::set("XYLITOL_CONFIG_DIR", global.to_str().unwrap());
-        let cfg = load_app_config(None).expect("load");
+        let home_s = home.path().to_str().unwrap();
+        let global_s = global.to_str().unwrap();
+        let entries = [
+            ("HOME", home_s),
+            ("XYLITOL_CONFIG_DIR", global_s),
+            ("XYLITOL_PROJECT_DIR", home_s),
+        ];
+        // secret.env still injects into process env → keep env_global.
+        let cfg = load_app_config_with(None, env_map(&entries), None).expect("load");
         let servers = cfg.mcp_servers.expect("mcp_servers");
         assert_eq!(servers.len(), 1);
         assert_eq!(servers[0].name, "demo");
@@ -252,18 +300,13 @@ mod tests {
     }
 
     #[test]
-    #[serial(env_global)]
-
     fn ignores_config_local_yaml() {
         let home = tempfile::tempdir().unwrap();
-        let _home = EnvGuard::set("HOME", home.path().to_str().unwrap());
         let project_root = home.path().join("proj");
         let proj = project_root.join(".xylitol");
         std::fs::create_dir_all(&proj).unwrap();
-        let _proj = EnvGuard::set("XYLITOL_PROJECT_DIR", project_root.to_str().unwrap());
         let global = home.path().join(".config").join("xylitol");
         std::fs::create_dir_all(&global).unwrap();
-        let _cfg_dir = EnvGuard::set("XYLITOL_CONFIG_DIR", global.to_str().unwrap());
 
         std::fs::write(
             proj.join("config.local.yaml"),
@@ -271,7 +314,15 @@ mod tests {
         )
         .unwrap();
 
-        let cfg = load_app_config(None).expect("load");
+        let home_s = home.path().to_str().unwrap().to_string();
+        let global_s = global.to_str().unwrap().to_string();
+        let project_s = project_root.to_str().unwrap().to_string();
+        let entries = [
+            ("HOME", home_s.as_str()),
+            ("XYLITOL_CONFIG_DIR", global_s.as_str()),
+            ("XYLITOL_PROJECT_DIR", project_s.as_str()),
+        ];
+        let cfg = load_app_config_with(None, env_map(&entries), None).expect("load");
         assert!(
             cfg.model.default_model.is_none(),
             "config.local.yaml must not be merged"
@@ -282,29 +333,7 @@ mod tests {
             "models:\n  default_model: from-yaml\n  models:\n    from-yaml:\n      provider: fake\n      model: fake\n",
         )
         .unwrap();
-        let cfg = load_app_config(None).expect("load with yaml");
+        let cfg = load_app_config_with(None, env_map(&entries), None).expect("load with yaml");
         assert_eq!(cfg.model.default_model.as_deref(), Some("from-yaml"));
-    }
-
-    /// RAII env var restore for loader path tests.
-    struct EnvGuard {
-        key: &'static str,
-        prev: Option<String>,
-    }
-    impl EnvGuard {
-        fn set(key: &'static str, value: &str) -> Self {
-            let prev = std::env::var(key).ok();
-            // SAFETY: test-only; short-lived; restored on drop.
-            unsafe { std::env::set_var(key, value) };
-            Self { key, prev }
-        }
-    }
-    impl Drop for EnvGuard {
-        fn drop(&mut self) {
-            match &self.prev {
-                Some(v) => unsafe { std::env::set_var(self.key, v) },
-                None => unsafe { std::env::remove_var(self.key) },
-            }
-        }
     }
 }
