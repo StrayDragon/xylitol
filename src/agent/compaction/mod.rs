@@ -119,6 +119,7 @@ pub async fn compact_session(
     model: &dyn XyModel,
     settings: &CompactionSettings,
     custom_instructions: Option<&str>,
+    obs_parent: Option<fastrace::prelude::SpanContext>,
 ) -> Result<CompactionEntry, String> {
     if !settings.enabled {
         return Err("compaction disabled".to_string());
@@ -212,6 +213,7 @@ pub async fn compact_session(
                 settings.reserve_tokens,
                 previous_summary,
                 custom_instructions,
+                obs_parent,
             )
             .await
             {
@@ -229,6 +231,7 @@ pub async fn compact_session(
             &turn_prefix_messages,
             model,
             settings.reserve_tokens,
+            obs_parent,
         )
         .await
         {
@@ -246,6 +249,7 @@ pub async fn compact_session(
             settings.reserve_tokens,
             previous_summary,
             custom_instructions,
+            obs_parent,
         )
         .await
         {
@@ -1016,7 +1020,7 @@ mod tests {
             reserve_tokens: 1024,
             keep_recent_tokens: 80,
         };
-        let entry = compact_session(&mgr, sid, &model, &settings, None)
+        let entry = compact_session(&mgr, sid, &model, &settings, None, None)
             .await
             .expect("compact");
         assert!(
@@ -1039,7 +1043,7 @@ mod tests {
 
         let model = FakeProvider::new("tp", vec![ScenarioStep::text("prefix-ok")]);
         let msgs = vec![AgentMessage::user("do the thing")];
-        let text = generate_turn_prefix_summary(&msgs, &model, 1024)
+        let text = generate_turn_prefix_summary(&msgs, &model, 1024, None)
             .await
             .unwrap();
         assert_eq!(text, "prefix-ok");

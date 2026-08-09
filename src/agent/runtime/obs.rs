@@ -1,13 +1,13 @@
 //! Low-frequency ReAct fastrace spans (c1265 Phase A; c1495 parent tree).
 //!
 //! Gated by [`xylitol_ai_bridge::provider::trace::provider_trace_active`]. When
-//! off, helpers are no-ops (zero/near-zero cost) — no UUID, no parent-slot writes.
+//! off, helpers are no-ops (zero/near-zero cost) — no UUID allocation.
 //!
 //! Hierarchy (exported names):
 //! ```text
 //! agent.turn
 //!   ├─ agent.iteration
-//!   │    ├─ llm.request   (via bridge obs parent slot)
+//!   │    ├─ llm.request   (via XyGenerateOptions.obs_parent)
 //!   │    └─ tool.execute
 //!   └─ agent.compaction   (via agent/compaction/obs; may parent summarization llm.request)
 //! ```
@@ -19,9 +19,6 @@
 
 use fastrace::prelude::*;
 use xylitol_ai_bridge::provider::langfuse_observation_properties;
-use xylitol_ai_bridge::provider::obs_span_parent::{
-    clear_obs_span_parents, obs_llm_parent, set_obs_iteration_parent, set_obs_turn_parent,
-};
 use xylitol_ai_bridge::provider::trace::{
     observation_io_tier, provider_trace_active, tool_observation_io_tier, truncate_observation_text,
 };
@@ -74,9 +71,6 @@ impl AgentTurnSpan {
                 ("name", "agent.turn".to_string()),
             ]
         }));
-        if let Some(ctx) = SpanContext::from_span(&root) {
-            set_obs_turn_parent(Some(ctx));
-        }
         Some(Self { root, turn_id })
     }
 
@@ -88,7 +82,7 @@ impl AgentTurnSpan {
         &self.root
     }
 
-    /// Attach terminal status then drop (clears turn parent). Abort → ERROR/`aborted`
+    /// Attach terminal status then drop. Abort → ERROR/`aborted`
     /// (aligned with `agent.compaction` / generation abort). Ok → no ERROR level.
     pub(crate) fn finish(self, reason: TurnEndReason) {
         match reason {
@@ -115,12 +109,6 @@ impl AgentTurnSpan {
                 ]
             }));
         drop(self);
-    }
-}
-
-impl Drop for AgentTurnSpan {
-    fn drop(&mut self) {
-        clear_obs_span_parents();
     }
 }
 
@@ -158,9 +146,6 @@ impl AgentIterationSpan {
                 ("turn_id", turn_id.clone()),
             ]
         }));
-        if let Some(ctx) = SpanContext::from_span(&span) {
-            set_obs_iteration_parent(Some(ctx));
-        }
         Some(Self { span, turn_id })
     }
 
@@ -170,12 +155,6 @@ impl AgentIterationSpan {
 
     pub(crate) fn span(&self) -> &Span {
         &self.span
-    }
-}
-
-impl Drop for AgentIterationSpan {
-    fn drop(&mut self) {
-        set_obs_iteration_parent(None);
     }
 }
 
@@ -216,8 +195,8 @@ impl ToolExecuteSpan {
 
     /// Child of a captured parent [`SpanContext`] (BarrierParallel fan-out).
     ///
-    /// Capturing the context before `join_all` avoids racing the global parent
-    /// slot and avoids `SpanContext::random` roots for concurrent tools.
+    /// Capturing the context before `join_all` avoids racing concurrent tools
+    /// and avoids `SpanContext::random` roots for concurrent tools.
     pub(crate) fn start_with_parent_ctx(
         name: &str,
         id: &str,
@@ -287,7 +266,12 @@ impl ToolExecuteSpan {
 }
 
 /// Log (+ optional fastrace) a hot-path [`XyError`] with stable `error.kind`.
-pub(crate) fn record_xy_error(where_: &str, err: &XyError, turn_id: Option<&str>) {
+pub(crate) fn record_xy_error(
+    where_: &str,
+    err: &XyError,
+    turn_id: Option<&str>,
+    parent: Option<SpanContext>,
+) {
     let kind = err.kind();
     let tid = turn_id.unwrap_or("");
     log::warn!(
@@ -297,7 +281,7 @@ pub(crate) fn record_xy_error(where_: &str, err: &XyError, turn_id: Option<&str>
     if !provider_trace_active() {
         return;
     }
-    let parent = obs_llm_parent().unwrap_or_else(SpanContext::random);
+    let parent = parent.unwrap_or_else(SpanContext::random);
     let span = Span::root("react.error", parent).with_properties(|| {
         let mut props = vec![
             ("error.kind".to_string(), kind.to_string()),
@@ -317,7 +301,12 @@ pub(crate) fn record_xy_error(where_: &str, err: &XyError, turn_id: Option<&str>
 }
 
 /// Log (+ optional fastrace) a tool failure with stable `error.kind`.
-pub(crate) fn record_tool_error(tool: &str, err: &XyToolError, turn_id: Option<&str>) {
+pub(crate) fn record_tool_error(
+    tool: &str,
+    err: &XyToolError,
+    turn_id: Option<&str>,
+    parent: Option<SpanContext>,
+) {
     let kind = err.kind();
     let tid = turn_id.unwrap_or("");
     log::warn!(
@@ -327,7 +316,7 @@ pub(crate) fn record_tool_error(tool: &str, err: &XyToolError, turn_id: Option<&
     if !provider_trace_active() {
         return;
     }
-    let parent = obs_llm_parent().unwrap_or_else(SpanContext::random);
+    let parent = parent.unwrap_or_else(SpanContext::random);
     let span = Span::root("tool.error", parent).with_properties(|| {
         let mut props = vec![
             ("error.kind".to_string(), kind.to_string()),
@@ -370,7 +359,6 @@ mod tests {
 
     #[test]
     #[serial(obs_global)]
-
     fn inactive_helpers_are_none() {
         let _g = TEST_LOCK.lock().unwrap_or_else(|e| e.into_inner());
         set_provider_trace_active(false);
@@ -381,11 +369,9 @@ mod tests {
 
     #[test]
     #[serial(obs_global)]
-
     fn turn_finish_ok_has_no_error_level() {
         let _g = TEST_LOCK.lock().unwrap_or_else(|e| e.into_inner());
         set_provider_trace_active(true);
-        clear_obs_span_parents();
         let records = Arc::new(Mutex::new(Vec::new()));
         fastrace::set_reporter(CollectingReporter(Arc::clone(&records)), Config::default());
 
@@ -418,11 +404,9 @@ mod tests {
 
     #[test]
     #[serial(obs_global)]
-
     fn turn_finish_aborted_marks_error() {
         let _g = TEST_LOCK.lock().unwrap_or_else(|e| e.into_inner());
         set_provider_trace_active(true);
-        clear_obs_span_parents();
         let records = Arc::new(Mutex::new(Vec::new()));
         fastrace::set_reporter(CollectingReporter(Arc::clone(&records)), Config::default());
 
@@ -452,11 +436,9 @@ mod tests {
 
     #[test]
     #[serial(obs_global)]
-
     fn turn_iteration_llm_share_trace_id() {
         let _g = TEST_LOCK.lock().unwrap_or_else(|e| e.into_inner());
         set_provider_trace_active(true);
-        clear_obs_span_parents();
         let records = Arc::new(Mutex::new(Vec::new()));
         fastrace::set_reporter(CollectingReporter(Arc::clone(&records)), Config::default());
 
@@ -465,9 +447,11 @@ mod tests {
             let iter = AgentIterationSpan::start(Some(&turn), 0).expect("iter");
             let tool = ToolExecuteSpan::start("bash", "t1", Some(iter.span())).expect("tool");
             tool.attach_io(r#"{"cmd":"echo"}"#, "ok");
-            let _llm = xylitol_ai_bridge::provider::trace::ProviderRequestTrace::start(
+            let iter_ctx = SpanContext::from_span(iter.span());
+            let _llm = xylitol_ai_bridge::provider::trace::ProviderRequestTrace::start_with_parent(
                 "openai-responses",
                 "m",
+                iter_ctx,
             )
             .expect("llm");
             drop(_llm);
@@ -529,11 +513,9 @@ mod tests {
 
     #[test]
     #[serial(obs_global)]
-
     fn turn_root_input_only_when_observation_io_set() {
         let _g = TEST_LOCK.lock().unwrap_or_else(|e| e.into_inner());
         set_provider_trace_active(true);
-        clear_obs_span_parents();
         set_observation_io_tier(ObservationIoTier::None);
         let records = Arc::new(Mutex::new(Vec::new()));
         fastrace::set_reporter(CollectingReporter(Arc::clone(&records)), Config::default());
@@ -574,11 +556,9 @@ mod tests {
 
     #[test]
     #[serial(obs_global)]
-
     fn tool_io_only_when_tool_observation_io_set() {
         let _g = TEST_LOCK.lock().unwrap_or_else(|e| e.into_inner());
         set_provider_trace_active(true);
-        clear_obs_span_parents();
         set_tool_observation_io_tier(ObservationIoTier::None);
         let records = Arc::new(Mutex::new(Vec::new()));
         fastrace::set_reporter(CollectingReporter(Arc::clone(&records)), Config::default());
@@ -626,11 +606,9 @@ mod tests {
 
     #[test]
     #[serial(obs_global)]
-
     fn parallel_tool_spans_share_iteration_parent_via_captured_ctx() {
         let _g = TEST_LOCK.lock().unwrap_or_else(|e| e.into_inner());
         set_provider_trace_active(true);
-        clear_obs_span_parents();
         let records = Arc::new(Mutex::new(Vec::new()));
         fastrace::set_reporter(CollectingReporter(Arc::clone(&records)), Config::default());
 

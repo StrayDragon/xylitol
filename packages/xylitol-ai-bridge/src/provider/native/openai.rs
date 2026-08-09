@@ -71,8 +71,11 @@ impl OpenAIProvider {
         stream: bool,
         options: &crate::thinking::AiBridgeGenerateOptions,
     ) -> Result<AiBridgeStream, AiBridgeError> {
-        let trace =
-            crate::provider::trace::ProviderRequestTrace::start("openai-completions", &self.model);
+        let trace = crate::provider::trace::ProviderRequestTrace::start_with_parent(
+            "openai-completions",
+            &self.model,
+            options.obs_parent,
+        );
         let msgs = convert_agent_messages(&messages, options.system_prompt.as_deref());
         let tool_defs = convert_tools(tools);
 

@@ -5,7 +5,6 @@
 
 use fastrace::prelude::*;
 use xylitol_ai_bridge::provider::langfuse_observation_properties;
-use xylitol_ai_bridge::provider::obs_span_parent::{obs_turn_parent, set_obs_compaction_parent};
 use xylitol_ai_bridge::provider::trace::provider_trace_active;
 
 /// Normalize Start/End reason strings to product kinds.
@@ -26,12 +25,15 @@ pub(crate) struct AgentCompactionSpan {
 
 impl AgentCompactionSpan {
     /// Start after `prepare_compaction` succeeds (manual / threshold / overflow).
-    pub(crate) fn start(reason: &str) -> Option<Self> {
+    ///
+    /// `parent` is typically the active `agent.turn` context when compacting inside
+    /// a turn; `None` starts an independent root (slash / out-of-turn compact).
+    pub(crate) fn start(reason: &str, parent: Option<SpanContext>) -> Option<Self> {
         if !provider_trace_active() {
             return None;
         }
         let kind = compaction_reason_kind(reason);
-        let parent = obs_turn_parent().unwrap_or_else(SpanContext::random);
+        let parent = parent.unwrap_or_else(SpanContext::random);
         let span = Span::root("agent.compaction", parent).with_properties(|| {
             let mut props = vec![("reason".to_string(), kind.to_string())];
             if reason != kind {
@@ -48,13 +50,15 @@ impl AgentCompactionSpan {
                 ("reason", kind.to_string()),
             ]
         }));
-        if let Some(ctx) = SpanContext::from_span(&span) {
-            set_obs_compaction_parent(Some(ctx));
-        }
         Some(Self { span })
     }
 
-    /// Attach end-of-compact attributes then drop (clears compaction parent).
+    /// Captured parent context for summarization `llm.request` nesting.
+    pub(crate) fn span_context(&self) -> Option<SpanContext> {
+        SpanContext::from_span(&self.span)
+    }
+
+    /// Attach end-of-compact attributes then drop.
     pub(crate) fn finish(self, will_retry: bool, aborted: bool, error_message: Option<&str>) {
         self.span
             .add_property(|| ("will_retry", will_retry.to_string()));
@@ -85,12 +89,6 @@ impl AgentCompactionSpan {
     }
 }
 
-impl Drop for AgentCompactionSpan {
-    fn drop(&mut self) {
-        set_obs_compaction_parent(None);
-    }
-}
-
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -99,9 +97,6 @@ mod tests {
 
     use fastrace::collector::{Config, Reporter, SpanRecord};
     use xylitol_ai_bridge::provider::obs_session::{clear_obs_session, set_obs_session};
-    use xylitol_ai_bridge::provider::obs_span_parent::{
-        clear_obs_span_parents, set_obs_turn_parent,
-    };
     use xylitol_ai_bridge::provider::trace::set_provider_trace_active;
 
     static TEST_LOCK: Mutex<()> = Mutex::new(());
@@ -116,7 +111,6 @@ mod tests {
 
     #[test]
     #[serial(obs_global)]
-
     fn reason_kind_maps() {
         assert_eq!(compaction_reason_kind("manual"), "manual");
         assert_eq!(compaction_reason_kind("overflow"), "overflow");
@@ -128,31 +122,26 @@ mod tests {
 
     #[test]
     #[serial(obs_global)]
-
     fn inactive_start_is_none() {
         let _g = TEST_LOCK.lock().unwrap_or_else(|e| e.into_inner());
         set_provider_trace_active(false);
-        assert!(AgentCompactionSpan::start("manual").is_none());
+        assert!(AgentCompactionSpan::start("manual", None).is_none());
     }
 
     #[test]
     #[serial(obs_global)]
-
     fn compaction_under_turn_shares_trace() {
         let _g = TEST_LOCK.lock().unwrap_or_else(|e| e.into_inner());
         set_provider_trace_active(true);
-        clear_obs_span_parents();
         let records = Arc::new(Mutex::new(Vec::new()));
         fastrace::set_reporter(CollectingReporter(Arc::clone(&records)), Config::default());
 
         {
             let turn = Span::root("agent.turn", SpanContext::random());
             let turn_ctx = SpanContext::from_span(&turn).expect("turn ctx");
-            set_obs_turn_parent(Some(turn_ctx));
-            let c = AgentCompactionSpan::start("threshold: demo").expect("compact");
+            let c = AgentCompactionSpan::start("threshold: demo", Some(turn_ctx)).expect("compact");
             c.finish(false, false, None);
             drop(turn);
-            clear_obs_span_parents();
         }
         fastrace::flush();
         set_provider_trace_active(false);
@@ -182,11 +171,9 @@ mod tests {
 
     #[test]
     #[serial(obs_global)]
-
     fn independent_root_carries_session_id_and_lane() {
         let _g = TEST_LOCK.lock().unwrap_or_else(|e| e.into_inner());
         set_provider_trace_active(true);
-        clear_obs_span_parents();
         clear_obs_session();
         set_obs_session("sess-compact-1", None);
         let records = Arc::new(Mutex::new(Vec::new()));
@@ -194,7 +181,7 @@ mod tests {
 
         {
             // Post-prepare failure path (e.g. summarization error), not prepare early-exit.
-            let c = AgentCompactionSpan::start("manual").expect("compact");
+            let c = AgentCompactionSpan::start("manual", None).expect("compact");
             c.finish(false, false, Some("compaction failed: model error"));
         }
         fastrace::flush();
@@ -227,27 +214,26 @@ mod tests {
 
     #[test]
     #[serial(obs_global)]
-
     fn summarization_llm_nests_under_compaction() {
         let _g = TEST_LOCK.lock().unwrap_or_else(|e| e.into_inner());
         set_provider_trace_active(true);
-        clear_obs_span_parents();
         let records = Arc::new(Mutex::new(Vec::new()));
         fastrace::set_reporter(CollectingReporter(Arc::clone(&records)), Config::default());
 
         {
             let turn = Span::root("agent.turn", SpanContext::random());
-            set_obs_turn_parent(SpanContext::from_span(&turn));
-            let c = AgentCompactionSpan::start("overflow").expect("compact");
-            let _llm = xylitol_ai_bridge::provider::trace::ProviderRequestTrace::start(
+            let turn_ctx = SpanContext::from_span(&turn);
+            let c = AgentCompactionSpan::start("overflow", turn_ctx).expect("compact");
+            let compact_ctx = c.span_context();
+            let _llm = xylitol_ai_bridge::provider::trace::ProviderRequestTrace::start_with_parent(
                 "openai-responses",
                 "m",
+                compact_ctx,
             )
             .expect("llm");
             drop(_llm);
             c.finish(true, false, None);
             drop(turn);
-            clear_obs_span_parents();
         }
         fastrace::flush();
         set_provider_trace_active(false);

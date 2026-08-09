@@ -75,14 +75,22 @@ impl CompactionOrchestrator {
             return Err(err);
         }
 
-        let obs = AgentCompactionSpan::start("manual");
+        let obs = AgentCompactionSpan::start("manual", None);
 
         let mut force_settings = self.settings.clone();
         force_settings.enabled = true;
 
-        let result = compact_session(store, sid, model, &force_settings, instructions.as_deref())
-            .await
-            .map_err(|e| format!("compaction failed: {e}"));
+        let llm_parent = obs.as_ref().and_then(|s| s.span_context());
+        let result = compact_session(
+            store,
+            sid,
+            model,
+            &force_settings,
+            instructions.as_deref(),
+            llm_parent,
+        )
+        .await
+        .map_err(|e| format!("compaction failed: {e}"));
 
         if let Some(obs) = obs {
             obs.finish(false, false, result.as_ref().err().map(String::as_str));
@@ -100,7 +108,7 @@ impl CompactionOrchestrator {
             .await;
 
         if result.is_ok() {
-            emit_after_compaction_settlement(store, sid, event_sink).await;
+            emit_after_compaction_settlement(store, sid, event_sink, None).await;
         }
 
         result?;
@@ -120,6 +128,7 @@ impl CompactionOrchestrator {
         current_provider: &str,
         current_model_id: &str,
         overflow_recovery_attempted: bool,
+        turn_obs_parent: Option<fastrace::prelude::SpanContext>,
     ) -> Result<OverflowCompactOutcome, String> {
         if !self.settings.enabled {
             return Ok(OverflowCompactOutcome::Skipped);
@@ -150,7 +159,16 @@ impl CompactionOrchestrator {
 
         if !will_retry {
             return self
-                .run_auto_compaction(store, sid, model, event_sink, "overflow", false, &entries)
+                .run_auto_compaction(
+                    store,
+                    sid,
+                    model,
+                    event_sink,
+                    "overflow",
+                    false,
+                    &entries,
+                    turn_obs_parent,
+                )
                 .await
                 .map(|ran| {
                     if ran {
@@ -176,15 +194,24 @@ impl CompactionOrchestrator {
             return Ok(OverflowCompactOutcome::FailedOnce);
         }
 
-        self.run_auto_compaction(store, sid, model, event_sink, "overflow", true, &entries)
-            .await
-            .map(|ran| {
-                if ran {
-                    OverflowCompactOutcome::Ran { will_retry: true }
-                } else {
-                    OverflowCompactOutcome::Skipped
-                }
-            })
+        self.run_auto_compaction(
+            store,
+            sid,
+            model,
+            event_sink,
+            "overflow",
+            true,
+            &entries,
+            turn_obs_parent,
+        )
+        .await
+        .map(|ran| {
+            if ran {
+                OverflowCompactOutcome::Ran { will_retry: true }
+            } else {
+                OverflowCompactOutcome::Skipped
+            }
+        })
     }
 
     /// Threshold auto-compact (pi Case2).
@@ -202,6 +229,7 @@ impl CompactionOrchestrator {
         estimate_opts: &EstimateOpts,
         last_assistant: Option<&AgentMessage>,
         precomputed: Option<&crate::protocol::model::ContextTokenEstimate>,
+        turn_obs_parent: Option<fastrace::prelude::SpanContext>,
     ) -> Result<bool, String> {
         if !self.settings.enabled {
             return Ok(false);
@@ -241,8 +269,17 @@ impl CompactionOrchestrator {
             estimate.tokens,
             context_window / 1000,
         );
-        self.run_auto_compaction(store, sid, model, event_sink, &reason, false, &entries)
-            .await
+        self.run_auto_compaction(
+            store,
+            sid,
+            model,
+            event_sink,
+            &reason,
+            false,
+            &entries,
+            turn_obs_parent,
+        )
+        .await
     }
 
     #[allow(clippy::too_many_arguments)]
@@ -255,6 +292,7 @@ impl CompactionOrchestrator {
         reason: &str,
         will_retry: bool,
         entries: &[SessionEntry],
+        turn_obs_parent: Option<fastrace::prelude::SpanContext>,
     ) -> Result<bool, String> {
         if prepare_compaction(entries, &self.settings).is_err() {
             return Ok(false);
@@ -265,9 +303,10 @@ impl CompactionOrchestrator {
                 reason: reason.to_string(),
             })
             .await;
-        let obs = AgentCompactionSpan::start(reason);
+        let obs = AgentCompactionSpan::start(reason, turn_obs_parent);
 
-        let result = compact_session(store, sid, model, &self.settings, None).await;
+        let llm_parent = obs.as_ref().and_then(|s| s.span_context());
+        let result = compact_session(store, sid, model, &self.settings, None, llm_parent).await;
         let (ok_result, err_msg, summary, tokens_before) = match &result {
             Ok(entry) => (
                 Some("ok".to_string()),
@@ -311,7 +350,7 @@ impl CompactionOrchestrator {
             .await;
 
         if result.is_ok() {
-            emit_after_compaction_settlement(store, sid, event_sink).await;
+            emit_after_compaction_settlement(store, sid, event_sink, turn_obs_parent).await;
         }
 
         match result {
@@ -325,6 +364,7 @@ async fn emit_after_compaction_settlement(
     store: &dyn XySessionStore,
     sid: &str,
     event_sink: &dyn XyEventSink,
+    turn_obs_parent: Option<fastrace::prelude::SpanContext>,
 ) {
     use crate::agent::compaction::settlement::{
         ContextTokenSettlementReason, settle_from_session_entries,
@@ -334,7 +374,10 @@ async fn emit_after_compaction_settlement(
     };
     let settled = settle_from_session_entries(
         &fresh,
-        &EstimateOpts::default(),
+        &EstimateOpts {
+            obs_parent: turn_obs_parent,
+            ..Default::default()
+        },
         ContextTokenSettlementReason::AfterCompaction,
     );
     event_sink
@@ -437,7 +480,6 @@ mod tests {
 
     use async_trait::async_trait;
     use fastrace::collector::{Config, Reporter, SpanRecord};
-    use xylitol_ai_bridge::provider::obs_span_parent::clear_obs_span_parents;
     use xylitol_ai_bridge::provider::trace::set_provider_trace_active;
 
     use crate::protocol::error::XyError;
@@ -516,7 +558,6 @@ mod tests {
     async fn prepare_fail_exports_no_compaction_span() {
         let _g = OBS_TEST_LOCK.lock().await;
         set_provider_trace_active(true);
-        clear_obs_span_parents();
         let records = Arc::new(Mutex::new(Vec::new()));
         fastrace::set_reporter(CollectingReporter(Arc::clone(&records)), Config::default());
 
@@ -532,7 +573,6 @@ mod tests {
 
         fastrace::flush();
         set_provider_trace_active(false);
-        clear_obs_span_parents();
 
         let spans = records.lock().unwrap().clone();
         assert!(

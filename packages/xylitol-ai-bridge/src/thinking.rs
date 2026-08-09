@@ -2,6 +2,7 @@
 
 use std::collections::HashMap;
 
+use fastrace::prelude::SpanContext;
 use serde_json::{Value, json};
 
 /// Optional Settings-style budget overrides for Anthropic.
@@ -23,6 +24,8 @@ pub struct AiBridgeGenerateOptions {
     /// System prompt injected each request via the adapter's formal channel
     /// (Responses `developer`/`system`, Completions system message, Anthropic `system`).
     pub system_prompt: Option<String>,
+    /// Optional fastrace parent for `llm.request` nesting (iteration / compaction).
+    pub obs_parent: Option<SpanContext>,
 }
 
 impl Default for AiBridgeGenerateOptions {
@@ -32,6 +35,7 @@ impl Default for AiBridgeGenerateOptions {
             level_map: HashMap::new(),
             thinking_budgets: None,
             system_prompt: None,
+            obs_parent: None,
         }
     }
 }

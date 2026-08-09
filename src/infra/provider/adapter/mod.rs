@@ -97,6 +97,7 @@ fn to_bridge_options(options: XyGenerateOptions) -> xylitol_ai_bridge::AiBridgeG
         level_map: options.level_map,
         thinking_budgets: options.thinking_budgets,
         system_prompt: options.system_prompt,
+        obs_parent: options.obs_parent,
     }
 }
 

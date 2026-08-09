@@ -106,9 +106,10 @@ pub struct ProviderRequestTrace {
 }
 
 impl ProviderRequestTrace {
-    /// Start under the current obs parent (`agent.iteration` / `agent.turn`) when set.
+    /// Start as an independent root (`None` parent → random context).
+    /// Prefer [`Self::start_with_parent`] when an iteration / compaction parent is known.
     pub fn start(api: &str, model: &str) -> Option<Self> {
-        Self::start_with_parent(api, model, super::obs_llm_parent())
+        Self::start_with_parent(api, model, None)
     }
 
     pub fn start_with_parent(api: &str, model: &str, parent: Option<SpanContext>) -> Option<Self> {

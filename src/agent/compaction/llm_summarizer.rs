@@ -105,13 +105,17 @@ pub(super) async fn generate_complete(
     model: &dyn XyModel,
     messages: Vec<LlmMessage>,
     _max_tokens: u32,
+    obs_parent: Option<fastrace::prelude::SpanContext>,
 ) -> Result<String> {
     let mut stream = model
         .generate_stream(
             messages,
             &[],
             false,
-            crate::protocol::ports::XyGenerateOptions::default(),
+            crate::protocol::ports::XyGenerateOptions {
+                obs_parent,
+                ..Default::default()
+            },
         )
         .await
         .map_err(|e| anyhow::anyhow!("summarization model error: {e}"))?;
@@ -218,6 +222,7 @@ pub async fn generate_summary(
     _reserve_tokens: u64,
     previous_summary: Option<&str>,
     custom_instructions: Option<&str>,
+    obs_parent: Option<fastrace::prelude::SpanContext>,
 ) -> Result<String> {
     let conversation_text = serialize_conversation(messages);
 
@@ -239,7 +244,13 @@ pub async fn generate_summary(
     let summarization_messages = project_for_llm(&[AgentMessage::user(prompt_text.clone())]);
 
     let max_tokens = ((_reserve_tokens as f64) * 0.8) as u32;
-    generate_complete(model, summarization_messages, max_tokens.max(256)).await
+    generate_complete(
+        model,
+        summarization_messages,
+        max_tokens.max(256),
+        obs_parent,
+    )
+    .await
 }
 
 /// Generate a turn-prefix summary when splitting a turn (pi `generateTurnPrefixSummary`).
@@ -247,6 +258,7 @@ pub async fn generate_turn_prefix_summary(
     messages: &[AgentMessage],
     model: &dyn XyModel,
     _reserve_tokens: u64,
+    obs_parent: Option<fastrace::prelude::SpanContext>,
 ) -> Result<String> {
     let conversation_text = serialize_conversation(messages);
     let prompt_text = format!(
@@ -255,7 +267,13 @@ pub async fn generate_turn_prefix_summary(
     let summarization_messages = project_for_llm(&[AgentMessage::user(prompt_text)]);
     // Smaller budget than full history summary (pi: 0.5 * reserveTokens).
     let max_tokens = ((_reserve_tokens as f64) * 0.5) as u32;
-    generate_complete(model, summarization_messages, max_tokens.max(256)).await
+    generate_complete(
+        model,
+        summarization_messages,
+        max_tokens.max(256),
+        obs_parent,
+    )
+    .await
 }
 
 #[cfg(test)]
@@ -320,9 +338,16 @@ mod tests {
             last: Mutex::new(None),
         };
         let msgs = vec![AgentMessage::user("hello")];
-        let _ = generate_summary(&msgs, &model, 1024, None, Some("prioritize API errors"))
-            .await
-            .unwrap();
+        let _ = generate_summary(
+            &msgs,
+            &model,
+            1024,
+            None,
+            Some("prioritize API errors"),
+            None,
+        )
+        .await
+        .unwrap();
         let prompt = model.last.lock().expect("last").clone().expect("captured");
         assert!(
             prompt.contains("Additional focus: prioritize API errors"),
@@ -336,7 +361,7 @@ mod tests {
             last: Mutex::new(None),
         };
         let msgs = vec![AgentMessage::user("hello")];
-        let _ = generate_summary(&msgs, &model, 1024, None, None)
+        let _ = generate_summary(&msgs, &model, 1024, None, None, None)
             .await
             .unwrap();
         let prompt = model.last.lock().expect("last").clone().expect("captured");

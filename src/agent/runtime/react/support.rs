@@ -35,6 +35,7 @@ pub(crate) fn prepare_turn_binding(
         level_map: meta.thinking_level_map.clone(),
         thinking_budgets: mm.thinking_budgets().cloned(),
         system_prompt: system_prompt.clone(),
+        obs_parent: None,
     };
     let model = match run_model.as_ref() {
         Some((id, model)) if id == &model_id => Arc::clone(model),
@@ -127,7 +128,7 @@ pub(crate) async fn call_with_retry(
                     retry_state.backoff(delay).await;
                     continue;
                 }
-                obs::record_xy_error("model.generate_stream", &e, turn_id);
+                obs::record_xy_error("model.generate_stream", &e, turn_id, options.obs_parent);
                 return Err(e);
             }
         }

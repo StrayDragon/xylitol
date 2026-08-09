@@ -48,6 +48,8 @@ pub struct EstimateOpts {
     /// settlement paths call `emit_token_estimate_obs` explicitly so callers do not
     /// each create duplicate OTel observations.
     pub emit_obs: bool,
+    /// Optional `agent.turn` parent for `token.estimate` nesting.
+    pub obs_parent: Option<fastrace::prelude::SpanContext>,
 }
 
 /// Build a [`ContextTokenEstimate`] from persisted session entries (footer + compact).
@@ -222,8 +224,8 @@ pub(crate) fn emit_token_estimate_obs(est: &ContextTokenEstimate, opts: &Estimat
     props.extend(xylitol_ai_bridge::provider::xylitol_obs_lane_properties(
         xylitol_ai_bridge::provider::XYLITOL_OBS_LANE_LLM,
     ));
-    // Prefer active agent.turn parent; otherwise independent root (same session attrs).
-    let parent = xylitol_ai_bridge::provider::obs_turn_parent().unwrap_or_else(SpanContext::random);
+    // Prefer explicit agent.turn parent; otherwise independent root (same session attrs).
+    let parent = opts.obs_parent.unwrap_or_else(SpanContext::random);
     let span = Span::root("token.estimate", parent).with_properties(|| props);
     span.add_event(Event::new("token.estimate").with_properties(|| {
         [
