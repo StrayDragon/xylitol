@@ -99,10 +99,8 @@ fn strip_dotenv_quotes(value: &str) -> String {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use serial_test::serial;
     use std::fs;
-    use std::sync::Mutex;
-
-    static ENV_LOCK: Mutex<()> = Mutex::new(());
 
     #[test]
     fn parse_skips_comments_and_blanks() {
@@ -119,8 +117,8 @@ mod tests {
     }
 
     #[test]
+    #[serial(env_global)]
     fn inject_does_not_override_existing_env() {
-        let _guard = ENV_LOCK.lock().unwrap();
         let key = "XYLITOL_TEST_SECRET_ENV_NO_OVERRIDE";
         unsafe {
             std::env::set_var(key, "from-shell");
@@ -135,8 +133,8 @@ mod tests {
     }
 
     #[test]
+    #[serial(env_global)]
     fn inject_sets_missing_keys() {
-        let _guard = ENV_LOCK.lock().unwrap();
         let key = "XYLITOL_TEST_SECRET_ENV_SET";
         unsafe {
             std::env::remove_var(key);
@@ -151,8 +149,8 @@ mod tests {
     }
 
     #[test]
+    #[serial(env_global)]
     fn load_from_temp_project_dir() {
-        let _guard = ENV_LOCK.lock().unwrap();
         let key = "XYLITOL_TEST_SECRET_ENV_LOAD";
         unsafe {
             std::env::remove_var(key);

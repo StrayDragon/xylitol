@@ -1353,9 +1353,8 @@ impl XyDriver for XyInProcessDriver {
         let mut steps = Vec::new();
 
         // Re-read trust store so `/trust` + later `/reload` picks up new decisions (c1105).
-        let trust_mgr = crate::infra::trust::TrustManager::new(
-            crate::infra::trust::TrustManager::default_dir(),
-        );
+        // Prefer reload `agent_dir` (same as product `~/.xylitol`) so tests need not mutate HOME.
+        let trust_mgr = crate::infra::trust::TrustManager::new(state.agent_dir.clone());
         let cwd_str = state.cwd.display().to_string();
         state.project_trusted = trust_mgr.is_trusted(&cwd_str);
 
@@ -1459,9 +1458,12 @@ impl XyDriver for XyInProcessDriver {
             .or_else(|| std::env::current_dir().ok())
             .unwrap_or_else(|| std::path::PathBuf::from("."));
         let cwd_str = cwd.display().to_string();
-        let mgr = crate::infra::trust::TrustManager::new(
-            crate::infra::trust::TrustManager::default_dir(),
-        );
+        let trust_dir = self
+            .reload
+            .as_ref()
+            .map(|s| s.agent_dir.clone())
+            .unwrap_or_else(crate::infra::trust::TrustManager::default_dir);
+        let mgr = crate::infra::trust::TrustManager::new(trust_dir);
         let options = mgr.get_trust_options(&cwd_str, false);
         let opt = match mode {
             ProjectTrustMode::TrustCwd => options.first(),
@@ -1536,7 +1538,9 @@ impl XyDriver for XyInProcessDriver {
 
 #[cfg(test)]
 mod driver_session_tree_tests {
-    use serial_test::serial;
+    // Writers of process `obs_session` slot: exclusive vs `serial(obs_global)` asserters,
+    // parallel among themselves (`cargo test` in-process).
+    use serial_test::parallel;
     use std::sync::Arc;
 
     use super::*;
@@ -1590,7 +1594,7 @@ mod driver_session_tree_tests {
     }
 
     #[tokio::test]
-    #[serial(obs_global)]
+    #[parallel(obs_global)]
 
     async fn switch_session_restores_sticky_thinking_without_rewriting() {
         let dir = tempfile::tempdir().unwrap();
@@ -1627,7 +1631,7 @@ mod driver_session_tree_tests {
     }
 
     #[tokio::test]
-    #[serial(obs_global)]
+    #[parallel(obs_global)]
 
     async fn in_process_session_tree_ensures_missing_session() {
         let dir = tempfile::tempdir().unwrap();
@@ -1660,7 +1664,7 @@ mod driver_session_tree_tests {
     }
 
     #[tokio::test]
-    #[serial(obs_global)]
+    #[parallel(obs_global)]
 
     async fn in_process_session_tree_returns_parent_child() {
         let dir = tempfile::tempdir().unwrap();
@@ -1700,7 +1704,7 @@ mod driver_session_tree_tests {
     }
 
     #[tokio::test]
-    #[serial(obs_global)]
+    #[parallel(obs_global)]
 
     async fn in_process_travel_user_sets_parent_leaf_and_editor_text() {
         let dir = tempfile::tempdir().unwrap();
@@ -1728,7 +1732,7 @@ mod driver_session_tree_tests {
     }
 
     #[tokio::test]
-    #[serial(obs_global)]
+    #[parallel(obs_global)]
 
     async fn in_process_travel_non_user_sets_leaf_without_editor_text() {
         let dir = tempfile::tempdir().unwrap();
@@ -1758,7 +1762,7 @@ mod driver_session_tree_tests {
     }
 
     #[tokio::test]
-    #[serial(obs_global)]
+    #[parallel(obs_global)]
 
     async fn unsupported_tree_kind_returns_err_without_changing_leaf() {
         let dir = tempfile::tempdir().unwrap();
@@ -1789,7 +1793,7 @@ mod driver_session_tree_tests {
     }
 
     #[tokio::test]
-    #[serial(obs_global)]
+    #[parallel(obs_global)]
 
     async fn after_run_session_tree_reflects_persisted_turn() {
         use std::pin::Pin;
@@ -1890,7 +1894,7 @@ mod driver_session_tree_tests {
     }
 
     #[tokio::test]
-    #[serial(obs_global)]
+    #[parallel(obs_global)]
 
     async fn fork_rejects_unflushed_session_via_driver() {
         // TUI cannot hit this while assistant is streaming (steer takes over); cover via XyDriver.
@@ -1941,36 +1945,27 @@ mod driver_session_tree_tests {
     }
 
     #[tokio::test]
-    #[serial(obs_global)]
+    #[parallel(obs_global)]
 
-    async fn persist_project_trust_writes_store_under_home() {
+    async fn persist_project_trust_writes_store_under_agent_dir() {
         let home = tempfile::tempdir().unwrap();
-        let prev = std::env::var_os("HOME");
-        unsafe {
-            std::env::set_var("HOME", home.path());
-        }
         let cwd = home.path().join("proj");
+        let agent_dir = home.path().join(".xylitol");
         std::fs::create_dir_all(cwd.join(".xylitol")).unwrap();
         let store = Arc::new(SessionManager::new(home.path().join("sessions")));
         let mut driver = build_test_driver(store).await;
-        driver.enable_reload_state(cwd.clone(), home.path().join(".xylitol"), false, Vec::new());
+        driver.enable_reload_state(cwd.clone(), agent_dir.clone(), false, Vec::new());
         let report = driver
             .persist_project_trust(ProjectTrustMode::TrustCwd)
             .expect("persist");
         assert!(report.trusted);
         assert!(report.message.contains("/reload") || report.message.contains("restart"));
-        let mgr = crate::infra::trust::TrustManager::new(
-            crate::infra::trust::TrustManager::default_dir(),
-        );
+        let mgr = crate::infra::trust::TrustManager::new(agent_dir);
         assert!(mgr.is_trusted(&cwd.display().to_string()));
-        match prev {
-            Some(v) => unsafe { std::env::set_var("HOME", v) },
-            None => unsafe { std::env::remove_var("HOME") },
-        }
     }
 
     #[tokio::test]
-    #[serial(obs_global)]
+    #[parallel(obs_global)]
 
     async fn begin_mcp_bootstrap_empty_settles_immediately() {
         let dir = tempfile::tempdir().unwrap();
@@ -1994,7 +1989,7 @@ mod driver_session_tree_tests {
     }
 
     #[tokio::test]
-    #[serial(obs_global)]
+    #[parallel(obs_global)]
 
     async fn mcp_settle_defers_system_prompt_off_tick() {
         use crate::app::core::mcp_spec::{McpServerSpec, McpTransportSpec};
@@ -2073,7 +2068,7 @@ mod driver_session_tree_tests {
     }
 
     #[tokio::test]
-    #[serial(obs_global)]
+    #[parallel(obs_global)]
 
     async fn leaving_mcp_gate_must_signal_ui_refresh() {
         use crate::app::core::mcp_spec::{McpServerSpec, McpTransportSpec};
@@ -2224,7 +2219,7 @@ mod driver_session_tree_tests {
     }
 
     #[tokio::test]
-    #[serial(obs_global)]
+    #[parallel(obs_global)]
 
     async fn ensure_freeze_on_empty_mcp_and_ignore_expand() {
         let dir = tempfile::tempdir().unwrap();
@@ -2250,7 +2245,7 @@ mod driver_session_tree_tests {
     }
 
     #[tokio::test]
-    #[serial(obs_global)]
+    #[parallel(obs_global)]
 
     async fn reload_re_freezes_tools() {
         let dir = tempfile::tempdir().unwrap();
@@ -2271,7 +2266,7 @@ mod driver_session_tree_tests {
     }
 
     #[tokio::test]
-    #[serial(obs_global)]
+    #[parallel(obs_global)]
 
     async fn arm_tool_freeze_gate_empty_mcp_freezes_immediately() {
         let dir = tempfile::tempdir().unwrap();
@@ -2293,7 +2288,7 @@ mod driver_session_tree_tests {
 
     /// Default `XyDriver::run` path is Reject: concurrent root while live → Busy, one provider stream.
     #[tokio::test]
-    #[serial(obs_global)]
+    #[parallel(obs_global)]
 
     async fn concurrent_run_rejects_second_with_busy() {
         use std::pin::Pin;
