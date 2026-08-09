@@ -38,6 +38,7 @@ dirs = "6"
 partial-json-fixer = "0.5.3"
 
 [dev-dependencies]
+serial_test = "3.5.0"
 wiremock = "0.6"
 tempfile = "3"
 yaml_serde = "0.10.4"

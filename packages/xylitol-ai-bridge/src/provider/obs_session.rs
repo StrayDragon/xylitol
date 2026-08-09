@@ -98,6 +98,7 @@ pub fn langfuse_generation_properties(model: &str) -> Vec<(String, String)> {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use serial_test::serial;
 
     static TEST_LOCK: Mutex<()> = Mutex::new(());
 
@@ -106,6 +107,7 @@ mod tests {
     }
 
     #[test]
+    #[serial]
     fn id_without_name() {
         let _guard = TEST_LOCK.lock().unwrap();
         reset();
@@ -116,6 +118,7 @@ mod tests {
     }
 
     #[test]
+    #[serial]
     fn id_with_name_and_rename() {
         let _guard = TEST_LOCK.lock().unwrap();
         reset();
@@ -136,6 +139,7 @@ mod tests {
     }
 
     #[test]
+    #[serial]
     fn generation_properties_include_type_and_model() {
         let _guard = TEST_LOCK.lock().unwrap();
         reset();
