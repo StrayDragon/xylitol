@@ -349,4 +349,179 @@ mod tests {
         );
         assert!(names.iter().any(|n| n == "read"));
     }
+
+    /// c1205 / c1900 experiment: add→remove MCP-like tools through the same
+    /// reopen + rebuild + freeze path `McpSession::reload` uses on install.
+    #[tokio::test]
+    async fn experiment_reload_add_remove_updates_provider_tool_names() {
+        use crate::agent::tools::ToolSet;
+        use crate::protocol::error::XyToolError;
+        use crate::protocol::ports::{XyTool, XyToolCtx};
+        use async_trait::async_trait;
+
+        struct StubMcpTool {
+            name: &'static str,
+        }
+        #[async_trait]
+        impl XyTool for StubMcpTool {
+            fn name(&self) -> &str {
+                self.name
+            }
+            fn description(&self) -> &str {
+                "stub mcp"
+            }
+            fn parameters_schema(&self) -> serde_json::Value {
+                serde_json::json!({"type": "object", "properties": {}})
+            }
+            async fn execute(
+                &self,
+                _ctx: &XyToolCtx,
+                _args: serde_json::Value,
+            ) -> Result<String, XyToolError> {
+                Ok("ok".into())
+            }
+        }
+
+        let agent = build_agent(BuildAgentOptions::default()).expect("build");
+        let store: Arc<dyn XySessionStore> = Arc::new(crate::infra::session::SessionManager::new(
+            tempfile::tempdir().unwrap().path().join("sessions"),
+        ));
+        let mut driver = crate::app::core::driver::XyInProcessDriver::new(agent, store);
+
+        let builtins = driver.builtins_for_reload();
+        let with_a = ToolSet::rebuild_agent_tools(
+            builtins.clone(),
+            vec![Arc::new(StubMcpTool {
+                name: "mcp__demo__alpha",
+            }) as Arc<dyn XyTool>],
+        );
+        driver.freeze_tools(with_a);
+        assert!(driver.is_tools_frozen());
+        assert!(
+            driver
+                .tool_names_for_test()
+                .iter()
+                .any(|n| n == "mcp__demo__alpha"),
+            "precondition: alpha armed in provider table"
+        );
+
+        // User removes MCP server from config → empty discover → install builtins only.
+        let mut mcp = McpSession::new();
+        mcp.set_manager(Arc::new(crate::infra::mcp::McpClientManager::new()));
+        let outcome = mcp
+            .reload(
+                &mut driver,
+                &[],
+                &tokio_util::sync::CancellationToken::new(),
+            )
+            .await
+            .expect("reload empty");
+        assert_eq!(outcome, McpReloadOutcome::Installed);
+        assert!(driver.is_tools_frozen());
+        let after_remove = driver.tool_names_for_test();
+        assert!(
+            !after_remove.iter().any(|n| n == "mcp__demo__alpha"),
+            "remove path MUST drop stale MCP tool from provider table: {after_remove:?}"
+        );
+        assert!(
+            after_remove.iter().any(|n| n == "read"),
+            "builtins MUST remain after remove reload"
+        );
+        assert!(
+            !mcp.has_manager(),
+            "empty reload clears previous manager after install"
+        );
+
+        // User adds a different MCP tool (simulate install overlay without live MCP).
+        driver.reopen_tools_for_regate();
+        let with_b = ToolSet::rebuild_agent_tools(
+            driver.builtins_for_reload(),
+            vec![Arc::new(StubMcpTool {
+                name: "mcp__demo__beta",
+            }) as Arc<dyn XyTool>],
+        );
+        driver.freeze_tools(with_b);
+        let after_add = driver.tool_names_for_test();
+        assert!(
+            after_add.iter().any(|n| n == "mcp__demo__beta"),
+            "add path MUST expose new MCP tool: {after_add:?}"
+        );
+        assert!(
+            !after_add.iter().any(|n| n == "mcp__demo__alpha"),
+            "add path MUST NOT revive removed alpha: {after_add:?}"
+        );
+
+        // Without /reload reopen, FROZEN ignores silent expand (config change alone).
+        let n = after_add.len();
+        driver.set_tools(ToolSet::rebuild_agent_tools(
+            driver.builtins_for_reload(),
+            vec![
+                Arc::new(StubMcpTool {
+                    name: "mcp__demo__beta",
+                }) as Arc<dyn XyTool>,
+                Arc::new(StubMcpTool {
+                    name: "mcp__demo__gamma",
+                }) as Arc<dyn XyTool>,
+            ],
+        ));
+        assert_eq!(
+            driver.tool_names_for_test().len(),
+            n,
+            "FROZEN set_tools MUST NOT expand provider tools without reopen/freeze"
+        );
+    }
+
+    /// Cancel before install: provider table stays on the pre-reload freeze epoch.
+    #[tokio::test]
+    async fn experiment_reload_cancel_keeps_provider_tools_despite_desired_add() {
+        use crate::agent::tools::ToolSet;
+        use crate::protocol::error::XyToolError;
+        use crate::protocol::ports::{XyTool, XyToolCtx};
+        use async_trait::async_trait;
+
+        struct StubMcpTool;
+        #[async_trait]
+        impl XyTool for StubMcpTool {
+            fn name(&self) -> &str {
+                "mcp__keep__me"
+            }
+            fn description(&self) -> &str {
+                "stub"
+            }
+            fn parameters_schema(&self) -> serde_json::Value {
+                serde_json::json!({"type": "object", "properties": {}})
+            }
+            async fn execute(
+                &self,
+                _ctx: &XyToolCtx,
+                _args: serde_json::Value,
+            ) -> Result<String, XyToolError> {
+                Ok("ok".into())
+            }
+        }
+
+        let agent = build_agent(BuildAgentOptions::default()).expect("build");
+        let store: Arc<dyn XySessionStore> = Arc::new(crate::infra::session::SessionManager::new(
+            tempfile::tempdir().unwrap().path().join("sessions"),
+        ));
+        let mut driver = crate::app::core::driver::XyInProcessDriver::new(agent, store);
+        driver.freeze_tools(ToolSet::rebuild_agent_tools(
+            driver.builtins_for_reload(),
+            vec![Arc::new(StubMcpTool) as Arc<dyn XyTool>],
+        ));
+        let before = driver.tool_names_for_test();
+
+        let mut mcp = McpSession::new();
+        mcp.set_manager(Arc::new(crate::infra::mcp::McpClientManager::new()));
+        let cancel = tokio_util::sync::CancellationToken::new();
+        cancel.cancel();
+        let outcome = mcp.reload(&mut driver, &[], &cancel).await.unwrap();
+        assert_eq!(outcome, McpReloadOutcome::Cancelled);
+        assert_eq!(driver.tool_names_for_test(), before);
+        assert!(driver.is_tools_frozen());
+        assert!(
+            before.iter().any(|n| n == "mcp__keep__me"),
+            "cancel MUST keep prior MCP tool visible to provider"
+        );
+    }
 }
