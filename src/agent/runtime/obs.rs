@@ -369,7 +369,8 @@ mod tests {
     }
 
     #[test]
-    #[serial]
+    #[serial(obs_global)]
+
     fn inactive_helpers_are_none() {
         let _g = TEST_LOCK.lock().unwrap_or_else(|e| e.into_inner());
         set_provider_trace_active(false);
@@ -379,7 +380,8 @@ mod tests {
     }
 
     #[test]
-    #[serial]
+    #[serial(obs_global)]
+
     fn turn_finish_ok_has_no_error_level() {
         let _g = TEST_LOCK.lock().unwrap_or_else(|e| e.into_inner());
         set_provider_trace_active(true);
@@ -415,7 +417,8 @@ mod tests {
     }
 
     #[test]
-    #[serial]
+    #[serial(obs_global)]
+
     fn turn_finish_aborted_marks_error() {
         let _g = TEST_LOCK.lock().unwrap_or_else(|e| e.into_inner());
         set_provider_trace_active(true);
@@ -448,7 +451,8 @@ mod tests {
     }
 
     #[test]
-    #[serial]
+    #[serial(obs_global)]
+
     fn turn_iteration_llm_share_trace_id() {
         let _g = TEST_LOCK.lock().unwrap_or_else(|e| e.into_inner());
         set_provider_trace_active(true);
@@ -524,7 +528,8 @@ mod tests {
     }
 
     #[test]
-    #[serial]
+    #[serial(obs_global)]
+
     fn turn_root_input_only_when_observation_io_set() {
         let _g = TEST_LOCK.lock().unwrap_or_else(|e| e.into_inner());
         set_provider_trace_active(true);
@@ -568,7 +573,8 @@ mod tests {
     }
 
     #[test]
-    #[serial]
+    #[serial(obs_global)]
+
     fn tool_io_only_when_tool_observation_io_set() {
         let _g = TEST_LOCK.lock().unwrap_or_else(|e| e.into_inner());
         set_provider_trace_active(true);
@@ -619,7 +625,8 @@ mod tests {
     }
 
     #[test]
-    #[serial]
+    #[serial(obs_global)]
+
     fn parallel_tool_spans_share_iteration_parent_via_captured_ctx() {
         let _g = TEST_LOCK.lock().unwrap_or_else(|e| e.into_inner());
         set_provider_trace_active(true);

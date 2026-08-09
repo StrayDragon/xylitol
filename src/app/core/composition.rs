@@ -232,7 +232,8 @@ mod tests {
     use serial_test::serial;
 
     #[tokio::test]
-    #[serial]
+    #[serial(obs_global)]
+
     async fn reload_empty_is_zero_cost_no_manager() {
         let agent = build_agent(BuildAgentOptions::default()).expect("build");
         let store: Arc<dyn XySessionStore> = Arc::new(crate::infra::session::SessionManager::new(
@@ -251,7 +252,8 @@ mod tests {
     }
 
     #[tokio::test]
-    #[serial]
+    #[serial(obs_global)]
+
     async fn reload_preserves_tui_ask_tool() {
         use crate::protocol::error::XyToolError;
         use crate::protocol::ports::ask::{AskArgs, AskUserGateway};

@@ -283,6 +283,7 @@ mod tests {
     }
 
     #[test]
+    #[serial_test::serial(kb_global)]
     fn install_and_reload_roundtrip() {
         let dir = tempfile::tempdir().unwrap();
         let outcome = install_product_keybindings(dir.path());

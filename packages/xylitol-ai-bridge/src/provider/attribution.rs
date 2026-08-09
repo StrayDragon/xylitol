@@ -59,7 +59,8 @@ mod tests {
     use serial_test::serial;
 
     #[test]
-    #[serial]
+    #[serial(obs_global)]
+
     fn detects_opencode_host() {
         assert!(is_opencode_host("https://opencode.ai/zen/v1"));
         assert!(is_opencode_host(
@@ -70,7 +71,8 @@ mod tests {
     }
 
     #[test]
-    #[serial]
+    #[serial(obs_global)]
+
     fn merges_only_for_opencode_with_session() {
         clear_obs_session();
         let mut headers = HeaderBag::new();
@@ -99,7 +101,8 @@ mod tests {
     }
 
     #[test]
-    #[serial]
+    #[serial(obs_global)]
+
     fn skips_non_opencode() {
         set_obs_session("sid-2", None);
         let mut headers = HeaderBag::new();

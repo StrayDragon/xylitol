@@ -107,7 +107,8 @@ mod tests {
     }
 
     #[test]
-    #[serial]
+    #[serial(obs_global)]
+
     fn id_without_name() {
         let _guard = TEST_LOCK.lock().unwrap();
         reset();
@@ -118,7 +119,8 @@ mod tests {
     }
 
     #[test]
-    #[serial]
+    #[serial(obs_global)]
+
     fn id_with_name_and_rename() {
         let _guard = TEST_LOCK.lock().unwrap();
         reset();
@@ -139,7 +141,8 @@ mod tests {
     }
 
     #[test]
-    #[serial]
+    #[serial(obs_global)]
+
     fn generation_properties_include_type_and_model() {
         let _guard = TEST_LOCK.lock().unwrap();
         reset();

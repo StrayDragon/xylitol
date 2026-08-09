@@ -120,3 +120,13 @@ Hook 三缝只认可移植 JSON（headers map + body Value）；不把 reqwest/�
 ## 测试
 
 跨层：BDD + 回归 + 面/Driver 行为测。细则与命令见根 `AGENTS.md`。设计史：`llmanspec/changes/archive/`。
+
+### 进程级全局状态与并行纪律
+
+进程内共享、跨测会互相踩的状态（非穷尽）：obs parent / session 槽、`provider_trace_active` 与 fastrace 全局 reporter、`std::env` / cwd、包级 `GLOBAL_KEYBINDINGS`、固定磁盘路径与端口。
+
+- 新测试禁止无必要引入新的进程级可变全局；能注入 / 局部化则注入。
+- 必须串行时用**按域命名**的 `#[serial(<domain>_global)]`（`obs_global` / `env_global` / `kb_global` 等），禁止默认空组把无关域捆在一起；注释写清为何串行与消除路径。
+- 同域内「只写等价默认值、可与破坏者互斥」的测可用 `#[parallel(<domain>_global)]`（与同名 `serial` 互斥、彼此可并行）。
+- 主闸 `just qa` 走 nextest（一测一进程）：跨测互斥优先考虑 nextest `test-groups`（共享 FS/端口等外部资源）；勿假设 in-process `#[serial]` 在 nextest 下跨测生效。
+- `cargo test` 回退与 `just test-tui` 仍依赖 in-process 命名组。

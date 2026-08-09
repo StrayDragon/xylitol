@@ -222,7 +222,8 @@ mod tests {
     }
 
     #[test]
-    #[serial]
+    #[serial(env_global)]
+
     fn loads_yml_alias_and_renders_mcp_secret_headers() {
         let home = tempfile::tempdir().unwrap();
         // Isolate migrate_legacy (reads `$HOME/.xylitol`) from the real home tree.
@@ -251,7 +252,8 @@ mod tests {
     }
 
     #[test]
-    #[serial]
+    #[serial(env_global)]
+
     fn ignores_config_local_yaml() {
         let home = tempfile::tempdir().unwrap();
         let _home = EnvGuard::set("HOME", home.path().to_str().unwrap());

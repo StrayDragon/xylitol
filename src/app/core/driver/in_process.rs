@@ -1590,7 +1590,8 @@ mod driver_session_tree_tests {
     }
 
     #[tokio::test]
-    #[serial]
+    #[serial(obs_global)]
+
     async fn switch_session_restores_sticky_thinking_without_rewriting() {
         let dir = tempfile::tempdir().unwrap();
         let store = Arc::new(SessionManager::new(dir.path().join("sessions")));
@@ -1626,7 +1627,8 @@ mod driver_session_tree_tests {
     }
 
     #[tokio::test]
-    #[serial]
+    #[serial(obs_global)]
+
     async fn in_process_session_tree_ensures_missing_session() {
         let dir = tempfile::tempdir().unwrap();
         let store = Arc::new(SessionManager::new(dir.path().join("sessions")));
@@ -1658,7 +1660,8 @@ mod driver_session_tree_tests {
     }
 
     #[tokio::test]
-    #[serial]
+    #[serial(obs_global)]
+
     async fn in_process_session_tree_returns_parent_child() {
         let dir = tempfile::tempdir().unwrap();
         let store = Arc::new(SessionManager::new(dir.path().join("sessions")));
@@ -1697,7 +1700,8 @@ mod driver_session_tree_tests {
     }
 
     #[tokio::test]
-    #[serial]
+    #[serial(obs_global)]
+
     async fn in_process_travel_user_sets_parent_leaf_and_editor_text() {
         let dir = tempfile::tempdir().unwrap();
         let store = Arc::new(SessionManager::new(dir.path().join("sessions")));
@@ -1724,7 +1728,8 @@ mod driver_session_tree_tests {
     }
 
     #[tokio::test]
-    #[serial]
+    #[serial(obs_global)]
+
     async fn in_process_travel_non_user_sets_leaf_without_editor_text() {
         let dir = tempfile::tempdir().unwrap();
         let store = Arc::new(SessionManager::new(dir.path().join("sessions")));
@@ -1753,7 +1758,8 @@ mod driver_session_tree_tests {
     }
 
     #[tokio::test]
-    #[serial]
+    #[serial(obs_global)]
+
     async fn unsupported_tree_kind_returns_err_without_changing_leaf() {
         let dir = tempfile::tempdir().unwrap();
         let store = Arc::new(SessionManager::new(dir.path().join("sessions")));
@@ -1783,7 +1789,8 @@ mod driver_session_tree_tests {
     }
 
     #[tokio::test]
-    #[serial]
+    #[serial(obs_global)]
+
     async fn after_run_session_tree_reflects_persisted_turn() {
         use std::pin::Pin;
 
@@ -1883,7 +1890,8 @@ mod driver_session_tree_tests {
     }
 
     #[tokio::test]
-    #[serial]
+    #[serial(obs_global)]
+
     async fn fork_rejects_unflushed_session_via_driver() {
         // TUI cannot hit this while assistant is streaming (steer takes over); cover via XyDriver.
         let dir = tempfile::tempdir().unwrap();
@@ -1933,7 +1941,8 @@ mod driver_session_tree_tests {
     }
 
     #[tokio::test]
-    #[serial]
+    #[serial(obs_global)]
+
     async fn persist_project_trust_writes_store_under_home() {
         let home = tempfile::tempdir().unwrap();
         let prev = std::env::var_os("HOME");
@@ -1961,7 +1970,8 @@ mod driver_session_tree_tests {
     }
 
     #[tokio::test]
-    #[serial]
+    #[serial(obs_global)]
+
     async fn begin_mcp_bootstrap_empty_settles_immediately() {
         let dir = tempfile::tempdir().unwrap();
         let store = Arc::new(SessionManager::new(dir.path().join("sessions")));
@@ -1984,7 +1994,8 @@ mod driver_session_tree_tests {
     }
 
     #[tokio::test]
-    #[serial]
+    #[serial(obs_global)]
+
     async fn mcp_settle_defers_system_prompt_off_tick() {
         use crate::app::core::mcp_spec::{McpServerSpec, McpTransportSpec};
 
@@ -2062,7 +2073,8 @@ mod driver_session_tree_tests {
     }
 
     #[tokio::test]
-    #[serial]
+    #[serial(obs_global)]
+
     async fn leaving_mcp_gate_must_signal_ui_refresh() {
         use crate::app::core::mcp_spec::{McpServerSpec, McpTransportSpec};
 
@@ -2110,7 +2122,8 @@ mod driver_session_tree_tests {
     }
 
     #[test]
-    #[serial]
+    #[serial(obs_global)]
+
     fn mcp_progress_needs_ui_refresh_only_on_label_change() {
         let mut last = None;
         assert!(mcp_progress_needs_ui_refresh(
@@ -2133,7 +2146,8 @@ mod driver_session_tree_tests {
     }
 
     #[test]
-    #[serial]
+    #[serial(obs_global)]
+
     fn mcp_tools_pending_ignores_failed_when_bootstrap_complete() {
         use crate::app::core::driver::{McpServerPhase, McpServerSnapshot};
 
@@ -2161,7 +2175,8 @@ mod driver_session_tree_tests {
     }
 
     #[test]
-    #[serial]
+    #[serial(obs_global)]
+
     fn mcp_tools_pending_while_connecting_label() {
         let snap = LoadedResourcesSnapshot {
             mcp_configured: 2,
@@ -2173,7 +2188,8 @@ mod driver_session_tree_tests {
     }
 
     #[test]
-    #[serial]
+    #[serial(obs_global)]
+
     fn mcp_tools_pending_pre_freeze_while_settling_even_if_armed() {
         use crate::app::core::driver::{McpServerPhase, McpServerSnapshot};
 
@@ -2197,7 +2213,8 @@ mod driver_session_tree_tests {
     }
 
     #[test]
-    #[serial]
+    #[serial(obs_global)]
+
     fn mcp_tools_pending_clears_after_freeze_when_complete() {
         use crate::app::core::driver::{McpServerPhase, McpServerSnapshot};
 
@@ -2217,7 +2234,8 @@ mod driver_session_tree_tests {
     }
 
     #[tokio::test]
-    #[serial]
+    #[serial(obs_global)]
+
     async fn ensure_freeze_on_empty_mcp_and_ignore_expand() {
         let dir = tempfile::tempdir().unwrap();
         let store = Arc::new(SessionManager::new(dir.path().join("sessions")));
@@ -2242,7 +2260,8 @@ mod driver_session_tree_tests {
     }
 
     #[tokio::test]
-    #[serial]
+    #[serial(obs_global)]
+
     async fn reload_re_freezes_tools() {
         let dir = tempfile::tempdir().unwrap();
         let store = Arc::new(SessionManager::new(dir.path().join("sessions")));
@@ -2262,7 +2281,8 @@ mod driver_session_tree_tests {
     }
 
     #[tokio::test]
-    #[serial]
+    #[serial(obs_global)]
+
     async fn arm_tool_freeze_gate_empty_mcp_freezes_immediately() {
         let dir = tempfile::tempdir().unwrap();
         let store = Arc::new(SessionManager::new(dir.path().join("sessions")));
@@ -2283,7 +2303,8 @@ mod driver_session_tree_tests {
 
     /// Default `XyDriver::run` path is Reject: concurrent root while live → Busy, one provider stream.
     #[tokio::test]
-    #[serial]
+    #[serial(obs_global)]
+
     async fn concurrent_run_rejects_second_with_busy() {
         use std::pin::Pin;
         use std::sync::atomic::{AtomicUsize, Ordering};

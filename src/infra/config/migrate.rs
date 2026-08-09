@@ -89,7 +89,8 @@ mod tests {
     use tempfile::TempDir;
 
     #[test]
-    #[serial]
+    #[serial(env_global)]
+
     fn migrates_missing_dest_only() {
         let home = TempDir::new().unwrap();
         let legacy = home.path().join(".xylitol");
@@ -138,7 +139,8 @@ mod tests {
     }
 
     #[test]
-    #[serial]
+    #[serial(env_global)]
+
     fn migrates_yml_alias_to_yaml() {
         let home = TempDir::new().unwrap();
         let legacy = home.path().join(".xylitol");
@@ -151,7 +153,8 @@ mod tests {
     }
 
     #[test]
-    #[serial]
+    #[serial(env_global)]
+
     fn does_not_migrate_config_local() {
         let home = TempDir::new().unwrap();
         let legacy = home.path().join(".xylitol");

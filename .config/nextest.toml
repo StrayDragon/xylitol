@@ -10,6 +10,9 @@ default-filter = "not binary(live_responses_prompt_cache)"
 path = "junit.xml"
 
 # Agent / `just qa` default: failures only, no pass/progress noise.
+# Note: in-process `#[serial(domain)]` does not cross nextest process-per-test
+# boundaries. Domain groups document cargo-test mutual exclusion; shared
+# external resources (ports/FS) would use `[test-groups]` here if needed.
 [profile.agent]
 fail-fast = false
 slow-timeout = "60s"
