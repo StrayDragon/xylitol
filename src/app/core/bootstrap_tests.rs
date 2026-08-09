@@ -13,7 +13,7 @@ fn make_driver() -> XyInProcessDriver {
     XyInProcessDriver::new(agent, store)
 }
 
-#[serial]
+#[serial(env_global)]
 #[test]
 fn reload_prompt_context_trusted_injects_agents() {
     let project = tempfile::tempdir().unwrap();
@@ -30,7 +30,7 @@ fn reload_prompt_context_trusted_injects_agents() {
     );
 }
 
-#[serial]
+#[serial(env_global)]
 #[test]
 fn reload_prompt_context_untrusted_skips_project_agents() {
     let project = tempfile::tempdir().unwrap();
@@ -56,7 +56,7 @@ fn write_skill(dir: &std::path::Path, name: &str) {
     .unwrap();
 }
 
-#[serial]
+#[serial(env_global)]
 #[test]
 fn reload_skills_trusted_injects_into_system_prompt() {
     let project = tempfile::tempdir().unwrap();
@@ -78,7 +78,7 @@ fn reload_skills_trusted_injects_into_system_prompt() {
     );
 }
 
-#[serial]
+#[serial(env_global)]
 #[test]
 fn reload_skills_untrusted_skips_project_skill() {
     let project = tempfile::tempdir().unwrap();
@@ -120,7 +120,7 @@ impl Drop for EnvGuard {
     }
 }
 
-#[serial]
+#[serial(env_global)]
 #[test]
 fn config_template_error_is_hard_fail() {
     let home = tempfile::tempdir().unwrap();
@@ -158,7 +158,7 @@ fn config_template_error_is_hard_fail() {
     );
 }
 
-#[serial]
+#[serial(env_global)]
 #[test]
 fn yaml_zero_models_hard_fail_no_env_gpt4o() {
     let home = tempfile::tempdir().unwrap();
@@ -197,7 +197,7 @@ fn yaml_zero_models_hard_fail_no_env_gpt4o() {
     );
 }
 
-#[serial]
+#[serial(env_global)]
 #[test]
 fn env_only_does_not_invent_models() {
     let home = tempfile::tempdir().unwrap();
@@ -232,7 +232,7 @@ fn env_only_does_not_invent_models() {
     );
 }
 
-#[serial]
+#[serial(env_global)]
 #[test]
 fn yaml_entry_registers_without_kind_env_key() {
     let home = tempfile::tempdir().unwrap();
@@ -295,7 +295,7 @@ fn yaml_entry_registers_without_kind_env_key() {
     );
 }
 
-#[serial]
+#[serial(env_global)]
 #[test]
 fn yaml_model_api_is_honored_in_registry_config() {
     let home = tempfile::tempdir().unwrap();
@@ -381,7 +381,7 @@ fn yaml_model_api_is_honored_in_registry_config() {
     );
 }
 
-#[serial]
+#[serial(env_global)]
 #[test]
 fn build_agent_with_skills_injects_available_skills_section() {
     use crate::protocol::resource::SkillInfo;
@@ -410,7 +410,7 @@ fn build_agent_with_skills_injects_available_skills_section() {
     assert_eq!(agent.loaded_skill_names(), vec!["boot-skill".to_string()]);
 }
 
-#[serial]
+#[serial(env_global)]
 #[test]
 fn untrusted_reload_still_loads_user_global_skills() {
     let project = tempfile::tempdir().unwrap();
@@ -437,9 +437,8 @@ fn untrusted_reload_still_loads_user_global_skills() {
     assert!(!sp.contains("project-only"));
 }
 
-#[serial]
 #[test]
-#[serial_test::serial(bootstrap_cwd)]
+#[serial(env_global)]
 fn trust_override_loads_or_skips_project_xylitol_skills() {
     let home = tempfile::tempdir().unwrap();
     let project = home.path().join("proj");
@@ -516,7 +515,7 @@ fn trust_override_loads_or_skips_project_xylitol_skills() {
     );
 }
 
-#[serial]
+#[serial(env_global)]
 #[test]
 fn resolve_assembly_reads_session_max_turns() {
     let home = tempfile::tempdir().unwrap();
@@ -558,7 +557,7 @@ session:
     assert_eq!(assembly.max_turns, Some(7));
 }
 
-#[serial]
+#[serial(env_global)]
 #[test]
 fn bootstrap_block_on_runs_from_current_thread_runtime() {
     let runtime = tokio::runtime::Builder::new_current_thread()
@@ -570,7 +569,7 @@ fn bootstrap_block_on_runs_from_current_thread_runtime() {
     assert_eq!(result, Some(7));
 }
 
-#[serial]
+#[serial(env_global)]
 #[test]
 fn missing_session_still_applies_settings_thinking_default() {
     let home = tempfile::tempdir().unwrap();

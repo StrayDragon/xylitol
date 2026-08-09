@@ -1285,6 +1285,7 @@ mod tests {
     }
 
     #[test]
+    #[serial_test::serial(kb_global)]
     fn page_up_down_move_by_max_visible_when_bound() {
         use crate::keybindings::{KeybindingsConfig, with_keybindings_mut};
         use crossterm::event::{KeyCode, KeyEvent, KeyModifiers};

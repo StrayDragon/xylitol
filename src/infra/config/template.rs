@@ -162,7 +162,8 @@ mod tests {
     }
 
     #[test]
-    #[serial]
+    #[serial(env_global)]
+
     fn renders_vars_home() {
         let home = dirs::home_dir().expect("home_dir for test");
         let home_str = home.to_string_lossy();
