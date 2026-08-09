@@ -56,8 +56,10 @@ pub fn merge_opencode_attribution(headers: &mut HeaderBag, request_or_base_url: 
 mod tests {
     use super::*;
     use crate::provider::obs_session::{clear_obs_session, set_obs_session};
+    use serial_test::serial;
 
     #[test]
+    #[serial]
     fn detects_opencode_host() {
         assert!(is_opencode_host("https://opencode.ai/zen/v1"));
         assert!(is_opencode_host(
@@ -68,6 +70,7 @@ mod tests {
     }
 
     #[test]
+    #[serial]
     fn merges_only_for_opencode_with_session() {
         clear_obs_session();
         let mut headers = HeaderBag::new();
@@ -96,6 +99,7 @@ mod tests {
     }
 
     #[test]
+    #[serial]
     fn skips_non_opencode() {
         set_obs_session("sid-2", None);
         let mut headers = HeaderBag::new();
