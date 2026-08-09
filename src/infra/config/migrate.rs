@@ -85,9 +85,11 @@ fn paths_equal(a: &Path, b: &Path) -> bool {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use serial_test::serial;
     use tempfile::TempDir;
 
     #[test]
+    #[serial]
     fn migrates_missing_dest_only() {
         let home = TempDir::new().unwrap();
         let legacy = home.path().join(".xylitol");
@@ -136,6 +138,7 @@ mod tests {
     }
 
     #[test]
+    #[serial]
     fn migrates_yml_alias_to_yaml() {
         let home = TempDir::new().unwrap();
         let legacy = home.path().join(".xylitol");
@@ -148,6 +151,7 @@ mod tests {
     }
 
     #[test]
+    #[serial]
     fn does_not_migrate_config_local() {
         let home = TempDir::new().unwrap();
         let legacy = home.path().join(".xylitol");

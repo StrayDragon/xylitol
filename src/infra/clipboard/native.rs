@@ -309,13 +309,16 @@ fn spawn_unref_pipe_command(cmd: &str, args: &[&str], text: &str) -> ClipboardRe
 #[cfg(test)]
 mod tests {
     use super::*;
+    use serial_test::serial;
 
     #[test]
+    #[serial]
     fn test_clipboard_result_copied() {
         assert_eq!(ClipboardResult::Copied, ClipboardResult::Copied);
     }
 
     #[test]
+    #[serial]
     fn tool_on_path_does_not_execute_clipboard_binaries() {
         let start = std::time::Instant::now();
         let _ = tool_on_path("wl-copy");
@@ -328,6 +331,7 @@ mod tests {
     }
 
     #[test]
+    #[serial]
     fn plan_defers_osc52_without_requiring_stdout() {
         // Empty PATH → native miss → want OSC52 with a sequence (local non-remote).
         let plan = {
@@ -371,6 +375,7 @@ mod tests {
     }
 
     #[test]
+    #[serial]
     fn pipe_to_command_times_out_hanging_tool() {
         let dir = tempfile::tempdir().expect("tempdir");
         let hang = dir.path().join("hang-clip");
@@ -395,6 +400,7 @@ mod tests {
     }
 
     #[test]
+    #[serial]
     fn spawn_unref_returns_without_waiting_for_hanging_child() {
         let dir = tempfile::tempdir().expect("tempdir");
         let hang = dir.path().join("hang-unref");
@@ -418,6 +424,7 @@ mod tests {
     }
 
     #[tokio::test]
+    #[serial]
     async fn plan_async_completes_within_pipe_timeout() {
         let start = std::time::Instant::now();
         let _ = plan_clipboard_copy_async("xylitol async clipboard probe".into()).await;

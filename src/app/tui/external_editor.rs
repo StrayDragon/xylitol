@@ -101,8 +101,10 @@ pub fn run_external_editor_process_with_command(
 #[cfg(test)]
 mod tests {
     use super::*;
+    use serial_test::serial;
 
     #[test]
+    #[serial]
     fn resolve_prefers_visual_then_editor() {
         assert_eq!(
             resolve_external_editor_command_from(Some("vim"), Some("nano")).unwrap(),
@@ -119,6 +121,7 @@ mod tests {
     }
 
     #[test]
+    #[serial]
     fn resolve_missing_is_err_no_default() {
         let err = resolve_external_editor_command_from(None, None).unwrap_err();
         assert!(err.contains("$VISUAL") || err.contains("$EDITOR"), "{err}");
@@ -127,6 +130,7 @@ mod tests {
     }
 
     #[test]
+    #[serial]
     fn run_with_script_rewrites_file() {
         let script =
             std::env::temp_dir().join(format!("xylitol-c650-editor-{}.sh", std::process::id()));
@@ -145,6 +149,7 @@ mod tests {
     }
 
     #[test]
+    #[serial]
     fn run_spawn_fail_is_err() {
         let err = run_external_editor_process_with_command(
             "/nonexistent/xylitol-editor-c650-test",
@@ -155,6 +160,7 @@ mod tests {
     }
 
     #[test]
+    #[serial]
     fn run_nonzero_exit_keeps_none() {
         let out = run_external_editor_process_with_command("false", "draft").unwrap();
         assert_eq!(out, None);

@@ -447,6 +447,22 @@ fn trust_override_loads_or_skips_project_xylitol_skills() {
     write_skill(&project, "c1620-proj-skill");
     let global = home.path().join(".config").join("xylitol");
     std::fs::create_dir_all(&global).unwrap();
+    // c2010: explicit-only model auth — register a model via config so
+    // bootstrap succeeds in the empty temp HOME.
+    std::fs::write(
+        project.join(".xylitol").join("config.yaml"),
+        r#"models:
+  default_model: local-qwen
+  models:
+    local-qwen:
+      provider: openai
+      model: qwen-local
+      base_url: http://127.0.0.1:8000/v1
+      api: openai-responses
+      thinking: false
+"#,
+    )
+    .unwrap();
 
     let _home = EnvGuard::set("HOME", home.path().to_str().unwrap());
     let _proj = EnvGuard::set("XYLITOL_PROJECT_DIR", project.to_str().unwrap());

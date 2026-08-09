@@ -94,6 +94,7 @@ impl Drop for AgentCompactionSpan {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use serial_test::serial;
     use std::sync::{Arc, Mutex};
 
     use fastrace::collector::{Config, Reporter, SpanRecord};
@@ -114,6 +115,7 @@ mod tests {
     }
 
     #[test]
+    #[serial]
     fn reason_kind_maps() {
         assert_eq!(compaction_reason_kind("manual"), "manual");
         assert_eq!(compaction_reason_kind("overflow"), "overflow");
@@ -124,15 +126,17 @@ mod tests {
     }
 
     #[test]
+    #[serial]
     fn inactive_start_is_none() {
-        let _g = TEST_LOCK.lock().unwrap();
+        let _g = TEST_LOCK.lock().unwrap_or_else(|e| e.into_inner());
         set_provider_trace_active(false);
         assert!(AgentCompactionSpan::start("manual").is_none());
     }
 
     #[test]
+    #[serial]
     fn compaction_under_turn_shares_trace() {
-        let _g = TEST_LOCK.lock().unwrap();
+        let _g = TEST_LOCK.lock().unwrap_or_else(|e| e.into_inner());
         set_provider_trace_active(true);
         clear_obs_span_parents();
         let records = Arc::new(Mutex::new(Vec::new()));
@@ -174,8 +178,9 @@ mod tests {
     }
 
     #[test]
+    #[serial]
     fn independent_root_carries_session_id_and_lane() {
-        let _g = TEST_LOCK.lock().unwrap();
+        let _g = TEST_LOCK.lock().unwrap_or_else(|e| e.into_inner());
         set_provider_trace_active(true);
         clear_obs_span_parents();
         clear_obs_session();
@@ -217,8 +222,9 @@ mod tests {
     }
 
     #[test]
+    #[serial]
     fn summarization_llm_nests_under_compaction() {
-        let _g = TEST_LOCK.lock().unwrap();
+        let _g = TEST_LOCK.lock().unwrap_or_else(|e| e.into_inner());
         set_provider_trace_active(true);
         clear_obs_span_parents();
         let records = Arc::new(Mutex::new(Vec::new()));
