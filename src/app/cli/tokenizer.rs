@@ -8,7 +8,9 @@ use std::process::ExitCode;
 
 use clap::Subcommand;
 use xylitol_ai_bridge::registry::{TokenizerSource, resolve_tokenizer_with_override};
-use xylitol_ai_bridge::tokenize::{HfTokenizerCache, build_hf_resolve_url, hf_endpoint_base};
+use xylitol_ai_bridge::tokenize::{
+    HfTokenizerCache, build_hf_resolve_url_with_base, hf_endpoint_base, hf_endpoint_base_from_env,
+};
 
 use crate::infra::config::types::AppConfig;
 
@@ -54,17 +56,34 @@ pub async fn run(action: TokenizerAction) -> ExitCode {
     code
 }
 
-/// Injectable entry for tests.
+/// Injectable entry for tests (process `HF_ENDPOINT` / default hub).
 pub async fn run_with(
     action: TokenizerAction,
     cache: &HfTokenizerCache,
     config: &AppConfig,
     tty: bool,
 ) -> (ExitCode, String) {
+    run_with_hf_endpoint(action, cache, config, tty, None).await
+}
+
+/// Like [`run_with`], but `hf_endpoint` overrides process env for URL / `hf_base` lines.
+///
+/// Pass `Some(base)` for BDD/wiremock without `std::env::set_var("HF_ENDPOINT")`.
+pub async fn run_with_hf_endpoint(
+    action: TokenizerAction,
+    cache: &HfTokenizerCache,
+    config: &AppConfig,
+    tty: bool,
+    hf_endpoint: Option<&str>,
+) -> (ExitCode, String) {
+    let hf_base = match hf_endpoint {
+        Some(ep) => hf_endpoint_base_from_env(|_| Some(ep.to_string())),
+        None => hf_endpoint_base(),
+    };
     match action {
-        TokenizerAction::Status { model } => status(cache, config, model.as_deref()),
+        TokenizerAction::Status { model } => status(cache, config, model.as_deref(), &hf_base),
         TokenizerAction::Download { target, file, yes } => {
-            download(cache, config, &target, file.as_deref(), yes, tty).await
+            download(cache, config, &target, file.as_deref(), yes, tty, &hf_base).await
         }
         TokenizerAction::Clean { all, model, target } => {
             clean(cache, config, all, model.as_deref(), target.as_deref())
@@ -72,10 +91,15 @@ pub async fn run_with(
     }
 }
 
-fn status(cache: &HfTokenizerCache, config: &AppConfig, model: Option<&str>) -> (ExitCode, String) {
+fn status(
+    cache: &HfTokenizerCache,
+    config: &AppConfig,
+    model: Option<&str>,
+    hf_base: &str,
+) -> (ExitCode, String) {
     let mut out = String::new();
     out.push_str(&format!("cache_root: {}\n", cache.cache_root().display()));
-    out.push_str(&format!("hf_base:    {}\n", hf_endpoint_base()));
+    out.push_str(&format!("hf_base:    {hf_base}\n"));
     let entries = cache.list_entries();
     out.push_str("entries:\n");
     if entries.is_empty() {
@@ -140,6 +164,7 @@ async fn download(
     file_override: Option<&str>,
     yes: bool,
     tty: bool,
+    hf_base: &str,
 ) -> (ExitCode, String) {
     match resolve_download_target(config, target, file_override) {
         DownloadTarget::Builtin => (
@@ -161,13 +186,13 @@ async fn download(
             ),
         ),
         DownloadTarget::Hf { repo, file } => {
-            let url = build_hf_resolve_url(&repo, &file);
+            let url = build_hf_resolve_url_with_base(hf_base, &repo, &file);
             let dest = cache.cache_path(&repo, &file);
             let mut summary = format!(
                 "Will download:\n  repo: {}\n  file: {}\n  hf_base: {}\n  url: {}\n  dest: {}\n",
                 repo,
                 file,
-                hf_endpoint_base(),
+                hf_base,
                 url,
                 dest.display()
             );

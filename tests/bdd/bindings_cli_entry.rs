@@ -19,8 +19,6 @@ fn test_ce15_status_empty(tokenizer_bdd: TokenizerBdd) {}
     path = "tests/features/cli-entry.feature",
     name = "tokenizer-download-opt-in"
 )]
-#[serial_test::serial(env_global)]
-
 fn test_ce15_download(tokenizer_bdd: TokenizerBdd) {}
 
 #[scenario(path = "tests/features/cli-entry.feature", name = "tokenizer-clean")]
@@ -36,8 +34,6 @@ fn test_ce15_no_bootstrap(tokenizer_bdd: TokenizerBdd) {}
     path = "tests/features/cli-entry.feature",
     name = "tokenizer-download-shows-hf-base"
 )]
-#[serial_test::serial(env_global)]
-
 fn test_ce15_hf_base(tokenizer_bdd: TokenizerBdd) {}
 
 #[scenario(path = "tests/features/cli-entry.feature", name = "surface-tui-verb")]
