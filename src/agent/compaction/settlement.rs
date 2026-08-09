@@ -108,8 +108,6 @@ mod tests {
     use crate::protocol::message::AgentMessage;
     use crate::protocol::session::{EntryBase, MessageEntry, SessionEntry};
 
-    static TEST_LOCK: Mutex<()> = Mutex::new(());
-
     struct CollectingReporter(Arc<Mutex<Vec<SpanRecord>>>);
 
     impl Reporter for CollectingReporter {
@@ -133,7 +131,6 @@ mod tests {
     #[test]
     #[serial(obs_global)]
     fn turn_settled_emits_one_token_estimate_under_turn() {
-        let _g = TEST_LOCK.lock().unwrap_or_else(|e| e.into_inner());
         set_provider_trace_active(true);
         let records = Arc::new(Mutex::new(Vec::new()));
         fastrace::set_reporter(CollectingReporter(Arc::clone(&records)), Config::default());
@@ -174,7 +171,6 @@ mod tests {
     #[test]
     #[serial(obs_global)]
     fn mid_turn_usage_does_not_emit_obs() {
-        let _g = TEST_LOCK.lock().unwrap_or_else(|e| e.into_inner());
         set_provider_trace_active(true);
         let records = Arc::new(Mutex::new(Vec::new()));
         fastrace::set_reporter(CollectingReporter(Arc::clone(&records)), Config::default());

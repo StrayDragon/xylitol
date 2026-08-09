@@ -1538,10 +1538,9 @@ impl XyDriver for XyInProcessDriver {
 
 #[cfg(test)]
 mod driver_session_tree_tests {
-    // Writers of process `obs_session` slot: exclusive vs `serial(obs_global)` asserters,
-    // parallel among themselves (`cargo test` in-process).
-    use serial_test::parallel;
+    // bind_session writes obs via ObsSessionScope — no process-slot race with CollectingReporter tests.
     use std::sync::Arc;
+    use xylitol_ai_bridge::provider::{ObsSessionContext, ObsSessionScope};
 
     use super::*;
     use crate::agent::AgentBuilder;
@@ -1571,7 +1570,8 @@ mod driver_session_tree_tests {
         })
     }
 
-    async fn build_test_driver(store: Arc<SessionManager>) -> XyInProcessDriver {
+    async fn build_test_driver(store: Arc<SessionManager>) -> (XyInProcessDriver, ObsSessionScope) {
+        let scope = ObsSessionScope::enter(ObsSessionContext::default());
         let store_trait: Arc<dyn XySessionStore> = store.clone();
         let mut agent = AgentBuilder::new(
             crate::agent::model::registry::ModelRegistry::new(Arc::new(InfraSecretResolver::new())),
@@ -1590,16 +1590,15 @@ mod driver_session_tree_tests {
             .await
             .expect("create session");
         agent.bind_session(sid).expect("bind_session");
-        XyInProcessDriver::new(agent, store)
+        (XyInProcessDriver::new(agent, store), scope)
     }
 
     #[tokio::test]
-    #[parallel(obs_global)]
 
     async fn switch_session_restores_sticky_thinking_without_rewriting() {
         let dir = tempfile::tempdir().unwrap();
         let store = Arc::new(SessionManager::new(dir.path().join("sessions")));
-        let mut driver = build_test_driver(store.clone()).await;
+        let (mut driver, _obs) = build_test_driver(store.clone()).await;
         let target = "restored-thinking";
         store.create(target, Some("."), None).await.unwrap();
         store
@@ -1631,7 +1630,6 @@ mod driver_session_tree_tests {
     }
 
     #[tokio::test]
-    #[parallel(obs_global)]
 
     async fn in_process_session_tree_ensures_missing_session() {
         let dir = tempfile::tempdir().unwrap();
@@ -1664,12 +1662,11 @@ mod driver_session_tree_tests {
     }
 
     #[tokio::test]
-    #[parallel(obs_global)]
 
     async fn in_process_session_tree_returns_parent_child() {
         let dir = tempfile::tempdir().unwrap();
         let store = Arc::new(SessionManager::new(dir.path().join("sessions")));
-        let driver = build_test_driver(store.clone()).await;
+        let (driver, _obs) = build_test_driver(store.clone()).await;
         let sid = driver.session_id().expect("session");
 
         store
@@ -1704,12 +1701,11 @@ mod driver_session_tree_tests {
     }
 
     #[tokio::test]
-    #[parallel(obs_global)]
 
     async fn in_process_travel_user_sets_parent_leaf_and_editor_text() {
         let dir = tempfile::tempdir().unwrap();
         let store = Arc::new(SessionManager::new(dir.path().join("sessions")));
-        let driver = build_test_driver(store.clone()).await;
+        let (driver, _obs) = build_test_driver(store.clone()).await;
         let sid = driver.session_id().expect("session");
 
         store
@@ -1732,12 +1728,11 @@ mod driver_session_tree_tests {
     }
 
     #[tokio::test]
-    #[parallel(obs_global)]
 
     async fn in_process_travel_non_user_sets_leaf_without_editor_text() {
         let dir = tempfile::tempdir().unwrap();
         let store = Arc::new(SessionManager::new(dir.path().join("sessions")));
-        let driver = build_test_driver(store.clone()).await;
+        let (driver, _obs) = build_test_driver(store.clone()).await;
         let sid = driver.session_id().expect("session");
 
         store
@@ -1762,12 +1757,11 @@ mod driver_session_tree_tests {
     }
 
     #[tokio::test]
-    #[parallel(obs_global)]
 
     async fn unsupported_tree_kind_returns_err_without_changing_leaf() {
         let dir = tempfile::tempdir().unwrap();
         let store = Arc::new(SessionManager::new(dir.path().join("sessions")));
-        let driver = build_test_driver(store.clone()).await;
+        let (driver, _obs) = build_test_driver(store.clone()).await;
         let sid = driver.session_id().expect("session");
         XySessionStore::set_leaf(store.as_ref(), &sid, Some("keep"));
 
@@ -1793,7 +1787,6 @@ mod driver_session_tree_tests {
     }
 
     #[tokio::test]
-    #[parallel(obs_global)]
 
     async fn after_run_session_tree_reflects_persisted_turn() {
         use std::pin::Pin;
@@ -1894,13 +1887,12 @@ mod driver_session_tree_tests {
     }
 
     #[tokio::test]
-    #[parallel(obs_global)]
 
     async fn fork_rejects_unflushed_session_via_driver() {
         // TUI cannot hit this while assistant is streaming (steer takes over); cover via XyDriver.
         let dir = tempfile::tempdir().unwrap();
         let store = Arc::new(SessionManager::new(dir.path().join("sessions")));
-        let mut driver = build_test_driver(store.clone()).await;
+        let (mut driver, _obs) = build_test_driver(store.clone()).await;
         let sid = driver.session_id().expect("session");
         let path = store.get_session_file(&sid).expect("persisted path");
         assert!(
@@ -1945,7 +1937,6 @@ mod driver_session_tree_tests {
     }
 
     #[tokio::test]
-    #[parallel(obs_global)]
 
     async fn persist_project_trust_writes_store_under_agent_dir() {
         let home = tempfile::tempdir().unwrap();
@@ -1953,7 +1944,7 @@ mod driver_session_tree_tests {
         let agent_dir = home.path().join(".xylitol");
         std::fs::create_dir_all(cwd.join(".xylitol")).unwrap();
         let store = Arc::new(SessionManager::new(home.path().join("sessions")));
-        let mut driver = build_test_driver(store).await;
+        let (mut driver, _obs) = build_test_driver(store).await;
         driver.enable_reload_state(cwd.clone(), agent_dir.clone(), false, Vec::new());
         let report = driver
             .persist_project_trust(ProjectTrustMode::TrustCwd)
@@ -1965,12 +1956,11 @@ mod driver_session_tree_tests {
     }
 
     #[tokio::test]
-    #[parallel(obs_global)]
 
     async fn begin_mcp_bootstrap_empty_settles_immediately() {
         let dir = tempfile::tempdir().unwrap();
         let store = Arc::new(SessionManager::new(dir.path().join("sessions")));
-        let mut driver = build_test_driver(store).await;
+        let (mut driver, _obs) = build_test_driver(store).await;
         driver.enable_reload_state(
             dir.path().to_path_buf(),
             dir.path().join(".xylitol"),
@@ -1989,14 +1979,13 @@ mod driver_session_tree_tests {
     }
 
     #[tokio::test]
-    #[parallel(obs_global)]
 
     async fn mcp_settle_defers_system_prompt_off_tick() {
         use crate::app::core::mcp_spec::{McpServerSpec, McpTransportSpec};
 
         let dir = tempfile::tempdir().unwrap();
         let store = Arc::new(SessionManager::new(dir.path().join("sessions")));
-        let mut driver = build_test_driver(store).await;
+        let (mut driver, _obs) = build_test_driver(store).await;
         let bad = McpServerSpec {
             name: "bad".into(),
             transport: McpTransportSpec::Stdio,
@@ -2068,7 +2057,6 @@ mod driver_session_tree_tests {
     }
 
     #[tokio::test]
-    #[parallel(obs_global)]
 
     async fn leaving_mcp_gate_must_signal_ui_refresh() {
         use crate::app::core::mcp_spec::{McpServerSpec, McpTransportSpec};
@@ -2077,7 +2065,7 @@ mod driver_session_tree_tests {
         // host only refreshes when poll_mcp_bootstrap returns true.
         let dir = tempfile::tempdir().unwrap();
         let store = Arc::new(SessionManager::new(dir.path().join("sessions")));
-        let mut driver = build_test_driver(store).await;
+        let (mut driver, _obs) = build_test_driver(store).await;
         driver.enable_reload_state(
             dir.path().to_path_buf(),
             dir.path().join(".xylitol"),
@@ -2219,12 +2207,11 @@ mod driver_session_tree_tests {
     }
 
     #[tokio::test]
-    #[parallel(obs_global)]
 
     async fn ensure_freeze_on_empty_mcp_and_ignore_expand() {
         let dir = tempfile::tempdir().unwrap();
         let store = Arc::new(SessionManager::new(dir.path().join("sessions")));
-        let mut driver = build_test_driver(store).await;
+        let (mut driver, _obs) = build_test_driver(store).await;
         driver.enable_reload_state(
             dir.path().to_path_buf(),
             dir.path().join(".xylitol"),
@@ -2245,12 +2232,11 @@ mod driver_session_tree_tests {
     }
 
     #[tokio::test]
-    #[parallel(obs_global)]
 
     async fn reload_re_freezes_tools() {
         let dir = tempfile::tempdir().unwrap();
         let store = Arc::new(SessionManager::new(dir.path().join("sessions")));
-        let mut driver = build_test_driver(store).await;
+        let (mut driver, _obs) = build_test_driver(store).await;
         driver.enable_reload_state(
             dir.path().to_path_buf(),
             dir.path().join(".xylitol"),
@@ -2266,12 +2252,11 @@ mod driver_session_tree_tests {
     }
 
     #[tokio::test]
-    #[parallel(obs_global)]
 
     async fn arm_tool_freeze_gate_empty_mcp_freezes_immediately() {
         let dir = tempfile::tempdir().unwrap();
         let store = Arc::new(SessionManager::new(dir.path().join("sessions")));
-        let mut driver = build_test_driver(store).await;
+        let (mut driver, _obs) = build_test_driver(store).await;
         driver.enable_reload_state(
             dir.path().to_path_buf(),
             dir.path().join(".xylitol"),
@@ -2288,7 +2273,6 @@ mod driver_session_tree_tests {
 
     /// Default `XyDriver::run` path is Reject: concurrent root while live → Busy, one provider stream.
     #[tokio::test]
-    #[parallel(obs_global)]
 
     async fn concurrent_run_rejects_second_with_busy() {
         use std::pin::Pin;

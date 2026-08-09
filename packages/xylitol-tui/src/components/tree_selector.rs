@@ -1285,16 +1285,22 @@ mod tests {
     }
 
     #[test]
-    #[serial_test::serial(kb_global)]
     fn page_up_down_move_by_max_visible_when_bound() {
-        use crate::keybindings::{KeybindingsConfig, with_keybindings_mut};
+        use crate::keybindings::{
+            KeybindingsConfig, KeybindingsManager, KeybindingsScope, create_default_definitions,
+        };
         use crossterm::event::{KeyCode, KeyEvent, KeyModifiers};
-        use std::collections::HashMap;
+        use std::cell::RefCell;
+        use std::rc::Rc;
 
         let mut user = KeybindingsConfig::new();
         user.insert("tui.select.pageUp".into(), vec!["pageUp".into()]);
         user.insert("tui.select.pageDown".into(), vec!["pageDown".into()]);
-        with_keybindings_mut(|kb| kb.set_user_bindings(user));
+        let kb = Rc::new(RefCell::new(KeybindingsManager::new(
+            create_default_definitions(),
+            user,
+        )));
+        let _scope = KeybindingsScope::enter(kb);
 
         let roots =
             vec![TreeNode::new("r", "root").with_children(
@@ -1319,8 +1325,6 @@ mod tests {
             KeyModifiers::NONE,
         )));
         assert_eq!(sel.selected_index, 0);
-
-        with_keybindings_mut(|kb| kb.set_user_bindings(HashMap::new()));
     }
 
     #[test]

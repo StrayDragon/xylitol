@@ -96,10 +96,10 @@ mod tests {
     use std::sync::{Arc, Mutex};
 
     use fastrace::collector::{Config, Reporter, SpanRecord};
-    use xylitol_ai_bridge::provider::obs_session::{clear_obs_session, set_obs_session};
+    use xylitol_ai_bridge::provider::obs_session::{
+        ObsSessionContext, ObsSessionScope, set_obs_session,
+    };
     use xylitol_ai_bridge::provider::trace::set_provider_trace_active;
-
-    static TEST_LOCK: Mutex<()> = Mutex::new(());
 
     struct CollectingReporter(Arc<Mutex<Vec<SpanRecord>>>);
 
@@ -122,7 +122,6 @@ mod tests {
     #[test]
     #[serial(obs_global)]
     fn inactive_start_is_none() {
-        let _g = TEST_LOCK.lock().unwrap_or_else(|e| e.into_inner());
         set_provider_trace_active(false);
         assert!(AgentCompactionSpan::start("manual", None).is_none());
     }
@@ -130,7 +129,6 @@ mod tests {
     #[test]
     #[serial(obs_global)]
     fn compaction_under_turn_shares_trace() {
-        let _g = TEST_LOCK.lock().unwrap_or_else(|e| e.into_inner());
         set_provider_trace_active(true);
         let records = Arc::new(Mutex::new(Vec::new()));
         fastrace::set_reporter(CollectingReporter(Arc::clone(&records)), Config::default());
@@ -171,9 +169,8 @@ mod tests {
     #[test]
     #[serial(obs_global)]
     fn independent_root_carries_session_id_and_lane() {
-        let _g = TEST_LOCK.lock().unwrap_or_else(|e| e.into_inner());
+        let _obs = ObsSessionScope::enter(ObsSessionContext::default());
         set_provider_trace_active(true);
-        clear_obs_session();
         set_obs_session("sess-compact-1", None);
         let records = Arc::new(Mutex::new(Vec::new()));
         fastrace::set_reporter(CollectingReporter(Arc::clone(&records)), Config::default());
@@ -184,7 +181,6 @@ mod tests {
             c.finish(false, false, Some("compaction failed: model error"));
         }
         fastrace::flush();
-        clear_obs_session();
         set_provider_trace_active(false);
 
         let spans = records.lock().unwrap().clone();
@@ -214,7 +210,6 @@ mod tests {
     #[test]
     #[serial(obs_global)]
     fn summarization_llm_nests_under_compaction() {
-        let _g = TEST_LOCK.lock().unwrap_or_else(|e| e.into_inner());
         set_provider_trace_active(true);
         let records = Arc::new(Mutex::new(Vec::new()));
         fastrace::set_reporter(CollectingReporter(Arc::clone(&records)), Config::default());

@@ -320,10 +320,10 @@ fn append_capped(buf: &mut String, chunk: &str, max: usize) {
 mod tests {
     use super::*;
     use fastrace::collector::{Config, Reporter, SpanRecord};
+    use serial_test::serial;
     use std::sync::{Arc, Mutex};
 
-    static TEST_LOCK: Mutex<()> = Mutex::new(());
-
+    // Process provider_trace / fastrace reporter — share obs_global with main-crate collectors.
     struct CollectingReporter(Arc<Mutex<Vec<SpanRecord>>>);
 
     impl Reporter for CollectingReporter {
@@ -340,10 +340,6 @@ mod tests {
             .iter()
             .find(|(k, _)| k.as_ref() == key)
             .map(|(_, v)| v.as_ref())
-    }
-
-    fn take_lock() -> std::sync::MutexGuard<'static, ()> {
-        TEST_LOCK.lock().unwrap_or_else(|e| e.into_inner())
     }
 
     fn latest_llm(spans: &[SpanRecord]) -> &SpanRecord {
@@ -363,16 +359,16 @@ mod tests {
     }
 
     #[test]
+    #[serial(obs_global)]
     fn inactive_start_returns_none() {
-        let _g = take_lock();
         set_provider_trace_active(false);
         set_observation_io_tier(ObservationIoTier::None);
         assert!(ProviderRequestTrace::start("openai-responses", "m").is_none());
     }
 
     #[test]
+    #[serial(obs_global)]
     fn usage_and_io_none_do_not_panic() {
-        let _g = take_lock();
         set_provider_trace_active(true);
         set_observation_io_tier(ObservationIoTier::None);
         let t = ProviderRequestTrace::start("openai-responses", "m").expect("active");
@@ -390,8 +386,8 @@ mod tests {
     }
 
     #[test]
+    #[serial(obs_global)]
     fn capture_request_input_and_done_flush_io() {
-        let _g = take_lock();
         set_provider_trace_active(true);
         set_observation_io_tier(ObservationIoTier::Truncated);
         let records = Arc::new(Mutex::new(Vec::new()));
@@ -426,8 +422,8 @@ mod tests {
     }
 
     #[test]
+    #[serial(obs_global)]
     fn attach_usage_emits_tri_state_without_fake_cache_read() {
-        let _g = take_lock();
         set_provider_trace_active(true);
         set_observation_io_tier(ObservationIoTier::None);
         let records = Arc::new(Mutex::new(Vec::new()));
@@ -462,8 +458,8 @@ mod tests {
     }
 
     #[test]
+    #[serial(obs_global)]
     fn attach_usage_writes_cache_read_for_tokens() {
-        let _g = take_lock();
         set_provider_trace_active(true);
         set_observation_io_tier(ObservationIoTier::None);
         let records = Arc::new(Mutex::new(Vec::new()));
@@ -498,8 +494,8 @@ mod tests {
     }
 
     #[test]
+    #[serial(obs_global)]
     fn abort_drop_flushes_partial_and_marks_error() {
-        let _g = take_lock();
         set_provider_trace_active(true);
         set_observation_io_tier(ObservationIoTier::Truncated);
         let records = Arc::new(Mutex::new(Vec::new()));
@@ -536,8 +532,8 @@ mod tests {
     }
 
     #[test]
+    #[serial(obs_global)]
     fn done_without_usage_still_flushes_io() {
-        let _g = take_lock();
         set_provider_trace_active(true);
         set_observation_io_tier(ObservationIoTier::Truncated);
         let records = Arc::new(Mutex::new(Vec::new()));
@@ -573,8 +569,8 @@ mod tests {
     }
 
     #[test]
+    #[serial(obs_global)]
     fn truncated_io_buffers_request_and_output() {
-        let _g = take_lock();
         set_provider_trace_active(true);
         set_observation_io_tier(ObservationIoTier::Truncated);
         let t = ProviderRequestTrace::start("openai-completions", "m").expect("active");
