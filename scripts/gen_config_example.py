@@ -43,6 +43,8 @@ models:
   # (avoids accidental live calls from a checked-in example).
   # DeepSeek flash is the recommended starter; thinking_levels must be explicit
   # (omit → only off). Switch-model default = last list item (max here).
+  # Levels/context below aligned to models.dev api.json (2026-08); capability
+  # fields not yet on ModelEntry stay as comments (deny_unknown_fields).
   # default_model: "deepseek-v4-flash"
   models: {}
     # deepseek-v4-flash:
@@ -53,7 +55,9 @@ models:
     #   compat: deepseek
     #   api_key: "{{ secret.DEEPSEEK_API_KEY }}"
     #   thinking: true
-    #   thinking_levels: [off, high, max]
+    #   thinking_levels: [off, low, high, max]
+    #   context_window: 1000000
+    #   # placeholders: tool_call/attachment/structured_output/modalities/cost/max_output
     # deepseek-v4-flash-anthropic:
     #   provider: anthropic
     #   model: deepseek-v4-flash
@@ -62,7 +66,8 @@ models:
     #   compat: deepseek
     #   api_key: "{{ secret.DEEPSEEK_API_KEY }}"
     #   thinking: true
-    #   thinking_levels: [off, high, max]
+    #   thinking_levels: [off, low, high, max]
+    #   context_window: 1000000
     # OpenCode Zen free（Completions）；别名用 *-zen 后缀：
     # deepseek-v4-flash-free-zen:
     #   provider: openai
@@ -72,7 +77,8 @@ models:
     #   compat: deepseek
     #   api_key: "{{ secret.OPENCODE_ZEN_API_KEY }}"
     #   thinking: true
-    #   thinking_levels: [off, high, max]
+    #   thinking_levels: [off, low, high, max]
+    #   context_window: 200000
     # Optional Anthropic (uncomment only if you intend to use it):
     # claude:
     #   provider: anthropic
