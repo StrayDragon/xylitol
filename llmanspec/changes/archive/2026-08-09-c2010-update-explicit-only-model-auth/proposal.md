@@ -2,7 +2,8 @@
 depends_on: []
 branch: sdd/c2010-update-explicit-only-model-auth
 base_sha: b0a3aa0cc399d6861b0bc1173dfdde12407b08c4
-checkpointed: false
+checkpointed: true
+checkpoint_sha: b0a3aa0cc399d6861b0bc1173dfdde12407b08c4
 ---
 
 # 仅认用户显式模型配置（禁止隐式 env 回落与 env 造模）
