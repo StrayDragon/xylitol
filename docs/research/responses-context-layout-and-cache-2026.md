@@ -195,7 +195,7 @@ coding agent 默认：环境类（cwd）可留 system；高变读数（工具计
 | Agent 状态栏族（**deferred**） | [`delayed c1895`](../../llmanspec/delayed-changes/context/c1895-add-agent-status-bar-subsystem/proposal.md)（+ c1896/97/98） | 升格待 Todo/事件 |
 | MCP 首条门闸 + 工具定稿 · **本期主线** | [`c1900`](../../llmanspec/changes/c1900-update-mcp-first-turn-tool-freeze/proposal.md) | `c1880`+`c1890` |
 | tool_search + Deferred · **双轨 B（活跃草案，后实现）** | [`c1960`](../../llmanspec/delayed-changes/tools/c1960-add-tool-search-mcp-discovery/proposal.md) | `c1900` |
-| tools 稳定 id / resume MCP（**调研**） | [`research`](responses-tools-stable-id-and-resume-mcp-2026.md) | — |
+| tools 稳定 id / resume MCP（**调研**） | [`research`](../../llmanspec/changes/archive/2026-08-05-c1900-update-mcp-first-turn-tool-freeze/research/responses-tools-stable-id-and-resume-mcp-2026.md) | — |
 | system 稳定/可变切分（**deferred**） | [`delayed c1905`](../../llmanspec/delayed-changes/context/c1905-update-system-prompt-stable-volatile-split/proposal.md) | `c1890` |
 | 压缩冻结替换串（**deferred**） | [`delayed c1910`](../../llmanspec/delayed-changes/context/c1910-update-compaction-freeze-tool-replacements/proposal.md) | `c1890`+`c1930` |
 | previous_response_id 可选链（**deferred**） | [`delayed c1915`](../../llmanspec/delayed-changes/context/c1915-add-previous-response-id-optional-chain/proposal.md) | `c1880`+`c1890`+`c1920` |

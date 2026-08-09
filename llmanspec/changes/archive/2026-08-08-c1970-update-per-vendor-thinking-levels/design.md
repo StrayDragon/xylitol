@@ -7,7 +7,7 @@
 | 未配置列表 | 仅 `off` / 不可调（取消 STANDARD） |
 | 档名空间 | **配置声明字符串**；不维护全球超集枚举；catalog 建议后置 c1980 |
 | resume | 末次落盘字符串原样还原；禁止静默 clamp 写回；允许 sticky out-of-set |
-| 调研 | 已完成：`docs/research/thinking-levels-per-vendor-2026.md` |
+| 调研 | 已完成：`research/thinking-levels-per-vendor-2026.md` |
 
 ## 架构
 

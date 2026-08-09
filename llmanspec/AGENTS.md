@@ -37,6 +37,12 @@ change/spec 的命名、ID、依赖、原子性、语言。架构事实（分层
 - 单 task 拆分上限约 2 小时。
 - purpose-draft change 可只交付 `proposal.md`（`status: purpose-draft`）；apply 前须 promote 为完整工件（specs + tasks）。
 
+### research（change 附属调研）
+
+- **临时 / change 作用域调研**（选型对照、一手摘录、仅对本 change propose/design 有意义、易随决策过期）MUST 放在 `llmanspec/changes/<id>/research/<topic>.md`（随 change 进 `archive/`）；**禁止**为此类笔记新开或堆进 `docs/research/`。
+- 产出是 Change 文档，**不是** live specs；关键结论 SHOULD 摘要回写 `proposal.md`「Further Notes」（附文件指针）。
+- `docs/research/` **仅**留给跨多个 change / 归档后仍常引用的耐久底稿（主题级、非单次选型备忘）。升格条件：六个月后仍被多条主线引用，且不是单 change 决策草稿纸。
+
 ## 语言
 
 - spec 的 `purpose` / requirement `title`+`statement` / scenario `given`/`when`/`then` **MUST 中文**；技术标识符（类型名、路径、命令、req_id）保留英文。
@@ -116,3 +122,4 @@ commit（live specs + 代码）
 - 架构 SSOT（分层、不变量、seam、Xy\*、Provider 适配）：`src/AGENTS.md`。
 - 高维产品/业务图：`docs/architecture/`（入口 `README.md`）。
 - 命令与测试：根 `AGENTS.md`「命令」/「提交与测试」段。
+- change 临时调研落点：上文「research（change 附属调研）」；耐久主题底稿才进 `docs/research/`。

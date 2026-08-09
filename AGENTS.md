@@ -123,6 +123,6 @@ SDD：`llman-sdd-*`（含 `llman-sdd-quick` 快速路径）。应用面：`write
 
 **偏好**：全局规则与架构不变量；落点用层名（`agent`/`infra`/…），细节去读代码。子目录只补本面例外。
 
-放哪：全仓规则 → 根；目录边界 → 该目录 `AGENTS.md`；多步 how-to → skill；临时笔记 → `_HANDOFF` / `*.tmp.md`（勿升格规范）。
+放哪：全仓规则 → 根；目录边界 → 该目录 `AGENTS.md`；多步 how-to → skill；临时笔记 → `_HANDOFF` / `*.tmp.md`（勿升格规范）；**change 作用域调研** → `llmanspec/changes/<id>/research/`（细则 `llmanspec/AGENTS.md`，勿堆 `docs/research/`）。
 
 维护：六个月后是否仍真？否则不要进 AGENTS。体量软硬顶与拆分默认策略在 `src/AGENTS.md`；**不**另维护超标表。

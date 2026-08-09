@@ -45,6 +45,6 @@ checkpoint_sha: 77d4be5d7dbaed6e529681363c828c5b0743bdc5
 
 - risk_level: low
 - prohibited_actions: 伪造厂商不支持的档；resume 静默改写用户已落盘档位意图；依赖未启用的远程 catalog 才能选档
-- required_evidence: `docs/research/thinking-levels-per-vendor-2026.md`（已附）
+- required_evidence: `research/thinking-levels-per-vendor-2026.md`（已附）
 - refusal_contract: 不承诺兼容端 thinking ≡ 官方；未知 compat 不得瞎映射
 - escalation_policy: 若需抬 session schema 版本或批量改写历史 level 字符串，须单独确认
