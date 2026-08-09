@@ -9,7 +9,7 @@ checkpointed: false
 
 > **一句话**：idle `/reload` 进行中用状态条 `Reloading` + 输入软闸；协作取消（Esc）；失败/取消可见；结束后仍出汇总滚动提示。
 > **当前排序**：#4（2026-08-10 自 delayed-changes 升格入 active）
-> **状态**：方案已钉；规划壳齐；已 Branch binding（`sdd/c1205-update-app-tui-reload-ux`）。Specs landing 进行中。
+> **状态**：`readyToImplement=true`（branch `sdd/c1205-update-app-tui-reload-ux`；specs landed）。下一步 `llman-sdd-apply`。
 
 ## Why
 
@@ -102,4 +102,4 @@ c1120 已接线 `/reload`，但 `handle_reload` 在 effects 泵内同步 `await 
 
 - 2026-07-16：自 `c1205-update-app-tui-reload-progress-ux` 泛化重命名。
 - 2026-08-10：explore 钉案——A1 `Reloading`；软闸 B1；Esc 协作取消；拒提 `Error: reloading — wait`；失败/取消 = ScrollNotice + toast。
-- 2026-08-10：补 `design.md` / `tasks.md`（含 Ctrl+C=取消、精确 toast/notice 文案、MCP snapshot 换接）；仍不 attach。
+- 2026-08-10：补 `design.md` / `tasks.md`；`change start` + Specs landing（ath28/atc25/ati43/atm12）→ `readyToImplement=true`。
