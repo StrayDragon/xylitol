@@ -11,7 +11,7 @@ checkpoint_sha: c43e083e12a52e125d6799120fba02d982238686
 # MCP 首条门闸 + 工具表定稿（移除 pending-turn 注入）
 
 > **调研底稿**：[`docs/research/responses-context-layout-and-cache-2026.md`](../../../docs/research/responses-context-layout-and-cache-2026.md)
-> **拆分（Q12）**：本 change **只**做门闸/定稿/去掉 next-turn 热并。`tool_search` 见活跃草案 [`c1960`](../c1960-add-tool-search-mcp-discovery/proposal.md)（双轨 B，后实现）。
+> **拆分（Q12）**：本 change **只**做门闸/定稿/去掉 next-turn 热并。`tool_search` 见活跃草案 [`c1960`](../../../delayed-changes/tools/c1960-add-tool-search-mcp-discovery/proposal.md)（双轨 B，后实现）。
 > **工程约定**：code-first `defaults.rs`；本波不扩 YAML/env（超时等常量可进 defaults）。真源 [`c1880`](../archive/2026-08-04-c1880-update-responses-first-api-boundary/proposal.md)。
 > **Lab**：Ornith/llama.cpp 上改 `tools[]`（upsert 或 append）均会 **cache miss**；故主路径 = **首轮前一次定稿后冻死**。
 
