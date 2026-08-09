@@ -2,7 +2,6 @@ use super::*;
 use crate::app::core::composition::{BuildAgentOptions, build_agent};
 use crate::app::core::driver::XyInProcessDriver;
 use crate::protocol::ports::XySessionStore;
-use serial_test::serial;
 use std::sync::Arc;
 
 fn make_driver() -> XyInProcessDriver {
@@ -11,6 +10,26 @@ fn make_driver() -> XyInProcessDriver {
         tempfile::tempdir().unwrap().path().join("sessions"),
     ));
     XyInProcessDriver::new(agent, store)
+}
+
+fn env_map<'a>(entries: &'a [(&'a str, &'a str)]) -> impl Fn(&str) -> Option<String> + 'a {
+    move |k: &str| {
+        entries
+            .iter()
+            .find(|(name, _)| *name == k)
+            .map(|(_, v)| (*v).to_string())
+    }
+}
+
+fn assembly_input(trust_override: Option<bool>) -> BootstrapInput {
+    BootstrapInput {
+        config_path: None,
+        session: None,
+        model: None,
+        trust_override,
+        interactive: false,
+        caller: "test",
+    }
 }
 
 #[test]
@@ -93,30 +112,6 @@ fn reload_skills_untrusted_skips_project_skill() {
     );
 }
 
-/// RAII env restore for bootstrap path tests.
-struct EnvGuard {
-    key: &'static str,
-    prev: Option<String>,
-}
-
-impl EnvGuard {
-    fn set(key: &'static str, val: &str) -> Self {
-        let prev = std::env::var(key).ok();
-        unsafe { std::env::set_var(key, val) };
-        Self { key, prev }
-    }
-}
-
-impl Drop for EnvGuard {
-    fn drop(&mut self) {
-        match &self.prev {
-            Some(v) => unsafe { std::env::set_var(self.key, v) },
-            None => unsafe { std::env::remove_var(self.key) },
-        }
-    }
-}
-
-#[serial(env_global)]
 #[test]
 fn config_template_error_is_hard_fail() {
     let home = tempfile::tempdir().unwrap();
@@ -126,10 +121,14 @@ fn config_template_error_is_hard_fail() {
     let global = home.path().join(".config").join("xylitol");
     std::fs::create_dir_all(&global).unwrap();
 
-    let _home = EnvGuard::set("HOME", home.path().to_str().unwrap());
-    let _proj = EnvGuard::set("XYLITOL_PROJECT_DIR", project.to_str().unwrap());
-    let _cfg = EnvGuard::set("XYLITOL_CONFIG_DIR", global.to_str().unwrap());
-    let _key = EnvGuard::set("OPENAI_API_KEY", "sk-test");
+    let home_s = home.path().to_str().unwrap();
+    let project_s = project.to_str().unwrap();
+    let global_s = global.to_str().unwrap();
+    let entries = [
+        ("HOME", home_s),
+        ("XYLITOL_PROJECT_DIR", project_s),
+        ("XYLITOL_CONFIG_DIR", global_s),
+    ];
 
     std::fs::write(
         proj_xy.join("config.yaml"),
@@ -137,14 +136,7 @@ fn config_template_error_is_hard_fail() {
     )
     .unwrap();
 
-    let err = match resolve_assembly(&BootstrapInput {
-        config_path: None,
-        session: None,
-        model: None,
-        trust_override: Some(true),
-        interactive: false,
-        caller: "test",
-    }) {
+    let err = match resolve_assembly_with(&assembly_input(Some(true)), env_map(&entries), None) {
         Ok(_) => panic!("template in comment must fail closed"),
         Err(e) => e,
     };
@@ -154,7 +146,6 @@ fn config_template_error_is_hard_fail() {
     );
 }
 
-#[serial(env_global)]
 #[test]
 fn yaml_zero_models_hard_fail_no_env_gpt4o() {
     let home = tempfile::tempdir().unwrap();
@@ -164,10 +155,14 @@ fn yaml_zero_models_hard_fail_no_env_gpt4o() {
     let global = home.path().join(".config").join("xylitol");
     std::fs::create_dir_all(&global).unwrap();
 
-    let _home = EnvGuard::set("HOME", home.path().to_str().unwrap());
-    let _proj = EnvGuard::set("XYLITOL_PROJECT_DIR", project.to_str().unwrap());
-    let _cfg = EnvGuard::set("XYLITOL_CONFIG_DIR", global.to_str().unwrap());
-    let _key = EnvGuard::set("OPENAI_API_KEY", "sk-test");
+    let home_s = home.path().to_str().unwrap();
+    let project_s = project.to_str().unwrap();
+    let global_s = global.to_str().unwrap();
+    let entries = [
+        ("HOME", home_s),
+        ("XYLITOL_PROJECT_DIR", project_s),
+        ("XYLITOL_CONFIG_DIR", global_s),
+    ];
 
     // Explicit empty models map (config present, zero registerable models).
     std::fs::write(
@@ -176,14 +171,7 @@ fn yaml_zero_models_hard_fail_no_env_gpt4o() {
     )
     .unwrap();
 
-    let err = match resolve_assembly(&BootstrapInput {
-        config_path: None,
-        session: None,
-        model: None,
-        trust_override: Some(true),
-        interactive: false,
-        caller: "test",
-    }) {
+    let err = match resolve_assembly_with(&assembly_input(Some(true)), env_map(&entries), None) {
         Ok(_) => panic!("zero models from yaml must hard fail"),
         Err(e) => e,
     };
@@ -193,7 +181,6 @@ fn yaml_zero_models_hard_fail_no_env_gpt4o() {
     );
 }
 
-#[serial(env_global)]
 #[test]
 fn env_only_does_not_invent_models() {
     let home = tempfile::tempdir().unwrap();
@@ -202,20 +189,17 @@ fn env_only_does_not_invent_models() {
     let global = home.path().join(".config").join("xylitol");
     std::fs::create_dir_all(&global).unwrap();
 
-    let _home = EnvGuard::set("HOME", home.path().to_str().unwrap());
-    let _proj = EnvGuard::set("XYLITOL_PROJECT_DIR", project.to_str().unwrap());
-    let _cfg = EnvGuard::set("XYLITOL_CONFIG_DIR", global.to_str().unwrap());
-    let _key = EnvGuard::set("OPENAI_API_KEY", "sk-test");
-    unsafe { std::env::remove_var("ANTHROPIC_API_KEY") };
+    let home_s = home.path().to_str().unwrap();
+    let project_s = project.to_str().unwrap();
+    let global_s = global.to_str().unwrap();
+    // Empty global + project dirs only — registry must not invent from process env.
+    let entries = [
+        ("HOME", home_s),
+        ("XYLITOL_PROJECT_DIR", project_s),
+        ("XYLITOL_CONFIG_DIR", global_s),
+    ];
 
-    let err = match resolve_assembly(&BootstrapInput {
-        config_path: None,
-        session: None,
-        model: None,
-        trust_override: Some(true),
-        interactive: false,
-        caller: "test",
-    }) {
+    let err = match resolve_assembly_with(&assembly_input(Some(true)), env_map(&entries), None) {
         Ok(_) => panic!("env-only must not invent registry models"),
         Err(e) => e,
     };
@@ -228,7 +212,6 @@ fn env_only_does_not_invent_models() {
     );
 }
 
-#[serial(env_global)]
 #[test]
 fn yaml_entry_registers_without_kind_env_key() {
     let home = tempfile::tempdir().unwrap();
@@ -238,15 +221,14 @@ fn yaml_entry_registers_without_kind_env_key() {
     let global = home.path().join(".config").join("xylitol");
     std::fs::create_dir_all(&global).unwrap();
 
-    let _home = EnvGuard::set("HOME", home.path().to_str().unwrap());
-    let _proj = EnvGuard::set("XYLITOL_PROJECT_DIR", project.to_str().unwrap());
-    let _cfg = EnvGuard::set("XYLITOL_CONFIG_DIR", global.to_str().unwrap());
-    unsafe {
-        std::env::remove_var("OPENAI_API_KEY");
-        std::env::remove_var("OPENAI_KEY");
-        std::env::remove_var("ANTHROPIC_API_KEY");
-        std::env::remove_var("ANTHROPIC_KEY");
-    }
+    let home_s = home.path().to_str().unwrap();
+    let project_s = project.to_str().unwrap();
+    let global_s = global.to_str().unwrap();
+    let entries = [
+        ("HOME", home_s),
+        ("XYLITOL_PROJECT_DIR", project_s),
+        ("XYLITOL_CONFIG_DIR", global_s),
+    ];
 
     std::fs::write(
         proj_xy.join("config.yaml"),
@@ -263,15 +245,8 @@ fn yaml_entry_registers_without_kind_env_key() {
     )
     .unwrap();
 
-    let assembly = resolve_assembly(&BootstrapInput {
-        config_path: None,
-        session: None,
-        model: None,
-        trust_override: Some(true),
-        interactive: false,
-        caller: "test",
-    })
-    .expect("yaml entry must register without OPENAI_API_KEY");
+    let assembly = resolve_assembly_with(&assembly_input(Some(true)), env_map(&entries), None)
+        .expect("yaml entry must register without OPENAI_API_KEY");
 
     let meta = assembly
         .model_registry
@@ -291,7 +266,6 @@ fn yaml_entry_registers_without_kind_env_key() {
     );
 }
 
-#[serial(env_global)]
 #[test]
 fn yaml_model_api_is_honored_in_registry_config() {
     let home = tempfile::tempdir().unwrap();
@@ -301,10 +275,14 @@ fn yaml_model_api_is_honored_in_registry_config() {
     let global = home.path().join(".config").join("xylitol");
     std::fs::create_dir_all(&global).unwrap();
 
-    let _home = EnvGuard::set("HOME", home.path().to_str().unwrap());
-    let _proj = EnvGuard::set("XYLITOL_PROJECT_DIR", project.to_str().unwrap());
-    let _cfg = EnvGuard::set("XYLITOL_CONFIG_DIR", global.to_str().unwrap());
-    let _key = EnvGuard::set("OPENAI_API_KEY", "sk-test");
+    let home_s = home.path().to_str().unwrap();
+    let project_s = project.to_str().unwrap();
+    let global_s = global.to_str().unwrap();
+    let entries = [
+        ("HOME", home_s),
+        ("XYLITOL_PROJECT_DIR", project_s),
+        ("XYLITOL_CONFIG_DIR", global_s),
+    ];
 
     std::fs::write(
         proj_xy.join("config.yaml"),
@@ -326,15 +304,8 @@ fn yaml_model_api_is_honored_in_registry_config() {
     )
     .unwrap();
 
-    let assembly = resolve_assembly(&BootstrapInput {
-        config_path: None,
-        session: None,
-        model: None,
-        trust_override: Some(true),
-        interactive: false,
-        caller: "test",
-    })
-    .expect("assembly");
+    let assembly = resolve_assembly_with(&assembly_input(Some(true)), env_map(&entries), None)
+        .expect("assembly");
 
     let list = assembly.model_registry.list();
     let by_id = |id: &str| {
@@ -432,7 +403,6 @@ fn untrusted_reload_still_loads_user_global_skills() {
 }
 
 #[test]
-#[serial(env_global)]
 fn trust_override_loads_or_skips_project_xylitol_skills() {
     let home = tempfile::tempdir().unwrap();
     let project = home.path().join("proj");
@@ -457,28 +427,21 @@ fn trust_override_loads_or_skips_project_xylitol_skills() {
     )
     .unwrap();
 
-    let _home = EnvGuard::set("HOME", home.path().to_str().unwrap());
-    let _proj = EnvGuard::set("XYLITOL_PROJECT_DIR", project.to_str().unwrap());
-    let _cfg = EnvGuard::set("XYLITOL_CONFIG_DIR", global.to_str().unwrap());
-    let _key = EnvGuard::set("OPENAI_API_KEY", "sk-test");
-    let prev_cwd = std::env::current_dir().unwrap();
-    std::env::set_current_dir(&project).unwrap();
-    struct CwdRestore(std::path::PathBuf);
-    impl Drop for CwdRestore {
-        fn drop(&mut self) {
-            let _ = std::env::set_current_dir(&self.0);
-        }
-    }
-    let _cwd = CwdRestore(prev_cwd);
+    let home_s = home.path().to_str().unwrap();
+    let project_s = project.to_str().unwrap();
+    let global_s = global.to_str().unwrap();
+    let entries = [
+        ("HOME", home_s),
+        ("XYLITOL_PROJECT_DIR", project_s),
+        ("XYLITOL_CONFIG_DIR", global_s),
+    ];
+    let get_env = env_map(&entries);
 
-    let trusted = resolve_assembly(&BootstrapInput {
-        config_path: None,
-        session: None,
-        model: None,
-        trust_override: Some(true),
-        interactive: false,
-        caller: "test",
-    })
+    let trusted = resolve_assembly_with(
+        &assembly_input(Some(true)),
+        &get_env,
+        Some(project.as_path()),
+    )
     .expect("trusted assembly");
     assert!(
         trusted.skills.iter().any(|s| s.name == "c1620-proj-skill"),
@@ -486,14 +449,11 @@ fn trust_override_loads_or_skips_project_xylitol_skills() {
         trusted.skills.iter().map(|s| &s.name).collect::<Vec<_>>()
     );
 
-    let denied = resolve_assembly(&BootstrapInput {
-        config_path: None,
-        session: None,
-        model: None,
-        trust_override: Some(false),
-        interactive: false,
-        caller: "test",
-    })
+    let denied = resolve_assembly_with(
+        &assembly_input(Some(false)),
+        &get_env,
+        Some(project.as_path()),
+    )
     .expect("untrusted assembly");
     assert!(
         denied
@@ -509,7 +469,6 @@ fn trust_override_loads_or_skips_project_xylitol_skills() {
     );
 }
 
-#[serial(env_global)]
 #[test]
 fn resolve_assembly_reads_session_max_turns() {
     let home = tempfile::tempdir().unwrap();
@@ -519,10 +478,14 @@ fn resolve_assembly_reads_session_max_turns() {
     let global = home.path().join(".config").join("xylitol");
     std::fs::create_dir_all(&global).unwrap();
 
-    let _home = EnvGuard::set("HOME", home.path().to_str().unwrap());
-    let _proj = EnvGuard::set("XYLITOL_PROJECT_DIR", project.to_str().unwrap());
-    let _cfg = EnvGuard::set("XYLITOL_CONFIG_DIR", global.to_str().unwrap());
-    let _key = EnvGuard::set("OPENAI_API_KEY", "sk-test");
+    let home_s = home.path().to_str().unwrap();
+    let project_s = project.to_str().unwrap();
+    let global_s = global.to_str().unwrap();
+    let entries = [
+        ("HOME", home_s),
+        ("XYLITOL_PROJECT_DIR", project_s),
+        ("XYLITOL_CONFIG_DIR", global_s),
+    ];
 
     std::fs::write(
         proj_xy.join("config.yaml"),
@@ -539,15 +502,8 @@ session:
     )
     .unwrap();
 
-    let assembly = resolve_assembly(&BootstrapInput {
-        config_path: None,
-        session: None,
-        model: None,
-        trust_override: Some(true),
-        interactive: false,
-        caller: "test",
-    })
-    .expect("assembly");
+    let assembly = resolve_assembly_with(&assembly_input(Some(true)), env_map(&entries), None)
+        .expect("assembly");
     assert_eq!(assembly.max_turns, Some(7));
 }
 
@@ -562,7 +518,6 @@ fn bootstrap_block_on_runs_from_current_thread_runtime() {
     assert_eq!(result, Some(7));
 }
 
-#[serial(env_global)]
 #[test]
 fn missing_session_still_applies_settings_thinking_default() {
     let home = tempfile::tempdir().unwrap();
@@ -593,12 +548,15 @@ fn missing_session_still_applies_settings_thinking_default() {
     )
     .unwrap();
 
-    let _home = EnvGuard::set("HOME", home.path().to_str().unwrap());
-    let _project = EnvGuard::set("XYLITOL_PROJECT_DIR", project.to_str().unwrap());
-    let _config = EnvGuard::set(
-        "XYLITOL_CONFIG_DIR",
-        global_config.to_str().expect("UTF-8 config path"),
-    );
+    let home_s = home.path().to_str().unwrap();
+    let project_s = project.to_str().unwrap();
+    let global_s = global_config.to_str().expect("UTF-8 config path");
+    let entries = [
+        ("HOME", home_s),
+        ("XYLITOL_PROJECT_DIR", project_s),
+        ("XYLITOL_CONFIG_DIR", global_s),
+    ];
+    let get_env = env_map(&entries);
 
     let input = || BootstrapInput {
         config_path: None,
@@ -608,9 +566,10 @@ fn missing_session_still_applies_settings_thinking_default() {
         interactive: false,
         caller: "test",
     };
-    let assembly = resolve_assembly(&input()).expect("assembly");
+    let assembly =
+        resolve_assembly_with(&input(), &get_env, Some(project.as_path())).expect("assembly");
     assert!(!assembly.session_file_exists);
 
-    let boot = bootstrap(input()).expect("bootstrap");
+    let boot = bootstrap_with(input(), &get_env, Some(project.as_path())).expect("bootstrap");
     assert_eq!(boot.agent.thinking_level(), "high");
 }
