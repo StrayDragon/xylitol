@@ -2,6 +2,7 @@ use super::*;
 use crate::app::core::composition::{BuildAgentOptions, build_agent};
 use crate::app::core::driver::XyInProcessDriver;
 use crate::protocol::ports::XySessionStore;
+use serial_test::serial;
 use std::sync::Arc;
 
 fn make_driver() -> XyInProcessDriver {
@@ -12,6 +13,7 @@ fn make_driver() -> XyInProcessDriver {
     XyInProcessDriver::new(agent, store)
 }
 
+#[serial]
 #[test]
 fn reload_prompt_context_trusted_injects_agents() {
     let project = tempfile::tempdir().unwrap();
@@ -28,6 +30,7 @@ fn reload_prompt_context_trusted_injects_agents() {
     );
 }
 
+#[serial]
 #[test]
 fn reload_prompt_context_untrusted_skips_project_agents() {
     let project = tempfile::tempdir().unwrap();
@@ -53,6 +56,7 @@ fn write_skill(dir: &std::path::Path, name: &str) {
     .unwrap();
 }
 
+#[serial]
 #[test]
 fn reload_skills_trusted_injects_into_system_prompt() {
     let project = tempfile::tempdir().unwrap();
@@ -74,6 +78,7 @@ fn reload_skills_trusted_injects_into_system_prompt() {
     );
 }
 
+#[serial]
 #[test]
 fn reload_skills_untrusted_skips_project_skill() {
     let project = tempfile::tempdir().unwrap();
@@ -115,6 +120,7 @@ impl Drop for EnvGuard {
     }
 }
 
+#[serial]
 #[test]
 fn config_template_error_is_hard_fail() {
     let home = tempfile::tempdir().unwrap();
@@ -152,6 +158,7 @@ fn config_template_error_is_hard_fail() {
     );
 }
 
+#[serial]
 #[test]
 fn yaml_zero_models_hard_fail_no_env_gpt4o() {
     let home = tempfile::tempdir().unwrap();
@@ -190,8 +197,9 @@ fn yaml_zero_models_hard_fail_no_env_gpt4o() {
     );
 }
 
+#[serial]
 #[test]
-fn env_only_registers_but_bootstrap_does_not_select() {
+fn env_only_does_not_invent_models() {
     let home = tempfile::tempdir().unwrap();
     let project = home.path().join("proj");
     std::fs::create_dir_all(&project).unwrap();
@@ -204,6 +212,61 @@ fn env_only_registers_but_bootstrap_does_not_select() {
     let _key = EnvGuard::set("OPENAI_API_KEY", "sk-test");
     unsafe { std::env::remove_var("ANTHROPIC_API_KEY") };
 
+    let err = match resolve_assembly(&BootstrapInput {
+        config_path: None,
+        session: None,
+        model: None,
+        trust_override: Some(true),
+        interactive: false,
+        caller: "test",
+    }) {
+        Ok(_) => panic!("env-only must not invent registry models"),
+        Err(e) => e,
+    };
+    assert!(
+        matches!(
+            err,
+            BootstrapError::NoModelsAvailable | BootstrapError::ConfigLoadedZeroModels
+        ),
+        "got {err}"
+    );
+}
+
+#[serial]
+#[test]
+fn yaml_entry_registers_without_kind_env_key() {
+    let home = tempfile::tempdir().unwrap();
+    let project = home.path().join("proj");
+    let proj_xy = project.join(".xylitol");
+    std::fs::create_dir_all(&proj_xy).unwrap();
+    let global = home.path().join(".config").join("xylitol");
+    std::fs::create_dir_all(&global).unwrap();
+
+    let _home = EnvGuard::set("HOME", home.path().to_str().unwrap());
+    let _proj = EnvGuard::set("XYLITOL_PROJECT_DIR", project.to_str().unwrap());
+    let _cfg = EnvGuard::set("XYLITOL_CONFIG_DIR", global.to_str().unwrap());
+    unsafe {
+        std::env::remove_var("OPENAI_API_KEY");
+        std::env::remove_var("OPENAI_KEY");
+        std::env::remove_var("ANTHROPIC_API_KEY");
+        std::env::remove_var("ANTHROPIC_KEY");
+    }
+
+    std::fs::write(
+        proj_xy.join("config.yaml"),
+        r#"models:
+  default_model: local-qwen
+  models:
+    local-qwen:
+      provider: openai
+      model: qwen-local
+      base_url: http://127.0.0.1:8000/v1
+      api: openai-responses
+      thinking: false
+"#,
+    )
+    .unwrap();
+
     let assembly = resolve_assembly(&BootstrapInput {
         config_path: None,
         session: None,
@@ -212,28 +275,27 @@ fn env_only_registers_but_bootstrap_does_not_select() {
         interactive: false,
         caller: "test",
     })
-    .expect("env-only assembly");
-    assert!(
-        !assembly.model_registry.list().is_empty(),
-        "env key should populate registry for discovery"
-    );
+    .expect("yaml entry must register without OPENAI_API_KEY");
 
-    let boot = bootstrap(BootstrapInput {
-        config_path: None,
-        session: None,
-        model: None,
-        trust_override: Some(true),
-        interactive: false,
-        caller: "test",
-    })
-    .expect("bootstrap without --model");
+    let meta = assembly
+        .model_registry
+        .find("local-qwen")
+        .expect("alias registered");
+    assert!(meta.config.api_key.is_empty(), "key must stay empty");
     assert!(
-        boot.agent.current_model().is_none(),
-        "must not silent-select gpt-4o"
+        assembly.warnings.iter().any(|w| {
+            matches!(
+                w,
+                crate::app::core::bootstrap::BootstrapWarning::NoApiKey { provider }
+                    if provider == "openai"
+            )
+        }),
+        "missing key should warn, not skip: {:?}",
+        assembly.warnings
     );
-    assert_eq!(UNSET_MODEL_DISPLAY, "NOT-SET");
 }
 
+#[serial]
 #[test]
 fn yaml_model_api_is_honored_in_registry_config() {
     let home = tempfile::tempdir().unwrap();
@@ -319,6 +381,7 @@ fn yaml_model_api_is_honored_in_registry_config() {
     );
 }
 
+#[serial]
 #[test]
 fn build_agent_with_skills_injects_available_skills_section() {
     use crate::protocol::resource::SkillInfo;
@@ -347,6 +410,7 @@ fn build_agent_with_skills_injects_available_skills_section() {
     assert_eq!(agent.loaded_skill_names(), vec!["boot-skill".to_string()]);
 }
 
+#[serial]
 #[test]
 fn untrusted_reload_still_loads_user_global_skills() {
     let project = tempfile::tempdir().unwrap();
@@ -373,6 +437,7 @@ fn untrusted_reload_still_loads_user_global_skills() {
     assert!(!sp.contains("project-only"));
 }
 
+#[serial]
 #[test]
 #[serial_test::serial(bootstrap_cwd)]
 fn trust_override_loads_or_skips_project_xylitol_skills() {
@@ -435,6 +500,7 @@ fn trust_override_loads_or_skips_project_xylitol_skills() {
     );
 }
 
+#[serial]
 #[test]
 fn resolve_assembly_reads_session_max_turns() {
     let home = tempfile::tempdir().unwrap();
@@ -476,6 +542,7 @@ session:
     assert_eq!(assembly.max_turns, Some(7));
 }
 
+#[serial]
 #[test]
 fn bootstrap_block_on_runs_from_current_thread_runtime() {
     let runtime = tokio::runtime::Builder::new_current_thread()
@@ -487,6 +554,7 @@ fn bootstrap_block_on_runs_from_current_thread_runtime() {
     assert_eq!(result, Some(7));
 }
 
+#[serial]
 #[test]
 fn missing_session_still_applies_settings_thinking_default() {
     let home = tempfile::tempdir().unwrap();

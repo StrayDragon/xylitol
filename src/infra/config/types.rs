@@ -270,7 +270,8 @@ pub struct ModelEntry {
     #[serde(default)]
     pub compat: Option<String>,
     /// Optional per-model API key (supports `{{ secret.* }}` after config render).
-    /// When set, wins over kind-level `OPENAI_API_KEY` / `ANTHROPIC_API_KEY`.
+    /// Omit or empty → empty key at register time; MUST NOT fall back to kind-level
+    /// `OPENAI_API_KEY` / `ANTHROPIC_API_KEY` (c2010 / m17).
     #[serde(default)]
     pub api_key: Option<String>,
     /// Optional fallback model ID (must be another key in `models`).
@@ -524,58 +525,36 @@ impl AppConfig {
     }
 
     /// Resolve a model alias to a runtime [`XyModelConfig`](crate::protocol::model::XyModelConfig).
+    ///
+    /// Only explicit `models.models` aliases resolve. Omitted/`""` `api_key` → empty string;
+    /// MUST NOT fall back to kind-level env (c2010 / m17).
     pub fn resolve_model(
         &self,
         model_id: &str,
     ) -> Result<crate::protocol::model::XyModelConfig, String> {
-        use crate::protocol::model::{XyModelConfig, XyModelKind};
+        use crate::protocol::model::XyModelConfig;
 
-        let (kind, model_name, base_url, api, compat, entry_api_key) =
-            if let Some(entry) = self.model.models.get(model_id) {
-                (
-                    entry.provider,
-                    entry.model.clone(),
-                    entry.base_url.clone(),
-                    entry.api.clone(),
-                    entry.compat.clone(),
-                    entry.api_key.clone(),
-                )
-            } else {
-                (
-                    XyModelKind::OpenAi,
-                    model_id.to_string(),
-                    None,
-                    None,
-                    None,
-                    None,
-                )
-            };
+        let entry = self.model.models.get(model_id).ok_or_else(|| {
+            format!("unknown model alias `{model_id}`: add it under models.models in config.yaml")
+        })?;
 
-        let api_key = match &entry_api_key {
+        let api_key = match &entry.api_key {
             Some(k) if !k.is_empty() => k.clone(),
             Some(_) => {
                 return Err(format!(
                     "models.{model_id}.api_key is set but empty (check secret.env / interpolation)"
                 ));
             }
-            None => match kind {
-                XyModelKind::OpenAi => std::env::var("OPENAI_API_KEY")
-                    .or_else(|_| std::env::var("OPENAI_KEY"))
-                    .map_err(|_| "OPENAI_API_KEY environment variable is not set".to_string())?,
-                XyModelKind::Anthropic => std::env::var("ANTHROPIC_API_KEY")
-                    .or_else(|_| std::env::var("ANTHROPIC_KEY"))
-                    .map_err(|_| "ANTHROPIC_API_KEY environment variable is not set".to_string())?,
-                XyModelKind::Fake => String::new(),
-            },
+            None => String::new(),
         };
 
         Ok(XyModelConfig {
-            kind,
+            kind: entry.provider,
             api_key,
-            model: model_name,
-            base_url,
-            api,
-            compat,
+            model: entry.model.clone(),
+            base_url: entry.base_url.clone(),
+            api: entry.api.clone(),
+            compat: entry.compat.clone(),
         })
     }
 
