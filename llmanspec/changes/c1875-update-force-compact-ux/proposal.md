@@ -67,7 +67,7 @@ checkpointed: false
 - 文案 `session too small` 在已有多次 compaction、footer 显示数万 token 时 **自相矛盾**，强化「阈值」误解。
 - 根因是 prepare（无可切旧史 / tip 已 compaction），不是阈值；修文案即可对齐心智，**不必**偏离 pi 去强制再压。
 
-## What Changes（意向）
+## What Changes
 
 ### 文案（默认必做 · 产品 A）
 
@@ -91,7 +91,7 @@ checkpointed: false
 
 - 门闸失败进不进 Langfuse：**c1870 已归档**；本 change MUST NOT 偷渡 Collector / `xylitol.signal`。
 
-## Capabilities（意向）
+## Capabilities
 
 - `domain-compaction` — 失败分类文案（若合约需从裸英文串升级为更诚实措辞）
 - `app-tui-commands` / chrome — notice 文案
