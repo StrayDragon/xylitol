@@ -2,8 +2,7 @@
 
 use std::path::{Path, PathBuf};
 
-/// Copy legacy `~/.xylitol/{config.yaml,config.yml,secret.env}` into `global_dir`
-/// when the destination file is missing.
+/// Injectable migrate: legacy dir is `$HOME/.xylitol` from `get_env` (empty/`None` → no-op).
 ///
 /// `config.yml` migrates to `config.yaml` (loader SSOT name).
 /// `config.local.*` is **not** migrated (c1400 — unsupported).
@@ -11,8 +10,12 @@ use std::path::{Path, PathBuf};
 /// Does **not** delete legacy files (user can remove after verifying).
 ///
 /// Global AppConfig SSOT remains `~/.config/xylitol/` (not `~/.xylitol/`).
-pub(crate) fn migrate_legacy_global_config_files(global_dir: &Path) -> Vec<String> {
-    let Some(legacy_dir) = legacy_xylitol_home_dir() else {
+/// Process discovery supplies HOME via env or `dirs` (see [`super::paths::ConfigPaths::discover`]).
+pub(crate) fn migrate_legacy_global_config_files_with(
+    global_dir: &Path,
+    get_env: impl Fn(&str) -> Option<String>,
+) -> Vec<String> {
+    let Some(legacy_dir) = legacy_xylitol_home_dir_with(&get_env) else {
         return Vec::new();
     };
     if !legacy_dir.is_dir() {
@@ -71,8 +74,11 @@ pub(crate) fn migrate_legacy_global_config_files(global_dir: &Path) -> Vec<Strin
     migrated
 }
 
-fn legacy_xylitol_home_dir() -> Option<PathBuf> {
-    dirs::home_dir().map(|h| h.join(".xylitol"))
+fn legacy_xylitol_home_dir_with(get_env: &impl Fn(&str) -> Option<String>) -> Option<PathBuf> {
+    // Injectable path: only honor get_env (None/empty → no migrate).
+    get_env("HOME")
+        .filter(|s| !s.is_empty())
+        .map(|h| PathBuf::from(h).join(".xylitol"))
 }
 
 fn paths_equal(a: &Path, b: &Path) -> bool {
@@ -85,12 +91,9 @@ fn paths_equal(a: &Path, b: &Path) -> bool {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use serial_test::serial;
     use tempfile::TempDir;
 
     #[test]
-    #[serial(env_global)]
-
     fn migrates_missing_dest_only() {
         let home = TempDir::new().unwrap();
         let legacy = home.path().join(".xylitol");
@@ -98,9 +101,10 @@ mod tests {
         std::fs::create_dir_all(&legacy).unwrap();
         std::fs::write(legacy.join("config.yaml"), "model: {}\n").unwrap();
         std::fs::write(legacy.join("secret.env"), "K=v\n").unwrap();
-        // Pretend home for this test by calling the core copy logic via paths.
-        // Unit API takes explicit dirs — exercise through a thin test helper.
-        let migrated = migrate_between(&legacy, &global);
+        let home_s = home.path().to_str().unwrap().to_string();
+        let migrated = migrate_legacy_global_config_files_with(&global, |k| {
+            (k == "HOME").then(|| home_s.clone())
+        });
         assert!(migrated.contains(&"config.yaml".to_string()));
         assert!(migrated.contains(&"secret.env".to_string()));
         assert_eq!(
@@ -109,7 +113,9 @@ mod tests {
         );
         // Second run: dest exists → no re-copy / no overwrite.
         std::fs::write(legacy.join("config.yaml"), "changed: true\n").unwrap();
-        let again = migrate_between(&legacy, &global);
+        let again = migrate_legacy_global_config_files_with(&global, |k| {
+            (k == "HOME").then(|| home_s.clone())
+        });
         assert!(again.is_empty());
         assert_eq!(
             std::fs::read_to_string(global.join("config.yaml")).unwrap(),
@@ -117,58 +123,32 @@ mod tests {
         );
     }
 
-    /// Test-only: same rules as [`migrate_legacy_global_config_files`] with explicit dirs.
-    fn migrate_between(legacy_dir: &Path, global_dir: &Path) -> Vec<String> {
-        let pairs = [
-            ("config.yaml", "config.yaml"),
-            ("config.yml", "config.yaml"),
-            ("secret.env", "secret.env"),
-        ];
-        let mut migrated = Vec::new();
-        for (src_name, dst_name) in pairs {
-            let src = legacy_dir.join(src_name);
-            let dst = global_dir.join(dst_name);
-            if !src.is_file() || dst.exists() {
-                continue;
-            }
-            std::fs::create_dir_all(global_dir).unwrap();
-            std::fs::copy(&src, &dst).unwrap();
-            migrated.push(dst_name.to_string());
-        }
-        migrated
-    }
-
     #[test]
-    #[serial(env_global)]
-
     fn migrates_yml_alias_to_yaml() {
         let home = TempDir::new().unwrap();
         let legacy = home.path().join(".xylitol");
         let global = home.path().join(".config").join("xylitol");
         std::fs::create_dir_all(&legacy).unwrap();
         std::fs::write(legacy.join("config.yml"), "mcp_servers: []\n").unwrap();
-        let migrated = migrate_between(&legacy, &global);
+        let home_s = home.path().to_str().unwrap().to_string();
+        let migrated = migrate_legacy_global_config_files_with(&global, |k| {
+            (k == "HOME").then(|| home_s.clone())
+        });
         assert!(migrated.contains(&"config.yaml".to_string()));
         assert!(global.join("config.yaml").is_file());
     }
 
     #[test]
-    #[serial(env_global)]
-
     fn does_not_migrate_config_local() {
         let home = TempDir::new().unwrap();
         let legacy = home.path().join(".xylitol");
         let global = home.path().join(".config").join("xylitol");
         std::fs::create_dir_all(&legacy).unwrap();
         std::fs::write(legacy.join("config.local.yaml"), "models: {}\n").unwrap();
-        // SAFETY: test-only HOME override for migrate_legacy_global_config_files.
-        let prev = std::env::var("HOME").ok();
-        unsafe { std::env::set_var("HOME", home.path()) };
-        let migrated = migrate_legacy_global_config_files(&global);
-        match prev {
-            Some(v) => unsafe { std::env::set_var("HOME", v) },
-            None => unsafe { std::env::remove_var("HOME") },
-        }
+        let home_s = home.path().to_str().unwrap().to_string();
+        let migrated = migrate_legacy_global_config_files_with(&global, |k| {
+            (k == "HOME").then(|| home_s.clone())
+        });
         assert!(!migrated.iter().any(|m| m.contains("local")));
         assert!(!global.join("config.local.yaml").exists());
     }
