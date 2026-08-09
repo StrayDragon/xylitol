@@ -40,8 +40,9 @@
   @req:m12
   场景: no-silent-env-select
     假如 仅设置 OPENAI_API_KEY 且无配置模型且未传 --model
-    当 bootstrap 完成装配
-    那么 当前选中模型为空且 MUST NOT 自动选中 gpt-4o
+    当 bootstrap 尝试装配
+    那么 MUST 硬失败且 ModelRegistry MUST NOT 含 gpt-4o 或其它仅由 env 注入的默认模型
+    并且 当前选中模型 MUST NOT 被自动设为 gpt-4o
 
   @req:m4
   场景: exact-match
