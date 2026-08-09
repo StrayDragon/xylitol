@@ -543,8 +543,6 @@ mod tests {
     }
 
     #[test]
-    #[serial(obs_global)]
-
     fn should_compact_disabled() {
         let s = CompactionSettings {
             enabled: false,
@@ -554,24 +552,18 @@ mod tests {
     }
 
     #[test]
-    #[serial(obs_global)]
-
     fn should_compact_window_zero() {
         let s = CompactionSettings::default();
         assert!(!should_compact(100_000, 0, &s));
     }
 
     #[test]
-    #[serial(obs_global)]
-
     fn should_compact_not_exceeded() {
         let s = CompactionSettings::default();
         assert!(!should_compact(50_000, 200_000, &s));
     }
 
     #[test]
-    #[serial(obs_global)]
-
     fn should_compact_exceeded() {
         let s = CompactionSettings {
             reserve_tokens: 1000,
@@ -581,24 +573,18 @@ mod tests {
     }
 
     #[test]
-    #[serial(obs_global)]
-
     fn should_compact_exact_boundary_not_trigger() {
         let s = CompactionSettings::default();
         assert!(!should_compact(183_616, 200_000, &s));
     }
 
     #[test]
-    #[serial(obs_global)]
-
     fn should_compact_one_over_boundary() {
         let s = CompactionSettings::default();
         assert!(should_compact(183_617, 200_000, &s));
     }
 
     #[test]
-    #[serial(obs_global)]
-
     fn aborted_assistant_detected() {
         let msg = AgentMessage::Llm(LlmMessage::AssistantMessage {
             content: vec![crate::protocol::message::AgentPart::text("x")],
