@@ -568,6 +568,53 @@ async fn tool_execute_err_ends_with_tool_end_not_global_error() {
     );
 }
 
+/// After reload removes an MCP tool, a later model call for that name MUST surface
+/// Unknown tool (history may still mention it; live ToolSet does not).
+#[tokio::test]
+async fn removed_mcp_tool_call_yields_unknown_tool_not_global_error() {
+    use crate::protocol::lifecycle::XyEvent;
+    use futures::StreamExt;
+
+    let chunks = vec![
+        crate::protocol::model::XyChunk::ToolCallEnd {
+            id: "call-stale".into(),
+            name: "mcp__fixture__ping".into(),
+            args: serde_json::json!({}),
+        },
+        crate::protocol::model::XyChunk::Done {
+            finish_reason: crate::protocol::message::XyStopReason::ToolUse,
+            usage: None,
+        },
+    ];
+    // Simulate post-reload empty MCP table: builtins-only / no mcp__fixture__ping.
+    let mut agent = make_agent_with_tools(chunks, ToolSet::empty());
+
+    let mut stream = run_agent(&mut agent, "call removed mcp").await;
+    let mut tool_ends = Vec::new();
+    let mut global_errors = Vec::new();
+    while let Some(evt) = stream.next().await {
+        match evt {
+            XyEvent::ToolExecutionEnd {
+                name,
+                result,
+                is_error,
+                ..
+            } => tool_ends.push((name, result, is_error)),
+            XyEvent::Error(err) => global_errors.push(err.message),
+            _ => {}
+        }
+    }
+    assert_eq!(tool_ends.len(), 1, "{tool_ends:?}");
+    assert_eq!(tool_ends[0].0, "mcp__fixture__ping");
+    assert!(tool_ends[0].2);
+    assert!(
+        tool_ends[0].1.contains("Unknown tool"),
+        "result: {}",
+        tool_ends[0].1
+    );
+    assert!(global_errors.is_empty(), "{global_errors:?}");
+}
+
 #[tokio::test]
 async fn test_before_hook_denies_tool_call() {
     use crate::agent::runtime::hooks::BeforeToolHook;

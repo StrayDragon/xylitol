@@ -156,6 +156,49 @@ mod tests {
         assert_eq!(projected[0].text(), "ok");
     }
 
+    /// After /reload removes an MCP tool, past ToolCall + toolResult MUST still
+    /// project into the next LLM prefix (history is not filtered by live tools).
+    #[test]
+    fn history_keeps_removed_mcp_tool_call_in_llm_projection() {
+        let history = vec![
+            AgentMessage::user("use ping"),
+            AgentMessage::Llm(LlmMessage::AssistantMessage {
+                content: vec![AgentPart::ToolCall {
+                    id: "call-gone".into(),
+                    name: "mcp__fixture__ping".into(),
+                    arguments: serde_json::json!({}),
+                }],
+                stop_reason: Some(crate::protocol::message::XyStopReason::ToolUse),
+                usage: None,
+                api: String::new(),
+                provider: String::new(),
+                model: String::new(),
+                response_id: None,
+                error_message: None,
+                timestamp: 1,
+                diagnostics: Vec::new(),
+            }),
+            AgentMessage::tool_result(
+                "call-gone",
+                "mcp__fixture__ping",
+                vec![AgentPart::text("pong")],
+                false,
+            ),
+            AgentMessage::user("again?"),
+        ];
+        let projected = project_for_llm(&history);
+        assert_eq!(projected.len(), 4, "must keep full prefix: {projected:?}");
+        let asst = &projected[1];
+        assert!(
+            asst.content().iter().any(
+                |p| matches!(p, AgentPart::ToolCall { name, .. } if name == "mcp__fixture__ping")
+            ),
+            "assistant ToolCall for removed tool MUST remain in LLM projection"
+        );
+        assert_eq!(projected[2].role_name(), "toolResult");
+        assert_eq!(projected[2].text(), "pong");
+    }
+
     #[test]
     fn edit_tool_result_content_short_details_not_in_text() {
         let history = vec![AgentMessage::tool_result_with_details(
