@@ -2,7 +2,7 @@ kind: llman.sdd.spec
 name: "app-tui-input"
 purpose: "Editor 操作区、取消/退出键位、steer 与 follow-up、信任后 yolo。"
 valid_scope[1]: src/app/tui/
-requirements[40]{req_id,title,statement}:
+requirements[41]{req_id,title,statement}:
   ati1,"editor-operation-zone","输入区 MUST 使用 xylitol-tui Editor，并保留上下边框作为操作区边界；选择器打开时 MUST 替换 editor 槽而非画到内容顶部。"
   ati2,"cancel-and-ctrl-c","流式、agent 忙碌或 bang（!/!!）忙碌且无 overlay 时，Esc 与 Ctrl+C（app.clear）MUST 同语义调用 Driver::abort（或等价 pending abort latch）且 MUST NOT 退出 TUI；有 overlay 时 Ctrl+C MUST 先关槽且 MUST NOT abort。idle 且无 overlay 时：编辑器非空 Ctrl+C MUST 清空输入；编辑器为空 Ctrl+C MUST 退出 TUI。"
   ati3,"steer-and-followup-keys","agent 忙碌时普通 Enter MUST 将当前输入作为 steer 入队；Alt+Enter MUST 将当前输入作为 follow-up 入队（等待当前 agent loop 全部完成后再执行）。"
@@ -43,4 +43,6 @@ requirements[40]{req_id,title,statement}:
   ati40,"dollar-skill 补全与高亮","产品 Editor MUST 经 CompletionSource 在键入 $ 时弹出已加载 skill 名补全；Tab/Enter 选定 MUST 写入 $name；用户消息在 scrollback 中 MUST 用 skill-ref 色高亮 $name token；MUST NOT 另开 skill 色块或系统已加载行。"
   ati36,"thinking-level-picker-only","产品 TUI MUST NOT 注册全局 app.thinking.cycle，MUST NOT 在 Editor 槽（非 Models）将 Shift+Tab 绑为 thinking cycle。thinking 档变更 MUST 仅经 /model 槽（←→ / 槽内 Shift+Tab）或有参 /model <id>（可调默认声明列表末项，不可调为 off）路径提交。MUST NOT 新增产品 /thinking-level slash；MUST NOT 与 app.thinking.toggle（Ctrl+T 折叠）混淆；MUST NOT 用包 ThinkingBorderLevel::cycle_next 作为产品真源。"
   ati37,"paste-image-temp-path","产品 TUI MUST 支持将系统剪贴板图片粘贴进对话：经 Driver 只读缝读取图片字节；成功时 MUST 写入带不可预测名的 tempfile，并向 Editor 插入绝对路径纯文本（对齐 pi；MUST NOT 要求 @ 前缀）；MUST NOT 在 Editor 内嵌大段 base64；MUST NOT 在 idle/busy 提交时把该路径转成 user AgentPart::Image；MUST NOT 从 app/tui reach infra::clipboard 或 infra::image；当剪贴板无图（或读图失败）时 MUST 经 Driver 尝试读取系统剪贴板 UTF-8 文本并插入 Editor；仅当图与文本皆不可用时 MUST 向 scrollback 追加短 Error；MUST NOT panic。"
-scenarios[0]:
+  ati43,"reload-soft-gate-keys","产品 TUI 在 /reload 进行中（ath28）且无 overlay 时：MUST 允许向 Editor 打字与 Ctrl+G 外编；Enter（普通上行、slash、bang）MUST 硬拒绝并经壳层通告 body `reloading — wait`，MUST NOT 调用 Driver::run / execute_bash / 第二次 reload，MUST NOT 入 steer/follow-up；Esc 与 Ctrl+C MUST 请求取消重载且 MUST NOT 退出 TUI、MUST NOT 打开会话树。有 overlay 时 Esc/Ctrl+C MUST 先关槽且 MUST NOT 仅因此取消重载。取消或重载结束后键位恢复既有 idle/agent/bang 规则（ati2/ati10/ati19）。"
+scenarios[1]{req_id,id,given,when,then,feature}:
+  ati43,ati43-unit,"reload 软闸键位由产品 harness 覆盖（非 BDD）",审查实现与对应测试,"行为符合本 requirement 陈述",false
