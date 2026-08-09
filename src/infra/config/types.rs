@@ -540,12 +540,8 @@ impl AppConfig {
 
         let api_key = match &entry.api_key {
             Some(k) if !k.is_empty() => k.clone(),
-            Some(_) => {
-                return Err(format!(
-                    "models.{model_id}.api_key is set but empty (check secret.env / interpolation)"
-                ));
-            }
-            None => String::new(),
+            // Explicit empty or omitted → empty (no kind-env fallback; c2010 / m17).
+            Some(_) | None => String::new(),
         };
 
         Ok(XyModelConfig {
