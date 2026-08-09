@@ -36,6 +36,7 @@
 | A09 | tool/diff 块键 id | 无独立 Alt+E app id（或不同命名） | **`app.tools.blocks`** = Alt+E（产品特有）；`app.tools.expand` = Ctrl+O 视口 | 是 |
 | A10 | Skill 调用呈现 | `/skill:name` → `<skill>…</skill>`；scrollback **每条** skill 用 `SkillInvocationMessage` 色块折叠/展开 **SKILL.md** | 产品用 **内联多 `$name`**（非 `/skill:`）。提交时 **读 SKILL.md 注入模型上下文**（静默，可多引用）。Scrollback：**只在用户消息内**用特殊色（如紫）高亮 `$name`；**MUST NOT** 另加系统消息行、N 个 skill 色块、footer `skills:N`、**`/session` / `/status skills` skill 清单**。验收以 **注入/read 断言**为准，不以 TUI 元素为主门禁。**正交**：启动/`/reload` 的 loaded-resources 槽（c1135）是**目录可见性**（skills/MCP 摘要），不是调用刷屏 | 是 |
 | A11 | Skill 发现路径 | 多源：`~/.pi/agent/skills`、`~/.agents/skills`、项目 `.pi`/`.agents`（祖先）、packages、settings、CLI | **产品路径**：`~/.xylitol/skills`、`~/.agents/skills`、`{cwd}/.xylitol/skills`、`{cwd}/.agents/skills`（Trust 闸项目侧）。同名优先级 **`.xylitol` > `.agents`**，且 **project > user**。**对齐** agentskills 元数据：`disable-model-invocation`、name 校验警告、system `<available_skills>` + read-tool 引导文。**不做**全量 pi 祖先递归 / packages / ignore 文件 | 是 |
+| A12 | Force compact 无可摘要文案 | prepare 失败：`Nothing to compact (session too small)`（空 / 无可切旧史共用） | **偏离同文**（c1875）：空 leaf → `Nothing to compact (empty session)`；其余无可摘要（含已在 keep 窗）→ `Nothing to compact (no summarizable history beyond keep window)`。`Already compacted` **仍对齐**。闸语义（不过 reserve、仍过 prepare、instructions 只 Additional focus）**不变**；禁止回退为误导性 `session too small` 主串 | 是 |
 
 ### 对齐（非差异，备忘）
 
@@ -87,3 +88,4 @@
 | 2026-07-16 | A11：默认发现 `.agents/skills`（user+project）；优先级 `.xylitol` > `.agents`，project > user |
 | 2026-07-16 | A10 澄清：c1135 loaded-resources = 目录可见性，≠ 调用刷屏 / 不替代注入验收 |
 | 2026-07-28 | c1670：撤销 A05；`/session-compact` 可选 instructions → `Additional focus:`；auto 不传 |
+| 2026-08-10 | c1875：A12 force prepare 无可摘要文案偏离 pi `session too small` → empty / keep-window 诚实短句 |
