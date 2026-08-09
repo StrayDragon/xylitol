@@ -19,9 +19,14 @@ pub const MAX_OSC52_ENCODED_LENGTH: usize = 100_000;
 
 /// Check whether the current session is a remote (SSH) session.
 pub fn is_remote_session() -> bool {
-    std::env::var("SSH_CONNECTION").is_ok()
-        || std::env::var("SSH_CLIENT").is_ok()
-        || std::env::var("MOSH_CONNECTION").is_ok()
+    is_remote_session_with(|k| std::env::var(k).ok())
+}
+
+/// Injectable remote-session check (reads `SSH_CONNECTION` / `SSH_CLIENT` / `MOSH_CONNECTION`).
+pub fn is_remote_session_with(get_env: impl Fn(&str) -> Option<String>) -> bool {
+    get_env("SSH_CONNECTION").is_some()
+        || get_env("SSH_CLIENT").is_some()
+        || get_env("MOSH_CONNECTION").is_some()
 }
 
 /// Minimal base64 encoder (RFC 4648) — no external crate needed for OSC 52.
@@ -71,7 +76,6 @@ pub fn write_osc52_stdout(sequence: &str) -> Result<(), std::io::Error> {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use serial_test::serial;
 
     #[test]
     fn test_base64_encode_basic() {
@@ -118,27 +122,8 @@ mod tests {
     }
 
     #[test]
-    #[serial(env_global)]
     fn test_is_remote_session_negative_when_no_env() {
-        // SAFETY: test-only env manipulation — single-threaded test context
-        let old_ssh = std::env::var("SSH_CONNECTION").ok();
-        unsafe { std::env::remove_var("SSH_CONNECTION") };
-        let old_client = std::env::var("SSH_CLIENT").ok();
-        unsafe { std::env::remove_var("SSH_CLIENT") };
-        let old_mosh = std::env::var("MOSH_CONNECTION").ok();
-        unsafe { std::env::remove_var("MOSH_CONNECTION") };
-
-        assert!(!is_remote_session());
-
-        if let Some(v) = old_ssh {
-            unsafe { std::env::set_var("SSH_CONNECTION", v) };
-        }
-        if let Some(v) = old_client {
-            unsafe { std::env::set_var("SSH_CLIENT", v) };
-        }
-        if let Some(v) = old_mosh {
-            unsafe { std::env::set_var("MOSH_CONNECTION", v) };
-        }
+        assert!(!is_remote_session_with(|_| None));
     }
 
     #[test]

@@ -24,24 +24,36 @@ pub(crate) fn render_config_template(
     path: &Path,
     secrets: &SecretMap,
 ) -> Result<String, String> {
+    let env_vars: HashMap<String, String> = std::env::vars().collect();
+    render_config_template_with(raw, path, secrets, &env_vars, dirs::home_dir().as_deref())
+}
+
+/// Injectable render: `env_vars` drives `env.*` and overrides matching `secret.*`
+/// keys; `home` drives `vars.home` when `Some`.
+pub(crate) fn render_config_template_with(
+    raw: &str,
+    path: &Path,
+    secrets: &SecretMap,
+    env_vars: &HashMap<String, String>,
+    home: Option<&Path>,
+) -> Result<String, String> {
     // Fast path: no mustache — skip engine (common for plain YAML).
     if !raw.contains("{{") {
         return Ok(raw.to_string());
     }
 
-    let env_map: HashMap<String, String> = std::env::vars().collect();
-    // secret.* = secret.env map; process env wins for the same keys.
+    // secret.* = secret.env map; env_vars wins for the same keys.
     let mut secret_ns = secrets.clone();
     for k in secrets.keys() {
-        if let Ok(v) = std::env::var(k) {
-            secret_ns.insert(k.clone(), v);
+        if let Some(v) = env_vars.get(k) {
+            secret_ns.insert(k.clone(), v.clone());
         }
     }
 
     // vars.* — only `home` when resolvable; missing home → undefined (strict
     // fails only if the template references vars.home).
     let mut vars_ns = HashMap::new();
-    if let Some(home) = dirs::home_dir() {
+    if let Some(home) = home {
         vars_ns.insert("home".to_string(), home.to_string_lossy().into_owned());
     }
 
@@ -65,7 +77,7 @@ pub(crate) fn render_config_template(
         .map_err(|e| format_template_error(path, &e))?;
 
     let ctx = context! {
-        env => MjValue::from_serialize(&env_map),
+        env => MjValue::from_serialize(env_vars),
         secret => MjValue::from_serialize(&secret_ns),
         vars => MjValue::from_serialize(&vars_ns),
     };
@@ -86,30 +98,26 @@ fn format_template_error(path: &Path, err: &minijinja::Error) -> String {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use serial_test::serial;
     use std::path::PathBuf;
 
     #[test]
-    #[serial(env_global)]
     fn renders_env_and_secret() {
         let path = PathBuf::from("config.yaml");
-        unsafe {
-            std::env::set_var("XYLITOL_TEST_TMPL_ENV", "from-env");
-        }
+        let mut env_vars = HashMap::new();
+        env_vars.insert("XYLITOL_TEST_TMPL_ENV".into(), "from-env".into());
         let mut secrets = SecretMap::new();
         secrets.insert("XYLITOL_TEST_TMPL_SECRET".into(), "from-secret".into());
 
-        let out = render_config_template(
+        let out = render_config_template_with(
             "a: {{ env.XYLITOL_TEST_TMPL_ENV }}\nb: {{ secret.XYLITOL_TEST_TMPL_SECRET }}\n",
             &path,
             &secrets,
+            &env_vars,
+            None,
         )
         .unwrap();
         assert!(out.contains("from-env"), "{out}");
         assert!(out.contains("from-secret"), "{out}");
-        unsafe {
-            std::env::remove_var("XYLITOL_TEST_TMPL_ENV");
-        }
     }
 
     #[test]
@@ -133,29 +141,21 @@ mod tests {
     }
 
     #[test]
-    #[serial(env_global)]
     fn renders_inside_yaml_double_quotes() {
         let path = PathBuf::from("config.yaml");
-        // Process env wins over secret.env for the same key — isolate this test.
-        let prev = std::env::var("CONTEXT7_API_KEY").ok();
-        unsafe {
-            std::env::remove_var("CONTEXT7_API_KEY");
-        }
+        // env_vars empty → secret.env value is used (no process override).
+        let env_vars = HashMap::new();
         let mut secrets = SecretMap::new();
         secrets.insert("CONTEXT7_API_KEY".into(), "sk-test".into());
-        let out = render_config_template(
+        let out = render_config_template_with(
             "headers:\n  CONTEXT7_API_KEY: \"{{ secret.CONTEXT7_API_KEY }}\"\n",
             &path,
             &secrets,
+            &env_vars,
+            None,
         )
         .unwrap();
         assert_eq!(out, "headers:\n  CONTEXT7_API_KEY: \"sk-test\"");
-        unsafe {
-            match prev {
-                Some(v) => std::env::set_var("CONTEXT7_API_KEY", v),
-                None => std::env::remove_var("CONTEXT7_API_KEY"),
-            }
-        }
     }
 
     #[test]

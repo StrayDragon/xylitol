@@ -13,7 +13,7 @@
 
 use std::process::{Command, Stdio};
 
-use super::osc52::{format_osc52, is_remote_session, write_osc52_stdout};
+use super::osc52::{format_osc52, is_remote_session_with, write_osc52_stdout};
 
 /// Result of a clipboard copy attempt.
 #[derive(Debug, Clone, PartialEq)]
@@ -61,8 +61,21 @@ impl ClipboardPlan {
 ///
 /// Does **not** write to stdout — safe to call from `spawn_blocking`.
 pub fn plan_clipboard_copy(text: &str) -> ClipboardPlan {
-    let native_copied = matches!(try_native_copy(text), ClipboardResult::Copied);
-    let remote = is_remote_session();
+    plan_clipboard_copy_with(text, |k| std::env::var(k).ok())
+}
+
+/// Injectable plan — `get_env` supplies `PATH` (native tool lookup) and SSH/MOSH
+/// remote markers.
+pub fn plan_clipboard_copy_with(
+    text: &str,
+    get_env: impl Fn(&str) -> Option<String>,
+) -> ClipboardPlan {
+    let path = get_env("PATH");
+    let native_copied = matches!(
+        try_native_copy_with(text, path.as_deref()),
+        ClipboardResult::Copied
+    );
+    let remote = is_remote_session_with(&get_env);
     // pi: OSC 52 when remote OR native did not copy.
     let want_osc52 = remote || !native_copied;
     let osc52_sequence = if want_osc52 { format_osc52(text) } else { None };
@@ -115,14 +128,14 @@ pub async fn copy_to_clipboard_async(text: String) -> Result<(), String> {
         .map_err(|e| format!("Clipboard: join error: {e}"))?
 }
 
-/// Try platform-native clipboard tools.
-fn try_native_copy(text: &str) -> ClipboardResult {
+/// Try platform-native clipboard tools (PATH from `path_value`).
+fn try_native_copy_with(text: &str, path_value: Option<&str>) -> ClipboardResult {
     if cfg!(target_os = "macos") {
         copy_macos(text)
     } else if cfg!(target_os = "windows") {
         copy_windows(text)
     } else if cfg!(target_os = "linux") {
-        copy_linux(text)
+        copy_linux(text, path_value)
     } else {
         ClipboardResult::Unsupported
     }
@@ -155,7 +168,7 @@ fn copy_windows(_text: &str) -> ClipboardResult {
 // ── Linux: wl-copy → xclip → xsel → termux-clipboard-set ────────────
 
 #[cfg(target_os = "linux")]
-fn copy_linux(text: &str) -> ClipboardResult {
+fn copy_linux(text: &str, path_value: Option<&str>) -> ClipboardResult {
     if std::env::var("TERMUX_VERSION").is_ok() {
         return pipe_to_command("termux-clipboard-set", &[], text);
     }
@@ -169,7 +182,7 @@ fn copy_linux(text: &str) -> ClipboardResult {
     let has_x11 = std::env::var_os("DISPLAY").is_some();
 
     // pi: Wayland first (spawn+unref); on tool/spawn failure fall through to X11.
-    if is_wayland && has_wayland_display && tool_on_path("wl-copy") {
+    if is_wayland && has_wayland_display && tool_on_path_with("wl-copy", path_value) {
         match spawn_unref_pipe_command("wl-copy", &[], text) {
             ClipboardResult::Copied => return ClipboardResult::Copied,
             other if !has_x11 => return other,
@@ -178,10 +191,10 @@ fn copy_linux(text: &str) -> ClipboardResult {
     }
 
     if has_x11 {
-        if tool_on_path("xclip") {
+        if tool_on_path_with("xclip", path_value) {
             return pipe_to_command("xclip", &["-selection", "clipboard"], text);
         }
-        if tool_on_path("xsel") {
+        if tool_on_path_with("xsel", path_value) {
             return pipe_to_command("xsel", &["--clipboard", "--input"], text);
         }
     }
@@ -190,18 +203,18 @@ fn copy_linux(text: &str) -> ClipboardResult {
 }
 
 #[cfg(not(target_os = "linux"))]
-fn copy_linux(_text: &str) -> ClipboardResult {
+fn copy_linux(_text: &str, _path_value: Option<&str>) -> ClipboardResult {
     ClipboardResult::Unsupported
 }
 
 // ── Helpers ──────────────────────────────────────────────────────────
 
 /// PATH presence check — never execute the tool (pi uses `which wl-copy`).
-fn tool_on_path(cmd: &str) -> bool {
-    let Ok(path) = std::env::var("PATH") else {
+fn tool_on_path_with(cmd: &str, path_value: Option<&str>) -> bool {
+    let Some(path) = path_value else {
         return false;
     };
-    for dir in std::env::split_paths(&path) {
+    for dir in std::env::split_paths(path) {
         let candidate = dir.join(cmd);
         if !candidate.is_file() {
             continue;
@@ -309,7 +322,6 @@ fn spawn_unref_pipe_command(cmd: &str, args: &[&str], text: &str) -> ClipboardRe
 #[cfg(test)]
 mod tests {
     use super::*;
-    use serial_test::{parallel, serial};
 
     #[test]
     fn test_clipboard_result_copied() {
@@ -317,12 +329,12 @@ mod tests {
     }
 
     #[test]
-    #[parallel(env_global)]
     fn tool_on_path_does_not_execute_clipboard_binaries() {
         let start = std::time::Instant::now();
-        let _ = tool_on_path("wl-copy");
-        let _ = tool_on_path("xclip");
-        let _ = tool_on_path("definitely-not-a-real-clipboard-tool-xyz");
+        let path = std::env::var("PATH").ok();
+        let _ = tool_on_path_with("wl-copy", path.as_deref());
+        let _ = tool_on_path_with("xclip", path.as_deref());
+        let _ = tool_on_path_with("definitely-not-a-real-clipboard-tool-xyz", path.as_deref());
         assert!(
             start.elapsed() < std::time::Duration::from_millis(200),
             "tool_on_path must be a PATH lookup only"
@@ -330,39 +342,13 @@ mod tests {
     }
 
     #[test]
-    #[serial(env_global)]
     fn plan_defers_osc52_without_requiring_stdout() {
         // Empty PATH → native miss → want OSC52 with a sequence (local non-remote).
-        let plan = {
-            let old_path = std::env::var("PATH").ok();
-            let old_ssh = std::env::var("SSH_CONNECTION").ok();
-            let old_client = std::env::var("SSH_CLIENT").ok();
-            let old_mosh = std::env::var("MOSH_CONNECTION").ok();
-            // SAFETY: test-only; restored below.
-            unsafe {
-                std::env::set_var("PATH", "");
-                std::env::remove_var("SSH_CONNECTION");
-                std::env::remove_var("SSH_CLIENT");
-                std::env::remove_var("MOSH_CONNECTION");
-            }
-            let p = plan_clipboard_copy("defer-me");
-            unsafe {
-                match old_path {
-                    Some(v) => std::env::set_var("PATH", v),
-                    None => std::env::remove_var("PATH"),
-                }
-                if let Some(v) = old_ssh {
-                    std::env::set_var("SSH_CONNECTION", v);
-                }
-                if let Some(v) = old_client {
-                    std::env::set_var("SSH_CLIENT", v);
-                }
-                if let Some(v) = old_mosh {
-                    std::env::set_var("MOSH_CONNECTION", v);
-                }
-            }
-            p
-        };
+        let plan = plan_clipboard_copy_with("defer-me", |k| match k {
+            "PATH" => Some(String::new()),
+            "SSH_CONNECTION" | "SSH_CLIENT" | "MOSH_CONNECTION" => None,
+            _ => None,
+        });
         assert!(!plan.native_copied);
         assert!(plan.want_osc52);
         let seq = plan
@@ -421,7 +407,6 @@ mod tests {
     }
 
     #[tokio::test]
-    #[parallel(env_global)]
     async fn plan_async_completes_within_pipe_timeout() {
         let start = std::time::Instant::now();
         let _ = plan_clipboard_copy_async("xylitol async clipboard probe".into()).await;
