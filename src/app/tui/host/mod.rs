@@ -141,6 +141,10 @@ pub struct HostSession<T: Terminal> {
     mcp_blocks_agent: bool,
     /// TUI-only ask host (c1850); polls pending asks → ChoicePrompt.
     ask_gateway: Option<Arc<crate::app::tui::ask_host::AskHostGateway>>,
+    /// Product keybindings owned by this session (scoped for component matching).
+    keybindings: Option<Rc<RefCell<xylitol_tui::KeybindingsManager>>>,
+    /// Keeps [`xylitol_tui::KeybindingsScope`] alive for the session thread.
+    _keybindings_scope: Option<xylitol_tui::KeybindingsScope>,
 }
 
 impl<T: Terminal> HostSession<T> {
@@ -195,6 +199,8 @@ impl<T: Terminal> HostSession<T> {
             editor_history_seed_job: None,
             mcp_blocks_agent: false,
             ask_gateway: None,
+            keybindings: None,
+            _keybindings_scope: None,
         }
     }
 
@@ -224,16 +230,20 @@ impl<T: Terminal> HostSession<T> {
     /// Product UI with footer identity (`cwd · model`).
     pub fn new_product_ui_with_meta(terminal: T, cwd: String, model: String) -> Self {
         // c1090: install tui.* + app.* before any input listeners run.
-        // Path is local (no infra reach); disk load only outside tests.
-        #[cfg(test)]
-        {
-            super::keybindings::install_product_keybindings_defaults_only();
-        }
-        #[cfg(not(test))]
-        {
-            let agent_dir = super::keybindings::default_agent_dir();
-            let _ = super::keybindings::install_product_keybindings(&agent_dir);
-        }
+        // Owned + thread-local scope — no process-global write (tests stay parallel).
+        let manager = {
+            #[cfg(test)]
+            {
+                super::keybindings::build_product_keybindings(xylitol_tui::KeybindingsConfig::new())
+            }
+            #[cfg(not(test))]
+            {
+                let agent_dir = super::keybindings::default_agent_dir();
+                super::keybindings::load_product_keybindings(&agent_dir).0
+            }
+        };
+        let keybindings = Rc::new(RefCell::new(manager));
+        let keybindings_scope = xylitol_tui::KeybindingsScope::enter(keybindings.clone());
 
         let ui_root = Rc::new(RefCell::new(UiRoot::new()));
         ui_root.borrow_mut().set_layout_meta(cwd.clone(), model);
@@ -243,6 +253,8 @@ impl<T: Terminal> HostSession<T> {
         session.layout_cwd = cwd;
         session.ui_root = Some(ui_root.clone());
         session.quit_flag = quit_flag.clone();
+        session.keybindings = Some(keybindings);
+        session._keybindings_scope = Some(keybindings_scope);
         install_ui_root_key_listeners(&ui_root, &quit_flag, &mut session.tui);
         session
     }
@@ -281,13 +293,17 @@ impl<T: Terminal> HostSession<T> {
         self.run_active
     }
 
-    /// Re-read `agent_dir/keybindings.json` into the global manager (c1090).
+    /// Re-read `agent_dir/keybindings.json` into this session's manager (c1090).
     /// Failure keeps the previous bindings.
     pub fn reload_keybindings(
         &self,
         agent_dir: &std::path::Path,
     ) -> super::keybindings::ReloadOutcome {
-        super::keybindings::reload_keybindings(agent_dir)
+        if let Some(kb) = &self.keybindings {
+            super::keybindings::reload_keybindings_into(&mut kb.borrow_mut(), agent_dir)
+        } else {
+            super::keybindings::reload_keybindings(agent_dir)
+        }
     }
 
     /// Apply a built-in theme name to the product UI (c1095).

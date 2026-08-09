@@ -4,7 +4,6 @@ use super::bridge::{UiModel, UiPhase, apply_xy_event};
 use super::host::{HostEvent, HostSession, LayoutMode, TOO_SMALL_HINT, is_too_small};
 use super::layout::build_root;
 use crate::app::core::driver::XyEvent;
-use serial_test::{parallel, serial};
 use xylitol_tui::{Component, InputEvent, Terminal};
 
 /// Minimal in-memory terminal for host tests.
@@ -104,7 +103,6 @@ fn harness_too_small_hint_safe_at_cjk_underfull_width() {
 }
 
 #[test]
-#[parallel(kb_global)]
 fn harness_extreme_shrink_then_restore_recovers_ready() {
     let mut session = HostSession::new_product_ui(TestTerminal::new(80, 24));
     session.render_now().unwrap();
@@ -311,7 +309,6 @@ fn ctrl_c_event() -> InputEvent {
 }
 
 #[test]
-#[parallel(kb_global)]
 fn harness_ctrl_c_clears_editor_then_quits() {
     let mut session = HostSession::new_product_ui(TestTerminal::new(80, 24));
     let root = session.ui_root().expect("product ui").clone();
@@ -335,7 +332,6 @@ fn harness_ctrl_c_clears_editor_then_quits() {
 }
 
 #[test]
-#[parallel(kb_global)]
 fn harness_ctrl_c_consumed_before_editor_insert() {
     let mut session = HostSession::new_product_ui(TestTerminal::new(80, 24));
     let root = session.ui_root().expect("product ui").clone();
@@ -376,7 +372,6 @@ fn alt_enter_event() -> InputEvent {
 }
 
 #[test]
-#[parallel(kb_global)]
 fn harness_busy_enter_queues_steer() {
     let mut session = HostSession::new_product_ui(TestTerminal::new(80, 24));
     let root = session.ui_root().expect("product ui").clone();
@@ -408,7 +403,6 @@ fn harness_busy_enter_queues_steer() {
 }
 
 #[test]
-#[parallel(kb_global)]
 fn harness_busy_steer_expands_paste_marker() {
     let mut session = HostSession::new_product_ui(TestTerminal::new(80, 24));
     let root = session.ui_root().expect("product ui").clone();
@@ -430,7 +424,6 @@ fn harness_busy_steer_expands_paste_marker() {
 }
 
 #[test]
-#[parallel(kb_global)]
 fn harness_busy_alt_enter_queues_follow_up() {
     let mut session = HostSession::new_product_ui(TestTerminal::new(80, 24));
     let root = session.ui_root().expect("product ui").clone();
@@ -461,7 +454,6 @@ fn alt_up_event() -> InputEvent {
 }
 
 #[test]
-#[parallel(kb_global)]
 fn harness_busy_alt_up_restores_queued_to_editor() {
     let mut session = HostSession::new_product_ui(TestTerminal::new(80, 24));
     let root = session.ui_root().expect("product ui").clone();
@@ -477,7 +469,6 @@ fn harness_busy_alt_up_restores_queued_to_editor() {
 }
 
 #[test]
-#[parallel(kb_global)]
 fn harness_busy_esc_requests_abort_not_tree() {
     let mut session = HostSession::new_product_ui(TestTerminal::new(80, 24));
     let root = session.ui_root().expect("product ui").clone();
@@ -491,7 +482,6 @@ fn harness_busy_esc_requests_abort_not_tree() {
 }
 
 #[test]
-#[parallel(kb_global)]
 fn harness_busy_ctrl_c_aborts_not_quit() {
     let mut session = HostSession::new_product_ui(TestTerminal::new(80, 24));
     let root = session.ui_root().expect("product ui").clone();
@@ -508,7 +498,6 @@ fn harness_busy_ctrl_c_aborts_not_quit() {
 }
 
 #[test]
-#[parallel(kb_global)]
 fn harness_busy_ctrl_c_with_draft_still_aborts() {
     let mut session = HostSession::new_product_ui(TestTerminal::new(80, 24));
     let root = session.ui_root().expect("product ui").clone();
@@ -522,7 +511,6 @@ fn harness_busy_ctrl_c_with_draft_still_aborts() {
 }
 
 #[test]
-#[parallel(kb_global)]
 fn harness_idle_slash_exit_quits() {
     let mut session = HostSession::new_product_ui(TestTerminal::new(80, 24));
     let root = session.ui_root().expect("product ui").clone();
@@ -533,7 +521,6 @@ fn harness_idle_slash_exit_quits() {
 }
 
 #[test]
-#[parallel(kb_global)]
 fn harness_idle_unknown_slash_stays_alive() {
     let mut session = HostSession::new_product_ui(TestTerminal::new(80, 24));
     let root = session.ui_root().expect("product ui").clone();
@@ -551,7 +538,6 @@ fn harness_idle_unknown_slash_stays_alive() {
 }
 
 #[test]
-#[parallel(kb_global)]
 fn harness_idle_slash_model_pending() {
     let mut session = HostSession::new_product_ui(TestTerminal::new(80, 24));
     let root = session.ui_root().expect("product ui").clone();
@@ -564,7 +550,6 @@ fn harness_idle_slash_model_pending() {
 }
 
 #[tokio::test]
-#[parallel(kb_global)]
 async fn harness_double_esc_opens_session_tree() {
     use super::harness::{ScriptedDriver, harness_sample_message_history_tree, pump_host_driver};
 
@@ -602,7 +587,6 @@ async fn harness_double_esc_opens_session_tree() {
 }
 
 #[test]
-#[parallel(kb_global)]
 fn harness_esc_closes_session_tree() {
     let mut session = HostSession::new_product_ui(TestTerminal::new(80, 24));
     let root = session.ui_root().expect("product ui").clone();
@@ -614,7 +598,6 @@ fn harness_esc_closes_session_tree() {
 }
 
 #[tokio::test]
-#[parallel(kb_global)]
 async fn harness_enter_travel_closes_tree() {
     use super::harness::{ScriptedDriver, harness_sample_session_messages, pump_host_driver};
 
@@ -655,7 +638,6 @@ async fn harness_enter_travel_closes_tree() {
 }
 
 #[tokio::test]
-#[parallel(kb_global)]
 async fn harness_enter_user_prefills_editor() {
     use super::harness::{ScriptedDriver, harness_sample_session_messages, pump_host_driver};
     use crate::protocol::session::{SessionTreeKind, SessionTreeTravel};
@@ -690,7 +672,6 @@ async fn harness_enter_user_prefills_editor() {
 }
 
 #[tokio::test]
-#[parallel(kb_global)]
 async fn harness_enter_assistant_does_not_prefill() {
     use super::harness::{ScriptedDriver, harness_sample_session_messages, pump_host_driver};
 
@@ -719,7 +700,6 @@ async fn harness_enter_assistant_does_not_prefill() {
 }
 
 #[test]
-#[parallel(kb_global)]
 fn harness_editor_slot_mutex_and_esc_closes() {
     use super::layout::EditorSlot;
 
@@ -757,7 +737,6 @@ fn harness_editor_slot_mutex_and_esc_closes() {
 }
 
 #[test]
-#[parallel(kb_global)]
 fn harness_busy_esc_aborts_not_tree_slot() {
     let mut session = HostSession::new_product_ui(TestTerminal::new(80, 24));
     let root = session.ui_root().expect("product ui").clone();
@@ -773,7 +752,6 @@ fn harness_busy_esc_aborts_not_tree_slot() {
 }
 
 #[test]
-#[parallel(kb_global)]
 fn harness_xy_events_update_ui_model_and_transcript() {
     let mut session = HostSession::new_product_ui(TestTerminal::new(80, 24));
     session.on_run_started("hello");
@@ -810,7 +788,6 @@ fn harness_xy_events_update_ui_model_and_transcript() {
 }
 
 #[test]
-#[parallel(kb_global)]
 fn harness_middle_turn_end_keeps_busy() {
     let mut session = HostSession::new_product_ui(TestTerminal::new(80, 24));
     session.on_run_started("x");
@@ -822,7 +799,6 @@ fn harness_middle_turn_end_keeps_busy() {
 }
 
 #[test]
-#[parallel(kb_global)]
 fn harness_idle_enter_queues_submit() {
     let mut session = HostSession::new_product_ui(TestTerminal::new(80, 24));
     let root = session.ui_root().expect("product ui").clone();
@@ -833,7 +809,6 @@ fn harness_idle_enter_queues_submit() {
 }
 
 #[test]
-#[parallel(kb_global)]
 fn harness_app_thinking_toggle_via_binding_id() {
     use crossterm::event::{KeyCode, KeyEvent, KeyEventKind, KeyEventState, KeyModifiers};
     let mut session = HostSession::new_product_ui(TestTerminal::new(80, 24));
@@ -851,7 +826,6 @@ fn harness_app_thinking_toggle_via_binding_id() {
 }
 
 #[tokio::test]
-#[parallel(kb_global)]
 async fn harness_idle_slash_reload_keeps_history_and_calls_runtime() {
     use super::harness::{ScriptedDriver, pump_host_driver};
     use crate::app::tui::bridge::UiEntry;
@@ -887,7 +861,6 @@ async fn harness_idle_slash_reload_keeps_history_and_calls_runtime() {
 }
 
 #[tokio::test]
-#[parallel(kb_global)]
 async fn harness_history_copy_last_copies_assistant() {
     use super::harness::{ScriptedDriver, pump_host_driver};
     use crate::app::tui::bridge::UiEntry;
@@ -926,7 +899,6 @@ async fn harness_history_copy_last_copies_assistant() {
 }
 
 #[tokio::test]
-#[parallel(kb_global)]
 async fn harness_history_copy_last_empty_prompts() {
     use super::harness::{ScriptedDriver, pump_host_driver};
     use crate::app::tui::bridge::UiEntry;
@@ -952,7 +924,6 @@ async fn harness_history_copy_last_empty_prompts() {
 }
 
 #[tokio::test]
-#[parallel(kb_global)]
 async fn harness_busy_history_copy_last_still_copies() {
     use super::harness::{ScriptedDriver, pump_host_driver};
     use crate::app::tui::bridge::UiEntry;
@@ -992,7 +963,6 @@ async fn harness_busy_history_copy_last_still_copies() {
 }
 
 #[tokio::test]
-#[parallel(kb_global)]
 async fn harness_history_copy_emits_pending_osc52_on_terminal() {
     use super::harness::{ScriptedDriver, pump_host_driver};
 
@@ -1028,7 +998,6 @@ async fn harness_history_copy_emits_pending_osc52_on_terminal() {
 }
 
 #[tokio::test]
-#[parallel(kb_global)]
 async fn harness_idle_slash_trust_persists_without_reload() {
     use super::harness::{ScriptedDriver, pump_host_driver};
     use crate::app::core::driver::ProjectTrustMode;
@@ -1063,7 +1032,6 @@ async fn harness_idle_slash_trust_persists_without_reload() {
 }
 
 #[tokio::test]
-#[parallel(kb_global)]
 async fn harness_busy_slash_trust_refused() {
     use super::harness::{ScriptedDriver, pump_host_driver};
     use crate::app::tui::bridge::UiEntry;
@@ -1093,7 +1061,6 @@ async fn harness_busy_slash_trust_refused() {
 }
 
 #[tokio::test]
-#[parallel(kb_global)]
 async fn harness_busy_slash_reload_refused() {
     use super::harness::{ScriptedDriver, pump_host_driver};
     use crate::app::tui::bridge::UiEntry;
@@ -1122,7 +1089,6 @@ async fn harness_busy_slash_reload_refused() {
 }
 
 #[tokio::test]
-#[parallel(kb_global)]
 async fn harness_busy_slash_session_name_allows_not_steer() {
     use super::harness::{ScriptedDriver, pump_host_driver};
     use crate::app::tui::bridge::UiEntry;
@@ -1156,7 +1122,6 @@ async fn harness_busy_slash_session_name_allows_not_steer() {
 }
 
 #[test]
-#[parallel(kb_global)]
 fn harness_busy_unknown_slash_not_steered() {
     let mut session = HostSession::new_product_ui(TestTerminal::new(80, 24));
     let root = session.ui_root().expect("product ui").clone();
@@ -1176,7 +1141,6 @@ fn harness_busy_unknown_slash_not_steered() {
 }
 
 #[test]
-#[serial(kb_global)]
 fn harness_keybindings_reload_keeps_old_on_bad_json() {
     use crate::app::tui::keybindings::{ReloadOutcome, matches_binding};
     use crossterm::event::{KeyCode, KeyEvent, KeyModifiers};
@@ -1204,7 +1168,6 @@ fn harness_keybindings_reload_keeps_old_on_bad_json() {
 }
 
 #[test]
-#[parallel(kb_global)]
 fn harness_long_paste_collapses_display_and_submit_expands() {
     let mut session = HostSession::new_product_ui(TestTerminal::new(80, 24));
     let root = session.ui_root().expect("product ui").clone();
@@ -1236,7 +1199,6 @@ fn ctrl_v_event() -> InputEvent {
 }
 
 #[tokio::test]
-#[parallel(kb_global)]
 async fn harness_paste_image_inserts_abs_path() {
     use super::harness::{ScriptedDriver, pump_host_driver};
 
@@ -1265,7 +1227,6 @@ async fn harness_paste_image_inserts_abs_path() {
 }
 
 #[tokio::test]
-#[parallel(kb_global)]
 async fn harness_paste_image_submit_stays_text() {
     use super::harness::{ScriptedDriver, pump_host_driver};
 
@@ -1295,7 +1256,6 @@ async fn harness_paste_image_submit_stays_text() {
 }
 
 #[tokio::test]
-#[parallel(kb_global)]
 async fn harness_paste_image_miss_error() {
     use super::harness::{ScriptedDriver, pump_host_driver};
     use crate::app::tui::bridge::UiEntry;
@@ -1322,7 +1282,6 @@ async fn harness_paste_image_miss_error() {
 }
 
 #[tokio::test]
-#[parallel(kb_global)]
 async fn harness_paste_text_fallback_inserts() {
     use super::harness::{ScriptedDriver, pump_host_driver};
     use crate::app::tui::bridge::UiEntry;
@@ -1351,7 +1310,6 @@ async fn harness_paste_text_fallback_inserts() {
 }
 
 #[tokio::test]
-#[parallel(kb_global)]
 async fn harness_paste_image_driver_err_falls_back_then_errors() {
     use super::harness::{ScriptedDriver, pump_host_driver};
     use crate::app::tui::bridge::UiEntry;
@@ -1378,7 +1336,6 @@ async fn harness_paste_image_driver_err_falls_back_then_errors() {
 }
 
 #[tokio::test]
-#[parallel(kb_global)]
 async fn harness_paste_image_err_with_text_fallback() {
     use super::harness::{ScriptedDriver, pump_host_driver};
     use crate::app::tui::bridge::UiEntry;
@@ -1418,7 +1375,6 @@ fn arrow_up_event() -> InputEvent {
 }
 
 #[test]
-#[parallel(kb_global)]
 fn harness_idle_up_recalls_submit_history() {
     let mut session = HostSession::new_product_ui(TestTerminal::new(80, 24));
     let root = session.ui_root().expect("product ui").clone();
@@ -1432,7 +1388,6 @@ fn harness_idle_up_recalls_submit_history() {
 }
 
 #[tokio::test]
-#[parallel(kb_global)]
 async fn harness_new_session_seeds_prior_user_prompt() {
     use crate::app::core::driver::SessionListEntry;
     use crate::protocol::session::{EntryBase, MessageEntry, SessionEntry, fixture_message_json};
@@ -1473,7 +1428,6 @@ async fn harness_new_session_seeds_prior_user_prompt() {
 }
 
 #[test]
-#[parallel(kb_global)]
 fn harness_resume_seeds_only_entry_users() {
     use crate::protocol::session::{EntryBase, MessageEntry, SessionEntry, fixture_message_json};
 
@@ -1505,7 +1459,6 @@ fn harness_resume_seeds_only_entry_users() {
 }
 
 #[test]
-#[parallel(kb_global)]
 fn harness_cli_restored_session_rebuilds_transcript() {
     use super::bridge::UiEntry;
     use crate::protocol::session::{EntryBase, MessageEntry, SessionEntry, fixture_message_json};
@@ -2058,7 +2011,6 @@ fn preflight_error_messages_are_cli_friendly() {
 }
 
 #[test]
-#[parallel(kb_global)]
 fn harness_ready_narrow_with_long_cwd_does_not_hang() {
     // Regression: startup-card wrap_plain spun forever on long path tokens at
     // Ready widths 40–44 (felt like "shrink then dead").
@@ -2092,7 +2044,6 @@ fn harness_ready_narrow_with_long_cwd_does_not_hang() {
 }
 
 #[test]
-#[parallel(kb_global)]
 fn idle_tick_skips_paint_when_clean() {
     let mut session = HostSession::new_product_ui(TestTerminal::new(80, 24));
     session.render_now().expect("warm");
@@ -2106,7 +2057,6 @@ fn idle_tick_skips_paint_when_clean() {
 }
 
 #[test]
-#[parallel(kb_global)]
 fn bang_chunk_marks_dirty_and_paints_on_tick() {
     let mut session = HostSession::new_product_ui(TestTerminal::new(80, 24));
     session.begin_bash_exec("echo hi", false);

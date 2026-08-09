@@ -201,16 +201,20 @@ fn load_from_path(path: &Path) -> Result<KeybindingsConfig, String> {
     parse_keybindings_json(&raw)
 }
 
-/// Install package `tui.*` + product `app.*` with no disk overrides.
-///
-/// Used by harness and as a fallback when matching before a full install.
-pub fn install_product_keybindings_defaults_only() {
+/// Build package `tui.*` + product `app.*` manager (no process-global write).
+pub fn build_product_keybindings(user: KeybindingsConfig) -> KeybindingsManager {
     let mut defs = create_default_definitions();
     defs.extend(app_definitions());
-    set_keybindings(KeybindingsManager::new(defs, KeybindingsConfig::new()));
+    KeybindingsManager::new(defs, user)
 }
 
-/// Convenience: match a product/package id against the global manager.
+/// Install package `tui.*` + product `app.*` with no disk overrides into the
+/// process-global manager (demo / tests that intentionally touch globals).
+pub fn install_product_keybindings_defaults_only() {
+    set_keybindings(build_product_keybindings(KeybindingsConfig::new()));
+}
+
+/// Convenience: match a product/package id against the scoped or global manager.
 pub fn matches_binding(event: &crossterm::event::KeyEvent, id: &'static str) -> bool {
     ensure_product_catalog();
     with_keybindings(|kb| kb.matches_event(event, id))
@@ -223,45 +227,58 @@ fn ensure_product_catalog() {
     }
 }
 
-/// Install package `tui.*` + product `app.*` and apply disk overrides (if any).
-///
-/// Safe to call from harness (missing file → defaults only).
-pub fn install_product_keybindings(agent_dir: &Path) -> ReloadOutcome {
+/// Load product keybindings from `agent_dir` without touching process globals.
+pub fn load_product_keybindings(agent_dir: &Path) -> (KeybindingsManager, ReloadOutcome) {
     let path = keybindings_path(agent_dir);
-    let user = match load_from_path(&path) {
-        Ok(c) => c,
-        Err(error) => {
-            // Still install defaults so matching works.
-            let mut defs = create_default_definitions();
-            defs.extend(app_definitions());
-            set_keybindings(KeybindingsManager::new(defs, KeybindingsConfig::new()));
-            return ReloadOutcome::Failed { path, error };
+    match load_from_path(&path) {
+        Ok(user) => {
+            let kb = build_product_keybindings(user);
+            let outcome = if path.exists() {
+                ReloadOutcome::Applied { path }
+            } else {
+                ReloadOutcome::NoFile { path }
+            };
+            (kb, outcome)
         }
-    };
-    let mut defs = create_default_definitions();
-    defs.extend(app_definitions());
-    set_keybindings(KeybindingsManager::new(defs, user));
-    if path.exists() {
-        ReloadOutcome::Applied { path }
-    } else {
-        ReloadOutcome::NoFile { path }
+        Err(error) => (
+            build_product_keybindings(KeybindingsConfig::new()),
+            ReloadOutcome::Failed { path, error },
+        ),
     }
 }
 
-/// Re-read `keybindings.json`. On parse/IO failure, keep current bindings.
-pub fn reload_keybindings(agent_dir: &Path) -> ReloadOutcome {
+/// Install package `tui.*` + product `app.*` and apply disk overrides (if any)
+/// into the process-global manager.
+///
+/// Prefer [`load_product_keybindings`] + [`xylitol_tui::KeybindingsScope`] for
+/// HostSession so tests do not share one process-global writer.
+#[cfg_attr(not(test), allow(dead_code))]
+pub fn install_product_keybindings(agent_dir: &Path) -> ReloadOutcome {
+    let (kb, outcome) = load_product_keybindings(agent_dir);
+    set_keybindings(kb);
+    outcome
+}
+
+/// Re-read `keybindings.json` into `kb`. On parse/IO failure, keep current bindings.
+pub fn reload_keybindings_into(kb: &mut KeybindingsManager, agent_dir: &Path) -> ReloadOutcome {
     let path = keybindings_path(agent_dir);
     if !path.exists() {
-        with_keybindings_mut(|kb| kb.set_user_bindings(KeybindingsConfig::new()));
+        kb.set_user_bindings(KeybindingsConfig::new());
         return ReloadOutcome::NoFile { path };
     }
     match load_from_path(&path) {
         Ok(user) => {
-            with_keybindings_mut(|kb| kb.set_user_bindings(user));
+            kb.set_user_bindings(user);
             ReloadOutcome::Applied { path }
         }
         Err(error) => ReloadOutcome::Failed { path, error },
     }
+}
+
+/// Re-read `keybindings.json` into the scoped or process-global manager.
+/// On parse/IO failure, keep current bindings.
+pub fn reload_keybindings(agent_dir: &Path) -> ReloadOutcome {
+    with_keybindings_mut(|kb| reload_keybindings_into(kb, agent_dir))
 }
 
 #[cfg(test)]

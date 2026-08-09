@@ -1,6 +1,8 @@
 use crate::keys::matches_key_event;
 use crossterm::event::KeyEvent;
+use std::cell::RefCell;
 use std::collections::HashMap;
+use std::rc::Rc;
 use std::sync::Mutex;
 
 pub type Keybinding = &'static str;
@@ -236,6 +238,34 @@ impl KeybindingsManager {
 
 static GLOBAL_KEYBINDINGS: Mutex<Option<KeybindingsManager>> = Mutex::new(None);
 
+thread_local! {
+    /// HostSession / tests install a scoped manager so matching does not need the
+    /// process-global mutex (and concurrent HostSession tests do not clobber each other).
+    static SCOPED_KEYBINDINGS: RefCell<Option<Rc<RefCell<KeybindingsManager>>>> =
+        const { RefCell::new(None) };
+}
+
+/// RAII install of a thread-local keybindings manager for [`with_keybindings`].
+/// Restores the previous scoped value on drop (nested scopes supported).
+pub struct KeybindingsScope {
+    prev: Option<Rc<RefCell<KeybindingsManager>>>,
+}
+
+impl KeybindingsScope {
+    pub fn enter(kb: Rc<RefCell<KeybindingsManager>>) -> Self {
+        let prev = SCOPED_KEYBINDINGS.with(|slot| slot.borrow_mut().replace(kb));
+        Self { prev }
+    }
+}
+
+impl Drop for KeybindingsScope {
+    fn drop(&mut self) {
+        SCOPED_KEYBINDINGS.with(|slot| {
+            *slot.borrow_mut() = self.prev.take();
+        });
+    }
+}
+
 pub fn set_keybindings(kb: KeybindingsManager) {
     *GLOBAL_KEYBINDINGS.lock().unwrap() = Some(kb);
 }
@@ -244,6 +274,9 @@ pub fn with_keybindings<F, R>(f: F) -> R
 where
     F: FnOnce(&KeybindingsManager) -> R,
 {
+    if let Some(kb) = SCOPED_KEYBINDINGS.with(|slot| slot.borrow().clone()) {
+        return f(&kb.borrow());
+    }
     let guard = GLOBAL_KEYBINDINGS.lock().unwrap();
     if let Some(ref kb) = *guard {
         f(kb)
@@ -256,11 +289,15 @@ where
     }
 }
 
-/// Mutate the global manager (e.g. `set_user_bindings` on reload).
+/// Mutate the scoped manager if present, else the process-global manager
+/// (e.g. `set_user_bindings` on reload / package component tests).
 pub fn with_keybindings_mut<F, R>(f: F) -> R
 where
     F: FnOnce(&mut KeybindingsManager) -> R,
 {
+    if let Some(kb) = SCOPED_KEYBINDINGS.with(|slot| slot.borrow().clone()) {
+        return f(&mut kb.borrow_mut());
+    }
     let mut guard = GLOBAL_KEYBINDINGS.lock().unwrap();
     if guard.is_none() {
         let definitions = create_default_definitions();
@@ -307,11 +344,29 @@ mod tests {
     }
 
     #[test]
-    fn unknown_id_ignored() {
-        let defs = create_default_definitions();
+    fn scoped_manager_preferred_over_global() {
+        use crossterm::event::{KeyCode, KeyModifiers};
+        use std::cell::RefCell;
+        use std::rc::Rc;
+
+        set_keybindings(KeybindingsManager::new(
+            create_default_definitions(),
+            HashMap::new(),
+        ));
         let mut custom = KeybindingsConfig::new();
-        custom.insert("app.does.not.exist".into(), vec!["f12".into()]);
-        let kb = KeybindingsManager::new(defs, custom);
-        assert!(kb.matches_event(&key(KeyCode::Enter), "tui.input.submit"));
+        custom.insert("tui.input.submit".into(), vec!["ctrl+j".into()]);
+        let scoped = Rc::new(RefCell::new(KeybindingsManager::new(
+            create_default_definitions(),
+            custom,
+        )));
+        let _guard = KeybindingsScope::enter(scoped);
+        let enter = KeyEvent::new(KeyCode::Enter, KeyModifiers::NONE);
+        let ctrl_j = KeyEvent::new(KeyCode::Char('j'), KeyModifiers::CONTROL);
+        assert!(!with_keybindings(
+            |kb| kb.matches_event(&enter, "tui.input.submit")
+        ));
+        assert!(with_keybindings(
+            |kb| kb.matches_event(&ctrl_j, "tui.input.submit")
+        ));
     }
 }
