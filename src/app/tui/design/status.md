@@ -27,7 +27,7 @@ components:
    - Spinner **MUST** 按 `Loader::interval_ms`（默认 ~80ms）推进；host ~16ms idle_tick **MUST NOT** 每 tick 都 `Loader::tick`（否则会异常快）。
    - **Reloading**（idle `/reload` 进行中，c1205）：独立于 agent `run_active` / bang；右侧 **MUST NOT** 画 mcp pending 或 Next turn 下轮预告。
 3. **MUST NOT** 放 turn 计数、耗时百分比、双列元数据。
-4. **队列条**（steer/follow-up）：**不进** status 行；进 footer 前缀 `q:sN|fM`，全文进 **scrollback 与 status 之间** 的 dim 队列块（见 [`queue-steer.md`](./queue-steer.md)）。**MUST NOT** 写成 scrollback `[steer]` 滚动提示墙。
+4. **队列条**（steer/follow-up）：**不进** status 行、**不进** footer；全文进 **scrollback 与 status 之间** 的 dim 队列块（见 [`queue-steer.md`](./queue-steer.md)）。**MUST NOT** 写成 scrollback `[steer]` 滚动提示墙；**MUST NOT** 另加 `q:sN|fM` 类计数徽章。
 
 ## 下轮预告（可复用槽）
 

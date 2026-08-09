@@ -29,7 +29,7 @@
 
 - **MUST NOT** 把 `agent_demo` / `just demo-tui` 当成产品 TUI 或 DESIGN playground。
 - **MUST NOT** 为「对齐产品 chrome 词汇表」去改写 demo 屏上英文 / plate 文案（除非人类明确要求）；demo 文案 **允许**与产品中文 SSOT（队列条 / 滚动提示 / 命令面板…）不同。
-- **MAY** 形态学对照产品（如 rail 默认、`q:sN|fM`）；对照 ≠ 同一 SSOT。
+- **MAY** 形态学对照产品（如 rail 默认、中间队列条）；对照 ≠ 同一 SSOT。
 - 产品 chrome 用词：[`docs/architecture/TUI信息面与chrome词汇.md`](../../docs/architecture/TUI信息面与chrome词汇.md) — **只约束产品面文档与 host**，不约束本包 demo 字符串。
 - 改产品视觉 / chrome：走 `src/app/tui/` + `just open-design-playground` / 产品测；**不要**默认先改 `agent_demo` 当「落地」。
 

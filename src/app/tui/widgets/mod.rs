@@ -71,14 +71,13 @@ pub fn footer_thinking_label(level: &str) -> String {
     }
 }
 
-/// Footer identity line (`cwd · model · {thinking}`, optional queue / tokens).
+/// Footer identity line (`cwd · model · {thinking}`, optional tokens).
 /// Empty `thinking_label` omits the thinking segment (no-thinking models).
+/// Queue chrome lives in the mid-layout strip — not a footer `q:sN|fM` badge.
 pub fn format_footer_text(
     cwd: &str,
     model: &str,
     thinking_label: &str,
-    steer: usize,
-    follow_up: usize,
     token_label: Option<&str>,
 ) -> String {
     let mut base = if thinking_label.is_empty() {
@@ -88,9 +87,6 @@ pub fn format_footer_text(
     };
     if let Some(tok) = token_label.filter(|s| !s.is_empty()) {
         base = format!("{base} · {tok}");
-    }
-    if steer > 0 || follow_up > 0 {
-        base = format!("q:s{steer}|f{follow_up} · {base}");
     }
     base
 }
@@ -167,16 +163,21 @@ mod tests {
     #[test]
     fn format_footer_text_field_order() {
         assert_eq!(
-            format_footer_text("~/x", "m", "thinking off", 0, 0, None),
+            format_footer_text("~/x", "m", "thinking off", None),
             "~/x · m · thinking off"
         );
         assert_eq!(
-            format_footer_text("~/x", "m", "medium", 0, 0, Some("used 3 tokens")),
+            format_footer_text("~/x", "m", "medium", Some("used 3 tokens")),
             "~/x · m · medium · used 3 tokens"
         );
         assert_eq!(
-            format_footer_text("~/x", "m", "high", 1, 2, Some("used ~4 tokens")),
-            "q:s1|f2 · ~/x · m · high · used ~4 tokens"
+            format_footer_text("~/x", "m", "high", Some("used ~4 tokens")),
+            "~/x · m · high · used ~4 tokens"
+        );
+        let with_tokens = format_footer_text("~/x", "m", "high", Some("used ~4 tokens"));
+        assert!(
+            !with_tokens.contains("q:s"),
+            "footer MUST NOT carry opaque queue badge; got {with_tokens:?}"
         );
     }
 }
