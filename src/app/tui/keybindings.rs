@@ -252,7 +252,7 @@ pub fn load_product_keybindings(agent_dir: &Path) -> (KeybindingsManager, Reload
 ///
 /// Prefer [`load_product_keybindings`] + [`xylitol_tui::KeybindingsScope`] for
 /// HostSession so tests do not share one process-global writer.
-#[cfg_attr(not(test), allow(dead_code))]
+#[allow(dead_code)] // demo / intentional GLOBAL install; product HostSession uses Scope
 pub fn install_product_keybindings(agent_dir: &Path) -> ReloadOutcome {
     let (kb, outcome) = load_product_keybindings(agent_dir);
     set_keybindings(kb);
@@ -300,11 +300,16 @@ mod tests {
     }
 
     #[test]
-    #[serial_test::serial(kb_global)]
     fn install_and_reload_roundtrip() {
+        use std::cell::RefCell;
+        use std::rc::Rc;
+        use xylitol_tui::KeybindingsScope;
+
         let dir = tempfile::tempdir().unwrap();
-        let outcome = install_product_keybindings(dir.path());
+        let (kb, outcome) = load_product_keybindings(dir.path());
         assert!(matches!(outcome, ReloadOutcome::NoFile { .. }));
+        let kb = Rc::new(RefCell::new(kb));
+        let _scope = KeybindingsScope::enter(Rc::clone(&kb));
         assert!(matches_binding(
             &KeyEvent::new(KeyCode::Esc, KeyModifiers::NONE),
             "app.interrupt"

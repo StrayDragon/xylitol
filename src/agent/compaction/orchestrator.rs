@@ -487,8 +487,6 @@ mod tests {
     use crate::protocol::ports::{XyGenerateOptions, XyStream};
     use crate::protocol::session::{ForkPosition, SessionContext};
 
-    static OBS_TEST_LOCK: tokio::sync::Mutex<()> = tokio::sync::Mutex::const_new(());
-
     struct CollectingReporter(Arc<Mutex<Vec<SpanRecord>>>);
 
     impl Reporter for CollectingReporter {
@@ -556,7 +554,6 @@ mod tests {
     #[serial(obs_global)]
 
     async fn prepare_fail_exports_no_compaction_span() {
-        let _g = OBS_TEST_LOCK.lock().await;
         set_provider_trace_active(true);
         let records = Arc::new(Mutex::new(Vec::new()));
         fastrace::set_reporter(CollectingReporter(Arc::clone(&records)), Config::default());

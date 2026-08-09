@@ -344,15 +344,11 @@ mod tests {
     }
 
     #[test]
-    fn scoped_manager_preferred_over_global() {
+    fn scoped_manager_preferred_for_matching() {
         use crossterm::event::{KeyCode, KeyModifiers};
         use std::cell::RefCell;
         use std::rc::Rc;
 
-        set_keybindings(KeybindingsManager::new(
-            create_default_definitions(),
-            HashMap::new(),
-        ));
         let mut custom = KeybindingsConfig::new();
         custom.insert("tui.input.submit".into(), vec!["ctrl+j".into()]);
         let scoped = Rc::new(RefCell::new(KeybindingsManager::new(

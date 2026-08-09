@@ -34,10 +34,10 @@ pub use native::{
     messages_to_responses_input_with_diagnostics, messages_to_responses_input_with_options,
 };
 pub use obs_session::{
-    ObsSessionContext, XYLITOL_OBS_LANE_ATTR, XYLITOL_OBS_LANE_INFRA, XYLITOL_OBS_LANE_LLM,
-    clear_obs_session, langfuse_generation_properties, langfuse_observation_properties,
-    langfuse_session_properties, obs_session_context, set_obs_session, set_obs_session_name,
-    xylitol_obs_lane_properties,
+    ObsSessionContext, ObsSessionScope, XYLITOL_OBS_LANE_ATTR, XYLITOL_OBS_LANE_INFRA,
+    XYLITOL_OBS_LANE_LLM, clear_obs_session, langfuse_generation_properties,
+    langfuse_observation_properties, langfuse_session_properties, obs_session_context,
+    set_obs_session, set_obs_session_name, with_obs_session, xylitol_obs_lane_properties,
 };
 pub use remote_count::{
     AnthropicRemoteCounter, OpenAiResponsesRemoteCounter, RemoteCounter, StubRemoteCounter,

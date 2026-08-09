@@ -55,8 +55,7 @@ pub fn merge_opencode_attribution(headers: &mut HeaderBag, request_or_base_url: 
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::provider::obs_session::{clear_obs_session, set_obs_session};
-    use serial_test::serial;
+    use crate::provider::obs_session::{ObsSessionContext, ObsSessionScope, set_obs_session};
 
     #[test]
     fn detects_opencode_host() {
@@ -69,10 +68,8 @@ mod tests {
     }
 
     #[test]
-    #[serial(obs_global)]
-
     fn merges_only_for_opencode_with_session() {
-        clear_obs_session();
+        let _g = ObsSessionScope::enter(ObsSessionContext::default());
         let mut headers = HeaderBag::new();
         merge_opencode_attribution(&mut headers, "https://opencode.ai/zen/v1");
         assert!(headers.is_empty());
@@ -95,17 +92,14 @@ mod tests {
             Some("custom"),
             "existing keys must win"
         );
-        clear_obs_session();
     }
 
     #[test]
-    #[serial(obs_global)]
-
     fn skips_non_opencode() {
+        let _g = ObsSessionScope::enter(ObsSessionContext::default());
         set_obs_session("sid-2", None);
         let mut headers = HeaderBag::new();
         merge_opencode_attribution(&mut headers, "https://api.deepseek.com/v1");
         assert!(headers.is_empty());
-        clear_obs_session();
     }
 }
