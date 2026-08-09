@@ -10,9 +10,15 @@ default-filter = "not binary(live_responses_prompt_cache)"
 path = "junit.xml"
 
 # Agent / `just qa` default: failures only, no pass/progress noise.
-# Note: in-process `#[serial(domain)]` does not cross nextest process-per-test
-# boundaries. Domain groups document cargo-test mutual exclusion; shared
-# external resources (ports/FS) would use `[test-groups]` here if needed.
+#
+# L3 nextest `[test-groups]`: **none needed** today.
+# - Live HTTP: filtered out + `just test-live-provider` serial.
+# - Ports: `:0` / wiremock ephemeral; no fixed binds in the suite.
+# - FS: tempfile / UUID lock paths (not UDP-port-named).
+# In-process `#[serial(<domain>_global)]` remains for cargo-test / `just test-tui`
+# mutual exclusion; it does not cross nextest process-per-test boundaries.
+# Revisit groups only when a shared external resource appears (fixed port, shared
+# non-temp path, concurrent live gateway, etc.).
 [profile.agent]
 fail-fast = false
 slow-timeout = "60s"

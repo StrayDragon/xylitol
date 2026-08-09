@@ -140,15 +140,9 @@ impl Drop for ServerLock {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use std::net::UdpSocket;
 
     fn temp_lock_path() -> PathBuf {
-        let port = UdpSocket::bind("127.0.0.1:0")
-            .unwrap()
-            .local_addr()
-            .unwrap()
-            .port();
-        std::env::temp_dir().join(format!("xylitol-test-lock-{port}"))
+        std::env::temp_dir().join(format!("xylitol-test-lock-{}", uuid::Uuid::new_v4()))
     }
 
     fn sample_info(port: u16) -> LockInfo {

@@ -69,7 +69,7 @@ async fn test_agent_session_builds_model() {
         thinking_level_map: Default::default(),
     });
 
-    let session_mgr = SessionManager::new(SessionManager::default_dir());
+    let session_mgr = SessionManager::new(tempfile::tempdir().unwrap().path().join("sessions"));
     let store: Arc<dyn XySessionStore> = Arc::new(session_mgr.clone());
     let sink: Arc<dyn XyEventSink> = Arc::new(crate::infra::event::EventBus::new());
     let mut session = AgentCapabilities::new(
@@ -123,7 +123,7 @@ async fn test_agent_loop_emits_events() {
         thinking_level_map: Default::default(),
     });
 
-    let session_mgr = SessionManager::new(SessionManager::default_dir());
+    let session_mgr = SessionManager::new(tempfile::tempdir().unwrap().path().join("sessions"));
     let store: Arc<dyn XySessionStore> = Arc::new(session_mgr.clone());
     let sink: Arc<dyn XyEventSink> = Arc::new(crate::infra::event::EventBus::new());
     let session = select_mock(AgentCapabilities::new(

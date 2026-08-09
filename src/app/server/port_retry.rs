@@ -116,12 +116,7 @@ mod tests {
     use std::net::TcpListener;
 
     fn temp_lock_path() -> std::path::PathBuf {
-        let port = std::net::UdpSocket::bind("127.0.0.1:0")
-            .unwrap()
-            .local_addr()
-            .unwrap()
-            .port();
-        std::env::temp_dir().join(format!("xylitol-test-portretry-{port}"))
+        std::env::temp_dir().join(format!("xylitol-test-portretry-{}", uuid::Uuid::new_v4()))
     }
 
     #[test]
