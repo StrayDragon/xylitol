@@ -3,7 +3,7 @@
 > **范围**：个人 coding agent（xylitol）在 **OpenAI Responses API**（含 llama.cpp 等兼容端）下，如何组织发给 provider 的 body，以及 KV Cache / Prompt Cache、状态栏、MCP/`tool_search`、压缩的工程取舍。
 > **一手来源**：本仓 `packages/xylitol-ai-bridge` / `src/agent` 现状；OpenAI Prompt caching / Responses / tool_search 文档；《深入理解 AI Agent》姊妹仓 `ai-agent-book/book/chapter2.md`（及 Ch4/Ch5）（状态栏、KV/Prompt Cache、工具只增不改、Cursor MCP 索引实践）。书语仅经下文 §7 术语表进入工程名，**禁止**写入 live specs。
 >
-> **Assembler 缝（c1890）**：Responses 请求 body 经 `ResponsesAssembler`（`xylitol-ai-bridge`）唯一构造（底层 assemble 为 crate-private）；agent 侧 `ContextPolicy` 提供 hooks；`set_tools*` 已消费 mid-turn rewrite 闸。状态栏完整行为 **deferred**（`llmanspec/delayed-changes/context/c1895…`）；Todo **deferred**（[`c1955`](../../llmanspec/delayed-changes/context/c1955-add-agent-todo-subsystem/proposal.md)）；本期主线 **`c1900`（MCP 首条门闸 + Full 工具定稿）**；`tool_search` → [`c1960`](../../llmanspec/delayed-changes/tools/c1960-add-tool-search-mcp-discovery/proposal.md)；`c1930`/`c1925` 软配合；`c1920` deferred。Ornith lab：改 tools[] 必 cache miss → 宜首轮定稿后冻死。
+> **Assembler 缝（c1890）**：Responses 请求 body 经 `ResponsesAssembler`（`xylitol-ai-bridge`）唯一构造（底层 assemble 为 crate-private）；agent 侧 `ContextPolicy` 提供 hooks；`set_tools*` 已消费 mid-turn rewrite 闸。状态栏完整行为 **deferred**（`llmanspec/delayed-changes/context/c1895…`）；Todo **deferred**（[`c1955`](../../llmanspec/delayed-changes/context/c1955-add-agent-todo-subsystem/proposal.md)）；本期主线 **`c1900`（MCP 首条门闸 + Full 工具定稿）**；`tool_search` → [`c1960`](../../llmanspec/delayed-changes/tools/c1960-add-tool-search-mcp-discovery/proposal.md)；`c1930`/`c1925` 软配合。**不**引入独立 context epoch 计数（全量重放以当前 SSOT 为准；链式断链见 `c1915` 非 input 快照比对）。Ornith lab：改 tools[] 必 cache miss → 宜首轮定稿后冻死。
 > **非目标**：不定实现排期；不改 live specs；不把 hit rate 当唯一 KPI。
 
 ## 一句话结论
@@ -187,7 +187,6 @@ coding agent 默认：环境类（cwd）可留 system；高变读数（工具计
 | Responses 默认 + Completions 显式 `api` + Anthropic 桩 + code-first WirePolicy | [`c1880`](../../llmanspec/changes/archive/2026-08-04-c1880-update-responses-first-api-boundary/proposal.md)（已归档） | `[]` |
 | Responses cache usage 诚实透出 | [`c1885`](../../llmanspec/changes/archive/2026-08-05-c1885-add-responses-cache-usage-honesty/proposal.md)（已归档） | `[]` |
 | ContextPolicy + ResponsesAssembler | [`c1890`](../../llmanspec/changes/archive/2026-08-05-c1890-add-responses-context-policy-assembler/proposal.md)（已归档） | `c1880` |
-| Context Epoch（前缀/工具世代）（**deferred**；非 search 前提） | [`delayed c1920`](../../llmanspec/delayed-changes/context/c1920-add-context-epoch-freeze/proposal.md) | `c1890` |
 | Thinking/reasoning 回放保真（JSONL→input） | [`c1925`](../../llmanspec/changes/c1925-update-responses-thinking-replay-flavor/proposal.md) | `c1880`+`c1890` |
 | Session SSOT ↔ Provider view · **本波** | [`c1930`](../../llmanspec/changes/c1930-update-session-provider-view-contract/proposal.md)（§5.3 lab） | `c1890` |
 | Assembler 布局决策可观测（**deferred**） | [`delayed c1935`](../../llmanspec/delayed-changes/context/c1935-add-assembler-layout-observability/proposal.md) | `c1890` |
@@ -198,7 +197,7 @@ coding agent 默认：环境类（cwd）可留 system；高变读数（工具计
 | tools 稳定 id / resume MCP（**调研**） | [`research`](../../llmanspec/changes/archive/2026-08-05-c1900-update-mcp-first-turn-tool-freeze/research/responses-tools-stable-id-and-resume-mcp-2026.md)（含 2026-08-10：MCP-only vs 删内建的 `input`/`tools[]` bust 面） | — |
 | system 稳定/可变切分（**deferred**） | [`delayed c1905`](../../llmanspec/delayed-changes/context/c1905-update-system-prompt-stable-volatile-split/proposal.md) | `c1890` |
 | 压缩冻结替换串（**deferred**） | [`delayed c1910`](../../llmanspec/delayed-changes/context/c1910-update-compaction-freeze-tool-replacements/proposal.md) | `c1890`+`c1930` |
-| previous_response_id 可选链（**deferred**） | [`delayed c1915`](../../llmanspec/delayed-changes/context/c1915-add-previous-response-id-optional-chain/proposal.md) | `c1880`+`c1890`+`c1920` |
+| previous_response_id 可选链 | [`c1915`](../../llmanspec/changes/c1915-add-previous-response-id-optional-chain/proposal.md)（active；断链=非 input 快照比对，无 epoch） | `c1880`+`c1890` |
 
 依赖以各 `proposal.md` frontmatter `depends_on` 为准；本文不钉实现细节。**草稿不改 live specs**；propose 前才 specs landing。
 
@@ -212,7 +211,7 @@ coding agent 默认：环境类（cwd）可留 system；高变读数（工具计
 | 实现口味 (flavor)（旧稿） | → 代码内 **`compat`**（`defaults.rs`；首版 `generic`） |
 | 能力声明 / capabilities（旧稿，易混） | wire → **`extra_policy`**（仅 req/resp）；agent 能力另案 |
 | Prompt Cache / KV Cache | usage `cached_tokens`；本地推理侧另论 |
-| 静态前缀世代 | context epoch（`c1920`） |
+| 静态前缀可比性 / 断链 | 非 input 请求快照比对（`c1915`；对照 Codex）；全量重放无独立 epoch |
 | 会话真源 / 发给模型的投影 | Session SSOT ↔ provider view（`c1930`） |
 | 框架元信息 | harness meta |
 | Agent 状态栏 · replace / append | StatusBar 模式（**deferred** `c1895`） |

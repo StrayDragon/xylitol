@@ -684,7 +684,7 @@ impl XyDriver for XyInProcessDriver {
         self.agent.restore_thinking_level(context.thinking_level);
         // c1905: session_env lives in transcript (Env→user); resume appends a new
         // row only when date/cwd change — no system-date pin restore needed.
-        // c1900: resume/switch starts a new tools epoch — next generate re-gates.
+        // c1900: resume/switch re-opens the freeze gate — next generate re-gates.
         // Fingerprint match/continue-freeze needs persisted fingerprint (same change wave MAY
         // add Custom/header storage); until then correctness prefers re-freeze.
         self.agent.clear_tool_freeze();
@@ -1459,7 +1459,7 @@ impl XyDriver for XyInProcessDriver {
                 });
             }
             Ok(McpReloadOutcome::Installed) => {
-                // c1900: reload is an explicit re-freeze epoch; bootstrap mark settled.
+                // c1900: reload is an explicit re-freeze; bootstrap mark settled.
                 self.mcp_boot = McpBootState::Settled;
                 let connected = guard.state_mut().mcp.connected_servers().await;
                 let diags = guard.state_mut().mcp.diagnostics().await;
