@@ -117,6 +117,14 @@ pub async fn drain_pending<T: Terminal>(
     if session.take_abort() {
         log::info!(target: "xylitol::tui", "XyDriver::abort (Esc)");
         driver.abort();
+        // c1900: Assembling uses a host-local gated_submit + follow-up strip that is
+        // NOT on the driver queue. Drop it before abort note so strip sync / idle
+        // check see real driver depths (otherwise Esc looks aborted then still runs).
+        let cancelled_gate = session.take_gated_submit().is_some();
+        if cancelled_gate {
+            let stats = driver.queue_stats();
+            session.set_queue_badge(stats.steer_count, stats.follow_up_count);
+        }
         session.note_user_abort();
         let _ = driver.clear_queue(true, false);
         let stats = driver.queue_stats();
@@ -126,6 +134,11 @@ pub async fn drain_pending<T: Terminal>(
     if session.take_dequeue() {
         log::info!(target: "xylitol::tui", "XyDriver::clear_queue (Alt+Up dequeue)");
         let _ = driver.clear_queue(true, true);
+        // Alt+Up already restored the gate strip into the editor; cancel Assembling
+        // so a later freeze MUST NOT start the withdrawn prompt.
+        if session.take_gated_submit().is_some() {
+            session.end_gated_assemble_idle();
+        }
         let stats = driver.queue_stats();
         session.set_queue_badge(stats.steer_count, stats.follow_up_count);
         let _ = session.render_now();

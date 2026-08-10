@@ -97,6 +97,8 @@ pub struct ScriptedDriver {
     clipboard_image_error: Mutex<Option<String>>,
     /// Injectable clipboard text for Ctrl+V fallback (c1156).
     clipboard_text: Mutex<Option<String>>,
+    /// c1900 first-turn freeze gate; default true (no gate) like trait default.
+    tools_frozen: AtomicBool,
 }
 
 impl ScriptedDriver {
@@ -206,7 +208,13 @@ impl ScriptedDriver {
             staged_paste_paths: Mutex::new(Vec::new()),
             clipboard_image_error: Mutex::new(None),
             clipboard_text: Mutex::new(None),
+            tools_frozen: AtomicBool::new(true),
         }
+    }
+
+    /// c1900: simulate pre-freeze / FROZEN for Assembling gate harness.
+    pub fn set_tools_frozen(&self, frozen: bool) {
+        self.tools_frozen.store(frozen, Ordering::SeqCst);
     }
 
     /// Queue a fake clipboard image for the next [`XyDriver::stage_clipboard_image`] (c1155).
@@ -854,6 +862,14 @@ impl XyDriver for ScriptedDriver {
             .lock()
             .expect("loaded_resources")
             .clone()
+    }
+
+    fn is_tools_frozen(&self) -> bool {
+        self.tools_frozen.load(Ordering::SeqCst)
+    }
+
+    async fn arm_tool_freeze_gate(&mut self) {
+        // Scripted: freeze is toggled via [`Self::set_tools_frozen`] across ticks.
     }
 
     async fn reload_runtime(&mut self) -> Result<RuntimeReloadReport, XyDriverError> {
@@ -4477,6 +4493,119 @@ mod slice_tests {
             frame.contains(crate::app::core::driver::MCP_PENDING_CUE),
             "busy row MUST paint right-aligned mcp pending (Loader pad must not eat cue): {frame}"
         );
+    }
+
+    #[tokio::test]
+    async fn c1900_alt_up_cancels_gated_assemble_must_not_run() {
+        let mut session = HostSession::new_product_ui(TestTerminal::new(80, 24));
+        let root = session.ui_root().expect("ui").clone();
+        let mut driver = ScriptedDriver::new();
+        let mut stream = None;
+        driver.set_tools_frozen(false);
+
+        root.borrow_mut().set_editor_text("hi");
+        session.step(HostEvent::Input(enter_event())).unwrap();
+        pump_host_driver(&mut session, &mut driver, &mut stream)
+            .await
+            .unwrap();
+        assert!(driver.runs.is_empty(), "pre-freeze MUST NOT run yet");
+        assert!(session.has_gated_submit(), "Assembling holds gated submit");
+        assert_eq!(session.ui_model().status.as_deref(), Some("Assembling"));
+        assert!(
+            !session.ui_model().pending_follow_up.is_empty(),
+            "gate MUST show Follow-up strip"
+        );
+
+        session.step(HostEvent::Input(alt_up_event())).unwrap();
+        pump_host_driver(&mut session, &mut driver, &mut stream)
+            .await
+            .unwrap();
+        assert_eq!(root.borrow().editor_text(), "hi");
+        assert!(!session.has_gated_submit());
+        assert_eq!(session.ui_model().phase, UiPhase::Idle);
+        assert!(session.ui_model().status.is_none());
+        assert!(session.ui_model().pending_follow_up.is_empty());
+
+        driver.set_tools_frozen(true);
+        pump_host_driver(&mut session, &mut driver, &mut stream)
+            .await
+            .unwrap();
+        assert!(
+            driver.runs.is_empty(),
+            "Alt+Up withdrew Assembling — freeze MUST NOT send hi: {:?}",
+            driver.runs
+        );
+    }
+
+    #[tokio::test]
+    async fn c1900_esc_cancels_gated_assemble_must_not_run() {
+        let mut session = HostSession::new_product_ui(TestTerminal::new(80, 24));
+        let root = session.ui_root().expect("ui").clone();
+        let mut driver = ScriptedDriver::new();
+        let mut stream = None;
+        driver.set_tools_frozen(false);
+
+        root.borrow_mut().set_editor_text("hi");
+        session.step(HostEvent::Input(enter_event())).unwrap();
+        pump_host_driver(&mut session, &mut driver, &mut stream)
+            .await
+            .unwrap();
+        assert!(session.has_gated_submit());
+        assert_eq!(session.ui_model().status.as_deref(), Some("Assembling"));
+
+        session.step(HostEvent::Input(esc_event())).unwrap();
+        pump_host_driver(&mut session, &mut driver, &mut stream)
+            .await
+            .unwrap();
+        assert!(!session.has_gated_submit());
+        assert_eq!(session.ui_model().phase, UiPhase::Idle);
+        assert!(session.ui_model().status.is_none());
+        assert!(
+            session.ui_model().entries.iter().any(|e| matches!(
+                e,
+                UiEntry::ScrollNotice { text } if text == "Operation aborted"
+            )),
+            "Esc during Assembling still shows abort note: {:?}",
+            session.ui_model().entries
+        );
+        assert!(
+            session.ui_model().pending_follow_up.is_empty(),
+            "gate strip MUST clear with Esc"
+        );
+
+        driver.set_tools_frozen(true);
+        pump_host_driver(&mut session, &mut driver, &mut stream)
+            .await
+            .unwrap();
+        assert!(
+            driver.runs.is_empty(),
+            "Esc cancelled Assembling — freeze MUST NOT send hi: {:?}",
+            driver.runs
+        );
+    }
+
+    #[tokio::test]
+    async fn c1900_gated_assemble_runs_after_freeze_when_not_cancelled() {
+        let mut session = HostSession::new_product_ui(TestTerminal::new(80, 24));
+        let root = session.ui_root().expect("ui").clone();
+        let mut driver = ScriptedDriver::new();
+        let mut stream = None;
+        driver.set_tools_frozen(false);
+
+        root.borrow_mut().set_editor_text("hi");
+        session.step(HostEvent::Input(enter_event())).unwrap();
+        pump_host_driver(&mut session, &mut driver, &mut stream)
+            .await
+            .unwrap();
+        assert!(driver.runs.is_empty());
+        assert!(session.has_gated_submit());
+
+        driver.set_tools_frozen(true);
+        pump_host_driver(&mut session, &mut driver, &mut stream)
+            .await
+            .unwrap();
+        assert_eq!(driver.runs, vec!["hi".to_string()]);
+        assert!(!session.has_gated_submit());
     }
 
     #[tokio::test]
