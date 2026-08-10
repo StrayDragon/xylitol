@@ -961,6 +961,10 @@ impl<T: Terminal> TUI<T> {
         // protocol negotiation (Kitty push / modifyOtherKeys fallback, c410).
         self.terminal.hide_cursor();
         self.terminal.start();
+        // Mode B: enter alt + mouse only after the TTY is started (c2070).
+        if self.interaction_mode.is_application_owned() {
+            self.begin_application_owned_session();
+        }
         self.do_render()?;
 
         while !self.stopped {
@@ -996,8 +1000,9 @@ impl<T: Terminal> TUI<T> {
                     }
                     Event::Mouse(mouse) => {
                         let event = InputEvent::Mouse(mouse);
-                        // 1003 any-event floods: drop motion before dispatch/paint.
-                        if event.is_pointer_motion() {
+                        // Mode A: drop bare Moved floods. Mode B owns mouse in
+                        // dispatch_event (selection may need Moved while dragging).
+                        if event.is_pointer_motion() && !self.application_session_active {
                             continue;
                         }
                         let reaction = self.dispatch_event(event);

@@ -24,15 +24,15 @@ use xylitol_tui::keybindings::{KeybindingsManager, create_default_definitions, s
 use xylitol_tui::{
     CancellableLoader, ChoiceMode, ChoiceOption, ChoicePrompt, ChoicePromptTheme, ChoiceQuestion,
     ChoiceResult, Component, CrosstermTerminal, DiffInput, DiffOptions, DiffTheme,
-    ExpandableOutputOptions, Focusable, Input, InputEvent, InputListenerResult, Markdown,
-    MarkdownTheme, Palette, Panel, SystemClock, TUI, TerminalColorScheme, Text, ThemeDetectSources,
-    ThinkingBorderLevel, TreeNode, TreeSelector, TreeSelectorOptions, TreeSelectorTheme,
-    TruncateFrom, TruncatedText, apply_background_to_line, apply_thinking_border, bg_rgb,
-    fg_bg_rgb, fg_rgb, is_osc11_background_color_response, is_terminal_color_reply,
-    matches_key_event, mix_rgb, paint_left_rail_line, parse_osc11_background_color,
-    parse_terminal_color_scheme_report, printable_from_key_event, render_diff_lines,
-    render_expandable_output, resolve_terminal_color_scheme, truncate_to_width, visible_width,
-    word_wash_bg, wrap_text_with_ansi,
+    ExpandableOutputOptions, Focusable, Input, InputEvent, InputListenerResult, InteractionMode,
+    Markdown, MarkdownTheme, Palette, Panel, SystemClock, TUI, Terminal, TerminalColorScheme, Text,
+    ThemeDetectSources, ThinkingBorderLevel, TreeNode, TreeSelector, TreeSelectorOptions,
+    TreeSelectorTheme, TruncateFrom, TruncatedText, apply_background_to_line,
+    apply_thinking_border, bg_rgb, fg_bg_rgb, fg_rgb, is_osc11_background_color_response,
+    is_terminal_color_reply, matches_key_event, mix_rgb, paint_left_rail_line,
+    parse_osc11_background_color, parse_terminal_color_scheme_report, printable_from_key_event,
+    render_diff_lines, render_expandable_output, resolve_terminal_color_scheme, truncate_to_width,
+    visible_width, word_wash_bg, wrap_text_with_ansi,
 };
 
 /// Demo slash commands (static; product would load from Driver / protocol).
@@ -967,6 +967,36 @@ fn env_flag(name: &str) -> bool {
         .unwrap_or(false)
 }
 
+/// Mode B (alt-screen / application-owned) via `XYLITOL_AGENT_DEMO_MODE=b|alt|application`.
+fn agent_demo_wants_mode_b() -> bool {
+    match std::env::var("XYLITOL_AGENT_DEMO_MODE") {
+        Ok(v) => {
+            let v = v.trim();
+            v.eq_ignore_ascii_case("b")
+                || v.eq_ignore_ascii_case("alt")
+                || v.eq_ignore_ascii_case("application")
+                || v.eq_ignore_ascii_case("mode-b")
+                || v.eq_ignore_ascii_case("mode_b")
+        }
+        Err(_) => false,
+    }
+}
+
+fn print_mode_b_acceptance_checklist() {
+    eprintln!(
+        "\
+xylitol-tui agent_demo · Mode B (alt-screen)
+验收清单（c2070）：
+  1. 终端进 alt-buffer（退出后主屏历史应恢复）
+  2. transcript 内拖选高亮；松手默认 OSC52 复制
+  3. 拖到顶/底可越界续选；滚轮滚应用视口（非终端 scrollback）
+  4. 底部输入/footer dock 不可作 transcript 选区起点
+  5. Ctrl+G 外编 suspend/resume 后仍保持 Mode B
+退出：Ctrl+C（空编辑器）或 /exit
+"
+    );
+}
+
 /// Interactive TTY → real `$EDITOR`; harness / non-TTY / explicit stub → stub.
 ///
 /// Under `cfg(test)` (agent_demo included by `agent_demo_test`), never auto-prefer
@@ -1054,12 +1084,25 @@ pub fn main() -> Result<(), Box<dyn std::error::Error>> {
     let defs = create_default_definitions();
     set_keybindings(KeybindingsManager::new(defs, HashMap::new()));
 
+    let mode_b = agent_demo_wants_mode_b();
+    if mode_b && std::io::stderr().is_terminal() {
+        print_mode_b_acceptance_checklist();
+    }
+
     let term = CrosstermTerminal::new()?;
-    let mut tui = TUI::new(term);
-    // Lab / e2e only: `XYLITOL_TUI_MOUSE=1` → EnableMouseCapture.
-    // Product inline TUI does not honor this env (see `src/app/tui/terminal_guard.rs`).
-    if xylitol_tui::env_requests_mouse_capture() {
+    let mut tui = if mode_b {
+        TUI::with_interaction_mode(term, InteractionMode::ApplicationOwned)
+    } else {
+        TUI::new(term)
+    };
+    // Mode A lab only: `XYLITOL_TUI_MOUSE=1` → EnableMouseCapture.
+    // Mode B enables mouse via begin_application_owned_session (inside start).
+    if !mode_b && xylitol_tui::env_requests_mouse_capture() {
         tui.enable_mouse_capture();
+    }
+    if mode_b {
+        // First-frame floor; refined from FakeCodingAgentApp dock measure.
+        tui.set_mode_b_dock_rows(8);
     }
     let quit_flag = Arc::new(AtomicBool::new(false));
     let initial_prompt = std::env::var("XYLITOL_AGENT_DEMO_INITIAL_PROMPT")
@@ -1077,6 +1120,10 @@ pub fn main() -> Result<(), Box<dyn std::error::Error>> {
     // After Ctrl+G sets pending: suspend terminal → `$EDITOR` → restore (pi shape).
     let app_hook = app.clone();
     tui.set_after_dispatch_hook(move |tui| {
+        if tui.application_session_active() {
+            let dock = app_hook.borrow().last_mode_b_dock_rows();
+            tui.set_mode_b_dock_rows(dock);
+        }
         let pending = app_hook.borrow_mut().take_pending_external_editor();
         if !pending {
             return;
@@ -1100,8 +1147,13 @@ pub fn main() -> Result<(), Box<dyn std::error::Error>> {
         }
     });
 
-    tui.add_child(Box::new(SharedFakeCodingAgentApp(app)));
+    tui.add_child(Box::new(SharedFakeCodingAgentApp(app.clone())));
     tui.set_focus(Some(0));
+    if mode_b {
+        let cols = tui.terminal.columns() as usize;
+        let _ = app.borrow_mut().render(cols.max(1));
+        tui.set_mode_b_dock_rows(app.borrow().last_mode_b_dock_rows());
+    }
     tui.start_with_flag(&quit_flag)
 }
 
@@ -1424,6 +1476,8 @@ pub struct FakeCodingAgentApp {
     thinking_border_level: ThinkingBorderLevel,
     /// Last submit's resolved `$skill` → stub SKILL.md bodies (demo inject assert).
     last_skill_injections: Vec<(String, String)>,
+    /// Mode B dock rows from last paint (status + editor slot + footer).
+    last_mode_b_dock_rows: usize,
 }
 
 impl FakeCodingAgentApp {
@@ -1472,6 +1526,11 @@ impl FakeCodingAgentApp {
     /// Test helper: footer metadata line (`cwd · model`).
     pub fn footer_note_for_test(&self) -> &str {
         &self.footer_note
+    }
+
+    /// Mode B dock rows measured on the last render (status + editor + footer).
+    pub fn last_mode_b_dock_rows(&self) -> usize {
+        self.last_mode_b_dock_rows.max(1)
     }
 
     /// Test helper: replace editor text (does not auto-sync bash border).
@@ -2736,6 +2795,7 @@ impl FakeCodingAgentApp {
             entry_style: EntryStyle::from_env(),
             thinking_border_level: ThinkingBorderLevel::Medium,
             last_skill_injections: Vec::new(),
+            last_mode_b_dock_rows: 8,
         };
         if app.theme_auto {
             app.refresh_theme_from_env();
@@ -4695,8 +4755,12 @@ impl Component for FakeCodingAgentApp {
         let mut lines = Vec::new();
         lines.extend(self.transcript_lines(width));
         lines.extend(self.queue_strip_lines(width));
-        lines.extend(self.status_lines(width));
-        lines.extend(self.render_editor_slot(width));
+        let status = self.status_lines(width);
+        let editor = self.render_editor_slot(width);
+        // Mode B dock excludes transcript+queue (c2070 / ptim06).
+        self.last_mode_b_dock_rows = status.len().saturating_add(editor.len()).saturating_add(1);
+        lines.extend(status);
+        lines.extend(editor);
         let footer_owned;
         let footer_ref = if self.palette_open
             || self.settings_open
