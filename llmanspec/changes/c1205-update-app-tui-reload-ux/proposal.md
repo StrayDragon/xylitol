@@ -1,12 +1,15 @@
 ---
 depends_on: []
+branch: sdd/c1205-update-app-tui-reload-ux
+base_sha: f1611239f68c0200259abe6f67724ed4fa17ba77
+checkpointed: false
 ---
 
 # /reload 进行中交互体验
 
 > **一句话**：idle `/reload` 进行中用状态条 `Reloading` + 输入软闸；协作取消（Esc）；失败/取消可见；结束后仍出汇总滚动提示。
 > **当前排序**：#4（2026-08-10 自 delayed-changes 升格入 active）
-> **状态**：方案已钉；规划壳 `proposal` + `design` + `tasks` 已齐（2026-08-10）。**暂不** `change start` / attach / Specs landing——待 review 通过后再 binding。
+> **状态**：方案已钉；规划壳齐；已 Branch binding（`sdd/c1205-update-app-tui-reload-ux`）。Specs landing 进行中。
 
 ## Why
 
