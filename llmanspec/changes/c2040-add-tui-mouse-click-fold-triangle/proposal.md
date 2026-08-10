@@ -61,6 +61,17 @@ c2030 ──┘
 2. 折叠字形最终选：`▾`/`▸`、`▼`/`▶`、`▽`/`▷`，或其他？
 3. mouse 默认开还是「首次需要点击折叠时再 Enable」？
 
+## 验证（自动化 + 人类）
+
+| 层 | 自动化 | 人类 |
+|---|---|---|
+| Harness | 合成 `Mouse Down` 在标记列 → 单块 toggle；点正文 → 态不变且 **无** 多余 render；字形 `visible_width==1` | Kitty：点 ▾/▶ 头；误点 Markdown 正文不折 |
+| 与 c2020 | `Moved` 洪水下 frame 不涨（复用 c2020 计数测） | 开 capture 晃鼠标无空转 |
+| 字形 | Unicode/Ascii 快照或单测 | `XYLITOL_TUI_GLYPH_SET=ascii` 回退可读 |
+| PTY（可选） | 点击折叠冒烟（坐标脆弱 → 优先 harness） | 真机点一次即可 |
+
+**人类最短路径**：开 mouse → 点折叠标记收起 → 再点展开 → 拖选一段（若默认关 capture 则先确认已开）知悉选区 tradeoff。
+
 ## Ethics
 
 - risk_level: low–medium
@@ -70,5 +81,5 @@ c2030 ──┘
 
 ## Further Notes
 
-- 调研：[`research/fold-glyph-and-hittest.md`](./research/fold-glyph-and-hittest.md)
+- 调研：[`research/fold-glyph-and-hittest.md`](./research/fold-glyph-and-hittest.md)；差分适切性见 [`../c2020-add-package-tui-mouse-input/research/diff-engine-mouse-fit.md`](../c2020-add-package-tui-mouse-input/research/diff-engine-mouse-fit.md)
 - `c1760` 已拍标记 `▶/▼`、不做 `(+)/(-)`——本草案可**微调**同一族三角，不引入加减号
