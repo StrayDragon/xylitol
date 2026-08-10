@@ -34,8 +34,8 @@ components:
 
 > Token：`{colors.*}` → [`../DESIGN.md`](../DESIGN.md)。
 > 静图：[`playground/`](./playground/) `?slot=ask`。
-> Skip 语义：[`docs/research/ask-tool-skip-semantics-2026.md`](../../../docs/research/ask-tool-skip-semantics-2026.md)。
-> UI 景观：[`docs/research/ask-ui-ux-landscape-2026.md`](../../../docs/research/ask-ui-ux-landscape-2026.md)。
+> Skip 语义：[`ask-tool-skip-semantics-2026.md`](../../../llmanspec/changes/archive/2026-08-02-c1850-add-tui-ask-tool/research/ask-tool-skip-semantics-2026.md)。
+> UI 景观：[`ask-ui-ux-landscape-2026.md`](../../../llmanspec/changes/archive/2026-08-02-c1850-add-tui-ask-tool/research/ask-ui-ux-landscape-2026.md)。
 > Trust 闸 **不是**本工具：[`trust-prompt.md`](./trust-prompt.md)。
 
 ## 产品意图

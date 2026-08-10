@@ -68,7 +68,7 @@ mod tests {
     #[test]
     fn hyphenated_server_and_tool_keep_hyphens_inside_segments() {
         // Delimiter `__` — segments may still contain `-` (Claude plugin style;
-        // docs/research/mcp-tool-public-naming-hyphen-2026.md). Dispatch MUST
+        // llmanspec/changes/archive/2026-08-08-c1940-update-multi-api-named-compat/research/mcp-tool-public-naming-hyphen-2026.md). Dispatch MUST
         // use stored fields, not reverse-parse.
         let n = mcp_tool_public_name("music-studio", "get-something");
         assert_eq!(n, "mcp__music-studio__get-something");

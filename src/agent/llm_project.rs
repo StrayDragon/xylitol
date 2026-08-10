@@ -199,6 +199,122 @@ mod tests {
         assert_eq!(projected[2].text(), "pong");
     }
 
+    /// Responses dialect: after /reload drops an MCP tool, history `input` can stay
+    /// byte-stable while request `tools[]` changes — that tools delta is a prompt-cache
+    /// bust (OpenAI: mutating the tools set breaks cache from that point). System prompt
+    /// available-tools already omits MCP names, so MCP-only remove need not rewrite the
+    /// developer/system item.
+    #[test]
+    fn responses_assemble_after_mcp_remove_keeps_input_busts_tools() {
+        use crate::agent::prompt::{SystemPromptOpts, build_system_prompt};
+        use xylitol_ai_bridge::AiBridgeGenerateOptions;
+        use xylitol_ai_bridge::dto::AiBridgeToolSchema;
+        use xylitol_ai_bridge::provider::ResponsesAssembler;
+
+        let history = vec![
+            AgentMessage::user("use ping"),
+            AgentMessage::Llm(LlmMessage::AssistantMessage {
+                content: vec![AgentPart::ToolCall {
+                    id: "call-gone".into(),
+                    name: "mcp__fixture__ping".into(),
+                    arguments: serde_json::json!({}),
+                }],
+                stop_reason: Some(crate::protocol::message::XyStopReason::ToolUse),
+                usage: None,
+                api: "openai-responses".into(),
+                provider: "test".into(),
+                model: "m".into(),
+                response_id: None,
+                error_message: None,
+                timestamp: 1,
+                diagnostics: Vec::new(),
+            }),
+            AgentMessage::tool_result(
+                "call-gone",
+                "mcp__fixture__ping",
+                vec![AgentPart::text("pong")],
+                false,
+            ),
+            AgentMessage::user("continue"),
+        ];
+        let projected = project_for_llm(&history);
+
+        let read = AiBridgeToolSchema {
+            name: "read".into(),
+            description: "read a file".into(),
+            parameters: serde_json::json!({
+                "type": "object",
+                "properties": {"path": {"type": "string"}},
+            }),
+        };
+        let ping = AiBridgeToolSchema {
+            name: "mcp__fixture__ping".into(),
+            description: "fixture ping".into(),
+            parameters: serde_json::json!({"type": "object", "properties": {}}),
+        };
+
+        // System prompt: MCP-only table change must not alter Available tools lines.
+        let prompt_with = build_system_prompt(&SystemPromptOpts {
+            selected_tools: vec!["read".into(), "mcp__fixture__ping".into()],
+            tool_snippets: vec![
+                ("read".into(), "Read file".into()),
+                ("mcp__fixture__ping".into(), "fixture ping".into()),
+            ],
+            cwd: "/tmp".into(),
+            date: Some("2026-08-10".into()),
+            ..Default::default()
+        });
+        let prompt_without = build_system_prompt(&SystemPromptOpts {
+            selected_tools: vec!["read".into()],
+            tool_snippets: vec![("read".into(), "Read file".into())],
+            cwd: "/tmp".into(),
+            date: Some("2026-08-10".into()),
+            ..Default::default()
+        });
+        assert_eq!(
+            prompt_with, prompt_without,
+            "MCP-only remove MUST NOT rewrite system Available tools (mcp names filtered)"
+        );
+
+        let opts = AiBridgeGenerateOptions {
+            system_prompt: Some(prompt_with),
+            thinking_level: "medium".into(),
+            ..Default::default()
+        };
+        let asm = ResponsesAssembler::default();
+        let before = asm.assemble(
+            "lab-m",
+            projected.clone(),
+            &[read.clone(), ping],
+            false,
+            &opts,
+        );
+        let after = asm.assemble("lab-m", projected, &[read], false, &opts);
+
+        assert_eq!(
+            before["input"], after["input"],
+            "history+system input prefix MUST stay equal after MCP remove"
+        );
+        assert_ne!(
+            before["tools"], after["tools"],
+            "tools[] MUST change after MCP remove (prompt-cache bust on tools field)"
+        );
+        let tools_after = after["tools"].as_array().expect("tools");
+        assert!(
+            !tools_after
+                .iter()
+                .any(|t| t.get("name").and_then(|n| n.as_str()) == Some("mcp__fixture__ping")),
+            "removed MCP tool MUST NOT remain in Responses tools[]: {tools_after:?}"
+        );
+        // Stale function_call remains in input (model still sees past call).
+        let input = after["input"].as_array().expect("input");
+        let input_s = serde_json::to_string(input).unwrap();
+        assert!(
+            input_s.contains("mcp__fixture__ping") || input_s.contains("call-gone"),
+            "input MUST still carry historical tool call for removed MCP: {input_s}"
+        );
+    }
+
     #[test]
     fn edit_tool_result_content_short_details_not_in_text() {
         let history = vec![AgentMessage::tool_result_with_details(
