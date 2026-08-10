@@ -1473,6 +1473,10 @@ mod slice_tests {
         let frame = root.borrow_mut().render(80);
         assert!(frame.iter().any(|l| l.contains("Steering: nudge")));
         assert!(
+            !frame.iter().any(|l| l.contains("q:s")),
+            "footer MUST NOT show opaque queue badge; frame={frame:?}"
+        );
+        assert!(
             !session
                 .ui_model()
                 .entries
@@ -1501,6 +1505,10 @@ mod slice_tests {
         );
         let frame = root.borrow_mut().render(80);
         assert!(frame.iter().any(|l| l.contains("Follow-up: later")));
+        assert!(
+            !frame.iter().any(|l| l.contains("q:s")),
+            "footer MUST NOT show opaque queue badge; frame={frame:?}"
+        );
     }
 
     #[tokio::test]

@@ -43,9 +43,6 @@ impl UiRoot {
         self.mcp_list = empty_mcp_list(theme);
         self.import_confirm_list = import_confirm_list(theme);
         self.session_resume = empty_session_resume_panel(theme);
-        self.refresh_footer_from_queue(
-            self.ui_model.queue.steer_count,
-            self.ui_model.queue.follow_up_count,
-        );
+        self.refresh_footer();
     }
 }

@@ -9,10 +9,7 @@ impl UiRoot {
     pub fn set_thinking_level_ui(&mut self, level: String) {
         self.thinking_level = level;
         self.sync_editor_border();
-        self.refresh_footer_from_queue(
-            self.ui_model.queue.steer_count,
-            self.ui_model.queue.follow_up_count,
-        );
+        self.refresh_footer();
     }
 
     pub fn thinking_level(&self) -> String {

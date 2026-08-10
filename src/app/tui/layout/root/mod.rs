@@ -242,7 +242,7 @@ impl UiRoot {
         };
         root.install_completion_sources();
         root.sync_editor_border();
-        root.refresh_footer_from_queue(0, 0);
+        root.refresh_footer();
         root
     }
 
@@ -364,16 +364,13 @@ impl UiRoot {
     pub fn set_layout_meta(&mut self, cwd: impl Into<String>, model: impl Into<String>) {
         self.cwd = cwd.into();
         self.model = model.into();
-        self.refresh_footer_from_queue(0, 0);
+        self.refresh_footer();
     }
 
     /// Set or clear the provenance-honest token usage fragment (c1035).
     pub fn set_footer_token_label(&mut self, label: Option<String>) {
         self.footer_token = label.filter(|s| !s.is_empty());
-        self.refresh_footer_from_queue(
-            self.ui_model.queue.steer_count,
-            self.ui_model.queue.follow_up_count,
-        );
+        self.refresh_footer();
     }
 
     pub fn set_glyphs(&mut self, glyphs: GlyphSet) {
@@ -757,14 +754,14 @@ impl UiRoot {
         }
         self.refresh_mcp_short_cue();
 
-        self.refresh_footer_from_queue(model.queue.steer_count, model.queue.follow_up_count);
+        self.refresh_footer();
     }
 
     fn bump_upper_gen(&mut self) {
         self.upper_gen = self.upper_gen.saturating_add(1);
     }
 
-    fn refresh_footer_from_queue(&mut self, steer: usize, follow_up: usize) {
+    fn refresh_footer(&mut self) {
         let thinking = if self.footer_omit_thinking {
             String::new()
         } else {
@@ -774,8 +771,6 @@ impl UiRoot {
             &self.cwd,
             &self.model,
             &thinking,
-            steer,
-            follow_up,
             self.footer_token.as_deref(),
         );
         self.footer.set_text(self.theme.paint_muted(&base));
@@ -792,10 +787,7 @@ impl UiRoot {
         self.thinking_level = thinking;
         self.footer_omit_thinking = omit_thinking;
         self.sync_editor_border();
-        self.refresh_footer_from_queue(
-            self.ui_model.queue.steer_count,
-            self.ui_model.queue.follow_up_count,
-        );
+        self.refresh_footer();
     }
 
     /// Set or clear next-turn cue (agent-busy NextTurn pending).

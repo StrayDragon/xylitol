@@ -53,10 +53,10 @@
     那么 follow-up 队列长度增加且会话树尚未出现该 follow-up 的 user 节点
 
   @req:ati6
-  场景: footer-counts
+  场景: queue-strip-visible
     假如 steer 或 follow-up 队列非空
-    当 渲染 footer
-    那么 footer 含 steer:N 或 follow-up:N
+    当 渲染一帧
+    那么 出现 Steering: 或 Follow-up: 行且 footer 不含 q:sN|fM 计数徽章
 
   @req:ati7
   场景: steer-no-abort

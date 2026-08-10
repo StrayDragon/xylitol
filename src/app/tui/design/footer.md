@@ -32,7 +32,7 @@ components:
 3b. **派生占用比（c1680）**：当已展示 used 字段且当前模型 `context_window > 0` 时，MUST 追加 ` · {p}%/{W}`，其中 `p = tokens/window*100`（1 位小数），`W` 为紧凑 window（如 `128k`）。例：`used 42k tokens · 32.8%/128k`。Heuristic MUST ` · ~p%/W`；Unknown MUST ` · ?%/W`。`context_window` 为 0 时 MUST NOT 追加。该百分比 **仅展示**，MUST NOT 作为 compaction 触发 SSOT。
 4. 放不下截断右侧（优先保留 cwd 左端与 model），**MUST NOT** 增高。
 5. 快捷键提示：默认**不**写进 footer（勿 `enter submit · double Esc…` 墙）；需要时 `/help` 或旁注括号和弦（见 [`keybindings.md`](./keybindings.md)）。
-6. 队列摘要若展示：短前缀 `q:sN|fM ·` 可贴 footer 最左，仍保持单行。
+6. **MUST NOT** 在 footer 展示队列计数徽章（如 `q:sN|fM`）；队列可见性 SSOT 为中间队列条（见 [`queue-steer.md`](./queue-steer.md)）。
 7. 刷新时机：session tree travel 换叶、**TurnSettled settlement**（TurnEnd 携带或独立事件 / Driver 缓存）、**CompactionEnd**、turn 进行中有可用 Api usage 更新时（节流）、thinking cycle / 模型切换；同一轮 run 已有 TurnSettled 后 **stream close MUST NOT** 再二次 estimate；**MUST NOT** 每个 TextDelta 全量 tokenizer.encode。
 8. **异步**：footer token 估计 MUST 在后台完成（`spawn_blocking`），**MUST NOT** 阻塞输入 / Tick / 其它渲染；结果落地后再差分刷新 footer 行。
 9. **MUST NOT** 常驻多行 debug / 快捷键墙；**MUST NOT** 把 Working 文案塞进 footer（那是 status）；**MUST NOT** 把 Heuristic 显示成无 `~` 的精确值。

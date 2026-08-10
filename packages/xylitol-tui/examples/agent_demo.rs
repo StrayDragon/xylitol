@@ -4701,16 +4701,11 @@ impl Component for FakeCodingAgentApp {
         {
             "esc close · ↑↓ · Enter"
         } else {
-            let queue_hint = match (self.steer_queue.len(), self.follow_up_queue.len()) {
-                (0, 0) => String::new(),
-                (s, 0) => format!(" · q:s{s}|f0"),
-                (0, f) => format!(" · q:s0|f{f}"),
-                (s, f) => format!(" · q:s{s}|f{f}"),
-            };
             // Compact cue strip — full list is in the seed ScrollNotice.
+            // Queue chrome = mid strip only; no footer q:sN|fM badge.
             footer_owned = format!(
                 // c535 pad4: metadata only — chords live in /help / plate help-keys.
-                "{} · {} · {} · entry:{}{queue_hint}",
+                "{} · {} · {} · entry:{}",
                 self.footer_note,
                 self.theme_label(),
                 self.glyph_set.label(),

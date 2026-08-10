@@ -1675,8 +1675,8 @@
       }
 
       // footer MUST show active (in-flight) model even when pending successor exists
+      // Queue chrome = mid strip only (shell-queue-line); MUST NOT add footer q: badge
       let footer = "~/xylitol · <model-name> · thinking off";
-      if (S.queue) footer = "q:s1|f0 · " + footer;
       document.getElementById("shell-footer").textContent = footer;
     }
     document.getElementById("shell-busy").addEventListener("click", () => {
@@ -1758,8 +1758,8 @@
 <div class="row fg-muted">~/xylitol · &lt;model-name&gt;</div>
 <div class="row fg-muted" style="font-size:11px">status.md · MUST NOT 空转 spinner</div>`,
       footer: `<div class="row fg-muted">~/xylitol · &lt;model-name&gt;</div>
-<div class="row fg-muted">q:s1|f0 · ~/proj · model-x</div>
-<div class="row fg-muted" style="font-size:11px">MVP = cwd · model · 可选 q: 前缀 · 无键位墙 · Working 不进 footer</div>`,
+<div class="row fg-muted">~/proj · model-x · thinking off</div>
+<div class="row fg-muted" style="font-size:11px">MVP = cwd · model · thinking · 无键位墙 · Working/队列不进 footer</div>`,
       glyph: `<div class="row"><span class="fg-user">❯</span> <span class="fg-on">unicode 默认</span> · <span class="fg-tool-name">Read</span> <span class="fg-tool-path">path.rs:10</span></div>
 <div class="row"><span class="fg-user">&gt;</span> <span class="fg-on">ascii 档</span> · <span class="fg-tool-name">Read</span> <span class="fg-tool-path">path.rs:10</span></div>
 <div class="row fg-muted" style="font-size:11px">glyphs.md · 工具无 ⚙ · 名/路径调色盘</div>`,
