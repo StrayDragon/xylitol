@@ -1,12 +1,13 @@
-//! Evidence capture for c1290: dump Responses request bodies (offline + optional live).
+//! Lab: dump Responses request bodies (offline + optional live). Formerly
+//! `evidence_responses_capture` (c1290); renamed under the unified `lab_` prefix.
 //!
 //! ```bash
 //! # Offline: reconstruct bodies for eeee turn prefixes
-//! cargo run -p xylitol-ai-bridge --example evidence_responses_capture -- \
+//! cargo run -p xylitol-ai-bridge --example lab_responses_capture -- \
 //!   offline /tmp/xylitol-c1290-evidence/eeee-history.json /tmp/xylitol-c1290-evidence
 //!
 //! # Live: one stream call via existing OpenAiResponsesAdapter + HttpHooks capture
-//! OPENAI_API_KEY=sk-local cargo run -p xylitol-ai-bridge --example evidence_responses_capture -- \
+//! OPENAI_API_KEY=sk-local cargo run -p xylitol-ai-bridge --example lab_responses_capture -- \
 //!   live http://127.0.0.1:8000/v1 my-model /tmp/xylitol-c1290-evidence
 //! ```
 

@@ -75,6 +75,18 @@
 - 非变更闸脚本 `scripts/check_*.py` **MUST** 经 wiring 进 `qa`；维护脚本不进闸。
 - 探查：`cargo run -- --help`；文档：`cargo doc --no-deps --all-features`。
 
+### 试验 / 打网命名（`lab_`）
+
+试验性证据与打网探针 **统一前缀 `lab_`**（不再用 `evidence_` / `experiment_` / 试验性 `live_` 二进制名）：
+
+| 形态 | 约定 | 是否进 `just qa` |
+|---|---|---|
+| `packages/*/examples/lab_*.rs` | 人跑维护 lab（`cargo run -p … --example lab_…`） | **否** |
+| `packages/*/tests/lab_*.rs` | 可打真网关的 lab 二进制；是否入闸看 just 接线 | **仅**已接线者（现：`lab_responses_prompt_cache` ← `just test-live-provider`） |
+| `#[test] fn lab_*` / `async fn lab_*` | 闸内契约实验（无网或假网） | **是**（随 crate 测） |
+
+配置文件名 `live-provider.yaml` / recipe `test-live-provider` 保留「live 网关」语义，与代码符号前缀无关。新试验 **MUST** 用 `lab_`；禁止再引入 `evidence_` / `experiment_` 前缀。
+
 ## Worktree 并行开发
 
 多 worktree 并行（多个 SDD change / feature 分支同时开）时遵循：

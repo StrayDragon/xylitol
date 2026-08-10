@@ -2489,9 +2489,9 @@ mod driver_session_tree_tests {
         while first.next().await.is_some() {}
     }
 
-    /// Experiment: next `generate_stream` after reload install sees updated tool schemas.
+    /// Lab: next `generate_stream` after reload install sees updated tool schemas.
     #[tokio::test]
-    async fn experiment_provider_tools_field_follows_reload_freeze() {
+    async fn lab_provider_tools_field_follows_reload_freeze() {
         use std::sync::Mutex;
 
         use async_trait::async_trait;

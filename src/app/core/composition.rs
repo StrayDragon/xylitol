@@ -350,10 +350,10 @@ mod tests {
         assert!(names.iter().any(|n| n == "read"));
     }
 
-    /// c1205 / c1900 experiment: add→remove MCP-like tools through the same
+    /// c1205 / c1900 lab: add→remove MCP-like tools through the same
     /// reopen + rebuild + freeze path `McpSession::reload` uses on install.
     #[tokio::test]
-    async fn experiment_reload_add_remove_updates_provider_tool_names() {
+    async fn lab_reload_add_remove_updates_provider_tool_names() {
         use crate::agent::tools::ToolSet;
         use crate::protocol::error::XyToolError;
         use crate::protocol::ports::{XyTool, XyToolCtx};
@@ -473,7 +473,7 @@ mod tests {
 
     /// Cancel before install: provider table stays on the pre-reload freeze epoch.
     #[tokio::test]
-    async fn experiment_reload_cancel_keeps_provider_tools_despite_desired_add() {
+    async fn lab_reload_cancel_keeps_provider_tools_despite_desired_add() {
         use crate::agent::tools::ToolSet;
         use crate::protocol::error::XyToolError;
         use crate::protocol::ports::{XyTool, XyToolCtx};
