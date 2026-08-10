@@ -1350,26 +1350,57 @@ impl XyDriver for XyInProcessDriver {
         &mut self,
         cancel: &tokio_util::sync::CancellationToken,
     ) -> Result<RuntimeReloadReport, XyDriverError> {
-        let Some(mut state) = self.reload.take() else {
+        use crate::app::core::composition::McpReloadOutcome;
+
+        let Some(state) = self.reload.take() else {
             return Ok(RuntimeReloadReport::noop());
         };
 
+        // Panic-safe put-back: Drop restores `reload` if a panic unwinds mid-flight.
+        // SAFETY: `driver` points at `self` for this stack frame only; Drop runs when
+        // `&mut self` is exclusively available again (end of function / unwind).
+        // `unsafe impl Send`: the raw pointer is never shared across threads; the async
+        // future is `Send` only for the trait object, and Drop runs on the same task.
+        struct ReloadPutBack {
+            driver: *mut XyInProcessDriver,
+            state: Option<InProcessReloadState>,
+        }
+        // SAFETY: see struct docstring — pointer is task-local, used only in Drop.
+        unsafe impl Send for ReloadPutBack {}
+        impl ReloadPutBack {
+            fn new(driver: &mut XyInProcessDriver, state: InProcessReloadState) -> Self {
+                Self {
+                    driver: driver as *mut XyInProcessDriver,
+                    state: Some(state),
+                }
+            }
+            fn state_mut(&mut self) -> &mut InProcessReloadState {
+                self.state.as_mut().expect("reload state present")
+            }
+        }
+        impl Drop for ReloadPutBack {
+            fn drop(&mut self) {
+                if let Some(state) = self.state.take() {
+                    // SAFETY: see ReloadPutBack docstring.
+                    unsafe {
+                        (*self.driver).reload = Some(state);
+                    }
+                }
+            }
+        }
+
+        let mut guard = ReloadPutBack::new(self, state);
         let mut steps = Vec::new();
         let mut cancelled = false;
 
-        // Ensure put-back even on early cancel / panic paths via explicit restore.
-        let put_back = |this: &mut Self, state: InProcessReloadState| {
-            this.reload = Some(state);
-        };
-
         // Re-read trust store so `/trust` + later `/reload` picks up new decisions (c1105).
         // Prefer reload `agent_dir` (same as product `~/.xylitol`) so tests need not mutate HOME.
-        let trust_mgr = crate::infra::trust::TrustManager::new(state.agent_dir.clone());
-        let cwd_str = state.cwd.display().to_string();
-        state.project_trusted = trust_mgr.is_trusted(&cwd_str);
+        let trust_mgr = crate::infra::trust::TrustManager::new(guard.state_mut().agent_dir.clone());
+        let cwd_str = guard.state_mut().cwd.display().to_string();
+        guard.state_mut().project_trusted = trust_mgr.is_trusted(&cwd_str);
 
         let app_config = crate::infra::config::loader::load_app_config(None).ok();
-        state.mcp_servers = crate::app::core::mcp_spec::McpServerSpec::from_infra_list(
+        guard.state_mut().mcp_servers = crate::app::core::mcp_spec::McpServerSpec::from_infra_list(
             app_config.as_ref().and_then(|c| c.mcp_servers.clone()),
         )
         .unwrap_or_default();
@@ -1379,19 +1410,18 @@ impl XyDriver for XyInProcessDriver {
             .and_then(|p| p.system_prompt.clone());
 
         if cancel.is_cancelled() {
-            put_back(self, state);
             return Ok(RuntimeReloadReport {
                 steps,
                 cancelled: true,
             });
         }
 
-        let skills = crate::app::core::bootstrap::reload_skills(
-            self,
-            &state.cwd,
-            &state.agent_dir,
-            state.project_trusted,
-        );
+        let (cwd, agent_dir, project_trusted) = {
+            let s = guard.state_mut();
+            (s.cwd.clone(), s.agent_dir.clone(), s.project_trusted)
+        };
+        let skills =
+            crate::app::core::bootstrap::reload_skills(self, &cwd, &agent_dir, project_trusted);
         let skills_msg = if skills.names.is_empty() {
             "0 skills".into()
         } else {
@@ -1404,15 +1434,21 @@ impl XyDriver for XyInProcessDriver {
         });
 
         if cancel.is_cancelled() {
-            put_back(self, state);
             return Ok(RuntimeReloadReport {
                 steps,
                 cancelled: true,
             });
         }
 
-        match state.mcp.reload(self, &state.mcp_servers, cancel).await {
-            Ok(true) => {
+        let mcp_servers = guard.state_mut().mcp_servers.clone();
+        let mcp_result = guard
+            .state_mut()
+            .mcp
+            .reload(self, &mcp_servers, cancel)
+            .await;
+
+        match mcp_result {
+            Ok(McpReloadOutcome::Cancelled) => {
                 cancelled = true;
                 steps.push(ReloadStepReport {
                     step: "mcp",
@@ -1420,19 +1456,19 @@ impl XyDriver for XyInProcessDriver {
                     message: "cancelled before install".into(),
                 });
             }
-            Ok(false) => {
+            Ok(McpReloadOutcome::Installed) => {
                 // c1900: reload is an explicit re-freeze epoch; bootstrap mark settled.
                 self.mcp_boot = McpBootState::Settled;
-                let connected = state.mcp.connected_servers().await;
-                let diags = state.mcp.diagnostics().await;
+                let connected = guard.state_mut().mcp.connected_servers().await;
+                let diags = guard.state_mut().mcp.diagnostics().await;
+                let configured = guard.state_mut().mcp_servers.len();
                 if diags.is_empty() {
                     let ids: Vec<_> = connected.iter().map(|s| s.id.as_str()).collect();
                     steps.push(ReloadStepReport {
                         step: "mcp",
                         ok: true,
                         message: format!(
-                            "{} configured, {} connected [{}]",
-                            state.mcp_servers.len(),
+                            "{configured} configured, {} connected [{}]",
                             connected.len(),
                             ids.join(", ")
                         ),
@@ -1447,8 +1483,7 @@ impl XyDriver for XyInProcessDriver {
                         step: "mcp",
                         ok: !connected.is_empty(),
                         message: format!(
-                            "{} configured, {} connected; diagnostics: {detail}",
-                            state.mcp_servers.len(),
+                            "{configured} configured, {} connected; diagnostics: {detail}",
                             connected.len()
                         ),
                     });
@@ -1462,18 +1497,21 @@ impl XyDriver for XyInProcessDriver {
         }
 
         if cancelled || cancel.is_cancelled() {
-            put_back(self, state);
             return Ok(RuntimeReloadReport {
                 steps,
                 cancelled: true,
             });
         }
 
+        let (cwd, agent_dir, project_trusted) = {
+            let s = guard.state_mut();
+            (s.cwd.clone(), s.agent_dir.clone(), s.project_trusted)
+        };
         let ctx = crate::app::core::bootstrap::reload_prompt_context(
             self,
-            &state.cwd,
-            &state.agent_dir,
-            state.project_trusted,
+            &cwd,
+            &agent_dir,
+            project_trusted,
             config_system_prompt,
         );
         steps.push(ReloadStepReport {
@@ -1485,7 +1523,6 @@ impl XyDriver for XyInProcessDriver {
             ),
         });
 
-        put_back(self, state);
         Ok(RuntimeReloadReport {
             steps,
             cancelled: false,
@@ -2057,7 +2094,10 @@ mod driver_session_tree_tests {
         // TUI host refreshes loaded-resources (mcp_bootstrap_complete flips).
         let mut saw_ungate_with_refresh = false;
         let mut saw_tools_while_gated = false;
-        for _ in 0..500 {
+        let deadline = std::time::Instant::now()
+            + crate::infra::mcp::MCP_SERVER_CONNECT_TIMEOUT
+            + std::time::Duration::from_secs(2);
+        while std::time::Instant::now() < deadline {
             let before = driver.mcp_blocks_agent();
             let refresh = driver.poll_mcp_bootstrap().await;
             let after = driver.mcp_blocks_agent();
@@ -2078,7 +2118,7 @@ mod driver_session_tree_tests {
                 saw_ungate_with_refresh = true;
                 break;
             }
-            tokio::task::yield_now().await;
+            tokio::time::sleep(std::time::Duration::from_millis(10)).await;
         }
         assert!(
             saw_tools_while_gated,
@@ -2129,7 +2169,10 @@ mod driver_session_tree_tests {
         assert!(driver.mcp_blocks_agent());
 
         let mut ok = false;
-        for _ in 0..500 {
+        let deadline = std::time::Instant::now()
+            + crate::infra::mcp::MCP_SERVER_CONNECT_TIMEOUT
+            + std::time::Duration::from_secs(2);
+        while std::time::Instant::now() < deadline {
             let before = driver.mcp_blocks_agent();
             let refresh = driver.poll_mcp_bootstrap().await;
             let after = driver.mcp_blocks_agent();
@@ -2141,7 +2184,7 @@ mod driver_session_tree_tests {
                 ok = true;
                 break;
             }
-            tokio::task::yield_now().await;
+            tokio::time::sleep(std::time::Duration::from_millis(10)).await;
         }
         assert!(ok, "gated→ungated transition not observed");
         let snap = driver.loaded_resources_snapshot().await;

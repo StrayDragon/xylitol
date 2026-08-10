@@ -131,6 +131,15 @@ pub fn build_agent(options: BuildAgentOptions) -> Result<AgentRuntime, XyDriverE
     builder.build().map_err(XyDriverError::from)
 }
 
+/// Outcome of [`McpSession::reload`] (c1205).
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum McpReloadOutcome {
+    /// New tools installed (or empty→builtins re-freeze).
+    Installed,
+    /// Cancelled before install; previous manager/tools left untouched.
+    Cancelled,
+}
+
 /// Owns MCP client connections for a local XyDriver session (composition seam).
 ///
 /// Held by the surface (cli/server) so connections stay alive across turns and
@@ -193,11 +202,11 @@ impl McpSession {
         driver: &mut crate::app::core::driver::XyInProcessDriver,
         servers: &[McpServerSpec],
         cancel: &tokio_util::sync::CancellationToken,
-    ) -> Result<bool, XyDriverError> {
+    ) -> Result<McpReloadOutcome, XyDriverError> {
         use crate::infra::mcp::{connect_and_discover, mcp_enabled};
 
         if cancel.is_cancelled() {
-            return Ok(true);
+            return Ok(McpReloadOutcome::Cancelled);
         }
 
         let infra = McpServerSpec::to_infra_list(servers);
@@ -209,7 +218,7 @@ impl McpSession {
             tokio::select! {
                 biased;
                 () = cancel.cancelled() => {
-                    return Ok(true);
+                    return Ok(McpReloadOutcome::Cancelled);
                 }
                 result = &mut discover => result,
             }
@@ -223,7 +232,7 @@ impl McpSession {
             if let Some((manager, _)) = discovered {
                 manager.shutdown().await;
             }
-            return Ok(true);
+            return Ok(McpReloadOutcome::Cancelled);
         }
 
         // Install only after discover succeeds (or empty path).
@@ -238,7 +247,7 @@ impl McpSession {
         if let Some(old) = prev {
             old.shutdown().await;
         }
-        Ok(false)
+        Ok(McpReloadOutcome::Installed)
     }
 }
 
@@ -269,6 +278,38 @@ mod tests {
         assert!(names.iter().any(|n| n == "read"));
         assert!(mcp.connected_servers().await.is_empty());
         assert!(mcp.diagnostics().await.is_empty());
+    }
+
+    #[tokio::test]
+    async fn reload_pre_cancelled_preserves_manager_and_tools() {
+        let agent = build_agent(BuildAgentOptions::default()).expect("build");
+        let store: Arc<dyn XySessionStore> = Arc::new(crate::infra::session::SessionManager::new(
+            tempfile::tempdir().unwrap().path().join("sessions"),
+        ));
+        let mut driver = crate::app::core::driver::XyInProcessDriver::new(agent, store);
+        let before = driver.tool_names_for_test();
+
+        let mut mcp = McpSession::new();
+        let placeholder = Arc::new(crate::infra::mcp::McpClientManager::new());
+        mcp.set_manager(Arc::clone(&placeholder));
+        assert!(mcp.has_manager());
+
+        let cancel = tokio_util::sync::CancellationToken::new();
+        cancel.cancel();
+        let outcome = mcp
+            .reload(&mut driver, &[], &cancel)
+            .await
+            .expect("pre-cancelled reload");
+        assert_eq!(outcome, McpReloadOutcome::Cancelled);
+        assert!(
+            mcp.has_manager(),
+            "cancel before install MUST keep previous manager"
+        );
+        assert_eq!(
+            driver.tool_names_for_test(),
+            before,
+            "cancel MUST NOT reopen/freeze tools"
+        );
     }
 
     #[tokio::test]

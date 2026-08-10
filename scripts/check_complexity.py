@@ -57,7 +57,7 @@ RADAR_PATHS = [
     REPO / "src/app/tui/bridge",
 ]
 
-# Passes today: host::step cognitive 33 / cyclo 28; headroom for small edits.
+# Passes today: host::step split into handle_*; gate on coordinator max.
 # ath12 / qg06 MUST: keep in sync with live specs (c1840).
 MAX_COGNITIVE = 35
 MAX_CYCLOMATIC = 30
