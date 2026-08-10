@@ -23,7 +23,7 @@ checkpoint_sha: 98c02592743f799ff45b2690a154328312591732
 - Responses usage：引入三态 `PromptCacheRead`（名以实现为准）；映射 `input_tokens_details.cached_tokens`（及官方存在的 write 类字段，若无则保持 0/NotApplicable 并文档说明）。
 - **`PROMPT_CACHE_USAGE` 默认 true**（改 `defaults.rs`；修订 live `pab19` **仅翻**该位）：有字段 → `Tokens`，无 → `NotReported`；显式关闸 → `NotApplicable`。
 - **观测**：trace / Langfuse（及既有 OTel 路径）透出三态；`usage_details.cache_read` 仅在 `Tokens(n)` 时写数字。
-- **不做 TUI**（延后草案 [`c1940`](../c1940-add-tui-prompt-cache-footer/proposal.md)）。
+- **不做 TUI**（延后草案 [`c1940`](../../../delayed-changes/tui/c1940-add-tui-prompt-cache-footer/proposal.md)）。
 - **不做** `prompt_cache_key` 请求透传（后置）。
 - 单测：fixtures → 三态；兼容端无细节 → `NotReported`（默认开闸下）。
 
@@ -41,7 +41,7 @@ checkpoint_sha: 98c02592743f799ff45b2690a154328312591732
 
 ## Out of scope
 
-- TUI footer / chrome（→ [`c1940`](../c1940-add-tui-prompt-cache-footer/proposal.md)）
+- TUI footer / chrome（→ [`c1940`](../../../delayed-changes/tui/c1940-add-tui-prompt-cache-footer/proposal.md)）
 - `prompt_cache_key` 请求透传与键策略（明确后置）
 - 改变 system/tools 布局或状态栏子系统（→ `c1890`/`c1895`）
 - 强制开启某 cache **策略**（布局侧）
@@ -51,7 +51,7 @@ checkpoint_sha: 98c02592743f799ff45b2690a154328312591732
 ## Parallel / depends
 
 - `depends_on: []`（硬依赖无；语义承接已归档 `c1880` WirePolicy）
-- 延后 TUI：[`c1940-add-tui-prompt-cache-footer`](../c1940-add-tui-prompt-cache-footer/proposal.md)
+- 延后 TUI：[`c1940-add-tui-prompt-cache-footer`](../../../delayed-changes/tui/c1940-add-tui-prompt-cache-footer/proposal.md)
 - Specs：修订 `package-ai-bridge` pab19（仅 `prompt_cache_usage` 默认 true）
 
 ## Open Questions
@@ -61,7 +61,7 @@ checkpoint_sha: 98c02592743f799ff45b2690a154328312591732
 - **Q1 最小诚实交付**：选 **A — 三态 provenance**。须区分「命中 N」「回报 0」「未回报/不适用」；禁止把「没字段」当成「没命中」。映射仍受 `WirePolicy.expects_prompt_cache_usage` 闸门约束（真源 `c1880` 已归档）。`cache_read: u64` 单字段混义不够。
 - **Q2 类型落点**：选 **A — 一等枚举**（意向名 `PromptCacheRead` / 以实现为准）：`NotApplicable | NotReported | Tokens(u64)`（含 `Tokens(0)`）。`cache_read: u64` 可保留为派生兼容读数（仅 `Tokens(n)→n`，其余→0）供 accounting/compact 求和；禁止只靠 `Option<u64>`（糊掉 NotApplicable vs NotReported）。
 - **Q3 闸门默认**：选 **B — `PROMPT_CACHE_USAGE` 默认 true**。Responses 路径默认期望 cache 细节；有字段 → `Tokens(n)`，无 → `NotReported`。动机：本地/联调测试必须能看见诚实读数与「未回报」。须修订 live `pab19`（仅翻 `prompt_cache_usage` 默认）。`NotApplicable` 留给显式关闸。方言端 NotReported 噪音可接受。
-- **Q4 产品面**：选 **A — bridge DTO/usage/单测 + trace/Langfuse 顺带三态；不做 TUI footer**。延后 TUI 另立 draft [`c1940`](../c1940-add-tui-prompt-cache-footer/proposal.md)。
+- **Q4 产品面**：选 **A — bridge DTO/usage/单测 + trace/Langfuse 顺带三态；不做 TUI footer**。延后 TUI 另立 draft [`c1940`](../../../delayed-changes/tui/c1940-add-tui-prompt-cache-footer/proposal.md)。
 - **Q5 `prompt_cache_key`**：选 **A — 整段后置**。本 change 不接请求透传、不定键策略；仍由 `allows_prompt_cache_key`（默认 false）闸着。范围 = **resp/usage 三态诚实 + 观测透出**。
 
 ### Open
