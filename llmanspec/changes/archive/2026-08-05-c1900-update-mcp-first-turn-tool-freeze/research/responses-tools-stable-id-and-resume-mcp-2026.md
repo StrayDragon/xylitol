@@ -35,6 +35,8 @@
 | 静态 `tools[]` 而动态发现？ | **部分可行**：`tool_search`、namespace、MCP `defer_loading`、`additional_tools` |
 | 已载入工具可静默删除/替换且保 cache？ | **否**；官方明确说修改 loaded set 会从该点破坏 cache |
 | `previous_response_id` 解决 tool identity？ | **否**；它是 response-state chain，不是 tool-definition 映射 |
+| xylitol：仅删 MCP 后 `input` 前缀？ | **可不变**；`tools[]` 仍变 → cache 仍 bust（见下文实证） |
+| xylitol：删内建后 `input` 前缀？ | **必变**（Available-tools 进 system）；与 `tools[]` 双 bust |
 
 ## 官方 Responses wire：相关对象的精确字段
 
@@ -240,6 +242,28 @@ session。
 本题已知 llama.cpp 拒绝 `previous_response_id`，故 xylitol 必须保留全量重放与明确 epoch
 fallback；不要为这条优化移除该路径。
 
+## xylitol 实证：删工具后 Responses 前缀 / cache（2026-08-10）
+
+> 闸内单测（`agent::llm_project`）：`responses_assemble_after_mcp_remove_keeps_input_busts_tools`、
+> `responses_assemble_after_builtin_remove_rewrites_input_and_tools`。
+> Assembler 把 system 预置进 `input[0]`（thinking on → `developer`）；`tools[]` 为顶栏独立字段。
+> Available-tools 文本经 `default_prompt_base` **滤掉** `is_mcp_tool_name` 名。
+
+| 变更 | System Available-tools | Responses `input`（含 system 项） | 顶栏 `tools[]` | Prompt-cache 含义 |
+|---|---|---|---|---|
+| **仅删 MCP** | **不变**（MCP 本不进 Available-tools） | **可 byte-stable**（历史 `function_call` 仍在） | **变**（定义消失） | **`tools[]` 必 bust**；历史前缀可不 bust |
+| **删内建**（如 `bash`） | **改写**（列表少一行） | **变**（system/developer 项变） | **变** | **前缀 + tools 双 bust** |
+| 历史里已发生的 ToolCall | — | **保留**（`project_for_llm` 不抹） | 与当前 catalog 无关 | call identity ≠ definition identity |
+
+产品含义（相对上文「冻表 / epoch」）：
+
+- `/reload` 只动 MCP 表：下一轮请求仍会因 `tools[]` 变化断 cache；但 **system 前缀与历史
+  `input` 可保持稳定**——不是「无代价」，而是 bust 面比删内建更窄。
+- 若未来允许会话中途减内建工具（或改 Available-tools 文案），那是**显式前缀 epoch 断点**，
+  与 MCP-only 不可混谈「只 bust tools」。
+- 与官方一致：改 loaded / 声明的 tools set 从该点破坏 cache；xylitol 没有 stable definition
+  remap 可绕过。
+
 ## 待验证问题与下一轮实验
 
 1. **OpenAI client search + resume matrix**：保存完整 `tool_search_call/output` 历史后，
@@ -248,14 +272,15 @@ fallback；不要为这条优化移除该路径。
 2. **`previous_response_id` 语义**：在相同与不同 `tools[]`、省略/传入 `tools`、以及已有
    `tool_search_output` 的组合中抓 request/response。官方文档未说明这些组合是否继承
    tool availability，不能猜测。
-3. **cache 可观测性**：对 OpenAI 原生记录 cache usage/latency；对同一历史分别做
-   append、重排、替换 loaded set 和更改 namespace description，验证官方“末尾注入”边界。
+3. **cache 可观测性**：对 OpenAI 原生 / Ornith 记录 `cached_tokens`（或等价）；对照
+   MCP-only `tools[]` 变更 vs 内建 Available-tools 改写，验证上表「窄 bust / 双 bust」
+   在 live 网关上是否可观测（维护 lab：`lab_resume_prompt_cache`，不进 qa）。
 4. **Ornith/llama.cpp compatibility probe**：逐一测 `namespace`、`tool_search`
    client mode、`tool_search_output`、`additional_tools`、`allowed_tools` 与
    `previous_response_id`；把接受/忽略/400 固化为 WirePolicy 测试矩阵，禁止自动猜测。
 5. **xylitol resume BDD**：覆盖 fingerprint equal、MCP removed、same name/new schema、
    provider reload、历史 tool output replay；断言既不静默重绑，也不在声称 cache-safe 的
-   epoch 中重写 frozen root。
+   epoch 中重写 frozen root。装配层「MCP vs 内建删工具」前缀差异已由上节单测锁住。
 
 ## 一手来源
 
