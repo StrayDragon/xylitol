@@ -73,6 +73,6 @@ Agent 在需求不清或实现分叉时需要结构化问用户，但：
 
 - 视觉 SSOT：[`src/app/tui/design/ask.md`](../../../src/app/tui/design/ask.md)
 - 静图：`playground/?slot=ask`
-- Skip：[`docs/research/ask-tool-skip-semantics-2026.md`](../../../docs/research/ask-tool-skip-semantics-2026.md)
-- UI 景观：[`docs/research/ask-ui-ux-landscape-2026.md`](../../../docs/research/ask-ui-ux-landscape-2026.md)
+- Skip：[`research/ask-tool-skip-semantics-2026.md`](./research/ask-tool-skip-semantics-2026.md)
+- UI 景观：[`research/ask-ui-ux-landscape-2026.md`](./research/ask-ui-ux-landscape-2026.md)
 - 前草案：`tui-only-builtin-ask-tool-clarify-decision-questionnaire`（已提升为本 id）

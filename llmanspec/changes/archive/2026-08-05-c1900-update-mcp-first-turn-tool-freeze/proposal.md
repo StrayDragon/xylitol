@@ -66,7 +66,7 @@ checkpoint_sha: c43e083e12a52e125d6799120fba02d982238686
 
 ### 已钉 / 调研结论（续）
 
-- **Resume × 稳定 tool id（Q15，[`调研稿`](../../../docs/research/responses-tools-stable-id-and-resume-mcp-2026.md)，[`tools id × resume MCP 调研`](bd5c389e-1cc9-4d2f-be35-6f21eb4cf256)）**：
+- **Resume × 稳定 tool id（Q15，[`调研稿`](./research/responses-tools-stable-id-and-resume-mcp-2026.md)，[`tools id × resume MCP 调研`](bd5c389e-1cc9-4d2f-be35-6f21eb4cf256)）**：
   - OpenAI Responses **没有** function definition 级稳定 `id`，也 **没有** placeholder / slot / remap。
   - `call_id` / item `id` = **单次调用**身份，不能当工具定义别名。
   - 官方「稳前缀 + 动态发现」= `tool_search` + `defer_loading`（尾部注入）；**不能**无代价删改已加载集；Ornith lab **不可用** hosted 路径。

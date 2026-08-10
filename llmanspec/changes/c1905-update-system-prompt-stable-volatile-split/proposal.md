@@ -11,7 +11,7 @@ depends_on:
 > **已升格（2026-08-10）**：自 delayed-changes 移入 active 待处理队列，当前排序 **#13**。
 
 
-> **调研底稿**：[`docs/research/responses-context-layout-and-cache-2026.md`](../../../docs/research/responses-context-layout-and-cache-2026.md) §5–6（术语对照 §7）
+> **调研底稿**：[`docs/research/responses-context-layout-and-cache-2026.md`](../../../docs/research/responses-context-layout-and-cache-2026.md) §5–6（术语对照 §7）；一手深挖 [`research/stable-volatile-split-2026.md`](./research/stable-volatile-split-2026.md)
 > **书指针**：《深入理解 AI Agent》Ch2「KV Cache 友好的上下文设计」「提示工程」（姊妹仓 `ai-agent-book/book/chapter2.md`）；书语仅经 research §7 术语表映射，**禁止**写入 live specs。
 > **自包含**：只整理 prompt 片段分类与组装顺序；不实现状态栏/MCP search。
 > **工程约定（本波次）**：策略默认 **code-first**：`defaults.rs` 纯常量（改文件调试）；**不**新增 YAML 旋钮；**不**用 env 当未暴露配置面。用户面 YAML 仅既有字段（如 `api`）。真源见 [`c1880`](../archive/2026-08-04-c1880-update-responses-first-api-boundary/proposal.md)。
@@ -43,18 +43,29 @@ depends_on:
 ## Out of scope
 
 - 状态栏实现（→ `c1895`）
-- tool_search（→ `c1900`）
+- tool_search（→ `c1960`；**非**已归档的 `c1900` 冻表）
 - 强制迁出 date/cwd
 
 ## Parallel / depends
 
 - **硬依赖**：`c1890`
-- 与同层并行时注意 prompt 文件冲突，可用任务切分（模板 vs 测）
+- 与同层并行时注意 prompt 文件冲突，可用任务切分（模板 vs 测）；日界权威与 `c1895` clock 联调
 
 ## Open Questions
 
-- skills 元数据放 stable 还是末尾 meta（书倾向末尾通道）—— propose 时与现 `$skill` 行为对齐。
-- **日历日 `date` × 隔日 resume（深挖必做）**：同一 session 跨自然日继续聊时，date 若钉在 system 会过时；若每日改写 system 则整段前缀失效。需在 propose/design 中对比并选型（可与 `c1895` 联调）：(a) system 内 date + 显式「日界刷新」规则与观测；(b) date 迁状态栏（replace/append）；(c) system 不含 date，仅跨日首轮追加 meta。cwd 与 date **分开**论证（cwd 通常会话内不变）。调研指针：[`docs/research/responses-context-layout-and-cache-2026.md`](../../../docs/research/responses-context-layout-and-cache-2026.md) §1。
+> 一手深挖已完成（2026-08-10）；**D1–D5 已钉入 [`design.md`](./design.md)**。
+
+- **skills 元数据**：stable（会话）；与 `$skill` user 投影对齐；顺序 MAY 后置。
+- **日历日 × 隔日 resume**：会话钉死日历日（`session_env`）+ 活时刻走栏/meta；否决默认日界改写 system。详见 design。
+
+## Further Notes
+
+一手深挖（[Deep-dive c1905 research](e91c661f-f22c-4b47-ad1a-ad966e0977ac)）→ [`research/stable-volatile-split-2026.md`](./research/stable-volatile-split-2026.md)：
+
+1. `date_placement` 仍仅占位，组装层未读；生产路径未钉 `opts.date`，缺省每次 `Utc::now()`。
+2. 日界：否决默认日界改写 system；推荐会话钉死日历日 + 活时刻走 `c1895` clock/栏。
+3. skills 元数据 → stable（会话）；`instructions` 双份拷贝仍遵守（不写顶栏）。
+4. FF design/tasks 建议钉：Policy 接线、片段标签单测、日界产品句、边界清单（含 `c1960`）。
 
 ## Ethics
 

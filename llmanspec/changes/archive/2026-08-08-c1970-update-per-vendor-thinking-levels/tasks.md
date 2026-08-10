@@ -2,7 +2,7 @@
 
 ## 0. 调研门禁
 
-- [x] 0.1 写 `docs/research/thinking-levels-per-vendor-2026.md`（DeepSeek / OpenAI / Anthropic 旋钮 + resume 两层）
+- [x] 0.1 写 `research/thinking-levels-per-vendor-2026.md`（DeepSeek / OpenAI / Anthropic 旋钮 + resume 两层）
 - [x] 0.2 design 吸收拍板：仅 off 默认、配置声明字符串、resume 无损、末项换模默认
 
 ## 1. 合约落地（Specs landing）

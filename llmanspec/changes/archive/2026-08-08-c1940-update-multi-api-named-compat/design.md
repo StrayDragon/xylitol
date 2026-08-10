@@ -70,7 +70,7 @@ deepseek-v4-flash-anthropic:    # Anthropic Messages / 官方兼容端（*-anthr
 
 命名约定：YAML 键 = registry id = 显示名；通道用**后缀**（`*-zen` / `*-anthropic`），不用 `zen-*` 前缀。上游 wire `model:` 可与别名不同、也可多别名共用。
 
-MCP 公开工具名统一为 `mcp__{server_id}__{tool_name}`（`MCP_PUBLIC_DELIMITER="__"` 单点；Claude/Codex 风格；仅 `[a-zA-Z0-9_-]`；段内可含 `-`/`_`，**不** sanitize 掉 hyphen）。**禁止** `mcp:server:tool` 冒号与点号分隔。execute **不得**反解析公开名，adapter 保存 `server_id`/`tool_name`。对照：`docs/research/mcp-tool-public-naming-hyphen-2026.md`。
+MCP 公开工具名统一为 `mcp__{server_id}__{tool_name}`（`MCP_PUBLIC_DELIMITER="__"` 单点；Claude/Codex 风格；仅 `[a-zA-Z0-9_-]`；段内可含 `-`/`_`，**不** sanitize 掉 hyphen）。**禁止** `mcp:server:tool` 冒号与点号分隔。execute **不得**反解析公开名，adapter 保存 `server_id`/`tool_name`。对照：`research/mcp-tool-public-naming-hyphen-2026.md`。
 
 ## 装配
 

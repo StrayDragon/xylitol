@@ -50,4 +50,4 @@ checkpoint_sha: 8ba0cf1c19da63e54ab764ced57a6fc568e5ddb7
 
 ## Further Notes
 
-- MCP 公开名：`mcp__{server}__{tool}`（`MCP_PUBLIC_DELIMITER`）；含 `-` 时的行业做法见 [`docs/research/mcp-tool-public-naming-hyphen-2026.md`](../../../docs/research/mcp-tool-public-naming-hyphen-2026.md)（[MCP tool naming research](daf6214f-51be-41e0-8c62-648428d34014)）。
+- MCP 公开名：`mcp__{server}__{tool}`（`MCP_PUBLIC_DELIMITER`）；含 `-` 时的行业做法见 [`research/mcp-tool-public-naming-hyphen-2026.md`](./research/mcp-tool-public-naming-hyphen-2026.md)（[MCP tool naming research](daf6214f-51be-41e0-8c62-648428d34014)）。

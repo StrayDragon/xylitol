@@ -2,7 +2,7 @@
 
 > **范围**：coding-agent「结构化问用户」的布局与视觉层级（TUI + IDE 卡）。
 > **约束**：一手来源（官方文档、带 UI 引文的 issue/PR、协议原文）。不改 `llmanspec/specs/**`。
-> **相关**：skip 语义 → [`ask-tool-skip-semantics-2026.md`](./ask-tool-skip-semantics-2026.md)；产品意图 → [`src/app/tui/design/ask.md`](../../src/app/tui/design/ask.md)。
+> **相关**：skip 语义 → [`ask-tool-skip-semantics-2026.md`](./ask-tool-skip-semantics-2026.md)；产品意图 → [`src/app/tui/design/ask.md`](../../../../../src/app/tui/design/ask.md)。
 
 ## 跨产品对照（摘要）
 
@@ -90,20 +90,20 @@
 |-------------|-------------|
 | 右栏 preview / 大卡 | 选中项下方展开描述或 ASCII preview；宽阈值再两栏 ([Claude preview](https://code.claude.com/docs/en/agent-sdk/user-input#option-previews-typescript)、[Codex layout priorities](https://github.com/openai/codex/blob/d47b755a/docs/tui-request-user-input.md)) |
 | 鼠标点选卡 | ↑↓ / 数字键 / `→` 焦点 ([Warp](https://docs.warp.dev/agent-platform/local-agents/interacting-with-agents/agent-questions/)、[OpenCode](https://github.com/anomalyco/opencode/blob/5d2dc888/packages/opencode/src/cli/cmd/tui/routes/session/question.tsx)) |
-| 多卡并排 | **一题一屏** + header tabs + Review ([Gemini PR](https://github.com/google-gemini/gemini-cli/pull/17344)、xylitol [`ask.md`](../../src/app/tui/design/ask.md)) |
-| 彩色卡片墙 | **左边轨 + semantic color**；Ask 结束后 **勿** `tool-*-bg` 洗底（[`DESIGN.md`](../../src/app/tui/DESIGN.md) c1830；[`ask.md`](../../src/app/tui/design/ask.md)） |
+| 多卡并排 | **一题一屏** + header tabs + Review ([Gemini PR](https://github.com/google-gemini/gemini-cli/pull/17344)、xylitol [`ask.md`](../../../../../src/app/tui/design/ask.md)) |
+| 彩色卡片墙 | **左边轨 + semantic color**；Ask 结束后 **勿** `tool-*-bg` 洗底（[`DESIGN.md`](../../src/app/tui/DESIGN.md) c1830；[`ask.md`](../../../../../src/app/tui/design/ask.md)） |
 
 ---
 
 ## Recommendation for xylitol Ask（<350 字）
 
-对齐已定稿意图：问卷在 **editor 槽**，结束后 scrollback **人话摘要**（非 JSON tool 块）([ask.md](../../src/app/tui/design/ask.md))。
+对齐已定稿意图：问卷在 **editor 槽**，结束后 scrollback **人话摘要**（非 JSON tool 块）([ask.md](../../../../../src/app/tui/design/ask.md))。
 
 1. **固定左轨 + 语义色**：进行中/成功用 accent/success 轨区分「Ask 等待」与「已答/跳过」；**禁止**默认 `tool-*-bg`（[`DESIGN.md`](../../src/app/tui/DESIGN.md)；对照 Claude/Codex 用结构层级而非整行洗底）。
 2. **选项列表优先**：单选 `→`、多选 `[x]`（ask.md）；行下短 `description` 作易懂说明——Codex/Claude/Gemini/OpenCode 均把说明绑在选项上 ([Codex schema](https://github.com/openai/codex/blob/35aaa5d9/codex-rs/tools/src/request_user_input_tool.rs)、[Claude](https://code.claude.com/docs/en/agent-sdk/user-input#question-format)、[OpenCode](https://github.com/anomalyco/opencode/blob/5d2dc888/packages/opencode/src/cli/cmd/tui/routes/session/question.tsx))。
 3. **宽时增强**：≥~100 列且有长例子/`preview` 时，右栏或选中项旁显示 AI「易懂例子」；窄宽折叠到选中项下（Claude 左列表+右 preview；Codex 挤 notes）([Claude](https://code.claude.com/docs/en/agent-sdk/user-input#option-previews-typescript)、[Codex TUI note](https://github.com/openai/codex/blob/d47b755a/docs/tui-request-user-input.md))。
 4. **字符级强调**：仅对 `(Recommended)`、当前焦点标签、多选勾选做 accent/bold；避免整行反色噪音（Warp recommended；Codex label 后缀）。
-5. **Skip 底栏常显** + Esc=skip（产品已拍板）；对照 Cursor 显式 Skip，避免 timeout 复用 skip 串 ([Cursor #158485](https://forum.cursor.com/t/askquestion-tool-can-return-synthetic-skip-string-with-highly-variable-unpredictable-delay/158485)；[ask.md](../../src/app/tui/design/ask.md))。
+5. **Skip 底栏常显** + Esc=skip（产品已拍板）；对照 Cursor 显式 Skip，避免 timeout 复用 skip 串 ([Cursor #158485](https://forum.cursor.com/t/askquestion-tool-can-return-synthetic-skip-string-with-highly-variable-unpredictable-delay/158485)；[ask.md](../../../../../src/app/tui/design/ask.md))。
 6. **多题**：header tabs → Review → Enter 提交（Gemini/OpenCode/ask.md）；单选可学 Warp auto-advance 减键次。
 
 ---

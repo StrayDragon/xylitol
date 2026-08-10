@@ -83,7 +83,7 @@ Basic catalog（18）：`Text` `Image` `Icon` `Video` `AudioPlayer` `Row` `Colum
 
 尚无「生成式 UI DSL」；**哲学已是 A2UI 子集（闭集 + 客户端渲染）**，只是未采用 A2UI envelope / surface / dataModel。
 
-相关：`src/infra/tools/ask.rs` · `src/app/tui/design/ask.md` · `docs/research/ask-ui-ux-landscape-2026.md` · wire 已有未接线的 `AnswerQuestion`。
+相关：`src/infra/tools/ask.rs` · `src/app/tui/design/ask.md` · `llmanspec/changes/archive/2026-08-02-c1850-add-tui-ask-tool/research/ask-ui-ux-landscape-2026.md` · wire 已有未接线的 `AnswerQuestion`。
 
 ---
 
@@ -165,4 +165,4 @@ packages/xylitol-tui — 只提供通用 widget；不拥有 A2UI 状态机
 - https://a2ui.org/specification/v1.0-a2ui/
 - https://a2ui.org/ （版本状态表）
 - 本机 `a2ui-tui-rs` checkout：README + `specification/v1_0/`
-- 本仓：`docs/roadmaps/Web与TUI同源.md` · `src/app/tui/design/ask.md` · `packages/xylitol-tui/AGENTS.md` · `docs/research/ask-ui-ux-landscape-2026.md`
+- 本仓：`docs/roadmaps/Web与TUI同源.md` · `src/app/tui/design/ask.md` · `packages/xylitol-tui/AGENTS.md` · `llmanspec/changes/archive/2026-08-02-c1850-add-tui-ask-tool/research/ask-ui-ux-landscape-2026.md`

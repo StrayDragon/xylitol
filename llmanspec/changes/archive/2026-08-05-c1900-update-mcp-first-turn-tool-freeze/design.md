@@ -106,7 +106,7 @@ code-first：
 
 - 轨 A（本 change）：`ToolsMode::Full` + 定稿冻表；见上文状态机。
 - 轨 B：`c1960-add-tool-search-mcp-discovery` + research
-  [`docs/research/responses-tools-stable-id-and-resume-mcp-2026.md`](../../../docs/research/responses-tools-stable-id-and-resume-mcp-2026.md)
+  [`research/responses-tools-stable-id-and-resume-mcp-2026.md`](./research/responses-tools-stable-id-and-resume-mcp-2026.md)
   （`defer_loading` / `tool_search`；用**声明支持**的 provider 验证，非 Ornith 冒充）。
 - Resume：本波切会话 **清冻再门闸**（正确性优先）。「指纹一致续冻」需持久化指纹后再升格；当前 fingerprint 类型已在会话侧可比较。
 
