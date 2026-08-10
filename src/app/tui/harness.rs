@@ -4209,10 +4209,11 @@ mod slice_tests {
 
     #[tokio::test]
     async fn c1205_reload_soft_gate_toast_keeps_draft() {
-        use crate::app::tui::commands::RELOADING_WAIT_NOTICE;
+        use crate::app::tui::commands::{CHROME_TOAST_ERROR_PREFIX, RELOADING_WAIT_NOTICE};
 
         let mut session = HostSession::new_product_ui(TestTerminal::new(80, 24));
         let root = session.ui_root().expect("ui").clone();
+        let notes_before = system_notes(&session).len();
 
         session.begin_reload();
         root.borrow_mut().set_editor_text("draft while reloading");
@@ -4221,6 +4222,16 @@ mod slice_tests {
         assert_eq!(
             chrome_toast_body(&session).as_deref(),
             Some(RELOADING_WAIT_NOTICE)
+        );
+        let frame = root.borrow_mut().render(80).join("\n");
+        assert!(
+            frame.contains(CHROME_TOAST_ERROR_PREFIX) && frame.contains(RELOADING_WAIT_NOTICE),
+            "visible toast MUST be Error: + body: {frame}"
+        );
+        assert_eq!(
+            system_notes(&session).len(),
+            notes_before,
+            "soft-gate MUST NOT append ScrollNotice"
         );
         assert_eq!(root.borrow().editor_text(), "draft while reloading");
         assert!(session.reload_active());
@@ -4299,6 +4310,282 @@ mod slice_tests {
             "expected fail report: {notes:?}"
         );
         assert!(!session.reload_active());
+    }
+
+    #[tokio::test]
+    async fn c1205_reload_paints_reloading_and_hides_right_cue() {
+        use crate::app::core::driver::{
+            LoadedResourcesSnapshot, MCP_PENDING_CUE, McpServerPhase, McpServerSnapshot,
+        };
+
+        let mut session = HostSession::new_product_ui(TestTerminal::new(80, 24));
+        let root = session.ui_root().expect("ui").clone();
+        let driver = ScriptedDriver::new();
+
+        driver.set_loaded_resources_for_driver(LoadedResourcesSnapshot {
+            mcp_configured: 1,
+            mcp_bootstrap_complete: true,
+            tools_table_frozen: false,
+            mcp_servers: vec![McpServerSnapshot {
+                id: "fs".into(),
+                phase: McpServerPhase::Connecting,
+                tools_armed: false,
+                tool_count: 0,
+            }],
+            ..LoadedResourcesSnapshot::default()
+        });
+        session.refresh_loaded_resources(&driver).await;
+        assert_eq!(
+            root.borrow().status_next_turn_cue_for_test().as_deref(),
+            Some(MCP_PENDING_CUE),
+            "precondition: mcp pending cue visible before reload"
+        );
+
+        session.begin_reload();
+        assert_eq!(session.ui_model().status.as_deref(), Some("Reloading"));
+        assert_eq!(
+            root.borrow().status_next_turn_cue_for_test(),
+            None,
+            "Reloading MUST suppress right-side mcp/next-turn cue"
+        );
+        let frame = root.borrow_mut().render(80).join("\n");
+        assert!(
+            frame.contains("Reloading"),
+            "status lead MUST paint Reloading: {frame}"
+        );
+        assert!(
+            !frame.contains(MCP_PENDING_CUE),
+            "frame MUST NOT paint mcp pending during Reloading: {frame}"
+        );
+        session.end_reload();
+    }
+
+    #[tokio::test]
+    async fn c1205_reload_ctrl_c_cancels_hang() {
+        use crate::app::tui::commands::RELOAD_CANCELLED_NOTICE;
+        use crate::app::tui::effects::{drain_pending, run_interactive_reload};
+        use futures::stream;
+
+        let mut session = HostSession::new_product_ui(TestTerminal::new(80, 24));
+        let root = session.ui_root().expect("ui").clone();
+        let mut driver = ScriptedDriver::new();
+        driver.set_hang_reload_until_cancel(true);
+        let mut agent_stream = None;
+
+        root.borrow_mut().set_editor_text("/reload");
+        session.step(HostEvent::Input(enter_event())).unwrap();
+        drain_pending(&mut session, &mut driver, &mut agent_stream)
+            .await
+            .unwrap();
+        assert!(session.take_reload());
+
+        let input = stream::iter(vec![
+            Ok::<HostEvent, XyDriverError>(HostEvent::Tick),
+            Ok(HostEvent::Input(ctrl_key_event('c'))),
+        ]);
+        run_interactive_reload(&mut session, &mut driver, input)
+            .await
+            .unwrap();
+
+        assert_eq!(
+            chrome_toast_body(&session).as_deref(),
+            Some(RELOAD_CANCELLED_NOTICE)
+        );
+        assert!(
+            system_notes(&session)
+                .iter()
+                .any(|t| t.contains("Reload cancelled:")),
+            "notes={:?}",
+            system_notes(&session)
+        );
+        assert!(!session.reload_active());
+        assert!(!session.should_quit(), "Ctrl+C during reload MUST NOT quit");
+    }
+
+    #[tokio::test]
+    async fn c1205_reload_second_slash_toast_not_agent_busy() {
+        use crate::app::tui::commands::RELOADING_WAIT_NOTICE;
+
+        let mut session = HostSession::new_product_ui(TestTerminal::new(80, 24));
+        let root = session.ui_root().expect("ui").clone();
+
+        session.begin_reload();
+        root.borrow_mut().set_editor_text("/reload");
+        session.step(HostEvent::Input(enter_event())).unwrap();
+
+        assert_eq!(
+            chrome_toast_body(&session).as_deref(),
+            Some(RELOADING_WAIT_NOTICE)
+        );
+        let notes = system_notes(&session);
+        assert!(
+            !notes
+                .iter()
+                .any(|t| t.contains("agent busy") && t.contains("/reload")),
+            "soft-gate MUST NOT use agent-busy refuse: {notes:?}"
+        );
+        assert_eq!(root.borrow().editor_text(), "/reload");
+        session.end_reload();
+    }
+
+    #[tokio::test]
+    async fn c1205_reload_bang_enter_soft_gate() {
+        use crate::app::tui::commands::RELOADING_WAIT_NOTICE;
+
+        let mut session = HostSession::new_product_ui(TestTerminal::new(80, 24));
+        let root = session.ui_root().expect("ui").clone();
+
+        session.begin_reload();
+        root.borrow_mut().set_editor_text("!echo hi");
+        session.step(HostEvent::Input(enter_event())).unwrap();
+
+        assert_eq!(
+            chrome_toast_body(&session).as_deref(),
+            Some(RELOADING_WAIT_NOTICE)
+        );
+        assert!(
+            session.take_bash().is_none(),
+            "bang MUST NOT queue while Reloading"
+        );
+        assert_eq!(root.borrow().editor_text(), "!echo hi");
+        session.end_reload();
+    }
+
+    #[tokio::test]
+    async fn c1205_reload_ctrl_g_allowed() {
+        let mut session = HostSession::new_product_ui(TestTerminal::new(80, 24));
+        let root = session.ui_root().expect("ui").clone();
+
+        session.begin_reload();
+        root.borrow_mut().set_editor_text("draft");
+        session.step(HostEvent::Input(ctrl_g_event())).unwrap();
+
+        assert!(session.reload_active(), "Ctrl+G MUST NOT cancel reload");
+        assert_eq!(root.borrow().external_editor_invocations(), 1);
+        assert!(
+            chrome_toast_body(&session).is_none(),
+            "Ctrl+G MUST NOT toast soft-gate/cancel"
+        );
+        session.end_reload();
+    }
+
+    #[tokio::test]
+    async fn c1205_reload_again_after_cancel() {
+        use crate::app::tui::effects::{drain_pending, run_interactive_reload};
+        use futures::stream;
+
+        let mut session = HostSession::new_product_ui(TestTerminal::new(80, 24));
+        let root = session.ui_root().expect("ui").clone();
+        let mut driver = ScriptedDriver::new();
+        driver.set_hang_reload_until_cancel(true);
+        let mut agent_stream = None;
+
+        root.borrow_mut().set_editor_text("/reload");
+        session.step(HostEvent::Input(enter_event())).unwrap();
+        drain_pending(&mut session, &mut driver, &mut agent_stream)
+            .await
+            .unwrap();
+        assert!(session.take_reload());
+
+        let input = stream::iter(vec![
+            Ok::<HostEvent, XyDriverError>(HostEvent::Tick),
+            Ok(HostEvent::Input(esc_event())),
+        ]);
+        run_interactive_reload(&mut session, &mut driver, input)
+            .await
+            .unwrap();
+        assert!(!session.reload_active());
+        assert_eq!(driver.reload_runtime_calls(), 1);
+
+        driver.set_hang_reload_until_cancel(false);
+        root.borrow_mut().set_editor_text("/reload");
+        session.step(HostEvent::Input(enter_event())).unwrap();
+        pump_host_driver(&mut session, &mut driver, &mut agent_stream)
+            .await
+            .unwrap();
+
+        assert_eq!(driver.reload_runtime_calls(), 2);
+        assert!(!session.reload_active());
+        assert!(
+            system_notes(&session)
+                .iter()
+                .any(|t| t.contains("Reload:") && !t.contains("cancelled")),
+            "second reload MUST land success report: {:?}",
+            system_notes(&session)
+        );
+    }
+
+    #[tokio::test]
+    async fn c1205_reload_overlay_esc_closes_slot_without_cancel() {
+        use crate::app::tui::layout::EditorSlot;
+
+        let mut session = HostSession::new_product_ui(TestTerminal::new(80, 24));
+        let root = session.ui_root().expect("ui").clone();
+
+        session.begin_reload();
+        let cancel = session.reload_cancel_token().expect("reload cancel");
+        root.borrow_mut().open_session_tree_for_test(
+            crate::app::tui::layout::sample_tree_nodes_for_test(),
+            Some("u2"),
+        );
+        assert!(root.borrow().slot().is_overlay());
+        assert!(session.reload_active());
+
+        session.step(HostEvent::Input(esc_event())).unwrap();
+
+        assert_eq!(root.borrow().slot(), EditorSlot::Editor);
+        assert!(
+            session.reload_active(),
+            "Esc on overlay MUST NOT cancel reload"
+        );
+        assert!(
+            !cancel.is_cancelled(),
+            "overlay Esc MUST NOT fire reload cancel token"
+        );
+        assert!(
+            chrome_toast_body(&session).is_none(),
+            "overlay Esc MUST NOT toast cancel"
+        );
+        session.end_reload();
+    }
+
+    #[tokio::test]
+    async fn c1205_reload_typing_allowed() {
+        let mut session = HostSession::new_product_ui(TestTerminal::new(80, 24));
+        let root = session.ui_root().expect("ui").clone();
+
+        session.begin_reload();
+        root.borrow_mut().set_editor_text("");
+        session.step(HostEvent::Input(char_event('a'))).unwrap();
+        session.step(HostEvent::Input(char_event('b'))).unwrap();
+
+        assert_eq!(root.borrow().editor_text(), "ab");
+        assert!(session.reload_active());
+        assert!(chrome_toast_body(&session).is_none());
+        session.end_reload();
+    }
+
+    #[tokio::test]
+    async fn c1205_reload_end_clears_reloading_lead() {
+        let mut session = HostSession::new_product_ui(TestTerminal::new(80, 24));
+        let root = session.ui_root().expect("ui").clone();
+
+        session.begin_reload();
+        assert!(
+            root.borrow_mut()
+                .render(80)
+                .join("\n")
+                .contains("Reloading"),
+            "precondition"
+        );
+        session.end_reload();
+        assert!(!session.reload_active());
+        assert_eq!(session.ui_model().status, None);
+        let frame = root.borrow_mut().render(80).join("\n");
+        assert!(
+            !frame.contains("Reloading"),
+            "after end_reload status MUST leave Reloading: {frame}"
+        );
     }
 
     #[tokio::test]

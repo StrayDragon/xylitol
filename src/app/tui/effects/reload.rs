@@ -24,6 +24,14 @@ fn format_keybindings_reload(outcome: ReloadOutcome) -> String {
     }
 }
 
+fn reload_notice_title(cancelled: bool) -> &'static str {
+    if cancelled {
+        "Reload cancelled:"
+    } else {
+        "Reload:"
+    }
+}
+
 /// Run `/reload` with live Tick/Input (Esc → cooperative cancel). Shared by host + harness.
 pub async fn run_interactive_reload<T, S>(
     session: &mut HostSession<T>,
@@ -100,7 +108,7 @@ where
 
     match runtime_result {
         Ok(report) => {
-            lines[0] = report.notice_title().to_string();
+            lines[0] = reload_notice_title(report.cancelled).to_string();
             lines.extend(report.format_lines());
             if report.cancelled {
                 session.push_chrome_toast(RELOAD_CANCELLED_NOTICE);

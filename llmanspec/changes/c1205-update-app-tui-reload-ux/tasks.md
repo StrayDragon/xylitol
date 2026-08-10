@@ -25,5 +25,7 @@
 
 ## Verify / 收尾
 
-1. `llman-sdd-verify` 证据；手测最短路径
-2. `change finalize`（或 checkpoint→archive）
+1. [x] harness 扩高+中：Reloading 绘制/右 cue、Ctrl+C、二次 slash、bang、Ctrl+G、取消后再 reload
+2. [x] verify 缺口修复：overlay Esc、MCP cancel 保 manager、put-back Drop、`McpReloadOutcome`、软闸 `Error:`/无 ScrollNotice、打字、end 清 Reloading
+3. [x] `just qa` + commit
+4. [ ] `change finalize`（或 checkpoint→archive）

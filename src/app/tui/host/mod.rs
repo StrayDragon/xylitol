@@ -761,83 +761,13 @@ impl<T: Terminal> HostSession<T> {
                 }
             }
             HostEvent::Resize { cols, rows } => {
-                // Prefer crossterm Resize payload: ioctl refresh can lag/stale.
-                let prev_cols = self.tui.terminal.columns();
-                let prev_rows = self.tui.terminal.rows();
-                self.tui.terminal.refresh_size();
-                self.tui.terminal.set_size_hint(cols, rows);
-                let size_changed = self.tui.terminal.columns() != prev_cols
-                    || self.tui.terminal.rows() != prev_rows;
-                // Cursor / multiplexers often flood identical Resize; skip paint.
-                if size_changed {
-                    self.sync_layout_from_terminal();
-                    // Align pi: resize → soft requestRender(); doRender sees
-                    // width/heightChanged → fullRender(true) with 2J/H/3J.
-                    // force=true would zero/sentinel-skip that path incorrectly.
-                    self.tui.request_render(false);
-                }
+                self.handle_resize(cols, rows);
             }
             HostEvent::Input(input) => {
-                if self.mode == LayoutMode::Ready {
-                    if self.try_suppress_stale_esc(&input)
-                        || self.try_paste_image(&input)
-                        || self.try_reload_input(&input)
-                        || self.try_busy_input(&input)
-                        || self.try_idle_enter_submit(&input)
-                        || self.try_ctrl_g(&input)
-                    {
-                        // Consumed — do not forward to editor (no newline / no tree).
-                    } else {
-                        self.tui.dispatch_event(input);
-                    }
-                }
-                self.tui.request_render(false);
+                self.handle_input(input);
             }
             HostEvent::Xy(xy) => {
-                if self.suppress_xy_until_stream_end {
-                    // c670: abort already noted — do not revive busy via deltas / AgentEnd.
-                    self.tui.request_render(false);
-                } else {
-                    apply_xy_event(&mut self.ui_model, &xy);
-                    match xy.as_ref() {
-                        XyEvent::AgentEnd { .. } => {
-                            self.run_active = false;
-                            // Footer: settlement event or stream-close fallback (c1860).
-                        }
-                        XyEvent::ContextTokenSettlement {
-                            estimate, reason, ..
-                        } => {
-                            self.note_context_token_settlement(estimate.clone(), reason);
-                        }
-                        XyEvent::CompactionEnd { .. } => {
-                            // Fallback if AfterCompaction settlement is absent (tests / older paths).
-                            self.request_footer_token_refresh();
-                        }
-                        XyEvent::TurnEnd { .. } => {
-                            // Footer comes from ContextTokenSettlement before TurnEnd (c1860).
-                        }
-                        XyEvent::MessageEnd { role, message } => {
-                            // Mid-turn Api usage: assistant MessageEnd often carries usage.
-                            let has_usage = message.as_ref().is_some_and(|m| {
-                                matches!(
-                                    m,
-                                    crate::protocol::message::AgentMessage::Llm(
-                                        crate::protocol::message::LlmMessage::AssistantMessage {
-                                            usage: Some(_),
-                                            ..
-                                        }
-                                    )
-                                )
-                            });
-                            if role == "assistant" && has_usage {
-                                self.request_footer_token_refresh_throttled();
-                            }
-                        }
-                        _ => {}
-                    }
-                    self.sync_ui_root_from_model();
-                    self.tui.request_render(false);
-                }
+                self.handle_xy(xy);
             }
             HostEvent::FooterTokens { job_id, label } => {
                 if job_id == self.footer_token_gen {
@@ -857,6 +787,88 @@ impl<T: Terminal> HostSession<T> {
             }
             Err(RenderError { .. }) => self.recover_from_render_error(),
         }
+    }
+
+    fn handle_resize(&mut self, cols: u16, rows: u16) {
+        // Prefer crossterm Resize payload: ioctl refresh can lag/stale.
+        let prev_cols = self.tui.terminal.columns();
+        let prev_rows = self.tui.terminal.rows();
+        self.tui.terminal.refresh_size();
+        self.tui.terminal.set_size_hint(cols, rows);
+        let size_changed =
+            self.tui.terminal.columns() != prev_cols || self.tui.terminal.rows() != prev_rows;
+        // Cursor / multiplexers often flood identical Resize; skip paint.
+        if size_changed {
+            self.sync_layout_from_terminal();
+            // Align pi: resize → soft requestRender(); doRender sees
+            // width/heightChanged → fullRender(true) with 2J/H/3J.
+            // force=true would zero/sentinel-skip that path incorrectly.
+            self.tui.request_render(false);
+        }
+    }
+
+    fn handle_input(&mut self, input: InputEvent) {
+        if self.mode == LayoutMode::Ready {
+            if self.try_suppress_stale_esc(&input)
+                || self.try_paste_image(&input)
+                || self.try_reload_input(&input)
+                || self.try_busy_input(&input)
+                || self.try_idle_enter_submit(&input)
+                || self.try_ctrl_g(&input)
+            {
+                // Consumed — do not forward to editor (no newline / no tree).
+            } else {
+                self.tui.dispatch_event(input);
+            }
+        }
+        self.tui.request_render(false);
+    }
+
+    fn handle_xy(&mut self, xy: Box<XyEvent>) {
+        if self.suppress_xy_until_stream_end {
+            // c670: abort already noted — do not revive busy via deltas / AgentEnd.
+            self.tui.request_render(false);
+            return;
+        }
+        apply_xy_event(&mut self.ui_model, &xy);
+        match xy.as_ref() {
+            XyEvent::AgentEnd { .. } => {
+                self.run_active = false;
+                // Footer: settlement event or stream-close fallback (c1860).
+            }
+            XyEvent::ContextTokenSettlement {
+                estimate, reason, ..
+            } => {
+                self.note_context_token_settlement(estimate.clone(), reason);
+            }
+            XyEvent::CompactionEnd { .. } => {
+                // Fallback if AfterCompaction settlement is absent (tests / older paths).
+                self.request_footer_token_refresh();
+            }
+            XyEvent::TurnEnd { .. } => {
+                // Footer comes from ContextTokenSettlement before TurnEnd (c1860).
+            }
+            XyEvent::MessageEnd { role, message } => {
+                // Mid-turn Api usage: assistant MessageEnd often carries usage.
+                let has_usage = message.as_ref().is_some_and(|m| {
+                    matches!(
+                        m,
+                        crate::protocol::message::AgentMessage::Llm(
+                            crate::protocol::message::LlmMessage::AssistantMessage {
+                                usage: Some(_),
+                                ..
+                            }
+                        )
+                    )
+                });
+                if role == "assistant" && has_usage {
+                    self.request_footer_token_refresh_throttled();
+                }
+            }
+            _ => {}
+        }
+        self.sync_ui_root_from_model();
+        self.tui.request_render(false);
     }
 
     /// ath4: min-size shows a hint; only exit if even the hint cannot paint.

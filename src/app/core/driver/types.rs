@@ -82,15 +82,6 @@ impl RuntimeReloadReport {
             .collect()
     }
 
-    /// ScrollNotice title line (`Reload:` / `Reload cancelled:`).
-    pub fn notice_title(&self) -> &'static str {
-        if self.cancelled {
-            "Reload cancelled:"
-        } else {
-            "Reload:"
-        }
-    }
-
     pub fn any_step_failed(&self) -> bool {
         self.steps.iter().any(|s| !s.ok)
     }
