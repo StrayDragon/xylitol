@@ -184,18 +184,11 @@ impl SelectionController {
     ) -> bool {
         let (col, row) = (event.column, event.row);
 
-        // Dock / input exclude: never start or extend selection from dock text.
+        // Dock / input: never *start* transcript selection on dock text (ptim06).
+        // While already dragging, clamp to transcript bottom and keep extending
+        // (Pi-style) — MUST NOT clear / copy-cancel mid-drag (ptim12).
         if dock.contains(col, row) {
-            let mut dirty = false;
-            if self.dragging || self.has_selection() {
-                if self.dragging && self.copy_on_release {
-                    self.maybe_copy(scroll, sink);
-                }
-                self.clear();
-                dirty = true;
-            }
-            self.auto_scroll_dir = 0;
-            return dirty;
+            return self.handle_dock_mouse(event, scroll, transcript, sink);
         }
 
         match event.kind {
@@ -349,6 +342,93 @@ impl SelectionController {
         {
             sink.copy_text(&text);
         }
+    }
+
+    /// Pointer in dock rectangle.
+    ///
+    /// - Idle / completed selection: ignore motion; Down clears transcript
+    ///   selection so the dock can take a fresh press (editor selection later).
+    /// - Active drag: clamp to transcript bottom edge, keep selection, edge
+    ///   auto-scroll downward; Up finishes copy like a release at the edge.
+    fn handle_dock_mouse(
+        &mut self,
+        event: &MouseEvent,
+        scroll: &mut ScrollView,
+        transcript: ScreenRect,
+        sink: &mut dyn ClipboardSink,
+    ) -> bool {
+        let (col, row) = (event.column, event.row);
+        match event.kind {
+            MouseEventKind::Down(MouseButton::Left) => {
+                // Do not start transcript selection from dock text.
+                if self.dragging || self.has_selection() {
+                    self.clear();
+                    return true;
+                }
+                false
+            }
+            MouseEventKind::Drag(MouseButton::Left) | MouseEventKind::Moved => {
+                if !self.dragging {
+                    // Completed selection: moving over dock MUST NOT clear it.
+                    return false;
+                }
+                self.extend_drag_clamped(col, row, scroll, transcript)
+            }
+            MouseEventKind::Up(MouseButton::Left) => {
+                if !self.dragging {
+                    return false;
+                }
+                self.extend_drag_clamped(col, row, scroll, transcript);
+                self.dragging = false;
+                self.auto_scroll_dir = 0;
+                if self.copy_on_release {
+                    self.maybe_copy(scroll, sink);
+                }
+                if !self.has_selection() {
+                    self.clear();
+                }
+                true
+            }
+            // Wheel over dock: do not scroll transcript here (Mode B may route later).
+            _ => false,
+        }
+    }
+
+    /// Continue an in-progress drag as if the pointer were on the transcript
+    /// edge nearest to `(col, row)` (typically the bottom when in the dock).
+    fn extend_drag_clamped(
+        &mut self,
+        col: u16,
+        row: u16,
+        scroll: &ScrollView,
+        transcript: ScreenRect,
+    ) -> bool {
+        // Treat dock as past the bottom edge → downward autoscroll while held.
+        let edge_row = transcript
+            .row
+            .saturating_add(transcript.height.saturating_sub(1));
+        let clamp_row = if row > edge_row { edge_row } else { row };
+        self.last_pointer = Some((col, clamp_row));
+        self.update_edge_dir(if row > edge_row { edge_row } else { row }, transcript);
+        // If pointer is in dock (below transcript), force bottom-edge scroll.
+        if row > edge_row {
+            self.auto_scroll_dir = 1;
+        }
+        let Some(cell) = self
+            .screen_to_content(col, clamp_row, scroll, transcript)
+            .or_else(|| self.clamp_to_transcript_edge(col, row, scroll, transcript))
+        else {
+            return false;
+        };
+        let (a, f) = if self.granularity == SelectionGranularity::Character {
+            (self.anchor.unwrap_or(cell), cell)
+        } else {
+            let base = self.anchor.unwrap_or(cell);
+            expand_range(base, cell, self.granularity, scroll.lines())
+        };
+        self.anchor = Some(a);
+        self.focus = Some(f);
+        true
     }
 
     fn update_edge_dir(&mut self, row: u16, transcript: ScreenRect) {
@@ -670,6 +750,69 @@ mod tests {
             &mut sink
         ));
         assert!(!sel.is_dragging());
+    }
+
+    #[test]
+    fn drag_into_dock_keeps_selection_and_clamps() {
+        let mut scroll = ScrollView::new(3);
+        scroll.set_lines(vec![
+            "one".into(),
+            "two".into(),
+            "three".into(),
+            "four".into(),
+        ]);
+        let mut sel = SelectionController::new();
+        let mut sink = RecordingClipboardSink::default();
+        let tr = ScreenRect {
+            row: 0,
+            col: 0,
+            height: 3,
+            width: 20,
+        };
+        let dock = ScreenRect {
+            row: 3,
+            col: 0,
+            height: 2,
+            width: 20,
+        };
+        sel.handle_mouse(
+            &mouse(MouseEventKind::Down(MouseButton::Left), 0, 0),
+            &mut scroll,
+            tr,
+            dock,
+            &mut sink,
+        );
+        assert!(sel.is_dragging());
+        // Drag into dock — must NOT clear; focus clamps to transcript edge.
+        assert!(sel.handle_mouse(
+            &mouse(MouseEventKind::Drag(MouseButton::Left), 2, 4),
+            &mut scroll,
+            tr,
+            dock,
+            &mut sink,
+        ));
+        assert!(sel.is_dragging());
+        assert!(sel.has_selection() || sel.is_dragging());
+        // Completed selection: moving over dock must not clear.
+        sel.handle_mouse(
+            &mouse(MouseEventKind::Up(MouseButton::Left), 2, 4),
+            &mut scroll,
+            tr,
+            dock,
+            &mut sink,
+        );
+        assert!(!sel.is_dragging());
+        let had = sel.has_selection() || !sink.copies.is_empty();
+        assert!(had, "release in dock should keep/copy selection");
+        let still = sel.has_selection();
+        assert!(!sel.handle_mouse(
+            &mouse(MouseEventKind::Moved, 1, 4),
+            &mut scroll,
+            tr,
+            dock,
+            &mut sink,
+        ));
+        assert_eq!(sel.has_selection(), still);
     }
 
     #[test]

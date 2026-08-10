@@ -1148,7 +1148,9 @@ impl<T: Terminal> TUI<T> {
     /// Public so host loops (and tests) can feed input without going through
     /// the blocking `start()` event loop.
     pub fn dispatch_event(&mut self, event: InputEvent) -> InputReaction {
-        // Mode B: application selection / wheel consume mouse before listeners.
+        // Mode B: application selection / wheel consume mouse before listeners
+        // when they dirty presentation. Unhandled presses (e.g. Down in dock)
+        // fall through so Editor/Input can own an independent selection later.
         if self.application_session_active
             && let InputEvent::Mouse(mouse) = &event
         {
@@ -1158,12 +1160,14 @@ impl<T: Terminal> TUI<T> {
                 .mode_b
                 .as_mut()
                 .is_some_and(|mb| mb.handle_mouse(mouse, cols, rows));
-            if dirty || !matches!(mouse.kind, MouseEventKind::Moved) {
-                // Non-moved mouse in Mode B is owned by selection/scroll.
-                return InputReaction::rerender_if(dirty);
+            if dirty {
+                return InputReaction::Rerender;
             }
-            // Moved with no dirty: drop silently (ptim07).
-            return InputReaction::None;
+            if matches!(mouse.kind, MouseEventKind::Moved) {
+                // Moved with no dirty: drop silently (ptim07).
+                return InputReaction::None;
+            }
+            // Non-moved, not consumed by transcript selection → fall through.
         }
 
         // Snapshot ids so a listener may remove itself / others mid-dispatch
