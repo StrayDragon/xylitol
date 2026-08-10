@@ -235,9 +235,14 @@ impl CrosstermTerminal {
     }
 
     /// After `EnterAlternateScreen`, re-push Kitty flags and arm modifyOtherKeys.
-    /// Emulators often clear both; Mode B Shift+Enter needs CSI-u / CSI 27;2;13~
-    /// / Ghostty `\n` (pi keys.ts when kitty active). Dual-arm is intentional —
-    /// Kitty push may be ignored while modifyOtherKeys still delivers Shift+Enter.
+    ///
+    /// Pi negotiates keyboard **after** alt-buffer is already active
+    /// (`tui-alt-screen` enter → `ProcessTerminal.start`). xylitol does
+    /// `start()` first then Mode B `enter_alternate_screen`, so this rearm is
+    /// the parity path (research: reapply after alt-screen / suspend restore).
+    /// Dual-arm is intentional under crossterm: we cannot consume Kitty DA
+    /// responses the way pi's stdin owner does; write both and let the
+    /// emulator honor what it supports.
     fn rearm_keyboard_after_alt_screen(&mut self) {
         let _ = execute!(
             io::stdout(),

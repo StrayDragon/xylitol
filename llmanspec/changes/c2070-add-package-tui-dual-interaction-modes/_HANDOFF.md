@@ -18,10 +18,10 @@
 | ath31 product notice (not Error toast) | PASS |
 | Copy char count (fit-pad trim) | PASS |
 | Narrow `↑ N more` | PASS |
-| Ctrl+G expands `[paste #N]` | **Fix in this handoff** — see below |
-| ptim13 edge scroll feel | **Hardened + automated** — re-check feel |
-| Short paste typewriter | **Visual coalesce @ 2 chars** — re-check |
-| Shift+Enter (Ctrl+J OK) | **Alt-screen keyboard re-arm** — re-check |
+| Ctrl+G expands `[paste #N]` | fixed + unit test — re-check in demo |
+| ptim13 edge scroll feel | hardened + automated — re-check feel |
+| Short paste typewriter | bracketed re-arm + burst paint suppress — re-check |
+| Shift+Enter (Ctrl+J OK) | alt-screen keyboard re-arm + Char(`\\n`) — re-check |
 | H6 overall | partial |
 
 ## Fixes landed in this sync
@@ -50,21 +50,46 @@
 - Bracketed paste remains the preferred path; Mode B `enter_alternate_screen`
   re-enables it (main fix for short pastes looking like typewriter).
 - Test: `paste_burst_suppresses_mid_burst_rerender`.
+- **Pi note (research):** checked pi HEAD has atomic bracketed paste only — **no**
+  `PasteBurst` / unbracketed coalesce. xylitol paint-suppress is an extension.
 
 ### 4. Shift+Enter on Mode B alt-screen (pi research)
 
-**Pi (`packages/tui/src/keys.ts` + `terminal.ts`):**
+Source: [pi Shift+Enter research](f9f7928d-2aad-40db-9b14-bec7ad171c5e) against pi
+`47b021a6…`.
 
-- Kitty CSI-u / modifyOtherKeys `CSI 27;2;13~` = shift+enter.
-- When kitty active: Ghostty `\n` and Kitty map `\x1b\r` = shift+enter.
-- When kitty inactive: `\n` = plain enter.
-- Apple Terminal / Win32: native Shift poll on `\r` (not Linux; N/A here).
+**Pi bindings / matchers**
 
-**xylitol:**
+- Newline: `shift+enter` + `ctrl+j`; submit: `enter` (`keybindings.ts`).
+- Matchers: Kitty CSI-u, modifyOtherKeys `CSI 27;2;13~`, kitty-active Ghostty `\n`,
+  Kitty map `\x1b\r`; backslash+Enter editor fallback.
+- Mouse capture does **not** change keyboard decode; active transcript search
+  can steal Enter / Shift+Enter (pi alt-screen only).
+
+**Lifecycle (important delta vs xylitol)**
+
+- Pi: enter alt-buffer **then** `ProcessTerminal.start()` → negotiate Kitty /
+  modifyOtherKeys while already on alt screen.
+- xylitol: `start()` negotiates first, Mode B later calls `enter_alternate_screen`.
+- **Parity path we use:** `rearm_keyboard_after_alt_screen` after alt enter
+  (also covers Ctrl+G suspend → `start()` → re-enter alt). Do **not** remap bare
+  `KeyCode::Enter` to newline (Shift state is gone).
+
+**xylitol today**
 
 - `matches_key_event`: `KeyCode::Char('\n')` → `shift+enter`; `\n`/`\r` not printable.
-- `enter_alternate_screen`: re-enable bracketed paste + **`rearm_keyboard_after_alt_screen`** (re-push Kitty flags **and** arm modifyOtherKeys — emulators often clear both on alt buffer).
-- Tests: `ghostty_shift_enter_char_lf_inserts_newline`, `matches_key_event_ghostty_lf_is_shift_enter`, existing modifyOtherKeys VT tests.
+- `enter_alternate_screen`: bracketed paste + Kitty re-push + modifyOtherKeys arm.
+- Tests: `ghostty_shift_enter_char_lf_inserts_newline`,
+  `matches_key_event_ghostty_lf_is_shift_enter`, modifyOtherKeys VT tests.
+
+**Open debt (not blocking this sync)**
+
+- Optimistic `set_kitty_protocol_active(true)` without consuming positive
+  `CSI ?Nu` (crossterm owns stdin). True pi-style “only trust positive detection
+  else modifyOtherKeys-only” needs a response drain path — track separately.
+- Crossterm may not surface raw `CSI 27;…~` the way pi's byte matcher does;
+  prefer Enter+SHIFT / Char(`\n`) KeyEvent tests over assuming VT strings reach
+  `matches_key`.
 
 ## Key paths
 
@@ -92,9 +117,12 @@ cargo test -p xylitol --test bdd package_tui_interaction
 ## Open / next on other machine
 
 1. Human re-check Shift+Enter + edge scroll + short paste feel in Mode B demo.
-2. If Shift+Enter still fails on a specific emulator: capture raw `KeyEvent` (code/modifiers/kind) and extend matcher; Linux has no pi native-modifier helper.
-3. `llman sdd validate --strict` may still ERROR on unchecked tasks (5.4, 7.3–7.4) until tasks.md updated.
-4. Keep updating this `_HANDOFF.md` when shipping handoff-worthy chunks; commit + push the SDD branch so other worktrees can pull.
+2. If Shift+Enter still fails on a specific emulator: capture raw `KeyEvent`
+   (code/modifiers/kind); keep Ctrl+J / `\`+Enter; do not remap bare Enter.
+3. Optional later: response-driven Kitty vs modifyOtherKeys (drop optimistic
+   `set_kitty_protocol_active(true)`).
+4. `llman sdd validate --strict` may still ERROR on unchecked tasks (5.4, 7.3–7.4).
+5. Keep updating this `_HANDOFF.md` when shipping handoff-worthy chunks; commit + push.
 
 ## Do not
 
