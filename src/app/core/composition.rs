@@ -524,4 +524,118 @@ mod tests {
             "cancel MUST keep prior MCP tool visible to provider"
         );
     }
+
+    fn fixture_mcp_spec(name: &str, tools: &str) -> McpServerSpec {
+        use std::collections::HashMap;
+
+        let script = std::path::PathBuf::from(env!("CARGO_MANIFEST_DIR"))
+            .join("tests/support/mcp_fixture_server.py");
+        let mut env = HashMap::new();
+        env.insert("XYLITOL_MCP_FIXTURE_TOOLS".into(), tools.into());
+        McpServerSpec {
+            name: name.into(),
+            transport: McpTransportSpec::Stdio,
+            command: Some("python3".into()),
+            args: Some(vec![script.display().to_string()]),
+            url: None,
+            env: Some(env),
+            headers: None,
+        }
+    }
+
+    /// Real MCP stdio: /reload install adds ping, then empty reload strips it.
+    #[tokio::test]
+    async fn real_mcp_reload_add_then_remove_updates_provider_tools() {
+        let agent = build_agent(BuildAgentOptions::default()).expect("build");
+        let store: Arc<dyn XySessionStore> = Arc::new(crate::infra::session::SessionManager::new(
+            tempfile::tempdir().unwrap().path().join("sessions"),
+        ));
+        let mut driver = crate::app::core::driver::XyInProcessDriver::new(agent, store);
+        driver.freeze_tools(crate::agent::tools::ToolSet::from_iter(
+            driver.builtins_for_reload(),
+        ));
+        assert!(
+            !driver
+                .tool_names_for_test()
+                .iter()
+                .any(|n| n.starts_with("mcp__")),
+            "precondition: no mcp tools"
+        );
+
+        let mut mcp = McpSession::new();
+        let add = mcp
+            .reload(
+                &mut driver,
+                &[fixture_mcp_spec("fixture", "ping")],
+                &tokio_util::sync::CancellationToken::new(),
+            )
+            .await
+            .expect("reload add");
+        assert_eq!(add, McpReloadOutcome::Installed);
+        assert!(driver.is_tools_frozen());
+        let after_add = driver.tool_names_for_test();
+        assert!(
+            after_add.iter().any(|n| n == "mcp__fixture__ping"),
+            "real MCP add MUST freeze ping into provider table: {after_add:?}"
+        );
+        assert!(mcp.has_manager());
+
+        let remove = mcp
+            .reload(
+                &mut driver,
+                &[],
+                &tokio_util::sync::CancellationToken::new(),
+            )
+            .await
+            .expect("reload remove");
+        assert_eq!(remove, McpReloadOutcome::Installed);
+        let after_remove = driver.tool_names_for_test();
+        assert!(
+            !after_remove.iter().any(|n| n == "mcp__fixture__ping"),
+            "real MCP remove MUST drop ping from provider table: {after_remove:?}"
+        );
+        assert!(!mcp.has_manager());
+    }
+
+    /// Real MCP: ping→ping,echo rediscover expands provider table.
+    #[tokio::test]
+    async fn real_mcp_reload_can_expand_tools_on_same_server() {
+        let agent = build_agent(BuildAgentOptions::default()).expect("build");
+        let store: Arc<dyn XySessionStore> = Arc::new(crate::infra::session::SessionManager::new(
+            tempfile::tempdir().unwrap().path().join("sessions"),
+        ));
+        let mut driver = crate::app::core::driver::XyInProcessDriver::new(agent, store);
+        let mut mcp = McpSession::new();
+
+        mcp.reload(
+            &mut driver,
+            &[fixture_mcp_spec("fixture", "ping")],
+            &tokio_util::sync::CancellationToken::new(),
+        )
+        .await
+        .unwrap();
+        assert!(
+            driver
+                .tool_names_for_test()
+                .iter()
+                .any(|n| n == "mcp__fixture__ping")
+        );
+        assert!(
+            !driver
+                .tool_names_for_test()
+                .iter()
+                .any(|n| n == "mcp__fixture__echo")
+        );
+
+        mcp.reload(
+            &mut driver,
+            &[fixture_mcp_spec("fixture", "ping,echo")],
+            &tokio_util::sync::CancellationToken::new(),
+        )
+        .await
+        .unwrap();
+        let names = driver.tool_names_for_test();
+        assert!(names.iter().any(|n| n == "mcp__fixture__ping"), "{names:?}");
+        assert!(names.iter().any(|n| n == "mcp__fixture__echo"), "{names:?}");
+    }
 }

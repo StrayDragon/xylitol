@@ -143,4 +143,84 @@ mod tests {
         assert!(!diags.is_empty());
         assert!(manager.connected_servers().await.is_empty());
     }
+
+    fn fixture_server_script() -> std::path::PathBuf {
+        std::path::PathBuf::from(env!("CARGO_MANIFEST_DIR"))
+            .join("tests/support/mcp_fixture_server.py")
+    }
+
+    fn fixture_mcp_config(name: &str, tools: &str) -> McpServerConfig {
+        let mut env = std::collections::HashMap::new();
+        env.insert("XYLITOL_MCP_FIXTURE_TOOLS".into(), tools.into());
+        McpServerConfig {
+            name: name.into(),
+            transport: crate::infra::mcp::McpTransportKind::Stdio,
+            command: Some("python3".into()),
+            args: Some(vec![fixture_server_script().display().to_string()]),
+            env: Some(env),
+            ..Default::default()
+        }
+    }
+
+    /// Real stdio MCP: discover exposes `mcp__fixture__ping`.
+    #[tokio::test]
+    async fn connect_and_discover_fixture_exposes_ping_tool() {
+        let script = fixture_server_script();
+        assert!(
+            script.is_file(),
+            "missing fixture server at {}",
+            script.display()
+        );
+        let result = connect_and_discover(&[fixture_mcp_config("fixture", "ping")])
+            .await
+            .expect("discover");
+        let Some((manager, tools)) = result else {
+            panic!("fixture server MUST produce a manager");
+        };
+        let names: Vec<_> = tools.iter().map(|t| t.name().to_string()).collect();
+        assert!(
+            names.iter().any(|n| n == "mcp__fixture__ping"),
+            "expected mcp__fixture__ping, got {names:?}; diags={:?}",
+            manager.diagnostics().await
+        );
+        assert!(
+            manager
+                .connected_servers()
+                .await
+                .iter()
+                .any(|s| s.id == "fixture"),
+            "fixture MUST show as connected"
+        );
+        let ping = tools
+            .iter()
+            .find(|t| t.name() == "mcp__fixture__ping")
+            .expect("ping tool");
+        let out = ping
+            .execute(
+                &crate::protocol::ports::XyToolCtx::new("call-1"),
+                serde_json::json!({}),
+            )
+            .await
+            .expect("ping execute");
+        assert!(
+            out.contains("pong"),
+            "real MCP call MUST return fixture pong: {out}"
+        );
+        manager.shutdown().await;
+    }
+
+    /// Real stdio MCP: tools env change (add echo) is visible on rediscover.
+    #[tokio::test]
+    async fn connect_and_discover_fixture_can_add_echo_tool() {
+        let result = connect_and_discover(&[fixture_mcp_config("fixture", "ping,echo")])
+            .await
+            .expect("discover");
+        let Some((manager, tools)) = result else {
+            panic!("fixture server MUST produce a manager");
+        };
+        let names: Vec<_> = tools.iter().map(|t| t.name().to_string()).collect();
+        assert!(names.iter().any(|n| n == "mcp__fixture__ping"), "{names:?}");
+        assert!(names.iter().any(|n| n == "mcp__fixture__echo"), "{names:?}");
+        manager.shutdown().await;
+    }
 }
