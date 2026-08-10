@@ -185,43 +185,60 @@ impl McpSession {
     ///
     /// c1900: reopens the freeze gate and **re-freezes** via upsert rebuild (not silent
     /// mid-session `set_tools` expand).
+    ///
+    /// c1205: keep the old manager until the new one is ready; on `cancel`, leave the
+    /// previous manager/tools untouched.
     pub async fn reload(
         &mut self,
         driver: &mut crate::app::core::driver::XyInProcessDriver,
         servers: &[McpServerSpec],
-    ) -> Result<(), XyDriverError> {
+        cancel: &tokio_util::sync::CancellationToken,
+    ) -> Result<bool, XyDriverError> {
         use crate::infra::mcp::{connect_and_discover, mcp_enabled};
 
-        driver.reopen_tools_for_regate();
-
-        // Take old first; shut down after new tools/manager are installed (c1210).
-        let old = self.manager.take();
+        if cancel.is_cancelled() {
+            return Ok(true);
+        }
 
         let infra = McpServerSpec::to_infra_list(servers);
         let builtins = driver.builtins_for_reload();
-        let mut tools = ToolSet::from_iter(builtins.clone());
-        if mcp_enabled(&Some(infra.clone())) {
-            match connect_and_discover(&infra).await {
-                Ok(Some((manager, mcp_tools))) => {
-                    tools = ToolSet::rebuild_agent_tools(builtins, mcp_tools);
-                    self.manager = Some(manager);
+
+        let discovered = if mcp_enabled(&Some(infra.clone())) {
+            let discover = connect_and_discover(&infra);
+            tokio::pin!(discover);
+            tokio::select! {
+                biased;
+                () = cancel.cancelled() => {
+                    return Ok(true);
                 }
-                Ok(None) => {}
-                Err(e) => {
-                    driver.freeze_tools(tools);
-                    if let Some(old) = old {
-                        old.shutdown().await;
-                    }
-                    return Err(XyDriverError::from_opaque(e));
-                }
+                result = &mut discover => result,
             }
+            .map_err(XyDriverError::from_opaque)?
+        } else {
+            None
+        };
+
+        if cancel.is_cancelled() {
+            // Discover finished but user cancelled before install — drop orphan manager.
+            if let Some((manager, _)) = discovered {
+                manager.shutdown().await;
+            }
+            return Ok(true);
         }
 
+        // Install only after discover succeeds (or empty path).
+        driver.reopen_tools_for_regate();
+        let mut tools = ToolSet::from_iter(builtins.clone());
+        let prev = self.manager.take();
+        if let Some((manager, mcp_tools)) = discovered {
+            tools = ToolSet::rebuild_agent_tools(builtins, mcp_tools);
+            self.manager = Some(manager);
+        }
         driver.freeze_tools(tools);
-        if let Some(old) = old {
+        if let Some(old) = prev {
             old.shutdown().await;
         }
-        Ok(())
+        Ok(false)
     }
 }
 
@@ -238,7 +255,13 @@ mod tests {
         ));
         let mut driver = crate::app::core::driver::XyInProcessDriver::new(agent, store);
         let mut mcp = McpSession::new();
-        mcp.reload(&mut driver, &[]).await.unwrap();
+        mcp.reload(
+            &mut driver,
+            &[],
+            &tokio_util::sync::CancellationToken::new(),
+        )
+        .await
+        .unwrap();
         assert!(!mcp.has_manager());
         assert!(!mcp_enabled(&Some(vec![])));
         let names: Vec<_> = driver.tool_names_for_test();
@@ -271,7 +294,13 @@ mod tests {
         assert!(driver.tool_names_for_test().iter().any(|n| n == "ask"));
 
         let mut mcp = McpSession::new();
-        mcp.reload(&mut driver, &[]).await.unwrap();
+        mcp.reload(
+            &mut driver,
+            &[],
+            &tokio_util::sync::CancellationToken::new(),
+        )
+        .await
+        .unwrap();
         let names = driver.tool_names_for_test();
         assert!(
             names.iter().any(|n| n == "ask"),

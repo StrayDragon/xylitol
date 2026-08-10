@@ -3,6 +3,7 @@
 mod bang;
 mod helpers;
 mod pending_ui;
+mod reload;
 mod slash;
 
 use xylitol_tui::Terminal;
@@ -16,6 +17,7 @@ use super::host::HostSession;
 use super::widgets::footer_token_label;
 
 pub use bang::run_interactive_bang;
+pub use reload::run_interactive_reload;
 
 /// Refresh footer token usage from [`XyDriver::estimate_context_tokens`] (c1035).
 ///
@@ -170,6 +172,7 @@ pub async fn drain_pending<T: Terminal>(
 
     // Bang (`!`/`!!`) is NOT awaited here — host loop / pump runs it so Esc can
     // abort concurrently (c665). Callers MUST `take_bash` after drain_pending.
+    // `/reload` likewise: callers MUST `take_reload` → `run_interactive_reload` (c1205).
 
     pending_ui::drain_pending_ui(session, driver).await;
     // Session switch/resume/import apply mid-drain and arm footer refresh; pick it

@@ -23,8 +23,9 @@ components:
 ## MUST
 
 1. idle：**MUST** 显示恰好 **1 行空白**作为 editor 上方呼吸间距（对齐 pi `IdleStatus` / `Loader` 前导空行 / agent_demo）；**MUST NOT** 显示 spinner / “Ready” 忙碌文案；**不要**把空白算成 status chrome 文案。
-2. busy：`Loader` 形态 = **前导空行 +** 一行 `spinner + 短词`（Working / Assembling / Running tool / Retry…），紧贴 input；**MUST NOT** strip 前导空行。
+2. busy：`Loader` 形态 = **前导空行 +** 一行 `spinner + 短词`（Working / Assembling / Running tool / Retry… / **Reloading**），紧贴 input；**MUST NOT** strip 前导空行。
    - Spinner **MUST** 按 `Loader::interval_ms`（默认 ~80ms）推进；host ~16ms idle_tick **MUST NOT** 每 tick 都 `Loader::tick`（否则会异常快）。
+   - **Reloading**（idle `/reload` 进行中，c1205）：独立于 agent `run_active` / bang；右侧 **MUST NOT** 画 mcp pending 或 Next turn 下轮预告。
 3. **MUST NOT** 放 turn 计数、耗时百分比、双列元数据。
 4. **队列条**（steer/follow-up）：**不进** status 行；进 footer 前缀 `q:sN|fM`，全文进 **scrollback 与 status 之间** 的 dim 队列块（见 [`queue-steer.md`](./queue-steer.md)）。**MUST NOT** 写成 scrollback `[steer]` 滚动提示墙。
 

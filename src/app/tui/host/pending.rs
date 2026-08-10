@@ -15,6 +15,8 @@ pub struct PendingOps {
     pub dequeue: bool,
     pub slash: Option<PendingSlash>,
     pub bash: Option<PendingBash>,
+    /// Idle `/reload` armed for interactive pump (c1205; like bang — not awaited in drain).
+    pub reload: bool,
     /// Refresh footer token estimate via XyDriver (c1035: turn end / stream close).
     pub footer_token_refresh: bool,
     /// Stage clipboard image into editor as tempfile path (c1155).
@@ -48,6 +50,9 @@ impl PendingOps {
     }
     pub fn take_bash(&mut self) -> Option<PendingBash> {
         self.bash.take()
+    }
+    pub fn take_reload(&mut self) -> bool {
+        std::mem::take(&mut self.reload)
     }
     pub fn take_footer_token_refresh(&mut self) -> bool {
         std::mem::take(&mut self.footer_token_refresh)

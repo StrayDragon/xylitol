@@ -25,7 +25,9 @@ use crate::protocol::session::{
     SessionEntry, SessionTreeKind, SessionTreeNode, SessionTreeTravel, plan_message_history_travel,
 };
 
-use super::effects::{drain_pending, refresh_footer_tokens, run_interactive_bang};
+use super::effects::{
+    drain_pending, refresh_footer_tokens, run_interactive_bang, run_interactive_reload,
+};
 use super::host::{HostEvent, HostSession};
 
 /// Test double: canned `run` streams + call recording for steer/abort/queues/bash.
@@ -76,6 +78,8 @@ pub struct ScriptedDriver {
     /// Count of [`XyDriver::estimate_context_tokens`] (c1860 double-kick guard).
     estimate_calls: AtomicUsize,
     reload_runtime_calls: AtomicUsize,
+    hang_reload_until_cancel: AtomicBool,
+    fail_reload: AtomicBool,
     persist_project_trust_calls: Mutex<Vec<crate::app::core::driver::ProjectTrustMode>>,
     copy_text_calls: Mutex<Vec<String>>,
     /// When set, next `copy_text_to_clipboard` returns this OSC 52 for host emit.
@@ -190,6 +194,8 @@ impl ScriptedDriver {
             estimate_override: None,
             estimate_calls: AtomicUsize::new(0),
             reload_runtime_calls: AtomicUsize::new(0),
+            hang_reload_until_cancel: AtomicBool::new(false),
+            fail_reload: AtomicBool::new(false),
             persist_project_trust_calls: Mutex::new(Vec::new()),
             copy_text_calls: Mutex::new(Vec::new()),
             copy_pending_osc52: Mutex::new(None),
@@ -262,6 +268,16 @@ impl ScriptedDriver {
 
     pub fn reload_runtime_calls(&self) -> usize {
         self.reload_runtime_calls.load(Ordering::SeqCst)
+    }
+
+    /// c1205: hang `reload_runtime` until the cancel token fires (Esc path).
+    pub fn set_hang_reload_until_cancel(&self, hang: bool) {
+        self.hang_reload_until_cancel.store(hang, Ordering::SeqCst);
+    }
+
+    /// c1205: next `reload_runtime` reports a failed mcp step.
+    pub fn set_fail_reload(&self, fail: bool) {
+        self.fail_reload.store(fail, Ordering::SeqCst);
     }
 
     pub fn persist_project_trust_calls(&self) -> Vec<crate::app::core::driver::ProjectTrustMode> {
@@ -872,8 +888,36 @@ impl XyDriver for ScriptedDriver {
         // Scripted: freeze is toggled via [`Self::set_tools_frozen`] across ticks.
     }
 
-    async fn reload_runtime(&mut self) -> Result<RuntimeReloadReport, XyDriverError> {
+    async fn reload_runtime(
+        &mut self,
+        cancel: &tokio_util::sync::CancellationToken,
+    ) -> Result<RuntimeReloadReport, XyDriverError> {
         self.reload_runtime_calls.fetch_add(1, Ordering::SeqCst);
+        if self.hang_reload_until_cancel.load(Ordering::SeqCst) {
+            // Wake immediately when host cancels (Esc); safety cap avoids eternal hang.
+            tokio::select! {
+                () = cancel.cancelled() => {}
+                () = tokio::time::sleep(std::time::Duration::from_secs(5)) => {}
+            }
+            return Ok(RuntimeReloadReport {
+                steps: vec![ReloadStepReport {
+                    step: "skills",
+                    ok: true,
+                    message: "scripted partial before cancel".into(),
+                }],
+                cancelled: true,
+            });
+        }
+        if self.fail_reload.load(Ordering::SeqCst) {
+            return Ok(RuntimeReloadReport {
+                steps: vec![ReloadStepReport {
+                    step: "mcp",
+                    ok: false,
+                    message: "scripted fail".into(),
+                }],
+                cancelled: false,
+            });
+        }
         // Mirror catalog → skill_names so /reload harness sees header refresh (c1135).
         let names: Vec<String> = self
             .dollar_skill_catalog
@@ -892,6 +936,7 @@ impl XyDriver for ScriptedDriver {
                 ok: true,
                 message: "scripted noop".into(),
             }],
+            cancelled: false,
         })
     }
 
@@ -978,6 +1023,11 @@ pub async fn pump_host_driver<T: Terminal>(
     agent_stream: &mut Option<EventStream>,
 ) -> Result<(), XyDriverError> {
     drain_pending(session, driver, agent_stream).await?;
+
+    if session.take_reload() {
+        let input = futures::stream::pending::<Result<HostEvent, XyDriverError>>();
+        run_interactive_reload(session, driver, input).await?;
+    }
 
     if let Some(bash) = session.take_bash() {
         // No keyboard: pending stream (not empty — empty would EOF-quit the bang loop).
@@ -4155,6 +4205,100 @@ mod slice_tests {
                 .any(|t| t.contains("busy") && t.contains("/reload refused")),
             "expected busy refusal: {notes:?}"
         );
+    }
+
+    #[tokio::test]
+    async fn c1205_reload_soft_gate_toast_keeps_draft() {
+        use crate::app::tui::commands::RELOADING_WAIT_NOTICE;
+
+        let mut session = HostSession::new_product_ui(TestTerminal::new(80, 24));
+        let root = session.ui_root().expect("ui").clone();
+
+        session.begin_reload();
+        root.borrow_mut().set_editor_text("draft while reloading");
+        session.step(HostEvent::Input(enter_event())).unwrap();
+
+        assert_eq!(
+            chrome_toast_body(&session).as_deref(),
+            Some(RELOADING_WAIT_NOTICE)
+        );
+        assert_eq!(root.borrow().editor_text(), "draft while reloading");
+        assert!(session.reload_active());
+        session.end_reload();
+        assert!(!session.reload_active());
+    }
+
+    #[tokio::test]
+    async fn c1205_reload_esc_cancels_hang() {
+        use crate::app::tui::commands::RELOAD_CANCELLED_NOTICE;
+        use crate::app::tui::effects::{drain_pending, run_interactive_reload};
+        use futures::stream;
+
+        let mut session = HostSession::new_product_ui(TestTerminal::new(80, 24));
+        let root = session.ui_root().expect("ui").clone();
+        let mut driver = ScriptedDriver::new();
+        driver.set_hang_reload_until_cancel(true);
+        let mut agent_stream = None;
+
+        root.borrow_mut().set_editor_text("/reload");
+        session.step(HostEvent::Input(enter_event())).unwrap();
+        drain_pending(&mut session, &mut driver, &mut agent_stream)
+            .await
+            .unwrap();
+        assert!(session.take_reload());
+
+        // Esc only (after a tick event so the select arm rotates).
+        let input = stream::iter(vec![
+            Ok::<HostEvent, XyDriverError>(HostEvent::Tick),
+            Ok(HostEvent::Input(esc_event())),
+        ]);
+        run_interactive_reload(&mut session, &mut driver, input)
+            .await
+            .unwrap();
+
+        assert_eq!(
+            chrome_toast_body(&session).as_deref(),
+            Some(RELOAD_CANCELLED_NOTICE)
+        );
+        assert!(
+            system_notes(&session)
+                .iter()
+                .any(|t| t.contains("Reload cancelled:")),
+            "notes={:?}",
+            system_notes(&session)
+        );
+        assert!(!session.reload_active());
+        assert_eq!(driver.reload_runtime_calls(), 1);
+    }
+
+    #[tokio::test]
+    async fn c1205_reload_fail_toast() {
+        use crate::app::tui::commands::RELOAD_FAILED_NOTICE;
+
+        let mut session = HostSession::new_product_ui(TestTerminal::new(80, 24));
+        let root = session.ui_root().expect("ui").clone();
+        let mut driver = ScriptedDriver::new();
+        driver.set_fail_reload(true);
+        let mut stream = None;
+
+        root.borrow_mut().set_editor_text("/reload");
+        session.step(HostEvent::Input(enter_event())).unwrap();
+        pump_host_driver(&mut session, &mut driver, &mut stream)
+            .await
+            .unwrap();
+
+        assert_eq!(
+            chrome_toast_body(&session).as_deref(),
+            Some(RELOAD_FAILED_NOTICE)
+        );
+        let notes = system_notes(&session);
+        assert!(
+            notes
+                .iter()
+                .any(|t| t.contains("Reload:") && t.contains("failed")),
+            "expected fail report: {notes:?}"
+        );
+        assert!(!session.reload_active());
     }
 
     #[tokio::test]

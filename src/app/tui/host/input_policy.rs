@@ -18,7 +18,7 @@ impl<T: Terminal> HostSession<T> {
             return false;
         }
         // New busy work owns Esc for abort — clear suppress and do not consume.
-        if self.is_busy() {
+        if self.is_busy() || self.reload_active {
             self.suppress_idle_esc = false;
             return false;
         }
@@ -33,6 +33,34 @@ impl<T: Terminal> HostSession<T> {
         }
         // Any other key (typing the next `!cmd`) ends idle Esc suppress.
         self.suppress_idle_esc = false;
+        false
+    }
+
+    /// c1205: `/reload` soft-gate — before agent busy / idle Enter paths.
+    /// Esc/Ctrl+C cancel; Enter → toast; typing falls through to editor.
+    pub(super) fn try_reload_input(&mut self, input: &InputEvent) -> bool {
+        use super::super::commands::RELOADING_WAIT_NOTICE;
+
+        if !self.reload_active {
+            return false;
+        }
+        let Some(root) = self.ui_root.as_ref() else {
+            return false;
+        };
+        let InputEvent::Key(key) = input else {
+            return false;
+        };
+        if root.borrow().slot().is_overlay() {
+            return false;
+        }
+        if matches_binding(key, "app.interrupt") || matches_binding(key, "app.clear") {
+            self.request_reload_cancel();
+            return true;
+        }
+        if matches_binding(key, "tui.input.submit") {
+            self.push_chrome_toast(RELOADING_WAIT_NOTICE);
+            return true;
+        }
         false
     }
 

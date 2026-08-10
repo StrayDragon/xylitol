@@ -79,6 +79,15 @@ pub type BusySlashPolicy = SlashPermit;
 pub const BUSY_SESSION_SWITCH_NOTICE: &str =
     "agent busy — finish turn or Esc abort before switching session";
 
+/// Soft-gate body while `/reload` is in flight (c1205 / ath28). Render prefixes `Error: `.
+pub const RELOADING_WAIT_NOTICE: &str = "reloading — wait";
+
+/// Toast body after user cancels an in-flight `/reload` (c1205).
+pub const RELOAD_CANCELLED_NOTICE: &str = "reload cancelled";
+
+/// Toast body when `/reload` fails (c1205); details stay in the ScrollNotice report.
+pub const RELOAD_FAILED_NOTICE: &str = "reload failed — see report";
+
 /// Default TTL for chrome toast auto-clear (atc22 · ~3–5s).
 pub const CHROME_TOAST_TTL: std::time::Duration = std::time::Duration::from_secs(4);
 
