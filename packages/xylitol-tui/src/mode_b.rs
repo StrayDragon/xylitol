@@ -14,6 +14,10 @@ pub struct ModeBRuntime {
     pub dock_rows: usize,
     /// OSC52 (or other) sequences to flush **outside** a differential paint batch.
     pub pending_clipboard: Vec<String>,
+    /// Stick to the latest content unless the user scrolls away (wheel / edge).
+    follow_bottom: bool,
+    /// Last dock lines from [`Self::project_frame`] (for exit dump onto main screen).
+    last_dock_lines: Vec<String>,
 }
 
 impl ModeBRuntime {
@@ -23,6 +27,8 @@ impl ModeBRuntime {
             selection: SelectionController::new(),
             dock_rows: dock_rows.max(1),
             pending_clipboard: Vec::new(),
+            follow_bottom: true,
+            last_dock_lines: Vec::new(),
         }
     }
 
@@ -34,19 +40,26 @@ impl ModeBRuntime {
         self.selection.copy_on_release = on;
     }
 
+    /// Full transcript + last dock — dumped to main-screen scrollback on Mode B exit.
+    pub fn exit_dump_lines(&self) -> Vec<String> {
+        let mut lines = self.scroll.lines().to_vec();
+        lines.extend(self.last_dock_lines.iter().cloned());
+        lines
+    }
+
     /// Split full component output into viewport paint lines (≤ terminal height).
     pub fn project_frame(&mut self, full_lines: &[String], term_height: usize) -> Vec<String> {
         let dock = self.dock_rows.min(full_lines.len()).min(term_height);
         let content_end = full_lines.len().saturating_sub(dock);
         let content: Vec<String> = full_lines[..content_end].to_vec();
         let dock_lines: Vec<String> = full_lines[content_end..].to_vec();
+        self.last_dock_lines = dock_lines.clone();
 
         let viewport_h = term_height.saturating_sub(dock).max(1);
         self.scroll.set_viewport_height(viewport_h);
-        // Follow bottom when not actively selecting (chat TUI default).
-        let follow = !self.selection.is_dragging() && !self.selection.has_selection();
         self.scroll.set_lines(content);
-        if follow {
+        // Follow only when sticky; wheel / selection edge scroll must persist across frames.
+        if self.follow_bottom && !self.selection.is_dragging() {
             self.scroll.scroll_to_end();
         }
 
@@ -83,8 +96,14 @@ impl ModeBRuntime {
         let mut sink = CollectOsc52Sink {
             out: &mut self.pending_clipboard,
         };
-        self.selection
-            .handle_mouse(event, &mut self.scroll, transcript, dock_rect, &mut sink)
+        let dirty =
+            self.selection
+                .handle_mouse(event, &mut self.scroll, transcript, dock_rect, &mut sink);
+        // Wheel / edge scroll away from bottom clears follow; return to bottom re-arms it.
+        if dirty {
+            self.follow_bottom = self.scroll.at_bottom();
+        }
+        dirty
     }
 
     pub fn tick_autoscroll(&mut self, term_cols: u16, term_rows: u16) -> bool {
@@ -96,7 +115,11 @@ impl ModeBRuntime {
             height: transcript_h,
             width: term_cols,
         };
-        self.selection.tick_autoscroll(&mut self.scroll, transcript)
+        let dirty = self.selection.tick_autoscroll(&mut self.scroll, transcript);
+        if dirty {
+            self.follow_bottom = self.scroll.at_bottom();
+        }
+        dirty
     }
 
     pub fn take_pending_clipboard(&mut self) -> Vec<String> {
@@ -113,7 +136,6 @@ impl ClipboardSink for CollectOsc52Sink<'_> {
         if let Some(seq) = format_osc52(text) {
             self.out.push(seq);
         } else {
-            // Oversize: still record plain via a no-op marker for tests using Recording…
             let _ = text;
         }
     }
@@ -128,6 +150,7 @@ pub fn test_runtime(dock_rows: usize) -> ModeBRuntime {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crossterm::event::{KeyModifiers, MouseEventKind};
 
     #[test]
     fn project_frame_caps_height_and_keeps_dock() {
@@ -139,5 +162,27 @@ mod tests {
         assert_eq!(paint[7], "L19");
         // Visible content is last 6 of 18 content lines.
         assert_eq!(paint[0], "L12");
+    }
+
+    #[test]
+    fn wheel_scroll_persists_across_project_frame() {
+        let mut mb = ModeBRuntime::new(2);
+        let full: Vec<String> = (0..20).map(|i| format!("L{i}")).collect();
+        let _ = mb.project_frame(&full, 8);
+        assert!(mb.scroll.at_bottom());
+        let top_before = mb.scroll.scroll_top();
+        let wheel = MouseEvent {
+            kind: MouseEventKind::ScrollUp,
+            column: 1,
+            row: 1,
+            modifiers: KeyModifiers::NONE,
+        };
+        assert!(mb.handle_mouse(&wheel, 40, 8));
+        assert!(!mb.scroll.at_bottom());
+        assert!(mb.scroll.scroll_top() < top_before);
+        let top_scrolled = mb.scroll.scroll_top();
+        let paint = mb.project_frame(&full, 8);
+        assert_eq!(mb.scroll.scroll_top(), top_scrolled);
+        assert_eq!(paint[0], format!("L{top_scrolled}"));
     }
 }
