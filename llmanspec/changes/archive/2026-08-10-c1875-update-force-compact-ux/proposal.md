@@ -3,7 +3,8 @@ depends_on:
 - c1860-refactor-context-token-settlement
 branch: sdd/c1875-update-force-compact-ux
 base_sha: 1ed6c0348dbca72c8c2e1058f69a2eef4fadffdc
-checkpointed: false
+checkpointed: true
+checkpoint_sha: 1ed6c0348dbca72c8c2e1058f69a2eef4fadffdc
 ---
 
 # 手动 force compact UX（too-small 澄清）
