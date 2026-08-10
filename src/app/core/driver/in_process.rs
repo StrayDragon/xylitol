@@ -2488,4 +2488,165 @@ mod driver_session_tree_tests {
 
         while first.next().await.is_some() {}
     }
+
+    /// Experiment: next `generate_stream` after reload install sees updated tool schemas.
+    #[tokio::test]
+    async fn experiment_provider_tools_field_follows_reload_freeze() {
+        use std::sync::Mutex;
+
+        use async_trait::async_trait;
+        use futures::StreamExt;
+
+        use crate::protocol::error::{XyError, XyToolError};
+        use crate::protocol::message::XyStopReason;
+        use crate::protocol::model::{XyChunk, XyModelMeta, XyToolSchema};
+        use crate::protocol::ports::{XyGenerateOptions, XyStream, XyTool, XyToolCtx};
+
+        struct StubMcpTool(&'static str);
+        #[async_trait]
+        impl XyTool for StubMcpTool {
+            fn name(&self) -> &str {
+                self.0
+            }
+            fn description(&self) -> &str {
+                "stub"
+            }
+            fn parameters_schema(&self) -> serde_json::Value {
+                serde_json::json!({"type": "object", "properties": {}})
+            }
+            async fn execute(
+                &self,
+                _ctx: &XyToolCtx,
+                _args: serde_json::Value,
+            ) -> Result<String, XyToolError> {
+                Ok("ok".into())
+            }
+        }
+
+        struct RecordingModel {
+            seen: Arc<Mutex<Vec<Vec<String>>>>,
+        }
+        #[async_trait]
+        impl XyModel for RecordingModel {
+            fn name(&self) -> &str {
+                "recording-mock"
+            }
+            async fn generate_stream(
+                &self,
+                _messages: Vec<crate::protocol::message::LlmMessage>,
+                tools: &[XyToolSchema],
+                _stream: bool,
+                _options: XyGenerateOptions,
+            ) -> Result<XyStream, XyError> {
+                let names: Vec<String> = tools.iter().map(|t| t.name.clone()).collect();
+                self.seen.lock().expect("seen").push(names);
+                Ok(Box::pin(async_stream::stream! {
+                    yield Ok(XyChunk::TextDelta("hi".into()));
+                    yield Ok(XyChunk::Done {
+                        finish_reason: XyStopReason::Stop,
+                        usage: None,
+                    });
+                }))
+            }
+        }
+
+        let seen = Arc::new(Mutex::new(Vec::new()));
+        let seen_b = seen.clone();
+        let dir = tempfile::tempdir().unwrap();
+        let store = Arc::new(SessionManager::new(dir.path().join("sessions")));
+        let store_trait: Arc<dyn XySessionStore> = store.clone();
+        let mut reg =
+            crate::agent::model::registry::ModelRegistry::new(Arc::new(InfraSecretResolver::new()));
+        reg.register(XyModelMeta {
+            id: "mock".into(),
+            config: XyModelConfig {
+                kind: crate::protocol::model::XyModelKind::Fake,
+                api_key: String::new(),
+                model: "mock".into(),
+                base_url: None,
+                api: None,
+                compat: None,
+            },
+            display_name: "Mock".into(),
+            thinking: false,
+            context_window: 128000,
+            api: String::new(),
+            provider: String::new(),
+            cost_input: 0.0,
+            cost_output: 0.0,
+            cost_cache_read: 0.0,
+            cost_cache_write: 0.0,
+            max_tokens: 0,
+            thinking_levels: Vec::new(),
+            thinking_level_map: Default::default(),
+        });
+        let builder: ModelBuilderFn = Arc::new(move |_| {
+            Ok(Arc::new(RecordingModel {
+                seen: seen_b.clone(),
+            }) as Arc<dyn XyModel>)
+        });
+        let mut agent = AgentBuilder::new(
+            reg,
+            builder,
+            store_trait.clone(),
+            Arc::new(EventBus::new()) as Arc<dyn crate::protocol::ports::XyEventSink>,
+            permission::allow_all_permission(),
+        )
+        .cwd(".")
+        .tools(ToolSet::empty())
+        .build()
+        .expect("build agent");
+        agent.select_model("mock").expect("select mock");
+        let sid = uuid::Uuid::new_v4().to_string();
+        agent.bind_session(sid).expect("bind_session");
+        let mut driver = XyInProcessDriver::new(agent, store_trait);
+
+        // Epoch 1: freeze with alpha MCP tool, run once.
+        driver.freeze_tools(ToolSet::rebuild_agent_tools(
+            driver.builtins_for_reload(),
+            vec![Arc::new(StubMcpTool("mcp__demo__alpha")) as Arc<dyn XyTool>],
+        ));
+        let mut s1 = driver.run("ping1").await;
+        while s1.next().await.is_some() {}
+        let first = seen.lock().expect("seen")[0].clone();
+        assert!(
+            first
+                .iter()
+                .any(|n| n.contains("alpha") || n == "mcp__demo__alpha"),
+            "first provider tools MUST include alpha: {first:?}"
+        );
+
+        // Epoch 2: reload-shaped remove (empty MCP install) then run again.
+        driver.reopen_tools_for_regate();
+        driver.freeze_tools(ToolSet::from_iter(driver.builtins_for_reload()));
+        let mut s2 = driver.run("ping2").await;
+        while s2.next().await.is_some() {}
+        let second = seen.lock().expect("seen")[1].clone();
+        assert!(
+            !second
+                .iter()
+                .any(|n| n.contains("alpha") || n == "mcp__demo__alpha"),
+            "after remove re-freeze, provider tools MUST NOT include alpha: {second:?}"
+        );
+
+        // Epoch 3: add beta.
+        driver.reopen_tools_for_regate();
+        driver.freeze_tools(ToolSet::rebuild_agent_tools(
+            driver.builtins_for_reload(),
+            vec![Arc::new(StubMcpTool("mcp__demo__beta")) as Arc<dyn XyTool>],
+        ));
+        let mut s3 = driver.run("ping3").await;
+        while s3.next().await.is_some() {}
+        let third = seen.lock().expect("seen")[2].clone();
+        assert!(
+            third
+                .iter()
+                .any(|n| n.contains("beta") || n == "mcp__demo__beta"),
+            "after add re-freeze, provider tools MUST include beta: {third:?}"
+        );
+        assert!(
+            !third.iter().any(|n| n.contains("alpha")),
+            "beta epoch MUST NOT keep alpha: {third:?}"
+        );
+    }
 }
