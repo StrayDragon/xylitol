@@ -21,11 +21,11 @@
 | 能力 | Pi AltScreen | Zellij | xylitol Mode B |
 |---|---|---|---|
 | 双模式入口 | `TuiMainScreen` / `TuiAltScreen` 择一 | 本身即应用管 pane（非 coding-agent 双 TUI） | 库双模式 + 产品默认 A |
-| 拖选 | `selectionAnchor`/`Focus` + mouse handler | `Selection` + `Start/Update/EndSelection` | 同构状态机 |
-| 越界续选 | `selectionAutoScroll*` + ScrollView | 拖到 pane 边滚动 scrollback | MUST |
-| 松手复制 | copy selection → clipboard | `copy_on_select` + clipboard / OSC52 | MUST 默认开 |
-| 输入/不可选 | 输入区与 scrollbar 等分流 | unselectable pane / chrome | Editor 矩形排除 |
-| 点折叠 | starline 挂 fullscreen 侧 | n/a（multiplexer） | **后续** change |
+| 拖选 | `selectionAnchor`/`Focus` + 字/词/行 | `Selection{start,end,active}` + Start/Update/End | 同构状态机 |
+| 越界续选 | 贴边 **50ms** timer + `ScrollView.scrollBy` | 越界 **10ms**/行；拖选中只移锚点 | MUST（间隔可取中/可加速） |
+| 松手复制 | **仅 OSC52** + flash | `copy_on_select`；`copy_command` 否则 OSC52 | MUST 默认开；允许 OSC52 与/或本地 |
+| 输入/不可选 | dock 在 ScrollView **外**；无 click-to-focus | tracking / frame / `set_selectable(false)` | 结构 dock 排除；MAY click-to-focus |
+| 点折叠 | AltScreen **未实现** fold hit | n/a（multiplexer） | **后续** change（预留 hit 优先钩子） |
 
 细节与行级引用见：
 
