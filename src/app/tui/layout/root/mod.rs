@@ -85,6 +85,8 @@ pub struct UiRoot {
     footer_omit_thinking: bool,
     /// Agent-busy next-turn cue (`Next turn: …`); independent of status short-word.
     status_next_turn_cue: Option<String>,
+    /// c1205: while `/reload` runs, hide mcp pending / next-turn on the right.
+    suppress_status_right_cue: bool,
     /// Chrome toast body + deadline (atc22); not in `UiModel.entries`.
     chrome_toast: Option<(String, Instant)>,
     /// Mutually exclusive editor-zone face (ati18).
@@ -192,6 +194,7 @@ impl UiRoot {
             thinking_level: THINKING_OFF.into(),
             footer_omit_thinking: false,
             status_next_turn_cue: None,
+            suppress_status_right_cue: false,
             chrome_toast: None,
             slot: EditorSlot::Editor,
             tree: empty_tree_selector(theme),
@@ -335,6 +338,10 @@ impl UiRoot {
     /// row; the cue only points at `/mcp` and must not sit left under the card.
     pub fn refresh_mcp_short_cue(&mut self) {
         use crate::app::core::driver::MCP_PENDING_CUE;
+        if self.suppress_status_right_cue {
+            self.status_next_turn_cue = None;
+            return;
+        }
         if self.loaded_resources.mcp_tools_pending() {
             // Keep an existing model/thinking next-turn cue when busy.
             if self.status_busy && self.status_next_turn_cue.is_some() {
@@ -796,6 +803,16 @@ impl UiRoot {
         self.status_next_turn_cue = cue.filter(|s| !s.is_empty());
         // If model/thinking cue cleared, restore MCP short cue when pending.
         if self.status_next_turn_cue.is_none() {
+            self.refresh_mcp_short_cue();
+        }
+    }
+
+    /// c1205: suppress right-side status cues while Reloading.
+    pub fn set_suppress_status_right_cue(&mut self, suppress: bool) {
+        self.suppress_status_right_cue = suppress;
+        if suppress {
+            self.status_next_turn_cue = None;
+        } else {
             self.refresh_mcp_short_cue();
         }
     }

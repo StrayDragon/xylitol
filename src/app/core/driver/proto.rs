@@ -282,11 +282,17 @@ pub trait XyDriver: Send {
         }
     }
 
-    /// Hot-reload skills, MCP, and prompt context (c1120).
+    /// Hot-reload skills, MCP, and prompt context (c1120 / c1205).
     ///
     /// Keybindings and themes are orchestrated by the product TUI host. Default:
     /// no-op report for drivers without reload state.
-    async fn reload_runtime(&mut self) -> Result<RuntimeReloadReport, XyDriverError> {
+    ///
+    /// `cancel` is cooperative: implementations MUST put-back reload state on every
+    /// exit and MUST NOT leave MCP/tools half-open when cancelled.
+    async fn reload_runtime(
+        &mut self,
+        _cancel: &tokio_util::sync::CancellationToken,
+    ) -> Result<RuntimeReloadReport, XyDriverError> {
         Ok(RuntimeReloadReport::noop())
     }
 

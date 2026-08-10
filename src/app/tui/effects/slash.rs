@@ -9,7 +9,6 @@ use crate::protocol::Command;
 use super::super::bridge::{CompactionBlockStatus, UiEntry};
 use super::super::commands::PendingSlash;
 use super::super::host::HostSession;
-use super::super::keybindings::ReloadOutcome;
 use super::helpers::{format_session_stats_dump, note_driver_err};
 
 fn last_assistant_text(entries: &[UiEntry]) -> Option<&str> {
@@ -17,51 +16,6 @@ fn last_assistant_text(entries: &[UiEntry]) -> Option<&str> {
         UiEntry::Assistant { text } if !text.trim().is_empty() => Some(text.as_str()),
         _ => None,
     })
-}
-
-fn format_keybindings_reload(outcome: ReloadOutcome) -> String {
-    match outcome {
-        ReloadOutcome::Applied { path } => format!("keybindings: ok — {}", path.display()),
-        ReloadOutcome::NoFile { path } => {
-            format!("keybindings: ok (no file) — {}", path.display())
-        }
-        ReloadOutcome::Failed { path, error } => {
-            format!("keybindings: failed — {} ({error})", path.display())
-        }
-    }
-}
-
-async fn handle_reload<T: Terminal>(session: &mut HostSession<T>, driver: &mut dyn XyDriver) {
-    let agent_dir = super::super::keybindings::default_agent_dir();
-    let mut lines = vec!["Reload:".to_string()];
-
-    lines.push(format_keybindings_reload(
-        session.reload_keybindings(&agent_dir),
-    ));
-
-    match driver.reload_runtime().await {
-        Ok(report) => lines.extend(report.format_lines()),
-        Err(e) => {
-            e.log_failure("tui.reload_runtime");
-            lines.push(format!("runtime: failed — {e}"));
-        }
-    }
-
-    if let Some(pref) = session.theme_preference().map(str::to_string) {
-        match session.reload_themes(&pref) {
-            Ok(()) => lines.push(format!("themes: ok — kept `{pref}`")),
-            Err(e) => {
-                e.log_failure("tui.reload_themes");
-                lines.push(format!("themes: failed — {e}"));
-            }
-        }
-    } else {
-        lines.push("themes: unchanged (no preference; kept current)".into());
-    }
-
-    session.set_dollar_skill_catalog(driver.dollar_skill_catalog());
-    session.refresh_loaded_resources(driver).await;
-    session.push_scroll_notice(lines.join("\n"));
 }
 
 pub(super) async fn handle_slash<T: Terminal>(
@@ -346,10 +300,14 @@ pub(super) async fn handle_slash<T: Terminal>(
             let _ = session.render_now();
         }
         PendingSlash::Reload => {
-            if session.is_busy() {
+            // Agent/bang busy: refuse. Reloading soft-gate is handled in try_reload_input
+            // (Enter never queues a second Reload while reload_active).
+            if session.run_active() || session.bash_active() {
                 session.push_scroll_notice("agent busy — /reload refused");
+            } else if session.reload_active() {
+                session.push_chrome_toast(super::super::commands::RELOADING_WAIT_NOTICE);
             } else {
-                handle_reload(session, driver).await;
+                session.arm_reload();
             }
             let _ = session.render_now();
         }

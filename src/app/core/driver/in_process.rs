@@ -248,9 +248,10 @@ impl XyInProcessDriver {
         let Some(mut state) = self.reload.take() else {
             return Ok(());
         };
-        let result = state.mcp.reload(self, servers).await;
+        let cancel = tokio_util::sync::CancellationToken::new();
+        let result = state.mcp.reload(self, servers, &cancel).await;
         self.reload = Some(state);
-        result
+        result.map(|_| ())
     }
 
     pub fn cancel_token(&self) -> CancellationToken {
@@ -1345,12 +1346,21 @@ impl XyDriver for XyInProcessDriver {
         self.try_complete_armed_tool_gate() || boot_refreshed
     }
 
-    async fn reload_runtime(&mut self) -> Result<RuntimeReloadReport, XyDriverError> {
+    async fn reload_runtime(
+        &mut self,
+        cancel: &tokio_util::sync::CancellationToken,
+    ) -> Result<RuntimeReloadReport, XyDriverError> {
         let Some(mut state) = self.reload.take() else {
             return Ok(RuntimeReloadReport::noop());
         };
 
         let mut steps = Vec::new();
+        let mut cancelled = false;
+
+        // Ensure put-back even on early cancel / panic paths via explicit restore.
+        let put_back = |this: &mut Self, state: InProcessReloadState| {
+            this.reload = Some(state);
+        };
 
         // Re-read trust store so `/trust` + later `/reload` picks up new decisions (c1105).
         // Prefer reload `agent_dir` (same as product `~/.xylitol`) so tests need not mutate HOME.
@@ -1367,6 +1377,14 @@ impl XyDriver for XyInProcessDriver {
             .as_ref()
             .and_then(|cfg| cfg.resolve_default_profile().ok())
             .and_then(|p| p.system_prompt.clone());
+
+        if cancel.is_cancelled() {
+            put_back(self, state);
+            return Ok(RuntimeReloadReport {
+                steps,
+                cancelled: true,
+            });
+        }
 
         let skills = crate::app::core::bootstrap::reload_skills(
             self,
@@ -1385,8 +1403,24 @@ impl XyDriver for XyInProcessDriver {
             message: skills_msg,
         });
 
-        match state.mcp.reload(self, &state.mcp_servers).await {
-            Ok(()) => {
+        if cancel.is_cancelled() {
+            put_back(self, state);
+            return Ok(RuntimeReloadReport {
+                steps,
+                cancelled: true,
+            });
+        }
+
+        match state.mcp.reload(self, &state.mcp_servers, cancel).await {
+            Ok(true) => {
+                cancelled = true;
+                steps.push(ReloadStepReport {
+                    step: "mcp",
+                    ok: true,
+                    message: "cancelled before install".into(),
+                });
+            }
+            Ok(false) => {
                 // c1900: reload is an explicit re-freeze epoch; bootstrap mark settled.
                 self.mcp_boot = McpBootState::Settled;
                 let connected = state.mcp.connected_servers().await;
@@ -1427,6 +1461,14 @@ impl XyDriver for XyInProcessDriver {
             }),
         }
 
+        if cancelled || cancel.is_cancelled() {
+            put_back(self, state);
+            return Ok(RuntimeReloadReport {
+                steps,
+                cancelled: true,
+            });
+        }
+
         let ctx = crate::app::core::bootstrap::reload_prompt_context(
             self,
             &state.cwd,
@@ -1443,8 +1485,11 @@ impl XyDriver for XyInProcessDriver {
             ),
         });
 
-        self.reload = Some(state);
-        Ok(RuntimeReloadReport { steps })
+        put_back(self, state);
+        Ok(RuntimeReloadReport {
+            steps,
+            cancelled: false,
+        })
     }
 
     fn persist_project_trust(
@@ -2245,7 +2290,10 @@ mod driver_session_tree_tests {
         );
         driver.ensure_tool_table_frozen().await;
         assert!(driver.is_tools_frozen());
-        let report = driver.reload_runtime().await.expect("reload");
+        let report = driver
+            .reload_runtime(&tokio_util::sync::CancellationToken::new())
+            .await
+            .expect("reload");
         assert!(report.steps.iter().any(|s| s.step == "mcp"));
         assert!(driver.is_tools_frozen());
         assert!(driver.tool_names_for_test().iter().any(|n| n == "read"));

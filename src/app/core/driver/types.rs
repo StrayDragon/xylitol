@@ -15,10 +15,12 @@ pub struct ReloadStepReport {
     pub message: String,
 }
 
-/// Aggregated runtime reload outcome for `/reload` (c1120).
+/// Aggregated runtime reload outcome for `/reload` (c1120 / c1205).
 #[derive(Debug, Clone, PartialEq, Eq, Default)]
 pub struct RuntimeReloadReport {
     pub steps: Vec<ReloadStepReport>,
+    /// True when the caller cancelled mid-flight (cooperative cancel; partial steps OK).
+    pub cancelled: bool,
 }
 
 /// `/trust` subcommand modes (c1105).
@@ -66,6 +68,7 @@ impl RuntimeReloadReport {
                 ok: true,
                 message: "noop (reload not supported on this driver)".into(),
             }],
+            cancelled: false,
         }
     }
 
@@ -77,6 +80,19 @@ impl RuntimeReloadReport {
                 format!("{}: {status} — {}", s.step, s.message)
             })
             .collect()
+    }
+
+    /// ScrollNotice title line (`Reload:` / `Reload cancelled:`).
+    pub fn notice_title(&self) -> &'static str {
+        if self.cancelled {
+            "Reload cancelled:"
+        } else {
+            "Reload:"
+        }
+    }
+
+    pub fn any_step_failed(&self) -> bool {
+        self.steps.iter().any(|s| !s.ok)
     }
 }
 

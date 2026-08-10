@@ -30,7 +30,7 @@ use xylitol_tui::{CrosstermTerminal, InputEvent};
 
 use crate::app::core::driver::{EventStream as AgentEventStream, XyDriver, XyDriverError};
 
-use self::effects::{drain_pending, run_interactive_bang};
+use self::effects::{drain_pending, run_interactive_bang, run_interactive_reload};
 use self::host::{HostEvent, HostSession};
 use self::terminal_guard::{TerminalGuard, exit_requested, install_lifecycle_hooks};
 
@@ -256,7 +256,7 @@ async fn run_host_loop(
                 editor_seed = Some(job);
             }
 
-            let want_busy_tick = session.is_busy();
+            let want_busy_tick = session.wants_busy_tick();
             if want_busy_tick != tick_busy {
                 tick_busy = want_busy_tick;
                 let ms = if tick_busy {
@@ -268,6 +268,18 @@ async fn run_host_loop(
                 ticker.set_missed_tick_behavior(tokio::time::MissedTickBehavior::Skip);
                 // First tick() completes immediately — skip so we do not spin a frame.
                 ticker.tick().await;
+            }
+
+            if session.take_reload() {
+                if session.reload_active() {
+                    session.push_chrome_toast(self::commands::RELOADING_WAIT_NOTICE);
+                } else {
+                    let input = term_events
+                        .by_ref()
+                        .filter_map(|maybe| futures::future::ready(map_crossterm_item(maybe)));
+                    run_interactive_reload(&mut session, driver, input).await?;
+                    continue;
+                }
             }
 
             if let Some(bash) = session.take_bash() {

@@ -102,6 +102,10 @@ pub struct HostSession<T: Terminal> {
     run_active: bool,
     /// True while interactive `!`/`!!` bash is in flight (c665 Esc abort).
     bash_active: bool,
+    /// True while idle `/reload` interactive pump is in flight (c1205).
+    reload_active: bool,
+    /// Cancel token for the in-flight `/reload` (host cancels; driver observes).
+    reload_cancel: Option<tokio_util::sync::CancellationToken>,
     /// Absorb leftover Esc / key-repeat after an abort while **idle** so the next
     /// bang is not cancelled at submit. Cleared on non-Esc input and when a new
     /// busy period starts (`begin_bash_exec` / `on_run_started`). MUST NOT gate
@@ -180,6 +184,8 @@ impl<T: Terminal> HostSession<T> {
             pending: PendingOps::default(),
             run_active: false,
             bash_active: false,
+            reload_active: false,
+            reload_cancel: None,
             suppress_idle_esc: false,
             suppress_xy_until_stream_end: false,
             paint_dirty: false,
@@ -287,6 +293,60 @@ impl<T: Terminal> HostSession<T> {
 
     pub fn is_busy(&self) -> bool {
         self.ui_model.phase == UiPhase::Busy || self.run_active || self.bash_active
+    }
+
+    /// c1205: `/reload` in-flight (soft-gate; not agent `run_active`).
+    pub fn reload_active(&self) -> bool {
+        self.reload_active
+    }
+
+    /// Tick / Loader while reload or agent/bang busy.
+    pub fn wants_busy_tick(&self) -> bool {
+        self.is_busy() || self.reload_active
+    }
+
+    pub fn take_reload(&mut self) -> bool {
+        self.pending.take_reload()
+    }
+
+    pub fn arm_reload(&mut self) {
+        self.pending.reload = true;
+    }
+
+    /// Arm interactive `/reload` (status Reloading + cancel token).
+    pub fn begin_reload(&mut self) {
+        let cancel = tokio_util::sync::CancellationToken::new();
+        self.reload_cancel = Some(cancel);
+        self.reload_active = true;
+        self.ui_model.set_busy_status("Reloading");
+        if let Some(root) = self.ui_root.as_ref() {
+            root.borrow_mut().set_suppress_status_right_cue(true);
+        }
+        self.sync_ui_root_from_model();
+    }
+
+    pub fn reload_cancel_token(&self) -> Option<tokio_util::sync::CancellationToken> {
+        self.reload_cancel.clone()
+    }
+
+    pub fn request_reload_cancel(&mut self) {
+        if let Some(t) = self.reload_cancel.as_ref() {
+            t.cancel();
+        }
+    }
+
+    /// Clear reload chrome after success / cancel / fail.
+    pub fn end_reload(&mut self) {
+        self.reload_active = false;
+        self.reload_cancel = None;
+        if let Some(root) = self.ui_root.as_ref() {
+            root.borrow_mut().set_suppress_status_right_cue(false);
+        }
+        if !self.run_active && !self.bash_active {
+            self.ui_model.phase = UiPhase::Idle;
+            self.ui_model.status = None;
+        }
+        self.sync_ui_root_from_model();
     }
 
     pub fn run_active(&self) -> bool {
@@ -721,6 +781,7 @@ impl<T: Terminal> HostSession<T> {
                 if self.mode == LayoutMode::Ready {
                     if self.try_suppress_stale_esc(&input)
                         || self.try_paste_image(&input)
+                        || self.try_reload_input(&input)
                         || self.try_busy_input(&input)
                         || self.try_idle_enter_submit(&input)
                         || self.try_ctrl_g(&input)
