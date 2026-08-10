@@ -2,7 +2,7 @@ kind: llman.sdd.spec
 name: "app-tui-host"
 purpose: 产品 TUI 宿主：host 驱动引擎、终端生命周期、即时日志、尺寸降级，以及合成垂直切片 / 产品 PTY smoke 验收。
 valid_scope[2]: src/app/tui/,tests/tui_e2e/
-requirements[26]{req_id,title,statement}:
+requirements[29]{req_id,title,statement}:
   ath1,"host-driven-engine","产品 TUI MUST 以 host 驱动 packages/xylitol-tui：使用 dispatch_event、request_render、try_render、idle_tick；产品路径 MUST NOT 调用 TUI::start()。"
   ath2,"terminal-restore",产品 TUI MUST 在正常退出、错误退出与 panic 路径恢复终端（关闭 raw mode 等），不得把用户终端留在损坏状态；MUST 安装 panic hook（仅靠 Drop 不足）。
   ath3,"infra-logging-default","debug 构建下产品 TUI MUST 默认启用即时文件日志（人类与 agent 可用 tail -f 观察）；release 构建 MUST 默认关闭，仍可通过 XYLITOL_DEBUG 或 RUST_LOG 显式打开。src/app/tui/AGENTS.md MUST 写明日志路径与查看方式。"
@@ -29,5 +29,7 @@ requirements[26]{req_id,title,statement}:
   ath28,"reload-in-progress-ux","产品 TUI 在 idle 启动无参 /reload 后、重载未完成前 MUST：以独立 reload 进行中态（非 agent run_active、非 bang busy）驱动 status lead 为 spinner+`Reloading`；host/effects MUST NOT 因 await 重载而阻塞终端 tick 与键入处理。进行中 MUST 允许打字与 Ctrl+G 外编；Enter 提交普通上行 / slash（含二次 /reload）/ bang MUST 拒绝且经壳层通告 body 恰好为 `reloading — wait`（可见 `Error: reloading — wait`），MUST NOT 调用第二次 runtime reload 或入 steer。无 overlay 时 Esc 与 Ctrl+C MUST 请求协作取消重载（非退出）；有 overlay 时 MUST 先关槽。取消收口 MUST 恢复一致工具/MCP 快照（旧 manager 保留至新装好或取消恢复）、put-back reload 句柄、解除进行中态，并以滚动提示 `Reload cancelled:`（含已完成步进摘要）+ 壳层通告 body `reload cancelled` 说明；已写入的 skills/context MUST NOT 要求事务回滚。失败（含墙钟超时诊断）MUST 以既有 `Reload:` 步进报告 + 壳层通告 body `reload failed — see report` 说明并解除进行中态。成功路径仍尾随既有 `Reload:` 汇总；MUST NOT 清空 transcript/session 历史或 editor 草稿。agent/bang 真 busy 时 /reload 拒绝保持 ath20/atm12。墙钟对齐既有 MCP 单 server 与首 turn 门闸常量。验证 MUST 含可注入慢/失败/取消的 harness。"
   avs1,"synthetic-harness-one-round","产品 TUI MUST 提供可在无真 TTY/无真 LLM 下运行的合成验收：ScriptedDriver（或等价）记录 run/steer/follow_up/abort/clear_queue，并能将预置 XyEvent 流回流 HostSession。MUST 覆盖提交→流式/工具→steer/follow-up queue strip→abort 后再提交→/exit 触发 finish_inline（H1–H9）；MUST NOT 把活树、bash、compaction UI 纳入本切片。"
   avs2,"product-pty-fake-smoke","tests/tui_e2e MUST 包含产品 xylitol 二进制的 PTY 冒烟（#[ignore]，经 just test-tui-e2e-pty 可跑）：在临时 Fake 模型配置与 --trust 下启动 TUI，提交用户消息后屏上 MUST 出现 Fake 默认文案 Hello from fake provider，输入 /exit 后进程 MUST 退出。MUST NOT 要求跨进程 Fake 脚本化，MUST NOT 在本用例断言 steer/工具 strip。"
-scenarios[1]{req_id,id,given,when,then,feature}:
+  ath29,"mouse-input-opt-in-no-moved-paint","产品 host 扇入 MUST 能将 crossterm Event::Mouse 映射为 HostEvent::Input(InputEvent::Mouse)（Moved 可在映射前丢弃）。Ready 态处理 Mouse 时：无 UI dirty / 未消费态变 MUST NOT request_render；Key/Paste 路径本要求不强制改写。产品 MUST NOT 在 TUI 启动时默认 EnableMouseCapture（显式 API 开启）。MUST 提供 #[ignore] PTY 用例（经 just test-tui-e2e-pty 可跑）：显式 Enable 后退出/teardown MUST Disable，尽探针所能断言 mouse mode 不残留；默认 just qa MUST NOT 强制该用例。折叠点击语义不在本要求范围。"
+scenarios[2]{req_id,id,given,when,then,feature}:
   ath28,ath28-unit,"reload-in-progress-ux 由产品 harness/单测覆盖（非 BDD harness）",审查实现与对应测试,"行为符合本 requirement 陈述",false
+  ath29,ath29-unit,"mouse-input-opt-in-no-moved-paint 由产品 harness 与 ignore PTY 覆盖（非 BDD harness）",审查实现与对应测试,"行为符合本 requirement 陈述",false
