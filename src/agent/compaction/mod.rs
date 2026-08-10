@@ -47,13 +47,15 @@ use crate::protocol::session::{CompactionEntry, EntryBase, SessionEntry};
 
 /// pi `prepareCompaction` gate: whether there is content worth summarizing.
 ///
-/// Errors use pi-aligned English strings for the force path.
+/// Force-path error strings: `Already compacted` stays pi-aligned; empty /
+/// no-summarizable-history strings diverge from pi `session too small`
+/// (c1875 / `PI_DELTAS` A12) so footer-% misunderstandings are harder.
 pub fn prepare_compaction(
     entries: &[SessionEntry],
     settings: &CompactionSettings,
 ) -> Result<(), String> {
     if entries.is_empty() {
-        return Err("Nothing to compact (session too small)".into());
+        return Err("Nothing to compact (empty session)".into());
     }
     if matches!(entries.last(), Some(SessionEntry::Compaction(_))) {
         return Err("Already compacted".into());
@@ -83,7 +85,7 @@ pub fn prepare_compaction(
     );
     let first_kept = &entries[cut.first_kept_entry_index];
     if first_kept.entry_id().is_none() {
-        return Err("Nothing to compact (session too small)".into());
+        return Err("Nothing to compact (no summarizable history beyond keep window)".into());
     }
     let history_end = if cut.is_split_turn {
         cut.turn_start_index.max(0) as usize
@@ -104,7 +106,7 @@ pub fn prepare_compaction(
         0
     };
     if history_count == 0 && turn_prefix_count == 0 {
-        return Err("Nothing to compact (session too small)".into());
+        return Err("Nothing to compact (no summarizable history beyond keep window)".into());
     }
     Ok(())
 }
@@ -707,10 +709,14 @@ mod tests {
     #[test]
     fn test_prepare_already_compacted_and_truly_small() {
         let settings = CompactionSettings::default();
+        assert_eq!(
+            prepare_compaction(&[], &settings).unwrap_err(),
+            "Nothing to compact (empty session)"
+        );
         let small = vec![make_message_entry("u1", "user", "hi")];
         assert_eq!(
             prepare_compaction(&small, &settings).unwrap_err(),
-            "Nothing to compact (session too small)"
+            "Nothing to compact (no summarizable history beyond keep window)"
         );
         let already = vec![
             make_message_entry("u1", "user", "hi"),
@@ -787,7 +793,7 @@ mod tests {
         );
         assert_eq!(
             prepare_compaction(&branch, &settings).unwrap_err(),
-            "Nothing to compact (session too small)"
+            "Nothing to compact (no summarizable history beyond keep window)"
         );
     }
 
