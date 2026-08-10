@@ -121,6 +121,9 @@ pub struct AgentCapabilities {
     hook_bus: Option<Arc<dyn XyHookBus>>,
     /// Request-layout hooks (c1890); default ≡ current full-tools / no status bar.
     context_policy: crate::agent::context_policy::ContextPolicy,
+    /// Session-pinned calendar day for ablation
+    /// [`DatePlacement::SystemPinnedAtSession`] only (c1905; product uses session_env).
+    system_date_pin: Option<String>,
 }
 
 impl AgentCapabilities {
@@ -162,7 +165,6 @@ impl AgentCapabilities {
             ),
             cwd: cwd.clone(),
             prompt_opts: SystemPromptOpts {
-                cwd,
                 system_prompt,
                 context_files,
                 append_system_prompt,
@@ -180,6 +182,7 @@ impl AgentCapabilities {
             queues: Arc::new(AsyncQueueRuntime::new(steering_mode, follow_up_mode)),
             hook_bus,
             context_policy: crate::agent::context_policy::ContextPolicy::default(),
+            system_date_pin: None,
         };
         // Assemble full system prompt (tools + context + SYSTEM/APPEND + runtime
         // policy) once at construction so bootstrap-injected AGENTS.md is visible
@@ -384,6 +387,47 @@ mod tests {
             QueueMode::default(),
             None,
         )
+    }
+
+    #[test]
+    fn default_system_prompt_omits_session_env() {
+        let session = make_session();
+        let prompt = session.system_prompt().unwrap_or("").to_string();
+        assert!(!prompt.contains("Current date:"), "{prompt}");
+        assert!(!prompt.contains("Current working directory:"), "{prompt}");
+    }
+
+    #[test]
+    fn system_date_pin_survives_rebuild() {
+        use crate::agent::context_policy::{ContextPolicy, DatePlacement};
+        let mut session = make_session();
+        session.set_context_policy_for_test(ContextPolicy {
+            date_placement: DatePlacement::SystemPinnedAtSession,
+            ..Default::default()
+        });
+        session.restore_system_date_pin("2026-08-05");
+        let first = session.system_prompt().unwrap_or("").to_string();
+        assert!(
+            first.contains("Current date: 2026-08-05"),
+            "expected pinned date: {first}"
+        );
+        session.rebuild_system_prompt();
+        let second = session.system_prompt().unwrap_or("").to_string();
+        assert_eq!(first, second, "pin must survive rebuild");
+    }
+
+    #[test]
+    fn omit_date_placement_skips_current_date_line() {
+        use crate::agent::context_policy::{ContextPolicy, DatePlacement};
+        let mut session = make_session();
+        session.set_context_policy_for_test(ContextPolicy {
+            date_placement: DatePlacement::Omit,
+            ..Default::default()
+        });
+        session.rebuild_system_prompt();
+        let prompt = session.system_prompt().unwrap_or("").to_string();
+        assert!(!prompt.contains("Current date:"), "{prompt}");
+        assert!(!prompt.contains("Current working directory:"), "{prompt}");
     }
 
     #[test]

@@ -1,6 +1,7 @@
 ---
 depends_on:
   - c1890-add-responses-context-policy-assembler
+  - c1905-update-system-prompt-stable-volatile-split
   - c1930-update-session-provider-view-contract
 ---
 
@@ -13,19 +14,39 @@ depends_on:
 > **调研底稿**：[`docs/research/responses-context-layout-and-cache-2026.md`](../../../docs/research/responses-context-layout-and-cache-2026.md) §3（术语对照 §7）
 > **书指针**：《深入理解 AI Agent》Ch2「Agent 状态栏」（姊妹仓 `ai-agent-book/book/chapter2.md`）；书语仅经 research §7 术语表映射，**禁止**写入 live specs。
 > **自包含**：原意向 Runtime 列 + Agent 列壳；Todo 业务改由 **c1955**；Agent 列通道稿见同目录 [`c1896`](../c1896-add-status-bar-agent-lane/proposal.md)。
+> **已落地特殊类型**：[`c1905`](../c1905-update-system-prompt-stable-volatile-split/design.md) **`session_env`** —— 状态栏族 bootstrap（date/clock/cwd）；本 change 须扫描并钉合并策略。
 > **工程约定**：code-first；真源见 [`c1880`](../archive/2026-08-04-c1880-update-responses-first-api-boundary/proposal.md)。
+
+## 上游已有：`session_env`（必读）
+
+`c1905` 已把会话环境做成 **状态栏族第一种类型**（不是普通 user 聊天）：
+
+| 项 | 值 |
+|---|---|
+| `custom_type` | `session_env`（`CUSTOM_TYPE_SESSION_ENV`） |
+| XML 根 | `<session_env>`（`SESSION_ENV_XML_ROOT`）；**全栏**根名另为 `<agent_status_bar>` |
+| `details` | `date` / `clock` / `cwd` / `status_bar_kind` |
+| 扫描 API | `last_session_env` / `session_env_from_message` / `should_append_session_env` |
+| 模块 | `src/agent/prompt/session_env.rs` |
+| 注入缝 | ReAct：真实 user 落盘前（append-only；同日同 cwd 不重复） |
+| TUI | `is_env_custom_message`；树 `meta` |
+
+**本 change 开闸时 MUST**：识别 transcript 中已有 `session_env`；在 design 钉清 off/replace/append 与 bootstrap 的并存或吸收；**禁止**再发明第二套 cwd/date 散落进 system 或裸 user 正文。
+
+发现表：[`c1905/design.md`](../c1905-update-system-prompt-stable-volatile-split/design.md)「给 c1895 的发现表」。
+
+**Compact**：早期 `session_env` 可被 `build_context_entries` 裁掉；overflow 同轮 reload 今日不重注。保证缝 → [`c1906`](../c1906-ensure-session-env-after-compaction/proposal.md)。全栏堆积策略 → [`c1897`](../c1897-update-compaction-status-bar-messages/proposal.md)。**禁止**因此把 pwd 写回 system。
 
 ## Why
 
-状态栏不是银弹：coding agent 下 cwd/date 进 system 常常正确；但工具计数、TODO、git 等**高变读数**若塞进 system 或每轮无策略追加，会在「cache」与「注意力/冗余」之间失控。需要**独立、可测**的子系统，由 ContextPolicy 选择 `off` | `replace` | `append`。
-
+状态栏不是银弹：高变读数若塞进 system 或每轮无策略追加，会在「cache」与「注意力/冗余」之间失控。需要**独立、可测**的子系统，由 ContextPolicy 选择 `off` | `replace` | `append`。会话级 date/cwd 已由 `session_env` 承担 bootstrap——全栏是其上的扩展，不是从零发明。
 ## What Changes
 
 - **双列地基（深挖 Q1，已钉）**：
   - **Lane Runtime**：代码可观测状态 → 结构化键值；**每个 outbound LLM generate 前**按 profile+预算盲目尾插并持久（深挖 Q6′）；本波 **无** refresh 工具（→ [`c1898`](../c1898-add-statusline-refresh-tool/proposal.md)）。
   - **Lane Agent**：可扩展 typed 尾插通道；本波只留扩展接口/空壳；业务 TODO → `c1896`。
 - StatusBar **provider 接口**（Runtime）：输入 = 代码可观测状态；输出 = 结构化键值（禁止散文堆砌为默认）。
-- Runtime 默认模式：**`append`（深挖 Q2 已钉）**——**不**扫描轨迹中已有 status message；在自动缝上直接追加最新快照（「盲目尾插」）。`replace` / `off` 仍可切。
+- Runtime 默认模式：**`append`（深挖 Q2 已钉）**——**不**扫描轨迹中已有 status message；在自动缝上直接追加最新快照（「盲目尾插」）。`replace` / `off` 仍可切。**对 `session_env` 例外**：开闸前须显式钉「是否扫描 bootstrap」（见上节）。
 - **持久化（深挖 Q3 已钉）**：**全部写入 session transcript**（SSOT），不是仅请求时投影。理由：常用 provider 的 KV / Prompt Cache 依赖跨请求前缀字节稳定；仅投影等于每轮换掉末尾条，破坏「只追加」命中。导出 / resume / compact（`c1897`）均可见这些特殊标记消息。
 - **Runtime 读数地基（深挖 Q4′ 已钉）**：**不**把字段表钉死为合约。做成
   - `ReadingProvider` 注册表（id / 优先级 / 估 token / 渲染 KV）
@@ -33,10 +54,10 @@ depends_on:
   - × **每条 append 硬 token 预算**（超限按优先级丢低优字段）
   - 本波：接口 + 预算 + **薄 coding profile** 可测实现（**默认含 clock**，深挖 Q5）；时间感操作手册 / git 深度 / 更多场景档后置迭代。对齐书实验 2-8「技术可独立开关」与「场景会变 + 省 token」。
 - **自动注入缝（深挖 Q6′ 已钉）**：① **每 outbound generate 前**自动尾插；② 本波不做按需工具。后置 `statusline_refresh` = **仅 tool result**、不写权威栏（`c1898`）。
-- **标记 / wire（深挖 Q7 已钉；命名意向）**：SSOT 独立 entry kind 统一为 **`AgentStatusBar`**（名以实现为准）；投影包装标签统一为 **`<agent_status_bar>…</agent_status_bar>`**（书实验里的 `<agent_status>` 仅作概念同源，工程不混用短名）。压缩/导出认 kind；不以普通 user 正文标签为唯一 SSOT。与 `c1930` 对齐投影契约。
+- **标记 / wire（深挖 Q7 已钉；命名意向）**：全栏 SSOT 独立 entry kind 意向 **`AgentStatusBar`**；投影包装 **`<agent_status_bar>…</agent_status_bar>`**。**已存在**的 bootstrap 继续用 `custom_type=session_env` / `<session_env>`，直至本 change design 钉迁移或并存策略。压缩/导出认 kind；与 `c1930` 对齐投影契约。
 - **薄 coding 默认附加集（深挖 Q8，已钉）**：
   - **默认开**：`clock`；`tool_calls`（按工具名累计次数——书实验 2-8「工具调用计数器」，也是弱模型防空转/死循环的主读数）。
-  - **实现但默认关**（profile 可开）：`cwd`；`git_branch`。
+  - **实现但默认关**（profile 可开）：`cwd`；`git_branch`——cwd 已可能在 `session_env`；开栏时避免双写，优先引用 / 合并 bootstrap。
   - **本波不做**：完整 git dirty、TODO、详细错误四层、长操作手册、`statusline_refresh` 等（见分流草案）。
   - 防循环：书证——显式次数（如 `read_file: 3`）能触发「多次失败后换策略/放弃」；电话实验里「3/3 到顶就停」规则足够显然时**只靠读数**即可纠偏。更细的「同参重复 streak / 微型策略」后置，不进本波默认。
 - **栏体形状（深挖 Q9 意向：XML 非 JSON）**：投影包装根标签 **`<agent_status_bar>`**；读数用子元素，**不用 JSON 对象当正文**。推荐骨架：
@@ -58,8 +79,8 @@ depends_on:
   - `tool/@name` 用属性（工具名可含非法 XML 名字符时仍安全）；`count` 为非负整数。
   - 空 `tool_calls` 可写成 `<tool_calls/>` 或省略子节点（design 钉一种）。
   - **禁止**把整段栏序列化成 `{...}` JSON 塞进 user 正文当默认形。
-- 注入经 Assembler / Policy，**不**散落改 `build_system_prompt` 特例逻辑（system 内稳定 env 仍可由 `c1905` 管）。
-- 验证：假 provider → 预算截断可测；profile 开/关 `cwd`/`git_branch` 可消融；generate 边界尾插含 `clock`+`tool_calls`；entry kind=`AgentStatusBar`；投影 XML 可解析/快照。
+- 注入经 Assembler / Policy，**不**散落改 `build_system_prompt` 特例逻辑（system 由 `c1905` Omit；环境走 `session_env` / 本栏）。
+- 验证：假 provider → 预算截断可测；能扫描既有 `session_env`；profile 开/关可消融；投影 XML 可解析/快照。
 - **禁止**用 LLM 批量扫历史生成权威栏。
 
 ## Capabilities（意向）
@@ -76,16 +97,16 @@ depends_on:
 
 ## Out of scope
 
-- 把 cwd/date **强制**迁出 system（本仓场景默认可留；`c1905` 可标 stable）
-- tool_search（→ `c1900`）
+- 把 cwd/date **写回** system（已被 `c1905` Omit 否决；本 change 不回潮）
+- tool_search（→ `c1900` / `c1960`）
 - 完整 TODO / 即时计划产品形态（→ `c1896`；本波仅扩展壳）
-- 压缩时对特殊标记 status message 的保留策略（→ `c1897`；本波只保证可识别标记）
+- 压缩时对特殊标记 status message 的保留策略（→ `c1897`；本波只保证可识别标记，含 `session_env`）
 - 按需 `statusline_refresh` 工具（→ `c1898`；仅 tool result，本波不做）
 - 子 agent 字节级对齐父栏（后置）
 
 ## Parallel / depends
 
-- **硬依赖**：`c1890`（已归档）、`c1930`
+- **硬依赖**：`c1890`（已归档）、`c1905`（session_env bootstrap）、`c1930`
 - **分流草案**：
   - [`c1896`](../c1896-add-status-bar-agent-lane/proposal.md)（Agent 列；sourced_from 本 change）
   - [`c1897`](../c1897-update-compaction-status-bar-messages/proposal.md)（压缩 × status；sourced_from 本 change）
@@ -100,9 +121,9 @@ depends_on:
 - **Q2 Runtime 默认模式（2026-08-05）**：选 **`append` = 盲目尾插**（不查看轨迹中已有 status message，直接追加到末尾）。`replace`/`off` 仍为可切档。压缩时陈旧 status 堆积 → 策略延后调研，写入 `c1897`（最多保留一条 vs 全不保留，未定）。
 - **Q3 持久化（2026-08-05）**：选 **全部持久进 transcript**（非仅请求投影）。动机：保住常用 LLM provider 的跨请求 KV / Prompt Cache（append 前缀稳定）；仅投影会每轮替换末尾条、破坏命中。`c1897` 因此更关键。Agent 列（`c1896`）默认同源持久，除非后继另钉。
 - **Q4′ Runtime 读数地基（2026-08-05）**：选 **注册表 × scenario profile × 单条 token 预算**；本波薄 coding profile，**不**把具体键表钉成硬合约。书据：Ch2 实验 2-8 可独立开关；Ch5 coding 环境四件套为 profile 意向而非 SSOT；append 持久下省 token 靠单条预算 + 后继 `c1897`。
-- **Q5 时钟 / 日界（2026-08-05）**：选 **C — 栏内 clock provider，并进入默认 coding profile**（每轮盲目尾插带时间读数）。system/`c1905` 仍可保留稳定 env 策略，但「当前时刻 / 日历日」以栏为准避免改 system 前缀；单条预算须为 clock 留优先级；与 `c1905` 日界文案对齐时注明「动态时刻走栏」。
+- **Q5 时钟 / 日界（2026-08-05）**：选 **C — 栏内 clock provider，并进入默认 coding profile**（每轮盲目尾插带时间读数）。`c1905` `session_env` 已提供稀疏 calendar/clock/cwd bootstrap；「当前时刻」权威以栏为准时须在 design 钉合并，避免双 clock。
 - **Q6′ 自动缝 × 按需工具（2026-08-05）**：分类后选 **① 每 outbound generate 前自动尾插 + ② 本波不做 refresh 工具**。后置工具若做：名 ≈ `statusline_refresh`，**仅 tool result、不 append 权威栏** → `c1898`。避免与 `c1897` 双写缠死。
-- **Q7 标记 / wire（2026-08-05）**：选 **A — 独立 session entry kind + 投影层包装**。工程命名统一：**`AgentStatusBar`** + **`<agent_status_bar>`**（不用混用 `StatusBar` / `<agent_status>` 短名）。压缩/导出认 kind；跟 `c1930` 联调投影细节。
+- **Q7 标记 / wire（2026-08-05）**：选 **A — 独立 session entry kind + 投影层包装**。工程命名统一：**`AgentStatusBar`** + **`<agent_status_bar>`**。bootstrap 继续 `session_env` 直至迁移策略钉死。压缩/导出认 kind；跟 `c1930` 联调投影细节。
 - **Q8 默认附加集（2026-08-05，已被 Q10 覆写）**：曾钉 `clock`+`tool_calls`；经 ROI 深挖后见 Q10。
 - **Q9 栏体形状（2026-08-05）**：选 **XML 子树**（非 JSON）。根 `<agent_status_bar>`；读数用子元素。
 
@@ -116,8 +137,9 @@ depends_on:
 
 ### 待钉（产品姿态）
 
-- 选 **(D)+(C)**：大幅降权 always-on；改为 **事件/Todo 驱动才出现**；c1895 最多薄缝且默认 `off`
+- 选 **(D)+(C)**：大幅降权 always-on；改为 **事件/Todo 驱动才出现**；c1895 最多薄缝且默认 `off`（保留 `session_env` bootstrap）
 - 选 **(A)**：只留薄缝（kind / mode / 钩子），默认 `off`，内容全后置
+- **`session_env` × 全栏**：并存 / 吸收进 `<agent_status_bar>` / replace 时是否删除旧 bootstrap（开 apply 前钉）
 - 选 **(B)**：仍 ship 最小 always-on（不推荐）
 - Todo 产品是否升为优先 change（可扩 `c1896` 或新 id），状态栏跟其后
 

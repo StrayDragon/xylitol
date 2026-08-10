@@ -337,7 +337,6 @@ fn g_pt9_bash_guidelines(prompt_bdd: &PromptBdd) {
             .iter()
             .map(|s| (*s).to_string())
             .collect(),
-        cwd: ".".into(),
         ..Default::default()
     };
     // Store guidelines for when step; also prebuild for convenience
@@ -370,7 +369,6 @@ fn g_pt9_custom(prompt_bdd: &PromptBdd) {
         custom_prompt: Some("CUSTOM_ONLY_BODY".into()),
         selected_tools: vec!["read".into()],
         tool_snippets: vec![("read".into(), "Read file".into())],
-        cwd: ".".into(),
         ..Default::default()
     };
     prompt_bdd.prompt.replace(build_system_prompt(&opts));

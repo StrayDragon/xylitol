@@ -52,6 +52,19 @@ pub fn message_role(msg: &Value) -> Option<&str> {
     msg.get("role").and_then(Value::as_str)
 }
 
+/// `customType` / `custom_type` on Env CustomMessage JSON
+/// (c1905 `session_env` status-bar bootstrap).
+pub fn message_custom_type(msg: &Value) -> Option<&str> {
+    msg.get("customType")
+        .or_else(|| msg.get("custom_type"))
+        .and_then(Value::as_str)
+}
+
+/// Env `role=custom` rows (incl. status-bar family `session_env`) — not user-typed chat.
+pub fn is_env_custom_message(msg: &Value) -> bool {
+    message_role(msg) == Some("custom")
+}
+
 /// Extract **visible text** for editor prefill / tree summary (dm2).
 ///
 /// Only aggregates `type=text` parts. Thinking / toolCall / image are skipped.

@@ -260,14 +260,12 @@ mod tests {
                 ("read".into(), "Read file".into()),
                 ("mcp__fixture__ping".into(), "fixture ping".into()),
             ],
-            cwd: "/tmp".into(),
             date: Some("2026-08-10".into()),
             ..Default::default()
         });
         let prompt_without = build_system_prompt(&SystemPromptOpts {
             selected_tools: vec!["read".into()],
             tool_snippets: vec![("read".into(), "Read file".into())],
-            cwd: "/tmp".into(),
             date: Some("2026-08-10".into()),
             ..Default::default()
         });
@@ -371,14 +369,12 @@ mod tests {
                 ("read".into(), "Read file".into()),
                 ("bash".into(), "Run shell".into()),
             ],
-            cwd: "/tmp".into(),
             date: Some("2026-08-10".into()),
             ..Default::default()
         });
         let prompt_without = build_system_prompt(&SystemPromptOpts {
             selected_tools: vec!["read".into()],
             tool_snippets: vec![("read".into(), "Read file".into())],
-            cwd: "/tmp".into(),
             date: Some("2026-08-10".into()),
             ..Default::default()
         });

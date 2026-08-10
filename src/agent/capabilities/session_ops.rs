@@ -15,9 +15,20 @@ impl AgentCapabilities {
     // ── Session management ────────────────────────────────────────
 
     /// Set the active session ID.
+    ///
+    /// Drops any ablation calendar pin from a previous bind **without** rebuilding
+    /// the system prompt (product [`crate::agent::context_policy::DatePlacement::Omit`]
+    /// ignores the pin; c1905).
     pub fn set_session(&mut self, session_id: String) {
         xylitol_ai_bridge::provider::set_obs_session(session_id.clone(), None);
         self.session_id = Some(session_id);
+        self.system_date_pin = None;
+        if matches!(
+            self.context_policy.date_placement,
+            crate::agent::context_policy::DatePlacement::SystemPinnedAtSession
+        ) {
+            self.prompt_opts.date = None;
+        }
     }
 
     /// Get the active session ID.

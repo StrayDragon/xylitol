@@ -16,8 +16,8 @@ pub use entries::{
 };
 pub use helpers::{
     bash_execution_message_entry, count_tool_calls, fixture_message_json, is_assistant_message,
-    is_tool_call_part, is_user_message, message_parts, message_role, message_text,
-    tool_call_arguments, tool_call_name, tool_file_paths,
+    is_env_custom_message, is_tool_call_part, is_user_message, message_custom_type, message_parts,
+    message_role, message_text, tool_call_arguments, tool_call_name, tool_file_paths,
 };
 pub use parse::{
     enforce_session_version, parse_session_jsonl, parse_session_jsonl_lines,

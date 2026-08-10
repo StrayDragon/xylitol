@@ -11,6 +11,7 @@ depends_on:
 
 > **已升格（2026-08-10）**：当前排序 **#8**。仅当状态栏真开 append-persist 后执行。
 > **来源**：深挖 [`c1895`](../c1895-add-agent-status-bar-subsystem/proposal.md) Q2/Q3。
+> **bootstrap 先行**：已落地的 `session_env` 在 compact/overflow 后的保证 → **[`c1906`](../c1906-ensure-session-env-after-compaction/proposal.md)**（不依赖本 change；可先归档落地）。本 change 只管全栏 `AgentStatusBar` 堆积。
 > **调研底稿**：[`docs/research/responses-context-layout-and-cache-2026.md`](../../../docs/research/responses-context-layout-and-cache-2026.md) §3 / §6；书 Ch2 压缩与状态栏（陈旧条 vs 注意力）。
 > **工程约定**：code-first；策略未钉前 **禁止**假实现进主路径。
 
@@ -56,11 +57,12 @@ depends_on:
 - Runtime 注入与默认 append（→ `c1895`）
 - Agent 列 TODO 业务（→ `c1896`）
 - 工具结果首次冻结（→ `c1910`）
+- **`session_env` bootstrap 在 compact/overflow 后的 ensure**（→ [`c1906`](../c1906-ensure-session-env-after-compaction/proposal.md)；可先于本 change）
 
 ## Parallel / depends
 
 - **硬依赖**：`c1895`（标记与注入先立）、`c1910`（压缩冻结骨架；可并行调研但 apply 宜在其后或同波协调）
-- 软相关：`c1930`（持久投影）
+- 软相关：`c1930`（持久投影）；`c1905` / `c1906`（session_env 族）
 
 ## Open Questions
 
