@@ -2,7 +2,7 @@
 
 ## 1. Specs landing
 
-- [ ] 1.1 修订 live `domain-compaction`：`c17` 失败串对齐 design 表（empty / keep-window / Already compacted）；`.feature` `@req:c17` 措辞同步；`llman sdd validate domain-compaction --strict --no-check`
+- [x] 1.1 修订 live `domain-compaction`：`c17` 失败串对齐 design 表（empty / keep-window / Already compacted）；`.feature` `@req:c17` 措辞同步；`llman sdd validate domain-compaction --strict --no-check`
 
 ## 2. 实现文案
 
