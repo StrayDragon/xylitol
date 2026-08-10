@@ -682,6 +682,8 @@ impl XyDriver for XyInProcessDriver {
         // append a replacement event: a stale vendor level is intentionally sticky
         // until the user changes or cycles it.
         self.agent.restore_thinking_level(context.thinking_level);
+        // c1905: session_env lives in transcript (Env→user); resume appends a new
+        // row only when date/cwd change — no system-date pin restore needed.
         // c1900: resume/switch starts a new tools epoch — next generate re-gates.
         // Fingerprint match/continue-freeze needs persisted fingerprint (same change wave MAY
         // add Custom/header storage); until then correctness prefers re-freeze.

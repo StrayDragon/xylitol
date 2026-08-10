@@ -426,6 +426,7 @@ impl AgentRuntime {
             compaction_settings: self.inner.compaction_settings(),
             permission: self.inner.get_permission(),
             hook_bus: self.inner.hook_bus(),
+            cwd: self.inner.cwd().to_string(),
         }
     }
 
@@ -607,6 +608,7 @@ fn build_live_react_stream(args: LiveReactArgs) -> impl Stream<Item = XyEvent> +
         compaction_settings,
         permission,
         hook_bus,
+        cwd,
     } = frozen;
 
     type PermissionCheck = Arc<dyn Fn(&str, &str) -> Option<String> + Send + Sync>;
@@ -671,6 +673,7 @@ fn build_live_react_stream(args: LiveReactArgs) -> impl Stream<Item = XyEvent> +
         skills,
         event_sink,
         compaction_settings,
+        cwd,
     }));
 
     async_stream::stream! {
@@ -758,6 +761,8 @@ struct ReActConfig {
     event_sink: Arc<dyn crate::protocol::ports::XyEventSink>,
     /// Snapshot of compaction settings for turn-end threshold auto (c1640).
     compaction_settings: crate::agent::compaction::CompactionSettings,
+    /// Workspace cwd for session_env (c1905).
+    cwd: String,
 }
 
 // ── Core ReAct loop ─────────────────────────────────────────────────
@@ -784,6 +789,7 @@ fn run_react_loop(cfg: ReActConfig) -> impl Stream<Item = XyEvent> + Send {
         skills,
         event_sink,
         compaction_settings,
+        cwd,
     } = cfg;
     async_stream::stream! {
         let _clear_active = ClearActiveTurn {
@@ -801,6 +807,15 @@ fn run_react_loop(cfg: ReActConfig) -> impl Stream<Item = XyEvent> + Send {
         // MUST NOT stuff it into history as a fake user turn.
         // pi `newMessages`: everything this run appends (exclude pre-seed).
         let run_baseline = history.len();
+
+        // c1905: session_env = special status-bar type (bootstrap date/clock/cwd).
+        // Append-only when missing or date/cwd changed; c1895 scans this family.
+        let env_snap = crate::agent::prompt::snapshot_for_cwd(&cwd);
+        if crate::agent::prompt::should_append_session_env(&history, &env_snap) {
+            let env_msg = env_snap.to_agent_message();
+            history.push(env_msg);
+            persist_agent_message(&store, &session_id, history.last().expect("session_env")).await;
+        }
 
         // Add user message (text and/or images, c1155).
         history.push(AgentMessage::user_parts(user_parts.clone()));

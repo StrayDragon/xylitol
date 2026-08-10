@@ -11,4 +11,4 @@ pub const STATUS_BAR_MODE_DEFAULT: StatusBarMode = StatusBarMode::Off;
 /// Full mode may rewrite tools between turns; Search must not.
 pub const ALLOW_MIDTURN_TOOLS_REWRITE_DEFAULT: bool = true;
 
-pub const DATE_PLACEMENT_DEFAULT: DatePlacement = DatePlacement::SystemAsToday;
+pub const DATE_PLACEMENT_DEFAULT: DatePlacement = DatePlacement::Omit;

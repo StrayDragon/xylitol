@@ -105,3 +105,14 @@ c1890 已钉：**不**写顶栏 `instructions`；SSOT = `system_prompt` → `pre
 3. **日界产品句**：默认不因跨日改写已钉 system date；活时间权威指向 c1895 clock（栏关时接受日历日滞后或 Omit）。
 4. **边界清单**：改正 tool_search→c1960；明确不实现 StatusBar/search/observability 本体；Assembler 继续无 `instructions`。
 5. （可选）skills 段顺序实验：移到 system 尾是否改善 cache 美学——产品行为不变则仅测序。
+
+---
+
+## 实现后修订（2026-08-10，归档前备忘）
+
+产品钉板已偏离本文早期「默认 SystemPinnedAtSession」建议：
+
+- 默认 **`DatePlacement::Omit`**；date/cwd 走 **`session_env` 状态栏族 bootstrap**（Env→user）。
+- Compact / overflow 保证 → **`c1906-ensure-session-env-after-compaction`**（否决写回 system pwd）。
+- 全栏堆积 → `c1897`；Lane → `c1895`。
+- SSOT：同目录 [`../design.md`](../design.md) D1–D8。

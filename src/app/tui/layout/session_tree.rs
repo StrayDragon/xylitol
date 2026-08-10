@@ -3,7 +3,9 @@
 
 use xylitol_tui::{TreeNode, truncate_to_width, visible_width, with_keybindings};
 
-use crate::protocol::session::{SessionEntry, SessionTreeNode, message_role, message_text};
+use crate::protocol::session::{
+    SessionEntry, SessionTreeNode, message_custom_type, message_role, message_text,
+};
 
 const LABEL_PREVIEW_WIDTH: usize = 48;
 
@@ -271,6 +273,8 @@ fn session_tree_node_kind(entry: &SessionEntry) -> Option<String> {
     match entry {
         SessionEntry::Message(m) => match message_role(&m.message) {
             Some("bashExecution") => Some("tool".into()),
+            // c1905: Env custom (session_env) is meta — Default filter hides it.
+            Some("custom") => Some("meta".into()),
             Some(role) => Some(role.to_string()),
             None => None,
         },
@@ -293,10 +297,15 @@ fn session_tree_display_label(node: &SessionTreeNode) -> String {
             .and_then(|v| v.as_str())
             .unwrap_or("")
             .to_string(),
+        SessionEntry::Message(m) if message_role(&m.message) == Some("custom") => {
+            message_custom_type(&m.message)
+                .unwrap_or("custom")
+                .to_string()
+        }
         SessionEntry::Message(m) => message_text(&m.message),
         SessionEntry::Compaction(c) => c.summary.clone(),
         SessionEntry::BranchSummary(b) => b.summary.clone(),
-        SessionEntry::CustomMessage(c) => c.content.to_string(),
+        SessionEntry::CustomMessage(c) => c.custom_type.clone(),
         SessionEntry::Custom(c) => c.data.to_string(),
         SessionEntry::ModelChange(m) => format!("{} / {}", m.provider, m.model_id),
         SessionEntry::ThinkingLevelChange(t) => t.thinking_level.clone(),
@@ -372,6 +381,32 @@ mod tests {
         };
         let mapped = map_session_tree_nodes(&[node]);
         assert_eq!(mapped[0].kind.as_deref(), Some("meta"));
+    }
+
+    #[test]
+    fn session_env_maps_to_meta_kind_with_type_label() {
+        use serde_json::json;
+        let node = SessionTreeNode {
+            entry: SessionEntry::Message(MessageEntry {
+                base: EntryBase {
+                    entry_type: "message".into(),
+                    id: "env1".into(),
+                    parent_id: None,
+                    timestamp: "t".into(),
+                },
+                message: json!({
+                    "role": "custom",
+                    "customType": "session_env",
+                    "content": "<session_env><date>2026-08-10</date><cwd>/x</cwd></session_env>",
+                }),
+            }),
+            children: Vec::new(),
+            label: None,
+        };
+        let mapped = map_session_tree_nodes(&[node]);
+        assert_eq!(mapped[0].kind.as_deref(), Some("meta"));
+        assert_eq!(mapped[0].label, "session_env");
+        assert!(FilterMode::Default.include(&mapped[0]) == false);
     }
 
     #[test]

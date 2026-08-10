@@ -1,8 +1,8 @@
 //! Rebuild live scrollback after MessageHistory travel (c615 / c646).
 
 use crate::protocol::session::{
-    SessionEntry, SessionTreeTravel, is_tool_call_part, message_parts, message_role, message_text,
-    tool_call_name,
+    SessionEntry, SessionTreeTravel, is_env_custom_message, is_tool_call_part, message_parts,
+    message_role, message_text, tool_call_name,
 };
 use serde_json::Value;
 
@@ -176,7 +176,10 @@ pub fn session_entry_to_ui_entries(entry: &SessionEntry) -> Vec<UiEntry> {
         SessionEntry::Message(m) if message_role(&m.message) == Some("bashExecution") => {
             nested_bash_to_ui(&m.message)
         }
+        // c1905: Env CustomMessage (session_env) must not appear as chat / ScrollNotice.
+        SessionEntry::Message(m) if is_env_custom_message(&m.message) => Vec::new(),
         SessionEntry::Message(m) => message_json_to_ui_entries(&m.base.id, &m.message),
+        SessionEntry::CustomMessage(_) => Vec::new(),
         SessionEntry::Compaction(c) => vec![UiEntry::Compaction {
             status: CompactionBlockStatus::Complete,
             summary: c.summary.clone(),
@@ -233,6 +236,10 @@ fn message_json_to_ui_entries(entry_id: &str, message: &Value) -> Vec<UiEntry> {
     let Some(role) = message_role(message) else {
         return Vec::new();
     };
+    // Belt-and-suspenders: custom env rows never become User/ScrollNotice.
+    if is_env_custom_message(message) {
+        return Vec::new();
+    }
     match role {
         "user" => vec![UiEntry::User {
             text: message_text(message),
@@ -621,6 +628,30 @@ mod tests {
         });
         assert_eq!(message_text(&msg), "visible");
         let _ = fixture_message_json("user", "x");
+    }
+
+    #[test]
+    fn session_env_custom_message_emits_no_ui_rows() {
+        let entry = SessionEntry::Message(MessageEntry {
+            base: EntryBase {
+                entry_type: "message".into(),
+                id: "env1".into(),
+                parent_id: None,
+                timestamp: "t".into(),
+            },
+            message: json!({
+                "role": "custom",
+                "customType": "session_env",
+                "content": "<session_env>\n  <date>2026-08-10</date>\n  <cwd>/tmp</cwd>\n</session_env>",
+                "display": "session_env",
+                "details": { "date": "2026-08-10", "cwd": "/tmp", "clock": "2026-08-10T00:00:00Z" },
+            }),
+        });
+        let ui = session_entry_to_ui_entries(&entry);
+        assert!(
+            ui.is_empty(),
+            "session_env must not surface in scrollback: {ui:?}"
+        );
     }
 
     #[test]

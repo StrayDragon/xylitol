@@ -93,6 +93,8 @@ pub(crate) struct FrozenRootConfig {
     pub compaction_settings: crate::agent::compaction::CompactionSettings,
     pub permission: std::sync::Arc<dyn crate::protocol::ports::XyPermission>,
     pub hook_bus: Option<std::sync::Arc<dyn crate::protocol::ports::XyHookBus>>,
+    /// Workspace cwd for session_env bootstrap (c1905).
+    pub cwd: String,
 }
 
 struct PendingRoot {

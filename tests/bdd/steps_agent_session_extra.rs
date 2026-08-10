@@ -583,7 +583,6 @@ pub(crate) fn w_sess_build_system_prompt(ws: &Workspace, agent: &AgentState) {
     let agents_md = std::fs::read_to_string(ws.ws("AGENTS.md")).unwrap_or_default();
     let prompt = build_system_prompt(&SystemPromptOpts {
         system_prompt: Some(agents_md),
-        cwd: ws.ws("."),
         ..Default::default()
     });
     agent.last_result.replace(Some(Ok(prompt)));

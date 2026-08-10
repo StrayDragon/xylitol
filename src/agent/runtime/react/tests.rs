@@ -1467,19 +1467,29 @@ async fn system_prompt_via_options_not_user_history() {
 
     let rounds = seen_msgs.lock().unwrap();
     let first = &rounds[0];
-    assert!(!first.is_empty(), "history must include user message");
-    let first_text = match &first[0] {
-        LlmMessage::UserMessage { content, .. } => content
-            .iter()
-            .find_map(|p| match p {
+    assert!(
+        first.len() >= 2,
+        "history must include session_env then user: {first:?}"
+    );
+    let texts: Vec<&str> = first
+        .iter()
+        .filter_map(|m| match m {
+            LlmMessage::UserMessage { content, .. } => content.iter().find_map(|p| match p {
                 AgentPart::Text { text } => Some(text.as_str()),
                 _ => None,
-            })
-            .unwrap_or(""),
-        other => panic!("first history entry must be user, got {other:?}"),
-    };
-    assert_eq!(first_text, "real user hello");
-    assert!(!first_text.contains("CUSTOM_SYSTEM_MARKER"));
+            }),
+            _ => None,
+        })
+        .collect();
+    assert!(
+        texts.iter().any(|t| t.contains("<session_env>")),
+        "first turn must project session_env as user: {texts:?}"
+    );
+    assert!(
+        texts.iter().any(|t| *t == "real user hello"),
+        "real user text must follow: {texts:?}"
+    );
+    assert!(texts.iter().all(|t| !t.contains("CUSTOM_SYSTEM_MARKER")));
 }
 
 #[tokio::test]

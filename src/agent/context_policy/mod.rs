@@ -1,8 +1,9 @@
-//! ContextPolicy — request-layout hooks (c1890).
+//! ContextPolicy — request-layout hooks (c1890 / c1905).
 //!
 //! Code-first defaults only; no YAML / env overlay this wave.
 //! Status bar is deferred (`c1895`). Tool search / `ToolsMode::Search` is `c1960`.
 //! Track-A freeze (c1900) keeps `ToolsMode::Full` as the open-box default.
+//! Calendar-day placement is consumed by system-prompt assembly (c1905).
 
 mod defaults;
 
@@ -12,27 +13,44 @@ pub use defaults::{
 };
 
 /// How tools are exposed on the provider request.
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
 pub enum ToolsMode {
     /// Full tool schema list (current product default).
+    #[default]
     Full,
     /// Deferred discovery / search (c1960; not delivered by c1900 freeze track).
     Search,
 }
 
-/// Agent status-bar injection mode (implemented in `c1895`).
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+/// Agent status-bar injection mode (full Lane Runtime in `c1895`).
+///
+/// Product already has one **special status-bar type** shipped by c1905:
+/// [`crate::agent::prompt::CUSTOM_TYPE_SESSION_ENV`] (`session_env` bootstrap).
+/// c1895 SHOULD scan / merge that type when enabling `Replace` / `Append`;
+/// default remains [`StatusBarMode::Off`] (bootstrap-only).
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
 pub enum StatusBarMode {
+    #[default]
     Off,
     Replace,
     Append,
 }
 
-/// Where calendar-day / date text is placed (final algorithm in `c1905` / `c1895`).
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+/// Where calendar-day text is placed **in the system prompt** (c1905).
+///
+/// Product default is [`DatePlacement::Omit`]: date/cwd ride the **session_env**
+/// status-bar bootstrap ([`crate::agent::prompt::session_env`]), not the system
+/// prefix. `SystemAsToday` / `SystemPinnedAtSession` are ablation / lab knobs.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
 pub enum DatePlacement {
-    /// Keep today's `build_system_prompt` date behavior.
+    /// Emit `Current date` using an explicit inject, else `Utc::now()` calendar day,
+    /// on **every** assemble (ablation / legacy).
     SystemAsToday,
+    /// Pin `YYYY-MM-DD` once per session into system (lab; not product default).
+    SystemPinnedAtSession,
+    /// Omit the `Current date` line from system (product default; session_env carries it).
+    #[default]
+    Omit,
 }
 
 /// Layout policy consumed by Assembler / ReAct hooks.
@@ -69,12 +87,25 @@ impl ContextPolicy {
 mod tests {
     use super::*;
 
+    /// Ablation helper (was public restore scaffolding; product uses session_env).
+    fn calendar_date_from_header_timestamp(timestamp: &str) -> Option<String> {
+        let t = timestamp.trim();
+        if t.len() >= 10 && t.as_bytes().get(4) == Some(&b'-') && t.as_bytes().get(7) == Some(&b'-')
+        {
+            let d = &t[..10];
+            if d.bytes().all(|b| b.is_ascii_digit() || b == b'-') {
+                return Some(d.to_string());
+            }
+        }
+        None
+    }
+
     #[test]
     fn default_hooks_match_design() {
         let p = ContextPolicy::default();
         assert_eq!(p.tools_mode, ToolsMode::Full);
         assert_eq!(p.status_bar_mode, StatusBarMode::Off);
-        assert_eq!(p.date_placement, DatePlacement::SystemAsToday);
+        assert_eq!(p.date_placement, DatePlacement::Omit);
         assert!(p.allow_midturn_tools_rewrite);
         assert!(p.allows_midturn_tools_rewrite());
     }
@@ -87,5 +118,18 @@ mod tests {
             ..Default::default()
         };
         assert!(!p.allows_midturn_tools_rewrite());
+    }
+
+    #[test]
+    fn calendar_date_from_rfc3339_header() {
+        assert_eq!(
+            calendar_date_from_header_timestamp("2026-08-05T14:25:00+08:00").as_deref(),
+            Some("2026-08-05")
+        );
+        assert_eq!(
+            calendar_date_from_header_timestamp("2026-08-06").as_deref(),
+            Some("2026-08-06")
+        );
+        assert_eq!(calendar_date_from_header_timestamp("bogus"), None);
     }
 }
