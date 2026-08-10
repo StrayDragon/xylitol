@@ -1,46 +1,95 @@
 # Tasks: c2070-add-package-tui-dual-interaction-modes
 
-> 验收一致：每条 task 完成 = 对应 seam 绿 + 不越界进 `blocks` 后续 change。
-> **范围钉**：本 change 交付 **完整 alt-screen Mode B 库基础**（视口 / transcript 选区 / dock 夹边 / Editor 独立多行选区 / dump / host seam），供产品 TUI 下游迁移。折叠点击仍属 `blocks`。
+> 验收一致：每条 task 完成 = 对应 seam 绿 + 不越界进 `blocks`（fold / viewport slice）。
+> **人验（2026-08-11）**：`just demo-tui-alt-screen` — 滚轮 sticky、退出 dump、dock 夹边续选手感 **PASS**。
 
-## 1. 升格、调研与规划壳
+## 进度总览
 
-- [x] 1.1 自 `delayed-changes/tui/` 升格本 change；cascade 五件拆入独立 `llmanspec/changes/<id>/`，frontmatter `depends_on`/`blocks` 正确
-- [x] 1.2 补齐 Pi AltScreen / Zellij 选区·滚动·复制·输入一手调研，并写 `research/xylitol-mode-b-subsystem-cut.md`
-- [x] 1.3 充实 `proposal.md` / `design.md` / `tasks.md`（本文件）— 明确「完整 Mode B」交付边界
+| 块 | 状态 | 合约 |
+|---|---|---|
+| 1–2 升格 / Specs landing | ✅ | — |
+| 3 生命周期 / 视口 / dump | ✅ | ptim01–02, 09–11 |
+| 4 transcript 选区 / dock | ✅（含人验） | ptim03–07, 12 |
+| 5 Editor 独立多行选区 | ⬜ 待做 | ptim13 |
+| 6 复制成功短提示 | ⬜ 待做 | **ptim15** + ath31 |
+| 7 库 host seam / 收口 | ⬜ 部分 | ptim14、ath30 |
 
-## 2. Branch binding 与 Specs landing
+---
 
-- [x] 2.1 `llman sdd change attach` 绑定非默认分支 `sdd/c2070-add-package-tui-dual-interaction-modes`
-- [x] 2.2 新建 live `package-tui-interaction-modes`；`app-tui-host` 增 `ath30`
-- [x] 2.3 合约覆盖至 ptim01–ptim14（含 dock 夹边、Editor 选区、库 host seam）与 ath30
-- [x] 2.4 `llman sdd validate … --strict --no-check`；`show --json` 确认 `readyToImplement=true`
+## 1. 升格、调研与规划壳 — ✅
 
-## 3. 库：Mode 生命周期与视口
+- [x] 1.1 升格 + cascade `depends_on`/`blocks`
+- [x] 1.2 Pi / Zellij / subsystem-cut 调研
+- [x] 1.3 proposal / design / tasks 钉「完整 Mode B 库基础」
 
-- [x] 3.1 Mode A/B 构造/切换 API：Mode B 进入自管视口（SHOULD alt-buffer）；teardown 恢复；VirtualTerminal 可观测启停序
-- [x] 3.2 Mode B 复用 `c2020` `enable_mouse_capture`；Moved 仍不强制整帧；禁止第二套 mouse 扇入
-- [x] 3.3 应用 ScrollView + `ModeBRuntime`：绘出行数 ≤ 终端高；滚轮 sticky follow；与选区 auto-scroll 共用视口
-- [x] 3.4 suspend/resume（`with_terminal_suspended`）后重新同步 alt + mouse + runtime（ptim11）
-- [x] 3.5 Mode B 退出 dump transcript(+dock) 到主屏 scrollback（ptim02）
+## 2. Branch binding 与 Specs landing — ✅
 
-## 4. 库：transcript 选区 / 复制 / dock
+- [x] 2.1 attach `sdd/c2070-…`
+- [x] 2.2 live `package-tui-interaction-modes` + `ath30`
+- [x] 2.3 合约扩至 ptim01–ptim15、ath30–ath31（本轮补 ptim15/ath31）
+- [x] 2.4 validate 结构门禁（pending tasks 期间 `--strict` 会报未勾任务，属预期）
 
-- [x] 4.1 选区状态机：anchor/focus、拖选高亮；松手可配置复制且默认开（OSC52，batch 外）
-- [x] 4.2 越界续选：拖到视口顶/底 → 自动滚 + 扩展选区（idle tick）
-- [x] 4.3 输入排除：dock 行不进 transcript 选区文本；按下始于 dock 不启 transcript 选区（ptim06）
-- [x] 4.4（SHOULD）双击词 / 三击行；折叠 hit 钩子预留，不实现折叠
-- [x] 4.5 拖选中进入 dock：夹底边续选，不中途清选；完成选区悬停 dock 不清（ptim12）
+## 3. 库：生命周期与视口 — ✅
 
-## 5. 库：Editor 独立选区（进行中）
+- [x] 3.1 Mode A/B API + alt begin/end
+- [x] 3.2 复用 c2020 mouse；Moved 不刷帧
+- [x] 3.3 ScrollView + ModeBRuntime；滚轮 sticky follow（**人验 PASS**）
+- [x] 3.4 suspend/resume 重进 alt+mouse（ptim11）
+- [x] 3.5 退出 dump 主屏 scrollback（**人验 PASS**）
 
-- [ ] 5.1 Editor（或共享 Input 缓冲选区类型）支持未修饰拖选，覆盖多行缓冲（ptim13）
-- [ ] 5.2 高亮绘在 Editor 可视行；松手复制仅输入文本；与 transcript `SelectionController` 状态隔离
-- [ ] 5.3 Mode B：按下始于 dock 时事件回落 Editor；transcript 选区可清；包级单测绿
-- [ ] 5.4 `agent_demo` Mode B 路径可人验 Editor 多行选区（`just demo-tui-alt-screen`）
+## 4. 库：transcript 选区 / dock — ✅
 
-## 6. 产品闸与库 host seam
+- [x] 4.1 拖选高亮 + 松手 OSC52 默认开
+- [x] 4.2 越界续选 + idle tick
+- [x] 4.3 按下始于 dock 不启 transcript 选区（ptim06）
+- [x] 4.4 双击词 / 三击行 SHOULD；fold hit 钩子预留
+- [x] 4.5 拖选中进 dock：夹底边续选、不清选（ptim12，**人验 PASS**）
 
-- [x] 6.1 Host：`TuiRunOptions.interaction_mode`；默认 Mode A；切换换栈；Mode B 登记 dock；不读 `XYLITOL_TUI_MOUSE`
-- [x] 6.2 包级单测 + 产品 harness（默认 A / 切 B）绿；`demo-tui-alt-screen` 人验路径
-- [ ] 6.3 文档/AGENTS：Mode B 下游接入清单（ptim14）；validate + verify 无 CRITICAL；确认未实现 fold/viewport `blocks`
+## 5. 库：Editor 独立选区 — ⬜
+
+- [ ] 5.1 Editor（或共享缓冲选区类型）未修饰拖选，覆盖**多行**缓冲（ptim13）
+- [ ] 5.2 高亮仅输入可视行；松手复制仅输入文本；与 transcript `SelectionController` 隔离
+- [ ] 5.3 Mode B：按下始于 dock → 事件回落 Editor；transcript 选区可清；包级单测
+- [ ] 5.4 `just demo-tui-alt-screen` 人验 Editor 多行选区
+
+**验收**：包单测 + demo 拖选输入多行 → 高亮 → 松手 OSC52；不影响 transcript 选区状态机。
+
+## 6. 复制成功短提示 — ⬜（新人需）
+
+- [ ] 6.1 库：松手复制成功后发出可观察 **copy-notice** 信号（pending flag / callback / 等价），空选或不复制 MUST NOT 发（ptim15）
+- [ ] 6.2 库/demo：短时 UI 提示（TTL 约 1.5–3s）；落点优先 **dock 内、输入框上方 1 行**（或 demo 等价），MUST NOT 写入 transcript / ScrollNotice
+- [ ] 6.3 产品 host：Mode B 下将 copy-notice 接到壳层短提示（ath31）；**MUST NOT** 滥用 `Error: ` 前缀的 chrome-toast 拒闸形态冒充成功确认（可用独立 info 槽或扩展非 Error toast——design 钉落点）
+- [ ] 6.4 单测：复制成功 → notice 置位/清除；人验 demo 可见「已复制」类短文案
+
+**验收文案（建议固定）**：`Copied` / `已复制`（中英择一钉死在 design；demo 与产品同源）。
+
+## 7. 产品闸与库 host 收口 — ⬜/部分
+
+- [x] 7.1 Host `TuiRunOptions.interaction_mode`；默认 Mode A；换栈；dock 登记；不读 `XYLITOL_TUI_MOUSE`（ath30）
+- [x] 7.2 包测 + host harness；`demo-tui-alt-screen` 人验路径
+- [ ] 7.3 AGENTS / package 文档：Mode B **下游接入清单**（ptim14）
+- [ ] 7.4 `llman sdd validate --strict` 全绿；verify 双轴无 CRITICAL；确认未实现 `c1760`/`c2040`/`c2050`/`c1505`/`c1535`
+- [ ] 7.5（可选）产品显式 Mode B 开关文档化（仍默认 A）
+
+---
+
+## 人验清单（`just demo-tui-alt-screen`）
+
+| # | 项 | 状态 |
+|---|---|---|
+| H1 | alt-buffer 进入/退出 | ✅ |
+| H2 | transcript 拖选高亮 + 松手 OSC52 | ✅ |
+| H3 | 滚轮 sticky（非仅靠边续选） | ✅ |
+| H4 | 拖选进输入区夹边续选、不反选 | ✅ |
+| H5 | 退出后主屏可上翻会话 dump | ✅ |
+| H6 | Editor 多行独立选区 | ⬜ |
+| H7 | 复制成功短提示 | ⬜ |
+
+## 实现顺序（建议）
+
+```text
+6.1–6.2（库 copy-notice + demo 提示）
+  → 5.1–5.4（Editor 选区）
+  → 6.3（产品 ath31）
+  → 7.3–7.4（文档 + verify 收口）
+```
