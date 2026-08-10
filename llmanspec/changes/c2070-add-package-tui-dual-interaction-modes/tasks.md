@@ -34,4 +34,4 @@
 
 - [x] 5.1 Host：`TuiRunOptions.interaction_mode`；默认 Mode A；切换换栈；Mode B 登记下缘 dock；teardown 不残留 mouse/alt；不把 `XYLITOL_TUI_MOUSE` 当产品开关
 - [x] 5.2 包级单测 + 产品 harness（默认 A / 切 B 换栈+dock）绿
-- [ ] 5.3 `llman sdd validate … --strict`；verify 无 CRITICAL；确认未实现 `c1760`/`c2040`/`c2050`/`c1505`/`c1535`
+- [x] 5.3 `llman sdd validate … --strict`；verify 无 CRITICAL；确认未实现 `c1760`/`c2040`/`c2050`/`c1505`/`c1535`

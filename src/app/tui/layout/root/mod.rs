@@ -395,12 +395,7 @@ impl UiRoot {
 
     /// Pre-paint estimate when no frame has measured dock yet.
     pub(crate) fn estimate_mode_b_dock_rows(&self) -> usize {
-        let queue = crate::app::tui::layout::queue_strip_line_count(
-            self.ui_model.pending_steer.len(),
-            self.ui_model.pending_follow_up.len(),
-        );
         // Queue lives in the upper/transcript band; dock is lower chrome only.
-        let _ = queue;
         crate::app::tui::layout::reserved_lower_chrome(
             self.status_busy,
             0,
