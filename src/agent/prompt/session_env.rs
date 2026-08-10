@@ -12,18 +12,18 @@
 //! | Wire / body root | [`SESSION_ENV_XML_ROOT`] → `<session_env>…</session_env>` |
 //! | Latest snapshot in history | [`last_session_env`] / [`session_env_from_message`] |
 //! | Whether to append another row | [`should_append_session_env`] (date **or** cwd change; clock alone ≠ append) |
-//! | Inject seam today | ReAct: before real user persist (`runtime/react`) |
+//! | Mutating ensure | [`ensure_session_env_in_history`] — append when missing/stale (c1906) |
+//! | Inject seams | ReAct before user persist; overflow reload; post-`compact_session` |
 //! | TUI hide | [`crate::protocol::session::is_env_custom_message`] + tree kind `meta` |
 //! | Planned full-bar root | `<agent_status_bar>` (c1895) — **different** name; scan `session_env` then merge/replace/off |
-//! | Compact / overflow ensure | **c1906** — cut may drop early env; overflow reload must re-ensure (not in c1905) |
 //!
 //! Persisted as [`EnvMessage::CustomMessage`], folded to a **user** row by
 //! [`crate::agent::llm_project::project_for_llm`]. Stable XML body: edit only via
 //! explicit change (prefix / cache sensitive).
 //!
-//! Design SSOT: `llmanspec/changes/c1905-update-system-prompt-stable-volatile-split/design.md`
+//! Design SSOT: `llmanspec/changes/archive/2026-08-10-c1905-update-system-prompt-stable-volatile-split/design.md`
 //! Downstream bar: `…/c1895-add-agent-status-bar-subsystem/proposal.md`
-//! Downstream compact: `…/c1906-ensure-session-env-after-compaction/proposal.md`
+//! Downstream compact: `…/c1906-ensure-session-env-after-compaction/`
 
 use serde_json::json;
 
@@ -157,6 +157,21 @@ pub fn should_append_session_env(history: &[AgentMessage], next: &SessionEnvSnap
     }
 }
 
+/// Append a session_env row when history lacks one aligned to `next` (date+cwd).
+///
+/// Returns `true` if a row was pushed. Callers that own a store SHOULD persist
+/// the new last message when this returns true (ReAct / overflow / compact).
+pub fn ensure_session_env_in_history(
+    history: &mut Vec<AgentMessage>,
+    next: &SessionEnvSnapshot,
+) -> bool {
+    if !should_append_session_env(history, next) {
+        return false;
+    }
+    history.push(next.to_agent_message());
+    true
+}
+
 /// Build a fresh snapshot for `cwd` (UTC now).
 pub fn snapshot_for_cwd(cwd: impl Into<String>) -> SessionEnvSnapshot {
     SessionEnvSnapshot::from_utc_now(cwd)
@@ -206,5 +221,32 @@ mod tests {
             ..a.clone()
         };
         assert!(should_append_session_env(&hist, &new_cwd));
+    }
+
+    #[test]
+    fn ensure_appends_when_missing_or_stale() {
+        let next = SessionEnvSnapshot {
+            date: "2026-08-10".into(),
+            clock: "2026-08-10T12:00:00Z".into(),
+            cwd: "/proj".into(),
+        };
+        let mut hist = Vec::new();
+        assert!(ensure_session_env_in_history(&mut hist, &next));
+        assert_eq!(hist.len(), 1);
+        assert!(!ensure_session_env_in_history(&mut hist, &next));
+        assert_eq!(hist.len(), 1);
+
+        // Simulate compact cut dropping early env.
+        hist.clear();
+        hist.push(AgentMessage::user("kept after compact"));
+        assert!(ensure_session_env_in_history(&mut hist, &next));
+        assert!(last_session_env(&hist).is_some());
+
+        let stale_cwd = SessionEnvSnapshot {
+            cwd: "/other".into(),
+            ..next.clone()
+        };
+        assert!(ensure_session_env_in_history(&mut hist, &stale_cwd));
+        assert_eq!(last_session_env(&hist).unwrap().cwd, "/other");
     }
 }

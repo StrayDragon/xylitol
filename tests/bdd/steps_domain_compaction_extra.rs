@@ -327,11 +327,13 @@ pub(crate) async fn g_comp_tokens_before_done(agent: &AgentState, sess: &XySessi
         .await
         .expect("compact");
     let loaded = mgr.load(sid).await.unwrap_or_default();
-    // Drop the compaction entry itself for apples-to-apples pre-compact estimate.
-    let before: Vec<_> = loaded
-        .into_iter()
-        .filter(|e| !matches!(e, SessionEntry::Compaction(_)))
-        .collect();
+    // Pre-compact estimate: everything before the CompactionEntry (exclude the
+    // entry itself and any post-compact ensure rows such as session_env).
+    let compact_at = loaded
+        .iter()
+        .rposition(|e| matches!(e, SessionEntry::Compaction(_)))
+        .expect("compaction entry written");
+    let before = loaded[..compact_at].to_vec();
     let shared = estimate_from_session_entries(&before, &EstimateOpts::default()).tokens;
     let len4: u64 = before.iter().map(estimate_tokens_entry).sum();
     agent.last_result.replace(Some(Ok(format!(
