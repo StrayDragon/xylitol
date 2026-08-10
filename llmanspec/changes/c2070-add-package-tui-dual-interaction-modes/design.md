@@ -88,9 +88,20 @@ alt-buffer 退出后主屏会恢复进 alt 前内容。库默认在 `finish_inli
 - `InteractionMode` + `begin`/`end_application_owned_session`
 - `set_mode_b_dock_rows` / copy-on-release
 - `ModeBRuntime` 投影与选区（经 `TUI` 调度）
+- 复制成功 **copy-notice** 信号（ptim15）
 - 退出 dump 与 suspend 恢复
 
 禁止产品为 Mode B 再 fork 一套 mouse/选区管道（ptim14）。
+
+### 7. 复制成功短提示（ptim15 / ath31）
+
+| 层 | 职责 |
+|---|---|
+| 库 | 松手复制成功 → 置位可观察 copy-notice（TTL 由 host 或库 tick 清除）；空选不发 |
+| demo | dock 内、输入上方 1 行短文案（建议 `Copied`），1.5–3s 消失 |
+| 产品 | Mode B 接到信号后展示短时壳层提示（ath31）；**禁止**用 `Error: ` 拒闸 toast 冒充成功；**禁止** ScrollNotice |
+
+词表：成功确认 ≠ 壳层通告（atc22 Error 形态）；本能力是 **Mode B 复制确认 cue**，落点独立或扩展非 Error info 槽。
 
 ## 产品接线
 
@@ -109,11 +120,15 @@ alt-buffer 退出后主屏会恢复进 alt 前内容。库默认在 `finish_inli
 | 拖选高亮 | VirtualTerminal 或组件级选区模型单测 |
 | 越界续选 | 选区状态机单测（拖到顶/底 → scroll 回调） |
 | 松手复制 | 注入 clipboard sink；默认开 |
-| dock 夹边续选 | 拖入 dock 不 clear；Up 在 dock 仍 copy（ptim12） |
-| Editor 多行选区 | Editor 组件单测（ptim13） |
-| 滚轮 sticky | project_frame 后 scroll_top 保持 |
-| 退出 dump | finish_inline 后主屏写入含 transcript |
-| 产品默认 Mode A | host/配置单测 |
+| dock 夹边续选 | 拖入 dock 不 clear；Up 在 dock 仍 copy（ptim12）— **人验 PASS** |
+| 滚轮 sticky | project_frame 后 scroll_top 保持 — **人验 PASS** |
+| 退出 dump | finish_inline 后主屏写入含 transcript — **人验 PASS** |
+| copy-notice | 复制成功 → notice 信号；TTL 清除（ptim15） |
+| Editor 多行选区 | Editor 组件单测 + demo（ptim13） |
+| 产品默认 Mode A | host/配置单测（ath30） |
+| 产品复制提示 | Mode B harness / 人验（ath31） |
+
+**BDD**：本 capability 场景均为 `feature: false`（包/产品单测 + demo 人验）；不新增 `tests/features` Gherkin，除非后续要把 Mode B 纳入可执行 BDD 矩阵。
 
 折叠点击 **不**在本 change 验收。
 
