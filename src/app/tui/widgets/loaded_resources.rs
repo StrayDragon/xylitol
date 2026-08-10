@@ -14,7 +14,6 @@ const ACCENT_RGB: (u8, u8, u8) = (0x38, 0xbd, 0xf8);
 /// ╭──────────────────────────────────────────────╮
 /// │ >_ xylitol (v…)                              │
 /// │                                              │
-/// │ model:     model-name                        │
 /// │ directory: ~/…                               │
 /// │ skills(N): a · b · c                         │
 /// │ mcp:       2 connected · …                   │
@@ -28,7 +27,6 @@ pub fn render_loaded_resources(
     theme: LayoutTheme,
     snap: &LoadedResourcesSnapshot,
     cwd: &str,
-    model: &str,
     width: usize,
 ) -> Vec<String> {
     let w = width.max(1);
@@ -41,13 +39,6 @@ pub fn render_loaded_resources(
     let mut meta: Vec<String> = Vec::new();
     meta.push(title_line(theme, version, inner));
     meta.push(String::new());
-    meta.extend(field_lines(
-        theme,
-        "model",
-        model,
-        theme.palette().on_surface,
-        inner,
-    ));
     meta.extend(field_lines(
         theme,
         "directory",
@@ -193,7 +184,6 @@ mod tests {
             LayoutTheme::product_dark(),
             &LoadedResourcesSnapshot::default(),
             "~/proj",
-            "model-name",
             72,
         );
         let joined = lines.join("\n");
@@ -201,13 +191,10 @@ mod tests {
         assert!(joined.contains("xylitol"), "{joined}");
         assert!(!joined.contains("木糖醇"), "{joined}");
         assert!(
-            joined.contains("model") && joined.contains("model-name"),
-            "{joined}"
-        );
-        assert!(
             joined.contains("directory") && joined.contains("~/proj"),
             "{joined}"
         );
+        assert!(!joined.contains("model:"), "{joined}");
         assert!(
             !joined.contains("✦") && !joined.contains("◕"),
             "no ascii logo"
@@ -224,7 +211,7 @@ mod tests {
             skill_names: (0..16).map(|i| format!("skill-name-{i:02}")).collect(),
             ..Default::default()
         };
-        let lines = render_loaded_resources(LayoutTheme::product_dark(), &snap, "~/x", "m", 72);
+        let lines = render_loaded_resources(LayoutTheme::product_dark(), &snap, "~/x", 72);
         let joined = lines.join("\n");
         assert!(joined.contains("skills"));
         assert!(joined.contains("skill-name-00"));
@@ -240,7 +227,7 @@ mod tests {
             ..Default::default()
         };
         let joined =
-            render_loaded_resources(LayoutTheme::product_dark(), &snap, "~/x", "m", 72).join("\n");
+            render_loaded_resources(LayoutTheme::product_dark(), &snap, "~/x", 72).join("\n");
         assert!(
             joined.contains("mcp") && joined.contains("connecting 1/2"),
             "{joined}"
@@ -255,20 +242,18 @@ mod tests {
     fn card_at_narrow_widths_does_not_hang() {
         // Use this checkout's path so each clone exercises its own cwd length.
         let long_cwd = crate::app::tui::host::display_path(env!("CARGO_MANIFEST_DIR"));
-        let long_model = "fake-model-with-a-very-long-name";
-        let cases: &[(usize, &str, &str)] = &[
-            (72, "~/x", "m"),
-            (50, long_cwd.as_str(), long_model),
-            (44, long_cwd.as_str(), long_model),
-            (40, long_cwd.as_str(), long_model),
-            (8, "~/x", "m"),
+        let cases: &[(usize, &str)] = &[
+            (72, "~/x"),
+            (50, long_cwd.as_str()),
+            (44, long_cwd.as_str()),
+            (40, long_cwd.as_str()),
+            (8, "~/x"),
         ];
-        for &(w, cwd, model) in cases {
+        for &(w, cwd) in cases {
             let lines = render_loaded_resources(
                 LayoutTheme::product_dark(),
                 &LoadedResourcesSnapshot::default(),
                 cwd,
-                model,
                 w,
             );
             assert!(!lines.is_empty(), "w={w}");

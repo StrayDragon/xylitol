@@ -22,12 +22,12 @@ components:
 ## MUST
 
 1. 位置：scrollback **上方**独立槽。
-2. **卡片**：`╭─╮ / │ │ / ╰─╯` 边框；内容为 `>_ xylitol (version)` + `model` / `directory` / `skills(N)` / `mcp`。
+2. **卡片**：`╭─╮ / │ │ / ╰─╯` 边框；内容为 `>_ xylitol (version)` + `directory` / `skills(N)` / `mcp`。
 3. **Skills / MCP**：标签语义色；值用 ` · ` 分隔并在卡内换行 **全量** 展示；**MUST NOT** `...`。MCP 连接中可显示 `connecting i/n` 进度（头卡启动摘要）。
 4. **MUST NOT** 展示「木糖醇」中文标签、化学式标题行、或 ASCII logo 艺术字。
-5. 无 skills/MCP 时仍保留卡片（title + model + directory）。
+5. 无 skills/MCP 时仍保留卡片（title + directory）。
 6. **MUST NOT** 列出 prompt templates / 密钥。
-7. 数据经 `XyDriver::loaded_resources_snapshot` + UiRoot `cwd`/`model`；启动与 `/reload` 成功后刷新资源行。
+7. 数据经 `XyDriver::loaded_resources_snapshot` + UiRoot `cwd`；启动与 `/reload` 成功后刷新资源行。
 8. 卡片每行 **exact width** pad（降低差分 resize 残影）。
 
 ## MUST NOT
