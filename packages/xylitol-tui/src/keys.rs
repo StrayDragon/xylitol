@@ -1209,6 +1209,16 @@ pub fn matches_key_event(event: &crossterm::event::KeyEvent, key_id: &str) -> bo
     let has_shift = event.modifiers.contains(KeyModifiers::SHIFT);
     let has_super = event.modifiers.contains(KeyModifiers::SUPER);
 
+    // Foot / legacy VT often report Alt+Shift+Letter as `Char('B')` + ALT
+    // **without** the SHIFT flag (uppercase encodes shift). Treat ASCII
+    // uppercase letter as implied shift so `alt+shift+b` still matches.
+    // Lowercase `alt+e` must NOT match that event (reserved Alt+Shift+E path).
+    let implied_shift = matches!(
+        event.code,
+        KeyCode::Char(c) if c.is_ascii_uppercase() && (has_alt || has_ctrl || has_super)
+    );
+    let effective_shift = has_shift || implied_shift;
+
     // Crossterm often encodes Shift+Tab as `KeyCode::BackTab` without SHIFT in
     // modifiers — treat that as `shift+tab` before the strict modifier check.
     if parsed.key == "tab"
@@ -1226,7 +1236,7 @@ pub fn matches_key_event(event: &crossterm::event::KeyEvent, key_id: &str) -> bo
 
     if has_ctrl != parsed.ctrl
         || has_alt != parsed.alt
-        || has_shift != parsed.shift
+        || effective_shift != parsed.shift
         || has_super != parsed.super_mod
     {
         return false;

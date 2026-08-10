@@ -194,6 +194,35 @@ fn matches_key_event_shift_tab_accepts_back_tab() {
     });
 }
 
+/// Foot / legacy: Alt+Shift+B often arrives as uppercase `B` + ALT, no SHIFT bit.
+#[test]
+fn matches_key_event_alt_shift_letter_accepts_uppercase_without_shift_flag() {
+    use crossterm::event::{KeyCode, KeyEvent, KeyModifiers};
+
+    with_kitty_protocol_active(false, || {
+        let foot_style = KeyEvent::new(KeyCode::Char('B'), KeyModifiers::ALT);
+        assert!(
+            matches_key_event(&foot_style, "alt+shift+b"),
+            "uppercase+ALT must match alt+shift+b"
+        );
+        assert!(
+            !matches_key_event(&foot_style, "alt+b"),
+            "must not collapse into alt+b"
+        );
+        assert!(
+            !matches_key_event(&foot_style, "alt+e"),
+            "Alt+Shift+B must not match alt+e"
+        );
+
+        let alt_e = KeyEvent::new(KeyCode::Char('e'), KeyModifiers::ALT);
+        assert!(matches_key_event(&alt_e, "alt+e"));
+        assert!(!matches_key_event(&alt_e, "alt+shift+e"));
+
+        let explicit = KeyEvent::new(KeyCode::Char('b'), KeyModifiers::ALT | KeyModifiers::SHIFT);
+        assert!(matches_key_event(&explicit, "alt+shift+b"));
+    });
+}
+
 #[test]
 fn test_is_key_release() {
     with_kitty_protocol_active(true, || {
