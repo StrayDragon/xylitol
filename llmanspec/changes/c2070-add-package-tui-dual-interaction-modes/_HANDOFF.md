@@ -43,11 +43,13 @@
 
 ### 3. Short non-bracketed paste (typewriter)
 
-- Visual coalesce starts at **2** consecutive fast chars: retract painted prefix, buffer until idle / next key / `InputEvent::Paste`.
-- Flush goes through `paste()` (markers if >10 lines / >1000 chars).
-- Enter-suppress still at `PASTE_BURST_MIN_CHARS` (8).
-- Test: `paste_visual_coalesce_batches_fast_chars`.
-- Bracketed paste remains the preferred path; Mode B `enter_alternate_screen` re-enables it.
+- **Do not** retract/buffer chars into a hidden coalesce string — that broke harness
+  typing (`get_text` empty mid-burst).
+- Instead: after `PASTE_BURST_MIN_CHARS` (8) consecutive fast chars, **suppress
+  mid-burst `input_wants_rerender`**; model still updates; idle `tick` paints once.
+- Bracketed paste remains the preferred path; Mode B `enter_alternate_screen`
+  re-enables it (main fix for short pastes looking like typewriter).
+- Test: `paste_burst_suppresses_mid_burst_rerender`.
 
 ### 4. Shift+Enter on Mode B alt-screen (pi research)
 
