@@ -125,6 +125,19 @@ pub trait Component {
     fn take_pending_clipboard(&mut self) -> Vec<String> {
         Vec::new()
     }
+
+    /// Mode B: after `render`, hint how many trailing rows are dock (status +
+    /// editor + footer). TUI applies this **before** `project_frame` so a grown
+    /// editor does not leave dock content misclassified as transcript.
+    fn mode_b_dock_rows_hint(&self) -> Option<usize> {
+        None
+    }
+
+    /// True while this component needs bare `MouseEventKind::Moved` (e.g. active
+    /// editor selection drag). Mode B otherwise drops non-dirty Moved.
+    fn wants_pointer_motion(&self) -> bool {
+        false
+    }
 }
 
 pub trait Focusable: Component {
@@ -1035,8 +1048,16 @@ impl<T: Terminal> TUI<T> {
                         }
                         let reaction = self.dispatch_event(event);
                         if reaction == InputReaction::Rerender {
+                            self.request_render(false);
+                        }
+                        // Mouse floods starve `poll` idle — still advance spinner /
+                        // editor edge-scroll ticks, then coalesce paints @ 16ms.
+                        if self.idle_tick() {
+                            self.request_render(false);
+                        }
+                        if self.render_requested {
                             self.run_after_dispatch_hook();
-                            self.do_render()?;
+                            let _ = self.try_render()?;
                         }
                     }
                     _ => {}
@@ -1192,10 +1213,21 @@ impl<T: Terminal> TUI<T> {
                 return InputReaction::Rerender;
             }
             if matches!(mouse.kind, MouseEventKind::Moved) {
-                // Moved with no dirty: drop silently (ptim07).
-                return InputReaction::None;
+                // Bare Moved: only continue when a focused child owns an active
+                // drag (ptim13 editor). Otherwise drop to avoid motion floods.
+                let wants_motion = self.focused_index.is_some_and(|idx| {
+                    self.components
+                        .get(idx)
+                        .is_some_and(|c| c.wants_pointer_motion())
+                }) || self.focused_overlay_id.is_some_and(|oid| {
+                    self.overlay_index(oid)
+                        .is_some_and(|i| self.overlays[i].0.wants_pointer_motion())
+                });
+                if !wants_motion {
+                    return InputReaction::None;
+                }
             }
-            // Non-moved, not consumed by transcript selection → fall through.
+            // Non-moved (or drag-owned Moved) not consumed by transcript → fall through.
         }
 
         // Snapshot ids so a listener may remove itself / others mid-dispatch
@@ -1268,8 +1300,8 @@ impl<T: Terminal> TUI<T> {
             && let Some(index) = self.overlay_index(overlay_id)
             && !self.overlays[index].2.hidden
         {
+            self.overlays[index].0.handle_input(event.clone());
             let wants = self.overlays[index].0.input_wants_rerender(&event);
-            self.overlays[index].0.handle_input(event);
             let seqs = self.overlays[index].0.take_pending_clipboard();
             self.ingest_component_clipboard(seqs);
             return InputReaction::rerender_if(wants);
@@ -1277,8 +1309,10 @@ impl<T: Terminal> TUI<T> {
         if let Some(idx) = self.focused_index
             && idx < self.components.len()
         {
+            // Query wants *after* handle so mouse_dirty / dragging updates count
+            // (Down must schedule a frame for editor selection highlight).
+            self.components[idx].handle_input(event.clone());
             let wants = self.components[idx].input_wants_rerender(&event);
-            self.components[idx].handle_input(event);
             let seqs = self.components[idx].take_pending_clipboard();
             self.ingest_component_clipboard(seqs);
             return InputReaction::rerender_if(wants);
@@ -1424,8 +1458,23 @@ impl<T: Terminal> TUI<T> {
         }
 
         let mut new_lines = Vec::new();
+        let dock_before = self.mode_b.as_ref().map(|mb| mb.dock_rows);
         for comp in &mut self.components {
             new_lines.extend(comp.render(width));
+            if let Some(dock) = comp.mode_b_dock_rows_hint() {
+                self.mode_b_dock_rows = dock.max(1);
+                if let Some(mb) = self.mode_b.as_mut() {
+                    mb.set_dock_rows(self.mode_b_dock_rows);
+                }
+            }
+        }
+        // Dock height change reclassifies lines — force full clear so Shift+Enter
+        // growth cannot leave a duplicate-looking transcript/dock seam.
+        if self.application_session_active
+            && dock_before.is_some_and(|d| d != self.mode_b_dock_rows)
+        {
+            self.previous_width = FORCE_SIZE_SENTINEL;
+            self.previous_height = FORCE_SIZE_SENTINEL;
         }
 
         if !self.overlays.is_empty() {

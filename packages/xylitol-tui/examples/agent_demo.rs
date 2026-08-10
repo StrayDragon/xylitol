@@ -1191,6 +1191,14 @@ impl Component for SharedFakeCodingAgentApp {
         self.0.borrow_mut().take_editor_clipboard()
     }
 
+    fn mode_b_dock_rows_hint(&self) -> Option<usize> {
+        Some(self.0.borrow().last_mode_b_dock_rows())
+    }
+
+    fn wants_pointer_motion(&self) -> bool {
+        self.0.borrow().input.is_selection_dragging()
+    }
+
     fn invalidate(&mut self) {
         self.0.borrow_mut().invalidate();
     }
@@ -1600,21 +1608,32 @@ impl FakeCodingAgentApp {
         {
             return;
         }
+        let dragging = self.input.is_selection_dragging();
         let dock = self.last_mode_b_dock_rows as u16;
         let dock_top = self.term_rows.saturating_sub(dock.max(1));
-        if mouse.row < dock_top {
+        // While dragging, keep delivering events even if the pointer leaves the
+        // cached editor rect (footer / transcript) — clamp local row so edge
+        // scroll + Up/copy still run.
+        if !dragging && mouse.row < dock_top {
             return;
         }
-        let dock_local = mouse.row - dock_top;
+        let dock_local = mouse.row.saturating_sub(dock_top);
         let status_h = self.last_status_rows as u16;
-        let editor_h = self.last_editor_rows as u16;
-        if dock_local < status_h {
+        let editor_h = self.last_editor_rows.max(1) as u16;
+        if !dragging && dock_local < status_h {
             return;
         }
-        let ed_local = dock_local - status_h;
-        if ed_local >= editor_h {
-            return;
-        }
+        let ed_local = if dragging {
+            let raw = dock_local.saturating_sub(status_h);
+            // Clamp into [0, editor_h] so top/bottom edges stay hittable.
+            raw.min(editor_h.saturating_sub(1))
+        } else {
+            let ed = dock_local.saturating_sub(status_h);
+            if ed >= editor_h {
+                return;
+            }
+            ed
+        };
         let local = crossterm::event::MouseEvent {
             kind: mouse.kind,
             column: mouse.column,

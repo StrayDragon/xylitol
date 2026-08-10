@@ -2118,6 +2118,10 @@ impl Component for Editor {
         std::mem::take(&mut self.pending_clipboard)
     }
 
+    fn wants_pointer_motion(&self) -> bool {
+        self.selection.dragging
+    }
+
     fn tick(&mut self) -> bool {
         let mut changed = false;
         if self.paste_burst_needs_paint && !self.paste_burst_paint_suppressed() {
@@ -2799,6 +2803,37 @@ mod tests {
         e.paste_burst_needs_paint = true;
         assert!(e.tick(), "idle tick must catch up one paint after burst");
         assert!(!e.paste_burst_needs_paint);
+    }
+
+    #[test]
+    fn editor_mouse_down_wants_rerender_after_handle() {
+        use crate::selection::RecordingClipboardSink;
+        use crate::tui::Component;
+        let mut e = Editor::new(
+            t(),
+            EditorOptions {
+                padding_x: 0,
+                ..Default::default()
+            },
+            clk(),
+        );
+        e.set_text("primary flow".into());
+        let _ = e.render(40);
+        let ev = InputEvent::Mouse(mouse(MouseEventKind::Down(MouseButton::Left), 0, 1));
+        // Before handle: no drag yet → default mouse policy is quiet.
+        assert!(!Component::input_wants_rerender(&e, &ev));
+        Component::handle_input(&mut e, ev.clone());
+        assert!(
+            Component::input_wants_rerender(&e, &ev),
+            "after Down, dragging must request a paint so click highlight is visible"
+        );
+        assert!(e.is_selection_dragging());
+        let mut sink = RecordingClipboardSink::default();
+        e.handle_mouse_local(
+            &mouse(MouseEventKind::Up(MouseButton::Left), 0, 1),
+            &mut sink,
+        );
+        assert!(sink.copies.is_empty(), "empty click must not copy");
     }
 
     #[test]
