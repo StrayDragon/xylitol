@@ -70,6 +70,18 @@ Wave 2
 - 实现 `c1505`/`c1370`/`c1535`
 - 块焦点常驻 EditorSlot
 
+## 验证（自动化 + 人类）
+
+| 层 | 自动化 | 人类 |
+|---|---|---|
+| Harness | 同屏 L1 块 + L2 摘要：leader 编号与点击各打中正确 `FoldTarget`；L2 段内 L1 不穿透（深挖 A） | 旧 turn 摘要行点标记升/降一级 |
+| Paint / 性能 | 混合屏 toggle 不回退 ath25 miss 上界；hit 表构建 O(可见)（单测或计数） | 长会话点摘要无整屏闪 |
+| 跨面文档 | Web 同源板动作 id 与 TUI 一致（文档闸 / 审阅） | — |
+
+**人类最短路径**：c1760 落地后造 L2 段 → leader 见摘要编号 → 点击标记 → 与 `Alt+Shift+E` 栈行为不矛盾。
+
+依赖差分结论：见 [`../c2020-add-package-tui-mouse-input/research/diff-engine-mouse-fit.md`](../c2020-add-package-tui-mouse-input/research/diff-engine-mouse-fit.md)。
+
 ## Ethics
 
 - risk_level: medium

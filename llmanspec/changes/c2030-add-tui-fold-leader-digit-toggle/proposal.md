@@ -72,6 +72,17 @@ blocks:
 2. Thinking（Ctrl+T）是否进同一编号平面，还是仅 tool/diff？
 3. Compaction 块是否可编号 toggle（今日与 Alt+E 共用）？
 
+## 验证（自动化 + 人类）
+
+| 层 | 自动化 | 人类 |
+|---|---|---|
+| 产品 harness | `Alt+E` → 可见编号；digit 只翻目标 entry 覆盖态；Esc 退出后数字键回 Editor；二次 leader 刷新编号序 | 长 scrollback：近底块为 1 |
+| Paint | toggle 后 miss 计数有上界（ath25 族）；进入 leader 不得全历史 MD 重解析 | 观感：高亮头行，正文不闪全屏 |
+| 键位回归 | 若保留全局展开：另绑或文档化路径有测；与 `Alt+Shift+E`（c1760）不互吞 | 对照旁注和弦 |
+| BDD（若改合约） | `app-tui-input` / transcript 场景 `@req:` | — |
+
+**人类最短路径**：造 ≥3 个 tool 块 → Alt+E → 见 1/2/3 → 按 `2` 仅第二块变 → Esc → 打字正常。
+
 ## Ethics
 
 - risk_level: medium（改默认和弦语义）

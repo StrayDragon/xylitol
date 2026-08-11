@@ -22,12 +22,24 @@ blocks:
 3. **扇入**：`TUI::start*` 与产品 host 事件环把 `Event::Mouse` 转成 `InputEvent::Mouse`（今日 `_ => {}` 丢掉）。
 4. **策略钩（意向）**：包提供 Enable/Disable 开关与文档；**默认关**（对齐 crossterm 默认）。选区 tradeoff 属终端行为，**不是** crossterm 契约——不可写「库保证 Shift 透传选区」；产品侧用关捕获 / 终端习惯缓解。
 5. **Move 洪水**：crossterm `EnableMouseCapture` 固定开 `1003` any-event → 会有 `Moved`；应用层 MUST 过滤，未命中可折叠区 MUST NOT dirty/render。
-6. **非目标**：产品 fold hit-test、选区复制、拖拽滚动、Web 面。
+6. **差分引擎接线闸（硬）**：产品 `handle_input` 今日对每次 Input 都 `request_render`——Mouse 路径 MUST 仅在态变 / listener dirty 时请求帧；包 demo 环同理。见 [`research/diff-engine-mouse-fit.md`](./research/diff-engine-mouse-fit.md)。
+7. **非目标**：产品 fold hit-test、选区复制、拖拽滚动、Web 面。
 
 ## Capabilities（意向）
 
 - `package-tui-input`（或新 `package-tui-mouse`）— 事件与生命周期
 - 产品 `app-tui-host` MAY 仅接线扇入；**MUST NOT** 在本 change 实现折叠点击
+
+## 验证（自动化 + 人类）
+
+| 层 | 自动化 | 人类 |
+|---|---|---|
+| 包 | 合成 Mouse：`Moved` ×N 后 `frame_count`/render 计数不增；`Down` 经 listener 可 `Consumed`；Enable/Disable 成对 | — |
+| 产品 host | 注入 `Mouse(Moved)` → **不** bump paint；Key 路径回归仍可刷一帧 | — |
+| PTY e2e（可选 `#[ignore]`） | 启停后 mouse mode 不残留（若有探针） | Kitty：开 Enable 后乱晃鼠标无明显空转；关捕获后拖选可用 |
+| 回归闸 | `just test-tui` + 产品相关测；`just qa` 不强制 PTY | verify 笔记勾选人类清单 |
+
+**人类最短路径**：显式开 mouse → 晃鼠标无闪烁/空转 → 退出后 shell 选区正常。
 
 ## Impact
 
@@ -67,6 +79,11 @@ c1760（多级折叠 MVP）与本 change 无边
 
 ## Further Notes
 
-- 调研：[`research/mouse-perf-and-selection.md`](./research/mouse-perf-and-selection.md)；一手 API：[`research/crossterm-mouse-api.md`](./research/crossterm-mouse-api.md)（crossterm **0.29.0**，[调研](885b8dde-6f49-4034-a0ee-1c38b0b97d0b)）
-- **crossterm 摘要**：默认不捕获；`Enable`/`DisableMouseCapture` 成对；Enable 含 `1003` → `Moved` 洪水须应用过滤；与 bracketed paste / Kitty 可同开（官方 `event-read`）；选区副作用**库内未文档化**
-- 相关：`docs/research/xylitol-tui-capability-hooks-vs-landscape-2026.md` §5；`c1760` 深挖 B（行距缝）；`c2040` 消费本地基
+- 调研：[`research/mouse-perf-and-selection.md`](./research/mouse-perf-and-selection.md)；一手 API：[`research/crossterm-mouse-api.md`](./research/crossterm-mouse-api.md)；**差分×鼠标**：[`research/diff-engine-mouse-fit.md`](./research/diff-engine-mouse-fit.md)
+- **差分结论**：适合点击；主雷是 `Moved`×无条件 `request_render`；只能点活视口，不能点已进模拟器 scrollback 的历史
+- **crossterm 摘要**：默认不捕获；Enable 含 `1003`；选区副作用库内未文档化
+- 相关：景观 §5；`c1760` 深挖 B；`c2040` 消费本地基
+
+## Open Questions
+
+1. ~~Mouse capture 默认~~ → **已拍：A** — 包/产品默认关；显式 API 开启（对齐 crossterm；避免 `1003`/`Moved` 与选区副作用）。`c2040` 再定产品何时调用 enable。
