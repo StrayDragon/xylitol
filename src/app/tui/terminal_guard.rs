@@ -33,6 +33,7 @@ pub fn emergency_restore() {
     let _ = crossterm::terminal::disable_raw_mode();
     let _ = crossterm::execute!(
         std::io::stdout(),
+        crossterm::event::DisableMouseCapture,
         crossterm::event::DisableBracketedPaste,
         crossterm::cursor::Show
     );
@@ -81,6 +82,9 @@ impl TerminalGuard {
             xylitol_tui::CrosstermTerminal::new().map_err(|e| format!("open terminal: {e}"))?;
         terminal.hide_cursor();
         terminal.start();
+        if xylitol_tui::env_requests_mouse_capture() {
+            terminal.enable_mouse_capture();
+        }
         Ok(Self {
             terminal: Some(terminal),
         })

@@ -437,6 +437,7 @@ impl Component for Input {
         match event {
             InputEvent::Paste(content) => self.handle_paste(&content),
             InputEvent::Key(ref key) => self.handle_key(key),
+            InputEvent::Mouse(_) => {}
         }
     }
 

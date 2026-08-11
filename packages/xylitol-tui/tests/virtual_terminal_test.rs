@@ -801,3 +801,42 @@ fn input_render_handles_cjk_in_visible_window_without_panic() {
     assert_eq!(lines.len(), 1, "input renders a single line");
     assert!(!lines[0].is_empty());
 }
+
+// ── mouse capture lifecycle (c2020 / tp07) ─────────────────────────────────
+
+#[test]
+fn mouse_capture_default_off_and_pairs_on_stop() {
+    let mut vt = LoggingVirtualTerminal::new(20, 5);
+    assert!(!vt.mouse_capture_active());
+    assert_eq!(vt.mouse_enable_calls(), 0);
+    assert_eq!(vt.mouse_disable_calls(), 0);
+
+    vt.start();
+    assert!(
+        !vt.mouse_capture_active(),
+        "start alone must not enable mouse capture"
+    );
+
+    vt.enable_mouse_capture();
+    assert!(vt.mouse_capture_active());
+    assert_eq!(vt.mouse_enable_calls(), 1);
+
+    vt.stop();
+    assert!(
+        !vt.mouse_capture_active(),
+        "stop must release active mouse capture"
+    );
+    assert_eq!(vt.mouse_disable_calls(), 1);
+
+    // Desire survives stop so a later start can restore capture.
+    vt.start();
+    assert!(
+        vt.mouse_capture_active(),
+        "start after prior enable must restore desired capture"
+    );
+    assert_eq!(vt.mouse_enable_calls(), 2);
+
+    vt.disable_mouse_capture();
+    assert!(!vt.mouse_capture_active());
+    assert_eq!(vt.mouse_disable_calls(), 2);
+}

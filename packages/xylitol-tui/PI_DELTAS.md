@@ -25,7 +25,7 @@
 |---|---|---|---|---|
 | D01 | 终端 I/O | 自管 VT / raw 较多 | 优先 crossterm `Command`；仅库未暴露序列才 `write_raw` | 是 |
 | D02 | stdin | 自研 `stdin-buffer` | **不移植**；crossterm 解码 `Event` | 是 |
-| D03 | 输入模型 | VT 字符串 / 自解析为主 | **硬切** `InputEvent::{Key,Paste}`；禁止 KeyEvent→VT→parse 运行时路径 | 是 |
+| D03 | 输入模型 | VT 字符串 / 自解析为主 | **硬切** `InputEvent::{Key,Paste,Mouse}`；Mouse 默认不刷帧（`InputReaction` / `input_wants_rerender`）；禁止 KeyEvent→VT→parse 运行时路径 | 是 |
 | D04 | 键匹配 | 字符串 `matchesKey` 等 | 运行时 `matches_key_event` / `KeybindingsManager::matches_event` | 是 |
 | D05 | 平台专属输入 | `native-modifiers`、Apple/Windows native | **不移植** | 是 |
 | D06 | 调试写盘 | `writeLogPath` | **不移植**（tracing / 应用面日志） | 是 |
@@ -38,7 +38,7 @@
 | D13 | Editor 补全扩展 | provider + 引擎内 `/` 等特判较多 | **`CompletionSource` 注册表**（`completion.rs`）；`/` `@` `$` 等为可插拔 Source（扩展点已落地；业务语义在应用面） | 是 |
 | D14 | paste-burst | 无对等模块（或弱） | `PasteBurst` + `Clock`/`MockClock`（确定性时序） | 是 |
 | D15 | 测试分层 | vitest + virtual-terminal | 五层 harness + PTY/tmux E2E（`test-tui-harness`） | 是 |
-| D16 | InputListener | VT 字符串回调常见 | **`InputEvent` 原生** `add_input_listener`；无 KeyEvent→VT；v1 仅 `Continue`/`Consumed` | 是 |
+| D16 | InputListener | VT 字符串回调常见 | **`InputEvent` 原生** `add_input_listener`；无 KeyEvent→VT；`Continue` / `Consumed`（Key·Paste 刷帧，Mouse 静默）/ `ConsumedRerender`（显式 dirty） | 是 |
 | D17 | Diff 组件 | `renderDiff` 函数式 | **`Diff` Component + `render_diff_lines`**；`similar` 在包内；主题闭包；对齐 `design/diff-block.md` | 是 |
 | D18 | 代码高亮 | 应用层常见 | **`highlight` optional feature**（syntect+two-face）；默认依赖无 syntect；经 `MarkdownTheme.highlight_code` 注入 | 是 |
 | D19 | `requestRender(true)` / suspend / resize | force 用 `previousWidth=-1` → **整屏 clear**；resize 回调 **soft** `requestRender()` → `width/heightChanged` → `fullRender(true)`；外部编辑器 resume 亦 `force` clear | **对齐**：force 用 `FORCE_SIZE_SENTINEL`（`usize::MAX` ≡ pi `-1`）→ **clear**；host resize / mount **soft** `request_render(false)`；`with_terminal_suspended` 仍保留 `previous_lines`、不立刻 paint（resume 后由调用方 soft/force） | 是 |

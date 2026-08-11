@@ -411,6 +411,15 @@ fn map_crossterm_item(
         }
         Ok(Event::Paste(data)) => Some(Ok(HostEvent::Input(InputEvent::Paste(data)))),
         Ok(Event::Resize(cols, rows)) => Some(Ok(HostEvent::Resize { cols, rows })),
+        Ok(Event::Mouse(mouse)) => {
+            let event = InputEvent::Mouse(mouse);
+            // Drop 1003 motion at the edge — never enter handle_input paint path.
+            if event.is_pointer_motion() {
+                None
+            } else {
+                Some(Ok(HostEvent::Input(event)))
+            }
+        }
         Ok(_) => None,
         Err(e) => Some(Err(XyDriverError::io(format!("input error: {e}")))),
     }

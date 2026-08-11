@@ -45,7 +45,7 @@
 |---|---|---|
 | 终端 I/O | 自管 VT / raw 序列较多 | **优先 crossterm Command**（raw、paste、Kitty push/pop、`Clear`/`SetTitle`/`cursor::*`、同步输出）；仅 OSC 9;4 等库未暴露的才 `write_raw` |
 | stdin | 自研 `stdin-buffer` | **不移植**；crossterm 已解码 `Event` |
-| 按键模型 | VT 字符串 / 自解析为主 | **硬切 `InputEvent::{Key,Paste}`**；禁止 KeyEvent→VT→parse 运行时路径 |
+| 按键模型 | VT 字符串 / 自解析为主 | **硬切 `InputEvent::{Key,Paste,Mouse}`**；Mouse 默认不刷帧；禁止 KeyEvent→VT→parse 运行时路径 |
 | 键匹配 | 字符串 `matchesKey` 等 | 运行时 `matches_key_event` / `KeybindingsManager::matches_event`；`matches_key`/`parse_key` 仅测试与配置字符串 |
 | 平台专属输入 | `native-modifiers`、Apple/Windows 路径 | **不移植** |
 | 调试写盘 | `writeLogPath` | **不移植**（用 tracing / 应用面日志） |

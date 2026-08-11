@@ -10,8 +10,8 @@
 //! Kitty and legacy sequences, rather than intercepting the Kitty response.
 
 use crossterm::event::{
-    DisableBracketedPaste, EnableBracketedPaste, KeyboardEnhancementFlags,
-    PopKeyboardEnhancementFlags, PushKeyboardEnhancementFlags,
+    DisableBracketedPaste, DisableMouseCapture, EnableBracketedPaste, EnableMouseCapture,
+    KeyboardEnhancementFlags, PopKeyboardEnhancementFlags, PushKeyboardEnhancementFlags,
 };
 use crossterm::terminal::{self, Clear, ClearType, SetTitle};
 use crossterm::{cursor, execute};
@@ -82,6 +82,16 @@ pub trait Terminal {
     /// `start` (no-op then).
     fn stop(&mut self) {}
 
+    /// Opt in to mouse reporting (`EnableMouseCapture`). Default off.
+    /// Implementations SHOULD remember desire across `stop`/`start` (suspend).
+    fn enable_mouse_capture(&mut self) {}
+    /// Opt out of mouse reporting. `stop` MUST disable if currently active.
+    fn disable_mouse_capture(&mut self) {}
+    /// Whether mouse capture is currently active on the TTY (not merely desired).
+    fn mouse_capture_active(&self) -> bool {
+        false
+    }
+
     // ── c410: OSC / cursor helpers (defaults no-op for test doubles) ──
 
     /// Set the terminal window title via OSC 0;... BEL.
@@ -90,6 +100,18 @@ pub trait Terminal {
     fn set_progress(&mut self, _active: bool) {}
     /// Move the cursor by `lines` rows (negative = up, positive = down).
     fn move_by(&mut self, _lines: i32) {}
+}
+
+/// True when `XYLITOL_TUI_MOUSE` is a truthy opt-in (`1` / `true` / `yes`).
+/// Default off (c2020 Q1=A). Intended for lab / PTY e2e — not a product setting UI.
+pub fn env_requests_mouse_capture() -> bool {
+    match std::env::var("XYLITOL_TUI_MOUSE") {
+        Ok(v) => {
+            let v = v.trim();
+            v == "1" || v.eq_ignore_ascii_case("true") || v.eq_ignore_ascii_case("yes")
+        }
+        Err(_) => false,
+    }
 }
 
 /// Parse a Kitty keyboard-protocol response `CSI ?Nu` into the negotiated
@@ -120,6 +142,10 @@ pub struct CrosstermTerminal {
     modify_other_keys_active: bool,
     /// Whether `start()` has run (so `stop()` knows to tear down).
     started: bool,
+    /// Host/API asked for mouse capture (survives suspend `stop`/`start`).
+    mouse_capture_desired: bool,
+    /// Mouse capture is currently enabled on the TTY.
+    mouse_capture_active: bool,
 }
 
 impl Default for CrosstermTerminal {
@@ -137,6 +163,8 @@ impl CrosstermTerminal {
             kitty_pushed: false,
             modify_other_keys_active: false,
             started: false,
+            mouse_capture_desired: false,
+            mouse_capture_active: false,
         })
     }
 
@@ -216,6 +244,28 @@ impl CrosstermTerminal {
             }
         }
     }
+
+    /// Apply desired mouse capture to the live TTY when `started`.
+    fn sync_mouse_capture(&mut self) {
+        if !self.started {
+            return;
+        }
+        if self.mouse_capture_desired && !self.mouse_capture_active {
+            let _ = execute!(io::stdout(), EnableMouseCapture);
+            self.mouse_capture_active = true;
+        } else if !self.mouse_capture_desired && self.mouse_capture_active {
+            let _ = execute!(io::stdout(), DisableMouseCapture);
+            self.mouse_capture_active = false;
+        }
+    }
+
+    /// Release capture on the TTY without clearing desire (for `stop`/suspend).
+    fn release_mouse_capture_active(&mut self) {
+        if self.mouse_capture_active {
+            let _ = execute!(io::stdout(), DisableMouseCapture);
+            self.mouse_capture_active = false;
+        }
+    }
 }
 
 impl Terminal for CrosstermTerminal {
@@ -276,6 +326,7 @@ impl Terminal for CrosstermTerminal {
         let _ = terminal::enable_raw_mode();
         let _ = execute!(io::stdout(), EnableBracketedPaste);
         self.negotiate_keyboard_protocol();
+        self.sync_mouse_capture();
     }
 
     fn stop(&mut self) {
@@ -283,6 +334,10 @@ impl Terminal for CrosstermTerminal {
             return;
         }
         self.started = false;
+
+        // Drop mouse reporting before paste/Kitty teardown (keeps exit order
+        // aligned with crossterm event-read example: disable what we enabled).
+        self.release_mouse_capture_active();
 
         // Disable bracketed paste first.
         let _ = execute!(io::stdout(), DisableBracketedPaste);
@@ -303,6 +358,20 @@ impl Terminal for CrosstermTerminal {
         let _ = terminal::disable_raw_mode();
         self.show_cursor();
         self.flush();
+    }
+
+    fn enable_mouse_capture(&mut self) {
+        self.mouse_capture_desired = true;
+        self.sync_mouse_capture();
+    }
+
+    fn disable_mouse_capture(&mut self) {
+        self.mouse_capture_desired = false;
+        self.sync_mouse_capture();
+    }
+
+    fn mouse_capture_active(&self) -> bool {
+        self.mouse_capture_active
     }
 
     fn set_title(&mut self, title: &str) {

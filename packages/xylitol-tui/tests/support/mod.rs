@@ -58,6 +58,8 @@ pub struct VirtualTerminal {
     attrs: Cell,
     /// Last set window title (OSC 0/2), if any.
     title: Option<String>,
+    mouse_capture_desired: bool,
+    mouse_capture_active: bool,
 }
 
 #[allow(dead_code)] // harness API; methods used across different test targets
@@ -74,6 +76,8 @@ impl VirtualTerminal {
             auto_wrap: true,
             attrs: Cell::default(),
             title: None,
+            mouse_capture_desired: false,
+            mouse_capture_active: false,
         }
     }
 
@@ -417,6 +421,31 @@ impl Terminal for VirtualTerminal {
     fn set_size_hint(&mut self, cols: u16, rows: u16) {
         self.resize(cols, rows);
     }
+
+    fn enable_mouse_capture(&mut self) {
+        self.mouse_capture_desired = true;
+        self.mouse_capture_active = true;
+    }
+
+    fn disable_mouse_capture(&mut self) {
+        self.mouse_capture_desired = false;
+        self.mouse_capture_active = false;
+    }
+
+    fn mouse_capture_active(&self) -> bool {
+        self.mouse_capture_active
+    }
+
+    fn start(&mut self) {
+        if self.mouse_capture_desired {
+            self.mouse_capture_active = true;
+        }
+    }
+
+    fn stop(&mut self) {
+        // Release active capture; keep desire for resume (mirrors CrosstermTerminal).
+        self.mouse_capture_active = false;
+    }
 }
 
 /// `vte::Perform` implementation forwarding parsed sequences into the grid.
@@ -515,6 +544,8 @@ pub struct LoggingVirtualTerminal {
     cursor_visible: bool,
     show_cursor_calls: u32,
     hide_cursor_calls: u32,
+    mouse_enable_calls: u32,
+    mouse_disable_calls: u32,
 }
 
 #[allow(dead_code)] // harness API; methods used across different test targets
@@ -526,6 +557,8 @@ impl LoggingVirtualTerminal {
             cursor_visible: true,
             show_cursor_calls: 0,
             hide_cursor_calls: 0,
+            mouse_enable_calls: 0,
+            mouse_disable_calls: 0,
         }
     }
 
@@ -562,6 +595,14 @@ impl LoggingVirtualTerminal {
 
     pub fn hide_cursor_calls(&self) -> u32 {
         self.hide_cursor_calls
+    }
+
+    pub fn mouse_enable_calls(&self) -> u32 {
+        self.mouse_enable_calls
+    }
+
+    pub fn mouse_disable_calls(&self) -> u32 {
+        self.mouse_disable_calls
     }
 
     /// Delegate to the inner virtual terminal for grid/cursor assertions when
@@ -613,6 +654,42 @@ impl Terminal for LoggingVirtualTerminal {
 
     fn set_size_hint(&mut self, cols: u16, rows: u16) {
         self.inner.set_size_hint(cols, rows);
+    }
+
+    fn enable_mouse_capture(&mut self) {
+        let was = self.inner.mouse_capture_active();
+        self.inner.enable_mouse_capture();
+        if !was && self.inner.mouse_capture_active() {
+            self.mouse_enable_calls = self.mouse_enable_calls.saturating_add(1);
+        }
+    }
+
+    fn disable_mouse_capture(&mut self) {
+        let was = self.inner.mouse_capture_active();
+        self.inner.disable_mouse_capture();
+        if was && !self.inner.mouse_capture_active() {
+            self.mouse_disable_calls = self.mouse_disable_calls.saturating_add(1);
+        }
+    }
+
+    fn mouse_capture_active(&self) -> bool {
+        self.inner.mouse_capture_active()
+    }
+
+    fn start(&mut self) {
+        let was = self.inner.mouse_capture_active();
+        self.inner.start();
+        if !was && self.inner.mouse_capture_active() {
+            self.mouse_enable_calls = self.mouse_enable_calls.saturating_add(1);
+        }
+    }
+
+    fn stop(&mut self) {
+        let was = self.inner.mouse_capture_active();
+        self.inner.stop();
+        if was && !self.inner.mouse_capture_active() {
+            self.mouse_disable_calls = self.mouse_disable_calls.saturating_add(1);
+        }
     }
 }
 
