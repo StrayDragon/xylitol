@@ -250,8 +250,15 @@ impl BootstrappedAgent {
         if let Some(name) = restored_session.session_name {
             xylitol_ai_bridge::provider::set_obs_session_name(Some(name.as_str()));
         }
+        let driver = crate::app::core::driver::XyInProcessDriver::new(self.agent, self.store);
+        let todo_gw = driver.todo_gateway();
+        let sid = self.session_id.clone();
+        let _ = block_on_bootstrap_task("bind todo session", async move {
+            todo_gw.bind_session(Some(sid)).await;
+            Ok::<(), String>(())
+        });
         BootstrappedRuntime {
-            driver: crate::app::core::driver::XyInProcessDriver::new(self.agent, self.store),
+            driver,
             session_id: self.session_id,
             warnings: self.warnings,
             mcp_servers: self.mcp_servers,

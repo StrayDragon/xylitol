@@ -513,6 +513,29 @@ mod tests {
     }
 
     #[test]
+    fn freeze_includes_todo_builtins_first_turn() {
+        let mut session = make_session();
+        session.begin_tool_gating();
+        let core = ToolSet::from_iter(crate::infra::tools::default_tools());
+        session.freeze_tools(core);
+        let fp = session.frozen_tool_fingerprint().cloned().expect("fp");
+        for n in ["todo_list", "todo_rewrite", "todo_update"] {
+            assert!(
+                fp.names.iter().any(|x| x == n),
+                "frozen table missing {n}: {:?}",
+                fp.names
+            );
+        }
+        // Mid-turn set_tools must not expand with duplicate todo names.
+        session.set_tools(ToolSet::from_iter(crate::infra::tools::default_tools()));
+        assert_eq!(
+            session.tools().iter().count(),
+            fp.names.len(),
+            "frozen set size must stay put"
+        );
+    }
+
+    #[test]
     fn freeze_then_set_tools_does_not_expand() {
         let mut session = make_session();
         assert_eq!(session.tool_freeze_phase(), ToolFreezePhase::Unfrozen);

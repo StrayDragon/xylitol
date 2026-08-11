@@ -298,6 +298,8 @@ pub async fn compact_session(
 
     // c1906: after cut, leaf context may lack session_env — ensure + persist.
     ensure_session_env_after_compact(store, session_id, &entries).await;
+    // c1955: if cut dropped every agent_todo snapshot, re-append latest.
+    ensure_agent_todo_after_compact(store, session_id, &entries).await;
 
     Ok(entry)
 }
@@ -307,6 +309,37 @@ fn session_cwd_from_entries(entries: &[SessionEntry]) -> Option<&str> {
         SessionEntry::Header(h) => Some(h.cwd.as_str()),
         _ => None,
     })
+}
+
+/// If compaction/cut leaves no `agent_todo` in the post-cut context window,
+/// re-append the latest pre-cut snapshot so tip / resume / todo_list stay aligned (atd10).
+pub(crate) async fn ensure_agent_todo_after_compact(
+    store: &dyn XySessionStore,
+    session_id: &str,
+    entries_before: &[SessionEntry],
+) {
+    use crate::protocol::session::{build_context_entries, latest_agent_todo};
+
+    let Some(snapshot) = latest_agent_todo(entries_before) else {
+        return;
+    };
+    let entries = match store.load_leaf_branch(session_id).await {
+        Ok(e) => e,
+        Err(e) => {
+            log::warn!("post-compact agent_todo ensure: reload failed ({e})");
+            return;
+        }
+    };
+    let cut = build_context_entries(&entries);
+    if latest_agent_todo(&cut).is_some() {
+        return;
+    }
+    if let Err(e) = store
+        .append_session_entry(session_id, &snapshot.to_custom_entry_shell())
+        .await
+    {
+        log::warn!("post-compact agent_todo persist failed: {e}");
+    }
 }
 
 async fn ensure_session_env_after_compact(
@@ -1104,5 +1137,63 @@ mod tests {
             .await
             .unwrap();
         assert_eq!(text, "prefix-ok");
+    }
+
+    #[tokio::test]
+    async fn compact_reappends_agent_todo_when_cut_drops_snapshot() {
+        use crate::infra::session::SessionManager;
+        use crate::protocol::ports::XySessionStore;
+        use crate::protocol::session::{
+            CUSTOM_TYPE_AGENT_TODO, CustomEntry, EntryBase, TodoItem, TodoList, TodoStatus,
+            build_context_entries, latest_agent_todo,
+        };
+
+        let dir = tempfile::tempdir().unwrap();
+        let mgr = SessionManager::new(dir.path().join("sessions"));
+        let sid = "todo-compact";
+        mgr.create(sid, Some("."), None).await.unwrap();
+
+        let list = TodoList::new(vec![TodoItem {
+            id: "a".into(),
+            content: "keep me".into(),
+            status: TodoStatus::Pending,
+        }]);
+        let todo = SessionEntry::Custom(CustomEntry {
+            base: EntryBase {
+                entry_type: "custom".into(),
+                id: "todo1".into(),
+                parent_id: None,
+                timestamp: "t".into(),
+            },
+            custom_type: CUSTOM_TYPE_AGENT_TODO.into(),
+            data: list.to_data_value(),
+        });
+        mgr.append_with_id(sid, &todo).await.unwrap();
+
+        let mut u_keep = make_message_entry("u_keep", "user", "kept");
+        if let SessionEntry::Message(ref mut m) = u_keep {
+            m.base.parent_id = Some("todo1".into());
+        }
+        mgr.append_with_id(sid, &u_keep).await.unwrap();
+
+        let mut compact = make_compaction_entry("c1", "sum");
+        if let SessionEntry::Compaction(ref mut c) = compact {
+            c.base.parent_id = Some("u_keep".into());
+            c.first_kept_entry_id = "u_keep".into();
+        }
+        let before = mgr.load_leaf_branch(sid).await.unwrap();
+        mgr.append_with_id(sid, &compact).await.unwrap();
+
+        // Context window after cut has no agent_todo.
+        let mid = mgr.load_leaf_branch(sid).await.unwrap();
+        let cut = build_context_entries(&mid);
+        assert!(latest_agent_todo(&cut).is_none());
+
+        ensure_agent_todo_after_compact(&mgr, sid, &before).await;
+
+        let after = mgr.load_leaf_branch(sid).await.unwrap();
+        let cut2 = build_context_entries(&after);
+        let restored = latest_agent_todo(&cut2).expect("todo re-appended into context");
+        assert_eq!(restored.items[0].content, "keep me");
     }
 }

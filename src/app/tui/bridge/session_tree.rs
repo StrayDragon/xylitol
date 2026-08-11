@@ -1,8 +1,9 @@
 //! Rebuild live scrollback after MessageHistory travel (c615 / c646).
 
 use crate::protocol::session::{
-    SessionEntry, SessionTreeTravel, is_env_custom_message, is_tool_call_part, message_parts,
-    message_role, message_text, tool_call_name,
+    SessionEntry, SessionTreeTravel, TodoList, TodoStatus, is_env_custom_message,
+    is_tool_call_part, latest_agent_todo, message_parts, message_role, message_text,
+    tool_call_name,
 };
 use serde_json::Value;
 
@@ -44,6 +45,54 @@ pub fn rebuild_scrollback_from_travel(
         for ui in session_entry_to_ui_entries(entry) {
             ui_model.entries.push(ui);
         }
+    }
+    sync_todo_checklist_from_entries(ui_model, entries);
+}
+
+/// Upsert the single latest-wins Todo checklist row from a full leaf branch (atd8/atd9).
+pub fn sync_todo_checklist_from_entries(ui_model: &mut UiModel, entries: &[SessionEntry]) {
+    sync_todo_checklist(ui_model, latest_agent_todo(entries).unwrap_or_default());
+}
+
+/// Upsert / remove Todo checklist from a parsed list (tool End or resume).
+pub fn sync_todo_checklist(ui_model: &mut UiModel, list: TodoList) {
+    ui_model
+        .entries
+        .retain(|e| !matches!(e, UiEntry::Todo { .. }));
+    if list.is_empty() {
+        return;
+    }
+    ui_model.entries.push(todo_list_to_ui_entry(&list));
+}
+
+/// Parse `todo_*` tool result JSON into a checklist upsert.
+pub fn sync_todo_checklist_from_tool_result(ui_model: &mut UiModel, result: &str) {
+    let Ok(v) = serde_json::from_str::<Value>(result) else {
+        return;
+    };
+    let Ok(list) = TodoList::from_data_value(&v) else {
+        return;
+    };
+    sync_todo_checklist(ui_model, list);
+}
+
+fn todo_list_to_ui_entry(list: &TodoList) -> UiEntry {
+    let detail_lines = list
+        .items
+        .iter()
+        .map(|i| {
+            let mark = match i.status {
+                TodoStatus::Pending => "[ ]",
+                TodoStatus::InProgress => "[~]",
+                TodoStatus::Completed => "[x]",
+                TodoStatus::Cancelled => "[-]",
+            };
+            format!("{mark} {}", i.content)
+        })
+        .collect();
+    UiEntry::Todo {
+        summary: list.summary_line(),
+        detail_lines,
     }
 }
 

@@ -135,7 +135,10 @@ mod tests {
         assert!(names.contains(&"grep"));
         assert!(names.contains(&"find"));
         assert!(names.contains(&"ls"));
-        assert_eq!(names.len(), 7);
+        assert!(names.contains(&"todo_list"));
+        assert!(names.contains(&"todo_rewrite"));
+        assert!(names.contains(&"todo_update"));
+        assert_eq!(names.len(), 10);
     }
 
     #[test]

@@ -236,6 +236,7 @@ impl UiRoot {
             if matches_binding(key, "app.tools.blocks") {
                 self.fold.tools_expanded = !self.fold.tools_expanded;
                 self.fold.compaction_expanded = !self.fold.compaction_expanded;
+                self.fold.todo_expanded = !self.fold.todo_expanded;
                 self.fold.clear_tools_overrides();
                 self.scrollback_paint.invalidate();
                 self.bump_upper_gen();

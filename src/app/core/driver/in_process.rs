@@ -101,6 +101,8 @@ pub struct XyInProcessDriver {
     tool_gate_deadline: Option<std::time::Instant>,
     /// TUI-only ask gateway; MCP reload MUST re-plus ask when this is set (c1850).
     ask_gateway: Option<Arc<dyn crate::protocol::ports::ask::AskUserGateway>>,
+    /// Session-bound Todo SSOT gateway shared by `todo_*` builtins (c1955).
+    todo_gateway: Arc<crate::infra::tools::SessionAgentTodoGateway>,
 }
 
 impl XyInProcessDriver {
@@ -130,7 +132,8 @@ impl XyInProcessDriver {
         bang: BangExecHandler,
         exporter: SessionExporter,
     ) -> Self {
-        Self {
+        let todo_gateway = crate::infra::tools::SessionAgentTodoGateway::new(store.clone());
+        let mut driver = Self {
             agent,
             store,
             bang,
@@ -141,7 +144,13 @@ impl XyInProcessDriver {
             mcp_gate_notice: None,
             tool_gate_deadline: None,
             ask_gateway: None,
-        }
+            todo_gateway: todo_gateway.clone(),
+        };
+        // Replace ephemeral MemoryTodoGateway from build_agent with store-bound SSOT.
+        driver.set_tools(crate::agent::tools::ToolSet::from_iter(
+            crate::infra::tools::default_tools_with_todo(todo_gateway),
+        ));
+        driver
     }
 
     /// Construct with an explicit bang handler (tests / embed without shell).
@@ -165,7 +174,10 @@ impl XyInProcessDriver {
     ) {
         self.ask_gateway = Some(gateway.clone());
         self.set_tools(crate::agent::tools::ToolSet::from_iter(
-            crate::infra::tools::default_tools_with_ask(gateway),
+            crate::infra::tools::default_tools_with_ask_and_todo(
+                gateway,
+                self.todo_gateway.clone(),
+            ),
         ));
     }
 
@@ -174,12 +186,26 @@ impl XyInProcessDriver {
         self.ask_gateway.clone()
     }
 
-    /// Builtins for ToolSet rebuild: `default_tools` or `default_tools`+ask.
+    /// Builtins for ToolSet rebuild: store-bound Todo (+ optional ask).
     pub fn builtins_for_reload(&self) -> Vec<Arc<dyn crate::protocol::ports::XyTool>> {
         match &self.ask_gateway {
-            Some(g) => crate::infra::tools::default_tools_with_ask(g.clone()),
-            None => crate::infra::tools::default_tools(),
+            Some(g) => crate::infra::tools::default_tools_with_ask_and_todo(
+                g.clone(),
+                self.todo_gateway.clone(),
+            ),
+            None => crate::infra::tools::default_tools_with_todo(self.todo_gateway.clone()),
         }
+    }
+
+    async fn bind_todo_session(&self, session_id: Option<&str>) {
+        self.todo_gateway
+            .bind_session(session_id.map(str::to_string))
+            .await;
+    }
+
+    /// Store-bound Todo gateway (shared with `todo_*` builtins).
+    pub fn todo_gateway(&self) -> Arc<crate::infra::tools::SessionAgentTodoGateway> {
+        self.todo_gateway.clone()
     }
 
     /// Enable `/reload` and MCP ownership for the process lifetime (c1120).
@@ -467,7 +493,11 @@ impl XyDriver for XyInProcessDriver {
         self.ensure_tool_table_frozen().await;
         if self.agent.session_id().is_none() {
             let id = uuid::Uuid::new_v4().to_string();
-            let _ = bind_session_or_err(&mut self.agent, id);
+            let _ = bind_session_or_err(&mut self.agent, id.clone());
+            self.bind_todo_session(Some(&id)).await;
+        } else if let Some(sid) = self.agent.session_id() {
+            // Keep Todo gateway aligned if agent was bound before driver wiring.
+            self.bind_todo_session(Some(sid)).await;
         }
         let stream = self.agent.submit_root(prompt, RunPolicy::Reject).await;
         Box::pin(stream)
@@ -654,10 +684,13 @@ impl XyDriver for XyInProcessDriver {
         entry_id: &str,
         position: crate::protocol::session::ForkPosition,
     ) -> Result<String, XyDriverError> {
-        self.agent
+        let id = self
+            .agent
             .fork_session(entry_id, position)
             .await
-            .map_err(XyDriverError::from)
+            .map_err(XyDriverError::from)?;
+        self.bind_todo_session(Some(&id)).await;
+        Ok(id)
     }
 
     async fn switch_session(&mut self, session_id: &str) -> Result<String, XyDriverError> {
@@ -678,6 +711,7 @@ impl XyDriver for XyInProcessDriver {
         }
         let context = Self::map_str(self.store.build_session_context(session_id).await)?;
         bind_session_or_err(&mut self.agent, session_id.to_string())?;
+        self.bind_todo_session(Some(session_id)).await;
         // Restore precisely what the session recorded. Do not validate, clamp, or
         // append a replacement event: a stale vendor level is intentionally sticky
         // until the user changes or cycles it.
@@ -912,6 +946,7 @@ impl XyDriver for XyInProcessDriver {
             .await
             .map_err(XyDriverError::from)?;
         bind_session_or_err(&mut self.agent, session_id.clone())?;
+        self.bind_todo_session(Some(&session_id)).await;
         let entries = self
             .store
             .load_entries(&session_id)
@@ -957,6 +992,7 @@ impl XyDriver for XyInProcessDriver {
             .await
             .map_err(XyDriverError::from)?;
         bind_session_or_err(&mut self.agent, session_id.clone())?;
+        self.bind_todo_session(Some(&session_id)).await;
         Ok(session_id)
     }
 

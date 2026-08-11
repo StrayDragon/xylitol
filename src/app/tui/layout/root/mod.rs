@@ -489,6 +489,9 @@ impl UiRoot {
             FoldTarget::Thinking(id) => {
                 self.fold.toggle_thinking(&id);
             }
+            FoldTarget::Todo => {
+                self.fold.todo_expanded = !self.fold.todo_expanded;
+            }
         }
         self.fold_dirty = true;
         self.bump_upper_gen();

@@ -85,6 +85,38 @@ mod tests {
     use crate::protocol::message::{AgentMessage, AgentPart, EnvMessage, LlmMessage};
 
     #[test]
+    fn agent_todo_custom_skipped_in_llm_prefix() {
+        use crate::protocol::session::{
+            CUSTOM_TYPE_AGENT_TODO, CustomEntry, EntryBase, SessionEntry, TodoItem, TodoList,
+            TodoStatus,
+        };
+        let list = TodoList::new(vec![TodoItem {
+            id: "1".into(),
+            content: "secret todo body".into(),
+            status: TodoStatus::InProgress,
+        }]);
+        let entry = SessionEntry::Custom(CustomEntry {
+            base: EntryBase {
+                entry_type: "custom".into(),
+                id: "t1".into(),
+                parent_id: None,
+                timestamp: "t".into(),
+            },
+            custom_type: CUSTOM_TYPE_AGENT_TODO.into(),
+            data: list.to_data_value(),
+        });
+        assert!(entry.as_agent_message().is_none());
+        let history = vec![
+            AgentMessage::user("hi"),
+            // Only messages that survive as_agent_message reach project_for_llm.
+        ];
+        let projected = project_for_llm(&history);
+        let blob = serde_json::to_string(&projected).unwrap();
+        assert!(!blob.contains("secret todo body"));
+        assert!(!blob.contains(CUSTOM_TYPE_AGENT_TODO));
+    }
+
+    #[test]
     fn bash_folds_to_user_llm() {
         let history = vec![
             AgentMessage::user("hi"),
