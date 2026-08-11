@@ -270,10 +270,16 @@ impl SelectionController {
                 true
             }
             MouseEventKind::ScrollUp => {
+                if !transcript.contains(col, row) {
+                    return false;
+                }
                 scroll.scroll_by(-1);
                 true
             }
             MouseEventKind::ScrollDown => {
+                if !transcript.contains(col, row) {
+                    return false;
+                }
                 scroll.scroll_by(1);
                 true
             }

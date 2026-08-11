@@ -210,17 +210,55 @@ impl<T: Terminal> HostSession<T> {
         }
     }
 
-    /// Apply interaction mode (c2070 / ath30). Default construction is Mode A
-    /// ([`xylitol_tui::InteractionMode::Inline`]). Mode B begins alt-buffer +
-    /// mouse; Mode A leaves any prior application session.
+    /// Apply interaction mode (c2070 / ath30). Default construction is Mode A.
+    /// Switching modes restacks: end Mode B session → rebuild root children →
+    /// begin Mode B if requested → force clear paint.
     pub fn apply_interaction_mode(&mut self, mode: xylitol_tui::InteractionMode) {
-        if mode.is_inline() {
-            self.tui.end_application_owned_session();
-            self.tui.set_interaction_mode(mode);
+        let already = self.tui.interaction_mode() == mode
+            && mode.is_application_owned() == self.tui.application_session_active();
+        if already {
+            if mode.is_application_owned() {
+                self.sync_mode_b_dock_rows();
+            }
             return;
         }
+
+        // Tear down prior Mode B session (mouse + alt) before rebuild.
+        self.tui.end_application_owned_session();
         self.tui.set_interaction_mode(mode);
-        self.tui.begin_application_owned_session();
+
+        // Restack: drop root children and rebuild from the layout factory
+        // (same UiRoot Rc for product sessions).
+        self.tui.clear_children();
+        for child in (self.rebuild)(self.mode) {
+            self.tui.add_child(child);
+        }
+        self.tui.set_focus(Some(0));
+
+        if mode.is_application_owned() {
+            self.sync_mode_b_dock_rows();
+            self.tui.begin_application_owned_session();
+            self.sync_mode_b_dock_rows();
+        }
+        self.tui.request_render(true);
+        self.paint_dirty = true;
+    }
+
+    /// Register lower chrome as Mode B dock (status/editor/footer…).
+    /// Prefers last-frame measured rows; falls back to a chrome estimate.
+    pub fn sync_mode_b_dock_rows(&mut self) {
+        let rows = if let Some(root) = self.ui_root.as_ref() {
+            let r = root.borrow();
+            let measured = r.last_mode_b_dock_rows();
+            if measured > 1 {
+                measured
+            } else {
+                r.estimate_mode_b_dock_rows()
+            }
+        } else {
+            8
+        };
+        self.tui.set_mode_b_dock_rows(rows.max(4));
     }
 
     /// Sync MCP connecting gate from the driver (c1200).
@@ -791,10 +829,16 @@ impl<T: Terminal> HostSession<T> {
             }
         }
 
+        if self.tui.application_session_active() {
+            self.sync_mode_b_dock_rows();
+        }
         match self.tui.try_render() {
             Ok(painted) => {
                 if painted {
                     self.paint_dirty = false;
+                    if self.tui.application_session_active() {
+                        self.sync_mode_b_dock_rows();
+                    }
                 }
                 Ok(())
             }
@@ -813,6 +857,9 @@ impl<T: Terminal> HostSession<T> {
         // Cursor / multiplexers often flood identical Resize; skip paint.
         if size_changed {
             self.sync_layout_from_terminal();
+            if self.tui.application_session_active() {
+                self.sync_mode_b_dock_rows();
+            }
             // Align pi: resize → soft requestRender(); doRender sees
             // width/heightChanged → fullRender(true) with 2J/H/3J.
             // force=true would zero/sentinel-skip that path incorrectly.
@@ -936,9 +983,16 @@ impl<T: Terminal> HostSession<T> {
     }
 
     pub fn render_now(&mut self) -> Result<(), XyDriverError> {
+        if self.tui.application_session_active() {
+            self.sync_mode_b_dock_rows();
+        }
         match self.tui.render_now() {
             Ok(_) => {
                 self.paint_dirty = false;
+                // Next frame uses measured dock from this paint (ath30).
+                if self.tui.application_session_active() {
+                    self.sync_mode_b_dock_rows();
+                }
                 Ok(())
             }
             Err(e) => {

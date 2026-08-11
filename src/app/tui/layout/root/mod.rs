@@ -151,6 +151,8 @@ pub struct UiRoot {
     scrollback_paint: ScrollbackPaintCache,
     /// Terminal rows from host (Chrome Footprint / atc23); soft default until first sync.
     term_rows: usize,
+    /// Last paint: toast + status + editor + footer row count (Mode B dock).
+    last_mode_b_dock_rows: usize,
     /// Test/obs: how many times upper (loaded+scrollback+queue) was rebuilt.
     #[cfg(test)]
     upper_rebuild_count: u64,
@@ -237,6 +239,7 @@ impl UiRoot {
             upper_cache_lines: Vec::new(),
             scrollback_paint: ScrollbackPaintCache::default(),
             term_rows: 24,
+            last_mode_b_dock_rows: 8,
             #[cfg(test)]
             upper_rebuild_count: 0,
         };
@@ -383,6 +386,28 @@ impl UiRoot {
 
     pub fn fold(&self) -> ScrollbackFold {
         self.fold
+    }
+
+    /// Mode B dock rows from the last [`Component::render`] (toast+status+editor+footer).
+    pub(crate) fn last_mode_b_dock_rows(&self) -> usize {
+        self.last_mode_b_dock_rows.max(1)
+    }
+
+    /// Pre-paint estimate when no frame has measured dock yet.
+    pub(crate) fn estimate_mode_b_dock_rows(&self) -> usize {
+        let queue = crate::app::tui::layout::queue_strip_line_count(
+            self.ui_model.pending_steer.len(),
+            self.ui_model.pending_follow_up.len(),
+        );
+        // Queue lives in the upper/transcript band; dock is lower chrome only.
+        let _ = queue;
+        crate::app::tui::layout::reserved_lower_chrome(
+            self.status_busy,
+            0,
+            self.chrome_toast.is_some(),
+        )
+        .saturating_add(4) // editor borders + body floor
+        .max(4)
     }
 
     pub fn editor_text(&self) -> String {

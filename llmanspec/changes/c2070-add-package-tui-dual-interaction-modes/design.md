@@ -69,9 +69,11 @@ Pi **无**独立 input-exclude API：Editor 在 ScrollView **外**的 dock，选
 
 ## 产品接线
 
-- Host / 设置：显式模式选择；**默认 Mode A**。
-- 一次会话一个主模式；运行中切换 = teardown 旧栈 + 建新栈（对齐 Pi 换实现，而非热补丁同一渲染器）。
-- Mode B 会话启动路径：Enable mouse +（若用）alt-buffer；teardown MUST Disable / 退缓冲，对齐 `tp07` / `ath29` 精神。
+- Host / `TuiRunOptions.interaction_mode`：显式模式选择；**默认 Mode A**。
+- 一次会话一个主模式；运行中切换 = teardown 旧栈 + rebuild 根子树 + begin/end Mode B（对齐 Pi 换实现）。
+- Mode B：Enable mouse + alt-buffer；每帧 `ModeBRuntime::project_frame` 把 UiRoot 全量行拆成 ScrollView 可见窗 + 下缘 dock；dock 行数优先用 UiRoot 上帧实测（toast+status+editor+footer）。
+- teardown MUST Disable / 退缓冲；`with_terminal_suspended` resume 后 MUST 重进 alt + mouse（ptim11）。
+- **不**读 `XYLITOL_TUI_MOUSE` 作产品模式开关。
 
 ## 验收 seam（自动化优先）
 

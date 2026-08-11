@@ -1,35 +1,37 @@
 # Tasks: c2070-add-package-tui-dual-interaction-modes
 
 > 验收一致：每条 task 完成 = 对应 seam 绿 + 不越界进 `blocks` 后续 change。
+> **范围钉（2026-08-11）**：本 change **交付完整 alt-screen Mode B**（库视口绘制 + 选区/滚轮/OSC52 + 产品换栈/dock），不只 foundation。
 
 ## 1. 升格、调研与规划壳
 
 - [x] 1.1 自 `delayed-changes/tui/` 升格本 change；cascade 五件拆入独立 `llmanspec/changes/<id>/`，frontmatter `depends_on`/`blocks` 正确
 - [x] 1.2 补齐 Pi AltScreen / Zellij 选区·滚动·复制·输入一手调研，并写 `research/xylitol-mode-b-subsystem-cut.md`
-- [x] 1.3 充实 `proposal.md` / `design.md` / `tasks.md`（本文件）
+- [x] 1.3 充实 `proposal.md` / `design.md` / `tasks.md`（本文件）— 明确「完整 Mode B」交付边界
 
 ## 2. Branch binding 与 Specs landing
 
 - [x] 2.1 `llman sdd change attach` 绑定非默认分支 `sdd/c2070-add-package-tui-dual-interaction-modes`
 - [x] 2.2 新建 live `package-tui-interaction-modes`；`app-tui-host` 增 `ath30`
-- [x] 2.3 合约覆盖：双模式 seam、Mode B 拖选、越界续选、松手复制默认开、输入区排除、产品默认 Mode A、切换换栈；折叠点击不在本 capability
+- [x] 2.3 合约覆盖：双模式 seam、Mode B 固定视口绘制、滚轮应用滚动、拖选、越界续选、松手 OSC52、输入 dock 排除、suspend 恢复、产品默认 Mode A、切换换栈；折叠点击不在本 capability
 - [x] 2.4 `llman sdd validate … --strict --no-check`；`show --json` 确认 `readyToImplement=true`（specs 已 commit）
 
-## 3. 库：Mode 生命周期与视口（apply）
+## 3. 库：Mode 生命周期与视口（完整 Mode B）
 
 - [x] 3.1 Mode A/B 构造/切换 API：Mode B 进入自管视口（SHOULD alt-buffer）；teardown 恢复；VirtualTerminal 可观测启停序
 - [x] 3.2 Mode B 复用 `c2020` `enable_mouse_capture`；Moved 仍不强制整帧；禁止第二套 mouse 扇入
-- [x] 3.3 应用 ScrollView（或等价）：滚轮/程序滚动；与选区 auto-scroll 共用视口
+- [x] 3.3 应用 ScrollView + `ModeBRuntime`：绘出行数 ≤ 终端高；滚轮/程序滚动；与选区 auto-scroll 共用视口
+- [x] 3.4 suspend/resume（`with_terminal_suspended`）后重新同步 alt + mouse + runtime（ptim11）
 
-## 4. 库：选区 / 复制 / 输入排除（apply）
+## 4. 库：选区 / 复制 / 输入排除（完整 Mode B）
 
-- [x] 4.1 选区状态机：anchor/focus、拖选高亮；松手可配置复制且默认开（OSC52 与/或本地 sink）
-- [x] 4.2 越界续选：拖到视口顶/底 → 自动滚 + 扩展选区
-- [x] 4.3 输入排除：Editor/Input dock 在 transcript 选区坐标系外（或等价）；指针落输入面不启动 transcript 选区
+- [x] 4.1 选区状态机：anchor/focus、拖选高亮；松手可配置复制且默认开（OSC52 经 Terminal::write，batch 外）
+- [x] 4.2 越界续选：拖到视口顶/底 → 自动滚 + 扩展选区（idle tick）
+- [x] 4.3 输入排除：dock 行在 transcript 选区坐标系外；指针落 dock 不启动 transcript 选区；滚轮仅 transcript 视口滚动
 - [x] 4.4（SHOULD）双击词 / 三击行；为后续折叠 hit 预留「click 消费优先于选区」钩子，不实现折叠
 
-## 5. 产品闸与验收（apply）
+## 5. 产品闸与验收（完整 Mode B）
 
-- [x] 5.1 Host/设置：模式选择；默认 Mode A；切换换栈；Mode B teardown 不残留 mouse/alt
-- [x] 5.2 包级单测 + 必要 harness 绿；文档写清 Mode A/B 选区归属 oneof
-- [x] 5.3 `llman sdd validate … --strict`；确认未实现 `c1760`/`c2040`/`c2050`/`c1505`/`c1535`
+- [x] 5.1 Host：`TuiRunOptions.interaction_mode`；默认 Mode A；切换换栈；Mode B 登记下缘 dock；teardown 不残留 mouse/alt；不把 `XYLITOL_TUI_MOUSE` 当产品开关
+- [x] 5.2 包级单测 + 产品 harness（默认 A / 切 B 换栈+dock）绿
+- [ ] 5.3 `llman sdd validate … --strict`；verify 无 CRITICAL；确认未实现 `c1760`/`c2040`/`c2050`/`c1505`/`c1535`
