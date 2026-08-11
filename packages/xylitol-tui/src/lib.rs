@@ -6,10 +6,13 @@ pub mod components;
 pub mod editor_component;
 pub mod fuzzy;
 pub mod highlight;
+pub mod interaction_mode;
 pub mod keybindings;
 pub mod keys;
 pub mod kill_ring;
 pub mod paste_burst;
+pub mod scroll_view;
+pub mod selection;
 pub mod terminal;
 pub mod terminal_colors;
 pub mod terminal_image;
@@ -64,6 +67,7 @@ pub use components::truncated_text::TruncatedText;
 pub use editor_component::EditorComponent;
 pub use fuzzy::{FuzzyMatch, fuzzy_filter, fuzzy_match};
 pub use highlight::{highlight_code, highlight_code_owned};
+pub use interaction_mode::InteractionMode;
 pub use keybindings::{
     Keybinding, KeybindingConflict, KeybindingDefinition, KeybindingDefinitions, KeybindingsConfig,
     KeybindingsManager, KeybindingsScope, create_default_definitions, set_keybindings,
@@ -74,6 +78,11 @@ pub use keys::{
     parse_key, printable_from_key_event, set_kitty_protocol_active, with_kitty_protocol_active,
 };
 pub use paste_burst::PasteBurst;
+pub use scroll_view::ScrollView;
+pub use selection::{
+    CellPoint, ClipboardSink, RecordingClipboardSink, ScreenRect, SelectionController,
+    SelectionGranularity, format_osc52,
+};
 pub use terminal::{CrosstermTerminal, Terminal, env_requests_mouse_capture, parse_kitty_flags};
 pub use terminal_colors::{
     CSI_COLOR_SCHEME_QUERY, OSC11_BG_QUERY, RgbColor, TerminalColorScheme, ThemeDetectSources,

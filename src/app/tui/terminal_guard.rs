@@ -34,6 +34,7 @@ pub fn emergency_restore() {
     let _ = crossterm::execute!(
         std::io::stdout(),
         crossterm::event::DisableMouseCapture,
+        crossterm::terminal::LeaveAlternateScreen,
         crossterm::event::DisableBracketedPaste,
         crossterm::cursor::Show
     );
@@ -82,11 +83,12 @@ impl TerminalGuard {
             xylitol_tui::CrosstermTerminal::new().map_err(|e| format!("open terminal: {e}"))?;
         terminal.hide_cursor();
         terminal.start();
-        // Product inline TUI MUST NOT enable mouse capture here.
-        // `XYLITOL_TUI_MOUSE` / `env_requests_mouse_capture` remain package lab/e2e
-        // hooks (agent_demo + PTY). Official mouse UX waits on Mode B (alt-screen /
-        // application-owned selection) — see delayed c2070. Keep DisableMouseCapture
-        // in `emergency_restore` for leaked lab sessions.
+        // Product TUI MUST NOT enable mouse capture here by default (Mode A).
+        // `XYLITOL_TUI_MOUSE` remains package lab/e2e only. Mode B
+        // ([`xylitol_tui::InteractionMode::ApplicationOwned`]) enters alt-buffer
+        // + mouse via [`crate::app::tui::host::HostSession::apply_interaction_mode`]
+        // after take — see c2070 / ath30. Keep DisableMouseCapture in
+        // `emergency_restore` for leaked sessions.
         Ok(Self {
             terminal: Some(terminal),
         })

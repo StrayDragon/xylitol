@@ -13,7 +13,9 @@ use crossterm::event::{
     DisableBracketedPaste, DisableMouseCapture, EnableBracketedPaste, EnableMouseCapture,
     KeyboardEnhancementFlags, PopKeyboardEnhancementFlags, PushKeyboardEnhancementFlags,
 };
-use crossterm::terminal::{self, Clear, ClearType, SetTitle};
+use crossterm::terminal::{
+    self, Clear, ClearType, EnterAlternateScreen, LeaveAlternateScreen, SetTitle,
+};
 use crossterm::{cursor, execute};
 use std::io::{self, Write};
 use std::time::{Duration, Instant};
@@ -92,6 +94,16 @@ pub trait Terminal {
         false
     }
 
+    /// Enter the terminal alternate buffer (`CSI ?1049h` / crossterm EnterAlternateScreen).
+    /// Used by Mode B ([`crate::InteractionMode::ApplicationOwned`]). Default no-op.
+    fn enter_alternate_screen(&mut self) {}
+    /// Leave the alternate buffer. `stop` MUST leave if currently active.
+    fn leave_alternate_screen(&mut self) {}
+    /// Whether the alternate buffer is currently entered.
+    fn alternate_screen_active(&self) -> bool {
+        false
+    }
+
     // ── c410: OSC / cursor helpers (defaults no-op for test doubles) ──
 
     /// Set the terminal window title via OSC 0;... BEL.
@@ -108,9 +120,10 @@ pub trait Terminal {
 /// that call [`Terminal::enable_mouse_capture`] explicitly — **not** a product
 /// setting for the inline TUI app.
 ///
-/// Enabling capture on inline (emulator-owned) sessions trades away unmodified
-/// terminal selection/scroll; official mouse UX (click-fold + app selection) is
-/// deferred to dual-mode Mode B (alt-screen) — see delayed change `c2070`.
+/// Enabling capture on inline (emulator-owned / Mode A) sessions trades away
+/// unmodified terminal selection/scroll. Official mouse UX (application
+/// selection, click-fold) belongs on Mode B ([`crate::InteractionMode::ApplicationOwned`])
+/// — see change `c2070` / capability `package-tui-interaction-modes`.
 /// The product `TerminalGuard` deliberately does **not** read this env.
 pub fn env_requests_mouse_capture() -> bool {
     match std::env::var("XYLITOL_TUI_MOUSE") {
@@ -154,6 +167,8 @@ pub struct CrosstermTerminal {
     mouse_capture_desired: bool,
     /// Mouse capture is currently enabled on the TTY.
     mouse_capture_active: bool,
+    /// Alternate screen buffer currently entered (Mode B).
+    alternate_screen_active: bool,
 }
 
 impl Default for CrosstermTerminal {
@@ -173,6 +188,7 @@ impl CrosstermTerminal {
             started: false,
             mouse_capture_desired: false,
             mouse_capture_active: false,
+            alternate_screen_active: false,
         })
     }
 
@@ -347,6 +363,12 @@ impl Terminal for CrosstermTerminal {
         // aligned with crossterm event-read example: disable what we enabled).
         self.release_mouse_capture_active();
 
+        // Leave alt-buffer before restoring main-screen protocols.
+        if self.alternate_screen_active {
+            let _ = execute!(io::stdout(), LeaveAlternateScreen);
+            self.alternate_screen_active = false;
+        }
+
         // Disable bracketed paste first.
         let _ = execute!(io::stdout(), DisableBracketedPaste);
 
@@ -380,6 +402,26 @@ impl Terminal for CrosstermTerminal {
 
     fn mouse_capture_active(&self) -> bool {
         self.mouse_capture_active
+    }
+
+    fn enter_alternate_screen(&mut self) {
+        if self.alternate_screen_active {
+            return;
+        }
+        let _ = execute!(io::stdout(), EnterAlternateScreen);
+        self.alternate_screen_active = true;
+    }
+
+    fn leave_alternate_screen(&mut self) {
+        if !self.alternate_screen_active {
+            return;
+        }
+        let _ = execute!(io::stdout(), LeaveAlternateScreen);
+        self.alternate_screen_active = false;
+    }
+
+    fn alternate_screen_active(&self) -> bool {
+        self.alternate_screen_active
     }
 
     fn set_title(&mut self, title: &str) {

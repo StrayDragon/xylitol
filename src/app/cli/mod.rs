@@ -459,6 +459,7 @@ pub async fn run() -> Result<(), Box<dyn std::error::Error>> {
                 editor_history_seed_sessions: seed_n,
                 restored_session: surface.session.is_some(),
                 ask_gateway: Some(ask_gateway),
+                ..Default::default()
             },
         )
         .await;

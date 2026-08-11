@@ -210,6 +210,19 @@ impl<T: Terminal> HostSession<T> {
         }
     }
 
+    /// Apply interaction mode (c2070 / ath30). Default construction is Mode A
+    /// ([`xylitol_tui::InteractionMode::Inline`]). Mode B begins alt-buffer +
+    /// mouse; Mode A leaves any prior application session.
+    pub fn apply_interaction_mode(&mut self, mode: xylitol_tui::InteractionMode) {
+        if mode.is_inline() {
+            self.tui.end_application_owned_session();
+            self.tui.set_interaction_mode(mode);
+            return;
+        }
+        self.tui.set_interaction_mode(mode);
+        self.tui.begin_application_owned_session();
+    }
+
     /// Sync MCP connecting gate from the driver (c1200).
     pub fn set_mcp_blocks_agent(&mut self, blocks: bool) {
         self.mcp_blocks_agent = blocks;
