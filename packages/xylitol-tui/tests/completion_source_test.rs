@@ -208,6 +208,77 @@ fn dollar_stub_opens_mid_line_without_leading_dollar() {
 }
 
 #[test]
+fn slash_popup_keeps_fixed_height_while_filtering() {
+    // Many slash commands → filter down to one; editor paint height must stay
+    // reserved so ApplicationOwned transcript dock does not jump (c2071 human).
+    use crossterm::event::{KeyCode, KeyEvent, KeyModifiers};
+    use xylitol_tui::Component;
+    use xylitol_tui::InputEvent;
+
+    let cmds: Vec<SlashCommand> = [
+        "exit",
+        "export",
+        "model",
+        "session-tree",
+        "session-fork",
+        "session-compact",
+        "session-export",
+        "help",
+        "theme",
+        "reload",
+        "mcp",
+        "debug",
+        "trust",
+        "status",
+        "clear",
+    ]
+    .into_iter()
+    .map(|name| SlashCommand {
+        name: name.into(),
+        description: Some(format!("desc {name}")),
+        argument_hint: None,
+        get_argument_completions: None,
+    })
+    .collect();
+
+    let mut editor = editor_with(vec![Box::new(SlashCommandSource::new(cmds))]);
+    let key = |c: char| InputEvent::Key(KeyEvent::new(KeyCode::Char(c), KeyModifiers::NONE));
+
+    let idle = Component::render(&mut editor, 80).len();
+    editor.handle_input(key('/'));
+    editor.handle_input(key('e'));
+    let rows_e = Component::render(&mut editor, 80).len();
+    assert!(
+        rows_e > idle,
+        "open popup must grow editor; idle={idle} /e={rows_e}"
+    );
+
+    editor.handle_input(key('x'));
+    let rows_ex = Component::render(&mut editor, 80).len();
+    assert_eq!(
+        rows_e, rows_ex,
+        "/e → /ex must not resize popup band ({rows_e} vs {rows_ex})"
+    );
+
+    editor.handle_input(key('i'));
+    let rows_exi = Component::render(&mut editor, 80).len();
+    assert_eq!(
+        rows_e, rows_exi,
+        "/ex → /exi must not resize popup band ({rows_e} vs {rows_exi})"
+    );
+
+    editor.handle_input(InputEvent::Key(KeyEvent::new(
+        KeyCode::Esc,
+        KeyModifiers::NONE,
+    )));
+    let rows_closed = Component::render(&mut editor, 80).len();
+    assert_eq!(
+        rows_closed, idle,
+        "clear/dismiss must restore height; idle={idle} closed={rows_closed}"
+    );
+}
+
+#[test]
 fn slash_enter_applies_selected_and_submits() {
     use std::cell::RefCell;
     use std::rc::Rc;

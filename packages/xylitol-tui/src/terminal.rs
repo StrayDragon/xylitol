@@ -35,13 +35,19 @@ const KITTY_PUSH_SEQUENCE: &str = "\x1b[>7u";
 /// terminal that doesn't know `>Nu` still answers the trailing DA).
 #[allow(dead_code)] // documented for clarity; inlined in KITTY_KEYBOARD_PROTOCOL_QUERY
 const KITTY_POP_QUERY_SEQUENCE: &str = "\x1b[?u";
-/// `CSI <u` — pop Kitty enhancement flags (restore prior state).
+/// `CSI <u` — pop one Kitty enhancement level.
+#[allow(dead_code)] // kept for docs / single-level callers; teardown uses POP_ALL
 const KITTY_POP_SEQUENCE: &str = "\x1b[<u";
+/// Deep pop — Kitty/Ghostty stack depth is typically ≤8; empties the active
+/// screen's keyboard stack (safe when already empty).
+const KITTY_POP_ALL_SEQUENCE: &str = "\x1b[<8u";
 /// `CSI c` — device attributes sentinel (terminals respond with `CSI ?..c`).
 #[allow(dead_code)] // documented for clarity; inlined in KITTY_KEYBOARD_PROTOCOL_QUERY
 const DA_QUERY_SEQUENCE: &str = "\x1b[c";
-/// The combined query pi sends at start: push flags, pop-query, then DA.
-const KITTY_KEYBOARD_PROTOCOL_QUERY: &str = "\x1b[>7u\x1b[?u\x1b[c";
+/// Query after a single Push: ask current flags + DA. **Must not** include
+/// another `\x1b[>7u` — that double-pushed the stack and left Ghostty in
+/// enhanced mode after a single pop on exit.
+const KITTY_KEYBOARD_PROTOCOL_QUERY: &str = "\x1b[?u\x1b[c";
 
 /// modifyOtherKeys mode 2 enable / reset (pi terminal.ts:322/328). Retained for
 /// parity with pi and future route-B negotiation; route A pushes Kitty
@@ -256,6 +262,21 @@ impl CrosstermTerminal {
         self.modify_other_keys_active = true;
     }
 
+    /// Pop keyboard enhancement on the **current** screen stack.
+    ///
+    /// Kitty maintains **separate** stacks for main vs alternate screens; pop
+    /// **before** leaving the alt buffer (spec). Emits a deep pop so leftover
+    /// pushes from start + alt rearm cannot leak CSI-u key reporting into the
+    /// parent shell / subsequent tmux.
+    fn pop_keyboard_enhancements(&mut self) {
+        self.write_raw(KITTY_POP_ALL_SEQUENCE);
+        // Crossterm pop as a second belt for stacks that only honor its path.
+        let _ = execute!(io::stdout(), PopKeyboardEnhancementFlags);
+        let _ = execute!(io::stdout(), PopKeyboardEnhancementFlags);
+        set_kitty_protocol_active(false);
+        self.kitty_pushed = false;
+    }
+
     fn disable_modify_other_keys(&mut self) {
         if !self.modify_other_keys_active {
             return;
@@ -385,8 +406,12 @@ impl Terminal for CrosstermTerminal {
         // aligned with crossterm event-read example: disable what we enabled).
         self.release_mouse_capture_active();
 
-        // Leave alt-buffer before restoring main-screen protocols.
+        // Kitty: pop the **alt** keyboard stack before LeaveAlternateScreen
+        // (https://sw.kovidgoyal.net/kitty/keyboard-protocol/). Leaving first
+        // left Ghostty reporting CSI-u into the shell / next tmux session.
         if self.alternate_screen_active {
+            self.pop_keyboard_enhancements();
+            self.disable_modify_other_keys();
             let _ = execute!(io::stdout(), LeaveAlternateScreen);
             self.alternate_screen_active = false;
         }
@@ -394,14 +419,8 @@ impl Terminal for CrosstermTerminal {
         // Disable bracketed paste first.
         let _ = execute!(io::stdout(), DisableBracketedPaste);
 
-        // Pop Kitty enhancement flags BEFORE draining, so late key releases
-        // do not generate new Kitty escape sequences.
-        if self.kitty_pushed {
-            self.write_raw(KITTY_POP_SEQUENCE);
-            let _ = execute!(io::stdout(), PopKeyboardEnhancementFlags);
-            set_kitty_protocol_active(false);
-            self.kitty_pushed = false;
-        }
+        // Pop any remaining **main**-screen Kitty pushes from `start()`.
+        self.pop_keyboard_enhancements();
         self.disable_modify_other_keys();
 
         // Drain residual input (slow-SSH key-release leak guard).
@@ -447,6 +466,9 @@ impl Terminal for CrosstermTerminal {
         if !self.alternate_screen_active {
             return;
         }
+        // Pop alt-screen Kitty stack while still on alt (see `stop`).
+        self.pop_keyboard_enhancements();
+        self.disable_modify_other_keys();
         let _ = execute!(io::stdout(), LeaveAlternateScreen);
         self.alternate_screen_active = false;
     }

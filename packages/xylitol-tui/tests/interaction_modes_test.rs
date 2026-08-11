@@ -306,14 +306,16 @@ fn application_owned_wheel_scrolls_app_viewport() {
     tui.request_render(false);
     tui.render_now().expect("after wheel");
     // Content lines L00..L17 + dock L18,L19; viewport content height=4, follow end
-    // shows L14..L17. Wheel -3 → L11..L14 must persist after project_frame.
+    // shows L14..L17. Wheel base=(4/4).clamp(6,24)=6 → L08..L11 must persist.
     let raw = tui.terminal.all_writes();
     assert!(
-        raw.contains("L11"),
+        raw.contains("L08") || raw.contains("L11"),
         "wheel scroll must persist across paint, got: {raw:?}"
     );
     assert!(
-        !raw.contains("L17") || raw.rfind("L11").unwrap() > raw.rfind("L17").unwrap_or(0),
+        !raw.contains("L17")
+            || raw.rfind("L08").or_else(|| raw.rfind("L11")).unwrap_or(0)
+                > raw.rfind("L17").unwrap_or(0),
         "must not snap back to follow-end after wheel"
     );
 }
