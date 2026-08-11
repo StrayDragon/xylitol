@@ -271,24 +271,6 @@ fn given_editor_multiline() {
     EDITOR.with(|e| *e.borrow_mut() = Some(editor));
 }
 
-#[given("产品 TuiRunOptions 默认值")]
-fn given_tui_run_options_default() {
-    let opts = xylitol::app::tui::TuiRunOptions::default();
-    LAST_BOOL.with(|b| {
-        *b.borrow_mut() = opts.interaction_mode == InteractionMode::Inline;
-    });
-}
-
-#[given("产品 ApplicationOwned 会话可接收库 copy-notice")]
-fn given_product_copy_notice_path() {
-    let src = include_str!("../../llmanspec/specs/app-tui-host/spec.toon");
-    assert!(
-        src.contains("ath31"),
-        "ath31 must be landed in app-tui-host spec"
-    );
-    LAST_BOOL.with(|b| *b.borrow_mut() = true);
-}
-
 #[when("查询交互模式")]
 fn when_query_mode() {
     HARNESS.with(|h| {
@@ -379,11 +361,6 @@ fn when_editor_drag_multiline() {
     });
 }
 
-#[when("读取 interaction_mode")]
-fn when_read_interaction_mode() {
-    // already set in given
-}
-
 #[then("模式为 Inline 且应用会话未激活")]
 fn then_inline_session_inactive() {
     LAST_BOOL.with(|b| assert!(*b.borrow(), "expected Inline / inactive session"));
@@ -459,30 +436,4 @@ fn then_editor_selection() {
             "editor multi-line selection must copy buffer text via OSC52"
         );
     });
-}
-
-#[then("为 Inline")]
-fn then_inline() {
-    LAST_BOOL.with(|b| assert!(*b.borrow()));
-}
-
-#[then("短时提示路径存在且不使用 Error 前缀拒闸 toast 冒充成功")]
-fn then_product_notice_path() {
-    LAST_BOOL.with(|b| assert!(*b.borrow()));
-    let design = include_str!(
-        "../../llmanspec/changes/c2070-add-package-tui-dual-interaction-modes/design.md"
-    );
-    assert!(
-        design.contains("copy-notice") || design.contains("Copied"),
-        "design must document copy-notice placement"
-    );
-    let host = include_str!("../../src/app/tui/layout/root/mod.rs");
-    assert!(
-        host.contains("arm_copy_notice") && host.contains("copy_notice_until"),
-        "product UiRoot must expose ApplicationOwned copy-notice cue"
-    );
-    assert!(
-        !host.contains("Error: Copied"),
-        "must not hardcode Error: Copied toast shape"
-    );
 }

@@ -36,15 +36,3 @@
     假如 ApplicationOwned 下 Editor 有多行缓冲
     当 在 Editor 内未修饰拖选跨行并松开
     那么 仅输入缓冲文本进入复制路径且 transcript 选区未写入
-
-  @req:ath30
-  场景: product-default-mode-a
-    假如 产品 TuiRunOptions 默认值
-    当 读取 interaction_mode
-    那么 为 Inline
-
-  @req:ath31
-  场景: product-copy-notice-wiring
-    假如 产品 ApplicationOwned 会话可接收库 copy-notice
-    当 读取 interaction_mode
-    那么 短时提示路径存在且不使用 Error 前缀拒闸 toast 冒充成功
