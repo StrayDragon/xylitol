@@ -1,32 +1,43 @@
 ---
 depends_on:
   - c2020-add-package-tui-mouse-input
-  - c2030-add-tui-fold-leader-digit-toggle
 blocks:
   - c2050-update-activity-fold-mouse-leader
 ---
 
 # 鼠标点击折叠三角 + 折叠标记字形
 
-> **一句话**：点折叠头行标记（倒三角/三角）toggle 单块；Unicode 用更清晰的折叠字形，Ascii 保留 `>`/`v`。
+> **一句话**：点折叠头行标记（倒三角/三角）toggle **单块**；键盘 `Alt+E` 仍为 **全局** tools；本 change **自带** per-block 覆盖表（不再依赖已废弃的 c2030 leader）。
 
 ## Why
 
-键盘 leader（`c2030`）解决定点折叠的无鼠标路径；有鼠标时，点击标记是最低学习成本（对齐 Web 同源「点 ▶/▼」心智，见 `docs/roadmaps/Web与TUI同源.md`）。`c1760` 已预留「segment/entry ↔ 行距」缝，但引擎无 Mouse、产品无 hit-test。
+今日 `Alt+E` 全局翻转所有 tool/diff（并连带 compaction）。定点折叠的最低学习成本是 **点 ▶/▼**（对齐 Web 同源，见 `docs/roadmaps/Web与TUI同源.md`）。
 
-字形：今日 `GlyphSet::fold/unfold` = `▶`/`▼`（Ascii `>`/`v`）。用户希望「更好看的倒三角/三角」代表可折叠——在**不破坏宽度/旁注**前提下微调（候选见调研；propose 目视拍板）。
+**产品分工（2026-08-11 拍板，弃 c2030 leader）**：
+
+| 路径 | 作用 |
+|---|---|
+| **键盘** `Alt+E`（及既有 Ctrl+T / Ctrl+O） | **全局** 展开/折叠 |
+| **鼠标** 点头行标记 | **单块** per-block 覆盖 toggle |
+
+弃键盘 leader+数字的理由：β′ 屏外块一改行高，贴底 content-end 重绘会「跳回底部」；终端历史上滚无法廉价保留。鼠标点的是 **live 视口内可见头**——用户已在贴底画面上，重绘不额外制造「从历史上滚跳回」的断裂感（行高变化仍会重排上方内容，但交互锚点仍是眼前的标记）。
+
+引擎侧：`c2020` 已提供 opt-in Mouse；产品尚无 hit-test / 覆盖表。
+
+字形：今日 `GlyphSet::fold/unfold` = `▶`/`▼`（Ascii `>`/`v`）。可在不破坏宽度/旁注前提下微调。
 
 ## What Changes
 
-1. **依赖 `c2020`**：产品开 mouse capture（至少在需要点击折叠时）；点击落在折叠标记（或整行头，策略钉）→ toggle 对应 entry/segment。
-2. **Hit-test 表**：render 时维护 `fold_hit_regions: [(y_range, x_range, target_id)]`（或行号→id）；仅头行标记列优先，避免点正文误触。
-3. **与 `c2030` 共用块级覆盖表**：点击与数字键同一语义动作（跨面动作 id 意向：`fold.toggle(target)`）。
-4. **字形**：更新 `GlyphSet`（产品）折叠标记；宽度 MUST 仍为单列可视宽；Ascii 回退不变或同步美化。
-5. **非目标**：拖拽选区、滚轮改 scroll（另案）；L2/L3 段点击细节由 `c2050` 收口。
+1. **依赖 `c2020`**：产品在需要点击折叠时开 mouse capture；点击落在折叠标记（或整行头，propose 钉）→ toggle 对应 entry。
+2. **Per-block 覆盖表**（本 change 落地，原拟 c2030）：`tools_expanded` 为默认；`overrides[target]` 优先；全局 `Alt+E` **改 default 并清空 overrides**（避免「按了全局没反应」）。Target：Tool/Ask 用稳定 `id`；Diff 用内容指纹或合成键。
+3. **Hit-test 表**：render 维护 `fold_hit_regions`（行/列 → target）；优先标记列，避免点正文误触。复用/扩展 paint 时记录的头行命中（若有）。
+4. **Paint**：单块 toggle 进 fingerprint，自该 entry truncate（ath25）；**禁止**全历史 MD 重解析。
+5. **字形**：更新产品 `GlyphSet` 折叠标记；宽度 MUST 单列可视宽；Ascii 回退可读。
+6. **非目标**：键盘 leader/数字编号；拖拽选区；滚轮改 app scroll；L2/L3 段点击（`c2050`）；产品自管 scroll / 锚点视口（高成本另案）。
 
 ## Capabilities（意向）
 
-- `app-tui-transcript` — hit-test + toggle
+- `app-tui-transcript` — 覆盖表 + hit-test + toggle
 - `app-tui-host` — Mouse 路由到 scrollback（Editor 未抢时）
 - 产品 `GlyphSet` — 折叠标记
 
@@ -34,52 +45,52 @@ blocks:
 
 | 层 | 影响 |
 |---|---|
-| 渲染 | 每帧可附带 hit 表；须与 paint-cache 同代指纹，避免错点 |
-| 输入 | Mouse Down/Up 去抖；忽略 move；Shift+click 策略跟 `c2020` |
-| 性能 | hit 表 O(可见折叠头)；toggle 只失效目标 entry 及之后行高（对齐 ath25） |
+| 渲染 | hit 表与 paint-cache 同代；toggle 局部 miss |
+| 输入 | Mouse Down/Up 去抖；忽略 move；Shift+click 跟 `c2020` |
+| 键位 | **不改** `Alt+E` 全局语义（除非另钉拆 compaction） |
+| 性能 | hit O(可见折叠头) |
 
 ## 依赖与排序
 
 ```text
-c2020 ──┐
-        ├──depends→ [本 change c2040] ──blocks→ c2050
-c2030 ──┘
+c2020 ──depends→ [本 change c2040] ──blocks→ c2050
 ```
 
-- **硬依赖** `c2020`（Mouse 事件）+ `c2030`（同一 per-block 覆盖表 / `fold.toggle`；禁止本 change 另起第二套状态）。
+- **硬依赖**仅 `c2020`（Mouse）。
 - **`blocks`**：`c2050`（段级点击语义）。
 
 ## Out of scope
 
-- Leader 编号模式（`c2030`）
+- Fold-leader / 数字定点（**已废弃**原 `c2030`）
 - Activity L2/L3 摘要文案（`c1760`）
-- 改差分引擎算法
+- 改差分引擎算法；产品自管 transcript scroll
 
 ## Open Questions
 
 1. 点击命中：仅标记单元格 vs 整条摘要/头行？
 2. 折叠字形最终选：`▾`/`▸`、`▼`/`▶`、`▽`/`▷`，或其他？
 3. mouse 默认开还是「首次需要点击折叠时再 Enable」？
+4. 全局 `Alt+E` 是否仍连带 compaction，或本波顺手拆出独立键？（与弃 leader 正交，propose 可钉）
 
 ## 验证（自动化 + 人类）
 
 | 层 | 自动化 | 人类 |
 |---|---|---|
-| Harness | 合成 `Mouse Down` 在标记列 → 单块 toggle；点正文 → 态不变且 **无** 多余 render；字形 `visible_width==1` | Kitty：点 ▾/▶ 头；误点 Markdown 正文不折 |
-| 与 c2020 | `Moved` 洪水下 frame 不涨（复用 c2020 计数测） | 开 capture 晃鼠标无空转 |
-| 字形 | Unicode/Ascii 快照或单测 | `XYLITOL_TUI_GLYPH_SET=ascii` 回退可读 |
-| PTY（可选） | 点击折叠冒烟（坐标脆弱 → 优先 harness） | 真机点一次即可 |
+| Harness | 合成 `Mouse Down` 在标记列 → 单块 toggle；点正文 → 态不变；全局 Alt+E 清覆盖 | Kitty/foot：点标记收起/展开；误点 Markdown 不折 |
+| Paint | 单块 toggle miss 上界（ath25） | 点眼前块时无明显「从历史上滚跳回」断裂（已在 live 底） |
+| 字形 | `visible_width==1`；Ascii 回退 | `XYLITOL_TUI_GLYPH_SET=ascii` |
 
-**人类最短路径**：开 mouse → 点折叠标记收起 → 再点展开 → 拖选一段（若默认关 capture 则先确认已开）知悉选区 tradeoff。
+**人类最短路径**：开 mouse → 点可见折叠标记收起 → 再点展开 → `Alt+E` 全局翻转并清覆盖。
 
 ## Ethics
 
 - risk_level: low–medium
-- prohibited_actions: 点正文大面积误 toggle；无 `c2020` 透传策略就默认常开 capture
-- required_evidence: harness 合成 Mouse→单块 toggle；错点正文不变；字形宽度单测
+- prohibited_actions: 点正文大面积误 toggle；无 `c2020` 透传策略就默认常开 capture；复活默认 Alt+digit leader
+- required_evidence: harness Mouse→单块 toggle；错点正文不变；字形宽度；覆盖与全局 Alt+E 清表
 - escalation_policy: 默认 EnableMouse 改变选区习惯须确认
 
 ## Further Notes
 
-- 调研：[`research/fold-glyph-and-hittest.md`](./research/fold-glyph-and-hittest.md)；差分适切性见 [`../c2020-add-package-tui-mouse-input/research/diff-engine-mouse-fit.md`](../c2020-add-package-tui-mouse-input/research/diff-engine-mouse-fit.md)
-- `c1760` 已拍标记 `▶/▼`、不做 `(+)/(-)`——本草案可**微调**同一族三角，不引入加减号
+- 调研：[`research/fold-glyph-and-hittest.md`](./research/fold-glyph-and-hittest.md)；差分适切性见 archive `c2020` `diff-engine-mouse-fit.md`
+- `c1760` 已拍标记 `▶/▼`、不做 `(+)/(-)`——本草案可**微调**同一族三角
+- **2026-08-11**：废弃 `c2030` fold-leader（屏外数字键 + 贴底重绘体验差）；定点改由本 change 鼠标路径独占
