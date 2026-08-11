@@ -1,6 +1,6 @@
 # Design: c1955 Agent Todo 子系统
 
-> **阶段**：Designed / pre-start（**未** Branch binding；禁止本波改 live specs / 代码）。
+> **阶段**：Specs landed（Branch binding 已完成；本波仍禁止写应用代码，仅合约）。
 > **产品优先线 #1**：先立 Todo SSOT；状态栏族（`c1895`/`c1896`…）仅作日后可选投影。
 > **书指针**：Ch2 实验 2-8（`rewrite_todo_list` / `update_todo_status`）→ 形状灵感；书语不进 live specs。
 > **同源**：TUI 与内部状态 MUST 同源（`docs/roadmaps/Web与TUI同源.md`）；无第二套「只教 TUI」故事。
@@ -180,8 +180,8 @@ TUI / resume：扫 leaf 分支上 latest custom_type=="agent_todo"
 | Open Questions 已钉（D1–D10） | ✅ |
 | design.md 领域 / 持久 / 工具 / TUI / 栏边界 | ✅ |
 | tasks.md 垂直切片 | ✅ |
-| Branch binding（`change start`） | ⬜ **未做**（本波硬禁） |
-| Specs landing | ⬜ start 之后 |
-| `readyToImplement` | ⬜ 需 Full ∧ specsLanded |
+| Branch binding（`change attach`） | ✅ `sdd/c1955-add-agent-todo-subsystem` |
+| Specs landing | ✅ `agent-todo` + `agent-tools` 修订 |
+| `readyToImplement` | ✅ Full ∧ specsLanded |
 
-**结论**：规划壳已达 **Designed / pre-start**。下一步人类确认后执行 `llman sdd change start c1955-add-agent-todo-subsystem`（干净树 + 默认分支），再 Specs landing。
+**结论**：Specs landing 完成，可进入 `llman-sdd-apply`。

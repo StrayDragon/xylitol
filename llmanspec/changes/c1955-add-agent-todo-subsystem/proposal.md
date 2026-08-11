@@ -8,7 +8,7 @@ checkpointed: false
 # Agent Todo 子系统（TUI + 工具 + 内部流转）
 > **一句话**：会话内持久 Todo SSOT：TUI checklist + LLM 工具 + resume 共享，治目标漂移/漏子任务；当前产品优先线
 > **当前排序**：#1（2026-08-10 自 delayed-changes 升格入 active）
-> **阶段**：Designed / pre-start（见 `design.md` / `tasks.md`；**未** `change start`）
+> **阶段**：Specs landed / `readyToImplement`（Branch binding 已 attach；见 `design.md` / `tasks.md`）
 
 > **产品优先于状态栏**：先立 Todo 产品 SSOT（排序 #1），状态栏族（排序 #5–9）仅作可选投影。
 > **书指针**：Ch2 实验 2-8「TODO 列表管理」（`rewrite_todo_list` / `update_todo_status`）；Ch5 coding 任务拆解。书语不进 live specs。
@@ -83,4 +83,4 @@ checkpointed: false
 | deferred_alongside | `c1895`–`c1898`（状态栏族 → `llmanspec/delayed-changes/next-todo/`） |
 | captured | 2026-08-05 |
 | designed | 2026-08-12 |
-| status | designed / pre-start（未 branch） |
+| status | specs landed（branch attached；待 apply） |
