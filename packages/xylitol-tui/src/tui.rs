@@ -419,13 +419,12 @@ impl<T: Terminal> TUI<T> {
         self.interaction_mode
     }
 
-    /// Set the mode flag without entering/leaving alt-buffer. Prefer
-    /// [`Self::with_interaction_mode`] at construction; for a live switch,
-    /// call [`Self::end_application_owned_session`] / [`Self::finish`]
-    /// / [`Self::finish_application_owned`] then rebuild the TUI.
+    /// Set the mode flag without entering/leaving alt-buffer.
     ///
-    /// If an application session is active and `mode` is Inline, this ends the
-    /// session so flag and TTY state stay aligned.
+    /// Prefer [`Self::with_interaction_mode`] at construction. This is **not** a
+    /// restack / live-switch API — hosts that need another mode MUST build a new
+    /// `TUI` (product: new `HostSession`). If an application session is active and
+    /// `mode` is Inline, this ends the session so flag and TTY state stay aligned.
     pub fn set_interaction_mode(&mut self, mode: InteractionMode) {
         if mode.is_inline() && self.application_session_active {
             self.end_application_owned_session();

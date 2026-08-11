@@ -152,9 +152,21 @@ pub struct HostSession<T: Terminal> {
 }
 
 impl<T: Terminal> HostSession<T> {
-    /// Create a session. `rebuild(mode)` supplies the root component tree.
+    /// Create a session (Inline interaction mode). `rebuild(mode)` supplies the root tree.
     pub fn new(
         terminal: T,
+        rebuild: impl FnMut(LayoutMode) -> Vec<Box<dyn xylitol_tui::Component>> + 'static,
+    ) -> Self {
+        Self::new_with_interaction_mode(terminal, xylitol_tui::InteractionMode::Inline, rebuild)
+    }
+
+    /// Create a session with a fixed interaction mode chosen at construction.
+    ///
+    /// Product hosts MUST pick the mode here (or via
+    /// [`Self::new_product_ui_with_meta_mode`]) — **no** mid-session restack API.
+    pub fn new_with_interaction_mode(
+        terminal: T,
+        interaction_mode: xylitol_tui::InteractionMode,
         mut rebuild: impl FnMut(LayoutMode) -> Vec<Box<dyn xylitol_tui::Component>> + 'static,
     ) -> Self {
         let cols = terminal.columns();
@@ -164,7 +176,7 @@ impl<T: Terminal> HostSession<T> {
         } else {
             LayoutMode::Ready
         };
-        let mut tui = TUI::new(terminal);
+        let mut tui = xylitol_tui::TUI::with_interaction_mode(terminal, interaction_mode);
         for child in rebuild(mode) {
             tui.add_child(child);
         }
@@ -210,40 +222,6 @@ impl<T: Terminal> HostSession<T> {
         }
     }
 
-    /// Apply interaction mode (c2070 / ath30). Default construction is Inline.
-    /// Switching modes restacks: end ApplicationOwned session → rebuild root children →
-    /// begin ApplicationOwned if requested → force clear paint.
-    pub fn apply_interaction_mode(&mut self, mode: xylitol_tui::InteractionMode) {
-        let already = self.tui.interaction_mode() == mode
-            && mode.is_application_owned() == self.tui.application_session_active();
-        if already {
-            if mode.is_application_owned() {
-                self.sync_dock_rows();
-            }
-            return;
-        }
-
-        // Tear down prior ApplicationOwned session (mouse + alt) before rebuild.
-        self.tui.end_application_owned_session();
-        self.tui.set_interaction_mode(mode);
-
-        // Restack: drop root children and rebuild from the layout factory
-        // (same UiRoot Rc for product sessions).
-        self.tui.clear_children();
-        for child in (self.rebuild)(self.mode) {
-            self.tui.add_child(child);
-        }
-        self.tui.set_focus(Some(0));
-
-        if mode.is_application_owned() {
-            self.sync_dock_rows();
-            self.tui.begin_application_owned_session();
-            self.sync_dock_rows();
-        }
-        self.tui.request_render(true);
-        self.paint_dirty = true;
-    }
-
     /// Register lower chrome as ApplicationOwned dock (status/editor/footer…).
     /// Prefers last-frame measured rows; falls back to a chrome estimate.
     pub fn sync_dock_rows(&mut self) {
@@ -284,8 +262,26 @@ impl<T: Terminal> HostSession<T> {
         )
     }
 
-    /// Product UI with footer identity (`cwd · model`).
+    /// Product UI with footer identity (`cwd · model`); Inline interaction mode.
     pub fn new_product_ui_with_meta(terminal: T, cwd: String, model: String) -> Self {
+        Self::new_product_ui_with_meta_mode(
+            terminal,
+            cwd,
+            model,
+            xylitol_tui::InteractionMode::Inline,
+        )
+    }
+
+    /// Product UI with a fixed interaction mode chosen at construction (ath30).
+    ///
+    /// **No mid-session mode switch** — pass the desired mode here (or rebuild
+    /// the whole host). ApplicationOwned begins alt+mouse after chrome is wired.
+    pub fn new_product_ui_with_meta_mode(
+        terminal: T,
+        cwd: String,
+        model: String,
+        interaction_mode: xylitol_tui::InteractionMode,
+    ) -> Self {
         // c1090: install tui.* + app.* before any input listeners run.
         // Owned + thread-local scope — no process-global write (tests stay parallel).
         let manager = {
@@ -306,13 +302,24 @@ impl<T: Terminal> HostSession<T> {
         ui_root.borrow_mut().set_layout_meta(cwd.clone(), model);
         ui_root.borrow_mut().set_term_rows(terminal.rows() as usize);
         let quit_flag = Arc::new(AtomicBool::new(false));
-        let mut session = Self::new(terminal, shared_ui_root_rebuild(ui_root.clone()));
+        let mut session = Self::new_with_interaction_mode(
+            terminal,
+            interaction_mode,
+            shared_ui_root_rebuild(ui_root.clone()),
+        );
         session.layout_cwd = cwd;
         session.ui_root = Some(ui_root.clone());
         session.quit_flag = quit_flag.clone();
         session.keybindings = Some(keybindings);
         session._keybindings_scope = Some(keybindings_scope);
         install_ui_root_key_listeners(&ui_root, &quit_flag, &mut session.tui);
+        if interaction_mode.is_application_owned() {
+            session.sync_dock_rows();
+            session.tui.begin_application_owned_session();
+            session.sync_dock_rows();
+            session.tui.request_render(true);
+            session.paint_dirty = true;
+        }
         session
     }
 

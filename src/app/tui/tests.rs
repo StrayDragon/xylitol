@@ -2438,29 +2438,31 @@ fn interaction_mode_defaults_to_inline() {
 }
 
 #[test]
-fn interaction_application_owned_restacks_and_registers_dock() {
-    let mut session = HostSession::new_product_ui(TestTerminal::new(80, 24));
-    session.render_now().unwrap();
-    session.apply_interaction_mode(xylitol_tui::InteractionMode::ApplicationOwned);
+fn interaction_application_owned_at_construction_registers_dock() {
+    let mut session = HostSession::new_product_ui_with_meta_mode(
+        TestTerminal::new(80, 24),
+        "/tmp".into(),
+        "model".into(),
+        xylitol_tui::InteractionMode::ApplicationOwned,
+    );
     assert!(session.tui.application_session_active());
     assert!(session.tui.mouse_capture_enabled());
     assert!(session.tui.dock_rows() >= 4);
     session.render_now().unwrap();
     // Measured dock after paint should stay above the input band floor.
     assert!(session.tui.dock_rows() >= 4);
-
-    session.apply_interaction_mode(xylitol_tui::InteractionMode::Inline);
-    assert!(!session.tui.application_session_active());
-    assert!(!session.tui.mouse_capture_enabled());
-    assert!(!session.tui.terminal.alternate_screen_active());
 }
 
 #[test]
 fn application_owned_copy_notice_chrome_ath31() {
     use crossterm::event::{KeyModifiers, MouseButton, MouseEvent, MouseEventKind};
 
-    let mut session = HostSession::new_product_ui(TestTerminal::new(80, 24));
-    session.apply_interaction_mode(xylitol_tui::InteractionMode::ApplicationOwned);
+    let mut session = HostSession::new_product_ui_with_meta_mode(
+        TestTerminal::new(80, 24),
+        "/tmp".into(),
+        "model".into(),
+        xylitol_tui::InteractionMode::ApplicationOwned,
+    );
     session.push_scroll_notice("hello world for mode-b copy");
     session.render_now().unwrap();
 
@@ -2525,8 +2527,12 @@ fn application_owned_copy_notice_chrome_ath31() {
 
 #[test]
 fn application_owned_copy_notice_arms_copied_cue_not_error_toast() {
-    let mut session = HostSession::new_product_ui(TestTerminal::new(80, 24));
-    session.apply_interaction_mode(xylitol_tui::InteractionMode::ApplicationOwned);
+    let mut session = HostSession::new_product_ui_with_meta_mode(
+        TestTerminal::new(80, 24),
+        "/tmp".into(),
+        "model".into(),
+        xylitol_tui::InteractionMode::ApplicationOwned,
+    );
     session.render_now().unwrap();
     let root = session.ui_root().expect("ui root");
     root.borrow_mut().arm_copy_notice();
