@@ -18,7 +18,7 @@ checkpointed: false
 > **角色**：`packages/xylitol-tui` 顶层基础——先构筑双模式，再谈折叠/点击/viewport。
 > **FF 状态**：规划壳 + 调研准备 → Branch binding → Specs landing；产品默认仍 Mode A，直至显式切 B。
 
-> **一句话**：库支持 **Mode A（inline / emulator-owned）** 与 **Mode B（alt-screen / application-owned）**；产品近期继续打磨 inline；日后可切 alt-screen。Mode B **默认 MUST** 提供不亚于今日 inline 终端选区的：拖选、跨页/越界续选、松手自动复制等。
+> **一句话**：库支持 **Mode A（inline / emulator-owned）** 与 **Mode B（alt-screen / application-owned）**；本 change 把 Mode B 做成**可复用库基础**（视口、transcript 选区、dock 夹边续选、Editor 独立多行选区、退出 dump、host seam），产品默认仍 Mode A，下游可换栈接入。
 
 ## Why
 
