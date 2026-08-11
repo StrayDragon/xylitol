@@ -4,6 +4,8 @@
 > Change：`c2070-add-package-tui-dual-interaction-modes`
 > 问题：产品 app TUI 是否应放弃双模式、只交 Mode B（alt-screen / `ApplicationOwned`），Mode A 仅留在 `packages/xylitol-tui` / demos / escape hatch？还是像 Pi 一样产品双模式？
 > 性质：Change 调研；**不是** live specs；未改 specs、未 commit。
+>
+> **历史注（2026-08-12）**：产品侧 `HostSession::apply_interaction_mode` 热切换栈 **已删除**；模式仅构造期绑定。下文「换栈 / A↔B 往返」作废，仅作决策对照。
 
 ## 1. Verdict options（三选，非强制单一答案）
 

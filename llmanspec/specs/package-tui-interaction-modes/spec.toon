@@ -3,7 +3,7 @@ name: "package-tui-interaction-modes"
 purpose: "packages/xylitol-tui 双交互模式（Inline 主屏 / ApplicationOwned 应用自管视口）完整库基础：视口、transcript 选区、dock 拖选夹边、Editor 独立多行选区、复制与短提示、生命周期，供产品 TUI 下游迁移。"
 valid_scope[2]: "packages/xylitol-tui/",tests/
 requirements[15]{req_id,title,statement}:
-  ptim01,"dual-mode-seam","xylitol-tui MUST 支持两种交互模式：Inline（主屏差分 / 终端 scrollback 与终端原生选区）与 ApplicationOwned（应用自管视口 + 应用内选区）。库 MUST 提供可观察的模式构造或切换入口；一次会话 MUST 只有一个主模式。运行中切换 MUST 等价于拆旧栈再装新栈（teardown 后再启动），MUST NOT 在同一渲染栈上混用终端原生选区与应用内选区。"
+  ptim01,"dual-mode-seam","xylitol-tui MUST 支持两种交互模式：Inline（主屏差分 / 终端 scrollback 与终端原生选区）与 ApplicationOwned（应用自管视口 + 应用内选区）。库 MUST 提供可观察的**构造期**模式入口；一次会话 MUST 只有一个主模式。MUST NOT 在同一渲染栈上混用终端原生选区与应用内选区。产品 host MUST NOT 提供运行中热切（改模式 = 新建 TUI/HostSession 或结束进程）；库 API MUST NOT 把「改标志」包装成无感热切。"
   ptim02,"mode-b-alt-viewport","ApplicationOwned MUST 使用应用自管视口承载 transcript（滚轮与程序滚动归应用）。ApplicationOwned 进入路径 SHOULD 经终端 alt-buffer（如 CSI ?1049h 或等价）；无论是否经 alt-buffer，退出/teardown MUST 恢复进入前的缓冲与光标可见性约定，且 MUST 关闭本模式启用的 mouse capture。ApplicationOwned 退出后 SHOULD 将 transcript（及末帧 dock）转储到主屏 scrollback，便于用户上翻会话（库默认开启，MAY 可配置关闭）。"
   ptim03,"mode-b-drag-select","ApplicationOwned 在 mouse capture 开启且应用会话已 begin 时 MUST 将未修饰左键拖选接到应用内选区：按下记录锚点、拖动更新焦点、选区高亮出现在绘出的 transcript 可见行上。空选（锚点与焦点重合）MUST NOT 触发复制成功路径。"
   ptim04,"mode-b-edge-autoscroll","ApplicationOwned 拖选过程中，当指针贴近视口顶或底边缘时 MUST 自动滚动 transcript 并扩展选区，使选区可跨出当前可见页（越界续选）。自动滚动 MUST 与应用视口共用同一滚动机制，MUST NOT 依赖终端 scrollback 完成续选。引擎 idle/tick 路径 MUST 能推进该自动滚动。"
@@ -16,7 +16,7 @@ requirements[15]{req_id,title,statement}:
   ptim11,"mode-b-suspend-restores-session","ApplicationOwned 应用会话激活期间若经 suspend/resume 终端（如外部编辑器），resume 后 MUST 重新进入 ApplicationOwned 会话所持有的 alt-buffer（若使用）与 mouse capture，使 application_session_active 与终端实际状态一致。"
   ptim12,"mode-b-dock-drag-clamp","ApplicationOwned 在 transcript 拖选进行中，指针移入 dock 矩形时 MUST 将焦点夹到 transcript 视口底边（或等价）并继续扩展选区，MUST NOT 因此清除选区或提前触发复制取消；松手在 dock 内时 MUST 按正常松手路径结束选区（含默认复制）。已完成（非拖动中）的 transcript 选区在指针移过 dock 时 MUST NOT 被自动清除。按下始于 dock 时仍适用 ptim06（不启 transcript 选区）。"
   ptim13,"mode-b-editor-selection","ApplicationOwned 下主输入面（Editor 或等价）MUST 提供与 transcript 选区相互独立的应用内选区：未修饰拖选 MUST 能覆盖 Editor 缓冲中的多行；高亮与复制 MUST 仅作用于输入缓冲文本，MUST NOT 写入 transcript 选区状态。按下始于 dock/Editor 时，transcript 选区 MAY 被清除以让出交互。库 MUST 提供可测的 Editor 选区 seam（包级单测），供产品 TUI 下游接线。"
-  ptim14,"mode-b-library-host-seam","xylitol-tui MUST 将 ApplicationOwned 作为可复用库基础暴露给下游 host：至少包括模式构造/begin/end、dock 行登记、视口投影、选区与 OSC52、复制成功短提示信号、退出主屏 dump 的可观察行为。产品 app host MUST 能在不 fork 引擎的前提下换栈接入 ApplicationOwned（默认产品面仍可为 Inline）。本要求不规定产品默认切 ApplicationOwned，也不规定折叠点击。"
+  ptim14,"mode-b-library-host-seam","xylitol-tui MUST 将 ApplicationOwned 作为可复用库基础暴露给下游 host：至少包括构造期模式入口/begin/end、dock 行登记、视口投影、选区与 OSC52、复制成功短提示信号、退出主屏 dump 的可观察行为。产品 app host MUST 能在不 fork 引擎的前提下于启动时接入 ApplicationOwned（默认产品面仍可为 Inline）。本要求不规定产品默认切 ApplicationOwned，不规定运行中热切，也不规定折叠点击。"
   ptim15,"mode-b-copy-notice","ApplicationOwned 在松手复制成功（非空选且实际发出复制路径）后 MUST 发出可观察的短时 copy-notice 信号（pending 标志、回调或等价），供 host/demo 展示用户可见提醒。空选、复制关闭或未发出复制时 MUST NOT 发出该信号。提示展示 MUST NOT 写入 transcript / ScrollNotice；展示 TTL SHOULD 约 1.5–3 秒后自动消失。库本身 MAY 只提供信号而不强制绘出文案；若库内绘出，落点 SHOULD 在 dock 带内（输入面上方）单行。"
 scenarios[15]{req_id,id,given,when,then,feature}:
   ptim01,ptim01-unit,"dual-mode-seam 由包级单测覆盖",审查实现与对应测试,"行为符合本 requirement 陈述",false
