@@ -312,8 +312,6 @@ pub struct Editor {
     screen_origin_col: u16,
     /// Last mouse handler dirtied selection / clipboard (for rerender policy).
     mouse_dirty: bool,
-    /// Last editor-local pointer while selecting (edge auto-scroll).
-    selection_pointer: Option<(usize, usize)>,
     pub on_submit: Option<Box<dyn FnMut(String)>>,
     pub on_change: Option<Box<dyn FnMut(&str)>>,
     pub disable_submit: bool,
@@ -357,7 +355,6 @@ impl Editor {
             screen_origin_row: 0,
             screen_origin_col: 0,
             mouse_dirty: false,
-            selection_pointer: None,
             on_submit: None,
             on_change: None,
             disable_submit: false,
@@ -1716,82 +1713,52 @@ impl Editor {
             MouseEventKind::Down(MouseButton::Left) => {
                 let Some(cell) = self.local_to_buffer(col, row) else {
                     self.selection.clear();
-                    self.selection_pointer = None;
                     return false;
                 };
                 self.selection.anchor = Some(cell);
                 self.selection.focus = Some(cell);
                 self.selection.dragging = true;
-                self.selection_pointer = Some((col, row));
                 true
             }
             MouseEventKind::Drag(MouseButton::Left) | MouseEventKind::Moved => {
                 if !self.selection.dragging {
                     return false;
                 }
-                self.selection_pointer = Some((col, row));
-                let mut changed = self.selection_edge_scroll(row);
                 let cell = self
                     .local_to_buffer(col, row)
                     .or_else(|| self.clamp_local_to_buffer(col, row));
                 if let Some(cell) = cell {
                     self.selection.focus = Some(cell);
-                    changed = true;
+                    return true;
                 }
-                changed
+                false
             }
             MouseEventKind::Up(MouseButton::Left) => {
                 if !self.selection.dragging {
                     return false;
                 }
                 self.selection.dragging = false;
-                self.selection_pointer = None;
                 if let Some(cell) = self
                     .local_to_buffer(col, row)
                     .or_else(|| self.clamp_local_to_buffer(col, row))
                 {
                     self.selection.focus = Some(cell);
                 }
-                if self.copy_on_release {
-                    self.maybe_copy_selection(sink);
-                }
+                // Click (no drag span): clear ghost highlight; do not copy.
+                // Editor viewport edge auto-scroll is intentionally unsupported
+                // (human cut 2026-08-12) — former edge-zone ticks expanded
+                // focus away from the click cell and left a false selection.
                 if !self.selection.has_selection() {
                     self.selection.clear();
+                    return true;
+                }
+                if self.copy_on_release {
+                    self.maybe_copy_selection(sink);
                 }
                 true
             }
             _ => false,
         }
-    }
-
-    /// While dragging onto the ↑/↓ more borders (or near first/last content
-    /// rows), scroll the editor viewport. Zone is intentionally wide and step
-    /// large so ptim13 edge-scroll stays responsive without relying on dense
-    /// mouse-move events (tick also drives this while dragging).
-    fn selection_edge_scroll(&mut self, local_row: usize) -> bool {
-        const EDGE_SCROLL_STEP: usize = 6;
-        /// Top: border + first two content rows. Bottom: last two content rows
-        /// and anything past the content band.
-        const EDGE_ZONE_ROWS: usize = 2;
-        let max_vis = self.content_max_visible();
-        let layout_len = self.layout_text(self.last_width.max(1)).len();
-        if layout_len == 0 {
-            return false;
-        }
-        if local_row <= EDGE_ZONE_ROWS && self.scroll_offset > 0 {
-            let step = EDGE_SCROLL_STEP.min(self.scroll_offset);
-            self.scroll_offset -= step;
-            return true;
-        }
-        let bottom_start = self.last_content_rows.saturating_sub(EDGE_ZONE_ROWS - 1);
-        let at_bottom_edge = local_row >= bottom_start.max(1);
-        let room = layout_len.saturating_sub(self.scroll_offset + max_vis);
-        if at_bottom_edge && room > 0 {
-            let step = EDGE_SCROLL_STEP.min(room);
-            self.scroll_offset += step;
-            return true;
-        }
-        false
     }
 
     fn content_max_visible(&self) -> usize {
@@ -2123,27 +2090,13 @@ impl Component for Editor {
     }
 
     fn tick(&mut self) -> bool {
-        let mut changed = false;
+        // Paste-burst catch-up only. Editor selection does not auto-scroll the
+        // viewport while dragging (edge-scroll removed — caused click ghosts).
         if self.paste_burst_needs_paint && !self.paste_burst_paint_suppressed() {
             self.paste_burst_needs_paint = false;
-            changed = true;
+            return true;
         }
-        if !self.selection.dragging {
-            return changed;
-        }
-        let Some((col, row)) = self.selection_pointer else {
-            return changed;
-        };
-        if !self.selection_edge_scroll(row) {
-            return changed;
-        }
-        if let Some(cell) = self
-            .local_to_buffer(col, row)
-            .or_else(|| self.clamp_local_to_buffer(col, row))
-        {
-            self.selection.focus = Some(cell);
-        }
-        true
+        false
     }
 
     fn invalidate(&mut self) {}
@@ -2659,7 +2612,9 @@ mod tests {
     }
 
     #[test]
-    fn editor_selection_edge_scroll_reveals_above() {
+    fn editor_click_on_scrolled_top_row_does_not_ghost_select() {
+        // Regression: former edge-zone scroll on Down/tick remapped focus to
+        // earlier buffer cells, so a plain click looked like "select all before".
         use crate::selection::RecordingClipboardSink;
         let mut e = Editor::new(
             t(),
@@ -2682,18 +2637,59 @@ mod tests {
             "expected scrolled editor, offset={offset_before}"
         );
         let mut sink = RecordingClipboardSink::default();
+        // Click mid first visible content row (edge zone under old logic).
         e.handle_mouse_local(
-            &mouse(MouseEventKind::Down(MouseButton::Left), 0, 1),
+            &mouse(MouseEventKind::Down(MouseButton::Left), 2, 1),
             &mut sink,
         );
-        assert!(e.handle_mouse_local(
+        // Simulate terminal Moved flood + idle tick while button held.
+        let _ = e.handle_mouse_local(&mouse(MouseEventKind::Moved, 2, 1), &mut sink);
+        assert!(!e.tick(), "click hold must not edge-scroll the viewport");
+        e.handle_mouse_local(
+            &mouse(MouseEventKind::Up(MouseButton::Left), 2, 1),
+            &mut sink,
+        );
+        assert_eq!(
+            e.scroll_offset, offset_before,
+            "plain click must not change scroll"
+        );
+        assert!(!e.has_selection(), "plain click must not leave a selection");
+        assert!(sink.copies.is_empty(), "plain click must not copy");
+    }
+
+    #[test]
+    fn editor_drag_onto_more_border_does_not_autoscroll() {
+        // Product cut: no editor viewport edge auto-scroll while selecting.
+        use crate::selection::RecordingClipboardSink;
+        let mut e = Editor::new(
+            t(),
+            EditorOptions {
+                padding_x: 0,
+                terminal_rows: 8,
+            },
+            clk(),
+        );
+        e.set_text(
+            (0..12)
+                .map(|i| format!("L{i:02}"))
+                .collect::<Vec<_>>()
+                .join("\n"),
+        );
+        let _ = e.render(40);
+        let offset_before = e.scroll_offset;
+        assert!(offset_before > 0);
+        let mut sink = RecordingClipboardSink::default();
+        e.handle_mouse_local(
+            &mouse(MouseEventKind::Down(MouseButton::Left), 0, 2),
+            &mut sink,
+        );
+        e.handle_mouse_local(
             &mouse(MouseEventKind::Drag(MouseButton::Left), 0, 0),
-            &mut sink
-        ));
-        assert!(
-            e.scroll_offset < offset_before,
-            "drag onto ↑ more must scroll up: before={offset_before} after={}",
-            e.scroll_offset
+            &mut sink,
+        );
+        assert_eq!(
+            e.scroll_offset, offset_before,
+            "drag onto ↑ more must not auto-scroll editor viewport"
         );
     }
 
@@ -2834,49 +2830,6 @@ mod tests {
             &mut sink,
         );
         assert!(sink.copies.is_empty(), "empty click must not copy");
-    }
-
-    #[test]
-    fn editor_selection_edge_scroll_steps_by_zone_and_tick() {
-        use crate::selection::RecordingClipboardSink;
-        let mut e = Editor::new(
-            t(),
-            EditorOptions {
-                padding_x: 0,
-                terminal_rows: 8, // max_vis ≈ 5
-            },
-            clk(),
-        );
-        e.set_text(
-            (0..30)
-                .map(|i| format!("L{i:02}"))
-                .collect::<Vec<_>>()
-                .join("\n"),
-        );
-        let _ = e.render(40);
-        let offset0 = e.scroll_offset;
-        assert!(offset0 >= 6, "expected deep scroll, got {offset0}");
-        let mut sink = RecordingClipboardSink::default();
-        e.handle_mouse_local(
-            &mouse(MouseEventKind::Down(MouseButton::Left), 0, 1),
-            &mut sink,
-        );
-        // Drag onto top content row (edge zone) — one step of 6.
-        assert!(e.handle_mouse_local(
-            &mouse(MouseEventKind::Drag(MouseButton::Left), 0, 1),
-            &mut sink
-        ));
-        let after_drag = e.scroll_offset;
-        assert!(
-            after_drag + 6 <= offset0 || after_drag < offset0,
-            "edge zone drag must scroll up by ~step: before={offset0} after={after_drag}"
-        );
-        // Holding at edge without new mouse events: tick keeps scrolling.
-        let before_tick = e.scroll_offset;
-        assert!(e.tick(), "drag hold at edge must tick-scroll");
-        assert!(
-            e.scroll_offset < before_tick,
-            "tick while dragging at top edge must keep scrolling"
-        );
+        assert!(!e.has_selection(), "empty click must clear selection");
     }
 }

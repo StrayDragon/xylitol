@@ -50,7 +50,7 @@
 - [x] 5.1 Editor（或共享缓冲选区类型）未修饰拖选，覆盖**多行**缓冲（ptim13）
 - [x] 5.2 高亮仅输入可视行；松手复制仅输入文本；与 transcript `SelectionController` 隔离
 - [x] 5.3 Mode B：按下始于 dock → 事件回落 Editor；transcript 选区可清；包级单测
-- [ ] 5.4 `just demo-tui-alt-screen` 人验 Editor 多行选区
+- [x] 5.4 `just demo-tui-alt-screen` 人验 Editor 多行选区（单击无鬼影 PASS 2026-08-12；边沿自动滚已裁）
 
 **验收**：包单测 + demo 拖选输入多行 → 高亮 → 松手 OSC52；不影响 transcript 选区状态机。
 
@@ -61,7 +61,7 @@
 - [x] 6.3 产品 host：Mode B 下将 copy-notice 接到壳层短提示（ath31）；**MUST NOT** 滥用 `Error: ` 前缀的 chrome-toast 拒闸形态冒充成功确认（可用独立 info 槽或扩展非 Error toast——design 钉落点）
 - [x] 6.4 单测：复制成功 → notice 置位/清除；人验 demo 可见「已复制」类短文案（单测 ✅；人验 H7 待）
 
-**验收文案（建议固定）**：`Copied` / `已复制`（中英择一钉死在 design；demo 与产品同源）。
+**验收文案（建议固定）**：`Copied` / `已复制`（库信号 + demo 可先用英文）。**产品落点 / 误触策略**：延后到 `src/app/tui` Mode B 集成再钉（2026-08-12 human）；本 change 不阻塞。
 
 ## 7. 产品闸与库 host 收口 — ⬜/部分
 
@@ -82,8 +82,8 @@
 | H3 | 滚轮 sticky（非仅靠边续选） | ✅ |
 | H4 | 拖选进输入区夹边续选、不反选 | ✅ |
 | H5 | 退出后主屏可上翻会话 dump | ✅ |
-| H6 | Editor 多行独立选区 | ⬜ 高亮 PASS；边沿自动滚已修，待复验 |
-| H7 | 复制成功短提示 | ✅ |
+| H6 | Editor 多行独立选区 | ✅ 人验 2026-08-12（鬼影 PASS；边沿滚已裁） |
+| H7 | 复制成功短提示 | ✅ demo 可；**产品 Copied 落点 / 误触延后** app 集成 |
 
 ## 实现顺序（建议）
 
