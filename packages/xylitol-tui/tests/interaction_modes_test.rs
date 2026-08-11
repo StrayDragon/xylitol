@@ -309,6 +309,10 @@ fn application_owned_wheel_scrolls_app_viewport() {
         "wheel-only AO reproject must bypass the full-frame throttle"
     );
     assert!(tui.last_render_perf().ao_reprojected);
+    assert!(
+        tui.last_render_perf().ao_vertical_shifted,
+        "pure wheel viewport motion should reuse terminal rows"
+    );
     // Content L00..L17 + dock L18,L19; viewport content h=4.
     // Follow end shows L14..L17; one fine notch → L13..L16.
     assert_eq!(tui.application_owned_wheel_notch(), 1);
@@ -346,6 +350,7 @@ fn application_owned_wheel_coalesce_applies_full_delta_without_tick_drain() {
     );
     assert_eq!(tui.frame_count(), frames_before + 1);
     assert!(tui.last_render_perf().ao_reprojected);
+    assert!(tui.last_render_perf().ao_vertical_shifted);
     assert!(
         tui.terminal.all_writes().contains("L11"),
         "all three one-line wheel events must be visible in the first paint"
@@ -1000,6 +1005,18 @@ fn application_owned_click_stays_aligned_after_repeated_wheel_scrolls() {
         let _ = tui.dispatch_event(wheel(MouseEventKind::ScrollDown));
         tui.render_frame().expect("wheel down");
     }
+    assert!(tui.last_render_perf().ao_vertical_shifted);
+    let wheel_writes = tui.terminal.all_writes();
+    assert!(
+        wheel_writes.contains("\x1b[1L") && wheel_writes.contains("\x1b[1M"),
+        "wheel shifts should use IL/DL in both directions"
+    );
+    assert!(
+        !wheel_writes.contains("\x1b[1;10r")
+            && !wheel_writes.contains("\x1b[1S")
+            && !wheel_writes.contains("\x1b[1T"),
+        "wheel shifts must not restore DECSTBM or CSI S/T"
+    );
 
     assert_eq!(
         tui.terminal.viewport()[4],
