@@ -1564,7 +1564,7 @@ mod slice_tests {
     }
 
     #[tokio::test]
-    async fn h8_exit_finish_inline() {
+    async fn h8_exit_finish_stops_terminal() {
         let mut session = HostSession::new_product_ui(TestTerminal::new(80, 24));
         let root = session.ui_root().expect("ui").clone();
         let mut driver = ScriptedDriver::new();
@@ -1578,6 +1578,10 @@ mod slice_tests {
         assert!(
             session.tui.terminal.stopped,
             "finish must stop TestTerminal"
+        );
+        assert!(
+            !session.tui.application_session_active(),
+            "AO finish must end application session"
         );
     }
 

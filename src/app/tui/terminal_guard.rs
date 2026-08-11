@@ -83,9 +83,8 @@ impl TerminalGuard {
             xylitol_tui::CrosstermTerminal::new().map_err(|e| format!("open terminal: {e}"))?;
         terminal.hide_cursor();
         terminal.start();
-        // Product TUI MUST NOT enable mouse capture here by default (Inline).
-        // `XYLITOL_TUI_MOUSE` remains package lab/e2e only. ApplicationOwned
-        // enters alt-buffer + mouse when the host is constructed with that mode
+        // Product TUI does not enable mouse via TerminalGuard / XYLITOL_TUI_MOUSE.
+        // ApplicationOwned sessions enable capture when the host is constructed
         // (`HostSession::new_product_ui_with_meta_mode`) — see c2070 / ath30.
         // Keep DisableMouseCapture in `emergency_restore` for leaked sessions.
         Ok(Self {

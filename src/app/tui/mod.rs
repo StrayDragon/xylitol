@@ -122,7 +122,7 @@ pub struct TuiRunOptions {
     pub restored_session: bool,
     /// Process-local ask gateway (TUI-only); host polls for Choice mounts (c1850).
     pub ask_gateway: Option<std::sync::Arc<AskHostGateway>>,
-    /// Interaction mode bound at host start (c2070 / ath30). Default Inline.
+    /// Interaction mode bound at host start (c2070 / ath30). Default ApplicationOwned.
     /// Not driven by `XYLITOL_TUI_MOUSE`. Mid-session switching is not supported —
     /// rebuild the host (or exit the process) to change modes.
     pub interaction_mode: xylitol_tui::InteractionMode,
@@ -134,7 +134,7 @@ impl Default for TuiRunOptions {
             editor_history_seed_sessions: 1,
             restored_session: false,
             ask_gateway: None,
-            interaction_mode: xylitol_tui::InteractionMode::Inline,
+            interaction_mode: xylitol_tui::InteractionMode::ApplicationOwned,
         }
     }
 }

@@ -73,7 +73,7 @@ Then 覆盖一致，且下一波次按关闭该能力装配
 | **Eval harness 面无关** | 回归跑 Print/CLI，不要求 TUI/Web 像素同源 |
 | **压缩/cache 状态同源** | 两面看到的「正在压缩 / cache 未知」语义一致 |
 | **Activity 折叠栈（expandNearest / collapseNearest）** | 旧 turn 中间操作 → L2/L3 摘要；从输入侧双向栈；与 `/session-compact` 分层；TUI：[`c1760`](../../llmanspec/changes/c1760-add-tui-activity-fold/proposal.md)（**延后**；交互前置 [`c2070`](../../llmanspec/changes/archive/2026-08-12-c2070-add-package-tui-dual-interaction-modes/proposal.md)） |
-| **TUI 交互 oneof（终端选区 ↔ 应用内选区）** | **Inline**≈Pi `regular`/主屏（产品缺省 ath30）；**ApplicationOwned**≈Pi `fullscreen`/alt-screen（库 MUST：拖选、跨页续选、松手复制）。入口：[`c2070`](../../llmanspec/changes/archive/2026-08-12-c2070-add-package-tui-dual-interaction-modes/proposal.md)；术语→代码见同 change `research/emulator-vs-app-selection-oneof.md` §1。产品改 AO-only → `c2071`。**c2020** 鼠标管道为 ApplicationOwned 地基；`XYLITOL_TUI_MOUSE` 仅 lab/e2e，产品不读。 |
+| **TUI 交互 oneof（终端选区 ↔ 应用内选区）** | **ApplicationOwned**≈Pi `fullscreen`/alt-screen（**产品缺省 ath30** / [`c2071`](../../llmanspec/changes/c2071-update-app-tui-host-mode-b-only/proposal.md)；库 MUST：拖选、跨页续选、松手复制）；**Inline**≈Pi `regular`/主屏（库 lab/demo）。入口：[`c2070`](../../llmanspec/changes/archive/2026-08-12-c2070-add-package-tui-dual-interaction-modes/proposal.md)；术语→代码见同 change `research/emulator-vs-app-selection-oneof.md` §1。**c2020** 鼠标管道为 ApplicationOwned 地基；`XYLITOL_TUI_MOUSE` 仅 lab/e2e，产品不读。 |
 
 ## 相关
 
