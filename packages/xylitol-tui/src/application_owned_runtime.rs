@@ -113,12 +113,21 @@ impl ApplicationOwnedRuntime {
         true
     }
 
+    pub fn has_pending_wheel(&self) -> bool {
+        self.pending_wheel != 0
+    }
+
+    /// Apply at most one frame's worth of pending wheel so coalesced bursts
+    /// stay visually continuous (residual stays queued for the next paint).
     fn flush_pending_wheel(&mut self) {
         if self.pending_wheel == 0 {
             return;
         }
-        let delta = self.pending_wheel;
-        self.pending_wheel = 0;
+        // Cap ≈ two fixed wheel notches (3+3) or half the viewport — enough to
+        // feel responsive without skipping a whole screen when Kitty bursts.
+        let max_step = (self.scroll.viewport_height() as isize / 2).clamp(3, 6);
+        let delta = self.pending_wheel.clamp(-max_step, max_step);
+        self.pending_wheel -= delta;
         if self.scroll.scroll_by(delta) {
             self.follow_bottom = self.scroll.at_bottom();
         }
@@ -352,6 +361,24 @@ mod tests {
         assert!(runtime.scroll.scroll_top() < top_before);
         let top_scrolled = runtime.scroll.scroll_top();
         assert_eq!(paint[0], format!("L{top_scrolled}"));
+    }
+
+    #[test]
+    fn wheel_flush_caps_per_frame_and_keeps_residual() {
+        let mut runtime = ApplicationOwnedRuntime::new(2);
+        let full: Vec<String> = (0..40).map(|i| format!("L{i}")).collect();
+        let _ = runtime.project_frame(&full, 10); // viewport content = 8
+        let top0 = runtime.scroll.scroll_top();
+        assert!(runtime.queue_wheel_delta(-30));
+        let _ = runtime.reproject_frame(10);
+        // max_step = clamp(8/2, 3, 6) = 4? 8/2=4 clamp 3..6 = 4
+        let moved = top0 - runtime.scroll.scroll_top();
+        assert!(moved <= 6, "moved={moved}");
+        assert!(moved >= 3, "moved={moved}");
+        assert!(
+            runtime.has_pending_wheel(),
+            "large burst must leave residual for next frame"
+        );
     }
 
     #[test]
