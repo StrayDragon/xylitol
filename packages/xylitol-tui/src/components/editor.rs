@@ -774,7 +774,10 @@ impl Editor {
         self.state.lines[self.state.cursor_line] = format!("{b}{ch}{a}");
         self.set_cursor_col(self.state.cursor_col + ch.len());
         self.on_changed();
-        if !self.paste_burst.is_coalescing(now) {
+        // Paste-burst may skip opening a *new* popup during a flood, but an
+        // already-open autocomplete MUST track the buffer — otherwise Tab
+        // applies a stale prefix (c545 `$` → `use $$demo`).
+        if !self.paste_burst.is_coalescing(now) || self.autocomplete_state.is_some() {
             self.handle_autocomplete_on_edit();
         }
     }
@@ -1554,6 +1557,9 @@ impl Editor {
                 return;
             }
             if k!("tui.input.tab") {
+                // Refresh prefix against the live buffer before apply (stale
+                // prefix can survive paste-burst char floods).
+                self.handle_autocomplete_on_edit();
                 self.apply_selected_autocomplete(/* chain_next */ true);
                 return;
             }
