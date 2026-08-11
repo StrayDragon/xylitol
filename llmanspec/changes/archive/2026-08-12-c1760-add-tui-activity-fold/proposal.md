@@ -6,7 +6,8 @@ blocks:
 - c2050-update-activity-fold-mouse-leader
 branch: sdd/c1760-add-tui-activity-fold
 base_sha: 839990764660a6b9f9014d1a88ee2d35aafeccd6
-checkpointed: false
+checkpointed: true
+checkpoint_sha: 839990764660a6b9f9014d1a88ee2d35aafeccd6
 ---
 
 # TUI activity-fold — 多级折叠（含 Worked for）
