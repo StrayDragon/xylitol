@@ -120,22 +120,7 @@ pub struct SelectionController {
     hit_priority: Option<HitPriorityFn>,
     /// Set when the last [`Self::handle_mouse`] issued a non-empty copy (ptim15).
     last_event_copied: bool,
-    /// Last wheel event time — drives human-flick accel vs flood damping.
-    wheel_last_at: Option<std::time::Instant>,
-    /// Consecutive human-paced wheel ticks (not event floods).
-    wheel_streak: u32,
-    /// Lines coalesced during a sub-frame event flood; drained on cadence.
-    wheel_coalesce: isize,
-    /// Last time coalesced wheel lines were actually applied.
-    wheel_last_apply: Option<std::time::Instant>,
 }
-
-/// Gap under this ⇒ treat as post-paint event flood (do not exponential-accel).
-const WHEEL_FLOOD_GAP: std::time::Duration = std::time::Duration::from_millis(8);
-/// Human flick window for mild 2× accel.
-const WHEEL_FLICK_GAP: std::time::Duration = std::time::Duration::from_millis(100);
-/// Min wall time between applying coalesced flood deltas (~1 frame).
-const WHEEL_COALESCE_CADENCE: std::time::Duration = std::time::Duration::from_millis(16);
 
 impl Default for SelectionController {
     fn default() -> Self {
@@ -152,10 +137,6 @@ impl Default for SelectionController {
             last_click_cell: None,
             hit_priority: None,
             last_event_copied: false,
-            wheel_last_at: None,
-            wheel_streak: 0,
-            wheel_coalesce: 0,
-            wheel_last_apply: None,
         }
     }
 }
@@ -298,71 +279,20 @@ impl SelectionController {
                 if !transcript.contains(col, row) {
                     return false;
                 }
-                let step = self.wheel_scroll_step(scroll.viewport_height());
-                if step != 0 {
-                    scroll.scroll_by(-step);
-                }
+                // Fixed multi-line step (typical terminal wheel feel). Do not
+                // viewport-scale or streak-accel — product/demo both queue many
+                // Scroll* after slow paints; scaling made browse feel runaway.
+                scroll.scroll_by(-3);
                 true
             }
             MouseEventKind::ScrollDown => {
                 if !transcript.contains(col, row) {
                     return false;
                 }
-                let step = self.wheel_scroll_step(scroll.viewport_height());
-                if step != 0 {
-                    scroll.scroll_by(step);
-                }
+                scroll.scroll_by(3);
                 true
             }
             _ => false,
-        }
-    }
-
-    /// Viewport-relative wheel step with flood damping.
-    ///
-    /// Product hosts paint heavy transcripts; after a slow frame the TTY may
-    /// deliver dozens of queued `Scroll*` events in <1ms. Counting those as
-    /// "accel streak" made demo feel rocket-fast while product still felt
-    /// stuck between paints. Strategy:
-    /// - base ≈ 1/4 viewport (clamped) so each human notch travels meaningfully
-    /// - mild 2× only on human-paced flicks (8–100ms)
-    /// - sub-8ms floods coalesce and apply at most ~2 viewports / 16ms
-    fn wheel_scroll_step(&mut self, viewport_h: usize) -> isize {
-        let now = std::time::Instant::now();
-        let vh = viewport_h.max(1) as isize;
-        let base = (vh / 4).clamp(6, 24);
-        let dt = self.wheel_last_at.map(|t| now.duration_since(t));
-        self.wheel_last_at = Some(now);
-
-        match dt {
-            Some(d) if d < WHEEL_FLOOD_GAP => {
-                // Queued flood: coalesce, apply on cadence, never ramp streak.
-                self.wheel_streak = 0;
-                self.wheel_coalesce = self.wheel_coalesce.saturating_add(base);
-                let since_apply = self
-                    .wheel_last_apply
-                    .map(|t| now.duration_since(t))
-                    .unwrap_or(WHEEL_COALESCE_CADENCE);
-                if since_apply < WHEEL_COALESCE_CADENCE {
-                    return 0;
-                }
-                let cap = vh.saturating_mul(2);
-                let step = self.wheel_coalesce.clamp(-cap, cap);
-                self.wheel_coalesce = 0;
-                self.wheel_last_apply = Some(now);
-                step
-            }
-            Some(d) if d <= WHEEL_FLICK_GAP => {
-                self.wheel_coalesce = 0;
-                self.wheel_streak = self.wheel_streak.saturating_add(1);
-                let mult = if self.wheel_streak >= 4 { 2 } else { 1 };
-                (base * mult).min(vh.saturating_mul(2))
-            }
-            _ => {
-                self.wheel_coalesce = 0;
-                self.wheel_streak = 0;
-                base
-            }
         }
     }
 
@@ -1117,9 +1047,9 @@ mod tests {
     }
 
     #[test]
-    fn wheel_scroll_uses_viewport_base_and_damps_floods() {
+    fn wheel_scroll_uses_fixed_three_line_step() {
         let mut scroll = ScrollView::new(40);
-        scroll.set_lines((0..2000).map(|i| format!("L{i}")).collect());
+        scroll.set_lines((0..200).map(|i| format!("L{i}")).collect());
         scroll.scroll_to_end();
         let mut sel = SelectionController::new();
         let mut sink = RecordingClipboardSink::default();
@@ -1132,26 +1062,6 @@ mod tests {
             dock,
             &mut sink,
         );
-        let step1 = top0 - scroll.scroll_top();
-        // viewport 40 → base = (40/4).clamp(6,24) = 10
-        assert_eq!(step1, 10, "first human tick uses viewport/4 base");
-
-        // Simulate event flood (dt≈0): many events must not teleport by streak*8.
-        let top_before_flood = scroll.scroll_top();
-        for _ in 0..40 {
-            sel.handle_mouse(
-                &mouse(MouseEventKind::ScrollUp, 0, 0),
-                &mut scroll,
-                tr,
-                dock,
-                &mut sink,
-            );
-        }
-        let flooded = top_before_flood - scroll.scroll_top();
-        assert!(
-            flooded <= 80 + 10,
-            "flood must stay within ~2 viewports per cadence apply, got {flooded}"
-        );
-        assert!(flooded > 0, "flood must still make progress");
+        assert_eq!(top0 - scroll.scroll_top(), 3);
     }
 }
