@@ -204,8 +204,16 @@ test-tui-e2e-tmux verbosity=verbosity_default:
     esac
 
 # Run the xylitol-tui agent_demo (package dynamic playground — not product host).
+# Mode A (inline) by default. For alt-screen Mode B acceptance: `just demo-tui-mode-b`.
 demo-tui:
     cargo run -p xylitol-tui --example agent_demo
+
+# agent_demo Mode B (alt-screen + app selection / scroll / OSC52). Human acceptance for c2070.
+demo-tui-mode-b:
+    XYLITOL_AGENT_DEMO_MODE=b cargo run -p xylitol-tui --example agent_demo
+
+# Alias: Mode B acceptance demo (same as demo-tui-mode-b).
+demo: demo-tui-mode-b
 
 # agent_demo with rail entry skin (left bg strip; /entry-style rail).
 demo-tui-rail:
