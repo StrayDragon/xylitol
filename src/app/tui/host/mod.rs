@@ -885,6 +885,18 @@ impl<T: Terminal> HostSession<T> {
             // TooSmall / other modes: ignore input; no paint from mouse floods.
             InputReaction::rerender_if(!matches!(input, InputEvent::Mouse(_)))
         };
+        if self.tui.application_session_active() {
+            if let Some(root) = self.ui_root.as_ref() {
+                root.borrow_mut().sync_editor_screen_origin();
+            }
+            // ptim15 → ath31: library edge → chrome «Copied» (not Error: toast).
+            if self.tui.take_copy_notice()
+                && let Some(root) = self.ui_root.as_ref()
+            {
+                root.borrow_mut().arm_copy_notice();
+                self.tui.request_render(false);
+            }
+        }
         if reaction == InputReaction::Rerender {
             self.tui.request_render(false);
         }

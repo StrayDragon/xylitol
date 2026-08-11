@@ -119,6 +119,12 @@ pub trait Component {
     fn input_wants_rerender(&self, event: &InputEvent) -> bool {
         !matches!(event, InputEvent::Mouse(_))
     }
+
+    /// Drain OSC52 (or other clipboard) sequences produced by this component
+    /// since the last take (e.g. Editor Mode B copy-on-release). Default empty.
+    fn take_pending_clipboard(&mut self) -> Vec<String> {
+        Vec::new()
+    }
 }
 
 pub trait Focusable: Component {
@@ -465,6 +471,28 @@ impl<T: Terminal> TUI<T> {
         if let Some(mb) = self.mode_b.as_mut() {
             mb.set_copy_on_release(on);
         }
+    }
+
+    /// Consume Mode B copy-notice edge (ptim15). True once per successful
+    /// copy-on-release until taken; empty selection / copy-off never arm it.
+    pub fn take_copy_notice(&mut self) -> bool {
+        self.mode_b.as_mut().is_some_and(|mb| mb.take_copy_notice())
+    }
+
+    /// Queue OSC52 (or other) clipboard sequences to flush after the next paint
+    /// batch — same path as transcript copy-on-release (ptim05 / ptim13).
+    /// Non-empty sequences also arm Mode B copy-notice (ptim15).
+    pub fn enqueue_clipboard_sequences(&mut self, seqs: impl IntoIterator<Item = String>) {
+        if let Some(mb) = self.mode_b.as_mut() {
+            mb.enqueue_clipboard_seqs(seqs);
+        }
+    }
+
+    /// Whether Mode B copy-notice is still within its TTL (~2s).
+    pub fn copy_notice_active(&self) -> bool {
+        self.mode_b
+            .as_ref()
+            .is_some_and(|mb| mb.copy_notice_active())
     }
 
     /// Register a pre-focus input listener. Returns an id for
@@ -1242,6 +1270,8 @@ impl<T: Terminal> TUI<T> {
         {
             let wants = self.overlays[index].0.input_wants_rerender(&event);
             self.overlays[index].0.handle_input(event);
+            let seqs = self.overlays[index].0.take_pending_clipboard();
+            self.ingest_component_clipboard(seqs);
             return InputReaction::rerender_if(wants);
         }
         if let Some(idx) = self.focused_index
@@ -1249,9 +1279,20 @@ impl<T: Terminal> TUI<T> {
         {
             let wants = self.components[idx].input_wants_rerender(&event);
             self.components[idx].handle_input(event);
+            let seqs = self.components[idx].take_pending_clipboard();
+            self.ingest_component_clipboard(seqs);
             return InputReaction::rerender_if(wants);
         }
         InputReaction::None
+    }
+
+    fn ingest_component_clipboard(&mut self, seqs: Vec<String>) {
+        if seqs.is_empty() {
+            return;
+        }
+        if let Some(mb) = self.mode_b.as_mut() {
+            mb.enqueue_clipboard_seqs(seqs);
+        }
     }
 
     /// Opt in to crossterm mouse capture (default off). Restored across
@@ -1284,6 +1325,7 @@ impl<T: Terminal> TUI<T> {
             let rows = self.terminal.rows();
             if let Some(mb) = self.mode_b.as_mut() {
                 changed |= mb.tick_autoscroll(cols, rows);
+                changed |= mb.tick_copy_notice();
             }
         }
         changed

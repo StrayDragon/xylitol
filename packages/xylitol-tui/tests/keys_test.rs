@@ -171,6 +171,18 @@ fn test_modify_other_keys() {
 }
 
 #[test]
+fn matches_key_event_ghostty_lf_is_shift_enter() {
+    use crossterm::event::{KeyCode, KeyEvent, KeyModifiers};
+
+    with_kitty_protocol_active(true, || {
+        let lf = KeyEvent::new(KeyCode::Char('\n'), KeyModifiers::NONE);
+        assert!(matches_key_event(&lf, "shift+enter"));
+        assert!(!matches_key_event(&lf, "enter"));
+        assert!(printable_from_key_event(&lf).is_none());
+    });
+}
+
+#[test]
 fn matches_key_event_shift_tab_accepts_back_tab() {
     use crossterm::event::{KeyCode, KeyEvent, KeyModifiers};
 

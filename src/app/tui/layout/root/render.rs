@@ -58,8 +58,19 @@ impl UiRoot {
 
         if !self.status_busy {
             // Idle: optional MCP short cue (c1210), right-aligned; otherwise breathing room.
+            // Mode B copy cue (ath31): reuse the blank status row when no next-turn cue
+            // so dock height stays stable; never use Error: chrome-toast.
             if let Some(cue) = self.status_next_turn_cue.as_deref() {
-                return vec![paint_cue_line(&self.theme, cue, width)];
+                let mut lines = vec![paint_cue_line(&self.theme, cue, width)];
+                if self.copy_notice_visible() {
+                    let painted = self.theme.paint_muted("Copied");
+                    lines.push(truncate_to_width(&painted, width.max(1), "…", false));
+                }
+                return lines;
+            }
+            if self.copy_notice_visible() {
+                let painted = self.theme.paint_muted("Copied");
+                return vec![truncate_to_width(&painted, width.max(1), "…", false)];
             }
             return vec![String::new()];
         }
@@ -89,6 +100,10 @@ impl UiRoot {
             } else {
                 lines.push(paint_cue_line(&self.theme, cue, width));
             }
+        }
+        if self.copy_notice_visible() {
+            let painted = self.theme.paint_muted("Copied");
+            lines.push(truncate_to_width(&painted, width, "…", false));
         }
         lines
     }
@@ -220,11 +235,15 @@ impl Component for UiRoot {
             truncate_to_width(self.footer.text(), width, "...", true)
         };
         // Mode B dock = everything below loaded+scrollback+queue (ath30 / ptim06).
+        self.last_toast_rows = toast.len();
+        self.last_status_rows = status.len();
+        self.last_editor_rows = editor.len();
         self.last_mode_b_dock_rows = toast
             .len()
             .saturating_add(status.len())
             .saturating_add(editor.len())
             .saturating_add(1);
+        self.sync_editor_screen_origin();
         lines.extend(toast);
         lines.extend(status);
         lines.extend(editor);
@@ -234,6 +253,10 @@ impl Component for UiRoot {
 
     fn handle_input(&mut self, event: InputEvent) {
         self.handle_slot_input(event);
+    }
+
+    fn take_pending_clipboard(&mut self) -> Vec<String> {
+        self.editor.take_pending_clipboard()
     }
 
     fn invalidate(&mut self) {
@@ -249,6 +272,7 @@ impl Component for UiRoot {
     fn tick(&mut self) -> bool {
         let mut dirty = self.editor.tick();
         dirty = self.clear_chrome_toast_if_expired() || dirty;
+        dirty = self.clear_copy_notice_if_expired() || dirty;
         if self.status_busy {
             let interval = self.status_loader.interval_ms() as u128;
             if self.loader_last_tick.elapsed().as_millis() >= interval {

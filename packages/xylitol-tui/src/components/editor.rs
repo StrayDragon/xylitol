@@ -21,10 +21,12 @@ use crate::keybindings::with_keybindings;
 use crate::keys::{matches_key_event, printable_from_key_event};
 use crate::kill_ring::{KillRing, KillRingOptions};
 use crate::paste_burst::PasteBurst;
+use crate::selection::{CellPoint, ClipboardSink, format_osc52};
 use crate::tui::{CURSOR_MARKER, Component, Focusable, InputEvent};
 use crate::undo_stack::UndoStack;
 use crate::utils::{is_whitespace_char, truncate_to_width, visible_width};
 use crate::word_navigation::{find_word_backward, find_word_forward};
+use crossterm::event::{MouseButton, MouseEvent, MouseEventKind};
 use std::collections::HashMap;
 use unicode_segmentation::UnicodeSegmentation;
 
@@ -103,6 +105,50 @@ struct LayoutLine {
     text: String,
     has_cursor: bool,
     cursor_pos: Option<usize>,
+    /// Logical buffer line this visual row belongs to.
+    logical_line: usize,
+    /// Byte offset into the logical line where `text` begins.
+    start_index: usize,
+}
+
+/// Independent multi-line selection inside the Editor buffer (ptim13).
+///
+/// Coordinates are **logical buffer** space (`row` = line index, `col` = byte
+/// offset), not screen cells and not transcript [`crate::SelectionController`].
+#[derive(Debug, Default, Clone)]
+struct EditorSelection {
+    anchor: Option<CellPoint>,
+    focus: Option<CellPoint>,
+    dragging: bool,
+}
+
+impl EditorSelection {
+    fn clear(&mut self) {
+        self.anchor = None;
+        self.focus = None;
+        self.dragging = false;
+    }
+
+    fn has_selection(&self) -> bool {
+        match (self.anchor, self.focus) {
+            (Some(a), Some(f)) => a != f,
+            _ => false,
+        }
+    }
+
+    fn bounds(&self) -> Option<(CellPoint, CellPoint)> {
+        let a = self.anchor?;
+        let f = self.focus?;
+        Some(ordered_cell(a, f))
+    }
+}
+
+fn ordered_cell(a: CellPoint, b: CellPoint) -> (CellPoint, CellPoint) {
+    if (a.row, a.col) <= (b.row, b.col) {
+        (a, b)
+    } else {
+        (b, a)
+    }
 }
 
 pub struct EditorTheme {
@@ -228,6 +274,10 @@ pub struct Editor {
     padding_x: usize,
     terminal_rows: usize,
     last_width: usize,
+    /// Visible content rows painted on the last render (excludes borders).
+    last_content_rows: usize,
+    /// Full width passed to the last [`Self::render`].
+    last_paint_width: usize,
     scroll_offset: usize,
     history: Vec<String>,
     history_index: isize,
@@ -242,6 +292,9 @@ pub struct Editor {
     preferred_visual_col: Option<usize>,
     snapped_from_cursor_col: Option<usize>,
     paste_burst: PasteBurst,
+    /// Non-bracketed paste coalesce buffer (flush via tick / idle gap).
+    paste_coalesce: String,
+    paste_coalesce_deadline: Option<std::time::Instant>,
     clock: Box<dyn Clock>,
     // c430 autocomplete integration (CompletionSource registry)
     completion: CompletionRegistry,
@@ -250,6 +303,18 @@ pub struct Editor {
     autocomplete_prefix: String,
     autocomplete_max_visible: usize,
     autocomplete_start_token: usize,
+    /// Mode B editor-owned selection (independent of transcript SelectionController).
+    selection: EditorSelection,
+    /// Default on — OSC52 sequences land in [`Self::take_pending_clipboard`].
+    pub copy_on_release: bool,
+    pending_clipboard: Vec<String>,
+    /// Absolute screen origin of the editor's top-left paint cell (Mode B hit-test).
+    screen_origin_row: u16,
+    screen_origin_col: u16,
+    /// Last mouse handler dirtied selection / clipboard (for rerender policy).
+    mouse_dirty: bool,
+    /// Last editor-local pointer while selecting (edge auto-scroll).
+    selection_pointer: Option<(usize, usize)>,
     pub on_submit: Option<Box<dyn FnMut(String)>>,
     pub on_change: Option<Box<dyn FnMut(&str)>>,
     pub disable_submit: bool,
@@ -264,6 +329,8 @@ impl Editor {
             padding_x: opts.padding_x,
             terminal_rows: opts.terminal_rows,
             last_width: 80,
+            last_content_rows: 1,
+            last_paint_width: 80,
             scroll_offset: 0,
             history: Vec::new(),
             history_index: -1,
@@ -277,6 +344,8 @@ impl Editor {
             preferred_visual_col: None,
             snapped_from_cursor_col: None,
             paste_burst: PasteBurst::new(),
+            paste_coalesce: String::new(),
+            paste_coalesce_deadline: None,
             clock,
             completion: CompletionRegistry::new(),
             autocomplete_list: None,
@@ -284,6 +353,13 @@ impl Editor {
             autocomplete_prefix: String::new(),
             autocomplete_max_visible: 5,
             autocomplete_start_token: 0,
+            selection: EditorSelection::default(),
+            copy_on_release: true,
+            pending_clipboard: Vec::new(),
+            screen_origin_row: 0,
+            screen_origin_col: 0,
+            mouse_dirty: false,
+            selection_pointer: None,
             on_submit: None,
             on_change: None,
             disable_submit: false,
@@ -310,6 +386,7 @@ impl Editor {
         self.last_action = None;
         self.pastes.clear();
         self.paste_counter = 0;
+        self.selection.clear();
         let n = text
             .replace('\t', "    ")
             .replace("\r\n", "\n")
@@ -318,6 +395,50 @@ impl Editor {
         // pi `setText` → `setTextInternal(..., "end")` — cursor at end of buffer.
         self.set_text_internal(&n, CursorPlacement::End);
     }
+
+    /// Whether the editor currently has a non-empty multi-cell selection.
+    pub fn has_selection(&self) -> bool {
+        self.selection.has_selection()
+    }
+
+    /// True while an unmodified left-drag selection is in progress.
+    pub fn is_selection_dragging(&self) -> bool {
+        self.selection.dragging
+    }
+
+    /// Ordered `(start, end)` in logical buffer coordinates, if non-empty.
+    pub fn selection_bounds(&self) -> Option<(CellPoint, CellPoint)> {
+        self.selection.bounds().filter(|(a, b)| a != b)
+    }
+
+    /// Selected plain text from the editor buffer (not transcript).
+    pub fn selected_text(&self) -> Option<String> {
+        let (start, end) = self.selection_bounds()?;
+        Some(extract_editor_range(&self.state.lines, start, end))
+    }
+
+    /// Drain OSC52 (or empty) sequences produced by copy-on-release.
+    pub fn take_pending_clipboard(&mut self) -> Vec<String> {
+        std::mem::take(&mut self.pending_clipboard)
+    }
+
+    pub fn clear_selection(&mut self) {
+        self.selection.clear();
+    }
+
+    /// Set absolute screen origin of this editor's top-left paint cell.
+    ///
+    /// Mode B hosts MUST update this when the dock moves so mouse hit-testing
+    /// maps screen coordinates into editor-local space for [`Self::handle_mouse_local`].
+    pub fn set_screen_origin(&mut self, row: u16, col: u16) {
+        self.screen_origin_row = row;
+        self.screen_origin_col = col;
+    }
+
+    pub fn screen_origin(&self) -> (u16, u16) {
+        (self.screen_origin_row, self.screen_origin_col)
+    }
+
     pub fn add_to_history(&mut self, text: String) {
         let t = text.trim().to_string();
         if t.is_empty() || self.history.first() == Some(&t) {
@@ -640,6 +761,45 @@ impl Editor {
         self.exit_history_browsing();
         let first = ch.chars().next().unwrap_or(' ');
         let now = self.clock.now();
+        // Flush stale coalesce before a slow gap char.
+        if self.paste_coalesce_deadline.is_some_and(|d| now >= d) {
+            self.flush_paste_coalesce();
+        }
+
+        self.paste_burst.on_plain_char(now);
+
+        // Visual coalesce: once 2+ chars arrive within the burst interval,
+        // retract the already-painted prefix and buffer until idle. This
+        // avoids the "sped-up typewriter" look for short non-bracketed pastes
+        // (Enter-suppress still uses PASTE_BURST_MIN_CHARS = 8).
+        const PASTE_VISUAL_COALESCE_MIN: u32 = 2;
+        if self.paste_burst.consecutive_plain_chars() == PASTE_VISUAL_COALESCE_MIN
+            && self.paste_coalesce.is_empty()
+        {
+            let mut retracted =
+                self.retract_n_chars(PASTE_VISUAL_COALESCE_MIN as usize - ch.chars().count());
+            retracted.push_str(ch);
+            self.paste_coalesce = retracted;
+            self.paste_coalesce_deadline = Some(
+                now + std::time::Duration::from_millis(
+                    crate::paste_burst::PASTE_BURST_ACTIVE_IDLE_TIMEOUT_MS,
+                ),
+            );
+            return;
+        }
+        if !self.paste_coalesce.is_empty()
+            && (self.paste_burst.is_coalescing(now)
+                || self.paste_burst.consecutive_plain_chars() >= PASTE_VISUAL_COALESCE_MIN)
+        {
+            self.paste_coalesce.push_str(ch);
+            self.paste_coalesce_deadline = Some(
+                now + std::time::Duration::from_millis(
+                    crate::paste_burst::PASTE_BURST_ACTIVE_IDLE_TIMEOUT_MS,
+                ),
+            );
+            return;
+        }
+
         if is_whitespace_char(first) || self.last_action.as_deref() != Some("type-word") {
             self.push_undo();
         }
@@ -649,10 +809,62 @@ impl Editor {
         let a = &line[self.state.cursor_col..];
         self.state.lines[self.state.cursor_line] = format!("{b}{ch}{a}");
         self.set_cursor_col(self.state.cursor_col + ch.len());
-        self.paste_burst.on_plain_char(now);
         self.on_changed();
-        // CompletionSource registry: refresh open popup, or probe for a new match.
-        self.handle_autocomplete_on_edit();
+        if !self.paste_burst.is_coalescing(now) {
+            self.handle_autocomplete_on_edit();
+        }
+    }
+
+    /// Remove up to `n` characters immediately before the cursor (same line first).
+    fn retract_n_chars(&mut self, mut n: usize) -> String {
+        let mut out = String::new();
+        while n > 0 {
+            let line = &self.state.lines[self.state.cursor_line];
+            if self.state.cursor_col == 0 {
+                if self.state.cursor_line == 0 {
+                    break;
+                }
+                // Join with previous line — retract the newline as `\n`.
+                let cur = self.state.lines.remove(self.state.cursor_line);
+                self.state.cursor_line -= 1;
+                let pl = self.state.lines[self.state.cursor_line].len();
+                self.state.lines[self.state.cursor_line].push_str(&cur);
+                self.set_cursor_col(pl);
+                out.insert(0, '\n');
+                n -= 1;
+                continue;
+            }
+            let before = &line[..self.state.cursor_col];
+            let gs: Vec<&str> = UnicodeSegmentation::graphemes(before, true).collect();
+            let g = gs.last().copied().unwrap_or("");
+            let glen = g.len().max(1);
+            let col = self.state.cursor_col.saturating_sub(glen);
+            out.insert_str(0, g);
+            self.state.lines[self.state.cursor_line] =
+                format!("{}{}", &line[..col], &line[self.state.cursor_col..]);
+            self.set_cursor_col(col);
+            n -= 1;
+        }
+        out
+    }
+
+    fn flush_paste_coalesce(&mut self) {
+        if self.paste_coalesce.is_empty() {
+            self.paste_coalesce_deadline = None;
+            return;
+        }
+        let chunk = std::mem::take(&mut self.paste_coalesce);
+        self.paste_coalesce_deadline = None;
+        let was_burst = self.paste_burst.consecutive_plain_chars()
+            >= crate::paste_burst::PASTE_BURST_MIN_CHARS
+            || chunk.chars().count() >= crate::paste_burst::PASTE_BURST_MIN_CHARS as usize;
+        self.paste_burst.reset();
+        if was_burst {
+            // Preserve Enter→newline suppress after a real burst flush.
+            self.paste_burst.extend_window(self.clock.now());
+        }
+        // `paste` owns undo + `[paste #N]` collapse threshold.
+        self.paste(&chunk);
     }
     fn backspace(&mut self) {
         self.exit_history_browsing();
@@ -1050,6 +1262,8 @@ impl Editor {
                 text: String::new(),
                 has_cursor: true,
                 cursor_pos: Some(0),
+                logical_line: 0,
+                start_index: 0,
             });
             return layout;
         }
@@ -1061,6 +1275,8 @@ impl Editor {
                     text: line.clone(),
                     has_cursor: is_cur,
                     cursor_pos: is_cur.then_some(self.state.cursor_col),
+                    logical_line: i,
+                    start_index: 0,
                 });
             } else {
                 for (ci, chunk) in word_wrap_line(line, content_width).iter().enumerate() {
@@ -1077,6 +1293,8 @@ impl Editor {
                         } else {
                             None
                         },
+                        logical_line: i,
+                        start_index: chunk.start_index,
                     });
                 }
             }
@@ -1563,6 +1781,263 @@ impl Editor {
             self.paste_burst.reset();
         }
     }
+
+    // ── Mode B editor selection (ptim13) ───────────────────────────────────
+
+    /// Handle a mouse event in **editor-local** coordinates: `(0,0)` is the
+    /// top-left of the editor's last render (top border row). Hosts that receive
+    /// absolute screen coords MUST remap into this space before dispatch.
+    ///
+    /// Returns whether presentation changed (caller should rerender).
+    pub fn handle_mouse_local(&mut self, event: &MouseEvent, sink: &mut dyn ClipboardSink) -> bool {
+        let (col, row) = (event.column as usize, event.row as usize);
+        match event.kind {
+            MouseEventKind::Down(MouseButton::Left) => {
+                let Some(cell) = self.local_to_buffer(col, row) else {
+                    self.selection.clear();
+                    self.selection_pointer = None;
+                    return false;
+                };
+                self.selection.anchor = Some(cell);
+                self.selection.focus = Some(cell);
+                self.selection.dragging = true;
+                self.selection_pointer = Some((col, row));
+                true
+            }
+            MouseEventKind::Drag(MouseButton::Left) | MouseEventKind::Moved => {
+                if !self.selection.dragging {
+                    return false;
+                }
+                self.selection_pointer = Some((col, row));
+                let mut changed = self.selection_edge_scroll(row);
+                let cell = self
+                    .local_to_buffer(col, row)
+                    .or_else(|| self.clamp_local_to_buffer(col, row));
+                if let Some(cell) = cell {
+                    self.selection.focus = Some(cell);
+                    changed = true;
+                }
+                changed
+            }
+            MouseEventKind::Up(MouseButton::Left) => {
+                if !self.selection.dragging {
+                    return false;
+                }
+                self.selection.dragging = false;
+                self.selection_pointer = None;
+                if let Some(cell) = self
+                    .local_to_buffer(col, row)
+                    .or_else(|| self.clamp_local_to_buffer(col, row))
+                {
+                    self.selection.focus = Some(cell);
+                }
+                if self.copy_on_release {
+                    self.maybe_copy_selection(sink);
+                }
+                if !self.selection.has_selection() {
+                    self.selection.clear();
+                }
+                true
+            }
+            _ => false,
+        }
+    }
+
+    /// While dragging onto the ↑/↓ more borders (or near first/last content
+    /// rows), scroll the editor viewport. Zone is intentionally wide and step
+    /// large so ptim13 edge-scroll stays responsive without relying on dense
+    /// mouse-move events (tick also drives this while dragging).
+    fn selection_edge_scroll(&mut self, local_row: usize) -> bool {
+        const EDGE_SCROLL_STEP: usize = 6;
+        /// Top: border + first two content rows. Bottom: last two content rows
+        /// and anything past the content band.
+        const EDGE_ZONE_ROWS: usize = 2;
+        let max_vis = self.content_max_visible();
+        let layout_len = self.layout_text(self.last_width.max(1)).len();
+        if layout_len == 0 {
+            return false;
+        }
+        if local_row <= EDGE_ZONE_ROWS && self.scroll_offset > 0 {
+            let step = EDGE_SCROLL_STEP.min(self.scroll_offset);
+            self.scroll_offset -= step;
+            return true;
+        }
+        let bottom_start = self.last_content_rows.saturating_sub(EDGE_ZONE_ROWS - 1);
+        let at_bottom_edge = local_row >= bottom_start.max(1);
+        let room = layout_len.saturating_sub(self.scroll_offset + max_vis);
+        if at_bottom_edge && room > 0 {
+            let step = EDGE_SCROLL_STEP.min(room);
+            self.scroll_offset += step;
+            return true;
+        }
+        false
+    }
+
+    fn content_max_visible(&self) -> usize {
+        let mut max_vis = (self.terminal_rows * 30 / 100).max(5);
+        if self.is_editor_empty() {
+            max_vis = 1;
+        }
+        max_vis
+    }
+
+    fn maybe_copy_selection(&mut self, sink: &mut dyn ClipboardSink) {
+        if let Some(text) = self.selected_text()
+            && !text.is_empty()
+        {
+            sink.copy_text(&text);
+            if let Some(seq) = format_osc52(&text) {
+                self.pending_clipboard.push(seq);
+            }
+        }
+    }
+
+    /// Map editor-local `(col, row)` onto a logical buffer cell.
+    /// Content rows are `1..=last_content_rows` (row 0 = top border).
+    fn local_to_buffer(&self, col: usize, row: usize) -> Option<CellPoint> {
+        if self.last_content_rows == 0 || row == 0 || row > self.last_content_rows {
+            return None;
+        }
+        let px = self
+            .padding_x
+            .min(self.last_paint_width.saturating_sub(1) / 2);
+        if col < px {
+            return None;
+        }
+        let layout = self.layout_text(self.last_width);
+        let layout_idx = self.scroll_offset + (row - 1);
+        let ll = layout.get(layout_idx)?;
+        let content_col = col - px;
+        let byte_in_chunk = col_to_byte_index(&ll.text, content_col);
+        let byte_in_chunk = byte_in_chunk.min(ll.text.len());
+        Some(CellPoint::new(
+            ll.logical_line,
+            ll.start_index + byte_in_chunk,
+        ))
+    }
+
+    fn clamp_local_to_buffer(&self, _col: usize, row: usize) -> Option<CellPoint> {
+        if self.last_content_rows == 0 {
+            return None;
+        }
+        let layout = self.layout_text(self.last_width);
+        if layout.is_empty() {
+            return None;
+        }
+        // Above top border → start of first visible content row.
+        // Below last content row → end of last visible content row.
+        let content_row = if row == 0 {
+            0
+        } else if row > self.last_content_rows {
+            self.last_content_rows - 1
+        } else {
+            row - 1
+        };
+        let layout_idx = (self.scroll_offset + content_row).min(layout.len() - 1);
+        let ll = &layout[layout_idx];
+        let byte_in_chunk = if row == 0 { 0 } else { ll.text.len() };
+        Some(CellPoint::new(
+            ll.logical_line,
+            ll.start_index + byte_in_chunk,
+        ))
+    }
+
+    fn apply_selection_highlight(&self, ll: &LayoutLine, display: &str) -> String {
+        let Some((start, end)) = self.selection.bounds() else {
+            return display.to_string();
+        };
+        if start == end {
+            return display.to_string();
+        }
+        let line_start = CellPoint::new(ll.logical_line, ll.start_index);
+        let line_end = CellPoint::new(ll.logical_line, ll.start_index + ll.text.len());
+        // No overlap with this visual chunk.
+        if (ll.logical_line < start.row || ll.logical_line > end.row)
+            || (ll.logical_line == start.row && line_end.col <= start.col)
+            || (ll.logical_line == end.row && line_start.col >= end.col)
+        {
+            return display.to_string();
+        }
+        let from = if ll.logical_line == start.row {
+            start.col.saturating_sub(ll.start_index)
+        } else {
+            0
+        };
+        let to = if ll.logical_line == end.row {
+            end.col.saturating_sub(ll.start_index).min(ll.text.len())
+        } else {
+            ll.text.len()
+        };
+        invert_byte_range(display, from, to)
+    }
+}
+
+fn col_to_byte_index(text: &str, col: usize) -> usize {
+    let mut w = 0usize;
+    for (i, g) in UnicodeSegmentation::grapheme_indices(text, true) {
+        let gw = visible_width(g);
+        if w + gw > col {
+            return i;
+        }
+        w += gw;
+    }
+    text.len()
+}
+
+fn invert_byte_range(s: &str, from: usize, to: usize) -> String {
+    if from >= to || from >= s.len() {
+        return s.to_string();
+    }
+    let mut from = from.min(s.len());
+    let mut to = to.min(s.len());
+    while from > 0 && !s.is_char_boundary(from) {
+        from -= 1;
+    }
+    while to > 0 && !s.is_char_boundary(to) {
+        to -= 1;
+    }
+    if from >= to {
+        return s.to_string();
+    }
+    format!("{}\x1b[7m{}\x1b[27m{}", &s[..from], &s[from..to], &s[to..])
+}
+
+fn extract_editor_range(lines: &[String], start: CellPoint, end: CellPoint) -> String {
+    if start.row == end.row {
+        let line = lines.get(start.row).map(|s| s.as_str()).unwrap_or("");
+        let from = start.col.min(line.len());
+        let to = end.col.min(line.len());
+        if from > to || !line.is_char_boundary(from) || !line.is_char_boundary(to) {
+            return String::new();
+        }
+        return line[from..to].to_string();
+    }
+    let mut out = String::new();
+    for row in start.row..=end.row {
+        let line = lines.get(row).map(|s| s.as_str()).unwrap_or("");
+        let piece = if row == start.row {
+            let from = start.col.min(line.len());
+            if line.is_char_boundary(from) {
+                &line[from..]
+            } else {
+                line
+            }
+        } else if row == end.row {
+            let to = end.col.min(line.len());
+            if line.is_char_boundary(to) {
+                &line[..to]
+            } else {
+                line
+            }
+        } else {
+            line
+        };
+        if row > start.row {
+            out.push('\n');
+        }
+        out.push_str(piece);
+    }
+    out
 }
 
 // ── Component impl ──────────────────────────────────────────────────────────
@@ -1578,13 +2053,11 @@ impl Component for Editor {
             cw.saturating_sub(1).max(1)
         };
         self.last_width = lw;
+        self.last_paint_width = width;
         let layout = self.layout_text(lw);
         // Empty draft: keep a single content row (cursor) so the operation zone
         // stays compact — product chrome / agent_demo idle parity (c477).
-        let mut max_vis = (self.terminal_rows * 30 / 100).max(5);
-        if self.is_editor_empty() {
-            max_vis = 1;
-        }
+        let max_vis = self.content_max_visible();
         let cur_idx = layout.iter().position(|l| l.has_cursor).unwrap_or(0);
         if cur_idx < self.scroll_offset {
             self.scroll_offset = cur_idx;
@@ -1594,39 +2067,58 @@ impl Component for Editor {
         let ms = layout.len().saturating_sub(max_vis);
         self.scroll_offset = self.scroll_offset.min(ms);
         let visible = &layout[self.scroll_offset..(self.scroll_offset + max_vis).min(layout.len())];
+        self.last_content_rows = visible.len();
         let lp = " ".repeat(px);
         let rp = " ".repeat(px);
         let mut result = Vec::new();
         let marker = if self.focused { CURSOR_MARKER } else { "" };
 
-        // Top border — style the full line once (do not paint-then-repeat ANSI).
+        // Top border — keep the "↑ N more" cue readable even on narrow widths.
         if self.scroll_offset > 0 {
-            let ind = format!("─── ↑ {} more ", self.scroll_offset);
-            let iw = visible_width(&ind);
-            result.push(if width >= iw {
-                (self.theme.border_color)(&format!("{ind}{}", "─".repeat(width - iw)))
-            } else {
-                (self.theme.border_color)(&truncate_to_width(&ind, width, "", false))
-            });
+            result.push(self.render_more_border(width, true, self.scroll_offset));
         } else {
             result.push((self.theme.border_color)(&"─".repeat(width.max(1))));
         }
 
         for ll in visible {
-            let mut display = ll.text.clone();
-            let mut lv = visible_width(&display);
+            let mut display = self.apply_selection_highlight(ll, &ll.text);
+            let mut lv = visible_width(&ll.text);
             if ll.has_cursor
                 && let Some(cp) = ll.cursor_pos
             {
-                let before = &display[..cp.min(display.len())];
-                let after = &display[cp.min(display.len())..];
+                // Cursor paint uses the pre-highlight plain offsets on `ll.text`.
+                let plain = &ll.text;
+                let before = &plain[..cp.min(plain.len())];
+                let after = &plain[cp.min(plain.len())..];
+                // Re-apply selection on before/after pieces then insert cursor.
+                let before_h = self.apply_selection_highlight(
+                    &LayoutLine {
+                        text: before.to_string(),
+                        has_cursor: false,
+                        cursor_pos: None,
+                        logical_line: ll.logical_line,
+                        start_index: ll.start_index,
+                    },
+                    before,
+                );
+                let after_start = ll.start_index + before.len();
                 if !after.is_empty() {
                     let gs: Vec<&str> = UnicodeSegmentation::graphemes(after, true).collect();
                     let first = gs.first().copied().unwrap_or(" ");
                     let rest = &after[first.len()..];
-                    display = format!("{before}{marker}\x1b[7m{first}\x1b[0m{rest}");
+                    let rest_h = self.apply_selection_highlight(
+                        &LayoutLine {
+                            text: rest.to_string(),
+                            has_cursor: false,
+                            cursor_pos: None,
+                            logical_line: ll.logical_line,
+                            start_index: after_start + first.len(),
+                        },
+                        rest,
+                    );
+                    display = format!("{before_h}{marker}\x1b[7m{first}\x1b[0m{rest_h}");
                 } else {
-                    display = format!("{before}{marker}\x1b[7m \x1b[0m");
+                    display = format!("{before_h}{marker}\x1b[7m \x1b[0m");
                     lv += 1;
                 }
             }
@@ -1638,13 +2130,7 @@ impl Component for Editor {
             .len()
             .saturating_sub(self.scroll_offset + visible.len());
         if below > 0 {
-            let ind = format!("─── ↓ {} more ", below);
-            let iw = visible_width(&ind);
-            result.push(if width >= iw {
-                (self.theme.border_color)(&format!("{ind}{}", "─".repeat(width - iw)))
-            } else {
-                (self.theme.border_color)(&truncate_to_width(&ind, width, "", false))
-            });
+            result.push(self.render_more_border(width, false, below));
         } else {
             result.push((self.theme.border_color)(&"─".repeat(width.max(1))));
         }
@@ -1672,17 +2158,101 @@ impl Component for Editor {
     fn handle_input(&mut self, event: InputEvent) {
         match event {
             InputEvent::Paste(content) => {
+                self.flush_paste_coalesce();
                 self.paste_burst.reset();
+                self.selection.clear();
                 if !content.is_empty() {
                     self.paste(&content);
                 }
             }
-            InputEvent::Key(key) => self.handle_key(&key),
-            InputEvent::Mouse(_) => {}
+            InputEvent::Key(key) => {
+                self.flush_paste_coalesce();
+                self.selection.clear();
+                self.handle_key(&key);
+            }
+            InputEvent::Mouse(mouse) => {
+                // Absolute screen → editor-local (top-left of last paint).
+                let local = MouseEvent {
+                    kind: mouse.kind,
+                    column: mouse.column.saturating_sub(self.screen_origin_col),
+                    row: mouse.row.saturating_sub(self.screen_origin_row),
+                    modifiers: mouse.modifiers,
+                };
+                let mut sink = DiscardClipboardSink;
+                self.mouse_dirty = self.handle_mouse_local(&local, &mut sink);
+            }
         }
     }
 
+    fn input_wants_rerender(&self, event: &InputEvent) -> bool {
+        match event {
+            InputEvent::Mouse(_) => {
+                self.mouse_dirty || self.selection.dragging || self.selection.has_selection()
+            }
+            _ => true,
+        }
+    }
+
+    fn take_pending_clipboard(&mut self) -> Vec<String> {
+        std::mem::take(&mut self.pending_clipboard)
+    }
+
+    fn tick(&mut self) -> bool {
+        let mut changed = false;
+        let now = self.clock.now();
+        if self.paste_coalesce_deadline.is_some_and(|d| now >= d) {
+            self.flush_paste_coalesce();
+            changed = true;
+        }
+        if !self.selection.dragging {
+            return changed;
+        }
+        let Some((col, row)) = self.selection_pointer else {
+            return changed;
+        };
+        if !self.selection_edge_scroll(row) {
+            return changed;
+        }
+        if let Some(cell) = self
+            .local_to_buffer(col, row)
+            .or_else(|| self.clamp_local_to_buffer(col, row))
+        {
+            self.selection.focus = Some(cell);
+        }
+        true
+    }
+
     fn invalidate(&mut self) {}
+}
+
+impl Editor {
+    /// Paint ↑/↓ more chrome; prefer the cue text over decorative dashes when narrow.
+    fn render_more_border(&self, width: usize, up: bool, count: usize) -> String {
+        let arrow = if up { '↑' } else { '↓' };
+        let core = format!(" {arrow} {count} more ");
+        let core_w = visible_width(&core);
+        if width == 0 {
+            return String::new();
+        }
+        if width <= core_w {
+            return (self.theme.border_color)(&truncate_to_width(&core, width, "…", false));
+        }
+        let lead = "───".to_string();
+        let lead_w = visible_width(&lead);
+        if lead_w + core_w <= width {
+            let rest = width - lead_w - core_w;
+            return (self.theme.border_color)(&format!("{lead}{core}{}", "─".repeat(rest)));
+        }
+        (self.theme.border_color)(&truncate_to_width(&format!("─{core}"), width, "…", false))
+    }
+}
+
+/// Sink used when [`Editor::handle_input`] receives mouse without an external sink.
+/// OSC52 still accumulates on [`Editor::pending_clipboard`] via [`Editor::maybe_copy_selection`].
+struct DiscardClipboardSink;
+
+impl ClipboardSink for DiscardClipboardSink {
+    fn copy_text(&mut self, _text: &str) {}
 }
 
 impl Focusable for Editor {
@@ -1697,7 +2267,6 @@ impl Focusable for Editor {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::clock::SystemClock;
     use std::cell::RefCell;
     use std::rc::Rc;
 
@@ -1707,8 +2276,35 @@ mod tests {
             select_list_theme: SelectListTheme::default(),
         }
     }
+
+    /// Default test clock: each `now()` is ≥20ms after the previous, so rapid
+    /// `insert_ch` in unit tests looks like human typing (no false paste coalesce).
+    /// Paste-burst tests pass an explicit frozen/`advance(1ms)` [`MockClock`] instead.
+    #[derive(Clone)]
+    struct TypingClock {
+        t: std::cell::Cell<std::time::Instant>,
+    }
+    impl TypingClock {
+        fn new() -> Self {
+            Self {
+                t: std::cell::Cell::new(std::time::Instant::now()),
+            }
+        }
+    }
+    impl Clock for TypingClock {
+        fn now(&self) -> std::time::Instant {
+            let n = self.t.get();
+            self.t.set(
+                n + std::time::Duration::from_millis(
+                    crate::paste_burst::PASTE_BURST_CHAR_INTERVAL_MS + 12,
+                ),
+            );
+            n
+        }
+    }
+
     fn clk() -> Box<dyn Clock> {
-        Box::new(SystemClock)
+        Box::new(TypingClock::new())
     }
 
     #[test]
@@ -2048,5 +2644,279 @@ mod tests {
         e.set_text("hello\nworld".into());
         assert_eq!(e.state.cursor_line, 1);
         assert_eq!(e.state.cursor_col, 5);
+    }
+
+    fn mouse(kind: MouseEventKind, col: u16, row: u16) -> MouseEvent {
+        MouseEvent {
+            kind,
+            column: col,
+            row,
+            modifiers: crossterm::event::KeyModifiers::NONE,
+        }
+    }
+
+    #[test]
+    fn editor_multiline_drag_select_and_copy() {
+        use crate::selection::RecordingClipboardSink;
+        let mut e = Editor::new(t(), EditorOptions::default(), clk());
+        e.set_text("alpha\nbeta\ngamma".into());
+        let _ = e.render(40);
+        // Local coords: row 0 = top border; content starts at row 1.
+        let mut sink = RecordingClipboardSink::default();
+        assert!(e.handle_mouse_local(
+            &mouse(MouseEventKind::Down(MouseButton::Left), 0, 1),
+            &mut sink
+        ));
+        assert!(e.is_selection_dragging());
+        assert!(e.handle_mouse_local(
+            &mouse(MouseEventKind::Drag(MouseButton::Left), 4, 3),
+            &mut sink
+        ));
+        assert!(e.handle_mouse_local(
+            &mouse(MouseEventKind::Up(MouseButton::Left), 4, 3),
+            &mut sink
+        ));
+        assert!(!e.is_selection_dragging());
+        assert_eq!(e.selected_text().as_deref(), Some("alpha\nbeta\ngamm"));
+        assert_eq!(sink.copies, vec!["alpha\nbeta\ngamm".to_string()]);
+        assert!(
+            !e.take_pending_clipboard().is_empty(),
+            "copy-on-release must queue OSC52"
+        );
+        let painted = e.render(40);
+        let joined = painted.join("\n");
+        assert!(
+            joined.contains("\x1b[7m"),
+            "visible editor lines must show selection highlight"
+        );
+    }
+
+    #[test]
+    fn editor_selection_independent_of_empty_click() {
+        use crate::selection::RecordingClipboardSink;
+        let mut e = Editor::new(t(), EditorOptions::default(), clk());
+        e.set_text("only".into());
+        let _ = e.render(40);
+        let mut sink = RecordingClipboardSink::default();
+        e.handle_mouse_local(
+            &mouse(MouseEventKind::Down(MouseButton::Left), 1, 1),
+            &mut sink,
+        );
+        e.handle_mouse_local(
+            &mouse(MouseEventKind::Up(MouseButton::Left), 1, 1),
+            &mut sink,
+        );
+        assert!(sink.copies.is_empty());
+        assert!(!e.has_selection());
+    }
+
+    #[test]
+    fn editor_selection_clears_on_key() {
+        use crate::selection::RecordingClipboardSink;
+        let mut e = Editor::new(t(), EditorOptions::default(), clk());
+        e.set_text("ab\ncd".into());
+        let _ = e.render(40);
+        let mut sink = RecordingClipboardSink::default();
+        e.handle_mouse_local(
+            &mouse(MouseEventKind::Down(MouseButton::Left), 0, 1),
+            &mut sink,
+        );
+        e.handle_mouse_local(
+            &mouse(MouseEventKind::Drag(MouseButton::Left), 1, 2),
+            &mut sink,
+        );
+        assert!(e.has_selection() || e.is_selection_dragging());
+        e.handle_input(InputEvent::Key(crossterm::event::KeyEvent::new(
+            crossterm::event::KeyCode::Right,
+            crossterm::event::KeyModifiers::NONE,
+        )));
+        assert!(!e.has_selection());
+        assert!(!e.is_selection_dragging());
+    }
+
+    #[test]
+    fn editor_selection_edge_scroll_reveals_above() {
+        use crate::selection::RecordingClipboardSink;
+        let mut e = Editor::new(
+            t(),
+            EditorOptions {
+                padding_x: 0,
+                terminal_rows: 8, // max_vis ≈ 5
+            },
+            clk(),
+        );
+        e.set_text(
+            (0..12)
+                .map(|i| format!("L{i:02}"))
+                .collect::<Vec<_>>()
+                .join("\n"),
+        );
+        let _ = e.render(40);
+        let offset_before = e.scroll_offset;
+        assert!(
+            offset_before > 0,
+            "expected scrolled editor, offset={offset_before}"
+        );
+        let mut sink = RecordingClipboardSink::default();
+        e.handle_mouse_local(
+            &mouse(MouseEventKind::Down(MouseButton::Left), 0, 1),
+            &mut sink,
+        );
+        assert!(e.handle_mouse_local(
+            &mouse(MouseEventKind::Drag(MouseButton::Left), 0, 0),
+            &mut sink
+        ));
+        assert!(
+            e.scroll_offset < offset_before,
+            "drag onto ↑ more must scroll up: before={offset_before} after={}",
+            e.scroll_offset
+        );
+    }
+
+    #[test]
+    fn editor_more_border_survives_narrow_width() {
+        let mut e = Editor::new(
+            t(),
+            EditorOptions {
+                padding_x: 0,
+                terminal_rows: 8,
+            },
+            clk(),
+        );
+        e.set_text(
+            (0..12)
+                .map(|i| format!("line-{i}"))
+                .collect::<Vec<_>>()
+                .join("\n"),
+        );
+        let _ = e.render(40);
+        assert!(e.scroll_offset > 0);
+        let narrow = e.render(12);
+        let top = &narrow[0];
+        assert!(
+            top.contains('↑') || top.contains("more"),
+            "narrow width must keep more cue: {top:?}"
+        );
+    }
+
+    #[test]
+    fn shift_enter_inserts_newline() {
+        use crossterm::event::{KeyCode, KeyEvent, KeyModifiers};
+        let mut e = Editor::new(t(), EditorOptions::default(), clk());
+        e.insert_ch("a");
+        e.handle_input(InputEvent::Key(KeyEvent::new(
+            KeyCode::Enter,
+            KeyModifiers::SHIFT,
+        )));
+        assert_eq!(e.get_text(), "a\n");
+    }
+
+    #[test]
+    fn ghostty_shift_enter_char_lf_inserts_newline() {
+        // Ghostty (kitty-active): Shift+Enter → text `\n` → crossterm Char('\n')
+        // without SHIFT (pi keys.ts). Must not submit / must not be printable.
+        use crate::keys::with_kitty_protocol_active;
+        use crossterm::event::{KeyCode, KeyEvent, KeyModifiers};
+        with_kitty_protocol_active(true, || {
+            let mut e = Editor::new(t(), EditorOptions::default(), clk());
+            e.insert_ch("a");
+            e.handle_input(InputEvent::Key(KeyEvent::new(
+                KeyCode::Char('\n'),
+                KeyModifiers::NONE,
+            )));
+            assert_eq!(e.get_text(), "a\n");
+        });
+    }
+
+    #[test]
+    fn external_editor_path_expands_paste_markers() {
+        // Ctrl+G / $EDITOR must see real paste bodies, not `[paste #N …]`.
+        let mut e = Editor::new(t(), EditorOptions::default(), clk());
+        let pasted = (0..26)
+            .map(|i| format!("body-line-{i}"))
+            .collect::<Vec<_>>()
+            .join("\n");
+        e.handle_input(InputEvent::Paste(pasted.clone()));
+        assert!(
+            e.get_text().contains("[paste #1 +26 lines]"),
+            "display collapses: {}",
+            e.get_text()
+        );
+        let for_editor = e.get_expanded_text();
+        assert_eq!(for_editor, pasted);
+        assert!(
+            !for_editor.contains("[paste #"),
+            "external editor must not receive collapse markers"
+        );
+    }
+
+    #[test]
+    fn paste_visual_coalesce_batches_fast_chars() {
+        use crate::clock::MockClock;
+        use crossterm::event::{KeyCode, KeyEvent, KeyModifiers};
+        // Frozen MockClock: all insert_ch share one Instant → consecutive burst.
+        let mut e = Editor::new(t(), EditorOptions::default(), Box::new(MockClock::new()));
+        e.insert_ch("a");
+        assert_eq!(e.get_text(), "a");
+        e.insert_ch("b");
+        assert_eq!(
+            e.get_text(),
+            "",
+            "visual coalesce should retract painted prefix mid-burst"
+        );
+        for ch in ["c", "d", "e"] {
+            e.insert_ch(ch);
+            assert_eq!(e.get_text(), "", "must stay buffered during burst");
+        }
+        // Any key flushes coalesce before handling (same as idle tick deadline).
+        e.handle_input(InputEvent::Key(KeyEvent::new(
+            KeyCode::Right,
+            KeyModifiers::NONE,
+        )));
+        assert_eq!(e.get_text(), "abcde");
+    }
+
+    #[test]
+    fn editor_selection_edge_scroll_steps_by_zone_and_tick() {
+        use crate::selection::RecordingClipboardSink;
+        let mut e = Editor::new(
+            t(),
+            EditorOptions {
+                padding_x: 0,
+                terminal_rows: 8, // max_vis ≈ 5
+            },
+            clk(),
+        );
+        e.set_text(
+            (0..30)
+                .map(|i| format!("L{i:02}"))
+                .collect::<Vec<_>>()
+                .join("\n"),
+        );
+        let _ = e.render(40);
+        let offset0 = e.scroll_offset;
+        assert!(offset0 >= 6, "expected deep scroll, got {offset0}");
+        let mut sink = RecordingClipboardSink::default();
+        e.handle_mouse_local(
+            &mouse(MouseEventKind::Down(MouseButton::Left), 0, 1),
+            &mut sink,
+        );
+        // Drag onto top content row (edge zone) — one step of 6.
+        assert!(e.handle_mouse_local(
+            &mouse(MouseEventKind::Drag(MouseButton::Left), 0, 1),
+            &mut sink
+        ));
+        let after_drag = e.scroll_offset;
+        assert!(
+            after_drag + 6 <= offset0 || after_drag < offset0,
+            "edge zone drag must scroll up by ~step: before={offset0} after={after_drag}"
+        );
+        // Holding at edge without new mouse events: tick keeps scrolling.
+        let before_tick = e.scroll_offset;
+        assert!(e.tick(), "drag hold at edge must tick-scroll");
+        assert!(
+            e.scroll_offset < before_tick,
+            "tick while dragging at top edge must keep scrolling"
+        );
     }
 }

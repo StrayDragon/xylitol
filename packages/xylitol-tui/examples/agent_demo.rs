@@ -992,6 +992,8 @@ xylitol-tui agent_demo · Mode B (alt-screen)
   3. 拖到顶/底可越界续选；滚轮滚应用视口（非终端 scrollback）
   4. 底部输入/footer dock 不可作 transcript 选区起点
   5. Ctrl+G 外编 suspend/resume 后仍保持 Mode B
+  6. Editor 多行独立拖选高亮；松手 OSC52（与 transcript 选区隔离）
+  7. 松手复制成功后 dock 内输入上方出现「Copied」约 2s（不进 transcript）
 退出：Ctrl+C（空编辑器）或 /exit
 "
     );
@@ -1121,14 +1123,24 @@ pub fn main() -> Result<(), Box<dyn std::error::Error>> {
     let app_hook = app.clone();
     tui.set_after_dispatch_hook(move |tui| {
         if tui.application_session_active() {
+            let rows = tui.terminal.rows();
+            app_hook.borrow_mut().set_term_rows_for_mouse(rows);
             let dock = app_hook.borrow().last_mode_b_dock_rows();
             tui.set_mode_b_dock_rows(dock);
+            // Editor independent selection copy (ptim13) → same OSC52 flush path.
+            let editor_clip = app_hook.borrow_mut().take_editor_clipboard();
+            if !editor_clip.is_empty() {
+                tui.enqueue_clipboard_sequences(editor_clip);
+            }
+            if tui.take_copy_notice() {
+                app_hook.borrow_mut().arm_copy_notice();
+            }
         }
         let pending = app_hook.borrow_mut().take_pending_external_editor();
         if !pending {
             return;
         }
-        let text = app_hook.borrow().input_text_for_test();
+        let text = app_hook.borrow().input.get_expanded_text();
         let outcome = tui.with_terminal_suspended(|| run_external_editor_process(&text));
         match outcome {
             Ok(Some(new_text)) => {
@@ -1151,6 +1163,8 @@ pub fn main() -> Result<(), Box<dyn std::error::Error>> {
     tui.set_focus(Some(0));
     if mode_b {
         let cols = tui.terminal.columns() as usize;
+        let rows = tui.terminal.rows();
+        app.borrow_mut().set_term_rows_for_mouse(rows);
         let _ = app.borrow_mut().render(cols.max(1));
         tui.set_mode_b_dock_rows(app.borrow().last_mode_b_dock_rows());
     }
@@ -1167,6 +1181,14 @@ impl Component for SharedFakeCodingAgentApp {
 
     fn handle_input(&mut self, event: InputEvent) {
         self.0.borrow_mut().handle_input(event);
+    }
+
+    fn input_wants_rerender(&self, event: &InputEvent) -> bool {
+        self.0.borrow().input_wants_rerender(event)
+    }
+
+    fn take_pending_clipboard(&mut self) -> Vec<String> {
+        self.0.borrow_mut().take_editor_clipboard()
     }
 
     fn invalidate(&mut self) {
@@ -1478,6 +1500,14 @@ pub struct FakeCodingAgentApp {
     last_skill_injections: Vec<(String, String)>,
     /// Mode B dock rows from last paint (status + editor slot + footer).
     last_mode_b_dock_rows: usize,
+    /// Status band height inside the dock (for remapping screen → editor-local).
+    last_status_rows: usize,
+    /// Editor slot height inside the dock (borders included).
+    last_editor_rows: usize,
+    /// Last known terminal rows (Mode B mouse remap).
+    term_rows: u16,
+    /// Mode B copy-success cue above the editor (`Copied`, ~2s TTL).
+    copy_notice_until: Option<Instant>,
 }
 
 impl FakeCodingAgentApp {
@@ -1518,9 +1548,14 @@ impl FakeCodingAgentApp {
         self.quit_flag.store(true, Ordering::SeqCst);
     }
 
-    /// Test helper: current editor text.
+    /// Test helper: current editor text (collapsed markers).
     pub fn input_text_for_test(&self) -> String {
         self.input.get_text()
+    }
+
+    /// Test helper: editor text with `[paste #N …]` expanded (Ctrl+G / submit parity).
+    pub fn input_expanded_text_for_test(&self) -> String {
+        self.input.get_expanded_text()
     }
 
     /// Test helper: footer metadata line (`cwd · model`).
@@ -1531,6 +1566,76 @@ impl FakeCodingAgentApp {
     /// Mode B dock rows measured on the last render (status + editor + footer).
     pub fn last_mode_b_dock_rows(&self) -> usize {
         self.last_mode_b_dock_rows.max(1)
+    }
+
+    /// Update terminal size used to remap Mode B mouse into the editor.
+    pub fn set_term_rows_for_mouse(&mut self, rows: u16) {
+        self.term_rows = rows.max(1);
+    }
+
+    /// Drain OSC52 sequences produced by Editor copy-on-release.
+    pub fn take_editor_clipboard(&mut self) -> Vec<String> {
+        self.input.take_pending_clipboard()
+    }
+
+    /// Remap absolute Mode B screen mouse → editor-local and forward (ptim13).
+    fn handle_editor_mouse(&mut self, mouse: crossterm::event::MouseEvent) {
+        use crossterm::event::MouseEventKind;
+        // Only left-button selection traffic; ignore wheel over dock here.
+        if !matches!(
+            mouse.kind,
+            MouseEventKind::Down(crossterm::event::MouseButton::Left)
+                | MouseEventKind::Drag(crossterm::event::MouseButton::Left)
+                | MouseEventKind::Up(crossterm::event::MouseButton::Left)
+                | MouseEventKind::Moved
+        ) {
+            return;
+        }
+        // Selectors replace the editor slot — don't steal their mouse.
+        if self.palette_open
+            || self.settings_open
+            || self.tree_open
+            || self.lib_atom.is_some()
+            || self.choice_prompt.is_some()
+        {
+            return;
+        }
+        let dock = self.last_mode_b_dock_rows as u16;
+        let dock_top = self.term_rows.saturating_sub(dock.max(1));
+        if mouse.row < dock_top {
+            return;
+        }
+        let dock_local = mouse.row - dock_top;
+        let status_h = self.last_status_rows as u16;
+        let editor_h = self.last_editor_rows as u16;
+        if dock_local < status_h {
+            return;
+        }
+        let ed_local = dock_local - status_h;
+        if ed_local >= editor_h {
+            return;
+        }
+        let local = crossterm::event::MouseEvent {
+            kind: mouse.kind,
+            column: mouse.column,
+            row: ed_local,
+            modifiers: mouse.modifiers,
+        };
+        self.input.handle_input(InputEvent::Mouse(local));
+    }
+
+    fn input_wants_rerender(&self, event: &InputEvent) -> bool {
+        self.input.input_wants_rerender(event)
+    }
+
+    /// Arm the Mode B «Copied» dock cue (~2s). Not a ScrollNotice / transcript line.
+    pub fn arm_copy_notice(&mut self) {
+        self.copy_notice_until = Some(Instant::now() + Duration::from_millis(2000));
+    }
+
+    fn copy_notice_visible(&self) -> bool {
+        self.copy_notice_until
+            .is_some_and(|until| Instant::now() < until)
     }
 
     /// Test helper: replace editor text (does not auto-sync bash border).
@@ -2435,7 +2540,8 @@ impl FakeCodingAgentApp {
     /// Ctrl+G: external editor — real `$EDITOR` on TTY via TUI suspend; stub in harness.
     fn open_external_editor_stub(&mut self) {
         self.external_editor_invocations = self.external_editor_invocations.saturating_add(1);
-        let text = self.input.get_text();
+        // Expand paste markers so stub / harness see real content (pi getExpandedText).
+        let text = self.input.get_expanded_text();
         self.push_message(
             Role::ScrollNotice,
             format!(
@@ -2796,6 +2902,10 @@ impl FakeCodingAgentApp {
             thinking_border_level: ThinkingBorderLevel::Medium,
             last_skill_injections: Vec::new(),
             last_mode_b_dock_rows: 8,
+            last_status_rows: 1,
+            last_editor_rows: 3,
+            term_rows: 24,
+            copy_notice_until: None,
         };
         if app.theme_auto {
             app.refresh_theme_from_env();
@@ -4567,14 +4677,24 @@ impl FakeCodingAgentApp {
     /// - Idle: one blank so input is never flush against transcript.
     fn status_lines(&mut self, width: usize) -> Vec<String> {
         if self.spinner_active() {
-            return self
+            let mut lines: Vec<String> = self
                 .loader
                 .render(width)
                 .into_iter()
                 .map(|line| Self::fit(&line, width))
                 .collect();
+            // Busy: keep spinner; append cue so it still sits above the editor.
+            if self.copy_notice_visible() {
+                lines.push(Self::fit(&dim("Copied"), width));
+            }
+            return lines;
         }
-        vec![String::new()]
+        // Idle: reuse the blank status row so Mode B dock height stays stable.
+        if self.copy_notice_visible() {
+            vec![Self::fit(&dim("Copied"), width)]
+        } else {
+            vec![String::new()]
+        }
     }
 
     /// pi `showSelector`: replace the editor slot (bottom of the stack) so the
@@ -4758,6 +4878,8 @@ impl Component for FakeCodingAgentApp {
         let status = self.status_lines(width);
         let editor = self.render_editor_slot(width);
         // Mode B dock excludes transcript+queue (c2070 / ptim06).
+        self.last_status_rows = status.len();
+        self.last_editor_rows = editor.len();
         self.last_mode_b_dock_rows = status.len().saturating_add(editor.len()).saturating_add(1);
         lines.extend(status);
         lines.extend(editor);
@@ -4800,7 +4922,10 @@ impl Component for FakeCodingAgentApp {
                 }
                 return;
             }
-            InputEvent::Mouse(_) => return,
+            InputEvent::Mouse(mouse) => {
+                self.handle_editor_mouse(*mouse);
+                return;
+            }
         };
 
         if matches_key_event(key, "ctrl+c") {
@@ -5036,6 +5161,15 @@ impl Component for FakeCodingAgentApp {
     fn tick(&mut self) -> bool {
         let mut changed = false;
         self.script_tick = self.script_tick.saturating_add(1);
+
+        if let Some(until) = self.copy_notice_until
+            && Instant::now() >= until
+        {
+            self.copy_notice_until = None;
+            changed = true;
+        }
+
+        changed |= self.input.tick();
 
         if self.spinner_active()
             && self.last_tick_at.elapsed().as_millis() >= self.loader.interval_ms() as u128

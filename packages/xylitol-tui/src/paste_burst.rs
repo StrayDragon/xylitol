@@ -86,6 +86,18 @@ impl PasteBurst {
         })
     }
 
+    /// True while a non-bracketed paste burst window is open (active or suppress).
+    pub fn is_coalescing(&self, now: Instant) -> bool {
+        self.active_until.is_some_and(|t| now <= t)
+            || self.enter_suppress_until.is_some_and(|t| now <= t)
+            || self.consecutive_plain_chars >= PASTE_BURST_MIN_CHARS
+    }
+
+    /// How many consecutive fast chars are currently tracked.
+    pub fn consecutive_plain_chars(&self) -> u32 {
+        self.consecutive_plain_chars
+    }
+
     /// Open/extend the active + enter-suppress windows. Called internally on
     /// burst detection; also public so the editor can force-extend (pi does
     /// this right before inserting the newline).

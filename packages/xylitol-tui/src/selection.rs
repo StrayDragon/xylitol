@@ -114,6 +114,8 @@ pub struct SelectionController {
     last_click_at: Option<std::time::Instant>,
     last_click_cell: Option<(u16, u16)>,
     hit_priority: Option<HitPriorityFn>,
+    /// Set when the last [`Self::handle_mouse`] issued a non-empty copy (ptim15).
+    last_event_copied: bool,
 }
 
 impl Default for SelectionController {
@@ -130,6 +132,7 @@ impl Default for SelectionController {
             last_click_at: None,
             last_click_cell: None,
             hit_priority: None,
+            last_event_copied: false,
         }
     }
 }
@@ -162,6 +165,11 @@ impl SelectionController {
         }
     }
 
+    /// True if the most recent [`Self::handle_mouse`] copied non-empty text.
+    pub fn last_event_copied(&self) -> bool {
+        self.last_event_copied
+    }
+
     pub fn bounds(&self) -> Option<(CellPoint, CellPoint)> {
         let a = self.anchor?;
         let f = self.focus?;
@@ -182,6 +190,7 @@ impl SelectionController {
         dock: ScreenRect,
         sink: &mut dyn ClipboardSink,
     ) -> bool {
+        self.last_event_copied = false;
         let (col, row) = (event.column, event.row);
 
         // Dock / input: never *start* transcript selection on dock text (ptim06).
@@ -254,7 +263,7 @@ impl SelectionController {
                     self.focus = Some(cell);
                 }
                 if self.copy_on_release {
-                    self.maybe_copy(scroll, sink);
+                    self.last_event_copied = self.maybe_copy(scroll, sink);
                 }
                 // Empty selection (click without drag) clears.
                 if !self.has_selection() {
@@ -336,18 +345,21 @@ impl SelectionController {
         }
     }
 
-    fn maybe_copy(&self, scroll: &ScrollView, sink: &mut dyn ClipboardSink) {
+    /// Copy non-empty selection to `sink`. Returns true when text was issued.
+    fn maybe_copy(&self, scroll: &ScrollView, sink: &mut dyn ClipboardSink) -> bool {
         if let Some(text) = self.selected_text(scroll.lines())
             && !text.is_empty()
         {
             sink.copy_text(&text);
+            return true;
         }
+        false
     }
 
     /// Pointer in dock rectangle.
     ///
     /// - Idle / completed selection: ignore motion; Down clears transcript
-    ///   selection so the dock can take a fresh press (editor selection later).
+    ///   selection and returns false so Editor can take the press (ptim13).
     /// - Active drag: clamp to transcript bottom edge, keep selection, edge
     ///   auto-scroll downward; Up finishes copy like a release at the edge.
     fn handle_dock_mouse(
@@ -360,10 +372,11 @@ impl SelectionController {
         let (col, row) = (event.column, event.row);
         match event.kind {
             MouseEventKind::Down(MouseButton::Left) => {
-                // Do not start transcript selection from dock text.
+                // Do not start transcript selection from dock text (ptim06).
+                // Clear any prior transcript selection, but return false so the
+                // event falls through to Editor independent selection (ptim13).
                 if self.dragging || self.has_selection() {
                     self.clear();
-                    return true;
                 }
                 false
             }
@@ -382,7 +395,7 @@ impl SelectionController {
                 self.dragging = false;
                 self.auto_scroll_dir = 0;
                 if self.copy_on_release {
-                    self.maybe_copy(scroll, sink);
+                    self.last_event_copied = self.maybe_copy(scroll, sink);
                 }
                 if !self.has_selection() {
                     self.clear();
@@ -560,15 +573,23 @@ fn strip_ansi_approx(s: &str) -> String {
 }
 
 fn extract_range(lines: &[String], start: CellPoint, end: CellPoint) -> String {
+    // Drop fit/pad trailing spaces so copy char-count matches visible text
+    // (demo `fit` pads every transcript line to terminal width).
+    fn trim_copy_piece(s: String) -> String {
+        s.trim_end_matches([' ', '\t']).to_string()
+    }
+
     if start.row == end.row {
         let plain = strip_ansi_approx(lines.get(start.row).map(|s| s.as_str()).unwrap_or(""));
-        return plain
-            .chars()
-            .skip(start.col)
-            .take(end.col.saturating_sub(start.col))
-            .collect();
+        return trim_copy_piece(
+            plain
+                .chars()
+                .skip(start.col)
+                .take(end.col.saturating_sub(start.col))
+                .collect(),
+        );
     }
-    let mut out = String::new();
+    let mut parts: Vec<String> = Vec::new();
     for row in start.row..=end.row {
         let plain = strip_ansi_approx(lines.get(row).map(|s| s.as_str()).unwrap_or(""));
         let piece: String = if row == start.row {
@@ -578,12 +599,14 @@ fn extract_range(lines: &[String], start: CellPoint, end: CellPoint) -> String {
         } else {
             plain
         };
-        if row > start.row {
-            out.push('\n');
+        let piece = trim_copy_piece(piece);
+        // Fully-padded trailing rows become empty after trim — drop them.
+        if piece.is_empty() && row == end.row && !parts.is_empty() {
+            continue;
         }
-        out.push_str(&piece);
+        parts.push(piece);
     }
-    out
+    parts.join("\n")
 }
 
 fn expand_for_granularity(
@@ -708,6 +731,7 @@ mod tests {
             &mut sink
         ));
         assert_eq!(sink.copies, vec!["hello".to_string()]);
+        assert!(sel.last_event_copied());
     }
 
     #[test]
@@ -733,6 +757,7 @@ mod tests {
         );
         assert!(sink.copies.is_empty());
         assert!(!sel.has_selection());
+        assert!(!sel.last_event_copied());
     }
 
     #[test]
@@ -749,6 +774,40 @@ mod tests {
             dock,
             &mut sink
         ));
+        assert!(!sel.is_dragging());
+    }
+
+    #[test]
+    fn dock_down_clears_transcript_selection_and_falls_through() {
+        let mut scroll = ScrollView::new(4);
+        scroll.set_lines(vec!["hello".into()]);
+        let mut sel = SelectionController::new();
+        let mut sink = RecordingClipboardSink::default();
+        let (tr, dock) = layout();
+        sel.handle_mouse(
+            &mouse(MouseEventKind::Down(MouseButton::Left), 0, 0),
+            &mut scroll,
+            tr,
+            dock,
+            &mut sink,
+        );
+        sel.handle_mouse(
+            &mouse(MouseEventKind::Drag(MouseButton::Left), 4, 0),
+            &mut scroll,
+            tr,
+            dock,
+            &mut sink,
+        );
+        assert!(sel.has_selection() || sel.is_dragging());
+        // Dock Down: clear, but return false so Editor can receive the press (ptim13).
+        assert!(!sel.handle_mouse(
+            &mouse(MouseEventKind::Down(MouseButton::Left), 0, 4),
+            &mut scroll,
+            tr,
+            dock,
+            &mut sink
+        ));
+        assert!(!sel.has_selection());
         assert!(!sel.is_dragging());
     }
 
@@ -883,6 +942,42 @@ mod tests {
         );
         assert!(sink.copies.is_empty());
         assert!(sel.has_selection());
+        assert!(!sel.last_event_copied());
+    }
+
+    #[test]
+    fn copy_trims_fit_padding_spaces() {
+        let mut scroll = ScrollView::new(4);
+        // Simulate demo `fit`: content + trailing pad to transcript width (20).
+        scroll.set_lines(vec![
+            format!("hello{}", " ".repeat(15)),
+            format!("world{}", " ".repeat(15)),
+        ]);
+        let mut sel = SelectionController::new();
+        let mut sink = RecordingClipboardSink::default();
+        let (tr, dock) = layout();
+        sel.handle_mouse(
+            &mouse(MouseEventKind::Down(MouseButton::Left), 0, 0),
+            &mut scroll,
+            tr,
+            dock,
+            &mut sink,
+        );
+        sel.handle_mouse(
+            &mouse(MouseEventKind::Drag(MouseButton::Left), 19, 1),
+            &mut scroll,
+            tr,
+            dock,
+            &mut sink,
+        );
+        sel.handle_mouse(
+            &mouse(MouseEventKind::Up(MouseButton::Left), 19, 1),
+            &mut scroll,
+            tr,
+            dock,
+            &mut sink,
+        );
+        assert_eq!(sink.copies, vec!["hello\nworld".to_string()]);
     }
 
     #[test]

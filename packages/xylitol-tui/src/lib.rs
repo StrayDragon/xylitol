@@ -78,6 +78,7 @@ pub use keys::{
     KeyId, decode_printable_key, is_key_release, is_key_repeat, matches_key, matches_key_event,
     parse_key, printable_from_key_event, set_kitty_protocol_active, with_kitty_protocol_active,
 };
+pub use mode_b::COPY_NOTICE_TTL;
 pub use paste_burst::PasteBurst;
 pub use scroll_view::ScrollView;
 pub use selection::{

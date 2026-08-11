@@ -2454,3 +2454,91 @@ fn interaction_mode_b_restacks_and_registers_dock() {
     assert!(!session.tui.mouse_capture_enabled());
     assert!(!session.tui.terminal.alternate_screen_active());
 }
+
+#[test]
+fn mode_b_copy_notice_chrome_ath31() {
+    use crossterm::event::{KeyModifiers, MouseButton, MouseEvent, MouseEventKind};
+
+    let mut session = HostSession::new_product_ui(TestTerminal::new(80, 24));
+    session.apply_interaction_mode(xylitol_tui::InteractionMode::ApplicationOwned);
+    session.push_scroll_notice("hello world for mode-b copy");
+    session.render_now().unwrap();
+
+    let root = session.ui_root().expect("product ui root").clone();
+    let (origin_row, origin_col) = root.borrow().editor_screen_origin_for_test();
+    assert_eq!(origin_col, 0);
+    let term_rows = session.tui.terminal.rows() as usize;
+    let dock = session.tui.mode_b_dock_rows();
+    assert!(
+        origin_row as usize >= term_rows.saturating_sub(dock),
+        "editor origin must sit in Mode B dock band: origin={origin_row} dock_top={}",
+        term_rows.saturating_sub(dock)
+    );
+
+    // Drag-select transcript → copy-on-release → host take_copy_notice → «Copied».
+    let mouse = |kind, col, row| {
+        InputEvent::Mouse(MouseEvent {
+            kind,
+            column: col,
+            row,
+            modifiers: KeyModifiers::NONE,
+        })
+    };
+    session
+        .step(HostEvent::Input(mouse(
+            MouseEventKind::Down(MouseButton::Left),
+            0,
+            0,
+        )))
+        .unwrap();
+    session
+        .step(HostEvent::Input(mouse(
+            MouseEventKind::Drag(MouseButton::Left),
+            5,
+            0,
+        )))
+        .unwrap();
+    session
+        .step(HostEvent::Input(mouse(
+            MouseEventKind::Up(MouseButton::Left),
+            5,
+            0,
+        )))
+        .unwrap();
+    session.render_now().unwrap();
+
+    assert_eq!(root.borrow().copy_notice_body_for_test(), Some("Copied"));
+    assert!(
+        root.borrow().chrome_toast_body().is_none(),
+        "ath31 MUST NOT use Error: chrome-toast for copy success"
+    );
+    let joined = session.tui.terminal.frames.concat();
+    assert!(
+        joined.contains("Copied"),
+        "frame MUST show Copied cue, got: {joined:?}"
+    );
+    assert!(
+        !joined.contains("Error: Copied") && !joined.contains("Error:Copied"),
+        "Copied MUST NOT be Error: toast morph, got: {joined:?}"
+    );
+}
+
+#[test]
+fn mode_b_copy_notice_arms_copied_cue_not_error_toast() {
+    let mut session = HostSession::new_product_ui(TestTerminal::new(80, 24));
+    session.apply_interaction_mode(xylitol_tui::InteractionMode::ApplicationOwned);
+    session.render_now().unwrap();
+    let root = session.ui_root().expect("ui root");
+    root.borrow_mut().arm_copy_notice();
+    assert_eq!(root.borrow().copy_notice_body_for_test(), Some("Copied"));
+    assert!(root.borrow().chrome_toast_body().is_none());
+    let frame = root.borrow_mut().render(80).join("\n");
+    assert!(
+        frame.contains("Copied"),
+        "Mode B copy cue must paint in chrome: {frame}"
+    );
+    assert!(
+        !frame.contains("Error: Copied"),
+        "must not use Error: toast shape: {frame}"
+    );
+}

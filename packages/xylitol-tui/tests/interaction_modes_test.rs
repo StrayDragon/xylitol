@@ -279,6 +279,86 @@ fn mode_b_wheel_scrolls_app_viewport() {
 }
 
 #[test]
+fn mode_b_copy_notice_armed_on_release_and_clears() {
+    let mut tui = TUI::with_interaction_mode(
+        LoggingVirtualTerminal::new(40, 8),
+        InteractionMode::ApplicationOwned,
+    );
+    tui.set_mode_b_dock_rows(2);
+    tui.add_child(Box::new(StaticLines {
+        lines: vec![
+            "hello world".into(),
+            "second line".into(),
+            "third".into(),
+            "fourth".into(),
+            "status".into(),
+            "input".into(),
+        ],
+    }));
+    tui.terminal.start();
+    tui.begin_application_owned_session();
+    tui.request_render(true);
+    tui.render_now().expect("seed");
+
+    assert!(!tui.copy_notice_active());
+    assert!(!tui.take_copy_notice());
+
+    // Empty click → no notice.
+    let down = MouseEvent {
+        kind: MouseEventKind::Down(MouseButton::Left),
+        column: 1,
+        row: 0,
+        modifiers: KeyModifiers::NONE,
+    };
+    let up = MouseEvent {
+        kind: MouseEventKind::Up(MouseButton::Left),
+        column: 1,
+        row: 0,
+        modifiers: KeyModifiers::NONE,
+    };
+    let _ = tui.dispatch_event(InputEvent::Mouse(down));
+    let _ = tui.dispatch_event(InputEvent::Mouse(up));
+    assert!(!tui.copy_notice_active());
+    assert!(!tui.take_copy_notice());
+
+    // Drag select → copy → notice.
+    let down = MouseEvent {
+        kind: MouseEventKind::Down(MouseButton::Left),
+        column: 0,
+        row: 0,
+        modifiers: KeyModifiers::NONE,
+    };
+    let drag = MouseEvent {
+        kind: MouseEventKind::Drag(MouseButton::Left),
+        column: 5,
+        row: 0,
+        modifiers: KeyModifiers::NONE,
+    };
+    let up = MouseEvent {
+        kind: MouseEventKind::Up(MouseButton::Left),
+        column: 5,
+        row: 0,
+        modifiers: KeyModifiers::NONE,
+    };
+    assert_eq!(
+        tui.dispatch_event(InputEvent::Mouse(down)),
+        xylitol_tui::InputReaction::Rerender
+    );
+    assert_eq!(
+        tui.dispatch_event(InputEvent::Mouse(drag)),
+        xylitol_tui::InputReaction::Rerender
+    );
+    assert_eq!(
+        tui.dispatch_event(InputEvent::Mouse(up)),
+        xylitol_tui::InputReaction::Rerender
+    );
+    assert!(tui.copy_notice_active());
+    assert!(tui.take_copy_notice());
+    assert!(!tui.take_copy_notice());
+    assert!(tui.copy_notice_active());
+}
+
+#[test]
 fn mode_b_finish_dumps_transcript_to_main_screen() {
     let mut tui = TUI::with_interaction_mode(
         LoggingVirtualTerminal::new(40, 8),
@@ -300,5 +380,93 @@ fn mode_b_finish_dumps_transcript_to_main_screen() {
     assert!(
         raw.contains("DUMP0") && raw.contains("DUMP9"),
         "exit must dump transcript onto main screen, got: {raw:?}"
+    );
+}
+
+/// Focused component that records mouse Downs (simulates Editor receiving dock presses).
+struct DockMouseProbe {
+    downs: std::rc::Rc<std::cell::Cell<u32>>,
+}
+
+impl Component for DockMouseProbe {
+    fn render(&mut self, _width: usize) -> Vec<String> {
+        vec![
+            "L0".into(),
+            "L1".into(),
+            "dock-status".into(),
+            "dock-editor".into(),
+        ]
+    }
+    fn handle_input(&mut self, event: InputEvent) {
+        if let InputEvent::Mouse(m) = event
+            && matches!(m.kind, MouseEventKind::Down(MouseButton::Left))
+        {
+            self.downs.set(self.downs.get() + 1);
+        }
+    }
+    fn input_wants_rerender(&self, event: &InputEvent) -> bool {
+        matches!(
+            event,
+            InputEvent::Mouse(m) if matches!(m.kind, MouseEventKind::Down(MouseButton::Left))
+        )
+    }
+    fn invalidate(&mut self) {}
+}
+
+#[test]
+fn mode_b_dock_down_falls_through_to_focused_component() {
+    let downs = std::rc::Rc::new(std::cell::Cell::new(0u32));
+    let mut tui = TUI::with_interaction_mode(
+        LoggingVirtualTerminal::new(40, 8),
+        InteractionMode::ApplicationOwned,
+    );
+    tui.set_mode_b_dock_rows(2);
+    tui.add_child(Box::new(DockMouseProbe {
+        downs: downs.clone(),
+    }));
+    tui.set_focus(Some(0));
+    tui.terminal.start();
+    tui.begin_application_owned_session();
+    tui.request_render(true);
+    tui.render_now().expect("seed");
+
+    // Establish a transcript selection, then Down in dock must clear it and still
+    // fall through so the focused component sees the press (ptim13).
+    let tr_down = MouseEvent {
+        kind: MouseEventKind::Down(MouseButton::Left),
+        column: 0,
+        row: 0,
+        modifiers: KeyModifiers::NONE,
+    };
+    let tr_drag = MouseEvent {
+        kind: MouseEventKind::Drag(MouseButton::Left),
+        column: 2,
+        row: 0,
+        modifiers: KeyModifiers::NONE,
+    };
+    let tr_up = MouseEvent {
+        kind: MouseEventKind::Up(MouseButton::Left),
+        column: 2,
+        row: 0,
+        modifiers: KeyModifiers::NONE,
+    };
+    tui.dispatch_event(InputEvent::Mouse(tr_down));
+    tui.dispatch_event(InputEvent::Mouse(tr_drag));
+    tui.dispatch_event(InputEvent::Mouse(tr_up));
+
+    let dock_down = MouseEvent {
+        kind: MouseEventKind::Down(MouseButton::Left),
+        column: 1,
+        row: 7, // bottom dock row in 8-row terminal with dock_rows=2
+        modifiers: KeyModifiers::NONE,
+    };
+    assert_eq!(
+        tui.dispatch_event(InputEvent::Mouse(dock_down)),
+        xylitol_tui::InputReaction::Rerender
+    );
+    assert_eq!(
+        downs.get(),
+        1,
+        "dock Down must fall through to focused component after clearing transcript selection"
     );
 }
