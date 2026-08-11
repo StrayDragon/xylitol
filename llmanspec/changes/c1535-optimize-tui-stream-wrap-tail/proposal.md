@@ -1,15 +1,12 @@
 ---
 depends_on:
   - c2070-add-package-tui-dual-interaction-modes
-apply_band: P9-deferred
-summary: "流式尾 wrap/scroll_render 再优化；ROI 低，与长历史 TUI 族一并延后"
 ---
 
-# c1535-optimize-tui-stream-wrap-tail
+# 流式尾 wrap / scroll_render 再优化
 
-> **⚠️ deferred（2026-08-11）**：再次位于 `…/c2070-…/cascade/`（双架构顶层目录下）。与折叠 / viewport / 双架构族同波延后；本身 ROI 已标「暂不值得打断主线」。
-> **总前置**：[`c2070`](../../proposal.md)。
-> 注：2026-08-10 曾升格 active（#12）；本轮撤回。
+> **状态**：active 规划草案（自 c2070 nested cascade 拆出）。**硬前置** [`c2070`](../c2070-add-package-tui-dual-interaction-modes/proposal.md)。ROI 低，**不**与 c2070 同批 apply。
+> 注：2026-08-10 曾升格；后撤回；2026-08-11 随 c2070 族再升为独立 `changes/` 条目。
 
 > **一句话**：流式尾部 wrap / scroll_render 再优化；必要画图成本为主，ROI 暂不值得（候补）
 

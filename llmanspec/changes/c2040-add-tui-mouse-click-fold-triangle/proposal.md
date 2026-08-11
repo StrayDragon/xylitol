@@ -4,15 +4,13 @@ depends_on:
   - c2070-add-package-tui-dual-interaction-modes
 blocks:
   - c2050-update-activity-fold-mouse-leader
-apply_band: P9-deferred
-summary: "点折叠三角 + L1 per-block 覆盖；延后至双交互架构 c2070 之后"
 ---
 
 # 鼠标点击折叠三角 + 折叠标记字形
 
-> **⚠️ deferred（2026-08-11）**：位于 `…/c2070-…/cascade/`（双架构顶层目录下）。与多级折叠族一并延后；**总前置** [`c2070`](../../proposal.md)。架构调研见 c2070 `research/`；本目录仅保留字形/hit 切片 [`research/fold-glyph-and-hittest.md`](./research/fold-glyph-and-hittest.md)。
+> **状态**：active 规划草案（自 c2070 nested cascade 拆出）。**硬前置** [`c2070`](../c2070-add-package-tui-dual-interaction-modes/proposal.md) Mode B。架构调研见 c2070 `research/`；本目录保留字形/hit 切片 [`research/fold-glyph-and-hittest.md`](./research/fold-glyph-and-hittest.md)。
 >
-> **c2020 提示**：点击折叠仍依赖已归档 **c2020** 的 mouse 管道（`InputEvent::Mouse` / `enable_mouse_capture`）。该管道**保留**；`XYLITOL_TUI_MOUSE` 仅为 lab/e2e。产品 inline **不开** capture——本 change 须在 **Mode B（c2070）** 落地后才有正式点折叠 UX。
+> **c2020 提示**：点击折叠仍依赖已归档 **c2020** 的 mouse 管道。该管道**保留**；`XYLITOL_TUI_MOUSE` 仅为 lab/e2e。产品 inline **不开** capture——须在 **Mode B（c2070）** 落地后才有正式点折叠 UX。
 
 > **一句话**：点折叠头行标记（倒三角/三角）toggle **单块**；键盘 `Alt+E` 仍为 **全局** tools；本 change **自带** per-block 覆盖表（不再依赖已废弃的 c2030 leader）。
 

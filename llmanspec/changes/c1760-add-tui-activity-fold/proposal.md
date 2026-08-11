@@ -4,19 +4,16 @@ depends_on:
   - c2070-add-package-tui-dual-interaction-modes
 blocks:
   - c2050-update-activity-fold-mouse-leader
-apply_band: P9-deferred
-summary: "多级 ActivityFold；与点击/双架构族一并延后（总前置 c2070）"
 ---
 
 # TUI activity-fold — 多级折叠（含 Worked for 通用表达）
 
-> **⚠️ deferred（2026-08-11）**：再次位于 `…/c2070-…/cascade/`（双架构顶层目录下）。与 `c2040`/`c2050`/`c2070` 同族延后——鼠标定点与交互模型未定前，不单独推进多级折叠落地。
-> **总前置**：[`c2070`](../../proposal.md)。
-> 注：2026-08-10 曾升格入 active（#3）；本轮因双架构调研结论整组撤回 delay。
+> **状态**：active 规划草案（自 c2070 nested cascade 拆出）。**硬前置** [`c2070`](../c2070-add-package-tui-dual-interaction-modes/proposal.md)——鼠标定点与交互模型未定前不单独 apply。
+> 注：2026-08-10 曾升格；后因双架构调研撤回；2026-08-11 随 c2070 族再升为独立 `changes/` 条目。
 
 > **一句话**：长会话中间操作墙多级折叠（最狠为 Worked for 2m 3s 通用耗时表达），可配置降级
 
-> 与 `domain-compaction` 不是同一层。前置：[`c1755`](../../../../changes/archive/2026-07-30-c1755-update-tui-travel-notice-placement/proposal.md)（已扩大为「禁顶插 / 贴底可滚通知」政策）。
+> 与 `domain-compaction` 不是同一层。前置：[`c1755`](../archive/2026-07-30-c1755-update-tui-travel-notice-placement/proposal.md)（已扩大为「禁顶插 / 贴底可滚通知」政策）。
 
 ## Why
 
