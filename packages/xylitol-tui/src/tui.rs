@@ -1,3 +1,4 @@
+use crate::interaction_mode::InteractionMode;
 use crate::terminal::Terminal;
 use crate::utils::{normalize_terminal_output, visible_width};
 use crossterm::event::{KeyEvent, KeyEventKind, MouseEvent, MouseEventKind};
@@ -318,6 +319,11 @@ pub struct TUI<T: Terminal> {
     render_requested: bool,
     /// Monotonic instant of the last actual render, for the 16ms throttle.
     last_render_at: Option<std::time::Instant>,
+    /// Dual interaction mode (c2070). Default [`InteractionMode::Inline`].
+    interaction_mode: InteractionMode,
+    /// Mode B session currently holding alt-buffer + mouse (after
+    /// [`Self::begin_application_owned_session`]).
+    application_session_active: bool,
 }
 
 /// Minimum spacing between throttled frames (~60fps). Mirrors pi's
@@ -360,7 +366,61 @@ impl<T: Terminal> TUI<T> {
             after_dispatch_hook: None,
             render_requested: false,
             last_render_at: None,
+            interaction_mode: InteractionMode::Inline,
+            application_session_active: false,
         }
+    }
+
+    /// Construct with an explicit interaction mode (c2070). Switching modes at
+    /// runtime MUST tear down and rebuild the stack (`end_*` then `begin_*`);
+    /// do not mix emulator-owned and application-owned selection on one stack.
+    pub fn with_interaction_mode(terminal: T, mode: InteractionMode) -> Self {
+        let mut tui = Self::new(terminal);
+        tui.interaction_mode = mode;
+        tui
+    }
+
+    pub fn interaction_mode(&self) -> InteractionMode {
+        self.interaction_mode
+    }
+
+    /// Set the mode flag without entering/leaving alt-buffer. Prefer
+    /// [`Self::with_interaction_mode`] at construction; for a live switch,
+    /// call [`Self::end_application_owned_session`] / [`Self::finish_inline`]
+    /// then rebuild the TUI.
+    pub fn set_interaction_mode(&mut self, mode: InteractionMode) {
+        self.interaction_mode = mode;
+    }
+
+    /// Mode B enter: alternate screen (SHOULD) + mouse capture. Idempotent.
+    /// No-op when mode is [`InteractionMode::Inline`].
+    pub fn begin_application_owned_session(&mut self) {
+        if !self.interaction_mode.is_application_owned() || self.application_session_active {
+            return;
+        }
+        self.terminal.enter_alternate_screen();
+        self.terminal.clear_screen();
+        self.enable_mouse_capture();
+        self.application_session_active = true;
+        // Force a clearing redraw into the alt buffer.
+        self.previous_width = FORCE_SIZE_SENTINEL;
+        self.previous_height = FORCE_SIZE_SENTINEL;
+        self.previous_lines.clear();
+        self.previous_viewport_top = 0;
+    }
+
+    /// Mode B leave: disable mouse + leave alt-buffer. Safe if never begun.
+    pub fn end_application_owned_session(&mut self) {
+        if !self.application_session_active {
+            return;
+        }
+        self.disable_mouse_capture();
+        self.terminal.leave_alternate_screen();
+        self.application_session_active = false;
+    }
+
+    pub fn application_session_active(&self) -> bool {
+        self.application_session_active
     }
 
     /// Register a pre-focus input listener. Returns an id for
@@ -925,8 +985,18 @@ impl<T: Terminal> TUI<T> {
     /// Call this from host-driven loops (product TUI / trust gate) instead of
     /// bare `terminal.stop()`, so the shell prompt lands under the leftover
     /// frame — same exit shape as `start` / `start_with_flag` / agent_demo.
+    ///
+    /// Mode B ([`InteractionMode::ApplicationOwned`]): ends the application
+    /// session (mouse + alt-buffer) then stops without parking into main-screen
+    /// scrollback.
     pub fn finish_inline(&mut self) {
         self.stopped = true;
+        if self.application_session_active || self.interaction_mode.is_application_owned() {
+            self.end_application_owned_session();
+            self.terminal.flush();
+            self.terminal.stop();
+            return;
+        }
         if !self.previous_lines.is_empty() {
             let target_row = self.previous_lines.len();
             if target_row > self.hardware_cursor_row {

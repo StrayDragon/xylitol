@@ -78,7 +78,7 @@
 3. `render` → `Vec<String>`（ANSI）；不引入结构化 `StyledLine` 层。
 4. 主题用闭包注入；语义 token 映射在应用面（`src/app/tui/DESIGN.md`）。
 5. 终端 I/O / 输入硬切：见上表「底层 / 输入」。
-6. `enable_mouse_capture` / `XYLITOL_TUI_MOUSE`：**包 API + lab/e2e 保留**；默认不 Enable。产品 inline 面不得经 env 自动开 capture（正式鼠标 UX → 延后 Mode B / c2070）。
+6. `enable_mouse_capture` / `XYLITOL_TUI_MOUSE`：**包 API + lab/e2e 保留**；默认不 Enable。产品 Mode A（inline）不得经 env 自动开 capture。Mode B（`InteractionMode::ApplicationOwned`）经 `begin_application_owned_session` 进 alt-buffer + mouse + 应用内选区（c2070 / `package-tui-interaction-modes`）。Mode A 文档 MUST NOT 暗示「开了 mouse = 原生选区 + 应用点选」兼得。
 7. 默认隐藏硬件光标；有 `CURSOR_MARKER` 时可相对定位 IME，但不得无条件 `show_cursor`。
 
 ## 验证（本文件 = 人类/agent 验证分工 SSOT）

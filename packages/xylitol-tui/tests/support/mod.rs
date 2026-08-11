@@ -60,6 +60,7 @@ pub struct VirtualTerminal {
     title: Option<String>,
     mouse_capture_desired: bool,
     mouse_capture_active: bool,
+    alternate_screen_active: bool,
 }
 
 #[allow(dead_code)] // harness API; methods used across different test targets
@@ -78,6 +79,7 @@ impl VirtualTerminal {
             title: None,
             mouse_capture_desired: false,
             mouse_capture_active: false,
+            alternate_screen_active: false,
         }
     }
 
@@ -436,6 +438,20 @@ impl Terminal for VirtualTerminal {
         self.mouse_capture_active
     }
 
+    fn enter_alternate_screen(&mut self) {
+        self.alternate_screen_active = true;
+        // Record CSI for LoggingVirtualTerminal via write when wrapped — here
+        // we only flip state; LoggingVT records the sequence itself.
+    }
+
+    fn leave_alternate_screen(&mut self) {
+        self.alternate_screen_active = false;
+    }
+
+    fn alternate_screen_active(&self) -> bool {
+        self.alternate_screen_active
+    }
+
     fn start(&mut self) {
         if self.mouse_capture_desired {
             self.mouse_capture_active = true;
@@ -445,6 +461,7 @@ impl Terminal for VirtualTerminal {
     fn stop(&mut self) {
         // Release active capture; keep desire for resume (mirrors CrosstermTerminal).
         self.mouse_capture_active = false;
+        self.alternate_screen_active = false;
     }
 }
 
@@ -546,6 +563,8 @@ pub struct LoggingVirtualTerminal {
     hide_cursor_calls: u32,
     mouse_enable_calls: u32,
     mouse_disable_calls: u32,
+    alt_enter_calls: u32,
+    alt_leave_calls: u32,
 }
 
 #[allow(dead_code)] // harness API; methods used across different test targets
@@ -559,6 +578,8 @@ impl LoggingVirtualTerminal {
             hide_cursor_calls: 0,
             mouse_enable_calls: 0,
             mouse_disable_calls: 0,
+            alt_enter_calls: 0,
+            alt_leave_calls: 0,
         }
     }
 
@@ -603,6 +624,14 @@ impl LoggingVirtualTerminal {
 
     pub fn mouse_disable_calls(&self) -> u32 {
         self.mouse_disable_calls
+    }
+
+    pub fn alt_enter_calls(&self) -> u32 {
+        self.alt_enter_calls
+    }
+
+    pub fn alt_leave_calls(&self) -> u32 {
+        self.alt_leave_calls
     }
 
     /// Delegate to the inner virtual terminal for grid/cursor assertions when
@@ -676,6 +705,26 @@ impl Terminal for LoggingVirtualTerminal {
         self.inner.mouse_capture_active()
     }
 
+    fn enter_alternate_screen(&mut self) {
+        if !self.inner.alternate_screen_active() {
+            self.writes.push("\x1b[?1049h".to_string());
+            self.alt_enter_calls = self.alt_enter_calls.saturating_add(1);
+        }
+        self.inner.enter_alternate_screen();
+    }
+
+    fn leave_alternate_screen(&mut self) {
+        if self.inner.alternate_screen_active() {
+            self.writes.push("\x1b[?1049l".to_string());
+            self.alt_leave_calls = self.alt_leave_calls.saturating_add(1);
+        }
+        self.inner.leave_alternate_screen();
+    }
+
+    fn alternate_screen_active(&self) -> bool {
+        self.inner.alternate_screen_active()
+    }
+
     fn start(&mut self) {
         let was = self.inner.mouse_capture_active();
         self.inner.start();
@@ -685,9 +734,14 @@ impl Terminal for LoggingVirtualTerminal {
     }
 
     fn stop(&mut self) {
-        let was = self.inner.mouse_capture_active();
+        let was_mouse = self.inner.mouse_capture_active();
+        let was_alt = self.inner.alternate_screen_active();
+        if was_alt {
+            self.writes.push("\x1b[?1049l".to_string());
+            self.alt_leave_calls = self.alt_leave_calls.saturating_add(1);
+        }
         self.inner.stop();
-        if was && !self.inner.mouse_capture_active() {
+        if was_mouse && !self.inner.mouse_capture_active() {
             self.mouse_disable_calls = self.mouse_disable_calls.saturating_add(1);
         }
     }

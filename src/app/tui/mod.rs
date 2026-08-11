@@ -113,7 +113,7 @@ pub fn preflight(driver: &dyn XyDriver) -> Result<(), TuiPreflightError> {
     Ok(())
 }
 
-/// Options for [`run`] (c1560).
+/// Options for [`run`] (c1560 / c2070).
 #[derive(Clone)]
 pub struct TuiRunOptions {
     /// `tui.editor_history_seed_sessions` (default 1).
@@ -122,6 +122,9 @@ pub struct TuiRunOptions {
     pub restored_session: bool,
     /// Process-local ask gateway (TUI-only); host polls for Choice mounts (c1850).
     pub ask_gateway: Option<std::sync::Arc<AskHostGateway>>,
+    /// Interaction mode (c2070 / ath30). Default [`xylitol_tui::InteractionMode::Inline`].
+    /// Not driven by `XYLITOL_TUI_MOUSE`.
+    pub interaction_mode: xylitol_tui::InteractionMode,
 }
 
 impl Default for TuiRunOptions {
@@ -130,6 +133,7 @@ impl Default for TuiRunOptions {
             editor_history_seed_sessions: 1,
             restored_session: false,
             ask_gateway: None,
+            interaction_mode: xylitol_tui::InteractionMode::Inline,
         }
     }
 }
@@ -176,6 +180,7 @@ async fn run_host_loop(
         })
         .unwrap_or_else(|| crate::app::core::bootstrap::UNSET_MODEL_DISPLAY.into());
     let mut session = HostSession::new_product_ui_with_meta(terminal, host::display_cwd(), model);
+    session.apply_interaction_mode(options.interaction_mode);
     session.set_editor_history_seed_sessions(options.editor_history_seed_sessions);
     if let Some(gw) = options.ask_gateway {
         session.set_ask_gateway(gw);
