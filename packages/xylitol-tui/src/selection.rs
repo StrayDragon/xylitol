@@ -279,17 +279,17 @@ impl SelectionController {
                 if !transcript.contains(col, row) {
                     return false;
                 }
-                // Fixed multi-line step (typical terminal wheel feel). Do not
-                // viewport-scale or streak-accel — product/demo both queue many
-                // Scroll* after slow paints; scaling made browse feel runaway.
-                scroll.scroll_by(-3);
+                // Same quantum as edge-drag (`tick_autoscroll`) / AO wheel.
+                let step = ScrollView::motion_step(scroll.viewport_height());
+                scroll.scroll_by(-step);
                 true
             }
             MouseEventKind::ScrollDown => {
                 if !transcript.contains(col, row) {
                     return false;
                 }
-                scroll.scroll_by(3);
+                let step = ScrollView::motion_step(scroll.viewport_height());
+                scroll.scroll_by(step);
                 true
             }
             _ => false,
@@ -301,9 +301,8 @@ impl SelectionController {
         if !self.dragging || self.auto_scroll_dir == 0 {
             return false;
         }
-        // Move a slice of the viewport per tick so drag-edge scroll keeps up
-        // with product paint cost (was ±1 line — felt linearly stuck).
-        let step = (scroll.viewport_height() as isize / 8).clamp(2, 8);
+        // Same quantum as wheel notches (`ScrollView::motion_step`).
+        let step = ScrollView::motion_step(scroll.viewport_height());
         let delta = self.auto_scroll_dir as isize * step;
         if !scroll.scroll_by(delta) {
             self.auto_scroll_dir = 0;
@@ -1047,7 +1046,7 @@ mod tests {
     }
 
     #[test]
-    fn wheel_scroll_uses_fixed_three_line_step() {
+    fn wheel_scroll_uses_motion_step() {
         let mut scroll = ScrollView::new(40);
         scroll.set_lines((0..200).map(|i| format!("L{i}")).collect());
         scroll.scroll_to_end();
@@ -1055,6 +1054,7 @@ mod tests {
         let mut sink = RecordingClipboardSink::default();
         let (tr, dock) = layout();
         let top0 = scroll.scroll_top();
+        let step = ScrollView::motion_step(scroll.viewport_height()) as usize;
         sel.handle_mouse(
             &mouse(MouseEventKind::ScrollUp, 0, 0),
             &mut scroll,
@@ -1062,6 +1062,6 @@ mod tests {
             dock,
             &mut sink,
         );
-        assert_eq!(top0 - scroll.scroll_top(), 3);
+        assert_eq!(top0 - scroll.scroll_top(), step);
     }
 }
