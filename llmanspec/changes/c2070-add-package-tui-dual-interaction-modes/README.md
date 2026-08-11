@@ -18,8 +18,9 @@
 | [`c2050-update-activity-fold-mouse-leader`](../c2050-update-activity-fold-mouse-leader/) | `c1760`, `c2020`, `c2040`, **`c2070`** |
 | [`c1505-add-tui-scrollback-viewport-slice`](../c1505-add-tui-scrollback-viewport-slice/) | **`c2070`** |
 | [`c1535-optimize-tui-stream-wrap-tail`](../c1535-optimize-tui-stream-wrap-tail/) | **`c2070`** |
+| [`c2071-update-app-tui-host-mode-b-only`](../c2071-update-app-tui-host-mode-b-only/) | **`c2070`** — 产品 ath30 B-only（**延后**；本分支不实现） |
 
-产品：**B-only**（2026-08-12 人拍）；库保留 Inline 为独立遗留入口。本 change 收口含拆 demo、e2e 矩阵、ath30 改写。
+产品战略：**B-only**（人拍）；**实现**在 c2071。本 change 收口：拆 demo、e2e、**库双入口 / ptim14 极致化**。
 
 ## 已落地地基：c2020（保留，勿当「产品已支持鼠标」）
 

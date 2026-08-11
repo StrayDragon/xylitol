@@ -8,8 +8,8 @@
 | Mode B：应用内拖选 / 越界续选 / 松手复制 / 滚轮 sticky | `c2040`/`c2050` 点折叠三角与段级适配 |
 | dock 拖选夹边续选（ptim12）；Editor **独立**多行选区（ptim13） | `c1505` viewport slice、`c1535` wrap 优化 |
 | 退出 dump；库 host seam（ptim14）；demo **两文件**拆分 | kill 库 Inline；产品用户可选 Inline |
-| **产品 B-only**（改 ath30；host 固定 B） | 回滚 c2020；`XYLITOL_TUI_MOUSE` 当产品开关 |
-| Mode B PTY/tmux 自动化矩阵（可分期） | 追平 Pi 全部 chrome |
+| 双入口结构极致化（分治 facade / type-state 等） | **产品 ath30 B-only** → [`c2071`](../c2071-update-app-tui-host-mode-b-only/) |
+| Mode B PTY/tmux 自动化矩阵（可分期） | 回滚 c2020；`XYLITOL_TUI_MOUSE` 当产品开关；追平 Pi 全部 chrome |
 
 ## 模式 oneof 与产品战略
 
@@ -107,7 +107,7 @@ alt-buffer 退出后主屏会恢复进 alt 前内容。库默认在 `finish_inli
 
 ## 产品接线
 
-- Host：**产品固定 Mode B**（`ath30` 待 Specs landing 从「默认 A」改写）；无用户双模式设置。
+- Host：**库**交付可复用 ApplicationOwned 入口 + ptim14；**产品**固定 Mode B 在 [`c2071`](../c2071-update-app-tui-host-mode-b-only/)（ath30）。
 - Mode B：Enable mouse + alt-buffer；每帧 `project_frame`；dock 行数用 UiRoot 实测。
 - teardown MUST Disable / 退缓冲；suspend/resume 重进 alt + mouse（ptim11）。
 - **不**读 `XYLITOL_TUI_MOUSE` 作产品模式开关。
@@ -127,7 +127,7 @@ alt-buffer 退出后主屏会恢复进 alt 前内容。库默认在 `finish_inli
 | 退出 dump | finish_inline 后主屏写入含 transcript — **人验 PASS** |
 | copy-notice | 复制成功 → notice 信号；TTL 清除（ptim15） |
 | Editor 多行选区 | Editor 组件单测 + demo（ptim13） |
-| 产品 Mode B-only | host/配置单测（ath30 改写后） |
+| 产品 Mode B-only | → c2071（本 design 不测产品默认翻转） |
 | 产品复制提示 | Mode B harness / 人验（ath31） |
 
 **BDD**：本 capability 场景均为 `feature: false`（包/产品单测 + demo 人验）；不新增 `tests/features` Gherkin，除非后续要把 Mode B 纳入可执行 BDD 矩阵。
