@@ -4,7 +4,7 @@
 **Demo Inline:** `just demo-tui` → `--example agent_demo`
 **Demo Mode B:** `just demo-tui-alt-screen` → `--example agent_demo_alt` (**no** `XYLITOL_AGENT_DEMO_MODE`)
 **Shared impl:** `packages/xylitol-tui/examples/agent_demo_impl.rs`
-**Last sync:** 2026-08-12 — demo split + Mode B PTY minimal gates landed
+**Last sync:** 2026-08-12 — demo split + Mode B PTY gates (alt/OSC52/dump/wheel/dock/suspend)
 
 ## Strategy lock (human 2026-08-12)
 
