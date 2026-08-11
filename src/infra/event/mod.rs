@@ -187,26 +187,6 @@ impl crate::protocol::ports::XyEventSink for EventBus {
     }
 }
 
-// ── Standard channel names (align with pi) ────────────────────────
-
-/// Standard event channel names used across the system.
-#[allow(dead_code)]
-pub mod channels {
-    pub const TOOL_EXECUTION_START: &str = "tool_execution_start";
-    pub const TOOL_EXECUTION_END: &str = "tool_execution_end";
-    pub const TOOL_EXECUTION_UPDATE: &str = "tool_execution_update";
-    pub const TURN_START: &str = "turn_start";
-    pub const TURN_END: &str = "turn_end";
-    pub const MESSAGE_START: &str = "message_start";
-    pub const MESSAGE_END: &str = "message_end";
-    pub const MESSAGE_UPDATE: &str = "message_update";
-    pub const COMPACTION_START: &str = "compaction_start";
-    pub const COMPACTION_END: &str = "compaction_end";
-    pub const SETTINGS_CHANGED: &str = "settings:changed";
-    pub const AGENT_START: &str = "agent_start";
-    pub const AGENT_END: &str = "agent_end";
-}
-
 #[cfg(test)]
 mod tests {
     use super::*;

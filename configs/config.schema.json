@@ -56,54 +56,6 @@
         "models": {}
       }
     },
-    "patch_apply": {
-      "$ref": "#/$defs/PatchApplyConfig",
-      "default": {
-        "auto_apply": false
-      }
-    },
-    "repeat_detection": {
-      "$ref": "#/$defs/RepeatDetectionConfig",
-      "default": {
-        "consecutive_hit_threshold": 3,
-        "early_stop_tokens": 0,
-        "enabled": false,
-        "max_n": 10,
-        "min_n": 3,
-        "recovery": {
-          "actions": [
-            {
-              "prepend": "WARNING: Avoid repetition.",
-              "type": "alter_prompt"
-            },
-            {
-              "frequency_penalty": 0.0,
-              "presence_penalty": 0.0,
-              "repetition_penalty": 1.4,
-              "type": "adjust_params"
-            },
-            {
-              "type": "delegate_to_planner"
-            }
-          ],
-          "max_attempts": 3,
-          "strategy": "sequential"
-        },
-        "window_repeat_ratio": 0.8,
-        "window_size": 100
-      }
-    },
-    "review": {
-      "anyOf": [
-        {
-          "$ref": "#/$defs/ReviewConfig"
-        },
-        {
-          "type": "null"
-        }
-      ],
-      "default": null
-    },
     "security": {
       "$ref": "#/$defs/SecurityConfig",
       "default": {
@@ -121,16 +73,6 @@
         }
       ],
       "default": null
-    },
-    "skills": {
-      "type": [
-        "array",
-        "null"
-      ],
-      "default": null,
-      "items": {
-        "$ref": "#/$defs/SkillConfig"
-      }
     },
     "tools": {
       "$ref": "#/$defs/ToolsConfig",
@@ -448,16 +390,6 @@
         }
       }
     },
-    "PatchApplyConfig": {
-      "type": "object",
-      "properties": {
-        "auto_apply": {
-          "description": "Whether to automatically apply patches without prompting.",
-          "type": "boolean",
-          "default": false
-        }
-      }
-    },
     "PermissionBackend": {
       "oneOf": [
         {
@@ -569,202 +501,6 @@
         }
       }
     },
-    "RecoveryAction": {
-      "description": "A single recovery action in the sequential chain.",
-      "oneOf": [
-        {
-          "description": "Prepend an anti-repetition warning to the prompt and retry.",
-          "type": "object",
-          "properties": {
-            "prepend": {
-              "type": "string",
-              "default": "WARNING: Avoid repetition."
-            },
-            "type": {
-              "type": "string",
-              "const": "alter_prompt"
-            }
-          },
-          "required": [
-            "type"
-          ]
-        },
-        {
-          "description": "Switch to a different model provider and retry.",
-          "type": "object",
-          "properties": {
-            "model_id": {
-              "description": "Model ID to switch to. None = switch to the other provider.",
-              "type": [
-                "string",
-                "null"
-              ],
-              "default": null
-            },
-            "type": {
-              "type": "string",
-              "const": "switch_model"
-            }
-          },
-          "required": [
-            "type"
-          ]
-        },
-        {
-          "description": "Increase repetition/frequency/presence penalties and retry.",
-          "type": "object",
-          "properties": {
-            "frequency_penalty": {
-              "type": "number",
-              "format": "double",
-              "default": 0.0
-            },
-            "presence_penalty": {
-              "type": "number",
-              "format": "double",
-              "default": 0.0
-            },
-            "repetition_penalty": {
-              "type": "number",
-              "format": "double",
-              "default": 0.0
-            },
-            "type": {
-              "type": "string",
-              "const": "adjust_params"
-            }
-          },
-          "required": [
-            "type"
-          ]
-        },
-        {
-          "description": "Fall back to the planner for re-planning the task.",
-          "type": "object",
-          "properties": {
-            "type": {
-              "type": "string",
-              "const": "delegate_to_planner"
-            }
-          },
-          "required": [
-            "type"
-          ]
-        }
-      ]
-    },
-    "RecoveryConfig": {
-      "type": "object",
-      "properties": {
-        "actions": {
-          "type": "array",
-          "default": [],
-          "items": {
-            "$ref": "#/$defs/RecoveryAction"
-          }
-        },
-        "max_attempts": {
-          "type": "integer",
-          "format": "uint8",
-          "default": 3,
-          "maximum": 255,
-          "minimum": 0
-        },
-        "strategy": {
-          "type": "string",
-          "default": "sequential"
-        }
-      }
-    },
-    "RepeatDetectionConfig": {
-      "type": "object",
-      "properties": {
-        "consecutive_hit_threshold": {
-          "type": "integer",
-          "format": "uint8",
-          "default": 3,
-          "maximum": 255,
-          "minimum": 0
-        },
-        "early_stop_tokens": {
-          "description": "Stop monitoring after this many tokens. 0 = no limit.",
-          "type": "integer",
-          "format": "uint16",
-          "default": 0,
-          "maximum": 65535,
-          "minimum": 0
-        },
-        "enabled": {
-          "type": "boolean",
-          "default": false
-        },
-        "max_n": {
-          "type": "integer",
-          "format": "uint8",
-          "default": 10,
-          "maximum": 255,
-          "minimum": 0
-        },
-        "min_n": {
-          "type": "integer",
-          "format": "uint8",
-          "default": 3,
-          "maximum": 255,
-          "minimum": 0
-        },
-        "recovery": {
-          "$ref": "#/$defs/RecoveryConfig",
-          "default": {
-            "actions": [
-              {
-                "prepend": "WARNING: Avoid repetition.",
-                "type": "alter_prompt"
-              },
-              {
-                "frequency_penalty": 0.0,
-                "presence_penalty": 0.0,
-                "repetition_penalty": 1.4,
-                "type": "adjust_params"
-              },
-              {
-                "type": "delegate_to_planner"
-              }
-            ],
-            "max_attempts": 3,
-            "strategy": "sequential"
-          }
-        },
-        "window_repeat_ratio": {
-          "type": "number",
-          "format": "double",
-          "default": 0.8
-        },
-        "window_size": {
-          "type": "integer",
-          "format": "uint16",
-          "default": 100,
-          "maximum": 65535,
-          "minimum": 0
-        }
-      }
-    },
-    "ReviewConfig": {
-      "type": "object",
-      "properties": {
-        "backend": {
-          "type": "string",
-          "default": "cli"
-        },
-        "enabled": {
-          "type": "boolean",
-          "default": false
-        },
-        "mode": {
-          "type": "string",
-          "default": "diff"
-        }
-      }
-    },
     "SecurityConfig": {
       "type": "object",
       "properties": {
@@ -815,41 +551,6 @@
           "default": "file"
         },
         "path": {
-          "type": [
-            "string",
-            "null"
-          ],
-          "default": null
-        }
-      }
-    },
-    "SkillConfig": {
-      "type": "object",
-      "properties": {
-        "allowed_tools": {
-          "description": "Tool names this skill is allowed to use. `None` or empty = all tools.",
-          "type": [
-            "array",
-            "null"
-          ],
-          "default": null,
-          "items": {
-            "type": "string"
-          }
-        },
-        "description": {
-          "type": [
-            "string",
-            "null"
-          ],
-          "default": null
-        },
-        "name": {
-          "type": "string",
-          "default": ""
-        },
-        "system_prompt_addon": {
-          "description": "System prompt fragment injected when this skill is activated.",
           "type": [
             "string",
             "null"

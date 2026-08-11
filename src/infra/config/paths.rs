@@ -1,7 +1,7 @@
 //! Config directory discovery.
 //!
 //! Resolves global config dir (XDG / env override), project config dir
-//! (CWD walk for `.xylitol/` or `.agents/`), and exposes `ConfigPaths`.
+//! (CWD walk for `.xylitol/`), and exposes `ConfigPaths`.
 
 use std::path::{Path, PathBuf};
 
@@ -12,9 +12,6 @@ pub(crate) struct ConfigPaths {
     pub(crate) global_dir: PathBuf,
     /// Project `.xylitol/` directory, if found.
     pub(crate) project_dir: Option<PathBuf>,
-    /// Project `.agents/` directory, if found (community convention, read-only).
-    #[allow(dead_code)]
-    pub(crate) agents_dir: Option<PathBuf>,
 }
 
 impl ConfigPaths {
@@ -23,7 +20,7 @@ impl ConfigPaths {
     /// Uses:
     /// - `XYLITOL_CONFIG_DIR` env var to override global config dir.
     /// - `XYLITOL_PROJECT_DIR` env var to pin the project root.
-    /// - CWD ancestor walk to find `.xylitol/` or `.agents/` as project markers.
+    /// - CWD ancestor walk to find `.xylitol/` as the project config marker.
     ///
     /// Global **AppConfig** SSOT is `~/.config/xylitol/` (or XDG / env override),
     /// **not** `~/.xylitol/` (that remains the data/agent dir for skills/sessions/logs).
@@ -55,11 +52,10 @@ impl ConfigPaths {
     ) -> Self {
         let global_dir = resolve_global_dir_with(&get_env);
         super::migrate::migrate_legacy_global_config_files_with(&global_dir, &get_env);
-        let (project_dir, agents_dir) = resolve_project_dirs_with(&get_env, cwd);
+        let project_dir = resolve_project_dir_with(&get_env, cwd);
         Self {
             global_dir,
             project_dir,
-            agents_dir,
         }
     }
 }
@@ -90,45 +86,23 @@ fn resolve_global_dir_with(get_env: &impl Fn(&str) -> Option<String>) -> PathBuf
     base.join("xylitol")
 }
 
-fn resolve_project_dirs_with(
+fn resolve_project_dir_with(
     get_env: &impl Fn(&str) -> Option<String>,
     cwd: Option<&Path>,
-) -> (Option<PathBuf>, Option<PathBuf>) {
+) -> Option<PathBuf> {
     if let Some(dir) = get_env("XYLITOL_PROJECT_DIR").filter(|s| !s.is_empty()) {
-        let root = PathBuf::from(dir);
-        let proj = root.join(".xylitol");
-        let agents = root.join(".agents");
-        return (
-            if proj.is_dir() { Some(proj) } else { None },
-            if agents.is_dir() { Some(agents) } else { None },
-        );
+        let proj = PathBuf::from(dir).join(".xylitol");
+        return proj.is_dir().then_some(proj);
     }
 
-    let cwd = match cwd {
-        Some(d) => d,
-        None => return (None, None),
-    };
-
-    let mut current: Option<&Path> = Some(cwd);
-
-    while let Some(dir) = current {
-        let proj = dir.join(".xylitol");
-        let agents = dir.join(".agents");
-
-        let has_proj = proj.is_dir();
-        let has_agents = agents.is_dir();
-
-        if has_proj || has_agents {
-            return (
-                if has_proj { Some(proj) } else { None },
-                if has_agents { Some(agents) } else { None },
-            );
+    let mut current = cwd?;
+    loop {
+        let proj = current.join(".xylitol");
+        if proj.is_dir() {
+            return Some(proj);
         }
-
-        current = dir.parent();
+        current = current.parent()?;
     }
-
-    (None, None)
 }
 
 #[cfg(test)]

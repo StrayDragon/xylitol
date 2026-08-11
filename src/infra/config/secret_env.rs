@@ -164,7 +164,6 @@ mod tests {
         let paths = ConfigPaths {
             global_dir: tmp.path().join("no-global"),
             project_dir: Some(proj),
-            agents_dir: None,
         };
         let (map, injected) = load_secret_env_files(&paths);
         assert_eq!(injected, 1);

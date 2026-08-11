@@ -18,12 +18,10 @@ pub struct AppConfig {
     pub model: ModelsConfig,
     pub agents: AgentsConfig,
     pub execution: ExecutionConfig,
-    pub patch_apply: PatchApplyConfig,
 
     // ── always compiled ──────────────────────────────────────────────
     pub hooks: HooksConfig,
     pub security: SecurityConfig,
-    pub repeat_detection: RepeatDetectionConfig,
     pub tools: ToolsConfig,
 
     // ── always compiled ────────────────────────────────────────────────
@@ -35,10 +33,7 @@ pub struct AppConfig {
     #[schemars(with = "Option<CompactionSettingsSchema>")]
     pub compaction: Option<crate::protocol::compaction_config::XyCompactionSettingsConfig>,
 
-    pub skills: Option<Vec<SkillConfig>>,
     pub mcp_servers: Option<Vec<McpServerConfig>>,
-
-    pub review: Option<ReviewConfig>,
 
     /// Named tokenizer sources shared by models (c1380; pre-1.0 simple shape).
     #[serde(default)]
@@ -647,18 +642,6 @@ impl AppConfig {
 }
 
 // ---------------------------------------------------------------------------
-// Patch apply
-// ---------------------------------------------------------------------------
-
-#[derive(Clone, Debug, Default, Serialize, Deserialize, JsonSchema)]
-#[serde(default)]
-pub struct PatchApplyConfig {
-    /// Whether to automatically apply patches without prompting.
-    #[serde(default)]
-    pub auto_apply: bool,
-}
-
-// ---------------------------------------------------------------------------
 // Hooks
 // ---------------------------------------------------------------------------
 
@@ -778,135 +761,6 @@ pub struct PermissionProcessConfig {
 }
 
 // ---------------------------------------------------------------------------
-// Repeat detection
-// ---------------------------------------------------------------------------
-
-#[derive(Clone, Debug, Serialize, Deserialize, JsonSchema)]
-pub struct RepeatDetectionConfig {
-    #[serde(default)]
-    pub enabled: bool,
-    #[serde(default = "default_min_n")]
-    pub min_n: u8,
-    #[serde(default = "default_max_n")]
-    pub max_n: u8,
-    #[serde(default = "default_window_size")]
-    pub window_size: u16,
-    #[serde(default = "default_hit_threshold")]
-    pub consecutive_hit_threshold: u8,
-    #[serde(default = "default_window_repeat_ratio")]
-    pub window_repeat_ratio: f64,
-    /// Stop monitoring after this many tokens. 0 = no limit.
-    #[serde(default)]
-    pub early_stop_tokens: u16,
-    #[serde(default)]
-    pub recovery: RecoveryConfig,
-}
-
-impl Default for RepeatDetectionConfig {
-    fn default() -> Self {
-        Self {
-            enabled: false,
-            min_n: default_min_n(),
-            max_n: default_max_n(),
-            window_size: default_window_size(),
-            consecutive_hit_threshold: default_hit_threshold(),
-            window_repeat_ratio: default_window_repeat_ratio(),
-            early_stop_tokens: 0,
-            recovery: RecoveryConfig::default(),
-        }
-    }
-}
-
-fn default_min_n() -> u8 {
-    3
-}
-fn default_max_n() -> u8 {
-    10
-}
-fn default_window_size() -> u16 {
-    100
-}
-fn default_hit_threshold() -> u8 {
-    3
-}
-fn default_window_repeat_ratio() -> f64 {
-    0.8
-}
-
-#[derive(Clone, Debug, Serialize, Deserialize, JsonSchema)]
-#[serde(default)]
-pub struct RecoveryConfig {
-    #[serde(default = "default_recovery_strategy")]
-    pub strategy: String,
-    #[serde(default = "default_max_attempts")]
-    pub max_attempts: u8,
-    #[serde(default)]
-    pub actions: Vec<RecoveryAction>,
-}
-
-impl Default for RecoveryConfig {
-    fn default() -> Self {
-        Self {
-            strategy: default_recovery_strategy(),
-            max_attempts: default_max_attempts(),
-            actions: default_recovery_actions(),
-        }
-    }
-}
-
-/// A single recovery action in the sequential chain.
-#[derive(Clone, Debug, Serialize, Deserialize, JsonSchema)]
-#[serde(tag = "type", rename_all = "snake_case")]
-pub enum RecoveryAction {
-    /// Prepend an anti-repetition warning to the prompt and retry.
-    AlterPrompt {
-        #[serde(default = "default_alter_prompt_prepend")]
-        prepend: String,
-    },
-    /// Switch to a different model provider and retry.
-    SwitchModel {
-        /// Model ID to switch to. None = switch to the other provider.
-        #[serde(default)]
-        model_id: Option<String>,
-    },
-    /// Increase repetition/frequency/presence penalties and retry.
-    AdjustParams {
-        #[serde(default)]
-        repetition_penalty: f64,
-        #[serde(default)]
-        frequency_penalty: f64,
-        #[serde(default)]
-        presence_penalty: f64,
-    },
-    /// Fall back to the planner for re-planning the task.
-    DelegateToPlanner,
-}
-
-fn default_recovery_strategy() -> String {
-    "sequential".into()
-}
-fn default_max_attempts() -> u8 {
-    3
-}
-fn default_alter_prompt_prepend() -> String {
-    "WARNING: Avoid repetition.".into()
-}
-
-fn default_recovery_actions() -> Vec<RecoveryAction> {
-    vec![
-        RecoveryAction::AlterPrompt {
-            prepend: default_alter_prompt_prepend(),
-        },
-        RecoveryAction::AdjustParams {
-            repetition_penalty: 1.4,
-            frequency_penalty: 0.0,
-            presence_penalty: 0.0,
-        },
-        RecoveryAction::DelegateToPlanner,
-    ]
-}
-
-// ---------------------------------------------------------------------------
 // Tools
 // ---------------------------------------------------------------------------
 
@@ -1000,22 +854,8 @@ pub struct CompactionSettingsSchema {
 }
 
 // ---------------------------------------------------------------------------
-// Skills & MCP
+// MCP
 // ---------------------------------------------------------------------------
-
-#[derive(Clone, Debug, Default, Serialize, Deserialize, JsonSchema)]
-#[serde(default)]
-pub struct SkillConfig {
-    pub name: String,
-    #[serde(default)]
-    pub description: Option<String>,
-    /// System prompt fragment injected when this skill is activated.
-    #[serde(default)]
-    pub system_prompt_addon: Option<String>,
-    /// Tool names this skill is allowed to use. `None` or empty = all tools.
-    #[serde(default)]
-    pub allowed_tools: Option<Vec<String>>,
-}
 
 #[derive(Clone, Debug, Serialize, Deserialize, JsonSchema)]
 pub struct McpServerConfig {
@@ -1085,38 +925,6 @@ fn default_mcp_transport() -> McpTransportKind {
 pub enum McpTransportKind {
     Stdio,
     Sse,
-}
-
-// ---------------------------------------------------------------------------
-// Review
-// ---------------------------------------------------------------------------
-
-#[derive(Clone, Debug, Serialize, Deserialize, JsonSchema)]
-pub struct ReviewConfig {
-    #[serde(default)]
-    pub enabled: bool,
-    #[serde(default = "default_review_mode")]
-    pub mode: String,
-    #[serde(default = "default_review_backend")]
-    pub backend: String,
-}
-
-impl Default for ReviewConfig {
-    fn default() -> Self {
-        Self {
-            enabled: false,
-            mode: default_review_mode(),
-            backend: default_review_backend(),
-        }
-    }
-}
-
-fn default_review_mode() -> String {
-    "diff".into()
-}
-
-fn default_review_backend() -> String {
-    "cli".into()
 }
 
 #[cfg(test)]

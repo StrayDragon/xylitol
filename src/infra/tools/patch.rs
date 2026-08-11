@@ -169,34 +169,6 @@ pub(crate) fn normalize_for_fuzzy_match(text: &str) -> String {
         .join("\n")
 }
 
-/// Detect whether a text uses CRLF or LF line endings.
-#[allow(dead_code)]
-pub(crate) fn detect_line_ending(content: &str) -> LineEnding {
-    if content.contains("\r\n") {
-        LineEnding::Crlf
-    } else {
-        LineEnding::Lf
-    }
-}
-
-/// Line ending style.
-#[derive(Debug, Clone, Copy, PartialEq)]
-pub(crate) enum LineEnding {
-    Crlf,
-    Lf,
-}
-
-/// Restore line endings to the specified style.
-#[allow(dead_code)]
-pub(crate) fn restore_line_endings(text: &str, ending: LineEnding) -> String {
-    // Normalize to LF first
-    let normalized = text.replace("\r\n", "\n").replace('\r', "\n");
-    match ending {
-        LineEnding::Crlf => normalized.replace('\n', "\r\n"),
-        LineEnding::Lf => normalized,
-    }
-}
-
 fn lines_match(a: &str, b: &str) -> bool {
     a.trim() == b.trim() || normalize_ws(a) == normalize_ws(b)
 }
@@ -427,44 +399,5 @@ mod tests {
         let input = "hello world";
         let result = normalize_for_fuzzy_match(input);
         assert_eq!(result, "hello world");
-    }
-
-    #[test]
-    fn test_detect_line_ending_crlf() {
-        let result = detect_line_ending("line1\r\nline2\r\n");
-        assert_eq!(result, LineEnding::Crlf);
-    }
-
-    #[test]
-    fn test_detect_line_ending_lf() {
-        let result = detect_line_ending("line1\nline2\n");
-        assert_eq!(result, LineEnding::Lf);
-    }
-
-    #[test]
-    fn test_detect_line_ending_lf_fallback() {
-        let result = detect_line_ending("no newlines here");
-        assert_eq!(result, LineEnding::Lf);
-    }
-
-    #[test]
-    fn test_restore_line_endings_lf_to_crlf() {
-        let input = "line1\nline2\n";
-        let result = restore_line_endings(input, LineEnding::Crlf);
-        assert_eq!(result, "line1\r\nline2\r\n");
-    }
-
-    #[test]
-    fn test_restore_line_endings_crlf_to_lf() {
-        let input = "line1\r\nline2\r\n";
-        let result = restore_line_endings(input, LineEnding::Lf);
-        assert_eq!(result, "line1\nline2\n");
-    }
-
-    #[test]
-    fn test_restore_line_endings_preserves_lf_when_already_lf() {
-        let input = "line1\nline2\n";
-        let result = restore_line_endings(input, LineEnding::Lf);
-        assert_eq!(result, "line1\nline2\n");
     }
 }
