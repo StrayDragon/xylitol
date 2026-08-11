@@ -10,6 +10,7 @@ pub mod interaction_mode;
 pub mod keybindings;
 pub mod keys;
 pub mod kill_ring;
+pub mod mode_b;
 pub mod paste_burst;
 pub mod scroll_view;
 pub mod selection;

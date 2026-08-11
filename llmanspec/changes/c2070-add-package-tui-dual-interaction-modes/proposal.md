@@ -40,9 +40,8 @@ checkpointed: false
 
 | 阶段 | 做什么 |
 |---|---|
-| **现在** | 升格本 change；完成调研 + 规划壳 + Specs landing；**继续打磨 inline（Mode A）产品面** |
-| **之后** | apply：实现双模式引擎与 Mode B 选区 MUST |
-| **再后** | 产品 TUI **可能**切到 Mode B；`blocks` 内折叠/点击/性能 change 按 `depends_on` 各自落地 |
+| **本 change** | 升格 + 调研 + Specs + **完整 Mode B 实现**（库视口/选区/OSC52 + 产品换栈/dock）；产品**默认仍 Mode A**，经 `TuiRunOptions.interaction_mode` 显式切 B |
+| **之后** | `blocks` 内折叠/点击/性能 change 按 `depends_on` 各自落地；产品是否默认切 B 另议 |
 
 ## What Changes
 
@@ -114,7 +113,8 @@ c2020（已归档）
 
 - 升格决策：cascade 五件拆为 `llmanspec/changes/<id>/` 独立草案，**不**再嵌套 `cascade/`；依赖只以 YAML `depends_on`/`blocks` 为 SSOT。
 - 一手对照：Pi `packages/tui`（`TuiMainScreen` / `TuiAltScreen`）+ Zellij `panes/selection.rs` / `tab/mouse_handler.rs` / clipboard；结论摘要见 `research/xylitol-mode-b-subsystem-cut.md` 与专篇。
-- Specs landing：新建 `package-tui-interaction-modes`（`ptim01`–`ptim08`）；`app-tui-host` 增 `ath30`（默认 Mode A）。
+- Specs landing：`package-tui-interaction-modes`（`ptim01`–`ptim11`）；`app-tui-host` `ath30`（默认 Mode A + Mode B dock/换栈）。
+- **完整 Mode B 交付**：`ModeBRuntime`（ScrollView + Selection + dock 投影）挂在 `TUI` 应用会话上；产品 host 换栈并登记实测 dock 行。
 
 ## Ethics
 

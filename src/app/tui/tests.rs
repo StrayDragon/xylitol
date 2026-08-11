@@ -13,6 +13,8 @@ struct TestTerminal {
     pub frames: Vec<String>,
     started: bool,
     stopped: bool,
+    mouse_capture_active: bool,
+    alternate_screen_active: bool,
 }
 
 impl TestTerminal {
@@ -23,6 +25,8 @@ impl TestTerminal {
             frames: Vec::new(),
             started: false,
             stopped: false,
+            mouse_capture_active: false,
+            alternate_screen_active: false,
         }
     }
 }
@@ -52,6 +56,26 @@ impl Terminal for TestTerminal {
     }
     fn stop(&mut self) {
         self.stopped = true;
+        self.mouse_capture_active = false;
+        self.alternate_screen_active = false;
+    }
+    fn enable_mouse_capture(&mut self) {
+        self.mouse_capture_active = true;
+    }
+    fn disable_mouse_capture(&mut self) {
+        self.mouse_capture_active = false;
+    }
+    fn mouse_capture_active(&self) -> bool {
+        self.mouse_capture_active
+    }
+    fn enter_alternate_screen(&mut self) {
+        self.alternate_screen_active = true;
+    }
+    fn leave_alternate_screen(&mut self) {
+        self.alternate_screen_active = false;
+    }
+    fn alternate_screen_active(&self) -> bool {
+        self.alternate_screen_active
     }
 }
 
@@ -2397,4 +2421,35 @@ fn models_picker_left_right_cycle_thinking_levels() {
     )));
     let right = root.take_pending_model_select().expect("right confirm");
     assert_eq!(right.thinking, "high");
+}
+
+#[test]
+fn interaction_mode_defaults_to_mode_a() {
+    let session = HostSession::new_product_ui(TestTerminal::new(80, 24));
+    assert_eq!(
+        session.tui.interaction_mode(),
+        xylitol_tui::InteractionMode::Inline
+    );
+    assert!(!session.tui.application_session_active());
+    assert_eq!(
+        crate::app::tui::TuiRunOptions::default().interaction_mode,
+        xylitol_tui::InteractionMode::Inline
+    );
+}
+
+#[test]
+fn interaction_mode_b_restacks_and_registers_dock() {
+    let mut session = HostSession::new_product_ui(TestTerminal::new(80, 24));
+    session.render_now().unwrap();
+    session.apply_interaction_mode(xylitol_tui::InteractionMode::ApplicationOwned);
+    assert!(session.tui.application_session_active());
+    assert!(session.tui.mouse_capture_enabled());
+    assert!(session.tui.mode_b_dock_rows() >= 4);
+    session.render_now().unwrap();
+    // Measured dock after paint should stay above the input band floor.
+    assert!(session.tui.mode_b_dock_rows() >= 4);
+
+    session.apply_interaction_mode(xylitol_tui::InteractionMode::Inline);
+    assert!(!session.tui.application_session_active());
+    assert!(!session.tui.mouse_capture_enabled());
 }

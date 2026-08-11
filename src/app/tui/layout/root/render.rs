@@ -208,17 +208,26 @@ impl Component for UiRoot {
             }
             lines.extend(upper);
         }
-        lines.extend(self.render_chrome_toast_slot(width));
-        lines.extend(self.render_status_slot(width));
+        let toast = self.render_chrome_toast_slot(width);
+        let status = self.render_status_slot(width);
         // Editor owns the operation-zone ─ borders (DESIGN editor.md / agent_demo).
         // Do NOT wrap with a second outer border pair.
         self.apply_chrome_footprint();
-        lines.extend(self.render_editor_slot(width));
+        let editor = self.render_editor_slot(width);
         let footer = if width == 0 {
             self.footer.text().to_string()
         } else {
             truncate_to_width(self.footer.text(), width, "...", true)
         };
+        // Mode B dock = everything below loaded+scrollback+queue (ath30 / ptim06).
+        self.last_mode_b_dock_rows = toast
+            .len()
+            .saturating_add(status.len())
+            .saturating_add(editor.len())
+            .saturating_add(1);
+        lines.extend(toast);
+        lines.extend(status);
+        lines.extend(editor);
         lines.push(footer);
         lines
     }

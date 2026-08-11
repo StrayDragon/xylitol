@@ -1,4 +1,5 @@
 use crate::interaction_mode::InteractionMode;
+use crate::mode_b::ModeBRuntime;
 use crate::terminal::Terminal;
 use crate::utils::{normalize_terminal_output, visible_width};
 use crossterm::event::{KeyEvent, KeyEventKind, MouseEvent, MouseEventKind};
@@ -324,6 +325,10 @@ pub struct TUI<T: Terminal> {
     /// Mode B session currently holding alt-buffer + mouse (after
     /// [`Self::begin_application_owned_session`]).
     application_session_active: bool,
+    /// Mode B viewport/selection runtime (only while application session active).
+    mode_b: Option<ModeBRuntime>,
+    /// Default dock rows used when beginning a Mode B session.
+    mode_b_dock_rows: usize,
 }
 
 /// Minimum spacing between throttled frames (~60fps). Mirrors pi's
@@ -368,6 +373,8 @@ impl<T: Terminal> TUI<T> {
             last_render_at: None,
             interaction_mode: InteractionMode::Inline,
             application_session_active: false,
+            mode_b: None,
+            mode_b_dock_rows: 3,
         }
     }
 
@@ -392,8 +399,8 @@ impl<T: Terminal> TUI<T> {
         self.interaction_mode = mode;
     }
 
-    /// Mode B enter: alternate screen (SHOULD) + mouse capture. Idempotent.
-    /// No-op when mode is [`InteractionMode::Inline`].
+    /// Mode B enter: alternate screen (SHOULD) + mouse capture + viewport runtime.
+    /// Idempotent. No-op when mode is [`InteractionMode::Inline`].
     pub fn begin_application_owned_session(&mut self) {
         if !self.interaction_mode.is_application_owned() || self.application_session_active {
             return;
@@ -402,6 +409,7 @@ impl<T: Terminal> TUI<T> {
         self.terminal.clear_screen();
         self.enable_mouse_capture();
         self.application_session_active = true;
+        self.mode_b = Some(ModeBRuntime::new(self.mode_b_dock_rows));
         // Force a clearing redraw into the alt buffer.
         self.previous_width = FORCE_SIZE_SENTINEL;
         self.previous_height = FORCE_SIZE_SENTINEL;
@@ -417,10 +425,34 @@ impl<T: Terminal> TUI<T> {
         self.disable_mouse_capture();
         self.terminal.leave_alternate_screen();
         self.application_session_active = false;
+        self.mode_b = None;
+        self.previous_lines.clear();
+        self.previous_viewport_top = 0;
+        self.previous_width = FORCE_SIZE_SENTINEL;
+        self.previous_height = FORCE_SIZE_SENTINEL;
     }
 
     pub fn application_session_active(&self) -> bool {
         self.application_session_active
+    }
+
+    /// Rows reserved at the bottom for dock (editor/status/footer). Mode B
+    /// selection excludes this band.
+    pub fn set_mode_b_dock_rows(&mut self, rows: usize) {
+        self.mode_b_dock_rows = rows.max(1);
+        if let Some(mb) = self.mode_b.as_mut() {
+            mb.set_dock_rows(self.mode_b_dock_rows);
+        }
+    }
+
+    pub fn mode_b_dock_rows(&self) -> usize {
+        self.mode_b_dock_rows
+    }
+
+    pub fn set_mode_b_copy_on_release(&mut self, on: bool) {
+        if let Some(mb) = self.mode_b.as_mut() {
+            mb.set_copy_on_release(on);
+        }
     }
 
     /// Register a pre-focus input listener. Returns an id for
@@ -1030,14 +1062,32 @@ impl<T: Terminal> TUI<T> {
     /// Spawning `$EDITOR` / tempfile I/O stays in the application (demo or
     /// `src/app/tui`), not in this crate.
     pub fn with_terminal_suspended<R>(&mut self, f: impl FnOnce() -> R) -> R {
+        let restore_mode_b = self.application_session_active;
         self.terminal.stop();
+        // `stop` leaves alt-buffer; keep logical Mode B flag so we can re-enter.
+        if restore_mode_b {
+            self.application_session_active = true;
+        }
         let result = f();
         self.terminal.hide_cursor();
         self.terminal.start();
+        if restore_mode_b {
+            // Re-sync alt + mouse with application_session_active (ptim11).
+            self.terminal.enter_alternate_screen();
+            self.terminal.clear_screen();
+            self.enable_mouse_capture();
+            if self.mode_b.is_none() {
+                self.mode_b = Some(ModeBRuntime::new(self.mode_b_dock_rows));
+            }
+            self.previous_width = FORCE_SIZE_SENTINEL;
+            self.previous_height = FORCE_SIZE_SENTINEL;
+            self.previous_lines.clear();
+            self.previous_viewport_top = 0;
+        }
         // Size may have changed while the editor owned the TTY (pi SIGWINCH).
         self.terminal.refresh_size();
         // Soft pending only — do not wipe previous_lines / do not paint yet.
-        self.request_render(false);
+        self.request_render(restore_mode_b);
         result
     }
 
@@ -1068,6 +1118,24 @@ impl<T: Terminal> TUI<T> {
     /// Public so host loops (and tests) can feed input without going through
     /// the blocking `start()` event loop.
     pub fn dispatch_event(&mut self, event: InputEvent) -> InputReaction {
+        // Mode B: application selection / wheel consume mouse before listeners.
+        if self.application_session_active
+            && let InputEvent::Mouse(mouse) = &event
+        {
+            let cols = self.terminal.columns();
+            let rows = self.terminal.rows();
+            let dirty = self
+                .mode_b
+                .as_mut()
+                .is_some_and(|mb| mb.handle_mouse(mouse, cols, rows));
+            if dirty || !matches!(mouse.kind, MouseEventKind::Moved) {
+                // Non-moved mouse in Mode B is owned by selection/scroll.
+                return InputReaction::rerender_if(dirty);
+            }
+            // Moved with no dirty: drop silently (ptim07).
+            return InputReaction::None;
+        }
+
         // Snapshot ids so a listener may remove itself / others mid-dispatch
         // without invalidating the walk; callbacks are invoked by id lookup.
         let listener_ids: Vec<u64> = self.input_listeners.iter().map(|l| l.id).collect();
@@ -1177,6 +1245,13 @@ impl<T: Terminal> TUI<T> {
             .overlays
             .iter_mut()
             .any(|(component, _, _)| component.tick());
+        if self.application_session_active {
+            let cols = self.terminal.columns();
+            let rows = self.terminal.rows();
+            if let Some(mb) = self.mode_b.as_mut() {
+                changed |= mb.tick_autoscroll(cols, rows);
+            }
+        }
         changed
     }
 
@@ -1325,6 +1400,15 @@ impl<T: Terminal> TUI<T> {
             *line = finalized;
         }
 
+        // Mode B: project full buffer into fixed-height app viewport + dock.
+        if self.application_session_active {
+            if let Some(mb) = self.mode_b.as_mut() {
+                new_lines = mb.project_frame(&new_lines, height);
+            }
+            // Never grow terminal scrollback in Mode B.
+            self.previous_viewport_top = 0;
+        }
+
         let width_changed = self.previous_width != 0 && self.previous_width != width;
         let height_changed = self.previous_height != 0 && self.previous_height != height;
 
@@ -1381,7 +1465,17 @@ impl<T: Terminal> TUI<T> {
         self.previous_lines = new_lines;
         self.previous_width = width;
         self.previous_height = height;
+        if self.application_session_active {
+            self.previous_viewport_top = 0;
+        }
         self.terminal.flush();
+        // OSC52 must leave the synchronized output batch (ptim05).
+        if let Some(mb) = self.mode_b.as_mut() {
+            for seq in mb.take_pending_clipboard() {
+                self.terminal.write(&seq);
+            }
+            self.terminal.flush();
+        }
         Ok(())
     }
 
