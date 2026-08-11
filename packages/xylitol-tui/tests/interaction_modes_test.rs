@@ -252,7 +252,7 @@ fn mode_b_wheel_scrolls_app_viewport() {
     tui.request_render(true);
     tui.render_now().expect("seed");
 
-    // Follow-end then wheel up should move off the bottom.
+    // Follow-end then wheel up should move off the bottom and stay there.
     let wheel = MouseEvent {
         kind: MouseEventKind::ScrollUp,
         column: 1,
@@ -265,4 +265,40 @@ fn mode_b_wheel_scrolls_app_viewport() {
     );
     tui.request_render(false);
     tui.render_now().expect("after wheel");
+    // Content lines L00..L17 + dock L18,L19; viewport content height=4, follow end
+    // shows L14..L17. Wheel -3 → L11..L14 must persist after project_frame.
+    let raw = tui.terminal.all_writes();
+    assert!(
+        raw.contains("L11"),
+        "wheel scroll must persist across paint, got: {raw:?}"
+    );
+    assert!(
+        !raw.contains("L17") || raw.rfind("L11").unwrap() > raw.rfind("L17").unwrap_or(0),
+        "must not snap back to follow-end after wheel"
+    );
+}
+
+#[test]
+fn mode_b_finish_dumps_transcript_to_main_screen() {
+    let mut tui = TUI::with_interaction_mode(
+        LoggingVirtualTerminal::new(40, 8),
+        InteractionMode::ApplicationOwned,
+    );
+    tui.set_mode_b_dock_rows(2);
+    tui.add_child(Box::new(StaticLines {
+        lines: (0..10).map(|i| format!("DUMP{i}")).collect(),
+    }));
+    tui.terminal.start();
+    tui.begin_application_owned_session();
+    tui.request_render(true);
+    tui.render_now().expect("seed");
+    tui.terminal.clear_writes();
+    tui.finish_inline();
+    assert!(!tui.application_session_active());
+    assert!(!tui.terminal.alternate_screen_active());
+    let raw = tui.terminal.all_writes();
+    assert!(
+        raw.contains("DUMP0") && raw.contains("DUMP9"),
+        "exit must dump transcript onto main screen, got: {raw:?}"
+    );
 }

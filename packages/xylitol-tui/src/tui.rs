@@ -1035,13 +1035,24 @@ impl<T: Terminal> TUI<T> {
     /// bare `terminal.stop()`, so the shell prompt lands under the leftover
     /// frame — same exit shape as `start` / `start_with_flag` / agent_demo.
     ///
-    /// Mode B ([`InteractionMode::ApplicationOwned`]): ends the application
-    /// session (mouse + alt-buffer) then stops without parking into main-screen
-    /// scrollback.
+    /// Mode B ([`InteractionMode::ApplicationOwned`]): leave alt-buffer, then
+    /// dump transcript (+ last dock) onto the **main** screen so the session
+    /// remains in terminal scrollback (Pi-style optional dump after `?1049l`).
     pub fn finish_inline(&mut self) {
         self.stopped = true;
         if self.application_session_active || self.interaction_mode.is_application_owned() {
+            let dump = self
+                .mode_b
+                .as_ref()
+                .map(|mb| mb.exit_dump_lines())
+                .filter(|lines| !lines.is_empty())
+                .unwrap_or_else(|| self.previous_lines.clone());
             self.end_application_owned_session();
+            // Main buffer is restored; append session text as scrollback.
+            for line in &dump {
+                self.terminal.write(line);
+                self.terminal.write("\r\n");
+            }
             self.terminal.flush();
             self.terminal.stop();
             return;

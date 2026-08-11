@@ -70,6 +70,11 @@ impl ScrollView {
         self.scroll_top = 0;
     }
 
+    /// True when the viewport already shows the last content page.
+    pub fn at_bottom(&self) -> bool {
+        self.scroll_top >= self.max_scroll()
+    }
+
     /// Visible content lines for the current scroll window (length ≤ viewport_height).
     pub fn visible_lines(&self) -> &[String] {
         let start = self.scroll_top.min(self.lines.len());

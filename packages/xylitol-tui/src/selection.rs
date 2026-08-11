@@ -273,14 +273,15 @@ impl SelectionController {
                 if !transcript.contains(col, row) {
                     return false;
                 }
-                scroll.scroll_by(-1);
+                // Multi-line steps match typical terminal wheel feel.
+                scroll.scroll_by(-3);
                 true
             }
             MouseEventKind::ScrollDown => {
                 if !transcript.contains(col, row) {
                     return false;
                 }
-                scroll.scroll_by(1);
+                scroll.scroll_by(3);
                 true
             }
             _ => false,

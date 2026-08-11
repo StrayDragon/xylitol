@@ -95,7 +95,7 @@
 
 **分工（勿混）**
 
-- **包 E2E / `agent_demo`**：引擎 + 通用组件 + 真终端协议；就绪探针 `DEMO_READY_NEEDLE`（`tests/tui_e2e.rs`，footer `theme:dark`——勿用易滚出视口的标题行）。PTY 上 plate/settings 宜用 `XYLITOL_AGENT_DEMO_INITIAL_PROMPT` + 足够行高；tmux 用 `C-p` / `C-s`。**文案 / chrome 标签以 demo 自身为准**，勿按产品词表强改。Mode B 人验：`just demo-tui-mode-b`（或 `just demo` / `XYLITOL_AGENT_DEMO_MODE=b`）。
+- **包 E2E / `agent_demo`**：引擎 + 通用组件 + 真终端协议；就绪探针 `DEMO_READY_NEEDLE`（`tests/tui_e2e.rs`，footer `theme:dark`——勿用易滚出视口的标题行）。PTY 上 plate/settings 宜用 `XYLITOL_AGENT_DEMO_INITIAL_PROMPT` + 足够行高；tmux 用 `C-p` / `C-s`。**文案 / chrome 标签以 demo 自身为准**，勿按产品词表强改。Mode B 人验：`just demo-tui-alt-screen`（`XYLITOL_AGENT_DEMO_MODE=b`）。
 - **产品 TUI**：Driver / bridge / layout / 键位 → 应用面 harness（`src/app/tui`）。层 5 另有 **`pty_product_*` Fake smoke**（隔离 HOME/config，不绑真 LLM）；日常仍勿把满闸默认绑完整配置/真 API。
 - 层 5 全 `#[ignore]`；缺 tmux 时用 `just test-tui-e2e-pty`。操作细则：`test-tui-harness` skill（how-to，非第二份边界文）。
 
