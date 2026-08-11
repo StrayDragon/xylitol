@@ -1,5 +1,8 @@
 ---
 depends_on: []
+branch: sdd/c1955-add-agent-todo-subsystem
+base_sha: 839990764660a6b9f9014d1a88ee2d35aafeccd6
+checkpointed: false
 ---
 
 # Agent Todo 子系统（TUI + 工具 + 内部流转）
