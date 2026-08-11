@@ -238,14 +238,7 @@ impl SelectionController {
                     .screen_to_content(col, row, scroll, transcript)
                     .or_else(|| self.clamp_to_transcript_edge(col, row, scroll, transcript));
                 if let Some(cell) = cell {
-                    let (a, f) = if self.granularity == SelectionGranularity::Character {
-                        (self.anchor.unwrap_or(cell), cell)
-                    } else {
-                        let base = self.anchor.unwrap_or(cell);
-                        expand_range(base, cell, self.granularity, scroll.lines())
-                    };
-                    self.anchor = Some(a);
-                    self.focus = Some(f);
+                    self.apply_focus_cell(cell, scroll.lines());
                     return true;
                 }
                 false
@@ -260,7 +253,9 @@ impl SelectionController {
                     .screen_to_content(col, row, scroll, transcript)
                     .or_else(|| self.clamp_to_transcript_edge(col, row, scroll, transcript))
                 {
-                    self.focus = Some(cell);
+                    // Keep word/line expansion on release — raw click cell would
+                    // collapse a double-click `apple` selection to `appl`.
+                    self.apply_focus_cell(cell, scroll.lines());
                 }
                 if self.copy_on_release {
                     self.last_event_copied = self.maybe_copy(scroll, sink);
@@ -305,7 +300,7 @@ impl SelectionController {
                 .screen_to_content(col, row, scroll, transcript)
                 .or_else(|| self.clamp_to_transcript_edge(col, row, scroll, transcript))
         {
-            self.focus = Some(cell);
+            self.apply_focus_cell(cell, scroll.lines());
         }
         true
     }
@@ -433,14 +428,7 @@ impl SelectionController {
         else {
             return false;
         };
-        let (a, f) = if self.granularity == SelectionGranularity::Character {
-            (self.anchor.unwrap_or(cell), cell)
-        } else {
-            let base = self.anchor.unwrap_or(cell);
-            expand_range(base, cell, self.granularity, scroll.lines())
-        };
-        self.anchor = Some(a);
-        self.focus = Some(f);
+        self.apply_focus_cell(cell, scroll.lines());
         true
     }
 
@@ -471,6 +459,18 @@ impl SelectionController {
         }
         self.last_click_at = Some(now);
         self.last_click_cell = Some((col, row));
+    }
+
+    /// Update focus (and re-expand anchor/focus for word/line granularity).
+    fn apply_focus_cell(&mut self, cell: CellPoint, lines: &[String]) {
+        let (a, f) = if self.granularity == SelectionGranularity::Character {
+            (self.anchor.unwrap_or(cell), cell)
+        } else {
+            let base = self.anchor.unwrap_or(cell);
+            expand_range(base, cell, self.granularity, lines)
+        };
+        self.anchor = Some(a);
+        self.focus = Some(f);
     }
 
     fn screen_to_content(
@@ -732,6 +732,51 @@ mod tests {
         ));
         assert_eq!(sink.copies, vec!["hello".to_string()]);
         assert!(sel.last_event_copied());
+    }
+
+    #[test]
+    fn double_click_selects_whole_word_on_release() {
+        // Regression: Up used to set focus to the raw click cell and collapse
+        // a word selection (`apple` → `appl` when clicking on `l`).
+        let mut scroll = ScrollView::new(4);
+        scroll.set_lines(vec!["say apple pie".into()]);
+        let mut sel = SelectionController::new();
+        let mut sink = RecordingClipboardSink::default();
+        let (tr, dock) = layout();
+        // "say apple pie" — 'l' of apple is column 7.
+        let col = 7u16;
+        assert!(sel.handle_mouse(
+            &mouse(MouseEventKind::Down(MouseButton::Left), col, 0),
+            &mut scroll,
+            tr,
+            dock,
+            &mut sink
+        ));
+        assert!(sel.handle_mouse(
+            &mouse(MouseEventKind::Up(MouseButton::Left), col, 0),
+            &mut scroll,
+            tr,
+            dock,
+            &mut sink
+        ));
+        sink.copies.clear();
+        assert!(sel.handle_mouse(
+            &mouse(MouseEventKind::Down(MouseButton::Left), col, 0),
+            &mut scroll,
+            tr,
+            dock,
+            &mut sink
+        ));
+        assert_eq!(sel.selected_text(scroll.lines()).as_deref(), Some("apple"));
+        assert!(sel.handle_mouse(
+            &mouse(MouseEventKind::Up(MouseButton::Left), col, 0),
+            &mut scroll,
+            tr,
+            dock,
+            &mut sink
+        ));
+        assert_eq!(sink.copies, vec!["apple".to_string()]);
+        assert_eq!(sel.selected_text(scroll.lines()).as_deref(), Some("apple"));
     }
 
     #[test]
