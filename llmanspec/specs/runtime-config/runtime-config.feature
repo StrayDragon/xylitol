@@ -5,12 +5,6 @@
 # （requirement 明确 MUST NOT 扩 BDD；由配置单测覆盖）
 功能: runtime-config
 
-  @req:rc11
-  场景: transport
-    假如 settings.json 中 transport 设为 sse
-    当 加载 settings
-    那么 Settings.transport 为 Some(sse)
-
   @req:rc12
   场景: mode-set
     假如 settings.json 中 steering_mode 设为 one-at-a-time
@@ -24,22 +18,10 @@
     那么 二者均为 OneAtATime
 
   @req:rc13
-  场景: shell-path
-    假如 settings.json 中 shell_path 设为 "/usr/local/bin/bash"
-    当 调用 SettingsManager.get_shell_path
-    那么 返回 Some(/usr/local/bin/bash)
-
-  @req:rc13
-  场景: trust-default
-    假如 default_project_trust 设为 always
-    当 调用 SettingsManager.get_default_project_trust
-    那么 返回 always
-
-  @req:rc14
-  场景: themes-list
-    假如 themes 有两个路径
-    当 合并 settings
-    那么 Settings.themes 有 2 项
+  场景: settings-delivered-surface-only
+    假如 加载默认或示例 settings
+    当 检查 Settings 类型与合并结果
+    那么 Settings 仅含已接线交付字段
 
   @req:rc14
   场景: no-prompts-settings-field
@@ -146,7 +128,7 @@
   场景: config-yaml-secret-env-layout
     假如 配置加载器已就绪
     当 从全局 config.yaml 加载完整 settings
-    那么 settings 含 transport 字段且不经 config.local.yaml 合并
+    那么 全局 config.yaml 生效且不经 config.local.yaml 合并
 
   @req:rc21
   场景: config-local-not-merged
