@@ -343,6 +343,10 @@ pub struct TUI<T: Terminal> {
     ao_components_stale: bool,
     /// Obs: how many frames took the ApplicationOwned reproject-only path.
     ao_reproject_frames: u64,
+    /// Obs: ApplicationOwned paints that used terminal scroll-region shift.
+    ao_scroll_shift_frames: u64,
+    /// Last painted ApplicationOwned `scroll_top` (for scroll-region shift).
+    ao_last_scroll_top: usize,
     focus_order_counter: u64,
     next_overlay_id: u64,
     next_input_listener_id: u64,
@@ -434,6 +438,8 @@ impl<T: Terminal> TUI<T> {
             last_render_perf: RenderPerfSnap::default(),
             ao_components_stale: true,
             ao_reproject_frames: 0,
+            ao_scroll_shift_frames: 0,
+            ao_last_scroll_top: 0,
             focus_order_counter: 0,
             next_overlay_id: 1,
             next_input_listener_id: 1,
@@ -491,6 +497,7 @@ impl<T: Terminal> TUI<T> {
         runtime.set_copy_on_release(self.transcript_copy_on_release);
         self.application_owned = Some(runtime);
         self.ao_components_stale = true;
+        self.ao_last_scroll_top = 0;
         // Force a clearing redraw into the alt buffer.
         self.previous_width = FORCE_SIZE_SENTINEL;
         self.previous_height = FORCE_SIZE_SENTINEL;
@@ -544,6 +551,31 @@ impl<T: Terminal> TUI<T> {
 
     pub fn clear_ao_reproject_frames_for_test(&mut self) {
         self.ao_reproject_frames = 0;
+    }
+
+    pub fn ao_scroll_shift_frames_for_test(&self) -> u64 {
+        self.ao_scroll_shift_frames
+    }
+
+    pub fn clear_ao_scroll_shift_frames_for_test(&mut self) {
+        self.ao_scroll_shift_frames = 0;
+    }
+
+    /// Whether the next ApplicationOwned frame must re-run `Component::render`.
+    pub fn ao_components_stale(&self) -> bool {
+        self.ao_components_stale
+    }
+
+    /// Queue ApplicationOwned transcript scroll (lines). Flushed on next paint.
+    pub fn application_owned_scroll_by(&mut self, delta: isize) -> bool {
+        let Some(runtime) = self.application_owned.as_mut() else {
+            return false;
+        };
+        if !runtime.queue_wheel_delta(delta) {
+            return false;
+        }
+        self.request_render(false);
+        true
     }
 
     pub fn dock_rows(&self) -> usize {
@@ -1818,6 +1850,8 @@ impl<T: Terminal> TUI<T> {
             self.full_render(&new_lines, clear, height);
         } else if first_changed < 0 {
             // No change at all — just reposition the cursor (pi's no-op branch).
+        } else if ao_reprojected && self.try_ao_scroll_shift_render(&new_lines, height) {
+            // Terminal scroll-region moved the overlap; only new rows were written.
         } else {
             self.differential_render(
                 &new_lines,
@@ -1830,6 +1864,9 @@ impl<T: Terminal> TUI<T> {
         }
 
         self.position_cursor(cursor_pos, new_lines.len());
+        if let Some(runtime) = self.application_owned.as_ref() {
+            self.ao_last_scroll_top = runtime.scroll_top();
+        }
         self.last_render_perf = RenderPerfSnap {
             do_render_us: render_started.elapsed().as_micros().min(u64::MAX as u128) as u64,
             component_lines,
@@ -1853,6 +1890,77 @@ impl<T: Terminal> TUI<T> {
             self.terminal.flush();
         }
         Ok(())
+    }
+
+    /// When ApplicationOwned only scrolled a few lines without selection, use
+    /// the terminal scroll region so we rewrite only the newly exposed rows.
+    fn try_ao_scroll_shift_render(&mut self, new_lines: &[String], height: usize) -> bool {
+        let Some(runtime) = self.application_owned.as_ref() else {
+            return false;
+        };
+        if runtime.has_selection() || runtime.selection.is_dragging() {
+            return false;
+        }
+        let dock = runtime.dock_rows.min(height).min(new_lines.len());
+        let transcript_h = height.saturating_sub(dock);
+        if transcript_h < 2 || new_lines.len() < height || self.previous_lines.len() < height {
+            return false;
+        }
+        let new_top = runtime.scroll_top();
+        let delta = new_top as isize - self.ao_last_scroll_top as isize;
+        if delta == 0 {
+            return false;
+        }
+        let d = delta.unsigned_abs();
+        if d == 0 || d >= transcript_h {
+            return false;
+        }
+
+        // Overlap must match a pure vertical shift of the prior transcript paint.
+        if delta > 0 {
+            if new_lines[..transcript_h - d] != self.previous_lines[d..transcript_h] {
+                return false;
+            }
+        } else if new_lines[d..transcript_h] != self.previous_lines[..transcript_h - d] {
+            return false;
+        }
+        // Dock chrome must be unchanged (otherwise fall back to differential).
+        if new_lines[transcript_h..transcript_h + dock]
+            != self.previous_lines[transcript_h..transcript_h + dock]
+        {
+            return false;
+        }
+
+        let top = 1usize; // 1-based CSI
+        let bottom = transcript_h;
+        let mut buf = String::from(BEGIN_RENDER_BATCH);
+        buf.push_str(&format!("\x1b[{top};{bottom}r"));
+        if delta > 0 {
+            // View later content: lines move up; new rows at bottom of region.
+            buf.push_str(&format!("\x1b[{d}S"));
+            let start = transcript_h - d;
+            for (offset, line) in new_lines[start..transcript_h].iter().enumerate() {
+                buf.push_str(&format!("\x1b[{};1H", start + offset + 1));
+                buf.push_str(line);
+                buf.push_str("\x1b[K");
+            }
+        } else {
+            // View earlier content: lines move down; new rows at top.
+            buf.push_str(&format!("\x1b[{d}T"));
+            for (i, line) in new_lines[..d].iter().enumerate() {
+                buf.push_str(&format!("\x1b[{};1H", i + 1));
+                buf.push_str(line);
+                buf.push_str("\x1b[K");
+            }
+        }
+        buf.push_str("\x1b[r"); // reset scroll region
+        buf.push_str(END_RENDER_BATCH);
+        self.terminal.write(&buf);
+        self.ao_scroll_shift_frames = self.ao_scroll_shift_frames.saturating_add(1);
+        self.cursor_row = new_lines.len().saturating_sub(1);
+        self.hardware_cursor_row = self.cursor_row;
+        self.max_lines_rendered = self.max_lines_rendered.max(new_lines.len());
+        true
     }
 
     fn full_render(&mut self, new_lines: &[String], clear: bool, height: usize) {

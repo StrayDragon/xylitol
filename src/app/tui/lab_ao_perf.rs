@@ -168,6 +168,7 @@ async fn lab_ao_session_perf_report() {
     idle_us.sort_unstable();
 
     session.tui.clear_ao_reproject_frames_for_test();
+    session.tui.clear_ao_scroll_shift_frames_for_test();
     let mut wheel_us = Vec::new();
     let mut wheel_reprojected = 0u32;
     for _ in 0..40 {
@@ -182,6 +183,7 @@ async fn lab_ao_session_perf_report() {
         }
     }
     wheel_us.sort_unstable();
+    let wheel_shifts = session.tui.ao_scroll_shift_frames_for_test();
 
     let mut drag_us = Vec::new();
     session
@@ -218,7 +220,7 @@ async fn lab_ao_session_perf_report() {
          source={source}\n\
          warm_us={warm_us} component_lines={} paint_lines={} finalize_checks={} reuses={}\n\
          idle_paint p50={}us p95={}us\n\
-         wheel_paint p50={}us p95={}us reprojected={wheel_reprojected}/40 ao_reproject_frames={}\n\
+         wheel_paint p50={}us p95={}us reprojected={wheel_reprojected}/40 shifts={wheel_shifts} ao_reproject_frames={}\n\
          drag_paint p50={}us p95={}us\n\
          last_frame component_lines={} paint_lines={} finalize_checks={} reuses={} do_render_us={} ao_reprojected={}",
         warm_perf.component_lines,

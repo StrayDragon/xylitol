@@ -27,6 +27,9 @@ pub struct ApplicationOwnedRuntime {
     pending_copy_notice: bool,
     /// Visible/active notice deadline; cleared by [`Self::tick_copy_notice`].
     copy_notice_until: Option<Instant>,
+    /// Wheel deltas coalesced until the next project/reproject paint.
+    /// Lets 16ms render throttle merge burst Scroll* into one viewport jump.
+    pending_wheel: isize,
 }
 
 impl ApplicationOwnedRuntime {
@@ -40,6 +43,7 @@ impl ApplicationOwnedRuntime {
             last_dock_lines: Vec::new(),
             pending_copy_notice: false,
             copy_notice_until: None,
+            pending_wheel: 0,
         }
     }
 
@@ -96,6 +100,30 @@ impl ApplicationOwnedRuntime {
         self.last_dock_lines.len()
     }
 
+    pub fn scroll_top(&self) -> usize {
+        self.scroll.scroll_top()
+    }
+
+    /// Queue a wheel delta (lines) for the next paint. Returns true if non-zero.
+    pub fn queue_wheel_delta(&mut self, delta: isize) -> bool {
+        if delta == 0 {
+            return false;
+        }
+        self.pending_wheel = self.pending_wheel.saturating_add(delta);
+        true
+    }
+
+    fn flush_pending_wheel(&mut self) {
+        if self.pending_wheel == 0 {
+            return;
+        }
+        let delta = self.pending_wheel;
+        self.pending_wheel = 0;
+        if self.scroll.scroll_by(delta) {
+            self.follow_bottom = self.scroll.at_bottom();
+        }
+    }
+
     /// Split full component output into viewport paint lines (≤ terminal height).
     pub fn project_frame(&mut self, full_lines: &[String], term_height: usize) -> Vec<String> {
         let dock = self.dock_rows.min(full_lines.len()).min(term_height);
@@ -107,6 +135,7 @@ impl ApplicationOwnedRuntime {
         let viewport_h = term_height.saturating_sub(dock);
         self.scroll.set_viewport_height(viewport_h.max(1));
         self.scroll.set_lines(content.to_vec());
+        self.flush_pending_wheel();
         self.paint_visible(viewport_h, term_height)
     }
 
@@ -119,6 +148,7 @@ impl ApplicationOwnedRuntime {
             .min(term_height);
         let viewport_h = term_height.saturating_sub(dock);
         self.scroll.set_viewport_height(viewport_h.max(1));
+        self.flush_pending_wheel();
         self.paint_visible(viewport_h, term_height)
     }
 
@@ -144,6 +174,8 @@ impl ApplicationOwnedRuntime {
     }
 
     pub fn handle_mouse(&mut self, event: &MouseEvent, term_cols: u16, term_rows: u16) -> bool {
+        use crossterm::event::MouseEventKind;
+
         let dock = self.dock_rows.min(term_rows as usize) as u16;
         let transcript_h = term_rows.saturating_sub(dock);
         let transcript = ScreenRect {
@@ -152,6 +184,20 @@ impl ApplicationOwnedRuntime {
             height: transcript_h,
             width: term_cols,
         };
+        // Wheel: queue delta for paint (coalesce under render throttle). Selection
+        // still owns drag/click; its Scroll* path is bypassed here.
+        let wheel_delta = match event.kind {
+            MouseEventKind::ScrollUp => Some(-3),
+            MouseEventKind::ScrollDown => Some(3),
+            _ => None,
+        };
+        if let Some(delta) = wheel_delta {
+            if !transcript.contains(event.column, event.row) {
+                return false;
+            }
+            return self.queue_wheel_delta(delta);
+        }
+
         let dock_rect = ScreenRect {
             row: transcript_h,
             col: 0,
@@ -167,7 +213,7 @@ impl ApplicationOwnedRuntime {
         if self.selection.last_event_copied() {
             self.signal_copy_notice();
         }
-        // Wheel / edge scroll away from bottom clears follow; return to bottom re-arms it.
+        // Edge scroll away from bottom clears follow; return to bottom re-arms it.
         if dirty {
             self.follow_bottom = self.scroll.at_bottom();
         }
@@ -300,11 +346,11 @@ mod tests {
             modifiers: KeyModifiers::NONE,
         };
         assert!(runtime.handle_mouse(&wheel, 40, 8));
-        assert!(!runtime.scroll.at_bottom());
+        // Wheel is queued until paint — scroll_top unchanged before project.
+        assert_eq!(runtime.scroll.scroll_top(), top_before);
+        let paint = runtime.project_frame(&full, 8);
         assert!(runtime.scroll.scroll_top() < top_before);
         let top_scrolled = runtime.scroll.scroll_top();
-        let paint = runtime.project_frame(&full, 8);
-        assert_eq!(runtime.scroll.scroll_top(), top_scrolled);
         assert_eq!(paint[0], format!("L{top_scrolled}"));
     }
 
