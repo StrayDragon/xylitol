@@ -21,7 +21,7 @@ use crate::keybindings::with_keybindings;
 use crate::keys::{matches_key_event, printable_from_key_event};
 use crate::kill_ring::{KillRing, KillRingOptions};
 use crate::paste_burst::PasteBurst;
-use crate::selection::{CellPoint, ClipboardSink, format_osc52};
+use crate::selection::{CellPoint, ClipboardSink, SelectionGranularity, format_osc52};
 use crate::tui::{CURSOR_MARKER, Component, Focusable, InputEvent};
 use crate::undo_stack::UndoStack;
 use crate::utils::{is_whitespace_char, truncate_to_width, visible_width};
@@ -115,11 +115,30 @@ struct LayoutLine {
 ///
 /// Coordinates are **logical buffer** space (`row` = line index, `col` = byte
 /// offset), not screen cells and not transcript [`crate::SelectionController`].
-#[derive(Debug, Default, Clone)]
+#[derive(Debug, Clone)]
 struct EditorSelection {
     anchor: Option<CellPoint>,
     focus: Option<CellPoint>,
     dragging: bool,
+    granularity: SelectionGranularity,
+    click_count: u8,
+    last_click_at: Option<std::time::Instant>,
+    /// Editor-local `(col, row)` of the last Down (for double/triple click).
+    last_click_cell: Option<(usize, usize)>,
+}
+
+impl Default for EditorSelection {
+    fn default() -> Self {
+        Self {
+            anchor: None,
+            focus: None,
+            dragging: false,
+            granularity: SelectionGranularity::Character,
+            click_count: 0,
+            last_click_at: None,
+            last_click_cell: None,
+        }
+    }
 }
 
 impl EditorSelection {
@@ -127,6 +146,8 @@ impl EditorSelection {
         self.anchor = None;
         self.focus = None;
         self.dragging = false;
+        self.granularity = SelectionGranularity::Character;
+        // Keep click_count / last_click_* so a second Down can still double-click.
     }
 
     fn has_selection(&self) -> bool {
@@ -141,6 +162,21 @@ impl EditorSelection {
         let f = self.focus?;
         Some(ordered_cell(a, f))
     }
+
+    fn update_click_count(&mut self, col: usize, row: usize) {
+        let now = std::time::Instant::now();
+        let same = self.last_click_cell == Some((col, row));
+        let quick = self
+            .last_click_at
+            .is_some_and(|t| now.duration_since(t).as_millis() < 400);
+        if same && quick {
+            self.click_count = self.click_count.saturating_add(1).min(3);
+        } else {
+            self.click_count = 1;
+        }
+        self.last_click_at = Some(now);
+        self.last_click_cell = Some((col, row));
+    }
 }
 
 fn ordered_cell(a: CellPoint, b: CellPoint) -> (CellPoint, CellPoint) {
@@ -149,6 +185,82 @@ fn ordered_cell(a: CellPoint, b: CellPoint) -> (CellPoint, CellPoint) {
     } else {
         (b, a)
     }
+}
+
+/// Expand selection endpoints for editor buffer coords (byte offsets).
+fn expand_editor_range(
+    a: CellPoint,
+    b: CellPoint,
+    g: SelectionGranularity,
+    lines: &[String],
+) -> (CellPoint, CellPoint) {
+    let (mut start, mut end) = ordered_cell(a, b);
+    match g {
+        SelectionGranularity::Character => {}
+        SelectionGranularity::Word => {
+            if start.row == end.row {
+                let line = lines.get(start.row).map(|s| s.as_str()).unwrap_or("");
+                let (l, r) = word_byte_bounds_containing(line, start.col.min(end.col));
+                start.col = l;
+                end.col = r;
+            } else {
+                let start_line = lines.get(start.row).map(|s| s.as_str()).unwrap_or("");
+                let end_line = lines.get(end.row).map(|s| s.as_str()).unwrap_or("");
+                let (l, _) = word_byte_bounds_containing(start_line, start.col);
+                let (_, r) = word_byte_bounds_containing(end_line, end.col);
+                start.col = l;
+                end.col = r;
+            }
+        }
+        SelectionGranularity::Line => {
+            start.col = 0;
+            end.col = lines.get(end.row).map(|l| l.len()).unwrap_or(0);
+        }
+    }
+    (start, end)
+}
+
+fn word_byte_bounds_containing(line: &str, byte_at: usize) -> (usize, usize) {
+    if line.is_empty() {
+        return (0, 0);
+    }
+    let mut byte_at = byte_at.min(line.len());
+    while byte_at > 0 && !line.is_char_boundary(byte_at) {
+        byte_at -= 1;
+    }
+    let indices: Vec<(usize, char)> = line.char_indices().collect();
+    if indices.is_empty() {
+        return (0, 0);
+    }
+    let mut i = indices.partition_point(|(off, _)| *off < byte_at);
+    if i >= indices.len() {
+        i = indices.len() - 1;
+    } else if indices[i].0 > byte_at && i > 0 {
+        i -= 1;
+    } else if indices[i].0 > byte_at {
+        // byte_at before first char
+        i = 0;
+    }
+    let word_char = |c: char| c.is_alphanumeric() || c == '_';
+    if !word_char(indices[i].1) {
+        let off = indices[i].0;
+        return (off, off + indices[i].1.len_utf8());
+    }
+    let mut l = i;
+    let mut r = i + 1;
+    while l > 0 && word_char(indices[l - 1].1) {
+        l -= 1;
+    }
+    while r < indices.len() && word_char(indices[r].1) {
+        r += 1;
+    }
+    let start = indices[l].0;
+    let end = if r < indices.len() {
+        indices[r].0
+    } else {
+        line.len()
+    };
+    (start, end)
 }
 
 pub struct EditorTheme {
@@ -1711,6 +1823,8 @@ impl Editor {
     /// absolute screen coords MUST remap into this space before dispatch.
     ///
     /// Returns whether presentation changed (caller should rerender).
+    /// Double-click selects the word under the pointer; triple-click selects the
+    /// logical line (same habit as transcript ApplicationOwned selection).
     pub fn handle_mouse_local(&mut self, event: &MouseEvent, sink: &mut dyn ClipboardSink) -> bool {
         let (col, row) = (event.column as usize, event.row as usize);
         match event.kind {
@@ -1719,8 +1833,16 @@ impl Editor {
                     self.selection.clear();
                     return false;
                 };
-                self.selection.anchor = Some(cell);
-                self.selection.focus = Some(cell);
+                self.selection.update_click_count(col, row);
+                self.selection.granularity = match self.selection.click_count {
+                    2 => SelectionGranularity::Word,
+                    3.. => SelectionGranularity::Line,
+                    _ => SelectionGranularity::Character,
+                };
+                let (a, f) =
+                    expand_editor_range(cell, cell, self.selection.granularity, &self.state.lines);
+                self.selection.anchor = Some(a);
+                self.selection.focus = Some(f);
                 self.selection.dragging = true;
                 true
             }
@@ -1732,7 +1854,7 @@ impl Editor {
                     .local_to_buffer(col, row)
                     .or_else(|| self.clamp_local_to_buffer(col, row));
                 if let Some(cell) = cell {
-                    self.selection.focus = Some(cell);
+                    self.apply_editor_focus_cell(cell);
                     return true;
                 }
                 false
@@ -1746,12 +1868,10 @@ impl Editor {
                     .local_to_buffer(col, row)
                     .or_else(|| self.clamp_local_to_buffer(col, row))
                 {
-                    self.selection.focus = Some(cell);
+                    self.apply_editor_focus_cell(cell);
                 }
-                // Click (no drag span): clear ghost highlight; do not copy.
-                // Editor viewport edge auto-scroll is intentionally unsupported
-                // (human cut 2026-08-12) — former edge-zone ticks expanded
-                // focus away from the click cell and left a false selection.
+                // Character click (no span): clear ghost highlight; do not copy.
+                // Word/line multi-click keeps the expanded range and may copy.
                 if !self.selection.has_selection() {
                     self.selection.clear();
                     return true;
@@ -1763,6 +1883,17 @@ impl Editor {
             }
             _ => false,
         }
+    }
+
+    fn apply_editor_focus_cell(&mut self, cell: CellPoint) {
+        let (a, f) = if self.selection.granularity == SelectionGranularity::Character {
+            (self.selection.anchor.unwrap_or(cell), cell)
+        } else {
+            let base = self.selection.anchor.unwrap_or(cell);
+            expand_editor_range(base, cell, self.selection.granularity, &self.state.lines)
+        };
+        self.selection.anchor = Some(a);
+        self.selection.focus = Some(f);
     }
 
     fn content_max_visible(&self) -> usize {
@@ -2589,6 +2720,64 @@ mod tests {
         );
         assert!(sink.copies.is_empty());
         assert!(!e.has_selection());
+    }
+
+    #[test]
+    fn editor_double_click_selects_whole_word_on_release() {
+        use crate::selection::RecordingClipboardSink;
+        let mut e = Editor::new(t(), EditorOptions::default(), clk());
+        e.set_text("say apple pie".into());
+        let _ = e.render(40);
+        let mut sink = RecordingClipboardSink::default();
+        // Content row 1; 'l' of apple is display column 7.
+        let col = 7u16;
+        let row = 1u16;
+        e.handle_mouse_local(
+            &mouse(MouseEventKind::Down(MouseButton::Left), col, row),
+            &mut sink,
+        );
+        e.handle_mouse_local(
+            &mouse(MouseEventKind::Up(MouseButton::Left), col, row),
+            &mut sink,
+        );
+        assert!(sink.copies.is_empty(), "first click must not copy");
+        e.handle_mouse_local(
+            &mouse(MouseEventKind::Down(MouseButton::Left), col, row),
+            &mut sink,
+        );
+        assert_eq!(e.selected_text().as_deref(), Some("apple"));
+        e.handle_mouse_local(
+            &mouse(MouseEventKind::Up(MouseButton::Left), col, row),
+            &mut sink,
+        );
+        assert_eq!(sink.copies, vec!["apple".to_string()]);
+        assert_eq!(e.selected_text().as_deref(), Some("apple"));
+    }
+
+    #[test]
+    fn editor_triple_click_selects_whole_line_on_release() {
+        use crate::selection::RecordingClipboardSink;
+        let mut e = Editor::new(t(), EditorOptions::default(), clk());
+        e.set_text("say apple pie".into());
+        let _ = e.render(40);
+        let mut sink = RecordingClipboardSink::default();
+        let col = 7u16;
+        let row = 1u16;
+        for _ in 0..3 {
+            e.handle_mouse_local(
+                &mouse(MouseEventKind::Down(MouseButton::Left), col, row),
+                &mut sink,
+            );
+            e.handle_mouse_local(
+                &mouse(MouseEventKind::Up(MouseButton::Left), col, row),
+                &mut sink,
+            );
+        }
+        assert_eq!(e.selected_text().as_deref(), Some("say apple pie"));
+        assert_eq!(
+            sink.copies.last().map(String::as_str),
+            Some("say apple pie")
+        );
     }
 
     #[test]
