@@ -1,9 +1,12 @@
 ---
 depends_on:
-  - c2020-add-package-tui-mouse-input
-  - c2070-add-package-tui-dual-interaction-modes
+- c2020-add-package-tui-mouse-input
+- c2070-add-package-tui-dual-interaction-modes
 blocks:
-  - c2050-update-activity-fold-mouse-leader
+- c2050-update-activity-fold-mouse-leader
+branch: sdd/c2040-add-tui-mouse-click-fold-triangle
+base_sha: 49ce1de618c1ec340ff98a223d72978d1c4f428e
+checkpointed: false
 ---
 
 # 鼠标点击折叠三角 + 折叠标记字形
