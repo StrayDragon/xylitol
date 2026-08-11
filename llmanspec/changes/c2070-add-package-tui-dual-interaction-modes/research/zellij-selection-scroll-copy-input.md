@@ -161,16 +161,16 @@ Zellij **没有** xylitol 式「底部 Editor 组件」；等价冲突面如下�
 
 ## 7. 对比表：Zellij vs Pi AltScreen
 
+> Pi 列已由主会话按 [`pi-altscreen-selection-scroll-copy-input.md`](./pi-altscreen-selection-scroll-copy-input.md) 合并（2026-08-11）。
+
 | 维度 | Zellij（本文一手） | Pi `TuiAltScreen` |
 |---|---|---|
 | 选区归属 | 复用器应用层（per-pane `Grid`） | 应用层（`selectionAnchor` / `selectionFocus`） |
-| 越界续选 | 相对坐标越界 + 10ms/行 + `active` 锚点平移 | 有 edge auto-scroll（见仓内 `research/pi-dual-tui-modes-and-xylitol-cost.md`）；细参 **待主 agent 合并** |
-| 松手复制 | `copy_on_select` → OSC52 或 `copy_command` | `copySelectionToClipboard`（OSC52/工具细节 **待主 agent 合并**） |
-| 与输入区冲突 | tracking / frame / unselectable plugin | Editor/ScrollView 分区（细节 **待主 agent 合并**） |
+| 越界续选 | 相对坐标越界 + **10ms**/行 + `active` 时只平移锚点 `start` | 贴 ScrollView 顶/底 → `setInterval(**50ms**)` + `ScrollView.scrollBy`；固定 drag pointer 续 focus |
+| 松手复制 | `copy_on_select` 默认 true → 有 `copy_command` 走本地，否则 **OSC52** | `copySelectionToClipboard`：**仅 OSC52**；无 wl-copy/pbcopy 回退；不清选区，flash「Copied!」 |
+| 与输入区冲突 | frame / 子程序 mouse tracking / `set_selectable(false)` | Editor 在 ScrollView **外** dock；高亮裁到 ScrollView box；鼠标一律 consume，**无** click-to-focus |
 | 坐标 | viewport 相对，负行 = scrollback | ScrollView 视口（非终端 scrollback） |
 | 产品形态 | 多 pane 终端复用器 | 单 agent TUI fullscreen |
-
-Pi 列未在本文件重读 `../pi` 源码处标「待主 agent 合并」；Zellij 列均已锚定路径+符号。
 
 ---
 
