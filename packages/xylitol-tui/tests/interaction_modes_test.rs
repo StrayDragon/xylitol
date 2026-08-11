@@ -962,3 +962,39 @@ fn application_owned_wheel_reprojects_without_component_render() {
     );
     assert_eq!(tui.ao_reproject_frames_for_test(), 1);
 }
+
+/// Soft resize must not reproject width-specific cached lines (editor borders /
+/// markdown wrap). Host uses `request_render(false)` on Resize.
+#[test]
+fn application_owned_soft_resize_rerenders_not_reprojects() {
+    struct WidthFill;
+    impl Component for WidthFill {
+        fn render(&mut self, width: usize) -> Vec<String> {
+            let body = "x".repeat(width.max(1));
+            vec![body, "dock".into()]
+        }
+        fn handle_input(&mut self, _event: InputEvent) {}
+        fn invalidate(&mut self) {}
+        fn dock_rows_hint(&self) -> Option<usize> {
+            Some(1)
+        }
+    }
+
+    let mut tui = TUI::with_interaction_mode(
+        LoggingVirtualTerminal::new(40, 8),
+        InteractionMode::ApplicationOwned,
+    );
+    tui.add_child(Box::new(WidthFill));
+    tui.terminal.start();
+    tui.begin_application_owned_session();
+    tui.render_frame().expect("warm 40");
+    assert!(!tui.last_render_perf().ao_reprojected);
+
+    tui.terminal.set_size_hint(20, 8);
+    tui.request_render(false);
+    tui.render_frame().expect("soft resize to 20");
+    assert!(
+        !tui.last_render_perf().ao_reprojected,
+        "width change must rebuild components, not reproject 40-col cache"
+    );
+}

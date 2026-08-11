@@ -212,8 +212,6 @@ impl Component for UiRoot {
             let mut upper = Vec::new();
             upper.extend(self.render_loaded_resources_slot(width));
             upper.extend(self.render_scrollback_slot(width));
-            // Queue strip sits between transcript and status (pi morphology).
-            upper.extend(self.render_queue_slot(width));
             self.upper_cache_width = width;
             self.upper_cache_gen = self.upper_gen;
             self.upper_cache_lines = upper.clone();
@@ -223,6 +221,10 @@ impl Component for UiRoot {
             }
             lines.extend(upper);
         }
+        // Queue strip is dock chrome (between transcript and status) — must not
+        // live in the ApplicationOwned ScrollView or short sessions pin it under
+        // the startup card with a pad of empty rows (Inline stuck-to-bottom feel).
+        let queue = self.render_queue_slot(width);
         let toast = self.render_chrome_toast_slot(width);
         let status = self.render_status_slot(width);
         // Editor owns the operation-zone ─ borders (DESIGN editor.md / agent_demo).
@@ -234,16 +236,18 @@ impl Component for UiRoot {
         } else {
             truncate_to_width(self.footer.text(), width, "...", true)
         };
-        // ApplicationOwned dock = everything below loaded+scrollback+queue (ath30 / ptim06).
+        // ApplicationOwned dock = queue + toast + status + editor + footer (ath30).
         self.last_toast_rows = toast.len();
         self.last_status_rows = status.len();
         self.last_editor_rows = editor.len();
-        self.last_dock_rows = toast
+        self.last_dock_rows = queue
             .len()
+            .saturating_add(toast.len())
             .saturating_add(status.len())
             .saturating_add(editor.len())
             .saturating_add(1);
         self.sync_editor_screen_origin();
+        lines.extend(queue);
         lines.extend(toast);
         lines.extend(status);
         lines.extend(editor);

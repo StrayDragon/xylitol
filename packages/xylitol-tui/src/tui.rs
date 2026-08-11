@@ -566,14 +566,15 @@ impl<T: Terminal> TUI<T> {
         self.ao_components_stale
     }
 
-    /// Queue ApplicationOwned transcript scroll (lines). Flushed on next paint.
+    /// Scroll ApplicationOwned transcript immediately; schedule a throttled paint.
     pub fn application_owned_scroll_by(&mut self, delta: isize) -> bool {
         let Some(runtime) = self.application_owned.as_mut() else {
             return false;
         };
-        if !runtime.queue_wheel_delta(delta) {
+        if delta == 0 {
             return false;
         }
+        let _ = runtime.scroll_by(delta);
         self.request_render(false);
         true
     }
@@ -1701,8 +1702,11 @@ impl<T: Terminal> TUI<T> {
         let checks_before = self.finalize_width_checks;
         let reuses_before = self.finalize_line_reuses;
 
+        // Cached project lines are width-specific (editor borders, markdown wrap).
+        // Soft resize (`request_render(false)`) must not reproject the prior width.
         let can_reproject = self.application_session_active
             && !self.ao_components_stale
+            && self.previous_width == width
             && self.overlays.is_empty()
             && self
                 .application_owned
@@ -1888,15 +1892,6 @@ impl<T: Terminal> TUI<T> {
                 self.terminal.write(&seq);
             }
             self.terminal.flush();
-        }
-        // Per-frame wheel cap left a residual — schedule another paint so the
-        // host busy ticker (~16ms) drains it instead of waiting on idle 250ms.
-        if self
-            .application_owned
-            .as_ref()
-            .is_some_and(ApplicationOwnedRuntime::has_pending_wheel)
-        {
-            self.render_requested = true;
         }
         Ok(())
     }
