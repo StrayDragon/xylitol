@@ -1,15 +1,12 @@
 ---
 depends_on:
   - c2070-add-package-tui-dual-interaction-modes
-apply_band: P9-deferred
-summary: "scrollback entry 级 viewport 切片；与折叠/双架构族一并延后"
 ---
 
-# c1505-add-tui-scrollback-viewport-slice
+# scrollback entry 级 viewport 切片
 
-> **⚠️ deferred（2026-08-11）**：再次位于 `…/c2070-…/cascade/`（双架构顶层目录下）。与折叠 / 双交互架构族同波延后——Mode B 会重写滚动假设；Mode A 下 activity-fold 也可能缓解紧迫性。
-> **总前置指针**：[`c2070`](../../proposal.md)。
-> 注：2026-08-10 曾升格 active（#11）；本轮撤回。
+> **状态**：active 规划草案（自 c2070 nested cascade 拆出）。**硬前置** [`c2070`](../c2070-add-package-tui-dual-interaction-modes/proposal.md)——Mode B 会重写滚动假设；Mode A 下 activity-fold 也可能缓解紧迫性。本 change **不**与 c2070 同批 apply。
+> 注：2026-08-10 曾升格；后撤回 delay；2026-08-11 随 c2070 族再升为独立 `changes/` 条目。
 
 > **一句话**：scrollback 改 entry 级 viewport 切片渲染，长历史不再每帧全量 flatten（activity-fold 落地后可能缓解紧迫性）
 
