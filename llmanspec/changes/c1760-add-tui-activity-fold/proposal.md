@@ -67,7 +67,7 @@ L3  通用耗时表达（最粗；可配置 / 更旧历史）
 | 旁注 | **先满和弦**（形态 A，对齐今日 `(Alt+E)`）；之后可调短标签 / 混合 |
 | 标记 | `▶/▼` / `>/v`；不做 `(+)/(-)`；字形微调见并行 `c2040` |
 | 鼠标 | **本波（c1760 MVP）仍可不实现点击**；行距缝预留。并行草案：`c2020` 地基 → `c2040` 点击；段级适配 `c2050` |
-| 与 Alt+E | 分层（深挖 A）；L1 定点 leader 见并行 `c2030`（可能重载 Alt+E 语义——与本案和弦表须一并拍板） |
+| 与 Alt+E | 分层（深挖 A）；L1 **全局**仍 `Alt+E`；L1 **定点**改并行 `c2040` 鼠标点三角（原 `c2030` leader **已废弃**） |
 | 跨面 | **动作语义统一**；物理键/点击分面绑定（深挖 D） |
 | 旧 turn | User + 最终 Assistant；中间 ≥L2，可 L3 |
 | System/Error | 始终外显；travel 见 c1755 |
@@ -97,16 +97,16 @@ L3  通用耗时表达（最粗；可配置 / 更旧历史）
 - c1755：travel 只改放置，文案完整保留。
 - **另案**（未建）：统一 System message 样式/文案族——不在本 change scope。
 
-## 并行交互增强草案（2026-08-11）
+## 并行交互增强草案（2026-08-11 · 修订弃 c2030）
 
 | id | 主题 | 依赖边 |
 |---|---|---|
-| [`c2020`](../c2020-add-package-tui-mouse-input/proposal.md) | 包级 Mouse | Wave 0；`blocks` → c2040/c2050 |
-| [`c2030`](../c2030-add-tui-fold-leader-digit-toggle/proposal.md) | Leader + 数字定点 | Wave 0；`blocks` → c2040/c2050 |
-| [`c2040`](../c2040-add-tui-mouse-click-fold-triangle/proposal.md) | 点击三角 + 字形 | Wave 1；`depends_on` c2020+c2030 |
-| [`c2050`](../c2050-update-activity-fold-mouse-leader/proposal.md) | 多级适配 | Wave 2；本 change **`blocks`** 之 |
+| [`c2020`](../archive/2026-08-11-c2020-add-package-tui-mouse-input/proposal.md) | 包级 Mouse | Wave 0✓ archive；`blocks` → c2040/c2050 |
+| ~~c2030~~ | ~~Leader + 数字定点~~ | **已废弃**（屏外数字 + 贴底重绘体验差） |
+| [`c2040`](../c2040-add-tui-mouse-click-fold-triangle/proposal.md) | 点击三角 + L1 覆盖表 + 字形 | Wave 1；`depends_on` **仅** c2020 |
+| [`c2050`](../c2050-update-activity-fold-mouse-leader/proposal.md) | 多级适配鼠标/覆盖 | Wave 2；本 change **`blocks`** 之 |
 
-本 change（c1760）与 c2020/c2030/c2040 **无** `depends_on` 边——MVP 可先落地；交互增强收口在 c2050。
+本 change（c1760）与 c2020/c2040 **无** `depends_on` 边——MVP 可先落地；交互增强收口在 c2050。
 
 性能并列（减行/切片，非本波交付）：`c1505` / `c1370` / `c1535`。
 
@@ -115,7 +115,7 @@ L3  通用耗时表达（最粗；可配置 / 更旧历史）
 - 实现 c1505/c1370/c1535；改 LLM 上下文
 - 本波统一全部 System 文案；假 `Worked for` / 假 `+/-`
 - `(+)/(-)` 标记；scrollback 常驻焦点槽
-- **MVP 可不实现**鼠标点击 / leader 数字（改由 c2020–c2050）；本波仍 **MUST** 预留行距缝（深挖 B）
+- **MVP 可不实现**鼠标点击（改由 c2020–c2050）；本波仍 **MUST** 预留行距缝（深挖 B）。**不做** keyboard fold-leader / 数字编号。
 
 ## 调研笔记（续 · L3 时长与展开）
 
