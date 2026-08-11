@@ -1,4 +1,3 @@
-use crate::helpers::*;
 use crate::prelude::*;
 use crate::steps_cli_tokenizer::{TokenizerBdd, parse_app_config_yaml};
 use rstest::fixture;
@@ -60,10 +59,6 @@ pub fn rc_snap() -> RcSnap {
 }
 
 // --- given ---
-#[given("settings.json 中 transport 设为 sse")]
-fn g_rc_transport(rc_snap: &RcSnap) {
-    rc_snap.settings.borrow_mut().transport = Some(xylitol::infra::settings::Transport::Sse);
-}
 #[given("settings.json 中 steering_mode 设为 one-at-a-time")]
 fn g_rc_steering(rc_snap: &RcSnap) {
     rc_snap.settings.borrow_mut().steering_mode =
@@ -74,19 +69,6 @@ fn g_rc_mode_defaults(rc_snap: &RcSnap) {
     let mut s = rc_snap.settings.borrow_mut();
     s.steering_mode = None;
     s.follow_up_mode = None;
-}
-#[given("settings.json 中 shell_path 设为 {val}")]
-fn g_rc_shell(rc_snap: &RcSnap, val: String) {
-    rc_snap.settings.borrow_mut().shell_path = Some(strip_quotes(&val));
-}
-#[given("default_project_trust 设为 always")]
-fn g_rc_trust(rc_snap: &RcSnap) {
-    rc_snap.settings.borrow_mut().default_project_trust =
-        Some(xylitol::infra::settings::DefaultProjectTrust::Always);
-}
-#[given("themes 有两个路径")]
-fn g_rc_themes(rc_snap: &RcSnap) {
-    rc_snap.settings.borrow_mut().themes = Some(vec!["theme-a".into(), "theme-b".into()]);
 }
 #[given("加载默认或示例 settings")]
 fn g_rc_default_settings(rc_snap: &RcSnap) {
@@ -236,18 +218,6 @@ fn w_rc_load(rc_snap: &RcSnap) {
 fn w_rc_defaults(rc_snap: &RcSnap) {
     rc_snap.load_settings_mgr();
 }
-#[when("调用 SettingsManager.get_shell_path")]
-fn w_rc_shell(rc_snap: &RcSnap) {
-    rc_snap.load_settings_mgr();
-}
-#[when("调用 SettingsManager.get_default_project_trust")]
-fn w_rc_trust_get(rc_snap: &RcSnap) {
-    rc_snap.load_settings_mgr();
-}
-#[when("合并 settings")]
-fn w_rc_merge(rc_snap: &RcSnap) {
-    rc_snap.load_settings_mgr();
-}
 #[when("检查 Settings 类型与合并结果")]
 fn w_rc_check_settings_no_prompts(rc_snap: &RcSnap) {
     rc_snap.load_settings_mgr();
@@ -325,15 +295,6 @@ fn w_rc_narrative(rc_snap: &RcSnap) {
 }
 
 // --- then ---
-#[then("Settings.transport 为 Some(sse)")]
-fn t_rc_transport(rc_snap: &RcSnap) {
-    let mgr = rc_snap.mgr.borrow();
-    let mgr = mgr.as_ref().expect("settings loaded");
-    assert_eq!(
-        mgr.get_transport(),
-        xylitol::infra::settings::Transport::Sse
-    );
-}
 #[then("Settings.steering_mode 为 OneAtATime")]
 fn t_rc_steering(rc_snap: &RcSnap) {
     let mgr = rc_snap.mgr.borrow();
@@ -356,26 +317,25 @@ fn t_rc_both(rc_snap: &RcSnap) {
         xylitol::infra::settings::SteeringMode::OneAtATime
     );
 }
-#[then("返回 Some(/usr/local/bin/bash)")]
-fn t_rc_shell_result(rc_snap: &RcSnap) {
+#[then("Settings 仅含已接线交付字段")]
+fn t_rc_delivered_surface(rc_snap: &RcSnap) {
     let mgr = rc_snap.mgr.borrow();
     let mgr = mgr.as_ref().expect("settings loaded");
-    assert_eq!(mgr.get_shell_path(), Some("/usr/local/bin/bash"));
-}
-#[then("返回 always")]
-fn t_rc_trust_result(rc_snap: &RcSnap) {
-    let mgr = rc_snap.mgr.borrow();
-    let mgr = mgr.as_ref().expect("settings loaded");
-    assert_eq!(
-        mgr.get_default_project_trust(),
-        xylitol::infra::settings::DefaultProjectTrust::Always
-    );
-}
-#[then("Settings.themes 有 2 项")]
-fn t_rc_themes(rc_snap: &RcSnap) {
-    let mgr = rc_snap.mgr.borrow();
-    let mgr = mgr.as_ref().expect("settings loaded");
-    assert_eq!(mgr.get_themes().map(|p| p.len()), Some(2));
+    let v = serde_json::to_value(mgr.get_settings()).unwrap();
+    let obj = v.as_object().expect("settings object");
+    let allowed = [
+        "defaultThinkingLevel",
+        "compaction",
+        "thinkingBudgets",
+        "steeringMode",
+        "followUpMode",
+    ];
+    for key in obj.keys() {
+        assert!(
+            allowed.contains(&key.as_str()),
+            "unexpected Settings field `{key}` (delivered surface only)"
+        );
+    }
 }
 #[then("MUST NOT 存在可生效的 prompts 路径列表字段")]
 fn t_rc_no_prompts_field(rc_snap: &RcSnap) {
@@ -488,7 +448,7 @@ fn t_rc_local(rc_snap: &RcSnap) {
     let local_cfg = parse_app_config_yaml(&local).expect("local yaml parses");
     assert_eq!(local_cfg.model.default_model.as_deref(), Some("from-local"));
 }
-#[then("settings 含 transport 字段且不经 config.local.yaml 合并")]
+#[then("全局 config.yaml 生效且不经 config.local.yaml 合并")]
 fn t_rc_docs(rc_snap: &RcSnap) {
     let cfg = rc_snap.app_config.borrow();
     let cfg = cfg.as_ref().expect("app config");

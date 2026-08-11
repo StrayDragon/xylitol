@@ -219,7 +219,15 @@ mod trust_bdd {
         let s = xylitol::infra::settings::storage::InMemorySettingsStorage::default();
         let m =
             xylitol::infra::settings::manager::SettingsManager::from_storage(Box::new(s), false);
-        assert!(m.settings.theme.is_none());
+        assert!(!m.is_project_trusted());
+        assert_eq!(
+            m.get_project_settings(),
+            &xylitol::infra::settings::Settings::default()
+        );
+        assert_eq!(
+            m.get_settings(),
+            &xylitol::infra::settings::Settings::default()
+        );
     }
 
     #[then("经应用缝持久化到 trust store，后续解析返回持久化值，且本会话不自动重载项目资源")]

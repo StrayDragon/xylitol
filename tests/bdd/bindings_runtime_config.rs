@@ -40,11 +40,6 @@ fn test_rc19_invalid(tokenizer_bdd: TokenizerBdd) {}
 
 #[scenario(
     path = "llmanspec/specs/runtime-config/runtime-config.feature",
-    name = "transport"
-)]
-fn test_rc_transport(rc_snap: RcSnap) {}
-#[scenario(
-    path = "llmanspec/specs/runtime-config/runtime-config.feature",
     name = "mode-set"
 )]
 fn test_rc_mode_set(rc_snap: RcSnap) {}
@@ -55,19 +50,9 @@ fn test_rc_mode_set(rc_snap: RcSnap) {}
 fn test_rc_mode_default(rc_snap: RcSnap) {}
 #[scenario(
     path = "llmanspec/specs/runtime-config/runtime-config.feature",
-    name = "shell-path"
+    name = "settings-delivered-surface-only"
 )]
-fn test_rc_shell_path(rc_snap: RcSnap) {}
-#[scenario(
-    path = "llmanspec/specs/runtime-config/runtime-config.feature",
-    name = "trust-default"
-)]
-fn test_rc_trust_default(rc_snap: RcSnap) {}
-#[scenario(
-    path = "llmanspec/specs/runtime-config/runtime-config.feature",
-    name = "themes-list"
-)]
-fn test_rc_themes_list(rc_snap: RcSnap) {}
+fn test_rc_settings_delivered_surface(rc_snap: RcSnap) {}
 #[scenario(
     path = "llmanspec/specs/runtime-config/runtime-config.feature",
     name = "no-prompts-settings-field"
