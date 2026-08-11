@@ -2,6 +2,9 @@
 depends_on:
 - c2071-update-app-tui-host-mode-b-only
 blocks: []
+branch: sdd/c2080-add-append-only-subagent-tui
+base_sha: 839990764660a6b9f9014d1a88ee2d35aafeccd6
+checkpointed: false
 ---
 
 # Append-only 瘦面：sub-agent 消费 + 多 app/TUI 架构验证
