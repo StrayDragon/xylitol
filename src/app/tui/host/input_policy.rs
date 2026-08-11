@@ -11,6 +11,23 @@ use super::super::keybindings::matches_binding;
 use super::HostSession;
 
 impl<T: Terminal> HostSession<T> {
+    /// Main editor Enter follows the live transcript even when the editor is
+    /// empty. Non-Editor slots retain Enter for their own confirm semantics.
+    pub(super) fn follow_bottom_on_submit_key(&mut self, input: &InputEvent) {
+        let InputEvent::Key(key) = input else {
+            return;
+        };
+        if !matches_binding(key, "tui.input.submit")
+            || self
+                .ui_root
+                .as_ref()
+                .is_none_or(|root| root.borrow().slot().is_overlay())
+        {
+            return;
+        }
+        self.tui.application_owned_scroll_to_end();
+    }
+
     /// Drop Esc backlog after abort while idle so the next bang is not cancelled
     /// at submit. Never suppress Esc while busy (second bang must stay abortable).
     pub(super) fn try_suppress_stale_esc(&mut self, input: &InputEvent) -> bool {
@@ -232,6 +249,9 @@ impl<T: Terminal> HostSession<T> {
         if text.trim().is_empty() {
             return false;
         }
+        // The host consumed the key before TUI::dispatch_event, so invalidate
+        // the cached dock explicitly before clearing the submitted editor text.
+        self.tui.mark_ao_components_stale();
 
         if let Some(slash) = parse_slash_command(&text) {
             root.set_editor_text(String::new());

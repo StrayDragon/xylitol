@@ -314,15 +314,15 @@ fn application_owned_wheel_scrolls_app_viewport() {
         "pure wheel viewport motion should reuse terminal rows"
     );
     // Content L00..L17 + dock L18,L19; viewport content h=4.
-    // Follow end shows L14..L17; one fine notch → L13..L16.
-    assert_eq!(tui.application_owned_wheel_notch(), 1);
+    // Follow end shows L14..L17; one three-row notch → L11..L14.
+    assert_eq!(tui.application_owned_wheel_notch(), 3);
     let raw = tui.terminal.all_writes();
     assert!(
-        raw.contains("L13"),
+        raw.contains("L11"),
         "wheel scroll must persist across paint, got: {raw:?}"
     );
     assert!(
-        !raw.contains("L17") || raw.rfind("L13").unwrap() > raw.rfind("L17").unwrap_or(0),
+        !raw.contains("L17") || raw.rfind("L11").unwrap() > raw.rfind("L17").unwrap_or(0),
         "must not snap back to follow-end after wheel"
     );
 }
@@ -343,17 +343,17 @@ fn application_owned_wheel_coalesce_applies_full_delta_without_tick_drain() {
     tui.terminal.clear_writes();
 
     let frames_before = tui.frame_count();
-    assert!(tui.application_owned_scroll_by(-3));
+    let notch = tui.application_owned_wheel_notch();
+    assert!(tui.application_owned_scroll_by(-(notch * 2)));
     assert!(
         tui.try_render().expect("coalesced wheel paint"),
         "coalesced wheel must paint immediately"
     );
     assert_eq!(tui.frame_count(), frames_before + 1);
     assert!(tui.last_render_perf().ao_reprojected);
-    assert!(tui.last_render_perf().ao_vertical_shifted);
     assert!(
-        tui.terminal.all_writes().contains("L11"),
-        "all three one-line wheel events must be visible in the first paint"
+        tui.terminal.all_writes().contains("L08"),
+        "both coalesced three-row wheel events must be visible in the first paint"
     );
     assert!(
         !tui.idle_tick(),
@@ -376,13 +376,14 @@ fn application_owned_wheel_first_paint_is_immediate_then_continuous_stream_is_ca
     tui.begin_application_owned_session();
     tui.render_now().expect("seed full frame");
 
-    assert!(tui.application_owned_scroll_by(-1));
+    let notch = tui.application_owned_wheel_notch();
+    assert!(tui.application_owned_scroll_by(-notch));
     assert!(
         tui.try_render().expect("first wheel paint"),
         "the first wheel reproject must not inherit the full-frame throttle"
     );
 
-    assert!(tui.application_owned_scroll_by(-1));
+    assert!(tui.application_owned_scroll_by(-notch));
     assert!(
         !tui.try_render().expect("continuous wheel cadence"),
         "continuous wheel paints should stay capped near 60fps"
@@ -390,7 +391,7 @@ fn application_owned_wheel_first_paint_is_immediate_then_continuous_stream_is_ca
     assert!(tui.is_render_requested());
 
     tui.render_now().expect("settle pending viewport");
-    assert!(tui.terminal.all_writes().contains("L12"));
+    assert!(tui.terminal.all_writes().contains("L08"));
     assert!(!tui.is_render_requested());
 }
 
@@ -1008,7 +1009,7 @@ fn application_owned_click_stays_aligned_after_repeated_wheel_scrolls() {
     assert!(tui.last_render_perf().ao_vertical_shifted);
     let wheel_writes = tui.terminal.all_writes();
     assert!(
-        wheel_writes.contains("\x1b[1L") && wheel_writes.contains("\x1b[1M"),
+        wheel_writes.contains("\x1b[3L") && wheel_writes.contains("\x1b[3M"),
         "wheel shifts should use IL/DL in both directions"
     );
     assert!(
@@ -1020,7 +1021,7 @@ fn application_owned_click_stays_aligned_after_repeated_wheel_scrolls() {
 
     assert_eq!(
         tui.terminal.viewport()[4],
-        "L68",
+        "L60",
         "the terminal row used for the click must match the projected viewport"
     );
 
@@ -1045,8 +1046,8 @@ fn application_owned_click_stays_aligned_after_repeated_wheel_scrolls() {
     let _ = tui.dispatch_event(mouse(MouseEventKind::Up(MouseButton::Left), 3));
     tui.render_frame().expect("selection release");
     assert!(
-        tui.terminal.all_writes().contains("\x1b]52;c;TDY4\x07"),
-        "the clicked visible row L68 must be the copied content"
+        tui.terminal.all_writes().contains("\x1b]52;c;TDYw\x07"),
+        "the clicked visible row L60 must be the copied content"
     );
 }
 
