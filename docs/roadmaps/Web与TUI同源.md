@@ -41,7 +41,7 @@ Web 应用面交付 → [Cloud-Agent与Web控制台.md](./Cloud-Agent与Web控�
 | 阶段 | 用户可感知 / 可验证结果 | 备注 |
 |---|---|---|
 | **M1 同源词汇与事实源清单** | 会话 / 改道 / 覆盖集的跨面约定可审查；公共能力「学习成本一套」写入可审查清单 | **文档+合约意图**；不要求 Web UI |
-| **M1b 长历史 activity 折叠栈** | 公共能力切片示例：两面共用「从输入侧剥开 / 盖上」；动作 id 同源；键位 SHOULD 同构（TUI 默认可配） | 草案 `c1760` / `c1755`；**未兑现**；≠ session-compact；服从上文「公共 vs 专属」 |
+| **M1b 长历史 activity 折叠栈** | 公共能力切片示例：两面共用「从输入侧剥开 / 盖上」；动作 id 同源；键位 SHOULD 同构（TUI 默认可配） | TUI：`c1760`（`activity.expandNearest` / `activity.collapseNearest`）；Web UI 仍未兑现；≠ session-compact；服从上文「公共 vs 专属」 |
 | **M2 即时设置事实源** | TUI 覆盖集可被未来 Web 只读/写入同一语义 | 与 [运行时即时设置.md](./运行时即时设置.md) M1–M2 对齐 |
 | **M3 跨面接续** | 同会话在已开闸的 TUI 与 Web 间切换不矛盾 | **依赖** Web 面至少有会话壳 |
 
@@ -72,7 +72,7 @@ Then 覆盖一致，且下一波次按关闭该能力装配
 | **事件闭集变更检查单** | 新生命周期词必须双面登记（流程向，非进度板） |
 | **Eval harness 面无关** | 回归跑 Print/CLI，不要求 TUI/Web 像素同源 |
 | **压缩/cache 状态同源** | 两面看到的「正在压缩 / cache 未知」语义一致 |
-| **Activity 折叠栈（expandNearest / collapseNearest）** | 旧 turn 中间操作 → L2/L3 摘要；从输入侧双向栈；与 `/session-compact` 分层；TUI：[`c1760`](../../llmanspec/changes/c1760-add-tui-activity-fold/proposal.md)（**延后**；交互前置 [`c2070`](../../llmanspec/changes/archive/2026-08-12-c2070-add-package-tui-dual-interaction-modes/proposal.md)） |
+| **Activity 折叠栈（expandNearest / collapseNearest）** | 旧 turn 中间操作 → L2/L3 摘要；从输入侧双向栈；与 `/session-compact` 分层；TUI：[`c1760`](../../llmanspec/changes/c1760-add-tui-activity-fold/proposal.md)（apply 中 / 已接线键位与段级 L0·L2·L3；交互前置 [`c2070`](../../llmanspec/changes/archive/2026-08-12-c2070-add-package-tui-dual-interaction-modes/proposal.md)） |
 | **TUI 交互 oneof（终端选区 ↔ 应用内选区）** | **ApplicationOwned**≈Pi `fullscreen`/alt-screen（**产品缺省 ath30** / [`c2071`](../../llmanspec/changes/c2071-update-app-tui-host-mode-b-only/proposal.md)；库 MUST：拖选、跨页续选、松手复制）；**Inline**≈Pi `regular`/主屏（库 lab/demo）。入口：[`c2070`](../../llmanspec/changes/archive/2026-08-12-c2070-add-package-tui-dual-interaction-modes/proposal.md)；术语→代码见同 change `research/emulator-vs-app-selection-oneof.md` §1。**c2020** 鼠标管道为 ApplicationOwned 地基；`XYLITOL_TUI_MOUSE` 仅 lab/e2e，产品不读。 |
 
 ## 相关
