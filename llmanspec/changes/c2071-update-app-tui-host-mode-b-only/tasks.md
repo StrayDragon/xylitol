@@ -23,9 +23,10 @@
 ## 2. 产品 host 默认 AO — ⬜
 
 - [ ] 2.1 `TuiRunOptions` 默认 `InteractionMode::ApplicationOwned`
-- [ ] 2.2 产品单测 / Fake / PTY 期望跟默认 AO（含原 `interaction_mode_defaults_to_inline`）
-- [ ] 2.3 生命周期：构造走 `new_product_ui_with_meta_mode`；alt begin/end、mouse、suspend；ptim14 清单（**不**抄 demo 私有胶；**不**再引入 `apply_interaction_mode`）；`finish` 分发 AO teardown + dump
-- [ ] 2.4 Copied / 误触：ath31 信号已接 chrome；本批仅核对默认 AO 下路径，不扩新 chrome
+- [ ] 2.2 产品单测 / Fake / PTY 期望跟默认 AO（改写原 `interaction_mode_defaults_to_inline`；harness H1–H9 **业务断言不变**，仅模式/finish 观测对齐 AO）
+- [ ] 2.3 生命周期：构造走 `new_product_ui_with_meta_mode`；alt begin/end、mouse、suspend；ptim14 清单；`finish` 分发 AO teardown + dump（**禁止**为 AO 改 Driver/slash/键位语义）
+- [ ] 2.4 Copied / 误触：ath31 信号已接 chrome；本批仅核对默认 AO 下路径
+- [ ] 2.5（可选）avs1 / feature 文案：`finish_inline` → 模式无关的 `finish`/stop 表述
 
 ## 3. 文档与人验 — ⬜
 
