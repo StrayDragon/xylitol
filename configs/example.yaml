@@ -126,10 +126,6 @@ hooks:
 #   # Omit / null = open-end (no product default max_iterations).
 #   max_turns: 200
 
-# skills:
-#   - name: "custom-skill"
-#     path: "./skills/custom"
-
 # mcp_servers:  # YAML list (not Cursor-style mcpServers object)
 #   # stdio (prefer PATH command name; or "{{ vars.home }}/…" for home-relative)
 #   - name: "my-server"
