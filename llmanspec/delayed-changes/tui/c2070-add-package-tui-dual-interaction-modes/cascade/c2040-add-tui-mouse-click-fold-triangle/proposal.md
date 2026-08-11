@@ -1,11 +1,18 @@
 ---
 depends_on:
   - c2020-add-package-tui-mouse-input
+  - c2070-add-package-tui-dual-interaction-modes
 blocks:
   - c2050-update-activity-fold-mouse-leader
+apply_band: P9-deferred
+summary: "点折叠三角 + L1 per-block 覆盖；延后至双交互架构 c2070 之后"
 ---
 
 # 鼠标点击折叠三角 + 折叠标记字形
+
+> **⚠️ deferred（2026-08-11）**：位于 `…/c2070-…/cascade/`（双架构顶层目录下）。与多级折叠族一并延后；**总前置** [`c2070`](../../proposal.md)。架构调研见 c2070 `research/`；本目录仅保留字形/hit 切片 [`research/fold-glyph-and-hittest.md`](./research/fold-glyph-and-hittest.md)。
+>
+> **c2020 提示**：点击折叠仍依赖已归档 **c2020** 的 mouse 管道（`InputEvent::Mouse` / `enable_mouse_capture`）。该管道**保留**；`XYLITOL_TUI_MOUSE` 仅为 lab/e2e。产品 inline **不开** capture——本 change 须在 **Mode B（c2070）** 落地后才有正式点折叠 UX。
 
 > **一句话**：点折叠头行标记（倒三角/三角）toggle **单块**；键盘 `Alt+E` 仍为 **全局** tools；本 change **自带** per-block 覆盖表（不再依赖已废弃的 c2030 leader）。
 
@@ -91,6 +98,8 @@ c2020 ──depends→ [本 change c2040] ──blocks→ c2050
 
 ## Further Notes
 
-- 调研：[`research/fold-glyph-and-hittest.md`](./research/fold-glyph-and-hittest.md)；差分适切性见 archive `c2020` `diff-engine-mouse-fit.md`
+- 字形/hit 切片：[`research/fold-glyph-and-hittest.md`](./research/fold-glyph-and-hittest.md)
+- **架构 / 选区 oneof / starline 对等**（深度调研）：[`../../research/`](../../research/)
+- 差分适切性见 archive `c2020` `diff-engine-mouse-fit.md`
 - `c1760` 已拍标记 `▶/▼`、不做 `(+)/(-)`——本草案可**微调**同一族三角
-- **2026-08-11**：废弃 `c2030` fold-leader（屏外数字键 + 贴底重绘体验差）；定点改由本 change 鼠标路径独占
+- **2026-08-11**：废弃 `c2030` fold-leader；定点改由本 change 鼠标路径独占；同日整组延后并挂 `c2070`

@@ -103,7 +103,15 @@ pub trait Terminal {
 }
 
 /// True when `XYLITOL_TUI_MOUSE` is a truthy opt-in (`1` / `true` / `yes`).
-/// Default off (c2020 Q1=A). Intended for lab / PTY e2e — not a product setting UI.
+///
+/// **Default off.** This is a **lab / PTY e2e** hook for `agent_demo` and harnesses
+/// that call [`Terminal::enable_mouse_capture`] explicitly — **not** a product
+/// setting for the inline TUI app.
+///
+/// Enabling capture on inline (emulator-owned) sessions trades away unmodified
+/// terminal selection/scroll; official mouse UX (click-fold + app selection) is
+/// deferred to dual-mode Mode B (alt-screen) — see delayed change `c2070`.
+/// The product `TerminalGuard` deliberately does **not** read this env.
 pub fn env_requests_mouse_capture() -> bool {
     match std::env::var("XYLITOL_TUI_MOUSE") {
         Ok(v) => {

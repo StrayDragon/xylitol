@@ -529,8 +529,9 @@ fn pty_product_fake_hello_then_exit() {
     assert_eq!(code, 0, "product TUI /exit should exit 0");
 }
 
-/// c2020 ath29 / S6: opt-in mouse via `XYLITOL_TUI_MOUSE=1` enables capture CSI;
-/// clean exit must not leave the process hung (Disable on teardown).
+/// c2020 ath29 / S6: lab opt-in mouse via `XYLITOL_TUI_MOUSE=1` on **agent_demo**
+/// (not the product TUI) enables capture CSI; clean exit must Disable on teardown.
+/// Product `TerminalGuard` ignores this env — mouse UX waits Mode B / c2070.
 #[test]
 #[ignore = "E2E: spawns a real PTY + cargo build; run via `just test-tui-e2e-pty`"]
 fn pty_agent_demo_mouse_opt_in_enable_then_exit() {

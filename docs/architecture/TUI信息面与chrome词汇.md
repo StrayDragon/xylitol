@@ -67,5 +67,6 @@
 - 六个月后仍真？否则不要扩表。
 - 新 chrome 能力先归类 A–G，再选落点；禁止静默发明第四套同义词。
 - 面操作边界：[`src/app/tui/AGENTS.md`](../../src/app/tui/AGENTS.md)。
+- **交互模型（延后）**：终端原生选区 vs 应用内选区（oneof）见 [`c2070`](../../llmanspec/delayed-changes/tui/c2070-add-package-tui-dual-interaction-modes/proposal.md)（级联在 `cascade/`）。**近期继续打磨 inline**；Mode B（alt-screen）默认须含拖选 / 跨页续选 / 松手复制。`c2020` 鼠标管道保留为 Mode B 地基；`XYLITOL_TUI_MOUSE` 仅 lab/e2e，产品 `TerminalGuard` 不读。
 - **归档 change**（`llmanspec/changes/archive/`）可保留当时旧词作史实；**新文 / 活 docs / 活 specs（产品面）** 只准用本表。
 - **DESIGN playground**（`src/app/tui/design/playground/`）= 产品静图；`agent_demo` = 包演示，文案/chrome **允许不同**。**禁止**把本表当成「必须改写 demo 字符串」的闸。
