@@ -4,7 +4,6 @@
 //! - Project context files (AGENTS.md, CLAUDE.md) by walking cwd → root
 //! - Skills via skills loader integration
 //! - Themes from global and project directories
-//! - Extensions (placeholder for c70)
 //! - System prompt files (SYSTEM.md, APPEND_SYSTEM.md)
 //!
 //! All resources are loaded once and cached. `reload()` refreshes everything.
@@ -14,10 +13,6 @@ use std::path::{Path, PathBuf};
 
 use crate::protocol::ports::{XyReloadable, XyResourceLoader};
 
-// ── ResourceDiagnostic ────────────────────────────────────────────────
-
-// Resource metadata types relocated to `domain::resource_types` (shared vocabulary).
-// `DefaultResourceLoader` (the runtime/loader impl) stays here in infra.
 pub use crate::protocol::resource::{AgentsFile, ResourceDiagnostic, SkillInfo, ThemeInfo};
 
 // ── DefaultResourceLoader ─────────────────────────────────────────────
@@ -495,11 +490,10 @@ impl XyReloadable for DefaultResourceLoader {
     }
 }
 
-// XyResourceLoader: port exists for boundary clarity, but production still
-// calls DefaultResourceLoader inherent methods (bootstrap projects data into
-// BuildAgentOptions). No `dyn` consumer yet — do not add one "for symmetry";
-// upgrade when a second implementation or embed replacement is real.
-// See src/AGENTS.md「扩展决策准则」.
+// Port impl for boundary clarity. Production callers use inherent methods
+// (bootstrap projects into BuildAgentOptions). No `dyn XyResourceLoader`
+// consumer yet — do not add one for symmetry; upgrade when a second
+// implementation or embed replacement is real. See src/AGENTS.md「扩展开闭」.
 #[allow(dead_code)]
 impl XyResourceLoader for DefaultResourceLoader {
     fn get_agents_files(&self) -> &[AgentsFile] {

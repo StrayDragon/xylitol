@@ -1,7 +1,6 @@
 //! Shell discovery and environment construction.
 //!
-//! Provides cross-platform bash finding and shell environment building,
-//! matching pi's `shell.ts`.
+//! Provides cross-platform bash finding and shell environment building.
 
 use std::path::PathBuf;
 use std::process::Command;
@@ -28,7 +27,7 @@ pub enum CommandTransport {
 
 /// Find bash on the current system.
 ///
-/// Resolution order (per pi's `getShellConfig`):
+/// Resolution order:
 /// 1. User-specified custom shell path (optional parameter)
 /// 2. Platform-specific discovery
 ///    - Windows: Git Bash in ProgramFiles → bash on PATH

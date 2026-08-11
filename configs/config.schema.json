@@ -464,16 +464,6 @@
           "description": "Pure application-level glob pattern matching (default).",
           "type": "string",
           "const": "glob"
-        },
-        {
-          "description": "Linux Landlock LSM (requires kernel >=5.13).",
-          "type": "string",
-          "const": "landlock"
-        },
-        {
-          "description": "macOS sandbox-init / Seatbelt.",
-          "type": "string",
-          "const": "mac_os"
         }
       ]
     },
@@ -481,7 +471,7 @@
       "type": "object",
       "properties": {
         "backend": {
-          "description": "Backend selection. \"glob\" (app-level) is always available;\n\"landlock\" requires Linux >=5.13; \"macos\" requires macOS.\nDefault: \"glob\".",
+          "description": "Backend selection. Only \"glob\" (app-level pattern matching) is delivered.\nDefault: \"glob\".",
           "$ref": "#/$defs/PermissionBackend",
           "default": "glob"
         },

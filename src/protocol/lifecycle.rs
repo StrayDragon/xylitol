@@ -1,4 +1,4 @@
-//! Typed lifecycle events for the agent — aligns with pi's AgentSessionEvent.
+//! Typed lifecycle events for the agent session.
 //!
 //! Pure vocabulary: every phase of the agent lifecycle emits a typed event
 //! with a meaningful payload. The `EventBus` runtime (dispatch/subscription)

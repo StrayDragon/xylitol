@@ -1,11 +1,7 @@
-//! Session entry types — shared vocabulary relocated to `domain::session_types`.
+//! Session entry type re-exports plus infra-only storage backend.
 //!
-//! This file remains as a thin re-export so `crate::infra::session::types`
-//! references (session manager) keep resolving during the import migration.
-//! New code should import from `crate::protocol::session`.
-//!
-//! The `SessionBackend` enum is an infra-only storage implementation detail
-//! (used solely by `manager.rs`) and is defined here.
+//! Prefer `crate::protocol::session` for entry types in new code.
+//! [`SessionBackend`] is an infra storage detail used by `manager.rs`.
 
 use std::path::PathBuf;
 

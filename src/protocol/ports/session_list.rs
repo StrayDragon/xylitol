@@ -2,7 +2,7 @@
 
 use super::SessionListEntry;
 
-/// Format a unix-secs age like pi session selector (`6m`, `19h`, `1d`, …).
+/// Format a unix-secs age for session selectors (`6m`, `19h`, `1d`, …).
 pub fn format_session_age(modified_unix: Option<u64>, now_unix: u64) -> String {
     let Some(ts) = modified_unix else {
         return "—".into();

@@ -100,7 +100,7 @@ pub fn build_system_prompt(opts: &SystemPromptOpts) -> String {
         }
     }
 
-    // Skills section — XML format aligned with pi / agentskills.io
+    // Skills section — XML format for agentskills.io-compatible catalogs.
     // (`disable-model-invocation` skills omitted; intro tells model to read SKILL.md).
     let visible_skills: Vec<_> = opts
         .skills

@@ -127,7 +127,7 @@ fn read_via_wl_paste() -> Result<Option<ClipboardImage>, String> {
     };
 
     // MUST pass -t: bare `wl-paste` often returns empty when the clipboard is
-    // image-only (Gradia / screenshot tools). Aligns with pi's `--type`.
+    // image-only (Gradia / screenshot tools).
     let output = Command::new("wl-paste")
         .args(["--type", &mime_type, "--no-newline"])
         .stdout(Stdio::piped())

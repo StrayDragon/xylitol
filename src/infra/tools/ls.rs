@@ -1,6 +1,6 @@
 //! Ls tool — lists directory contents.
 //!
-//! Key behaviors (aligns with pi's ls.ts):
+//! Key behaviors:
 //! - Sorted alphabetically (case-insensitive)
 //! - Directories suffixed with `/`
 //! - Optional path (defaults to cwd)

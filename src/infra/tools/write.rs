@@ -1,6 +1,6 @@
 //! Write tool — creates or overwrites files atomically.
 //!
-//! Key behaviors (aligns with pi's write.ts):
+//! Key behaviors:
 //! - Uses FileMutationQueue for per-path serialization
 //! - Creates parent directories automatically
 //! - Atomic write via temp file + rename

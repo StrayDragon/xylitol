@@ -277,7 +277,7 @@ fn is_valid_cut_point(entry: &SessionEntry) -> bool {
     }
 }
 
-/// Turn-start aligns with pi `isTurnStartMessage` / `isTurnStartEntry`.
+/// Whether this entry opens a new user turn.
 /// Assistant is never a turn start. Compaction entry type is never a turn start.
 fn is_turn_start_entry(entry: &SessionEntry) -> bool {
     if matches!(entry, SessionEntry::Compaction(_)) {

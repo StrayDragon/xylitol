@@ -1,10 +1,6 @@
-//! Lifecycle event vocabulary.
+//! Lifecycle event vocabulary re-export for the EventBus implementation.
 //!
-//! `XyEvent` lives in `domain::lifecycle`; `LifecycleHandler`
-//! lives in `protocol::ports::event`.
-//!
-//! This file remains as a thin re-export so `crate::infra::event::lifecycle`
-//! references (the EventBus implementation here + tests) keep resolving.
+//! Prefer `crate::protocol::lifecycle` / `crate::protocol::ports::event` in new code.
 
 pub use crate::protocol::lifecycle::XyEvent;
 pub use crate::protocol::ports::event::LifecycleHandler;

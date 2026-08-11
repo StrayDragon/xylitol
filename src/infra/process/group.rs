@@ -1,7 +1,7 @@
 //! Cross-platform process group termination.
 //!
 //! Extends the basic `tools/process::kill_tree` with Windows support
-//! and a unified API matching pi's `shell.ts`.
+//! and a unified kill-tree API for bash / child process cleanup.
 
 use std::process::Command;
 

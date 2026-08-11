@@ -1,6 +1,5 @@
 pub mod bash_exec;
 pub mod config;
-pub mod constants;
 pub mod event;
 pub mod export;
 pub mod hooks;
@@ -28,4 +27,3 @@ pub mod git;
 pub mod image;
 pub mod permission;
 pub mod tools;
-pub mod update;

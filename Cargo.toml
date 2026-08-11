@@ -40,7 +40,6 @@ glob = "0.3.3"
 futures = "0.3.32"
 anyhow = "1.0.103"
 regex = "1.12.4"
-const_format = "0.2"
 rmcp = { version = "1.8.0", features = ["client", "transport-child-process", "transport-streamable-http-client", "transport-streamable-http-client-reqwest"] }
 zstd = "0.13.3"
 sha2 = "0.11.0"
@@ -92,8 +91,6 @@ otel = [
     "dep:opentelemetry_sdk",
     "dep:opentelemetry-otlp",
 ]
-# Future GUI placeholder.
-gui = []
 
 # Disk-first dev profile (see docs/research/rust-disk-worktree-cache-2026.md).
 # Trade: no variable-level DWARF; no incremental cache. Backtrace line info kept.

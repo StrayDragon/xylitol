@@ -253,7 +253,7 @@ pub struct ModelsConfig {
 ///
 /// References [`XyModelKind`](crate::protocol::model::XyModelKind) for the provider;
 /// the kind's serde representation is the YAML wire format. Schema uses a string
-/// twin so domain stays free of schemars (c510).
+/// twin so protocol stays free of schemars (c510).
 #[derive(Clone, Debug, Default, Serialize, Deserialize, JsonSchema)]
 pub struct ModelEntry {
     #[schemars(with = "String")]
@@ -715,9 +715,8 @@ pub struct PermissionConfig {
     /// Master toggle.
     #[serde(default)]
     pub enabled: bool,
-    /// Backend selection. "glob" (app-level) is always available;
-    /// "landlock" requires Linux >=5.13; "macos" requires macOS.
-    /// Default: "glob".
+    /// Backend selection. Only `"glob"` (app-level pattern matching) is
+    /// delivered. Default: `"glob"`.
     #[serde(default = "default_permission_backend")]
     pub backend: PermissionBackend,
     /// Filesystem permission rules.
@@ -742,10 +741,6 @@ pub enum PermissionBackend {
     /// Pure application-level glob pattern matching (default).
     #[default]
     Glob,
-    /// Linux Landlock LSM (requires kernel >=5.13).
-    Landlock,
-    /// macOS sandbox-init / Seatbelt.
-    MacOs,
 }
 
 #[derive(Clone, Debug, Default, Serialize, Deserialize, JsonSchema)]

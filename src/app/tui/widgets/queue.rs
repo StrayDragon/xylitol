@@ -15,7 +15,7 @@ pub fn render_queue_strip(
         return Vec::new();
     }
     let mut lines = Vec::new();
-    // One blank spacer like pi's Spacer(1) before the queue block.
+    // One blank spacer row before the queue block.
     if width > 0 {
         lines.push(String::new());
     }

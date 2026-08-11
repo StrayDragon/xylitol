@@ -1,13 +1,13 @@
-//! Platform-native clipboard tool wrappers (aligned with pi `clipboard.ts`).
+//! Platform-native clipboard tool wrappers.
 //!
-//! Strategy (pi order):
+//! Strategy order:
 //! 1. Platform tools — pbcopy / clip / termux / wl-copy (spawn+unref) / xclip / xsel
 //! 2. OSC 52 when remote **or** native failed
 //!
 //! Hard rules for TUI safety:
 //! - Never probe tools by executing them with inherited stdin (`xclip`/`wl-copy` block).
-//! - Never `wait()` a daemonized `wl-copy` — Rust `Child::drop` waits; use `forget` (pi `unref`).
-//! - Bound waits for sync pipe tools (pi `timeout: 5000`).
+//! - Never `wait()` a daemonized `wl-copy` — Rust `Child::drop` waits; use `forget`.
+//! - Bound waits for sync pipe tools (~5s).
 //! - Never emit OSC 52 from a blocking-pool worker while the product TUI owns
 //!   stdout — return a deferred sequence for the host thread (`Terminal::write`).
 
@@ -26,14 +26,14 @@ pub enum ClipboardResult {
     Failed(String),
 }
 
-/// Planned clipboard copy: native attempt + optional OSC 52 (not yet written).
+/// Planned clipboard copy: native attempt + optional deferred OSC 52.
 ///
 /// TUI hosts apply [`ClipboardPlan::osc52_sequence`] via `Terminal` on the UI
 /// thread; CLI paths use [`apply_clipboard_plan_stdout`].
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct ClipboardPlan {
     pub native_copied: bool,
-    /// Policy wants OSC 52 (remote session or native miss), per pi.
+    /// Policy wants OSC 52 (remote session or native miss).
     pub want_osc52: bool,
     /// Preformatted OSC 52 when `want_osc52` and payload fits the size limit.
     pub osc52_sequence: Option<String>,

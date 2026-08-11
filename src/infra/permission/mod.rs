@@ -2,8 +2,6 @@
 //!
 //! Provides the [`XyPermission`] trait (defined in [`crate::protocol::ports::permission`])
 //! and concrete backends that enforce application-level path/domain matching.
-//! Platform-specific backends (Landlock, macOS sandbox) are added as separate
-//! modules.
 //!
 //! # Advisory only
 //!
@@ -142,7 +140,7 @@ impl XyPermission for GlobPolicy {
 
 /// Build a permission backend from config.
 ///
-/// Returns `AllowAllPermission` when permission is disabled or the feature is not enabled.
+/// Returns `AllowAllPermission` when permission is disabled.
 pub fn build_permission(config: &PermissionConfig) -> Arc<dyn XyPermission> {
     if !config.enabled {
         return Arc::new(AllowAllPermission);
@@ -150,15 +148,6 @@ pub fn build_permission(config: &PermissionConfig) -> Arc<dyn XyPermission> {
 
     match config.backend {
         PermissionBackend::Glob => Arc::new(GlobPolicy::new(config)),
-        PermissionBackend::Landlock => {
-            // Landlock backend is not yet implemented — fall back gracefully.
-            log::warn!("Landlock permission backend not yet implemented, using GlobPolicy");
-            Arc::new(GlobPolicy::new(config))
-        }
-        PermissionBackend::MacOs => {
-            log::warn!("macOS permission backend not yet implemented, using GlobPolicy");
-            Arc::new(GlobPolicy::new(config))
-        }
     }
 }
 

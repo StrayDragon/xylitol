@@ -1,4 +1,4 @@
-//! SettingsManager — user preference management mirroring pi's settings-manager.ts.
+//! SettingsManager — three-tier user preference merge and persistence.
 //!
 //! Three-tier deep merge (global < project < overrides), file locking with
 //! retry, hot reload via EventBus `settings:changed` event.

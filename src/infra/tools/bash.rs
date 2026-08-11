@@ -1,6 +1,6 @@
 //! Bash tool — executes shell commands with abort and timeout support.
 //!
-//! Key behaviors (aligns with pi's bash.ts):
+//! Key behaviors:
 //! - CancellationToken kills the process tree
 //! - Merges stdout/stderr streaming
 //! - Optional timeout (default unlimited, max 120s) with graduated escalation
