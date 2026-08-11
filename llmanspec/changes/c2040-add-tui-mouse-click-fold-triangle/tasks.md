@@ -1,13 +1,14 @@
 # Tasks: c2040-add-tui-mouse-click-fold-triangle
 
 > **前置**：c2020 / c2070 / c2071 已归档。深挖决策见 `proposal.md` Open Questions（全钉）。
+> **门禁**：`readyToImplement=true`（Specs landed）。下方 Apply backlog 由 `llman-sdd-apply` 实施时改回 checkbox 并勾选。
 
 ## 进度总览
 
 | 块 | 状态 | 合约 |
 |---|---|---|
 | 1 Specs landing | ✅ | att19–22 / ath33 |
-| 2–6 实现 | ⬜ apply | 见下方 Apply backlog |
+| 2–6 实现 | 待 apply | 见 Apply backlog |
 
 ---
 
@@ -19,37 +20,37 @@
 - [x] 1.4 场景：`feature: false` unit
 - [x] 1.5 commit Specs landing → `readyToImplement`
 
-## Apply backlog（`llman-sdd-apply` 勾选）
+## Apply backlog（实施时勾选）
 
 ### 2. 覆盖表 + ThinkingId
 
-- [ ] 2.1 `ScrollbackFold`（或等价）：tools overrides map + thinking overrides map
-- [ ] 2.2 Thinking 条目稳定 id（live + rebuild 同构）
-- [ ] 2.3 `Alt+E` / `Ctrl+T`：flip default + 清对应族 overrides
-- [ ] 2.4 effective 展开态驱动 render（Tool/Diff/Ask/Thinking）
+1. `ScrollbackFold`（或等价）：tools overrides map + thinking overrides map
+2. Thinking 条目稳定 id（live + rebuild 同构）
+3. `Alt+E` / `Ctrl+T`：flip default + 清对应族 overrides
+4. effective 展开态驱动 render（Tool/Diff/Ask/Thinking）
 
 ### 3. Hit 表 + host 接线
 
-- [ ] 3.1 render 维护三角列 `fold_hit_regions`（绑 paint gen）
-- [ ] 3.2 `set_transcript_hit_priority`：命中 → toggle + 吞按
-- [ ] 3.3 拖选进行中忽略 fold 重命中（latch）
-- [ ] 3.4 点正文 / 旁注不 toggle
+1. render 维护三角列 `fold_hit_regions`（绑 paint gen）
+2. `set_transcript_hit_priority`：命中 → toggle + 吞按
+3. 拖选进行中忽略 fold 重命中（latch）
+4. 点正文 / 旁注不 toggle
 
 ### 4. 字形
 
-- [ ] 4.1 Unicode fold/unfold → `▸`/`▾`；Ascii 保持 `>`/`v`
-- [ ] 4.2 `visible_width==1` 单测；ascii env 冒烟
+1. Unicode fold/unfold → `▸`/`▾`；Ascii 保持 `>`/`v`
+2. `visible_width==1` 单测；ascii env 冒烟
 
 ### 5. 验证
 
-- [ ] 5.1 harness：Mouse 三角 toggle / 误点正文 / 全局清覆盖
-- [ ] 5.2 ath25 miss 上界不因单块 toggle 回退
-- [ ] 5.3 `just fmt` + 相关测；人验最短路径记 verify 板
+1. harness：Mouse 三角 toggle / 误点正文 / 全局清覆盖
+2. ath25 miss 上界不因单块 toggle 回退
+3. `just fmt` + 相关测；人验最短路径记 verify 板
 
 ### 6. 收口
 
-- [ ] 6.1 `llman sdd validate c2040 --strict`
-- [ ] 6.2 确认未实现 c2045 / c1760 / c2050 范围
+1. `llman sdd validate c2040 --strict`
+2. 确认未实现 c2045 / c1760 / c2050 范围
 
 ## 实现顺序
 
