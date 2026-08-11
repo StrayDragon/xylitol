@@ -292,9 +292,8 @@ pub struct Editor {
     preferred_visual_col: Option<usize>,
     snapped_from_cursor_col: Option<usize>,
     paste_burst: PasteBurst,
-    /// Non-bracketed paste coalesce buffer (flush via tick / idle gap).
-    paste_coalesce: String,
-    paste_coalesce_deadline: Option<std::time::Instant>,
+    /// After a paste-burst paint-suppress window ends, force one catch-up frame.
+    paste_burst_needs_paint: bool,
     clock: Box<dyn Clock>,
     // c430 autocomplete integration (CompletionSource registry)
     completion: CompletionRegistry,
@@ -344,8 +343,7 @@ impl Editor {
             preferred_visual_col: None,
             snapped_from_cursor_col: None,
             paste_burst: PasteBurst::new(),
-            paste_coalesce: String::new(),
-            paste_coalesce_deadline: None,
+            paste_burst_needs_paint: false,
             clock,
             completion: CompletionRegistry::new(),
             autocomplete_list: None,
@@ -761,43 +759,12 @@ impl Editor {
         self.exit_history_browsing();
         let first = ch.chars().next().unwrap_or(' ');
         let now = self.clock.now();
-        // Flush stale coalesce before a slow gap char.
-        if self.paste_coalesce_deadline.is_some_and(|d| now >= d) {
-            self.flush_paste_coalesce();
-        }
-
         self.paste_burst.on_plain_char(now);
-
-        // Visual coalesce: once 2+ chars arrive within the burst interval,
-        // retract the already-painted prefix and buffer until idle. This
-        // avoids the "sped-up typewriter" look for short non-bracketed pastes
-        // (Enter-suppress still uses PASTE_BURST_MIN_CHARS = 8).
-        const PASTE_VISUAL_COALESCE_MIN: u32 = 2;
-        if self.paste_burst.consecutive_plain_chars() == PASTE_VISUAL_COALESCE_MIN
-            && self.paste_coalesce.is_empty()
-        {
-            let mut retracted =
-                self.retract_n_chars(PASTE_VISUAL_COALESCE_MIN as usize - ch.chars().count());
-            retracted.push_str(ch);
-            self.paste_coalesce = retracted;
-            self.paste_coalesce_deadline = Some(
-                now + std::time::Duration::from_millis(
-                    crate::paste_burst::PASTE_BURST_ACTIVE_IDLE_TIMEOUT_MS,
-                ),
-            );
-            return;
-        }
-        if !self.paste_coalesce.is_empty()
-            && (self.paste_burst.is_coalescing(now)
-                || self.paste_burst.consecutive_plain_chars() >= PASTE_VISUAL_COALESCE_MIN)
-        {
-            self.paste_coalesce.push_str(ch);
-            self.paste_coalesce_deadline = Some(
-                now + std::time::Duration::from_millis(
-                    crate::paste_burst::PASTE_BURST_ACTIVE_IDLE_TIMEOUT_MS,
-                ),
-            );
-            return;
+        // Suppress per-char paints during a recognized non-bracketed burst so
+        // the UI does not look like a sped-up typewriter. Model still updates
+        // every char (harness / get_text stay correct); idle tick paints once.
+        if self.paste_burst.consecutive_plain_chars() >= crate::paste_burst::PASTE_BURST_MIN_CHARS {
+            self.paste_burst_needs_paint = true;
         }
 
         if is_whitespace_char(first) || self.last_action.as_deref() != Some("type-word") {
@@ -815,56 +782,10 @@ impl Editor {
         }
     }
 
-    /// Remove up to `n` characters immediately before the cursor (same line first).
-    fn retract_n_chars(&mut self, mut n: usize) -> String {
-        let mut out = String::new();
-        while n > 0 {
-            let line = &self.state.lines[self.state.cursor_line];
-            if self.state.cursor_col == 0 {
-                if self.state.cursor_line == 0 {
-                    break;
-                }
-                // Join with previous line — retract the newline as `\n`.
-                let cur = self.state.lines.remove(self.state.cursor_line);
-                self.state.cursor_line -= 1;
-                let pl = self.state.lines[self.state.cursor_line].len();
-                self.state.lines[self.state.cursor_line].push_str(&cur);
-                self.set_cursor_col(pl);
-                out.insert(0, '\n');
-                n -= 1;
-                continue;
-            }
-            let before = &line[..self.state.cursor_col];
-            let gs: Vec<&str> = UnicodeSegmentation::graphemes(before, true).collect();
-            let g = gs.last().copied().unwrap_or("");
-            let glen = g.len().max(1);
-            let col = self.state.cursor_col.saturating_sub(glen);
-            out.insert_str(0, g);
-            self.state.lines[self.state.cursor_line] =
-                format!("{}{}", &line[..col], &line[self.state.cursor_col..]);
-            self.set_cursor_col(col);
-            n -= 1;
-        }
-        out
-    }
-
-    fn flush_paste_coalesce(&mut self) {
-        if self.paste_coalesce.is_empty() {
-            self.paste_coalesce_deadline = None;
-            return;
-        }
-        let chunk = std::mem::take(&mut self.paste_coalesce);
-        self.paste_coalesce_deadline = None;
-        let was_burst = self.paste_burst.consecutive_plain_chars()
-            >= crate::paste_burst::PASTE_BURST_MIN_CHARS
-            || chunk.chars().count() >= crate::paste_burst::PASTE_BURST_MIN_CHARS as usize;
-        self.paste_burst.reset();
-        if was_burst {
-            // Preserve Enter→newline suppress after a real burst flush.
-            self.paste_burst.extend_window(self.clock.now());
-        }
-        // `paste` owns undo + `[paste #N]` collapse threshold.
-        self.paste(&chunk);
+    fn paste_burst_paint_suppressed(&self) -> bool {
+        let now = self.clock.now();
+        self.paste_burst.consecutive_plain_chars() >= crate::paste_burst::PASTE_BURST_MIN_CHARS
+            && self.paste_burst.is_coalescing(now)
     }
     fn backspace(&mut self) {
         self.exit_history_browsing();
@@ -2158,15 +2079,14 @@ impl Component for Editor {
     fn handle_input(&mut self, event: InputEvent) {
         match event {
             InputEvent::Paste(content) => {
-                self.flush_paste_coalesce();
                 self.paste_burst.reset();
+                self.paste_burst_needs_paint = false;
                 self.selection.clear();
                 if !content.is_empty() {
                     self.paste(&content);
                 }
             }
             InputEvent::Key(key) => {
-                self.flush_paste_coalesce();
                 self.selection.clear();
                 self.handle_key(&key);
             }
@@ -2189,6 +2109,7 @@ impl Component for Editor {
             InputEvent::Mouse(_) => {
                 self.mouse_dirty || self.selection.dragging || self.selection.has_selection()
             }
+            InputEvent::Key(_) if self.paste_burst_paint_suppressed() => false,
             _ => true,
         }
     }
@@ -2199,9 +2120,8 @@ impl Component for Editor {
 
     fn tick(&mut self) -> bool {
         let mut changed = false;
-        let now = self.clock.now();
-        if self.paste_coalesce_deadline.is_some_and(|d| now >= d) {
-            self.flush_paste_coalesce();
+        if self.paste_burst_needs_paint && !self.paste_burst_paint_suppressed() {
+            self.paste_burst_needs_paint = false;
             changed = true;
         }
         if !self.selection.dragging {
@@ -2851,29 +2771,34 @@ mod tests {
     }
 
     #[test]
-    fn paste_visual_coalesce_batches_fast_chars() {
+    fn paste_burst_suppresses_mid_burst_rerender() {
         use crate::clock::MockClock;
         use crossterm::event::{KeyCode, KeyEvent, KeyModifiers};
         // Frozen MockClock: all insert_ch share one Instant → consecutive burst.
         let mut e = Editor::new(t(), EditorOptions::default(), Box::new(MockClock::new()));
-        e.insert_ch("a");
-        assert_eq!(e.get_text(), "a");
-        e.insert_ch("b");
-        assert_eq!(
-            e.get_text(),
-            "",
-            "visual coalesce should retract painted prefix mid-burst"
-        );
-        for ch in ["c", "d", "e"] {
+        for ch in ["a", "b", "c", "d", "e", "f", "g"] {
             e.insert_ch(ch);
-            assert_eq!(e.get_text(), "", "must stay buffered during burst");
+            assert!(
+                e.input_wants_rerender(&InputEvent::Key(KeyEvent::new(
+                    KeyCode::Char('x'),
+                    KeyModifiers::NONE,
+                ))),
+                "below burst threshold must still want paint"
+            );
         }
-        // Any key flushes coalesce before handling (same as idle tick deadline).
-        e.handle_input(InputEvent::Key(KeyEvent::new(
-            KeyCode::Right,
-            KeyModifiers::NONE,
-        )));
-        assert_eq!(e.get_text(), "abcde");
+        e.insert_ch("h"); // 8th → paste burst
+        assert_eq!(e.get_text(), "abcdefgh", "model must keep all chars");
+        assert!(
+            !e.input_wants_rerender(&InputEvent::Key(KeyEvent::new(
+                KeyCode::Char('x'),
+                KeyModifiers::NONE,
+            ))),
+            "mid-burst keys must suppress typewriter paints"
+        );
+        e.paste_burst.reset();
+        e.paste_burst_needs_paint = true;
+        assert!(e.tick(), "idle tick must catch up one paint after burst");
+        assert!(!e.paste_burst_needs_paint);
     }
 
     #[test]
