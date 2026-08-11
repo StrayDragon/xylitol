@@ -80,7 +80,7 @@
 5. 终端 I/O / 输入硬切：见上表「底层 / 输入」。
 6. `enable_mouse_capture` / `XYLITOL_TUI_MOUSE`：**包 API + lab/e2e 保留**；默认不 Enable。产品 **Inline** 不得经 env 自动开 capture。**ApplicationOwned**（alt-screen）经 `begin_application_owned_session` 挂 `ApplicationOwnedRuntime`（ScrollView 视口 + 选区 + dock 排除 + OSC52），进 alt-buffer + mouse（c2070 / `package-tui-interaction-modes`）。Inline 文档 MUST NOT 暗示「开了 mouse = 原生选区 + 应用点选」兼得。
 7. 默认隐藏硬件光标；有 `CURSOR_MARKER` 时可相对定位 IME，但不得无条件 `show_cursor`。
-8. **命名（代码 SSOT）**：交互模式与 ApplicationOwned API **MUST** 用自解释标识符——`InteractionMode::{Inline,ApplicationOwned}`、`ApplicationOwnedTui` / `ApplicationOwnedRuntime`、`set_dock_rows` / `dock_rows_hint`、`set_transcript_copy_on_release`、`set_append_session_to_main_scrollback_on_exit`、`finish_application_owned`。**禁止**在新/改代码里引入 `mode_a` / `mode_b` / `ModeA` / `ModeB` / `*_mode_b_*` 符号（含 pub API、字段、测试函数名）。口语「Mode A/B」仅允许出现在对照旧笔记时，且 MUST 立刻映射到 Inline / ApplicationOwned。勿加兼容别名——一步到位改调用点。
+8. **命名（代码 SSOT）**：交互模式与 ApplicationOwned API **MUST** 用自解释标识符——`InteractionMode::{Inline,ApplicationOwned}`、`ApplicationOwnedTui` / `ApplicationOwnedRuntime`、`set_dock_rows` / `dock_rows_hint`、`set_transcript_copy_on_release`、`set_append_session_to_main_scrollback_on_exit`、`finish` / `finish_application_owned` / `finish_inline`。**禁止**在新/改代码里引入 `mode_a` / `mode_b` / `ModeA` / `ModeB` / `*_mode_b_*` 符号（含 pub API、字段、测试函数名）。口语「Mode A/B」仅允许出现在对照旧笔记时，且 MUST 立刻映射到 Inline / ApplicationOwned。概念 ↔ 代码列：[`emulator-vs-app-selection-oneof.md`](../../llmanspec/changes/c2070-add-package-tui-dual-interaction-modes/research/emulator-vs-app-selection-oneof.md) §1。勿加兼容别名——一步到位改调用点。
 
 ## ApplicationOwned host checklist（ptim14）
 
@@ -96,7 +96,7 @@
 | dock 过滤 | `mouse_in_dock`；按下始于 dock 不启 transcript 选区（引擎已做）；Editor 仅收 dock/拖选中事件 |
 | 复制提示 | `take_copy_notice` / `copy_notice_active` → 壳层短提示（勿写 transcript） |
 | Editor OSC52 | `Editor::take_pending_clipboard` → `enqueue_clipboard_sequences` |
-| 退出 | `finish_application_owned`（默认把会话追加进主屏 scrollback；`set_append_session_to_main_scrollback_on_exit(false)` 可关）；Inline 用 `finish_inline` |
+| 退出 | `finish`（按模式分发）；或显式 `finish_application_owned` / `finish_inline` |
 | 挂起 | `with_terminal_suspended` — ApplicationOwned 自动重进 alt+mouse（ptim11） |
 
 入口类型：`ApplicationOwnedTui`（Deref→`TUI`）。布局纯函数：`editor_screen_origin` / `mouse_in_dock`。
