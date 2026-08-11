@@ -8,7 +8,7 @@ blocks:
 
 # TUI activity-fold — 多级折叠（含 Worked for 通用表达）
 
-> **状态**：active 规划草案（自 c2070 nested cascade 拆出）。**硬前置** [`c2070`](../c2070-add-package-tui-dual-interaction-modes/proposal.md)——鼠标定点与交互模型未定前不单独 apply。
+> **状态**：active 规划草案（自 c2070 nested cascade 拆出）。**硬前置** [`c2070`](../archive/2026-08-12-c2070-add-package-tui-dual-interaction-modes/proposal.md)——鼠标定点与交互模型未定前不单独 apply。
 > 注：2026-08-10 曾升格；后因双架构调研撤回；2026-08-11 随 c2070 族再升为独立 `changes/` 条目。
 
 > **一句话**：长会话中间操作墙多级折叠（最狠为 Worked for 2m 3s 通用耗时表达），可配置降级

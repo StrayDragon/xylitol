@@ -8,7 +8,7 @@ blocks:
 
 # 鼠标点击折叠三角 + 折叠标记字形
 
-> **状态**：active 规划草案（自 c2070 nested cascade 拆出）。**硬前置** [`c2070`](../c2070-add-package-tui-dual-interaction-modes/proposal.md) Mode B。架构调研见 c2070 `research/`；本目录保留字形/hit 切片 [`research/fold-glyph-and-hittest.md`](./research/fold-glyph-and-hittest.md)。
+> **状态**：active 规划草案（自 c2070 nested cascade 拆出）。**硬前置** [`c2070`](../archive/2026-08-12-c2070-add-package-tui-dual-interaction-modes/proposal.md) Mode B。架构调研见 c2070 `research/`；本目录保留字形/hit 切片 [`research/fold-glyph-and-hittest.md`](./research/fold-glyph-and-hittest.md)。
 >
 > **c2020 提示**：点击折叠仍依赖已归档 **c2020** 的 mouse 管道。该管道**保留**；`XYLITOL_TUI_MOUSE` 仅为 lab/e2e。产品 inline **不开** capture——须在 **Mode B（c2070）** 落地后才有正式点折叠 UX。
 
@@ -107,7 +107,7 @@ c2020 + c2070 ──depends→ [本 change c2040] ──blocks→ c2050
 ## Further Notes
 
 - 字形/hit 切片：[`research/fold-glyph-and-hittest.md`](./research/fold-glyph-and-hittest.md)
-- **架构 / 选区 oneof / starline 对等**：见 [`c2070 research/`](../c2070-add-package-tui-dual-interaction-modes/research/)（勿用已失效的 `../../research/` 相对路径）
+- **架构 / 选区 oneof / starline 对等**：见 [`c2070 research/`](../archive/2026-08-12-c2070-add-package-tui-dual-interaction-modes/research/)（勿用已失效的 `../../research/` 相对路径）
 - 差分适切性见 archive `c2020` `diff-engine-mouse-fit.md`
 - `c1760` 已拍标记 `▶/▼`、不做 `(+)/(-)`——本草案可**微调**同一族三角
 - **2026-08-11**：废弃 `c2030` fold-leader；定点改由本 change 鼠标路径独占；同日整组延后并挂 `c2070`

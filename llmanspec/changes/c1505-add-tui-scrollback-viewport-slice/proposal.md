@@ -5,7 +5,7 @@ depends_on:
 
 # scrollback entry 级 viewport 切片
 
-> **状态**：active 规划草案（自 c2070 nested cascade 拆出）。**硬前置** [`c2070`](../c2070-add-package-tui-dual-interaction-modes/proposal.md)——Mode B 会重写滚动假设；Mode A 下 activity-fold 也可能缓解紧迫性。本 change **不**与 c2070 同批 apply。
+> **状态**：active 规划草案（自 c2070 nested cascade 拆出）。**硬前置** [`c2070`](../archive/2026-08-12-c2070-add-package-tui-dual-interaction-modes/proposal.md)——Mode B 会重写滚动假设；Mode A 下 activity-fold 也可能缓解紧迫性。本 change **不**与 c2070 同批 apply。
 > 注：2026-08-10 曾升格；后撤回 delay；2026-08-11 随 c2070 族再升为独立 `changes/` 条目。
 
 > **一句话**：scrollback 改 entry 级 viewport 切片渲染，长历史不再每帧全量 flatten（activity-fold 落地后可能缓解紧迫性）
