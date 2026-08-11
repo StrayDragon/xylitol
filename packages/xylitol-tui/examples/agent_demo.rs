@@ -1056,6 +1056,8 @@ pub fn main() -> Result<(), Box<dyn std::error::Error>> {
 
     let term = CrosstermTerminal::new()?;
     let mut tui = TUI::new(term);
+    // Lab / e2e only: `XYLITOL_TUI_MOUSE=1` → EnableMouseCapture.
+    // Product inline TUI does not honor this env (see `src/app/tui/terminal_guard.rs`).
     if xylitol_tui::env_requests_mouse_capture() {
         tui.enable_mouse_capture();
     }

@@ -82,9 +82,11 @@ impl TerminalGuard {
             xylitol_tui::CrosstermTerminal::new().map_err(|e| format!("open terminal: {e}"))?;
         terminal.hide_cursor();
         terminal.start();
-        if xylitol_tui::env_requests_mouse_capture() {
-            terminal.enable_mouse_capture();
-        }
+        // Product inline TUI MUST NOT enable mouse capture here.
+        // `XYLITOL_TUI_MOUSE` / `env_requests_mouse_capture` remain package lab/e2e
+        // hooks (agent_demo + PTY). Official mouse UX waits on Mode B (alt-screen /
+        // application-owned selection) — see delayed c2070. Keep DisableMouseCapture
+        // in `emergency_restore` for leaked lab sessions.
         Ok(Self {
             terminal: Some(terminal),
         })

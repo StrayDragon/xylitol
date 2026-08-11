@@ -1,19 +1,22 @@
 ---
 depends_on:
   - c1755-update-tui-travel-notice-placement
+  - c2070-add-package-tui-dual-interaction-modes
 blocks:
   - c2050-update-activity-fold-mouse-leader
+apply_band: P9-deferred
+summary: "多级 ActivityFold；与点击/双架构族一并延后（总前置 c2070）"
 ---
 
 # TUI activity-fold — 多级折叠（含 Worked for 通用表达）
+
+> **⚠️ deferred（2026-08-11）**：再次位于 `…/c2070-…/cascade/`（双架构顶层目录下）。与 `c2040`/`c2050`/`c2070` 同族延后——鼠标定点与交互模型未定前，不单独推进多级折叠落地。
+> **总前置**：[`c2070`](../../proposal.md)。
+> 注：2026-08-10 曾升格入 active（#3）；本轮因双架构调研结论整组撤回 delay。
+
 > **一句话**：长会话中间操作墙多级折叠（最狠为 Worked for 2m 3s 通用耗时表达），可配置降级
-> **当前排序**：#3（2026-08-10 自 delayed-changes 升格入 active）
 
-
-> **已升格（2026-08-10）**：自 delayed-changes 移入 active 待处理队列，当前排序 **#3**。
-
-
-> 与 `domain-compaction` 不是同一层。前置：[`c1755`](../archive/2026-07-30-c1755-update-tui-travel-notice-placement/proposal.md)（已扩大为「禁顶插 / 贴底可滚通知」政策）。两案调研后可分别 propose。
+> 与 `domain-compaction` 不是同一层。前置：[`c1755`](../../../../changes/archive/2026-07-30-c1755-update-tui-travel-notice-placement/proposal.md)（已扩大为「禁顶插 / 贴底可滚通知」政策）。
 
 ## Why
 
@@ -103,7 +106,7 @@ L3  通用耗时表达（最粗；可配置 / 更旧历史）
 |---|---|---|
 | [`c2020`](../archive/2026-08-11-c2020-add-package-tui-mouse-input/proposal.md) | 包级 Mouse | Wave 0✓ archive；`blocks` → c2040/c2050 |
 | ~~c2030~~ | ~~Leader + 数字定点~~ | **已废弃**（屏外数字 + 贴底重绘体验差） |
-| [`c2040`](../c2040-add-tui-mouse-click-fold-triangle/proposal.md) | 点击三角 + L1 覆盖表 + 字形 | Wave 1；`depends_on` **仅** c2020 |
+| [`c2040`](../c2040-add-tui-mouse-click-fold-triangle/proposal.md) | 点击三角 + L1 覆盖表 + 字形 | Wave 1；`depends_on` c2020 + **c2070** |
 | [`c2050`](../c2050-update-activity-fold-mouse-leader/proposal.md) | 多级适配鼠标/覆盖 | Wave 2；本 change **`blocks`** 之 |
 
 本 change（c1760）与 c2020/c2040 **无** `depends_on` 边——MVP 可先落地；交互增强收口在 c2050。

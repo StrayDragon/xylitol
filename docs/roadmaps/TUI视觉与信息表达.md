@@ -23,7 +23,7 @@
 
 | 阶段 | 用户可感知结果 | 路径提示 |
 |---|---|---|
-| **M1 状态减噪** | 一轮大量内部进度时，主区仍保住助手结论与工具结果；长史旧操作可收成活动摘要 / Worked for（跨面语义见 [Web与TUI同源.md](./Web与TUI同源.md) M1b） | 有用户可感知 MUST → SDD（草案 c1760） |
+| **M1 状态减噪** | 一轮大量内部进度时，主区仍保住助手结论与工具结果；长史旧操作可收成活动摘要 / Worked for（跨面语义见 [Web与TUI同源.md](./Web与TUI同源.md) M1b） | 有用户可感知 MUST → SDD（草案 c1760，**延后**；总前置 [c2070](../../llmanspec/delayed-changes/tui/c2070-add-package-tui-dual-interaction-modes/proposal.md)） |
 | **M2 忙碌/队列/中止统一** | 同类状态不再多徽章抢视线 | 有合约则 SDD；否则 quick |
 | **M3 主题密度** | DESIGN 对比度 / 密度打磨，不改语义 | **默认 quick**（不改行为合约） |
 

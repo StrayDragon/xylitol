@@ -1,6 +1,7 @@
 # Research: 折叠字形与 Hit-test
 
 > Change: `c2040-add-tui-mouse-click-fold-triangle`
+> **架构级调研**（选区 oneof / starline / Alt-hold）已迁至 [`../../research/`](../../research/)。
 
 ## 今日字形
 

@@ -3,9 +3,14 @@ depends_on:
   - c1760-add-tui-activity-fold
   - c2020-add-package-tui-mouse-input
   - c2040-add-tui-mouse-click-fold-triangle
+  - c2070-add-package-tui-dual-interaction-modes
+apply_band: P9-deferred
+summary: "多级折叠 × 鼠标定点适配；延后至 c2070 + c1760 + c2040"
 ---
 
 # 多级 ActivityFold 适配鼠标 / 块级覆盖
+
+> **⚠️ deferred（2026-08-11）**：位于 `…/c2070-…/cascade/`（双架构顶层目录下）。折叠/鼠标族一并延后；前置 [`c2070`](../../proposal.md)。段级点击同样依赖 **c2020** 管道 + Mode B；见 c2070 README「已落地地基：c2020」。
 
 > **一句话**：让 `c1760` 的段级 L2/L3 与 L1 块级 **鼠标定点**、全局键盘折叠共用一套目标模型与性能边界（**无** keyboard leader 编号）。
 
@@ -88,4 +93,5 @@ Wave 2
 
 - 调研：[`research/multilevel-fold-interaction-matrix.md`](./research/multilevel-fold-interaction-matrix.md)（须删/改 leader 编号条款以跟本提案）
 - 主案：[`../c1760-add-tui-activity-fold/proposal.md`](../c1760-add-tui-activity-fold/proposal.md)
-- **2026-08-11**：`c2030` fold-leader 废弃；本 change 不再 depends 编号模式
+- 架构总前置：[`../../proposal.md`](../../proposal.md)
+- **2026-08-11**：`c2030` fold-leader 废弃；本 change 不再 depends 编号模式；同日整组延后

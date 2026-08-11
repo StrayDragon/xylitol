@@ -28,6 +28,7 @@
 ### `agent_demo` 硬边界（防误导）
 
 - **MUST NOT** 把 `agent_demo` / `just demo-tui` 当成产品 TUI 或 DESIGN playground。
+- `XYLITOL_TUI_MOUSE` 仅在本 demo（及以其为目标的 PTY e2e）生效；**不是**产品 inline 鼠标开关。
 - **MUST NOT** 为「对齐产品 chrome 词汇表」去改写 demo 屏上英文 / plate 文案（除非人类明确要求）；demo 文案 **允许**与产品中文 SSOT（队列条 / 滚动提示 / 命令面板…）不同。
 - **MAY** 形态学对照产品（如 rail 默认、中间队列条）；对照 ≠ 同一 SSOT。
 - 产品 chrome 用词：[`docs/architecture/TUI信息面与chrome词汇.md`](../../docs/architecture/TUI信息面与chrome词汇.md) — **只约束产品面文档与 host**，不约束本包 demo 字符串。
@@ -77,7 +78,8 @@
 3. `render` → `Vec<String>`（ANSI）；不引入结构化 `StyledLine` 层。
 4. 主题用闭包注入；语义 token 映射在应用面（`src/app/tui/DESIGN.md`）。
 5. 终端 I/O / 输入硬切：见上表「底层 / 输入」。
-6. 默认隐藏硬件光标；有 `CURSOR_MARKER` 时可相对定位 IME，但不得无条件 `show_cursor`。
+6. `enable_mouse_capture` / `XYLITOL_TUI_MOUSE`：**包 API + lab/e2e 保留**；默认不 Enable。产品 inline 面不得经 env 自动开 capture（正式鼠标 UX → 延后 Mode B / c2070）。
+7. 默认隐藏硬件光标；有 `CURSOR_MARKER` 时可相对定位 IME，但不得无条件 `show_cursor`。
 
 ## 验证（本文件 = 人类/agent 验证分工 SSOT）
 
