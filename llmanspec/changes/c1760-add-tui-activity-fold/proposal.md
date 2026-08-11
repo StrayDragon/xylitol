@@ -112,7 +112,7 @@ Wave: c2070✓ → c2040✓ → [本 c1760] → c2050（或 c2045 吸收）
 
 | 项 | 值 |
 |---|---|
-| **ready_for_start** | **yes** |
-| 剩余人决 | **无挡 start**。可选（不挡）：L2 英文计数模板细词（files/searches/commands）在 Specs landing 时按 Cursor 体定稿即可 |
-| 下一步 | 干净树 + 默认分支 → `llman sdd change start c1760-add-tui-activity-fold` → Specs landing（见 `tasks.md` §1） |
-| 禁止 | 本阶段改 `llmanspec/specs/**` / 应用代码；勿 `attach` 到 main |
+| **ready_for_start** | **yes**（已 start + Specs landing） |
+| Specs | `app-tui-transcript` att23–att28；`feature: false` unit；无 runtime-config YAML MUST；无 Segment 鼠标点击 MUST |
+| 下一步 | `llman-sdd-apply`（`readyToImplement=true`） |
+| 禁止 | Apply 勿抢跑 c2045/c2050 段鼠标 / 广义 FoldTarget；勿占用 att29+（预留给 c2045） |
