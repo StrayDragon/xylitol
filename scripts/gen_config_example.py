@@ -108,7 +108,7 @@ security:
   enabled: true
   permission:
     enabled: false
-    backend: glob  # glob (default) | landlock (Linux ≥5.13) | macos
+    backend: glob  # only delivered backend (app-level glob matching)
     filesystem:
       read_allowed: []   # non-empty = default-deny for unlisted paths
       write_allowed: []

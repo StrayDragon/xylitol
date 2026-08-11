@@ -1,4 +1,4 @@
-//! Settings types mirroring pi's Settings interface.
+//! Settings types for user-controlled preferences (global / project / overrides).
 //!
 //! All fields use `Option` for partial overrides. The merged view
 //! provides defaults via accessor methods on SettingsManager.
@@ -50,15 +50,6 @@ pub struct Settings {
 
     #[serde(skip_serializing_if = "Option::is_none")]
     pub images: Option<ImageSettings>,
-
-    #[serde(skip_serializing_if = "Option::is_none")]
-    pub enabled_models: Option<Vec<String>>,
-
-    #[serde(skip_serializing_if = "Option::is_none")]
-    pub extensions: Option<Vec<String>>,
-
-    #[serde(skip_serializing_if = "Option::is_none")]
-    pub skills: Option<Vec<String>>,
 
     #[serde(skip_serializing_if = "Option::is_none")]
     pub thinking_budgets: Option<ThinkingBudgets>,

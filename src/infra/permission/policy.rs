@@ -185,8 +185,7 @@ mod tests {
 
     #[test]
     fn test_domain_subdomain_no_match_wrong_level() {
-        // `*.example.com` should match sub.example.com but not example.com
-        // Actually checking pi's behavior: `*.example.com` matches `sub.example.com`
+        // `*.example.com` matches `sub.example.com` but not the apex `example.com`.
         assert!(domain_matches("sub.example.com", "*.example.com"));
     }
 }

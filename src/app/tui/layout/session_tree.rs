@@ -9,7 +9,7 @@ use crate::protocol::session::{
 
 const LABEL_PREVIEW_WIDTH: usize = 48;
 
-/// Product session-tree filter modes (aligned with pi; wired via `include_node` + `status_suffix`).
+/// Product session-tree filter modes (wired via `include_node` + `status_suffix`).
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
 pub enum FilterMode {
     #[default]

@@ -3,8 +3,8 @@
 //! Provides [`XyModelKind`] (supported provider types) and [`XyModelConfig`]
 //! (connection parameters for building a provider instance).
 //!
-//! JSON Schema for config files lives in `infra` (see c510); this module is
-//! serde-only so domain stays free of schemars.
+//! JSON Schema for config files lives in `infra` (see c510); this module stays
+//! serde-only.
 
 use serde::{Deserialize, Serialize};
 

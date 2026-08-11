@@ -1,6 +1,6 @@
 //! Find tool — uses `fd` to search for files by glob pattern.
 //!
-//! Key behaviors (aligns with pi's find.ts):
+//! Key behaviors:
 //! - Uses external `fd` process via tokio::process::Command
 //! - Respects .gitignore via fd's default behavior
 //! - Returns Posix-relative paths

@@ -1,4 +1,4 @@
-//! Channel-based event bus — aligns with pi's EventBus (event-bus.ts).
+//! Channel-based event bus for side-channel lifecycle (compaction, settings).
 //!
 //! Supports:
 //! - `emit(channel, data)` — string channel + JSON Value payload

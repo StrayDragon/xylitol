@@ -49,8 +49,9 @@ impl Default for ImageResizeOptions {
 /// Resize an image to fit within constraints.
 ///
 /// - Scales down if exceeding max dimensions (preserving aspect ratio)
-/// - Applies EXIF orientation
 /// - Converts to JPEG if PNG exceeds byte limit
+///
+/// Does not apply EXIF orientation correction; decoded pixels are used as-is.
 pub fn resize_image(data: &[u8], options: &ImageResizeOptions) -> Result<ResizedImage, String> {
     let img = image::load_from_memory(data).map_err(|e| format!("failed to decode image: {e}"))?;
 

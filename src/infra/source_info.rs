@@ -1,8 +1,7 @@
-//! Source-info vocabulary — relocated to `domain::source_info`.
+//! Source-info vocabulary re-export.
 //!
-//! This file remains as a thin re-export so existing `crate::infra::source_info`
-//! references (infra-internal + tests) keep resolving while imports are migrated
-//! in phases. New code should import from `crate::protocol::source_info`.
+//! Prefer `crate::protocol::source_info` in new code. This path remains for
+//! existing infra-internal imports.
 
 pub use crate::protocol::source_info::{
     SourceInfo, SourceOrigin, SourceScope, create_source_info, create_synthetic_source_info,

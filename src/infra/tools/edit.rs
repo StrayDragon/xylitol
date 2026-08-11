@@ -1,4 +1,4 @@
-//! Edit tool — aligns with pi's edit.ts (multi-edit, original-file matching).
+//! Edit tool — multi-edit with original-file matching.
 //!
 //! Key behaviors:
 //! - All edits match against the ORIGINAL file content, not sequentially.

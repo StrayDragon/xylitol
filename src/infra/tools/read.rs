@@ -1,6 +1,6 @@
 //! Read tool — reads file contents with truncation and offset support.
 //!
-//! Key behaviors (aligns with pi's read.ts):
+//! Key behaviors:
 //! - Truncation at 2000 lines OR 50KB (whichever first)
 //! - Offset (line-based) and limit support
 //! - Reports offset-out-of-bounds

@@ -3,8 +3,6 @@
 //! A process may `exit` while a detached descendant keeps stdout/stderr pipes
 //! open. We must not resolve while output is still arriving. After `exit`,
 //! wait for pipes to fall idle before finalizing.
-//!
-//! Matches pi's `child-process.ts::waitForChildProcess`.
 
 use std::time::Duration;
 use tokio::io::AsyncReadExt;

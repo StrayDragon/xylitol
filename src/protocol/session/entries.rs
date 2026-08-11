@@ -11,7 +11,7 @@ use crate::protocol::message::{AgentMessage, EnvMessage};
 /// v5: camelCase entry shell + tagged AgentPart content (c646 / pi-aligned)
 pub const SESSION_VERSION: u32 = 5;
 
-/// Where a session fork cuts the parent tree (aligns with pi `fork` position).
+/// Where a session fork cuts the parent tree.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
 pub enum ForkPosition {
     /// Include `at_entry_id` in the child path (pi `position: "at"` / clone).

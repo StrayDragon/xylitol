@@ -1,4 +1,4 @@
-//! Shared truncation utilities for tool outputs — aligns with pi's truncate.ts.
+//! Shared truncation utilities for tool outputs.
 //!
 //! Truncation is based on two independent limits — whichever is hit first wins:
 //! - Line limit (default: 2000 lines)

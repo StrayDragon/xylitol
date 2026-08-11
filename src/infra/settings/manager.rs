@@ -128,15 +128,6 @@ impl SettingsManager {
         if overrides.collapse_changelog.is_some() {
             result.collapse_changelog = overrides.collapse_changelog;
         }
-        if overrides.enabled_models.is_some() {
-            result.enabled_models = overrides.enabled_models.clone();
-        }
-        if overrides.extensions.is_some() {
-            result.extensions = overrides.extensions.clone();
-        }
-        if overrides.skills.is_some() {
-            result.skills = overrides.skills.clone();
-        }
         if overrides.last_changelog_version.is_some() {
             result.last_changelog_version = overrides.last_changelog_version.clone();
         }
@@ -264,10 +255,6 @@ impl SettingsManager {
             .as_ref()
             .and_then(|c| c.keep_recent_tokens)
             .unwrap_or(20000)
-    }
-
-    pub fn get_enabled_models(&self) -> Option<&[String]> {
-        self.settings.enabled_models.as_deref()
     }
 
     pub fn get_retry_enabled(&self) -> bool {

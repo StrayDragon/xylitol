@@ -1,6 +1,6 @@
 //! Grep tool — uses ripgrep (`rg`) for file content search.
 //!
-//! Key behaviors (aligns with pi's grep.ts):
+//! Key behaviors:
 //! - Uses external `rg` process via tokio::process::Command
 //! - Supports: regex, glob, ignoreCase, literal, context lines, result limit
 //! - Defaults to 100 results, truncates long lines to GREP_MAX_LINE_LENGTH
