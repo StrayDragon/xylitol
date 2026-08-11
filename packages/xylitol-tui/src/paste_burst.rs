@@ -87,10 +87,15 @@ impl PasteBurst {
     }
 
     /// True while a non-bracketed paste burst window is open (active or suppress).
+    /// Consecutive-char count alone must **not** keep this true forever — otherwise
+    /// editor paint suppression never lifts after a burst until `reset()`.
     pub fn is_coalescing(&self, now: Instant) -> bool {
         self.active_until.is_some_and(|t| now <= t)
             || self.enter_suppress_until.is_some_and(|t| now <= t)
-            || self.consecutive_plain_chars >= PASTE_BURST_MIN_CHARS
+            || self.last_plain_char_at.is_some_and(|last| {
+                self.consecutive_plain_chars >= PASTE_BURST_MIN_CHARS
+                    && now.duration_since(last) <= ACTIVE_IDLE_TIMEOUT
+            })
     }
 
     /// How many consecutive fast chars are currently tracked.
@@ -114,5 +119,25 @@ impl PasteBurst {
         self.consecutive_plain_chars = 0;
         self.active_until = None;
         self.enter_suppress_until = None;
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn is_coalescing_expires_after_idle_even_with_high_consecutive() {
+        let mut burst = PasteBurst::new();
+        let t0 = Instant::now();
+        for _ in 0..PASTE_BURST_MIN_CHARS {
+            burst.on_plain_char(t0);
+        }
+        assert!(burst.is_coalescing(t0));
+        let later = t0 + ENTER_SUPPRESS_WINDOW + Duration::from_millis(1);
+        assert!(
+            !burst.is_coalescing(later),
+            "must not stick forever after active/suppress windows expire"
+        );
     }
 }

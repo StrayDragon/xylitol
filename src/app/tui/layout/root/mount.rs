@@ -26,6 +26,22 @@ impl Component for SharedUiRoot {
         self.0.borrow_mut().handle_input(event);
     }
 
+    fn input_wants_rerender(&self, event: &InputEvent) -> bool {
+        self.0.borrow().editor_wants_rerender(event)
+    }
+
+    fn take_pending_clipboard(&mut self) -> Vec<String> {
+        Component::take_pending_clipboard(&mut *self.0.borrow_mut())
+    }
+
+    fn mode_b_dock_rows_hint(&self) -> Option<usize> {
+        Some(self.0.borrow().last_mode_b_dock_rows())
+    }
+
+    fn wants_pointer_motion(&self) -> bool {
+        self.0.borrow().editor.is_selection_dragging()
+    }
+
     fn invalidate(&mut self) {
         self.0.borrow_mut().invalidate();
     }

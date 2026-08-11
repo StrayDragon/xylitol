@@ -25,7 +25,6 @@ use std::sync::atomic::{AtomicBool, Ordering};
 use std::time::Instant;
 
 use tokio::sync::oneshot;
-#[cfg(test)]
 use xylitol_tui::Component;
 use xylitol_tui::components::editor::{Editor, EditorOptions};
 use xylitol_tui::components::loader::{Loader, LoaderIndicatorOptions};
@@ -401,6 +400,11 @@ impl UiRoot {
     /// Mode B dock rows from the last [`Component::render`] (toast+status+editor+footer).
     pub(crate) fn last_mode_b_dock_rows(&self) -> usize {
         self.last_mode_b_dock_rows.max(1)
+    }
+
+    /// Mouse/key paint policy for the focused editor (Mode B selection / typing).
+    pub(crate) fn editor_wants_rerender(&self, event: &xylitol_tui::InputEvent) -> bool {
+        Component::input_wants_rerender(&self.editor, event)
     }
 
     /// Arm Mode B «Copied» chrome cue (~2s). Must not use Error: toast (ath31).

@@ -18,11 +18,32 @@
 | ath31 product notice (not Error toast) | PASS |
 | Copy char count (fit-pad trim) | PASS |
 | Narrow `↑ N more` | PASS |
-| Ctrl+G expands `[paste #N]` | fixed + unit test — re-check in demo |
-| ptim13 edge scroll feel | hardened + automated — re-check feel |
-| Short paste typewriter | bracketed re-arm + burst paint suppress — re-check |
-| Shift+Enter (Ctrl+J OK) | alt-screen keyboard re-arm + Char(`\\n`) — re-check |
+| Ctrl+G expands `[paste #N]` | PASS |
+| ptim13 edge scroll feel | **routing + dock sync fix** — re-check in demo |
+| Short paste typewriter | PASS |
+| Shift+Enter (Ctrl+J OK) | PASS keys; **dock-seam ghost** fix — re-check |
+| Drag lag / spinner slow | **mouse coalesce + idle_tick** — re-check |
 | H6 overall | partial |
+
+## Follow-up sync (editor mouse / Shift+Enter ghost / lag)
+
+Root causes (see explore notes):
+
+1. Demo dropped Drag/Up outside cached editor rect → stale highlight, no copy, dead edge-scroll.
+2. Mode B dropped all bare `Moved` → some terminals never extend editor drag.
+3. `input_wants_rerender` queried **before** `handle_input` → first Down painted late.
+4. Stale `dock_rows` on Shift+Enter growth → transcript/dock seam duplicate look.
+5. Mouse flood starved `idle_tick` → spinner lag; immediate `do_render` every drag.
+6. `PasteBurst::is_coalescing` stuck on consecutive count forever → paint suppress sticky.
+
+Fixes:
+
+- Demo `handle_editor_mouse`: while dragging, clamp & forward (don't drop).
+- `Component::wants_pointer_motion` + Mode B Moved fallthrough when dragging.
+- Query mouse wants **after** handle; Editor/SharedUiRoot/demo implement hints.
+- `mode_b_dock_rows_hint` applied in `do_render` before `project_frame`; dock change forces full clear.
+- Mouse path: `request_render` + `idle_tick` + `try_render` (16ms coalesce).
+- Time-bound `is_coalescing`.
 
 ## Fixes landed in this sync
 
