@@ -10,8 +10,8 @@
 | 1–2 升格 / Specs landing | ✅ | — |
 | 3 生命周期 / 视口 / dump | ✅ | ptim01–02, 09–11 |
 | 4 transcript 选区 / dock | ✅（含人验） | ptim03–07, 12 |
-| 5 Editor 独立多行选区 | ⬜ 待做 | ptim13 |
-| 6 复制成功短提示 | ⬜ 待做 | **ptim15** + ath31 |
+| 5 Editor 独立多行选区 | ✅ | ptim13 |
+| 6 复制成功短提示 | ✅ 库+demo+产品 ath31 | **ptim15** + ath31 |
 | 7 库 host seam / 收口 | ⬜ 部分 | ptim14、ath30 |
 
 ---
@@ -45,21 +45,21 @@
 - [x] 4.4 双击词 / 三击行 SHOULD；fold hit 钩子预留
 - [x] 4.5 拖选中进 dock：夹底边续选、不清选（ptim12，**人验 PASS**）
 
-## 5. 库：Editor 独立选区 — ⬜
+## 5. 库：Editor 独立选区 — ✅
 
-- [ ] 5.1 Editor（或共享缓冲选区类型）未修饰拖选，覆盖**多行**缓冲（ptim13）
-- [ ] 5.2 高亮仅输入可视行；松手复制仅输入文本；与 transcript `SelectionController` 隔离
-- [ ] 5.3 Mode B：按下始于 dock → 事件回落 Editor；transcript 选区可清；包级单测
+- [x] 5.1 Editor（或共享缓冲选区类型）未修饰拖选，覆盖**多行**缓冲（ptim13）
+- [x] 5.2 高亮仅输入可视行；松手复制仅输入文本；与 transcript `SelectionController` 隔离
+- [x] 5.3 Mode B：按下始于 dock → 事件回落 Editor；transcript 选区可清；包级单测
 - [ ] 5.4 `just demo-tui-alt-screen` 人验 Editor 多行选区
 
 **验收**：包单测 + demo 拖选输入多行 → 高亮 → 松手 OSC52；不影响 transcript 选区状态机。
 
-## 6. 复制成功短提示 — ⬜（新人需）
+## 6. 复制成功短提示 — ✅（人验 H7 可选）
 
-- [ ] 6.1 库：松手复制成功后发出可观察 **copy-notice** 信号（pending flag / callback / 等价），空选或不复制 MUST NOT 发（ptim15）
-- [ ] 6.2 库/demo：短时 UI 提示（TTL 约 1.5–3s）；落点优先 **dock 内、输入框上方 1 行**（或 demo 等价），MUST NOT 写入 transcript / ScrollNotice
-- [ ] 6.3 产品 host：Mode B 下将 copy-notice 接到壳层短提示（ath31）；**MUST NOT** 滥用 `Error: ` 前缀的 chrome-toast 拒闸形态冒充成功确认（可用独立 info 槽或扩展非 Error toast——design 钉落点）
-- [ ] 6.4 单测：复制成功 → notice 置位/清除；人验 demo 可见「已复制」类短文案
+- [x] 6.1 库：松手复制成功后发出可观察 **copy-notice** 信号（pending flag / callback / 等价），空选或不复制 MUST NOT 发（ptim15）
+- [x] 6.2 库/demo：短时 UI 提示（TTL 约 1.5–3s）；落点优先 **dock 内、输入框上方 1 行**（或 demo 等价），MUST NOT 写入 transcript / ScrollNotice
+- [x] 6.3 产品 host：Mode B 下将 copy-notice 接到壳层短提示（ath31）；**MUST NOT** 滥用 `Error: ` 前缀的 chrome-toast 拒闸形态冒充成功确认（可用独立 info 槽或扩展非 Error toast——design 钉落点）
+- [x] 6.4 单测：复制成功 → notice 置位/清除；人验 demo 可见「已复制」类短文案（单测 ✅；人验 H7 待）
 
 **验收文案（建议固定）**：`Copied` / `已复制`（中英择一钉死在 design；demo 与产品同源）。
 
@@ -82,8 +82,8 @@
 | H3 | 滚轮 sticky（非仅靠边续选） | ✅ |
 | H4 | 拖选进输入区夹边续选、不反选 | ✅ |
 | H5 | 退出后主屏可上翻会话 dump | ✅ |
-| H6 | Editor 多行独立选区 | ⬜ |
-| H7 | 复制成功短提示 | ⬜ |
+| H6 | Editor 多行独立选区 | ⬜ 高亮 PASS；边沿自动滚已修，待复验 |
+| H7 | 复制成功短提示 | ✅ |
 
 ## 实现顺序（建议）
 

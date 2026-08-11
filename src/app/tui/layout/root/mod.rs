@@ -153,6 +153,12 @@ pub struct UiRoot {
     term_rows: usize,
     /// Last paint: toast + status + editor + footer row count (Mode B dock).
     last_mode_b_dock_rows: usize,
+    /// Rows in toast / status / editor from last paint (Mode B mouse origin).
+    last_toast_rows: usize,
+    last_status_rows: usize,
+    last_editor_rows: usize,
+    /// Mode B copy-success cue (`Copied`, ~2s). Not chrome-toast / ScrollNotice.
+    copy_notice_until: Option<Instant>,
     /// Test/obs: how many times upper (loaded+scrollback+queue) was rebuilt.
     #[cfg(test)]
     upper_rebuild_count: u64,
@@ -240,6 +246,10 @@ impl UiRoot {
             scrollback_paint: ScrollbackPaintCache::default(),
             term_rows: 24,
             last_mode_b_dock_rows: 8,
+            last_toast_rows: 0,
+            last_status_rows: 1,
+            last_editor_rows: 3,
+            copy_notice_until: None,
             #[cfg(test)]
             upper_rebuild_count: 0,
         };
@@ -393,6 +403,29 @@ impl UiRoot {
         self.last_mode_b_dock_rows.max(1)
     }
 
+    /// Arm Mode B «Copied» chrome cue (~2s). Must not use Error: toast (ath31).
+    pub fn arm_copy_notice(&mut self) {
+        self.copy_notice_until = Some(Instant::now() + xylitol_tui::COPY_NOTICE_TTL);
+    }
+
+    /// Whether the Mode B copy cue is still within TTL.
+    pub fn copy_notice_visible(&self) -> bool {
+        self.copy_notice_until
+            .is_some_and(|until| Instant::now() < until)
+    }
+
+    /// Test helper: visible copy-notice body when armed.
+    #[cfg(test)]
+    pub fn copy_notice_body_for_test(&self) -> Option<&'static str> {
+        self.copy_notice_visible().then_some("Copied")
+    }
+
+    /// Test helper: Editor absolute screen origin (Mode B mouse hit-test).
+    #[cfg(test)]
+    pub fn editor_screen_origin_for_test(&self) -> (u16, u16) {
+        self.editor.screen_origin()
+    }
+
     /// Pre-paint estimate when no frame has measured dock yet.
     pub(crate) fn estimate_mode_b_dock_rows(&self) -> usize {
         // Queue lives in the upper/transcript band; dock is lower chrome only.
@@ -450,9 +483,10 @@ impl UiRoot {
     }
 
     /// Ctrl+G stub: count + optional `# $EDITOR stub` marker (harness-safe).
+    /// Uses expanded text so `[paste #N …]` markers become real content (ati34 / pi getExpandedText).
     pub fn open_external_editor_stub(&mut self) {
         self.external_editor_invocations = self.external_editor_invocations.saturating_add(1);
-        let text = self.editor.get_text();
+        let text = self.editor.get_expanded_text();
         if text.is_empty() {
             self.editor.set_text("# $EDITOR stub\n".to_string());
         } else if !text.contains("$EDITOR stub") {
@@ -871,6 +905,29 @@ impl UiRoot {
         } else {
             false
         }
+    }
+
+    pub(super) fn clear_copy_notice_if_expired(&mut self) -> bool {
+        let expired = self
+            .copy_notice_until
+            .is_some_and(|until| Instant::now() >= until);
+        if expired {
+            self.copy_notice_until = None;
+            true
+        } else {
+            false
+        }
+    }
+
+    /// Update Editor screen origin from last dock measure (Mode B mouse → ptim13).
+    pub(crate) fn sync_editor_screen_origin(&mut self) {
+        let dock = self.last_mode_b_dock_rows.max(1);
+        let dock_top = self.term_rows.saturating_sub(dock);
+        let origin = dock_top
+            .saturating_add(self.last_toast_rows)
+            .saturating_add(self.last_status_rows);
+        self.editor
+            .set_screen_origin(origin.min(u16::MAX as usize) as u16, 0);
     }
 
     /// Pending steer / follow-up strip above status (pi `pendingMessagesContainer`).

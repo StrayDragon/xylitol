@@ -1234,6 +1234,23 @@ pub fn matches_key_event(event: &crossterm::event::KeyEvent, key_id: &str) -> bo
         return true;
     }
 
+    // Pi parity (keys.ts): when Kitty protocol is active, Ghostty maps
+    // Shift+Enter → `\n` and Kitty custom maps → `\x1b\r`. Crossterm surfaces
+    // the former as `KeyCode::Char('\n')` **without** SHIFT. Match before the
+    // strict modifier check so `tui.input.newLine` works in Mode B alt-screen.
+    if parsed.key == "enter"
+        && parsed.shift
+        && !parsed.ctrl
+        && !parsed.alt
+        && !parsed.super_mod
+        && !has_ctrl
+        && !has_alt
+        && !has_super
+        && matches!(event.code, KeyCode::Char('\n'))
+    {
+        return true;
+    }
+
     if has_ctrl != parsed.ctrl
         || has_alt != parsed.alt
         || effective_shift != parsed.shift
@@ -1301,6 +1318,8 @@ pub fn printable_from_key_event(event: &crossterm::event::KeyEvent) -> Option<St
         return None;
     }
     match event.code {
+        // Never treat `\n` as printable — Ghostty Shift+Enter (see matches_key_event).
+        KeyCode::Char('\n') | KeyCode::Char('\r') => None,
         KeyCode::Char(c) => Some(c.to_string()),
         _ => None,
     }

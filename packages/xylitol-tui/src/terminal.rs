@@ -234,6 +234,23 @@ impl CrosstermTerminal {
         self.modify_other_keys_active = true;
     }
 
+    /// After `EnterAlternateScreen`, re-push Kitty flags and arm modifyOtherKeys.
+    /// Emulators often clear both; Mode B Shift+Enter needs CSI-u / CSI 27;2;13~
+    /// / Ghostty `\n` (pi keys.ts when kitty active). Dual-arm is intentional —
+    /// Kitty push may be ignored while modifyOtherKeys still delivers Shift+Enter.
+    fn rearm_keyboard_after_alt_screen(&mut self) {
+        let _ = execute!(
+            io::stdout(),
+            PushKeyboardEnhancementFlags(KeyboardEnhancementFlags::from_bits_truncate(
+                KITTY_FLAGS_REQUEST,
+            ))
+        );
+        set_kitty_protocol_active(true);
+        self.kitty_pushed = true;
+        self.write_raw(MODIFY_OTHER_KEYS_ENABLE);
+        self.modify_other_keys_active = true;
+    }
+
     fn disable_modify_other_keys(&mut self) {
         if !self.modify_other_keys_active {
             return;
@@ -410,6 +427,15 @@ impl Terminal for CrosstermTerminal {
         }
         let _ = execute!(io::stdout(), EnterAlternateScreen);
         self.alternate_screen_active = true;
+        // Some emulators reset bracketed paste / keyboard enhancement when
+        // entering the alt buffer. Without re-arm:
+        // - pastes arrive as per-char keys (typewriter feel)
+        // - Shift+Enter may degrade to plain Enter (pi: re-query Kitty +
+        //   modifyOtherKeys CSI 27;2;13~ / Ghostty `\n` when kitty active).
+        if self.started {
+            let _ = execute!(io::stdout(), EnableBracketedPaste);
+            self.rearm_keyboard_after_alt_screen();
+        }
     }
 
     fn leave_alternate_screen(&mut self) {
