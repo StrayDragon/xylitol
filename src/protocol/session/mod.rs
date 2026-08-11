@@ -7,6 +7,7 @@
 mod entries;
 mod helpers;
 mod parse;
+mod todo;
 mod tree;
 
 pub use entries::{
@@ -22,6 +23,11 @@ pub use helpers::{
 pub use parse::{
     enforce_session_version, parse_session_jsonl, parse_session_jsonl_lines,
     peek_session_header_version,
+};
+pub use todo::{
+    CUSTOM_TYPE_AGENT_TODO, TodoItem, TodoItemDraft, TodoList, TodoStatus, TodoValidationError,
+    apply_todo_update, latest_agent_todo, leaf_has_agent_todo, normalize_rewrite_items,
+    validate_todo_list,
 };
 pub use tree::{
     SessionTreeKind, SessionTreeNode, SessionTreeTravel, build_session_tree,
