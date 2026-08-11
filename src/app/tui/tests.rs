@@ -2452,4 +2452,5 @@ fn interaction_mode_b_restacks_and_registers_dock() {
     session.apply_interaction_mode(xylitol_tui::InteractionMode::Inline);
     assert!(!session.tui.application_session_active());
     assert!(!session.tui.mouse_capture_enabled());
+    assert!(!session.tui.terminal.alternate_screen_active());
 }

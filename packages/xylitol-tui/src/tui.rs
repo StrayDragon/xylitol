@@ -329,6 +329,8 @@ pub struct TUI<T: Terminal> {
     mode_b: Option<ModeBRuntime>,
     /// Default dock rows used when beginning a Mode B session.
     mode_b_dock_rows: usize,
+    /// Persists across begin/end; applied when constructing [`ModeBRuntime`].
+    mode_b_copy_on_release: bool,
 }
 
 /// Minimum spacing between throttled frames (~60fps). Mirrors pi's
@@ -375,6 +377,7 @@ impl<T: Terminal> TUI<T> {
             application_session_active: false,
             mode_b: None,
             mode_b_dock_rows: 3,
+            mode_b_copy_on_release: true,
         }
     }
 
@@ -395,7 +398,13 @@ impl<T: Terminal> TUI<T> {
     /// [`Self::with_interaction_mode`] at construction; for a live switch,
     /// call [`Self::end_application_owned_session`] / [`Self::finish_inline`]
     /// then rebuild the TUI.
+    ///
+    /// If an application session is active and `mode` is Inline, this ends the
+    /// session so flag and TTY state stay aligned.
     pub fn set_interaction_mode(&mut self, mode: InteractionMode) {
+        if mode.is_inline() && self.application_session_active {
+            self.end_application_owned_session();
+        }
         self.interaction_mode = mode;
     }
 
@@ -409,7 +418,9 @@ impl<T: Terminal> TUI<T> {
         self.terminal.clear_screen();
         self.enable_mouse_capture();
         self.application_session_active = true;
-        self.mode_b = Some(ModeBRuntime::new(self.mode_b_dock_rows));
+        let mut mb = ModeBRuntime::new(self.mode_b_dock_rows);
+        mb.set_copy_on_release(self.mode_b_copy_on_release);
+        self.mode_b = Some(mb);
         // Force a clearing redraw into the alt buffer.
         self.previous_width = FORCE_SIZE_SENTINEL;
         self.previous_height = FORCE_SIZE_SENTINEL;
@@ -450,6 +461,7 @@ impl<T: Terminal> TUI<T> {
     }
 
     pub fn set_mode_b_copy_on_release(&mut self, on: bool) {
+        self.mode_b_copy_on_release = on;
         if let Some(mb) = self.mode_b.as_mut() {
             mb.set_copy_on_release(on);
         }
@@ -1077,7 +1089,9 @@ impl<T: Terminal> TUI<T> {
             self.terminal.clear_screen();
             self.enable_mouse_capture();
             if self.mode_b.is_none() {
-                self.mode_b = Some(ModeBRuntime::new(self.mode_b_dock_rows));
+                let mut mb = ModeBRuntime::new(self.mode_b_dock_rows);
+                mb.set_copy_on_release(self.mode_b_copy_on_release);
+                self.mode_b.replace(mb);
             }
             self.previous_width = FORCE_SIZE_SENTINEL;
             self.previous_height = FORCE_SIZE_SENTINEL;

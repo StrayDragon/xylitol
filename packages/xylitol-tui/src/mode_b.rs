@@ -14,7 +14,6 @@ pub struct ModeBRuntime {
     pub dock_rows: usize,
     /// OSC52 (or other) sequences to flush **outside** a differential paint batch.
     pub pending_clipboard: Vec<String>,
-    copy_on_release: bool,
 }
 
 impl ModeBRuntime {
@@ -24,7 +23,6 @@ impl ModeBRuntime {
             selection: SelectionController::new(),
             dock_rows: dock_rows.max(1),
             pending_clipboard: Vec::new(),
-            copy_on_release: true,
         }
     }
 
@@ -33,7 +31,6 @@ impl ModeBRuntime {
     }
 
     pub fn set_copy_on_release(&mut self, on: bool) {
-        self.copy_on_release = on;
         self.selection.copy_on_release = on;
     }
 
