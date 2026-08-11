@@ -1,6 +1,6 @@
 use crate::terminal::Terminal;
 use crate::utils::{normalize_terminal_output, visible_width};
-use crossterm::event::{KeyEvent, KeyEventKind};
+use crossterm::event::{KeyEvent, KeyEventKind, MouseEvent, MouseEventKind};
 use std::sync::Arc;
 use std::sync::atomic::AtomicBool;
 
@@ -12,6 +12,42 @@ pub const CURSOR_MARKER: &str = "\x1b_pi:c\x07";
 pub enum InputEvent {
     Key(KeyEvent),
     Paste(String),
+    /// Pointer / wheel report. Prefer filtering [`Self::is_pointer_motion`] at
+    /// fan-in so crossterm `1003` any-event floods never reach the host paint path.
+    Mouse(MouseEvent),
+}
+
+impl InputEvent {
+    /// `MouseEventKind::Moved` only — safe to drop at the edge (no presentation change).
+    #[inline]
+    pub fn is_pointer_motion(&self) -> bool {
+        matches!(
+            self,
+            Self::Mouse(MouseEvent {
+                kind: MouseEventKind::Moved,
+                ..
+            })
+        )
+    }
+}
+
+/// Whether routing an [`InputEvent`] should schedule a frame.
+///
+/// Keys/paste default to [`Self::Rerender`] (today's host always-paint). Mouse
+/// defaults to [`Self::None`] until a component opts in via
+/// [`Component::input_wants_rerender`] (e.g. future fold-hit handlers).
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
+pub enum InputReaction {
+    #[default]
+    None,
+    Rerender,
+}
+
+impl InputReaction {
+    #[inline]
+    pub fn rerender_if(cond: bool) -> Self {
+        if cond { Self::Rerender } else { Self::None }
+    }
 }
 
 /// Result of an input listener invoked before focus routing.
@@ -19,8 +55,14 @@ pub enum InputEvent {
 pub enum InputListenerResult {
     /// Pass the event to later listeners and (if none consume) the focused target.
     Continue,
-    /// Stop the listener chain and do not deliver the event to overlay/focus.
+    /// Stop the listener chain and do not deliver to overlay/focus.
+    ///
+    /// Paint policy: Key/Paste → [`InputReaction::Rerender`]; Mouse →
+    /// [`InputReaction::None`]. Mouse handlers that dirtied UI MUST return
+    /// [`Self::ConsumedRerender`] (c2040 fold click).
     Consumed,
+    /// Stop routing and schedule a frame (intentional presentation change).
+    ConsumedRerender,
 }
 
 /// Error from a render pass. The engine hard-errors when a component emits a
@@ -65,6 +107,15 @@ pub trait Component {
     /// Returning true hints that a re-render is wanted (host decides).
     fn tick(&mut self) -> bool {
         false
+    }
+
+    /// Whether handling `event` should request a frame after [`Self::handle_input`].
+    ///
+    /// Default: Key/Paste → yes; Mouse → no (ignored pointer traffic must not
+    /// thrash the differential engine). Override when a component actually
+    /// mutates presentation for a mouse event (click targets, etc.).
+    fn input_wants_rerender(&self, event: &InputEvent) -> bool {
+        !matches!(event, InputEvent::Mouse(_))
     }
 }
 
@@ -316,7 +367,8 @@ impl<T: Terminal> TUI<T> {
     /// [`remove_input_listener`](Self::remove_input_listener).
     ///
     /// Listeners run in registration order before overlay/root focus routing.
-    /// The first [`InputListenerResult::Consumed`] stops the chain.
+    /// The first [`InputListenerResult::Consumed`] or
+    /// [`InputListenerResult::ConsumedRerender`] stops the chain.
     pub fn add_input_listener(
         &mut self,
         listener: impl FnMut(InputEvent) -> InputListenerResult + 'static,
@@ -819,9 +871,11 @@ impl<T: Terminal> TUI<T> {
                         if !self.should_dispatch_key_event(&key_event) {
                             continue;
                         }
-                        self.dispatch_event(InputEvent::Key(key_event));
-                        self.run_after_dispatch_hook();
-                        self.do_render()?;
+                        let reaction = self.dispatch_event(InputEvent::Key(key_event));
+                        if reaction == InputReaction::Rerender {
+                            self.run_after_dispatch_hook();
+                            self.do_render()?;
+                        }
                     }
                     Event::Resize(_, _) => {
                         // Re-query size before rendering so we don't paint with
@@ -830,9 +884,23 @@ impl<T: Terminal> TUI<T> {
                         self.do_render()?;
                     }
                     Event::Paste(data) => {
-                        self.dispatch_event(InputEvent::Paste(data));
-                        self.run_after_dispatch_hook();
-                        self.do_render()?;
+                        let reaction = self.dispatch_event(InputEvent::Paste(data));
+                        if reaction == InputReaction::Rerender {
+                            self.run_after_dispatch_hook();
+                            self.do_render()?;
+                        }
+                    }
+                    Event::Mouse(mouse) => {
+                        let event = InputEvent::Mouse(mouse);
+                        // 1003 any-event floods: drop motion before dispatch/paint.
+                        if event.is_pointer_motion() {
+                            continue;
+                        }
+                        let reaction = self.dispatch_event(event);
+                        if reaction == InputReaction::Rerender {
+                            self.run_after_dispatch_hook();
+                            self.do_render()?;
+                        }
                     }
                     _ => {}
                 }
@@ -921,9 +989,15 @@ impl<T: Terminal> TUI<T> {
     /// Route one decoded input event through listeners, then the focused
     /// overlay (if any) or root child.
     ///
+    /// Returns whether a frame should be scheduled. Listener
+    /// [`InputListenerResult::ConsumedRerender`] always paints;
+    /// [`InputListenerResult::Consumed`] paints for Key/Paste only (Mouse stays
+    /// quiet unless the focused component opts in via
+    /// [`Component::input_wants_rerender`]).
+    ///
     /// Public so host loops (and tests) can feed input without going through
     /// the blocking `start()` event loop.
-    pub fn dispatch_event(&mut self, event: InputEvent) {
+    pub fn dispatch_event(&mut self, event: InputEvent) -> InputReaction {
         // Snapshot ids so a listener may remove itself / others mid-dispatch
         // without invalidating the walk; callbacks are invoked by id lookup.
         let listener_ids: Vec<u64> = self.input_listeners.iter().map(|l| l.id).collect();
@@ -932,8 +1006,14 @@ impl<T: Terminal> TUI<T> {
                 continue;
             };
             let result = (self.input_listeners[index].callback)(event.clone());
-            if result == InputListenerResult::Consumed {
-                return;
+            match result {
+                InputListenerResult::Continue => {}
+                InputListenerResult::ConsumedRerender => return InputReaction::Rerender,
+                InputListenerResult::Consumed => {
+                    // Key/Paste: historical always-paint. Mouse: silent consume
+                    // so a no-op handler cannot flood frames (c2020 / c2040).
+                    return InputReaction::rerender_if(!matches!(event, InputEvent::Mouse(_)));
+                }
             }
         }
 
@@ -988,14 +1068,33 @@ impl<T: Terminal> TUI<T> {
             && let Some(index) = self.overlay_index(overlay_id)
             && !self.overlays[index].2.hidden
         {
+            let wants = self.overlays[index].0.input_wants_rerender(&event);
             self.overlays[index].0.handle_input(event);
-            return;
+            return InputReaction::rerender_if(wants);
         }
         if let Some(idx) = self.focused_index
             && idx < self.components.len()
         {
+            let wants = self.components[idx].input_wants_rerender(&event);
             self.components[idx].handle_input(event);
+            return InputReaction::rerender_if(wants);
         }
+        InputReaction::None
+    }
+
+    /// Opt in to crossterm mouse capture (default off). Restored across
+    /// [`Self::with_terminal_suspended`] when still desired.
+    pub fn enable_mouse_capture(&mut self) {
+        self.terminal.enable_mouse_capture();
+    }
+
+    /// Opt out of mouse capture. Also runs on `Terminal::stop` / `finish_inline`.
+    pub fn disable_mouse_capture(&mut self) {
+        self.terminal.disable_mouse_capture();
+    }
+
+    pub fn mouse_capture_enabled(&self) -> bool {
+        self.terminal.mouse_capture_active()
     }
 
     /// Advance time-driven component state once without reading input.
@@ -1830,6 +1929,154 @@ mod tests {
         assert_eq!(
             events.lock().unwrap().as_slice(),
             &[InputEvent::Paste("hello".into())]
+        );
+    }
+
+    fn mouse_moved() -> InputEvent {
+        InputEvent::Mouse(MouseEvent {
+            kind: MouseEventKind::Moved,
+            column: 1,
+            row: 2,
+            modifiers: KeyModifiers::NONE,
+        })
+    }
+
+    fn mouse_left_down() -> InputEvent {
+        InputEvent::Mouse(MouseEvent {
+            kind: MouseEventKind::Down(crossterm::event::MouseButton::Left),
+            column: 3,
+            row: 4,
+            modifiers: KeyModifiers::NONE,
+        })
+    }
+
+    #[test]
+    fn mouse_motion_is_pointer_motion() {
+        assert!(mouse_moved().is_pointer_motion());
+        assert!(!mouse_left_down().is_pointer_motion());
+        assert!(!letter_a().is_pointer_motion());
+    }
+
+    #[test]
+    fn mouse_down_reaches_focused_child_without_default_rerender() {
+        let events = std::sync::Arc::new(std::sync::Mutex::new(Vec::new()));
+        let mut tui = TUI::new(DummyTerminal);
+        tui.add_child(Box::new(RecordingComponent {
+            events: events.clone(),
+        }));
+        tui.set_focus(Some(0));
+
+        let reaction = tui.dispatch_event(mouse_left_down());
+        assert_eq!(reaction, InputReaction::None);
+        assert_eq!(events.lock().unwrap().len(), 1);
+        assert!(matches!(
+            events.lock().unwrap()[0],
+            InputEvent::Mouse(MouseEvent {
+                kind: MouseEventKind::Down(_),
+                ..
+            })
+        ));
+    }
+
+    #[test]
+    fn mouse_listener_consumed_does_not_request_rerender() {
+        let mut tui = TUI::new(DummyTerminal);
+        tui.add_input_listener(|_| InputListenerResult::Consumed);
+        assert_eq!(tui.dispatch_event(mouse_left_down()), InputReaction::None);
+    }
+
+    #[test]
+    fn mouse_listener_consumed_rerender_requests_frame() {
+        let mut tui = TUI::new(DummyTerminal);
+        tui.add_input_listener(|_| InputListenerResult::ConsumedRerender);
+        assert_eq!(
+            tui.dispatch_event(mouse_left_down()),
+            InputReaction::Rerender
+        );
+    }
+
+    #[test]
+    fn mouse_listener_consumed_blocks_focused_child() {
+        let events = std::sync::Arc::new(std::sync::Mutex::new(Vec::new()));
+        let mut tui = TUI::new(DummyTerminal);
+        tui.add_child(Box::new(RecordingComponent {
+            events: events.clone(),
+        }));
+        tui.set_focus(Some(0));
+        tui.add_input_listener(|_| InputListenerResult::Consumed);
+        assert_eq!(tui.dispatch_event(mouse_left_down()), InputReaction::None);
+        assert!(
+            events.lock().unwrap().is_empty(),
+            "Consumed listener must block focused child"
+        );
+    }
+
+    struct MouseAwareComponent;
+
+    impl Component for MouseAwareComponent {
+        fn render(&mut self, _width: usize) -> Vec<String> {
+            Vec::new()
+        }
+        fn handle_input(&mut self, _event: InputEvent) {}
+        fn invalidate(&mut self) {}
+        fn input_wants_rerender(&self, event: &InputEvent) -> bool {
+            matches!(
+                event,
+                InputEvent::Mouse(MouseEvent {
+                    kind: MouseEventKind::Down(_),
+                    ..
+                })
+            )
+        }
+    }
+
+    #[test]
+    fn component_can_opt_in_mouse_rerender() {
+        let mut tui = TUI::new(DummyTerminal);
+        tui.add_child(Box::new(MouseAwareComponent));
+        tui.set_focus(Some(0));
+        assert_eq!(
+            tui.dispatch_event(mouse_left_down()),
+            InputReaction::Rerender
+        );
+        assert_eq!(tui.dispatch_event(mouse_moved()), InputReaction::None);
+    }
+
+    #[test]
+    fn mouse_moved_flood_does_not_bump_frame_count() {
+        let mut tui = TUI::new(DummyTerminal);
+        tui.add_child(Box::new(RecordingComponent {
+            events: std::sync::Arc::new(std::sync::Mutex::new(Vec::new())),
+        }));
+        tui.set_focus(Some(0));
+        let before = tui.frame_count();
+        for _ in 0..64 {
+            if tui.dispatch_event(mouse_moved()) == InputReaction::Rerender {
+                tui.request_render(false);
+            }
+        }
+        let _ = tui.try_render();
+        assert_eq!(
+            tui.frame_count(),
+            before,
+            "Moved flood must not schedule or paint frames"
+        );
+    }
+
+    #[test]
+    fn mouse_consumed_listener_can_bump_frame_count() {
+        let mut tui = TUI::new(DummyTerminal);
+        tui.add_input_listener(|_| InputListenerResult::ConsumedRerender);
+        let before = tui.frame_count();
+        assert_eq!(
+            tui.dispatch_event(mouse_left_down()),
+            InputReaction::Rerender
+        );
+        tui.request_render(false);
+        tui.try_render().expect("ConsumedRerender mouse may paint");
+        assert!(
+            tui.frame_count() > before,
+            "ConsumedRerender mouse Down may schedule a frame"
         );
     }
 }

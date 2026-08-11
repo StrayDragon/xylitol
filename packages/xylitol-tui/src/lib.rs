@@ -74,7 +74,7 @@ pub use keys::{
     parse_key, printable_from_key_event, set_kitty_protocol_active, with_kitty_protocol_active,
 };
 pub use paste_burst::PasteBurst;
-pub use terminal::{CrosstermTerminal, Terminal, parse_kitty_flags};
+pub use terminal::{CrosstermTerminal, Terminal, env_requests_mouse_capture, parse_kitty_flags};
 pub use terminal_colors::{
     CSI_COLOR_SCHEME_QUERY, OSC11_BG_QUERY, RgbColor, TerminalColorScheme, ThemeDetectSources,
     is_osc11_background_color_response, is_terminal_color_reply, parse_colorfgbg,
@@ -88,9 +88,9 @@ pub use theme::{
     shade_toward_white, strikethrough, underline, word_wash_bg,
 };
 pub use tui::{
-    Component, FocusTarget, Focusable, InputEvent, InputListenerResult, OverlayAnchor,
-    OverlayHandle, OverlayMargin, OverlayOptions, OverlayUnfocusOptions, RenderError, SizeValue,
-    TUI,
+    Component, FocusTarget, Focusable, InputEvent, InputListenerResult, InputReaction,
+    OverlayAnchor, OverlayHandle, OverlayMargin, OverlayOptions, OverlayUnfocusOptions,
+    RenderError, SizeValue, TUI,
 };
 pub use utils::{
     ExtractedSegments, TruncateFrom, VisualTruncateResult, apply_background_to_line,

@@ -529,6 +529,36 @@ fn pty_product_fake_hello_then_exit() {
     assert_eq!(code, 0, "product TUI /exit should exit 0");
 }
 
+/// c2020 ath29 / S6: opt-in mouse via `XYLITOL_TUI_MOUSE=1` enables capture CSI;
+/// clean exit must not leave the process hung (Disable on teardown).
+#[test]
+#[ignore = "E2E: spawns a real PTY + cargo build; run via `just test-tui-e2e-pty`"]
+fn pty_agent_demo_mouse_opt_in_enable_then_exit() {
+    let mut session =
+        PtySession::spawn_example_with_env("agent_demo", 100, 30, &[("XYLITOL_TUI_MOUSE", "1")])
+            .expect("spawn agent_demo with mouse opt-in");
+    session
+        .wait_for(crate::DEMO_READY_NEEDLE, Duration::from_secs(60), 100, 30)
+        .expect("agent_demo should render");
+    // crossterm EnableMouseCapture emits CSI ?1000h / ?1002h / ?1003h / …
+    assert!(
+        session.raw_contains(b"\x1b[?1000h") || session.raw_contains(b"\x1b[?1003h"),
+        "opt-in mouse must emit EnableMouseCapture CSI in PTY stream"
+    );
+    // Demo quits on Ctrl+C only when the editor is empty (default prompt is not).
+    session.send_keys("\x15").expect("clear editor (Ctrl+U)");
+    session.send_keys("\x03").expect("Ctrl+C quit demo");
+    let code = session
+        .wait_exit(Duration::from_secs(30))
+        .expect("demo should exit after quit");
+    assert_eq!(code, 0, "mouse opt-in demo must exit cleanly");
+    // Teardown should DisableMouseCapture (crossterm emits CSI ?1000l / related).
+    assert!(
+        session.raw_contains(b"\x1b[?1000l") || session.raw_contains(b"\x1b[?1003l"),
+        "exit must emit DisableMouseCapture CSI so mouse mode does not linger"
+    );
+}
+
 /// c669: product bang `!echo` streams into a Bash block (real shell, Fake model).
 #[test]
 #[ignore = "E2E: product PTY + cargo build; run via `just test-tui-e2e-pty`"]

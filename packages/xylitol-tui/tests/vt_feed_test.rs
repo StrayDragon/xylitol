@@ -13,6 +13,7 @@ fn assert_key(ev: &InputEvent, code: KeyCode, mods: KeyModifiers) {
             assert_eq!(k.modifiers, mods);
         }
         InputEvent::Paste(_) => panic!("expected Key, got Paste"),
+        InputEvent::Mouse(_) => panic!("expected Key, got Mouse"),
     }
 }
 

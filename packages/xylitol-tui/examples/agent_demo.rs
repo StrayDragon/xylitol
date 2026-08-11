@@ -1056,6 +1056,9 @@ pub fn main() -> Result<(), Box<dyn std::error::Error>> {
 
     let term = CrosstermTerminal::new()?;
     let mut tui = TUI::new(term);
+    if xylitol_tui::env_requests_mouse_capture() {
+        tui.enable_mouse_capture();
+    }
     let quit_flag = Arc::new(AtomicBool::new(false));
     let initial_prompt = std::env::var("XYLITOL_AGENT_DEMO_INITIAL_PROMPT")
         .unwrap_or_else(|_| "tighten footer truncation and add a PTY acceptance test".into());
@@ -4731,6 +4734,7 @@ impl Component for FakeCodingAgentApp {
                 }
                 return;
             }
+            InputEvent::Mouse(_) => return,
         };
 
         if matches_key_event(key, "ctrl+c") {

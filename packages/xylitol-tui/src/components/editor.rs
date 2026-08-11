@@ -1678,6 +1678,7 @@ impl Component for Editor {
                 }
             }
             InputEvent::Key(key) => self.handle_key(&key),
+            InputEvent::Mouse(_) => {}
         }
     }
 

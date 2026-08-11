@@ -12,7 +12,7 @@ use std::rc::Rc;
 use std::sync::Arc;
 use std::sync::atomic::{AtomicBool, Ordering};
 
-use xylitol_tui::{InputEvent, RenderError, TUI, Terminal};
+use xylitol_tui::{InputEvent, InputReaction, RenderError, TUI, Terminal};
 
 use crate::app::core::driver::{XyDriverError, XyEvent};
 use crate::protocol::ports::XyBashResult;
@@ -808,7 +808,7 @@ impl<T: Terminal> HostSession<T> {
     }
 
     fn handle_input(&mut self, input: InputEvent) {
-        if self.mode == LayoutMode::Ready {
+        let reaction = if self.mode == LayoutMode::Ready {
             if self.try_suppress_stale_esc(&input)
                 || self.try_paste_image(&input)
                 || self.try_reload_input(&input)
@@ -816,12 +816,18 @@ impl<T: Terminal> HostSession<T> {
                 || self.try_idle_enter_submit(&input)
                 || self.try_ctrl_g(&input)
             {
-                // Consumed — do not forward to editor (no newline / no tree).
+                // Host consumed a key/chord — always paint (status / editor / toast).
+                InputReaction::Rerender
             } else {
-                self.tui.dispatch_event(input);
+                self.tui.dispatch_event(input)
             }
+        } else {
+            // TooSmall / other modes: ignore input; no paint from mouse floods.
+            InputReaction::rerender_if(!matches!(input, InputEvent::Mouse(_)))
+        };
+        if reaction == InputReaction::Rerender {
+            self.tui.request_render(false);
         }
-        self.tui.request_render(false);
     }
 
     fn handle_xy(&mut self, xy: Box<XyEvent>) {

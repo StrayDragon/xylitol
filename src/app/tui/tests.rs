@@ -135,6 +135,51 @@ fn harness_never_calls_terminal_start() {
 }
 
 #[test]
+fn mouse_input_does_not_request_render_by_default() {
+    use crossterm::event::{KeyCode, KeyModifiers, MouseButton, MouseEvent, MouseEventKind};
+
+    let mut session = HostSession::new_product_ui(TestTerminal::new(80, 24));
+    session.render_now().unwrap();
+    assert!(!session.tui.is_render_requested());
+
+    session
+        .step(HostEvent::Input(InputEvent::Mouse(MouseEvent {
+            kind: MouseEventKind::Moved,
+            column: 1,
+            row: 1,
+            modifiers: KeyModifiers::NONE,
+        })))
+        .unwrap();
+    assert!(
+        !session.tui.is_render_requested(),
+        "Moved must not schedule a frame"
+    );
+
+    session
+        .step(HostEvent::Input(InputEvent::Mouse(MouseEvent {
+            kind: MouseEventKind::Down(MouseButton::Left),
+            column: 2,
+            row: 2,
+            modifiers: KeyModifiers::NONE,
+        })))
+        .unwrap();
+    assert!(
+        !session.tui.is_render_requested(),
+        "unhandled mouse Down must not schedule a frame"
+    );
+
+    session
+        .step(HostEvent::Input(InputEvent::Key(
+            crossterm::event::KeyEvent::new(KeyCode::Char('a'), KeyModifiers::NONE),
+        )))
+        .unwrap();
+    assert!(
+        session.tui.is_render_requested(),
+        "Key path must still request render"
+    );
+}
+
+#[test]
 fn product_tui_source_has_no_tui_start_call() {
     let sources = [
         ("mod.rs", include_str!("mod.rs")),
