@@ -5,7 +5,8 @@ blocks:
 - c2050-update-activity-fold-mouse-leader
 branch: sdd/c2020-add-package-tui-mouse-input
 base_sha: 04f1894aabe743e08c0623e788ba55a5840755bb
-checkpointed: false
+checkpointed: true
+checkpoint_sha: 04f1894aabe743e08c0623e788ba55a5840755bb
 ---
 
 # 包级 TUI 鼠标输入地基（EnableMouse + InputEvent::Mouse）
