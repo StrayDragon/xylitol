@@ -774,12 +774,10 @@ impl Editor {
         self.state.lines[self.state.cursor_line] = format!("{b}{ch}{a}");
         self.set_cursor_col(self.state.cursor_col + ch.len());
         self.on_changed();
-        // Paste-burst may skip opening a *new* popup during a flood, but an
-        // already-open autocomplete MUST track the buffer — otherwise Tab
-        // applies a stale prefix (c545 `$` → `use $$demo`).
-        if !self.paste_burst.is_coalescing(now) || self.autocomplete_state.is_some() {
-            self.handle_autocomplete_on_edit();
-        }
+        // Always refresh autocomplete from the live buffer. Paste-burst only
+        // suppresses *paints* (`paste_burst_needs_paint`); skipping this refresh
+        // left stale/`None` popups (c545 `$` → missed open or Tab `$$demo`).
+        self.handle_autocomplete_on_edit();
     }
 
     fn paste_burst_paint_suppressed(&self) -> bool {
