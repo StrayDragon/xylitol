@@ -5,7 +5,8 @@ blocks:
 - c2050-update-activity-fold-mouse-leader
 branch: sdd/c2045-add-tui-fold-target-remaining
 base_sha: 839990764660a6b9f9014d1a88ee2d35aafeccd6
-checkpointed: false
+checkpointed: true
+checkpoint_sha: 839990764660a6b9f9014d1a88ee2d35aafeccd6
 ---
 
 # 广义 FoldTarget：剩余可折块鼠标独立点（吸收 c2050）

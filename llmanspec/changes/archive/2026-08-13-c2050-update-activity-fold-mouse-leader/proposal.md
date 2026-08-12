@@ -11,7 +11,7 @@ skip_specs_landing: true
 
 # 多级 ActivityFold 适配鼠标 / 块级覆盖
 
-> **状态**：**docs-only superseded**（2026-08-13）。段命中 / 统一 `FoldTarget` 由 [`c2045`](../../c2045-add-tui-fold-target-remaining/proposal.md) Wave B 兑现；本票 **无 Branch binding / 无 Specs landing / 无应用代码**。
+> **状态**：**docs-only superseded**（2026-08-13）。段命中 / 统一 `FoldTarget` 由 [`c2045`](../2026-08-12-c2045-add-tui-fold-target-remaining/proposal.md) Wave B 兑现；本票 **无 Branch binding / 无 Specs landing / 无应用代码**。
 >
 > 前置：[`c1760`](../2026-08-12-c1760-add-tui-activity-fold/)（已归档）· [`c2040`](../2026-08-12-c2040-add-tui-mouse-click-fold-triangle/) · [`c2070`](../2026-08-12-c2070-add-package-tui-dual-interaction-modes/)。
 
