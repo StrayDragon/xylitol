@@ -1612,8 +1612,8 @@ impl FakeCodingAgentApp {
         let dock = self.last_mode_b_dock_rows as u16;
         let dock_top = self.term_rows.saturating_sub(dock.max(1));
         // While dragging, keep delivering events even if the pointer leaves the
-        // cached editor rect (footer / transcript) — clamp local row so edge
-        // scroll + Up/copy still run.
+        // cached editor rect (footer / transcript) — clamp local row so Up/copy
+        // still run (viewport edge auto-scroll is not supported).
         if !dragging && mouse.row < dock_top {
             return;
         }
@@ -1625,7 +1625,6 @@ impl FakeCodingAgentApp {
         }
         let ed_local = if dragging {
             let raw = dock_local.saturating_sub(status_h);
-            // Clamp into [0, editor_h] so top/bottom edges stay hittable.
             raw.min(editor_h.saturating_sub(1))
         } else {
             let ed = dock_local.saturating_sub(status_h);

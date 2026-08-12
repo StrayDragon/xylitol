@@ -73,7 +73,7 @@ Pi **无**独立 input-exclude API：Editor 在 ScrollView **外**的 dock，选
 1. **按下始于 dock**：不启 transcript 选区（ptim06）；可清除已有 transcript 选区，事件回落给 Editor。
 2. **拖选中进入 dock**：夹到 transcript 底边续选 + 底边 autoscroll（ptim12）；**禁止**清选 / 提前 copy-cancel。
 3. **已完成选区悬停 dock**：不自动清除。
-4. **Editor 选区**：独立状态机，支持多行拖选与复制（ptim13）；与 transcript 选区 oneof 于「当前指针归属」。
+4. **Editor 选区**：独立状态机，支持多行拖选与复制（ptim13）；与 transcript 选区 oneof 于「当前指针归属」。**不**做 Editor 视口边沿自动滚（拖到 ↑/↓ more 仅 clamp focus；人切 2026-08-12——边沿滚会把单击误扩成「选中之前全部」）。**产品** `Copied` 落点与误触检测：延后 `src/app/tui` Mode B 集成再钉；demo 不作为产品 chrome SSOT。
 
 折叠 hit 插入「scrollbar/fold > selection」链，实现归后续 change。
 

@@ -1051,7 +1051,7 @@ impl<T: Terminal> TUI<T> {
                             self.request_render(false);
                         }
                         // Mouse floods starve `poll` idle — still advance spinner /
-                        // editor edge-scroll ticks, then coalesce paints @ 16ms.
+                        // ticks, then coalesce paints @ 16ms.
                         if self.idle_tick() {
                             self.request_render(false);
                         }
