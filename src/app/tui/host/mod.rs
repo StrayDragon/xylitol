@@ -800,6 +800,9 @@ impl<T: Terminal> HostSession<T> {
         let mut root = root.borrow_mut();
         root.set_term_rows(rows);
         root.apply_ui_model(&self.ui_model);
+        // Entries / chrome changed — ApplicationOwned must not reproject stale cache.
+        drop(root);
+        self.tui.mark_ao_components_stale();
     }
 
     /// Apply one host event and attempt a throttled render.
@@ -836,7 +839,10 @@ impl<T: Terminal> HostSession<T> {
             }
         }
 
-        if self.tui.application_session_active() {
+        // Dock sync is only needed when we may paint (or just painted). Skipping
+        // on quiet ticks / dropped motion keeps ApplicationOwned hosts cheap.
+        let may_paint = self.tui.is_render_requested();
+        if may_paint && self.tui.application_session_active() {
             self.sync_dock_rows();
         }
         match self.tui.try_render() {
@@ -901,6 +907,7 @@ impl<T: Terminal> HostSession<T> {
                 && let Some(root) = self.ui_root.as_ref()
             {
                 root.borrow_mut().arm_copy_notice();
+                self.tui.mark_ao_components_stale();
                 self.tui.request_render(false);
             }
         }

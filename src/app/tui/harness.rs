@@ -2905,6 +2905,42 @@ mod slice_tests {
     }
 
     #[tokio::test]
+    async fn h25b_debug_verify_smoke_ui_only() {
+        let mut session = HostSession::new_product_ui(TestTerminal::new(80, 24));
+        let root = session.ui_root().expect("ui").clone();
+        let mut driver = ScriptedDriver::new();
+        let mut stream = None;
+        root.borrow_mut().set_editor_text("/debug verify-smoke");
+        session.step(HostEvent::Input(enter_event())).unwrap();
+        pump_host_driver(&mut session, &mut driver, &mut stream)
+            .await
+            .unwrap();
+        assert!(
+            driver.debug_scene_calls().is_empty(),
+            "verify-smoke must not call load_debug_scene"
+        );
+        assert!(!session.should_quit(), "verify-smoke must not quit");
+        let note = session
+            .ui_model()
+            .entries
+            .iter()
+            .rev()
+            .find_map(|e| match e {
+                crate::app::tui::UiEntry::ScrollNotice { text } => Some(text.as_str()),
+                _ => None,
+            })
+            .unwrap_or("");
+        assert!(
+            note.contains("verify-smoke") && note.contains("PASS"),
+            "expected verify-smoke report; got: {note}"
+        );
+        assert!(
+            !root.borrow().models_open(),
+            "Esc in verify-smoke must leave models closed"
+        );
+    }
+
+    #[tokio::test]
     async fn h26_slash_session_tree_opens_session_tree() {
         use crate::app::tui::commands::{PendingSlash, parse_slash_command};
         assert_eq!(

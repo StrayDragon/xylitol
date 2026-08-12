@@ -46,9 +46,29 @@ pub async fn seed_scene(
         "session-tree-multiturn" => seed_multiturn(store, session_id).await?,
         "session-tree-labeled" => seed_labeled(store, session_id).await?,
         "session-tree-branched" => seed_branched(store, session_id).await?,
+        "ao-perf-scroll" => seed_ao_perf_scroll(store, session_id).await?,
         _ => return Err(format!("unhandled debug scene id: {id}")),
     }
     Ok(id)
+}
+
+/// Long spine for ApplicationOwned wheel / select CPU hand-tests (~80 turns).
+async fn seed_ao_perf_scroll(store: &dyn XySessionStore, session_id: &str) -> Result<(), String> {
+    const TURNS: usize = 80;
+    let chunk = "字".repeat(48);
+    for i in 0..TURNS {
+        let user = format!("debug ao-perf #{i}: ask {chunk}");
+        let assistant = format!(
+            "debug ao-perf #{i}: reply {chunk} — padding for scroll/select CPU ({i}/{TURNS})"
+        );
+        store
+            .append_session_entry(session_id, &user_msg(&user))
+            .await?;
+        store
+            .append_session_entry(session_id, &assistant_msg(&assistant))
+            .await?;
+    }
+    Ok(())
 }
 
 async fn seed_multiturn(store: &dyn XySessionStore, session_id: &str) -> Result<(), String> {
@@ -201,5 +221,19 @@ mod tests {
             max_siblings >= 2,
             "expected a parent with ≥2 children, got max={max_siblings}; tree={tree:#?}"
         );
+    }
+
+    #[tokio::test]
+    async fn seed_ao_perf_scroll_has_many_messages() {
+        let mgr = SessionManager::in_memory();
+        mgr.create("d4", Some("."), None).await.unwrap();
+        let id = seed_scene(&mgr, "d4", "long-transcript").await.unwrap();
+        assert_eq!(id, "ao-perf-scroll");
+        let entries = mgr.load_entries("d4").await.unwrap();
+        let msgs = entries
+            .iter()
+            .filter(|e| matches!(e, SessionEntry::Message(_)))
+            .count();
+        assert!(msgs >= 160, "expected ~160 messages, got {msgs}");
     }
 }

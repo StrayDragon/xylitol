@@ -103,7 +103,7 @@ pub use theme::{
 pub use tui::{
     Component, FocusTarget, Focusable, InputEvent, InputListenerResult, InputReaction,
     OverlayAnchor, OverlayHandle, OverlayMargin, OverlayOptions, OverlayUnfocusOptions,
-    RenderError, SizeValue, TUI,
+    RenderError, RenderPerfSnap, SizeValue, TUI,
 };
 pub use utils::{
     ExtractedSegments, TruncateFrom, VisualTruncateResult, apply_background_to_line,
