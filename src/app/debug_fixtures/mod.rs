@@ -12,5 +12,7 @@
 mod catalog;
 mod seed;
 
-pub use catalog::{completion_catalog, list_note, resolve_scene_id};
+#[cfg(debug_assertions)]
+pub use catalog::completion_catalog;
+pub use catalog::{list_note, resolve_scene_id};
 pub use seed::seed_scene;

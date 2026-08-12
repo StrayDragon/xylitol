@@ -16,6 +16,7 @@ pub struct ProductSlashCommand {
 
 /// Built-in product commands. Debug-only entries appear only under `debug_assertions`.
 pub fn product_slash_commands() -> Vec<ProductSlashCommand> {
+    #[allow(unused_mut)]
     let mut cmds = vec![
         ProductSlashCommand {
             name: "exit",
@@ -104,11 +105,13 @@ pub fn product_slash_commands() -> Vec<ProductSlashCommand> {
         },
     ];
     #[cfg(debug_assertions)]
-    cmds.push(ProductSlashCommand {
-        name: "debug",
-        description: "Load fixture: /debug <scene>",
-        argument_hint: Some("<scene>"),
-    });
+    {
+        cmds.push(ProductSlashCommand {
+            name: "debug",
+            description: "Load fixture: /debug <scene>",
+            argument_hint: Some("<scene>"),
+        });
+    }
     cmds
 }
 
