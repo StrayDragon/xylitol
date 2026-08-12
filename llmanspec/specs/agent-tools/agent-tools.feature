@@ -285,8 +285,8 @@
     那么 调用失败 包含错误信息
 
   @req:r42
-  场景: all-seven-tools-smoke
-    假如 工具注册表含全部 7 个工具
+  场景: all-ten-tools-smoke
+    假如 工具注册表含全部 10 个工具
     当 各工具以合法参数调用
     那么 各返回成功 ToolResult
 
@@ -354,7 +354,7 @@
   场景: registry
     假如 工具集含全部内置工具
     当 列举工具名
-    那么 返回 7 个工具名
+    那么 返回 10 个工具名
 
   @req:t11
   场景: infra-works

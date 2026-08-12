@@ -9,7 +9,7 @@
 |---|---|---|
 | 0 Pre-start 核对 | ✅ | D1–D10 |
 | 1 Specs landing | ✅ | agent-todo atd1–12；agent-tools r42/t2/t26 |
-| 2–5 实现 | 待 apply | 见 Apply backlog |
+| 2–5 实现 | ✅ apply | 见 Apply backlog |
 
 ---
 
@@ -30,29 +30,29 @@
 
 ### 2. 领域 + 持久（垂直薄片）
 
-1. protocol：`agent_todo` Custom payload 形状 + fold-latest helper（leaf 全扫）
-2. 校验：非空 content、合法 status、至多一条 in_progress；单测
-3. compact/cut 后若无快照残留 → 重 append 最新 list；单测
+1. [x] protocol：`agent_todo` Custom payload 形状 + fold-latest helper（leaf 全扫）
+2. [x] 校验：非空 content、合法 status、至多一条 in_progress；单测
+3. [x] compact/cut 后若无快照残留 → 重 append 最新 list；单测
 
 ### 3. 工具面
 
-1. `todo_list` / `todo_rewrite` / `todo_update` TypedTool + 入 `default_tools`
-2. tool result = 结构化全表；未知 id / 双 in_progress 可读错误
-3. BDD / 单测：工具 ↔ JSONL latest Custom 一致；不进 `project_for_llm` 前缀
-4. 确认 c1900：含 Todo 的 builtins 仍首轮一次冻表
+1. [x] `todo_list` / `todo_rewrite` / `todo_update` TypedTool + 入 `default_tools`
+2. [x] tool result = 结构化全表；未知 id / 双 in_progress 可读错误
+3. [x] BDD / 单测：工具 ↔ JSONL latest Custom 一致；不进 `project_for_llm` 前缀
+4. [x] 确认 c1900：含 Todo 的 builtins 仍首轮一次冻表
 
 ### 4. TUI checklist
 
-1. checklist 对话条目：默认一行摘要，可展开完整列表
-2. resume / switch_session / todo_* 工具结束后同源刷新
-3. harness：摘要计数与 store 一致；无侧栏 / 不占 status 主清单
-4. （可选）architecture 词表加「Todo 清单」一行；DESIGN playground 静图
+1. [x] checklist 对话条目：默认一行摘要，可展开完整列表
+2. [x] resume / switch_session / todo_* 工具结束后同源刷新
+3. [x] harness：摘要计数与 store 一致；无侧栏 / 不占 status 主清单
+4. [x] （可选）architecture 词表加「Todo 清单」一行；DESIGN playground 静图 — 跳过（非阻塞）
 
 ### 5. 收口
 
-1. Print 面：无 UI 但工具+持久可用（冒烟）
-2. `just fmt` / 相关 lint / 相关 test；`llman sdd validate` 满闸
-3. verify 报告；准备 finalize（勿在 apply 中途 archive）
+1. [x] Print 面：无 UI 但工具+持久可用（冒烟）— default_tools + SessionAgentTodoGateway 同源
+2. [x] `just fmt` / 相关 lint / 相关 test；`llman sdd validate` 满闸
+3. [ ] verify 报告；准备 finalize（勿在 apply 中途 archive）— 交 `llman-sdd-verify`
 
 ## 实现顺序
 

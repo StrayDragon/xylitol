@@ -709,9 +709,13 @@ fn t_tools_txt_no_img(ws: &Workspace) {
 }
 // ── agent-tools: unbound tool scenarios (continued) ───────────────
 
-#[given("工具注册表含全部 7 个工具")]
-fn g_tools_all_seven(_ws: &Workspace) {
-    assert_eq!(xylitol::infra::tools::default_tools().len(), 7);
+#[given("工具注册表含全部 10 个工具")]
+fn g_tools_all_ten(_ws: &Workspace) {
+    let tools = xylitol::infra::tools::default_tools();
+    assert_eq!(tools.len(), 10);
+    for n in ["todo_list", "todo_rewrite", "todo_update"] {
+        assert!(tools.iter().any(|t| t.name() == n), "missing builtin {n}");
+    }
 }
 
 #[when("各工具以合法参数调用")]
@@ -786,10 +790,38 @@ async fn w_tools_smoke_all(ws: &Workspace) {
                 .map_err(|e| e.to_string()),
         ),
     ];
-    let failed: Vec<_> = cases
+    let mut failed: Vec<_> = cases
         .into_iter()
         .filter_map(|(name, r)| r.err().map(|e| format!("{name}:{e}")))
         .collect();
+    // One default_tools() so todo_* share the same MemoryTodoGateway.
+    {
+        let tools = xylitol::infra::tools::default_tools();
+        let by = |n: &str| tools.iter().find(|t| t.name() == n).cloned().unwrap();
+        if let Err(e) = by("todo_rewrite")
+            .execute(
+                &ctx,
+                serde_json::json!({
+                    "items": [{"id": "smoke", "content": "smoke todo", "status": "pending"}]
+                }),
+            )
+            .await
+        {
+            failed.push(format!("todo_rewrite:{e}"));
+        }
+        if let Err(e) = by("todo_update")
+            .execute(
+                &ctx,
+                serde_json::json!({"id": "smoke", "status": "completed"}),
+            )
+            .await
+        {
+            failed.push(format!("todo_update:{e}"));
+        }
+        if let Err(e) = by("todo_list").execute(&ctx, serde_json::json!({})).await {
+            failed.push(format!("todo_list:{e}"));
+        }
+    }
     ws.last_result.replace(if failed.is_empty() {
         Some(Ok("all-tools-ok".into()))
     } else {
@@ -956,7 +988,7 @@ fn t_tools_cancelled(ws: &Workspace) {
 
 #[given("工具集含全部内置工具")]
 fn g_tools_registry(_ws: &Workspace) {
-    assert_eq!(xylitol::infra::tools::default_tools().len(), 7);
+    assert_eq!(xylitol::infra::tools::default_tools().len(), 10);
 }
 
 #[when("列举工具名")]
@@ -968,11 +1000,14 @@ fn w_tools_list_names(ws: &Workspace) {
     ws.last_result.replace(Some(Ok(names.join(","))));
 }
 
-#[then("返回 7 个工具名")]
-fn t_tools_seven_names(ws: &Workspace) {
+#[then("返回 10 个工具名")]
+fn t_tools_ten_names(ws: &Workspace) {
     let raw = result_ok_str(&ws.last_result);
     let names: Vec<_> = raw.split(',').collect();
-    assert_eq!(names.len(), 7, "expected 7 tool names, got: {names:?}");
+    assert_eq!(names.len(), 10, "expected 10 tool names, got: {names:?}");
+    for n in ["todo_list", "todo_rewrite", "todo_update"] {
+        assert!(names.contains(&n), "missing {n} in {names:?}");
+    }
 }
 
 #[given("内置工具集已构造")]
