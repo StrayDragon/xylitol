@@ -49,9 +49,11 @@ WirePolicy/compat、ContextPolicy 档、tools 模式、date 放置、是否 chai
 - 软依赖：`c1885`（对照 cache，不写入 depends_on）
 - 属性名与 `c1925`/`c1915` 对齐；可先打点已知字段，后补
 
-## Open Questions
+## Open Questions（已钉）
 
-- 是否在 debug 下附带 body 指纹（hash）而非全文—— 隐私默认。
+| # | 题 | 决议 |
+|---|---|---|
+| 1 | debug 是否附 body 指纹（hash） | **本波不做**。隐私默认：只记布局标签 + 既有 gated I/O；hash/body 指纹后置另案，避免半吊子敏感面 |
 
 ## Ethics
 

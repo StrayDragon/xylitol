@@ -89,12 +89,14 @@ restore(baseline)（能力位，无 MVP 入口）:
 - **app**：后置 `/review`；与现有 Diff 组件可复用展示
 - **信任/权限**：不改变 Trust / 工具 allow-all 定调
 
-## Open Questions
+## Open Questions（已钉 · MVP）
 
-- [ ] 评论回灌：`steer` vs 专用 `ReviewContinue`
-- [ ] restore 的精确 git 命令与 untracked 清理策略（开入口前必须定）
-- [ ] 是否拆成「仅 infra snapshot」与「agent/app 消费者」两个 change
-- [ ] tree oid 存活：是否 `git update-ref` 挂 refs/xylitol/… 防 gc
+| # | 题 | 决议 |
+|---|---|---|
+| 1 | 评论回灌 `steer` vs `ReviewContinue` | **后置消费者票**决定；本 MVP 无 review UI / 无评论通道 |
+| 2 | restore 命令与 untracked 清理 | **本 MVP 不实现 restore**；开产品入口前另票钉破坏性语义 |
+| 3 | 是否拆 infra vs agent/app | **是**：本票仅 infra port + Git CLI；TurnStart/End、`/review` 另开 |
+| 4 | tree oid 是否挂 `refs/xylitol/…` | **否（MVP）**：进程内 opaque oid；失效 → `StaleBaseline`。持久 ref 仅在跨进程/长寿命基线成为真实需求时另开 |
 
 ## 探索笔记
 
