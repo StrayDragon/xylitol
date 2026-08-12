@@ -11,8 +11,8 @@ checkpointed: false
 
 > **一句话**：在主线 ApplicationOwned 产品 TUI 之外，增加一条**几乎无折叠 / 极简键位 / 更矮块限 + session 旁 spill** 的 append-only 应用面，优先服务 sub-agent 观察与旁路；并借此验证分层是否真能支撑「多 app 模式、多 TUI 分别消费」的复用与不复用边界。
 >
-> **阶段**：Designed / pre-start（`proposal` + `design` + `tasks`；**未** Branch binding；**未**改 live specs / 应用代码）。
-> **`ready_for_start`**：**true**（详见 `tasks.md`）。
+> **阶段**：Full + Specs landed（`app-tui-append-only` atao1–atao7；ath30 主会话主语澄清）；**未**写应用代码。
+> **`readyToImplement`**：commit Specs landing 后应为 **true**（见 `tasks.md`）。
 > **不推翻**：[`c2071`](../archive/2026-08-12-c2071-update-app-tui-host-mode-b-only/proposal.md) 主会话 ath30 AO-only；库双入口见 [`c2070`](../archive/2026-08-12-c2070-add-package-tui-dual-interaction-modes/proposal.md)。
 
 ## Why
@@ -71,7 +71,7 @@ checkpointed: false
 | `src/app` | 新 `SurfaceMode` + 瘦 host；组合根再挂一条面 |
 | `packages/xylitol-tui` | 复用 Inline 引擎；**禁止**把主线 AO MUST 偷绑到瘦面 |
 | `agent` / `protocol` | 理想零改；spill 路径若必须收 session 旁 → 最小 infra/工具累加器改动 |
-| live specs | **start 之后** Specs landing；本阶段不改 |
+| live specs | Specs landed：`app-tui-append-only` + ath30 主语澄清 |
 
 ## Open Questions（已钉）
 
@@ -85,14 +85,15 @@ checkpointed: false
 
 细则与数字：`design.md`。任务拆分：`tasks.md`。
 
-## Start readiness
+## Implement readiness
 
 | 项 | 状态 |
 |---|---|
 | 依赖 c2071 归档 | ✅ |
-| design + tasks + OQ | ✅ |
-| Branch / Specs / 代码 | 未做（本阶段禁止） |
-| **ready_for_start** | **true** → 下一步 `llman sdd change start c2080-add-append-only-subagent-tui` |
+| Branch binding | ✅ |
+| Specs landing | ✅（atao1–atao7 + ath30） |
+| 应用代码 | ⛔ 未做（本阶段禁止） |
+| **readyToImplement** | Specs commit 后 **true** → 下一步 `llman-sdd-apply` |
 
 ## Further Notes
 

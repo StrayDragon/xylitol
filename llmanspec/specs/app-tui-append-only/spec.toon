@@ -1,0 +1,20 @@
+kind: llman.sdd.spec
+name: "app-tui-append-only"
+purpose: "独立 append-only 产品面：SurfaceMode 入口、库 Inline 载体、无折叠、矮块帽与 session spill、键位闭集，以及经 XyDriver 的多面复用探针。"
+valid_scope[2]: src/app/,tests/
+requirements[7]{req_id,title,statement}:
+  atao1,"surface-mode-append-only-entry","产品 MUST 提供独立应用面入口 `SurfaceMode::AppendOnly`（或等价显式 CLI/组合根分发），与主会话 TUI / Print 并列装配。TTY 缺省进入主会话产品 TUI 的路径 MUST NOT 被本面抢占；进入 AppendOnly MUST 经显式 flag 或子命令（或等价显式入口）。本面 MUST NOT 实现为主会话 ApplicationOwned 内的嵌套子面板（嵌套后置另票）。"
+  atao2,"library-inline-carrier","AppendOnly 面 MUST 在启动构造时绑定 xylitol-tui `InteractionMode::Inline` 作为物理载体（主屏差分 + emulator-owned 选区）。本面 MUST NOT 承担 ApplicationOwned 的 alt-buffer / 应用内选区 / dock / mouse capture 产品义务。产品对外命名 MUST 称 append-only surface（或等价旁路面名）；MUST NOT 教用户「切换/切回 Inline 模式」。折叠策略与 InteractionMode 正交：本面无折叠是呈现策略，MUST NOT 升格为第三种库交互模式枚举值。"
+  atao3,"no-fold-interaction","AppendOnly 面 MUST NOT 注册或暴露折叠/展开交互：无 activity-fold、无块级 Ctrl+O 视口展开、无 Alt+E 族展开、无折叠三角点击 toggle。超可见帽内容 MUST 仅经 spill 路径关联全文，不得在本面内展开。"
+  atao4,"block-visible-caps","AppendOnly 面已提交块的默认可见行硬帽 MUST 为：tool / bash / assistant 正文至多 3 逻辑行；write / diff 类至多 5 逻辑行。上述硬帽 MUST 严格小于主会话产品 TUI 对应默认预览（主线参考 5 / 10）且 MUST NOT 提供展开抬帽。超出硬帽 MUST 溢出至 session spill 并露出 `[Full output: …]` 文案族（或等价）。"
+  atao5,"session-spill-directory","每个 session MUST 关联唯一 spill 目录，落在该 session 存储旁（与 session id 关联），MUST NOT 以全局散落系统临时目录作为本面溢出 SSOT。工具硬截断与本面块可见行帽溢出均 MUST 将全文写入该目录内文件，并经 `full_output_path`（或等价字段）与 transcript / UI 的 `[Full output: …]` 族关联。本面 MUST NOT 提供专用「打开 spill 文件」产品快捷键；清理跟随 session 删除/过期策略，本要求不另定全局 GC。"
+  atao6,"keybinding-closed-set","AppendOnly 面产品快捷键 MUST 为闭集：Busy 时 Esc（或既有 abort 和弦）→ `XyDriver::abort`（或等价）；退出 → `/exit` 与空闲双 Ctrl+C 确认退出（二者均须可达）；滚动依赖终端原生 scrollback / PgUp·PgDn（Inline 载体）。闭集以外的产品快捷键 MUST NOT 注册，包括但不限于：Ctrl+O 展开、Alt+E、折叠三角、完整 slash 发现目录、Command Plate、会话树双 Esc、steer/follow-up 完整 chrome。若保留单行输入，MUST 仅服务 `/exit` 与（可选）只读旁注，MUST NOT 移植主线 slash 目录。"
+  atao7,"xydriver-reuse-probe","AppendOnly 面 MUST 经同一 `XyDriver` / `XyEvent`（及 `XyDriverError`）seam 消费 agent 流，装配路径 MUST 复用 `composition::build_agent`（或既有组合根等价入口）；MUST NOT fork 第二套 ReAct 循环或平行事件总线。面专属布局/键位/块帽/无折叠策略 MUST 与主会话 AO chrome 分叉。验证 MUST 含审查或 harness：至少一条证明复用 XyDriver seam，至少一条证明未复制主线 fold/完整 chrome 义务；app 面 MUST NOT reach-in `infra::*` / `agent::capabilities`。"
+scenarios[7]{req_id,id,given,when,then,feature}:
+  atao1,atao1-unit,"surface-mode-append-only-entry 由产品入口/配置单测覆盖（非 BDD harness）",审查实现与对应测试,"行为符合本 requirement 陈述",false
+  atao2,atao2-unit,"library-inline-carrier 由产品构造/生命周期单测覆盖（非 BDD harness）",审查实现与对应测试,"行为符合本 requirement 陈述",false
+  atao3,atao3-unit,"no-fold-interaction 由产品 harness/单测覆盖（非 BDD harness）",审查实现与对应测试,"行为符合本 requirement 陈述",false
+  atao4,atao4-unit,"block-visible-caps 由常量/渲染单测钉 3/5 且小于主线（非 BDD harness）",审查实现与对应测试,"行为符合本 requirement 陈述",false
+  atao5,atao5-unit,"session-spill-directory 由 spill 路径与 Full output 关联单测覆盖（非 BDD harness）",审查实现与对应测试,"行为符合本 requirement 陈述",false
+  atao6,atao6-unit,"keybinding-closed-set 由键位表/host 单测覆盖（非 BDD harness）",审查实现与对应测试,"行为符合本 requirement 陈述",false
+  atao7,atao7-unit,"xydriver-reuse-probe 由架构审查清单与 ScriptedDriver harness 覆盖（非 BDD harness）",审查实现与对应测试,"行为符合本 requirement 陈述",false

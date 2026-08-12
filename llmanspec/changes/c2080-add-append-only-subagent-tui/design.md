@@ -18,9 +18,9 @@
 
 ```text
 c2071 archive ✅（ath30 AO-only 主会话）
-  → c2080 Designed（本文件 + tasks；未 start）
-  → change start（Branch binding）
-  → Specs landing（新 capability + ath30 范围澄清）
+  → c2080 Designed ✅
+  → Branch binding ✅
+  → Specs landing ✅（app-tui-append-only + ath30 主语澄清）
   → apply（面 + harness + 架构审查）→ verify → archive
 ```
 
@@ -147,12 +147,13 @@ infra 侧路径从「系统 tmp」收到「session 旁」若证明必须改累�
 
 见 `proposal.md` / `tasks.md` 同表。无未决项挡 start。
 
-## Start readiness
+## Implement readiness
 
 | 项 | 状态 |
 |---|---|
 | `depends_on` c2071 已归档 | ✅ |
 | proposal / design / tasks 齐 | ✅ |
 | Open Questions 全钉 | ✅ |
-| Branch binding / Specs / 应用代码 | ⛔ 未做（本阶段禁止） |
-| **`ready_for_start`** | **`true`** — 可在干净默认分支执行 `llman sdd change start c2080-add-append-only-subagent-tui` |
+| Branch binding + Specs landing | ✅ |
+| 应用代码 | ⛔ 未做（本阶段禁止） |
+| **`readyToImplement`** | Specs commit 后 **true** → `llman-sdd-apply` |
