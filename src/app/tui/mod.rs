@@ -26,9 +26,10 @@ mod tests;
 use std::time::Duration;
 
 use crossterm::event::EventStream as CrosstermEventStream;
-use crossterm::event::{Event, KeyEventKind};
+use crossterm::event::{Event, KeyEventKind, MouseEventKind};
+use futures::FutureExt;
 use futures::StreamExt;
-use xylitol_tui::{CrosstermTerminal, InputEvent};
+use xylitol_tui::{CrosstermTerminal, InputEvent, Terminal};
 
 use crate::app::core::driver::{EventStream as AgentEventStream, XyDriver, XyDriverError};
 
@@ -330,7 +331,46 @@ async fn run_host_loop(
                 maybe = term_events.next() => {
                     match maybe {
                         Some(item) => {
-                            if let Some(ev) = map_crossterm_item(item) {
+                            // Fast scroll: drain already-buffered wheel events into
+                            // one delta + one paint (Kitty/tmux often burst Scroll*).
+                            // Only when the first event is over the transcript pane.
+                            let coalesce_wheel = wheel_delta_from_item(&item).filter(|_| {
+                                session.tui.application_session_active()
+                                    && match &item {
+                                        Ok(Event::Mouse(m)) => {
+                                            let dock = session.tui.dock_rows() as u16;
+                                            let th = Terminal::rows(&session.tui.terminal)
+                                                .saturating_sub(dock);
+                                            m.row < th
+                                        }
+                                        _ => false,
+                                    }
+                            });
+                            if let Some(delta0) = coalesce_wheel {
+                                let mut delta = delta0;
+                                let mut deferred: Option<Result<Event, std::io::Error>> = None;
+                                while let Some(next) = term_events.next().now_or_never().flatten()
+                                {
+                                    if let Some(d) = wheel_delta_from_item(&next) {
+                                        delta = delta.saturating_add(d);
+                                    } else {
+                                        deferred = Some(next);
+                                        break;
+                                    }
+                                }
+                                session.apply_ao_wheel_delta(delta)?;
+                                if let Some(next) = deferred
+                                    && let Some(ev) = map_crossterm_item(next)
+                                {
+                                    match ev {
+                                        Ok(host_ev) => session.step(host_ev)?,
+                                        Err(e) => {
+                                            e.log_failure("tui.term_input");
+                                            return Err(e);
+                                        }
+                                    }
+                                }
+                            } else if let Some(ev) = map_crossterm_item(item) {
                                 match ev {
                                     Ok(host_ev) => session.step(host_ev)?,
                                     Err(e) => {
@@ -407,6 +447,17 @@ async fn run_host_loop(
     session.tui.finish();
     log::info!(target: "xylitol::tui", "product TUI host stopped");
     host_result
+}
+
+fn wheel_delta_from_item(item: &Result<Event, std::io::Error>) -> Option<isize> {
+    match item {
+        Ok(Event::Mouse(m)) => match m.kind {
+            MouseEventKind::ScrollUp => Some(-3),
+            MouseEventKind::ScrollDown => Some(3),
+            _ => None,
+        },
+        _ => None,
+    }
 }
 
 /// Shared crossterm → HostEvent map for main select and bang input stream (c725 / 2A).

@@ -839,19 +839,43 @@ impl<T: Terminal> HostSession<T> {
             }
         }
 
-        // Dock sync is only needed when we may paint (or just painted). Skipping
-        // on quiet ticks / dropped motion keeps ApplicationOwned hosts cheap.
+        // Dock sync only when chrome/content may have changed. Reproject-only
+        // wheel frames keep the prior dock measurement.
         let may_paint = self.tui.is_render_requested();
-        if may_paint && self.tui.application_session_active() {
+        let need_dock_sync =
+            may_paint && self.tui.application_session_active() && self.tui.ao_components_stale();
+        if need_dock_sync {
             self.sync_dock_rows();
         }
         match self.tui.try_render() {
             Ok(painted) => {
                 if painted {
                     self.paint_dirty = false;
-                    if self.tui.application_session_active() {
+                    // After a full component paint, refresh measured dock rows.
+                    if self.tui.application_session_active()
+                        && !self.tui.last_render_perf().ao_reprojected
+                    {
                         self.sync_dock_rows();
                     }
+                }
+                Ok(())
+            }
+            Err(RenderError { .. }) => self.recover_from_render_error(),
+        }
+    }
+
+    /// Apply coalesced ApplicationOwned wheel deltas and attempt one paint.
+    pub fn apply_ao_wheel_delta(&mut self, delta: isize) -> Result<(), XyDriverError> {
+        if delta == 0 || !self.tui.application_session_active() {
+            return Ok(());
+        }
+        if !self.tui.application_owned_scroll_by(delta) {
+            return Ok(());
+        }
+        match self.tui.try_render() {
+            Ok(painted) => {
+                if painted {
+                    self.paint_dirty = false;
                 }
                 Ok(())
             }

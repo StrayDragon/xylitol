@@ -901,6 +901,39 @@ fn application_owned_finalize_only_paint_lines() {
 }
 
 #[test]
+fn application_owned_wheel_uses_scroll_region_shift() {
+    let lines: Vec<String> = (0..80).map(|i| format!("L{i:02}")).collect();
+    let mut tui = TUI::with_interaction_mode(
+        LoggingVirtualTerminal::new(40, 12),
+        InteractionMode::ApplicationOwned,
+    );
+    tui.set_dock_rows(2);
+    tui.add_child(Box::new(StaticLines { lines }));
+    tui.terminal.start();
+    tui.begin_application_owned_session();
+    tui.render_frame().expect("warm");
+    tui.clear_ao_scroll_shift_frames_for_test();
+    tui.terminal.clear_writes();
+
+    let _ = tui.dispatch_event(InputEvent::Mouse(MouseEvent {
+        kind: MouseEventKind::ScrollUp,
+        column: 2,
+        row: 2,
+        modifiers: KeyModifiers::NONE,
+    }));
+    tui.render_frame().expect("wheel");
+    assert!(
+        tui.ao_scroll_shift_frames_for_test() >= 1,
+        "small wheel without selection should use scroll-region shift"
+    );
+    let writes = tui.terminal.all_writes();
+    assert!(
+        writes.contains("\x1b[3S") || writes.contains("\x1b[3T"),
+        "expected CSI scroll in transcript region, got: {writes:?}"
+    );
+}
+
+#[test]
 fn application_owned_wheel_reprojects_without_component_render() {
     let lines: Vec<String> = (0..80).map(|i| format!("L{i:02}")).collect();
     let mut tui = TUI::with_interaction_mode(
