@@ -10,7 +10,7 @@ checkpointed: false
 
 # 广义 FoldTarget：剩余可折块鼠标独立点（吸收 c2050）
 
-> **状态**：Designed / pre-`change start`（2026-08-12）。硬前置 [`c2040`](../archive/2026-08-12-c2040-add-tui-mouse-click-fold-triangle/)（已归档）。规划壳：`design.md` + `tasks.md`。**禁止**在默认分支 Specs landing / 应用代码。
+> **状态**：Specs landed / `readyToImplement=true`（2026-08-12）。硬前置 [`c2040`](../archive/2026-08-12-c2040-add-tui-mouse-click-fold-triangle/)（已归档）。live：`app-tui-transcript` att29–att32；host skip（ath33）。Wave B Segment **实现**仍闸 c1760 归档。
 >
 > **一句话**：在 c2040 L1 四类三角之上扩展统一 `FoldTarget`/`FoldHitTable`，补齐 Compaction + Ctrl+O viewport 鼠标点；Wave B 吸收段级点击并 **docs-only 收薄 c2050**。
 
@@ -58,18 +58,18 @@ c2040 只收口 Tool/Diff/Ask/Thinking。产品终局是「凡可折块都能鼠
 
 无未决项挡 `change start`。细则决策表见 `design.md`。
 
-## Start readiness
+## Specs landing
 
 | 项 | 状态 |
 |---|---|
-| proposal / design / tasks | ✅ |
-| Open Questions | ✅ 全清 |
-| c2040 depends | ✅ 已归档 |
-| c2050 吸收 | ✅ D1/D2 钉死 |
-| live specs / 应用代码 | ⬜ 须 start 后；本阶段禁止改 |
-| ready_for_start | **true** |
+| Branch binding | ✅ `sdd/c2045-add-tui-fold-target-remaining` |
+| `app-tui-transcript` | ✅ att29–att32（`feature: false` unit） |
+| `app-tui-host` | ✅ skip（ath33 已覆盖） |
+| att23–att28 共存 | ✅ 未改；c1760 cherry-pick 保留 |
+| Wave B 实现闸 | c1760 归档（specs 已先写 att31） |
+| 应用代码 | ⬜ 本阶段禁止；下一步 apply Wave A |
 
-下一步：干净默认分支上 `llman sdd change start c2045-add-tui-fold-target-remaining` → Specs landing → apply Wave A；Wave B 等 c1760。
+下一步：`llman-sdd-apply` Wave A；Wave B 等 c1760 归档。
 
 ## Ethics
 
