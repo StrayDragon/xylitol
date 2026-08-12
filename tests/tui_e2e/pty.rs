@@ -276,6 +276,33 @@ impl PtySession {
         windows_two(self.buf.as_slice(), needle)
     }
 
+    /// Poll until `needle` appears in the raw stream **after** the last
+    /// occurrence of `after` (e.g. second `?1049h` after `?1049l` on resume).
+    pub fn wait_for_raw_after(
+        &mut self,
+        needle: &str,
+        after: &str,
+        timeout: Duration,
+    ) -> std::io::Result<()> {
+        let needle_b = needle.as_bytes();
+        let after_b = after.as_bytes();
+        let deadline = Instant::now() + timeout;
+        loop {
+            self.drain(Duration::from_millis(50));
+            if let Some(after_at) = find_last_subslice(&self.buf, after_b) {
+                let tail = &self.buf[after_at + after_b.len()..];
+                if windows_two(tail, needle_b) {
+                    return Ok(());
+                }
+            }
+            if Instant::now() >= deadline {
+                return Err(std::io::Error::other(format!(
+                    "timeout waiting raw for {needle:?} after last {after:?}"
+                )));
+            }
+        }
+    }
+
     /// Non-blocking poll of child exit status (`None` = still running).
     pub fn try_wait(&mut self) -> std::io::Result<Option<u32>> {
         match self.child.try_wait() {
@@ -320,6 +347,15 @@ fn windows_two(haystack: &[u8], needle: &[u8]) -> bool {
         return false;
     }
     haystack.windows(needle.len()).any(|w| w == needle)
+}
+
+fn find_last_subslice(haystack: &[u8], needle: &[u8]) -> Option<usize> {
+    if needle.is_empty() || haystack.len() < needle.len() {
+        return None;
+    }
+    haystack
+        .windows(needle.len())
+        .rposition(|window| window == needle)
 }
 
 // ── Tests (all #[ignore] — spec test-infra r8) ─────────────────────────────
@@ -643,19 +679,141 @@ fn pty_agent_demo_alt_mode_b_drag_select_osc52() {
         "precondition: alt-buffer active"
     );
 
-    // SGR mouse: left down → drag → up on an upper transcript row (1-based cols/rows).
-    session.send_keys("\x1b[<0;8;4M").expect("mouse down");
-    session.send_keys("\x1b[<32;48;4M").expect("mouse drag");
-    session.send_keys("\x1b[<0;48;4m").expect("mouse up");
-    session.drain(Duration::from_millis(400));
+    // Vertical drag across mid-transcript (avoid fold headers / dock).
+    session.send_keys("\x1b[<0;12;6M").expect("mouse down");
+    session.send_keys("\x1b[<32;12;14M").expect("mouse drag");
+    session.send_keys("\x1b[<0;12;14m").expect("mouse up");
+    session.drain(Duration::from_millis(500));
     session
-        .wait_for_raw("\x1b]52;", Duration::from_secs(5))
+        .wait_for_raw("\x1b]52;", Duration::from_secs(8))
         .expect("drag-select release must emit OSC52");
 
     session.send_keys("\x15").expect("clear editor");
     session.send_keys("\x03").expect("quit");
     let code = session.wait_exit(Duration::from_secs(30)).expect("exit");
     assert_eq!(code, 0);
+}
+
+/// c2070 Mode B: wheel over transcript must not crash; viewport stays app-owned
+/// (smoke — sticky persistence is covered by package unit tests).
+#[test]
+#[ignore = "E2E: spawns a real PTY + cargo build; run via `just test-tui-e2e-pty`"]
+fn pty_agent_demo_alt_mode_b_wheel_smoke() {
+    const COLS: u16 = 100;
+    const ROWS: u16 = 30;
+    let mut session = PtySession::spawn_demo_alt(COLS, ROWS).expect("spawn agent_demo_alt");
+    session
+        .wait_for(
+            crate::DEMO_READY_NEEDLE,
+            Duration::from_secs(90),
+            COLS as usize,
+            ROWS as usize,
+        )
+        .expect("agent_demo_alt should render");
+
+    // SGR wheel up (button 64) then wheel down (65) over transcript.
+    for _ in 0..6 {
+        session.send_keys("\x1b[<64;20;5M").expect("wheel up");
+    }
+    for _ in 0..3 {
+        session.send_keys("\x1b[<65;20;5M").expect("wheel down");
+    }
+    session.drain(Duration::from_millis(300));
+    session
+        .wait_for(
+            crate::DEMO_READY_NEEDLE,
+            Duration::from_secs(10),
+            COLS as usize,
+            ROWS as usize,
+        )
+        .expect("Mode B must stay alive after wheel");
+
+    session.send_keys("\x15").expect("clear");
+    session.send_keys("\x03").expect("quit");
+    assert_eq!(session.wait_exit(Duration::from_secs(30)).expect("exit"), 0);
+}
+
+/// c2070 Mode B H4: drag from transcript into dock still copy-on-release (clamp).
+#[test]
+#[ignore = "E2E: spawns a real PTY + cargo build; run via `just test-tui-e2e-pty`"]
+fn pty_agent_demo_alt_mode_b_dock_clamp_copy() {
+    const COLS: u16 = 100;
+    const ROWS: u16 = 30;
+    let mut session = PtySession::spawn_demo_alt(COLS, ROWS).expect("spawn agent_demo_alt");
+    session
+        .wait_for(
+            crate::DEMO_READY_NEEDLE,
+            Duration::from_secs(90),
+            COLS as usize,
+            ROWS as usize,
+        )
+        .expect("agent_demo_alt should render");
+
+    // Down in transcript, drag into lower dock band, release in dock.
+    session.send_keys("\x1b[<0;8;4M").expect("down transcript");
+    session.send_keys("\x1b[<32;8;28M").expect("drag into dock");
+    session.send_keys("\x1b[<0;8;28m").expect("up in dock");
+    session.drain(Duration::from_millis(400));
+    session
+        .wait_for_raw("\x1b]52;", Duration::from_secs(5))
+        .expect("dock-clamp release must still OSC52");
+
+    session.send_keys("\x15").expect("clear");
+    session.send_keys("\x03").expect("quit");
+    assert_eq!(session.wait_exit(Duration::from_secs(30)).expect("exit"), 0);
+}
+
+/// c2070 ptim11: Ctrl+G with instant `$EDITOR` leave/re-enter alt + mouse.
+#[test]
+#[ignore = "E2E: spawns a real PTY + cargo build; run via `just test-tui-e2e-pty`"]
+fn pty_agent_demo_alt_mode_b_suspend_resume_restores_alt() {
+    const COLS: u16 = 100;
+    const ROWS: u16 = 30;
+    let mut session = PtySession::spawn_example_with_env(
+        "agent_demo_alt",
+        COLS,
+        ROWS,
+        &[
+            ("XYLITOL_AGENT_DEMO_REAL_EDITOR", "1"),
+            ("EDITOR", "true"),
+            ("VISUAL", "true"),
+        ],
+    )
+    .expect("spawn agent_demo_alt with instant editor");
+    session
+        .wait_for(
+            crate::DEMO_READY_NEEDLE,
+            Duration::from_secs(90),
+            COLS as usize,
+            ROWS as usize,
+        )
+        .expect("agent_demo_alt should render");
+    assert!(
+        session.raw_contains(b"\x1b[?1049h"),
+        "precondition: alt entered"
+    );
+
+    // Ctrl+G → suspend → `true` exits 0 → resume Mode B.
+    session.send_keys("\x07").expect("Ctrl+G");
+    session
+        .wait_for_raw("\x1b[?1049l", Duration::from_secs(10))
+        .expect("suspend must leave alt-buffer");
+    // Re-enter after editor exits (must be a *new* ?1049h after leave).
+    session
+        .wait_for_raw_after("\x1b[?1049h", "\x1b[?1049l", Duration::from_secs(10))
+        .expect("resume must re-enter alt-buffer");
+    session
+        .wait_for(
+            crate::DEMO_READY_NEEDLE,
+            Duration::from_secs(15),
+            COLS as usize,
+            ROWS as usize,
+        )
+        .expect("UI must recover after suspend");
+
+    session.send_keys("\x15").expect("clear");
+    session.send_keys("\x03").expect("quit");
+    assert_eq!(session.wait_exit(Duration::from_secs(30)).expect("exit"), 0);
 }
 
 /// c669: product bang `!echo` streams into a Bash block (real shell, Fake model).

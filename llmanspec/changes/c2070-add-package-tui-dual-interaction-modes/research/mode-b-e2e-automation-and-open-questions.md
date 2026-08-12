@@ -47,9 +47,10 @@
 | `agent_demo` / `agent_demo_alt` + `agent_demo_impl` | ✅；`just demo-tui` / `demo-tui-alt-screen`；禁 env 切模式 |
 | PTY `pty_agent_demo_alt_mode_b_alt_mouse_and_exit_dump` | ✅ alt `?1049h/l` + mouse enable/disable + dump marker |
 | PTY `pty_agent_demo_alt_mode_b_drag_select_osc52` | ✅ SGR drag → OSC52 |
+| PTY wheel / dock clamp / suspend | ✅ `pty_agent_demo_alt_mode_b_{wheel_smoke,dock_clamp_copy,suspend_resume_restores_alt}` |
 | 层 5 仍以 Inline `agent_demo` 为主场景 | 不变；Mode B 为新增 `*_alt_*` 用例 |
 
-剩余 SHOULD：dock clamp、滚轮 sticky、suspend/resume、tmux Mode B、CapturedScreen alt 支持。
+剩余 SHOULD：tmux Mode B 粗烟、CapturedScreen alt 支持、Editor 多行选区 pty。
 
 ## 2. Proposed automation matrix
 

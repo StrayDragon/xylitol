@@ -71,7 +71,7 @@
 - [ ] 7.4 `llman sdd validate --strict`；verify 双轴无 CRITICAL；确认未实现 blocks
 - [ ] 7.5 **Specs landing**：改写 `ath30` → 产品 MUST B-only（废「默认 A」）
 - [x] 7.6 **Demo 拆分**：`agent_demo`（Inline）与 `agent_demo_alt`（Mode B）两文件 + `agent_demo_impl`；just 两 recipe；删除 `XYLITOL_AGENT_DEMO_MODE`
-- [x] 7.7 **Mode B e2e 最小闸**（PTY）：`pty_agent_demo_alt_mode_b_alt_mouse_and_exit_dump`（alt+mouse+dump）+ `pty_agent_demo_alt_mode_b_drag_select_osc52`；扩矩阵仍见 research
+- [x] 7.7 **Mode B e2e**（PTY）：alt/mouse/dump、OSC52 拖选、wheel smoke、dock clamp copy、suspend/resume；tmux Mode B 粗烟仍 SHOULD
 - [ ] 7.8 库双入口结构债：按 strict-review 收敛 `application_session_active` 散布（可分期，不挡 7.5–7.6）
 
 ---
