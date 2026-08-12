@@ -51,6 +51,28 @@ impl ApplicationOwnedRuntime {
         self.selection.copy_on_release = on;
     }
 
+    /// Install / clear transcript click priority (fold hit, etc.). Prefer
+    /// [`crate::TUI::set_transcript_hit_priority`] so the hook survives
+    /// session recreate (suspend / begin).
+    pub fn set_hit_priority(&mut self, hit: Option<crate::selection::HitPriorityFn>) {
+        self.selection.set_hit_priority(hit);
+    }
+
+    /// Whether transcript selection currently spans at least one cell.
+    pub fn has_selection(&self) -> bool {
+        self.selection.has_selection()
+    }
+
+    /// Clear transcript selection / drag without copying.
+    pub fn clear_selection(&mut self) {
+        self.selection.clear();
+    }
+
+    /// Selected transcript plain text, if any.
+    pub fn selected_text(&self) -> Option<String> {
+        self.selection.selected_text(self.scroll.lines())
+    }
+
     /// Full transcript + last dock — written to main-screen scrollback when
     /// leaving ApplicationOwned if [`crate::TUI::append_session_to_main_scrollback_on_exit`].
     pub fn session_lines_for_main_scrollback(&self) -> Vec<String> {

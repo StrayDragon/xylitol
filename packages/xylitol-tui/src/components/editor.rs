@@ -2224,6 +2224,15 @@ impl Component for Editor {
         self.selection.dragging
     }
 
+    fn clear_pointer_selection(&mut self) -> bool {
+        if !self.selection.has_selection() && !self.selection.dragging {
+            return false;
+        }
+        self.selection.clear();
+        self.mouse_dirty = true;
+        true
+    }
+
     fn tick(&mut self) -> bool {
         // Paste-burst catch-up only. Editor selection does not auto-scroll the
         // viewport while dragging (edge-scroll removed — caused click ghosts).

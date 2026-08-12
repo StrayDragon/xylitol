@@ -282,4 +282,8 @@ impl Component for UiRoot {
         }
         dirty
     }
+
+    fn clear_pointer_selection(&mut self) -> bool {
+        Component::clear_pointer_selection(&mut self.editor)
+    }
 }

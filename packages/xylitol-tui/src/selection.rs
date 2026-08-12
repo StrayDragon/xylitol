@@ -97,8 +97,12 @@ fn base64_encode(input: &[u8]) -> String {
     result
 }
 
-/// Optional click consumer (e.g. future fold hit). Return true to swallow the press.
-pub type HitPriorityFn = Box<dyn FnMut(u16, u16) -> bool + Send>;
+/// Optional click consumer (e.g. fold-triangle hit for c2040).
+/// Return true to swallow the press (clear selection; do not start drag).
+///
+/// Not `Send`: ApplicationOwned hosts are single-threaded and typically capture
+/// `Rc<RefCell<_>>` fold tables (c2040).
+pub type HitPriorityFn = Box<dyn FnMut(u16, u16) -> bool>;
 
 /// ApplicationOwned selection controller over a [`ScrollView`] transcript pane.
 pub struct SelectionController {
@@ -144,6 +148,11 @@ impl SelectionController {
 
     pub fn set_hit_priority(&mut self, hit: Option<HitPriorityFn>) {
         self.hit_priority = hit;
+    }
+
+    /// Take the hit-priority hook (e.g. TUI park/restore across a mouse dispatch).
+    pub fn take_hit_priority(&mut self) -> Option<HitPriorityFn> {
+        self.hit_priority.take()
     }
 
     pub fn clear(&mut self) {

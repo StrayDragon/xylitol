@@ -47,6 +47,15 @@ c2070（库 ApplicationOwned + 启动绑定模式 + 禁止热切）
 
 **硬前置**：c2070 归档（或至少 ptim14 host 清单可复用），再 `change start` 本票。
 
+### 库侧已就绪（c2070 收口后，本 change 无需再扩库）
+
+| 需求 | API / 事实 |
+|---|---|
+| 启动绑定 AO | `TUI::with_interaction_mode` / `ApplicationOwnedTui` / `HostSession::new_product_ui_with_meta_mode` |
+| 禁热切 | 无 `apply_interaction_mode`；ath30/ptim01 已钉启动选定 |
+| 退出留主屏可翻 | `finish` / `finish_application_owned` + `set_append_session_to_main_scrollback_on_exit` |
+| Host 清单 | `packages/xylitol-tui/AGENTS.md` § ApplicationOwned host checklist（ptim14） |
+
 ## Out of scope
 
 - 库双入口结构重构（属 c2070）
