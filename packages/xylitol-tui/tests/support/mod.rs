@@ -338,6 +338,31 @@ impl VirtualTerminal {
         }
     }
 
+    fn insert_delete_lines(&mut self, count: usize, insert: bool) {
+        if self.cursor_row < self.scroll_top || self.cursor_row > self.scroll_bottom {
+            return;
+        }
+        let top = self.cursor_row;
+        let count = count.max(1).min(self.scroll_bottom.saturating_sub(top) + 1);
+        let overlap = self.scroll_bottom - top + 1 - count;
+        let blank = vec![Cell::default(); self.cols as usize];
+        if insert {
+            for offset in (0..overlap).rev() {
+                self.grid[top + offset + count] = self.grid[top + offset].clone();
+            }
+            for row in top..top + count {
+                self.grid[row] = blank.clone();
+            }
+        } else {
+            for offset in 0..overlap {
+                self.grid[top + offset] = self.grid[top + offset + count].clone();
+            }
+            for row in self.scroll_bottom + 1 - count..=self.scroll_bottom {
+                self.grid[row] = blank.clone();
+            }
+        }
+    }
+
     fn apply_sgr(&mut self, params: &Params) {
         // Flatten all params (including subparams) into a flat stream, then
         // walk with a cursor. `\x1b[38;5;208m` yields three top-level params
@@ -586,6 +611,14 @@ impl Perform for VTPerformer<'_> {
             'T' => {
                 let count = nth_param(params, 0).unwrap_or(1) as usize;
                 self.vt.scroll_region(count, false);
+            }
+            'L' => {
+                let count = nth_param(params, 0).unwrap_or(1) as usize;
+                self.vt.insert_delete_lines(count, true);
+            }
+            'M' => {
+                let count = nth_param(params, 0).unwrap_or(1) as usize;
+                self.vt.insert_delete_lines(count, false);
             }
             'h' | 'l' if nth_param(params, 0) == Some(7) => {
                 self.vt.auto_wrap = byte == 'h';

@@ -404,6 +404,8 @@ pub struct RenderPerfSnap {
     pub finalize_line_reuses: u64,
     /// ApplicationOwned skipped `Component::render` and only re-sliced the viewport.
     pub ao_reprojected: bool,
+    /// ApplicationOwned reused terminal rows with IL/DL for a pure wheel shift.
+    pub ao_vertical_shifted: bool,
 }
 
 /// Minimum spacing between throttled frames (~60fps). Mirrors pi's
@@ -411,10 +413,52 @@ pub struct RenderPerfSnap {
 const MIN_RENDER_INTERVAL_MS: u64 = 16;
 const BEGIN_RENDER_BATCH: &str = "\x1b[?2026h\x1b[?7l";
 const END_RENDER_BATCH: &str = "\x1b[?7h\x1b[?2026l";
+const SEGMENT_RESET: &str = "\x1b[0m\x1b]8;;\x07";
 /// pi `requestRender(true)` sets `previousWidth = -1` so `widthChanged` is true
 /// and the next frame takes `fullRender(true)` (`2J`/`H`/`3J`). `usize` has no
 /// `-1`; use `MAX` as the same non-zero ≠ real-width sentinel.
 const FORCE_SIZE_SENTINEL: usize = usize::MAX;
+
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+enum VerticalShift {
+    Up(usize),
+    Down(usize),
+}
+
+fn previous_body(line: &str) -> &str {
+    line.strip_suffix(SEGMENT_RESET).unwrap_or(line)
+}
+
+fn shifted_previous_index(
+    row: usize,
+    total_rows: usize,
+    dock_rows: usize,
+    shift: VerticalShift,
+) -> Option<usize> {
+    let transcript_rows = total_rows.saturating_sub(dock_rows);
+    match shift {
+        VerticalShift::Up(amount) if row < transcript_rows.saturating_sub(amount) => {
+            Some(row + amount)
+        }
+        VerticalShift::Down(amount) if row >= amount && row < transcript_rows => Some(row - amount),
+        _ => None,
+    }
+}
+
+fn append_rewrite_lines(buf: &mut String, lines: &[String], start: usize, end: usize) {
+    let end = end.min(lines.len());
+    if start >= end {
+        return;
+    }
+    buf.push_str(&format!("\x1b[{};1H", start + 1));
+    for (i, line) in lines.iter().enumerate().take(end).skip(start) {
+        if i > start {
+            buf.push_str("\r\n");
+        }
+        buf.push_str("\x1b[2K");
+        buf.push_str(line);
+    }
+}
 
 impl<T: Terminal> TUI<T> {
     pub fn new(terminal: T) -> Self {
@@ -1820,26 +1864,39 @@ impl<T: Terminal> TUI<T> {
         // pi: extract cursor marker before applyLineResets.
         let cursor_pos = self.extract_cursor_position(&mut new_lines, height);
 
+        let ao_dock_rows = self
+            .application_owned
+            .as_ref()
+            .map(ApplicationOwnedRuntime::dock_line_count)
+            .unwrap_or(0)
+            .min(new_lines.len());
+        let ao_wheel_shift = (ao_reprojected && self.ao_wheel_render_requested)
+            .then(|| self.detect_application_owned_vertical_shift(&new_lines, ao_dock_rows))
+            .flatten();
+
         // pi applyLineResets + hard width invariant.
         // Fast path (A+B): when terminal width is unchanged and the component
         // emitted the same pre-reset body as last frame, reuse the previous
         // finalized line (already normalized + SEGMENT_RESET + width-ok).
         // Skip normalize and visible_width for that line. On resize, or when
         // content differs, take the slow path so overflow still errors.
-        const SEGMENT_RESET: &str = "\x1b[0m\x1b]8;;\x07";
         let reuse_ok = self.previous_width == width;
+        let paint_rows = new_lines.len();
         for (i, line) in new_lines.iter_mut().enumerate() {
             if is_image_line(line) {
                 continue;
             }
-            if reuse_ok
-                && let Some(prev) = self.previous_lines.get(i)
-                && let Some(body) = prev.strip_suffix(SEGMENT_RESET)
-                && body == line.as_str()
-            {
-                *line = prev.clone();
-                self.finalize_line_reuses = self.finalize_line_reuses.saturating_add(1);
-                continue;
+            if reuse_ok {
+                let shifted_prev = ao_wheel_shift
+                    .and_then(|shift| shifted_previous_index(i, paint_rows, ao_dock_rows, shift));
+                let previous_index = shifted_prev.unwrap_or(i);
+                if let Some(prev) = self.previous_lines.get(previous_index)
+                    && previous_body(prev) == line.as_str()
+                {
+                    *line = prev.clone();
+                    self.finalize_line_reuses = self.finalize_line_reuses.saturating_add(1);
+                    continue;
+                }
             }
 
             let mut finalized = normalize_terminal_output(line);
@@ -1897,11 +1954,16 @@ impl<T: Terminal> TUI<T> {
                 && !new_lines.is_empty()
                 && new_lines.len() <= self.previous_viewport_top);
 
-        if do_full {
+        let ao_vertical_shifted = if do_full {
             let clear = !(self.previous_lines.is_empty() && !width_changed && !height_changed);
             self.full_render(&new_lines, clear, height);
+            false
+        } else if let Some(shift) = ao_wheel_shift {
+            self.application_owned_vertical_shift_render(&new_lines, ao_dock_rows, shift);
+            true
         } else if first_changed < 0 {
             // No change at all — just reposition the cursor (pi's no-op branch).
+            false
         } else {
             self.differential_render(
                 &new_lines,
@@ -1911,7 +1973,8 @@ impl<T: Terminal> TUI<T> {
                 last_changed,
                 appended,
             );
-        }
+            false
+        };
 
         self.position_cursor(cursor_pos, new_lines.len());
         self.last_render_perf = RenderPerfSnap {
@@ -1921,6 +1984,7 @@ impl<T: Terminal> TUI<T> {
             finalize_width_checks: self.finalize_width_checks.saturating_sub(checks_before),
             finalize_line_reuses: self.finalize_line_reuses.saturating_sub(reuses_before),
             ao_reprojected,
+            ao_vertical_shifted,
         };
         self.previous_lines = new_lines;
         self.previous_width = width;
@@ -1993,6 +2057,78 @@ impl<T: Terminal> TUI<T> {
             last_changed = (new_lines.len() - 1) as isize;
         }
         (first_changed, last_changed, appended)
+    }
+
+    fn detect_application_owned_vertical_shift(
+        &self,
+        new_lines: &[String],
+        dock_rows: usize,
+    ) -> Option<VerticalShift> {
+        if new_lines.len() != self.previous_lines.len() {
+            return None;
+        }
+        let transcript_rows = new_lines.len().saturating_sub(dock_rows);
+        if transcript_rows < 2
+            || !(transcript_rows..new_lines.len())
+                .all(|i| previous_body(&self.previous_lines[i]) == new_lines[i])
+        {
+            return None;
+        }
+
+        for amount in 1..transcript_rows {
+            if (0..transcript_rows - amount)
+                .all(|i| previous_body(&self.previous_lines[i + amount]) == new_lines[i])
+            {
+                return Some(VerticalShift::Up(amount));
+            }
+            if (amount..transcript_rows)
+                .all(|i| previous_body(&self.previous_lines[i - amount]) == new_lines[i])
+            {
+                return Some(VerticalShift::Down(amount));
+            }
+        }
+        None
+    }
+
+    /// Shift only terminal rows for an AO wheel frame, without DECSTBM or CSI
+    /// S/T. IL/DL leave the hardware cursor at the explicit CUP origin; redraw
+    /// the exposed transcript edge and dock in the same synchronized batch.
+    fn application_owned_vertical_shift_render(
+        &mut self,
+        new_lines: &[String],
+        dock_rows: usize,
+        shift: VerticalShift,
+    ) {
+        let transcript_rows = new_lines.len().saturating_sub(dock_rows);
+        let mut buf = String::from(BEGIN_RENDER_BATCH);
+        buf.push_str("\x1b[1;1H");
+
+        match shift {
+            VerticalShift::Up(amount) => {
+                buf.push_str(&format!("\x1b[{amount}M"));
+                append_rewrite_lines(
+                    &mut buf,
+                    new_lines,
+                    transcript_rows.saturating_sub(amount),
+                    new_lines.len(),
+                );
+            }
+            VerticalShift::Down(amount) => {
+                buf.push_str(&format!("\x1b[{amount}L"));
+                append_rewrite_lines(&mut buf, new_lines, 0, amount);
+                append_rewrite_lines(&mut buf, new_lines, transcript_rows, new_lines.len());
+            }
+        }
+
+        let final_row = new_lines.len().saturating_sub(1);
+        buf.push_str(&format!("\x1b[{};1H", final_row + 1));
+        buf.push_str(END_RENDER_BATCH);
+        self.terminal.write(&buf);
+
+        self.cursor_row = final_row;
+        self.hardware_cursor_row = final_row;
+        self.previous_viewport_top = 0;
+        self.max_lines_rendered = self.max_lines_rendered.max(new_lines.len());
     }
 
     fn differential_render(

@@ -173,6 +173,7 @@ async fn lab_ao_session_perf_report() {
     session.tui.clear_ao_reproject_frames_for_test();
     let mut wheel_us = Vec::new();
     let mut wheel_reprojected = 0u32;
+    let mut wheel_vertical_shifted = 0u32;
     let wheel_notch = session.tui.application_owned_wheel_notch();
     for _ in 0..40 {
         let t0 = Instant::now();
@@ -181,6 +182,9 @@ async fn lab_ao_session_perf_report() {
         wheel_us.push(t0.elapsed().as_micros() as u64);
         if session.tui.last_render_perf().ao_reprojected {
             wheel_reprojected += 1;
+        }
+        if session.tui.last_render_perf().ao_vertical_shifted {
+            wheel_vertical_shifted += 1;
         }
     }
     wheel_us.sort_unstable();
@@ -220,7 +224,7 @@ async fn lab_ao_session_perf_report() {
          source={source}\n\
          warm_us={warm_us} component_lines={} paint_lines={} finalize_checks={} reuses={}\n\
          idle_paint p50={}us p95={}us\n\
-         wheel_paint p50={}us p95={}us reprojected={wheel_reprojected}/40 ao_reproject_frames={}\n\
+         wheel_paint p50={}us p95={}us reprojected={wheel_reprojected}/40 vertical_shifted={wheel_vertical_shifted}/40 ao_reproject_frames={}\n\
          drag_paint p50={}us p95={}us\n\
          last_frame component_lines={} paint_lines={} finalize_checks={} reuses={} do_render_us={} ao_reprojected={}",
         warm_perf.component_lines,
