@@ -9,6 +9,8 @@ depends_on:
 # 多级 ActivityFold 适配鼠标 / 块级覆盖
 
 > **状态**：active 规划草案（自 c2070 nested cascade 拆出）。前置 [`c2070`](../archive/2026-08-12-c2070-add-package-tui-dual-interaction-modes/proposal.md) + `c1760` + `c2040`。段级点击依赖 **c2020** 管道 + Mode B；见 c2070 README「已落地地基：c2020」。
+>
+> **2026-08-12 注**：c2040 深挖 Q6=B 新建 [`c2045`](../c2045-add-tui-fold-target-remaining/proposal.md)（广义 FoldTarget + 剩余块）。propose 时评估本 change **被 c2045 收薄/吸收**，避免两套段命中 API。
 
 > **一句话**：让 `c1760` 的段级 L2/L3 与 L1 块级 **鼠标定点**、全局键盘折叠共用一套目标模型与性能边界（**无** keyboard leader 编号）。
 
