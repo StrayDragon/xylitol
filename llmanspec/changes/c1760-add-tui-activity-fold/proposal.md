@@ -1,9 +1,12 @@
 ---
 depends_on:
-  - c1755-update-tui-travel-notice-placement
-  - c2070-add-package-tui-dual-interaction-modes
+- c1755-update-tui-travel-notice-placement
+- c2070-add-package-tui-dual-interaction-modes
 blocks:
-  - c2050-update-activity-fold-mouse-leader
+- c2050-update-activity-fold-mouse-leader
+branch: sdd/c1760-add-tui-activity-fold
+base_sha: 839990764660a6b9f9014d1a88ee2d35aafeccd6
+checkpointed: false
 ---
 
 # TUI activity-fold — 多级折叠（含 Worked for）
