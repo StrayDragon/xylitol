@@ -32,3 +32,5 @@ pub(crate) mod lag;
 pub(crate) mod mcp_spec;
 pub mod product_commands;
 pub mod session_export;
+/// Session-adjacent tool spill root (c2080 append-only / hard-truncation).
+pub mod tool_spill;
