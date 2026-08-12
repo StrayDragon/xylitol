@@ -9,8 +9,25 @@
 use std::fs::File;
 use std::io::{BufWriter, Write};
 use std::path::PathBuf;
+use std::sync::{Mutex, OnceLock};
 
 use super::truncate::DEFAULT_MAX_BYTES;
+
+static PROCESS_SPILL_DIR: OnceLock<Mutex<Option<PathBuf>>> = OnceLock::new();
+
+fn process_spill_slot() -> &'static Mutex<Option<PathBuf>> {
+    PROCESS_SPILL_DIR.get_or_init(|| Mutex::new(None))
+}
+
+/// Install process-wide spill directory (session-adjacent). `None` restores system tmp.
+pub(crate) fn set_process_spill_dir(dir: Option<PathBuf>) {
+    *process_spill_slot().lock().expect("spill mutex") = dir;
+}
+
+/// Current process spill directory, if installed.
+pub(crate) fn process_spill_dir() -> Option<PathBuf> {
+    process_spill_slot().lock().expect("spill mutex").clone()
+}
 
 /// Default rolling buffer size (2x max_bytes before spilling to temp).
 const DEFAULT_MAX_ROLLING_BYTES_FACTOR: usize = 2;
@@ -130,9 +147,13 @@ impl OutputAccumulator {
             return;
         }
 
-        // Create temp file
-        let temp_path =
-            std::env::temp_dir().join(format!("xylitol-output-{}.txt", uuid::Uuid::new_v4()));
+        // Prefer session-adjacent process spill dir (c2080); else system tmp.
+        let temp_path = if let Some(dir) = process_spill_dir() {
+            let _ = std::fs::create_dir_all(&dir);
+            dir.join(format!("xylitol-output-{}.txt", uuid::Uuid::new_v4()))
+        } else {
+            std::env::temp_dir().join(format!("xylitol-output-{}.txt", uuid::Uuid::new_v4()))
+        };
 
         match File::create(&temp_path) {
             Ok(file) => {
@@ -309,9 +330,27 @@ mod tests {
         assert!(display.contains("[Full output:"), "{display}");
         assert!(display.contains("lines shown"), "{display}");
         assert!(display.contains("Truncated:"), "{display}");
+        assert!(display.contains("[Full output:"), "{display}");
+        // Path may be system tmp or session spill dir depending on process install.
         assert!(
-            display.contains("/tmp/") || display.contains("(unavailable)"),
+            display.contains('/') || display.contains("(unavailable)"),
             "{display}"
+        );
+    }
+
+    #[test]
+    fn spill_uses_process_spill_dir_when_set() {
+        let dir = tempfile::tempdir().unwrap();
+        set_process_spill_dir(Some(dir.path().to_path_buf()));
+        let mut acc = OutputAccumulator::with_limits(10, 20);
+        acc.append(b"this is a very long output that exceeds the limit");
+        let snapshot = acc.finish();
+        set_process_spill_dir(None);
+        let path = snapshot.full_output_path.expect("spilled");
+        assert!(
+            path.starts_with(dir.path()),
+            "expected spill under {:?}, got {path:?}",
+            dir.path()
         );
     }
 

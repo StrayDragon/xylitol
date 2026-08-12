@@ -22,3 +22,7 @@ pub mod server;
 
 #[cfg(feature = "tui")]
 pub mod tui;
+
+/// Independent append-only surface (c2080); Inline carrier, no AO fold chrome.
+#[cfg(feature = "tui")]
+pub mod append_only;
