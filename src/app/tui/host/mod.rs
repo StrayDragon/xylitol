@@ -358,9 +358,13 @@ impl<T: Terminal> HostSession<T> {
         self.reload_active
     }
 
-    /// Tick / Loader while reload or agent/bang busy.
+    /// Tick / Loader while reload or agent/bang busy, **or** a paint is pending.
+    ///
+    /// Pending `request_render` under the 16ms throttle MUST keep the host on the
+    /// busy (≈60Hz) ticker — otherwise wheel/drag frames wait on the 250ms idle
+    /// tick and feel stuttery even when CPU is low.
     pub fn wants_busy_tick(&self) -> bool {
-        self.is_busy() || self.reload_active
+        self.is_busy() || self.reload_active || self.tui.is_render_requested()
     }
 
     pub fn take_reload(&mut self) -> bool {

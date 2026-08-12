@@ -1889,6 +1889,15 @@ impl<T: Terminal> TUI<T> {
             }
             self.terminal.flush();
         }
+        // Per-frame wheel cap left a residual — schedule another paint so the
+        // host busy ticker (~16ms) drains it instead of waiting on idle 250ms.
+        if self
+            .application_owned
+            .as_ref()
+            .is_some_and(ApplicationOwnedRuntime::has_pending_wheel)
+        {
+            self.render_requested = true;
+        }
         Ok(())
     }
 
