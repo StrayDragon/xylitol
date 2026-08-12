@@ -2558,7 +2558,7 @@ fn application_owned_copy_notice_chrome_ath31() {
         "model".into(),
         xylitol_tui::InteractionMode::ApplicationOwned,
     );
-    session.push_scroll_notice("hello world for mode-b copy");
+    session.push_scroll_notice("hello world for application-owned copy");
     session.render_now().unwrap();
 
     let root = session.ui_root().expect("product ui root").clone();
