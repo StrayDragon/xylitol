@@ -145,7 +145,7 @@ pub fn travel_history_note(entries: &[SessionEntry], travel: &SessionTreeTravel)
     )
 }
 
-fn ancestry_path_ids(entries: &[SessionEntry], leaf_id: Option<&str>) -> Vec<String> {
+pub(crate) fn ancestry_path_ids(entries: &[SessionEntry], leaf_id: Option<&str>) -> Vec<String> {
     let Some(mut cur) = leaf_id.map(str::to_string) else {
         return Vec::new();
     };

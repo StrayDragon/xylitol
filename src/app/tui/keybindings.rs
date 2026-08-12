@@ -6,9 +6,10 @@
 use std::collections::HashMap;
 use std::path::{Path, PathBuf};
 
+pub use xylitol_tui::with_keybindings;
 use xylitol_tui::{
     KeybindingDefinition, KeybindingsConfig, KeybindingsManager, create_default_definitions,
-    set_keybindings, with_keybindings, with_keybindings_mut,
+    set_keybindings, with_keybindings_mut,
 };
 
 /// Product action defaults (pi-aligned ids; chords match previous hardcoding).
@@ -48,6 +49,16 @@ static APP_KEYBINDINGS: &[(&str, &[&str], Option<&str>)] = &[
         "app.tools.blocks",
         &["alt+e"],
         Some("Toggle tool/diff block expand"),
+    ),
+    (
+        "app.activity.expandNearest",
+        &["alt+shift+e"],
+        Some("Expand nearest activity segment"),
+    ),
+    (
+        "app.activity.collapseNearest",
+        &["ctrl+alt+shift+e"],
+        Some("Collapse nearest activity segment"),
     ),
     (
         "app.tree.filter.default",
@@ -220,7 +231,7 @@ pub fn matches_binding(event: &crossterm::event::KeyEvent, id: &'static str) -> 
     with_keybindings(|kb| kb.matches_event(event, id))
 }
 
-fn ensure_product_catalog() {
+pub(crate) fn ensure_product_catalog() {
     let missing = with_keybindings(|kb| kb.get_definition("app.interrupt").is_none());
     if missing {
         install_product_keybindings_defaults_only();

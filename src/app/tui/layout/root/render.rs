@@ -201,6 +201,7 @@ impl UiRoot {
             self.glyphs,
             self.theme,
             &self.fold,
+            &mut self.activity,
             width,
             &mut self.scrollback_paint,
             &mut self.fold_hits,

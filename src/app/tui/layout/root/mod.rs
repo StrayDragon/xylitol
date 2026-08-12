@@ -44,6 +44,7 @@ use super::session_tree::FilterMode;
 use super::slots::EditorSlot;
 use super::theme::LayoutTheme;
 use crate::app::core::driver::LoadedResourcesSnapshot;
+use crate::app::tui::activity_fold::{ActivityFoldState, AutoTrigger, ingest_rebuild_clocks};
 use crate::app::tui::bridge::UiModel;
 use crate::app::tui::session_resume::SessionResumePanel;
 use crate::app::tui::widgets::{
@@ -52,6 +53,7 @@ use crate::app::tui::widgets::{
 };
 use crate::protocol::error::XyToolError;
 use crate::protocol::model::THINKING_OFF;
+use crate::protocol::session::{SessionEntry, SessionTreeTravel};
 
 /// User choice from `/session-import` confirm slot (c1010).
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -70,6 +72,8 @@ pub struct UiRoot {
     fold_hits: FoldHitTable,
     /// Set when a fold triangle toggle mutates state; host marks AO stale.
     fold_dirty: bool,
+    /// Segment L0/L2/L3 plane (c1760); orthogonal to [`ScrollbackFold`].
+    activity: ActivityFoldState,
     /// Busy-only; idle leaves this unused so status occupies 0 rows.
     status_loader: Loader,
     status_busy: bool,
@@ -195,6 +199,7 @@ impl UiRoot {
             fold: ScrollbackFold::default(),
             fold_hits: FoldHitTable::default(),
             fold_dirty: false,
+            activity: ActivityFoldState::default(),
             status_loader,
             status_busy: false,
             loader_last_tick: Instant::now(),
@@ -402,6 +407,67 @@ impl UiRoot {
 
     pub fn fold(&self) -> ScrollbackFold {
         self.fold.clone()
+    }
+
+    pub fn activity(&self) -> &ActivityFoldState {
+        &self.activity
+    }
+
+    pub fn activity_mut(&mut self) -> &mut ActivityFoldState {
+        &mut self.activity
+    }
+
+    /// Test/harness: mutate activity then invalidate upper paint cache.
+    pub fn touch_activity(&mut self) {
+        self.bump_upper_gen();
+    }
+
+    /// C1: expand nearest L2/L3 segment one step toward L0 (att28). Silent if none.
+    pub fn expand_nearest_activity(&mut self) -> bool {
+        let changed = self.activity.expand_nearest(&self.ui_model.entries);
+        if changed {
+            self.bump_upper_gen();
+        }
+        changed
+    }
+
+    /// C1: collapse nearest eligible L0 Activity one step (att28). Silent if none.
+    pub fn collapse_nearest_activity(&mut self) -> bool {
+        let changed = self.activity.collapse_nearest(&self.ui_model.entries);
+        if changed {
+            self.bump_upper_gen();
+        }
+        changed
+    }
+
+    /// Rebuild path: ingest wall-clock stamps + auto crush older segments (att26).
+    pub fn apply_activity_after_rebuild(
+        &mut self,
+        session_entries: &[SessionEntry],
+        travel: &SessionTreeTravel,
+    ) {
+        ingest_rebuild_clocks(
+            &mut self.activity,
+            &self.ui_model.entries,
+            session_entries,
+            travel,
+        );
+        if self
+            .activity
+            .auto_degrade(&self.ui_model.entries, AutoTrigger::Rebuild, false)
+        {
+            self.bump_upper_gen();
+        }
+    }
+
+    /// Turn-end auto crush (att26). Caller MUST only invoke when the turn is idle/ended.
+    pub fn apply_activity_after_turn_end(&mut self) {
+        if self
+            .activity
+            .auto_degrade(&self.ui_model.entries, AutoTrigger::TurnEnd, false)
+        {
+            self.bump_upper_gen();
+        }
     }
 
     pub fn fold_hits(&self) -> &FoldHitTable {
