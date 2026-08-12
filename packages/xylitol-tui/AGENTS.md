@@ -22,17 +22,17 @@
 | 角色 | 路径 | 说明 |
 |---|---|---|
 | **产品视觉 SSOT** | app `DESIGN.md` + `design/*.md` + `design/playground/` | 色板 / 壳 / 键位 / 组件呈现；静图 **仅**服务 `src/app/tui` |
-| **包交互演示** | `examples/agent_demo.rs`（`just demo-tui`） | 引擎 / 通用组件试跑；**≠** design playground |
+| **包交互演示** | `examples/agent_demo.rs`（Inline，`just demo-tui`）· `examples/agent_demo_alt.rs`（Mode B，`just demo-tui-alt-screen`） | 引擎 / 通用组件试跑；**≠** design playground；共享实现 `agent_demo_impl.rs` |
 | **运行时便利** | `Palette`（本包） | 对齐 DESIGN 的 Dark/Light 快照；组件仍只收闭包 |
 
 ### `agent_demo` 硬边界（防误导）
 
-- **MUST NOT** 把 `agent_demo` / `just demo-tui` 当成产品 TUI 或 DESIGN playground。
-- `XYLITOL_TUI_MOUSE` 仅在本 demo（及以其为目标的 PTY e2e）生效；**不是**产品 inline 鼠标开关。
+- **MUST NOT** 把 `agent_demo` / `agent_demo_alt` / `just demo-tui*` 当成产品 TUI 或 DESIGN playground。
+- `XYLITOL_TUI_MOUSE` 仅在 **Inline** demo（及以其为目标的 PTY e2e）生效；**不是**产品 inline 鼠标开关；**禁止**用 `XYLITOL_AGENT_DEMO_MODE` 切模式（已拆双 example）。
 - **MUST NOT** 为「对齐产品 chrome 词汇表」去改写 demo 屏上英文 / plate 文案（除非人类明确要求）；demo 文案 **允许**与产品中文 SSOT（队列条 / 滚动提示 / 命令面板…）不同。
 - **MAY** 形态学对照产品（如 rail 默认、中间队列条）；对照 ≠ 同一 SSOT。
 - 产品 chrome 用词：[`docs/architecture/TUI信息面与chrome词汇.md`](../../docs/architecture/TUI信息面与chrome词汇.md) — **只约束产品面文档与 host**，不约束本包 demo 字符串。
-- 改产品视觉 / chrome：走 `src/app/tui/` + `just open-design-playground` / 产品测；**不要**默认先改 `agent_demo` 当「落地」。
+- 改产品视觉 / chrome：走 `src/app/tui/` + `just open-design-playground` / 产品测；**不要**默认先改 `agent_demo*` 当「落地」。
 
 分发本库后：代码零依赖主 crate；文档与 `Palette` **继续引用** monorepo 的 app DESIGN 为活 SSOT（嵌入方也可自备 token 注入闭包）。**不要**在本包另起平行 design 文档树。
 
@@ -95,7 +95,7 @@
 
 **分工（勿混）**
 
-- **包 E2E / `agent_demo`**：引擎 + 通用组件 + 真终端协议；就绪探针 `DEMO_READY_NEEDLE`（`tests/tui_e2e.rs`，footer `theme:dark`——勿用易滚出视口的标题行）。PTY 上 plate/settings 宜用 `XYLITOL_AGENT_DEMO_INITIAL_PROMPT` + 足够行高；tmux 用 `C-p` / `C-s`。**文案 / chrome 标签以 demo 自身为准**，勿按产品词表强改。Mode B 人验：`just demo-tui-alt-screen`（`XYLITOL_AGENT_DEMO_MODE=b`）。
+- **包 E2E / `agent_demo*`**：引擎 + 通用组件 + 真终端协议；就绪探针 `DEMO_READY_NEEDLE`（`tests/tui_e2e.rs`，footer `theme:dark`——勿用易滚出视口的标题行）。PTY 上 plate/settings 宜用 `XYLITOL_AGENT_DEMO_INITIAL_PROMPT` + 足够行高；tmux 用 `C-p` / `C-s`。**文案 / chrome 标签以 demo 自身为准**，勿按产品词表强改。Mode B：example `agent_demo_alt` / `just demo-tui-alt-screen`；PTY 最小闸见 `pty_agent_demo_alt_mode_b_*`。
 - **产品 TUI**：Driver / bridge / layout / 键位 → 应用面 harness（`src/app/tui`）。层 5 另有 **`pty_product_*` Fake smoke**（隔离 HOME/config，不绑真 LLM）；日常仍勿把满闸默认绑完整配置/真 API。
 - 层 5 全 `#[ignore]`；缺 tmux 时用 `just test-tui-e2e-pty`。操作细则：`test-tui-harness` skill（how-to，非第二份边界文）。
 

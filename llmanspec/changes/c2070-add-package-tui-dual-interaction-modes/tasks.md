@@ -12,7 +12,7 @@
 | 4 transcript 选区 / dock | ✅（含人验） | ptim03–07, 12 |
 | 5 Editor 独立多行选区 | ✅ | ptim13 |
 | 6 复制成功短提示 | ✅ 库+demo+产品 ath31 | **ptim15** + ath31 |
-| 7 库 host seam / 收口 | ⬜ 部分 | ptim14、ath30 |
+| 7 库 host seam / 收口 | ⬜ 战略修订后重开 | ptim14、ath30→B-only、demo 拆、e2e |
 
 ---
 
@@ -63,17 +63,20 @@
 
 **验收文案（建议固定）**：`Copied` / `已复制`（库信号 + demo 可先用英文）。**产品落点 / 误触策略**：延后到 `src/app/tui` Mode B 集成再钉（2026-08-12 human）；本 change 不阻塞。
 
-## 7. 产品闸与库 host 收口 — ⬜/部分
+## 7. 产品闸与库 host 收口 — ⬜（战略修订后重开）
 
-- [x] 7.1 Host `TuiRunOptions.interaction_mode`；默认 Mode A；换栈；dock 登记；不读 `XYLITOL_TUI_MOUSE`（ath30）
-- [x] 7.2 包测 + host harness；`demo-tui-alt-screen` 人验路径
-- [ ] 7.3 AGENTS / package 文档：Mode B **下游接入清单**（ptim14）
-- [ ] 7.4 `llman sdd validate --strict` 全绿；verify 双轴无 CRITICAL；确认未实现 `c1760`/`c2040`/`c2050`/`c1505`/`c1535`
-- [ ] 7.5（可选）产品显式 Mode B 开关文档化（仍默认 A）
+- [x] 7.1 Host 换栈 / dock API 已存在（历史默认 A；**待改 B-only**）
+- [x] 7.2 包测 + host harness；Mode B 人验路径（env demo 过渡）
+- [ ] 7.3 **ptim14 下游接入清单**（AGENTS / package）+ 产品固定 B 接线说明
+- [ ] 7.4 `llman sdd validate --strict`；verify 双轴无 CRITICAL；确认未实现 blocks
+- [ ] 7.5 **Specs landing**：改写 `ath30` → 产品 MUST B-only（废「默认 A」）
+- [x] 7.6 **Demo 拆分**：`agent_demo`（Inline）与 `agent_demo_alt`（Mode B）两文件 + `agent_demo_impl`；just 两 recipe；删除 `XYLITOL_AGENT_DEMO_MODE`
+- [x] 7.7 **Mode B e2e 最小闸**（PTY）：`pty_agent_demo_alt_mode_b_alt_mouse_and_exit_dump`（alt+mouse+dump）+ `pty_agent_demo_alt_mode_b_drag_select_osc52`；扩矩阵仍见 research
+- [ ] 7.8 库双入口结构债：按 strict-review 收敛 `application_session_active` 散布（可分期，不挡 7.5–7.6）
 
 ---
 
-## 人验清单（`just demo-tui-alt-screen`）
+## 人验清单（Mode B demo；拆文件后改 recipe 名）
 
 | # | 项 | 状态 |
 |---|---|---|
@@ -82,14 +85,18 @@
 | H3 | 滚轮 sticky（非仅靠边续选） | ✅ |
 | H4 | 拖选进输入区夹边续选、不反选 | ✅ |
 | H5 | 退出后主屏可上翻会话 dump | ✅ |
-| H6 | Editor 多行独立选区 | ✅ 人验 2026-08-12（鬼影 PASS；边沿滚已裁） |
-| H7 | 复制成功短提示 | ✅ demo 可；**产品 Copied 落点 / 误触延后** app 集成 |
+| H6 | Editor 多行独立选区 | ✅ 2026-08-12（边沿滚已裁） |
+| H7 | 复制成功短提示 | ✅ demo；产品落点延后 |
 
-## 实现顺序（建议）
+## 实现顺序（2026-08-12 修订）
 
 ```text
-6.1–6.2（库 copy-notice + demo 提示）
-  → 5.1–5.4（Editor 选区）
-  → 6.3（产品 ath31）
-  → 7.3–7.4（文档 + verify 收口）
+战略文档钉死（本轮）
+  → strict review + e2e 调研落地
+  → 7.6 demo 两文件
+  → 7.7 Mode B 自动化（先 PTY MUST 集）
+  → 7.5 ath30 Specs landing + 产品 host 固定 B
+  → 7.3 接入清单文档
+  → 7.8 双入口结构收敛（可并行/后置）
+  → 7.4 validate / verify
 ```

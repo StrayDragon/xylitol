@@ -2,28 +2,30 @@
 
 ## 目标边界
 
-| 在范围 | 不在范围（后续 change） |
+| 在范围 | 不在范围（后续 / 另闸） |
 |---|---|
-| 库双模式 seam：Mode A inline ↔ Mode B alt-screen | `c1760` 多级折叠 |
+| 库双入口：Inline（遗留能力）↔ ApplicationOwned（产品路径） | `c1760` 多级折叠 |
 | Mode B：应用内拖选 / 越界续选 / 松手复制 / 滚轮 sticky | `c2040`/`c2050` 点折叠三角与段级适配 |
 | dock 拖选夹边续选（ptim12）；Editor **独立**多行选区（ptim13） | `c1505` viewport slice、`c1535` wrap 优化 |
-| 退出 dump 主屏 scrollback；库 host seam（ptim14） | 现在把产品默认切到 Mode B |
-| 产品 host：模式旗标、默认 Mode A、切换换栈 | 回滚 c2020；`XYLITOL_TUI_MOUSE` 当产品开关 |
-| 复用已归档 `c2020` mouse 管道 | |
+| 退出 dump；库 host seam（ptim14）；demo **两文件**拆分 | kill 库 Inline；产品用户可选 Inline |
+| **产品 B-only**（改 ath30；host 固定 B） | 回滚 c2020；`XYLITOL_TUI_MOUSE` 当产品开关 |
+| Mode B PTY/tmux 自动化矩阵（可分期） | 追平 Pi 全部 chrome |
 
-## 模式 oneof（产品语义）
+## 模式 oneof 与产品战略
 
 ```text
-Mode A（emulator-owned）
+库 Inline（emulator-owned）— 遗留/对照入口
   inline 差分 + 终端 scrollback + 终端原生选区
-  mouse capture 默认关（lab/e2e 可显式开，不承诺点折叠）
+  mouse capture 默认关（lab 可开，不承诺点折叠）
 
-Mode B（application-owned）
-  alt-buffer（倾向 ?1049h）+ app ScrollView + grabbed mouse
+库 ApplicationOwned / 产品唯一路径（application-owned）
+  alt-buffer + app ScrollView + grabbed mouse
   应用内选区 + 越界 auto-scroll + 松手复制（默认开）
 ```
 
-未修饰左键在同一会话内只能归属一侧——**禁止**文档暗示 Mode A 开 mouse 后仍保留完整终端选区又同时「自然点折叠」。
+**产品不维护双模式 UX。** 库双入口为分治实现（后续功能可分叉），不是给用户两个产品故事。
+
+未修饰左键在同一会话内只能归属一侧——**禁止**文档暗示 Inline 开 mouse 后仍完整原生选区又同时「自然点折叠」。
 
 ## 子系统切分（库内逻辑边界，非文件钉死）
 
@@ -105,12 +107,12 @@ alt-buffer 退出后主屏会恢复进 alt 前内容。库默认在 `finish_inli
 
 ## 产品接线
 
-- Host / `TuiRunOptions.interaction_mode`：显式模式选择；**默认 Mode A**。
-- 一次会话一个主模式；运行中切换 = teardown 旧栈 + rebuild 根子树 + begin/end Mode B（对齐 Pi 换实现）。
-- Mode B：Enable mouse + alt-buffer；每帧 `ModeBRuntime::project_frame` 把 UiRoot 全量行拆成 ScrollView 可见窗 + 下缘 dock；dock 行数优先用 UiRoot 上帧实测（toast+status+editor+footer）。
-- teardown MUST Disable / 退缓冲；`with_terminal_suspended` resume 后 MUST 重进 alt + mouse（ptim11）。
+- Host：**产品固定 Mode B**（`ath30` 待 Specs landing 从「默认 A」改写）；无用户双模式设置。
+- Mode B：Enable mouse + alt-buffer；每帧 `project_frame`；dock 行数用 UiRoot 实测。
+- teardown MUST Disable / 退缓冲；suspend/resume 重进 alt + mouse（ptim11）。
 - **不**读 `XYLITOL_TUI_MOUSE` 作产品模式开关。
-- 人验：`just demo-tui-alt-screen`。
+- Demo：**两文件**（Inline / Alt）+ `just demo-tui` / `just demo-tui-alt-screen`；禁止 env 切模式。
+- Copied 落点 / 误触：产品集成时再钉（demo 不挡）。
 
 ## 验收 seam（自动化优先）
 
@@ -125,7 +127,7 @@ alt-buffer 退出后主屏会恢复进 alt 前内容。库默认在 `finish_inli
 | 退出 dump | finish_inline 后主屏写入含 transcript — **人验 PASS** |
 | copy-notice | 复制成功 → notice 信号；TTL 清除（ptim15） |
 | Editor 多行选区 | Editor 组件单测 + demo（ptim13） |
-| 产品默认 Mode A | host/配置单测（ath30） |
+| 产品 Mode B-only | host/配置单测（ath30 改写后） |
 | 产品复制提示 | Mode B harness / 人验（ath31） |
 
 **BDD**：本 capability 场景均为 `feature: false`（包/产品单测 + demo 人验）；不新增 `tests/features` Gherkin，除非后续要把 Mode B 纳入可执行 BDD 矩阵。

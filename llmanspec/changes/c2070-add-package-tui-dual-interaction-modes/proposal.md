@@ -14,87 +14,91 @@ checkpointed: false
 
 # xylitol-tui：双交互架构（终端选区 ↔ 应用内选区）
 
-> **升格（2026-08-11）**：自 `delayed-changes/tui/` 整包升入 `llmanspec/changes/`。本 change 是**完整大需求**（库双模式 + Mode B 选区 MUST）；级联后续已拆为独立 change（见 `blocks`），各自带 `depends_on`。
-> **角色**：`packages/xylitol-tui` 顶层基础——先构筑双模式，再谈折叠/点击/viewport。
-> **FF 状态**：规划壳 + 调研准备 → Branch binding → Specs landing；产品默认仍 Mode A，直至显式切 B。
+> **升格（2026-08-11）**：自 `delayed-changes/tui/` 整包升入 `llmanspec/changes/`。本 change 是**完整大需求**（库双入口 + Mode B 选区 MUST）；级联后续已拆为独立 change（见 `blocks`）。
+> **角色**：`packages/xylitol-tui` 顶层基础——双入口可分治后再谈折叠/点击/viewport。
+> **战略修订（2026-08-12，人拍）**：见「战略钉」；与早期「产品默认 A」冲突处以本节为准（live `ath30` **待 Specs landing 改写**）。
 
-> **一句话**：库支持 **Mode A（inline / emulator-owned）** 与 **Mode B（alt-screen / application-owned）**；本 change 把 Mode B 做成**可复用库基础**（视口、transcript 选区、dock 夹边续选、Editor 独立多行选区、退出 dump、host seam），产品默认仍 Mode A，下游可换栈接入。
+> **一句话**：库保留 **两条独立入口**（Inline = 库能力/遗留赋能；ApplicationOwned = alt-screen 产品路径）；**产品 app TUI 仅 Mode B**；Mode B 做成可复用库基础后接 fold cascade。
+
+## 战略钉（2026-08-12）
+
+| 层 | 决定 |
+|---|---|
+| **产品 `src/app/tui`** | **B-only** — 不维护用户可选 Inline；不承诺产品双模式 UX |
+| **库 `xylitol-tui`** | **双入口分治** — Inline 与 ApplicationOwned **分别实现、分别管理**（对齐 Pi MainScreen / AltScreen 方向）；后续功能允许分叉 |
+| **Inline 定位** | **库能力 / 历史遗留赋能**（差分引擎、Inline demo/e2e、对照）— **不是**产品一等交互面 |
+| **Demo** | **两个 example 文件** + 两个 just recipe；**禁止** `XYLITOL_AGENT_DEMO_MODE` 切模式 |
+| **验收** | Mode B 可确定用户行为 → **PTY / tmux 等高自动化**；人验只补手感与终端特例 |
+| **禁止** | kill 库 Inline 引擎；Inline 上承诺无修饰点折叠；产品读 `XYLITOL_TUI_MOUSE` 当模式开关 |
+
+依据：[`research/keep-or-drop-inline-mode.md`](./research/keep-or-drop-inline-mode.md)。
 
 ## Why
 
-调研（见 `research/`）表明未修饰左键归属是 **oneof**；starline 式直接点折叠挂在 Pi fullscreen（AltScreen）一侧。把双架构升为引擎总前置，避免在 inline 上硬塞「自然点折叠」。
+未修饰左键归属是 **oneof**；自然点折叠挂在 alt-screen / 应用内选区一侧。产品只交 B，避免 fold/选区/键位在两套产品故事上分叉；库仍留 Inline 作独立能力与回归对照。
 
 ### 与已归档 c2020 的关系（必读）
 
-`c2020` 已落地 **opt-in mouse 管道**（包 API + `InputEvent::Mouse` + paint-safe reaction），**应保留**作 Mode B 地基，**不要回滚**。
-
 | | 说明 |
 |---|---|
-| 保留 | `Terminal::enable_mouse_capture`、事件扇入、Moved 不刷帧、teardown Disable |
-| **不是**产品开关 | `XYLITOL_TUI_MOUSE` = **lab / e2e**（`agent_demo`）；产品 `TerminalGuard` **不读**该 env |
-| 本 change 补齐 | Mode B（alt-screen）上正式 Enable + 应用内选区 MUST；再由独立后续 change 挂点击折叠 |
+| 保留 | `enable_mouse_capture`、`InputEvent::Mouse`、Moved 不刷帧、teardown Disable |
+| **不是**产品开关 | `XYLITOL_TUI_MOUSE` = Inline **lab / e2e**；产品 `TerminalGuard` **不读** |
+| 本 change | Mode B 正式 Enable + 应用内选区 MUST；fold 点击在 `blocks` |
 
-详见 [`README.md`](./README.md)「已落地地基：c2020」。
-
-## 产品时序（已拍）
+## 产品时序
 
 | 阶段 | 做什么 |
 |---|---|
-| **本 change** | 升格 + 调研 + Specs + **完整 Mode B 实现**（库视口/选区/OSC52 + 产品换栈/dock）；产品**默认仍 Mode A**，经 `TuiRunOptions.interaction_mode` 显式切 B |
-| **之后** | `blocks` 内折叠/点击/性能 change 按 `depends_on` 各自落地；产品是否默认切 B 另议 |
+| **本 change** | Mode B 库基础；战略收口（拆 demo、review、e2e 矩阵、ptim14 文档）；**propose 改 ath30 → 产品 B-only** |
+| **紧随** | 库双入口结构收敛；Mode B PTY/tmux 自动化；产品 host 固定 B |
+| **之后** | `blocks` 折叠/点击/性能（自然点折叠 = Mode B only） |
 
 ## What Changes
 
-1. **双模式 seam（`packages/xylitol-tui`）**
-   - **Mode A**：今日路径——inline 差分、终端 scrollback、**终端原生选区**；mouse 默认关或仅瞬时/模式。
-   - **Mode B**：**alt-screen（或等价自管视口）** + grabbed mouse + **应用内选区** + app scroll。
-2. **Mode B 默认能力 MUST**（对齐「以前 inline 靠终端就能做的事」，参照 Pi `TuiAltScreen` + Zellij 选区滚动/复制）
-   - **拖选**：未修饰左键拖出字符流选区并高亮。
-   - **跨页 / 越界续选**：选区拖到视口顶/底时 **自动滚 transcript**，选区可跨出当前屏。
-   - **松手自动复制**：button up 后写入剪贴板（OSC52 与/或本地工具），行为可配置但**默认开**。
-   - （SHOULD）双击词 / 三击行；与折叠 hit 共存时：点折叠标记消费 click，其余走选区。
-   - **输入区特例**：底部 Editor/Input 行 MUST 可排除或短路选区（借鉴 Pi / Zellij 不可选区域处理）。
-3. **产品闸**：设置/旗标择模式；一次会话一个主模式；切换换栈。默认产品面仍 Mode A，直至显式切 B。
-4. **非本 change**：折叠三角、L2/L3、per-block 覆盖、viewport slice、stream wrap → 见 `blocks` 所列独立 change。
+1. **库双入口**：Inline（差分 + 终端 scrollback + 原生选区）与 ApplicationOwned（alt-screen + app 选区/滚动/复制）— 演进为分治实现。
+2. **Mode B MUST**：拖选、越界续选、松手复制（默认开）、dock 排除/夹边、Editor 独立多行选区、退出 dump、copy-notice 信号。
+3. **产品闸**：app **仅** Mode B（改 `ath30`；删产品双模式设置叙事）。
+4. **Demo 拆分**：两文件；去掉 env 切模式。
+5. **E2E 矩阵**：Mode B 行为进自动化；见 research。
+6. **非本 change 实现**：折叠三角 / L2–L3 / viewport slice → `blocks`。
 
 ## Capabilities
 
-- `package-tui-interaction-modes`（新建：双模式 / Mode B 选区·滚动·复制·输入排除）
-- `package-tui-terminal-protocol` / `package-tui-engine`（衔接既有 mouse / alt-buffer 协议面，按需增量）
-- `app-tui-host`（模式选择与生命周期；默认 Mode A）
+- `package-tui-interaction-modes`（双入口 + Mode B 选区·滚动·复制·输入排除）
+- `package-tui-terminal-protocol` / `package-tui-engine`（按需增量）
+- `app-tui-host`（**产品 B-only** 生命周期与 dock；`ath30` 待改写）
 
 ## Impact
 
 | 层 | 影响 |
 |---|---|
-| `xylitol-tui` | Mode B ≈ 新选区+scroll+clipboard 子系统 |
-| 产品 TUI | 近期 Mode A；日后可切 B |
-| 后续 change | `blocks` 全部 `depends_on` 本 change（或经本 change 间接） |
+| `xylitol-tui` | Mode B 子系统 + Inline 遗留入口分治 |
+| 产品 TUI | **仅** Mode B；Copied 落点/误触延后讨论 |
+| 后续 | `blocks` 全部依赖本 change |
 
 ## 依赖图（frontmatter SSOT）
 
 ```text
 c2020（已归档）
-  └─ c2070（本 change · 完整大需求）
+  └─ c2070（本 change）
        ├─ c1760 / c2040 / c2050（折叠·点击）
        └─ c1505 / c1535（长历史性能，软相关）
 ```
 
 ## Out of scope
 
-- 现在就切换产品默认到 Mode B
-- 在 Mode A 承诺「无修饰点折叠且原生选区不变」
+- kill 库 Inline / 差分引擎
+- 在 Inline 承诺无修饰点折叠
 - 复活 fold-leader；追平 Pi 全部 chrome
 - 实现 `blocks` 内后续 change
+- 本回合直接改 live `ath30` 正文（须正式 Specs landing）
 
-## Open Questions（调研后钉）
+## Open Questions（已钉 / 待钉）
 
-1. Mode B 是否 **必须** `?1049h` alt-buffer，还是允许自管视口留在主屏？
-   **钉**：产品叙述与实现 **倾向 alt-screen**；合约写「应用自管视口 MUST + alt-buffer SHOULD」（见 `ptim02`）。
-2. 复制默认 OSC52-only vs 本地工具优先？
-   **钉**：默认松手复制 **开**；后端允许 OSC52 与/或本地（Pi AltScreen = OSC52-only；Zellij = `copy_command` 否则 OSC52）。不在合约钉死单一工具名。
-3. Mode A 是否保留 Alt-hold 点折叠作廉价增强（不代替 B）？
-   **推迟**：不阻塞本 change；非本 change 交付。
+1. alt-buffer：**钉** 倾向 `?1049h`；合约「自管视口 MUST + alt-buffer SHOULD」（`ptim02`）。
+2. 复制后端：**钉** 默认松手复制开；OSC52 与/或本地。
+3. Inline Alt-hold 点折叠：**推迟**；产品不需要（B-only）。
+4. 双入口物理拆分（两 type vs 策略对象）形状、e2e MUST 集 → 见进行中 research / review。
 
 ## 调研
 
@@ -108,15 +112,21 @@ c2020（已归档）
 | [`research/pi-altscreen-selection-scroll-copy-input.md`](./research/pi-altscreen-selection-scroll-copy-input.md) | Pi AltScreen 选区/滚动/复制/输入 |
 | [`research/zellij-selection-scroll-copy-input.md`](./research/zellij-selection-scroll-copy-input.md) | Zellij 选区滚动/复制/特例 |
 | [`research/xylitol-mode-b-subsystem-cut.md`](./research/xylitol-mode-b-subsystem-cut.md) | xylitol Mode B 子系统切分建议 |
+| [`research/keep-or-drop-inline-mode.md`](./research/keep-or-drop-inline-mode.md) | 产品 B-only / 库留 Inline |
+| [`research/open-questions-deep-dive-agenda.md`](./research/open-questions-deep-dive-agenda.md) | 深挖题议程（P0–P2） |
+| [`research/mode-b-strict-review-2026-08-12.md`](./research/mode-b-strict-review-2026-08-12.md) | 严苛 review（agent） |
+| [`research/mode-b-e2e-automation-and-open-questions.md`](./research/mode-b-e2e-automation-and-open-questions.md) | e2e 矩阵（agent） |
 
 ## Further Notes
 
-- 升格决策：cascade 五件拆为 `llmanspec/changes/<id>/` 独立草案，**不**再嵌套 `cascade/`；依赖只以 YAML `depends_on`/`blocks` 为 SSOT。
-- 一手对照：Pi `packages/tui`（`TuiMainScreen` / `TuiAltScreen`）+ Zellij `panes/selection.rs` / `tab/mouse_handler.rs` / clipboard；结论摘要见 `research/xylitol-mode-b-subsystem-cut.md` 与专篇。
-- Specs landing：`package-tui-interaction-modes`（`ptim01`–`ptim11`）；`app-tui-host` `ath30`（默认 Mode A + Mode B dock/换栈）。
-- **完整 Mode B 交付**：`ModeBRuntime`（ScrollView + Selection + dock 投影）挂在 `TUI` 应用会话上；产品 host 换栈并登记实测 dock 行。
+- cascade 五件独立 `changes/<id>/`；依赖 YAML SSOT。
+- Mode B 已交付：`ModeBRuntime` + 选区/dock/Editor/dump/copy-notice；产品 host 换栈 API 已有，**默认仍 A（代码）直至 ath30 改写**。
+- **人拍（2026-08-12）**：产品 B-only；库双入口分治；demo 两文件；高自动化 e2e。Inline = 库遗留赋能，非产品面。
+- **Strict review**（[`research/mode-b-strict-review-2026-08-12.md`](./research/mode-b-strict-review-2026-08-12.md)，[Strict Mode B review](f5555dc2-053f-4444-abc1-f603f6d14fe5)）：行为/单测扎实；**P0** = 单 `TUI` + 散布的 `application_session_active` 挡双入口；ptim14 host 胶（Editor remap、copy-notice 绘制）仍在 `agent_demo` 非可复用入口。**P1** = dump 无可关、Editor 坐标双路径、docs/D16 仍写默认 A。
+- **E2E 缺口**（[`research/mode-b-e2e-automation-and-open-questions.md`](./research/mode-b-e2e-automation-and-open-questions.md)，[E2E matrix research](d555305b-bbc7-4cb9-9ac8-37865b11e769)）：层 5 PTY/tmux **几乎零 Mode B**（仅 Inline demo + `XYLITOL_TUI_MOUSE` CSI lab）；H1–H7 真终端未自动化；库 `interaction_modes_test` 已盖进程内。产品 B-only / fold 前 MUST 先补 PTY 探针（alt CSI / OSC52 / dump 子集）。
+- **Demo 拆分 + Mode B PTY 最小闸（2026-08-12）**：`agent_demo` / `agent_demo_alt` + shared `agent_demo_impl`；`pty_agent_demo_alt_mode_b_alt_mouse_and_exit_dump` + `pty_agent_demo_alt_mode_b_drag_select_osc52`（`just test-tui-e2e-pty`）。
 
 ## Ethics
 
-- Mode A 文档不得暗示「开了 mouse = 自然选区 + 直接点」。
-- Mode B 上线时 MUST 文档写清：选区/滚轮归应用；并验收跨页选与松手复制。
+- Inline 文档不得暗示「开了 mouse = 自然选区 + 直接点」。
+- Mode B / 产品 MUST 写清：选区/滚轮归应用；自动化 + 人验覆盖跨页选与松手复制。

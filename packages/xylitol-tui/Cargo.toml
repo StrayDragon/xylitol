@@ -37,3 +37,7 @@ tempfile = "3"
 [[example]]
 name = "agent_demo"
 path = "examples/agent_demo.rs"
+
+[[example]]
+name = "agent_demo_alt"
+path = "examples/agent_demo_alt.rs"

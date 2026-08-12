@@ -19,7 +19,7 @@
 | [`c1505-add-tui-scrollback-viewport-slice`](../c1505-add-tui-scrollback-viewport-slice/) | **`c2070`** |
 | [`c1535-optimize-tui-stream-wrap-tail`](../c1535-optimize-tui-stream-wrap-tail/) | **`c2070`** |
 
-产品近期：继续打磨 **inline**；本 change Specs landing 后实现引擎，再考虑 app 切 Mode B。
+产品：**B-only**（2026-08-12 人拍）；库保留 Inline 为独立遗留入口。本 change 收口含拆 demo、e2e 矩阵、ath30 改写。
 
 ## 已落地地基：c2020（保留，勿当「产品已支持鼠标」）
 
