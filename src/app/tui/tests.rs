@@ -216,9 +216,10 @@ fn application_owned_host_coalesced_wheel_paints_once_without_tick_tail() {
     session.render_now().expect("seed long AO viewport");
     session.tui.terminal.frames.clear();
     let frames_before = session.tui.frame_count();
+    let notch = session.tui.application_owned_wheel_notch();
 
     session
-        .apply_ao_wheel_delta(-3)
+        .apply_ao_wheel_delta(-(notch * 2))
         .expect("coalesced wheel delta");
 
     assert_eq!(session.tui.frame_count(), frames_before + 1);
@@ -238,7 +239,7 @@ fn application_owned_host_coalesced_wheel_paints_once_without_tick_tail() {
 
     let frames_after_first = session.tui.frame_count();
     session
-        .apply_ao_wheel_delta(-1)
+        .apply_ao_wheel_delta(-notch)
         .expect("continuous wheel delta");
     assert_eq!(
         session.tui.frame_count(),
@@ -246,11 +247,33 @@ fn application_owned_host_coalesced_wheel_paints_once_without_tick_tail() {
         "continuous wheel paint should respect the independent 60fps cap"
     );
     assert!(session.tui.is_render_requested());
+    let deadline = session
+        .tui
+        .application_owned_wheel_render_deadline()
+        .expect("capped wheel paint must expose its exact deadline");
     assert!(
-        session.wants_busy_tick(),
-        "a capped paint must stay on the busy ticker until it is flushed"
+        deadline <= std::time::Instant::now() + std::time::Duration::from_millis(16),
+        "wheel deadline must be based on the previous paint, not a fresh host tick"
+    );
+    session
+        .apply_ao_wheel_delta(-notch)
+        .expect("additional wheel delta before deadline");
+    assert_eq!(
+        session.tui.application_owned_wheel_render_deadline(),
+        Some(deadline),
+        "new wheel input must not restart the existing paint deadline"
+    );
+    assert!(
+        !session.wants_busy_tick(),
+        "wheel deadline owns this wake; the generic busy ticker must not add delay"
     );
     session.tui.render_now().expect("flush capped wheel paint");
+    assert!(
+        session
+            .tui
+            .application_owned_wheel_render_deadline()
+            .is_none()
+    );
     assert!(!session.wants_busy_tick());
 }
 
@@ -962,10 +985,50 @@ fn harness_middle_turn_end_keeps_busy() {
 fn harness_idle_enter_queues_submit() {
     let mut session = HostSession::new_product_ui(TestTerminal::new(80, 24));
     let root = session.ui_root().expect("product ui").clone();
+    for i in 0..40 {
+        session.push_scroll_notice(format!("submit-scroll-{i:02}"));
+    }
+    session.render_now().expect("seed long transcript");
+    let notch = session.tui.application_owned_wheel_notch();
+    assert!(session.tui.application_owned_scroll_by(-(notch * 2)));
+
     root.borrow_mut().set_editor_text("run me");
     session.step(HostEvent::Input(enter_event())).unwrap();
     assert_eq!(session.take_submit().as_deref(), Some("run me"));
     assert!(root.borrow().editor_text().is_empty());
+    assert!(
+        !session.tui.application_owned_scroll_by(notch),
+        "successful Enter submit must already be following the transcript bottom"
+    );
+}
+
+#[test]
+fn harness_empty_enter_follows_bottom_without_submit() {
+    let mut session = HostSession::new_product_ui(TestTerminal::new(80, 24));
+    let root = session.ui_root().expect("product ui").clone();
+    for i in 0..40 {
+        session.push_scroll_notice(format!("empty-enter-scroll-{i:02}"));
+    }
+    session.render_now().expect("seed long transcript");
+    let notch = session.tui.application_owned_wheel_notch();
+    assert!(session.tui.application_owned_scroll_by(-(notch * 2)));
+
+    session.step(HostEvent::Input(enter_event())).unwrap();
+
+    assert!(session.take_submit().is_none());
+    assert!(
+        !session.tui.application_owned_scroll_by(notch),
+        "empty Enter must follow the transcript bottom without submitting"
+    );
+
+    assert!(session.tui.application_owned_scroll_by(-(notch * 2)));
+    root.borrow_mut()
+        .open_slot_for_test(super::layout::EditorSlot::Plate);
+    session.step(HostEvent::Input(enter_event())).unwrap();
+    assert!(
+        session.tui.application_owned_scroll_by(notch),
+        "Enter in a non-Editor slot must not force the transcript to the bottom"
+    );
 }
 
 #[test]

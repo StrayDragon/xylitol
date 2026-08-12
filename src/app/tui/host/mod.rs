@@ -358,11 +358,14 @@ impl<T: Terminal> HostSession<T> {
         self.reload_active
     }
 
-    /// Tick / Loader while reload or agent/bang busy, **or** a throttled paint
-    /// is pending. AO wheel-only reprojects paint immediately; selection
-    /// edge-drag still advances through `idle_tick` on this busy cadence.
+    /// Tick / Loader while reload or agent/bang busy, **or** a throttled
+    /// non-wheel paint is pending. AO wheel reprojects have an exact deadline
+    /// wake in the host loop; selection edge-drag still uses this busy cadence.
     pub fn wants_busy_tick(&self) -> bool {
-        self.is_busy() || self.reload_active || self.tui.is_render_requested()
+        self.is_busy()
+            || self.reload_active
+            || (self.tui.is_render_requested()
+                && self.tui.application_owned_wheel_render_deadline().is_none())
     }
 
     pub fn take_reload(&mut self) -> bool {
@@ -929,6 +932,7 @@ impl<T: Terminal> HostSession<T> {
 
     fn handle_input(&mut self, input: InputEvent) {
         let reaction = if self.mode == LayoutMode::Ready {
+            self.follow_bottom_on_submit_key(&input);
             if self.try_suppress_stale_esc(&input)
                 || self.try_paste_image(&input)
                 || self.try_reload_input(&input)

@@ -312,7 +312,11 @@ async fn run_host_loop(
                 }
             }
 
+            let ao_wheel_render_deadline = session.tui.application_owned_wheel_render_deadline();
             tokio::select! {
+                _ = wait_for_ao_wheel_deadline(ao_wheel_render_deadline) => {
+                    session.step_paint_only()?;
+                }
                 _ = ticker.tick() => {
                     // Drain any footer estimates that completed without waiting on select.
                     while let Some((job_id, label)) = session.try_recv_footer_token() {
@@ -448,6 +452,13 @@ async fn run_host_loop(
     session.tui.finish();
     log::info!(target: "xylitol::tui", "product TUI host stopped");
     host_result
+}
+
+async fn wait_for_ao_wheel_deadline(deadline: Option<std::time::Instant>) {
+    match deadline {
+        Some(deadline) => tokio::time::sleep_until(deadline.into()).await,
+        None => std::future::pending().await,
+    }
 }
 
 fn wheel_delta_from_item(item: &Result<Event, std::io::Error>, step: isize) -> Option<isize> {

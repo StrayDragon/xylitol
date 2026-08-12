@@ -332,8 +332,8 @@ fn when_wheel_up_repaint() {
         harness.tui.request_render(false);
         let _ = harness.tui.render_now();
         let raw = harness.tui.terminal.writes.concat();
-        // Follow-end shows L14..L17 (40x6, dock=2). One WHEEL_NOTCH up → L13..L16.
-        LAST_BOOL.with(|b| *b.borrow_mut() = raw.contains("L13"));
+        // Follow-end shows L14..L17 (40x6, dock=2). One WHEEL_NOTCH up → L11..L14.
+        LAST_BOOL.with(|b| *b.borrow_mut() = raw.contains("L11"));
     });
 }
 

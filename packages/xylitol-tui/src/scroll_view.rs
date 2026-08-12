@@ -11,12 +11,12 @@ pub struct ScrollView {
 }
 
 impl ScrollView {
-    /// One physical wheel notch (fine grain — avoids multi-row jumps).
-    pub const WHEEL_NOTCH: isize = 1;
+    /// Three rows per physical wheel notch, matching the expected alt-screen pace.
+    pub const WHEEL_NOTCH: isize = 3;
 
-    /// Selection edge-drag quantum per busy tick (faster catch-up than wheel).
-    pub fn motion_step(viewport_height: usize) -> isize {
-        (viewport_height as isize / 8).clamp(2, 8)
+    /// Selection edge-drag quantum per busy tick (precise content targeting).
+    pub fn motion_step(_viewport_height: usize) -> isize {
+        1
     }
 
     pub fn wheel_notch() -> isize {

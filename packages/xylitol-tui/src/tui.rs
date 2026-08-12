@@ -622,7 +622,20 @@ impl<T: Terminal> TUI<T> {
         true
     }
 
-    /// Fine wheel notch for AO host coalesce (1 line; edge-drag stays coarser).
+    /// Move an active ApplicationOwned viewport to the transcript end and
+    /// re-arm follow mode. Returns whether the viewport position changed.
+    pub fn application_owned_scroll_to_end(&mut self) -> bool {
+        let Some(runtime) = self.application_owned.as_mut() else {
+            return false;
+        };
+        let changed = runtime.scroll_to_end();
+        if changed {
+            self.request_render(false);
+        }
+        changed
+    }
+
+    /// Three-row wheel notch for AO host coalescing; edge-drag stays independent.
     pub fn application_owned_wheel_notch(&self) -> isize {
         self.application_owned
             .as_ref()
@@ -749,6 +762,27 @@ impl<T: Terminal> TUI<T> {
     pub fn is_render_requested(&self) -> bool {
         self.render_requested
     }
+
+    /// Exact due time for a pending cached ApplicationOwned wheel paint.
+    ///
+    /// Hosts can await this deadline and call [`Self::try_render`] without
+    /// restarting a full cadence interval from the latest input event. Other
+    /// pending paints return `None` and keep their existing host tick policy.
+    pub fn application_owned_wheel_render_deadline(&self) -> Option<std::time::Instant> {
+        if !self.render_requested
+            || !self.ao_wheel_render_requested
+            || !self.can_reproject_application_owned(self.terminal.columns() as usize)
+        {
+            return None;
+        }
+        Some(
+            self.last_ao_wheel_render_at
+                .map_or_else(std::time::Instant::now, |last| {
+                    last + std::time::Duration::from_millis(MIN_RENDER_INTERVAL_MS)
+                }),
+        )
+    }
+
     pub fn set_show_hardware_cursor(&mut self, enabled: bool) {
         if self.show_hardware_cursor == enabled {
             return;

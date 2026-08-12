@@ -112,18 +112,26 @@ impl ApplicationOwnedRuntime {
         true
     }
 
-    /// Apply a wheel delta immediately. A physical wheel event contributes one
-    /// line; hosts may coalesce several buffered events into one summed delta.
+    /// Re-arm follow mode and move the application-owned viewport to its end.
+    pub fn scroll_to_end(&mut self) -> bool {
+        let was_at_bottom = self.scroll.at_bottom();
+        self.scroll.scroll_to_end();
+        self.follow_bottom = true;
+        !was_at_bottom
+    }
+
+    /// Apply a wheel delta immediately. Hosts map each physical wheel event to
+    /// [`Self::wheel_notch`] rows and may coalesce buffered events into one delta.
     pub fn ingest_wheel_delta(&mut self, delta: isize) -> bool {
         self.scroll_by(delta)
     }
 
-    /// Fine wheel notch (host coalesce). Edge-drag uses [`ScrollView::motion_step`].
+    /// Wheel step for host coalescing. Edge-drag uses [`ScrollView::motion_step`].
     pub fn wheel_notch(&self) -> isize {
         ScrollView::wheel_notch()
     }
 
-    /// Edge-drag quantum (not used for wheel notches).
+    /// Precise one-row edge-drag quantum (not used for wheel notches).
     pub fn motion_step(&self) -> isize {
         ScrollView::motion_step(self.scroll.viewport_height())
     }
@@ -186,8 +194,8 @@ impl ApplicationOwnedRuntime {
             height: transcript_h,
             width: term_cols,
         };
-        // Wheel: one line per physical event. Host-side coalescing sums events
-        // before calling `ingest_wheel_delta`, but never changes this notch.
+        // Host-side coalescing sums physical wheel steps before calling
+        // `ingest_wheel_delta`, but never changes the per-event notch.
         let wheel_delta = match event.kind {
             MouseEventKind::ScrollUp => Some(-self.wheel_notch()),
             MouseEventKind::ScrollDown => Some(self.wheel_notch()),
@@ -352,7 +360,7 @@ mod tests {
             modifiers: KeyModifiers::NONE,
         };
         assert!(runtime.handle_mouse(&wheel, 40, 8));
-        // One notch = one line applied immediately.
+        // One physical notch is applied immediately.
         assert_eq!(runtime.scroll.scroll_top(), top_before - notch as usize);
         let top_scrolled = runtime.scroll.scroll_top();
         let paint = runtime.project_frame(&full, 8);
@@ -366,7 +374,7 @@ mod tests {
         let full: Vec<String> = (0..40).map(|i| format!("L{i}")).collect();
         let _ = runtime.project_frame(&full, 10);
         let notch = runtime.wheel_notch();
-        assert_eq!(notch, 1);
+        assert_eq!(notch, 3);
         let top0 = runtime.scroll.scroll_top();
         assert!(runtime.ingest_wheel_delta(-(notch * 3)));
         assert_eq!(runtime.scroll.scroll_top(), top0 - (notch * 3) as usize);
@@ -375,6 +383,20 @@ mod tests {
             "normal wheel motion must not drip through the selection tick path"
         );
         assert_eq!(runtime.scroll.scroll_top(), top0 - (notch * 3) as usize);
+    }
+
+    #[test]
+    fn scroll_to_end_rearms_follow_mode() {
+        let mut runtime = ApplicationOwnedRuntime::new(2);
+        let full: Vec<String> = (0..20).map(|i| format!("L{i}")).collect();
+        let _ = runtime.project_frame(&full, 8);
+        assert!(runtime.scroll_by(-runtime.wheel_notch()));
+        assert!(!runtime.follow_bottom);
+
+        assert!(runtime.scroll_to_end());
+        assert!(runtime.scroll.at_bottom());
+        assert!(runtime.follow_bottom);
+        assert!(!runtime.scroll_to_end());
     }
 
     #[test]

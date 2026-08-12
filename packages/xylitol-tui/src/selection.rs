@@ -6,6 +6,14 @@
 use crate::scroll_view::ScrollView;
 use crossterm::event::{MouseButton, MouseEvent, MouseEventKind};
 
+// UX tuning knobs: keep the first tier at one row for precise selection. These
+// hold thresholds and later multipliers may be adjusted together after manual
+// terminal feel testing; they are not protocol or persistence contracts.
+const EDGE_AUTOSCROLL_MEDIUM_AFTER: std::time::Duration = std::time::Duration::from_millis(400);
+const EDGE_AUTOSCROLL_FAST_AFTER: std::time::Duration = std::time::Duration::from_secs(1);
+const EDGE_AUTOSCROLL_MEDIUM_MULTIPLIER: isize = 2;
+const EDGE_AUTOSCROLL_FAST_MULTIPLIER: isize = 4;
+
 /// Content-space cell (row = content line index, col = display column).
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub struct CellPoint {
@@ -113,6 +121,7 @@ pub struct SelectionController {
     /// Default **on** (ptim05).
     pub copy_on_release: bool,
     auto_scroll_dir: i8,
+    auto_scroll_started_at: Option<std::time::Instant>,
     last_pointer: Option<(u16, u16)>,
     click_count: u8,
     last_click_at: Option<std::time::Instant>,
@@ -131,6 +140,7 @@ impl Default for SelectionController {
             granularity: SelectionGranularity::Character,
             copy_on_release: true,
             auto_scroll_dir: 0,
+            auto_scroll_started_at: None,
             last_pointer: None,
             click_count: 0,
             last_click_at: None,
@@ -159,7 +169,7 @@ impl SelectionController {
         self.anchor = None;
         self.focus = None;
         self.dragging = false;
-        self.auto_scroll_dir = 0;
+        self.stop_auto_scroll();
         self.granularity = SelectionGranularity::Character;
     }
 
@@ -257,7 +267,7 @@ impl SelectionController {
                     return false;
                 }
                 self.dragging = false;
-                self.auto_scroll_dir = 0;
+                self.stop_auto_scroll();
                 if let Some(cell) = self
                     .screen_to_content(col, row, scroll, transcript)
                     .or_else(|| self.clamp_to_transcript_edge(col, row, scroll, transcript))
@@ -279,7 +289,7 @@ impl SelectionController {
                 if !transcript.contains(col, row) {
                     return false;
                 }
-                // Fine notch (edge-drag still uses [`ScrollView::motion_step`]).
+                // Wheel notch (edge-drag still uses [`ScrollView::motion_step`]).
                 scroll.scroll_by(-ScrollView::wheel_notch());
                 true
             }
@@ -296,15 +306,34 @@ impl SelectionController {
 
     /// Edge auto-scroll tick (call from idle / timer). Returns true if scrolled.
     pub fn tick_autoscroll(&mut self, scroll: &mut ScrollView, transcript: ScreenRect) -> bool {
+        self.tick_autoscroll_at(scroll, transcript, std::time::Instant::now())
+    }
+
+    fn tick_autoscroll_at(
+        &mut self,
+        scroll: &mut ScrollView,
+        transcript: ScreenRect,
+        now: std::time::Instant,
+    ) -> bool {
         if !self.dragging || self.auto_scroll_dir == 0 {
             return false;
         }
-        // Edge-drag keeps its viewport-scaled motion quantum; wheel events use
-        // the independent one-line `ScrollView::wheel_notch`.
-        let step = ScrollView::motion_step(scroll.viewport_height());
+        // Start precise, then accelerate a sustained edge hold symmetrically.
+        let held = self
+            .auto_scroll_started_at
+            .map(|started| now.saturating_duration_since(started))
+            .unwrap_or_default();
+        let multiplier = if held >= EDGE_AUTOSCROLL_FAST_AFTER {
+            EDGE_AUTOSCROLL_FAST_MULTIPLIER
+        } else if held >= EDGE_AUTOSCROLL_MEDIUM_AFTER {
+            EDGE_AUTOSCROLL_MEDIUM_MULTIPLIER
+        } else {
+            1
+        };
+        let step = ScrollView::motion_step(scroll.viewport_height()) * multiplier;
         let delta = self.auto_scroll_dir as isize * step;
         if !scroll.scroll_by(delta) {
-            self.auto_scroll_dir = 0;
+            self.stop_auto_scroll();
             return false;
         }
         if let Some((col, row)) = self.last_pointer
@@ -400,7 +429,7 @@ impl SelectionController {
                 }
                 self.extend_drag_clamped(col, row, scroll, transcript);
                 self.dragging = false;
-                self.auto_scroll_dir = 0;
+                self.stop_auto_scroll();
                 if self.copy_on_release {
                     self.last_event_copied = self.maybe_copy(scroll, sink);
                 }
@@ -432,7 +461,7 @@ impl SelectionController {
         self.update_edge_dir(if row > edge_row { edge_row } else { row }, transcript);
         // If pointer is in dock (below transcript), force bottom-edge scroll.
         if row > edge_row {
-            self.auto_scroll_dir = 1;
+            self.set_auto_scroll_dir(1);
         }
         let Some(cell) = self
             .screen_to_content(col, clamp_row, scroll, transcript)
@@ -449,13 +478,27 @@ impl SelectionController {
         let bottom = transcript
             .row
             .saturating_add(transcript.height.saturating_sub(1));
-        self.auto_scroll_dir = if row <= top {
+        let next = if row <= top {
             -1
         } else if row >= bottom {
             1
         } else {
             0
         };
+        self.set_auto_scroll_dir(next);
+    }
+
+    fn set_auto_scroll_dir(&mut self, next: i8) {
+        if next == self.auto_scroll_dir {
+            return;
+        }
+        self.auto_scroll_dir = next;
+        self.auto_scroll_started_at = (next != 0).then(std::time::Instant::now);
+    }
+
+    fn stop_auto_scroll(&mut self) {
+        self.auto_scroll_dir = 0;
+        self.auto_scroll_started_at = None;
     }
 
     fn update_click_count(&mut self, col: u16, row: u16) {
@@ -934,13 +977,7 @@ mod tests {
     #[test]
     fn edge_autoscroll_extends_selection() {
         let mut scroll = ScrollView::new(2);
-        scroll.set_lines(vec![
-            "a".into(),
-            "b".into(),
-            "c".into(),
-            "d".into(),
-            "e".into(),
-        ]);
+        scroll.set_lines((0..20).map(|i| format!("L{i}")).collect());
         let mut sel = SelectionController::new();
         let mut sink = RecordingClipboardSink::default();
         let tr = ScreenRect {
@@ -971,8 +1008,32 @@ mod tests {
             &mut sink,
         );
         assert_eq!(sel.auto_scroll_dir, 1);
-        assert!(sel.tick_autoscroll(&mut scroll, tr));
-        assert!(scroll.scroll_top() > 0);
+        let started = sel
+            .auto_scroll_started_at
+            .expect("edge hold start timestamp");
+        let top_before = scroll.scroll_top();
+        assert!(sel.tick_autoscroll_at(&mut scroll, tr, started));
+        assert_eq!(
+            scroll.scroll_top() - top_before,
+            1,
+            "a fresh edge hold must advance exactly one row"
+        );
+
+        let top_before = scroll.scroll_top();
+        assert!(sel.tick_autoscroll_at(&mut scroll, tr, started + EDGE_AUTOSCROLL_MEDIUM_AFTER));
+        assert_eq!(
+            scroll.scroll_top() - top_before,
+            2,
+            "a medium edge hold should advance two rows"
+        );
+
+        let top_before = scroll.scroll_top();
+        assert!(sel.tick_autoscroll_at(&mut scroll, tr, started + EDGE_AUTOSCROLL_FAST_AFTER));
+        assert_eq!(
+            scroll.scroll_top() - top_before,
+            4,
+            "a sustained edge hold should advance four rows"
+        );
     }
 
     #[test]
