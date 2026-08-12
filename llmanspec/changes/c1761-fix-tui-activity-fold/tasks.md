@@ -8,7 +8,7 @@
 | 块 | 状态 | 合约 |
 |---|---|---|
 | 0 Designed 规划壳 | 进行中 | proposal + design + tasks |
-| 1 Specs landing | 未开始 | 须 Branch binding 后 |
+| 1 Specs landing | ✅ | 已 commit live specs |
 | 2–7 Apply | 未开始 | `readyToImplement` 后 |
 
 ---
@@ -27,7 +27,7 @@
 - [x] 1.2 `app-tui-transcript`：改写 att23–att28、att31；**新增** att33 live window、att34 簇切刀
 - [x] 1.3 `runtime-config`：`tui.activity_fold` 键、缺省、非法 `stream_collapse` 失败
 - [x] 1.4 场景：对应 req 各一条 `feature: false` unit；禁止 toon `feature: true`
-- [ ] 1.5 commit Specs landing → `readyToImplement=true`
+- [x] 1.5 commit Specs landing → `readyToImplement=true`
 
 ## Apply backlog
 
