@@ -10,9 +10,9 @@ checkpointed: false
 
 # 广义 FoldTarget：剩余可折块鼠标独立点（吸收 c2050）
 
-> **状态**：Specs landed / `readyToImplement=true`（2026-08-12）。硬前置 [`c2040`](../archive/2026-08-12-c2040-add-tui-mouse-click-fold-triangle/)（已归档）。live：`app-tui-transcript` att29–att32；host skip（ath33）。Wave B Segment **实现**仍闸 c1760 归档。
+> **状态**：Wave A+B applied（2026-08-13）。硬前置 [`c2040`](../archive/2026-08-12-c2040-add-tui-mouse-click-fold-triangle/) · [`c1760`](../archive/2026-08-12-c1760-add-tui-activity-fold/)（均已归档）。live：`app-tui-transcript` att29–att32；host skip（ath33）。c2050 → docs-only [`archive/2026-08-13-c2050-…`](../archive/2026-08-13-c2050-update-activity-fold-mouse-leader/)。
 >
-> **一句话**：在 c2040 L1 四类三角之上扩展统一 `FoldTarget`/`FoldHitTable`，补齐 Compaction + Ctrl+O viewport 鼠标点；Wave B 吸收段级点击并 **docs-only 收薄 c2050**。
+> **一句话**：在 c2040 L1 四类三角之上扩展统一 `FoldTarget`/`FoldHitTable`，补齐 Compaction + Ctrl+O viewport + Segment 摘要标记鼠标点；**docs-only 收薄 c2050**。
 
 ## Why
 

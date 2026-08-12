@@ -1,7 +1,7 @@
 # Design: c2050 多级 ActivityFold × 鼠标 / 覆盖适配
 
 > **阶段**：**docs-only superseded**（2026-08-13；`absorbed_by` c2045）。
-> **对照**：[`c1760`](../archive/2026-08-12-c1760-add-tui-activity-fold/proposal.md) · [`c2045`](../c2045-add-tui-fold-target-remaining/proposal.md) · [`c2040`](../archive/2026-08-12-c2040-add-tui-mouse-click-fold-triangle/) · [`research/multilevel-fold-interaction-matrix.md`](./research/multilevel-fold-interaction-matrix.md)
+> **对照**：[`c1760`](../2026-08-12-c1760-add-tui-activity-fold/proposal.md) · [`c2045`](../../c2045-add-tui-fold-target-remaining/proposal.md) · [`c2040`](../2026-08-12-c2040-add-tui-mouse-click-fold-triangle/) · [`research/multilevel-fold-interaction-matrix.md`](./research/multilevel-fold-interaction-matrix.md)
 
 ## 一句话
 

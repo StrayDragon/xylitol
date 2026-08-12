@@ -10,7 +10,7 @@
 | 1 Specs landing | ✅ | att29–att32；host skip（ath33） |
 | 2–4 Wave A | ✅ | Compaction + OutputViewport |
 | 5–6 Wave B | ✅ | Segment；吸收 c2050 |
-| 7 收口 | ⬜ | validate + c2050 docs-only |
+| 7 收口 | ✅ | validate + c2050 docs-only |
 
 ---
 
@@ -64,9 +64,9 @@
 
 ### 收口（Wave B 后）
 
-- [ ] 7.1 `llman sdd validate c2045 --strict`（及改动 capability）
-- [ ] 7.2 c2050：docs-only supersede → archive（无应用代码；指针回本 change）
-- [ ] 7.3 确认未膨胀进 c1760 主交付 / 未复活 fold-leader
+- [x] 7.1 `llman sdd validate c2045 --strict`（及改动 capability）— 见 verify
+- [x] 7.2 c2050：docs-only supersede → `archive/2026-08-13-c2050-…`
+- [x] 7.3 确认未膨胀进 c1760 主交付 / 未复活 fold-leader
 
 ## 实现顺序
 
