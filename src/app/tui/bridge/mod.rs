@@ -11,6 +11,7 @@ pub(crate) mod session_tree;
 pub(crate) use model::trailing_aborted_note;
 pub use model::{
     AskPhase, BashBlockStatus, CompactionBlockStatus, QueueBadge, UiEntry, UiModel, UiPhase,
+    allocate_thinking_id,
 };
 pub use preview::extract_display_diff;
 pub(crate) use preview::{

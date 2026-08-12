@@ -1,0 +1,85 @@
+//! Fold-triangle hit table for ApplicationOwned mouse (c2040 / att22 / ath33).
+
+/// Per-block fold target addressed by mouse triangle hit.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub enum FoldTarget {
+    Tool(String),
+    Diff(String),
+    Ask(String),
+    Thinking(String),
+}
+
+/// One triangle-column hit region in content coordinates (scrollback line space).
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct FoldHitRegion {
+    pub content_row: usize,
+    pub col_start: usize,
+    pub col_end: usize,
+    pub target: FoldTarget,
+}
+
+/// Live fold hit regions + viewport mapping for screen → content hit tests.
+#[derive(Debug, Clone, Default)]
+pub struct FoldHitTable {
+    pub regions: Vec<FoldHitRegion>,
+    pub scroll_top: usize,
+    pub transcript_rows: u16,
+}
+
+impl FoldHitTable {
+    pub fn clear_regions(&mut self) {
+        self.regions.clear();
+    }
+
+    pub fn push(
+        &mut self,
+        content_row: usize,
+        col_start: usize,
+        col_end: usize,
+        target: FoldTarget,
+    ) {
+        if col_end > col_start {
+            self.regions.push(FoldHitRegion {
+                content_row,
+                col_start,
+                col_end,
+                target,
+            });
+        }
+    }
+
+    /// Map screen cell to a fold target. `content_row = scroll_top + screen_row`.
+    pub fn hit(&self, screen_col: u16, screen_row: u16) -> Option<FoldTarget> {
+        if screen_row >= self.transcript_rows {
+            return None;
+        }
+        let content_row = self.scroll_top.saturating_add(screen_row as usize);
+        let col = screen_col as usize;
+        self.regions
+            .iter()
+            .find(|r| r.content_row == content_row && col >= r.col_start && col < r.col_end)
+            .map(|r| r.target.clone())
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn fold_hit_table_maps_screen_to_content() {
+        let mut table = FoldHitTable {
+            scroll_top: 10,
+            transcript_rows: 5,
+            ..FoldHitTable::default()
+        };
+        table.push(12, 2, 3, FoldTarget::Tool("t1".into()));
+        assert_eq!(
+            table.hit(2, 2),
+            Some(FoldTarget::Tool("t1".into())),
+            "row 2 + scroll 10 → content 12"
+        );
+        assert_eq!(table.hit(3, 2), None, "outside triangle column");
+        assert_eq!(table.hit(2, 5), None, "below transcript pane");
+    }
+}

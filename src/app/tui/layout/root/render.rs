@@ -190,16 +190,27 @@ impl UiRoot {
         }
     }
 
-    pub(super) fn render_scrollback_slot(&mut self, width: usize) -> Vec<String> {
+    pub(super) fn render_scrollback_slot(
+        &mut self,
+        width: usize,
+        content_row_offset: usize,
+    ) -> Vec<String> {
         // Idle empty: 0 rows (DESIGN editor.md — no loud placeholder wall).
-        render_scrollback(
+        let lines = render_scrollback(
             &self.ui_model,
             self.glyphs,
             self.theme,
-            self.fold,
+            &self.fold,
             width,
             &mut self.scrollback_paint,
-        )
+            &mut self.fold_hits,
+        );
+        if content_row_offset > 0 {
+            for region in &mut self.fold_hits.regions {
+                region.content_row = region.content_row.saturating_add(content_row_offset);
+            }
+        }
+        lines
     }
 }
 
@@ -210,8 +221,10 @@ impl Component for UiRoot {
             lines.extend(self.upper_cache_lines.iter().cloned());
         } else {
             let mut upper = Vec::new();
-            upper.extend(self.render_loaded_resources_slot(width));
-            upper.extend(self.render_scrollback_slot(width));
+            let loaded = self.render_loaded_resources_slot(width);
+            let loaded_rows = loaded.len();
+            upper.extend(loaded);
+            upper.extend(self.render_scrollback_slot(width, loaded_rows));
             self.upper_cache_width = width;
             self.upper_cache_gen = self.upper_gen;
             self.upper_cache_lines = upper.clone();

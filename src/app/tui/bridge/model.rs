@@ -109,6 +109,8 @@ pub enum UiEntry {
         text: String,
     },
     Thinking {
+        /// Stable per-block id (hash+ordinal); live flush and session rebuild MUST agree.
+        id: String,
         text: String,
     },
     Tool {
@@ -158,6 +160,24 @@ pub enum UiEntry {
     Error {
         text: String,
     },
+}
+
+/// Stable Thinking id: short text-hash + ordinal among existing Thinking entries
+/// that share the same hash (live flush and session rebuild MUST agree).
+pub fn allocate_thinking_id(entries: &[UiEntry], text: &str) -> String {
+    use std::collections::hash_map::DefaultHasher;
+    use std::hash::{Hash, Hasher};
+    let mut h = DefaultHasher::new();
+    text.hash(&mut h);
+    let short = format!("{:08x}", h.finish() as u32);
+    let ordinal = entries
+        .iter()
+        .filter(|e| match e {
+            UiEntry::Thinking { id, .. } => id.starts_with(&format!("{short}-")),
+            _ => false,
+        })
+        .count();
+    format!("{short}-{ordinal}")
 }
 
 /// Product TUI state produced solely by [`super::apply_xy_event`] / [`UiModel::begin_run`].
@@ -267,7 +287,7 @@ impl UiModel {
             match entry {
                 UiEntry::User { text } => lines.push(format!("user: {text}")),
                 UiEntry::Assistant { text } => lines.push(format!("assistant: {text}")),
-                UiEntry::Thinking { text } => lines.push(format!("thinking: {text}")),
+                UiEntry::Thinking { text, .. } => lines.push(format!("thinking: {text}")),
                 UiEntry::Tool {
                     name,
                     output,
@@ -475,9 +495,9 @@ impl UiModel {
 
     pub(crate) fn flush_streaming(&mut self) {
         if !self.streaming_thinking.is_empty() {
-            self.entries.push(UiEntry::Thinking {
-                text: std::mem::take(&mut self.streaming_thinking),
-            });
+            let text = std::mem::take(&mut self.streaming_thinking);
+            let id = allocate_thinking_id(&self.entries, &text);
+            self.entries.push(UiEntry::Thinking { id, text });
         }
         if !self.streaming_assistant.is_empty() {
             self.entries.push(UiEntry::Assistant {

@@ -228,6 +228,7 @@ impl UiRoot {
         if let InputEvent::Key(ref key) = event {
             if matches_binding(key, "app.thinking.toggle") {
                 self.fold.thinking_expanded = !self.fold.thinking_expanded;
+                self.fold.clear_thinking_overrides();
                 self.scrollback_paint.invalidate();
                 self.bump_upper_gen();
                 return;
@@ -235,6 +236,7 @@ impl UiRoot {
             if matches_binding(key, "app.tools.blocks") {
                 self.fold.tools_expanded = !self.fold.tools_expanded;
                 self.fold.compaction_expanded = !self.fold.compaction_expanded;
+                self.fold.clear_tools_overrides();
                 self.scrollback_paint.invalidate();
                 self.bump_upper_gen();
                 return;

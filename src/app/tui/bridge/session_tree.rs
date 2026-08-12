@@ -7,7 +7,7 @@ use crate::protocol::session::{
 use serde_json::Value;
 
 use super::{
-    BashBlockStatus, CompactionBlockStatus, UiEntry, UiModel, UiPhase,
+    BashBlockStatus, CompactionBlockStatus, UiEntry, UiModel, UiPhase, allocate_thinking_id,
     apply_tool_result_to_entries, find_tool_mut,
 };
 
@@ -334,9 +334,9 @@ fn assistant_parts_to_ui(entry_id: &str, message: &Value) -> Vec<UiEntry> {
                     .and_then(Value::as_str)
                     .filter(|s| !s.is_empty())
                 {
-                    out.push(UiEntry::Thinking {
-                        text: t.to_string(),
-                    });
+                    let text = t.to_string();
+                    let id = allocate_thinking_id(&out, &text);
+                    out.push(UiEntry::Thinking { id, text });
                 }
             }
             Some("text") => {
@@ -529,7 +529,7 @@ mod tests {
         let ui = session_entry_to_ui_entries(&entry);
         assert!(
             matches!(ui.as_slice(), [
-                UiEntry::Thinking { text } ,
+                UiEntry::Thinking { text, .. } ,
                 UiEntry::Assistant { text: reply }
             ] if text == "step 1" && reply == "hello"),
             "got: {ui:?}"

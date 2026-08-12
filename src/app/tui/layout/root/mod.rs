@@ -47,7 +47,8 @@ use crate::app::core::driver::LoadedResourcesSnapshot;
 use crate::app::tui::bridge::UiModel;
 use crate::app::tui::session_resume::SessionResumePanel;
 use crate::app::tui::widgets::{
-    GlyphSet, ScrollbackFold, ScrollbackPaintCache, footer_thinking_label, format_footer_text,
+    FoldHitTable, FoldTarget, GlyphSet, ScrollbackFold, ScrollbackPaintCache,
+    footer_thinking_label, format_footer_text,
 };
 use crate::protocol::error::XyToolError;
 use crate::protocol::model::THINKING_OFF;
@@ -65,6 +66,10 @@ pub struct UiRoot {
     loaded_resources: LoadedResourcesSnapshot,
     ui_model: UiModel,
     fold: ScrollbackFold,
+    /// Triangle-column hit regions for ApplicationOwned mouse (c2040).
+    fold_hits: FoldHitTable,
+    /// Set when a fold triangle toggle mutates state; host marks AO stale.
+    fold_dirty: bool,
     /// Busy-only; idle leaves this unused so status occupies 0 rows.
     status_loader: Loader,
     status_busy: bool,
@@ -188,6 +193,8 @@ impl UiRoot {
             loaded_resources: LoadedResourcesSnapshot::default(),
             ui_model: UiModel::new(),
             fold: ScrollbackFold::default(),
+            fold_hits: FoldHitTable::default(),
+            fold_dirty: false,
             status_loader,
             status_busy: false,
             loader_last_tick: Instant::now(),
@@ -394,7 +401,36 @@ impl UiRoot {
     }
 
     pub fn fold(&self) -> ScrollbackFold {
-        self.fold
+        self.fold.clone()
+    }
+
+    pub fn fold_hits(&self) -> &FoldHitTable {
+        &self.fold_hits
+    }
+
+    pub fn sync_fold_hit_viewport(&mut self, scroll_top: usize, transcript_rows: u16) {
+        self.fold_hits.scroll_top = scroll_top;
+        self.fold_hits.transcript_rows = transcript_rows;
+    }
+
+    /// Single-block fold toggle (mouse triangle). Does **not** clear the whole
+    /// paint cache — entry fingerprints carry effective fold (ath25).
+    pub fn toggle_fold_target(&mut self, target: FoldTarget) {
+        match target {
+            FoldTarget::Tool(id) | FoldTarget::Diff(id) | FoldTarget::Ask(id) => {
+                self.fold.toggle_tools(&id);
+            }
+            FoldTarget::Thinking(id) => {
+                self.fold.toggle_thinking(&id);
+            }
+        }
+        self.fold_dirty = true;
+        self.bump_upper_gen();
+    }
+
+    /// Consume fold-dirty edge so the host can `mark_ao_components_stale`.
+    pub fn take_fold_dirty(&mut self) -> bool {
+        std::mem::take(&mut self.fold_dirty)
     }
 
     /// ApplicationOwned dock rows from the last [`Component::render`].

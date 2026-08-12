@@ -8,7 +8,7 @@
 | 块 | 状态 | 合约 |
 |---|---|---|
 | 1 Specs landing | ✅ | att19–22 / ath33 |
-| 2–6 实现 | 待 apply | 见 Apply backlog |
+| 2–6 实现 | ✅ | 见 Apply backlog |
 
 ---
 
@@ -24,33 +24,33 @@
 
 ### 2. 覆盖表 + ThinkingId
 
-1. `ScrollbackFold`（或等价）：tools overrides map + thinking overrides map
-2. Thinking 条目稳定 id（live + rebuild 同构）
-3. `Alt+E` / `Ctrl+T`：flip default + 清对应族 overrides
-4. effective 展开态驱动 render（Tool/Diff/Ask/Thinking）
+- [x] 1. `ScrollbackFold`（或等价）：tools overrides map + thinking overrides map
+- [x] 2. Thinking 条目稳定 id（live + rebuild 同构）
+- [x] 3. `Alt+E` / `Ctrl+T`：flip default + 清对应族 overrides
+- [x] 4. effective 展开态驱动 render（Tool/Diff/Ask/Thinking）
 
 ### 3. Hit 表 + host 接线
 
-1. render 维护三角列 `fold_hit_regions`（绑 paint gen）
-2. `set_transcript_hit_priority`：命中 → toggle + 吞按
-3. 拖选进行中忽略 fold 重命中（latch）
-4. 点正文 / 旁注不 toggle
+- [x] 1. render 维护三角列 `fold_hit_regions`（绑 paint gen）
+- [x] 2. `set_transcript_hit_priority`：命中 → toggle + 吞按
+- [x] 3. 拖选进行中忽略 fold 重命中（latch）
+- [x] 4. 点正文 / 旁注不 toggle
 
 ### 4. 字形
 
-1. Unicode fold/unfold → `▸`/`▾`；Ascii 保持 `>`/`v`
-2. `visible_width==1` 单测；ascii env 冒烟
+- [x] 1. Unicode fold/unfold → `▸`/`▾`；Ascii 保持 `>`/`v`
+- [x] 2. `visible_width==1` 单测；ascii env 冒烟
 
 ### 5. 验证
 
-1. harness：Mouse 三角 toggle / 误点正文 / 全局清覆盖
-2. ath25 miss 上界不因单块 toggle 回退
-3. `just fmt` + 相关测；人验最短路径记 verify 板
+- [x] 1. harness：Mouse 三角 toggle / 误点正文 / 全局清覆盖
+- [x] 2. ath25 miss 上界不因单块 toggle 回退
+- [x] 3. `just fmt` + 相关测；人验最短路径记 verify 板
 
 ### 6. 收口
 
-1. `llman sdd validate c2040 --strict`
-2. 确认未实现 c2045 / c1760 / c2050 范围
+- [x] 1. `llman sdd validate c2040 --strict`
+- [x] 2. 确认未实现 c2045 / c1760 / c2050 范围
 
 ## 实现顺序
 

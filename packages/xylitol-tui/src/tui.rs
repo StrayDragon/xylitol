@@ -643,6 +643,14 @@ impl<T: Terminal> TUI<T> {
             .unwrap_or(ScrollView::WHEEL_NOTCH)
     }
 
+    /// ApplicationOwned transcript viewport scroll top (content rows above the pane).
+    pub fn application_owned_scroll_top(&self) -> usize {
+        self.application_owned
+            .as_ref()
+            .map(ApplicationOwnedRuntime::scroll_top)
+            .unwrap_or(0)
+    }
+
     pub fn dock_rows(&self) -> usize {
         self.dock_rows
     }
