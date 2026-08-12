@@ -138,7 +138,7 @@ fn given_default_tui() {
     });
 }
 
-#[given("Mode B 应用会话已 begin 且 transcript 有可拖选文本")]
+#[given("ApplicationOwned 应用会话已 begin 且 transcript 有可拖选文本")]
 fn given_application_owned_with_text() {
     let mut tui =
         TUI::with_interaction_mode(RecTerm::new(40, 10), InteractionMode::ApplicationOwned);
@@ -178,7 +178,7 @@ fn given_application_owned_with_text() {
     });
 }
 
-#[given("Mode B 应用会话已 begin")]
+#[given("ApplicationOwned 应用会话已 begin")]
 fn given_application_owned_session() {
     given_application_owned_with_text();
 }
@@ -222,7 +222,7 @@ fn given_transcript_dragging() {
     });
 }
 
-#[given("Mode B 视口已 follow 到底")]
+#[given("ApplicationOwned 视口已 follow 到底")]
 fn given_application_owned_follow_end() {
     let mut tui =
         TUI::with_interaction_mode(RecTerm::new(40, 6), InteractionMode::ApplicationOwned);
@@ -256,7 +256,7 @@ fn given_application_owned_follow_end() {
     });
 }
 
-#[given("Mode B 下 Editor 有多行缓冲")]
+#[given("ApplicationOwned 下 Editor 有多行缓冲")]
 fn given_editor_multiline() {
     let mut editor = Editor::new(
         editor_theme(),
@@ -279,7 +279,7 @@ fn given_tui_run_options_default() {
     });
 }
 
-#[given("产品 Mode B 会话可接收库 copy-notice")]
+#[given("产品 ApplicationOwned 会话可接收库 copy-notice")]
 fn given_product_copy_notice_path() {
     let src = include_str!("../../llmanspec/specs/app-tui-host/spec.toon");
     assert!(

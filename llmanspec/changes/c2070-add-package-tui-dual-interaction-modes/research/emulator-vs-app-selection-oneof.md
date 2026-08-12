@@ -16,17 +16,19 @@
 
 ## 1. 术语对照（建议仓内统一用）
 
-| 中文（建议） | 英文（专业/文档常用） | 指什么 |
-|---|---|---|
-| **终端原生选区** / **仿真器选区** | **emulator-owned selection**、**terminal-native selection**、**host selection** | 选区由终端仿真器画和高亮；复制走终端/OSC 52/主选区；应用**不**解释拖选几何 |
-| **应用内选区** | **application-owned selection**、**app-managed / client-side selection** | 应用收鼠标、自绘高亮、自算行列、自复制（OSC52/剪贴板工具） |
-| **鼠标上报 / 捕获** | **mouse tracking**、**mouse capture**、**xterm mouse reporting**（DECSET 1000/1002/1003…） | 终端把鼠标事件编码发给应用；开着时应用处于 Kitty 所称 **grabbed** |
-| **未捕获 / 已捕获** | **ungrabbed** / **grabbed**（Kitty `mouse_map`） | 未开 tracking ≈ 终端处理 click/拖选；开了 ≈ 应用优先 |
-| **选区旁路修饰键** | **selection-override modifiers**（foot 等） | tracking 开着时，按住 Shift（等）把该次手势**临时还给**终端选区 |
-| **应用视口滚动** | **application-managed scroll** / **viewport scroll** | 内容滚在应用状态里（ScrollView），不是模拟器 scrollback |
-| **终端历史上滚** | **terminal scrollback** / **emulator scrollback** | 历史行在仿真器缓冲；应用通常**点不到** |
+| 中文（建议） | 英文（专业/文档常用） | 指什么 | → 代码标识符（c2070） |
+|---|---|---|---|
+| **终端原生选区** / **仿真器选区** | **emulator-owned selection**、**terminal-native selection**、**host selection** | 选区由终端仿真器画和高亮；复制走终端/OSC 52/主选区；应用**不**解释拖选几何 | `InteractionMode::Inline`；不挂 `ApplicationOwnedRuntime`；无应用内 transcript 选区 |
+| **应用内选区** | **application-owned selection**、**app-managed / client-side selection** | 应用收鼠标、自绘高亮、自算行列、自复制（OSC52/剪贴板工具） | `InteractionMode::ApplicationOwned` + `ApplicationOwnedRuntime` / `selection`；入口 `ApplicationOwnedTui` |
+| **鼠标上报 / 捕获** | **mouse tracking**、**mouse capture**、**xterm mouse reporting**（DECSET 1000/1002/1003…） | 终端把鼠标事件编码发给应用；开着时应用处于 Kitty 所称 **grabbed** | `enable_mouse_capture` / `begin_application_owned_session`（AO 路径一并开） |
+| **未捕获 / 已捕获** | **ungrabbed** / **grabbed**（Kitty `mouse_map`） | 未开 tracking ≈ 终端处理 click/拖选；开了 ≈ 应用优先 | Inline 默认 ungrabbed；AO 会话 grabbed |
+| **选区旁路修饰键** | **selection-override modifiers**（foot 等） | tracking 开着时，按住 Shift（等）把该次手势**临时还给**终端选区 | （产品未承诺；库不假装兼得） |
+| **应用视口滚动** | **application-managed scroll** / **viewport scroll** | 内容滚在应用状态里（ScrollView），不是模拟器 scrollback | AO 内 `ScrollView`；`set_dock_rows` / `dock_rows_hint`；`editor_screen_origin` |
+| **终端历史上滚** | **terminal scrollback** / **emulator scrollback** | 历史行在仿真器缓冲；应用通常**点不到** | Inline 差分写主缓冲；AO 退出 `finish_application_owned` + `set_append_session_to_main_scrollback_on_exit` |
+| **Inline 交互栈** | **inline / main-screen stack**（≈ Pi `TuiMainScreen` / regular） | 主屏差分 + 终端选区取向；一次会话主模式之一 | `InteractionMode::Inline` · `finish_inline` |
+| **ApplicationOwned 交互栈** | **application-owned stack**（≈ Pi `TuiAltScreen` / fullscreen） | 常经 alt-buffer；应用视口 + 应用内选区 + dock 排除 | `InteractionMode::ApplicationOwned` · `begin`/`end`/`finish_application_owned` |
 
-仓内口语可继续说「app 选区 / 原生选区」；写入 proposal/spec 时优先用表中英文对。
+仓内口语可继续说「app 选区 / 原生选区」；写入 proposal/spec / AGENTS 时优先用表中英文与 **Inline / ApplicationOwned**。禁止新代码用 `mode_a` / `mode_b`（见 `packages/xylitol-tui/AGENTS.md` §8）。
 
 **易混**：
 
