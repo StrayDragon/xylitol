@@ -140,6 +140,11 @@ impl PtySession {
         })
     }
 
+    /// Spawn Mode B (`agent_demo_alt`) under a PTY — c2070 ApplicationOwned entry.
+    pub fn spawn_demo_alt(cols: u16, rows: u16) -> std::io::Result<Self> {
+        Self::spawn_example("agent_demo_alt", cols, rows)
+    }
+
     /// Spawn `cargo run --example agent_demo -p xylitol-tui` under a PTY of the
     /// given size. Returns once the process is started.
     pub fn spawn_demo(cols: u16, rows: u16) -> std::io::Result<Self> {
@@ -558,6 +563,99 @@ fn pty_agent_demo_mouse_opt_in_enable_then_exit() {
         session.raw_contains(b"\x1b[?1000l") || session.raw_contains(b"\x1b[?1003l"),
         "exit must emit DisableMouseCapture CSI so mouse mode does not linger"
     );
+}
+
+/// c2070 Mode B minimal PTY gate: `agent_demo_alt` enters alt-buffer + mouse
+/// without `XYLITOL_TUI_MOUSE` / `XYLITOL_AGENT_DEMO_MODE`; exit leaves alt,
+/// disables mouse, and dumps transcript marker onto the main buffer stream.
+#[test]
+#[ignore = "E2E: spawns a real PTY + cargo build; run via `just test-tui-e2e-pty`"]
+fn pty_agent_demo_alt_mode_b_alt_mouse_and_exit_dump() {
+    const COLS: u16 = 100;
+    const ROWS: u16 = 30;
+    const DUMP_MARK: &str = "c2070-mode-b-pty-dump-marker";
+    let mut session = PtySession::spawn_example_with_env(
+        "agent_demo_alt",
+        COLS,
+        ROWS,
+        &[("XYLITOL_AGENT_DEMO_INITIAL_PROMPT", DUMP_MARK)],
+    )
+    .expect("spawn agent_demo_alt");
+    session
+        .wait_for(
+            crate::DEMO_READY_NEEDLE,
+            Duration::from_secs(90),
+            COLS as usize,
+            ROWS as usize,
+        )
+        .expect("agent_demo_alt should render");
+
+    // EnterAlternateScreen (CSI ?1049h) — Mode B begin.
+    assert!(
+        session.raw_contains(b"\x1b[?1049h"),
+        "Mode B must enter alt-buffer (CSI ?1049h)"
+    );
+    // Mouse from begin_application_owned_session — not XYLITOL_TUI_MOUSE.
+    assert!(
+        session.raw_contains(b"\x1b[?1000h") || session.raw_contains(b"\x1b[?1003h"),
+        "Mode B must EnableMouseCapture without XYLITOL_TUI_MOUSE"
+    );
+
+    session.send_keys("\x15").expect("clear editor");
+    session.send_keys("\x03").expect("Ctrl+C quit");
+    let code = session
+        .wait_exit(Duration::from_secs(30))
+        .expect("agent_demo_alt should exit");
+    assert_eq!(code, 0, "Mode B demo must exit cleanly");
+
+    assert!(
+        session.raw_contains(b"\x1b[?1049l"),
+        "Mode B teardown must leave alt-buffer (CSI ?1049l)"
+    );
+    assert!(
+        session.raw_contains(b"\x1b[?1000l") || session.raw_contains(b"\x1b[?1003l"),
+        "Mode B teardown must DisableMouseCapture"
+    );
+    // Exit dump writes transcript (incl. seeded editor/prompt path) to main buffer.
+    assert!(
+        session.raw_contains(DUMP_MARK.as_bytes()),
+        "exit dump should emit seeded transcript marker into PTY stream after leave-alt"
+    );
+}
+
+/// c2070 Mode B: SGR drag on transcript should emit OSC52 copy-on-release.
+#[test]
+#[ignore = "E2E: spawns a real PTY + cargo build; run via `just test-tui-e2e-pty`"]
+fn pty_agent_demo_alt_mode_b_drag_select_osc52() {
+    const COLS: u16 = 100;
+    const ROWS: u16 = 30;
+    let mut session = PtySession::spawn_demo_alt(COLS, ROWS).expect("spawn agent_demo_alt");
+    session
+        .wait_for(
+            crate::DEMO_READY_NEEDLE,
+            Duration::from_secs(90),
+            COLS as usize,
+            ROWS as usize,
+        )
+        .expect("agent_demo_alt should render");
+    assert!(
+        session.raw_contains(b"\x1b[?1049h"),
+        "precondition: alt-buffer active"
+    );
+
+    // SGR mouse: left down → drag → up on an upper transcript row (1-based cols/rows).
+    session.send_keys("\x1b[<0;8;4M").expect("mouse down");
+    session.send_keys("\x1b[<32;48;4M").expect("mouse drag");
+    session.send_keys("\x1b[<0;48;4m").expect("mouse up");
+    session.drain(Duration::from_millis(400));
+    session
+        .wait_for_raw("\x1b]52;", Duration::from_secs(5))
+        .expect("drag-select release must emit OSC52");
+
+    session.send_keys("\x15").expect("clear editor");
+    session.send_keys("\x03").expect("quit");
+    let code = session.wait_exit(Duration::from_secs(30)).expect("exit");
+    assert_eq!(code, 0);
 }
 
 /// c669: product bang `!echo` streams into a Bash block (real shell, Fake model).

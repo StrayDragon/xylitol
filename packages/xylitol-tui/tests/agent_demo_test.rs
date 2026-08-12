@@ -1,6 +1,6 @@
 mod support;
 
-#[path = "../examples/agent_demo.rs"]
+#[path = "../examples/agent_demo_impl.rs"]
 mod agent_demo_example;
 
 use std::sync::Arc;
