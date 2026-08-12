@@ -364,7 +364,10 @@ impl<T: Terminal> HostSession<T> {
     /// busy (≈60Hz) ticker — otherwise wheel/drag frames wait on the 250ms idle
     /// tick and feel stuttery even when CPU is low.
     pub fn wants_busy_tick(&self) -> bool {
-        self.is_busy() || self.reload_active || self.tui.is_render_requested()
+        self.is_busy()
+            || self.reload_active
+            || self.tui.is_render_requested()
+            || self.tui.application_owned_wheel_pending()
     }
 
     pub fn take_reload(&mut self) -> bool {
@@ -843,6 +846,11 @@ impl<T: Terminal> HostSession<T> {
             }
         }
 
+        self.step_paint_only()
+    }
+
+    /// Throttled paint after model/chrome updates (shared by `step` and stream coalesce).
+    pub(crate) fn step_paint_only(&mut self) -> Result<(), XyDriverError> {
         // Dock sync only when chrome/content may have changed. Reproject-only
         // wheel frames keep the prior dock measurement.
         let may_paint = self.tui.is_render_requested();

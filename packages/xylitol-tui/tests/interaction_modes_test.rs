@@ -305,15 +305,17 @@ fn application_owned_wheel_scrolls_app_viewport() {
     );
     tui.request_render(false);
     tui.render_now().expect("after wheel");
-    // Content lines L00..L17 + dock L18,L19; viewport content height=4, follow end
-    // shows L14..L17. Wheel -3 → L11..L14 must persist after project_frame.
+    // Content L00..L17 + dock L18,L19; viewport content h=4 → motion_step=2.
+    // Follow end shows L14..L17; one wheel notch → L12..L15.
+    let step = tui.application_owned_motion_step();
+    assert_eq!(step, 2);
     let raw = tui.terminal.all_writes();
     assert!(
-        raw.contains("L11"),
+        raw.contains("L12"),
         "wheel scroll must persist across paint, got: {raw:?}"
     );
     assert!(
-        !raw.contains("L17") || raw.rfind("L11").unwrap() > raw.rfind("L17").unwrap_or(0),
+        !raw.contains("L17") || raw.rfind("L12").unwrap() > raw.rfind("L17").unwrap_or(0),
         "must not snap back to follow-end after wheel"
     );
 }
@@ -926,10 +928,13 @@ fn application_owned_wheel_uses_scroll_region_shift() {
         tui.ao_scroll_shift_frames_for_test() >= 1,
         "small wheel without selection should use scroll-region shift"
     );
+    let step = tui.application_owned_motion_step();
     let writes = tui.terminal.all_writes();
+    let expected_s = format!("\x1b[{step}S");
+    let expected_t = format!("\x1b[{step}T");
     assert!(
-        writes.contains("\x1b[3S") || writes.contains("\x1b[3T"),
-        "expected CSI scroll in transcript region, got: {writes:?}"
+        writes.contains(&expected_s) || writes.contains(&expected_t),
+        "expected CSI scroll {expected_s}/{expected_t} in transcript region, got: {writes:?}"
     );
 }
 

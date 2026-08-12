@@ -11,6 +11,12 @@ pub struct ScrollView {
 }
 
 impl ScrollView {
+    /// Shared motion quantum for wheel notches and selection edge-drag.
+    /// Keeps ApplicationOwned browse / select scroll feeling the same.
+    pub fn motion_step(viewport_height: usize) -> isize {
+        (viewport_height as isize / 8).clamp(2, 8)
+    }
+
     pub fn new(viewport_height: usize) -> Self {
         Self {
             lines: Vec::new(),

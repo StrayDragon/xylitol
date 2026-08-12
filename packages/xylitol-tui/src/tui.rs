@@ -566,7 +566,7 @@ impl<T: Terminal> TUI<T> {
         self.ao_components_stale
     }
 
-    /// Scroll ApplicationOwned transcript immediately; schedule a throttled paint.
+    /// Ingest ApplicationOwned wheel delta (drag-aligned step + residual).
     pub fn application_owned_scroll_by(&mut self, delta: isize) -> bool {
         let Some(runtime) = self.application_owned.as_mut() else {
             return false;
@@ -574,9 +574,24 @@ impl<T: Terminal> TUI<T> {
         if delta == 0 {
             return false;
         }
-        let _ = runtime.scroll_by(delta);
+        let _ = runtime.ingest_wheel_delta(delta);
         self.request_render(false);
         true
+    }
+
+    /// Motion quantum for AO wheel coalesce (matches selection edge-drag).
+    pub fn application_owned_motion_step(&self) -> isize {
+        self.application_owned
+            .as_ref()
+            .map(ApplicationOwnedRuntime::motion_step)
+            .unwrap_or(3)
+    }
+
+    /// Wheel residual still draining on the busy-tick path.
+    pub fn application_owned_wheel_pending(&self) -> bool {
+        self.application_owned
+            .as_ref()
+            .is_some_and(ApplicationOwnedRuntime::has_pending_wheel)
     }
 
     pub fn dock_rows(&self) -> usize {
@@ -1892,6 +1907,14 @@ impl<T: Terminal> TUI<T> {
                 self.terminal.write(&seq);
             }
             self.terminal.flush();
+        }
+        // Wheel residual matches drag: keep requesting frames on the busy ticker.
+        if self
+            .application_owned
+            .as_ref()
+            .is_some_and(ApplicationOwnedRuntime::has_pending_wheel)
+        {
+            self.render_requested = true;
         }
         Ok(())
     }

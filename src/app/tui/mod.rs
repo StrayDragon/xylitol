@@ -332,9 +332,10 @@ async fn run_host_loop(
                     match maybe {
                         Some(item) => {
                             // Fast scroll: drain already-buffered wheel events into
-                            // one delta + one paint (Kitty/tmux often burst Scroll*).
+                            // one residual + drag-aligned first step (Kitty/tmux burst).
                             // Only when the first event is over the transcript pane.
-                            let coalesce_wheel = wheel_delta_from_item(&item).filter(|_| {
+                            let step = session.tui.application_owned_motion_step();
+                            let coalesce_wheel = wheel_delta_from_item(&item, step).filter(|_| {
                                 session.tui.application_session_active()
                                     && match &item {
                                         Ok(Event::Mouse(m)) => {
@@ -351,7 +352,7 @@ async fn run_host_loop(
                                 let mut deferred: Option<Result<Event, std::io::Error>> = None;
                                 while let Some(next) = term_events.next().now_or_never().flatten()
                                 {
-                                    if let Some(d) = wheel_delta_from_item(&next) {
+                                    if let Some(d) = wheel_delta_from_item(&next, step) {
                                         delta = delta.saturating_add(d);
                                     } else {
                                         deferred = Some(next);
@@ -449,11 +450,12 @@ async fn run_host_loop(
     host_result
 }
 
-fn wheel_delta_from_item(item: &Result<Event, std::io::Error>) -> Option<isize> {
+fn wheel_delta_from_item(item: &Result<Event, std::io::Error>, step: isize) -> Option<isize> {
+    let step = step.max(1);
     match item {
         Ok(Event::Mouse(m)) => match m.kind {
-            MouseEventKind::ScrollUp => Some(-3),
-            MouseEventKind::ScrollDown => Some(3),
+            MouseEventKind::ScrollUp => Some(-step),
+            MouseEventKind::ScrollDown => Some(step),
             _ => None,
         },
         _ => None,
@@ -494,6 +496,44 @@ fn on_agent_stream_item<T: xylitol_tui::Terminal>(
     maybe: Option<crate::protocol::lifecycle::XyEvent>,
 ) -> Result<(), XyDriverError> {
     match maybe {
+        Some(xy) if is_coalesceable_stream_delta(&xy) => {
+            // Typewriter bursts: merge already-buffered Text/Thinking deltas into
+            // one model sync + one throttled paint (cuts AO full-render spam).
+            apply_xy_event(session.ui_model_mut(), &xy);
+            let mut deferred: Option<crate::protocol::lifecycle::XyEvent> = None;
+            let mut stream_ended = false;
+            while let Some(stream) = agent_stream.as_mut() {
+                let Some(next) = stream.next().now_or_never() else {
+                    break;
+                };
+                match next {
+                    Some(ev) if is_coalesceable_stream_delta(&ev) => {
+                        apply_xy_event(session.ui_model_mut(), &ev);
+                    }
+                    Some(ev) => {
+                        deferred = Some(ev);
+                        break;
+                    }
+                    None => {
+                        stream_ended = true;
+                        break;
+                    }
+                }
+            }
+            session.sync_ui_root_from_model();
+            session.tui.request_render(false);
+            session.step_paint_only()?;
+            if stream_ended {
+                log::debug!(target: "xylitol::tui", "agent EventStream ended");
+                *agent_stream = None;
+                session.on_run_stream_closed();
+                let _ = session.tui.try_render();
+            }
+            if let Some(ev) = deferred {
+                session.step(HostEvent::Xy(Box::new(ev)))?;
+            }
+            Ok(())
+        }
         Some(xy) => session.step(HostEvent::Xy(Box::new(xy))),
         None => {
             log::debug!(target: "xylitol::tui", "agent EventStream ended");
@@ -503,4 +543,12 @@ fn on_agent_stream_item<T: xylitol_tui::Terminal>(
             Ok(())
         }
     }
+}
+
+fn is_coalesceable_stream_delta(xy: &crate::protocol::lifecycle::XyEvent) -> bool {
+    matches!(
+        xy,
+        crate::protocol::lifecycle::XyEvent::TextDelta(_)
+            | crate::protocol::lifecycle::XyEvent::ThinkingDelta(_)
+    )
 }
