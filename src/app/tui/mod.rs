@@ -2,6 +2,7 @@
 //!
 //! See `AGENTS.md` in this directory. Engine: `packages/xylitol-tui`.
 
+pub(crate) mod activity_fold;
 mod ask_host;
 mod bridge;
 mod commands;

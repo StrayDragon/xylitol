@@ -345,13 +345,14 @@ impl<T: Terminal> HostSession<T> {
         if let Some(root) = self.ui_root.as_ref() {
             let mut root = root.borrow_mut();
             root.close_session_tree();
-            if let Some(text) = travel.editor_text {
-                root.set_editor_text(text);
+            if let Some(ref text) = travel.editor_text {
+                root.set_editor_text(text.clone());
             } else {
                 root.set_editor_text(String::new());
             }
         }
         self.sync_ui_root_from_model();
+        self.finish_activity_after_rebuild(&entries, &travel);
         // Trailing notice (above input / end of scrollback) — never prepend via rebuild.
         self.push_scroll_notice(note);
     }
@@ -380,6 +381,7 @@ impl<T: Terminal> HostSession<T> {
             root.set_editor_text(editor_prefill.unwrap_or_default());
         }
         self.sync_ui_root_from_model();
+        self.finish_activity_after_rebuild(&entries, &travel);
         // Single trailing note; rebuild no longer emits history @ (travel-only).
         self.push_scroll_notice(format!("forked → session {child_id}"));
         self.seed_editor_history_from_entries(&entries);
@@ -479,6 +481,7 @@ impl<T: Terminal> HostSession<T> {
             self.seed_editor_history_from_entries(&entries);
         }
         self.sync_ui_root_from_model();
+        self.finish_activity_after_rebuild(&entries, &travel);
         self.push_scroll_notice(note);
         // Resume / restore / clone / import must refresh footer without waiting for
         // a new turn (c1035 was stream-close only; CLI --session left token blank).
@@ -513,6 +516,18 @@ impl<T: Terminal> HostSession<T> {
             self.set_footer_model(label);
         }
         self.sync_ui_root_from_model();
+        self.finish_activity_after_rebuild(&load.entries, &travel);
         self.push_scroll_notice(load.note);
+    }
+
+    fn finish_activity_after_rebuild(
+        &mut self,
+        entries: &[SessionEntry],
+        travel: &SessionTreeTravel,
+    ) {
+        if let Some(root) = self.ui_root.as_ref() {
+            root.borrow_mut()
+                .apply_activity_after_rebuild(entries, travel);
+        }
     }
 }

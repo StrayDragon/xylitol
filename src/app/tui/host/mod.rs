@@ -1053,6 +1053,12 @@ impl<T: Terminal> HostSession<T> {
             _ => {}
         }
         self.sync_ui_root_from_model();
+        if matches!(xy.as_ref(), XyEvent::AgentEnd { .. })
+            && let Some(root) = self.ui_root.as_ref()
+        {
+            // ActivityFold turn-end auto crush (att26); after model sync.
+            root.borrow_mut().apply_activity_after_turn_end();
+        }
         self.tui.request_render(false);
     }
 

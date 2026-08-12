@@ -247,6 +247,14 @@ impl UiRoot {
                 self.bump_upper_gen();
                 return;
             }
+            if matches_binding(key, "app.activity.expandNearest") {
+                let _ = self.expand_nearest_activity();
+                return;
+            }
+            if matches_binding(key, "app.activity.collapseNearest") {
+                let _ = self.collapse_nearest_activity();
+                return;
+            }
             // Product MUST NOT open Command Plate (DESIGN 明确不做；Ctrl+P 留给
             // session-resume path toggle 等已接线绑定，勿再抢占).
         }

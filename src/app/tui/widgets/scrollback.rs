@@ -13,6 +13,10 @@ use std::collections::HashMap;
 
 use super::fold_hit::{FoldHitTable, FoldTarget};
 use super::glyphs::GlyphSet;
+use crate::app::tui::activity_fold::{
+    ActivityFoldState, SegmentLevel, count_segment, format_summary_line, middle_entry_indices,
+    partition_segments,
+};
 use crate::app::tui::bridge::{AskPhase, BashBlockStatus, CompactionBlockStatus, UiEntry, UiModel};
 use crate::app::tui::layout::LayoutTheme;
 use xylitol_tui::terminal_colors::RgbColor;
@@ -677,11 +681,16 @@ const RAILED_MARKER_COL: usize = 2;
 ///
 /// Fills `fold_hits.regions` with content-relative rows (caller adds loaded-resources
 /// offset). Does not touch `scroll_top` / `transcript_rows`.
+///
+/// L2/L3 segments skip foldable middles and emit one summary row; segment→row
+/// spans land in `activity.row_spans` (not [`FoldHitTable`] — c1760 / c2050).
+#[allow(clippy::too_many_arguments)] // fold + activity + cache + hits are distinct paint planes
 pub fn render_scrollback(
     model: &UiModel,
     glyphs: GlyphSet,
     theme: LayoutTheme,
     fold: &ScrollbackFold,
+    activity: &mut ActivityFoldState,
     width: usize,
     cache: &mut ScrollbackPaintCache,
     fold_hits: &mut FoldHitTable,
@@ -689,6 +698,7 @@ pub fn render_scrollback(
     let width = width.max(1);
     cache.prepare(width, fold);
     fold_hits.clear_regions();
+    activity.row_spans.clear();
     let mut lines = Vec::new();
 
     if model.entries.is_empty() && model.streaming_scrollback_tails().is_empty() {
@@ -701,8 +711,48 @@ pub fn render_scrollback(
         cache.entries.truncate(model.entries.len());
     }
 
+    let segments = partition_segments(&model.entries);
+    let mut collapsed_middle: std::collections::HashSet<usize> = std::collections::HashSet::new();
+    let mut summary_at: std::collections::HashMap<usize, usize> = std::collections::HashMap::new();
+    for (si, seg) in segments.iter().enumerate() {
+        if !activity.effective_level(&seg.id).is_collapsed() {
+            continue;
+        }
+        let mids = middle_entry_indices(&model.entries, seg);
+        if let Some(&first) = mids.first() {
+            summary_at.insert(first, si);
+        }
+        collapsed_middle.extend(mids);
+    }
+
     let mut need_spacer = false;
     for (entry_idx, entry) in model.entries.iter().enumerate() {
+        if collapsed_middle.contains(&entry_idx) {
+            if let Some(&si) = summary_at.get(&entry_idx) {
+                let seg = &segments[si];
+                let level = activity.effective_level(&seg.id);
+                if need_spacer {
+                    lines.push(inter_block_spacer(width));
+                }
+                let counts = count_segment(&model.entries, seg);
+                let dur = activity.duration_for(&seg.id);
+                // L3 without reliable stamps: omit duration (att24); still L3 row.
+                let dur_ref = match level {
+                    SegmentLevel::L3 => dur.as_deref(),
+                    _ => None,
+                };
+                let plain = format_summary_line(level, glyphs, &counts, dur_ref);
+                let painted = theme.paint_muted(&plain);
+                let row_start = lines.len();
+                push_wrapped(&mut lines, &painted, width);
+                let row_end = lines.len();
+                activity
+                    .row_spans
+                    .insert(seg.id.clone(), row_start, row_end);
+                need_spacer = true;
+            }
+            continue;
+        }
         if need_spacer {
             lines.push(inter_block_spacer(width));
         }
@@ -1084,6 +1134,7 @@ mod tests {
             GlyphSet::from_env(),
             theme,
             &fold,
+            &mut crate::app::tui::activity_fold::ActivityFoldState::default(),
             80,
             &mut ScrollbackPaintCache::default(),
             &mut FoldHitTable::default(),
@@ -1116,6 +1167,7 @@ mod tests {
             GlyphSet::from_env(),
             theme,
             &ScrollbackFold::default(),
+            &mut crate::app::tui::activity_fold::ActivityFoldState::default(),
             100,
             &mut ScrollbackPaintCache::default(),
             &mut FoldHitTable::default(),
@@ -1150,6 +1202,7 @@ mod tests {
                 compaction_expanded: true,
                 ..ScrollbackFold::default()
             },
+            &mut crate::app::tui::activity_fold::ActivityFoldState::default(),
             100,
             &mut ScrollbackPaintCache::default(),
             &mut FoldHitTable::default(),
@@ -1182,6 +1235,7 @@ mod tests {
             GlyphSet::from_env(),
             theme,
             &ScrollbackFold::default(),
+            &mut crate::app::tui::activity_fold::ActivityFoldState::default(),
             80,
             &mut ScrollbackPaintCache::default(),
             &mut FoldHitTable::default(),
@@ -1225,6 +1279,7 @@ mod tests {
             GlyphSet::from_env(),
             theme,
             &ScrollbackFold::default(),
+            &mut crate::app::tui::activity_fold::ActivityFoldState::default(),
             80,
             &mut ScrollbackPaintCache::default(),
             &mut FoldHitTable::default(),
@@ -1293,6 +1348,7 @@ mod tests {
             GlyphSet::from_env(),
             theme,
             &ScrollbackFold::default(),
+            &mut crate::app::tui::activity_fold::ActivityFoldState::default(),
             100,
             &mut ScrollbackPaintCache::default(),
             &mut FoldHitTable::default(),
@@ -1351,6 +1407,7 @@ mod tests {
                 tools_output_expanded: true,
                 ..ScrollbackFold::default()
             },
+            &mut crate::app::tui::activity_fold::ActivityFoldState::default(),
             120,
             &mut ScrollbackPaintCache::default(),
             &mut FoldHitTable::default(),
@@ -1396,6 +1453,7 @@ mod tests {
             GlyphSet::from_env(),
             theme,
             &ScrollbackFold::default(),
+            &mut crate::app::tui::activity_fold::ActivityFoldState::default(),
             100,
             &mut ScrollbackPaintCache::default(),
             &mut FoldHitTable::default(),
@@ -1441,6 +1499,7 @@ mod tests {
             GlyphSet::from_env(),
             theme,
             &ScrollbackFold::default(),
+            &mut crate::app::tui::activity_fold::ActivityFoldState::default(),
             100,
             &mut ScrollbackPaintCache::default(),
             &mut FoldHitTable::default(),
@@ -1489,6 +1548,7 @@ mod tests {
                 glyphs,
                 theme,
                 &fold,
+                &mut crate::app::tui::activity_fold::ActivityFoldState::default(),
                 100,
                 &mut cache,
                 &mut FoldHitTable::default(),
@@ -1501,6 +1561,7 @@ mod tests {
                     glyphs,
                     theme,
                     &fold,
+                    &mut crate::app::tui::activity_fold::ActivityFoldState::default(),
                     100,
                     &mut cache,
                     &mut FoldHitTable::default(),

@@ -1,0 +1,111 @@
+//! Activity-fold (c1760): segment L0/L2/L3 plane, orthogonal to block L1 (c2040).
+//!
+//! MUST NOT register `FoldTarget::Segment` or wire summary clicks (c2045 / c2050).
+
+mod degrade;
+mod segment;
+mod settings;
+mod state;
+mod summary;
+
+pub use degrade::AutoTrigger;
+pub use segment::{SegmentLevel, middle_entry_indices, partition_segments};
+#[allow(unused_imports)] // settings surface for host/options later
+pub use settings::ActivityFoldSettings;
+#[allow(unused_imports)]
+pub use state::SegmentRowSpans;
+pub use state::{ActivityFoldState, SegmentClock};
+pub use summary::{count_segment, format_summary_line};
+
+use chrono::{DateTime, TimeZone, Utc};
+
+use crate::app::tui::bridge::UiEntry;
+use crate::protocol::session::{SessionEntry, SessionTreeTravel};
+
+/// Parse session / ISO / unix-ish timestamps; `None` when unreliable.
+pub fn parse_timestamp(raw: &str) -> Option<DateTime<Utc>> {
+    let raw = raw.trim();
+    if raw.is_empty() {
+        return None;
+    }
+    if let Ok(dt) = DateTime::parse_from_rfc3339(raw) {
+        return Some(dt.with_timezone(&Utc));
+    }
+    if let Ok(n) = raw.parse::<i64>() {
+        // Heuristic: ms vs s
+        let secs = if n > 10_000_000_000 { n / 1000 } else { n };
+        return Utc.timestamp_opt(secs, 0).single();
+    }
+    None
+}
+
+/// After rebuild: map ancestry session stamps onto segment clocks (att24).
+pub fn ingest_rebuild_clocks(
+    state: &mut ActivityFoldState,
+    ui_entries: &[UiEntry],
+    session_entries: &[SessionEntry],
+    travel: &SessionTreeTravel,
+) {
+    let segs = partition_segments(ui_entries);
+    let path_ids = ancestry_path_ids(session_entries, travel.leaf_id.as_deref());
+    // Walk path messages in order; pair User / last assistant-ish stamps by turn.
+    let mut user_stamps: Vec<Option<DateTime<Utc>>> = Vec::new();
+    let mut asst_stamps: Vec<Option<DateTime<Utc>>> = Vec::new();
+    let mut cur_user: Option<DateTime<Utc>> = None;
+    let mut cur_asst: Option<DateTime<Utc>> = None;
+    let mut in_turn = false;
+
+    for id in &path_ids {
+        let Some(entry) = session_entries
+            .iter()
+            .find(|e| e.entry_id() == Some(id.as_str()))
+        else {
+            continue;
+        };
+        let Some(base) = entry.base() else {
+            continue;
+        };
+        let ts = parse_timestamp(&base.timestamp);
+        if let SessionEntry::Message(m) = entry {
+            let role = crate::protocol::session::message_role(&m.message);
+            match role {
+                Some("user") => {
+                    if in_turn {
+                        user_stamps.push(cur_user);
+                        asst_stamps.push(cur_asst);
+                    }
+                    cur_user = ts;
+                    cur_asst = None;
+                    in_turn = true;
+                }
+                Some("assistant") if ts.is_some() => {
+                    cur_asst = ts;
+                }
+                _ => {}
+            }
+        }
+    }
+    if in_turn {
+        user_stamps.push(cur_user);
+        asst_stamps.push(cur_asst);
+    }
+
+    // Map activity segments (which skip empty turns) onto user-turn stamps by
+    // counting User rows in ui_entries.
+    let mut user_ord = 0usize;
+    for (idx, e) in ui_entries.iter().enumerate() {
+        if !matches!(e, UiEntry::User { .. }) {
+            continue;
+        }
+        if let Some(seg) = segs.iter().find(|s| s.user_idx == idx) {
+            let start = user_stamps.get(user_ord).copied().flatten();
+            let end = asst_stamps.get(user_ord).copied().flatten();
+            state.set_clock(&seg.id, SegmentClock { start, end });
+        }
+        user_ord += 1;
+    }
+}
+
+fn ancestry_path_ids(entries: &[SessionEntry], leaf_id: Option<&str>) -> Vec<String> {
+    crate::app::tui::bridge::session_tree::ancestry_path_ids(entries, leaf_id)
+}
