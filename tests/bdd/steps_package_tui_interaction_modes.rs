@@ -1,4 +1,4 @@
-//! Steps for `package-tui-interaction-modes` (c2070 Mode B).
+//! Steps for `package-tui-interaction-modes` (c2070 ApplicationOwned).
 
 use std::cell::RefCell;
 
@@ -11,7 +11,7 @@ use xylitol_tui::{
 };
 
 thread_local! {
-    static HARNESS: RefCell<Option<ModeBHarness>> = const { RefCell::new(None) };
+    static HARNESS: RefCell<Option<ApplicationOwnedHarness>> = const { RefCell::new(None) };
     static LAST_BOOL: RefCell<bool> = const { RefCell::new(false) };
     static EDITOR: RefCell<Option<Editor>> = const { RefCell::new(None) };
 }
@@ -89,7 +89,7 @@ impl Component for StaticLines {
     fn invalidate(&mut self) {}
 }
 
-struct ModeBHarness {
+struct ApplicationOwnedHarness {
     tui: TUI<RecTerm>,
     sel: SelectionController,
     scroll: ScrollView,
@@ -117,7 +117,7 @@ fn editor_theme() -> EditorTheme {
 #[given("新建默认 TUI")]
 fn given_default_tui() {
     HARNESS.with(|h| {
-        *h.borrow_mut() = Some(ModeBHarness {
+        *h.borrow_mut() = Some(ApplicationOwnedHarness {
             tui: TUI::new(RecTerm::new(40, 12)),
             sel: SelectionController::new(),
             scroll: ScrollView::new(4),
@@ -139,10 +139,10 @@ fn given_default_tui() {
 }
 
 #[given("Mode B 应用会话已 begin 且 transcript 有可拖选文本")]
-fn given_mode_b_with_text() {
+fn given_application_owned_with_text() {
     let mut tui =
         TUI::with_interaction_mode(RecTerm::new(40, 10), InteractionMode::ApplicationOwned);
-    tui.set_mode_b_dock_rows(2);
+    tui.set_dock_rows(2);
     tui.add_child(Box::new(StaticLines {
         lines: vec![
             "hello".into(),
@@ -157,7 +157,7 @@ fn given_mode_b_with_text() {
     let _ = tui.render_now();
     tui.terminal.writes.clear();
     HARNESS.with(|h| {
-        *h.borrow_mut() = Some(ModeBHarness {
+        *h.borrow_mut() = Some(ApplicationOwnedHarness {
             tui,
             sel: SelectionController::new(),
             scroll: ScrollView::new(4),
@@ -179,14 +179,14 @@ fn given_mode_b_with_text() {
 }
 
 #[given("Mode B 应用会话已 begin")]
-fn given_mode_b_session() {
-    given_mode_b_with_text();
+fn given_application_owned_session() {
+    given_application_owned_with_text();
 }
 
 #[given("transcript 拖选进行中")]
 fn given_transcript_dragging() {
     HARNESS.with(|h| {
-        let mut harness = ModeBHarness {
+        let mut harness = ApplicationOwnedHarness {
             tui: TUI::new(RecTerm::new(40, 12)),
             sel: SelectionController::new(),
             scroll: ScrollView::new(3),
@@ -223,10 +223,10 @@ fn given_transcript_dragging() {
 }
 
 #[given("Mode B 视口已 follow 到底")]
-fn given_mode_b_follow_end() {
+fn given_application_owned_follow_end() {
     let mut tui =
         TUI::with_interaction_mode(RecTerm::new(40, 6), InteractionMode::ApplicationOwned);
-    tui.set_mode_b_dock_rows(2);
+    tui.set_dock_rows(2);
     tui.add_child(Box::new(StaticLines {
         lines: (0..20).map(|i| format!("L{i:02}")).collect(),
     }));
@@ -235,7 +235,7 @@ fn given_mode_b_follow_end() {
     tui.request_render(true);
     let _ = tui.render_now();
     HARNESS.with(|h| {
-        *h.borrow_mut() = Some(ModeBHarness {
+        *h.borrow_mut() = Some(ApplicationOwnedHarness {
             tui,
             sel: SelectionController::new(),
             scroll: ScrollView::new(4),
@@ -385,8 +385,8 @@ fn when_read_interaction_mode() {
 }
 
 #[then("模式为 Inline 且应用会话未激活")]
-fn then_mode_a() {
-    LAST_BOOL.with(|b| assert!(*b.borrow(), "expected Mode A / inactive session"));
+fn then_inline_session_inactive() {
+    LAST_BOOL.with(|b| assert!(*b.borrow(), "expected Inline / inactive session"));
 }
 
 #[then("发出 OSC52 剪贴板序列")]
@@ -432,7 +432,7 @@ fn then_copy_notice() {
 
         let mut tui =
             TUI::with_interaction_mode(RecTerm::new(40, 10), InteractionMode::ApplicationOwned);
-        tui.set_mode_b_dock_rows(2);
+        tui.set_dock_rows(2);
         tui.add_child(Box::new(StaticLines {
             lines: vec!["ab".into(), "cd".into(), "d1".into(), "d2".into()],
         }));
@@ -479,7 +479,7 @@ fn then_product_notice_path() {
     let host = include_str!("../../src/app/tui/layout/root/mod.rs");
     assert!(
         host.contains("arm_copy_notice") && host.contains("copy_notice_until"),
-        "product UiRoot must expose Mode B copy-notice cue"
+        "product UiRoot must expose ApplicationOwned copy-notice cue"
     );
     assert!(
         !host.contains("Error: Copied"),

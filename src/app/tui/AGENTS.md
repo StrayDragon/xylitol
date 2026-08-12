@@ -30,7 +30,7 @@
 - 滚动提示 / 导航瞬时提示：默认 **尾随**（跟底可见、保 paint-cache）。**顶插不是绝对禁令**——顶层原则是高效绘制 + 用户跟底仍能合理看见关键反馈；仅当有明确理由（且接受缓存失效 / 视口外风险）才可顶插，须在 design/提案写清。瞬时确认优先页脚 / 状态条 / **下轮预告** / 槽，不要堆滚动提示。
 
 - 渲染只用 `xylitol_tui`；缺能力先改包再接线。产品路径 **host 驱动**（demo 专用启动 API 勿用于生产面）。
-- **鼠标**：产品 inline 面 **不**开 mouse capture，也 **不**读 `XYLITOL_TUI_MOUSE`。该 env 仅 **lab / e2e**（`agent_demo`、PTY）；包仍保留 `enable_mouse_capture` API。正式鼠标 UX（应用内选区）见双模式 Mode B——[`c2070`](../../../llmanspec/changes/c2070-add-package-tui-dual-interaction-modes/proposal.md)（点折叠仍属后续 fold 族）。`InputEvent::Mouse` 扇入可保留（无 capture 时通常无事件）；禁止在产品路径为「试鼠标」默认 Enable。
+- **鼠标**：产品 **Inline** 面 **不**开 mouse capture，也 **不**读 `XYLITOL_TUI_MOUSE`。该 env 仅 **lab / e2e**（`agent_demo`、PTY）；包仍保留 `enable_mouse_capture` API。正式鼠标 UX（应用内选区）见 **ApplicationOwned**（alt-screen）——[`c2070`](../../../llmanspec/changes/c2070-add-package-tui-dual-interaction-modes/proposal.md)（点折叠仍属后续 fold 族）。`InputEvent::Mouse` 扇入可保留（无 capture 时通常无事件）；禁止在产品路径为「试鼠标」默认 Enable。命名：用 `Inline` / `ApplicationOwned`，勿写 `mode_a`/`mode_b`（见 `packages/xylitol-tui/AGENTS.md` §硬约束 8）。
 - Agent 只经 `XyDriver`；禁止 reach `agent` / `infra` 内部（同 `src/AGENTS.md`）。
 - Trust 在 CLI 闸；本面 `EditorSlot::Choice` 已解冻给内置 `ask`（c1850）。Plate/Settings stub 仍冻结；产品未拍板勿扩活树/活设置。
 - Esc（行为规则；实现细节以代码与 stage-QA design 为准）：

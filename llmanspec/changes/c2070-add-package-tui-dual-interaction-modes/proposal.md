@@ -123,7 +123,7 @@ c2020（已归档）
 ## Further Notes
 
 - cascade 五件独立 `changes/<id>/`；依赖 YAML SSOT。
-- Mode B 已交付：`ModeBRuntime` + 选区/dock/Editor/dump/copy-notice；产品 host 换栈 API 已有，**默认仍 A（代码）— 翻转属 c2071**。
+- Mode B 已交付：`ApplicationOwnedRuntime` + 选区/dock/Editor/dump/copy-notice；产品 host 换栈 API 已有，**默认仍 A（代码）— 翻转属 c2071**。
 - **人拍（2026-08-12）**：产品 B-only → **c2071**；本分支专攻库双入口分治 + 优美 API；demo 两文件；高自动化 e2e。Inline = 库遗留赋能，非产品面。
 - **Strict review**（[`research/mode-b-strict-review-2026-08-12.md`](./research/mode-b-strict-review-2026-08-12.md)）：行为/单测扎实；**P0** = 单 `TUI` + 散布的 `application_session_active` 挡双入口；ptim14 host 胶仍在 demo。**P1** = dump 无可关、Editor 坐标双路径。本分支以消除 P0/P1 库侧债为主。
 - **E2E**：Mode B PTY 最小闸已上（alt/OSC52/dump/wheel/dock/suspend）；tmux Mode B 粗烟仍 SHOULD。

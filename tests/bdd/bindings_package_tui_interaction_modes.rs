@@ -7,7 +7,7 @@ use rstest_bdd_macros::scenario;
     path = "llmanspec/specs/package-tui-interaction-modes/package-tui-interaction-modes.feature",
     name = "default-mode-a-inline"
 )]
-fn test_default_mode_a_inline(ws: Workspace) {
+fn test_default_inline(ws: Workspace) {
     let _ = ws;
 }
 
@@ -55,7 +55,7 @@ fn test_editor_multiline_selection(ws: Workspace) {
     path = "llmanspec/specs/package-tui-interaction-modes/package-tui-interaction-modes.feature",
     name = "product-default-mode-a"
 )]
-fn test_product_default_mode_a(ws: Workspace) {
+fn test_product_default_inline(ws: Workspace) {
     let _ = ws;
 }
 

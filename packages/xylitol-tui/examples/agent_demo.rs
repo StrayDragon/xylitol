@@ -1,4 +1,4 @@
-//! Package interactive harness — **Inline** (Mode A / main-screen) entry.
+//! Package interactive harness — **Inline** (main-screen) entry.
 //!
 //! Shared app lives in [`agent_demo_impl`]. Mode B uses `agent_demo_alt`.
 //! Do **not** switch modes via `XYLITOL_AGENT_DEMO_MODE`.

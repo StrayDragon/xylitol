@@ -967,16 +967,16 @@ fn env_flag(name: &str) -> bool {
         .unwrap_or(false)
 }
 
-fn print_mode_b_acceptance_checklist() {
+fn print_application_owned_acceptance_checklist() {
     eprintln!(
         "\
-xylitol-tui agent_demo_alt · Mode B (alt-screen)
+xylitol-tui agent_demo_alt · ApplicationOwned (alt-screen)
 验收清单（c2070）：
   1. 终端进 alt-buffer（退出后主屏历史应恢复）
   2. transcript 内拖选高亮；松手默认 OSC52 复制
   3. 拖到顶/底可越界续选；滚轮滚应用视口（非终端 scrollback）
   4. 底部输入/footer dock 不可作 transcript 选区起点
-  5. Ctrl+G 外编 suspend/resume 后仍保持 Mode B
+  5. Ctrl+G 外编 suspend/resume 后仍保持 ApplicationOwned
   6. Editor 多行独立拖选高亮；松手 OSC52（与 transcript 选区隔离）
   7. 松手复制成功后 dock 内输入上方出现「Copied」约 2s（不进 transcript）
 退出：Ctrl+C（空编辑器）或 /exit
@@ -1074,25 +1074,25 @@ pub fn run(mode: InteractionMode) -> Result<(), Box<dyn std::error::Error>> {
     let defs = create_default_definitions();
     set_keybindings(KeybindingsManager::new(defs, HashMap::new()));
 
-    let mode_b = mode.is_application_owned();
-    if mode_b && std::io::stderr().is_terminal() {
-        print_mode_b_acceptance_checklist();
+    let application_owned = mode.is_application_owned();
+    if application_owned && std::io::stderr().is_terminal() {
+        print_application_owned_acceptance_checklist();
     }
 
     let term = CrosstermTerminal::new()?;
-    let mut tui = if mode_b {
+    let mut tui = if application_owned {
         TUI::with_interaction_mode(term, InteractionMode::ApplicationOwned)
     } else {
         TUI::new(term)
     };
     // Inline lab only: `XYLITOL_TUI_MOUSE=1` → EnableMouseCapture.
-    // Mode B enables mouse via begin_application_owned_session (inside start).
-    if !mode_b && xylitol_tui::env_requests_mouse_capture() {
+    // ApplicationOwned enables mouse via begin_application_owned_session (inside start).
+    if !application_owned && xylitol_tui::env_requests_mouse_capture() {
         tui.enable_mouse_capture();
     }
-    if mode_b {
+    if application_owned {
         // First-frame floor; refined from FakeCodingAgentApp dock measure.
-        tui.set_mode_b_dock_rows(8);
+        tui.set_dock_rows(8);
     }
     let quit_flag = Arc::new(AtomicBool::new(false));
     let initial_prompt = std::env::var("XYLITOL_AGENT_DEMO_INITIAL_PROMPT")
@@ -1113,8 +1113,8 @@ pub fn run(mode: InteractionMode) -> Result<(), Box<dyn std::error::Error>> {
         if tui.application_session_active() {
             let rows = tui.terminal.rows();
             app_hook.borrow_mut().set_term_rows_for_mouse(rows);
-            let dock = app_hook.borrow().last_mode_b_dock_rows();
-            tui.set_mode_b_dock_rows(dock);
+            let dock = app_hook.borrow().last_dock_rows();
+            tui.set_dock_rows(dock);
             // Editor independent selection copy (ptim13) → same OSC52 flush path.
             let editor_clip = app_hook.borrow_mut().take_editor_clipboard();
             if !editor_clip.is_empty() {
@@ -1149,12 +1149,12 @@ pub fn run(mode: InteractionMode) -> Result<(), Box<dyn std::error::Error>> {
 
     tui.add_child(Box::new(SharedFakeCodingAgentApp(app.clone())));
     tui.set_focus(Some(0));
-    if mode_b {
+    if application_owned {
         let cols = tui.terminal.columns() as usize;
         let rows = tui.terminal.rows();
         app.borrow_mut().set_term_rows_for_mouse(rows);
         let _ = app.borrow_mut().render(cols.max(1));
-        tui.set_mode_b_dock_rows(app.borrow().last_mode_b_dock_rows());
+        tui.set_dock_rows(app.borrow().last_dock_rows());
     }
     tui.start_with_flag(&quit_flag)
 }
@@ -1179,8 +1179,8 @@ impl Component for SharedFakeCodingAgentApp {
         self.0.borrow_mut().take_editor_clipboard()
     }
 
-    fn mode_b_dock_rows_hint(&self) -> Option<usize> {
-        Some(self.0.borrow().last_mode_b_dock_rows())
+    fn dock_rows_hint(&self) -> Option<usize> {
+        Some(self.0.borrow().last_dock_rows())
     }
 
     fn wants_pointer_motion(&self) -> bool {
@@ -1495,7 +1495,7 @@ pub struct FakeCodingAgentApp {
     /// Last submit's resolved `$skill` → stub SKILL.md bodies (demo inject assert).
     last_skill_injections: Vec<(String, String)>,
     /// Mode B dock rows from last paint (status + editor slot + footer).
-    last_mode_b_dock_rows: usize,
+    last_dock_rows: usize,
     /// Status band height inside the dock (for remapping screen → editor-local).
     last_status_rows: usize,
     /// Editor slot height inside the dock (borders included).
@@ -1560,8 +1560,8 @@ impl FakeCodingAgentApp {
     }
 
     /// Mode B dock rows measured on the last render (status + editor + footer).
-    pub fn last_mode_b_dock_rows(&self) -> usize {
-        self.last_mode_b_dock_rows.max(1)
+    pub fn last_dock_rows(&self) -> usize {
+        self.last_dock_rows.max(1)
     }
 
     /// Update terminal size used to remap Mode B mouse into the editor.
@@ -1574,9 +1574,11 @@ impl FakeCodingAgentApp {
         self.input.take_pending_clipboard()
     }
 
-    /// Remap absolute Mode B screen mouse → editor-local and forward (ptim13).
+    /// Remap absolute Mode B screen mouse → Editor via canonical origin path
+    /// ([`xylitol_tui::editor_screen_origin`] + [`Editor::set_screen_origin`]).
     fn handle_editor_mouse(&mut self, mouse: crossterm::event::MouseEvent) {
         use crossterm::event::MouseEventKind;
+        use xylitol_tui::{editor_screen_origin, mouse_in_dock};
         // Only left-button selection traffic; ignore wheel over dock here.
         if !matches!(
             mouse.kind,
@@ -1597,37 +1599,21 @@ impl FakeCodingAgentApp {
             return;
         }
         let dragging = self.input.is_selection_dragging();
-        let dock = self.last_mode_b_dock_rows as u16;
-        let dock_top = self.term_rows.saturating_sub(dock.max(1));
-        // While dragging, keep delivering events even if the pointer leaves the
-        // cached editor rect (footer / transcript) — clamp local row so Up/copy
-        // still run (viewport edge auto-scroll is not supported).
-        if !dragging && mouse.row < dock_top {
+        let dock = self.last_dock_rows.max(1);
+        if !dragging && !mouse_in_dock(mouse.row, self.term_rows, dock) {
             return;
         }
-        let dock_local = mouse.row.saturating_sub(dock_top);
+        let dock_top = self.term_rows.saturating_sub(dock as u16);
         let status_h = self.last_status_rows as u16;
-        let editor_h = self.last_editor_rows.max(1) as u16;
-        if !dragging && dock_local < status_h {
+        // Clicks on the status band (not dragging) stay out of the editor.
+        if !dragging && mouse.row < dock_top.saturating_add(status_h) {
             return;
         }
-        let ed_local = if dragging {
-            let raw = dock_local.saturating_sub(status_h);
-            raw.min(editor_h.saturating_sub(1))
-        } else {
-            let ed = dock_local.saturating_sub(status_h);
-            if ed >= editor_h {
-                return;
-            }
-            ed
-        };
-        let local = crossterm::event::MouseEvent {
-            kind: mouse.kind,
-            column: mouse.column,
-            row: ed_local,
-            modifiers: mouse.modifiers,
-        };
-        self.input.handle_input(InputEvent::Mouse(local));
+        let (origin_row, origin_col) =
+            editor_screen_origin(self.term_rows, dock, self.last_status_rows);
+        self.input.set_screen_origin(origin_row, origin_col);
+        // Absolute screen coords — Editor subtracts origin in handle_input.
+        self.input.handle_input(InputEvent::Mouse(mouse));
     }
 
     fn input_wants_rerender(&self, event: &InputEvent) -> bool {
@@ -2907,7 +2893,7 @@ impl FakeCodingAgentApp {
             entry_style: EntryStyle::from_env(),
             thinking_border_level: ThinkingBorderLevel::Medium,
             last_skill_injections: Vec::new(),
-            last_mode_b_dock_rows: 8,
+            last_dock_rows: 8,
             last_status_rows: 1,
             last_editor_rows: 3,
             term_rows: 24,
@@ -4887,7 +4873,14 @@ impl Component for FakeCodingAgentApp {
         // Mode B dock excludes transcript+queue (c2070 / ptim06).
         self.last_status_rows = status.len();
         self.last_editor_rows = editor.len();
-        self.last_mode_b_dock_rows = status.len().saturating_add(editor.len()).saturating_add(1);
+        self.last_dock_rows = status.len().saturating_add(editor.len()).saturating_add(1);
+        // Canonical Mode B editor hit-test origin (ptim14) — same helper as product.
+        let (origin_row, origin_col) = xylitol_tui::editor_screen_origin(
+            self.term_rows,
+            self.last_dock_rows,
+            self.last_status_rows,
+        );
+        self.input.set_screen_origin(origin_row, origin_col);
         lines.extend(status);
         lines.extend(editor);
         let footer_owned;

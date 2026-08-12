@@ -210,7 +210,7 @@ impl<T: Terminal> HostSession<T> {
         }
     }
 
-    /// Apply interaction mode (c2070 / ath30). Default construction is Mode A.
+    /// Apply interaction mode (c2070 / ath30). Default construction is Inline.
     /// Switching modes restacks: end Mode B session → rebuild root children →
     /// begin Mode B if requested → force clear paint.
     pub fn apply_interaction_mode(&mut self, mode: xylitol_tui::InteractionMode) {
@@ -218,7 +218,7 @@ impl<T: Terminal> HostSession<T> {
             && mode.is_application_owned() == self.tui.application_session_active();
         if already {
             if mode.is_application_owned() {
-                self.sync_mode_b_dock_rows();
+                self.sync_dock_rows();
             }
             return;
         }
@@ -236,9 +236,9 @@ impl<T: Terminal> HostSession<T> {
         self.tui.set_focus(Some(0));
 
         if mode.is_application_owned() {
-            self.sync_mode_b_dock_rows();
+            self.sync_dock_rows();
             self.tui.begin_application_owned_session();
-            self.sync_mode_b_dock_rows();
+            self.sync_dock_rows();
         }
         self.tui.request_render(true);
         self.paint_dirty = true;
@@ -246,19 +246,19 @@ impl<T: Terminal> HostSession<T> {
 
     /// Register lower chrome as Mode B dock (status/editor/footer…).
     /// Prefers last-frame measured rows; falls back to a chrome estimate.
-    pub fn sync_mode_b_dock_rows(&mut self) {
+    pub fn sync_dock_rows(&mut self) {
         let rows = if let Some(root) = self.ui_root.as_ref() {
             let r = root.borrow();
-            let measured = r.last_mode_b_dock_rows();
+            let measured = r.last_dock_rows();
             if measured > 1 {
                 measured
             } else {
-                r.estimate_mode_b_dock_rows()
+                r.estimate_dock_rows()
             }
         } else {
             8
         };
-        self.tui.set_mode_b_dock_rows(rows.max(4));
+        self.tui.set_dock_rows(rows.max(4));
     }
 
     /// Sync MCP connecting gate from the driver (c1200).
@@ -830,14 +830,14 @@ impl<T: Terminal> HostSession<T> {
         }
 
         if self.tui.application_session_active() {
-            self.sync_mode_b_dock_rows();
+            self.sync_dock_rows();
         }
         match self.tui.try_render() {
             Ok(painted) => {
                 if painted {
                     self.paint_dirty = false;
                     if self.tui.application_session_active() {
-                        self.sync_mode_b_dock_rows();
+                        self.sync_dock_rows();
                     }
                 }
                 Ok(())
@@ -858,7 +858,7 @@ impl<T: Terminal> HostSession<T> {
         if size_changed {
             self.sync_layout_from_terminal();
             if self.tui.application_session_active() {
-                self.sync_mode_b_dock_rows();
+                self.sync_dock_rows();
             }
             // Align pi: resize → soft requestRender(); doRender sees
             // width/heightChanged → fullRender(true) with 2J/H/3J.
@@ -996,14 +996,14 @@ impl<T: Terminal> HostSession<T> {
 
     pub fn render_now(&mut self) -> Result<(), XyDriverError> {
         if self.tui.application_session_active() {
-            self.sync_mode_b_dock_rows();
+            self.sync_dock_rows();
         }
         match self.tui.render_now() {
             Ok(_) => {
                 self.paint_dirty = false;
                 // Next frame uses measured dock from this paint (ath30).
                 if self.tui.application_session_active() {
-                    self.sync_mode_b_dock_rows();
+                    self.sync_dock_rows();
                 }
                 Ok(())
             }

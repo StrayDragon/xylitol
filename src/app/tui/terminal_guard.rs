@@ -83,7 +83,7 @@ impl TerminalGuard {
             xylitol_tui::CrosstermTerminal::new().map_err(|e| format!("open terminal: {e}"))?;
         terminal.hide_cursor();
         terminal.start();
-        // Product TUI MUST NOT enable mouse capture here by default (Mode A).
+        // Product TUI MUST NOT enable mouse capture here by default (Inline).
         // `XYLITOL_TUI_MOUSE` remains package lab/e2e only. Mode B
         // ([`xylitol_tui::InteractionMode::ApplicationOwned`]) enters alt-buffer
         // + mouse via [`crate::app::tui::host::HostSession::apply_interaction_mode`]

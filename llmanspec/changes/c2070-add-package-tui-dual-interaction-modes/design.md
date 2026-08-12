@@ -88,8 +88,8 @@ alt-buffer 退出后主屏会恢复进 alt 前内容。库默认在 `finish_inli
 下游（产品 `src/app/tui`、`agent_demo`）只依赖：
 
 - `InteractionMode` + `begin`/`end_application_owned_session`
-- `set_mode_b_dock_rows` / copy-on-release
-- `ModeBRuntime` 投影与选区（经 `TUI` 调度）
+- `set_dock_rows` / copy-on-release
+- `ApplicationOwnedRuntime` 投影与选区（经 `TUI` 调度）
 - 复制成功 **copy-notice** 信号（ptim15）
 - 退出 dump 与 suspend 恢复
 

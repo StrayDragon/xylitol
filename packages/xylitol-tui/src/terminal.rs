@@ -120,7 +120,7 @@ pub trait Terminal {
 /// that call [`Terminal::enable_mouse_capture`] explicitly — **not** a product
 /// setting for the inline TUI app.
 ///
-/// Enabling capture on inline (emulator-owned / Mode A) sessions trades away
+/// Enabling capture on Inline (emulator-owned) sessions trades away
 /// unmodified terminal selection/scroll. Official mouse UX (application
 /// selection, click-fold) belongs on Mode B ([`crate::InteractionMode::ApplicationOwned`])
 /// — see change `c2070` / capability `package-tui-interaction-modes`.

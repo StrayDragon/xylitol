@@ -2424,7 +2424,7 @@ fn models_picker_left_right_cycle_thinking_levels() {
 }
 
 #[test]
-fn interaction_mode_defaults_to_mode_a() {
+fn interaction_mode_defaults_to_inline() {
     let session = HostSession::new_product_ui(TestTerminal::new(80, 24));
     assert_eq!(
         session.tui.interaction_mode(),
@@ -2438,16 +2438,16 @@ fn interaction_mode_defaults_to_mode_a() {
 }
 
 #[test]
-fn interaction_mode_b_restacks_and_registers_dock() {
+fn interaction_application_owned_restacks_and_registers_dock() {
     let mut session = HostSession::new_product_ui(TestTerminal::new(80, 24));
     session.render_now().unwrap();
     session.apply_interaction_mode(xylitol_tui::InteractionMode::ApplicationOwned);
     assert!(session.tui.application_session_active());
     assert!(session.tui.mouse_capture_enabled());
-    assert!(session.tui.mode_b_dock_rows() >= 4);
+    assert!(session.tui.dock_rows() >= 4);
     session.render_now().unwrap();
     // Measured dock after paint should stay above the input band floor.
-    assert!(session.tui.mode_b_dock_rows() >= 4);
+    assert!(session.tui.dock_rows() >= 4);
 
     session.apply_interaction_mode(xylitol_tui::InteractionMode::Inline);
     assert!(!session.tui.application_session_active());
@@ -2456,7 +2456,7 @@ fn interaction_mode_b_restacks_and_registers_dock() {
 }
 
 #[test]
-fn mode_b_copy_notice_chrome_ath31() {
+fn application_owned_copy_notice_chrome_ath31() {
     use crossterm::event::{KeyModifiers, MouseButton, MouseEvent, MouseEventKind};
 
     let mut session = HostSession::new_product_ui(TestTerminal::new(80, 24));
@@ -2468,7 +2468,7 @@ fn mode_b_copy_notice_chrome_ath31() {
     let (origin_row, origin_col) = root.borrow().editor_screen_origin_for_test();
     assert_eq!(origin_col, 0);
     let term_rows = session.tui.terminal.rows() as usize;
-    let dock = session.tui.mode_b_dock_rows();
+    let dock = session.tui.dock_rows();
     assert!(
         origin_row as usize >= term_rows.saturating_sub(dock),
         "editor origin must sit in Mode B dock band: origin={origin_row} dock_top={}",
@@ -2524,7 +2524,7 @@ fn mode_b_copy_notice_chrome_ath31() {
 }
 
 #[test]
-fn mode_b_copy_notice_arms_copied_cue_not_error_toast() {
+fn application_owned_copy_notice_arms_copied_cue_not_error_toast() {
     let mut session = HostSession::new_product_ui(TestTerminal::new(80, 24));
     session.apply_interaction_mode(xylitol_tui::InteractionMode::ApplicationOwned);
     session.render_now().unwrap();

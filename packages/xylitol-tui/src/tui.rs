@@ -1,5 +1,5 @@
+use crate::application_owned_runtime::ApplicationOwnedRuntime;
 use crate::interaction_mode::InteractionMode;
-use crate::mode_b::ModeBRuntime;
 use crate::terminal::Terminal;
 use crate::utils::{normalize_terminal_output, visible_width};
 use crossterm::event::{KeyEvent, KeyEventKind, MouseEvent, MouseEventKind};
@@ -121,20 +121,20 @@ pub trait Component {
     }
 
     /// Drain OSC52 (or other clipboard) sequences produced by this component
-    /// since the last take (e.g. Editor Mode B copy-on-release). Default empty.
+    /// since the last take (e.g. Editor ApplicationOwned copy-on-release). Default empty.
     fn take_pending_clipboard(&mut self) -> Vec<String> {
         Vec::new()
     }
 
-    /// Mode B: after `render`, hint how many trailing rows are dock (status +
+    /// ApplicationOwned: after `render`, hint how many trailing rows are dock (status +
     /// editor + footer). TUI applies this **before** `project_frame` so a grown
     /// editor does not leave dock content misclassified as transcript.
-    fn mode_b_dock_rows_hint(&self) -> Option<usize> {
+    fn dock_rows_hint(&self) -> Option<usize> {
         None
     }
 
     /// True while this component needs bare `MouseEventKind::Moved` (e.g. active
-    /// editor selection drag). Mode B otherwise drops non-dirty Moved.
+    /// editor selection drag). ApplicationOwned otherwise drops non-dirty Moved.
     fn wants_pointer_motion(&self) -> bool {
         false
     }
@@ -341,15 +341,20 @@ pub struct TUI<T: Terminal> {
     last_render_at: Option<std::time::Instant>,
     /// Dual interaction mode (c2070). Default [`InteractionMode::Inline`].
     interaction_mode: InteractionMode,
-    /// Mode B session currently holding alt-buffer + mouse (after
+    /// ApplicationOwned session currently holding alt-buffer + mouse (after
     /// [`Self::begin_application_owned_session`]).
     application_session_active: bool,
-    /// Mode B viewport/selection runtime (only while application session active).
-    mode_b: Option<ModeBRuntime>,
-    /// Default dock rows used when beginning a Mode B session.
-    mode_b_dock_rows: usize,
-    /// Persists across begin/end; applied when constructing [`ModeBRuntime`].
-    mode_b_copy_on_release: bool,
+    /// ApplicationOwned viewport/selection runtime (only while application session active).
+    application_owned: Option<ApplicationOwnedRuntime>,
+    /// Default dock rows used when beginning an ApplicationOwned session.
+    dock_rows: usize,
+    /// Persists across begin/end; applied when constructing [`ApplicationOwnedRuntime`].
+    transcript_copy_on_release: bool,
+    /// When true (default), [`Self::finish_application_owned`] appends the
+    /// session transcript (+ last dock) to the **main-screen** terminal
+    /// scrollback after leaving the alternate buffer — so the user can still
+    /// scroll the session after ApplicationOwned exits.
+    append_session_to_main_scrollback_on_exit: bool,
 }
 
 /// Minimum spacing between throttled frames (~60fps). Mirrors pi's
@@ -394,9 +399,10 @@ impl<T: Terminal> TUI<T> {
             last_render_at: None,
             interaction_mode: InteractionMode::Inline,
             application_session_active: false,
-            mode_b: None,
-            mode_b_dock_rows: 3,
-            mode_b_copy_on_release: true,
+            application_owned: None,
+            dock_rows: 3,
+            transcript_copy_on_release: true,
+            append_session_to_main_scrollback_on_exit: true,
         }
     }
 
@@ -416,7 +422,7 @@ impl<T: Terminal> TUI<T> {
     /// Set the mode flag without entering/leaving alt-buffer. Prefer
     /// [`Self::with_interaction_mode`] at construction; for a live switch,
     /// call [`Self::end_application_owned_session`] / [`Self::finish_inline`]
-    /// then rebuild the TUI.
+    /// / [`Self::finish_application_owned`] then rebuild the TUI.
     ///
     /// If an application session is active and `mode` is Inline, this ends the
     /// session so flag and TTY state stay aligned.
@@ -427,7 +433,7 @@ impl<T: Terminal> TUI<T> {
         self.interaction_mode = mode;
     }
 
-    /// Mode B enter: alternate screen (SHOULD) + mouse capture + viewport runtime.
+    /// ApplicationOwned enter: alternate screen (SHOULD) + mouse capture + viewport runtime.
     /// Idempotent. No-op when mode is [`InteractionMode::Inline`].
     pub fn begin_application_owned_session(&mut self) {
         if !self.interaction_mode.is_application_owned() || self.application_session_active {
@@ -437,9 +443,9 @@ impl<T: Terminal> TUI<T> {
         self.terminal.clear_screen();
         self.enable_mouse_capture();
         self.application_session_active = true;
-        let mut mb = ModeBRuntime::new(self.mode_b_dock_rows);
-        mb.set_copy_on_release(self.mode_b_copy_on_release);
-        self.mode_b = Some(mb);
+        let mut mb = ApplicationOwnedRuntime::new(self.dock_rows);
+        mb.set_copy_on_release(self.transcript_copy_on_release);
+        self.application_owned = Some(mb);
         // Force a clearing redraw into the alt buffer.
         self.previous_width = FORCE_SIZE_SENTINEL;
         self.previous_height = FORCE_SIZE_SENTINEL;
@@ -447,7 +453,7 @@ impl<T: Terminal> TUI<T> {
         self.previous_viewport_top = 0;
     }
 
-    /// Mode B leave: disable mouse + leave alt-buffer. Safe if never begun.
+    /// ApplicationOwned leave: disable mouse + leave alt-buffer. Safe if never begun.
     pub fn end_application_owned_session(&mut self) {
         if !self.application_session_active {
             return;
@@ -455,7 +461,7 @@ impl<T: Terminal> TUI<T> {
         self.disable_mouse_capture();
         self.terminal.leave_alternate_screen();
         self.application_session_active = false;
-        self.mode_b = None;
+        self.application_owned = None;
         self.previous_lines.clear();
         self.previous_viewport_top = 0;
         self.previous_width = FORCE_SIZE_SENTINEL;
@@ -466,44 +472,57 @@ impl<T: Terminal> TUI<T> {
         self.application_session_active
     }
 
-    /// Rows reserved at the bottom for dock (editor/status/footer). Mode B
+    /// Rows reserved at the bottom for dock (editor/status/footer). ApplicationOwned
     /// selection excludes this band.
-    pub fn set_mode_b_dock_rows(&mut self, rows: usize) {
-        self.mode_b_dock_rows = rows.max(1);
-        if let Some(mb) = self.mode_b.as_mut() {
-            mb.set_dock_rows(self.mode_b_dock_rows);
+    pub fn set_dock_rows(&mut self, rows: usize) {
+        self.dock_rows = rows.max(1);
+        if let Some(mb) = self.application_owned.as_mut() {
+            mb.set_dock_rows(self.dock_rows);
         }
     }
 
-    pub fn mode_b_dock_rows(&self) -> usize {
-        self.mode_b_dock_rows
+    pub fn dock_rows(&self) -> usize {
+        self.dock_rows
     }
 
-    pub fn set_mode_b_copy_on_release(&mut self, on: bool) {
-        self.mode_b_copy_on_release = on;
-        if let Some(mb) = self.mode_b.as_mut() {
+    pub fn set_transcript_copy_on_release(&mut self, on: bool) {
+        self.transcript_copy_on_release = on;
+        if let Some(mb) = self.application_owned.as_mut() {
             mb.set_copy_on_release(on);
         }
     }
 
-    /// Consume Mode B copy-notice edge (ptim15). True once per successful
+    /// After leaving alt-screen, append the session transcript (+ last dock)
+    /// into the terminal's **main** scrollback so history remains readable
+    /// (default **on**). Set `false` to tear down without writing those lines.
+    pub fn set_append_session_to_main_scrollback_on_exit(&mut self, on: bool) {
+        self.append_session_to_main_scrollback_on_exit = on;
+    }
+
+    pub fn append_session_to_main_scrollback_on_exit(&self) -> bool {
+        self.append_session_to_main_scrollback_on_exit
+    }
+
+    /// Consume ApplicationOwned copy-notice edge (ptim15). True once per successful
     /// copy-on-release until taken; empty selection / copy-off never arm it.
     pub fn take_copy_notice(&mut self) -> bool {
-        self.mode_b.as_mut().is_some_and(|mb| mb.take_copy_notice())
+        self.application_owned
+            .as_mut()
+            .is_some_and(|mb| mb.take_copy_notice())
     }
 
     /// Queue OSC52 (or other) clipboard sequences to flush after the next paint
     /// batch — same path as transcript copy-on-release (ptim05 / ptim13).
-    /// Non-empty sequences also arm Mode B copy-notice (ptim15).
+    /// Non-empty sequences also arm ApplicationOwned copy-notice (ptim15).
     pub fn enqueue_clipboard_sequences(&mut self, seqs: impl IntoIterator<Item = String>) {
-        if let Some(mb) = self.mode_b.as_mut() {
+        if let Some(mb) = self.application_owned.as_mut() {
             mb.enqueue_clipboard_seqs(seqs);
         }
     }
 
-    /// Whether Mode B copy-notice is still within its TTL (~2s).
+    /// Whether ApplicationOwned copy-notice is still within its TTL (~2s).
     pub fn copy_notice_active(&self) -> bool {
-        self.mode_b
+        self.application_owned
             .as_ref()
             .is_some_and(|mb| mb.copy_notice_active())
     }
@@ -1002,7 +1021,7 @@ impl<T: Terminal> TUI<T> {
         // protocol negotiation (Kitty push / modifyOtherKeys fallback, c410).
         self.terminal.hide_cursor();
         self.terminal.start();
-        // Mode B: enter alt + mouse only after the TTY is started (c2070).
+        // ApplicationOwned: enter alt + mouse only after the TTY is started (c2070).
         if self.interaction_mode.is_application_owned() {
             self.begin_application_owned_session();
         }
@@ -1041,7 +1060,7 @@ impl<T: Terminal> TUI<T> {
                     }
                     Event::Mouse(mouse) => {
                         let event = InputEvent::Mouse(mouse);
-                        // Mode A: drop bare Moved floods. Mode B owns mouse in
+                        // Inline: drop bare Moved floods. ApplicationOwned owns mouse in
                         // dispatch_event (selection may need Moved while dragging).
                         if event.is_pointer_motion() && !self.application_session_active {
                             continue;
@@ -1072,40 +1091,34 @@ impl<T: Terminal> TUI<T> {
             }
         }
 
-        // Host-driven loops must call the same teardown (see `finish_inline`).
-        self.finish_inline();
+        // Host-driven loops must call the same teardown (see `finish_inline` /
+        // `finish_application_owned`).
+        if self.application_session_active || self.interaction_mode.is_application_owned() {
+            self.finish_application_owned();
+        } else {
+            self.finish_inline();
+        }
         Ok(())
     }
 
     /// Park the cursor below the last rendered frame, emit `\r\n`, then
     /// restore the terminal (raw mode / keyboard protocol).
     ///
-    /// Call this from host-driven loops (product TUI / trust gate) instead of
-    /// bare `terminal.stop()`, so the shell prompt lands under the leftover
-    /// frame — same exit shape as `start` / `start_with_flag` / agent_demo.
+    /// Call this from host-driven **Inline** loops (product TUI / trust gate)
+    /// instead of bare `terminal.stop()`, so the shell prompt lands under the
+    /// leftover frame — same exit shape as `start` / `start_with_flag` /
+    /// `agent_demo`.
     ///
-    /// Mode B ([`InteractionMode::ApplicationOwned`]): leave alt-buffer, then
-    /// dump transcript (+ last dock) onto the **main** screen so the session
-    /// remains in terminal scrollback (Pi-style optional dump after `?1049l`).
+    /// If an ApplicationOwned session is active (or the mode flag is ApplicationOwned),
+    /// this **delegates** to [`Self::finish_application_owned`] for one-release
+    /// compatibility. Prefer calling [`Self::finish_application_owned`]
+    /// explicitly on ApplicationOwned hosts.
     pub fn finish_inline(&mut self) {
-        self.stopped = true;
         if self.application_session_active || self.interaction_mode.is_application_owned() {
-            let dump = self
-                .mode_b
-                .as_ref()
-                .map(|mb| mb.exit_dump_lines())
-                .filter(|lines| !lines.is_empty())
-                .unwrap_or_else(|| self.previous_lines.clone());
-            self.end_application_owned_session();
-            // Main buffer is restored; append session text as scrollback.
-            for line in &dump {
-                self.terminal.write(line);
-                self.terminal.write("\r\n");
-            }
-            self.terminal.flush();
-            self.terminal.stop();
+            self.finish_application_owned();
             return;
         }
+        self.stopped = true;
         if !self.previous_lines.is_empty() {
             let target_row = self.previous_lines.len();
             if target_row > self.hardware_cursor_row {
@@ -1115,6 +1128,32 @@ impl<T: Terminal> TUI<T> {
             self.terminal.write("\r\n");
         }
         self.terminal.flush();
+        self.terminal.stop();
+    }
+
+    /// ApplicationOwned teardown: leave alt-buffer, optionally append the session
+    /// transcript (+ last dock) to the **main** terminal scrollback, then stop
+    /// the terminal. Controlled by
+    /// [`Self::set_append_session_to_main_scrollback_on_exit`] (default on).
+    pub fn finish_application_owned(&mut self) {
+        self.stopped = true;
+        let scrollback_lines = if self.append_session_to_main_scrollback_on_exit {
+            self.application_owned
+                .as_ref()
+                .map(|mb| mb.session_lines_for_main_scrollback())
+                .filter(|lines| !lines.is_empty())
+                .unwrap_or_else(|| self.previous_lines.clone())
+        } else {
+            Vec::new()
+        };
+        self.end_application_owned_session();
+        if self.append_session_to_main_scrollback_on_exit {
+            for line in &scrollback_lines {
+                self.terminal.write(line);
+                self.terminal.write("\r\n");
+            }
+            self.terminal.flush();
+        }
         self.terminal.stop();
     }
 
@@ -1139,24 +1178,24 @@ impl<T: Terminal> TUI<T> {
     /// Spawning `$EDITOR` / tempfile I/O stays in the application (demo or
     /// `src/app/tui`), not in this crate.
     pub fn with_terminal_suspended<R>(&mut self, f: impl FnOnce() -> R) -> R {
-        let restore_mode_b = self.application_session_active;
+        let restore_application_owned = self.application_session_active;
         self.terminal.stop();
-        // `stop` leaves alt-buffer; keep logical Mode B flag so we can re-enter.
-        if restore_mode_b {
+        // `stop` leaves alt-buffer; keep logical ApplicationOwned flag so we can re-enter.
+        if restore_application_owned {
             self.application_session_active = true;
         }
         let result = f();
         self.terminal.hide_cursor();
         self.terminal.start();
-        if restore_mode_b {
+        if restore_application_owned {
             // Re-sync alt + mouse with application_session_active (ptim11).
             self.terminal.enter_alternate_screen();
             self.terminal.clear_screen();
             self.enable_mouse_capture();
-            if self.mode_b.is_none() {
-                let mut mb = ModeBRuntime::new(self.mode_b_dock_rows);
-                mb.set_copy_on_release(self.mode_b_copy_on_release);
-                self.mode_b.replace(mb);
+            if self.application_owned.is_none() {
+                let mut mb = ApplicationOwnedRuntime::new(self.dock_rows);
+                mb.set_copy_on_release(self.transcript_copy_on_release);
+                self.application_owned.replace(mb);
             }
             self.previous_width = FORCE_SIZE_SENTINEL;
             self.previous_height = FORCE_SIZE_SENTINEL;
@@ -1166,7 +1205,7 @@ impl<T: Terminal> TUI<T> {
         // Size may have changed while the editor owned the TTY (pi SIGWINCH).
         self.terminal.refresh_size();
         // Soft pending only — do not wipe previous_lines / do not paint yet.
-        self.request_render(restore_mode_b);
+        self.request_render(restore_application_owned);
         result
     }
 
@@ -1197,7 +1236,7 @@ impl<T: Terminal> TUI<T> {
     /// Public so host loops (and tests) can feed input without going through
     /// the blocking `start()` event loop.
     pub fn dispatch_event(&mut self, event: InputEvent) -> InputReaction {
-        // Mode B: application selection / wheel consume mouse before listeners
+        // ApplicationOwned: application selection / wheel consume mouse before listeners
         // when they dirty presentation. Unhandled presses (e.g. Down in dock)
         // fall through so Editor/Input can own an independent selection later.
         if self.application_session_active
@@ -1206,7 +1245,7 @@ impl<T: Terminal> TUI<T> {
             let cols = self.terminal.columns();
             let rows = self.terminal.rows();
             let dirty = self
-                .mode_b
+                .application_owned
                 .as_mut()
                 .is_some_and(|mb| mb.handle_mouse(mouse, cols, rows));
             if dirty {
@@ -1324,7 +1363,7 @@ impl<T: Terminal> TUI<T> {
         if seqs.is_empty() {
             return;
         }
-        if let Some(mb) = self.mode_b.as_mut() {
+        if let Some(mb) = self.application_owned.as_mut() {
             mb.enqueue_clipboard_seqs(seqs);
         }
     }
@@ -1357,7 +1396,7 @@ impl<T: Terminal> TUI<T> {
         if self.application_session_active {
             let cols = self.terminal.columns();
             let rows = self.terminal.rows();
-            if let Some(mb) = self.mode_b.as_mut() {
+            if let Some(mb) = self.application_owned.as_mut() {
                 changed |= mb.tick_autoscroll(cols, rows);
                 changed |= mb.tick_copy_notice();
             }
@@ -1458,21 +1497,19 @@ impl<T: Terminal> TUI<T> {
         }
 
         let mut new_lines = Vec::new();
-        let dock_before = self.mode_b.as_ref().map(|mb| mb.dock_rows);
+        let dock_before = self.application_owned.as_ref().map(|mb| mb.dock_rows);
         for comp in &mut self.components {
             new_lines.extend(comp.render(width));
-            if let Some(dock) = comp.mode_b_dock_rows_hint() {
-                self.mode_b_dock_rows = dock.max(1);
-                if let Some(mb) = self.mode_b.as_mut() {
-                    mb.set_dock_rows(self.mode_b_dock_rows);
+            if let Some(dock) = comp.dock_rows_hint() {
+                self.dock_rows = dock.max(1);
+                if let Some(mb) = self.application_owned.as_mut() {
+                    mb.set_dock_rows(self.dock_rows);
                 }
             }
         }
         // Dock height change reclassifies lines — force full clear so Shift+Enter
         // growth cannot leave a duplicate-looking transcript/dock seam.
-        if self.application_session_active
-            && dock_before.is_some_and(|d| d != self.mode_b_dock_rows)
-        {
+        if self.application_session_active && dock_before.is_some_and(|d| d != self.dock_rows) {
             self.previous_width = FORCE_SIZE_SENTINEL;
             self.previous_height = FORCE_SIZE_SENTINEL;
         }
@@ -1525,12 +1562,12 @@ impl<T: Terminal> TUI<T> {
             *line = finalized;
         }
 
-        // Mode B: project full buffer into fixed-height app viewport + dock.
+        // ApplicationOwned: project full buffer into fixed-height app viewport + dock.
         if self.application_session_active {
-            if let Some(mb) = self.mode_b.as_mut() {
+            if let Some(mb) = self.application_owned.as_mut() {
                 new_lines = mb.project_frame(&new_lines, height);
             }
-            // Never grow terminal scrollback in Mode B.
+            // Never grow terminal scrollback in ApplicationOwned.
             self.previous_viewport_top = 0;
         }
 
@@ -1595,7 +1632,7 @@ impl<T: Terminal> TUI<T> {
         }
         self.terminal.flush();
         // OSC52 must leave the synchronized output batch (ptim05).
-        if let Some(mb) = self.mode_b.as_mut() {
+        if let Some(mb) = self.application_owned.as_mut() {
             for seq in mb.take_pending_clipboard() {
                 self.terminal.write(&seq);
             }

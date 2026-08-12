@@ -212,6 +212,10 @@ demo-tui:
 demo-tui-alt-screen:
     cargo run -p xylitol-tui --example agent_demo_alt
 
+# Minimal Mode B host loop (ptim14 surface — not agent_demo).
+demo-tui-host-loop:
+    cargo run -p xylitol-tui --example host_loop_application_owned
+
 # agent_demo with rail entry skin (left bg strip; /entry-style rail).
 demo-tui-rail:
     XYLITOL_AGENT_DEMO_ENTRY_STYLE=rail cargo run -p xylitol-tui --example agent_demo

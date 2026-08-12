@@ -13,7 +13,7 @@
 | 4 transcript 选区 / dock | ✅（含人验） | ptim03–07, 12 |
 | 5 Editor 独立多行选区 | ✅ | ptim13 |
 | 6 复制成功短提示 | ✅ 库+demo+产品 ath31 | **ptim15** + ath31 |
-| 7 库双入口 / host seam 收口 | ⬜ **本分支主战场** | ptim14、优雅 API、结构债 |
+| 7 库双入口 / host seam 收口 | ✅ | ptim14、优雅 API |
 
 ---
 
@@ -34,7 +34,7 @@
 
 - [x] 3.1 Mode A/B API + alt begin/end
 - [x] 3.2 复用 c2020 mouse；Moved 不刷帧
-- [x] 3.3 ScrollView + ModeBRuntime；滚轮 sticky follow（**人验 PASS**）
+- [x] 3.3 ScrollView + ApplicationOwnedRuntime；滚轮 sticky follow（**人验 PASS**）
 - [x] 3.4 suspend/resume 重进 alt+mouse（ptim11）
 - [x] 3.5 退出 dump 主屏 scrollback（**人验 PASS**）
 
@@ -64,23 +64,23 @@
 
 **验收文案（建议固定）**：`Copied` / `已复制`（库信号 + demo 可先用英文）。**产品落点 / 误触策略**：延后到 `src/app/tui` Mode B 集成（[`c2071`](../c2071-update-app-tui-host-mode-b-only/)）再钉；本 change 不阻塞。
 
-## 7. 库双入口 / host seam 收口 — ⬜（本分支主战场）
+## 7. 库双入口 / host seam 收口 — ✅（本分支主战场已落地）
 
 > **已迁出**：原 **7.5 产品 ath30 B-only** → [`c2071`](../c2071-update-app-tui-host-mode-b-only/)。本块只做库。
 
 - [x] 7.1 Host 换栈 / dock API 已存在（历史默认 A；产品默认翻转属 c2071）
 - [x] 7.2 包测 + host harness；Mode B 人验路径（env demo 过渡已废；两 example）
-- [ ] 7.3 **ptim14 库 host 接入清单**（AGENTS / package）：dock→Editor origin→mouse 单一路径；copy-notice 臂装；**产品可抄、禁止 demo 私有胶为 SSOT**
-- [ ] 7.4 `llman sdd validate --strict`；verify 双轴无 CRITICAL；确认未实现 blocks / 未改 ath30 产品默认
+- [x] 7.3 **ptim14 库 host 接入清单**（`packages/xylitol-tui/AGENTS.md` § Mode B host checklist）
+- [x] 7.4 `llman sdd validate --strict`；verify 双轴无 CRITICAL；确认未实现 blocks / 未改 ath30 产品默认
+  - 2026-08-12：人验 alt-screen demo + host loop PASS；PTY bang/submit 改 `wait_for_raw` 后绿；verify 报告见 `_VERIFY.md`（CRITICAL 空；产品默认仍 Inline）
 - [x] 7.6 **Demo 拆分**：`agent_demo`（Inline）与 `agent_demo_alt`（Mode B）两文件 + `agent_demo_impl`；just 两 recipe；删除 `XYLITOL_AGENT_DEMO_MODE`
 - [x] 7.7 **Mode B e2e**（PTY）：alt/mouse/dump、OSC52 拖选、wheel smoke、dock clamp copy、suspend/resume；tmux Mode B 粗烟仍 SHOULD
-- [ ] 7.8 **双入口结构极致化**（本分支核心）：
-  - 收敛 `application_session_active` 散布；抽出 ApplicationOwned 会话/生命周期（或等价 type-state / 分治 facade）
-  - teardown：`finish_application_owned` vs `finish_inline`（命名与行为对齐）
-  - dump opt-out API（ptim02 MAY）
-  - 统一 Editor 命中契约（一条 remap 路径 + 包测）
-  - 面向扩展：fold hit 优先级钩子可挂；零多余运行时分支税；接口面小而稳（pub 边界审一遍）
-- [ ] 7.9 （可选）包 docs / examples 展示「优美 host 最小环」：`begin` → `dispatch` → `idle_tick` → `finish`，无 demo 特例泄漏
+- [x] 7.8 **双入口结构极致化**：
+  - `ApplicationOwnedTui` facade（Deref→`TUI`）+ `finish_application_owned` / `finish_inline` 分流（Mode B shim 兼容）
+  - `set_append_session_to_main_scrollback_on_exit`（离开 alt 后是否把会话写回主屏 scrollback；默认 on）
+  - 统一 Editor 命中：`editor_screen_origin` + `set_screen_origin`（demo + 产品 root）
+  - fold hit 优先级钩子仍预留在 selection（c2040）
+- [x] 7.9 包 example `host_loop_application_owned` + `just demo-tui-host-loop`（最小 host 环）
 
 ---
 
@@ -96,13 +96,11 @@
 | H6 | Editor 多行独立选区 | ✅ 2026-08-12（边沿滚已裁） |
 | H7 | 复制成功短提示 | ✅ demo；产品落点 → c2071 |
 
-## 实现顺序（2026-08-12 修订²）
+## 实现顺序（2026-08-12 修订³）
 
 ```text
 战略：产品 B-only → c2071（本分支不碰 ath30）
-  → 7.8 双入口结构 / 优雅 API（主）
-  → 7.3 ptim14 库 host 清单（与 7.8 可交错）
-  → 7.9 最小 host 环示例（可选）
+  → 7.8 / 7.3 / 7.9 ✅
   → 7.4 validate / verify
   → archive c2070 → 另开分支做 c2071
 ```
