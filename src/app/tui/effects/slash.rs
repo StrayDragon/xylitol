@@ -64,6 +64,8 @@ pub(super) async fn handle_slash<T: Terminal>(
             let scene = scene.trim().to_ascii_lowercase();
             if scene.is_empty() || scene == "list" {
                 session.push_scroll_notice(crate::app::debug_fixtures::list_note());
+            } else if scene == "verify-smoke" {
+                super::debug_verify::run_verify_smoke(session, driver).await;
             } else {
                 log::info!(target: "xylitol::tui", "XyDriver::load_debug_scene scene={}", scene);
                 match driver.load_debug_scene(&scene).await {

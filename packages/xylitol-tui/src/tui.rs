@@ -336,6 +336,13 @@ pub struct TUI<T: Terminal> {
     finalize_width_checks: u64,
     /// Obs/test: lines that reused the previous finalized string (A+B fast path).
     finalize_line_reuses: u64,
+    /// Last painted frame cost (obs / labs).
+    last_render_perf: RenderPerfSnap,
+    /// ApplicationOwned: when false, wheel/selection frames may skip
+    /// `Component::render` and only reproject the cached transcript+dock.
+    ao_components_stale: bool,
+    /// Obs: how many frames took the ApplicationOwned reproject-only path.
+    ao_reproject_frames: u64,
     focus_order_counter: u64,
     next_overlay_id: u64,
     next_input_listener_id: u64,
@@ -371,6 +378,26 @@ pub struct TUI<T: Terminal> {
     append_session_to_main_scrollback_on_exit: bool,
 }
 
+/// Last successful `do_render` cost snapshot (obs / labs / harness).
+#[derive(Debug, Clone, Copy, Default, PartialEq, Eq)]
+pub struct RenderPerfSnap {
+    /// Wall time of the last `do_render` (microseconds).
+    pub do_render_us: u64,
+    /// Lines emitted by components (+ overlays) before ApplicationOwned project.
+    /// On an ApplicationOwned reproject-only frame this is the cached content+dock
+    /// length (components were not re-invoked).
+    pub component_lines: usize,
+    /// Lines after ApplicationOwned project (≤ terminal height); Inline = same as
+    /// `component_lines`.
+    pub paint_lines: usize,
+    /// This frame: lines that ran normalize + `visible_width`.
+    pub finalize_width_checks: u64,
+    /// This frame: lines that reused the previous finalized string.
+    pub finalize_line_reuses: u64,
+    /// ApplicationOwned skipped `Component::render` and only re-sliced the viewport.
+    pub ao_reprojected: bool,
+}
+
 /// Minimum spacing between throttled frames (~60fps). Mirrors pi's
 /// MIN_RENDER_INTERVAL_MS. `render_frame` bypasses this; `try_render` honors it.
 const MIN_RENDER_INTERVAL_MS: u64 = 16;
@@ -404,6 +431,9 @@ impl<T: Terminal> TUI<T> {
             frame_count: 0,
             finalize_width_checks: 0,
             finalize_line_reuses: 0,
+            last_render_perf: RenderPerfSnap::default(),
+            ao_components_stale: true,
+            ao_reproject_frames: 0,
             focus_order_counter: 0,
             next_overlay_id: 1,
             next_input_listener_id: 1,
@@ -460,6 +490,7 @@ impl<T: Terminal> TUI<T> {
         let mut runtime = ApplicationOwnedRuntime::new(self.dock_rows);
         runtime.set_copy_on_release(self.transcript_copy_on_release);
         self.application_owned = Some(runtime);
+        self.ao_components_stale = true;
         // Force a clearing redraw into the alt buffer.
         self.previous_width = FORCE_SIZE_SENTINEL;
         self.previous_height = FORCE_SIZE_SENTINEL;
@@ -489,10 +520,30 @@ impl<T: Terminal> TUI<T> {
     /// Rows reserved at the bottom for dock (editor/status/footer). ApplicationOwned
     /// selection excludes this band.
     pub fn set_dock_rows(&mut self, rows: usize) {
-        self.dock_rows = rows.max(1);
+        let rows = rows.max(1);
+        if rows != self.dock_rows {
+            self.ao_components_stale = true;
+        }
+        self.dock_rows = rows;
         if let Some(runtime) = self.application_owned.as_mut() {
             runtime.set_dock_rows(self.dock_rows);
         }
+    }
+
+    /// Force the next ApplicationOwned frame to re-run `Component::render`
+    /// (entries / chrome / editor changed). Wheel/selection-only paints leave
+    /// this clear so they can reproject the cached transcript.
+    pub fn mark_ao_components_stale(&mut self) {
+        self.ao_components_stale = true;
+    }
+
+    /// Obs/test: ApplicationOwned frames that skipped component render.
+    pub fn ao_reproject_frames_for_test(&self) -> u64 {
+        self.ao_reproject_frames
+    }
+
+    pub fn clear_ao_reproject_frames_for_test(&mut self) {
+        self.ao_reproject_frames = 0;
     }
 
     pub fn dock_rows(&self) -> usize {
@@ -603,6 +654,11 @@ impl<T: Terminal> TUI<T> {
     pub fn clear_finalize_counters_for_test(&mut self) {
         self.finalize_width_checks = 0;
         self.finalize_line_reuses = 0;
+    }
+
+    /// Cost of the last successful `do_render` (microseconds + line counts).
+    pub fn last_render_perf(&self) -> RenderPerfSnap {
+        self.last_render_perf
     }
 
     /// Whether a soft/force `request_render` is pending.
@@ -1280,6 +1336,11 @@ impl<T: Terminal> TUI<T> {
     /// Public so host loops (and tests) can feed input without going through
     /// the blocking `start()` event loop.
     pub fn dispatch_event(&mut self, event: InputEvent) -> InputReaction {
+        // Keys/paste always mutate chrome or editor — invalidate AO component cache.
+        // Wheel/selection-only mouse returns early below without setting this.
+        if matches!(event, InputEvent::Key(_) | InputEvent::Paste(_)) {
+            self.ao_components_stale = true;
+        }
         // ApplicationOwned: left Down clears the focused component's pointer
         // selection first so transcript ↔ editor highlights stay one-of
         // (click anywhere cancels the other). Then transcript/wheel may
@@ -1308,7 +1369,13 @@ impl<T: Terminal> TUI<T> {
                 self.transcript_hit_priority = hit;
                 false
             };
+            if force_rerender {
+                // Editor pointer clear needs Component::render for dock highlight.
+                self.ao_components_stale = true;
+            }
             if dirty {
+                // Scroll/selection only: keep component cache, reproject viewport.
+                // Copied chrome is armed by the host via take_copy_notice → mark stale.
                 return InputReaction::Rerender;
             }
             if matches!(mouse.kind, MouseEventKind::Moved) {
@@ -1339,13 +1406,18 @@ impl<T: Terminal> TUI<T> {
             let result = (self.input_listeners[index].callback)(event.clone());
             match result {
                 InputListenerResult::Continue => {}
-                InputListenerResult::ConsumedRerender => return InputReaction::Rerender,
+                InputListenerResult::ConsumedRerender => {
+                    self.ao_components_stale = true;
+                    return InputReaction::Rerender;
+                }
                 InputListenerResult::Consumed => {
                     // Key/Paste: historical always-paint. Mouse: silent consume
                     // so a no-op handler cannot flood frames (c2020 / c2040).
-                    return InputReaction::rerender_if(
-                        force_rerender || !matches!(event, InputEvent::Mouse(_)),
-                    );
+                    let paint = force_rerender || !matches!(event, InputEvent::Mouse(_));
+                    if paint {
+                        self.ao_components_stale = true;
+                    }
+                    return InputReaction::rerender_if(paint);
                 }
             }
         }
@@ -1405,7 +1477,11 @@ impl<T: Terminal> TUI<T> {
             let wants = self.overlays[index].0.input_wants_rerender(&event);
             let seqs = self.overlays[index].0.take_pending_clipboard();
             self.ingest_component_clipboard(seqs);
-            return InputReaction::rerender_if(wants || force_rerender);
+            let paint = wants || force_rerender;
+            if paint {
+                self.ao_components_stale = true;
+            }
+            return InputReaction::rerender_if(paint);
         }
         if let Some(idx) = self.focused_index
             && idx < self.components.len()
@@ -1416,7 +1492,14 @@ impl<T: Terminal> TUI<T> {
             let wants = self.components[idx].input_wants_rerender(&event);
             let seqs = self.components[idx].take_pending_clipboard();
             self.ingest_component_clipboard(seqs);
-            return InputReaction::rerender_if(wants || force_rerender);
+            let paint = wants || force_rerender;
+            if paint {
+                self.ao_components_stale = true;
+            }
+            return InputReaction::rerender_if(paint);
+        }
+        if force_rerender {
+            self.ao_components_stale = true;
         }
         InputReaction::rerender_if(force_rerender)
     }
@@ -1470,12 +1553,20 @@ impl<T: Terminal> TUI<T> {
             .overlays
             .iter_mut()
             .any(|(component, _, _)| component.tick());
+        if changed {
+            // Spinner / chrome animations must rebuild dock lines.
+            self.ao_components_stale = true;
+        }
         if self.application_session_active {
             let cols = self.terminal.columns();
             let rows = self.terminal.rows();
             if let Some(runtime) = self.application_owned.as_mut() {
                 changed |= runtime.tick_autoscroll(cols, rows);
-                changed |= runtime.tick_copy_notice();
+                if runtime.tick_copy_notice() {
+                    // Status row lost "Copied" — refresh chrome.
+                    self.ao_components_stale = true;
+                    changed = true;
+                }
             }
         }
         changed
@@ -1530,6 +1621,7 @@ impl<T: Terminal> TUI<T> {
             self.cursor_row = 0;
             self.hardware_cursor_row = 0;
             self.max_lines_rendered = 0;
+            self.ao_components_stale = true;
         }
         self.render_requested = true;
     }
@@ -1573,30 +1665,73 @@ impl<T: Terminal> TUI<T> {
             return Ok(());
         }
 
-        let mut new_lines = Vec::new();
-        let dock_before = self
-            .application_owned
-            .as_ref()
-            .map(|runtime| runtime.dock_rows);
-        for comp in &mut self.components {
-            new_lines.extend(comp.render(width));
-            if let Some(dock) = comp.dock_rows_hint() {
-                self.dock_rows = dock.max(1);
-                if let Some(runtime) = self.application_owned.as_mut() {
-                    runtime.set_dock_rows(self.dock_rows);
+        let render_started = std::time::Instant::now();
+        let checks_before = self.finalize_width_checks;
+        let reuses_before = self.finalize_line_reuses;
+
+        let can_reproject = self.application_session_active
+            && !self.ao_components_stale
+            && self.overlays.is_empty()
+            && self
+                .application_owned
+                .as_ref()
+                .is_some_and(ApplicationOwnedRuntime::has_projected_content);
+
+        let (component_lines, mut new_lines, ao_reprojected) = if can_reproject {
+            let runtime = self
+                .application_owned
+                .as_mut()
+                .expect("can_reproject checked runtime");
+            let cached_len = runtime
+                .content_len()
+                .saturating_add(runtime.dock_line_count());
+            let painted = runtime.reproject_frame(height);
+            self.ao_reproject_frames = self.ao_reproject_frames.saturating_add(1);
+            // Never grow terminal scrollback in ApplicationOwned.
+            self.previous_viewport_top = 0;
+            (cached_len, painted, true)
+        } else {
+            let mut new_lines = Vec::new();
+            let dock_before = self
+                .application_owned
+                .as_ref()
+                .map(|runtime| runtime.dock_rows);
+            for comp in &mut self.components {
+                new_lines.extend(comp.render(width));
+                if let Some(dock) = comp.dock_rows_hint() {
+                    self.dock_rows = dock.max(1);
+                    if let Some(runtime) = self.application_owned.as_mut() {
+                        runtime.set_dock_rows(self.dock_rows);
+                    }
                 }
             }
-        }
-        // Dock height change reclassifies lines — force full clear so Shift+Enter
-        // growth cannot leave a duplicate-looking transcript/dock seam.
-        if self.application_session_active && dock_before.is_some_and(|d| d != self.dock_rows) {
-            self.previous_width = FORCE_SIZE_SENTINEL;
-            self.previous_height = FORCE_SIZE_SENTINEL;
-        }
+            // Dock height change reclassifies lines — force full clear so Shift+Enter
+            // growth cannot leave a duplicate-looking transcript/dock seam.
+            if self.application_session_active && dock_before.is_some_and(|d| d != self.dock_rows) {
+                self.previous_width = FORCE_SIZE_SENTINEL;
+                self.previous_height = FORCE_SIZE_SENTINEL;
+            }
 
-        if !self.overlays.is_empty() {
-            new_lines = self.composite_overlays(new_lines, width, height);
-        }
+            if !self.overlays.is_empty() {
+                new_lines = self.composite_overlays(new_lines, width, height);
+            }
+
+            let component_lines = new_lines.len();
+
+            // ApplicationOwned: project *before* finalize/cursor extract so we only
+            // pay normalize+visible_width on the ≤height paint surface (long
+            // transcripts otherwise re-finalize the entire scrollback every frame).
+            // Also keeps cursor row indices in screen space for position_cursor.
+            if self.application_session_active {
+                if let Some(runtime) = self.application_owned.as_mut() {
+                    new_lines = runtime.project_frame(&new_lines, height);
+                }
+                // Never grow terminal scrollback in ApplicationOwned.
+                self.previous_viewport_top = 0;
+            }
+            self.ao_components_stale = false;
+            (component_lines, new_lines, false)
+        };
 
         // pi: extract cursor marker before applyLineResets.
         let cursor_pos = self.extract_cursor_position(&mut new_lines, height);
@@ -1640,15 +1775,6 @@ impl<T: Terminal> TUI<T> {
                 }
             }
             *line = finalized;
-        }
-
-        // ApplicationOwned: project full buffer into fixed-height app viewport + dock.
-        if self.application_session_active {
-            if let Some(runtime) = self.application_owned.as_mut() {
-                new_lines = runtime.project_frame(&new_lines, height);
-            }
-            // Never grow terminal scrollback in ApplicationOwned.
-            self.previous_viewport_top = 0;
         }
 
         let width_changed = self.previous_width != 0 && self.previous_width != width;
@@ -1704,6 +1830,14 @@ impl<T: Terminal> TUI<T> {
         }
 
         self.position_cursor(cursor_pos, new_lines.len());
+        self.last_render_perf = RenderPerfSnap {
+            do_render_us: render_started.elapsed().as_micros().min(u64::MAX as u128) as u64,
+            component_lines,
+            paint_lines: new_lines.len(),
+            finalize_width_checks: self.finalize_width_checks.saturating_sub(checks_before),
+            finalize_line_reuses: self.finalize_line_reuses.saturating_sub(reuses_before),
+            ao_reprojected,
+        };
         self.previous_lines = new_lines;
         self.previous_width = width;
         self.previous_height = height;

@@ -81,17 +81,48 @@ impl ApplicationOwnedRuntime {
         lines
     }
 
+    /// True after at least one [`Self::project_frame`] ingested dock/content.
+    pub fn has_projected_content(&self) -> bool {
+        !self.last_dock_lines.is_empty() || self.scroll.content_len() > 0
+    }
+
+    /// Transcript content lines currently held by the scroll view (no dock).
+    pub fn content_len(&self) -> usize {
+        self.scroll.content_len()
+    }
+
+    /// Dock lines cached from the last component project.
+    pub fn dock_line_count(&self) -> usize {
+        self.last_dock_lines.len()
+    }
+
     /// Split full component output into viewport paint lines (≤ terminal height).
     pub fn project_frame(&mut self, full_lines: &[String], term_height: usize) -> Vec<String> {
         let dock = self.dock_rows.min(full_lines.len()).min(term_height);
         let content_end = full_lines.len().saturating_sub(dock);
-        let content: Vec<String> = full_lines[..content_end].to_vec();
-        let dock_lines: Vec<String> = full_lines[content_end..].to_vec();
-        self.last_dock_lines = dock_lines.clone();
+        let content = &full_lines[..content_end];
+        let dock_lines = &full_lines[content_end..];
+        self.last_dock_lines = dock_lines.to_vec();
 
         let viewport_h = term_height.saturating_sub(dock);
         self.scroll.set_viewport_height(viewport_h.max(1));
-        self.scroll.set_lines(content);
+        self.scroll.set_lines(content.to_vec());
+        self.paint_visible(viewport_h, term_height)
+    }
+
+    /// Re-slice the already-ingested transcript + dock after scroll/selection
+    /// changes — **no** component re-render. Used by ApplicationOwned wheel/drag.
+    pub fn reproject_frame(&mut self, term_height: usize) -> Vec<String> {
+        let dock = self
+            .dock_rows
+            .min(self.last_dock_lines.len())
+            .min(term_height);
+        let viewport_h = term_height.saturating_sub(dock);
+        self.scroll.set_viewport_height(viewport_h.max(1));
+        self.paint_visible(viewport_h, term_height)
+    }
+
+    fn paint_visible(&mut self, viewport_h: usize, term_height: usize) -> Vec<String> {
         // Follow only when sticky; wheel / selection edge scroll must persist across frames.
         if self.follow_bottom && !self.selection.is_dragging() {
             self.scroll.scroll_to_end();
@@ -104,7 +135,7 @@ impl ApplicationOwnedRuntime {
             visible.push(String::new());
         }
         visible.truncate(viewport_h);
-        visible.extend(dock_lines);
+        visible.extend(self.last_dock_lines.iter().cloned());
         // Hard cap: never exceed terminal height.
         if visible.len() > term_height {
             visible.truncate(term_height);

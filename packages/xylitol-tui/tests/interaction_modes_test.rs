@@ -865,3 +865,67 @@ fn application_owned_transcript_hit_priority_swallows_press() {
         "hit priority must survive across dispatches"
     );
 }
+
+#[test]
+fn application_owned_finalize_only_paint_lines() {
+    // Long component output must not pay finalize/visible_width on every content
+    // line — only the projected ≤height paint surface.
+    let lines: Vec<String> = (0..200).map(|i| format!("row-{i:03} payload")).collect();
+    let mut tui = TUI::with_interaction_mode(
+        LoggingVirtualTerminal::new(80, 24),
+        InteractionMode::ApplicationOwned,
+    );
+    tui.set_dock_rows(4);
+    tui.add_child(Box::new(StaticLines { lines }));
+    tui.terminal.start();
+    tui.begin_application_owned_session();
+    tui.clear_finalize_counters_for_test();
+    tui.render_frame().expect("ao paint");
+    let perf = tui.last_render_perf();
+    assert_eq!(perf.component_lines, 200);
+    assert!(
+        perf.paint_lines <= 24,
+        "paint_lines={} must be ≤ term rows",
+        perf.paint_lines
+    );
+    assert!(
+        perf.finalize_width_checks <= perf.paint_lines as u64,
+        "finalize_checks={} paint_lines={}",
+        perf.finalize_width_checks,
+        perf.paint_lines
+    );
+    assert!(
+        tui.finalize_width_checks_for_test() < 50,
+        "must not finalize full 200-line transcript"
+    );
+}
+
+#[test]
+fn application_owned_wheel_reprojects_without_component_render() {
+    let lines: Vec<String> = (0..80).map(|i| format!("L{i:02}")).collect();
+    let mut tui = TUI::with_interaction_mode(
+        LoggingVirtualTerminal::new(40, 12),
+        InteractionMode::ApplicationOwned,
+    );
+    tui.set_dock_rows(2);
+    tui.add_child(Box::new(StaticLines { lines }));
+    tui.terminal.start();
+    tui.begin_application_owned_session();
+    tui.render_frame().expect("warm");
+    assert!(!tui.last_render_perf().ao_reprojected);
+
+    tui.clear_ao_reproject_frames_for_test();
+    let reaction = tui.dispatch_event(InputEvent::Mouse(MouseEvent {
+        kind: MouseEventKind::ScrollUp,
+        column: 2,
+        row: 2,
+        modifiers: KeyModifiers::NONE,
+    }));
+    assert_eq!(reaction, xylitol_tui::InputReaction::Rerender);
+    tui.render_frame().expect("wheel");
+    assert!(
+        tui.last_render_perf().ao_reprojected,
+        "wheel frame must skip Component::render"
+    );
+    assert_eq!(tui.ao_reproject_frames_for_test(), 1);
+}
