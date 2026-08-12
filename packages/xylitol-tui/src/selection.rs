@@ -279,17 +279,15 @@ impl SelectionController {
                 if !transcript.contains(col, row) {
                     return false;
                 }
-                // Same quantum as edge-drag (`tick_autoscroll`) / AO wheel.
-                let step = ScrollView::motion_step(scroll.viewport_height());
-                scroll.scroll_by(-step);
+                // Fine notch (edge-drag still uses [`ScrollView::motion_step`]).
+                scroll.scroll_by(-ScrollView::wheel_notch());
                 true
             }
             MouseEventKind::ScrollDown => {
                 if !transcript.contains(col, row) {
                     return false;
                 }
-                let step = ScrollView::motion_step(scroll.viewport_height());
-                scroll.scroll_by(step);
+                scroll.scroll_by(ScrollView::wheel_notch());
                 true
             }
             _ => false,
@@ -301,7 +299,8 @@ impl SelectionController {
         if !self.dragging || self.auto_scroll_dir == 0 {
             return false;
         }
-        // Same quantum as wheel notches (`ScrollView::motion_step`).
+        // Edge-drag keeps its viewport-scaled motion quantum; wheel events use
+        // the independent one-line `ScrollView::wheel_notch`.
         let step = ScrollView::motion_step(scroll.viewport_height());
         let delta = self.auto_scroll_dir as isize * step;
         if !scroll.scroll_by(delta) {
@@ -1046,7 +1045,7 @@ mod tests {
     }
 
     #[test]
-    fn wheel_scroll_uses_motion_step() {
+    fn wheel_scroll_uses_fine_notch() {
         let mut scroll = ScrollView::new(40);
         scroll.set_lines((0..200).map(|i| format!("L{i}")).collect());
         scroll.scroll_to_end();
@@ -1054,7 +1053,6 @@ mod tests {
         let mut sink = RecordingClipboardSink::default();
         let (tr, dock) = layout();
         let top0 = scroll.scroll_top();
-        let step = ScrollView::motion_step(scroll.viewport_height()) as usize;
         sel.handle_mouse(
             &mouse(MouseEventKind::ScrollUp, 0, 0),
             &mut scroll,
@@ -1062,6 +1060,9 @@ mod tests {
             dock,
             &mut sink,
         );
-        assert_eq!(top0 - scroll.scroll_top(), step);
+        assert_eq!(
+            top0 - scroll.scroll_top(),
+            ScrollView::wheel_notch() as usize
+        );
     }
 }

@@ -331,10 +331,10 @@ async fn run_host_loop(
                 maybe = term_events.next() => {
                     match maybe {
                         Some(item) => {
-                            // Fast scroll: drain already-buffered wheel events into
-                            // one residual + drag-aligned first step (Kitty/tmux burst).
+                            // Fast scroll: sum already-buffered wheel events and
+                            // apply the full delta before one cheap AO reproject.
                             // Only when the first event is over the transcript pane.
-                            let step = session.tui.application_owned_motion_step();
+                            let step = session.tui.application_owned_wheel_notch();
                             let coalesce_wheel = wheel_delta_from_item(&item, step).filter(|_| {
                                 session.tui.application_session_active()
                                     && match &item {
@@ -521,8 +521,8 @@ fn on_agent_stream_item<T: xylitol_tui::Terminal>(
                 }
             }
             session.sync_ui_root_from_model();
+            // Busy ticker paints ≤60Hz — do not paint on every token wake.
             session.tui.request_render(false);
-            session.step_paint_only()?;
             if stream_ended {
                 log::debug!(target: "xylitol::tui", "agent EventStream ended");
                 *agent_stream = None;

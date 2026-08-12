@@ -304,20 +304,89 @@ fn application_owned_wheel_scrolls_app_viewport() {
         xylitol_tui::InputReaction::Rerender
     );
     tui.request_render(false);
-    tui.render_now().expect("after wheel");
-    // Content L00..L17 + dock L18,L19; viewport content h=4 → motion_step=2.
-    // Follow end shows L14..L17; one wheel notch → L12..L15.
-    let step = tui.application_owned_motion_step();
-    assert_eq!(step, 2);
+    assert!(
+        tui.try_render().expect("after wheel"),
+        "wheel-only AO reproject must bypass the full-frame throttle"
+    );
+    assert!(tui.last_render_perf().ao_reprojected);
+    // Content L00..L17 + dock L18,L19; viewport content h=4.
+    // Follow end shows L14..L17; one fine notch → L13..L16.
+    assert_eq!(tui.application_owned_wheel_notch(), 1);
     let raw = tui.terminal.all_writes();
     assert!(
-        raw.contains("L12"),
+        raw.contains("L13"),
         "wheel scroll must persist across paint, got: {raw:?}"
     );
     assert!(
-        !raw.contains("L17") || raw.rfind("L12").unwrap() > raw.rfind("L17").unwrap_or(0),
+        !raw.contains("L17") || raw.rfind("L13").unwrap() > raw.rfind("L17").unwrap_or(0),
         "must not snap back to follow-end after wheel"
     );
+}
+
+#[test]
+fn application_owned_wheel_coalesce_applies_full_delta_without_tick_drain() {
+    let mut tui = TUI::with_interaction_mode(
+        LoggingVirtualTerminal::new(40, 6),
+        InteractionMode::ApplicationOwned,
+    );
+    tui.set_dock_rows(2);
+    tui.add_child(Box::new(StaticLines {
+        lines: (0..20).map(|i| format!("L{i:02}")).collect(),
+    }));
+    tui.terminal.start();
+    tui.begin_application_owned_session();
+    tui.render_now().expect("seed");
+    tui.terminal.clear_writes();
+
+    let frames_before = tui.frame_count();
+    assert!(tui.application_owned_scroll_by(-3));
+    assert!(
+        tui.try_render().expect("coalesced wheel paint"),
+        "coalesced wheel must paint immediately"
+    );
+    assert_eq!(tui.frame_count(), frames_before + 1);
+    assert!(tui.last_render_perf().ao_reprojected);
+    assert!(
+        tui.terminal.all_writes().contains("L11"),
+        "all three one-line wheel events must be visible in the first paint"
+    );
+    assert!(
+        !tui.idle_tick(),
+        "normal wheel motion must not continue through the edge-drag tick path"
+    );
+    assert!(!tui.is_render_requested());
+}
+
+#[test]
+fn application_owned_wheel_first_paint_is_immediate_then_continuous_stream_is_capped() {
+    let mut tui = TUI::with_interaction_mode(
+        LoggingVirtualTerminal::new(40, 6),
+        InteractionMode::ApplicationOwned,
+    );
+    tui.set_dock_rows(2);
+    tui.add_child(Box::new(StaticLines {
+        lines: (0..20).map(|i| format!("L{i:02}")).collect(),
+    }));
+    tui.terminal.start();
+    tui.begin_application_owned_session();
+    tui.render_now().expect("seed full frame");
+
+    assert!(tui.application_owned_scroll_by(-1));
+    assert!(
+        tui.try_render().expect("first wheel paint"),
+        "the first wheel reproject must not inherit the full-frame throttle"
+    );
+
+    assert!(tui.application_owned_scroll_by(-1));
+    assert!(
+        !tui.try_render().expect("continuous wheel cadence"),
+        "continuous wheel paints should stay capped near 60fps"
+    );
+    assert!(tui.is_render_requested());
+
+    tui.render_now().expect("settle pending viewport");
+    assert!(tui.terminal.all_writes().contains("L12"));
+    assert!(!tui.is_render_requested());
 }
 
 #[test]
@@ -903,7 +972,7 @@ fn application_owned_finalize_only_paint_lines() {
 }
 
 #[test]
-fn application_owned_wheel_uses_scroll_region_shift() {
+fn application_owned_click_stays_aligned_after_repeated_wheel_scrolls() {
     let lines: Vec<String> = (0..80).map(|i| format!("L{i:02}")).collect();
     let mut tui = TUI::with_interaction_mode(
         LoggingVirtualTerminal::new(40, 12),
@@ -914,27 +983,53 @@ fn application_owned_wheel_uses_scroll_region_shift() {
     tui.terminal.start();
     tui.begin_application_owned_session();
     tui.render_frame().expect("warm");
-    tui.clear_ao_scroll_shift_frames_for_test();
-    tui.terminal.clear_writes();
 
-    let _ = tui.dispatch_event(InputEvent::Mouse(MouseEvent {
-        kind: MouseEventKind::ScrollUp,
-        column: 2,
-        row: 2,
-        modifiers: KeyModifiers::NONE,
-    }));
-    tui.render_frame().expect("wheel");
-    assert!(
-        tui.ao_scroll_shift_frames_for_test() >= 1,
-        "small wheel without selection should use scroll-region shift"
+    let wheel = |kind| {
+        InputEvent::Mouse(MouseEvent {
+            kind,
+            column: 2,
+            row: 4,
+            modifiers: KeyModifiers::NONE,
+        })
+    };
+    for _ in 0..6 {
+        let _ = tui.dispatch_event(wheel(MouseEventKind::ScrollUp));
+        tui.render_frame().expect("wheel up");
+    }
+    for _ in 0..2 {
+        let _ = tui.dispatch_event(wheel(MouseEventKind::ScrollDown));
+        tui.render_frame().expect("wheel down");
+    }
+
+    assert_eq!(
+        tui.terminal.viewport()[4],
+        "L68",
+        "the terminal row used for the click must match the projected viewport"
     );
-    let step = tui.application_owned_motion_step();
-    let writes = tui.terminal.all_writes();
-    let expected_s = format!("\x1b[{step}S");
-    let expected_t = format!("\x1b[{step}T");
+
+    let mouse = |kind, column| {
+        InputEvent::Mouse(MouseEvent {
+            kind,
+            column,
+            row: 4,
+            modifiers: KeyModifiers::NONE,
+        })
+    };
+    let _ = tui.dispatch_event(mouse(MouseEventKind::Down(MouseButton::Left), 0));
+    let _ = tui.dispatch_event(mouse(MouseEventKind::Drag(MouseButton::Left), 3));
+    tui.render_frame().expect("selection highlight");
+
     assert!(
-        writes.contains(&expected_s) || writes.contains(&expected_t),
-        "expected CSI scroll {expected_s}/{expected_t} in transcript region, got: {writes:?}"
+        tui.terminal.viewport_cell(4, 0).reverse,
+        "selection highlight must land on the clicked terminal row"
+    );
+
+    tui.terminal.clear_writes();
+    let _ = tui.dispatch_event(mouse(MouseEventKind::Up(MouseButton::Left), 3));
+    tui.render_frame().expect("selection release");
+    assert!(
+        tui.terminal.all_writes().contains("\x1b]52;c;TDY4\x07"),
+        "the clicked visible row L68 must be the copied content"
     );
 }
 

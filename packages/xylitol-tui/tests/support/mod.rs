@@ -46,6 +46,9 @@ pub enum Color {
 pub struct VirtualTerminal {
     cols: u16,
     rows: u16,
+    /// Active DECSTBM scroll region, inclusive and viewport-relative.
+    scroll_top: usize,
+    scroll_bottom: usize,
     /// Row-major grid; row 0 is the top of the current viewport. Grown lazily
     /// when content scrolls past `rows` (we keep the full scrollback so tests
     /// can assert on overflow/scroll behavior like pi's scroll buffer).
@@ -71,6 +74,8 @@ impl VirtualTerminal {
         Self {
             cols,
             rows,
+            scroll_top: 0,
+            scroll_bottom: rows_us.saturating_sub(1),
             grid: vec![vec![Cell::default(); cols_us]; rows_us],
             cursor_row: 0,
             cursor_col: 0,
@@ -95,6 +100,8 @@ impl VirtualTerminal {
         }
         self.cols = cols;
         self.rows = rows;
+        self.scroll_top = 0;
+        self.scroll_bottom = new_rows.saturating_sub(1);
         self.cursor_row = self.cursor_row.min(new_rows.saturating_sub(1));
         self.cursor_col = self.cursor_col.min(new_cols.saturating_sub(1));
     }
@@ -292,6 +299,41 @@ impl VirtualTerminal {
         if let Some(r) = self.grid.get_mut(row) {
             for c in start..end.min(r.len()) {
                 r[c] = Cell::default();
+            }
+        }
+    }
+
+    fn set_scroll_region(&mut self, top: usize, bottom: usize) {
+        let last = self.rows.saturating_sub(1) as usize;
+        self.scroll_top = top.min(last);
+        self.scroll_bottom = bottom.min(last).max(self.scroll_top);
+        // DECSTBM homes the cursor when origin mode is disabled.
+        self.cursor_row = 0;
+        self.cursor_col = 0;
+    }
+
+    fn scroll_region(&mut self, count: usize, up: bool) {
+        let count = count
+            .max(1)
+            .min(self.scroll_bottom.saturating_sub(self.scroll_top) + 1);
+        let region_len = self.scroll_bottom - self.scroll_top + 1;
+        let overlap = region_len - count;
+        let blank = vec![Cell::default(); self.cols as usize];
+        if up {
+            for offset in 0..overlap {
+                self.grid[self.scroll_top + offset] =
+                    self.grid[self.scroll_top + offset + count].clone();
+            }
+            for row in self.scroll_bottom + 1 - count..=self.scroll_bottom {
+                self.grid[row] = blank.clone();
+            }
+        } else {
+            for offset in (0..overlap).rev() {
+                self.grid[self.scroll_top + offset + count] =
+                    self.grid[self.scroll_top + offset].clone();
+            }
+            for row in self.scroll_top..self.scroll_top + count {
+                self.grid[row] = blank.clone();
             }
         }
     }
@@ -532,6 +574,19 @@ impl Perform for VTPerformer<'_> {
                 self.vt.erase_in_line(mode);
             }
             'm' => self.vt.apply_sgr(params),
+            'r' => {
+                let top = nth_param(params, 0).unwrap_or(1).max(1) as usize - 1;
+                let bottom = nth_param(params, 1).unwrap_or(self.vt.rows).max(1) as usize - 1;
+                self.vt.set_scroll_region(top, bottom);
+            }
+            'S' => {
+                let count = nth_param(params, 0).unwrap_or(1) as usize;
+                self.vt.scroll_region(count, true);
+            }
+            'T' => {
+                let count = nth_param(params, 0).unwrap_or(1) as usize;
+                self.vt.scroll_region(count, false);
+            }
             'h' | 'l' if nth_param(params, 0) == Some(7) => {
                 self.vt.auto_wrap = byte == 'h';
             }

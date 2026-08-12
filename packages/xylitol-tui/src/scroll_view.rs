@@ -11,10 +11,16 @@ pub struct ScrollView {
 }
 
 impl ScrollView {
-    /// Shared motion quantum for wheel notches and selection edge-drag.
-    /// Keeps ApplicationOwned browse / select scroll feeling the same.
+    /// One physical wheel notch (fine grain — avoids multi-row jumps).
+    pub const WHEEL_NOTCH: isize = 1;
+
+    /// Selection edge-drag quantum per busy tick (faster catch-up than wheel).
     pub fn motion_step(viewport_height: usize) -> isize {
         (viewport_height as isize / 8).clamp(2, 8)
+    }
+
+    pub fn wheel_notch() -> isize {
+        Self::WHEEL_NOTCH
     }
 
     pub fn new(viewport_height: usize) -> Self {

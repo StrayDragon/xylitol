@@ -208,6 +208,53 @@ fn mouse_moved_does_not_request_render_by_default() {
 }
 
 #[test]
+fn application_owned_host_coalesced_wheel_paints_once_without_tick_tail() {
+    let mut session = HostSession::new_product_ui(TestTerminal::new(80, 12));
+    for i in 0..40 {
+        session.push_scroll_notice(format!("wheel-history-{i:02}"));
+    }
+    session.render_now().expect("seed long AO viewport");
+    session.tui.terminal.frames.clear();
+    let frames_before = session.tui.frame_count();
+
+    session
+        .apply_ao_wheel_delta(-3)
+        .expect("coalesced wheel delta");
+
+    assert_eq!(session.tui.frame_count(), frames_before + 1);
+    assert!(
+        session.tui.last_render_perf().ao_reprojected,
+        "host coalesce should take the cached AO reproject path"
+    );
+    assert!(!session.tui.is_render_requested());
+    assert!(
+        !session.wants_busy_tick(),
+        "normal wheel motion must not leave a residual busy-tick tail"
+    );
+    assert!(
+        !session.tui.terminal.frames.is_empty(),
+        "the coalesced viewport delta should paint immediately"
+    );
+
+    let frames_after_first = session.tui.frame_count();
+    session
+        .apply_ao_wheel_delta(-1)
+        .expect("continuous wheel delta");
+    assert_eq!(
+        session.tui.frame_count(),
+        frames_after_first,
+        "continuous wheel paint should respect the independent 60fps cap"
+    );
+    assert!(session.tui.is_render_requested());
+    assert!(
+        session.wants_busy_tick(),
+        "a capped paint must stay on the busy ticker until it is flushed"
+    );
+    session.tui.render_now().expect("flush capped wheel paint");
+    assert!(!session.wants_busy_tick());
+}
+
+#[test]
 fn inline_unhandled_mouse_down_does_not_request_render() {
     use crossterm::event::{KeyModifiers, MouseButton, MouseEvent, MouseEventKind};
 

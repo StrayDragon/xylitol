@@ -358,16 +358,11 @@ impl<T: Terminal> HostSession<T> {
         self.reload_active
     }
 
-    /// Tick / Loader while reload or agent/bang busy, **or** a paint is pending.
-    ///
-    /// Pending `request_render` under the 16ms throttle MUST keep the host on the
-    /// busy (≈60Hz) ticker — otherwise wheel/drag frames wait on the 250ms idle
-    /// tick and feel stuttery even when CPU is low.
+    /// Tick / Loader while reload or agent/bang busy, **or** a throttled paint
+    /// is pending. AO wheel-only reprojects paint immediately; selection
+    /// edge-drag still advances through `idle_tick` on this busy cadence.
     pub fn wants_busy_tick(&self) -> bool {
-        self.is_busy()
-            || self.reload_active
-            || self.tui.is_render_requested()
-            || self.tui.application_owned_wheel_pending()
+        self.is_busy() || self.reload_active || self.tui.is_render_requested()
     }
 
     pub fn take_reload(&mut self) -> bool {
@@ -813,7 +808,20 @@ impl<T: Terminal> HostSession<T> {
     }
 
     /// Apply one host event and attempt a throttled render.
+    ///
+    /// Stream text/thinking deltas only arm `request_render` — the busy ticker
+    /// (~60Hz) owns the paint cadence so slow Ornith tokens do not each force
+    /// a full ApplicationOwned rebuild when they arrive >16ms apart.
     pub fn step(&mut self, event: HostEvent) -> Result<(), XyDriverError> {
+        let defer_stream_paint = matches!(
+            &event,
+            HostEvent::Xy(xy)
+                if matches!(
+                    xy.as_ref(),
+                    crate::app::core::driver::XyEvent::TextDelta(_)
+                        | crate::app::core::driver::XyEvent::ThinkingDelta(_)
+                )
+        );
         match event {
             HostEvent::Quit => {
                 self.quit = true;
@@ -846,6 +854,9 @@ impl<T: Terminal> HostSession<T> {
             }
         }
 
+        if defer_stream_paint {
+            return Ok(());
+        }
         self.step_paint_only()
     }
 
