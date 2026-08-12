@@ -2159,11 +2159,19 @@ impl Component for Editor {
         }
 
         // c430/c545: append autocomplete popup below border; clamp to content width.
+        // While open, reserve a fixed band (max_visible + optional pagination row)
+        // so filtering `/e` → `/ex` → `/exi` does not resize the dock / jump the
+        // transcript. Cancel / clear releases the band (height restores).
         if let Some(ref mut ac_list) = self.autocomplete_list
             && self.autocomplete_state.is_some()
         {
+            let reserved = self.autocomplete_max_visible.saturating_add(1);
             let ac_lines = ac_list.render(cw);
+            let mut painted = 0usize;
             for line in &ac_lines {
+                if painted >= reserved {
+                    break;
+                }
                 let clipped = if visible_width(line) <= cw {
                     line.clone()
                 } else {
@@ -2172,6 +2180,11 @@ impl Component for Editor {
                 let lw = visible_width(&clipped);
                 let pad = cw.saturating_sub(lw);
                 result.push(format!("{lp}{clipped}{}{rp}", " ".repeat(pad)));
+                painted += 1;
+            }
+            while painted < reserved {
+                result.push(format!("{lp}{}{rp}", " ".repeat(cw)));
+                painted += 1;
             }
         }
 

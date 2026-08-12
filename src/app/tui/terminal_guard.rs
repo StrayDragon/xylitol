@@ -30,14 +30,22 @@ pub fn install_lifecycle_hooks() {
 
 /// Best-effort restore when no `CrosstermTerminal` handle is available.
 pub fn emergency_restore() {
+    use std::io::Write;
+    // Deep-pop Kitty keyboard stacks (main + whatever screen is active).
+    // Without this, Ghostty keeps emitting CSI-u (`c9;1:3u…`) into the shell.
+    let _ = std::io::stdout().write_all(b"\x1b[<8u");
     let _ = crossterm::terminal::disable_raw_mode();
     let _ = crossterm::execute!(
         std::io::stdout(),
+        crossterm::event::PopKeyboardEnhancementFlags,
+        crossterm::event::PopKeyboardEnhancementFlags,
         crossterm::event::DisableMouseCapture,
         crossterm::terminal::LeaveAlternateScreen,
         crossterm::event::DisableBracketedPaste,
         crossterm::cursor::Show
     );
+    let _ = std::io::stdout().write_all(b"\x1b[<8u\x1b[>4;0m");
+    let _ = std::io::stdout().flush();
 }
 
 fn install_panic_hook() {
