@@ -27,9 +27,6 @@ pub struct ApplicationOwnedRuntime {
     pending_copy_notice: bool,
     /// Visible/active notice deadline; cleared by [`Self::tick_copy_notice`].
     copy_notice_until: Option<Instant>,
-    /// Wheel residual drained one [`ScrollView::motion_step`] per tick/paint —
-    /// same cadence as selection edge-drag (host may coalesce bursts into here).
-    pending_wheel: isize,
 }
 
 impl ApplicationOwnedRuntime {
@@ -43,7 +40,6 @@ impl ApplicationOwnedRuntime {
             last_dock_lines: Vec::new(),
             pending_copy_notice: false,
             copy_notice_until: None,
-            pending_wheel: 0,
         }
     }
 
@@ -116,40 +112,18 @@ impl ApplicationOwnedRuntime {
         true
     }
 
-    /// Wheel / host coalesce: enqueue delta and apply one drag-sized step now.
-    /// Residual drains on [`Self::tick_autoscroll`] at the busy-tick rate.
+    /// Apply a wheel delta immediately. A physical wheel event contributes one
+    /// line; hosts may coalesce several buffered events into one summed delta.
     pub fn ingest_wheel_delta(&mut self, delta: isize) -> bool {
-        if delta == 0 {
-            return false;
-        }
-        self.pending_wheel = self.pending_wheel.saturating_add(delta);
-        self.drain_wheel_step()
+        self.scroll_by(delta)
     }
 
-    pub fn has_pending_wheel(&self) -> bool {
-        self.pending_wheel != 0
+    /// Fine wheel notch (host coalesce). Edge-drag uses [`ScrollView::motion_step`].
+    pub fn wheel_notch(&self) -> isize {
+        ScrollView::wheel_notch()
     }
 
-    /// One [`ScrollView::motion_step`] from the wheel residual (drag-aligned).
-    pub fn drain_wheel_step(&mut self) -> bool {
-        if self.pending_wheel == 0 {
-            return false;
-        }
-        let step = ScrollView::motion_step(self.scroll.viewport_height());
-        let delta = self.pending_wheel.clamp(-step, step);
-        self.pending_wheel -= delta;
-        if !self.scroll.scroll_by(delta) {
-            // Hit edge — drop residual in the same direction.
-            if delta.signum() == self.pending_wheel.signum() {
-                self.pending_wheel = 0;
-            }
-            return false;
-        }
-        self.follow_bottom = self.scroll.at_bottom();
-        true
-    }
-
-    /// Notch size matching selection edge-drag (for host coalesce).
+    /// Edge-drag quantum (not used for wheel notches).
     pub fn motion_step(&self) -> isize {
         ScrollView::motion_step(self.scroll.viewport_height())
     }
@@ -212,19 +186,18 @@ impl ApplicationOwnedRuntime {
             height: transcript_h,
             width: term_cols,
         };
-        // Wheel: same step + tick drain as selection edge-drag.
+        // Wheel: one line per physical event. Host-side coalescing sums events
+        // before calling `ingest_wheel_delta`, but never changes this notch.
         let wheel_delta = match event.kind {
-            MouseEventKind::ScrollUp => Some(-self.motion_step()),
-            MouseEventKind::ScrollDown => Some(self.motion_step()),
+            MouseEventKind::ScrollUp => Some(-self.wheel_notch()),
+            MouseEventKind::ScrollDown => Some(self.wheel_notch()),
             _ => None,
         };
         if let Some(delta) = wheel_delta {
             if !transcript.contains(event.column, event.row) {
                 return false;
             }
-            let _ = self.ingest_wheel_delta(delta);
-            // Dirty even at edge so a pending paint can settle.
-            return true;
+            return self.ingest_wheel_delta(delta);
         }
 
         let dock_rect = ScreenRect {
@@ -252,7 +225,7 @@ impl ApplicationOwnedRuntime {
     pub fn tick_autoscroll(&mut self, term_cols: u16, term_rows: u16) -> bool {
         let dock = self.dock_rows.min(term_rows as usize) as u16;
         let transcript_h = term_rows.saturating_sub(dock);
-        // Keep viewport height in sync before motion_step / wheel drain.
+        // Keep viewport height in sync before selection edge-drag motion.
         self.scroll
             .set_viewport_height((transcript_h as usize).max(1));
         let transcript = ScreenRect {
@@ -261,12 +234,10 @@ impl ApplicationOwnedRuntime {
             height: transcript_h,
             width: term_cols,
         };
-        let mut dirty = self.selection.tick_autoscroll(&mut self.scroll, transcript);
+        let dirty = self.selection.tick_autoscroll(&mut self.scroll, transcript);
         if dirty {
             self.follow_bottom = self.scroll.at_bottom();
         }
-        // Wheel residual: one motion_step per busy tick (same as edge-drag).
-        dirty |= self.drain_wheel_step();
         dirty
     }
 
@@ -373,7 +344,7 @@ mod tests {
         let _ = runtime.project_frame(&full, 8);
         assert!(runtime.scroll.at_bottom());
         let top_before = runtime.scroll.scroll_top();
-        let step = runtime.motion_step();
+        let notch = runtime.wheel_notch();
         let wheel = MouseEvent {
             kind: MouseEventKind::ScrollUp,
             column: 1,
@@ -381,9 +352,8 @@ mod tests {
             modifiers: KeyModifiers::NONE,
         };
         assert!(runtime.handle_mouse(&wheel, 40, 8));
-        // One notch = one motion_step applied immediately (drag-aligned).
-        assert_eq!(runtime.scroll.scroll_top(), top_before - step as usize);
-        assert!(!runtime.has_pending_wheel());
+        // One notch = one line applied immediately.
+        assert_eq!(runtime.scroll.scroll_top(), top_before - notch as usize);
         let top_scrolled = runtime.scroll.scroll_top();
         let paint = runtime.project_frame(&full, 8);
         assert_eq!(runtime.scroll.scroll_top(), top_scrolled);
@@ -391,20 +361,20 @@ mod tests {
     }
 
     #[test]
-    fn wheel_burst_drains_like_edge_drag_steps() {
+    fn wheel_coalesce_applies_full_delta_immediately() {
         let mut runtime = ApplicationOwnedRuntime::new(2);
         let full: Vec<String> = (0..40).map(|i| format!("L{i}")).collect();
-        let _ = runtime.project_frame(&full, 10); // content viewport = 8 → step = 2
-        let step = runtime.motion_step();
-        assert_eq!(step, 2);
+        let _ = runtime.project_frame(&full, 10);
+        let notch = runtime.wheel_notch();
+        assert_eq!(notch, 1);
         let top0 = runtime.scroll.scroll_top();
-        assert!(runtime.ingest_wheel_delta(-(step * 3)));
-        assert_eq!(runtime.scroll.scroll_top(), top0 - step as usize);
-        assert!(runtime.has_pending_wheel());
-        assert!(runtime.drain_wheel_step());
-        assert!(runtime.drain_wheel_step());
-        assert!(!runtime.has_pending_wheel());
-        assert_eq!(runtime.scroll.scroll_top(), top0 - (step * 3) as usize);
+        assert!(runtime.ingest_wheel_delta(-(notch * 3)));
+        assert_eq!(runtime.scroll.scroll_top(), top0 - (notch * 3) as usize);
+        assert!(
+            !runtime.tick_autoscroll(40, 10),
+            "normal wheel motion must not drip through the selection tick path"
+        );
+        assert_eq!(runtime.scroll.scroll_top(), top0 - (notch * 3) as usize);
     }
 
     #[test]

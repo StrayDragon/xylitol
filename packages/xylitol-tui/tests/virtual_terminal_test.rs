@@ -113,6 +113,22 @@ fn vt_scroll_grows_grid_past_initial_rows() {
     assert!(buf.contains(&"4".to_string()));
 }
 
+#[test]
+fn vt_decstbm_scrolls_only_the_selected_region_and_homes_cursor() {
+    let mut vt = VirtualTerminal::new(6, 5);
+    for row in 1..=5 {
+        vt.write(&format!("\x1b[{row};1HR{row}"));
+    }
+
+    vt.write("\x1b[2;4r\x1b[1S");
+    assert_eq!(vt.viewport(), vec!["R1", "R3", "R4", "", "R5"]);
+    assert_eq!(vt.cursor_position(), (0, 0));
+
+    vt.write("\x1b[1T\x1b[r");
+    assert_eq!(vt.viewport(), vec!["R1", "", "R3", "R4", "R5"]);
+    assert_eq!(vt.cursor_position(), (0, 0));
+}
+
 // ── LoggingVirtualTerminal write capture ───────────────────────────────────
 
 #[test]

@@ -1,5 +1,6 @@
 use crate::application_owned_runtime::ApplicationOwnedRuntime;
 use crate::interaction_mode::InteractionMode;
+use crate::scroll_view::ScrollView;
 use crate::terminal::Terminal;
 use crate::utils::{normalize_terminal_output, visible_width};
 use crossterm::event::{KeyEvent, KeyEventKind, MouseEvent, MouseEventKind};
@@ -341,12 +342,12 @@ pub struct TUI<T: Terminal> {
     /// ApplicationOwned: when false, wheel/selection frames may skip
     /// `Component::render` and only reproject the cached transcript+dock.
     ao_components_stale: bool,
+    /// A wheel-only AO viewport change is pending. `try_render` may paint this
+    /// cached reproject immediately instead of waiting behind the full-frame
+    /// throttle.
+    ao_wheel_render_requested: bool,
     /// Obs: how many frames took the ApplicationOwned reproject-only path.
     ao_reproject_frames: u64,
-    /// Obs: ApplicationOwned paints that used terminal scroll-region shift.
-    ao_scroll_shift_frames: u64,
-    /// Last painted ApplicationOwned `scroll_top` (for scroll-region shift).
-    ao_last_scroll_top: usize,
     focus_order_counter: u64,
     next_overlay_id: u64,
     next_input_listener_id: u64,
@@ -360,6 +361,9 @@ pub struct TUI<T: Terminal> {
     render_requested: bool,
     /// Monotonic instant of the last actual render, for the 16ms throttle.
     last_render_at: Option<std::time::Instant>,
+    /// Separate wheel cadence: the first cached AO reproject is independent of
+    /// the previous full frame; continuous wheel paints remain capped near 60fps.
+    last_ao_wheel_render_at: Option<std::time::Instant>,
     /// Dual interaction mode (c2070). Default [`InteractionMode::Inline`].
     interaction_mode: InteractionMode,
     /// ApplicationOwned session currently holding alt-buffer + mouse (after
@@ -437,9 +441,8 @@ impl<T: Terminal> TUI<T> {
             finalize_line_reuses: 0,
             last_render_perf: RenderPerfSnap::default(),
             ao_components_stale: true,
+            ao_wheel_render_requested: false,
             ao_reproject_frames: 0,
-            ao_scroll_shift_frames: 0,
-            ao_last_scroll_top: 0,
             focus_order_counter: 0,
             next_overlay_id: 1,
             next_input_listener_id: 1,
@@ -447,6 +450,7 @@ impl<T: Terminal> TUI<T> {
             after_dispatch_hook: None,
             render_requested: false,
             last_render_at: None,
+            last_ao_wheel_render_at: None,
             interaction_mode: InteractionMode::Inline,
             application_session_active: false,
             application_owned: None,
@@ -497,7 +501,7 @@ impl<T: Terminal> TUI<T> {
         runtime.set_copy_on_release(self.transcript_copy_on_release);
         self.application_owned = Some(runtime);
         self.ao_components_stale = true;
-        self.ao_last_scroll_top = 0;
+        self.last_ao_wheel_render_at = None;
         // Force a clearing redraw into the alt buffer.
         self.previous_width = FORCE_SIZE_SENTINEL;
         self.previous_height = FORCE_SIZE_SENTINEL;
@@ -514,6 +518,7 @@ impl<T: Terminal> TUI<T> {
         self.terminal.leave_alternate_screen();
         self.application_session_active = false;
         self.application_owned = None;
+        self.last_ao_wheel_render_at = None;
         self.previous_lines.clear();
         self.previous_viewport_top = 0;
         self.previous_width = FORCE_SIZE_SENTINEL;
@@ -542,6 +547,7 @@ impl<T: Terminal> TUI<T> {
     /// this clear so they can reproject the cached transcript.
     pub fn mark_ao_components_stale(&mut self) {
         self.ao_components_stale = true;
+        self.ao_wheel_render_requested = false;
     }
 
     /// Obs/test: ApplicationOwned frames that skipped component render.
@@ -553,45 +559,31 @@ impl<T: Terminal> TUI<T> {
         self.ao_reproject_frames = 0;
     }
 
-    pub fn ao_scroll_shift_frames_for_test(&self) -> u64 {
-        self.ao_scroll_shift_frames
-    }
-
-    pub fn clear_ao_scroll_shift_frames_for_test(&mut self) {
-        self.ao_scroll_shift_frames = 0;
-    }
-
     /// Whether the next ApplicationOwned frame must re-run `Component::render`.
     pub fn ao_components_stale(&self) -> bool {
         self.ao_components_stale
     }
 
-    /// Ingest ApplicationOwned wheel delta (drag-aligned step + residual).
+    /// Apply a coalesced ApplicationOwned wheel delta immediately and request
+    /// a cheap cached reproject paint.
     pub fn application_owned_scroll_by(&mut self, delta: isize) -> bool {
         let Some(runtime) = self.application_owned.as_mut() else {
             return false;
         };
-        if delta == 0 {
+        if !runtime.ingest_wheel_delta(delta) {
             return false;
         }
-        let _ = runtime.ingest_wheel_delta(delta);
+        self.ao_wheel_render_requested = true;
         self.request_render(false);
         true
     }
 
-    /// Motion quantum for AO wheel coalesce (matches selection edge-drag).
-    pub fn application_owned_motion_step(&self) -> isize {
+    /// Fine wheel notch for AO host coalesce (1 line; edge-drag stays coarser).
+    pub fn application_owned_wheel_notch(&self) -> isize {
         self.application_owned
             .as_ref()
-            .map(ApplicationOwnedRuntime::motion_step)
-            .unwrap_or(3)
-    }
-
-    /// Wheel residual still draining on the busy-tick path.
-    pub fn application_owned_wheel_pending(&self) -> bool {
-        self.application_owned
-            .as_ref()
-            .is_some_and(ApplicationOwnedRuntime::has_pending_wheel)
+            .map(ApplicationOwnedRuntime::wheel_notch)
+            .unwrap_or(ScrollView::WHEEL_NOTCH)
     }
 
     pub fn dock_rows(&self) -> usize {
@@ -1397,6 +1389,10 @@ impl<T: Terminal> TUI<T> {
         if self.application_session_active
             && let InputEvent::Mouse(mouse) = &event
         {
+            let is_wheel = matches!(
+                mouse.kind,
+                MouseEventKind::ScrollUp | MouseEventKind::ScrollDown
+            );
             if matches!(
                 mouse.kind,
                 MouseEventKind::Down(crossterm::event::MouseButton::Left)
@@ -1405,6 +1401,8 @@ impl<T: Terminal> TUI<T> {
             }
             let cols = self.terminal.columns();
             let rows = self.terminal.rows();
+            let wheel_in_transcript = is_wheel
+                && mouse.row < rows.saturating_sub(self.dock_rows.min(rows as usize) as u16);
             // Park hit-priority on the live selection for this dispatch so
             // c2040 fold hooks survive runtime recreate (suspend / begin).
             let hit = self.transcript_hit_priority.take();
@@ -1424,7 +1422,15 @@ impl<T: Terminal> TUI<T> {
             if dirty {
                 // Scroll/selection only: keep component cache, reproject viewport.
                 // Copied chrome is armed by the host via take_copy_notice → mark stale.
+                if is_wheel {
+                    self.ao_wheel_render_requested = true;
+                }
                 return InputReaction::Rerender;
+            }
+            if wheel_in_transcript {
+                // Consume an in-pane wheel event even at the content edge, but
+                // avoid a no-op paint and do not leak it into the dock editor.
+                return InputReaction::None;
             }
             if matches!(mouse.kind, MouseEventKind::Moved) {
                 // Bare Moved: only continue when a focused child owns an active
@@ -1670,25 +1676,42 @@ impl<T: Terminal> TUI<T> {
             self.hardware_cursor_row = 0;
             self.max_lines_rendered = 0;
             self.ao_components_stale = true;
+            self.ao_wheel_render_requested = false;
         }
         self.render_requested = true;
     }
 
-    /// Render only if one is pending AND the 16ms throttle has elapsed. Returns
-    /// Ok(true) if a frame was actually rendered, Ok(false) if skipped, Err if
-    /// the render hit the width invariant. Host loops call this on their tick.
+    /// Render a pending frame. Full/component frames honor the shared 16ms
+    /// throttle. ApplicationOwned wheel-only cached reprojects use an independent
+    /// 16ms cadence: the first wheel paint is never delayed by a preceding full
+    /// frame, while a continuous wheel stream stays capped near 60fps.
+    ///
+    /// Returns Ok(true) if a frame was actually rendered, Ok(false) if skipped,
+    /// Err if the render hit the width invariant.
     pub fn try_render(&mut self) -> Result<bool, RenderError> {
         if !self.render_requested {
             return Ok(false);
         }
-        if let Some(last) = self.last_render_at {
+        let width = self.terminal.columns() as usize;
+        let ao_wheel_reproject =
+            self.ao_wheel_render_requested && self.can_reproject_application_owned(width);
+        let cadence_last = if ao_wheel_reproject {
+            self.last_ao_wheel_render_at
+        } else {
+            self.last_render_at
+        };
+        if let Some(last) = cadence_last {
             let elapsed = last.elapsed();
             if elapsed < std::time::Duration::from_millis(MIN_RENDER_INTERVAL_MS) {
                 return Ok(false);
             }
         }
         self.render_requested = false;
-        self.last_render_at = Some(std::time::Instant::now());
+        let now = std::time::Instant::now();
+        self.last_render_at = Some(now);
+        if ao_wheel_reproject {
+            self.last_ao_wheel_render_at = Some(now);
+        }
         self.do_render()?;
         Ok(true)
     }
@@ -1696,10 +1719,27 @@ impl<T: Terminal> TUI<T> {
     /// Render immediately, bypassing the throttle. Returns Ok(true) if a frame
     /// was rendered (i.e. not stopped), Err on width-invariant violation.
     pub fn render_now(&mut self) -> Result<bool, RenderError> {
+        let ao_wheel_reproject = self.ao_wheel_render_requested
+            && self.can_reproject_application_owned(self.terminal.columns() as usize);
         self.render_requested = false;
-        self.last_render_at = Some(std::time::Instant::now());
+        let now = std::time::Instant::now();
+        self.last_render_at = Some(now);
+        if ao_wheel_reproject {
+            self.last_ao_wheel_render_at = Some(now);
+        }
         self.do_render()?;
         Ok(!self.stopped)
+    }
+
+    fn can_reproject_application_owned(&self, width: usize) -> bool {
+        self.application_session_active
+            && !self.ao_components_stale
+            && self.previous_width == width
+            && self.overlays.is_empty()
+            && self
+                .application_owned
+                .as_ref()
+                .is_some_and(ApplicationOwnedRuntime::has_projected_content)
     }
 
     fn do_render(&mut self) -> Result<(), RenderError> {
@@ -1719,14 +1759,7 @@ impl<T: Terminal> TUI<T> {
 
         // Cached project lines are width-specific (editor borders, markdown wrap).
         // Soft resize (`request_render(false)`) must not reproject the prior width.
-        let can_reproject = self.application_session_active
-            && !self.ao_components_stale
-            && self.previous_width == width
-            && self.overlays.is_empty()
-            && self
-                .application_owned
-                .as_ref()
-                .is_some_and(ApplicationOwnedRuntime::has_projected_content);
+        let can_reproject = self.can_reproject_application_owned(width);
 
         let (component_lines, mut new_lines, ao_reprojected) = if can_reproject {
             let runtime = self
@@ -1869,8 +1902,6 @@ impl<T: Terminal> TUI<T> {
             self.full_render(&new_lines, clear, height);
         } else if first_changed < 0 {
             // No change at all — just reposition the cursor (pi's no-op branch).
-        } else if ao_reprojected && self.try_ao_scroll_shift_render(&new_lines, height) {
-            // Terminal scroll-region moved the overlap; only new rows were written.
         } else {
             self.differential_render(
                 &new_lines,
@@ -1883,9 +1914,6 @@ impl<T: Terminal> TUI<T> {
         }
 
         self.position_cursor(cursor_pos, new_lines.len());
-        if let Some(runtime) = self.application_owned.as_ref() {
-            self.ao_last_scroll_top = runtime.scroll_top();
-        }
         self.last_render_perf = RenderPerfSnap {
             do_render_us: render_started.elapsed().as_micros().min(u64::MAX as u128) as u64,
             component_lines,
@@ -1908,86 +1936,8 @@ impl<T: Terminal> TUI<T> {
             }
             self.terminal.flush();
         }
-        // Wheel residual matches drag: keep requesting frames on the busy ticker.
-        if self
-            .application_owned
-            .as_ref()
-            .is_some_and(ApplicationOwnedRuntime::has_pending_wheel)
-        {
-            self.render_requested = true;
-        }
+        self.ao_wheel_render_requested = false;
         Ok(())
-    }
-
-    /// When ApplicationOwned only scrolled a few lines without selection, use
-    /// the terminal scroll region so we rewrite only the newly exposed rows.
-    fn try_ao_scroll_shift_render(&mut self, new_lines: &[String], height: usize) -> bool {
-        let Some(runtime) = self.application_owned.as_ref() else {
-            return false;
-        };
-        if runtime.has_selection() || runtime.selection.is_dragging() {
-            return false;
-        }
-        let dock = runtime.dock_rows.min(height).min(new_lines.len());
-        let transcript_h = height.saturating_sub(dock);
-        if transcript_h < 2 || new_lines.len() < height || self.previous_lines.len() < height {
-            return false;
-        }
-        let new_top = runtime.scroll_top();
-        let delta = new_top as isize - self.ao_last_scroll_top as isize;
-        if delta == 0 {
-            return false;
-        }
-        let d = delta.unsigned_abs();
-        if d == 0 || d >= transcript_h {
-            return false;
-        }
-
-        // Overlap must match a pure vertical shift of the prior transcript paint.
-        if delta > 0 {
-            if new_lines[..transcript_h - d] != self.previous_lines[d..transcript_h] {
-                return false;
-            }
-        } else if new_lines[d..transcript_h] != self.previous_lines[..transcript_h - d] {
-            return false;
-        }
-        // Dock chrome must be unchanged (otherwise fall back to differential).
-        if new_lines[transcript_h..transcript_h + dock]
-            != self.previous_lines[transcript_h..transcript_h + dock]
-        {
-            return false;
-        }
-
-        let top = 1usize; // 1-based CSI
-        let bottom = transcript_h;
-        let mut buf = String::from(BEGIN_RENDER_BATCH);
-        buf.push_str(&format!("\x1b[{top};{bottom}r"));
-        if delta > 0 {
-            // View later content: lines move up; new rows at bottom of region.
-            buf.push_str(&format!("\x1b[{d}S"));
-            let start = transcript_h - d;
-            for (offset, line) in new_lines[start..transcript_h].iter().enumerate() {
-                buf.push_str(&format!("\x1b[{};1H", start + offset + 1));
-                buf.push_str(line);
-                buf.push_str("\x1b[K");
-            }
-        } else {
-            // View earlier content: lines move down; new rows at top.
-            buf.push_str(&format!("\x1b[{d}T"));
-            for (i, line) in new_lines[..d].iter().enumerate() {
-                buf.push_str(&format!("\x1b[{};1H", i + 1));
-                buf.push_str(line);
-                buf.push_str("\x1b[K");
-            }
-        }
-        buf.push_str("\x1b[r"); // reset scroll region
-        buf.push_str(END_RENDER_BATCH);
-        self.terminal.write(&buf);
-        self.ao_scroll_shift_frames = self.ao_scroll_shift_frames.saturating_add(1);
-        self.cursor_row = new_lines.len().saturating_sub(1);
-        self.hardware_cursor_row = self.cursor_row;
-        self.max_lines_rendered = self.max_lines_rendered.max(new_lines.len());
-        true
     }
 
     fn full_render(&mut self, new_lines: &[String], clear: bool, height: usize) {
