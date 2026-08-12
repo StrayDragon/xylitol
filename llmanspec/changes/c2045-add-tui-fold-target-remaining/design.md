@@ -111,7 +111,7 @@ Capability：`app-tui-transcript`（主）；`app-tui-host` 仅当 latch/路由�
 4. ath25：上述 toggle 不回退 miss 上界。
 5. 回归：c2040 Tool/Thinking 三角行为不变。
 
-## Start readiness
+## Specs landing（已落）
 
 | 项 | 状态 |
 |---|---|
@@ -119,11 +119,11 @@ Capability：`app-tui-transcript`（主）；`app-tui-host` 仅当 latch/路由�
 | design.md + tasks.md | **有** |
 | `depends_on` c2040 | **已归档** |
 | c2050 吸收策略 | **已钉 D1/D2** |
-| live specs | **未改**（须 `change start` 后 Specs landing） |
+| live specs | **att29–att32**（`app-tui-transcript`；host skip） |
 | 应用代码 | **未改**（本阶段禁止） |
-| Wave B | tasks 标 `[blocked-by: c1760]`；不挡 Wave A start |
+| Wave B | tasks 标 `[blocked-by: c1760]`；specs 已先写 att31 |
 
-**ready_for_start: true** — 可在默认分支干净树上 `llman sdd change start c2045-add-tui-fold-target-remaining`，再 Specs landing（先 Wave A req；Wave B req 可同批写下但 apply 闸 c1760）。
+**readyToImplement: true** — 下一步 `llman-sdd-apply` Wave A；Wave B apply 仍闸 c1760 归档。
 
 ## Ethics
 

@@ -2,7 +2,7 @@ kind: llman.sdd.spec
 name: "app-tui-transcript"
 purpose: Live 输出进引擎 scrollback（非 Codex 式 transcript 浏览面）；分支回看走会话树。
 valid_scope[1]: src/app/tui/
-requirements[27]{req_id,title,statement}:
+requirements[31]{req_id,title,statement}:
   att1,"live-scrollback-output",产品 UiRoot 当前轮 live 用户/助手/系统输出 MUST 写入引擎 scrollback 并以包 Markdown（及角色色/glyph）呈现；MUST NOT 截断历史冒充滚动；MUST NOT 以此要求实现 Codex 式可导航 transcript 浏览面。
   att3,"diff-via-package","产品 live scrollback 中文件编辑 diff MUST 复用 packages/xylitol-tui Diff（含 word-level 与复制友好前缀）；MUST NOT 在应用面复制准通用 diff 渲染器。"
   att4,"tool-block-status-rail","产品默认以 rail 皮肤绘制 tool 可展开块：每可见内容行左侧 MUST 为 1 列 status 色轨 + 1 列无底色 gutter，再跟内容；pending/success/error 轨色 MUST 对齐 DESIGN accent/success/error（MAY soft-mix surface）。MUST NOT 默认整行铺 tool-*-bg。edit/Diff（含 unified display_diff）的 header 与 Diff 正文 MUST 共用同一 status 轨色（无洗底信封）；正文 MUST NOT 再叠 diff-*-bg 行底（极性靠 fg + word_wash_bg）。外层 ANSI 背景 MUST 以 \\x1b[49m 复位。"
@@ -30,7 +30,11 @@ requirements[27]{req_id,title,statement}:
   att26,"activity-fold-auto-degrade","产品 MUST 以 code-first 默认提供 ActivityFold 降级行为（配置面 MAY 后补，本要求不强制 YAML 键）：enabled 默认 true（关闭则全 L0，块级折叠仍可用）；keep_recent_turns 默认 2（最近 K 轮保持 L0）；auto_on_rebuild 默认 true（travel/resume/fork 重建后将超窗段压到至少 L2）；auto_on_turn_end 默认 true（回合结束后将超窗段压到至少 L2）；流式进行中的当前回合 MUST NOT 被自动压段；auto_l3_distant 默认 false（开启时更旧段可自动 L3，且收纳地板可为 L3）。近窗口内从未进入 ActivityFold 的细账 MUST NOT 被当作 collapseNearest 目标。"
   att27,"activity-fold-markers-and-hints","L2/L3 摘要行折叠标记 MUST 遵守 att19（Unicode ▸/▾；Ascii >/v）。旁注 MUST 为当前绑定的完整和弦括号；默认展开旁注 MUST 对应 Alt+Shift+E，默认收纳旁注 MUST 对应 Ctrl+Alt+Shift+E；改绑后旁注 MUST 跟随当前绑定。L2/L3 行 MUST NOT 写 (Alt+E)，以免与块级展开混淆。"
   att28,"activity-expand-collapse-nearest","产品 MUST 提供跨面动作语义 activity.expandNearest 与 activity.collapseNearest（TUI 键位 id 为 app.activity.expandNearest / app.activity.collapseNearest；默认和弦 Alt+Shift+E / Ctrl+Alt+Shift+E，可改绑）。expandNearest MUST 将距输入最近的 L2/L3 段升一级（L3→L2→L0）。collapseNearest MUST 将距输入最近的 L0 Activity 段降一级，地板为该段默认粗级（未开远段自动 L3 时地板为 L2）。无合格目标时两动作 MUST 静默（无报错、无 toast、无态变）。启发式 MUST 按 entries 序靠近输入；MUST NOT 抢 Editor 常驻焦点。一对动作 MUST 覆盖全部级间步进；MUST NOT 另开 L3↔L2 专用默认键；弱终端 MUST NOT 另发官方第二默认和弦。"
-scenarios[23]{req_id,id,given,when,then,feature}:
+  att29,"compaction-fold-triangle-mouse","产品在 ApplicationOwned 下，Compaction 可折块 MUST 提供折叠三角列（字形遵守 att19）。左键单击该三角列 MUST 仅翻转全局 compaction 展开态（compaction_expanded 或等价）；MUST NOT 清空 tools 族覆盖，MUST NOT 翻转 tools 族默认展开态。单击摘要正文、旁注和弦或其它非三角列 MUST NOT 因此 toggle。键盘 Alt+E 与 compaction 的既有连带（若有）不在本条拆改范围。态变 MUST 遵守 ath25：禁止因此对全部历史 Assistant 重做 Markdown 解析。"
+  att30,"output-viewport-hint-mouse","产品在 ApplicationOwned 下，对渲染 Ctrl+O 输出视口 expand/collapse hint 的块（含 Tool、Bash、独立 Diff 等凡展示该 hint 者）：左键单击可见 hint 带 MUST 翻转全局 tools_output_expanded（或等价），与键盘 Ctrl+O 同构。命中几何 MUST 为 hint 文案可点带（非折叠三角列；att22 三角列-only 不适用本条）。Bash MUST NOT 另补块级 L1 折叠三角；其输出高度交互 MUST 走本条 Viewport。硬截断禁展开（att16）时 MUST NOT 因点击 hint 而展开全文。态变 MUST 遵守 ath25。"
+  att31,"segment-fold-marker-mouse","产品在 ApplicationOwned 下，对 L2/L3 Activity 段摘要行：左键单击折叠标记列（字形遵守 att19/att27；命中仅三角列）MUST 对该段做一级 level toggle（升/降朝栈对称），MUST NOT 使用 expandNearest/collapseNearest 启发式代替定点。单击摘要正文或旁注 MUST NOT 因此 toggle。分层继承 att25（深挖 A）：段为 L2/L3 时 Alt+E、Ctrl+T、Ctrl+O 与 per-id 块级覆盖 MUST NOT 改变该段外观；段内块级折叠三角命中 MUST NOT 登记。实现交付硬闸 c1760 Activity 段状态机已归档可用（本要求可先于实现写入 specs）。态变 MUST 遵守 ath25。"
+  att32,"remaining-fold-targets-unified-hit","产品对 att29–att31 剩余可点折叠目标（Compaction、OutputViewport、Segment）MUST 登记进与 att20/att21 同一折叠命中表及 ath33 hit_priority 路径（FoldHitTable 或等价）；MUST NOT 另开第二套命中管道。transcript 拖选进行中 MUST 忽略这些折叠命中（与 att22/ath33 同构）。本条不要求新增 host latch 管道（ath33 已覆盖吞按与拖选忽略）。"
+scenarios[27]{req_id,id,given,when,then,feature}:
   att13,"bash-summary",bash 工具 args 含 command,外显或重建 args_preview,以 $ 开头且非纯 JSON 墙,false
   att13,"write-lines-hint",write args 含 path 与多行 content,求 args_preview,含 path 与 lines 且无 content 正文,false
   att13,"edit-no-json-fallback",edit args 仅有 edits 无顶层 path,求 args_preview,为 edit 短形且不含 oldText/newText JSON 墙,false
@@ -54,3 +58,7 @@ scenarios[23]{req_id,id,given,when,then,feature}:
   att26,att26-unit,"activity-fold-auto-degrade 由产品 harness 覆盖",keep_recent_turns=2 下 rebuild 与 turn-end,"超窗段自动至少 L2；流式当前回合保持细账",false
   att27,att27-unit,"activity-fold-markers-and-hints 由产品 harness 覆盖",审查 L2/L3 行标记与旁注,"标记合 att19；旁注为满段和弦且不含 (Alt+E)",false
   att28,att28-unit,"activity-expand-collapse-nearest 由产品 harness 覆盖",有目标一级步进与无目标按键,"升/降一级可逆；无目标静默无态变",false
+  att29,att29-unit,"compaction-fold-triangle-mouse 由产品 harness 覆盖",AO 下点 Compaction 三角与点同头行正文,"三角 flip compaction_expanded；正文不 toggle；tools overrides 不变",false
+  att30,att30-unit,"output-viewport-hint-mouse 由产品 harness 覆盖",AO 下点可见 Ctrl+O hint 带后与 Ctrl+O 对照,"tools_output_expanded 翻转且与键盘同构；Bash 无 L1 三角",false
+  att31,att31-unit,"segment-fold-marker-mouse 由产品 harness 覆盖",同屏 L1 三角与 L2 摘要标记各点一次,"各打中对应目标一级 toggle；L2 外观不受 L1 覆盖穿透",false
+  att32,att32-unit,"remaining-fold-targets-unified-hit 由产品 harness 覆盖",审查剩余目标命中与拖选中划过,"进同一命中表/priority；拖选中不 toggle",false
