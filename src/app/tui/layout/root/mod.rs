@@ -432,10 +432,17 @@ impl UiRoot {
 
     /// Pre-paint estimate when no frame has measured dock yet.
     pub(crate) fn estimate_dock_rows(&self) -> usize {
-        // Queue lives in the upper/transcript band; dock is lower chrome only.
+        let queue_rows = if self.ui_model.pending_steer.is_empty()
+            && self.ui_model.pending_follow_up.is_empty()
+        {
+            0
+        } else {
+            // Steering/Follow-up lines + Alt+Up hint (see render_queue_strip).
+            self.ui_model.pending_steer.len() + self.ui_model.pending_follow_up.len() + 1
+        };
         crate::app::tui::layout::reserved_lower_chrome(
             self.status_busy,
-            0,
+            queue_rows,
             self.chrome_toast.is_some(),
         )
         .saturating_add(4) // editor borders + body floor
@@ -790,12 +797,11 @@ impl UiRoot {
 
     /// Push bridge UI model into status / footer; scrollback re-renders from model (c476).
     pub fn apply_ui_model(&mut self, model: &UiModel) {
+        // Queue strip is dock chrome — steer/follow-up alone must not invalidate
+        // the transcript upper cache (streaming frames stay cheaper).
         let upper_changed = self.ui_model.entries != model.entries
             || self.ui_model.streaming_assistant != model.streaming_assistant
-            || self.ui_model.streaming_thinking != model.streaming_thinking
-            || self.ui_model.pending_steer != model.pending_steer
-            || self.ui_model.pending_follow_up != model.pending_follow_up
-            || self.ui_model.queue != model.queue;
+            || self.ui_model.streaming_thinking != model.streaming_thinking;
         self.ui_model = model.clone();
         if upper_changed {
             self.bump_upper_gen();

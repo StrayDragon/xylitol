@@ -537,9 +537,22 @@ fn harness_busy_alt_enter_queues_follow_up() {
         vec!["later".to_string()]
     );
     let frame = root.borrow_mut().render(80);
+    let follow_idx = frame
+        .iter()
+        .position(|l| l.contains("Follow-up: later"))
+        .expect(&format!("missing Follow-up strip: {frame:?}"));
+    let status_idx = frame
+        .iter()
+        .position(|l| l.contains("Assembling") || l.contains("Working"))
+        .expect(&format!("missing busy status: {frame:?}"));
     assert!(
-        frame.iter().any(|l| l.contains("Follow-up: later")),
-        "missing Follow-up strip: {frame:?}"
+        follow_idx < status_idx,
+        "Follow-up must sit above status/spinner; follow={follow_idx} status={status_idx}; {frame:?}"
+    );
+    assert!(
+        status_idx - follow_idx <= 4,
+        "Follow-up must be docked next to status (not under startup card); gap={}; {frame:?}",
+        status_idx - follow_idx
     );
 }
 

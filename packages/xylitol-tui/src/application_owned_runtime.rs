@@ -27,9 +27,6 @@ pub struct ApplicationOwnedRuntime {
     pending_copy_notice: bool,
     /// Visible/active notice deadline; cleared by [`Self::tick_copy_notice`].
     copy_notice_until: Option<Instant>,
-    /// Wheel deltas coalesced until the next project/reproject paint.
-    /// Lets 16ms render throttle merge burst Scroll* into one viewport jump.
-    pending_wheel: isize,
 }
 
 impl ApplicationOwnedRuntime {
@@ -43,7 +40,6 @@ impl ApplicationOwnedRuntime {
             last_dock_lines: Vec::new(),
             pending_copy_notice: false,
             copy_notice_until: None,
-            pending_wheel: 0,
         }
     }
 
@@ -104,33 +100,17 @@ impl ApplicationOwnedRuntime {
         self.scroll.scroll_top()
     }
 
-    /// Queue a wheel delta (lines) for the next paint. Returns true if non-zero.
-    pub fn queue_wheel_delta(&mut self, delta: isize) -> bool {
+    /// Apply transcript scroll immediately (wheel / host coalesce). Paint may
+    /// still be throttled — delaying the offset until paint felt sticky.
+    pub fn scroll_by(&mut self, delta: isize) -> bool {
         if delta == 0 {
             return false;
         }
-        self.pending_wheel = self.pending_wheel.saturating_add(delta);
+        if !self.scroll.scroll_by(delta) {
+            return false;
+        }
+        self.follow_bottom = self.scroll.at_bottom();
         true
-    }
-
-    pub fn has_pending_wheel(&self) -> bool {
-        self.pending_wheel != 0
-    }
-
-    /// Apply at most one frame's worth of pending wheel so coalesced bursts
-    /// stay visually continuous (residual stays queued for the next paint).
-    fn flush_pending_wheel(&mut self) {
-        if self.pending_wheel == 0 {
-            return;
-        }
-        // Cap ≈ two fixed wheel notches (3+3) or half the viewport — enough to
-        // feel responsive without skipping a whole screen when Kitty bursts.
-        let max_step = (self.scroll.viewport_height() as isize / 2).clamp(3, 6);
-        let delta = self.pending_wheel.clamp(-max_step, max_step);
-        self.pending_wheel -= delta;
-        if self.scroll.scroll_by(delta) {
-            self.follow_bottom = self.scroll.at_bottom();
-        }
     }
 
     /// Split full component output into viewport paint lines (≤ terminal height).
@@ -144,7 +124,6 @@ impl ApplicationOwnedRuntime {
         let viewport_h = term_height.saturating_sub(dock);
         self.scroll.set_viewport_height(viewport_h.max(1));
         self.scroll.set_lines(content.to_vec());
-        self.flush_pending_wheel();
         self.paint_visible(viewport_h, term_height)
     }
 
@@ -157,7 +136,6 @@ impl ApplicationOwnedRuntime {
             .min(term_height);
         let viewport_h = term_height.saturating_sub(dock);
         self.scroll.set_viewport_height(viewport_h.max(1));
-        self.flush_pending_wheel();
         self.paint_visible(viewport_h, term_height)
     }
 
@@ -193,8 +171,8 @@ impl ApplicationOwnedRuntime {
             height: transcript_h,
             width: term_cols,
         };
-        // Wheel: queue delta for paint (coalesce under render throttle). Selection
-        // still owns drag/click; its Scroll* path is bypassed here.
+        // Wheel: move the viewport immediately; host/engine still throttle paints.
+        // (Deferring offset until paint made scroll feel sticky.)
         let wheel_delta = match event.kind {
             MouseEventKind::ScrollUp => Some(-3),
             MouseEventKind::ScrollDown => Some(3),
@@ -204,7 +182,9 @@ impl ApplicationOwnedRuntime {
             if !transcript.contains(event.column, event.row) {
                 return false;
             }
-            return self.queue_wheel_delta(delta);
+            let _ = self.scroll_by(delta);
+            // Always dirty so a throttled paint still catches up to the new offset.
+            return true;
         }
 
         let dock_rect = ScreenRect {
@@ -355,30 +335,11 @@ mod tests {
             modifiers: KeyModifiers::NONE,
         };
         assert!(runtime.handle_mouse(&wheel, 40, 8));
-        // Wheel is queued until paint — scroll_top unchanged before project.
-        assert_eq!(runtime.scroll.scroll_top(), top_before);
-        let paint = runtime.project_frame(&full, 8);
         assert!(runtime.scroll.scroll_top() < top_before);
         let top_scrolled = runtime.scroll.scroll_top();
+        let paint = runtime.project_frame(&full, 8);
+        assert_eq!(runtime.scroll.scroll_top(), top_scrolled);
         assert_eq!(paint[0], format!("L{top_scrolled}"));
-    }
-
-    #[test]
-    fn wheel_flush_caps_per_frame_and_keeps_residual() {
-        let mut runtime = ApplicationOwnedRuntime::new(2);
-        let full: Vec<String> = (0..40).map(|i| format!("L{i}")).collect();
-        let _ = runtime.project_frame(&full, 10); // viewport content = 8
-        let top0 = runtime.scroll.scroll_top();
-        assert!(runtime.queue_wheel_delta(-30));
-        let _ = runtime.reproject_frame(10);
-        // max_step = clamp(8/2, 3, 6) = 4? 8/2=4 clamp 3..6 = 4
-        let moved = top0 - runtime.scroll.scroll_top();
-        assert!(moved <= 6, "moved={moved}");
-        assert!(moved >= 3, "moved={moved}");
-        assert!(
-            runtime.has_pending_wheel(),
-            "large burst must leave residual for next frame"
-        );
     }
 
     #[test]
