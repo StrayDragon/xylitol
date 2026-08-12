@@ -557,3 +557,130 @@ fn application_owned_dock_down_falls_through_to_focused_component() {
         "dock Down must fall through to focused component after clearing transcript selection"
     );
 }
+
+/// Host-style ApplicationOwned path: dock mouse → focused [`Editor`] with absolute
+/// screen coords + [`Editor::set_screen_origin`] (demo / product wiring).
+struct SharedEditorHost {
+    editor: std::rc::Rc<std::cell::RefCell<xylitol_tui::Editor>>,
+    term_rows: u16,
+    dock_rows: usize,
+}
+
+impl Component for SharedEditorHost {
+    fn render(&mut self, width: usize) -> Vec<String> {
+        // Pad transcript above the dock so dock fallthrough is exercised.
+        let mut lines: Vec<String> = (0..self.term_rows as usize)
+            .map(|i| format!("transcript-{i}"))
+            .collect();
+        let dock = self.dock_rows.min(lines.len());
+        let editor_lines = self.editor.borrow_mut().render(width);
+        let start = lines.len().saturating_sub(dock);
+        for (i, line) in editor_lines.into_iter().take(dock).enumerate() {
+            if start + i < lines.len() {
+                lines[start + i] = line;
+            }
+        }
+        lines
+    }
+
+    fn handle_input(&mut self, event: InputEvent) {
+        if let InputEvent::Mouse(mouse) = event {
+            let (origin_row, origin_col) =
+                xylitol_tui::editor_screen_origin(self.term_rows, self.dock_rows, 0);
+            self.editor
+                .borrow_mut()
+                .set_screen_origin(origin_row, origin_col);
+            self.editor
+                .borrow_mut()
+                .handle_input(InputEvent::Mouse(mouse));
+        }
+    }
+
+    fn input_wants_rerender(&self, event: &InputEvent) -> bool {
+        self.editor.borrow().input_wants_rerender(event)
+    }
+
+    fn invalidate(&mut self) {
+        self.editor.borrow_mut().invalidate();
+    }
+}
+
+#[test]
+fn application_owned_editor_double_click_word_via_dock_fallthrough() {
+    use xylitol_tui::{
+        Clock, Editor, EditorOptions, EditorTheme, SystemClock, editor_screen_origin,
+    };
+
+    let term_rows = 12u16;
+    let dock_rows = 4usize;
+    let editor = std::rc::Rc::new(std::cell::RefCell::new(Editor::new(
+        EditorTheme::default(),
+        EditorOptions {
+            padding_x: 0,
+            terminal_rows: term_rows as usize,
+        },
+        Box::new(SystemClock) as Box<dyn Clock>,
+    )));
+    editor.borrow_mut().set_text("say apple pie".into());
+    let _ = editor.borrow_mut().render(40);
+
+    let mut tui = TUI::with_interaction_mode(
+        LoggingVirtualTerminal::new(40, term_rows),
+        InteractionMode::ApplicationOwned,
+    );
+    tui.set_dock_rows(dock_rows);
+    tui.add_child(Box::new(SharedEditorHost {
+        editor: editor.clone(),
+        term_rows,
+        dock_rows,
+    }));
+    tui.set_focus(Some(0));
+    tui.terminal.start();
+    tui.begin_application_owned_session();
+    tui.request_render(true);
+    tui.render_now().expect("seed");
+
+    let (origin_row, _) = editor_screen_origin(term_rows, dock_rows, 0);
+    // Editor local content row 1 → absolute screen row origin+1; col 7 = 'l' of apple.
+    let screen_row = origin_row + 1;
+    let col = 7u16;
+    let click = |kind| MouseEvent {
+        kind,
+        column: col,
+        row: screen_row,
+        modifiers: KeyModifiers::NONE,
+    };
+
+    // First click (character) — no copy.
+    assert_eq!(
+        tui.dispatch_event(InputEvent::Mouse(click(MouseEventKind::Down(
+            MouseButton::Left
+        )))),
+        xylitol_tui::InputReaction::Rerender
+    );
+    let _ = tui.dispatch_event(InputEvent::Mouse(click(MouseEventKind::Up(
+        MouseButton::Left,
+    ))));
+
+    // Second click — whole word.
+    let _ = tui.dispatch_event(InputEvent::Mouse(click(MouseEventKind::Down(
+        MouseButton::Left,
+    ))));
+    assert_eq!(
+        editor.borrow().selected_text().as_deref(),
+        Some("apple"),
+        "double-click Down must expand to whole word before release"
+    );
+    let _ = tui.dispatch_event(InputEvent::Mouse(click(MouseEventKind::Up(
+        MouseButton::Left,
+    ))));
+    assert_eq!(editor.borrow().selected_text().as_deref(), Some("apple"));
+    assert!(
+        editor
+            .borrow_mut()
+            .take_pending_clipboard()
+            .iter()
+            .any(|s| s.contains("\x1b]52;")),
+        "editor double-click copy-on-release must queue OSC52"
+    );
+}
