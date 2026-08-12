@@ -44,8 +44,9 @@
 ### 5. 验证
 
 - [x] 1. harness：Mouse 三角 toggle / 误点正文 / 全局清覆盖
+- [x] 1b. harness：拖选划过三角不 toggle；Thinking/Diff/Ask 三角 Mouse toggle；库 `hit_priority` 仅 Left Down
 - [x] 2. ath25 miss 上界不因单块 toggle 回退
-- [x] 3. `just fmt` + 相关测；人验最短路径记 verify 板
+- [x] 3. `just fmt` + 相关测；人验最短路径记 verify 板（人验 PASS）
 
 ### 6. 收口
 

@@ -2409,6 +2409,283 @@ fn harness_mouse_triangle_toggles_tool_fold() {
 }
 
 #[test]
+fn harness_mouse_drag_across_triangle_does_not_toggle_fold() {
+    // att22: while transcript drag-select is active, crossing the fold triangle
+    // must not toggle (engine only consults hit_priority on Left Down).
+    use super::widgets::FoldTarget;
+    use crossterm::event::{KeyModifiers, MouseButton, MouseEvent, MouseEventKind};
+
+    let mut session = HostSession::new_product_ui(TestTerminal::new(80, 24));
+    let root = session.ui_root().expect("product ui").clone();
+    {
+        let mut model = session.ui_model().clone();
+        model.entries.push(super::bridge::UiEntry::Tool {
+            id: "drag-me".into(),
+            name: "read".into(),
+            args_preview: "y.rs".into(),
+            tool_path: None,
+            write_content: None,
+            display_diff: None,
+            output: "drag-body".into(),
+            is_error: false,
+            done: true,
+        });
+        *session.ui_model_mut() = model;
+        session.sync_ui_root_from_model();
+    }
+    session.step(HostEvent::Tick).unwrap();
+    session.tui.request_render(true);
+    session.step_paint_only().unwrap();
+
+    let region = root
+        .borrow()
+        .fold_hits()
+        .regions
+        .iter()
+        .find(|reg| matches!(&reg.target, FoldTarget::Tool(id) if id == "drag-me"))
+        .cloned()
+        .expect("tool triangle hit region");
+    let screen_row = region
+        .content_row
+        .saturating_sub(root.borrow().fold_hits().scroll_top) as u16;
+    let body_col = (region.col_end + 4) as u16;
+    let tri_col = region.col_start as u16;
+    assert!(root.borrow().fold().tools_effective("drag-me"));
+
+    // Start selection on header body (miss fold hit).
+    session
+        .step(HostEvent::Input(InputEvent::Mouse(MouseEvent {
+            kind: MouseEventKind::Down(MouseButton::Left),
+            column: body_col,
+            row: screen_row,
+            modifiers: KeyModifiers::NONE,
+        })))
+        .unwrap();
+    assert!(
+        root.borrow().fold().tools_effective("drag-me"),
+        "body Down must not toggle"
+    );
+
+    // Drag across the triangle column — must not flip fold.
+    session
+        .step(HostEvent::Input(InputEvent::Mouse(MouseEvent {
+            kind: MouseEventKind::Drag(MouseButton::Left),
+            column: tri_col,
+            row: screen_row,
+            modifiers: KeyModifiers::NONE,
+        })))
+        .unwrap();
+    assert!(
+        root.borrow().fold().tools_effective("drag-me"),
+        "Drag over triangle must not toggle fold"
+    );
+
+    session
+        .step(HostEvent::Input(InputEvent::Mouse(MouseEvent {
+            kind: MouseEventKind::Up(MouseButton::Left),
+            column: tri_col,
+            row: screen_row,
+            modifiers: KeyModifiers::NONE,
+        })))
+        .unwrap();
+    assert!(
+        root.borrow().fold().tools_effective("drag-me"),
+        "release after drag across triangle must not toggle fold"
+    );
+}
+
+#[test]
+fn harness_mouse_triangle_toggles_thinking_fold() {
+    use super::widgets::FoldTarget;
+    use crossterm::event::{KeyModifiers, MouseButton, MouseEvent, MouseEventKind};
+
+    let mut session = HostSession::new_product_ui(TestTerminal::new(80, 24));
+    let root = session.ui_root().expect("product ui").clone();
+    let thinking_text = "think-body-visible".to_string();
+    let thinking_id = {
+        let mut model = session.ui_model().clone();
+        let id = super::bridge::allocate_thinking_id(&model.entries, &thinking_text);
+        model.entries.push(super::bridge::UiEntry::Thinking {
+            id: id.clone(),
+            text: thinking_text.clone(),
+        });
+        *session.ui_model_mut() = model;
+        session.sync_ui_root_from_model();
+        id
+    };
+    session.step(HostEvent::Tick).unwrap();
+    session.tui.request_render(true);
+    session.step_paint_only().unwrap();
+
+    let region = root
+        .borrow()
+        .fold_hits()
+        .regions
+        .iter()
+        .find(|reg| matches!(&reg.target, FoldTarget::Thinking(id) if id == &thinking_id))
+        .cloned()
+        .unwrap_or_else(|| {
+            panic!(
+                "expected thinking triangle hit; regions={:?}",
+                root.borrow().fold_hits().regions
+            )
+        });
+    assert!(!root.borrow().fold().thinking_effective(&thinking_id));
+
+    let screen_row = region
+        .content_row
+        .saturating_sub(root.borrow().fold_hits().scroll_top) as u16;
+    let screen_col = region.col_start as u16;
+    session
+        .step(HostEvent::Input(InputEvent::Mouse(MouseEvent {
+            kind: MouseEventKind::Down(MouseButton::Left),
+            column: screen_col,
+            row: screen_row,
+            modifiers: KeyModifiers::NONE,
+        })))
+        .unwrap();
+    assert!(
+        root.borrow().fold().thinking_effective(&thinking_id),
+        "thinking triangle click must toggle per-id override"
+    );
+    session.tui.request_render(true);
+    session.step_paint_only().unwrap();
+    let after = root.borrow_mut().render(80).join("\n");
+    assert!(
+        after.contains(&thinking_text),
+        "AO paint must show thinking body after triangle expand: {after}"
+    );
+}
+
+#[test]
+fn harness_mouse_triangle_toggles_diff_fold() {
+    use super::widgets::FoldTarget;
+    use crossterm::event::{KeyModifiers, MouseButton, MouseEvent, MouseEventKind};
+
+    let mut session = HostSession::new_product_ui(TestTerminal::new(80, 24));
+    let root = session.ui_root().expect("product ui").clone();
+    {
+        let mut model = session.ui_model().clone();
+        model.entries.push(super::bridge::UiEntry::Diff {
+            summary: "edit unique-diff.rs".into(),
+            display_diff: "+ unique-diff-body-line\n- old\n".into(),
+        });
+        *session.ui_model_mut() = model;
+        session.sync_ui_root_from_model();
+    }
+    session.step(HostEvent::Tick).unwrap();
+    session.tui.request_render(true);
+    session.step_paint_only().unwrap();
+
+    let (region, key) = {
+        let r = root.borrow();
+        let region = r
+            .fold_hits()
+            .regions
+            .iter()
+            .find(|reg| matches!(&reg.target, FoldTarget::Diff(_)))
+            .cloned()
+            .unwrap_or_else(|| {
+                panic!(
+                    "expected Diff triangle hit; regions={:?}",
+                    r.fold_hits().regions
+                )
+            });
+        let FoldTarget::Diff(key) = region.target.clone() else {
+            unreachable!("matched Diff above");
+        };
+        (region, key)
+    };
+    assert!(root.borrow().fold().tools_effective(&key));
+
+    let screen_row = region
+        .content_row
+        .saturating_sub(root.borrow().fold_hits().scroll_top) as u16;
+    session
+        .step(HostEvent::Input(InputEvent::Mouse(MouseEvent {
+            kind: MouseEventKind::Down(MouseButton::Left),
+            column: region.col_start as u16,
+            row: screen_row,
+            modifiers: KeyModifiers::NONE,
+        })))
+        .unwrap();
+    assert!(
+        !root.borrow().fold().tools_effective(&key),
+        "Diff triangle click must toggle tools override"
+    );
+    session.tui.request_render(true);
+    session.step_paint_only().unwrap();
+    let after = root.borrow_mut().render(80).join("\n");
+    assert!(
+        !after.contains("unique-diff-body-line"),
+        "AO paint must hide Diff body after triangle collapse: {after}"
+    );
+}
+
+#[test]
+fn harness_mouse_triangle_toggles_ask_fold() {
+    use super::bridge::AskPhase;
+    use super::widgets::FoldTarget;
+    use crossterm::event::{KeyModifiers, MouseButton, MouseEvent, MouseEventKind};
+
+    let mut session = HostSession::new_product_ui(TestTerminal::new(80, 24));
+    let root = session.ui_root().expect("product ui").clone();
+    {
+        let mut model = session.ui_model().clone();
+        model.entries.push(super::bridge::UiEntry::Ask {
+            id: "ask-click".into(),
+            summary: "Ask · choose".into(),
+            detail_lines: vec!["ask-detail-visible".into()],
+            phase: AskPhase::Answered,
+            expanded: true,
+        });
+        *session.ui_model_mut() = model;
+        session.sync_ui_root_from_model();
+    }
+    session.step(HostEvent::Tick).unwrap();
+    session.tui.request_render(true);
+    session.step_paint_only().unwrap();
+
+    let region = root
+        .borrow()
+        .fold_hits()
+        .regions
+        .iter()
+        .find(|reg| matches!(&reg.target, FoldTarget::Ask(id) if id == "ask-click"))
+        .cloned()
+        .unwrap_or_else(|| {
+            panic!(
+                "expected Ask triangle hit; regions={:?}",
+                root.borrow().fold_hits().regions
+            )
+        });
+    assert!(root.borrow().fold().tools_effective("ask-click"));
+
+    let screen_row = region
+        .content_row
+        .saturating_sub(root.borrow().fold_hits().scroll_top) as u16;
+    session
+        .step(HostEvent::Input(InputEvent::Mouse(MouseEvent {
+            kind: MouseEventKind::Down(MouseButton::Left),
+            column: region.col_start as u16,
+            row: screen_row,
+            modifiers: KeyModifiers::NONE,
+        })))
+        .unwrap();
+    assert!(
+        !root.borrow().fold().tools_effective("ask-click"),
+        "Ask triangle click must toggle tools override"
+    );
+    session.tui.request_render(true);
+    session.step_paint_only().unwrap();
+    let after = root.borrow_mut().render(80).join("\n");
+    assert!(
+        !after.contains("ask-detail-visible"),
+        "AO paint must hide Ask detail after triangle collapse: {after}"
+    );
+}
+
+#[test]
 fn scrollback_diff_header_tint_and_body() {
     use super::layout::UiRoot;
     use crossterm::event::{KeyCode, KeyEvent, KeyModifiers};

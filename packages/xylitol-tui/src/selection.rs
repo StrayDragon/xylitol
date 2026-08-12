@@ -878,6 +878,60 @@ mod tests {
     }
 
     #[test]
+    fn hit_priority_runs_only_on_left_down_not_drag() {
+        use std::sync::atomic::{AtomicUsize, Ordering};
+
+        let calls = std::sync::Arc::new(AtomicUsize::new(0));
+        let calls_hook = calls.clone();
+        let mut scroll = ScrollView::new(4);
+        scroll.set_lines(vec!["hello world".into()]);
+        let mut sel = SelectionController::new();
+        sel.set_hit_priority(Some(Box::new(move |_col, _row| {
+            calls_hook.fetch_add(1, Ordering::SeqCst);
+            // Miss: allow selection to start so Drag path is exercised.
+            false
+        })));
+        let mut sink = RecordingClipboardSink::default();
+        let (tr, dock) = layout();
+
+        assert!(sel.handle_mouse(
+            &mouse(MouseEventKind::Down(MouseButton::Left), 0, 0),
+            &mut scroll,
+            tr,
+            dock,
+            &mut sink
+        ));
+        assert_eq!(calls.load(Ordering::SeqCst), 1);
+        assert!(sel.is_dragging());
+
+        assert!(sel.handle_mouse(
+            &mouse(MouseEventKind::Drag(MouseButton::Left), 5, 0),
+            &mut scroll,
+            tr,
+            dock,
+            &mut sink
+        ));
+        assert_eq!(
+            calls.load(Ordering::SeqCst),
+            1,
+            "Drag must not re-invoke hit_priority (fold latch)"
+        );
+
+        assert!(sel.handle_mouse(
+            &mouse(MouseEventKind::Up(MouseButton::Left), 5, 0),
+            &mut scroll,
+            tr,
+            dock,
+            &mut sink
+        ));
+        assert_eq!(
+            calls.load(Ordering::SeqCst),
+            1,
+            "Up must not invoke hit_priority"
+        );
+    }
+
+    #[test]
     fn dock_down_clears_transcript_selection_and_falls_through() {
         let mut scroll = ScrollView::new(4);
         scroll.set_lines(vec!["hello".into()]);

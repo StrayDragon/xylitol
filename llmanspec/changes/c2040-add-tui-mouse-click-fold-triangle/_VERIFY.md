@@ -3,7 +3,7 @@
 **Date:** 2026-08-12
 **Branch:** `sdd/c2040-add-tui-mouse-click-fold-triangle`
 **base_sha (proposal):** `49ce1de618c1ec340ff98a223d72978d1c4f428e`
-**HEAD (this verify):** `ed49b867` (+ docs verify commit)
+**HEAD (this verify):** post-human-signoff harness lock-in (drag latch + Thinking mouse + package Down-only hit_priority)
 **Stage:** `full` · `readyToImplement=true` · `specsLanded=true` · attached
 
 ## Gates
@@ -15,10 +15,10 @@
 | `llman sdd validate c2040 --strict --no-check` | PASS（INFO: depends_on archived c2020/c2070） |
 | `llman sdd validate app-tui-transcript/host --strict --no-check` | PASS；dualWrite=0 |
 | `cargo test -p xylitol --lib app::tui` | **352 passed** / 2 ignored |
-| Focused c2040 tests | glyph / FoldHitTable / tools+Alt+E / thinking+Ctrl+T / paint miss / harness mouse triangle+non-triangle **6/6** |
+| Focused c2040 tests | 原 6 + `harness_mouse_drag_across_triangle…` + `harness_mouse_triangle_toggles_thinking…` + `hit_priority_runs_only_on_left_down_not_drag` |
 | `just lint` | PASS |
 | c2045 / c1760 / c2050 | **not** implemented（out of scope） |
-| Human terminal sign-off | 见 `_HUMAN_CHECKLIST.md`（verify 不挡自动化；合并前建议最短路径） |
+| Human terminal sign-off | **PASS**（2026-08-12 人验） |
 
 ## Hard constraints (c2040)
 
@@ -45,12 +45,12 @@
 ### WARNING
 
 1. **`base_sha...HEAD` 含无关 `c2080` draft**（规划提交时 main 已 ahead）。不改 c2040 行为；finalize 前确认 ff 合入范围可接受，或 rebase/清理非本票文档。
-2. **拖选 latch 无专用产品测**：依赖库 `SelectionController` 仅在 Left Down 调 `hit_priority`（拖中为 Drag）。行为符合设计，但缺「拖选中划过三角不 toggle」显式 harness（spec 场景 att22-unit 写了；自动化未单测该路径）。
 
 ### SUGGESTION
 
 1. feat commit 含 `Co-authored-by: Cursor`（本地 hook）；仓库规则偏好不暴露 agent——合并前可改写 message（人决定）。
 2. Thinking id = `hash(text)-ordinal`：同文多块可区分；跨 travel 与 live 同序同文可复现。若未来 session 有稳定 part id，可升为更强键（属 c2045/后续）。
+3. （已补）Diff/Ask 三角鼠标 harness：`harness_mouse_triangle_toggles_{diff,ask}_fold`。
 
 ### Covered requirements
 
@@ -58,8 +58,8 @@
 |---|---|---|
 | **att19** fold-glyph-chevron | PASS | Unicode ▸/▾；ascii >/v；width 单测 |
 | **att20** per-block-tools-fold-overrides | PASS | Tool/Diff/Ask effective+toggle；Alt+E 清 tools overrides；compaction 连带保留 |
-| **att21** thinking-per-id-fold | PASS | `allocate_thinking_id` live+rebuild；Ctrl+T 清 thinking overrides；流式强制展开 |
-| **att22** mouse-fold-triangle-column-only | PASS* | 三角命中/非三角不 toggle harness 绿；拖选 latch 见 WARNING |
+| **att21** thinking-per-id-fold | PASS | id 路径 + Ctrl+T；**+** `harness_mouse_triangle_toggles_thinking_fold` |
+| **att22** mouse-fold-triangle-column-only | PASS | 三角/正文 + **拖选划过三角** harness；库 `hit_priority_runs_only_on_left_down_not_drag` |
 | **ath33** fold-triangle-hit-priority | PASS | AO begin 安装 hit_priority；命中 toggle+吞按；viewport sync；`take_fold_dirty`→AO stale |
 
 ### Out-of-scope（正确未做）
@@ -78,17 +78,23 @@
 
 ### WARNING
 
-1. **`scrollback.rs` 体量继续上涨**（本票 +268 行量级）——未拆文件；仍贴软顶策略，后续 fold 族宜外提 hit/overrides（c2045 机会）。
+1. **`scrollback.rs` 体量继续上涨**——后续 fold 族宜外提 hit/overrides（c2045）。
+2. **`ScrollbackFoldDefaultsKey` 四元组**、`FoldTarget::{Tool,Diff,Ask}` 行为折叠到 `toggle_tools`——可读性/扩展债（非行为缺口）。
 
 ### SUGGESTION
 
-1. `FoldTarget` / `diff_fold_key` / overrides 已是合理领域类型（非 Primitive Obsession）。
-2. Host 同步 viewport + hit_priority 闭环清晰，无 app→infra 越层。
-3. 可能的 Data Clump：`(scroll_top, transcript_rows)` 已收在 `FoldHitTable`——好。
+1. Host 同步 viewport + hit_priority 闭环清晰，无 app→infra 越层。
+2. `fold()` clone HashMap、hit emit 重复臂：c2045 前可顺手收。
+3. 产品 `AGENTS.md` 鼠标段已改为指向 c2040（不再写「点折叠属后续」）。
 
 ---
 
+## Dual-axis agents
+
+- [Verify c2040 spec axis](2d4ad0f1-f250-438a-ab75-ad73567da2dc)：WARNING 验证洞已用本提交 harness 闭合。
+- [Verify c2040 standards axis](dc50ef8e-f7dc-4f33-a889-9efd7c33b496)：无 CRITICAL；软顶/命名债记入上方 WARNING。
+
 ## Verdict
 
-**PASS — 可归档**（无 CRITICAL）。
-建议：最短人验签字后 `llman-sdd-archive` / `change finalize`；留意 WARNING#1 合入范围。
+**PASS — 可归档**（无 CRITICAL；人验 + latch/Thinking 鼠标自动化已齐）。
+建议：`llman-sdd-archive` / `change finalize`；留意 WARNING#1（c2080 合入范围）。
