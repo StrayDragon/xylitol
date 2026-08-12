@@ -2951,6 +2951,7 @@ fn streaming_assistant_reuses_stable_prefix_under_deltas() {
         glyphs,
         theme,
         &fold,
+        &mut crate::app::tui::activity_fold::ActivityFoldState::default(),
         80,
         &mut warm,
         &mut FoldHitTable::default(),
@@ -2965,6 +2966,7 @@ fn streaming_assistant_reuses_stable_prefix_under_deltas() {
             glyphs,
             theme,
             &fold,
+            &mut crate::app::tui::activity_fold::ActivityFoldState::default(),
             80,
             &mut warm,
             &mut FoldHitTable::default(),
@@ -2984,6 +2986,7 @@ fn streaming_assistant_reuses_stable_prefix_under_deltas() {
         glyphs,
         theme,
         &fold,
+        &mut crate::app::tui::activity_fold::ActivityFoldState::default(),
         80,
         &mut warm,
         &mut FoldHitTable::default(),
@@ -2994,6 +2997,7 @@ fn streaming_assistant_reuses_stable_prefix_under_deltas() {
         glyphs,
         theme,
         &fold,
+        &mut crate::app::tui::activity_fold::ActivityFoldState::default(),
         80,
         &mut cold,
         &mut FoldHitTable::default(),
@@ -3225,5 +3229,384 @@ fn application_owned_copy_notice_arms_copied_cue_not_error_toast() {
     assert!(
         !frame.contains("Error: Copied"),
         "must not use Error: toast shape: {frame}"
+    );
+}
+
+// ── c1760 activity-fold (att23–att28) ─────────────────────────────────
+
+fn activity_turn(user: &str, tool_id: &str, path: &str, asst: &str) -> Vec<super::bridge::UiEntry> {
+    vec![
+        super::bridge::UiEntry::User { text: user.into() },
+        super::bridge::UiEntry::Tool {
+            id: tool_id.into(),
+            name: "read".into(),
+            args_preview: path.into(),
+            tool_path: Some(path.into()),
+            write_content: None,
+            display_diff: None,
+            output: "ok".into(),
+            is_error: false,
+            done: true,
+        },
+        super::bridge::UiEntry::Assistant { text: asst.into() },
+    ]
+}
+
+fn strip_ansi_activity(s: &str) -> String {
+    let mut out = String::new();
+    let mut chars = s.chars().peekable();
+    while let Some(c) = chars.next() {
+        if c == '\u{1b}' {
+            if chars.peek() == Some(&'[') {
+                chars.next();
+                while let Some(n) = chars.next() {
+                    if n.is_ascii_alphabetic() {
+                        break;
+                    }
+                }
+            }
+        } else {
+            out.push(c);
+        }
+    }
+    out
+}
+
+#[test]
+fn activity_fold_att23_l2_shows_summary_keeps_user_asst_scrollnotice() {
+    use super::activity_fold::SegmentLevel;
+    use super::layout::UiRoot;
+
+    let mut root = UiRoot::new();
+    let mut model = UiModel::new();
+    for i in 0..3 {
+        model.entries.extend(activity_turn(
+            &format!("u{i}"),
+            &format!("t{i}"),
+            &format!("f{i}.rs"),
+            &format!("a{i}"),
+        ));
+    }
+    model.entries.push(super::bridge::UiEntry::ScrollNotice {
+        text: "nav-note".into(),
+    });
+    root.apply_ui_model(&model);
+    // keep_recent=2 → oldest seg-0 auto-crush via force (simulate rebuild crush)
+    root.activity_mut().force_level("seg-0", SegmentLevel::L2);
+    root.touch_activity();
+    let plain = strip_ansi_activity(&root.render(100).join("\n"));
+    assert!(plain.contains("u0"), "user must stay: {plain}");
+    assert!(plain.contains("a0"), "final assistant must stay: {plain}");
+    assert!(
+        plain.contains("Explored") || plain.contains("file"),
+        "L2 summary expected: {plain}"
+    );
+    assert!(
+        !plain.contains("body-hidden-marker") && !plain.contains("f0.rs\nok"),
+        "collapsed middle detail should not fully paint; got {plain}"
+    );
+    // tool args_preview may still appear in summary counts path — ensure tool body "ok" after f0 not as rail block:
+    // stronger: ScrollNotice never absorbed
+    assert!(
+        plain.contains("nav-note"),
+        "ScrollNotice must stay: {plain}"
+    );
+}
+
+#[test]
+fn activity_fold_att24_worked_for_and_no_fake_duration_or_pm() {
+    use super::activity_fold::{SegmentClock, SegmentLevel};
+    use super::layout::UiRoot;
+    use chrono::{TimeZone, Utc};
+
+    let mut root = UiRoot::new();
+    let mut model = UiModel::new();
+    model
+        .entries
+        .extend(activity_turn("u", "t1", "a.rs", "done"));
+    // second turn with reliable diff stats
+    model
+        .entries
+        .push(super::bridge::UiEntry::User { text: "u2".into() });
+    model.entries.push(super::bridge::UiEntry::Tool {
+        id: "edit1".into(),
+        name: "edit".into(),
+        args_preview: "b.rs".into(),
+        tool_path: Some("b.rs".into()),
+        write_content: None,
+        display_diff: Some("+new\n-old\n".into()),
+        output: String::new(),
+        is_error: false,
+        done: true,
+    });
+    model
+        .entries
+        .push(super::bridge::UiEntry::Assistant { text: "a2".into() });
+    root.apply_ui_model(&model);
+
+    root.activity_mut().force_level("seg-0", SegmentLevel::L3);
+    root.touch_activity();
+    // no clock → must not invent a duration number
+    let plain_no = strip_ansi_activity(&root.render(100).join("\n"));
+    assert!(
+        plain_no.contains("Worked for"),
+        "L3 row without stamps still paints Worked for: {plain_no}"
+    );
+    assert!(
+        !plain_no.contains("Worked for 0")
+            && !plain_no.contains("Worked for 1")
+            && !plain_no.contains("Worked for 2"),
+        "must not fake duration: {plain_no}"
+    );
+
+    root.activity_mut().set_clock(
+        "seg-0",
+        SegmentClock {
+            start: Some(Utc.with_ymd_and_hms(2026, 1, 1, 0, 0, 0).unwrap()),
+            end: Some(Utc.with_ymd_and_hms(2026, 1, 1, 0, 2, 3).unwrap()),
+        },
+    );
+    root.touch_activity();
+    let plain_yes = strip_ansi_activity(&root.render(100).join("\n"));
+    assert!(
+        plain_yes.contains("Worked for 2m 3s"),
+        "reliable stamps → duration: {plain_yes}"
+    );
+
+    root.activity_mut().force_level("seg-3", SegmentLevel::L2);
+    root.touch_activity();
+    let plain_l2 = strip_ansi_activity(&root.render(100).join("\n"));
+    assert!(
+        plain_l2.contains("+1 -1") || plain_l2.contains("+1") && plain_l2.contains("-1"),
+        "reliable diff pm: {plain_l2}"
+    );
+}
+
+#[test]
+fn activity_fold_att25_l2_ignores_alt_e_then_l0_restores_l1() {
+    use super::activity_fold::SegmentLevel;
+    use super::layout::UiRoot;
+    use crossterm::event::{KeyCode, KeyEvent, KeyModifiers};
+    use xylitol_tui::InputEvent;
+
+    let mut root = UiRoot::new();
+    let mut model = UiModel::new();
+    model
+        .entries
+        .extend(activity_turn("u", "only", "x.rs", "asst"));
+    // force tools default open so body visible at L0
+    root.apply_ui_model(&model);
+    root.activity_mut().force_level("seg-0", SegmentLevel::L2);
+    root.touch_activity();
+    let before = strip_ansi_activity(&root.render(100).join("\n"));
+    root.handle_input(InputEvent::Key(KeyEvent::new(
+        KeyCode::Char('e'),
+        KeyModifiers::ALT,
+    )));
+    let after_alt = strip_ansi_activity(&root.render(100).join("\n"));
+    assert_eq!(
+        before
+            .lines()
+            .filter(|l| l.contains("Explored") || l.contains("Worked"))
+            .collect::<Vec<_>>(),
+        after_alt
+            .lines()
+            .filter(|l| l.contains("Explored") || l.contains("Worked"))
+            .collect::<Vec<_>>(),
+        "Alt+E must not change L2 appearance"
+    );
+
+    root.activity_mut().force_level("seg-0", SegmentLevel::L0);
+    root.touch_activity();
+    // Alt+E may have flipped tools default closed — re-open for L1 visibility check.
+    if !root.fold().tools_effective("only") {
+        root.handle_input(InputEvent::Key(KeyEvent::new(
+            KeyCode::Char('e'),
+            KeyModifiers::ALT,
+        )));
+    }
+    let l0 = strip_ansi_activity(&root.render(100).join("\n"));
+    assert!(
+        l0.contains("x.rs") || l0.contains("read"),
+        "L0 must show tool block again: {l0}"
+    );
+    use super::widgets::FoldTarget;
+    root.toggle_fold_target(FoldTarget::Tool("only".into()));
+    assert!(
+        !root.fold().tools_effective("only"),
+        "after L0, per-block L1 override must work again"
+    );
+}
+
+#[test]
+fn activity_fold_att26_auto_degrade_keeps_recent_and_streaming() {
+    use super::activity_fold::{AutoTrigger, SegmentLevel};
+    use super::layout::UiRoot;
+
+    let mut root = UiRoot::new();
+    let mut model = UiModel::new();
+    // 4 activity turns; keep_recent=2 → oldest two crush to L2.
+    for i in 0..4 {
+        model.entries.extend(activity_turn(
+            &format!("u{i}"),
+            &format!("t{i}"),
+            &format!("f{i}.rs"),
+            &format!("a{i}"),
+        ));
+    }
+    root.apply_ui_model(&model);
+    let entries = root.activity().settings.enabled;
+    assert!(entries);
+    assert!(
+        root.activity_mut()
+            .auto_degrade(&model.entries, AutoTrigger::Rebuild, false)
+    );
+    assert_eq!(root.activity().level_of("seg-0"), SegmentLevel::L2);
+    assert_eq!(root.activity().level_of("seg-3"), SegmentLevel::L2);
+    // recent window (last 2): user idxs 6 and 9 → seg-6, seg-9
+    assert_eq!(root.activity().level_of("seg-6"), SegmentLevel::L0);
+    assert_eq!(root.activity().level_of("seg-9"), SegmentLevel::L0);
+
+    // Streaming protect: newest stays L0 even if outside window logic asks crush.
+    let mut root2 = UiRoot::new();
+    root2.apply_ui_model(&model);
+    root2
+        .activity_mut()
+        .auto_degrade(&model.entries, AutoTrigger::TurnEnd, true);
+    assert_eq!(
+        root2.activity().level_of("seg-9"),
+        SegmentLevel::L0,
+        "streaming current turn must not auto-crush"
+    );
+}
+
+#[test]
+fn activity_fold_att27_markers_and_full_chord_hints() {
+    use super::activity_fold::SegmentLevel;
+    use super::layout::UiRoot;
+    use super::widgets::GlyphSet;
+
+    let mut root = UiRoot::new();
+    let mut model = UiModel::new();
+    model.entries.extend(activity_turn("u", "t", "a.rs", "a"));
+    root.apply_ui_model(&model);
+    root.activity_mut().force_level("seg-0", SegmentLevel::L2);
+    root.touch_activity();
+    let plain = strip_ansi_activity(&root.render(100).join("\n"));
+    let fold_mark = GlyphSet::from_env().fold();
+    assert!(
+        plain.contains(fold_mark),
+        "L2 must use fold marker: {plain}"
+    );
+    assert!(
+        plain.contains("(Alt+Shift+E)"),
+        "expand hint must be full chord: {plain}"
+    );
+    assert!(
+        !plain.contains("(Alt+E)"),
+        "must not confuse with L1 Alt+E: {plain}"
+    );
+
+    root.activity_mut().force_level("seg-0", SegmentLevel::L3);
+    root.touch_activity();
+    let plain3 = strip_ansi_activity(&root.render(100).join("\n"));
+    assert!(plain3.contains("(Alt+Shift+E)"), "L3 expand hint: {plain3}");
+    assert!(!plain3.contains("(Alt+E)"), "no Alt+E on L3: {plain3}");
+}
+
+#[test]
+fn activity_fold_att28_expand_collapse_nearest_and_silent() {
+    use super::activity_fold::SegmentLevel;
+    use super::layout::UiRoot;
+    use crossterm::event::{KeyCode, KeyEvent, KeyModifiers};
+    use xylitol_tui::InputEvent;
+
+    let mut root = UiRoot::new();
+    let mut model = UiModel::new();
+    for i in 0..3 {
+        model.entries.extend(activity_turn(
+            &format!("u{i}"),
+            &format!("t{i}"),
+            &format!("f{i}.rs"),
+            &format!("a{i}"),
+        ));
+    }
+    root.apply_ui_model(&model);
+    // crush oldest so expand has a target; recent stay virgin L0
+    root.activity_mut().auto_degrade(
+        &model.entries,
+        super::activity_fold::AutoTrigger::Rebuild,
+        false,
+    );
+    assert_eq!(root.activity().level_of("seg-0"), SegmentLevel::L2);
+
+    // Expand nearest collapsed (seg-0 is only L2; seg-3 is also L2 if keep=2 with 3 turns)
+    // 3 turns → crush only oldest (from_newest>=2): seg-0
+    assert!(root.expand_nearest_activity());
+    assert_eq!(root.activity().level_of("seg-0"), SegmentLevel::L0);
+
+    // Collapse nearest eligible: expanded-back seg-0 is entered → collapse ok
+    assert!(root.collapse_nearest_activity());
+    assert_eq!(root.activity().level_of("seg-0"), SegmentLevel::L2);
+
+    // Silent expand when no L2/L3; silent collapse when only virgin recent-window L0.
+    let mut quiet_model = UiModel::new();
+    for i in 0..2 {
+        quiet_model.entries.extend(activity_turn(
+            &format!("q{i}"),
+            &format!("qt{i}"),
+            &format!("q{i}.rs"),
+            &format!("qa{i}"),
+        ));
+    }
+    let mut quiet = UiRoot::new();
+    quiet.apply_ui_model(&quiet_model);
+    quiet.handle_input(InputEvent::Key(KeyEvent::new(
+        KeyCode::Char('e'),
+        KeyModifiers::ALT | KeyModifiers::SHIFT,
+    )));
+    assert_eq!(
+        quiet.activity().level_of("seg-0"),
+        SegmentLevel::L0,
+        "no L2/L3 → expandNearest silent"
+    );
+    quiet.handle_input(InputEvent::Key(KeyEvent::new(
+        KeyCode::Char('e'),
+        KeyModifiers::CONTROL | KeyModifiers::ALT | KeyModifiers::SHIFT,
+    )));
+    assert_eq!(
+        quiet.activity().level_of("seg-0"),
+        SegmentLevel::L0,
+        "virgin recent window → collapseNearest silent"
+    );
+    assert_eq!(quiet.activity().level_of("seg-3"), SegmentLevel::L0);
+}
+
+#[test]
+fn activity_fold_att25_level_switch_local_paint_misses() {
+    use super::activity_fold::SegmentLevel;
+    use super::layout::UiRoot;
+
+    let mut root = UiRoot::new();
+    let mut model = UiModel::new();
+    for i in 0..6 {
+        model.entries.push(super::bridge::UiEntry::Assistant {
+            text: format!("history-{i}\n\nparagraph"),
+        });
+    }
+    model
+        .entries
+        .extend(activity_turn("u", "only", "x.rs", "tail"));
+    root.apply_ui_model(&model);
+    let _ = root.render(80);
+    root.clear_scrollback_entry_misses_for_test();
+
+    root.activity_mut().force_level("seg-6", SegmentLevel::L2);
+    root.touch_activity();
+    let _ = root.render(80);
+    let misses = root.scrollback_entry_misses_for_test();
+    assert!(
+        misses <= 3,
+        "segment level switch must not re-Markdown all assistants; misses={misses}"
     );
 }
