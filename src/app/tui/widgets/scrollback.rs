@@ -9,13 +9,16 @@ use xylitol_tui::{
     truncate_to_width, visible_width, wrap_text_with_ansi,
 };
 
+use std::collections::HashMap;
+
+use super::fold_hit::{FoldHitTable, FoldTarget};
 use super::glyphs::GlyphSet;
 use crate::app::tui::bridge::{AskPhase, BashBlockStatus, CompactionBlockStatus, UiEntry, UiModel};
 use crate::app::tui::layout::LayoutTheme;
 use xylitol_tui::terminal_colors::RgbColor;
 
-/// Fold state owned by the product surface (att7).
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
+/// Fold defaults + per-block overrides (att7 / att20 / att21). Not `Copy` — holds maps.
+#[derive(Debug, Clone, PartialEq, Eq)]
 pub struct ScrollbackFold {
     pub thinking_expanded: bool,
     /// Alt+E — tool/diff **block** show/hide detail.
@@ -24,6 +27,10 @@ pub struct ScrollbackFold {
     pub tools_output_expanded: bool,
     /// Alt+E — compaction summary (default collapsed; shares chord with tools).
     pub compaction_expanded: bool,
+    /// Per-block tools-family overrides (Tool / Diff / Ask); prefer over [`Self::tools_expanded`].
+    pub tools_overrides: HashMap<String, bool>,
+    /// Per-id thinking overrides; prefer over [`Self::thinking_expanded`].
+    pub thinking_overrides: HashMap<String, bool>,
 }
 
 impl Default for ScrollbackFold {
@@ -35,8 +42,66 @@ impl Default for ScrollbackFold {
             tools_output_expanded: false,
             // Product default: compaction summary collapsed (c1730 / pi).
             compaction_expanded: false,
+            tools_overrides: HashMap::new(),
+            thinking_overrides: HashMap::new(),
         }
     }
+}
+
+/// Defaults tuple for paint-cache prepare — overrides MUST NOT clear the whole cache.
+pub type ScrollbackFoldDefaultsKey = (bool, bool, bool, bool);
+
+impl ScrollbackFold {
+    pub fn defaults_key(&self) -> ScrollbackFoldDefaultsKey {
+        (
+            self.thinking_expanded,
+            self.tools_expanded,
+            self.tools_output_expanded,
+            self.compaction_expanded,
+        )
+    }
+
+    pub fn tools_effective(&self, id: &str) -> bool {
+        self.tools_overrides
+            .get(id)
+            .copied()
+            .unwrap_or(self.tools_expanded)
+    }
+
+    pub fn thinking_effective(&self, id: &str) -> bool {
+        self.thinking_overrides
+            .get(id)
+            .copied()
+            .unwrap_or(self.thinking_expanded)
+    }
+
+    pub fn toggle_tools(&mut self, id: &str) {
+        let next = !self.tools_effective(id);
+        self.tools_overrides.insert(id.to_string(), next);
+    }
+
+    pub fn toggle_thinking(&mut self, id: &str) {
+        let next = !self.thinking_effective(id);
+        self.thinking_overrides.insert(id.to_string(), next);
+    }
+
+    pub fn clear_tools_overrides(&mut self) {
+        self.tools_overrides.clear();
+    }
+
+    pub fn clear_thinking_overrides(&mut self) {
+        self.thinking_overrides.clear();
+    }
+}
+
+/// Stable Diff fold-key: hash of summary + display_diff.
+pub fn diff_fold_key(summary: &str, display_diff: &str) -> String {
+    use std::collections::hash_map::DefaultHasher;
+    use std::hash::{Hash, Hasher};
+    let mut h = DefaultHasher::new();
+    summary.hash(&mut h);
+    display_diff.hash(&mut h);
+    format!("{:016x}", h.finish())
 }
 
 /// Max visual lines for collapsed tool/bash detail (pi bash tool = 5).
@@ -451,13 +516,22 @@ fn paint_streaming_assistant(
     all
 }
 
+/// Relative fold-hit within a cached block (row offset from block start).
+#[derive(Debug, Clone)]
+struct CachedFoldHit {
+    row_offset: usize,
+    col_start: usize,
+    col_end: usize,
+    target: FoldTarget,
+}
+
 /// Per-entry paint cache so streaming/spinner frames do not re-Markdown the
 /// entire transcript (ath25).
 #[derive(Debug, Default)]
 pub struct ScrollbackPaintCache {
     width: usize,
-    fold: ScrollbackFold,
-    entries: Vec<(u64, Vec<String>)>,
+    fold_defaults: Option<ScrollbackFoldDefaultsKey>,
+    entries: Vec<(u64, Vec<String>, Vec<CachedFoldHit>)>,
     /// Test/obs: how many committed entries were freshly painted.
     pub(crate) entry_misses: u64,
     /// Streaming assistant incremental paint (ath26).
@@ -468,6 +542,7 @@ impl ScrollbackPaintCache {
     pub fn invalidate(&mut self) {
         self.entries.clear();
         self.width = 0;
+        self.fold_defaults = None;
         self.streaming_assistant.invalidate();
         // keep entry_misses / stream counters cumulative unless cleared
     }
@@ -478,17 +553,19 @@ impl ScrollbackPaintCache {
         self.entry_misses = 0;
     }
 
-    fn prepare(&mut self, width: usize, fold: ScrollbackFold) {
-        if self.width != width || self.fold != fold {
+    /// Full-clear only on width / fold **defaults** change — not override-map identity.
+    fn prepare(&mut self, width: usize, fold: &ScrollbackFold) {
+        let key = fold.defaults_key();
+        if self.width != width || self.fold_defaults != Some(key) {
             self.entries.clear();
             self.streaming_assistant.invalidate();
             self.width = width;
-            self.fold = fold;
+            self.fold_defaults = Some(key);
         }
     }
 }
 
-fn entry_fingerprint(entry: &UiEntry) -> u64 {
+fn entry_fingerprint(entry: &UiEntry, fold: &ScrollbackFold) -> u64 {
     use std::collections::hash_map::DefaultHasher;
     use std::hash::{Hash, Hasher};
     let mut h = DefaultHasher::new();
@@ -496,9 +573,13 @@ fn entry_fingerprint(entry: &UiEntry) -> u64 {
     match entry {
         UiEntry::User { text }
         | UiEntry::Assistant { text }
-        | UiEntry::Thinking { text }
         | UiEntry::ScrollNotice { text }
         | UiEntry::Error { text } => text.hash(&mut h),
+        UiEntry::Thinking { id, text } => {
+            id.hash(&mut h);
+            text.hash(&mut h);
+            fold.thinking_effective(id).hash(&mut h);
+        }
         UiEntry::Tool {
             id,
             name,
@@ -519,6 +600,8 @@ fn entry_fingerprint(entry: &UiEntry) -> u64 {
             output.hash(&mut h);
             is_error.hash(&mut h);
             done.hash(&mut h);
+            fold.tools_effective(id).hash(&mut h);
+            fold.tools_output_expanded.hash(&mut h);
         }
         UiEntry::Diff {
             summary,
@@ -526,6 +609,9 @@ fn entry_fingerprint(entry: &UiEntry) -> u64 {
         } => {
             summary.hash(&mut h);
             display_diff.hash(&mut h);
+            let key = diff_fold_key(summary, display_diff);
+            fold.tools_effective(&key).hash(&mut h);
+            fold.tools_output_expanded.hash(&mut h);
         }
         UiEntry::Bash {
             command,
@@ -537,6 +623,7 @@ fn entry_fingerprint(entry: &UiEntry) -> u64 {
             status.hash(&mut h);
             output.hash(&mut h);
             exclude_from_context.hash(&mut h);
+            fold.tools_output_expanded.hash(&mut h);
         }
         UiEntry::Ask {
             id,
@@ -550,6 +637,7 @@ fn entry_fingerprint(entry: &UiEntry) -> u64 {
             detail_lines.hash(&mut h);
             phase.hash(&mut h);
             expanded.hash(&mut h);
+            fold.tools_effective(id).hash(&mut h);
         }
         UiEntry::Compaction {
             status,
@@ -561,22 +649,46 @@ fn entry_fingerprint(entry: &UiEntry) -> u64 {
             summary.hash(&mut h);
             tokens_before.hash(&mut h);
             detail.hash(&mut h);
+            fold.compaction_expanded.hash(&mut h);
         }
     }
     h.finish()
 }
 
+fn marker_cols(marker: &str) -> usize {
+    visible_width(marker).max(1)
+}
+
+fn emit_block_hits(fold_hits: &mut FoldHitTable, content_row_base: usize, hits: &[CachedFoldHit]) {
+    for h in hits {
+        fold_hits.push(
+            content_row_base.saturating_add(h.row_offset),
+            h.col_start,
+            h.col_end,
+            h.target.clone(),
+        );
+    }
+}
+
+/// Triangle column after left rail + gutter (`paint_left_rail_line`).
+const RAILED_MARKER_COL: usize = 2;
+
 /// Render UiModel entries into scrollback lines for the product host.
+///
+/// Fills `fold_hits.regions` with content-relative rows (caller adds loaded-resources
+/// offset). Does not touch `scroll_top` / `transcript_rows`.
 pub fn render_scrollback(
     model: &UiModel,
     glyphs: GlyphSet,
     theme: LayoutTheme,
-    fold: ScrollbackFold,
+    fold: &ScrollbackFold,
     width: usize,
     cache: &mut ScrollbackPaintCache,
+    fold_hits: &mut FoldHitTable,
 ) -> Vec<String> {
     let width = width.max(1);
     cache.prepare(width, fold);
+    fold_hits.clear_regions();
     let mut lines = Vec::new();
 
     if model.entries.is_empty() && model.streaming_scrollback_tails().is_empty() {
@@ -595,11 +707,19 @@ pub fn render_scrollback(
             lines.push(inter_block_spacer(width));
         }
         need_spacer = true;
-        let fp = entry_fingerprint(entry);
-        if cache.entries.get(entry_idx).is_some_and(|(f, _)| *f == fp) {
-            lines.extend(cache.entries[entry_idx].1.iter().cloned());
+        let fp = entry_fingerprint(entry, fold);
+        if cache
+            .entries
+            .get(entry_idx)
+            .is_some_and(|(f, _, _)| *f == fp)
+        {
+            let content_row_base = lines.len();
+            let (_, block_lines, hits) = &cache.entries[entry_idx];
+            emit_block_hits(fold_hits, content_row_base, hits);
+            lines.extend(block_lines.iter().cloned());
             continue;
         }
+        let mut block_hits = Vec::new();
         let block_lines = {
             let mut lines = Vec::new();
             match entry {
@@ -617,21 +737,31 @@ pub fn render_scrollback(
                         lines.push(fit(&line, width));
                     }
                 }
-                UiEntry::Thinking { text } => {
+                UiEntry::Thinking { id, text } => {
                     // Flush like assistant body — thinking is content, not a status tool block.
-                    let marker = if fold.thinking_expanded {
+                    let expanded = fold.thinking_effective(id);
+                    let marker = if expanded {
                         glyphs.unfold()
                     } else {
                         glyphs.fold()
                     };
+                    let mw = marker_cols(marker);
                     let header =
                         theme.paint_muted(&format!("{marker} thinking  {}", key_hint("Ctrl+T")));
+                    let header_row = lines.len();
                     push_wrapped(&mut lines, &header, width);
-                    if fold.thinking_expanded {
+                    block_hits.push(CachedFoldHit {
+                        row_offset: header_row,
+                        col_start: 0,
+                        col_end: mw,
+                        target: FoldTarget::Thinking(id.clone()),
+                    });
+                    if expanded {
                         push_wrapped(&mut lines, &theme.paint_muted(text), width);
                     }
                 }
                 UiEntry::Tool {
+                    id,
                     name,
                     args_preview,
                     write_content,
@@ -642,17 +772,25 @@ pub fn render_scrollback(
                     ..
                 } => {
                     let inner = rail_inner_width(width);
-                    let marker = if fold.tools_expanded {
+                    let expanded = fold.tools_effective(id);
+                    let marker = if expanded {
                         glyphs.unfold()
                     } else {
                         glyphs.fold()
                     };
+                    let mw = marker_cols(marker);
                     let header = paint_tool_header_line(theme, marker, name, args_preview);
                     let rgb = tool_rail_rgb(!done, *is_error, theme);
                     let mut block = Vec::new();
                     push_wrapped(&mut block, &header, inner);
+                    block_hits.push(CachedFoldHit {
+                        row_offset: 0,
+                        col_start: RAILED_MARKER_COL,
+                        col_end: RAILED_MARKER_COL + mw,
+                        target: FoldTarget::Tool(id.clone()),
+                    });
 
-                    if fold.tools_expanded {
+                    if expanded {
                         if let Some(content) = write_content
                             && !content.is_empty()
                         {
@@ -686,8 +824,8 @@ pub fn render_scrollback(
                                 },
                                 hint_style: None,
                             };
-                            let expanded = fold.tools_output_expanded && !hard;
-                            for line in render_expandable_output(&painted, inner, expanded, &opts) {
+                            let viewport = fold.tools_output_expanded && !hard;
+                            for line in render_expandable_output(&painted, inner, viewport, &opts) {
                                 block.push(fit(&line, inner));
                             }
                         }
@@ -715,16 +853,25 @@ pub fn render_scrollback(
                     display_diff,
                 } => {
                     let inner = rail_inner_width(width);
-                    let marker = if fold.tools_expanded {
+                    let key = diff_fold_key(summary, display_diff);
+                    let expanded = fold.tools_effective(&key);
+                    let marker = if expanded {
                         glyphs.unfold()
                     } else {
                         glyphs.fold()
                     };
+                    let mw = marker_cols(marker);
                     let header = paint_tool_header_line(theme, marker, "diff", summary);
                     let mut block = Vec::new();
                     push_wrapped(&mut block, &header, inner);
+                    block_hits.push(CachedFoldHit {
+                        row_offset: 0,
+                        col_start: RAILED_MARKER_COL,
+                        col_end: RAILED_MARKER_COL + mw,
+                        target: FoldTarget::Diff(key),
+                    });
                     let rgb = tool_rail_rgb(false, false, theme);
-                    if fold.tools_expanded && !display_diff.is_empty() {
+                    if expanded && !display_diff.is_empty() {
                         block.push(String::new());
                         push_viewport_diff_lines(
                             &mut block,
@@ -780,20 +927,29 @@ pub fn render_scrollback(
                     push_railed(&mut lines, &block, width, bash_rail_rgb(*status, theme));
                 }
                 UiEntry::Ask {
+                    id,
                     summary,
                     detail_lines,
                     phase,
                     ..
                 } => {
                     let inner = rail_inner_width(width);
-                    let marker = if fold.tools_expanded {
+                    let expanded = fold.tools_effective(id);
+                    let marker = if expanded {
                         glyphs.unfold()
                     } else {
                         glyphs.fold()
                     };
+                    let mw = marker_cols(marker);
                     let header = paint_ask_header_line(theme, marker, summary, inner);
                     let mut block = vec![fit(&header, inner)];
-                    if fold.tools_expanded {
+                    block_hits.push(CachedFoldHit {
+                        row_offset: 0,
+                        col_start: RAILED_MARKER_COL,
+                        col_end: RAILED_MARKER_COL + mw,
+                        target: FoldTarget::Ask(id.clone()),
+                    });
+                    if expanded {
                         for line in detail_lines {
                             block.push(fit(&theme.paint_muted(line), inner));
                         }
@@ -860,7 +1016,9 @@ pub fn render_scrollback(
         if entry_idx < cache.entries.len() {
             cache.entries.truncate(entry_idx);
         }
-        cache.entries.push((fp, block_lines.clone()));
+        let content_row_base = lines.len();
+        emit_block_hits(fold_hits, content_row_base, &block_hits);
+        cache.entries.push((fp, block_lines.clone(), block_hits));
         lines.extend(block_lines);
     }
 
@@ -876,17 +1034,12 @@ pub fn render_scrollback(
         need_spacer = true;
         match kind {
             "thinking" => {
-                let marker = if fold.thinking_expanded {
-                    glyphs.unfold()
-                } else {
-                    glyphs.fold()
-                };
+                // att8 / att21: streaming thinking MUST stay expanded.
+                let marker = glyphs.unfold();
                 let header =
                     theme.paint_muted(&format!("{marker} thinking  {}", key_hint("Ctrl+T")));
                 push_wrapped(&mut lines, &header, width);
-                if fold.thinking_expanded {
-                    push_wrapped(&mut lines, &theme.paint_muted(&format!("{text}…")), width);
-                }
+                push_wrapped(&mut lines, &theme.paint_muted(&format!("{text}…")), width);
             }
             "assistant" => {
                 lines.extend(paint_streaming_assistant(
@@ -930,9 +1083,10 @@ mod tests {
             &model,
             GlyphSet::from_env(),
             theme,
-            fold,
+            &fold,
             80,
             &mut ScrollbackPaintCache::default(),
+            &mut FoldHitTable::default(),
         );
         let joined = lines.join("\n");
         let accent_ask = theme.paint_tool_name("Ask");
@@ -961,9 +1115,10 @@ mod tests {
             &model,
             GlyphSet::from_env(),
             theme,
-            ScrollbackFold::default(),
+            &ScrollbackFold::default(),
             100,
             &mut ScrollbackPaintCache::default(),
+            &mut FoldHitTable::default(),
         );
         let plain = strip_ansi_local(&lines.join("\n"));
         assert!(plain.contains("[compaction]"), "missing label: {plain}");
@@ -991,12 +1146,13 @@ mod tests {
             &model,
             GlyphSet::from_env(),
             theme,
-            ScrollbackFold {
+            &ScrollbackFold {
                 compaction_expanded: true,
                 ..ScrollbackFold::default()
             },
             100,
             &mut ScrollbackPaintCache::default(),
+            &mut FoldHitTable::default(),
         );
         let plain = strip_ansi_local(&lines.join("\n"));
         assert!(
@@ -1025,9 +1181,10 @@ mod tests {
             &model,
             GlyphSet::from_env(),
             theme,
-            ScrollbackFold::default(),
+            &ScrollbackFold::default(),
             80,
             &mut ScrollbackPaintCache::default(),
+            &mut FoldHitTable::default(),
         );
         let joined = lines.join("\n");
         let expect = bold(&fg_rgb(skill, "$demo"));
@@ -1067,9 +1224,10 @@ mod tests {
             &model,
             GlyphSet::from_env(),
             theme,
-            ScrollbackFold::default(),
+            &ScrollbackFold::default(),
             80,
             &mut ScrollbackPaintCache::default(),
+            &mut FoldHitTable::default(),
         );
         let header = lines
             .iter()
@@ -1134,9 +1292,10 @@ mod tests {
             &model,
             GlyphSet::from_env(),
             theme,
-            ScrollbackFold::default(),
+            &ScrollbackFold::default(),
             100,
             &mut ScrollbackPaintCache::default(),
+            &mut FoldHitTable::default(),
         );
         let header = lines
             .iter()
@@ -1188,12 +1347,13 @@ mod tests {
             &model,
             GlyphSet::from_env(),
             theme,
-            ScrollbackFold {
+            &ScrollbackFold {
                 tools_output_expanded: true,
                 ..ScrollbackFold::default()
             },
             120,
             &mut ScrollbackPaintCache::default(),
+            &mut FoldHitTable::default(),
         );
         let joined = lines.join("\n");
         assert!(
@@ -1235,9 +1395,10 @@ mod tests {
             &model,
             GlyphSet::from_env(),
             theme,
-            ScrollbackFold::default(),
+            &ScrollbackFold::default(),
             100,
             &mut ScrollbackPaintCache::default(),
+            &mut FoldHitTable::default(),
         );
         let plain = strip_ansi_local(&lines.join("\n"));
         assert!(
@@ -1279,9 +1440,10 @@ mod tests {
             &model,
             GlyphSet::from_env(),
             theme,
-            ScrollbackFold::default(),
+            &ScrollbackFold::default(),
             100,
             &mut ScrollbackPaintCache::default(),
+            &mut FoldHitTable::default(),
         );
         let plain = strip_ansi_local(&lines.join("\n"));
         assert!(
@@ -1322,11 +1484,27 @@ mod tests {
             let glyphs = GlyphSet::from_env();
             let mut cache = ScrollbackPaintCache::default();
             // Cold fill cache.
-            let _cold = render_scrollback(&model, glyphs, theme, fold, 100, &mut cache);
+            let _cold = render_scrollback(
+                &model,
+                glyphs,
+                theme,
+                &fold,
+                100,
+                &mut cache,
+                &mut FoldHitTable::default(),
+            );
             let t0 = Instant::now();
             let mut last_len = 0usize;
             for _ in 0..iters {
-                let lines = render_scrollback(&model, glyphs, theme, fold, 100, &mut cache);
+                let lines = render_scrollback(
+                    &model,
+                    glyphs,
+                    theme,
+                    &fold,
+                    100,
+                    &mut cache,
+                    &mut FoldHitTable::default(),
+                );
                 last_len = lines.len();
                 // Simulate UiRoot upper_cache hit: clone full upper each frame.
                 let _ = lines.clone();

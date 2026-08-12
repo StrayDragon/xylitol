@@ -2174,6 +2174,7 @@ fn scrollback_thinking_fold_shows_ctrl_t_hint() {
     let mut root = UiRoot::new();
     let mut model = UiModel::new();
     model.entries.push(super::bridge::UiEntry::Thinking {
+        id: super::bridge::allocate_thinking_id(&[], "secret plan"),
         text: "secret plan".into(),
     });
     root.apply_ui_model(&model);
@@ -2194,6 +2195,217 @@ fn scrollback_thinking_fold_shows_ctrl_t_hint() {
     let open = root.render(80).join("\n");
     assert!(open.contains("secret plan"), "{open}");
     assert!(root.fold().thinking_expanded);
+}
+
+#[test]
+fn tools_per_block_override_and_alt_e_clears() {
+    use super::layout::UiRoot;
+    use super::widgets::FoldTarget;
+    use crossterm::event::{KeyCode, KeyEvent, KeyModifiers};
+    use xylitol_tui::InputEvent;
+
+    let mut root = UiRoot::new();
+    let mut model = UiModel::new();
+    model.entries.push(super::bridge::UiEntry::Tool {
+        id: "t1".into(),
+        name: "read".into(),
+        args_preview: "a.rs".into(),
+        tool_path: None,
+        write_content: None,
+        display_diff: None,
+        output: "body-one".into(),
+        is_error: false,
+        done: true,
+    });
+    model.entries.push(super::bridge::UiEntry::Tool {
+        id: "t2".into(),
+        name: "read".into(),
+        args_preview: "b.rs".into(),
+        tool_path: None,
+        write_content: None,
+        display_diff: None,
+        output: "body-two".into(),
+        is_error: false,
+        done: true,
+    });
+    root.apply_ui_model(&model);
+    let _ = root.render(80);
+    assert!(root.fold().tools_effective("t1"));
+    assert!(root.fold().tools_effective("t2"));
+
+    root.toggle_fold_target(FoldTarget::Tool("t1".into()));
+    assert!(!root.fold().tools_effective("t1"));
+    assert!(root.fold().tools_effective("t2"));
+    assert_eq!(root.fold().tools_overrides.len(), 1);
+
+    root.handle_input(InputEvent::Key(KeyEvent::new(
+        KeyCode::Char('e'),
+        KeyModifiers::ALT,
+    )));
+    assert!(root.fold().tools_overrides.is_empty());
+    // Default flipped from true → false; both follow default.
+    assert!(!root.fold().tools_effective("t1"));
+    assert!(!root.fold().tools_effective("t2"));
+}
+
+#[test]
+fn thinking_per_id_override_and_ctrl_t_clears() {
+    use super::layout::UiRoot;
+    use super::widgets::FoldTarget;
+    use crossterm::event::{KeyCode, KeyEvent, KeyModifiers};
+    use xylitol_tui::InputEvent;
+
+    let mut root = UiRoot::new();
+    let mut model = UiModel::new();
+    let t1 = "alpha thought".to_string();
+    let t2 = "beta thought".to_string();
+    let id1 = super::bridge::allocate_thinking_id(&[], &t1);
+    model.entries.push(super::bridge::UiEntry::Thinking {
+        id: id1.clone(),
+        text: t1,
+    });
+    let id2 = super::bridge::allocate_thinking_id(&model.entries, &t2);
+    model.entries.push(super::bridge::UiEntry::Thinking {
+        id: id2.clone(),
+        text: t2,
+    });
+    root.apply_ui_model(&model);
+    let _ = root.render(80);
+    assert!(!root.fold().thinking_effective(&id1));
+    assert!(!root.fold().thinking_effective(&id2));
+
+    root.toggle_fold_target(FoldTarget::Thinking(id1.clone()));
+    assert!(root.fold().thinking_effective(&id1));
+    assert!(!root.fold().thinking_effective(&id2));
+
+    root.handle_input(InputEvent::Key(KeyEvent::new(
+        KeyCode::Char('t'),
+        KeyModifiers::CONTROL,
+    )));
+    assert!(root.fold().thinking_overrides.is_empty());
+    assert!(root.fold().thinking_effective(&id1));
+    assert!(root.fold().thinking_effective(&id2));
+}
+
+#[test]
+fn single_tool_toggle_does_not_miss_unrelated_assistant() {
+    use super::layout::UiRoot;
+    use super::widgets::FoldTarget;
+
+    let mut root = UiRoot::new();
+    let mut model = UiModel::new();
+    for i in 0..8 {
+        model.entries.push(super::bridge::UiEntry::Assistant {
+            text: format!("history-{i}\n\nparagraph"),
+        });
+    }
+    model.entries.push(super::bridge::UiEntry::Tool {
+        id: "only".into(),
+        name: "bash".into(),
+        args_preview: "ls".into(),
+        tool_path: None,
+        write_content: None,
+        display_diff: None,
+        output: "out".into(),
+        is_error: false,
+        done: true,
+    });
+    root.apply_ui_model(&model);
+    let _ = root.render(80);
+    root.clear_scrollback_entry_misses_for_test();
+
+    root.toggle_fold_target(FoldTarget::Tool("only".into()));
+    let _ = root.render(80);
+    let misses = root.scrollback_entry_misses_for_test();
+    assert!(
+        misses <= 1,
+        "single-block toggle must not re-Markdown assistants; misses={misses}"
+    );
+}
+
+#[test]
+fn harness_mouse_triangle_toggles_tool_fold() {
+    use super::widgets::FoldTarget;
+    use crossterm::event::{KeyModifiers, MouseButton, MouseEvent, MouseEventKind};
+
+    let mut session = HostSession::new_product_ui(TestTerminal::new(80, 24));
+    let root = session.ui_root().expect("product ui").clone();
+    {
+        let mut model = session.ui_model().clone();
+        model.entries.push(super::bridge::UiEntry::Tool {
+            id: "click-me".into(),
+            name: "read".into(),
+            args_preview: "x.rs".into(),
+            tool_path: None,
+            write_content: None,
+            display_diff: None,
+            output: "tool-body-visible".into(),
+            is_error: false,
+            done: true,
+        });
+        *session.ui_model_mut() = model;
+        session.sync_ui_root_from_model();
+    }
+    session.step(HostEvent::Tick).unwrap();
+    // Force a paint so fold_hits populate.
+    session.tui.request_render(true);
+    session.step_paint_only().unwrap();
+
+    let hit = {
+        let r = root.borrow();
+        r.fold_hits()
+            .regions
+            .iter()
+            .find(|reg| matches!(&reg.target, FoldTarget::Tool(id) if id == "click-me"))
+            .cloned()
+    };
+    let Some(region) = hit else {
+        panic!(
+            "expected tool triangle hit region; regions={:?}",
+            root.borrow().fold_hits().regions
+        );
+    };
+    assert!(root.borrow().fold().tools_effective("click-me"));
+
+    let screen_row = region
+        .content_row
+        .saturating_sub(root.borrow().fold_hits().scroll_top) as u16;
+    let screen_col = region.col_start as u16;
+    session
+        .step(HostEvent::Input(InputEvent::Mouse(MouseEvent {
+            kind: MouseEventKind::Down(MouseButton::Left),
+            column: screen_col,
+            row: screen_row,
+            modifiers: KeyModifiers::NONE,
+        })))
+        .unwrap();
+    assert!(
+        !root.borrow().fold().tools_effective("click-me"),
+        "triangle click must toggle tools override"
+    );
+    session.tui.request_render(true);
+    session.step_paint_only().unwrap();
+    let after = root.borrow_mut().render(80).join("\n");
+    assert!(
+        !after.contains("tool-body-visible"),
+        "AO paint must collapse tool body after triangle toggle: {after}"
+    );
+
+    // Click body column (not triangle) must not toggle back.
+    let before = root.borrow().fold().tools_effective("click-me");
+    session
+        .step(HostEvent::Input(InputEvent::Mouse(MouseEvent {
+            kind: MouseEventKind::Down(MouseButton::Left),
+            column: (region.col_end + 4) as u16,
+            row: screen_row,
+            modifiers: KeyModifiers::NONE,
+        })))
+        .unwrap();
+    assert_eq!(
+        root.borrow().fold().tools_effective("click-me"),
+        before,
+        "non-triangle column must not toggle"
+    );
 }
 
 #[test]
@@ -2418,8 +2630,8 @@ fn scrollback_entry_cache_limits_misses_under_streaming() {
 fn streaming_assistant_reuses_stable_prefix_under_deltas() {
     use super::layout::{LayoutTheme, UiRoot};
     use super::widgets::{
-        GlyphSet, ScrollbackFold, ScrollbackPaintCache, find_stable_markdown_prefix_end,
-        render_scrollback,
+        FoldHitTable, GlyphSet, ScrollbackFold, ScrollbackPaintCache,
+        find_stable_markdown_prefix_end, render_scrollback,
     };
 
     let mut root = UiRoot::new();
@@ -2457,13 +2669,29 @@ fn streaming_assistant_reuses_stable_prefix_under_deltas() {
     let mut warm = ScrollbackPaintCache::default();
     let mut growing = UiModel::new();
     growing.streaming_assistant = "alpha para\n\nbeta para\n\n".into();
-    let _ = render_scrollback(&growing, glyphs, theme, fold, 80, &mut warm);
+    let _ = render_scrollback(
+        &growing,
+        glyphs,
+        theme,
+        &fold,
+        80,
+        &mut warm,
+        &mut FoldHitTable::default(),
+    );
     for i in 0..40 {
         growing.streaming_assistant.push_str(&format!("tok{i} "));
         if i % 10 == 9 {
             growing.streaming_assistant.push_str("\n\n");
         }
-        let _ = render_scrollback(&growing, glyphs, theme, fold, 80, &mut warm);
+        let _ = render_scrollback(
+            &growing,
+            glyphs,
+            theme,
+            &fold,
+            80,
+            &mut warm,
+            &mut FoldHitTable::default(),
+        );
     }
     assert_eq!(
         growing.streaming_assistant, model.streaming_assistant,
@@ -2474,9 +2702,25 @@ fn streaming_assistant_reuses_stable_prefix_under_deltas() {
         "warm cache full_parses={}",
         warm.streaming_assistant.full_parses
     );
-    let got = render_scrollback(&growing, glyphs, theme, fold, 80, &mut warm);
+    let got = render_scrollback(
+        &growing,
+        glyphs,
+        theme,
+        &fold,
+        80,
+        &mut warm,
+        &mut FoldHitTable::default(),
+    );
     let mut cold = ScrollbackPaintCache::default();
-    let expected = render_scrollback(&growing, glyphs, theme, fold, 80, &mut cold);
+    let expected = render_scrollback(
+        &growing,
+        glyphs,
+        theme,
+        &fold,
+        80,
+        &mut cold,
+        &mut FoldHitTable::default(),
+    );
     assert_eq!(
         got, expected,
         "warm incremental paint must match cold full Markdown(text+…)"

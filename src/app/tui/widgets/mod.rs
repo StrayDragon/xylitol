@@ -3,11 +3,13 @@
 //! Not a second component library — no differential engine, no generic Editor.
 //! Keep atoms in the package; put product scrollback / queue strip / glyphs here.
 
+mod fold_hit;
 mod glyphs;
 mod loaded_resources;
 mod queue;
 mod scrollback;
 
+pub use fold_hit::{FoldHitTable, FoldTarget};
 pub use glyphs::GlyphSet;
 pub use loaded_resources::render_loaded_resources;
 pub use queue::render_queue_strip;

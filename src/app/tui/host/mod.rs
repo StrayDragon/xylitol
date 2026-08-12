@@ -316,11 +316,42 @@ impl<T: Terminal> HostSession<T> {
         if interaction_mode.is_application_owned() {
             session.sync_dock_rows();
             session.tui.begin_application_owned_session();
+            session.install_fold_triangle_hit_priority();
             session.sync_dock_rows();
+            session.sync_fold_hit_viewport();
             session.tui.request_render(true);
             session.paint_dirty = true;
         }
         session
+    }
+
+    /// Wire fold-triangle Left Down → per-block toggle (ath33 / c2040).
+    fn install_fold_triangle_hit_priority(&mut self) {
+        let Some(ui_root) = self.ui_root.clone() else {
+            return;
+        };
+        self.tui
+            .set_transcript_hit_priority(Some(Box::new(move |col, row| {
+                let mut root = ui_root.borrow_mut();
+                let Some(target) = root.fold_hits().hit(col, row) else {
+                    return false;
+                };
+                root.toggle_fold_target(target);
+                true
+            })));
+    }
+
+    /// Keep fold hit table scroll/pane geometry aligned with AO viewport.
+    fn sync_fold_hit_viewport(&mut self) {
+        let Some(root) = self.ui_root.as_ref() else {
+            return;
+        };
+        let scroll_top = self.tui.application_owned_scroll_top();
+        let term_rows = self.tui.terminal.rows() as usize;
+        let dock = self.tui.dock_rows();
+        let transcript_rows = term_rows.saturating_sub(dock) as u16;
+        root.borrow_mut()
+            .sync_fold_hit_viewport(scroll_top, transcript_rows);
     }
 
     pub fn mode(&self) -> LayoutMode {
@@ -883,6 +914,9 @@ impl<T: Terminal> HostSession<T> {
                     {
                         self.sync_dock_rows();
                     }
+                    if self.tui.application_session_active() {
+                        self.sync_fold_hit_viewport();
+                    }
                 }
                 Ok(())
             }
@@ -902,6 +936,7 @@ impl<T: Terminal> HostSession<T> {
             Ok(painted) => {
                 if painted {
                     self.paint_dirty = false;
+                    self.sync_fold_hit_viewport();
                 }
                 Ok(())
             }
@@ -951,7 +986,14 @@ impl<T: Terminal> HostSession<T> {
         };
         if self.tui.application_session_active() {
             if let Some(root) = self.ui_root.as_ref() {
-                root.borrow_mut().sync_editor_screen_origin();
+                let mut root = root.borrow_mut();
+                root.sync_editor_screen_origin();
+                // Hit-priority path returns Rerender without component render;
+                // fold toggles must force a full AO project (ath33 / att20).
+                if root.take_fold_dirty() {
+                    drop(root);
+                    self.tui.mark_ao_components_stale();
+                }
             }
             // ptim15 → ath31: library edge → chrome «Copied» (not Error: toast).
             if self.tui.take_copy_notice()
