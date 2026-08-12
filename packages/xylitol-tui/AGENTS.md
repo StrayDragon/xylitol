@@ -22,7 +22,7 @@
 | 角色 | 路径 | 说明 |
 |---|---|---|
 | **产品视觉 SSOT** | app `DESIGN.md` + `design/*.md` + `design/playground/` | 色板 / 壳 / 键位 / 组件呈现；静图 **仅**服务 `src/app/tui` |
-| **包交互演示** | `examples/agent_demo.rs`（Inline，`just demo-tui`）· `examples/agent_demo_alt.rs`（Mode B，`just demo-tui-alt-screen`） | 引擎 / 通用组件试跑；**≠** design playground；共享实现 `agent_demo_impl.rs` |
+| **包交互演示** | `examples/agent_demo.rs`（Inline，`just demo-tui`）· `examples/agent_demo_alt.rs`（ApplicationOwned / alt-screen，`just demo-tui-alt-screen`）· `examples/host_loop_application_owned.rs`（最小 host，`just demo-tui-host-loop`） | 引擎 / 通用组件试跑；**≠** design playground；共享实现 `agent_demo_impl.rs` |
 | **运行时便利** | `Palette`（本包） | 对齐 DESIGN 的 Dark/Light 快照；组件仍只收闭包 |
 
 ### `agent_demo` 硬边界（防误导）
@@ -78,8 +78,28 @@
 3. `render` → `Vec<String>`（ANSI）；不引入结构化 `StyledLine` 层。
 4. 主题用闭包注入；语义 token 映射在应用面（`src/app/tui/DESIGN.md`）。
 5. 终端 I/O / 输入硬切：见上表「底层 / 输入」。
-6. `enable_mouse_capture` / `XYLITOL_TUI_MOUSE`：**包 API + lab/e2e 保留**；默认不 Enable。产品 Mode A（inline）不得经 env 自动开 capture。Mode B（`InteractionMode::ApplicationOwned`）经 `begin_application_owned_session` 挂 `ModeBRuntime`（ScrollView 视口 + 选区 + dock 排除 + OSC52），进 alt-buffer + mouse（c2070 / `package-tui-interaction-modes`）。Mode A 文档 MUST NOT 暗示「开了 mouse = 原生选区 + 应用点选」兼得。
+6. `enable_mouse_capture` / `XYLITOL_TUI_MOUSE`：**包 API + lab/e2e 保留**；默认不 Enable。产品 **Inline** 不得经 env 自动开 capture。**ApplicationOwned**（alt-screen）经 `begin_application_owned_session` 挂 `ApplicationOwnedRuntime`（ScrollView 视口 + 选区 + dock 排除 + OSC52），进 alt-buffer + mouse（c2070 / `package-tui-interaction-modes`）。Inline 文档 MUST NOT 暗示「开了 mouse = 原生选区 + 应用点选」兼得。
 7. 默认隐藏硬件光标；有 `CURSOR_MARKER` 时可相对定位 IME，但不得无条件 `show_cursor`。
+8. **命名（代码 SSOT）**：交互模式与 ApplicationOwned API **MUST** 用自解释标识符——`InteractionMode::{Inline,ApplicationOwned}`、`ApplicationOwnedTui` / `ApplicationOwnedRuntime`、`set_dock_rows` / `dock_rows_hint`、`set_transcript_copy_on_release`、`set_append_session_to_main_scrollback_on_exit`、`finish_application_owned`。**禁止**在新/改代码里引入 `mode_a` / `mode_b` / `ModeA` / `ModeB` / `*_mode_b_*` 符号（含 pub API、字段、测试函数名）。口语「Mode A/B」仅允许出现在对照旧笔记时，且 MUST 立刻映射到 Inline / ApplicationOwned。勿加兼容别名——一步到位改调用点。
+
+## ApplicationOwned host checklist（ptim14）
+
+产品 / 自写 host **MUST** 走此清单；**禁止**把 `agent_demo_impl` 私有坐标算术当 SSOT。样板：`examples/host_loop_application_owned.rs`（`just demo-tui-host-loop`）。
+
+| 步骤 | API |
+|---|---|
+| 构造 | `ApplicationOwnedTui::new(term)` 或 `TUI::with_interaction_mode(..., ApplicationOwned)` |
+| 开会话 | `terminal.start()` → `begin_application_owned_session` / `ApplicationOwnedTui::begin` |
+| 环 | host 驱动 `dispatch_event` → `idle_tick` → `try_render` / `render_now`（**勿**产品路径调 `TUI::start()`） |
+| dock | 每帧（或 dock 变）`set_dock_rows`；组件可 `dock_rows_hint` |
+| Editor 命中 | `editor_screen_origin(term_rows, dock_rows, rows_above_editor)` → `Editor::set_screen_origin` → 传 **绝对** screen `InputEvent::Mouse`（Editor 内减 origin） |
+| dock 过滤 | `mouse_in_dock`；按下始于 dock 不启 transcript 选区（引擎已做）；Editor 仅收 dock/拖选中事件 |
+| 复制提示 | `take_copy_notice` / `copy_notice_active` → 壳层短提示（勿写 transcript） |
+| Editor OSC52 | `Editor::take_pending_clipboard` → `enqueue_clipboard_sequences` |
+| 退出 | `finish_application_owned`（默认把会话追加进主屏 scrollback；`set_append_session_to_main_scrollback_on_exit(false)` 可关）；Inline 用 `finish_inline` |
+| 挂起 | `with_terminal_suspended` — ApplicationOwned 自动重进 alt+mouse（ptim11） |
+
+入口类型：`ApplicationOwnedTui`（Deref→`TUI`）。布局纯函数：`editor_screen_origin` / `mouse_in_dock`。
 
 ## 验证（本文件 = 人类/agent 验证分工 SSOT）
 
@@ -95,7 +115,7 @@
 
 **分工（勿混）**
 
-- **包 E2E / `agent_demo*`**：引擎 + 通用组件 + 真终端协议；就绪探针 `DEMO_READY_NEEDLE`（`tests/tui_e2e.rs`，footer `theme:dark`——勿用易滚出视口的标题行）。PTY 上 plate/settings 宜用 `XYLITOL_AGENT_DEMO_INITIAL_PROMPT` + 足够行高；tmux 用 `C-p` / `C-s`。**文案 / chrome 标签以 demo 自身为准**，勿按产品词表强改。Mode B：example `agent_demo_alt` / `just demo-tui-alt-screen`；PTY 最小闸见 `pty_agent_demo_alt_mode_b_*`。
+- **包 E2E / `agent_demo*`**：引擎 + 通用组件 + 真终端协议；就绪探针 `DEMO_READY_NEEDLE`（`tests/tui_e2e.rs`，footer `theme:dark`——勿用易滚出视口的标题行）。PTY 上 plate/settings 宜用 `XYLITOL_AGENT_DEMO_INITIAL_PROMPT` + 足够行高；tmux 用 `C-p` / `C-s`。**文案 / chrome 标签以 demo 自身为准**，勿按产品词表强改。ApplicationOwned：example `agent_demo_alt` / `just demo-tui-alt-screen`；PTY 最小闸见 `pty_agent_demo_alt_*`。
 - **产品 TUI**：Driver / bridge / layout / 键位 → 应用面 harness（`src/app/tui`）。层 5 另有 **`pty_product_*` Fake smoke**（隔离 HOME/config，不绑真 LLM）；日常仍勿把满闸默认绑完整配置/真 API。
 - 层 5 全 `#[ignore]`；缺 tmux 时用 `just test-tui-e2e-pty`。操作细则：`test-tui-harness` skill（how-to，非第二份边界文）。
 

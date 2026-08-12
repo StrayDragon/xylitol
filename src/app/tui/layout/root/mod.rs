@@ -151,7 +151,7 @@ pub struct UiRoot {
     /// Terminal rows from host (Chrome Footprint / atc23); soft default until first sync.
     term_rows: usize,
     /// Last paint: toast + status + editor + footer row count (Mode B dock).
-    last_mode_b_dock_rows: usize,
+    last_dock_rows: usize,
     /// Rows in toast / status / editor from last paint (Mode B mouse origin).
     last_toast_rows: usize,
     last_status_rows: usize,
@@ -244,7 +244,7 @@ impl UiRoot {
             upper_cache_lines: Vec::new(),
             scrollback_paint: ScrollbackPaintCache::default(),
             term_rows: 24,
-            last_mode_b_dock_rows: 8,
+            last_dock_rows: 8,
             last_toast_rows: 0,
             last_status_rows: 1,
             last_editor_rows: 3,
@@ -398,8 +398,8 @@ impl UiRoot {
     }
 
     /// Mode B dock rows from the last [`Component::render`] (toast+status+editor+footer).
-    pub(crate) fn last_mode_b_dock_rows(&self) -> usize {
-        self.last_mode_b_dock_rows.max(1)
+    pub(crate) fn last_dock_rows(&self) -> usize {
+        self.last_dock_rows.max(1)
     }
 
     /// Mouse/key paint policy for the focused editor (Mode B selection / typing).
@@ -431,7 +431,7 @@ impl UiRoot {
     }
 
     /// Pre-paint estimate when no frame has measured dock yet.
-    pub(crate) fn estimate_mode_b_dock_rows(&self) -> usize {
+    pub(crate) fn estimate_dock_rows(&self) -> usize {
         // Queue lives in the upper/transcript band; dock is lower chrome only.
         crate::app::tui::layout::reserved_lower_chrome(
             self.status_busy,
@@ -923,15 +923,14 @@ impl UiRoot {
         }
     }
 
-    /// Update Editor screen origin from last dock measure (Mode B mouse → ptim13).
+    /// Update Editor screen origin from last dock measure (Mode B mouse → ptim13/14).
     pub(crate) fn sync_editor_screen_origin(&mut self) {
-        let dock = self.last_mode_b_dock_rows.max(1);
-        let dock_top = self.term_rows.saturating_sub(dock);
-        let origin = dock_top
-            .saturating_add(self.last_toast_rows)
-            .saturating_add(self.last_status_rows);
-        self.editor
-            .set_screen_origin(origin.min(u16::MAX as usize) as u16, 0);
+        let (row, col) = xylitol_tui::editor_screen_origin(
+            self.term_rows.min(u16::MAX as usize) as u16,
+            self.last_dock_rows,
+            self.last_toast_rows.saturating_add(self.last_status_rows),
+        );
+        self.editor.set_screen_origin(row, col);
     }
 
     /// Pending steer / follow-up strip above status (pi `pendingMessagesContainer`).

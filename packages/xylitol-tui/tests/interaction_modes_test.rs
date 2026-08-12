@@ -22,14 +22,14 @@ impl Component for StaticLines {
 }
 
 #[test]
-fn default_tui_is_mode_a_inline() {
+fn default_tui_is_inline() {
     let tui = TUI::new(LoggingVirtualTerminal::new(40, 12));
     assert_eq!(tui.interaction_mode(), InteractionMode::Inline);
     assert!(!tui.application_session_active());
 }
 
 #[test]
-fn mode_b_begin_end_records_alt_and_mouse() {
+fn application_owned_begin_end_records_alt_and_mouse() {
     let mut tui = TUI::with_interaction_mode(
         LoggingVirtualTerminal::new(40, 12),
         InteractionMode::ApplicationOwned,
@@ -51,7 +51,7 @@ fn mode_b_begin_end_records_alt_and_mouse() {
 }
 
 #[test]
-fn mode_b_finish_inline_tears_down_without_leak() {
+fn application_owned_finish_inline_tears_down_without_leak() {
     let mut tui = TUI::with_interaction_mode(
         LoggingVirtualTerminal::new(40, 12),
         InteractionMode::ApplicationOwned,
@@ -68,7 +68,7 @@ fn mode_b_finish_inline_tears_down_without_leak() {
 }
 
 #[test]
-fn mode_a_begin_application_is_noop() {
+fn inline_begin_application_owned_is_noop() {
     let mut tui = TUI::new(LoggingVirtualTerminal::new(40, 12));
     tui.terminal.start();
     tui.begin_application_owned_session();
@@ -146,12 +146,12 @@ fn selection_scroll_and_dock_exclude_integration() {
 }
 
 #[test]
-fn mode_b_paint_caps_at_terminal_height() {
+fn application_owned_paint_caps_at_terminal_height() {
     let mut tui = TUI::with_interaction_mode(
         LoggingVirtualTerminal::new(40, 8),
         InteractionMode::ApplicationOwned,
     );
-    tui.set_mode_b_dock_rows(2);
+    tui.set_dock_rows(2);
     tui.add_child(Box::new(StaticLines {
         lines: (0..20).map(|i| format!("L{i}")).collect(),
     }));
@@ -164,12 +164,12 @@ fn mode_b_paint_caps_at_terminal_height() {
 }
 
 #[test]
-fn mode_b_selection_emits_osc52_outside_batch() {
+fn application_owned_selection_emits_osc52_outside_batch() {
     let mut tui = TUI::with_interaction_mode(
         LoggingVirtualTerminal::new(40, 10),
         InteractionMode::ApplicationOwned,
     );
-    tui.set_mode_b_dock_rows(2);
+    tui.set_dock_rows(2);
     tui.add_child(Box::new(StaticLines {
         lines: vec![
             "hello".into(),
@@ -218,7 +218,7 @@ fn mode_b_selection_emits_osc52_outside_batch() {
 }
 
 #[test]
-fn mode_b_suspend_restores_alt_and_mouse() {
+fn application_owned_suspend_restores_alt_and_mouse() {
     let mut tui = TUI::with_interaction_mode(
         LoggingVirtualTerminal::new(40, 12),
         InteractionMode::ApplicationOwned,
@@ -238,12 +238,12 @@ fn mode_b_suspend_restores_alt_and_mouse() {
 }
 
 #[test]
-fn mode_b_wheel_scrolls_app_viewport() {
+fn application_owned_wheel_scrolls_app_viewport() {
     let mut tui = TUI::with_interaction_mode(
         LoggingVirtualTerminal::new(40, 6),
         InteractionMode::ApplicationOwned,
     );
-    tui.set_mode_b_dock_rows(2);
+    tui.set_dock_rows(2);
     tui.add_child(Box::new(StaticLines {
         lines: (0..20).map(|i| format!("L{i:02}")).collect(),
     }));
@@ -279,12 +279,12 @@ fn mode_b_wheel_scrolls_app_viewport() {
 }
 
 #[test]
-fn mode_b_copy_notice_armed_on_release_and_clears() {
+fn application_owned_copy_notice_armed_on_release_and_clears() {
     let mut tui = TUI::with_interaction_mode(
         LoggingVirtualTerminal::new(40, 8),
         InteractionMode::ApplicationOwned,
     );
-    tui.set_mode_b_dock_rows(2);
+    tui.set_dock_rows(2);
     tui.add_child(Box::new(StaticLines {
         lines: vec![
             "hello world".into(),
@@ -359,12 +359,12 @@ fn mode_b_copy_notice_armed_on_release_and_clears() {
 }
 
 #[test]
-fn mode_b_finish_dumps_transcript_to_main_screen() {
+fn application_owned_finish_dumps_transcript_to_main_screen() {
     let mut tui = TUI::with_interaction_mode(
         LoggingVirtualTerminal::new(40, 8),
         InteractionMode::ApplicationOwned,
     );
-    tui.set_mode_b_dock_rows(2);
+    tui.set_dock_rows(2);
     tui.add_child(Box::new(StaticLines {
         lines: (0..10).map(|i| format!("DUMP{i}")).collect(),
     }));
@@ -373,13 +373,38 @@ fn mode_b_finish_dumps_transcript_to_main_screen() {
     tui.request_render(true);
     tui.render_now().expect("seed");
     tui.terminal.clear_writes();
-    tui.finish_inline();
+    tui.finish_application_owned();
     assert!(!tui.application_session_active());
     assert!(!tui.terminal.alternate_screen_active());
     let raw = tui.terminal.all_writes();
     assert!(
         raw.contains("DUMP0") && raw.contains("DUMP9"),
         "exit must dump transcript onto main screen, got: {raw:?}"
+    );
+}
+
+#[test]
+fn application_owned_finish_can_skip_appending_session_to_main_scrollback() {
+    let mut tui = TUI::with_interaction_mode(
+        LoggingVirtualTerminal::new(40, 8),
+        InteractionMode::ApplicationOwned,
+    );
+    tui.set_append_session_to_main_scrollback_on_exit(false);
+    tui.set_dock_rows(2);
+    tui.add_child(Box::new(StaticLines {
+        lines: (0..10).map(|i| format!("NODUMP{i}")).collect(),
+    }));
+    tui.terminal.start();
+    tui.begin_application_owned_session();
+    tui.request_render(true);
+    tui.render_now().expect("seed");
+    tui.terminal.clear_writes();
+    tui.finish_application_owned();
+    assert!(!tui.application_session_active());
+    let raw = tui.terminal.all_writes();
+    assert!(
+        !raw.contains("NODUMP0") && !raw.contains("NODUMP9"),
+        "opting out must not append session lines to main scrollback, got: {raw:?}"
     );
 }
 
@@ -414,13 +439,13 @@ impl Component for DockMouseProbe {
 }
 
 #[test]
-fn mode_b_dock_down_falls_through_to_focused_component() {
+fn application_owned_dock_down_falls_through_to_focused_component() {
     let downs = std::rc::Rc::new(std::cell::Cell::new(0u32));
     let mut tui = TUI::with_interaction_mode(
         LoggingVirtualTerminal::new(40, 8),
         InteractionMode::ApplicationOwned,
     );
-    tui.set_mode_b_dock_rows(2);
+    tui.set_dock_rows(2);
     tui.add_child(Box::new(DockMouseProbe {
         downs: downs.clone(),
     }));

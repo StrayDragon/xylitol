@@ -34,8 +34,8 @@ impl Component for SharedUiRoot {
         Component::take_pending_clipboard(&mut *self.0.borrow_mut())
     }
 
-    fn mode_b_dock_rows_hint(&self) -> Option<usize> {
-        Some(self.0.borrow().last_mode_b_dock_rows())
+    fn dock_rows_hint(&self) -> Option<usize> {
+        Some(self.0.borrow().last_dock_rows())
     }
 
     fn wants_pointer_motion(&self) -> bool {

@@ -336,7 +336,7 @@ fn write_fake_project_config(project_root: &Path) -> std::io::Result<()> {
     std::fs::create_dir_all(&dir)?;
     std::fs::write(
         dir.join("config.yaml"),
-        "models:\n  default_model: fake\n  models:\n    fake:\n      provider: fake\n      model: fake-model\n",
+        "models:\n  default_model: fake\n  models:\n    fake:\n      provider: fake\n      model: fake-model\n      api_key: fake-e2e\n",
     )?;
     Ok(())
 }
@@ -423,17 +423,23 @@ fn pty_bracketed_paste_enabled_at_start() {
 fn pty_agent_demo_submit_flow_survives_enter() {
     let mut session = PtySession::spawn_example("agent_demo", 172, 40).expect("spawn agent_demo");
     session
-        .wait_for(crate::DEMO_READY_NEEDLE, Duration::from_secs(60), 172, 40)
+        .wait_for_idle(
+            crate::DEMO_READY_NEEDLE,
+            "Drafting",
+            Duration::from_secs(60),
+            172,
+            40,
+        )
         .expect("agent_demo should render");
     // Ctrl+U clear (0x15), then CJK — match tmux driver semantics.
     session
         .send_keys("\x15修复 footer 宽度预算并补一个 emoji smoke 🙂")
         .expect("replace editor text with CJK");
     session.send_keys("\r").expect("submit editor input");
-    let screen = session
-        .wait_for("修复 footer", Duration::from_secs(10), 172, 40)
-        .expect("submitted CJK text should appear");
-    assert!(!screen.text().trim().is_empty());
+    // Differential CSI can leave CapturedScreen stale; assert via raw PTY bytes.
+    session
+        .wait_for_raw("修复 footer", Duration::from_secs(10))
+        .expect("submitted CJK text should appear in PTY stream");
 }
 
 #[test]
@@ -606,7 +612,7 @@ fn pty_agent_demo_mouse_opt_in_enable_then_exit() {
 /// disables mouse, and dumps transcript marker onto the main buffer stream.
 #[test]
 #[ignore = "E2E: spawns a real PTY + cargo build; run via `just test-tui-e2e-pty`"]
-fn pty_agent_demo_alt_mode_b_alt_mouse_and_exit_dump() {
+fn pty_agent_demo_alt_alt_mouse_and_exit_dump() {
     const COLS: u16 = 100;
     const ROWS: u16 = 30;
     const DUMP_MARK: &str = "c2070-mode-b-pty-dump-marker";
@@ -662,7 +668,7 @@ fn pty_agent_demo_alt_mode_b_alt_mouse_and_exit_dump() {
 /// c2070 Mode B: SGR drag on transcript should emit OSC52 copy-on-release.
 #[test]
 #[ignore = "E2E: spawns a real PTY + cargo build; run via `just test-tui-e2e-pty`"]
-fn pty_agent_demo_alt_mode_b_drag_select_osc52() {
+fn pty_agent_demo_alt_drag_select_osc52() {
     const COLS: u16 = 100;
     const ROWS: u16 = 30;
     let mut session = PtySession::spawn_demo_alt(COLS, ROWS).expect("spawn agent_demo_alt");
@@ -698,7 +704,7 @@ fn pty_agent_demo_alt_mode_b_drag_select_osc52() {
 /// (smoke — sticky persistence is covered by package unit tests).
 #[test]
 #[ignore = "E2E: spawns a real PTY + cargo build; run via `just test-tui-e2e-pty`"]
-fn pty_agent_demo_alt_mode_b_wheel_smoke() {
+fn pty_agent_demo_alt_wheel_smoke() {
     const COLS: u16 = 100;
     const ROWS: u16 = 30;
     let mut session = PtySession::spawn_demo_alt(COLS, ROWS).expect("spawn agent_demo_alt");
@@ -736,7 +742,7 @@ fn pty_agent_demo_alt_mode_b_wheel_smoke() {
 /// c2070 Mode B H4: drag from transcript into dock still copy-on-release (clamp).
 #[test]
 #[ignore = "E2E: spawns a real PTY + cargo build; run via `just test-tui-e2e-pty`"]
-fn pty_agent_demo_alt_mode_b_dock_clamp_copy() {
+fn pty_agent_demo_alt_dock_clamp_copy() {
     const COLS: u16 = 100;
     const ROWS: u16 = 30;
     let mut session = PtySession::spawn_demo_alt(COLS, ROWS).expect("spawn agent_demo_alt");
@@ -766,7 +772,7 @@ fn pty_agent_demo_alt_mode_b_dock_clamp_copy() {
 /// c2070 ptim11: Ctrl+G with instant `$EDITOR` leave/re-enter alt + mouse.
 #[test]
 #[ignore = "E2E: spawns a real PTY + cargo build; run via `just test-tui-e2e-pty`"]
-fn pty_agent_demo_alt_mode_b_suspend_resume_restores_alt() {
+fn pty_agent_demo_alt_suspend_resume_restores_alt() {
     const COLS: u16 = 100;
     const ROWS: u16 = 30;
     let mut session = PtySession::spawn_example_with_env(
@@ -826,9 +832,10 @@ fn pty_product_fake_bang_echo_ok() {
     session
         .send_keys("\x15!echo c669-bang-ok\r")
         .expect("submit bang echo");
+    // Tall welcome/skills + differential CSI → CapturedScreen stale; use raw.
     session
-        .wait_for("c669-bang-ok", Duration::from_secs(30), COLS, ROWS)
-        .expect("bang output should appear in scrollback");
+        .wait_for_raw("c669-bang-ok", Duration::from_secs(30))
+        .expect("bang output should appear in PTY stream");
     session.send_keys("\x15/exit\r").expect("submit /exit");
     let code = session
         .wait_exit(Duration::from_secs(30))
@@ -847,7 +854,7 @@ fn pty_product_fake_bang_esc_cancelled() {
         .send_keys("\x15!sleep 30\r")
         .expect("submit hanging bang");
     session
-        .wait_for("sleep 30", Duration::from_secs(15), COLS, ROWS)
+        .wait_for_raw("sleep 30", Duration::from_secs(15))
         .expect("bang command should uplink");
     // Brief settle so execute_bash is in-flight, then Esc.
     session.drain(Duration::from_millis(400));
@@ -871,7 +878,7 @@ fn pty_product_fake_bang_second_hard_reject() {
         .send_keys("\x15!sleep 30\r")
         .expect("submit first bang");
     session
-        .wait_for("sleep 30", Duration::from_secs(15), COLS, ROWS)
+        .wait_for_raw("sleep 30", Duration::from_secs(15))
         .expect("first bang uplink");
     session.drain(Duration::from_millis(400));
     session

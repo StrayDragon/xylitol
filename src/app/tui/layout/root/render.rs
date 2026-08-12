@@ -238,7 +238,7 @@ impl Component for UiRoot {
         self.last_toast_rows = toast.len();
         self.last_status_rows = status.len();
         self.last_editor_rows = editor.len();
-        self.last_mode_b_dock_rows = toast
+        self.last_dock_rows = toast
             .len()
             .saturating_add(status.len())
             .saturating_add(editor.len())

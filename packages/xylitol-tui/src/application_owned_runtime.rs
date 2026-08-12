@@ -12,7 +12,7 @@ use crossterm::event::MouseEvent;
 pub const COPY_NOTICE_TTL: Duration = Duration::from_millis(2000);
 
 /// Per-session Mode B state (created on begin, dropped on end).
-pub struct ModeBRuntime {
+pub struct ApplicationOwnedRuntime {
     pub scroll: ScrollView,
     pub selection: SelectionController,
     /// Bottom dock rows excluded from transcript selection (editor/status/footer…).
@@ -21,7 +21,7 @@ pub struct ModeBRuntime {
     pub pending_clipboard: Vec<String>,
     /// Stick to the latest content unless the user scrolls away (wheel / edge).
     follow_bottom: bool,
-    /// Last dock lines from [`Self::project_frame`] (for exit dump onto main screen).
+    /// Last dock lines from [`Self::project_frame`] (for main-scrollback append on exit).
     last_dock_lines: Vec<String>,
     /// Edge signal: set on successful copy-on-release until [`Self::take_copy_notice`].
     pending_copy_notice: bool,
@@ -29,7 +29,7 @@ pub struct ModeBRuntime {
     copy_notice_until: Option<Instant>,
 }
 
-impl ModeBRuntime {
+impl ApplicationOwnedRuntime {
     pub fn new(dock_rows: usize) -> Self {
         Self {
             scroll: ScrollView::new(1),
@@ -51,8 +51,9 @@ impl ModeBRuntime {
         self.selection.copy_on_release = on;
     }
 
-    /// Full transcript + last dock — dumped to main-screen scrollback on Mode B exit.
-    pub fn exit_dump_lines(&self) -> Vec<String> {
+    /// Full transcript + last dock — written to main-screen scrollback when
+    /// leaving Mode B if [`crate::TUI::append_session_to_main_scrollback_on_exit`].
+    pub fn session_lines_for_main_scrollback(&self) -> Vec<String> {
         let mut lines = self.scroll.lines().to_vec();
         lines.extend(self.last_dock_lines.iter().cloned());
         lines
@@ -202,8 +203,8 @@ impl ClipboardSink for CollectOsc52Sink<'_> {
 
 /// Test helper: construct a Mode B runtime (selection/copy covered by selection tests).
 #[cfg(test)]
-pub fn test_runtime(dock_rows: usize) -> ModeBRuntime {
-    ModeBRuntime::new(dock_rows)
+pub fn test_runtime(dock_rows: usize) -> ApplicationOwnedRuntime {
+    ApplicationOwnedRuntime::new(dock_rows)
 }
 
 #[cfg(test)]
@@ -222,7 +223,7 @@ mod tests {
 
     #[test]
     fn project_frame_caps_height_and_keeps_dock() {
-        let mut mb = ModeBRuntime::new(2);
+        let mut mb = ApplicationOwnedRuntime::new(2);
         let full: Vec<String> = (0..20).map(|i| format!("L{i}")).collect();
         let paint = mb.project_frame(&full, 8);
         assert_eq!(paint.len(), 8);
@@ -234,7 +235,7 @@ mod tests {
 
     #[test]
     fn wheel_scroll_persists_across_project_frame() {
-        let mut mb = ModeBRuntime::new(2);
+        let mut mb = ApplicationOwnedRuntime::new(2);
         let full: Vec<String> = (0..20).map(|i| format!("L{i}")).collect();
         let _ = mb.project_frame(&full, 8);
         assert!(mb.scroll.at_bottom());
@@ -256,7 +257,7 @@ mod tests {
 
     #[test]
     fn copy_on_release_signals_notice_empty_does_not() {
-        let mut mb = ModeBRuntime::new(2);
+        let mut mb = ApplicationOwnedRuntime::new(2);
         let full: Vec<String> = vec![
             "hello world".into(),
             "second".into(),
@@ -283,7 +284,7 @@ mod tests {
 
     #[test]
     fn copy_disabled_does_not_signal_notice() {
-        let mut mb = ModeBRuntime::new(2);
+        let mut mb = ApplicationOwnedRuntime::new(2);
         mb.set_copy_on_release(false);
         let full: Vec<String> = vec!["abcd".into(), "e".into(), "s".into(), "i".into()];
         let _ = mb.project_frame(&full, 6);
@@ -296,7 +297,7 @@ mod tests {
 
     #[test]
     fn copy_notice_expires_on_tick() {
-        let mut mb = ModeBRuntime::new(1);
+        let mut mb = ApplicationOwnedRuntime::new(1);
         mb.signal_copy_notice();
         // Force an already-expired deadline.
         mb.copy_notice_until = Some(Instant::now() - Duration::from_millis(1));

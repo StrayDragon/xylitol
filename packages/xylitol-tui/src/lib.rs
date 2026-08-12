@@ -1,3 +1,5 @@
+pub mod application_owned;
+pub mod application_owned_runtime;
 pub mod autocomplete;
 pub mod autocomplete_fd;
 pub mod clock;
@@ -10,7 +12,6 @@ pub mod interaction_mode;
 pub mod keybindings;
 pub mod keys;
 pub mod kill_ring;
-pub mod mode_b;
 pub mod paste_burst;
 pub mod scroll_view;
 pub mod selection;
@@ -23,6 +24,8 @@ pub mod undo_stack;
 pub mod utils;
 pub mod word_navigation;
 
+pub use application_owned::{ApplicationOwnedTui, editor_screen_origin, mouse_in_dock};
+pub use application_owned_runtime::COPY_NOTICE_TTL;
 pub use autocomplete::{
     AutocompleteItem, AutocompleteProvider, AutocompleteSuggestions, CombinedAutocompleteProvider,
     DebouncedAutocomplete, SlashCommand, extract_at_prefix, extract_dollar_prefix,
@@ -78,7 +81,6 @@ pub use keys::{
     KeyId, decode_printable_key, is_key_release, is_key_repeat, matches_key, matches_key_event,
     parse_key, printable_from_key_event, set_kitty_protocol_active, with_kitty_protocol_active,
 };
-pub use mode_b::COPY_NOTICE_TTL;
 pub use paste_burst::PasteBurst;
 pub use scroll_view::ScrollView;
 pub use selection::{

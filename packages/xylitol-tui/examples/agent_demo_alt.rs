@@ -1,4 +1,4 @@
-//! Package interactive harness — **ApplicationOwned** (Mode B / alt-screen) entry.
+//! Package interactive harness — **ApplicationOwned** (alt-screen) entry.
 //!
 //! Shared app lives in [`agent_demo_impl`]. Inline uses `agent_demo`.
 //! Do **not** switch modes via `XYLITOL_AGENT_DEMO_MODE`.

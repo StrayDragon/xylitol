@@ -6,6 +6,8 @@ rust-version = "1.97.1"
 license = "MIT"
 description = "Terminal UI with differential rendering (fork derived from pi-tui; diverges for xylitol)"
 repository = "https://github.com/straydragon/xylitol"
+# Shared `agent_demo_impl.rs` lives under examples/ but is not a binary entry.
+autoexamples = false
 
 
 [dependencies]
@@ -41,3 +43,7 @@ path = "examples/agent_demo.rs"
 [[example]]
 name = "agent_demo_alt"
 path = "examples/agent_demo_alt.rs"
+
+[[example]]
+name = "host_loop_application_owned"
+path = "examples/host_loop_application_owned.rs"
