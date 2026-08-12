@@ -1,7 +1,8 @@
 # Tasks: c2070-add-package-tui-dual-interaction-modes
 
-> 验收一致：每条 task 完成 = 对应 seam 绿 + 不越界进 `blocks`（fold / viewport slice）。
+> 验收一致：每条 task 完成 = 对应 seam 绿 + 不越界进 `blocks`（fold / viewport slice / **产品 ath30**）。
 > **人验（2026-08-11）**：`just demo-tui-alt-screen` — 滚轮 sticky、退出 dump、dock 夹边续选手感 **PASS**。
+> **范围钉（2026-08-12）**：本分支 **仅** 库基础极致化（双入口、ptim14、API 质量）。**产品 B-only / ath30** → [`c2071`](../c2071-update-app-tui-host-mode-b-only/)。
 
 ## 进度总览
 
@@ -12,7 +13,7 @@
 | 4 transcript 选区 / dock | ✅（含人验） | ptim03–07, 12 |
 | 5 Editor 独立多行选区 | ✅ | ptim13 |
 | 6 复制成功短提示 | ✅ 库+demo+产品 ath31 | **ptim15** + ath31 |
-| 7 库 host seam / 收口 | ⬜ 战略修订后重开 | ptim14、ath30→B-only、demo 拆、e2e |
+| 7 库双入口 / host seam 收口 | ⬜ **本分支主战场** | ptim14、优雅 API、结构债 |
 
 ---
 
@@ -61,22 +62,29 @@
 - [x] 6.3 产品 host：Mode B 下将 copy-notice 接到壳层短提示（ath31）；**MUST NOT** 滥用 `Error: ` 前缀的 chrome-toast 拒闸形态冒充成功确认（可用独立 info 槽或扩展非 Error toast——design 钉落点）
 - [x] 6.4 单测：复制成功 → notice 置位/清除；人验 demo 可见「已复制」类短文案（单测 ✅；人验 H7 待）
 
-**验收文案（建议固定）**：`Copied` / `已复制`（库信号 + demo 可先用英文）。**产品落点 / 误触策略**：延后到 `src/app/tui` Mode B 集成再钉（2026-08-12 human）；本 change 不阻塞。
+**验收文案（建议固定）**：`Copied` / `已复制`（库信号 + demo 可先用英文）。**产品落点 / 误触策略**：延后到 `src/app/tui` Mode B 集成（[`c2071`](../c2071-update-app-tui-host-mode-b-only/)）再钉；本 change 不阻塞。
 
-## 7. 产品闸与库 host 收口 — ⬜（战略修订后重开）
+## 7. 库双入口 / host seam 收口 — ⬜（本分支主战场）
 
-- [x] 7.1 Host 换栈 / dock API 已存在（历史默认 A；**待改 B-only**）
-- [x] 7.2 包测 + host harness；Mode B 人验路径（env demo 过渡）
-- [ ] 7.3 **ptim14 下游接入清单**（AGENTS / package）+ 产品固定 B 接线说明
-- [ ] 7.4 `llman sdd validate --strict`；verify 双轴无 CRITICAL；确认未实现 blocks
-- [ ] 7.5 **Specs landing**：改写 `ath30` → 产品 MUST B-only（废「默认 A」）
+> **已迁出**：原 **7.5 产品 ath30 B-only** → [`c2071`](../c2071-update-app-tui-host-mode-b-only/)。本块只做库。
+
+- [x] 7.1 Host 换栈 / dock API 已存在（历史默认 A；产品默认翻转属 c2071）
+- [x] 7.2 包测 + host harness；Mode B 人验路径（env demo 过渡已废；两 example）
+- [ ] 7.3 **ptim14 库 host 接入清单**（AGENTS / package）：dock→Editor origin→mouse 单一路径；copy-notice 臂装；**产品可抄、禁止 demo 私有胶为 SSOT**
+- [ ] 7.4 `llman sdd validate --strict`；verify 双轴无 CRITICAL；确认未实现 blocks / 未改 ath30 产品默认
 - [x] 7.6 **Demo 拆分**：`agent_demo`（Inline）与 `agent_demo_alt`（Mode B）两文件 + `agent_demo_impl`；just 两 recipe；删除 `XYLITOL_AGENT_DEMO_MODE`
 - [x] 7.7 **Mode B e2e**（PTY）：alt/mouse/dump、OSC52 拖选、wheel smoke、dock clamp copy、suspend/resume；tmux Mode B 粗烟仍 SHOULD
-- [ ] 7.8 库双入口结构债：按 strict-review 收敛 `application_session_active` 散布（可分期，不挡 7.5–7.6）
+- [ ] 7.8 **双入口结构极致化**（本分支核心）：
+  - 收敛 `application_session_active` 散布；抽出 ApplicationOwned 会话/生命周期（或等价 type-state / 分治 facade）
+  - teardown：`finish_application_owned` vs `finish_inline`（命名与行为对齐）
+  - dump opt-out API（ptim02 MAY）
+  - 统一 Editor 命中契约（一条 remap 路径 + 包测）
+  - 面向扩展：fold hit 优先级钩子可挂；零多余运行时分支税；接口面小而稳（pub 边界审一遍）
+- [ ] 7.9 （可选）包 docs / examples 展示「优美 host 最小环」：`begin` → `dispatch` → `idle_tick` → `finish`，无 demo 特例泄漏
 
 ---
 
-## 人验清单（Mode B demo；拆文件后改 recipe 名）
+## 人验清单（Mode B demo）
 
 | # | 项 | 状态 |
 |---|---|---|
@@ -86,17 +94,15 @@
 | H4 | 拖选进输入区夹边续选、不反选 | ✅ |
 | H5 | 退出后主屏可上翻会话 dump | ✅ |
 | H6 | Editor 多行独立选区 | ✅ 2026-08-12（边沿滚已裁） |
-| H7 | 复制成功短提示 | ✅ demo；产品落点延后 |
+| H7 | 复制成功短提示 | ✅ demo；产品落点 → c2071 |
 
-## 实现顺序（2026-08-12 修订）
+## 实现顺序（2026-08-12 修订²）
 
 ```text
-战略文档钉死（本轮）
-  → strict review + e2e 调研落地
-  → 7.6 demo 两文件
-  → 7.7 Mode B 自动化（先 PTY MUST 集）
-  → 7.5 ath30 Specs landing + 产品 host 固定 B
-  → 7.3 接入清单文档
-  → 7.8 双入口结构收敛（可并行/后置）
+战略：产品 B-only → c2071（本分支不碰 ath30）
+  → 7.8 双入口结构 / 优雅 API（主）
+  → 7.3 ptim14 库 host 清单（与 7.8 可交错）
+  → 7.9 最小 host 环示例（可选）
   → 7.4 validate / verify
+  → archive c2070 → 另开分支做 c2071
 ```
