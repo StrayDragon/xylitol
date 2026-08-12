@@ -121,11 +121,22 @@ impl TypedTool for AskTool {
 /// `default_tools()` plus an `ask` tool bound to `gateway`.
 ///
 /// Used by TUI composition / MCP reload. Print MUST keep plain [`super::default_tools`].
+/// Prefer [`default_tools_with_ask_and_todo`] when a session-bound Todo gateway exists.
 pub fn default_tools_with_ask(
     gateway: Arc<dyn AskUserGateway>,
 ) -> Vec<Arc<dyn crate::protocol::ports::XyTool>> {
     let mut tools = super::default_tools();
     tools.push(Arc::new(AskTool::new(gateway)));
+    tools
+}
+
+/// Session-bound Todo builtins + TUI-only `ask`.
+pub fn default_tools_with_ask_and_todo(
+    ask: Arc<dyn AskUserGateway>,
+    todo: Arc<dyn crate::protocol::ports::AgentTodoGateway>,
+) -> Vec<Arc<dyn crate::protocol::ports::XyTool>> {
+    let mut tools = super::default_tools_with_todo(todo);
+    tools.push(Arc::new(AskTool::new(ask)));
     tools
 }
 
