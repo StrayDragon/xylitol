@@ -12,7 +12,7 @@ blocks:
 >
 > **c2020 提示**：点击折叠仍依赖已归档 **c2020** 的 mouse 管道。该管道**保留**；`XYLITOL_TUI_MOUSE` 仅为 lab/e2e。产品 inline **不开** capture——须在 **Mode B（c2070）** 落地后才有正式点折叠 UX。
 
-> **一句话**：点折叠头行标记（倒三角/三角）toggle **单块**；键盘 `Alt+E` 仍为 **全局** tools；本 change **自带** per-block 覆盖表（不再依赖已废弃的 c2030 leader）。
+> **一句话**：点折叠**三角列**（`▸`/`▾`）toggle **单块**（Tool/Diff/Ask/**Thinking per-id**）；`Alt+E`/`Ctrl+T` 改对应族 default 并清 overrides；自带覆盖表（弃 c2030 leader）。
 
 ## Why
 
@@ -33,18 +33,18 @@ blocks:
 
 ## What Changes
 
-1. **依赖 `c2020`**：产品在需要点击折叠时开 mouse capture；点击落在折叠标记（或整行头，propose 钉）→ toggle 对应 entry。
-2. **Per-block 覆盖表**（本 change 落地，原拟 c2030）：`tools_expanded` 为默认；`overrides[target]` 优先；全局 `Alt+E` **改 default 并清空 overrides**（避免「按了全局没反应」）。Target：Tool/Ask 用稳定 `id`；Diff 用内容指纹或合成键。
-3. **Hit-test 表**：render 维护 `fold_hit_regions`（行/列 → target）；优先标记列，避免点正文误触。复用/扩展 paint 时记录的头行命中（若有）。
-4. **Paint**：单块 toggle 进 fingerprint，自该 entry truncate（ath25）；**禁止**全历史 MD 重解析。
-5. **字形**：更新产品 `GlyphSet` 折叠标记；宽度 MUST 单列可视宽；Ascii 回退可读。
-6. **非目标**：键盘 leader/数字编号；拖拽选区；滚轮改 app scroll；L2/L3 段点击（`c2050`）；产品自管 scroll / 锚点视口（高成本另案）。
+1. **手势（已钉）**：`Left Down` 命中三角列 → 立即单块 toggle，吞按不启拖选；**拖选中忽略 fold**（latch）。复用 AO 已开 mouse + `set_transcript_hit_priority`。
+2. **范围（已钉）**：Tool / Diff / Ask / **Thinking**；Thinking MUST **per-id**（今日仅全局 `thinking_expanded` → 升 default+overrides）。
+3. **覆盖表**：tools 族与 thinking 族各自 `default + overrides`；`Alt+E` / `Ctrl+T` **改对应 default 并清空该族 overrides**；本波不拆 Alt+E×compaction。
+4. **Hit-test**：仅三角列 1 cell；render 维护 `fold_hit_regions`（绑 paint gen）。
+5. **Paint**：单块 toggle → ath25 局部 miss；禁止全历史 MD 重解析。
+6. **字形**：Unicode `▸`/`▾`；Ascii `>`/`v`；`visible_width==1`。
+7. **非目标**：整行可点；leader/数字；L2/L3 / Bash / Compaction / Ctrl+O → [`c2045`](../c2045-add-tui-fold-target-remaining/)（可吸收 c2050）。
 
-## Capabilities（意向）
+## Capabilities
 
-- `app-tui-transcript` — 覆盖表 + hit-test + toggle
-- `app-tui-host` — Mouse 路由到 scrollback（Editor 未抢时）
-- 产品 `GlyphSet` — 折叠标记
+- `app-tui-transcript` — 覆盖表 + Thinking per-id + 三角 hit + 字形
+- `app-tui-host` — hit_priority 接线 + latch
 
 ## Impact
 
@@ -82,10 +82,27 @@ c2020 + c2070 ──depends→ [本 change c2040] ──blocks→ c2050
 
 ## Open Questions
 
-1. 点击命中：仅标记单元格 vs 整条摘要/头行？
-2. 折叠字形最终选：`▾`/`▸`、`▼`/`▶`、`▽`/`▷`，或其他？
-3. mouse 默认开还是「首次需要点击折叠时再 Enable」？
-4. 全局 `Alt+E` 是否仍连带 compaction，或本波顺手拆出独立键？（与弃 leader 正交，propose 可钉）
+> 2026-08-12：先深挖 pi/zellij 再钉；**未全钉前禁止 Specs landing / apply**。综合稿：[`research/synth-pi-zellij-xylitol-fold-hit.md`](./research/synth-pi-zellij-xylitol-fold-hit.md)。
+
+### 已拍（人）
+
+| # | 钉 |
+|---|---|
+| 字形 | 本期用 **`▸`/`▾`**（Ascii 仍 `>`/`v`）；须验 `visible_width==1` |
+| 范围 | **本期三角 L1 点折**：Tool + Diff + Ask + **Thinking（须新增 per-id 态）**；其余可折叠块 → **另开 draft change**（最终目标：凡可折块均可鼠标独立点开） |
+| mouse Enable | **复用 AO 会话已开 capture**；不经 `XYLITOL_TUI_MOUSE` 当产品开关（ath30） |
+| 对照源 | pi TUI **无**点折控件；zellij 贡献 **优先级/latch/分层**，不贡献 fold 产品语义 |
+
+### 待深挖（一次一问）
+
+| # | 状态 | 钉 |
+|---|---|---|
+| 1 Toggle 手势 | **已钉** | **A + latch**：`Left Down` 命中三角 → 立即 toggle，吞按不启拖选（现 `set_transcript_hit_priority`）；**拖选进行中忽略 fold 重命中**（zellij latch） |
+| 2 命中几何 | **已钉** | **仅三角列**（glyph 1 cell；点正文/旁注不 toggle） |
+| 3 本期 entry 类型 | **已钉** | **Tool + Diff + Ask + Thinking**；Thinking **MUST** 从全局-only 升为 **per-id**（与 tool 覆盖表同构：default + overrides）；点三角 = 单块 toggle。`Ctrl+T` 仍为 thinking **全局** default（清/改 overrides 规则见 #4 同类） |
+| 4 全局 Alt+E / Ctrl+T | **已钉** | **A**：改对应族 default **并清空该族 overrides**（`Alt+E`→tools 族；`Ctrl+T`→thinking 族）；**本波不拆** Alt+E×compaction 连带 |
+| 5 （并入 #1） | — | latch 已随 #1 钉死 |
+| 6 延后 draft | **已钉 B** | [`c2045-add-tui-fold-target-remaining`](../c2045-add-tui-fold-target-remaining/proposal.md)：广义 `FoldTarget` 总装 + 剩余可折块鼠标独立点 + **可收薄/吸收 c2050** |
 
 ## 验证（自动化 + 人类）
 
@@ -107,8 +124,11 @@ c2020 + c2070 ──depends→ [本 change c2040] ──blocks→ c2050
 ## Further Notes
 
 - 字形/hit 切片：[`research/fold-glyph-and-hittest.md`](./research/fold-glyph-and-hittest.md)
-- **架构 / 选区 oneof / starline 对等**：见 [`c2070 research/`](../archive/2026-08-12-c2070-add-package-tui-dual-interaction-modes/research/)（勿用已失效的 `../../research/` 相对路径）
+- **pi 一手**：[`research/pi-fold-hit-and-mouse.md`](./research/pi-fold-hit-and-mouse.md) — TUI 无点折；全局键盘 + Alt-screen 选区/OSC8
+- **zellij 一手**：[`research/zellij-mouse-hit.md`](./research/zellij-mouse-hit.md) — gather/determine/execute、控件≻选区、latch
+- **综合推荐**：[`research/synth-pi-zellij-xylitol-fold-hit.md`](./research/synth-pi-zellij-xylitol-fold-hit.md)
+- **架构 / 选区 oneof / starline 对等**：见 [`c2070 research/`](../archive/2026-08-12-c2070-add-package-tui-dual-interaction-modes/research/)
 - 差分适切性见 archive `c2020` `diff-engine-mouse-fit.md`
-- `c1760` 已拍标记 `▶/▼`、不做 `(+)/(-)`——本草案可**微调**同一族三角
-- **2026-08-11**：废弃 `c2030` fold-leader；定点改由本 change 鼠标路径独占；同日整组延后并挂 `c2070`
-- **2026-08-12**：c2070 暴露 `set_transcript_hit_priority`；本 change apply 时接线产品 hit 表即可
+- `c1760` 曾拍 `▶/▼`；**本期人拍改为 `▸`/`▾`**（与 c1760 合流时再对齐文档）
+- **2026-08-11**：废弃 `c2030` fold-leader；定点改由本 change 鼠标路径独占
+- **2026-08-12**：c2070 暴露 `set_transcript_hit_priority`；库 hook 已就绪，产品表与手势语义仍须深挖钉死后再 apply
