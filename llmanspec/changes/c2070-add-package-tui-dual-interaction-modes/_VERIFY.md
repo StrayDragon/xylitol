@@ -10,7 +10,7 @@
 | Gate | Result |
 |---|---|
 | `interaction_modes_test` | 19 (incl. editor/transcript mutex + hit-priority) |
-| BDD `package_tui_interaction_modes` | 8/8 (prior wave) |
+| BDD `package_tui_interaction_modes` | 6/6 (ath30/ath31 GWT moved off package feature — covered by app-tui-host unit + `src/app/tui/tests.rs`) |
 | PTY (prior wave): submit CJK + product bang×3 | 4/4 (`--test-threads=1`) |
 | Product default still Inline (`ath30`) | yes — AO-only → c2071 |
 | blocks (fold / viewport slice) not implemented | yes — host hook only (`set_transcript_hit_priority`) |
@@ -19,9 +19,9 @@
 ## 合约轴
 
 - **CRITICAL:** none
-- **WARNING:** ath30/ath31 GWT live under `package-tui-interaction-modes.feature` (cross-capability; measurable)
-- Library ptim01–15 covered; product ath30 still default Inline
+- Library ptim01–15 covered; product ath30 still default Inline (unit/harness in `app-tui-host` / `src/app/tui/tests.rs`)
 - Final polish: selection mutual exclusion; fold hit host seam for c2040
+- Specs hygiene: removed cross-capability `@req:ath30/ath31` from `package-tui-interaction-modes.feature`
 
 ## 标准轴
 

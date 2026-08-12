@@ -50,19 +50,3 @@ fn test_copy_notice_after_success(ws: Workspace) {
 fn test_editor_multiline_selection(ws: Workspace) {
     let _ = ws;
 }
-
-#[scenario(
-    path = "llmanspec/specs/package-tui-interaction-modes/package-tui-interaction-modes.feature",
-    name = "product-default-mode-a"
-)]
-fn test_product_default_inline(ws: Workspace) {
-    let _ = ws;
-}
-
-#[scenario(
-    path = "llmanspec/specs/package-tui-interaction-modes/package-tui-interaction-modes.feature",
-    name = "product-copy-notice-wiring"
-)]
-fn test_product_copy_notice_wiring(ws: Workspace) {
-    let _ = ws;
-}
