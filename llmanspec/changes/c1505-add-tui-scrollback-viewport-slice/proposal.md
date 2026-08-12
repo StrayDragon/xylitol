@@ -5,14 +5,43 @@ depends_on:
 
 # scrollback entry 级 viewport 切片
 
-> **状态**：active 规划草案（自 c2070 nested cascade 拆出）。**硬前置** [`c2070`](../archive/2026-08-12-c2070-add-package-tui-dual-interaction-modes/proposal.md)——Mode B 会重写滚动假设；Mode A 下 activity-fold 也可能缓解紧迫性。本 change **不**与 c2070 同批 apply。
-> 注：2026-08-10 曾升格；后撤回 delay；2026-08-11 随 c2070 族再升为独立 `changes/` 条目。
+> **状态**：`purpose-draft · P9-deferred`，pre-start、未绑定分支、未落 live specs、不可 apply。**硬前置** [`c2070`](../archive/2026-08-12-c2070-add-package-tui-dual-interaction-modes/proposal.md) 已归档；其后的产品默认已由 [`c2071`](../archive/2026-08-12-c2071-update-app-tui-host-mode-b-only/proposal.md) 固定为 ApplicationOwned。本 change 不与 c2070/c2071 同批 apply。
+> 注：2026-08-10 曾升格；后撤回 delay；2026-08-11 随 c2070 族再升为独立 `changes/` 条目。本次审计后仍保留为规划壳，不 promote。
 
-> **一句话**：scrollback 改 entry 级 viewport 切片渲染，长历史不再每帧全量 flatten（activity-fold 落地后可能缓解紧迫性）
+> **一句话**：候选 entry 级 viewport 切片可减少长历史 flatten，但当前 ApplicationOwned 的完整逻辑视口、选区与 c2040 折叠命中仍依赖全量内容；在端到端 ROI 未证明且 seam 未重选前继续暂缓。
 
 > **与 c1760**：activity-fold 落地后可能 **缓解** 对 viewport slice 的紧迫性（行数已降）；**不是**被 c1760 吸收实现。若 fold 后仍卡，再单独评估升格。
 >
 > T0d：`E-hist-stream` 下 `scroll_render` ≈ 27–30%，**不随历史明显上涨**；warm flatten O(n) 结构债仍在，端到端未证为主瓶颈。
+
+## 当前审计结论（post-c2070/c2040）
+
+**结论：继续暂缓（defer），不是 `ready_for_start`。**
+
+当前产品不是旧的 Inline 默认路径，而是 c2071 落地后的 ApplicationOwned：
+
+1. `UiRoot::render` 先让 `render_scrollback` 把全部 entry flatten 成 component lines。
+2. `ApplicationOwnedRuntime::project_frame` 再把完整内容交给应用 `ScrollView`，只把可见窗口与 dock 画到终端。
+3. 滚轮 / 拖选的 cheap reproject 不重新 render component；`scroll_top`、应用内选区和 c2040 的 `FoldHitTable` 都以完整内容坐标工作。
+
+因此旧意向中的「给 host 一个 `scroll_line_offset`，让 `render_scrollback` 直接只返回窗口」不能直接 promote：若把窗口切片直接喂给当前 `ScrollView`，会破坏上滚、选区和折叠命中；若每次滚轮都重新 render，又会回退 c2070 已交付的 cheap reproject。需要先决定新的 viewport-aware / lazy-content seam。
+
+ROI 仍不足以承担这项 seam 变更：T0d 的合格 `E-hist-stream` 只显示 `scroll_render` 在 80→800 pairs 间约 27.3%→30.3%，而 c1535 的 post-A+B 结果同样显示份额随历史基本不涨。微基准证明 warm flatten 有 O(n) 成本，但尚未证明它是当前真实会话的用户可感瓶颈。
+
+### Promote 闸
+
+只有同时满足以下条件才把本 change promote 到 `ready_for_start` 候选：
+
+- 真实 ApplicationOwned 长历史的帧耗时 / CPU 随历史增长，且不是孤立微基准或 B-scroll 假阴性；
+- 先拍定能保留完整逻辑内容坐标、cheap reproject、应用内选区及 c2040 fold hit 的 seam；
+- 验收口径覆盖 follow-bottom、AO 上滚/回底、fold 后高度变化、折叠三角命中和长历史输出上界；
+- 人确认「为结构性 O(n) 成本先做 seam 改造」的 ROI 高于继续收集真实卡顿证据。
+
+## 需人决项（当前不阻塞 defer）
+
+1. **触发口径**：只在真实 AO 会话出现随历史增长的卡顿时 promote，还是接受「输出行数上界 / 结构债」作为独立收益。推荐前者，后者需明确性能预算。
+2. **seam 方向**：优先 package 级 lazy/viewport-aware content provider，还是允许产品 host 在视口变化时重算窗口。推荐前者；禁止 ad hoc `scroll_line_offset` 破坏现有 `ScrollView` 语义。
+3. **AO 逻辑内容契约**：确认完整内容仍由 ScrollView/selection/fold hit 作为坐标真源，切片只改变 paint 工作集，不改变用户可滚、可选、可点折叠的语义。
 
 ## Why
 
@@ -125,12 +154,15 @@ Inclusive 栈归因（`summarize_samply_profile.py` 新增段落）：
 **B — 估高虚拟列表**：不优先。
 **C — 仅引擎 clip**：不够。
 
-## What Changes（意向；见 design/tasks）
+## What Changes
 
-1. 产品 host 引入可选 `scroll_line_offset`（或等价）；默认 follow-bottom 行为与今日一致
-2. `render_scrollback` 按 offset + height + margin 切片 flatten（跳过屏外 entry 的 extend）
-3. harness：长 scrollback 帧耗时 / 输出行数上限断言
-4. **不**引入 Codex `insert_history`；**不**做 ratatui VirtualList
+这是 promote 后的候选范围，不是当前 apply 承诺：
+
+1. 选定一种能被 ApplicationOwned `ScrollView` 消费的 viewport-aware / lazy-content seam；不能只把 `scroll_line_offset` 作为孤立 host 参数。
+2. 在不改变完整逻辑内容坐标的前提下，按 entry 行数、视口高度和 overscan 减少屏外历史的 flatten / clone。
+3. 保持 AO 的 follow-bottom、上滚/回底、拖选、c2040 fold hit 和 fold 高度失效语义；滚轮 reproject 不能退化为每次完整 component render。
+4. 先补真实 AO 长历史 profile / lab 与输出行数上界，再决定是否进入实现 tasks；若证据仍不支持，关闭本 change。
+5. **不**引入 Codex `insert_history`；**不**做 ratatui VirtualList；**不**改变 `app-tui-transcript` 的 scrollback 心智。
 
 ## UX / 体验风险
 
@@ -144,10 +176,10 @@ Inclusive 栈归因（`summarize_samply_profile.py` 新增段落）：
 
 ## Status
 
-**purpose-draft · P9-deferred** — 已移入 `llmanspec/do-not-read-me/`。
-T0d 复现：E long-stream 合格探针；历史放大未证明 scroll_render 瓶颈。
+**purpose-draft · P9-deferred · pre-start** — 依赖已归档，但当前无 branch binding、无 specs landing、无实现承诺；保持 defer，不是 `ready_for_start`。
+T0d 复现：E long-stream 是合格探针；历史放大未证明 `scroll_render` 是当前真实瓶颈。post-c2070/c2040 的 AO full-content / reproject / fold-hit 约束已写入本稿与 design。
 
 ## Ethics
 
 - risk_level: low（设计稿）
-- prohibited_actions: 为性能切到 Codex TranscriptView；在未测基线前大改滚动语义
+- prohibited_actions: 为性能切到 Codex TranscriptView；在未测基线前大改滚动语义；把 AO 的 partial lines 直接当成完整 ScrollView 内容；为切片退化 cheap reproject 或 fold hit 坐标

@@ -30,9 +30,24 @@ depends_on:
 - 后端默认内存 BM25（+ 可选显式 sidecar）；索引不落盘。
 - 方言无 defer 时：按 name upsert（不得已）；知悉必 cache miss。
 
-## Open Questions（已钉，升格时继承）
+## Open Questions（Designed 已钉 · 见 design 决策表）
 
-- Q1 wire 双轨；Q2 仅手动声明；Q3 A+B 默认 A 内存；Q4 sidecar 仅显式；Q5 开箱 Search **作废**（主路径在 c1900）；Q6 description 刷新 source（知悉 bust cache）；Q7 forge 吃得下的形状；Q8 upsert；Q9–Q11 见 c1900。
+| ID | 钉死 |
+|---|---|
+| Q1 | Hosted vs ClientFunction 双轨；按声明选，不混假 hosted |
+| Q2 | **仅手动声明**；禁运行时探测 |
+| **Q-WP** | `WirePolicy.tool_search_wire`（独立字段）；**禁止**进 `ExtraPolicy`；与 `ToolsMode` 分层；见 design |
+| Q3 | 检索 A+B，默认内存 BM25 |
+| Q4 | sidecar **仅显式** |
+| Q5 | 开箱 Search **作废**（默认 Full + c1900） |
+| Q6 | description 刷新源 = registry；知悉 bust cache |
+| Q7 | forge 严格按声明 |
+| Q8 | 方言改表 → 按 name upsert |
+| Q9–Q11 | 继承 c1900；Search 门闸冻顶栏非全 MCP 表 |
+| Q14/Q16/Q17 | reload/resume/双轨：见 design；Ornith ≠ Hosted 证据 |
+| Q-V | 假 provider 矩阵 Start/apply 足够；真网关清单 apply 前另钉 |
+
+**工件**：[`design.md`](./design.md) · [`tasks.md`](./tasks.md)。**Start readiness**：Designed / **未** Branch binding。
 
 ### Lab（Ornith）
 
