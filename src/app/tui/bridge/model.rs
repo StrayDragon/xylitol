@@ -154,6 +154,12 @@ pub enum UiEntry {
         /// Short failure / abort detail when not Complete.
         detail: Option<String>,
     },
+    /// Session Todo checklist (c1955) — default one-line summary; expand for items.
+    Todo {
+        summary: String,
+        /// Full checklist lines (status glyph + content), shown when expanded.
+        detail_lines: Vec<String>,
+    },
     ScrollNotice {
         text: String,
     },
@@ -358,6 +364,15 @@ impl UiModel {
                         );
                     }
                 },
+                UiEntry::Todo {
+                    summary,
+                    detail_lines,
+                } => {
+                    lines.push(summary.clone());
+                    for line in detail_lines {
+                        lines.push(line.clone());
+                    }
+                }
                 UiEntry::ScrollNotice { text } => lines.push(format!("scroll_notice: {text}")),
                 UiEntry::Error { text } => lines.push(format!("error: {text}")),
             }

@@ -162,7 +162,13 @@ fn render_entry_html(entry: &SessionEntry) -> String {
             "message",
             &format!("[custom:{}]\n{}", cm.custom_type, cm.content),
         ),
-        SessionEntry::Custom(c) => block("header", &format!("[custom:{}]", c.custom_type)),
+        SessionEntry::Custom(c) => {
+            if c.custom_type == crate::protocol::session::CUSTOM_TYPE_AGENT_TODO {
+                block("header", &format!("[custom:agent_todo]\n{}", c.data))
+            } else {
+                block("header", &format!("[custom:{}]", c.custom_type))
+            }
+        }
         SessionEntry::Label(l) => block("header", &format!("[label → {}]", l.target_id)),
         SessionEntry::SessionInfo(si) => {
             block("header", &format!("[session info: name={:?}]", si.name))

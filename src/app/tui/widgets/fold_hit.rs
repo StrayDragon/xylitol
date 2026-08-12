@@ -7,6 +7,8 @@ pub enum FoldTarget {
     Diff(String),
     Ask(String),
     Thinking(String),
+    /// Session Todo checklist block (c1955).
+    Todo,
 }
 
 /// One triangle-column hit region in content coordinates (scrollback line space).

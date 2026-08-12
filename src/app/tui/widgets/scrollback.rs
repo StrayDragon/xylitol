@@ -31,6 +31,8 @@ pub struct ScrollbackFold {
     pub tools_output_expanded: bool,
     /// Alt+E — compaction summary (default collapsed; shares chord with tools).
     pub compaction_expanded: bool,
+    /// Alt+E — Todo checklist (default collapsed one-line summary; c1955).
+    pub todo_expanded: bool,
     /// Per-block tools-family overrides (Tool / Diff / Ask); prefer over [`Self::tools_expanded`].
     pub tools_overrides: HashMap<String, bool>,
     /// Per-id thinking overrides; prefer over [`Self::thinking_expanded`].
@@ -46,6 +48,8 @@ impl Default for ScrollbackFold {
             tools_output_expanded: false,
             // Product default: compaction summary collapsed (c1730 / pi).
             compaction_expanded: false,
+            // Product default: Todo checklist collapsed to summary line (c1955).
+            todo_expanded: false,
             tools_overrides: HashMap::new(),
             thinking_overrides: HashMap::new(),
         }
@@ -53,7 +57,7 @@ impl Default for ScrollbackFold {
 }
 
 /// Defaults tuple for paint-cache prepare — overrides MUST NOT clear the whole cache.
-pub type ScrollbackFoldDefaultsKey = (bool, bool, bool, bool);
+pub type ScrollbackFoldDefaultsKey = (bool, bool, bool, bool, bool);
 
 impl ScrollbackFold {
     pub fn defaults_key(&self) -> ScrollbackFoldDefaultsKey {
@@ -62,6 +66,7 @@ impl ScrollbackFold {
             self.tools_expanded,
             self.tools_output_expanded,
             self.compaction_expanded,
+            self.todo_expanded,
         )
     }
 
@@ -655,6 +660,14 @@ fn entry_fingerprint(entry: &UiEntry, fold: &ScrollbackFold) -> u64 {
             detail.hash(&mut h);
             fold.compaction_expanded.hash(&mut h);
         }
+        UiEntry::Todo {
+            summary,
+            detail_lines,
+        } => {
+            summary.hash(&mut h);
+            detail_lines.hash(&mut h);
+            fold.todo_expanded.hash(&mut h);
+        }
     }
     h.finish()
 }
@@ -1045,6 +1058,42 @@ pub fn render_scrollback(
                         }
                     }
                 }
+                UiEntry::Todo {
+                    summary,
+                    detail_lines,
+                } => {
+                    let inner = rail_inner_width(width);
+                    let expanded = fold.todo_expanded;
+                    let marker = if expanded {
+                        glyphs.unfold()
+                    } else {
+                        glyphs.fold()
+                    };
+                    let mw = marker_cols(marker);
+                    let hint = if expanded {
+                        String::new()
+                    } else {
+                        format!(" ({})", key_hint("Alt+E"))
+                    };
+                    let header = format!("{marker} {summary}{hint}");
+                    let mut block = vec![fit(&theme.paint_muted(&header), inner)];
+                    block_hits.push(CachedFoldHit {
+                        row_offset: 0,
+                        col_start: RAILED_MARKER_COL,
+                        col_end: RAILED_MARKER_COL + mw,
+                        target: FoldTarget::Todo,
+                    });
+                    if expanded {
+                        for line in detail_lines {
+                            block.push(fit(&theme.paint_muted(line), inner));
+                        }
+                    }
+                    let rail = {
+                        let p = theme.palette();
+                        mix_rgb(p.surface, p.muted, 0.72)
+                    };
+                    push_railed(&mut lines, &block, width, rail);
+                }
                 UiEntry::ScrollNotice { text } => {
                     push_wrapped(
                         &mut lines,
@@ -1149,6 +1198,62 @@ mod tests {
         assert!(
             plain.contains("🔍 搜代码") && plain.contains("🚀 跑命令"),
             "expanded body must stay full; got:\n{plain}"
+        );
+    }
+
+    #[test]
+    fn todo_checklist_defaults_to_summary_line() {
+        let mut model = UiModel::default();
+        model.entries.push(UiEntry::Todo {
+            summary: "Todo · 2/5".into(),
+            detail_lines: vec!["[x] done".into(), "[ ] next".into()],
+        });
+        let theme = LayoutTheme::product_dark();
+        let lines = render_scrollback(
+            &model,
+            GlyphSet::from_env(),
+            theme,
+            &ScrollbackFold::default(),
+            80,
+            &mut ScrollbackPaintCache::default(),
+            &mut FoldHitTable::default(),
+        );
+        let plain = strip_ansi_local(&lines.join("\n"));
+        assert!(plain.contains("Todo · 2/5"), "missing summary: {plain}");
+        assert!(
+            !plain.contains("[x] done"),
+            "detail must stay folded: {plain}"
+        );
+        assert!(
+            !plain.to_lowercase().contains("plan"),
+            "must not render Plan side chrome: {plain}"
+        );
+    }
+
+    #[test]
+    fn todo_checklist_expands_with_fold() {
+        let mut model = UiModel::default();
+        model.entries.push(UiEntry::Todo {
+            summary: "Todo · 1/2".into(),
+            detail_lines: vec!["[x] done".into(), "[~] wip".into()],
+        });
+        let theme = LayoutTheme::product_dark();
+        let lines = render_scrollback(
+            &model,
+            GlyphSet::from_env(),
+            theme,
+            &ScrollbackFold {
+                todo_expanded: true,
+                ..ScrollbackFold::default()
+            },
+            80,
+            &mut ScrollbackPaintCache::default(),
+            &mut FoldHitTable::default(),
+        );
+        let plain = strip_ansi_local(&lines.join("\n"));
+        assert!(
+            plain.contains("[x] done") && plain.contains("[~] wip"),
+            "{plain}"
         );
     }
 
