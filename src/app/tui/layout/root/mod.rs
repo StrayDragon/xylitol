@@ -479,9 +479,10 @@ impl UiRoot {
         self.fold_hits.transcript_rows = transcript_rows;
     }
 
-    /// Fold toggle from mouse hit (triangle / Compaction / OutputViewport).
+    /// Fold toggle from mouse hit (L1 / Compaction / OutputViewport / Segment).
     /// Does **not** clear the whole paint cache — entry fingerprints carry
     /// effective fold (ath25). Compaction MUST NOT clear tools overrides.
+    /// Segment is one-step level toggle (att31), not nearest expand/collapse.
     pub fn toggle_fold_target(&mut self, target: FoldTarget) {
         match target {
             FoldTarget::Tool(id) | FoldTarget::Diff(id) | FoldTarget::Ask(id) => {
@@ -498,6 +499,9 @@ impl UiRoot {
             }
             FoldTarget::OutputViewport => {
                 self.fold.tools_output_expanded = !self.fold.tools_output_expanded;
+            }
+            FoldTarget::Segment(id) => {
+                let _ = self.activity.toggle_one_step(&id);
             }
         }
         self.fold_dirty = true;

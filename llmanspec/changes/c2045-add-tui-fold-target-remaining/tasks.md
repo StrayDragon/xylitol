@@ -1,7 +1,6 @@
 # Tasks: c2045-add-tui-fold-target-remaining
 
-> **前置**：c2040 已归档。决策见 `design.md` 决策表；Open Questions 已清。
-> **本阶段**：Apply Wave A ✅（att29/att30/att32）。Wave B 仍闸 c1760——下方 **无 checkbox**（避免 `--strict` Pending task ERROR）；c1760 归档后改回 checkbox 再实施。
+> **前置**：c2040 已归档；c1760 已归档（Wave B 解锁）。决策见 `design.md`。
 
 ## 进度总览
 
@@ -10,8 +9,8 @@
 | 0 Designed 壳 | ✅ | proposal + design + tasks |
 | 1 Specs landing | ✅ | att29–att32；host skip（ath33） |
 | 2–4 Wave A | ✅ | Compaction + OutputViewport |
-| 5–6 Wave B | ⬜ blocked | Segment；吸收 c2050（plain list） |
-| 7 收口 | ⬜ | Wave B 后：validate + c2050 docs-only |
+| 5–6 Wave B | ✅ | Segment；吸收 c2050 |
+| 7 收口 | ⬜ | validate + c2050 docs-only |
 
 ---
 
@@ -50,31 +49,30 @@
 
 ---
 
-## Wave B Segment `[blocked-by: c1760]` — ⬜ 明确未做（plain list）
+## Wave B Segment — ✅
 
-- 5.1 确认 c1760 已归档且段 id↔行映射可用
-- 5.2 `FoldTarget::Segment(id)` + toggle = 该段一级（非 nearest）
-- 5.3 摘要行标记登记 hit（三角列-only）
-- 5.4 分层：L2/L3 段内 L1 外观不穿透（深挖 A）
+- [x] 5.1 确认 c1760 已归档且段 id↔行映射可用
+- [x] 5.2 `FoldTarget::Segment(id)` + toggle = 该段一级（非 nearest）
+- [x] 5.3 摘要行标记登记 hit（三角列-only）
+- [x] 5.4 分层：L2/L3 段内 L1 外观不穿透（深挖 A）
 
-### 验证 Wave B `[blocked-by: 5.*]`
+### 验证 Wave B
 
-- 6.1 harness：同屏 L1 + L2 各打中正确 target
-- 6.2 harness：L2 段内 L1 全局/覆盖不改变该段外观
-- 6.3 ath25 / 可见 hit O(可见) 抽检
+- [x] 6.1 harness：同屏 L1 + L2 各打中正确 target
+- [x] 6.2 harness：L2 段内 L1 全局/覆盖不改变该段外观
+- [x] 6.3 ath25 / 可见 hit O(可见) 抽检
 
 ### 收口（Wave B 后）
 
-- 7.1 `llman sdd validate c2045 --strict`（及改动 capability）
-- 7.2 c2050：docs-only supersede → archive（无应用代码；指针回本 change）
-- 7.3 确认未膨胀进 c1760 主交付 / 未复活 fold-leader
+- [ ] 7.1 `llman sdd validate c2045 --strict`（及改动 capability）
+- [ ] 7.2 c2050：docs-only supersede → archive（无应用代码；指针回本 change）
+- [ ] 7.3 确认未膨胀进 c1760 主交付 / 未复活 fold-leader
 
 ## 实现顺序
 
 ```text
-1 Specs ✅ → 2–4 Wave A ✅
-  ─┬─ c1760 archive
-   └→ 5 Segment → 6 harness B → 7 validate + c2050 docs-only
+1 Specs ✅ → 2–4 Wave A ✅ → 5 Segment ✅ → 6 harness B ✅
+  → 7 validate + c2050 docs-only
 ```
 
 ## Open Questions
