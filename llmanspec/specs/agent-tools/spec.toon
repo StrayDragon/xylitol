@@ -1,10 +1,10 @@
 kind: llman.sdd.spec
 name: "agent-tools"
-purpose: 工具系统 — 工具定义、执行分发、bash/ls/grep/edit/write/read 内置工具与路径工具。
+purpose: 工具系统 — 工具定义、执行分发、文件类内置与 Todo 三工具、路径工具与并发类。
 valid_scope[3]: src/agent/tools/,src/infra/tools/,src/protocol/
 requirements[43]{req_id,title,statement}:
   r32,工具 trait 前缀,System MUST 将主工具接口定义为 XyTool；trait 名已带 Xy 前缀，MUST 与 protocol 边界其余命名一致。
-  r42,七种内置工具,System MUST 实现 7 个内置工具：read、bash、edit、write、grep、find、ls。
+  r42,默认内置工具闭集,"产品 default_tools（Print 与 TUI builtins 基座）MUST 包含且以闭集提供：read、bash、edit、write、grep、find、ls、todo_list、todo_rewrite、todo_update（共 10 个）。ask 等面专属工具 MUST NOT 计入该闭集（见 t28）。Todo 工具语义见 agent-todo。"
   r48,补丁应用,System MUST 使用 fudiff 模糊匹配应用 AI 生成的补丁，并以 patch crate 精确匹配作为回退。
   r4,读文件大小限制,Read 工具 MUST 拒绝超过 MAX_FILE_SIZE（默认 10MB）的文件，并返回清晰错误信息。
   r5,bash 流式输出,Bash 工具 MUST 流式输出 stdout/stderr 并设字节上限；超限时 MUST 终止子进程。
@@ -17,7 +17,7 @@ requirements[43]{req_id,title,statement}:
   r10,禁止全局 dead_code 允许,"crate 根 MUST NOT 使用全局 #![allow(dead_code)]；dead code 抑制 MUST 限定于单项并附理由。"
   r11,工具错误类型,"System MUST 定义 XyToolError，含结构化错误类别（invalid_args / execution_failed / permission_denied / timeout），独立于 adk-core。"
   t1,traits,System MUST 定义 XyTool trait，execute 接受 CancellationToken。
-  t2,七种内置工具,System MUST 实现 7 个与 pi 等价的工具：read、bash、edit、write、grep、find、ls。
+  t2,默认内置工具闭集,"System MUST 实现与 r42 相同的 10 个 default_tools 闭集成员：read、bash、edit、write、grep、find、ls、todo_list、todo_rewrite、todo_update。文件类七工具行为对齐既有 pi 等价语义；Todo 三工具行为见 agent-todo。"
   t3,edit 多段编辑,Edit 工具 MUST 接受 path 与 edits 数组（oldText、newText），对照原始内容匹配。
   t4,edit 校验,Edit 工具 MUST 拒绝重叠编辑、非唯一 oldText、空 oldText 与无变化编辑。
   t5,edit Unicode,"Edit 工具 MUST 将 CRLF 规范为 LF、剥离 UTF-8 BOM，并通过 NFKC 规范化做模糊匹配。"
@@ -28,7 +28,7 @@ requirements[43]{req_id,title,statement}:
   t10,read 截断,Read 工具 MUST 在 2000 行或 50KB 处截断，并对 offset 越界报告剩余行提示。
   t11,infra,System MUST 提供 TruncationResult、XxxOperations trait、FileMutationQueue 与 CancellationToken。
   t12,ToolSet 单元操作,工具容器 ToolSet MUST 仅提供构建期单元操作：empty、from_iter、plus、remove、merge、retain（带谓词）；MUST NOT 提供运行时 allow/exclude 过滤 API 或 wrap_with_hooks 方法。按名 get 与遍历最终集合仍可用。
-  t13,BDD 工具测试,"llmanspec/specs/agent-tools/agent-tools.feature 下全部 7 个工具的 BDD 测试 MUST 通过（live `.feature` 路径；场景标题为英文 id）。"
+  t13,BDD 工具测试,"llmanspec/specs/agent-tools/agent-tools.feature 下文件类工具与既有场景的 BDD 测试 MUST 通过（live `.feature` 路径；场景标题为英文 id）。Todo 三工具可执行场景属 agent-todo / 后续接线，不强制本文件穷尽。"
   t14,OutputAccumulator,工具执行 MUST 支持 OutputAccumulator：增量缓冲接收流式数据、在内存保留可配置尾部窗口、总量超滚动阈值时透明溢出到临时文件，并产出含截断信息的最终快照。
   t15,bash 累加器,Bash 工具 MUST 对 stdout/stderr 流式输出使用 OutputAccumulator，替代 String 拼接；配置 max_lines 100 与 max_bytes DEFAULT_MAX_BYTES。
   t16,"BDD tool-v3","OutputAccumulator 与 bash 累加器集成的 BDD 测试 MUST 全部通过（含 agent-tools.feature 中 bash-truncate 等场景）。"
@@ -43,18 +43,19 @@ requirements[43]{req_id,title,statement}:
   r36,MCP 工具经 XyTool 接入,MCP 工具 MUST 仅通过 XyTool 端口进入 agent 工具集；rmcp 具体类型 MUST NOT 泄漏到 agent/ 或 domain/。
   t21,"read-image-parts","Read 工具在路径为支持的图片文件时 MUST 经 resize/multimodal 准备产出含 AgentPart::Image（base64 data + media_type）的 tool result parts，并附简短 text note；MUST NOT 仅返回「[Image file: …]」占位字符串作为唯一结果。文本文件行为保持既有截断语义。工具端口 MUST 允许 execute 结果以 parts 形式进入 history（默认实现可将纯文本包成 Text part）。"
   t22,"write-edit-llm-result-quiet","write/edit 成功时，进入会话 history 并经 project_for_llm 发往模型的 tool result 正文 MUST 为短成功句（对齐 pi）；MUST NOT 把完整 content 回灌或嵌入 unified/display_diff。失败时 MUST 保留可读错误原因。UI 仍 MUST 能取得 display_diff（或等价）以渲染编辑块。"
-  t26,"builtin-tool-concurrency-class","内置工具 MUST 声明并发类：read/grep/find/ls 为 ParallelSafe；write/edit/bash 为 Barrier（或等价 Sequential 映射）。调度层在 barrier_parallel 下 MUST 尊重该类；FileMutationQueue 可并存作同 path 纵深防御。由单测覆盖 default_tools 分类表，MUST NOT 为静态表单独扩 BDD step。"
+  t26,"builtin-tool-concurrency-class","内置工具 MUST 声明并发类：read/grep/find/ls 为 ParallelSafe；write/edit/bash 与 todo_list/todo_rewrite/todo_update 为 Barrier（或等价 Sequential 映射）。调度层在 barrier_parallel 下 MUST 尊重该类；FileMutationQueue 可并存作同 path 纵深防御。由单测覆盖 default_tools 分类表，MUST NOT 为静态表单独扩 BDD step。"
   t27,"dynamic-tool-mcp-hard-barrier","公开名以 `mcp__` 为前缀（过渡期可识别遗留 `mcp-` / `mcp_` / `mcp:`）的工具（含 McpToolAdapter 与任何同前缀注册）在批调度分类中 MUST 为 Barrier，无论其 trait 并发声明或配置如何；MUST NOT 提供 glob、配置名名单或 MCP annotation 将其升为 ParallelSafe。非 mcp 自注册工具缺省 MUST 为 Barrier，MAY 经 ToolConcurrency 显式标 ParallelSafe。由单测覆盖，MUST NOT 为静态默认单独扩 BDD step。"
   t28,"ask-tui-only-builtin","内置工具 ask MUST 以 TypedTool 存在于 infra；schema MUST 含 questions 数组（每题 id/prompt/mode/options，option.description 可选）；execute 成功结果 MUST 为 status 为 skipped 或 answered 的 JSON。default_tools MUST NOT 包含 ask；仅 TUI 装配路径 MAY 经 ToolSet plus 注入。ask MUST 为 Barrier Sequential。Abort MUST NOT 伪装为 skipped。"
-scenarios[16]{req_id,id,given,when,then,feature}:
+scenarios[17]{req_id,id,given,when,then,feature}:
   t22,"edit-success-short-llm",edit 成功后,project_for_llm 的 tool result 正文,为短成功句且不含 display_diff,false
   t22,"write-success-short-llm",write 成功后,project_for_llm 的 tool result 正文,为短成功句且不含文件正文,false
   t24,"omit-timeout-unlimited-doc",省略 bash/grep/find timeout,执行工具,不武装默认秒级 timer（单测断言 ToolTimeout::Unlimited）,false
   t25,"grep-find-schema-timeout",查阅 grep/find schema,检查 parameters,含可选 timeout 字段,false
   r6,"zero-not-unlimited",传入 timeout=0,校验参数,拒绝为无效 timeout,false
-  t26,"builtin-class-table",查询 default_tools 各工具 execution_mode,对照分类表,读族 ParallelSafe 且 write/edit/bash Barrier,false
+  t26,"builtin-class-table",查询 default_tools 各工具 execution_mode,对照分类表,读族 ParallelSafe 且 write/edit/bash 与 todo_* 为 Barrier,false
   t27,"mcp-hard-barrier",构造 mcp__ 名工具即便 trait 声称 ParallelSafe,经 classify,仍为 Barrier,false
   t28,"ask-not-in-default-tools",查询 default_tools 名称列表,检查 ask,不在列表中,false
+  r42,"default-tools-include-todo",查询 default_tools 名称列表,检查闭集,含 todo_list/todo_rewrite/todo_update 与七个文件类工具,false
   r32,"tool-trait-prefix-unit",XyTool trait 已定义,检查名称前缀,以 Xy 开头,false
   r10,"no-global-dead-code-unit",crate 根,检查 #![allow(dead_code)],不存在或附理由,false
   t13,"bdd-tool-tests-pass",工具 BDD 套件,执行,全通过（由 CI 保证）,false
