@@ -95,6 +95,7 @@
 | Editor 命中 | `editor_screen_origin(term_rows, dock_rows, rows_above_editor)` → `Editor::set_screen_origin` → 传 **绝对** screen `InputEvent::Mouse`（Editor 内减 origin） |
 | dock 过滤 | `mouse_in_dock`；按下始于 dock 不启 transcript 选区（引擎已做）；Editor 仅收 dock/拖选中事件 |
 | 复制提示 | `take_copy_notice` / `copy_notice_active` → 壳层短提示（勿写 transcript） |
+| fold hit（c2040） | `set_transcript_hit_priority` — Left Down 优先于选区；回调 `true` 则吞按下并清 transcript 选区 |
 | Editor OSC52 | `Editor::take_pending_clipboard` → `enqueue_clipboard_sequences` |
 | 退出 | `finish`（按模式分发）；或显式 `finish_application_owned` / `finish_inline` |
 | 挂起 | `with_terminal_suspended` — ApplicationOwned 自动重进 alt+mouse（ptim11） |

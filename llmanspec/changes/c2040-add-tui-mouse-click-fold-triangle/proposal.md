@@ -58,11 +58,21 @@ blocks:
 ## 依赖与排序
 
 ```text
-c2020 ──depends→ [本 change c2040] ──blocks→ c2050
+c2020 + c2070 ──depends→ [本 change c2040] ──blocks→ c2050
 ```
 
-- **硬依赖**仅 `c2020`（Mouse）。
+- **硬依赖**：`c2020`（Mouse 管道）+ **`c2070`（ApplicationOwned；点折叠正式 UX 挂 AO）**。
 - **`blocks`**：`c2050`（段级点击语义）。
+
+### 库侧已就绪（c2070，本 change 接产品 hit 表）
+
+| 需求 | API |
+|---|---|
+| AO 选区优先于 fold？ | 相反：`TUI::set_transcript_hit_priority` — Left Down 回调 `true` 则吞按下并清 transcript 选区（不启拖选） |
+| Host 清单 | `packages/xylitol-tui/AGENTS.md` § ApplicationOwned（含 fold hit 行） |
+| 单测锚 | `application_owned_transcript_hit_priority_swallows_press` |
+
+本 change **MUST** 在产品 render 维护 `fold_hit_regions`，经上述 hook 接入；**不必**再扩引擎选区状态机。
 
 ## Out of scope
 
@@ -97,7 +107,8 @@ c2020 ──depends→ [本 change c2040] ──blocks→ c2050
 ## Further Notes
 
 - 字形/hit 切片：[`research/fold-glyph-and-hittest.md`](./research/fold-glyph-and-hittest.md)
-- **架构 / 选区 oneof / starline 对等**（深度调研）：[`../../research/`](../../research/)
+- **架构 / 选区 oneof / starline 对等**：见 [`c2070 research/`](../c2070-add-package-tui-dual-interaction-modes/research/)（勿用已失效的 `../../research/` 相对路径）
 - 差分适切性见 archive `c2020` `diff-engine-mouse-fit.md`
 - `c1760` 已拍标记 `▶/▼`、不做 `(+)/(-)`——本草案可**微调**同一族三角
 - **2026-08-11**：废弃 `c2030` fold-leader；定点改由本 change 鼠标路径独占；同日整组延后并挂 `c2070`
+- **2026-08-12**：c2070 暴露 `set_transcript_hit_priority`；本 change apply 时接线产品 hit 表即可

@@ -138,6 +138,16 @@ pub trait Component {
     fn wants_pointer_motion(&self) -> bool {
         false
     }
+
+    /// Clear any pointer-driven text selection this component owns.
+    ///
+    /// ApplicationOwned: TUI calls this on left-button Down so transcript and
+    /// editor selections stay mutually exclusive (click anywhere cancels the
+    /// other surface's highlight). Returns whether a selection was cleared
+    /// (caller may force a frame when the Down does not otherwise dirty).
+    fn clear_pointer_selection(&mut self) -> bool {
+        false
+    }
 }
 
 pub trait Focusable: Component {
@@ -350,6 +360,10 @@ pub struct TUI<T: Terminal> {
     dock_rows: usize,
     /// Persists across begin/end; applied when constructing [`ApplicationOwnedRuntime`].
     transcript_copy_on_release: bool,
+    /// Transcript Left-Down priority hook (fold hit). Parked on `TUI` so it
+    /// survives ApplicationOwnedRuntime recreate (suspend / begin); swapped
+    /// onto the live selection controller for each mouse dispatch.
+    transcript_hit_priority: Option<crate::selection::HitPriorityFn>,
     /// When true (default), [`Self::finish_application_owned`] appends the
     /// session transcript (+ last dock) to the **main-screen** terminal
     /// scrollback after leaving the alternate buffer — so the user can still
@@ -402,6 +416,7 @@ impl<T: Terminal> TUI<T> {
             application_owned: None,
             dock_rows: 3,
             transcript_copy_on_release: true,
+            transcript_hit_priority: None,
             append_session_to_main_scrollback_on_exit: true,
         }
     }
@@ -491,6 +506,15 @@ impl<T: Terminal> TUI<T> {
         }
     }
 
+    /// Transcript Left-Down priority hook (c2040 fold triangle, etc.).
+    ///
+    /// When the callback returns true, the press is swallowed: transcript
+    /// selection is cleared and the event does **not** start a drag. Stored on
+    /// `TUI` so it survives ApplicationOwnedRuntime recreate (suspend / begin).
+    pub fn set_transcript_hit_priority(&mut self, hit: Option<crate::selection::HitPriorityFn>) {
+        self.transcript_hit_priority = hit;
+    }
+
     /// After leaving alt-screen, append the session transcript (+ last dock)
     /// into the terminal's **main** scrollback so history remains readable
     /// (default **on**). Set `false` to tear down without writing those lines.
@@ -524,6 +548,13 @@ impl<T: Terminal> TUI<T> {
         self.application_owned
             .as_ref()
             .is_some_and(|runtime| runtime.copy_notice_active())
+    }
+
+    /// Whether ApplicationOwned transcript selection currently spans text.
+    pub fn application_owned_has_selection(&self) -> bool {
+        self.application_owned
+            .as_ref()
+            .is_some_and(|runtime| runtime.has_selection())
     }
 
     /// Register a pre-focus input listener. Returns an id for
@@ -1249,18 +1280,34 @@ impl<T: Terminal> TUI<T> {
     /// Public so host loops (and tests) can feed input without going through
     /// the blocking `start()` event loop.
     pub fn dispatch_event(&mut self, event: InputEvent) -> InputReaction {
-        // ApplicationOwned: application selection / wheel consume mouse before listeners
-        // when they dirty presentation. Unhandled presses (e.g. Down in dock)
-        // fall through so Editor/Input can own an independent selection later.
+        // ApplicationOwned: left Down clears the focused component's pointer
+        // selection first so transcript ↔ editor highlights stay one-of
+        // (click anywhere cancels the other). Then transcript/wheel may
+        // consume; unhandled dock presses fall through to Editor.
+        let mut force_rerender = false;
         if self.application_session_active
             && let InputEvent::Mouse(mouse) = &event
         {
+            if matches!(
+                mouse.kind,
+                MouseEventKind::Down(crossterm::event::MouseButton::Left)
+            ) {
+                force_rerender |= self.clear_focused_pointer_selection();
+            }
             let cols = self.terminal.columns();
             let rows = self.terminal.rows();
-            let dirty = self
-                .application_owned
-                .as_mut()
-                .is_some_and(|runtime| runtime.handle_mouse(mouse, cols, rows));
+            // Park hit-priority on the live selection for this dispatch so
+            // c2040 fold hooks survive runtime recreate (suspend / begin).
+            let hit = self.transcript_hit_priority.take();
+            let dirty = if let Some(runtime) = self.application_owned.as_mut() {
+                runtime.selection.set_hit_priority(hit);
+                let dirty = runtime.handle_mouse(mouse, cols, rows);
+                self.transcript_hit_priority = runtime.selection.take_hit_priority();
+                dirty
+            } else {
+                self.transcript_hit_priority = hit;
+                false
+            };
             if dirty {
                 return InputReaction::Rerender;
             }
@@ -1276,7 +1323,7 @@ impl<T: Terminal> TUI<T> {
                         .is_some_and(|i| self.overlays[i].0.wants_pointer_motion())
                 });
                 if !wants_motion {
-                    return InputReaction::None;
+                    return InputReaction::rerender_if(force_rerender);
                 }
             }
             // Non-moved (or drag-owned Moved) not consumed by transcript → fall through.
@@ -1296,7 +1343,9 @@ impl<T: Terminal> TUI<T> {
                 InputListenerResult::Consumed => {
                     // Key/Paste: historical always-paint. Mouse: silent consume
                     // so a no-op handler cannot flood frames (c2020 / c2040).
-                    return InputReaction::rerender_if(!matches!(event, InputEvent::Mouse(_)));
+                    return InputReaction::rerender_if(
+                        force_rerender || !matches!(event, InputEvent::Mouse(_)),
+                    );
                 }
             }
         }
@@ -1356,7 +1405,7 @@ impl<T: Terminal> TUI<T> {
             let wants = self.overlays[index].0.input_wants_rerender(&event);
             let seqs = self.overlays[index].0.take_pending_clipboard();
             self.ingest_component_clipboard(seqs);
-            return InputReaction::rerender_if(wants);
+            return InputReaction::rerender_if(wants || force_rerender);
         }
         if let Some(idx) = self.focused_index
             && idx < self.components.len()
@@ -1367,9 +1416,24 @@ impl<T: Terminal> TUI<T> {
             let wants = self.components[idx].input_wants_rerender(&event);
             let seqs = self.components[idx].take_pending_clipboard();
             self.ingest_component_clipboard(seqs);
-            return InputReaction::rerender_if(wants);
+            return InputReaction::rerender_if(wants || force_rerender);
         }
-        InputReaction::None
+        InputReaction::rerender_if(force_rerender)
+    }
+
+    /// Clear pointer selection on the focused overlay or root child.
+    fn clear_focused_pointer_selection(&mut self) -> bool {
+        if let Some(overlay_id) = self.focused_overlay_id
+            && let Some(index) = self.overlay_index(overlay_id)
+        {
+            return self.overlays[index].0.clear_pointer_selection();
+        }
+        if let Some(idx) = self.focused_index
+            && let Some(component) = self.components.get_mut(idx)
+        {
+            return component.clear_pointer_selection();
+        }
+        false
     }
 
     fn ingest_component_clipboard(&mut self, seqs: Vec<String>) {

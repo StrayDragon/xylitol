@@ -42,6 +42,10 @@ impl Component for SharedUiRoot {
         self.0.borrow().editor.is_selection_dragging()
     }
 
+    fn clear_pointer_selection(&mut self) -> bool {
+        Component::clear_pointer_selection(&mut self.0.borrow_mut().editor)
+    }
+
     fn invalidate(&mut self) {
         self.0.borrow_mut().invalidate();
     }

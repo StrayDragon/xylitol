@@ -28,11 +28,15 @@ use xylitol_tui::{
     Markdown, MarkdownTheme, Palette, Panel, SystemClock, TUI, Terminal, TerminalColorScheme, Text,
     ThemeDetectSources, ThinkingBorderLevel, TreeNode, TreeSelector, TreeSelectorOptions,
     TreeSelectorTheme, TruncateFrom, TruncatedText, apply_background_to_line,
-    apply_thinking_border, bg_rgb, fg_bg_rgb, fg_rgb, is_osc11_background_color_response,
-    is_terminal_color_reply, matches_key_event, mix_rgb, paint_left_rail_line,
-    parse_osc11_background_color, parse_terminal_color_scheme_report, printable_from_key_event,
-    render_diff_lines, render_expandable_output, resolve_terminal_color_scheme, truncate_to_width,
-    visible_width, word_wash_bg, wrap_text_with_ansi,
+    apply_thinking_border, bg_rgb, fg_bg_rgb, fg_rgb, matches_key_event, mix_rgb,
+    paint_left_rail_line, printable_from_key_event, render_diff_lines, render_expandable_output,
+    resolve_terminal_color_scheme, truncate_to_width, visible_width, word_wash_bg,
+    wrap_text_with_ansi,
+};
+#[cfg(test)]
+use xylitol_tui::{
+    is_osc11_background_color_response, is_terminal_color_reply, parse_osc11_background_color,
+    parse_terminal_color_scheme_report,
 };
 
 /// Demo slash commands (static; product would load from Driver / protocol).
@@ -647,6 +651,7 @@ pub enum ToolBlockStatus {
     Error,
 }
 
+#[cfg(test)]
 impl ToolBlockStatus {
     /// RGB from active palette (`tool-*-bg`).
     pub fn rgb(self, palette: &Palette) -> (u8, u8, u8) {
@@ -1135,14 +1140,14 @@ pub fn run(mode: InteractionMode) -> Result<(), Box<dyn std::error::Error>> {
                 app_hook.borrow_mut().apply_external_editor_text(new_text);
             }
             Ok(None) => {
-                app_hook.borrow_mut().push_system_for_test(
+                app_hook.borrow_mut().push_system(
                     "external editor exited non-zero — keeping original text".to_string(),
                 );
             }
             Err(err) => {
                 app_hook
                     .borrow_mut()
-                    .push_system_for_test(format!("external editor failed: {err}"));
+                    .push_system(format!("external editor failed: {err}"));
             }
         }
     });
@@ -1185,6 +1190,10 @@ impl Component for SharedFakeCodingAgentApp {
 
     fn wants_pointer_motion(&self) -> bool {
         self.0.borrow().input.is_selection_dragging()
+    }
+
+    fn clear_pointer_selection(&mut self) -> bool {
+        Component::clear_pointer_selection(&mut self.0.borrow_mut().input)
     }
 
     fn invalidate(&mut self) {
@@ -1507,6 +1516,7 @@ pub struct FakeCodingAgentApp {
 }
 
 impl FakeCodingAgentApp {
+    #[cfg(test)]
     pub fn new(quit_flag: Arc<AtomicBool>) -> Self {
         Self::new_with_prompt(
             quit_flag,
@@ -1544,16 +1554,19 @@ impl FakeCodingAgentApp {
         self.quit_flag.store(true, Ordering::SeqCst);
     }
 
+    #[cfg(test)]
     /// Test helper: current editor text (collapsed markers).
     pub fn input_text_for_test(&self) -> String {
         self.input.get_text()
     }
 
+    #[cfg(test)]
     /// Test helper: editor text with `[paste #N …]` expanded (Ctrl+G / submit parity).
     pub fn input_expanded_text_for_test(&self) -> String {
         self.input.get_expanded_text()
     }
 
+    #[cfg(test)]
     /// Test helper: footer metadata line (`cwd · model`).
     pub fn footer_note_for_test(&self) -> &str {
         &self.footer_note
@@ -1628,28 +1641,34 @@ impl FakeCodingAgentApp {
             .is_some_and(|until| Instant::now() < until)
     }
 
+    #[cfg(test)]
     /// Test helper: replace editor text (does not auto-sync bash border).
     pub fn set_editor_text_for_test(&mut self, text: impl Into<String>) {
         self.input.set_text(text.into());
     }
 
+    #[cfg(test)]
     pub fn status_text_for_test(&self) -> &str {
         &self.status_text
     }
 
+    #[cfg(test)]
     pub fn set_status_for_test(&mut self, text: impl Into<String>) {
         self.set_status(text);
     }
 
+    #[cfg(test)]
     /// Harness: status stack above the editor (idle blank / busy blank+spinner).
     pub fn status_lines_for_test(&mut self, width: usize) -> Vec<String> {
         self.status_lines(width)
     }
 
+    #[cfg(test)]
     pub fn clear_scheduled_actions_for_test(&mut self) {
         self.scheduled_actions.clear();
     }
 
+    #[cfg(test)]
     /// Stop idle fallback turns from interfering with harness injects.
     pub fn freeze_script_for_test(&mut self) {
         self.auto_started = true;
@@ -1657,6 +1676,7 @@ impl FakeCodingAgentApp {
         self.pending_events.clear();
     }
 
+    #[cfg(test)]
     /// Harness: push a pending tool (no long scripted turn). Returns transcript index.
     pub fn inject_pending_tool_for_test(&mut self) -> usize {
         let index = self.transcript.len();
@@ -1669,21 +1689,25 @@ impl FakeCodingAgentApp {
         index
     }
 
+    #[cfg(test)]
     /// Harness: push an already-finished tool (header has cmd; detail has no `$` echo).
     pub fn push_tool_for_test(&mut self, summary: impl Into<String>, detail: impl Into<String>) {
         self.push_tool(summary, detail, ToolBlockStatus::Success);
     }
 
+    #[cfg(test)]
     /// Harness: transcript length (index of next push).
     pub fn transcript_len_for_test(&self) -> usize {
         self.transcript.len()
     }
 
+    #[cfg(test)]
     /// Rendered transcript lines (including block spacers) for harness asserts.
     pub fn transcript_render_lines_for_test(&self, width: usize) -> Vec<String> {
         self.transcript_lines(width)
     }
 
+    #[cfg(test)]
     /// Replace transcript with two short messages (block-gap tests).
     pub fn seed_two_user_blocks_for_test(&mut self) {
         self.transcript.clear();
@@ -1691,30 +1715,36 @@ impl FakeCodingAgentApp {
         self.push_message(Role::User, "block-beta");
     }
 
+    #[cfg(test)]
     /// Clear all transcript entries (harness).
     pub fn clear_transcript_for_test(&mut self) {
         self.transcript.clear();
     }
 
+    #[cfg(test)]
     /// Harness: global tool-output viewport expand (Ctrl+O).
     pub fn tools_output_expanded_for_test(&self) -> bool {
         self.tools_output_expanded
     }
 
+    #[cfg(test)]
     pub fn set_tools_output_expanded_for_test(&mut self, expanded: bool) {
         self.tools_output_expanded = expanded;
     }
 
+    #[cfg(test)]
     /// Harness: append to a Tool detail (streaming viewport).
     pub fn append_tool_detail_for_test(&mut self, index: usize, chunk: impl Into<String>) {
         self.append_tool_detail_at(index, &chunk.into());
     }
 
+    #[cfg(test)]
     /// Harness: flip a specific tool/diff entry to success.
     pub fn complete_tool_at_for_test(&mut self, index: usize) {
         self.set_tool_status_at(index, ToolBlockStatus::Success);
     }
 
+    #[cfg(test)]
     /// Harness: schedule independent flips for two pending tools (parallel feel).
     pub fn inject_parallel_pending_tools_for_test(&mut self) -> (usize, usize) {
         let a = self.inject_pending_tool_for_test();
@@ -2094,12 +2124,14 @@ impl FakeCodingAgentApp {
         self.close_session_tree();
     }
 
+    #[cfg(test)]
     pub fn fork_from_selected_for_test(&mut self) {
         if let Some(id) = self.tree.selected_id().map(str::to_string) {
             self.fork_from_history(&id);
         }
     }
 
+    #[cfg(test)]
     /// Child count of a session-tree node (harness — fork creates siblings).
     pub fn session_tree_child_count_for_test(&self, id: &str) -> usize {
         find_session_node(&self.session_tree, id)
@@ -2107,32 +2139,39 @@ impl FakeCodingAgentApp {
             .unwrap_or(0)
     }
 
+    #[cfg(test)]
     /// Harness: submit text as if the editor fired on_submit (bypasses paste-burst).
     pub fn submit_text_for_test(&mut self, text: impl Into<String>) {
         self.process_submit(text.into());
     }
 
+    #[cfg(test)]
     /// Harness: drive one Component tick (script / streams / queues).
     pub fn tick_for_test(&mut self) -> bool {
         self.tick()
     }
 
+    #[cfg(test)]
     pub fn bash_mode_for_test(&self) -> bool {
         self.bash_mode
     }
 
+    #[cfg(test)]
     pub fn history_leaf_for_test(&self) -> &str {
         &self.history_leaf_id
     }
 
+    #[cfg(test)]
     pub fn external_editor_invocations_for_test(&self) -> u32 {
         self.external_editor_invocations
     }
 
+    #[cfg(test)]
     pub fn open_external_editor_stub_for_test(&mut self) {
         self.open_external_editor_stub();
     }
 
+    #[cfg(test)]
     pub fn request_external_editor_for_test(&mut self) {
         self.request_external_editor();
     }
@@ -2162,11 +2201,13 @@ impl FakeCodingAgentApp {
         );
     }
 
+    #[cfg(test)]
     /// Harness: run c493 compaction status demo.
     pub fn demo_compaction_status_for_test(&mut self) {
         self.demo_compaction_status();
     }
 
+    #[cfg(test)]
     /// Harness: run c493 retry status demo.
     pub fn demo_retry_status_for_test(&mut self) {
         self.demo_retry_status();
@@ -2201,12 +2242,13 @@ impl FakeCodingAgentApp {
         );
     }
 
+    #[cfg(test)]
     /// Test helper: editor cursor `(line, col)` after external-editor writeback.
     pub fn editor_cursor_for_test(&self) -> (usize, usize) {
         self.input.cursor_position()
     }
 
-    pub fn push_system_for_test(&mut self, text: String) {
+    pub fn push_system(&mut self, text: String) {
         self.push_message(Role::ScrollNotice, text);
     }
 
@@ -2220,27 +2262,33 @@ impl FakeCodingAgentApp {
         self.open_external_editor_stub();
     }
 
+    #[cfg(test)]
     pub fn sync_editor_border_for_test(&mut self) {
         self.sync_editor_border();
     }
 
+    #[cfg(test)]
     pub fn editor_render_for_test(&mut self, width: usize) -> Vec<String> {
         self.input.render(width)
     }
 
+    #[cfg(test)]
     pub fn theme_mode_for_test(&self) -> TerminalColorScheme {
         self.theme_mode
     }
 
+    #[cfg(test)]
     /// Harness: stub SKILL.md bodies injected on last user submit (A10 demo path).
     pub fn last_skill_injections_for_test(&self) -> &[(String, String)] {
         &self.last_skill_injections
     }
 
+    #[cfg(test)]
     pub fn theme_auto_for_test(&self) -> bool {
         self.theme_auto
     }
 
+    #[cfg(test)]
     pub fn set_theme_auto_for_test(&mut self, enabled: bool) {
         self.theme_auto = enabled;
         if !enabled {
@@ -2253,6 +2301,7 @@ impl FakeCodingAgentApp {
         Palette::from(self.theme_mode)
     }
 
+    #[cfg(test)]
     /// Harness: apply OSC11 / COLORFGBG / CSI997 sources when auto is on.
     pub fn apply_theme_detect_for_test(
         &mut self,
@@ -2274,6 +2323,7 @@ impl FakeCodingAgentApp {
         });
     }
 
+    #[cfg(test)]
     /// Host-driven live reply (OSC11 or CSI 997). No-op unless `theme_auto`.
     pub fn feed_terminal_color_reply(&mut self, data: &str) {
         if !self.theme_auto || !is_terminal_color_reply(data) {
@@ -2480,10 +2530,12 @@ impl FakeCodingAgentApp {
         self.set_status(format!("Ready · thinking:{level}"));
     }
 
+    #[cfg(test)]
     pub fn thinking_border_level_for_test(&self) -> ThinkingBorderLevel {
         self.thinking_border_level
     }
 
+    #[cfg(test)]
     pub fn set_thinking_border_level_for_test(&mut self, level: ThinkingBorderLevel) {
         self.thinking_border_level = level;
         self.refresh_editor_border_theme();
@@ -2548,22 +2600,27 @@ impl FakeCodingAgentApp {
         self.sync_editor_border();
     }
 
+    #[cfg(test)]
     pub fn steer_queue_len_for_test(&self) -> usize {
         self.steer_queue.len()
     }
 
+    #[cfg(test)]
     pub fn follow_up_queue_len_for_test(&self) -> usize {
         self.follow_up_queue.len()
     }
 
+    #[cfg(test)]
     pub fn enqueue_follow_up_for_test(&mut self, text: impl Into<String>) {
         self.enqueue_follow_up(text.into());
     }
 
+    #[cfg(test)]
     pub fn travel_to_history_for_test(&mut self, id: &str) {
         self.travel_to_history(id);
     }
 
+    #[cfg(test)]
     /// Whether a label substring appears anywhere in the live session tree (harness).
     pub fn session_tree_contains_label_for_test(&self, needle: &str) -> bool {
         fn walk(nodes: &[TreeNode], needle: &str) -> bool {
@@ -2574,6 +2631,7 @@ impl FakeCodingAgentApp {
         walk(&self.session_tree, needle)
     }
 
+    #[cfg(test)]
     /// Flattened plain text from transcript messages/tool summaries (harness).
     pub fn transcript_plain_for_test(&self) -> String {
         let mut out = String::new();
@@ -2651,10 +2709,12 @@ impl FakeCodingAgentApp {
         self.apply_tree_filter(self.tree_filter.cycle());
     }
 
+    #[cfg(test)]
     pub fn tree_open_for_test(&self) -> bool {
         self.tree_open
     }
 
+    #[cfg(test)]
     pub fn tree_fold_selected_for_test(&mut self) {
         use crossterm::event::{KeyCode, KeyEvent, KeyModifiers};
         self.tree.handle_input(InputEvent::Key(KeyEvent::new(
@@ -2663,10 +2723,12 @@ impl FakeCodingAgentApp {
         )));
     }
 
+    #[cfg(test)]
     pub fn tree_is_folded_for_test(&self, id: &str) -> bool {
         self.tree.is_folded(id)
     }
 
+    #[cfg(test)]
     pub fn tree_select_id_for_test(&mut self, id: &str) {
         if let Some(idx) = self.tree.filtered_nodes().iter().position(|n| n.id == id) {
             // Move selection by repeated down/up from 0
@@ -2697,6 +2759,7 @@ impl FakeCodingAgentApp {
         }
     }
 
+    #[cfg(test)]
     /// Harness: clear editor then open tree (skips double-Esc timing).
     pub fn open_session_tree_for_test(&mut self) {
         self.input.set_text(String::new());
@@ -5155,6 +5218,26 @@ impl Component for FakeCodingAgentApp {
     }
 
     fn invalidate(&mut self) {}
+
+    fn input_wants_rerender(&self, event: &InputEvent) -> bool {
+        self.input.input_wants_rerender(event)
+    }
+
+    fn take_pending_clipboard(&mut self) -> Vec<String> {
+        self.take_editor_clipboard()
+    }
+
+    fn dock_rows_hint(&self) -> Option<usize> {
+        Some(self.last_dock_rows())
+    }
+
+    fn wants_pointer_motion(&self) -> bool {
+        self.input.is_selection_dragging()
+    }
+
+    fn clear_pointer_selection(&mut self) -> bool {
+        Component::clear_pointer_selection(&mut self.input)
+    }
 
     fn tick(&mut self) -> bool {
         let mut changed = false;

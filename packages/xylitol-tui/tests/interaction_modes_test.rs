@@ -603,6 +603,14 @@ impl Component for SharedEditorHost {
     fn invalidate(&mut self) {
         self.editor.borrow_mut().invalidate();
     }
+
+    fn clear_pointer_selection(&mut self) -> bool {
+        Component::clear_pointer_selection(&mut *self.editor.borrow_mut())
+    }
+
+    fn wants_pointer_motion(&self) -> bool {
+        self.editor.borrow().is_selection_dragging()
+    }
 }
 
 #[test]
@@ -682,5 +690,178 @@ fn application_owned_editor_double_click_word_via_dock_fallthrough() {
             .iter()
             .any(|s| s.contains("\x1b]52;")),
         "editor double-click copy-on-release must queue OSC52"
+    );
+}
+
+#[test]
+fn application_owned_editor_and_transcript_selection_are_mutex() {
+    use xylitol_tui::{
+        Clock, Editor, EditorOptions, EditorTheme, SystemClock, editor_screen_origin,
+    };
+
+    let term_rows = 12u16;
+    let dock_rows = 4usize;
+    let editor = std::rc::Rc::new(std::cell::RefCell::new(Editor::new(
+        EditorTheme::default(),
+        EditorOptions {
+            padding_x: 0,
+            terminal_rows: term_rows as usize,
+        },
+        Box::new(SystemClock) as Box<dyn Clock>,
+    )));
+    editor.borrow_mut().set_text("say apple pie".into());
+    let _ = editor.borrow_mut().render(40);
+
+    let mut tui = TUI::with_interaction_mode(
+        LoggingVirtualTerminal::new(40, term_rows),
+        InteractionMode::ApplicationOwned,
+    );
+    tui.set_dock_rows(dock_rows);
+    tui.add_child(Box::new(SharedEditorHost {
+        editor: editor.clone(),
+        term_rows,
+        dock_rows,
+    }));
+    tui.set_focus(Some(0));
+    tui.terminal.start();
+    tui.begin_application_owned_session();
+    tui.request_render(true);
+    tui.render_now().expect("seed");
+
+    let (origin_row, _) = editor_screen_origin(term_rows, dock_rows, 0);
+    let editor_row = origin_row + 1;
+    let mouse = |kind, column, row| MouseEvent {
+        kind,
+        column,
+        row,
+        modifiers: KeyModifiers::NONE,
+    };
+
+    // Select "apple" in the editor (cols 4..9 on content row).
+    let _ = tui.dispatch_event(InputEvent::Mouse(mouse(
+        MouseEventKind::Down(MouseButton::Left),
+        4,
+        editor_row,
+    )));
+    let _ = tui.dispatch_event(InputEvent::Mouse(mouse(
+        MouseEventKind::Drag(MouseButton::Left),
+        9,
+        editor_row,
+    )));
+    let _ = tui.dispatch_event(InputEvent::Mouse(mouse(
+        MouseEventKind::Up(MouseButton::Left),
+        9,
+        editor_row,
+    )));
+    assert_eq!(editor.borrow().selected_text().as_deref(), Some("apple"));
+    assert!(!tui.application_owned_has_selection());
+
+    // Click + drag in transcript — editor highlight must drop; transcript owns it.
+    let _ = tui.dispatch_event(InputEvent::Mouse(mouse(
+        MouseEventKind::Down(MouseButton::Left),
+        0,
+        0,
+    )));
+    assert!(
+        !editor.borrow().has_selection(),
+        "transcript Left Down must clear editor selection"
+    );
+    let _ = tui.dispatch_event(InputEvent::Mouse(mouse(
+        MouseEventKind::Drag(MouseButton::Left),
+        8,
+        0,
+    )));
+    let _ = tui.dispatch_event(InputEvent::Mouse(mouse(
+        MouseEventKind::Up(MouseButton::Left),
+        8,
+        0,
+    )));
+    assert!(tui.application_owned_has_selection());
+    assert!(!editor.borrow().has_selection());
+
+    // Click in editor — transcript selection clears; editor can own a new range.
+    let _ = tui.dispatch_event(InputEvent::Mouse(mouse(
+        MouseEventKind::Down(MouseButton::Left),
+        4,
+        editor_row,
+    )));
+    assert!(
+        !tui.application_owned_has_selection(),
+        "dock Left Down must clear transcript selection"
+    );
+    let _ = tui.dispatch_event(InputEvent::Mouse(mouse(
+        MouseEventKind::Drag(MouseButton::Left),
+        9,
+        editor_row,
+    )));
+    let _ = tui.dispatch_event(InputEvent::Mouse(mouse(
+        MouseEventKind::Up(MouseButton::Left),
+        9,
+        editor_row,
+    )));
+    assert_eq!(editor.borrow().selected_text().as_deref(), Some("apple"));
+    assert!(!tui.application_owned_has_selection());
+}
+
+#[test]
+fn application_owned_transcript_hit_priority_swallows_press() {
+    use std::sync::atomic::{AtomicBool, Ordering};
+
+    let hit = std::sync::Arc::new(AtomicBool::new(false));
+    let hit_flag = hit.clone();
+
+    let mut tui = TUI::with_interaction_mode(
+        LoggingVirtualTerminal::new(40, 10),
+        InteractionMode::ApplicationOwned,
+    );
+    tui.set_dock_rows(2);
+    tui.add_child(Box::new(StaticLines {
+        lines: vec![
+            "hello".into(),
+            "world".into(),
+            "dock-a".into(),
+            "dock-b".into(),
+        ],
+    }));
+    tui.set_transcript_hit_priority(Some(Box::new(move |col, row| {
+        if row == 0 && col <= 4 {
+            hit_flag.store(true, Ordering::SeqCst);
+            true
+        } else {
+            false
+        }
+    })));
+    tui.terminal.start();
+    tui.begin_application_owned_session();
+    tui.request_render(true);
+    tui.render_now().expect("seed");
+
+    let down = MouseEvent {
+        kind: MouseEventKind::Down(MouseButton::Left),
+        column: 1,
+        row: 0,
+        modifiers: KeyModifiers::NONE,
+    };
+    assert_eq!(
+        tui.dispatch_event(InputEvent::Mouse(down)),
+        xylitol_tui::InputReaction::Rerender
+    );
+    assert!(hit.load(Ordering::SeqCst), "hit priority must run");
+    assert!(
+        !tui.application_owned_has_selection(),
+        "swallowed press must not start transcript selection"
+    );
+
+    // Hook must still be installed after the dispatch (park/restore).
+    hit.store(false, Ordering::SeqCst);
+    let _ = tui.dispatch_event(InputEvent::Mouse(MouseEvent {
+        kind: MouseEventKind::Down(MouseButton::Left),
+        column: 2,
+        row: 0,
+        modifiers: KeyModifiers::NONE,
+    }));
+    assert!(
+        hit.load(Ordering::SeqCst),
+        "hit priority must survive across dispatches"
     );
 }

@@ -84,8 +84,8 @@ pub use keys::{
 pub use paste_burst::PasteBurst;
 pub use scroll_view::ScrollView;
 pub use selection::{
-    CellPoint, ClipboardSink, RecordingClipboardSink, ScreenRect, SelectionController,
-    SelectionGranularity, format_osc52,
+    CellPoint, ClipboardSink, HitPriorityFn, RecordingClipboardSink, ScreenRect,
+    SelectionController, SelectionGranularity, format_osc52,
 };
 pub use terminal::{CrosstermTerminal, Terminal, env_requests_mouse_capture, parse_kitty_flags};
 pub use terminal_colors::{
