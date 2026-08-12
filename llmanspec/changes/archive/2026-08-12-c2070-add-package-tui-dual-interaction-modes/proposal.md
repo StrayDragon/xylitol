@@ -10,7 +10,8 @@ blocks:
 - c2071-update-app-tui-host-mode-b-only
 branch: sdd/c2070-add-package-tui-dual-interaction-modes
 base_sha: 1dd5de3a53e28365099c2351abd0a767bbfab688
-checkpointed: false
+checkpointed: true
+checkpoint_sha: 1dd5de3a53e28365099c2351abd0a767bbfab688
 ---
 
 # xylitol-tui：双交互架构（终端选区 ↔ 应用内选区）

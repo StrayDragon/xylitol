@@ -6,7 +6,7 @@ blocks: []
 
 # 产品 TUI 固定 ApplicationOwned（ath30 AO-only）
 
-> **延后提案（2026-08-12）**：自 [`c2070`](../c2070-add-package-tui-dual-interaction-modes/proposal.md) **任务 7.5** 拆出。
+> **延后提案（2026-08-12）**：自 [`c2070`](../archive/2026-08-12-c2070-add-package-tui-dual-interaction-modes/proposal.md) **任务 7.5** 拆出。
 > **本 change 不在** `sdd/c2070-…` 分支实现默认翻转；c2070 收口库双入口 / 启动绑定 / 禁热切。
 > **状态**：规划草案（Designed 前可充实 tasks）。
 
