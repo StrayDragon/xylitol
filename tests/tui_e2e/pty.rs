@@ -140,7 +140,7 @@ impl PtySession {
         })
     }
 
-    /// Spawn Mode B (`agent_demo_alt`) under a PTY — c2070 ApplicationOwned entry.
+    /// Spawn ApplicationOwned (`agent_demo_alt`) under a PTY — c2070 entry.
     pub fn spawn_demo_alt(cols: u16, rows: u16) -> std::io::Result<Self> {
         Self::spawn_example("agent_demo_alt", cols, rows)
     }
@@ -578,7 +578,7 @@ fn pty_product_fake_hello_then_exit() {
 
 /// c2020 ath29 / S6: lab opt-in mouse via `XYLITOL_TUI_MOUSE=1` on **agent_demo**
 /// (not the product TUI) enables capture CSI; clean exit must Disable on teardown.
-/// Product `TerminalGuard` ignores this env — mouse UX waits Mode B / c2070.
+/// Product `TerminalGuard` ignores this env — mouse UX waits ApplicationOwned / c2070.
 #[test]
 #[ignore = "E2E: spawns a real PTY + cargo build; run via `just test-tui-e2e-pty`"]
 fn pty_agent_demo_mouse_opt_in_enable_then_exit() {
@@ -607,7 +607,7 @@ fn pty_agent_demo_mouse_opt_in_enable_then_exit() {
     );
 }
 
-/// c2070 Mode B minimal PTY gate: `agent_demo_alt` enters alt-buffer + mouse
+/// c2070 ApplicationOwned minimal PTY gate: `agent_demo_alt` enters alt-buffer + mouse
 /// without `XYLITOL_TUI_MOUSE` / `XYLITOL_AGENT_DEMO_MODE`; exit leaves alt,
 /// disables mouse, and dumps transcript marker onto the main buffer stream.
 #[test]
@@ -632,15 +632,15 @@ fn pty_agent_demo_alt_alt_mouse_and_exit_dump() {
         )
         .expect("agent_demo_alt should render");
 
-    // EnterAlternateScreen (CSI ?1049h) — Mode B begin.
+    // EnterAlternateScreen (CSI ?1049h) — ApplicationOwned begin.
     assert!(
         session.raw_contains(b"\x1b[?1049h"),
-        "Mode B must enter alt-buffer (CSI ?1049h)"
+        "ApplicationOwned must enter alt-buffer (CSI ?1049h)"
     );
     // Mouse from begin_application_owned_session — not XYLITOL_TUI_MOUSE.
     assert!(
         session.raw_contains(b"\x1b[?1000h") || session.raw_contains(b"\x1b[?1003h"),
-        "Mode B must EnableMouseCapture without XYLITOL_TUI_MOUSE"
+        "ApplicationOwned must EnableMouseCapture without XYLITOL_TUI_MOUSE"
     );
 
     session.send_keys("\x15").expect("clear editor");
@@ -648,15 +648,15 @@ fn pty_agent_demo_alt_alt_mouse_and_exit_dump() {
     let code = session
         .wait_exit(Duration::from_secs(30))
         .expect("agent_demo_alt should exit");
-    assert_eq!(code, 0, "Mode B demo must exit cleanly");
+    assert_eq!(code, 0, "ApplicationOwned demo must exit cleanly");
 
     assert!(
         session.raw_contains(b"\x1b[?1049l"),
-        "Mode B teardown must leave alt-buffer (CSI ?1049l)"
+        "ApplicationOwned teardown must leave alt-buffer (CSI ?1049l)"
     );
     assert!(
         session.raw_contains(b"\x1b[?1000l") || session.raw_contains(b"\x1b[?1003l"),
-        "Mode B teardown must DisableMouseCapture"
+        "ApplicationOwned teardown must DisableMouseCapture"
     );
     // Exit dump writes transcript (incl. seeded editor/prompt path) to main buffer.
     assert!(
@@ -665,7 +665,7 @@ fn pty_agent_demo_alt_alt_mouse_and_exit_dump() {
     );
 }
 
-/// c2070 Mode B: SGR drag on transcript should emit OSC52 copy-on-release.
+/// c2070 ApplicationOwned: SGR drag on transcript should emit OSC52 copy-on-release.
 #[test]
 #[ignore = "E2E: spawns a real PTY + cargo build; run via `just test-tui-e2e-pty`"]
 fn pty_agent_demo_alt_drag_select_osc52() {
@@ -700,7 +700,7 @@ fn pty_agent_demo_alt_drag_select_osc52() {
     assert_eq!(code, 0);
 }
 
-/// c2070 Mode B: wheel over transcript must not crash; viewport stays app-owned
+/// c2070 ApplicationOwned: wheel over transcript must not crash; viewport stays app-owned
 /// (smoke — sticky persistence is covered by package unit tests).
 #[test]
 #[ignore = "E2E: spawns a real PTY + cargo build; run via `just test-tui-e2e-pty`"]
@@ -732,14 +732,14 @@ fn pty_agent_demo_alt_wheel_smoke() {
             COLS as usize,
             ROWS as usize,
         )
-        .expect("Mode B must stay alive after wheel");
+        .expect("ApplicationOwned must stay alive after wheel");
 
     session.send_keys("\x15").expect("clear");
     session.send_keys("\x03").expect("quit");
     assert_eq!(session.wait_exit(Duration::from_secs(30)).expect("exit"), 0);
 }
 
-/// c2070 Mode B H4: drag from transcript into dock still copy-on-release (clamp).
+/// c2070 ApplicationOwned H4: drag from transcript into dock still copy-on-release (clamp).
 #[test]
 #[ignore = "E2E: spawns a real PTY + cargo build; run via `just test-tui-e2e-pty`"]
 fn pty_agent_demo_alt_dock_clamp_copy() {
@@ -799,7 +799,7 @@ fn pty_agent_demo_alt_suspend_resume_restores_alt() {
         "precondition: alt entered"
     );
 
-    // Ctrl+G → suspend → `true` exits 0 → resume Mode B.
+    // Ctrl+G → suspend → `true` exits 0 → resume ApplicationOwned.
     session.send_keys("\x07").expect("Ctrl+G");
     session
         .wait_for_raw("\x1b[?1049l", Duration::from_secs(10))

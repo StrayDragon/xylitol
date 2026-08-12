@@ -1046,7 +1046,7 @@ pub async fn pump_host_driver<T: Terminal>(
     }
 
     if session.should_quit() {
-        session.tui.finish_inline();
+        session.tui.finish();
     }
     Ok(())
 }
@@ -1577,7 +1577,7 @@ mod slice_tests {
         assert!(session.should_quit());
         assert!(
             session.tui.terminal.stopped,
-            "finish_inline must stop TestTerminal"
+            "finish must stop TestTerminal"
         );
     }
 

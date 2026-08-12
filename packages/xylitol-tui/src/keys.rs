@@ -1237,7 +1237,7 @@ pub fn matches_key_event(event: &crossterm::event::KeyEvent, key_id: &str) -> bo
     // Pi parity (keys.ts): when Kitty protocol is active, Ghostty maps
     // Shift+Enter → `\n` and Kitty custom maps → `\x1b\r`. Crossterm surfaces
     // the former as `KeyCode::Char('\n')` **without** SHIFT. Match before the
-    // strict modifier check so `tui.input.newLine` works in Mode B alt-screen.
+    // strict modifier check so `tui.input.newLine` works in ApplicationOwned alt-screen.
     if parsed.key == "enter"
         && parsed.shift
         && !parsed.ctrl

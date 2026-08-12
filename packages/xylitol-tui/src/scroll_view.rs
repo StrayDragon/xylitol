@@ -1,4 +1,4 @@
-//! Application-owned scroll viewport for Mode B (c2070).
+//! Application-owned scroll viewport for ApplicationOwned sessions (c2070).
 
 /// Content-backed viewport: scroll is owned by the app, not the terminal scrollback.
 #[derive(Debug, Clone, Default)]

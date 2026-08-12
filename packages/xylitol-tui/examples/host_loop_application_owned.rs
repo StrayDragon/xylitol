@@ -1,4 +1,4 @@
-//! Minimal Mode B host loop — canonical ptim14 surface (c2070 §7.9).
+//! Minimal ApplicationOwned host loop — canonical ptim14 surface (c2070 §7.9).
 //!
 //! Run: `cargo run -p xylitol-tui --example host_loop_application_owned`
 //!   or: `just demo-tui-host-loop`
@@ -23,7 +23,7 @@ impl HelloHost {
     fn new() -> Self {
         Self {
             lines: vec![
-                "Mode B host loop (ptim14)".into(),
+                "ApplicationOwned host loop (ptim14)".into(),
                 "Type characters; Ctrl+C or q to quit.".into(),
                 String::new(),
                 "> ".into(),

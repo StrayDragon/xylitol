@@ -211,8 +211,8 @@ impl<T: Terminal> HostSession<T> {
     }
 
     /// Apply interaction mode (c2070 / ath30). Default construction is Inline.
-    /// Switching modes restacks: end Mode B session → rebuild root children →
-    /// begin Mode B if requested → force clear paint.
+    /// Switching modes restacks: end ApplicationOwned session → rebuild root children →
+    /// begin ApplicationOwned if requested → force clear paint.
     pub fn apply_interaction_mode(&mut self, mode: xylitol_tui::InteractionMode) {
         let already = self.tui.interaction_mode() == mode
             && mode.is_application_owned() == self.tui.application_session_active();
@@ -223,7 +223,7 @@ impl<T: Terminal> HostSession<T> {
             return;
         }
 
-        // Tear down prior Mode B session (mouse + alt) before rebuild.
+        // Tear down prior ApplicationOwned session (mouse + alt) before rebuild.
         self.tui.end_application_owned_session();
         self.tui.set_interaction_mode(mode);
 
@@ -244,7 +244,7 @@ impl<T: Terminal> HostSession<T> {
         self.paint_dirty = true;
     }
 
-    /// Register lower chrome as Mode B dock (status/editor/footer…).
+    /// Register lower chrome as ApplicationOwned dock (status/editor/footer…).
     /// Prefers last-frame measured rows; falls back to a chrome estimate.
     pub fn sync_dock_rows(&mut self) {
         let rows = if let Some(root) = self.ui_root.as_ref() {

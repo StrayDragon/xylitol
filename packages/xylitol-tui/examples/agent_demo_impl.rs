@@ -1494,15 +1494,15 @@ pub struct FakeCodingAgentApp {
     thinking_border_level: ThinkingBorderLevel,
     /// Last submit's resolved `$skill` → stub SKILL.md bodies (demo inject assert).
     last_skill_injections: Vec<(String, String)>,
-    /// Mode B dock rows from last paint (status + editor slot + footer).
+    /// ApplicationOwned dock rows from last paint (status + editor slot + footer).
     last_dock_rows: usize,
     /// Status band height inside the dock (for remapping screen → editor-local).
     last_status_rows: usize,
     /// Editor slot height inside the dock (borders included).
     last_editor_rows: usize,
-    /// Last known terminal rows (Mode B mouse remap).
+    /// Last known terminal rows (ApplicationOwned mouse remap).
     term_rows: u16,
-    /// Mode B copy-success cue above the editor (`Copied`, ~2s TTL).
+    /// ApplicationOwned copy-success cue above the editor (`Copied`, ~2s TTL).
     copy_notice_until: Option<Instant>,
 }
 
@@ -1559,12 +1559,12 @@ impl FakeCodingAgentApp {
         &self.footer_note
     }
 
-    /// Mode B dock rows measured on the last render (status + editor + footer).
+    /// ApplicationOwned dock rows measured on the last render (status + editor + footer).
     pub fn last_dock_rows(&self) -> usize {
         self.last_dock_rows.max(1)
     }
 
-    /// Update terminal size used to remap Mode B mouse into the editor.
+    /// Update terminal size used to remap ApplicationOwned mouse into the editor.
     pub fn set_term_rows_for_mouse(&mut self, rows: u16) {
         self.term_rows = rows.max(1);
     }
@@ -1574,7 +1574,7 @@ impl FakeCodingAgentApp {
         self.input.take_pending_clipboard()
     }
 
-    /// Remap absolute Mode B screen mouse → Editor via canonical origin path
+    /// Remap absolute ApplicationOwned screen mouse → Editor via canonical origin path
     /// ([`xylitol_tui::editor_screen_origin`] + [`Editor::set_screen_origin`]).
     fn handle_editor_mouse(&mut self, mouse: crossterm::event::MouseEvent) {
         use crossterm::event::MouseEventKind;
@@ -1603,14 +1603,12 @@ impl FakeCodingAgentApp {
         if !dragging && !mouse_in_dock(mouse.row, self.term_rows, dock) {
             return;
         }
-        let dock_top = self.term_rows.saturating_sub(dock as u16);
-        let status_h = self.last_status_rows as u16;
-        // Clicks on the status band (not dragging) stay out of the editor.
-        if !dragging && mouse.row < dock_top.saturating_add(status_h) {
-            return;
-        }
         let (origin_row, origin_col) =
             editor_screen_origin(self.term_rows, dock, self.last_status_rows);
+        // Clicks on the status band (not dragging) stay out of the editor.
+        if !dragging && mouse.row < origin_row {
+            return;
+        }
         self.input.set_screen_origin(origin_row, origin_col);
         // Absolute screen coords — Editor subtracts origin in handle_input.
         self.input.handle_input(InputEvent::Mouse(mouse));
@@ -1620,7 +1618,7 @@ impl FakeCodingAgentApp {
         self.input.input_wants_rerender(event)
     }
 
-    /// Arm the Mode B «Copied» dock cue (~2s). Not a ScrollNotice / transcript line.
+    /// Arm the ApplicationOwned «Copied» dock cue (~2s). Not a ScrollNotice / transcript line.
     pub fn arm_copy_notice(&mut self) {
         self.copy_notice_until = Some(Instant::now() + Duration::from_millis(2000));
     }
@@ -3032,7 +3030,7 @@ impl FakeCodingAgentApp {
         self.push_message(
             Role::ScrollNotice,
             "This demo (`just demo-tui` / `agent_demo`) is the **package** Inline harness. \
-             Mode B: `just demo-tui-alt-screen` (`agent_demo_alt`). \
+             ApplicationOwned: `just demo-tui-alt-screen` (`agent_demo_alt`). \
              It MAY differ from product chrome / copy. Product visual SSOT = \
              `src/app/tui/DESIGN.md` + `design/` (+ static `design/playground/` — Agents ignore \
              by default). Tokens: DESIGN.md → `just sync-tui-tokens` (`sync_tokens.py`) → \
@@ -4682,7 +4680,7 @@ impl FakeCodingAgentApp {
             }
             return lines;
         }
-        // Idle: reuse the blank status row so Mode B dock height stays stable.
+        // Idle: reuse the blank status row so ApplicationOwned dock height stays stable.
         if self.copy_notice_visible() {
             vec![Self::fit(&dim("Copied"), width)]
         } else {
@@ -4870,11 +4868,11 @@ impl Component for FakeCodingAgentApp {
         lines.extend(self.queue_strip_lines(width));
         let status = self.status_lines(width);
         let editor = self.render_editor_slot(width);
-        // Mode B dock excludes transcript+queue (c2070 / ptim06).
+        // ApplicationOwned dock excludes transcript+queue (c2070 / ptim06).
         self.last_status_rows = status.len();
         self.last_editor_rows = editor.len();
         self.last_dock_rows = status.len().saturating_add(editor.len()).saturating_add(1);
-        // Canonical Mode B editor hit-test origin (ptim14) — same helper as product.
+        // Canonical ApplicationOwned editor hit-test origin (ptim14) — same helper as product.
         let (origin_row, origin_col) = xylitol_tui::editor_screen_origin(
             self.term_rows,
             self.last_dock_rows,

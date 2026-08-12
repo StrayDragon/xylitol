@@ -95,7 +95,7 @@ pub trait Terminal {
     }
 
     /// Enter the terminal alternate buffer (`CSI ?1049h` / crossterm EnterAlternateScreen).
-    /// Used by Mode B ([`crate::InteractionMode::ApplicationOwned`]). Default no-op.
+    /// Used by [`crate::InteractionMode::ApplicationOwned`]. Default no-op.
     fn enter_alternate_screen(&mut self) {}
     /// Leave the alternate buffer. `stop` MUST leave if currently active.
     fn leave_alternate_screen(&mut self) {}
@@ -122,7 +122,7 @@ pub trait Terminal {
 ///
 /// Enabling capture on Inline (emulator-owned) sessions trades away
 /// unmodified terminal selection/scroll. Official mouse UX (application
-/// selection, click-fold) belongs on Mode B ([`crate::InteractionMode::ApplicationOwned`])
+/// selection, click-fold) belongs on [`crate::InteractionMode::ApplicationOwned`]
 /// — see change `c2070` / capability `package-tui-interaction-modes`.
 /// The product `TerminalGuard` deliberately does **not** read this env.
 pub fn env_requests_mouse_capture() -> bool {
@@ -167,7 +167,7 @@ pub struct CrosstermTerminal {
     mouse_capture_desired: bool,
     /// Mouse capture is currently enabled on the TTY.
     mouse_capture_active: bool,
-    /// Alternate screen buffer currently entered (Mode B).
+    /// Alternate screen buffer currently entered (ApplicationOwned).
     alternate_screen_active: bool,
 }
 
@@ -238,7 +238,7 @@ impl CrosstermTerminal {
     ///
     /// Pi negotiates keyboard **after** alt-buffer is already active
     /// (`tui-alt-screen` enter → `ProcessTerminal.start`). xylitol does
-    /// `start()` first then Mode B `enter_alternate_screen`, so this rearm is
+    /// `start()` first then ApplicationOwned `enter_alternate_screen`, so this rearm is
     /// the parity path (research: reapply after alt-screen / suspend restore).
     /// Dual-arm is intentional under crossterm: we cannot consume Kitty DA
     /// responses the way pi's stdin owner does; write both and let the

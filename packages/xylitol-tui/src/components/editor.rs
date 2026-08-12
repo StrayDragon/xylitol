@@ -302,12 +302,12 @@ pub struct Editor {
     autocomplete_prefix: String,
     autocomplete_max_visible: usize,
     autocomplete_start_token: usize,
-    /// Mode B editor-owned selection (independent of transcript SelectionController).
+    /// ApplicationOwned editor-owned selection (independent of transcript SelectionController).
     selection: EditorSelection,
     /// Default on — OSC52 sequences land in [`Self::take_pending_clipboard`].
     pub copy_on_release: bool,
     pending_clipboard: Vec<String>,
-    /// Absolute screen origin of the editor's top-left paint cell (Mode B hit-test).
+    /// Absolute screen origin of the editor's top-left paint cell (ApplicationOwned hit-test).
     screen_origin_row: u16,
     screen_origin_col: u16,
     /// Last mouse handler dirtied selection / clipboard (for rerender policy).
@@ -423,7 +423,7 @@ impl Editor {
 
     /// Set absolute screen origin of this editor's top-left paint cell.
     ///
-    /// Mode B hosts MUST update this when the dock moves so mouse hit-testing
+    /// ApplicationOwned hosts MUST update this when the dock moves so mouse hit-testing
     /// maps screen coordinates into editor-local space for [`Self::handle_mouse_local`].
     pub fn set_screen_origin(&mut self, row: u16, col: u16) {
         self.screen_origin_row = row;
@@ -1700,7 +1700,7 @@ impl Editor {
         }
     }
 
-    // ── Mode B editor selection (ptim13) ───────────────────────────────────
+    // ── ApplicationOwned editor selection (ptim13) ─────────────────────────
 
     /// Handle a mouse event in **editor-local** coordinates: `(0,0)` is the
     /// top-left of the editor's last render (top border row). Hosts that receive

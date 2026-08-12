@@ -1,4 +1,4 @@
-//! Mode B (application-owned) runtime: ScrollView + selection + dock split.
+//! Application-owned runtime: ScrollView + selection + dock split.
 //!
 //! Owned by [`crate::TUI`] while an application session is active.
 
@@ -8,10 +8,10 @@ use crate::scroll_view::ScrollView;
 use crate::selection::{ClipboardSink, ScreenRect, SelectionController, format_osc52};
 use crossterm::event::MouseEvent;
 
-/// Default TTL for the Mode B copy-notice cue (ptim15 / design §7).
+/// Default TTL for the ApplicationOwned copy-notice cue (ptim15 / design §7).
 pub const COPY_NOTICE_TTL: Duration = Duration::from_millis(2000);
 
-/// Per-session Mode B state (created on begin, dropped on end).
+/// Per-session ApplicationOwned state (created on begin, dropped on end).
 pub struct ApplicationOwnedRuntime {
     pub scroll: ScrollView,
     pub selection: SelectionController,
@@ -52,7 +52,7 @@ impl ApplicationOwnedRuntime {
     }
 
     /// Full transcript + last dock — written to main-screen scrollback when
-    /// leaving Mode B if [`crate::TUI::append_session_to_main_scrollback_on_exit`].
+    /// leaving ApplicationOwned if [`crate::TUI::append_session_to_main_scrollback_on_exit`].
     pub fn session_lines_for_main_scrollback(&self) -> Vec<String> {
         let mut lines = self.scroll.lines().to_vec();
         lines.extend(self.last_dock_lines.iter().cloned());
@@ -67,8 +67,8 @@ impl ApplicationOwnedRuntime {
         let dock_lines: Vec<String> = full_lines[content_end..].to_vec();
         self.last_dock_lines = dock_lines.clone();
 
-        let viewport_h = term_height.saturating_sub(dock).max(1);
-        self.scroll.set_viewport_height(viewport_h);
+        let viewport_h = term_height.saturating_sub(dock);
+        self.scroll.set_viewport_height(viewport_h.max(1));
         self.scroll.set_lines(content);
         // Follow only when sticky; wheel / selection edge scroll must persist across frames.
         if self.follow_bottom && !self.selection.is_dragging() {
@@ -92,7 +92,7 @@ impl ApplicationOwnedRuntime {
 
     pub fn handle_mouse(&mut self, event: &MouseEvent, term_cols: u16, term_rows: u16) -> bool {
         let dock = self.dock_rows.min(term_rows as usize) as u16;
-        let transcript_h = term_rows.saturating_sub(dock).max(1);
+        let transcript_h = term_rows.saturating_sub(dock);
         let transcript = ScreenRect {
             row: 0,
             col: 0,
@@ -123,7 +123,7 @@ impl ApplicationOwnedRuntime {
 
     pub fn tick_autoscroll(&mut self, term_cols: u16, term_rows: u16) -> bool {
         let dock = self.dock_rows.min(term_rows as usize) as u16;
-        let transcript_h = term_rows.saturating_sub(dock).max(1);
+        let transcript_h = term_rows.saturating_sub(dock);
         let transcript = ScreenRect {
             row: 0,
             col: 0,
@@ -201,7 +201,7 @@ impl ClipboardSink for CollectOsc52Sink<'_> {
     }
 }
 
-/// Test helper: construct a Mode B runtime (selection/copy covered by selection tests).
+/// Test helper: construct an ApplicationOwned runtime (selection/copy covered by selection tests).
 #[cfg(test)]
 pub fn test_runtime(dock_rows: usize) -> ApplicationOwnedRuntime {
     ApplicationOwnedRuntime::new(dock_rows)
@@ -223,9 +223,9 @@ mod tests {
 
     #[test]
     fn project_frame_caps_height_and_keeps_dock() {
-        let mut mb = ApplicationOwnedRuntime::new(2);
+        let mut runtime = ApplicationOwnedRuntime::new(2);
         let full: Vec<String> = (0..20).map(|i| format!("L{i}")).collect();
-        let paint = mb.project_frame(&full, 8);
+        let paint = runtime.project_frame(&full, 8);
         assert_eq!(paint.len(), 8);
         assert_eq!(paint[6], "L18");
         assert_eq!(paint[7], "L19");
@@ -235,75 +235,90 @@ mod tests {
 
     #[test]
     fn wheel_scroll_persists_across_project_frame() {
-        let mut mb = ApplicationOwnedRuntime::new(2);
+        let mut runtime = ApplicationOwnedRuntime::new(2);
         let full: Vec<String> = (0..20).map(|i| format!("L{i}")).collect();
-        let _ = mb.project_frame(&full, 8);
-        assert!(mb.scroll.at_bottom());
-        let top_before = mb.scroll.scroll_top();
+        let _ = runtime.project_frame(&full, 8);
+        assert!(runtime.scroll.at_bottom());
+        let top_before = runtime.scroll.scroll_top();
         let wheel = MouseEvent {
             kind: MouseEventKind::ScrollUp,
             column: 1,
             row: 1,
             modifiers: KeyModifiers::NONE,
         };
-        assert!(mb.handle_mouse(&wheel, 40, 8));
-        assert!(!mb.scroll.at_bottom());
-        assert!(mb.scroll.scroll_top() < top_before);
-        let top_scrolled = mb.scroll.scroll_top();
-        let paint = mb.project_frame(&full, 8);
-        assert_eq!(mb.scroll.scroll_top(), top_scrolled);
+        assert!(runtime.handle_mouse(&wheel, 40, 8));
+        assert!(!runtime.scroll.at_bottom());
+        assert!(runtime.scroll.scroll_top() < top_before);
+        let top_scrolled = runtime.scroll.scroll_top();
+        let paint = runtime.project_frame(&full, 8);
+        assert_eq!(runtime.scroll.scroll_top(), top_scrolled);
         assert_eq!(paint[0], format!("L{top_scrolled}"));
     }
 
     #[test]
+    fn dock_that_fills_terminal_keeps_dock_and_disables_transcript_selection() {
+        let mut runtime = ApplicationOwnedRuntime::new(8);
+        let full: Vec<String> = (0..8).map(|i| format!("L{i}")).collect();
+        let paint = runtime.project_frame(&full, 4);
+        assert_eq!(paint, vec!["L4", "L5", "L6", "L7"]);
+
+        assert!(!runtime.handle_mouse(
+            &mouse(MouseEventKind::Down(MouseButton::Left), 0, 0),
+            40,
+            4,
+        ));
+        assert!(!runtime.selection.is_dragging());
+    }
+
+    #[test]
     fn copy_on_release_signals_notice_empty_does_not() {
-        let mut mb = ApplicationOwnedRuntime::new(2);
+        let mut runtime = ApplicationOwnedRuntime::new(2);
         let full: Vec<String> = vec![
             "hello world".into(),
             "second".into(),
             "status".into(),
             "input".into(),
         ];
-        let _ = mb.project_frame(&full, 6);
+        let _ = runtime.project_frame(&full, 6);
         // Empty click — no notice.
-        assert!(mb.handle_mouse(&mouse(MouseEventKind::Down(MouseButton::Left), 1, 0), 40, 6));
-        assert!(mb.handle_mouse(&mouse(MouseEventKind::Up(MouseButton::Left), 1, 0), 40, 6));
-        assert!(!mb.copy_notice_active());
-        assert!(!mb.take_copy_notice());
+        assert!(runtime.handle_mouse(&mouse(MouseEventKind::Down(MouseButton::Left), 1, 0), 40, 6));
+        assert!(runtime.handle_mouse(&mouse(MouseEventKind::Up(MouseButton::Left), 1, 0), 40, 6));
+        assert!(!runtime.copy_notice_active());
+        assert!(!runtime.take_copy_notice());
 
         // Drag select then release — notice armed.
-        assert!(mb.handle_mouse(&mouse(MouseEventKind::Down(MouseButton::Left), 0, 0), 40, 6));
-        assert!(mb.handle_mouse(&mouse(MouseEventKind::Drag(MouseButton::Left), 5, 0), 40, 6));
-        assert!(mb.handle_mouse(&mouse(MouseEventKind::Up(MouseButton::Left), 5, 0), 40, 6));
-        assert!(mb.copy_notice_active());
-        assert!(mb.take_copy_notice());
-        assert!(!mb.take_copy_notice());
-        assert!(mb.copy_notice_active());
-        assert!(!mb.take_pending_clipboard().is_empty());
+        assert!(runtime.handle_mouse(&mouse(MouseEventKind::Down(MouseButton::Left), 0, 0), 40, 6));
+        assert!(runtime.handle_mouse(&mouse(MouseEventKind::Drag(MouseButton::Left), 5, 0), 40, 6));
+        assert!(runtime.handle_mouse(&mouse(MouseEventKind::Up(MouseButton::Left), 5, 0), 40, 6));
+        assert!(runtime.copy_notice_active());
+        assert!(runtime.take_copy_notice());
+        assert!(!runtime.take_copy_notice());
+        assert!(runtime.copy_notice_active());
+        assert!(!runtime.take_pending_clipboard().is_empty());
     }
 
     #[test]
     fn copy_disabled_does_not_signal_notice() {
-        let mut mb = ApplicationOwnedRuntime::new(2);
-        mb.set_copy_on_release(false);
+        let mut runtime = ApplicationOwnedRuntime::new(2);
+        runtime.set_copy_on_release(false);
         let full: Vec<String> = vec!["abcd".into(), "e".into(), "s".into(), "i".into()];
-        let _ = mb.project_frame(&full, 6);
-        mb.handle_mouse(&mouse(MouseEventKind::Down(MouseButton::Left), 0, 0), 40, 6);
-        mb.handle_mouse(&mouse(MouseEventKind::Up(MouseButton::Left), 3, 0), 40, 6);
-        assert!(!mb.copy_notice_active());
-        assert!(!mb.take_copy_notice());
-        assert!(mb.take_pending_clipboard().is_empty());
+        let _ = runtime.project_frame(&full, 6);
+        runtime.handle_mouse(&mouse(MouseEventKind::Down(MouseButton::Left), 0, 0), 40, 6);
+        runtime.handle_mouse(&mouse(MouseEventKind::Up(MouseButton::Left), 3, 0), 40, 6);
+        assert!(!runtime.copy_notice_active());
+        assert!(!runtime.take_copy_notice());
+        assert!(runtime.take_pending_clipboard().is_empty());
     }
 
     #[test]
     fn copy_notice_expires_on_tick() {
-        let mut mb = ApplicationOwnedRuntime::new(1);
-        mb.signal_copy_notice();
+        let mut runtime = ApplicationOwnedRuntime::new(1);
+        runtime.signal_copy_notice();
         // Force an already-expired deadline.
-        mb.copy_notice_until = Some(Instant::now() - Duration::from_millis(1));
-        assert!(!mb.copy_notice_active());
-        assert!(mb.tick_copy_notice());
-        assert!(!mb.take_copy_notice());
-        assert!(!mb.tick_copy_notice());
+        runtime.copy_notice_until = Some(Instant::now() - Duration::from_millis(1));
+        assert!(!runtime.copy_notice_active());
+        assert!(runtime.tick_copy_notice());
+        assert!(!runtime.take_copy_notice());
+        assert!(!runtime.tick_copy_notice());
     }
 }
