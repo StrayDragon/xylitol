@@ -1,4 +1,4 @@
-//! Mode B / dual interaction modes (c2070 / package-tui-interaction-modes).
+//! ApplicationOwned / dual interaction modes (c2070 / package-tui-interaction-modes).
 
 mod support;
 
@@ -51,7 +51,7 @@ fn application_owned_begin_end_records_alt_and_mouse() {
 }
 
 #[test]
-fn application_owned_finish_inline_tears_down_without_leak() {
+fn application_owned_finish_tears_down_without_leak() {
     let mut tui = TUI::with_interaction_mode(
         LoggingVirtualTerminal::new(40, 12),
         InteractionMode::ApplicationOwned,
@@ -61,7 +61,7 @@ fn application_owned_finish_inline_tears_down_without_leak() {
     }));
     tui.terminal.start();
     tui.begin_application_owned_session();
-    tui.finish_inline();
+    tui.finish();
     assert!(!tui.application_session_active());
     assert!(!tui.terminal.alternate_screen_active());
     assert!(!tui.mouse_capture_enabled());
@@ -159,8 +159,29 @@ fn application_owned_paint_caps_at_terminal_height() {
     tui.begin_application_owned_session();
     tui.request_render(true);
     tui.render_now().expect("paint");
-    // Mode B must not grow scrollback via overflow lines.
+    // ApplicationOwned must not grow scrollback via overflow lines.
     assert_eq!(tui.terminal.rows(), 8);
+}
+
+#[test]
+fn application_owned_dock_filling_terminal_keeps_dock_lines() {
+    let mut tui = TUI::with_interaction_mode(
+        LoggingVirtualTerminal::new(40, 4),
+        InteractionMode::ApplicationOwned,
+    );
+    tui.set_dock_rows(8);
+    tui.add_child(Box::new(StaticLines {
+        lines: (0..8).map(|i| format!("FULL{i}")).collect(),
+    }));
+    tui.terminal.start();
+    tui.begin_application_owned_session();
+    tui.request_render(true);
+    tui.render_now().expect("paint");
+    let raw = tui.terminal.all_writes();
+    assert!(
+        raw.contains("FULL4") && raw.contains("FULL7") && !raw.contains("FULL3"),
+        "dock must occupy the full terminal without a synthetic transcript row: {raw:?}"
+    );
 }
 
 #[test]
@@ -235,6 +256,25 @@ fn application_owned_suspend_restores_alt_and_mouse() {
     assert!(tui.mouse_capture_enabled());
     assert!(tui.terminal.alt_enter_calls() > enter);
     assert!(tui.terminal.mouse_enable_calls() > mouse);
+}
+
+#[test]
+fn application_owned_suspend_restores_terminal_before_resuming_panic() {
+    let mut tui = TUI::with_interaction_mode(
+        LoggingVirtualTerminal::new(40, 12),
+        InteractionMode::ApplicationOwned,
+    );
+    tui.terminal.start();
+    tui.begin_application_owned_session();
+
+    let result = std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
+        tui.with_terminal_suspended(|| panic!("external process wrapper panicked"));
+    }));
+
+    assert!(result.is_err());
+    assert!(tui.application_session_active());
+    assert!(tui.terminal.alternate_screen_active());
+    assert!(tui.mouse_capture_enabled());
 }
 
 #[test]
@@ -405,6 +445,28 @@ fn application_owned_finish_can_skip_appending_session_to_main_scrollback() {
     assert!(
         !raw.contains("NODUMP0") && !raw.contains("NODUMP9"),
         "opting out must not append session lines to main scrollback, got: {raw:?}"
+    );
+}
+
+#[test]
+fn application_owned_finish_flushes_queued_clipboard_without_another_paint() {
+    let mut tui = TUI::with_interaction_mode(
+        LoggingVirtualTerminal::new(40, 8),
+        InteractionMode::ApplicationOwned,
+    );
+    tui.set_append_session_to_main_scrollback_on_exit(false);
+    tui.terminal.start();
+    tui.begin_application_owned_session();
+    tui.enqueue_clipboard_sequences(["\x1b]52;c;cGVuZGluZw==\x07".to_string()]);
+    tui.terminal.clear_writes();
+
+    tui.finish_application_owned();
+
+    assert!(
+        tui.terminal
+            .all_writes()
+            .contains("\x1b]52;c;cGVuZGluZw==\x07"),
+        "finish must not drop clipboard data queued after the last paint"
     );
 }
 

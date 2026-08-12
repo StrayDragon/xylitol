@@ -397,7 +397,7 @@ async fn run_host_loop(
     }
     .await;
 
-    session.tui.finish_inline();
+    session.tui.finish();
     log::info!(target: "xylitol::tui", "product TUI host stopped");
     host_result
 }

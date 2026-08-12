@@ -1,11 +1,11 @@
-//! Application-owned (Mode B) host helpers — elegant, reusable entry surface.
+//! Application-owned host helpers.
 //!
-//! Prefer this module's layout helpers + [`crate::TUI`] Mode B lifecycle over
+//! Prefer this module's layout helpers + [`crate::TUI`] ApplicationOwned lifecycle over
 //! copying demo-private mouse arithmetic. Product hosts and demos SHOULD share
 //! one path: measure dock → [`editor_screen_origin`] → [`Editor::set_screen_origin`]
 //! → absolute [`InputEvent::Mouse`] through normal focus routing.
 //!
-//! # Minimal host loop (Mode B)
+//! # Minimal ApplicationOwned host loop
 //!
 //! ```ignore
 //! use xylitol_tui::{ApplicationOwnedTui, InputEvent, InteractionMode, TUI};
@@ -25,7 +25,7 @@
 //! tui.finish(); // leave alt; append session to main scrollback by default
 //! ```
 //!
-//! See package `AGENTS.md` § Mode B host checklist (ptim14).
+//! See package `AGENTS.md` § ApplicationOwned host checklist (ptim14).
 
 use crate::interaction_mode::InteractionMode;
 use crate::terminal::Terminal;
@@ -49,30 +49,33 @@ pub fn editor_screen_origin(
     dock_rows: usize,
     rows_above_editor_in_dock: usize,
 ) -> (u16, u16) {
-    let dock = dock_rows.max(1) as u16;
+    let dock = dock_rows.max(1).min(term_rows as usize) as u16;
     let dock_top = term_rows.saturating_sub(dock);
-    let above = rows_above_editor_in_dock.min(u16::MAX as usize) as u16;
+    let above = rows_above_editor_in_dock.min(dock.saturating_sub(1) as usize) as u16;
     (dock_top.saturating_add(above), 0)
 }
 
 /// Whether `mouse_row` falls in the bottom dock band (inclusive of dock top).
 #[must_use]
 pub fn mouse_in_dock(mouse_row: u16, term_rows: u16, dock_rows: usize) -> bool {
-    let dock = dock_rows.max(1) as u16;
+    if term_rows == 0 {
+        return false;
+    }
+    let dock = dock_rows.max(1).min(term_rows as usize) as u16;
     let dock_top = term_rows.saturating_sub(dock);
     mouse_row >= dock_top
 }
 
 /// Thin facade: [`TUI`] constructed as [`InteractionMode::ApplicationOwned`].
 ///
-/// Owns the Mode B **entry narrative** (`begin` / `finish`) without forking the
+/// Owns the ApplicationOwned **entry narrative** (`begin` / `finish`) without forking the
 /// differential engine. Deref to [`TUI`] for the full host surface.
 pub struct ApplicationOwnedTui<T: Terminal> {
     inner: TUI<T>,
 }
 
 impl<T: Terminal> ApplicationOwnedTui<T> {
-    /// Construct a Mode B–flagged TUI (does not enter alt-buffer yet).
+    /// Construct an ApplicationOwned TUI (does not enter alt-buffer yet).
     #[must_use]
     pub fn new(terminal: T) -> Self {
         Self {
@@ -85,7 +88,7 @@ impl<T: Terminal> ApplicationOwnedTui<T> {
         self.inner.begin_application_owned_session();
     }
 
-    /// Leave Mode B: leave alt-screen, optionally append session to main
+    /// Leave ApplicationOwned: leave alt-screen, optionally append session to main
     /// scrollback, then stop the terminal.
     pub fn finish(&mut self) {
         self.inner.finish_application_owned();
@@ -132,5 +135,12 @@ mod tests {
         assert!(!mouse_in_dock(13, 20, 6));
         assert!(mouse_in_dock(14, 20, 6));
         assert!(mouse_in_dock(19, 20, 6));
+    }
+
+    #[test]
+    fn oversized_dock_and_offset_stay_inside_terminal() {
+        assert_eq!(editor_screen_origin(4, usize::MAX, usize::MAX), (3, 0));
+        assert!(mouse_in_dock(0, 4, usize::MAX));
+        assert!(!mouse_in_dock(0, 0, usize::MAX));
     }
 }

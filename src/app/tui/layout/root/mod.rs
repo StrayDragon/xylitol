@@ -150,13 +150,13 @@ pub struct UiRoot {
     scrollback_paint: ScrollbackPaintCache,
     /// Terminal rows from host (Chrome Footprint / atc23); soft default until first sync.
     term_rows: usize,
-    /// Last paint: toast + status + editor + footer row count (Mode B dock).
+    /// Last paint: toast + status + editor + footer row count (ApplicationOwned dock).
     last_dock_rows: usize,
-    /// Rows in toast / status / editor from last paint (Mode B mouse origin).
+    /// Rows in toast / status / editor from last paint (ApplicationOwned mouse origin).
     last_toast_rows: usize,
     last_status_rows: usize,
     last_editor_rows: usize,
-    /// Mode B copy-success cue (`Copied`, ~2s). Not chrome-toast / ScrollNotice.
+    /// ApplicationOwned copy-success cue (`Copied`, ~2s). Not chrome-toast / ScrollNotice.
     copy_notice_until: Option<Instant>,
     /// Test/obs: how many times upper (loaded+scrollback+queue) was rebuilt.
     #[cfg(test)]
@@ -397,22 +397,22 @@ impl UiRoot {
         self.fold
     }
 
-    /// Mode B dock rows from the last [`Component::render`] (toast+status+editor+footer).
+    /// ApplicationOwned dock rows from the last [`Component::render`].
     pub(crate) fn last_dock_rows(&self) -> usize {
         self.last_dock_rows.max(1)
     }
 
-    /// Mouse/key paint policy for the focused editor (Mode B selection / typing).
+    /// Mouse/key paint policy for the focused editor (ApplicationOwned selection / typing).
     pub(crate) fn editor_wants_rerender(&self, event: &xylitol_tui::InputEvent) -> bool {
         Component::input_wants_rerender(&self.editor, event)
     }
 
-    /// Arm Mode B «Copied» chrome cue (~2s). Must not use Error: toast (ath31).
+    /// Arm ApplicationOwned «Copied» chrome cue (~2s). Must not use Error: toast (ath31).
     pub fn arm_copy_notice(&mut self) {
         self.copy_notice_until = Some(Instant::now() + xylitol_tui::COPY_NOTICE_TTL);
     }
 
-    /// Whether the Mode B copy cue is still within TTL.
+    /// Whether the ApplicationOwned copy cue is still within TTL.
     pub fn copy_notice_visible(&self) -> bool {
         self.copy_notice_until
             .is_some_and(|until| Instant::now() < until)
@@ -424,7 +424,7 @@ impl UiRoot {
         self.copy_notice_visible().then_some("Copied")
     }
 
-    /// Test helper: Editor absolute screen origin (Mode B mouse hit-test).
+    /// Test helper: Editor absolute screen origin (ApplicationOwned mouse hit-test).
     #[cfg(test)]
     pub fn editor_screen_origin_for_test(&self) -> (u16, u16) {
         self.editor.screen_origin()
@@ -923,7 +923,7 @@ impl UiRoot {
         }
     }
 
-    /// Update Editor screen origin from last dock measure (Mode B mouse → ptim13/14).
+    /// Update Editor screen origin from the last ApplicationOwned dock measure.
     pub(crate) fn sync_editor_screen_origin(&mut self) {
         let (row, col) = xylitol_tui::editor_screen_origin(
             self.term_rows.min(u16::MAX as usize) as u16,

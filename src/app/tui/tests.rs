@@ -2471,7 +2471,7 @@ fn application_owned_copy_notice_chrome_ath31() {
     let dock = session.tui.dock_rows();
     assert!(
         origin_row as usize >= term_rows.saturating_sub(dock),
-        "editor origin must sit in Mode B dock band: origin={origin_row} dock_top={}",
+        "editor origin must sit in ApplicationOwned dock band: origin={origin_row} dock_top={}",
         term_rows.saturating_sub(dock)
     );
 
@@ -2535,7 +2535,7 @@ fn application_owned_copy_notice_arms_copied_cue_not_error_toast() {
     let frame = root.borrow_mut().render(80).join("\n");
     assert!(
         frame.contains("Copied"),
-        "Mode B copy cue must paint in chrome: {frame}"
+        "ApplicationOwned copy cue must paint in chrome: {frame}"
     );
     assert!(
         !frame.contains("Error: Copied"),

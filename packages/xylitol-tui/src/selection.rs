@@ -1,4 +1,4 @@
-//! Mode B application text selection (c2070).
+//! ApplicationOwned text selection (c2070).
 //!
 //! Drag-select over transcript content coordinates, edge auto-scroll via
 //! [`ScrollView`], optional copy-on-release, and dock/input exclusion.
@@ -100,7 +100,7 @@ fn base64_encode(input: &[u8]) -> String {
 /// Optional click consumer (e.g. future fold hit). Return true to swallow the press.
 pub type HitPriorityFn = Box<dyn FnMut(u16, u16) -> bool + Send>;
 
-/// Mode B selection controller over a [`ScrollView`] transcript pane.
+/// ApplicationOwned selection controller over a [`ScrollView`] transcript pane.
 pub struct SelectionController {
     anchor: Option<CellPoint>,
     focus: Option<CellPoint>,
@@ -402,7 +402,7 @@ impl SelectionController {
                 }
                 true
             }
-            // Wheel over dock: do not scroll transcript here (Mode B may route later).
+            // Wheel over dock: do not scroll transcript here (ApplicationOwned may route later).
             _ => false,
         }
     }

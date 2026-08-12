@@ -58,7 +58,7 @@ impl UiRoot {
 
         if !self.status_busy {
             // Idle: optional MCP short cue (c1210), right-aligned; otherwise breathing room.
-            // Mode B copy cue (ath31): reuse the blank status row when no next-turn cue
+            // ApplicationOwned copy cue (ath31): reuse the blank status row when no next-turn cue
             // so dock height stays stable; never use Error: chrome-toast.
             if let Some(cue) = self.status_next_turn_cue.as_deref() {
                 let mut lines = vec![paint_cue_line(&self.theme, cue, width)];
@@ -234,7 +234,7 @@ impl Component for UiRoot {
         } else {
             truncate_to_width(self.footer.text(), width, "...", true)
         };
-        // Mode B dock = everything below loaded+scrollback+queue (ath30 / ptim06).
+        // ApplicationOwned dock = everything below loaded+scrollback+queue (ath30 / ptim06).
         self.last_toast_rows = toast.len();
         self.last_status_rows = status.len();
         self.last_editor_rows = editor.len();

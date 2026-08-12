@@ -71,7 +71,7 @@ where
                         }
                         Some(Err(e)) => {
                             e.log_failure("tui.bang.input");
-                            session.tui.finish_inline();
+                            session.tui.finish();
                             return Err(e);
                         }
                         None => {
