@@ -38,7 +38,7 @@
 | D13 | Editor 补全扩展 | provider + 引擎内 `/` 等特判较多 | **`CompletionSource` 注册表**（`completion.rs`）；`/` `@` `$` 等为可插拔 Source（扩展点已落地；业务语义在应用面） | 是 |
 | D14 | paste-burst | 无对等模块（或弱） | `PasteBurst` + `Clock`/`MockClock`（确定性时序） | 是 |
 | D15 | 测试分层 | vitest + virtual-terminal | 五层 harness + PTY/tmux E2E（`test-tui-harness`） | 是 |
-| D16 | 双交互模式 | `TuiMainScreen` / `TuiAltScreen` 两套实现 | 单 `TUI` + `InteractionMode`；ApplicationOwned 经 alt-buffer + `ScrollView`/`SelectionController`；产品默认 Inline | 是 |
+| D16 | 双交互模式 | `TuiMainScreen` / `TuiAltScreen` 两套实现 | 单 `TUI` + `InteractionMode`；ApplicationOwned 经 alt-buffer + `ScrollView`/`SelectionController`；**产品默认 ApplicationOwned**（ath30 / c2071）；库仍暴露 Inline | 是 |
 | D16 | InputListener | VT 字符串回调常见 | **`InputEvent` 原生** `add_input_listener`；无 KeyEvent→VT；`Continue` / `Consumed`（Key·Paste 刷帧，Mouse 静默）/ `ConsumedRerender`（显式 dirty） | 是 |
 | D17 | Diff 组件 | `renderDiff` 函数式 | **`Diff` Component + `render_diff_lines`**；`similar` 在包内；主题闭包；对齐 `design/diff-block.md` | 是 |
 | D18 | 代码高亮 | 应用层常见 | **`highlight` optional feature**（syntect+two-face）；默认依赖无 syntect；经 `MarkdownTheme.highlight_code` 注入 | 是 |

@@ -302,7 +302,7 @@
   场景: h8-exit
     假如 idle 输入 /exit
     当 编排收尾
-    那么 session quit 且 finish_inline/stop 可观测
+    那么 session quit 且 finish/stop 可观测
 
   @req:avs2
   场景: pty-hello-exit

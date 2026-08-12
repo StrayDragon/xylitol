@@ -159,9 +159,11 @@ fn harness_never_calls_terminal_start() {
 }
 
 #[test]
-fn mouse_input_does_not_request_render_by_default() {
+fn mouse_moved_does_not_request_render_by_default() {
     use crossterm::event::{KeyCode, KeyModifiers, MouseButton, MouseEvent, MouseEventKind};
 
+    // Product default is ApplicationOwned: Moved stays idle; Left Down starts
+    // app selection and may schedule a frame (expected AO delta vs Inline).
     let mut session = HostSession::new_product_ui(TestTerminal::new(80, 24));
     session.render_now().unwrap();
     assert!(!session.tui.is_render_requested());
@@ -188,9 +190,11 @@ fn mouse_input_does_not_request_render_by_default() {
         })))
         .unwrap();
     assert!(
-        !session.tui.is_render_requested(),
-        "unhandled mouse Down must not schedule a frame"
+        session.tui.is_render_requested(),
+        "ApplicationOwned Left Down begins selection and must schedule a frame"
     );
+    session.render_now().unwrap();
+    assert!(!session.tui.is_render_requested());
 
     session
         .step(HostEvent::Input(InputEvent::Key(
@@ -200,6 +204,33 @@ fn mouse_input_does_not_request_render_by_default() {
     assert!(
         session.tui.is_render_requested(),
         "Key path must still request render"
+    );
+}
+
+#[test]
+fn inline_unhandled_mouse_down_does_not_request_render() {
+    use crossterm::event::{KeyModifiers, MouseButton, MouseEvent, MouseEventKind};
+
+    let mut session = HostSession::new_product_ui_with_meta_mode(
+        TestTerminal::new(80, 24),
+        "/tmp".into(),
+        "model".into(),
+        xylitol_tui::InteractionMode::Inline,
+    );
+    session.render_now().unwrap();
+    assert!(!session.tui.is_render_requested());
+
+    session
+        .step(HostEvent::Input(InputEvent::Mouse(MouseEvent {
+            kind: MouseEventKind::Down(MouseButton::Left),
+            column: 2,
+            row: 2,
+            modifiers: KeyModifiers::NONE,
+        })))
+        .unwrap();
+    assert!(
+        !session.tui.is_render_requested(),
+        "Inline unhandled mouse Down must not schedule a frame"
     );
 }
 
@@ -2424,16 +2455,20 @@ fn models_picker_left_right_cycle_thinking_levels() {
 }
 
 #[test]
-fn interaction_mode_defaults_to_inline() {
+fn interaction_mode_defaults_to_application_owned() {
     let session = HostSession::new_product_ui(TestTerminal::new(80, 24));
     assert_eq!(
         session.tui.interaction_mode(),
-        xylitol_tui::InteractionMode::Inline
+        xylitol_tui::InteractionMode::ApplicationOwned
     );
-    assert!(!session.tui.application_session_active());
+    assert!(
+        session.tui.application_session_active(),
+        "product default MUST begin ApplicationOwned session"
+    );
+    assert!(session.tui.mouse_capture_enabled());
     assert_eq!(
         crate::app::tui::TuiRunOptions::default().interaction_mode,
-        xylitol_tui::InteractionMode::Inline
+        xylitol_tui::InteractionMode::ApplicationOwned
     );
 }
 

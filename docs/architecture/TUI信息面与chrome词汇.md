@@ -19,8 +19,8 @@
 | **槽** | overlay / slot | 树、模型列表、resume… | 用滚动提示复述成功路径 |
 | **尾随** | trail-append / trailing | append 到 entries **末**（跟底可见） | 与 next-turn **cue** 不同根概念 |
 | **顶插** | prepend | 写入 `entries[0]` 或等价前缀 | — |
-| **Inline 交互** | **Inline** · `InteractionMode::Inline` | 主屏差分；**终端原生选区**取向（emulator-owned）；默认产品缺省 | Mode A、inline-only 当唯一真名 |
-| **ApplicationOwned 交互** | **ApplicationOwned** · `InteractionMode::ApplicationOwned` | 应用自管视口 + **应用内选区**；常经 alt-buffer + mouse capture | Mode B、alt-screen 当唯一真名（alt-buffer 只是 AO 常见载体） |
+| **Inline 交互** | **Inline** · `InteractionMode::Inline` | 主屏差分；**终端原生选区**取向（emulator-owned）；库 lab/demo | Mode A、inline-only 当唯一真名 |
+| **ApplicationOwned 交互** | **ApplicationOwned** · `InteractionMode::ApplicationOwned` | 应用自管视口 + **应用内选区**；常经 alt-buffer + mouse capture；**产品缺省（ath30）** | Mode B、alt-screen 当唯一真名（alt-buffer 只是 AO 常见载体） |
 | **终端原生选区** | emulator-owned selection | 仿真器画选区/复制；应用不解释未修饰拖选 | 「开了 mouse 就有原生选区」 |
 | **应用内选区** | application-owned selection | 应用收鼠标、自绘高亮、自复制（OSC52 等） | 把 mouse capture 说成「有选区」 |
 
@@ -73,6 +73,6 @@
 - 六个月后仍真？否则不要扩表。
 - 新 chrome 能力先归类 A–G，再选落点；禁止静默发明第四套同义词。
 - 面操作边界：[`src/app/tui/AGENTS.md`](../../src/app/tui/AGENTS.md)。
-- **交互模型（库双入口）**：终端原生选区 vs 应用内选区（oneof）见 [`c2070`](../../llmanspec/changes/archive/2026-08-12-c2070-add-package-tui-dual-interaction-modes/proposal.md)；术语表 §1 [`emulator-vs-app-selection-oneof.md`](../../llmanspec/changes/archive/2026-08-12-c2070-add-package-tui-dual-interaction-modes/research/emulator-vs-app-selection-oneof.md)。库保留 **Inline** + **ApplicationOwned**；ApplicationOwned 默认须含拖选 / 跨页续选 / 松手复制。产品默认仍 Inline（ath30）；产品改 ApplicationOwned-only 见后续 `c2071`。点折叠等挂 [`c1760`](../../llmanspec/changes/c1760-add-tui-activity-fold/proposal.md)（延后）。`c2020` 鼠标管道为 ApplicationOwned 地基；`XYLITOL_TUI_MOUSE` 仅 lab/e2e，产品 `TerminalGuard` 不读。
+- **交互模型（库双入口）**：终端原生选区 vs 应用内选区（oneof）见 [`c2070`](../../llmanspec/changes/archive/2026-08-12-c2070-add-package-tui-dual-interaction-modes/proposal.md)；术语表 §1 [`emulator-vs-app-selection-oneof.md`](../../llmanspec/changes/archive/2026-08-12-c2070-add-package-tui-dual-interaction-modes/research/emulator-vs-app-selection-oneof.md)。库保留 **Inline** + **ApplicationOwned**；ApplicationOwned 默认须含拖选 / 跨页续选 / 松手复制。**产品默认 ApplicationOwned**（ath30 / [`c2071`](../../llmanspec/changes/c2071-update-app-tui-host-mode-b-only/proposal.md)）；库 Inline 仅 lab/demo。点折叠等挂 [`c1760`](../../llmanspec/changes/c1760-add-tui-activity-fold/proposal.md)（延后）。`c2020` 鼠标管道为 ApplicationOwned 地基；`XYLITOL_TUI_MOUSE` 仅 lab/e2e，产品 `TerminalGuard` 不读。
 - **归档 change**（`llmanspec/changes/archive/`）可保留当时旧词作史实；**新文 / 活 docs / 活 specs（产品面）** 只准用本表。
 - **DESIGN playground**（`src/app/tui/design/playground/`）= 产品静图；`agent_demo` = 包演示，文案/chrome **允许不同**。**禁止**把本表当成「必须改写 demo 字符串」的闸。

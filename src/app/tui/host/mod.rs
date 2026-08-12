@@ -262,13 +262,13 @@ impl<T: Terminal> HostSession<T> {
         )
     }
 
-    /// Product UI with footer identity (`cwd · model`); Inline interaction mode.
+    /// Product UI with footer identity (`cwd · model`); ApplicationOwned by default (ath30).
     pub fn new_product_ui_with_meta(terminal: T, cwd: String, model: String) -> Self {
         Self::new_product_ui_with_meta_mode(
             terminal,
             cwd,
             model,
-            xylitol_tui::InteractionMode::Inline,
+            xylitol_tui::InteractionMode::ApplicationOwned,
         )
     }
 
