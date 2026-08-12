@@ -2083,23 +2083,19 @@
     /* Compaction block: progress placeholder → collapsed/expanded summary · busy Compacting */
     const COMPACTION = {
       progress: `<div class="row"><span class="fg-user">user:</span> <span class="fg-on">继续修这个大会话</span></div>
-<div class="row fg-muted" style="font-weight:700">[compaction]</div>
-<div class="row fg-muted">Compacting…</div>`,
+<div class="row fg-muted">[compaction] Compacting…</div>`,
       collapsed: `<div class="row"><span class="fg-user">user:</span> <span class="fg-on">继续修这个大会话</span></div>
-<div class="row fg-muted" style="font-weight:700">[compaction]</div>
-<div class="row fg-muted">Compacted from 186,842 tokens (Alt+E to expand)</div>
+<div class="row fg-muted">▸ [compaction] Compacted from 186,842 tokens (Alt+E to expand)</div>
 <div class="row"><span class="fg-success">assistant:</span> <span class="fg-on">好的，我先从摘要后的上下文继续。</span></div>`,
       expanded: `<div class="row"><span class="fg-user">user:</span> <span class="fg-on">继续修这个大会话</span></div>
-<div class="row fg-muted" style="font-weight:700">[compaction]</div>
-<div class="row fg-muted"><strong>Compacted from 186,842 tokens</strong></div>
+<div class="row fg-muted"><strong>▾ [compaction] Compacted from 186,842 tokens</strong></div>
 <div class="row fg-muted"></div>
 <div class="row fg-muted">Session covered debugging token footer refresh, then a long tool loop</div>
 <div class="row fg-muted">reading session JSONL and provider-trace; concluded auto-compact was</div>
 <div class="row fg-muted">firing each turn because Api usage stayed above reserve…</div>
 <div class="row"><span class="fg-success">assistant:</span> <span class="fg-on">好的，我先从摘要后的上下文继续。</span></div>`,
       aborted: `<div class="row"><span class="fg-user">user:</span> <span class="fg-on">继续修这个大会话</span></div>
-<div class="row fg-muted" style="font-weight:700">[compaction]</div>
-<div class="row fg-muted">compaction aborted</div>`,
+<div class="row fg-muted">[compaction] compaction aborted</div>`,
     };
     const COMPACTION_META = {
       progress: {

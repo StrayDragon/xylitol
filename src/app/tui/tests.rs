@@ -2776,12 +2776,65 @@ fn harness_mouse_triangle_toggles_compaction_fold() {
         "AO paint must show Compaction summary after expand: {after}"
     );
 
+    // Re-hit after expand: triangle stays on the Compacted header (same line as
+    // [compaction]); click it to collapse again.
+    session.tui.request_render(true);
+    session.step_paint_only().unwrap();
+    let region_expanded = root
+        .borrow()
+        .fold_hits()
+        .regions
+        .iter()
+        .find(|reg| matches!(reg.target, FoldTarget::Compaction))
+        .cloned()
+        .unwrap_or_else(|| {
+            panic!(
+                "expected Compaction triangle after expand; regions={:?}",
+                root.borrow().fold_hits().regions
+            )
+        });
+    let screen_row_expanded = region_expanded
+        .content_row
+        .saturating_sub(root.borrow().fold_hits().scroll_top) as u16;
+    session
+        .step(HostEvent::Input(InputEvent::Mouse(MouseEvent {
+            kind: MouseEventKind::Down(MouseButton::Left),
+            column: region_expanded.col_start as u16,
+            row: screen_row_expanded,
+            modifiers: KeyModifiers::NONE,
+        })))
+        .unwrap();
+    assert!(
+        !root.borrow().fold().compaction_expanded,
+        "Compaction triangle must collapse after a second click"
+    );
+    session.tui.request_render(true);
+    session.step_paint_only().unwrap();
+    let collapsed_again = root.borrow_mut().render(80).join("\n");
+    assert!(
+        !collapsed_again.contains("compaction-summary-body"),
+        "AO paint must hide Compaction summary after triangle collapse: {collapsed_again}"
+    );
+
+    // Re-expand so the non-triangle body click check below still has a visible header.
+    session
+        .step(HostEvent::Input(InputEvent::Mouse(MouseEvent {
+            kind: MouseEventKind::Down(MouseButton::Left),
+            column: region_expanded.col_start as u16,
+            row: screen_row_expanded,
+            modifiers: KeyModifiers::NONE,
+        })))
+        .unwrap();
+    assert!(root.borrow().fold().compaction_expanded);
+    session.tui.request_render(true);
+    session.step_paint_only().unwrap();
+
     let before = root.borrow().fold().compaction_expanded;
     session
         .step(HostEvent::Input(InputEvent::Mouse(MouseEvent {
             kind: MouseEventKind::Down(MouseButton::Left),
-            column: (region.col_end + 4) as u16,
-            row: screen_row,
+            column: (region_expanded.col_end + 4) as u16,
+            row: screen_row_expanded,
             modifiers: KeyModifiers::NONE,
         })))
         .unwrap();

@@ -34,13 +34,11 @@ components:
 ### Transcript compaction block（c1730）
 
 6. **CompactionStart**：在 transcript 插入一条 **占位块**（与最终块同槽位），折叠摘要示意进行中，例如：
-   - 标签行：`[compaction]`（muted / 可加粗标签）
-   - 折叠行：`Compacting…`（muted）
+   - 单行：`[compaction] Compacting…`（muted）
 7. **CompactionEnd（成功）**：同一占位 **就地变成** 完成块（勿再叠一条「compaction complete」滚动提示）：
-   - 标签行：`[compaction]`
-   - **默认折叠**：`Compacted from {N} tokens ({expand-chord} to expand)`；`N` = `tokens_before`（千分位可选）
-   - **展开**：`Compacted from {N} tokens` + 空行 + summary markdown（muted 正文）
-8. **CompactionEnd（失败 / aborted）**：占位变成失败块或短 muted 一行（`compaction aborted` / 错误摘要）；**MUST NOT** 假装成成功 summary。
+   - **默认折叠**（单行）：`▸ [compaction] Compacted from {N} tokens ({expand-chord} to expand)`；三角与 Compacted 同行；`N` = `tokens_before`（千分位可选）
+   - **展开**（头行仍可折）：`▾ [compaction] Compacted from {N} tokens` + 空行 + summary markdown（muted 正文）
+8. **CompactionEnd（失败 / aborted）**：占位变成失败块或短 muted 一行（`[compaction] compaction aborted` / 错误摘要）；**MUST NOT** 假装成成功 summary。
 9. **默认折叠**；展开键与 tool 块共用产品面 expand 和弦（旁注括号提示，见 expandable）。重建 / resume 时已落盘的 CompactionEntry **MUST** 渲染为完成块（默认折叠），**MUST NOT** 退回旧的整段 System `[compaction] {full summary}`。
 10. **MUST NOT** 用 footer 表达压缩进度或摘要；footer 只刷 token 数字（见 [`footer.md`](./footer.md)）。
 
