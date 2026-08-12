@@ -4,7 +4,8 @@ depends_on:
 blocks: []
 branch: sdd/c2071-update-app-tui-host-mode-b-only
 base_sha: 1dd5de3a53e28365099c2351abd0a767bbfab688
-checkpointed: false
+checkpointed: true
+checkpoint_sha: 1dd5de3a53e28365099c2351abd0a767bbfab688
 ---
 
 # 产品 TUI 固定 ApplicationOwned（ath30 AO-only）
