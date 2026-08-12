@@ -2887,6 +2887,234 @@ fn harness_mouse_hint_toggles_output_viewport() {
 }
 
 #[test]
+fn harness_mouse_segment_marker_toggles_one_step() {
+    // att31: L2 summary fold-marker click = that segment one-step expand;
+    // body click does not; coexisting L1 Tool triangle still works (att32).
+    use super::activity_fold::SegmentLevel;
+    use super::widgets::FoldTarget;
+    use crossterm::event::{KeyModifiers, MouseButton, MouseEvent, MouseEventKind};
+
+    let mut session = HostSession::new_product_ui(TestTerminal::new(100, 32));
+    let root = session.ui_root().expect("product ui").clone();
+    {
+        let mut model = session.ui_model().clone();
+        model
+            .entries
+            .extend(activity_turn("u0", "tool-l2", "old.rs", "a0"));
+        model
+            .entries
+            .extend(activity_turn("u1", "tool-l1", "new.rs", "a1"));
+        *session.ui_model_mut() = model;
+        session.sync_ui_root_from_model();
+    }
+    {
+        let mut r = root.borrow_mut();
+        r.activity_mut().force_level("seg-0", SegmentLevel::L2);
+        r.touch_activity();
+    }
+    session.step(HostEvent::Tick).unwrap();
+    session.tui.request_render(true);
+    session.step_paint_only().unwrap();
+
+    assert_eq!(root.borrow().activity().level_of("seg-0"), SegmentLevel::L2);
+    assert!(
+        !root
+            .borrow()
+            .fold_hits()
+            .regions
+            .iter()
+            .any(|r| matches!(&r.target, FoldTarget::Tool(id) if id == "tool-l2")),
+        "L2 segment MUST NOT register L1 hits for collapsed middles"
+    );
+    let seg_hit = root
+        .borrow()
+        .fold_hits()
+        .regions
+        .iter()
+        .find(|reg| matches!(&reg.target, FoldTarget::Segment(id) if id == "seg-0"))
+        .cloned()
+        .unwrap_or_else(|| {
+            panic!(
+                "expected Segment(seg-0) hit; regions={:?}",
+                root.borrow().fold_hits().regions
+            )
+        });
+    let tool_hit = root
+        .borrow()
+        .fold_hits()
+        .regions
+        .iter()
+        .find(|reg| matches!(&reg.target, FoldTarget::Tool(id) if id == "tool-l1"))
+        .cloned()
+        .unwrap_or_else(|| {
+            panic!(
+                "expected L1 Tool(tool-l1) hit on same screen; regions={:?}",
+                root.borrow().fold_hits().regions
+            )
+        });
+
+    let seg_row = seg_hit
+        .content_row
+        .saturating_sub(root.borrow().fold_hits().scroll_top) as u16;
+    session
+        .step(HostEvent::Input(InputEvent::Mouse(MouseEvent {
+            kind: MouseEventKind::Down(MouseButton::Left),
+            column: seg_hit.col_start as u16,
+            row: seg_row,
+            modifiers: KeyModifiers::NONE,
+        })))
+        .unwrap();
+    assert_eq!(
+        root.borrow().activity().level_of("seg-0"),
+        SegmentLevel::L0,
+        "Segment marker click MUST expand one step (L2→L0)"
+    );
+
+    // Re-collapse and confirm body column does not toggle.
+    {
+        let mut r = root.borrow_mut();
+        r.activity_mut().force_level("seg-0", SegmentLevel::L2);
+        r.touch_activity();
+    }
+    session.tui.request_render(true);
+    session.step_paint_only().unwrap();
+    let seg_hit = root
+        .borrow()
+        .fold_hits()
+        .regions
+        .iter()
+        .find(|reg| matches!(&reg.target, FoldTarget::Segment(id) if id == "seg-0"))
+        .cloned()
+        .expect("Segment hit after re-collapse");
+    let seg_row = seg_hit
+        .content_row
+        .saturating_sub(root.borrow().fold_hits().scroll_top) as u16;
+    session
+        .step(HostEvent::Input(InputEvent::Mouse(MouseEvent {
+            kind: MouseEventKind::Down(MouseButton::Left),
+            column: (seg_hit.col_end + 4) as u16,
+            row: seg_row,
+            modifiers: KeyModifiers::NONE,
+        })))
+        .unwrap();
+    assert_eq!(
+        root.borrow().activity().level_of("seg-0"),
+        SegmentLevel::L2,
+        "summary body click MUST NOT toggle segment"
+    );
+
+    // L1 tool triangle still toggles its own override (same paint).
+    let tool_row = tool_hit
+        .content_row
+        .saturating_sub(root.borrow().fold_hits().scroll_top) as u16;
+    let before = root.borrow().fold().tools_effective("tool-l1");
+    session
+        .step(HostEvent::Input(InputEvent::Mouse(MouseEvent {
+            kind: MouseEventKind::Down(MouseButton::Left),
+            column: tool_hit.col_start as u16,
+            row: tool_row,
+            modifiers: KeyModifiers::NONE,
+        })))
+        .unwrap();
+    assert_ne!(
+        root.borrow().fold().tools_effective("tool-l1"),
+        before,
+        "coexisting L1 Tool triangle must still toggle"
+    );
+    assert_eq!(
+        root.borrow().activity().level_of("seg-0"),
+        SegmentLevel::L2,
+        "L1 tool click MUST NOT change L2 segment level"
+    );
+}
+
+#[test]
+fn harness_l2_ignores_l1_override_after_segment_present() {
+    // att31 / att25 deep-dive A: while seg is L2, flipping tools override must
+    // not change L2 summary paint (middles not rendered).
+    use super::activity_fold::SegmentLevel;
+    use super::layout::UiRoot;
+    use super::widgets::FoldTarget;
+
+    let mut root = UiRoot::new();
+    let mut model = UiModel::new();
+    model
+        .entries
+        .extend(activity_turn("u0", "hidden-tool", "x.rs", "a0"));
+    root.apply_ui_model(&model);
+    root.activity_mut().force_level("seg-0", SegmentLevel::L2);
+    root.touch_activity();
+    let before = strip_ansi_activity(&root.render(100).join("\n"));
+    assert!(
+        before.contains("Explored") || before.contains("file"),
+        "L2 summary expected: {before}"
+    );
+    root.toggle_fold_target(FoldTarget::Tool("hidden-tool".into()));
+    let after = strip_ansi_activity(&root.render(100).join("\n"));
+    assert_eq!(
+        before, after,
+        "L1 override MUST NOT change L2 segment appearance"
+    );
+    assert_eq!(root.activity().level_of("seg-0"), SegmentLevel::L2);
+}
+
+#[test]
+fn segment_toggle_one_step_and_local_paint_misses() {
+    // att31 + ath25: Segment toggle is one ladder step; not nearest; local misses.
+    // Warm cache at L0 first (same pattern as activity_fold_att25_level_switch…).
+    use super::activity_fold::SegmentLevel;
+    use super::layout::UiRoot;
+    use super::widgets::FoldTarget;
+
+    let mut root = UiRoot::new();
+    let mut model = UiModel::new();
+    for i in 0..6 {
+        model.entries.push(super::bridge::UiEntry::Assistant {
+            text: format!("history-{i}\n\nparagraph"),
+        });
+    }
+    model
+        .entries
+        .extend(activity_turn("u", "only", "x.rs", "tail"));
+    root.apply_ui_model(&model);
+    let _ = root.render(80);
+    root.activity_mut().force_level("seg-6", SegmentLevel::L3);
+    root.touch_activity();
+    let _ = root.render(80);
+    root.clear_scrollback_entry_misses_for_test();
+
+    root.toggle_fold_target(FoldTarget::Segment("seg-6".into()));
+    assert_eq!(root.activity().level_of("seg-6"), SegmentLevel::L2);
+    let _ = root.render(80);
+    let misses = root.scrollback_entry_misses_for_test();
+    assert!(
+        misses <= 3,
+        "Segment one-step toggle must stay local; misses={misses}"
+    );
+
+    // Pointed toggle must not move a different collapsed segment.
+    let mut model2 = UiModel::new();
+    model2
+        .entries
+        .extend(activity_turn("u0", "t0", "a.rs", "a0"));
+    model2
+        .entries
+        .extend(activity_turn("u1", "t1", "b.rs", "a1"));
+    let mut root2 = UiRoot::new();
+    root2.apply_ui_model(&model2);
+    root2.activity_mut().force_level("seg-0", SegmentLevel::L2);
+    root2.activity_mut().force_level("seg-3", SegmentLevel::L2);
+    root2.touch_activity();
+    root2.toggle_fold_target(FoldTarget::Segment("seg-0".into()));
+    assert_eq!(root2.activity().level_of("seg-0"), SegmentLevel::L0);
+    assert_eq!(
+        root2.activity().level_of("seg-3"),
+        SegmentLevel::L2,
+        "must not use expandNearest"
+    );
+}
+
+#[test]
 fn compaction_and_viewport_toggle_miss_bound() {
     // ath25 / att29–att30: global Compaction / OutputViewport toggle must not
     // re-Markdown unrelated Assistant history.

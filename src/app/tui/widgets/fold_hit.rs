@@ -13,6 +13,8 @@ pub enum FoldTarget {
     Compaction,
     /// Global `tools_output_expanded` via Ctrl+O hint band (Wave A / att30).
     OutputViewport,
+    /// Activity segment L2/L3 summary marker (Wave B / att31); id = `seg-{user_idx}`.
+    Segment(String),
 }
 
 /// One triangle-column hit region in content coordinates (scrollback line space).

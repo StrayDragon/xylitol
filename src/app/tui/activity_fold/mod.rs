@@ -1,6 +1,8 @@
 //! Activity-fold (c1760): segment L0/L2/L3 plane, orthogonal to block L1 (c2040).
 //!
-//! MUST NOT register `FoldTarget::Segment` or wire summary clicks (c2045 / c2050).
+//! Summary-marker mouse hits → [`crate::app::tui::widgets::FoldTarget::Segment`]
+//! are wired by c2045 Wave B (scrollback + `toggle_one_step`); this module owns
+//! segment state / nearest expand·collapse only.
 
 mod degrade;
 mod segment;

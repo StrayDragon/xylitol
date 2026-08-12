@@ -735,7 +735,8 @@ fn emit_block_hits(fold_hits: &mut FoldHitTable, content_row_base: usize, hits: 
 /// offset). Does not touch `scroll_top` / `transcript_rows`.
 ///
 /// L2/L3 segments skip foldable middles and emit one summary row; segment→row
-/// spans land in `activity.row_spans` (not [`FoldHitTable`] — c1760 / c2050).
+/// spans land in `activity.row_spans`, and the summary fold marker is also
+/// registered on [`FoldHitTable`] as [`FoldTarget::Segment`] (att31 / c2045).
 #[allow(clippy::too_many_arguments)] // fold + activity + cache + hits are distinct paint planes
 pub fn render_scrollback(
     model: &UiModel,
@@ -794,10 +795,17 @@ pub fn render_scrollback(
                     _ => None,
                 };
                 let plain = format_summary_line(level, glyphs, &counts, dur_ref);
+                let marker = match level {
+                    SegmentLevel::L0 => glyphs.unfold(),
+                    SegmentLevel::L2 | SegmentLevel::L3 => glyphs.fold(),
+                };
+                let mw = marker_cols(marker);
                 let painted = theme.paint_muted(&plain);
                 let row_start = lines.len();
                 push_wrapped(&mut lines, &painted, width);
                 let row_end = lines.len();
+                // Summary is not left-railed — marker sits at content col 0 (att31).
+                fold_hits.push(row_start, 0, mw, FoldTarget::Segment(seg.id.clone()));
                 activity
                     .row_spans
                     .insert(seg.id.clone(), row_start, row_end);
@@ -1272,6 +1280,7 @@ mod tests {
             GlyphSet::from_env(),
             theme,
             &ScrollbackFold::default(),
+            &mut crate::app::tui::activity_fold::ActivityFoldState::default(),
             80,
             &mut ScrollbackPaintCache::default(),
             &mut FoldHitTable::default(),
@@ -1304,6 +1313,7 @@ mod tests {
                 todo_expanded: true,
                 ..ScrollbackFold::default()
             },
+            &mut crate::app::tui::activity_fold::ActivityFoldState::default(),
             80,
             &mut ScrollbackPaintCache::default(),
             &mut FoldHitTable::default(),

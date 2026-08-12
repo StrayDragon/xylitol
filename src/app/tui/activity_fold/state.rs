@@ -119,6 +119,24 @@ impl ActivityFoldState {
         apply_auto_degrade(self, entries, trigger, protect_newest)
     }
 
+    /// One-step toggle for a specific segment (att31 / c2045 Wave B).
+    ///
+    /// Collapsed (L2/L3) → `expand_one`; L0 → `collapse_one(floor)`.
+    /// Does **not** use nearest heuristics.
+    pub fn toggle_one_step(&mut self, id: &str) -> bool {
+        if !self.settings.enabled {
+            return false;
+        }
+        let cur = self.level_of(id);
+        let next = if cur.is_collapsed() {
+            cur.expand_one()
+        } else {
+            self.mark_entered(id);
+            cur.collapse_one(self.settings.collapse_floor())
+        };
+        self.set_level(id, next)
+    }
+
     /// Expand nearest L2/L3 toward L0. Silent if none. Returns whether state changed.
     pub fn expand_nearest(&mut self, entries: &[UiEntry]) -> bool {
         if !self.settings.enabled {
