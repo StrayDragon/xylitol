@@ -8,11 +8,13 @@ depends_on:
 
 # 多级 ActivityFold 适配鼠标 / 块级覆盖
 
-> **状态**：active 规划草案（自 c2070 nested cascade 拆出）。前置 [`c2070`](../archive/2026-08-12-c2070-add-package-tui-dual-interaction-modes/proposal.md) + `c1760` + `c2040`。段级点击依赖 **c2020** 管道 + Mode B；见 c2070 README「已落地地基：c2020」。
+> **状态**：Designed / pre-start（**未分支**）。前置 [`c2070`](../archive/2026-08-12-c2070-add-package-tui-dual-interaction-modes/proposal.md) + `c1760` + [`c2040`✓](../archive/2026-08-12-c2040-add-tui-mouse-click-fold-triangle/)。段级点击依赖 **c2020** 管道 + Mode B。
 >
-> **2026-08-12 注**：c2040 深挖 Q6=B 新建 [`c2045`](../c2045-add-tui-fold-target-remaining/proposal.md)（广义 FoldTarget + 剩余块）。propose 时评估本 change **被 c2045 收薄/吸收**，避免两套段命中 API。
+> **Start readiness**：`blocked_on_c1760`（`ready_for_start=false`）。详见 [`design.md`](./design.md) / [`tasks.md`](./tasks.md)。
+>
+> **2026-08-12**：c2040 Q6=B → [`c2045`](../c2045-add-tui-fold-target-remaining/proposal.md)。**默认路径 A**：段命中被 c2045 吸收 → 本票 **docs-only archive**（无 start/Specs/代码）。**Fallback B**：仅当 c2045 design 明文排除 Segment。禁止两套段命中 API。
 
-> **一句话**：让 `c1760` 的段级 L2/L3 与 L1 块级 **鼠标定点**、全局键盘折叠共用一套目标模型与性能边界（**无** keyboard leader 编号）。
+> **一句话**：让 `c1760` 的段级 L2/L3 与 L1 块级 **鼠标定点**、全局键盘折叠共用一套目标模型与性能边界（**无** keyboard leader 编号）；实现默认归 c2045，本票钉语义矩阵。
 
 ## Why
 
@@ -26,8 +28,10 @@ depends_on:
 
 ## What Changes
 
-1. **目标模型统一**：`FoldTarget` = Entry(id) | Segment(id) |（可选）Thinking 仍走 Ctrl+T。
-2. **点击**：摘要行标记 → `activity` 升/降一级或 toggle 段显隐（与 `expandNearest` 单目标版对齐——propose 钉「点标记 = toggle 该段一级」）。
+> 实现落点：默认 **c2045 吸收**；下列为本票合约意图（路径 B 时本票落地）。
+
+1. **目标模型统一**：在 c2040 `FoldTarget` 上扩展 `Segment(id)`（广义总装归 c2045）；Thinking 点折已在 c2040，摘要行不点 Thinking。
+2. **点击**：摘要行**三角列** → **对该段一级**升/降（与单目标版栈对称；非整行；非纯显隐 bool）。
 3. **分层规则继承 `c1760` 深挖 A**：段处于 L2/L3 时，L1 全局/覆盖不穿透该段外观。
 4. **性能**：
    - hit 表只覆盖**当前视口可见**头/摘要；
@@ -45,25 +49,22 @@ depends_on:
 
 | 相关 change | 关系 |
 |---|---|
-| `c1760` | 主交付多级折叠；本 change 适配交互增强 |
-| `c2020` / `c2040` | 硬依赖；引擎 Mouse + L1 点击/覆盖表 |
+| `c1760` | 主交付多级折叠；**硬阻塞**本票 start |
+| `c2020` / `c2040` ✓ | Mouse + L1 三角 / 覆盖 / `FoldHitTable` |
+| `c2045` | **默认吸收** Segment 命中 → 本票 docs-only |
 | `c1505` / `c1370` / `c1535` | 性能并列；适配 MUST 不恶化端到端 |
 
 ## 依赖与排序（frontmatter SSOT）
 
 ```text
-Wave 0
-  c2020 鼠标地基
-  c1760 多级折叠 MVP          ← depends c1755✓
-
-Wave 1
-  c2040 点击三角 + L1 覆盖表   ← depends c2020
-
-Wave 2
-  c2050（本 change）          ← depends c1760 + c2020 + c2040
+Wave 0 ✓  c2020 · c2070/c2071
+Wave 1 ✓  c2040 L1 三角
+Wave 1'   c1760 多级折叠 MVP          ← 硬阻塞本票
+Wave 2    c2045 FoldTarget 总装（默认含 Segment）
+          c2050：默认 docs-only；fallback 才独立 apply
 ```
 
-若 `c1760` propose 时交互增强已齐，可将本草案 **吸收进 c1760 末 tasks** 后 archive 本 id（docs-only）；否则保持独立闭环。
+历史备选（已降级）：若 c1760 末段自行做完段点击，亦可 docs-only archive——但 **现行默认吸收方是 c2045**（Q6=B），避免与「任意块」故事分叉。
 
 ## Out of scope
 
@@ -89,9 +90,15 @@ Wave 2
 - required_evidence: 混合 L1+L2 屏上点击打中正确目标；miss 计数不回退 ath25
 - escalation_policy: 与 `c1760` 已拍板和弦冲突时升级确认
 
+## Open Questions（已钉）
+
+见 [`design.md`](./design.md)；摘要：点标记=段一级；Thinking 摘要不可点；默认被 c2045 吸收→docs-only；`blocked_on_c1760`。
+
 ## Further Notes
 
-- 调研：[`research/multilevel-fold-interaction-matrix.md`](./research/multilevel-fold-interaction-matrix.md)（须删/改 leader 编号条款以跟本提案）
+- 规划壳：[`design.md`](./design.md) · [`tasks.md`](./tasks.md)
+- 调研：[`research/multilevel-fold-interaction-matrix.md`](./research/multilevel-fold-interaction-matrix.md)
 - 主案：[`../c1760-add-tui-activity-fold/proposal.md`](../c1760-add-tui-activity-fold/proposal.md)
-- 架构总前置：[`../../proposal.md`](../../proposal.md)
-- **2026-08-11**：`c2030` fold-leader 废弃；本 change 不再 depends 编号模式；同日整组延后
+- 吸收方：[`../c2045-add-tui-fold-target-remaining/proposal.md`](../c2045-add-tui-fold-target-remaining/proposal.md)
+- L1 样板：[`../archive/2026-08-12-c2040-add-tui-mouse-click-fold-triangle/`](../archive/2026-08-12-c2040-add-tui-mouse-click-fold-triangle/)
+- **2026-08-11**：`c2030` fold-leader 废弃；本 change 不再 depends 编号模式

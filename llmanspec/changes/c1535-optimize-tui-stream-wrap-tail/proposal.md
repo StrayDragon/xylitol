@@ -1,18 +1,19 @@
 ---
 depends_on:
   - c2070-add-package-tui-dual-interaction-modes
+blocks: []
 ---
 
-# 流式尾 wrap / scroll_render 再优化
+# c1535 — 流式尾部 wrap / scroll_render 再优化
 
-> **状态**：active 规划草案（自 c2070 nested cascade 拆出）。**硬前置** [`c2070`](../archive/2026-08-12-c2070-add-package-tui-dual-interaction-modes/proposal.md)。ROI 低，**不**与 c2070 同批 apply。
-> 注：2026-08-10 曾升格；后撤回；2026-08-11 随 c2070 族再升为独立 `changes/` 条目。
+> **状态**：`purpose-draft · P9-deferred · archive-candidate`。本轮明确 defer：未分支、未 start、未 propose/apply；不创建 `design.md`，tasks 记为 N/A。
+> **硬前置**：[`c2070`](../archive/2026-08-12-c2070-add-package-tui-dual-interaction-modes/proposal.md) 已归档；本 change 不与其同批 apply。
 
-> **一句话**：流式尾部 wrap / scroll_render 再优化；必要画图成本为主，ROI 暂不值得（候补）
+> **一句话**：保留流式尾部 wrap / `scroll_render` 的性能候补，但当前 ROI 不足以打断主线。
 
 > A+B（finalize 行复用）落地后，体感与 samply 均已明显好转。下一份额热点是 **wrap / 流式尾 scroll_render**，但是**必要画图成本**为主，ROI 暂不值得打断主线（OTEL / Langfuse 树优先）。
 
-## Why（证据）
+## Why
 
 探针：`E-hist-stream` long-stream（流盖满 ~20s）。
 
@@ -30,6 +31,20 @@ depends_on:
 3. 80→800 历史放大：wrap / scroll 份额几乎不动 → 仍是**流式尾重绘**，不是长历史上半 O(n) flatten（见已延后的 c1505）。
 4. c1509（wrap ANSI+ASCII 快路径）与 c1510（streaming assistant 增量 paint）**已落地**；余下多是 CJK grapheme wrap + 尾块 Markdown 真画。
 
+代码现状与边界：
+
+- 产品 scrollback 已有 committed-entry paint cache，以及 assistant 稳定前缀增量 Markdown paint；streaming tail 仍需按当前宽度真实 wrap / paint。
+- 引擎已有 A+B finalize 行复用；ApplicationOwned 路径只对可见投影面做宽度 finalize，长历史并未再证明是当前绝对热点。
+- 因此本 change 可能只优化尾部残余路径，收益取决于真实长回复、语言分布和帧频；不能由占比上浮单独推出产品收益。
+
+## Decision
+
+**Defer / archive-candidate。**
+
+- **不 promote、不 start、不建分支**：当前基准没有显示 wrap 或 streaming paint 的绝对成本已主导用户体验。
+- **不为 CPU% 激进合帧或降低流式帧率**：这会直接提高“观感一顿、错字/闪烁”的风险，且收益不明确。
+- 规划壳只保留证据、候补方向和 reopen gate；不新增 live specs、代码或实现任务。
+
 ## ROI 评估
 
 | 候补方向 | 体验风险 | 预估收益 | ROI |
@@ -39,14 +54,20 @@ depends_on:
 | 更狠合帧 / 降流式帧率 | **高**（观感一顿） | 不明确 | **低** |
 | c1505 viewport slice | — | 已证非瓶颈 | **不做** |
 
-**结论（2026-07-23）**：暂**不是**产品瓶颈；用户手动测亦「非常好」。本 change **仅 draft 延后**，不 promote / 不 apply。主线改投 **c1495 OTEL session 父子树 / Langfuse**。
+**结论**：暂**不是**产品瓶颈；用户手动测亦「非常好」。本 change 保持 `P9-deferred`，不 promote / 不 apply；当前主线优先观测与 Langfuse。
 
-升格条件（任一）：
+## Reopen / closure conditions
+
+只有满足以下任一 reopen 条件，才从 archive candidate 重新评估：
 
 - 真会长回复流式再次卡 spinner / 掉帧，且 E/C profile 显示 wrap 或 streaming paint 绝对成本主导；或
 - 业务空窗且有明确微基准（wrap 行长 × 帧）可验收。
 
-## 意向方案（升格时）
+若下一次真实长流 profiling 仍不满足上述条件，且没有新的用户卡顿报告，则将该规划壳 docs-only archive；不得为了“占比更高”单独 reopen。
+
+## What Changes
+
+仅在 reopen 且重新 promote 后，才考虑以下意向范围：
 
 1. 针对 `wrap_text_with_ansi` CJK 路径再测 + 可选快路径（无 ZWJ 时）
 2. 复查 c1510 稳定前缀边界；长工具/代码块流式是否仍全量 wrap
@@ -59,7 +80,7 @@ depends_on:
 
 ## Status
 
-**purpose-draft · P9-deferred** — 记档候补；主线不跟。
+**purpose-draft · P9-deferred · archive-candidate** — 明确延后；未分支、未 start、未 propose/apply。`tasks.md`：N/A。
 
 ## Ethics
 
