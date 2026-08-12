@@ -85,10 +85,9 @@ impl TerminalGuard {
         terminal.start();
         // Product TUI MUST NOT enable mouse capture here by default (Inline).
         // `XYLITOL_TUI_MOUSE` remains package lab/e2e only. ApplicationOwned
-        // enters alt-buffer + mouse via
-        // [`crate::app::tui::host::HostSession::apply_interaction_mode`] after
-        // take — see c2070 / ath30. Keep DisableMouseCapture in
-        // `emergency_restore` for leaked sessions.
+        // enters alt-buffer + mouse when the host is constructed with that mode
+        // (`HostSession::new_product_ui_with_meta_mode`) — see c2070 / ath30.
+        // Keep DisableMouseCapture in `emergency_restore` for leaked sessions.
         Ok(Self {
             terminal: Some(terminal),
         })
