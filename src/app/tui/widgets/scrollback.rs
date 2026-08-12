@@ -56,18 +56,16 @@ impl Default for ScrollbackFold {
     }
 }
 
-/// Defaults tuple for paint-cache prepare — overrides MUST NOT clear the whole cache.
-pub type ScrollbackFoldDefaultsKey = (bool, bool, bool, bool, bool);
+/// Defaults that MAY full-clear the paint cache on change.
+///
+/// `tools_output_expanded` / `compaction_expanded` / `todo_expanded` MUST stay
+/// out of this key (ath25 / att29–att30): entry fingerprints already carry them,
+/// so Compaction / Ctrl+O / Todo toggles only re-paint affected blocks.
+pub type ScrollbackFoldDefaultsKey = (bool, bool);
 
 impl ScrollbackFold {
     pub fn defaults_key(&self) -> ScrollbackFoldDefaultsKey {
-        (
-            self.thinking_expanded,
-            self.tools_expanded,
-            self.tools_output_expanded,
-            self.compaction_expanded,
-            self.todo_expanded,
-        )
+        (self.thinking_expanded, self.tools_expanded)
     }
 
     pub fn tools_effective(&self, id: &str) -> bool {
