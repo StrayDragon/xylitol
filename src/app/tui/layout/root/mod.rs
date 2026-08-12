@@ -479,8 +479,9 @@ impl UiRoot {
         self.fold_hits.transcript_rows = transcript_rows;
     }
 
-    /// Single-block fold toggle (mouse triangle). Does **not** clear the whole
-    /// paint cache — entry fingerprints carry effective fold (ath25).
+    /// Fold toggle from mouse hit (triangle / Compaction / OutputViewport).
+    /// Does **not** clear the whole paint cache — entry fingerprints carry
+    /// effective fold (ath25). Compaction MUST NOT clear tools overrides.
     pub fn toggle_fold_target(&mut self, target: FoldTarget) {
         match target {
             FoldTarget::Tool(id) | FoldTarget::Diff(id) | FoldTarget::Ask(id) => {
@@ -491,6 +492,12 @@ impl UiRoot {
             }
             FoldTarget::Todo => {
                 self.fold.todo_expanded = !self.fold.todo_expanded;
+            }
+            FoldTarget::Compaction => {
+                self.fold.compaction_expanded = !self.fold.compaction_expanded;
+            }
+            FoldTarget::OutputViewport => {
+                self.fold.tools_output_expanded = !self.fold.tools_output_expanded;
             }
         }
         self.fold_dirty = true;
