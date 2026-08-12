@@ -1,6 +1,6 @@
 # Tasks: c2050-update-activity-fold-mouse-leader
 
-> **路径 A（默认）已收口**：被 [`c2045`](../../c2045-add-tui-fold-target-remaining/proposal.md) 吸收 → **docs-only archive**。
+> **路径 A（默认）已收口**：被 [`c2045`](../2026-08-12-c2045-add-tui-fold-target-remaining/proposal.md) 吸收 → **docs-only archive**。
 > 路径 B（独立 apply）**未启用**（c2045 design 未排除 Segment）。
 
 ## 0. Review 门 / 阻塞
