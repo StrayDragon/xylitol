@@ -29,7 +29,7 @@ designing/
 |---|---|---|
 | **Agent 改某表面** | 产品代码 → 本目录 `tui/modules/<id>/intent.md` + `draft.yaml` + `states/*.yaml` | `app/` 源码、`generated/*.css`、整包 HTML、`node_modules` |
 | **Agent 找路** | [`generated/AGENT-INDEX.md`](./generated/AGENT-INDEX.md) | 旧 `design/*.md` 正文（已缩成指针） |
-| **人类** | `just open-designing` → `/tui/<id>/<state>`（点预览切态；动画只用播放按钮；右栏 marked + 复制路径） | — |
+| **人类** | `just open-designing` → `/tui/<id>/<state>`（上方按钮切态；动画只用播放按钮；右栏 marked + 复制路径） | — |
 
 改模块后跑 `just gen-designing-index`（漏跑由 `scripts/check_tui_designing.py` 进 `just qa` 抓住）。
 
