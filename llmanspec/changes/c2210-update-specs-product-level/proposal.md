@@ -37,4 +37,5 @@ Live specs 的实际编辑 **须** Branch binding 后在非默认分支进行（
 ## Further Notes
 
 调研：[`research/spec-rigidity-and-product-level.md`](./research/spec-rigidity-and-product-level.md)
-追踪：`_HANDOFF/02-specs-product-level.md`
+派工：[`research/PROMPT-spec-audit.md`](./research/PROMPT-spec-audit.md)
+三线索引：[`../c2200-refactor-tui-kind-catalog-verify/research/TRACKS.md`](../c2200-refactor-tui-kind-catalog-verify/research/TRACKS.md)
