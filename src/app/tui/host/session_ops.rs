@@ -1,9 +1,9 @@
 //! Session tree / models / resume mount + apply helpers (c1170 / ath12).
 
 use crate::app::core::driver::{ModelInfo, XyDriver};
+use crate::app::debug_fixtures::ChromeOp;
 use crate::protocol::session::{SessionEntry, SessionTreeTravel};
-use xylitol_tui::Terminal;
-use xylitol_tui::TreeNode;
+use xylitol_tui::{ChoiceMode, ChoiceOption, ChoiceQuestion, Terminal, TreeNode};
 
 use super::super::bridge::session_tree::{rebuild_scrollback_from_travel, travel_history_note};
 use super::HostSession;
@@ -529,6 +529,42 @@ impl<T: Terminal> HostSession<T> {
         self.sync_ui_root_from_model();
         self.finish_activity_after_rebuild(&load.entries, &travel);
         self.push_scroll_notice(load.note);
+    }
+
+    /// Apply a typed chrome inject (toast / cue / slot). Not transcript stuffing.
+    pub fn apply_chrome_op(&mut self, op: ChromeOp) {
+        match op {
+            ChromeOp::Toast => {
+                self.push_chrome_toast("preview: toast");
+            }
+            ChromeOp::NextTurnCue => {
+                if let Some(root) = self.ui_root.as_ref() {
+                    root.borrow_mut()
+                        .set_status_next_turn_cue(Some("Next turn: preview".into()));
+                    self.paint_dirty = true;
+                }
+            }
+            ChromeOp::SlotModels => {
+                self.mount_models_picker(Vec::new(), None, String::new());
+            }
+            ChromeOp::SlotChoice => {
+                let (tx, _rx) = tokio::sync::oneshot::channel();
+                self.mount_ask_choice(
+                    vec![ChoiceQuestion {
+                        id: "preview".into(),
+                        label: "Preview".into(),
+                        prompt: "chrome preview choice".into(),
+                        mode: ChoiceMode::Single,
+                        options: vec![ChoiceOption::new("ok", "OK")],
+                        allow_other: false,
+                    }],
+                    tx,
+                );
+            }
+            ChromeOp::SlotTree => {
+                self.mount_session_tree(Vec::new(), None);
+            }
+        }
     }
 
     fn finish_activity_after_rebuild(

@@ -173,77 +173,69 @@ fn thought_duration_label(
 /// flush, todo projection and Ask shapes are the product's, not fixtures'.
 pub struct SceneBuilder {
     model: UiModel,
+    live: Vec<XyEvent>,
 }
 
 impl SceneBuilder {
     pub fn begin() -> Self {
         let mut model = UiModel::new();
         model.begin_run("scene");
-        Self { model }
+        Self {
+            model,
+            live: Vec::new(),
+        }
+    }
+
+    fn push_xy(&mut self, event: XyEvent) -> &mut Self {
+        apply_xy_event(&mut self.model, &event);
+        self.live.push(event);
+        self
     }
 
     pub fn thinking(&mut self, text: &str) -> &mut Self {
-        apply_xy_event(&mut self.model, &XyEvent::ThinkingDelta(text.into()));
-        self
+        self.push_xy(XyEvent::ThinkingDelta(text.into()))
     }
 
     pub fn tool_start(&mut self, id: &str, name: &str, path: &str) -> &mut Self {
-        apply_xy_event(
-            &mut self.model,
-            &XyEvent::ToolExecutionStart {
-                id: id.into(),
-                name: name.into(),
-                args: serde_json::json!({ "path": path }),
-            },
-        );
-        self
+        self.push_xy(XyEvent::ToolExecutionStart {
+            id: id.into(),
+            name: name.into(),
+            args: serde_json::json!({ "path": path }),
+        })
     }
 
     /// Plain tool end (no todo projection).
     pub fn tool_end(&mut self, id: &str, name: &str) -> &mut Self {
-        apply_xy_event(
-            &mut self.model,
-            &XyEvent::ToolExecutionEnd {
-                id: id.into(),
-                name: name.into(),
-                result: "ok".into(),
-                is_error: false,
-            },
-        );
-        self
+        self.push_xy(XyEvent::ToolExecutionEnd {
+            id: id.into(),
+            name: name.into(),
+            result: "ok".into(),
+            is_error: false,
+        })
     }
 
     /// todo_* result through the product projection
     /// (`sync_todo_checklist_from_tool_result` inside `apply_tools_family`):
     /// the checklist row is a projection, not a Used call (lesson 1).
     pub fn todo_result(&mut self, id: &str, name: &str, result: &str) -> &mut Self {
-        apply_xy_event(
-            &mut self.model,
-            &XyEvent::ToolExecutionEnd {
-                id: id.into(),
-                name: name.into(),
-                result: result.into(),
-                is_error: false,
-            },
-        );
-        self
+        self.push_xy(XyEvent::ToolExecutionEnd {
+            id: id.into(),
+            name: name.into(),
+            result: result.into(),
+            is_error: false,
+        })
     }
 
     pub fn assistant(&mut self, text: &str) -> &mut Self {
-        apply_xy_event(&mut self.model, &XyEvent::TextDelta(text.into()));
-        self
+        self.push_xy(XyEvent::TextDelta(text.into()))
     }
 
     /// Flush streaming buffers the way MessageEnd does (product handler).
     pub fn message_end(&mut self) -> &mut Self {
-        apply_xy_event(
-            &mut self.model,
-            &XyEvent::MessageEnd {
-                role: "assistant".into(),
-                message: None,
-            },
-        );
-        self
+        self.push_xy(XyEvent::MessageEnd {
+            role: "assistant".into(),
+            message: None,
+        })
     }
 
     /// Seal a thinking burst the product way: [`XyEvent::ThinkingDelta`] then
@@ -260,8 +252,13 @@ impl SceneBuilder {
     /// Inflight stream for the live window. Identity is
     /// [`crate::app::tui::bridge::STREAMING_THINK_ID`], not a nonempty buffer.
     pub fn live_thinking(&mut self, text: &str) -> &mut Self {
-        apply_xy_event(&mut self.model, &XyEvent::ThinkingDelta(text.into()));
-        self
+        self.push_xy(XyEvent::ThinkingDelta(text.into()))
+    }
+
+    /// Live Xy events for [`HostSession::step(HostEvent::Xy)`]. Does not include
+    /// [`Self::thinking_flushed`] (pinned elapsed is Resume-shaped).
+    pub fn live_events(&self) -> &[XyEvent] {
+        &self.live
     }
 
     pub fn entries(&self) -> &[UiEntry] {
