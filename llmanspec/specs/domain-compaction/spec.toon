@@ -1,14 +1,13 @@
 kind: llman.sdd.spec
 name: "domain-compaction"
 purpose: "对话 compaction — n-gram 切点检测、LLM 摘要与 token 估计。"
-valid_scope[3]: src/agent/compaction/,src/agent/capabilities/,src/infra/session/
-requirements[27]{req_id,title,statement}:
+valid_scope[3]: "agent 层 compaction","agent 层 capabilities","infra 层 session"
+requirements[26]{req_id,title,statement}:
   c1,token 估算使用统一 Usage 与多源计量,"System MUST 基于当前消息与可选 XyUsage 锚点估计上下文占用，并经 xylitol-ai-bridge accounting（或等价注入端口）按 Api 然后 RemoteCount 然后 LocalTokenizer 然后 Heuristic 的优先级解析；MUST 继续使用 canonical XyUsage，MUST NOT 再引入并行的第二套 usage 结构。"
   c2,应触发 compact,"当 CompactionSettings.enabled 为 true 且 context_window > 0 时，System MUST 在 contextTokens > contextWindow - reserveTokens（与 pi 同构；reserveTokens 来自 CompactionSettings）时判定应触发 compaction；enabled 为 false 时 MUST NOT 因用量触发；该判定所用 contextTokens MUST 与产品 footer / Driver 只读估计同源（同一 paa1 入口与 LocalTokenizer 闸），MUST NOT 另用独立的 message 字符串 len/4 总和，MUST NOT 再使用独立的百分比阈值（如 compaction_threshold / usage_ratio）作为触发 SSOT。"
   c3,compact 摘要,Compaction MUST 将较早消息摘要为 CompactionEntry，同时保留最近 N 轮。
   c4,compact 会话,Compaction MUST 将 CompactionEntry 持久化到会话文件并更新会话树。
   c5,分支摘要,导航到会话树分支时，System MUST 生成分支摘要条目桥接上下文缺口。
-  c6,BDD compaction,"llmanspec/specs/domain-compaction/domain-compaction.feature 下 BDD 测试 MUST 全部通过。"
   c7,LLM 摘要,"Compaction MUST 调用配置的 LLM 生成结构化摘要，格式：## Goal / ## Constraints & Preferences / ## Progress (Done, In Progress, Blocked) / ## Key Decisions / ## Next Steps / ## Critical Context。"
   c8,切点,"System MUST 自最新条目向后累计 token，在约 keepRecent tokens 预算处找最近合法切点；累计所用 token MUST 对齐 pi estimateTokens：对上下文可见 AgentMessage（含 text/thinking/toolCall/toolResult/bashExecution 等）按字符启发式（chars/4 或等价），零贡献条目 MUST 跳过；MUST NOT 以条目原始 JSON 整包 len/4 作为切点 SSOT；合法切点 MUST 含 user、assistant、bashExecution、custom_message、branch_summary（及等价条目类型）；MUST NOT 在 toolResult 处切断；切在 turn 中部时 MUST 填 turn_start_index 与 is_split_turn=true，切在 turn-start 时 turn_start_index MUST 为哨兵（如 -1）且 is_split_turn=false。"
   c9,迭代摘要,存在先前 CompactionEntry 时，System MUST 使用更新 prompt 保留既有结构化信息并合并新进展，而非从头开始。
@@ -30,8 +29,7 @@ requirements[27]{req_id,title,statement}:
   c25,compact 输入为 leaf 分支,"prepare_compaction 与 compact_session（及 Orchestrator force/auto/overflow）MUST 仅消费当前 leaf 的分支路径条目（对齐 pi getBranch）；MUST NOT 把旁支 sibling 条目计入切点或摘要范围。"
   c26,turn-settlement-once,"当一次 ReAct turn 收尾做 threshold/overflow 预检时，System MUST 对该次收尾只产生一份 ContextTokenEstimate settlement（同一 tokens/provenance generation）供 compact 决策与产品 footer 消费；MUST NOT 让 Agent 预检与 TUI TurnEnd/stream-close 在无上下文失效的情况下各自再跑一遍 estimate 并各自打点；若随后实际执行了 compaction，MUST 经 CompactionEnd（或等价）失效并允许新的 settlement。算数入口仍 MUST 为 estimate_from_session_entries（或同源），MUST NOT 另立第二套尺子。"
   c27,"no-invent-reasoning-after-compact","Compaction 以 CompactionEntry 摘要替换 firstKept 之前的轨迹后，随后经 project_for_llm 与 Responses 组装的 input MUST 仅回放仍留在保留消息中的 thinkingSignature；MUST NOT 为已摘要掉的旧 assistant 轮次发明或恢复 reasoning item / thinkingSignature。由单测或文档场景覆盖，MUST NOT 单独扩 BDD step。"
-scenarios[5]{req_id,id,given,when,then,feature}:
-  c6,"bdd-compaction-pass",compaction BDD 套件,执行,全通过（由 CI 保证）,false
+scenarios[4]{req_id,id,given,when,then,feature}:
   c14,"single-compaction-config-unit",代码库,"搜索 CompactionConfig 与 compaction_threshold","零匹配残留（单测或闸脚本维护）",false
   c25,"branch-path-excludes-sibling",文件序含旁支 sibling 且 leaf 在右支,force 或 prepare compact,切点与摘要范围不含左支消息,false
   c26,"turn-settlement-shared-once",单次 turn 收尾且未实际 compact,检查 compact 预检与 footer 所用估计,同一 settlement generation 且无同秒重复独立 estimate 打点,false
