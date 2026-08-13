@@ -546,10 +546,6 @@ fn parent_id_of(roots: &[TreeNode], target: &str) -> Option<Option<String>> {
     None
 }
 
-fn is_reply_tree_node(node: &TreeNode) -> bool {
-    matches!(node.kind.as_deref(), Some("assistant") | Some("tool"))
-}
-
 fn tree_label_preview(text: &str) -> String {
     let one = text.lines().next().unwrap_or(text).trim();
     if visible_width(one) > 48 {
@@ -581,29 +577,6 @@ fn path_ids_to(roots: &[TreeNode], target: &str) -> Option<Vec<String>> {
         }
     }
     None
-}
-
-/// Path to `target`, then linear assistant/tool spine.
-/// Retained for harness/experiments; Enter travel uses pi semantics in [`FakeCodingAgentApp::travel_to_history`].
-#[allow(dead_code)]
-fn travel_path_with_replies(roots: &[TreeNode], target: &str) -> Vec<String> {
-    let mut path = path_ids_to(roots, target).unwrap_or_else(|| vec![target.to_string()]);
-    let Some(start) = path.last().cloned() else {
-        return path;
-    };
-    let mut cur_id = start;
-    while let Some(node) = find_session_node(roots, &cur_id) {
-        if node.children.len() != 1 {
-            break;
-        }
-        let child = &node.children[0];
-        if !is_reply_tree_node(child) {
-            break;
-        }
-        path.push(child.id.clone());
-        cur_id = child.id.clone();
-    }
-    path
 }
 
 /// Built-in payloads for the seed sample tree (live nodes use `history_payloads`).

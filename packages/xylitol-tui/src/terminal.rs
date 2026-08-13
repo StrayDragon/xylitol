@@ -28,31 +28,15 @@ use crate::keys::set_kitty_protocol_active;
 /// (2) + report alternate keys (4) = 7. Matches pi DESIRED_KITTY_KEYBOARD_PROTOCOL_FLAGS.
 const KITTY_FLAGS_REQUEST: u8 = 7;
 
-/// `CSI >{flags}u` — push Kitty enhancement flags (pi sends `>7u`).
-#[allow(dead_code)] // documented for clarity; inlined in KITTY_KEYBOARD_PROTOCOL_QUERY
-const KITTY_PUSH_SEQUENCE: &str = "\x1b[>7u";
-/// `CSI ?u` — pop current Kitty flags (pi sends as part of the query so a
-/// terminal that doesn't know `>Nu` still answers the trailing DA).
-#[allow(dead_code)] // documented for clarity; inlined in KITTY_KEYBOARD_PROTOCOL_QUERY
-const KITTY_POP_QUERY_SEQUENCE: &str = "\x1b[?u";
-/// `CSI <u` — pop one Kitty enhancement level.
-#[allow(dead_code)] // kept for docs / single-level callers; teardown uses POP_ALL
-const KITTY_POP_SEQUENCE: &str = "\x1b[<u";
 /// Deep pop — Kitty/Ghostty stack depth is typically ≤8; empties the active
 /// screen's keyboard stack (safe when already empty).
 const KITTY_POP_ALL_SEQUENCE: &str = "\x1b[<8u";
-/// `CSI c` — device attributes sentinel (terminals respond with `CSI ?..c`).
-#[allow(dead_code)] // documented for clarity; inlined in KITTY_KEYBOARD_PROTOCOL_QUERY
-const DA_QUERY_SEQUENCE: &str = "\x1b[c";
 /// Query after a single Push: ask current flags + DA. **Must not** include
 /// another `\x1b[>7u` — that double-pushed the stack and left Ghostty in
 /// enhanced mode after a single pop on exit.
 const KITTY_KEYBOARD_PROTOCOL_QUERY: &str = "\x1b[?u\x1b[c";
 
-/// modifyOtherKeys mode 2 enable / reset (pi terminal.ts:322/328). Retained for
-/// parity with pi and future route-B negotiation; route A pushes Kitty
-/// unconditionally so these are not emitted at runtime today.
-#[allow(dead_code)]
+/// modifyOtherKeys mode 2 enable / reset (pi terminal.ts:322/328).
 const MODIFY_OTHER_KEYS_ENABLE: &str = "\x1b[>4;2m";
 const MODIFY_OTHER_KEYS_DISABLE: &str = "\x1b[>4;0m";
 

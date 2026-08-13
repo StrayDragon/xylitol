@@ -166,26 +166,10 @@ impl OutputAccumulator {
             let _ = writer.flush();
         }
 
-        // Build full content from pre_chunks or temp file
-        let full_content = if self.spilled_to_file {
-            self.temp_file
-                .as_ref()
-                .and_then(|p| std::fs::read_to_string(p).ok())
-                .unwrap_or_default()
-        } else {
-            self.pre_chunks
-                .iter()
-                .map(|c| String::from_utf8_lossy(c).to_string())
-                .collect::<Vec<_>>()
-                .concat()
-        };
-
         let truncated = self.total_bytes > self.max_bytes;
 
         OutputSnapshot {
             content: self.rolling_text.clone(),
-            full_content,
-            total_bytes: self.total_bytes,
             truncated,
             max_bytes: self.max_bytes,
             full_output_path: self.temp_file.clone(),
@@ -201,12 +185,6 @@ impl OutputAccumulator {
 pub(crate) struct OutputSnapshot {
     /// Tail of the output (for display).
     pub(crate) content: String,
-    /// Full output content.
-    #[allow(dead_code)]
-    pub(crate) full_content: String,
-    /// Total bytes accumulated.
-    #[allow(dead_code)]
-    pub(crate) total_bytes: usize,
     /// Whether the output was truncated.
     pub(crate) truncated: bool,
     /// Max rolling tail bytes applied (for footer limit text).
@@ -261,7 +239,6 @@ mod tests {
         let snapshot = acc.finish();
         assert_eq!(snapshot.content, "hello world");
         assert!(!snapshot.truncated);
-        assert_eq!(snapshot.total_bytes, 11);
     }
 
     #[test]
@@ -272,7 +249,6 @@ mod tests {
         let snapshot = acc.finish();
         assert!(snapshot.truncated);
         assert!(snapshot.full_output_path.is_some());
-        assert_eq!(snapshot.total_bytes, 300);
     }
 
     #[test]
@@ -286,8 +262,6 @@ mod tests {
 
         // rolling_text should be at most 50 bytes
         assert!(snapshot.content.len() <= 50);
-        // full_content should have all 90 bytes
-        assert_eq!(snapshot.full_content.len(), 90);
     }
 
     #[test]
@@ -297,7 +271,7 @@ mod tests {
         acc.append(b"line2\n");
         acc.append(b"line3\n");
         let snapshot = acc.finish();
-        assert_eq!(snapshot.full_content, "line1\nline2\nline3\n");
+        assert_eq!(snapshot.content, "line1\nline2\nline3\n");
     }
 
     #[test]

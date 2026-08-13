@@ -195,7 +195,7 @@ if ($img -ne $null) {
     }
 
     let b64 = String::from_utf8_lossy(&output.stdout).trim().to_string();
-    let bytes = base64_decode(&b64)?;
+    let bytes = decode_base64(&b64)?;
 
     Ok(Some(ClipboardImage {
         bytes,
@@ -240,9 +240,11 @@ fn select_preferred_image_mime(mime_types: &str) -> Option<String> {
 }
 
 /// Minimal base64 decoder — mirrors the encoder in osc52.rs.
-#[allow(dead_code)]
-fn base64_decode(input: &str) -> Result<Vec<u8>, String> {
-    // Remove whitespace
+/// Production caller is the Windows clipboard reader only; tests roundtrip it
+/// against the osc52 encoder on every platform.
+#[cfg(any(target_os = "windows", test))]
+fn decode_base64(input: &str) -> Result<Vec<u8>, String> {
+    // Remove whitespace (PowerShell emits CRLF line endings in base64 output).
     let clean: String = input.chars().filter(|c| !c.is_whitespace()).collect();
 
     // Strip padding
@@ -292,10 +294,10 @@ mod tests {
     use super::*;
 
     #[test]
-    fn test_base64_decode_roundtrip() {
+    fn test_decode_base64_roundtrip() {
         let input = b"hello clipboard";
         let encoded = super::super::osc52::base64_encode(input);
-        let decoded = base64_decode(&encoded).unwrap();
+        let decoded = decode_base64(&encoded).unwrap();
         assert_eq!(decoded, input);
     }
 
