@@ -1,5 +1,8 @@
 ---
 depends_on: []
+branch: sdd/c2240-add-stream-node-timestamps
+base_sha: 722ea33317144b801bdd405d2e36e35dc8125820
+checkpointed: false
 ---
 
 # 流式节点墙钟：Thought 只计量思考通道
