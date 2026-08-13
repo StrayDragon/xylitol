@@ -4741,6 +4741,40 @@ fn activity_fold_thought_only_cluster_shows_frozen_duration() {
 }
 
 #[test]
+fn activity_fold_sealed_thought_stays_when_later_thinking_streams() {
+    use super::activity_fold::SegmentLevel;
+    use super::layout::UiRoot;
+
+    let mut root = UiRoot::new();
+    let mut model = UiModel::new();
+    model.phase = UiPhase::Busy;
+    model
+        .entries
+        .push(super::bridge::UiEntry::User { text: "hi".into() });
+    model.entries.push(super::bridge::UiEntry::Thinking {
+        id: "th-old".into(),
+        text: "first burst".into(),
+        elapsed_secs: Some(17),
+    });
+    model
+        .entries
+        .push(super::bridge::UiEntry::Assistant { text: "mid".into() });
+    model.streaming_thinking = "second burst".into();
+    root.apply_ui_model(&model);
+    root.activity_mut().force_level("seg-0", SegmentLevel::L2);
+    root.touch_activity();
+    let plain = strip_ansi_activity(&root.render(100).join("\n"));
+    assert!(
+        plain.contains("Thought 17s"),
+        "sealed Thought MUST NOT flip back to Thinking: {plain}"
+    );
+    assert!(
+        plain.contains("Thinking"),
+        "live burst MUST still be Thinking: {plain}"
+    );
+}
+
+#[test]
 fn activity_fold_todo_tools_are_used_not_thought_cluster() {
     use super::activity_fold::SegmentLevel;
     use super::layout::UiRoot;

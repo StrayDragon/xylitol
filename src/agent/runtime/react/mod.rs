@@ -20,7 +20,7 @@ use assistant::{
 };
 use support::{
     ClearActiveTurn, call_with_retry, observe_script_hook, persist_agent_message,
-    prepare_turn_binding,
+    persist_agent_message_with_thought_elapsed, prepare_turn_binding, thought_elapsed_secs,
 };
 use turn_end::{
     FinishTurnOutcome, drain_queue, finish_turn, queue_counts, try_turn_end_compaction,
@@ -1000,6 +1000,7 @@ fn run_react_loop(cfg: ReActConfig) -> impl Stream<Item = XyEvent> + Send {
 
                 let mut text_acc = String::new();
                 let mut thinking_acc = String::new();
+                let mut thinking_started_at: Option<std::time::Instant> = None;
                 let mut thinking_signature: Option<String> = None;
                 let mut tool_calls: Vec<(String, String, Value)> = Vec::new();
                 let mut done_usage: Option<crate::protocol::message::XyUsage> = None;
@@ -1035,8 +1036,13 @@ fn run_react_loop(cfg: ReActConfig) -> impl Stream<Item = XyEvent> + Send {
                                     role: "assistant".to_string(),
                                     message: Some(assistant_msg.clone()),
                                 };
-                                persist_agent_message(&store, &session_id, &assistant_msg)
-                                    .await;
+                                persist_agent_message_with_thought_elapsed(
+                                    &store,
+                                    &session_id,
+                                    &assistant_msg,
+                                    thought_elapsed_secs(thinking_started_at),
+                                )
+                                .await;
                                 history.push(assistant_msg);
                             }
                             turn_aborted = true;
@@ -1059,6 +1065,9 @@ fn run_react_loop(cfg: ReActConfig) -> impl Stream<Item = XyEvent> + Send {
                                 );
                             }
                             XyChunk::ThinkingDelta(text) => {
+                                if thinking_started_at.is_none() {
+                                    thinking_started_at = Some(std::time::Instant::now());
+                                }
                                 thinking_acc.push_str(&text);
                                 yield XyEvent::ThinkingDelta(text);
                                 yield streaming_message_update(
@@ -1198,7 +1207,13 @@ fn run_react_loop(cfg: ReActConfig) -> impl Stream<Item = XyEvent> + Send {
                         model_id,
                         done_error_message,
                     );
-                    persist_agent_message(&store, &session_id, &assistant_msg).await;
+                    persist_agent_message_with_thought_elapsed(
+                        &store,
+                        &session_id,
+                        &assistant_msg,
+                        thought_elapsed_secs(thinking_started_at),
+                    )
+                    .await;
                     history.push(assistant_msg);
                 }
 

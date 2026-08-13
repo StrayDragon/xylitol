@@ -112,7 +112,8 @@ pub enum UiEntry {
         /// Stable per-block id (hash+ordinal); live flush and session rebuild MUST agree.
         id: String,
         text: String,
-        /// Wall-clock secs from first ThinkingDelta to flush; `None` if <1s or resume.
+        /// Wall-clock secs from first ThinkingDelta to flush; `None` if <1s.
+        /// Resume prefers persisted `thinkingElapsedSecs`, else adjacent stamps.
         elapsed_secs: Option<u64>,
     },
     Tool {
