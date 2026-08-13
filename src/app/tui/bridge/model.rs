@@ -112,6 +112,8 @@ pub enum UiEntry {
         /// Stable per-block id (hash+ordinal); live flush and session rebuild MUST agree.
         id: String,
         text: String,
+        /// Wall-clock secs from first ThinkingDelta to flush; `None` if <1s or resume.
+        elapsed_secs: Option<u64>,
     },
     Tool {
         id: String,
@@ -204,8 +206,6 @@ pub struct UiModel {
     pub(crate) streaming_thinking: String,
     /// Wall-clock start of the current thinking stream (first delta of a burst).
     pub(crate) thinking_started_at: Option<std::time::Instant>,
-    /// Frozen thinking elapsed secs, keyed by Thinking entry id (live session only).
-    pub(crate) thinking_elapsed_secs: std::collections::HashMap<String, u64>,
     pub(crate) current_role: Option<String>,
     /// Incomplete UTF-8 bytes across bang stream chunks (c669).
     bash_utf8_pending: Vec<u8>,
@@ -229,7 +229,6 @@ impl UiModel {
             streaming_assistant: String::new(),
             streaming_thinking: String::new(),
             thinking_started_at: None,
-            thinking_elapsed_secs: std::collections::HashMap::new(),
             current_role: None,
             bash_utf8_pending: Vec::new(),
         }
@@ -519,13 +518,15 @@ impl UiModel {
         if !self.streaming_thinking.is_empty() {
             let text = std::mem::take(&mut self.streaming_thinking);
             let id = allocate_thinking_id(&self.entries, &text);
-            if let Some(start) = self.thinking_started_at.take() {
+            let elapsed_secs = self.thinking_started_at.take().and_then(|start| {
                 let secs = start.elapsed().as_secs();
-                if secs > 0 {
-                    self.thinking_elapsed_secs.insert(id.clone(), secs);
-                }
-            }
-            self.entries.push(UiEntry::Thinking { id, text });
+                (secs > 0).then_some(secs)
+            });
+            self.entries.push(UiEntry::Thinking {
+                id,
+                text,
+                elapsed_secs,
+            });
         }
         if !self.streaming_assistant.is_empty() {
             self.entries.push(UiEntry::Assistant {

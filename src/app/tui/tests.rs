@@ -2176,10 +2176,15 @@ fn scrollback_thinking_fold_shows_ctrl_t_hint() {
     model.entries.push(super::bridge::UiEntry::Thinking {
         id: super::bridge::allocate_thinking_id(&[], "secret plan"),
         text: "secret plan".into(),
+        elapsed_secs: None,
     });
     root.apply_ui_model(&model);
     let idle = root.render(80).join("\n");
     assert!(idle.contains("(Ctrl+T)"), "{idle}");
+    assert!(
+        idle.contains("Thought"),
+        "flushed thinking L1 is Thought: {idle}"
+    );
     assert!(
         !idle.contains("secret plan"),
         "collapsed must hide body: {idle}"
@@ -2263,11 +2268,13 @@ fn thinking_per_id_override_and_ctrl_t_clears() {
     model.entries.push(super::bridge::UiEntry::Thinking {
         id: id1.clone(),
         text: t1,
+        elapsed_secs: None,
     });
     let id2 = super::bridge::allocate_thinking_id(&model.entries, &t2);
     model.entries.push(super::bridge::UiEntry::Thinking {
         id: id2.clone(),
         text: t2,
+        elapsed_secs: None,
     });
     root.apply_ui_model(&model);
     let _ = root.render(80);
@@ -2508,6 +2515,7 @@ fn harness_mouse_triangle_toggles_thinking_fold() {
         model.entries.push(super::bridge::UiEntry::Thinking {
             id: id.clone(),
             text: thinking_text.clone(),
+            elapsed_secs: None,
         });
         *session.ui_model_mut() = model;
         session.sync_ui_root_from_model();
@@ -4368,8 +4376,12 @@ fn activity_fold_att33_live_planning_and_open_cluster_updates() {
     root.apply_ui_model(&model);
     let empty = strip_ansi_activity(&root.render(100).join("\n"));
     assert!(
-        empty.contains("Planning next moves"),
-        "no displayable assistant → Planning: {empty}"
+        !empty.contains("Planning next moves"),
+        "busy chrome is status, not Planning: {empty}"
+    );
+    assert!(
+        !empty.contains("Worked for"),
+        "live window must not wrap current turn: {empty}"
     );
 
     model.entries.push(super::bridge::UiEntry::Tool {
@@ -4400,8 +4412,8 @@ fn activity_fold_att33_live_planning_and_open_cluster_updates() {
     root.apply_ui_model(&model);
     let before = strip_ansi_activity(&root.render(100).join("\n"));
     assert!(
-        before.contains("Planning next moves"),
-        "open cluster still unsealed → Planning: {before}"
+        !before.contains("Planning next moves"),
+        "open cluster still unsealed → no Planning placeholder: {before}"
     );
     assert!(
         before.contains("Explored") || before.contains("Editing"),
@@ -4505,7 +4517,7 @@ fn activity_fold_att33_ask_waiting_stays_clickable() {
 }
 
 #[test]
-fn activity_fold_att33_planning_click_expands_open_cluster() {
+fn activity_fold_att33_cluster_click_expands_open_cluster() {
     use super::layout::UiRoot;
     use super::widgets::FoldTarget;
 
@@ -4534,23 +4546,23 @@ fn activity_fold_att33_planning_click_expands_open_cluster() {
             .regions
             .iter()
             .any(|r| matches!(&r.target, FoldTarget::Tool(id) if id == "sealed-tool")),
-        "live cluster kids hidden until Planning click"
+        "live cluster kids hidden until cluster triangle click"
     );
     assert!(
         root.fold_hits()
             .regions
             .iter()
-            .any(|reg| matches!(reg.target, FoldTarget::LiveTail)),
-        "Planning next moves must register a whole-line hit"
+            .any(|reg| matches!(reg.target, FoldTarget::Cluster(_))),
+        "Exploring cluster header must register a fold triangle"
     );
-    root.toggle_fold_target(FoldTarget::LiveTail);
+    root.toggle_fold_target(FoldTarget::Cluster("seg-0:c0".into()));
     let _ = root.render(100);
     assert!(
         root.fold_hits()
             .regions
             .iter()
             .any(|r| matches!(&r.target, FoldTarget::Tool(id) if id == "sealed-tool")),
-        "Planning click must reveal sealed kids"
+        "cluster triangle must reveal sealed kids"
     );
 }
 
@@ -4655,6 +4667,7 @@ fn activity_fold_thinking_only_is_thought_not_explored() {
     model.entries.push(super::bridge::UiEntry::Thinking {
         id: "th".into(),
         text: "consider".into(),
+        elapsed_secs: None,
     });
     model.entries.push(super::bridge::UiEntry::Assistant {
         text: "hello".into(),
@@ -4761,8 +4774,8 @@ fn activity_fold_live_write_placeholder_is_editing_not_dots() {
         "streaming write body stays folded by default: {plain}"
     );
     assert!(
-        plain.contains("Planning next moves"),
-        "inflight tools must not replace Planning: {plain}"
+        !plain.contains("Planning next moves"),
+        "MUST NOT paint Planning placeholder: {plain}"
     );
     assert!(
         root.fold_hits()
@@ -4808,33 +4821,59 @@ fn activity_fold_live_thinking_stream_merges_into_thought() {
     root.apply_ui_model(&model);
     let plain = strip_ansi_activity(&root.render(100).join("\n"));
     assert!(
-        plain.contains("Thought"),
-        "stream must be a Thought bar: {plain}"
+        plain.contains("Thinking"),
+        "stream must be a Thinking bar: {plain}"
     );
     assert!(
-        plain.contains("Thought 17s"),
-        "live Thought must show elapsed wall time: {plain}"
+        !plain.contains("Thought"),
+        "MUST NOT freeze Thought duration while still streaming: {plain}"
     );
     assert!(
         !plain.contains("consider next edit"),
-        "Thought body stays folded by default: {plain}"
+        "Thinking body stays folded by default: {plain}"
     );
     assert!(
         !plain
             .lines()
             .any(|l| l.contains("thinking") && l.contains("Ctrl+T")),
-        "must not show a second thinking header: {plain}"
+        "must not show a second thinking L1 header: {plain}"
     );
     assert!(
         !plain.contains("Planning next moves"),
-        "thinking stream replaces Planning: {plain}"
+        "MUST NOT paint Planning placeholder: {plain}"
     );
 
     root.toggle_fold_target(FoldTarget::Cluster("seg-0:c0".into()));
     let opened = strip_ansi_activity(&root.render(100).join("\n"));
     assert!(
         opened.contains("consider next edit"),
-        "opening Thought reveals the stream: {opened}"
+        "opening Thinking reveals the stream: {opened}"
+    );
+    assert!(
+        opened.contains("Thinking") && !opened.contains("Thought"),
+        "expanded stream is still Thinking: {opened}"
+    );
+
+    let expect_dur = model
+        .thinking_started_at
+        .expect("stream must stamp start")
+        .elapsed()
+        .as_secs();
+    model.flush_streaming();
+    root.apply_ui_model(&model);
+    let flushed = strip_ansi_activity(&root.render(100).join("\n"));
+    let expect = format!("Thought {expect_dur}s");
+    assert!(
+        flushed.contains(&expect),
+        "after stream end the bar MUST become {expect}: {flushed}"
+    );
+    assert!(
+        !flushed.contains("Thinking"),
+        "flushed thought-only cluster MUST NOT keep Thinking: {flushed}"
+    );
+    assert!(
+        flushed.contains("consider next edit"),
+        "expand survives flush: {flushed}"
     );
 }
 

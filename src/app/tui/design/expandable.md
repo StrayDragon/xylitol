@@ -22,7 +22,7 @@ components:
 
 > Token 根源：`{colors.*}` / `{components.*}` → [`../DESIGN.md`](../DESIGN.md)。
 
-对齐 pi interactive：折叠一行摘要，展开完整内容。实现落在**应用面**（demo 优先）；**不是**包内通用 Chat 组件，也**不是** Codex 式 TranscriptView 的一部分。段/簇信封（`Worked for` / `Planning next moves`）见 [`activity-fold.md`](./activity-fold.md)，本文件只管块级 thinking / tool / diff。
+对齐 pi interactive：折叠一行摘要，展开完整内容。实现落在**应用面**（demo 优先）；**不是**包内通用 Chat 组件，也**不是** Codex 式 TranscriptView 的一部分。段/簇信封（`Worked for` / 流式 `Thinking`→`Thought` / Ask 等待 `Asking questions`）见 [`activity-fold.md`](./activity-fold.md)，本文件只管块级 thinking / tool / diff。
 
 默认皮肤 **rail**（c1830）：tool/bash/diff 为 `[1-cell status 轨][1 gutter][content]`；**thinking / user / assistant flush**（无轨）。**MUST NOT** 默认整行 `tool-*-bg` 洗底。
 
@@ -34,7 +34,7 @@ components:
 4. **默认展开**：`tools_expanded` 默认 true（工具/Edit/Diff 正文默认可见）；**Alt+E** 在 hide ↔ unhide 间切换（Edit 的 `display_diff` **MUST** 服从同一开关，不得常驻展开）。
 5. **Viewport**：正文展开后仍有高度上限（tool/bash/write/diff）；**Ctrl+O** 切满高。与 Alt+E 正交。
 6. 快捷键切换（thinking toggle、tools expand）由产品面绑定；包组件只渲染给定展开态。
-7. 折叠行旁 MUST 提示对应快捷键，格式为括号包裹的完整和弦（`thinking  (Ctrl+T)`、`Read path  (Alt+E)`）。
+7. 折叠行旁 MUST 提示对应快捷键，格式为括号包裹的完整和弦（流式 `Thinking  (Ctrl+T)`、结束后 `Thought` / `Thought 17s  (Ctrl+T)`、`Read path  (Alt+E)`）。
 8. **工具块轨色三态**：pending → accent 轨；成功 → success 轨；失败 → error 轨（MAY soft-mix surface）；经包 `paint_left_rail_line`。
 9. **Edit / Diff**：header + Diff 正文共用同一 status 轨；正文 **MUST NOT** 再叠 `diff-*-bg` 行底；**MUST NOT** 用 `tool-*-bg` 洗底信封。
 10. **Tool 详情不重复命令**：摘要行已含命令时，展开详情 MUST NOT 再 echo 同一命令。

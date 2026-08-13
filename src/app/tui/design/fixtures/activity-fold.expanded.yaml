@@ -6,7 +6,7 @@ state: expanded
 source: activityFold.expanded
 must_contain:
   - "Editing 7 files"
-  - "Planning next moves"
   - "▾"
 must_not_contain:
   - "Worked for"
+  - "Planning next moves"

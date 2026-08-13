@@ -238,7 +238,7 @@ impl ActivityFoldState {
         true
     }
 
-    /// Planning next moves: expand the last cluster of the newest envelope.
+    /// Ask-waiting live tail: expand the last cluster of the newest envelope.
     pub fn expand_live_cluster(&mut self, entries: &[UiEntry]) -> bool {
         let segs = partition_segments(entries);
         let Some(seg) = segs.last() else {

@@ -595,7 +595,7 @@
             <div class="row">
               <span class="fg-user">❯</span> <span class="fg-on">跑测试并看工具块</span>
             </div>
-            <div class="row fg-muted" id="think-line" role="button" tabindex="0">thinking  (Ctrl+T)</div>
+            <div class="row fg-muted" id="think-line" role="button" tabindex="0">Thinking  (Ctrl+T)</div>
             <div class="row fg-muted hidden" id="think-body"></div>
             <div class="entry-rail rail-pending" id="tool-block">
               <div class="row" id="tool-summary" role="button" tabindex="0"></div>
@@ -1081,12 +1081,13 @@
           <button type="button" class="chip-btn" data-activity-fold="asking" aria-pressed="false">流式·Ask</button>
           <button type="button" class="chip-btn" data-activity-fold="envelope" aria-pressed="false">旧 turn·信封收</button>
           <button type="button" class="chip-btn" data-activity-fold="envelopeOpen" aria-pressed="false">旧 turn·信封开</button>
-          <span class="hint">芯片=跳到预设 · 点信封/簇/Planning · L1 细账静图不可点（产品可点）</span>
+          <span class="hint">芯片=跳到预设 · 点信封/簇/Asking questions · L1 细账静图不可点（产品可点）</span>
         </div>
         <div class="ctl">
-          <span class="hint">进行中 -1</span>
-          <button type="button" class="chip-btn" data-af-inflight="planning">Planning</button>
+          <span class="hint">进行中</span>
+          <button type="button" class="chip-btn" data-af-inflight="working">Working</button>
           <button type="button" class="chip-btn" data-af-inflight="thinking">Thinking</button>
+          <button type="button" class="chip-btn" data-af-inflight="thought">Thought</button>
           <button type="button" class="chip-btn" data-af-inflight="asking">Ask</button>
           <button type="button" class="chip-btn" data-af-inflight="editing">Editing file</button>
         </div>
@@ -1504,9 +1505,9 @@
       body.classList.toggle("hidden", !showThink);
       body.textContent = t.streamText || (t.thinking ? THINK_CHUNKS.join(" ") : "");
       document.getElementById("think-line").textContent =
-        t.streaming ? "thinking  (Ctrl+T) · streaming…"
-        : t.thinking || t.streamText ? "thinking  (Ctrl+T) · expanded"
-        : "thinking  (Ctrl+T) · 折叠摘要";
+        t.streaming ? "Thinking  (Ctrl+T) · streaming…"
+        : t.thinking || t.streamText ? "Thought  (Ctrl+T) · expanded"
+        : "Thought  (Ctrl+T) · 折叠摘要";
       document.getElementById("tool-expand").setAttribute("aria-pressed", String(t.expanded));
       document.getElementById("tool-viewport").setAttribute("aria-pressed", String(t.full));
       document.getElementById("tool-show-diff").setAttribute("aria-pressed", String(t.showDiff));
@@ -1702,7 +1703,7 @@
         '<div class="row">' +
         '<span class="fg-user">❯</span> <span class="fg-on">少壳层、可复制 · 整壳预览</span></div>' +
         '<div class="row fg-assistant">当前轮进 scrollback（非 Codex 浏览面）。</div>' +
-        '<div class="row fg-muted">▸ thinking  (Ctrl+T)</div>' +
+        '<div class="row fg-muted">▸ Thought  (Ctrl+T)</div>' +
         '<div class="row fg-assistant">assistant: 已对齐 Layout 栈。</div>';
       if (S.tool) {
         html +=
@@ -2195,13 +2196,11 @@
     const ACTIVITY_FOLD = {
       collapsed: `<div class="row"><span class="fg-user">❯</span> <span class="fg-on">继续修折叠</span></div>
 <div class="row fg-muted">Thought 20s</div>
-<div class="row fg-muted">Explored 15 files, Ran 1 command</div>
-<div class="row fg-muted">Planning next moves</div>`,
+<div class="row fg-muted">Explored 15 files, Ran 1 command</div>`,
       expanded: `<div class="row"><span class="fg-user">❯</span> <span class="fg-on">继续修折叠</span></div>
 <div class="row fg-muted">Thought 20s</div>
 <div class="row fg-muted">Explored 15 files, Ran 1 command</div>
-<div class="row fg-muted">▾ Editing 7 files, Running 5 commands <span class="fg-success">+301</span> <span class="fg-error">-8</span></div>
-<div class="row fg-muted">Planning next moves</div>`,
+<div class="row fg-muted">▾ Editing 7 files, Running 5 commands <span class="fg-success">+301</span> <span class="fg-error">-8</span></div>`,
       envelope: `<div class="row"><span class="fg-user">❯</span> <span class="fg-on">继续修折叠</span></div>
 <div class="row fg-muted">▸ Worked for 7m 33s</div>
 <div class="row"><span class="fg-success">assistant:</span> <span class="fg-on">好的，我先从摘要后的上下文继续。</span></div>`,
@@ -2284,15 +2283,18 @@
         return html;
       }
       if (kind === "thinking") {
-        html += afRow(`${afTri(live.open)} Thought`, "live-head");
+        html += afRow(`${afTri(live.open)} Thinking`, "live-head");
         if (live.open) html += afRow("  先确认簇切刀是助手正文…");
         return html;
       }
-      if (kind === "editing") {
-        html += afRow("Planning next moves", "live-tail");
+      if (kind === "thought") {
+        html += afRow(`${afTri(live.open)} Thought 17s`, "live-head");
+        if (live.open) html += afRow("  先确认簇切刀是助手正文…");
         return html;
       }
-      html += afRow("Planning next moves", "live-tail");
+      if (kind === "editing" || kind === "working") {
+        return html;
+      }
       return html;
     }
     function afLive(model) {
@@ -2304,6 +2306,7 @@
       });
       const showLiveHead =
         live.inflight !== "thinking" &&
+        live.inflight !== "thought" &&
         live.inflight !== "asking" &&
         ((live.sealed && live.sealed.length) || live.inflight === "editing");
       if (showLiveHead) {
@@ -2387,7 +2390,7 @@
         summary: "Editing 7 files, Running 5 commands",
         plus: "301",
         minus: "8",
-        sealed: ["Read tests.rs", "Grepped Planning next moves", "Thinking"],
+        sealed: ["Read tests.rs", "Grepped activity fold labels", "Thinking"],
       };
     }
     function afPreset(name) {
@@ -2408,11 +2411,11 @@
           ended: [afEndedOld(), keep],
           frozen: afFrozen(),
           liveUser,
-          live: afLiveBlock(false, "planning"),
+          live: afLiveBlock(false, "working"),
         };
       }
       const inflight =
-        name === "thinking" ? "thinking" : name === "asking" ? "asking" : "planning";
+        name === "thinking" ? "thinking" : name === "asking" ? "asking" : "working";
       return {
         scene: name,
         ended: [],

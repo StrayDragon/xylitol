@@ -5,8 +5,9 @@ slot: activity-fold
 state: collapsed
 source: activityFold.collapsed
 must_contain:
-  - "Planning next moves"
+  - "Thought 20s"
   - "Explored 15 files"
 must_not_contain:
   - "Editing 7 files"
   - "Worked for"
+  - "Planning next moves"

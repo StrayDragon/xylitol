@@ -29,7 +29,6 @@ pub fn rebuild_scrollback_from_travel(
     ui_model.streaming_assistant.clear();
     ui_model.streaming_thinking.clear();
     ui_model.thinking_started_at = None;
-    ui_model.thinking_elapsed_secs.clear();
     ui_model.current_role = None;
 
     let path = ancestry_path_ids(entries, travel.leaf_id.as_deref());
@@ -387,7 +386,11 @@ fn assistant_parts_to_ui(entry_id: &str, message: &Value) -> Vec<UiEntry> {
                 {
                     let text = t.to_string();
                     let id = allocate_thinking_id(&out, &text);
-                    out.push(UiEntry::Thinking { id, text });
+                    out.push(UiEntry::Thinking {
+                        id,
+                        text,
+                        elapsed_secs: None,
+                    });
                 }
             }
             Some("text") => {

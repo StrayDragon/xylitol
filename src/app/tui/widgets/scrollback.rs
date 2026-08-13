@@ -19,6 +19,7 @@ use crate::app::tui::activity_fold::{
     ActivityFoldState, SegmentLevel, cluster_is_thought_only, cluster_middle_indices,
     cluster_omits_header, count_cluster, format_cluster_header, format_elapsed_secs,
     format_envelope_line, middle_entry_indices, partition_segments, streaming_thought_counts,
+    thought_header_body,
 };
 use crate::app::tui::bridge::{
     AskPhase, BashBlockStatus, CompactionBlockStatus, UiEntry, UiModel, UiPhase,
@@ -629,9 +630,14 @@ fn entry_fingerprint(entry: &UiEntry, fold: &ScrollbackFold) -> u64 {
         | UiEntry::Assistant { text }
         | UiEntry::ScrollNotice { text }
         | UiEntry::Error { text } => text.hash(&mut h),
-        UiEntry::Thinking { id, text } => {
+        UiEntry::Thinking {
+            id,
+            text,
+            elapsed_secs,
+        } => {
             id.hash(&mut h);
             text.hash(&mut h);
+            elapsed_secs.hash(&mut h);
             fold.thinking_effective(id).hash(&mut h);
         }
         UiEntry::Tool {
@@ -934,12 +940,15 @@ pub fn render_scrollback(
                         lines.push(fit(&line, width));
                     }
                 }
-                UiEntry::Thinking { id, text } => {
+                UiEntry::Thinking {
+                    id,
+                    text,
+                    elapsed_secs,
+                } => {
                     if thought_only_mids.contains(&entry_idx) {
-                        // Cluster header is already `Thought`; don't paint a second `thinking` row.
+                        // Cluster header is already Thought; don't paint a second L1 row.
                         push_wrapped(&mut lines, &theme.paint_muted(text), width);
                     } else {
-                        // Flush like assistant body — thinking is content, not a status tool block.
                         let expanded = fold.thinking_effective(id);
                         let marker = if expanded {
                             glyphs.unfold()
@@ -947,8 +956,10 @@ pub fn render_scrollback(
                             glyphs.fold()
                         };
                         let mw = marker_cols(marker);
-                        let header = theme
-                            .paint_muted(&format!("{marker} thinking  {}", key_hint("Ctrl+T")));
+                        let dur = elapsed_secs.filter(|s| *s > 0).map(format_elapsed_secs);
+                        let label = thought_header_body(dur.as_deref());
+                        let header =
+                            theme.paint_muted(&format!("{marker} {label}  {}", key_hint("Ctrl+T")));
                         let header_row = lines.len();
                         push_wrapped(&mut lines, &header, width);
                         block_hits.push(CachedFoldHit {
@@ -1316,7 +1327,7 @@ pub fn render_scrollback(
                     // att8 / att21: without ActivityFold, streaming thinking stays expanded.
                     let marker = glyphs.unfold();
                     let header =
-                        theme.paint_muted(&format!("{marker} thinking  {}", key_hint("Ctrl+T")));
+                        theme.paint_muted(&format!("{marker} Thinking  {}", key_hint("Ctrl+T")));
                     push_wrapped(&mut lines, &header, width);
                     push_wrapped(&mut lines, &theme.paint_muted(&format!("{text}…")), width);
                 }
@@ -1409,14 +1420,16 @@ fn paint_cluster_header_row(
     let counts = count_cluster(&model.entries, cl);
     let thought_dur = counts
         .is_thought_only()
-        .then(|| thought_duration_label(model, Some(cl)))
+        .then(|| thought_duration_label(model, cl))
         .flatten();
+    let live_thinking = counts.is_thought_only() && !model.streaming_thinking.is_empty();
     let plain = format_cluster_header(
         glyphs,
         &counts,
         expanded,
         progressive,
         thought_dur.as_deref(),
+        live_thinking,
     );
     let marker = if expanded {
         glyphs.unfold()
@@ -1431,7 +1444,7 @@ fn paint_cluster_header_row(
     *need_spacer = true;
 }
 
-/// ActivityFold on: merge streaming Think into a Thought bar (no second `thinking` header).
+/// ActivityFold on: merge streaming Think into a Thinking bar (no second L1 header).
 ///
 /// Cluster id matches the cluster `partition_segments` will assign when the
 /// stream flushes, so a user expand survives ToolStart / MessageEnd.
@@ -1450,8 +1463,8 @@ fn paint_folded_streaming_thought(
     width: usize,
 ) {
     if live_open_cluster {
-        // Header already painted (Thought or Editing/Exploring/…). Thinking
-        // stream is a kid — no second Thought / `thinking` row.
+        // Header already painted (Thinking/Thought or Editing/Exploring/…).
+        // Thinking stream is a kid — no second L1 row.
         if live_open_cluster_expanded {
             push_wrapped(lines, &theme.paint_muted(&format!("{text}…")), width);
         }
@@ -1461,8 +1474,7 @@ fn paint_folded_streaming_thought(
     let (env_id, cluster_id) = next_live_thought_cluster_id(&model.entries, segments);
     let expanded = activity.cluster_kids_visible(&env_id, &cluster_id);
     let counts = streaming_thought_counts();
-    let thought_dur = thought_duration_label(model, None);
-    let plain = format_cluster_header(glyphs, &counts, expanded, true, thought_dur.as_deref());
+    let plain = format_cluster_header(glyphs, &counts, expanded, true, None, true);
     let marker = if expanded {
         glyphs.unfold()
     } else {
@@ -1480,22 +1492,17 @@ fn paint_folded_streaming_thought(
 
 fn thought_duration_label(
     model: &UiModel,
-    cluster: Option<&crate::app::tui::activity_fold::ActivityCluster>,
+    cluster: &crate::app::tui::activity_fold::ActivityCluster,
 ) -> Option<String> {
     let mut secs = 0u64;
-    if let Some(cl) = cluster {
-        for idx in cluster_middle_indices(&model.entries, cl) {
-            if let Some(UiEntry::Thinking { id, .. }) = model.entries.get(idx)
-                && let Some(s) = model.thinking_elapsed_secs.get(id)
-            {
-                secs = secs.saturating_add(*s);
-            }
+    for idx in cluster_middle_indices(&model.entries, cluster) {
+        if let Some(UiEntry::Thinking {
+            elapsed_secs: Some(s),
+            ..
+        }) = model.entries.get(idx)
+        {
+            secs = secs.saturating_add(*s);
         }
-    }
-    if !model.streaming_thinking.is_empty()
-        && let Some(start) = model.thinking_started_at
-    {
-        secs = secs.saturating_add(start.elapsed().as_secs());
     }
     (secs > 0).then(|| format_elapsed_secs(secs))
 }
@@ -1656,10 +1663,7 @@ fn live_tail_label(
     if model.entries.iter().rev().any(is_ask_waiting) {
         return Some("Asking questions".into());
     }
-    if !model.streaming_thinking.is_empty() {
-        return None;
-    }
-    Some("Planning next moves".into())
+    None
 }
 
 #[cfg(test)]
@@ -2173,7 +2177,7 @@ mod tests {
     }
 
     #[test]
-    fn live_window_shows_planning_without_displayable_assistant() {
+    fn live_window_omits_planning_placeholder() {
         let mut model = UiModel::default();
         model.phase = UiPhase::Busy;
         model.entries.push(UiEntry::User { text: "go".into() });
@@ -2190,18 +2194,20 @@ mod tests {
         );
         let plain = strip_ansi_local(&lines.join("\n"));
         assert!(
-            plain.contains("Planning next moves"),
-            "busy with no assistant body must show Planning: {plain}"
+            !plain.contains("Planning next moves"),
+            "busy chrome is status spinner, not a Planning placeholder: {plain}"
         );
         assert!(
             !plain.contains("Worked for"),
             "live window must not wrap current turn in Worked for: {plain}"
         );
         assert!(
-            hits.regions
+            !hits
+                .regions
                 .iter()
                 .any(|r| matches!(r.target, FoldTarget::LiveTail)),
-            "Planning next moves must be whole-line clickable"
+            "no Planning live-tail hit: {:?}",
+            hits.regions
         );
     }
 

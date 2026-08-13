@@ -27,7 +27,7 @@ components:
 3. 助手：正文直接出（flush）；**MUST NOT** 每段 `ASSISTANT>`。
 4. System / 错误：短 dim 或 `{colors.error}`（见 [`errors.md`](./errors.md)）。
 5. Markdown / Diff 细则见 [`markdown.md`](./markdown.md)、[`diff-block.md`](./diff-block.md)——作为**行级积木**，不是独立浏览面。
-6. thinking / tool 折叠：thinking **flush**（同正文，无轨）；tool/bash/diff **rail**——见 [`expandable.md`](./expandable.md)。段/簇/流式队列（`Planning next moves`）见 [`activity-fold.md`](./activity-fold.md)。
+6. thinking / tool 折叠：thinking **flush**（同正文，无轨）；tool/bash/diff **rail**——见 [`expandable.md`](./expandable.md)。段/簇/流式（`Thinking`→`Thought`、Ask 等待 `Asking questions`）见 [`activity-fold.md`](./activity-fold.md)。
 7. 相邻块之间 **≥1** 行 untinted 空行。
 
 ## MUST NOT
