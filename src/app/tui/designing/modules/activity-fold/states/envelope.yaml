@@ -1,0 +1,13 @@
+id: activity-fold.envelope
+cols: 80
+must_contain:
+  - "Worked for"
+  - "▸"
+must_not_contain:
+  - "Planning next moves"
+lines:
+  - - { text: "❯ ", token: user }
+    - { text: "继续修折叠", token: on-surface }
+  - - { text: "▸ Worked for 7m 33s", token: muted }
+  - - { text: "assistant: ", token: success }
+    - { text: "好的，我先从摘要后的上下文继续。", token: on-surface }
