@@ -4785,8 +4785,8 @@ fn activity_fold_todo_tools_are_used_not_thought_cluster() {
     root.touch_activity();
     let plain = strip_ansi_activity(&root.render(100).join("\n"));
     assert!(
-        plain.contains("Used"),
-        "todo tools MUST own the cluster header: {plain}"
+        plain.contains("Used 2 tools"),
+        "two distinct todo_* calls MUST count as Used 2 tools: {plain}"
     );
     assert!(
         !plain
@@ -4799,6 +4799,55 @@ fn activity_fold_todo_tools_are_used_not_thought_cluster() {
     assert!(
         opened.contains("Thought 4s") && opened.contains("(Ctrl+T)"),
         "L1 thinking kid MUST keep frozen duration: {opened}"
+    );
+}
+
+#[test]
+fn activity_fold_repeated_unknown_tools_count_calls() {
+    use super::activity_fold::SegmentLevel;
+    use super::layout::UiRoot;
+
+    let mut root = UiRoot::new();
+    let mut model = UiModel::new();
+    model
+        .entries
+        .push(super::bridge::UiEntry::User { text: "u".into() });
+    for i in 0..4 {
+        model.entries.push(super::bridge::UiEntry::Tool {
+            id: format!("t-{i}"),
+            name: "todo_update".into(),
+            args_preview: String::new(),
+            tool_path: None,
+            write_content: None,
+            display_diff: None,
+            output: "{}".into(),
+            is_error: false,
+            done: true,
+        });
+    }
+    model.entries.push(super::bridge::UiEntry::Todo {
+        summary: "Todo · 10/10".into(),
+        detail_lines: vec![],
+    });
+    model.entries.push(super::bridge::UiEntry::Thinking {
+        id: "th".into(),
+        text: "done".into(),
+        elapsed_secs: Some(10),
+    });
+    model
+        .entries
+        .push(super::bridge::UiEntry::Assistant { text: "ok".into() });
+    root.apply_ui_model(&model);
+    root.activity_mut().force_level("seg-0", SegmentLevel::L2);
+    root.touch_activity();
+    let plain = strip_ansi_activity(&root.render(100).join("\n"));
+    assert!(
+        plain.contains("Used 4 tools"),
+        "four todo_update calls MUST be Used 4 tools, not unique-name 1 or checklist+name 2: {plain}"
+    );
+    assert!(
+        !plain.contains("Used 2 tools"),
+        "checklist row MUST NOT inflate Used N: {plain}"
     );
 }
 

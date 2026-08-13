@@ -14,7 +14,7 @@ c1761 的信封套簇套块、att34 助手正文切簇、扁平同列、live win
    ├─ ▸ Explored {name|N files}[, Ran M]
    ├─ ▸ Ran M commands                      仅 shell、无文件活动
    ├─ ▸ Thinking / Thought / Thought {dur}  仅 thinking：流式 / 结束后
-   ├─ ▸ Used {tool}                         仅 MCP / 未知工具
+   ├─ ▸ Used {tool} / Used N tools          未知/MCP/todo_*：1 次写名，多次按次
    ├─ [compaction] Compacted from N         仅 compaction：不套簇头
    └─ （中间助手正文：信封展开才画）
 [该轮最后一段 Assistant]
@@ -32,9 +32,9 @@ Worked for 与 Explored **不是**同一层的两种前缀；Explored 只在信�
 4. N=1 且有 basename → 写 basename；N>1 → `N files`；Explored 因无 path 的 search 成立且 N=0 → 只写 `Explored`（不写 `1 file`）。
 5. shell（bash/shell/run_terminal_cmd/execute）调用次数 M>0 → 追加 `, Ran M command(s)`；无文件活动时整行就是 `Ran M commands`。
 6. 若 3–5 皆空：
-   - thinking **与** 工具/Ask 同簇（同一轮中途再思考，att34 不切簇）→ **不**走 Thought；有未知/MCP/`todo_*` → `Used`；有 Ask → `Asking questions`
+   - thinking **与** 工具/Ask 同簇（同一轮中途再思考，att34 不切簇）→ **不**走 Thought；有未知/MCP/`todo_*` → `Used`（N=调用次数；1 次写短名）；有 Ask → `Asking questions`
    - 只有 thinking → 流式 `Thinking`；结束后 `Thought`（有可靠双端戳才加时长，如 `Thought 17s`）；MUST NOT 流式滴答
-   - 只有 MCP/`mcp:*`/未知工具（含 `todo_*`，不单开 Todo 类目）→ `Used {短名}`
+   - 只有 MCP/`mcp:*`/未知工具（含 `todo_*`，不单开 Todo 类目）→ 1 次 `Used {短名}`；多次 `Used N tools`。checklist 行不计入 N
    - 只有 Ask → `Asking questions`
    - 只有 Compaction → **不 emit 簇头**；paint 走既有 compaction 块
 7. 可靠 `display_diff` 的 +/- 在 ToolEnd 累加到该簇头；无则省略。

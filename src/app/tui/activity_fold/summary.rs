@@ -24,8 +24,10 @@ pub struct ActivityCounts {
     pub search_no_path: bool,
     pub commands: u32,
     pub thinking: u32,
-    /// MCP / unknown tool names (display short ids).
+    /// MCP / unknown / todo_* display names (first-seen, unique; N=1 header).
     pub used_names: Vec<String>,
+    /// Invocation count of those tools (Ran-style; N>1 header). Checklist row is not a call.
+    pub used_calls: u32,
     pub asks: u32,
     pub compaction: u32,
     /// Reliable +/- from Diff / edit display_diff only.
@@ -43,6 +45,7 @@ impl ActivityCounts {
             && self.commands == 0
             && self.thinking == 0
             && self.used_names.is_empty()
+            && self.used_calls == 0
             && self.asks == 0
     }
 
@@ -53,6 +56,7 @@ impl ActivityCounts {
             && !self.search_no_path
             && self.commands == 0
             && self.used_names.is_empty()
+            && self.used_calls == 0
             && self.asks == 0
             && self.compaction == 0
     }
@@ -150,6 +154,7 @@ fn count_middles(entries: &[UiEntry], indices: &[usize]) -> ActivityCounts {
                         None => anon_explores += 1,
                     }
                 } else {
+                    c.used_calls = c.used_calls.saturating_add(1);
                     push_unique(&mut c.used_names, used_display_name(name));
                 }
                 if let Some(diff) = display_diff.as_deref()
@@ -172,7 +177,7 @@ fn count_middles(entries: &[UiEntry], indices: &[usize]) -> ActivityCounts {
             UiEntry::Thinking { .. } => c.thinking += 1,
             UiEntry::Ask { .. } => c.asks += 1,
             UiEntry::Compaction { .. } => c.compaction += 1,
-            UiEntry::Todo { .. } => push_unique(&mut c.used_names, "Todo".to_string()),
+            // Checklist (UiEntry::Todo) is a projection of todo_* results, not a Used call.
             _ => {}
         }
     }
@@ -265,6 +270,10 @@ pub fn count_diff_pm(diff: &str) -> Option<(u32, u32)> {
     if any { Some((plus, minus)) } else { None }
 }
 
+fn tool_word(n: u32) -> &'static str {
+    if n == 1 { "tool" } else { "tools" }
+}
+
 fn command_word(n: u32) -> &'static str {
     if n == 1 { "command" } else { "commands" }
 }
@@ -318,10 +327,18 @@ pub fn format_cluster_body(counts: &ActivityCounts, progressive: bool) -> String
     }
     let mut body = if !parts.is_empty() {
         parts.join(", ")
-    } else if !counts.used_names.is_empty() {
-        match counts.used_names.as_slice() {
-            [one] => format!("Used {one}"),
-            names => format!("Used {} tools", names.len()),
+    } else if counts.used_calls > 0 {
+        if counts.used_calls == 1 {
+            match counts.used_names.as_slice() {
+                [one] => format!("Used {one}"),
+                _ => "Used 1 tool".into(),
+            }
+        } else {
+            format!(
+                "Used {} {}",
+                counts.used_calls,
+                tool_word(counts.used_calls)
+            )
         }
     } else if counts.asks > 0 {
         "Asking questions".to_string()
@@ -585,9 +602,29 @@ mod tests {
         ];
         let c = count_middles(&entries, &[0, 1, 2]);
         let s = format_l2_body(&c);
-        assert!(s.starts_with("Used "), "{s}");
-        assert!(!s.contains("Thought"), "{s}");
+        assert_eq!(s, "Used 2 tools");
+        assert_eq!(c.used_calls, 2);
         assert!(c.thinking > 0, "thinking stays a kid, not the header");
+        assert!(!c.is_thought_only());
+    }
+
+    #[test]
+    fn four_same_unknown_tools_count_calls_not_unique_names() {
+        let entries = vec![
+            thinking(),
+            tool("todo_update", None),
+            tool("todo_update", None),
+            tool("todo_update", None),
+            tool("todo_update", None),
+            UiEntry::Todo {
+                summary: "Todo · 10/10".into(),
+                detail_lines: vec![],
+            },
+        ];
+        let c = count_middles(&entries, &[0, 1, 2, 3, 4, 5]);
+        assert_eq!(format_l2_body(&c), "Used 4 tools");
+        assert_eq!(c.used_calls, 4);
+        assert_eq!(c.used_names.as_slice(), ["todo_update"]);
         assert!(!c.is_thought_only());
     }
 

@@ -45,7 +45,7 @@ components:
 7. 三角何时画在簇头：该簇有可计活动（工具/thinking/Ask 回退头）即画。尚无工具、只有 busy 时无簇头。仅 Compaction 的簇不画第二根簇头（att23）。MUST NOT 用 `...` 当文件名。助手正文（夹心或该轮最后一段）**MUST NOT** 被收进簇。
 8. 类目计数在 **ToolStart** 写入摘要缓存；`+/-` 仅 **ToolEnd** 且有可靠 diff。
 9. Ask `Waiting`：底部标题为 `Asking questions`；Ask 块 **MUST** 可交互，不得折没。
-10. 助手正文 **第一个非空白字符** 封口本簇（进行时 `Editing` / `Exploring` / `Running` → 过去式 `Edited` / `Explored` / `Ran`），簇进入 -3 冻结。同一轮中途 thinking 不切簇。仅 thinking 的簇头流式为 `Thinking`、结束后为 `Thought` / `Thought {Ns}`；仅 MCP/未知（含 `todo_*`）为 `Used`；仅 Compaction **MUST NOT** 再画簇头。MUST NOT 用文件占位虚构 Explored。
+10. 助手正文 **第一个非空白字符** 封口本簇（进行时 `Editing` / `Exploring` / `Running` → 过去式 `Edited` / `Explored` / `Ran`），簇进入 -3 冻结。同一轮中途 thinking 不切簇。仅 thinking 的簇头流式为 `Thinking`、结束后为 `Thought` / `Thought {Ns}`；仅 MCP/未知（含 `todo_*`）为 `Used`（N=调用次数；1 次写短名）；仅 Compaction **MUST NOT** 再画簇头。MUST NOT 用文件占位虚构 Explored。
 
 ### 旧 turn 信封
 

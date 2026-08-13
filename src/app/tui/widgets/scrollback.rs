@@ -1249,7 +1249,7 @@ pub fn render_scrollback(
                     let hint = if expanded {
                         String::new()
                     } else {
-                        format!(" ({})", key_hint("Alt+E"))
+                        format!("  {}", key_hint("Alt+E"))
                     };
                     let header = format!("{marker} {summary}{hint}");
                     let mut block = vec![fit(&theme.paint_muted(&header), inner)];
@@ -1732,6 +1732,10 @@ mod tests {
         );
         let plain = strip_ansi_local(&lines.join("\n"));
         assert!(plain.contains("Todo · 2/5"), "missing summary: {plain}");
+        assert!(
+            plain.contains("(Alt+E)") && !plain.contains("((Alt+E))"),
+            "folded hint MUST be a single pair of parens: {plain}"
+        );
         assert!(
             !plain.contains("[x] done"),
             "detail must stay folded: {plain}"
