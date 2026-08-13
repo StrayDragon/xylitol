@@ -12,10 +12,10 @@ pub enum AutoTrigger {
     TurnEnd,
 }
 
-/// Apply keep_recent_turns / auto_l3_distant crush. Returns whether any level changed.
+/// Apply keep_recent_turns / stream_collapse crush. Returns whether any level changed.
 ///
 /// When `protect_newest` is true (streaming busy), the newest activity segment is
-/// forced to stay L0 for this pass.
+/// forced to stay L0 for this pass (live window — no Worked-for envelope).
 pub fn apply_auto_degrade(
     state: &mut ActivityFoldState,
     entries: &[UiEntry],
@@ -39,12 +39,7 @@ pub fn apply_auto_degrade(
     }
 
     let keep = state.settings.keep_recent_turns as usize;
-    let floor = state.settings.collapse_floor();
-    let target = if state.settings.auto_l3_distant {
-        SegmentLevel::L3
-    } else {
-        SegmentLevel::L2
-    };
+    let target = state.settings.collapse_floor();
 
     let newest_ord = segments.iter().map(|s| s.turn_ordinal).max().unwrap_or(0);
     let mut changed = false;
@@ -58,17 +53,13 @@ pub fn apply_auto_degrade(
         if protect_newest && seg.turn_ordinal == newest_ord {
             continue;
         }
-        // Mark as having entered ActivityFold (eligible for later collapseNearest).
         state.mark_entered(&seg.id);
         let cur = state.level_of(&seg.id);
-        let want =
-            if cur == SegmentLevel::L0 || (target == SegmentLevel::L3 && cur == SegmentLevel::L2) {
-                Some(target)
-            } else if matches!(floor, SegmentLevel::L3) && cur == SegmentLevel::L2 {
-                Some(SegmentLevel::L3)
-            } else {
-                None
-            };
+        let want = if cur == SegmentLevel::L0 || cur.rank_public() < target.rank_public() {
+            Some(target)
+        } else {
+            None
+        };
         if let Some(level) = want
             && state.set_level(&seg.id, level)
         {

@@ -112,6 +112,15 @@ hooks:
   pre_tool_call: []
   post_tool_call: []
 
+# tui:
+#   editor_history_seed_sessions: 1
+#   activity_fold:
+#     enabled: true
+#     keep_recent_turns: 2
+#     stream_collapse: envelope  # envelope | clusters
+#     auto_on_rebuild: true
+#     auto_on_turn_end: true
+
 # Feature-gated sections (require corresponding feature flag):
 
 # planning:

@@ -2941,6 +2941,45 @@ mod slice_tests {
     }
 
     #[tokio::test]
+    async fn h25c_debug_activity_fold_live_tape() {
+        let mut session = HostSession::new_product_ui(TestTerminal::new(100, 32));
+        let root = session.ui_root().expect("ui").clone();
+        let mut driver = ScriptedDriver::new();
+        let mut stream = None;
+        root.borrow_mut()
+            .set_editor_text("/debug activity-fold-live");
+        session.step(HostEvent::Input(enter_event())).unwrap();
+        pump_host_driver(&mut session, &mut driver, &mut stream)
+            .await
+            .unwrap();
+        assert!(
+            driver.debug_scene_calls().is_empty(),
+            "activity-fold-live must not call load_debug_scene"
+        );
+        let note = session
+            .ui_model()
+            .entries
+            .iter()
+            .rev()
+            .find_map(|e| match e {
+                crate::app::tui::UiEntry::ScrollNotice { text } => Some(text.as_str()),
+                _ => None,
+            })
+            .unwrap_or("");
+        assert!(
+            note.contains("activity-fold-live") && note.contains("OK"),
+            "expected activity-fold-live report; got: {note}"
+        );
+        let plain = crate::app::tui::activity_fold::strip_ansi_live_window(
+            &root.borrow_mut().render(100).join("\n"),
+        );
+        assert!(
+            plain.contains("Asking questions"),
+            "last tape frame must remain visible: {plain}"
+        );
+    }
+
+    #[tokio::test]
     async fn h26_slash_session_tree_opens_session_tree() {
         use crate::app::tui::commands::{PendingSlash, parse_slash_command};
         assert_eq!(

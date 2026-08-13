@@ -66,6 +66,8 @@ pub(super) async fn handle_slash<T: Terminal>(
                 session.push_scroll_notice(crate::app::debug_fixtures::list_note());
             } else if scene == "verify-smoke" {
                 super::debug_verify::run_verify_smoke(session, driver).await;
+            } else if scene == "activity-fold-live" {
+                super::debug_activity_fold::run_activity_fold_live(session);
             } else {
                 log::info!(target: "xylitol::tui", "XyDriver::load_debug_scene scene={}", scene);
                 match driver.load_debug_scene(&scene).await {

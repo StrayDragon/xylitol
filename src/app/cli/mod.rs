@@ -444,11 +444,20 @@ pub async fn run() -> Result<(), Box<dyn std::error::Error>> {
             eprintln!("Error: {e}");
             return Err(e.into());
         }
-        let seed_n = crate::infra::config::loader::load_app_config(
+        let seed_n;
+        let activity_fold;
+        match crate::infra::config::loader::load_app_config(
             surface.config.as_ref().map(std::path::Path::new),
-        )
-        .map(|c| c.tui.editor_history_seed_sessions)
-        .unwrap_or(1);
+        ) {
+            Ok(c) => {
+                seed_n = c.tui.editor_history_seed_sessions;
+                activity_fold = c.tui.activity_fold.into();
+            }
+            Err(_) => {
+                seed_n = 1;
+                activity_fold = crate::app::tui::activity_fold::ActivityFoldSettings::default();
+            }
+        }
         // c1200: do not await full MCP before opening the TUI.
         driver.begin_mcp_bootstrap().await;
         let ask_gateway = std::sync::Arc::new(crate::app::tui::AskHostGateway::new());
@@ -457,6 +466,7 @@ pub async fn run() -> Result<(), Box<dyn std::error::Error>> {
             &mut driver,
             crate::app::tui::TuiRunOptions {
                 editor_history_seed_sessions: seed_n,
+                activity_fold,
                 restored_session: surface.session.is_some(),
                 ask_gateway: Some(ask_gateway),
                 ..Default::default()

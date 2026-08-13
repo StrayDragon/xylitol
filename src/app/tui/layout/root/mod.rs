@@ -417,6 +417,13 @@ impl UiRoot {
         &mut self.activity
     }
 
+    pub fn set_activity_settings(
+        &mut self,
+        settings: crate::app::tui::activity_fold::ActivityFoldSettings,
+    ) {
+        self.activity.settings = settings;
+    }
+
     /// Test/harness: mutate activity then invalidate upper paint cache.
     pub fn touch_activity(&mut self) {
         self.bump_upper_gen();
@@ -502,6 +509,12 @@ impl UiRoot {
             }
             FoldTarget::Segment(id) => {
                 let _ = self.activity.toggle_one_step(&id);
+            }
+            FoldTarget::Cluster(id) => {
+                let _ = self.activity.toggle_cluster(&id);
+            }
+            FoldTarget::LiveTail => {
+                let _ = self.activity.expand_live_cluster(&self.ui_model.entries);
             }
         }
         self.fold_dirty = true;
@@ -917,7 +930,8 @@ impl UiRoot {
         // the transcript upper cache (streaming frames stay cheaper).
         let upper_changed = self.ui_model.entries != model.entries
             || self.ui_model.streaming_assistant != model.streaming_assistant
-            || self.ui_model.streaming_thinking != model.streaming_thinking;
+            || self.ui_model.streaming_thinking != model.streaming_thinking
+            || self.ui_model.phase != model.phase;
         self.ui_model = model.clone();
         if upper_changed {
             self.bump_upper_gen();

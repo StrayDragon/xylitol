@@ -1,6 +1,7 @@
 //! Shared pending side-effect pump for production host loop and harness (ath6 / c494).
 
 mod bang;
+mod debug_activity_fold;
 mod debug_verify;
 mod helpers;
 mod pending_ui;

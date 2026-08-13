@@ -56,25 +56,74 @@ pub struct AppConfig {
     pub tool_batch: ToolBatchConfig,
 }
 
-/// Product TUI knobs under top-level `tui:` (c1560).
+/// Product TUI knobs under top-level `tui:` (c1560 / c1761).
 #[derive(Clone, Debug, Serialize, Deserialize, JsonSchema, PartialEq, Eq)]
 #[serde(default)]
 pub struct TuiConfig {
     /// How many prior same-cwd sessions seed ↑/↓ send history on a pure new session.
     #[serde(default = "default_editor_history_seed_sessions")]
     pub editor_history_seed_sessions: u32,
+    /// Nested ActivityFold (envelope / cluster / live window).
+    #[serde(default)]
+    pub activity_fold: TuiActivityFoldConfig,
 }
 
 impl Default for TuiConfig {
     fn default() -> Self {
         Self {
             editor_history_seed_sessions: default_editor_history_seed_sessions(),
+            activity_fold: TuiActivityFoldConfig::default(),
         }
     }
 }
 
 fn default_editor_history_seed_sessions() -> u32 {
     1
+}
+
+fn default_true() -> bool {
+    true
+}
+
+fn default_keep_recent_turns() -> u32 {
+    2
+}
+
+/// `tui.activity_fold` (c1761 / rc28).
+#[derive(Clone, Debug, Serialize, Deserialize, JsonSchema, PartialEq, Eq)]
+#[serde(default, deny_unknown_fields)]
+pub struct TuiActivityFoldConfig {
+    #[serde(default = "default_true")]
+    pub enabled: bool,
+    #[serde(default = "default_keep_recent_turns")]
+    pub keep_recent_turns: u32,
+    #[serde(default)]
+    pub stream_collapse: ActivityFoldStreamCollapse,
+    #[serde(default = "default_true")]
+    pub auto_on_rebuild: bool,
+    #[serde(default = "default_true")]
+    pub auto_on_turn_end: bool,
+}
+
+impl Default for TuiActivityFoldConfig {
+    fn default() -> Self {
+        Self {
+            enabled: true,
+            keep_recent_turns: 2,
+            stream_collapse: ActivityFoldStreamCollapse::Envelope,
+            auto_on_rebuild: true,
+            auto_on_turn_end: true,
+        }
+    }
+}
+
+/// How ended / distant turns collapse (`tui.activity_fold.stream_collapse`).
+#[derive(Clone, Copy, Debug, Default, PartialEq, Eq, Serialize, Deserialize, JsonSchema)]
+#[serde(rename_all = "snake_case")]
+pub enum ActivityFoldStreamCollapse {
+    #[default]
+    Envelope,
+    Clusters,
 }
 
 /// `[tool_batch]` — same-turn tool call scheduling (c1545 / rc26).
@@ -1275,6 +1324,57 @@ tui:
         )
         .expect("tui section");
         assert_eq!(cfg.tui.editor_history_seed_sessions, 3);
+    }
+
+    #[test]
+    fn tui_activity_fold_defaults() {
+        let cfg: AppConfig = yaml_serde::from_str("models: {}").expect("minimal");
+        assert!(cfg.tui.activity_fold.enabled);
+        assert_eq!(cfg.tui.activity_fold.keep_recent_turns, 2);
+        assert_eq!(
+            cfg.tui.activity_fold.stream_collapse,
+            ActivityFoldStreamCollapse::Envelope
+        );
+        assert!(cfg.tui.activity_fold.auto_on_rebuild);
+        assert!(cfg.tui.activity_fold.auto_on_turn_end);
+    }
+
+    #[test]
+    fn tui_activity_fold_parses_clusters() {
+        let cfg: AppConfig = yaml_serde::from_str(
+            r#"
+models: {}
+tui:
+  activity_fold:
+    enabled: false
+    keep_recent_turns: 4
+    stream_collapse: clusters
+    auto_on_rebuild: false
+    auto_on_turn_end: false
+"#,
+        )
+        .expect("activity_fold");
+        assert!(!cfg.tui.activity_fold.enabled);
+        assert_eq!(cfg.tui.activity_fold.keep_recent_turns, 4);
+        assert_eq!(
+            cfg.tui.activity_fold.stream_collapse,
+            ActivityFoldStreamCollapse::Clusters
+        );
+        assert!(!cfg.tui.activity_fold.auto_on_rebuild);
+        assert!(!cfg.tui.activity_fold.auto_on_turn_end);
+    }
+
+    #[test]
+    fn tui_activity_fold_invalid_stream_collapse_fails() {
+        let err = yaml_serde::from_str::<AppConfig>(
+            r#"
+models: {}
+tui:
+  activity_fold:
+    stream_collapse: envelope_please
+"#,
+        );
+        assert!(err.is_err(), "illegal stream_collapse must fail load");
     }
 
     #[test]

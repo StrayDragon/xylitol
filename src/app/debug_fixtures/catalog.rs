@@ -29,6 +29,10 @@ pub const DEBUG_SCENES: &[DebugSceneMeta] = &[
         id: "verify-smoke",
         description: "UI-only B4/B7 smoke (no LLM, no /exit); report via scroll notice",
     },
+    DebugSceneMeta {
+        id: "activity-fold-live",
+        description: "Stream live-window tape (Planning / Editing / Ask); PASS/FAIL notice",
+    },
 ];
 
 /// `(id, description)` for [`xylitol_tui::SlashArgCompletionSource`].
@@ -52,11 +56,11 @@ pub fn list_note() -> String {
 /// Seedable scene ids (excludes slash-only actions like `verify-smoke`).
 pub fn resolve_scene_id(raw: &str) -> Option<&'static str> {
     let key = raw.trim().to_ascii_lowercase();
-    if key.is_empty() || key == "list" || key == "verify-smoke" {
+    if key.is_empty() || key == "list" || key == "verify-smoke" || key == "activity-fold-live" {
         return None;
     }
     for s in DEBUG_SCENES {
-        if s.id == key && s.id != "verify-smoke" {
+        if s.id == key && s.id != "verify-smoke" && s.id != "activity-fold-live" {
             return Some(s.id);
         }
     }
@@ -88,6 +92,7 @@ mod tests {
         assert_eq!(resolve_scene_id("long-transcript"), Some("ao-perf-scroll"));
         assert_eq!(resolve_scene_id("ao-perf-scroll"), Some("ao-perf-scroll"));
         assert_eq!(resolve_scene_id("verify-smoke"), None);
+        assert_eq!(resolve_scene_id("activity-fold-live"), None);
         assert_eq!(resolve_scene_id("list"), None);
         assert_eq!(resolve_scene_id("nope"), None);
     }

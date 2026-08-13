@@ -54,6 +54,8 @@ pub struct ActivityFoldState {
     levels: HashMap<String, SegmentLevel>,
     /// Segments that have been auto-folded or user-collapsed at least once.
     entered: HashSet<String>,
+    /// Clusters independently expanded while envelope is L2.
+    cluster_open: HashSet<String>,
     clocks: HashMap<String, SegmentClock>,
     /// Paint-time reservation (not FoldHitTable).
     pub row_spans: SegmentRowSpans,
@@ -82,6 +84,10 @@ impl ActivityFoldState {
         } else {
             self.levels.insert(id.to_string(), level);
         }
+        if level != SegmentLevel::L2 {
+            self.cluster_open
+                .retain(|cid| !cid.starts_with(&format!("{id}:")));
+        }
         prev != level
     }
 
@@ -101,6 +107,8 @@ impl ActivityFoldState {
         self.levels.retain(|k, _| live_ids.contains(k));
         self.entered.retain(|k| live_ids.contains(k));
         self.clocks.retain(|k, _| live_ids.contains(k));
+        self.cluster_open
+            .retain(|cid| live_ids.iter().any(|id| cid.starts_with(&format!("{id}:"))));
     }
 
     pub fn sync_segment_ids(&mut self, entries: &[UiEntry]) {
@@ -137,45 +145,132 @@ impl ActivityFoldState {
         self.set_level(id, next)
     }
 
-    /// Expand nearest L2/L3 toward L0. Silent if none. Returns whether state changed.
+    /// Expand nearest collapsed envelope, else nearest collapsed cluster (att28).
     pub fn expand_nearest(&mut self, entries: &[UiEntry]) -> bool {
         if !self.settings.enabled {
             return false;
         }
         let segs = partition_segments(entries);
-        let Some(seg) = segs
-            .iter()
-            .rev()
-            .find(|s| self.level_of(&s.id).is_collapsed())
-        else {
-            return false;
-        };
-        let next = self.level_of(&seg.id).expand_one();
-        self.set_level(&seg.id, next)
+        if let Some(seg) = segs.iter().rev().find(|s| {
+            self.level_of(&s.id).is_collapsed() && self.level_of(&s.id) == SegmentLevel::L3
+        }) {
+            let next = self.level_of(&seg.id).expand_one();
+            return self.set_level(&seg.id, next);
+        }
+        for seg in segs.iter().rev() {
+            if self.level_of(&seg.id) == SegmentLevel::L3 {
+                continue;
+            }
+            for cl in seg.clusters.iter().rev() {
+                if !self.cluster_is_expanded(&seg.id, &cl.id) {
+                    return self.toggle_cluster(&cl.id);
+                }
+            }
+        }
+        false
     }
 
-    /// Collapse nearest L0 Activity toward floor. Near-window virgin L0 is not a target.
+    /// Collapse nearest expanded cluster, else nearest expanded envelope.
     pub fn collapse_nearest(&mut self, entries: &[UiEntry]) -> bool {
         if !self.settings.enabled {
             return false;
         }
         let segs = partition_segments(entries);
-        let floor = self.settings.collapse_floor();
-        let Some(seg) = segs.iter().rev().find(|s| {
-            if self.level_of(&s.id) != SegmentLevel::L0 || !s.has_activity() {
-                return false;
+        for seg in segs.iter().rev() {
+            if self.level_of(&seg.id) == SegmentLevel::L3 {
+                continue;
             }
-            // Near-window never-entered → not a target (att26 / att28).
-            if in_virgin_recent_window(&self.settings, &segs, s) && !self.entered.contains(&s.id) {
-                return false;
+            if in_virgin_recent_window(&self.settings, &segs, seg)
+                && !self.entered.contains(&seg.id)
+            {
+                continue;
             }
-            true
-        }) else {
+            for cl in seg.clusters.iter().rev() {
+                if self.cluster_is_expanded(&seg.id, &cl.id)
+                    && self.level_of(&seg.id) != SegmentLevel::L0
+                {
+                    return self.toggle_cluster(&cl.id);
+                }
+                if self.level_of(&seg.id) == SegmentLevel::L0 {
+                    self.mark_entered(&seg.id);
+                    return self.set_level(&seg.id, SegmentLevel::L2);
+                }
+            }
+            if self.level_of(&seg.id) == SegmentLevel::L2 {
+                self.mark_entered(&seg.id);
+                let next = SegmentLevel::L2.collapse_one(self.settings.collapse_floor());
+                return self.set_level(&seg.id, next);
+            }
+        }
+        false
+    }
+
+    pub fn cluster_is_expanded(&self, envelope_id: &str, cluster_id: &str) -> bool {
+        match self.level_of(envelope_id) {
+            SegmentLevel::L3 => false,
+            SegmentLevel::L0 => true,
+            SegmentLevel::L2 => self.cluster_open.contains(cluster_id),
+        }
+    }
+
+    /// Streaming live window: kids stay collapsed until the user opens that cluster
+    /// (L0 "all expanded" would otherwise dump every tool block).
+    pub fn cluster_kids_visible(
+        &self,
+        envelope_id: &str,
+        cluster_id: &str,
+        live_window: bool,
+    ) -> bool {
+        if live_window {
+            self.cluster_open.contains(cluster_id)
+        } else {
+            self.cluster_is_expanded(envelope_id, cluster_id)
+        }
+    }
+
+    /// Toggle a cluster. Envelope L3 first expands to L2.
+    pub fn toggle_cluster(&mut self, cluster_id: &str) -> bool {
+        if !self.settings.enabled {
+            return false;
+        }
+        let Some(env_id) = cluster_id.split(':').next() else {
             return false;
         };
-        self.mark_entered(&seg.id);
-        let next = SegmentLevel::L0.collapse_one(floor);
-        self.set_level(&seg.id, next)
+        let env_id = env_id.to_string();
+        if self.level_of(&env_id) == SegmentLevel::L3 {
+            self.set_level(&env_id, SegmentLevel::L2);
+            self.cluster_open.insert(cluster_id.to_string());
+            return true;
+        }
+        if self.level_of(&env_id) == SegmentLevel::L0 {
+            self.set_level(&env_id, SegmentLevel::L2);
+            self.cluster_open.insert(cluster_id.to_string());
+            return true;
+        }
+        if self.cluster_open.contains(cluster_id) {
+            self.cluster_open.remove(cluster_id);
+        } else {
+            self.cluster_open.insert(cluster_id.to_string());
+        }
+        true
+    }
+
+    /// Planning next moves: expand the last cluster of the newest envelope.
+    pub fn expand_live_cluster(&mut self, entries: &[UiEntry]) -> bool {
+        let segs = partition_segments(entries);
+        let Some(seg) = segs.last() else {
+            return false;
+        };
+        if self.level_of(&seg.id) == SegmentLevel::L3 {
+            self.set_level(&seg.id, SegmentLevel::L2);
+        }
+        let Some(cl) = seg.clusters.last() else {
+            return false;
+        };
+        if self.cluster_open.contains(&cl.id) {
+            return false;
+        }
+        self.toggle_cluster(&cl.id)
     }
 
     /// Lookup collapsed segment covering a middle entry index.

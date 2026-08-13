@@ -13,6 +13,15 @@ impl<T: Terminal> HostSession<T> {
         self.editor_history_seed_sessions = n;
     }
 
+    pub fn set_activity_fold_settings(
+        &mut self,
+        settings: crate::app::tui::activity_fold::ActivityFoldSettings,
+    ) {
+        if let Some(root) = self.ui_root.as_ref() {
+            root.borrow_mut().set_activity_settings(settings);
+        }
+    }
+
     /// Replace editor send history from already-loaded entries (resume/switch).
     pub fn seed_editor_history_from_entries(&mut self, entries: &[SessionEntry]) {
         let texts = super::super::editor_history_seed::user_prompt_texts_from_entries(entries);
