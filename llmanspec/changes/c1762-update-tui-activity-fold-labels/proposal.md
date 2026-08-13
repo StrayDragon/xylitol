@@ -1,6 +1,9 @@
 ---
 depends_on:
 - c1761-fix-tui-activity-fold
+branch: sdd/c1762-update-tui-activity-fold-labels
+base_sha: 50f988f7a974a0879e80e706c8d8c0883157003f
+checkpointed: false
 ---
 
 # Activity 折叠条文案：诚实词表与层级
