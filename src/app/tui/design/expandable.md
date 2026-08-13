@@ -22,7 +22,7 @@ components:
 
 > Token 根源：`{colors.*}` / `{components.*}` → [`../DESIGN.md`](../DESIGN.md)。
 
-对齐 pi interactive：折叠一行摘要，展开完整内容。实现落在**应用面**（demo 优先）；**不是**包内通用 Chat 组件，也**不是** Codex 式 TranscriptView 的一部分。
+对齐 pi interactive：折叠一行摘要，展开完整内容。实现落在**应用面**（demo 优先）；**不是**包内通用 Chat 组件，也**不是** Codex 式 TranscriptView 的一部分。段/簇信封（`Worked for` / `Planning next moves`）见 [`activity-fold.md`](./activity-fold.md)，本文件只管块级 thinking / tool / diff。
 
 默认皮肤 **rail**（c1830）：tool/bash/diff 为 `[1-cell status 轨][1 gutter][content]`；**thinking / user / assistant flush**（无轨）。**MUST NOT** 默认整行 `tool-*-bg` 洗底。
 

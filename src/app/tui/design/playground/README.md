@@ -43,4 +43,4 @@ just check-tui-tokens
 
 ## SSOT 槽（index）
 
-Full shell · Layout · Keybindings · Models · Pending · Chrome toast · Mcp · Tree · Resume · Compaction · Tool · Diff · Markdown · Palette · Widgets · Atoms · Ask
+Full shell · Layout · Keybindings · Models · Pending · Chrome toast · Mcp · Tree · Resume · Compaction · Activity fold（可点） · Tool · Diff · Markdown · Palette · Widgets · Atoms · Ask
