@@ -697,12 +697,10 @@ fn w_ce16_tui(surface_bdd: &SurfaceBdd) {
     use xylitol::app::cli::{CliArgs, resolve_surface_intent, select_surface_mode};
     assert!(surface_bdd.is_tty.get(), "given TTY must arm is_tty");
     let args = CliArgs::try_parse_from(["xylitol", "tui"]).expect("parse tui");
-    let (force_tui, print_flag, one_shot, append_only) =
-        resolve_surface_intent(args.command.as_ref());
+    let (force_tui, print_flag, one_shot) = resolve_surface_intent(args.command.as_ref());
     surface_bdd.mode.set(Some(select_surface_mode(
         force_tui,
         print_flag,
-        append_only,
         one_shot.is_some(),
         surface_bdd.is_tty.get(),
     )));
@@ -730,8 +728,7 @@ fn w_ce16_print(surface_bdd: &SurfaceBdd) {
         "given 无 prompt must clear has_prompt"
     );
     let args = CliArgs::try_parse_from(["xylitol", "print"]).expect("parse print");
-    let (_force_tui, print_flag, one_shot, _append_only) =
-        resolve_surface_intent(args.command.as_ref());
+    let (_force_tui, print_flag, one_shot) = resolve_surface_intent(args.command.as_ref());
     let err = resolve_print_prompt(one_shot.as_deref(), print_flag, true, || Ok(String::new()))
         .expect_err("print without prompt must fail");
     surface_bdd.print_err.replace(err);
