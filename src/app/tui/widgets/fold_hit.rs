@@ -1,6 +1,6 @@
-//! Fold-triangle hit table for ApplicationOwned mouse (c2040 / att22 / ath33).
+//! Fold hit table for ApplicationOwned mouse (c2040 / c2045 / att22 / ath33).
 
-/// Per-block fold target addressed by mouse triangle hit.
+/// Per-block / global fold target addressed by mouse hit.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub enum FoldTarget {
     Tool(String),
@@ -9,6 +9,10 @@ pub enum FoldTarget {
     Thinking(String),
     /// Session Todo checklist block (c1955).
     Todo,
+    /// Global `compaction_expanded` (Wave A / att29).
+    Compaction,
+    /// Global `tools_output_expanded` via Ctrl+O hint band (Wave A / att30).
+    OutputViewport,
 }
 
 /// One triangle-column hit region in content coordinates (scrollback line space).

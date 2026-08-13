@@ -2686,6 +2686,260 @@ fn harness_mouse_triangle_toggles_ask_fold() {
 }
 
 #[test]
+fn harness_mouse_triangle_toggles_compaction_fold() {
+    // att29: Compaction triangle flips compaction_expanded; body click does not;
+    // tools overrides stay intact.
+    use super::bridge::CompactionBlockStatus;
+    use super::widgets::FoldTarget;
+    use crossterm::event::{KeyModifiers, MouseButton, MouseEvent, MouseEventKind};
+
+    let mut session = HostSession::new_product_ui(TestTerminal::new(80, 24));
+    let root = session.ui_root().expect("product ui").clone();
+    {
+        let mut model = session.ui_model().clone();
+        model.entries.push(super::bridge::UiEntry::Tool {
+            id: "keep-override".into(),
+            name: "read".into(),
+            args_preview: "z.rs".into(),
+            tool_path: None,
+            write_content: None,
+            display_diff: None,
+            output: "tool-keep".into(),
+            is_error: false,
+            done: true,
+        });
+        model.entries.push(super::bridge::UiEntry::Compaction {
+            status: CompactionBlockStatus::Complete,
+            summary: "compaction-summary-body".into(),
+            tokens_before: 12_345,
+            detail: None,
+        });
+        *session.ui_model_mut() = model;
+        session.sync_ui_root_from_model();
+    }
+    session.step(HostEvent::Tick).unwrap();
+    session.tui.request_render(true);
+    session.step_paint_only().unwrap();
+
+    root.borrow_mut()
+        .toggle_fold_target(FoldTarget::Tool("keep-override".into()));
+    assert!(!root.borrow().fold().tools_effective("keep-override"));
+    let overrides_before = root.borrow().fold().tools_overrides.len();
+    assert!(!root.borrow().fold().compaction_expanded);
+    // Re-paint so Compaction hit rows match post-override layout.
+    session.tui.request_render(true);
+    session.step_paint_only().unwrap();
+
+    let region = root
+        .borrow()
+        .fold_hits()
+        .regions
+        .iter()
+        .find(|reg| matches!(reg.target, FoldTarget::Compaction))
+        .cloned()
+        .unwrap_or_else(|| {
+            panic!(
+                "expected Compaction triangle hit; regions={:?}",
+                root.borrow().fold_hits().regions
+            )
+        });
+
+    let screen_row = region
+        .content_row
+        .saturating_sub(root.borrow().fold_hits().scroll_top) as u16;
+    session
+        .step(HostEvent::Input(InputEvent::Mouse(MouseEvent {
+            kind: MouseEventKind::Down(MouseButton::Left),
+            column: region.col_start as u16,
+            row: screen_row,
+            modifiers: KeyModifiers::NONE,
+        })))
+        .unwrap();
+    assert!(
+        root.borrow().fold().compaction_expanded,
+        "Compaction triangle must flip compaction_expanded"
+    );
+    assert_eq!(
+        root.borrow().fold().tools_overrides.len(),
+        overrides_before,
+        "Compaction click MUST NOT clear tools overrides"
+    );
+    assert!(
+        !root.borrow().fold().tools_effective("keep-override"),
+        "tools override must survive Compaction toggle"
+    );
+    session.tui.request_render(true);
+    session.step_paint_only().unwrap();
+    let after = root.borrow_mut().render(80).join("\n");
+    assert!(
+        after.contains("compaction-summary-body"),
+        "AO paint must show Compaction summary after expand: {after}"
+    );
+
+    let before = root.borrow().fold().compaction_expanded;
+    session
+        .step(HostEvent::Input(InputEvent::Mouse(MouseEvent {
+            kind: MouseEventKind::Down(MouseButton::Left),
+            column: (region.col_end + 4) as u16,
+            row: screen_row,
+            modifiers: KeyModifiers::NONE,
+        })))
+        .unwrap();
+    assert_eq!(
+        root.borrow().fold().compaction_expanded,
+        before,
+        "non-triangle Compaction body must not toggle"
+    );
+}
+
+#[test]
+fn harness_mouse_hint_toggles_output_viewport() {
+    // att30: Ctrl+O hint band flips tools_output_expanded; isomorphic with Ctrl+O.
+    use super::widgets::FoldTarget;
+    use crossterm::event::{
+        KeyCode, KeyEvent, KeyModifiers, MouseButton, MouseEvent, MouseEventKind,
+    };
+
+    let mut session = HostSession::new_product_ui(TestTerminal::new(80, 24));
+    let root = session.ui_root().expect("product ui").clone();
+    {
+        let mut model = session.ui_model().clone();
+        let mut output = String::new();
+        for i in 0..20 {
+            output.push_str(&format!("viewport-line-{i}\n"));
+        }
+        model.entries.push(super::bridge::UiEntry::Bash {
+            command: "big".into(),
+            status: super::bridge::BashBlockStatus::Success,
+            output,
+            exclude_from_context: false,
+        });
+        *session.ui_model_mut() = model;
+        session.sync_ui_root_from_model();
+    }
+    session.step(HostEvent::Tick).unwrap();
+    session.tui.request_render(true);
+    session.step_paint_only().unwrap();
+
+    assert!(
+        !root
+            .borrow()
+            .fold_hits()
+            .regions
+            .iter()
+            .any(|r| matches!(r.target, FoldTarget::Tool(_))),
+        "Bash MUST NOT register L1 Tool triangle"
+    );
+    let region = root
+        .borrow()
+        .fold_hits()
+        .regions
+        .iter()
+        .find(|reg| matches!(reg.target, FoldTarget::OutputViewport))
+        .cloned()
+        .unwrap_or_else(|| {
+            panic!(
+                "expected OutputViewport hint hit; regions={:?}",
+                root.borrow().fold_hits().regions
+            )
+        });
+    assert!(!root.borrow().fold().tools_output_expanded);
+
+    let screen_row = region
+        .content_row
+        .saturating_sub(root.borrow().fold_hits().scroll_top) as u16;
+    session
+        .step(HostEvent::Input(InputEvent::Mouse(MouseEvent {
+            kind: MouseEventKind::Down(MouseButton::Left),
+            column: region.col_start as u16,
+            row: screen_row,
+            modifiers: KeyModifiers::NONE,
+        })))
+        .unwrap();
+    assert!(
+        root.borrow().fold().tools_output_expanded,
+        "hint click must flip tools_output_expanded"
+    );
+    session.tui.request_render(true);
+    session.step_paint_only().unwrap();
+    let expanded = root.borrow_mut().render(80).join("\n");
+    assert!(
+        expanded.contains("viewport-line-0"),
+        "expanded viewport must show early lines: {expanded}"
+    );
+
+    // Collapse via Ctrl+O (same bool), then expand again via key to confirm isomorphism.
+    root.borrow_mut()
+        .handle_input(InputEvent::Key(KeyEvent::new(
+            KeyCode::Char('o'),
+            KeyModifiers::CONTROL,
+        )));
+    assert!(
+        !root.borrow().fold().tools_output_expanded,
+        "Ctrl+O must share tools_output_expanded with hint click"
+    );
+    root.borrow_mut()
+        .handle_input(InputEvent::Key(KeyEvent::new(
+            KeyCode::Char('o'),
+            KeyModifiers::CONTROL,
+        )));
+    assert!(root.borrow().fold().tools_output_expanded);
+}
+
+#[test]
+fn compaction_and_viewport_toggle_miss_bound() {
+    // ath25 / att29–att30: global Compaction / OutputViewport toggle must not
+    // re-Markdown unrelated Assistant history.
+    use super::bridge::CompactionBlockStatus;
+    use super::layout::UiRoot;
+    use super::widgets::FoldTarget;
+
+    let mut root = UiRoot::new();
+    let mut model = UiModel::new();
+    for i in 0..8 {
+        model.entries.push(super::bridge::UiEntry::Assistant {
+            text: format!("history-{i}\n\nparagraph"),
+        });
+    }
+    model.entries.push(super::bridge::UiEntry::Compaction {
+        status: CompactionBlockStatus::Complete,
+        summary: "sum".into(),
+        tokens_before: 100,
+        detail: None,
+    });
+    let mut output = String::new();
+    for i in 0..20 {
+        output.push_str(&format!("line-{i}\n"));
+    }
+    model.entries.push(super::bridge::UiEntry::Bash {
+        command: "x".into(),
+        status: super::bridge::BashBlockStatus::Success,
+        output,
+        exclude_from_context: false,
+    });
+    root.apply_ui_model(&model);
+    let _ = root.render(80);
+    root.clear_scrollback_entry_misses_for_test();
+
+    root.toggle_fold_target(FoldTarget::Compaction);
+    let _ = root.render(80);
+    let misses_compaction = root.scrollback_entry_misses_for_test();
+    assert!(
+        misses_compaction <= 2,
+        "Compaction toggle must not re-Markdown assistants; misses={misses_compaction}"
+    );
+
+    root.clear_scrollback_entry_misses_for_test();
+    root.toggle_fold_target(FoldTarget::OutputViewport);
+    let _ = root.render(80);
+    let misses_viewport = root.scrollback_entry_misses_for_test();
+    assert!(
+        misses_viewport <= 2,
+        "OutputViewport toggle must not re-Markdown assistants; misses={misses_viewport}"
+    );
+}
+
+#[test]
 fn scrollback_diff_header_tint_and_body() {
     use super::layout::UiRoot;
     use crossterm::event::{KeyCode, KeyEvent, KeyModifiers};

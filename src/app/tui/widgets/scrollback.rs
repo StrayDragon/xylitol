@@ -113,6 +113,9 @@ pub fn diff_fold_key(summary: &str, display_diff: &str) -> String {
     format!("{:016x}", h.finish())
 }
 
+/// Triangle column after left rail + gutter (`paint_left_rail_line`).
+const RAILED_MARKER_COL: usize = 2;
+
 /// Max visual lines for collapsed tool/bash detail (pi bash tool = 5).
 const TOOLS_OUTPUT_PREVIEW_LINES: usize = 5;
 /// Collapsed write body viewport (pi write.ts = 10 logical lines).
@@ -124,8 +127,41 @@ const MAX_DIFF_RENDER_LINES: usize = 80;
 /// Disable word-level when raw display_diff exceeds this many lines.
 const WORD_LEVEL_DIFF_LINE_LIMIT: usize = 120;
 
+/// Append expandable output; register `OutputViewport` on the visible Ctrl+O hint
+/// footer (att30). `col_offset` is screen content col of the inner text (2 when railed).
+fn push_expandable_with_viewport_hit(
+    lines: &mut Vec<String>,
+    block_hits: &mut Vec<CachedFoldHit>,
+    text: &str,
+    width: usize,
+    viewport_full: bool,
+    opts: &ExpandableOutputOptions,
+    col_offset: usize,
+) {
+    let out = render_expandable_output(text, width, viewport_full, opts);
+    // Hint footer embeds expand_hint inside dim SGR (incl. hard-truncation copy).
+    let hint_idx = (!viewport_full)
+        .then(|| out.len().checked_sub(1))
+        .flatten()
+        .filter(|&idx| out[idx].contains(&opts.expand_hint));
+    let base = lines.len();
+    for line in &out {
+        lines.push(fit(line, width));
+    }
+    if let Some(idx) = hint_idx {
+        let hint_cols = visible_width(&out[idx]).max(1);
+        block_hits.push(CachedFoldHit {
+            row_offset: base + idx,
+            col_start: col_offset,
+            col_end: col_offset.saturating_add(hint_cols),
+            target: FoldTarget::OutputViewport,
+        });
+    }
+}
+
 fn push_viewport_diff_lines(
     lines: &mut Vec<String>,
+    block_hits: &mut Vec<CachedFoldHit>,
     diff: &str,
     width: usize,
     theme: LayoutTheme,
@@ -159,9 +195,15 @@ fn push_viewport_diff_lines(
         expand_hint: "ctrl+o to expand".into(),
         hint_style: None,
     };
-    for line in render_expandable_output(&body, width, viewport_full, &exp_opts) {
-        lines.push(fit(&line, width));
-    }
+    push_expandable_with_viewport_hit(
+        lines,
+        block_hits,
+        &body,
+        width,
+        viewport_full,
+        &exp_opts,
+        RAILED_MARKER_COL,
+    );
 }
 
 fn key_hint(chord: &str) -> String {
@@ -687,9 +729,6 @@ fn emit_block_hits(fold_hits: &mut FoldHitTable, content_row_base: usize, hits: 
     }
 }
 
-/// Triangle column after left rail + gutter (`paint_left_rail_line`).
-const RAILED_MARKER_COL: usize = 2;
-
 /// Render UiModel entries into scrollback lines for the product host.
 ///
 /// Fills `fold_hits.regions` with content-relative rows (caller adds loaded-resources
@@ -864,14 +903,15 @@ pub fn render_scrollback(
                                 expand_hint: format!("{total} total, ctrl+o to expand"),
                                 hint_style: None,
                             };
-                            for line in render_expandable_output(
+                            push_expandable_with_viewport_hit(
+                                &mut block,
+                                &mut block_hits,
                                 content,
                                 inner,
                                 fold.tools_output_expanded,
                                 &opts,
-                            ) {
-                                block.push(fit(&line, inner));
-                            }
+                                RAILED_MARKER_COL,
+                            );
                         }
 
                         if !output.is_empty() {
@@ -888,9 +928,15 @@ pub fn render_scrollback(
                                 hint_style: None,
                             };
                             let viewport = fold.tools_output_expanded && !hard;
-                            for line in render_expandable_output(&painted, inner, viewport, &opts) {
-                                block.push(fit(&line, inner));
-                            }
+                            push_expandable_with_viewport_hit(
+                                &mut block,
+                                &mut block_hits,
+                                &painted,
+                                inner,
+                                viewport,
+                                &opts,
+                                RAILED_MARKER_COL,
+                            );
                         }
 
                         if let Some(diff) = display_diff
@@ -901,6 +947,7 @@ pub fn render_scrollback(
                             }
                             push_viewport_diff_lines(
                                 &mut block,
+                                &mut block_hits,
                                 diff,
                                 inner,
                                 theme,
@@ -938,6 +985,7 @@ pub fn render_scrollback(
                         block.push(String::new());
                         push_viewport_diff_lines(
                             &mut block,
+                            &mut block_hits,
                             display_diff,
                             inner,
                             theme,
@@ -977,9 +1025,15 @@ pub fn render_scrollback(
                             hint_style: None,
                         };
                         let expanded = fold.tools_output_expanded && !hard;
-                        for line in render_expandable_output(&body, inner, expanded, &opts) {
-                            block.push(fit(&line, inner));
-                        }
+                        push_expandable_with_viewport_hit(
+                            &mut block,
+                            &mut block_hits,
+                            &body,
+                            inner,
+                            expanded,
+                            &opts,
+                            RAILED_MARKER_COL,
+                        );
                     } else if matches!(status, BashBlockStatus::Pending) {
                         push_wrapped(
                             &mut block,
@@ -1032,24 +1086,28 @@ pub fn render_scrollback(
                         }
                         CompactionBlockStatus::Complete => {
                             let n = format_token_count(*tokens_before);
-                            if fold.compaction_expanded {
-                                push_wrapped(
-                                    &mut lines,
-                                    &theme.paint_muted(&format!("Compacted from {n} tokens")),
-                                    width,
-                                );
-                                if !summary.is_empty() {
-                                    lines.push(String::new());
-                                    push_wrapped(&mut lines, &theme.paint_muted(summary), width);
-                                }
+                            let marker = if fold.compaction_expanded {
+                                glyphs.unfold()
                             } else {
-                                push_wrapped(
-                                    &mut lines,
-                                    &theme.paint_muted(&format!(
-                                        "Compacted from {n} tokens (Alt+E to expand)"
-                                    )),
-                                    width,
-                                );
+                                glyphs.fold()
+                            };
+                            let mw = marker_cols(marker);
+                            let header = if fold.compaction_expanded {
+                                format!("{marker} Compacted from {n} tokens")
+                            } else {
+                                format!("{marker} Compacted from {n} tokens (Alt+E to expand)")
+                            };
+                            let header_row = lines.len();
+                            push_wrapped(&mut lines, &theme.paint_muted(&header), width);
+                            block_hits.push(CachedFoldHit {
+                                row_offset: header_row,
+                                col_start: 0,
+                                col_end: mw,
+                                target: FoldTarget::Compaction,
+                            });
+                            if fold.compaction_expanded && !summary.is_empty() {
+                                lines.push(String::new());
+                                push_wrapped(&mut lines, &theme.paint_muted(summary), width);
                             }
                         }
                         CompactionBlockStatus::Aborted | CompactionBlockStatus::Failed => {
@@ -1282,6 +1340,10 @@ mod tests {
         assert!(
             plain.contains("Compacted from 186,842 tokens (Alt+E to expand)"),
             "missing collapsed line: {plain}"
+        );
+        assert!(
+            plain.contains('▸') || plain.contains('>'),
+            "collapsed Compaction MUST show fold triangle: {plain}"
         );
         assert!(
             !plain.contains("long summary body"),
