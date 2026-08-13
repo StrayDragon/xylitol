@@ -1084,44 +1084,51 @@ pub fn render_scrollback(
                     summary,
                     tokens_before,
                     detail,
-                } => {
-                    push_wrapped(&mut lines, &theme.paint_muted("[compaction]"), width);
-                    match status {
-                        CompactionBlockStatus::Pending => {
-                            push_wrapped(&mut lines, &theme.paint_muted("Compacting…"), width);
-                        }
-                        CompactionBlockStatus::Complete => {
-                            let n = format_token_count(*tokens_before);
-                            let marker = if fold.compaction_expanded {
-                                glyphs.unfold()
-                            } else {
-                                glyphs.fold()
-                            };
-                            let mw = marker_cols(marker);
-                            let header = if fold.compaction_expanded {
-                                format!("{marker} Compacted from {n} tokens")
-                            } else {
-                                format!("{marker} Compacted from {n} tokens (Alt+E to expand)")
-                            };
-                            let header_row = lines.len();
-                            push_wrapped(&mut lines, &theme.paint_muted(&header), width);
-                            block_hits.push(CachedFoldHit {
-                                row_offset: header_row,
-                                col_start: 0,
-                                col_end: mw,
-                                target: FoldTarget::Compaction,
-                            });
-                            if fold.compaction_expanded && !summary.is_empty() {
-                                lines.push(String::new());
-                                push_wrapped(&mut lines, &theme.paint_muted(summary), width);
-                            }
-                        }
-                        CompactionBlockStatus::Aborted | CompactionBlockStatus::Failed => {
-                            let text = detail.as_deref().unwrap_or("compaction aborted");
-                            push_wrapped(&mut lines, &theme.paint_muted(text), width);
+                } => match status {
+                    CompactionBlockStatus::Pending => {
+                        push_wrapped(
+                            &mut lines,
+                            &theme.paint_muted("[compaction] Compacting…"),
+                            width,
+                        );
+                    }
+                    CompactionBlockStatus::Complete => {
+                        let n = format_token_count(*tokens_before);
+                        let marker = if fold.compaction_expanded {
+                            glyphs.unfold()
+                        } else {
+                            glyphs.fold()
+                        };
+                        let mw = marker_cols(marker);
+                        let header = if fold.compaction_expanded {
+                            format!("{marker} [compaction] Compacted from {n} tokens")
+                        } else {
+                            format!(
+                                "{marker} [compaction] Compacted from {n} tokens (Alt+E to expand)"
+                            )
+                        };
+                        let header_row = lines.len();
+                        push_wrapped(&mut lines, &theme.paint_muted(&header), width);
+                        block_hits.push(CachedFoldHit {
+                            row_offset: header_row,
+                            col_start: 0,
+                            col_end: mw,
+                            target: FoldTarget::Compaction,
+                        });
+                        if fold.compaction_expanded && !summary.is_empty() {
+                            lines.push(String::new());
+                            push_wrapped(&mut lines, &theme.paint_muted(summary), width);
                         }
                     }
-                }
+                    CompactionBlockStatus::Aborted | CompactionBlockStatus::Failed => {
+                        let text = detail.as_deref().unwrap_or("compaction aborted");
+                        push_wrapped(
+                            &mut lines,
+                            &theme.paint_muted(&format!("[compaction] {text}")),
+                            width,
+                        );
+                    }
+                },
                 UiEntry::Todo {
                     summary,
                     detail_lines,
@@ -1344,14 +1351,15 @@ mod tests {
             &mut FoldHitTable::default(),
         );
         let plain = strip_ansi_local(&lines.join("\n"));
-        assert!(plain.contains("[compaction]"), "missing label: {plain}");
+        let header = plain
+            .lines()
+            .find(|l| l.contains("Compacted from"))
+            .unwrap_or("");
         assert!(
-            plain.contains("Compacted from 186,842 tokens (Alt+E to expand)"),
-            "missing collapsed line: {plain}"
-        );
-        assert!(
-            plain.contains('▸') || plain.contains('>'),
-            "collapsed Compaction MUST show fold triangle: {plain}"
+            header.contains("[compaction]")
+                && header.contains("Compacted from 186,842 tokens (Alt+E to expand)")
+                && (header.contains('▸') || header.contains('>')),
+            "fold triangle MUST sit on the Compacted header line: {plain}"
         );
         assert!(
             !plain.contains("long summary body"),
@@ -1383,9 +1391,15 @@ mod tests {
             &mut FoldHitTable::default(),
         );
         let plain = strip_ansi_local(&lines.join("\n"));
+        let header = plain
+            .lines()
+            .find(|l| l.contains("Compacted from"))
+            .unwrap_or("");
         assert!(
-            plain.contains("Compacted from 1,000 tokens"),
-            "missing header: {plain}"
+            header.contains("[compaction]")
+                && header.contains("Compacted from 1,000 tokens")
+                && (header.contains('▾') || header.contains('v')),
+            "expanded triangle MUST sit on the Compacted header line: {plain}"
         );
         assert!(
             plain.contains("visible summary body"),
