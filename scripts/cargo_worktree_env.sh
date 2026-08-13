@@ -13,7 +13,7 @@
 # Optional:
 #   CARGO_TARGET_CACHE_ROOT=~/.cache/cargo-targets  (default)
 #   RUSTC_WRAPPER=sccache   # set yourself if installed; safe across worktrees
-#   SCCACHE_CACHE_SIZE=20G  # defaulted below when unset — caps sccache disk growth
+#   SCCACHE_CACHE_SIZE=60G  # defaulted below when unset — caps sccache disk growth
 #
 # See: docs/research/rust-disk-worktree-cache-2026.md
 
@@ -52,7 +52,7 @@ mkdir -p "$TARGET_DIR"
 # Cap sccache so the shared compile cache cannot grow without bound.
 # Override with SCCACHE_CACHE_SIZE=… before sourcing if needed.
 if [[ -z "${SCCACHE_CACHE_SIZE:-}" ]]; then
-  SCCACHE_CACHE_SIZE=20G
+  SCCACHE_CACHE_SIZE=60G
 fi
 
 # CACHEDIR.TAG so backup tools can skip (Cargo also writes one under target/).
