@@ -20,9 +20,23 @@ eval "$(just cargo-wt-env)"
 4. `llmanspec/changes/c2200-refactor-tui-kind-catalog-verify/research/code-as-design-and-tui-verify.md` §3–5
 5. 既有产品 harness 里 activity-fold 测试（`src/app/tui/harness.rs` / `activity_fold` 单测）——**扩既有文件**，不要新开平行 harness
 
+## 硬约束：必须走产品 TUI 真链路
+
+**禁止**再写一套「测试专用 paint」。否则又是第二 SSOT，也测不出产品 bug。
+
+必须复用（已有样板）：
+
+- `HostSession::new_product_ui(TestTerminal::…)` 或 `UiRoot` + `apply_ui_model` + `render`（与 `activity_fold/live_tape.rs` / `effects/debug_activity_fold.rs` 相同）
+- 同一 `UiEntry` / `ActivityFoldState` / `count_*` / `format_*`
+- 事件从 `XyEvent` 或现成 live tape 推进，不要手搓第二套 scrollback 字符串
+
+对照：`/debug activity-fold-live` 已经 `apply_ui_model` → `root.render`。本切片是 **加语义 dump + 教训 1–3 的断言**，不是新框架。
+
+不要引入 `tui-pantry` / Ink Storybook（引擎不同）。目录形态可以学它们，渲染必须是 xylitol 产品根。
+
 ## 目标
 
-加一层 **Scene**（名字可变）：给定 `UiEntry` 切片 + fold 态 + 可选 streaming 标志，调用 **与产品相同的** `count_*` / `format_*` / 现有 scrollback paint 路径，产出：
+给定夹具（entries 或 tape）→ **产品 render** → 产出：
 
 1. **语义 dump**（纯文本，给人和测看，不是截图）：
    - 每一行标明和弦：`L3 envelope` / `L2 cluster` / `L1 block`
