@@ -87,6 +87,7 @@ pub fn apply_lifecycle_family(model: &mut UiModel, event: &XyEvent) -> bool {
                     });
                 }
                 model.streaming_thinking.clear();
+                model.streaming_think_id = None;
                 model.streaming_assistant.clear();
                 model.current_role = None;
                 if model.queue.follow_up_count == 0 {

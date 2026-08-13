@@ -15,8 +15,8 @@ mod settings;
 mod state;
 mod summary;
 
-pub use atom::STREAMING_THINK_ID;
 #[cfg(test)]
+#[allow(unused_imports)] // used by scrollback inflight labels under cfg(test)
 pub(crate) use atom::is_path_placeholder;
 pub use degrade::AutoTrigger;
 #[cfg(test)]
@@ -35,7 +35,8 @@ pub use state::SegmentRowSpans;
 pub use state::{ActivityFoldState, SegmentClock};
 pub use summary::{
     cluster_is_thought_only, cluster_omits_header, count_cluster, format_cluster_header,
-    format_elapsed_secs, format_envelope_line, streaming_thought_counts, thought_header_body,
+    format_elapsed_secs, format_envelope_line, live_think_id_for_cluster, streaming_thought_counts,
+    thought_header_body,
 };
 
 use time::OffsetDateTime;
