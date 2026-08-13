@@ -394,6 +394,10 @@ fn message_update_tool_intent_flushes_thinking_first() {
     let mut model = UiModel::new();
     model.begin_run("hi");
     apply_xy_event(&mut model, &XyEvent::ThinkingDelta("plan…".into()));
+    assert_eq!(
+        model.streaming_think_id.as_deref(),
+        Some(crate::app::tui::bridge::STREAMING_THINK_ID)
+    );
     assert!(
         model
             .entries
@@ -446,6 +450,7 @@ fn message_update_tool_intent_flushes_thinking_first() {
         "scrollback must be thinking then tool, got {kinds:?}"
     );
     assert!(model.streaming_thinking.is_empty());
+    assert!(model.streaming_think_id.is_none());
 }
 
 #[test]

@@ -927,6 +927,7 @@ impl UiRoot {
         let upper_changed = self.ui_model.entries != model.entries
             || self.ui_model.streaming_assistant != model.streaming_assistant
             || self.ui_model.streaming_thinking != model.streaming_thinking
+            || self.ui_model.streaming_think_id != model.streaming_think_id
             || self.ui_model.phase != model.phase;
         self.ui_model = model.clone();
         if upper_changed {

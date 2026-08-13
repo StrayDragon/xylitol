@@ -28,6 +28,7 @@ pub fn rebuild_scrollback_from_travel(
     ui_model.status = None;
     ui_model.streaming_assistant.clear();
     ui_model.streaming_thinking.clear();
+    ui_model.streaming_think_id = None;
     ui_model.thinking_started_at = None;
     ui_model.current_role = None;
 
