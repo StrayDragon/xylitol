@@ -146,7 +146,7 @@ fn parse_csi(body: &str) -> Option<(InputEvent, usize)> {
 }
 
 /// Convenience: feed a VT sequence into a component via `handle_input`.
-#[allow(dead_code)]
+#[allow(dead_code)] // harness API; used by input/property/tui_integration/virtual_terminal targets (per-target `mod support`)
 pub fn feed_vt(component: &mut dyn xylitol_tui::Component, seq: &str) {
     for ev in parse_vt_to_input_events(seq) {
         component.handle_input(ev);

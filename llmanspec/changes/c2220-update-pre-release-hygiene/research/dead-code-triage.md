@@ -31,24 +31,41 @@
 
 ### packages/xylitol-tui/tests/support（测试 harness）
 
-| 路径 | 符号 | 判定 | 建议 | 依据 |
-|---|---|---|---|---|
-| support/vt_feed.rs:149 | `feed_vt` | 逻辑死→已被使用 | **去 allow**（可立刻执行，纯减负） | 5 个 test target 均引用：input/property/virtual_terminal/tui_integration/interaction 测试 |
-| support/mod.rs:69 | `impl VirtualTerminal` | 逻辑死→实际使用 | **去 allow**（`viewport`/`cell`/`cursor_position`/`grid_*` 被各 target 使用） | 多 target 交叉使用 |
-| support/mod.rs:93 | `VirtualTerminal::resize` | 逻辑死→被使用 | **去 allow** | 被 trait `Terminal::set_size_hint` 转发调用，且多 target 驱动 resize |
-| support/mod.rs:148 | `viewport_cell` | 逻辑死→被使用 | **去 allow** | agent_demo_test(:1592,:1683,:1708) / interaction_modes_test(:1041) 真实调用 |
-| support/mod.rs:178 | `title` | 真死（无调用） | 留 | 各 target 未用，但属 harness API 完整性（OSC 标题断言备用） |
-| support/mod.rs:658 | `impl LoggingVirtualTerminal` | 逻辑死→实际使用 | **去 allow** | `clear_writes`/`count_occurrences` 被 virtual_terminal_test 大量使用 |
-| support/mod.rs:677 | `raw_writes` | 真死（无调用） | 留 | harness API；注释说明未来差分渲染断言需要（pi `clearWrites` 模式） |
-| support/mod.rs:727 | `inner` | 真死（无调用） | 留 | 经 `Deref` 访问；显式 inner 用于需 `&VirtualTerminal` 的测试（API 完整性） |
-| support/mod.rs:874 | `impl Component for MutableComponent` | 逻辑死→被使用 | **去 allow** | virtual_terminal_test 7 处直接构造 + `mount_shared`（harness_test 2 处） |
-| support/mod.rs:894 | `impl TuiTestHarness` | 逻辑死→实际使用 | **去 allow** | 多 target 使用其方法 |
-| support/mod.rs:911 | `mount_shared` | 逻辑死→被使用 | **去 allow** | harness_test :22/:78 两处调用 |
-| support/mod.rs:963 | `assert_cursor_at` | 真死（无调用） | 留 | 注释「used by later editor-port tests」（未来 editor-port 变更激活） |
-| support/mod.rs:975 | `assert_cell_text` | 真死（无调用） | 留 | 同上（未来 editor-port 变更激活） |
-| support/mod.rs:990 | `viewport_snapshot` | 逻辑死→被使用 | **去 allow** | snapshot_test :25 调用 |
-| support/mod.rs:1031 | `render_row_annotated` | 逻辑死→被使用 | **去 allow** | 被 viewport_snapshot 调用（同一 test 模块） |
-| support/mod.rs:1056 | `style_tag` | 逻辑死→被使用 | **去 allow** | 被 render_row_annotated 调用（同一 test 模块） |
+**c2220-support-retriage 重分诊（2026-08，分支 `c2220-support-retriage`）**：以下旧表初判「逻辑死→已被使用→去 allow」**整体证伪**。原因：cargo 自动发现的 18 个 integration target 中，12 个各自独立 `mod support`，每个 target 是一个编译单元，只把「本 target 用到的符号」算活；12 个 target 的并集才是真实引用面。去 allow 会在大量 target 上爆 `dead_code`（与 c2220-dead-delete 执行时复现的 ~30 个新告警一致）。这些 allow 是**跨 target 必需的 harness API 完整性**，不是死码压制。重分诊结论：**16 处 allow 全部保留（keep allow），零符号删除**；仅改注释使落地条件明确。
+
+#### 引用矩阵（2026-08-19 实测；12 个 `mod support` target × 16 个 allow 符号）
+
+18 个 integration target（cargo 自动发现，`Cargo.toml` 无显式 `[[test]]`）：`agent_demo`、`autocomplete`、`completion_source`、`fuzzy`、`harness`、`input`、`interaction_modes`、`keybindings`、`keys`、`overlay_focus`、`paste_burst`、`property`、`snapshot`、`tui_integration`、`utils`、`virtual_terminal`、`vt_feed`、`word_navigation`。其中 **12 个 `mod support`**（参与 allow 分析）：agent_demo、autocomplete、completion_source、harness、input、interaction_modes、overlay_focus、property、snapshot、tui_integration、virtual_terminal、vt_feed；`fuzzy`/`keybindings`/`keys`/`paste_burst`/`utils`/`word_navigation` 六者不引 support。下表「N/12 爆」= 去掉 allow 后会在几个 support-target 编译单元报 `dead_code`。
+
+| 符号 | 直接引用它的 target（12 中） | 结论 |
+|---|---|---|
+| `feed_vt`（vt_feed.rs） | input、property、tui_integration、virtual_terminal（4） | **keep allow**（其余 8/12 会爆） |
+| `impl VirtualTerminal`（mod.rs:69） | 直接：interaction_modes、overlay_focus、virtual_terminal；经 `Deref`/harness 间接：agent_demo、completion_source、harness、snapshot（7） | **keep allow**（其余 5/12 爆） |
+| `VirtualTerminal::resize` | 0 direct；`set_size_hint` 内转调（mod.rs:491），仅 interaction_modes/virtual_terminal 调 `set_size_hint`（2） | **keep allow**（其余 10/12 爆） |
+| `viewport_cell` | agent_demo（:1592,:1683,:1708）、interaction_modes（:1041）（2） | **keep allow**（其余 10/12 爆） |
+| `title` | **0**（`title` 在 agent_demo_test 的 5 处命中全是「plate/settings title」文案字符串，非调用） | **keep allow**（预留：OSC 标题断言；field 已被写，删 getter 无收益） |
+| `impl LoggingVirtualTerminal`（mod.rs:658） | 直接构造：interaction_modes、virtual_terminal；harness 间接（clear_writes/cursor 计数等自有方法）：agent_demo、harness（4） | **keep allow**（其余 8/12 爆） |
+| `raw_writes` | **0** | **keep allow**（预留：未来差分渲染断言需 per-call 分解——pi `clearWrites` 模式） |
+| `inner` | **0** | **keep allow**（预留：显式 `&VirtualTerminal` 断言，`Deref` 不走时用） |
+| `impl Component for MutableComponent` | virtual_terminal（7 处直接构造）；harness（经 `mount_shared` 内部构造，2） | **keep allow**（其余 10/12 爆） |
+| `impl TuiTestHarness`（mod.rs:894） | agent_demo、completion_source、harness、snapshot、virtual_terminal（5） | **keep allow**（其余 7/12 爆）；12 个方法各自只有子集被用，删任何一个都断跨 target |
+| `mount_shared` | harness（:22,:78）（1） | **keep allow**（其余 11/12 爆） |
+| `assert_cursor_at` | **0** | **keep allow**（预留：未来 editor-port 变更激活；已注明落地条件） |
+| `assert_cell_text` | **0** | **keep allow**（预留：同上） |
+| `viewport_snapshot` | snapshot（:25）（1） | **keep allow**（其余 11/12 爆） |
+| `render_row_annotated` | support 内部：被 `viewport_snapshot` 调（模块私有；1/12 活） | **keep allow**（私有 + 调用链在本模块） |
+| `style_tag` | support 内部：被 `render_row_annotated` 调（模块私有；1/12 活） | **keep allow**（同上） |
+
+#### 归类动作
+
+| 类 | 数量 | 动作 |
+|---|---|---|
+| ≥1 target 用、其它不用 | 11（除下栏 5 项外全部） | keep allow；注释统一「harness API；独立 `mod support` 跨 target，去 allow 会在未引用的 target 爆 dead_code」 |
+| 12 target 全零但预留成立 | 5（`title` OSC 断言、`raw_writes` 差分渲染、`inner` Deref 显式访问、`assert_cursor_at`/`assert_cell_text` editor-port） | keep allow + 注释写清落地条件 |
+| 可删符号 | **0** | 无 12-target 零引用且无落地条件的符号 |
+| 拆 crate / 公共 lib 消 allow | — | **不采纳**：`mod support` 每 target 独立编译单元模型下，拆 crate 会把 test-only harness 抬进 lib 公共 API，收益不敌成本 |
+
+> 注：`resize` 的旧表依据「被 trait `Terminal::set_size_hint` 转发调用，且多 target 驱动 resize」实测为假——`set_size_hint` 内转调成立，但只有 interaction_modes(:1111)/virtual_terminal(:396,:602) 调 `set_size_hint`；completion_source 的两处命中是 popup band 文案字符串。`feed_vt` 旧表说「interaction 测试」也引用，实测 interaction_modes_test 零命中。
 
 ### src（主 crate）
 
@@ -104,9 +121,15 @@
 
 - `pre-release-hygiene.md` 提到 `app/core/driver/remote.rs` 的 allow「须分诊，不是一律删（remote driver 可能是嵌入/server 预留）」—— 本表确认：**预留成立**，注释已含落地条件（远程薄端接线后实例化），与 `docs/roadmaps/Cloud-Agent与Web控制台.md` 方向一致。
 - `pre-release-hygiene.md` 提到 `infra bash/truncate` —— 本表确认 bash 是 test-only seam（建议 cfg(test) 强约束），truncate 是真死字段（拿不准节 1）。
-- `pre-release-hygiene.md` 提到「测试 support 等」—— 本表初判 tests/support 可立刻去 allow；**c2220-dead-delete 执行证伪**（跨 target 独立 `mod support`）。仅 `clear_misses` 去 allow 成立。
+- `pre-release-hygiene.md` 提到「测试 support 等」—— 初判 tests/support 可立刻去 allow；**c2220-dead-delete 执行证伪**，**c2220-support-retriage 矩阵重分诊确认**：18 个 integration target 中 12 个各自独立 `mod support`，16 处 allow 全部为跨 target 必需的 harness API 完整性，零符号删除，仅改注释。仅 `clear_misses` 去 allow 成立。
 
 ## 执行结果（2026-08-14，分支 `c2220-dead-delete` / `3e36b184`）
+
+（下文 2026-08 新追加）
+
+## 执行结果（2026-08-19，分支 `c2220-support-retriage`）
+
+- 引用矩阵见上节「tests/support」：16 处 allow 全部 keep，零符号删除；文档/注释按矩阵更新。
 
 清单 1–3、5、7 与 `clear_misses` 已删/去 allow。第 4 项未删（Windows cfg）。第 6 项 support 去 allow 已 revert。拿不准 5 项与 `XyRemoteDriver` 未动。
 
