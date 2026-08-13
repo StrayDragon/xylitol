@@ -5274,6 +5274,29 @@ fn scene_dump_four_same_unknown_tools_count_invocations() {
     assert_eq!(counts.used_names.as_slice(), ["todo_update"]);
 }
 
+/// Flushed thinking goes through product `ThinkingDelta` + `flush_streaming`,
+/// not `entries.push(Thinking)`.
+#[test]
+fn scene_thinking_flushed_uses_product_flush() {
+    use super::activity_fold::scene::SceneBuilder;
+    use super::bridge::UiEntry;
+
+    let mut b = SceneBuilder::begin();
+    b.thinking_flushed("first burst", 1);
+    assert!(
+        b.live_think_idle(),
+        "flush must clear live think id and buffer"
+    );
+    match b.entries().last() {
+        Some(UiEntry::Thinking {
+            text,
+            elapsed_secs: Some(1),
+            ..
+        }) if text == "first burst" => {}
+        other => panic!("expected flushed Thinking 1s, got {other:?}"),
+    }
+}
+
 /// Lesson 3: a sealed Thought cluster stays `Thought` when a new Thinking
 /// stream starts; the new stream paints its own live head. Asserted on the
 /// product frame via the semantic dump (both rows must be present).
