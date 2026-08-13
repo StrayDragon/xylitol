@@ -32,6 +32,6 @@ requirements[26]{req_id,title,statement}:
 scenarios[5]{req_id,id,given,when,then,feature}:
   atc22,atc22-unit,"壳层通告约束由产品 harness 覆盖（非 BDD）",审查实现与对应测试,"行为符合本 requirement 陈述",false
   atc23,atc23-unit,"Chrome Footprint 约束由产品 harness 覆盖（非 BDD）",审查实现与对应测试,"行为符合本 requirement 陈述",false
-  atc24,atc24-unit,"used 紧凑计数由产品单测/harness 覆盖（非 BDD）",审查 format_compact_tokens 与 footer_token_label,"行为符合本 requirement 陈述",false
+  atc24,atc24-unit,"used 紧凑计数由产品单测/harness 覆盖（非 BDD）",审查紧凑计数实现与 footer 标签,"行为符合本 requirement 陈述",false
   atc25,atc25-unit,"reload status/toast 由产品 harness 覆盖（非 BDD）",审查实现与对应测试,"行为符合本 requirement 陈述",false
   atc26,atc26-unit,"无多余未声明 chrome 由产品单测/harness 覆盖（非 BDD）",审查 footer 格式化与队列条渲染,"行为符合本 requirement 陈述",false
