@@ -60,6 +60,16 @@
 - 遵循 `rustfmt.toml` / `.editorconfig`；命名：snake_case 模块与函数，PascalCase 类型。
 - 模块边界贴合分层；能内联不套 wrapper；不加无要求的兼容 shim。
 - 格式与 lint 交给 `just fmt` / `just lint`，勿在 AGENTS 重复排版细则。
+- 优先穷举类型 / 注册表，避免字符串 magics；公共形状让 rust-analyzer 能跳转。
+
+## Pre-0.0.1 卫生（未发布版本）
+
+第一个 tagged **0.0.1** 之前，本仓库 **没有** 外部 SemVer 客户。迭代中 **MUST NOT** 积累「以后再删」的兼容债：
+
+- **禁止**为未发布的公开 API、YAML 键、slash、UI 字符串保留兼容别名、双解析路径、deprecated 转发。改名 = 一次性改调用点。
+- Session JSONL：未知字段可忽略（serde）≠ 产品代码永久读旧键。需要读旧会话时做一次性迁移或声明不保证，**禁止**双语义长期并存。
+- 死码按 skill `audit-dead-code` 分诊（真死删 / 逻辑死本变更内激活或删 / 预留须写落地条件）。禁止无理由新 `#[allow(dead_code)]`。
+- **禁止**为未交付能力预留兼容 shim。0.0.1 **之后** 再谈 SemVer / 弃用窗。
 
 ## Provider（Pre-1.0.0）
 

@@ -89,7 +89,7 @@ crate 内置工具             = *Args + serde；优先 TypedTool → dyn XyTool
 2. **既有 port**（禁止旁路第二套语义）
 3. **新 port**（仅真实第二实现或嵌入/测试必须替换时）
 
-禁止：插件市场、Extension Host、为未交付能力预挖空 `Xy*`、「已是统一口再包一层」。
+禁止：插件市场、Extension Host、为未交付能力预挖空 `Xy*`、「已是统一口再包一层」。未发布卫生（无兼容别名 / 无无理由 `allow(dead_code)`）见根 `AGENTS.md`「Pre-0.0.1 卫生」。
 
 Trust / Permission / MCP 产品语义分别见 `docs/architecture/` 对应文；实现要点：Trust 闸**项目本地资源**；工具开箱 allow-all；MCP **有配置才装配**并支持重载。
 
