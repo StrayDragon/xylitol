@@ -32,6 +32,7 @@ pub const DEBUG_SCENES: &[DebugSceneMeta] = &[
 ];
 
 /// `(id, description)` for [`xylitol_tui::SlashArgCompletionSource`].
+#[cfg(debug_assertions)]
 pub fn completion_catalog() -> Vec<(String, String)> {
     DEBUG_SCENES
         .iter()

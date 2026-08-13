@@ -2048,7 +2048,11 @@ async fn reject_second_root_while_first_live() {
     let mut second_text = false;
     while let Some(ev) = second.next().await {
         match ev {
-            XyEvent::Error(err) if err.kind == "Busy" => busy = true,
+            XyEvent::Error(err)
+                if err.kind == crate::agent::runtime::state::RuntimeControlError::Busy.kind() =>
+            {
+                busy = true
+            }
             XyEvent::TextDelta(_) => second_text = true,
             _ => {}
         }
