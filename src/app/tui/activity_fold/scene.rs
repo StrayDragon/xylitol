@@ -21,7 +21,7 @@ use crate::app::core::driver::XyEvent;
 use crate::app::tui::activity_fold::{
     format_elapsed_secs, partition_segments, strip_ansi_live_window, thought_header_body,
 };
-use crate::app::tui::bridge::{UiEntry, UiModel, UiPhase, allocate_thinking_id, apply_xy_event};
+use crate::app::tui::bridge::{UiEntry, UiModel, allocate_thinking_id, apply_xy_event};
 use crate::app::tui::widgets::GlyphSet;
 use xylitol_tui::Component;
 
