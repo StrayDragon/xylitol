@@ -26,6 +26,8 @@ pub use settings::ActivityFoldSettings;
 #[allow(unused_imports)]
 pub use state::SegmentRowSpans;
 pub use state::{ActivityFoldState, SegmentClock};
+#[cfg(test)]
+pub(crate) use summary::is_path_placeholder;
 pub use summary::{
     cluster_omits_header, count_cluster, format_cluster_header, format_envelope_line,
 };

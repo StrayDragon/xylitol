@@ -66,22 +66,27 @@ fn push_unique(paths: &mut Vec<String>, path: String) {
     }
 }
 
+/// Streaming / empty path chrome (`preview.rs` `PATH_PLACEHOLDER`), not a real file.
+pub(crate) fn is_path_placeholder(p: &str) -> bool {
+    let p = p.trim();
+    p.is_empty() || p == "..." || p == "…" || p == "$ ..." || p.starts_with("...")
+}
+
 fn tool_path_of(tool_path: &Option<String>, args_preview: &str) -> Option<String> {
     if let Some(p) = tool_path.as_deref().map(str::trim)
-        && !p.is_empty()
-        && p != "…"
+        && !is_path_placeholder(p)
     {
         return Some(p.to_string());
     }
     let preview = args_preview.trim();
-    if preview.is_empty() || preview == "…" {
+    if is_path_placeholder(preview) {
         return None;
     }
     // Human preview is `{name} {path}` or just a path-ish token.
     preview
         .split_whitespace()
         .next_back()
-        .filter(|t| *t != "…" && (t.contains('.') || t.contains('/')))
+        .filter(|t| !is_path_placeholder(t) && (t.contains('.') || t.contains('/')))
         .map(str::to_string)
 }
 
@@ -203,10 +208,12 @@ fn basename(path: &str) -> &str {
     if path.starts_with('\0') {
         return "";
     }
-    path.rsplit(['/', '\\'])
+    let base = path
+        .rsplit(['/', '\\'])
         .next()
         .filter(|s| !s.is_empty())
-        .unwrap_or(path)
+        .unwrap_or(path);
+    if is_path_placeholder(base) { "" } else { base }
 }
 
 fn files_word(n: u32) -> &'static str {
@@ -535,6 +542,17 @@ mod tests {
         assert_eq!(s, "Ran 1 command");
         let live = format_cluster_body(&c, true);
         assert_eq!(live, "Running 1 command");
+    }
+
+    #[test]
+    fn write_placeholder_path_is_not_dots() {
+        let entries = vec![tool("write", Some("..."))];
+        let c = count_middles(&entries, &[0]);
+        let live = format_cluster_body(&c, true);
+        assert_eq!(live, "Editing 1 file");
+        assert!(!live.contains("..."), "{live}");
+        let sealed = format_l2_body(&c);
+        assert_eq!(sealed, "Edited 1 file");
     }
 
     #[test]

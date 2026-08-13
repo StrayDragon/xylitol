@@ -2289,7 +2289,9 @@
         return html;
       }
       if (kind === "editing") {
-        html += afRow("Editing tests.rs", "live-tail");
+        html += afRow(`${afTri(true)} Editing tests.rs`, "live-head");
+        html += afRow(`${afTri(true)} Write tests.rs`);
+        html += afRow("Planning next moves", "live-tail");
         return html;
       }
       html += afRow("Planning next moves", "live-tail");

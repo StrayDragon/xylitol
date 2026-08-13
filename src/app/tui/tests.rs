@@ -4702,6 +4702,66 @@ fn activity_fold_compaction_only_has_no_explored_header() {
 }
 
 #[test]
+fn activity_fold_live_write_placeholder_is_editing_not_dots() {
+    use super::layout::UiRoot;
+    use super::widgets::FoldTarget;
+
+    let mut root = UiRoot::new();
+    let mut model = UiModel::new();
+    model.phase = UiPhase::Busy;
+    model
+        .entries
+        .push(super::bridge::UiEntry::User { text: "u".into() });
+    model.entries.push(super::bridge::UiEntry::Tool {
+        id: "w1".into(),
+        name: "write".into(),
+        args_preview: "...".into(),
+        tool_path: None,
+        write_content: Some("fn demo() {}".into()),
+        display_diff: None,
+        output: String::new(),
+        is_error: false,
+        done: false,
+    });
+    root.apply_ui_model(&model);
+    let plain = strip_ansi_activity(&root.render(100).join("\n"));
+    assert!(
+        plain.contains("Editing"),
+        "inflight write must still say Editing: {plain}"
+    );
+    assert!(
+        !plain.contains("Editing ...") && !plain.contains("Editing…"),
+        "must not treat path placeholder as a filename: {plain}"
+    );
+    assert!(
+        plain.contains("Write") && plain.contains("fn demo"),
+        "streaming write block must stay visible under the cluster: {plain}"
+    );
+    assert!(
+        plain.contains("Planning next moves"),
+        "inflight tools must not replace Planning: {plain}"
+    );
+    assert!(
+        root.fold_hits()
+            .regions
+            .iter()
+            .any(|r| matches!(r.target, FoldTarget::Cluster(_))),
+        "Editing cluster header must register a fold triangle: {:?}",
+        root.fold_hits().regions
+    );
+
+    if let super::bridge::UiEntry::Tool { done, .. } = &mut model.entries[1] {
+        *done = true;
+    }
+    root.apply_ui_model(&model);
+    let after_end = strip_ansi_activity(&root.render(100).join("\n"));
+    assert!(
+        after_end.contains("fn demo") && after_end.contains("Write"),
+        "ToolEnd on the still-open cluster must not auto-collapse kids: {after_end}"
+    );
+}
+
+#[test]
 fn activity_fold_mcp_cluster_is_used() {
     use super::activity_fold::SegmentLevel;
     use super::layout::UiRoot;
