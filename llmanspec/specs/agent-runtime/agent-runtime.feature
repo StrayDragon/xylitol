@@ -3,14 +3,12 @@
 # executable GWT only; architectural/static scenarios stay in spec.toon as feature:false
 功能: agent-runtime
   @req:ar1
-  @req:ar-pilot
   场景: react-terminates
     假如 mock 模型先 tool 后无 tool
     当 运行 AgentRuntime
     那么 先执行工具再结束且无 adk 类型
 
   @req:ar2
-  @req:ar-pilot
   场景: stream-is-xyevent
     假如 消费事件流
     当 轮询
