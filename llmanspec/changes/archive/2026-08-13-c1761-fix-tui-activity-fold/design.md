@@ -6,12 +6,14 @@
 
 ## 产品树
 
+展示 **扁平同列**：信封头、簇头、块头与未折叠细账同一列；层级只存在于每个折叠块自己的状态里，**MUST NOT** 用前导缩进表达嵌套。
+
 ```text
 [User]                                      始终外显
-  ▸/▾ Worked for {duration}                 信封（展开后头行仍在）
-      ▸/▾ Edited foo.rs, explored …         簇（可多条；Todo/Compaction 算活动）
-          ▸ read / grep / edit / thinking   块 L1
-      ▸/▾ Ran 3 commands
+▸/▾ Worked for {duration}                   信封（展开后头行仍在）
+▸/▾ Edited foo.rs, explored …               簇（可多条；Todo/Compaction 算活动）
+▸ read / grep / edit / thinking             块 L1
+▸/▾ Ran 3 commands
 [该 turn 最后一段 Assistant]                 信封折叠时唯一保留的正文
 ScrollNotice / Error                        永不进信封
 ```
@@ -31,14 +33,14 @@ ScrollNotice / Error                        永不进信封
 | 旧 | 新 | 用户看到 |
 |---|---|---|
 | L3 | 信封折叠 | User + `Worked for` + **最后** Assistant |
-| L2 | 信封展开、簇折叠 | User + 簇头 + **中间正文仍画** + 最后 Assistant |
-| L0 | 某簇展开 | 该簇内块服从 L1 |
+| L2 | 信封展开、簇折叠 | User + ▾ `Worked for` + 簇头 + **中间正文仍画** + 最后 Assistant |
+| L0 | 某簇展开 | User + ▾ `Worked for` + 该簇细账（L1）+ 其它簇头 + 最后 Assistant |
 
 展开任一级 **MUST** 留下该级头行 + `▾`（att19）。这是 c1760 paint 只在 `is_collapsed()` 画摘要行的根因修复。
 
 ## 簇切分（可测启发式）
 
-**主刀：LLM 助手正文。** 一段打开簇 = 两次可展示助手正文之间的全部活动（Tool / Thinking / Diff / Ask / Bash / **Todo / Compaction**）。Thinking **不**切段。种类只影响该簇摘要措辞（Explored / Edited / Ran / Thought），不单独切段。
+**主刀：LLM 助手正文。** 一段打开簇 = 两次可展示助手正文之间的全部活动（Tool / Thinking / Diff / Ask / **Todo / Compaction**）。用户 bang 命令块不进信封。Thinking **不**切段。种类只影响该簇摘要措辞（Explored / Edited / Ran / Thought），不单独切段。
 
 封口：助手正文开始可展示 → 打开簇改过去式并冻结，进入 live window 的 -3。
 
@@ -53,16 +55,16 @@ ScrollNotice / Error                        永不进信封
 | YAML 键 | 默认 | 含义 |
 |---|---|---|
 | `enabled` | `true` | 关则全细账（L1 仍可用）；resume 也不套信封 |
-| `keep_recent_turns` | `2` | 最近 K 个 Activity turn：信封默认展开；更旧：信封默认折叠 |
+| `keep_recent_turns` | `2` | 仅约束 `auto_on_turn_end`：最近 K 个已结束 turn 信封默认展开；更旧：信封默认折叠 |
 | `stream_collapse` | `envelope` | 见下 |
-| `auto_on_rebuild` | `true` | travel/resume/fork 后对超窗 turn 套折叠信封 |
+| `auto_on_rebuild` | `true` | travel/resume/fork 后对**全部**已结束 turn 套折叠信封（不按 keep 留近窗） |
 | `auto_on_turn_end` | `true` | 回合结束后对超窗 turn 套折叠信封 |
 
-`stream_collapse`（**只作用于已结束 / 超窗 turn**；流式当前 turn 见 live window）：
+`stream_collapse`（**只作用于已结束 turn**；流式当前 turn 见 live window）：
 
-| 值 | 已结束超窗 turn | 流式当前 turn |
+| 值 | 已结束 turn | 流式当前 turn |
 |---|---|---|
-| `envelope` | `Worked for` 信封 | live window：-1/-2 更新，-3 冻结；**不**整段套信封 |
+| `envelope` | `Worked for` 信封（rebuild=全部已结束轮；turn-end=超窗） | live window：-1/-2 更新，-3 冻结；**不**整段套信封 |
 | `clusters` | 只留簇头 | 同上 live window |
 
 流式少刷 = 冻结 -3 的 paint cache，不是把当前 turn 收成一行 Worked for。
@@ -114,7 +116,7 @@ tui:
 | TextDelta（助手正文） | 刷新正在流的正文；封口后打开簇进 -3 | 全量 `partition` + 全历史 MD |
 | ToolExecutionEnd / Bash 完成 | 只更新 -2 打开簇计数 | 动 -3 |
 | Ask Waiting | -1 = `Asking questions`；Ask 块可交互 | 折进已折叠簇 |
-| TurnEnd / rebuild | 超窗按 `stream_collapse` 套信封或簇头 | 假时长 |
+| TurnEnd / rebuild | rebuild：全部已结束轮按 `stream_collapse` 套信封；turn-end：超窗套信封或簇头 | 假时长 |
 
 ath25：信封/簇 toggle MUST NOT 触发全部历史 Assistant Markdown 重解析。
 

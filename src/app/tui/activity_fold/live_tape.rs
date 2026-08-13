@@ -2,10 +2,13 @@
 //!
 //! Same frames drive:
 //! - `cargo test` / UiRoot harness (`replay_live_window`)
-//! - `/debug activity-fold-live` (inject + PASS/FAIL scroll notice)
+//! - `/debug activity-fold-live` (inject + Choice slot; not a real ReAct run)
+//!
+//! Ended-session hand-test is `/debug activity-fold-resume` (seeded JSONL).
 //!
 //! Reproduce: last painted frame stays on the transcript so a FAIL names the
 //! step (Planning → inflight tool → sealed -3 → open -2 → Ask).
+//! Answering Choice then applies [`live_ask_close_events`] (not a live agent).
 
 use serde_json::json;
 
@@ -40,6 +43,26 @@ fn tool_end(id: &str, name: &str) -> XyEvent {
         result: "ok".into(),
         is_error: false,
     }
+}
+
+/// Tool id for the tape's Ask Waiting frame and the Choice close-out.
+pub const LIVE_ASK_TOOL_ID: &str = "ask1";
+
+/// Distinct closing assistant body after the debug Choice is answered / skipped.
+pub const LIVE_ASK_CLOSE_TEXT: &str = "Thanks — continuing from your answer.";
+
+/// Scripted UX after `/debug activity-fold-live` Choice finishes (no ReAct).
+pub fn live_ask_close_events(result: &str) -> Vec<XyEvent> {
+    vec![
+        XyEvent::ToolExecutionEnd {
+            id: LIVE_ASK_TOOL_ID.into(),
+            name: "ask".into(),
+            result: result.into(),
+            is_error: false,
+        },
+        XyEvent::TextDelta(LIVE_ASK_CLOSE_TEXT.into()),
+        XyEvent::AgentEnd { messages: vec![] },
+    ]
 }
 
 /// Ordered live-window checkpoints (after `UiModel::begin_run`).
@@ -96,7 +119,7 @@ pub fn live_window_frames() -> Vec<LiveWindowFrame> {
         LiveWindowFrame {
             name: "9-ask-waiting",
             events: vec![XyEvent::ToolExecutionStart {
-                id: "ask1".into(),
+                id: LIVE_ASK_TOOL_ID.into(),
                 name: "ask".into(),
                 args: json!({}),
             }],

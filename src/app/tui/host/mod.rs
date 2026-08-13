@@ -145,6 +145,8 @@ pub struct HostSession<T: Terminal> {
     mcp_blocks_agent: bool,
     /// TUI-only ask host (c1850); polls pending asks → ChoicePrompt.
     ask_gateway: Option<Arc<crate::app::tui::ask_host::AskHostGateway>>,
+    /// `/debug activity-fold-live`: after Choice, play scripted ToolEnd/idle (not ReAct).
+    debug_live_ask_close: bool,
     /// Product keybindings owned by this session (scoped for component matching).
     keybindings: Option<Rc<RefCell<xylitol_tui::KeybindingsManager>>>,
     /// Keeps [`xylitol_tui::KeybindingsScope`] alive for the session thread.
@@ -217,6 +219,7 @@ impl<T: Terminal> HostSession<T> {
             editor_history_seed_job: None,
             mcp_blocks_agent: false,
             ask_gateway: None,
+            debug_live_ask_close: false,
             keybindings: None,
             _keybindings_scope: None,
         }
@@ -1009,7 +1012,7 @@ impl<T: Terminal> HostSession<T> {
         }
     }
 
-    fn handle_xy(&mut self, xy: Box<XyEvent>) {
+    pub(crate) fn handle_xy(&mut self, xy: Box<XyEvent>) {
         if self.suppress_xy_until_stream_end {
             // c670: abort already noted — do not revive busy via deltas / AgentEnd.
             self.tui.request_render(false);

@@ -14,8 +14,8 @@ use std::collections::{HashMap, HashSet};
 use super::fold_hit::{FoldHitTable, FoldTarget};
 use super::glyphs::GlyphSet;
 use crate::app::tui::activity_fold::{
-    ActivityFoldState, SegmentLevel, cluster_middle_indices, count_cluster, count_segment,
-    format_cluster_header, format_summary_line, middle_entry_indices, partition_segments,
+    ActivityFoldState, SegmentLevel, cluster_middle_indices, count_cluster, format_cluster_header,
+    format_envelope_line, middle_entry_indices, partition_segments,
 };
 use crate::app::tui::bridge::{
     AskPhase, BashBlockStatus, CompactionBlockStatus, UiEntry, UiModel, UiPhase,
@@ -772,19 +772,24 @@ pub fn render_scrollback(
     let mut envelope_summary_at: HashMap<usize, usize> = HashMap::new();
     let mut cluster_header_at: HashMap<usize, (usize, usize)> = HashMap::new();
     for (si, seg) in segments.iter().enumerate() {
+        let live_seg = live_seg_idx == Some(si);
         let level = activity.effective_level(&seg.id);
-        if level == SegmentLevel::L3 {
+        // Envelope header only when the envelope is in play (L2 expanded / L3
+        // collapsed). Keep-window L0 and live window stay cluster heads only.
+        if activity.settings.paints_envelope_header() && !live_seg && level != SegmentLevel::L0 {
             let mids = middle_entry_indices(&model.entries, seg);
             if let Some(&first) = mids.first() {
                 envelope_summary_at.insert(first, si);
             }
+        }
+        if level == SegmentLevel::L3 {
+            let mids = middle_entry_indices(&model.entries, seg);
             skip_middle.extend(mids);
             skip_mid_asst.extend(seg.mid_assistant_idxs.iter().copied());
             continue;
         }
-        let live_seg = live_seg_idx == Some(si);
         for (ci, cl) in seg.clusters.iter().enumerate() {
-            let expanded = activity.cluster_kids_visible(&seg.id, &cl.id, live_seg);
+            let expanded = activity.cluster_kids_visible(&seg.id, &cl.id);
             let mids = cluster_middle_indices(&model.entries, cl);
             let sealed_nonempty = mids.iter().any(|&idx| {
                 model
@@ -821,27 +826,23 @@ pub fn render_scrollback(
         if skip_mid_asst.contains(&entry_idx) {
             continue;
         }
+        if let Some(&si) = envelope_summary_at.get(&entry_idx) {
+            paint_envelope_header_row(
+                &mut lines,
+                fold_hits,
+                activity,
+                &segments[si],
+                glyphs,
+                theme,
+                width,
+                &mut need_spacer,
+            );
+            if activity.effective_level(&segments[si].id) == SegmentLevel::L3 {
+                continue;
+            }
+        }
         if skip_middle.contains(&entry_idx) {
-            if let Some(&si) = envelope_summary_at.get(&entry_idx) {
-                let seg = &segments[si];
-                if need_spacer {
-                    lines.push(inter_block_spacer(width));
-                }
-                let counts = count_segment(&model.entries, seg);
-                let dur = activity.duration_for(&seg.id);
-                let plain = format_summary_line(SegmentLevel::L3, glyphs, &counts, dur.as_deref());
-                let marker = glyphs.fold();
-                let mw = marker_cols(marker);
-                let painted = theme.paint_muted(&plain);
-                let row_start = lines.len();
-                push_wrapped(&mut lines, &painted, width);
-                let row_end = lines.len();
-                fold_hits.push(row_start, 0, mw, FoldTarget::Segment(seg.id.clone()));
-                activity
-                    .row_spans
-                    .insert(seg.id.clone(), row_start, row_end);
-                need_spacer = true;
-            } else if let Some(&(si, ci)) = cluster_header_at.get(&entry_idx) {
+            if let Some(&(si, ci)) = cluster_header_at.get(&entry_idx) {
                 paint_cluster_header_row(
                     &mut lines,
                     fold_hits,
@@ -1304,6 +1305,40 @@ pub fn render_scrollback(
     lines
 }
 
+#[allow(clippy::too_many_arguments)] // paint planes: lines, hits, activity, theme
+fn paint_envelope_header_row(
+    lines: &mut Vec<String>,
+    fold_hits: &mut FoldHitTable,
+    activity: &mut ActivityFoldState,
+    seg: &crate::app::tui::activity_fold::ActivitySegment,
+    glyphs: GlyphSet,
+    theme: LayoutTheme,
+    width: usize,
+    need_spacer: &mut bool,
+) {
+    if *need_spacer {
+        lines.push(inter_block_spacer(width));
+    }
+    let expanded = activity.effective_level(&seg.id) != SegmentLevel::L3;
+    let dur = activity.duration_for(&seg.id);
+    let plain = format_envelope_line(glyphs, dur.as_deref(), expanded);
+    let marker = if expanded {
+        glyphs.unfold()
+    } else {
+        glyphs.fold()
+    };
+    let mw = marker_cols(marker);
+    let painted = theme.paint_muted(&plain);
+    let row_start = lines.len();
+    push_wrapped(lines, &painted, width);
+    let row_end = lines.len();
+    fold_hits.push(row_start, 0, mw, FoldTarget::Segment(seg.id.clone()));
+    activity
+        .row_spans
+        .insert(seg.id.clone(), row_start, row_end);
+    *need_spacer = true;
+}
+
 #[allow(clippy::too_many_arguments)] // paint planes: lines, hits, segments, activity, theme
 fn paint_cluster_header_row(
     lines: &mut Vec<String>,
@@ -1325,7 +1360,7 @@ fn paint_cluster_header_row(
         lines.push(inter_block_spacer(width));
     }
     let live_seg = live_seg_idx == Some(si);
-    let expanded = activity.cluster_kids_visible(&seg.id, &cl.id, live_seg);
+    let expanded = activity.cluster_kids_visible(&seg.id, &cl.id);
     let progressive = is_open_live_cluster(seg, ci, live_seg);
     let counts = count_cluster(entries, cl);
     let plain = format_cluster_header(glyphs, &counts, expanded, progressive);

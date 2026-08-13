@@ -12,7 +12,11 @@ mod state;
 mod summary;
 
 pub use degrade::AutoTrigger;
-pub use live_tape::{replay_live_window, strip_ansi as strip_ansi_live_window};
+#[cfg(test)]
+pub use live_tape::LIVE_ASK_CLOSE_TEXT;
+pub use live_tape::{
+    live_ask_close_events, replay_live_window, strip_ansi as strip_ansi_live_window,
+};
 #[allow(unused_imports)]
 pub use segment::ActivityCluster;
 pub use segment::{
@@ -22,7 +26,7 @@ pub use settings::ActivityFoldSettings;
 #[allow(unused_imports)]
 pub use state::SegmentRowSpans;
 pub use state::{ActivityFoldState, SegmentClock};
-pub use summary::{count_cluster, count_segment, format_cluster_header, format_summary_line};
+pub use summary::{count_cluster, format_cluster_header, format_envelope_line};
 
 use time::OffsetDateTime;
 

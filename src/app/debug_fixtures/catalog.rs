@@ -31,7 +31,11 @@ pub const DEBUG_SCENES: &[DebugSceneMeta] = &[
     },
     DebugSceneMeta {
         id: "activity-fold-live",
-        description: "Stream live-window tape (Planning / Editing / Ask); PASS/FAIL notice",
+        description: "Live window tape + Ask Choice (no LLM); answer to close the turn",
+    },
+    DebugSceneMeta {
+        id: "activity-fold-resume",
+        description: "Ended session with tools + answered Ask; persist and /resume fold",
     },
 ];
 
@@ -93,6 +97,10 @@ mod tests {
         assert_eq!(resolve_scene_id("ao-perf-scroll"), Some("ao-perf-scroll"));
         assert_eq!(resolve_scene_id("verify-smoke"), None);
         assert_eq!(resolve_scene_id("activity-fold-live"), None);
+        assert_eq!(
+            resolve_scene_id("activity-fold-resume"),
+            Some("activity-fold-resume")
+        );
         assert_eq!(resolve_scene_id("list"), None);
         assert_eq!(resolve_scene_id("nope"), None);
     }

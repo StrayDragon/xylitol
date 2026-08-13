@@ -4,7 +4,8 @@ depends_on:
 - c2045-add-tui-fold-target-remaining
 branch: sdd/c1761-fix-tui-activity-fold
 base_sha: f2f2a7fed255aab800547eb1c12f85883da0e1be
-checkpointed: false
+checkpointed: true
+checkpoint_sha: f2f2a7fed255aab800547eb1c12f85883da0e1be
 ---
 
 # ActivityFold 嵌套收纳 + YAML 配置
@@ -28,7 +29,7 @@ c1760 把一整段中间操作收成 **一行** 摘要；点开后摘要行消�
 3. **可折叠空间**：多级树；**低级操作自动收进上一聚合块**（块→簇→信封）。各级可独立展开。点 `Planning next moves` = 展开 -2 簇（揭开已算好的 sealed）；收回用 -2 三角。不是任意行区间交叉折叠。
 4. **YAML** `tui.activity_fold`（映射到既有 `ActivityFoldSettings` + 新枚举；缺省 = 推荐默认）。
 5. **`stream_collapse`**（语义名，不用 A/B）：
-   - `envelope`（默认）：**已结束 / resume 超窗** turn 收成 `Worked for` 信封。
+   - `envelope`（默认）：**已结束** turn 收成 `Worked for` 信封（resume/rebuild = 全部已结束轮）。
    - `clusters`：超窗 turn 只留簇头，不套信封。
    - **流式当前 turn 不套信封**（见下条 live window）。
 6. **流式 live window**（当前 turn）：
@@ -37,7 +38,7 @@ c1760 把一整段中间操作收成 **一行** 摘要；点开后摘要行消�
    - `-1`：`Planning next moves` **可点、无三角**（点 = 展开 -2，揭开已算好的 sealed）。Thinking 流、Ask 堵塞、进行中工具必须正确表达。
    - `-2`：打开簇头；**三角只画在这里**（sealed 非空时）；ToolStart 更新类目。
    - `-3` 及更旧：冻结。
-7. **resume/rebuild**：`enabled` 且 `auto_on_rebuild` 时，超 `keep_recent_turns` 的 **已结束** turn 显示折叠信封（`Worked for`）。
+7. **resume/rebuild**：`enabled` 且 `auto_on_rebuild` 时，**全部已结束** turn 显示折叠信封（`Worked for`）。`keep_recent_turns` 只约束 live 会话的 `auto_on_turn_end` 近窗。
 8. **键盘 / 鼠标**：`expandNearest` / `collapseNearest` 嵌套一级步进；点 -1 与点 -2 三角同簇。
 9. **性能**：后台增量写摘要；点击只揭缓存；只 invalidate -1/-2；ath25。
 
@@ -70,7 +71,7 @@ c1760 把一整段中间操作收成 **一行** 摘要；点开后摘要行消�
 | Ask 堵塞 | `-1` = `Asking questions`；Ask 块必须可交互，不得折没 |
 | 配置名 | 语义名 `envelope` / `clusters`，不用 A/B |
 | L3 时长 | 沿 att24：缺戳省略时长，禁止伪造 |
-| 近窗 | `keep_recent_turns` 默认 2：近窗信封默认展开、簇可自动折；更旧信封默认收 |
+| 近窗 | `keep_recent_turns` 默认 2：仅 `auto_on_turn_end` 近窗信封默认展开；**resume/rebuild 全部已结束轮套信封** |
 | `auto_l3_distant` | **退役**：折叠信封即 Worked for；远/近由 keep_recent + rebuild/turn-end 控制 |
 
 ## 与邻接边界
@@ -118,7 +119,7 @@ c1760 把一整段中间操作收成 **一行** 摘要；点开后摘要行消�
 
 - risk_level: low–medium
 - prohibited_actions: 伪造时长或 +/-；折叠冒充 session compaction；TextDelta 全量重画历史 Assistant；默认分支改 live specs
-- required_evidence: 展开后头行 `▾` 可再折；resume 超窗 `Worked for`；流式 -2 随 ToolEnd 变、-3 不变；无正文时见 `Planning next moves`；Ask Waiting 可交互；YAML 非法枚举加载失败
+- required_evidence: 展开后头行 `▾` 可再折；resume 每轮已结束 turn `Worked for`；流式 -2 随 ToolEnd 变、-3 不变；无正文时见 `Planning next moves`；Ask Waiting 可交互；YAML 非法枚举加载失败
 - escalation_policy: 若簇切分要改 JSONL / 进 LLM 上下文 → 停下来确认
 
 ## Start readiness

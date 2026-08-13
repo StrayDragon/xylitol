@@ -15,4 +15,6 @@ mod seed;
 #[cfg(debug_assertions)]
 pub use catalog::completion_catalog;
 pub use catalog::{list_note, resolve_scene_id};
+#[cfg(test)]
+pub use seed::activity_fold_resume_stamped_entries;
 pub use seed::seed_scene;

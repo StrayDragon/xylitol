@@ -61,7 +61,7 @@
 ### 6. 验证
 
 - [x] 6.1 harness：展开后再点头行可折；嵌套两级鼠标互不误伤
-- [x] 6.2 resume/`auto_on_rebuild`：超窗 `Worked for`；近窗信封展开
+- [x] 6.2 resume/`auto_on_rebuild`：全部已结束轮 `Worked for`；`keep_recent_turns` 只约束 turn-end
 - [x] 6.3 流式：无正文见 Planning next moves；ToolEnd 后 -2 变、-3 不变；Ask Waiting 可点
 - [x] 6.4 `just fmt` + 相关测
 
@@ -69,6 +69,19 @@
 
 - [x] 7.1 `llman sdd validate c1761-fix-tui-activity-fold --strict --no-check`
 - [x] 7.2 确认未把 Compact 头行 / L1 四类重做算进本票
+
+### 8. Debug 手测（live / resume 拆分）
+
+- [x] 8.1 `/debug activity-fold-live`：tape 后挂真实 Choice；答完脚本 `ToolEnd(ask)` → 收尾正文 → `AgentEnd` / idle（不跑 ReAct）
+- [x] 8.2 `/debug activity-fold-resume`：seedable 旧会话（thinking + 工具 + 已答 ask），可 persist / resume 看信封
+
+### 9. 手测反馈（信封头 / resume 全折 / 扁平展示）
+
+- [x] 9.1 信封展开后仍画 `Worked for` 头 + `▾`，再点可折回 L3
+- [x] 9.2 resume/rebuild 每轮已结束 turn 套信封（keep 只约束 turn-end）
+- [x] 9.3 design/playground 展示扁平同列，取消缩进
+
+---
 
 ## 实现顺序
 

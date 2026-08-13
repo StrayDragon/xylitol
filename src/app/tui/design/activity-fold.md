@@ -49,9 +49,9 @@ components:
 
 ### 旧 turn 信封
 
-11. `stream_collapse: envelope`（默认）：超窗已结束 turn 折叠为 `Worked for {duration}`（缺戳则省略时长，禁止伪造）。
+11. `stream_collapse: envelope`（默认）：已结束 turn（resume/rebuild 为全部已结束轮；turn-end 为超窗）折叠为 `Worked for {duration}`（缺戳则省略时长，禁止伪造）。流式当前 turn MUST NOT 套信封。
 12. 信封折叠可见：User + `Worked for` + 该 turn **最后一段** Assistant。中间正文与 Todo/Compaction/工具一并收纳。ScrollNotice / Error **MUST NOT** 进信封。
-13. 信封展开：见簇头（可再点开）；live window / 展开态 **仍画** 夹心助手正文（与折叠信封的 B 不同）。
+13. 信封展开：头行 `▾ Worked for` **仍在**（可再折）；其下见簇头（可再点开）。展示与未折叠细账 **同一列**，MUST NOT 用缩进表达信封/簇/块层级。live window / 展开态 **仍画** 夹心助手正文（与折叠信封的 B 不同）。
 
 ### 性能与动画
 

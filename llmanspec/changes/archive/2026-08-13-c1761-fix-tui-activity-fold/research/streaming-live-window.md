@@ -11,7 +11,7 @@
 | 事件 | 切簇？ |
 |---|---|
 | ThinkingDelta / 落定 Thinking | **否**（thinking 是活动，不是正文） |
-| Tool / Bash / Ask / Diff / Todo / Compaction | **否**（同一打开簇内累计） |
+| Tool / Ask / Diff / Todo / Compaction | **否**（同一打开簇内累计；agent bash 是 Tool） |
 | 助手正文 **第一个非空白字符** | **是**：封上一个打开簇 |
 | 仅空白 / 尚未可展示的正文 | **否**；尾行用 `Planning next moves` |
 
@@ -56,7 +56,7 @@ Ask 与 thinking 都是「最新动态折叠块」的合法内容，不是切段
 | 范围 | 行为 |
 |---|---|
 | **流式当前 turn** | 始终 live window（-1/-2 动，-3 冻）；**不**整段收成 Worked for |
-| **已结束 / resume 超窗 turn** | `stream_collapse: envelope` → `Worked for` 信封；`clusters` → 只留簇头 |
+| **已结束 / resume turn** | `stream_collapse: envelope` → 全部已结束轮 `Worked for` 信封；`clusters` → 只留簇头 |
 
 `envelope` 的少刷收益在流式中改为：**-3 冻结 + paint cache**，而不是把当前 turn 藏进一行信封。
 
