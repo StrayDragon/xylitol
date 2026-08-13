@@ -29,7 +29,7 @@ Worked for 与 Explored **不是**同一层的两种前缀；Explored 只在信�
 1. 扫描簇内 foldable middles。
 2. 文件 path 去重：改写工具（edit/write/apply_patch/str_replace）→ Edited 集合；read/ls/search（grep/rg/glob/find 及名字含 search/grep）→ Explored 集合。
 3. 文件层互斥：Edited 非空 → 只输出 Edited（升格，不附 explored）。否则 Explored 非空（含「有 search 但无 path」）→ Explored。
-4. N=1 且有 basename → 写 basename；N>1 → `N files`；Explored 因无 path 的 search 成立且 N=0 → 只写 `Explored`（不写 `1 file`）。
+4. N=1 且有可用 basename → 写 basename（跳过 `.` / `..` 分量，如 `xylitol/.` → `xylitol`）；无可用名 → `N file`，MUST NOT 写 `Explored .`。N>1 → `N files`；Explored 因无 path 的 search 成立且 N=0 → 只写 `Explored`（不写 `1 file`）。
 5. shell（bash/shell/run_terminal_cmd/execute）调用次数 M>0 → 追加 `, Ran M command(s)`；无文件活动时整行就是 `Ran M commands`。
 6. 若 3–5 皆空：
    - thinking **与** 工具/Ask 同簇（同一轮中途再思考，att34 不切簇）→ **不**走 Thought；有未知/MCP/`todo_*` → `Used`（N=调用次数；1 次写短名）；有 Ask → `Asking questions`
