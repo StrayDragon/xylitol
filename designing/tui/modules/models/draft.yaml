@@ -1,0 +1,14 @@
+id: models
+title: 模型列表
+surface: tui
+summary: /model 槽：选模型 + 行内 thinking 档；宽铺开、窄 cycle。
+alignment:
+  chrome: 替换 editor 槽
+  item: 选中行反转，禁止 kind 前景穿透
+  todo-bar: 不进队列条
+todos:
+  - { done: true, text: "wide / narrow / no-thinking 三态" }
+keys:
+  - { chord: "←→ / Shift+Tab", when: "槽内 cycle 该行 thinking 档（非全局）" }
+notes: |
+  代码 SSOT：/model picker。禁止全局 Shift+Tab。无思考模型行上 —。

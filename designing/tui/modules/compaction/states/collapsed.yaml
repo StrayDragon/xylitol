@@ -1,0 +1,14 @@
+id: compaction.collapsed
+cols: 80
+must_contain:
+  - "[compaction]"
+  - "Compacted from 186,842 tokens"
+  - "Alt+E to expand"
+must_not_contain:
+  - "compaction complete"
+  - "Compacting…"
+lines:
+  -
+    - { text: "▸ [compaction] Compacted from 186,842 tokens", token: muted }
+  -
+    - { text: "  Alt+E to expand", token: muted }

@@ -1,0 +1,13 @@
+id: loaded-resources
+title: 启动卡片
+surface: tui
+summary: scrollback 上方 Codex 风边框卡片；资源名全量换行，禁止省略号截断。
+alignment:
+  chrome: 主滚动区之上，不是 footer
+  item: skills 用 skill-ref；mcp 用 success
+  todo-bar: 不进队列条
+todos:
+  - { done: true, text: "名称 MUST 全量展示，禁止 ..." }
+keys: []
+notes: |
+  代码 SSOT：loaded-resources 槽（atc18）。MUST NOT 木糖醇中文标签、ASCII logo、prompt templates、密钥。

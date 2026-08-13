@@ -1,0 +1,9 @@
+id: editor.idle
+cols: 80
+must_contain:
+  - ">"
+must_not_contain:
+  - "enter submit"
+lines:
+  -
+    - { text: "> ", token: muted }

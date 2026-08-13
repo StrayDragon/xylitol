@@ -1,0 +1,15 @@
+id: theme.list
+cols: 80
+must_contain:
+  - "dark"
+  - "light"
+must_not_contain:
+  - "Ctrl+P"
+  - "auto"
+lines:
+  -
+    - { text: "themes", token: muted }
+  -
+    - { text: "› dark", token: on-surface, rev: true }
+  -
+    - { text: "  light", token: muted }

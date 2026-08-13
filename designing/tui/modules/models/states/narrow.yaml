@@ -1,0 +1,13 @@
+id: models.narrow
+cols: 40
+must_contain:
+  - "› <model-fast>"
+  - "high"
+must_not_contain:
+  - "[high]"
+  - "reasoning"
+lines:
+  -
+    - { text: "models", token: muted }
+  -
+    - { text: "› <model-fast>  high", token: on-surface, rev: true }

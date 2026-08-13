@@ -1,0 +1,34 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>xylitol designing</title>
+  </head>
+  <body data-scheme="light">
+    <header>
+      <h1>xylitol designing</h1>
+      <p class="meta">代码为运行时真值 · 本稿为交互设计稿 · 浏览器格子不是产品真值</p>
+      <button type="button" id="scheme" aria-pressed="false">dark</button>
+    </header>
+    <div class="shell">
+      <nav id="nav" aria-label="模块"></nav>
+      <main>
+        <h2 id="module-title">designing</h2>
+        <p class="spec" id="module-spec"></p>
+        <div class="chips" id="state-chips"></div>
+        <div class="stage-bar" id="stage-bar"></div>
+        <div id="stage"></div>
+      </main>
+      <aside aria-label="设计细节">
+        <div class="handoff">
+          <code id="endpoint">/tui/</code>
+          <div id="handoff-md" class="md-body"></div>
+          <button type="button" id="copy-handoff">复制路径</button>
+        </div>
+        <div id="detail"></div>
+      </aside>
+    </div>
+    <script type="module" src="/src/main.ts"></script>
+  </body>
+</html>

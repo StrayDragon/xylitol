@@ -3067,10 +3067,10 @@ impl FakeCodingAgentApp {
             Role::ScrollNotice,
             "This demo (`just demo-tui` / `agent_demo`) is the **package** Inline harness. \
              ApplicationOwned: `just demo-tui-alt-screen` (`agent_demo_alt`). \
-             It MAY differ from product chrome / copy. Product visual SSOT = \
-             `src/app/tui/DESIGN.md` + `design/` (+ static `design/playground/` — Agents ignore \
-             by default). Tokens: DESIGN.md → `just sync-tui-tokens` (`sync_tokens.py`) → \
-             tokens.css/js; keep `Palette` aligned. Runtime MD: `/md` · plates `md-list-wrap` / \
+             It MAY differ from product chrome / copy. Product runtime = \
+             `src/app/tui` code; color tokens = `DESIGN.md`. Interactive draft = \
+             repo-root `designing/` (`just open-designing`). Tokens: DESIGN.md → \
+             `just sync-tui-tokens` → designing/generated; keep `Palette` aligned. Runtime MD: `/md` · plates `md-list-wrap` / \
              `narrow-clamp`.",
         );
         self.set_status("Ready · try /md for runtime MD");
