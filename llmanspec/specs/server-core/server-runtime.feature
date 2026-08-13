@@ -16,8 +16,8 @@
 
   @req:sr1
   场景: server-under-app
-    当 变更后检查源码树
-    那么 src/app/server 存在且 src/server 不再存在
+    当 server 应用面启动
+    那么 装配 infra 运行时并注入 agent 端口，供路由处理器调用
 
   @req:sr2
   场景: server-rest-ws-under-app

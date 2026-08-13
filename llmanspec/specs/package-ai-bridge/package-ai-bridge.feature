@@ -35,7 +35,7 @@
   @req:pab5
   场景: single-impl
     假如 OpenAI 与 Anthropic 路径已迁入包
-    当 审查 src/infra/provider 与包 provider
+    当 审查主仓 provider 装配与包 provider
     那么 主仓无并行完整 adapter 实现体仅剩映射或装配
 
   @req:pab11

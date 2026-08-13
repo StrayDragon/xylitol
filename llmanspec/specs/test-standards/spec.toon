@@ -1,7 +1,7 @@
 kind: llman.sdd.spec
 name: "test-standards"
 purpose: 测试标准与约定 — 测试组织、harness 要求与覆盖期望。
-valid_scope[2]: tests/,src/tests.rs
+valid_scope[2]: "workspace 测试","主 crate 测试入口"
 requirements[4]{req_id,title,statement}:
   ts01,"BDD-vs-Unit 测试分界",项目 MUST 维护 documented 边界：BDD 场景覆盖端到端编排（agent loop、tool execution、session lifecycle、CLI dispatch）；单元测试覆盖纯算法、数据结构契约、组件内部状态机与错误类型行为。测试 MUST NOT 在两层间重复覆盖。
   ts02,核心数据类型测试覆盖,"agent/ 会话词汇与 protocol/ 端口签名类型 MUST 有 #[cfg(test)] 模块验证关键路径：（1）serialization round-trip（适用时），（2）Display/From 转换，（3）constructor invariants。MUST NOT 再以独立 domain/ 或 runtime_protocol/ 顶栏作为测试挂载点。"

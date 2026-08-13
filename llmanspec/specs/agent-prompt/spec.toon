@@ -1,7 +1,7 @@
 kind: llman.sdd.spec
 name: "agent-prompt"
 purpose: 系统提示组装：skills/context 注入与热应用；默认正文经沙箱 minijinja；产品主路径用 skill（含 $name），MUST NOT 提供 pi 式 slash prompt templates。
-valid_scope[3]: src/agent/prompt/,src/protocol/,src/infra/resource/
+valid_scope[3]: "agent 层 prompt","protocol 层","infra 层 resource"
 requirements[12]{req_id,title,statement}:
   pt1,"system-assembly",System MUST 经 build_system_prompt（或等价）组装系统提示，可包含工具片段、skills 摘要、context 文件；自定义 system 文件可替换或 append。组装顺序 MUST 可文档化为 stable 正文与资源 → skills 元数据 → Guidelines → runtime_policy。产品默认 MUST NOT 将日历日或 CWD 写入系统提示前缀（session_env 另条）；秒级时刻等 volatile 读数 MUST NOT 进入系统提示前缀。
   pt2,"skills-section",当 ResourceLoader 发现 skills 时，系统提示 MUST 能包含 available_skills（或等价）清单供模型发现；未信任项目 MUST NOT 注入项目 skills。skills 元数据属 stable（会话作用域）；SKILL.md 正文仍经 $skill 注入 user 投影，MUST NOT 为对齐外部书语而强制改走状态栏。

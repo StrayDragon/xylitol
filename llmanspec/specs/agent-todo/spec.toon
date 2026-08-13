@@ -1,7 +1,7 @@
 kind: llman.sdd.spec
 name: "agent-todo"
 purpose: 会话内 Todo SSOT — Custom latest-wins 持久、内置三工具读写、至多一条 in_progress、不进 LLM 前缀；TUI 可折 checklist 与状态栏只读投影边界。
-valid_scope[4]: src/protocol/,src/agent/,src/infra/tools/,src/app/tui/
+valid_scope[4]: "protocol 层","agent 层","infra 层工具","产品 TUI 面"
 requirements[12]{req_id,title,statement}:
   atd1,"todo-domain-model","会话 Todo 列表 MUST 为有序条目集合；每条含稳定 id、非空 content（trim 后）、status ∈ pending|in_progress|completed|cancelled。空表合法。completed/cancelled MUST 保留在表内直至整表 rewrite 删除。本波 MUST NOT 要求 max_attempt、assignee、namespace 或 plan 类字段。"
   atd2,"custom-agent-todo-latest-wins","Todo 真源 MUST 以会话 Custom 条目持久化：custom_type 为 agent_todo，载荷为当前全量 items 快照。每次成功变更 MUST append 一条完整快照；读取 MUST 在当前 leaf 分支上 latest-wins（全叶扫描，MUST NOT 仅依赖裁切后的 LLM context 窗）。MUST NOT 另开旁路文件当真源；MUST NOT 用会进模型前缀的 CustomMessage/session_env 冒充 Todo SSOT。"

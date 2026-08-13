@@ -1,7 +1,7 @@
 kind: llman.sdd.spec
 name: "agent-hooks"
 purpose: 脚本/库 hooks：工具与 provider 生命周期、XyHookBus 精选导出与可取消/可修改语义。
-valid_scope[2]: src/infra/hooks/,src/agent/runtime/hooks.rs
+valid_scope[2]: "infra 层 hooks","agent 层 runtime hooks"
 requirements[18]{req_id,title,statement}:
   r1,Hook 分发器,System MUST 实现 HookDispatcher，为 10+ 事件类型执行已注册 hooks。
   r2,三层配置,System MUST 支持 global/project/user 三层 hook 配置，后层覆盖前层。

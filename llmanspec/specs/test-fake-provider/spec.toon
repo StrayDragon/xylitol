@@ -1,7 +1,7 @@
 kind: llman.sdd.spec
 name: "test-fake-provider"
 purpose: Fake 与 mock provider：用于 agent 行为的确定性测试。
-valid_scope[2]: src/infra/provider/fake.rs,src/infra/provider/mock.rs
+valid_scope[1]: "infra 层 fake/mock provider"
 requirements[2]{req_id,title,statement}:
   r38,"fake-provider","System MUST 实现 FakeProvider，实现 XyModel，经 ScenarioStep 序列返回预配置响应。"
   r45,"scenario-orchestration","System MUST 支持编排多步场景：text -> tool_call -> tool_result -> text，含可配置 delay 与经 ScenarioStep 的错误注入。"

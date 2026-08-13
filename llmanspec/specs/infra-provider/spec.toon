@@ -1,7 +1,7 @@
 kind: llman.sdd.spec
 name: "infra-provider"
 purpose: "Provider 装配与映射：协议适配实现在 xylitol-ai-bridge；主仓 LlmAdapter/XyModel 外壳与 DTO 映射。"
-valid_scope[3]: src/infra/provider/,"packages/xylitol-ai-bridge/",tests/
+valid_scope[3]: "infra 层 provider","xylitol-ai-bridge 包","workspace 测试"
 requirements[10]{req_id,title,statement}:
   pa1,"adapter-trait",System SHALL 在 infra/provider/adapter 定义 LlmAdapter trait，暴露 generate_stream 与 generate 方法，返回 XyStream。
   pa2,"openai-responses-adapter","System SHALL 提供 OpenAiResponsesAdapter，调用 /v1/responses，对 reasoning items 发出 XyChunk::ThinkingDelta，对 message items 发出 XyChunk::TextDelta。"

@@ -1,7 +1,7 @@
 kind: llman.sdd.spec
 name: "infra-clipboard"
 purpose: 剪贴板集成 — 原生剪贴板、OSC 52 与图片复制支持。
-valid_scope[1]: src/infra/clipboard/
+valid_scope[1]: "infra 层 clipboard"
 requirements[8]{req_id,title,statement}:
   r13,"text-copy","System MUST 提供 copy_to_clipboard(text)，经平台原生工具将 UTF-8 文本复制到系统剪贴板。"
   r14,"platform-order","System MUST 按顺序尝试平台原生剪贴板：native addon > pbcopy/clip > wl-copy > xclip/xsel > termux-clipboard-set > OSC 52。"

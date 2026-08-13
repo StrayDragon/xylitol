@@ -40,9 +40,9 @@
 
   @req:pi2
   场景: provider-moved
-    假如 检查 src/agent/provider 是否存在
-    当 检查该路径
-    那么 不存在，且 src/infra/provider/ 存在且 XyModel 从 crate::protocol 导入
+    假如 审查 LLM provider 实现归属
+    当 检查 agent 层与 infra 层
+    那么 provider 实现位于 infra 层并实现 XyModel；agent 层不含 provider 实现子树
 
   @req:pi3
   场景: no-concrete-provider

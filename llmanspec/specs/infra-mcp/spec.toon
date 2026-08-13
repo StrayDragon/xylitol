@@ -1,7 +1,7 @@
 kind: llman.sdd.spec
 name: "infra-mcp"
 purpose: MCP 客户端：stdio / url·sse 传输、零配置零成本、工具前缀与进程内重载。
-valid_scope[4]: src/infra/mcp/,src/infra/config/types.rs,src/app/core/mcp_spec.rs,src/app/core/composition.rs
+valid_scope[2]: "infra 层 MCP","app 跨面缝 MCP 装配"
 requirements[8]{req_id,title,statement}:
   mcp1,无配置零装配,"当配置中不存在 mcp_servers 或列表为空时，System MUST NOT 创建 MCP client、MUST NOT 向默认 ToolSet 注册任何 mcp__ 前缀工具（过渡期亦可识别遗留 mcp-/mcp_/mcp:），且该路径 MUST 不引入可感知的运行时开销（zero-cost 未启用）。"
   mcp2,有配置则装配为 XyTool,"当 mcp_servers 含有效条目时，System MUST 按 transport（至少 Stdio 与 Sse/url）连接对应服务器，并将发现的工具以 XyTool 形式注册，公开名 MUST 使用 mcp__{server_id}__{name} 约定（分隔符单点可换；仅 [a-zA-Z0-9_-]，与 DeepSeek/Anthropic/OpenAI-compat tools[].name 模式对齐；禁止冒号/点号分隔；段内 MAY 保留 -/_）；execute MUST 使用保存的 server_id/tool_name，MUST NOT 反解析公开名。"

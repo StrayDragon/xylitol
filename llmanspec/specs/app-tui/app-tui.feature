@@ -14,8 +14,8 @@
 
   @req:tui4
   场景: no-infra-import
-    当 检查 src/app/tui 导入
-    那么 无 agent::capabilities / runtime / infra 直达
+    当 审查产品 TUI 依赖方向
+    那么 无 agent 子模块内部或 infra 直达
 
   @req:tui5
   场景: driven-on-land

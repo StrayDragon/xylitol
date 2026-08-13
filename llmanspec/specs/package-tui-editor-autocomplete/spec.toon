@@ -1,7 +1,7 @@
 kind: llman.sdd.spec
 name: "package-tui-editor-autocomplete"
 purpose: "Editor 补全 popup：可插拔 CompletionSource 注册表（slash、@-path、未来触发符）。"
-valid_scope[2]: src/,tests/
+valid_scope[2]: "xylitol-tui 包","workspace 测试"
 requirements[6]{req_id,title,statement}:
   ea01,"completion-source-registry",Editor MUST 经 set_completion_sources() 支持可插拔 CompletionSource。Editor MUST 在 edit/Tab 时按顺序探测已注册 source；首个 probe hit 拥有 popup。包 MUST 提供内置 SlashCommandSource（/）与 AtPathSource（@）；应用注册启用的 source。set_autocomplete_provider(CombinedAutocompleteProvider) MUST 保留为兼容 shim，安装 SlashCommandSource + AtPathSource。注册表为空时，Tab/newline/Enter MUST 回退到正常 editor 行为。
   ea02,"autocomplete-selectlist-popup","CompletionSource 返回建议时，Editor MUST 用建议创建 SelectList popup，计算 best-match 预选项（精确 value 匹配 > prefix 起始匹配），并在 render() 中渲染于 editor 边框下方。popup 激活时，Tab/Enter MUST 经 active source 的 apply() 应用选中项，Esc MUST 取消 popup，上下箭头 MUST 导航列表。应用后 popup MUST 关闭且光标 MUST 定位到补全后位置。"

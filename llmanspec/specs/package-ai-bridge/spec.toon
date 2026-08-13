@@ -1,7 +1,7 @@
 kind: llman.sdd.spec
 name: "package-ai-bridge"
 purpose: "packages/xylitol-ai-bridge：client→LLM provider 接线与 AiBridge* DTO 边界。"
-valid_scope[2]: "packages/xylitol-ai-bridge/",src/infra/provider/
+valid_scope[2]: "xylitol-ai-bridge 包","infra 层 provider 装配"
 requirements[23]{req_id,title,statement}:
   pab1,"workspace-包边界","仓库 MUST 提供 workspace 成员包 packages/xylitol-ai-bridge，作为 client 到上游 LLM model provider 的接线与计量库；该包 MUST NOT 依赖主 crate xylitol。"
   pab2,包内模块划分,"xylitol-ai-bridge MUST 按职责划分至少包含 provider、usage、accounting、tokenize、registry 模块（名称可等价），分别承担方言接线、usage 归一化、多源计量、本地/远程分词计数与模型到分词源注册。"

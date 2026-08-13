@@ -1,7 +1,7 @@
 kind: llman.sdd.spec
 name: "server-core"
 purpose: "Server 运行时 — REST 路由、WebSocket 帧协议与事件 journal、反向 RPC 审批、单实例锁与优雅关闭。"
-valid_scope[1]: src/app/server/
+valid_scope[1]: "server 应用面"
 requirements[24]{req_id,title,statement}:
   sr1,server 托管 agent,"app::server MUST 在启动时装配 infra 运行时并注入 agent 端口；app::server MUST 将 Agent 传入 AppState 供路由处理器调用。"
   sr2,REST 与 WS,"app::server MUST 在 /api/v1 前缀下经 REST（控制命令与状态查询）与 WebSocket（流式事件）暴露 protocol/；二者 MUST 使用 protocol::Command 与 protocol::Event 类型。"

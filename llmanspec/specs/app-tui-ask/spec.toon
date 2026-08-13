@@ -1,7 +1,7 @@
 kind: llman.sdd.spec
 name: "app-tui-ask"
 purpose: 产品 TUI 内置工具 ask：澄清/分叉问卷、仅 TUI 装配、Choice 槽与 scrollback 人话摘要。
-valid_scope[1]: src/app/tui/
+valid_scope[1]: "产品 TUI 面"
 requirements[6]{req_id,title,statement}:
   ata1,"tui-only-registration","产品 TUI 装配的 ToolSet MUST 含内置工具 ask；Print 与非 TUI composition MUST NOT 注册 ask。"
   ata2,"choice-slot-mount","当 ask 工具执行等待用户时，产品 TUI MUST 在 editor 槽挂载 ChoicePrompt（解冻 EditorSlot::Choice）；MUST NOT 使用 stderr 数字菜单。"
