@@ -206,7 +206,9 @@ pub(crate) async fn _w_agent_switch_thinking(agent: &AgentState, verb: String, l
             entry_type: "thinking_level_change".into(),
             id: format!("tlc-{}", uuid::Uuid::new_v4()),
             parent_id: None,
-            timestamp: chrono::Utc::now().to_rfc3339(),
+            timestamp: time::OffsetDateTime::now_utc()
+                .format(&time::format_description::well_known::Rfc3339)
+                .expect("RFC3339 format is infallible"),
         },
         thinking_level: session.thinking_level(),
     });

@@ -7,7 +7,7 @@ use crate::app::tui::session_resume::cwd_matches;
 use crate::protocol::ports::XySessionStore;
 use crate::protocol::session::{SessionEntry, message_role, message_text};
 
-/// Extract user prompt texts from session entries (chrono order; skip `/…`).
+/// Extract user prompt texts from session entries (chronological order; skip `/…`).
 pub fn user_prompt_texts_from_entries(entries: &[SessionEntry]) -> Vec<String> {
     let mut out = Vec::new();
     for entry in entries {

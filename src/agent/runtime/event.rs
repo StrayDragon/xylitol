@@ -36,7 +36,7 @@ impl XyEventStream {
 
     pub(crate) fn busy() -> Self {
         Self::error(crate::protocol::lifecycle::XyEventError::new(
-            "Busy",
+            crate::agent::runtime::state::RuntimeControlError::Busy.kind(),
             "agent run already active",
         ))
     }

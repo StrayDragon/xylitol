@@ -19,24 +19,24 @@ pub use state::SegmentRowSpans;
 pub use state::{ActivityFoldState, SegmentClock};
 pub use summary::{count_segment, format_summary_line};
 
-use chrono::{DateTime, TimeZone, Utc};
+use time::OffsetDateTime;
 
 use crate::app::tui::bridge::UiEntry;
 use crate::protocol::session::{SessionEntry, SessionTreeTravel};
 
 /// Parse session / ISO / unix-ish timestamps; `None` when unreliable.
-pub fn parse_timestamp(raw: &str) -> Option<DateTime<Utc>> {
+pub fn parse_timestamp(raw: &str) -> Option<OffsetDateTime> {
     let raw = raw.trim();
     if raw.is_empty() {
         return None;
     }
-    if let Ok(dt) = DateTime::parse_from_rfc3339(raw) {
-        return Some(dt.with_timezone(&Utc));
+    if let Ok(dt) = OffsetDateTime::parse(raw, &time::format_description::well_known::Rfc3339) {
+        return Some(dt);
     }
     if let Ok(n) = raw.parse::<i64>() {
         // Heuristic: ms vs s
         let secs = if n > 10_000_000_000 { n / 1000 } else { n };
-        return Utc.timestamp_opt(secs, 0).single();
+        return OffsetDateTime::from_unix_timestamp(secs).ok();
     }
     None
 }
@@ -51,10 +51,10 @@ pub fn ingest_rebuild_clocks(
     let segs = partition_segments(ui_entries);
     let path_ids = ancestry_path_ids(session_entries, travel.leaf_id.as_deref());
     // Walk path messages in order; pair User / last assistant-ish stamps by turn.
-    let mut user_stamps: Vec<Option<DateTime<Utc>>> = Vec::new();
-    let mut asst_stamps: Vec<Option<DateTime<Utc>>> = Vec::new();
-    let mut cur_user: Option<DateTime<Utc>> = None;
-    let mut cur_asst: Option<DateTime<Utc>> = None;
+    let mut user_stamps: Vec<Option<OffsetDateTime>> = Vec::new();
+    let mut asst_stamps: Vec<Option<OffsetDateTime>> = Vec::new();
+    let mut cur_user: Option<OffsetDateTime> = None;
+    let mut cur_asst: Option<OffsetDateTime> = None;
     let mut in_turn = false;
 
     for id in &path_ids {

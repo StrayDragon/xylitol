@@ -2513,7 +2513,10 @@ mod driver_session_tree_tests {
         let mut second_text = false;
         while let Some(ev) = second.next().await {
             match ev {
-                crate::protocol::lifecycle::XyEvent::Error(err) if err.kind == "Busy" => {
+                crate::protocol::lifecycle::XyEvent::Error(err)
+                    if err.kind
+                        == crate::agent::runtime::state::RuntimeControlError::Busy.kind() =>
+                {
                     busy = true
                 }
                 crate::protocol::lifecycle::XyEvent::TextDelta(_) => second_text = true,

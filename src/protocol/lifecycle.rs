@@ -14,6 +14,7 @@
 
 use serde::{Deserialize, Serialize};
 use serde_json::Value;
+use strum::IntoStaticStr;
 
 use crate::protocol::error::XyError;
 use crate::protocol::message::AgentMessage;
@@ -87,8 +88,12 @@ impl From<&XyError> for XyEventError {
 /// All possible events emitted during agent execution.
 ///
 /// Each variant carries a typed payload — no generic `Value` here.
-#[derive(Debug, Clone, Serialize, Deserialize)]
+///
+/// `IntoStaticStr` (snake_case) feeds [`Self::description`] — stable log/obs/
+/// topic keys, **deliberately distinct** from the camelCase wire tag.
+#[derive(Debug, Clone, Serialize, Deserialize, IntoStaticStr)]
 #[serde(tag = "type", rename_all = "camelCase")]
+#[strum(serialize_all = "snake_case")]
 pub enum XyEvent {
     // ── Agent lifecycle ──────────────────────────────────────────
     AgentStart {
@@ -231,29 +236,6 @@ impl XyEvent {
 
     /// A short human-readable description of the event.
     pub fn description(&self) -> &'static str {
-        match self {
-            XyEvent::AgentStart { .. } => "agent_start",
-            XyEvent::AgentEnd { .. } => "agent_end",
-            XyEvent::TurnStart { .. } => "turn_start",
-            XyEvent::TurnEnd { .. } => "turn_end",
-            XyEvent::MessageStart { .. } => "message_start",
-            XyEvent::MessageUpdate { .. } => "message_update",
-            XyEvent::MessageEnd { .. } => "message_end",
-            XyEvent::TextDelta(_) => "text_delta",
-            XyEvent::ThinkingDelta(_) => "thinking_delta",
-            XyEvent::ToolExecutionStart { .. } => "tool_execution_start",
-            XyEvent::ToolExecutionUpdate { .. } => "tool_execution_update",
-            XyEvent::ToolExecutionEnd { .. } => "tool_execution_end",
-            XyEvent::CompactionStart { .. } => "compaction_start",
-            XyEvent::CompactionEnd { .. } => "compaction_end",
-            XyEvent::ContextTokenSettlement { .. } => "context_token_settlement",
-            XyEvent::ModelSelect { .. } => "model_select",
-            XyEvent::ThinkingLevelChanged { .. } => "thinking_level_changed",
-            XyEvent::QueueUpdate { .. } => "queue_update",
-            XyEvent::AutoRetryStart { .. } => "auto_retry_start",
-            XyEvent::AutoRetryEnd { .. } => "auto_retry_end",
-            XyEvent::SessionInfoChanged { .. } => "session_info_changed",
-            XyEvent::Error(_) => "error",
-        }
+        self.into()
     }
 }

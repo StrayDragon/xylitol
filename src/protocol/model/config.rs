@@ -7,12 +7,20 @@
 //! serde-only.
 
 use serde::{Deserialize, Serialize};
+use strum::{EnumString, IntoStaticStr};
 
 /// Supported LLM provider kinds.
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize, Default)]
+///
+/// Lowercase provider id is a single SSOT: serde wire form, [`Self::provider_name`]
+/// and [`Self::from_provider_name`] all read the same strum attributes.
+#[derive(
+    Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize, Default, IntoStaticStr, EnumString,
+)]
 #[serde(rename_all = "lowercase")]
+#[strum(serialize_all = "lowercase", ascii_case_insensitive)]
 pub enum XyModelKind {
     #[serde(rename = "openai")]
+    #[strum(serialize = "openai")]
     #[default]
     OpenAi,
     #[serde(rename = "anthropic")]
@@ -24,21 +32,12 @@ pub enum XyModelKind {
 impl XyModelKind {
     /// Parse from a provider name string (case-insensitive).
     pub fn from_provider_name(name: &str) -> Option<Self> {
-        match name.to_lowercase().as_str() {
-            "openai" => Some(Self::OpenAi),
-            "anthropic" => Some(Self::Anthropic),
-            "fake" => Some(Self::Fake),
-            _ => None,
-        }
+        name.parse().ok()
     }
 
     /// Provider identifier for display and serialization.
     pub fn provider_name(&self) -> &'static str {
-        match self {
-            Self::OpenAi => "openai",
-            Self::Anthropic => "anthropic",
-            Self::Fake => "fake",
-        }
+        self.into()
     }
 
     /// Default adapter API protocol family when YAML/`api` is omitted (c1598 / c1600).

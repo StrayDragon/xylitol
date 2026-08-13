@@ -1,31 +1,38 @@
 //! Model metadata and context-token estimates.
 
 use serde::{Deserialize, Serialize};
+use strum::IntoStaticStr;
 
 use crate::protocol::model::config::XyModelConfig;
 use crate::protocol::model::thinking::ThinkingLevelMap;
 
 /// Where a context-token estimate came from (c1030 accounting provenance).
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+///
+/// Naming SSOT: the **wire form is snake_case** (serde), while
+/// [`Self::as_str`] is the legacy PascalCase obs key. Both forms live on the
+/// enum via strum (`IntoStaticStr` with per-variant PascalCase serializes).
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize, IntoStaticStr)]
 #[serde(rename_all = "snake_case")]
+#[strum(serialize_all = "snake_case")]
 pub enum TokenProvenance {
+    #[strum(serialize = "Api")]
     Api,
+    #[strum(serialize = "RemoteCount")]
     RemoteCount,
+    #[strum(serialize = "LocalTokenizer")]
     LocalTokenizer,
+    #[strum(serialize = "Heuristic")]
     Heuristic,
+    #[strum(serialize = "Unknown")]
     Unknown,
 }
 
 impl TokenProvenance {
     /// Stable string for logs / fastrace (`Api`, `LocalTokenizer`, …).
+    ///
+    /// Legacy PascalCase key — wire form is snake_case (`api`, `remote_count`…).
     pub fn as_str(self) -> &'static str {
-        match self {
-            Self::Api => "Api",
-            Self::RemoteCount => "RemoteCount",
-            Self::LocalTokenizer => "LocalTokenizer",
-            Self::Heuristic => "Heuristic",
-            Self::Unknown => "Unknown",
-        }
+        self.into()
     }
 }
 

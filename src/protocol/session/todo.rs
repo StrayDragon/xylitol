@@ -6,6 +6,7 @@
 
 use serde::{Deserialize, Serialize};
 use serde_json::{Value, json};
+use strum::IntoStaticStr;
 
 use super::entries::{CustomEntry, EntryBase, SessionEntry};
 
@@ -13,8 +14,12 @@ use super::entries::{CustomEntry, EntryBase, SessionEntry};
 pub const CUSTOM_TYPE_AGENT_TODO: &str = "agent_todo";
 
 /// Closed status set for Todo items.
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+///
+/// `IntoStaticStr` keeps one snake_case SSOT shared by [`Self::as_str`] and the
+/// serde wire form.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize, IntoStaticStr)]
 #[serde(rename_all = "snake_case")]
+#[strum(serialize_all = "snake_case")]
 pub enum TodoStatus {
     Pending,
     InProgress,
@@ -24,12 +29,7 @@ pub enum TodoStatus {
 
 impl TodoStatus {
     pub fn as_str(self) -> &'static str {
-        match self {
-            Self::Pending => "pending",
-            Self::InProgress => "in_progress",
-            Self::Completed => "completed",
-            Self::Cancelled => "cancelled",
-        }
+        self.into()
     }
 }
 

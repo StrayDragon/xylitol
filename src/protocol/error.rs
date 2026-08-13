@@ -1,6 +1,8 @@
 use std::time::Duration;
 
-#[derive(Debug, thiserror::Error)]
+use strum::IntoStaticStr;
+
+#[derive(Debug, thiserror::Error, IntoStaticStr)]
 pub enum XyError {
     #[error("provider error: {0}")]
     Provider(#[source] anyhow::Error),
@@ -17,17 +19,11 @@ pub enum XyError {
 impl XyError {
     /// Stable kind for logs / fastrace (`Provider`, `Tool`, …).
     pub fn kind(&self) -> &'static str {
-        match self {
-            Self::Provider(_) => "Provider",
-            Self::Tool(_) => "Tool",
-            Self::Session(_) => "Session",
-            Self::Config(_) => "Config",
-            Self::Aborted => "Aborted",
-        }
+        self.into()
     }
 }
 
-#[derive(Debug, thiserror::Error)]
+#[derive(Debug, thiserror::Error, IntoStaticStr)]
 pub enum XyToolError {
     #[error("invalid arguments: {0}")]
     InvalidArgs(String),
@@ -44,13 +40,7 @@ pub enum XyToolError {
 impl XyToolError {
     /// Stable kind for logs / fastrace (`InvalidArgs`, `Aborted`, …).
     pub fn kind(&self) -> &'static str {
-        match self {
-            Self::InvalidArgs(_) => "InvalidArgs",
-            Self::ExecutionFailed(_) => "ExecutionFailed",
-            Self::PermissionDenied(_) => "PermissionDenied",
-            Self::Timeout(_) => "Timeout",
-            Self::Aborted => "Aborted",
-        }
+        self.into()
     }
 }
 

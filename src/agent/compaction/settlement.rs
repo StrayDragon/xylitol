@@ -11,6 +11,8 @@
 
 use std::sync::atomic::{AtomicU64, Ordering};
 
+use strum::IntoStaticStr;
+
 use crate::protocol::model::ContextTokenEstimate;
 use crate::protocol::session::SessionEntry;
 
@@ -29,7 +31,8 @@ pub fn next_settlement_generation() -> u64 {
 ///
 /// Future: `CachePolicyChanged` / `ProviderHintStale` — only add the variant +
 /// invalidator mapping; keep one settle → many consumers.
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, IntoStaticStr)]
+#[strum(serialize_all = "snake_case")]
 pub enum ContextTokenSettlementReason {
     /// ReAct turn settled (threshold / overflow pre-check path).
     TurnSettled,
@@ -45,13 +48,7 @@ pub enum ContextTokenSettlementReason {
 
 impl ContextTokenSettlementReason {
     pub fn as_str(self) -> &'static str {
-        match self {
-            Self::TurnSettled => "turn_settled",
-            Self::AfterCompaction => "after_compaction",
-            Self::MidTurnUsage => "mid_turn_usage",
-            Self::LeafChanged => "leaf_changed",
-            Self::ManualRefresh => "manual_refresh",
-        }
+        self.into()
     }
 
     /// Whether this settlement should export a `token.estimate` span when the
