@@ -122,6 +122,8 @@ pub fn preflight(driver: &dyn XyDriver) -> Result<(), TuiPreflightError> {
 pub struct TuiRunOptions {
     /// `tui.editor_history_seed_sessions` (default 1).
     pub editor_history_seed_sessions: u32,
+    /// `tui.activity_fold` (c1761).
+    pub activity_fold: crate::app::tui::activity_fold::ActivityFoldSettings,
     /// True when CLI restored an existing `--session` id.
     pub restored_session: bool,
     /// Process-local ask gateway (TUI-only); host polls for Choice mounts (c1850).
@@ -136,6 +138,7 @@ impl Default for TuiRunOptions {
     fn default() -> Self {
         Self {
             editor_history_seed_sessions: 1,
+            activity_fold: crate::app::tui::activity_fold::ActivityFoldSettings::default(),
             restored_session: false,
             ask_gateway: None,
             interaction_mode: xylitol_tui::InteractionMode::ApplicationOwned,
@@ -191,6 +194,7 @@ async fn run_host_loop(
         options.interaction_mode,
     );
     session.set_editor_history_seed_sessions(options.editor_history_seed_sessions);
+    session.set_activity_fold_settings(options.activity_fold);
     if let Some(gw) = options.ask_gateway {
         session.set_ask_gateway(gw);
     }

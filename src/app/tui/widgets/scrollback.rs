@@ -9,15 +9,17 @@ use xylitol_tui::{
     truncate_to_width, visible_width, wrap_text_with_ansi,
 };
 
-use std::collections::HashMap;
+use std::collections::{HashMap, HashSet};
 
 use super::fold_hit::{FoldHitTable, FoldTarget};
 use super::glyphs::GlyphSet;
 use crate::app::tui::activity_fold::{
-    ActivityFoldState, SegmentLevel, count_segment, format_summary_line, middle_entry_indices,
-    partition_segments,
+    ActivityFoldState, SegmentLevel, cluster_middle_indices, count_cluster, count_segment,
+    format_cluster_header, format_summary_line, middle_entry_indices, partition_segments,
 };
-use crate::app::tui::bridge::{AskPhase, BashBlockStatus, CompactionBlockStatus, UiEntry, UiModel};
+use crate::app::tui::bridge::{
+    AskPhase, BashBlockStatus, CompactionBlockStatus, UiEntry, UiModel, UiPhase,
+};
 use crate::app::tui::layout::LayoutTheme;
 use xylitol_tui::terminal_colors::RgbColor;
 
@@ -763,55 +765,118 @@ pub fn render_scrollback(
     }
 
     let segments = partition_segments(&model.entries);
-    let mut collapsed_middle: std::collections::HashSet<usize> = std::collections::HashSet::new();
-    let mut summary_at: std::collections::HashMap<usize, usize> = std::collections::HashMap::new();
+    let has_asst_tail = streaming_assistant_displayable(model);
+    let live_seg_idx = live_window_segment_idx(model, &segments, has_asst_tail);
+    let mut skip_middle: HashSet<usize> = HashSet::new();
+    let mut skip_mid_asst: HashSet<usize> = HashSet::new();
+    let mut envelope_summary_at: HashMap<usize, usize> = HashMap::new();
+    let mut cluster_header_at: HashMap<usize, (usize, usize)> = HashMap::new();
     for (si, seg) in segments.iter().enumerate() {
-        if !activity.effective_level(&seg.id).is_collapsed() {
+        let level = activity.effective_level(&seg.id);
+        if level == SegmentLevel::L3 {
+            let mids = middle_entry_indices(&model.entries, seg);
+            if let Some(&first) = mids.first() {
+                envelope_summary_at.insert(first, si);
+            }
+            skip_middle.extend(mids);
+            skip_mid_asst.extend(seg.mid_assistant_idxs.iter().copied());
             continue;
         }
-        let mids = middle_entry_indices(&model.entries, seg);
-        if let Some(&first) = mids.first() {
-            summary_at.insert(first, si);
+        let live_seg = live_seg_idx == Some(si);
+        for (ci, cl) in seg.clusters.iter().enumerate() {
+            let expanded = activity.cluster_kids_visible(&seg.id, &cl.id, live_seg);
+            let mids = cluster_middle_indices(&model.entries, cl);
+            let sealed_nonempty = mids.iter().any(|&idx| {
+                model
+                    .entries
+                    .get(idx)
+                    .is_some_and(|e| !is_inflight_hidden(e) && !is_ask_waiting(e))
+            });
+            let is_open = is_open_live_cluster(seg, ci, live_seg);
+            // Live open cluster with only inflight: no -2 header yet (att33).
+            let paint_header = !(is_open && !sealed_nonempty);
+            if paint_header && let Some(&first) = mids.first() {
+                cluster_header_at.insert(first, (si, ci));
+            }
+            for &idx in &mids {
+                let Some(entry) = model.entries.get(idx) else {
+                    continue;
+                };
+                if is_ask_waiting(entry) {
+                    continue;
+                }
+                if is_open && is_inflight_hidden(entry) {
+                    skip_middle.insert(idx);
+                    continue;
+                }
+                if !expanded {
+                    skip_middle.insert(idx);
+                }
+            }
         }
-        collapsed_middle.extend(mids);
     }
 
     let mut need_spacer = false;
     for (entry_idx, entry) in model.entries.iter().enumerate() {
-        if collapsed_middle.contains(&entry_idx) {
-            if let Some(&si) = summary_at.get(&entry_idx) {
+        if skip_mid_asst.contains(&entry_idx) {
+            continue;
+        }
+        if skip_middle.contains(&entry_idx) {
+            if let Some(&si) = envelope_summary_at.get(&entry_idx) {
                 let seg = &segments[si];
-                let level = activity.effective_level(&seg.id);
                 if need_spacer {
                     lines.push(inter_block_spacer(width));
                 }
                 let counts = count_segment(&model.entries, seg);
                 let dur = activity.duration_for(&seg.id);
-                // L3 without reliable stamps: omit duration (att24); still L3 row.
-                let dur_ref = match level {
-                    SegmentLevel::L3 => dur.as_deref(),
-                    _ => None,
-                };
-                let plain = format_summary_line(level, glyphs, &counts, dur_ref);
-                let marker = match level {
-                    SegmentLevel::L0 => glyphs.unfold(),
-                    SegmentLevel::L2 | SegmentLevel::L3 => glyphs.fold(),
-                };
+                let plain = format_summary_line(SegmentLevel::L3, glyphs, &counts, dur.as_deref());
+                let marker = glyphs.fold();
                 let mw = marker_cols(marker);
                 let painted = theme.paint_muted(&plain);
                 let row_start = lines.len();
                 push_wrapped(&mut lines, &painted, width);
                 let row_end = lines.len();
-                // Summary is not left-railed — marker sits at content col 0 (att31).
                 fold_hits.push(row_start, 0, mw, FoldTarget::Segment(seg.id.clone()));
                 activity
                     .row_spans
                     .insert(seg.id.clone(), row_start, row_end);
                 need_spacer = true;
+            } else if let Some(&(si, ci)) = cluster_header_at.get(&entry_idx) {
+                paint_cluster_header_row(
+                    &mut lines,
+                    fold_hits,
+                    &segments,
+                    si,
+                    ci,
+                    &model.entries,
+                    activity,
+                    live_seg_idx,
+                    glyphs,
+                    theme,
+                    width,
+                    &mut need_spacer,
+                );
             }
             continue;
         }
-        if need_spacer {
+        if let Some(&(si, ci)) = cluster_header_at.get(&entry_idx) {
+            paint_cluster_header_row(
+                &mut lines,
+                fold_hits,
+                &segments,
+                si,
+                ci,
+                &model.entries,
+                activity,
+                live_seg_idx,
+                glyphs,
+                theme,
+                width,
+                &mut need_spacer,
+            );
+        }
+        let glued_to_header = cluster_header_at.contains_key(&entry_idx);
+        if need_spacer && !glued_to_header {
             lines.push(inter_block_spacer(width));
         }
         need_spacer = true;
@@ -1223,7 +1288,195 @@ pub fn render_scrollback(
         }
     }
 
+    if activity.settings.enabled
+        && model.phase == UiPhase::Busy
+        && let Some(label) = live_tail_label(model, &segments, has_asst_tail)
+    {
+        if need_spacer {
+            lines.push(inter_block_spacer(width));
+        }
+        let painted = theme.paint_muted(&label);
+        let row_start = lines.len();
+        push_wrapped(&mut lines, &painted, width);
+        fold_hits.push(row_start, 0, width.max(1), FoldTarget::LiveTail);
+    }
+
     lines
+}
+
+#[allow(clippy::too_many_arguments)] // paint planes: lines, hits, segments, activity, theme
+fn paint_cluster_header_row(
+    lines: &mut Vec<String>,
+    fold_hits: &mut FoldHitTable,
+    segments: &[crate::app::tui::activity_fold::ActivitySegment],
+    si: usize,
+    ci: usize,
+    entries: &[UiEntry],
+    activity: &ActivityFoldState,
+    live_seg_idx: Option<usize>,
+    glyphs: GlyphSet,
+    theme: LayoutTheme,
+    width: usize,
+    need_spacer: &mut bool,
+) {
+    let seg = &segments[si];
+    let cl = &seg.clusters[ci];
+    if *need_spacer {
+        lines.push(inter_block_spacer(width));
+    }
+    let live_seg = live_seg_idx == Some(si);
+    let expanded = activity.cluster_kids_visible(&seg.id, &cl.id, live_seg);
+    let progressive = is_open_live_cluster(seg, ci, live_seg);
+    let counts = count_cluster(entries, cl);
+    let plain = format_cluster_header(glyphs, &counts, expanded, progressive);
+    let marker = if expanded {
+        glyphs.unfold()
+    } else {
+        glyphs.fold()
+    };
+    let mw = marker_cols(marker);
+    let painted = theme.paint_muted(&plain);
+    let row_start = lines.len();
+    push_wrapped(lines, &painted, width);
+    fold_hits.push(row_start, 0, mw, FoldTarget::Cluster(cl.id.clone()));
+    *need_spacer = true;
+}
+
+fn is_open_live_cluster(
+    seg: &crate::app::tui::activity_fold::ActivitySegment,
+    ci: usize,
+    live_seg: bool,
+) -> bool {
+    live_seg && ci + 1 == seg.clusters.len() && seg.clusters[ci].seal_assistant_idx.is_none()
+}
+
+fn streaming_assistant_displayable(model: &UiModel) -> bool {
+    model
+        .streaming_scrollback_tails()
+        .iter()
+        .any(|(kind, text)| *kind == "assistant" && text.chars().any(|c| !c.is_whitespace()))
+}
+
+fn live_window_segment_idx(
+    model: &UiModel,
+    segments: &[crate::app::tui::activity_fold::ActivitySegment],
+    has_asst_tail: bool,
+) -> Option<usize> {
+    if model.phase != UiPhase::Busy || has_asst_tail {
+        return None;
+    }
+    let (si, seg) = segments.iter().enumerate().next_back()?;
+    let last = seg.clusters.last()?;
+    if last.seal_assistant_idx.is_some() {
+        return None;
+    }
+    Some(si)
+}
+
+fn is_ask_waiting(entry: &UiEntry) -> bool {
+    matches!(
+        entry,
+        UiEntry::Ask {
+            phase: AskPhase::Waiting,
+            ..
+        }
+    )
+}
+
+fn is_inflight_hidden(entry: &UiEntry) -> bool {
+    matches!(
+        entry,
+        UiEntry::Tool { done: false, .. }
+            | UiEntry::Bash {
+                status: BashBlockStatus::Pending,
+                ..
+            }
+    )
+}
+
+fn inflight_short_label(entry: &UiEntry) -> Option<String> {
+    match entry {
+        UiEntry::Tool {
+            done: false,
+            name,
+            args_preview,
+            tool_path,
+            ..
+        } => {
+            let file = tool_path
+                .as_deref()
+                .filter(|s| !s.is_empty())
+                .unwrap_or(args_preview.as_str());
+            let file = if file.is_empty() { name.as_str() } else { file };
+            let n = name.to_ascii_lowercase();
+            let label = if matches!(
+                n.as_str(),
+                "edit" | "write" | "apply_patch" | "strreplace" | "str_replace"
+            ) {
+                format!("Editing {file}")
+            } else if n == "read" || n == "cat" {
+                format!("Reading {file}")
+            } else if is_searchish(&n) {
+                format!("Searching {file}")
+            } else if matches!(
+                n.as_str(),
+                "bash" | "shell" | "run_terminal_cmd" | "execute"
+            ) {
+                format!("Running {file}")
+            } else {
+                format!("Running {name}")
+            };
+            Some(label)
+        }
+        UiEntry::Bash {
+            status: BashBlockStatus::Pending,
+            command,
+            ..
+        } => Some(format!("Running {command}")),
+        _ => None,
+    }
+}
+
+fn is_searchish(name: &str) -> bool {
+    matches!(
+        name,
+        "grep" | "rg" | "search" | "glob" | "find" | "codebase_search" | "semantic_search"
+    ) || name.contains("search")
+        || name.contains("grep")
+}
+
+fn live_tail_label(
+    model: &UiModel,
+    segments: &[crate::app::tui::activity_fold::ActivitySegment],
+    has_asst_tail: bool,
+) -> Option<String> {
+    if has_asst_tail {
+        return None;
+    }
+    let last_cluster_unsealed = segments.last().is_none_or(|s| {
+        s.clusters
+            .last()
+            .is_none_or(|c| c.seal_assistant_idx.is_none())
+    });
+    if !last_cluster_unsealed {
+        return None;
+    }
+    if model.entries.iter().rev().any(is_ask_waiting) {
+        return Some("Asking questions".into());
+    }
+    if let Some(seg) = segments.last()
+        && let Some(cl) = seg.clusters.last()
+    {
+        for idx in cluster_middle_indices(&model.entries, cl).into_iter().rev() {
+            if let Some(label) = model.entries.get(idx).and_then(inflight_short_label) {
+                return Some(label);
+            }
+        }
+    }
+    if !model.streaming_thinking.is_empty() {
+        return None;
+    }
+    Some("Planning next moves".into())
 }
 
 #[cfg(test)]
@@ -1702,6 +1955,39 @@ mod tests {
             lines.len() < 120,
             "scrollback must not paint hundreds of diff rows; got {}",
             lines.len()
+        );
+    }
+
+    #[test]
+    fn live_window_shows_planning_without_displayable_assistant() {
+        let mut model = UiModel::default();
+        model.phase = UiPhase::Busy;
+        model.entries.push(UiEntry::User { text: "go".into() });
+        let mut hits = FoldHitTable::default();
+        let lines = render_scrollback(
+            &model,
+            GlyphSet::from_env(),
+            LayoutTheme::product_dark(),
+            &ScrollbackFold::default(),
+            &mut crate::app::tui::activity_fold::ActivityFoldState::default(),
+            80,
+            &mut ScrollbackPaintCache::default(),
+            &mut hits,
+        );
+        let plain = strip_ansi_local(&lines.join("\n"));
+        assert!(
+            plain.contains("Planning next moves"),
+            "busy with no assistant body must show Planning: {plain}"
+        );
+        assert!(
+            !plain.contains("Worked for"),
+            "live window must not wrap current turn in Worked for: {plain}"
+        );
+        assert!(
+            hits.regions
+                .iter()
+                .any(|r| matches!(r.target, FoldTarget::LiveTail)),
+            "Planning next moves must be whole-line clickable"
         );
     }
 

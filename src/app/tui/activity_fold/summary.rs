@@ -6,7 +6,9 @@ use crate::app::tui::bridge::UiEntry;
 use crate::app::tui::keybindings::with_keybindings;
 use crate::app::tui::widgets::GlyphSet;
 
-use super::segment::{ActivitySegment, SegmentLevel, middle_entry_indices};
+use super::segment::{
+    ActivityCluster, ActivitySegment, SegmentLevel, cluster_middle_indices, middle_entry_indices,
+};
 
 /// Observable activity counters for an L2 line.
 #[derive(Debug, Clone, Default, PartialEq, Eq)]
@@ -26,12 +28,21 @@ impl ActivityCounts {
 }
 
 pub fn count_segment(entries: &[UiEntry], seg: &ActivitySegment) -> ActivityCounts {
+    count_middles(entries, &middle_entry_indices(entries, seg))
+}
+
+/// Counts for one cluster only (open-cluster -2 vs frozen -3).
+pub fn count_cluster(entries: &[UiEntry], cluster: &ActivityCluster) -> ActivityCounts {
+    count_middles(entries, &cluster_middle_indices(entries, cluster))
+}
+
+fn count_middles(entries: &[UiEntry], indices: &[usize]) -> ActivityCounts {
     let mut c = ActivityCounts::default();
     let mut plus = 0u32;
     let mut minus = 0u32;
     let mut saw_diff_stats = false;
 
-    for idx in middle_entry_indices(entries, seg) {
+    for &idx in indices {
         match &entries[idx] {
             UiEntry::Tool {
                 name,
@@ -72,8 +83,8 @@ pub fn count_segment(entries: &[UiEntry], seg: &ActivitySegment) -> ActivityCoun
         }
     }
 
-    // Thinking/Ask-only segments: keep a non-empty L2 line.
-    if c.is_empty() && !middle_entry_indices(entries, seg).is_empty() {
+    // Thinking/Ask-only clusters: keep a non-empty header.
+    if c.is_empty() && !indices.is_empty() {
         c.files = 1;
     }
 
@@ -117,10 +128,16 @@ pub fn count_diff_pm(diff: &str) -> Option<(u32, u32)> {
 }
 
 pub fn format_l2_body(counts: &ActivityCounts) -> String {
+    format_cluster_body(counts, false)
+}
+
+/// Open-cluster progressive (`Editing`) vs sealed (`Explored` / `Edited` via past).
+pub fn format_cluster_body(counts: &ActivityCounts, progressive: bool) -> String {
     let mut parts = Vec::new();
     if counts.files > 0 {
+        let verb = if progressive { "Editing" } else { "Explored" };
         parts.push(format!(
-            "Explored {} {}",
+            "{verb} {} {}",
             counts.files,
             if counts.files == 1 { "file" } else { "files" }
         ));
@@ -239,6 +256,27 @@ pub fn format_summary_line(
     format!("{marker} {body}  {hint}")
 }
 
+/// Cluster header (L2/L0). `progressive` is the live open cluster (`Editing`).
+pub fn format_cluster_header(
+    glyphs: GlyphSet,
+    counts: &ActivityCounts,
+    expanded: bool,
+    progressive: bool,
+) -> String {
+    let marker = if expanded {
+        glyphs.unfold()
+    } else {
+        glyphs.fold()
+    };
+    let body = format_cluster_body(counts, progressive);
+    let hint = binding_chord_hint(if expanded {
+        "app.activity.collapseNearest"
+    } else {
+        "app.activity.expandNearest"
+    });
+    format!("{marker} {body}  {hint}")
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -262,5 +300,8 @@ mod tests {
         assert!(s.contains("Explored 2 files"));
         assert!(s.contains("1 search"));
         assert!(!s.contains('+'));
+        let live = format_cluster_body(&c, true);
+        assert!(live.contains("Editing 2 files"));
+        assert!(!live.contains("Explored"));
     }
 }

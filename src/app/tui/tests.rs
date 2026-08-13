@@ -2962,14 +2962,14 @@ fn harness_mouse_segment_marker_toggles_one_step() {
     }
     {
         let mut r = root.borrow_mut();
-        r.activity_mut().force_level("seg-0", SegmentLevel::L2);
+        r.activity_mut().force_level("seg-0", SegmentLevel::L3);
         r.touch_activity();
     }
     session.step(HostEvent::Tick).unwrap();
     session.tui.request_render(true);
     session.step_paint_only().unwrap();
 
-    assert_eq!(root.borrow().activity().level_of("seg-0"), SegmentLevel::L2);
+    assert_eq!(root.borrow().activity().level_of("seg-0"), SegmentLevel::L3);
     assert!(
         !root
             .borrow()
@@ -2977,7 +2977,7 @@ fn harness_mouse_segment_marker_toggles_one_step() {
             .regions
             .iter()
             .any(|r| matches!(&r.target, FoldTarget::Tool(id) if id == "tool-l2")),
-        "L2 segment MUST NOT register L1 hits for collapsed middles"
+        "L3 envelope MUST NOT register L1 hits for collapsed middles"
     );
     let seg_hit = root
         .borrow()
@@ -3019,14 +3019,14 @@ fn harness_mouse_segment_marker_toggles_one_step() {
         .unwrap();
     assert_eq!(
         root.borrow().activity().level_of("seg-0"),
-        SegmentLevel::L0,
-        "Segment marker click MUST expand one step (L2→L0)"
+        SegmentLevel::L2,
+        "Segment marker click MUST expand one step (L3→L2)"
     );
 
     // Re-collapse and confirm body column does not toggle.
     {
         let mut r = root.borrow_mut();
-        r.activity_mut().force_level("seg-0", SegmentLevel::L2);
+        r.activity_mut().force_level("seg-0", SegmentLevel::L3);
         r.touch_activity();
     }
     session.tui.request_render(true);
@@ -3052,7 +3052,7 @@ fn harness_mouse_segment_marker_toggles_one_step() {
         .unwrap();
     assert_eq!(
         root.borrow().activity().level_of("seg-0"),
-        SegmentLevel::L2,
+        SegmentLevel::L3,
         "summary body click MUST NOT toggle segment"
     );
 
@@ -3076,8 +3076,8 @@ fn harness_mouse_segment_marker_toggles_one_step() {
     );
     assert_eq!(
         root.borrow().activity().level_of("seg-0"),
-        SegmentLevel::L2,
-        "L1 tool click MUST NOT change L2 segment level"
+        SegmentLevel::L3,
+        "L1 tool click MUST NOT change L3 envelope level"
     );
 }
 
@@ -3980,7 +3980,7 @@ fn activity_fold_att26_auto_degrade_keeps_recent_and_streaming() {
 
     let mut root = UiRoot::new();
     let mut model = UiModel::new();
-    // 4 activity turns; keep_recent=2 → oldest two crush to L2.
+    // 4 activity turns; keep_recent=2 → oldest two crush to envelope L3.
     for i in 0..4 {
         model.entries.extend(activity_turn(
             &format!("u{i}"),
@@ -3996,8 +3996,8 @@ fn activity_fold_att26_auto_degrade_keeps_recent_and_streaming() {
         root.activity_mut()
             .auto_degrade(&model.entries, AutoTrigger::Rebuild, false)
     );
-    assert_eq!(root.activity().level_of("seg-0"), SegmentLevel::L2);
-    assert_eq!(root.activity().level_of("seg-3"), SegmentLevel::L2);
+    assert_eq!(root.activity().level_of("seg-0"), SegmentLevel::L3);
+    assert_eq!(root.activity().level_of("seg-3"), SegmentLevel::L3);
     // recent window (last 2): user idxs 6 and 9 → seg-6, seg-9
     assert_eq!(root.activity().level_of("seg-6"), SegmentLevel::L0);
     assert_eq!(root.activity().level_of("seg-9"), SegmentLevel::L0);
@@ -4073,16 +4073,15 @@ fn activity_fold_att28_expand_collapse_nearest_and_silent() {
         super::activity_fold::AutoTrigger::Rebuild,
         false,
     );
-    assert_eq!(root.activity().level_of("seg-0"), SegmentLevel::L2);
+    assert_eq!(root.activity().level_of("seg-0"), SegmentLevel::L3);
 
-    // Expand nearest collapsed (seg-0 is only L2; seg-3 is also L2 if keep=2 with 3 turns)
-    // 3 turns → crush only oldest (from_newest>=2): seg-0
+    // 3 turns → crush only oldest (from_newest>=2): seg-0 at envelope floor
     assert!(root.expand_nearest_activity());
-    assert_eq!(root.activity().level_of("seg-0"), SegmentLevel::L0);
-
-    // Collapse nearest eligible: expanded-back seg-0 is entered → collapse ok
-    assert!(root.collapse_nearest_activity());
     assert_eq!(root.activity().level_of("seg-0"), SegmentLevel::L2);
+
+    // Collapse nearest eligible: entered L2 → floor L3
+    assert!(root.collapse_nearest_activity());
+    assert_eq!(root.activity().level_of("seg-0"), SegmentLevel::L3);
 
     // Silent expand when no L2/L3; silent collapse when only virgin recent-window L0.
     let mut quiet_model = UiModel::new();
@@ -4143,5 +4142,358 @@ fn activity_fold_att25_level_switch_local_paint_misses() {
     assert!(
         misses <= 3,
         "segment level switch must not re-Markdown all assistants; misses={misses}"
+    );
+}
+
+#[test]
+fn activity_fold_att31_expand_header_then_collapse() {
+    use super::activity_fold::SegmentLevel;
+    use super::layout::UiRoot;
+    use super::widgets::FoldTarget;
+
+    let mut root = UiRoot::new();
+    let mut model = UiModel::new();
+    model
+        .entries
+        .extend(activity_turn("u", "only", "x.rs", "asst"));
+    root.apply_ui_model(&model);
+    root.activity_mut().force_level("seg-0", SegmentLevel::L2);
+    root.touch_activity();
+    let _ = root.render(100);
+    root.toggle_fold_target(FoldTarget::Cluster("seg-0:c0".into()));
+    let expanded = strip_ansi_activity(&root.render(100).join("\n"));
+    assert!(
+        expanded.contains("x.rs") || expanded.contains("read"),
+        "cluster expand must reveal L1: {expanded}"
+    );
+    root.toggle_fold_target(FoldTarget::Cluster("seg-0:c0".into()));
+    let collapsed = strip_ansi_activity(&root.render(100).join("\n"));
+    assert!(
+        collapsed.contains("Explored") || collapsed.contains("file"),
+        "header remains after collapse: {collapsed}"
+    );
+    assert!(
+        !collapsed.contains("x.rs\nok"),
+        "collapsed cluster must hide tool body: {collapsed}"
+    );
+}
+
+#[test]
+fn activity_fold_nested_mouse_envelope_vs_cluster() {
+    use super::activity_fold::SegmentLevel;
+    use super::layout::UiRoot;
+    use super::widgets::FoldTarget;
+
+    let mut root = UiRoot::new();
+    let mut model = UiModel::new();
+    model
+        .entries
+        .push(super::bridge::UiEntry::User { text: "u".into() });
+    model.entries.push(super::bridge::UiEntry::Tool {
+        id: "c0".into(),
+        name: "read".into(),
+        args_preview: "a.rs".into(),
+        tool_path: Some("a.rs".into()),
+        write_content: None,
+        display_diff: None,
+        output: "ok0".into(),
+        is_error: false,
+        done: true,
+    });
+    model
+        .entries
+        .push(super::bridge::UiEntry::Assistant { text: "mid".into() });
+    model.entries.push(super::bridge::UiEntry::Tool {
+        id: "c1".into(),
+        name: "read".into(),
+        args_preview: "b.rs".into(),
+        tool_path: Some("b.rs".into()),
+        write_content: None,
+        display_diff: None,
+        output: "ok1".into(),
+        is_error: false,
+        done: true,
+    });
+    model.entries.push(super::bridge::UiEntry::Assistant {
+        text: "last".into(),
+    });
+    root.apply_ui_model(&model);
+    root.activity_mut().force_level("seg-0", SegmentLevel::L2);
+    root.touch_activity();
+    let _ = root.render(100);
+    assert!(
+        root.fold_hits()
+            .regions
+            .iter()
+            .any(|reg| matches!(&reg.target, FoldTarget::Cluster(id) if id == "seg-0:c0"))
+    );
+    assert!(
+        root.fold_hits()
+            .regions
+            .iter()
+            .any(|reg| matches!(&reg.target, FoldTarget::Cluster(id) if id == "seg-0:c1"))
+    );
+    root.toggle_fold_target(FoldTarget::Cluster("seg-0:c0".into()));
+    let _ = root.render(100);
+    assert_eq!(root.activity().level_of("seg-0"), SegmentLevel::L2);
+    assert!(
+        root.fold_hits()
+            .regions
+            .iter()
+            .any(|r| matches!(&r.target, FoldTarget::Tool(id) if id == "c0")),
+        "opening cluster 0 must reveal its L1"
+    );
+    assert!(
+        !root
+            .fold_hits()
+            .regions
+            .iter()
+            .any(|r| matches!(&r.target, FoldTarget::Tool(id) if id == "c1")),
+        "cluster 1 must stay collapsed"
+    );
+}
+
+#[test]
+fn activity_fold_att26_rebuild_paints_worked_for() {
+    use super::activity_fold::{AutoTrigger, SegmentLevel};
+    use super::layout::UiRoot;
+
+    let mut root = UiRoot::new();
+    let mut model = UiModel::new();
+    for i in 0..4 {
+        model.entries.extend(activity_turn(
+            &format!("u{i}"),
+            &format!("t{i}"),
+            &format!("f{i}.rs"),
+            &format!("a{i}"),
+        ));
+    }
+    root.apply_ui_model(&model);
+    root.activity_mut()
+        .auto_degrade(&model.entries, AutoTrigger::Rebuild, false);
+    root.touch_activity();
+    let plain = strip_ansi_activity(&root.render(100).join("\n"));
+    assert!(
+        plain.contains("Worked for"),
+        "distant ended turns must paint envelope: {plain}"
+    );
+    assert_eq!(root.activity().level_of("seg-0"), SegmentLevel::L3);
+    assert_eq!(root.activity().level_of("seg-9"), SegmentLevel::L0);
+}
+
+#[test]
+fn activity_fold_att33_live_planning_and_open_cluster_updates() {
+    use super::layout::UiRoot;
+
+    let mut root = UiRoot::new();
+    let mut model = UiModel::new();
+    model.phase = UiPhase::Busy;
+    model
+        .entries
+        .push(super::bridge::UiEntry::User { text: "u".into() });
+    root.apply_ui_model(&model);
+    let empty = strip_ansi_activity(&root.render(100).join("\n"));
+    assert!(
+        empty.contains("Planning next moves"),
+        "no displayable assistant → Planning: {empty}"
+    );
+
+    model.entries.push(super::bridge::UiEntry::Tool {
+        id: "sealed".into(),
+        name: "read".into(),
+        args_preview: "old.rs".into(),
+        tool_path: Some("old.rs".into()),
+        write_content: None,
+        display_diff: None,
+        output: "ok".into(),
+        is_error: false,
+        done: true,
+    });
+    model
+        .entries
+        .push(super::bridge::UiEntry::Assistant { text: "mid".into() });
+    model.entries.push(super::bridge::UiEntry::Tool {
+        id: "open1".into(),
+        name: "edit".into(),
+        args_preview: "a.rs".into(),
+        tool_path: Some("a.rs".into()),
+        write_content: None,
+        display_diff: Some("+a\n-b\n".into()),
+        output: String::new(),
+        is_error: false,
+        done: true,
+    });
+    root.apply_ui_model(&model);
+    let before = strip_ansi_activity(&root.render(100).join("\n"));
+    assert!(
+        before.contains("Planning next moves"),
+        "open cluster still unsealed → Planning: {before}"
+    );
+    assert!(
+        before.contains("Explored") || before.contains("Editing"),
+        "cluster headers present: {before}"
+    );
+    let frozen = before
+        .lines()
+        .find(|l| l.contains("Explored"))
+        .unwrap_or("")
+        .to_string();
+
+    model.entries.push(super::bridge::UiEntry::Tool {
+        id: "open2".into(),
+        name: "edit".into(),
+        args_preview: "b.rs".into(),
+        tool_path: Some("b.rs".into()),
+        write_content: None,
+        display_diff: Some("+x\n".into()),
+        output: String::new(),
+        is_error: false,
+        done: true,
+    });
+    root.apply_ui_model(&model);
+    let after = strip_ansi_activity(&root.render(100).join("\n"));
+    let frozen_after = after
+        .lines()
+        .find(|l| l.contains("Explored"))
+        .unwrap_or("")
+        .to_string();
+    assert_eq!(
+        frozen, frozen_after,
+        "sealed -3 header must not change when open cluster updates"
+    );
+    assert!(
+        after.contains("Editing 2 files") || after.contains("+2") || after.contains("+1"),
+        "open cluster -2 must update counts: {after}"
+    );
+}
+
+#[test]
+fn activity_fold_att33_ask_waiting_stays_clickable() {
+    use super::bridge::AskPhase;
+    use super::widgets::FoldTarget;
+    use crossterm::event::{KeyModifiers, MouseButton, MouseEvent, MouseEventKind};
+
+    let mut session = HostSession::new_product_ui(TestTerminal::new(100, 32));
+    let root = session.ui_root().expect("product ui").clone();
+    {
+        let mut model = session.ui_model().clone();
+        model.phase = UiPhase::Busy;
+        model
+            .entries
+            .push(super::bridge::UiEntry::User { text: "u".into() });
+        model.entries.push(super::bridge::UiEntry::Ask {
+            id: "ask-live".into(),
+            summary: "Ask · choose".into(),
+            detail_lines: vec!["ask-live-detail".into()],
+            phase: AskPhase::Waiting,
+            expanded: true,
+        });
+        *session.ui_model_mut() = model;
+        session.sync_ui_root_from_model();
+    }
+    session.step(HostEvent::Tick).unwrap();
+    session.tui.request_render(true);
+    session.step_paint_only().unwrap();
+
+    let plain = strip_ansi_activity(&root.borrow_mut().render(100).join("\n"));
+    assert!(
+        plain.contains("Asking questions"),
+        "Ask waiting must label the live tail: {plain}"
+    );
+    let region = root
+        .borrow()
+        .fold_hits()
+        .regions
+        .iter()
+        .find(|reg| matches!(&reg.target, FoldTarget::Ask(id) if id == "ask-live"))
+        .cloned()
+        .unwrap_or_else(|| {
+            panic!(
+                "Ask Waiting must stay hittable; regions={:?}",
+                root.borrow().fold_hits().regions
+            )
+        });
+    let screen_row = region
+        .content_row
+        .saturating_sub(root.borrow().fold_hits().scroll_top) as u16;
+    session
+        .step(HostEvent::Input(InputEvent::Mouse(MouseEvent {
+            kind: MouseEventKind::Down(MouseButton::Left),
+            column: region.col_start as u16,
+            row: screen_row,
+            modifiers: KeyModifiers::NONE,
+        })))
+        .unwrap();
+    assert!(
+        !root.borrow().fold().tools_effective("ask-live"),
+        "Ask Waiting triangle must remain interactive"
+    );
+}
+
+#[test]
+fn activity_fold_att33_planning_click_expands_open_cluster() {
+    use super::layout::UiRoot;
+    use super::widgets::FoldTarget;
+
+    let mut root = UiRoot::new();
+    let mut model = UiModel::new();
+    model.phase = UiPhase::Busy;
+    model
+        .entries
+        .push(super::bridge::UiEntry::User { text: "u".into() });
+    model.entries.push(super::bridge::UiEntry::Tool {
+        id: "sealed-tool".into(),
+        name: "read".into(),
+        args_preview: "z.rs".into(),
+        tool_path: Some("z.rs".into()),
+        write_content: None,
+        display_diff: None,
+        output: "ok".into(),
+        is_error: false,
+        done: true,
+    });
+    root.apply_ui_model(&model);
+    let _ = root.render(100);
+    assert!(
+        !root
+            .fold_hits()
+            .regions
+            .iter()
+            .any(|r| matches!(&r.target, FoldTarget::Tool(id) if id == "sealed-tool")),
+        "live cluster kids hidden until Planning click"
+    );
+    assert!(
+        root.fold_hits()
+            .regions
+            .iter()
+            .any(|reg| matches!(reg.target, FoldTarget::LiveTail)),
+        "Planning next moves must register a whole-line hit"
+    );
+    root.toggle_fold_target(FoldTarget::LiveTail);
+    let _ = root.render(100);
+    assert!(
+        root.fold_hits()
+            .regions
+            .iter()
+            .any(|r| matches!(&r.target, FoldTarget::Tool(id) if id == "sealed-tool")),
+        "Planning click must reveal sealed kids"
+    );
+}
+
+#[test]
+fn activity_fold_att33_live_window_tape_reproduces_stream() {
+    use super::activity_fold::{replay_live_window, strip_ansi_live_window};
+    use super::layout::UiRoot;
+
+    let mut root = UiRoot::new();
+    let mut model = UiModel::new();
+    let report = replay_live_window(&mut model, |m| {
+        root.apply_ui_model(m);
+        strip_ansi_live_window(&root.render(100).join("\n"))
+    });
+    assert!(
+        report.ok,
+        "live-window tape failed:\n{}",
+        report.lines.join("\n")
     );
 }

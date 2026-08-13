@@ -46,17 +46,34 @@ impl SegmentLevel {
     pub fn is_collapsed(self) -> bool {
         matches!(self, Self::L2 | Self::L3)
     }
+
+    pub(crate) fn rank_public(self) -> u8 {
+        self.rank()
+    }
 }
 
-/// One Activity segment: User + foldable middles + optional final Assistant.
+/// One cluster inside an envelope (split by displayable assistant body, att34).
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct ActivityCluster {
+    /// `seg-{user_idx}:c{ord}`
+    pub id: String,
+    pub middle: Range<usize>,
+    /// Assistant row that sealed this cluster, if any.
+    pub seal_assistant_idx: Option<usize>,
+}
+
+/// One Activity envelope: User + foldable middles (possibly several clusters) + last Assistant.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct ActivitySegment {
     /// Stable id: `seg-{user_idx}` (entry index of the User row).
     pub id: String,
     pub user_idx: usize,
-    /// Inclusive start .. exclusive end of Tool/Thinking/Diff/Ask/Bash rows.
+    /// Inclusive start .. exclusive end covering all cluster middles.
     pub middle: Range<usize>,
+    pub clusters: Vec<ActivityCluster>,
     pub assistant_idx: Option<usize>,
+    /// Assistant rows in this turn that are not the last one (hidden when envelope collapsed).
+    pub mid_assistant_idxs: Vec<usize>,
     /// 0 = oldest activity segment in the transcript.
     pub turn_ordinal: usize,
 }
@@ -79,13 +96,19 @@ fn is_foldable_middle(entry: &UiEntry) -> bool {
             | UiEntry::Diff { .. }
             | UiEntry::Ask { .. }
             | UiEntry::Bash { .. }
+            | UiEntry::Compaction { .. }
+            | UiEntry::Todo { .. }
     )
 }
 
-/// Partition `entries` into Activity segments (att23).
+fn assistant_displayable(text: &str) -> bool {
+    text.chars().any(|c| !c.is_whitespace())
+}
+
+/// Partition `entries` into Activity envelopes (att23 / att34).
 ///
-/// ScrollNotice / Error / Compaction are never middles. A segment exists only when
-/// the turn has at least one foldable middle op.
+/// ScrollNotice / Error are never middles. Compaction / Todo are middles (in envelope).
+/// Cluster boundaries = displayable assistant body (thinking does not split).
 pub fn partition_segments(entries: &[UiEntry]) -> Vec<ActivitySegment> {
     let mut out = Vec::new();
     let mut i = 0;
@@ -103,26 +126,57 @@ pub fn partition_segments(entries: &[UiEntry]) -> Vec<ActivitySegment> {
             .map(|p| i + p)
             .unwrap_or(entries.len());
 
-        let mut middle_idxs = Vec::new();
-        let mut last_assistant: Option<usize> = None;
+        let mut clusters = Vec::new();
+        let mut open_mids: Vec<usize> = Vec::new();
+        let mut assistants: Vec<usize> = Vec::new();
+        let mut cluster_ord = 0usize;
+
+        let seal_open = |clusters: &mut Vec<ActivityCluster>,
+                         open_mids: &mut Vec<usize>,
+                         cluster_ord: &mut usize,
+                         seal: Option<usize>| {
+            if open_mids.is_empty() {
+                return;
+            }
+            let start = *open_mids.first().expect("non-empty");
+            let end = *open_mids.last().expect("non-empty") + 1;
+            clusters.push(ActivityCluster {
+                id: format!("seg-{user_idx}:c{cluster_ord}"),
+                middle: start..end,
+                seal_assistant_idx: seal,
+            });
+            *cluster_ord += 1;
+            open_mids.clear();
+        };
+
         for (j, entry) in entries.iter().enumerate().take(turn_end).skip(i) {
             match entry {
-                e if is_foldable_middle(e) => middle_idxs.push(j),
-                UiEntry::Assistant { .. } => last_assistant = Some(j),
+                e if is_foldable_middle(e) => open_mids.push(j),
+                UiEntry::Assistant { text } if assistant_displayable(text) => {
+                    assistants.push(j);
+                    seal_open(&mut clusters, &mut open_mids, &mut cluster_ord, Some(j));
+                }
                 _ => {}
             }
         }
+        seal_open(&mut clusters, &mut open_mids, &mut cluster_ord, None);
 
-        if !middle_idxs.is_empty() {
-            // Contiguous range covering all middles (may include always-visible
-            // rows in between — render still only skips foldable idxs).
-            let start = *middle_idxs.first().expect("non-empty");
-            let end = middle_idxs.last().expect("non-empty") + 1;
+        if !clusters.is_empty() {
+            let start = clusters.first().expect("non-empty").middle.start;
+            let end = clusters.last().expect("non-empty").middle.end;
+            let last_asst = assistants.last().copied();
+            let mid_assistant_idxs = if assistants.len() > 1 {
+                assistants[..assistants.len() - 1].to_vec()
+            } else {
+                Vec::new()
+            };
             out.push(ActivitySegment {
                 id: format!("seg-{user_idx}"),
                 user_idx,
                 middle: start..end,
-                assistant_idx: last_assistant,
+                clusters,
+                assistant_idx: last_asst,
+                mid_assistant_idxs,
                 turn_ordinal,
             });
             turn_ordinal += 1;
@@ -132,9 +186,18 @@ pub fn partition_segments(entries: &[UiEntry]) -> Vec<ActivitySegment> {
     out
 }
 
-/// Foldable entry indices belonging to `seg` (excludes Compaction etc. in range).
+/// Foldable entry indices belonging to `seg` (includes Compaction / Todo).
 pub fn middle_entry_indices(entries: &[UiEntry], seg: &ActivitySegment) -> Vec<usize> {
     seg.middle
+        .clone()
+        .filter(|&idx| entries.get(idx).is_some_and(is_foldable_middle))
+        .collect()
+}
+
+/// Foldable entry indices belonging to one cluster.
+pub fn cluster_middle_indices(entries: &[UiEntry], cluster: &ActivityCluster) -> Vec<usize> {
+    cluster
+        .middle
         .clone()
         .filter(|&idx| entries.get(idx).is_some_and(is_foldable_middle))
         .collect()
@@ -160,7 +223,7 @@ mod tests {
     }
 
     #[test]
-    fn partition_skips_compaction_and_empty_turns() {
+    fn partition_includes_compaction_skips_empty_and_scrollnotice() {
         let entries = vec![
             UiEntry::User { text: "u1".into() },
             tool("t1"),
@@ -178,8 +241,49 @@ mod tests {
         let segs = partition_segments(&entries);
         assert_eq!(segs.len(), 1);
         assert_eq!(segs[0].id, "seg-0");
-        assert_eq!(segs[0].middle, 1..2);
+        assert_eq!(segs[0].clusters.len(), 2);
+        assert_eq!(segs[0].clusters[0].middle, 1..2);
         assert_eq!(segs[0].assistant_idx, Some(2));
+        assert!(
+            middle_entry_indices(&entries, &segs[0]).contains(&3),
+            "compaction is an envelope middle"
+        );
+    }
+
+    #[test]
+    fn partition_splits_clusters_on_displayable_assistant() {
+        let entries = vec![
+            UiEntry::User { text: "u".into() },
+            tool("t1"),
+            UiEntry::Assistant { text: "mid".into() },
+            tool("t2"),
+            UiEntry::Assistant {
+                text: "last".into(),
+            },
+        ];
+        let segs = partition_segments(&entries);
+        assert_eq!(segs.len(), 1);
+        assert_eq!(segs[0].clusters.len(), 2);
+        assert_eq!(segs[0].clusters[0].id, "seg-0:c0");
+        assert_eq!(segs[0].clusters[1].id, "seg-0:c1");
+        assert_eq!(segs[0].mid_assistant_idxs, vec![2]);
+        assert_eq!(segs[0].assistant_idx, Some(4));
+    }
+
+    #[test]
+    fn whitespace_assistant_does_not_split() {
+        let entries = vec![
+            UiEntry::User { text: "u".into() },
+            tool("t1"),
+            UiEntry::Assistant {
+                text: "  \n".into(),
+            },
+            tool("t2"),
+            UiEntry::Assistant { text: "ok".into() },
+        ];
+        let segs = partition_segments(&entries);
+        assert_eq!(segs[0].clusters.len(), 1);
+        assert_eq!(segs[0].clusters[0].middle, 1..4);
     }
 
     #[test]

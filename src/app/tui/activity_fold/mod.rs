@@ -5,19 +5,24 @@
 //! segment state / nearest expand·collapse only.
 
 mod degrade;
+mod live_tape;
 mod segment;
 mod settings;
 mod state;
 mod summary;
 
 pub use degrade::AutoTrigger;
-pub use segment::{SegmentLevel, middle_entry_indices, partition_segments};
-#[allow(unused_imports)] // settings surface for host/options later
+pub use live_tape::{replay_live_window, strip_ansi as strip_ansi_live_window};
+#[allow(unused_imports)]
+pub use segment::ActivityCluster;
+pub use segment::{
+    ActivitySegment, SegmentLevel, cluster_middle_indices, middle_entry_indices, partition_segments,
+};
 pub use settings::ActivityFoldSettings;
 #[allow(unused_imports)]
 pub use state::SegmentRowSpans;
 pub use state::{ActivityFoldState, SegmentClock};
-pub use summary::{count_segment, format_summary_line};
+pub use summary::{count_cluster, count_segment, format_cluster_header, format_summary_line};
 
 use time::OffsetDateTime;
 

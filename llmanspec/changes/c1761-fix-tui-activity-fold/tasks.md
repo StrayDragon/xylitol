@@ -9,7 +9,7 @@
 |---|---|---|
 | 0 Designed 规划壳 | 进行中 | proposal + design + tasks |
 | 1 Specs landing | ✅ | 已 commit live specs |
-| 2–7 Apply | 未开始 | `readyToImplement` 后 |
+| 2–7 Apply | ✅ | 配置 / 簇状态 / live window paint / harness |
 
 ---
 
@@ -33,42 +33,42 @@
 
 ### 2. 配置面
 
-- [ ] 2.1 `TuiConfig.activity_fold` + 枚举 `envelope` / `clusters`；schema / example 模板
-- [ ] 2.2 映射到 `ActivityFoldSettings`；host 启动装入；`enabled: false` 全细账
-- [ ] 2.3 配置单测：缺省、解析、非法枚举失败
+- [x] 2.1 `TuiConfig.activity_fold` + 枚举 `envelope` / `clusters`；schema / example 模板
+- [x] 2.2 映射到 `ActivityFoldSettings`；host 启动装入；`enabled: false` 全细账
+- [x] 2.3 配置单测：缺省、解析、非法枚举失败
 
 ### 3. 嵌套状态
 
-- [ ] 3.1 簇切分主刀 = 助手正文（thinking 不切）；live ≡ rebuild
-- [ ] 3.2 信封展开态 + 每簇展开态；与 `ScrollbackFold` 分离
-- [ ] 3.3 `toggle` 定点一级；`expandNearest` / `collapseNearest` 走嵌套栈
+- [x] 3.1 簇切分主刀 = 助手正文（thinking 不切）；live ≡ rebuild
+- [x] 3.2 信封展开态 + 每簇展开态；与 `ScrollbackFold` 分离
+- [x] 3.3 `toggle` 定点一级；`expandNearest` / `collapseNearest` 走嵌套栈
 
 ### 4. Paint + 持久头行
 
-- [ ] 4.1 信封/簇展开后仍画头行 + `▾` 并登记 hit
-- [ ] 4.2 信封折叠只画 Worked for；不登记内层 hit
-- [ ] 4.3 User 外显；信封折叠时只留 **最后** Assistant；Todo/Compaction **进**信封；ScrollNotice/Error 不进
-- [ ] 4.4 流式当前 turn：live window（不套信封）；-1 尾行状态机；-2 进行时簇头
-- [ ] 4.6 打开簇 = sealed 队列 + inflight 尾行；点 Planning = 展开 -2；三角只在 -2 且 sealed 非空
-- [ ] 5.4 展开只画已缓存摘要 + entry 下标；禁止点击时全量重分区
+- [x] 4.1 信封/簇展开后仍画头行 + `▾` 并登记 hit
+- [x] 4.2 信封折叠只画 Worked for；不登记内层 hit
+- [x] 4.3 User 外显；信封折叠时只留 **最后** Assistant；Todo/Compaction **进**信封；ScrollNotice/Error 不进
+- [x] 4.4 流式当前 turn：live window（不套信封）；-1 尾行状态机；-2 进行时簇头
+- [x] 4.6 打开簇 = sealed 队列 + inflight 尾行；点 Planning = 展开 -2；三角只在 -2 且 sealed 非空
+- [x] 5.4 展开只画已缓存摘要 + entry 下标；禁止点击时全量重分区
 
 ### 5. 增量刷新
 
-- [ ] 5.1 ToolEnd 只更新 -2；ThinkingDelta 只更新 -1；-3 冻
-- [ ] 5.2 TextDelta MUST NOT 重算 -2/-3 / 全历史 MD
-- [ ] 5.3 toggle 遵守 ath25
+- [x] 5.1 ToolEnd 只更新 -2；ThinkingDelta 只更新 -1；-3 冻
+- [x] 5.2 TextDelta MUST NOT 重算 -2/-3 / 全历史 MD
+- [x] 5.3 toggle 遵守 ath25
 
 ### 6. 验证
 
-- [ ] 6.1 harness：展开后再点头行可折；嵌套两级鼠标互不误伤
-- [ ] 6.2 resume/`auto_on_rebuild`：超窗 `Worked for`；近窗信封展开
-- [ ] 6.3 流式：无正文见 Planning next moves；ToolEnd 后 -2 变、-3 不变；Ask Waiting 可点
-- [ ] 6.4 `just fmt` + 相关测
+- [x] 6.1 harness：展开后再点头行可折；嵌套两级鼠标互不误伤
+- [x] 6.2 resume/`auto_on_rebuild`：超窗 `Worked for`；近窗信封展开
+- [x] 6.3 流式：无正文见 Planning next moves；ToolEnd 后 -2 变、-3 不变；Ask Waiting 可点
+- [x] 6.4 `just fmt` + 相关测
 
 ### 7. 收口
 
-- [ ] 7.1 `llman sdd validate c1761-fix-tui-activity-fold --strict --no-check`
-- [ ] 7.2 确认未把 Compact 头行 / L1 四类重做算进本票
+- [x] 7.1 `llman sdd validate c1761-fix-tui-activity-fold --strict --no-check`
+- [x] 7.2 确认未把 Compact 头行 / L1 四类重做算进本票
 
 ## 实现顺序
 
