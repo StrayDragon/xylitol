@@ -58,3 +58,4 @@
 
 - [x] 6.1 `llman sdd validate c1762-update-tui-activity-fold-labels --strict --no-check`
 - [x] 6.2 确认未改 att34、未接线 c1770、未改非 thinking 的 L1 工具动词
+- [x] 6.3 混簇不用 Thought 聚合头（todo_* 当未知工具 Used）；resume 用相邻墙钟恢复 `Thought {Ns}`

@@ -44,7 +44,8 @@ c1761 把中间操作收进信封/簇之后，簇头仍会**虚构**类目：Thi
 | 簇头混合 | 文件层互斥：有 edit/write/apply_patch/str_replace → 只写 Edited；否则有 read/ls/search → Explored。禁止 `Edited …, explored …` |
 | 命令 | 真实 shell 才写 `Ran N commands`（进行时 `Running`）。bash-only **不**叫 Explored |
 | 辅助类 | thinking / MCP / compaction **不**进混合簇头；四类（文件 Edited/Explored + Ran）皆空才回退 |
-| MCP / 未知 | `Used`，永不进 Explored |
+| MCP / 未知 / todo_* | `Used`，永不进 Explored；**不**为 Todo 单开簇头类目 |
+| 中途思考 | **不改 att34**：同一轮中途 thinking 留在打开簇；簇头跟真实工具走，L1 才是 `Thought {Ns}` |
 | compaction 独簇 | 不另画簇头 |
 | 计数 | 去重 path；N=1 basename；命令按次 |
 | +/- | ToolEnd 聚合 `display_diff`；c1770 不进本票 |
@@ -78,7 +79,7 @@ c1761 把中间操作收进信封/簇之后，簇头仍会**虚构**类目：Thi
 |---|---|---|
 | 1 | 范围 vs 打开 att34 | **已钉**：不改簇切刀；先修词表 |
 | 2 | 簇头动词集合 | **已钉**：Edited XOR Explored + 可选 Ran；空则 Thought/Used/Asking；compaction 独簇无簇头 |
-| 3 | 工具归属 | **已钉**：改写→Edited；read/ls/search→Explored；bash→Ran；MCP/未知→Used |
+| 3 | 工具归属 | **已钉**：改写→Edited；read/ls/search→Explored；bash→Ran；MCP/未知/`todo_*`→Used（不单开 Todo 簇头） |
 | 4 | N 与文件名 | **已钉**：去重 path；N=1 basename |
 | 5 | 树与 compaction | **已钉**：扁平；独簇不套头 |
 | 6 | +/- | **已钉**：ToolEnd `display_diff`；c1770 另票 |
