@@ -1,12 +1,14 @@
 //! [`XyDriverError`] — typed failures for the shared application driver protocol.
 
+use strum::IntoStaticStr;
+
 use crate::protocol::error::{XyError, XyToolError};
 
 /// Errors from [`super::driver::XyDriver`] (整机遥控器 / 多面共享应用协议).
 ///
 /// Distinct from [`XyError`] (ReAct / provider / tool hot path). Agent-loop
 /// failures that surface through the driver are wrapped as [`Self::Agent`].
-#[derive(Debug, thiserror::Error)]
+#[derive(Debug, thiserror::Error, IntoStaticStr)]
 pub enum XyDriverError {
     /// Resource missing (session, entry, path, …).
     #[error("not found: {0}")]
@@ -43,15 +45,7 @@ pub enum XyDriverError {
 impl XyDriverError {
     /// Stable kind for logs / fastrace (`NotFound`, `Agent`, …).
     pub fn kind(&self) -> &'static str {
-        match self {
-            Self::NotFound(_) => "NotFound",
-            Self::Unsupported(_) => "Unsupported",
-            Self::InvalidInput(_) => "InvalidInput",
-            Self::Io(_) => "Io",
-            Self::Remote(_) => "Remote",
-            Self::Agent(_) => "Agent",
-            Self::Message(_) => "Message",
-        }
+        self.into()
     }
 
     /// Nested hot-path kind when [`Self::Agent`]; otherwise same as [`Self::kind`].

@@ -7,9 +7,16 @@ use std::collections::HashMap;
 use std::path::PathBuf;
 use std::sync::{Arc, RwLock};
 
-use chrono::Utc;
 use serde_json::Value;
+use time::OffsetDateTime;
 use uuid::Uuid;
+
+/// RFC3339 seconds format used across session JSONL timestamps.
+fn rfc3339_now() -> String {
+    OffsetDateTime::now_utc()
+        .format(&time::format_description::well_known::Rfc3339)
+        .expect("RFC3339 format is infallible for valid times")
+}
 
 use super::types::*;
 use crate::protocol::ports::XySessionStore;
@@ -269,7 +276,7 @@ impl SessionManager {
             entry_type: "session".into(),
             version: SESSION_VERSION,
             id: id.to_string(),
-            timestamp: Utc::now().to_rfc3339(),
+            timestamp: rfc3339_now(),
             cwd: cwd.unwrap_or(".").to_string(),
             parent_session: parent_session.map(String::from),
         });
@@ -380,7 +387,7 @@ impl SessionManager {
                                     entry_type: "session".into(),
                                     version: SESSION_VERSION,
                                     id: session_id.to_string(),
-                                    timestamp: Utc::now().to_rfc3339(),
+                                    timestamp: rfc3339_now(),
                                     cwd: ".".into(),
                                     parent_session: None,
                                 }),
@@ -410,7 +417,7 @@ impl SessionManager {
     fn inject_ids(&self, session_id: &str, entry: &SessionEntry) -> SessionEntry {
         let new_id = Uuid::new_v4().to_string();
         let parent_id = self.get_leaf(session_id);
-        let now = Utc::now().to_rfc3339();
+        let now = rfc3339_now();
 
         // Create a new entry with injected ids
         Self::clone_entry_with_ids(entry, &new_id, parent_id.as_deref(), &now)
@@ -1599,8 +1606,11 @@ impl XySessionStore for SessionManager {
                     if !h.cwd.is_empty() {
                         cwd = Some(h.cwd.clone());
                     }
-                    if let Ok(dt) = chrono::DateTime::parse_from_rfc3339(&h.timestamp) {
-                        modified_unix = Some(dt.timestamp().max(0) as u64);
+                    if let Ok(dt) = time::OffsetDateTime::parse(
+                        &h.timestamp,
+                        &time::format_description::well_known::Rfc3339,
+                    ) {
+                        modified_unix = Some(dt.unix_timestamp().max(0) as u64);
                     }
                     continue;
                 }

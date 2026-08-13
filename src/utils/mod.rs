@@ -7,4 +7,4 @@ pub(crate) mod sync;
 pub mod text;
 
 pub(crate) use sync::lock_mutex;
-pub use text::xml_escape;
+pub use text::{today_yyyy_mm_dd, xml_escape};

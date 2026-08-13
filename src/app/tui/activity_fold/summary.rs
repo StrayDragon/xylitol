@@ -1,6 +1,6 @@
 //! L2 count summary + L3 Worked-for lines (att24 / att27).
 
-use chrono::{DateTime, Utc};
+use time::OffsetDateTime;
 
 use crate::app::tui::bridge::UiEntry;
 use crate::app::tui::keybindings::with_keybindings;
@@ -158,8 +158,8 @@ pub fn format_l2_body(counts: &ActivityCounts) -> String {
     body
 }
 
-pub fn format_duration(start: DateTime<Utc>, end: DateTime<Utc>) -> Option<String> {
-    let secs = (end - start).num_seconds();
+pub fn format_duration(start: OffsetDateTime, end: OffsetDateTime) -> Option<String> {
+    let secs = (end - start).whole_seconds();
     if secs < 0 {
         return None;
     }

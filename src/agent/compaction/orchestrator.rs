@@ -428,9 +428,9 @@ fn latest_compaction_ms(entries: &[SessionEntry]) -> Option<u64> {
 }
 
 fn parse_rfc3339_ms(ts: &str) -> Option<u64> {
-    chrono::DateTime::parse_from_rfc3339(ts)
+    time::OffsetDateTime::parse(ts, &time::format_description::well_known::Rfc3339)
         .ok()
-        .map(|dt| dt.timestamp_millis().max(0) as u64)
+        .map(|dt| (dt.unix_timestamp() * 1000 + dt.millisecond() as i64).max(0) as u64)
 }
 
 fn assistant_is_stale_vs_compaction(

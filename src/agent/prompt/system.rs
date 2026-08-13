@@ -163,7 +163,7 @@ pub fn build_system_prompt(opts: &SystemPromptOpts) -> String {
             let date = opts
                 .date
                 .clone()
-                .unwrap_or_else(|| chrono::Utc::now().format("%Y-%m-%d").to_string());
+                .unwrap_or_else(crate::utils::today_yyyy_mm_dd);
             prompt.push_str(&format!("\nCurrent date: {date}"));
         }
     }

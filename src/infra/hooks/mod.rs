@@ -6,6 +6,8 @@
 //!
 //! Built-in, config-gated (empty hooks list = no-op).
 
+use strum::{EnumString, IntoStaticStr};
+
 pub mod dispatcher;
 pub mod http;
 pub mod script;
@@ -17,7 +19,8 @@ pub use dispatcher::HookDispatcher;
 // ---------------------------------------------------------------------------
 
 /// Whether the hook fires before or after an event.
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, IntoStaticStr, EnumString)]
+#[strum(serialize_all = "lowercase")]
 pub enum HookPhase {
     /// Before the event (can block/modify).
     Pre,
@@ -38,10 +41,7 @@ impl HookPhase {
 
     /// Return the string representation.
     pub fn as_str(&self) -> &'static str {
-        match self {
-            HookPhase::Pre => "pre",
-            HookPhase::Post => "post",
-        }
+        self.into()
     }
 }
 

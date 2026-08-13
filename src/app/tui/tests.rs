@@ -3799,7 +3799,7 @@ fn activity_fold_att23_l2_shows_summary_keeps_user_asst_scrollnotice() {
 fn activity_fold_att24_worked_for_and_no_fake_duration_or_pm() {
     use super::activity_fold::{SegmentClock, SegmentLevel};
     use super::layout::UiRoot;
-    use chrono::{TimeZone, Utc};
+    use time::macros::datetime;
 
     let mut root = UiRoot::new();
     let mut model = UiModel::new();
@@ -3844,8 +3844,8 @@ fn activity_fold_att24_worked_for_and_no_fake_duration_or_pm() {
     root.activity_mut().set_clock(
         "seg-0",
         SegmentClock {
-            start: Some(Utc.with_ymd_and_hms(2026, 1, 1, 0, 0, 0).unwrap()),
-            end: Some(Utc.with_ymd_and_hms(2026, 1, 1, 0, 2, 3).unwrap()),
+            start: Some(datetime!(2026-01-01 0:00 UTC)),
+            end: Some(datetime!(2026-01-01 0:02:03 UTC)),
         },
     );
     root.touch_activity();

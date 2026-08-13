@@ -157,7 +157,8 @@ fn load_from_paths(
         });
     }
 
-    let config: AppConfig = serde_json::from_value(merged)?;
+    let config: AppConfig = serde_json::from_value(merged.clone())?;
+    super::validate::validate_merged_config(&merged).map_err(LoadError::Validation)?;
     config
         .validate_thinking_levels()
         .map_err(LoadError::Validation)?;

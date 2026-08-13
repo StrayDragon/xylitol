@@ -52,10 +52,16 @@ pub struct SessionEnvSnapshot {
 
 impl SessionEnvSnapshot {
     pub fn from_utc_now(cwd: impl Into<String>) -> Self {
-        let now = chrono::Utc::now();
+        let now = time::OffsetDateTime::now_utc();
+        let clock = now
+            .format(&time::format_description::well_known::Rfc3339)
+            .expect("RFC3339 format is infallible for valid times");
+        let date = now
+            .format(&time::macros::format_description!("[year]-[month]-[day]"))
+            .expect("calendar date format is infallible");
         Self {
-            date: now.format("%Y-%m-%d").to_string(),
-            clock: now.to_rfc3339_opts(chrono::SecondsFormat::Secs, true),
+            date,
+            clock,
             cwd: cwd.into(),
         }
     }

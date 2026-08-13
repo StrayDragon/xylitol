@@ -48,7 +48,7 @@ impl AgentCapabilities {
                         .prompt_opts
                         .date
                         .clone()
-                        .unwrap_or_else(|| chrono::Utc::now().format("%Y-%m-%d").to_string());
+                        .unwrap_or_else(crate::utils::today_yyyy_mm_dd);
                     self.system_date_pin = Some(pin);
                 }
                 self.prompt_opts.date = self.system_date_pin.clone();

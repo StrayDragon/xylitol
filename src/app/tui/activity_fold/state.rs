@@ -2,7 +2,7 @@
 
 use std::collections::{HashMap, HashSet};
 
-use chrono::{DateTime, Utc};
+use time::OffsetDateTime;
 
 use crate::app::tui::bridge::UiEntry;
 
@@ -30,8 +30,8 @@ impl SegmentRowSpans {
 
 #[derive(Debug, Clone, Default, PartialEq, Eq)]
 pub struct SegmentClock {
-    pub start: Option<DateTime<Utc>>,
-    pub end: Option<DateTime<Utc>>,
+    pub start: Option<OffsetDateTime>,
+    pub end: Option<OffsetDateTime>,
 }
 
 impl SegmentClock {
