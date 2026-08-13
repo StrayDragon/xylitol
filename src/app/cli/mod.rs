@@ -75,27 +75,8 @@ pub struct PrintSurfaceArgs {
     pub no_trust: bool,
 }
 
-/// Surface flags for `xylitol append-only` (c2080).
-#[derive(Args, Debug, Default, Clone, PartialEq, Eq)]
-pub struct AppendOnlySurfaceArgs {
-    #[arg(long)]
-    pub session: Option<String>,
-    #[arg(long)]
-    pub model: Option<String>,
-    #[arg(long)]
-    pub config: Option<String>,
-    #[arg(long)]
-    pub list_models: bool,
-    /// Trust the project directory and load its `.xylitol/` resources.
-    #[arg(long)]
-    pub trust: bool,
-    /// Do not trust the project directory; skip its `.xylitol/` resources.
-    #[arg(long)]
-    pub no_trust: bool,
-}
-
 /// Top-level subcommand. When absent: TTY → TUI; non-TTY → print (stdin).
-/// Surface verbs (`tui` / `print` / `append-only`) vs ops (`resources` / …).
+/// Surface verbs (`tui` / `print`) vs ops (`resources` / …). No flat surface aliases.
 #[derive(Subcommand, Debug)]
 pub enum CliCommand {
     /// Interactive TUI surface (default on a TTY).
@@ -115,13 +96,6 @@ pub enum CliCommand {
         /// Prompt via flag (`--prompt` / `-p`) under `print` only.
         #[arg(short = 'p', long = "prompt", value_name = "TEXT")]
         prompt_flag: Option<String>,
-    },
-    /// Append-only observation surface (explicit entry; does not steal TTY default).
-    #[cfg(feature = "tui")]
-    #[command(name = "append-only")]
-    AppendOnly {
-        #[command(flatten)]
-        surface: AppendOnlySurfaceArgs,
     },
     /// Read-only resource listing and diagnostics.
     Resources {
@@ -180,7 +154,7 @@ fn merge_tui_surface(parent: &TuiSurfaceArgs, action: Option<&TuiAction>) -> Tui
     }
 }
 
-/// Resolve surface-owned flags from a parsed CLI command (c1565 / c2080).
+/// Resolve surface-owned flags from a parsed CLI command (c1565).
 pub fn surface_from_command(command: Option<&CliCommand>) -> SurfaceBootstrap {
     match command {
         Some(CliCommand::Tui { surface, action }) => {
@@ -204,16 +178,6 @@ pub fn surface_from_command(command: Option<&CliCommand>) -> SurfaceBootstrap {
             trust: surface.trust,
             no_trust: surface.no_trust,
         },
-        #[cfg(feature = "tui")]
-        Some(CliCommand::AppendOnly { surface }) => SurfaceBootstrap {
-            session: surface.session.clone(),
-            model: surface.model.clone(),
-            config: surface.config.clone(),
-            list_models: surface.list_models,
-            no_color: false,
-            trust: surface.trust,
-            no_trust: surface.no_trust,
-        },
         _ => SurfaceBootstrap::default(),
     }
 }
@@ -228,14 +192,13 @@ pub fn resume_hint_line(session_id: Option<&str>, listed: bool) -> Option<String
     listed.then(|| format!("Resume by $ xylitol tui --session {sid}"))
 }
 
-/// Resolve force-tui / explicit-print / one-shot / append-only from surface verbs.
+/// Resolve force-tui / explicit-print / one-shot prompt from surface verbs only.
 ///
-/// Ops subcommands are handled before this; callers pass only surface verbs.
+/// Ops subcommands are handled before this; callers pass only `None` / `Tui` / `Print`.
 /// There are no flat `--tui` / `--print` / top-level `-p` aliases.
-/// Returns `(force_tui, explicit_print, one_shot, explicit_append_only)`.
-pub fn resolve_surface_intent(command: Option<&CliCommand>) -> (bool, bool, Option<String>, bool) {
+pub fn resolve_surface_intent(command: Option<&CliCommand>) -> (bool, bool, Option<String>) {
     match command {
-        Some(CliCommand::Tui { .. }) => (true, false, None, false),
+        Some(CliCommand::Tui { .. }) => (true, false, None),
         Some(CliCommand::Print {
             prompt,
             prompt_flag,
@@ -243,11 +206,9 @@ pub fn resolve_surface_intent(command: Option<&CliCommand>) -> (bool, bool, Opti
         }) => {
             let merged =
                 merge_prompt_parts(prompt_flag.as_deref(), prompt.as_deref()).map(str::to_string);
-            (false, true, merged, false)
+            (false, true, merged)
         }
-        #[cfg(feature = "tui")]
-        Some(CliCommand::AppendOnly { .. }) => (false, false, None, true),
-        None | Some(_) => (false, false, None, false),
+        None | Some(_) => (false, false, None),
     }
 }
 
@@ -256,22 +217,15 @@ pub fn resolve_surface_intent(command: Option<&CliCommand>) -> (bool, bool, Opti
 pub enum SurfaceMode {
     Tui,
     Print,
-    /// Explicit append-only observation surface (c2080). Never the TTY default.
-    AppendOnly,
 }
 
 /// Pure dispatch: TUI default on a TTY; print via `print` verb or non-TTY bare launch.
-/// `explicit_append_only` wins over TTY default but MUST NOT be implied by bare TTY.
 pub fn select_surface_mode(
     force_tui: bool,
     explicit_print: bool,
-    explicit_append_only: bool,
     has_one_shot_prompt: bool,
     stdin_is_tty: bool,
 ) -> SurfaceMode {
-    if explicit_append_only {
-        return SurfaceMode::AppendOnly;
-    }
     if force_tui {
         return SurfaceMode::Tui;
     }
@@ -361,10 +315,6 @@ pub async fn run() -> Result<(), Box<dyn std::error::Error>> {
         Some(CliCommand::Server { action }) => {
             return crate::app::server::subcommand::run(action).await;
         }
-        #[cfg(feature = "tui")]
-        Some(CliCommand::Tui { .. } | CliCommand::Print { .. } | CliCommand::AppendOnly { .. })
-        | None => {}
-        #[cfg(not(feature = "tui"))]
         Some(CliCommand::Tui { .. } | CliCommand::Print { .. }) | None => {}
     }
 
@@ -378,31 +328,18 @@ pub async fn run() -> Result<(), Box<dyn std::error::Error>> {
 
     use std::io::IsTerminal;
     let stdin_is_tty = std::io::stdin().is_terminal();
-    let (force_tui, explicit_print, one_shot, explicit_append_only) =
-        resolve_surface_intent(args.command.as_ref());
+    let (force_tui, explicit_print, one_shot) = resolve_surface_intent(args.command.as_ref());
 
     #[cfg(feature = "tui")]
-    let surface_mode = select_surface_mode(
-        force_tui,
-        explicit_print,
-        explicit_append_only,
-        one_shot.is_some(),
-        stdin_is_tty,
-    );
-    #[cfg(feature = "tui")]
-    let want_tui = !surface.list_models && surface_mode == SurfaceMode::Tui;
-    #[cfg(feature = "tui")]
-    let want_append_only = !surface.list_models && surface_mode == SurfaceMode::AppendOnly;
+    let want_tui = !surface.list_models
+        && select_surface_mode(force_tui, explicit_print, one_shot.is_some(), stdin_is_tty)
+            == SurfaceMode::Tui;
     #[cfg(not(feature = "tui"))]
     let want_tui = false;
-    #[cfg(not(feature = "tui"))]
-    let want_append_only = false;
-    #[cfg(not(feature = "tui"))]
-    let _ = want_append_only;
 
     // c490: Ask trust inside ChoicePrompt **before** bootstrap (no stdio menu).
     #[cfg(feature = "tui")]
-    if want_tui || want_append_only {
+    if want_tui {
         match trust_gate::run_trust_gate_if_needed(trust_override) {
             Ok(()) => {}
             Err(trust_gate::TrustGateError::Cancelled) => {
@@ -424,11 +361,7 @@ pub async fn run() -> Result<(), Box<dyn std::error::Error>> {
         trust_override,
         // c490: product TUI Ask is `run_trust_gate_if_needed` (ChoicePrompt), never stdio.
         interactive: false,
-        caller: if want_tui || want_append_only {
-            "tui"
-        } else {
-            "cli"
-        },
+        caller: if want_tui { "tui" } else { "cli" },
     };
 
     // `--list-models` needs the resolved registry before any agent build; it
@@ -485,7 +418,7 @@ pub async fn run() -> Result<(), Box<dyn std::error::Error>> {
     };
     render_warnings(&bootstrapped.warnings);
     #[cfg(feature = "tui")]
-    let refuse_interactive_untrusted = (want_tui || want_append_only)
+    let refuse_tui_untrusted = want_tui
         && bootstrapped
             .warnings
             .iter()
@@ -504,7 +437,7 @@ pub async fn run() -> Result<(), Box<dyn std::error::Error>> {
     #[cfg(feature = "tui")]
     if want_tui {
         // Align with pi / 图4: untrusted project → message already printed, no TUI.
-        if refuse_interactive_untrusted {
+        if refuse_tui_untrusted {
             return Ok(());
         }
         if let Err(e) = crate::app::tui::preflight(&driver) {
@@ -532,25 +465,6 @@ pub async fn run() -> Result<(), Box<dyn std::error::Error>> {
         .await;
         maybe_print_resume_hint(&driver).await;
         return tui_result.map_err(|e| e.into());
-    }
-    #[cfg(feature = "tui")]
-    if want_append_only {
-        if refuse_interactive_untrusted {
-            return Ok(());
-        }
-        if let Err(e) = crate::app::append_only::preflight(&driver) {
-            eprintln!("Error: {e}");
-            return Err(e.into());
-        }
-        let sessions_dir = crate::infra::session::SessionManager::default_dir();
-        driver.begin_mcp_bootstrap().await;
-        let ao_result = crate::app::append_only::run(
-            &mut driver,
-            crate::app::append_only::AppendOnlyRunOptions { sessions_dir },
-        )
-        .await;
-        maybe_print_resume_hint(&driver).await;
-        return ao_result.map_err(|e| e.into());
     }
 
     // print / non-TUI: settle MCP before the oneshot prompt (c1200).
@@ -647,7 +561,7 @@ mod tests {
     #[test]
     fn bare_tty_selects_tui() {
         assert_eq!(
-            select_surface_mode(false, false, false, false, true),
+            select_surface_mode(false, false, false, true),
             SurfaceMode::Tui
         );
     }
@@ -655,7 +569,7 @@ mod tests {
     #[test]
     fn force_tui_wins_over_prompt() {
         assert_eq!(
-            select_surface_mode(true, false, false, true, true),
+            select_surface_mode(true, false, true, true),
             SurfaceMode::Tui
         );
     }
@@ -663,7 +577,7 @@ mod tests {
     #[test]
     fn prompt_selects_print() {
         assert_eq!(
-            select_surface_mode(false, false, false, true, true),
+            select_surface_mode(false, false, true, true),
             SurfaceMode::Print
         );
     }
@@ -671,26 +585,8 @@ mod tests {
     #[test]
     fn explicit_print_selects_print() {
         assert_eq!(
-            select_surface_mode(false, true, false, false, true),
+            select_surface_mode(false, true, false, true),
             SurfaceMode::Print
-        );
-    }
-
-    #[test]
-    fn atao1_explicit_append_only_does_not_steal_tty_default() {
-        assert_eq!(
-            select_surface_mode(false, false, false, false, true),
-            SurfaceMode::Tui,
-            "bare TTY must remain main-session TUI"
-        );
-        assert_eq!(
-            select_surface_mode(false, false, true, false, true),
-            SurfaceMode::AppendOnly
-        );
-        // force_tui must not override explicit append-only
-        assert_eq!(
-            select_surface_mode(true, false, true, false, true),
-            SurfaceMode::AppendOnly
         );
     }
 
@@ -720,46 +616,13 @@ mod tests {
             args.command,
             Some(CliCommand::Tui { action: None, .. })
         ));
-        let (force_tui, explicit_print, one_shot, append_only) =
-            resolve_surface_intent(args.command.as_ref());
+        let (force_tui, explicit_print, one_shot) = resolve_surface_intent(args.command.as_ref());
         assert!(force_tui);
         assert!(!explicit_print);
         assert!(one_shot.is_none());
-        assert!(!append_only);
         assert_eq!(
-            select_surface_mode(
-                force_tui,
-                explicit_print,
-                append_only,
-                one_shot.is_some(),
-                true
-            ),
+            select_surface_mode(force_tui, explicit_print, one_shot.is_some(), true),
             SurfaceMode::Tui
-        );
-    }
-
-    #[cfg(feature = "tui")]
-    #[test]
-    fn parses_cli_command_append_only() {
-        let args = CliArgs::try_parse_from(["xylitol", "append-only", "--model", "m"]).unwrap();
-        assert!(matches!(args.command, Some(CliCommand::AppendOnly { .. })));
-        let s = surface_from_command(args.command.as_ref());
-        assert_eq!(s.model.as_deref(), Some("m"));
-        let (force_tui, explicit_print, one_shot, append_only) =
-            resolve_surface_intent(args.command.as_ref());
-        assert!(!force_tui);
-        assert!(!explicit_print);
-        assert!(one_shot.is_none());
-        assert!(append_only);
-        assert_eq!(
-            select_surface_mode(
-                force_tui,
-                explicit_print,
-                append_only,
-                one_shot.is_some(),
-                true
-            ),
-            SurfaceMode::AppendOnly
         );
     }
 
@@ -863,20 +726,12 @@ mod tests {
     #[test]
     fn parses_cli_command_print_with_prompt() {
         let args = CliArgs::try_parse_from(["xylitol", "print", "hello"]).unwrap();
-        let (force_tui, explicit_print, one_shot, append_only) =
-            resolve_surface_intent(args.command.as_ref());
+        let (force_tui, explicit_print, one_shot) = resolve_surface_intent(args.command.as_ref());
         assert!(!force_tui);
         assert!(explicit_print);
-        assert!(!append_only);
         assert_eq!(one_shot.as_deref(), Some("hello"));
         assert_eq!(
-            select_surface_mode(
-                force_tui,
-                explicit_print,
-                append_only,
-                one_shot.is_some(),
-                true
-            ),
+            select_surface_mode(force_tui, explicit_print, one_shot.is_some(), true),
             SurfaceMode::Print
         );
     }
@@ -884,11 +739,9 @@ mod tests {
     #[test]
     fn print_verb_without_prompt_selects_print() {
         let args = CliArgs::try_parse_from(["xylitol", "print"]).unwrap();
-        let (force_tui, explicit_print, one_shot, append_only) =
-            resolve_surface_intent(args.command.as_ref());
+        let (force_tui, explicit_print, one_shot) = resolve_surface_intent(args.command.as_ref());
         assert!(!force_tui);
         assert!(explicit_print);
-        assert!(!append_only);
         assert!(one_shot.is_none());
         let err =
             resolve_print_prompt(None, explicit_print, true, || Ok(String::new())).unwrap_err();
@@ -915,10 +768,8 @@ mod tests {
         );
         // `-p` lives only under `print`
         let args = CliArgs::try_parse_from(["xylitol", "print", "-p", "x"]).unwrap();
-        let (_, explicit_print, one_shot, append_only) =
-            resolve_surface_intent(args.command.as_ref());
+        let (_, explicit_print, one_shot) = resolve_surface_intent(args.command.as_ref());
         assert!(explicit_print);
-        assert!(!append_only);
         assert_eq!(one_shot.as_deref(), Some("x"));
     }
 
@@ -937,7 +788,7 @@ mod tests {
         use clap::CommandFactory;
         let mut cmd = CliArgs::command();
         let help = cmd.render_long_help().to_string();
-        for name in ["tui", "print", "append-only", "resources", "tokenizer"] {
+        for name in ["tui", "print", "resources", "tokenizer"] {
             assert!(
                 help.contains(name),
                 "expected `{name}` in top-level help:\n{help}"
