@@ -2,7 +2,7 @@ kind: llman.sdd.spec
 name: "runtime-config"
 purpose: 运行时配置 — 深合并、secret.env、settings；仅 config.yaml + secret.env，不支持 config.local。
 valid_scope[2]: src/infra/config/,src/infra/settings/
-requirements[19]{req_id,title,statement}:
+requirements[20]{req_id,title,statement}:
   rc12,mode 字段,"Settings MUST 含 steering_mode 与 follow_up_mode，枚举含 all 与 one-at-a-time；缺省（未配置）MUST 为 one-at-a-time；二者 MUST 经组合根装配进插话/续跑队列模式。"
   rc13,Settings 交付面,"Settings（settings.json）MUST 仅含组合根已接线字段：default_thinking_level、compaction、thinking_budgets、steering_mode、follow_up_mode。未接线偏好（如 transport、shell_path、npm_command、session_dir、http_*、themes 路径列表、enable_skill_commands、markdown、warnings、default_provider/model）MUST NOT 作为可生效 Settings 字段保留；遗留 JSON 键 MUST 被忽略且 MUST NOT 生效。"
   rc14,无 prompts 列表,"Settings MUST NOT 再提供 prompts 路径列表字段（slash prompt 模板已移除）；遗留 prompts 键 MUST 被忽略且 MUST NOT 生效。"
@@ -22,13 +22,15 @@ requirements[19]{req_id,title,statement}:
   rc25,"tui-editor-history-seed-sessions","AppConfig MUST 支持可选顶层 tui 节字段 editor_history_seed_sessions（非负整数）；缺省 MUST 为 1；该值 MUST 供产品 TUI 纯 new session 装载跨 session 发送历史种子（ati41）；由配置单测覆盖，MUST NOT 为静态字段形状单独扩 BDD step。"
   rc26,"tool-batch-config","AppConfig MUST 支持可选工具批配置节 tool_batch：含 mode（sequential 或 barrier_parallel；缺省 barrier_parallel）；非法 mode MUST 使配置加载失败；显式 sequential MUST 恢复源序串行批；MUST NOT 提供将 mcp_ 工具升为并行安全的配置字段（无 parallel_safe_patterns 或等价 MCP 放行名单）。由配置单测覆盖，MUST NOT 为静态字段形状单独扩 BDD step。"
   rc27,"session-max-turns","SessionConfig MUST 支持可选 max_turns（正整数）；缺省或省略 MUST 为 None（不限制）；值为 0 或非法 MUST 使配置加载失败；该字段 MUST 供组合根安装 should_stop_after_turn（ar30），MUST NOT 映射为已移除的 max_iterations。由配置单测覆盖，MUST NOT 为静态字段形状单独扩 BDD step。"
+  rc28,"tui-activity-fold","AppConfig MUST 支持可选顶层 tui.activity_fold：enabled（缺省 true）、keep_recent_turns（缺省 2，非负整数）、stream_collapse（envelope 或 clusters，缺省 envelope）、auto_on_rebuild（缺省 true）、auto_on_turn_end（缺省 true）。非法 stream_collapse MUST 使配置加载失败。enabled 为 false MUST 使 ActivityFold 不套信封（全细账，块级折叠仍可用）。由配置单测覆盖，MUST NOT 为静态字段形状单独扩 BDD step。"
 
-scenarios[8]{req_id,id,given,when,then,feature}:
+scenarios[9]{req_id,id,given,when,then,feature}:
   rc22,"profile-no-max-iterations",Agent profile 类型与 schema,检查 max_iterations 字段,MUST NOT 存在可生效字段,false
   rc23,"vars-home-unit-covered",配置模板渲染上下文,"渲染含 {{ vars.home }} 的 YAML 片段","展开为 home 绝对路径；未知 vars 键 strict 失败",false
   rc24,"otel-default-none-unit",AppConfig 缺省 otel 节,检查 exporter 生效值,等价 none 且不隐式开启 OTLP,false
   rc25,"tui-seed-default-one",AppConfig 缺省 tui.editor_history_seed_sessions,读取生效值,等于 1,false
   rc26,"tool-batch-default-barrier-parallel-unit",AppConfig 缺省或未写 tool_batch,读取 mode,等于 barrier_parallel,false
   rc27,"session-max-turns-default-none",AppConfig 缺省 session.max_turns,读取生效值,为 None,false
+  rc28,"tui-activity-fold-defaults-unit",AppConfig 缺省或未写 tui.activity_fold,读取生效值,"enabled true；keep_recent_turns 为 2；stream_collapse 为 envelope",false
   rc1,"config-value-in-infra-unit",ConfigValueResolver,检查路径,位于 infra/config/value.rs 且 agent/ 无残留,false
   rc8,"json-schema-boundary-unit",需要 JSON Schema 的结构,检查定义模块,在边界模块非 domain,false

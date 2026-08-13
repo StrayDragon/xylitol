@@ -1070,7 +1070,8 @@
         <p class="spec">
           <a href="../activity-fold.md">activity-fold.md</a> ·
           流式打开簇 = 队列（默认只留 inflight）·
-          旧 turn 信封 <code>Worked for</code> · 点 transcript 行折叠 · TUI 一次 paint，无滑入
+          旧 turn 信封 <code>Worked for</code> · 点 transcript 行折叠 · TUI 一次 paint，无滑入 ·
+          L1「Read tests.rs」等细账<strong>静图不可点</strong>；产品 TUI 走块级折叠（expandable）
         </p>
         <div class="ctl">
           <button type="button" class="chip-btn" data-activity-fold="resume" aria-pressed="true">Resume 混排</button>
@@ -1080,7 +1081,7 @@
           <button type="button" class="chip-btn" data-activity-fold="asking" aria-pressed="false">流式·Ask</button>
           <button type="button" class="chip-btn" data-activity-fold="envelope" aria-pressed="false">旧 turn·信封收</button>
           <button type="button" class="chip-btn" data-activity-fold="envelopeOpen" aria-pressed="false">旧 turn·信封开</button>
-          <span class="hint">芯片=跳到预设 · 内容可点</span>
+          <span class="hint">芯片=跳到预设 · 点信封/簇/Planning · L1 细账静图不可点（产品可点）</span>
         </div>
         <div class="ctl">
           <span class="hint">进行中 -1</span>
