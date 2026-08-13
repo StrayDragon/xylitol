@@ -264,6 +264,7 @@ footer            1 行 dim（cwd · model · 可选 context%）
 | [`design/session-resume.md`](./design/session-resume.md) | `/session-resume`：预览按终端比例；**Ctrl+U** 切换完整 session id（默认隐藏） |
 | [`design/models-picker.md`](./design/models-picker.md) | `/model` fuzzy 列表（替换 editor 槽；对齐 pi） |
 | [`design/transcript.md`](./design/transcript.md) | live 输出进 scrollback（非 Codex 浏览面） |
+| [`design/activity-fold.md`](./design/activity-fold.md) | 嵌套 ActivityFold：流式队列 `Planning next moves`；旧 turn `Worked for` 信封 |
 | [`design/expandable.md`](./design/expandable.md) | thinking / tool 可展开（demo 优先） |
 | [`design/status.md`](./design/status.md) | busy 一行 |
 | [`design/chrome-toast.md`](./design/chrome-toast.md) | 壳层通告：status 上方 warning + `Error:` |
@@ -283,7 +284,7 @@ footer            1 行 dim（cwd · model · 可选 context%）
 | [`design/markdown.md`](./design/markdown.md) | 复制友好 / token 效率 markdown（`c530-update-package-tui-markdown`） |
 | [`design/errors.md`](./design/errors.md) | 错误呈现 |
 
-已落地（c493）：[`compaction-status`](./design/compaction-status.md)。bash（c492）与 trust（c490）已落地。
+已落地（c493）：[`compaction-status`](./design/compaction-status.md)。bash（c492）与 trust（c490）已落地。视觉闸：[`activity-fold`](./design/activity-fold.md)（规划 c1761）。
 
 **已落地 layout 子规范**（c480 起）：[`queue-steer`](./design/queue-steer.md) · [`status`](./design/status.md) — 写产品 host 时以这两份为准，**不要**抄 demo scrollback `[steer]` 墙。
 

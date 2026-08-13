@@ -255,6 +255,16 @@
     .term.term-tall .term-content {
       min-height: 10rem;
     }
+    .term.term-af {
+      min-height: 24rem;
+      max-width: 56rem;
+    }
+    #activity-fold-content {
+      overflow: auto;
+      max-height: 28rem;
+    }
+    .af-hit { cursor: pointer; }
+    .af-hit:hover { color: var(--on-surface); }
     .term-content {
       flex: 1;
       display: flex;
@@ -1054,6 +1064,43 @@
         </div>
       </section>
 
+      <!-- activity fold: live queue + nested envelope -->
+      <section class="panel" id="panel-activity-fold" data-id="activity-fold">
+        <h2>Activity fold</h2>
+        <p class="spec">
+          <a href="../activity-fold.md">activity-fold.md</a> ·
+          流式打开簇 = 队列（默认只留 inflight）·
+          旧 turn 信封 <code>Worked for</code> · 点 transcript 行折叠 · TUI 一次 paint，无滑入
+        </p>
+        <div class="ctl">
+          <button type="button" class="chip-btn" data-activity-fold="resume" aria-pressed="true">Resume 混排</button>
+          <button type="button" class="chip-btn" data-activity-fold="collapsed" aria-pressed="false">流式·收起</button>
+          <button type="button" class="chip-btn" data-activity-fold="expanded" aria-pressed="false">流式·展开</button>
+          <button type="button" class="chip-btn" data-activity-fold="thinking" aria-pressed="false">流式·Thinking</button>
+          <button type="button" class="chip-btn" data-activity-fold="asking" aria-pressed="false">流式·Ask</button>
+          <button type="button" class="chip-btn" data-activity-fold="envelope" aria-pressed="false">旧 turn·信封收</button>
+          <button type="button" class="chip-btn" data-activity-fold="envelopeOpen" aria-pressed="false">旧 turn·信封开</button>
+          <span class="hint">芯片=跳到预设 · 内容可点</span>
+        </div>
+        <div class="ctl">
+          <span class="hint">进行中 -1</span>
+          <button type="button" class="chip-btn" data-af-inflight="planning">Planning</button>
+          <button type="button" class="chip-btn" data-af-inflight="thinking">Thinking</button>
+          <button type="button" class="chip-btn" data-af-inflight="asking">Ask</button>
+          <button type="button" class="chip-btn" data-af-inflight="editing">Editing file</button>
+        </div>
+        <div class="term term-tall term-af" id="activity-fold-term" data-design-fixture="activity-fold.collapsed">
+          <div class="term-content" id="activity-fold-content"></div>
+          <div class="term-status" id="activity-fold-status-line">
+            <span class="status-lead"><span class="spin">⠋</span> Working</span>
+          </div>
+          <div class="term-editor">❯ </div>
+          <div class="term-footer" id="activity-fold-footer">~/xylitol · &lt;model-name&gt; · used 42,110 tokens · 21.1%/200k</div>
+        </div>
+        <span hidden data-design-fixture="activity-fold.expanded"></span>
+        <span hidden data-design-fixture="activity-fold.envelope"></span>
+      </section>
+
       <!-- 0 ask: tool `ask` wrapper faces (clarify / decision; Trust 仍见 trust-prompt) -->
       <section class="panel" id="panel-ask" data-id="ask">
         <h2>Ask</h2>
@@ -1231,6 +1278,7 @@
       { id: "tree-power", label: "Tree power", key: "p" },
       { id: "session-resume", label: "Resume /session-resume", key: "r" },
       { id: "compaction", label: "Compaction", key: "g" },
+      { id: "activity-fold", label: "Activity fold", key: "y" },
       { id: "layout", label: "Layout", key: "1" },
       { id: "tool", label: "Tool / Expandable", key: "2" },
       { id: "diff", label: "Diff", key: "3" },
@@ -1272,6 +1320,8 @@
       treep: "filter",
       resume: "default",
       compaction: "progress",
+      activityFold: "resume",
+      af: null,
       layoutShell: "ok",
       widget: "empty",
       atom: "trunc",
@@ -2140,6 +2190,338 @@
       });
     });
 
+    /* Activity fold snapshots — fixtures only (check_tui_design_playground). Live paint is paintAf. */
+    const ACTIVITY_FOLD = {
+      collapsed: `<div class="row"><span class="fg-user">❯</span> <span class="fg-on">继续修折叠</span></div>
+<div class="row fg-muted">Thought 20s</div>
+<div class="row fg-muted">Explored 15 files, 9 searches, ran 1 command</div>
+<div class="row fg-muted">Planning next moves</div>`,
+      expanded: `<div class="row"><span class="fg-user">❯</span> <span class="fg-on">继续修折叠</span></div>
+<div class="row fg-muted">Thought 20s</div>
+<div class="row fg-muted">Explored 15 files, 9 searches, ran 1 command</div>
+<div class="row fg-muted">▾ Editing 7 files, explored 6 files, 2 searches, ran 5 commands <span class="fg-success">+301</span> <span class="fg-error">-8</span></div>
+<div class="row fg-muted">Planning next moves</div>`,
+      envelope: `<div class="row"><span class="fg-user">❯</span> <span class="fg-on">继续修折叠</span></div>
+<div class="row fg-muted">▸ Worked for 7m 33s</div>
+<div class="row"><span class="fg-success">assistant:</span> <span class="fg-on">好的，我先从摘要后的上下文继续。</span></div>`,
+    };
+
+    function afTri(open) {
+      return open ? "▾" : "▸";
+    }
+    function afDiff(c) {
+      if (!c.plus && !c.minus) return "";
+      return ` <span class="fg-success">+${c.plus}</span> <span class="fg-error">-${c.minus}</span>`;
+    }
+    function afRow(html, hit, extraCls) {
+      const cls = ["row", "fg-muted", extraCls, hit ? "af-hit" : ""]
+        .filter(Boolean)
+        .join(" ");
+      const data = hit ? ` data-af-hit="${hit}"` : "";
+      return `<div class="${cls}"${data}>${html}</div>`;
+    }
+    function afUser(text) {
+      return `<div class="row"><span class="fg-user">❯</span> <span class="fg-on">${text}</span></div>`;
+    }
+    function afAsst(text) {
+      return `<div class="row"><span class="fg-success">assistant:</span> <span class="fg-on">${text}</span></div>`;
+    }
+    function afKids(kids, indent) {
+      const pad = " ".repeat(indent);
+      return (kids || [])
+        .map((k) => afRow(`${pad}${k}`))
+        .join("");
+    }
+    function afCluster(c, hit, indent) {
+      const pad = " ".repeat(indent);
+      let html = afRow(`${pad}${afTri(c.open)} ${c.summary}${afDiff(c)}`, hit);
+      if (c.open) html += afKids(c.kids, indent + 2);
+      return html;
+    }
+    function afEnded(t) {
+      let html = afUser(t.user);
+      html += afRow(`${afTri(t.envelopeOpen)} Worked for ${t.duration}`, `env:${t.id}`);
+      if (!t.envelopeOpen) {
+        html += afAsst(t.lastAsst);
+        return html;
+      }
+      if (t.midAsst) html += afAsst(t.midAsst);
+      t.clusters.forEach((c) => {
+        html += afCluster(c, `cl:${t.id}:${c.id}`, 2);
+      });
+      if (t.todo) {
+        html += afRow(`  ${afTri(t.todo.open)} Todo ${t.todo.label}`, `todo:${t.id}`);
+        if (t.todo.open) html += afKids(t.todo.kids, 4);
+      }
+      if (t.compaction) {
+        html += afRow(
+          `  ${afTri(t.compaction.open)} [compaction] Compacted from ${t.compaction.tokens} tokens`,
+          `comp:${t.id}`,
+        );
+        if (t.compaction.open) {
+          html += afKids(
+            ["Session covered a long tool loop; auto-compact fired above reserve…"],
+            4,
+          );
+        }
+      }
+      html += afAsst(t.lastAsst);
+      return html;
+    }
+    function afInflight(live) {
+      const kind = live.inflight;
+      let html = "";
+      if (kind === "asking") {
+        const pick = live.askPicked;
+        html += `<div class="row"><span class="fg-tool">ask</span> <span class="fg-on">which approach?</span></div>`;
+        html += afRow(
+          `  [A] envelope${pick === "A" ? "  ←" : ""}`,
+          "ask:A",
+          pick === "A" ? "fg-on" : "",
+        );
+        html += afRow(
+          `  [B] clusters${pick === "B" ? "  ←" : ""}`,
+          "ask:B",
+          pick === "B" ? "fg-on" : "",
+        );
+        html += afRow("Asking questions", "live-tail");
+        return html;
+      }
+      if (kind === "thinking") {
+        html += afRow("Thinking", "live-tail");
+        html += afRow("  先确认簇切刀是助手正文…");
+        return html;
+      }
+      if (kind === "editing") {
+        html += afRow("Editing tests.rs", "live-tail");
+        return html;
+      }
+      html += afRow("Planning next moves", "live-tail");
+      return html;
+    }
+    function afLive(model) {
+      const live = model.live;
+      if (!live) return "";
+      let html = afUser(model.liveUser);
+      (model.frozen || []).forEach((c) => {
+        html += afCluster(c, `fz:${c.id}`, 0);
+      });
+      if (live.open && live.sealed.length) {
+        html += afRow(
+          `${afTri(true)} ${live.summary}${afDiff(live)}`,
+          "live-head",
+        );
+        html += afKids(live.sealed, 2);
+      }
+      html += afInflight(live);
+      return html;
+    }
+    function afEndedOld() {
+      return {
+        id: "t-old",
+        user: "修 ActivityFold 三角消失",
+        duration: "7m 33s",
+        envelopeOpen: false,
+        lastAsst: "好的，我先从摘要后的上下文继续。",
+        midAsst: "先改 paint，再补 harness。",
+        compaction: { open: false, tokens: "186,842" },
+        todo: { open: false, label: "3/5", kids: ["fix triangle", "YAML config", "live window"] },
+        clusters: [
+          { id: "th", summary: "Thought 20s", open: false, kids: ["对齐 Cursor 的信封套簇…"] },
+          {
+            id: "ex",
+            summary: "Explored 15 files, 9 searches, ran 1 command",
+            open: false,
+            kids: ["Read scrollback.rs", "Grepped is_collapsed"],
+          },
+          {
+            id: "ed",
+            summary: "Edited 7 files, explored 6 files, 2 searches, ran 5 commands",
+            plus: "301",
+            minus: "8",
+            open: false,
+            kids: ["Read tests.rs", "Applied patch"],
+          },
+        ],
+      };
+    }
+    function afEndedKeep() {
+      return {
+        id: "t-keep",
+        user: "resume 后继续",
+        duration: "2m 10s",
+        envelopeOpen: true,
+        lastAsst: "已按 keep_recent_turns 展开这一封。",
+        midAsst: "中间这段正文只在信封展开时出现。",
+        compaction: { open: false, tokens: "42,110" },
+        todo: null,
+        clusters: [
+          { id: "th", summary: "Thought 8s", open: false, kids: ["超窗 turn 套信封，近窗保持簇头。"] },
+          {
+            id: "ed",
+            summary: "Edited 3 files, ran 1 command",
+            plus: "40",
+            minus: "2",
+            open: true,
+            kids: ["Read activity-fold.md", "Updated fixtures"],
+          },
+        ],
+      };
+    }
+    function afFrozen() {
+      return [
+        { id: "f-th", summary: "Thought 20s", open: false, kids: ["先确认簇切刀是助手正文…"] },
+        {
+          id: "f-ex",
+          summary: "Explored 15 files, 9 searches, ran 1 command",
+          open: false,
+          kids: ["Read src/app/tui/widgets/scrollback.rs", "Grepped partition_segments"],
+        },
+      ];
+    }
+    function afLiveBlock(open, inflight) {
+      return {
+        open,
+        inflight,
+        askPicked: null,
+        summary: "Editing 7 files, explored 6 files, 2 searches, ran 5 commands",
+        plus: "301",
+        minus: "8",
+        sealed: ["Read tests.rs", "Grepped Planning next moves", "Thinking"],
+      };
+    }
+    function afPreset(name) {
+      const liveUser = "继续修折叠";
+      if (name === "envelope") {
+        return { scene: name, ended: [afEndedOld()], frozen: [], liveUser, live: null };
+      }
+      if (name === "envelopeOpen") {
+        const t = afEndedOld();
+        t.envelopeOpen = true;
+        return { scene: name, ended: [t], frozen: [], liveUser, live: null };
+      }
+      if (name === "resume") {
+        return {
+          scene: name,
+          ended: [afEndedOld(), afEndedKeep()],
+          frozen: afFrozen(),
+          liveUser,
+          live: afLiveBlock(false, "planning"),
+        };
+      }
+      const inflight =
+        name === "thinking" ? "thinking" : name === "asking" ? "asking" : "planning";
+      return {
+        scene: name,
+        ended: [],
+        frozen: afFrozen(),
+        liveUser,
+        live: afLiveBlock(name === "expanded", inflight),
+      };
+    }
+    function afFindEnded(id) {
+      return (state.af.ended || []).find((t) => t.id === id);
+    }
+    function afFindCluster(list, id) {
+      return (list || []).find((c) => c.id === id);
+    }
+    function applyAfHit(hit) {
+      const af = state.af;
+      if (hit === "live-tail" && af.live) {
+        af.live.open = true;
+        return;
+      }
+      if (hit === "live-head" && af.live) {
+        af.live.open = false;
+        return;
+      }
+      if (hit.startsWith("ask:") && af.live) {
+        af.live.askPicked = hit.slice(4);
+        return;
+      }
+      if (hit.startsWith("env:")) {
+        const t = afFindEnded(hit.slice(4));
+        if (t) t.envelopeOpen = !t.envelopeOpen;
+        return;
+      }
+      if (hit.startsWith("comp:")) {
+        const t = afFindEnded(hit.slice(5));
+        if (t && t.compaction) t.compaction.open = !t.compaction.open;
+        return;
+      }
+      if (hit.startsWith("todo:")) {
+        const t = afFindEnded(hit.slice(5));
+        if (t && t.todo) t.todo.open = !t.todo.open;
+        return;
+      }
+      if (hit.startsWith("fz:")) {
+        const c = afFindCluster(af.frozen, hit.slice(3));
+        if (c) c.open = !c.open;
+        return;
+      }
+      if (hit.startsWith("cl:")) {
+        const parts = hit.split(":");
+        const t = afFindEnded(parts[1]);
+        const c = t ? afFindCluster(t.clusters, parts[2]) : null;
+        if (c) c.open = !c.open;
+      }
+    }
+    function paintAf() {
+      if (!state.af) state.af = afPreset(state.activityFold);
+      const af = state.af;
+      let html = "";
+      (af.ended || []).forEach((t) => {
+        html += afEnded(t);
+      });
+      html += afLive(af);
+      document.getElementById("activity-fold-content").innerHTML = html;
+      const busy = !!af.live;
+      const status = document.getElementById("activity-fold-status-line");
+      status.classList.toggle("hidden", !busy);
+      if (busy) {
+        const run =
+          af.live.inflight === "editing"
+            ? "Running apply_patch"
+            : "Working";
+        status.innerHTML =
+          `<span class="status-lead"><span class="spin">⠋</span> ${run}</span>`;
+      }
+      document.querySelectorAll("[data-activity-fold]").forEach((b) => {
+        b.setAttribute(
+          "aria-pressed",
+          String(b.dataset.activityFold === state.activityFold),
+        );
+      });
+      document.querySelectorAll("[data-af-inflight]").forEach((b) => {
+        const on = af.live && b.dataset.afInflight === af.live.inflight;
+        b.setAttribute("aria-pressed", String(!!on));
+        b.disabled = !af.live;
+      });
+    }
+    function renderActivityFold() {
+      paintAf();
+    }
+    document.querySelectorAll("[data-activity-fold]").forEach((b) => {
+      b.addEventListener("click", () => {
+        state.activityFold = b.dataset.activityFold;
+        state.af = afPreset(state.activityFold);
+        paintAf();
+      });
+    });
+    document.querySelectorAll("[data-af-inflight]").forEach((b) => {
+      b.addEventListener("click", () => {
+        if (!state.af || !state.af.live) return;
+        state.af.live.inflight = b.dataset.afInflight;
+        paintAf();
+      });
+    });
+    document.getElementById("activity-fold-content").addEventListener("click", (e) => {
+      const el = e.target.closest("[data-af-hit]");
+      if (!el) return;
+      applyAfHit(el.getAttribute("data-af-hit"));
+      paintAf();
+    });
+
 
     function renderWidgets() {
       const empty = document.getElementById("widgets-empty");
@@ -2210,7 +2592,7 @@
       } else if (e.key === "ArrowRight" || e.key === "]") {
         select(state.index + 1);
         e.preventDefault();
-      } else if (/^[0-9fFcCkKmMnNpPuUgGrR]$/.test(e.key) && !e.ctrlKey && !e.altKey && !e.metaKey) {
+      } else if (/^[0-9fFcCkKmMnNpPuUgGrRyY]$/.test(e.key) && !e.ctrlKey && !e.altKey && !e.metaKey) {
         const k = e.key.toLowerCase();
         const idx = SLOTS.findIndex((s) => s.key === k);
         if (idx >= 0) select(idx);
@@ -2265,6 +2647,7 @@
     renderTreep();
     renderResume();
     renderCompaction();
+    renderActivityFold();
     renderWidgets();
     renderAtoms();
     renderAsk();
