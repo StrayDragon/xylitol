@@ -2,6 +2,9 @@
 depends_on:
 - c1760-add-tui-activity-fold
 - c2045-add-tui-fold-target-remaining
+branch: sdd/c1761-fix-tui-activity-fold
+base_sha: f2f2a7fed255aab800547eb1c12f85883da0e1be
+checkpointed: false
 ---
 
 # ActivityFold 嵌套收纳 + YAML 配置

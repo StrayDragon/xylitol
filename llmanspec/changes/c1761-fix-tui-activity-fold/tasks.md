@@ -23,7 +23,7 @@
 
 ## 1. Specs landing
 
-- [ ] 1.1 干净树且在默认分支：`llman sdd change start c1761-fix-tui-activity-fold`（Compact quick 已单独提交后再 start）
+- [x] 1.1 干净树且在默认分支：`llman sdd change start c1761-fix-tui-activity-fold`（Compact quick 已单独提交后再 start）
 - [ ] 1.2 `app-tui-transcript`：改写 att23–att28、att31；**新增**流式 live window（切段=正文、Planning next moves、Ask 堵塞、-2 更新/-3 冻）
 - [ ] 1.3 `runtime-config`：`tui.activity_fold` 键、缺省、非法 `stream_collapse` 失败
 - [ ] 1.4 场景：对应 req 各一条 `feature: false` unit；禁止 toon `feature: true`
