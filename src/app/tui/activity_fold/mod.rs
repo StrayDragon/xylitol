@@ -16,8 +16,7 @@ mod state;
 mod summary;
 
 #[cfg(test)]
-#[allow(unused_imports)] // used by scrollback inflight labels under cfg(test)
-pub(crate) use atom::is_path_placeholder;
+pub(crate) use atom::{ToolActivityRole, is_path_placeholder, tool_activity_role};
 pub use degrade::AutoTrigger;
 #[cfg(test)]
 pub use live_tape::LIVE_ASK_CLOSE_TEXT;

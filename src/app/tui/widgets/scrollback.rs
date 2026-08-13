@@ -13,14 +13,14 @@ use std::collections::{HashMap, HashSet};
 
 use super::fold_hit::{FoldHitTable, FoldTarget};
 use super::glyphs::GlyphSet;
-#[cfg(test)]
-use crate::app::tui::activity_fold::is_path_placeholder;
 use crate::app::tui::activity_fold::{
     ActivityFoldState, SegmentLevel, cluster_is_thought_only, cluster_middle_indices,
     cluster_omits_header, count_cluster, format_cluster_header, format_elapsed_secs,
     format_envelope_line, live_think_id_for_cluster, middle_entry_indices, partition_segments,
     streaming_thought_counts, thought_header_body,
 };
+#[cfg(test)]
+use crate::app::tui::activity_fold::{ToolActivityRole, is_path_placeholder, tool_activity_role};
 use crate::app::tui::bridge::{
     AskPhase, BashBlockStatus, CompactionBlockStatus, UiEntry, UiModel, UiPhase,
 };
@@ -1596,34 +1596,16 @@ fn inflight_short_label(entry: &UiEntry) -> Option<String> {
                 Some(file)
             };
             let n = name.to_ascii_lowercase();
-            let label = if matches!(
-                n.as_str(),
-                "edit" | "write" | "apply_patch" | "strreplace" | "str_replace"
-            ) {
-                match file {
-                    Some(file) => format!("Editing {file}"),
-                    None => "Editing".into(),
-                }
-            } else if n == "read" || n == "cat" {
-                match file {
-                    Some(file) => format!("Reading {file}"),
-                    None => "Reading".into(),
-                }
-            } else if is_searchish(&n) {
-                match file {
-                    Some(file) => format!("Searching {file}"),
-                    None => "Searching".into(),
-                }
-            } else if matches!(
-                n.as_str(),
-                "bash" | "shell" | "run_terminal_cmd" | "execute"
-            ) {
-                match file {
-                    Some(file) => format!("Running {file}"),
-                    None => "Running".into(),
-                }
-            } else {
-                format!("Running {name}")
+            let file_label = |verb: &str| match file {
+                Some(file) => format!("{verb} {file}"),
+                None => verb.to_string(),
+            };
+            let label = match tool_activity_role(&n) {
+                ToolActivityRole::Edit => file_label("Editing"),
+                ToolActivityRole::ExploreFile => file_label("Reading"),
+                ToolActivityRole::ExploreSearch => file_label("Searching"),
+                ToolActivityRole::Run => file_label("Running"),
+                ToolActivityRole::Used => format!("Running {name}"),
             };
             Some(label)
         }
@@ -1634,15 +1616,6 @@ fn inflight_short_label(entry: &UiEntry) -> Option<String> {
         } => Some(format!("Running {command}")),
         _ => None,
     }
-}
-
-#[cfg(test)]
-fn is_searchish(name: &str) -> bool {
-    matches!(
-        name,
-        "grep" | "rg" | "search" | "glob" | "find" | "codebase_search" | "semantic_search"
-    ) || name.contains("search")
-        || name.contains("grep")
 }
 
 fn live_tail_label(
@@ -1884,6 +1857,40 @@ mod tests {
         assert_eq!(
             inflight_short_label(&with_path).as_deref(),
             Some("Editing a.py")
+        );
+    }
+
+    fn inflight_tool(name: &str, path: Option<&str>) -> UiEntry {
+        UiEntry::Tool {
+            id: name.into(),
+            name: name.into(),
+            args_preview: path.unwrap_or("").into(),
+            tool_path: path.map(str::to_string),
+            write_content: None,
+            display_diff: None,
+            output: String::new(),
+            is_error: false,
+            done: false,
+        }
+    }
+
+    #[test]
+    fn inflight_labels_use_tool_activity_role_not_searchish_substring() {
+        assert_eq!(
+            inflight_short_label(&inflight_tool("grep", Some("a.rs"))).as_deref(),
+            Some("Searching a.rs")
+        );
+        assert_eq!(
+            inflight_short_label(&inflight_tool("my_custom_search", None)).as_deref(),
+            Some("Running my_custom_search")
+        );
+        assert_eq!(
+            inflight_short_label(&inflight_tool("read", Some("a.rs"))).as_deref(),
+            Some("Reading a.rs")
+        );
+        assert_eq!(
+            inflight_short_label(&inflight_tool("bash", None)).as_deref(),
+            Some("Running")
         );
     }
 
