@@ -2195,12 +2195,12 @@
     const ACTIVITY_FOLD = {
       collapsed: `<div class="row"><span class="fg-user">❯</span> <span class="fg-on">继续修折叠</span></div>
 <div class="row fg-muted">Thought 20s</div>
-<div class="row fg-muted">Explored 15 files, 9 searches, ran 1 command</div>
+<div class="row fg-muted">Explored 15 files, Ran 1 command</div>
 <div class="row fg-muted">Planning next moves</div>`,
       expanded: `<div class="row"><span class="fg-user">❯</span> <span class="fg-on">继续修折叠</span></div>
 <div class="row fg-muted">Thought 20s</div>
-<div class="row fg-muted">Explored 15 files, 9 searches, ran 1 command</div>
-<div class="row fg-muted">▾ Editing 7 files, explored 6 files, 2 searches, ran 5 commands <span class="fg-success">+301</span> <span class="fg-error">-8</span></div>
+<div class="row fg-muted">Explored 15 files, Ran 1 command</div>
+<div class="row fg-muted">▾ Editing 7 files, Running 5 commands <span class="fg-success">+301</span> <span class="fg-error">-8</span></div>
 <div class="row fg-muted">Planning next moves</div>`,
       envelope: `<div class="row"><span class="fg-user">❯</span> <span class="fg-on">继续修折叠</span></div>
 <div class="row fg-muted">▸ Worked for 7m 33s</div>
@@ -2326,13 +2326,13 @@
           { id: "th", summary: "Thought 20s", open: false, kids: ["对齐 Cursor 的信封套簇…"] },
           {
             id: "ex",
-            summary: "Explored 15 files, 9 searches, ran 1 command",
+            summary: "Explored 15 files, Ran 1 command",
             open: false,
             kids: ["Read scrollback.rs", "Grepped is_collapsed"],
           },
           {
             id: "ed",
-            summary: "Edited 7 files, explored 6 files, 2 searches, ran 5 commands",
+            summary: "Edited 7 files, Ran 5 commands",
             plus: "301",
             minus: "8",
             open: false,
@@ -2355,7 +2355,7 @@
           { id: "th", summary: "Thought 8s", open: false, kids: ["resume 每轮已结束 turn 都套信封。"] },
           {
             id: "ed",
-            summary: "Edited 3 files, ran 1 command",
+            summary: "Edited 3 files, Ran 1 command",
             plus: "40",
             minus: "2",
             open: true,
@@ -2369,7 +2369,7 @@
         { id: "f-th", summary: "Thought 20s", open: false, kids: ["先确认簇切刀是助手正文…"] },
         {
           id: "f-ex",
-          summary: "Explored 15 files, 9 searches, ran 1 command",
+          summary: "Explored 15 files, Ran 1 command",
           open: false,
           kids: ["Read src/app/tui/widgets/scrollback.rs", "Grepped partition_segments"],
         },
@@ -2380,7 +2380,7 @@
         open,
         inflight,
         askPicked: null,
-        summary: "Editing 7 files, explored 6 files, 2 searches, ran 5 commands",
+        summary: "Editing 7 files, Running 5 commands",
         plus: "301",
         minus: "8",
         sealed: ["Read tests.rs", "Grepped Planning next moves", "Thinking"],

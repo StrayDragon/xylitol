@@ -4643,6 +4643,100 @@ fn activity_fold_default_hides_cluster_kids_and_uses_edited() {
 }
 
 #[test]
+fn activity_fold_thinking_only_is_thought_not_explored() {
+    use super::activity_fold::SegmentLevel;
+    use super::layout::UiRoot;
+
+    let mut root = UiRoot::new();
+    let mut model = UiModel::new();
+    model
+        .entries
+        .push(super::bridge::UiEntry::User { text: "hi".into() });
+    model.entries.push(super::bridge::UiEntry::Thinking {
+        id: "th".into(),
+        text: "consider".into(),
+    });
+    model.entries.push(super::bridge::UiEntry::Assistant {
+        text: "hello".into(),
+    });
+    root.apply_ui_model(&model);
+    root.activity_mut().force_level("seg-0", SegmentLevel::L2);
+    root.touch_activity();
+    let plain = strip_ansi_activity(&root.render(100).join("\n"));
+    assert!(plain.contains("Thought"), "thinking-only header: {plain}");
+    assert!(
+        !plain.contains("Explored"),
+        "must not invent Explored: {plain}"
+    );
+}
+
+#[test]
+fn activity_fold_compaction_only_has_no_explored_header() {
+    use super::activity_fold::SegmentLevel;
+    use super::bridge::CompactionBlockStatus;
+    use super::layout::UiRoot;
+
+    let mut root = UiRoot::new();
+    let mut model = UiModel::new();
+    model.entries.push(super::bridge::UiEntry::User {
+        text: "cool 总结下".into(),
+    });
+    model.entries.push(super::bridge::UiEntry::Compaction {
+        status: CompactionBlockStatus::Complete,
+        summary: "sum".into(),
+        tokens_before: 101_494,
+        detail: None,
+    });
+    root.apply_ui_model(&model);
+    root.activity_mut().force_level("seg-0", SegmentLevel::L2);
+    root.touch_activity();
+    let plain = strip_ansi_activity(&root.render(100).join("\n"));
+    assert!(
+        !plain.contains("Explored"),
+        "compaction-only must not invent Explored: {plain}"
+    );
+    assert!(
+        plain.contains("101") || plain.contains("compaction") || plain.contains("Compacted"),
+        "compaction block must still paint: {plain}"
+    );
+}
+
+#[test]
+fn activity_fold_mcp_cluster_is_used() {
+    use super::activity_fold::SegmentLevel;
+    use super::layout::UiRoot;
+
+    let mut root = UiRoot::new();
+    let mut model = UiModel::new();
+    model
+        .entries
+        .push(super::bridge::UiEntry::User { text: "u".into() });
+    model.entries.push(super::bridge::UiEntry::Tool {
+        id: "mcp1".into(),
+        name: "mcp:lspz:get_symbols".into(),
+        args_preview: String::new(),
+        tool_path: None,
+        write_content: None,
+        display_diff: None,
+        output: "ok".into(),
+        is_error: false,
+        done: true,
+    });
+    model
+        .entries
+        .push(super::bridge::UiEntry::Assistant { text: "a".into() });
+    root.apply_ui_model(&model);
+    root.activity_mut().force_level("seg-0", SegmentLevel::L2);
+    root.touch_activity();
+    let plain = strip_ansi_activity(&root.render(100).join("\n"));
+    assert!(plain.contains("Used get_symbols"), "MCP header: {plain}");
+    assert!(
+        !plain.contains("Explored"),
+        "MCP must not be Explored: {plain}"
+    );
+}
+
+#[test]
 fn activity_fold_live_ask_close_idles_and_drops_asking() {
     use super::activity_fold::{
         LIVE_ASK_CLOSE_TEXT, live_ask_close_events, replay_live_window, strip_ansi_live_window,
@@ -4674,7 +4768,7 @@ fn activity_fold_live_ask_close_idles_and_drops_asking() {
         "closing assistant body missing: {plain}"
     );
     assert!(
-        plain.contains("Edited 2 files") || plain.contains("Explored 1 file"),
+        plain.contains("Edited 2 files") || plain.contains("Explored old.rs"),
         "ended turn keeps cluster heads: {plain}"
     );
     assert!(

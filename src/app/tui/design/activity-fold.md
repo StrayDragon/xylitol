@@ -19,7 +19,7 @@ components:
 > Token 根源：`{colors.*}` → [`../DESIGN.md`](../DESIGN.md)。
 > 静图：[`playground/`](./playground/) 槽 `activity-fold`。
 > 块级 thinking/tool 折叠仍见 [`expandable.md`](./expandable.md)；本文件管 **段/簇/流式队列**。
-> 规划：[`c1761`](../../../llmanspec/changes/c1761-fix-tui-activity-fold/proposal.md)。
+> 规划：[`c1762`](../../../llmanspec/changes/c1762-update-tui-activity-fold-labels/proposal.md) 词表；嵌套结构仍见已归档 c1761。
 
 对齐 Cursor Agent 窗：低级操作自动收进上一聚合块；默认只留一个最小化入口；点击揭开已算好的 trace。
 
@@ -37,7 +37,7 @@ components:
 3. **默认收起**：隐藏该打开簇的 sealed 子块与 `Edited…` 统计头。其上方已封簇（-3）仍可按其自身态显示（计数冻结，仍可点开看 L1）。底部 **仍画 inflight**：无可展示正文且无进行中操作时才是 `Planning next moves`；否则为 Thinking 体 / Ask 块 / `Editing tests.rs` 等。`Planning next moves` 整行可点、无三角。
 4. **点标题展开**：整行可点（att22 三角列-only 的例外，同类 att30 hint 带）。揭开的是 **已经增量算好** 的 sealed 列表，**MUST NOT** 点击时全量重算。
 5. **展开后形态**（自上而下）：
-   1. 统计摘要头 `Editing N files, …` + 可选 `{colors.success}` `+N` / `{colors.error}` `-N`（无可靠 diff 则省略 +/-）
+   1. 统计摘要头：文件层互斥 `Editing {name|N files}` 或 `Exploring {name|N files}`，有 shell 才追加 `Running N commands`，可选 `{colors.success}` `+N` / `{colors.error}` `-N`（无可靠 diff 则省略 +/-）。MUST NOT 并列 explored，MUST NOT 把纯 read 写成 Editing。
    2. 摘要头行首 **折叠三角 `▾`** — 这是 **唯一** 收起入口
    3. sealed 细账（read / grep / thinking / …）**MUST** 仍走 [`expandable.md`](./expandable.md) 块级独立折叠（点块头三角，不是点簇头）。playground 静图可以把这些 L1 画成不可点标签。
    4. 原标题 `Planning next moves`（或当前 inflight：`Thinking` / `Asking questions` / `Editing tests.rs`）留在 **最底**，作为本段流程终点标记
@@ -45,7 +45,7 @@ components:
 7. 三角何时画在摘要头：仅当 sealed **非空**。尚无 sealed 时只有底部标题，无 `Edited…` 行。
 8. 类目计数在 **ToolStart** 写入摘要缓存；`+/-` 仅 **ToolEnd** 且有可靠 diff。
 9. Ask `Waiting`：底部标题为 `Asking questions`；Ask 块 **MUST** 可交互，不得折没。
-10. 助手正文 **第一个非空白字符** 封口本簇（进行时 `Editing` → 过去式 `Edited`），簇进入 -3 冻结。
+10. 助手正文 **第一个非空白字符** 封口本簇（进行时 `Editing` / `Exploring` / `Running` → 过去式 `Edited` / `Explored` / `Ran`），簇进入 -3 冻结。仅 thinking 的簇头为 `Thought`；仅 MCP/未知为 `Used`；仅 Compaction **MUST NOT** 再画簇头。MUST NOT 用文件占位虚构 Explored。
 
 ### 旧 turn 信封
 

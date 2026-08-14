@@ -26,7 +26,9 @@ pub use settings::ActivityFoldSettings;
 #[allow(unused_imports)]
 pub use state::SegmentRowSpans;
 pub use state::{ActivityFoldState, SegmentClock};
-pub use summary::{count_cluster, format_cluster_header, format_envelope_line};
+pub use summary::{
+    cluster_omits_header, count_cluster, format_cluster_header, format_envelope_line,
+};
 
 use time::OffsetDateTime;
 
