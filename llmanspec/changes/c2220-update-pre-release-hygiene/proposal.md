@@ -33,5 +33,5 @@ depends_on: []
 ## Further Notes
 
 调研：[`research/pre-release-hygiene.md`](./research/pre-release-hygiene.md)
-追踪：`_HANDOFF/03-pre-release-hygiene.md`
-Skill：`.claude/skills/audit-dead-code/SKILL.md`
+派工：[`research/PROMPT-dead-code.md`](./research/PROMPT-dead-code.md)
+三线索引：[`../c2200-refactor-tui-kind-catalog-verify/research/TRACKS.md`](../c2200-refactor-tui-kind-catalog-verify/research/TRACKS.md)

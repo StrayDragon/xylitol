@@ -42,5 +42,5 @@ c1760–c1762 证明：ActivityFold 的词表、计数、live 身份是按「当
 
 ## Further Notes
 
-调研：[`research/code-as-design-and-tui-verify.md`](./research/code-as-design-and-tui-verify.md)
-追踪：`_HANDOFF/01-tui-kind-catalog-verify.md`
+调研：[`research/code-as-design-and-tui-verify.md`](./research/code-as-design-and-tui-verify.md) · [`research/tui-as-app-stable-vs-iterate.md`](./research/tui-as-app-stable-vs-iterate.md)
+派工索引：[`research/TRACKS.md`](./research/TRACKS.md)
