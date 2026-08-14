@@ -84,9 +84,11 @@
 1. **`packages/xylitol-tui/examples/agent_demo_impl.rs:588` `travel_path_with_replies`** —— 零调用，语义被 `path_ids_to` + Enter travel 取代。
 2. **`packages/xylitol-tui/src/terminal.rs:32/36/39/45` 4 个内联常量** —— `KITTY_PUSH_SEQUENCE` / `KITTY_POP_QUERY_SEQUENCE` / `KITTY_POP_SEQUENCE` / `DA_QUERY_SEQUENCE`，协议字节串已内联于 `KITTY_KEYBOARD_PROTOCOL_QUERY`（:50）；本包无 feature 门控（`[features]` 仅 `highlight`），`rg` 零引用，删零行为变化。
 3. **`src/infra/tools/accumulator.rs` `OutputSnapshot::full_content` + `total_bytes` 字段** —— 全仓库零读；删后同步简化 `finish()` 组装逻辑与单测两处断言。
-4. **`src/infra/clipboard/image.rs:243` `base64_decode`** —— 全仓库零引用；删除时确认 `clipboard` 模块不因此为空。
+4. **`src/infra/clipboard/image.rs` `base64_decode`** —— **Linux `rg` 盲区，不可删。** 唯一生产调用者是 `#[cfg(target_os = "windows")]` 的 `read_windows_clipboard_image`。执行切片改为去 allow + 更名 `decode_base64` + `#[cfg(any(target_os = "windows", test))]`。以后扫死码 MUST 带 `--cfg` / 读 `cfg(target_os)` 调用链，不能只信 Linux 零引用。
 5. **`src/app/tui/keybindings.rs:266` `install_product_keybindings`** —— 全仓库零调用；「demo GLOBAL install」注释过时（demo 用 `set_keybindings`，生产走 Scope）。
-6. **去 allow（非删代码）**：`vt_feed.rs:149 feed_vt`、`support/mod.rs` 的 `impl VirtualTerminal`（部分）、`resize`、`viewport_cell`、`impl LoggingVirtualTerminal`、`impl Component for MutableComponent`、`impl TuiTestHarness`、`mount_shared`、`viewport_snapshot`、`render_row_annotated`、`style_tag`、`app/tui/widgets/scrollback.rs:606 clear_misses` —— 这些 allow 压制的是**已被真实 test target 使用**的符号；12 个 test target 各自独立 `mod support`，allow 并非跨 target 必需，删除后编译器重新守卫。
+6. **去 allow（非删代码）**：
+   - **`scrollback.rs` `clear_misses`**：✅ 已去 allow（`#[cfg(test)]`，经 `UiRoot` test helper 触达）。
+   - **`packages/xylitol-tui/tests/support/**` 其余 11 处：❌ 不可去 allow。**判定被证伪**——12 个 test target 各自独立 `mod support`，去 allow 后约 30 个新 `dead_code`（基线仅 `agent_demo_test` 局部 5 个）。这些 allow 是跨 target 必需的 harness API 完整性，不是「已被使用所以 allow 多余」。重新分诊前保持原 allow。
 
 7. **`packages/xylitol-tui/src/terminal.rs:55` `MODIFY_OTHER_KEYS_ENABLE`/`_DISABLE`** —— 常量已被真实调用（rearm :261 写 `_ENABLE`、`disable_modify_other_keys` :284 写 `_DISABLE`，后者被 `stop`/`leave_alternate_screen` 调用），allow 已过时，去 allow 零风险。
 
@@ -102,10 +104,14 @@
 
 - `pre-release-hygiene.md` 提到 `app/core/driver/remote.rs` 的 allow「须分诊，不是一律删（remote driver 可能是嵌入/server 预留）」—— 本表确认：**预留成立**，注释已含落地条件（远程薄端接线后实例化），与 `docs/roadmaps/Cloud-Agent与Web控制台.md` 方向一致。
 - `pre-release-hygiene.md` 提到 `infra bash/truncate` —— 本表确认 bash 是 test-only seam（建议 cfg(test) 强约束），truncate 是真死字段（拿不准节 1）。
-- `pre-release-hygiene.md` 提到「测试 support 等」—— 本表确认 tests/support 的 allow 大多**已被真实使用**，是可立刻去 allow 的减负项（清单第 6 项）。
+- `pre-release-hygiene.md` 提到「测试 support 等」—— 本表初判 tests/support 可立刻去 allow；**c2220-dead-delete 执行证伪**（跨 target 独立 `mod support`）。仅 `clear_misses` 去 allow 成立。
+
+## 执行结果（2026-08-14，分支 `c2220-dead-delete` / `3e36b184`）
+
+清单 1–3、5、7 与 `clear_misses` 已删/去 allow。第 4 项未删（Windows cfg）。第 6 项 support 去 allow 已 revert。拿不准 5 项与 `XyRemoteDriver` 未动。
 
 ## 执行注意事项
 
 - 删除任何符号后必须跑 `cargo build --all-features` + `just test`，清 `unused import`。
 - 去 allow 后若编译器报新 dead_code，说明该符号确实无真实使用 → 回到上表分诊。
-- 不在此 wt 做删代码 commit；本表交付后由后续 change 按清单执行。
+- `rg` 零引用不足以判死：MUST 检查 `#[cfg(target_os = …)]` 与「每 test target 一份 `mod support`」这类分编译单元。
