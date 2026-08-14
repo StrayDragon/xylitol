@@ -60,3 +60,4 @@
 - [x] 6.2 确认未改 att34、未接线 c1770、未改非 thinking 的 L1 工具动词
 - [x] 6.3 混簇不用 Thought 聚合头（todo_* 当未知工具 Used）；resume 用相邻墙钟恢复 `Thought {Ns}`
 - [x] 6.4 Used N 按调用次数（同 Ran）；checklist 行不计入
+- [x] 6.5 已封 Thought 不因后续 Thinking 流改回；resume 优先 thinkingElapsedSecs

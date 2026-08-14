@@ -1422,7 +1422,8 @@ fn paint_cluster_header_row(
         .is_thought_only()
         .then(|| thought_duration_label(model, cl))
         .flatten();
-    let live_thinking = counts.is_thought_only() && !model.streaming_thinking.is_empty();
+    let live_thinking =
+        progressive && counts.is_thought_only() && !model.streaming_thinking.is_empty();
     let plain = format_cluster_header(
         glyphs,
         &counts,

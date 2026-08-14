@@ -68,9 +68,24 @@ pub(crate) async fn persist_agent_message(
     session_id: &str,
     message: &AgentMessage,
 ) {
-    let Ok(message) = serde_json::to_value(message) else {
+    persist_agent_message_with_thought_elapsed(store, session_id, message, None).await;
+}
+
+/// Persist an assistant message, optionally stamping thinking wall-clock secs
+/// (`thinkingElapsedSecs`) for TUI resume. Extra JSON field is ignored when
+/// history deserializes to [`AgentMessage`] for LLM projection.
+pub(crate) async fn persist_agent_message_with_thought_elapsed(
+    store: &Arc<dyn XySessionStore>,
+    session_id: &str,
+    message: &AgentMessage,
+    thought_elapsed_secs: Option<u64>,
+) {
+    let Ok(mut message) = serde_json::to_value(message) else {
         return;
     };
+    if let Some(secs) = thought_elapsed_secs.filter(|s| *s > 0) {
+        message["thinkingElapsedSecs"] = serde_json::json!(secs);
+    }
     let entry = SessionEntry::Message(MessageEntry {
         base: EntryBase {
             entry_type: "message".into(),
@@ -81,6 +96,13 @@ pub(crate) async fn persist_agent_message(
         message,
     });
     let _ = store.append_session_entry(session_id, &entry).await;
+}
+
+pub(crate) fn thought_elapsed_secs(started: Option<std::time::Instant>) -> Option<u64> {
+    started.and_then(|t| {
+        let secs = t.elapsed().as_secs();
+        (secs > 0).then_some(secs)
+    })
 }
 
 pub(crate) async fn observe_script_hook(

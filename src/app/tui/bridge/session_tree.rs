@@ -47,7 +47,8 @@ pub fn rebuild_scrollback_from_travel(
                 continue;
             }
         }
-        let thought_elapsed = thought_elapsed_secs(prev_ts_ms, session_entry_ts_ms(entry));
+        let thought_elapsed = persisted_thinking_elapsed(entry)
+            .or_else(|| thought_elapsed_secs(prev_ts_ms, session_entry_ts_ms(entry)));
         for ui in session_entry_to_ui_entries_with_thought_elapsed(entry, thought_elapsed) {
             ui_model.entries.push(ui);
         }
@@ -258,6 +259,17 @@ fn session_entry_to_ui_entries_with_thought_elapsed(
             text: format!("[branch] {}", b.summary),
         }],
         _ => Vec::new(),
+    }
+}
+
+fn persisted_thinking_elapsed(entry: &SessionEntry) -> Option<u64> {
+    match entry {
+        SessionEntry::Message(m) => m
+            .message
+            .get("thinkingElapsedSecs")
+            .and_then(|v| v.as_u64())
+            .filter(|s| *s > 0),
+        _ => None,
     }
 }
 
@@ -722,6 +734,65 @@ mod tests {
                 ] if text == "step 1"
             ),
             "resume MUST restore Thought duration from adjacent stamps: {:?}",
+            ui.entries
+        );
+    }
+
+    #[test]
+    fn rebuild_prefers_persisted_thinking_elapsed_over_adjacent_stamps() {
+        let entries = vec![
+            SessionEntry::Message(MessageEntry {
+                base: EntryBase {
+                    entry_type: "message".into(),
+                    id: "u1".into(),
+                    parent_id: None,
+                    timestamp: "t".into(),
+                },
+                message: json!({
+                    "role": "user",
+                    "content": [{ "type": "text", "text": "hi" }],
+                    "timestamp": 1_700_000_000_000u64,
+                }),
+            }),
+            SessionEntry::Message(MessageEntry {
+                base: EntryBase {
+                    entry_type: "message".into(),
+                    id: "a1".into(),
+                    parent_id: Some("u1".into()),
+                    timestamp: "t".into(),
+                },
+                message: json!({
+                    "role": "assistant",
+                    "content": [
+                        { "type": "thinking", "thinking": "step 1" },
+                        { "type": "text", "text": "hello" }
+                    ],
+                    "timestamp": 1_700_000_017_000u64,
+                    "thinkingElapsedSecs": 4u64,
+                }),
+            }),
+        ];
+        let travel = SessionTreeTravel {
+            kind: crate::protocol::session::SessionTreeKind::MessageHistory,
+            selected_id: "a1".into(),
+            leaf_id: Some("a1".into()),
+            editor_text: None,
+        };
+        let mut ui = UiModel::default();
+        rebuild_scrollback_from_travel(&mut ui, &entries, &travel);
+        assert!(
+            matches!(
+                ui.entries.as_slice(),
+                [
+                    UiEntry::User { .. },
+                    UiEntry::Thinking {
+                        elapsed_secs: Some(4),
+                        ..
+                    },
+                    UiEntry::Assistant { .. }
+                ]
+            ),
+            "persisted thinkingElapsedSecs MUST win over adjacent message stamps: {:?}",
             ui.entries
         );
     }
