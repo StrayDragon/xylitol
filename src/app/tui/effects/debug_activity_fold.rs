@@ -59,3 +59,30 @@ pub(super) fn run_activity_fold_live<T: Terminal>(session: &mut HostSession<T>) 
     session.mount_ask_choice(live_ask_questions(), tx);
     let _ = session.render_now();
 }
+
+/// `/debug activity-fold-live-xy` — LiveXy inject via `HostSession::step`,
+/// not `apply_ui_model` stuffing. Tape matches the SceneBuilder live-xy test.
+pub(super) fn run_preview_live_xy<T: Terminal>(session: &mut HostSession<T>) {
+    use crate::app::core::driver::XyEvent;
+    use crate::app::tui::host::HostEvent;
+
+    session.on_run_started("activity-fold-live-xy");
+    let events = [
+        XyEvent::ThinkingDelta("plan".into()),
+        XyEvent::ToolExecutionStart {
+            id: "r1".into(),
+            name: "read".into(),
+            args: serde_json::json!({ "path": "a.rs" }),
+        },
+        XyEvent::ToolExecutionEnd {
+            id: "r1".into(),
+            name: "read".into(),
+            result: "ok".into(),
+            is_error: false,
+        },
+    ];
+    for ev in events {
+        let _ = session.step(HostEvent::Xy(Box::new(ev)));
+    }
+    let _ = session.step(HostEvent::Tick);
+}

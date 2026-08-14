@@ -6,16 +6,25 @@
 pub enum PreviewInject {
     /// `HostSession::step(HostEvent::Xy)` / `apply_xy_event`.
     ///
-    /// No `/debug` row constructs this yet; ActivityFold `SceneBuilder` is the
-    /// live-xy path (cfg(test)). Landing: first LiveXy catalog scene.
-    #[allow(dead_code)]
+    /// `/debug activity-fold-live-xy` steps Thinking + read through
+    /// `HostSession::step` (not JSONL, not the Choice live tape).
     LiveXy,
     /// `/debug activity-fold-live` tape (Choice + scripted events; not JSONL seed).
     LiveTape,
     /// SessionEntry / JSONL seed → `rebuild_scrollback_from_travel`.
     Resume,
     /// `mount_*` / toast / footer / slash-only UI smoke.
-    Chrome,
+    Chrome(ChromeOp),
+}
+
+/// Chrome-plane inject (not transcript `UiEntry`s).
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum ChromeOp {
+    Toast,
+    NextTurnCue,
+    SlotModels,
+    SlotChoice,
+    SlotTree,
 }
 
 impl PreviewInject {
@@ -58,12 +67,17 @@ pub const DEBUG_SCENES: &[DebugSceneMeta] = &[
     DebugSceneMeta {
         id: "verify-smoke",
         description: "UI-only B4/B7 smoke (no LLM, no /exit); report via scroll notice",
-        inject: PreviewInject::Chrome,
+        inject: PreviewInject::Chrome(ChromeOp::SlotModels),
     },
     DebugSceneMeta {
         id: "activity-fold-live",
         description: "Live window tape + Ask Choice (no LLM); answer to close the turn",
         inject: PreviewInject::LiveTape,
+    },
+    DebugSceneMeta {
+        id: "activity-fold-live-xy",
+        description: "LiveXy: Thinking + read via HostSession::step (no JSONL, no Choice tape)",
+        inject: PreviewInject::LiveXy,
     },
     DebugSceneMeta {
         id: "activity-fold-resume",
@@ -134,6 +148,7 @@ mod tests {
         assert_eq!(resolve_scene_id("ao-perf-scroll"), Some("ao-perf-scroll"));
         assert_eq!(resolve_scene_id("verify-smoke"), None);
         assert_eq!(resolve_scene_id("activity-fold-live"), None);
+        assert_eq!(resolve_scene_id("activity-fold-live-xy"), None);
         assert_eq!(
             resolve_scene_id("activity-fold-resume"),
             Some("activity-fold-resume")
@@ -148,8 +163,20 @@ mod tests {
         let by_id: std::collections::HashMap<&str, PreviewInject> =
             DEBUG_SCENES.iter().map(|s| (s.id, s.inject)).collect();
         assert_eq!(by_id["activity-fold-live"], LiveTape);
+        assert_eq!(by_id["activity-fold-live-xy"], LiveXy);
         assert_eq!(by_id["activity-fold-resume"], Resume);
-        assert_eq!(by_id["verify-smoke"], Chrome);
+        assert_eq!(by_id["verify-smoke"], Chrome(ChromeOp::SlotModels));
+        let _seams = [
+            LiveXy,
+            LiveTape,
+            Resume,
+            Chrome(ChromeOp::Toast),
+            Chrome(ChromeOp::NextTurnCue),
+            Chrome(ChromeOp::SlotModels),
+            Chrome(ChromeOp::SlotChoice),
+            Chrome(ChromeOp::SlotTree),
+        ];
+        assert_eq!(_seams.len(), 8);
         assert_eq!(by_id["session-tree-multiturn"], Resume);
         assert_eq!(by_id["ao-perf-scroll"], Resume);
         assert!(

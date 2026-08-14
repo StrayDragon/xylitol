@@ -67,11 +67,20 @@ pub(super) async fn handle_slash<T: Terminal>(
             } else if let Some(meta) = crate::app::debug_fixtures::find_scene(&scene) {
                 use crate::app::debug_fixtures::PreviewInject;
                 match (meta.inject, meta.id) {
-                    (PreviewInject::Chrome, "verify-smoke") => {
+                    (
+                        PreviewInject::Chrome(crate::app::debug_fixtures::ChromeOp::SlotModels),
+                        "verify-smoke",
+                    ) => {
                         super::debug_verify::run_verify_smoke(session, driver).await;
+                    }
+                    (PreviewInject::Chrome(op), _) => {
+                        session.apply_chrome_op(op);
                     }
                     (PreviewInject::LiveTape, "activity-fold-live") => {
                         super::debug_activity_fold::run_activity_fold_live(session);
+                    }
+                    (PreviewInject::LiveXy, _) => {
+                        super::debug_activity_fold::run_preview_live_xy(session);
                     }
                     (PreviewInject::Resume, _) => {
                         log::info!(target: "xylitol::tui", "XyDriver::load_debug_scene scene={}", meta.id);

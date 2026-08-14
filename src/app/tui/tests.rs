@@ -5297,6 +5297,112 @@ fn scene_thinking_flushed_uses_product_flush() {
     }
 }
 
+#[test]
+fn scene_live_xy_steps_host_session() {
+    use super::activity_fold::scene::SceneBuilder;
+    use super::activity_fold::strip_ansi_live_window;
+
+    let mut b = SceneBuilder::begin();
+    b.thinking("plan");
+    b.tool_start("r1", "read", "a.rs");
+    b.tool_end("r1", "read");
+
+    let mut session = HostSession::new_product_ui(TestTerminal::new(100, 32));
+    session.on_run_started("scene");
+    for ev in b.live_events() {
+        session.step(HostEvent::Xy(Box::new(ev.clone()))).unwrap();
+    }
+    session.step(HostEvent::Tick).unwrap();
+    session.render_now().unwrap();
+    let joined = strip_ansi_live_window(&session.tui.terminal.frames.concat());
+    assert!(
+        joined.contains("Explor") || joined.contains("a.rs") || joined.contains("read"),
+        "LiveXy HostSession::step must paint explore/read; got:\n{joined}"
+    );
+}
+
+#[test]
+fn chrome_op_toast_is_not_scroll_notice() {
+    use super::bridge::UiEntry;
+    use crate::app::debug_fixtures::ChromeOp;
+
+    let mut session = HostSession::new_product_ui(TestTerminal::new(80, 24));
+    session.apply_chrome_op(ChromeOp::Toast);
+    let body = session
+        .ui_root()
+        .expect("product ui root")
+        .borrow()
+        .chrome_toast_body()
+        .unwrap_or("")
+        .to_string();
+    assert!(
+        body.contains("toast"),
+        "expected chrome toast body; got {body:?}"
+    );
+    assert!(
+        !session
+            .ui_model()
+            .entries
+            .iter()
+            .any(|e| matches!(e, UiEntry::ScrollNotice { .. })),
+        "chrome toast must not be a ScrollNotice"
+    );
+}
+
+#[test]
+fn chrome_op_slot_models_mounts_picker() {
+    use super::layout::EditorSlot;
+    use crate::app::debug_fixtures::ChromeOp;
+
+    let mut session = HostSession::new_product_ui(TestTerminal::new(80, 24));
+    session.apply_chrome_op(ChromeOp::SlotModels);
+    assert_eq!(
+        session.ui_root().expect("product ui root").borrow().slot(),
+        EditorSlot::Models
+    );
+}
+
+#[test]
+fn chrome_op_next_turn_cue_is_not_scroll_notice() {
+    use super::bridge::UiEntry;
+    use crate::app::debug_fixtures::ChromeOp;
+
+    let mut session = HostSession::new_product_ui(TestTerminal::new(80, 24));
+    session.apply_chrome_op(ChromeOp::NextTurnCue);
+    let cue = session
+        .ui_root()
+        .expect("product ui root")
+        .borrow()
+        .status_next_turn_cue_for_test();
+    assert_eq!(cue.as_deref(), Some("Next turn: preview"));
+    assert!(
+        !session
+            .ui_model()
+            .entries
+            .iter()
+            .any(|e| matches!(e, UiEntry::ScrollNotice { .. })),
+        "next-turn cue must not be a ScrollNotice"
+    );
+}
+
+#[test]
+fn chrome_op_slot_choice_and_tree_mount() {
+    use super::layout::EditorSlot;
+    use crate::app::debug_fixtures::ChromeOp;
+
+    let mut session = HostSession::new_product_ui(TestTerminal::new(80, 24));
+    session.apply_chrome_op(ChromeOp::SlotChoice);
+    assert_eq!(
+        session.ui_root().expect("product ui root").borrow().slot(),
+        EditorSlot::Choice
+    );
+    session.apply_chrome_op(ChromeOp::SlotTree);
+    assert_eq!(
+        session.ui_root().expect("product ui root").borrow().slot(),
+        EditorSlot::Tree
+    );
+}
+
 /// Lesson 3: a sealed Thought cluster stays `Thought` when a new Thinking
 /// stream starts; the new stream paints its own live head. Asserted on the
 /// product frame via the semantic dump (both rows must be present).
