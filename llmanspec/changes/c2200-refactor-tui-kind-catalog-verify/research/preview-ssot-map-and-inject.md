@@ -170,7 +170,7 @@ dump **后置**于产品 paint，从 `ActivityFoldState` + `UiModel` 读，不�
 | 阶段 | 做什么 | 不做什么 | 谁 |
 |---|---|---|---|
 | **0 清单** | 本文件 §2 表变成仓库内 checklist（UiEntry × 缝 × 已有 `/debug`/测） | 不写 Preview 类型 | 派工 |
-| **1 注入纪律** | 新夹具必须走 `PreviewInject` 三缝之一；禁止测里直接 `entries.push(Thinking)` 当产品测 | 不拆 UiRoot | 架构师审 + 派工改 harness 样板 |
+| **1 注入纪律** | 新夹具必须走 `PreviewInject` 三缝之一；禁止测里直接 `entries.push(Thinking)` 当产品测 | 不拆 UiRoot | **类型已落** `PreviewInject` + `DebugSceneMeta.inject`；`thinking_flushed` 走产品 flush。下一步：harness 样板 / ChromeOp |
 | **2 dump** | 产品 paint 后打印 L3/L2/L1；c1762 三条场景用 dump 断言 | 不改词表 | 已派 `PROMPT-activity-fold-scene` |
 | **3 表** | `DEBUG_SCENES` 长成 Preview 表（id + inject + stability + invariants）；inventory：每个 `UiEntry` 变体、每个非 stub `EditorSlot`、每个 chrome 槽 ≥1 条 | 不做侧栏 pantry | 架构师定类型后派工填表 |
 | **4 看见** | `/debug <id>` 全部走同一表（含今天被排除的 `activity-fold-live`） |  | 派工 |

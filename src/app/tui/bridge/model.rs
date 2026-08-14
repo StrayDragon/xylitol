@@ -525,14 +525,27 @@ impl UiModel {
     }
 
     pub(crate) fn flush_streaming(&mut self) {
+        self.flush_streaming_elapsed(None);
+    }
+
+    /// Same as [`Self::flush_streaming`], but pin thinking wall-clock.
+    ///
+    /// Live production passes `None` (measure `thinking_started_at`). Scene /
+    /// resume-shaped tests pass `Some` because they cannot steer
+    /// [`std::time::Instant`].
+    pub(crate) fn flush_streaming_elapsed(&mut self, elapsed_override: Option<u64>) {
         if !self.streaming_thinking.is_empty() {
             let text = std::mem::take(&mut self.streaming_thinking);
             self.streaming_think_id = None;
             let id = allocate_thinking_id(&self.entries, &text);
-            let elapsed_secs = self.thinking_started_at.take().and_then(|start| {
-                let secs = start.elapsed().as_secs();
-                (secs > 0).then_some(secs)
-            });
+            let elapsed_secs = match elapsed_override {
+                Some(secs) => (secs > 0).then_some(secs),
+                None => self.thinking_started_at.take().and_then(|start| {
+                    let secs = start.elapsed().as_secs();
+                    (secs > 0).then_some(secs)
+                }),
+            };
+            self.thinking_started_at = None;
             self.entries.push(UiEntry::Thinking {
                 id,
                 text,

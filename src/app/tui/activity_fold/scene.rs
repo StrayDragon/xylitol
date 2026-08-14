@@ -21,7 +21,7 @@ use crate::app::core::driver::XyEvent;
 use crate::app::tui::activity_fold::{
     format_elapsed_secs, partition_segments, strip_ansi_live_window, thought_header_body,
 };
-use crate::app::tui::bridge::{UiEntry, UiModel, allocate_thinking_id, apply_xy_event};
+use crate::app::tui::bridge::{UiEntry, UiModel, apply_xy_event};
 use crate::app::tui::widgets::GlyphSet;
 use xylitol_tui::Component;
 
@@ -214,8 +214,8 @@ impl SceneBuilder {
     }
 
     /// todo_* result through the product projection
-    /// (`sync_todo_checklist_from_tool_result`): the checklist row is a
-    /// projection, not a Used call (lesson 1).
+    /// (`sync_todo_checklist_from_tool_result` inside `apply_tools_family`):
+    /// the checklist row is a projection, not a Used call (lesson 1).
     pub fn todo_result(&mut self, id: &str, name: &str, result: &str) -> &mut Self {
         apply_xy_event(
             &mut self.model,
@@ -225,10 +225,6 @@ impl SceneBuilder {
                 result: result.into(),
                 is_error: false,
             },
-        );
-        crate::app::tui::bridge::session_tree::sync_todo_checklist_from_tool_result(
-            &mut self.model,
-            result,
         );
         self
     }
@@ -250,25 +246,14 @@ impl SceneBuilder {
         self
     }
 
-    /// Pin a **flushed** Thinking entry (the exact entry shape the product
-    /// flush produces / resume consumes, with a fixed `elapsed_secs`).
+    /// Seal a thinking burst the product way: [`XyEvent::ThinkingDelta`] then
+    /// [`UiModel::flush_streaming_elapsed`] (same flush `MessageEnd` uses).
     ///
-    /// Live flush measures the burst with a wall-clock [`std::time::Instant`]
-    /// that a scene cannot steer without touching product code — so the scene
-    /// pins the flushed result instead and covers the paint decision
-    /// (`thought_duration_label` in scrollback.rs). Missing frame band:
-    /// ThinkingDelta → flush timing is covered by product/bridge tests, not by
-    /// scene frames.
+    /// Elapsed is pinned because a scene cannot steer
+    /// [`std::time::Instant`]. This is **not** stuffing `UiEntry::Thinking`.
     pub fn thinking_flushed(&mut self, text: &str, elapsed_secs: u64) -> &mut Self {
-        self.model.streaming_thinking.clear();
-        self.model.streaming_think_id = None;
-        self.model.thinking_started_at = None;
-        let id = allocate_thinking_id(&self.model.entries, text);
-        self.model.entries.push(UiEntry::Thinking {
-            id,
-            text: text.into(),
-            elapsed_secs: Some(elapsed_secs),
-        });
+        apply_xy_event(&mut self.model, &XyEvent::ThinkingDelta(text.into()));
+        self.model.flush_streaming_elapsed(Some(elapsed_secs));
         self
     }
 
@@ -281,6 +266,11 @@ impl SceneBuilder {
 
     pub fn entries(&self) -> &[UiEntry] {
         &self.model.entries
+    }
+
+    /// Live thinking buffers must be empty after a product flush.
+    pub fn live_think_idle(&self) -> bool {
+        self.model.streaming_think_id.is_none() && self.model.streaming_thinking.is_empty()
     }
 
     /// Product render of the current scene state (entries + inflight streams).

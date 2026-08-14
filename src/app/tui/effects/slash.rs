@@ -64,10 +64,30 @@ pub(super) async fn handle_slash<T: Terminal>(
             let scene = scene.trim().to_ascii_lowercase();
             if scene.is_empty() || scene == "list" {
                 session.push_scroll_notice(crate::app::debug_fixtures::list_note());
-            } else if scene == "verify-smoke" {
-                super::debug_verify::run_verify_smoke(session, driver).await;
-            } else if scene == "activity-fold-live" {
-                super::debug_activity_fold::run_activity_fold_live(session);
+            } else if let Some(meta) = crate::app::debug_fixtures::find_scene(&scene) {
+                use crate::app::debug_fixtures::PreviewInject;
+                match (meta.inject, meta.id) {
+                    (PreviewInject::Chrome, "verify-smoke") => {
+                        super::debug_verify::run_verify_smoke(session, driver).await;
+                    }
+                    (PreviewInject::LiveTape, "activity-fold-live") => {
+                        super::debug_activity_fold::run_activity_fold_live(session);
+                    }
+                    (PreviewInject::Resume, _) => {
+                        log::info!(target: "xylitol::tui", "XyDriver::load_debug_scene scene={}", meta.id);
+                        match driver.load_debug_scene(meta.id).await {
+                            Ok(load) => session.apply_debug_scene(load),
+                            Err(e) => {
+                                note_driver_err(session, "tui.load_debug_scene", &e, e.to_string())
+                            }
+                        }
+                    }
+                    (inject, id) => {
+                        session.push_scroll_notice(format!(
+                            "{id}: inject {inject:?} has no /debug runner yet"
+                        ));
+                    }
+                }
             } else {
                 log::info!(target: "xylitol::tui", "XyDriver::load_debug_scene scene={}", scene);
                 match driver.load_debug_scene(&scene).await {
