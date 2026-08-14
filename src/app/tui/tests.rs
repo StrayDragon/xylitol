@@ -5188,3 +5188,174 @@ fn activity_fold_live_ask_close_idles_and_drops_asking() {
         "opening a cluster on the live turn must not invent Worked for: {opened}"
     );
 }
+
+// ── c2200 scene slice: semantic dump over product paint (lessons 1–3) ──
+
+/// Lesson 1: thinking + todo_* → L2 cluster head is `Used 2 tools` (by call
+/// count), not `Thought`. Asserted on the product frame via the semantic dump.
+#[test]
+fn scene_dump_thinking_plus_todo_is_used_not_thought() {
+    use super::activity_fold::scene::SceneBuilder;
+    use super::activity_fold::{count_cluster, partition_segments};
+
+    let mut b = SceneBuilder::begin();
+    b.thinking("plan todos");
+    b.tool_start("td1", "todo_update", "");
+    b.todo_result(
+        "td1",
+        "todo_update",
+        r#"{"items":[{"id":"1","content":"a","status":"completed"}]}"#,
+    );
+    b.tool_start("td2", "todo_list", "");
+    b.todo_result(
+        "td2",
+        "todo_list",
+        r#"{"items":[{"id":"1","content":"a","status":"completed"}]}"#,
+    );
+    let entries = b.entries().to_vec();
+
+    let (plain, dump) = b.render(100);
+    let text = dump.to_text();
+    let l2_used: Vec<_> = dump
+        .rows_with_chord("L2 cluster")
+        .filter(|r| r.cluster_head.contains("Used"))
+        .collect();
+    assert!(
+        l2_used.iter().any(|r| r.cluster_head.contains("2 tools")),
+        "L2 cluster head must be Used 2 tools (lesson 1); dump:\n{text}\nframe:\n{plain}"
+    );
+    assert!(
+        !dump
+            .rows_with_chord("L2 cluster")
+            .any(|r| r.cluster_head.contains("Thought")),
+        "thinking + todo_* must not be Thought (lesson 1); dump:\n{text}\nframe:\n{plain}"
+    );
+    let segs = partition_segments(&entries);
+    let counts = count_cluster(&entries, &segs[0].clusters[0]);
+    assert_eq!(counts.used_calls, 2, "two todo_* invocations");
+    assert!(
+        !counts.is_thought_only(),
+        "thinking is a kid, not the header"
+    );
+}
+
+/// Lesson 2: four same-name unknown tools → `Used 4 tools` counts
+/// invocations, not unique names.
+#[test]
+fn scene_dump_four_same_unknown_tools_count_invocations() {
+    use super::activity_fold::scene::SceneBuilder;
+    use super::activity_fold::{count_cluster, partition_segments};
+
+    let mut b = SceneBuilder::begin();
+    b.thinking("plan calls");
+    for i in 0..4 {
+        b.tool_start(&format!("u{i}"), "todo_update", "");
+        b.tool_end(&format!("u{i}"), "todo_update");
+    }
+    let entries = b.entries().to_vec();
+
+    let (plain, dump) = b.render(100);
+    let text = dump.to_text();
+    let l2_used: Vec<_> = dump
+        .rows_with_chord("L2 cluster")
+        .filter(|r| r.cluster_head.contains("Used"))
+        .collect();
+    assert!(
+        l2_used.iter().any(|r| r.cluster_head.contains("4 tools")),
+        "L2 cluster head must be Used 4 tools (lesson 2); dump:\n{text}\nframe:\n{plain}"
+    );
+    assert!(
+        !l2_used.iter().any(|r| r.cluster_head.contains("1 tool")),
+        "must not collapse by unique name; dump:\n{text}"
+    );
+    let segs = partition_segments(&entries);
+    let counts = count_cluster(&entries, &segs[0].clusters[0]);
+    assert_eq!(counts.used_calls, 4, "invocations, not unique names");
+    assert_eq!(counts.used_names.as_slice(), ["todo_update"]);
+}
+
+/// Lesson 3: a sealed Thought cluster stays `Thought` when a new Thinking
+/// stream starts; the new stream paints its own live head. Asserted on the
+/// product frame via the semantic dump (both rows must be present).
+#[test]
+fn scene_dump_sealed_thought_stays_thought_under_new_stream() {
+    use super::activity_fold::scene::SceneBuilder;
+    use super::activity_fold::{count_cluster, partition_segments};
+
+    let mut b = SceneBuilder::begin();
+    b.thinking_flushed("first burst", 1);
+    b.assistant("mid");
+    b.message_end();
+    let entries = b.entries().to_vec();
+
+    let segs = partition_segments(&entries);
+    let sealed = &segs[0].clusters[0];
+    assert!(
+        sealed.seal_assistant_idx.is_some(),
+        "cluster must be sealed by the assistant body"
+    );
+    let counts = count_cluster(&entries, sealed);
+    assert!(counts.is_thought_only(), "sealed cluster is thought-only");
+
+    b.live_thinking("second burst");
+    let (plain, dump) = b.render(100);
+    let text = dump.to_text();
+    assert!(
+        dump.rows_with_chord("L2 cluster")
+            .any(|r| r.cluster_head.contains("Thought 1s")),
+        "sealed cluster head must stay Thought 1s (lesson 3); dump:\n{text}\nframe:\n{plain}"
+    );
+    assert!(
+        dump.rows_with_chord("L2 cluster")
+            .any(|r| r.cluster_head == "Thinking"),
+        "new stream must paint its own Thinking head; dump:\n{text}\nframe:\n{plain}"
+    );
+    assert!(
+        plain.contains("Thought 1s") && plain.contains("Thinking"),
+        "frame band: sealed Thought row and live Thinking row coexist; frame:\n{plain}"
+    );
+}
+
+/// The semantic dump must cover the same product paint path
+/// (`render_scrollback` under UiRoot), not a test-only paint.
+#[test]
+fn scene_dump_covers_product_render_scrollback() {
+    use super::activity_fold::scene::SceneBuilder;
+    use super::activity_fold::{ActivityFoldState, SemanticDump, strip_ansi_live_window};
+    use super::layout::LayoutTheme;
+    use super::widgets::{
+        FoldHitTable, GlyphSet, ScrollbackFold, ScrollbackPaintCache, render_scrollback,
+    };
+
+    let mut b = SceneBuilder::begin();
+    b.thinking("plan");
+    b.tool_start("r1", "read", "a.rs");
+    b.tool_end("r1", "read");
+    b.assistant("done");
+    b.message_end();
+    let entries = b.entries().to_vec();
+
+    let mut model = UiModel::new();
+    model.entries = entries.clone();
+    let mut activity = ActivityFoldState::default();
+    let frame = render_scrollback(
+        &model,
+        GlyphSet::from_env(),
+        LayoutTheme::product_dark(),
+        &ScrollbackFold::default(),
+        &mut activity,
+        100,
+        &mut ScrollbackPaintCache::default(),
+        &mut FoldHitTable::default(),
+    );
+    let plain = strip_ansi_live_window(&frame.join("\n"));
+    assert!(plain.contains("Explored a.rs"), "frame:\n{plain}");
+
+    let dump = SemanticDump::from_product_frame(&plain, &entries);
+    assert!(
+        dump.rows_with_chord("L2 cluster")
+            .any(|r| r.cluster_head.contains("Explored a.rs")),
+        "dump must anchor the sealed read cluster; dump:\n{}",
+        dump.to_text()
+    );
+}
