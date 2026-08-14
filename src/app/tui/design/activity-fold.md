@@ -17,7 +17,8 @@ components:
 # Activity fold（嵌套收纳 + 流式队列）
 
 > Token 根源：`{colors.*}` → [`../DESIGN.md`](../DESIGN.md)。
-> 静图：[`playground/`](./playground/) 槽 `activity-fold`。
+> **意图已迁** [`../designing/modules/activity-fold/`](../designing/modules/activity-fold/)。本文双轨保留至拆除日。
+> 静图：designing 预览；旧槽 [`playground/`](./playground/) `activity-fold`。
 > 块级 thinking/tool 折叠仍见 [`expandable.md`](./expandable.md)；本文件管 **段/簇/流式队列**。
 > 规划：[`c1762`](../../../llmanspec/changes/c1762-update-tui-activity-fold-labels/proposal.md) 词表；嵌套结构仍见已归档 c1761。
 

@@ -29,6 +29,7 @@ DESIGN_DIR = REPO / "src" / "app" / "tui" / "design"
 FIXTURES = DESIGN_DIR / "fixtures"
 AGENTS = DESIGN_DIR / "AGENTS.md"
 README = DESIGN_DIR / "playground" / "README.md"
+DESIGNING_MODULES = REPO / "src" / "app" / "tui" / "designing" / "modules"
 
 CHANGE_ID_RE = re.compile(r"\bc\d{3}(?:-\w+)?\b")
 HEX_RE = re.compile(r"#[0-9a-fA-F]{6}")
@@ -234,6 +235,23 @@ def load_fixture(path: Path) -> dict:
     return data
 
 
+def flatten_state_lines(data: dict) -> str:
+    rows = data.get("lines") or []
+    out: list[str] = []
+    for row in rows:
+        if isinstance(row, list):
+            parts: list[str] = []
+            for span in row:
+                if isinstance(span, dict):
+                    parts.append(str(span.get("text", "")))
+                else:
+                    parts.append(str(span))
+            out.append("".join(parts))
+        elif isinstance(row, str):
+            out.append(row)
+    return "\n".join(out)
+
+
 def resolve_source(html: str, source: str) -> str | None:
     # treep.filter / models.open.editor / pending.nextTurn.editor
     parts = source.split(".")
@@ -274,6 +292,30 @@ def check_fixtures(html: str, errors: list[str]) -> None:
             fail(f"fixtures: parse {path.name}: {e}", errors)
             continue
         fid = str(fix.get("id", path.stem))
+        if str(fix.get("ssot", "")) == "designing":
+            module = str(fix.get("module") or fix.get("slot") or "")
+            state = str(fix.get("state") or "")
+            state_path = DESIGNING_MODULES / module / "states" / f"{state}.yaml"
+            if not state_path.is_file():
+                fail(
+                    f"fixtures: {fid} designing state missing "
+                    f"{state_path.relative_to(REPO)}",
+                    errors,
+                )
+                continue
+            try:
+                state_doc = load_fixture(state_path)
+            except Exception as e:  # noqa: BLE001
+                fail(f"fixtures: parse {state_path.name}: {e}", errors)
+                continue
+            src = flatten_state_lines(state_doc)
+            for s in state_doc.get("must_contain") or []:
+                if s not in src:
+                    fail(f"fixtures: {fid} must_contain missing {s!r}", errors)
+            for s in state_doc.get("must_not_contain") or []:
+                if s in src:
+                    fail(f"fixtures: {fid} must_not_contain found {s!r}", errors)
+            continue
         if f'data-design-fixture="{fid}"' not in html:
             fail(f"fixtures: HTML missing data-design-fixture=\"{fid}\"", errors)
         source = str(fix.get("source", ""))

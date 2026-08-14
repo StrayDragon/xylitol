@@ -5,4 +5,4 @@ Agent 找路：每模块一行。改某表面时读 `modules/<id>/intent.md` + `
 
 | id | 一句话 | states |
 |---|---|---|
-| — | (no modules) | — |
+| activity-fold | 折叠减噪：低级操作收进簇；默认最小化入口。 | collapsed, envelope, expanded |

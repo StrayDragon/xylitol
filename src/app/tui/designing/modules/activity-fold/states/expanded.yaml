@@ -1,0 +1,17 @@
+id: activity-fold.expanded
+cols: 80
+must_contain:
+  - "Editing 7 files"
+  - "▾"
+must_not_contain:
+  - "Worked for"
+  - "Planning next moves"
+lines:
+  - - { text: "❯ ", token: user }
+    - { text: "继续修折叠", token: on-surface }
+  - - { text: "Thought 20s", token: muted }
+  - - { text: "Explored 15 files, Ran 1 command", token: muted }
+  - - { text: "▾ Editing 7 files, Running 5 commands ", token: muted }
+    - { text: "+301", token: success }
+    - { text: " ", token: muted }
+    - { text: "-8", token: error }

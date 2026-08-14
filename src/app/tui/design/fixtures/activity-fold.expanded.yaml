@@ -1,12 +1,6 @@
 # id: activity-fold.expanded
 id: activity-fold.expanded
-design: ../activity-fold.md
-slot: activity-fold
+ssot: designing
+module: activity-fold
 state: expanded
-source: activityFold.expanded
-must_contain:
-  - "Editing 7 files"
-  - "▾"
-must_not_contain:
-  - "Worked for"
-  - "Planning next moves"
+slot: activity-fold
