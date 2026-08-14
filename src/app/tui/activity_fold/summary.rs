@@ -5,8 +5,10 @@ use time::OffsetDateTime;
 use crate::app::tui::bridge::UiEntry;
 use crate::app::tui::keybindings::with_keybindings;
 use crate::app::tui::widgets::GlyphSet;
-use crate::protocol::tool_name::is_mcp_tool_name;
 
+use super::atom::{
+    ActivityAtom, ExploreKind, STREAMING_THINK_ID, activity_atom, is_path_placeholder,
+};
 #[cfg(test)]
 use super::segment::SegmentLevel;
 use super::segment::{
@@ -33,6 +35,8 @@ pub struct ActivityCounts {
     /// Reliable +/- from Diff / edit display_diff only.
     pub diff_plus: Option<u32>,
     pub diff_minus: Option<u32>,
+    /// In-flight thinking burst id ([`STREAMING_THINK_ID`]), not a global stream flag.
+    pub live_think_id: Option<String>,
 }
 
 impl ActivityCounts {
@@ -60,6 +64,18 @@ impl ActivityCounts {
             && self.asks == 0
             && self.compaction == 0
     }
+
+    /// Merge an in-flight thinking burst into this cluster only.
+    ///
+    /// Callers MUST pass this only for the open live cluster. Identity is
+    /// [`STREAMING_THINK_ID`], not `UiModel.streaming_thinking`.
+    pub fn with_live_think(mut self, id: impl Into<String>) -> Self {
+        if self.thinking == 0 {
+            self.thinking = 1;
+        }
+        self.live_think_id = Some(id.into());
+        self
+    }
 }
 
 pub fn count_segment(entries: &[UiEntry], seg: &ActivitySegment) -> ActivityCounts {
@@ -82,10 +98,7 @@ pub fn cluster_is_thought_only(entries: &[UiEntry], cluster: &ActivityCluster) -
 
 /// Counts for a live thinking stream before it is flushed to a Thinking entry.
 pub fn streaming_thought_counts() -> ActivityCounts {
-    ActivityCounts {
-        thinking: 1,
-        ..Default::default()
-    }
+    counts_from_atoms(std::iter::once(ActivityAtom::streaming_think()))
 }
 
 fn push_unique(paths: &mut Vec<String>, path: String) {
@@ -94,31 +107,11 @@ fn push_unique(paths: &mut Vec<String>, path: String) {
     }
 }
 
-/// Streaming / empty path chrome (`preview.rs` `PATH_PLACEHOLDER`), not a real file.
-pub(crate) fn is_path_placeholder(p: &str) -> bool {
-    let p = p.trim();
-    p.is_empty() || p == "..." || p == "…" || p == "$ ..." || p.starts_with("...")
-}
-
-fn tool_path_of(tool_path: &Option<String>, args_preview: &str) -> Option<String> {
-    if let Some(p) = tool_path.as_deref().map(str::trim)
-        && !is_path_placeholder(p)
-    {
-        return Some(p.to_string());
-    }
-    let preview = args_preview.trim();
-    if is_path_placeholder(preview) {
-        return None;
-    }
-    // Human preview is `{name} {path}` or just a path-ish token.
-    preview
-        .split_whitespace()
-        .next_back()
-        .filter(|t| !is_path_placeholder(t) && (t.contains('.') || t.contains('/')))
-        .map(str::to_string)
-}
-
 fn count_middles(entries: &[UiEntry], indices: &[usize]) -> ActivityCounts {
+    counts_from_atoms(indices.iter().map(|&idx| activity_atom(&entries[idx])))
+}
+
+fn counts_from_atoms(atoms: impl IntoIterator<Item = ActivityAtom>) -> ActivityCounts {
     let mut c = ActivityCounts::default();
     let mut plus = 0u32;
     let mut minus = 0u32;
@@ -126,59 +119,38 @@ fn count_middles(entries: &[UiEntry], indices: &[usize]) -> ActivityCounts {
     let mut anon_edits = 0u32;
     let mut anon_explores = 0u32;
 
-    for &idx in indices {
-        match &entries[idx] {
-            UiEntry::Tool {
-                name,
-                args_preview,
-                tool_path,
-                display_diff,
-                ..
-            } => {
-                let n = name.to_ascii_lowercase();
-                if is_search_tool(&n) {
-                    match tool_path_of(tool_path, args_preview) {
-                        Some(p) => push_unique(&mut c.explore_paths, p),
-                        None => c.search_no_path = true,
-                    }
-                } else if is_command_tool(&n) {
-                    c.commands += 1;
-                } else if is_edit_tool(&n) {
-                    match tool_path_of(tool_path, args_preview) {
-                        Some(p) => push_unique(&mut c.edit_paths, p),
-                        None => anon_edits += 1,
-                    }
-                } else if is_read_or_ls(&n) {
-                    match tool_path_of(tool_path, args_preview) {
-                        Some(p) => push_unique(&mut c.explore_paths, p),
-                        None => anon_explores += 1,
-                    }
-                } else {
-                    c.used_calls = c.used_calls.saturating_add(1);
-                    push_unique(&mut c.used_names, used_display_name(name));
+    for atom in atoms {
+        match atom {
+            ActivityAtom::Edit { path, diff_pm } => {
+                match path {
+                    Some(p) => push_unique(&mut c.edit_paths, p),
+                    None => anon_edits += 1,
                 }
-                if let Some(diff) = display_diff.as_deref()
-                    && let Some((p, m)) = count_diff_pm(diff)
-                {
+                if let Some((p, m)) = diff_pm {
                     plus = plus.saturating_add(p);
                     minus = minus.saturating_add(m);
                     saw_diff_stats = true;
                 }
             }
-            UiEntry::Diff { display_diff, .. } => {
-                anon_edits += 1;
-                if let Some((p, m)) = count_diff_pm(display_diff) {
-                    plus = plus.saturating_add(p);
-                    minus = minus.saturating_add(m);
-                    saw_diff_stats = true;
+            ActivityAtom::Explore { path, kind } => match (path, kind) {
+                (Some(p), _) => push_unique(&mut c.explore_paths, p),
+                (None, ExploreKind::Search) => c.search_no_path = true,
+                (None, ExploreKind::File) => anon_explores += 1,
+            },
+            ActivityAtom::Run => c.commands += 1,
+            ActivityAtom::Used { display_name } => {
+                c.used_calls = c.used_calls.saturating_add(1);
+                push_unique(&mut c.used_names, display_name);
+            }
+            ActivityAtom::Think { id } => {
+                c.thinking += 1;
+                if id == STREAMING_THINK_ID {
+                    c.live_think_id = Some(id);
                 }
             }
-            UiEntry::Bash { .. } => c.commands += 1,
-            UiEntry::Thinking { .. } => c.thinking += 1,
-            UiEntry::Ask { .. } => c.asks += 1,
-            UiEntry::Compaction { .. } => c.compaction += 1,
-            // Checklist (UiEntry::Todo) is a projection of todo_* results, not a Used call.
-            _ => {}
+            ActivityAtom::Ask { .. } => c.asks += 1,
+            ActivityAtom::Compaction => c.compaction += 1,
+            ActivityAtom::Noise | ActivityAtom::Projection => {}
         }
     }
 
@@ -194,44 +166,6 @@ fn count_middles(entries: &[UiEntry], indices: &[usize]) -> ActivityCounts {
         c.diff_minus = Some(minus);
     }
     c
-}
-
-fn is_search_tool(name: &str) -> bool {
-    matches!(
-        name,
-        "grep" | "rg" | "search" | "glob" | "find" | "codebase_search" | "semantic_search"
-    ) || name.contains("search")
-        || name.contains("grep")
-}
-
-fn is_command_tool(name: &str) -> bool {
-    matches!(name, "bash" | "shell" | "run_terminal_cmd" | "execute")
-}
-
-fn is_edit_tool(name: &str) -> bool {
-    matches!(
-        name,
-        "edit" | "write" | "apply_patch" | "strreplace" | "str_replace"
-    )
-}
-
-fn is_read_or_ls(name: &str) -> bool {
-    matches!(name, "read" | "ls")
-}
-
-fn used_display_name(name: &str) -> String {
-    if is_mcp_tool_name(name) {
-        if let Some(rest) = name.strip_prefix("mcp__") {
-            return rest.rsplit("__").next().unwrap_or(rest).to_string();
-        }
-        if let Some(rest) = name.strip_prefix("mcp:") {
-            return rest.rsplit(':').next().unwrap_or(rest).to_string();
-        }
-        if let Some(rest) = name.strip_prefix("mcp-") {
-            return rest.rsplit('-').next().unwrap_or(rest).to_string();
-        }
-    }
-    name.to_string()
 }
 
 fn basename(path: &str) -> &str {
@@ -253,26 +187,6 @@ fn basename(path: &str) -> &str {
 
 fn files_word(n: u32) -> &'static str {
     if n == 1 { "file" } else { "files" }
-}
-
-/// Count +/- lines in a unified diff; `None` when nothing reliable.
-pub fn count_diff_pm(diff: &str) -> Option<(u32, u32)> {
-    let mut plus = 0u32;
-    let mut minus = 0u32;
-    let mut any = false;
-    for line in diff.lines() {
-        if line.starts_with("+++") || line.starts_with("---") || line.starts_with("@@") {
-            continue;
-        }
-        if line.starts_with('+') {
-            plus += 1;
-            any = true;
-        } else if line.starts_with('-') {
-            minus += 1;
-            any = true;
-        }
-    }
-    if any { Some((plus, minus)) } else { None }
 }
 
 fn tool_word(n: u32) -> &'static str {
@@ -458,14 +372,13 @@ pub fn format_summary_line(
 }
 
 /// Cluster header (L2/L0). `progressive` is the live open cluster.
-/// `live_thinking`: current burst still streaming — show Thinking, not Thought Ns.
+/// Live Thinking vs Thought is bound to [`ActivityCounts::live_think_id`].
 pub fn format_cluster_header(
     glyphs: GlyphSet,
     counts: &ActivityCounts,
     expanded: bool,
     progressive: bool,
     thought_dur: Option<&str>,
-    live_thinking: bool,
 ) -> String {
     let marker = if expanded {
         glyphs.unfold()
@@ -474,7 +387,7 @@ pub fn format_cluster_header(
     };
     let mut body = format_cluster_body(counts, progressive);
     if body == "Thought" {
-        body = if live_thinking {
+        body = if counts.live_think_id.is_some() {
             "Thinking".to_string()
         } else {
             thought_header_body(thought_dur)
@@ -490,6 +403,7 @@ pub fn format_cluster_header(
 
 #[cfg(test)]
 mod tests {
+    use super::super::atom::count_diff_pm;
     use super::*;
     use crate::app::tui::bridge::UiEntry;
 
@@ -590,12 +504,22 @@ mod tests {
         assert_eq!(format_elapsed_secs(0), "0s");
         crate::app::tui::keybindings::ensure_product_catalog();
         let glyphs = GlyphSet::from_env();
-        let streaming = format_cluster_header(glyphs, &c, false, true, None, true);
+        let streaming =
+            format_cluster_header(glyphs, &streaming_thought_counts(), false, true, None);
         assert!(streaming.contains("Thinking"), "{streaming}");
         assert!(!streaming.contains("Thought"), "{streaming}");
-        let flushed = format_cluster_header(glyphs, &c, false, false, Some("17s"), false);
+        let flushed = format_cluster_header(glyphs, &c, false, false, Some("17s"));
         assert!(flushed.contains("Thought 17s"), "{flushed}");
         assert!(!flushed.contains("Thinking"), "{flushed}");
+        let live_on_flushed = format_cluster_header(
+            glyphs,
+            &c.clone().with_live_think(STREAMING_THINK_ID),
+            false,
+            true,
+            None,
+        );
+        assert!(live_on_flushed.contains("Thinking"), "{live_on_flushed}");
+        assert!(!live_on_flushed.contains("Thought"), "{live_on_flushed}");
     }
 
     #[test]
@@ -678,6 +602,22 @@ mod tests {
     }
 
     #[test]
+    fn bang_bash_entry_is_noise_tool_bash_is_ran() {
+        let bang = UiEntry::Bash {
+            command: "ls".into(),
+            status: crate::app::tui::bridge::BashBlockStatus::Success,
+            output: String::new(),
+            exclude_from_context: false,
+        };
+        let c = count_middles(&[bang], &[0]);
+        assert_eq!(c.commands, 0);
+        assert_eq!(format_l2_body(&c), "Activity");
+
+        let c = count_middles(&[tool("bash", None)], &[0]);
+        assert_eq!(format_l2_body(&c), "Ran 1 command");
+    }
+
+    #[test]
     fn write_placeholder_path_is_not_dots() {
         let entries = vec![tool("write", Some("..."))];
         let c = count_middles(&entries, &[0]);
@@ -727,5 +667,15 @@ mod tests {
         let live = format_cluster_body(&c, true);
         assert!(live.contains("Exploring 2 files"), "{live}");
         assert!(!live.contains("Explored"));
+    }
+
+    #[test]
+    fn unknown_searchish_tool_is_used_not_explored() {
+        let entries = vec![tool("my_custom_search", None)];
+        let c = count_middles(&entries, &[0]);
+        assert_eq!(format_l2_body(&c), "Used my_custom_search");
+        assert_eq!(c.used_calls, 1);
+        assert!(c.explore_paths.is_empty());
+        assert!(!c.search_no_path);
     }
 }
