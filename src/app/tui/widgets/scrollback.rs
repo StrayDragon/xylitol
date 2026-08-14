@@ -16,10 +16,10 @@ use super::glyphs::GlyphSet;
 #[cfg(test)]
 use crate::app::tui::activity_fold::is_path_placeholder;
 use crate::app::tui::activity_fold::{
-    ActivityFoldState, SegmentLevel, cluster_is_thought_only, cluster_middle_indices,
-    cluster_omits_header, count_cluster, format_cluster_header, format_elapsed_secs,
-    format_envelope_line, middle_entry_indices, partition_segments, streaming_thought_counts,
-    thought_header_body,
+    ActivityFoldState, STREAMING_THINK_ID, SegmentLevel, cluster_is_thought_only,
+    cluster_middle_indices, cluster_omits_header, count_cluster, format_cluster_header,
+    format_elapsed_secs, format_envelope_line, middle_entry_indices, partition_segments,
+    streaming_thought_counts, thought_header_body,
 };
 use crate::app::tui::bridge::{
     AskPhase, BashBlockStatus, CompactionBlockStatus, UiEntry, UiModel, UiPhase,
@@ -1417,20 +1417,20 @@ fn paint_cluster_header_row(
     let live_seg = live_seg_idx == Some(si);
     let expanded = activity.cluster_kids_visible(&seg.id, &cl.id);
     let progressive = is_open_live_cluster(seg, ci, live_seg);
-    let counts = count_cluster(&model.entries, cl);
+    let mut counts = count_cluster(&model.entries, cl);
+    if progressive && counts.is_thought_only() && !model.streaming_thinking.is_empty() {
+        counts = counts.with_live_think(STREAMING_THINK_ID);
+    }
     let thought_dur = counts
         .is_thought_only()
         .then(|| thought_duration_label(model, cl))
         .flatten();
-    let live_thinking =
-        progressive && counts.is_thought_only() && !model.streaming_thinking.is_empty();
     let plain = format_cluster_header(
         glyphs,
         &counts,
         expanded,
         progressive,
         thought_dur.as_deref(),
-        live_thinking,
     );
     let marker = if expanded {
         glyphs.unfold()
@@ -1475,7 +1475,7 @@ fn paint_folded_streaming_thought(
     let (env_id, cluster_id) = next_live_thought_cluster_id(&model.entries, segments);
     let expanded = activity.cluster_kids_visible(&env_id, &cluster_id);
     let counts = streaming_thought_counts();
-    let plain = format_cluster_header(glyphs, &counts, expanded, true, None, true);
+    let plain = format_cluster_header(glyphs, &counts, expanded, true, None);
     let marker = if expanded {
         glyphs.unfold()
     } else {

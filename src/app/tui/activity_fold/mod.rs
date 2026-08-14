@@ -3,7 +3,11 @@
 //! Summary-marker mouse hits → [`crate::app::tui::widgets::FoldTarget::Segment`]
 //! are wired by c2045 Wave B (scrollback + `toggle_one_step`); this module owns
 //! segment state / nearest expand·collapse only.
+//!
+//! New transcript block: add `UiEntry` variant + arm in `activity_atom` +
+//! (tools) `tool_activity_role`. Fold counts atoms only.
 
+mod atom;
 mod degrade;
 mod live_tape;
 mod segment;
@@ -11,6 +15,9 @@ mod settings;
 mod state;
 mod summary;
 
+pub use atom::STREAMING_THINK_ID;
+#[cfg(test)]
+pub(crate) use atom::is_path_placeholder;
 pub use degrade::AutoTrigger;
 #[cfg(test)]
 pub use live_tape::LIVE_ASK_CLOSE_TEXT;
@@ -26,8 +33,6 @@ pub use settings::ActivityFoldSettings;
 #[allow(unused_imports)]
 pub use state::SegmentRowSpans;
 pub use state::{ActivityFoldState, SegmentClock};
-#[cfg(test)]
-pub(crate) use summary::is_path_placeholder;
 pub use summary::{
     cluster_is_thought_only, cluster_omits_header, count_cluster, format_cluster_header,
     format_elapsed_secs, format_envelope_line, streaming_thought_counts, thought_header_body,

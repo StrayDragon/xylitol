@@ -4,6 +4,8 @@ use std::ops::Range;
 
 use crate::app::tui::bridge::UiEntry;
 
+use super::atom::activity_atom;
+
 /// Segment ladder (no segment-level L1 — that is block fold / c2040).
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
 pub enum SegmentLevel {
@@ -89,15 +91,7 @@ impl ActivitySegment {
 }
 
 fn is_foldable_middle(entry: &UiEntry) -> bool {
-    matches!(
-        entry,
-        UiEntry::Tool { .. }
-            | UiEntry::Thinking { .. }
-            | UiEntry::Diff { .. }
-            | UiEntry::Ask { .. }
-            | UiEntry::Compaction { .. }
-            | UiEntry::Todo { .. }
-    )
+    activity_atom(entry).is_foldable_middle()
 }
 
 fn assistant_displayable(text: &str) -> bool {
