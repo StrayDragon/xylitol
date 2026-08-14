@@ -1070,7 +1070,7 @@
         <p class="spec">
           <a href="../activity-fold.md">activity-fold.md</a> ·
           流式打开簇 = 队列（默认只留 inflight）·
-          旧 turn 信封 <code>Worked for</code> · 点 transcript 行折叠 · TUI 一次 paint，无滑入 ·
+          旧 turn 信封 <code>Worked for</code> · 展示扁平同列（层级只在数据里）· 点 transcript 行折叠 · TUI 一次 paint，无滑入 ·
           L1「Read tests.rs」等细账<strong>静图不可点</strong>；产品 TUI 走块级折叠（expandable）
         </p>
         <div class="ctl">
@@ -2227,16 +2227,12 @@
     function afAsst(text) {
       return `<div class="row"><span class="fg-success">assistant:</span> <span class="fg-on">${text}</span></div>`;
     }
-    function afKids(kids, indent) {
-      const pad = " ".repeat(indent);
-      return (kids || [])
-        .map((k) => afRow(`${pad}${k}`))
-        .join("");
+    function afKids(kids) {
+      return (kids || []).map((k) => afRow(k)).join("");
     }
-    function afCluster(c, hit, indent) {
-      const pad = " ".repeat(indent);
-      let html = afRow(`${pad}${afTri(c.open)} ${c.summary}${afDiff(c)}`, hit);
-      if (c.open) html += afKids(c.kids, indent + 2);
+    function afCluster(c, hit) {
+      let html = afRow(`${afTri(c.open)} ${c.summary}${afDiff(c)}`, hit);
+      if (c.open) html += afKids(c.kids);
       return html;
     }
     function afEnded(t) {
@@ -2248,21 +2244,20 @@
       }
       if (t.midAsst) html += afAsst(t.midAsst);
       t.clusters.forEach((c) => {
-        html += afCluster(c, `cl:${t.id}:${c.id}`, 2);
+        html += afCluster(c, `cl:${t.id}:${c.id}`);
       });
       if (t.todo) {
-        html += afRow(`  ${afTri(t.todo.open)} Todo ${t.todo.label}`, `todo:${t.id}`);
-        if (t.todo.open) html += afKids(t.todo.kids, 4);
+        html += afRow(`${afTri(t.todo.open)} Todo ${t.todo.label}`, `todo:${t.id}`);
+        if (t.todo.open) html += afKids(t.todo.kids);
       }
       if (t.compaction) {
         html += afRow(
-          `  ${afTri(t.compaction.open)} [compaction] Compacted from ${t.compaction.tokens} tokens`,
+          `${afTri(t.compaction.open)} [compaction] Compacted from ${t.compaction.tokens} tokens`,
           `comp:${t.id}`,
         );
         if (t.compaction.open) {
           html += afKids(
             ["Session covered a long tool loop; auto-compact fired above reserve…"],
-            4,
           );
         }
       }
@@ -2305,14 +2300,14 @@
       if (!live) return "";
       let html = afUser(model.liveUser);
       (model.frozen || []).forEach((c) => {
-        html += afCluster(c, `fz:${c.id}`, 0);
+        html += afCluster(c, `fz:${c.id}`);
       });
       if (live.open && live.sealed.length) {
         html += afRow(
           `${afTri(true)} ${live.summary}${afDiff(live)}`,
           "live-head",
         );
-        html += afKids(live.sealed, 2);
+        html += afKids(live.sealed);
       }
       html += afInflight(live);
       return html;
@@ -2352,12 +2347,12 @@
         user: "resume 后继续",
         duration: "2m 10s",
         envelopeOpen: true,
-        lastAsst: "已按 keep_recent_turns 展开这一封。",
+        lastAsst: "这一轮的结论写在最后一段。",
         midAsst: "中间这段正文只在信封展开时出现。",
         compaction: { open: false, tokens: "42,110" },
         todo: null,
         clusters: [
-          { id: "th", summary: "Thought 8s", open: false, kids: ["超窗 turn 套信封，近窗保持簇头。"] },
+          { id: "th", summary: "Thought 8s", open: false, kids: ["resume 每轮已结束 turn 都套信封。"] },
           {
             id: "ed",
             summary: "Edited 3 files, ran 1 command",
@@ -2402,9 +2397,11 @@
         return { scene: name, ended: [t], frozen: [], liveUser, live: null };
       }
       if (name === "resume") {
+        const keep = afEndedKeep();
+        keep.envelopeOpen = false;
         return {
           scene: name,
-          ended: [afEndedOld(), afEndedKeep()],
+          ended: [afEndedOld(), keep],
           frozen: afFrozen(),
           liveUser,
           live: afLiveBlock(false, "planning"),

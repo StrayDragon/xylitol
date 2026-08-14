@@ -84,7 +84,7 @@ impl ActivityFoldState {
         } else {
             self.levels.insert(id.to_string(), level);
         }
-        if level != SegmentLevel::L2 {
+        if level == SegmentLevel::L3 {
             self.cluster_open
                 .retain(|cid| !cid.starts_with(&format!("{id}:")));
         }
@@ -127,20 +127,20 @@ impl ActivityFoldState {
         apply_auto_degrade(self, entries, trigger, protect_newest)
     }
 
-    /// One-step toggle for a specific segment (att31 / c2045 Wave B).
-    ///
-    /// Collapsed (L2/L3) → `expand_one`; L0 → `collapse_one(floor)`.
-    /// Does **not** use nearest heuristics.
+    /// Envelope header click: L3 ↔ expanded (L2). Does **not** use nearest
+    /// heuristics and does **not** walk the old L2→L0 ladder (clusters have
+    /// their own [`Self::toggle_cluster`]).
     pub fn toggle_one_step(&mut self, id: &str) -> bool {
         if !self.settings.enabled {
             return false;
         }
         let cur = self.level_of(id);
-        let next = if cur.is_collapsed() {
-            cur.expand_one()
-        } else {
-            self.mark_entered(id);
-            cur.collapse_one(self.settings.collapse_floor())
+        let next = match cur {
+            SegmentLevel::L3 => SegmentLevel::L2,
+            SegmentLevel::L2 | SegmentLevel::L0 => {
+                self.mark_entered(id);
+                self.settings.collapse_floor()
+            }
         };
         self.set_level(id, next)
     }
@@ -186,14 +186,8 @@ impl ActivityFoldState {
                 continue;
             }
             for cl in seg.clusters.iter().rev() {
-                if self.cluster_is_expanded(&seg.id, &cl.id)
-                    && self.level_of(&seg.id) != SegmentLevel::L0
-                {
+                if self.cluster_is_expanded(&seg.id, &cl.id) {
                     return self.toggle_cluster(&cl.id);
-                }
-                if self.level_of(&seg.id) == SegmentLevel::L0 {
-                    self.mark_entered(&seg.id);
-                    return self.set_level(&seg.id, SegmentLevel::L2);
                 }
             }
             if self.level_of(&seg.id) == SegmentLevel::L2 {
@@ -208,27 +202,19 @@ impl ActivityFoldState {
     pub fn cluster_is_expanded(&self, envelope_id: &str, cluster_id: &str) -> bool {
         match self.level_of(envelope_id) {
             SegmentLevel::L3 => false,
-            SegmentLevel::L0 => true,
-            SegmentLevel::L2 => self.cluster_open.contains(cluster_id),
+            // Keep-window L0 and L2 both show cluster heads; kids only when opened.
+            SegmentLevel::L0 | SegmentLevel::L2 => self.cluster_open.contains(cluster_id),
         }
     }
 
-    /// Streaming live window: kids stay collapsed until the user opens that cluster
-    /// (L0 "all expanded" would otherwise dump every tool block).
-    pub fn cluster_kids_visible(
-        &self,
-        envelope_id: &str,
-        cluster_id: &str,
-        live_window: bool,
-    ) -> bool {
-        if live_window {
-            self.cluster_open.contains(cluster_id)
-        } else {
-            self.cluster_is_expanded(envelope_id, cluster_id)
-        }
+    /// Kids stay collapsed until the user opens that cluster (live and ended).
+    pub fn cluster_kids_visible(&self, envelope_id: &str, cluster_id: &str) -> bool {
+        self.cluster_is_expanded(envelope_id, cluster_id)
     }
 
-    /// Toggle a cluster. Envelope L3 first expands to L2.
+    /// Toggle a cluster. Envelope L3 first expands to L2 (header stays).
+    /// Keep-window / just-ended live (L0) MUST stay L0 — opening a cluster
+    /// must not invent a `Worked for` envelope.
     pub fn toggle_cluster(&mut self, cluster_id: &str) -> bool {
         if !self.settings.enabled {
             return false;
@@ -240,11 +226,7 @@ impl ActivityFoldState {
         if self.level_of(&env_id) == SegmentLevel::L3 {
             self.set_level(&env_id, SegmentLevel::L2);
             self.cluster_open.insert(cluster_id.to_string());
-            return true;
-        }
-        if self.level_of(&env_id) == SegmentLevel::L0 {
-            self.set_level(&env_id, SegmentLevel::L2);
-            self.cluster_open.insert(cluster_id.to_string());
+            self.mark_entered(&env_id);
             return true;
         }
         if self.cluster_open.contains(cluster_id) {
@@ -252,6 +234,7 @@ impl ActivityFoldState {
         } else {
             self.cluster_open.insert(cluster_id.to_string());
         }
+        self.mark_entered(&env_id);
         true
     }
 

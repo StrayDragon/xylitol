@@ -110,21 +110,26 @@ impl<T: Terminal> HostSession<T> {
         self.sync_ui_root_from_model();
     }
 
+    /// Arm scripted live-window close after the next Choice result (debug tape).
+    pub fn arm_debug_live_ask_close(&mut self) {
+        self.debug_live_ask_close = true;
+    }
+
     /// Complete ask oneshot when ChoicePrompt finished.
-    pub fn complete_ask_if_ready(&mut self) -> bool {
-        let Some(root) = self.ui_root.as_ref() else {
-            return false;
-        };
-        let done = root.borrow_mut().complete_ask_if_ready();
-        if done {
-            self.sync_ui_root_from_model();
-        }
-        done
+    pub fn complete_ask_if_ready(&mut self) -> Option<String> {
+        let root = self.ui_root.as_ref()?;
+        let json = root.borrow_mut().complete_ask_if_ready()?;
+        self.sync_ui_root_from_model();
+        Some(json)
     }
 
     /// Poll ask gateway + complete finished ChoicePrompt (c1850).
     pub fn poll_ask_host(&mut self) {
-        if self.complete_ask_if_ready() {
+        if let Some(json) = self.complete_ask_if_ready() {
+            if self.debug_live_ask_close {
+                self.debug_live_ask_close = false;
+                self.apply_debug_live_ask_close(&json);
+            }
             let _ = self.render_now();
         }
         let Some(gw) = self.ask_gateway.clone() else {
@@ -136,6 +141,12 @@ impl<T: Terminal> HostSession<T> {
         let questions = crate::app::tui::ask_host::ask_questions_to_choice(pending.questions);
         self.mount_ask_choice(questions, pending.reply);
         let _ = self.render_now();
+    }
+
+    fn apply_debug_live_ask_close(&mut self, json: &str) {
+        for event in crate::app::tui::activity_fold::live_ask_close_events(json) {
+            self.handle_xy(Box::new(event));
+        }
     }
 
     pub fn mount_session_resume_picker(

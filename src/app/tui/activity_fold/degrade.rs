@@ -38,7 +38,12 @@ pub fn apply_auto_degrade(
         return false;
     }
 
-    let keep = state.settings.keep_recent_turns as usize;
+    // Resume/rebuild: every ended turn is history — crush all.
+    // `keep_recent_turns` only windows TurnEnd (live session after a turn completes).
+    let keep = match trigger {
+        AutoTrigger::Rebuild => 0,
+        AutoTrigger::TurnEnd => state.settings.keep_recent_turns as usize,
+    };
     let target = state.settings.collapse_floor();
 
     let newest_ord = segments.iter().map(|s| s.turn_ordinal).max().unwrap_or(0);

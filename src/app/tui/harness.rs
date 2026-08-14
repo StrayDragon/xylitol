@@ -1446,9 +1446,14 @@ mod slice_tests {
                 .any(|e| matches!(e, UiEntry::Tool { name, .. } if name == "bash"))
         );
         let frame = root.borrow_mut().render(80);
+        let plain = frame
+            .iter()
+            .map(|l| crate::app::tui::activity_fold::strip_ansi_live_window(l))
+            .collect::<Vec<_>>()
+            .join("\n");
         assert!(
-            frame.iter().any(|l| l.contains("Bash")),
-            "missing tool in frame: {frame:?}"
+            plain.contains("command") || plain.contains("Bash"),
+            "live window must show the sealed tool as cluster head or body: {plain}"
         );
     }
 
@@ -2970,12 +2975,110 @@ mod slice_tests {
             note.contains("activity-fold-live") && note.contains("OK"),
             "expected activity-fold-live report; got: {note}"
         );
+        assert!(
+            root.borrow().ask_choice_open(),
+            "live tape must mount Ask Choice, not leave Running ask without a slot"
+        );
         let plain = crate::app::tui::activity_fold::strip_ansi_live_window(
             &root.borrow_mut().render(100).join("\n"),
         );
         assert!(
             plain.contains("Asking questions"),
             "last tape frame must remain visible: {plain}"
+        );
+        assert!(
+            plain.contains("activity-fold-live: next step?"),
+            "Choice prompt must be visible: {plain}"
+        );
+        assert!(
+            session.is_busy(),
+            "Ask waiting stays Busy until Choice closes"
+        );
+
+        session.step(HostEvent::Input(enter_event())).unwrap();
+        pump_host_driver(&mut session, &mut driver, &mut stream)
+            .await
+            .unwrap();
+        assert!(
+            !root.borrow().ask_choice_open(),
+            "answering Choice must close the slot"
+        );
+        assert!(
+            !session.is_busy(),
+            "scripted AgentEnd must idle after Choice"
+        );
+        let plain = crate::app::tui::activity_fold::strip_ansi_live_window(
+            &root.borrow_mut().render(100).join("\n"),
+        );
+        assert!(
+            !plain.contains("Asking questions"),
+            "live tail Asking questions must drop: {plain}"
+        );
+        assert!(
+            !plain.contains("Running ask"),
+            "status must not stick on Running ask: {plain}"
+        );
+        assert!(
+            plain.contains(crate::app::tui::activity_fold::LIVE_ASK_CLOSE_TEXT),
+            "closing body missing: {plain}"
+        );
+        assert!(
+            !plain.contains("Worked for"),
+            "answering Ask must not wrap the live turn in Worked for: {plain}"
+        );
+    }
+
+    #[tokio::test]
+    async fn h25d_debug_activity_fold_resume_loads_scene() {
+        let mut session = HostSession::new_product_ui(TestTerminal::new(100, 32));
+        let root = session.ui_root().expect("ui").clone();
+        let mut driver = ScriptedDriver::new();
+        driver.set_session_messages(
+            crate::app::debug_fixtures::activity_fold_resume_stamped_entries(),
+        );
+        let mut stream = None;
+        root.borrow_mut()
+            .set_editor_text("/debug activity-fold-resume");
+        session.step(HostEvent::Input(enter_event())).unwrap();
+        pump_host_driver(&mut session, &mut driver, &mut stream)
+            .await
+            .unwrap();
+        assert_eq!(
+            driver.debug_scene_calls(),
+            vec!["activity-fold-resume".to_string()]
+        );
+        assert!(
+            !root.borrow().ask_choice_open(),
+            "ended resume scene must not mount Choice"
+        );
+        assert!(!session.is_busy(), "resume scene is idle history");
+        let plain = crate::app::tui::activity_fold::strip_ansi_live_window(
+            &root.borrow_mut().render(100).join("\n"),
+        );
+        assert!(
+            plain.contains("Worked for"),
+            "ended turns must crush: {plain}"
+        );
+        assert!(
+            plain.contains("Thanks — continuing from your answer."),
+            "last assistant of each turn stays visible: {plain}"
+        );
+        assert!(
+            plain.contains("debug: older reply 0") && plain.contains("debug: older reply 1"),
+            "older last-assistant bodies stay visible: {plain}"
+        );
+        assert!(
+            !plain.contains("mid-body"),
+            "sandwich assistant must stay inside envelope: {plain}"
+        );
+        assert!(
+            !plain.contains("Edited 2 files") && !plain.contains("Explored"),
+            "resume must not leave cluster heads on ended turns: {plain}"
+        );
+        assert_eq!(
+            plain.matches("Worked for").count(),
+            3,
+            "each ended turn gets an envelope: {plain}"
         );
     }
 

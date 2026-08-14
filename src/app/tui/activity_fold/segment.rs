@@ -95,7 +95,6 @@ fn is_foldable_middle(entry: &UiEntry) -> bool {
             | UiEntry::Thinking { .. }
             | UiEntry::Diff { .. }
             | UiEntry::Ask { .. }
-            | UiEntry::Bash { .. }
             | UiEntry::Compaction { .. }
             | UiEntry::Todo { .. }
     )
@@ -107,7 +106,7 @@ fn assistant_displayable(text: &str) -> bool {
 
 /// Partition `entries` into Activity envelopes (att23 / att34).
 ///
-/// ScrollNotice / Error are never middles. Compaction / Todo are middles (in envelope).
+/// ScrollNotice / Error / bang Bash are never middles. Compaction / Todo are middles (in envelope).
 /// Cluster boundaries = displayable assistant body (thinking does not split).
 pub fn partition_segments(entries: &[UiEntry]) -> Vec<ActivitySegment> {
     let mut out = Vec::new();
@@ -206,7 +205,7 @@ pub fn cluster_middle_indices(entries: &[UiEntry], cluster: &ActivityCluster) ->
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::app::tui::bridge::{BashBlockStatus, UiEntry};
+    use crate::app::tui::bridge::UiEntry;
 
     fn tool(id: &str) -> UiEntry {
         UiEntry::Tool {
@@ -293,12 +292,7 @@ mod tests {
             tool("t"),
             UiEntry::Assistant { text: "ok".into() },
             UiEntry::User { text: "b".into() },
-            UiEntry::Bash {
-                command: "ls".into(),
-                status: BashBlockStatus::Success,
-                output: String::new(),
-                exclude_from_context: false,
-            },
+            tool("t2"),
             UiEntry::Assistant { text: "ok2".into() },
         ];
         let segs = partition_segments(&entries);

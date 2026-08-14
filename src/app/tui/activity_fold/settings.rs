@@ -41,4 +41,10 @@ impl ActivityFoldSettings {
             ActivityFoldStreamCollapse::Clusters => SegmentLevel::L2,
         }
     }
+
+    /// `stream_collapse: envelope` paints `Worked for` when the envelope is in
+    /// play (L2 expanded / L3 collapsed). Keep-window L0 and live window do not.
+    pub fn paints_envelope_header(&self) -> bool {
+        matches!(self.stream_collapse, ActivityFoldStreamCollapse::Envelope)
+    }
 }

@@ -805,24 +805,20 @@ impl UiRoot {
 
     /// If ChoicePrompt finished, complete oneshot with ask JSON and close the slot.
     ///
-    /// Returns true when a result was delivered.
-    pub fn complete_ask_if_ready(&mut self) -> bool {
-        let Some(pending) = self.choice_pending.as_ref() else {
-            return false;
-        };
-        let Some(result) = pending.borrow_mut().take() else {
-            return false;
-        };
+    /// Returns the ask payload JSON when a result was delivered.
+    pub fn complete_ask_if_ready(&mut self) -> Option<String> {
+        let pending = self.choice_pending.as_ref()?;
+        let result = pending.borrow_mut().take()?;
         let json = result.to_ask_payload_json();
         if let Some(tx) = self.ask_reply.take() {
-            let _ = tx.send(Ok(json));
+            let _ = tx.send(Ok(json.clone()));
         }
         self.choice_prompt = None;
         self.choice_pending = None;
         if self.slot == EditorSlot::Choice {
             self.slot = EditorSlot::Editor;
         }
-        true
+        Some(json)
     }
 
     pub fn close_ask_choice(&mut self) {

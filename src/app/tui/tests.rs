@@ -2963,6 +2963,8 @@ fn harness_mouse_segment_marker_toggles_one_step() {
     {
         let mut r = root.borrow_mut();
         r.activity_mut().force_level("seg-0", SegmentLevel::L3);
+        // Newest turn: open its cluster so a coexisting L1 tool hit is on screen.
+        let _ = r.activity_mut().toggle_cluster("seg-3:c0");
         r.touch_activity();
     }
     session.step(HostEvent::Tick).unwrap();
@@ -3159,7 +3161,7 @@ fn segment_toggle_one_step_and_local_paint_misses() {
     root2.activity_mut().force_level("seg-3", SegmentLevel::L2);
     root2.touch_activity();
     root2.toggle_fold_target(FoldTarget::Segment("seg-0".into()));
-    assert_eq!(root2.activity().level_of("seg-0"), SegmentLevel::L0);
+    assert_eq!(root2.activity().level_of("seg-0"), SegmentLevel::L3);
     assert_eq!(
         root2.activity().level_of("seg-3"),
         SegmentLevel::L2,
@@ -3951,7 +3953,7 @@ fn activity_fold_att25_l2_ignores_alt_e_then_l0_restores_l1() {
         "Alt+E must not change L2 appearance"
     );
 
-    root.activity_mut().force_level("seg-0", SegmentLevel::L0);
+    root.activity_mut().toggle_cluster("seg-0:c0");
     root.touch_activity();
     // Alt+E may have flipped tools default closed — re-open for L1 visibility check.
     if !root.fold().tools_effective("only") {
@@ -3960,16 +3962,16 @@ fn activity_fold_att25_l2_ignores_alt_e_then_l0_restores_l1() {
             KeyModifiers::ALT,
         )));
     }
-    let l0 = strip_ansi_activity(&root.render(100).join("\n"));
+    let opened = strip_ansi_activity(&root.render(100).join("\n"));
     assert!(
-        l0.contains("x.rs") || l0.contains("read"),
-        "L0 must show tool block again: {l0}"
+        opened.contains("x.rs") || opened.contains("read"),
+        "opening the cluster must show the tool block: {opened}"
     );
     use super::widgets::FoldTarget;
     root.toggle_fold_target(FoldTarget::Tool("only".into()));
     assert!(
         !root.fold().tools_effective("only"),
-        "after L0, per-block L1 override must work again"
+        "after cluster expand, per-block L1 override must work again"
     );
 }
 
@@ -3980,7 +3982,7 @@ fn activity_fold_att26_auto_degrade_keeps_recent_and_streaming() {
 
     let mut root = UiRoot::new();
     let mut model = UiModel::new();
-    // 4 activity turns; keep_recent=2 → oldest two crush to envelope L3.
+    // 4 activity turns; rebuild crushes all ended turns to envelope L3.
     for i in 0..4 {
         model.entries.extend(activity_turn(
             &format!("u{i}"),
@@ -3998,11 +4000,10 @@ fn activity_fold_att26_auto_degrade_keeps_recent_and_streaming() {
     );
     assert_eq!(root.activity().level_of("seg-0"), SegmentLevel::L3);
     assert_eq!(root.activity().level_of("seg-3"), SegmentLevel::L3);
-    // recent window (last 2): user idxs 6 and 9 → seg-6, seg-9
-    assert_eq!(root.activity().level_of("seg-6"), SegmentLevel::L0);
-    assert_eq!(root.activity().level_of("seg-9"), SegmentLevel::L0);
+    assert_eq!(root.activity().level_of("seg-6"), SegmentLevel::L3);
+    assert_eq!(root.activity().level_of("seg-9"), SegmentLevel::L3);
 
-    // Streaming protect: newest stays L0 even if outside window logic asks crush.
+    // Streaming protect: newest stays L0 even if rebuild would crush all ended turns.
     let mut root2 = UiRoot::new();
     root2.apply_ui_model(&model);
     root2
@@ -4029,9 +4030,18 @@ fn activity_fold_att27_markers_and_full_chord_hints() {
     root.touch_activity();
     let plain = strip_ansi_activity(&root.render(100).join("\n"));
     let fold_mark = GlyphSet::from_env().fold();
+    let unfold_mark = GlyphSet::from_env().unfold();
+    assert!(
+        plain.contains("Worked for"),
+        "L2 envelope header must stay: {plain}"
+    );
+    assert!(
+        plain.contains(unfold_mark),
+        "expanded envelope must use unfold marker: {plain}"
+    );
     assert!(
         plain.contains(fold_mark),
-        "L2 must use fold marker: {plain}"
+        "L2 cluster heads must use fold marker: {plain}"
     );
     assert!(
         plain.contains("(Alt+Shift+E)"),
@@ -4067,23 +4077,25 @@ fn activity_fold_att28_expand_collapse_nearest_and_silent() {
         ));
     }
     root.apply_ui_model(&model);
-    // crush oldest so expand has a target; recent stay virgin L0
+    // rebuild crushes every ended turn; expandNearest opens the newest envelope
     root.activity_mut().auto_degrade(
         &model.entries,
         super::activity_fold::AutoTrigger::Rebuild,
         false,
     );
     assert_eq!(root.activity().level_of("seg-0"), SegmentLevel::L3);
+    assert_eq!(root.activity().level_of("seg-6"), SegmentLevel::L3);
 
-    // 3 turns → crush only oldest (from_newest>=2): seg-0 at envelope floor
     assert!(root.expand_nearest_activity());
-    assert_eq!(root.activity().level_of("seg-0"), SegmentLevel::L2);
+    assert_eq!(root.activity().level_of("seg-6"), SegmentLevel::L2);
+    assert_eq!(root.activity().level_of("seg-0"), SegmentLevel::L3);
 
     // Collapse nearest eligible: entered L2 → floor L3
     assert!(root.collapse_nearest_activity());
-    assert_eq!(root.activity().level_of("seg-0"), SegmentLevel::L3);
+    assert_eq!(root.activity().level_of("seg-6"), SegmentLevel::L3);
 
-    // Silent expand when no L2/L3; silent collapse when only virgin recent-window L0.
+    // Silent expand when no L3 envelope and every cluster already open — not the
+    // keep-window default (heads-only). expandNearest opens the nearest cluster.
     let mut quiet_model = UiModel::new();
     for i in 0..2 {
         quiet_model.entries.extend(activity_turn(
@@ -4095,25 +4107,29 @@ fn activity_fold_att28_expand_collapse_nearest_and_silent() {
     }
     let mut quiet = UiRoot::new();
     quiet.apply_ui_model(&quiet_model);
-    quiet.handle_input(InputEvent::Key(KeyEvent::new(
-        KeyCode::Char('e'),
-        KeyModifiers::ALT | KeyModifiers::SHIFT,
-    )));
-    assert_eq!(
-        quiet.activity().level_of("seg-0"),
-        SegmentLevel::L0,
-        "no L2/L3 → expandNearest silent"
+    assert!(
+        quiet.expand_nearest_activity(),
+        "keep-window heads-only → expandNearest opens a cluster"
     );
-    quiet.handle_input(InputEvent::Key(KeyEvent::new(
+    assert_eq!(quiet.activity().level_of("seg-0"), SegmentLevel::L0);
+    assert_eq!(quiet.activity().level_of("seg-3"), SegmentLevel::L0);
+    assert!(
+        quiet.activity().cluster_is_expanded("seg-3", "seg-3:c0"),
+        "expandNearest on keep-window opens a cluster without inventing an envelope"
+    );
+
+    let mut untouched = UiRoot::new();
+    untouched.apply_ui_model(&quiet_model);
+    untouched.handle_input(InputEvent::Key(KeyEvent::new(
         KeyCode::Char('e'),
         KeyModifiers::CONTROL | KeyModifiers::ALT | KeyModifiers::SHIFT,
     )));
     assert_eq!(
-        quiet.activity().level_of("seg-0"),
+        untouched.activity().level_of("seg-0"),
         SegmentLevel::L0,
         "virgin recent window → collapseNearest silent"
     );
-    assert_eq!(quiet.activity().level_of("seg-3"), SegmentLevel::L0);
+    assert_eq!(untouched.activity().level_of("seg-3"), SegmentLevel::L0);
 }
 
 #[test]
@@ -4175,6 +4191,64 @@ fn activity_fold_att31_expand_header_then_collapse() {
     assert!(
         !collapsed.contains("x.rs\nok"),
         "collapsed cluster must hide tool body: {collapsed}"
+    );
+}
+
+#[test]
+fn activity_fold_envelope_header_stays_when_expanded() {
+    // att23 / att31: expand envelope → ▾ Worked for stays; click again folds back.
+    use super::activity_fold::SegmentLevel;
+    use super::layout::UiRoot;
+    use super::widgets::{FoldTarget, GlyphSet};
+
+    let mut root = UiRoot::new();
+    let mut model = UiModel::new();
+    model
+        .entries
+        .extend(activity_turn("u", "only", "x.rs", "asst"));
+    root.apply_ui_model(&model);
+    root.activity_mut().force_level("seg-0", SegmentLevel::L3);
+    root.touch_activity();
+    let folded = strip_ansi_activity(&root.render(100).join("\n"));
+    let fold_mark = GlyphSet::from_env().fold();
+    let unfold_mark = GlyphSet::from_env().unfold();
+    assert!(folded.contains("Worked for"), "L3 envelope: {folded}");
+    assert!(folded.contains(fold_mark), "L3 fold marker: {folded}");
+    assert!(
+        !folded.contains("Explored") && !folded.contains("x.rs"),
+        "L3 must hide cluster heads: {folded}"
+    );
+
+    root.toggle_fold_target(FoldTarget::Segment("seg-0".into()));
+    assert_eq!(root.activity().level_of("seg-0"), SegmentLevel::L2);
+    let opened = strip_ansi_activity(&root.render(100).join("\n"));
+    assert!(
+        opened.contains("Worked for"),
+        "expanded envelope MUST keep Worked for header: {opened}"
+    );
+    assert!(
+        opened.contains(unfold_mark),
+        "expanded envelope MUST use ▾: {opened}"
+    );
+    assert!(
+        opened.contains("Explored") || opened.contains("file"),
+        "L2 must show cluster heads: {opened}"
+    );
+    assert!(
+        root.fold_hits()
+            .regions
+            .iter()
+            .any(|r| matches!(&r.target, FoldTarget::Segment(id) if id == "seg-0")),
+        "expanded envelope MUST keep Segment hit"
+    );
+
+    root.toggle_fold_target(FoldTarget::Segment("seg-0".into()));
+    assert_eq!(root.activity().level_of("seg-0"), SegmentLevel::L3);
+    let refolded = strip_ansi_activity(&root.render(100).join("\n"));
+    assert!(refolded.contains("Worked for"), "re-fold: {refolded}");
+    assert!(
+        !refolded.contains("Explored"),
+        "re-folded envelope hides cluster heads: {refolded}"
     );
 }
 
@@ -4275,10 +4349,10 @@ fn activity_fold_att26_rebuild_paints_worked_for() {
     let plain = strip_ansi_activity(&root.render(100).join("\n"));
     assert!(
         plain.contains("Worked for"),
-        "distant ended turns must paint envelope: {plain}"
+        "ended turns must paint envelope: {plain}"
     );
     assert_eq!(root.activity().level_of("seg-0"), SegmentLevel::L3);
-    assert_eq!(root.activity().level_of("seg-9"), SegmentLevel::L0);
+    assert_eq!(root.activity().level_of("seg-9"), SegmentLevel::L3);
 }
 
 #[test]
@@ -4495,5 +4569,131 @@ fn activity_fold_att33_live_window_tape_reproduces_stream() {
         report.ok,
         "live-window tape failed:\n{}",
         report.lines.join("\n")
+    );
+}
+
+#[test]
+fn activity_fold_default_hides_cluster_kids_and_uses_edited() {
+    use super::layout::UiRoot;
+    use super::widgets::FoldTarget;
+
+    let mut root = UiRoot::new();
+    let mut model = UiModel::new();
+    model
+        .entries
+        .push(super::bridge::UiEntry::User { text: "u".into() });
+    model.entries.push(super::bridge::UiEntry::Tool {
+        id: "e1".into(),
+        name: "edit".into(),
+        args_preview: "a.rs".into(),
+        tool_path: Some("a.rs".into()),
+        write_content: None,
+        display_diff: None,
+        output: "ok-a".into(),
+        is_error: false,
+        done: true,
+    });
+    model.entries.push(super::bridge::UiEntry::Tool {
+        id: "e2".into(),
+        name: "edit".into(),
+        args_preview: "b.rs".into(),
+        tool_path: Some("b.rs".into()),
+        write_content: None,
+        display_diff: None,
+        output: "ok-b".into(),
+        is_error: false,
+        done: true,
+    });
+    model.entries.push(super::bridge::UiEntry::Assistant {
+        text: "done".into(),
+    });
+    root.apply_ui_model(&model);
+    let collapsed = strip_ansi_activity(&root.render(100).join("\n"));
+    assert!(
+        collapsed.contains("Edited 2 files"),
+        "sealed edit cluster must say Edited: {collapsed}"
+    );
+    assert!(
+        !collapsed.contains("Worked for"),
+        "default L0 keep-window must not paint envelope: {collapsed}"
+    );
+    assert!(
+        !collapsed.contains("Explored 2 files"),
+        "must not label an edit cluster Explored: {collapsed}"
+    );
+    assert!(
+        !collapsed.contains("ok-a") && !collapsed.contains("a.rs"),
+        "default cluster kids stay hidden: {collapsed}"
+    );
+
+    root.toggle_fold_target(FoldTarget::Cluster("seg-0:c0".into()));
+    let expanded = strip_ansi_activity(&root.render(100).join("\n"));
+    assert!(
+        expanded.contains("a.rs") && expanded.contains("b.rs"),
+        "opening the cluster reveals same-column tool rows: {expanded}"
+    );
+    assert!(
+        !expanded.contains("Worked for"),
+        "opening a keep-window cluster must not invent Worked for: {expanded}"
+    );
+    assert_eq!(
+        root.activity().level_of("seg-0"),
+        super::activity_fold::SegmentLevel::L0
+    );
+}
+
+#[test]
+fn activity_fold_live_ask_close_idles_and_drops_asking() {
+    use super::activity_fold::{
+        LIVE_ASK_CLOSE_TEXT, live_ask_close_events, replay_live_window, strip_ansi_live_window,
+    };
+    use super::layout::UiRoot;
+
+    let mut root = UiRoot::new();
+    let mut model = UiModel::new();
+    let report = replay_live_window(&mut model, |m| {
+        root.apply_ui_model(m);
+        strip_ansi_live_window(&root.render(100).join("\n"))
+    });
+    assert!(report.ok, "tape must pass before close-out");
+    for ev in live_ask_close_events(
+        r#"{"status":"answered","answers":[{"id":"next","values":["continue"],"labels":["Continue"],"was_custom":false}]}"#,
+    ) {
+        apply_xy_event(&mut model, &ev);
+    }
+    root.apply_ui_model(&model);
+    root.apply_activity_after_turn_end();
+    let plain = strip_ansi_live_window(&root.render(100).join("\n"));
+    assert_eq!(model.phase, UiPhase::Idle);
+    assert!(
+        !plain.contains("Asking questions"),
+        "live tail must leave Ask waiting: {plain}"
+    );
+    assert!(
+        plain.contains(LIVE_ASK_CLOSE_TEXT),
+        "closing assistant body missing: {plain}"
+    );
+    assert!(
+        plain.contains("Edited 2 files") || plain.contains("Explored 1 file"),
+        "ended turn keeps cluster heads: {plain}"
+    );
+    assert!(
+        !plain.contains("等待回答"),
+        "Ask must not stay waiting: {plain}"
+    );
+    assert!(
+        !plain.contains("Worked for"),
+        "just-ended live turn must stay live-window (no envelope): {plain}"
+    );
+
+    root.toggle_fold_target(super::widgets::FoldTarget::Cluster("seg-0:c1".into()));
+    let opened = strip_ansi_live_window(&root.render(100).join("\n"));
+    assert!(
+        opened.contains("a.rs") || opened.contains("Edit"),
+        "cluster must actually open: {opened}"
+    );
+    assert!(
+        !opened.contains("Worked for"),
+        "opening a cluster on the live turn must not invent Worked for: {opened}"
     );
 }

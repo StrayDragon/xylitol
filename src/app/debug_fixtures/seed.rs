@@ -1,5 +1,8 @@
 //! Persist fixture entries into an already-created session.
 
+use serde_json::{Value, json};
+
+use crate::protocol::message::{AgentMessage, AgentPart, LlmMessage, XyStopReason};
 use crate::protocol::ports::XySessionStore;
 use crate::protocol::session::{
     EntryBase, LabelEntry, MessageEntry, SessionEntry, fixture_message_json,
@@ -30,6 +33,140 @@ fn assistant_msg(text: &str) -> SessionEntry {
     })
 }
 
+fn agent_entry(msg: AgentMessage) -> SessionEntry {
+    SessionEntry::Message(MessageEntry {
+        base: empty_base("message"),
+        message: serde_json::to_value(&msg).unwrap_or(Value::Null),
+    })
+}
+
+fn tool_call(id: &str, name: &str, args: Value) -> AgentPart {
+    AgentPart::ToolCall {
+        id: id.into(),
+        name: name.into(),
+        arguments: args,
+    }
+}
+
+fn assistant_parts(content: Vec<AgentPart>) -> SessionEntry {
+    agent_entry(AgentMessage::Llm(LlmMessage::AssistantMessage {
+        content,
+        stop_reason: Some(XyStopReason::Stop),
+        usage: None,
+        api: String::new(),
+        provider: String::new(),
+        model: String::new(),
+        response_id: None,
+        error_message: None,
+        timestamp: 0,
+        diagnostics: Vec::new(),
+    }))
+}
+
+fn tool_result_entry(id: &str, name: &str, text: &str) -> SessionEntry {
+    agent_entry(AgentMessage::tool_result(
+        id,
+        name,
+        vec![AgentPart::text(text)],
+        false,
+    ))
+}
+
+const ASK_ANSWERED_JSON: &str = r#"{"status":"answered","answers":[{"id":"next","values":["continue"],"labels":["Continue"],"was_custom":false}]}"#;
+
+/// Newest-turn rows matching the live-window tape, already completed (Ask answered).
+fn activity_fold_resume_newest_turn() -> Vec<SessionEntry> {
+    vec![
+        user_msg("debug: activity-fold live window"),
+        assistant_parts(vec![
+            AgentPart::thinking("consider next edit"),
+            tool_call("r1", "read", json!({ "path": "old.rs" })),
+            AgentPart::text("mid-body"),
+            tool_call("e1", "edit", json!({ "path": "a.rs" })),
+            tool_call("e2", "edit", json!({ "path": "b.rs" })),
+            tool_call(
+                "ask1",
+                "ask",
+                json!({
+                    "questions": [{
+                        "id": "next",
+                        "prompt": "activity-fold-live: next step?",
+                        "mode": "single",
+                        "options": [
+                            { "value": "continue", "label": "Continue" },
+                            { "value": "stop", "label": "Stop here" }
+                        ]
+                    }]
+                }),
+            ),
+        ]),
+        tool_result_entry("r1", "read", "ok"),
+        tool_result_entry("e1", "edit", "ok"),
+        tool_result_entry("e2", "edit", "ok"),
+        tool_result_entry("ask1", "ask", ASK_ANSWERED_JSON),
+        assistant_msg("Thanks — continuing from your answer."),
+    ]
+}
+
+fn activity_fold_resume_raw() -> Vec<SessionEntry> {
+    let mut rows = Vec::new();
+    for i in 0..2 {
+        rows.push(user_msg(&format!("debug: older turn {i}")));
+        rows.push(assistant_parts(vec![
+            AgentPart::thinking(format!("older thinking {i}")),
+            tool_call(
+                &format!("old-r{i}"),
+                "read",
+                json!({ "path": format!("old{i}.rs") }),
+            ),
+            AgentPart::text(format!("debug: older reply {i}")),
+        ]));
+        rows.push(tool_result_entry(&format!("old-r{i}"), "read", "ok"));
+    }
+    rows.extend(activity_fold_resume_newest_turn());
+    rows
+}
+
+/// Stamp ids / parents / RFC3339 clocks so harness rebuild paints `Worked for`.
+#[cfg(test)]
+pub fn activity_fold_resume_stamped_entries() -> Vec<SessionEntry> {
+    let mut parent: Option<String> = None;
+    let mut out = Vec::new();
+    for (i, entry) in activity_fold_resume_raw().into_iter().enumerate() {
+        let id = format!("af-resume-{i}");
+        let ts = format!("2026-01-01T00:{i:02}:00Z");
+        out.push(rebase_message(entry, &id, parent.as_deref(), &ts));
+        parent = Some(id);
+    }
+    out
+}
+
+#[cfg(test)]
+fn rebase_message(entry: SessionEntry, id: &str, parent: Option<&str>, ts: &str) -> SessionEntry {
+    match entry {
+        SessionEntry::Message(m) => SessionEntry::Message(MessageEntry {
+            base: EntryBase {
+                entry_type: "message".into(),
+                id: id.into(),
+                parent_id: parent.map(str::to_string),
+                timestamp: ts.into(),
+            },
+            message: m.message,
+        }),
+        other => other,
+    }
+}
+
+async fn seed_activity_fold_resume(
+    store: &dyn XySessionStore,
+    session_id: &str,
+) -> Result<(), String> {
+    for entry in activity_fold_resume_raw() {
+        store.append_session_entry(session_id, &entry).await?;
+    }
+    Ok(())
+}
+
 /// Seed `session_id` for a known scene id (canonical or alias).
 pub async fn seed_scene(
     store: &dyn XySessionStore,
@@ -47,6 +184,7 @@ pub async fn seed_scene(
         "session-tree-labeled" => seed_labeled(store, session_id).await?,
         "session-tree-branched" => seed_branched(store, session_id).await?,
         "ao-perf-scroll" => seed_ao_perf_scroll(store, session_id).await?,
+        "activity-fold-resume" => seed_activity_fold_resume(store, session_id).await?,
         _ => return Err(format!("unhandled debug scene id: {id}")),
     }
     Ok(id)
@@ -235,5 +373,66 @@ mod tests {
             .filter(|e| matches!(e, SessionEntry::Message(_)))
             .count();
         assert!(msgs >= 160, "expected ~160 messages, got {msgs}");
+    }
+
+    #[tokio::test]
+    async fn seed_activity_fold_resume_has_tools_ask_and_older_turns() {
+        use crate::protocol::session::{count_tool_calls, is_tool_call_part, message_parts};
+
+        let mgr = SessionManager::in_memory();
+        mgr.create("d5", Some("."), None).await.unwrap();
+        let id = seed_scene(&mgr, "d5", "activity-fold-resume")
+            .await
+            .unwrap();
+        assert_eq!(id, "activity-fold-resume");
+        let entries = mgr.load_entries("d5").await.unwrap();
+        let users = entries
+            .iter()
+            .filter(|e| matches!(e, SessionEntry::Message(m) if message_text(&m.message).contains("debug:")))
+            .count();
+        assert!(
+            users >= 3,
+            "expected older turns + live turn, got {entries:?}"
+        );
+
+        let assistant_tools: usize = entries
+            .iter()
+            .filter_map(|e| match e {
+                SessionEntry::Message(m) => Some(count_tool_calls(&m.message)),
+                _ => None,
+            })
+            .sum();
+        assert!(
+            assistant_tools >= 4,
+            "expected read/edit/edit/ask tool calls, got {assistant_tools}"
+        );
+
+        let has_ask_call = entries.iter().any(|e| match e {
+            SessionEntry::Message(m) => message_parts(&m.message).is_some_and(|parts| {
+                parts.iter().any(|p| {
+                    is_tool_call_part(p) && p.get("name").and_then(|n| n.as_str()) == Some("ask")
+                })
+            }),
+            _ => false,
+        });
+        assert!(has_ask_call, "missing ask toolCall: {entries:?}");
+
+        let has_ask_result = entries.iter().any(|e| match e {
+            SessionEntry::Message(m) => {
+                m.message.get("role").and_then(|r| r.as_str()) == Some("toolResult")
+                    && m.message.get("toolName").and_then(|n| n.as_str()) == Some("ask")
+            }
+            _ => false,
+        });
+        assert!(has_ask_result, "missing ask toolResult: {entries:?}");
+        assert!(
+            entries.iter().any(|e| match e {
+                SessionEntry::Message(m) => {
+                    message_text(&m.message).contains("continuing from your answer")
+                }
+                _ => false,
+            }),
+            "missing closing assistant text: {entries:?}"
+        );
     }
 }

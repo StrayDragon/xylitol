@@ -6,14 +6,19 @@ use crate::app::tui::bridge::UiEntry;
 use crate::app::tui::keybindings::with_keybindings;
 use crate::app::tui::widgets::GlyphSet;
 
+#[cfg(test)]
+use super::segment::SegmentLevel;
 use super::segment::{
-    ActivityCluster, ActivitySegment, SegmentLevel, cluster_middle_indices, middle_entry_indices,
+    ActivityCluster, ActivitySegment, cluster_middle_indices, middle_entry_indices,
 };
 
 /// Observable activity counters for an L2 line.
 #[derive(Debug, Clone, Default, PartialEq, Eq)]
 pub struct ActivityCounts {
+    /// Read / explore file tools (sealed header: Explored).
     pub files: u32,
+    /// Edit / write / Diff (sealed header: Edited; progressive still folds into Editing).
+    pub edits: u32,
     pub searches: u32,
     pub commands: u32,
     /// Reliable +/- from Diff / edit display_diff only.
@@ -23,7 +28,7 @@ pub struct ActivityCounts {
 
 impl ActivityCounts {
     pub fn is_empty(&self) -> bool {
-        self.files == 0 && self.searches == 0 && self.commands == 0
+        self.files == 0 && self.edits == 0 && self.searches == 0 && self.commands == 0
     }
 }
 
@@ -56,8 +61,10 @@ fn count_middles(entries: &[UiEntry], indices: &[usize]) -> ActivityCounts {
                     c.searches += 1;
                 } else if is_command_tool(&n) {
                     c.commands += 1;
+                } else if is_edit_tool(&n) {
+                    c.edits += 1;
                 } else {
-                    // read/write/edit/ls and unknown path-ish tools → files.
+                    // read/ls and unknown path-ish tools → explored files.
                     let _ = (tool_path, args_preview);
                     c.files += 1;
                 }
@@ -70,7 +77,7 @@ fn count_middles(entries: &[UiEntry], indices: &[usize]) -> ActivityCounts {
                 }
             }
             UiEntry::Diff { display_diff, .. } => {
-                c.files += 1;
+                c.edits += 1;
                 if let Some((p, m)) = count_diff_pm(display_diff) {
                     plus = plus.saturating_add(p);
                     minus = minus.saturating_add(m);
@@ -107,6 +114,17 @@ fn is_command_tool(name: &str) -> bool {
     matches!(name, "bash" | "shell" | "run_terminal_cmd" | "execute")
 }
 
+fn is_edit_tool(name: &str) -> bool {
+    matches!(
+        name,
+        "edit" | "write" | "apply_patch" | "strreplace" | "str_replace"
+    )
+}
+
+fn files_word(n: u32) -> &'static str {
+    if n == 1 { "file" } else { "files" }
+}
+
 /// Count +/- lines in a unified diff; `None` when nothing reliable.
 pub fn count_diff_pm(diff: &str) -> Option<(u32, u32)> {
     let mut plus = 0u32;
@@ -127,20 +145,35 @@ pub fn count_diff_pm(diff: &str) -> Option<(u32, u32)> {
     if any { Some((plus, minus)) } else { None }
 }
 
+#[cfg(test)]
 pub fn format_l2_body(counts: &ActivityCounts) -> String {
     format_cluster_body(counts, false)
 }
 
-/// Open-cluster progressive (`Editing`) vs sealed (`Explored` / `Edited` via past).
+/// Open-cluster progressive (`Editing`) vs sealed (`Explored` / `Edited`).
 pub fn format_cluster_body(counts: &ActivityCounts, progressive: bool) -> String {
     let mut parts = Vec::new();
-    if counts.files > 0 {
-        let verb = if progressive { "Editing" } else { "Explored" };
-        parts.push(format!(
-            "{verb} {} {}",
-            counts.files,
-            if counts.files == 1 { "file" } else { "files" }
-        ));
+    let file_total = counts.edits.saturating_add(counts.files);
+    if progressive {
+        if file_total > 0 {
+            parts.push(format!("Editing {file_total} {}", files_word(file_total)));
+        }
+    } else {
+        if counts.edits > 0 {
+            parts.push(format!(
+                "Edited {} {}",
+                counts.edits,
+                files_word(counts.edits)
+            ));
+        }
+        if counts.files > 0 {
+            let n = format!("{} {}", counts.files, files_word(counts.files));
+            if parts.is_empty() {
+                parts.push(format!("Explored {n}"));
+            } else {
+                parts.push(format!("explored {n}"));
+            }
+        }
     }
     if counts.searches > 0 {
         parts.push(format!(
@@ -229,31 +262,37 @@ pub fn binding_chord_hint(binding_id: &'static str) -> String {
     }
 }
 
-/// Paint one L2/L3 summary row (marker + body + chord hint).
+/// Envelope header (`Worked for`). Stays visible when expanded (▾) so it can fold again.
+pub fn format_envelope_line(glyphs: GlyphSet, duration: Option<&str>, expanded: bool) -> String {
+    let marker = if expanded {
+        glyphs.unfold()
+    } else {
+        glyphs.fold()
+    };
+    let body = match duration {
+        Some(d) => format!("Worked for {d}"),
+        None => "Worked for".to_string(),
+    };
+    let hint = binding_chord_hint(if expanded {
+        "app.activity.collapseNearest"
+    } else {
+        "app.activity.expandNearest"
+    });
+    format!("{marker} {body}  {hint}")
+}
+
+/// Paint one envelope summary row (marker + body + chord hint).
 ///
-/// Collapsed L2/L3 rows show the expand chord; MUST NOT write `(Alt+E)`.
+/// Cluster heads use [`format_cluster_header`]; this is envelope-only.
+/// MUST NOT write `(Alt+E)`.
+#[cfg(test)]
 pub fn format_summary_line(
     level: SegmentLevel,
     glyphs: GlyphSet,
-    counts: &ActivityCounts,
+    _counts: &ActivityCounts,
     duration: Option<&str>,
 ) -> String {
-    let marker = match level {
-        SegmentLevel::L0 => glyphs.unfold(),
-        SegmentLevel::L2 | SegmentLevel::L3 => glyphs.fold(),
-    };
-    let body = match level {
-        SegmentLevel::L3 => match duration {
-            Some(d) => format!("Worked for {d}"),
-            None => "Worked for".to_string(),
-        },
-        SegmentLevel::L2 | SegmentLevel::L0 => format_l2_body(counts),
-    };
-    let hint = binding_chord_hint(match level {
-        SegmentLevel::L2 | SegmentLevel::L3 => "app.activity.expandNearest",
-        SegmentLevel::L0 => "app.activity.collapseNearest",
-    });
-    format!("{marker} {body}  {hint}")
+    format_envelope_line(glyphs, duration, !matches!(level, SegmentLevel::L3))
 }
 
 /// Cluster header (L2/L0). `progressive` is the live open cluster (`Editing`).
@@ -291,6 +330,7 @@ mod tests {
     fn l2_omits_pm_without_diff() {
         let c = ActivityCounts {
             files: 2,
+            edits: 0,
             searches: 1,
             commands: 0,
             diff_plus: None,
@@ -303,5 +343,42 @@ mod tests {
         let live = format_cluster_body(&c, true);
         assert!(live.contains("Editing 2 files"));
         assert!(!live.contains("Explored"));
+    }
+
+    #[test]
+    fn envelope_line_keeps_worked_for_when_expanded() {
+        crate::app::tui::keybindings::ensure_product_catalog();
+        let glyphs = GlyphSet::from_env();
+        let collapsed = format_envelope_line(glyphs, Some("2m"), false);
+        let expanded = format_envelope_line(glyphs, Some("2m"), true);
+        let via_summary = format_summary_line(
+            SegmentLevel::L2,
+            glyphs,
+            &ActivityCounts::default(),
+            Some("2m"),
+        );
+        assert!(collapsed.contains("Worked for 2m"), "{collapsed}");
+        assert!(expanded.contains("Worked for 2m"), "{expanded}");
+        assert_eq!(expanded, via_summary);
+        assert_ne!(collapsed, expanded);
+    }
+
+    #[test]
+    fn sealed_edits_use_edited_not_explored() {
+        let c = ActivityCounts {
+            files: 1,
+            edits: 2,
+            searches: 0,
+            commands: 0,
+            diff_plus: None,
+            diff_minus: None,
+        };
+        let s = format_l2_body(&c);
+        assert!(s.contains("Edited 2 files"), "{s}");
+        assert!(s.contains("explored 1 file"), "{s}");
+        assert!(!s.contains("Explored 2"), "{s}");
+        let live = format_cluster_body(&c, true);
+        assert!(live.contains("Editing 3 files"), "{live}");
+        assert!(!live.contains("Edited"), "{live}");
     }
 }
