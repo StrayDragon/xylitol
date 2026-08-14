@@ -14,7 +14,7 @@ pub(crate) mod support;
 mod tests;
 mod turn_end;
 
-use crate::utils::ThoughtClock;
+use crate::utils::{StreamNode, StreamNodeClock};
 use assistant::{
     build_assistant_message, current_provider_model, partial_assistant_message,
     streaming_assistant_parts, streaming_message_update, upsert_streaming_tool,
@@ -827,6 +827,8 @@ fn run_react_loop(cfg: ReActConfig) -> impl Stream<Item = XyEvent> + Send {
         let mut run_model: Option<(String, Arc<dyn XyModel>)> = None;
         // c1660: at most one overflow compact-and-retry per run.
         let mut overflow_recovery_attempted = false;
+        let mut stream_clock = StreamNodeClock::new();
+        stream_clock.stamp(StreamNode::AgentStart);
         // One OTEL/fastrace tree per user-triggered run (c1495 / c1555 turn preview).
         let user_preview = super::tool_exec::parts_preview_text(&user_parts);
         let model_api = {
@@ -854,6 +856,8 @@ fn run_react_loop(cfg: ReActConfig) -> impl Stream<Item = XyEvent> + Send {
                     break 'outer;
                 }
 
+                stream_clock.begin_turn();
+                stream_clock.stamp(StreamNode::TurnStart);
                 yield XyEvent::TurnStart { turn_index: turn as u32 };
                 if let Some(bus) = &hook_bus {
                     let (ty, phase, ctx) = super::script_hook_ctx::turn_start(turn as u32);
@@ -1001,7 +1005,6 @@ fn run_react_loop(cfg: ReActConfig) -> impl Stream<Item = XyEvent> + Send {
 
                 let mut text_acc = String::new();
                 let mut thinking_acc = String::new();
-                let mut thought_clock = ThoughtClock::new();
                 let mut thinking_signature: Option<String> = None;
                 let mut tool_calls: Vec<(String, String, Value)> = Vec::new();
                 let mut done_usage: Option<crate::protocol::message::XyUsage> = None;
@@ -1037,11 +1040,12 @@ fn run_react_loop(cfg: ReActConfig) -> impl Stream<Item = XyEvent> + Send {
                                     role: "assistant".to_string(),
                                     message: Some(assistant_msg.clone()),
                                 };
+                                stream_clock.finish_message();
                                 persist_agent_message_with_thought_elapsed(
                                     &store,
                                     &session_id,
                                     &assistant_msg,
-                                    Some(&thought_clock),
+                                    Some(&stream_clock),
                                 )
                                 .await;
                                 history.push(assistant_msg);
@@ -1056,7 +1060,7 @@ fn run_react_loop(cfg: ReActConfig) -> impl Stream<Item = XyEvent> + Send {
                         None => break,
                         Some(Ok(chunk)) => match chunk {
                             XyChunk::TextDelta(text) => {
-                                thought_clock.stamp_end();
+                                stream_clock.on_text_delta();
                                 text_acc.push_str(&text);
                                 yield XyEvent::TextDelta(text.clone());
                                 yield streaming_message_update(
@@ -1067,7 +1071,7 @@ fn run_react_loop(cfg: ReActConfig) -> impl Stream<Item = XyEvent> + Send {
                                 );
                             }
                             XyChunk::ThinkingDelta(text) => {
-                                thought_clock.stamp_start();
+                                stream_clock.on_thinking_delta();
                                 thinking_acc.push_str(&text);
                                 yield XyEvent::ThinkingDelta(text);
                                 yield streaming_message_update(
@@ -1081,7 +1085,7 @@ fn run_react_loop(cfg: ReActConfig) -> impl Stream<Item = XyEvent> + Send {
                                 thinking,
                                 thinking_signature: sig,
                             } => {
-                                thought_clock.stamp_end();
+                                stream_clock.on_thinking_end_chunk();
                                 if !thinking.is_empty() {
                                     thinking_acc = thinking;
                                 }
@@ -1096,7 +1100,7 @@ fn run_react_loop(cfg: ReActConfig) -> impl Stream<Item = XyEvent> + Send {
                                 );
                             }
                             XyChunk::ToolCallStart { id, name } => {
-                                thought_clock.stamp_end();
+                                stream_clock.on_tool_intent();
                                 upsert_streaming_tool(
                                     &mut tool_calls,
                                     id,
@@ -1116,7 +1120,7 @@ fn run_react_loop(cfg: ReActConfig) -> impl Stream<Item = XyEvent> + Send {
                                 args,
                                 ..
                             } => {
-                                thought_clock.stamp_end();
+                                stream_clock.on_tool_intent();
                                 upsert_streaming_tool(&mut tool_calls, id, name, args);
                                 yield streaming_message_update(
                                     &text_acc,
@@ -1127,7 +1131,7 @@ fn run_react_loop(cfg: ReActConfig) -> impl Stream<Item = XyEvent> + Send {
                             }
                             XyChunk::ToolCallEnd { name, args, id } => {
                                 // Intent only — execute after MessageEnd (c1255 / ar21).
-                                thought_clock.stamp_end();
+                                stream_clock.on_tool_intent();
                                 upsert_streaming_tool(&mut tool_calls, id, name, args);
                                 yield streaming_message_update(
                                     &text_acc,
@@ -1211,11 +1215,12 @@ fn run_react_loop(cfg: ReActConfig) -> impl Stream<Item = XyEvent> + Send {
                         model_id,
                         done_error_message,
                     );
+                    stream_clock.finish_message();
                     persist_agent_message_with_thought_elapsed(
                         &store,
                         &session_id,
                         &assistant_msg,
-                        Some(&thought_clock),
+                        Some(&stream_clock),
                     )
                     .await;
                     history.push(assistant_msg);

@@ -115,7 +115,7 @@ pub enum UiEntry {
         id: String,
         text: String,
         /// Wall-clock secs from thinking start node to thinking end node; `None` if <1s.
-        /// Resume prefers persisted `thinkingElapsedSecs`, else start/end node ms.
+        /// Resume prefers persisted `thinkingElapsedSecs`, else `streamTiming` node ms.
         elapsed_secs: Option<u64>,
     },
     Tool {
