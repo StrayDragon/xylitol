@@ -238,12 +238,17 @@ fn basename(path: &str) -> &str {
     if path.starts_with('\0') {
         return "";
     }
-    let base = path
-        .rsplit(['/', '\\'])
-        .next()
-        .filter(|s| !s.is_empty())
-        .unwrap_or(path);
-    if is_path_placeholder(base) { "" } else { base }
+    for part in path.rsplit(['/', '\\']) {
+        let p = part.trim();
+        if p.is_empty() || p == "." || p == ".." {
+            continue;
+        }
+        if is_path_placeholder(p) {
+            return "";
+        }
+        return p;
+    }
+    ""
 }
 
 fn files_word(n: u32) -> &'static str {
@@ -681,6 +686,24 @@ mod tests {
         assert!(!live.contains("..."), "{live}");
         let sealed = format_l2_body(&c);
         assert_eq!(sealed, "Edited 1 file");
+    }
+
+    #[test]
+    fn cwd_dot_path_is_not_explored_dot() {
+        let entries = vec![tool("ls", Some(".")), tool("bash", None)];
+        let c = count_middles(&entries, &[0, 1]);
+        let s = format_l2_body(&c);
+        assert_eq!(s, "Explored 1 file, Ran 1 command");
+        assert!(!s.contains("Explored ."), "{s}");
+        assert!(!s.contains("Explored ..."), "{s}");
+
+        let abs = tool("ls", Some("/home/l8ng/Projects/__straydragon__/xylitol/."));
+        let c = count_middles(&[abs], &[0]);
+        assert_eq!(format_l2_body(&c), "Explored xylitol");
+
+        let dotfile = tool("read", Some(".gitignore"));
+        let c = count_middles(&[dotfile], &[0]);
+        assert_eq!(format_l2_body(&c), "Explored .gitignore");
     }
 
     #[test]
