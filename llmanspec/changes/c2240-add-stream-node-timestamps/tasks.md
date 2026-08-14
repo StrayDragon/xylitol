@@ -2,9 +2,9 @@
 
 ## 1. Branch binding 与 Specs landing
 
-- [ ] 1.1 `llman sdd change start c2240-add-stream-node-timestamps`
-- [ ] 1.2 [blocked-by: 1.1] 收紧 `app-tui-transcript` att8/att21/att24/att33：思考通道起止；resume 不用相邻条目墙钟
-- [ ] 1.3 [blocked-by: 1.1] `agent-runtime` 增加 streamTiming 节点落盘要求（单测，不扩 BDD step）
+- [x] 1.1 `llman sdd change start c2240-add-stream-node-timestamps`
+- [x] 1.2 [blocked-by: 1.1] 收紧 `app-tui-transcript` att8/att21/att24/att33：思考通道起止；resume 不用相邻条目墙钟
+- [x] 1.3 [blocked-by: 1.1] `agent-runtime` 增加 streamTiming 节点落盘要求（单测，不扩 BDD step）
 - [ ] 1.4 [blocked-by: 1.2] `llman sdd validate c2240-add-stream-node-timestamps --strict --no-check`
 
 ## 2. 在线钟与落盘

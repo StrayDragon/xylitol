@@ -2,7 +2,7 @@ kind: llman.sdd.spec
 name: "agent-runtime"
 purpose: "薄编排 ReAct 运行时：AgentRuntime 循环、工具批执行、steer/follow-up 队列、abort 与 XyEvent 流（不含 adk / OutputGuard）。"
 valid_scope[3]: "agent 层","protocol 层","workspace 测试"
-requirements[33]{req_id,title,statement}:
+requirements[34]{req_id,title,statement}:
   ar1,"thin-react-loop","agent/ 层 MUST 以 AgentRuntime 驱动 ReAct：调用 XyModel、执行工具、直至无 tool_calls、abort、或可选 should_stop_after_turn 请求停；MUST NOT 以产品默认 max_iterations 或未配置的硬步数闸结束 run；可选 session.max_turns（见 ar30）MUST 仅通过 should_stop_after_turn 生效。MUST NOT 在循环实现内联 bash 执行或厂商 HTTP。"
   ar2,"xy-event-stream",运行时 MUST 以 XyEvent 异步流对外输出（TextDelta / ThinkingDelta / Tool* / Turn* / QueueUpdate / Error 等）；MUST NOT 再引入 AgentEvent 或 adk 事件类型。
   ar3,工具批后继续,"同一模型响应中的全部工具调用 MUST 在下一轮模型调用前执行完毕（可并行或串行）；MUST NOT 因流结束 Done 而提前结束含 tool_calls 的回合。该行为 MUST 有可执行 BDD 场景（live `.feature`，`@req`）。"
@@ -36,7 +36,8 @@ requirements[33]{req_id,title,statement}:
   ar33,"context-policy-responses-assembler","agent 层 MUST 提供 ContextPolicy（或等价）code-first 默认板：至少含 tools_mode（默认 full）、status_bar_mode（默认 off）、date_placement（默认 Omit：system 不含日历日；另支持 SystemAsToday 与 SystemPinnedAtSession 消融）；MUST NOT 本 change 实现 search/状态栏完整行为。date_placement MUST 被系统提示组装消费。openai-responses 主路径 MUST 经 ResponsesAssembler（bridge）构造请求 body，并传入 WirePolicy；MUST NOT 在 ReAct/adapter 散落第二套业务布局。由单测覆盖，MUST NOT 单独扩 BDD step。"
   ar34,"mcp-tool-table-freeze-gate","轨 A：Agent/session MUST 在首次 generate（会话尚未工具定稿）前执行 MCP 门闸（对齐 infra-mcp mcp8）：等待 settle 或超时后定稿 provider 可见工具表；定稿后 MUST 忽略会扩表的 settle 热并；idle `/reload` MUST 按 name upsert 重定稿；本波 resume/切会话 MUST 清冻再门闸（指纹持久化后的一致续冻另波，对齐 mcp8）。tools_mode=search（c1960）不在本要求交付范围。由单测覆盖，MUST NOT 单独扩 BDD step。"
   ar35,"stream-error-carries-kind","ReAct / session 热路径在将 XyError 投影为 XyEvent::Error 时 MUST 经 XyEventError::from_xy（或等价）保留稳定 kind（对齐 XyError::kind）；MUST NOT 仅把 Display 字符串塞进无 kind 的 Error。Abort 路径 MUST 使用 Aborted kind（或 is_aborted 可识别）。由单测覆盖，MUST NOT 单独扩 BDD step。"
-scenarios[18]{req_id,id,given,when,then,feature}:
+  ar36,"stream-node-timestamps","ReAct 持久化 assistant 消息时 MUST 附加 streamTiming（camelCase unix-ms 节点，LLM 投影忽略）：本 run 的 agentStarted、本 turn 的 turnStarted、思考通道起止、正文首末 TextDelta、首个工具意图、messageEnded；仅写入实际发生的键。思考通道结束 MUST 在先到的正文/工具意图/ThinkingEnd 打一次，MUST NOT 用 Done 或整段正文结束冒充。textEnded MAY 随最后 TextDelta 覆盖。Thought 展示用思考通道起止派生 thinkingElapsedSecs（不到 1s 省略）。由单测覆盖，MUST NOT 单独扩 BDD step。"
+scenarios[19]{req_id,id,given,when,then,feature}:
   ar15,"unknown-ok",构造内部专用 XyEvent 变体,经 to_wire_event 降级,返回 None 且不 panic,false
   ar16,"default-thinking",装配未设 thinking 的 agent,查询 thinking level,返回默认值,false
   ar16,"no-max-iterations-default",检查 AgentBuilder 与 profile 默认,查询步数闸,MUST NOT 存在 max_iterations 默认或生效字段,false
@@ -55,3 +56,4 @@ scenarios[18]{req_id,id,given,when,then,feature}:
   ar33,"context-policy-default-unit","调用 ContextPolicy::default()","检查 hooks","tools_mode=full；status_bar_mode=off；date_placement=Omit",false
   ar34,"freeze-gate-unit","未定稿会话首次 generate","门闸超时或 settle 后","工具表 FROZEN；其后 settle 不扩 provider 表",false
   ar35,"stream-error-kind-unit","热路径 XyError::Provider 投影为 XyEvent::Error","检查 XyEventError","kind=Provider 且 message 含 Display",false
+  ar36,"stream-timing-nodes-unit","thinking 后长正文再 Done","persist assistant","streamTiming 含思考起止与正文起止；thinkingElapsedSecs 不含正文墙钟",false
