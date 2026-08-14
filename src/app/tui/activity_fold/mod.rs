@@ -15,6 +15,12 @@ mod settings;
 mod state;
 mod summary;
 
+/// Semantic scene dump (c2200 scene slice): product path chords (L3/L2/L1)
+/// over the product render. Tests in [`crate::app::tui::tests`] assert the
+/// c1762 lessons 1–3 on product frames.
+#[cfg(test)]
+pub(crate) mod scene;
+
 #[cfg(test)]
 pub(crate) use atom::{ToolActivityRole, is_path_placeholder, tool_activity_role};
 pub use degrade::AutoTrigger;
@@ -42,6 +48,9 @@ use time::OffsetDateTime;
 
 use crate::app::tui::bridge::UiEntry;
 use crate::protocol::session::{SessionEntry, SessionTreeTravel};
+
+#[cfg(test)]
+pub(crate) use scene::SemanticDump;
 
 /// Parse session / ISO / unix-ish timestamps; `None` when unreliable.
 pub fn parse_timestamp(raw: &str) -> Option<OffsetDateTime> {
