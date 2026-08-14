@@ -1,10 +1,11 @@
-//! L2 count summary + L3 Worked-for lines (att24 / att27).
+//! Cluster / envelope summary lines (att24 / att27).
 
 use time::OffsetDateTime;
 
 use crate::app::tui::bridge::UiEntry;
 use crate::app::tui::keybindings::with_keybindings;
 use crate::app::tui::widgets::GlyphSet;
+use crate::protocol::tool_name::is_mcp_tool_name;
 
 #[cfg(test)]
 use super::segment::SegmentLevel;
@@ -12,23 +13,37 @@ use super::segment::{
     ActivityCluster, ActivitySegment, cluster_middle_indices, middle_entry_indices,
 };
 
-/// Observable activity counters for an L2 line.
+/// Observable activity for one cluster header (att24).
 #[derive(Debug, Clone, Default, PartialEq, Eq)]
 pub struct ActivityCounts {
-    /// Read / explore file tools (sealed header: Explored).
-    pub files: u32,
-    /// Edit / write / Diff (sealed header: Edited; progressive still folds into Editing).
-    pub edits: u32,
-    pub searches: u32,
+    /// Unique edit/write paths (first-seen order). Pathless edits use a placeholder.
+    pub edit_paths: Vec<String>,
+    /// Unique read/ls/search paths.
+    pub explore_paths: Vec<String>,
+    /// Search ran with no usable path — still qualifies Explored, no fake N.
+    pub search_no_path: bool,
     pub commands: u32,
+    pub thinking: u32,
+    /// MCP / unknown tool names (display short ids).
+    pub used_names: Vec<String>,
+    pub asks: u32,
+    pub compaction: u32,
     /// Reliable +/- from Diff / edit display_diff only.
     pub diff_plus: Option<u32>,
     pub diff_minus: Option<u32>,
 }
 
 impl ActivityCounts {
-    pub fn is_empty(&self) -> bool {
-        self.files == 0 && self.edits == 0 && self.searches == 0 && self.commands == 0
+    /// Compaction-only: no cluster header (att23); paint the compaction block itself.
+    pub fn omits_cluster_header(&self) -> bool {
+        self.compaction > 0
+            && self.edit_paths.is_empty()
+            && self.explore_paths.is_empty()
+            && !self.search_no_path
+            && self.commands == 0
+            && self.thinking == 0
+            && self.used_names.is_empty()
+            && self.asks == 0
     }
 }
 
@@ -41,11 +56,42 @@ pub fn count_cluster(entries: &[UiEntry], cluster: &ActivityCluster) -> Activity
     count_middles(entries, &cluster_middle_indices(entries, cluster))
 }
 
+pub fn cluster_omits_header(entries: &[UiEntry], cluster: &ActivityCluster) -> bool {
+    count_cluster(entries, cluster).omits_cluster_header()
+}
+
+fn push_unique(paths: &mut Vec<String>, path: String) {
+    if !paths.iter().any(|p| p == &path) {
+        paths.push(path);
+    }
+}
+
+fn tool_path_of(tool_path: &Option<String>, args_preview: &str) -> Option<String> {
+    if let Some(p) = tool_path.as_deref().map(str::trim)
+        && !p.is_empty()
+        && p != "…"
+    {
+        return Some(p.to_string());
+    }
+    let preview = args_preview.trim();
+    if preview.is_empty() || preview == "…" {
+        return None;
+    }
+    // Human preview is `{name} {path}` or just a path-ish token.
+    preview
+        .split_whitespace()
+        .next_back()
+        .filter(|t| *t != "…" && (t.contains('.') || t.contains('/')))
+        .map(str::to_string)
+}
+
 fn count_middles(entries: &[UiEntry], indices: &[usize]) -> ActivityCounts {
     let mut c = ActivityCounts::default();
     let mut plus = 0u32;
     let mut minus = 0u32;
     let mut saw_diff_stats = false;
+    let mut anon_edits = 0u32;
+    let mut anon_explores = 0u32;
 
     for &idx in indices {
         match &entries[idx] {
@@ -58,15 +104,24 @@ fn count_middles(entries: &[UiEntry], indices: &[usize]) -> ActivityCounts {
             } => {
                 let n = name.to_ascii_lowercase();
                 if is_search_tool(&n) {
-                    c.searches += 1;
+                    match tool_path_of(tool_path, args_preview) {
+                        Some(p) => push_unique(&mut c.explore_paths, p),
+                        None => c.search_no_path = true,
+                    }
                 } else if is_command_tool(&n) {
                     c.commands += 1;
                 } else if is_edit_tool(&n) {
-                    c.edits += 1;
+                    match tool_path_of(tool_path, args_preview) {
+                        Some(p) => push_unique(&mut c.edit_paths, p),
+                        None => anon_edits += 1,
+                    }
+                } else if is_read_or_ls(&n) {
+                    match tool_path_of(tool_path, args_preview) {
+                        Some(p) => push_unique(&mut c.explore_paths, p),
+                        None => anon_explores += 1,
+                    }
                 } else {
-                    // read/ls and unknown path-ish tools → explored files.
-                    let _ = (tool_path, args_preview);
-                    c.files += 1;
+                    push_unique(&mut c.used_names, used_display_name(name));
                 }
                 if let Some(diff) = display_diff.as_deref()
                     && let Some((p, m)) = count_diff_pm(diff)
@@ -77,7 +132,7 @@ fn count_middles(entries: &[UiEntry], indices: &[usize]) -> ActivityCounts {
                 }
             }
             UiEntry::Diff { display_diff, .. } => {
-                c.edits += 1;
+                anon_edits += 1;
                 if let Some((p, m)) = count_diff_pm(display_diff) {
                     plus = plus.saturating_add(p);
                     minus = minus.saturating_add(m);
@@ -85,14 +140,18 @@ fn count_middles(entries: &[UiEntry], indices: &[usize]) -> ActivityCounts {
                 }
             }
             UiEntry::Bash { .. } => c.commands += 1,
-            UiEntry::Thinking { .. } | UiEntry::Ask { .. } => {}
+            UiEntry::Thinking { .. } => c.thinking += 1,
+            UiEntry::Ask { .. } => c.asks += 1,
+            UiEntry::Compaction { .. } => c.compaction += 1,
             _ => {}
         }
     }
 
-    // Thinking/Ask-only clusters: keep a non-empty header.
-    if c.is_empty() && !indices.is_empty() {
-        c.files = 1;
+    for i in 0..anon_edits {
+        c.edit_paths.push(format!("\0edit{i}"));
+    }
+    for i in 0..anon_explores {
+        c.explore_paths.push(format!("\0explore{i}"));
     }
 
     if saw_diff_stats {
@@ -121,6 +180,35 @@ fn is_edit_tool(name: &str) -> bool {
     )
 }
 
+fn is_read_or_ls(name: &str) -> bool {
+    matches!(name, "read" | "ls")
+}
+
+fn used_display_name(name: &str) -> String {
+    if is_mcp_tool_name(name) {
+        if let Some(rest) = name.strip_prefix("mcp__") {
+            return rest.rsplit("__").next().unwrap_or(rest).to_string();
+        }
+        if let Some(rest) = name.strip_prefix("mcp:") {
+            return rest.rsplit(':').next().unwrap_or(rest).to_string();
+        }
+        if let Some(rest) = name.strip_prefix("mcp-") {
+            return rest.rsplit('-').next().unwrap_or(rest).to_string();
+        }
+    }
+    name.to_string()
+}
+
+fn basename(path: &str) -> &str {
+    if path.starts_with('\0') {
+        return "";
+    }
+    path.rsplit(['/', '\\'])
+        .next()
+        .filter(|s| !s.is_empty())
+        .unwrap_or(path)
+}
+
 fn files_word(n: u32) -> &'static str {
     if n == 1 { "file" } else { "files" }
 }
@@ -145,62 +233,70 @@ pub fn count_diff_pm(diff: &str) -> Option<(u32, u32)> {
     if any { Some((plus, minus)) } else { None }
 }
 
+fn command_word(n: u32) -> &'static str {
+    if n == 1 { "command" } else { "commands" }
+}
+
+fn file_clause(verb: &str, paths: &[String]) -> String {
+    let n = paths.len() as u32;
+    if n == 1 {
+        let base = basename(&paths[0]);
+        if !base.is_empty() {
+            return format!("{verb} {base}");
+        }
+        return format!("{verb} 1 file");
+    }
+    format!("{verb} {n} {}", files_word(n))
+}
+
 #[cfg(test)]
 pub fn format_l2_body(counts: &ActivityCounts) -> String {
     format_cluster_body(counts, false)
 }
 
-/// Open-cluster progressive (`Editing`) vs sealed (`Explored` / `Edited`).
+/// Open-cluster progressive vs sealed (att24).
 pub fn format_cluster_body(counts: &ActivityCounts, progressive: bool) -> String {
-    let mut parts = Vec::new();
-    let file_total = counts.edits.saturating_add(counts.files);
-    if progressive {
-        if file_total > 0 {
-            parts.push(format!("Editing {file_total} {}", files_word(file_total)));
-        }
-    } else {
-        if counts.edits > 0 {
-            parts.push(format!(
-                "Edited {} {}",
-                counts.edits,
-                files_word(counts.edits)
-            ));
-        }
-        if counts.files > 0 {
-            let n = format!("{} {}", counts.files, files_word(counts.files));
-            if parts.is_empty() {
-                parts.push(format!("Explored {n}"));
-            } else {
-                parts.push(format!("explored {n}"));
-            }
-        }
+    if counts.omits_cluster_header() {
+        return String::new();
     }
-    if counts.searches > 0 {
-        parts.push(format!(
-            "{} {}",
-            counts.searches,
-            if counts.searches == 1 {
-                "search"
-            } else {
-                "searches"
-            }
-        ));
+    let mut parts = Vec::new();
+    let (file_verb, cmd_verb) = if progressive {
+        ("Editing", "Running")
+    } else {
+        ("Edited", "Ran")
+    };
+    if !counts.edit_paths.is_empty() {
+        parts.push(file_clause(file_verb, &counts.edit_paths));
+    } else if !counts.explore_paths.is_empty() {
+        let explore_verb = if progressive { "Exploring" } else { "Explored" };
+        parts.push(file_clause(explore_verb, &counts.explore_paths));
+    } else if counts.search_no_path {
+        parts.push(if progressive {
+            "Exploring".into()
+        } else {
+            "Explored".into()
+        });
     }
     if counts.commands > 0 {
         parts.push(format!(
-            "ran {} {}",
+            "{cmd_verb} {} {}",
             counts.commands,
-            if counts.commands == 1 {
-                "command"
-            } else {
-                "commands"
-            }
+            command_word(counts.commands)
         ));
     }
-    let mut body = if parts.is_empty() {
-        "Activity".to_string()
-    } else {
+    let mut body = if !parts.is_empty() {
         parts.join(", ")
+    } else if counts.thinking > 0 {
+        "Thought".to_string()
+    } else if !counts.used_names.is_empty() {
+        match counts.used_names.as_slice() {
+            [one] => format!("Used {one}"),
+            names => format!("Used {} tools", names.len()),
+        }
+    } else if counts.asks > 0 {
+        "Asking questions".to_string()
+    } else {
+        "Activity".to_string()
     };
     if let (Some(p), Some(m)) = (counts.diff_plus, counts.diff_minus) {
         body.push_str(&format!("  +{p} -{m}"));
@@ -295,7 +391,7 @@ pub fn format_summary_line(
     format_envelope_line(glyphs, duration, !matches!(level, SegmentLevel::L3))
 }
 
-/// Cluster header (L2/L0). `progressive` is the live open cluster (`Editing`).
+/// Cluster header (L2/L0). `progressive` is the live open cluster.
 pub fn format_cluster_header(
     glyphs: GlyphSet,
     counts: &ActivityCounts,
@@ -319,6 +415,37 @@ pub fn format_cluster_header(
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::app::tui::bridge::UiEntry;
+
+    fn tool(name: &str, path: Option<&str>) -> UiEntry {
+        UiEntry::Tool {
+            id: name.into(),
+            name: name.into(),
+            args_preview: path.unwrap_or("").into(),
+            tool_path: path.map(str::to_string),
+            write_content: None,
+            display_diff: None,
+            output: String::new(),
+            is_error: false,
+            done: true,
+        }
+    }
+
+    fn thinking() -> UiEntry {
+        UiEntry::Thinking {
+            id: "t".into(),
+            text: "hmm".into(),
+        }
+    }
+
+    fn compaction() -> UiEntry {
+        UiEntry::Compaction {
+            status: crate::app::tui::bridge::CompactionBlockStatus::Complete,
+            summary: "c".into(),
+            tokens_before: 101_494,
+            detail: None,
+        }
+    }
 
     #[test]
     fn diff_pm_counts_reliable_lines() {
@@ -327,22 +454,20 @@ mod tests {
     }
 
     #[test]
-    fn l2_omits_pm_without_diff() {
-        let c = ActivityCounts {
-            files: 2,
-            edits: 0,
-            searches: 1,
-            commands: 0,
-            diff_plus: None,
-            diff_minus: None,
-        };
+    fn explored_unique_paths_and_search_no_fake_file() {
+        let entries = vec![
+            tool("read", Some("a.rs")),
+            tool("read", Some("a.rs")),
+            tool("grep", None),
+        ];
+        let c = count_middles(&entries, &[0, 1, 2]);
         let s = format_l2_body(&c);
-        assert!(s.contains("Explored 2 files"));
-        assert!(s.contains("1 search"));
-        assert!(!s.contains('+'));
+        assert!(s.contains("Explored a.rs"), "{s}");
+        assert!(!s.contains("Explored 2"), "{s}");
+        assert!(!s.contains("search"), "{s}");
         let live = format_cluster_body(&c, true);
-        assert!(live.contains("Editing 2 files"));
-        assert!(!live.contains("Explored"));
+        assert!(live.contains("Exploring a.rs"), "{live}");
+        assert!(!live.contains("Editing"), "{live}");
     }
 
     #[test]
@@ -364,21 +489,74 @@ mod tests {
     }
 
     #[test]
-    fn sealed_edits_use_edited_not_explored() {
+    fn sealed_edits_upgrade_not_explored() {
+        let entries = vec![tool("edit", Some("b.rs")), tool("read", Some("a.rs"))];
+        let c = count_middles(&entries, &[0, 1]);
+        let s = format_l2_body(&c);
+        assert!(s.contains("Edited b.rs"), "{s}");
+        assert!(!s.to_ascii_lowercase().contains("explored"), "{s}");
+        let live = format_cluster_body(&c, true);
+        assert!(live.contains("Editing b.rs"), "{live}");
+        assert!(!live.contains("Edited"), "{live}");
+        assert!(!live.contains("Explor"), "{live}");
+    }
+
+    #[test]
+    fn thinking_only_is_thought_not_explored() {
+        let entries = vec![thinking()];
+        let c = count_middles(&entries, &[0]);
+        let s = format_l2_body(&c);
+        assert_eq!(s, "Thought");
+        assert!(!s.contains("Explored"));
+    }
+
+    #[test]
+    fn compaction_only_omits_header() {
+        let entries = vec![compaction()];
+        let c = count_middles(&entries, &[0]);
+        assert!(c.omits_cluster_header());
+        assert!(format_l2_body(&c).is_empty());
+    }
+
+    #[test]
+    fn mcp_is_used_not_explored() {
+        let entries = vec![tool("mcp:lspz:get_symbols", None)];
+        let c = count_middles(&entries, &[0]);
+        let s = format_l2_body(&c);
+        assert!(s.contains("Used get_symbols"), "{s}");
+        assert!(!s.contains("Explored"), "{s}");
+    }
+
+    #[test]
+    fn bash_only_is_ran_not_explored() {
+        let entries = vec![tool("bash", None)];
+        let c = count_middles(&entries, &[0]);
+        let s = format_l2_body(&c);
+        assert_eq!(s, "Ran 1 command");
+        let live = format_cluster_body(&c, true);
+        assert_eq!(live, "Running 1 command");
+    }
+
+    #[test]
+    fn two_edits_unique_files() {
+        let entries = vec![tool("edit", Some("a.rs")), tool("write", Some("b.rs"))];
+        let c = count_middles(&entries, &[0, 1]);
+        let s = format_l2_body(&c);
+        assert_eq!(s, "Edited 2 files");
+    }
+
+    #[test]
+    fn l2_omits_pm_without_diff() {
         let c = ActivityCounts {
-            files: 1,
-            edits: 2,
-            searches: 0,
-            commands: 0,
-            diff_plus: None,
-            diff_minus: None,
+            explore_paths: vec!["a.rs".into(), "b.rs".into()],
+            search_no_path: true,
+            ..Default::default()
         };
         let s = format_l2_body(&c);
-        assert!(s.contains("Edited 2 files"), "{s}");
-        assert!(s.contains("explored 1 file"), "{s}");
-        assert!(!s.contains("Explored 2"), "{s}");
+        assert!(s.contains("Explored 2 files"), "{s}");
+        assert!(!s.contains('+'));
         let live = format_cluster_body(&c, true);
-        assert!(live.contains("Editing 3 files"), "{live}");
-        assert!(!live.contains("Edited"), "{live}");
+        assert!(live.contains("Exploring 2 files"), "{live}");
+        assert!(!live.contains("Explored"));
     }
 }

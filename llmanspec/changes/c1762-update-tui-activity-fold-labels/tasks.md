@@ -6,9 +6,9 @@
 
 | 块 | 状态 | 合约 |
 |---|---|---|
-| 0 Designed 规划壳 | 进行中 | proposal + design + tasks |
-| 1 Specs landing | 待 start | att24 / att33 / att23 独簇句 |
-| 2–5 Apply | 待 | 计数 · paint · live · 夹具 |
+| 0 Designed 规划壳 | ✅ | proposal + design + tasks |
+| 1 Specs landing | ✅ | att24 / att33 / att23 独簇句 |
+| 2–5 Apply | ✅ | 计数 · paint · live · 夹具 |
 
 ---
 
@@ -30,29 +30,29 @@
 
 ### 2. 计数与格式
 
-- [ ] 2.1 删除 `files = 1` 占位；MCP/未知不进 files
-- [ ] 2.2 Edited XOR Explored；Ran 第二子句；N 去重 + basename；回退 Thought / Used / Asking
-- [ ] 2.3 +/- 仍 ToolEnd 可靠 diff；无则省略
-- [ ] 2.4 单测：thinking-only ≠ Explored；compaction-only 无 Explored；MCP → Used；edit+read 只 Edited；bash-only → Ran
+- [x] 2.1 删除 `files = 1` 占位；MCP/未知不进 files
+- [x] 2.2 Edited XOR Explored；Ran 第二子句；N 去重 + basename；回退 Thought / Used / Asking
+- [x] 2.3 +/- 仍 ToolEnd 可靠 diff；无则省略
+- [x] 2.4 单测：thinking-only ≠ Explored；compaction-only 无 Explored；MCP → Used；edit+read 只 Edited；bash-only → Ran
 
 ### 3. Paint
 
-- [ ] 3.1 仅 Compaction 的簇不画簇头、不登记簇 hit；信封展开直出 compaction 块
-- [ ] 3.2 信封 L3 仍收纳 compaction（回归 att23）
-- [ ] 3.3 视觉 `design/activity-fold.md` 文案与 playground 槽对齐新词表（无滑入）
+- [x] 3.1 仅 Compaction 的簇不画簇头、不登记簇 hit；信封展开直出 compaction 块
+- [x] 3.2 信封 L3 仍收纳 compaction（回归 att23）
+- [x] 3.3 视觉 `design/activity-fold.md` 文案与 playground 槽对齐新词表（无滑入）
 
 ### 4. Live window
 
-- [ ] 4.1 打开簇进行时：Editing / Exploring / Running；封口改过去式
-- [ ] 4.2 更新 `live_tape` 期望；禁止纯 read 显示 Editing
+- [x] 4.1 打开簇进行时：Editing / Exploring / Running；封口改过去式
+- [x] 4.2 更新 `live_tape` 期望；禁止纯 read 显示 Editing
 
 ### 5. 夹具与闸
 
-- [ ] 5.1 `/debug activity-fold-live` / `activity-fold-resume` 断言跟新词表
-- [ ] 5.2 `just fmt` + 相关 `activity_fold` / harness 测
-- [ ] 5.3 手测指针：session `460ad16e`「cool 总结下」（不进 qa）
+- [x] 5.1 `/debug activity-fold-live` / `activity-fold-resume` 断言跟新词表
+- [x] 5.2 `just fmt` + 相关 `activity_fold` / harness 测
+- [x] 5.3 手测指针：session `460ad16e`「cool 总结下」（不进 qa）
 
 ## 收口
 
-- [ ] 6.1 `llman sdd validate c1762-update-tui-activity-fold-labels --strict --no-check`
-- [ ] 6.2 确认未改 att34、未接线 c1770、未改 L1 块动词
+- [x] 6.1 `llman sdd validate c1762-update-tui-activity-fold-labels --strict --no-check`
+- [x] 6.2 确认未改 att34、未接线 c1770、未改 L1 块动词

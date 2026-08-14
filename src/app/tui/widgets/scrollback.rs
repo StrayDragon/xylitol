@@ -14,8 +14,8 @@ use std::collections::{HashMap, HashSet};
 use super::fold_hit::{FoldHitTable, FoldTarget};
 use super::glyphs::GlyphSet;
 use crate::app::tui::activity_fold::{
-    ActivityFoldState, SegmentLevel, cluster_middle_indices, count_cluster, format_cluster_header,
-    format_envelope_line, middle_entry_indices, partition_segments,
+    ActivityFoldState, SegmentLevel, cluster_middle_indices, cluster_omits_header, count_cluster,
+    format_cluster_header, format_envelope_line, middle_entry_indices, partition_segments,
 };
 use crate::app::tui::bridge::{
     AskPhase, BashBlockStatus, CompactionBlockStatus, UiEntry, UiModel, UiPhase,
@@ -791,6 +791,7 @@ pub fn render_scrollback(
         for (ci, cl) in seg.clusters.iter().enumerate() {
             let expanded = activity.cluster_kids_visible(&seg.id, &cl.id);
             let mids = cluster_middle_indices(&model.entries, cl);
+            let omit_header = cluster_omits_header(&model.entries, cl);
             let sealed_nonempty = mids.iter().any(|&idx| {
                 model
                     .entries
@@ -799,7 +800,8 @@ pub fn render_scrollback(
             });
             let is_open = is_open_live_cluster(seg, ci, live_seg);
             // Live open cluster with only inflight: no -2 header yet (att33).
-            let paint_header = !(is_open && !sealed_nonempty);
+            // Compaction-only clusters never get a second header (att23).
+            let paint_header = !omit_header && !(is_open && !sealed_nonempty);
             if paint_header && let Some(&first) = mids.first() {
                 cluster_header_at.insert(first, (si, ci));
             }
@@ -812,6 +814,10 @@ pub fn render_scrollback(
                 }
                 if is_open && is_inflight_hidden(entry) {
                     skip_middle.insert(idx);
+                    continue;
+                }
+                if omit_header {
+                    // Envelope is already expanded here; show the compaction block.
                     continue;
                 }
                 if !expanded {
