@@ -388,6 +388,64 @@ fn message_update_does_not_duplicate_deltas() {
 }
 
 #[test]
+fn thinking_elapsed_stops_at_first_text_delta() {
+    let mut model = UiModel::new();
+    model.begin_run("hi");
+    apply_xy_event(&mut model, &XyEvent::ThinkingDelta("plan…".into()));
+    let start = std::time::Instant::now() - std::time::Duration::from_secs(2);
+    model.thought_clock.pin_start_at(start, 1_000);
+    model
+        .thought_clock
+        .stamp_end_at(start + std::time::Duration::from_secs(2), 3_000);
+    apply_xy_event(&mut model, &XyEvent::TextDelta("Hello".into()));
+    let thinking: Vec<_> = model
+        .entries
+        .iter()
+        .filter_map(|e| match e {
+            UiEntry::Thinking {
+                text, elapsed_secs, ..
+            } => Some((text.as_str(), *elapsed_secs)),
+            _ => None,
+        })
+        .collect();
+    assert_eq!(thinking, [("plan…", Some(2))]);
+    assert!(model.streaming_thinking.is_empty());
+    assert!(model.streaming_think_id.is_none());
+    assert_eq!(model.streaming_assistant, "Hello");
+
+    apply_xy_event(&mut model, &XyEvent::TextDelta(" world".into()));
+    apply_xy_event(
+        &mut model,
+        &XyEvent::MessageEnd {
+            role: "assistant".into(),
+            message: None,
+        },
+    );
+    let thinking_after: Vec<_> = model
+        .entries
+        .iter()
+        .filter_map(|e| match e {
+            UiEntry::Thinking { elapsed_secs, .. } => Some(*elapsed_secs),
+            _ => None,
+        })
+        .collect();
+    assert_eq!(
+        thinking_after,
+        [Some(2)],
+        "later text / MessageEnd MUST NOT inflate thought wall-clock"
+    );
+    let assistants: Vec<_> = model
+        .entries
+        .iter()
+        .filter_map(|e| match e {
+            UiEntry::Assistant { text } => Some(text.as_str()),
+            _ => None,
+        })
+        .collect();
+    assert_eq!(assistants, ["Hello world"]);
+}
+
+#[test]
 fn message_update_tool_intent_flushes_thinking_first() {
     use crate::protocol::message::{AgentMessage, AgentPart, LlmMessage};
 

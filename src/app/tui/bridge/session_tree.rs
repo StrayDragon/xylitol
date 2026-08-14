@@ -5,6 +5,7 @@ use crate::protocol::session::{
     is_tool_call_part, latest_agent_todo, message_parts, message_role, message_text,
     tool_call_name,
 };
+use crate::utils::elapsed_from_persist_ms;
 use serde_json::Value;
 
 use super::{
@@ -29,7 +30,7 @@ pub fn rebuild_scrollback_from_travel(
     ui_model.streaming_assistant.clear();
     ui_model.streaming_thinking.clear();
     ui_model.streaming_think_id = None;
-    ui_model.thinking_started_at = None;
+    ui_model.thought_clock.reset();
     ui_model.current_role = None;
 
     let path = ancestry_path_ids(entries, travel.leaf_id.as_deref());
@@ -265,11 +266,15 @@ fn session_entry_to_ui_entries_with_thought_elapsed(
 
 fn persisted_thinking_elapsed(entry: &SessionEntry) -> Option<u64> {
     match entry {
-        SessionEntry::Message(m) => m
-            .message
-            .get("thinkingElapsedSecs")
-            .and_then(|v| v.as_u64())
-            .filter(|s| *s > 0),
+        SessionEntry::Message(m) => elapsed_from_persist_ms(
+            m.message
+                .get("thinkingElapsedSecs")
+                .and_then(|v| v.as_u64()),
+            m.message
+                .get("thinkingStartedAtMs")
+                .and_then(|v| v.as_u64()),
+            m.message.get("thinkingEndedAtMs").and_then(|v| v.as_u64()),
+        ),
         _ => None,
     }
 }
@@ -794,6 +799,66 @@ mod tests {
                 ]
             ),
             "persisted thinkingElapsedSecs MUST win over adjacent message stamps: {:?}",
+            ui.entries
+        );
+    }
+
+    #[test]
+    fn rebuild_computes_elapsed_from_thinking_node_ms() {
+        let entries = vec![
+            SessionEntry::Message(MessageEntry {
+                base: EntryBase {
+                    entry_type: "message".into(),
+                    id: "u1".into(),
+                    parent_id: None,
+                    timestamp: "t".into(),
+                },
+                message: json!({
+                    "role": "user",
+                    "content": [{ "type": "text", "text": "hi" }],
+                    "timestamp": 1_700_000_000_000u64,
+                }),
+            }),
+            SessionEntry::Message(MessageEntry {
+                base: EntryBase {
+                    entry_type: "message".into(),
+                    id: "a1".into(),
+                    parent_id: Some("u1".into()),
+                    timestamp: "t".into(),
+                },
+                message: json!({
+                    "role": "assistant",
+                    "content": [
+                        { "type": "thinking", "thinking": "step 1" },
+                        { "type": "text", "text": "hello" }
+                    ],
+                    "timestamp": 1_700_000_017_000u64,
+                    "thinkingStartedAtMs": 1_700_000_010_000u64,
+                    "thinkingEndedAtMs": 1_700_000_012_500u64,
+                }),
+            }),
+        ];
+        let travel = SessionTreeTravel {
+            kind: crate::protocol::session::SessionTreeKind::MessageHistory,
+            selected_id: "a1".into(),
+            leaf_id: Some("a1".into()),
+            editor_text: None,
+        };
+        let mut ui = UiModel::default();
+        rebuild_scrollback_from_travel(&mut ui, &entries, &travel);
+        assert!(
+            matches!(
+                ui.entries.as_slice(),
+                [
+                    UiEntry::User { .. },
+                    UiEntry::Thinking {
+                        elapsed_secs: Some(2),
+                        ..
+                    },
+                    UiEntry::Assistant { .. }
+                ]
+            ),
+            "resume MUST subtract thinkingEndedAtMs - thinkingStartedAtMs: {:?}",
             ui.entries
         );
     }

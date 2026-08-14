@@ -14,13 +14,14 @@ pub(crate) mod support;
 mod tests;
 mod turn_end;
 
+use crate::utils::ThoughtClock;
 use assistant::{
     build_assistant_message, current_provider_model, partial_assistant_message,
     streaming_assistant_parts, streaming_message_update, upsert_streaming_tool,
 };
 use support::{
     ClearActiveTurn, call_with_retry, observe_script_hook, persist_agent_message,
-    persist_agent_message_with_thought_elapsed, prepare_turn_binding, thought_elapsed_secs,
+    persist_agent_message_with_thought_elapsed, prepare_turn_binding,
 };
 use turn_end::{
     FinishTurnOutcome, drain_queue, finish_turn, queue_counts, try_turn_end_compaction,
@@ -1000,7 +1001,7 @@ fn run_react_loop(cfg: ReActConfig) -> impl Stream<Item = XyEvent> + Send {
 
                 let mut text_acc = String::new();
                 let mut thinking_acc = String::new();
-                let mut thinking_started_at: Option<std::time::Instant> = None;
+                let mut thought_clock = ThoughtClock::new();
                 let mut thinking_signature: Option<String> = None;
                 let mut tool_calls: Vec<(String, String, Value)> = Vec::new();
                 let mut done_usage: Option<crate::protocol::message::XyUsage> = None;
@@ -1040,7 +1041,7 @@ fn run_react_loop(cfg: ReActConfig) -> impl Stream<Item = XyEvent> + Send {
                                     &store,
                                     &session_id,
                                     &assistant_msg,
-                                    thought_elapsed_secs(thinking_started_at),
+                                    Some(&thought_clock),
                                 )
                                 .await;
                                 history.push(assistant_msg);
@@ -1055,6 +1056,7 @@ fn run_react_loop(cfg: ReActConfig) -> impl Stream<Item = XyEvent> + Send {
                         None => break,
                         Some(Ok(chunk)) => match chunk {
                             XyChunk::TextDelta(text) => {
+                                thought_clock.stamp_end();
                                 text_acc.push_str(&text);
                                 yield XyEvent::TextDelta(text.clone());
                                 yield streaming_message_update(
@@ -1065,9 +1067,7 @@ fn run_react_loop(cfg: ReActConfig) -> impl Stream<Item = XyEvent> + Send {
                                 );
                             }
                             XyChunk::ThinkingDelta(text) => {
-                                if thinking_started_at.is_none() {
-                                    thinking_started_at = Some(std::time::Instant::now());
-                                }
+                                thought_clock.stamp_start();
                                 thinking_acc.push_str(&text);
                                 yield XyEvent::ThinkingDelta(text);
                                 yield streaming_message_update(
@@ -1081,6 +1081,7 @@ fn run_react_loop(cfg: ReActConfig) -> impl Stream<Item = XyEvent> + Send {
                                 thinking,
                                 thinking_signature: sig,
                             } => {
+                                thought_clock.stamp_end();
                                 if !thinking.is_empty() {
                                     thinking_acc = thinking;
                                 }
@@ -1095,6 +1096,7 @@ fn run_react_loop(cfg: ReActConfig) -> impl Stream<Item = XyEvent> + Send {
                                 );
                             }
                             XyChunk::ToolCallStart { id, name } => {
+                                thought_clock.stamp_end();
                                 upsert_streaming_tool(
                                     &mut tool_calls,
                                     id,
@@ -1114,6 +1116,7 @@ fn run_react_loop(cfg: ReActConfig) -> impl Stream<Item = XyEvent> + Send {
                                 args,
                                 ..
                             } => {
+                                thought_clock.stamp_end();
                                 upsert_streaming_tool(&mut tool_calls, id, name, args);
                                 yield streaming_message_update(
                                     &text_acc,
@@ -1124,6 +1127,7 @@ fn run_react_loop(cfg: ReActConfig) -> impl Stream<Item = XyEvent> + Send {
                             }
                             XyChunk::ToolCallEnd { name, args, id } => {
                                 // Intent only — execute after MessageEnd (c1255 / ar21).
+                                thought_clock.stamp_end();
                                 upsert_streaming_tool(&mut tool_calls, id, name, args);
                                 yield streaming_message_update(
                                     &text_acc,
@@ -1211,7 +1215,7 @@ fn run_react_loop(cfg: ReActConfig) -> impl Stream<Item = XyEvent> + Send {
                         &store,
                         &session_id,
                         &assistant_msg,
-                        thought_elapsed_secs(thinking_started_at),
+                        Some(&thought_clock),
                     )
                     .await;
                     history.push(assistant_msg);

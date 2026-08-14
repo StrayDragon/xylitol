@@ -5037,8 +5037,10 @@ fn activity_fold_live_thinking_stream_merges_into_thought() {
         &mut model,
         &XyEvent::ThinkingDelta("consider next edit".into()),
     );
-    model.thinking_started_at =
-        Some(std::time::Instant::now() - std::time::Duration::from_secs(17));
+    model.thought_clock.pin_start_at(
+        std::time::Instant::now() - std::time::Duration::from_secs(17),
+        0,
+    );
     root.apply_ui_model(&model);
     let plain = strip_ansi_activity(&root.render(100).join("\n"));
     assert!(
@@ -5076,7 +5078,8 @@ fn activity_fold_live_thinking_stream_merges_into_thought() {
     );
 
     let expect_dur = model
-        .thinking_started_at
+        .thought_clock
+        .started_at()
         .expect("stream must stamp start")
         .elapsed()
         .as_secs();
@@ -5095,6 +5098,47 @@ fn activity_fold_live_thinking_stream_merges_into_thought() {
     assert!(
         flushed.contains("consider next edit"),
         "expand survives flush: {flushed}"
+    );
+}
+
+#[test]
+fn activity_fold_text_delta_seals_thought_without_waiting_for_body() {
+    use super::layout::UiRoot;
+
+    let mut root = UiRoot::new();
+    let mut model = UiModel::new();
+    model.phase = UiPhase::Busy;
+    model
+        .entries
+        .push(super::bridge::UiEntry::User { text: "u".into() });
+    apply_xy_event(
+        &mut model,
+        &XyEvent::ThinkingDelta("consider next edit".into()),
+    );
+    let start = std::time::Instant::now() - std::time::Duration::from_secs(2);
+    model.thought_clock.pin_start_at(start, 0);
+    model
+        .thought_clock
+        .stamp_end_at(start + std::time::Duration::from_secs(2), 2_000);
+    apply_xy_event(&mut model, &XyEvent::TextDelta("answer".into()));
+    root.apply_ui_model(&model);
+    let mid = strip_ansi_activity(&root.render(100).join("\n"));
+    assert!(
+        mid.contains("Thought 2s"),
+        "first TextDelta MUST freeze Thought at thinking-channel end: {mid}"
+    );
+    assert!(
+        !mid.contains("Thinking"),
+        "body stream MUST NOT keep the Thinking label: {mid}"
+    );
+
+    apply_xy_event(&mut model, &XyEvent::TextDelta(" continues".into()));
+    apply_xy_event(&mut model, &XyEvent::AgentEnd { messages: vec![] });
+    root.apply_ui_model(&model);
+    let done = strip_ansi_activity(&root.render(100).join("\n"));
+    assert!(
+        done.contains("Thought 2s"),
+        "body / AgentEnd MUST NOT inflate thought wall-clock: {done}"
     );
 }
 

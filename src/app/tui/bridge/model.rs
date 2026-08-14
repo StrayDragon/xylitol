@@ -1,5 +1,7 @@
 //! UI-only model types and methods (c1170).
 
+use crate::utils::ThoughtClock;
+
 /// Decode complete UTF-8 prefix from `buf`, leaving a trailing incomplete sequence.
 fn drain_utf8_prefix(buf: &mut Vec<u8>) -> String {
     match std::str::from_utf8(buf) {
@@ -112,8 +114,8 @@ pub enum UiEntry {
         /// Stable per-block id (hash+ordinal); live flush and session rebuild MUST agree.
         id: String,
         text: String,
-        /// Wall-clock secs from first ThinkingDelta to flush; `None` if <1s.
-        /// Resume prefers persisted `thinkingElapsedSecs`, else adjacent stamps.
+        /// Wall-clock secs from thinking start node to thinking end node; `None` if <1s.
+        /// Resume prefers persisted `thinkingElapsedSecs`, else start/end node ms.
         elapsed_secs: Option<u64>,
     },
     Tool {
@@ -212,8 +214,8 @@ pub struct UiModel {
     /// Live burst id ([`STREAMING_THINK_ID`]) while deltas are in flight.
     /// Paint MUST key off this, not `streaming_thinking.is_empty()`.
     pub(crate) streaming_think_id: Option<String>,
-    /// Wall-clock start of the current thinking stream (first delta of a burst).
-    pub(crate) thinking_started_at: Option<std::time::Instant>,
+    /// Online thought interval (start = first ThinkingDelta; end = channel switch).
+    pub(crate) thought_clock: ThoughtClock,
     pub(crate) current_role: Option<String>,
     /// Incomplete UTF-8 bytes across bang stream chunks (c669).
     bash_utf8_pending: Vec<u8>,
@@ -237,7 +239,7 @@ impl UiModel {
             streaming_assistant: String::new(),
             streaming_thinking: String::new(),
             streaming_think_id: None,
-            thinking_started_at: None,
+            thought_clock: ThoughtClock::new(),
             current_role: None,
             bash_utf8_pending: Vec::new(),
         }
@@ -431,7 +433,7 @@ impl UiModel {
         self.streaming_thinking.clear();
         self.streaming_think_id = None;
         self.streaming_assistant.clear();
-        self.thinking_started_at = None;
+        self.thought_clock.reset();
         self.current_role = None;
     }
 
@@ -530,33 +532,41 @@ impl UiModel {
 
     /// Same as [`Self::flush_streaming`], but pin thinking wall-clock.
     ///
-    /// Live production passes `None` (measure `thinking_started_at`). Scene /
+    /// Live production passes `None` (use [`ThoughtClock`] stamps). Scene /
     /// resume-shaped tests pass `Some` because they cannot steer
     /// [`std::time::Instant`].
     pub(crate) fn flush_streaming_elapsed(&mut self, elapsed_override: Option<u64>) {
-        if !self.streaming_thinking.is_empty() {
-            let text = std::mem::take(&mut self.streaming_thinking);
-            self.streaming_think_id = None;
-            let id = allocate_thinking_id(&self.entries, &text);
-            let elapsed_secs = match elapsed_override {
-                Some(secs) => (secs > 0).then_some(secs),
-                None => self.thinking_started_at.take().and_then(|start| {
-                    let secs = start.elapsed().as_secs();
-                    (secs > 0).then_some(secs)
-                }),
-            };
-            self.thinking_started_at = None;
-            self.entries.push(UiEntry::Thinking {
-                id,
-                text,
-                elapsed_secs,
-            });
-        }
+        self.flush_thinking_elapsed(elapsed_override);
         if !self.streaming_assistant.is_empty() {
             self.entries.push(UiEntry::Assistant {
                 text: std::mem::take(&mut self.streaming_assistant),
             });
         }
+    }
+
+    /// Seal in-flight thinking into a [`UiEntry::Thinking`] without touching assistant text.
+    pub(crate) fn flush_thinking_elapsed(&mut self, elapsed_override: Option<u64>) {
+        if self.streaming_thinking.is_empty() {
+            return;
+        }
+        let text = std::mem::take(&mut self.streaming_thinking);
+        self.streaming_think_id = None;
+        let elapsed_secs = match elapsed_override {
+            Some(secs) => (secs > 0).then_some(secs),
+            None => {
+                if !self.thought_clock.has_ended() {
+                    self.thought_clock.stamp_end();
+                }
+                self.thought_clock.elapsed_secs()
+            }
+        };
+        self.thought_clock.reset();
+        let id = allocate_thinking_id(&self.entries, &text);
+        self.entries.push(UiEntry::Thinking {
+            id,
+            text,
+            elapsed_secs,
+        });
     }
 
     pub(crate) fn set_busy_status(&mut self, status: impl Into<String>) {
