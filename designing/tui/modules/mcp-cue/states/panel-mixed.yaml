@@ -1,0 +1,19 @@
+id: mcp-cue.panel-mixed
+cols: 80
+must_contain:
+  - "configured 12 · connected 7 · armed 5"
+  - "not armed"
+  - "Enter closes"
+must_not_contain:
+  - "System"
+  - "Next turn:"
+  - "a·b·c·d"
+lines:
+  -
+    - { text: "configured 12 · connected 7 · armed 5", token: muted }
+  -
+    - { text: "› context7", token: on-surface, rev: true }
+  -
+    - { text: "  other  not armed", token: muted }
+  -
+    - { text: "Enter closes", token: muted }

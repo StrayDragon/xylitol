@@ -28,6 +28,7 @@
 - **跨面公共体验**：TUI 与未来 Web **共有**能力的动作语义 / 学习成本 MUST 同源；快捷键 SHOULD 尽量同构；仅面专属能力可分叉。约束板：`docs/roadmaps/Web与TUI同源.md`。
 - 产品心智图：`docs/architecture/`；候补方向：`docs/roadmaps/`（不维护进度列）；文档闭环：`docs/AGENTS.md`。
 - TUI chrome / 滚动区固定词（下轮预告、滚动提示、尾随…）：`docs/architecture/TUI信息面与chrome词汇.md`（面约束见 `src/app/tui/AGENTS.md`）。
+- 交互设计稿：仓库顶层 `designing/`（现 `tui/`，以后可加其它端；`just open-designing`）。**代码是运行时真值**；稿是对照辅助。无独立快捷键设计。
 
 ## 工作原则
 

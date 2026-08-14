@@ -1,0 +1,11 @@
+id: errors
+title: 错误行
+surface: tui
+summary: "UiEntry::Error 进 transcript；壳层硬拒闸走 toast。"
+alignment:
+  chrome: 错误行 ≠ 壳层通告 ≠ 滚动提示
+  item: 词表见 TUI信息面
+todos:
+  - { done: true, text: "硬拒闸优先 toast" }
+notes: |
+  不要把 Error: toast 和 Error 条目混称。

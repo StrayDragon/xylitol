@@ -1,0 +1,13 @@
+id: expandable.tool-collapsed
+cols: 80
+must_contain:
+  - "▸"
+  - "Read"
+  - "(Alt+E)"
+must_not_contain:
+  - "Planning next moves"
+  - "ctrl+o to expand"
+lines:
+  -
+    - { text: "▎", token: success }
+    - { text: " ▸ Read foo.rs:12-40  (Alt+E)", token: on-surface }

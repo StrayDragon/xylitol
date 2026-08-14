@@ -1,0 +1,17 @@
+id: transcript.mixed
+cols: 80
+must_contain:
+  - "❯"
+  - "Read"
+must_not_contain:
+  - "USER>"
+  - "ASSISTANT>"
+lines:
+  -
+    - { text: "❯ ", token: user }
+    - { text: "继续", token: on-surface }
+  -
+    - { text: "好的。", token: assistant }
+  -
+    - { text: " ", token: success }
+    - { text: " Read foo.rs", token: tool }

@@ -1,0 +1,14 @@
+id: models.no-thinking
+cols: 80
+must_contain:
+  - "› other/gpt-mini"
+  - "—"
+must_not_contain:
+  - "[high]"
+  - "thinking off"
+  - "reasoning"
+lines:
+  -
+    - { text: "models", token: muted }
+  -
+    - { text: "› other/gpt-mini  —", token: on-surface, rev: true }

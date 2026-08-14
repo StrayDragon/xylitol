@@ -224,11 +224,11 @@ demo-tui-rail:
 demo-tui-no-highlight:
     cargo run -p xylitol-tui --example agent_demo --no-default-features
 
-# Sync playground tokens.css/js from src/app/tui/DESIGN.md frontmatter.
+# Sync designing tokens.css/js from src/app/tui/DESIGN.md frontmatter.
 sync-tui-tokens:
-    python3 src/app/tui/design/playground/sync_tokens.py
+    python3 scripts/sync_tui_tokens.py
 
-# Fail if playground tokens or package Palette diverge from DESIGN.md.
+# Fail if designing tokens or package Palette diverge from DESIGN.md.
 [arg('verbosity', pattern='quiet|normal|verbose')]
 check-tui-tokens verbosity=verbosity_default:
     #!/usr/bin/env bash
@@ -237,7 +237,7 @@ check-tui-tokens verbosity=verbosity_default:
     if [[ "{{verbosity}}" == "verbose" ]]; then
       args+=(--verbose)
     fi
-    python3 src/app/tui/design/playground/sync_tokens.py "${args[@]}"
+    python3 scripts/sync_tui_tokens.py "${args[@]}"
 
 # Soft complexity radar (cccc-rs top-cognitive). Not a hard gate — see
 # scripts/check_complexity.py (HARD entry limits run via check-scripts / qa).
@@ -327,9 +327,12 @@ check-scripts verbosity=verbosity_default:
         fi
     done
 
-# Open DESIGN playground HTML (Linux; xdg-open).
-open-design-playground:
-    xdg-open src/app/tui/design/playground/index.html
+# Interactive design draft (TUI modules; later other surfaces under designing/).
+open-designing:
+    bun run --cwd designing/app dev
+
+gen-designing-index:
+    python3 scripts/gen_designing_index.py
 
 # Package TUI tests with default features (includes highlight) — layers 1–4.
 [arg('verbosity', pattern='quiet|normal|verbose')]

@@ -1,0 +1,11 @@
+id: ask
+title: Ask
+surface: tui
+summary: 内置 ask：Choice 换 editor 槽；等待 Asking questions。
+alignment:
+  chrome: 等待态簇底 Asking questions（无三角）
+  item: Ask 块保持可交互，不得折没
+todos:
+  - { done: true, text: "禁止 Planning next moves" }
+notes: |
+  代码 SSOT：ask 工具 + ChoicePrompt。

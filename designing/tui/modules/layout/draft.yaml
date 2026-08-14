@@ -1,0 +1,11 @@
+id: layout
+title: 布局预算
+surface: tui
+summary: 短终端仍见 Working；槽高 term-aware。
+alignment:
+  chrome: 整壳高度预算
+  item: status 优先于装饰
+todos:
+  - { done: true, text: "短终端保 status 可见" }
+notes: |
+  代码 SSOT：chrome footprint。

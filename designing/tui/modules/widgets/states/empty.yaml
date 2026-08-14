@@ -1,0 +1,9 @@
+id: widgets.empty
+cols: 80
+must_contain:
+  - "(empty)"
+must_not_contain:
+  - "(包)"
+lines:
+  -
+    - { text: "(empty)", token: muted }

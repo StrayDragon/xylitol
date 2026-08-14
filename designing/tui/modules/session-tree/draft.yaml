@@ -1,0 +1,15 @@
+id: session-tree
+title: 会话树
+surface: tui
+summary: 双 Esc 打开 MessageHistory 活树；kind 色前缀，选中反转。
+alignment:
+  chrome: 替换 editor 槽
+  item: kind 前缀用 token 色；选中行 inherit
+  todo-bar: 与队列条无关
+todos:
+  - { done: true, text: "filter 态 (n/m) 在选中行之后" }
+keys:
+  - { chord: "Enter", when: "travel 到该叶" }
+  - { chord: "Esc", when: "关树" }
+notes: |
+  代码 SSOT：session_tree + travel_session_tree。不是快捷键百科。

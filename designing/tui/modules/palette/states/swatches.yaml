@@ -1,0 +1,14 @@
+id: palette.swatches
+cols: 80
+must_contain:
+  - "muted"
+  - "accent"
+  - "user"
+must_not_contain:
+  - "#"
+lines:
+  -
+    - { text: "on-surface ", token: on-surface }
+    - { text: "muted ", token: muted }
+    - { text: "accent ", token: accent }
+    - { text: "user", token: user }

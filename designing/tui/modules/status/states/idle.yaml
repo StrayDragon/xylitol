@@ -1,0 +1,9 @@
+id: status.idle
+cols: 80
+must_contain: []
+must_not_contain:
+  - "Ready"
+  - "Working"
+lines:
+  -
+    - { text: " ", token: muted }

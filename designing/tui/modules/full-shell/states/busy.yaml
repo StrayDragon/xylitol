@@ -1,0 +1,18 @@
+id: full-shell.busy
+cols: 80
+must_contain:
+  - "Working"
+  - "used"
+must_not_contain:
+  - "enter submit"
+  - "(包)"
+lines:
+  -
+    - { text: "❯ ", token: user }
+    - { text: "继续修折叠", token: on-surface }
+  -
+    - { text: "⠋ Working", token: accent }
+  -
+    - { text: "> ", token: muted }
+  -
+    - { text: "~/xylitol · <model-name> · used 42k tokens", token: muted }

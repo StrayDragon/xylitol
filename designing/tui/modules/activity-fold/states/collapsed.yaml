@@ -1,0 +1,14 @@
+id: activity-fold.collapsed
+cols: 80
+must_contain:
+  - "Thought 20s"
+  - "Explored 15 files"
+must_not_contain:
+  - "Editing 7 files"
+  - "Worked for"
+  - "Planning next moves"
+lines:
+  - - { text: "❯ ", token: user }
+    - { text: "继续修折叠", token: on-surface }
+  - - { text: "Thought 20s", token: muted }
+  - - { text: "Explored 15 files, Ran 1 command", token: muted }

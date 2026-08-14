@@ -1,0 +1,17 @@
+id: session-resume.default
+cols: 80
+must_contain:
+  - "Resume Session"
+  - "ctrl+u id"
+  - "› 请给我一个表格markdown的示例…"
+  - "(3/66)"
+must_not_contain:
+  - "ad43e96a-2e87-4767-ae1c-870854346b23"
+  - "c1530"
+lines:
+  -
+    - { text: "Resume Session", token: muted }
+  -
+    - { text: "› 请给我一个表格markdown的示例…", token: on-surface, rev: true }
+  -
+    - { text: "(3/66)  ctrl+u id", token: muted }

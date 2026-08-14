@@ -1,0 +1,20 @@
+id: diff.side-by-side
+cols: 100
+must_contain:
+  - " │ "
+  - "- 10"
+  - "+ 10"
+must_not_contain:
+  - "--- a/"
+  - "Planning next moves"
+lines:
+  -
+    - { text: "- 10 fn old()", token: diff-removed }
+    - { text: " │ ", token: muted }
+    - { text: "+ 10 fn new()", token: diff-added }
+  -
+    - { text: "  11     ok()", token: diff-context }
+    - { text: " │ ", token: muted }
+    - { text: "  11     ok()", token: diff-context }
+  -
+    - { text: "- 12 gone", token: diff-removed }

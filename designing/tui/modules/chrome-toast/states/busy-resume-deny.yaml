@@ -1,0 +1,14 @@
+id: chrome-toast.busy-resume-deny
+cols: 80
+must_contain:
+  - "Error:"
+  - "BUSY_SESSION_SWITCH_NOTICE"
+must_not_contain:
+  - "Planning next moves"
+  - "Next turn:"
+lines:
+  -
+    - { text: "Error: BUSY_SESSION_SWITCH_NOTICE", token: warning }
+  -
+    - { text: "⠋ Working", token: accent }
+    - { text: "", token: muted }

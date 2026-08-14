@@ -1,0 +1,14 @@
+id: bash.running
+cols: 80
+must_contain:
+  - "! ls"
+  - "Running"
+must_not_contain:
+  - "ASSISTANT>"
+  - "(包)"
+lines:
+  -
+    - { text: "▎ ", token: accent }
+    - { text: "! ls", token: on-surface }
+  -
+    - { text: "⠋ Running", token: accent }

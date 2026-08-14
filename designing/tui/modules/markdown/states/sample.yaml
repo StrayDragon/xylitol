@@ -1,0 +1,14 @@
+id: markdown.sample
+cols: 80
+must_contain:
+  - "Heading"
+  - "docs.rs"
+  - "bold"
+must_not_contain:
+  - "# Heading"
+  - "**bold**"
+lines:
+  -
+    - { text: "Heading", token: accent }
+  -
+    - { text: "See docs (https://docs.rs) and bold word.", token: assistant }
