@@ -1,7 +1,7 @@
 kind: llman.sdd.spec
 name: "domain-security"
 purpose: 安全策略 — 含工具级门控的 permission 系统、trust store 与审批工作流。
-valid_scope[3]: src/infra/permission/,src/infra/trust/,src/protocol/
+valid_scope[3]: "infra 层 permission","infra 层 trust","protocol 层"
 requirements[19]{req_id,title,statement}:
   r35,Security 包装器,"SecurityToolWrapper MUST 包装 XyTool（非 adk_core::Tool），并在工具执行前强制审批策略。"
   r44,仅收紧,System MUST 仅允许三层配置覆盖收紧规则，不得放宽。
@@ -15,7 +15,7 @@ requirements[19]{req_id,title,statement}:
   r66,网络权限检查,Bash 执行 SHALL 对命令文本中出现的 URL 检查 XyPermission 的 network.allowed_domains 与 network.denied_domains。域被拒绝或（allowed_domains 非空时）不在允许列表时，执行 SHALL 被阻止。
   s13,Permission trait,"System MUST 提供 protocol::XyPermission trait（自 XySandboxEngine 重命名），含 check_read(path)、check_write(path)、check_network(domain)、check_process(path)，返回 XyPermissionVerdict（自 XySandboxVerdict 重命名）。该 trait 为 ReAct 循环在工具分发前消费的进程内建议性 permission 门控，非安全边界。具体后端（禁用时 AllowAllPermission、配置模式匹配 GlobPolicy）位于 infra/。"
   s14,Permission 默认拒绝未列出,permission.filesystem.read_allowed 非空时，任何不匹配允许 pattern 的路径 SHALL 视为拒绝（默认拒绝）。permission.network.allowed_domains 非空时，任何不匹配允许 pattern 的域 SHALL 视为拒绝。
-  r71,信任单一事实来源,项目 trust 状态 MUST 在 infra/trust/ 有单一真源。agent/ 层 MUST NOT 含自有 trust store 或 trust resolver。src/agent/trust/（store.rs、resolve.rs）重复实现 MUST 移除。
+  r71,信任单一事实来源,"项目 trust 状态 MUST 在 infra 层 trust 模块有单一真源；agent 层 MUST NOT 含自有 trust store 或 trust resolver。"
   r72,信任持久化格式,Trust 决策 MUST 持久化为 JSON 文件，映射规范绝对目录路径到布尔 trust 决策（true=trusted、false=untrusted）或 null（已清除）。store MUST 支持父目录继承：祖先目录上的 trust 决策适用于全部后代项目目录，除非被覆盖。
   r73,信任解析管线,"项目 trust 解析 MUST 遵循固定优先级：(1) 显式 CLI 覆盖（--trust / --no-trust）；(2) 无 trust 所需输入时自动 trust；(3) 带父继承的持久 store 查找；(4) 配置默认策略（always / never / ask）；(5) 仅 has_ui 为 true 时 app UI 提示；(6) 回退 deny。解析 MUST 同时返回决策与原因。"
   r74,信任 UI 回调注入,trust resolver MUST 接受 app 步骤的 on_prompt 回调，MUST NOT 直接做终端 I/O。app/ 层负责提供提示回调；agent/ 与 infra/ 层对 trust 决策 MUST 保持 UI 无关。
@@ -24,5 +24,5 @@ requirements[19]{req_id,title,statement}:
   s15,Permission 非安全边界,文档与命名 MUST 明示 XyPermission 为建议性：礼貌阻止循环调用被拒绝工具，但不阻止主机级访问，因 bash 仍可删文件且恶意 prompt 不受 containment。真实隔离 MUST 来自 OS、容器或 VM 边界（如未来将工具执行委托到沙箱的工具路由模式）；扩展 XyPermission MUST NOT 被视为增加安全控制。
 scenarios[3]{req_id,id,given,when,then,feature}:
   r66,"network-permission-stays",网络权限检查,检查实现引用,引用 XyPermission 而非 SandboxEngine,false
-  r71,"trust-single-source-unit",trust 真源,检查 src/agent/trust/,目录不存在（信任单测在 infra）,false
+  r71,"trust-single-source-unit",trust 真源,检查 agent 层,无自有 trust store/resolver（信任写路径在 infra + 面）,false
   s15,"permission-advisory-documented",XyPermission 模块文档,检查门控声明,为建议性非安全边界,false

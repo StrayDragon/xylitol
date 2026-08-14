@@ -1,8 +1,8 @@
 kind: llman.sdd.spec
 name: "agent-session-store"
 purpose: 会话持久化 — 基于 JSONL 文件的会话存储，含树操作、compaction、fork 与 CWD 校验。
-valid_scope[1]: src/infra/session/
-requirements[33]{req_id,title,statement}:
+valid_scope[1]: "infra 层 session 持久化"
+requirements[31]{req_id,title,statement}:
   r31,快照操作,System MUST 支持对不可变会话快照执行 snapshot、restore、spawn、list、prune、diff、merge 操作。
   r41,compaction,"当 CompactionSettings.enabled 且上下文占用超过 window−reserve（c1630）时，System MUST 在 agent/capabilities 回合落定后自动 compact（c1640）；MUST NOT 仅依赖百分比闸或仅 TUI 轮询。"
   s1,JSONL 存储,SessionManager MUST 将会话持久化为 JSONL 文件（每行一个带版本标签的 JSON 对象），位于 ~/.xylitol/sessions/。
@@ -12,12 +12,10 @@ requirements[33]{req_id,title,statement}:
   s5,会话树,SessionManager MUST 维护 parent/child 会话链接：fork 创建子分支，branchSummary 引用父条目。
   s6,分支摘要,System MUST 支持 generateBranchSummary(parentEntries)，产出汇总切点前条目的 CompactionEntry。
   s7,文件操作,SessionManager MUST 使用原子 append（仅追加 JSONL）与文件锁保证并发安全。
-  s8,BDD session,"llmanspec/specs/agent-session-store/agent-session-store.feature 下 BDD 测试 MUST 全部通过。"
   s9,会话 fork,"SessionManager MUST 支持 fork(parent_id, child_id, at_entry_id)，将父条目复制到切点至新子会话文件并 append branch_summary 条目。"
   s10,分支摘要实现,fork 时 System MUST 生成描述被跳过条目的分支摘要：条目数、条目类型、最后 user 消息及工具调用中的 notable actions。
   s11,agent fork,System MUST 支持 fork_session(at_entry_id)：经 SessionManager::fork() 创建新子会话并返回子 session id。
   s16,会话 CWD 校验,从磁盘加载会话时 SessionManager MUST 校验存储 CWD 存在且可访问；不可用时返回可操作错误信息。
-  s17,"BDD session-v3",CWD 校验的 BDD 测试 MUST 通过。
   s18,"session-entry-camelcase-v5","Session persisted JSONL MUST 以 camelCase 为唯一盘面 SSOT（JS/TS favor；非 pi snake entry type）：外壳字段含 parentId、parentSession、firstKeptEntryId 等；SessionEntry type 判别为 message、compaction、branchSummary、modelChange、thinkingLevelChange、custom、customMessage、label、sessionInfo。新写入的 bang-bash MUST 使用 type=message 且 message.role=bashExecution，MUST NOT 再写出顶层 type=bashExecution 或 bash_execution。新写入的 header.version MUST 等于 SESSION_VERSION（5）。MUST NOT 再写出 parent_id 或 version≤4 作为新会话真源。MUST NOT 提供 serde alias、静默 v3/v4 migrate、或将旧顶层 bash 提升为合法上下文。"
   s19,"tool-result-tool-call-id",role=toolResult 的 AgentMessage MUST 以 toolCallId 键持久化工具调用关联 id（对齐 pi）；MUST NOT 写出 toolUseId。content 内 MUST NOT 再嵌入 type=toolResult 的 AgentPart（工具结果只走独立 message 行）。
   s20,"session-load-skip-warn","load（及同源逐行解析）遇到无法按最新 SSOT 解析的行（坏 JSON、未知 type、非 SSOT snake type 如 bash_execution、旧 untagged content 导致无法投影）时 MUST 跳过该行并记录可观测 warn；同一 load/list 操作内明文 warn MUST 至多 3 条，超出后 MUST 以单条省略标记（如 ...）收敛，MUST NOT 刷屏。header.version 不等于 SESSION_VERSION（5）时 MUST 拒绝将该文件视为合法最新会话（返回可操作错误），MUST NOT 静默 migrate 后当成功。TUI resume、print/CLI --session 与 SessionManager MUST 共用此策略。"
@@ -36,10 +34,8 @@ requirements[33]{req_id,title,statement}:
   sp6,日志访问,"会话 store MUST 暴露 read_recent(session_id, limit) -> Vec<Event> 供 server journal；journal 容量 MUST 可配置（默认 10000）。"
   sp3,ExportIo 实现,System MUST 提供导出 I/O 端口实现（StdExportIo 或等价，tokio::fs 读写）；组合根 MUST 将导出协作器经该端口注入。
   s12,延迟持久化至 assistant,Persisted SessionManager（非 in_memory backend）MUST 对齐 pi：首条 assistant 消息写入前，会话条目可仅保留在内存；首条 assistant append 时 MUST 创建磁盘 jsonl（若尚不存在）并刷出此前挂起条目（含 header 与先前 user 等）；其后每次 append MUST 落盘。InMemory backend MUST NOT 写文件。MUST NOT 在仅有 header、用户又放弃对话时强制留下无消息垃圾文件作为唯一策略（允许 create 仍写 header，但 deferred 刷出路径 MUST 存在并可测）。
-scenarios[6]{req_id,id,given,when,then,feature}:
+scenarios[4]{req_id,id,given,when,then,feature}:
   s18,session-entry-camelcase-v5-unit,"写入新会话 JSONL","检查外壳字段与 header.version","camelCase（parentId/parentSession/type）且 version=5；bang-bash 为 message+role=bashExecution；无顶层 bash",false
   s19,tool-result-tool-call-id-unit,"持久化 role=toolResult 消息","serde JSONL","含 toolCallId 且无 toolUseId；content 无嵌入 toolResult AgentPart",false
   s20,session-load-skip-warn-unit,"JSONL 含 bash_execution 与未知 type 行","load 会话","坏行被跳过；warn≤3 后出现省略；合法行仍可用",false
   s21,list-sessions-resilient-unit,"sessions 目录含一损坏 jsonl 与一合法会话","list_sessions","返回含合法会话；不因损坏文件整表失败",false
-  s8,"bdd-session-pass",session BDD 套件,执行,全通过（由 CI 保证）,false
-  s17,"bdd-session-v3-pass",session-v3 BDD 套件,执行,全通过（由 CI 保证）,false

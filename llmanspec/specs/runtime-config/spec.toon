@@ -1,13 +1,13 @@
 kind: llman.sdd.spec
 name: "runtime-config"
 purpose: 运行时配置 — 深合并、secret.env、settings；仅 config.yaml + secret.env，不支持 config.local。
-valid_scope[2]: src/infra/config/,src/infra/settings/
+valid_scope[2]: "infra 层配置","infra 层 settings"
 requirements[20]{req_id,title,statement}:
   rc12,mode 字段,"Settings MUST 含 steering_mode 与 follow_up_mode，枚举含 all 与 one-at-a-time；缺省（未配置）MUST 为 one-at-a-time；二者 MUST 经组合根装配进插话/续跑队列模式。"
   rc13,Settings 交付面,"Settings（settings.json）MUST 仅含组合根已接线字段：default_thinking_level、compaction、thinking_budgets、steering_mode、follow_up_mode。未接线偏好（如 transport、shell_path、npm_command、session_dir、http_*、themes 路径列表、enable_skill_commands、markdown、warnings、default_provider/model）MUST NOT 作为可生效 Settings 字段保留；遗留 JSON 键 MUST 被忽略且 MUST NOT 生效。"
   rc14,无 prompts 列表,"Settings MUST NOT 再提供 prompts 路径列表字段（slash prompt 模板已移除）；遗留 prompts 键 MUST 被忽略且 MUST NOT 生效。"
   rc15,compaction 配置映射,"运行时配置 MUST 定义从 YAML 加载期 compaction 表面（enabled / reserveTokens / keepRecentTokens）到规范运行时 CompactionSettings 的单一文档化映射，无并行重复类型；MUST NOT 暴露或映射 compaction_threshold / 百分比阈值字段。"
-  rc1,ConfigValue 在 infra,"ConfigValueResolver（环境变量、shell 命令与 ${VAR:-default} 解析，原 agent/config_value.rs）MUST 位于 infra/config/value.rs；除 infra/config 外 MUST 零 crate:: 内部依赖；agent/ MUST NOT 含 config_value.rs。"
+  rc1,ConfigValue 在 infra,"ConfigValueResolver（环境变量、shell 命令与 ${VAR:-default} 解析，或等价）MUST 收敛于 infra 配置边界且零内部依赖；agent 层 MUST NOT 含重复解析实现。"
   rc8,配置边界承载 JsonSchema,需要对外暴露 JSON Schema 的配置结构 MUST 在 runtime/config 边界（infra/config 或 settings）定义或包装，并 MUST 能映射到 domain 纯数据（若存在对应领域类型）。
   rc9,mcp_servers 配置字段,运行时配置 MUST 提供 mcp_servers（或等价）字段以声明 MCP 服务器；缺省或空表示未启用 MCP。
   rc16,"model-entry-thinking-levels","ModelsConfig 的 ModelEntry（或等价 YAML 面）MUST 支持可选 thinking_levels 有序字符串列表作为用户面档位 SSOT；空串或仅空白条目 MUST 使配置加载失败；MUST NOT 仅因档名不属于历史封闭枚举而失败。缺省或未声明可调列表时运行时支持集 MUST 仅为 off（见 m9）。Settings.default_thinking_level 若存在 MAY 仅用于会话首次装配的初始档（∈ 支持集则采用，否则忽略）；换模与精确 /model <id> 默认档 MUST 遵循 m10 末项策略，MUST NOT 被 Settings 默认覆盖。"
@@ -32,5 +32,5 @@ scenarios[9]{req_id,id,given,when,then,feature}:
   rc26,"tool-batch-default-barrier-parallel-unit",AppConfig 缺省或未写 tool_batch,读取 mode,等于 barrier_parallel,false
   rc27,"session-max-turns-default-none",AppConfig 缺省 session.max_turns,读取生效值,为 None,false
   rc28,"tui-activity-fold-defaults-unit",AppConfig 缺省或未写 tui.activity_fold,读取生效值,"enabled true；keep_recent_turns 为 2；stream_collapse 为 envelope",false
-  rc1,"config-value-in-infra-unit",ConfigValueResolver,检查路径,位于 infra/config/value.rs 且 agent/ 无残留,false
+  rc1,"config-value-in-infra-unit",ConfigValueResolver,检查归属,收敛于 infra 配置边界且 agent 层无重复实现,false
   rc8,"json-schema-boundary-unit",需要 JSON Schema 的结构,检查定义模块,在边界模块非 domain,false

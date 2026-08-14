@@ -25,13 +25,13 @@
 
   @req:atc4
   场景: index-lists-components
-    当 打开 DESIGN.md
-    那么 组件索引列出 design/ 下核心文档路径
+    当 审计视觉 SSOT 文档结构
+    那么 总索引列出组件级子文档核心路径
 
   @req:atc4
   场景: diff-block-exists
     当 实现 Diff 渲染前查阅设计
-    那么 design/diff-block.md 存在且含 unified / word-level / CJK MUST
+    那么 diff-block 子文档存在且含 unified / word-level / CJK MUST
 
   @req:atc5
   场景: default-dark
