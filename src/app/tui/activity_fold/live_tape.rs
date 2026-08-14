@@ -83,8 +83,8 @@ pub fn live_window_frames() -> Vec<LiveWindowFrame> {
         LiveWindowFrame {
             name: "3-inflight-read-short-line",
             events: vec![tool_start("r1", "read", "old.rs")],
-            must: &["Reading old.rs"],
-            must_not: &["Planning next moves"],
+            must: &["Exploring old.rs", "Read", "Planning next moves"],
+            must_not: &["Worked for", "Editing"],
         },
         LiveWindowFrame {
             name: "4-toolend-opens-cluster-header",
@@ -101,8 +101,8 @@ pub fn live_window_frames() -> Vec<LiveWindowFrame> {
         LiveWindowFrame {
             name: "6-new-cluster-inflight-edit",
             events: vec![tool_start("e1", "edit", "a.rs")],
-            must: &["Explored old.rs", "Editing a.rs"],
-            must_not: &["Planning next moves", "Worked for"],
+            must: &["Explored old.rs", "Editing a.rs", "Planning next moves"],
+            must_not: &["Worked for"],
         },
         LiveWindowFrame {
             name: "7-open-cluster-after-first-edit",

@@ -34,15 +34,15 @@ components:
 
 打开簇分两截：**sealed**（已结束的低级操作）+ **inflight**（正在处理）。
 
-3. **默认收起**：隐藏该打开簇的 sealed 子块与 `Edited…` 统计头。其上方已封簇（-3）仍可按其自身态显示（计数冻结，仍可点开看 L1）。底部 **仍画 inflight**：无可展示正文且无进行中操作时才是 `Planning next moves`；否则为 Thinking 体 / Ask 块 / `Editing tests.rs` 等。`Planning next moves` 整行可点、无三角。
-4. **点标题展开**：整行可点（att22 三角列-only 的例外，同类 att30 hint 带）。揭开的是 **已经增量算好** 的 sealed 列表，**MUST NOT** 点击时全量重算。
+3. **默认**：打开簇有工具时 **MUST** 画带三角的簇头（进行时 `Editing` / `Exploring` / `Running`）。流式工具块是该簇子项，**默认展开**所以 Write/Read 正文可见；同一打开簇内 ToolEnd / 多次调用归并 **MUST NOT** 自动收起子项（避免屏幕跳动）。点簇头三角才收起子项（含流式）。助手正文封口后该簇冻结，自动展开可撤。其上方已封簇（-3）仍可按其自身态显示。底部 **Planning next moves** 在无 thinking/Ask 时仍画（整行可点、无三角）。Thinking 流与 Ask 块仍走各自动态块，不是无三角的 `Editing` 尾行。
+4. **点 Planning 展开**：整行可点（att22 三角列-only 的例外，同类 att30 hint 带）。揭开的是 **已经增量算好** 的 sealed 列表，**MUST NOT** 点击时全量重算。
 5. **展开后形态**（自上而下）：
    1. 统计摘要头：文件层互斥 `Editing {name|N files}` 或 `Exploring {name|N files}`，有 shell 才追加 `Running N commands`，可选 `{colors.success}` `+N` / `{colors.error}` `-N`（无可靠 diff 则省略 +/-）。MUST NOT 并列 explored，MUST NOT 把纯 read 写成 Editing。
-   2. 摘要头行首 **折叠三角 `▾`** — 这是 **唯一** 收起入口
-   3. sealed 细账（read / grep / thinking / …）**MUST** 仍走 [`expandable.md`](./expandable.md) 块级独立折叠（点块头三角，不是点簇头）。playground 静图可以把这些 L1 画成不可点标签。
-   4. 原标题 `Planning next moves`（或当前 inflight：`Thinking` / `Asking questions` / `Editing tests.rs`）留在 **最底**，作为本段流程终点标记
-6. **点摘要头三角收起**：回到第 3 条紧凑态（隐藏 sealed 与统计头，**仍留 inflight**）。
-7. 三角何时画在摘要头：仅当 sealed **非空**。尚无 sealed 时只有底部标题，无 `Edited…` 行。
+   2. 摘要头行首 **折叠三角 `▾`** — 这是收起该簇子项的入口
+   3. 子项细账（read / write / grep / thinking / …，**含流式**）**MUST** 仍走 [`expandable.md`](./expandable.md) 块级独立折叠（点块头三角，不是点簇头）。playground 静图可以把这些 L1 画成不可点标签。
+   4. `Planning next moves`（Ask 等待时为 `Asking questions`）留在 **最底**，作为本段流程终点标记
+6. **点摘要头三角收起**：隐藏该簇子项（含流式工具块），**留下带三角的簇头** 与底部 Planning/Ask。
+7. 三角何时画在簇头：该簇有可计活动（工具/thinking/Ask 回退头）即画。尚无工具、只有 Planning 时无簇头。仅 Compaction 的簇不画第二根簇头（att23）。MUST NOT 用 `...` 当文件名。
 8. 类目计数在 **ToolStart** 写入摘要缓存；`+/-` 仅 **ToolEnd** 且有可靠 diff。
 9. Ask `Waiting`：底部标题为 `Asking questions`；Ask 块 **MUST** 可交互，不得折没。
 10. 助手正文 **第一个非空白字符** 封口本簇（进行时 `Editing` / `Exploring` / `Running` → 过去式 `Edited` / `Explored` / `Ran`），簇进入 -3 冻结。仅 thinking 的簇头为 `Thought`；仅 MCP/未知为 `Used`；仅 Compaction **MUST NOT** 再画簇头。MUST NOT 用文件占位虚构 Explored。

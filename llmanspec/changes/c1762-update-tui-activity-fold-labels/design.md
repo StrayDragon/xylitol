@@ -39,7 +39,7 @@ Worked for 与 Explored **不是**同一层的两种前缀；Explored 只在信�
 7. 可靠 `display_diff` 的 +/- 在 ToolEnd 累加到该簇头；无则省略。
 8. 禁止：空类目 `files = 1`；未知工具当 file；compaction 当 Explored。
 
-进行时（打开簇未封口）：Edited→`Editing`，Explored→`Exploring`，Ran→`Running`。禁止再把纯 read 写成 `Editing`。
+进行时（打开簇未封口）：Edited→`Editing`，Explored→`Exploring`，Ran→`Running`。禁止再把纯 read 写成 `Editing`。打开簇有工具时画带三角的簇头；流式工具是子项（默认展开），不是无三角的 live 尾行。同一打开簇内 ToolEnd **不得**自动收起子项。
 
 ## Compaction 独簇 paint
 

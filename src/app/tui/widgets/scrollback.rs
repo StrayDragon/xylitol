@@ -13,6 +13,8 @@ use std::collections::{HashMap, HashSet};
 
 use super::fold_hit::{FoldHitTable, FoldTarget};
 use super::glyphs::GlyphSet;
+#[cfg(test)]
+use crate::app::tui::activity_fold::is_path_placeholder;
 use crate::app::tui::activity_fold::{
     ActivityFoldState, SegmentLevel, cluster_middle_indices, cluster_omits_header, count_cluster,
     format_cluster_header, format_envelope_line, middle_entry_indices, partition_segments,
@@ -789,7 +791,6 @@ pub fn render_scrollback(
             continue;
         }
         for (ci, cl) in seg.clusters.iter().enumerate() {
-            let expanded = activity.cluster_kids_visible(&seg.id, &cl.id);
             let mids = cluster_middle_indices(&model.entries, cl);
             let omit_header = cluster_omits_header(&model.entries, cl);
             let sealed_nonempty = mids.iter().any(|&idx| {
@@ -799,9 +800,21 @@ pub fn render_scrollback(
                     .is_some_and(|e| !is_inflight_hidden(e) && !is_ask_waiting(e))
             });
             let is_open = is_open_live_cluster(seg, ci, live_seg);
-            // Live open cluster with only inflight: no -2 header yet (att33).
-            // Compaction-only clusters never get a second header (att23).
-            let paint_header = !omit_header && !(is_open && !sealed_nonempty);
+            let has_inflight_tools = mids
+                .iter()
+                .any(|&idx| model.entries.get(idx).is_some_and(is_inflight_hidden));
+            if is_open && has_inflight_tools {
+                activity.ensure_live_inflight_expanded(&cl.id);
+            } else if !is_open {
+                // Only fold auto-expand when the cluster seals (assistant body).
+                // ToolEnd in the same open cluster MUST NOT collapse — that jumps the screen.
+                activity.drop_live_inflight_auto_expand(&cl.id);
+            }
+            let expanded = activity.cluster_kids_visible(&seg.id, &cl.id);
+            // Live open cluster with tools (including inflight) gets a foldable
+            // cluster header. Compaction-only clusters never get a second header.
+            let paint_header =
+                !omit_header && !(is_open && !sealed_nonempty && !has_inflight_tools);
             if paint_header && let Some(&first) = mids.first() {
                 cluster_header_at.insert(first, (si, ci));
             }
@@ -810,10 +823,6 @@ pub fn render_scrollback(
                     continue;
                 };
                 if is_ask_waiting(entry) {
-                    continue;
-                }
-                if is_open && is_inflight_hidden(entry) {
-                    skip_middle.insert(idx);
                     continue;
                 }
                 if omit_header {
@@ -1435,6 +1444,7 @@ fn is_inflight_hidden(entry: &UiEntry) -> bool {
     )
 }
 
+#[cfg(test)]
 fn inflight_short_label(entry: &UiEntry) -> Option<String> {
     match entry {
         UiEntry::Tool {
@@ -1446,24 +1456,40 @@ fn inflight_short_label(entry: &UiEntry) -> Option<String> {
         } => {
             let file = tool_path
                 .as_deref()
-                .filter(|s| !s.is_empty())
+                .filter(|s| !is_path_placeholder(s))
                 .unwrap_or(args_preview.as_str());
-            let file = if file.is_empty() { name.as_str() } else { file };
+            let file = if is_path_placeholder(file) {
+                None
+            } else {
+                Some(file)
+            };
             let n = name.to_ascii_lowercase();
             let label = if matches!(
                 n.as_str(),
                 "edit" | "write" | "apply_patch" | "strreplace" | "str_replace"
             ) {
-                format!("Editing {file}")
+                match file {
+                    Some(file) => format!("Editing {file}"),
+                    None => "Editing".into(),
+                }
             } else if n == "read" || n == "cat" {
-                format!("Reading {file}")
+                match file {
+                    Some(file) => format!("Reading {file}"),
+                    None => "Reading".into(),
+                }
             } else if is_searchish(&n) {
-                format!("Searching {file}")
+                match file {
+                    Some(file) => format!("Searching {file}"),
+                    None => "Searching".into(),
+                }
             } else if matches!(
                 n.as_str(),
                 "bash" | "shell" | "run_terminal_cmd" | "execute"
             ) {
-                format!("Running {file}")
+                match file {
+                    Some(file) => format!("Running {file}"),
+                    None => "Running".into(),
+                }
             } else {
                 format!("Running {name}")
             };
@@ -1478,6 +1504,7 @@ fn inflight_short_label(entry: &UiEntry) -> Option<String> {
     }
 }
 
+#[cfg(test)]
 fn is_searchish(name: &str) -> bool {
     matches!(
         name,
@@ -1504,15 +1531,6 @@ fn live_tail_label(
     }
     if model.entries.iter().rev().any(is_ask_waiting) {
         return Some("Asking questions".into());
-    }
-    if let Some(seg) = segments.last()
-        && let Some(cl) = seg.clusters.last()
-    {
-        for idx in cluster_middle_indices(&model.entries, cl).into_iter().rev() {
-            if let Some(label) = model.entries.get(idx).and_then(inflight_short_label) {
-                return Some(label);
-            }
-        }
     }
     if !model.streaming_thinking.is_empty() {
         return None;
@@ -1702,6 +1720,37 @@ mod tests {
         assert!(
             !plain.contains("to expand"),
             "expanded must not show expand hint: {plain}"
+        );
+    }
+
+    #[test]
+    fn inflight_write_placeholder_is_editing_not_dots() {
+        let entry = UiEntry::Tool {
+            id: "w1".into(),
+            name: "write".into(),
+            args_preview: "...".into(),
+            tool_path: None,
+            write_content: None,
+            display_diff: None,
+            output: String::new(),
+            is_error: false,
+            done: false,
+        };
+        assert_eq!(inflight_short_label(&entry).as_deref(), Some("Editing"));
+        let with_path = UiEntry::Tool {
+            id: "w2".into(),
+            name: "write".into(),
+            args_preview: "a.py".into(),
+            tool_path: Some("a.py".into()),
+            write_content: None,
+            display_diff: None,
+            output: String::new(),
+            is_error: false,
+            done: false,
+        };
+        assert_eq!(
+            inflight_short_label(&with_path).as_deref(),
+            Some("Editing a.py")
         );
     }
 
