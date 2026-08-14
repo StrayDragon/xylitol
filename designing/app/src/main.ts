@@ -5,7 +5,6 @@ import { loadModules } from "./catalog";
 import { renderGrid } from "./cell-grid";
 import { handoffCopy, handoffMarkdown } from "./handoff";
 import { renderMarkdown } from "./markdown";
-import { cycleState } from "./interact";
 import {
   formatPath,
   formatUrl,
@@ -179,7 +178,7 @@ function paintStageBar(): void {
   const st = currentState();
   const hint = document.createElement("p");
   hint.className = "stage-hint";
-  hint.textContent = "点击预览切固定态 · 动画只用播放/暂停按钮";
+  hint.textContent = "切态用上方按钮；动画只用播放/暂停；终端格子可框选";
   stageBarEl.appendChild(hint);
   if (!st || !hasSpin(st)) return;
   const n = spinFrames(st).length;
@@ -228,22 +227,8 @@ function paintStage(): void {
   }
   const term = document.createElement("div");
   term.className = "term-frame";
-  term.setAttribute("aria-label", "设计稿预览，点击切固定态");
-  const stateKeys = current ? Object.keys(current.states) : [];
-  if (stateKeys.length > 1) term.dataset.clickable = "true";
+  term.setAttribute("aria-label", "设计稿预览");
   term.appendChild(renderGrid(applyFrame(state, frame)));
-  term.addEventListener("click", () => {
-    const sel = window.getSelection();
-    if (sel && String(sel).length) return;
-    if (!current || Object.keys(current.states).length < 2) return;
-    const next = cycleState(current, stateId, 1);
-    if (next === stateId) return;
-    lastAction = `clicked preview: ${current.id}/${stateId} → ${current.id}/${next}`;
-    stateId = next;
-    frame = 0;
-    setPlaying(false);
-    paint("push");
-  });
   stageEl.appendChild(term);
 }
 
