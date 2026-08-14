@@ -77,7 +77,7 @@ pub fn tool_activity_role(name: &str) -> ToolActivityRole {
     let n = name.to_ascii_lowercase();
     match n.as_str() {
         "edit" | "write" | "apply_patch" | "strreplace" | "str_replace" => ToolActivityRole::Edit,
-        "read" | "ls" => ToolActivityRole::ExploreFile,
+        "read" | "ls" | "cat" => ToolActivityRole::ExploreFile,
         "grep" | "rg" | "search" | "glob" | "find" | "codebase_search" | "semantic_search" => {
             ToolActivityRole::ExploreSearch
         }
@@ -236,6 +236,15 @@ mod tests {
             |a| matches!(a, ActivityAtom::Think { id } if id == "t1"),
         );
         assert_atom(tool("read", Some("a.rs")), |a| {
+            matches!(
+                a,
+                ActivityAtom::Explore {
+                    kind: ExploreKind::File,
+                    ..
+                }
+            )
+        });
+        assert_atom(tool("cat", Some("a.rs")), |a| {
             matches!(
                 a,
                 ActivityAtom::Explore {
