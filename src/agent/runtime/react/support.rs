@@ -14,6 +14,7 @@ use crate::protocol::message::AgentMessage;
 use crate::protocol::model::{XyChunk, XyToolSchema};
 use crate::protocol::ports::{XyHookBus, XyHookOutcome, XyModel, XySessionStore};
 use crate::protocol::session::{EntryBase, MessageEntry, SessionEntry};
+use crate::utils::{ThoughtClock, ThoughtPersist};
 
 pub(crate) fn prepare_turn_binding(
     model_manager: &Arc<Mutex<crate::agent::model::manager::ModelManager>>,
@@ -71,20 +72,33 @@ pub(crate) async fn persist_agent_message(
     persist_agent_message_with_thought_elapsed(store, session_id, message, None).await;
 }
 
-/// Persist an assistant message, optionally stamping thinking wall-clock secs
-/// (`thinkingElapsedSecs`) for TUI resume. Extra JSON field is ignored when
-/// history deserializes to [`AgentMessage`] for LLM projection.
+/// Persist an assistant message, optionally stamping thinking wall-clock
+/// (`thinkingElapsedSecs` plus start/end node ms) for TUI resume. Extra JSON
+/// fields are ignored when history deserializes to [`AgentMessage`] for LLM projection.
 pub(crate) async fn persist_agent_message_with_thought_elapsed(
     store: &Arc<dyn XySessionStore>,
     session_id: &str,
     message: &AgentMessage,
-    thought_elapsed_secs: Option<u64>,
+    thought: Option<&ThoughtClock>,
 ) {
     let Ok(mut message) = serde_json::to_value(message) else {
         return;
     };
-    if let Some(secs) = thought_elapsed_secs.filter(|s| *s > 0) {
-        message["thinkingElapsedSecs"] = serde_json::json!(secs);
+    if let Some(ThoughtPersist {
+        elapsed_secs,
+        started_at_ms,
+        ended_at_ms,
+    }) = thought.map(ThoughtClock::persist_fields)
+    {
+        if let Some(secs) = elapsed_secs.filter(|s| *s > 0) {
+            message["thinkingElapsedSecs"] = serde_json::json!(secs);
+        }
+        if let Some(ms) = started_at_ms {
+            message["thinkingStartedAtMs"] = serde_json::json!(ms);
+        }
+        if let Some(ms) = ended_at_ms {
+            message["thinkingEndedAtMs"] = serde_json::json!(ms);
+        }
     }
     let entry = SessionEntry::Message(MessageEntry {
         base: EntryBase {
@@ -96,13 +110,6 @@ pub(crate) async fn persist_agent_message_with_thought_elapsed(
         message,
     });
     let _ = store.append_session_entry(session_id, &entry).await;
-}
-
-pub(crate) fn thought_elapsed_secs(started: Option<std::time::Instant>) -> Option<u64> {
-    started.and_then(|t| {
-        let secs = t.elapsed().as_secs();
-        (secs > 0).then_some(secs)
-    })
 }
 
 pub(crate) async fn observe_script_hook(

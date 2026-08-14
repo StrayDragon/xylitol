@@ -5,6 +5,8 @@
 
 pub(crate) mod sync;
 pub mod text;
+pub(crate) mod thought_clock;
 
 pub(crate) use sync::lock_mutex;
 pub use text::{today_yyyy_mm_dd, xml_escape};
+pub(crate) use thought_clock::{ThoughtClock, ThoughtPersist, elapsed_from_persist_ms};
