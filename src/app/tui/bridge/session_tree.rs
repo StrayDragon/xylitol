@@ -28,6 +28,8 @@ pub fn rebuild_scrollback_from_travel(
     ui_model.status = None;
     ui_model.streaming_assistant.clear();
     ui_model.streaming_thinking.clear();
+    ui_model.thinking_started_at = None;
+    ui_model.thinking_elapsed_secs.clear();
     ui_model.current_role = None;
 
     let path = ancestry_path_ids(entries, travel.leaf_id.as_deref());

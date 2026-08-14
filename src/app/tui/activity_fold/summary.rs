@@ -45,6 +45,17 @@ impl ActivityCounts {
             && self.used_names.is_empty()
             && self.asks == 0
     }
+
+    pub fn is_thought_only(&self) -> bool {
+        self.thinking > 0
+            && self.edit_paths.is_empty()
+            && self.explore_paths.is_empty()
+            && !self.search_no_path
+            && self.commands == 0
+            && self.used_names.is_empty()
+            && self.asks == 0
+            && self.compaction == 0
+    }
 }
 
 pub fn count_segment(entries: &[UiEntry], seg: &ActivitySegment) -> ActivityCounts {
@@ -58,6 +69,19 @@ pub fn count_cluster(entries: &[UiEntry], cluster: &ActivityCluster) -> Activity
 
 pub fn cluster_omits_header(entries: &[UiEntry], cluster: &ActivityCluster) -> bool {
     count_cluster(entries, cluster).omits_cluster_header()
+}
+
+/// Thought-only cluster: fold into the Thought header, no second `thinking` L1 row.
+pub fn cluster_is_thought_only(entries: &[UiEntry], cluster: &ActivityCluster) -> bool {
+    count_cluster(entries, cluster).is_thought_only()
+}
+
+/// Counts for a live thinking stream before it is flushed to a Thinking entry.
+pub fn streaming_thought_counts() -> ActivityCounts {
+    ActivityCounts {
+        thinking: 1,
+        ..Default::default()
+    }
 }
 
 fn push_unique(paths: &mut Vec<String>, path: String) {
@@ -294,7 +318,7 @@ pub fn format_cluster_body(counts: &ActivityCounts, progressive: bool) -> String
     let mut body = if !parts.is_empty() {
         parts.join(", ")
     } else if counts.thinking > 0 {
-        "Thought".to_string()
+        thought_header_body(None)
     } else if !counts.used_names.is_empty() {
         match counts.used_names.as_slice() {
             [one] => format!("Used {one}"),
@@ -316,25 +340,37 @@ pub fn format_duration(start: OffsetDateTime, end: OffsetDateTime) -> Option<Str
     if secs < 0 {
         return None;
     }
-    let secs = secs as u64;
+    Some(format_elapsed_secs(secs as u64))
+}
+
+/// Whole-second elapsed label (`17s`, `2m`, `1h 3m`). `0` → `"0s"` for callers
+/// that already decided to show a number; paint omits Thought duration at 0.
+pub fn format_elapsed_secs(secs: u64) -> String {
     if secs < 60 {
-        Some(format!("{secs}s"))
+        format!("{secs}s")
     } else if secs < 3600 {
         let m = secs / 60;
         let s = secs % 60;
         if s == 0 {
-            Some(format!("{m}m"))
+            format!("{m}m")
         } else {
-            Some(format!("{m}m {s}s"))
+            format!("{m}m {s}s")
         }
     } else {
         let h = secs / 3600;
         let m = (secs % 3600) / 60;
         if m == 0 {
-            Some(format!("{h}h"))
+            format!("{h}h")
         } else {
-            Some(format!("{h}h {m}m"))
+            format!("{h}h {m}m")
         }
+    }
+}
+
+pub fn thought_header_body(duration: Option<&str>) -> String {
+    match duration {
+        Some(d) if !d.is_empty() => format!("Thought {d}"),
+        _ => "Thought".to_string(),
     }
 }
 
@@ -404,13 +440,17 @@ pub fn format_cluster_header(
     counts: &ActivityCounts,
     expanded: bool,
     progressive: bool,
+    thought_dur: Option<&str>,
 ) -> String {
     let marker = if expanded {
         glyphs.unfold()
     } else {
         glyphs.fold()
     };
-    let body = format_cluster_body(counts, progressive);
+    let mut body = format_cluster_body(counts, progressive);
+    if body == "Thought" {
+        body = thought_header_body(thought_dur);
+    }
     let hint = binding_chord_hint(if expanded {
         "app.activity.collapseNearest"
     } else {
@@ -515,6 +555,9 @@ mod tests {
         let s = format_l2_body(&c);
         assert_eq!(s, "Thought");
         assert!(!s.contains("Explored"));
+        assert_eq!(thought_header_body(Some("17s")), "Thought 17s");
+        assert_eq!(format_elapsed_secs(17), "17s");
+        assert_eq!(format_elapsed_secs(0), "0s");
     }
 
     #[test]

@@ -11,6 +11,9 @@ pub fn apply_stream_family(model: &mut UiModel, event: &XyEvent) -> bool {
             true
         }
         XyEvent::ThinkingDelta(text) => {
+            if model.streaming_thinking.is_empty() {
+                model.thinking_started_at = Some(std::time::Instant::now());
+            }
             model.streaming_thinking.push_str(text);
             model.set_busy_status("Thinking");
             true
