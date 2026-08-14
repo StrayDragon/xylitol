@@ -1,7 +1,7 @@
 kind: llman.sdd.spec
 name: "cli-print"
 purpose: Print 模式（非交互）输出渲染 — TextDelta 流式 stdout、reasoning 流式 stderr 与工具摘要。
-valid_scope[2]: src/app/cli/print.rs,src/app/cli/mod.rs
+valid_scope[1]: "CLI print 应用面"
 requirements[5]{req_id,title,statement}:
   r34,"streaming-output",Print 模式下 System MUST 实时将 agent 文本输出流式写入 stdout。
   r43,"tool-display",Print 模式下 System MUST 显示工具执行名称与结果摘要。

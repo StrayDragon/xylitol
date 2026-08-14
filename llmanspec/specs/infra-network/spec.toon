@@ -1,7 +1,7 @@
 kind: llman.sdd.spec
 name: "infra-network"
 purpose: 网络配置 — HTTP 代理设置、idle 超时与 dispatcher 配置。
-valid_scope[2]: src/infra/config/,src/infra/settings/
+valid_scope[2]: "infra 层配置","infra 层 settings"
 requirements[6]{req_id,title,statement}:
   nc0,placeholder,System SHALL 支持可配置的 HTTP 代理与 idle 超时设置。
   nc1,"proxy-config",System MUST 从 httpProxy 设置应用 HTTP_PROXY 与 HTTPS_PROXY 环境变量。

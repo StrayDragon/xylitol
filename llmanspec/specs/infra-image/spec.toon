@@ -1,7 +1,7 @@
 kind: llman.sdd.spec
 name: "infra-image"
 purpose: 图片处理 — 格式检测、缩放、方向校正与终端渲染。
-valid_scope[1]: src/infra/image/
+valid_scope[1]: "infra 层 image"
 requirements[5]{req_id,title,statement}:
   i1,"image-resize",System MUST 提供 resize_image()，将图片缩放到可配置 max width/height/bytes 内并保持宽高比。
   i2,"exif-orientation",System MUST 加载图片时应用 EXIF orientation 元数据并相应校正像素数据。

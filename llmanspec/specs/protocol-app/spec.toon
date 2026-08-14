@@ -1,7 +1,7 @@
 kind: llman.sdd.spec
 name: "protocol-app"
 purpose: Client↔core 线协议词汇（Command/Event 枚举 + 传输辅助），传输无关。
-valid_scope[2]: src/,tests/
+valid_scope[2]: "主 crate","workspace 测试"
 requirements[14]{req_id,title,statement}:
   ip1,Command 枚举,protocol MUST 定义 Command 枚举，至少覆盖 Run、Cancel、SwitchModel、SetThinking、ListCommands、ApproveTool、AnswerQuestion、SwitchSession、GetMessages、ExportHtml、ExportJsonl、ImportJsonl；每个 client→core 消息 MUST 反序列化为此枚举。
   ip2,Event 枚举,protocol/ MUST 定义 Event 枚举，至少覆盖 TurnStart、Delta、ToolCall、ApprovalRequired、QuestionRequired、TurnEnd、Usage；每个 core→client 消息 MUST 反序列化为此枚举。

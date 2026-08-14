@@ -1,7 +1,7 @@
 kind: llman.sdd.spec
 name: "test-infra"
 purpose: "测试基础设施：Fake/Faux provider、临时目录 RAII、TUI E2E 隔离。"
-valid_scope[2]: src/,tests/
+valid_scope[2]: "主 crate","workspace 测试"
 requirements[6]{req_id,title,statement}:
   r39,"faux-provider",System MUST 提供 FauxProvider，返回预配置的响应步骤，无需网络调用，用于确定性 agent 测试。
   r46,"test-harness-tools","System MUST 通过 rstest-bdd 场景/测试函数测试工具，使用 given/when/then 类型化占位符步骤，每个场景对应一个测试函数。"

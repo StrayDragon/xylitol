@@ -1,7 +1,7 @@
 kind: llman.sdd.spec
 name: "app-tui-commands"
 purpose: "斜杠命令与 protocol::Command / dispatch 映射。"
-valid_scope[1]: src/app/tui/
+valid_scope[1]: "产品 TUI 面"
 requirements[17]{req_id,title,statement}:
   atm1,"slash-exit-model","TUI MUST 解析斜杠命令 /exit（映射 Quit）与 /model：无参 idle MUST 打开替换 editor 槽的 fuzzy 模型列表（GetAvailableModels）；列表 MUST 支持 ↑↓ 选模型行，可调模型 MUST 支持 ←→ 与槽内 Shift+Tab 在焦点模型声明的 thinking_levels 上选档；宽内容区 MUST 在焦点行铺开该模型声明档名（当前档以方括号标记），窄内容区 MUST 仅显示单档标签；无思考或仅不可调 off 的模型 MUST 显示 — 且方向键 MUST NOT 改变状态。Enter 选定 MUST 提交 (model, level)（可调默认配置列表末项，无思考为 off）经 SetModel/set_thinking_level 并关槽；有参 /model <id> MUST 直接 SetModel 并对可调模型默认末项、不可调为 off；键入 /model 参数时 MAY/MUST 经包 SlashArgCompletionSource 内联补全（见 ati23）。busy 时无参 MUST 仍可打开模型列表（BusySlashPolicy Allow；确认选定仍走既有 SetModel/thinking 与 NextTurn/下轮预告，见 ar25）；busy 有参直设 MUST 更新 selected（NextTurn 生效，见 ar25）。MUST NOT 再把无参 /model 做成 CycleModel；MUST NOT 引入 /models 主路径；MUST NOT 把未在该模型 thinking_levels 声明的档名当成可选项；未知斜杠 MUST 显示内联错误且 MUST NOT 崩溃。"
   atm2,"dispatch-shared","除 Prompt、Quit 与传输专用命令外，斜杠执行 MUST 走 app::core::dispatch 共享路径，MUST NOT 发明平行命令词表。"

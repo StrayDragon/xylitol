@@ -7,8 +7,8 @@ requirements[5]{req_id,title,statement}:
   bt1,"server-integration-scenarios",BDD 测试套件 MUST 含 server.feature（server 启动、health check、prompt 提交、event streaming、shutdown）与 approval.feature（经 reverse RPC 的工具审批往返）的步骤定义。
   bt2,"rstest-bdd-current","仓库 MUST 使用 crates.io 当前 rstest-bdd / rstest-bdd-macros 兼容最新 beta；既有核心 BDD 场景 MUST 在升级后仍全部通过。"
   tb3,Partitioned live feature BDD,"BDD 场景 MUST 支持在 live llmanspec/specs/<capability>/<capability>.feature 中以 @req 绑定 requirement，并由 tests/bdd/ 下的 #[scenario(path=..., name=<scenario.id>)] 消费；场景标题 MUST 等于 scenario.id；该链路 MUST 与现有 tests/features/ 手写链路并存，互不干扰。可执行 GWT 写在 .feature；架构/静态断言留在 spec.toon（feature:false）并由单测覆盖。MUST NOT 依赖已移除的 solidify / feature.delta。"
-  tb4,配置 BDD 分层,配置加载行为（三层合并、模型/provider 解析、ConfigValue 插值、默认值）MUST 由 src/infra/config 与 src/infra/settings 的单元测试覆盖，MUST NOT 保留无 step 实现的孤儿 feature 作为 BDD 债务。
+  tb4,配置 BDD 分层,配置加载行为（三层合并、模型/provider 解析、ConfigValue 插值、默认值）MUST 由 infra 层配置与 settings 的单元测试覆盖，MUST NOT 保留无 step 实现的孤儿 feature 作为 BDD 债务。
 scenarios[3]{req_id,id,given,when,then,feature}:
   r37,"no-orphan-features","tests/features 与 llmanspec/specs 下可执行 feature 均有对应 #[scenario] 绑定","cargo test --test bdd",全量通过且无孤儿 feature 被跳过,false
   tb3,"live-feature-pilot-passes","agent-runtime.feature 含场景 react-terminates 与 stream-is-xyevent","cargo test --test bdd",两个 live feature 场景通过且现有场景无回归,false
-  tb4,"config-covered-by-unittests",src/infra/config 与 src/infra/settings 含覆盖三层合并/解析/插值/默认值的单测,"cargo test --lib infra::config infra::settings",配置加载行为由单测保障且无孤儿 feature 残留,false
+  tb4,"config-covered-by-unittests",infra 层配置与 settings 含覆盖三层合并/解析/插值/默认值的单测,"cargo test --lib infra::config infra::settings",配置加载行为由单测保障且无孤儿 feature 残留,false

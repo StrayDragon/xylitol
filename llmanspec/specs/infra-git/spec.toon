@@ -1,7 +1,7 @@
 kind: llman.sdd.spec
 name: "infra-git"
 purpose: Git 仓库操作 — 分支管理、仓库发现与 URL 解析。
-valid_scope[1]: src/infra/git/
+valid_scope[1]: "infra 层 git"
 requirements[4]{req_id,title,statement}:
   g1,"repo-detection",System MUST 提供 find_git_repo(cwd)，向上遍历目录查找 .git 目录或 worktree 文件，返回 repo path、common git dir 与 HEAD path。
   g2,"branch-detection",System MUST 提供 get_current_branch(git_dir)，读取 HEAD 引用并返回当前分支名，detached HEAD 时返回 null。

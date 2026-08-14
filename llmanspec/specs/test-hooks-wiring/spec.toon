@@ -1,7 +1,7 @@
 kind: llman.sdd.spec
 name: "test-hooks-wiring"
 purpose: hooks 接线 BDD：观察/可取消/可修改矩阵与 XyHookBus 精选导出。
-valid_scope[2]: src/,tests/
+valid_scope[2]: "主 crate","workspace 测试"
 requirements[6]{req_id,title,statement}:
   thw1,"hooks-wiring-feature","仓库 MUST 提供 llmanspec/specs/test-hooks-wiring/test-hooks-wiring.feature（live Partitioned），以场景大纲固定「观察型 / 可取消」库缝接线；与 agent-hooks（调度器机制）分工：本 capability 只证 Driver/XyHookBus 权威路径，MUST NOT 用 HookDispatcher::dispatch 冒充。"
   thw2,"operation-dictionary-steps",BDD runner MUST 提供可复用步骤：注册匹配事件的 hook、hook 返回 JSON、执行操作「操作名」、断言 hook 被调用、断言 hook 上下文包含键、断言操作被阻止；操作名 MUST 经显式字典映射到权威路径，未知操作名 MUST 失败且信息可读。

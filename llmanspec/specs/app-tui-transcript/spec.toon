@@ -1,7 +1,7 @@
 kind: llman.sdd.spec
 name: "app-tui-transcript"
 purpose: Live 输出进引擎 scrollback（非 Codex 式 transcript 浏览面）；分支回看走会话树。
-valid_scope[1]: src/app/tui/
+valid_scope[1]: "产品 TUI 面"
 requirements[33]{req_id,title,statement}:
   att1,"live-scrollback-output",产品 UiRoot 当前轮 live 用户/助手/系统输出 MUST 写入引擎 scrollback 并以包 Markdown（及角色色/glyph）呈现；MUST NOT 截断历史冒充滚动；MUST NOT 以此要求实现 Codex 式可导航 transcript 浏览面。
   att3,"diff-via-package","产品 live scrollback 中文件编辑 diff MUST 复用 packages/xylitol-tui Diff（含 word-level 与复制友好前缀）；MUST NOT 在应用面复制准通用 diff 渲染器。"
