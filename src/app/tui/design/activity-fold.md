@@ -1,7 +1,7 @@
 ---
 version: "alpha"
 name: "activity-fold"
-description: "Activity fold — nested envelope/cluster/block; streaming live queue (Planning next moves)."
+description: "Activity fold — nested envelope/cluster/block; streaming Thinking → Thought; Ask waiting Asking questions."
 tokens_from: "../DESIGN.md"
 components:
   fold-header:
@@ -28,24 +28,24 @@ components:
 ### 折叠标记
 
 1. 可折头行字形遵守 [`glyphs.md`](./glyphs.md) 与 att19：收起 `▸`、展开 `▾`（ascii `>` / `v`）；**行首**一列。本票 **MUST NOT** 改到行尾。
-2. `Planning next moves` **MUST NOT** 画三角。
+2. `Asking questions`（Ask 等待的 live 尾行）**MUST NOT** 画三角；整行可点展开打开簇。**MUST NOT** 画 `Planning next moves`。
 
 ### 流式打开簇（队列）
 
 打开簇分两截：**sealed**（已结束的低级操作）+ **inflight**（正在处理）。
 
-3. **默认**：打开簇有工具时 **MUST** 画带三角的簇头（进行时 `Editing` / `Exploring` / `Running`）。流式工具块是该簇子项，**默认折叠**（不弹出 Write/Read/MCP 正文）。点簇头三角才展开子项（含流式）。同一打开簇内 ToolEnd / 多次调用归并 **MUST NOT** 自动收起已展开的子项（避免屏幕跳动）。paint **MUST NOT** 每帧改折叠态。助手正文封口后该簇冻结为过去式。其上方已封簇（-3）仍可按其自身态显示。底部 **Planning next moves** 在无 thinking/Ask 时仍画（整行可点、无三角）。Thinking 流 **MUST** 收成一条 `Thought` 簇头（完成流式后形态不变），**MUST NOT** 同时画 `Thought` 与 `thinking (Ctrl+T)`。Ask 块仍走各自动态块，不是无三角的 `Editing` 尾行。
-4. **点 Planning 展开**：整行可点（att22 三角列-only 的例外，同类 att30 hint 带）。揭开的是 **已经增量算好** 的 sealed 列表，**MUST NOT** 点击时全量重算。
+3. **默认**：打开簇有工具时 **MUST** 画带三角的簇头（进行时 `Editing` / `Exploring` / `Running`）。流式工具块是该簇子项，**默认折叠**（不弹出 Write/Read/MCP 正文）。点簇头三角才展开子项（含流式）。同一打开簇内 ToolEnd / 多次调用归并 **MUST NOT** 自动收起已展开的子项（避免屏幕跳动）。paint **MUST NOT** 每帧改折叠态。助手正文封口后该簇冻结为过去式。其上方已封簇（-3）仍可按其自身态显示。无 thinking/Ask/工具时 **MUST NOT** 画假占位尾行（busy 短词走状态条）。Thinking 流 **MUST** 画一条 `Thinking` 簇头（可点展开，默认折叠正文，无时长、无 `(Ctrl+T)`）；流结束后 **MUST** 更新为 `Thought`，有可靠起止墙钟 **MUST** 写 `Thought {Ns}`（如 `Thought 17s`）；resume 无戳则省略时长；**MUST NOT** 流式每帧刷新时长。**MUST NOT** 同时画 `Thinking`/`Thought` 簇头与 thinking L1 `(Ctrl+T)` 头。Ask 块仍走各自动态块，不是无三角的 `Editing` 尾行。
+4. **点簇头三角展开**：揭开的是 **已经增量算好** 的 sealed 列表，**MUST NOT** 点击时全量重算。Ask 等待时点 `Asking questions` 整行同样展开打开簇（att22 三角列-only 的例外，同类 att30 hint 带）。
 5. **展开后形态**（自上而下）：
-   1. 统计摘要头：文件层互斥 `Editing {name|N files}` 或 `Exploring {name|N files}`，有 shell 才追加 `Running N commands`，可选 `{colors.success}` `+N` / `{colors.error}` `-N`（无可靠 diff 则省略 +/-）。MUST NOT 并列 explored，MUST NOT 把纯 read 写成 Editing。仅 thinking 的进行中/已完成为 `Thought`。
+   1. 统计摘要头：文件层互斥 `Editing {name|N files}` 或 `Exploring {name|N files}`，有 shell 才追加 `Running N commands`，可选 `{colors.success}` `+N` / `{colors.error}` `-N`（无可靠 diff 则省略 +/-）。MUST NOT 并列 explored，MUST NOT 把纯 read 写成 Editing。仅 thinking：流式为 `Thinking`，结束后为 `Thought` / `Thought {Ns}`。
    2. 摘要头行首 **折叠三角** — 展开/收起该簇子项的入口
    3. 子项细账（read / write / grep / thinking / …，**含流式**）**MUST** 仍走 [`expandable.md`](./expandable.md) 块级独立折叠（点块头三角，不是点簇头）。playground 静图可以把这些 L1 画成不可点标签。
-   4. `Planning next moves`（Ask 等待时为 `Asking questions`）留在 **最底**，作为本段流程终点标记
-6. **点摘要头三角收起**：隐藏该簇子项（含流式工具块），**留下带三角的簇头** 与底部 Planning/Ask。
-7. 三角何时画在簇头：该簇有可计活动（工具/thinking/Ask 回退头）即画。尚无工具、只有 Planning 时无簇头。仅 Compaction 的簇不画第二根簇头（att23）。MUST NOT 用 `...` 当文件名。助手正文（夹心或该轮最后一段）**MUST NOT** 被收进簇。
+   4. Ask 等待时 `Asking questions` 留在 **最底**；否则无 Planning 占位行
+6. **点摘要头三角收起**：隐藏该簇子项（含流式工具块），**留下带三角的簇头**；Ask 等待时仍见底部 Asking questions。
+7. 三角何时画在簇头：该簇有可计活动（工具/thinking/Ask 回退头）即画。尚无工具、只有 busy 时无簇头。仅 Compaction 的簇不画第二根簇头（att23）。MUST NOT 用 `...` 当文件名。助手正文（夹心或该轮最后一段）**MUST NOT** 被收进簇。
 8. 类目计数在 **ToolStart** 写入摘要缓存；`+/-` 仅 **ToolEnd** 且有可靠 diff。
 9. Ask `Waiting`：底部标题为 `Asking questions`；Ask 块 **MUST** 可交互，不得折没。
-10. 助手正文 **第一个非空白字符** 封口本簇（进行时 `Editing` / `Exploring` / `Running` → 过去式 `Edited` / `Explored` / `Ran`），簇进入 -3 冻结。仅 thinking 的簇头为 `Thought`；仅 MCP/未知为 `Used`；仅 Compaction **MUST NOT** 再画簇头。MUST NOT 用文件占位虚构 Explored。
+10. 助手正文 **第一个非空白字符** 封口本簇（进行时 `Editing` / `Exploring` / `Running` → 过去式 `Edited` / `Explored` / `Ran`），簇进入 -3 冻结。仅 thinking 的簇头流式为 `Thinking`、结束后为 `Thought` / `Thought {Ns}`；仅 MCP/未知为 `Used`；仅 Compaction **MUST NOT** 再画簇头。MUST NOT 用文件占位虚构 Explored。
 
 ### 旧 turn 信封
 
@@ -61,4 +61,4 @@ components:
 
 ### 状态条
 
-17. 输入框上方 busy 短词仍为 `Working` / `Running {name}`（[`status.md`](./status.md)）。`Planning next moves` **MUST NOT** 进状态条。
+17. 输入框上方 busy 短词仍为 `Working` / `Running {name}`（[`status.md`](./status.md)）。**MUST NOT** 画 `Planning next moves`（状态条也不进）。

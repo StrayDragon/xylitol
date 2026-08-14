@@ -21,7 +21,7 @@ c1761 把中间操作收进信封/簇之后，簇头仍会**虚构**类目：Thi
 1. **分层词表（Title Case）**，Worked / Explored 不是同一根条的两种文案：
    - 信封：`Worked for {duration}`（缺戳省略时长，禁止伪造）。
    - 簇：文件层 **Edited XOR Explored**；有 shell 才追加 `Ran N commands`。
-   - 回退头：仅 thinking → `Thought`；仅 MCP/未知 → `Used {tool}`；仅 Ask → `Asking questions`。
+   - 回退头：仅 thinking → 流式 `Thinking`，结束后 `Thought` / `Thought {dur}`；仅 MCP/未知 → `Used {tool}`；仅 Ask → `Asking questions`。
    - 仅 compaction：**不画簇头**，直接露出已有 `[compaction] Compacted from N`。
 2. **计数诚实**：Edited/Explored 的 N 为去重 path；N=1 写 basename；N>1 写 `N files`。命令按调用次数。无 path 的 search 不加假文件数，但仍让该簇进入 Explored 侧。
 3. **+/-**：簇头在 ToolEnd 增量聚合已有可靠 `display_diff` 的 `+N -M`；没有则省略。不阻塞 [`c1770`](../c1770-add-worktree-snapshot/proposal.md)（工作树整轮/逐步盘变更另票）。
@@ -48,16 +48,17 @@ c1761 把中间操作收进信封/簇之后，簇头仍会**虚构**类目：Thi
 | compaction 独簇 | 不另画簇头 |
 | 计数 | 去重 path；N=1 basename；命令按次 |
 | +/- | ToolEnd 聚合 `display_diff`；c1770 不进本票 |
-| 大小写 | Edited / Explored / Ran / Running / Thought / Used 与 Cursor 同类大写 |
+| 大小写 | Edited / Explored / Ran / Running / Thinking / Thought / Used 与 Cursor 同类大写 |
 | 树 / 缩进 | 信封 → 簇 → 块；扁平同列，不缩进 |
-| L1 块动词 | **本票不改**（仍走既有 tool/thinking/compaction chrome） |
+| L1 块动词 | 工具/compaction chrome **不改**；thinking 块统一 Title Case：流式 `Thinking`，结束后 `Thought` / `Thought {dur}` |
+| live 占位 | **MUST NOT** 画 `Planning next moves`；busy 走状态条 |
 | 簇切刀 att34 | **不改**：仍以助手正文封口 |
 
 ## 与邻接边界
 
 | 对方 | 本票 | 对方保留 |
 |---|---|---|
-| c1761 | 改簇头/计数/进行时措辞 | 嵌套状态、live window 结构、-1 Planning、YAML、键位 |
+| c1761 | 改簇头/计数/进行时措辞；去掉 Planning 占位；Thinking→Thought 时长 | 嵌套状态、live window 结构、YAML、键位 |
 | c1760 | 仍禁止假时长 / 假 +/- | 段时钟 |
 | c1770 | 不依赖、不阻塞 | 工作树 snapshot 整轮差分；日后可接信封级 +/- |
 | Compact 头行 | 不改 `[compaction] Compacted from N` 块文案 | 三角同行仍属既有 quick |
@@ -65,7 +66,7 @@ c1761 把中间操作收进信封/簇之后，簇头仍会**虚构**类目：Thi
 ## Out of scope
 
 - 打开 att34 改成「一轮一个聚合簇」
-- L1 子项改成 Cursor 的 Read/Ran/Thought/Used/Waited 词
+- L1 子项改成 Cursor 的 Read/Ran/Used/Waited 词（thinking 的 Thinking/Thought 除外）
 - 用缩进表达嵌套
 - c1770 snapshot / 逐步工作树 diff / bash 改盘行级 +/-
 - Web 实现
@@ -107,4 +108,4 @@ session `460ad16e` 为研究/手测，**不**进 `just qa`。
 |---|---|
 | **ready_for_start** | **yes**（词表已锁；规划壳齐） |
 | Specs | 绑定分支后改 att24 / att33（及 att23 仅 compaction 独簇句）；`feature: false` unit |
-| 禁止 | 默认分支改 `llmanspec/specs/**`；把 c1770 / L1 动词重命名算进本 change |
+| 禁止 | 默认分支改 `llmanspec/specs/**`；把 c1770 / 非 thinking 的 L1 工具动词重命名算进本 change |

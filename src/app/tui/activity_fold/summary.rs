@@ -71,7 +71,7 @@ pub fn cluster_omits_header(entries: &[UiEntry], cluster: &ActivityCluster) -> b
     count_cluster(entries, cluster).omits_cluster_header()
 }
 
-/// Thought-only cluster: fold into the Thought header, no second `thinking` L1 row.
+/// Thought-only cluster: fold into the Thinking/Thought header, no second L1 row.
 pub fn cluster_is_thought_only(entries: &[UiEntry], cluster: &ActivityCluster) -> bool {
     count_cluster(entries, cluster).is_thought_only()
 }
@@ -435,12 +435,14 @@ pub fn format_summary_line(
 }
 
 /// Cluster header (L2/L0). `progressive` is the live open cluster.
+/// `live_thinking`: current burst still streaming — show Thinking, not Thought Ns.
 pub fn format_cluster_header(
     glyphs: GlyphSet,
     counts: &ActivityCounts,
     expanded: bool,
     progressive: bool,
     thought_dur: Option<&str>,
+    live_thinking: bool,
 ) -> String {
     let marker = if expanded {
         glyphs.unfold()
@@ -449,7 +451,11 @@ pub fn format_cluster_header(
     };
     let mut body = format_cluster_body(counts, progressive);
     if body == "Thought" {
-        body = thought_header_body(thought_dur);
+        body = if live_thinking {
+            "Thinking".to_string()
+        } else {
+            thought_header_body(thought_dur)
+        };
     }
     let hint = binding_chord_hint(if expanded {
         "app.activity.collapseNearest"
@@ -482,6 +488,7 @@ mod tests {
         UiEntry::Thinking {
             id: "t".into(),
             text: "hmm".into(),
+            elapsed_secs: None,
         }
     }
 
@@ -558,6 +565,14 @@ mod tests {
         assert_eq!(thought_header_body(Some("17s")), "Thought 17s");
         assert_eq!(format_elapsed_secs(17), "17s");
         assert_eq!(format_elapsed_secs(0), "0s");
+        crate::app::tui::keybindings::ensure_product_catalog();
+        let glyphs = GlyphSet::from_env();
+        let streaming = format_cluster_header(glyphs, &c, false, true, None, true);
+        assert!(streaming.contains("Thinking"), "{streaming}");
+        assert!(!streaming.contains("Thought"), "{streaming}");
+        let flushed = format_cluster_header(glyphs, &c, false, false, Some("17s"), false);
+        assert!(flushed.contains("Thought 17s"), "{flushed}");
+        assert!(!flushed.contains("Thinking"), "{flushed}");
     }
 
     #[test]

@@ -17,7 +17,7 @@ pub enum FoldTarget {
     Segment(String),
     /// Activity cluster header; id = `seg-{user_idx}:c{ord}`.
     Cluster(String),
-    /// Streaming live-window tail (`Planning next moves`); whole-line hit.
+    /// Asking questions (Ask waiting): whole-line hit expands the live cluster.
     LiveTail,
 }
 

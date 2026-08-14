@@ -7,7 +7,7 @@
 //! Ended-session hand-test is `/debug activity-fold-resume` (seeded JSONL).
 //!
 //! Reproduce: last painted frame stays on the transcript so a FAIL names the
-//! step (Planning → inflight tool → sealed -3 → open -2 → Ask).
+//! step (busy → Thinking → inflight tool → sealed -3 → open -2 → Ask).
 //! Answering Choice then applies [`live_ask_close_events`] (not a live agent).
 
 use serde_json::json;
@@ -69,28 +69,28 @@ pub fn live_ask_close_events(result: &str) -> Vec<XyEvent> {
 pub fn live_window_frames() -> Vec<LiveWindowFrame> {
     vec![
         LiveWindowFrame {
-            name: "1-planning-before-tokens",
+            name: "1-busy-before-tokens",
             events: vec![],
-            must: &["Planning next moves"],
-            must_not: &["Worked for"],
+            must: &["debug: activity-fold live window"],
+            must_not: &["Planning next moves", "Worked for"],
         },
         LiveWindowFrame {
             name: "2-thinking-stream-is-inflight",
             events: vec![XyEvent::ThinkingDelta("consider next edit".into())],
-            must: &["Thought"],
-            must_not: &["Planning next moves", "Worked for", "Ctrl+T"],
+            must: &["Thinking"],
+            must_not: &["Planning next moves", "Worked for", "Ctrl+T", "Thought"],
         },
         LiveWindowFrame {
             name: "3-inflight-read-short-line",
             events: vec![tool_start("r1", "read", "old.rs")],
-            must: &["Exploring old.rs", "Planning next moves"],
-            must_not: &["Worked for", "Editing"],
+            must: &["Exploring old.rs"],
+            must_not: &["Worked for", "Editing", "Planning next moves"],
         },
         LiveWindowFrame {
             name: "4-toolend-opens-cluster-header",
             events: vec![tool_end("r1", "read")],
-            must: &["Planning next moves", "Exploring old.rs"],
-            must_not: &["Worked for"],
+            must: &["Exploring old.rs"],
+            must_not: &["Worked for", "Planning next moves"],
         },
         LiveWindowFrame {
             name: "5-assistant-body-seals-no-planning",
@@ -101,20 +101,20 @@ pub fn live_window_frames() -> Vec<LiveWindowFrame> {
         LiveWindowFrame {
             name: "6-new-cluster-inflight-edit",
             events: vec![tool_start("e1", "edit", "a.rs")],
-            must: &["Explored old.rs", "Editing a.rs", "Planning next moves"],
-            must_not: &["Worked for"],
+            must: &["Explored old.rs", "Editing a.rs"],
+            must_not: &["Worked for", "Planning next moves"],
         },
         LiveWindowFrame {
             name: "7-open-cluster-after-first-edit",
             events: vec![tool_end("e1", "edit")],
-            must: &["Explored old.rs", "Editing a.rs", "Planning next moves"],
-            must_not: &["Worked for"],
+            must: &["Explored old.rs", "Editing a.rs"],
+            must_not: &["Worked for", "Planning next moves"],
         },
         LiveWindowFrame {
             name: "8-toolend-updates-minus2-not-minus3",
             events: vec![tool_start("e2", "edit", "b.rs"), tool_end("e2", "edit")],
-            must: &["Explored old.rs", "Editing 2 files", "Planning next moves"],
-            must_not: &["Worked for"],
+            must: &["Explored old.rs", "Editing 2 files"],
+            must_not: &["Worked for", "Planning next moves"],
         },
         LiveWindowFrame {
             name: "9-ask-waiting",

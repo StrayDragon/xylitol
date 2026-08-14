@@ -30,7 +30,7 @@ pub use state::{ActivityFoldState, SegmentClock};
 pub(crate) use summary::is_path_placeholder;
 pub use summary::{
     cluster_is_thought_only, cluster_omits_header, count_cluster, format_cluster_header,
-    format_elapsed_secs, format_envelope_line, streaming_thought_counts,
+    format_elapsed_secs, format_envelope_line, streaming_thought_counts, thought_header_body,
 };
 
 use time::OffsetDateTime;

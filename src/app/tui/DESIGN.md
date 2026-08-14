@@ -264,7 +264,7 @@ footer            1 行 dim（cwd · model · 可选 context%）
 | [`design/session-resume.md`](./design/session-resume.md) | `/session-resume`：预览按终端比例；**Ctrl+U** 切换完整 session id（默认隐藏） |
 | [`design/models-picker.md`](./design/models-picker.md) | `/model` fuzzy 列表（替换 editor 槽；对齐 pi） |
 | [`design/transcript.md`](./design/transcript.md) | live 输出进 scrollback（非 Codex 浏览面） |
-| [`design/activity-fold.md`](./design/activity-fold.md) | 嵌套 ActivityFold：流式队列 `Planning next moves`；旧 turn `Worked for` 信封 |
+| [`design/activity-fold.md`](./design/activity-fold.md) | 嵌套 ActivityFold：流式 `Thinking`→`Thought {dur}`；Ask 等待 `Asking questions`；旧 turn `Worked for` 信封 |
 | [`design/expandable.md`](./design/expandable.md) | thinking / tool 可展开（demo 优先） |
 | [`design/status.md`](./design/status.md) | busy 一行 |
 | [`design/chrome-toast.md`](./design/chrome-toast.md) | 壳层通告：status 上方 warning + `Error:` |

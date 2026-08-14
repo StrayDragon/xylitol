@@ -1,6 +1,6 @@
 # Tasks: Activity 折叠诚实词表
 
-> 决策见 `proposal.md`；树与算法见 `design.md`。硬禁：默认分支改 live specs；本票实现 c1770 snapshot；改 att34 切刀；L1 动词重命名。
+> 决策见 `proposal.md`；树与算法见 `design.md`。硬禁：默认分支改 live specs；本票实现 c1770 snapshot；改 att34 切刀。thinking 块 Title Case（`Thinking`→`Thought {dur}`）在范围内。
 
 ## 进度总览
 
@@ -45,16 +45,16 @@
 
 - [x] 4.1 打开簇进行时：Editing / Exploring / Running；封口改过去式
 - [x] 4.2 更新 `live_tape` 期望；禁止纯 read 显示 Editing
-- [x] 4.3 live 默认折叠子项（不弹流式正文）；Thought 合并 thinking L1；paint 不每帧改折叠态
-- [x] 4.4 Thought 时长：live 用本流第一次 ThinkingDelta 的墙钟；flush 后冻在该 Thinking id；resume 无戳则省略，禁止伪造
+- [x] 4.3 live 默认折叠子项（不弹流式正文）；Thinking 流合并、无 thinking L1；paint 不每帧改折叠态
+- [x] 4.4 流式外显 `Thinking`（无时长）；flush 后冻成 `Thought {dur}`（第一次 ThinkingDelta→flush 墙钟）；resume 无戳则省略，禁止伪造；**MUST NOT** 画 Planning next moves
 
 ### 5. 夹具与闸
 
 - [x] 5.1 `/debug activity-fold-live` / `activity-fold-resume` 断言跟新词表
 - [x] 5.2 `just fmt` + 相关 `activity_fold` / harness 测
-- [x] 5.3 手测指针：session `460ad16e`「cool 总结下」（不进 qa）；`/debug activity-fold-live`：Planning → Thought（无 `thinking (Ctrl+T)`、默不弹正文、≥1s 见 `Thought Ns`）→ Exploring 簇头默认折叠 → 点三角见 Read → 助手正文始终外显 → 下一提问后上一轮 `Worked for`
+- [x] 5.3 手测指针：session `460ad16e`「cool 总结下」（不进 qa）；`/debug activity-fold-live`：无 Planning → Thinking（无 `thinking (Ctrl+T)`、默不弹正文）→ 流结束后 `Thought Ns` → Exploring 簇头默认折叠 → 点三角见 Read → 助手正文始终外显 → 下一提问后上一轮 `Worked for`
 
 ## 收口
 
 - [x] 6.1 `llman sdd validate c1762-update-tui-activity-fold-labels --strict --no-check`
-- [x] 6.2 确认未改 att34、未接线 c1770、未改 L1 块动词
+- [x] 6.2 确认未改 att34、未接线 c1770、未改非 thinking 的 L1 工具动词
