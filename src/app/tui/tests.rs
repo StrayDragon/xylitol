@@ -4707,6 +4707,102 @@ fn activity_fold_thinking_only_is_thought_not_explored() {
 }
 
 #[test]
+fn activity_fold_thought_only_cluster_shows_frozen_duration() {
+    use super::activity_fold::SegmentLevel;
+    use super::layout::UiRoot;
+
+    let mut root = UiRoot::new();
+    let mut model = UiModel::new();
+    model
+        .entries
+        .push(super::bridge::UiEntry::User { text: "hi".into() });
+    model.entries.push(super::bridge::UiEntry::Thinking {
+        id: "th".into(),
+        text: "consider".into(),
+        elapsed_secs: Some(17),
+    });
+    model.entries.push(super::bridge::UiEntry::Assistant {
+        text: "hello".into(),
+    });
+    root.apply_ui_model(&model);
+    root.activity_mut().force_level("seg-0", SegmentLevel::L2);
+    root.touch_activity();
+    let plain = strip_ansi_activity(&root.render(100).join("\n"));
+    assert!(
+        plain.contains("Thought 17s"),
+        "thought-only cluster MUST show frozen duration: {plain}"
+    );
+    assert!(
+        !plain
+            .lines()
+            .any(|l| l.contains("Thought 17s") && l.contains("Ctrl+T")),
+        "thought-only cluster MUST NOT paint L1 Ctrl+T: {plain}"
+    );
+}
+
+#[test]
+fn activity_fold_todo_tools_are_used_not_thought_cluster() {
+    use super::activity_fold::SegmentLevel;
+    use super::layout::UiRoot;
+
+    let mut root = UiRoot::new();
+    let mut model = UiModel::new();
+    model
+        .entries
+        .push(super::bridge::UiEntry::User { text: "u".into() });
+    model.entries.push(super::bridge::UiEntry::Tool {
+        id: "t-list".into(),
+        name: "todo_list".into(),
+        args_preview: String::new(),
+        tool_path: None,
+        write_content: None,
+        display_diff: None,
+        output: r#"{"items":[]}"#.into(),
+        is_error: false,
+        done: true,
+    });
+    model.entries.push(super::bridge::UiEntry::Tool {
+        id: "t-up".into(),
+        name: "todo_update".into(),
+        args_preview: String::new(),
+        tool_path: None,
+        write_content: None,
+        display_diff: None,
+        output: r#"{"items":[]}"#.into(),
+        is_error: false,
+        done: true,
+    });
+    model.entries.push(super::bridge::UiEntry::Thinking {
+        id: "th".into(),
+        text: "Good progress. Now I need to use ask".into(),
+        elapsed_secs: Some(4),
+    });
+    model.entries.push(super::bridge::UiEntry::Assistant {
+        text: "继续，用 `ask` 问用户一个选择".into(),
+    });
+    root.apply_ui_model(&model);
+    root.activity_mut().force_level("seg-0", SegmentLevel::L2);
+    root.touch_activity();
+    let plain = strip_ansi_activity(&root.render(100).join("\n"));
+    assert!(
+        plain.contains("Used"),
+        "todo tools MUST own the cluster header: {plain}"
+    );
+    assert!(
+        !plain
+            .lines()
+            .any(|l| l.contains("Thought") && l.contains("Alt+Shift+E")),
+        "MUST NOT use Thought as the aggregate cluster header: {plain}"
+    );
+    root.toggle_fold_target(super::widgets::FoldTarget::Cluster("seg-0:c0".into()));
+    let opened = strip_ansi_activity(&root.render(100).join("\n"));
+    assert!(
+        opened.contains("Thought 4s") && opened.contains("(Ctrl+T)"),
+        "L1 thinking kid MUST keep frozen duration: {opened}"
+    );
+}
+
+#[test]
 fn activity_fold_compaction_only_has_no_explored_header() {
     use super::activity_fold::SegmentLevel;
     use super::bridge::CompactionBlockStatus;

@@ -172,6 +172,7 @@ fn count_middles(entries: &[UiEntry], indices: &[usize]) -> ActivityCounts {
             UiEntry::Thinking { .. } => c.thinking += 1,
             UiEntry::Ask { .. } => c.asks += 1,
             UiEntry::Compaction { .. } => c.compaction += 1,
+            UiEntry::Todo { .. } => push_unique(&mut c.used_names, "Todo".to_string()),
             _ => {}
         }
     }
@@ -317,8 +318,6 @@ pub fn format_cluster_body(counts: &ActivityCounts, progressive: bool) -> String
     }
     let mut body = if !parts.is_empty() {
         parts.join(", ")
-    } else if counts.thinking > 0 {
-        thought_header_body(None)
     } else if !counts.used_names.is_empty() {
         match counts.used_names.as_slice() {
             [one] => format!("Used {one}"),
@@ -326,6 +325,8 @@ pub fn format_cluster_body(counts: &ActivityCounts, progressive: bool) -> String
         }
     } else if counts.asks > 0 {
         "Asking questions".to_string()
+    } else if counts.thinking > 0 {
+        thought_header_body(None)
     } else {
         "Activity".to_string()
     };
@@ -573,6 +574,38 @@ mod tests {
         let flushed = format_cluster_header(glyphs, &c, false, false, Some("17s"), false);
         assert!(flushed.contains("Thought 17s"), "{flushed}");
         assert!(!flushed.contains("Thinking"), "{flushed}");
+    }
+
+    #[test]
+    fn thinking_plus_todo_tools_is_used_not_thought() {
+        let entries = vec![
+            thinking(),
+            tool("todo_list", None),
+            tool("todo_update", None),
+        ];
+        let c = count_middles(&entries, &[0, 1, 2]);
+        let s = format_l2_body(&c);
+        assert!(s.starts_with("Used "), "{s}");
+        assert!(!s.contains("Thought"), "{s}");
+        assert!(c.thinking > 0, "thinking stays a kid, not the header");
+        assert!(!c.is_thought_only());
+    }
+
+    #[test]
+    fn thinking_plus_ask_is_asking_not_thought() {
+        let entries = vec![
+            thinking(),
+            UiEntry::Ask {
+                id: "a1".into(),
+                summary: "Ask · pick".into(),
+                detail_lines: vec![],
+                phase: crate::app::tui::bridge::AskPhase::Waiting,
+                expanded: false,
+            },
+        ];
+        let c = count_middles(&entries, &[0, 1]);
+        assert_eq!(format_l2_body(&c), "Asking questions");
+        assert!(!c.is_thought_only());
     }
 
     #[test]
