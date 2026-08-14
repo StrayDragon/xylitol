@@ -375,6 +375,175 @@ async fn test_persist_done_usage() {
 }
 
 #[tokio::test]
+async fn test_persist_stream_timing_nodes() {
+    use std::time::{Duration, Instant};
+
+    use crate::protocol::message::AgentPart;
+    use crate::utils::{StreamNode, StreamNodeClock};
+
+    let session_mgr = SessionManager::new(tempfile::tempdir().unwrap().path().join("sessions"));
+    let store: Arc<dyn XySessionStore> = Arc::new(session_mgr);
+    let sid = "sess-stream-timing";
+    let mut clock = StreamNodeClock::new();
+    let a = Instant::now();
+    clock.stamp_at(StreamNode::AgentStart, a, 1_000);
+    clock.stamp_at(StreamNode::TurnStart, a, 1_100);
+    clock.stamp_at(StreamNode::ThinkingStart, a, 2_000);
+    clock.stamp_at(StreamNode::ThinkingEnd, a + Duration::from_secs(2), 4_000);
+    clock.stamp_at(StreamNode::TextStart, a + Duration::from_secs(2), 4_000);
+    clock.stamp_at(StreamNode::TextEnd, a + Duration::from_secs(7), 9_000);
+    clock.stamp_at(StreamNode::MessageEnd, a + Duration::from_secs(7), 9_100);
+
+    let msg = super::assistant::build_assistant_message(
+        vec![AgentPart::thinking("plan"), AgentPart::text("hello")],
+        None,
+        None,
+        String::new(),
+        String::new(),
+        None,
+    );
+    super::persist_agent_message_with_thought_elapsed(&store, sid, &msg, Some(&clock)).await;
+
+    let entries = store.load_entries(sid).await.expect("entries");
+    let SessionEntry::Message(m) = entries
+        .into_iter()
+        .find(|e| matches!(e, SessionEntry::Message(_)))
+        .expect("persisted message")
+    else {
+        unreachable!();
+    };
+    assert_eq!(
+        m.message
+            .get("thinkingElapsedSecs")
+            .and_then(|v| v.as_u64()),
+        Some(2),
+        "thinkingElapsedSecs MUST be thinking channel only, not text wall clock"
+    );
+    assert!(
+        m.message.get("thinkingStartedAtMs").is_none(),
+        "MUST NOT dual-write top-level thinking*AtMs: {:?}",
+        m.message
+    );
+    let timing = m.message.get("streamTiming").expect("streamTiming");
+    assert_eq!(
+        timing.get("thinkingStartedAtMs").and_then(|v| v.as_u64()),
+        Some(2_000)
+    );
+    assert_eq!(
+        timing.get("thinkingEndedAtMs").and_then(|v| v.as_u64()),
+        Some(4_000)
+    );
+    assert_eq!(
+        timing.get("textStartedAtMs").and_then(|v| v.as_u64()),
+        Some(4_000)
+    );
+    assert_eq!(
+        timing.get("textEndedAtMs").and_then(|v| v.as_u64()),
+        Some(9_000)
+    );
+    assert_eq!(
+        timing.get("agentStartedAtMs").and_then(|v| v.as_u64()),
+        Some(1_000)
+    );
+    assert_eq!(
+        timing.get("turnStartedAtMs").and_then(|v| v.as_u64()),
+        Some(1_100)
+    );
+    assert_eq!(
+        timing.get("messageEndedAtMs").and_then(|v| v.as_u64()),
+        Some(9_100)
+    );
+    assert!(timing.get("toolIntentAtMs").is_none());
+}
+
+#[tokio::test]
+async fn test_persist_stream_timing_from_chunks() {
+    use crate::protocol::message::XyStopReason;
+    use futures::StreamExt;
+
+    let chunks = vec![
+        crate::protocol::model::XyChunk::ThinkingDelta("plan".into()),
+        crate::protocol::model::XyChunk::TextDelta("hello ".into()),
+        crate::protocol::model::XyChunk::TextDelta("world".into()),
+        crate::protocol::model::XyChunk::ThinkingEnd {
+            thinking: "plan".into(),
+            thinking_signature: None,
+        },
+        crate::protocol::model::XyChunk::Done {
+            finish_reason: XyStopReason::Stop,
+            usage: None,
+        },
+    ];
+    let (mut agent, store) = make_agent_with_tools_and_store(chunks, ToolSet::from_iter([]));
+    let mut stream = run_agent_with_id(&mut agent, "ping", "sess-stream-chunks").await;
+    while stream.next().await.is_some() {}
+
+    let entries = store
+        .load_entries("sess-stream-chunks")
+        .await
+        .expect("entries");
+    let mut found = false;
+    for entry in entries {
+        let SessionEntry::Message(m) = entry else {
+            continue;
+        };
+        let Some(timing) = m.message.get("streamTiming") else {
+            continue;
+        };
+        if m.message.get("role").and_then(|v| v.as_str()) != Some("assistant") {
+            continue;
+        }
+        assert!(
+            timing
+                .get("agentStartedAtMs")
+                .and_then(|v| v.as_u64())
+                .is_some()
+        );
+        assert!(
+            timing
+                .get("turnStartedAtMs")
+                .and_then(|v| v.as_u64())
+                .is_some()
+        );
+        assert!(
+            timing
+                .get("thinkingStartedAtMs")
+                .and_then(|v| v.as_u64())
+                .is_some()
+        );
+        let thinking_end = timing
+            .get("thinkingEndedAtMs")
+            .and_then(|v| v.as_u64())
+            .expect("thinkingEndedAtMs");
+        let text_start = timing
+            .get("textStartedAtMs")
+            .and_then(|v| v.as_u64())
+            .expect("textStartedAtMs");
+        let text_end = timing
+            .get("textEndedAtMs")
+            .and_then(|v| v.as_u64())
+            .expect("textEndedAtMs");
+        assert!(
+            thinking_end <= text_start,
+            "thinking end MUST be first TextDelta, not late ThinkingEnd/Done: {timing}"
+        );
+        assert!(text_end >= text_start);
+        assert!(
+            timing
+                .get("messageEndedAtMs")
+                .and_then(|v| v.as_u64())
+                .is_some()
+        );
+        assert!(m.message.get("thinkingStartedAtMs").is_none());
+        found = true;
+    }
+    assert!(
+        found,
+        "expected persisted assistant with streamTiming nodes"
+    );
+}
+
+#[tokio::test]
 async fn test_tool_intent_before_execution() {
     use crate::protocol::lifecycle::XyEvent;
     use crate::protocol::message::{AgentMessage, AgentPart, LlmMessage};

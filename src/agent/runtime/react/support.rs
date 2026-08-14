@@ -14,7 +14,7 @@ use crate::protocol::message::AgentMessage;
 use crate::protocol::model::{XyChunk, XyToolSchema};
 use crate::protocol::ports::{XyHookBus, XyHookOutcome, XyModel, XySessionStore};
 use crate::protocol::session::{EntryBase, MessageEntry, SessionEntry};
-use crate::utils::{ThoughtClock, ThoughtPersist};
+use crate::utils::StreamNodeClock;
 
 pub(crate) fn prepare_turn_binding(
     model_manager: &Arc<Mutex<crate::agent::model::manager::ModelManager>>,
@@ -72,32 +72,29 @@ pub(crate) async fn persist_agent_message(
     persist_agent_message_with_thought_elapsed(store, session_id, message, None).await;
 }
 
-/// Persist an assistant message, optionally stamping thinking wall-clock
-/// (`thinkingElapsedSecs` plus start/end node ms) for TUI resume. Extra JSON
-/// fields are ignored when history deserializes to [`AgentMessage`] for LLM projection.
+/// Persist an assistant message, optionally stamping `thinkingElapsedSecs` and
+/// `streamTiming` node unix-ms for TUI resume. Extra JSON is ignored when
+/// history deserializes to [`AgentMessage`] for LLM projection.
 pub(crate) async fn persist_agent_message_with_thought_elapsed(
     store: &Arc<dyn XySessionStore>,
     session_id: &str,
     message: &AgentMessage,
-    thought: Option<&ThoughtClock>,
+    stream_clock: Option<&StreamNodeClock>,
 ) {
     let Ok(mut message) = serde_json::to_value(message) else {
         return;
     };
-    if let Some(ThoughtPersist {
-        elapsed_secs,
-        started_at_ms,
-        ended_at_ms,
-    }) = thought.map(ThoughtClock::persist_fields)
-    {
-        if let Some(secs) = elapsed_secs.filter(|s| *s > 0) {
+    if let Some(clock) = stream_clock {
+        if let Some(secs) = clock.thinking_elapsed_secs() {
             message["thinkingElapsedSecs"] = serde_json::json!(secs);
         }
-        if let Some(ms) = started_at_ms {
-            message["thinkingStartedAtMs"] = serde_json::json!(ms);
-        }
-        if let Some(ms) = ended_at_ms {
-            message["thinkingEndedAtMs"] = serde_json::json!(ms);
+        let pairs = clock.timing_pairs();
+        if !pairs.is_empty() {
+            let mut timing = serde_json::Map::new();
+            for (key, ms) in pairs {
+                timing.insert(key.to_string(), serde_json::json!(ms));
+            }
+            message["streamTiming"] = serde_json::Value::Object(timing);
         }
     }
     let entry = SessionEntry::Message(MessageEntry {

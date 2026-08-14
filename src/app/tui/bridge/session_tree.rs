@@ -34,7 +34,6 @@ pub fn rebuild_scrollback_from_travel(
     ui_model.current_role = None;
 
     let path = ancestry_path_ids(entries, travel.leaf_id.as_deref());
-    let mut prev_ts_ms: Option<u64> = None;
     for id in path {
         let Some(entry) = entries.iter().find(|e| e.entry_id() == Some(id.as_str())) else {
             continue;
@@ -43,19 +42,12 @@ pub fn rebuild_scrollback_from_travel(
             let role = message_role(&m.message);
             if matches!(role, Some("toolResult") | Some("tool")) {
                 merge_persisted_tool_result(&mut ui_model.entries, &m.base.id, &m.message);
-                if let Some(ms) = session_entry_ts_ms(entry) {
-                    prev_ts_ms = Some(ms);
-                }
                 continue;
             }
         }
-        let thought_elapsed = persisted_thinking_elapsed(entry)
-            .or_else(|| thought_elapsed_secs(prev_ts_ms, session_entry_ts_ms(entry)));
+        let thought_elapsed = persisted_thinking_elapsed(entry);
         for ui in session_entry_to_ui_entries_with_thought_elapsed(entry, thought_elapsed) {
             ui_model.entries.push(ui);
-        }
-        if let Some(ms) = session_entry_ts_ms(entry) {
-            prev_ts_ms = Some(ms);
         }
     }
     sync_todo_checklist_from_entries(ui_model, entries);
@@ -266,72 +258,22 @@ fn session_entry_to_ui_entries_with_thought_elapsed(
 
 fn persisted_thinking_elapsed(entry: &SessionEntry) -> Option<u64> {
     match entry {
-        SessionEntry::Message(m) => elapsed_from_persist_ms(
-            m.message
-                .get("thinkingElapsedSecs")
-                .and_then(|v| v.as_u64()),
-            m.message
-                .get("thinkingStartedAtMs")
-                .and_then(|v| v.as_u64()),
-            m.message.get("thinkingEndedAtMs").and_then(|v| v.as_u64()),
-        ),
-        _ => None,
-    }
-}
-
-fn thought_elapsed_secs(prev_ms: Option<u64>, this_ms: Option<u64>) -> Option<u64> {
-    let (prev, this) = (prev_ms?, this_ms?);
-    this.checked_sub(prev).map(|d| d / 1000).filter(|s| *s > 0)
-}
-
-fn session_entry_ts_ms(entry: &SessionEntry) -> Option<u64> {
-    match entry {
-        SessionEntry::Message(m) => m
-            .message
-            .get("timestamp")
-            .and_then(json_timestamp_ms)
-            .or_else(|| parse_timestamp_ms(&m.base.timestamp)),
-        other => other.base().and_then(|b| parse_timestamp_ms(&b.timestamp)),
-    }
-}
-
-fn json_timestamp_ms(v: &Value) -> Option<u64> {
-    match v {
-        Value::Number(n) => {
-            let n = n
-                .as_u64()
-                .or_else(|| n.as_i64().and_then(|i| u64::try_from(i).ok()))?;
-            Some(if n > 10_000_000_000 {
-                n
-            } else {
-                n.saturating_mul(1000)
-            })
+        SessionEntry::Message(m) => {
+            let timing = m.message.get("streamTiming");
+            elapsed_from_persist_ms(
+                m.message
+                    .get("thinkingElapsedSecs")
+                    .and_then(|v| v.as_u64()),
+                timing
+                    .and_then(|t| t.get("thinkingStartedAtMs"))
+                    .and_then(|v| v.as_u64()),
+                timing
+                    .and_then(|t| t.get("thinkingEndedAtMs"))
+                    .and_then(|v| v.as_u64()),
+            )
         }
-        Value::String(s) => parse_timestamp_ms(s),
         _ => None,
     }
-}
-
-fn parse_timestamp_ms(raw: &str) -> Option<u64> {
-    let s = raw.trim();
-    if s.is_empty() {
-        return None;
-    }
-    if let Ok(n) = s.parse::<u64>() {
-        return Some(if n > 10_000_000_000 {
-            n
-        } else {
-            n.saturating_mul(1000)
-        });
-    }
-    time::OffsetDateTime::parse(s, &time::format_description::well_known::Rfc3339)
-        .ok()
-        .and_then(|t| {
-            u64::try_from(t.unix_timestamp()).ok().map(|sec| {
-                let ms = u64::from(t.nanosecond() / 1_000_000);
-                sec.saturating_mul(1000).saturating_add(ms)
-            })
-        })
 }
 
 fn nested_bash_to_ui(message: &Value) -> Vec<UiEntry> {
@@ -690,7 +632,7 @@ mod tests {
     }
 
     #[test]
-    fn rebuild_thinking_elapsed_from_adjacent_timestamps() {
+    fn rebuild_omits_elapsed_without_thinking_stamps() {
         let entries = vec![
             SessionEntry::Message(MessageEntry {
                 base: EntryBase {
@@ -735,11 +677,11 @@ mod tests {
                 ui.entries.as_slice(),
                 [
                     UiEntry::User { .. },
-                    UiEntry::Thinking { elapsed_secs: Some(17), text, .. },
+                    UiEntry::Thinking { elapsed_secs: None, text, .. },
                     UiEntry::Assistant { .. }
                 ] if text == "step 1"
             ),
-            "resume MUST restore Thought duration from adjacent stamps: {:?}",
+            "resume MUST omit Thought duration without thinkingElapsedSecs or streamTiming: {:?}",
             ui.entries
         );
     }
@@ -833,8 +775,10 @@ mod tests {
                         { "type": "text", "text": "hello" }
                     ],
                     "timestamp": 1_700_000_017_000u64,
-                    "thinkingStartedAtMs": 1_700_000_010_000u64,
-                    "thinkingEndedAtMs": 1_700_000_012_500u64,
+                    "streamTiming": {
+                        "thinkingStartedAtMs": 1_700_000_010_000u64,
+                        "thinkingEndedAtMs": 1_700_000_012_500u64,
+                    },
                 }),
             }),
         ];
@@ -858,7 +802,7 @@ mod tests {
                     UiEntry::Assistant { .. }
                 ]
             ),
-            "resume MUST subtract thinkingEndedAtMs - thinkingStartedAtMs: {:?}",
+            "resume MUST subtract streamTiming thinkingEndedAtMs - thinkingStartedAtMs: {:?}",
             ui.entries
         );
     }

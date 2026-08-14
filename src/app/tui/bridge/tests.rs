@@ -393,10 +393,10 @@ fn thinking_elapsed_stops_at_first_text_delta() {
     model.begin_run("hi");
     apply_xy_event(&mut model, &XyEvent::ThinkingDelta("plan…".into()));
     let start = std::time::Instant::now() - std::time::Duration::from_secs(2);
-    model.thought_clock.pin_start_at(start, 1_000);
+    model.thought_clock.pin_start_at(start);
     model
         .thought_clock
-        .stamp_end_at(start + std::time::Duration::from_secs(2), 3_000);
+        .stamp_end_at(start + std::time::Duration::from_secs(2));
     apply_xy_event(&mut model, &XyEvent::TextDelta("Hello".into()));
     let thinking: Vec<_> = model
         .entries

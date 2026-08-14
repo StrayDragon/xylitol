@@ -5037,10 +5037,9 @@ fn activity_fold_live_thinking_stream_merges_into_thought() {
         &mut model,
         &XyEvent::ThinkingDelta("consider next edit".into()),
     );
-    model.thought_clock.pin_start_at(
-        std::time::Instant::now() - std::time::Duration::from_secs(17),
-        0,
-    );
+    model
+        .thought_clock
+        .pin_start_at(std::time::Instant::now() - std::time::Duration::from_secs(17));
     root.apply_ui_model(&model);
     let plain = strip_ansi_activity(&root.render(100).join("\n"));
     assert!(
@@ -5116,10 +5115,10 @@ fn activity_fold_text_delta_seals_thought_without_waiting_for_body() {
         &XyEvent::ThinkingDelta("consider next edit".into()),
     );
     let start = std::time::Instant::now() - std::time::Duration::from_secs(2);
-    model.thought_clock.pin_start_at(start, 0);
+    model.thought_clock.pin_start_at(start);
     model
         .thought_clock
-        .stamp_end_at(start + std::time::Duration::from_secs(2), 2_000);
+        .stamp_end_at(start + std::time::Duration::from_secs(2));
     apply_xy_event(&mut model, &XyEvent::TextDelta("answer".into()));
     root.apply_ui_model(&model);
     let mid = strip_ansi_activity(&root.render(100).join("\n"));
