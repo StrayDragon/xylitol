@@ -1,14 +1,15 @@
-# DESIGN playground（产品静图 SSOT）
+# DESIGN playground（双轨旧静图）
 
-**归属**：仅服务产品面 `src/app/tui`（DESIGN / layout / chrome）。**不是** `packages/xylitol-tui` 的 `agent_demo`；包交互演示与本页 **允许差异**。
+**归属**：未迁槽的产品静图。**意图 SSOT 已迁** [`../../designing/`](../../designing/)（`just open-designing`）。本页不是唯一视觉 SSOT。
 
 | 页 | 角色 |
 |---|---|
-| [`index.html`](./index.html) | **唯一**产品静图 SSOT：形状 / 色板 / 整壳固定态 ↔ DESIGN；**UiEntry 默认 rail** |
+| [`../../designing/`](../../designing/) | 模块化意图 + 固定态（人类浏览器；Agent 默认读模块） |
+| [`index.html`](./index.html) | 双轨旧巨石；闸对其它槽仍解析；activity-fold 闸已走 YAML states |
 
 重制说明：[`docs/roadmaps/TUI重制.md`](../../../../../docs/roadmaps/TUI重制.md)（M1 产品已兑现）。
 
-本仓 **不**在包内维护第二份 design HTML。**Agent 默认忽略本目录**（见 [`../AGENTS.md`](../AGENTS.md)），除非人类指定。
+本仓 **不**在包内维护第二份 design HTML。**Agent 默认忽略本目录 HTML**（见 [`../AGENTS.md`](../AGENTS.md) / [`../../designing/AGENTS.md`](../../designing/AGENTS.md)）。
 
 信息面用词：[`docs/architecture/TUI信息面与chrome词汇.md`](../../../../../docs/architecture/TUI信息面与chrome词汇.md)。
 

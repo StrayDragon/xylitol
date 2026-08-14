@@ -17,11 +17,11 @@
 | layout / widgets | 呈现与局部交互 | 直接调 Driver / 读写 session |
 | harness / tests | 合成切片护栏 | 与生产硬顶混用（测试另计） |
 
-视觉 / UX SSOT：`DESIGN.md` + `design/`（含 **产品专用** `design/playground/` 静图）。历史文案「chrome」= layout/widgets；勿用 `shell`/`scene` 命名。
+视觉意图 SSOT：[`designing/`](./designing/)（模块 `intent.md` + `states/*.yaml`；人类 `just open-designing`）。产品运行时以本目录代码为准。旧 `design/` + `design/playground/` 双轨至拆除日（c2230）。Agent 默认读 [`designing/AGENTS.md`](./designing/AGENTS.md) + [`designing/generated/AGENT-INDEX.md`](./designing/generated/AGENT-INDEX.md) + 相关模块；**默认忽略** playground HTML 与 `designing/app/`。历史文案「chrome」= layout/widgets；勿用 `shell`/`scene` 命名。
 
 **信息面词汇（固定）**：讨论与**本面**文档 / host MUST 使用 [`docs/architecture/TUI信息面与chrome词汇.md`](../../../docs/architecture/TUI信息面与chrome词汇.md) 表内词——尤其 **下轮预告**（next-turn cue，≠ message）、**滚动提示**（`UiEntry::ScrollNotice` / `push_scroll_notice`）、**壳层通告**（chrome toast / `push_chrome_toast`，status 上方；≠ ScrollNotice / `UiEntry::Error`）、**尾随 / 顶插**。禁止主用「挂账」「Status trail」「system 消息」/`UiEntry::System` 指 UI。
 
-**与 `agent_demo` 分界**：`just demo-tui` / `packages/…/agent_demo` = 包引擎演示，**不是**本面 SSOT，**不是** DESIGN playground。**MUST NOT** 把 demo 屏上英文 / plate 文案当成产品 chrome 真值；**MUST NOT** 为对齐本词表去强改 demo 字符串（除非人类明确要求）。产品视觉改动走本目录 + `just open-design-playground` / 产品测。
+**与 `agent_demo` 分界**：`just demo-tui` / `packages/…/agent_demo` = 包引擎演示，**不是**本面 SSOT，**不是** designing。**MUST NOT** 把 demo 屏上英文 / plate 文案当成产品 chrome 真值；**MUST NOT** 为对齐本词表去强改 demo 字符串（除非人类明确要求）。产品视觉意图走 `designing/` + `just open-designing`；运行时以产品测 / host 为准。
 
 **与未来 Web 的公共体验（跨面）**：凡 TUI 与 Web **共有**的能力（会话、改道、折叠/展开类减噪、即时设置等），用户学习模型与动作语义 MUST 同源——理解成本一致；快捷键 / 发现方式 SHOULD 尽量同构（允许 OS 修饰键差异与 Web 额外点击）。**仅**某一面独有的能力才可另起交互。约束板：[`docs/roadmaps/Web与TUI同源.md`](../../../docs/roadmaps/Web与TUI同源.md)；落地心智：[`docs/architecture/库与多客户端.md`](../../../docs/architecture/库与多客户端.md)。改公共交互前先对齐全套面，禁止静默开出「只教 TUI」的第二套故事。当前未兑现切片示例：长历史 activity 折叠（同文 M1b；草案 `c1760`；前置 `c1755` 已归档）。
 
