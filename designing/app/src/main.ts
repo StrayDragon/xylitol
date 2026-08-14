@@ -5,7 +5,7 @@ import { loadModules } from "./catalog";
 import { renderGrid } from "./cell-grid";
 import { handoffCopy, handoffMarkdown } from "./handoff";
 import { renderMarkdown } from "./markdown";
-import { cycleState, stateFromComponentKey } from "./interact";
+import { cycleState } from "./interact";
 import {
   formatPath,
   formatUrl,
@@ -35,6 +35,7 @@ let frame = 0;
 let playing = false;
 let scheme: Scheme = "light";
 let playTimer = 0;
+let lastAction = "opened";
 
 function currentState() {
   return current?.states[stateId];
@@ -96,7 +97,10 @@ function startPlay(): void {
     if (!n) return;
     frame = (frame + 1) % n;
     paintStage();
-    paintStageBar();
+    const label = document.getElementById("frame-label");
+    if (label) {
+      label.textContent = `frame ${frame + 1}/${n}`;
+    }
   }, spinMs(st));
 }
 
@@ -142,6 +146,7 @@ function paintNav(): void {
         current = mod;
         stateId = Object.keys(mod.states)[0] ?? "";
         frame = 0;
+        lastAction = `opened module ${mod.surface}/${mod.id} state ${stateId}`;
         setPlaying(false);
         paint("push");
       });
@@ -159,6 +164,7 @@ function paintChips(): void {
     btn.textContent = id;
     btn.setAttribute("aria-pressed", String(id === stateId));
     btn.addEventListener("click", () => {
+      lastAction = `selected state chip: ${stateId} → ${id}`;
       stateId = id;
       frame = 0;
       setPlaying(false);
@@ -173,32 +179,42 @@ function paintStageBar(): void {
   const st = currentState();
   const hint = document.createElement("p");
   hint.className = "stage-hint";
-  hint.textContent = "←→ 切固定态 · [ ] 切帧 · Space 播放 · 格子可框选复制";
+  hint.textContent = "点击预览切固定态 · 动画只用播放/暂停按钮";
   stageBarEl.appendChild(hint);
   if (!st || !hasSpin(st)) return;
   const n = spinFrames(st).length;
   const wrap = document.createElement("div");
   wrap.className = "frame-controls";
   const label = document.createElement("span");
+  label.id = "frame-label";
   label.textContent = `frame ${frame + 1}/${n}`;
   const prev = document.createElement("button");
   prev.type = "button";
-  prev.textContent = "[";
-  prev.title = "上一帧";
-  prev.addEventListener("click", () => stepFrame(-1));
+  prev.textContent = "上一帧";
+  prev.addEventListener("click", (ev) => {
+    ev.stopPropagation();
+    lastAction = "clicked prev frame";
+    stepFrame(-1);
+  });
   const play = document.createElement("button");
   play.type = "button";
   play.textContent = playing ? "暂停" : "播放";
   play.setAttribute("aria-pressed", String(playing));
-  play.addEventListener("click", () => {
-    setPlaying(!playing);
+  play.addEventListener("click", (ev) => {
+    ev.stopPropagation();
+    const next = !playing;
+    lastAction = next ? "clicked play" : "clicked pause";
+    setPlaying(next);
     paint("replace");
   });
   const next = document.createElement("button");
   next.type = "button";
-  next.textContent = "]";
-  next.title = "下一帧";
-  next.addEventListener("click", () => stepFrame(1));
+  next.textContent = "下一帧";
+  next.addEventListener("click", (ev) => {
+    ev.stopPropagation();
+    lastAction = "clicked next frame";
+    stepFrame(1);
+  });
   wrap.append(prev, play, next, label);
   stageBarEl.appendChild(wrap);
 }
@@ -212,18 +228,21 @@ function paintStage(): void {
   }
   const term = document.createElement("div");
   term.className = "term-frame";
-  term.tabIndex = 0;
-  term.setAttribute("role", "application");
-  term.setAttribute("aria-label", "设计稿预览，可键盘操作");
+  term.setAttribute("aria-label", "设计稿预览，点击切固定态");
+  const stateKeys = current ? Object.keys(current.states) : [];
+  if (stateKeys.length > 1) term.dataset.clickable = "true";
   term.appendChild(renderGrid(applyFrame(state, frame)));
   term.addEventListener("click", () => {
     const sel = window.getSelection();
     if (sel && String(sel).length) return;
-    const st = currentState();
-    if (st && hasSpin(st)) {
-      setPlaying(!playing);
-      paint("replace");
-    }
+    if (!current || Object.keys(current.states).length < 2) return;
+    const next = cycleState(current, stateId, 1);
+    if (next === stateId) return;
+    lastAction = `clicked preview: ${current.id}/${stateId} → ${current.id}/${next}`;
+    stateId = next;
+    frame = 0;
+    setPlaying(false);
+    paint("push");
   });
   stageEl.appendChild(term);
 }
@@ -353,13 +372,15 @@ function paintHandoff(): void {
   const route = routeNow();
   handoffMdEl.replaceChildren();
   if (!route || !current) return;
-  handoffMdEl.appendChild(renderMarkdown(handoffMarkdown({ route, mod: current })));
+  handoffMdEl.appendChild(
+    renderMarkdown(handoffMarkdown({ route, mod: current, origin: location.origin, lastAction })),
+  );
 }
 
 async function copyHandoff(): Promise<void> {
   const route = routeNow();
   if (!route || !current) return;
-  const text = handoffCopy({ route, mod: current });
+  const text = handoffCopy({ route, mod: current, origin: location.origin, lastAction });
   try {
     await navigator.clipboard.writeText(text);
   } catch {
@@ -378,7 +399,9 @@ async function copyHandoff(): Promise<void> {
 }
 
 schemeBtn.addEventListener("click", () => {
-  scheme = scheme === "light" ? "dark" : "light";
+  const next = scheme === "light" ? "dark" : "light";
+  lastAction = `clicked scheme: ${scheme} → ${next}`;
+  scheme = next;
   paint("replace");
 });
 
@@ -388,49 +411,13 @@ copyBtn.addEventListener("click", () => {
 
 window.addEventListener("popstate", () => {
   applyRoute(parseLocation(), current);
+  lastAction = "browser back/forward";
   paint("replace");
 });
 
-window.addEventListener(
-  "keydown",
-  (ev) => {
-  const t = ev.target;
-  if (t instanceof HTMLElement) {
-    const tag = t.tagName;
-    if (tag === "INPUT" || tag === "TEXTAREA" || t.isContentEditable) return;
-  }
-  if (!current) return;
-  const fromKey = stateFromComponentKey(current, stateId, ev);
-  if (fromKey && fromKey !== stateId && current.states[fromKey]) {
-    ev.preventDefault();
-    stateId = fromKey;
-    frame = 0;
-    setPlaying(false);
-    paint("push");
-    return;
-  }
-  if (ev.key === "ArrowLeft" || ev.key === "ArrowRight") {
-    ev.preventDefault();
-    stateId = cycleState(current, stateId, ev.key === "ArrowRight" ? 1 : -1);
-    frame = 0;
-    setPlaying(false);
-    paint("push");
-    return;
-  }
-  if (ev.key === "[" || ev.key === "]") {
-    ev.preventDefault();
-    stepFrame(ev.key === "]" ? 1 : -1);
-    return;
-  }
-  const spinning = currentState();
-  if (ev.key === " " && spinning && hasSpin(spinning)) {
-    ev.preventDefault();
-    setPlaying(!playing);
-    paint("replace");
-  }
-  },
-  true,
-);
-
 applyRoute(parseLocation(), current);
+{
+  const opened = routeNow();
+  lastAction = opened ? `opened ${formatUrl(opened)}` : "opened";
+}
 paint("replace");

@@ -117,6 +117,9 @@ main h2 {
 .term-frame:focus {
   outline: 1px solid var(--accent);
 }
+.term-frame[data-clickable="true"] {
+  cursor: pointer;
+}
 
 aside {
   border-left: 1px solid var(--hairline);
