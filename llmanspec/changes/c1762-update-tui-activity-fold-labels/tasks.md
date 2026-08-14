@@ -45,12 +45,14 @@
 
 - [x] 4.1 打开簇进行时：Editing / Exploring / Running；封口改过去式
 - [x] 4.2 更新 `live_tape` 期望；禁止纯 read 显示 Editing
+- [x] 4.3 live 默认折叠子项（不弹流式正文）；Thought 合并 thinking L1；paint 不每帧改折叠态
+- [x] 4.4 Thought 时长：live 用本流第一次 ThinkingDelta 的墙钟；flush 后冻在该 Thinking id；resume 无戳则省略，禁止伪造
 
 ### 5. 夹具与闸
 
 - [x] 5.1 `/debug activity-fold-live` / `activity-fold-resume` 断言跟新词表
 - [x] 5.2 `just fmt` + 相关 `activity_fold` / harness 测
-- [x] 5.3 手测指针：session `460ad16e`「cool 总结下」（不进 qa）
+- [x] 5.3 手测指针：session `460ad16e`「cool 总结下」（不进 qa）；`/debug activity-fold-live`：Planning → Thought（无 `thinking (Ctrl+T)`、默不弹正文、≥1s 见 `Thought Ns`）→ Exploring 簇头默认折叠 → 点三角见 Read → 助手正文始终外显 → 下一提问后上一轮 `Worked for`
 
 ## 收口
 

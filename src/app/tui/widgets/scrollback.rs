@@ -16,8 +16,9 @@ use super::glyphs::GlyphSet;
 #[cfg(test)]
 use crate::app::tui::activity_fold::is_path_placeholder;
 use crate::app::tui::activity_fold::{
-    ActivityFoldState, SegmentLevel, cluster_middle_indices, cluster_omits_header, count_cluster,
-    format_cluster_header, format_envelope_line, middle_entry_indices, partition_segments,
+    ActivityFoldState, SegmentLevel, cluster_is_thought_only, cluster_middle_indices,
+    cluster_omits_header, count_cluster, format_cluster_header, format_elapsed_secs,
+    format_envelope_line, middle_entry_indices, partition_segments, streaming_thought_counts,
 };
 use crate::app::tui::bridge::{
     AskPhase, BashBlockStatus, CompactionBlockStatus, UiEntry, UiModel, UiPhase,
@@ -773,6 +774,11 @@ pub fn render_scrollback(
     let mut skip_mid_asst: HashSet<usize> = HashSet::new();
     let mut envelope_summary_at: HashMap<usize, usize> = HashMap::new();
     let mut cluster_header_at: HashMap<usize, (usize, usize)> = HashMap::new();
+    let mut thought_only_mids: HashSet<usize> = HashSet::new();
+    // Live open cluster only — used by the thinking stream paint. Do not scan
+    // older turns (a prior Thought cluster must not swallow the live stream).
+    let mut live_open_cluster = false;
+    let mut live_open_cluster_expanded = false;
     for (si, seg) in segments.iter().enumerate() {
         let live_seg = live_seg_idx == Some(si);
         let level = activity.effective_level(&seg.id);
@@ -803,20 +809,22 @@ pub fn render_scrollback(
             let has_inflight_tools = mids
                 .iter()
                 .any(|&idx| model.entries.get(idx).is_some_and(is_inflight_hidden));
-            if is_open && has_inflight_tools {
-                activity.ensure_live_inflight_expanded(&cl.id);
-            } else if !is_open {
-                // Only fold auto-expand when the cluster seals (assistant body).
-                // ToolEnd in the same open cluster MUST NOT collapse — that jumps the screen.
-                activity.drop_live_inflight_auto_expand(&cl.id);
-            }
             let expanded = activity.cluster_kids_visible(&seg.id, &cl.id);
             // Live open cluster with tools (including inflight) gets a foldable
-            // cluster header. Compaction-only clusters never get a second header.
+            // cluster header. Kids stay collapsed until the user opens them —
+            // paint must not auto-expand (avoids popping bodies and per-frame HashSet writes).
             let paint_header =
                 !omit_header && !(is_open && !sealed_nonempty && !has_inflight_tools);
             if paint_header && let Some(&first) = mids.first() {
                 cluster_header_at.insert(first, (si, ci));
+            }
+            let thought_only = cluster_is_thought_only(&model.entries, cl);
+            if thought_only {
+                thought_only_mids.extend(mids.iter().copied());
+            }
+            if is_open {
+                live_open_cluster = true;
+                live_open_cluster_expanded = expanded;
             }
             for &idx in &mids {
                 let Some(entry) = model.entries.get(idx) else {
@@ -864,7 +872,7 @@ pub fn render_scrollback(
                     &segments,
                     si,
                     ci,
-                    &model.entries,
+                    model,
                     activity,
                     live_seg_idx,
                     glyphs,
@@ -882,7 +890,7 @@ pub fn render_scrollback(
                 &segments,
                 si,
                 ci,
-                &model.entries,
+                model,
                 activity,
                 live_seg_idx,
                 glyphs,
@@ -927,26 +935,31 @@ pub fn render_scrollback(
                     }
                 }
                 UiEntry::Thinking { id, text } => {
-                    // Flush like assistant body — thinking is content, not a status tool block.
-                    let expanded = fold.thinking_effective(id);
-                    let marker = if expanded {
-                        glyphs.unfold()
-                    } else {
-                        glyphs.fold()
-                    };
-                    let mw = marker_cols(marker);
-                    let header =
-                        theme.paint_muted(&format!("{marker} thinking  {}", key_hint("Ctrl+T")));
-                    let header_row = lines.len();
-                    push_wrapped(&mut lines, &header, width);
-                    block_hits.push(CachedFoldHit {
-                        row_offset: header_row,
-                        col_start: 0,
-                        col_end: mw,
-                        target: FoldTarget::Thinking(id.clone()),
-                    });
-                    if expanded {
+                    if thought_only_mids.contains(&entry_idx) {
+                        // Cluster header is already `Thought`; don't paint a second `thinking` row.
                         push_wrapped(&mut lines, &theme.paint_muted(text), width);
+                    } else {
+                        // Flush like assistant body — thinking is content, not a status tool block.
+                        let expanded = fold.thinking_effective(id);
+                        let marker = if expanded {
+                            glyphs.unfold()
+                        } else {
+                            glyphs.fold()
+                        };
+                        let mw = marker_cols(marker);
+                        let header = theme
+                            .paint_muted(&format!("{marker} thinking  {}", key_hint("Ctrl+T")));
+                        let header_row = lines.len();
+                        push_wrapped(&mut lines, &header, width);
+                        block_hits.push(CachedFoldHit {
+                            row_offset: header_row,
+                            col_start: 0,
+                            col_end: mw,
+                            target: FoldTarget::Thinking(id.clone()),
+                        });
+                        if expanded {
+                            push_wrapped(&mut lines, &theme.paint_muted(text), width);
+                        }
                     }
                 }
                 UiEntry::Tool {
@@ -1285,12 +1298,28 @@ pub fn render_scrollback(
         need_spacer = true;
         match kind {
             "thinking" => {
-                // att8 / att21: streaming thinking MUST stay expanded.
-                let marker = glyphs.unfold();
-                let header =
-                    theme.paint_muted(&format!("{marker} thinking  {}", key_hint("Ctrl+T")));
-                push_wrapped(&mut lines, &header, width);
-                push_wrapped(&mut lines, &theme.paint_muted(&format!("{text}…")), width);
+                if activity.settings.enabled {
+                    paint_folded_streaming_thought(
+                        &mut lines,
+                        fold_hits,
+                        activity,
+                        model,
+                        &segments,
+                        live_open_cluster,
+                        live_open_cluster_expanded,
+                        text,
+                        glyphs,
+                        theme,
+                        width,
+                    );
+                } else {
+                    // att8 / att21: without ActivityFold, streaming thinking stays expanded.
+                    let marker = glyphs.unfold();
+                    let header =
+                        theme.paint_muted(&format!("{marker} thinking  {}", key_hint("Ctrl+T")));
+                    push_wrapped(&mut lines, &header, width);
+                    push_wrapped(&mut lines, &theme.paint_muted(&format!("{text}…")), width);
+                }
             }
             "assistant" => {
                 lines.extend(paint_streaming_assistant(
@@ -1361,7 +1390,7 @@ fn paint_cluster_header_row(
     segments: &[crate::app::tui::activity_fold::ActivitySegment],
     si: usize,
     ci: usize,
-    entries: &[UiEntry],
+    model: &UiModel,
     activity: &ActivityFoldState,
     live_seg_idx: Option<usize>,
     glyphs: GlyphSet,
@@ -1377,8 +1406,18 @@ fn paint_cluster_header_row(
     let live_seg = live_seg_idx == Some(si);
     let expanded = activity.cluster_kids_visible(&seg.id, &cl.id);
     let progressive = is_open_live_cluster(seg, ci, live_seg);
-    let counts = count_cluster(entries, cl);
-    let plain = format_cluster_header(glyphs, &counts, expanded, progressive);
+    let counts = count_cluster(&model.entries, cl);
+    let thought_dur = counts
+        .is_thought_only()
+        .then(|| thought_duration_label(model, Some(cl)))
+        .flatten();
+    let plain = format_cluster_header(
+        glyphs,
+        &counts,
+        expanded,
+        progressive,
+        thought_dur.as_deref(),
+    );
     let marker = if expanded {
         glyphs.unfold()
     } else {
@@ -1390,6 +1429,91 @@ fn paint_cluster_header_row(
     push_wrapped(lines, &painted, width);
     fold_hits.push(row_start, 0, mw, FoldTarget::Cluster(cl.id.clone()));
     *need_spacer = true;
+}
+
+/// ActivityFold on: merge streaming Think into a Thought bar (no second `thinking` header).
+///
+/// Cluster id matches the cluster `partition_segments` will assign when the
+/// stream flushes, so a user expand survives ToolStart / MessageEnd.
+#[allow(clippy::too_many_arguments)] // paint planes: lines, hits, activity, theme
+fn paint_folded_streaming_thought(
+    lines: &mut Vec<String>,
+    fold_hits: &mut FoldHitTable,
+    activity: &ActivityFoldState,
+    model: &UiModel,
+    segments: &[crate::app::tui::activity_fold::ActivitySegment],
+    live_open_cluster: bool,
+    live_open_cluster_expanded: bool,
+    text: &str,
+    glyphs: GlyphSet,
+    theme: LayoutTheme,
+    width: usize,
+) {
+    if live_open_cluster {
+        // Header already painted (Thought or Editing/Exploring/…). Thinking
+        // stream is a kid — no second Thought / `thinking` row.
+        if live_open_cluster_expanded {
+            push_wrapped(lines, &theme.paint_muted(&format!("{text}…")), width);
+        }
+        return;
+    }
+
+    let (env_id, cluster_id) = next_live_thought_cluster_id(&model.entries, segments);
+    let expanded = activity.cluster_kids_visible(&env_id, &cluster_id);
+    let counts = streaming_thought_counts();
+    let thought_dur = thought_duration_label(model, None);
+    let plain = format_cluster_header(glyphs, &counts, expanded, true, thought_dur.as_deref());
+    let marker = if expanded {
+        glyphs.unfold()
+    } else {
+        glyphs.fold()
+    };
+    let mw = marker_cols(marker);
+    let painted = theme.paint_muted(&plain);
+    let row_start = lines.len();
+    push_wrapped(lines, &painted, width);
+    fold_hits.push(row_start, 0, mw, FoldTarget::Cluster(cluster_id));
+    if expanded {
+        push_wrapped(lines, &theme.paint_muted(&format!("{text}…")), width);
+    }
+}
+
+fn thought_duration_label(
+    model: &UiModel,
+    cluster: Option<&crate::app::tui::activity_fold::ActivityCluster>,
+) -> Option<String> {
+    let mut secs = 0u64;
+    if let Some(cl) = cluster {
+        for idx in cluster_middle_indices(&model.entries, cl) {
+            if let Some(UiEntry::Thinking { id, .. }) = model.entries.get(idx)
+                && let Some(s) = model.thinking_elapsed_secs.get(id)
+            {
+                secs = secs.saturating_add(*s);
+            }
+        }
+    }
+    if !model.streaming_thinking.is_empty()
+        && let Some(start) = model.thinking_started_at
+    {
+        secs = secs.saturating_add(start.elapsed().as_secs());
+    }
+    (secs > 0).then(|| format_elapsed_secs(secs))
+}
+
+fn next_live_thought_cluster_id(
+    entries: &[UiEntry],
+    segments: &[crate::app::tui::activity_fold::ActivitySegment],
+) -> (String, String) {
+    if let Some(seg) = segments.last() {
+        let id = format!("{}:c{}", seg.id, seg.clusters.len());
+        return (seg.id.clone(), id);
+    }
+    let user_idx = entries
+        .iter()
+        .rposition(|e| matches!(e, UiEntry::User { .. }))
+        .unwrap_or(0);
+    let env = format!("seg-{user_idx}");
+    (env.clone(), format!("{env}:c0"))
 }
 
 fn is_open_live_cluster(

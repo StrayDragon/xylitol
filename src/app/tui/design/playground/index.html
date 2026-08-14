@@ -1069,7 +1069,7 @@
         <h2>Activity fold</h2>
         <p class="spec">
           <a href="../activity-fold.md">activity-fold.md</a> ·
-          流式打开簇 = 队列（默认只留 inflight）·
+          流式打开簇 = 队列（默认折叠子项）·
           旧 turn 信封 <code>Worked for</code> · 展示扁平同列（层级只在数据里）· 点 transcript 行折叠 · TUI 一次 paint，无滑入 ·
           L1「Read tests.rs」等细账<strong>静图不可点</strong>；产品 TUI 走块级折叠（expandable）
         </p>
@@ -2284,13 +2284,11 @@
         return html;
       }
       if (kind === "thinking") {
-        html += afRow("Thinking", "live-tail");
-        html += afRow("  先确认簇切刀是助手正文…");
+        html += afRow(`${afTri(live.open)} Thought`, "live-head");
+        if (live.open) html += afRow("  先确认簇切刀是助手正文…");
         return html;
       }
       if (kind === "editing") {
-        html += afRow(`${afTri(true)} Editing tests.rs`, "live-head");
-        html += afRow(`${afTri(true)} Write tests.rs`);
         html += afRow("Planning next moves", "live-tail");
         return html;
       }
@@ -2304,12 +2302,16 @@
       (model.frozen || []).forEach((c) => {
         html += afCluster(c, `fz:${c.id}`);
       });
-      if (live.open && live.sealed.length) {
+      const showLiveHead =
+        live.inflight !== "thinking" &&
+        live.inflight !== "asking" &&
+        ((live.sealed && live.sealed.length) || live.inflight === "editing");
+      if (showLiveHead) {
         html += afRow(
-          `${afTri(true)} ${live.summary}${afDiff(live)}`,
+          `${afTri(live.open)} ${live.summary}${afDiff(live)}`,
           "live-head",
         );
-        html += afKids(live.sealed);
+        if (live.open) html += afKids(live.sealed);
       }
       html += afInflight(live);
       return html;
@@ -2432,7 +2434,7 @@
         return;
       }
       if (hit === "live-head" && af.live) {
-        af.live.open = false;
+        af.live.open = !af.live.open;
         return;
       }
       if (hit.startsWith("ask:") && af.live) {

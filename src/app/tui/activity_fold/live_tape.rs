@@ -77,13 +77,13 @@ pub fn live_window_frames() -> Vec<LiveWindowFrame> {
         LiveWindowFrame {
             name: "2-thinking-stream-is-inflight",
             events: vec![XyEvent::ThinkingDelta("consider next edit".into())],
-            must: &["thinking"],
-            must_not: &["Planning next moves", "Worked for"],
+            must: &["Thought"],
+            must_not: &["Planning next moves", "Worked for", "Ctrl+T"],
         },
         LiveWindowFrame {
             name: "3-inflight-read-short-line",
             events: vec![tool_start("r1", "read", "old.rs")],
-            must: &["Exploring old.rs", "Read", "Planning next moves"],
+            must: &["Exploring old.rs", "Planning next moves"],
             must_not: &["Worked for", "Editing"],
         },
         LiveWindowFrame {

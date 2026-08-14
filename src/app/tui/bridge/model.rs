@@ -202,6 +202,10 @@ pub struct UiModel {
     pub(crate) streaming_assistant: String,
     /// In-progress thinking text.
     pub(crate) streaming_thinking: String,
+    /// Wall-clock start of the current thinking stream (first delta of a burst).
+    pub(crate) thinking_started_at: Option<std::time::Instant>,
+    /// Frozen thinking elapsed secs, keyed by Thinking entry id (live session only).
+    pub(crate) thinking_elapsed_secs: std::collections::HashMap<String, u64>,
     pub(crate) current_role: Option<String>,
     /// Incomplete UTF-8 bytes across bang stream chunks (c669).
     bash_utf8_pending: Vec<u8>,
@@ -224,6 +228,8 @@ impl UiModel {
             status: None,
             streaming_assistant: String::new(),
             streaming_thinking: String::new(),
+            thinking_started_at: None,
+            thinking_elapsed_secs: std::collections::HashMap::new(),
             current_role: None,
             bash_utf8_pending: Vec::new(),
         }
@@ -416,6 +422,7 @@ impl UiModel {
     pub fn clear_streaming_buffers(&mut self) {
         self.streaming_thinking.clear();
         self.streaming_assistant.clear();
+        self.thinking_started_at = None;
         self.current_role = None;
     }
 
@@ -512,6 +519,12 @@ impl UiModel {
         if !self.streaming_thinking.is_empty() {
             let text = std::mem::take(&mut self.streaming_thinking);
             let id = allocate_thinking_id(&self.entries, &text);
+            if let Some(start) = self.thinking_started_at.take() {
+                let secs = start.elapsed().as_secs();
+                if secs > 0 {
+                    self.thinking_elapsed_secs.insert(id.clone(), secs);
+                }
+            }
             self.entries.push(UiEntry::Thinking { id, text });
         }
         if !self.streaming_assistant.is_empty() {

@@ -4668,6 +4668,29 @@ fn activity_fold_thinking_only_is_thought_not_explored() {
         !plain.contains("Explored"),
         "must not invent Explored: {plain}"
     );
+    assert!(
+        !plain.contains("consider"),
+        "Thought cluster kids stay folded by default: {plain}"
+    );
+    assert!(
+        !plain
+            .lines()
+            .any(|l| l.contains("thinking") && l.contains("Ctrl+T")),
+        "must not paint a second thinking L1 header: {plain}"
+    );
+
+    root.toggle_fold_target(super::widgets::FoldTarget::Cluster("seg-0:c0".into()));
+    let opened = strip_ansi_activity(&root.render(100).join("\n"));
+    assert!(
+        opened.contains("consider"),
+        "opening Thought reveals the body: {opened}"
+    );
+    assert!(
+        !opened
+            .lines()
+            .any(|l| l.contains("thinking") && l.contains("Ctrl+T")),
+        "expanded Thought still has no thinking L1 header: {opened}"
+    );
 }
 
 #[test]
@@ -4734,8 +4757,8 @@ fn activity_fold_live_write_placeholder_is_editing_not_dots() {
         "must not treat path placeholder as a filename: {plain}"
     );
     assert!(
-        plain.contains("Write") && plain.contains("fn demo"),
-        "streaming write block must stay visible under the cluster: {plain}"
+        !plain.contains("fn demo"),
+        "streaming write body stays folded by default: {plain}"
     );
     assert!(
         plain.contains("Planning next moves"),
@@ -4750,6 +4773,13 @@ fn activity_fold_live_write_placeholder_is_editing_not_dots() {
         root.fold_hits().regions
     );
 
+    root.toggle_fold_target(FoldTarget::Cluster("seg-0:c0".into()));
+    let opened = strip_ansi_activity(&root.render(100).join("\n"));
+    assert!(
+        opened.contains("fn demo") && opened.contains("Write"),
+        "opening the cluster reveals the streaming write: {opened}"
+    );
+
     if let super::bridge::UiEntry::Tool { done, .. } = &mut model.entries[1] {
         *done = true;
     }
@@ -4757,7 +4787,54 @@ fn activity_fold_live_write_placeholder_is_editing_not_dots() {
     let after_end = strip_ansi_activity(&root.render(100).join("\n"));
     assert!(
         after_end.contains("fn demo") && after_end.contains("Write"),
-        "ToolEnd on the still-open cluster must not auto-collapse kids: {after_end}"
+        "ToolEnd on an opened cluster must not auto-collapse kids: {after_end}"
+    );
+}
+
+#[test]
+fn activity_fold_live_thinking_stream_merges_into_thought() {
+    use super::layout::UiRoot;
+    use super::widgets::FoldTarget;
+
+    let mut root = UiRoot::new();
+    let mut model = UiModel::new();
+    model.phase = UiPhase::Busy;
+    model
+        .entries
+        .push(super::bridge::UiEntry::User { text: "u".into() });
+    model.streaming_thinking = "consider next edit".into();
+    model.thinking_started_at =
+        Some(std::time::Instant::now() - std::time::Duration::from_secs(17));
+    root.apply_ui_model(&model);
+    let plain = strip_ansi_activity(&root.render(100).join("\n"));
+    assert!(
+        plain.contains("Thought"),
+        "stream must be a Thought bar: {plain}"
+    );
+    assert!(
+        plain.contains("Thought 17s"),
+        "live Thought must show elapsed wall time: {plain}"
+    );
+    assert!(
+        !plain.contains("consider next edit"),
+        "Thought body stays folded by default: {plain}"
+    );
+    assert!(
+        !plain
+            .lines()
+            .any(|l| l.contains("thinking") && l.contains("Ctrl+T")),
+        "must not show a second thinking header: {plain}"
+    );
+    assert!(
+        !plain.contains("Planning next moves"),
+        "thinking stream replaces Planning: {plain}"
+    );
+
+    root.toggle_fold_target(FoldTarget::Cluster("seg-0:c0".into()));
+    let opened = strip_ansi_activity(&root.render(100).join("\n"));
+    assert!(
+        opened.contains("consider next edit"),
+        "opening Thought reveals the stream: {opened}"
     );
 }
 

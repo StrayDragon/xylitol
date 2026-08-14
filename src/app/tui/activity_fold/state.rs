@@ -54,12 +54,8 @@ pub struct ActivityFoldState {
     levels: HashMap<String, SegmentLevel>,
     /// Segments that have been auto-folded or user-collapsed at least once.
     entered: HashSet<String>,
-    /// Clusters independently expanded while envelope is L2.
+    /// Clusters independently expanded while envelope is L2 / keep-window L0.
     cluster_open: HashSet<String>,
-    /// Live inflight cluster the user collapsed; paint must not auto-reopen it.
-    cluster_user_collapsed: HashSet<String>,
-    /// Auto-expanded while tools are inflight; dropped when inflight ends unless the user opened it.
-    cluster_auto_open: HashSet<String>,
     clocks: HashMap<String, SegmentClock>,
     /// Paint-time reservation (not FoldHitTable).
     pub row_spans: SegmentRowSpans,
@@ -112,10 +108,6 @@ impl ActivityFoldState {
         self.entered.retain(|k| live_ids.contains(k));
         self.clocks.retain(|k, _| live_ids.contains(k));
         self.cluster_open
-            .retain(|cid| live_ids.iter().any(|id| cid.starts_with(&format!("{id}:"))));
-        self.cluster_user_collapsed
-            .retain(|cid| live_ids.iter().any(|id| cid.starts_with(&format!("{id}:"))));
-        self.cluster_auto_open
             .retain(|cid| live_ids.iter().any(|id| cid.starts_with(&format!("{id}:"))));
     }
 
@@ -239,34 +231,11 @@ impl ActivityFoldState {
         }
         if self.cluster_open.contains(cluster_id) {
             self.cluster_open.remove(cluster_id);
-            self.cluster_auto_open.remove(cluster_id);
-            self.cluster_user_collapsed.insert(cluster_id.to_string());
         } else {
             self.cluster_open.insert(cluster_id.to_string());
-            self.cluster_auto_open.remove(cluster_id);
-            self.cluster_user_collapsed.remove(cluster_id);
         }
         self.mark_entered(&env_id);
         true
-    }
-
-    /// Live open cluster with inflight tools defaults expanded so streaming rows stay visible.
-    pub fn ensure_live_inflight_expanded(&mut self, cluster_id: &str) {
-        if self.cluster_user_collapsed.contains(cluster_id) {
-            return;
-        }
-        if self.cluster_open.contains(cluster_id) {
-            return;
-        }
-        self.cluster_open.insert(cluster_id.to_string());
-        self.cluster_auto_open.insert(cluster_id.to_string());
-    }
-
-    /// Drop auto-expand when inflight ends or the cluster seals (Planning click stays).
-    pub fn drop_live_inflight_auto_expand(&mut self, cluster_id: &str) {
-        if self.cluster_auto_open.remove(cluster_id) {
-            self.cluster_open.remove(cluster_id);
-        }
     }
 
     /// Planning next moves: expand the last cluster of the newest envelope.
