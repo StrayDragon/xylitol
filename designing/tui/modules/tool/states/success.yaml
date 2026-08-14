@@ -1,0 +1,11 @@
+id: tool.success
+cols: 80
+must_contain:
+  - "Read"
+  - "activity-fold.md"
+must_not_contain:
+  - "|"
+lines:
+  -
+    - { text: " ", token: success }
+    - { text: " Read activity-fold.md", token: tool }

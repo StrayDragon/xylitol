@@ -1,0 +1,12 @@
+id: expandable.thinking
+cols: 80
+must_contain:
+  - "Thinking"
+  - "(Ctrl+T)"
+must_not_contain:
+  - "▎"
+  - "(Alt+E)"
+  - "Planning next moves"
+lines:
+  -
+    - { text: "Thinking  (Ctrl+T)", token: muted }

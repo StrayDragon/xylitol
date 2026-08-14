@@ -1,0 +1,20 @@
+id: models.wide
+cols: 80
+must_contain:
+  - "models"
+  - "› <model-fast>"
+  - "[high]"
+  - "off"
+  - "max"
+  - "—"
+must_not_contain:
+  - "c630"
+  - "/model "
+  - "reasoning"
+lines:
+  -
+    - { text: "models", token: muted }
+  -
+    - { text: "› <model-fast>  off  low  [high]  max", token: on-surface, rev: true }
+  -
+    - { text: "  other/gpt-mini  —", token: muted }

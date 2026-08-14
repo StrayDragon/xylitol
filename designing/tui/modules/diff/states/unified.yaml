@@ -1,0 +1,17 @@
+id: diff.unified
+cols: 80
+must_contain:
+  - "- 10"
+  - "+ 10"
+  - "  11"
+must_not_contain:
+  - "--- a/"
+  - "+++ b/"
+  - " │ "
+lines:
+  -
+    - { text: "- 10 fn old()", token: diff-removed }
+  -
+    - { text: "+ 10 fn new()", token: diff-added }
+  -
+    - { text: "  11     ok()", token: diff-context }

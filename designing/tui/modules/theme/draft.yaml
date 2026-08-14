@@ -1,0 +1,11 @@
+id: theme
+title: 主题
+surface: tui
+summary: /theme 切 dark/light；默认 dark，不开 auto。
+alignment:
+  chrome: 替换 editor 的 Themes 槽
+  item: 与 /model 同为 busy Allow 列表
+todos:
+  - { done: true, text: "不抄 demo Ctrl+P" }
+notes: |
+  代码 SSOT：/theme。产品默认 Palette::dark。

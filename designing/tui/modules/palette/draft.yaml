@@ -1,0 +1,11 @@
+id: palette
+title: 色板
+surface: tui
+summary: DESIGN.md 语义色；本页只展示 token，不另写 hex。
+alignment:
+  chrome: 非运行时槽，仅设计对照
+  item: "与 Palette::dark/light 闸对齐"
+todos:
+  - { done: true, text: "色值来自 generated/tokens.css" }
+notes: |
+  产品默认 Palette::dark。/theme 切 light。

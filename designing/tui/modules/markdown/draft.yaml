@@ -1,0 +1,11 @@
+id: markdown
+title: Markdown
+surface: tui
+summary: 可复制：无井号标题前缀；链接 text (url)；强调无可见星号。
+alignment:
+  chrome: 助手 flush 正文
+  item: 不是独立 Markdown 浏览面
+todos:
+  - { done: true, text: "对齐 adp2 可见形态" }
+notes: |
+  代码 SSOT：markdown paint。

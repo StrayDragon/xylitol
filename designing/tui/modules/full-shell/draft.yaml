@@ -1,0 +1,10 @@
+id: full-shell
+title: 整壳
+surface: tui
+summary: idle/busy 整屏对照：transcript + 队列 + toast + status + editor + footer。
+alignment:
+  chrome: 自上而下 scrollback → 队列 → toast → status → editor → footer
+todos:
+  - { done: true, text: "busy 示意 Working + footer active" }
+notes: |
+  组合稿；细节以各模块 + 产品代码为准。

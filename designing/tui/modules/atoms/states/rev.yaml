@@ -1,0 +1,9 @@
+id: atoms.rev
+cols: 80
+must_contain:
+  - "selected"
+must_not_contain:
+  - "(包)"
+lines:
+  -
+    - { text: "› selected row", token: on-surface, rev: true }

@@ -47,31 +47,26 @@ c2200 PreviewInject / HostSession-in-browser 是 **真 host 夹具**，与本票
 
 **不做**：wasm `xylitol-tui`、嵌 `HostSession`、PreviewInject、`/debug` 侧栏、tui-pantry、`agent_demo`、Scene 框架、Figma、一次删光旧 md/HTML。
 
-## 目录落点（选定，不两套）
+## 目录落点（现行）
+
+仓库顶层（便于以后加 `designing/web/`；未交付不建空目录）：
 
 ```text
-src/app/tui/designing/
-  AGENTS.md                 # 人/Agent 分界
+designing/
+  AGENTS.md
   app/                      # bun + Vite vanilla TS（package.json 只在这里）
-  modules/<id>/
+  tui/modules/<id>/
+    draft.yaml              # 摘要 / 对齐 / todos / 组件键 / 备注
     intent.md
     states/*.yaml
-    preview.ts              # 组装该模块 cell/span
   generated/                # AGENT-INDEX.md、tokens.css/js；勿手改
 ```
 
-不放 `tools/tui-designing/`（Agent 要靠近产品面）。`packages/xylitol-tui` **不**平行维护 design HTML。
+`packages/xylitol-tui` **不**平行维护 design HTML。无独立快捷键模块。
 
-## 旧 playground / 旧 md 拆除条件
+## 旧 playground / 旧 md 拆除（已做）
 
-短双轨 **允许**，禁止无限期兼容。
-
-| 阶段 | 何时 | 做什么 |
-|---|---|---|
-| 本切片 | activity-fold 闸走 YAML states；其它槽仍解析 `index.html` | 保留 `playground/index.html`；禁止把槽复制成第三份 |
-| 迁槽 | 每迁走一个槽 | 删 HTML 里对应 JS 模板 / section；`design/<comp>.md` 改成一行指针后删正文（Pre-0.0.1 无 SemVer 读者） |
-| 切闸 | `scripts/check_tui_design_playground.py` **不再**解析任何 HTML 模板，且 `check_tui_designing.py` 覆盖全部已迁模块 | **删除** `playground/index.html`；`just open-design-playground` 改为 alias `open-designing`（一次性改调用点，不留永久转发） |
-| tokens | 无槽再读 `playground/tokens.css` | `sync_tokens.py` 停止写 playground；只写 `designing/generated/` |
+`src/app/tui/design/playground/` 已删；`open-design-playground` 一次性改为 `open-designing`（不留永久 alias）。`design/*.md` 缩成指针。闸只走 `check_tui_designing.py`。token 脚本只写 `designing/generated/`。
 
 ## atc4 产品级改写草稿（不落 specs）
 
@@ -93,24 +88,23 @@ src/app/tui/designing/
 
 无 live 合约落地（`skip_specs_landing: true`）。atc4 只出草稿。意图闸是脚本级，不是产品运行时行为。
 
-## 迁移清单（本切片只勾 activity-fold）
+## 迁移清单
 
-- [x] Activity fold（本切片）
-- [ ] Palette / tokens（管道本切片接通；槽仍旧）
-- [ ] Chrome toast · Pending · Status/footer 词表
-- [ ] Transcript / expandable
-- [ ] Models · Tree · Mcp · Resume · Compaction
-- [ ] Tool · Diff · Markdown · Widgets · Atoms · Ask
-- [ ] Full shell · Layout · Keybindings
-- [ ] `session-tree-vs-pi.md` → research 或缩进 intent（对照文，不迁成模块）
-
-顺序：tokens/palette → chrome 词表 → transcript/expandable → pickers → 整壳。
+- [x] Activity fold
+- [x] Palette / tokens
+- [x] Chrome toast · Pending · Status/footer 词表
+- [x] Transcript / expandable
+- [x] Models · Tree · Mcp · Resume · Compaction
+- [x] Tool · Diff · Markdown · Widgets · Atoms · Ask
+- [x] Full shell · Layout
+- [x] 取消独立 Keybindings 模块（组件键留在各 draft.keys）
+- [x] `session-tree-vs-pi.md` → 指针到 session-tree
 
 ## Impact
 
-- Agent 改折叠：读 `designing/modules/activity-fold/`，不吞 2.6k HTML。
-- 人类：`just open-designing` / `bun run --cwd src/app/tui/designing/app dev`。
-- qa：旧 playground 闸对其它槽仍绿；activity-fold 走 YAML；新 `check_tui_designing.py` 进 `just qa`。
+- Agent 改某表面：先读产品代码，再读 `designing/tui/modules/<id>/`。
+- 人类：`just open-designing` / `bun run --cwd designing/app dev`（pathname `/tui/<id>/<state>`；右栏复制 handoff；←→ 切态、`?play=1` 对照 spinner）。
+- qa：`scripts/check_tui_designing.py` 进 `just qa`；旧 playground 闸已删。
 
 ## Further Notes
 

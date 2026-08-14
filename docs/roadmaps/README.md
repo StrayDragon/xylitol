@@ -84,7 +84,7 @@ flowchart TB
 |---|---|
 | [Web与TUI同源.md](./Web与TUI同源.md) | 跨面语义约束板（含长历史 activity 折叠栈意向；非 Web 壳本身） |
 | [TUI视觉与信息表达.md](./TUI视觉与信息表达.md) | 状态减噪、主题密度；与 activity 折叠减噪衔接 |
-| [TUI重制.md](./TUI重制.md) | **UiEntry** rail 皮肤（M1 已兑现）；产品静图 SSOT = `src/app/tui/design/playground/index.html`（≠ `agent_demo`） |
+| [TUI重制.md](./TUI重制.md) | **UiEntry** rail 皮肤（M1 已兑现）；交互设计稿 = 仓库顶层 `designing/`（≠ 产品真值；≠ `agent_demo`） |
 | [键位与命令发现.md](./键位与命令发现.md) | `/hotkeys` 支线延后；可视化键盘挂 Web；**busy 即时列表 / chrome footprint 已兑现**（见 architecture 词汇表 + DESIGN） |
 | [OTEL与Langfuse观测.md](./OTEL与Langfuse观测.md) | obs.lane / Collector / otel19 门闸、采样预留、子进程出站（已落地见 [architecture](../architecture/进程内观测.md)） |
 | [Agent-Eval与回归基准.md](./Agent-Eval与回归基准.md) | SWE 先、TB 后；Docker 出分；AA 选模对照；Langfuse 回归旁路 |

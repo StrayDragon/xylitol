@@ -1,0 +1,11 @@
+id: footer.default
+cols: 80
+must_contain:
+  - "used"
+  - "tokens"
+must_not_contain:
+  - "enter submit"
+  - "q:s"
+lines:
+  -
+    - { text: "~/xylitol · <model-name> · used 42k tokens · 21.1%/200k", token: muted }

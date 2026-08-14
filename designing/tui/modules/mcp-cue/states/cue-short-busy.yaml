@@ -1,0 +1,14 @@
+id: mcp-cue.cue-short-busy
+cols: 80
+must_contain:
+  - "Working"
+  - "mcp pending (see /mcp)"
+must_not_contain:
+  - "context7"
+  - "System"
+  - "1/2"
+lines:
+  -
+    - { text: "⠋ Working", token: accent }
+    - { text: "              ", token: muted }
+    - { text: "mcp pending (see /mcp)", token: muted }

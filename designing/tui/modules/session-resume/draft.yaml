@@ -1,0 +1,14 @@
+id: session-resume
+title: Resume
+surface: tui
+summary: Resume Session 列表；默认不暴露完整 session id。
+alignment:
+  chrome: 替换 editor 槽
+  item: 选中行高亮
+  todo-bar: 不进队列
+todos:
+  - { done: true, text: "默认列表不展示完整 uuid" }
+keys:
+  - { chord: "ctrl+u id", when: "槽内切换显示 id" }
+notes: |
+  代码 SSOT：session-resume 槽。ctrl+u 是槽内能力，不是全局快捷键墙。
