@@ -603,7 +603,6 @@ impl ScrollbackPaintCache {
     }
 
     #[cfg(test)]
-    #[allow(dead_code)] // called via UiRoot test helper
     pub fn clear_misses(&mut self) {
         self.entry_misses = 0;
     }

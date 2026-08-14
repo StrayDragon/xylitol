@@ -258,18 +258,6 @@ pub fn load_product_keybindings(agent_dir: &Path) -> (KeybindingsManager, Reload
     }
 }
 
-/// Install package `tui.*` + product `app.*` and apply disk overrides (if any)
-/// into the process-global manager.
-///
-/// Prefer [`load_product_keybindings`] + [`xylitol_tui::KeybindingsScope`] for
-/// HostSession so tests do not share one process-global writer.
-#[allow(dead_code)] // demo / intentional GLOBAL install; product HostSession uses Scope
-pub fn install_product_keybindings(agent_dir: &Path) -> ReloadOutcome {
-    let (kb, outcome) = load_product_keybindings(agent_dir);
-    set_keybindings(kb);
-    outcome
-}
-
 /// Re-read `keybindings.json` into `kb`. On parse/IO failure, keep current bindings.
 pub fn reload_keybindings_into(kb: &mut KeybindingsManager, agent_dir: &Path) -> ReloadOutcome {
     let path = keybindings_path(agent_dir);
