@@ -171,6 +171,10 @@ pub enum UiEntry {
     },
 }
 
+/// Identity of the in-flight thinking burst (not yet a [`UiEntry::Thinking`]).
+/// Distinct from [`allocate_thinking_id`] (`{hash}-{n}`).
+pub const STREAMING_THINK_ID: &str = "live:streaming";
+
 /// Stable Thinking id: short text-hash + ordinal among existing Thinking entries
 /// that share the same hash (live flush and session rebuild MUST agree).
 pub fn allocate_thinking_id(entries: &[UiEntry], text: &str) -> String {
@@ -205,6 +209,9 @@ pub struct UiModel {
     pub(crate) streaming_assistant: String,
     /// In-progress thinking text.
     pub(crate) streaming_thinking: String,
+    /// Live burst id ([`STREAMING_THINK_ID`]) while deltas are in flight.
+    /// Paint MUST key off this, not `streaming_thinking.is_empty()`.
+    pub(crate) streaming_think_id: Option<String>,
     /// Wall-clock start of the current thinking stream (first delta of a burst).
     pub(crate) thinking_started_at: Option<std::time::Instant>,
     pub(crate) current_role: Option<String>,
@@ -229,6 +236,7 @@ impl UiModel {
             status: None,
             streaming_assistant: String::new(),
             streaming_thinking: String::new(),
+            streaming_think_id: None,
             thinking_started_at: None,
             current_role: None,
             bash_utf8_pending: Vec::new(),
@@ -392,7 +400,7 @@ impl UiModel {
     /// In-flight streaming tails for layout scrollback (role label, text).
     pub(crate) fn streaming_scrollback_tails(&self) -> Vec<(&'static str, &str)> {
         let mut out = Vec::new();
-        if !self.streaming_thinking.is_empty() {
+        if self.streaming_think_id.is_some() && !self.streaming_thinking.is_empty() {
             out.push(("thinking", self.streaming_thinking.as_str()));
         }
         if !self.streaming_assistant.is_empty() {
@@ -421,6 +429,7 @@ impl UiModel {
     /// Drop in-flight stream drafts (c670 / c720 Esc latch before drain).
     pub fn clear_streaming_buffers(&mut self) {
         self.streaming_thinking.clear();
+        self.streaming_think_id = None;
         self.streaming_assistant.clear();
         self.thinking_started_at = None;
         self.current_role = None;
@@ -518,6 +527,7 @@ impl UiModel {
     pub(crate) fn flush_streaming(&mut self) {
         if !self.streaming_thinking.is_empty() {
             let text = std::mem::take(&mut self.streaming_thinking);
+            self.streaming_think_id = None;
             let id = allocate_thinking_id(&self.entries, &text);
             let elapsed_secs = self.thinking_started_at.take().and_then(|start| {
                 let secs = start.elapsed().as_secs();

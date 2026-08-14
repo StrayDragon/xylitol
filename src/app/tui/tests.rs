@@ -4759,7 +4759,7 @@ fn activity_fold_sealed_thought_stays_when_later_thinking_streams() {
     model
         .entries
         .push(super::bridge::UiEntry::Assistant { text: "mid".into() });
-    model.streaming_thinking = "second burst".into();
+    apply_xy_event(&mut model, &XyEvent::ThinkingDelta("second burst".into()));
     root.apply_ui_model(&model);
     root.activity_mut().force_level("seg-0", SegmentLevel::L2);
     root.touch_activity();
@@ -4771,6 +4771,45 @@ fn activity_fold_sealed_thought_stays_when_later_thinking_streams() {
     assert!(
         plain.contains("Thinking"),
         "live burst MUST still be Thinking: {plain}"
+    );
+}
+
+#[test]
+fn activity_fold_thinking_text_without_id_does_not_flip_headers() {
+    use super::activity_fold::SegmentLevel;
+    use super::layout::UiRoot;
+
+    let mut root = UiRoot::new();
+    let mut model = UiModel::new();
+    model.phase = UiPhase::Busy;
+    model
+        .entries
+        .push(super::bridge::UiEntry::User { text: "hi".into() });
+    model.entries.push(super::bridge::UiEntry::Thinking {
+        id: "th-old".into(),
+        text: "first burst".into(),
+        elapsed_secs: Some(17),
+    });
+    model
+        .entries
+        .push(super::bridge::UiEntry::Assistant { text: "mid".into() });
+    model.streaming_thinking = "orphan buffer".into();
+    assert!(model.streaming_think_id.is_none());
+    root.apply_ui_model(&model);
+    root.activity_mut().force_level("seg-0", SegmentLevel::L2);
+    root.touch_activity();
+    let plain = strip_ansi_activity(&root.render(100).join("\n"));
+    assert!(
+        plain.contains("Thought 17s"),
+        "buffer without live id MUST NOT flip sealed Thought: {plain}"
+    );
+    let thinking_headers = plain
+        .lines()
+        .filter(|l| l.contains("Thinking") && !l.contains("Thought"))
+        .count();
+    assert_eq!(
+        thinking_headers, 0,
+        "orphan streaming_thinking MUST NOT paint a Thinking header: {plain}"
     );
 }
 
@@ -4994,7 +5033,10 @@ fn activity_fold_live_thinking_stream_merges_into_thought() {
     model
         .entries
         .push(super::bridge::UiEntry::User { text: "u".into() });
-    model.streaming_thinking = "consider next edit".into();
+    apply_xy_event(
+        &mut model,
+        &XyEvent::ThinkingDelta("consider next edit".into()),
+    );
     model.thinking_started_at =
         Some(std::time::Instant::now() - std::time::Duration::from_secs(17));
     root.apply_ui_model(&model);
@@ -5038,7 +5080,7 @@ fn activity_fold_live_thinking_stream_merges_into_thought() {
         .expect("stream must stamp start")
         .elapsed()
         .as_secs();
-    model.flush_streaming();
+    apply_xy_event(&mut model, &XyEvent::AgentEnd { messages: vec![] });
     root.apply_ui_model(&model);
     let flushed = strip_ansi_activity(&root.render(100).join("\n"));
     let expect = format!("Thought {expect_dur}s");

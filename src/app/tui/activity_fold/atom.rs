@@ -6,9 +6,7 @@
 use crate::app::tui::bridge::UiEntry;
 use crate::protocol::tool_name::is_mcp_tool_name;
 
-/// Identity of the in-flight thinking burst (not yet a `UiEntry::Thinking`).
-/// Distinct from [`crate::app::tui::bridge::allocate_thinking_id`] (`{hash}-{n}`).
-pub const STREAMING_THINK_ID: &str = "live:streaming";
+pub use crate::app::tui::bridge::STREAMING_THINK_ID;
 
 /// How an explore atom counts pathless calls.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]

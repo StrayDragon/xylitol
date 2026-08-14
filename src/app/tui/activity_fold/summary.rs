@@ -2,7 +2,7 @@
 
 use time::OffsetDateTime;
 
-use crate::app::tui::bridge::UiEntry;
+use crate::app::tui::bridge::{UiEntry, UiModel};
 use crate::app::tui::keybindings::with_keybindings;
 use crate::app::tui::widgets::GlyphSet;
 
@@ -94,6 +94,29 @@ pub fn cluster_omits_header(entries: &[UiEntry], cluster: &ActivityCluster) -> b
 /// Thought-only cluster: fold into the Thinking/Thought header, no second L1 row.
 pub fn cluster_is_thought_only(entries: &[UiEntry], cluster: &ActivityCluster) -> bool {
     count_cluster(entries, cluster).is_thought_only()
+}
+
+/// Which live thinking burst this cluster owns, if any.
+///
+/// Keys off [`UiModel::streaming_think_id`], never `streaming_thinking` emptiness.
+/// Unflushed bursts use [`STREAMING_THINK_ID`] and only attach to the open live cluster.
+pub fn live_think_id_for_cluster(
+    model: &UiModel,
+    cluster: &ActivityCluster,
+    progressive: bool,
+) -> Option<String> {
+    let live_id = model.streaming_think_id.as_deref()?;
+    if progressive && live_id == STREAMING_THINK_ID {
+        return Some(live_id.to_string());
+    }
+    for idx in cluster_middle_indices(&model.entries, cluster) {
+        if let Some(UiEntry::Thinking { id, .. }) = model.entries.get(idx)
+            && id == live_id
+        {
+            return Some(live_id.to_string());
+        }
+    }
+    None
 }
 
 /// Counts for a live thinking stream before it is flushed to a Thinking entry.
@@ -677,5 +700,31 @@ mod tests {
         assert_eq!(c.used_calls, 1);
         assert!(c.explore_paths.is_empty());
         assert!(!c.search_no_path);
+    }
+
+    #[test]
+    fn live_think_id_ignores_text_buffer_without_id() {
+        use super::super::segment::partition_segments;
+        let mut model = UiModel::new();
+        model.entries = vec![
+            UiEntry::User { text: "hi".into() },
+            UiEntry::Thinking {
+                id: "th-old".into(),
+                text: "first".into(),
+                elapsed_secs: Some(17),
+            },
+            UiEntry::Assistant { text: "mid".into() },
+        ];
+        model.streaming_thinking = "orphan".into();
+        let segs = partition_segments(&model.entries);
+        let cl0 = &segs[0].clusters[0];
+        assert!(live_think_id_for_cluster(&model, cl0, true).is_none());
+
+        model.streaming_think_id = Some(STREAMING_THINK_ID.into());
+        assert!(live_think_id_for_cluster(&model, cl0, false).is_none());
+        assert_eq!(
+            live_think_id_for_cluster(&model, cl0, true).as_deref(),
+            Some(STREAMING_THINK_ID)
+        );
     }
 }
