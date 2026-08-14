@@ -1,0 +1,13 @@
+id: layout.short
+cols: 40
+must_contain:
+  - "Working"
+must_not_contain:
+  - "(包)"
+lines:
+  -
+    - { text: "⠋ Working", token: accent }
+  -
+    - { text: "> ", token: muted }
+  -
+    - { text: "~/x · model", token: muted }

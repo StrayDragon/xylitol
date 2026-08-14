@@ -1,0 +1,21 @@
+id: loaded-resources.card
+cols: 80
+must_contain:
+  - ">_ xylitol"
+  - "skills"
+must_not_contain:
+  - "木糖醇"
+  - "..."
+lines:
+  -
+    - { text: "┌──────────────────────────────────────────┐", token: muted }
+  -
+    - { text: "│ >_ xylitol                               │", token: on-surface }
+  -
+    - { text: "│ ~/xylitol · <model-name>                 │", token: muted }
+  -
+    - { text: "│ skills  write-tui  audit-dead-code       │", token: skill-ref }
+  -
+    - { text: "│ mcp  context7                            │", token: success }
+  -
+    - { text: "└──────────────────────────────────────────┘", token: muted }

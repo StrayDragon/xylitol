@@ -1,0 +1,19 @@
+id: pending.thinking
+cols: 80
+spin:
+  ms: 80
+must_contain:
+  - "Next turn thinking:"
+  - "high"
+must_not_contain:
+  - "deepseek"
+  - "model →"
+  - "System"
+lines:
+  -
+    - { text: "⠋", token: accent, spin: true }
+    - { text: " Working", token: accent }
+    - { text: "                         ", token: muted }
+    - { text: "Next turn thinking: high", token: muted }
+  -
+    - { text: "~/xylitol · <model-name> · high", token: muted }

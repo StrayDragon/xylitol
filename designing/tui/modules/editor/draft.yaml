@@ -1,0 +1,11 @@
+id: editor
+title: 输入区
+surface: tui
+summary: 贴底操作区；队列走中间条，不进本框快捷键墙。
+alignment:
+  chrome: 最底输入；上 status、下 footer
+  todo-bar: steer/follow-up 在队列条不是本框
+todos:
+  - { done: true, text: "无顶栏快捷键墙" }
+notes: |
+  组件提交键见产品 host；本稿不列全局表。

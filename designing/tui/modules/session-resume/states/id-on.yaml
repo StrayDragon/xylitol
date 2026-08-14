@@ -1,0 +1,15 @@
+id: session-resume.id-on
+cols: 80
+must_contain:
+  - "Resume Session"
+  - "ad43e96a-2e87-4767-ae1c-870854346b23"
+  - "ctrl+u id"
+must_not_contain:
+  - "c1530"
+lines:
+  -
+    - { text: "Resume Session", token: muted }
+  -
+    - { text: "› ad43e96a-2e87-4767-ae1c-870854346b23  请给我一个表格…", token: on-surface, rev: true }
+  -
+    - { text: "(3/66)  ctrl+u id", token: muted }

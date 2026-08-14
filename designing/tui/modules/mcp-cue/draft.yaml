@@ -1,0 +1,12 @@
+id: mcp-cue
+title: MCP
+surface: tui
+summary: 短 cue 右对齐 mcp pending (see /mcp)；面板看连接态。
+alignment:
+  chrome: busy 且无 Next turn 时 cue 在 status 右
+  item: 有 Next turn 时 MCP cue 不覆盖
+  todo-bar: 不进队列条
+todos:
+  - { done: true, text: "短 cue 与 /mcp 面板分态" }
+notes: |
+  代码 SSOT：mcp-input-cue。面板文案 configured / connected / armed。

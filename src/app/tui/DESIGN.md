@@ -31,7 +31,7 @@ colors:
   user-message-bg: "#313244"
   # Inline `$skill` token in user message (A10); mauve, distinct from accent spinner.
   skill-ref: "#cba6f7"
-# Light companion (playground / demo opt-in; product MVP stays `colors` dark).
+# Light companion (designing / demo opt-in; product MVP stays `colors` dark).
 colors_light:
   on-surface: "#4c4f69"
   muted: "#9ca0b0"
@@ -121,18 +121,13 @@ components:
 
 > 规范：遵循 `common-design-md-zh`（中文正文 + YAML frontmatter tokens，值一律双引号）。
 > **Token SSOT**：本文件 frontmatter。子文档见下方「Token 引用」。
-> 组件级意图：[`designing/`](./designing/)（模块 `intent.md` + YAML 固定态）。未迁组件仍见 [`design/`](./design/)。
-> 人类预览：[`designing/`](./designing/)（`just open-designing`）；旧巨石静图双轨 [`design/playground/`](./design/playground/)。
-> Agent：[`designing/AGENTS.md`](./designing/AGENTS.md)。包 `packages/xylitol-tui` 只提供引擎与通用组件；语义 token / layout / glyph 配置在本面。
+> 组件级意图：仓库顶层 [`designing/`](../../../designing/)（`tui/modules` 的 `intent.md` + YAML 固定态）。
+> 人类预览：`just open-designing`（交互设计稿，非产品真值）。
+> Agent：[`designing/AGENTS.md`](../../../designing/AGENTS.md)。包 `packages/xylitol-tui` 只提供引擎与通用组件；语义 token / layout / glyph 配置在本面。运行时以本目录代码为准。
 
 ## Token 引用（子文档）
 
-`design/*.md` 的 YAML 中形如 `{colors.diff-context}`、`{spacing.status-rows}`、`{components.footer}`、`{typography.body}`、`{rounded.none}` 的表达式：
-
-1. **根路径**：一律解析到 **本文件** `src/app/tui/DESIGN.md` 的 frontmatter 同名路径。
-2. 子文档 MUST 声明 `tokens_from: "../DESIGN.md"`，便于 agent / 人一眼找到根源。
-3. 子文档 MUST NOT 重新定义与主色板冲突的 hex；组件级只写引用或本组件独有的非色板属性（如 `height`）。
-4. 查色 / 查间距：先打开本文件 `colors` / `spacing` / `components`，再打开子文档看该组件用了哪些引用。
+色板查 `colors` / `spacing` / `components`；组件意图与固定态在仓库顶层 `designing/tui/modules/`。YAML `token: muted` 映射本文件同名色。模块 MUST NOT 另立冲突 hex。
 
 ## Overview
 
@@ -142,7 +137,7 @@ components:
 
 情绪：安静、高效、像在普通 REPL 里聊天。用户应能向上翻历史、框选复制，再贴回下一轮提问——**复制友好优先于视觉热闹**。
 
-参考实现锚点：浏览器 [`design/playground/`](./design/playground/) = **产品**静态设计图（固定状态，本面专用）；生产接线在本目录 `src/app/tui`。包侧 `agent_demo`（`just demo-tui`）= 引擎交互演示，**允许与产品 chrome / 文案有差异**，**不**充当 design playground。当前主路径 c465–c493 已归档；模块为 `layout/` + `widgets/`。
+参考实现锚点：浏览器 [`designing/`](../../../designing/) = **交互设计稿**（固定状态，对照辅助）；生产接线在本目录 `src/app/tui`（运行时真值）。包侧 `agent_demo`（`just demo-tui`）= 引擎交互演示，**允许与产品 chrome / 文案有差异**，**不**充当 designing。当前主路径 c465–c493 已归档；模块为 `layout/` + `widgets/`。
 
 ## Track B 落地切片（设计闸）
 
@@ -162,7 +157,7 @@ components:
 
 | Change | 设计焦点 | 文档 |
 |---|---|---|
-| **c625** design/playground | 固定下一屏形状：`/model` 列表槽、树 power、真 `$EDITOR`、footer context%、abort 反馈；**不做** Settings/Plate 运行时改配置 | 本表 · [`playground/`](./design/playground/) |
+| **c625** designing | 固定下一屏形状：`/model` 列表槽、树 power、真 `$EDITOR`、footer context%、abort 反馈；**不做** Settings/Plate 运行时改配置 | 本表 · [`designing/`](../../../designing/) |
 | **c630** `/model` | 替换 editor 槽：**模型 + xylitol thinking 等级**（行内右列；Shift+Tab 仅槽内）；默认最高档；**移除**全局 thinking cycle | [`models-picker`](./design/models-picker.md) · [`keybindings`](./design/keybindings.md) |
 | **c1115** `/theme` | 产品 slash 切内建 `dark`/`light`（无参 Themes 槽；有参/`toggle`；**busy Allow**）；**不**默认开 theme auto；**不**抄 demo Ctrl+P | [`theme-tokens`](./design/theme-tokens.md) · [`keybindings`](./design/keybindings.md) |
 | **c635–c645** 树 power | 产品 filter → fold → fork（demo 已有；逐个接线） | [`session-tree`](./design/session-tree.md) · [`keybindings`](./design/keybindings.md) |

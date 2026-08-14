@@ -28,8 +28,17 @@
 - [x] 4.2 生成 `generated/AGENT-INDEX.md`；qa 抓过期
 - [x] 4.3 `src/app/tui/AGENTS.md` 一小段指针
 
-## 5. 验证
+## 5. 验证（切片 1）
 
 - [x] 5.1 `bun run --cwd src/app/tui/designing/app check`
 - [x] 5.2 `just check-tui-tokens` + `python3 scripts/check_tui_design_playground.py --check`
 - [x] 5.3 旧闸不红；新 check 脚本已接线
+
+## 6. 顶层迁移 + 拆旧轨
+
+- [x] 6.1 `git mv` 到仓库顶层 `designing/`，模块落 `tui/modules/`
+- [x] 6.2 迁完其余 TUI 槽；页面右栏展示对齐 / todos / 备注 / 组件键
+- [x] 6.3 取消独立快捷键设计；无 keybindings 模块
+- [x] 6.4 删除 playground HTML / fixtures / `check_tui_design_playground.py`；token 脚本只写 `designing/generated/`
+- [x] 6.5 全部 AGENTS.md 改指向；`design/*.md` 缩成指针；代码为 SSOT
+- [x] 6.6 `bun run --cwd designing/app check` + `just check-tui-tokens` + `python3 scripts/check_tui_designing.py --check`

@@ -1,0 +1,16 @@
+id: queue-steer.both
+cols: 80
+must_contain:
+  - "Steering:"
+  - "Follow-up:"
+  - "Alt+Up"
+must_not_contain:
+  - "q:s"
+  - "[steer]"
+lines:
+  -
+    - { text: "Steering: 先改 paint", token: muted }
+  -
+    - { text: "Follow-up: 再补 harness", token: muted }
+  -
+    - { text: "↳ Alt+Up to edit all queued messages", token: muted }

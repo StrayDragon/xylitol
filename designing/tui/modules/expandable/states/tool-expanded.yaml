@@ -1,0 +1,22 @@
+id: expandable.tool-expanded
+cols: 80
+must_contain:
+  - "▾"
+  - "(Alt+E)"
+  - "ctrl+o to expand"
+must_not_contain:
+  - "⚙"
+  - "{\"content\""
+lines:
+  -
+    - { text: "▎", token: success }
+    - { text: " ▾ Read foo.rs:12-40  (Alt+E)", token: on-surface }
+  -
+    - { text: "▎", token: success }
+    - { text: " pub fn main() {}", token: on-surface }
+  -
+    - { text: "▎", token: success }
+    - { text: " …", token: muted }
+  -
+    - { text: "▎", token: success }
+    - { text: " ctrl+o to expand", token: muted }

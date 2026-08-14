@@ -1,0 +1,15 @@
+id: mcp-cue.panel-connecting
+cols: 80
+must_contain:
+  - "connecting"
+  - "1/2"
+must_not_contain:
+  - "System"
+  - "Next turn:"
+lines:
+  -
+    - { text: "mcp  connecting 1/2  context7", token: success }
+  -
+    - { text: "› context7", token: on-surface, rev: true }
+  -
+    - { text: "  other  not connected", token: muted }

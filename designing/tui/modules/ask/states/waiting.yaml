@@ -1,0 +1,16 @@
+id: ask.waiting
+cols: 80
+must_contain:
+  - "Asking questions"
+  - "which approach?"
+must_not_contain:
+  - "Planning next moves"
+lines:
+  -
+    - { text: "ask  which approach?", token: on-surface }
+  -
+    - { text: "  [A] envelope", token: muted }
+  -
+    - { text: "  [B] clusters", token: muted }
+  -
+    - { text: "Asking questions", token: muted }

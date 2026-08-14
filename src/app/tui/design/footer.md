@@ -1,40 +1,5 @@
----
-version: "alpha"
-name: "footer"
-description: "Single-line dim footer — cwd · model · thinking · optional used C/~C/? tokens · optional derived p%/window."
-tokens_from: "../DESIGN.md"
-components:
-  footer:
-    textColor: "{colors.muted}"
-    height: "{spacing.footer-rows}"
----
+# 页脚
 
-# Footer
+交互设计稿已迁 [`designing/tui/modules/footer/`](../../../../designing/tui/modules/footer/)。
 
-> Token 根源：`{colors.*}` / `{spacing.*}` → [`../DESIGN.md`](../DESIGN.md)。
-> **c475 MVP**：`cwd · model`；**c1035**：带 provenance 的 `used C`/`~C`/`?`（无则省略）；**c1150**：thinking 标签（`thinking off` / `{as_str}`）；**c1680**：有 `context_window>0` 时追加派生 `p%/W`（仅展示）；**c1820**：used 计数 `C` 与 window 共用 `format_compact_tokens`。字段间只用 ` · `，**不再**在 thinking 前加装饰 `•`（避免 `model · · low` 双分隔观感）。
-
-## MUST
-
-1. 恰好 **1 行** dim。字段序：`cwd · model · {thinking}`；有 `ContextTokenEstimate` 时追加 `· used … tokens`（见下表）；可选 `· branch`。
-2. Thinking 标签：可调思考时 level=`off` → `thinking off`，其余用 xylitol 档名。**无可调思考的模型**（支持集空或仅不可调 off）：footer **MUST 省略** thinking 段（`cwd · model`），避免假装可调。**MUST NOT** 展示 provider map 值。与编辑器边框同步；等级经 `/model` picker（[`models-picker.md`](./models-picker.md)）。
-2b. **NextTurn pending**（见 [`pending-runtime.md`](./pending-runtime.md)）：存在待生效的模型/thinking 时，footer 的 model / thinking 字段 MUST 仍显示 **生效中（active）**；接替值 MUST NOT 覆写 footer 主字段，改由 **busy status 行右侧** dim **下轮预告**表达。pending 清除后 footer 可与选中一致（通常已是 active）。
-3. Token 文案按 `TokenProvenance`（经 `XyDriver::estimate_context_tokens`）：
-
-   | Provenance | 文案 |
-   |---|---|
-   | Api / RemoteCount / LocalTokenizer | `used C tokens` |
-   | Heuristic | `used ~C tokens` |
-   | Unknown | `used ? tokens` |
-
-   可数计数 `C` MUST 与 window 同源紧凑（`format_compact_tokens` / 对齐 pi `formatTokens`）：`<1k` 十进制全量；`1k–9.9k` 一位小数 `k`；`≥10k` 整 `Nk` / `NM`。Unknown 的 `?` MUST NOT 套紧凑。无估计结果（空会话 / estimate 失败）时 **MUST 省略** 该字段；**MUST NOT** 伪造 `used 0 tokens`。
-
-3b. **派生占用比（c1680）**：当已展示 used 字段且当前模型 `context_window > 0` 时，MUST 追加 ` · {p}%/{W}`，其中 `p = tokens/window*100`（1 位小数），`W` 为紧凑 window（如 `128k`）。例：`used 42k tokens · 32.8%/128k`。Heuristic MUST ` · ~p%/W`；Unknown MUST ` · ?%/W`。`context_window` 为 0 时 MUST NOT 追加。该百分比 **仅展示**，MUST NOT 作为 compaction 触发 SSOT。
-4. 放不下截断右侧（优先保留 cwd 左端与 model），**MUST NOT** 增高。
-5. 快捷键提示：默认**不**写进 footer（勿 `enter submit · double Esc…` 墙）；需要时 `/help` 或旁注括号和弦（见 [`keybindings.md`](./keybindings.md)）。
-6. **MUST NOT** 在 footer 展示队列计数徽章（如 `q:sN|fM`）；队列可见性 SSOT 为中间队列条（见 [`queue-steer.md`](./queue-steer.md)）。
-7. 刷新时机：session tree travel 换叶、**TurnSettled settlement**（TurnEnd 携带或独立事件 / Driver 缓存）、**CompactionEnd**、turn 进行中有可用 Api usage 更新时（节流）、thinking cycle / 模型切换；同一轮 run 已有 TurnSettled 后 **stream close MUST NOT** 再二次 estimate；**MUST NOT** 每个 TextDelta 全量 tokenizer.encode。
-8. **异步**：footer token 估计 MUST 在后台完成（`spawn_blocking`），**MUST NOT** 阻塞输入 / Tick / 其它渲染；结果落地后再差分刷新 footer 行。
-9. **MUST NOT** 常驻多行 debug / 快捷键墙；**MUST NOT** 把 Working 文案塞进 footer（那是 status）；**MUST NOT** 把 Heuristic 显示成无 `~` 的精确值。
-
-颜色：`{colors.muted}`；高度：`{spacing.footer-rows}`。
+运行时真值是产品代码（`src/app/tui`）。本稿辅助，不是第二套视觉 SSOT。预览：`just open-designing`。

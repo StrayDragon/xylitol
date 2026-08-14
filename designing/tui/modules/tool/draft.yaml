@@ -1,0 +1,11 @@
+id: tool
+title: 工具块
+surface: tui
+summary: tool/bash/diff 左边轨 + gutter；成败用轨色不是整行洗底。
+alignment:
+  chrome: transcript 条目；轨在 status 语义色
+  item: 与 thinking flush 对照
+todos:
+  - { done: true, text: "禁止默认整行 tool-*-bg" }
+notes: |
+  代码 SSOT：paint_left_rail_line。

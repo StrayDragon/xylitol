@@ -1,0 +1,10 @@
+id: diff.empty
+cols: 80
+must_contain:
+  - "(no changes)"
+must_not_contain:
+  - "+"
+  - "-"
+lines:
+  -
+    - { text: "(no changes)", token: muted }

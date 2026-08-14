@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""QA check: designing modules + generated AGENT-INDEX freshness.
+"""QA check: designing modules + generated AGENT-INDEX + state contracts.
 
 Usage:
   python3 scripts/check_tui_designing.py --check
@@ -14,17 +14,155 @@ import subprocess
 import sys
 from pathlib import Path
 
+try:
+    import yaml
+except ImportError:  # pragma: no cover
+    yaml = None  # type: ignore
+
 REPO = Path(__file__).resolve().parent.parent
-DESIGNING = REPO / "src" / "app" / "tui" / "designing"
-MODULES = DESIGNING / "modules"
+DESIGNING = REPO / "designing"
+APP = DESIGNING / "app"
 INDEX = DESIGNING / "generated" / "AGENT-INDEX.md"
 GEN = REPO / "scripts" / "gen_designing_index.py"
 AGENTS = DESIGNING / "AGENTS.md"
 HEX_RE = re.compile(r"#[0-9a-fA-F]{6}")
 
+REQUIRED_STATES = {
+    ("tui", "activity-fold"): ("collapsed", "envelope", "expanded"),
+    ("tui", "diff"): ("unified", "side-by-side", "empty"),
+    ("tui", "expandable"): ("tool-collapsed", "tool-expanded", "thinking"),
+    ("tui", "models"): ("wide", "narrow", "no-thinking", "filter"),
+    ("tui", "session-tree"): ("filter",),
+    ("tui", "session-resume"): ("default", "id-on"),
+    ("tui", "pending"): ("next-turn", "thinking"),
+    ("tui", "markdown"): ("sample",),
+    ("tui", "status"): ("idle", "busy"),
+    ("tui", "compaction"): ("collapsed", "expanded"),
+}
+
+FORBIDDEN_MODULE_IDS = {"keybindings"}
+
 
 def fail(msg: str, errors: list[str]) -> None:
     errors.append(msg)
+
+
+def iter_modules() -> list[tuple[str, Path]]:
+    rows: list[tuple[str, Path]] = []
+    if not DESIGNING.is_dir():
+        return rows
+    for surface in sorted(p for p in DESIGNING.iterdir() if p.is_dir()):
+        mods = surface / "modules"
+        if not mods.is_dir():
+            continue
+        for path in sorted(p for p in mods.iterdir() if p.is_dir()):
+            rows.append((surface.name, path))
+    return rows
+
+
+def load_yaml(path: Path) -> dict:
+    text = path.read_text(encoding="utf-8")
+    if yaml is None:
+        raise RuntimeError("PyYAML required to parse designing YAML")
+    data = yaml.safe_load(text)
+    if not isinstance(data, dict):
+        raise ValueError(f"{path}: expected mapping")
+    return data
+
+
+def flatten_lines(data: dict) -> str:
+    rows = data.get("lines") or []
+    out: list[str] = []
+    for row in rows:
+        if isinstance(row, list):
+            parts: list[str] = []
+            for span in row:
+                if isinstance(span, dict):
+                    parts.append(str(span.get("text", "")))
+                else:
+                    parts.append(str(span))
+            out.append("".join(parts))
+        elif isinstance(row, str):
+            out.append(row)
+    return "\n".join(out)
+
+
+def check_app(errors: list[str]) -> None:
+    for name in ("package.json", "index.html", "src/main.ts", "src/shell.css"):
+        if not (APP / name).is_file():
+            fail(f"designing app missing {name}", errors)
+    html = (APP / "index.html").read_text(encoding="utf-8") if (APP / "index.html").is_file() else ""
+    css = (APP / "src" / "shell.css").read_text(encoding="utf-8") if (APP / "src" / "shell.css").is_file() else ""
+    main = (APP / "src" / "main.ts").read_text(encoding="utf-8") if (APP / "src" / "main.ts").is_file() else ""
+    if 'id="copy-handoff"' not in html:
+        fail("handoff: index.html must ship copy-handoff", errors)
+    if "parseLocation" not in main:
+        fail("endpoint: app must parse pathname /tui/<id>/<state>", errors)
+    if 'class="keys"' in html:
+        fail("no-key-wall: app header must not ship a .keys shortcut wall", errors)
+    blob = html + css
+    if "(包)" in blob:
+        fail("no-impl-noise: '(包)' must not appear in designing app", errors)
+    if "color: inherit" not in css:
+        fail("rev-no-kind-fg: shell.css must inherit color on selected/rev rows", errors)
+
+
+def check_module(surface: str, mod: Path, errors: list[str]) -> None:
+    if mod.name in FORBIDDEN_MODULE_IDS:
+        fail(f"no independent keybindings design: unexpected module {mod.name}", errors)
+    if not (mod / "intent.md").is_file():
+        fail(f"designing: {surface}/{mod.name} missing intent.md", errors)
+    else:
+        n = len((mod / "intent.md").read_text(encoding="utf-8").splitlines())
+        if n > 80:
+            fail(f"designing: {surface}/{mod.name}/intent.md is {n} lines (soft top 80)", errors)
+    if not (mod / "draft.yaml").is_file():
+        fail(f"designing: {surface}/{mod.name} missing draft.yaml", errors)
+    else:
+        try:
+            draft = load_yaml(mod / "draft.yaml")
+        except Exception as e:  # noqa: BLE001
+            fail(f"designing: parse {surface}/{mod.name}/draft.yaml: {e}", errors)
+            draft = {}
+        if "keybindings" in str(draft.get("id", "")).lower() and mod.name != "queue-steer":
+            pass
+        keys = draft.get("keys") or []
+        if keys and not isinstance(keys, list):
+            fail(f"designing: {surface}/{mod.name} keys must be a list", errors)
+    states_dir = mod / "states"
+    states = list(states_dir.glob("*.yaml")) if states_dir.is_dir() else []
+    if not states:
+        fail(f"designing: {surface}/{mod.name} has no states/*.yaml", errors)
+    stems = {p.stem for p in states}
+    required = REQUIRED_STATES.get((surface, mod.name))
+    if required:
+        for stem in required:
+            if stem not in stems:
+                fail(f"designing: {surface}/{mod.name} missing states/{stem}.yaml", errors)
+    for path in [mod / "intent.md", mod / "draft.yaml", *states]:
+        if not path.is_file():
+            continue
+        text = path.read_text(encoding="utf-8")
+        if HEX_RE.search(text):
+            fail(f"no-raw-hex: {path.relative_to(REPO)}", errors)
+    for path in states:
+        try:
+            doc = load_yaml(path)
+        except Exception as e:  # noqa: BLE001
+            fail(f"designing: parse {path.relative_to(REPO)}: {e}", errors)
+            continue
+        src = flatten_lines(doc)
+        if "(包)" in src:
+            fail(f"no-impl-noise: '(包)' visible in {path.relative_to(REPO)}", errors)
+        for s in doc.get("must_contain") or []:
+            if s not in src:
+                fail(f"states: {path.relative_to(REPO)} must_contain missing {s!r}", errors)
+        for s in doc.get("must_not_contain") or []:
+            if s in src:
+                fail(f"states: {path.relative_to(REPO)} must_not_contain found {s!r}", errors)
+        if any(span.get("rev") for row in (doc.get("lines") or []) if isinstance(row, list) for span in row if isinstance(span, dict)):
+            # selected spans exist; kind-fg leak is a CSS concern, already gated in app
+            pass
 
 
 def main() -> int:
@@ -36,28 +174,18 @@ def main() -> int:
     errors: list[str] = []
     if not AGENTS.is_file():
         fail(f"missing {AGENTS.relative_to(REPO)}", errors)
-    if not MODULES.is_dir():
-        fail(f"missing {MODULES.relative_to(REPO)}", errors)
-
-    mods = sorted(p for p in MODULES.iterdir() if p.is_dir()) if MODULES.is_dir() else []
-    for mod in mods:
-        if not (mod / "intent.md").is_file():
-            fail(f"designing: {mod.name} missing intent.md", errors)
-        else:
-            n = len((mod / "intent.md").read_text(encoding="utf-8").splitlines())
-            if n > 80:
-                fail(f"designing: {mod.name}/intent.md is {n} lines (soft top 80)", errors)
-        if not (mod / "preview.ts").is_file():
-            fail(f"designing: {mod.name} missing preview.ts", errors)
-        states = list((mod / "states").glob("*.yaml")) if (mod / "states").is_dir() else []
-        if not states:
-            fail(f"designing: {mod.name} has no states/*.yaml", errors)
-        for path in [mod / "intent.md", *states]:
-            if not path.is_file():
-                continue
-            text = path.read_text(encoding="utf-8")
-            if HEX_RE.search(text):
-                fail(f"no-raw-hex: {path.relative_to(REPO)}", errors)
+    else:
+        agents = AGENTS.read_text(encoding="utf-8")
+        if "/tui/" not in agents:
+            fail("designing/AGENTS.md must document pathname /tui/", errors)
+        if "复制路径" not in agents and "handoff" not in agents.lower():
+            fail("designing/AGENTS.md must mention copy paths / handoff", errors)
+    mods = iter_modules()
+    if not mods:
+        fail("missing designing/*/modules", errors)
+    for surface, mod in mods:
+        check_module(surface, mod, errors)
+    check_app(errors)
 
     want = subprocess.check_output(
         [sys.executable, str(GEN), "--stdout"],
@@ -68,11 +196,6 @@ def main() -> int:
         fail("missing generated/AGENT-INDEX.md — run: just gen-designing-index", errors)
     elif INDEX.read_text(encoding="utf-8") != want:
         fail("stale generated/AGENT-INDEX.md — run: just gen-designing-index", errors)
-
-    app = DESIGNING / "app"
-    for name in ("package.json", "index.html", "src/main.ts"):
-        if not (app / name).is_file():
-            fail(f"designing app missing {name}", errors)
 
     if errors:
         print("check_tui_designing: FAIL", file=sys.stderr)

@@ -1,0 +1,16 @@
+id: queue-steer
+title: 队列条
+surface: tui
+summary: scrollback 与 status 之间的 Steering / Follow-up 条。
+alignment:
+  chrome: scrollback → 队列条 → 壳层通告 → status
+  item: 注入后变普通 User 条目
+  todo-bar: 本条即 steer/follow-up 可见性 SSOT
+todos:
+  - { done: true, text: "禁止 footer/status 队列徽章" }
+keys:
+  - { chord: "Enter (busy)", when: "steer 入队" }
+  - { chord: "Alt+Enter", when: "follow-up 入队" }
+  - { chord: "Alt+Up", when: "还原队列进 editor" }
+notes: |
+  组件键，不是全局百科。下轮预告不在本带。

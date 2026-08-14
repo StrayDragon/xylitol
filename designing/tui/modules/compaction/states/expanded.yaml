@@ -1,0 +1,13 @@
+id: compaction.expanded
+cols: 80
+must_contain:
+  - "[compaction]"
+  - "Compacted from"
+must_not_contain:
+  - "Compacting…"
+  - "compaction complete"
+lines:
+  -
+    - { text: "▾ [compaction] Compacted from 186,842 tokens", token: muted }
+  -
+    - { text: "  Dropped stale tool results and old turns.", token: muted }

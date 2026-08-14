@@ -1,0 +1,15 @@
+id: expandable
+title: Expandable
+surface: tui
+summary: 块级折叠；Alt+E 显隐正文，Ctrl+O 视口满高。thinking flush，tool 轨。
+alignment:
+  chrome: transcript 块，不是簇级 activity-fold
+  item: 与 Diff / Ask 共用 tools 展开开关
+todos:
+  - { done: true, text: "collapsed / expanded 对照 Alt+E 与 Ctrl+O" }
+keys:
+  - { chord: "Alt+E", when: "tool/diff/ask/compaction 块显隐" }
+  - { chord: "Ctrl+O", when: "详情视口满高" }
+  - { chord: "Ctrl+T", when: "thinking 块展开（不是簇头）" }
+notes: |
+  代码 SSOT：scrollback fold + FoldState。默认 tools_expanded true。

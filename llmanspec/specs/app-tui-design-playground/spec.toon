@@ -1,16 +1,14 @@
 kind: llman.sdd.spec
 name: "app-tui-design-playground"
-purpose: "DESIGN playground 静态设计图：token 同步、Next-wave 槽、Agent 默认忽略、L1/L2 一致性闸门指针。"
-valid_scope[7]: src/app/tui/design/playground/,src/app/tui/design/AGENTS.md,src/app/tui/design/playground/README.md,src/app/tui/design/playground/sync_tokens.py,src/app/tui/design/playground/index.html,src/app/tui/design/fixtures/,src/app/tui/DESIGN.md
-requirements[10]{req_id,title,statement}:
-  adp1,"token-sync-ssot",playground 的 tokens.css 与 tokens.js MUST 由 sync_tokens.py 从 DESIGN.md frontmatter 生成；手改生成物 MUST NOT 作为长期真值。
-  adp2,"markdown-slot-align",playground Markdown 槽示意 MUST 对齐 design/markdown.md：无井号标题前缀、链接为 text (url)、粗体斜体无可见星号包裹。
-  adp3,"agent-default-ignore",design/AGENTS.md MUST 写明 Agent 默认忽略 playground/；仅在人类点名路径或粘贴片段时才读。
-  adp4,"session-tree-kind-ssot","playground 会话树槽静图 MUST 用 DESIGN token 色区分 kind 前缀（user/assistant/tool），正文 MUST NOT 再把 role 字符串预烘焙进同一纯文本片段作为唯一表现；MUST 与 session-tree.md 的 kind 渲染序一致。"
-  adp5,"session-tree-travel-ssot-live",playground 会话树槽注脚与键位示意 MUST 写明产品树为 Driver MessageHistory 活树、Enter 经 travel_session_tree（user→填 input）；MUST NOT 再暗示产品仍为 c491 假树 stub 或禁止 Driver travel。
-  adp9,"next-wave-static-slots","DESIGN playground MUST 提供静态槽 panel-models、panel-tree-power 与 pending-runtime（或等价 Full-shell pending 示意）；MUST 与 design/models-picker.md、design/pending-runtime.md、design/session-tree.md 形状一致；Models 槽 MUST 覆盖 wide / narrow / no-thinking；MUST NOT 在静图中表达实现分层（包标签/置灰）或顶栏快捷键墙。"
-  adp10,"next-wave-design-ssot",产品下一波（/models、树 filter/fold/fork、真 EDITOR、footer context%、abort UI）的视觉 MUST 以 src/app/tui/DESIGN.md Next wave 表与对应 design/*.md 为 SSOT；静图一致性格式（L1/L2）MUST 可被后续 lint 引用。
-  adp6,"playground-lint-gate","仓库 MUST 提供 scripts/check_tui_design_playground.py（或等价），并由 just qa 经 check-scripts 执行；失败时 MUST 非零退出。脚本 MUST 覆盖至少：禁止实现分层标签/置灰、Next-wave 槽与 fixture 源内禁止 change-id 噪音、选中 .rev 对比度护栏（CSS inherit 与选中行无 kind 前景穿透）、必有 panel-models 与 panel-tree-power、Models/Tree 使用 term-slot。"
-  adp7,"playground-fixtures-l2","src/app/tui/design/fixtures/ MUST 存在至少 session-tree.filter、models.wide（及 models.narrow / models.no-thinking）与 pending-model.next-turn（或 pending-thinking.next-turn）的 YAML 夹具；playground HTML MUST 以 data-design-fixture 关联；lint MUST 按夹具 must_contain / must_not_contain / assert_html 断言对应模板源。"
-  adp8,"playground-lint-docs","design/AGENTS.md 与 playground README MUST 写明改静图须跑 playground lint（及 check-tui-tokens）；MUST NOT 再暗示仅靠人眼发现 DESIGN 漂移。"
+purpose: "交互设计稿：token 从 DESIGN.md 生成；模块固定态可闸；无快捷键墙；浏览器稿不是运行时真值。"
+valid_scope[5]: designing/,scripts/check_tui_designing.py,scripts/sync_tui_tokens.py,src/app/tui/DESIGN.md,designing/AGENTS.md
+requirements[8]{req_id,title,statement}:
+  adp1,"token-sync-ssot",产品 TUI 语义色 MUST 以 DESIGN.md frontmatter 为唯一色板数据；designing 生成的 tokens.css / tokens.js MUST 由单一同步脚本写出；手改生成物 MUST NOT 作为长期真值。
+  adp2,"markdown-slot-align",Markdown 固定态示意 MUST 无井号标题前缀、链接为 text (url)、粗体斜体无可见星号包裹。
+  adp3,"agent-default-ignore",designing/AGENTS.md MUST 写明 Agent 改表面先读产品代码、默认读短模块 intent/states、默认忽略 designing/app；仅在人类点名路径时才读应用壳源码。
+  adp4,"session-tree-kind-ssot",会话树固定态 MUST 用 DESIGN token 色区分 kind 前缀；选中反转行 MUST 继承前景，MUST NOT 再把 role 字符串预烘焙成唯一表现。
+  adp5,"session-tree-travel-ssot-live",会话树是 Driver MessageHistory 活树；Enter 经 travel_session_tree（user→填 input）。MUST NOT 再暗示产品仍为假树 stub。
+  adp9,"static-slots","交互设计稿 MUST 提供 models（wide / narrow / no-thinking）、session-tree filter 与 pending next-turn 固定态；MUST NOT 在静图中表达实现分层（包标签）或顶栏快捷键墙；MUST NOT 设立独立快捷键百科模块。"
+  adp6,"designing-lint-gate","仓库 MUST 提供 scripts/check_tui_designing.py（或等价），并由 just qa 经 check-scripts 执行；失败时 MUST 非零退出。脚本 MUST 覆盖：模块 intent/draft/states 存在、states 的 must_contain / must_not_contain、禁止实现分层标签、选中反转 inherit、无独立 keybindings 模块。"
+  adp8,"designing-lint-docs","designing/AGENTS.md MUST 写明改设计稿须跑 designing lint 与 check-tui-tokens；MUST NOT 再暗示仅靠人眼发现色板或固定态漂移。"
 scenarios[0]:

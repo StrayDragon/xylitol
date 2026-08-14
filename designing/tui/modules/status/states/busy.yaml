@@ -1,0 +1,12 @@
+id: status.busy
+cols: 80
+spin:
+  ms: 80
+must_contain:
+  - "Working"
+must_not_contain:
+  - "Ready"
+lines:
+  -
+    - { text: "⠋", token: accent, spin: true }
+    - { text: " Working", token: accent }

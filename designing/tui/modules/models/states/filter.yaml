@@ -1,0 +1,14 @@
+id: models.filter
+cols: 80
+must_contain:
+  - "filter:"
+  - "fast"
+must_not_contain:
+  - "reasoning"
+  - "/model "
+lines:
+  -
+    - { text: "models", token: muted }
+    - { text: " filter: fast", token: muted }
+  -
+    - { text: "› <model-fast>  off  low  [high]  max", token: on-surface, rev: true }

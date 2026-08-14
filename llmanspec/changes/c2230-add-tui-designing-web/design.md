@@ -1,36 +1,40 @@
-# designing Web：骨架与双轨
+# designing Web：顶层交互设计稿
 
-权衡见 [`research/stack-survey.md`](./research/stack-survey.md)。本文只钉本切片落地形状。
+权衡见 [`research/stack-survey.md`](./research/stack-survey.md)。
 
-## 两源
+## 真值
 
-运行时真值 = 产品代码。意图 + 固定态 = `src/app/tui/designing/`。浏览器 cell-grid **不是** 产品真值（layoutlib ≠ 真机）。
+运行时真值 = 产品代码。`designing/` 是给人看的交互设计稿（固定态 + 对齐 + 待办 + 备注），**不是**第二套视觉 SSOT。浏览器 cell-grid **不是**产品真值（layoutlib ≠ 真机）。
 
 ## 目录
 
-数据与模块靠近产品面；bun 应用 `package.json` 只在 `designing/app/`，不进 Cargo workspace、不进 `packages/xylitol-tui`。
+升到仓库顶层，便于以后加 `designing/web/`（未交付则不建空目录）。`package.json` 只在 `designing/app/`。
 
 ```text
-src/app/tui/designing/
+designing/
   AGENTS.md
-  app/          # Vite vanilla TS
-  modules/
-  generated/    # 勿手改
+  app/                 # bun + Vite vanilla TS
+  generated/           # 勿手改
+  tui/modules/<id>/
+    draft.yaml
+    intent.md
+    states/*.yaml
 ```
 
 ## 作者格式
 
-YAML state：`must_contain` / `must_not_contain` + `lines: [{ text, token }]`。`token` 映射 DESIGN 色名（`muted` → `var(--muted)`）。可选 `cols:`。禁止 hex。
-
-intent.md：可观察 MUST + 词表；禁止钉 Rust 路径/类型/行数。
+- `draft.yaml`：摘要、对齐（chrome / item / todo-bar）、todos、可选 `keys`（仅组件自有键）、备注。
+- YAML state：`must_contain` / `must_not_contain` + `lines: [{ text, token, rev? }]`。禁止 hex。
+- intent.md：可观察 MUST；禁止钉 Rust 路径/类型/行数。
+- **无独立快捷键模块**。
 
 ## Token
 
-SSOT 仍是 `DESIGN.md` frontmatter。`sync_tokens.py` 双写 playground + `designing/generated/`，直到拆除日只留后者。`just check-tui-tokens` 两边都对。
+SSOT 仍是 `DESIGN.md` frontmatter。`scripts/sync_tui_tokens.py` **只写** `designing/generated/`。`just check-tui-tokens` 对生成物 + `Palette`。
 
-## 双轨拆除
+## 拆除（本切片已做）
 
-activity-fold 闸改 YAML 后，HTML 模板不再对该模块做 `must_contain`。全部槽迁完且 playground 闸不再解析 HTML → 删 `index.html`，`open-design-playground` 一次性改成 `open-designing`。禁止永久 alias。
+旧 `src/app/tui/design/playground/` 删除；`open-design-playground` 一次性改为 `open-designing`（不留永久 alias）。`design/*.md` 缩成指针。闸只走 `scripts/check_tui_designing.py`。
 
 ## 与 c2200
 

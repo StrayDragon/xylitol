@@ -1,0 +1,17 @@
+id: session-tree.filter
+cols: 80
+must_contain:
+  - "(2/5) [user]"
+  - "› user:"
+must_not_contain:
+  - "c635"
+  - "demo 已有"
+lines:
+  -
+    - { text: "› user: ", token: on-surface, rev: true }
+    - { text: "修折叠", token: on-surface, rev: true }
+  -
+    - { text: "  assistant: ", token: assistant }
+    - { text: "ok", token: muted }
+  -
+    - { text: "(2/5) [user]", token: muted }

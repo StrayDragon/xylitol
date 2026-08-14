@@ -1,0 +1,17 @@
+id: diff
+title: Diff
+surface: tui
+summary: 产品 Edit 走 display_diff；窄屏 unified compact，宽≥100 切 side-by-side；rail 内不叠 diff 行底。
+alignment:
+  chrome: 工具块/Diff 条目正文，不是独立浏览面
+  item: 与 markdown 同为行级积木；header 与正文共 status 轨
+  todo-bar: 不进队列条
+todos:
+  - { done: true, text: "unified / SBS / empty 三态对照代码" }
+  - { done: false, text: "词级 wash 静图（span 内 bg）可再补一态" }
+keys:
+  - { chord: "Alt+E", when: "折叠/展开 Diff 块（与 tool 共用）" }
+  - { chord: "Ctrl+O", when: "视口满高，与 Alt+E 正交" }
+notes: |
+  代码 SSOT：packages/xylitol-tui Diff + scrollback push_viewport_diff_lines。
+  DESIGN spacing.diff-side-by-side-min-cols = 100。包 Default 即 Some(100)。

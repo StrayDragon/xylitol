@@ -1,0 +1,9 @@
+id: errors.row
+cols: 80
+must_contain:
+  - "failed"
+must_not_contain:
+  - "System"
+lines:
+  -
+    - { text: "failed to apply patch", token: error }
