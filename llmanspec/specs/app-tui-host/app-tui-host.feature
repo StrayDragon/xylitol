@@ -66,9 +66,8 @@
 
   @req:ath10
   场景: layout-section-present
-    假如 打开 src/app/tui/AGENTS.md
-    当 审计文档结构
-    那么 含文件布局表、模块职责、硬约束与验证指针，且无进度表
+    当 打开面 AGENTS 文档
+    那么 含布局表与模块职责，且无进度表
 
   @req:ath11
   场景: bang-abort-unchanged
@@ -79,20 +78,14 @@
   @req:ath12
   场景: entry-complexity-under-budget
     假如 ath12 入口协调者已接线
-    当 运行 scripts/check_complexity.py --check
-    那么 cognitive≤35 且 cyclomatic≤30 且无第二套 drain 泵
+    当 运行复杂度闸脚本 --check
+    那么 cognitive 与 cyclomatic 均在上限内且无第二套 drain 泵
 
   @req:ath12
   场景: input-policy-module
     假如 审查 host 目录
     当 定位 busy Esc 与 idle Enter
     那么 位于 input_policy（或等价）子模块且 step 仍为唯一调度入口
-
-  @req:ath12
-  场景: effects-slash-split
-    假如 审查 effects 目录
-    当 定位 PendingSlash 臂
-    那么 按族分文件且 harness 仍调用同一 drain_pending
 
   @req:ath13
   场景: get-messages-error-note

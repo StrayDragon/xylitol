@@ -19,6 +19,10 @@
 
 视觉 / UX SSOT：`DESIGN.md` + `design/`（含 **产品专用** `design/playground/` 静图）。历史文案「chrome」= layout/widgets；勿用 `shell`/`scene` 命名。
 
+**布局地图（本文件自指要求）**：本文件按「角色表（上）→ 硬约束 → 验证与 HOW」提供本地布局地图：目录/文件职责、协调者与可下沉模块边界（host / effects / bridge / layout / widgets / commands）、硬约束指针（Esc 归属与 bang/agent abort 分岔、禁止 reach-in、禁止继续堆 God 文件）、验证命令指针；并保留对 [`PI_DELTAS.md`](./PI_DELTAS.md) 与 `write-tui` skill 的指针。不写进度板或易腐清单。
+
+**playground 文档职责**（design 文档/lint 承继）：Agent 默认忽略 `design/playground/`，仅在人类点名路径或粘贴片段时才读；改静图须跑 `scripts/check_tui_design_playground.py`（入 `just qa`）与 `check-tui-tokens`；token 生成物（tokens.css/tokens.js）由 `sync_tokens.py` 从 `DESIGN.md` frontmatter 生成，手改不作为长期真值；fixtures（`design/fixtures/`）与 HTML `data-design-fixture` 关联由 lint 断言。
+
 **信息面词汇（固定）**：讨论与**本面**文档 / host MUST 使用 [`docs/architecture/TUI信息面与chrome词汇.md`](../../../docs/architecture/TUI信息面与chrome词汇.md) 表内词——尤其 **下轮预告**（next-turn cue，≠ message）、**滚动提示**（`UiEntry::ScrollNotice` / `push_scroll_notice`）、**壳层通告**（chrome toast / `push_chrome_toast`，status 上方；≠ ScrollNotice / `UiEntry::Error`）、**尾随 / 顶插**。禁止主用「挂账」「Status trail」「system 消息」/`UiEntry::System` 指 UI。
 
 **与 `agent_demo` 分界**：`just demo-tui` / `packages/…/agent_demo` = 包引擎演示，**不是**本面 SSOT，**不是** DESIGN playground。**MUST NOT** 把 demo 屏上英文 / plate 文案当成产品 chrome 真值；**MUST NOT** 为对齐本词表去强改 demo 字符串（除非人类明确要求）。产品视觉改动走本目录 + `just open-design-playground` / 产品测。

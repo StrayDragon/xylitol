@@ -1,35 +1,34 @@
 kind: llman.sdd.spec
 name: "layer-architecture"
-purpose: "分层与 seam、Xy 精选导出、嵌入缝与组件粒度：agent / protocol / infra / app（单 crate；无独立 domain/ 或 runtime_protocol/ 顶栏；不用源码 grep 元测试卡写法）。"
-valid_scope[3]: src/,tests/,src/AGENTS.md
-requirements[26]{req_id,title,statement}:
-  la1,核心层与 protocol 布局,"System MUST 以 src/agent/ 承载编排与投影（ReAct、project_for_llm、session 编排），语义对齐 pi-agent-core；agent 侧共享类型 MUST 经 protocol 承载（因 infra 不得依赖 agent）。System MUST 以单一 src/protocol/ 作为跨边界契约 SSOT：wire/（Command/Event）与 ports/（XyModel、XyTool、XySessionStore、XyEventSink 等）为契约子树；进 port/wire 签名的共享类型（AgentMessage、Env、SessionEntry、XyEvent、XyChunk 等）MUST 位于 protocol 根模块（可按领域聚子树，非独立 vocab/types 顶栏）；wire MUST NOT 依赖 ports；ports MAY 依赖根共享类型；根共享类型 MUST NOT 依赖 ports/wire/agent/infra。MUST NOT 提供独立的 src/domain/、src/runtime_protocol/ 或第三顶栏子树。"
-  la2,向下依赖,"infra/ 模块 MUST NOT import 任何 crate::agent 符号；agent/ 模块 MUST NOT import 任何具体 infra/ 类型（仅经 protocol ports）；应用面（cli 渲染子路径、tui、非组合根的 app 模块）MUST NOT import crate::infra 或 agent 子模块内部，MUST 经 app/core seam（composition / Driver / bootstrap / dispatch）与 crate::agent 的 mod 级导出。组合根 app/cli/、app/server/、app/core/composition.rs 可同时 import agent 与 infra 做装配。InProcessDriver MAY 调用文档化的表面 infra（trust / clipboard / 必要 config 读）；MUST NOT 成为第二套组合根去构造 provider/session 工具集。protocol/ MUST NOT 依赖 agent/ 或 infra/ 实现。分层靠 AGENTS + review + 缝行为测保障，MUST NOT 要求源码 grep 元测试。"
-  la4,app 层命名,"app/ 表面（用户入口：cli、server、tui、gui）与跨面缝（composition、driver）MUST 分离：缝位于 app/core/，表面不托管缝实现。print 模式 MUST 位于 app/cli/ 作为 CLI 子模式，而非顶层 app 模块。"
-  la6,server 在 app 下,"System MUST 在 src/app/server/ 提供 app::server 模块，托管 agent + infra 运行时并经 REST（/api/v1）与 WebSocket 暴露 protocol/；server MUST 强制单实例锁。"
-  la7,运行时归属,"全部运行时（provider、tool、session storage、exec-env、bash executor、secret resolution、resource loader、export I/O）MUST 位于 infra/；agent/ MUST 仅以 Arc<dyn Port> 在组合根从 protocol/ 注入持有；agent/ MUST NOT 直接调用 infra 构造器或借用 infra exec 原语。"
+purpose: "分层与 seam、Xy 精选导出、嵌入缝与组件粒度：agent / protocol / infra / app（单 crate；无独立 domain 或 runtime_protocol 顶栏；不用源码 grep 元测试卡写法）。"
+valid_scope[3]: "agent 层与 infra 层与 app 层与 protocol 层","workspace 测试","分层约定载体（AGENTS）"
+requirements[25]{req_id,title,statement}:
+  la1,核心层与 protocol 布局,"System MUST 以 agent 层承载编排与投影（ReAct、LLM 投影、session 编排）；agent 侧共享类型 MUST 经 protocol 承载（因 infra 不得依赖 agent）。System MUST 以单一 protocol 层作为跨边界契约 SSOT：wire（Command/Event）与 ports（XyModel、XyTool、XySessionStore、XyEventSink 等）为契约子树；进 port/wire 签名的共享类型（AgentMessage、Env、SessionEntry、XyEvent、XyChunk 等）MUST 位于 protocol 根共享区（可按领域聚子树，非独立 vocab/types 顶栏）；wire MUST NOT 依赖 ports；ports MAY 依赖根共享类型；根共享类型 MUST NOT 依赖 ports/wire/agent/infra。MUST NOT 提供独立的 domain、runtime_protocol 或第三顶栏子树。"
+  la2,向下依赖,"infra 层 MUST NOT 导入任何 agent 符号；agent 层 MUST NOT 导入任何具体 infra 类型（仅经 protocol ports）；应用面（cli 渲染子路径、tui、非组合根的 app 模块）MUST NOT 导入 infra 或 agent 子模块内部，MUST 经 app 跨面缝（composition / Driver / bootstrap / dispatch）与 agent 公共入口导入。组合根（cli 面、server 面、装配模块）可同时导入 agent 与 infra 做装配。InProcessDriver MAY 调用文档化的表面 infra（trust / clipboard / 必要 config 读）；MUST NOT 成为第二套组合根去构造 provider/session 工具集。protocol 层 MUST NOT 依赖 agent 或 infra 实现。分层靠 AGENTS + review + 缝行为测保障，MUST NOT 要求源码 grep 元测试。"
+  la4,app 层命名,"app 表面（用户入口：cli、server、tui、gui）与跨面缝（composition、driver）MUST 分离：缝位于 app 跨面缝区，表面不托管缝实现。print 模式 MUST 为 CLI 子模式，而非顶层 app 模块。"
+  la6,server 应用面,"System MUST 提供 server 应用面，托管 agent + infra 运行时并经 REST（/api/v1）与 WebSocket 暴露 protocol 契约；server MUST 强制单实例锁。"
+  la7,运行时归属,"全部运行时（provider、tool、session storage、exec-env、bash executor、secret resolution、resource loader、export I/O）MUST 位于 infra 层；agent 层 MUST 仅经 protocol 端口注入持有（组合根装配），MUST NOT 直接调用 infra 构造器或借用 infra exec 原语。"
   la8,agent 独立性,"Agent（能力聚合体）构造器 MUST NOT 要求 Session、MUST NOT 持有 session_id、MUST NOT 依赖 Session 持久化生命周期；session_id 为 app 层绑定的 SessionStore 查询键。"
-  la9,分层保障方式,"分层不变量（la2 依赖方向）MUST 经 src/AGENTS.md、write-surface 流程与缝/行为测试保障；src/infra 下 MUST NOT 有生产代码 import crate::agent；System MUST NOT 要求或恢复以扫描 import 路径为手段的 arch_guard 测试模块作为强制闸（新增分层约束优先写成缝行为测或 AGENTS 约定）。"
+  la9,分层保障方式,"分层不变量（la2 依赖方向）的保障手段为仓库自身约定：架构 AGENTS 文档、write-surface 流程与缝/行为测试；System MUST NOT 要求或恢复以扫描 import 路径为手段的 arch_guard 测试模块作为强制闸（新增分层约束优先写成缝行为测或 AGENTS 约定）。"
   la13,agent 薄且无展示,agent/ MUST NOT 托管纯展示或用户指引逻辑（如静态帮助文本或消息格式化）；此类逻辑 MUST 位于 app/（客户端表面），agent/ MUST 仅含编排循环、hook 点与编排状态。
-  la14,禁止 domain 顶栏与词汇集中,"System MUST NOT 保留独立 src/domain/ 顶栏、pub use domain as core 兼容 shim 或 vocab/types 第三顶栏子树；调用点 MUST 一次性迁到 protocol 根共享类型、protocol/ports、protocol/wire 或 agent/（投影与编排）。Xy 前缀核心抽象 MUST 落在其主人分区（protocol 根共享类型、protocol/ports、protocol/wire、agent 编排与投影、infra 实现），MUST NOT 集中堆在独立顶栏。"
-  la15,app composition,"System MUST 提供 app::core::composition 模块，从 BuildAgentOptions 集中构造完整接线的 Agent，使 CLI、Server 与 TUI 不重复 Agent 接线代码。"
-  la17,Xy 协议端口,"protocol/ports/ MUST 托管 Xy 前缀端口契约；其签名所用共享类型 MUST 来自 protocol 根模块。"
-  la19,缝与表面分离,app/ MUST 将跨面缝分组于 src/app/core/（组合根与运行时 driver 边界），与自包含应用表面（cli/、server/、tui/、gui）分离；应用表面 MUST NOT 直接托管 build_agent 接线或 Driver trait。
-  la20,共享 bootstrap 与 dispatch,"app::core MUST 托管共享 bootstrap 模块（app::core::bootstrap），集中从 CLI args 到 AgentRuntime 的完整装配路径（config load、ModelRegistry build、trust resolution、resource discovery 含 templates/context_files/system_prompt/append_system_prompt、compaction settings、permission、build_agent、model select），以及共享 dispatch 模块（app::core::dispatch）集中 Command 变体执行语义；print（cli）、server、tui MUST 调用 bootstrap，tui MUST 调用 dispatch，任何表面 MAY NOT 内联自有装配或命令分发实现。"
-  la21,禁止死包装协作者,agent/ 内对端口的纯转发壳（无附加状态或行为，且无生产调用方）MUST 删除；Agent MUST 直接持有 Arc<dyn Port> 或经有真实职责的协作者访问，MUST NOT 保留 SessionIO 类零逻辑包装。
+  la15,app 组合根,"System MUST 提供单一组合根装配入口，从构建选项集中构造完整接线的 Agent，使 CLI、Server 与 TUI 不重复 Agent 接线代码。"
+  la17,Xy 协议端口,"Xy 前缀端口契约 MUST 位于 protocol 层端口区；其签名所用共享类型 MUST 来自 protocol 层根共享区。"
+  la19,缝与表面分离,"app 层 MUST 将跨面缝（组合根与运行时 driver 边界）分组于独立跨面缝区，与自包含应用表面（cli、server、tui、gui）分离；应用表面 MUST NOT 直接托管 build_agent 接线或 Driver trait（或等价）。"
+  la20,共享 bootstrap 与 dispatch,"System MUST 提供共享 bootstrap 入口集中从 CLI args 到运行时聚合体的完整装配路径，以及共享 dispatch 入口集中 Command 变体执行语义；print（cli）、server、tui MUST 调用 bootstrap，tui MUST 调用 dispatch，任何表面 MAY NOT 内联自有装配或命令分发实现。装配步骤清单（config load、ModelRegistry build、trust resolution、resource discovery 含 templates/context_files/system_prompt/append_system_prompt、compaction settings、permission、build_agent、model select）随代码组织演化，由架构 AGENTS 维护。"
+  la21,禁止死包装协作者,"agent 层 MUST NOT 长期保留对端口的纯转发壳（无附加状态或行为，且无生产调用方）；死码分诊与删除策略由架构 AGENTS 体量策略与 audit-dead-code skill 承载。"
   "la-embed1","嵌入缝与公开入口","System MUST 向库用户提供文档化的嵌入入口（含 bootstrap/Driver 或等价），使外部 crate 无需 reach-in agent::capabilities 或 infra 具体类型即可装配并驱动一轮对话。嵌入路径 MUST 仅依赖精选 Xy 契约与文档化应用缝；MUST NOT 要求嵌入方 import infra 具体实现或 agent 子模块内部类型以完成标准装配。"
   "la-server-driver",Server 与 Print 同缝,Server 与 Print MUST 共享同一应用缝（Driver/bootstrap）；新增 server 能力时优先扩缝，禁止为 server 单独复制一套 agent 编排。
-  "la-mcp-seam",MCP 经嵌入缝,"System MUST 向嵌入方提供不依赖 infra 路径的 MCP 服务器描述（或等价句柄），使 bootstrap/reload 可在不 reach-in infra::mcp 的情况下传递配置。composition/McpSession MUST 在缝边界内将嵌入缝 MCP 描述转为 infra 实现；应用面 MUST NOT 为 MCP 装配单独 reach-in infra 类型。"
-  "la-dispatch-consume",dispatch 有消费方,跨面命令执行缝 dispatch MUST 至少被一个生产应用面消费（Server 或 TUI）；禁止长期仅单测覆盖而无面接线。
+  "la-mcp-seam",MCP 经嵌入缝,"System MUST 向嵌入方提供不依赖 infra 路径的 MCP 服务器描述（或等价句柄），使 bootstrap/reload 可在不 reach-in infra 实现的情况下传递配置。缝边界内的 MCP 会话类型（或等价）MUST 将嵌入缝 MCP 描述转为 infra 实现；应用面 MUST NOT 为 MCP 装配单独 reach-in infra 类型。"
+  "la-dispatch-consume",dispatch 有消费方,"跨面命令执行缝 dispatch MUST 至少被一个生产应用面消费（Server 或 TUI）；仅单测覆盖而无面接线视为逻辑死码，死码分诊与激活策略由架构 AGENTS 与 audit-dead-code skill 承载。"
   la25,provider 包开闭,"LLM 厂商差异 MUST 收敛在 packages/xylitol-ai-bridge 的 adapter 族；主仓投影缝（agent 内 project_for_llm）仅负责 Env→LLM 折叠。新 OpenAI-like 或 Anthropic-like 兼容端 MUST 以开闭方式扩展（新 adapter/配置），MUST NOT 为某一网关修改 AgentMessage 角色集或 agent ReAct 核心；agent MAY 依赖 bridge DTO 组合 Llm 臂；agent/infra MUST NOT 依赖厂商 HTTP/SDK。"
   la26,feature-flags,"System MUST 为每个可选能力定义带域前缀的 feature flag，使非默认 feature 零开销编译剔除。内置能力（tools、hooks、security、print-mode）无 feature flag，运行时由 config.yaml 控制。ACP 模式使用 feature flag infra-acp。"
   la27,minimal-default-features,"Cargo.toml default MUST 为 cli + tui + otel（个人 agent 开箱）；server MUST 为 opt-in；MUST NOT 要求 default 包含全部非 dev feature。构建 feature 闸与条件编译以 Cargo.toml 为 SSOT（原 build-config 并入）。"
-  ar01,清除 pi 文档引用,src/ 中所有源文件 MUST NOT 在 doc comments 中引用 pi coding agent 或其 TypeScript 模块。pi 设计理由引用 MUST 替换为该模块实际职责的独立描述。
+  ar01,清除 pi 文档引用,"源文件 doc comments MUST NOT 引用 pi coding agent 或其 TypeScript 模块；pi 设计理由引用 MUST 替换为该模块实际职责的独立描述。文档卫生清单（含存量清理跟进）由架构 AGENTS 维护。"
   ar06,精选库入口 Xy 前缀,精选进 crate 公开 API（lib.rs pub use）的可替换端口、跨面生命周期事件及其绑定签名类型 MUST 使用 Xy 前缀；应用面缝（Driver/bootstrap/dispatch）、protocol 线协议类型、infra 具体实现、以及未导出的内部协作者 MUST NOT 仅为品牌而加 Xy 前缀。
   ar07,消除重复领域实体,System MUST NOT 为同一领域概念定义多种类型；Usage、StopReason 与 Compaction 配置 MUST 各有一个 canonical 类型。
-  ar09,精选 pub use 清单,System MUST 在 src/lib.rs（或等价公开入口）维护精选 pub use，至少覆盖 XyModel、XyTool、XySessionStore、XyEvent、XyChunk 及文档化的配套错误/配置类型；未列入清单的内部模块 MUST NOT 被误当作稳定公开 API。
-  r12,配置 JSON Schema 边界,"需要 JSON Schema 的配置/settings DTO MUST 位于 infra/config 或 infra/settings（或等价配置边界）并在该处 derive schemars；agent/protocol 会话词汇 MUST NOT 仅为 schema 而 derive JsonSchema。"
-scenarios[26]{req_id,id,given,when,then,feature}:
+  ar09,精选 pub use 清单,"System MUST 在库公开入口（或等价）维护精选 pub use，至少覆盖 XyModel、XyTool、XySessionStore、XyEvent、XyChunk 及文档化的配套错误/配置类型；未列入清单的内部模块 MUST NOT 被误当作稳定公开 API。"
+  r12,配置 JSON Schema 边界,"需要 JSON Schema 的配置/settings DTO MUST 收敛于 infra 配置边界（config/settings 或等价）并在该处 derive schemars；agent/protocol 会话词汇 MUST NOT 仅为 schema 而 derive JsonSchema。"
+scenarios[25]{req_id,id,given,when,then,feature}:
   la1,la1-unit,"核心层 约束由架构约定与缝行为测覆盖（非 BDD harness）",审查实现与对应测试,"行为符合本 requirement 陈述",false
   la2,la2-unit,"向下依赖 约束由架构约定与缝行为测覆盖（非 BDD harness）",审查实现与对应测试,"行为符合本 requirement 陈述",false
   la4,la4-unit,"app 层命名 约束由架构约定与缝行为测覆盖（非 BDD harness）",审查实现与对应测试,"行为符合本 requirement 陈述",false
@@ -38,7 +37,6 @@ scenarios[26]{req_id,id,given,when,then,feature}:
   la8,la8-unit,"agent 独立性 约束由架构约定与缝行为测覆盖（非 BDD harness）",审查实现与对应测试,"行为符合本 requirement 陈述",false
   la9,la9-unit,"分层保障方式 约束由架构约定与缝行为测覆盖（非 BDD harness）",审查实现与对应测试,"行为符合本 requirement 陈述",false
   la13,la13-unit,"agent 薄且无展示 约束由架构约定与缝行为测覆盖（非 BDD harness）",审查实现与对应测试,"行为符合本 requirement 陈述",false
-  la14,la14-unit,"禁止 domain 顶栏与词汇集中 约束由架构约定与缝行为测覆盖（非 BDD harness）",审查实现与对应测试,"行为符合本 requirement 陈述",false
   la15,la15-unit,"app composition 约束由架构约定与缝行为测覆盖（非 BDD harness）",审查实现与对应测试,"行为符合本 requirement 陈述",false
   la17,la17-unit,"Xy 协议端口 约束由架构约定与缝行为测覆盖（非 BDD harness）",审查实现与对应测试,"行为符合本 requirement 陈述",false
   la19,la19-unit,"缝与表面分离 约束由架构约定与缝行为测覆盖（非 BDD harness）",审查实现与对应测试,"行为符合本 requirement 陈述",false
