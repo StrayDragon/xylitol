@@ -21,9 +21,9 @@
 
 ## 1. Specs landing
 
-- [ ] 1.1 干净树且默认分支：`llman sdd change start c1762-update-tui-activity-fold-labels`
-- [ ] 1.2 `app-tui-transcript`：改写 att24（诚实类目、XOR、去重、basename、Title Case、禁止 file 占位）；att33 进行时 Editing/Exploring/Running；att23 补「仅 compaction 不套簇头」
-- [ ] 1.3 对应 `feature: false` unit 场景；禁止 toon `feature: true`
+- [x] 1.1 干净树且默认分支：`llman sdd change start c1762-update-tui-activity-fold-labels`
+- [x] 1.2 `app-tui-transcript`：改写 att24（诚实类目、XOR、去重、basename、Title Case、禁止 file 占位）；att33 进行时 Editing/Exploring/Running；att23 补「仅 compaction 不套簇头」
+- [x] 1.3 对应 `feature: false` unit 场景；禁止 toon `feature: true`
 - [ ] 1.4 commit Specs landing → `readyToImplement=true`
 
 ## Apply
