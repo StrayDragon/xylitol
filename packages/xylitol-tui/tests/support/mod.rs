@@ -7,6 +7,13 @@
 //! compositing, and style leaks.
 //!
 //! Not part of the public API; `#[cfg(test)]` / test-crates only.
+//!
+//! `#[allow(dead_code)]` 说明：Cargo 自动发现 tests/ 下 12 个 integration
+//! target，每个 target 独立 `mod support`（一个 target = 一个编译单元），
+//! 只有本 target 引到的符号才算活。下面各 allow 是「harness API 跨 target
+//! 完整性」所需，不是死码压制——去 allow 会在未引用的 target 上爆
+//! `dead_code`。引用矩阵见
+//! `llmanspec/changes/c2220-update-pre-release-hygiene/research/dead-code-triage.md`。
 
 pub mod vt_feed;
 
@@ -66,7 +73,7 @@ pub struct VirtualTerminal {
     alternate_screen_active: bool,
 }
 
-#[allow(dead_code)] // harness API; methods used across different test targets
+#[allow(dead_code)] // harness API; direct: interaction_modes/overlay_focus/virtual_terminal; via Deref/harness: agent_demo/completion_source/harness/snapshot (per-target `mod support`)
 impl VirtualTerminal {
     pub fn new(cols: u16, rows: u16) -> Self {
         let rows_us = rows as usize;
@@ -90,7 +97,7 @@ impl VirtualTerminal {
 
     /// Resize the grid to `cols` x `rows`. Existing content in the top-left
     /// overlap is preserved; new cells are blank. Cursor is clamped.
-    #[allow(dead_code)]
+    #[allow(dead_code)] // harness API; only interaction_modes/virtual_terminal reach it via Terminal::set_size_hint (per-target `mod support`)
     pub fn resize(&mut self, cols: u16, rows: u16) {
         let new_rows = rows as usize;
         let new_cols = cols as usize;
@@ -145,7 +152,7 @@ impl VirtualTerminal {
     }
 
     /// Read a viewport-relative cell (row 0 = top of visible area).
-    #[allow(dead_code)]
+    #[allow(dead_code)] // harness API; used by agent_demo/interaction_modes targets
     pub fn viewport_cell(&self, row: usize, col: usize) -> Cell {
         let abs = self.viewport_top() + row;
         self.cell(abs, col)
@@ -175,7 +182,7 @@ impl VirtualTerminal {
         self.grid.get(row).map(|r| r.as_slice()).unwrap_or(&[])
     }
 
-    #[allow(dead_code)]
+    #[allow(dead_code)] // 预留：OSC 标题断言；落地条件：需要断言 OSC 0/2 标题的测试接入后启用
     pub fn title(&self) -> Option<&str> {
         self.title.as_deref()
     }
@@ -655,7 +662,7 @@ pub struct LoggingVirtualTerminal {
     alt_leave_calls: u32,
 }
 
-#[allow(dead_code)] // harness API; methods used across different test targets
+#[allow(dead_code)] // harness API; direct use in interaction_modes/virtual_terminal targets, indirect via TuiTestHarness (per-target `mod support`)
 impl LoggingVirtualTerminal {
     pub fn new(cols: u16, rows: u16) -> Self {
         Self {
@@ -671,9 +678,8 @@ impl LoggingVirtualTerminal {
         }
     }
 
-    /// Per-`write()` call records, in order. Retained for future differential-
-    /// render assertions that need the per-call breakdown (pi's clearWrites
-    /// pattern).
+    /// Per-`write()` call records, in order. 预留：未来差分渲染断言需 per-call
+    /// 分解（pi `clearWrites` 模式）；落地条件：差分渲染断言测试接入后启用。
     #[allow(dead_code)]
     pub fn raw_writes(&self) -> &[String] {
         &self.writes
@@ -724,6 +730,8 @@ impl LoggingVirtualTerminal {
 
     /// Delegate to the inner virtual terminal for grid/cursor assertions when
     /// a test needs an explicit `&VirtualTerminal` (most use `Deref`).
+    /// 预留：需要显式 `&VirtualTerminal` 的断言；落地条件：首个不走 `Deref`
+    /// 的断言测试接入后启用。
     #[allow(dead_code)]
     pub fn inner(&self) -> &VirtualTerminal {
         &self.inner
@@ -871,7 +879,7 @@ pub struct MutableComponent {
     pub lines: Rc<RefCell<Vec<String>>>,
 }
 
-#[allow(dead_code)] // harness API; not every test target mounts a mutable component
+#[allow(dead_code)] // harness API; constructed by virtual_terminal target, shared via mount_shared in harness target
 impl Component for MutableComponent {
     fn render(&mut self, _width: usize) -> Vec<String> {
         self.lines.borrow().clone()
@@ -891,7 +899,7 @@ pub struct TuiTestHarness {
     pub tui: TUI<LoggingVirtualTerminal>,
 }
 
-#[allow(dead_code)] // harness API shared across test targets; not every target uses every method
+#[allow(dead_code)] // harness API; 5 targets use methods (agent_demo/completion_source/harness/snapshot/virtual_terminal), each target compiles its own `mod support`
 impl TuiTestHarness {
     /// Create a harness with a `cols x rows` logging virtual terminal.
     pub fn new(cols: u16, rows: u16) -> Self {
@@ -908,7 +916,7 @@ impl TuiTestHarness {
 
     /// Mount a `MutableComponent` sharing `lines` with the test, and return
     /// nothing (the test keeps its `Rc<RefCell<Vec<String>>>` handle).
-    #[allow(dead_code)] // harness API; used by harness_test, not every target
+    #[allow(dead_code)] // harness API; used by harness_test target only (per-target `mod support`)
     pub fn mount_shared(&mut self, lines: Rc<RefCell<Vec<String>>>) -> &mut Self {
         self.tui.add_child(Box::new(MutableComponent { lines }));
         self
@@ -960,7 +968,8 @@ impl TuiTestHarness {
     }
 
     /// Assert the cursor is at viewport-relative `(col, row)`.
-    #[allow(dead_code)] // harness API; used by later editor-port tests
+    /// 预留：未来 editor-port 变更激活；落地条件：editor-port 测试接入。
+    #[allow(dead_code)]
     pub fn assert_cursor_at(&self, col: usize, row: usize) -> &Self {
         let (c, r) = self.tui.terminal.cursor_position();
         assert_eq!(
@@ -972,7 +981,8 @@ impl TuiTestHarness {
     }
 
     /// Assert the cell at viewport-relative `(row, col)` has char `ch`.
-    #[allow(dead_code)] // harness API; used by later editor-port tests
+    /// 预留：未来 editor-port 变更激活；落地条件：editor-port 测试接入。
+    #[allow(dead_code)]
     pub fn assert_cell_text(&self, row: usize, col: usize, ch: char) -> &Self {
         let cell = self.tui.terminal.cell(row, col);
         assert_eq!(
@@ -984,10 +994,11 @@ impl TuiTestHarness {
 }
 
 // ── c405 layer 2: insta snapshot helper (spec tt03) ────────────────────────
-// These helpers are shared across multiple test targets; a given target may
-// not reference every one, so they carry #[allow(dead_code)].
+// Shared across test targets; each target compiles its own `mod support` and
+// only snapshot_test references these, so they carry #[allow(dead_code)]
+// (harness API 跨 target 完整性，非死码压制；矩阵见 triage doc).
 
-#[allow(dead_code)]
+#[allow(dead_code)] // harness API; used by snapshot_test target only
 /// Render the harness viewport into a human-readable multi-line string with
 /// inline SGR annotations, suitable for `insta::assert_snapshot!`. Each row is
 /// prefixed with its index; styled runs are wrapped like `[bold]text[/]`.
@@ -1028,7 +1039,7 @@ pub fn viewport_snapshot(harness: &TuiTestHarness) -> String {
 
 /// Annotate a row's cells: wrap consecutive styled runs in `[bold]…[/]`-style
 /// tags so a snapshot diff highlights where styles change, not just text.
-#[allow(dead_code)]
+#[allow(dead_code)] // private helper of viewport_snapshot (same module)
 fn render_row_annotated(row: &[Cell]) -> String {
     let mut out = String::new();
     let mut cur_tag = String::new();
@@ -1053,7 +1064,7 @@ fn render_row_annotated(row: &[Cell]) -> String {
 
 /// Compact style tag for a cell (empty if default). Order: bold,dim,italic,
 /// underline,reverse, then fg if non-default.
-#[allow(dead_code)]
+#[allow(dead_code)] // private helper of render_row_annotated (same module)
 fn style_tag(cell: &Cell) -> String {
     let mut parts: Vec<&str> = Vec::new();
     if cell.bold {
