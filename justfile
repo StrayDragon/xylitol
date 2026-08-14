@@ -327,9 +327,16 @@ check-scripts verbosity=verbosity_default:
         fi
     done
 
-# Open DESIGN playground HTML (Linux; xdg-open).
+# Open DESIGN playground HTML (Linux; xdg-open). Dual-track until designing teardown.
 open-design-playground:
     xdg-open src/app/tui/design/playground/index.html
+
+# designing web app (intent + structured static preview).
+open-designing:
+    bun run --cwd src/app/tui/designing/app dev
+
+gen-designing-index:
+    python3 scripts/gen_designing_index.py
 
 # Package TUI tests with default features (includes highlight) — layers 1–4.
 [arg('verbosity', pattern='quiet|normal|verbose')]

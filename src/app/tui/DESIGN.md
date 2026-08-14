@@ -121,9 +121,9 @@ components:
 
 > 规范：遵循 `common-design-md-zh`（中文正文 + YAML frontmatter tokens，值一律双引号）。
 > **Token SSOT**：本文件 frontmatter。子文档见下方「Token 引用」。
-> 组件级 MUST：[`design/`](./design/)（各文件 YAML 只引用本文件，不另立色板）。
-> 人类快速审色 / 固定状态：[`design/playground/`](./design/playground/)（**静态设计图**；agent 默认忽略，见 [`design/AGENTS.md`](./design/AGENTS.md)）。
-> 包 `packages/xylitol-tui` 只提供引擎与通用组件；语义 token / layout / glyph 配置在本面。
+> 组件级意图：[`designing/`](./designing/)（模块 `intent.md` + YAML 固定态）。未迁组件仍见 [`design/`](./design/)。
+> 人类预览：[`designing/`](./designing/)（`just open-designing`）；旧巨石静图双轨 [`design/playground/`](./design/playground/)。
+> Agent：[`designing/AGENTS.md`](./designing/AGENTS.md)。包 `packages/xylitol-tui` 只提供引擎与通用组件；语义 token / layout / glyph 配置在本面。
 
 ## Token 引用（子文档）
 
