@@ -3,7 +3,8 @@ depends_on: []
 skip_specs_landing: true
 branch: c2230-tui-designing
 base_sha: 8e560211a8cfcf8d5de476eea93f5e5a9843b1c2
-checkpointed: false
+checkpointed: true
+checkpoint_sha: c8b1a1acf0e59a39e7fa35b5071aac658193d7f1
 ---
 
 # TUI designing Web：意图静图收成两源
