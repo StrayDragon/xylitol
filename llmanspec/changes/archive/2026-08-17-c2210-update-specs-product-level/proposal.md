@@ -1,5 +1,9 @@
 ---
 depends_on: []
+branch: sdd/c2210
+base_sha: d4c8da78c8ae1b7e83d007e984a06dd3a0bc0927
+checkpointed: true
+checkpoint_sha: 053677fc6222973ff417d8bc5ca22a87475830a7
 ---
 
 # Specs 收敛为产品级合约

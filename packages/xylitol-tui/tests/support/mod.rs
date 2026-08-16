@@ -13,7 +13,7 @@
 //! 只有本 target 引到的符号才算活。下面各 allow 是「harness API 跨 target
 //! 完整性」所需，不是死码压制——去 allow 会在未引用的 target 上爆
 //! `dead_code`。引用矩阵见
-//! `llmanspec/changes/c2220-update-pre-release-hygiene/research/dead-code-triage.md`。
+//! `llmanspec/changes/archive/2026-08-17-c2220-update-pre-release-hygiene/research/dead-code-triage.md`。
 
 pub mod vt_feed;
 
