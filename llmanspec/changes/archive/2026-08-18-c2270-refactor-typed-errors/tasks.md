@@ -39,4 +39,4 @@
 - [x] 6.1 [blocked-by: 3.4, 4.2, 5.3] 生产路径不再对 session/export/trust/config/MCP 走 `from_opaque`；更新 `driver_error` 单测；残留 opaque 才回落 Message
 - [x] 6.2 [blocked-by: 6.1] `rg 'Result<[^,]+,\s*String>' src/ packages/xylitol-ai-bridge/src`：生产文件零命中（允许 test/lab/example）
 - [x] 6.3 [blocked-by: 6.2] `just fmt` + `just lint` + `just qa`
-- [ ] 6.4 [blocked-by: 6.3] `llman-sdd-verify`；全绿后 `llman sdd change finalize c2270-refactor-typed-errors`
+- [x] 6.4 [blocked-by: 6.3] `llman-sdd-verify`；全绿后 `llman sdd change finalize c2270-refactor-typed-errors`

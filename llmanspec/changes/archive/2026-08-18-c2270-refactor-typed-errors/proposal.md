@@ -2,7 +2,8 @@
 depends_on: []
 branch: sdd/c2270-refactor-typed-errors
 base_sha: 9bf6dca3adf9893cd67a8495f72a4f2ab691e9c8
-checkpointed: false
+checkpointed: true
+checkpoint_sha: 9bf6dca3adf9893cd67a8495f72a4f2ab691e9c8
 ---
 
 # 全仓收口 Result String 错误：port typed error + 稳定 kind
