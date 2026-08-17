@@ -1,5 +1,9 @@
 ---
 depends_on: []
+branch: sdd/c2220
+base_sha: d4c8da78c8ae1b7e83d007e984a06dd3a0bc0927
+checkpointed: true
+checkpoint_sha: d4fb41a309fd891f0010d68997bfdb8376637e2d
 ---
 
 # 0.0.1 前卫生：无未发布兼容债

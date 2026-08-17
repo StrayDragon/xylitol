@@ -1,5 +1,9 @@
 ---
 depends_on: []
+branch: sdd/c2200
+base_sha: d4c8da78c8ae1b7e83d007e984a06dd3a0bc0927
+checkpointed: true
+checkpoint_sha: ce9334095229a2effe46bad8cf3fcd293d0834f4
 ---
 
 # TUI 形态注册表 + 代码驱动目录 + 帧带验证
