@@ -483,22 +483,16 @@ impl DebouncedAutocomplete {
             _ = new_token.cancelled() => return None,
         }
 
-        // Merge the upstream ct and our debounce token so either cancels
-        // the actual query.
-        let merged = CancellationToken::new();
-        let merged_ct = merged.clone();
-        let ct2 = ct.clone();
-        let nt2 = new_token.clone();
-        tokio::spawn(async move {
-            tokio::select! {
-                _ = ct2.cancelled() => merged_ct.cancel(),
-                _ = nt2.cancelled() => merged_ct.cancel(),
-            }
-        });
-
-        self.provider
-            .get_suggestions_async(lines, cursor_line, cursor_col, force, merged)
-            .await
+        // Run the latest query; the upstream ct and the debounce token (cancelled
+        // by the next call) both flow into the query itself, so no merge helper
+        // task is needed — dropping the query future on `ct` also releases the
+        // in-flight fd subprocess.
+        tokio::select! {
+            _ = ct.cancelled() => None,
+            result = self
+                .provider
+                .get_suggestions_async(lines, cursor_line, cursor_col, force, new_token) => result,
+        }
     }
 
     /// Returns a reference to the inner provider.

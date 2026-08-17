@@ -13,9 +13,21 @@ pub mod lifecycle;
 use std::collections::HashMap;
 use std::sync::{Arc, Mutex};
 
+use futures::FutureExt;
 use serde_json::Value;
 
 use self::lifecycle::{LifecycleHandler, XyEvent};
+
+/// Extract the message from a caught panic payload (mirrors `JoinError` display).
+fn panic_payload_message(payload: &(dyn std::any::Any + Send)) -> String {
+    if let Some(s) = payload.downcast_ref::<&str>() {
+        (*s).to_string()
+    } else if let Some(s) = payload.downcast_ref::<String>() {
+        s.clone()
+    } else {
+        "panic with a non-string payload".to_string()
+    }
+}
 
 /// Type alias for async event handlers.
 pub type Handler = Arc<
@@ -70,16 +82,15 @@ impl EventBus {
             let handler = entry.handler.clone();
             let data = data.clone();
             let channel_name = channel.to_string();
-            // tokio::spawn isolates panics at task boundary
+            // One task per handler; catch_unwind turns a handler panic into a log
+            // line instead of poisoning the bus (no wrapper task needed).
             tokio::task::spawn(async move {
-                let join_handle = tokio::task::spawn(async move {
-                    handler(data).await;
-                });
-                if let Err(e) = join_handle.await {
+                let fut = handler(data);
+                if let Err(payload) = std::panic::AssertUnwindSafe(fut).catch_unwind().await {
                     log::warn!(
                         "EventBus: handler panicked on channel '{}': {}",
                         channel_name,
-                        e
+                        panic_payload_message(&payload)
                     );
                 }
             });
