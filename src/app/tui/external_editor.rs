@@ -69,8 +69,7 @@ pub fn run_external_editor_process_with_command(
             .map(|d| d.as_millis())
             .unwrap_or(0)
     ));
-    std::fs::write(&path, initial)
-        .map_err(|e| TuiSurfaceError::io(format!("write tempfile: {e}")))?;
+    std::fs::write(&path, initial).map_err(|e| TuiSurfaceError::io("write tempfile", e))?;
 
     let mut parts = editor_cmd.split_whitespace();
     let program = parts
@@ -86,11 +85,11 @@ pub fn run_external_editor_process_with_command(
         .stdout(std::process::Stdio::inherit())
         .stderr(std::process::Stdio::inherit())
         .status()
-        .map_err(|e| TuiSurfaceError::io(format!("spawn {program}: {e}")))?;
+        .map_err(|e| TuiSurfaceError::spawn(program, e))?;
 
     let result = if status.success() {
-        let new_content = std::fs::read_to_string(&path)
-            .map_err(|e| TuiSurfaceError::io(format!("read back: {e}")))?;
+        let new_content =
+            std::fs::read_to_string(&path).map_err(|e| TuiSurfaceError::io("read back", e))?;
         Some(
             new_content
                 .strip_suffix('\n')

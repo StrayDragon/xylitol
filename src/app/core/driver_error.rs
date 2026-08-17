@@ -372,10 +372,9 @@ impl From<LoadError> for XyDriverError {
 impl From<McpError> for XyDriverError {
     fn from(err: McpError) -> Self {
         match err {
-            McpError::Connect(message) | McpError::Call(message) | McpError::Timeout(message) => {
-                Self::io(message)
-            }
+            McpError::ServerNotFound { .. } => Self::not_found(err.to_string()),
             McpError::Config(message) => Self::invalid_input(message),
+            _ => Self::io(err.to_string()),
         }
     }
 }
@@ -383,7 +382,8 @@ impl From<McpError> for XyDriverError {
 impl From<ClipboardError> for XyDriverError {
     fn from(err: ClipboardError) -> Self {
         match err {
-            ClipboardError::Io(message) => Self::io(message),
+            ClipboardError::Io { context, source } => Self::io(format!("{context}: {source}")),
+            ClipboardError::Join(message) => Self::io(message),
             ClipboardError::Unsupported(message) => Self::unsupported(message),
             ClipboardError::Decode(message) => Self::invalid_input(message),
         }
@@ -527,7 +527,7 @@ mod tests {
 
     #[test]
     fn from_clipboard_error_is_io() {
-        let err = XyDriverError::from(ClipboardError::io("Clipboard: join error: boom"));
+        let err = XyDriverError::from(ClipboardError::join("Clipboard: join error: boom"));
         assert_eq!(err.kind(), "Io");
         assert_eq!(err.to_string(), "io: Clipboard: join error: boom");
     }

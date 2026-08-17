@@ -74,7 +74,7 @@ fn read_text_via_wl_paste() -> Result<Option<String>, ClipboardError> {
         .stdout(Stdio::piped())
         .stderr(Stdio::null())
         .output()
-        .map_err(|e| ClipboardError::io(format!("wl-paste --list-types failed: {e}")))?;
+        .map_err(|e| ClipboardError::io("wl-paste --list-types failed", e))?;
 
     if !list_output.status.success() {
         return Ok(None);
@@ -91,7 +91,7 @@ fn read_text_via_wl_paste() -> Result<Option<String>, ClipboardError> {
         .stdout(Stdio::piped())
         .stderr(Stdio::null())
         .output()
-        .map_err(|e| ClipboardError::io(format!("wl-paste text failed: {e}")))?;
+        .map_err(|e| ClipboardError::io("wl-paste text failed", e))?;
 
     if !output.status.success() || output.stdout.is_empty() {
         return Ok(None);
@@ -111,7 +111,7 @@ fn read_text_via_xclip() -> Result<Option<String>, ClipboardError> {
         .stdout(Stdio::piped())
         .stderr(Stdio::null())
         .output()
-        .map_err(|e| ClipboardError::io(format!("xclip failed: {e}")))?;
+        .map_err(|e| ClipboardError::io("xclip failed", e))?;
     if !output.status.success() || output.stdout.is_empty() {
         return Ok(None);
     }

@@ -211,8 +211,7 @@ fn load_from_path(path: &Path) -> Result<KeybindingsConfig, TuiSurfaceError> {
     if !path.exists() {
         return Ok(KeybindingsConfig::new());
     }
-    let raw = std::fs::read_to_string(path)
-        .map_err(|e| TuiSurfaceError::io(format!("read failed: {e}")))?;
+    let raw = std::fs::read_to_string(path).map_err(|e| TuiSurfaceError::io("read failed", e))?;
     parse_keybindings_json(&raw)
 }
 
