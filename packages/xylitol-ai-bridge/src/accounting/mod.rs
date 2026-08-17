@@ -146,7 +146,7 @@ mod tests {
         let assistant = AiBridgeMessage::AssistantMessage {
             content: vec![],
             stop_reason: Some(AiBridgeStopReason::Stop),
-            usage: Some(usage.clone()),
+            usage: Some(usage),
             api: "test".into(),
             provider: "test".into(),
             model: "test".into(),

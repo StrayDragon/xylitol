@@ -406,7 +406,7 @@ mod tests {
         let mapped = map_session_tree_nodes(&[node]);
         assert_eq!(mapped[0].kind.as_deref(), Some("meta"));
         assert_eq!(mapped[0].label, "session_env");
-        assert!(FilterMode::Default.include(&mapped[0]) == false);
+        assert!(!FilterMode::Default.include(&mapped[0]));
     }
 
     #[test]

@@ -299,7 +299,7 @@ async fn run_turn(
             }
         }
 
-        last_usage = usage.clone();
+        last_usage = usage;
         let mut parts = Vec::new();
         if !thinking.is_empty() || thinking_signature.is_some() {
             parts.push(AiBridgePart::Thinking {
@@ -321,7 +321,7 @@ async fn run_turn(
         history.push(AiBridgeMessage::AssistantMessage {
             content: parts,
             stop_reason: Some(stop),
-            usage: usage.clone(),
+            usage,
             api: "openai-responses".into(),
             provider: "lab".into(),
             model: adapter.name().to_string(),

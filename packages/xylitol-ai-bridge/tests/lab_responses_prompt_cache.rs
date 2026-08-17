@@ -81,29 +81,29 @@ fn apply_env_overrides(file: &mut LiveProviderFile) {
     if let Some(on) = env_truthy("XYLITOL_LIVE_PROVIDER") {
         file.enabled = on;
     }
-    if let Ok(v) = std::env::var("XYLITOL_LIVE_BASE_URL") {
-        if !v.is_empty() {
-            file.base_url = v;
-        }
+    if let Ok(v) = std::env::var("XYLITOL_LIVE_BASE_URL")
+        && !v.is_empty()
+    {
+        file.base_url = v;
     }
-    if let Ok(v) = std::env::var("XYLITOL_LIVE_MODEL") {
-        if !v.is_empty() {
-            file.model = v;
-        }
+    if let Ok(v) = std::env::var("XYLITOL_LIVE_MODEL")
+        && !v.is_empty()
+    {
+        file.model = v;
     }
     if let Ok(v) = std::env::var("XYLITOL_LIVE_API_KEY") {
         if !v.is_empty() {
             file.api_key = v;
         }
-    } else if let Ok(v) = std::env::var("OPENAI_API_KEY") {
-        if !v.is_empty() {
-            file.api_key = v;
-        }
+    } else if let Ok(v) = std::env::var("OPENAI_API_KEY")
+        && !v.is_empty()
+    {
+        file.api_key = v;
     }
-    if let Ok(v) = std::env::var("XYLITOL_LIVE_MAX_OUTPUT_TOKENS") {
-        if let Ok(n) = v.parse() {
-            file.max_output_tokens = n;
-        }
+    if let Ok(v) = std::env::var("XYLITOL_LIVE_MAX_OUTPUT_TOKENS")
+        && let Ok(n) = v.parse()
+    {
+        file.max_output_tokens = n;
     }
 }
 
@@ -206,9 +206,10 @@ async fn one_call(
         .unwrap_or_else(|e| panic!("generate failed: {e}"));
     let mut usage = None;
     while let Some(item) = stream.next().await {
-        match item.unwrap_or_else(|e| panic!("chunk err: {e}")) {
-            AiBridgeChunk::Done { usage: u, .. } => usage = u,
-            _ => {}
+        if let AiBridgeChunk::Done { usage: u, .. } =
+            item.unwrap_or_else(|e| panic!("chunk err: {e}"))
+        {
+            usage = u
         }
     }
     usage.expect("Done usage missing — provider omitted usage?")
