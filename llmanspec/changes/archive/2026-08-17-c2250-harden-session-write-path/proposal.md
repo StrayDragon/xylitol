@@ -2,7 +2,8 @@
 depends_on: []
 branch: sdd/c2250-harden-session-write-path
 base_sha: 31618ae386867f9b7564b025cdb501d9d11f3699
-checkpointed: false
+checkpointed: true
+checkpoint_sha: 31618ae386867f9b7564b025cdb501d9d11f3699
 ---
 
 # session 写入路径加固：原子重写 + 变更落盘确定化
