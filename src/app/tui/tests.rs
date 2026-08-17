@@ -3666,6 +3666,30 @@ fn interaction_mode_defaults_to_application_owned() {
 }
 
 #[test]
+fn lab_inline_env_selects_inline_at_construction() {
+    assert_eq!(
+        crate::app::tui::lab_interaction_mode(Some("1")),
+        xylitol_tui::InteractionMode::Inline
+    );
+    assert_eq!(
+        crate::app::tui::lab_interaction_mode(Some(" true ")),
+        xylitol_tui::InteractionMode::Inline
+    );
+    assert_eq!(
+        crate::app::tui::lab_interaction_mode(Some("YES")),
+        xylitol_tui::InteractionMode::Inline
+    );
+    assert_eq!(
+        crate::app::tui::lab_interaction_mode(Some("0")),
+        xylitol_tui::InteractionMode::ApplicationOwned
+    );
+    assert_eq!(
+        crate::app::tui::lab_interaction_mode(None),
+        xylitol_tui::InteractionMode::ApplicationOwned
+    );
+}
+
+#[test]
 fn interaction_application_owned_at_construction_registers_dock() {
     let mut session = HostSession::new_product_ui_with_meta_mode(
         TestTerminal::new(80, 24),

@@ -132,6 +132,9 @@ pub struct TuiRunOptions {
     /// Interaction mode bound at host start (c2070 / ath30). Default ApplicationOwned.
     /// Not driven by `XYLITOL_TUI_MOUSE`. Mid-session switching is not supported —
     /// rebuild the host (or exit the process) to change modes.
+    ///
+    /// Lab peek: CLI may pass [`lab_interaction_mode_from_env`] (`XYLITOL_TUI_INLINE`).
+    /// That is **not** a product flag or setting.
     pub interaction_mode: xylitol_tui::InteractionMode,
 }
 
@@ -147,6 +150,30 @@ impl Default for TuiRunOptions {
     }
 }
 
+/// Lab peek env for constructing the product host as Inline (`1` / `true` / `yes`).
+///
+/// **Not** a product flag. Default / unset remains ApplicationOwned (ath30).
+pub(crate) const LAB_TUI_INLINE_ENV: &str = "XYLITOL_TUI_INLINE";
+
+pub(crate) fn parse_lab_inline_opt_in(value: Option<&str>) -> bool {
+    value.is_some_and(|v| {
+        let v = v.trim();
+        v == "1" || v.eq_ignore_ascii_case("true") || v.eq_ignore_ascii_case("yes")
+    })
+}
+
+pub(crate) fn lab_interaction_mode(inline_env: Option<&str>) -> xylitol_tui::InteractionMode {
+    if parse_lab_inline_opt_in(inline_env) {
+        xylitol_tui::InteractionMode::Inline
+    } else {
+        xylitol_tui::InteractionMode::ApplicationOwned
+    }
+}
+
+pub(crate) fn lab_interaction_mode_from_env() -> xylitol_tui::InteractionMode {
+    lab_interaction_mode(std::env::var(LAB_TUI_INLINE_ENV).ok().as_deref())
+}
+
 /// Enter the interactive TUI REPL (host-driven; never calls `TUI::start()`).
 ///
 /// Callers MUST run [`preflight`] first (CLI does). This still fails closed if
@@ -154,6 +181,12 @@ impl Default for TuiRunOptions {
 pub async fn run(driver: &mut dyn XyDriver, options: TuiRunOptions) -> Result<(), XyDriverError> {
     install_lifecycle_hooks();
     log::info!(target: "xylitol::tui", "starting product TUI host");
+    if options.interaction_mode.is_inline() {
+        log::info!(
+            target: "xylitol::tui",
+            "lab {LAB_TUI_INLINE_ENV}: product host using Inline (not a product setting)"
+        );
+    }
 
     let guard = TerminalGuard::enter()?;
     let terminal = guard.take();
