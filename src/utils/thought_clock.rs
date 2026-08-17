@@ -215,10 +215,15 @@ impl StreamNodeClock {
 
     /// Thinking-only fallback then message end, just before persist.
     pub fn finish_message(&mut self) {
+        // Single clock capture: thinking closes *at* message end, so both stamps
+        // share one wall-clock read (keeps the ms-equality assertion stable under
+        // parallel load instead of straddling two SystemTime::now() reads).
+        let at = Instant::now();
+        let ms = unix_now_ms();
         if self.has(StreamNode::ThinkingStart) && !self.has(StreamNode::ThinkingEnd) {
-            self.stamp(StreamNode::ThinkingEnd);
+            self.stamp_at(StreamNode::ThinkingEnd, at, ms);
         }
-        self.stamp(StreamNode::MessageEnd);
+        self.stamp_at(StreamNode::MessageEnd, at, ms);
     }
 
     pub fn elapsed_secs(&self, start: StreamNode, end: StreamNode) -> Option<u64> {
