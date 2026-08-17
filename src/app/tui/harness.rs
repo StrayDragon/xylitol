@@ -500,7 +500,7 @@ impl XyDriver for ScriptedDriver {
         }
     }
 
-    fn select_model(&mut self, model_id: &str) -> Result<ModelInfo, XyDriverError> {
+    async fn select_model(&mut self, model_id: &str) -> Result<ModelInfo, XyDriverError> {
         self.model = ModelInfo {
             id: model_id.into(),
             display_name: model_id.into(),
@@ -511,11 +511,11 @@ impl XyDriver for ScriptedDriver {
         Ok(self.model.clone())
     }
 
-    fn cycle_model(&mut self) -> Result<ModelInfo, XyDriverError> {
+    async fn cycle_model(&mut self) -> Result<ModelInfo, XyDriverError> {
         Ok(self.model.clone())
     }
 
-    fn set_thinking_level(&mut self, level: String) -> Result<(), XyDriverError> {
+    async fn set_thinking_level(&mut self, level: String) -> Result<(), XyDriverError> {
         if !self.thinking_levels.is_empty()
             && !self
                 .thinking_levels
@@ -536,7 +536,7 @@ impl XyDriver for ScriptedDriver {
         self.thinking_level.clone()
     }
 
-    fn cycle_thinking_level(&mut self) -> Result<String, XyDriverError> {
+    async fn cycle_thinking_level(&mut self) -> Result<String, XyDriverError> {
         if self.thinking_levels.is_empty() {
             return Err("current model has no thinking levels".into());
         }
@@ -6148,9 +6148,16 @@ mod slice_tests {
         let mut driver = ScriptedDriver::new();
         driver.set_thinking_levels(vec!["off".into(), "high".into()]);
         assert_eq!(driver.thinking_level(), "off");
-        assert_eq!(driver.cycle_thinking_level().unwrap(), "high");
-        assert_eq!(driver.cycle_thinking_level().unwrap(), "off", "must wrap");
-        assert!(driver.set_thinking_level("xhigh".into()).is_err());
+        assert_eq!(
+            futures::executor::block_on(driver.cycle_thinking_level()).unwrap(),
+            "high"
+        );
+        assert_eq!(
+            futures::executor::block_on(driver.cycle_thinking_level()).unwrap(),
+            "off",
+            "must wrap"
+        );
+        assert!(futures::executor::block_on(driver.set_thinking_level("xhigh".into())).is_err());
         assert_eq!(driver.thinking_level(), "off");
     }
 

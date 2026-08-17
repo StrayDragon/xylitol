@@ -77,7 +77,7 @@ pub(crate) fn make_agent_with_store(
     if session.current_model().is_none()
         && let Some(id) = agent.registry.borrow().list().first().map(|m| m.id.clone())
     {
-        let _ = session.select_model(&id);
+        let _ = futures::executor::block_on(session.select_model(&id));
     }
     (AgentRuntime::new(session), store)
 }
@@ -129,7 +129,7 @@ pub(crate) async fn run_wiring_operation(
             ensure_wiring_fake_model(agent, true);
             let (runtime, store) = make_agent_with_store(agent);
             let mut driver = XyInProcessDriver::new(runtime, store);
-            driver.select_model("fake").map(|_| ())
+            driver.select_model("fake").await.map(|_| ())
         }
         "设置思考级别 high" => {
             let _ = agent.ensure_wiring_hook_log();
@@ -137,12 +137,12 @@ pub(crate) async fn run_wiring_operation(
             let (runtime, store) = make_agent_with_store(agent);
             // Select fake first so a model exists; then change thinking.
             let mut driver = XyInProcessDriver::new(runtime, store);
-            driver.select_model("fake")?;
+            driver.select_model("fake").await?;
             // Clear recorder so only thinking_level_select remains for key asserts.
             if let Some(log) = agent.wiring_hook_log.borrow().as_ref() {
                 log.calls.lock().unwrap_or_else(|e| e.into_inner()).clear();
             }
-            driver.set_thinking_level("high".into()).unwrap();
+            driver.set_thinking_level("high".into()).await.unwrap();
             Ok(())
         }
         "打开会话树" => {

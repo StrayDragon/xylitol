@@ -46,15 +46,15 @@ pub trait XyDriver: Send {
 
     /// Select a model by id (exact match on `id` or `config.model`).
     /// Returns the selected model on success.
-    fn select_model(&mut self, model_id: &str) -> Result<ModelInfo, XyDriverError>;
+    async fn select_model(&mut self, model_id: &str) -> Result<ModelInfo, XyDriverError>;
 
     /// Cycle to the next model in the registry. Returns the newly-selected model.
-    fn cycle_model(&mut self) -> Result<ModelInfo, XyDriverError>;
+    async fn cycle_model(&mut self) -> Result<ModelInfo, XyDriverError>;
 
     /// Set the thinking level.
     ///
     /// Returns `Err` if the level is not in the current model's support set.
-    fn set_thinking_level(&mut self, level: String) -> Result<(), XyDriverError>;
+    async fn set_thinking_level(&mut self, level: String) -> Result<(), XyDriverError>;
 
     /// Current thinking level.
     fn thinking_level(&self) -> String;
@@ -63,7 +63,7 @@ pub trait XyDriver: Send {
     ///
     /// Returns the level now in effect. Demo / legacy callers only; product TUI
     /// changes thinking solely via `/model` (ati36).
-    fn cycle_thinking_level(&mut self) -> Result<String, XyDriverError>;
+    async fn cycle_thinking_level(&mut self) -> Result<String, XyDriverError>;
 
     /// Current session id (the id the next `run`/export acts on).
     fn session_id(&self) -> Option<String>;

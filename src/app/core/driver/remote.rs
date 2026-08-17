@@ -292,7 +292,7 @@ impl XyDriver for XyRemoteDriver {
         .unwrap_or_default()
     }
 
-    fn select_model(&mut self, model_id: &str) -> Result<ModelInfo, XyDriverError> {
+    async fn select_model(&mut self, model_id: &str) -> Result<ModelInfo, XyDriverError> {
         let model_id = model_id.to_string();
         let url = format!(
             "{}/api/v1/session/{}/model?model_id={}",
@@ -300,35 +300,33 @@ impl XyDriver for XyRemoteDriver {
             self.session_id,
             urlencoding_loose(&model_id)
         );
-        let selected = self.block_on(async {
-            let resp = self
-                .client
-                .post(&url)
-                .send()
-                .await
-                .map_err(|e| XyDriverError::remote(e.to_string()))?;
-            let data = Self::parse_envelope(resp).await?;
-            // Endpoint returns { model, display_name }; enrich via list if needed.
-            if data.get("id").is_some() {
-                Self::model_from_value(&data)
-            } else {
-                Ok(ModelInfo {
-                    id: data
-                        .get("model")
-                        .and_then(|m| m.as_str())
-                        .unwrap_or(&model_id)
-                        .to_string(),
-                    display_name: data
-                        .get("display_name")
-                        .and_then(|m| m.as_str())
-                        .unwrap_or("")
-                        .to_string(),
-                    thinking: false,
-                    thinking_levels: Vec::new(),
-                    context_window: 0,
-                })
+        let resp = self
+            .client
+            .post(&url)
+            .send()
+            .await
+            .map_err(|e| XyDriverError::remote(e.to_string()))?;
+        let data = Self::parse_envelope(resp).await?;
+        // Endpoint returns { model, display_name }; enrich via list if needed.
+        let selected = if data.get("id").is_some() {
+            Self::model_from_value(&data)?
+        } else {
+            ModelInfo {
+                id: data
+                    .get("model")
+                    .and_then(|m| m.as_str())
+                    .unwrap_or(&model_id)
+                    .to_string(),
+                display_name: data
+                    .get("display_name")
+                    .and_then(|m| m.as_str())
+                    .unwrap_or("")
+                    .to_string(),
+                thinking: false,
+                thinking_levels: Vec::new(),
+                context_window: 0,
             }
-        })?;
+        };
         let default = selected
             .thinking_levels
             .last()
@@ -338,11 +336,9 @@ impl XyDriver for XyRemoteDriver {
         Ok(selected)
     }
 
-    fn cycle_model(&mut self) -> Result<ModelInfo, XyDriverError> {
-        let selected = self.block_on(async {
-            let data = self.post_data("model/cycle", serde_json::json!({})).await?;
-            Self::model_from_value(&data)
-        })?;
+    async fn cycle_model(&mut self) -> Result<ModelInfo, XyDriverError> {
+        let data = self.post_data("model/cycle", serde_json::json!({})).await?;
+        let selected = Self::model_from_value(&data)?;
         *self.thinking.lock().unwrap() = selected
             .thinking_levels
             .last()
@@ -351,12 +347,9 @@ impl XyDriver for XyRemoteDriver {
         Ok(selected)
     }
 
-    fn set_thinking_level(&mut self, level: String) -> Result<(), XyDriverError> {
-        let request_level = level.clone();
-        self.block_on(async {
-            self.post_data("thinking", serde_json::json!({ "level": request_level }))
-                .await
-        })?;
+    async fn set_thinking_level(&mut self, level: String) -> Result<(), XyDriverError> {
+        self.post_data("thinking", serde_json::json!({ "level": level }))
+            .await?;
         *self.thinking.lock().unwrap() = level;
         Ok(())
     }
@@ -365,7 +358,7 @@ impl XyDriver for XyRemoteDriver {
         self.thinking.lock().unwrap().clone()
     }
 
-    fn cycle_thinking_level(&mut self) -> Result<String, XyDriverError> {
+    async fn cycle_thinking_level(&mut self) -> Result<String, XyDriverError> {
         // Remote REST has set-only; cycle locally over the selected model's
         // declared support list.
         let levels = self
@@ -381,7 +374,7 @@ impl XyDriver for XyRemoteDriver {
                 .cloned()
                 .unwrap_or_else(|| THINKING_OFF.into()),
         };
-        self.set_thinking_level(next.clone())?;
+        self.set_thinking_level(next.clone()).await?;
         Ok(next)
     }
 

@@ -534,7 +534,7 @@ impl XyDriver for XyInProcessDriver {
             .collect()
     }
 
-    fn select_model(&mut self, model_id: &str) -> Result<ModelInfo, XyDriverError> {
+    async fn select_model(&mut self, model_id: &str) -> Result<ModelInfo, XyDriverError> {
         // Prefer registry id; only use unique upstream `config.model` as alias.
         let registry = self.agent.model_registry();
         let found = registry
@@ -556,6 +556,7 @@ impl XyDriver for XyInProcessDriver {
             .ok_or_else(|| XyDriverError::not_found(format!("model not found: {model_id}")))?;
         self.agent
             .select_model(&found)
+            .await
             .map_err(XyDriverError::from)?;
         // Re-read the resolved model to return authoritative info.
         Ok(self
@@ -571,7 +572,7 @@ impl XyDriver for XyInProcessDriver {
             }))
     }
 
-    fn cycle_model(&mut self) -> Result<ModelInfo, XyDriverError> {
+    async fn cycle_model(&mut self) -> Result<ModelInfo, XyDriverError> {
         let list = self.agent.model_registry().list().to_vec();
         if list.is_empty() {
             return Err(XyDriverError::not_found("no models available"));
@@ -585,13 +586,15 @@ impl XyDriver for XyInProcessDriver {
         let next_id = list[next_idx].id.clone();
         self.agent
             .select_model_with_source(&next_id, "cycle")
+            .await
             .map_err(XyDriverError::from)?;
         Ok(ModelInfo::from(&list[next_idx]))
     }
 
-    fn set_thinking_level(&mut self, level: String) -> Result<(), XyDriverError> {
+    async fn set_thinking_level(&mut self, level: String) -> Result<(), XyDriverError> {
         self.agent
             .set_thinking_level(level)
+            .await
             .map_err(XyDriverError::from)
     }
 
@@ -599,9 +602,10 @@ impl XyDriver for XyInProcessDriver {
         self.agent.thinking_level()
     }
 
-    fn cycle_thinking_level(&mut self) -> Result<String, XyDriverError> {
+    async fn cycle_thinking_level(&mut self) -> Result<String, XyDriverError> {
         self.agent
             .cycle_thinking_level()
+            .await
             .map_err(XyDriverError::from)
     }
 
@@ -953,7 +957,7 @@ impl XyDriver for XyInProcessDriver {
             .await
             .map_err(XyDriverError::from)?;
         let mut note = format!("debug scene `{canonical}` → session {session_id}");
-        let model = match self.select_model("fake") {
+        let model = match self.select_model("fake").await {
             Ok(m) => {
                 note.push_str("; model → fake");
                 Some(m)
@@ -1988,7 +1992,7 @@ mod driver_session_tree_tests {
         .tools(ToolSet::empty())
         .build()
         .expect("build agent");
-        agent.select_model("mock").expect("select mock");
+        agent.select_model("mock").await.expect("select mock");
         let sid = uuid::Uuid::new_v4().to_string();
         agent.bind_session(sid).expect("bind_session");
         let mut driver = XyInProcessDriver::new(agent, store_trait);
@@ -2493,7 +2497,7 @@ mod driver_session_tree_tests {
         .tools(ToolSet::empty())
         .build()
         .expect("build agent");
-        agent.select_model("mock").expect("select mock");
+        agent.select_model("mock").await.expect("select mock");
         let sid = uuid::Uuid::new_v4().to_string();
         agent.bind_session(sid).expect("bind_session");
         let mut driver = XyInProcessDriver::new(agent, store_trait);
@@ -2637,7 +2641,7 @@ mod driver_session_tree_tests {
         .tools(ToolSet::empty())
         .build()
         .expect("build agent");
-        agent.select_model("mock").expect("select mock");
+        agent.select_model("mock").await.expect("select mock");
         let sid = uuid::Uuid::new_v4().to_string();
         agent.bind_session(sid).expect("bind_session");
         let mut driver = XyInProcessDriver::new(agent, store_trait);

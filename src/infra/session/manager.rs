@@ -18,6 +18,28 @@ fn rfc3339_now() -> String {
         .expect("RFC3339 format is infallible for valid times")
 }
 
+/// Write `content` to `tmp_path`, sync, then atomically rename over `path`.
+async fn write_session_file_atomically(
+    path: &std::path::Path,
+    tmp_path: &std::path::Path,
+    content: &str,
+) -> Result<(), String> {
+    use tokio::io::AsyncWriteExt;
+
+    let mut tmp = tokio::fs::File::create(tmp_path)
+        .await
+        .map_err(|e| format!("create session tmp file: {e}"))?;
+    tmp.write_all(content.as_bytes())
+        .await
+        .map_err(|e| format!("write session tmp file: {e}"))?;
+    tmp.sync_all()
+        .await
+        .map_err(|e| format!("sync session tmp file: {e}"))?;
+    tokio::fs::rename(tmp_path, path)
+        .await
+        .map_err(|e| format!("rename session file: {e}"))
+}
+
 use super::types::*;
 use crate::protocol::ports::XySessionStore;
 
@@ -149,10 +171,14 @@ impl SessionManager {
             content.push('\n');
         }
 
-        tokio::fs::write(&path, content)
-            .await
-            .map_err(|e| format!("write session file: {e}"))?;
-        Ok(())
+        // Crash-atomic replace (s7): a sibling tmp file + rename means a crash
+        // can never leave an existing session file truncated.
+        let tmp_path = path.with_extension("jsonl.tmp");
+        let write_result = write_session_file_atomically(&path, &tmp_path, &content).await;
+        if write_result.is_err() {
+            let _ = tokio::fs::remove_file(&tmp_path).await;
+        }
+        write_result
     }
 
     async fn flush_pending_to_disk(&self, session_id: &str) -> Result<(), String> {
@@ -1919,6 +1945,64 @@ mod deferred_persist_tests {
                 .count(),
             2
         );
+    }
+
+    #[tokio::test]
+    async fn write_entries_to_disk_rewrites_without_tmp_leftover() {
+        let dir = tempfile::tempdir().unwrap();
+        let sessions = dir.path().join("sessions");
+        let mgr = SessionManager::new(sessions.clone());
+        let sid = "atomic-rewrite";
+
+        mgr.create(sid, Some("."), None).await.unwrap();
+        mgr.append(sid, &user_message("one")).await.unwrap();
+        mgr.append(sid, &assistant_message("two")).await.unwrap();
+
+        let file = sessions.join(format!("{sid}.jsonl"));
+        let before = tokio::fs::read_to_string(&file).await.unwrap();
+        let entries = mgr.load(sid).await.unwrap();
+        mgr.write_entries_to_disk(sid, &entries).await.unwrap();
+        let after = tokio::fs::read_to_string(&file).await.unwrap();
+        assert_eq!(before, after, "rewrite must be content-preserving");
+
+        let names: Vec<String> = std::fs::read_dir(&sessions)
+            .unwrap()
+            .map(|e| e.unwrap().file_name().to_string_lossy().into_owned())
+            .collect();
+        assert_eq!(names, vec![format!("{sid}.jsonl")], "no tmp leftovers");
+    }
+
+    #[tokio::test]
+    async fn write_entries_to_disk_failure_keeps_original_intact() {
+        use std::os::unix::fs::PermissionsExt;
+
+        let dir = tempfile::tempdir().unwrap();
+        let sessions = dir.path().join("sessions");
+        let mgr = SessionManager::new(sessions.clone());
+        let sid = "atomic-failure";
+
+        mgr.create(sid, Some("."), None).await.unwrap();
+        mgr.append(sid, &user_message("one")).await.unwrap();
+        mgr.append(sid, &assistant_message("two")).await.unwrap();
+
+        let file = sessions.join(format!("{sid}.jsonl"));
+        let original = tokio::fs::read_to_string(&file).await.unwrap();
+
+        // Read-only dir makes tmp creation fail; the original must stay intact.
+        let mut perms = std::fs::metadata(&sessions).unwrap().permissions();
+        perms.set_mode(0o555);
+        std::fs::set_permissions(&sessions, perms).unwrap();
+
+        let entries = mgr.load(sid).await.unwrap();
+        let result = mgr.write_entries_to_disk(sid, &entries).await;
+
+        let mut perms = std::fs::metadata(&sessions).unwrap().permissions();
+        perms.set_mode(0o755);
+        std::fs::set_permissions(&sessions, perms).unwrap();
+
+        assert!(result.is_err(), "tmp creation must fail in read-only dir");
+        let after = tokio::fs::read_to_string(&file).await.unwrap();
+        assert_eq!(original, after, "failed rewrite must not touch original");
     }
 }
 

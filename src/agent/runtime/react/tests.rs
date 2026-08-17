@@ -88,10 +88,126 @@ async fn test_agent_session_builds_model() {
         crate::agent::capabilities::QueueMode::default(),
         None,
     );
-    session.select_model("mock").expect("select mock");
+    session.select_model("mock").await.expect("select mock");
 
     assert!(session.current_model().is_some());
     assert_eq!(session.current_model().unwrap().id, "mock");
+}
+
+#[tokio::test]
+async fn model_change_entry_lands_before_following_message() {
+    use crate::protocol::session::{EntryBase, MessageEntry};
+
+    let mut reg = ModelRegistry::new(std::sync::Arc::new(
+        crate::infra::config::value::InfraSecretResolver::new(),
+    ));
+    reg.register(XyModelMeta {
+        id: "mock".into(),
+        config: crate::protocol::model::XyModelConfig {
+            kind: crate::protocol::model::XyModelKind::OpenAi,
+            api_key: "sk-test".into(),
+            model: "mock-model".into(),
+            base_url: None,
+            api: None,
+            compat: None,
+        },
+        display_name: "Mock".into(),
+        thinking: false,
+        context_window: 128000,
+        api: String::new(),
+        provider: String::new(),
+        cost_input: 0.0,
+        cost_output: 0.0,
+        cost_cache_read: 0.0,
+        cost_cache_write: 0.0,
+        max_tokens: 0,
+        thinking_levels: Vec::new(),
+        thinking_level_map: Default::default(),
+    });
+
+    let session_mgr = SessionManager::new(tempfile::tempdir().unwrap().path().join("sessions"));
+    let store: Arc<dyn XySessionStore> = Arc::new(session_mgr.clone());
+    let sink: Arc<dyn XyEventSink> = Arc::new(crate::infra::event::EventBus::new());
+    let session = AgentCapabilities::new(
+        reg,
+        ToolSet::from_iter(crate::infra::tools::default_tools()),
+        store.clone(),
+        sink,
+        None,
+        Vec::new(),
+        Vec::new(),
+        ".".into(),
+        None,
+        fake_model_builder(),
+        crate::infra::permission::allow_all_permission(),
+        crate::agent::capabilities::QueueMode::default(),
+        crate::agent::capabilities::QueueMode::default(),
+        None,
+    );
+    let mut runtime = AgentRuntime::new(session);
+    runtime.bind_session("order-check").expect("bind session");
+
+    // Awaited selection must persist before anything appended afterwards.
+    runtime.select_model("mock").await.expect("select mock");
+    store
+        .append_session_entry(
+            "order-check",
+            &SessionEntry::Message(MessageEntry {
+                base: EntryBase {
+                    entry_type: "message".into(),
+                    id: "m-after".into(),
+                    parent_id: None,
+                    timestamp: "t".into(),
+                },
+                message: crate::protocol::session::fixture_message_json("user", "after"),
+            }),
+        )
+        .await
+        .unwrap();
+    // First assistant message forces the deferred flush to disk (s12).
+    store
+        .append_session_entry(
+            "order-check",
+            &SessionEntry::Message(MessageEntry {
+                base: EntryBase {
+                    entry_type: "message".into(),
+                    id: "a-flush".into(),
+                    parent_id: None,
+                    timestamp: "t".into(),
+                },
+                message: crate::protocol::session::fixture_message_json("assistant", "flush"),
+            }),
+        )
+        .await
+        .unwrap();
+
+    let path = session_mgr
+        .get_session_file("order-check")
+        .expect("persisted session file");
+    let content = std::fs::read_to_string(path).unwrap();
+    let types: Vec<String> = content
+        .lines()
+        .map(|line| {
+            serde_json::from_str::<serde_json::Value>(line)
+                .unwrap()
+                .get("type")
+                .and_then(|t| t.as_str())
+                .unwrap_or_default()
+                .to_string()
+        })
+        .collect();
+    let model_change = types
+        .iter()
+        .position(|t| t == "modelChange")
+        .expect("modelChange entry persisted");
+    let message = types
+        .iter()
+        .position(|t| t == "message")
+        .expect("message entry persisted");
+    assert!(
+        model_change < message,
+        "modelChange must precede later messages: {types:?}"
+    );
 }
 
 #[tokio::test]
@@ -279,8 +395,9 @@ fn mock_model_registry() -> ModelRegistry {
 }
 
 fn select_mock(mut session: AgentCapabilities) -> AgentCapabilities {
-    session
-        .select_model("mock")
+    // No session bound yet, so the persist branch never runs and the future
+    // resolves without a reactor; a plain executor is enough.
+    futures::executor::block_on(session.select_model("mock"))
         .expect("select mock model for react tests");
     session
 }
@@ -325,8 +442,7 @@ fn make_agent_with_tools_and_store(
         crate::agent::capabilities::QueueMode::default(),
         None,
     );
-    session
-        .select_model("mock")
+    futures::executor::block_on(session.select_model("mock"))
         .expect("select mock model for react tests");
     (AgentRuntime::new(session), store)
 }
@@ -995,8 +1111,7 @@ fn make_agent_with_rounds(
         crate::agent::capabilities::QueueMode::default(),
         None,
     );
-    session
-        .select_model("mock")
+    futures::executor::block_on(session.select_model("mock"))
         .expect("select mock model for round tests");
     AgentRuntime::new(session)
 }

@@ -96,10 +96,10 @@
     那么 产出汇总该 5 条的 CompactionEntry
 
   @req:s7
-  场景: concurrent
-    假如 两个写入者 append 同一会话
-    当 两次写入完成
-    那么 文件含全部条目且无损坏
+  场景: write-atomicity
+    假如 存在既有会话文件
+    当 重写路径（flush merge / header repair）执行后进程任意时点终止
+    那么 盘上文件保持旧完整内容或新完整内容；无截断或半行混合；同一会话至多一个进程写入
 
   @req:s9
   场景: basic-fork

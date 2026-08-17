@@ -106,7 +106,9 @@ pub(crate) async fn persist_agent_message_with_thought_elapsed(
         },
         message,
     });
-    let _ = store.append_session_entry(session_id, &entry).await;
+    if let Err(error) = store.append_session_entry(session_id, &entry).await {
+        log::warn!(target: "xylitol::session", "persist agent message failed: {error}");
+    }
 }
 
 pub(crate) async fn observe_script_hook(

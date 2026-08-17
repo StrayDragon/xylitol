@@ -404,7 +404,7 @@ pub(crate) fn w_switch_model_cycle(agent: &AgentState) {
         None,
     );
     // Select first model then cycle to the next
-    let _ = session.select_model("agent-a-model");
+    let _ = futures::executor::block_on(session.select_model("agent-a-model"));
     assert!(session.current_model().is_some(), "model selected");
     let models = agent.registry.borrow();
     let available = models.get_available();
@@ -412,7 +412,7 @@ pub(crate) fn w_switch_model_cycle(agent: &AgentState) {
     let current = session.current_model().unwrap();
     let next = available.iter().find(|m| m.id != current.id);
     if let Some(next_model) = next {
-        let _ = session.select_model(&next_model.id);
+        let _ = futures::executor::block_on(session.select_model(&next_model.id));
         agent
             .last_result
             .replace(Some(Ok(format!("switched to {}", next_model.id))));
@@ -656,7 +656,7 @@ pub(crate) async fn g_sess_persist_turn(agent: &AgentState, sess: &XySessionStor
     let store: Arc<dyn xylitol::protocol::ports::XySessionStore> = Arc::new(mgr);
     let mut caps = make_test_capabilities(agent, store.clone());
     if let Some(id) = agent.registry.borrow().list().first().map(|m| m.id.clone()) {
-        let _ = caps.select_model(&id);
+        let _ = caps.select_model(&id).await;
     }
     caps.set_session(sid.to_string());
     let mut runtime = AgentRuntime::new(caps);
@@ -706,7 +706,7 @@ pub(crate) async fn g_sess_persist_tool(agent: &AgentState, sess: &XySessionStor
     let store: Arc<dyn xylitol::protocol::ports::XySessionStore> = Arc::new(mgr);
     let mut caps = make_test_capabilities(agent, store);
     if let Some(id) = agent.registry.borrow().list().first().map(|m| m.id.clone()) {
-        let _ = caps.select_model(&id);
+        let _ = caps.select_model(&id).await;
     }
     caps.set_session(sid.to_string());
     let mut runtime = AgentRuntime::new(caps);

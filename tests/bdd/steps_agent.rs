@@ -196,11 +196,11 @@ pub(crate) async fn _w_agent_switch_thinking(agent: &AgentState, verb: String, l
     if session.current_model().is_none()
         && let Some(id) = agent.registry.borrow().list().first().map(|m| m.id.clone())
     {
-        let _ = session.select_model(&id);
+        let _ = session.select_model(&id).await;
     }
     let _ = store.create(&sid, Some("."), None).await;
     session.set_session(sid.clone());
-    session.set_thinking_level(level.clone()).unwrap();
+    session.set_thinking_level(level.clone()).await.unwrap();
     let entry = SessionEntry::ThinkingLevelChange(ThinkingLevelChangeEntry {
         base: EntryBase {
             entry_type: "thinking_level_change".into(),
@@ -468,9 +468,9 @@ pub(crate) fn _w_agent_try_thinking_level(agent: &AgentState, level: String) {
     if session.current_model().is_none()
         && let Some(id) = agent.registry.borrow().list().first().map(|m| m.id.clone())
     {
-        let _ = session.select_model(&id);
+        let _ = futures::executor::block_on(session.select_model(&id));
     }
-    let payload = match session.set_thinking_level(level) {
+    let payload = match futures::executor::block_on(session.set_thinking_level(level)) {
         Ok(()) => format!("level:{}", session.thinking_level()),
         Err(_) => format!("rejected:level:{}", session.thinking_level()),
     };

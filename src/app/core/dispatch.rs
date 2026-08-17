@@ -124,11 +124,11 @@ async fn dispatch_inner(
         }
         Command::GetState { .. } => Ok(DispatchOutcome::State(driver.get_state())),
         Command::SetModel { model_id, .. } => {
-            let m = driver.select_model(&model_id)?;
+            let m = driver.select_model(&model_id).await?;
             Ok(DispatchOutcome::Model(m))
         }
         Command::CycleModel { .. } => {
-            let m = driver.cycle_model()?;
+            let m = driver.cycle_model().await?;
             Ok(DispatchOutcome::Model(m))
         }
         Command::GetAvailableModels { .. } => {
@@ -136,7 +136,7 @@ async fn dispatch_inner(
         }
         Command::SetThinkingLevel { level, .. } => {
             validate_nonempty_thinking_level(&level)?;
-            driver.set_thinking_level(level.clone())?;
+            driver.set_thinking_level(level.clone()).await?;
             Ok(DispatchOutcome::ThinkingLevel(level))
         }
         Command::Bash {
@@ -320,7 +320,7 @@ mod tests {
         fn available_models(&self) -> Vec<ModelInfo> {
             vec![self.current_model().unwrap()]
         }
-        fn select_model(&mut self, id: &str) -> Result<ModelInfo, XyDriverError> {
+        async fn select_model(&mut self, id: &str) -> Result<ModelInfo, XyDriverError> {
             Ok(ModelInfo {
                 id: id.into(),
                 display_name: id.into(),
@@ -329,17 +329,17 @@ mod tests {
                 context_window: 0,
             })
         }
-        fn cycle_model(&mut self) -> Result<ModelInfo, XyDriverError> {
+        async fn cycle_model(&mut self) -> Result<ModelInfo, XyDriverError> {
             Ok(self.current_model().unwrap())
         }
-        fn set_thinking_level(&mut self, level: String) -> Result<(), XyDriverError> {
+        async fn set_thinking_level(&mut self, level: String) -> Result<(), XyDriverError> {
             self.thinking = level;
             Ok(())
         }
         fn thinking_level(&self) -> String {
             self.thinking.clone()
         }
-        fn cycle_thinking_level(&mut self) -> Result<String, XyDriverError> {
+        async fn cycle_thinking_level(&mut self) -> Result<String, XyDriverError> {
             let levels = ["off", "minimal", "low", "medium", "high"];
             let idx = levels
                 .iter()
@@ -575,7 +575,7 @@ mod tests {
     async fn cycle_and_dispatch_preserve_local_thinking_levels() {
         let mut d = stub();
         assert_eq!(d.thinking_level(), "medium");
-        assert_eq!(d.cycle_thinking_level().unwrap(), "high");
+        assert_eq!(d.cycle_thinking_level().await.unwrap(), "high");
         assert_eq!(d.thinking_level(), "high");
 
         let outcome = dispatch(

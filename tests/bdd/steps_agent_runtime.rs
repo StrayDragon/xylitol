@@ -249,8 +249,7 @@ pub(crate) fn ar_make_runner(agent: &AgentState, ws: &Workspace) -> AgentRuntime
     ws.init();
     ar_register_fake(agent, "ar-queue");
     let mut runtime = make_agent(agent);
-    runtime
-        .select_model("ar-queue")
+    futures::executor::block_on(runtime.select_model("ar-queue"))
         .expect("select ar-queue fake model");
     runtime
 }
@@ -400,6 +399,7 @@ pub(crate) async fn _g_ar11_second_run_after_abort(agent: &AgentState, ws: &Work
     let mut runner = make_agent(agent);
     runner
         .select_model("ar-abort-second")
+        .await
         .expect("select ar-abort-second fake model");
     let mut stream = agent_submit_root(&mut runner, "首轮").await;
     let mut saw_delta = false;
@@ -690,9 +690,7 @@ pub(crate) fn bdd_batch_make_runner(
         xylitol::agent::capabilities::QueueMode::default(),
         None,
     );
-    session
-        .select_model("ar-batch")
-        .expect("select ar-batch fake");
+    futures::executor::block_on(session.select_model("ar-batch")).expect("select ar-batch fake");
     let mut runner = AgentRuntime::new(session);
     runner.set_batch_mode(mode);
     runner
