@@ -65,7 +65,7 @@ fn with_active_mut<R>(f: impl FnOnce(&mut ObsSessionContext) -> R) -> R {
             f(g.as_mut().expect("scoped obs session"))
         });
     }
-    let mut g = slot().lock().expect("obs session mutex");
+    let mut g = slot().lock().unwrap_or_else(|e| e.into_inner());
     f(&mut g)
 }
 
@@ -101,7 +101,7 @@ pub fn obs_session_context() -> ObsSessionContext {
     if let Some(ctx) = SCOPED.with(|slot| slot.borrow().clone()) {
         return ctx;
     }
-    slot().lock().expect("obs session mutex").clone()
+    slot().lock().unwrap_or_else(|e| e.into_inner()).clone()
 }
 
 /// Fastrace property pairs for Langfuse session mapping.

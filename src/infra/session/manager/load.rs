@@ -1,6 +1,7 @@
 use super::SessionManager;
 use crate::infra::session::types::*;
 use crate::protocol::error::XySessionStoreError;
+use crate::utils::{lock_rwlock_read, lock_rwlock_write};
 
 impl SessionManager {
     /// Load all entries from a session (latest [`SESSION_VERSION`] only).
@@ -9,10 +10,7 @@ impl SessionManager {
     pub async fn load(&self, session_id: &str) -> Result<Vec<SessionEntry>, XySessionStoreError> {
         let entries = match &self.backend {
             SessionBackend::InMemory { .. } => {
-                let entries = self
-                    .in_memory_store
-                    .read()
-                    .expect("RwLock not poisoned")
+                let entries = lock_rwlock_read(&self.in_memory_store)
                     .get(session_id)
                     .cloned()
                     .ok_or_else(|| XySessionStoreError::not_found(session_id))?;
@@ -27,10 +25,7 @@ impl SessionManager {
                         .map_err(|e| XySessionStoreError::io("read session", e))?;
                     crate::protocol::session::parse_session_jsonl(&content)?
                 } else {
-                    let entries = self
-                        .pending_store
-                        .read()
-                        .expect("RwLock not poisoned")
+                    let entries = lock_rwlock_read(&self.pending_store)
                         .get(session_id)
                         .cloned()
                         .ok_or_else(|| XySessionStoreError::not_found(session_id))?;
@@ -68,16 +63,16 @@ impl SessionManager {
     /// Delete a session file and in-memory tracking (c1065 resume panel).
     pub async fn delete_session(&self, session_id: &str) -> Result<(), XySessionStoreError> {
         {
-            let mut pending = self.pending_store.write().expect("RwLock not poisoned");
+            let mut pending = lock_rwlock_write(&self.pending_store);
             pending.remove(session_id);
         }
         {
-            let mut leaf = self.leaf_ids.write().expect("RwLock not poisoned");
+            let mut leaf = lock_rwlock_write(&self.leaf_ids);
             leaf.remove(session_id);
         }
         match &self.backend {
             SessionBackend::InMemory { .. } => {
-                let mut store = self.in_memory_store.write().expect("RwLock not poisoned");
+                let mut store = lock_rwlock_write(&self.in_memory_store);
                 store.remove(session_id);
                 Ok(())
             }
@@ -102,7 +97,7 @@ impl SessionManager {
             Ok(d) => d,
             Err(e) if e.kind() == std::io::ErrorKind::NotFound => {
                 // Still surface pending-only sessions below.
-                let pending = self.pending_store.read().expect("RwLock not poisoned");
+                let pending = lock_rwlock_read(&self.pending_store);
                 let mut pending_ids: Vec<_> = pending.keys().cloned().collect();
                 pending_ids.sort();
                 return Ok(pending_ids);
@@ -140,7 +135,7 @@ impl SessionManager {
         let mut ids: Vec<String> = files.into_iter().map(|(id, _)| id).collect();
 
         if matches!(&self.backend, SessionBackend::Persisted { .. }) {
-            let pending = self.pending_store.read().expect("RwLock not poisoned");
+            let pending = lock_rwlock_read(&self.pending_store);
             for id in pending.keys() {
                 if !ids.iter().any(|existing| existing == id) {
                     ids.push(id.clone());
@@ -203,10 +198,7 @@ impl SessionManager {
 
         match &self.backend {
             SessionBackend::InMemory { .. } => {
-                let entries = self
-                    .in_memory_store
-                    .read()
-                    .expect("RwLock not poisoned")
+                let entries = lock_rwlock_read(&self.in_memory_store)
                     .get(session_id)
                     .cloned()
                     .ok_or_else(|| XySessionStoreError::not_found(session_id))?;
@@ -228,10 +220,7 @@ impl SessionManager {
                     }
                     parse_session_jsonl(&content)
                 } else {
-                    let entries = self
-                        .pending_store
-                        .read()
-                        .expect("RwLock not poisoned")
+                    let entries = lock_rwlock_read(&self.pending_store)
                         .get(session_id)
                         .cloned()
                         .ok_or_else(|| XySessionStoreError::not_found(session_id))?;
