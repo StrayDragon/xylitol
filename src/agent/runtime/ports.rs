@@ -179,15 +179,14 @@ mod tests {
         }
     }
 
-    #[test]
-    fn cloned_ports_yield_independent_sessions_and_model_selection() {
+    #[tokio::test]
+    async fn cloned_ports_yield_independent_sessions_and_model_selection() {
         let ports = baseline_ports(Arc::new(crate::infra::provider::factory::build_provider));
         let mut a = ports.clone().materialize_runtime();
         let mut b = ports.materialize_runtime();
 
-        // Select before bind: `select_model` may `tokio::spawn` persistence when a
-        // session id is already set; this sync test only needs selection state.
-        a.select_model("mock").expect("select on a");
+        // Select before bind: persistence only runs once a session id is set.
+        a.select_model("mock").await.expect("select on a");
         assert!(a.current_model().is_some());
         assert!(
             b.current_model().is_none(),
@@ -232,8 +231,8 @@ mod tests {
         let ports = baseline_ports(builder);
         let mut a = ports.clone().materialize_runtime();
         let mut b = ports.materialize_runtime();
-        a.select_model("mock").expect("select a");
-        b.select_model("mock").expect("select b");
+        a.select_model("mock").await.expect("select a");
+        b.select_model("mock").await.expect("select b");
         a.bind_session("sess-a").expect("bind a");
         b.bind_session("sess-b").expect("bind b");
 

@@ -55,39 +55,36 @@ impl AgentCapabilities {
     }
 
     /// Set thinking level.
-    pub fn set_thinking_level(&mut self, level: String) -> Result<(), XyError> {
+    pub async fn set_thinking_level(&mut self, level: String) -> Result<(), XyError> {
         let previous = self.thinking_level();
         self.with_models_mut(|mm| mm.set_thinking_level(level.clone()))?;
-        self.persist_thinking_level_change(previous, level);
+        self.persist_thinking_level_change(previous, level).await;
         Ok(())
     }
 
     /// Cycle to the next level in the current model's support list.
-    pub fn cycle_thinking_level(&mut self) -> Result<String, XyError> {
+    pub async fn cycle_thinking_level(&mut self) -> Result<String, XyError> {
         let previous = self.thinking_level();
         let level = self.with_models_mut(|mm| mm.cycle_thinking_level())?;
-        self.persist_thinking_level_change(previous, level.clone());
+        self.persist_thinking_level_change(previous, level.clone())
+            .await;
         Ok(level)
     }
 
-    fn persist_thinking_level_change(&self, previous: String, level: String) {
-        // Fire-and-forget persistence via the session store port.
+    async fn persist_thinking_level_change(&self, previous: String, level: String) {
         if let Some(ref sid) = self.session_id {
-            let store = self.store.clone();
-            let sid = sid.clone();
-            let level_str = level.clone();
-            tokio::spawn(async move {
-                let entry = SessionEntry::ThinkingLevelChange(ThinkingLevelChangeEntry {
-                    base: EntryBase {
-                        entry_type: "thinking_level_change".into(),
-                        id: String::new(),
-                        parent_id: None,
-                        timestamp: String::new(),
-                    },
-                    thinking_level: level_str,
-                });
-                let _ = store.append_session_entry(&sid, &entry).await;
+            let entry = SessionEntry::ThinkingLevelChange(ThinkingLevelChangeEntry {
+                base: EntryBase {
+                    entry_type: "thinking_level_change".into(),
+                    id: String::new(),
+                    parent_id: None,
+                    timestamp: String::new(),
+                },
+                thinking_level: level.clone(),
             });
+            if let Err(error) = self.store.append_session_entry(sid, &entry).await {
+                log::warn!(target: "xylitol::session", "persist thinking level change failed: {error}");
+            }
         }
         if let Some(bus) = self.hook_bus.clone() {
             observe_hook_sync(
@@ -125,36 +122,32 @@ impl AgentCapabilities {
     }
 
     /// Select a specific model by ID (`source` = `"set"`).
-    pub fn select_model(&mut self, model_id: &str) -> Result<(), XyError> {
-        self.select_model_with_source(model_id, "set")
+    pub async fn select_model(&mut self, model_id: &str) -> Result<(), XyError> {
+        self.select_model_with_source(model_id, "set").await
     }
 
     /// Select a model and emit `model_select` with the given source (`set` | `cycle`).
-    pub fn select_model_with_source(
+    pub async fn select_model_with_source(
         &mut self,
         model_id: &str,
         source: &str,
     ) -> Result<(), XyError> {
         let previous = self.current_model().map(|m| m.id.clone());
         self.with_models_mut(|mm| mm.select_model(model_id))?;
-        // Fire-and-forget persistence via the session store port.
         if let Some(ref sid) = self.session_id {
-            let store = self.store.clone();
-            let sid = sid.clone();
-            let mid = model_id.to_string();
-            tokio::spawn(async move {
-                let entry = SessionEntry::ModelChange(ModelChangeEntry {
-                    base: EntryBase {
-                        entry_type: "model_change".into(),
-                        id: String::new(),
-                        parent_id: None,
-                        timestamp: String::new(),
-                    },
-                    provider: mid.clone(),
-                    model_id: mid,
-                });
-                let _ = store.append_session_entry(&sid, &entry).await;
+            let entry = SessionEntry::ModelChange(ModelChangeEntry {
+                base: EntryBase {
+                    entry_type: "model_change".into(),
+                    id: String::new(),
+                    parent_id: None,
+                    timestamp: String::new(),
+                },
+                provider: model_id.to_string(),
+                model_id: model_id.to_string(),
             });
+            if let Err(error) = self.store.append_session_entry(sid, &entry).await {
+                log::warn!(target: "xylitol::session", "persist model change failed: {error}");
+            }
         }
         if let Some(bus) = self.hook_bus.clone() {
             observe_hook_sync(

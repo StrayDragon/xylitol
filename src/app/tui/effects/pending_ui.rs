@@ -212,7 +212,7 @@ pub(super) async fn drain_pending_ui<T: Terminal>(
         .await
         {
             Ok(DispatchOutcome::Model(_)) => {
-                if let Err(e) = driver.set_thinking_level(choice.thinking) {
+                if let Err(e) = driver.set_thinking_level(choice.thinking).await {
                     e.log_failure("tui.set_thinking_level");
                     session.push_scroll_notice(format!("thinking level failed: {e}"));
                 }
@@ -220,7 +220,7 @@ pub(super) async fn drain_pending_ui<T: Terminal>(
                 session.close_models_slot();
             }
             Ok(_) => {
-                let _ = driver.set_thinking_level(choice.thinking);
+                let _ = driver.set_thinking_level(choice.thinking).await;
                 session.sync_runtime_chrome(driver);
                 session.close_models_slot();
             }

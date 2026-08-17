@@ -3,12 +3,16 @@ source: tests/agent_session_api_baseline.rs
 assertion_line: 127
 expression: "all_items.join(\"\\n\")"
 ---
+pub async fn cycle_thinking_level(&mut self) -> Result<String, XyError>
 pub async fn ensure_session(&self, id: &str, parent: Option<&str>) -> Result<(), XyError>
 pub async fn force_compact(&self, instructions: Option<String>) -> Result<(), XyError>
 pub async fn fork_session( &self, at_entry_id: &str, position: crate::protocol::session::ForkPosition, ) -> Result<String, XyError>
 pub async fn get_session_stats(&self) -> Result<SessionStats, XyError>
 pub async fn maybe_auto_compact(&self) -> Result<bool, XyError>
 pub async fn maybe_auto_compact_with( &self, estimate_opts: &crate::agent::compaction::EstimateOpts, last_assistant: Option<&crate::protocol::message::AgentMessage>, ) -> Result<bool, XyError>
+pub async fn select_model(&mut self, model_id: &str) -> Result<(), XyError>
+pub async fn select_model_with_source( &mut self, model_id: &str, source: &str, ) -> Result<(), XyError>
+pub async fn set_thinking_level(&mut self, level: String) -> Result<(), XyError>
 pub enum QueueMode
 pub fn apply_default_thinking_level(&mut self, raw: Option<&str>)
 pub fn apply_prompt_resources( &mut self, context_files: Vec<(String, String)>, system_prompt: Option<String>, append_system_prompt: Vec<String>, )
@@ -24,7 +28,6 @@ pub fn clear_tool_freeze(&mut self)
 pub fn context_policy(&self) -> &crate::agent::context_policy::ContextPolicy
 pub fn current_model(&self) -> Option<XyModelMeta>
 pub fn cwd(&self) -> &str
-pub fn cycle_thinking_level(&mut self) -> Result<String, XyError>
 pub fn drain(&mut self) -> Vec<AgentMessage>
 pub fn enqueue(&mut self, message: AgentMessage)
 pub fn estimate_tokens(messages: &[crate::protocol::message::AgentMessage]) -> u64
@@ -54,8 +57,6 @@ pub fn queue_stats(&self) -> QueueStats
 pub fn rebuild_system_prompt(&mut self)
 pub fn reopen_tools_for_regate(&mut self)
 pub fn replace_hooks(&mut self, hooks: AgentHooks)
-pub fn select_model(&mut self, model_id: &str) -> Result<(), XyError>
-pub fn select_model_with_source( &mut self, model_id: &str, source: &str, ) -> Result<(), XyError>
 pub fn selected_turn_binding(&self) -> Option<ActiveTurnBinding>
 pub fn session_id(&self) -> Option<&str>
 pub fn session_store(&self) -> Arc<dyn XySessionStore>
@@ -64,7 +65,6 @@ pub fn set_permission(&mut self, permission: std::sync::Arc<dyn XyPermission>)
 pub fn set_session(&mut self, session_id: String)
 pub fn set_system_prompt(&mut self, prompt: Option<String>)
 pub fn set_thinking_budgets( &mut self, budgets: Option<crate::protocol::model::ThinkingBudgets>, )
-pub fn set_thinking_level(&mut self, level: String) -> Result<(), XyError>
 pub fn set_tools(&mut self, tools: ToolSet)
 pub fn set_tools_defer_prompt(&mut self, tools: ToolSet) -> SystemPromptOpts
 pub fn stats(&self) -> QueueStats

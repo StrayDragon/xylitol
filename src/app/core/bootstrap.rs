@@ -61,6 +61,20 @@ fn xylitol_home_dir(get_env: &impl Fn(&str) -> Option<String>) -> PathBuf {
         .join(".xylitol")
 }
 
+/// Sync bootstrap bridging into the async model/thinking mutators (their
+/// session persistence is awaited; same pattern as the remote driver's
+/// `block_on`).
+fn block_on<T>(fut: impl std::future::Future<Output = T>) -> T {
+    match tokio::runtime::Handle::try_current() {
+        Ok(handle) => tokio::task::block_in_place(|| handle.block_on(fut)),
+        Err(_) => tokio::runtime::Builder::new_current_thread()
+            .enable_all()
+            .build()
+            .expect("build bootstrap current-thread runtime")
+            .block_on(fut),
+    }
+}
+
 /// Inputs to [`bootstrap`] / `resolve_assembly`, mirroring the CLI flags that
 /// drive assembly.
 ///
@@ -720,7 +734,7 @@ pub fn bootstrap_with(
                 if let Some(ref warning) = resolved.warning {
                     warnings.push(BootstrapWarning::ModelResolutionWarning(warning.clone()));
                 }
-                let _ = agent.select_model(&resolved.model.id);
+                let _ = block_on(agent.select_model(&resolved.model.id));
                 requested_thinking_level = resolved.thinking_level;
             }
             Err(msg) => {
@@ -739,7 +753,7 @@ pub fn bootstrap_with(
     // first-session preference. Unsupported values leave the selected model
     // default unchanged.
     if let Some(level) = requested_thinking_level
-        && let Err(error) = agent.set_thinking_level(level.clone())
+        && let Err(error) = block_on(agent.set_thinking_level(level.clone()))
     {
         log::warn!("bootstrap model:thinkingLevel rejected level={level} error={error}");
     }

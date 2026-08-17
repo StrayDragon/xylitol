@@ -259,28 +259,28 @@ impl AgentRuntime {
         self.inner.model_registry()
     }
 
-    pub fn select_model(&mut self, model_id: &str) -> Result<(), XyError> {
-        self.inner.select_model(model_id)
+    pub async fn select_model(&mut self, model_id: &str) -> Result<(), XyError> {
+        self.inner.select_model(model_id).await
     }
 
-    pub fn select_model_with_source(
+    pub async fn select_model_with_source(
         &mut self,
         model_id: &str,
         source: &str,
     ) -> Result<(), XyError> {
-        self.inner.select_model_with_source(model_id, source)
+        self.inner.select_model_with_source(model_id, source).await
     }
 
     pub fn thinking_level(&self) -> String {
         self.inner.thinking_level()
     }
 
-    pub fn set_thinking_level(&mut self, level: String) -> Result<(), XyError> {
-        self.inner.set_thinking_level(level)
+    pub async fn set_thinking_level(&mut self, level: String) -> Result<(), XyError> {
+        self.inner.set_thinking_level(level).await
     }
 
-    pub fn cycle_thinking_level(&mut self) -> Result<String, XyError> {
-        self.inner.cycle_thinking_level()
+    pub async fn cycle_thinking_level(&mut self) -> Result<String, XyError> {
+        self.inner.cycle_thinking_level().await
     }
 
     pub fn apply_default_thinking_level(&mut self, raw: Option<&str>) {
