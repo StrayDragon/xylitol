@@ -318,6 +318,32 @@ mod tests {
     }
 
     #[test]
+    fn jsonl_rejects_v5_disk_import() {
+        // c2260: old v5 disk must not be imported. A real v5 file carries string
+        // timestamps, so its header fails v6 deserialization → refused (no header).
+        let v5 = r#"{"type":"session","version":5,"id":"old-s1","timestamp":"2024-01-01T00:00:00Z","cwd":"/tmp"}
+{"type":"message","id":"m1","parentId":null,"timestamp":"2024-01-01T00:00:01Z","message":{"role":"user","content":[{"type":"text","text":"hi"}],"timestamp":1704067200000}}
+"#;
+        let err = parse_jsonl(v5.as_bytes()).unwrap_err();
+        let msg = err.to_string();
+        assert!(
+            msg.contains("no header"),
+            "real v5 disk must be refused: {msg}"
+        );
+
+        // A version-tagged header that still parses (numeric ms) is refused with
+        // `require 6` — the actionable message.
+        let v5_numeric = r#"{"type":"session","version":5,"id":"old-s2","timestamp":1704067200000,"cwd":"/tmp"}
+"#;
+        let err = parse_jsonl(v5_numeric.as_bytes()).unwrap_err();
+        let msg = err.to_string();
+        assert!(
+            msg.contains("require 6"),
+            "must name current version: {msg}"
+        );
+    }
+
+    #[test]
     fn jsonl_rejects_missing_header() {
         // A message entry alone (no header) must be rejected.
         let only_message = serde_json::to_string(&message("user", "x")).unwrap();
