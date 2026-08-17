@@ -31,16 +31,19 @@ description: >-
 **解析 `agent_dir`（按优先级）**：
 
 1. 用户/会话已给出的 agent 数据目录
-2. 环境覆盖（若有项目约定的 `XYLITOL_*` / 自定义 `HOME`——E2E 常用临时 `HOME`）
-3. 代码默认：`DefaultResourceLoader::default_agent_dir()` → `$HOME/.xylitol`（实现见 `infra/resource`）
+2. 自定义 `HOME`（E2E 常用临时 `HOME`）
+3. 代码默认：`DefaultResourceLoader::default_agent_dir()` → `$HOME/.xylitol`（实现见 `infra/resource`；当前产品代码不读取 `XYLITOL_AGENT_DIR`）
 
 ```bash
 # 示例：默认布局（仅当未另指定 agent_dir）
-LOG_DIR="${XYLITOL_AGENT_DIR:-$HOME/.xylitol}/logs"
+LOG_DIR="$HOME/.xylitol/logs"
 # 有自定义 agent_dir 时：LOG_DIR="$AGENT_DIR/logs"
+# 若 E2E 使用了临时 HOME，则按该 HOME 计算，例如：LOG_DIR="$TMP_HOME/.xylitol/logs"
 ```
 
 `inspect_provider_trace.py` 默认同上；覆盖：`--path "$LOG_DIR/provider-trace.jsonl"`。
+
+> 注：`just obs-tui-lag` 的 shell 封装额外接受 `XYLITOL_AGENT_DIR` 作为脚本默认值覆盖；这不是产品代码的 agent_dir 解析，仅为该 just 命令的便捷参数。
 
 **闸门**（`logging.rs`）：debug 构建默认开 log+trace；release 需 `RUST_LOG` / `XYLITOL_DEBUG=1`，或仅 `XYLITOL_PROVIDER_TRACE=1`（可只开 trace、不开级别日志）。**永不**写 stdout/stderr（保 TUI）。
 

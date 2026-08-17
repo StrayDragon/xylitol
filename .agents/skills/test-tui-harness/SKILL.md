@@ -12,7 +12,7 @@ description: >-
 # TUI 五层自动验证（harness）
 
 **边界 / 产品 vs 包 E2E 分工 SSOT**：[`packages/xylitol-tui/AGENTS.md`](../../../packages/xylitol-tui/AGENTS.md)「验证」。
-应用面接线：`write-tui`。闸门命令：根 `AGENTS.md`（`just qa` / `just qa-e2e`）。合约：`package-tui-testing`。
+应用面接线：`l8ng-write-tui`。闸门命令：根 `AGENTS.md`（`just qa` / `just qa-e2e`）。合约：`package-tui-testing`。
 
 本 skill 只写**怎么写测 / 怎么跑**，不另立分工表。
 

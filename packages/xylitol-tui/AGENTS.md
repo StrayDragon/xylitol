@@ -131,7 +131,7 @@
 | 改组件 / 引擎 / 扩测试 | `test-tui-harness` skill（落点）；边界见上「验证」 |
 | 扩展 Editor 补全触发（`/` `@` `$` `^`…） | `CompletionSource` + `set_completion_sources`（`src/completion.rs`）；勿在 `editor.rs` 硬编码触发符 |
 | 对照 / 合并 pi-tui 行为 | 先读 [`PI_DELTAS.md`](PI_DELTAS.md)；不得静默回退表中决议 |
-| 改产品 TUI 面 / UX / 视觉 | `write-tui` + 产品代码 + `src/app/tui/DESIGN.md` + `just open-designing`；**勿**默认改 `agent_demo` 当产品落地 |
+| 改产品 TUI 面 / UX / 视觉 | `l8ng-write-tui` + 产品代码 + `src/app/tui/DESIGN.md` + `just open-designing`；**勿**默认改 `agent_demo` 当产品落地 |
 | 改包引擎 / 通用组件 / demo | `test-tui-harness`；`just demo-tui` 仅验证包能力 |
 | 改色板 | 只改 app `DESIGN.md` → `just sync-tui-tokens` → 对齐 `Palette`；`just check-tui-tokens` |
 | 打开交互设计稿 | `just open-designing`（对照稿；≠ 产品真值；≠ demo） |
