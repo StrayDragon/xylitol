@@ -45,11 +45,9 @@ use serde_json::json;
 use crate::protocol::ports::{XyModel, XySessionStore};
 use crate::protocol::session::{CompactionEntry, EntryBase, MessageEntry, SessionEntry};
 
-/// RFC3339 seconds timestamp for new compaction entries (shared with session manager format).
-fn timestamp_now_rfc3339() -> String {
-    time::OffsetDateTime::now_utc()
-        .format(&time::format_description::well_known::Rfc3339)
-        .expect("RFC3339 format is infallible for valid times")
+/// unix-ms timestamp for new compaction entries (v6 disk basis).
+fn timestamp_now() -> u64 {
+    crate::protocol::message::now_ms()
 }
 
 /// pi `prepareCompaction` gate: whether there is content worth summarizing.
@@ -280,7 +278,7 @@ pub async fn compact_session(
         format_file_ops_xml(&read_files, &modified_files)
     );
 
-    let now = timestamp_now_rfc3339();
+    let now = timestamp_now();
     let entry = CompactionEntry {
         base: EntryBase {
             entry_type: "compaction".into(),
@@ -381,7 +379,7 @@ async fn ensure_session_env_after_compact(
             entry_type: "message".into(),
             id: String::new(),
             parent_id: None,
-            timestamp: String::new(),
+            timestamp: 0,
         },
         message,
     });
@@ -399,7 +397,7 @@ mod tests {
 
     fn make_message_entry(id: &str, role: &str, content: &str) -> SessionEntry {
         use crate::protocol::message::AgentMessage;
-        let now = timestamp_now_rfc3339();
+        let now = timestamp_now();
         let message = match role {
             "user" => serde_json::to_value(AgentMessage::user(content)).unwrap(),
             "assistant" => serde_json::to_value(AgentMessage::assistant(content)).unwrap(),
@@ -428,7 +426,7 @@ mod tests {
     }
 
     fn make_model_change_entry(id: &str, provider: &str, model_id: &str) -> SessionEntry {
-        let now = timestamp_now_rfc3339();
+        let now = timestamp_now();
         SessionEntry::ModelChange(crate::protocol::session::ModelChangeEntry {
             base: crate::protocol::session::EntryBase {
                 entry_type: "model_change".into(),
@@ -442,7 +440,7 @@ mod tests {
     }
 
     fn make_thinking_entry(id: &str, level: &str) -> SessionEntry {
-        let now = timestamp_now_rfc3339();
+        let now = timestamp_now();
         SessionEntry::ThinkingLevelChange(crate::protocol::session::ThinkingLevelChangeEntry {
             base: crate::protocol::session::EntryBase {
                 entry_type: "thinking_level_change".into(),
@@ -455,7 +453,7 @@ mod tests {
     }
 
     fn make_compaction_entry(id: &str, summary: &str) -> SessionEntry {
-        let now = timestamp_now_rfc3339();
+        let now = timestamp_now();
         SessionEntry::Compaction(crate::protocol::session::CompactionEntry {
             base: crate::protocol::session::EntryBase {
                 entry_type: "compaction".into(),
@@ -680,7 +678,7 @@ mod tests {
         tool_args: serde_json::Value,
     ) -> SessionEntry {
         use crate::protocol::message::{AgentMessage, AgentPart, LlmMessage, XyStopReason};
-        let now = timestamp_now_rfc3339();
+        let now = timestamp_now();
         let msg = AgentMessage::Llm(LlmMessage::AssistantMessage {
             content: vec![
                 AgentPart::text(text),
@@ -726,7 +724,7 @@ mod tests {
         // Image-style: 4800 chars → 1200 tokens (not 4800 tokens).
         let img = {
             use crate::protocol::message::{AgentMessage, AgentPart};
-            let now = timestamp_now_rfc3339();
+            let now = timestamp_now();
             SessionEntry::Message(crate::protocol::session::MessageEntry {
                 base: crate::protocol::session::EntryBase {
                     entry_type: "message".into(),
@@ -1058,7 +1056,7 @@ mod tests {
             timestamp: 1,
             diagnostics: Vec::new(),
         });
-        let now = timestamp_now_rfc3339();
+        let now = timestamp_now();
         let entries = vec![
             make_message_entry("u1", "user", "hello"),
             SessionEntry::Message(crate::protocol::session::MessageEntry {
@@ -1170,7 +1168,7 @@ mod tests {
                 entry_type: "custom".into(),
                 id: "todo1".into(),
                 parent_id: None,
-                timestamp: "t".into(),
+                timestamp: 0,
             },
             custom_type: CUSTOM_TYPE_AGENT_TODO.into(),
             data: list.to_data_value(),

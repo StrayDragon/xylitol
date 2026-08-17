@@ -123,7 +123,7 @@ pub trait XySessionStore: Send + Sync {
                 entry_type: "session_info".into(),
                 id: String::new(),
                 parent_id: None,
-                timestamp: String::new(),
+                timestamp: 0,
             },
             name: Some(sanitized.clone()),
         });

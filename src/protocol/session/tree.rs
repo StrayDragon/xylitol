@@ -98,8 +98,8 @@ pub fn build_session_tree(entries: &[SessionEntry]) -> Vec<SessionTreeNode> {
     fn sort_children(nodes: &mut [SessionTreeNode]) {
         for node in nodes.iter_mut() {
             node.children.sort_by(|a, b| {
-                let ta = a.entry.base().map(|b| b.timestamp.clone());
-                let tb = b.entry.base().map(|b| b.timestamp.clone());
+                let ta = a.entry.base().map(|b| b.timestamp);
+                let tb = b.entry.base().map(|b| b.timestamp);
                 ta.cmp(&tb)
             });
             sort_children(&mut node.children);

@@ -37,7 +37,7 @@ pub(crate) async fn g_sess_first_turn(sess: &XySessionStore, agent: &AgentState)
                 entry_type: "message".into(),
                 id: format!("msg-{i}"),
                 parent_id: None,
-                timestamp: "2024-01-01T00:00:00Z".into(),
+                timestamp: 1704067200000,
             },
             message: serde_json::json!({"role": role, "content": format!("turn 1 {role}")}),
         });
@@ -69,7 +69,7 @@ pub(crate) async fn g_sess_bang(sess: &XySessionStore) {
         bash_execution_message_entry("echo hello", "hello\n", Some(0), false, false, None, false);
     if let SessionEntry::Message(ref mut m) = bash_entry {
         m.base.id = "bash-1".into();
-        m.base.timestamp = "2024-01-01T00:00:00Z".into();
+        m.base.timestamp = 1704067200000; // 2024-01-01T00:00:00Z (unix-ms)
     }
     let _ = mgr.append(sid, &bash_entry).await;
 
@@ -78,7 +78,7 @@ pub(crate) async fn g_sess_bang(sess: &XySessionStore) {
             entry_type: "compaction".into(),
             id: "comp-1".into(),
             parent_id: None,
-            timestamp: "2024-01-01T00:00:00Z".into(),
+            timestamp: 1704067200000,
         },
         summary: "Prior context summarized".into(),
         first_kept_entry_id: "bash-1".into(),
@@ -143,7 +143,7 @@ pub(crate) async fn g_sess_thinking_persisted(sess: &XySessionStore) {
             entry_type: "message".into(),
             id: "think-1".into(),
             parent_id: None,
-            timestamp: "2024-01-01T00:00:00Z".into(),
+            timestamp: 1704067200000,
         },
         message: serde_json::json!({
             "role": "assistant",
@@ -200,7 +200,7 @@ pub(crate) fn g_sess_legacy(sess: &XySessionStore) {
             entry_type: "message".into(),
             id: "legacy-1".into(),
             parent_id: None,
-            timestamp: "2024-01-01T00:00:00Z".into(),
+            timestamp: 1704067200000,
         },
         message: serde_json::json!({
             "role": "assistant",

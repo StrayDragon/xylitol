@@ -27,8 +27,7 @@ pub fn now_ms() -> u64 {
 
 /// Environment / session meta roles (not sent to the model as-is).
 ///
-/// Wire fields are camelCase (`excludeFromContext`, `tokensBefore`, …);
-/// snake aliases accept pre-fix JSONL.
+/// Wire fields are camelCase (`excludeFromContext`, `tokensBefore`, …).
 #[derive(Debug, Clone, Serialize, Deserialize)]
 #[serde(tag = "role", rename_all = "camelCase")]
 pub enum EnvMessage {
@@ -37,25 +36,20 @@ pub enum EnvMessage {
     BashExecutionMessage {
         command: String,
         output: String,
-        #[serde(default, skip_serializing_if = "Option::is_none", alias = "exit_code")]
+        #[serde(default, skip_serializing_if = "Option::is_none")]
         exit_code: Option<i32>,
         #[serde(default)]
         cancelled: bool,
         #[serde(default)]
         truncated: bool,
-        #[serde(
-            default,
-            skip_serializing_if = "Option::is_none",
-            alias = "full_output_path"
-        )]
+        #[serde(default, skip_serializing_if = "Option::is_none")]
         full_output_path: Option<String>,
-        #[serde(default, alias = "exclude_from_context")]
+        #[serde(default)]
         exclude_from_context: bool,
     },
     #[serde(rename = "custom")]
     #[serde(rename_all = "camelCase")]
     CustomMessage {
-        #[serde(alias = "custom_type")]
         custom_type: String,
         content: Value,
         #[serde(default)]
@@ -67,26 +61,16 @@ pub enum EnvMessage {
     #[serde(rename_all = "camelCase")]
     CompactionSummaryMessage {
         summary: String,
-        #[serde(alias = "tokens_before")]
         tokens_before: u64,
-        #[serde(alias = "tokens_after")]
         tokens_after: u64,
-        #[serde(default, skip_serializing_if = "Option::is_none", alias = "read_files")]
+        #[serde(default, skip_serializing_if = "Option::is_none")]
         read_files: Option<Vec<String>>,
-        #[serde(
-            default,
-            skip_serializing_if = "Option::is_none",
-            alias = "modified_files"
-        )]
+        #[serde(default, skip_serializing_if = "Option::is_none")]
         modified_files: Option<Vec<String>>,
     },
     #[serde(rename = "branchSummary")]
     #[serde(rename_all = "camelCase")]
-    BranchSummaryMessage {
-        summary: String,
-        #[serde(alias = "from_id")]
-        from_id: String,
-    },
+    BranchSummaryMessage { summary: String, from_id: String },
 }
 
 impl EnvMessage {
@@ -494,14 +478,27 @@ mod tests {
             AgentMessage::Env(EnvMessage::BashExecutionMessage { .. })
         ));
 
-        let legacy = r#"{"role":"bashExecution","command":"ls","output":"a","cancelled":false,"truncated":false,"exclude_from_context":true}"#;
-        let msg: AgentMessage = serde_json::from_str(legacy).unwrap();
+        let camel = r#"{"role":"bashExecution","command":"ls","output":"a","cancelled":false,"truncated":false,"excludeFromContext":true}"#;
+        let msg: AgentMessage = serde_json::from_str(camel).unwrap();
         match msg {
             AgentMessage::Env(EnvMessage::BashExecutionMessage {
                 exclude_from_context: true,
                 ..
             }) => {}
             other => panic!("expected excluded bash, got {other:?}"),
+        }
+
+        // v6: snake aliases are removed (s18 / c2260). Unknown snake keys are
+        // ignored by serde, so a snake `exclude_from_context` no longer flips the
+        // flag — the row deserializes with the default value.
+        let snake = r#"{"role":"bashExecution","command":"ls","output":"a","cancelled":false,"truncated":false,"exclude_from_context":true}"#;
+        let msg: AgentMessage = serde_json::from_str(snake).unwrap();
+        match msg {
+            AgentMessage::Env(EnvMessage::BashExecutionMessage {
+                exclude_from_context: false,
+                ..
+            }) => {}
+            other => panic!("snake alias must be ignored, got {other:?}"),
         }
 
         let v = serde_json::to_value(AgentMessage::bash("pwd", "/tmp", Some(0))).unwrap();

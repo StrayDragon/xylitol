@@ -422,15 +422,9 @@ fn assistant_timestamp_ms(assistant: &AgentMessage) -> Option<u64> {
 
 fn latest_compaction_ms(entries: &[SessionEntry]) -> Option<u64> {
     entries.iter().rev().find_map(|e| match e {
-        SessionEntry::Compaction(c) => parse_rfc3339_ms(&c.base.timestamp),
+        SessionEntry::Compaction(c) => Some(c.base.timestamp),
         _ => None,
     })
-}
-
-fn parse_rfc3339_ms(ts: &str) -> Option<u64> {
-    time::OffsetDateTime::parse(ts, &time::format_description::well_known::Rfc3339)
-        .ok()
-        .map(|dt| (dt.unix_timestamp() * 1000 + dt.millisecond() as i64).max(0) as u64)
 }
 
 fn assistant_is_stale_vs_compaction(
@@ -463,7 +457,7 @@ fn usage_anchor_stale_vs_compaction(entries: &[SessionEntry]) -> bool {
             if *timestamp > 0 {
                 return *timestamp <= comp_ms;
             }
-            if let Some(entry_ms) = entry.base().and_then(|b| parse_rfc3339_ms(&b.timestamp)) {
+            if let Some(entry_ms) = entry.base().map(|b| b.timestamp) {
                 return entry_ms <= comp_ms;
             }
             return false;

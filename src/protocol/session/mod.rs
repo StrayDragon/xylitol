@@ -45,10 +45,19 @@ mod session_tree_tests {
                 entry_type: "message".into(),
                 id: id.into(),
                 parent_id: parent.map(str::to_string),
-                timestamp: format!("2026-01-01T00:00:{id}Z"),
+                timestamp: entry_ms(id),
             },
             message: fixture_message_json(role, text),
         })
+    }
+
+    /// Deterministic unix-ms from a string id (test fixture).
+    fn entry_ms(id: &str) -> u64 {
+        1_781_827_200_000u64
+            + id.as_bytes()
+                .iter()
+                .fold(0u64, |acc, b| acc * 31 + *b as u64)
+                % 1_000_000
     }
 
     #[test]
@@ -88,12 +97,12 @@ mod session_tree_tests {
             entry_type: "session".into(),
             version: SESSION_VERSION,
             id: "s1".into(),
-            timestamp: "t".into(),
+            timestamp: 0,
             cwd: "/tmp".into(),
             parent_session: Some("p".into()),
         });
         let v = serde_json::to_value(&header).unwrap();
-        assert_eq!(v["version"], 5);
+        assert_eq!(v["version"], 6);
         assert_eq!(v["parentSession"], "p");
 
         let msg = msg_entry("e1", Some("p1"), "user", "hi");
@@ -217,13 +226,13 @@ mod session_tree_tests {
                 "type": "session",
                 "version": SESSION_VERSION,
                 "id": "s1",
-                "timestamp": "t",
+                "timestamp": 0,
                 "cwd": "/tmp"
             }),
             serde_json::json!({
                 "type": "message",
                 "id": "m1",
-                "timestamp": "t",
+                "timestamp": 0,
                 "message": {
                     "role": "user",
                     "content": [{ "type": "text", "text": "ok" }]
@@ -240,10 +249,56 @@ mod session_tree_tests {
 
     #[test]
     fn parse_session_jsonl_rejects_non_current_header_version() {
-        let content = r#"{"type":"session","version":4,"id":"s1","timestamp":"t","cwd":"/tmp"}
+        let content = r#"{"type":"session","version":4,"id":"s1","timestamp":0,"cwd":"/tmp"}
 "#;
         let err = parse_session_jsonl(content).unwrap_err();
         assert!(err.contains("not supported"), "{err}");
+    }
+
+    #[test]
+    fn parse_session_jsonl_rejects_v5_with_require_6_message() {
+        // c2260: v5 disk is refused (no migration / dual-read); the version
+        // message must report the const (now 6).
+        let content = r#"{"type":"session","version":5,"id":"s1","timestamp":0,"cwd":"/tmp"}
+"#;
+        let err = parse_session_jsonl(content).unwrap_err();
+        assert!(
+            err.contains("require 6") || err.contains("require {SESSION_VERSION}"),
+            "v5 refusal must carry current version: {err}"
+        );
+        assert!(err.contains("5"), "must name the offending version: {err}");
+    }
+
+    #[test]
+    fn v6_entry_round_trip_keeps_unix_ms_timestamps() {
+        // s22: header + entry shell timestamps are u64 unix-ms on the wire.
+        let header = SessionEntry::Header(SessionHeader {
+            entry_type: "session".into(),
+            version: SESSION_VERSION,
+            id: "s1".into(),
+            timestamp: 1_781_827_200_000,
+            cwd: "/tmp".into(),
+            parent_session: Some("p".into()),
+        });
+        let raw_header = serde_json::to_string(&header).unwrap();
+        assert!(
+            raw_header.contains("\"timestamp\":1781827200000"),
+            "header must serialize timestamp as u64 ms: {raw_header}"
+        );
+        let parsed: Vec<SessionEntry> =
+            parse_session_jsonl(&format!("{raw_header}\n")).expect("v6 round-trip");
+        let SessionEntry::Header(h) = &parsed[0] else {
+            panic!("expected header");
+        };
+        assert_eq!(h.timestamp, 1_781_827_200_000);
+
+        let msg = msg_entry("e1", Some("p1"), "user", "hi");
+        let raw_msg = serde_json::to_string(&msg).unwrap();
+        let back: SessionEntry = serde_json::from_str(&raw_msg).unwrap();
+        assert_eq!(
+            back.base().unwrap().timestamp,
+            msg.base().unwrap().timestamp
+        );
     }
 
     fn compaction_entry(id: &str, first_kept: &str, summary: &str) -> SessionEntry {
@@ -252,7 +307,7 @@ mod session_tree_tests {
                 entry_type: "compaction".into(),
                 id: id.into(),
                 parent_id: None,
-                timestamp: "t".into(),
+                timestamp: 0,
             },
             summary: summary.into(),
             first_kept_entry_id: first_kept.into(),
@@ -324,7 +379,7 @@ mod as_agent_message_tests {
                 entry_type: "message".into(),
                 id: "e1".into(),
                 parent_id: None,
-                timestamp: "t".into(),
+                timestamp: 0,
             },
             message,
         })
@@ -416,9 +471,26 @@ mod as_agent_message_tests {
             "output": "x",
             "cancelled": false,
             "truncated": false,
-            "exclude_from_context": true,
+            "excludeFromContext": true,
         }));
         assert!(e.as_agent_message().is_none());
+    }
+
+    #[test]
+    fn snake_alias_no_longer_sets_excluded_flag() {
+        // c2260: serde aliases removed. A snake `exclude_from_context` key is an
+        // unknown field → ignored; the flag stays default (false), so the message
+        // is NOT excluded (must not resurrect pre-fix semantics; s18).
+        let e = entry(json!({
+            "role": "bashExecution",
+            "command": "secret",
+            "output": "x",
+            "cancelled": false,
+            "truncated": false,
+            "exclude_from_context": true,
+        }));
+        let msg = e.as_agent_message().expect("snake alias must be ignored");
+        assert_eq!(msg.role_name(), "bashExecution");
     }
 
     #[test]
@@ -428,7 +500,7 @@ mod as_agent_message_tests {
                 entry_type: "compaction".into(),
                 id: "c1".into(),
                 parent_id: None,
-                timestamp: "t".into(),
+                timestamp: 0,
             },
             summary: "sum".into(),
             first_kept_entry_id: "m1".into(),

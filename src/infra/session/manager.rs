@@ -8,15 +8,9 @@ use std::path::PathBuf;
 use std::sync::{Arc, RwLock};
 
 use serde_json::Value;
-use time::OffsetDateTime;
 use uuid::Uuid;
 
-/// RFC3339 seconds format used across session JSONL timestamps.
-fn rfc3339_now() -> String {
-    OffsetDateTime::now_utc()
-        .format(&time::format_description::well_known::Rfc3339)
-        .expect("RFC3339 format is infallible for valid times")
-}
+use crate::protocol::message::now_ms;
 
 /// Write `content` to `tmp_path`, sync, then atomically rename over `path`.
 async fn write_session_file_atomically(
@@ -302,7 +296,7 @@ impl SessionManager {
             entry_type: "session".into(),
             version: SESSION_VERSION,
             id: id.to_string(),
-            timestamp: rfc3339_now(),
+            timestamp: now_ms(),
             cwd: cwd.unwrap_or(".").to_string(),
             parent_session: parent_session.map(String::from),
         });
@@ -413,7 +407,7 @@ impl SessionManager {
                                     entry_type: "session".into(),
                                     version: SESSION_VERSION,
                                     id: session_id.to_string(),
-                                    timestamp: rfc3339_now(),
+                                    timestamp: now_ms(),
                                     cwd: ".".into(),
                                     parent_session: None,
                                 }),
@@ -443,23 +437,23 @@ impl SessionManager {
     fn inject_ids(&self, session_id: &str, entry: &SessionEntry) -> SessionEntry {
         let new_id = Uuid::new_v4().to_string();
         let parent_id = self.get_leaf(session_id);
-        let now = rfc3339_now();
+        let now = now_ms();
 
         // Create a new entry with injected ids
-        Self::clone_entry_with_ids(entry, &new_id, parent_id.as_deref(), &now)
+        Self::clone_entry_with_ids(entry, &new_id, parent_id.as_deref(), now)
     }
 
     fn clone_entry_with_ids(
         entry: &SessionEntry,
         id: &str,
         parent_id: Option<&str>,
-        timestamp: &str,
+        timestamp: u64,
     ) -> SessionEntry {
         let base = EntryBase {
             entry_type: entry.entry_type().to_string(),
             id: id.to_string(),
             parent_id: parent_id.map(String::from),
-            timestamp: timestamp.to_string(),
+            timestamp,
         };
 
         match entry {
@@ -467,7 +461,7 @@ impl SessionManager {
                 entry_type: "session".into(),
                 version: SESSION_VERSION,
                 id: id.to_string(),
-                timestamp: timestamp.to_string(),
+                timestamp,
                 cwd: String::new(),
                 parent_session: parent_id.map(String::from),
             }),
@@ -920,7 +914,7 @@ impl SessionManager {
                 entry_type: "label".into(),
                 id: String::new(),
                 parent_id: None,
-                timestamp: String::new(),
+                timestamp: 0,
             },
             target_id: target_id.to_string(),
             label: Some(if let Some(desc) = description {
@@ -946,7 +940,7 @@ impl SessionManager {
                 entry_type: "model_change".into(),
                 id: String::new(), // will be filled by append
                 parent_id: None,
-                timestamp: String::new(),
+                timestamp: 0,
             },
             provider: provider.to_string(),
             model_id: model_id.to_string(),
@@ -965,7 +959,7 @@ impl SessionManager {
                 entry_type: "thinking_level_change".into(),
                 id: String::new(),
                 parent_id: None,
-                timestamp: String::new(),
+                timestamp: 0,
             },
             thinking_level: level.to_string(),
         });
@@ -986,7 +980,7 @@ impl SessionManager {
                 entry_type: "custom_message".into(),
                 id: String::new(),
                 parent_id: None,
-                timestamp: String::new(),
+                timestamp: 0,
             },
             custom_type: custom_type.to_string(),
             content,
@@ -1159,12 +1153,8 @@ impl SessionManager {
             let Some(eid) = entry.entry_id() else {
                 continue;
             };
-            let ts = entry
-                .base()
-                .map(|b| b.timestamp.as_str())
-                .unwrap_or("")
-                .to_string();
-            let rewritten = Self::clone_entry_with_ids(entry, eid, prev_id.as_deref(), &ts);
+            let ts = entry.base().map(|b| b.timestamp).unwrap_or(0);
+            let rewritten = Self::clone_entry_with_ids(entry, eid, prev_id.as_deref(), ts);
             prev_id = Some(eid.to_string());
             rechanneled.push(rewritten);
         }
@@ -1172,7 +1162,7 @@ impl SessionManager {
         let path_ids: std::collections::HashSet<&str> =
             rechanneled.iter().filter_map(|e| e.entry_id()).collect();
         // Last label wins per target (same as build_session_tree).
-        let mut labels_by_target: HashMap<String, (Option<String>, String)> = HashMap::new();
+        let mut labels_by_target: HashMap<String, (Option<String>, u64)> = HashMap::new();
         for entry in &parent_entries {
             if let SessionEntry::Label(l) = entry
                 && path_ids.contains(l.target_id.as_str())
@@ -1180,10 +1170,8 @@ impl SessionManager {
                 if l.label.is_none() {
                     labels_by_target.remove(&l.target_id);
                 } else {
-                    labels_by_target.insert(
-                        l.target_id.clone(),
-                        (l.label.clone(), l.base.timestamp.clone()),
-                    );
+                    labels_by_target
+                        .insert(l.target_id.clone(), (l.label.clone(), l.base.timestamp));
                 }
             }
         }
@@ -1353,7 +1341,7 @@ impl SessionManager {
                 entry_type: "label".into(),
                 id: String::new(),
                 parent_id: None,
-                timestamp: String::new(),
+                timestamp: 0,
             },
             target_id: target_id.to_string(),
             label: label.map(String::from),
@@ -1386,7 +1374,7 @@ impl SessionManager {
                 entry_type: "session_info".into(),
                 id: String::new(),
                 parent_id: None,
-                timestamp: String::new(),
+                timestamp: 0,
             },
             name: Some(name.trim().to_string()),
         });
@@ -1632,12 +1620,7 @@ impl XySessionStore for SessionManager {
                     if !h.cwd.is_empty() {
                         cwd = Some(h.cwd.clone());
                     }
-                    if let Ok(dt) = time::OffsetDateTime::parse(
-                        &h.timestamp,
-                        &time::format_description::well_known::Rfc3339,
-                    ) {
-                        modified_unix = Some(dt.unix_timestamp().max(0) as u64);
-                    }
+                    modified_unix = Some(h.timestamp / 1000);
                     continue;
                 }
                 if matches!(entry, SessionEntry::Message(_)) {
@@ -1717,7 +1700,7 @@ mod deferred_persist_tests {
                 entry_type: "message".into(),
                 id: String::new(),
                 parent_id: None,
-                timestamp: String::new(),
+                timestamp: 0,
             },
             message: crate::protocol::session::fixture_message_json("user", text),
         })
@@ -1729,7 +1712,7 @@ mod deferred_persist_tests {
                 entry_type: "message".into(),
                 id: String::new(),
                 parent_id: None,
-                timestamp: String::new(),
+                timestamp: 0,
             },
             message: crate::protocol::session::fixture_message_json("assistant", text),
         })
@@ -1758,7 +1741,7 @@ mod deferred_persist_tests {
                     entry_type: "thinking_level_change".into(),
                     id: String::new(),
                     parent_id: None,
-                    timestamp: String::new(),
+                    timestamp: 0,
                 },
                 thinking_level: "vendor-retired".into(),
             }),
@@ -1850,7 +1833,7 @@ mod deferred_persist_tests {
                     entry_type: "message".into(),
                     id: "u1".into(),
                     parent_id: None,
-                    timestamp: "t-u1".into(),
+                    timestamp: 0,
                 },
                 message: crate::protocol::session::fixture_message_json("user", "hello"),
             }),
@@ -1864,7 +1847,7 @@ mod deferred_persist_tests {
                     entry_type: "message".into(),
                     id: "a1".into(),
                     parent_id: Some("u1".into()),
-                    timestamp: "t-a1".into(),
+                    timestamp: 0,
                 },
                 message: crate::protocol::session::fixture_message_json("assistant", "hi"),
             }),
@@ -1903,7 +1886,7 @@ mod deferred_persist_tests {
                 entry_type: "message".into(),
                 id: "u1".into(),
                 parent_id: None,
-                timestamp: "t-u1".into(),
+                timestamp: 0,
             },
             message: crate::protocol::session::fixture_message_json("user", "kept"),
         });
@@ -2018,7 +2001,7 @@ mod branch_summary_tests {
                 entry_type: "message".into(),
                 id: id.into(),
                 parent_id: None,
-                timestamp: "t".into(),
+                timestamp: 0,
             },
             message,
         })
@@ -2057,13 +2040,22 @@ mod fork_path_tests {
         EntryBase, ForkPosition, MessageEntry, fixture_message_json, is_user_message, message_text,
     };
 
+    /// Deterministic unix-ms from a string id (test fixture; v6 ms baseline).
+    fn fork_entry_ms(id: &str) -> u64 {
+        1_781_827_200_000u64
+            + id.as_bytes()
+                .iter()
+                .fold(0u64, |acc, b| acc * 31 + *b as u64)
+                % 1_000_000
+    }
+
     fn msg(id: &str, parent: Option<&str>, role: &str, text: &str) -> SessionEntry {
         SessionEntry::Message(MessageEntry {
             base: EntryBase {
                 entry_type: "message".into(),
                 id: id.into(),
                 parent_id: parent.map(str::to_string),
-                timestamp: format!("t-{id}"),
+                timestamp: fork_entry_ms(id),
             },
             message: fixture_message_json(role, text),
         })
@@ -2324,7 +2316,7 @@ mod fork_path_tests {
                         entry_type: "label".into(),
                         id: "lbl1".into(),
                         parent_id: Some("a1".into()),
-                        timestamp: "t-lbl".into(),
+                        timestamp: 0,
                     },
                     target_id: "u1".into(),
                     label: Some("checkpoint".into()),
@@ -2375,7 +2367,7 @@ mod fork_path_tests {
             .await
             .unwrap();
         assert!(
-            raw.contains("\"version\":5") || raw.contains("\"version\": 5"),
+            raw.contains("\"version\":6") || raw.contains("\"version\": 6"),
             "{raw}"
         );
         assert!(!raw.contains("\"type\":\"bashExecution\""));

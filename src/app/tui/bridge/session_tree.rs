@@ -556,7 +556,7 @@ mod tests {
                     entry_type: "message".into(),
                     id: "u1".into(),
                     parent_id: None,
-                    timestamp: "t".into(),
+                    timestamp: 0,
                 },
                 message: fixture_message_json("user", "hi"),
             }),
@@ -565,7 +565,7 @@ mod tests {
                     entry_type: "message".into(),
                     id: "a1".into(),
                     parent_id: Some("u1".into()),
-                    timestamp: "t".into(),
+                    timestamp: 0,
                 },
                 message: fixture_message_json("assistant", "yo"),
             }),
@@ -610,7 +610,7 @@ mod tests {
                 entry_type: "message".into(),
                 id: "a1".into(),
                 parent_id: Some("u1".into()),
-                timestamp: "t".into(),
+                timestamp: 0,
             },
             message: json!({
                 "role": "assistant",
@@ -639,7 +639,7 @@ mod tests {
                     entry_type: "message".into(),
                     id: "u1".into(),
                     parent_id: None,
-                    timestamp: "t".into(),
+                    timestamp: 0,
                 },
                 message: json!({
                     "role": "user",
@@ -652,7 +652,7 @@ mod tests {
                     entry_type: "message".into(),
                     id: "a1".into(),
                     parent_id: Some("u1".into()),
-                    timestamp: "t".into(),
+                    timestamp: 0,
                 },
                 message: json!({
                     "role": "assistant",
@@ -694,7 +694,7 @@ mod tests {
                     entry_type: "message".into(),
                     id: "u1".into(),
                     parent_id: None,
-                    timestamp: "t".into(),
+                    timestamp: 0,
                 },
                 message: json!({
                     "role": "user",
@@ -707,7 +707,7 @@ mod tests {
                     entry_type: "message".into(),
                     id: "a1".into(),
                     parent_id: Some("u1".into()),
-                    timestamp: "t".into(),
+                    timestamp: 0,
                 },
                 message: json!({
                     "role": "assistant",
@@ -753,7 +753,7 @@ mod tests {
                     entry_type: "message".into(),
                     id: "u1".into(),
                     parent_id: None,
-                    timestamp: "t".into(),
+                    timestamp: 0,
                 },
                 message: json!({
                     "role": "user",
@@ -766,7 +766,7 @@ mod tests {
                     entry_type: "message".into(),
                     id: "a1".into(),
                     parent_id: Some("u1".into()),
-                    timestamp: "t".into(),
+                    timestamp: 0,
                 },
                 message: json!({
                     "role": "assistant",
@@ -814,7 +814,7 @@ mod tests {
                 entry_type: "compaction".into(),
                 id: "c1".into(),
                 parent_id: Some("u1".into()),
-                timestamp: "t".into(),
+                timestamp: 0,
             },
             summary: "## Goal\nkeep going".into(),
             first_kept_entry_id: "u2".into(),
@@ -844,7 +844,7 @@ mod tests {
                 entry_type: "message".into(),
                 id: "a1".into(),
                 parent_id: Some("u1".into()),
-                timestamp: "t".into(),
+                timestamp: 0,
             },
             message: json!({
                 "role": "assistant",
@@ -871,7 +871,7 @@ mod tests {
                 entry_type: "message".into(),
                 id: "a1".into(),
                 parent_id: Some("u1".into()),
-                timestamp: "t".into(),
+                timestamp: 0,
             },
             message: json!({
                 "role": "assistant",
@@ -908,7 +908,7 @@ mod tests {
                 entry_type: "message".into(),
                 id: "env1".into(),
                 parent_id: None,
-                timestamp: "t".into(),
+                timestamp: 0,
             },
             message: json!({
                 "role": "custom",
@@ -933,7 +933,7 @@ mod tests {
                     entry_type: "message".into(),
                     id: "u1".into(),
                     parent_id: None,
-                    timestamp: "t".into(),
+                    timestamp: 0,
                 },
                 message: fixture_message_json("user", "grep it"),
             }),
@@ -942,7 +942,7 @@ mod tests {
                     entry_type: "message".into(),
                     id: "a1".into(),
                     parent_id: Some("u1".into()),
-                    timestamp: "t".into(),
+                    timestamp: 0,
                 },
                 message: json!({
                     "role": "assistant",
@@ -960,7 +960,7 @@ mod tests {
                     entry_type: "message".into(),
                     id: "tr1".into(),
                     parent_id: Some("a1".into()),
-                    timestamp: "t".into(),
+                    timestamp: 0,
                 },
                 message: json!({
                     "role": "toolResult",
@@ -1014,7 +1014,7 @@ mod tests {
                 entry_type: "message".into(),
                 id: "tr_orphan".into(),
                 parent_id: None,
-                timestamp: "t".into(),
+                timestamp: 0,
             },
             message: json!({
                 "role": "toolResult",

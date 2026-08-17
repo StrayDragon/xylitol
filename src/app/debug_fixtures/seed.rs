@@ -15,7 +15,7 @@ fn empty_base(entry_type: &str) -> EntryBase {
         entry_type: entry_type.into(),
         id: String::new(),
         parent_id: None,
-        timestamp: String::new(),
+        timestamp: 0,
     }
 }
 
@@ -127,29 +127,29 @@ fn activity_fold_resume_raw() -> Vec<SessionEntry> {
     rows
 }
 
-/// Stamp ids / parents / RFC3339 clocks so harness rebuild paints `Worked for`.
+/// Stamp ids / parents / unix-ms clocks so harness rebuild paints `Worked for`.
 #[cfg(test)]
 pub fn activity_fold_resume_stamped_entries() -> Vec<SessionEntry> {
     let mut parent: Option<String> = None;
     let mut out = Vec::new();
     for (i, entry) in activity_fold_resume_raw().into_iter().enumerate() {
         let id = format!("af-resume-{i}");
-        let ts = format!("2026-01-01T00:{i:02}:00Z");
-        out.push(rebase_message(entry, &id, parent.as_deref(), &ts));
+        let ts = 1_781_827_200_000u64 + i as u64 * 1000; // 2026-06-19T00:00:00Z + i s
+        out.push(rebase_message(entry, &id, parent.as_deref(), ts));
         parent = Some(id);
     }
     out
 }
 
 #[cfg(test)]
-fn rebase_message(entry: SessionEntry, id: &str, parent: Option<&str>, ts: &str) -> SessionEntry {
+fn rebase_message(entry: SessionEntry, id: &str, parent: Option<&str>, ts: u64) -> SessionEntry {
     match entry {
         SessionEntry::Message(m) => SessionEntry::Message(MessageEntry {
             base: EntryBase {
                 entry_type: "message".into(),
                 id: id.into(),
                 parent_id: parent.map(str::to_string),
-                timestamp: ts.into(),
+                timestamp: ts,
             },
             message: m.message,
         }),

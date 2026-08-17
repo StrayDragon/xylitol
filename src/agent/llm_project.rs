@@ -100,7 +100,7 @@ mod tests {
                 entry_type: "custom".into(),
                 id: "t1".into(),
                 parent_id: None,
-                timestamp: "t".into(),
+                timestamp: 0,
             },
             custom_type: CUSTOM_TYPE_AGENT_TODO.into(),
             data: list.to_data_value(),
@@ -719,7 +719,7 @@ mod tests {
             entry_type: "session".into(),
             version: SESSION_VERSION,
             id: "c1930-lab".into(),
-            timestamp: "2026-08-06T00:00:00Z".into(),
+            timestamp: 1785974400000,
             cwd: "/tmp/lab".into(),
             parent_session: None,
         })];
@@ -728,7 +728,7 @@ mod tests {
                 entry_type: "message".into(),
                 id: format!("e{i}"),
                 parent_id: None,
-                timestamp: "2026-08-06T00:00:00Z".into(),
+                timestamp: 1785974400000,
             };
             match msg {
                 AgentMessage::Env(EnvMessage::BashExecutionMessage {
@@ -807,7 +807,7 @@ mod tests {
                     entry_type: "message".into(),
                     id: id.into(),
                     parent_id: parent.map(str::to_string),
-                    timestamp: "t".into(),
+                    timestamp: 0,
                 },
                 message: serde_json::to_value(&agent).expect("ser"),
             })
@@ -874,7 +874,7 @@ mod tests {
                     entry_type: "compaction".into(),
                     id: "c1".into(),
                     parent_id: Some("a_keep".into()),
-                    timestamp: "t".into(),
+                    timestamp: 0,
                 },
                 summary: "prior turns summarized".into(),
                 first_kept_entry_id: "u_keep".into(),

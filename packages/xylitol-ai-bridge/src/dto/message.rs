@@ -25,16 +25,12 @@ pub enum AiBridgeMessage {
         #[serde(default = "now_ms")]
         timestamp: u64,
     },
-    /// Wire fields camelCase (`stopReason`, `errorMessage`); snake aliases read pre-fix JSONL.
+    /// Wire fields camelCase (`stopReason`, `errorMessage`).
     #[serde(rename = "assistant")]
     #[serde(rename_all = "camelCase")]
     AssistantMessage {
         content: Vec<AiBridgePart>,
-        #[serde(
-            default,
-            skip_serializing_if = "Option::is_none",
-            alias = "stop_reason"
-        )]
+        #[serde(default, skip_serializing_if = "Option::is_none")]
         stop_reason: Option<AiBridgeStopReason>,
         #[serde(default, skip_serializing_if = "Option::is_none")]
         usage: Option<AiBridgeUsage>,
@@ -44,17 +40,9 @@ pub enum AiBridgeMessage {
         provider: String,
         #[serde(default)]
         model: String,
-        #[serde(
-            default,
-            skip_serializing_if = "Option::is_none",
-            alias = "response_id"
-        )]
+        #[serde(default, skip_serializing_if = "Option::is_none")]
         response_id: Option<String>,
-        #[serde(
-            default,
-            skip_serializing_if = "Option::is_none",
-            alias = "error_message"
-        )]
+        #[serde(default, skip_serializing_if = "Option::is_none")]
         error_message: Option<String>,
         #[serde(default = "now_ms")]
         timestamp: u64,
@@ -64,14 +52,13 @@ pub enum AiBridgeMessage {
     #[serde(rename = "toolResult")]
     #[serde(rename_all = "camelCase")]
     ToolResultMessage {
-        #[serde(rename = "toolCallId", alias = "tool_use_id")]
+        #[serde(rename = "toolCallId")]
         tool_use_id: String,
-        #[serde(default, alias = "tool_name")]
         tool_name: String,
         content: Vec<AiBridgePart>,
         #[serde(default, skip_serializing_if = "Option::is_none")]
         details: Option<Value>,
-        #[serde(default, alias = "is_error")]
+        #[serde(default)]
         is_error: bool,
         #[serde(default = "now_ms")]
         timestamp: u64,
@@ -270,11 +257,11 @@ impl PromptCacheRead {
 pub struct AiBridgeUsage {
     pub input: u64,
     pub output: u64,
-    #[serde(default, alias = "cache_read")]
+    #[serde(default)]
     pub cache_read: u64,
-    #[serde(default, alias = "cache_write")]
+    #[serde(default)]
     pub cache_write: u64,
-    #[serde(default, alias = "cache_write_1h")]
+    #[serde(default)]
     pub cache_write_1h: u64,
     #[serde(skip)]
     pub total_tokens: u64,
@@ -290,9 +277,7 @@ pub struct AiBridgeUsage {
 pub struct AiBridgeUsageCost {
     pub input: f64,
     pub output: f64,
-    #[serde(alias = "cache_read")]
     pub cache_read: f64,
-    #[serde(alias = "cache_write")]
     pub cache_write: f64,
     pub total: f64,
 }
