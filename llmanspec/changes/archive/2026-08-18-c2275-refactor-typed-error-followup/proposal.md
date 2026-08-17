@@ -4,7 +4,8 @@ depends_on:
 skip_specs_landing: true
 branch: sdd/c2275-refactor-typed-error-followup
 base_sha: 6f65930bde1f5151b33ed1d1d996aa9036ab60e5
-checkpointed: false
+checkpointed: true
+checkpoint_sha: 6f65930bde1f5151b33ed1d1d996aa9036ab60e5
 ---
 
 # c2270 后续：会话域拆分、Driver 来源观测、叶错误 variant
