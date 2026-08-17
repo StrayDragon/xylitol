@@ -14,13 +14,13 @@ use tokio::process::Command;
 
 use super::path_utils::resolve_to_cwd;
 use super::truncate::{
-    DEFAULT_MAX_BYTES, GREP_MAX_LINE_LENGTH, TruncationOptions, format_size, truncate_head,
-    truncate_line,
+    DEFAULT_MAX_BYTES, GREP_MAX_LINE_LENGTH, TruncationOptions, truncate_head, truncate_line,
 };
 use super::typed::TypedTool;
 use crate::protocol::error::XyToolError;
 use crate::protocol::ports::XyToolCtx;
 use crate::protocol::{ToolTimeout, ToolTimeoutError};
+use crate::utils::format_size;
 
 const DEFAULT_LIMIT: usize = 100;
 pub struct GrepTool;
@@ -264,7 +264,10 @@ impl TypedTool for GrepTool {
             ));
         }
         if truncation.truncated {
-            notices.push(format!("{} limit reached", format_size(DEFAULT_MAX_BYTES)));
+            notices.push(format!(
+                "{} limit reached",
+                format_size(DEFAULT_MAX_BYTES as u64)
+            ));
         }
         if !notices.is_empty() {
             final_output.push_str(&format!("\n\n[{}]", notices.join(". ")));

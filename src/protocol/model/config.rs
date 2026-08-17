@@ -42,7 +42,7 @@ impl XyModelKind {
 
     /// Default adapter API protocol family when YAML/`api` is omitted (c1598 / c1600).
     ///
-    /// Keep in sync with infra `AdapterKind::default_for` → Display
+    /// Keep in sync with infra `default_for(kind)` → bridge `AdapterKind` Display
     /// (`openai-responses` / `anthropic-messages`). Lives in protocol so agent
     /// manifest loading does not reach infra.
     pub fn default_adapter_api(self) -> &'static str {

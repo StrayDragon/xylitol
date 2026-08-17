@@ -1,16 +1,13 @@
 //! Runtime boundary for LLM providers.
 
-use std::collections::HashMap;
 use std::pin::Pin;
 
 use async_trait::async_trait;
 
-use fastrace::prelude::SpanContext;
-
 use crate::protocol::error::XyError;
 use crate::protocol::message::LlmMessage;
+use crate::protocol::model::XyChunk;
 use crate::protocol::model::XyModelConfig;
-use crate::protocol::model::{THINKING_OFF, ThinkingBudgets, ThinkingLevelMap, XyChunk};
 
 /// Streaming response from an LLM provider.
 pub type XyStream = Pin<Box<dyn futures::Stream<Item = Result<XyChunk, XyError>> + Send>>;
@@ -25,32 +22,11 @@ pub type XyModelBuilder =
 
 /// Options for a single [`XyModel::generate_stream`] call.
 ///
-/// Default (`off` + empty map + no budgets) matches historical “no thinking fields”
-/// request bodies for most adapters.
-#[derive(Debug, Clone)]
-pub struct XyGenerateOptions {
-    /// Exact declared or restored level name. This stays freeform through the
-    /// provider bridge so vendor-specific levels are not collapsed to an enum.
-    pub thinking_level: String,
-    pub level_map: ThinkingLevelMap,
-    pub thinking_budgets: Option<ThinkingBudgets>,
-    /// Formal system prompt for the adapter (not stuffed into user history).
-    pub system_prompt: Option<String>,
-    /// Optional fastrace parent for `llm.request` nesting (iteration / compaction).
-    pub obs_parent: Option<SpanContext>,
-}
-
-impl Default for XyGenerateOptions {
-    fn default() -> Self {
-        Self {
-            thinking_level: THINKING_OFF.into(),
-            level_map: HashMap::new(),
-            thinking_budgets: None,
-            system_prompt: None,
-            obs_parent: None,
-        }
-    }
-}
+/// Bridge DTO alias (fields identical to
+/// [`xylitol_ai_bridge::AiBridgeGenerateOptions`]). Default (`off` + empty
+/// map + no budgets) matches historical “no thinking fields” request bodies
+/// for most adapters.
+pub type XyGenerateOptions = xylitol_ai_bridge::AiBridgeGenerateOptions;
 
 /// LLM provider contract.
 ///
@@ -77,6 +53,7 @@ pub trait XyModel: Send + Sync {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::protocol::model::THINKING_OFF;
 
     #[test]
     fn xy_stream_type_is_send() {

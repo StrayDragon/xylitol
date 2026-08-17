@@ -15,6 +15,7 @@ use crate::infra::image::agent_part_from_image_path;
 use crate::protocol::error::XyToolError;
 use crate::protocol::message::AgentPart;
 use crate::protocol::ports::XyToolCtx;
+use crate::utils::format_size;
 
 use super::truncate::{TruncationOptions, truncate_head};
 use super::typed::TypedTool;
@@ -188,16 +189,6 @@ impl TypedTool for ReadTool {
 
     fn prompt_guidelines(&self) -> &[&str] {
         &["Use read to examine files instead of cat or sed."]
-    }
-}
-
-fn format_size(bytes: u64) -> String {
-    if bytes < 1024 {
-        format!("{bytes}B")
-    } else if bytes < 1024 * 1024 {
-        format!("{:.1}KB", bytes as f64 / 1024.0)
-    } else {
-        format!("{:.1}MB", bytes as f64 / (1024.0 * 1024.0))
     }
 }
 

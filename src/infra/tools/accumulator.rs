@@ -212,19 +212,8 @@ impl OutputSnapshot {
         let body = self.content.trim_end_matches('\n');
         format!(
             "{body}\n[Full output: {path}. Truncated: {lines_shown} lines shown ({} limit)]",
-            format_size(self.max_bytes),
+            crate::utils::format_size(self.max_bytes as u64),
         )
-    }
-}
-
-/// Format bytes as human-readable size.
-fn format_size(bytes: usize) -> String {
-    if bytes < 1024 {
-        format!("{bytes}B")
-    } else if bytes < 1024 * 1024 {
-        format!("{:.1}KB", bytes as f64 / 1024.0)
-    } else {
-        format!("{:.1}MB", bytes as f64 / (1024.0 * 1024.0))
     }
 }
 

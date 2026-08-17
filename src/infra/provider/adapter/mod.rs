@@ -7,9 +7,7 @@
 use std::sync::Arc;
 
 use async_trait::async_trait;
-use xylitol_ai_bridge::provider::{
-    AdapterKind as AiBridgeAdapterKind, AdapterRef as AiBridgeAdapterRef,
-};
+use xylitol_ai_bridge::provider::AdapterRef as AiBridgeAdapterRef;
 
 use crate::infra::provider::map::{to_bridge_tools, to_xy_error, to_xy_stream};
 use crate::protocol::error::XyError;
@@ -23,49 +21,15 @@ pub mod xy_model;
 
 pub use xy_model::AdapterXyModel;
 
-/// Supported adapter kinds (domain-facing mirror of the bridge enum).
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub enum AdapterKind {
-    OpenAiResponses,
-    OpenAiCompletions,
-    AnthropicMessages,
-}
+/// Adapter kind (bridge enum, re-exported so domain code never mirrors it).
+pub use xylitol_ai_bridge::provider::AdapterKind;
 
-impl AdapterKind {
-    pub fn default_for(kind: XyModelKind) -> Self {
-        // String SSOT: `XyModelKind::default_adapter_api` (agent-safe).
-        match kind.default_adapter_api() {
-            "anthropic-messages" => AdapterKind::AnthropicMessages,
-            _ => AdapterKind::OpenAiResponses,
-        }
-    }
-
-    pub fn from_config_str(s: &str) -> Option<Self> {
-        AiBridgeAdapterKind::from_config_str(s).map(Into::into)
-    }
-
-    pub fn to_bridge(self) -> AiBridgeAdapterKind {
-        match self {
-            Self::OpenAiResponses => AiBridgeAdapterKind::OpenAiResponses,
-            Self::OpenAiCompletions => AiBridgeAdapterKind::OpenAiCompletions,
-            Self::AnthropicMessages => AiBridgeAdapterKind::AnthropicMessages,
-        }
-    }
-}
-
-impl From<AiBridgeAdapterKind> for AdapterKind {
-    fn from(value: AiBridgeAdapterKind) -> Self {
-        match value {
-            AiBridgeAdapterKind::OpenAiResponses => Self::OpenAiResponses,
-            AiBridgeAdapterKind::OpenAiCompletions => Self::OpenAiCompletions,
-            AiBridgeAdapterKind::AnthropicMessages => Self::AnthropicMessages,
-        }
-    }
-}
-
-impl std::fmt::Display for AdapterKind {
-    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        write!(f, "{}", self.to_bridge())
+/// Default adapter kind for a model kind. String SSOT:
+/// `XyModelKind::default_adapter_api` (agent-safe).
+pub fn default_for(kind: XyModelKind) -> AdapterKind {
+    match kind.default_adapter_api() {
+        "anthropic-messages" => AdapterKind::AnthropicMessages,
+        _ => AdapterKind::OpenAiResponses,
     }
 }
 
@@ -90,16 +54,6 @@ pub trait LlmAdapter: Send + Sync {
 }
 
 pub type AdapterRef = Arc<dyn LlmAdapter>;
-
-fn to_bridge_options(options: XyGenerateOptions) -> xylitol_ai_bridge::AiBridgeGenerateOptions {
-    xylitol_ai_bridge::AiBridgeGenerateOptions {
-        thinking_level: options.thinking_level,
-        level_map: options.level_map,
-        thinking_budgets: options.thinking_budgets,
-        system_prompt: options.system_prompt,
-        obs_parent: options.obs_parent,
-    }
-}
 
 /// Wrap a bridge adapter ([`xylitol_ai_bridge::provider::AiBridgeLlmAdapter`]) with domain mapping.
 pub struct MappedBridgeAdapter {
@@ -127,7 +81,7 @@ impl LlmAdapter for MappedBridgeAdapter {
         let bridge_tools = to_bridge_tools(tools);
         let stream = self
             .inner
-            .generate_stream(messages, &bridge_tools, to_bridge_options(options))
+            .generate_stream(messages, &bridge_tools, options)
             .await
             .map_err(to_xy_error)?;
         Ok(to_xy_stream(stream))
@@ -142,7 +96,7 @@ impl LlmAdapter for MappedBridgeAdapter {
         let bridge_tools = to_bridge_tools(tools);
         let stream = self
             .inner
-            .generate(messages, &bridge_tools, to_bridge_options(options))
+            .generate(messages, &bridge_tools, options)
             .await
             .map_err(to_xy_error)?;
         Ok(to_xy_stream(stream))
