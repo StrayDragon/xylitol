@@ -16,6 +16,16 @@ fn session_err(e: impl Into<String>) -> XyError {
     XyError::Session(anyhow::anyhow!(e.into()))
 }
 
+/// Format a unix-ms session timestamp as RFC3339 for display (v6: RFC3339 is
+/// a display-side concern only; the on-disk format is unix-ms).
+fn format_unix_ms(ms: u64) -> String {
+    time::OffsetDateTime::from_unix_timestamp((ms / 1000) as i64)
+        .map(|dt| dt.format(&time::format_description::well_known::Rfc3339))
+        .ok()
+        .and_then(|res| res.ok())
+        .unwrap_or_else(|| ms.to_string())
+}
+
 /// Stateful export/import collaborator — owns the [`XyExportIo`] port.
 ///
 /// Session store is borrowed per call (`&dyn XySessionStore` + session id).
@@ -127,7 +137,12 @@ fn render_entry_html(entry: &SessionEntry) -> String {
     match entry {
         SessionEntry::Header(h) => block(
             "header",
-            &format!("session {} (v{}) @ {}", h.id, h.version, h.timestamp),
+            &format!(
+                "session {} (v{}) @ {}",
+                h.id,
+                h.version,
+                format_unix_ms(h.timestamp)
+            ),
         ),
         SessionEntry::Message(m) if message_role(&m.message) == Some("bashExecution") => {
             let cmd = m
@@ -243,7 +258,7 @@ mod tests {
             entry_type: "session".into(),
             version: SESSION_VERSION,
             id: id.into(),
-            timestamp: "2026-06-19T00:00:00Z".into(),
+            timestamp: 1_781_827_200_000, // 2026-06-19T00:00:00Z (unix-ms)
             cwd: "/tmp".into(),
             parent_session: None,
         })
@@ -254,7 +269,7 @@ mod tests {
             entry_type: "message".into(),
             id: "e1".into(),
             parent_id: None,
-            timestamp: "2026-06-19T00:00:00Z".into(),
+            timestamp: 1_781_827_200_000, // 2026-06-19T00:00:00Z (unix-ms)
         }
     }
 

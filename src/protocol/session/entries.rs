@@ -9,7 +9,8 @@ use crate::protocol::message::{AgentMessage, EnvMessage};
 /// v3: legacy (no id/parentId tree)
 /// v4: tree-aware with id/parentId (snake_case / untagged AgentPart era)
 /// v5: camelCase entry shell + tagged AgentPart content (c646 / pi-aligned)
-pub const SESSION_VERSION: u32 = 5;
+/// v6: v5 semantics + shell/header timestamps are u64 unix-ms; no serde aliases
+pub const SESSION_VERSION: u32 = 6;
 
 /// Where a session fork cuts the parent tree.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
@@ -32,7 +33,7 @@ pub struct SessionHeader {
     #[serde(default = "default_version")]
     pub version: u32,
     pub id: String,
-    pub timestamp: String,
+    pub timestamp: u64,
     pub cwd: String,
     #[serde(skip_serializing_if = "Option::is_none")]
     pub parent_session: Option<String>,
@@ -51,7 +52,7 @@ pub struct EntryBase {
     pub entry_type: String,
     pub id: String,
     pub parent_id: Option<String>,
-    pub timestamp: String,
+    pub timestamp: u64,
 }
 
 // ── Message entry ───────────────────────────────────────────────────

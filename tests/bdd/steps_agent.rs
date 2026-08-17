@@ -206,9 +206,7 @@ pub(crate) async fn _w_agent_switch_thinking(agent: &AgentState, verb: String, l
             entry_type: "thinking_level_change".into(),
             id: format!("tlc-{}", uuid::Uuid::new_v4()),
             parent_id: None,
-            timestamp: time::OffsetDateTime::now_utc()
-                .format(&time::format_description::well_known::Rfc3339)
-                .expect("RFC3339 format is infallible"),
+            timestamp: xylitol::protocol::message::now_ms(),
         },
         thinking_level: session.thinking_level(),
     });
@@ -359,7 +357,7 @@ pub(crate) async fn _g_agent_turn_done(sess: &XySessionStore) {
             entry_type: "message".into(),
             id: "auto-1".into(),
             parent_id: None,
-            timestamp: "2024-01-01T00:00:00Z".into(),
+            timestamp: 1704067200000,
         },
         message: serde_json::json!({"role":"assistant","content":"done"}),
     });

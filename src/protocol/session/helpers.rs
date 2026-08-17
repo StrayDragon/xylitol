@@ -30,7 +30,7 @@ pub fn bash_execution_message_entry(
             entry_type: "message".into(),
             id: String::new(),
             parent_id: None,
-            timestamp: String::new(),
+            timestamp: 0,
         },
         message: serde_json::to_value(&message).unwrap_or(Value::Null),
     })

@@ -20,7 +20,7 @@ fn message_entry(id: &str, parent_id: Option<&str>, role: &str, content: &str) -
             entry_type: "message".into(),
             id: id.into(),
             parent_id: parent_id.map(str::to_string),
-            timestamp: "2024-01-01T00:00:00Z".into(),
+            timestamp: 1704067200000,
         },
         message: serde_json::json!({"role": role, "content": content}),
     })
@@ -80,7 +80,7 @@ async fn append_branch_summary(
                 entry_type: "branchSummary".into(),
                 id: format!("bs-{child_id}"),
                 parent_id: leaf,
-                timestamp: "2024-01-01T00:00:10Z".into(),
+                timestamp: 1704067210000,
             },
             from_id: at_entry_id.into(),
             summary,
@@ -147,7 +147,7 @@ async fn _w_session_append(sess: &XySessionStore, msg: String) {
             entry_type: "message".into(),
             id: "msg-1".into(),
             parent_id: None,
-            timestamp: "2024-01-01T00:00:00Z".into(),
+            timestamp: 1704067200000,
         },
         message: serde_json::json!({"role":"user","content":msg}),
     });

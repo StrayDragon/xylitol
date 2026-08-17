@@ -157,7 +157,7 @@ async fn model_change_entry_lands_before_following_message() {
                     entry_type: "message".into(),
                     id: "m-after".into(),
                     parent_id: None,
-                    timestamp: "t".into(),
+                    timestamp: 0,
                 },
                 message: crate::protocol::session::fixture_message_json("user", "after"),
             }),
@@ -173,7 +173,7 @@ async fn model_change_entry_lands_before_following_message() {
                     entry_type: "message".into(),
                     id: "a-flush".into(),
                     parent_id: None,
-                    timestamp: "t".into(),
+                    timestamp: 0,
                 },
                 message: crate::protocol::session::fixture_message_json("assistant", "flush"),
             }),
@@ -570,6 +570,100 @@ async fn test_persist_stream_timing_nodes() {
         Some(9_100)
     );
     assert!(timing.get("toolIntentAtMs").is_none());
+}
+
+#[tokio::test]
+async fn test_stream_timing_shape_is_locked_and_typed() {
+    // c2260: shape-lock `thinkingElapsedSecs` (u64) + `streamTiming`
+    // (map<string,u64>): persisted JSON must carry both keys with correct types,
+    // typed AgentMessage deserialization must succeed (unknown fields ignored),
+    // and the typed projection must not be polluted by either key.
+    use std::time::{Duration, Instant};
+
+    use crate::protocol::message::AgentPart;
+    use crate::utils::{StreamNode, StreamNodeClock};
+
+    let session_mgr = SessionManager::new(tempfile::tempdir().unwrap().path().join("sessions"));
+    let store: Arc<dyn XySessionStore> = Arc::new(session_mgr);
+    let sid = "sess-shape-lock";
+    let mut clock = StreamNodeClock::new();
+    let a = Instant::now();
+    clock.stamp_at(StreamNode::AgentStart, a, 1_000);
+    clock.stamp_at(StreamNode::TurnStart, a, 1_100);
+    clock.stamp_at(StreamNode::ThinkingStart, a, 2_000);
+    clock.stamp_at(StreamNode::ThinkingEnd, a + Duration::from_secs(2), 4_000);
+    clock.stamp_at(StreamNode::TextStart, a + Duration::from_secs(2), 4_000);
+    clock.stamp_at(StreamNode::TextEnd, a + Duration::from_secs(7), 9_000);
+    clock.stamp_at(StreamNode::MessageEnd, a + Duration::from_secs(7), 9_100);
+
+    let msg = super::assistant::build_assistant_message(
+        vec![AgentPart::thinking("plan"), AgentPart::text("hello")],
+        None,
+        None,
+        String::new(),
+        String::new(),
+        None,
+    );
+    super::persist_agent_message_with_thought_elapsed(&store, sid, &msg, Some(&clock)).await;
+
+    let entries = store.load_entries(sid).await.expect("entries");
+    let SessionEntry::Message(m) = entries
+        .into_iter()
+        .find(|e| matches!(e, SessionEntry::Message(_)))
+        .expect("persisted message")
+    else {
+        unreachable!();
+    };
+
+    // 1. Both keys exist with the exact typed shape.
+    assert_eq!(
+        m.message
+            .get("thinkingElapsedSecs")
+            .and_then(|v| v.as_u64()),
+        Some(2),
+        "thinkingElapsedSecs key must be u64 when present"
+    );
+    let timing = m.message.get("streamTiming").expect("streamTiming key");
+    assert!(timing.is_object(), "streamTiming must be an object");
+    for (k, v) in timing.as_object().unwrap() {
+        assert!(
+            v.as_u64().is_some(),
+            "streamTiming.{k} must be u64, got {v}"
+        );
+    }
+    let mut actual_keys: Vec<_> = timing
+        .as_object()
+        .unwrap()
+        .keys()
+        .map(String::as_str)
+        .collect();
+    actual_keys.sort();
+    let mut expected_keys = [
+        "agentStartedAtMs",
+        "turnStartedAtMs",
+        "thinkingStartedAtMs",
+        "thinkingEndedAtMs",
+        "textStartedAtMs",
+        "textEndedAtMs",
+        "messageEndedAtMs",
+    ];
+    expected_keys.sort();
+    assert_eq!(
+        actual_keys, expected_keys,
+        "streamTiming must only carry happened nodes"
+    );
+
+    // 2. Typed deserialization succeeds (unknown keys ignored) and is un-polluted.
+    let typed: AgentMessage =
+        serde_json::from_value(m.message.clone()).expect("typed deserialize with extra keys");
+    let AgentMessage::Llm(LlmMessage::AssistantMessage {
+        content, timestamp, ..
+    }) = typed
+    else {
+        unreachable!("expected assistant");
+    };
+    assert_eq!(content.len(), 2);
+    assert!(timestamp > 0);
 }
 
 #[tokio::test]

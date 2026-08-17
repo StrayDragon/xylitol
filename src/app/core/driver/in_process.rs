@@ -914,7 +914,7 @@ impl XyDriver for XyInProcessDriver {
                 entry_type: "label".into(),
                 id: String::new(),
                 parent_id: None,
-                timestamp: String::new(),
+                timestamp: 0,
             },
             target_id: target_id.to_string(),
             label: cleaned,
@@ -1688,10 +1688,19 @@ mod driver_session_tree_tests {
                 entry_type: "message".into(),
                 id: id.into(),
                 parent_id: parent.map(str::to_string),
-                timestamp: format!("2026-01-01T00:00:00.{id}Z"),
+                timestamp: entry_ms(id),
             },
             message: crate::protocol::session::fixture_message_json(role, text),
         })
+    }
+
+    /// Deterministic unix-ms from a string id (test fixture).
+    fn entry_ms(id: &str) -> u64 {
+        1_781_827_200_000u64
+            + id.as_bytes()
+                .iter()
+                .fold(0u64, |acc, b| acc * 31 + *b as u64)
+                % 1_000_000
     }
 
     async fn build_test_driver(store: Arc<SessionManager>) -> (XyInProcessDriver, ObsSessionScope) {
@@ -1733,7 +1742,7 @@ mod driver_session_tree_tests {
                         entry_type: "thinking_level_change".into(),
                         id: String::new(),
                         parent_id: None,
-                        timestamp: String::new(),
+                        timestamp: 0,
                     },
                     thinking_level: "vendor-retired".into(),
                 }),
@@ -2032,7 +2041,7 @@ mod driver_session_tree_tests {
                         entry_type: "message".into(),
                         id: String::new(),
                         parent_id: None,
-                        timestamp: String::new(),
+                        timestamp: 0,
                     },
                     message: crate::protocol::session::fixture_message_json("user", "only user"),
                 }),

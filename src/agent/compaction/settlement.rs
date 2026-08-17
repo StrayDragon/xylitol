@@ -108,7 +108,7 @@ mod tests {
                 entry_type: "message".into(),
                 id: "u1".into(),
                 parent_id: None,
-                timestamp: String::new(),
+                timestamp: 0,
             },
             message: serde_json::to_value(AgentMessage::user("hi")).unwrap(),
         })]

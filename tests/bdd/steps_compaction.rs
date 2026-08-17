@@ -266,7 +266,7 @@ pub(crate) async fn _g_comp_navigate_branch(sess: &XySessionStore) {
             entry_type: "message".into(),
             id: "flush-asst".into(),
             parent_id: None,
-            timestamp: "2024-01-01T00:00:01Z".into(),
+            timestamp: 1704067201000,
         },
         message: serde_json::json!({"role":"assistant","content":"ok"}),
     });
@@ -325,7 +325,7 @@ pub(crate) async fn comp_seed_turns(sess: &XySessionStore, sid: &str, turns: usi
                 entry_type: "message".into(),
                 id: format!("msg-{i}"),
                 parent_id: None,
-                timestamp: "2024-01-01T00:00:00Z".into(),
+                timestamp: 1704067200000,
             },
             message: serde_json::to_value(AgentMessage::user(format!(
                 "turn {i} {}",

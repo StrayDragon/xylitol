@@ -95,7 +95,7 @@ pub fn ingest_rebuild_clocks(
         let Some(base) = entry.base() else {
             continue;
         };
-        let ts = parse_timestamp(&base.timestamp);
+        let ts = parse_timestamp(&base.timestamp.to_string());
         if let SessionEntry::Message(m) = entry {
             let role = crate::protocol::session::message_role(&m.message);
             match role {

@@ -78,7 +78,7 @@ impl AgentCapabilities {
                     entry_type: "thinking_level_change".into(),
                     id: String::new(),
                     parent_id: None,
-                    timestamp: String::new(),
+                    timestamp: 0,
                 },
                 thinking_level: level.clone(),
             });
@@ -140,7 +140,7 @@ impl AgentCapabilities {
                     entry_type: "model_change".into(),
                     id: String::new(),
                     parent_id: None,
-                    timestamp: String::new(),
+                    timestamp: 0,
                 },
                 provider: model_id.to_string(),
                 model_id: model_id.to_string(),

@@ -1055,6 +1055,15 @@ pub async fn pump_host_driver<T: Terminal>(
 pub fn harness_sample_message_history_tree() -> Vec<SessionTreeNode> {
     use crate::protocol::session::{EntryBase, MessageEntry};
 
+    /// Deterministic unix-ms from a string id (test fixture; v6 ms baseline).
+    fn harness_entry_ms(id: &str) -> u64 {
+        1_781_827_200_000u64
+            + id.as_bytes()
+                .iter()
+                .fold(0u64, |acc, b| acc * 31 + *b as u64)
+                % 1_000_000
+    }
+
     fn msg(id: &str, parent: Option<&str>, role: &str, text: &str) -> SessionTreeNode {
         SessionTreeNode {
             entry: SessionEntry::Message(MessageEntry {
@@ -1062,7 +1071,7 @@ pub fn harness_sample_message_history_tree() -> Vec<SessionTreeNode> {
                     entry_type: "message".into(),
                     id: id.into(),
                     parent_id: parent.map(str::to_string),
-                    timestamp: format!("t-{id}"),
+                    timestamp: harness_entry_ms(id),
                 },
                 message: crate::protocol::session::fixture_message_json(role, text),
             }),

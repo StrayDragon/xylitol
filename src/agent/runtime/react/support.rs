@@ -102,7 +102,7 @@ pub(crate) async fn persist_agent_message_with_thought_elapsed(
             entry_type: "message".into(),
             id: String::new(),
             parent_id: None,
-            timestamp: String::new(),
+            timestamp: 0,
         },
         message,
     });
