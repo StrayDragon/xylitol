@@ -2,13 +2,13 @@
 
 ## 0. 前置
 
-- [ ] 0.1 确认 `c2250-harden-session-write-path` 已 finalize / archive（本票 depends_on 它；其落盘路径修复是本票 version bump 的安全前提）
+- [x] 0.1 确认 `c2250-harden-session-write-path` 已 finalize / archive（本票 depends_on 它；其落盘路径修复是本票 version bump 的安全前提）
 
 ## 1. Branch binding 与 Specs landing
 
-- [ ] 1.1 [blocked-by: 0.1] 前置：本规划壳已提交到默认分支，工作树干净；然后 `llman sdd change start c2260-bump-session-format-v6`
-- [ ] 1.2 [blocked-by: 1.1] 按 design §5 更新 `llmanspec/specs/agent-session-store/spec.toon`：s18 / s20 版本号 → 6；新增盘面时间戳条款 s22 + 非执行场景行
-- [ ] 1.3 [blocked-by: 1.1] `llman sdd context --task "session 盘面时间戳统一为 unix-ms、删除 serde alias、版本 6" --paths "src/protocol/session,src/protocol/message.rs,packages/xylitol-ai-bridge/src/dto/message.rs"`；复核 `domain-message` / `agent-session` 等候选 spec 是否有版本 / 时间戳硬编码条款，有则同步
+- [x] 1.1 [blocked-by: 0.1] 前置：本规划壳已提交到默认分支，工作树干净；然后 `llman sdd change start c2260-bump-session-format-v6`
+- [x] 1.2 [blocked-by: 1.1] 按 design §5 更新 `llmanspec/specs/agent-session-store/spec.toon`：s18 / s20 版本号 → 6；新增盘面时间戳条款 s22 + 非执行场景行
+- [x] 1.3 [blocked-by: 1.1] `llman sdd context --task "session 盘面时间戳统一为 unix-ms、删除 serde alias、版本 6" --paths "src/protocol/session,src/protocol/message.rs,packages/xylitol-ai-bridge/src/dto/message.rs"`；复核 `domain-message` / `agent-session` 等候选 spec 是否有版本 / 时间戳硬编码条款，有则同步
 - [ ] 1.4 [blocked-by: 1.2, 1.3] `llman sdd validate c2260-bump-session-format-v6 --strict --no-interactive`；`llman sdd show c2260-bump-session-format-v6 --json` 确认 `readyToImplement=true`
 
 ## 2. schema v6：版本 + 时间戳

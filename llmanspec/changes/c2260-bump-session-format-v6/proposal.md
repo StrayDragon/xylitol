@@ -1,5 +1,9 @@
 ---
-depends_on: [c2250-harden-session-write-path]
+depends_on:
+- c2250-harden-session-write-path
+branch: sdd/c2260-bump-session-format-v6
+base_sha: 31618ae386867f9b7564b025cdb501d9d11f3699
+checkpointed: false
 ---
 
 # session 盘面 v6：unix-ms 时间戳统一 + 兼容 alias 清零
