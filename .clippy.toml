@@ -1,3 +1,4 @@
+# Quality thresholds are complexity metrics only (line counts are not a
+# quality signal — see src/AGENTS.md 复杂度与体量).
 cognitive-complexity-threshold = 25
-too-many-lines-threshold = 300
 type-complexity-threshold = 250

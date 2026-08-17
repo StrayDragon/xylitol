@@ -1,6 +1,6 @@
 # src/ 分层架构（代码架构 SSOT）
 
-本文件是 `src/` **代码架构**的单一真值源：依赖方向、seam、`Xy*`、消息/工具边界、扩展开闭、体量策略。全局工作方式见根 `AGENTS.md`；产品心智见 `docs/architecture/`。子目录 `AGENTS.md` 只写本面例外，不重复本文件。
+本文件是 `src/` **代码架构**的单一真值源：依赖方向、seam、`Xy*`、消息/工具边界、扩展开闭、复杂度与体量策略。全局工作方式见根 `AGENTS.md`；产品心智见 `docs/architecture/`。子目录 `AGENTS.md` 只写本面例外，不重复本文件。
 
 **真值顺序**：代码与测试 → 本文件 → archive design。本文件写**稳定规则**，不写文件清单、change id 进度、超标表。模块落点以目录树为准。
 
@@ -111,13 +111,15 @@ protocol **MAY** 依赖 bridge **DTO only**，**MUST NOT** 依赖 bridge HTTP/SD
 
 Hook 三缝只认可移植 JSON（headers map + body Value）；不把 reqwest/某一 SDK 类型泄漏进 hook。原始 SSE 诊断用进程内 provider trace，不进 hook。
 
-## 体量
+## 复杂度与体量
 
-生产模块避免无结构 God 文件。软顶 ~1200 / 硬顶 ~2000 行（`wc -l`；同文件内联测计入生产）。测试专用模块另计，仍禁止无结构堆叠。
+生产模块避免无结构 God 文件。**不以文件物理行数作为质量约束**（行数与可维护性无直接映射，行数硬测会逼出按 impl 块散落的假拆分）；质量信号只走函数级复杂度指标（cccc-rs 的 Sonar cognitive / McCabe cyclomatic）。
 
-**TUI 面复杂度闸**：产品 TUI 入口协调者（host 入口、layout 根、effects 入口、bridge 入口）的函数级复杂度经 `just qa` 的 `scripts/check_complexity.py`（cccc-rs）强制：Sonar cognitive ≤32 且 McCabe cyclomatic ≤27（按当前协调者 max 收紧，禁止回涨到旧 35/30）。**不以文件物理行数作为 TUI 硬闸**（行数硬测会逼出按 impl 块散落的假拆分）。体量仍走上文软顶 ~1200 / 硬顶 ~2000 的 review 策略，以及「默认不为行数大拆」。同文件内联测不计入生产（见上）。
+**TUI 面复杂度闸（HARD）**：产品 TUI 入口协调者（host 入口、layout 根、effects 入口、bridge 入口）的函数级复杂度经 `just qa` 的 `scripts/check_complexity.py`（cccc-rs）强制：Sonar cognitive ≤32 且 McCabe cyclomatic ≤27（按当前协调者 max 收紧，禁止回涨到旧 35/30）。**不以文件物理行数作为硬闸**（行数硬测会逼出按 impl 块散落的假拆分）。测试专用模块不参与本闸。
 
-**默认不为行数大拆**：ReAct（剧本可与行为测同居；state machine 未开闸）、session manager、已拆开的 driver 子树。功能逼出或编辑痛点明确时再拆；超硬顶须在 PR 说明计划或豁免。**不**在本文件维护超标清单。
+**全树复杂度雷达（review 信号）**：`just complexity`（`--radar`）对全生产树（排除测试文件）报告 cccc-rs top-cognitive 排名，作为 review 参照；软信号，非硬闸。复杂度高的函数优先拆分/重构，不用行数 KPI。
+
+**默认不为行数大拆**：ReAct（剧本可与行为测同居；state machine 未开闸）、session manager、已拆开的 driver 子树。功能逼出或编辑痛点明确时再拆；复杂度超闸须拆分或显式豁免。**不**在本文件维护超标清单。
 
 ## 测试
 
