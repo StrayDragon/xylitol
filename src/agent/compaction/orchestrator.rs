@@ -92,11 +92,14 @@ impl CompactionOrchestrator {
             instructions.as_deref(),
             llm_parent,
         )
-        .await
-        .map_err(|e| format!("compaction failed: {e}"));
+        .await;
 
         if let Some(obs) = obs {
-            obs.finish(false, false, result.as_ref().err().map(String::as_str));
+            obs.finish(
+                false,
+                false,
+                result.as_ref().err().map(|e| e.to_string()).as_deref(),
+            );
         }
         event_sink
             .emit(&XyEvent::CompactionEnd {
@@ -104,7 +107,10 @@ impl CompactionOrchestrator {
                 aborted: false,
                 reason: "manual".into(),
                 will_retry: false,
-                error_message: result.as_ref().err().cloned(),
+                error_message: result
+                    .as_ref()
+                    .err()
+                    .map(|e| format!("compaction failed: {e}")),
                 summary: result.as_ref().ok().map(|e| e.summary.clone()),
                 tokens_before: result.as_ref().ok().map(|e| e.tokens_before),
             })
