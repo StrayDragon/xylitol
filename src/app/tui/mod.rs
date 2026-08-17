@@ -133,7 +133,7 @@ pub struct TuiRunOptions {
     /// Not driven by `XYLITOL_TUI_MOUSE`. Mid-session switching is not supported —
     /// rebuild the host (or exit the process) to change modes.
     ///
-    /// Lab peek: CLI may pass [`lab_interaction_mode_from_env`] (`XYLITOL_TUI_INLINE`).
+    /// Lab peek: CLI may pass `lab_interaction_mode_from_env` (`XYLITOL_TUI_INLINE`).
     /// That is **not** a product flag or setting.
     pub interaction_mode: xylitol_tui::InteractionMode,
 }
