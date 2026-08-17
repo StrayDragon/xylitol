@@ -2,7 +2,7 @@
 
 本面专属边界。分层与 seam：`src/AGENTS.md`。引擎：`packages/xylitol-tui/AGENTS.md`。写法：根 `AGENTS.md`。
 
-写/改本面：先读本节职责，再跟 `write-tui`。刻意差异台账：[`PI_DELTAS.md`](./PI_DELTAS.md)（包层另有一份，不得静默覆盖）。
+写/改本面：先读本节职责，再跟 `l8ng-write-tui`。刻意差异台账：[`PI_DELTAS.md`](./PI_DELTAS.md)（包层另有一份，不得静默覆盖）。
 
 ## 角色（按职责，不按文件表）
 
@@ -19,7 +19,7 @@
 
 运行时真值：本目录产品代码。交互设计稿：仓库顶层 [`designing/`](../../../designing/)（`tui/modules/<id>/intent.md` + `draft.yaml` + `states/*.yaml`；人类 `just open-designing`）。Agent 改本面先读代码，再读 [`designing/AGENTS.md`](../../../designing/AGENTS.md) + [`designing/generated/AGENT-INDEX.md`](../../../designing/generated/AGENT-INDEX.md) + 相关模块；**默认忽略** `designing/app/`。无独立快捷键设计（组件键写在模块 `draft.yaml` `keys:`）。历史文案「chrome」= layout/widgets；勿用 `shell`/`scene` 命名。
 
-**布局地图（本文件自指要求）**：本文件按「角色表（上）→ 硬约束 → 验证与 HOW」提供本地布局地图：目录/文件职责、协调者与可下沉模块边界（host / effects / bridge / layout / widgets / commands）、硬约束指针（Esc 归属与 bang/agent abort 分岔、禁止 reach-in、禁止继续堆 God 文件）、验证命令指针；并保留对 [`PI_DELTAS.md`](./PI_DELTAS.md) 与 `write-tui` skill 的指针。不写进度板或易腐清单。
+**布局地图（本文件自指要求）**：本文件按「角色表（上）→ 硬约束 → 验证与 HOW」提供本地布局地图：目录/文件职责、协调者与可下沉模块边界（host / effects / bridge / layout / widgets / commands）、硬约束指针（Esc 归属与 bang/agent abort 分岔、禁止 reach-in、禁止继续堆 God 文件）、验证命令指针；并保留对 [`PI_DELTAS.md`](./PI_DELTAS.md) 与 `l8ng-write-tui` skill 的指针。不写进度板或易腐清单。
 
 **设计稿文档职责**（designing lint 承继）：Agent 改本面先读产品代码，再读 designing 短模块 intent/states；**默认忽略** `designing/app/`，仅在人类点名路径时才读应用壳。改固定态须跑 designing lint（入 `just qa`）与 `check-tui-tokens`；token 生成物由同步脚本从 `DESIGN.md` frontmatter 写出，手改不作为长期真值。无独立快捷键设计模块。
 
@@ -53,6 +53,6 @@
 | Agent 尽量跑 | `just test-tui-e2e-pty`（真终端） |
 | 人类 | 最短手测观感；**不**替代 harness |
 
-包侧五层：`packages/xylitol-tui/AGENTS.md` + skill `test-tui-harness`。排障：`xylitol-inspect-runtime-logs`（勿整文件灌 log）。新增应用面：`write-surface`。
+包侧五层：`packages/xylitol-tui/AGENTS.md` + skill `test-tui-harness`。排障：`xylitol-inspect-runtime-logs`（勿整文件灌 log）。新增应用面：`l8ng-write-surface`。
 
 live 只进 scrollback；历史/分叉以会话树为准。不做 Codex TranscriptView；不做运行时 Settings/Plate 改配置；**不**绑定 Ctrl+P 打开 Command Plate stub。

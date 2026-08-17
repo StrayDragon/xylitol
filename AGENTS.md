@@ -69,7 +69,7 @@
 
 - **禁止**为未发布的公开 API、YAML 键、slash、UI 字符串保留兼容别名、双解析路径、deprecated 转发。改名 = 一次性改调用点。
 - Session JSONL：未知字段可忽略（serde）≠ 产品代码永久读旧键。需要读旧会话时做一次性迁移或声明不保证，**禁止**双语义长期并存。
-- 死码按 skill `audit-dead-code` 分诊（真死删 / 逻辑死本变更内激活或删 / 预留须写落地条件）。禁止无理由新 `#[allow(dead_code)]`。
+- 死码按 skill `l8ng-audit-dead-code` 分诊（真死删 / 逻辑死本变更内激活或删 / 预留须写落地条件）。禁止无理由新 `#[allow(dead_code)]`。
 - **禁止**为未交付能力预留兼容 shim。0.0.1 **之后** 再谈 SemVer / 弃用窗。
 
 ## Provider（Pre-1.0.0）
@@ -132,7 +132,7 @@
 
 ## Skills
 
-SDD：`llman-sdd-*`（含 `llman-sdd-quick` 快速路径）。应用面：`write-surface`、`audit-dead-code`、`write-tui`。TUI 验证：`test-tui-harness`。观测窄读：`xylitol-inspect-runtime-logs`。构建/磁盘：`rust-build-tune`。TUI 参考：`tui-expert-of-codex`、`terminal-tui-differential-rendering`。
+SDD：`llman-sdd-*`（含 `llman-sdd-quick` 快速路径）。应用面：`l8ng-write-surface`、`l8ng-audit-dead-code`、`l8ng-write-tui`。TUI 验证：`test-tui-harness`。观测窄读：`xylitol-inspect-runtime-logs`。构建/磁盘：`rust-build-tune`。TUI 参考：`tui-expert-of-codex`、`l8ng-terminal-tui-differential-rendering`（`l8ng-*` 均在 `~/.config/llman/skills/` 维护，不在本仓库，避免漂移）。外部锁定：`langfuse`（经 `skills-lock.json` 管理）。
 
 ## 编写与维护 AGENTS.md
 

@@ -14,7 +14,7 @@ lines:
   -
     - { text: "│ ~/xylitol · <model-name>                 │", token: muted }
   -
-    - { text: "│ skills  write-tui  audit-dead-code       │", token: skill-ref }
+    - { text: "│ skills  test-tui-harness  rust-build-tune       │", token: skill-ref }
   -
     - { text: "│ mcp  context7                            │", token: success }
   -
