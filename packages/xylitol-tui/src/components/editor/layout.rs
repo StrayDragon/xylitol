@@ -540,8 +540,8 @@ impl Component for super::Editor {
     fn invalidate(&mut self) {}
 }
 
-/// Sink used when [`Editor::handle_input`] receives mouse without an external sink.
-/// OSC52 still accumulates on [`Editor::pending_clipboard`] via [`Editor::maybe_copy_selection`].
+/// Sink used when [`super::Editor::handle_input`] receives mouse without an external sink.
+/// OSC52 still accumulates on [`super::Editor::pending_clipboard`] via [`super::Editor::maybe_copy_selection`].
 struct DiscardClipboardSink;
 
 impl ClipboardSink for DiscardClipboardSink {

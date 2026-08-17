@@ -189,7 +189,7 @@ impl SessionManager {
         Ok(session_display_name_from_entries(&entries))
     }
 
-    /// Load entries for [`XySessionStore::list_sessions`] without mutating leaf tracking.
+    /// Load entries for [`crate::protocol::ports::XySessionStore::list_sessions`] without mutating leaf tracking.
     ///
     /// Disk sessions: peek header version first so legacy files skip without a full JSONL parse.
     pub(super) async fn load_entries_for_list(
