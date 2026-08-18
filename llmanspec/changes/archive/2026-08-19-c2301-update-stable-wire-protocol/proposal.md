@@ -3,7 +3,8 @@ depends_on:
 - c2300-update-cs-capability-split
 branch: sdd/c2301-update-stable-wire-protocol
 base_sha: 7acd591a41afffa741a7a1ea199ec53701e3aa6b
-checkpointed: false
+checkpointed: true
+checkpoint_sha: 7acd591a41afffa741a7a1ea199ec53701e3aa6b
 ---
 
 # 稳定线协议闭集
