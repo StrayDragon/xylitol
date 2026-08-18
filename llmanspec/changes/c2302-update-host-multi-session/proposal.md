@@ -2,11 +2,14 @@
 depends_on:
   - c2300-update-cs-capability-split
   - c2301-update-stable-wire-protocol
+  - c2290-update-standalone-host
 ---
 
 # host 多会话与 salvo 契约传输面
 
-N 客户端 ↔ 1 个 HTTP 监听器。产品语义只走 WebSocket 上的 Command/Event（c2301）。栈：salvo 0.94（`salvo-websocket` / `salvo-realtime` / `salvo-graceful-shutdown` / `salvo-testing`）。REST 不再承载产品动词。
+> **暂停 apply。** 产品协议改由 c2290 钉死（JSON-RPC unary + 下行通知，TUI 只 attach）。本票待 c2290 归档后重写：保留绑定占用、多 session 写者、salvo 栈意向，**载 c2290 信封**，不再把全双工 WS Command/Event 当产品语义。
+
+N 客户端 ↔ 1 个 HTTP 监听器。原设计「产品语义只走 WebSocket 上的 Command/Event」作废。栈意向仍可是 salvo 0.94。REST 不再承载产品动词。
 
 ## Why
 
