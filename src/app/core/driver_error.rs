@@ -8,16 +8,18 @@ use crate::infra::clipboard::ClipboardError;
 use crate::infra::config::error::LoadError;
 use crate::infra::mcp::McpError;
 use crate::protocol::error::{
-    XyError, XyExportError, XySessionError, XyStoreError, XyToolError, XyTrustError,
+    XyError, XyExportError, XySessionError, XySessionStoreError, XyToolError, XyTrustError,
 };
 
 /// Errors from [`super::driver::XyDriver`] (整机遥控器 / 多面共享应用协议).
 ///
 /// Distinct from [`XyError`] (ReAct / provider / tool hot path). Agent-loop
 /// failures that surface through the driver are wrapped as [`Self::Agent`].
-/// Flattened session/export/trust failures keep their driver class in
+/// Flattened persist/export/trust failures keep their driver class in
 /// [`Self::kind`] (`NotFound`, `Io`, …) and the originating domain in
 /// [`Self::detail_kind`] / `source.kind` on [`Self::log_failure`].
+/// Control-plane [`XySessionError::NoActiveSession`] is `Message` + `Session`,
+/// not `NotFound`, so it does not collide with a missing session file.
 #[derive(Debug, thiserror::Error, IntoStaticStr)]
 pub enum XyDriverError {
     /// Resource missing (session, entry, path, …).
@@ -274,7 +276,7 @@ impl From<XySessionError> for XyDriverError {
         match err {
             XySessionError::Store(store) => Self::from(store),
             XySessionError::NoActiveSession => {
-                Self::not_found("no active session").with_source_kind("Session")
+                Self::message("no active session").with_source_kind("Session")
             }
             XySessionError::Busy { message } => Self::message(message).with_source_kind("Session"),
             XySessionError::EntryNotFound { entry_id } => {
@@ -284,25 +286,22 @@ impl From<XySessionError> for XyDriverError {
     }
 }
 
-impl From<XyStoreError> for XyDriverError {
-    fn from(err: XyStoreError) -> Self {
+impl From<XySessionStoreError> for XyDriverError {
+    fn from(err: XySessionStoreError) -> Self {
         match err {
-            XyStoreError::NotFound { session_id } => {
+            XySessionStoreError::NotFound { session_id } => {
                 Self::not_found(session_id).with_source_kind("Session")
             }
-            XyStoreError::EntryNotFound { entry_id } => {
-                Self::not_found(entry_id).with_source_kind("Session")
-            }
-            XyStoreError::Io { op, source } => {
+            XySessionStoreError::Io { op, source } => {
                 Self::io(format!("{op}: {source}")).with_source_kind("Session")
             }
-            XyStoreError::Serialize(source) => {
+            XySessionStoreError::Serialize(source) => {
                 Self::io(format!("serialize entry: {source}")).with_source_kind("Session")
             }
-            XyStoreError::Unsupported { op } => {
+            XySessionStoreError::Unsupported { op } => {
                 Self::unsupported(format!("{op} not supported")).with_source_kind("Session")
             }
-            XyStoreError::Validation { message } => {
+            XySessionStoreError::Validation { message } => {
                 Self::message(message).with_source_kind("Session")
             }
         }
@@ -348,7 +347,7 @@ impl From<CompactionError> for XyDriverError {
 impl From<RuntimeControlError> for XyDriverError {
     fn from(err: RuntimeControlError) -> Self {
         match err {
-            RuntimeControlError::NoSession => Self::not_found("no active session"),
+            RuntimeControlError::NoSession => XySessionError::NoActiveSession.into(),
             RuntimeControlError::Busy | RuntimeControlError::SessionBusy => {
                 Self::message(err.to_string())
             }
@@ -476,8 +475,40 @@ mod tests {
     }
 
     #[test]
+    fn from_session_no_active_keeps_session_domain() {
+        let err = XyDriverError::from(XySessionError::NoActiveSession);
+        assert_eq!(err.kind(), "Message");
+        assert_eq!(err.detail_kind(), "Session");
+        assert_eq!(err.to_string(), "no active session");
+    }
+
+    #[test]
+    fn from_runtime_no_session_keeps_session_domain() {
+        let err = XyDriverError::from(RuntimeControlError::NoSession);
+        assert_eq!(err.kind(), "Message");
+        assert_eq!(err.detail_kind(), "Session");
+        assert_eq!(err.to_string(), "no active session");
+    }
+
+    #[test]
+    fn from_session_entry_not_found_is_not_found() {
+        let err = XyDriverError::from(XySessionError::entry_not_found("e1"));
+        assert_eq!(err.kind(), "NotFound");
+        assert_eq!(err.detail_kind(), "Session");
+        assert_eq!(err.to_string(), "not found: e1");
+    }
+
+    #[test]
+    fn from_xy_error_no_active_is_not_not_found() {
+        let err = XyDriverError::from(XyError::from(XySessionError::NoActiveSession));
+        assert_eq!(err.kind(), "Message");
+        assert_eq!(err.detail_kind(), "Session");
+        assert_eq!(err.to_string(), "no active session");
+    }
+
+    #[test]
     fn from_store_not_found_is_single_layer() {
-        let err = XyDriverError::from(XyStoreError::not_found("abc"));
+        let err = XyDriverError::from(XySessionStoreError::not_found("abc"));
         assert_eq!(err.kind(), "NotFound");
         assert_eq!(err.detail_kind(), "Session");
         assert_eq!(err.to_string(), "not found: abc");
@@ -485,7 +516,7 @@ mod tests {
 
     #[test]
     fn from_xy_error_session_flattens_to_store_kind() {
-        let err = XyDriverError::from(XyError::from(XyStoreError::not_found("abc")));
+        let err = XyDriverError::from(XyError::from(XySessionStoreError::not_found("abc")));
         assert_eq!(err.kind(), "NotFound");
         assert_eq!(err.detail_kind(), "Session");
         assert_eq!(err.to_string(), "not found: abc");
@@ -503,7 +534,7 @@ mod tests {
 
     #[test]
     fn from_store_validation_keeps_policy_copy() {
-        let err = XyDriverError::from(XyStoreError::validation(
+        let err = XyDriverError::from(XySessionStoreError::validation(
             "empty session, nothing to compact",
         ));
         assert_eq!(err.kind(), "Message");

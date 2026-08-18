@@ -50,11 +50,9 @@ impl XyToolError {
 /// Control-plane misses (no bound session, busy mutation, in-memory tree
 /// travel) live on [`XySessionError`], not here.
 #[derive(Debug, thiserror::Error, IntoStaticStr)]
-pub enum XyStoreError {
+pub enum XySessionStoreError {
     #[error("session not found: {session_id}")]
     NotFound { session_id: String },
-    #[error("target entry not found: {entry_id}")]
-    EntryNotFound { entry_id: String },
     #[error("{op}: {source}")]
     Io {
         op: &'static str,
@@ -74,7 +72,7 @@ pub enum XyStoreError {
 #[derive(Debug, thiserror::Error, IntoStaticStr)]
 pub enum XySessionError {
     #[error(transparent)]
-    Store(#[from] XyStoreError),
+    Store(#[from] XySessionStoreError),
     #[error("no active session")]
     NoActiveSession,
     #[error("{message}")]
@@ -83,8 +81,8 @@ pub enum XySessionError {
     EntryNotFound { entry_id: String },
 }
 
-impl From<XyStoreError> for XyError {
-    fn from(err: XyStoreError) -> Self {
+impl From<XySessionStoreError> for XyError {
+    fn from(err: XySessionStoreError) -> Self {
         Self::Session(err.into())
     }
 }
@@ -112,7 +110,7 @@ impl XySessionError {
     }
 }
 
-impl XyStoreError {
+impl XySessionStoreError {
     pub fn kind(&self) -> &'static str {
         self.into()
     }
@@ -120,12 +118,6 @@ impl XyStoreError {
     pub fn not_found(session_id: impl Into<String>) -> Self {
         Self::NotFound {
             session_id: session_id.into(),
-        }
-    }
-
-    pub fn entry_not_found(entry_id: impl Into<String>) -> Self {
-        Self::EntryNotFound {
-            entry_id: entry_id.into(),
         }
     }
 
@@ -215,7 +207,7 @@ mod tests {
 
     #[test]
     fn xy_error_display_session() {
-        let err = XyError::from(XyStoreError::not_found("abc"));
+        let err = XyError::from(XySessionStoreError::not_found("abc"));
         assert_eq!(err.to_string(), "session error: session not found: abc");
     }
 
@@ -292,7 +284,7 @@ mod tests {
         assert_eq!(XyError::Provider(anyhow::anyhow!("x")).kind(), "Provider");
         assert_eq!(XyError::Tool(XyToolError::Aborted).kind(), "Tool");
         assert_eq!(
-            XyError::from(XyStoreError::not_found("x")).kind(),
+            XyError::from(XySessionStoreError::not_found("x")).kind(),
             "Session"
         );
         assert_eq!(XyError::Config("x".into()).kind(), "Config");
@@ -319,11 +311,11 @@ mod tests {
 
     #[test]
     fn xy_store_error_kind_and_display() {
-        let nf = XyStoreError::not_found("abc");
+        let nf = XySessionStoreError::not_found("abc");
         assert_eq!(nf.kind(), "NotFound");
         assert_eq!(nf.to_string(), "session not found: abc");
         assert_eq!(
-            XyStoreError::unsupported("delete_session").to_string(),
+            XySessionStoreError::unsupported("delete_session").to_string(),
             "delete_session not supported"
         );
         assert_eq!(

@@ -37,7 +37,9 @@ pub use ports::{
 };
 
 // Shared vocabulary commonly imported from protocol root.
-pub use error::{XyError, XyExportError, XySessionError, XyStoreError, XyToolError, XyTrustError};
+pub use error::{
+    XyError, XyExportError, XySessionError, XySessionStoreError, XyToolError, XyTrustError,
+};
 pub use lifecycle::{XyEvent, XyEventError};
 pub use message::{AgentMessage, AgentPart, EnvMessage, LlmMessage};
 pub use model::{XyChunk, XyModelMeta, XyToolSchema};

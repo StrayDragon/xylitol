@@ -8,7 +8,7 @@ use std::sync::Arc;
 use serde_json::Value;
 
 use crate::app::core::driver_error::XyDriverError;
-use crate::protocol::error::XyStoreError;
+use crate::protocol::error::XySessionStoreError;
 use crate::protocol::ports::{XyExportIo, XySessionStore};
 use crate::protocol::session::{MessageEntry, SessionEntry, message_role};
 use crate::utils::xml_escape;
@@ -215,7 +215,7 @@ fn message_text(msg: &Value) -> String {
 pub fn render_jsonl(entries: &[SessionEntry]) -> Result<String, XyDriverError> {
     let mut out = String::new();
     for entry in entries {
-        let line = serde_json::to_string(entry).map_err(XyStoreError::from)?;
+        let line = serde_json::to_string(entry).map_err(XySessionStoreError::from)?;
         out.push_str(&line);
         out.push('\n');
     }

@@ -208,7 +208,10 @@ async fn run_host_loop(
     session.render_now()?;
 
     type CliRestoreHandle = tokio::task::JoinHandle<
-        Result<Vec<crate::protocol::session::SessionEntry>, crate::protocol::error::XyStoreError>,
+        Result<
+            Vec<crate::protocol::session::SessionEntry>,
+            crate::protocol::error::XySessionStoreError,
+        >,
     >;
     let mut cli_restore: Option<(std::time::Instant, String, CliRestoreHandle)> = None;
     if options.restored_session {
