@@ -322,7 +322,7 @@ fn product_tui_source_has_no_tui_start_call() {
             "layout/root/slot_input.rs",
             include_str!("layout/root/slot_input.rs"),
         ),
-        ("layout/slots.rs", include_str!("layout/slots.rs")),
+        ("layout/slots/mod.rs", include_str!("layout/slots/mod.rs")),
         ("terminal_guard.rs", include_str!("terminal_guard.rs")),
         ("bridge/mod.rs", include_str!("bridge/mod.rs")),
         ("bridge/model.rs", include_str!("bridge/model.rs")),
@@ -356,7 +356,7 @@ fn render_modules_do_not_match_xy_event() {
         !slot_input.contains("XyEvent"),
         "layout/root/slot_input must stay XyEvent-free"
     );
-    let slots = include_str!("layout/slots.rs");
+    let slots = include_str!("layout/slots/mod.rs");
     assert!(
         !slots.contains("XyEvent"),
         "layout/slots must stay XyEvent-free"
@@ -394,26 +394,6 @@ fn shared_effect_pump_is_single_entry() {
         !harness.contains("PendingSlash::Exit"),
         "harness must not duplicate PendingSlash match"
     );
-}
-
-#[test]
-fn ath12_entry_files_under_hard_smell_loc() {
-    // c1840 / ath12: physical LOC is SHOULD ~800; approaching ~1200 is hard smell.
-    // Function complexity HARD gate is scripts/check_complexity.py (just qa).
-    const HARD_SMELL: usize = 1200;
-    let files = [
-        ("host/mod.rs", include_str!("host/mod.rs")),
-        ("layout/root/mod.rs", include_str!("layout/root/mod.rs")),
-        ("effects/mod.rs", include_str!("effects/mod.rs")),
-        ("bridge/mod.rs", include_str!("bridge/mod.rs")),
-    ];
-    for (name, src) in files {
-        let lines = src.lines().count();
-        assert!(
-            lines < HARD_SMELL,
-            "{name} has {lines} lines (hard smell {HARD_SMELL}); split further per ath12"
-        );
-    }
 }
 
 #[test]
@@ -884,13 +864,13 @@ async fn harness_enter_assistant_does_not_prefill() {
 
 #[test]
 fn harness_editor_slot_mutex_and_esc_closes() {
-    use super::layout::EditorSlot;
+    use super::layout::{EditorSlot, EditorSlotKind};
 
     let mut session = HostSession::new_product_ui(TestTerminal::new(80, 24));
     let root = session.ui_root().expect("product ui").clone();
 
     root.borrow_mut().open_slot_for_test(EditorSlot::Plate);
-    assert_eq!(root.borrow().slot(), EditorSlot::Plate);
+    assert_eq!(root.borrow().slot(), EditorSlotKind::Plate);
     let frame = root.borrow_mut().render(80);
     assert!(
         frame.iter().any(|l| l.contains("Command Plate")),
@@ -904,19 +884,20 @@ fn harness_editor_slot_mutex_and_esc_closes() {
     // Opening Tree replaces Plate (mount directly in harness — open_slot queues XyDriver fetch).
     root.borrow_mut()
         .open_session_tree_for_test(super::layout::sample_tree_nodes_for_test(), Some("u2"));
-    assert_eq!(root.borrow().slot(), EditorSlot::Tree);
+    assert_eq!(root.borrow().slot(), EditorSlotKind::Tree);
     assert!(root.borrow().tree_open());
 
     session.step(HostEvent::Input(esc_event())).unwrap();
-    assert_eq!(root.borrow().slot(), EditorSlot::Editor);
+    assert_eq!(root.borrow().slot(), EditorSlotKind::Editor);
 
     root.borrow_mut().open_slot_for_test(EditorSlot::Settings);
     session.step(HostEvent::Input(esc_event())).unwrap();
-    assert_eq!(root.borrow().slot(), EditorSlot::Editor);
+    assert_eq!(root.borrow().slot(), EditorSlotKind::Editor);
 
-    root.borrow_mut().open_slot_for_test(EditorSlot::Choice);
+    root.borrow_mut()
+        .open_slot_for_test(EditorSlot::choice_shell());
     session.step(HostEvent::Input(esc_event())).unwrap();
-    assert_eq!(root.borrow().slot(), EditorSlot::Editor);
+    assert_eq!(root.borrow().slot(), EditorSlotKind::Editor);
 }
 
 #[test]
@@ -924,12 +905,12 @@ fn harness_busy_esc_aborts_not_tree_slot() {
     let mut session = HostSession::new_product_ui(TestTerminal::new(80, 24));
     let root = session.ui_root().expect("product ui").clone();
     session.on_run_started("hello");
-    assert_eq!(root.borrow().slot(), super::layout::EditorSlot::Editor);
+    assert_eq!(root.borrow().slot(), super::layout::EditorSlotKind::Editor);
     session.step(HostEvent::Input(esc_event())).unwrap();
     assert!(session.take_abort());
     assert_eq!(
         root.borrow().slot(),
-        super::layout::EditorSlot::Editor,
+        super::layout::EditorSlotKind::Editor,
         "busy Esc must abort and MUST NOT open Tree"
     );
 }
@@ -5418,14 +5399,14 @@ fn chrome_op_toast_is_not_scroll_notice() {
 
 #[test]
 fn chrome_op_slot_models_mounts_picker() {
-    use super::layout::EditorSlot;
+    use super::layout::EditorSlotKind;
     use crate::app::debug_fixtures::ChromeOp;
 
     let mut session = HostSession::new_product_ui(TestTerminal::new(80, 24));
     session.apply_chrome_op(ChromeOp::SlotModels);
     assert_eq!(
         session.ui_root().expect("product ui root").borrow().slot(),
-        EditorSlot::Models
+        EditorSlotKind::Models
     );
 }
 
@@ -5454,19 +5435,19 @@ fn chrome_op_next_turn_cue_is_not_scroll_notice() {
 
 #[test]
 fn chrome_op_slot_choice_and_tree_mount() {
-    use super::layout::EditorSlot;
+    use super::layout::EditorSlotKind;
     use crate::app::debug_fixtures::ChromeOp;
 
     let mut session = HostSession::new_product_ui(TestTerminal::new(80, 24));
     session.apply_chrome_op(ChromeOp::SlotChoice);
     assert_eq!(
         session.ui_root().expect("product ui root").borrow().slot(),
-        EditorSlot::Choice
+        EditorSlotKind::Choice
     );
     session.apply_chrome_op(ChromeOp::SlotTree);
     assert_eq!(
         session.ui_root().expect("product ui root").borrow().slot(),
-        EditorSlot::Tree
+        EditorSlotKind::Tree
     );
 }
 

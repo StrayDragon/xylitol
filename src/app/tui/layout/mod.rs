@@ -25,10 +25,8 @@ pub(crate) use slash_catalog::product_slash_commands_for_editor;
 
 #[cfg(test)]
 pub(crate) use root::sample_tree_nodes_for_test;
-pub use root::{
-    ImportConfirmDecision, UiRoot, install_ui_root_key_listeners, shared_ui_root_rebuild,
-};
-pub use slots::EditorSlot;
+pub use root::{UiRoot, install_ui_root_key_listeners, shared_ui_root_rebuild};
+pub use slots::{EditorSlot, EditorSlotKind, ImportConfirmDecision};
 pub use theme::LayoutTheme;
 
 #[cfg(test)]

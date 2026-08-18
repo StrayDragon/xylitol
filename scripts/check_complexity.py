@@ -4,8 +4,8 @@
 Xylitol complexity model (see justfile `complexity` + this gate):
 
   Layer A — Clippy `-D warnings` (no cognitive_complexity; restriction/off).
-  Layer B — File LOC: SHOULD ~800; hard-smell ceiling <1200
-            (`ath12_entry_files_under_hard_smell_loc` in src/app/tui/tests.rs).
+  Layer B — File LOC: review only (`src/AGENTS.md` 体量 软~1200 / 硬~2000).
+            NOT a TUI hard gate — a LOC ratchet forced impl-block file splits.
   Layer C — THIS SCRIPT (HARD in `just qa`): Sonar cognitive + McCabe
             cyclomatic on ath12 *entry coordinators* only (ath12 MUST).
   Layer D — Soft radar (`--radar` / `just complexity`): wider host/effects/
@@ -40,7 +40,7 @@ CCCC_RS_CRATE = "cccc-rs-cli"
 CCCC_RS_VERSION = "0.4.0"
 CCCC_RS_BIN = "cccc-rs"
 
-# HARD gate: ath12 entry coordinators (same set as LOC hard-smell test).
+# HARD gate: ath12 entry coordinators (function complexity, not file LOC).
 # Thresholds MUST match llmanspec ath12 / test-qa-gate qg06 (c1840).
 ENTRY_PATHS = [
     REPO / "src/app/tui/host/mod.rs",

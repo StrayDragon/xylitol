@@ -1,230 +1,79 @@
 //! UiRoot slot input routing (c1170 / ath12).
 
-use xylitol_tui::{Component, Input, InputEvent, matches_key_event, printable_from_key_event};
+use xylitol_tui::{Component, InputEvent};
 
-use super::super::session_tree::FilterMode;
-use super::super::slots::EditorSlot;
-use super::ImportConfirmDecision;
+use super::super::slots::{
+    EditorSlot, ImportAction, McpAction, ModelsAction, ThemesAction, TreeAction,
+};
 use super::UiRoot;
 use crate::app::tui::keybindings::matches_binding;
 use crate::app::tui::session_resume::SessionResumeAction;
 
 impl UiRoot {
     pub(super) fn handle_slot_input(&mut self, event: InputEvent) {
-        match self.slot {
-            EditorSlot::Tree => {
-                let InputEvent::Key(ref key) = event else {
-                    return;
-                };
-                if let Some((_, ref mut input)) = self.tree_label_edit {
-                    if matches_binding(key, "tui.select.confirm") {
-                        if let Some((id, input)) = self.tree_label_edit.take() {
-                            let text = input.value().trim().to_string();
-                            let ann = if text.is_empty() { None } else { Some(text) };
-                            self.pending_tree_label = Some((id, ann));
-                        }
-                        return;
+        if matches!(&self.slot, EditorSlot::Editor) {
+            self.handle_editor_keys(event);
+            return;
+        }
+        let close_mcp = match &mut self.slot {
+            EditorSlot::Editor => false,
+            EditorSlot::Tree(tree) => {
+                match tree.handle_input(event) {
+                    TreeAction::None => {}
+                    TreeAction::Travel(id) => self.pending.tree_travel = Some(id),
+                    TreeAction::Fork(id) => self.pending.tree_fork = Some(id),
+                    TreeAction::Label { id, annotation } => {
+                        self.pending.tree_label = Some((id, annotation));
                     }
-                    input.handle_input(event);
-                    return;
                 }
-                if matches_binding(key, "app.tree.filter.default") {
-                    self.apply_tree_filter(FilterMode::Default);
-                    return;
-                }
-                if matches_binding(key, "app.tree.filter.noTools") {
-                    self.apply_tree_filter(self.tree_filter.toggle(FilterMode::NoTools));
-                    return;
-                }
-                if matches_binding(key, "app.tree.filter.userOnly") {
-                    self.apply_tree_filter(self.tree_filter.toggle(FilterMode::UserOnly));
-                    return;
-                }
-                if matches_binding(key, "app.tree.filter.labeledOnly") {
-                    self.apply_tree_filter(self.tree_filter.toggle(FilterMode::LabeledOnly));
-                    return;
-                }
-                if matches_binding(key, "app.tree.filter.all") {
-                    self.apply_tree_filter(self.tree_filter.toggle(FilterMode::All));
-                    return;
-                }
-                if matches_binding(key, "app.tree.filter.cycleBackward") {
-                    self.apply_tree_filter(self.tree_filter.cycle_backward());
-                    return;
-                }
-                if matches_binding(key, "app.tree.filter.cycleForward") {
-                    self.apply_tree_filter(self.tree_filter.cycle());
-                    return;
-                }
-                if matches_binding(key, "tui.select.confirm") {
-                    let id = self.tree.selected_id().unwrap_or("?").to_string();
-                    self.pending_tree_travel = Some(id);
-                    return;
-                }
-                if matches_binding(key, "app.session.fork") {
-                    let id = self.tree.selected_id().unwrap_or("?").to_string();
-                    self.pending_tree_fork = Some(id);
-                    return;
-                }
-                if matches_binding(key, "app.tree.editLabel") {
-                    let Some(id) = self.tree.selected_id().map(str::to_string) else {
-                        return;
-                    };
-                    let current = self.tree.annotation_of(&id).unwrap_or("").to_string();
-                    let mut input = Input::new();
-                    input.set_value(current);
-                    self.tree_label_edit = Some((id, input));
-                    return;
-                }
-                if matches_binding(key, "app.tree.toggleLabelTimestamp") {
-                    self.tree.toggle_annotation_timestamps();
-                    return;
-                }
-                if matches_binding(key, "tui.select.up")
-                    || matches_binding(key, "tui.select.down")
-                    || matches_binding(key, "tui.select.pageUp")
-                    || matches_binding(key, "tui.select.pageDown")
-                    || matches_binding(key, "tui.tree.foldOrUp")
-                    || matches_binding(key, "tui.tree.unfoldOrDown")
-                    || matches_key_event(key, "backspace")
-                    || printable_from_key_event(key).is_some()
-                {
-                    self.tree.handle_input(event);
-                }
-                return;
+                false
             }
-            EditorSlot::Plate | EditorSlot::Settings => {
-                // Empty shells: Esc is handled by InputListener; ignore other keys.
-                return;
+            EditorSlot::Plate | EditorSlot::Settings => false,
+            EditorSlot::Choice(ask) => {
+                ask.handle_input(event);
+                false
             }
-            EditorSlot::Choice => {
-                if let Some(ref mut prompt) = self.choice_prompt {
-                    prompt.handle_input(event);
+            EditorSlot::Models(models) => {
+                if let ModelsAction::Select(choice) = models.handle_input(event) {
+                    self.pending.model_select = Some(choice);
                 }
-                return;
+                false
             }
-            EditorSlot::Models => {
-                let InputEvent::Key(ref key) = event else {
-                    return;
-                };
-                if matches_binding(key, "tui.select.confirm") {
-                    self.confirm_models_selection();
-                    return;
+            EditorSlot::Themes(themes) => {
+                if let ThemesAction::Select(name) = themes.handle_input(event) {
+                    self.pending.theme_select = Some(name);
                 }
-                // ←→ / Shift+Tab: cycle provisional thinking on focused model (c1470).
-                // `tui.select.pageUp|pageDown` stay unbound so ←→ are not stolen.
-                if matches_key_event(key, "left") {
-                    self.cycle_focused_model_level(false);
-                    return;
-                }
-                if matches_key_event(key, "right") || matches_key_event(key, "shift+tab") {
-                    self.cycle_focused_model_level(true);
-                    return;
-                }
-                if matches_binding(key, "tui.select.up")
-                    || matches_binding(key, "tui.select.down")
-                    || matches_binding(key, "tui.select.pageUp")
-                    || matches_binding(key, "tui.select.pageDown")
-                {
-                    self.models_list.handle_input(event);
-                    self.rebuild_models_items_keep_selection();
-                    return;
-                }
-                if matches_key_event(key, "backspace") {
-                    self.models_filter.pop();
-                    self.apply_models_filter();
-                    return;
-                }
-                if let Some(text) = printable_from_key_event(key) {
-                    self.models_filter.push_str(&text);
-                    self.apply_models_filter();
-                }
-                return;
+                false
             }
-            EditorSlot::Themes => {
-                let InputEvent::Key(ref key) = event else {
-                    return;
-                };
-                if matches_binding(key, "tui.select.confirm") {
-                    if let Some(item) = self.themes_list.get_selected_item() {
-                        self.pending_theme_select = Some(item.value.clone());
-                    }
-                    return;
+            EditorSlot::ImportConfirm(imp) => {
+                if let ImportAction::Decide(decision) = imp.handle_input(event) {
+                    self.pending.import_decision = Some(decision);
                 }
-                if matches_binding(key, "tui.select.up")
-                    || matches_binding(key, "tui.select.down")
-                    || matches_binding(key, "tui.select.pageUp")
-                    || matches_binding(key, "tui.select.pageDown")
-                {
-                    self.themes_list.handle_input(event);
-                }
-                return;
+                false
             }
-            EditorSlot::ImportConfirm => {
-                let InputEvent::Key(ref key) = event else {
-                    return;
-                };
-                if matches_binding(key, "tui.select.confirm") {
-                    let Some(path) = self.import_confirm_path.clone() else {
-                        return;
-                    };
-                    let accepted = self
-                        .import_confirm_list
-                        .get_selected_item()
-                        .is_some_and(|item| item.value == "yes");
-                    self.pending_import_decision = Some(if accepted {
-                        ImportConfirmDecision::Accepted { path }
-                    } else {
-                        ImportConfirmDecision::Rejected
-                    });
-                    return;
-                }
-                if matches_binding(key, "tui.select.up")
-                    || matches_binding(key, "tui.select.down")
-                    || matches_binding(key, "tui.select.pageUp")
-                    || matches_binding(key, "tui.select.pageDown")
-                {
-                    self.import_confirm_list.handle_input(event);
-                }
-                return;
-            }
-            EditorSlot::SessionResume => {
-                let action = self.session_resume.handle_input(event);
-                match action {
+            EditorSlot::SessionResume(panel) => {
+                match panel.handle_input(event) {
                     SessionResumeAction::Switch(id) => {
-                        self.pending_session_resume_select = Some(id);
+                        self.pending.session_resume_select = Some(id);
                     }
                     SessionResumeAction::Rename { id, name } => {
-                        self.pending_session_resume_rename = Some((id, name));
+                        self.pending.session_resume_rename = Some((id, name));
                     }
                     SessionResumeAction::Delete(id) => {
-                        self.pending_session_resume_delete = Some(id);
+                        self.pending.session_resume_delete = Some(id);
                     }
                     SessionResumeAction::None => {}
                 }
-                return;
+                false
             }
-            EditorSlot::Mcp => {
-                let InputEvent::Key(ref key) = event else {
-                    return;
-                };
-                // MVP: Enter closes the slot (no fake MCP disable).
-                if matches_binding(key, "tui.select.confirm") {
-                    self.close_slot();
-                    return;
-                }
-                if matches_binding(key, "tui.select.up")
-                    || matches_binding(key, "tui.select.down")
-                    || matches_binding(key, "tui.select.pageUp")
-                    || matches_binding(key, "tui.select.pageDown")
-                {
-                    self.mcp_list.handle_input(event);
-                }
-                return;
-            }
-            EditorSlot::Editor => {}
+            EditorSlot::Mcp(mcp) => matches!(mcp.handle_input(event), McpAction::Close),
+        };
+        if close_mcp {
+            self.close_slot();
         }
+    }
 
+    fn handle_editor_keys(&mut self, event: InputEvent) {
         if let InputEvent::Key(ref key) = event {
             if matches_binding(key, "app.thinking.toggle") {
                 self.fold.thinking_expanded = !self.fold.thinking_expanded;
@@ -256,10 +105,7 @@ impl UiRoot {
                 let _ = self.collapse_nearest_activity();
                 return;
             }
-            // Product MUST NOT open Command Plate (DESIGN 明确不做；Ctrl+P 留给
-            // session-resume path toggle 等已接线绑定，勿再抢占).
         }
-
         self.editor.handle_input(event);
         self.sync_editor_border();
     }

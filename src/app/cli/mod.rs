@@ -477,7 +477,6 @@ pub async fn run() -> Result<(), Box<dyn std::error::Error>> {
                 restored_session: surface.session.is_some(),
                 ask_gateway: Some(ask_gateway),
                 interaction_mode: crate::app::tui::lab_interaction_mode_from_env(),
-                ..Default::default()
             },
         )
         .await;

@@ -4718,7 +4718,7 @@ mod slice_tests {
 
     #[tokio::test]
     async fn c1205_reload_overlay_esc_closes_slot_without_cancel() {
-        use crate::app::tui::layout::EditorSlot;
+        use crate::app::tui::layout::EditorSlotKind;
 
         let mut session = HostSession::new_product_ui(TestTerminal::new(80, 24));
         let root = session.ui_root().expect("ui").clone();
@@ -4734,7 +4734,7 @@ mod slice_tests {
 
         session.step(HostEvent::Input(esc_event())).unwrap();
 
-        assert_eq!(root.borrow().slot(), EditorSlot::Editor);
+        assert_eq!(root.borrow().slot(), EditorSlotKind::Editor);
         assert!(
             session.reload_active(),
             "Esc on overlay MUST NOT cancel reload"
