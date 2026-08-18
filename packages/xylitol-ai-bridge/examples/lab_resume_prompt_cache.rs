@@ -76,20 +76,20 @@ fn load_cfg() -> Result<LiveProviderFile, String> {
         &fs::read_to_string(&path).map_err(|e| format!("read {}: {e}", path.display()))?,
     )
     .map_err(|e| format!("parse {}: {e}", path.display()))?;
-    if let Ok(v) = std::env::var("XYLITOL_LIVE_BASE_URL") {
-        if !v.is_empty() {
-            file.base_url = v;
-        }
+    if let Ok(v) = std::env::var("XYLITOL_LIVE_BASE_URL")
+        && !v.is_empty()
+    {
+        file.base_url = v;
     }
-    if let Ok(v) = std::env::var("XYLITOL_LIVE_MODEL") {
-        if !v.is_empty() {
-            file.model = v;
-        }
+    if let Ok(v) = std::env::var("XYLITOL_LIVE_MODEL")
+        && !v.is_empty()
+    {
+        file.model = v;
     }
-    if let Ok(v) = std::env::var("XYLITOL_LIVE_API_KEY") {
-        if !v.is_empty() {
-            file.api_key = v;
-        }
+    if let Ok(v) = std::env::var("XYLITOL_LIVE_API_KEY")
+        && !v.is_empty()
+    {
+        file.api_key = v;
     }
     if let Ok(v) = std::env::var("XYLITOL_LIVE_PROVIDER") {
         file.enabled = matches!(
@@ -241,7 +241,7 @@ async fn run_turn(
             }
         }
 
-        last_usage = usage.clone();
+        last_usage = usage;
         let mut parts = Vec::new();
         if !thinking.is_empty() || thinking_signature.is_some() {
             parts.push(AiBridgePart::Thinking {
@@ -263,7 +263,7 @@ async fn run_turn(
         history.push(AiBridgeMessage::AssistantMessage {
             content: parts,
             stop_reason: Some(stop),
-            usage: usage.clone(),
+            usage,
             api: "openai-responses".into(),
             provider: "lab".into(),
             model: adapter.name().to_string(),

@@ -422,7 +422,7 @@ async fn lab_ao_stream_delta_perf_report() {
 
     assert_eq!(uncoal_paints, DELTAS as u32);
     assert!(
-        paced_paints <= ((DELTAS + TICK_EVERY - 1) / TICK_EVERY) as u32 + 2,
+        paced_paints <= DELTAS.div_ceil(TICK_EVERY) as u32 + 2,
         "tick-paced should paint about once per {TICK_EVERY} deltas, got {paced_paints}"
     );
     assert!(

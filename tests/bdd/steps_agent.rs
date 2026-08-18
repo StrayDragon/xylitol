@@ -193,8 +193,9 @@ pub(crate) async fn _w_agent_switch_thinking(agent: &AgentState, verb: String, l
         xylitol::agent::capabilities::QueueMode::default(),
         None,
     );
+    let first_model_id = agent.registry.borrow().list().first().map(|m| m.id.clone());
     if session.current_model().is_none()
-        && let Some(id) = agent.registry.borrow().list().first().map(|m| m.id.clone())
+        && let Some(id) = first_model_id
     {
         let _ = session.select_model(&id).await;
     }

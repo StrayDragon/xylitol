@@ -655,7 +655,8 @@ pub(crate) async fn g_sess_persist_turn(agent: &AgentState, sess: &XySessionStor
     set_fake_text("assistant reply");
     let store: Arc<dyn xylitol::protocol::ports::XySessionStore> = Arc::new(mgr);
     let mut caps = make_test_capabilities(agent, store.clone());
-    if let Some(id) = agent.registry.borrow().list().first().map(|m| m.id.clone()) {
+    let first_model_id = agent.registry.borrow().list().first().map(|m| m.id.clone());
+    if let Some(id) = first_model_id {
         let _ = caps.select_model(&id).await;
     }
     caps.set_session(sid.to_string());
@@ -705,7 +706,8 @@ pub(crate) async fn g_sess_persist_tool(agent: &AgentState, sess: &XySessionStor
     let _ = mgr.create(sid, Some("."), None).await;
     let store: Arc<dyn xylitol::protocol::ports::XySessionStore> = Arc::new(mgr);
     let mut caps = make_test_capabilities(agent, store);
-    if let Some(id) = agent.registry.borrow().list().first().map(|m| m.id.clone()) {
+    let first_model_id = agent.registry.borrow().list().first().map(|m| m.id.clone());
+    if let Some(id) = first_model_id {
         let _ = caps.select_model(&id).await;
     }
     caps.set_session(sid.to_string());

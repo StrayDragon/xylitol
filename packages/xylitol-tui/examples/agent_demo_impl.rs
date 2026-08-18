@@ -945,6 +945,10 @@ fn env_flag(name: &str) -> bool {
         .unwrap_or(false)
 }
 
+// Demo-entry helpers below are exercised by the example binaries
+// (`agent_demo` / `agent_demo_alt`); the `agent_demo_test` target includes this
+// file privately and never reaches them, so `dead_code` fires only there.
+#[allow(dead_code)]
 fn print_application_owned_acceptance_checklist() {
     eprintln!(
         "\
@@ -980,6 +984,7 @@ fn prefer_real_external_editor() -> bool {
     std::io::stdin().is_terminal()
 }
 
+#[allow(dead_code)]
 fn resolve_external_editor_command() -> Option<String> {
     std::env::var("VISUAL")
         .or_else(|_| std::env::var("EDITOR"))
@@ -996,6 +1001,7 @@ fn resolve_external_editor_command() -> Option<String> {
 
 /// Write `initial` to a tempfile, spawn `$VISUAL`/`$EDITOR`, return new text on
 /// exit 0 (pi-compatible). Terminal must already be suspended by the caller.
+#[allow(dead_code)]
 fn run_external_editor_process(initial: &str) -> Result<Option<String>, String> {
     let editor_cmd = resolve_external_editor_command()
         .ok_or_else(|| "no editor configured (set VISUAL/EDITOR)".to_string())?;
@@ -1048,6 +1054,7 @@ fn run_external_editor_process(initial: &str) -> Result<Option<String>, String> 
 ///
 /// - `agent_demo` → [`InteractionMode::Inline`]
 /// - `agent_demo_alt` → [`InteractionMode::ApplicationOwned`]
+#[allow(dead_code)]
 pub fn run(mode: InteractionMode) -> Result<(), Box<dyn std::error::Error>> {
     let defs = create_default_definitions();
     set_keybindings(KeybindingsManager::new(defs, HashMap::new()));
@@ -1534,12 +1541,6 @@ impl FakeCodingAgentApp {
     }
 
     #[cfg(test)]
-    /// Test helper: editor text with `[paste #N …]` expanded (Ctrl+G / submit parity).
-    pub fn input_expanded_text_for_test(&self) -> String {
-        self.input.get_expanded_text()
-    }
-
-    #[cfg(test)]
     /// Test helper: footer metadata line (`cwd · model`).
     pub fn footer_note_for_test(&self) -> &str {
         &self.footer_note
@@ -1551,6 +1552,7 @@ impl FakeCodingAgentApp {
     }
 
     /// Update terminal size used to remap ApplicationOwned mouse into the editor.
+    #[allow(dead_code)]
     pub fn set_term_rows_for_mouse(&mut self, rows: u16) {
         self.term_rows = rows.max(1);
     }
@@ -1605,6 +1607,7 @@ impl FakeCodingAgentApp {
     }
 
     /// Arm the ApplicationOwned «Copied» dock cue (~2s). Not a ScrollNotice / transcript line.
+    #[allow(dead_code)]
     pub fn arm_copy_notice(&mut self) {
         self.copy_notice_until = Some(Instant::now() + Duration::from_millis(2000));
     }
@@ -2221,6 +2224,7 @@ impl FakeCodingAgentApp {
         self.input.cursor_position()
     }
 
+    #[allow(dead_code)]
     pub fn push_system(&mut self, text: String) {
         self.push_message(Role::ScrollNotice, text);
     }

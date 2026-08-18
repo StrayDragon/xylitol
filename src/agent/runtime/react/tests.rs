@@ -1864,7 +1864,7 @@ async fn system_prompt_via_options_not_user_history() {
         "first turn must project session_env as user: {texts:?}"
     );
     assert!(
-        texts.iter().any(|t| *t == "real user hello"),
+        texts.contains(&"real user hello"),
         "real user text must follow: {texts:?}"
     );
     assert!(texts.iter().all(|t| !t.contains("CUSTOM_SYSTEM_MARKER")));

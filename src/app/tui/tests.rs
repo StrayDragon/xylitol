@@ -610,11 +610,11 @@ fn harness_busy_alt_enter_queues_follow_up() {
     let follow_idx = frame
         .iter()
         .position(|l| l.contains("Follow-up: later"))
-        .expect(&format!("missing Follow-up strip: {frame:?}"));
+        .unwrap_or_else(|| panic!("missing Follow-up strip: {frame:?}"));
     let status_idx = frame
         .iter()
         .position(|l| l.contains("Assembling") || l.contains("Working"))
-        .expect(&format!("missing busy status: {frame:?}"));
+        .unwrap_or_else(|| panic!("missing busy status: {frame:?}"));
     assert!(
         follow_idx < status_idx,
         "Follow-up must sit above status/spinner; follow={follow_idx} status={status_idx}; {frame:?}"
@@ -3804,7 +3804,7 @@ fn strip_ansi_activity(s: &str) -> String {
         if c == '\u{1b}' {
             if chars.peek() == Some(&'[') {
                 chars.next();
-                while let Some(n) = chars.next() {
+                for n in chars.by_ref() {
                     if n.is_ascii_alphabetic() {
                         break;
                     }

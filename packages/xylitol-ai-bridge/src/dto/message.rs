@@ -399,12 +399,13 @@ mod tests {
     }
 
     #[test]
-    fn assistant_deserializes_legacy_snake_case() {
+    fn assistant_deserializes_camel_case_wire() {
+        // c2260 dropped legacy snake_case aliases (v6 disk format); wire is camelCase.
         let v = json!({
             "role": "assistant",
             "content": [{"type": "text", "text": ""}],
-            "stop_reason": "error",
-            "error_message": "legacy",
+            "stopReason": "error",
+            "errorMessage": "legacy",
             "timestamp": 1u64,
         });
         let msg: AiBridgeMessage = serde_json::from_value(v).unwrap();
