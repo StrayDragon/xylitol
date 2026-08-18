@@ -47,7 +47,7 @@
 
 ### T4 双模 SSOT 能否被代码证伪？
 
-对照 `in_process.rs`：哪些 `XyDriver` 方法其实在做 **面本地**（clipboard/trust 文件/bang）？列出搬到 TUI 侧的清单——这是 attach 前的拆缝清单，不是框架问题。
+对照 `in_process.rs`：哪些 `XyDriver` 方法其实在做 **面本地**（clipboard / TTY / `$EDITOR`）？哪些其实该在 **工作区**（bang、agent bash）？列出拆缝清单——这是 attach 前的切分，不是框架问题。
 
 `packages/xylitol-tui` 是否已零引用主 crate（可保持薄）？产品 host 是否已只依赖 `XyDriver`？（应已是，用源码确认）
 
