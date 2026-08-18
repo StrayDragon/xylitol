@@ -4,13 +4,14 @@
 Xylitol complexity model (see justfile `complexity` + this gate):
 
   Layer A — Clippy `-D warnings` (no cognitive_complexity; restriction/off).
-  Layer B — File LOC: review only (`src/AGENTS.md` 体量 软~1200 / 硬~2000).
-            NOT a TUI hard gate — a LOC ratchet forced impl-block file splits.
+  Layer B — (retired) file-LOC soft/hard caps: removed — line counts are NOT
+            a quality signal (`src/AGENTS.md` 复杂度与体量); quality signals
+            are function-level complexity metrics only.
   Layer C — THIS SCRIPT (HARD in `just qa`): Sonar cognitive + McCabe
             cyclomatic on ath12 *entry coordinators* only (ath12 MUST).
-  Layer D — Soft radar (`--radar` / `just complexity`): wider host/effects/
-            bridge/layout tree; smell signal, not a hard gate (slash/pending_ui
-            already exceed entry thresholds).
+  Layer D — Soft radar (`--radar` / `just complexity`): whole production tree
+            (tests/harness excluded) top-cognitive; smell signal, not a hard
+            gate (slash/pending_ui already exceed entry thresholds).
 
 Why cccc-rs (not Clippy cognitive / lizard alone): dual metrics, JSON-ready
 `--max-*` exits, scores align with our trial baselines; Clippy scores diverge
@@ -49,17 +50,14 @@ ENTRY_PATHS = [
     REPO / "src/app/tui/bridge/mod.rs",
 ]
 
-# Soft radar roots (production slices under ath12, not whole workspace).
-RADAR_PATHS = [
-    REPO / "src/app/tui/host",
-    REPO / "src/app/tui/layout/root",
-    REPO / "src/app/tui/effects",
-    REPO / "src/app/tui/bridge",
-]
+# Soft radar roots: whole production tree (tests/harness excluded via --exclude).
+RADAR_PATHS = [REPO / "src"]
+# Test-only slices that would dominate the top-cognitive ranking with noise.
+RADAR_EXCLUDES = ["**/tests.rs", "**/tests/**", "**/harness.rs"]
 
 # Ratchet: measured entry max is cog 30 / cyc 25 (`apply_tool_result_to_entries`).
 # Keep 2 points of slack so a small arm can land; do not grow back toward 35/30.
-# Keep in sync with `src/AGENTS.md` TUI 面复杂度闸.
+# Keep in sync with `src/AGENTS.md` TUI 面复杂度闸 (复杂度与体量).
 MAX_COGNITIVE = 32
 MAX_CYCLOMATIC = 27
 
@@ -221,7 +219,14 @@ def soft_radar(binary: Path, *, verbose: bool) -> int:
 
     proc = run_cccc(
         binary,
-        ["--table", "--top-cognitive", "20", "--min", "10"],
+        [
+            "--table",
+            "--top-cognitive",
+            "20",
+            "--min",
+            "10",
+            *(f"--exclude={g}" for g in RADAR_EXCLUDES),
+        ],
         paths=RADAR_PATHS,
     )
     # Radar never fails on threshold — only on tool/path errors.
@@ -253,7 +258,7 @@ def main() -> int:
     parser.add_argument(
         "--radar",
         action="store_true",
-        help="print soft top-cognitive ranking for ath12 subtrees (exit 0)",
+        help="print soft top-cognitive ranking for the production tree (exit 0)",
     )
     parser.add_argument(
         "--verbose",

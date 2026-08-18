@@ -15,7 +15,7 @@
 | commands | 解析 → pending | 直接执行副作用 |
 | bridge | `XyEvent` → UI 模型 | layout 直接 match 事件 |
 | layout / widgets | 呈现与局部交互 | 直接调 Driver / 读写 session |
-| harness / tests | 合成切片护栏 | 与生产硬顶混用（测试另计） |
+| harness / tests | 合成切片护栏 | 与生产复杂度闸混用（测试另计） |
 
 运行时真值：本目录产品代码。交互设计稿：仓库顶层 [`designing/`](../../../designing/)（`tui/modules/<id>/intent.md` + `draft.yaml` + `states/*.yaml`；人类 `just open-designing`）。Agent 改本面先读代码，再读 [`designing/AGENTS.md`](../../../designing/AGENTS.md) + [`designing/generated/AGENT-INDEX.md`](../../../designing/generated/AGENT-INDEX.md) + 相关模块；**默认忽略** `designing/app/`。无独立快捷键设计（组件键写在模块 `draft.yaml` `keys:`）。历史文案「chrome」= layout/widgets；勿用 `shell`/`scene` 命名。
 
