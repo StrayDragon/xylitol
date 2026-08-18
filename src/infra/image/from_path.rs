@@ -4,10 +4,11 @@ use std::path::Path;
 
 use crate::protocol::message::{AgentPart, ImageContent};
 
+use super::error::ImageError;
 use super::resize::{ImageResizeOptions, resize_image};
 
 /// Read an image file, resize for multimodal limits, return [`ImageContent`].
-pub fn image_content_from_path(path: &Path) -> Result<ImageContent, String> {
+pub fn image_content_from_path(path: &Path) -> Result<ImageContent, ImageError> {
     image_content_from_path_with_options(path, &ImageResizeOptions::default())
 }
 
@@ -15,10 +16,10 @@ pub fn image_content_from_path(path: &Path) -> Result<ImageContent, String> {
 pub fn image_content_from_path_with_options(
     path: &Path,
     options: &ImageResizeOptions,
-) -> Result<ImageContent, String> {
+) -> Result<ImageContent, ImageError> {
     let bytes = std::fs::read(path).map_err(|e| format!("read image {}: {e}", path.display()))?;
     if bytes.is_empty() {
-        return Err(format!("image file is empty: {}", path.display()));
+        return Err(format!("image file is empty: {}", path.display()).into());
     }
     let resized = resize_image(&bytes, options)?;
     Ok(ImageContent {
@@ -29,7 +30,7 @@ pub fn image_content_from_path_with_options(
 }
 
 /// Convenience: path → [`AgentPart::Image`].
-pub fn agent_part_from_image_path(path: &Path) -> Result<AgentPart, String> {
+pub fn agent_part_from_image_path(path: &Path) -> Result<AgentPart, ImageError> {
     Ok(AgentPart::Image(image_content_from_path(path)?))
 }
 

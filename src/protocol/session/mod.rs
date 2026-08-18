@@ -252,7 +252,7 @@ mod session_tree_tests {
         let content = r#"{"type":"session","version":4,"id":"s1","timestamp":0,"cwd":"/tmp"}
 "#;
         let err = parse_session_jsonl(content).unwrap_err();
-        assert!(err.contains("not supported"), "{err}");
+        assert!(err.to_string().contains("not supported"), "{err}");
     }
 
     #[test]
@@ -263,10 +263,14 @@ mod session_tree_tests {
 "#;
         let err = parse_session_jsonl(content).unwrap_err();
         assert!(
-            err.contains("require 6") || err.contains("require {SESSION_VERSION}"),
+            err.to_string().contains("require 6")
+                || err.to_string().contains("require {SESSION_VERSION}"),
             "v5 refusal must carry current version: {err}"
         );
-        assert!(err.contains("5"), "must name the offending version: {err}");
+        assert!(
+            err.to_string().contains("5"),
+            "must name the offending version: {err}"
+        );
     }
 
     #[test]

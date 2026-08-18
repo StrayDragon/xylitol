@@ -1,5 +1,6 @@
 //! Runtime boundary for session export/import I/O.
 
+use crate::protocol::error::XyExportError;
 use std::path::Path;
 
 use async_trait::async_trait;
@@ -11,8 +12,8 @@ use async_trait::async_trait;
 #[async_trait]
 pub trait XyExportIo: Send + Sync {
     /// Write `content` as UTF-8 text to `path`.
-    async fn write_text(&self, path: &Path, content: &str) -> Result<(), String>;
+    async fn write_text(&self, path: &Path, content: &str) -> Result<(), XyExportError>;
 
     /// Read `path` as raw bytes.
-    async fn read_bytes(&self, path: &Path) -> Result<Vec<u8>, String>;
+    async fn read_bytes(&self, path: &Path) -> Result<Vec<u8>, XyExportError>;
 }

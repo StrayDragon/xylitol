@@ -15,6 +15,17 @@ use serde_json::json;
 use crate::app::core::driver::XyEvent;
 use crate::app::tui::bridge::{UiModel, apply_xy_event};
 
+/// Scripted-tape assertion failure (crate-private; not `Xy*`).
+#[derive(Debug, thiserror::Error)]
+#[error("{0}")]
+pub struct LiveTapeMismatch(pub String);
+
+impl From<String> for LiveTapeMismatch {
+    fn from(value: String) -> Self {
+        Self(value)
+    }
+}
+
 /// One observable checkpoint after applying `events`.
 pub struct LiveWindowFrame {
     pub name: &'static str,
@@ -153,15 +164,15 @@ pub fn replay_live_window(
     LiveWindowTapeReport { ok, lines }
 }
 
-pub fn check_plain(plain: &str, frame: &LiveWindowFrame) -> Result<(), String> {
+pub fn check_plain(plain: &str, frame: &LiveWindowFrame) -> Result<(), LiveTapeMismatch> {
     for needle in frame.must {
         if !plain.contains(needle) {
-            return Err(format!("missing `{needle}` in: {plain}"));
+            return Err(format!("missing `{needle}` in: {plain}").into());
         }
     }
     for needle in frame.must_not {
         if plain.contains(needle) {
-            return Err(format!("unexpected `{needle}` in: {plain}"));
+            return Err(format!("unexpected `{needle}` in: {plain}").into());
         }
     }
     Ok(())

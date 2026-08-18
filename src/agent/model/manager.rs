@@ -81,7 +81,7 @@ impl ModelManager {
         let meta = self
             .current_model()
             .ok_or_else(|| XyError::Config("no model configured".into()))?;
-        (self.model_builder)(&meta.config).map_err(|e| XyError::Provider(anyhow::anyhow!(e)))
+        Ok((self.model_builder)(&meta.config))
     }
 
     // ── Thinking level ───────────────────────────────────────────
@@ -231,10 +231,8 @@ mod tests {
     use crate::protocol::error::XyError;
     use crate::protocol::model::XyModelMeta;
     use crate::protocol::model::{XyModelConfig, XyModelKind};
-    use crate::protocol::ports::XyModel;
 
-    type ModelBuilderFn =
-        Arc<dyn Fn(&XyModelConfig) -> Result<Arc<dyn XyModel>, String> + Send + Sync>;
+    type ModelBuilderFn = crate::protocol::ports::XyModelBuilder;
 
     fn empty_registry() -> ModelRegistry {
         ModelRegistry::new(Arc::new(
@@ -243,7 +241,7 @@ mod tests {
     }
 
     fn fake_builder() -> ModelBuilderFn {
-        Arc::new(|_cfg: &XyModelConfig| Err("test: no provider".to_string()))
+        Arc::new(crate::infra::provider::factory::build_provider)
     }
 
     fn meta(id: &str, thinking: bool, levels: &[&str]) -> XyModelMeta {

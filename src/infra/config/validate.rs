@@ -10,6 +10,7 @@ use jsonschema::Validator;
 use schemars::schema_for;
 use serde_json::Value;
 
+use super::error::LoadError;
 use super::types::AppConfig;
 
 /// Root JSON Schema for `AppConfig` (schemars mirrors serde attrs — c510 pattern).
@@ -23,7 +24,7 @@ pub fn app_config_schema() -> serde_json::Value {
 /// (wrong field type) surface here before serde hits them; unknown keys stay
 /// permissive (schemars does not mirror `deny_unknown_fields` — historical
 /// configs keep loading through `migrate`).
-pub(crate) fn validate_merged_config(value: &Value) -> Result<(), String> {
+pub(crate) fn validate_merged_config(value: &Value) -> Result<(), LoadError> {
     // Null = "no YAML layers" — the loader short-circuits to `AppConfig::default()`
     // before this call; keep the contract total for future call sites.
     if value.is_null() {
@@ -32,11 +33,11 @@ pub(crate) fn validate_merged_config(value: &Value) -> Result<(), String> {
     // `merged` is the result of deep-merging YAML layers — the same Value that
     // goes into `AppConfig` deserialization.
     let schema = app_config_schema();
-    let validator =
-        Validator::new(&schema).map_err(|e| format!("config schema is invalid: {e}"))?;
+    let validator = Validator::new(&schema)
+        .map_err(|e| LoadError::validation(format!("config schema is invalid: {e}")))?;
     validator
         .validate(value)
-        .map_err(|e| format!("config schema violation: {e}"))
+        .map_err(|e| LoadError::validation(format!("config schema violation: {e}")))
 }
 
 #[cfg(test)]
@@ -48,7 +49,10 @@ mod tests {
     fn rejects_wrong_field_type() {
         // `models` must be an object; a scalar trips the schema before serde.
         let err = validate_merged_config(&json!({ "models": 42 })).unwrap_err();
-        assert!(err.contains("schema"), "unexpected error: {err}");
+        assert!(
+            err.to_string().contains("schema"),
+            "unexpected error: {err}"
+        );
     }
 
     #[test]

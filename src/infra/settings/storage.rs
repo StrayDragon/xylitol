@@ -6,6 +6,23 @@
 
 use std::path::{Path, PathBuf};
 
+/// Settings lock acquisition failures (crate-private; not `Xy*`).
+#[derive(Debug, Clone, PartialEq, Eq, thiserror::Error)]
+#[error("{0}")]
+struct SettingsLockError(String);
+
+impl From<&str> for SettingsLockError {
+    fn from(value: &str) -> Self {
+        Self(value.to_string())
+    }
+}
+
+impl From<String> for SettingsLockError {
+    fn from(value: String) -> Self {
+        Self(value)
+    }
+}
+
 pub trait SettingsStorage {
     fn with_lock(&self, scope: SettingsScope, f: &mut dyn FnMut(Option<&str>) -> Option<String>);
 }
@@ -31,7 +48,7 @@ impl FileSettingsStorage {
         }
     }
 
-    fn acquire_with_retry(&self, path: &Path) -> Result<(), String> {
+    fn acquire_with_retry(&self, path: &Path) -> Result<(), SettingsLockError> {
         let max_attempts = 10;
         let delay_us = 20_000; // 20ms
 
@@ -51,13 +68,14 @@ impl FileSettingsStorage {
                     if attempt == max_attempts {
                         return Err(format!(
                             "Failed to acquire settings lock after {max_attempts} attempts"
-                        ));
+                        )
+                        .into());
                     }
                     // Wait and retry
                     std::thread::sleep(std::time::Duration::from_micros(delay_us));
                 }
                 Err(e) => {
-                    return Err(format!("Lock error: {e}"));
+                    return Err(format!("Lock error: {e}").into());
                 }
             }
         }

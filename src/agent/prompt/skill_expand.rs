@@ -86,8 +86,8 @@ pub fn expand_skill_refs(text: &str, skills: &[SkillInfo]) -> String {
     format!("{}\n\n{}", text.trim_end(), blocks.join("\n\n"))
 }
 
-fn read_skill_body(path: &Path) -> Result<String, String> {
-    let raw = std::fs::read_to_string(path).map_err(|e| e.to_string())?;
+fn read_skill_body(path: &Path) -> std::io::Result<String> {
+    let raw = std::fs::read_to_string(path)?;
     Ok(strip_skill_frontmatter(&raw))
 }
 

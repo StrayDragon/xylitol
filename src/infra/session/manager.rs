@@ -17,24 +17,25 @@ async fn write_session_file_atomically(
     path: &std::path::Path,
     tmp_path: &std::path::Path,
     content: &str,
-) -> Result<(), String> {
+) -> Result<(), XyStoreError> {
     use tokio::io::AsyncWriteExt;
 
     let mut tmp = tokio::fs::File::create(tmp_path)
         .await
-        .map_err(|e| format!("create session tmp file: {e}"))?;
+        .map_err(|e| XyStoreError::io("create session tmp file", e))?;
     tmp.write_all(content.as_bytes())
         .await
-        .map_err(|e| format!("write session tmp file: {e}"))?;
+        .map_err(|e| XyStoreError::io("write session tmp file", e))?;
     tmp.sync_all()
         .await
-        .map_err(|e| format!("sync session tmp file: {e}"))?;
+        .map_err(|e| XyStoreError::io("sync session tmp file", e))?;
     tokio::fs::rename(tmp_path, path)
         .await
-        .map_err(|e| format!("rename session file: {e}"))
+        .map_err(|e| XyStoreError::io("rename session file", e))
 }
 
 use super::types::*;
+use crate::protocol::error::XyStoreError;
 use crate::protocol::ports::XySessionStore;
 
 /// Manages session persistence using JSONL files or in-memory storage.
@@ -150,17 +151,17 @@ impl SessionManager {
         &self,
         session_id: &str,
         entries: &[SessionEntry],
-    ) -> Result<(), String> {
+    ) -> Result<(), XyStoreError> {
         let path = self.session_path(session_id);
         if let Some(parent) = path.parent() {
             tokio::fs::create_dir_all(parent)
                 .await
-                .map_err(|e| format!("create sessions dir: {e}"))?;
+                .map_err(|e| XyStoreError::io("create sessions dir", e))?;
         }
 
         let mut content = String::new();
         for entry in entries {
-            let line = serde_json::to_string(entry).map_err(|e| format!("serialize entry: {e}"))?;
+            let line = serde_json::to_string(entry).map_err(XyStoreError::from)?;
             content.push_str(&line);
             content.push('\n');
         }
@@ -175,12 +176,12 @@ impl SessionManager {
         write_result
     }
 
-    async fn flush_pending_to_disk(&self, session_id: &str) -> Result<(), String> {
+    async fn flush_pending_to_disk(&self, session_id: &str) -> Result<(), XyStoreError> {
         let pending = {
             let mut store = self.pending_store.write().expect("RwLock not poisoned");
-            store
-                .remove(session_id)
-                .ok_or_else(|| format!("no pending entries for session: {session_id}"))?
+            store.remove(session_id).ok_or_else(|| {
+                XyStoreError::validation(format!("no pending entries for session: {session_id}"))
+            })?
         };
 
         // `append_with_id` may have already created the JSONL (body rows) while the
@@ -189,7 +190,7 @@ impl SessionManager {
             let path = self.session_path(session_id);
             let content = tokio::fs::read_to_string(&path)
                 .await
-                .map_err(|e| format!("read session before pending merge: {e}"))?;
+                .map_err(|e| XyStoreError::io("read session before pending merge", e))?;
             let (disk, _) = crate::protocol::session::parse_session_jsonl_lines(&content);
             let merged = Self::merge_pending_ahead_of_disk(pending, disk);
             self.write_entries_to_disk(session_id, &merged).await
@@ -287,7 +288,7 @@ impl SessionManager {
         id: &str,
         cwd: Option<&str>,
         parent_session: Option<&str>,
-    ) -> Result<(), String> {
+    ) -> Result<(), XyStoreError> {
         if self.session_has_header(id).await {
             return Ok(());
         }
@@ -308,7 +309,7 @@ impl SessionManager {
                     let path = self.session_path(id);
                     let content = tokio::fs::read_to_string(&path)
                         .await
-                        .map_err(|e| format!("read session before header repair: {e}"))?;
+                        .map_err(|e| XyStoreError::io("read session before header repair", e))?;
                     let (disk, _) = crate::protocol::session::parse_session_jsonl_lines(&content);
                     let mut merged = Vec::with_capacity(disk.len() + 1);
                     merged.push(header);
@@ -369,15 +370,15 @@ impl SessionManager {
     /// Automatically generates id and links parent_id from current leaf.
     /// For persisted sessions, writes to the JSONL file.
     /// For in-memory sessions, stores in a Vec.
-    pub async fn append(&self, session_id: &str, entry: &SessionEntry) -> Result<(), String> {
+    pub async fn append(&self, session_id: &str, entry: &SessionEntry) -> Result<(), XyStoreError> {
         let entry_with_ids = self.inject_ids(session_id, entry);
 
         match &self.backend {
             SessionBackend::Persisted { .. } => {
                 if self.session_file_exists(session_id) {
                     let path = self.session_path(session_id);
-                    let line = serde_json::to_string(&entry_with_ids)
-                        .map_err(|e| format!("serialize entry: {e}"))?;
+                    let line =
+                        serde_json::to_string(&entry_with_ids).map_err(XyStoreError::from)?;
                     let content = format!("{line}\n");
 
                     use tokio::io::AsyncWriteExt;
@@ -385,13 +386,13 @@ impl SessionManager {
                         .append(true)
                         .open(&path)
                         .await
-                        .map_err(|e| format!("open for append: {e}"))?;
+                        .map_err(|e| XyStoreError::io("open for append", e))?;
                     file.write_all(content.as_bytes())
                         .await
-                        .map_err(|e| format!("write entry: {e}"))?;
+                        .map_err(|e| XyStoreError::io("write entry", e))?;
                     file.flush()
                         .await
-                        .map_err(|e| format!("flush entry: {e}"))?;
+                        .map_err(|e| XyStoreError::io("flush entry", e))?;
                 } else {
                     let is_assistant =
                         crate::protocol::session::is_assistant_message(&entry_with_ids);
@@ -524,7 +525,7 @@ impl SessionManager {
         &self,
         session_id: &str,
         entry: &SessionEntry,
-    ) -> Result<(), String> {
+    ) -> Result<(), XyStoreError> {
         // Flush deferred header (and any pending rows) before writing the file
         // directly — otherwise `load` ignores pending once the file exists, and a
         // later `flush_pending_to_disk` can overwrite body rows with header-only.
@@ -541,9 +542,9 @@ impl SessionManager {
         if let Some(parent) = path.parent() {
             tokio::fs::create_dir_all(parent)
                 .await
-                .map_err(|e| format!("create sessions dir: {e}"))?;
+                .map_err(|e| XyStoreError::io("create sessions dir", e))?;
         }
-        let line = serde_json::to_string(entry).map_err(|e| format!("serialize entry: {e}"))?;
+        let line = serde_json::to_string(entry).map_err(XyStoreError::from)?;
         let content = format!("{line}\n");
 
         use tokio::io::AsyncWriteExt;
@@ -552,13 +553,13 @@ impl SessionManager {
             .create(true)
             .open(&path)
             .await
-            .map_err(|e| format!("open for append: {e}"))?;
+            .map_err(|e| XyStoreError::io("open for append", e))?;
         file.write_all(content.as_bytes())
             .await
-            .map_err(|e| format!("write entry: {e}"))?;
+            .map_err(|e| XyStoreError::io("write entry", e))?;
         file.flush()
             .await
-            .map_err(|e| format!("flush entry: {e}"))?;
+            .map_err(|e| XyStoreError::io("flush entry", e))?;
 
         if let Some(new_id) = entry.entry_id() {
             self.set_leaf(session_id, Some(new_id.to_string()));
@@ -570,7 +571,7 @@ impl SessionManager {
     /// Load all entries from a session (latest [`SESSION_VERSION`] only).
     /// For persisted sessions, reads from the JSONL file or pending memory.
     /// For in-memory sessions, returns from the in-memory store.
-    pub async fn load(&self, session_id: &str) -> Result<Vec<SessionEntry>, String> {
+    pub async fn load(&self, session_id: &str) -> Result<Vec<SessionEntry>, XyStoreError> {
         let entries = match &self.backend {
             SessionBackend::InMemory { .. } => {
                 let entries = self
@@ -579,7 +580,7 @@ impl SessionManager {
                     .expect("RwLock not poisoned")
                     .get(session_id)
                     .cloned()
-                    .ok_or_else(|| format!("session not found: {session_id}"))?;
+                    .ok_or_else(|| XyStoreError::not_found(session_id))?;
                 crate::protocol::session::enforce_session_version(&entries)?;
                 entries
             }
@@ -588,7 +589,7 @@ impl SessionManager {
                     let path = self.session_path(session_id);
                     let content = tokio::fs::read_to_string(&path)
                         .await
-                        .map_err(|e| format!("read session: {e}"))?;
+                        .map_err(|e| XyStoreError::io("read session", e))?;
                     crate::protocol::session::parse_session_jsonl(&content)?
                 } else {
                     let entries = self
@@ -597,7 +598,7 @@ impl SessionManager {
                         .expect("RwLock not poisoned")
                         .get(session_id)
                         .cloned()
-                        .ok_or_else(|| format!("session not found: {session_id}"))?;
+                        .ok_or_else(|| XyStoreError::not_found(session_id))?;
                     crate::protocol::session::enforce_session_version(&entries)?;
                     entries
                 }
@@ -623,15 +624,14 @@ impl SessionManager {
         &self,
         session_id: &str,
         fallback_cwd: &str,
-    ) -> Result<Vec<SessionEntry>, String> {
+    ) -> Result<Vec<SessionEntry>, XyStoreError> {
         let entries = self.load(session_id).await?;
-        assert_session_cwd_exists(&entries, fallback_cwd)
-            .map_err(|e| format!("session validation failed: {e}"))?;
+        assert_session_cwd_exists(&entries, fallback_cwd)?;
         Ok(entries)
     }
 
     /// Delete a session file and in-memory tracking (c1065 resume panel).
-    pub async fn delete_session(&self, session_id: &str) -> Result<(), String> {
+    pub async fn delete_session(&self, session_id: &str) -> Result<(), XyStoreError> {
         {
             let mut pending = self.pending_store.write().expect("RwLock not poisoned");
             pending.remove(session_id);
@@ -651,7 +651,7 @@ impl SessionManager {
                 if path.exists() {
                     tokio::fs::remove_file(&path)
                         .await
-                        .map_err(|e| format!("delete session file: {e}"))?;
+                        .map_err(|e| XyStoreError::io("delete session file", e))?;
                 }
                 Ok(())
             }
@@ -662,7 +662,7 @@ impl SessionManager {
     ///
     /// Includes on-disk `.jsonl` sessions and not-yet-flushed pending sessions
     /// (created / user-only before first assistant flush).
-    pub async fn list(&self) -> Result<Vec<String>, String> {
+    pub async fn list(&self) -> Result<Vec<String>, XyStoreError> {
         let dir = match tokio::fs::read_dir(&self.sessions_dir).await {
             Ok(d) => d,
             Err(e) if e.kind() == std::io::ErrorKind::NotFound => {
@@ -672,7 +672,7 @@ impl SessionManager {
                 pending_ids.sort();
                 return Ok(pending_ids);
             }
-            Err(e) => return Err(format!("read sessions dir: {e}")),
+            Err(e) => return Err(XyStoreError::io("read sessions dir", e)),
         };
 
         let mut entries = Vec::new();
@@ -681,7 +681,7 @@ impl SessionManager {
             match read.next_entry().await {
                 Ok(Some(entry)) => entries.push(entry),
                 Ok(None) => break,
-                Err(e) => return Err(format!("read dir entry: {e}")),
+                Err(e) => return Err(XyStoreError::io("read dir entry", e)),
             }
         }
 
@@ -723,13 +723,16 @@ impl SessionManager {
         &self,
         session_id: &str,
         entry_id: &str,
-    ) -> Result<Option<SessionEntry>, String> {
+    ) -> Result<Option<SessionEntry>, XyStoreError> {
         let entries = self.load(session_id).await?;
         Ok(entries.into_iter().find(|e| e.entry_id() == Some(entry_id)))
     }
 
     /// Get the current leaf entry.
-    pub async fn get_leaf_entry(&self, session_id: &str) -> Result<Option<SessionEntry>, String> {
+    pub async fn get_leaf_entry(
+        &self,
+        session_id: &str,
+    ) -> Result<Option<SessionEntry>, XyStoreError> {
         let leaf_id = self.get_leaf(session_id);
         match leaf_id {
             Some(id) => self.get_entry(session_id, &id).await,
@@ -758,7 +761,7 @@ impl SessionManager {
         &self,
         session_id: &str,
         leaf_id: Option<&str>,
-    ) -> Result<Vec<SessionEntry>, String> {
+    ) -> Result<Vec<SessionEntry>, XyStoreError> {
         let entries = self.load(session_id).await?;
         let id_map: HashMap<&str, &SessionEntry> = entries
             .iter()
@@ -796,7 +799,10 @@ impl SessionManager {
 
     /// Build session context from the stored entries.
     /// Walks from leaf to root, then applies compaction-aware cut (pi `buildContextEntries`).
-    pub async fn build_session_context(&self, session_id: &str) -> Result<SessionContext, String> {
+    pub async fn build_session_context(
+        &self,
+        session_id: &str,
+    ) -> Result<SessionContext, XyStoreError> {
         let leaf_id = self.get_leaf(session_id);
         let branch = self.get_branch(session_id, leaf_id.as_deref()).await?;
 
@@ -840,7 +846,7 @@ impl SessionManager {
     pub async fn build_session_context_v2(
         &self,
         session_id: &str,
-    ) -> Result<Vec<crate::protocol::message::AgentMessage>, String> {
+    ) -> Result<Vec<crate::protocol::message::AgentMessage>, XyStoreError> {
         let leaf_id = self.get_leaf(session_id);
         let branch = self.get_branch(session_id, leaf_id.as_deref()).await?;
         let branch = crate::protocol::session::build_context_entries(&branch);
@@ -854,7 +860,7 @@ impl SessionManager {
         session_id: &str,
         start_id: &str,
         end_id: &str,
-    ) -> Result<Vec<SessionEntry>, String> {
+    ) -> Result<Vec<SessionEntry>, XyStoreError> {
         let leaf_id = self.get_leaf(session_id);
         let branch = self.get_branch(session_id, leaf_id.as_deref()).await?;
 
@@ -885,7 +891,7 @@ impl SessionManager {
         parent_id: &str,
         child_id: &str,
         target_entry_id: &str,
-    ) -> Result<(), String> {
+    ) -> Result<(), XyStoreError> {
         self.fork(
             parent_id,
             child_id,
@@ -902,12 +908,12 @@ impl SessionManager {
         target_id: &str,
         label: &str,
         description: Option<&str>,
-    ) -> Result<(), String> {
+    ) -> Result<(), XyStoreError> {
         // Verify target exists
         let _ = self
             .get_entry(session_id, target_id)
             .await?
-            .ok_or_else(|| format!("target entry not found: {target_id}"))?;
+            .ok_or_else(|| XyStoreError::entry_not_found(target_id))?;
 
         let entry = SessionEntry::Label(LabelEntry {
             base: EntryBase {
@@ -934,7 +940,7 @@ impl SessionManager {
         session_id: &str,
         provider: &str,
         model_id: &str,
-    ) -> Result<(), String> {
+    ) -> Result<(), XyStoreError> {
         let entry = SessionEntry::ModelChange(ModelChangeEntry {
             base: EntryBase {
                 entry_type: "model_change".into(),
@@ -953,7 +959,7 @@ impl SessionManager {
         &self,
         session_id: &str,
         level: &str,
-    ) -> Result<(), String> {
+    ) -> Result<(), XyStoreError> {
         let entry = SessionEntry::ThinkingLevelChange(ThinkingLevelChangeEntry {
             base: EntryBase {
                 entry_type: "thinking_level_change".into(),
@@ -974,7 +980,7 @@ impl SessionManager {
         content: Value,
         display: bool,
         details: Option<Value>,
-    ) -> Result<(), String> {
+    ) -> Result<(), XyStoreError> {
         let entry = SessionEntry::CustomMessage(CustomMessageEntry {
             base: EntryBase {
                 entry_type: "custom_message".into(),
@@ -1090,7 +1096,7 @@ impl SessionManager {
         child_id: &str,
         at_entry_id: &str,
         position: crate::protocol::session::ForkPosition,
-    ) -> Result<(), String> {
+    ) -> Result<(), XyStoreError> {
         self.fork_inner(parent_id, child_id, at_entry_id, position)
             .await
     }
@@ -1111,28 +1117,28 @@ impl SessionManager {
         child_id: &str,
         at_entry_id: &str,
         position: crate::protocol::session::ForkPosition,
-    ) -> Result<(), String> {
+    ) -> Result<(), XyStoreError> {
         use crate::protocol::session::{ForkPosition, is_assistant_message, is_user_message};
 
         if matches!(&self.backend, SessionBackend::Persisted { .. })
             && !self.session_file_exists(parent_id)
         {
-            return Err(Self::UNFLUSHED_FORK_ERR.into());
+            return Err(XyStoreError::validation(Self::UNFLUSHED_FORK_ERR));
         }
 
         let parent_entries = self.load(parent_id).await?;
         let selected = parent_entries
             .iter()
             .find(|e| e.entry_id() == Some(at_entry_id))
-            .ok_or_else(|| format!("entry not found in parent session: {at_entry_id}"))?;
+            .ok_or_else(|| XyStoreError::entry_not_found(at_entry_id))?;
 
         let path_leaf: Option<&str> = match position {
             ForkPosition::At => Some(at_entry_id),
             ForkPosition::Before => {
                 if !is_user_message(selected) {
-                    return Err(
-                        "ForkPosition::Before requires a user message entry (pi /fork)".into(),
-                    );
+                    return Err(XyStoreError::validation(
+                        "ForkPosition::Before requires a user message entry (pi /fork)",
+                    ));
                 }
                 selected.parent_id()
             }
@@ -1277,24 +1283,27 @@ impl SessionManager {
 
     /// Switch the active session to a new file path.
     /// This loads entries from the new path and updates the active session.
-    pub async fn switch_session(&self, new_session_id: &str, new_path: &str) -> Result<(), String> {
+    pub async fn switch_session(
+        &self,
+        new_session_id: &str,
+        new_path: &str,
+    ) -> Result<(), XyStoreError> {
         // Verify the new path exists
         let path = std::path::Path::new(new_path);
         if !path.exists() {
-            return Err(format!("session file not found: {new_path}"));
+            return Err(XyStoreError::not_found(new_path));
         }
         // Load entries from the new path
         let content = tokio::fs::read_to_string(path)
             .await
-            .map_err(|e| format!("read session file: {e}"))?;
+            .map_err(|e| XyStoreError::io("read session file", e))?;
 
         let mut entries: Vec<SessionEntry> = Vec::new();
         for line in content.lines() {
             if line.trim().is_empty() {
                 continue;
             }
-            let entry: SessionEntry =
-                serde_json::from_str(line).map_err(|e| format!("parse entry: {e}"))?;
+            let entry: SessionEntry = serde_json::from_str(line).map_err(XyStoreError::from)?;
             entries.push(entry);
         }
 
@@ -1315,7 +1324,7 @@ impl SessionManager {
 
     /// Get the session as a tree structure.
     /// Builds a `Vec<SessionTreeNode>` with labels resolved from LabelEntries.
-    pub async fn get_tree(&self, session_id: &str) -> Result<Vec<SessionTreeNode>, String> {
+    pub async fn get_tree(&self, session_id: &str) -> Result<Vec<SessionTreeNode>, XyStoreError> {
         let entries = self.load(session_id).await?;
         Ok(crate::protocol::session::build_session_tree(&entries))
     }
@@ -1329,12 +1338,12 @@ impl SessionManager {
         session_id: &str,
         target_id: &str,
         label: Option<&str>,
-    ) -> Result<(), String> {
+    ) -> Result<(), XyStoreError> {
         // Verify target exists
         let _ = self
             .get_entry(session_id, target_id)
             .await?
-            .ok_or_else(|| format!("target entry not found: {target_id}"))?;
+            .ok_or_else(|| XyStoreError::entry_not_found(target_id))?;
 
         let entry = SessionEntry::Label(LabelEntry {
             base: EntryBase {
@@ -1354,7 +1363,7 @@ impl SessionManager {
         &self,
         session_id: &str,
         target_id: &str,
-    ) -> Result<Option<String>, String> {
+    ) -> Result<Option<String>, XyStoreError> {
         let entries = self.load(session_id).await?;
         // Walk in reverse to find the latest label for this target
         for entry in entries.iter().rev() {
@@ -1368,7 +1377,11 @@ impl SessionManager {
     }
 
     /// Append a session info entry (e.g., display name).
-    pub async fn append_session_info(&self, session_id: &str, name: &str) -> Result<(), String> {
+    pub async fn append_session_info(
+        &self,
+        session_id: &str,
+        name: &str,
+    ) -> Result<(), XyStoreError> {
         let entry = SessionEntry::SessionInfo(SessionInfoEntry {
             base: EntryBase {
                 entry_type: "session_info".into(),
@@ -1388,7 +1401,7 @@ impl SessionManager {
     pub async fn append_bash_execution(
         &self,
         params: BashExecutionParams<'_>,
-    ) -> Result<(), String> {
+    ) -> Result<(), XyStoreError> {
         let entry = crate::protocol::session::bash_execution_message_entry(
             params.command,
             params.output,
@@ -1402,7 +1415,7 @@ impl SessionManager {
     }
 
     /// Get the current session name from the latest session_info entry.
-    pub async fn get_session_name(&self, session_id: &str) -> Result<Option<String>, String> {
+    pub async fn get_session_name(&self, session_id: &str) -> Result<Option<String>, XyStoreError> {
         let entries = self.load(session_id).await?;
         Ok(session_display_name_from_entries(&entries))
     }
@@ -1410,7 +1423,10 @@ impl SessionManager {
     /// Load entries for [`XySessionStore::list_sessions`] without mutating leaf tracking.
     ///
     /// Disk sessions: peek header version first so legacy files skip without a full JSONL parse.
-    async fn load_entries_for_list(&self, session_id: &str) -> Result<Vec<SessionEntry>, String> {
+    async fn load_entries_for_list(
+        &self,
+        session_id: &str,
+    ) -> Result<Vec<SessionEntry>, XyStoreError> {
         use crate::protocol::session::{
             SESSION_VERSION, enforce_session_version, parse_session_jsonl,
             peek_session_header_version,
@@ -1424,7 +1440,7 @@ impl SessionManager {
                     .expect("RwLock not poisoned")
                     .get(session_id)
                     .cloned()
-                    .ok_or_else(|| format!("session not found: {session_id}"))?;
+                    .ok_or_else(|| XyStoreError::not_found(session_id))?;
                 enforce_session_version(&entries)?;
                 Ok(entries)
             }
@@ -1433,13 +1449,13 @@ impl SessionManager {
                     let path = self.session_path(session_id);
                     let content = tokio::fs::read_to_string(&path)
                         .await
-                        .map_err(|e| format!("read session: {e}"))?;
+                        .map_err(|e| XyStoreError::io("read session", e))?;
                     if let Some(v) = peek_session_header_version(&content)
                         && v != SESSION_VERSION
                     {
-                        return Err(format!(
+                        return Err(XyStoreError::validation(format!(
                             "session header version {v} is not supported (require {SESSION_VERSION}); refusing legacy migrate"
-                        ));
+                        )));
                     }
                     parse_session_jsonl(&content)
                 } else {
@@ -1449,7 +1465,7 @@ impl SessionManager {
                         .expect("RwLock not poisoned")
                         .get(session_id)
                         .cloned()
-                        .ok_or_else(|| format!("session not found: {session_id}"))?;
+                        .ok_or_else(|| XyStoreError::not_found(session_id))?;
                     enforce_session_version(&entries)?;
                     Ok(entries)
                 }
@@ -1477,7 +1493,7 @@ fn session_display_name_from_entries(entries: &[SessionEntry]) -> Option<String>
 pub fn assert_session_cwd_exists(
     entries: &[SessionEntry],
     fallback_cwd: &str,
-) -> Result<(), String> {
+) -> Result<(), XyStoreError> {
     // Find the session header
     let header = entries
         .iter()
@@ -1488,7 +1504,7 @@ pub fn assert_session_cwd_exists(
                 None
             }
         })
-        .ok_or_else(|| "session has no header entry".to_string())?;
+        .ok_or_else(|| XyStoreError::validation("session has no header entry"))?;
 
     let cwd = if header.cwd.is_empty() {
         "."
@@ -1507,10 +1523,10 @@ pub fn assert_session_cwd_exists(
         return Ok(());
     }
 
-    Err(format!(
+    Err(XyStoreError::validation(format!(
         "Session working directory '{}' does not exist. Fallback '{}' also not found.",
         cwd, fallback_cwd
-    ))
+    )))
 }
 
 // ── XySessionStore impl ───────────────────────────────────────────────
@@ -1524,14 +1540,14 @@ impl XySessionStore for SessionManager {
     async fn load_entries(
         &self,
         session_id: &str,
-    ) -> Result<Vec<super::types::SessionEntry>, String> {
+    ) -> Result<Vec<super::types::SessionEntry>, XyStoreError> {
         SessionManager::load(self, session_id).await
     }
 
     async fn load_leaf_branch(
         &self,
         session_id: &str,
-    ) -> Result<Vec<super::types::SessionEntry>, String> {
+    ) -> Result<Vec<super::types::SessionEntry>, XyStoreError> {
         let leaf_id = self.get_leaf(session_id);
         self.get_branch(session_id, leaf_id.as_deref()).await
     }
@@ -1540,14 +1556,14 @@ impl XySessionStore for SessionManager {
         &self,
         session_id: &str,
         entry: &super::types::SessionEntry,
-    ) -> Result<(), String> {
+    ) -> Result<(), XyStoreError> {
         SessionManager::append(self, session_id, entry).await
     }
 
     async fn build_session_context(
         &self,
         session_id: &str,
-    ) -> Result<crate::protocol::session::SessionContext, String> {
+    ) -> Result<crate::protocol::session::SessionContext, XyStoreError> {
         SessionManager::build_session_context(self, session_id).await
     }
 
@@ -1556,7 +1572,7 @@ impl XySessionStore for SessionManager {
         id: &str,
         cwd: Option<&str>,
         parent: Option<&str>,
-    ) -> Result<(), String> {
+    ) -> Result<(), XyStoreError> {
         SessionManager::create(self, id, cwd, parent).await
     }
 
@@ -1566,7 +1582,7 @@ impl XySessionStore for SessionManager {
         child_id: &str,
         at_entry_id: &str,
         position: crate::protocol::session::ForkPosition,
-    ) -> Result<(), String> {
+    ) -> Result<(), XyStoreError> {
         SessionManager::fork(self, parent_id, child_id, at_entry_id, position).await
     }
 
@@ -1578,7 +1594,9 @@ impl XySessionStore for SessionManager {
         SessionManager::get_leaf_id(self, session_id)
     }
 
-    async fn list_sessions(&self) -> Result<Vec<crate::protocol::ports::SessionListEntry>, String> {
+    async fn list_sessions(
+        &self,
+    ) -> Result<Vec<crate::protocol::ports::SessionListEntry>, XyStoreError> {
         use crate::protocol::session::{SessionEntry, is_user_message, message_text};
         use std::time::{SystemTime, UNIX_EPOCH};
 
@@ -1684,7 +1702,7 @@ impl XySessionStore for SessionManager {
         Ok(out)
     }
 
-    async fn delete_session(&self, session_id: &str) -> Result<(), String> {
+    async fn delete_session(&self, session_id: &str) -> Result<(), XyStoreError> {
         SessionManager::delete_session(self, session_id).await
     }
 }
@@ -2188,7 +2206,10 @@ mod fork_path_tests {
             .fork(&parent_id, &child_id, "a_right", ForkPosition::Before)
             .await
             .unwrap_err();
-        assert!(err.contains("user"), "Before on assistant must err: {err}");
+        assert!(
+            err.to_string().contains("user"),
+            "Before on assistant must err: {err}"
+        );
     }
 
     #[tokio::test]
@@ -2226,7 +2247,7 @@ mod fork_path_tests {
             .await
             .unwrap_err();
         assert!(
-            err.contains("not been saved yet"),
+            err.to_string().contains("not been saved yet"),
             "pi unflushed guard: {err}"
         );
         assert!(!mgr.session_path(&child).exists());

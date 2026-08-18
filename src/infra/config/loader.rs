@@ -16,32 +16,10 @@ use std::path::Path;
 
 use serde_json::Value;
 
+use super::error::LoadError;
 use super::paths::ConfigPaths;
 use super::secret_env::SecretMap;
 use super::types::AppConfig;
-
-/// Errors from config loading.
-#[derive(Debug, thiserror::Error)]
-pub(crate) enum LoadError {
-    #[error("I/O error reading {path}: {source}")]
-    Io {
-        path: String,
-        source: std::io::Error,
-    },
-    #[error("YAML parse error in {path}: {source}")]
-    Yaml {
-        path: String,
-        source: yaml_serde::Error,
-    },
-    #[error("{0}")]
-    Template(String),
-
-    #[error("deserialize: {0}")]
-    Deserialize(#[from] serde_json::Error),
-
-    #[error("{0}")]
-    Validation(String),
-}
 
 /// Result of loading AppConfig YAML layers.
 #[derive(Debug, Clone)]
@@ -158,16 +136,10 @@ fn load_from_paths(
     }
 
     let config: AppConfig = serde_json::from_value(merged.clone())?;
-    super::validate::validate_merged_config(&merged).map_err(LoadError::Validation)?;
-    config
-        .validate_thinking_levels()
-        .map_err(LoadError::Validation)?;
-    config
-        .validate_model_tokenizers()
-        .map_err(LoadError::Validation)?;
-    config
-        .validate_session_max_turns()
-        .map_err(LoadError::Validation)?;
+    super::validate::validate_merged_config(&merged)?;
+    config.validate_thinking_levels()?;
+    config.validate_model_tokenizers()?;
+    config.validate_session_max_turns()?;
     Ok(LoadedAppConfig {
         config,
         from_yaml_layers,
@@ -184,8 +156,7 @@ fn load_and_render(path: &Path, secrets: &SecretMap) -> Result<Value, LoadError>
         source: e,
     })?;
 
-    let rendered = super::template::render_config_template(&raw, path, secrets)
-        .map_err(LoadError::Template)?;
+    let rendered = super::template::render_config_template(&raw, path, secrets)?;
 
     let value: Value = yaml_serde::from_str(&rendered).map_err(|e| LoadError::Yaml {
         path: path.to_string_lossy().to_string(),

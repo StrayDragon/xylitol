@@ -109,6 +109,16 @@ pub(crate) mod install {
     use super::*;
     use crate::infra::config::types::OtelHttpProtocol;
 
+    #[derive(Debug, thiserror::Error)]
+    #[error("{0}")]
+    struct OtelBuildError(String);
+
+    impl From<String> for OtelBuildError {
+        fn from(value: String) -> Self {
+            Self(value)
+        }
+    }
+
     /// fastrace-opentelemetry 0.18 maps spans with `TraceFlags::default()`
     /// (not sampled). Langfuse (and OTEL exporters generally) drop those.
     /// Force SAMPLED before the OTLP wire encode.
@@ -166,7 +176,7 @@ pub(crate) mod install {
         cfg: &OtelConfig,
         endpoint: &str,
         headers: std::collections::HashMap<String, String>,
-    ) -> Result<OpenTelemetryReporter, String> {
+    ) -> Result<OpenTelemetryReporter, OtelBuildError> {
         let protocol = match cfg.protocol {
             OtelHttpProtocol::HttpBinary => Protocol::HttpBinary,
             OtelHttpProtocol::HttpJson => Protocol::HttpJson,

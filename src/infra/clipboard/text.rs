@@ -1,5 +1,6 @@
 //! Read UTF-8 text from the system clipboard (c1156 / c8).
 
+use super::error::ClipboardError;
 use std::process::{Command, Stdio};
 
 /// Read plain text from the system clipboard, if available.
@@ -7,7 +8,7 @@ use std::process::{Command, Stdio};
 /// Returns `Ok(None)` when there is no text (or only empty).
 /// Returns `Err` when clipboard tools are missing or fail hard.
 /// Does **not** use OSC 52 (write-only fallback).
-pub fn read_clipboard_text() -> Result<Option<String>, String> {
+pub fn read_clipboard_text() -> Result<Option<String>, ClipboardError> {
     if cfg!(target_os = "macos") {
         read_macos_clipboard_text()
     } else if cfg!(target_os = "linux") {
@@ -20,7 +21,7 @@ pub fn read_clipboard_text() -> Result<Option<String>, String> {
 }
 
 #[cfg(target_os = "macos")]
-fn read_macos_clipboard_text() -> Result<Option<String>, String> {
+fn read_macos_clipboard_text() -> Result<Option<String>, ClipboardError> {
     let output = Command::new("pbpaste")
         .stdout(Stdio::piped())
         .stderr(Stdio::null())
@@ -38,12 +39,12 @@ fn read_macos_clipboard_text() -> Result<Option<String>, String> {
 }
 
 #[cfg(not(target_os = "macos"))]
-fn read_macos_clipboard_text() -> Result<Option<String>, String> {
+fn read_macos_clipboard_text() -> Result<Option<String>, ClipboardError> {
     Err("Not macOS".into())
 }
 
 #[cfg(target_os = "linux")]
-fn read_linux_clipboard_text() -> Result<Option<String>, String> {
+fn read_linux_clipboard_text() -> Result<Option<String>, ClipboardError> {
     let has_wayland = std::env::var("WAYLAND_DISPLAY").is_ok()
         || std::env::var("XDG_SESSION_TYPE").as_deref() == Ok("wayland");
     let has_x11 = std::env::var("DISPLAY").is_ok();
@@ -58,12 +59,12 @@ fn read_linux_clipboard_text() -> Result<Option<String>, String> {
 }
 
 #[cfg(not(target_os = "linux"))]
-fn read_linux_clipboard_text() -> Result<Option<String>, String> {
+fn read_linux_clipboard_text() -> Result<Option<String>, ClipboardError> {
     Err("Not Linux".into())
 }
 
 #[cfg(target_os = "linux")]
-fn read_text_via_wl_paste() -> Result<Option<String>, String> {
+fn read_text_via_wl_paste() -> Result<Option<String>, ClipboardError> {
     let list_output = Command::new("wl-paste")
         .args(["--list-types"])
         .stdout(Stdio::piped())
@@ -100,7 +101,7 @@ fn read_text_via_wl_paste() -> Result<Option<String>, String> {
 }
 
 #[cfg(target_os = "linux")]
-fn read_text_via_xclip() -> Result<Option<String>, String> {
+fn read_text_via_xclip() -> Result<Option<String>, ClipboardError> {
     let output = Command::new("xclip")
         .args(["-selection", "clipboard", "-o"])
         .stdout(Stdio::piped())
@@ -140,7 +141,7 @@ fn select_text_mime(mime_types: &str) -> Option<&str> {
 }
 
 #[cfg(target_os = "windows")]
-fn read_windows_clipboard_text() -> Result<Option<String>, String> {
+fn read_windows_clipboard_text() -> Result<Option<String>, ClipboardError> {
     let output = Command::new("powershell")
         .args([
             "-NoProfile",
@@ -164,7 +165,7 @@ fn read_windows_clipboard_text() -> Result<Option<String>, String> {
 }
 
 #[cfg(not(target_os = "windows"))]
-fn read_windows_clipboard_text() -> Result<Option<String>, String> {
+fn read_windows_clipboard_text() -> Result<Option<String>, ClipboardError> {
     Err("Not Windows".into())
 }
 

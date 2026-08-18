@@ -737,8 +737,8 @@ pub fn bootstrap_with(
                 let _ = block_on(agent.select_model(&resolved.model.id));
                 requested_thinking_level = resolved.thinking_level;
             }
-            Err(msg) => {
-                warnings.push(BootstrapWarning::ModelResolutionFailed(msg));
+            Err(err) => {
+                warnings.push(BootstrapWarning::ModelResolutionFailed(err.to_string()));
             }
         }
     }

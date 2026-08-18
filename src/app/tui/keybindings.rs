@@ -6,6 +6,7 @@
 use std::collections::HashMap;
 use std::path::{Path, PathBuf};
 
+use super::error::TuiSurfaceError;
 pub use xylitol_tui::with_keybindings;
 use xylitol_tui::{
     KeybindingDefinition, KeybindingsConfig, KeybindingsManager, create_default_definitions,
@@ -173,12 +174,12 @@ pub fn default_agent_dir() -> PathBuf {
 }
 
 /// Parse `keybindings.json` object: `{ "id": ["chord", ...] | "chord" }`.
-pub fn parse_keybindings_json(raw: &str) -> Result<KeybindingsConfig, String> {
-    let value: serde_json::Value =
-        serde_json::from_str(raw).map_err(|e| format!("invalid JSON: {e}"))?;
+pub fn parse_keybindings_json(raw: &str) -> Result<KeybindingsConfig, TuiSurfaceError> {
+    let value: serde_json::Value = serde_json::from_str(raw)
+        .map_err(|e| TuiSurfaceError::invalid(format!("invalid JSON: {e}")))?;
     let obj = value
         .as_object()
-        .ok_or_else(|| "keybindings root must be an object".to_string())?;
+        .ok_or_else(|| TuiSurfaceError::invalid("keybindings root must be an object"))?;
     let mut out = KeybindingsConfig::new();
     for (id, v) in obj {
         let keys = match v {
@@ -187,16 +188,18 @@ pub fn parse_keybindings_json(raw: &str) -> Result<KeybindingsConfig, String> {
                 let mut keys = Vec::new();
                 for item in arr {
                     let Some(s) = item.as_str() else {
-                        return Err(format!("keybinding `{id}` array must be strings"));
+                        return Err(TuiSurfaceError::invalid(format!(
+                            "keybinding `{id}` array must be strings"
+                        )));
                     };
                     keys.push(s.to_string());
                 }
                 keys
             }
             _ => {
-                return Err(format!(
+                return Err(TuiSurfaceError::invalid(format!(
                     "keybinding `{id}` must be a string or array of strings"
-                ));
+                )));
             }
         };
         out.insert(id.clone(), keys);
@@ -204,11 +207,12 @@ pub fn parse_keybindings_json(raw: &str) -> Result<KeybindingsConfig, String> {
     Ok(out)
 }
 
-fn load_from_path(path: &Path) -> Result<KeybindingsConfig, String> {
+fn load_from_path(path: &Path) -> Result<KeybindingsConfig, TuiSurfaceError> {
     if !path.exists() {
         return Ok(KeybindingsConfig::new());
     }
-    let raw = std::fs::read_to_string(path).map_err(|e| format!("read failed: {e}"))?;
+    let raw = std::fs::read_to_string(path)
+        .map_err(|e| TuiSurfaceError::io(format!("read failed: {e}")))?;
     parse_keybindings_json(&raw)
 }
 
@@ -253,7 +257,10 @@ pub fn load_product_keybindings(agent_dir: &Path) -> (KeybindingsManager, Reload
         }
         Err(error) => (
             build_product_keybindings(KeybindingsConfig::new()),
-            ReloadOutcome::Failed { path, error },
+            ReloadOutcome::Failed {
+                path,
+                error: error.to_string(),
+            },
         ),
     }
 }
@@ -270,7 +277,10 @@ pub fn reload_keybindings_into(kb: &mut KeybindingsManager, agent_dir: &Path) ->
             kb.set_user_bindings(user);
             ReloadOutcome::Applied { path }
         }
-        Err(error) => ReloadOutcome::Failed { path, error },
+        Err(error) => ReloadOutcome::Failed {
+            path,
+            error: error.to_string(),
+        },
     }
 }
 

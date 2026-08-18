@@ -247,7 +247,7 @@ fn w_rc_resolve_meta(rc_snap: &RcSnap, tokenizer_bdd: &TokenizerBdd) {
         }
         Err(e) => {
             tokenizer_bdd.cfg_ok.set(false);
-            tokenizer_bdd.cfg_err.replace(e);
+            tokenizer_bdd.cfg_err.replace(e.to_string());
         }
     }
 }

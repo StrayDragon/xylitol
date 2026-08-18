@@ -9,10 +9,7 @@ use std::time::Duration;
 /// Watch a file for changes, calling `callback` when modified.
 ///
 /// Returns a channel sender; drop it to stop watching.
-pub fn watch_file(
-    path: &Path,
-    callback: Box<dyn Fn() + Send + 'static>,
-) -> Result<mpsc::Sender<()>, String> {
+pub fn watch_file(path: &Path, callback: Box<dyn Fn() + Send + 'static>) -> mpsc::Sender<()> {
     let (tx, rx) = mpsc::channel::<()>();
     let path = path.to_path_buf();
 
@@ -65,5 +62,5 @@ pub fn watch_file(
         }
     });
 
-    Ok(tx)
+    tx
 }

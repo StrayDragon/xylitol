@@ -3,10 +3,6 @@
 use crate::protocol::error::XyError;
 use crate::protocol::ports::XySessionStore;
 
-fn session_err(e: impl Into<String>) -> XyError {
-    XyError::Session(anyhow::anyhow!(e.into()))
-}
-
 /// Statistics for a session.
 #[derive(Debug, Clone)]
 pub struct SessionStats {
@@ -29,7 +25,7 @@ pub async fn compute(
     let ctx = store
         .build_session_context(session_id)
         .await
-        .map_err(session_err)?;
+        .map_err(XyError::from)?;
     let user_messages = ctx
         .messages
         .iter()

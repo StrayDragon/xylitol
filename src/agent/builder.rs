@@ -171,7 +171,7 @@ impl AgentBuilder {
     /// Build the [`AgentRuntime`] (ReAct-loop runtime over capabilities).
     ///
     /// Internally builds [`RuntimePorts`] then materializes one actor.
-    pub fn build(self) -> Result<AgentRuntime, String> {
-        Ok(self.build_ports().materialize_runtime())
+    pub fn build(self) -> AgentRuntime {
+        self.build_ports().materialize_runtime()
     }
 }

@@ -28,10 +28,10 @@ impl FileMutationQueue {
 
     /// Execute a mutation `f` on `file_path`. If another mutation is currently running on the
     /// same path (canonically resolved), this call will wait for it to finish before executing.
-    pub async fn run<F, Fut, T>(&self, file_path: &str, f: F) -> Result<T, String>
+    pub async fn run<F, Fut, T, E>(&self, file_path: &str, f: F) -> Result<T, E>
     where
         F: FnOnce() -> Fut + Send,
-        Fut: Future<Output = Result<T, String>> + Send,
+        Fut: Future<Output = Result<T, E>> + Send,
         T: Send,
     {
         // Resolve the real path (best-effort)
@@ -82,11 +82,11 @@ mod tests {
         let (r1, r2) = tokio::join!(
             q1.run("a.txt", || async move {
                 tokio::time::sleep(Duration::from_millis(50)).await;
-                Ok(c1.fetch_add(1, Ordering::SeqCst))
+                Ok::<_, ()>(c1.fetch_add(1, Ordering::SeqCst))
             }),
             q2.run("b.txt", || async move {
                 tokio::time::sleep(Duration::from_millis(50)).await;
-                Ok(c2.fetch_add(1, Ordering::SeqCst))
+                Ok::<_, ()>(c2.fetch_add(1, Ordering::SeqCst))
             }),
         );
 
@@ -110,11 +110,11 @@ mod tests {
             q1.run("shared.txt", || async {
                 tokio::time::sleep(Duration::from_millis(50)).await;
                 c.fetch_add(1, Ordering::SeqCst);
-                Ok::<_, String>(())
+                Ok::<_, ()>(())
             }),
             q2.run("shared.txt", || async {
                 c.fetch_add(1, Ordering::SeqCst);
-                Ok::<_, String>(())
+                Ok::<_, ()>(())
             }),
         );
 

@@ -1,7 +1,24 @@
 //! Open a URL in the system default browser.
 
+/// Browser launch failures (crate-private; not `Xy*`).
+#[derive(Debug, Clone, PartialEq, Eq, thiserror::Error)]
+#[error("{0}")]
+pub struct BrowserError(pub String);
+
+impl From<&str> for BrowserError {
+    fn from(value: &str) -> Self {
+        Self(value.to_string())
+    }
+}
+
+impl From<String> for BrowserError {
+    fn from(value: String) -> Self {
+        Self(value)
+    }
+}
+
 /// Open a URL in the default system browser.
-pub fn open_browser(url: &str) -> Result<(), String> {
+pub fn open_browser(url: &str) -> Result<(), BrowserError> {
     let result = if cfg!(target_os = "macos") {
         std::process::Command::new("open").arg(url).status()
     } else if cfg!(target_os = "windows") {
@@ -22,8 +39,8 @@ pub fn open_browser(url: &str) -> Result<(), String> {
 
     match result {
         Ok(status) if status.success() => Ok(()),
-        Ok(_) => Err(format!("failed to open browser for {url}")),
-        Err(e) => Err(format!("could not launch browser: {e}")),
+        Ok(_) => Err(format!("failed to open browser for {url}").into()),
+        Err(e) => Err(format!("could not launch browser: {e}").into()),
     }
 }
 

@@ -4,14 +4,19 @@ use std::sync::Arc;
 
 use crate::protocol::ports::XyHookBus;
 
+/// Hook dispatched `Blocked { reason }` (product copy; not `Xy*`).
+#[derive(Debug, Clone, PartialEq, Eq, thiserror::Error)]
+#[error("{0}")]
+pub(crate) struct HookBlockedError(pub String);
+
 pub(crate) async fn cancel_hook(
     bus: &Arc<dyn XyHookBus>,
     event_type: &str,
     phase: &str,
     context: serde_json::Value,
-) -> Result<(), String> {
+) -> Result<(), HookBlockedError> {
     match bus.dispatch(event_type, phase, context).await {
-        crate::protocol::ports::XyHookOutcome::Blocked { reason } => Err(reason),
+        crate::protocol::ports::XyHookOutcome::Blocked { reason } => Err(HookBlockedError(reason)),
         _ => Ok(()),
     }
 }

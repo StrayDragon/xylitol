@@ -9,8 +9,9 @@ pub use chunk::{XyChunk, XyToolSchema};
 pub use config::{ResolvedProfile, XyModelConfig, XyModelKind, default_context_window_for};
 pub use meta::{ContextTokenEstimate, TokenProvenance, XyModelMeta};
 pub use thinking::{
-    THINKING_OFF, ThinkingBudgets, ThinkingLevelMap, last_declared_thinking_level,
-    resolve_configured_levels, thinking_levels_are_adjustable, validate_thinking_level_map,
+    THINKING_OFF, ThinkingBudgets, ThinkingConfigError, ThinkingLevelMap,
+    last_declared_thinking_level, resolve_configured_levels, thinking_levels_are_adjustable,
+    validate_thinking_level_map,
 };
 
 #[cfg(test)]
@@ -185,6 +186,7 @@ mod tests {
         assert!(
             validate_thinking_level_map(&map, &["off".into(), "high".into()])
                 .unwrap_err()
+                .to_string()
                 .contains("bogon")
         );
     }

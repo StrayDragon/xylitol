@@ -9,7 +9,9 @@
 use crate::agent::compaction::obs::AgentCompactionSpan;
 use crate::agent::compaction::overflow::{assistant_same_model, is_context_overflow_assistant};
 use crate::agent::compaction::token_estimator::EstimateOpts;
-use crate::agent::compaction::{CompactionSettings, compact_session, prepare_compaction};
+use crate::agent::compaction::{
+    CompactionError, CompactionSettings, compact_session, prepare_compaction,
+};
 use crate::protocol::lifecycle::XyEvent;
 use crate::protocol::message::{AgentMessage, LlmMessage, XyStopReason};
 use crate::protocol::ports::{XyEventSink, XyModel, XySessionStore};
@@ -52,7 +54,7 @@ impl CompactionOrchestrator {
         model: &dyn XyModel,
         event_sink: &dyn XyEventSink,
         instructions: Option<String>,
-    ) -> Result<(), String> {
+    ) -> Result<(), CompactionError> {
         event_sink
             .emit(&XyEvent::CompactionStart {
                 reason: "manual".to_string(),
@@ -61,13 +63,14 @@ impl CompactionOrchestrator {
 
         let entries = store.load_leaf_branch(sid).await?;
         if let Some(err) = prepare_compaction(&entries, &self.settings).err() {
+            let error_message = err.to_string();
             event_sink
                 .emit(&XyEvent::CompactionEnd {
                     result: None,
                     aborted: false,
                     reason: "manual".into(),
                     will_retry: false,
-                    error_message: Some(err.clone()),
+                    error_message: Some(error_message),
                     summary: None,
                     tokens_before: None,
                 })
@@ -129,7 +132,7 @@ impl CompactionOrchestrator {
         current_model_id: &str,
         overflow_recovery_attempted: bool,
         turn_obs_parent: Option<fastrace::prelude::SpanContext>,
-    ) -> Result<OverflowCompactOutcome, String> {
+    ) -> Result<OverflowCompactOutcome, CompactionError> {
         if !self.settings.enabled {
             return Ok(OverflowCompactOutcome::Skipped);
         }
@@ -230,7 +233,7 @@ impl CompactionOrchestrator {
         last_assistant: Option<&AgentMessage>,
         precomputed: Option<&crate::protocol::model::ContextTokenEstimate>,
         turn_obs_parent: Option<fastrace::prelude::SpanContext>,
-    ) -> Result<bool, String> {
+    ) -> Result<bool, CompactionError> {
         if !self.settings.enabled {
             return Ok(false);
         }
@@ -293,7 +296,7 @@ impl CompactionOrchestrator {
         will_retry: bool,
         entries: &[SessionEntry],
         turn_obs_parent: Option<fastrace::prelude::SpanContext>,
-    ) -> Result<bool, String> {
+    ) -> Result<bool, CompactionError> {
         if prepare_compaction(entries, &self.settings).is_err() {
             return Ok(false);
         }
@@ -355,7 +358,7 @@ impl CompactionOrchestrator {
 
         match result {
             Ok(_) => Ok(true),
-            Err(e) => Err(format!("auto-compaction: {e}")),
+            Err(e) => Err(e),
         }
     }
 }
@@ -473,7 +476,7 @@ mod tests {
     use async_trait::async_trait;
     use xylitol_ai_bridge::provider::trace::{ObsGateScope, ObsGateState, SpanCollectScope};
 
-    use crate::protocol::error::XyError;
+    use crate::protocol::error::{XyError, XyStoreError};
     use crate::protocol::model::XyToolSchema;
     use crate::protocol::ports::{XyGenerateOptions, XyStream};
     use crate::protocol::session::{ForkPosition, SessionContext};
@@ -486,19 +489,34 @@ mod tests {
         async fn exists(&self, _: &str) -> bool {
             true
         }
-        async fn load_entries(&self, _: &str) -> Result<Vec<SessionEntry>, String> {
+        async fn load_entries(&self, _: &str) -> Result<Vec<SessionEntry>, XyStoreError> {
             Ok(Vec::new())
         }
-        async fn append_session_entry(&self, _: &str, _: &SessionEntry) -> Result<(), String> {
+        async fn append_session_entry(
+            &self,
+            _: &str,
+            _: &SessionEntry,
+        ) -> Result<(), XyStoreError> {
             unreachable!("prepare-fail path must not append")
         }
-        async fn build_session_context(&self, _: &str) -> Result<SessionContext, String> {
+        async fn build_session_context(&self, _: &str) -> Result<SessionContext, XyStoreError> {
             unreachable!("prepare-fail path must not build context")
         }
-        async fn create(&self, _: &str, _: Option<&str>, _: Option<&str>) -> Result<(), String> {
+        async fn create(
+            &self,
+            _: &str,
+            _: Option<&str>,
+            _: Option<&str>,
+        ) -> Result<(), XyStoreError> {
             Ok(())
         }
-        async fn fork(&self, _: &str, _: &str, _: &str, _: ForkPosition) -> Result<(), String> {
+        async fn fork(
+            &self,
+            _: &str,
+            _: &str,
+            _: &str,
+            _: ForkPosition,
+        ) -> Result<(), XyStoreError> {
             unreachable!("prepare-fail path must not fork")
         }
         fn set_leaf(&self, _: &str, _: Option<&str>) {}
@@ -545,7 +563,7 @@ mod tests {
             .await
             .expect_err("empty session must fail prepare");
         assert!(
-            err.contains("Nothing to compact"),
+            err.to_string().contains("Nothing to compact"),
             "unexpected prepare error: {err}"
         );
 

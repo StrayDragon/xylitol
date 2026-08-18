@@ -304,7 +304,9 @@ pub trait XyDriver: Send {
         &mut self,
         _mode: ProjectTrustMode,
     ) -> Result<ProjectTrustPersistReport, XyDriverError> {
-        Err("persist_project_trust not supported on this driver".into())
+        Err(XyDriverError::unsupported(
+            "persist_project_trust not supported on this driver",
+        ))
     }
 
     /// Copy UTF-8 text to the system clipboard (`/history-copy-last`, c1110).
@@ -317,7 +319,9 @@ pub trait XyDriver: Send {
         &mut self,
         _text: &str,
     ) -> Result<ClipboardCopyOutcome, XyDriverError> {
-        Err("copy_text_to_clipboard not supported on this driver".into())
+        Err(XyDriverError::unsupported(
+            "copy_text_to_clipboard not supported on this driver",
+        ))
     }
 
     /// Stage a clipboard image to a unique tempfile and return its absolute path (c1155).
@@ -325,13 +329,17 @@ pub trait XyDriver: Send {
     /// Returns `Ok(None)` when the clipboard has no image. Product TUI inserts the
     /// path as plain text (pi-aligned); MUST NOT put base64 in the editor.
     async fn stage_clipboard_image(&mut self) -> Result<Option<std::path::PathBuf>, XyDriverError> {
-        Err("stage_clipboard_image not supported on this driver".into())
+        Err(XyDriverError::unsupported(
+            "stage_clipboard_image not supported on this driver",
+        ))
     }
 
     /// Read UTF-8 text from the system clipboard (c1156 / Ctrl+V text fallback).
     ///
     /// Returns `Ok(None)` when empty / no text. Default: unsupported.
     async fn read_clipboard_text(&mut self) -> Result<Option<String>, XyDriverError> {
-        Err("read_clipboard_text not supported on this driver".into())
+        Err(XyDriverError::unsupported(
+            "read_clipboard_text not supported on this driver",
+        ))
     }
 }

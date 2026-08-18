@@ -670,9 +670,9 @@ pub(crate) fn bdd_batch_make_runner(
     let store: Arc<dyn XySessionStore> = Arc::new(mgr);
     let sink: Arc<dyn XyEventSink> = Arc::new(xylitol::infra::event::EventBus::new());
     let builder: xylitol::protocol::ports::XyModelBuilder = Arc::new(move |_| {
-        Ok(Arc::new(BddMultiToolModel {
+        Arc::new(BddMultiToolModel {
             rounds: std::sync::Mutex::new(rounds.clone()),
-        }) as Arc<dyn XyModel>)
+        }) as Arc<dyn XyModel>
     });
     let mut session = AgentCapabilities::new(
         agent.registry.borrow().clone(),

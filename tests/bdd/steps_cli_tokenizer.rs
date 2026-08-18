@@ -731,7 +731,7 @@ fn w_ce16_print(surface_bdd: &SurfaceBdd) {
     let (_force_tui, print_flag, one_shot) = resolve_surface_intent(args.command.as_ref());
     let err = resolve_print_prompt(one_shot.as_deref(), print_flag, true, || Ok(String::new()))
         .expect_err("print without prompt must fail");
-    surface_bdd.print_err.replace(err);
+    surface_bdd.print_err.replace(err.to_string());
 }
 
 #[then("错误退出且无 Hello!")]

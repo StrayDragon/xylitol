@@ -17,6 +17,15 @@ use crate::infra::config::types::AppConfig;
 
 type McpService = RunningService<RoleClient, ()>;
 
+/// Crate-private MCP client failures (connect / tool call).
+#[derive(Debug, thiserror::Error)]
+pub enum McpError {
+    #[error("{0}")]
+    Connect(String),
+    #[error("{0}")]
+    Call(String),
+}
+
 /// Diagnostic from validate / connect (c1080 / mcp4).
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct McpConnectDiagnostic {
@@ -85,10 +94,10 @@ impl McpClientManager {
     }
 
     /// Connect to all MCP servers from the app configuration.
-    pub async fn connect(self: &Arc<Self>, config: &AppConfig) -> Result<(), String> {
+    pub async fn connect(self: &Arc<Self>, config: &AppConfig) {
         match &config.mcp_servers {
             Some(servers) if !servers.is_empty() => self.connect_servers(servers).await,
-            _ => Ok(()),
+            _ => {}
         }
     }
 
@@ -96,10 +105,7 @@ impl McpClientManager {
     ///
     /// Invalid configs and connection failures are recorded as diagnostics and
     /// logged; remaining servers still attempt connect (mcp4).
-    pub async fn connect_servers(
-        self: &Arc<Self>,
-        servers: &[McpServerConfig],
-    ) -> Result<(), String> {
+    pub async fn connect_servers(self: &Arc<Self>, servers: &[McpServerConfig]) {
         self.connect_servers_with_progress(servers, None).await
     }
 
@@ -108,7 +114,7 @@ impl McpClientManager {
         self: &Arc<Self>,
         servers: &[McpServerConfig],
         progress_out: Option<Arc<Mutex<McpConnectProgress>>>,
-    ) -> Result<(), String> {
+    ) {
         {
             let mut diags = self.diagnostics.lock().await;
             diags.clear();
@@ -119,7 +125,7 @@ impl McpClientManager {
             let name = server_config.name.clone();
             if let Err(e) = server_config.validate() {
                 log::warn!("MCP server {name}: invalid config: {e}");
-                self.push_diagnostic(name, e).await;
+                self.push_diagnostic(name, e.to_string()).await;
                 continue;
             }
             validated.push(server_config.clone());
@@ -147,10 +153,10 @@ impl McpClientManager {
                 .await
                 {
                     Ok(inner) => inner,
-                    Err(_) => Err(format!(
+                    Err(_) => Err(McpError::Connect(format!(
                         "connect timed out after {:?}",
                         crate::infra::mcp::MCP_SERVER_CONNECT_TIMEOUT
-                    )),
+                    ))),
                 };
                 (name, result)
             });
@@ -160,7 +166,7 @@ impl McpClientManager {
         while let Some((name, result)) = futs.next().await {
             if let Err(e) = result {
                 log::warn!("MCP server {name}: connection failed: {e}");
-                self.push_diagnostic(name.clone(), e).await;
+                self.push_diagnostic(name.clone(), e.to_string()).await;
             }
             finished += 1;
             self.write_progress(&progress_out, true, total, finished, Some(name))
@@ -173,7 +179,6 @@ impl McpClientManager {
         let clear = progress_out.is_none();
         self.write_progress(&progress_out, !clear, total, finished, None)
             .await;
-        Ok(())
     }
 
     async fn write_progress(
@@ -238,11 +243,11 @@ impl McpClientManager {
         out
     }
 
-    async fn connect_stdio(&self, name: &str, config: &McpServerConfig) -> Result<(), String> {
+    async fn connect_stdio(&self, name: &str, config: &McpServerConfig) -> Result<(), McpError> {
         let command = config
             .command
             .as_ref()
-            .ok_or_else(|| "command is required for stdio transport".to_string())?;
+            .ok_or_else(|| McpError::Connect("command is required for stdio transport".into()))?;
         let args = config.args.as_deref().unwrap_or_default();
 
         let mut cmd = Command::new(command);
@@ -253,11 +258,12 @@ impl McpClientManager {
             }
         }
 
-        let transport = TokioChildProcess::new(cmd).map_err(|e| format!("spawn failed: {e}"))?;
+        let transport = TokioChildProcess::new(cmd)
+            .map_err(|e| McpError::Connect(format!("spawn failed: {e}")))?;
 
         let service = serve_client((), transport)
             .await
-            .map_err(|e| format!("init failed: {e}"))?;
+            .map_err(|e| McpError::Connect(format!("init failed: {e}")))?;
 
         let mut services = self.services.lock().await;
         services.insert(name.to_string(), service);
@@ -273,7 +279,7 @@ impl McpClientManager {
         Ok(())
     }
 
-    async fn connect_sse(&self, name: &str, config: &McpServerConfig) -> Result<(), String> {
+    async fn connect_sse(&self, name: &str, config: &McpServerConfig) -> Result<(), McpError> {
         use http::{HeaderName, HeaderValue};
         use rmcp::transport::StreamableHttpClientTransport;
         use rmcp::transport::streamable_http_client::StreamableHttpClientTransportConfig;
@@ -281,15 +287,15 @@ impl McpClientManager {
         let url = config
             .url
             .as_ref()
-            .ok_or_else(|| "url is required for sse transport".to_string())?;
+            .ok_or_else(|| McpError::Connect("url is required for sse transport".into()))?;
         let mut transport_cfg = StreamableHttpClientTransportConfig::with_uri(url.clone());
         if let Some(ref headers) = config.headers {
             let mut custom = HashMap::new();
             for (k, v) in headers {
                 let name = HeaderName::from_bytes(k.as_bytes())
-                    .map_err(|e| format!("invalid header name {k:?}: {e}"))?;
+                    .map_err(|e| McpError::Connect(format!("invalid header name {k:?}: {e}")))?;
                 let value = HeaderValue::from_str(v)
-                    .map_err(|e| format!("invalid header value for {k}: {e}"))?;
+                    .map_err(|e| McpError::Connect(format!("invalid header value for {k}: {e}")))?;
                 custom.insert(name, value);
             }
             transport_cfg = transport_cfg.custom_headers(custom);
@@ -297,7 +303,7 @@ impl McpClientManager {
         let transport = StreamableHttpClientTransport::from_config(transport_cfg);
         let service = serve_client((), transport)
             .await
-            .map_err(|e| format!("init failed: {e}"))?;
+            .map_err(|e| McpError::Connect(format!("init failed: {e}")))?;
 
         let mut services = self.services.lock().await;
         services.insert(name.to_string(), service);
@@ -353,11 +359,11 @@ impl McpClientManager {
         server_id: &str,
         tool_name: &str,
         args: Value,
-    ) -> Result<Value, String> {
+    ) -> Result<Value, McpError> {
         let services = self.services.lock().await;
         let service = services
             .get(server_id)
-            .ok_or_else(|| format!("MCP server not found: {server_id}"))?;
+            .ok_or_else(|| McpError::Call(format!("MCP server not found: {server_id}")))?;
 
         let args_map = args.as_object().cloned().unwrap_or_default();
         let params = CallToolRequestParams::new(tool_name.to_string()).with_arguments(args_map);
@@ -365,9 +371,10 @@ impl McpClientManager {
         let result: CallToolResult = service
             .call_tool(params)
             .await
-            .map_err(|e| format!("call {server_id}/{tool_name} failed: {e}"))?;
+            .map_err(|e| McpError::Call(format!("call {server_id}/{tool_name} failed: {e}")))?;
 
-        let json = serde_json::to_value(&result).map_err(|e| format!("serialize result: {e}"))?;
+        let json = serde_json::to_value(&result)
+            .map_err(|e| McpError::Call(format!("serialize result: {e}")))?;
         Ok(json)
     }
 
@@ -401,7 +408,7 @@ mod tests {
         let rt = tokio::runtime::Runtime::new().unwrap();
         let manager = Arc::new(McpClientManager::new());
         let config = AppConfig::default();
-        rt.block_on(manager.connect(&config)).unwrap();
+        rt.block_on(manager.connect(&config));
         let services = rt.block_on(async { manager.services.lock().await });
         assert!(services.is_empty());
     }
@@ -414,7 +421,7 @@ mod tests {
             mcp_servers: Some(vec![]),
             ..Default::default()
         };
-        rt.block_on(manager.connect(&config)).unwrap();
+        rt.block_on(manager.connect(&config));
         let services = rt.block_on(async { manager.services.lock().await });
         assert!(services.is_empty());
     }
@@ -428,7 +435,7 @@ mod tests {
             command: None,
             ..Default::default()
         }];
-        manager.connect_servers(&servers).await.unwrap();
+        manager.connect_servers(&servers).await;
         let diags = manager.diagnostics().await;
         assert!(
             diags
@@ -448,7 +455,7 @@ mod tests {
             url: Some("not-a-url".into()),
             ..Default::default()
         }];
-        manager.connect_servers(&servers).await.unwrap();
+        manager.connect_servers(&servers).await;
         let diags = manager.diagnostics().await;
         assert!(
             diags
@@ -476,7 +483,7 @@ mod tests {
             },
         ];
         // Must not Err the whole batch.
-        manager.connect_servers(&servers).await.unwrap();
+        manager.connect_servers(&servers).await;
         let diags = manager.diagnostics().await;
         assert!(diags.len() >= 2, "both failures observable; got {diags:?}");
         assert!(manager.connected_servers().await.is_empty());

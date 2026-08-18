@@ -1,11 +1,12 @@
 //! Session JSONL parse and version enforcement.
 
 use super::entries::{SESSION_VERSION, SessionEntry};
+use crate::protocol::error::XyStoreError;
 
 /// Parse session JSONL content: skip unparseable / non-SSOT lines with warn≤3 then `...`.
 ///
 /// Requires a header with [`SESSION_VERSION`]; does not migrate older versions.
-pub fn parse_session_jsonl(content: &str) -> Result<Vec<SessionEntry>, String> {
+pub fn parse_session_jsonl(content: &str) -> Result<Vec<SessionEntry>, XyStoreError> {
     let (entries, _) = parse_session_jsonl_lines(content);
     enforce_session_version(&entries)?;
     Ok(entries)
@@ -40,15 +41,15 @@ fn emit_session_load_warn(warn_count: &mut usize, msg: &str) {
 }
 
 /// Reject sessions whose header is missing or not the current [`SESSION_VERSION`].
-pub fn enforce_session_version(entries: &[SessionEntry]) -> Result<(), String> {
+pub fn enforce_session_version(entries: &[SessionEntry]) -> Result<(), XyStoreError> {
     let version = entries.iter().find_map(|e| match e {
         SessionEntry::Header(h) => Some(h.version),
         _ => None,
     });
     match version {
         Some(v) if v == SESSION_VERSION => Ok(()),
-        Some(v) => Err(unsupported_session_version_msg(v)),
-        None => Err("session has no header entry".into()),
+        Some(v) => Err(XyStoreError::validation(unsupported_session_version_msg(v))),
+        None => Err(XyStoreError::validation("session has no header entry")),
     }
 }
 

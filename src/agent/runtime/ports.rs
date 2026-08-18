@@ -224,9 +224,9 @@ mod tests {
         let polled = Arc::new(AtomicUsize::new(0));
         let polled_for_builder = polled.clone();
         let builder: XyModelBuilder = Arc::new(move |_| {
-            Ok(Arc::new(SlowMock {
+            Arc::new(SlowMock {
                 polled: polled_for_builder.clone(),
-            }) as Arc<dyn XyModel>)
+            }) as Arc<dyn XyModel>
         });
         let ports = baseline_ports(builder);
         let mut a = ports.clone().materialize_runtime();

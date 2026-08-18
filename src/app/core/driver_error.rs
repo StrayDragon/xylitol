@@ -2,7 +2,12 @@
 
 use strum::IntoStaticStr;
 
-use crate::protocol::error::{XyError, XyToolError};
+use crate::agent::compaction::CompactionError;
+use crate::agent::runtime::RuntimeControlError;
+use crate::infra::clipboard::ClipboardError;
+use crate::infra::config::error::LoadError;
+use crate::infra::mcp::McpError;
+use crate::protocol::error::{XyError, XyExportError, XyStoreError, XyToolError, XyTrustError};
 
 /// Errors from [`super::driver::XyDriver`] (整机遥控器 / 多面共享应用协议).
 ///
@@ -32,7 +37,7 @@ pub enum XyDriverError {
 
     /// Agent / provider / tool failure bubbled through the driver.
     #[error(transparent)]
-    Agent(#[from] XyError),
+    Agent(XyError),
 
     /// Display-preserving message (migration / opaque upstream strings).
     ///
@@ -172,9 +177,105 @@ impl From<&str> for XyDriverError {
     }
 }
 
+impl From<XyError> for XyDriverError {
+    fn from(err: XyError) -> Self {
+        match err {
+            XyError::Session(store) => store.into(),
+            other => Self::Agent(other),
+        }
+    }
+}
+
 impl From<XyToolError> for XyDriverError {
     fn from(value: XyToolError) -> Self {
         Self::Agent(XyError::from(value))
+    }
+}
+
+impl From<XyStoreError> for XyDriverError {
+    fn from(err: XyStoreError) -> Self {
+        match err {
+            XyStoreError::NotFound { session_id } => Self::not_found(session_id),
+            XyStoreError::EntryNotFound { entry_id } => Self::not_found(entry_id),
+            XyStoreError::NoActiveSession => Self::not_found("no active session"),
+            XyStoreError::Io { op, source } => Self::io(format!("{op}: {source}")),
+            XyStoreError::Serialize(source) => Self::io(format!("serialize entry: {source}")),
+            XyStoreError::Unsupported { op } => Self::unsupported(format!("{op} not supported")),
+            XyStoreError::Validation { message } => Self::message(message),
+        }
+    }
+}
+
+impl From<XyExportError> for XyDriverError {
+    fn from(err: XyExportError) -> Self {
+        match err {
+            XyExportError::Io { op, path, source } => {
+                Self::io(format!("{op} {}: {source}", path.display()))
+            }
+        }
+    }
+}
+
+impl From<XyTrustError> for XyDriverError {
+    fn from(err: XyTrustError) -> Self {
+        match err {
+            XyTrustError::Io { op, source } => Self::io(format!("{op}: {source}")),
+            XyTrustError::Parse(source) => Self::io(format!("serialize trust store: {source}")),
+            XyTrustError::Lock => Self::io("failed to acquire trust store lock"),
+        }
+    }
+}
+
+impl From<CompactionError> for XyDriverError {
+    fn from(err: CompactionError) -> Self {
+        match err {
+            CompactionError::Store(store) => store.into(),
+            CompactionError::Policy(message) => Self::message(message),
+        }
+    }
+}
+
+impl From<RuntimeControlError> for XyDriverError {
+    fn from(err: RuntimeControlError) -> Self {
+        match err {
+            RuntimeControlError::NoSession => Self::not_found("no active session"),
+            RuntimeControlError::Busy | RuntimeControlError::SessionBusy => {
+                Self::message(err.to_string())
+            }
+        }
+    }
+}
+
+impl From<LoadError> for XyDriverError {
+    fn from(err: LoadError) -> Self {
+        match err {
+            LoadError::Io { .. } | LoadError::Yaml { .. } | LoadError::Deserialize(_) => {
+                Self::io(err.to_string())
+            }
+            LoadError::Template(message) | LoadError::Validation(message) => {
+                Self::invalid_input(message)
+            }
+        }
+    }
+}
+
+impl From<McpError> for XyDriverError {
+    fn from(err: McpError) -> Self {
+        match err {
+            McpError::Connect(message) | McpError::Call(message) => Self::io(message),
+        }
+    }
+}
+
+impl From<ClipboardError> for XyDriverError {
+    fn from(err: ClipboardError) -> Self {
+        Self::io(err.0)
+    }
+}
+
+impl From<crate::agent::capabilities::HookBlockedError> for XyDriverError {
+    fn from(err: crate::agent::capabilities::HookBlockedError) -> Self {
+        Self::message(err.0)
     }
 }
 
@@ -255,6 +356,51 @@ mod tests {
 
         let disabled: XyDriverError = "compaction disabled".into();
         assert_eq!(disabled.kind(), "Message");
+    }
+
+    #[test]
+    fn from_store_not_found_is_single_layer() {
+        let err = XyDriverError::from(XyStoreError::not_found("abc"));
+        assert_eq!(err.kind(), "NotFound");
+        assert_eq!(err.to_string(), "not found: abc");
+    }
+
+    #[test]
+    fn from_xy_error_session_flattens_to_store_kind() {
+        let err = XyDriverError::from(XyError::from(XyStoreError::not_found("abc")));
+        assert_eq!(err.kind(), "NotFound");
+        assert_eq!(err.to_string(), "not found: abc");
+    }
+
+    #[test]
+    fn from_store_validation_keeps_policy_copy() {
+        let err = XyDriverError::from(XyStoreError::validation(
+            "empty session, nothing to compact",
+        ));
+        assert_eq!(err.kind(), "Message");
+        assert_eq!(err.to_string(), "empty session, nothing to compact");
+    }
+
+    #[test]
+    fn from_export_and_trust_are_io() {
+        let exp = XyDriverError::from(XyExportError::io(
+            "write",
+            "/tmp/out.html",
+            std::io::Error::other("disk full"),
+        ));
+        assert_eq!(exp.kind(), "Io");
+        assert!(exp.to_string().starts_with("io: write"));
+
+        let trust = XyDriverError::from(XyTrustError::Lock);
+        assert_eq!(trust.kind(), "Io");
+        assert_eq!(trust.to_string(), "io: failed to acquire trust store lock");
+    }
+
+    #[test]
+    fn from_clipboard_error_is_io() {
+        let err = XyDriverError::from(ClipboardError("Clipboard: join error: boom".into()));
+        assert_eq!(err.kind(), "Io");
+        assert_eq!(err.to_string(), "io: Clipboard: join error: boom");
     }
 
     #[test]

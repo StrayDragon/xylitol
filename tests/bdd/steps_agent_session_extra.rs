@@ -886,11 +886,15 @@ struct MockExportIo {
 
 #[async_trait::async_trait]
 impl xylitol::protocol::ports::XyExportIo for MockExportIo {
-    async fn write_text(&self, _path: &std::path::Path, content: &str) -> Result<(), String> {
+    async fn write_text(
+        &self,
+        _path: &std::path::Path,
+        content: &str,
+    ) -> Result<(), xylitol::XyExportError> {
         self.writes.lock().unwrap().push(content.to_string());
         Ok(())
     }
-    async fn read_bytes(&self, _path: &std::path::Path) -> Result<Vec<u8>, String> {
+    async fn read_bytes(&self, _path: &std::path::Path) -> Result<Vec<u8>, xylitol::XyExportError> {
         Ok(Vec::new())
     }
 }
@@ -921,11 +925,9 @@ pub(crate) async fn w_sess_export_html(agent: &AgentState, _sess: &XySessionStor
     let result = exporter
         .export_to_html(store.as_ref(), sid, out.as_path())
         .await;
-    agent.last_result.replace(Some(
-        result
-            .map(|_| "exported".into())
-            .map_err(XyDriverError::from),
-    ));
+    agent
+        .last_result
+        .replace(Some(result.map(|_| "exported".into())));
 }
 
 mod sess_caps {

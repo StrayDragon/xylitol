@@ -39,25 +39,26 @@ pub(crate) async fn comp_run_compact(
             api: None,
             compat: None,
         },
-    )
-    .expect("build fake provider");
+    );
     let settings = CompactionSettings {
         enabled: true,
         reserve_tokens: 1024,
         keep_recent_tokens,
     };
     let result = compact_session(&mgr, sid, model.as_ref(), &settings, None, None).await;
-    agent.last_result.replace(Some(
-        result
-            .as_ref()
-            .map(|e| format!("compacted:{}", e.summary.len()))
-            .map_err(|e| XyDriverError::from(e.clone())),
-    ));
-    if let Ok(entry) = result {
-        comp_fixture::LAST_COMPACTION.with(|c| c.replace(Some(entry.clone())));
-        let entries = mgr.load(sid).await.unwrap_or_default();
-        sess.entries.replace(entries);
-        sess.current_id.replace(Some(sid.to_string()));
+    match result {
+        Ok(entry) => {
+            agent
+                .last_result
+                .replace(Some(Ok(format!("compacted:{}", entry.summary.len()))));
+            comp_fixture::LAST_COMPACTION.with(|c| c.replace(Some(entry.clone())));
+            let entries = mgr.load(sid).await.unwrap_or_default();
+            sess.entries.replace(entries);
+            sess.current_id.replace(Some(sid.to_string()));
+        }
+        Err(e) => {
+            agent.last_result.replace(Some(Err(XyDriverError::from(e))));
+        }
     }
 }
 

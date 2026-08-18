@@ -11,7 +11,7 @@ use crate::protocol::model::XyModelMeta;
 use crate::protocol::ports::{XyEventSink, XyModel, XySessionStore, XyStream};
 use crate::protocol::session::SessionEntry;
 
-type ModelBuilderFn = Arc<dyn Fn(&XyModelConfig) -> Result<Arc<dyn XyModel>, String> + Send + Sync>;
+type ModelBuilderFn = crate::protocol::ports::XyModelBuilder;
 
 fn bind_session_or_panic(agent: &mut AgentRuntime, session_id: impl Into<String>) {
     agent.bind_session(session_id).expect("bind_session");
@@ -404,10 +404,10 @@ fn select_mock(mut session: AgentCapabilities) -> AgentCapabilities {
 
 fn mock_model_builder(chunks: Vec<crate::protocol::model::XyChunk>) -> ModelBuilderFn {
     Arc::new(move |_| {
-        Ok(Arc::new(MockModel {
+        Arc::new(MockModel {
             chunks: chunks.clone(),
             calls: std::sync::atomic::AtomicUsize::new(0),
-        }) as Arc<dyn XyModel>)
+        }) as Arc<dyn XyModel>
     })
 }
 
@@ -1185,9 +1185,9 @@ fn make_agent_with_rounds(
     let store: Arc<dyn XySessionStore> = Arc::new(session_mgr);
     let sink: Arc<dyn XyEventSink> = Arc::new(crate::infra::event::EventBus::new());
     let builder: XyModelBuilder = Arc::new(move |_| {
-        Ok(Arc::new(StatefulMockModel {
+        Arc::new(StatefulMockModel {
             rounds: std::sync::Mutex::new(rounds.clone()),
-        }) as Arc<dyn XyModel>)
+        }) as Arc<dyn XyModel>
     });
     let mut session = AgentCapabilities::new(
         reg,
@@ -1563,9 +1563,9 @@ async fn abort_mid_stream_stops_polling_model_chunks() {
     let store: Arc<dyn XySessionStore> = Arc::new(session_mgr);
     let sink: Arc<dyn XyEventSink> = Arc::new(crate::infra::event::EventBus::new());
     let builder: crate::protocol::ports::XyModelBuilder = Arc::new(move |_| {
-        Ok(Arc::new(SlowMock {
+        Arc::new(SlowMock {
             polled: polled_for_builder.clone(),
-        }) as Arc<dyn XyModel>)
+        }) as Arc<dyn XyModel>
     });
     let session = select_mock(AgentCapabilities::new(
         reg,
@@ -1709,13 +1709,13 @@ async fn second_turn_model_input_includes_first_turn_messages() {
     let builder: ModelBuilderFn = {
         let seen = seen.clone();
         Arc::new(move |_| {
-            Ok(Arc::new(RecordingMockModel {
+            Arc::new(RecordingMockModel {
                 seen: seen.clone(),
                 chunks: vec![
                     crate::protocol::model::XyChunk::TextDelta("ok".into()),
                     done_stop(),
                 ],
-            }) as Arc<dyn XyModel>)
+            }) as Arc<dyn XyModel>
         })
     };
     let mut agent = AgentRuntime::new(select_mock(AgentCapabilities::new(
@@ -1806,10 +1806,10 @@ async fn system_prompt_via_options_not_user_history() {
         let seen_msgs = seen_msgs.clone();
         let seen_opts = seen_opts.clone();
         Arc::new(move |_| {
-            Ok(Arc::new(RecordingMockModel {
+            Arc::new(RecordingMockModel {
                 seen_msgs: seen_msgs.clone(),
                 seen_opts: seen_opts.clone(),
-            }) as Arc<dyn XyModel>)
+            }) as Arc<dyn XyModel>
         })
     };
     let mut agent = AgentRuntime::new(select_mock(AgentCapabilities::new(
@@ -1923,9 +1923,7 @@ async fn dollar_skill_expanded_for_model_history_stays_raw() {
     let sink: Arc<dyn XyEventSink> = Arc::new(crate::infra::event::EventBus::new());
     let builder: ModelBuilderFn = {
         let seen = seen.clone();
-        Arc::new(move |_| {
-            Ok(Arc::new(RecordingMockModel { seen: seen.clone() }) as Arc<dyn XyModel>)
-        })
+        Arc::new(move |_| Arc::new(RecordingMockModel { seen: seen.clone() }) as Arc<dyn XyModel>)
     };
     let mut agent = AgentRuntime::new(select_mock(AgentCapabilities::new(
         reg,
@@ -2387,9 +2385,9 @@ async fn reject_second_root_while_first_live() {
     let store: Arc<dyn XySessionStore> = Arc::new(session_mgr);
     let sink: Arc<dyn XyEventSink> = Arc::new(crate::infra::event::EventBus::new());
     let builder: crate::protocol::ports::XyModelBuilder = Arc::new(move |_| {
-        Ok(Arc::new(SlowMock {
+        Arc::new(SlowMock {
             calls: calls_b.clone(),
-        }) as Arc<dyn XyModel>)
+        }) as Arc<dyn XyModel>
     });
     let session = select_mock(AgentCapabilities::new(
         reg,
@@ -2505,9 +2503,9 @@ async fn abort_and_replace_starts_after_cancel() {
     let store: Arc<dyn XySessionStore> = Arc::new(session_mgr);
     let sink: Arc<dyn XyEventSink> = Arc::new(crate::infra::event::EventBus::new());
     let builder: crate::protocol::ports::XyModelBuilder = Arc::new(move |_| {
-        Ok(Arc::new(SlowMock {
+        Arc::new(SlowMock {
             calls: calls_b.clone(),
-        }) as Arc<dyn XyModel>)
+        }) as Arc<dyn XyModel>
     });
     let session = select_mock(AgentCapabilities::new(
         reg,
@@ -2601,9 +2599,9 @@ async fn queue_after_run_fifo_and_drop_revokes() {
     let store: Arc<dyn XySessionStore> = Arc::new(session_mgr);
     let sink: Arc<dyn XyEventSink> = Arc::new(crate::infra::event::EventBus::new());
     let builder: crate::protocol::ports::XyModelBuilder = Arc::new(move |_| {
-        Ok(Arc::new(CountingMock {
+        Arc::new(CountingMock {
             calls: calls_b.clone(),
-        }) as Arc<dyn XyModel>)
+        }) as Arc<dyn XyModel>
     });
     let session = select_mock(AgentCapabilities::new(
         reg,
@@ -2704,9 +2702,9 @@ async fn abort_keeps_queued_root_after_active_cancels() {
     let store: Arc<dyn XySessionStore> = Arc::new(session_mgr);
     let sink: Arc<dyn XyEventSink> = Arc::new(crate::infra::event::EventBus::new());
     let builder: crate::protocol::ports::XyModelBuilder = Arc::new(move |_| {
-        Ok(Arc::new(SlowThenFast {
+        Arc::new(SlowThenFast {
             calls: calls_b.clone(),
-        }) as Arc<dyn XyModel>)
+        }) as Arc<dyn XyModel>
     });
     let session = select_mock(AgentCapabilities::new(
         reg,
@@ -2816,9 +2814,9 @@ async fn abort_and_replace_keeps_new_run_event_tx_and_active_turn() {
     let store: Arc<dyn XySessionStore> = Arc::new(session_mgr);
     let sink: Arc<dyn XyEventSink> = Arc::new(crate::infra::event::EventBus::new());
     let builder: crate::protocol::ports::XyModelBuilder = Arc::new(move |_| {
-        Ok(Arc::new(SlowMock {
+        Arc::new(SlowMock {
             calls: calls_b.clone(),
-        }) as Arc<dyn XyModel>)
+        }) as Arc<dyn XyModel>
     });
     let session = select_mock(AgentCapabilities::new(
         reg,
@@ -2948,10 +2946,10 @@ async fn queue_after_run_second_reads_persisted_history() {
     let store: Arc<dyn XySessionStore> = Arc::new(session_mgr);
     let sink: Arc<dyn XyEventSink> = Arc::new(crate::infra::event::EventBus::new());
     let builder: crate::protocol::ports::XyModelBuilder = Arc::new(move |_| {
-        Ok(Arc::new(HistoryMock {
+        Arc::new(HistoryMock {
             calls: calls_b.clone(),
             seen: seen_b.clone(),
-        }) as Arc<dyn XyModel>)
+        }) as Arc<dyn XyModel>
     });
     let session = select_mock(AgentCapabilities::new(
         reg,
@@ -3066,9 +3064,9 @@ async fn bind_session_rejects_while_busy() {
     let store: Arc<dyn XySessionStore> = Arc::new(session_mgr);
     let sink: Arc<dyn XyEventSink> = Arc::new(crate::infra::event::EventBus::new());
     let builder: crate::protocol::ports::XyModelBuilder = Arc::new(move |_| {
-        Ok(Arc::new(SlowMock {
+        Arc::new(SlowMock {
             calls: calls_b.clone(),
-        }) as Arc<dyn XyModel>)
+        }) as Arc<dyn XyModel>
     });
     let session = select_mock(AgentCapabilities::new(
         reg,

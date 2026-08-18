@@ -14,6 +14,7 @@ use std::time::Duration;
 
 use serde::{Deserialize, Serialize};
 
+use crate::protocol::error::XyTrustError;
 use crate::protocol::ports::XyTrustStore;
 
 /// In-memory trust file: canonical path → decision. Sorted for deterministic output.
@@ -95,11 +96,10 @@ impl TrustManager {
 
     /// Acquire an exclusive lock via a `.lock` sibling using `O_CREAT | O_EXCL`,
     /// retrying briefly to tolerate concurrent writers.
-    fn acquire_lock(&self) -> Result<fs::File, String> {
+    fn acquire_lock(&self) -> Result<fs::File, XyTrustError> {
         let lock_path = self.trust_file_path.with_extension("json.lock");
         if let Some(parent) = lock_path.parent() {
-            fs::create_dir_all(parent)
-                .map_err(|e| format!("create trust lock dir {parent:?}: {e}"))?;
+            fs::create_dir_all(parent).map_err(|e| XyTrustError::io("create trust lock dir", e))?;
         }
         let max_attempts = 10;
         let delay = Duration::from_millis(20);
@@ -115,18 +115,16 @@ impl TrustManager {
                 }
                 Err(e) if e.kind() == ErrorKind::AlreadyExists => {
                     if attempt == max_attempts {
-                        return Err(format!(
-                            "trust store lock contention after {max_attempts} attempts: {e}"
-                        ));
+                        return Err(XyTrustError::Lock);
                     }
                     std::thread::sleep(delay);
                 }
                 Err(e) => {
-                    return Err(format!("create trust lock {lock_path:?}: {e}"));
+                    return Err(XyTrustError::io("create trust lock", e));
                 }
             }
         }
-        Err("failed to acquire trust store lock".to_string())
+        Err(XyTrustError::Lock)
     }
 
     fn release_lock(&self, lock_file: fs::File) {
@@ -135,7 +133,7 @@ impl TrustManager {
         let _ = fs::remove_file(&lock_path);
     }
 
-    fn with_lock<T>(&self, f: impl FnOnce() -> Result<T, String>) -> Result<T, String> {
+    fn with_lock<T>(&self, f: impl FnOnce() -> Result<T, XyTrustError>) -> Result<T, XyTrustError> {
         let lock = self.acquire_lock()?;
         let result = f();
         self.release_lock(lock);
@@ -144,37 +142,28 @@ impl TrustManager {
 
     // ── File I/O ─────────────────────────────────────────────────
 
-    fn read_file(&self) -> Result<TrustFile, String> {
+    fn read_file(&self) -> Result<TrustFile, XyTrustError> {
         if !self.trust_file_path.exists() {
             return Ok(BTreeMap::new());
         }
-        let raw = fs::read_to_string(&self.trust_file_path).map_err(|e| {
-            format!(
-                "read trust store {path:?}: {e}",
-                path = self.trust_file_path
-            )
-        })?;
-        let parsed: TrustFile = serde_json::from_str(&raw).map_err(|e| {
-            format!(
-                "parse trust store {path:?}: {e}",
-                path = self.trust_file_path
-            )
-        })?;
+        let raw = fs::read_to_string(&self.trust_file_path)
+            .map_err(|e| XyTrustError::io("read trust store", e))?;
+        let parsed: TrustFile = serde_json::from_str(&raw)?;
         Ok(parsed)
     }
 
-    fn write_file(&self, data: &TrustFile) -> Result<(), String> {
+    fn write_file(&self, data: &TrustFile) -> Result<(), XyTrustError> {
         if let Some(parent) = self.trust_file_path.parent() {
-            fs::create_dir_all(parent).map_err(|e| format!("create trust dir {parent:?}: {e}"))?;
+            fs::create_dir_all(parent).map_err(|e| XyTrustError::io("create trust dir", e))?;
         }
         // BTreeMap yields sorted keys → deterministic output.
-        let json = serde_json::to_string_pretty(data)
-            .map_err(|e| format!("serialize trust store: {e}"))?;
+        let json = serde_json::to_string_pretty(data)?;
         // Atomic write: tmp file then rename.
         let tmp_path = self.trust_file_path.with_extension("json.tmp");
         fs::write(&tmp_path, format!("{json}\n"))
-            .map_err(|e| format!("write trust tmp {tmp_path:?}: {e}"))?;
-        fs::rename(&tmp_path, &self.trust_file_path).map_err(|e| format!("rename trust store: {e}"))
+            .map_err(|e| XyTrustError::io("write trust tmp", e))?;
+        fs::rename(&tmp_path, &self.trust_file_path)
+            .map_err(|e| XyTrustError::io("rename trust store", e))
     }
 
     // ── Public API ───────────────────────────────────────────────
@@ -196,7 +185,7 @@ impl TrustManager {
     }
 
     /// Persist a single trust decision for a path.
-    pub fn set_trust(&self, path: &str, decision: TrustDecision) -> Result<(), String> {
+    pub fn set_trust(&self, path: &str, decision: TrustDecision) -> Result<(), XyTrustError> {
         self.apply_updates(&[TrustUpdate {
             path: path.to_string(),
             decision,
@@ -204,7 +193,7 @@ impl TrustManager {
     }
 
     /// Apply multiple trust updates atomically under the lock.
-    pub fn apply_updates(&self, updates: &[TrustUpdate]) -> Result<(), String> {
+    pub fn apply_updates(&self, updates: &[TrustUpdate]) -> Result<(), XyTrustError> {
         self.with_lock(|| {
             let mut data = self.read_file()?;
             for update in updates {
@@ -316,7 +305,7 @@ impl TrustManager {
 }
 
 impl XyTrustStore for TrustManager {
-    fn set_trust(&self, path: &str, trusted: Option<bool>) -> Result<(), String> {
+    fn set_trust(&self, path: &str, trusted: Option<bool>) -> Result<(), XyTrustError> {
         self.set_trust(path, trusted)
     }
 }

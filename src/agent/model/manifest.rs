@@ -28,6 +28,18 @@ use super::registry::ModelRegistry;
 use crate::protocol::model::XyModelMeta;
 use crate::protocol::model::{XyModelConfig, XyModelKind};
 
+/// Manifest load failures (crate-private; not `Xy*`).
+#[derive(Debug, thiserror::Error)]
+pub enum ManifestError {
+    #[error("read manifest {path:?}: {source}")]
+    Read {
+        path: std::path::PathBuf,
+        source: std::io::Error,
+    },
+    #[error("parse manifest: {0}")]
+    Parse(#[from] serde_json::Error),
+}
+
 /// A single model definition from a manifest file.
 #[derive(Debug, Clone, Deserialize)]
 pub struct ManifestModel {
@@ -80,12 +92,13 @@ pub fn load_models_from_manifest(
     path: &Path,
     registry: &mut ModelRegistry,
     default_api_key: Option<&str>,
-) -> Result<usize, String> {
-    let content =
-        std::fs::read_to_string(path).map_err(|e| format!("read manifest {path:?}: {e}"))?;
+) -> Result<usize, ManifestError> {
+    let content = std::fs::read_to_string(path).map_err(|source| ManifestError::Read {
+        path: path.to_path_buf(),
+        source,
+    })?;
 
-    let manifest: ModelManifest =
-        serde_json::from_str(&content).map_err(|e| format!("parse manifest: {e}"))?;
+    let manifest: ModelManifest = serde_json::from_str(&content)?;
 
     let mut count = 0;
     for m in &manifest.models {

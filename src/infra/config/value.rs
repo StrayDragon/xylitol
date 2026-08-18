@@ -10,6 +10,7 @@
 use std::collections::HashMap;
 use std::sync::Mutex;
 
+use crate::infra::config::error::LoadError;
 use crate::protocol::ports::XySecretResolver;
 
 // ── Types ──────────────────────────────────────────────────────────
@@ -322,10 +323,10 @@ pub fn resolve_config_value_or_throw(
     config: &str,
     description: &str,
     env: Option<&HashMap<String, String>>,
-) -> Result<String, String> {
+) -> Result<String, LoadError> {
     resolve_config_value(config, env).ok_or_else(|| {
         let reference = parse_config_value(config);
-        match reference {
+        let message = match reference {
             ConfigValueReference::ShellCmd(cmd) => {
                 format!("Failed to resolve {description} from shell command: {cmd}")
             }
@@ -355,7 +356,8 @@ pub fn resolve_config_value_or_throw(
             ConfigValueReference::Literal(_) => {
                 format!("Failed to resolve {description}")
             }
-        }
+        };
+        LoadError::validation(message)
     })
 }
 
@@ -635,7 +637,7 @@ mod tests {
     fn test_resolve_or_throw_err() {
         let result = resolve_config_value_or_throw("${MISSING}", "missing key", None);
         assert!(result.is_err());
-        assert!(result.unwrap_err().contains("MISSING"));
+        assert!(result.unwrap_err().to_string().contains("MISSING"));
     }
 
     #[test]

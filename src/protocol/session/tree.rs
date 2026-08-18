@@ -4,6 +4,7 @@ use serde::{Deserialize, Serialize};
 
 use super::entries::SessionEntry;
 use super::helpers::{is_user_message, message_text};
+use crate::protocol::error::XyStoreError;
 
 /// Kind of session tree exposed via [`crate::app::core::driver::XyDriver`].
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
@@ -114,15 +115,15 @@ pub fn build_session_tree(entries: &[SessionEntry]) -> Vec<SessionTreeNode> {
 pub fn plan_message_history_travel(
     entries: &[SessionEntry],
     selected_id: &str,
-) -> Result<SessionTreeTravel, String> {
+) -> Result<SessionTreeTravel, XyStoreError> {
     let selected = entries
         .iter()
         .find(|e| e.entry_id() == Some(selected_id))
-        .ok_or_else(|| format!("entry not found: {selected_id}"))?;
+        .ok_or_else(|| XyStoreError::entry_not_found(selected_id))?;
 
     if is_user_message(selected) {
         let SessionEntry::Message(m) = selected else {
-            return Err(format!("entry not found: {selected_id}"));
+            return Err(XyStoreError::entry_not_found(selected_id));
         };
         Ok(SessionTreeTravel {
             kind: SessionTreeKind::MessageHistory,
