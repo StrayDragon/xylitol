@@ -9,6 +9,7 @@ use std::path::{Path, PathBuf};
 use std::sync::{Arc, OnceLock, RwLock};
 
 use crate::dto::AiBridgeMessage;
+use crate::error::AiBridgeError;
 
 /// Process-wide loaded HF [`tokenizers::Tokenizer`] handles (keyed by canonical path).
 ///
@@ -178,11 +179,11 @@ impl HfTokenizerCache {
     }
 
     /// Remove one cache key. Missing path is Ok (idempotent).
-    pub fn remove(&self, repo: &str, file: &str) -> Result<(), String> {
+    pub fn remove(&self, repo: &str, file: &str) -> Result<(), AiBridgeError> {
         let path = self.cache_path(repo, file);
         invalidate_loaded_tokenizer(&path);
         if path.exists() {
-            std::fs::remove_file(&path).map_err(|e| e.to_string())?;
+            std::fs::remove_file(&path).map_err(|e| AiBridgeError::Io(e.to_string()))?;
         }
         if let Some(parent) = path.parent() {
             let _ = std::fs::remove_dir(parent); // only if empty
@@ -191,12 +192,12 @@ impl HfTokenizerCache {
     }
 
     /// Remove all entries under the cache root.
-    pub fn remove_all(&self) -> Result<(), String> {
+    pub fn remove_all(&self) -> Result<(), AiBridgeError> {
         invalidate_all_loaded_tokenizers();
         if !self.cache_dir.exists() {
             return Ok(());
         }
-        std::fs::remove_dir_all(&self.cache_dir).map_err(|e| e.to_string())?;
+        std::fs::remove_dir_all(&self.cache_dir).map_err(|e| AiBridgeError::Io(e.to_string()))?;
         Ok(())
     }
 
@@ -221,13 +222,13 @@ impl HfTokenizerCache {
         repo: &str,
         file: &str,
         url: &str,
-    ) -> Result<PathBuf, String> {
+    ) -> Result<PathBuf, AiBridgeError> {
         let path = self.cache_path(repo, file);
         if path.exists() {
             return Ok(path);
         }
         if let Some(parent) = path.parent() {
-            std::fs::create_dir_all(parent).map_err(|e| e.to_string())?;
+            std::fs::create_dir_all(parent).map_err(|e| AiBridgeError::Io(e.to_string()))?;
         }
         let tmp = {
             let mut t = path.as_os_str().to_owned();
@@ -237,14 +238,14 @@ impl HfTokenizerCache {
         let result = async {
             let bytes = reqwest::get(url)
                 .await
-                .map_err(|e| e.to_string())?
+                .map_err(|e| AiBridgeError::Io(e.to_string()))?
                 .error_for_status()
-                .map_err(|e| e.to_string())?
+                .map_err(|e| AiBridgeError::Io(e.to_string()))?
                 .bytes()
                 .await
-                .map_err(|e| e.to_string())?;
-            std::fs::write(&tmp, &bytes).map_err(|e| e.to_string())?;
-            std::fs::rename(&tmp, &path).map_err(|e| e.to_string())?;
+                .map_err(|e| AiBridgeError::Io(e.to_string()))?;
+            std::fs::write(&tmp, &bytes).map_err(|e| AiBridgeError::Io(e.to_string()))?;
+            std::fs::rename(&tmp, &path).map_err(|e| AiBridgeError::Io(e.to_string()))?;
             Ok(path.clone())
         }
         .await;
@@ -255,7 +256,11 @@ impl HfTokenizerCache {
     }
 
     /// Opt-in download using [`build_hf_resolve_url`] (`HF_ENDPOINT` aware).
-    pub async fn download_opt_in_hf(&self, repo: &str, file: &str) -> Result<PathBuf, String> {
+    pub async fn download_opt_in_hf(
+        &self,
+        repo: &str,
+        file: &str,
+    ) -> Result<PathBuf, AiBridgeError> {
         let url = build_hf_resolve_url(repo, file);
         self.download_opt_in(repo, file, &url).await
     }

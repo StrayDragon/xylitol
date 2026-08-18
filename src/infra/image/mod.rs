@@ -4,9 +4,11 @@
 //! - Convert to JPEG with quality control when encoded size exceeds limit
 //! - Produce base64 payload under ~4.5MB
 
+mod error;
 mod from_path;
 mod resize;
 
+pub use error::ImageError;
 pub use from_path::{agent_part_from_image_path, image_content_from_path};
 pub use resize::resize_image;
 pub use resize::{ImageResizeOptions, ResizedImage};

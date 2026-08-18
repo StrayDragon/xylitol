@@ -38,7 +38,7 @@ pub fn adapters_from_discovered(
 /// Empty / disabled input returns `None` without constructing a manager.
 pub async fn connect_and_discover(
     servers: &[McpServerConfig],
-) -> Result<Option<(Arc<McpClientManager>, Vec<Arc<dyn XyTool>>)>, String> {
+) -> Option<(Arc<McpClientManager>, Vec<Arc<dyn XyTool>>)> {
     connect_and_discover_with_progress(servers, None).await
 }
 
@@ -46,15 +46,15 @@ pub async fn connect_and_discover(
 pub async fn connect_and_discover_with_progress(
     servers: &[McpServerConfig],
     progress: Option<std::sync::Arc<tokio::sync::Mutex<super::client::McpConnectProgress>>>,
-) -> Result<Option<(Arc<McpClientManager>, Vec<Arc<dyn XyTool>>)>, String> {
+) -> Option<(Arc<McpClientManager>, Vec<Arc<dyn XyTool>>)> {
     if servers.is_empty() {
-        return Ok(None);
+        return None;
     }
 
     let manager = Arc::new(McpClientManager::new());
     manager
         .connect_servers_with_progress(servers, progress.clone())
-        .await?;
+        .await;
     let rows = manager.list_all_tools().await;
     let tools = adapters_from_discovered(manager.clone(), &rows);
     if let Some(progress) = progress.as_ref() {
@@ -62,16 +62,16 @@ pub async fn connect_and_discover_with_progress(
         snap.connecting = false;
         snap.current = None;
     }
-    Ok(Some((manager, tools)))
+    Some((manager, tools))
 }
 
 /// Convenience: pull servers from [`AppConfig`] and assemble.
 pub async fn connect_and_discover_from_config(
     config: &AppConfig,
-) -> Result<Option<(Arc<McpClientManager>, Vec<Arc<dyn XyTool>>)>, String> {
+) -> Option<(Arc<McpClientManager>, Vec<Arc<dyn XyTool>>)> {
     match &config.mcp_servers {
         Some(servers) if !servers.is_empty() => connect_and_discover(servers).await,
-        _ => Ok(None),
+        _ => None,
     }
 }
 
@@ -110,7 +110,7 @@ mod tests {
 
     #[tokio::test]
     async fn connect_and_discover_empty_is_none() {
-        let result = connect_and_discover(&[]).await.unwrap();
+        let result = connect_and_discover(&[]).await;
         assert!(result.is_none());
     }
 
@@ -122,7 +122,7 @@ mod tests {
             command: None,
             ..Default::default()
         };
-        assert!(cfg.validate().unwrap_err().contains("command"));
+        assert!(cfg.validate().unwrap_err().to_string().contains("command"));
     }
 
     #[tokio::test]
@@ -134,7 +134,7 @@ mod tests {
             command: None,
             ..Default::default()
         }];
-        let result = connect_and_discover(&servers).await.unwrap();
+        let result = connect_and_discover(&servers).await;
         let Some((manager, tools)) = result else {
             panic!("non-empty server list should still construct manager");
         };
@@ -171,12 +171,9 @@ mod tests {
             "missing fixture server at {}",
             script.display()
         );
-        let result = connect_and_discover(&[fixture_mcp_config("fixture", "ping")])
+        let (manager, tools) = connect_and_discover(&[fixture_mcp_config("fixture", "ping")])
             .await
             .expect("discover");
-        let Some((manager, tools)) = result else {
-            panic!("fixture server MUST produce a manager");
-        };
         let names: Vec<_> = tools.iter().map(|t| t.name().to_string()).collect();
         assert!(
             names.iter().any(|n| n == "mcp__fixture__ping"),
@@ -212,12 +209,9 @@ mod tests {
     /// Real stdio MCP: tools env change (add echo) is visible on rediscover.
     #[tokio::test]
     async fn connect_and_discover_fixture_can_add_echo_tool() {
-        let result = connect_and_discover(&[fixture_mcp_config("fixture", "ping,echo")])
+        let (manager, tools) = connect_and_discover(&[fixture_mcp_config("fixture", "ping,echo")])
             .await
             .expect("discover");
-        let Some((manager, tools)) = result else {
-            panic!("fixture server MUST produce a manager");
-        };
         let names: Vec<_> = tools.iter().map(|t| t.name().to_string()).collect();
         assert!(names.iter().any(|n| n == "mcp__fixture__ping"), "{names:?}");
         assert!(names.iter().any(|n| n == "mcp__fixture__echo"), "{names:?}");

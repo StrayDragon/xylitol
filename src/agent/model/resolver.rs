@@ -42,21 +42,22 @@ impl ResolvedModel {
 
 // ── Resolution ──────────────────────────────────────────────────────
 
+/// Empty catalog — the only hard failure from pattern resolution.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, thiserror::Error)]
+#[error("no models available")]
+pub(crate) struct EmptyModelCatalog;
+
 /// Resolve a model by pattern string against available models.
 ///
-/// Resolution order:
-/// 1. Try the complete pattern as an exact model id.
-/// 2. For a non-empty `model:thinkingLevel` suffix, resolve the base model and
-///    retain the suffix verbatim.
-/// 3. Try exact and fuzzy model matching.
-/// 4. Fallback to the requested complete pattern.
+/// Tries the complete pattern as an exact id, then a `model:thinkingLevel`
+/// suffix, then exact/fuzzy matching, then fallback to the requested pattern.
 pub(crate) fn resolve_model(
     pattern: &str,
     available: &[&XyModelMeta],
     default_provider: Option<&str>,
-) -> Result<ResolvedModel, String> {
+) -> Result<ResolvedModel, EmptyModelCatalog> {
     if available.is_empty() {
-        return Err("no models available".to_string());
+        return Err(EmptyModelCatalog);
     }
 
     // Preserve a colon-bearing configured model id before treating the final

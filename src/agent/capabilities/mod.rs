@@ -26,7 +26,7 @@ mod session_ops;
 mod stats;
 mod tools_ops;
 
-pub(crate) use self::hook_bus::{cancel_hook, observe_hook, observe_hook_sync};
+pub(crate) use self::hook_bus::{HookBlockedError, cancel_hook, observe_hook, observe_hook_sync};
 pub use self::queue::{
     AsyncQueueRuntime, PendingMessageQueue, QueueChannel, QueueMode, QueueStats,
 };

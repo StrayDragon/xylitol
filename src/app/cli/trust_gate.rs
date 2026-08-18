@@ -119,7 +119,7 @@ pub fn run_trust_gate_if_needed(trust_override: Option<bool>) -> Result<(), Trus
 
 fn run_choice_ui(cwd: &str, options: &[TrustOption]) -> Result<TrustGateResult, TrustGateError> {
     install_lifecycle_hooks();
-    let guard = TerminalGuard::enter().map_err(TrustGateError::Other)?;
+    let guard = TerminalGuard::enter().map_err(|e| TrustGateError::Other(e.to_string()))?;
     let terminal = guard.take();
 
     let done: Rc<RefCell<Option<ChoiceResult>>> = Rc::new(RefCell::new(None));

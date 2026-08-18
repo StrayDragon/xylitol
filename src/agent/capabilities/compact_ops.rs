@@ -1,12 +1,13 @@
 //! Compaction orchestration methods on [`AgentCapabilities`].
 
 use super::{AgentCapabilities, observe_hook};
-use crate::protocol::error::XyError;
+use crate::agent::compaction::CompactionError;
+use crate::protocol::error::XyStoreError;
 
 impl AgentCapabilities {
     /// Check and perform auto-compaction if the context is full.
     /// Returns true if compaction was performed.
-    pub async fn maybe_auto_compact(&self) -> Result<bool, XyError> {
+    pub async fn maybe_auto_compact(&self) -> Result<bool, CompactionError> {
         self.maybe_auto_compact_with(
             &crate::agent::compaction::EstimateOpts {
                 model_id: self.current_model().map(|m| m.id.clone()),
@@ -24,12 +25,14 @@ impl AgentCapabilities {
         &self,
         estimate_opts: &crate::agent::compaction::EstimateOpts,
         last_assistant: Option<&crate::protocol::message::AgentMessage>,
-    ) -> Result<bool, XyError> {
+    ) -> Result<bool, CompactionError> {
         let sid = self
             .session_id()
-            .ok_or_else(|| XyError::Session(anyhow::anyhow!("no active session")))?;
+            .ok_or(CompactionError::from(XyStoreError::NoActiveSession))?;
 
-        let model = self.build_current_model()?;
+        let model = self
+            .build_current_model()
+            .map_err(|e| CompactionError::policy(e.to_string()))?;
 
         let ctx_window = self
             .current_model()
@@ -54,8 +57,7 @@ impl AgentCapabilities {
                 None,
                 None,
             )
-            .await
-            .map_err(|e| XyError::Session(anyhow::anyhow!(e)))?;
+            .await?;
 
         if compacted && let Some(bus) = &self.hook_bus {
             let (ty, phase, ctx) = crate::agent::runtime::script_hook_ctx::session_compact();
@@ -66,12 +68,14 @@ impl AgentCapabilities {
     }
 
     /// Manual force compact (pi `compact(customInstructions?)`). Does not apply the reserve gate.
-    pub async fn force_compact(&self, instructions: Option<String>) -> Result<(), XyError> {
+    pub async fn force_compact(&self, instructions: Option<String>) -> Result<(), CompactionError> {
         let sid = self
             .session_id()
-            .ok_or_else(|| XyError::Session(anyhow::anyhow!("no active session")))?;
+            .ok_or(CompactionError::from(XyStoreError::NoActiveSession))?;
 
-        let model = self.build_current_model()?;
+        let model = self
+            .build_current_model()
+            .map_err(|e| CompactionError::policy(e.to_string()))?;
 
         if let Some(bus) = &self.hook_bus {
             let (ty, phase, ctx) = crate::agent::runtime::script_hook_ctx::session_before_compact();
@@ -86,8 +90,7 @@ impl AgentCapabilities {
                 self.sink.as_ref(),
                 instructions,
             )
-            .await
-            .map_err(|e| XyError::Session(anyhow::anyhow!(e)))?;
+            .await?;
 
         if let Some(bus) = &self.hook_bus {
             let (ty, phase, ctx) = crate::agent::runtime::script_hook_ctx::session_compact();

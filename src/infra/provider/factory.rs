@@ -50,7 +50,7 @@ pub fn set_fake_tool_result(text: &str) {
 }
 
 /// Build a provider instance from a model config.
-pub fn build_provider(config: &XyModelConfig) -> Result<Arc<dyn XyModel>, String> {
+pub fn build_provider(config: &XyModelConfig) -> Arc<dyn XyModel> {
     build_provider_with_hooks(config, None)
 }
 
@@ -58,11 +58,11 @@ pub fn build_provider(config: &XyModelConfig) -> Result<Arc<dyn XyModel>, String
 pub fn build_provider_with_hooks(
     config: &XyModelConfig,
     hooks: Option<Arc<crate::infra::hooks::HookDispatcher>>,
-) -> Result<Arc<dyn XyModel>, String> {
+) -> Arc<dyn XyModel> {
     match config.kind {
         XyModelKind::OpenAi | XyModelKind::Anthropic => {
-            let adapter = build_adapter(config, hooks)?;
-            Ok(Arc::new(AdapterXyModel::new(adapter)) as Arc<dyn XyModel>)
+            let adapter = build_adapter(config, hooks);
+            Arc::new(AdapterXyModel::new(adapter)) as Arc<dyn XyModel>
         }
         XyModelKind::Fake => {
             let steps = {
@@ -118,7 +118,7 @@ pub fn build_provider_with_hooks(
                 }
             };
             let fake = FakeProvider::new("__fake__", steps);
-            Ok(Arc::new(fake) as Arc<dyn XyModel>)
+            Arc::new(fake) as Arc<dyn XyModel>
         }
     }
 }

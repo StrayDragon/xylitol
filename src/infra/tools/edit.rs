@@ -247,14 +247,9 @@ impl TypedTool for EditTool {
                 let edit_pairs = edit_pairs.clone();
                 let cancel = cancel.clone();
                 let file_path = fp.clone();
-                async move {
-                    Self::do_edit(&file_path, edit_pairs, cancel)
-                        .await
-                        .map_err(|e| e.to_string())
-                }
+                async move { Self::do_edit(&file_path, edit_pairs, cancel).await }
             })
-            .await
-            .map_err(|e| XyToolError::ExecutionFailed(anyhow::anyhow!("{e}")))?;
+            .await?;
 
         Ok(result_text)
     }

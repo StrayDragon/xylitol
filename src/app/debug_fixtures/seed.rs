@@ -2,6 +2,7 @@
 
 use serde_json::{Value, json};
 
+use crate::app::core::driver_error::XyDriverError;
 use crate::protocol::message::{AgentMessage, AgentPart, LlmMessage, XyStopReason};
 use crate::protocol::ports::XySessionStore;
 use crate::protocol::session::{
@@ -160,7 +161,7 @@ fn rebase_message(entry: SessionEntry, id: &str, parent: Option<&str>, ts: u64) 
 async fn seed_activity_fold_resume(
     store: &dyn XySessionStore,
     session_id: &str,
-) -> Result<(), String> {
+) -> Result<(), XyDriverError> {
     for entry in activity_fold_resume_raw() {
         store.append_session_entry(session_id, &entry).await?;
     }
@@ -172,12 +173,12 @@ pub async fn seed_scene(
     store: &dyn XySessionStore,
     session_id: &str,
     scene: &str,
-) -> Result<&'static str, String> {
+) -> Result<&'static str, XyDriverError> {
     let id = resolve_scene_id(scene).ok_or_else(|| {
-        format!(
+        XyDriverError::invalid_input(format!(
             "unknown debug scene: {scene}\n{}",
             super::catalog::list_note()
-        )
+        ))
     })?;
     match id {
         "session-tree-multiturn" => seed_multiturn(store, session_id).await?,
@@ -185,13 +186,20 @@ pub async fn seed_scene(
         "session-tree-branched" => seed_branched(store, session_id).await?,
         "ao-perf-scroll" => seed_ao_perf_scroll(store, session_id).await?,
         "activity-fold-resume" => seed_activity_fold_resume(store, session_id).await?,
-        _ => return Err(format!("unhandled debug scene id: {id}")),
+        _ => {
+            return Err(XyDriverError::invalid_input(format!(
+                "unhandled debug scene id: {id}"
+            )));
+        }
     }
     Ok(id)
 }
 
 /// Long spine for ApplicationOwned wheel / select CPU hand-tests (~80 turns).
-async fn seed_ao_perf_scroll(store: &dyn XySessionStore, session_id: &str) -> Result<(), String> {
+async fn seed_ao_perf_scroll(
+    store: &dyn XySessionStore,
+    session_id: &str,
+) -> Result<(), XyDriverError> {
     const TURNS: usize = 80;
     let chunk = "字".repeat(48);
     for i in 0..TURNS {
@@ -209,7 +217,7 @@ async fn seed_ao_perf_scroll(store: &dyn XySessionStore, session_id: &str) -> Re
     Ok(())
 }
 
-async fn seed_multiturn(store: &dyn XySessionStore, session_id: &str) -> Result<(), String> {
+async fn seed_multiturn(store: &dyn XySessionStore, session_id: &str) -> Result<(), XyDriverError> {
     store
         .append_session_entry(session_id, &user_msg("debug: hi"))
         .await?;
@@ -231,16 +239,16 @@ async fn seed_multiturn(store: &dyn XySessionStore, session_id: &str) -> Result<
 /// u_root → a_root ─┬─ u_main → a_main
 ///                  └─ u_alt  → a_alt
 /// ```
-async fn seed_branched(store: &dyn XySessionStore, session_id: &str) -> Result<(), String> {
+async fn seed_branched(store: &dyn XySessionStore, session_id: &str) -> Result<(), XyDriverError> {
     store
         .append_session_entry(session_id, &user_msg("debug: root"))
         .await?;
     store
         .append_session_entry(session_id, &assistant_msg("debug: root reply"))
         .await?;
-    let fork_parent = store
-        .leaf_id(session_id)
-        .ok_or_else(|| "debug session-tree-branched: missing fork parent leaf".to_string())?;
+    let fork_parent = store.leaf_id(session_id).ok_or_else(|| {
+        XyDriverError::message("debug session-tree-branched: missing fork parent leaf")
+    })?;
 
     store
         .append_session_entry(session_id, &user_msg("debug: main branch"))
@@ -259,7 +267,7 @@ async fn seed_branched(store: &dyn XySessionStore, session_id: &str) -> Result<(
     Ok(())
 }
 
-async fn seed_labeled(store: &dyn XySessionStore, session_id: &str) -> Result<(), String> {
+async fn seed_labeled(store: &dyn XySessionStore, session_id: &str) -> Result<(), XyDriverError> {
     store
         .append_session_entry(session_id, &user_msg("debug: labeled root"))
         .await?;
@@ -280,7 +288,7 @@ async fn seed_labeled(store: &dyn XySessionStore, session_id: &str) -> Result<()
             }
             _ => None,
         })
-        .ok_or_else(|| "debug session-tree-labeled: missing user entry".to_string())?;
+        .ok_or_else(|| XyDriverError::message("debug session-tree-labeled: missing user entry"))?;
     store
         .append_session_entry(
             session_id,

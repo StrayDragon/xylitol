@@ -5,7 +5,7 @@
 use std::sync::Arc;
 
 use crate::agent::compaction::CompactionSettings;
-use crate::protocol::error::XyError;
+use crate::protocol::error::{XyError, XyStoreError};
 use crate::protocol::message::AgentMessage;
 use crate::protocol::ports::XySessionStore;
 
@@ -51,7 +51,7 @@ impl AgentCapabilities {
         self.store
             .create(id, Some(&cwd_clone), parent)
             .await
-            .map_err(|e| XyError::Session(anyhow::anyhow!(e)))?;
+            .map_err(XyError::from)?;
         if !had_header && let Some(bus) = &self.hook_bus {
             let reason = if parent.is_some() { "fork" } else { "new" };
             let (ty, phase, ctx) = crate::agent::runtime::script_hook_ctx::session_start(reason);
@@ -69,7 +69,7 @@ impl AgentCapabilities {
             .store
             .load_leaf_branch(session_id)
             .await
-            .map_err(|e| XyError::Session(anyhow::anyhow!(e)))?;
+            .map_err(XyError::from)?;
         let entries = crate::protocol::session::build_context_entries(&entries);
         Ok(entries
             .iter()
@@ -105,7 +105,7 @@ impl AgentCapabilities {
     ) -> Result<String, XyError> {
         let parent_id = self
             .session_id()
-            .ok_or_else(|| XyError::Session(anyhow::anyhow!("no active session")))?;
+            .ok_or(XyError::from(XyStoreError::NoActiveSession))?;
 
         if let Some(bus) = &self.hook_bus {
             let (ty, phase, ctx) = crate::agent::runtime::script_hook_ctx::session_before_fork(
@@ -120,7 +120,7 @@ impl AgentCapabilities {
         self.store
             .fork(parent_id, &child_id, at_entry_id, position)
             .await
-            .map_err(|e| XyError::Session(anyhow::anyhow!("fork failed: {e}")))?;
+            .map_err(XyError::from)?;
 
         Ok(child_id)
     }
@@ -131,7 +131,7 @@ impl AgentCapabilities {
     pub async fn get_session_stats(&self) -> Result<SessionStats, XyError> {
         let sid = self
             .session_id()
-            .ok_or_else(|| XyError::Session(anyhow::anyhow!("no active session")))?;
+            .ok_or(XyError::from(XyStoreError::NoActiveSession))?;
         crate::agent::capabilities::stats::compute(self.store.as_ref(), sid).await
     }
 }

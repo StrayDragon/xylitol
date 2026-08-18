@@ -41,9 +41,10 @@ use super::state::{
 };
 use super::{AgentHooks, XyEvent, XyEventStream};
 use crate::agent::capabilities::{AgentCapabilities, PendingMessageQueue};
+use crate::agent::compaction::CompactionError;
 use crate::agent::prompt::expand_skills_in_agent_messages;
 use crate::agent::tools::ToolSet;
-use crate::protocol::error::XyError;
+use crate::protocol::error::{XyError, XyStoreError};
 use crate::protocol::message::{AgentMessage, AgentPart};
 use crate::protocol::model::{XyChunk, XyToolSchema};
 use crate::protocol::ports::{XyBatchMode, XyHookBus, XyHookOutcome, XyModel, XySessionStore};
@@ -324,8 +325,8 @@ impl AgentRuntime {
         position: crate::protocol::session::ForkPosition,
     ) -> Result<String, XyError> {
         if self.coordinator.with(|c| c.has_work()) {
-            return Err(XyError::Session(anyhow::anyhow!(
-                "session mutation unavailable while busy"
+            return Err(XyError::from(XyStoreError::validation(
+                "session mutation unavailable while busy",
             )));
         }
         self.inner.fork_session(at_entry_id, position).await
@@ -337,16 +338,14 @@ impl AgentRuntime {
         self.inner.get_session_stats().await
     }
 
-    pub async fn force_compact(&self, instructions: Option<String>) -> Result<(), XyError> {
+    pub async fn force_compact(&self, instructions: Option<String>) -> Result<(), CompactionError> {
         if self.coordinator.with(|c| c.has_work()) {
-            return Err(XyError::Session(anyhow::anyhow!(
-                "compact unavailable while busy"
-            )));
+            return Err(CompactionError::policy("compact unavailable while busy"));
         }
         self.inner.force_compact(instructions).await
     }
 
-    pub async fn maybe_auto_compact(&self) -> Result<bool, XyError> {
+    pub async fn maybe_auto_compact(&self) -> Result<bool, CompactionError> {
         self.inner.maybe_auto_compact().await
     }
 
@@ -460,7 +459,7 @@ impl AgentRuntime {
                 && let Err(e) = store.create(&session_id, Some(&cwd), None).await
             {
                 yield XyEvent::Error(crate::protocol::lifecycle::XyEventError::from_xy(
-                    &XyError::Session(anyhow::anyhow!(e)),
+                    &XyError::from(e),
                 ));
                 return;
             }
@@ -564,7 +563,7 @@ async fn load_history(
     let entries = store
         .load_leaf_branch(session_id)
         .await
-        .map_err(|e| XyError::Session(anyhow::anyhow!(e)))?;
+        .map_err(XyError::from)?;
     let entries = crate::protocol::session::build_context_entries(&entries);
     Ok(entries
         .iter()

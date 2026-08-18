@@ -390,22 +390,22 @@ impl<T: Terminal> HostSession<T> {
                 if let Some(over) = self.external_editor_cmd_override.clone() {
                     match over {
                         Ok(cmd) => cmd,
-                        Err(msg) => {
-                            let err =
-                                crate::app::core::driver::XyDriverError::invalid_input(msg.clone());
-                            err.log_failure("tui.external_editor.resolve");
-                            self.push_error_note(msg);
+                        Err(err) => {
+                            let driver_err =
+                                crate::app::core::driver::XyDriverError::from(err.clone());
+                            driver_err.log_failure("tui.external_editor.resolve");
+                            self.push_error_note(err.to_string());
                             return true;
                         }
                     }
                 } else {
                     match super::super::external_editor::resolve_external_editor_command() {
                         Ok(cmd) => cmd,
-                        Err(msg) => {
-                            let err =
-                                crate::app::core::driver::XyDriverError::invalid_input(msg.clone());
-                            err.log_failure("tui.external_editor.resolve");
-                            self.push_error_note(msg);
+                        Err(err) => {
+                            let driver_err =
+                                crate::app::core::driver::XyDriverError::from(err.clone());
+                            driver_err.log_failure("tui.external_editor.resolve");
+                            self.push_error_note(err.to_string());
                             return true;
                         }
                     }
@@ -415,11 +415,10 @@ impl<T: Terminal> HostSession<T> {
             {
                 match super::super::external_editor::resolve_external_editor_command() {
                     Ok(cmd) => cmd,
-                    Err(msg) => {
-                        let err =
-                            crate::app::core::driver::XyDriverError::invalid_input(msg.clone());
-                        err.log_failure("tui.external_editor.resolve");
-                        self.push_error_note(msg);
+                    Err(err) => {
+                        let driver_err = crate::app::core::driver::XyDriverError::from(err.clone());
+                        driver_err.log_failure("tui.external_editor.resolve");
+                        self.push_error_note(err.to_string());
                         return true;
                     }
                 }
@@ -448,7 +447,7 @@ impl<T: Terminal> HostSession<T> {
                 );
             }
             Err(err) => {
-                let e = crate::app::core::driver::XyDriverError::from_opaque(err.clone());
+                let e = crate::app::core::driver::XyDriverError::from(err.clone());
                 e.log_failure("tui.external_editor.run");
                 self.push_error_note(format!("external editor failed: {err}"));
             }

@@ -42,8 +42,36 @@ pub use token_estimator::{
 use anyhow::Result;
 use serde_json::json;
 
+use crate::protocol::error::XyStoreError;
 use crate::protocol::ports::{XyModel, XySessionStore};
 use crate::protocol::session::{CompactionEntry, EntryBase, MessageEntry, SessionEntry};
+
+/// Compaction failures: store IO vs product-copy policy gates.
+#[derive(Debug, thiserror::Error)]
+pub enum CompactionError {
+    #[error(transparent)]
+    Store(#[from] XyStoreError),
+    #[error("{0}")]
+    Policy(String),
+}
+
+impl CompactionError {
+    pub fn policy(message: impl Into<String>) -> Self {
+        Self::Policy(message.into())
+    }
+}
+
+impl From<String> for CompactionError {
+    fn from(message: String) -> Self {
+        Self::Policy(message)
+    }
+}
+
+impl From<&str> for CompactionError {
+    fn from(message: &str) -> Self {
+        Self::Policy(message.to_string())
+    }
+}
 
 /// unix-ms timestamp for new compaction entries (v6 disk basis).
 fn timestamp_now() -> u64 {
@@ -58,7 +86,7 @@ fn timestamp_now() -> u64 {
 pub fn prepare_compaction(
     entries: &[SessionEntry],
     settings: &CompactionSettings,
-) -> Result<(), String> {
+) -> Result<(), CompactionError> {
     if entries.is_empty() {
         return Err("Nothing to compact (empty session)".into());
     }
@@ -127,15 +155,15 @@ pub async fn compact_session(
     settings: &CompactionSettings,
     custom_instructions: Option<&str>,
     obs_parent: Option<fastrace::prelude::SpanContext>,
-) -> Result<CompactionEntry, String> {
+) -> Result<CompactionEntry, CompactionError> {
     if !settings.enabled {
-        return Err("compaction disabled".to_string());
+        return Err("compaction disabled".into());
     }
 
     let entries = store.load_leaf_branch(session_id).await?;
 
     if entries.is_empty() {
-        return Err("empty session, nothing to compact".to_string());
+        return Err("empty session, nothing to compact".into());
     }
 
     let mut prev_compaction: Option<&CompactionEntry> = None;
@@ -298,8 +326,7 @@ pub async fn compact_session(
 
     store
         .append_session_entry(session_id, &SessionEntry::Compaction(entry.clone()))
-        .await
-        .map_err(|e| format!("write compaction entry: {e}"))?;
+        .await?;
 
     // c1906: after cut, leaf context may lack session_env — ensure + persist.
     ensure_session_env_after_compact(store, session_id, &entries).await;
@@ -799,12 +826,14 @@ mod tests {
     fn test_prepare_already_compacted_and_truly_small() {
         let settings = CompactionSettings::default();
         assert_eq!(
-            prepare_compaction(&[], &settings).unwrap_err(),
+            prepare_compaction(&[], &settings).unwrap_err().to_string(),
             "Nothing to compact (empty session)"
         );
         let small = vec![make_message_entry("u1", "user", "hi")];
         assert_eq!(
-            prepare_compaction(&small, &settings).unwrap_err(),
+            prepare_compaction(&small, &settings)
+                .unwrap_err()
+                .to_string(),
             "Nothing to compact (no summarizable history beyond keep window)"
         );
         let already = vec![
@@ -812,7 +841,9 @@ mod tests {
             make_compaction_entry("c1", "prior"),
         ];
         assert_eq!(
-            prepare_compaction(&already, &settings).unwrap_err(),
+            prepare_compaction(&already, &settings)
+                .unwrap_err()
+                .to_string(),
             "Already compacted"
         );
     }
@@ -881,7 +912,9 @@ mod tests {
             "full JSONL with LEFT sibling looks compactable (false positive)"
         );
         assert_eq!(
-            prepare_compaction(&branch, &settings).unwrap_err(),
+            prepare_compaction(&branch, &settings)
+                .unwrap_err()
+                .to_string(),
             "Nothing to compact (no summarizable history beyond keep window)"
         );
     }

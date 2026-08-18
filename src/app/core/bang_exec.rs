@@ -13,10 +13,6 @@ use crate::protocol::error::XyError;
 use crate::protocol::ports::{BashExecOpts, XyBashExecutor, XyBashResult, XySessionStore};
 use crate::protocol::session::bash_execution_message_entry;
 
-fn session_err(e: impl Into<String>) -> XyError {
-    XyError::Session(anyhow::anyhow!(e.into()))
-}
-
 /// Stateful bash-execution collaborator.
 pub struct BangExecHandler {
     /// Injected bash executor port. `None` means `!cmd` is unavailable.
@@ -113,7 +109,7 @@ pub(crate) async fn record_bash_result(
     store
         .append_session_entry(session_id, &entry)
         .await
-        .map_err(session_err)
+        .map_err(XyError::from)
 }
 
 #[cfg(test)]

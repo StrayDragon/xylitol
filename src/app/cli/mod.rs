@@ -240,27 +240,34 @@ pub fn select_surface_mode(
 }
 
 /// Resolve the print-mode prompt. Never returns a placeholder like `Hello!`.
+#[derive(Debug, thiserror::Error)]
+pub enum PrintPromptError {
+    #[error("failed to read stdin: {0}")]
+    Stdin(#[from] std::io::Error),
+    #[error(
+        "print mode requires a prompt: `xylitol print <PROMPT>`, `print --prompt TEXT`, \
+         or pipe stdin (bare TTY launch opens the TUI; use `tui` to force it)"
+    )]
+    MissingPrompt,
+}
+
 pub fn resolve_print_prompt(
     one_shot: Option<&str>,
     allow_stdin_pipe: bool,
     stdin_is_tty: bool,
     mut read_stdin: impl FnMut() -> std::io::Result<String>,
-) -> Result<String, String> {
+) -> Result<String, PrintPromptError> {
     if let Some(p) = one_shot.map(str::trim).filter(|s| !s.is_empty()) {
         return Ok(p.to_string());
     }
     if allow_stdin_pipe && !stdin_is_tty {
-        let buf = read_stdin().map_err(|e| format!("failed to read stdin: {e}"))?;
+        let buf = read_stdin()?;
         let trimmed = buf.trim();
         if !trimmed.is_empty() {
             return Ok(trimmed.to_string());
         }
     }
-    Err(
-        "print mode requires a prompt: `xylitol print <PROMPT>`, `print --prompt TEXT`, \
-         or pipe stdin (bare TTY launch opens the TUI; use `tui` to force it)"
-            .into(),
-    )
+    Err(PrintPromptError::MissingPrompt)
 }
 
 pub async fn run() -> Result<(), Box<dyn std::error::Error>> {
@@ -500,9 +507,9 @@ pub async fn run() -> Result<(), Box<dyn std::error::Error>> {
         },
     ) {
         Ok(p) => p,
-        Err(msg) => {
-            eprintln!("Error: {msg}");
-            return Err(msg.into());
+        Err(err) => {
+            eprintln!("Error: {err}");
+            return Err(err.into());
         }
     };
 
@@ -603,8 +610,11 @@ mod tests {
     #[test]
     fn resolve_print_prompt_rejects_hello_fallback() {
         let err = resolve_print_prompt(None, false, true, || Ok(String::new())).unwrap_err();
-        assert!(err.contains("print") || err.contains("PROMPT"), "{err}");
-        assert!(!err.contains("Hello!"), "{err}");
+        assert!(
+            err.to_string().contains("print") || err.to_string().contains("PROMPT"),
+            "{err}"
+        );
+        assert!(!err.to_string().contains("Hello!"), "{err}");
     }
 
     #[test]
@@ -755,7 +765,7 @@ mod tests {
         assert!(one_shot.is_none());
         let err =
             resolve_print_prompt(None, explicit_print, true, || Ok(String::new())).unwrap_err();
-        assert!(!err.contains("Hello!"), "{err}");
+        assert!(!err.to_string().contains("Hello!"), "{err}");
     }
 
     #[test]

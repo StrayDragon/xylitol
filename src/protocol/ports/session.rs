@@ -2,6 +2,7 @@
 
 use async_trait::async_trait;
 
+use crate::protocol::error::XyStoreError;
 use crate::protocol::session::{
     EntryBase, SessionContext, SessionEntry, SessionInfoEntry, SessionTreeNode, build_session_tree,
 };
@@ -41,13 +42,13 @@ pub trait XySessionStore: Send + Sync {
     async fn exists(&self, session_id: &str) -> bool;
 
     /// Load the raw typed session entries (for compaction / export).
-    async fn load_entries(&self, session_id: &str) -> Result<Vec<SessionEntry>, String>;
+    async fn load_entries(&self, session_id: &str) -> Result<Vec<SessionEntry>, XyStoreError>;
 
     /// Load entries on the current leaf→root branch (pi `getBranch`).
     ///
     /// Compaction prepare/cut MUST use this path so sibling branches are excluded.
     /// Default falls back to [`Self::load_entries`] for linear/stub stores.
-    async fn load_leaf_branch(&self, session_id: &str) -> Result<Vec<SessionEntry>, String> {
+    async fn load_leaf_branch(&self, session_id: &str) -> Result<Vec<SessionEntry>, XyStoreError> {
         self.load_entries(session_id).await
     }
 
@@ -56,13 +57,18 @@ pub trait XySessionStore: Send + Sync {
         &self,
         session_id: &str,
         entry: &SessionEntry,
-    ) -> Result<(), String>;
+    ) -> Result<(), XyStoreError>;
     /// Build the full session context (messages, thinking level, model).
-    async fn build_session_context(&self, session_id: &str) -> Result<SessionContext, String>;
+    async fn build_session_context(&self, session_id: &str)
+    -> Result<SessionContext, XyStoreError>;
 
     /// Create a new session (writes header, initializes leaf tracking).
-    async fn create(&self, id: &str, cwd: Option<&str>, parent: Option<&str>)
-    -> Result<(), String>;
+    async fn create(
+        &self,
+        id: &str,
+        cwd: Option<&str>,
+        parent: Option<&str>,
+    ) -> Result<(), XyStoreError>;
     /// Fork a session into a new child.
     ///
     /// - [`ForkPosition::At`]: child path is `get_branch` through `at_entry_id` (re-chained).
@@ -74,7 +80,7 @@ pub trait XySessionStore: Send + Sync {
         child_id: &str,
         at_entry_id: &str,
         position: ForkPosition,
-    ) -> Result<(), String>;
+    ) -> Result<(), XyStoreError>;
 
     /// Set the active leaf entry for branching / travel.
     fn set_leaf(&self, session_id: &str, entry_id: Option<&str>);
@@ -83,7 +89,10 @@ pub trait XySessionStore: Send + Sync {
     fn leaf_id(&self, session_id: &str) -> Option<String>;
 
     /// Build the message-history session tree (default: load entries + [`build_session_tree`]).
-    async fn message_history_tree(&self, session_id: &str) -> Result<Vec<SessionTreeNode>, String> {
+    async fn message_history_tree(
+        &self,
+        session_id: &str,
+    ) -> Result<Vec<SessionTreeNode>, XyStoreError> {
         let entries = self.load_entries(session_id).await?;
         Ok(build_session_tree(&entries))
     }
@@ -92,13 +101,13 @@ pub trait XySessionStore: Send + Sync {
     ///
     /// Used by the XyDriver for `/session-resume` (not a `protocol::Command`).
     /// Default returns an empty list so minimal store stubs stay usable.
-    async fn list_sessions(&self) -> Result<Vec<SessionListEntry>, String> {
+    async fn list_sessions(&self) -> Result<Vec<SessionListEntry>, XyStoreError> {
         let _ = self;
         Ok(Vec::new())
     }
 
     /// Latest display name from `session_info` entries (c1020 `/session-name`).
-    async fn get_session_name(&self, session_id: &str) -> Result<Option<String>, String> {
+    async fn get_session_name(&self, session_id: &str) -> Result<Option<String>, XyStoreError> {
         let entries = self.load_entries(session_id).await?;
         for entry in entries.iter().rev() {
             if let SessionEntry::SessionInfo(si) = entry {
@@ -116,7 +125,7 @@ pub trait XySessionStore: Send + Sync {
     /// Append a sanitized session display name (CR/LF → space, trim; c1020).
     ///
     /// Returns the name actually stored.
-    async fn set_session_name(&self, session_id: &str, name: &str) -> Result<String, String> {
+    async fn set_session_name(&self, session_id: &str, name: &str) -> Result<String, XyStoreError> {
         let sanitized = sanitize_session_display_name(name);
         let entry = SessionEntry::SessionInfo(SessionInfoEntry {
             base: EntryBase {
@@ -134,10 +143,10 @@ pub trait XySessionStore: Send + Sync {
     /// Delete a persisted session (XyDriver `/session-resume` panel; c1065).
     ///
     /// Default returns an error so minimal store stubs stay safe.
-    async fn delete_session(&self, session_id: &str) -> Result<(), String> {
+    async fn delete_session(&self, session_id: &str) -> Result<(), XyStoreError> {
         let _ = session_id;
         let _ = self;
-        Err("delete_session not supported".into())
+        Err(XyStoreError::unsupported("delete_session"))
     }
 }
 

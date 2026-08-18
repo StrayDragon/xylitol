@@ -7,14 +7,11 @@ use std::sync::Arc;
 
 use serde_json::Value;
 
-use crate::protocol::error::XyError;
+use crate::app::core::driver_error::XyDriverError;
+use crate::protocol::error::XyStoreError;
 use crate::protocol::ports::{XyExportIo, XySessionStore};
 use crate::protocol::session::{MessageEntry, SessionEntry, message_role};
 use crate::utils::xml_escape;
-
-fn session_err(e: impl Into<String>) -> XyError {
-    XyError::Session(anyhow::anyhow!(e.into()))
-}
 
 /// Format a unix-ms session timestamp as RFC3339 for display (v6: RFC3339 is
 /// a display-side concern only; the on-disk format is unix-ms).
@@ -45,14 +42,14 @@ impl SessionExporter {
         store: &dyn XySessionStore,
         session_id: &str,
         path: &std::path::Path,
-    ) -> Result<std::path::PathBuf, XyError> {
+    ) -> Result<std::path::PathBuf, XyDriverError> {
         let io = self
             .io
             .as_ref()
-            .ok_or_else(|| XyError::Config("export io not configured".into()))?;
-        let entries = store.load_entries(session_id).await.map_err(session_err)?;
+            .ok_or_else(|| XyDriverError::message("export io not configured"))?;
+        let entries = store.load_entries(session_id).await?;
         let html = render_html(session_id, &entries);
-        io.write_text(path, &html).await.map_err(session_err)?;
+        io.write_text(path, &html).await?;
         Ok(path.to_path_buf())
     }
 
@@ -62,14 +59,14 @@ impl SessionExporter {
         store: &dyn XySessionStore,
         session_id: &str,
         path: &std::path::Path,
-    ) -> Result<std::path::PathBuf, XyError> {
+    ) -> Result<std::path::PathBuf, XyDriverError> {
         let io = self
             .io
             .as_ref()
-            .ok_or_else(|| XyError::Config("export io not configured".into()))?;
-        let entries = store.load_entries(session_id).await.map_err(session_err)?;
+            .ok_or_else(|| XyDriverError::message("export io not configured"))?;
+        let entries = store.load_entries(session_id).await?;
         let jsonl = render_jsonl(&entries)?;
-        io.write_text(path, &jsonl).await.map_err(session_err)?;
+        io.write_text(path, &jsonl).await?;
         Ok(path.to_path_buf())
     }
 
@@ -82,25 +79,26 @@ impl SessionExporter {
         &self,
         store: &dyn XySessionStore,
         path: &std::path::Path,
-    ) -> Result<String, XyError> {
+    ) -> Result<String, XyDriverError> {
         let io = self
             .io
             .as_ref()
-            .ok_or_else(|| XyError::Config("export io not configured".into()))?;
-        let bytes = io.read_bytes(path).await.map_err(session_err)?;
+            .ok_or_else(|| XyDriverError::message("export io not configured"))?;
+        let bytes = io.read_bytes(path).await?;
         let entries = parse_jsonl(&bytes)?;
         let new_id = match entries.first() {
             Some(SessionEntry::Header(h)) => h.id.clone(),
-            _ => return Err(session_err("import: missing header")),
+            _ => {
+                return Err(XyDriverError::invalid_input("import: missing header"));
+            }
         };
         if store.exists(&new_id).await {
-            return Err(session_err(format!("session already exists: {new_id}")));
+            return Err(XyDriverError::invalid_input(format!(
+                "session already exists: {new_id}"
+            )));
         }
         for entry in &entries {
-            store
-                .append_session_entry(&new_id, entry)
-                .await
-                .map_err(session_err)?;
+            store.append_session_entry(&new_id, entry).await?;
         }
         Ok(new_id)
     }
@@ -214,11 +212,10 @@ fn message_text(msg: &Value) -> String {
 }
 
 /// Render a session's entries as JSONL (one JSON object per line).
-pub fn render_jsonl(entries: &[SessionEntry]) -> Result<String, XyError> {
+pub fn render_jsonl(entries: &[SessionEntry]) -> Result<String, XyDriverError> {
     let mut out = String::new();
     for entry in entries {
-        let line = serde_json::to_string(entry)
-            .map_err(|e| session_err(format!("serialize entry: {e}")))?;
+        let line = serde_json::to_string(entry).map_err(XyStoreError::from)?;
         out.push_str(&line);
         out.push('\n');
     }
@@ -229,16 +226,16 @@ pub fn render_jsonl(entries: &[SessionEntry]) -> Result<String, XyError> {
 ///
 /// Validates that the first non-empty line is a session header carrying a
 /// compatible `version`. Returns an error otherwise.
-pub fn parse_jsonl(bytes: &[u8]) -> Result<Vec<SessionEntry>, XyError> {
-    let text =
-        std::str::from_utf8(bytes).map_err(|e| session_err(format!("jsonl is not utf-8: {e}")))?;
-    let entries = crate::protocol::session::parse_session_jsonl(text).map_err(session_err)?;
+pub fn parse_jsonl(bytes: &[u8]) -> Result<Vec<SessionEntry>, XyDriverError> {
+    let text = std::str::from_utf8(bytes)
+        .map_err(|e| XyDriverError::invalid_input(format!("jsonl is not utf-8: {e}")))?;
+    let entries = crate::protocol::session::parse_session_jsonl(text)?;
     if entries.is_empty() {
-        return Err(session_err("jsonl contained no entries"));
+        return Err(XyDriverError::invalid_input("jsonl contained no entries"));
     }
     // The first entry must be a Header.
     if !matches!(entries.first(), Some(SessionEntry::Header(_))) {
-        return Err(session_err(format!(
+        return Err(XyDriverError::invalid_input(format!(
             "import: first entry must be a session header, got {:?}",
             entries.first().map(|e| e.entry_type()).unwrap_or("none")
         )));

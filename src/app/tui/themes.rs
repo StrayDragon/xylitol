@@ -2,23 +2,24 @@
 
 use xylitol_tui::Palette;
 
+use super::error::TuiSurfaceError;
 use super::layout::LayoutTheme;
 
 /// Resolve a built-in theme name to a [`Palette`].
 ///
 /// Only `dark` / `light` (case-insensitive) are supported in this wave.
-pub fn resolve_builtin_palette(name: &str) -> Result<Palette, String> {
+pub fn resolve_builtin_palette(name: &str) -> Result<Palette, TuiSurfaceError> {
     match name.trim().to_ascii_lowercase().as_str() {
         "dark" => Ok(Palette::dark()),
         "light" => Ok(Palette::light()),
-        other => Err(format!(
+        other => Err(TuiSurfaceError::invalid(format!(
             "unknown theme `{other}` (built-in: dark, light); custom JSON themes not yet applied"
-        )),
+        ))),
     }
 }
 
 /// Build a [`LayoutTheme`] from a theme name.
-pub fn layout_theme_from_name(name: &str) -> Result<LayoutTheme, String> {
+pub fn layout_theme_from_name(name: &str) -> Result<LayoutTheme, TuiSurfaceError> {
     Ok(LayoutTheme::from_palette(resolve_builtin_palette(name)?))
 }
 

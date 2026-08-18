@@ -75,8 +75,9 @@ impl TodoList {
         json!({ "items": self.items })
     }
 
-    pub fn from_data_value(data: &Value) -> Result<Self, String> {
-        serde_json::from_value(data.clone()).map_err(|e| format!("invalid agent_todo payload: {e}"))
+    pub fn from_data_value(data: &Value) -> Result<Self, TodoValidationError> {
+        serde_json::from_value(data.clone())
+            .map_err(|e| TodoValidationError(format!("invalid agent_todo payload: {e}")))
     }
 
     pub fn to_custom_entry_shell(&self) -> SessionEntry {

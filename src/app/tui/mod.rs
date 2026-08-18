@@ -8,6 +8,7 @@ mod bridge;
 mod commands;
 mod editor_history_seed;
 mod effects;
+pub(crate) mod error;
 mod external_editor;
 mod host;
 pub(crate) mod keybindings;
@@ -206,8 +207,9 @@ async fn run_host_loop(
     // welcome chrome is not blocked by JSONL load or list_sessions work.
     session.render_now()?;
 
-    type CliRestoreHandle =
-        tokio::task::JoinHandle<Result<Vec<crate::protocol::session::SessionEntry>, String>>;
+    type CliRestoreHandle = tokio::task::JoinHandle<
+        Result<Vec<crate::protocol::session::SessionEntry>, crate::protocol::error::XyStoreError>,
+    >;
     let mut cli_restore: Option<(std::time::Instant, String, CliRestoreHandle)> = None;
     if options.restored_session {
         match (driver.session_id(), driver.session_store()) {

@@ -4,6 +4,7 @@ use std::sync::Arc;
 
 use crate::app::core::driver::{XyDriver, XyDriverError};
 use crate::app::tui::session_resume::cwd_matches;
+use crate::protocol::error::XyStoreError;
 use crate::protocol::ports::XySessionStore;
 use crate::protocol::session::{SessionEntry, message_role, message_text};
 
@@ -128,7 +129,7 @@ pub fn spawn_new_session_seed(
 pub fn spawn_cli_session_load(
     store: Arc<dyn XySessionStore>,
     session_id: String,
-) -> tokio::task::JoinHandle<Result<Vec<SessionEntry>, String>> {
+) -> tokio::task::JoinHandle<Result<Vec<SessionEntry>, XyStoreError>> {
     tokio::spawn(async move { store.load_entries(&session_id).await })
 }
 

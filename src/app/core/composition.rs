@@ -128,7 +128,7 @@ pub fn build_agent(options: BuildAgentOptions) -> Result<AgentRuntime, XyDriverE
         builder = builder.system_prompt(sp);
     }
 
-    builder.build().map_err(XyDriverError::from)
+    Ok(builder.build())
 }
 
 /// Outcome of [`McpSession::reload`] (c1205).
@@ -222,7 +222,6 @@ impl McpSession {
                 }
                 result = &mut discover => result,
             }
-            .map_err(XyDriverError::from_opaque)?
         } else {
             None
         };

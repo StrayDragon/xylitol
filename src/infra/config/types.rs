@@ -5,6 +5,8 @@ use std::collections::HashMap;
 use schemars::JsonSchema;
 use serde::{Deserialize, Serialize};
 
+use super::error::LoadError;
+
 // ---------------------------------------------------------------------------
 // Top-level config
 // ---------------------------------------------------------------------------
@@ -344,7 +346,7 @@ impl ModelEntry {
     /// Resolve and validate this model's freeform thinking configuration once.
     pub fn resolve_thinking_config(
         &self,
-    ) -> Result<(Vec<String>, crate::protocol::model::ThinkingLevelMap), String> {
+    ) -> Result<(Vec<String>, crate::protocol::model::ThinkingLevelMap), LoadError> {
         let levels = crate::protocol::model::resolve_configured_levels(
             self.thinking,
             self.thinking_levels.as_deref(),
@@ -381,11 +383,11 @@ fn default_tokenizer_file() -> String {
 pub fn resolve_tokenizer_ref(
     tokenizers: &HashMap<String, TokenizerEntry>,
     raw: &str,
-) -> Result<xylitol_ai_bridge::registry::TokenizerOverride, String> {
+) -> Result<xylitol_ai_bridge::registry::TokenizerOverride, LoadError> {
     use xylitol_ai_bridge::registry::TokenizerOverride;
     let s = raw.trim();
     if s.is_empty() {
-        return Err("tokenizer ref is empty".into());
+        return Err(LoadError::validation("tokenizer ref is empty"));
     }
     if s.eq_ignore_ascii_case("builtin") {
         return Ok(TokenizerOverride::Builtin);
@@ -406,7 +408,7 @@ pub fn resolve_tokenizer_ref(
             .as_ref()
             .map(|r| r.trim())
             .filter(|r| !r.is_empty())
-            .ok_or_else(|| format!("tokenizers.{s}: need repo or path"))?;
+            .ok_or_else(|| LoadError::validation(format!("tokenizers.{s}: need repo or path")))?;
         let file = if entry.file.trim().is_empty() {
             "tokenizer.json".into()
         } else {
@@ -435,9 +437,9 @@ pub fn resolve_tokenizer_ref(
             file: "tokenizer.json".into(),
         });
     }
-    Err(format!(
+    Err(LoadError::validation(format!(
         "unknown tokenizer `{s}`: use a name from tokenizers:, HF owner/repo, path, or builtin"
-    ))
+    )))
 }
 
 fn default_thinking() -> bool {
@@ -530,30 +532,32 @@ fn default_profile_name() -> String {
 
 impl AppConfig {
     /// Validate freeform thinking lists and maps for every model entry.
-    pub fn validate_thinking_levels(&self) -> Result<(), String> {
+    pub fn validate_thinking_levels(&self) -> Result<(), LoadError> {
         for (alias, entry) in &self.model.models {
             entry
                 .resolve_thinking_config()
-                .map_err(|e| format!("models.{alias}: {e}"))?;
+                .map_err(|e| LoadError::validation(format!("models.{alias}: {e}")))?;
         }
         Ok(())
     }
 
     /// `session.max_turns` must be absent or a positive integer (c1620 / rc27).
-    pub fn validate_session_max_turns(&self) -> Result<(), String> {
+    pub fn validate_session_max_turns(&self) -> Result<(), LoadError> {
         match self.session.as_ref().and_then(|s| s.max_turns) {
             None => Ok(()),
-            Some(0) => Err("session.max_turns must be a positive integer (got 0)".into()),
+            Some(0) => Err(LoadError::validation(
+                "session.max_turns must be a positive integer (got 0)",
+            )),
             Some(_) => Ok(()),
         }
     }
 
     /// Soft-check tokenizer refs (pre-1.0: warn via Err only for clearly broken named refs).
-    pub fn validate_model_tokenizers(&self) -> Result<(), String> {
+    pub fn validate_model_tokenizers(&self) -> Result<(), LoadError> {
         for (alias, entry) in &self.model.models {
             if let Some(raw) = &entry.tokenizer {
                 resolve_tokenizer_ref(&self.tokenizers, raw)
-                    .map_err(|e| format!("models.{alias}.tokenizer: {e}"))?;
+                    .map_err(|e| LoadError::validation(format!("models.{alias}.tokenizer: {e}")))?;
             }
         }
         Ok(())
@@ -575,11 +579,13 @@ impl AppConfig {
     pub fn resolve_model(
         &self,
         model_id: &str,
-    ) -> Result<crate::protocol::model::XyModelConfig, String> {
+    ) -> Result<crate::protocol::model::XyModelConfig, LoadError> {
         use crate::protocol::model::XyModelConfig;
 
         let entry = self.model.models.get(model_id).ok_or_else(|| {
-            format!("unknown model alias `{model_id}`: add it under models.models in config.yaml")
+            LoadError::validation(format!(
+                "unknown model alias `{model_id}`: add it under models.models in config.yaml"
+            ))
         })?;
 
         let api_key = match &entry.api_key {
@@ -605,7 +611,7 @@ impl AppConfig {
     pub fn resolve_model_meta(
         &self,
         model_id: &str,
-    ) -> Result<crate::protocol::model::XyModelMeta, String> {
+    ) -> Result<crate::protocol::model::XyModelMeta, LoadError> {
         use crate::protocol::model::XyModelMeta;
         use crate::protocol::model::default_context_window_for;
 
@@ -647,7 +653,7 @@ impl AppConfig {
     pub fn resolve_profile(
         &self,
         name: &str,
-    ) -> Result<crate::protocol::model::ResolvedProfile, String> {
+    ) -> Result<crate::protocol::model::ResolvedProfile, LoadError> {
         let profile = self.agents.profiles.get(name);
 
         let (model_ref, system_prompt, allowed_tools) = match profile {
@@ -663,9 +669,11 @@ impl AppConfig {
             .or(self.execution.model.as_deref())
             .or(self.model.default_model.as_deref())
             .ok_or_else(|| {
-                "no model configured: set `--model`, `execution.model`, `model.default_model`, \
-                 or `agents.profiles.<name>.model`"
-                    .to_string()
+                LoadError::validation(
+                    "no model configured: set `--model`, `execution.model`, `model.default_model`, \
+                     or `agents.profiles.<name>.model`"
+                        .to_string(),
+                )
             })?;
         let model_config = self.resolve_model(model_id)?;
 
@@ -680,7 +688,7 @@ impl AppConfig {
     /// Resolve the default agent profile.
     pub fn resolve_default_profile(
         &self,
-    ) -> Result<crate::protocol::model::ResolvedProfile, String> {
+    ) -> Result<crate::protocol::model::ResolvedProfile, LoadError> {
         let name = if self.agents.default_profile.is_empty() {
             "default"
         } else {
@@ -945,20 +953,22 @@ impl Default for McpServerConfig {
 
 impl McpServerConfig {
     /// Validate required fields for the selected transport (c1080 / mcp4).
-    pub fn validate(&self) -> Result<(), String> {
+    pub fn validate(&self) -> Result<(), LoadError> {
         if self.name.trim().is_empty() {
-            return Err("mcp server name must not be empty".into());
+            return Err(LoadError::validation("mcp server name must not be empty"));
         }
         match self.transport {
             McpTransportKind::Stdio => match self.command.as_deref().map(str::trim) {
-                None | Some("") => Err("command is required for stdio transport".into()),
+                None | Some("") => Err(LoadError::validation(
+                    "command is required for stdio transport",
+                )),
                 Some(_) => Ok(()),
             },
             McpTransportKind::Sse => match self.url.as_deref().map(str::trim) {
-                None | Some("") => Err("url is required for sse transport".into()),
-                Some(u) if !(u.starts_with("http://") || u.starts_with("https://")) => {
-                    Err(format!("url must be http(s) for sse transport: {u}"))
-                }
+                None | Some("") => Err(LoadError::validation("url is required for sse transport")),
+                Some(u) if !(u.starts_with("http://") || u.starts_with("https://")) => Err(
+                    LoadError::validation(format!("url must be http(s) for sse transport: {u}")),
+                ),
                 Some(_) => Ok(()),
             },
         }
@@ -1041,7 +1051,7 @@ session:
         let err = cfg
             .validate_session_max_turns()
             .expect_err("0 must fail validation");
-        assert!(err.contains("max_turns"), "{err}");
+        assert!(err.to_string().contains("max_turns"), "{err}");
     }
 
     #[test]
@@ -1144,7 +1154,7 @@ mod thinking_levels_tests {
         entry.thinking_level_map = Some(map);
         cfg.model.models.insert("f".into(), entry);
         let err = cfg.validate_thinking_levels().unwrap_err();
-        assert!(err.contains("max"));
+        assert!(err.to_string().contains("max"));
     }
 
     #[test]

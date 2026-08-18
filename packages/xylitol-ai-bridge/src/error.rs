@@ -4,6 +4,8 @@ pub enum AiBridgeError {
     Provider(#[source] anyhow::Error),
     #[error("aborted")]
     Aborted,
+    #[error("{0}")]
+    Io(String),
 }
 
 #[cfg(test)]
@@ -20,5 +22,11 @@ mod tests {
     fn bridge_error_display_aborted() {
         let err = AiBridgeError::Aborted;
         assert_eq!(err.to_string(), "aborted");
+    }
+
+    #[test]
+    fn bridge_error_display_io() {
+        let err = AiBridgeError::Io("connection reset".into());
+        assert_eq!(err.to_string(), "connection reset");
     }
 }

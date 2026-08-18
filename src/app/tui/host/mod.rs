@@ -124,7 +124,7 @@ pub struct HostSession<T: Terminal> {
     force_real_external_editor: bool,
     /// Test-only: override `$VISUAL`/`$EDITOR` resolve (avoids process-wide env races).
     #[cfg(test)]
-    external_editor_cmd_override: Option<Result<String, String>>,
+    external_editor_cmd_override: Option<Result<String, super::error::TuiSurfaceError>>,
     /// Latest footer-token job generation (stale results discarded).
     footer_token_gen: u64,
     /// Background estimate results → host `select!` (production).
@@ -773,7 +773,10 @@ impl<T: Terminal> HostSession<T> {
 
     /// Test harness: override editor command resolve (`Err` = missing config).
     #[cfg(test)]
-    pub fn set_external_editor_cmd_override(&mut self, cmd: Option<Result<String, String>>) {
+    pub(crate) fn set_external_editor_cmd_override(
+        &mut self,
+        cmd: Option<Result<String, super::error::TuiSurfaceError>>,
+    ) {
         self.external_editor_cmd_override = cmd;
     }
 
@@ -1124,7 +1127,7 @@ impl<T: Terminal> HostSession<T> {
                 Ok(())
             }
             Err(e) => {
-                let err = XyDriverError::from_opaque(e.to_string());
+                let err = XyDriverError::io(e.to_string());
                 err.log_failure("tui.render_now");
                 Err(err)
             }

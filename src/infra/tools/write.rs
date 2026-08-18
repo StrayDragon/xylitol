@@ -88,7 +88,7 @@ impl TypedTool for WriteTool {
             let fp = fp.clone();
             async move {
                 if cancel.is_cancelled() {
-                    return Err("aborted".to_string());
+                    return Err(XyToolError::Aborted);
                 }
 
                 let path = std::path::Path::new(&fp);
@@ -97,19 +97,19 @@ impl TypedTool for WriteTool {
                 if let Some(parent) = path.parent()
                     && !parent.as_os_str().is_empty()
                 {
-                    tokio::fs::create_dir_all(parent)
-                        .await
-                        .map_err(|e| format!("create parent dirs: {e}"))?;
+                    tokio::fs::create_dir_all(parent).await.map_err(|e| {
+                        XyToolError::ExecutionFailed(anyhow::anyhow!("create parent dirs: {e}"))
+                    })?;
                 }
 
                 // Atomic write
                 let temp_path = path.with_extension("xylitol-tmp");
-                tokio::fs::write(&temp_path, &content)
-                    .await
-                    .map_err(|e| format!("write temp: {e}"))?;
+                tokio::fs::write(&temp_path, &content).await.map_err(|e| {
+                    XyToolError::ExecutionFailed(anyhow::anyhow!("write temp: {e}"))
+                })?;
                 tokio::fs::rename(&temp_path, path).await.map_err(|e| {
                     let _ = std::fs::remove_file(&temp_path);
-                    format!("rename: {e}")
+                    XyToolError::ExecutionFailed(anyhow::anyhow!("rename: {e}"))
                 })?;
 
                 Ok(serde_json::to_string(&json!({
@@ -121,7 +121,6 @@ impl TypedTool for WriteTool {
             }
         })
         .await
-        .map_err(|e| XyToolError::ExecutionFailed(anyhow::anyhow!("{e}")))
     }
 
     fn prompt_guidelines(&self) -> &[&str] {

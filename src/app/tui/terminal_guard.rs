@@ -2,6 +2,7 @@
 
 use std::sync::atomic::{AtomicBool, Ordering};
 
+use super::error::TuiSurfaceError;
 use xylitol_tui::Terminal;
 
 static EXIT_REQUESTED: AtomicBool = AtomicBool::new(false);
@@ -85,10 +86,10 @@ pub struct TerminalGuard {
 }
 
 impl TerminalGuard {
-    pub fn enter() -> Result<Self, String> {
+    pub fn enter() -> Result<Self, TuiSurfaceError> {
         install_lifecycle_hooks();
-        let mut terminal =
-            xylitol_tui::CrosstermTerminal::new().map_err(|e| format!("open terminal: {e}"))?;
+        let mut terminal = xylitol_tui::CrosstermTerminal::new()
+            .map_err(|e| TuiSurfaceError::io(format!("open terminal: {e}")))?;
         terminal.hide_cursor();
         terminal.start();
         // Product TUI does not enable mouse via TerminalGuard / XYLITOL_TUI_MOUSE.

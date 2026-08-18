@@ -41,7 +41,9 @@ XyTrustError
 映射：
 
 ```text
-XyStoreError ──► XyError::Session ──► XyDriverError::Agent
+XyStoreError ──► XyError::Session
+                 └── Driver flatten：NotFound / Io / Unsupported / Message
+                     （禁止再包一层 Agent，否则 kind 变成 Agent、Display 叠前缀）
 XyExportError ─► XyDriverError::Io     （禁止再进 Session）
 XyTrustError ──► XyDriverError::Io
 配置 / MCP / TUI 私有 Error ─► XyDriverError 对应臂（InvalidInput / Io / Message）
@@ -66,7 +68,7 @@ XyTrustError ──► XyDriverError::Io
 - `XyModelBuilder`
 - `AgentBuilder::build`
 
-测试闭包从 `Ok(Arc::new(...))` 改为 `Arc::new(...)`。`BootstrapError::BuildFailed` 删除。`ModelManager::build_current_model` 不再 `map_err` 到 `Provider`。
+测试闭包从 `Ok(Arc::new(...))` 改为 `Arc::new(...)`。`BootstrapError::BuildFailed` **保留**（装配期 `create_dir_all` 等 IO 仍会失败；factory 本身不再 `Result`）。`ModelManager::build_current_model` 不再 `map_err` 到 `Provider`。
 
 Pre-0.0.1：**禁止**新旧签名并存。
 

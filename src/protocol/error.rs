@@ -1,3 +1,4 @@
+use std::path::PathBuf;
 use std::time::Duration;
 
 use strum::IntoStaticStr;
@@ -9,7 +10,7 @@ pub enum XyError {
     #[error("tool error: {0}")]
     Tool(#[from] XyToolError),
     #[error("session error: {0}")]
-    Session(#[source] anyhow::Error),
+    Session(#[from] XyStoreError),
     #[error("agent config error: {0}")]
     Config(String),
     #[error("aborted")]
@@ -44,6 +45,112 @@ impl XyToolError {
     }
 }
 
+/// Persistence failures from [`crate::protocol::ports::XySessionStore`].
+#[derive(Debug, thiserror::Error, IntoStaticStr)]
+pub enum XyStoreError {
+    #[error("session not found: {session_id}")]
+    NotFound { session_id: String },
+    #[error("target entry not found: {entry_id}")]
+    EntryNotFound { entry_id: String },
+    #[error("no active session")]
+    NoActiveSession,
+    #[error("{op}: {source}")]
+    Io {
+        op: &'static str,
+        #[source]
+        source: std::io::Error,
+    },
+    #[error("serialize entry: {0}")]
+    Serialize(#[from] serde_json::Error),
+    #[error("{message}")]
+    Validation { message: String },
+    #[error("{op} not supported")]
+    Unsupported { op: &'static str },
+}
+
+impl XyStoreError {
+    pub fn kind(&self) -> &'static str {
+        self.into()
+    }
+
+    pub fn not_found(session_id: impl Into<String>) -> Self {
+        Self::NotFound {
+            session_id: session_id.into(),
+        }
+    }
+
+    pub fn entry_not_found(entry_id: impl Into<String>) -> Self {
+        Self::EntryNotFound {
+            entry_id: entry_id.into(),
+        }
+    }
+
+    pub fn io(op: &'static str, source: std::io::Error) -> Self {
+        Self::Io { op, source }
+    }
+
+    pub fn validation(message: impl Into<String>) -> Self {
+        Self::Validation {
+            message: message.into(),
+        }
+    }
+
+    pub fn unsupported(op: &'static str) -> Self {
+        Self::Unsupported { op }
+    }
+}
+
+/// Filesystem (or equivalent) failures from [`crate::protocol::ports::XyExportIo`].
+#[derive(Debug, thiserror::Error, IntoStaticStr)]
+pub enum XyExportError {
+    #[error("{op} {path}: {source}")]
+    Io {
+        op: &'static str,
+        path: PathBuf,
+        #[source]
+        source: std::io::Error,
+    },
+}
+
+impl XyExportError {
+    pub fn kind(&self) -> &'static str {
+        self.into()
+    }
+
+    pub fn io(op: &'static str, path: impl Into<PathBuf>, source: std::io::Error) -> Self {
+        Self::Io {
+            op,
+            path: path.into(),
+            source,
+        }
+    }
+}
+
+/// Persistence failures from [`crate::protocol::ports::XyTrustStore`].
+#[derive(Debug, thiserror::Error, IntoStaticStr)]
+pub enum XyTrustError {
+    #[error("{op}: {source}")]
+    Io {
+        op: &'static str,
+        #[source]
+        source: std::io::Error,
+    },
+    #[error("serialize trust store: {0}")]
+    Parse(#[from] serde_json::Error),
+    #[error("failed to acquire trust store lock")]
+    Lock,
+}
+
+impl XyTrustError {
+    pub fn kind(&self) -> &'static str {
+        self.into()
+    }
+
+    pub fn io(op: &'static str, source: std::io::Error) -> Self {
+        Self::Io { op, source }
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -64,8 +171,8 @@ mod tests {
 
     #[test]
     fn xy_error_display_session() {
-        let err = XyError::Session(anyhow::anyhow!("session not found"));
-        assert_eq!(err.to_string(), "session error: session not found");
+        let err = XyError::from(XyStoreError::not_found("abc"));
+        assert_eq!(err.to_string(), "session error: session not found: abc");
     }
 
     #[test]
@@ -140,7 +247,10 @@ mod tests {
     fn xy_error_kind_variants() {
         assert_eq!(XyError::Provider(anyhow::anyhow!("x")).kind(), "Provider");
         assert_eq!(XyError::Tool(XyToolError::Aborted).kind(), "Tool");
-        assert_eq!(XyError::Session(anyhow::anyhow!("x")).kind(), "Session");
+        assert_eq!(
+            XyError::from(XyStoreError::not_found("x")).kind(),
+            "Session"
+        );
         assert_eq!(XyError::Config("x".into()).kind(), "Config");
         assert_eq!(XyError::Aborted.kind(), "Aborted");
     }
@@ -161,6 +271,31 @@ mod tests {
             "Timeout"
         );
         assert_eq!(XyToolError::Aborted.kind(), "Aborted");
+    }
+
+    #[test]
+    fn xy_store_error_kind_and_display() {
+        let nf = XyStoreError::not_found("abc");
+        assert_eq!(nf.kind(), "NotFound");
+        assert_eq!(nf.to_string(), "session not found: abc");
+        assert_eq!(
+            XyStoreError::NoActiveSession.to_string(),
+            "no active session"
+        );
+        assert_eq!(
+            XyStoreError::unsupported("delete_session").to_string(),
+            "delete_session not supported"
+        );
+    }
+
+    #[test]
+    fn xy_export_and_trust_error_kind() {
+        let exp = XyExportError::io("write", "/tmp/out.html", std::io::Error::other("disk full"));
+        assert_eq!(exp.kind(), "Io");
+        assert!(exp.to_string().contains("write"));
+        let trust = XyTrustError::Lock;
+        assert_eq!(trust.kind(), "Lock");
+        assert_eq!(trust.to_string(), "failed to acquire trust store lock");
     }
 
     // ── Debug ───────────────────────────────────────────────────────

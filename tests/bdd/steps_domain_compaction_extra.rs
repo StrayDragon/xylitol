@@ -316,8 +316,7 @@ pub(crate) async fn g_comp_tokens_before_done(agent: &AgentState, sess: &XySessi
             api: None,
             compat: None,
         },
-    )
-    .expect("fake");
+    );
     let settings = CompactionSettings {
         enabled: true,
         reserve_tokens: 1024,
@@ -882,8 +881,7 @@ pub(crate) async fn w_compact_summarize(agent: &AgentState, sess: &XySessionStor
             api: None,
             compat: None,
         },
-    )
-    .expect("build fake provider");
+    );
     let settings = CompactionSettings {
         enabled: true,
         reserve_tokens: 1024,
@@ -985,8 +983,7 @@ Edit src/file5.rs and update Cargo.toml
             api: None,
             compat: None,
         },
-    )
-    .expect("build fake provider");
+    );
     let result = generate_summary(&messages, model.as_ref(), 4096, None, None, None).await;
     agent
         .last_result
@@ -1049,8 +1046,7 @@ pub(crate) async fn w_comp_agent_compact(agent: &AgentState, sess: &XySessionSto
             api: None,
             compat: None,
         },
-    )
-    .expect("build fake provider");
+    );
     let settings = CompactionSettings {
         enabled: true,
         reserve_tokens: 1024,
@@ -1198,8 +1194,7 @@ pub(crate) async fn w_comp_iterative_summary(agent: &AgentState, sess: &XySessio
             api: None,
             compat: None,
         },
-    )
-    .expect("fake provider");
+    );
     let result =
         generate_summary(&messages, model.as_ref(), 4096, prev.as_deref(), None, None).await;
     agent

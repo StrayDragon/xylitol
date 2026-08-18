@@ -6,10 +6,13 @@
 //!
 //! This module is gated behind the `infra-clipboard` feature flag.
 
+mod error;
 mod image;
 mod native;
 pub(crate) mod osc52;
 mod text;
+
+pub use error::ClipboardError;
 
 pub use image::{ClipboardImage, read_clipboard_image, write_clipboard_image_temp};
 pub use native::{

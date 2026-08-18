@@ -9,6 +9,7 @@ use std::path::Path;
 
 use minijinja::{AutoEscape, Environment, UndefinedBehavior, context, value::Value as MjValue};
 
+use super::error::LoadError;
 use super::secret_env::SecretMap;
 
 /// Render a config file body through minijinja.
@@ -23,7 +24,7 @@ pub(crate) fn render_config_template(
     raw: &str,
     path: &Path,
     secrets: &SecretMap,
-) -> Result<String, String> {
+) -> Result<String, LoadError> {
     let env_vars: HashMap<String, String> = std::env::vars().collect();
     render_config_template_with(raw, path, secrets, &env_vars, dirs::home_dir().as_deref())
 }
@@ -36,7 +37,7 @@ pub(crate) fn render_config_template_with(
     secrets: &SecretMap,
     env_vars: &HashMap<String, String>,
     home: Option<&Path>,
-) -> Result<String, String> {
+) -> Result<String, LoadError> {
     // Fast path: no mustache — skip engine (common for plain YAML).
     if !raw.contains("{{") {
         return Ok(raw.to_string());
@@ -70,11 +71,11 @@ pub(crate) fn render_config_template_with(
         .unwrap_or("config.yaml");
     jinja
         .add_template(name, raw)
-        .map_err(|e| format_template_error(path, &e))?;
+        .map_err(|e| LoadError::template(format_template_error(path, &e)))?;
 
     let tmpl = jinja
         .get_template(name)
-        .map_err(|e| format_template_error(path, &e))?;
+        .map_err(|e| LoadError::template(format_template_error(path, &e)))?;
 
     let ctx = context! {
         env => MjValue::from_serialize(env_vars),
@@ -83,7 +84,7 @@ pub(crate) fn render_config_template_with(
     };
 
     tmpl.render(ctx)
-        .map_err(|e| format_template_error(path, &e))
+        .map_err(|e| LoadError::template(format_template_error(path, &e)))
 }
 
 fn format_template_error(path: &Path, err: &minijinja::Error) -> String {
@@ -129,8 +130,11 @@ mod tests {
             &SecretMap::new(),
         )
         .unwrap_err();
-        assert!(err.contains("cfg.yaml"), "{err}");
-        assert!(err.contains("secret.env") || err.contains("Hint"), "{err}");
+        assert!(err.to_string().contains("cfg.yaml"), "{err}");
+        assert!(
+            err.to_string().contains("secret.env") || err.to_string().contains("Hint"),
+            "{err}"
+        );
     }
 
     #[test]
@@ -179,9 +183,11 @@ mod tests {
             &SecretMap::new(),
         )
         .unwrap_err();
-        assert!(err.contains("cfg.yaml"), "{err}");
+        assert!(err.to_string().contains("cfg.yaml"), "{err}");
         assert!(
-            err.contains("vars.home") || err.contains("undefined") || err.contains("project"),
+            err.to_string().contains("vars.home")
+                || err.to_string().contains("undefined")
+                || err.to_string().contains("project"),
             "{err}"
         );
     }

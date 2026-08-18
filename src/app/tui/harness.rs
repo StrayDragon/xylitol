@@ -2024,7 +2024,9 @@ mod slice_tests {
         root.borrow_mut().set_editor_text("keep-me");
         session.set_force_real_external_editor(true);
         session.set_external_editor_cmd_override(Some(Err(
-            "set $VISUAL or $EDITOR to use external editor (Ctrl+G)".into(),
+            crate::app::tui::error::TuiSurfaceError::invalid(
+                "set $VISUAL or $EDITOR to use external editor (Ctrl+G)",
+            ),
         )));
         session.step(HostEvent::Input(ctrl_g_event())).unwrap();
         assert_eq!(root.borrow().editor_text(), "keep-me");

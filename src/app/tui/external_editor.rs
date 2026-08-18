@@ -6,6 +6,8 @@
 use std::io::IsTerminal;
 use std::process::Command;
 
+use super::error::TuiSurfaceError;
+
 /// Prefer real `$EDITOR` path (interactive TTY). Harness / tests / non-TTY → stub.
 ///
 /// - `XYLITOL_TUI_EDITOR_STUB=1` → always stub
@@ -31,7 +33,7 @@ fn env_flag(name: &str) -> bool {
 }
 
 /// Strict resolve: non-empty `$VISUAL`, else non-empty `$EDITOR`. No nano/notepad default.
-pub fn resolve_external_editor_command() -> Result<String, String> {
+pub fn resolve_external_editor_command() -> Result<String, TuiSurfaceError> {
     resolve_external_editor_command_from(
         std::env::var("VISUAL").ok().as_deref(),
         std::env::var("EDITOR").ok().as_deref(),
@@ -41,14 +43,16 @@ pub fn resolve_external_editor_command() -> Result<String, String> {
 pub fn resolve_external_editor_command_from(
     visual: Option<&str>,
     editor: Option<&str>,
-) -> Result<String, String> {
+) -> Result<String, TuiSurfaceError> {
     for raw in [visual, editor].into_iter().flatten() {
         let trimmed = raw.trim();
         if !trimmed.is_empty() {
             return Ok(trimmed.to_string());
         }
     }
-    Err("set $VISUAL or $EDITOR to use external editor (Ctrl+G)".into())
+    Err(TuiSurfaceError::invalid(
+        "set $VISUAL or $EDITOR to use external editor (Ctrl+G)",
+    ))
 }
 
 /// Write `initial` to a tempfile, spawn `editor_cmd`, return new text on exit 0.
@@ -56,7 +60,7 @@ pub fn resolve_external_editor_command_from(
 pub fn run_external_editor_process_with_command(
     editor_cmd: &str,
     initial: &str,
-) -> Result<Option<String>, String> {
+) -> Result<Option<String>, TuiSurfaceError> {
     let path = std::env::temp_dir().join(format!(
         "xylitol-tui-editor-{}-{}.md",
         std::process::id(),
@@ -65,12 +69,13 @@ pub fn run_external_editor_process_with_command(
             .map(|d| d.as_millis())
             .unwrap_or(0)
     ));
-    std::fs::write(&path, initial).map_err(|e| format!("write tempfile: {e}"))?;
+    std::fs::write(&path, initial)
+        .map_err(|e| TuiSurfaceError::io(format!("write tempfile: {e}")))?;
 
     let mut parts = editor_cmd.split_whitespace();
     let program = parts
         .next()
-        .ok_or_else(|| "empty editor command".to_string())?;
+        .ok_or_else(|| TuiSurfaceError::invalid("empty editor command"))?;
     let mut args: Vec<&str> = parts.collect();
     let path_str = path.to_string_lossy();
     args.push(path_str.as_ref());
@@ -81,10 +86,11 @@ pub fn run_external_editor_process_with_command(
         .stdout(std::process::Stdio::inherit())
         .stderr(std::process::Stdio::inherit())
         .status()
-        .map_err(|e| format!("spawn {program}: {e}"))?;
+        .map_err(|e| TuiSurfaceError::io(format!("spawn {program}: {e}")))?;
 
     let result = if status.success() {
-        let new_content = std::fs::read_to_string(&path).map_err(|e| format!("read back: {e}"))?;
+        let new_content = std::fs::read_to_string(&path)
+            .map_err(|e| TuiSurfaceError::io(format!("read back: {e}")))?;
         Some(
             new_content
                 .strip_suffix('\n')
@@ -121,9 +127,12 @@ mod tests {
     #[test]
     fn resolve_missing_is_err_no_default() {
         let err = resolve_external_editor_command_from(None, None).unwrap_err();
-        assert!(err.contains("$VISUAL") || err.contains("$EDITOR"), "{err}");
+        assert!(
+            err.to_string().contains("$VISUAL") || err.to_string().contains("$EDITOR"),
+            "{err}"
+        );
         let err = resolve_external_editor_command_from(Some(""), Some("   ")).unwrap_err();
-        assert!(err.contains("Ctrl+G"), "{err}");
+        assert!(err.to_string().contains("Ctrl+G"), "{err}");
     }
 
     #[test]
@@ -152,7 +161,10 @@ mod tests {
             "draft",
         )
         .unwrap_err();
-        assert!(err.contains("spawn") || err.contains("No such"), "{err}");
+        assert!(
+            err.to_string().contains("spawn") || err.to_string().contains("No such"),
+            "{err}"
+        );
     }
 
     #[test]

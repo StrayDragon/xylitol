@@ -32,10 +32,7 @@ pub fn resolve_wire_policy(config: &XyModelConfig) -> xylitol_ai_bridge::WirePol
 ///
 /// WirePolicy comes from named `compat` profiles in the bridge (c1940); free-form
 /// `extra_policy` YAML is not accepted. AdapterKind still ignores WirePolicy.
-pub fn build_adapter(
-    config: &XyModelConfig,
-    hooks: Option<Arc<HookDispatcher>>,
-) -> Result<AdapterRef, String> {
+pub fn build_adapter(config: &XyModelConfig, hooks: Option<Arc<HookDispatcher>>) -> AdapterRef {
     let kind = resolve_adapter_kind(config);
     let http_hooks = to_http_hooks(hooks);
     let wire_policy = resolve_wire_policy(config);
@@ -47,7 +44,7 @@ pub fn build_adapter(
         http_hooks,
         wire_policy,
     );
-    Ok(Arc::new(MappedBridgeAdapter::new(bridge)) as AdapterRef)
+    Arc::new(MappedBridgeAdapter::new(bridge)) as AdapterRef
 }
 
 #[cfg(test)]

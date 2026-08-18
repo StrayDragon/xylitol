@@ -36,7 +36,6 @@ struct InProcessReloadState {
 
 type McpToolList = Vec<Arc<dyn crate::protocol::ports::XyTool>>;
 type McpDiscoverOk = Option<(Arc<crate::infra::mcp::McpClientManager>, McpToolList)>;
-type McpDiscoverOutcome = Result<McpDiscoverOk, String>;
 
 /// Whether connecting progress should invalidate the TUI loaded-resources strip.
 ///
@@ -55,7 +54,7 @@ fn mcp_progress_needs_ui_refresh(
 enum McpBootState {
     Idle,
     Running {
-        handle: tokio::task::JoinHandle<McpDiscoverOutcome>,
+        handle: tokio::task::JoinHandle<McpDiscoverOk>,
         progress: Arc<tokio::sync::Mutex<crate::infra::mcp::McpConnectProgress>>,
         /// Last connecting label published to the TUI; skip refresh when unchanged.
         last_ui_label: Option<Option<String>>,
@@ -94,7 +93,7 @@ pub struct XyInProcessDriver {
     /// Background MCP bootstrap (c1200); independent of agent busy.
     mcp_boot: McpBootState,
     /// Discover finished after gate timeout detached `Running` (apply on poll).
-    late_mcp_discover: Option<tokio::task::JoinHandle<McpDiscoverOutcome>>,
+    late_mcp_discover: Option<tokio::task::JoinHandle<McpDiscoverOk>>,
     /// User-visible notice after gate timeout subset freeze (TUI takes once).
     mcp_gate_notice: Option<String>,
     /// When set, [`Self::poll_mcp_bootstrap`] freezes tools at settle or this deadline (TUI gate).
@@ -106,10 +105,6 @@ pub struct XyInProcessDriver {
 }
 
 impl XyInProcessDriver {
-    fn map_str<T>(r: Result<T, String>) -> Result<T, XyDriverError> {
-        r.map_err(XyDriverError::from_opaque)
-    }
-
     /// Construct from a built agent plus the store used to build it.
     ///
     /// Installs default bang + export I/O for product surfaces.
@@ -482,9 +477,7 @@ fn bind_session_or_err(
     agent: &mut AgentRuntime,
     session_id: impl Into<String>,
 ) -> Result<(), XyDriverError> {
-    agent
-        .bind_session(session_id)
-        .map_err(|e| XyDriverError::from_opaque(e.to_string()))
+    agent.bind_session(session_id).map_err(XyDriverError::from)
 }
 
 #[async_trait]
@@ -625,9 +618,7 @@ impl XyDriver for XyInProcessDriver {
                 exclude_from_context,
                 self.agent.cwd(),
             );
-            crate::agent::capabilities::cancel_hook(&bus, ty, phase, ctx)
-                .await
-                .map_err(XyDriverError::from_opaque)?;
+            crate::agent::capabilities::cancel_hook(&bus, ty, phase, ctx).await?;
         }
         self.bang
             .execute(
@@ -654,12 +645,11 @@ impl XyDriver for XyInProcessDriver {
         let sid = self
             .agent
             .session_id()
-            .ok_or_else(|| XyDriverError::from_opaque("no active session"))?
+            .ok_or_else(|| XyDriverError::not_found("no active session"))?
             .to_string();
         self.exporter
             .export_to_html(self.store.as_ref(), &sid, path)
-            .await
-            .map_err(XyDriverError::from)?;
+            .await?;
         Ok(path.to_string_lossy().into_owned())
     }
 
@@ -667,12 +657,11 @@ impl XyDriver for XyInProcessDriver {
         let sid = self
             .agent
             .session_id()
-            .ok_or_else(|| XyDriverError::from_opaque("no active session"))?
+            .ok_or_else(|| XyDriverError::not_found("no active session"))?
             .to_string();
         self.exporter
             .export_to_jsonl(self.store.as_ref(), &sid, path)
-            .await
-            .map_err(XyDriverError::from)?;
+            .await?;
         Ok(path.to_string_lossy().into_owned())
     }
 
@@ -680,7 +669,6 @@ impl XyDriver for XyInProcessDriver {
         self.exporter
             .import_from_jsonl(self.store.as_ref(), path)
             .await
-            .map_err(XyDriverError::from)
     }
 
     async fn fork_session(
@@ -699,9 +687,7 @@ impl XyDriver for XyInProcessDriver {
 
     async fn switch_session(&mut self, session_id: &str) -> Result<String, XyDriverError> {
         if !self.store.exists(session_id).await {
-            return Err(XyDriverError::not_found(format!(
-                "session not found: {session_id}"
-            )));
+            return Err(XyDriverError::not_found(session_id.to_string()));
         }
         if let Some(bus) = self.agent.hook_bus() {
             let (ty, phase, ctx) =
@@ -713,7 +699,7 @@ impl XyDriver for XyInProcessDriver {
             );
             crate::agent::capabilities::observe_hook(&bus, ty, phase, ctx).await;
         }
-        let context = Self::map_str(self.store.build_session_context(session_id).await)?;
+        let context = self.store.build_session_context(session_id).await?;
         bind_session_or_err(&mut self.agent, session_id.to_string())?;
         self.bind_todo_session(Some(session_id)).await;
         // Restore precisely what the session recorded. Do not validate, clamp, or
@@ -747,7 +733,7 @@ impl XyDriver for XyInProcessDriver {
             .agent
             .session_id()
             .ok_or_else(|| XyDriverError::not_found("no active session"))?;
-        Self::map_str(self.store.load_entries(sid).await)
+        self.store.load_entries(sid).await.map_err(Into::into)
     }
 
     async fn get_session_stats(&self) -> Result<SessionStats, XyDriverError> {
@@ -919,7 +905,10 @@ impl XyDriver for XyInProcessDriver {
             target_id: target_id.to_string(),
             label: cleaned,
         });
-        Self::map_str(self.store.append_session_entry(sid, &entry).await)
+        self.store
+            .append_session_entry(sid, &entry)
+            .await
+            .map_err(Into::into)
     }
 
     fn leaf_entry_id(&self) -> Option<String> {
@@ -946,9 +935,7 @@ impl XyDriver for XyInProcessDriver {
             .create(&session_id, cwd.as_deref(), None)
             .await
             .map_err(XyDriverError::from)?;
-        let canonical = seed_scene(self.store.as_ref(), &session_id, scene)
-            .await
-            .map_err(XyDriverError::from)?;
+        let canonical = seed_scene(self.store.as_ref(), &session_id, scene).await?;
         bind_session_or_err(&mut self.agent, session_id.clone())?;
         self.bind_todo_session(Some(&session_id)).await;
         let entries = self
@@ -976,14 +963,17 @@ impl XyDriver for XyInProcessDriver {
     }
 
     async fn list_sessions(&self) -> Result<Vec<SessionListEntry>, XyDriverError> {
-        Self::map_str(self.store.list_sessions().await)
+        self.store.list_sessions().await.map_err(Into::into)
     }
 
     async fn load_session_entries(
         &self,
         session_id: &str,
     ) -> Result<Vec<SessionEntry>, XyDriverError> {
-        Self::map_str(self.store.load_entries(session_id).await)
+        self.store
+            .load_entries(session_id)
+            .await
+            .map_err(Into::into)
     }
 
     async fn new_session(&mut self) -> Result<String, XyDriverError> {
@@ -1005,7 +995,7 @@ impl XyDriver for XyInProcessDriver {
             .agent
             .session_id()
             .ok_or_else(|| XyDriverError::not_found("no active session"))?;
-        Self::map_str(self.store.get_session_name(sid).await)
+        self.store.get_session_name(sid).await.map_err(Into::into)
     }
 
     async fn set_session_name(&mut self, name: &str) -> Result<String, XyDriverError> {
@@ -1013,7 +1003,7 @@ impl XyDriver for XyInProcessDriver {
             .agent
             .session_id()
             .ok_or_else(|| XyDriverError::not_found("no active session"))?;
-        let out = Self::map_str(self.store.set_session_name(sid, name).await)?;
+        let out = self.store.set_session_name(sid, name).await?;
         xylitol_ai_bridge::provider::set_obs_session_name(Some(out.as_str()));
         Ok(out)
     }
@@ -1023,7 +1013,7 @@ impl XyDriver for XyInProcessDriver {
         session_id: &str,
         name: &str,
     ) -> Result<String, XyDriverError> {
-        let out = Self::map_str(self.store.set_session_name(session_id, name).await)?;
+        let out = self.store.set_session_name(session_id, name).await?;
         if self.agent.session_id() == Some(session_id) {
             xylitol_ai_bridge::provider::set_obs_session_name(Some(out.as_str()));
         }
@@ -1031,7 +1021,10 @@ impl XyDriver for XyInProcessDriver {
     }
 
     async fn delete_session(&mut self, session_id: &str) -> Result<(), XyDriverError> {
-        Self::map_str(self.store.delete_session(session_id).await)
+        self.store
+            .delete_session(session_id)
+            .await
+            .map_err(Into::into)
     }
 
     fn session_store(&self) -> Option<Arc<dyn XySessionStore>> {
@@ -1181,7 +1174,7 @@ impl XyDriver for XyInProcessDriver {
             let handle = self.late_mcp_discover.take().expect("late handle");
             let mut refreshed = false;
             match handle.await {
-                Ok(Ok(Some((manager, tools)))) => {
+                Ok(Some((manager, tools))) => {
                     let tool_n = tools.len();
                     let old = self.reload.as_mut().and_then(|s| s.mcp.take_manager());
                     if let Some(old) = old {
@@ -1217,7 +1210,7 @@ impl XyDriver for XyInProcessDriver {
                         }
                     }
                 }
-                Ok(Ok(None)) | Ok(Err(_)) | Err(_) => {
+                Ok(None) | Err(_) => {
                     log::warn!(target: "xylitol::mcp", "late MCP discover after gate failed or empty");
                     refreshed = true;
                 }
@@ -1347,7 +1340,7 @@ impl XyDriver for XyInProcessDriver {
             return false;
         };
         let boot_refreshed = match handle.await {
-            Ok(Ok(Some((manager, tools)))) => {
+            Ok(Some((manager, tools))) => {
                 let tool_n = tools.len();
                 let settle_started = std::time::Instant::now();
                 let old = self.reload.as_mut().and_then(|s| s.mcp.take_manager());
@@ -1370,12 +1363,7 @@ impl XyDriver for XyInProcessDriver {
                 // UI refresh waits until tools are applied (Rebuilding → Settling).
                 false
             }
-            Ok(Ok(None)) => {
-                self.mcp_boot = McpBootState::Settled;
-                true
-            }
-            Ok(Err(e)) => {
-                log::warn!(target: "xylitol::mcp", "MCP bootstrap failed: {e}");
+            Ok(None) => {
                 self.mcp_boot = McpBootState::Settled;
                 true
             }
@@ -1605,8 +1593,7 @@ impl XyDriver for XyInProcessDriver {
             });
         };
         if !opt.updates.is_empty() {
-            mgr.apply_updates(&opt.updates)
-                .map_err(|e| XyDriverError::io(format!("trust store write failed: {e}")))?;
+            mgr.apply_updates(&opt.updates)?;
         }
         let saved = opt.saved_path.clone().unwrap_or_else(|| cwd_str.clone());
         let verb = if opt.trusted { "trusted" } else { "denied" };
@@ -1626,7 +1613,7 @@ impl XyDriver for XyInProcessDriver {
     ) -> Result<ClipboardCopyOutcome, XyDriverError> {
         let plan = crate::infra::clipboard::plan_clipboard_copy_async(text.to_string())
             .await
-            .map_err(XyDriverError::io)?;
+            .map_err(XyDriverError::from)?;
         if !plan.will_succeed() {
             return Err(XyDriverError::io(plan.failure_message()));
         }
@@ -1639,7 +1626,7 @@ impl XyDriver for XyInProcessDriver {
         let image = tokio::task::spawn_blocking(crate::infra::clipboard::read_clipboard_image)
             .await
             .map_err(|e| XyDriverError::io(format!("clipboard image task failed: {e}")))?
-            .map_err(XyDriverError::io)?;
+            .map_err(XyDriverError::from)?;
         let Some(image) = image else {
             return Ok(None);
         };
@@ -1648,7 +1635,7 @@ impl XyDriver for XyInProcessDriver {
         })
         .await
         .map_err(|e| XyDriverError::io(format!("clipboard image write task failed: {e}")))?
-        .map_err(XyDriverError::io)?;
+        .map_err(XyDriverError::from)?;
         Ok(Some(path))
     }
 
@@ -1656,7 +1643,7 @@ impl XyDriver for XyInProcessDriver {
         tokio::task::spawn_blocking(crate::infra::clipboard::read_clipboard_text)
             .await
             .map_err(|e| XyDriverError::io(format!("clipboard text task failed: {e}")))?
-            .map_err(XyDriverError::io)
+            .map_err(XyDriverError::from)
     }
 }
 
@@ -1679,8 +1666,7 @@ mod driver_session_tree_tests {
         EntryBase, MessageEntry, SessionEntry, SessionTreeKind, ThinkingLevelChangeEntry,
     };
 
-    type ModelBuilderFn =
-        Arc<dyn Fn(&XyModelConfig) -> Result<Arc<dyn XyModel>, String> + Send + Sync>;
+    type ModelBuilderFn = crate::protocol::ports::XyModelBuilder;
 
     fn msg_entry(id: &str, parent: Option<&str>, role: &str, text: &str) -> SessionEntry {
         SessionEntry::Message(MessageEntry {
@@ -1715,8 +1701,7 @@ mod driver_session_tree_tests {
         )
         .cwd(".")
         .tools(ToolSet::from_iter(crate::infra::tools::default_tools()))
-        .build()
-        .expect("build agent");
+        .build();
         let sid = uuid::Uuid::new_v4().to_string();
         store_trait
             .create(&sid, Some("."), None)
@@ -1777,8 +1762,7 @@ mod driver_session_tree_tests {
         )
         .cwd(".")
         .tools(ToolSet::from_iter(crate::infra::tools::default_tools()))
-        .build()
-        .expect("build agent");
+        .build();
         // Orphan id: set on agent but never created on disk (wipe / pre-persist).
         let orphan = uuid::Uuid::new_v4().to_string();
         agent.bind_session(orphan.clone()).expect("bind_session");
@@ -1989,7 +1973,7 @@ mod driver_session_tree_tests {
             thinking_levels: Vec::new(),
             thinking_level_map: Default::default(),
         });
-        let builder: ModelBuilderFn = Arc::new(|_| Ok(Arc::new(TextMockModel) as Arc<dyn XyModel>));
+        let builder: ModelBuilderFn = Arc::new(|_| Arc::new(TextMockModel) as Arc<dyn XyModel>);
         let mut agent = AgentBuilder::new(
             reg,
             builder,
@@ -1999,8 +1983,7 @@ mod driver_session_tree_tests {
         )
         .cwd(".")
         .tools(ToolSet::empty())
-        .build()
-        .expect("build agent");
+        .build();
         agent.select_model("mock").await.expect("select mock");
         let sid = uuid::Uuid::new_v4().to_string();
         agent.bind_session(sid).expect("bind_session");
@@ -2491,9 +2474,9 @@ mod driver_session_tree_tests {
             thinking_level_map: Default::default(),
         });
         let builder: ModelBuilderFn = Arc::new(move |_| {
-            Ok(Arc::new(SlowMock {
+            Arc::new(SlowMock {
                 calls: calls_b.clone(),
-            }) as Arc<dyn XyModel>)
+            }) as Arc<dyn XyModel>
         });
         let mut agent = AgentBuilder::new(
             reg,
@@ -2504,8 +2487,7 @@ mod driver_session_tree_tests {
         )
         .cwd(".")
         .tools(ToolSet::empty())
-        .build()
-        .expect("build agent");
+        .build();
         agent.select_model("mock").await.expect("select mock");
         let sid = uuid::Uuid::new_v4().to_string();
         agent.bind_session(sid).expect("bind_session");
@@ -2635,9 +2617,9 @@ mod driver_session_tree_tests {
             thinking_level_map: Default::default(),
         });
         let builder: ModelBuilderFn = Arc::new(move |_| {
-            Ok(Arc::new(RecordingModel {
+            Arc::new(RecordingModel {
                 seen: seen_b.clone(),
-            }) as Arc<dyn XyModel>)
+            }) as Arc<dyn XyModel>
         });
         let mut agent = AgentBuilder::new(
             reg,
@@ -2648,8 +2630,7 @@ mod driver_session_tree_tests {
         )
         .cwd(".")
         .tools(ToolSet::empty())
-        .build()
-        .expect("build agent");
+        .build();
         agent.select_model("mock").await.expect("select mock");
         let sid = uuid::Uuid::new_v4().to_string();
         agent.bind_session(sid).expect("bind_session");

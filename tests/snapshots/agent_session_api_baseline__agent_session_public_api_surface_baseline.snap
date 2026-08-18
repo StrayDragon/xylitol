@@ -5,11 +5,11 @@ expression: "all_items.join(\"\\n\")"
 ---
 pub async fn cycle_thinking_level(&mut self) -> Result<String, XyError>
 pub async fn ensure_session(&self, id: &str, parent: Option<&str>) -> Result<(), XyError>
-pub async fn force_compact(&self, instructions: Option<String>) -> Result<(), XyError>
+pub async fn force_compact(&self, instructions: Option<String>) -> Result<(), CompactionError>
 pub async fn fork_session( &self, at_entry_id: &str, position: crate::protocol::session::ForkPosition, ) -> Result<String, XyError>
 pub async fn get_session_stats(&self) -> Result<SessionStats, XyError>
-pub async fn maybe_auto_compact(&self) -> Result<bool, XyError>
-pub async fn maybe_auto_compact_with( &self, estimate_opts: &crate::agent::compaction::EstimateOpts, last_assistant: Option<&crate::protocol::message::AgentMessage>, ) -> Result<bool, XyError>
+pub async fn maybe_auto_compact(&self) -> Result<bool, CompactionError>
+pub async fn maybe_auto_compact_with( &self, estimate_opts: &crate::agent::compaction::EstimateOpts, last_assistant: Option<&crate::protocol::message::AgentMessage>, ) -> Result<bool, CompactionError>
 pub async fn select_model(&mut self, model_id: &str) -> Result<(), XyError>
 pub async fn select_model_with_source( &mut self, model_id: &str, source: &str, ) -> Result<(), XyError>
 pub async fn set_thinking_level(&mut self, level: String) -> Result<(), XyError>

@@ -5,6 +5,8 @@
 use image::GenericImageView;
 use std::io::Cursor;
 
+use super::error::ImageError;
+
 /// Result of a resize operation.
 #[derive(Debug, Clone)]
 pub struct ResizedImage {
@@ -52,7 +54,7 @@ impl Default for ImageResizeOptions {
 /// - Converts to JPEG if PNG exceeds byte limit
 ///
 /// Does not apply EXIF orientation correction; decoded pixels are used as-is.
-pub fn resize_image(data: &[u8], options: &ImageResizeOptions) -> Result<ResizedImage, String> {
+pub fn resize_image(data: &[u8], options: &ImageResizeOptions) -> Result<ResizedImage, ImageError> {
     let img = image::load_from_memory(data).map_err(|e| format!("failed to decode image: {e}"))?;
 
     let (orig_w, orig_h) = img.dimensions();
@@ -125,7 +127,9 @@ pub fn resize_image(data: &[u8], options: &ImageResizeOptions) -> Result<Resized
         });
     }
 
-    Err("image could not be resized below the byte limit".to_string())
+    Err("image could not be resized below the byte limit"
+        .to_string()
+        .into())
 }
 
 /// Minimal base64 encoder (RFC 4648) — mirrors clipboard version.
