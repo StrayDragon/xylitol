@@ -4,7 +4,6 @@ use std::time::Instant;
 
 use xylitol_tui::{Component, InputEvent, truncate_to_width};
 
-use super::super::session_tree::{tree_help_line, tree_search_line, wrap_help_line};
 use super::super::slots::EditorSlot;
 use super::UiRoot;
 use crate::app::tui::widgets::{render_queue_strip, render_scrollback};
@@ -109,84 +108,20 @@ impl UiRoot {
     }
 
     pub(super) fn render_editor_slot(&mut self, width: usize) -> Vec<String> {
-        match self.slot {
+        match &mut self.slot {
             EditorSlot::Editor => self.editor.render(width.max(1)),
-            EditorSlot::Tree => {
-                let mut lines = Vec::new();
-                lines.push(" Session tree".to_string());
-                if let Some((_, ref mut input)) = self.tree_label_edit {
-                    lines.push(
-                        self.theme
-                            .paint_muted(" Label edit · Enter save · Esc cancel"),
-                    );
-                    lines.extend(input.render(width.max(1)));
-                    return lines;
-                }
-                // pi order: TreeHelp then SearchLine.
-                for help in wrap_help_line(&tree_help_line(), width.max(1)) {
-                    lines.push(self.theme.paint_muted(&help));
-                }
-                lines.push(
-                    self.theme
-                        .paint_muted(&tree_search_line(self.tree.search_query())),
-                );
-                lines.extend(self.tree.render(width.max(1)));
-                lines
-            }
+            EditorSlot::Tree(tree) => tree.render(width, self.theme),
             EditorSlot::Plate => vec![
                 " Command Plate".to_string(),
                 " (stub) Esc close".to_string(),
             ],
             EditorSlot::Settings => vec![" Settings".to_string(), " (stub) Esc close".to_string()],
-            EditorSlot::Choice => {
-                // Brand lives on scrollback header (`Ask · …`); no redundant slot caption.
-                let mut lines = Vec::new();
-                if let Some(ref mut prompt) = self.choice_prompt {
-                    lines.extend(prompt.render(width.max(1)));
-                }
-                lines
-            }
-            EditorSlot::Models => {
-                let w = width.max(1);
-                if self.models_last_width != w {
-                    self.models_last_width = w;
-                    self.rebuild_models_items_keep_selection();
-                }
-                let mut lines = Vec::new();
-                lines.push(self.models_filter_line());
-                lines.extend(self.models_list.render(w));
-                lines
-            }
-            EditorSlot::Themes => {
-                let mut lines = Vec::new();
-                lines.push(self.theme.paint_muted(" themes"));
-                lines.extend(self.themes_list.render(width.max(1)));
-                lines
-            }
-            EditorSlot::ImportConfirm => {
-                let mut lines = Vec::new();
-                let path = self.import_confirm_path.as_deref().unwrap_or("?");
-                lines.push(
-                    self.theme
-                        .paint_muted(&format!(" Replace current session with {path}?")),
-                );
-                lines.extend(self.import_confirm_list.render(width.max(1)));
-                lines
-            }
-            EditorSlot::SessionResume => self.session_resume.render(width.max(1)),
-            EditorSlot::Mcp => {
-                let mut lines = Vec::new();
-                lines.push(
-                    self.theme
-                        .paint_muted(&format!(" MCP · {}", self.mcp_summary_line)),
-                );
-                lines.extend(self.mcp_list.render(width.max(1)));
-                for diag in &self.mcp_diag_lines {
-                    lines.push(self.theme.paint_muted(diag));
-                }
-                lines.push(self.theme.paint_muted(" Esc · Enter closes"));
-                lines
-            }
+            EditorSlot::Choice(ask) => ask.render(width),
+            EditorSlot::Models(models) => models.render(width, self.theme),
+            EditorSlot::Themes(themes) => themes.render(width, self.theme),
+            EditorSlot::ImportConfirm(imp) => imp.render(width, self.theme),
+            EditorSlot::SessionResume(panel) => panel.render(width.max(1)),
+            EditorSlot::Mcp(mcp) => mcp.render(width, self.theme),
         }
     }
 
@@ -281,10 +216,7 @@ impl Component for UiRoot {
         self.status_loader.invalidate();
         self.editor.invalidate();
         self.footer.invalidate();
-        self.tree.invalidate();
-        self.models_list.invalidate();
-        self.import_confirm_list.invalidate();
-        self.session_resume.invalidate();
+        self.slot.invalidate();
     }
 
     fn tick(&mut self) -> bool {

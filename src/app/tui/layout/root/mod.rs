@@ -5,43 +5,35 @@
 
 mod chrome_footprint_apply;
 mod editor_border;
-mod empty_widgets;
 mod mcp_slot;
 mod models_slot;
 mod mount;
+mod pending_slot;
 mod render;
 mod slot_input;
 mod slot_nav;
 mod theme_apply;
 
-use empty_widgets::{
-    empty_mcp_list, empty_models_list, empty_session_resume_panel, empty_themes_list,
-    empty_tree_selector, import_confirm_list as make_import_confirm_list,
-};
-use std::cell::RefCell;
+use pending_slot::PendingSlotOps;
 use std::path::PathBuf;
-use std::rc::Rc;
 use std::sync::atomic::{AtomicBool, Ordering};
 use std::time::Instant;
 
-use tokio::sync::oneshot;
 use xylitol_tui::Component;
 use xylitol_tui::components::editor::{Editor, EditorOptions};
 use xylitol_tui::components::loader::{Loader, LoaderIndicatorOptions};
-use xylitol_tui::components::select_list::{SelectItem, SelectList, SelectListLayoutOptions};
 use xylitol_tui::components::text::Text;
 use xylitol_tui::{
-    AtPathSource, ChoicePrompt, ChoiceQuestion, ChoiceResult, CompletionSource, Focusable, Input,
-    SlashArgCompletionSource, SlashCommandSource, SystemClock, TreeNode, TreeSelector,
-    TreeSelectorOptions, fg_rgb,
+    AtPathSource, ChoiceQuestion, CompletionSource, Focusable, SlashArgCompletionSource,
+    SlashCommandSource, SystemClock, TreeNode, fg_rgb,
 };
 
 use super::dollar_skill_source::DollarSkillSource;
-use super::models_picker::{ModelPickerRow, PendingModelChoice};
+use super::models_picker::PendingModelChoice;
 use super::slash_catalog::product_slash_commands_for_editor;
 
 use super::session_tree::FilterMode;
-use super::slots::EditorSlot;
+use super::slots::{AskSlot, EditorSlot, EditorSlotKind, ImportSlot, ThemesSlot, TreeSlot};
 use super::theme::LayoutTheme;
 use crate::app::core::driver::LoadedResourcesSnapshot;
 use crate::app::tui::activity_fold::{ActivityFoldState, AutoTrigger, ingest_rebuild_clocks};
@@ -55,12 +47,7 @@ use crate::protocol::error::XyToolError;
 use crate::protocol::model::THINKING_OFF;
 use crate::protocol::session::{SessionEntry, SessionTreeTravel};
 
-/// User choice from `/session-import` confirm slot (c1010).
-#[derive(Debug, Clone, PartialEq, Eq)]
-pub enum ImportConfirmDecision {
-    Accepted { path: String },
-    Rejected,
-}
+pub use super::slots::ImportConfirmDecision;
 
 /// Root UI: loaded-resources + live scrollback + optional status + bordered editor|tree + footer.
 pub struct UiRoot {
@@ -99,58 +86,19 @@ pub struct UiRoot {
     chrome_toast: Option<(String, Instant)>,
     /// Mutually exclusive editor-zone face (ati18).
     slot: EditorSlot,
-    tree: TreeSelector,
-    tree_filter: FilterMode,
+    /// Handshake with host `drain_pending_ui` (outlives the live payload).
+    pending: PendingSlotOps,
     last_esc_at: Option<Instant>,
     /// `!` / `!!` prefix → success border (c492).
     bash_mode: bool,
     /// Ctrl+G stub invocation count (harness).
     external_editor_invocations: u32,
-    /// Double Esc while idle → host fetches MessageHistory via XyDriver (c615).
-    pending_tree_open: bool,
-    /// Tree Enter → host calls `travel_session_tree` (c615).
-    pending_tree_travel: Option<String>,
-    /// Tree Shift+F → host calls `fork_session` + `switch_session` (c645).
-    pending_tree_fork: Option<String>,
-    /// Tree Shift+L commit → host `append_entry_label` (c690).
-    pending_tree_label: Option<(String, Option<String>)>,
-    /// Active label editor for selected tree node (c690).
-    tree_label_edit: Option<(String, Input)>,
-    /// Models Enter → host calls `SetModel` (c630).
-    pending_model_select: Option<PendingModelChoice>,
-    models_list: SelectList,
-    models_items: Vec<SelectItem>,
-    models_rows: Vec<ModelPickerRow>,
-    models_filter: String,
-    models_last_width: usize,
     /// `(model_id, description)` for [`SlashArgCompletionSource`] (c999).
     model_arg_catalog: Vec<(String, String)>,
-    /// Themes Enter → host calls `reload_themes` (c1115).
-    pending_theme_select: Option<String>,
-    themes_list: SelectList,
     /// Root for [`AtPathSource`] (c1125); default process cwd.
     at_path_base: PathBuf,
     /// `(name, description)` for [`DollarSkillSource`] (c1130).
     dollar_skill_catalog: Vec<(String, String)>,
-    /// `/session-import` confirm (c1010).
-    import_confirm_list: SelectList,
-    import_confirm_path: Option<String>,
-    pending_import_decision: Option<ImportConfirmDecision>,
-    /// Builtin `ask` ChoicePrompt (c1850).
-    choice_prompt: Option<ChoicePrompt>,
-    choice_pending: Option<Rc<RefCell<Option<ChoiceResult>>>>,
-    ask_reply: Option<oneshot::Sender<Result<String, XyToolError>>>,
-    /// `/session-resume` picker (c1015 / c1065).
-    pub(crate) session_resume: SessionResumePanel,
-    pending_session_resume_select: Option<String>,
-    pending_session_resume_rename: Option<(String, String)>,
-    pending_session_resume_delete: Option<String>,
-    /// `/mcp` SelectList (c1215).
-    mcp_list: SelectList,
-    /// Summary above the list: `configured N · connected K · armed A`.
-    mcp_summary_line: String,
-    /// Optional diag lines under the list.
-    mcp_diag_lines: Vec<String>,
     /// Generation for loaded+scrollback+queue cache (ath24); bumps on content/theme/fold.
     upper_gen: u64,
     upper_cache_gen: u64,
@@ -216,40 +164,13 @@ impl UiRoot {
             suppress_status_right_cue: false,
             chrome_toast: None,
             slot: EditorSlot::Editor,
-            tree: empty_tree_selector(theme),
-            tree_filter: FilterMode::Default,
+            pending: PendingSlotOps::default(),
             last_esc_at: None,
             bash_mode: false,
             external_editor_invocations: 0,
-            pending_tree_open: false,
-            pending_tree_travel: None,
-            pending_tree_fork: None,
-            pending_tree_label: None,
-            tree_label_edit: None,
-            pending_model_select: None,
-            models_list: empty_models_list(theme),
-            models_items: Vec::new(),
-            models_rows: Vec::new(),
-            models_filter: String::new(),
-            models_last_width: 80,
             model_arg_catalog: Vec::new(),
-            pending_theme_select: None,
-            themes_list: empty_themes_list(theme),
             at_path_base: std::env::current_dir().unwrap_or_else(|_| PathBuf::from(".")),
             dollar_skill_catalog: Vec::new(),
-            import_confirm_list: make_import_confirm_list(theme),
-            import_confirm_path: None,
-            pending_import_decision: None,
-            choice_prompt: None,
-            choice_pending: None,
-            ask_reply: None,
-            session_resume: empty_session_resume_panel(theme),
-            pending_session_resume_select: None,
-            pending_session_resume_rename: None,
-            pending_session_resume_delete: None,
-            mcp_list: empty_mcp_list(theme),
-            mcp_summary_line: String::new(),
-            mcp_diag_lines: Vec::new(),
             upper_gen: 0,
             upper_cache_gen: u64::MAX,
             upper_cache_width: usize::MAX,
@@ -646,8 +567,8 @@ impl UiRoot {
         self.editor.replace_history(texts);
     }
 
-    pub fn slot(&self) -> EditorSlot {
-        self.slot
+    pub fn slot(&self) -> EditorSlotKind {
+        self.slot.kind()
     }
 
     pub fn tree_open(&self) -> bool {
@@ -655,79 +576,97 @@ impl UiRoot {
     }
 
     pub fn take_pending_tree_open(&mut self) -> bool {
-        std::mem::take(&mut self.pending_tree_open)
+        std::mem::take(&mut self.pending.tree_open)
     }
 
     /// Request MessageHistory tree open (double Esc / `/session-tree`, c700/c1005).
     pub fn request_tree_open(&mut self) {
-        self.pending_tree_open = true;
+        self.pending.tree_open = true;
     }
 
     pub fn take_pending_tree_travel(&mut self) -> Option<String> {
-        self.pending_tree_travel.take()
+        self.pending.tree_travel.take()
     }
 
     pub fn take_pending_tree_fork(&mut self) -> Option<String> {
-        self.pending_tree_fork.take()
+        self.pending.tree_fork.take()
     }
 
     /// Queue fork for `entry_id` (`/session-fork` at leaf or Shift+F).
     pub fn request_tree_fork(&mut self, entry_id: String) {
-        self.pending_tree_fork = Some(entry_id);
+        self.pending.tree_fork = Some(entry_id);
     }
 
     pub fn take_pending_tree_label(&mut self) -> Option<(String, Option<String>)> {
-        self.pending_tree_label.take()
+        self.pending.tree_label.take()
     }
 
     pub fn apply_tree_label(&mut self, id: &str, label: Option<String>) {
-        self.tree.set_annotation(id, label.clone());
-        if label.is_some() {
-            self.tree.set_annotation_at(id, Some("just now".into()));
-        } else {
-            self.tree.set_annotation_at(id, None);
+        if let EditorSlot::Tree(tree) = &mut self.slot {
+            tree.apply_label(id, label);
         }
     }
 
     pub fn take_pending_model_select(&mut self) -> Option<PendingModelChoice> {
-        self.pending_model_select.take()
+        self.pending.model_select.take()
     }
 
     pub fn models_open(&self) -> bool {
-        self.slot == EditorSlot::Models
+        matches!(&self.slot, EditorSlot::Models(_))
     }
 
     pub fn take_pending_theme_select(&mut self) -> Option<String> {
-        self.pending_theme_select.take()
+        self.pending.theme_select.take()
     }
 
     pub fn themes_open(&self) -> bool {
-        self.slot == EditorSlot::Themes
+        matches!(&self.slot, EditorSlot::Themes(_))
     }
 
     pub fn import_confirm_open(&self) -> bool {
-        self.slot == EditorSlot::ImportConfirm
+        matches!(&self.slot, EditorSlot::ImportConfirm(_))
     }
 
     pub fn session_resume_open(&self) -> bool {
-        self.slot == EditorSlot::SessionResume
+        matches!(&self.slot, EditorSlot::SessionResume(_))
     }
 
     pub fn take_pending_session_resume_select(&mut self) -> Option<String> {
-        self.pending_session_resume_select.take()
+        self.pending.session_resume_select.take()
     }
 
     pub fn take_pending_session_resume_rename(&mut self) -> Option<(String, String)> {
-        self.pending_session_resume_rename.take()
+        self.pending.session_resume_rename.take()
     }
 
     pub fn take_pending_session_resume_delete(&mut self) -> Option<String> {
-        self.pending_session_resume_delete.take()
+        self.pending.session_resume_delete.take()
+    }
+
+    pub fn session_resume_apply_rename(&mut self, id: &str, name: &str) {
+        if let EditorSlot::SessionResume(panel) = &mut self.slot {
+            panel.apply_rename(id, name);
+        }
+    }
+
+    pub fn session_resume_remove_entry(&mut self, id: &str) {
+        if let EditorSlot::SessionResume(panel) = &mut self.slot {
+            panel.remove_entry(id);
+        }
+    }
+
+    pub fn session_resume_set_status(&mut self, msg: impl Into<String>) {
+        if let EditorSlot::SessionResume(panel) = &mut self.slot {
+            panel.set_status(msg);
+        }
     }
 
     #[cfg(test)]
     pub fn session_resume_panel_text_for_test(&self, width: usize) -> String {
-        self.session_resume.render(width).join("\n")
+        match &self.slot {
+            EditorSlot::SessionResume(panel) => panel.render(width).join("\n"),
+            _ => String::new(),
+        }
     }
 
     /// Mount session resume panel in the editor slot (c1065).
@@ -736,39 +675,42 @@ impl UiRoot {
         entries: Vec<crate::app::core::driver::SessionListEntry>,
         current_id: Option<&str>,
     ) {
-        self.session_resume.set_current_cwd(&self.cwd);
-        self.session_resume
-            .load_entries(entries, current_id.map(str::to_string));
-        self.slot = EditorSlot::SessionResume;
+        let mut panel = SessionResumePanel::new(self.theme);
+        panel.set_current_cwd(&self.cwd);
+        panel.load_entries(entries, current_id.map(str::to_string));
+        self.slot = EditorSlot::SessionResume(panel);
     }
 
     /// Placeholder while scanning session jsonl (pi loaded/total).
     pub fn mount_session_resume_loading(&mut self, loaded: usize, total: usize) {
-        self.session_resume.set_current_cwd(&self.cwd);
-        self.session_resume.set_loading(loaded, total);
-        self.slot = EditorSlot::SessionResume;
+        if let EditorSlot::SessionResume(panel) = &mut self.slot {
+            panel.set_current_cwd(&self.cwd);
+            panel.set_loading(loaded, total);
+            return;
+        }
+        let mut panel = SessionResumePanel::new(self.theme);
+        panel.set_current_cwd(&self.cwd);
+        panel.set_loading(loaded, total);
+        self.slot = EditorSlot::SessionResume(panel);
     }
 
     pub fn close_session_resume(&mut self) {
-        if self.slot == EditorSlot::SessionResume {
+        if matches!(&self.slot, EditorSlot::SessionResume(_)) {
             self.close_slot();
         }
     }
 
     pub fn take_pending_import_decision(&mut self) -> Option<ImportConfirmDecision> {
-        self.pending_import_decision.take()
+        self.pending.import_decision.take()
     }
 
     /// Mount Yes/No import confirm in the editor slot (c1010).
     pub fn mount_import_confirm(&mut self, path: &str) {
-        self.import_confirm_path = Some(path.to_string());
-        self.import_confirm_list = make_import_confirm_list(self.theme);
-        self.import_confirm_list.selected_index = 0;
-        self.slot = EditorSlot::ImportConfirm;
+        self.slot = EditorSlot::ImportConfirm(ImportSlot::mount(self.theme, path));
     }
 
     pub fn close_import_confirm(&mut self) {
-        if self.slot == EditorSlot::ImportConfirm {
+        if matches!(&self.slot, EditorSlot::ImportConfirm(_)) {
             self.close_slot();
         }
     }
@@ -777,7 +719,7 @@ impl UiRoot {
     pub fn mount_ask_choice(
         &mut self,
         questions: Vec<ChoiceQuestion>,
-        reply: oneshot::Sender<Result<String, XyToolError>>,
+        reply: tokio::sync::oneshot::Sender<Result<String, XyToolError>>,
     ) {
         if questions.is_empty() {
             let _ = reply.send(Err(XyToolError::InvalidArgs(
@@ -785,108 +727,47 @@ impl UiRoot {
             )));
             return;
         }
-        // Drop any prior unfinished ask (should not overlap under Barrier).
-        if let Some(prev) = self.ask_reply.take() {
-            let _ = prev.send(Err(XyToolError::Aborted));
+        if let EditorSlot::Choice(ref mut prev) = self.slot {
+            prev.abort();
         }
-        let pending: Rc<RefCell<Option<ChoiceResult>>> = Rc::new(RefCell::new(None));
-        let slot = pending.clone();
-        let mut theme = self.theme.palette().choice_prompt_theme();
-        // Product Ask stays rail-on (demo may wash via /entry-style).
-        theme.rail = Some(self.theme.palette().accent);
-        let prompt = ChoicePrompt::new(questions, theme, move |r| {
-            *slot.borrow_mut() = Some(r);
-        });
-        self.choice_prompt = Some(prompt);
-        self.choice_pending = Some(pending);
-        self.ask_reply = Some(reply);
-        self.slot = EditorSlot::Choice;
+        self.slot = EditorSlot::Choice(AskSlot::mount(self.theme, questions, reply));
     }
 
     /// If ChoicePrompt finished, complete oneshot with ask JSON and close the slot.
     ///
     /// Returns the ask payload JSON when a result was delivered.
     pub fn complete_ask_if_ready(&mut self) -> Option<String> {
-        let pending = self.choice_pending.as_ref()?;
-        let result = pending.borrow_mut().take()?;
-        let json = result.to_ask_payload_json();
-        if let Some(tx) = self.ask_reply.take() {
-            let _ = tx.send(Ok(json.clone()));
-        }
-        self.choice_prompt = None;
-        self.choice_pending = None;
-        if self.slot == EditorSlot::Choice {
-            self.slot = EditorSlot::Editor;
-        }
+        let json = {
+            let EditorSlot::Choice(ask) = &mut self.slot else {
+                return None;
+            };
+            ask.complete_if_ready()?
+        };
+        self.slot = EditorSlot::Editor;
         Some(json)
     }
 
     pub fn close_ask_choice(&mut self) {
-        if let Some(tx) = self.ask_reply.take() {
-            let _ = tx.send(Err(XyToolError::Aborted));
+        if let EditorSlot::Choice(ref mut ask) = self.slot {
+            ask.abort();
         }
-        self.choice_prompt = None;
-        self.choice_pending = None;
-        if self.slot == EditorSlot::Choice {
+        if matches!(&self.slot, EditorSlot::Choice(_)) {
             self.slot = EditorSlot::Editor;
         }
     }
 
     pub fn ask_choice_open(&self) -> bool {
-        self.slot == EditorSlot::Choice && self.choice_prompt.is_some()
+        matches!(&self.slot, EditorSlot::Choice(ask) if ask.has_prompt())
     }
 
     /// Mount built-in theme picker in the editor slot (c1115).
     pub fn mount_themes_picker(&mut self, current: Option<&str>) {
-        let current = current.unwrap_or("dark");
-        let items: Vec<SelectItem> = ["dark", "light"]
-            .into_iter()
-            .map(|name| {
-                let label = if current.eq_ignore_ascii_case(name) {
-                    format!("{name} *")
-                } else {
-                    name.to_string()
-                };
-                SelectItem::new(name, label)
-            })
-            .collect();
-        self.themes_list = SelectList::new(
-            items,
-            4,
-            self.theme.select_list_theme(),
-            SelectListLayoutOptions {
-                min_primary_column_width: Some(12),
-                max_primary_column_width: Some(24),
-                truncate_primary: None,
-            },
-        );
-        self.slot = EditorSlot::Themes;
-    }
-
-    fn apply_tree_filter(&mut self, mode: FilterMode) {
-        self.tree_filter = mode;
-        let filter = mode;
-        self.tree
-            .set_include_node(Some(Box::new(move |n| filter.include(n))));
-        self.tree
-            .set_status_suffix(mode.status_suffix().map(str::to_string));
+        self.slot = EditorSlot::Themes(ThemesSlot::mount(self.theme, current));
     }
 
     /// Mount MessageHistory rows fetched via XyDriver and open the Tree slot.
     pub fn mount_session_tree(&mut self, roots: Vec<TreeNode>, active_id: Option<&str>) {
-        self.tree_filter = FilterMode::Default;
-        self.tree = TreeSelector::new(
-            roots,
-            self.theme.tree_selector_theme(),
-            TreeSelectorOptions {
-                max_visible: 10,
-                unicode_connectors: true,
-                include_node: Some(Box::new(|n| FilterMode::Default.include(n))),
-                active_id: active_id.map(str::to_string),
-                status_suffix: None,
-            },
-        );
-        self.slot = EditorSlot::Tree;
+        self.slot = EditorSlot::Tree(TreeSlot::mount(self.theme, roots, active_id));
     }
 
     pub fn on_ctrl_c(&mut self, quit_flag: &AtomicBool) {
@@ -911,7 +792,9 @@ impl UiRoot {
     pub fn open_session_tree_at_for_test(&mut self, roots: Vec<TreeNode>, id: &str) {
         self.editor.set_text(String::new());
         self.mount_session_tree(roots, Some(id));
-        let _ = self.tree.select_id(id);
+        if let EditorSlot::Tree(tree) = &mut self.slot {
+            let _ = tree.select_id(id);
+        }
     }
 
     #[cfg(test)]
@@ -1068,17 +951,26 @@ impl UiRoot {
 
     /// Pending steer / follow-up strip above status (pi `pendingMessagesContainer`).
     pub fn tree_filter_for_test(&self) -> FilterMode {
-        self.tree_filter
+        match &self.slot {
+            EditorSlot::Tree(tree) => tree.filter(),
+            _ => FilterMode::Default,
+        }
     }
 
     #[cfg(test)]
     pub fn tree_search_query_for_test(&self) -> &str {
-        self.tree.search_query()
+        match &self.slot {
+            EditorSlot::Tree(tree) => tree.search_query(),
+            _ => "",
+        }
     }
 
     #[cfg(test)]
     pub fn tree_panel_text_for_test(&mut self, width: usize) -> String {
-        self.tree.render(width).join("\n")
+        match &mut self.slot {
+            EditorSlot::Tree(tree) => tree.panel_text(width),
+            _ => String::new(),
+        }
     }
 
     /// Full Tree slot head (Search / Help) + list for harness asserts.
@@ -1089,7 +981,10 @@ impl UiRoot {
 
     #[cfg(test)]
     pub fn tree_is_folded_for_test(&self, id: &str) -> bool {
-        self.tree.is_folded(id)
+        match &self.slot {
+            EditorSlot::Tree(tree) => tree.is_folded(id),
+            _ => false,
+        }
     }
 
     #[cfg(test)]

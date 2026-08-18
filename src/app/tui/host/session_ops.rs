@@ -189,21 +189,21 @@ impl<T: Terminal> HostSession<T> {
 
     pub fn session_resume_apply_rename(&mut self, id: &str, name: &str) {
         if let Some(root) = self.ui_root.as_ref() {
-            root.borrow_mut().session_resume.apply_rename(id, name);
+            root.borrow_mut().session_resume_apply_rename(id, name);
             self.sync_ui_root_from_model();
         }
     }
 
     pub fn session_resume_remove_entry(&mut self, id: &str) {
         if let Some(root) = self.ui_root.as_ref() {
-            root.borrow_mut().session_resume.remove_entry(id);
+            root.borrow_mut().session_resume_remove_entry(id);
             self.sync_ui_root_from_model();
         }
     }
 
     pub fn session_resume_set_status(&mut self, msg: impl Into<String>) {
         if let Some(root) = self.ui_root.as_ref() {
-            root.borrow_mut().session_resume.set_status(msg);
+            root.borrow_mut().session_resume_set_status(msg);
             self.sync_ui_root_from_model();
         }
     }

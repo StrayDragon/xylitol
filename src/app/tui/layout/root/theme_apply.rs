@@ -3,11 +3,8 @@
 use xylitol_tui::components::loader::{Loader, LoaderIndicatorOptions};
 use xylitol_tui::fg_rgb;
 
+use super::super::slots::EditorSlot;
 use super::UiRoot;
-use super::empty_widgets::{
-    empty_mcp_list, empty_models_list, empty_session_resume_panel, empty_themes_list,
-    empty_tree_selector, import_confirm_list,
-};
 use crate::app::tui::layout::LayoutTheme;
 
 impl UiRoot {
@@ -29,20 +26,25 @@ impl UiRoot {
             String::new(),
             Some(LoaderIndicatorOptions::default()),
         );
-        // Bash accent or thinking border under the new Palette (c1150).
         self.sync_editor_border();
-        // Rebuild themed shells; tree/resume content is host-refreshed on next open.
-        let selected = self.tree.selected_id().map(str::to_string);
-        self.tree = empty_tree_selector(theme);
-        if let Some(id) = selected {
-            let _ = self.tree.select_id(&id);
+        if matches!(&self.slot, EditorSlot::SessionResume(_)) {
+            self.slot = EditorSlot::SessionResume(
+                crate::app::tui::session_resume::SessionResumePanel::new(theme),
+            );
+        } else {
+            match &mut self.slot {
+                EditorSlot::Tree(tree) => tree.wipe_themed(theme),
+                EditorSlot::Models(models) => models.retheme(theme),
+                EditorSlot::Themes(themes) => themes.retheme(theme),
+                EditorSlot::Mcp(mcp) => mcp.retheme(theme),
+                EditorSlot::ImportConfirm(imp) => imp.retheme(theme),
+                EditorSlot::Editor
+                | EditorSlot::Plate
+                | EditorSlot::Settings
+                | EditorSlot::Choice(_)
+                | EditorSlot::SessionResume(_) => {}
+            }
         }
-        self.models_list = empty_models_list(theme);
-        self.apply_models_filter();
-        self.themes_list = empty_themes_list(theme);
-        self.mcp_list = empty_mcp_list(theme);
-        self.import_confirm_list = import_confirm_list(theme);
-        self.session_resume = empty_session_resume_panel(theme);
         self.refresh_footer();
     }
 }

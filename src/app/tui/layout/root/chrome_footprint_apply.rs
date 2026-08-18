@@ -1,5 +1,6 @@
 //! Chrome Footprint apply path for [`UiRoot`] (atc23 / c1810).
 
+use super::super::slots::EditorSlot;
 use super::super::{
     IMPORT_SLOT, MCP_SLOT_BASE, MODELS_SLOT, RESUME_SLOT, THEMES_SLOT, TREE_SLOT,
     queue_strip_line_count, reserved_lower_chrome, slot_body_budget,
@@ -17,7 +18,7 @@ impl UiRoot {
         self.term_rows
     }
 
-    /// Apply term-aware `max_visible` to all flex list/tree slots (atc23).
+    /// Apply term-aware `max_visible` to the live flex list/tree slot (atc23).
     pub(crate) fn apply_chrome_footprint(&mut self) {
         let queue_lines = queue_strip_line_count(
             self.ui_model.pending_steer.len(),
@@ -25,27 +26,37 @@ impl UiRoot {
         );
         let toast_present = self.chrome_toast.is_some();
         let reserved = reserved_lower_chrome(self.status_busy, queue_lines, toast_present);
+        let rows = self.term_rows;
 
-        self.models_list.max_visible = slot_body_budget(self.term_rows, reserved, MODELS_SLOT);
-        self.themes_list.max_visible = slot_body_budget(self.term_rows, reserved, THEMES_SLOT);
-        self.import_confirm_list.max_visible =
-            slot_body_budget(self.term_rows, reserved, IMPORT_SLOT);
-
-        let mut mcp_slot = MCP_SLOT_BASE;
-        mcp_slot.trailer = mcp_slot.trailer.saturating_add(self.mcp_diag_lines.len());
-        self.mcp_list.max_visible = slot_body_budget(self.term_rows, reserved, mcp_slot);
-
-        let mut resume_slot = RESUME_SLOT;
-        if self.session_resume.status_line().is_some() {
-            resume_slot.header = resume_slot.header.saturating_add(1);
+        match &mut self.slot {
+            EditorSlot::Models(models) => {
+                models.set_max_visible(slot_body_budget(rows, reserved, MODELS_SLOT));
+            }
+            EditorSlot::Themes(themes) => {
+                themes.set_max_visible(slot_body_budget(rows, reserved, THEMES_SLOT));
+            }
+            EditorSlot::ImportConfirm(imp) => {
+                imp.set_max_visible(slot_body_budget(rows, reserved, IMPORT_SLOT));
+            }
+            EditorSlot::Mcp(mcp) => {
+                let mut mcp_slot = MCP_SLOT_BASE;
+                mcp_slot.trailer = mcp_slot.trailer.saturating_add(mcp.diag_len());
+                mcp.set_max_visible(slot_body_budget(rows, reserved, mcp_slot));
+            }
+            EditorSlot::SessionResume(panel) => {
+                let mut resume_slot = RESUME_SLOT;
+                if panel.status_line().is_some() {
+                    resume_slot.header = resume_slot.header.saturating_add(1);
+                }
+                panel.set_max_visible(slot_body_budget(rows, reserved, resume_slot));
+            }
+            EditorSlot::Tree(tree) => {
+                tree.set_max_visible(slot_body_budget(rows, reserved, TREE_SLOT));
+            }
+            EditorSlot::Editor
+            | EditorSlot::Plate
+            | EditorSlot::Settings
+            | EditorSlot::Choice(_) => {}
         }
-        self.session_resume.set_max_visible(slot_body_budget(
-            self.term_rows,
-            reserved,
-            resume_slot,
-        ));
-
-        self.tree
-            .set_max_visible(slot_body_budget(self.term_rows, reserved, TREE_SLOT));
     }
 }

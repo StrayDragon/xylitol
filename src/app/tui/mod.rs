@@ -49,7 +49,7 @@ pub use self::host::{
     HostEvent as TuiHostEvent, HostSession as TuiHostSession, LayoutMode, MIN_COLS, MIN_ROWS,
     TOO_SMALL_HINT, display_cwd, is_too_small,
 };
-pub use self::layout::{EditorSlot, LayoutTheme};
+pub use self::layout::{EditorSlot, EditorSlotKind, LayoutTheme};
 pub use self::widgets::GlyphSet;
 // TuiRunOptions exported via struct above in this module
 
