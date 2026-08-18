@@ -3,7 +3,7 @@ use crossterm::event::KeyEvent;
 use std::cell::RefCell;
 use std::collections::HashMap;
 use std::rc::Rc;
-use std::sync::Mutex;
+use std::sync::{LazyLock, Mutex};
 
 pub type Keybinding = &'static str;
 
@@ -236,7 +236,8 @@ impl KeybindingsManager {
     }
 }
 
-static GLOBAL_KEYBINDINGS: Mutex<Option<KeybindingsManager>> = Mutex::new(None);
+static GLOBAL_KEYBINDINGS: LazyLock<Mutex<Option<KeybindingsManager>>> =
+    LazyLock::new(|| Mutex::new(None));
 
 thread_local! {
     /// HostSession / tests install a scoped manager so matching does not need the
@@ -277,16 +278,12 @@ where
     if let Some(kb) = SCOPED_KEYBINDINGS.with(|slot| slot.borrow().clone()) {
         return f(&kb.borrow());
     }
-    let guard = GLOBAL_KEYBINDINGS.lock().unwrap();
-    if let Some(ref kb) = *guard {
-        f(kb)
-    } else {
-        drop(guard);
+    let mut guard = GLOBAL_KEYBINDINGS.lock().unwrap();
+    if guard.is_none() {
         let definitions = create_default_definitions();
-        let mut guard = GLOBAL_KEYBINDINGS.lock().unwrap();
         *guard = Some(KeybindingsManager::new(definitions, HashMap::new()));
-        f(guard.as_ref().unwrap())
     }
+    f(guard.as_ref().unwrap())
 }
 
 /// Mutate the scoped manager if present, else the process-global manager

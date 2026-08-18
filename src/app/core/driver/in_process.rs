@@ -1382,181 +1382,161 @@ impl XyDriver for XyInProcessDriver {
     ) -> Result<RuntimeReloadReport, XyDriverError> {
         use crate::app::core::composition::McpReloadOutcome;
 
-        let Some(state) = self.reload.take() else {
+        let mut state = self.reload.take();
+        if state.is_none() {
             return Ok(RuntimeReloadReport::noop());
-        };
-
-        // Panic-safe put-back: Drop restores `reload` if a panic unwinds mid-flight.
-        // SAFETY: `driver` points at `self` for this stack frame only; Drop runs when
-        // `&mut self` is exclusively available again (end of function / unwind).
-        // `unsafe impl Send`: the raw pointer is never shared across threads; the async
-        // future is `Send` only for the trait object, and Drop runs on the same task.
-        struct ReloadPutBack {
-            driver: *mut XyInProcessDriver,
-            state: Option<InProcessReloadState>,
         }
-        // SAFETY: see struct docstring — pointer is task-local, used only in Drop.
-        unsafe impl Send for ReloadPutBack {}
-        impl ReloadPutBack {
-            fn new(driver: &mut XyInProcessDriver, state: InProcessReloadState) -> Self {
-                Self {
-                    driver: driver as *mut XyInProcessDriver,
-                    state: Some(state),
-                }
-            }
-            fn state_mut(&mut self) -> &mut InProcessReloadState {
-                self.state.as_mut().expect("reload state present")
-            }
-        }
-        impl Drop for ReloadPutBack {
-            fn drop(&mut self) {
-                if let Some(state) = self.state.take() {
-                    // SAFETY: see ReloadPutBack docstring.
-                    unsafe {
-                        (*self.driver).reload = Some(state);
-                    }
-                }
-            }
-        }
+        use futures::FutureExt;
 
-        let mut guard = ReloadPutBack::new(self, state);
-        let mut steps = Vec::new();
-        let mut cancelled = false;
+        // Panic-safe put-back: `state` is taken out of `self.reload` so the body can
+        // pass `&mut self` to helpers while owning the reload state. If the body
+        // panics mid-flight, the catch arm below restores `reload` so the driver is
+        // not left without reload state.
+        let body = async {
+            let st = state.as_mut().expect("reload state present");
+            let mut steps = Vec::new();
+            let mut cancelled = false;
 
-        // Re-read trust store so `/trust` + later `/reload` picks up new decisions (c1105).
-        // Prefer reload `agent_dir` (same as product `~/.xylitol`) so tests need not mutate HOME.
-        let trust_mgr = crate::infra::trust::TrustManager::new(guard.state_mut().agent_dir.clone());
-        let cwd_str = guard.state_mut().cwd.display().to_string();
-        guard.state_mut().project_trusted = trust_mgr.is_trusted(&cwd_str);
+            // Re-read trust store so `/trust` + later `/reload` picks up new decisions (c1105).
+            // Prefer reload `agent_dir` (same as product `~/.xylitol`) so tests need not mutate HOME.
+            let trust_mgr = crate::infra::trust::TrustManager::new(st.agent_dir.clone());
+            let cwd_str = st.cwd.display().to_string();
+            st.project_trusted = trust_mgr.is_trusted(&cwd_str);
 
-        let app_config = crate::infra::config::loader::load_app_config(None).ok();
-        guard.state_mut().mcp_servers = crate::app::core::mcp_spec::McpServerSpec::from_infra_list(
-            app_config.as_ref().and_then(|c| c.mcp_servers.clone()),
-        )
-        .unwrap_or_default();
-        let config_system_prompt = app_config
-            .as_ref()
-            .and_then(|cfg| cfg.resolve_default_profile().ok())
-            .and_then(|p| p.system_prompt.clone());
+            let app_config = crate::infra::config::loader::load_app_config(None).ok();
+            st.mcp_servers = crate::app::core::mcp_spec::McpServerSpec::from_infra_list(
+                app_config.as_ref().and_then(|c| c.mcp_servers.clone()),
+            )
+            .unwrap_or_default();
+            let config_system_prompt = app_config
+                .as_ref()
+                .and_then(|cfg| cfg.resolve_default_profile().ok())
+                .and_then(|p| p.system_prompt.clone());
 
-        if cancel.is_cancelled() {
-            return Ok(RuntimeReloadReport {
-                steps,
-                cancelled: true,
-            });
-        }
-
-        let (cwd, agent_dir, project_trusted) = {
-            let s = guard.state_mut();
-            (s.cwd.clone(), s.agent_dir.clone(), s.project_trusted)
-        };
-        let skills =
-            crate::app::core::bootstrap::reload_skills(self, &cwd, &agent_dir, project_trusted);
-        let skills_msg = if skills.names.is_empty() {
-            "0 skills".into()
-        } else {
-            format!("{} skill(s): {}", skills.count, skills.names.join(", "))
-        };
-        steps.push(ReloadStepReport {
-            step: "skills",
-            ok: true,
-            message: skills_msg,
-        });
-
-        if cancel.is_cancelled() {
-            return Ok(RuntimeReloadReport {
-                steps,
-                cancelled: true,
-            });
-        }
-
-        let mcp_servers = guard.state_mut().mcp_servers.clone();
-        let mcp_result = guard
-            .state_mut()
-            .mcp
-            .reload(self, &mcp_servers, cancel)
-            .await;
-
-        match mcp_result {
-            Ok(McpReloadOutcome::Cancelled) => {
-                cancelled = true;
-                steps.push(ReloadStepReport {
-                    step: "mcp",
-                    ok: true,
-                    message: "cancelled before install".into(),
+            if cancel.is_cancelled() {
+                self.reload = state.take();
+                return Ok(RuntimeReloadReport {
+                    steps,
+                    cancelled: true,
                 });
             }
-            Ok(McpReloadOutcome::Installed) => {
-                // c1900: reload is an explicit re-freeze; bootstrap mark settled.
-                self.mcp_boot = McpBootState::Settled;
-                let connected = guard.state_mut().mcp.connected_servers().await;
-                let diags = guard.state_mut().mcp.diagnostics().await;
-                let configured = guard.state_mut().mcp_servers.len();
-                if diags.is_empty() {
-                    let ids: Vec<_> = connected.iter().map(|s| s.id.as_str()).collect();
+
+            let (cwd, agent_dir, project_trusted) =
+                (st.cwd.clone(), st.agent_dir.clone(), st.project_trusted);
+            let skills =
+                crate::app::core::bootstrap::reload_skills(self, &cwd, &agent_dir, project_trusted);
+            let skills_msg = if skills.names.is_empty() {
+                "0 skills".into()
+            } else {
+                format!("{} skill(s): {}", skills.count, skills.names.join(", "))
+            };
+            steps.push(ReloadStepReport {
+                step: "skills",
+                ok: true,
+                message: skills_msg,
+            });
+
+            if cancel.is_cancelled() {
+                self.reload = state.take();
+                return Ok(RuntimeReloadReport {
+                    steps,
+                    cancelled: true,
+                });
+            }
+
+            let mcp_servers = st.mcp_servers.clone();
+            let mcp_result = st.mcp.reload(self, &mcp_servers, cancel).await;
+
+            match mcp_result {
+                Ok(McpReloadOutcome::Cancelled) => {
+                    cancelled = true;
                     steps.push(ReloadStepReport {
                         step: "mcp",
                         ok: true,
-                        message: format!(
-                            "{configured} configured, {} connected [{}]",
-                            connected.len(),
-                            ids.join(", ")
-                        ),
-                    });
-                } else {
-                    let detail = diags
-                        .iter()
-                        .map(|d| format!("{}: {}", d.server, d.message))
-                        .collect::<Vec<_>>()
-                        .join("; ");
-                    steps.push(ReloadStepReport {
-                        step: "mcp",
-                        ok: !connected.is_empty(),
-                        message: format!(
-                            "{configured} configured, {} connected; diagnostics: {detail}",
-                            connected.len()
-                        ),
+                        message: "cancelled before install".into(),
                     });
                 }
+                Ok(McpReloadOutcome::Installed) => {
+                    // c1900: reload is an explicit re-freeze; bootstrap mark settled.
+                    self.mcp_boot = McpBootState::Settled;
+                    let connected = st.mcp.connected_servers().await;
+                    let diags = st.mcp.diagnostics().await;
+                    let configured = st.mcp_servers.len();
+                    if diags.is_empty() {
+                        let ids: Vec<_> = connected.iter().map(|s| s.id.as_str()).collect();
+                        steps.push(ReloadStepReport {
+                            step: "mcp",
+                            ok: true,
+                            message: format!(
+                                "{configured} configured, {} connected [{}]",
+                                connected.len(),
+                                ids.join(", ")
+                            ),
+                        });
+                    } else {
+                        let detail = diags
+                            .iter()
+                            .map(|d| format!("{}: {}", d.server, d.message))
+                            .collect::<Vec<_>>()
+                            .join("; ");
+                        steps.push(ReloadStepReport {
+                            step: "mcp",
+                            ok: !connected.is_empty(),
+                            message: format!(
+                                "{configured} configured, {} connected; diagnostics: {detail}",
+                                connected.len()
+                            ),
+                        });
+                    }
+                }
+                Err(e) => steps.push(ReloadStepReport {
+                    step: "mcp",
+                    ok: false,
+                    message: e.to_string(),
+                }),
             }
-            Err(e) => steps.push(ReloadStepReport {
-                step: "mcp",
-                ok: false,
-                message: e.to_string(),
-            }),
-        }
 
-        if cancelled || cancel.is_cancelled() {
-            return Ok(RuntimeReloadReport {
-                steps,
-                cancelled: true,
+            if cancelled || cancel.is_cancelled() {
+                self.reload = state.take();
+                return Ok(RuntimeReloadReport {
+                    steps,
+                    cancelled: true,
+                });
+            }
+
+            let (cwd, agent_dir, project_trusted) =
+                (st.cwd.clone(), st.agent_dir.clone(), st.project_trusted);
+            let ctx = crate::app::core::bootstrap::reload_prompt_context(
+                self,
+                &cwd,
+                &agent_dir,
+                project_trusted,
+                config_system_prompt,
+            );
+            steps.push(ReloadStepReport {
+                step: "context",
+                ok: true,
+                message: format!(
+                    "{} context file(s), system={}, append={}",
+                    ctx.context_file_count, ctx.has_system_prompt, ctx.append_count
+                ),
             });
-        }
 
-        let (cwd, agent_dir, project_trusted) = {
-            let s = guard.state_mut();
-            (s.cwd.clone(), s.agent_dir.clone(), s.project_trusted)
+            self.reload = state.take();
+            Ok(RuntimeReloadReport {
+                steps,
+                cancelled: false,
+            })
         };
-        let ctx = crate::app::core::bootstrap::reload_prompt_context(
-            self,
-            &cwd,
-            &agent_dir,
-            project_trusted,
-            config_system_prompt,
-        );
-        steps.push(ReloadStepReport {
-            step: "context",
-            ok: true,
-            message: format!(
-                "{} context file(s), system={}, append={}",
-                ctx.context_file_count, ctx.has_system_prompt, ctx.append_count
-            ),
-        });
 
-        Ok(RuntimeReloadReport {
-            steps,
-            cancelled: false,
-        })
+        match std::panic::AssertUnwindSafe(body).catch_unwind().await {
+            Ok(result) => result,
+            Err(payload) => {
+                // Restore the taken reload state after an unwind, then re-raise.
+                self.reload = state;
+                std::panic::resume_unwind(payload);
+            }
+        }
     }
 
     fn persist_project_trust(
