@@ -115,7 +115,7 @@ Hook 三缝只认可移植 JSON（headers map + body Value）；不把 reqwest/�
 
 生产模块避免无结构 God 文件。软顶 ~1200 / 硬顶 ~2000 行（`wc -l`；同文件内联测计入生产）。测试专用模块另计，仍禁止无结构堆叠。
 
-**TUI 面复杂度闸**：产品 TUI 入口协调者（host 入口、layout 根、effects 入口、bridge 入口）的函数级复杂度经 `just qa` 的 `scripts/check_complexity.py`（cccc-rs）强制：Sonar cognitive ≤35 且 McCabe cyclomatic ≤30；物理行数 SHOULD 显著低于约 800 行，逼近约 1200 行仍视为硬味且 MUST 优先拆分而非继续堆叠。同文件内联测不计入生产（见上）。
+**TUI 面复杂度闸**：产品 TUI 入口协调者（host 入口、layout 根、effects 入口、bridge 入口）的函数级复杂度经 `just qa` 的 `scripts/check_complexity.py`（cccc-rs）强制：Sonar cognitive ≤32 且 McCabe cyclomatic ≤27（按当前协调者 max 收紧，禁止回涨到旧 35/30）；物理行数 SHOULD 显著低于约 800 行，逼近约 1200 行仍视为硬味且 MUST 优先拆分而非继续堆叠。同文件内联测不计入生产（见上）。
 
 **默认不为行数大拆**：ReAct（剧本可与行为测同居；state machine 未开闸）、session manager、已拆开的 driver 子树。功能逼出或编辑痛点明确时再拆；超硬顶须在 PR 说明计划或豁免。**不**在本文件维护超标清单。
 

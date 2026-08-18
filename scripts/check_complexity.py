@@ -57,10 +57,11 @@ RADAR_PATHS = [
     REPO / "src/app/tui/bridge",
 ]
 
-# Passes today: host::step split into handle_*; gate on coordinator max.
-# ath12 / qg06 MUST: keep in sync with live specs (c1840).
-MAX_COGNITIVE = 35
-MAX_CYCLOMATIC = 30
+# Ratchet: measured entry max is cog 30 / cyc 25 (`apply_tool_result_to_entries`).
+# Keep 2 points of slack so a small arm can land; do not grow back toward 35/30.
+# Keep in sync with `src/AGENTS.md` TUI 面复杂度闸.
+MAX_COGNITIVE = 32
+MAX_CYCLOMATIC = 27
 
 TOOLS_ROOT = REPO / ".tools"
 TOOLS_BIN = TOOLS_ROOT / "bin" / CCCC_RS_BIN
