@@ -26,13 +26,13 @@ pub fn watch_file(path: &Path, callback: Box<dyn Fn() + Send + 'static>) -> mpsc
         ) {
             Ok(w) => w,
             Err(e) => {
-                eprintln!("fs_watch: failed to create watcher: {e}");
+                log::warn!("fs_watch: failed to create watcher: {e}");
                 return;
             }
         };
 
         if let Err(e) = watcher.watch(&path, notify::RecursiveMode::NonRecursive) {
-            eprintln!("fs_watch: failed to watch {path:?}: {e}");
+            log::warn!("fs_watch: failed to watch {path:?}: {e}");
             return;
         }
 
@@ -52,7 +52,7 @@ pub fn watch_file(path: &Path, callback: Box<dyn Fn() + Send + 'static>) -> mpsc
                     }
                 }
                 Ok(Err(e)) => {
-                    eprintln!("fs_watch: watch error: {e}");
+                    log::warn!("fs_watch: watch error: {e}");
                 }
                 Err(mpsc::RecvTimeoutError::Timeout) => {
                     // Normal timeout — just loop

@@ -71,12 +71,14 @@ pub fn print_timings() {
     };
 
     let total: u64 = entries.iter().map(|e| e.ms).sum();
-    eprintln!("\n--- Startup Timings ---");
+    let mut block = String::from("--- Startup Timings ---\n");
     for entry in &entries {
-        eprintln!("  {}: {}ms", entry.label, entry.ms);
+        block.push_str(&format!("  {}: {}ms\n", entry.label, entry.ms));
     }
-    eprintln!("  TOTAL: {total}ms");
-    eprintln!("------------------------\n");
+    block.push_str(&format!("  TOTAL: {total}ms\n------------------------"));
+    // Log (not eprintln): startup diagnostics belong on the same `log` sink as the
+    // rest of the observability stack (file when logging is enabled).
+    log::info!(target: "xylitol::timing", "{block}");
 }
 
 #[cfg(test)]

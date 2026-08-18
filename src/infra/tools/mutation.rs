@@ -69,6 +69,10 @@ mod tests {
     use std::sync::atomic::{AtomicU32, Ordering};
     use std::time::Duration;
 
+    /// Artificial delay so both queued futures are in flight before the second
+    /// path-lock is taken (proves parallel / serial semantics). Not a poll interval.
+    const OVERLAP_DELAY: Duration = Duration::from_millis(50);
+
     #[tokio::test]
     async fn test_different_paths_run_in_parallel() {
         let queue = FileMutationQueue::new();
@@ -81,11 +85,11 @@ mod tests {
 
         let (r1, r2) = tokio::join!(
             q1.run("a.txt", || async move {
-                tokio::time::sleep(Duration::from_millis(50)).await;
+                tokio::time::sleep(OVERLAP_DELAY).await;
                 Ok::<_, ()>(c1.fetch_add(1, Ordering::SeqCst))
             }),
             q2.run("b.txt", || async move {
-                tokio::time::sleep(Duration::from_millis(50)).await;
+                tokio::time::sleep(OVERLAP_DELAY).await;
                 Ok::<_, ()>(c2.fetch_add(1, Ordering::SeqCst))
             }),
         );
@@ -108,7 +112,7 @@ mod tests {
 
         let (r1, r2) = tokio::join!(
             q1.run("shared.txt", || async {
-                tokio::time::sleep(Duration::from_millis(50)).await;
+                tokio::time::sleep(OVERLAP_DELAY).await;
                 c.fetch_add(1, Ordering::SeqCst);
                 Ok::<_, ()>(())
             }),

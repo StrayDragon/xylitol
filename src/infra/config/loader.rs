@@ -239,6 +239,8 @@ mod tests {
         assert_eq!(base["key"], json!("val"));
     }
 
+    // env_global: 渲染 mcp secret 头经 inject_missing_env 真写进程环境，须与 env_global
+    // 域串行防交叉污染。消除路径：断言自清理（tempdir scout）或改注入式方可并行。
     #[test]
     #[serial(env_global)]
     fn loads_yml_alias_and_renders_mcp_secret_headers() {
