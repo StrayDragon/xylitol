@@ -1,0 +1,169 @@
+//! SessionManager — JSONL file-based session storage.
+//!
+//! Handles create, append, load, list, exists, tree navigation,
+//! and build_session_context for sessions (latest SESSION_VERSION only).
+
+use std::collections::HashMap;
+use std::path::PathBuf;
+use std::sync::{Arc, RwLock};
+
+use super::types::*;
+
+mod context;
+mod load;
+mod persist;
+mod store;
+mod tree;
+
+#[cfg(test)]
+mod tests;
+
+#[allow(unused_imports)] // public path: `manager::assert_session_cwd_exists`
+pub use load::assert_session_cwd_exists;
+
+/// Manages session persistence using JSONL files or in-memory storage.
+///
+/// [`Clone`] shares interior stores via [`Arc`] so handles remain coherent after
+/// deferred (pre-flush) creates — deep-copying pending would drop sessions on
+/// `mgr.clone()` + mutate patterns used by tests and thin wrappers.
+#[derive(Debug, Clone)]
+pub struct SessionManager {
+    sessions_dir: PathBuf,
+    /// Storage backend.
+    backend: SessionBackend,
+    /// Per-session leaf node tracking (in-memory).
+    /// session_id -> current leaf entry id (None = root).
+    leaf_ids: Arc<RwLock<HashMap<String, Option<String>>>>,
+    /// Active session tracking.
+    active_session: Arc<RwLock<Option<String>>>,
+    /// In-memory entry storage (used when backend is InMemory).
+    in_memory_store: Arc<RwLock<HashMap<String, Vec<SessionEntry>>>>,
+    /// Pending entries for persisted sessions not yet flushed to disk.
+    pending_store: Arc<RwLock<HashMap<String, Vec<SessionEntry>>>>,
+}
+
+impl Default for SessionManager {
+    fn default() -> Self {
+        Self {
+            sessions_dir: PathBuf::from("."),
+            backend: SessionBackend::Persisted {
+                sessions_dir: PathBuf::from("."),
+            },
+            leaf_ids: Arc::new(RwLock::new(HashMap::new())),
+            active_session: Arc::new(RwLock::new(None)),
+            in_memory_store: Arc::new(RwLock::new(HashMap::new())),
+            pending_store: Arc::new(RwLock::new(HashMap::new())),
+        }
+    }
+}
+
+/// Parameters for [`SessionManager::append_bash_execution`].
+pub struct BashExecutionParams<'a> {
+    pub session_id: &'a str,
+    pub command: &'a str,
+    pub output: &'a str,
+    pub exit_code: Option<i32>,
+    pub cancelled: bool,
+    pub truncated: bool,
+    pub full_output_path: Option<&'a str>,
+    pub exclude_from_context: bool,
+}
+
+impl SessionManager {
+    /// Create a new SessionManager with the given sessions directory.
+    pub fn new(sessions_dir: PathBuf) -> Self {
+        Self {
+            sessions_dir: sessions_dir.clone(),
+            backend: SessionBackend::Persisted {
+                sessions_dir: sessions_dir.clone(),
+            },
+            leaf_ids: Arc::new(RwLock::new(HashMap::new())),
+            active_session: Arc::new(RwLock::new(None)),
+            in_memory_store: Arc::new(RwLock::new(HashMap::new())),
+            pending_store: Arc::new(RwLock::new(HashMap::new())),
+        }
+    }
+
+    /// Create an in-memory SessionManager (no disk writes).
+    /// All entries are stored in a Vec, suitable for ephemeral sessions.
+    pub fn in_memory() -> Self {
+        Self {
+            sessions_dir: PathBuf::from("."),
+            backend: SessionBackend::InMemory {
+                entries: Vec::new(),
+            },
+            leaf_ids: Arc::new(RwLock::new(HashMap::new())),
+            active_session: Arc::new(RwLock::new(None)),
+            in_memory_store: Arc::new(RwLock::new(HashMap::new())),
+            pending_store: Arc::new(RwLock::new(HashMap::new())),
+        }
+    }
+
+    /// Default sessions directory: ~/.xylitol/sessions/
+    pub fn default_dir() -> PathBuf {
+        dirs::home_dir()
+            .unwrap_or_else(|| PathBuf::from("."))
+            .join(".xylitol")
+            .join("sessions")
+    }
+
+    // ── Leaf tracking ───────────────────────────────────────────
+
+    fn set_leaf(&self, session_id: &str, entry_id: Option<String>) {
+        self.leaf_ids
+            .write()
+            .expect("RwLock not poisoned")
+            .insert(session_id.to_string(), entry_id);
+    }
+
+    fn get_leaf(&self, session_id: &str) -> Option<String> {
+        self.leaf_ids
+            .read()
+            .expect("RwLock not poisoned")
+            .get(session_id)
+            .cloned()
+            .unwrap_or(None)
+    }
+
+    fn session_file_exists(&self, session_id: &str) -> bool {
+        matches!(&self.backend, SessionBackend::Persisted { .. })
+            && self.session_path(session_id).exists()
+    }
+
+    // ── CRUD ────────────────────────────────────────────────────
+
+    /// Get the file path for a session.
+    fn session_path(&self, id: &str) -> PathBuf {
+        match &self.backend {
+            SessionBackend::Persisted { sessions_dir } => sessions_dir.join(format!("{id}.jsonl")),
+            SessionBackend::InMemory { .. } => PathBuf::from("/dev/null"),
+        }
+    }
+
+    /// Get the session file, if persisted.
+    pub fn get_session_file(&self, id: &str) -> Option<PathBuf> {
+        match &self.backend {
+            SessionBackend::Persisted { .. } => Some(self.session_path(id)),
+            SessionBackend::InMemory { .. } => None,
+        }
+    }
+
+    /// Check if a session exists.
+    pub fn exists(&self, id: &str) -> bool {
+        match &self.backend {
+            SessionBackend::Persisted { .. } => {
+                self.session_file_exists(id)
+                    || self
+                        .pending_store
+                        .read()
+                        .expect("RwLock not poisoned")
+                        .contains_key(id)
+            }
+            SessionBackend::InMemory { .. } => self
+                .in_memory_store
+                .read()
+                .expect("RwLock not poisoned")
+                .contains_key(id),
+        }
+    }
+}
