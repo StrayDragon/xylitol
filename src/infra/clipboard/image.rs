@@ -34,8 +34,7 @@ pub fn write_clipboard_image_temp(
     };
     let name = format!("xylitol-paste-{}.{}", uuid::Uuid::new_v4(), ext);
     let path = std::env::temp_dir().join(name);
-    std::fs::write(&path, bytes)
-        .map_err(|e| ClipboardError::io(format!("write paste image failed: {e}")))?;
+    std::fs::write(&path, bytes).map_err(|e| ClipboardError::io("write paste image failed", e))?;
     Ok(path)
 }
 
@@ -73,7 +72,7 @@ end try"#;
         .stdout(Stdio::piped())
         .stderr(Stdio::null())
         .output()
-        .map_err(|e| ClipboardError::io(format!("osascript failed: {e}")))?;
+        .map_err(|e| ClipboardError::io("osascript failed", e))?;
 
     if !output.status.success() || output.stdout.is_empty() {
         return Ok(None);
@@ -124,7 +123,7 @@ fn read_via_wl_paste() -> Result<Option<ClipboardImage>, ClipboardError> {
         .stdout(Stdio::piped())
         .stderr(Stdio::null())
         .output()
-        .map_err(|e| ClipboardError::io(format!("wl-paste --list-types failed: {e}")))?;
+        .map_err(|e| ClipboardError::io("wl-paste --list-types failed", e))?;
 
     if !list_output.status.success() {
         return Ok(None);
@@ -142,7 +141,7 @@ fn read_via_wl_paste() -> Result<Option<ClipboardImage>, ClipboardError> {
         .stdout(Stdio::piped())
         .stderr(Stdio::null())
         .output()
-        .map_err(|e| ClipboardError::io(format!("wl-paste failed: {e}")))?;
+        .map_err(|e| ClipboardError::io("wl-paste failed", e))?;
 
     if !output.status.success() || output.stdout.is_empty() {
         return Ok(None);
@@ -166,7 +165,7 @@ fn read_via_xclip() -> Result<Option<ClipboardImage>, ClipboardError> {
             .stdout(Stdio::piped())
             .stderr(Stdio::null())
             .output()
-            .map_err(|e| ClipboardError::io(format!("xclip failed: {e}")))?;
+            .map_err(|e| ClipboardError::io("xclip failed", e))?;
 
         if output.status.success() && !output.stdout.is_empty() {
             return Ok(Some(ClipboardImage {
@@ -197,7 +196,7 @@ if ($img -ne $null) {
         .stdout(Stdio::piped())
         .stderr(Stdio::null())
         .output()
-        .map_err(|e| ClipboardError::io(format!("PowerShell failed: {e}")))?;
+        .map_err(|e| ClipboardError::io("PowerShell failed", e))?;
 
     if !output.status.success() || output.stdout.is_empty() {
         return Ok(None);

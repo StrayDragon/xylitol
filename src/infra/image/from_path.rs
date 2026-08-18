@@ -17,8 +17,7 @@ pub fn image_content_from_path_with_options(
     path: &Path,
     options: &ImageResizeOptions,
 ) -> Result<ImageContent, ImageError> {
-    let bytes = std::fs::read(path)
-        .map_err(|e| ImageError::io(format!("read image {}: {e}", path.display())))?;
+    let bytes = std::fs::read(path).map_err(|e| ImageError::io(path.display().to_string(), e))?;
     if bytes.is_empty() {
         return Err(ImageError::empty(format!(
             "image file is empty: {}",

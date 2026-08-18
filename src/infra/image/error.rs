@@ -3,12 +3,22 @@
 use strum::IntoStaticStr;
 
 /// Multimodal image processing failures. Display keeps the original body.
-#[derive(Debug, Clone, PartialEq, Eq, thiserror::Error, IntoStaticStr)]
+#[derive(Debug, thiserror::Error, IntoStaticStr)]
 pub enum ImageError {
-    #[error("{0}")]
-    Io(String),
-    #[error("{0}")]
-    Decode(String),
+    /// Reading the image file failed (source preserved).
+    #[error("read image {path}: {source}")]
+    Io {
+        path: String,
+        #[source]
+        source: std::io::Error,
+    },
+    /// Decode / encode by the `image` crate failed (source preserved).
+    #[error("{context}: {source}")]
+    Decode {
+        context: &'static str,
+        #[source]
+        source: image::ImageError,
+    },
     #[error("{0}")]
     Empty(String),
     #[error("{0}")]
@@ -20,12 +30,15 @@ impl ImageError {
         self.into()
     }
 
-    pub fn io(message: impl Into<String>) -> Self {
-        Self::Io(message.into())
+    pub fn io(path: impl Into<String>, source: std::io::Error) -> Self {
+        Self::Io {
+            path: path.into(),
+            source,
+        }
     }
 
-    pub fn decode(message: impl Into<String>) -> Self {
-        Self::Decode(message.into())
+    pub fn decode(context: &'static str, source: image::ImageError) -> Self {
+        Self::Decode { context, source }
     }
 
     pub fn empty(message: impl Into<String>) -> Self {
@@ -43,8 +56,18 @@ mod tests {
 
     #[test]
     fn image_error_kinds() {
-        assert_eq!(ImageError::io("read").kind(), "Io");
-        assert_eq!(ImageError::decode("png").kind(), "Decode");
+        assert_eq!(
+            ImageError::io("/tmp/a", std::io::Error::other("read")).kind(),
+            "Io"
+        );
+        assert_eq!(
+            ImageError::decode(
+                "decode",
+                image::ImageError::IoError(std::io::Error::other("png"))
+            )
+            .kind(),
+            "Decode"
+        );
         assert_eq!(ImageError::empty("0 bytes").kind(), "Empty");
         assert_eq!(ImageError::limit("too big").kind(), "Limit");
     }

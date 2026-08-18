@@ -17,13 +17,43 @@ use crate::infra::config::types::AppConfig;
 
 type McpService = RunningService<RoleClient, ()>;
 
-/// Crate-private MCP client failures (connect / tool call).
+/// Crate-private MCP client failures (connect / tool call). Sources preserved.
 #[derive(Debug, thiserror::Error)]
 pub enum McpError {
-    #[error("{0}")]
-    Connect(String),
-    #[error("{0}")]
-    Call(String),
+    /// stdio transport spawn failure.
+    #[error("spawn failed: {0}")]
+    Spawn(#[source] std::io::Error),
+    /// MCP initialize handshake failure (stdio / sse).
+    #[error("init failed: {0}")]
+    Init(#[source] Box<rmcp::service::ClientInitializeError>),
+    /// SSE custom header name invalid.
+    #[error("invalid header name {key:?}: {source}")]
+    InvalidHeaderName {
+        key: String,
+        #[source]
+        source: http::header::InvalidHeaderName,
+    },
+    /// SSE custom header value invalid.
+    #[error("invalid header value for {key}: {source}")]
+    InvalidHeaderValue {
+        key: String,
+        #[source]
+        source: http::header::InvalidHeaderValue,
+    },
+    /// Tool call failure on a connected server.
+    #[error("call {server_id}/{tool_name} failed: {source}")]
+    Call {
+        server_id: String,
+        tool_name: String,
+        #[source]
+        source: Box<rmcp::service::ServiceError>,
+    },
+    /// Tool result serialization failure.
+    #[error("serialize result: {0}")]
+    Serialize(#[from] serde_json::Error),
+    /// Requested server is not connected.
+    #[error("MCP server not found: {server_id}")]
+    ServerNotFound { server_id: String },
     #[error("{0}")]
     Config(String),
     #[error("{0}")]
@@ -262,12 +292,11 @@ impl McpClientManager {
             }
         }
 
-        let transport = TokioChildProcess::new(cmd)
-            .map_err(|e| McpError::Connect(format!("spawn failed: {e}")))?;
+        let transport = TokioChildProcess::new(cmd).map_err(McpError::Spawn)?;
 
         let service = serve_client((), transport)
             .await
-            .map_err(|e| McpError::Connect(format!("init failed: {e}")))?;
+            .map_err(|e| McpError::Init(Box::new(e)))?;
 
         let mut services = self.services.lock().await;
         services.insert(name.to_string(), service);
@@ -296,10 +325,17 @@ impl McpClientManager {
         if let Some(ref headers) = config.headers {
             let mut custom = HashMap::new();
             for (k, v) in headers {
-                let name = HeaderName::from_bytes(k.as_bytes())
-                    .map_err(|e| McpError::Connect(format!("invalid header name {k:?}: {e}")))?;
-                let value = HeaderValue::from_str(v)
-                    .map_err(|e| McpError::Connect(format!("invalid header value for {k}: {e}")))?;
+                let name = HeaderName::from_bytes(k.as_bytes()).map_err(|source| {
+                    McpError::InvalidHeaderName {
+                        key: k.clone(),
+                        source,
+                    }
+                })?;
+                let value =
+                    HeaderValue::from_str(v).map_err(|source| McpError::InvalidHeaderValue {
+                        key: k.clone(),
+                        source,
+                    })?;
                 custom.insert(name, value);
             }
             transport_cfg = transport_cfg.custom_headers(custom);
@@ -307,7 +343,7 @@ impl McpClientManager {
         let transport = StreamableHttpClientTransport::from_config(transport_cfg);
         let service = serve_client((), transport)
             .await
-            .map_err(|e| McpError::Connect(format!("init failed: {e}")))?;
+            .map_err(|e| McpError::Init(Box::new(e)))?;
 
         let mut services = self.services.lock().await;
         services.insert(name.to_string(), service);
@@ -367,18 +403,24 @@ impl McpClientManager {
         let services = self.services.lock().await;
         let service = services
             .get(server_id)
-            .ok_or_else(|| McpError::Call(format!("MCP server not found: {server_id}")))?;
+            .ok_or_else(|| McpError::ServerNotFound {
+                server_id: server_id.to_string(),
+            })?;
 
         let args_map = args.as_object().cloned().unwrap_or_default();
         let params = CallToolRequestParams::new(tool_name.to_string()).with_arguments(args_map);
 
-        let result: CallToolResult = service
-            .call_tool(params)
-            .await
-            .map_err(|e| McpError::Call(format!("call {server_id}/{tool_name} failed: {e}")))?;
+        let result: CallToolResult =
+            service
+                .call_tool(params)
+                .await
+                .map_err(|source| McpError::Call {
+                    server_id: server_id.to_string(),
+                    tool_name: tool_name.to_string(),
+                    source: Box::new(source),
+                })?;
 
-        let json = serde_json::to_value(&result)
-            .map_err(|e| McpError::Call(format!("serialize result: {e}")))?;
+        let json = serde_json::to_value(&result).map_err(McpError::Serialize)?;
         Ok(json)
     }
 

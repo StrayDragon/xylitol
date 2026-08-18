@@ -89,7 +89,7 @@ impl TerminalGuard {
     pub fn enter() -> Result<Self, TuiSurfaceError> {
         install_lifecycle_hooks();
         let mut terminal = xylitol_tui::CrosstermTerminal::new()
-            .map_err(|e| TuiSurfaceError::io(format!("open terminal: {e}")))?;
+            .map_err(|e| TuiSurfaceError::io("open terminal", e))?;
         terminal.hide_cursor();
         terminal.start();
         // Product TUI does not enable mouse via TerminalGuard / XYLITOL_TUI_MOUSE.

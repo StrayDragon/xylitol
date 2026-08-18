@@ -93,9 +93,7 @@ pub fn apply_clipboard_plan_stdout(plan: ClipboardPlan) -> Result<(), ClipboardE
         match write_osc52_stdout(seq) {
             Ok(()) => {}
             Err(e) if !plan.native_copied => {
-                return Err(ClipboardError::io(format!(
-                    "Clipboard: OSC 52 write failed: {e}"
-                )));
+                return Err(ClipboardError::io("Clipboard: OSC 52 write failed", e));
             }
             Err(_) => {}
         }
@@ -103,7 +101,7 @@ pub fn apply_clipboard_plan_stdout(plan: ClipboardPlan) -> Result<(), ClipboardE
     if plan.native_copied || plan.osc52_sequence.is_some() {
         Ok(())
     } else {
-        Err(ClipboardError::io(plan.failure_message()))
+        Err(ClipboardError::unsupported(plan.failure_message()))
     }
 }
 
@@ -118,7 +116,7 @@ pub fn copy_to_clipboard(text: &str) -> Result<(), ClipboardError> {
 pub async fn plan_clipboard_copy_async(text: String) -> Result<ClipboardPlan, ClipboardError> {
     tokio::task::spawn_blocking(move || plan_clipboard_copy(&text))
         .await
-        .map_err(|e| ClipboardError::io(format!("Clipboard: join error: {e}")))
+        .map_err(|e| ClipboardError::join(format!("Clipboard: join error: {e}")))
 }
 
 /// Async wrapper — runs [`copy_to_clipboard`] on Tokio's blocking pool.
@@ -128,7 +126,7 @@ pub async fn plan_clipboard_copy_async(text: String) -> Result<ClipboardPlan, Cl
 pub async fn copy_to_clipboard_async(text: String) -> Result<(), ClipboardError> {
     tokio::task::spawn_blocking(move || copy_to_clipboard(&text))
         .await
-        .map_err(|e| ClipboardError::io(format!("Clipboard: join error: {e}")))?
+        .map_err(|e| ClipboardError::join(format!("Clipboard: join error: {e}")))?
 }
 
 /// Try platform-native clipboard tools (PATH from `path_value`).

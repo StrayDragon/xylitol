@@ -387,14 +387,14 @@ impl<T: Terminal> HostSession<T> {
         let editor_cmd = {
             #[cfg(test)]
             {
-                if let Some(over) = self.external_editor_cmd_override.clone() {
+                if let Some(over) = self.external_editor_cmd_override.take() {
                     match over {
                         Ok(cmd) => cmd,
                         Err(err) => {
-                            let driver_err =
-                                crate::app::core::driver::XyDriverError::from(err.clone());
+                            let message = err.to_string();
+                            let driver_err = crate::app::core::driver::XyDriverError::from(err);
                             driver_err.log_failure("tui.external_editor.resolve");
-                            self.push_error_note(err.to_string());
+                            self.push_error_note(message);
                             return true;
                         }
                     }
@@ -402,10 +402,10 @@ impl<T: Terminal> HostSession<T> {
                     match super::super::external_editor::resolve_external_editor_command() {
                         Ok(cmd) => cmd,
                         Err(err) => {
-                            let driver_err =
-                                crate::app::core::driver::XyDriverError::from(err.clone());
+                            let message = err.to_string();
+                            let driver_err = crate::app::core::driver::XyDriverError::from(err);
                             driver_err.log_failure("tui.external_editor.resolve");
-                            self.push_error_note(err.to_string());
+                            self.push_error_note(message);
                             return true;
                         }
                     }
@@ -416,9 +416,10 @@ impl<T: Terminal> HostSession<T> {
                 match super::super::external_editor::resolve_external_editor_command() {
                     Ok(cmd) => cmd,
                     Err(err) => {
-                        let driver_err = crate::app::core::driver::XyDriverError::from(err.clone());
+                        let message = err.to_string();
+                        let driver_err = crate::app::core::driver::XyDriverError::from(err);
                         driver_err.log_failure("tui.external_editor.resolve");
-                        self.push_error_note(err.to_string());
+                        self.push_error_note(message);
                         return true;
                     }
                 }
@@ -447,9 +448,10 @@ impl<T: Terminal> HostSession<T> {
                 );
             }
             Err(err) => {
-                let e = crate::app::core::driver::XyDriverError::from(err.clone());
+                let message = format!("external editor failed: {err}");
+                let e = crate::app::core::driver::XyDriverError::from(err);
                 e.log_failure("tui.external_editor.run");
-                self.push_error_note(format!("external editor failed: {err}"));
+                self.push_error_note(message);
             }
         }
         // Soft render via step(); suspend kept previous_lines for differential
