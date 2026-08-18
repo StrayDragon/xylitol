@@ -6,7 +6,7 @@
 
 - [x] 1.1 `llman sdd change start c2270-refactor-typed-errors`（或已在 feature 分支则 `attach`）
 - [x] 1.2 [blocked-by: 1.1] 按 design §6 在 `llmanspec/specs/protocol-app/spec.toon` 增加 `pa-e2`（稳定 kind、禁止子串猜 session/export/trust 分类、message 不叠前缀）；`scenarios[]` 仅 `feature: false` 文档行。不改 atb14。
-- [ ] 1.3 [blocked-by: 1.2] `llman sdd validate c2270-refactor-typed-errors --strict --no-interactive --no-check`；commit Specs landing；`llman sdd show … --json` 确认 `readyToImplement=true`
+- [x] 1.3 [blocked-by: 1.2] `llman sdd validate c2270-refactor-typed-errors --strict --no-interactive --no-check`；commit Specs landing；`llman sdd show … --json` 确认 `readyToImplement=true`
 
 ## 2. 库错误类型与 infallible factory
 
