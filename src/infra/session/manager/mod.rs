@@ -8,6 +8,7 @@ use std::path::PathBuf;
 use std::sync::{Arc, RwLock};
 
 use super::types::*;
+use crate::utils::{lock_rwlock_read, lock_rwlock_write};
 
 mod context;
 mod load;
@@ -110,16 +111,11 @@ impl SessionManager {
     // ── Leaf tracking ───────────────────────────────────────────
 
     fn set_leaf(&self, session_id: &str, entry_id: Option<String>) {
-        self.leaf_ids
-            .write()
-            .expect("RwLock not poisoned")
-            .insert(session_id.to_string(), entry_id);
+        lock_rwlock_write(&self.leaf_ids).insert(session_id.to_string(), entry_id);
     }
 
     fn get_leaf(&self, session_id: &str) -> Option<String> {
-        self.leaf_ids
-            .read()
-            .expect("RwLock not poisoned")
+        lock_rwlock_read(&self.leaf_ids)
             .get(session_id)
             .cloned()
             .unwrap_or(None)
@@ -153,17 +149,11 @@ impl SessionManager {
         match &self.backend {
             SessionBackend::Persisted { .. } => {
                 self.session_file_exists(id)
-                    || self
-                        .pending_store
-                        .read()
-                        .expect("RwLock not poisoned")
-                        .contains_key(id)
+                    || lock_rwlock_read(&self.pending_store).contains_key(id)
             }
-            SessionBackend::InMemory { .. } => self
-                .in_memory_store
-                .read()
-                .expect("RwLock not poisoned")
-                .contains_key(id),
+            SessionBackend::InMemory { .. } => {
+                lock_rwlock_read(&self.in_memory_store).contains_key(id)
+            }
         }
     }
 }

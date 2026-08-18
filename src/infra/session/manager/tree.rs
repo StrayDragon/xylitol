@@ -5,6 +5,7 @@ use uuid::Uuid;
 use super::SessionManager;
 use crate::infra::session::types::*;
 use crate::protocol::error::{XySessionError, XySessionStoreError};
+use crate::utils::{lock_rwlock_read, lock_rwlock_write};
 
 impl SessionManager {
     /// Branch: change the current leaf to a different entry.
@@ -252,7 +253,7 @@ impl SessionManager {
                     }
                 } else {
                     // No assistant → stay pending until first assistant append (pi deferred).
-                    let mut pending = self.pending_store.write().expect("RwLock not poisoned");
+                    let mut pending = lock_rwlock_write(&self.pending_store);
                     pending
                         .entry(child_id.to_string())
                         .or_default()
@@ -260,7 +261,7 @@ impl SessionManager {
                 }
             }
             SessionBackend::InMemory { .. } => {
-                let mut store = self.in_memory_store.write().expect("RwLock not poisoned");
+                let mut store = lock_rwlock_write(&self.in_memory_store);
                 store
                     .entry(child_id.to_string())
                     .or_default()
@@ -281,18 +282,12 @@ impl SessionManager {
 
     /// Get the active session id.
     pub fn active_session_id(&self) -> Option<String> {
-        self.active_session
-            .read()
-            .expect("RwLock not poisoned")
-            .clone()
+        lock_rwlock_read(&self.active_session).clone()
     }
 
     /// Set the active session.
     pub fn set_active_session(&self, id: &str) {
-        self.active_session
-            .write()
-            .expect("RwLock not poisoned")
-            .replace(id.to_string());
+        lock_rwlock_write(&self.active_session).replace(id.to_string());
     }
 
     /// Navigate tree: change the current leaf to a different entry.

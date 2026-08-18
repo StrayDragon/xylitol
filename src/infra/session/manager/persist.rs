@@ -4,6 +4,7 @@ use super::SessionManager;
 use crate::infra::session::types::*;
 use crate::protocol::error::XySessionStoreError;
 use crate::protocol::message::now_ms;
+use crate::utils::{lock_rwlock_read, lock_rwlock_write};
 
 /// Write `content` to `tmp_path`, sync, then atomically rename over `path`.
 async fn write_session_file_atomically(
@@ -62,7 +63,7 @@ impl SessionManager {
         session_id: &str,
     ) -> Result<(), XySessionStoreError> {
         let pending = {
-            let mut store = self.pending_store.write().expect("RwLock not poisoned");
+            let mut store = lock_rwlock_write(&self.pending_store);
             store.remove(session_id).ok_or_else(|| {
                 XySessionStoreError::validation(format!(
                     "no pending entries for session: {session_id}"
@@ -165,13 +166,13 @@ impl SessionManager {
                     merged.extend(disk);
                     self.write_entries_to_disk(id, &merged).await?;
                 } else {
-                    let mut store = self.pending_store.write().expect("RwLock not poisoned");
+                    let mut store = lock_rwlock_write(&self.pending_store);
                     let entries = store.entry(id.to_string()).or_default();
                     entries.insert(0, header);
                 }
             }
             SessionBackend::InMemory { .. } => {
-                let mut store = self.in_memory_store.write().expect("RwLock not poisoned");
+                let mut store = lock_rwlock_write(&self.in_memory_store);
                 let entries = store.entry(id.to_string()).or_default();
                 entries.insert(0, header);
             }
@@ -196,18 +197,13 @@ impl SessionManager {
                     }
                     return false;
                 }
-                self.pending_store
-                    .read()
-                    .expect("RwLock not poisoned")
+                lock_rwlock_read(&self.pending_store)
                     .get(session_id)
                     .is_some_and(|entries| {
                         entries.iter().any(|e| matches!(e, SessionEntry::Header(_)))
                     })
             }
-            SessionBackend::InMemory { .. } => self
-                .in_memory_store
-                .read()
-                .expect("RwLock not poisoned")
+            SessionBackend::InMemory { .. } => lock_rwlock_read(&self.in_memory_store)
                 .get(session_id)
                 .is_some_and(|entries| {
                     entries.iter().any(|e| matches!(e, SessionEntry::Header(_)))
@@ -250,7 +246,7 @@ impl SessionManager {
                     let is_assistant =
                         crate::protocol::session::is_assistant_message(&entry_with_ids);
                     {
-                        let mut pending = self.pending_store.write().expect("RwLock not poisoned");
+                        let mut pending = lock_rwlock_write(&self.pending_store);
                         let entries = pending.entry(session_id.to_string()).or_default();
                         // Defense: body rows must never sit in pending without a header
                         // (bind-then-append before `create` / `ensure_session`).
@@ -275,7 +271,7 @@ impl SessionManager {
                 }
             }
             SessionBackend::InMemory { .. } => {
-                let mut store = self.in_memory_store.write().expect("RwLock not poisoned");
+                let mut store = lock_rwlock_write(&self.in_memory_store);
                 store
                     .entry(session_id.to_string())
                     .or_default()
@@ -382,11 +378,7 @@ impl SessionManager {
         // Flush deferred header (and any pending rows) before writing the file
         // directly — otherwise `load` ignores pending once the file exists, and a
         // later `flush_pending_to_disk` can overwrite body rows with header-only.
-        let has_pending = self
-            .pending_store
-            .read()
-            .expect("RwLock not poisoned")
-            .contains_key(session_id);
+        let has_pending = lock_rwlock_read(&self.pending_store).contains_key(session_id);
         if has_pending {
             self.flush_pending_to_disk(session_id).await?;
         }
