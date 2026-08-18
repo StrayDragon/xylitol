@@ -183,11 +183,11 @@ mod tests {
             }
             other => panic!("expected Message, got {other:?}"),
         }
-        assert!(
-            !entries.iter().any(
-                |e| e.entry_type() == "bashExecution" && !matches!(e, SessionEntry::Message(_))
-            ),
-            "must not write top-level BashExecution"
-        );
+        // Guard (logically dead, removed): the old assertion compared the entry kind
+        // string against "bashExecution", a kind `entry_type()` can never return — bash
+        // execution is a Message *role* (`message_role(...) == Some("bashExecution")`),
+        // not an entry kind. The real invariant — bash executions are persisted
+        // Message-typed, never a top-level non-Message entry — is asserted by the
+        // role-based match above.
     }
 }

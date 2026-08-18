@@ -194,8 +194,19 @@ impl XyEvent {
     }
 }
 
+/// Failure to project a wire [`Event`] into an [`XyEvent`] (`TryFrom` error type).
+///
+/// Typed (not `String`) so callers can distinguish conversion failures from
+/// transport-level errors and keep the offending variant for diagnostics.
+#[derive(Debug, thiserror::Error)]
+pub enum WireEventConvertError {
+    /// The wire variant has no `XyEvent` projection (degraded / client-side only).
+    #[error("event variant not convertible to XyEvent: {0}")]
+    Unmapped(String),
+}
+
 impl TryFrom<&Event> for XyEvent {
-    type Error = String;
+    type Error = WireEventConvertError;
 
     fn try_from(event: &Event) -> Result<Self, <Self as TryFrom<&Event>>::Error> {
         match event {
@@ -297,9 +308,7 @@ impl TryFrom<&Event> for XyEvent {
                 steer_count: *steer_count,
                 follow_up_count: *follow_up_count,
             }),
-            other => Err(format!(
-                "event variant not convertible to XyEvent: {other:?}"
-            )),
+            other => Err(WireEventConvertError::Unmapped(format!("{other:?}"))),
         }
     }
 }

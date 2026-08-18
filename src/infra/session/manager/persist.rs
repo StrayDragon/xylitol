@@ -94,7 +94,7 @@ impl SessionManager {
         let mut disk_ids = std::collections::HashSet::new();
         let mut has_header = false;
         for entry in &disk {
-            if entry.entry_type() == "session" {
+            if matches!(entry, SessionEntry::Header(_)) {
                 has_header = true;
             }
             if let Some(id) = entry.entry_id() {
@@ -104,7 +104,7 @@ impl SessionManager {
 
         let mut merged = Vec::with_capacity(pending.len() + disk.len());
         for entry in pending {
-            if entry.entry_type() == "session" {
+            if matches!(entry, SessionEntry::Header(_)) {
                 if !has_header {
                     merged.push(entry);
                 }

@@ -178,7 +178,7 @@ impl SessionManager {
         let mut rechanneled = Vec::with_capacity(path.len());
         let mut prev_id: Option<String> = None;
         for entry in &path {
-            if entry.entry_type() == "label" {
+            if matches!(entry, SessionEntry::Label(_)) {
                 continue;
             }
             let Some(eid) = entry.entry_id() else {

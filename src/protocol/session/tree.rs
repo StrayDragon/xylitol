@@ -55,7 +55,7 @@ pub fn build_session_tree(entries: &[SessionEntry]) -> Vec<SessionTreeNode> {
 
     let mut node_map: HashMap<String, SessionTreeNode> = HashMap::new();
     for entry in entries {
-        if entry.entry_type() == "label" || entry.entry_type() == "session" {
+        if matches!(entry, SessionEntry::Label(_) | SessionEntry::Header(_)) {
             continue;
         }
         if let Some(id) = entry.entry_id() {
@@ -75,7 +75,7 @@ pub fn build_session_tree(entries: &[SessionEntry]) -> Vec<SessionTreeNode> {
 
     // Link children to parents (reverse order so parents stay in node_map).
     for entry in entries.iter().rev() {
-        if entry.entry_type() == "label" || entry.entry_type() == "session" {
+        if matches!(entry, SessionEntry::Label(_) | SessionEntry::Header(_)) {
             continue;
         }
         let Some(id) = entry.entry_id() else {
