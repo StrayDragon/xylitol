@@ -19,6 +19,14 @@ use super::types::{
 /// [`crate::app::core::driver::XyInProcessDriver`] keeps a cached `AgentRuntime` and is the local
 /// (single-process) implementation. The remote HTTP driver speaks the protocol over
 /// WS/REST to a xylitol server.
+///
+/// # Errors
+///
+/// `Result` methods fail with [`XyDriverError`], classified by stable `kind`
+/// (`NotFound` / `Io` / `Message` / `Unsupported` / …); `detail_kind` keeps the
+/// source domain (`Session` / `Export` / `Trust` / …). Store `NotFound` flattens
+/// to `kind=NotFound`; `NoActiveSession` flattens to `kind=Message`,
+/// `detail_kind=Session`. Per-method docs below list the failing conditions.
 #[async_trait]
 pub trait XyDriver: Send {
     /// Submit a prompt and receive a stream of events.
@@ -45,15 +53,24 @@ pub trait XyDriver: Send {
     fn available_models(&self) -> Vec<ModelInfo>;
 
     /// Select a model by id (exact match on `id` or `config.model`).
-    /// Returns the selected model on success.
+    ///
+    /// # Errors
+    ///
+    /// `Err` when `model_id` matches no registered model.
     async fn select_model(&mut self, model_id: &str) -> Result<ModelInfo, XyDriverError>;
 
-    /// Cycle to the next model in the registry. Returns the newly-selected model.
+    /// Cycle to the next model in the registry.
+    ///
+    /// # Errors
+    ///
+    /// `Err` when the model registry is empty.
     async fn cycle_model(&mut self) -> Result<ModelInfo, XyDriverError>;
 
     /// Set the thinking level.
     ///
-    /// Returns `Err` if the level is not in the current model's support set.
+    /// # Errors
+    ///
+    /// `Err` when the level is not in the current model's support set.
     async fn set_thinking_level(&mut self, level: String) -> Result<(), XyDriverError>;
 
     /// Current thinking level.
@@ -63,6 +80,10 @@ pub trait XyDriver: Send {
     ///
     /// Returns the level now in effect. Demo / legacy callers only; product TUI
     /// changes thinking solely via `/model` (ati36).
+    ///
+    /// # Errors
+    ///
+    /// `Err` when the current model supports no thinking levels.
     async fn cycle_thinking_level(&mut self) -> Result<String, XyDriverError>;
 
     /// Current session id (the id the next `run`/export acts on).
@@ -82,6 +103,11 @@ pub trait XyDriver: Send {
     /// Takes `&self` so the host can `select!` keyboard (Esc → [`Self::abort`])
     /// while bash is in flight (c665). `chunk_tx` uplinks live output bytes for
     /// product TUI streaming (c669); pass `None` for non-streaming callers.
+    ///
+    /// # Errors
+    ///
+    /// `Err` when the command cannot be spawned or its execution fails (kind
+    /// varies; a non-zero exit is normally a successful [`XyBashResult`]).
     async fn execute_bash(
         &self,
         command: &str,
@@ -90,19 +116,39 @@ pub trait XyDriver: Send {
     ) -> Result<XyBashResult, XyDriverError>;
 
     /// Force compact (manual). Optional `instructions` focus the summary (c1670).
-    /// Returns whether a compaction occurred.
+    ///
+    /// # Errors
+    ///
+    /// `Err` when no session is bound or compaction fails (store IO / session /
+    /// policy).
     async fn compact(&mut self, instructions: Option<String>) -> Result<bool, XyDriverError>;
 
-    /// Export the session to HTML at `path`. Returns the path used.
+    /// Export the session to HTML at `path`.
+    ///
+    /// # Errors
+    ///
+    /// `Err` when the session is missing or the export write / render fails.
     async fn export_html(&mut self, path: &Path) -> Result<String, XyDriverError>;
 
-    /// Export the session to JSONL at `path`. Returns the path used.
+    /// Export the session to JSONL at `path`.
+    ///
+    /// # Errors
+    ///
+    /// `Err` when the session is missing or the export write fails.
     async fn export_jsonl(&mut self, path: &Path) -> Result<String, XyDriverError>;
 
-    /// Import a JSONL file. Returns the new session id.
+    /// Import a JSONL file.
+    ///
+    /// # Errors
+    ///
+    /// `Err` when the file is unreadable or not valid session JSONL.
     async fn import_jsonl(&mut self, path: &Path) -> Result<String, XyDriverError>;
 
-    /// Fork the current session at `entry_id`. Returns the new session id.
+    /// Fork the current session at `entry_id`.
+    ///
+    /// # Errors
+    ///
+    /// `Err` when `entry_id` is not on the current branch or the store cannot fork.
     async fn fork_session(
         &mut self,
         entry_id: &str,
@@ -110,12 +156,24 @@ pub trait XyDriver: Send {
     ) -> Result<String, XyDriverError>;
 
     /// Switch to an existing session id. Validates existence first.
+    ///
+    /// # Errors
+    ///
+    /// `Err` when `session_id` does not exist in the store.
     async fn switch_session(&mut self, session_id: &str) -> Result<String, XyDriverError>;
 
     /// Load the message entries of the current session.
+    ///
+    /// # Errors
+    ///
+    /// `Err` when no session is bound or the store read fails.
     async fn get_messages(&self) -> Result<Vec<SessionEntry>, XyDriverError>;
 
     /// Load session statistics.
+    ///
+    /// # Errors
+    ///
+    /// `Err` when no session is bound or the store read fails.
     async fn get_session_stats(&self) -> Result<SessionStats, XyDriverError>;
 
     /// Read-only context token estimate for the current leaf/path (c1030 / c1035).
@@ -123,6 +181,10 @@ pub trait XyDriver: Send {
     /// Prefer consuming [`crate::protocol::lifecycle::XyEvent::ContextTokenSettlement`]
     /// for turn-end / post-compact footer updates (c1860). Use this for leaf travel,
     /// mid-turn throttle, and stream-close **fallback** when no settlement was applied.
+    ///
+    /// # Errors
+    ///
+    /// `Err` when no model / tokenizer can estimate the current context.
     async fn estimate_context_tokens(
         &self,
     ) -> Result<crate::protocol::model::ContextTokenEstimate, XyDriverError>;
@@ -131,12 +193,24 @@ pub trait XyDriver: Send {
     fn get_commands(&self) -> Vec<CommandInfo>;
 
     /// Enqueue a steering message for the active (or next) run.
+    ///
+    /// # Errors
+    ///
+    /// `Err` when the steering queue is unavailable (remote / stub drivers).
     fn steer(&mut self, message: &str) -> Result<(), XyDriverError>;
 
     /// Enqueue a follow-up message delivered when the run would otherwise stop.
+    ///
+    /// # Errors
+    ///
+    /// `Err` when the follow-up queue is unavailable (remote / stub drivers).
     fn follow_up(&mut self, message: &str) -> Result<(), XyDriverError>;
 
     /// Clear one or both pending-message queues.
+    ///
+    /// # Errors
+    ///
+    /// `Err` when the queues are unavailable (remote / stub drivers).
     fn clear_queue(
         &mut self,
         clear_steer: bool,
@@ -150,6 +224,10 @@ pub trait XyDriver: Send {
     ///
     /// XyDriver-only seam (not wired through `protocol::Command`); REST calls this
     /// directly for MessageHistory tree endpoints.
+    ///
+    /// # Errors
+    ///
+    /// `Err` when the store read fails or the tree kind is unimplemented.
     async fn session_tree(
         &self,
         kind: SessionTreeKind,
@@ -159,6 +237,11 @@ pub trait XyDriver: Send {
     ///
     /// XyDriver-only seam (not wired through `protocol::Command`); REST travel
     /// endpoints call this directly.
+    ///
+    /// # Errors
+    ///
+    /// `Err` when `entry_id` is not on the current branch or the tree kind is
+    /// unimplemented.
     async fn travel_session_tree(
         &self,
         kind: SessionTreeKind,
@@ -167,6 +250,10 @@ pub trait XyDriver: Send {
 
     /// Persist a tree annotation (`Label` entry) for `target_id` (c690).
     /// `label: None` or empty clears the annotation.
+    ///
+    /// # Errors
+    ///
+    /// `Err` when `target_id` is not found on the current branch.
     async fn append_entry_label(
         &mut self,
         target_id: &str,
@@ -181,17 +268,29 @@ pub trait XyDriver: Send {
     /// Returns session id + entries for transcript rebuild. Does not invent a
     /// `protocol::Command` — XyDriver-only like session_tree. Fixtures live in
     /// `app::debug_fixtures` (delete that module to remove).
+    ///
+    /// # Errors
+    ///
+    /// `Err` when the named scene is unknown.
     async fn load_debug_scene(&mut self, scene: &str) -> Result<DebugSceneLoad, XyDriverError>;
 
     /// List resumable sessions for `/session-resume` (c1015).
     ///
     /// XyDriver-only seam (not `protocol::Command`); sorted mtime desc by store.
     /// TUI MUST NOT read the sessions directory directly.
+    ///
+    /// # Errors
+    ///
+    /// `Err` on store listing failure.
     async fn list_sessions(&self) -> Result<Vec<SessionListEntry>, XyDriverError>;
 
     /// Load raw session entries for any session id (c1560 editor history seed).
     ///
     /// TUI MUST NOT read the sessions directory directly.
+    ///
+    /// # Errors
+    ///
+    /// `Err` when `session_id` does not exist (`NotFound`).
     async fn load_session_entries(
         &self,
         session_id: &str,
@@ -200,15 +299,31 @@ pub trait XyDriver: Send {
     /// Create an empty session and make it current (`/session-new`, c1020).
     ///
     /// XyDriver-only seam (not `protocol::Command`).
+    ///
+    /// # Errors
+    ///
+    /// `Err` when the store cannot create the session.
     async fn new_session(&mut self) -> Result<String, XyDriverError>;
 
     /// Current session display name (`/session-name`, c1020).
+    ///
+    /// # Errors
+    ///
+    /// `Err` when no session is bound or the store read fails.
     async fn get_session_name(&self) -> Result<Option<String>, XyDriverError>;
 
     /// Set current session display name; returns sanitized stored name (c1020).
+    ///
+    /// # Errors
+    ///
+    /// `Err` when no session is bound or the store write fails.
     async fn set_session_name(&mut self, name: &str) -> Result<String, XyDriverError>;
 
     /// Set display name for any session (resume panel rename; c1065).
+    ///
+    /// # Errors
+    ///
+    /// `Err` when `session_id` does not exist or the store write fails.
     async fn set_session_name_for(
         &mut self,
         session_id: &str,
@@ -216,6 +331,10 @@ pub trait XyDriver: Send {
     ) -> Result<String, XyDriverError>;
 
     /// Delete a persisted session (resume panel; c1065). MUST NOT delete active session.
+    ///
+    /// # Errors
+    ///
+    /// `Err` when `session_id` is the active session (refused) or missing / IO.
     async fn delete_session(&mut self, session_id: &str) -> Result<(), XyDriverError>;
 
     /// `(name, description)` for product `$skill` completion (c1130).
@@ -289,6 +408,10 @@ pub trait XyDriver: Send {
     ///
     /// `cancel` is cooperative: implementations MUST put-back reload state on every
     /// exit and MUST NOT leave MCP/tools half-open when cancelled.
+    ///
+    /// # Errors
+    ///
+    /// `Err` on reload failure (MCP / tools / prompt assembly). Default: no-op `Ok`.
     async fn reload_runtime(
         &mut self,
         _cancel: &tokio_util::sync::CancellationToken,
@@ -300,6 +423,10 @@ pub trait XyDriver: Send {
     ///
     /// Does **not** reload skills/MCP/context — caller shows
     /// `ProjectTrustPersistReport::RELOAD_HINT`. Default: unsupported.
+    ///
+    /// # Errors
+    ///
+    /// `Err` on unsupported driver (default) or IO.
     fn persist_project_trust(
         &mut self,
         _mode: ProjectTrustMode,
@@ -315,6 +442,10 @@ pub trait XyDriver: Send {
     /// TUI host task. When OSC 52 is required, return it in
     /// `ClipboardCopyOutcome.pending_osc52` for the host to write via
     /// `Terminal` (do not emit from the driver). Default: unsupported.
+    ///
+    /// # Errors
+    ///
+    /// `Err` on unsupported driver (default) or platform clipboard failure.
     async fn copy_text_to_clipboard(
         &mut self,
         _text: &str,
@@ -328,6 +459,10 @@ pub trait XyDriver: Send {
     ///
     /// Returns `Ok(None)` when the clipboard has no image. Product TUI inserts the
     /// path as plain text (pi-aligned); MUST NOT put base64 in the editor.
+    ///
+    /// # Errors
+    ///
+    /// `Err` on unsupported driver (default) or platform clipboard failure.
     async fn stage_clipboard_image(&mut self) -> Result<Option<std::path::PathBuf>, XyDriverError> {
         Err(XyDriverError::unsupported(
             "stage_clipboard_image not supported on this driver",
@@ -337,6 +472,10 @@ pub trait XyDriver: Send {
     /// Read UTF-8 text from the system clipboard (c1156 / Ctrl+V text fallback).
     ///
     /// Returns `Ok(None)` when empty / no text. Default: unsupported.
+    ///
+    /// # Errors
+    ///
+    /// `Err` on unsupported driver (default) or platform clipboard failure.
     async fn read_clipboard_text(&mut self) -> Result<Option<String>, XyDriverError> {
         Err(XyDriverError::unsupported(
             "read_clipboard_text not supported on this driver",

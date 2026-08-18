@@ -44,7 +44,7 @@ pub fn apply_auto_degrade(
         AutoTrigger::Rebuild => 0,
         AutoTrigger::TurnEnd => state.settings.keep_recent_turns as usize,
     };
-    let target = state.settings.collapse_floor();
+    let target = state.settings.collapse_floor;
 
     let newest_ord = segments.iter().map(|s| s.turn_ordinal).max().unwrap_or(0);
     let mut changed = false;

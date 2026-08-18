@@ -42,6 +42,10 @@ pub trait XySessionStore: Send + Sync {
     async fn exists(&self, session_id: &str) -> bool;
 
     /// Load the raw typed session entries (for compaction / export).
+    ///
+    /// # Errors
+    ///
+    /// `Err` when the session does not exist (`NotFound`) or the store IO fails.
     async fn load_entries(
         &self,
         session_id: &str,
@@ -51,6 +55,10 @@ pub trait XySessionStore: Send + Sync {
     ///
     /// Compaction prepare/cut MUST use this path so sibling branches are excluded.
     /// Default falls back to [`Self::load_entries`] for linear/stub stores.
+    ///
+    /// # Errors
+    ///
+    /// Same as [`Self::load_entries`].
     async fn load_leaf_branch(
         &self,
         session_id: &str,
@@ -59,18 +67,30 @@ pub trait XySessionStore: Send + Sync {
     }
 
     /// Append a typed session entry (compaction summary, bash exec, etc.).
+    ///
+    /// # Errors
+    ///
+    /// `Err` when the session does not exist (`NotFound`) or the store IO fails.
     async fn append_session_entry(
         &self,
         session_id: &str,
         entry: &SessionEntry,
     ) -> Result<(), XySessionStoreError>;
     /// Build the full session context (messages, thinking level, model).
+    ///
+    /// # Errors
+    ///
+    /// `Err` when the session does not exist (`NotFound`) or the store IO fails.
     async fn build_session_context(
         &self,
         session_id: &str,
     ) -> Result<SessionContext, XySessionStoreError>;
 
     /// Create a new session (writes header, initializes leaf tracking).
+    ///
+    /// # Errors
+    ///
+    /// `Err` when the store cannot write the initial header / leaf state.
     async fn create(
         &self,
         id: &str,
@@ -86,6 +106,11 @@ pub trait XySessionStore: Send + Sync {
     /// - [`ForkPosition::At`]: child path is `get_branch` through `at_entry_id` (re-chained).
     /// - [`ForkPosition::Before`]: `at_entry_id` must be a user message; path ends at its
     ///   parent (pi `/fork`); the user row is not copied.
+    ///
+    /// # Errors
+    ///
+    /// `Err(EntryNotFound)` when `at_entry_id` is not on the branch;
+    /// `Err(Store)` when the child session cannot be persisted.
     async fn fork(
         &self,
         parent_id: &str,
@@ -101,6 +126,10 @@ pub trait XySessionStore: Send + Sync {
     fn leaf_id(&self, session_id: &str) -> Option<String>;
 
     /// Build the message-history session tree (default: load entries + [`build_session_tree`]).
+    ///
+    /// # Errors
+    ///
+    /// Same as [`Self::load_entries`].
     async fn message_history_tree(
         &self,
         session_id: &str,
@@ -113,12 +142,20 @@ pub trait XySessionStore: Send + Sync {
     ///
     /// Used by the XyDriver for `/session-resume` (not a `protocol::Command`).
     /// Default returns an empty list so minimal store stubs stay usable.
+    ///
+    /// # Errors
+    ///
+    /// `Err` on store listing failure. Default returns `Ok(vec![])`.
     async fn list_sessions(&self) -> Result<Vec<SessionListEntry>, XySessionStoreError> {
         let _ = self;
         Ok(Vec::new())
     }
 
     /// Latest display name from `session_info` entries (c1020 `/session-name`).
+    ///
+    /// # Errors
+    ///
+    /// `Err` when the session does not exist (`NotFound`) or the store IO fails.
     async fn get_session_name(
         &self,
         session_id: &str,
@@ -140,6 +177,10 @@ pub trait XySessionStore: Send + Sync {
     /// Append a sanitized session display name (CR/LF → space, trim; c1020).
     ///
     /// Returns the name actually stored.
+    ///
+    /// # Errors
+    ///
+    /// `Err` when the session does not exist (`NotFound`) or the store IO fails.
     async fn set_session_name(
         &self,
         session_id: &str,
@@ -162,6 +203,10 @@ pub trait XySessionStore: Send + Sync {
     /// Delete a persisted session (XyDriver `/session-resume` panel; c1065).
     ///
     /// Default returns an error so minimal store stubs stay safe.
+    ///
+    /// # Errors
+    ///
+    /// `Err` when unsupported (default stub) or the store cannot delete.
     async fn delete_session(&self, session_id: &str) -> Result<(), XySessionStoreError> {
         let _ = session_id;
         let _ = self;

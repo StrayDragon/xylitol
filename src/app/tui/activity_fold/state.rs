@@ -139,7 +139,7 @@ impl ActivityFoldState {
             SegmentLevel::L3 => SegmentLevel::L2,
             SegmentLevel::L2 | SegmentLevel::L0 => {
                 self.mark_entered(id);
-                self.settings.collapse_floor()
+                self.settings.collapse_floor
             }
         };
         self.set_level(id, next)
@@ -192,7 +192,7 @@ impl ActivityFoldState {
             }
             if self.level_of(&seg.id) == SegmentLevel::L2 {
                 self.mark_entered(&seg.id);
-                let next = SegmentLevel::L2.collapse_one(self.settings.collapse_floor());
+                let next = SegmentLevel::L2.collapse_one(self.settings.collapse_floor);
                 return self.set_level(&seg.id, next);
             }
         }
