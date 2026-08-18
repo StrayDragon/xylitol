@@ -310,10 +310,54 @@ fn product_tui_source_has_no_tui_start_call() {
         ("mod.rs", include_str!("mod.rs")),
         ("host/mod.rs", include_str!("host/mod.rs")),
         ("effects/mod.rs", include_str!("effects/mod.rs")),
-        ("effects/slash.rs", include_str!("effects/slash.rs")),
+        ("effects/slash/mod.rs", include_str!("effects/slash/mod.rs")),
         (
-            "effects/pending_ui.rs",
-            include_str!("effects/pending_ui.rs"),
+            "effects/slash/chrome.rs",
+            include_str!("effects/slash/chrome.rs"),
+        ),
+        (
+            "effects/slash/compact.rs",
+            include_str!("effects/slash/compact.rs"),
+        ),
+        (
+            "effects/slash/debug.rs",
+            include_str!("effects/slash/debug.rs"),
+        ),
+        (
+            "effects/slash/model.rs",
+            include_str!("effects/slash/model.rs"),
+        ),
+        (
+            "effects/slash/session.rs",
+            include_str!("effects/slash/session.rs"),
+        ),
+        (
+            "effects/pending_ui/mod.rs",
+            include_str!("effects/pending_ui/mod.rs"),
+        ),
+        (
+            "effects/pending_ui/clipboard.rs",
+            include_str!("effects/pending_ui/clipboard.rs"),
+        ),
+        (
+            "effects/pending_ui/import.rs",
+            include_str!("effects/pending_ui/import.rs"),
+        ),
+        (
+            "effects/pending_ui/models.rs",
+            include_str!("effects/pending_ui/models.rs"),
+        ),
+        (
+            "effects/pending_ui/resume.rs",
+            include_str!("effects/pending_ui/resume.rs"),
+        ),
+        (
+            "effects/pending_ui/theme.rs",
+            include_str!("effects/pending_ui/theme.rs"),
+        ),
+        (
+            "effects/pending_ui/tree.rs",
+            include_str!("effects/pending_ui/tree.rs"),
         ),
         ("effects/bang.rs", include_str!("effects/bang.rs")),
         ("commands.rs", include_str!("commands.rs")),
