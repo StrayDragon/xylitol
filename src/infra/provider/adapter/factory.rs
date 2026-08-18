@@ -3,7 +3,7 @@
 use std::sync::Arc;
 
 use crate::infra::hooks::HookDispatcher;
-use crate::infra::provider::adapter::{AdapterKind, AdapterRef, MappedBridgeAdapter};
+use crate::infra::provider::adapter::{AdapterKind, AdapterRef, MappedBridgeAdapter, default_for};
 use crate::infra::provider::hooks_port::to_http_hooks;
 use crate::protocol::model::XyModelConfig;
 
@@ -13,7 +13,7 @@ pub fn resolve_adapter_kind(config: &XyModelConfig) -> AdapterKind {
         .api
         .as_deref()
         .and_then(AdapterKind::from_config_str)
-        .unwrap_or_else(|| AdapterKind::default_for(config.kind))
+        .unwrap_or_else(|| default_for(config.kind))
 }
 
 /// Resolve named YAML `compat` → bridge [`xylitol_ai_bridge::WirePolicy`].
@@ -40,7 +40,7 @@ pub fn build_adapter(config: &XyModelConfig, hooks: Option<Arc<HookDispatcher>>)
         config.api_key.clone(),
         config.model.clone(),
         config.base_url.clone(),
-        kind.to_bridge(),
+        kind,
         http_hooks,
         wire_policy,
     );

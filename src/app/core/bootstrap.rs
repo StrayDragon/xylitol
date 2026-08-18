@@ -449,7 +449,7 @@ pub fn resolve_assembly_with(
                     api_key,
                     model: entry.model.clone(),
                     base_url: entry.base_url.clone(),
-                    // c1598: honor YAML `models.*.api`; None → AdapterKind::default_for
+                    // c1598: honor YAML `models.*.api`; None → infra default_for
                     api: entry.api.clone(),
                     compat: entry.compat.clone(),
                 },

@@ -5,23 +5,14 @@
 
 use serde::{Deserialize, Serialize};
 use serde_json::Value;
-use std::time::{SystemTime, UNIX_EPOCH};
 
 // ── Bridge LLM leaf aliases (minimize call-site churn) ──────────────
 
 pub use xylitol_ai_bridge::dto::{
     AiBridgeImageContent as ImageContent, AiBridgeMessage as LlmMessage, AiBridgePart as AgentPart,
     AiBridgeStopReason as XyStopReason, AiBridgeUsage as XyUsage, AiBridgeUsageCost as XyUsageCost,
-    Diagnostic, collect_text_parts,
+    Diagnostic, collect_text_parts, now_ms,
 };
-
-/// Current timestamp in milliseconds since Unix epoch.
-pub fn now_ms() -> u64 {
-    SystemTime::now()
-        .duration_since(UNIX_EPOCH)
-        .unwrap_or_default()
-        .as_millis() as u64
-}
 
 // ── EnvMessage / AgentMessage (domain composition) ─────────────────
 

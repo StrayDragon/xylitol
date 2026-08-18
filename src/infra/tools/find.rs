@@ -13,11 +13,12 @@ use serde_json::{Value, json};
 use tokio::process::Command;
 
 use super::path_utils::resolve_to_cwd;
-use super::truncate::{DEFAULT_MAX_BYTES, TruncationOptions, format_size, truncate_head};
+use super::truncate::{DEFAULT_MAX_BYTES, TruncationOptions, truncate_head};
 use super::typed::TypedTool;
 use crate::protocol::error::XyToolError;
 use crate::protocol::ports::XyToolCtx;
 use crate::protocol::{ToolTimeout, ToolTimeoutError};
+use crate::utils::format_size;
 
 const DEFAULT_LIMIT: usize = 1000;
 pub struct FindTool;
@@ -215,7 +216,10 @@ impl TypedTool for FindTool {
             notices.push(format!("{effective_limit} results limit reached"));
         }
         if truncation.truncated {
-            notices.push(format!("{} limit reached", format_size(DEFAULT_MAX_BYTES)));
+            notices.push(format!(
+                "{} limit reached",
+                format_size(DEFAULT_MAX_BYTES as u64)
+            ));
         }
         if !notices.is_empty() {
             final_output.push_str(&format!("\n\n[{}]", notices.join(". ")));
