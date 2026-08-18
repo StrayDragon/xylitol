@@ -45,7 +45,7 @@ pub(super) enum McpBootState {
 impl super::XyInProcessDriver {
     /// Initial MCP bootstrap after assembly (cli / server).
     ///
-    /// Prefer [`XyDriver::begin_mcp_bootstrap`] + poll for TUI (c1200). This
+    /// Prefer [`crate::app::core::driver::XyDriver::begin_mcp_bootstrap`] + poll for TUI (c1200). This
     /// still performs a blocking reload for callers that need a settled ToolSet
     /// synchronously (legacy / tests).
     pub async fn bootstrap_mcp(&mut self) -> Result<(), XyDriverError> {
