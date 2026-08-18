@@ -16,7 +16,9 @@ pub fn read_clipboard_text() -> Result<Option<String>, ClipboardError> {
     } else if cfg!(target_os = "windows") {
         read_windows_clipboard_text()
     } else {
-        Err("Clipboard text reading is not supported on this platform".into())
+        Err(ClipboardError::unsupported(
+            "Clipboard text reading is not supported on this platform",
+        ))
     }
 }
 
@@ -26,7 +28,7 @@ fn read_macos_clipboard_text() -> Result<Option<String>, ClipboardError> {
         .stdout(Stdio::piped())
         .stderr(Stdio::null())
         .output()
-        .map_err(|e| format!("pbpaste failed: {e}"))?;
+        .map_err(|e| ClipboardError::io(format!("pbpaste failed: {e}")))?;
     if !output.status.success() {
         return Ok(None);
     }
@@ -40,7 +42,7 @@ fn read_macos_clipboard_text() -> Result<Option<String>, ClipboardError> {
 
 #[cfg(not(target_os = "macos"))]
 fn read_macos_clipboard_text() -> Result<Option<String>, ClipboardError> {
-    Err("Not macOS".into())
+    Err(ClipboardError::unsupported("Not macOS"))
 }
 
 #[cfg(target_os = "linux")]
@@ -55,12 +57,14 @@ fn read_linux_clipboard_text() -> Result<Option<String>, ClipboardError> {
     if has_x11 {
         return read_text_via_xclip();
     }
-    Err("No Wayland or X11 display detected".into())
+    Err(ClipboardError::unsupported(
+        "No Wayland or X11 display detected",
+    ))
 }
 
 #[cfg(not(target_os = "linux"))]
 fn read_linux_clipboard_text() -> Result<Option<String>, ClipboardError> {
-    Err("Not Linux".into())
+    Err(ClipboardError::unsupported("Not Linux"))
 }
 
 #[cfg(target_os = "linux")]
@@ -70,7 +74,7 @@ fn read_text_via_wl_paste() -> Result<Option<String>, ClipboardError> {
         .stdout(Stdio::piped())
         .stderr(Stdio::null())
         .output()
-        .map_err(|e| format!("wl-paste --list-types failed: {e}"))?;
+        .map_err(|e| ClipboardError::io(format!("wl-paste --list-types failed: {e}")))?;
 
     if !list_output.status.success() {
         return Ok(None);
@@ -87,7 +91,7 @@ fn read_text_via_wl_paste() -> Result<Option<String>, ClipboardError> {
         .stdout(Stdio::piped())
         .stderr(Stdio::null())
         .output()
-        .map_err(|e| format!("wl-paste text failed: {e}"))?;
+        .map_err(|e| ClipboardError::io(format!("wl-paste text failed: {e}")))?;
 
     if !output.status.success() || output.stdout.is_empty() {
         return Ok(None);
@@ -107,7 +111,7 @@ fn read_text_via_xclip() -> Result<Option<String>, ClipboardError> {
         .stdout(Stdio::piped())
         .stderr(Stdio::null())
         .output()
-        .map_err(|e| format!("xclip failed: {e}"))?;
+        .map_err(|e| ClipboardError::io(format!("xclip failed: {e}")))?;
     if !output.status.success() || output.stdout.is_empty() {
         return Ok(None);
     }
@@ -152,7 +156,7 @@ fn read_windows_clipboard_text() -> Result<Option<String>, ClipboardError> {
         .stdout(Stdio::piped())
         .stderr(Stdio::null())
         .output()
-        .map_err(|e| format!("PowerShell Get-Clipboard failed: {e}"))?;
+        .map_err(|e| ClipboardError::io(format!("PowerShell Get-Clipboard failed: {e}")))?;
     if !output.status.success() {
         return Ok(None);
     }
@@ -166,7 +170,7 @@ fn read_windows_clipboard_text() -> Result<Option<String>, ClipboardError> {
 
 #[cfg(not(target_os = "windows"))]
 fn read_windows_clipboard_text() -> Result<Option<String>, ClipboardError> {
-    Err("Not Windows".into())
+    Err(ClipboardError::unsupported("Not Windows"))
 }
 
 #[cfg(test)]

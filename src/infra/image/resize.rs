@@ -55,7 +55,8 @@ impl Default for ImageResizeOptions {
 ///
 /// Does not apply EXIF orientation correction; decoded pixels are used as-is.
 pub fn resize_image(data: &[u8], options: &ImageResizeOptions) -> Result<ResizedImage, ImageError> {
-    let img = image::load_from_memory(data).map_err(|e| format!("failed to decode image: {e}"))?;
+    let img = image::load_from_memory(data)
+        .map_err(|e| ImageError::decode(format!("failed to decode image: {e}")))?;
 
     let (orig_w, orig_h) = img.dimensions();
     let (mut w, mut h) = (orig_w, orig_h);
@@ -83,7 +84,7 @@ pub fn resize_image(data: &[u8], options: &ImageResizeOptions) -> Result<Resized
         let mut cursor = Cursor::new(&mut png_bytes);
         resized
             .write_to(&mut cursor, image::ImageFormat::Png)
-            .map_err(|e| format!("failed to encode PNG: {e}"))?;
+            .map_err(|e| ImageError::decode(format!("failed to encode PNG: {e}")))?;
     }
     let png_b64 = base64_encode(&png_bytes);
 
@@ -109,7 +110,7 @@ pub fn resize_image(data: &[u8], options: &ImageResizeOptions) -> Result<Resized
             image::codecs::jpeg::JpegEncoder::new_with_quality(&mut cursor, options.jpeg_quality);
         jpeg_enc
             .encode(raw, w, h, image::ExtendedColorType::Rgba8)
-            .map_err(|e| format!("failed to encode JPEG: {e}"))?;
+            .map_err(|e| ImageError::decode(format!("failed to encode JPEG: {e}")))?;
     }
 
     let jpeg_b64 = base64_encode(&jpeg_bytes);
@@ -127,9 +128,9 @@ pub fn resize_image(data: &[u8], options: &ImageResizeOptions) -> Result<Resized
         });
     }
 
-    Err("image could not be resized below the byte limit"
-        .to_string()
-        .into())
+    Err(ImageError::limit(
+        "image could not be resized below the byte limit",
+    ))
 }
 
 /// Minimal base64 encoder (RFC 4648) — mirrors clipboard version.

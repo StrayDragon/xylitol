@@ -3,6 +3,9 @@
 use crate::app::core::driver::XyDriverError;
 
 /// Keybindings / theme / terminal / external-editor failures.
+///
+/// `InvalidInput` vs `Io` is the stable split; payloads stay the original body
+/// so Driver Display is unchanged.
 #[derive(Debug, Clone, PartialEq, Eq, thiserror::Error)]
 pub(crate) enum TuiSurfaceError {
     #[error("{0}")]

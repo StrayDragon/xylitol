@@ -54,7 +54,7 @@ pub fn to_xy_error(err: AiBridgeError) -> XyError {
     match err {
         AiBridgeError::Provider(e) => XyError::Provider(e),
         AiBridgeError::Aborted => XyError::Aborted,
-        AiBridgeError::Io(msg) => XyError::Provider(anyhow::anyhow!("{msg}")),
+        AiBridgeError::Io(e) => XyError::Provider(anyhow::anyhow!("{e}")),
     }
 }
 

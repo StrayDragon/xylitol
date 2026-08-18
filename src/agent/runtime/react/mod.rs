@@ -44,7 +44,7 @@ use crate::agent::capabilities::{AgentCapabilities, PendingMessageQueue};
 use crate::agent::compaction::CompactionError;
 use crate::agent::prompt::expand_skills_in_agent_messages;
 use crate::agent::tools::ToolSet;
-use crate::protocol::error::{XyError, XyStoreError};
+use crate::protocol::error::{XyError, XySessionError};
 use crate::protocol::message::{AgentMessage, AgentPart};
 use crate::protocol::model::{XyChunk, XyToolSchema};
 use crate::protocol::ports::{XyBatchMode, XyHookBus, XyHookOutcome, XyModel, XySessionStore};
@@ -325,7 +325,7 @@ impl AgentRuntime {
         position: crate::protocol::session::ForkPosition,
     ) -> Result<String, XyError> {
         if self.coordinator.with(|c| c.has_work()) {
-            return Err(XyError::from(XyStoreError::validation(
+            return Err(XyError::from(XySessionError::busy(
                 "session mutation unavailable while busy",
             )));
         }

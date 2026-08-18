@@ -24,7 +24,7 @@ pub fn write_clipboard_image_temp(
     mime_type: &str,
 ) -> Result<PathBuf, ClipboardError> {
     if bytes.is_empty() {
-        return Err("image bytes are empty".into());
+        return Err(ClipboardError::decode("image bytes are empty"));
     }
     let ext = match mime_type {
         "image/jpeg" | "image/jpg" => "jpg",
@@ -34,7 +34,8 @@ pub fn write_clipboard_image_temp(
     };
     let name = format!("xylitol-paste-{}.{}", uuid::Uuid::new_v4(), ext);
     let path = std::env::temp_dir().join(name);
-    std::fs::write(&path, bytes).map_err(|e| format!("write paste image failed: {e}"))?;
+    std::fs::write(&path, bytes)
+        .map_err(|e| ClipboardError::io(format!("write paste image failed: {e}")))?;
     Ok(path)
 }
 
@@ -50,9 +51,9 @@ pub fn read_clipboard_image() -> Result<Option<ClipboardImage>, ClipboardError> 
     } else if cfg!(target_os = "windows") {
         read_windows_clipboard_image()
     } else {
-        Err("Clipboard image reading is not supported on this platform"
-            .to_string()
-            .into())
+        Err(ClipboardError::unsupported(
+            "Clipboard image reading is not supported on this platform",
+        ))
     }
 }
 
@@ -72,7 +73,7 @@ end try"#;
         .stdout(Stdio::piped())
         .stderr(Stdio::null())
         .output()
-        .map_err(|e| format!("osascript failed: {e}"))?;
+        .map_err(|e| ClipboardError::io(format!("osascript failed: {e}")))?;
 
     if !output.status.success() || output.stdout.is_empty() {
         return Ok(None);
@@ -86,7 +87,7 @@ end try"#;
 
 #[cfg(not(target_os = "macos"))]
 fn read_macos_clipboard_image() -> Result<Option<ClipboardImage>, ClipboardError> {
-    Err("Not macOS".to_string().into())
+    Err(ClipboardError::unsupported("Not macOS"))
 }
 
 // ── Linux (Wayland: wl-paste, X11: xclip) ───────────────────────────
@@ -105,12 +106,14 @@ fn read_linux_clipboard_image() -> Result<Option<ClipboardImage>, ClipboardError
         return read_via_xclip();
     }
 
-    Err("No Wayland or X11 display detected".to_string().into())
+    Err(ClipboardError::unsupported(
+        "No Wayland or X11 display detected",
+    ))
 }
 
 #[cfg(not(target_os = "linux"))]
 fn read_linux_clipboard_image() -> Result<Option<ClipboardImage>, ClipboardError> {
-    Err("Not Linux".to_string().into())
+    Err(ClipboardError::unsupported("Not Linux"))
 }
 
 #[cfg(target_os = "linux")]
@@ -121,7 +124,7 @@ fn read_via_wl_paste() -> Result<Option<ClipboardImage>, ClipboardError> {
         .stdout(Stdio::piped())
         .stderr(Stdio::null())
         .output()
-        .map_err(|e| format!("wl-paste --list-types failed: {e}"))?;
+        .map_err(|e| ClipboardError::io(format!("wl-paste --list-types failed: {e}")))?;
 
     if !list_output.status.success() {
         return Ok(None);
@@ -139,7 +142,7 @@ fn read_via_wl_paste() -> Result<Option<ClipboardImage>, ClipboardError> {
         .stdout(Stdio::piped())
         .stderr(Stdio::null())
         .output()
-        .map_err(|e| format!("wl-paste failed: {e}"))?;
+        .map_err(|e| ClipboardError::io(format!("wl-paste failed: {e}")))?;
 
     if !output.status.success() || output.stdout.is_empty() {
         return Ok(None);
@@ -163,7 +166,7 @@ fn read_via_xclip() -> Result<Option<ClipboardImage>, ClipboardError> {
             .stdout(Stdio::piped())
             .stderr(Stdio::null())
             .output()
-            .map_err(|e| format!("xclip failed: {e}"))?;
+            .map_err(|e| ClipboardError::io(format!("xclip failed: {e}")))?;
 
         if output.status.success() && !output.stdout.is_empty() {
             return Ok(Some(ClipboardImage {
@@ -194,7 +197,7 @@ if ($img -ne $null) {
         .stdout(Stdio::piped())
         .stderr(Stdio::null())
         .output()
-        .map_err(|e| format!("PowerShell failed: {e}"))?;
+        .map_err(|e| ClipboardError::io(format!("PowerShell failed: {e}")))?;
 
     if !output.status.success() || output.stdout.is_empty() {
         return Ok(None);
@@ -211,7 +214,7 @@ if ($img -ne $null) {
 
 #[cfg(not(target_os = "windows"))]
 fn read_windows_clipboard_image() -> Result<Option<ClipboardImage>, ClipboardError> {
-    Err("Not Windows".to_string().into())
+    Err(ClipboardError::unsupported("Not Windows"))
 }
 
 // ── Helpers ──────────────────────────────────────────────────────────
@@ -274,14 +277,15 @@ fn decode_base64(input: &str) -> Result<Vec<u8>, ClipboardError> {
 
     for chunk in bytes.chunks(4) {
         for (i, &b) in chunk.iter().enumerate() {
-            buf[i] = decode(b).ok_or_else(|| format!("Invalid base64 character: {b}"))?;
+            buf[i] = decode(b)
+                .ok_or_else(|| ClipboardError::decode(format!("Invalid base64 character: {b}")))?;
         }
         let len = chunk.len();
         let triple = match len {
             4 => (buf[0] << 18) | (buf[1] << 12) | (buf[2] << 6) | buf[3],
             3 => (buf[0] << 18) | (buf[1] << 12) | (buf[2] << 6),
             2 => (buf[0] << 18) | (buf[1] << 12),
-            _ => return Err("Invalid base64 chunk length".to_string().into()),
+            _ => return Err(ClipboardError::decode("Invalid base64 chunk length")),
         };
         result.push((triple >> 16) as u8);
         if len > 2 {

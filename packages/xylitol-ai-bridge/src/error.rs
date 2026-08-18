@@ -5,7 +5,7 @@ pub enum AiBridgeError {
     #[error("aborted")]
     Aborted,
     #[error("{0}")]
-    Io(String),
+    Io(#[from] std::io::Error),
 }
 
 #[cfg(test)]
@@ -26,7 +26,7 @@ mod tests {
 
     #[test]
     fn bridge_error_display_io() {
-        let err = AiBridgeError::Io("connection reset".into());
+        let err = AiBridgeError::Io(std::io::Error::other("connection reset"));
         assert_eq!(err.to_string(), "connection reset");
     }
 }
