@@ -65,7 +65,7 @@ Skill/extension slash 尚未交付：需要时在 **app / `XyDriver`** 侧注册
 
 ## 错误与观测
 
-- 热路径：`XyError` / `XyToolError` + 稳定 `kind()`；会话域用 `XySessionError`（含 store 持久化 + 无绑定会话 / busy / 树旅行），`XyStoreError` 只表示 `XySessionStore` 持久化失败。
+- 热路径：`XyError` / `XyToolError` + 稳定 `kind()`；会话域用 `XySessionError`（含 store 持久化 + 无绑定会话 / busy / 树旅行），`XySessionStoreError` 只表示 `XySessionStore` 持久化失败（`fork` 例外：树定位失败走 `XySessionError`）。Driver flatten：store `NotFound` → `kind=NotFound`；`NoActiveSession` → `kind=Message`、`detail_kind=Session`。
 - 整机缝：`XyDriverError`（含 `Agent(…)`）+ `kind` / `detail_kind` / `log_failure`。session/export/trust 失败 flatten 后 `kind` 仍是 Driver 分类（`NotFound`/`Io`/…），`detail_kind` 与 `log_failure` 的 `source.kind` 保留来源域（`Session`/`Export`/`Trust`）。opaque 字符串经 `from_opaque`（具体短语，避免裸 token 误伤）。
 - 栈：**仅** fastrace + `log`；禁止 `tracing` 双栈。失败日志宜带 `error.kind`。
 - 读 trace：skill `xylitol-inspect-runtime-logs` / `just obs-*`；禁止整文件灌 JSONL。

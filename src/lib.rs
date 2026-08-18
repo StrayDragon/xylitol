@@ -15,7 +15,7 @@
 //! Shared application protocol: [`XyDriver`], [`XyInProcessDriver`], [`XyDriverError`].
 //! Events / stream: [`XyEvent`], [`XyChunk`], [`XyStream`].
 //! Hook outcomes: [`XyHookOutcome`], [`NoopHookBus`].
-//! Errors: [`XyError`], [`XyToolError`], [`XyStoreError`], [`XySessionError`], [`XyExportError`], [`XyTrustError`], [`XyDriverError`].
+//! Errors: [`XyError`], [`XyToolError`], [`XySessionStoreError`], [`XySessionError`], [`XyExportError`], [`XyTrustError`], [`XyDriverError`].
 //! Config metadata: [`XyModelConfig`], [`XyModelKind`], [`XyModelMeta`],
 //! [`XyToolSchema`].
 //!
@@ -43,7 +43,7 @@ pub mod utils;
 
 pub use crate::app::core::driver::{XyDriver, XyDriverError, XyInProcessDriver};
 pub use crate::protocol::error::{
-    XyError, XyExportError, XySessionError, XyStoreError, XyToolError, XyTrustError,
+    XyError, XyExportError, XySessionError, XySessionStoreError, XyToolError, XyTrustError,
 };
 pub use crate::protocol::lifecycle::{XyEvent, XyEventError};
 pub use crate::protocol::model::{XyChunk, XyModelMeta, XyToolSchema};

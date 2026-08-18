@@ -476,7 +476,7 @@ mod tests {
     use async_trait::async_trait;
     use xylitol_ai_bridge::provider::trace::{ObsGateScope, ObsGateState, SpanCollectScope};
 
-    use crate::protocol::error::{XyError, XyStoreError};
+    use crate::protocol::error::{XyError, XySessionStoreError};
     use crate::protocol::model::XyToolSchema;
     use crate::protocol::ports::{XyGenerateOptions, XyStream};
     use crate::protocol::session::{ForkPosition, SessionContext};
@@ -489,17 +489,20 @@ mod tests {
         async fn exists(&self, _: &str) -> bool {
             true
         }
-        async fn load_entries(&self, _: &str) -> Result<Vec<SessionEntry>, XyStoreError> {
+        async fn load_entries(&self, _: &str) -> Result<Vec<SessionEntry>, XySessionStoreError> {
             Ok(Vec::new())
         }
         async fn append_session_entry(
             &self,
             _: &str,
             _: &SessionEntry,
-        ) -> Result<(), XyStoreError> {
+        ) -> Result<(), XySessionStoreError> {
             unreachable!("prepare-fail path must not append")
         }
-        async fn build_session_context(&self, _: &str) -> Result<SessionContext, XyStoreError> {
+        async fn build_session_context(
+            &self,
+            _: &str,
+        ) -> Result<SessionContext, XySessionStoreError> {
             unreachable!("prepare-fail path must not build context")
         }
         async fn create(
@@ -507,7 +510,7 @@ mod tests {
             _: &str,
             _: Option<&str>,
             _: Option<&str>,
-        ) -> Result<(), XyStoreError> {
+        ) -> Result<(), XySessionStoreError> {
             Ok(())
         }
         async fn fork(
@@ -516,7 +519,7 @@ mod tests {
             _: &str,
             _: &str,
             _: ForkPosition,
-        ) -> Result<(), XyStoreError> {
+        ) -> Result<(), crate::protocol::error::XySessionError> {
             unreachable!("prepare-fail path must not fork")
         }
         fn set_leaf(&self, _: &str, _: Option<&str>) {}

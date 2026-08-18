@@ -42,7 +42,7 @@ pub use token_estimator::{
 use anyhow::Result;
 use serde_json::json;
 
-use crate::protocol::error::{XySessionError, XyStoreError};
+use crate::protocol::error::{XySessionError, XySessionStoreError};
 use crate::protocol::ports::{XyModel, XySessionStore};
 use crate::protocol::session::{CompactionEntry, EntryBase, MessageEntry, SessionEntry};
 
@@ -50,7 +50,7 @@ use crate::protocol::session::{CompactionEntry, EntryBase, MessageEntry, Session
 #[derive(Debug, thiserror::Error)]
 pub enum CompactionError {
     #[error(transparent)]
-    Store(#[from] XyStoreError),
+    Store(#[from] XySessionStoreError),
     #[error(transparent)]
     Session(#[from] XySessionError),
     #[error("{0}")]

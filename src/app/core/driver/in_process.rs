@@ -10,6 +10,7 @@ use crate::agent::AgentRuntime;
 use crate::agent::runtime::RunPolicy;
 use crate::app::core::bang_exec::BangExecHandler;
 use crate::app::core::session_export::SessionExporter;
+use crate::protocol::error::XySessionError;
 use crate::protocol::ports::{XyBashResult, XySessionStore};
 use crate::protocol::session::{
     SessionEntry, SessionTreeKind, SessionTreeNode, SessionTreeTravel, plan_message_history_travel,
@@ -480,6 +481,12 @@ fn bind_session_or_err(
     agent.bind_session(session_id).map_err(XyDriverError::from)
 }
 
+fn require_active_session(agent: &AgentRuntime) -> Result<&str, XyDriverError> {
+    agent
+        .session_id()
+        .ok_or_else(|| XySessionError::NoActiveSession.into())
+}
+
 #[async_trait]
 impl XyDriver for XyInProcessDriver {
     async fn run(&mut self, prompt: &str) -> EventStream {
@@ -642,11 +649,7 @@ impl XyDriver for XyInProcessDriver {
     }
 
     async fn export_html(&mut self, path: &Path) -> Result<String, XyDriverError> {
-        let sid = self
-            .agent
-            .session_id()
-            .ok_or_else(|| XyDriverError::not_found("no active session"))?
-            .to_string();
+        let sid = require_active_session(&self.agent)?.to_string();
         self.exporter
             .export_to_html(self.store.as_ref(), &sid, path)
             .await?;
@@ -654,11 +657,7 @@ impl XyDriver for XyInProcessDriver {
     }
 
     async fn export_jsonl(&mut self, path: &Path) -> Result<String, XyDriverError> {
-        let sid = self
-            .agent
-            .session_id()
-            .ok_or_else(|| XyDriverError::not_found("no active session"))?
-            .to_string();
+        let sid = require_active_session(&self.agent)?.to_string();
         self.exporter
             .export_to_jsonl(self.store.as_ref(), &sid, path)
             .await?;
@@ -729,10 +728,7 @@ impl XyDriver for XyInProcessDriver {
     }
 
     async fn get_messages(&self) -> Result<Vec<SessionEntry>, XyDriverError> {
-        let sid = self
-            .agent
-            .session_id()
-            .ok_or_else(|| XyDriverError::not_found("no active session"))?;
+        let sid = require_active_session(&self.agent)?;
         self.store.load_entries(sid).await.map_err(Into::into)
     }
 
@@ -796,10 +792,7 @@ impl XyDriver for XyInProcessDriver {
         &self,
         kind: SessionTreeKind,
     ) -> Result<Vec<SessionTreeNode>, XyDriverError> {
-        let sid = self
-            .agent
-            .session_id()
-            .ok_or_else(|| XyDriverError::not_found("no active session"))?;
+        let sid = require_active_session(&self.agent)?;
         if let Some(bus) = self.agent.hook_bus() {
             let kind = format!("{kind:?}");
             let (ty, phase, ctx) =
@@ -833,10 +826,7 @@ impl XyDriver for XyInProcessDriver {
         kind: SessionTreeKind,
         entry_id: &str,
     ) -> Result<SessionTreeTravel, XyDriverError> {
-        let sid = self
-            .agent
-            .session_id()
-            .ok_or_else(|| XyDriverError::not_found("no active session"))?;
+        let sid = require_active_session(&self.agent)?;
         if let Some(bus) = self.agent.hook_bus() {
             let kind_s = format!("{kind:?}");
             let (ty, phase, ctx) =
@@ -877,19 +867,14 @@ impl XyDriver for XyInProcessDriver {
     ) -> Result<(), XyDriverError> {
         use crate::protocol::session::{EntryBase, LabelEntry};
 
-        let sid = self
-            .agent
-            .session_id()
-            .ok_or_else(|| XyDriverError::not_found("no active session"))?;
+        let sid = require_active_session(&self.agent)?;
         self.agent
             .ensure_session(sid, None)
             .await
             .map_err(XyDriverError::from)?;
         let entries = self.store.load_entries(sid).await?;
         if !entries.iter().any(|e| e.entry_id() == Some(target_id)) {
-            return Err(XyDriverError::not_found(format!(
-                "target entry not found: {target_id}"
-            )));
+            return Err(XySessionError::entry_not_found(target_id).into());
         }
         let cleaned = label
             .map(str::trim)
@@ -991,18 +976,12 @@ impl XyDriver for XyInProcessDriver {
     }
 
     async fn get_session_name(&self) -> Result<Option<String>, XyDriverError> {
-        let sid = self
-            .agent
-            .session_id()
-            .ok_or_else(|| XyDriverError::not_found("no active session"))?;
+        let sid = require_active_session(&self.agent)?;
         self.store.get_session_name(sid).await.map_err(Into::into)
     }
 
     async fn set_session_name(&mut self, name: &str) -> Result<String, XyDriverError> {
-        let sid = self
-            .agent
-            .session_id()
-            .ok_or_else(|| XyDriverError::not_found("no active session"))?;
+        let sid = require_active_session(&self.agent)?;
         let out = self.store.set_session_name(sid, name).await?;
         xylitol_ai_bridge::provider::set_obs_session_name(Some(out.as_str()));
         Ok(out)
