@@ -276,7 +276,9 @@ impl XyDriver for XyInProcessDriver {
         self.ensure_tool_table_frozen().await;
         if self.agent.session_id().is_none() {
             let id = uuid::Uuid::new_v4().to_string();
-            let _ = bind_session_or_err(&mut self.agent, id.clone());
+            if let Err(e) = bind_session_or_err(&mut self.agent, id.clone()) {
+                e.log_failure("driver.run.bind_session");
+            }
             self.bind_todo_session(Some(&id)).await;
         } else if let Some(sid) = self.agent.session_id() {
             // Keep Todo gateway aligned if agent was bound before driver wiring.
