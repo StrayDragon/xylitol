@@ -2,7 +2,7 @@
 
 use super::{AgentCapabilities, observe_hook};
 use crate::agent::compaction::CompactionError;
-use crate::protocol::error::XyStoreError;
+use crate::protocol::error::XySessionError;
 
 impl AgentCapabilities {
     /// Check and perform auto-compaction if the context is full.
@@ -28,7 +28,7 @@ impl AgentCapabilities {
     ) -> Result<bool, CompactionError> {
         let sid = self
             .session_id()
-            .ok_or(CompactionError::from(XyStoreError::NoActiveSession))?;
+            .ok_or(CompactionError::from(XySessionError::NoActiveSession))?;
 
         let model = self
             .build_current_model()
@@ -71,7 +71,7 @@ impl AgentCapabilities {
     pub async fn force_compact(&self, instructions: Option<String>) -> Result<(), CompactionError> {
         let sid = self
             .session_id()
-            .ok_or(CompactionError::from(XyStoreError::NoActiveSession))?;
+            .ok_or(CompactionError::from(XySessionError::NoActiveSession))?;
 
         let model = self
             .build_current_model()

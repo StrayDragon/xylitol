@@ -7,33 +7,53 @@ use crate::agent::runtime::RuntimeControlError;
 use crate::infra::clipboard::ClipboardError;
 use crate::infra::config::error::LoadError;
 use crate::infra::mcp::McpError;
-use crate::protocol::error::{XyError, XyExportError, XyStoreError, XyToolError, XyTrustError};
+use crate::protocol::error::{
+    XyError, XyExportError, XySessionError, XyStoreError, XyToolError, XyTrustError,
+};
 
 /// Errors from [`super::driver::XyDriver`] (整机遥控器 / 多面共享应用协议).
 ///
 /// Distinct from [`XyError`] (ReAct / provider / tool hot path). Agent-loop
 /// failures that surface through the driver are wrapped as [`Self::Agent`].
+/// Flattened session/export/trust failures keep their driver class in
+/// [`Self::kind`] (`NotFound`, `Io`, …) and the originating domain in
+/// [`Self::detail_kind`] / `source.kind` on [`Self::log_failure`].
 #[derive(Debug, thiserror::Error, IntoStaticStr)]
 pub enum XyDriverError {
     /// Resource missing (session, entry, path, …).
-    #[error("not found: {0}")]
-    NotFound(String),
+    #[error("not found: {message}")]
+    NotFound {
+        message: String,
+        source_kind: Option<&'static str>,
+    },
 
     /// This driver backend does not support the capability.
-    #[error("unsupported: {0}")]
-    Unsupported(String),
+    #[error("unsupported: {message}")]
+    Unsupported {
+        message: String,
+        source_kind: Option<&'static str>,
+    },
 
     /// Caller input / argument invalid.
-    #[error("invalid input: {0}")]
-    InvalidInput(String),
+    #[error("invalid input: {message}")]
+    InvalidInput {
+        message: String,
+        source_kind: Option<&'static str>,
+    },
 
     /// Local IO / filesystem / clipboard transport failure.
-    #[error("io: {0}")]
-    Io(String),
+    #[error("io: {message}")]
+    Io {
+        message: String,
+        source_kind: Option<&'static str>,
+    },
 
     /// Remote driver / HTTP envelope failure.
-    #[error("remote: {0}")]
-    Remote(String),
+    #[error("remote: {message}")]
+    Remote {
+        message: String,
+        source_kind: Option<&'static str>,
+    },
 
     /// Agent / provider / tool failure bubbled through the driver.
     #[error(transparent)]
@@ -43,8 +63,11 @@ pub enum XyDriverError {
     ///
     /// Prefer a more specific variant at new call sites. Kept so existing
     /// human-readable strings stay stable while signatures move off `String`.
-    #[error("{0}")]
-    Message(String),
+    #[error("{message}")]
+    Message {
+        message: String,
+        source_kind: Option<&'static str>,
+    },
 }
 
 impl XyDriverError {
@@ -53,15 +76,42 @@ impl XyDriverError {
         self.into()
     }
 
-    /// Nested hot-path kind when [`Self::Agent`]; otherwise same as [`Self::kind`].
-    pub fn detail_kind(&self) -> &'static str {
+    fn source_kind(&self) -> Option<&'static str> {
         match self {
-            Self::Agent(inner) => inner.kind(),
-            other => other.kind(),
+            Self::NotFound { source_kind, .. }
+            | Self::Unsupported { source_kind, .. }
+            | Self::InvalidInput { source_kind, .. }
+            | Self::Io { source_kind, .. }
+            | Self::Remote { source_kind, .. }
+            | Self::Message { source_kind, .. } => *source_kind,
+            Self::Agent(_) => None,
         }
     }
 
-    /// Log a driver/dispatch failure with stable `error.kind` (and `agent.kind` when nested).
+    fn with_source_kind(mut self, kind: &'static str) -> Self {
+        match &mut self {
+            Self::NotFound { source_kind, .. }
+            | Self::Unsupported { source_kind, .. }
+            | Self::InvalidInput { source_kind, .. }
+            | Self::Io { source_kind, .. }
+            | Self::Remote { source_kind, .. }
+            | Self::Message { source_kind, .. } => *source_kind = Some(kind),
+            Self::Agent(_) => {}
+        }
+        self
+    }
+
+    /// Nested kind: [`Self::Agent`] inner, or flattened domain (`Session` /
+    /// `Export` / `Trust`) when present; otherwise same as [`Self::kind`].
+    pub fn detail_kind(&self) -> &'static str {
+        match self {
+            Self::Agent(inner) => inner.kind(),
+            other => other.source_kind().unwrap_or(other.kind()),
+        }
+    }
+
+    /// Log a driver/dispatch failure with stable `error.kind` (and `agent.kind`
+    /// / `source.kind` when nested or flattened from a domain error).
     pub fn log_failure(&self, where_: &str) {
         match self {
             Self::Agent(inner) => {
@@ -72,38 +122,65 @@ impl XyDriverError {
                     inner.kind()
                 );
             }
-            _ => {
-                log::warn!(
-                    target: "xylitol::driver",
-                    "{where_} failed error.kind={} error={self}",
-                    self.kind()
-                );
+            other => {
+                if let Some(src) = other.source_kind() {
+                    log::warn!(
+                        target: "xylitol::driver",
+                        "{where_} failed error.kind={} source.kind={} error={self}",
+                        other.kind(),
+                        src
+                    );
+                } else {
+                    log::warn!(
+                        target: "xylitol::driver",
+                        "{where_} failed error.kind={} error={self}",
+                        other.kind()
+                    );
+                }
             }
         }
     }
 
     pub fn not_found(msg: impl Into<String>) -> Self {
-        Self::NotFound(msg.into())
+        Self::NotFound {
+            message: msg.into(),
+            source_kind: None,
+        }
     }
 
     pub fn unsupported(msg: impl Into<String>) -> Self {
-        Self::Unsupported(msg.into())
+        Self::Unsupported {
+            message: msg.into(),
+            source_kind: None,
+        }
     }
 
     pub fn invalid_input(msg: impl Into<String>) -> Self {
-        Self::InvalidInput(msg.into())
+        Self::InvalidInput {
+            message: msg.into(),
+            source_kind: None,
+        }
     }
 
     pub fn io(msg: impl Into<String>) -> Self {
-        Self::Io(msg.into())
+        Self::Io {
+            message: msg.into(),
+            source_kind: None,
+        }
     }
 
     pub fn remote(msg: impl Into<String>) -> Self {
-        Self::Remote(msg.into())
+        Self::Remote {
+            message: msg.into(),
+            source_kind: None,
+        }
     }
 
     pub fn message(msg: impl Into<String>) -> Self {
-        Self::Message(msg.into())
+        Self::Message {
+            message: msg.into(),
+            source_kind: None,
+        }
     }
 
     /// Best-effort classify an opaque upstream string into a typed variant.
@@ -124,12 +201,12 @@ impl XyDriverError {
             || lower.contains("no models available")
             || lower.contains("no pending entries")
         {
-            Self::NotFound(msg)
+            Self::not_found(msg)
         } else if lower.contains("not implemented")
             || lower.contains("unsupported")
             || lower.contains("not supported")
         {
-            Self::Unsupported(msg)
+            Self::unsupported(msg)
         } else if lower.contains("invalid")
             || lower.contains("unknown ")
             || lower.starts_with("usage:")
@@ -138,7 +215,7 @@ impl XyDriverError {
             || lower.contains("set $visual")
             || lower.contains("set $editor")
         {
-            Self::InvalidInput(msg)
+            Self::invalid_input(msg)
         } else if lower.contains("permission denied")
             || lower.contains("i/o")
             || lower.contains("io error")
@@ -156,11 +233,11 @@ impl XyDriverError {
             || lower.contains("write tempfile")
             || lower.contains("spawn ")
         {
-            Self::Io(msg)
+            Self::io(msg)
         } else if lower.starts_with("remote:") || lower.contains("server error") {
-            Self::Remote(msg)
+            Self::remote(msg)
         } else {
-            Self::Message(msg)
+            Self::message(msg)
         }
     }
 }
@@ -180,7 +257,7 @@ impl From<&str> for XyDriverError {
 impl From<XyError> for XyDriverError {
     fn from(err: XyError) -> Self {
         match err {
-            XyError::Session(store) => store.into(),
+            XyError::Session(sess) => sess.into(),
             other => Self::Agent(other),
         }
     }
@@ -192,16 +269,42 @@ impl From<XyToolError> for XyDriverError {
     }
 }
 
+impl From<XySessionError> for XyDriverError {
+    fn from(err: XySessionError) -> Self {
+        match err {
+            XySessionError::Store(store) => Self::from(store),
+            XySessionError::NoActiveSession => {
+                Self::not_found("no active session").with_source_kind("Session")
+            }
+            XySessionError::Busy { message } => Self::message(message).with_source_kind("Session"),
+            XySessionError::EntryNotFound { entry_id } => {
+                Self::not_found(entry_id).with_source_kind("Session")
+            }
+        }
+    }
+}
+
 impl From<XyStoreError> for XyDriverError {
     fn from(err: XyStoreError) -> Self {
         match err {
-            XyStoreError::NotFound { session_id } => Self::not_found(session_id),
-            XyStoreError::EntryNotFound { entry_id } => Self::not_found(entry_id),
-            XyStoreError::NoActiveSession => Self::not_found("no active session"),
-            XyStoreError::Io { op, source } => Self::io(format!("{op}: {source}")),
-            XyStoreError::Serialize(source) => Self::io(format!("serialize entry: {source}")),
-            XyStoreError::Unsupported { op } => Self::unsupported(format!("{op} not supported")),
-            XyStoreError::Validation { message } => Self::message(message),
+            XyStoreError::NotFound { session_id } => {
+                Self::not_found(session_id).with_source_kind("Session")
+            }
+            XyStoreError::EntryNotFound { entry_id } => {
+                Self::not_found(entry_id).with_source_kind("Session")
+            }
+            XyStoreError::Io { op, source } => {
+                Self::io(format!("{op}: {source}")).with_source_kind("Session")
+            }
+            XyStoreError::Serialize(source) => {
+                Self::io(format!("serialize entry: {source}")).with_source_kind("Session")
+            }
+            XyStoreError::Unsupported { op } => {
+                Self::unsupported(format!("{op} not supported")).with_source_kind("Session")
+            }
+            XyStoreError::Validation { message } => {
+                Self::message(message).with_source_kind("Session")
+            }
         }
     }
 }
@@ -210,7 +313,7 @@ impl From<XyExportError> for XyDriverError {
     fn from(err: XyExportError) -> Self {
         match err {
             XyExportError::Io { op, path, source } => {
-                Self::io(format!("{op} {}: {source}", path.display()))
+                Self::io(format!("{op} {}: {source}", path.display())).with_source_kind("Export")
             }
         }
     }
@@ -219,9 +322,15 @@ impl From<XyExportError> for XyDriverError {
 impl From<XyTrustError> for XyDriverError {
     fn from(err: XyTrustError) -> Self {
         match err {
-            XyTrustError::Io { op, source } => Self::io(format!("{op}: {source}")),
-            XyTrustError::Parse(source) => Self::io(format!("serialize trust store: {source}")),
-            XyTrustError::Lock => Self::io("failed to acquire trust store lock"),
+            XyTrustError::Io { op, source } => {
+                Self::io(format!("{op}: {source}")).with_source_kind("Trust")
+            }
+            XyTrustError::Parse(source) => {
+                Self::io(format!("serialize trust store: {source}")).with_source_kind("Trust")
+            }
+            XyTrustError::Lock => {
+                Self::io("failed to acquire trust store lock").with_source_kind("Trust")
+            }
         }
     }
 }
@@ -230,6 +339,7 @@ impl From<CompactionError> for XyDriverError {
     fn from(err: CompactionError) -> Self {
         match err {
             CompactionError::Store(store) => store.into(),
+            CompactionError::Session(sess) => sess.into(),
             CompactionError::Policy(message) => Self::message(message),
         }
     }
@@ -262,14 +372,21 @@ impl From<LoadError> for XyDriverError {
 impl From<McpError> for XyDriverError {
     fn from(err: McpError) -> Self {
         match err {
-            McpError::Connect(message) | McpError::Call(message) => Self::io(message),
+            McpError::Connect(message) | McpError::Call(message) | McpError::Timeout(message) => {
+                Self::io(message)
+            }
+            McpError::Config(message) => Self::invalid_input(message),
         }
     }
 }
 
 impl From<ClipboardError> for XyDriverError {
     fn from(err: ClipboardError) -> Self {
-        Self::io(err.0)
+        match err {
+            ClipboardError::Io(message) => Self::io(message),
+            ClipboardError::Unsupported(message) => Self::unsupported(message),
+            ClipboardError::Decode(message) => Self::invalid_input(message),
+        }
     }
 }
 
@@ -362,6 +479,7 @@ mod tests {
     fn from_store_not_found_is_single_layer() {
         let err = XyDriverError::from(XyStoreError::not_found("abc"));
         assert_eq!(err.kind(), "NotFound");
+        assert_eq!(err.detail_kind(), "Session");
         assert_eq!(err.to_string(), "not found: abc");
     }
 
@@ -369,7 +487,18 @@ mod tests {
     fn from_xy_error_session_flattens_to_store_kind() {
         let err = XyDriverError::from(XyError::from(XyStoreError::not_found("abc")));
         assert_eq!(err.kind(), "NotFound");
+        assert_eq!(err.detail_kind(), "Session");
         assert_eq!(err.to_string(), "not found: abc");
+    }
+
+    #[test]
+    fn from_session_busy_keeps_policy_copy_and_domain() {
+        let err = XyDriverError::from(XySessionError::busy(
+            "session mutation unavailable while busy",
+        ));
+        assert_eq!(err.kind(), "Message");
+        assert_eq!(err.detail_kind(), "Session");
+        assert_eq!(err.to_string(), "session mutation unavailable while busy");
     }
 
     #[test]
@@ -398,7 +527,7 @@ mod tests {
 
     #[test]
     fn from_clipboard_error_is_io() {
-        let err = XyDriverError::from(ClipboardError("Clipboard: join error: boom".into()));
+        let err = XyDriverError::from(ClipboardError::io("Clipboard: join error: boom"));
         assert_eq!(err.kind(), "Io");
         assert_eq!(err.to_string(), "io: Clipboard: join error: boom");
     }

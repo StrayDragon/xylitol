@@ -24,6 +24,10 @@ pub enum McpError {
     Connect(String),
     #[error("{0}")]
     Call(String),
+    #[error("{0}")]
+    Config(String),
+    #[error("{0}")]
+    Timeout(String),
 }
 
 /// Diagnostic from validate / connect (c1080 / mcp4).
@@ -153,7 +157,7 @@ impl McpClientManager {
                 .await
                 {
                     Ok(inner) => inner,
-                    Err(_) => Err(McpError::Connect(format!(
+                    Err(_) => Err(McpError::Timeout(format!(
                         "connect timed out after {:?}",
                         crate::infra::mcp::MCP_SERVER_CONNECT_TIMEOUT
                     ))),
@@ -247,7 +251,7 @@ impl McpClientManager {
         let command = config
             .command
             .as_ref()
-            .ok_or_else(|| McpError::Connect("command is required for stdio transport".into()))?;
+            .ok_or_else(|| McpError::Config("command is required for stdio transport".into()))?;
         let args = config.args.as_deref().unwrap_or_default();
 
         let mut cmd = Command::new(command);
@@ -287,7 +291,7 @@ impl McpClientManager {
         let url = config
             .url
             .as_ref()
-            .ok_or_else(|| McpError::Connect("url is required for sse transport".into()))?;
+            .ok_or_else(|| McpError::Config("url is required for sse transport".into()))?;
         let mut transport_cfg = StreamableHttpClientTransportConfig::with_uri(url.clone());
         if let Some(ref headers) = config.headers {
             let mut custom = HashMap::new();

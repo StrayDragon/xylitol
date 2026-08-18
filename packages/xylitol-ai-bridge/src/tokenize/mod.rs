@@ -11,6 +11,10 @@ use std::sync::{Arc, OnceLock, RwLock};
 use crate::dto::AiBridgeMessage;
 use crate::error::AiBridgeError;
 
+fn io_bridge(err: impl std::fmt::Display) -> AiBridgeError {
+    AiBridgeError::Io(std::io::Error::other(err.to_string()))
+}
+
 /// Process-wide loaded HF [`tokenizers::Tokenizer`] handles (keyed by canonical path).
 ///
 /// Disk cache under `~/.xylitol/tokenizers/` is separate: this map avoids re-parsing
@@ -183,7 +187,7 @@ impl HfTokenizerCache {
         let path = self.cache_path(repo, file);
         invalidate_loaded_tokenizer(&path);
         if path.exists() {
-            std::fs::remove_file(&path).map_err(|e| AiBridgeError::Io(e.to_string()))?;
+            std::fs::remove_file(&path)?;
         }
         if let Some(parent) = path.parent() {
             let _ = std::fs::remove_dir(parent); // only if empty
@@ -197,7 +201,7 @@ impl HfTokenizerCache {
         if !self.cache_dir.exists() {
             return Ok(());
         }
-        std::fs::remove_dir_all(&self.cache_dir).map_err(|e| AiBridgeError::Io(e.to_string()))?;
+        std::fs::remove_dir_all(&self.cache_dir)?;
         Ok(())
     }
 
@@ -228,7 +232,7 @@ impl HfTokenizerCache {
             return Ok(path);
         }
         if let Some(parent) = path.parent() {
-            std::fs::create_dir_all(parent).map_err(|e| AiBridgeError::Io(e.to_string()))?;
+            std::fs::create_dir_all(parent)?;
         }
         let tmp = {
             let mut t = path.as_os_str().to_owned();
@@ -238,14 +242,14 @@ impl HfTokenizerCache {
         let result = async {
             let bytes = reqwest::get(url)
                 .await
-                .map_err(|e| AiBridgeError::Io(e.to_string()))?
+                .map_err(io_bridge)?
                 .error_for_status()
-                .map_err(|e| AiBridgeError::Io(e.to_string()))?
+                .map_err(io_bridge)?
                 .bytes()
                 .await
-                .map_err(|e| AiBridgeError::Io(e.to_string()))?;
-            std::fs::write(&tmp, &bytes).map_err(|e| AiBridgeError::Io(e.to_string()))?;
-            std::fs::rename(&tmp, &path).map_err(|e| AiBridgeError::Io(e.to_string()))?;
+                .map_err(io_bridge)?;
+            std::fs::write(&tmp, &bytes)?;
+            std::fs::rename(&tmp, &path)?;
             Ok(path.clone())
         }
         .await;

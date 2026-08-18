@@ -35,7 +35,11 @@ pub fn adapters_from_discovered(
 
 /// Connect to the given servers (if any), discover tools, return manager + adapters.
 ///
-/// Empty / disabled input returns `None` without constructing a manager.
+/// Empty input returns `None` without constructing a manager. A non-empty list
+/// always returns `Some`: connect/discover failures do **not** travel through
+/// this `Option`. Observe them via [`McpClientManager::diagnostics`] (and the
+/// zero-tool / zero-connected snapshots). Partial success is a manager with
+/// whatever servers actually connected.
 pub async fn connect_and_discover(
     servers: &[McpServerConfig],
 ) -> Option<(Arc<McpClientManager>, Vec<Arc<dyn XyTool>>)> {
@@ -43,6 +47,9 @@ pub async fn connect_and_discover(
 }
 
 /// Like [`connect_and_discover`], mirroring connect progress when `progress` is set (c1200).
+///
+/// Same `Option` contract: `None` only for an empty server list; per-server
+/// failures stay on [`McpClientManager::diagnostics`].
 pub async fn connect_and_discover_with_progress(
     servers: &[McpServerConfig],
     progress: Option<std::sync::Arc<tokio::sync::Mutex<super::client::McpConnectProgress>>>,
@@ -66,6 +73,9 @@ pub async fn connect_and_discover_with_progress(
 }
 
 /// Convenience: pull servers from [`AppConfig`] and assemble.
+///
+/// Missing / empty `mcp_servers` → `None`. Configured servers follow
+/// [`connect_and_discover`]: failures are diagnostics, not `None`.
 pub async fn connect_and_discover_from_config(
     config: &AppConfig,
 ) -> Option<(Arc<McpClientManager>, Vec<Arc<dyn XyTool>>)> {

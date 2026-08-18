@@ -10,7 +10,7 @@ pub enum XyError {
     #[error("tool error: {0}")]
     Tool(#[from] XyToolError),
     #[error("session error: {0}")]
-    Session(#[from] XyStoreError),
+    Session(#[from] XySessionError),
     #[error("agent config error: {0}")]
     Config(String),
     #[error("aborted")]
@@ -46,14 +46,15 @@ impl XyToolError {
 }
 
 /// Persistence failures from [`crate::protocol::ports::XySessionStore`].
+///
+/// Control-plane misses (no bound session, busy mutation, in-memory tree
+/// travel) live on [`XySessionError`], not here.
 #[derive(Debug, thiserror::Error, IntoStaticStr)]
 pub enum XyStoreError {
     #[error("session not found: {session_id}")]
     NotFound { session_id: String },
     #[error("target entry not found: {entry_id}")]
     EntryNotFound { entry_id: String },
-    #[error("no active session")]
-    NoActiveSession,
     #[error("{op}: {source}")]
     Io {
         op: &'static str,
@@ -66,6 +67,49 @@ pub enum XyStoreError {
     Validation { message: String },
     #[error("{op} not supported")]
     Unsupported { op: &'static str },
+}
+
+/// Session-domain failures: store IO plus control-plane (no active session,
+/// busy, in-memory tree travel).
+#[derive(Debug, thiserror::Error, IntoStaticStr)]
+pub enum XySessionError {
+    #[error(transparent)]
+    Store(#[from] XyStoreError),
+    #[error("no active session")]
+    NoActiveSession,
+    #[error("{message}")]
+    Busy { message: String },
+    #[error("target entry not found: {entry_id}")]
+    EntryNotFound { entry_id: String },
+}
+
+impl From<XyStoreError> for XyError {
+    fn from(err: XyStoreError) -> Self {
+        Self::Session(err.into())
+    }
+}
+
+impl XySessionError {
+    /// Persist variants keep the store kind (`NotFound`, `Io`, …); control-plane
+    /// arms use their own (`NoActiveSession`, `Busy`, `EntryNotFound`).
+    pub fn kind(&self) -> &'static str {
+        match self {
+            Self::Store(store) => store.kind(),
+            other => other.into(),
+        }
+    }
+
+    pub fn busy(message: impl Into<String>) -> Self {
+        Self::Busy {
+            message: message.into(),
+        }
+    }
+
+    pub fn entry_not_found(entry_id: impl Into<String>) -> Self {
+        Self::EntryNotFound {
+            entry_id: entry_id.into(),
+        }
+    }
 }
 
 impl XyStoreError {
@@ -279,12 +323,17 @@ mod tests {
         assert_eq!(nf.kind(), "NotFound");
         assert_eq!(nf.to_string(), "session not found: abc");
         assert_eq!(
-            XyStoreError::NoActiveSession.to_string(),
-            "no active session"
-        );
-        assert_eq!(
             XyStoreError::unsupported("delete_session").to_string(),
             "delete_session not supported"
+        );
+        assert_eq!(
+            XySessionError::NoActiveSession.to_string(),
+            "no active session"
+        );
+        assert_eq!(XySessionError::NoActiveSession.kind(), "NoActiveSession");
+        assert_eq!(
+            XySessionError::busy("session mutation unavailable while busy").kind(),
+            "Busy"
         );
     }
 

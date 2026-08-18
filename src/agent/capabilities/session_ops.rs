@@ -5,7 +5,7 @@
 use std::sync::Arc;
 
 use crate::agent::compaction::CompactionSettings;
-use crate::protocol::error::{XyError, XyStoreError};
+use crate::protocol::error::{XyError, XySessionError};
 use crate::protocol::message::AgentMessage;
 use crate::protocol::ports::XySessionStore;
 
@@ -105,7 +105,7 @@ impl AgentCapabilities {
     ) -> Result<String, XyError> {
         let parent_id = self
             .session_id()
-            .ok_or(XyError::from(XyStoreError::NoActiveSession))?;
+            .ok_or(XyError::from(XySessionError::NoActiveSession))?;
 
         if let Some(bus) = &self.hook_bus {
             let (ty, phase, ctx) = crate::agent::runtime::script_hook_ctx::session_before_fork(
@@ -131,7 +131,7 @@ impl AgentCapabilities {
     pub async fn get_session_stats(&self) -> Result<SessionStats, XyError> {
         let sid = self
             .session_id()
-            .ok_or(XyError::from(XyStoreError::NoActiveSession))?;
+            .ok_or(XyError::from(XySessionError::NoActiveSession))?;
         crate::agent::capabilities::stats::compute(self.store.as_ref(), sid).await
     }
 }
