@@ -6,8 +6,8 @@
 
 ## 1. 合约
 
-- [ ] 1.1 改 `server-core` spec.toon + `server-runtime.feature` / `server-ws.feature`：绑定占用、无产品 REST、POST unary、WS **只下行**、写者
-- [ ] 1.2 改 `layer-architecture` la6：监听器非整机锁；产品面是四象限 HTTP+WS 下行，不是 REST，也不是全双工 WS Command
+- [x] 1.1 改 `server-core` spec.toon + `server-runtime.feature` / `server-ws.feature`：绑定占用、无产品 REST、POST unary、WS **只下行**、写者
+- [x] 1.2 改 `layer-architecture` la6：监听器非整机锁；产品面是四象限 HTTP+WS 下行，不是 REST，也不是全双工 WS Command
 
 ## 2. salvo 监听器
 
