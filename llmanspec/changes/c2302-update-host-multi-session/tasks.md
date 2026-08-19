@@ -26,5 +26,5 @@
 
 ## 4. 闸
 
-- [ ] 4.1 `llman sdd validate c2302-update-host-multi-session --strict`
-- [ ] 4.2 `cargo test --test bdd` 与 `just qa` 绿
+- [x] 4.1 `llman sdd validate c2302-update-host-multi-session --strict`
+- [x] 4.2 `cargo test --test bdd` 与 `just qa` 绿
