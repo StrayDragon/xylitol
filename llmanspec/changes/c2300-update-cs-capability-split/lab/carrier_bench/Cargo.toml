@@ -1,0 +1,15 @@
+[workspace]
+
+[package]
+name = "carrier-bench"
+version = "0.0.0"
+edition = "2021"
+publish = false
+description = "Throwaway overhead eval for c2300: in-process vs network carrier on token-delta stream. See research/overhead-eval.md"
+
+[dependencies]
+serde = { version = "1", features = ["derive"] }
+serde_json = "1"
+
+[profile.release]
+opt-level = 3

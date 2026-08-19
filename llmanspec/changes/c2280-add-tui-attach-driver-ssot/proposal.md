@@ -4,8 +4,8 @@ depends_on: []
 
 # 双模 TUI：Driver SSOT 与本机 host 传输选型（研究草案）
 
-> **一句话**：产品保留「默认进程内 TUI」与「显式 `xylitol serve` 后 attach」两条进线；用同一套 TUI host + `XyDriver` 符合性闸把漂移压住；本票只做固定深度调研与 SSOT 设计，不实现。
-> **产品进线（已钉）**：先 `xylitol serve`（不做 Ensure-running / 第一扇窗兼 host）；习惯用窗口管理器、多开终端的用户可用会话/autostart 起 host。默认仍原生 TUI。
+> **一句话**：产品保留「默认进程内 TUI」与「显式 `xylitol serve` 后 attach」两条启动与连接方式；用同一套 TUI host + `XyDriver` 符合性闸把漂移压住；本票只做固定深度调研与 SSOT 设计，不实现。
+> **产品启动与连接方式（已钉）**：先 `xylitol serve`（不做 Ensure-running / 第一扇窗兼 host）；习惯用窗口管理器、多开终端的用户可用会话/autostart 起 host。默认仍原生 TUI。
 
 ## Why
 
@@ -35,7 +35,7 @@ depends_on: []
 
 ## 双模代码 SSOT（设计意向，供调研证伪）
 
-目标：用户看见两条进线，仓库只养 **一套 TUI + 一套驱动合约**。
+目标：用户看见两条启动与连接方式，仓库只养 **一套 TUI + 一套驱动合约**。
 
 ```text
                     ┌─ 面本地（两模式共用，禁止经 Driver）
@@ -57,7 +57,7 @@ xylitol TUI host ───┤
 3. **面本地能力不进 Driver。** InProcess 里若还夹着 clipboard / TTY，attach 路径会缺一块——实现前拆到 TUI 侧协作器。**bang（`!`）走 Driver，在工作区执行**（attach 时经 wire protocol 到 server）。
 4. **符合性闸（SSOT 的牙齿）**：同一张 Command 表 + 同一组可观察 Event，对 InProcess（harness）与「测试 host + RemoteDriver」各跑一遍。Remote 对已承诺命令返回未实现 = 闸红。现有 `sr-remote1` 是合约锚，缺的是 **双实现同跑**。
 5. **MCP**：池化只发生在 serve 进程，key 意向 `(mcp_name, canonical cwd)`（对齐 DSH LSP）。原生模式仍每进程一份——这是双模式付的税，文档写明，不要用「自动探测 serve 就切换」偷偷改默认。
-6. **进线显式**：`xylitol tui --attach`（或等价）连 host；**禁止**「探测到 socket 就静默切 Remote」（第三模式，bang/cwd/失败语义会鬼畜）。serve 未起 → attach 失败并提示 `xylitol serve`。
+6. **启动与连接显式**：`xylitol tui --attach`（或等价）连 host；**禁止**「探测到 socket 就静默切 Remote」（第三模式，bang/cwd/失败语义会鬼畜）。serve 未起 → attach 失败并提示 `xylitol serve`。
 7. **Print / embed** 继续 InProcess，不经假 attach。
 
 无法用 SSOT 消灭的差异（必须当产品差异写进以后的 spec，而不是代码分叉）：
@@ -91,7 +91,7 @@ xylitol TUI host ───┤
 ## Impact
 
 - 本票：仅 `llmanspec/changes/c2280-add-tui-attach-driver-ssot/`
-- 后续实现票：TUI 进线、Server 多 runtime、锁从 `/tmp/xylitol-server.lock` 改为用户 runtime 目录、MCP 池 key
+- 后续实现票：TUI 启动与连接方式、Server 多 runtime、锁从 `/tmp/xylitol-server.lock` 改为用户 runtime 目录、MCP 池 key
 
 ## Test seams（给实现票，本票不写测）
 
@@ -122,7 +122,7 @@ xylitol TUI host ───┤
 - **主载体**：attach = **TCP loopback + Docker 发布端口 + WebSocket + tagged JSON**；UDS 仅「本机 Linux 无 Docker」的可选项。能力考察：`04`「三种连法」。
 - **沙盒**：server 整进程进 Docker = **粗粒度沙盒**（隔离进程树 / 文件系统 / 网络命名空间；不是每工具 seccomp）。能力考察：`04`「粗粒度沙盒」。
 - **bang 直播**：attach 下 `!` / `!!` 在 server 工作区执行、增量推送、Esc → `Abort` 杀 bang 进程树；Event 名 **`BashDelta`**（专给 bang，不复用 `ToolExecutionUpdate`）。产品行为种子见「BashDelta 实现票种子」；缺口事实见 `03`。
-- **双模代码 SSOT**：一个 TUI host；Agent 能力只经 `XyDriver` + `dispatch`；面本地不进 Driver；符合性闸同表双跑；MCP 池只发生在 serve 进程（key 意向 `(mcp_name, canonical cwd)`）；进线显式。见上文「双模代码 SSOT」。
+- **双模代码 SSOT**：一个 TUI host；Agent 能力只经 `XyDriver` + `dispatch`；面本地不进 Driver；符合性闸同表双跑；MCP 池只发生在 serve 进程（key 意向 `(mcp_name, canonical cwd)`）；启动与连接显式。见上文「双模代码 SSOT」。
 - **Web 壳**：默认 **React + Vite SPA**（静态 `dist`，同源连现有 axum WS）；传输保持浏览器可升级 WS。能力考察：`06`「候选对照」。
 - **工具链**：默认 **1.97.1 stable**；postcard / rkyv / ntex-uring / sonic-rs 均不需 nightly；`portable_simd` 与 Cranelift 单独 spike。能力考察：`05`「nightly 议题」。
 
@@ -145,4 +145,45 @@ xylitol TUI host ───┤
 - 拓扑与 Docker 连法能力对照：[`research/04-topology.md`](./research/04-topology.md)
 - 吞吐分层与工具链 / nightly 能力面：[`research/05-throughput.md`](./research/05-throughput.md)
 - 浏览器 UI 壳候选与竞品横切：[`research/06-web.md`](./research/06-web.md)
+- ACP 外部侧表面事实（未来迭代 / provider 适配器）：[`research/acp-interop.md`](./research/acp-interop.md)
 - 现有代码锚点：`src/app/core/driver/{proto,in_process,remote}.rs`、`src/app/server/{runtime,rest,lock}.rs`、`llmanspec/specs/server-core/spec.toon`
+
+## 拆分草案（Open Questions —— DRAFT，未定死）
+
+> 本节是「从研究收口到实现立项」的拆分草稿。**标注 DRAFT：不构成最终约束**。research（00–06）尚未核对完，术语/结论敲定并回填 01–06 之后再转正为正式实现 change（id 暂占 c230…，收敛后可重排）。此处只记意图与冲突，不锁约束。
+
+### 已记录的意图（用户，DRAFT）
+
+- **本轮边界**：直达 **多 TUI ↔ 多 session**——server 多 runtime 纳入本轮（对应产品 P1：多仓各开 + 同仓多 session）。
+- **形态方向**：**统一 CS**——TUI 恒为客户端，只发 Command / 只收 Event；「进程内默认」只是 serve 的 **embed 形态**（默认单命令 = 同进程 embedded host + 协议自连）。用户可见的默认路径可保持不变，但**代码路径统一为一条**，不再有"进程内 vs 远程"两套语义。
+- **REST**：现有 `src/app/server/rest.rs` 是临时设计，**不作为基准**；整体废弃、按新协议重做新 transport 面。
+- **拆分偏好**：尽量粗（可单 change 分多个 task 目标），但**每个 change 必须可验证**；先 draft、不锁约束。
+
+### 与既有内容冲突（待 research 核对后裁决）
+
+1. 统一 CS vs 现「已钉产品决策」P4「双模：默认进程内 + 显式 attach」→ 需修 P4（embed 与 attach 是同一协议族的两条启动与连接方式）。
+2. REST 废弃重建 vs research「保留极薄 HTTP 旁路」→ 按用户意图走废弃，research 相应修订（`01` / `04` 里 REST 相关内容）。
+3. 本轮含 server 多 runtime（原「非目标/实现票」范围）→ 边界扩大，从「研究」变「实现立项」。
+
+### 粗拆草案（非最终；收敛后填 id / spec / tasks / 验收）
+
+> 产品位 draft **全部落地**（先建后改、依赖图以各 proposal `depends_on` 为准）：
+> `c2300 归属+连接方式` → `c2301 稳定线协议` → `c2302 host 多会话+传输面`（框架已锁 salvo/axum 回退） → `c2303 统一启动与连接（embed+attach）` → `c2304 符合性闸双跑` → `c2305 ACP 外层适配器（后置迭代）`。
+> 与下表映射：A→c2301，B→c2302，C→c2303，D→c2304（bang 直播语义在 c2301 协议闭集 + c2303 端到端验证）。
+
+| 块 | 做什么（草案） | 可验证点（草案） |
+|---|---|---|
+| A | 稳定 wire 闭集：Command/Event + session 语义 + bash + 反向 RPC + journal/replay 定型（0.0.1 前禁双语义） | wire round-trip；TUI 方法集对协议 gap=0 |
+| B | Server 组合根多 runtime（按 session 单飞）+ 全新 transport（废弃现 REST） | 多 session 隔离 BDD；健康/调试端点 |
+| C | 统一启动与连接：embed 默认（同进程 host + 协议自连）+ `--attach` 连外部 serve；面本地在 TUI 侧 | 默认路径端到端 + attach 路径端到端 |
+| D | 符合性闸双跑（embed host 内实现 ∪ Remote）+ bang 直播（`BashDelta` / 两条 bash API） | 同一场景表双双全绿；多 chunk 直播 + Abort |
+
+### 待核对 / 待定（未锁）
+
+- research 00–06 的术语与结论是否保持（逐篇核对中）。
+- 最终 change 数量与 id（很粗 → 数个大 change；或 1 change 多 tasks）。
+- ~~**连接方式的载体形态（Open）**~~ **已决（c2300）**：开销已实测（`c2300/research/overhead-eval.md`）——载体开销可忽略 → **默认 A（统一 CS）**；B（单进程自持）由「进程税 / 启动体感」产品判定，不再阻塞 c2301。
+- **HTTP/server 框架（已决：salvo）**：旧「钉 axum」premise 失效（REST 废弃重建 + 统一 CS(A) 后本机 UDS 是一级拓扑）；salvo 覆盖需求矩阵见 `c2302/research/framework-pick.md`（WS 一等、UDS+TCP 双听、sock 权限、优雅停机带 force、广播背压文档化、静态/CORS/ACP 可后加）；**axum 为保守回退**。按用户要求不跑可行性验证，仅文档对比锁选。
+- **ACP 外部接入（调研已完成 → 后置决策）**：结论见 `research/acp-interop.md`。定位 **provider 角色 + WebSocket-only 外层适配器**，消费 native 契约、不入核心闭集；会话/消息/权限/取消近 1:1，三处必桥：① `last_seq` 精确续传（ACP v1 不重放、v2 才有）② steer/队列（v1 缺、v2「beyond the turn」才对上）③ 单写者 + 只读第二 attach（ACP 无此概念，适配层自强制写者锁）。**排在 native wire 稳定 + serve 多会话之后**，独立 change（`depends_on` 核心 wire）；v1 够基本会话/审批、要 steer/强续传则等 v2 稳定再评。**本轮不作核心交付。**
+- 多窗写入规则已定（c2300）：一 session 一写者；附加窗口 = 只读静态恢复；host 追踪每 session 连接数。
+- 多 session 的 session 归属与 MCP 池 key 对齐（`(mcp_name, canonical cwd)`）。
