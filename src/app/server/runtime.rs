@@ -47,7 +47,7 @@ impl Drop for RunningServer {
 
 /// Configuration for starting the server.
 ///
-/// Agent assembly fields live in the shared [`resolve_assembly`] / [`build_ports`]
+/// Agent assembly fields live in the shared `resolve_assembly` / `build_ports`
 /// path (spec ce9). Only transport-level knobs live here.
 pub struct ServerConfig {
     pub host: String,
