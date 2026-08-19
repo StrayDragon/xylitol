@@ -1,12 +1,12 @@
-# 06 浏览器 UI 壳：约束维度、候选与竞品（能力对照，非裁决）
+# 06 浏览器 UI 壳
 
-> 本篇是「若做浏览器面」的候选与竞品能力事实；选哪个壳、是否开闸是提案裁决，见 `proposal.md`「研究结论」与「非目标」。背景事实：内核在 Rust（Rust host / `XyDriver` + `dispatch`），Web 是控制与呈现面，roadmap 钉死「Web 用 TS 生态」。
+> 未开闸。浏览器是同一 host 的另一个客户端；契约不堵 WebSocket（c2301）。内核在 Rust，roadmap：Web 用 TS 生态。
 
 ## 两层边界（事实）
 
 | 层 | 已有事实 | 与浏览器的关系 |
 |---|---|---|
-| Host / 线协议 | `Command` / `Event` + axum HTTP/WS + journal `last_seq` + 反向 RPC | 不在本篇范围；浏览器是连接同一 host 的另一个客户端 |
+| Host / 线协议 | `Command` / `Event` + WS + journal `last_seq` + 反向 RPC | 浏览器连同一 host |
 | 浏览器 UI 壳 | 未开闸；roadmap 钉「TS 生态」 | 本篇 |
 
 ```text

@@ -10,7 +10,7 @@
 | WS 全双工承载 tagged JSON Command/Event（含反向 RPC 应答） | `WebSocketUpgrade` 全双工；`WebSocket` 是 `Stream+Sink`，`split()`/`recv()`/`send()`；`#[serde(tag="type")]` 直接可用 | ✅ 一等 |
 | journal 广播到 N 个 TUI 连接，每连接独立队列 + 慢客户端背压 | realtime skill 明确推荐：**bounded `mpsc` per-client queue** 或 broadcast `RecvError::Lagged` 丢滞后订阅者；`max_message_size/max_frame_size/write_buffer_size` 旋钮；concurrency-limiter 可封顶订阅者 | ✅ 文档化正解（正是我们要的形态） |
 | 优雅停机：等在途请求 + 收掉全部 attach，可带超时强停 | `ServerHandle::stop_graceful(Some(dur))` / `stop_forceful()` / `Server::max_connections` | ✅（WS 回调与 axum 同为 spawn 任务，订阅者收摊仍需自管理） |
-| 本地 UDS + 远程 TCP 双听（host 每机器/容器唯一） | `salvo_core::conn::unix::UnixListener`（feature `unix`）+ `Listener::join` → **JoinedAcceptor** 一个往上挂双听 | ✅（axum 是两个 serve 任务） |
+| 本地 UDS + 远程 TCP 双听 | `salvo_core::conn::unix::UnixListener` + `Listener::join` | ✅（axum 是两个 serve 任务）。产品默认是 HTTP 端口，UDS 非必须 |
 | UDS sock 权限（uid/gid/chmod 防同机他用户） | bind 时 `permissions`/`owner` 一等 API | ✅（axum 要自己 `set_permissions`/libc） |
 | 升级前身份/授权 + Origin 校验（浏览器未来） | hoop 中间件 + depot `jwt_auth_data`；`allowed_origins`/`check_origin`；query 在 upgrade 前可读 | ✅ |
 | 心跳 / 断线检测 / 连接计数 | `Message::ping`（auto-pong）+ `select!` 心跳；`AtomicUsize` 计数模式 | ✅ 文档化 |
@@ -40,7 +40,7 @@
 ## 结论（锁）
 
 1. **salvo 覆盖当前与未来可预见全部需求**（WS 一等、广播背压文档化、优雅停机、UDS+TCP 双听、sock 权限、auth/origin、静态/CORS、ACP 单端点、SSE/HTTP/2 可后加）。
-2. 相对 axum 的差异点（双听、sock 权限、force 停机、背压文档）在本新拓扑（统一 CS A：本机 UDS 一级 + 远程/容器 TCP）上**真实有用**；world "已在树" 迁移税因 REST 废弃重建而大幅削弱。
+2. 相对 axum 的差异点（双听、sock 权限、force 停机、背压文档）在本机 UDS + 远程/容器 TCP 上有用；REST 废弃重建后换栈税下降。
 3. **默认取 salvo**（c2302 契约传输面）；**axum 为保守回退**记录在案。不做可行性验证（按用户要求；文档与 skill 覆盖已足够支撑决策，首次实现时若遇文档与代码不符再回退评估）。
 
 ## 一手来源

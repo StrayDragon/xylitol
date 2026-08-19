@@ -1,6 +1,6 @@
-# 05 吞吐分层与工具链选项（能力对照，非裁决）
+# 05 吞吐分层与工具链
 
-> 本篇是「吞吐怎么上台阶」与「换工具链要不要 nightly」的能力事实；默认工具链、哪些单独 spike、是否切 nightly 是提案裁决，见 `proposal.md`「研究结论」。
+> 杠杆与 nightly 事实。数量级见 `c2300/research/overhead-eval.md`。编码保持 tagged JSON（c2301）；不切 nightly。
 
 ## 吞吐分层（层级杠杆与框架相关性）
 
@@ -12,7 +12,7 @@
 | 3. 传输 | UDS / vsock（docker）/ 少 copy | 有 UDS 即可 |
 | 4. runtime | 连接数 ≈ 1–3；io_uring 的「60%」来自高连接 TCP proxy | 过早 |
 
-推论：若走「只做本机、无 Web」的路，问题本质是「选一条本地 RPC/流栈」，不是「选网站框架」。
+分层：进程切分 > 编码 > 成帧 > 传输 > runtime。连接约 1–3 条时 io_uring 过早。overhead-eval 印证传输非主导。
 
 ## 编码选项（代价表）
 
@@ -33,7 +33,7 @@ token 洪水时比换框架更狠的一招：**Delta 不带完整 tag 对象**�
 | **tonic** | 一流 bidi streaming（反向 RPC = 同一 stream，不必 oneshot map）；`serve_with_incoming(UnixListenerStream)`；`peer_cred` 做沙盒外 TUI 的 uid 校验；HTTP/2 窗口 = 协议级背压 | prost / codegen；与现有 serde enum 双写直到切完；无 Web 则 grpc-web 可推迟 |
 | **自写帧**（`LengthDelimitedCodec` + postcard） | 最瘦；词汇仍是 Command/Event | journal、重连 `last_seq`、反向 RPC 继续自己写（今天已在 `server/ws.rs`）；吞吐上限由 codec 决定，框架为零 |
 
-若只想留 `curl` 健康检查 / 调试 REST，可用**极薄 HTTP 旁路**，不必当 Event 泵。poem / salvo / rocket_ws 的 UDS 双听 / `max_send_queue` / sonic-rs 可当「旋钮形态」参考，不一定为其买整个网站框架（`01`）。
+健康检查不必当 Event 泵。UDS 双听 / 背压旋钮见 `01`。
 
 **io_uring**：帮的是「很多连接或很多磁盘读写」时少 syscall。TUI 到 server 通常一两条连接；沙盒里工具狂读仓库，才可能在 server 进程上看到 uring 的好处——那仍是 stable 的 ntex / tokio-uring，不是 `portable_simd`。
 
@@ -48,7 +48,7 @@ token 洪水时比换框架更狠的一招：**Delta 不带完整 tag 对象**�
 | 消息别再用 JSON 文本 | `postcard`（还是 serde，包装换二进制） | stable |
 | TUI 读一长串历史少分配 | `rkyv` | stable |
 | Linux 上文件/网络少进内核 | ntex `neon-uring`，或以后再看 `tokio-uring` | stable；要新内核（官方写 5.10+） |
-| REST 调试口的 JSON | `sonic-rs`（Poem 有开关；自己 parse 也能调） | stable |
+| REST 调试口的 JSON | `sonic-rs` | stable |
 
 需要 nightly：
 
