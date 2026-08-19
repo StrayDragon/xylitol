@@ -2,12 +2,15 @@
 depends_on:
   - c2300-update-cs-capability-split
   - c2301-update-stable-wire-protocol
+  - c2290-update-standalone-host
   - c2302-update-host-multi-session
 ---
 
 # 产品位：embed 默认 + 显式 attach
 
-默认单命令体感与今天相同（同进程自连，不必先 `serve`）。`--attach` 连已在听的 HTTP host。面本地始终在 TUI。
+> **默认拓扑已改。** c2290 产品路径是独立 Host + TUI attach（方案 C）。本票不再把「同进程 embed 为默认」当产品位；`--host/--port`、`serve` 改名、方案 A（一条命令 loopback）另议。
+
+`--attach` 连已在听的 HTTP host。面本地始终在 TUI。
 
 ## Why
 
