@@ -5,7 +5,8 @@ blocks:
 - c2315-add-loopback-host-tui
 branch: sdd/c2306-fix-tui-attach-parity
 base_sha: 977650e00063f87948e75879c05e903a53ea2b56
-checkpointed: false
+checkpointed: true
+checkpoint_sha: 9eee3e5c9b8d0e4b4b7c3871f79cda8f8314f2bf
 ---
 
 # 产品 TUI attach 对拍旧同进程体验
