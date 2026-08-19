@@ -1,9 +1,10 @@
+use super::super::fold_hit::FoldTarget;
 use super::live::inflight_short_label;
 use super::*;
 use xylitol_tui::terminal_colors::RgbColor;
-use xylitol_tui::{bold, fg_rgb};
+use xylitol_tui::{bold, fg_rgb, mix_rgb};
 
-use crate::app::tui::bridge::{AskPhase, CompactionBlockStatus, UiEntry};
+use crate::app::tui::bridge::{AskPhase, BashBlockStatus, CompactionBlockStatus, UiEntry};
 
 #[test]
 fn ask_header_paints_accent_ask_and_keeps_full_body() {

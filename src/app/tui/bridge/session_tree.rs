@@ -1,5 +1,6 @@
 //! Rebuild live scrollback after MessageHistory travel (c615 / c646).
 
+use crate::app::tool_display::{is_ask_tool, is_write_tool};
 use crate::protocol::session::{
     SessionEntry, SessionTreeTravel, TodoList, TodoStatus, is_env_custom_message,
     is_tool_call_part, latest_agent_todo, message_parts, message_role, message_text,
@@ -124,7 +125,7 @@ fn merge_persisted_tool_result(entries: &mut Vec<UiEntry>, entry_id: &str, messa
         .and_then(Value::as_str)
         .map(str::to_string);
 
-    if name == "ask" {
+    if is_ask_tool(name) {
         let (phase, summary, detail_lines) =
             crate::app::tui::bridge::humanize_ask_result(&result, is_error);
         if let Some(UiEntry::Ask {
@@ -454,7 +455,7 @@ fn assistant_parts_to_ui(
                     .and_then(Value::as_str)
                     .unwrap_or(entry_id)
                     .to_string();
-                if name == "ask" {
+                if is_ask_tool(name) {
                     out.push(UiEntry::Ask {
                         id,
                         summary: "Ask · 等待回答…".into(),
@@ -479,7 +480,7 @@ fn assistant_parts_to_ui(
                         crate::app::tui::bridge::human_tool_args_preview(name, &args, usize::MAX)
                     },
                     tool_path: crate::app::tui::bridge::extract_tool_path(&args),
-                    write_content: (name == "write")
+                    write_content: is_write_tool(name)
                         .then(|| {
                             args.get("content")
                                 .and_then(Value::as_str)

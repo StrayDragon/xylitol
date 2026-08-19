@@ -25,6 +25,7 @@ pub(crate) use preview::{
 use serde_json::Value;
 
 use crate::app::core::driver::XyEvent;
+use crate::app::tool_display::{is_ask_tool, is_edit_tool, is_write_tool};
 use crate::protocol::message::AgentMessage;
 
 /// Single seam: translate one [`XyEvent`] into UI-only mutations.
@@ -47,7 +48,7 @@ pub(crate) fn upsert_tool_entry(model: &mut UiModel, id: &str, name: &str, args:
     use crate::app::tool_display::{is_mcp_tool_name, mcp_tool_body};
 
     let fresh_path = extract_tool_path(args);
-    let write_content = (name == "write")
+    let write_content = is_write_tool(name)
         .then(|| {
             args.get("content")
                 .and_then(Value::as_str)
@@ -133,7 +134,7 @@ pub(crate) fn sync_tool_intent_from_message(model: &mut UiModel, message: &Agent
             arguments,
         } = part
         {
-            if name == "ask" {
+            if is_ask_tool(name) {
                 if !model
                     .entries
                     .iter()
@@ -222,7 +223,7 @@ pub(crate) fn apply_tool_result_to_entries(
     {
         *output = human;
     }
-    if name == "edit"
+    if is_edit_tool(name)
         && !is_error
         && let Some(diff) = extract_display_diff(result)
     {
@@ -255,7 +256,7 @@ pub(crate) fn apply_tool_result_to_entries(
     }
 
     // Edit line-range after path backfill so `:N-M` is not wiped.
-    if name == "edit"
+    if is_edit_tool(name)
         && let Some(diff) = display_diff.as_ref()
         && let Some(range) = extract_line_range_from_display_diff(diff)
     {

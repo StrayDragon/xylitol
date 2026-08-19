@@ -141,6 +141,14 @@ fn parse_event_type(s: Option<&str>) -> u8 {
     }
 }
 
+/// Kitty protocol encodes the modifier bitmask as value+1 (`1` = no modifiers).
+///
+/// Malformed / hostile sequences may carry `0`; decode with saturating arithmetic
+/// so `mod_val - 1` can never underflow (debug panic) or wrap to a huge bitmask.
+fn decode_kitty_modifier(mod_val: u32) -> u32 {
+    mod_val.saturating_sub(1)
+}
+
 pub fn parse_kitty_sequence(data: &str) -> Option<ParsedKittySequence> {
     let bytes = data.as_bytes();
     if bytes.len() < 3 || bytes[0] != 0x1b || bytes[1] != b'[' {
@@ -173,7 +181,7 @@ pub fn parse_kitty_sequence(data: &str) -> Option<ParsedKittySequence> {
                     codepoint,
                     shifted_key: None,
                     base_layout_key: None,
-                    modifier: mod_val - 1,
+                    modifier: decode_kitty_modifier(mod_val),
                     event_type,
                 });
             } else {
@@ -182,7 +190,7 @@ pub fn parse_kitty_sequence(data: &str) -> Option<ParsedKittySequence> {
                     codepoint,
                     shifted_key: None,
                     base_layout_key: None,
-                    modifier: mod_val - 1,
+                    modifier: decode_kitty_modifier(mod_val),
                     event_type: 1,
                 });
             }
@@ -213,7 +221,7 @@ pub fn parse_kitty_sequence(data: &str) -> Option<ParsedKittySequence> {
                         codepoint: codepoint as u32,
                         shifted_key: None,
                         base_layout_key: None,
-                        modifier: m - 1,
+                        modifier: decode_kitty_modifier(m),
                         event_type,
                     });
                 }
@@ -225,7 +233,7 @@ pub fn parse_kitty_sequence(data: &str) -> Option<ParsedKittySequence> {
                 codepoint: codepoint as u32,
                 shifted_key: None,
                 base_layout_key: None,
-                modifier: mod_val - 1,
+                modifier: decode_kitty_modifier(mod_val),
                 event_type: 1,
             });
         }
@@ -246,7 +254,7 @@ pub fn parse_kitty_sequence(data: &str) -> Option<ParsedKittySequence> {
                     codepoint,
                     shifted_key: None,
                     base_layout_key: None,
-                    modifier: mod_val - 1,
+                    modifier: decode_kitty_modifier(mod_val),
                     event_type,
                 });
             } else {
@@ -255,7 +263,7 @@ pub fn parse_kitty_sequence(data: &str) -> Option<ParsedKittySequence> {
                     codepoint,
                     shifted_key: None,
                     base_layout_key: None,
-                    modifier: mod_val - 1,
+                    modifier: decode_kitty_modifier(mod_val),
                     event_type: 1,
                 });
             }
@@ -294,7 +302,7 @@ fn parse_kitty_csi_u(inner: &str) -> Option<ParsedKittySequence> {
             codepoint: cp,
             shifted_key,
             base_layout_key,
-            modifier: mod_val - 1,
+            modifier: decode_kitty_modifier(mod_val),
             event_type,
         })
     } else {
@@ -357,7 +365,7 @@ fn parse_modify_other_keys(data: &str) -> Option<(u32, u32)> {
     }
     let mod_val: u32 = parts[0].parse().ok()?;
     let cp: u32 = parts[1].parse().ok()?;
-    Some((mod_val - 1, cp))
+    Some((decode_kitty_modifier(mod_val), cp))
 }
 
 fn matches_modify_other_keys(data: &str, expected_cp: u32, expected_mod: u32) -> bool {
@@ -1149,7 +1157,7 @@ pub fn decode_kitty_printable(data: &str) -> Option<String> {
 
     let mod_str = rest.split(':').next()?;
     let mod_val: u32 = mod_str.parse().unwrap_or(1);
-    let modifier = if mod_val > 0 { mod_val - 1 } else { 0 };
+    let modifier = decode_kitty_modifier(mod_val);
 
     let allowed = MOD_SHIFT | LOCK_MASK;
     if (modifier & !allowed) != 0 {
