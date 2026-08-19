@@ -19,7 +19,7 @@ host 是端口上的 HTTP 服务器。DSH web 是 `--host` / `--port`（默认 `
 ## What Changes
 
 - embed：同进程经契约自连，不占用 HTTP 绑定。给库用户与 print，不是产品 TUI。
-- `xylitol serve --host`（默认 `127.0.0.1`；用户可显式 `0.0.0.0`）`--port`（默认 **18790**；`0` 让 OS 分配并打印实际端口）。关 TUI 不杀它。
+- `xylitol serve [--host] [--port]`：默认 `127.0.0.1:18790`；`--host 0.0.0.0` 显式；`--port 0` OS 分配并打印。**无** `server` / `run` 别名。`serve stop` 只打印 SIGTERM；`serve install` 仍 stub。关 TUI 不杀 listener。
 - `--attach`：默认 `http://127.0.0.1:18790`；可传 URL 或 `--port`。未在听 → 失败并提示 `serve`。禁止静默改 embed。
 - 握手：连上后客户端打开 mux WebSocket，并 unary `subscribe`（session + last_seq）。host 回 `host.describe` / subscribed 帧（协议版本字段）。对不上则断开，不降级。版本不走 WebSocket subprotocol。
 - 面本地在 TUI；其余经四象限。多窗写入按 c2300。
