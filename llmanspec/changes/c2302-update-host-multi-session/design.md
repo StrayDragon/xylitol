@@ -83,6 +83,7 @@ InProcessDriver **不**占用 TCP。产品语义仍进同一 dispatch（c2300）
 
 - **不实现** `GET /api/events.host`。TUI v1 只订 `GET /api/events.mux`。
 - mux 每连接 bounded mpsc 满：对该连接发 `session/resync_required`；已无法投递则断开。MUST NOT 静默丢事件。
+- **写者身份是 `writerToken` 租约，不是 HTTP 连接**（每次 unary 都是新 TCP）。首次非只读 unary 颁发；后续写回显；否则 `writer_conflict`。只读 unary / subscribe 不占写者。`HttpWsClient` 实例（含 clone）共享令牌。
 - WS 收到业务上行 text/binary：**关连接**。ping/pong/close 按载体处理。
 - 产品 REST `/api/v1/...` **删除**，不 410 双路径。未知 unary path → 404 或非法信封 400，不发明 REST 别名。
 - **不扩方法表**：`list_sessions` / `session_tree` / `queue_stats` 不登记。`XyRemoteDriver` 继续 unsupported/default；live spec 改掉 sr-st1 / 对 REST 树的 MUST，而不是把树塞回 HTTP。

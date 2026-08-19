@@ -120,6 +120,10 @@ mod tests {
             "kebab-case envelope tag missing:\n{ts}"
         );
         assert!(ts.contains("rpcId"), "rpcId rename missing:\n{ts}");
+        assert!(
+            ts.contains("writerToken"),
+            "writer lease field missing:\n{ts}"
+        );
         assert!(ts.contains("text_delta"), "Event snake_case missing:\n{ts}");
         assert!(ts.contains("\"prompt\""));
         assert!(ts.contains("\"host.describe\""));

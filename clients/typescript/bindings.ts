@@ -69,7 +69,9 @@ export type RpcError = {
 };
 
 /**  Discriminated four-quadrant message. */
-export type RpcMessage = { type: "client-request"; rpcId: string; method: string; payload?: any } | { type: "server-response"; rpcId: string; result: RpcResult } | { type: "server-request"; rpcId: string; method: string; payload?: any } | { type: "client-response"; rpcId: string; payload?: any };
+export type RpcMessage = { type: "client-request"; rpcId: string; method: string; payload?: any;
+/**  Session writer lease. First non-readonly unary mints it; later writes must echo it. */
+writerToken?: string | null } | { type: "server-response"; rpcId: string; result: RpcResult } | { type: "server-request"; rpcId: string; method: string; payload?: any } | { type: "client-response"; rpcId: string; payload?: any };
 
 /**  Unary / respond result. HTTP 200 means the envelope parsed. */
 export type RpcResult = {

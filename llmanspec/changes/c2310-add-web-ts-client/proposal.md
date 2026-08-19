@@ -15,6 +15,7 @@ Web 不能 `use` Rust 类型。没有薄客户端，`bindings.ts` 只是一堆 i
 ## What Changes
 
 - 一个 TS 模块吃 c2290 `bindings.ts`：unary / respond / mux 订阅。方法名与信封字段不得手写第二套。
+- **写者租约：** `ClientRequest.writerToken` 由首次非只读 unary 的 `result.value.writerToken` 颁发；同一客户端后续写必须回显。薄层 MUST 把令牌存在客户端实例上（与 Rust `HttpWsClient` 同语义），MUST NOT 每个 fetch 新建匿名客户端再写同一 session。
 - 不交付页面、路由、ConversationNode、登录、静态托管。
 - 不把 OpenAPI 生成客户端当这条路径。
 

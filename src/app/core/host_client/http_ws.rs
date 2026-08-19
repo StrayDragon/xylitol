@@ -1,5 +1,7 @@
 //! HTTP POST unary + WebSocket downlink (product TUI carrier).
 
+use std::sync::{Arc, Mutex};
+
 use async_trait::async_trait;
 use futures::StreamExt;
 use serde_json::Value;
@@ -15,6 +17,8 @@ use super::{HostClient, HostClientError, MuxStream};
 pub struct HttpWsClient {
     base_url: String,
     http: reqwest::Client,
+    /// Shared across clones: one TUI = one writer lease.
+    writer_token: Arc<Mutex<Option<String>>>,
 }
 
 impl HttpWsClient {
@@ -22,6 +26,7 @@ impl HttpWsClient {
         Self {
             base_url: base_url.into().trim_end_matches('/').to_string(),
             http: reqwest::Client::new(),
+            writer_token: Arc::new(Mutex::new(None)),
         }
     }
 
@@ -42,10 +47,12 @@ impl HttpWsClient {
 impl HostClient for HttpWsClient {
     async fn unary(&self, method: &str, payload: Value) -> Result<RpcResult, HostClientError> {
         let rpc_id = uuid::Uuid::new_v4().to_string();
+        let writer_token = self.writer_token.lock().ok().and_then(|g| g.clone());
         let body = RpcMessage::ClientRequest {
             rpc_id: rpc_id.clone(),
             method: method.to_string(),
             payload,
+            writer_token,
         };
         let resp = self
             .http
@@ -75,6 +82,12 @@ impl HostClient for HttpWsClient {
                         sent: rpc_id,
                         got: echo,
                     });
+                }
+                if let Some(Value::Object(map)) = result.value.as_ref()
+                    && let Some(token) = map.get("writerToken").and_then(|v| v.as_str())
+                    && let Ok(mut slot) = self.writer_token.lock()
+                {
+                    *slot = Some(token.to_string());
                 }
                 Ok(result)
             }

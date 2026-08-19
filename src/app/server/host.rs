@@ -86,6 +86,8 @@ pub struct SessionSlot {
     pub journal: Mutex<EventJournal>,
     pub driver: Arc<Mutex<Option<XyInProcessDriver>>>,
     pub writer: AtomicBool,
+    /// Lease for non-readonly unary. HTTP is not a long-lived connection, so identity is this token.
+    pub writer_token: Mutex<Option<String>>,
     pub subscribers: Mutex<HashMap<u64, MuxSink>>,
     pub gateway: Arc<ReverseRpcGateway>,
     next_conn: AtomicU64,
@@ -197,6 +199,7 @@ impl SessionSlot {
             session_id,
             driver: Arc::new(Mutex::new(None)),
             writer: AtomicBool::new(false),
+            writer_token: Mutex::new(None),
             subscribers: Mutex::new(HashMap::new()),
             gateway: Arc::new(ReverseRpcGateway::new()),
             next_conn: AtomicU64::new(1),
@@ -624,8 +627,40 @@ fn rpc_err(e: XyDriverError) -> RpcResult {
     RpcResult::error(e.kind(), e.to_string())
 }
 
+fn attach_writer_token(mut value: Value, token: &str) -> Value {
+    if let Value::Object(map) = &mut value {
+        map.insert("writerToken".into(), json!(token));
+    }
+    value
+}
+
+async fn take_writer_lease(
+    slot: &SessionSlot,
+    presented: Option<&str>,
+) -> Result<String, RpcResult> {
+    let mut guard = slot.writer_token.lock().await;
+    match guard.as_ref() {
+        None => {
+            let token = uuid::Uuid::new_v4().to_string();
+            *guard = Some(token.clone());
+            slot.writer.store(true, Ordering::SeqCst);
+            Ok(token)
+        }
+        Some(existing) if presented == Some(existing.as_str()) => Ok(existing.clone()),
+        Some(_) => Err(RpcResult::error(
+            "writer_conflict",
+            "another client is the writer for this session",
+        )),
+    }
+}
+
 /// Dispatch a registered unary method against the session slot.
-pub async fn handle_unary(host: &Arc<HostState>, method: &str, payload: Value) -> RpcResult {
+pub async fn handle_unary(
+    host: &Arc<HostState>,
+    method: &str,
+    payload: Value,
+    writer_token: Option<String>,
+) -> RpcResult {
     if method == "host.describe" {
         return RpcResult::ok_value(
             serde_json::to_value(HostDescribeValue {
@@ -661,6 +696,7 @@ pub async fn handle_unary(host: &Arc<HostState>, method: &str, payload: Value) -
     }
 
     let slot = host.slot(&session_id).await;
+    let presented = writer_token.as_deref();
 
     if method == "prompt" {
         let message = payload
@@ -671,8 +707,14 @@ pub async fn handle_unary(host: &Arc<HostState>, method: &str, payload: Value) -
         if message.is_empty() {
             return RpcResult::error("invalid_input", "missing message");
         }
+        let token = match take_writer_lease(&slot, presented).await {
+            Ok(t) => t,
+            Err(e) => return e,
+        };
         if let Err(e) = materialize_writer(host, &slot).await {
-            return rpc_err(e);
+            let mut r = rpc_err(e);
+            r.value = Some(json!({ "writerToken": token }));
+            return r;
         }
         let driver = slot.driver.clone();
         let slot_push = slot.clone();
@@ -694,13 +736,40 @@ pub async fn handle_unary(host: &Arc<HostState>, method: &str, payload: Value) -
                 }
             }
         });
-        return RpcResult::ok_value(json!({ "session_id": session_id }));
+        return RpcResult::ok_value(attach_writer_token(
+            json!({ "session_id": session_id }),
+            &token,
+        ));
     }
 
-    if is_writer_method(method)
-        && let Err(e) = materialize_writer(host, &slot).await
-    {
-        return rpc_err(e);
+    if is_writer_method(method) {
+        let token = match take_writer_lease(&slot, presented).await {
+            Ok(t) => t,
+            Err(e) => return e,
+        };
+        if let Err(e) = materialize_writer(host, &slot).await {
+            let mut r = rpc_err(e);
+            r.value = Some(json!({ "writerToken": token }));
+            return r;
+        }
+        let cmd = match command_from_method(method, &payload) {
+            Ok(c) => c,
+            Err(e) => return RpcResult::error("invalid_input", e),
+        };
+        let mut g = slot.driver.lock().await;
+        let Some(driver) = g.as_mut() else {
+            return RpcResult::error("unavailable", "no writer engine");
+        };
+        return match dispatch(driver, cmd).await {
+            Ok(outcome) => {
+                RpcResult::ok_value(attach_writer_token(outcome_to_value(outcome), &token))
+            }
+            Err(e) => {
+                let mut r = rpc_err(e);
+                r.value = Some(json!({ "writerToken": token }));
+                r
+            }
+        };
     }
 
     if method == "get_available_models" && slot.driver.lock().await.is_none() {

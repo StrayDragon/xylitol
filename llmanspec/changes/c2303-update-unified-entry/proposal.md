@@ -34,4 +34,4 @@ host 是端口上的 HTTP 服务器。DSH web 是 `--host` / `--port`（默认 `
 
 ## Further Notes
 
-c2290 已把产品 TUI 默认 attach 做成未在听失败（无静默 InProcess）。本票只收 CLI 形状（`serve` / `--attach`）；握手里的 `subscribe` 与 c2302 journal 对齐。
+- mux Origin：缺省允许无 Origin（原生 TUI）。c2302 已把带 Origin 的请求限制为 loopback（127.0.0.1 / localhost / ::1）。非 loopback 浏览器 Origin / `--trusted-host` 仍是本票开放决策。

@@ -580,6 +580,7 @@ fn w_w2_subscribe(server_test: &ServerTest) {
         rpc_id: "r2".into(),
         method: "subscribe".into(),
         payload: serde_json::json!({"session_id": "s0", "last_seq": 5}),
+        writer_token: None,
     };
     server_test
         .unary_body
@@ -1042,5 +1043,51 @@ fn t_rr4(approval_test: &ServerTest) {
     assert_eq!(
         *approval_test.last_rpc.borrow(),
         Some(ReverseRpcResult::Approved)
+    );
+}
+
+#[given("客户端 A 已对 session 发出非只读 unary")]
+async fn g_sr_w1_writer_a(server_test: &ServerTest) {
+    start_host(server_test).await;
+    let a = HttpWsClient::new(server_test.base_url());
+    let r = a
+        .unary(
+            "clear_queue",
+            serde_json::json!({"clear_steer": true, "clear_follow_up": true}),
+        )
+        .await
+        .expect("A write");
+    assert!(r.ok, "{r:?}");
+    assert!(
+        r.value
+            .as_ref()
+            .and_then(|v| v.get("writerToken"))
+            .and_then(|v| v.as_str())
+            .is_some(),
+        "{r:?}"
+    );
+}
+
+#[when("客户端 B 无 writerToken 再发非只读 unary")]
+async fn w_sr_w1_writer_b(server_test: &ServerTest) {
+    let b = HttpWsClient::new(server_test.base_url());
+    let r = b
+        .unary(
+            "clear_queue",
+            serde_json::json!({"clear_steer": true, "clear_follow_up": true}),
+        )
+        .await
+        .expect("B transport");
+    server_test
+        .unary_body
+        .replace(Some(serde_json::to_string(&r).unwrap()));
+}
+
+#[then("业务错误说明已有写者")]
+fn t_sr_w1_conflict(server_test: &ServerTest) {
+    let s = server_test.unary_body.borrow().clone().expect("B result");
+    assert!(
+        s.contains("writer_conflict") || s.contains("another client is the writer"),
+        "{s}"
     );
 }

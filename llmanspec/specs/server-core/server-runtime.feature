@@ -97,3 +97,9 @@
     假如 RemoteDriver 指向该 server
     当 调用未入方法表的 session_tree/travel
     那么 不经 REST 冒充；可为未实现或默认值
+
+  @req:sr-w1
+  场景: writer-lease
+    假如 客户端 A 已对 session 发出非只读 unary
+    当 客户端 B 无 writerToken 再发非只读 unary
+    那么 业务错误说明已有写者
