@@ -9,7 +9,7 @@ depends_on: []
 
 ## Why
 
-习惯用窗口管理器、经常多开终端的用户（例如 i3 / sway / Hyprland，或 tmux 多窗格）会开多扇 TUI：多仓各开 + 同仓多 session。痛点是 RSS、MCP stdio 被每窗 clone、冷启动重复 bootstrap。现有 Server / `XyRemoteDriver` 是缝，但 Server 仍是一把 `Mutex<XyInProcessDriver>`、REST 路径里的 `session_id` 大量未真正路由，TUI 从不 attach。拉起 serve 的习惯见 [`research/serve-autostart.md`](./research/serve-autostart.md)。
+习惯用窗口管理器、经常多开终端的用户（例如 i3 / sway / Hyprland，或 tmux 多窗格）会开多扇 TUI：多仓各开 + 同仓多 session。痛点是 RSS、MCP stdio 被每窗 clone、冷启动重复 bootstrap。现有 Server / `XyRemoteDriver` 是缝，但 Server 仍是一把 `Mutex<XyInProcessDriver>`、REST 路径里的 `session_id` 大量未真正路由，TUI 从不 attach。拉起 serve 的习惯见 [`research/04-topology.md`](./research/04-topology.md)「窗口管理器用户怎么拉起 serve」。
 
 同时决定 **双模式并存**（默认原生，serve 起来再 attach），而不是「产品 TUI 只 attach」。双模式的真实风险不是「多一个 CLI 旗标」，而是 host/effects/MCP/bang 走出第二套语义。本票要把 **代码 SSOT 与符合性闸** 写死，并调研 **本机 host 该不该换框架**（现成 axum+WS vs UDS 上的 Command/Event vs JSON-RPC），避免实现阶段临时选一个和未来 Web 打架的载体。
 
@@ -76,6 +76,10 @@ xylitol TUI host ───┤
 - 同仓多 agent 写锁 / worktree 隔离（`c1770` 方向）
 - Web 产品面（只要求传输选型 **不堵** 未来 Web 载体）
 - 换 ReAct、拆 crate、上插件平台
+- vsock / microVM 沙盒连法
+- 多 server 编排（1 管理面 → N server）
+- 换编码 / 换流模型（postcard / rkyv / tonic / ntex / 自写帧；本票只定 tagged JSON + axum）
+- 默认切 nightly
 
 ## Capabilities（实现票才 landing；本票只引用）
 
@@ -96,26 +100,49 @@ xylitol TUI host ───┤
 - bang：`--attach` 下 `!ls` 在 host 工作区执行，输出经 Event（意向 `BashDelta`）回 TUI（不是 TUI 本机 cwd）
 - 锁：第二 `xylitol serve` 失败；停 host 后 attach 窗可观察断开
 
-## Further Notes
+## BashDelta 实现票种子（供后续实现 change；不是本票 apply）
 
-- 探索对话结论摘要：多仓 RSS 下限仍是 N 套工具世界；attach 主要打 **同仓第二扇窗** 的 MCP/启动；DSH 的 host≠TUI 父进程。
-- 调研范围与一手资料清单：[`research/scope.md`](./research/scope.md)（固定深度；未完成文献前不选框架）。
-- **架构 E**：操作器在 server/sandbox，TUI 只画界面和采集输入。tokio 留下。长期不做 Web。
-- 用词（wire protocol / Command / Event / tagged JSON …）：[`research/glossary.md`](./research/glossary.md)。
-- wire protocol 继续 **tagged JSON**（不换 JSON-RPC envelope）。HTTP 栈钉 **axum**，listener 按拓扑换：[`research/http-stack-pick.md`](./research/http-stack-pick.md)。
-- Docker 连法：默认 **published port**；UDS 仅同内核 Linux；vsock 不进 v1：[`research/docker-connect.md`](./research/docker-connect.md)。
-- **server 进 Docker = 粗粒度沙盒**；N TUI ↔ 1 server 是本票；多 server 编排以后再做：[`research/topology-sandbox.md`](./research/topology-sandbox.md)。
-- poem/salvo 的 UDS 双听确实更好，但对 Docker 主 attach（TCP）不对齐，不换栈：[`research/http-stack-revisit.md`](./research/http-stack-revisit.md)。
-- bang 直播是 attach MUST（Remote 现在 REST 丢掉 `chunk_tx`）。实现票草稿（不改 live specs）：[`research/impl-bashdelta.md`](./research/impl-bashdelta.md)。Event 名 **`BashDelta`**。
-- **默认**本机 serve；Docker 是可选粗粒度沙盒。多 server 编排只留指针，不画协议：[`research/topology-sandbox.md`](./research/topology-sandbox.md)。
-- 窗口管理器 / 多开终端用户如何拉起 serve（不实现）：[`research/serve-autostart.md`](./research/serve-autostart.md)。
+产品行为（landing spec 时作 MUST 种子）：
 
-- 哪段代码必须留 TUI：[`research/ssot-seams.md`](./research/ssot-seams.md)（剪贴板、TTY；**bang 在工作区**；export/import 按路径切开）。
+- attach 下 `!` / `!!` 在 **server 工作区**执行。
+- stdout/stderr 增量作为 Event 推同一条 WebSocket 订阅；TUI 画法与进程内 bang 区一致。
+- 结束仍是 `Event::BashResult`；Esc → `Command::Abort` 杀这棵 bang 进程树（不是 agent Aborted 文案）。
+- 模型 bash 工具继续走 `ToolStart` / `ToolExecutionUpdate` / `ToolEnd` —— **两条 API**（用户 `!` 与模型工具，不共用同一 Driver 方法语义）。
 
-- nightly：[`nightly-simd.md`](./nightly-simd.md)。默认 1.97.1 stable。postcard / rkyv / ntex-uring 都不需要 nightly。`portable_simd` 和 Cranelift 单独 spike。
-- 现有代码锚点：`src/app/core/driver/{proto,in_process,remote}.rs`、`src/app/server/{runtime,rest,lock}.rs`、`llmanspec/specs/server-core/spec.toon`。
-- 一手摘录（不是选型决议；决议在上列 pick / revisit）：
-  - TS 壳：[`research/web-framework-upstream.md`](./research/web-framework-upstream.md)（React+Vite 可；Next App Router 官方否定 Route Handler WebSocket）
-  - 竞品 attach：[`research/web-framework-peers.md`](./research/web-framework-peers.md)（最接近：OpenCode 本机 HTTP+SSE，`web` 与 `attach` 共 server）
-  - Rust HTTP 栈：[`research/rust-server-framework-upstream.md`](./research/rust-server-framework-upstream.md)（axum 0.8 覆盖 UDS+WS+JSON；jsonrpsee/tonic 换 envelope）
-  - ≥4000 star HTTP JSON：[`research/http-json-frameworks-upstream.md`](./research/http-json-frameworks-upstream.md)（无过闸的 JSON-RPC 2.0 服务端；jsonrpsee 851）
+代码切口（实现时对着改）：`src/protocol/wire/event.rs` 加 `BashDelta`（wire 先定 UTF-8 文本，非法字节用 `infra/tools/bash.rs` 的替换策略）；`XyEvent`（lifecycle）加对应变体与 `to_wire_event` / `try_from` 往返；journal 在 bang 进行中 `append` 每条 `BashDelta`（是否只 replay 未完成 bang 由实现票定）；server `BangExecHandler::execute` 的 `chunk_tx` 接「写 journal + 广播 WebSocket」而非只走 REST 返回值；`XyRemoteDriver` 的 attach 路径弃用 REST bash，改订阅 Event 本地 `append_bash_chunk`（REST 留给 Print / 调试）；`effects/bang.rs` Remote 时 `chunk_rx` 从 Event 流来；harness 把现有 bang 测参数化 InProcess | 测试 host+Remote。
+
+非目标：不换 HTTP 栈 / 不换 JSON-RPC；不设计多 server 编排；不以 Docker 为 `BashDelta` 前置（本机 serve 也要直播）。
+
+## 研究结论（裁决与边界；research 只供中立事实，采纳/不采纳以本节为准）
+
+**采纳：**
+
+- **协议**：wire protocol 保持 **tagged JSON**（`#[serde(tag="type")]`），不换 JSON-RPC 信封。能力考察：`01`「四候选架构」。
+- **HTTP 栈**：选 **axum 0.8**，listener 按拓扑换 TCP / UDS。poem/salvo 的 UDS 双听/权限 API 更完整，但对主拓扑连法无帮助，**不换**。能力考察：`01`「候选对照」。
+- **主载体**：attach = **TCP loopback + Docker 发布端口 + WebSocket + tagged JSON**；UDS 仅「本机 Linux 无 Docker」的可选项。能力考察：`04`「三种连法」。
+- **沙盒**：server 整进程进 Docker = **粗粒度沙盒**（隔离进程树 / 文件系统 / 网络命名空间；不是每工具 seccomp）。能力考察：`04`「粗粒度沙盒」。
+- **bang 直播**：attach 下 `!` / `!!` 在 server 工作区执行、增量推送、Esc → `Abort` 杀 bang 进程树；Event 名 **`BashDelta`**（专给 bang，不复用 `ToolExecutionUpdate`）。产品行为种子见「BashDelta 实现票种子」；缺口事实见 `03`。
+- **双模代码 SSOT**：一个 TUI host；Agent 能力只经 `XyDriver` + `dispatch`；面本地不进 Driver；符合性闸同表双跑；MCP 池只发生在 serve 进程（key 意向 `(mcp_name, canonical cwd)`）；进线显式。见上文「双模代码 SSOT」。
+- **Web 壳**：默认 **React + Vite SPA**（静态 `dist`，同源连现有 axum WS）；传输保持浏览器可升级 WS。能力考察：`06`「候选对照」。
+- **工具链**：默认 **1.97.1 stable**；postcard / rkyv / ntex-uring / sonic-rs 均不需 nightly；`portable_simd` 与 Cranelift 单独 spike。能力考察：`05`「nightly 议题」。
+
+**不采纳 / 边界：**
+
+- vsock（`AF_VSOCK`）不进 v1；UDS 仅同内核 Linux（Desktop / VM 不行）。
+- 换编码 / 换流模型（postcard / rkyv / tonic / ntex / 自写帧）不作为本票载体。
+- 多 server 编排（1 管理面 → N server）不是本票；本票只 N TUI ↔ 1 server。
+- nightly 不作为主线默认。
+- 浏览器面不开闸（只保证传输不堵未来 Web）。
+
+**探索结论残留事实：** 多仓 RSS 下限仍是 N 套工具世界；attach 主要打**同仓第二扇窗**的 MCP / 启动；DSH 的 host ≠ TUI 父进程。
+
+## 调研文档（中立事实，非裁决）
+
+- 入口 / 术语表 / 调研地图：[`research/00-overview.md`](./research/00-overview.md)
+- 框架与流模型能力对照：[`research/01-framework.md`](./research/01-framework.md)
+- TUI 与 server 的能力归属切分：[`research/02-split.md`](./research/02-split.md)
+- 消息路径与现状缺口：[`research/03-paths.md`](./research/03-paths.md)
+- 拓扑与 Docker 连法能力对照：[`research/04-topology.md`](./research/04-topology.md)
+- 吞吐分层与工具链 / nightly 能力面：[`research/05-throughput.md`](./research/05-throughput.md)
+- 浏览器 UI 壳候选与竞品横切：[`research/06-web.md`](./research/06-web.md)
+- 现有代码锚点：`src/app/core/driver/{proto,in_process,remote}.rs`、`src/app/server/{runtime,rest,lock}.rs`、`llmanspec/specs/server-core/spec.toon`
