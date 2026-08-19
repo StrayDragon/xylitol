@@ -274,18 +274,25 @@ impl HostState {
     }
 
     pub async fn loaded_resources_snapshot(&self) -> LoadedResourcesSnapshot {
-        {
+        // Drop `sessions` before polling: `poll_mcp_bootstrap` joins a finished
+        // connect task and installs the manager. Attach TUI never calls that on
+        // the writer (Remote poll is cache-only); without this, progress hits
+        // `connecting n/n` then the header sticks at `N configured · 0 connected`.
+        let slots: Vec<Arc<SessionSlot>> = {
             let sessions = self.sessions.read().await;
-            for slot in sessions.values() {
-                let guard = slot.driver.lock().await;
-                if let Some(driver) = guard.as_ref() {
-                    return driver.loaded_resources_snapshot().await;
-                }
+            sessions.values().cloned().collect()
+        };
+        for slot in slots {
+            let mut guard = slot.driver.lock().await;
+            if let Some(driver) = guard.as_mut() {
+                let _ = driver.poll_mcp_bootstrap().await;
+                return driver.loaded_resources_snapshot().await;
             }
         }
         let mut guard = self.ensure_resource_driver().await;
         let driver = guard.as_mut().expect("resource driver initialized");
         driver.begin_mcp_bootstrap().await;
+        let _ = driver.poll_mcp_bootstrap().await;
         driver.loaded_resources_snapshot().await
     }
 }

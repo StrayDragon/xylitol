@@ -1521,6 +1521,41 @@ mod tests {
     }
 
     #[tokio::test]
+    async fn loaded_resources_snapshot_applies_writer_mcp_without_direct_poll() {
+        use crate::app::server::host::materialize_writer;
+
+        let host =
+            HostState::for_test_with_mcp(vec![fixture_mcp("a"), fixture_mcp("b")]).expect("host");
+        let slot = host.slot("mcp-attach").await;
+        materialize_writer(&host, &slot)
+            .await
+            .expect("materialize writer");
+        // Attach TUI only hits `loaded_resources` unary — never `XyDriver::poll_mcp`
+        // on the writer. Snapshot MUST join/install so the header can leave
+        // `2 configured · 0 connected`.
+        let deadline = std::time::Instant::now() + std::time::Duration::from_secs(20);
+        let mut snap = host.loaded_resources_snapshot().await;
+        while std::time::Instant::now() < deadline {
+            if !snap.mcp_connected.is_empty() || !snap.mcp_diag_short.is_empty() {
+                break;
+            }
+            tokio::time::sleep(std::time::Duration::from_millis(50)).await;
+            snap = host.loaded_resources_snapshot().await;
+        }
+        assert_eq!(snap.mcp_configured, 2);
+        assert!(
+            !snap.mcp_connected.is_empty() || !snap.mcp_diag_short.is_empty(),
+            "attach-path snapshot MUST apply MCP without a direct writer poll: {snap:?}"
+        );
+        if snap.mcp_bootstrap_complete {
+            assert!(
+                !snap.mcp_connected.is_empty() || !snap.mcp_diag_short.is_empty(),
+                "settled attach snapshot MUST NOT be 0 connected: {snap:?}"
+            );
+        }
+    }
+
+    #[tokio::test]
     async fn loaded_resources_before_writer_is_not_fake_complete() {
         let host = HostState::for_test_with_mcp(vec![fixture_mcp("pre")]).expect("host");
         let snap = host.loaded_resources_snapshot().await;
