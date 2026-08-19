@@ -136,6 +136,7 @@ export const UNARY_METHODS = [
   "loaded_resources",
   "queue_stats",
   "load_debug_scene",
+  "arm_tool_freeze",
   "steer",
   "follow_up",
   "clear_queue",

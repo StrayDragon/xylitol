@@ -1235,10 +1235,23 @@ where
     fn is_tools_frozen(&self) -> bool {
         self.cached_resources
             .lock()
-            .map(|snap| {
-                snap.mcp_configured == 0 || snap.tools_table_frozen || snap.mcp_bootstrap_complete
-            })
+            .map(|snap| snap.mcp_configured == 0 || snap.tools_table_frozen)
             .unwrap_or(true)
+    }
+
+    async fn arm_tool_freeze_gate(&mut self) {
+        let data = match self.unary("arm_tool_freeze", serde_json::json!({})).await {
+            Ok(data) => data,
+            Err(e) => {
+                e.log_failure("remote.arm_tool_freeze");
+                return;
+            }
+        };
+        if let Ok(snap) = serde_json::from_value::<LoadedResourcesSnapshot>(data)
+            && let Ok(mut cached) = self.cached_resources.lock()
+        {
+            *cached = snap;
+        }
     }
 
     async fn poll_mcp_bootstrap(&mut self) -> bool {
@@ -1250,7 +1263,10 @@ where
         if prev.mcp_configured == 0 {
             return false;
         }
-        if prev.mcp_bootstrap_complete && prev.mcp_connecting_label.is_none() {
+        if prev.tools_table_frozen
+            && prev.mcp_bootstrap_complete
+            && prev.mcp_connecting_label.is_none()
+        {
             return false;
         }
         true
@@ -1404,6 +1420,11 @@ mod tests {
 
         let snapshot = driver.loaded_resources_snapshot().await;
         assert!(snapshot.mcp_diag_short.is_empty());
+        driver.arm_tool_freeze_gate().await;
+        assert!(
+            driver.is_tools_frozen(),
+            "arm_tool_freeze MUST freeze when no MCP is configured"
+        );
         driver.steer("nudge").expect("steer");
         assert_eq!(driver.queue_stats().steer_count, 1);
         let queued = driver
@@ -1553,6 +1574,47 @@ mod tests {
                 "settled attach snapshot MUST NOT be 0 connected: {snap:?}"
             );
         }
+    }
+
+    #[tokio::test]
+    async fn arm_tool_freeze_unary_freezes_after_mcp_settle() {
+        use crate::app::server::host::materialize_writer;
+
+        let host =
+            HostState::for_test_with_mcp(vec![fixture_mcp("a"), fixture_mcp("b")]).expect("host");
+        let slot = host.slot("mcp-freeze").await;
+        materialize_writer(&host, &slot)
+            .await
+            .expect("materialize writer");
+        let deadline = std::time::Instant::now() + std::time::Duration::from_secs(20);
+        let mut snap = host.loaded_resources_snapshot().await;
+        while std::time::Instant::now() < deadline {
+            if snap.mcp_bootstrap_complete
+                && (!snap.mcp_connected.is_empty() || !snap.mcp_diag_short.is_empty())
+            {
+                break;
+            }
+            tokio::time::sleep(std::time::Duration::from_millis(50)).await;
+            snap = host.loaded_resources_snapshot().await;
+        }
+        assert!(
+            !snap.tools_table_frozen,
+            "settle MUST NOT freeze until first-turn gate: {snap:?}"
+        );
+        let result = crate::app::server::host::handle_unary(
+            &host,
+            "arm_tool_freeze",
+            serde_json::json!({ "session_id": "mcp-freeze" }),
+            None,
+        )
+        .await;
+        assert!(result.ok, "arm_tool_freeze unary failed: {result:?}");
+        let snap: LoadedResourcesSnapshot =
+            serde_json::from_value(result.value.expect("snapshot")).expect("decode snapshot");
+        assert!(
+            snap.tools_table_frozen,
+            "first-turn arm MUST freeze after MCP settle: {snap:?}"
+        );
     }
 
     #[tokio::test]
