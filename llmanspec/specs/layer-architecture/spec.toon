@@ -28,9 +28,9 @@ requirements[30]{req_id,title,statement}:
   ar07,消除重复领域实体,System MUST NOT 为同一领域概念定义多种类型；Usage、StopReason 与 Compaction 配置 MUST 各有一个 canonical 类型。
   ar09,精选 pub use 清单,"System MUST 在库公开入口（或等价）维护精选 pub use，至少覆盖 XyModel、XyTool、XySessionStore、XyEvent、XyChunk 及文档化的配套错误/配置类型；未列入清单的内部模块 MUST NOT 被误当作稳定公开 API。"
   r12,配置 JSON Schema 边界,"需要 JSON Schema 的配置/settings DTO MUST 收敛于 infra 配置边界（config/settings 或等价）并在该处 derive schemars；agent/protocol 会话词汇 MUST NOT 仅为 schema 而 derive JsonSchema。"
-  "la-cs1","双角色","System MUST 把运行时分成 client 与 host 两个产品角色。client MUST 只承担面本地：键盘、绘制、TTY、本机编辑器、剪贴板。host MUST 承担模型、会话生命周期、资源装配（配置 / MCP / 工具 / 技能 / prompt）、工作区执行（含人发起的 bang）与项目信任。"
-  "la-cs2","归属判据","依赖工作区、仓库、模型或 MCP 的能力 MUST 由 host 执行。依赖本机终端或本机硬件的能力 MUST 由 client 执行。导出 MUST 由 host 序列化内容、由 client 写入本机路径；导入对称。一条 reload MUST 同时让 client 热加载本机键位与主题，并向 host 请求重装 MCP / prompt / 技能。"
-  "la-cs3","embed 不要求监听器","host 是操作器角色，MUST NOT 被等同于占用了网络绑定的监听器。默认 embed MUST 允许 client 与 host 同进程、同一条产品契约自连，且 MUST NOT 要求先占用监听地址。占用绑定是显式 serve 的职责，不是 embed 的前提。"
+  "la-cs1","双角色","System MUST 把运行时分成 client 与 host 两个产品角色（职责划分，MUST NOT 解读为必须拆成两个进程）。client MUST 只承担面本地：键盘、绘制、TTY、本机编辑器、剪贴板。host MUST 承担模型、会话生命周期、资源装配（配置 / MCP / 工具 / 技能 / prompt）、工作区执行（含人发起的 bang）与项目信任。"
+  "la-cs2","归属判据","依赖工作区、仓库、模型或 MCP 的能力 MUST 由 host 执行。依赖本机终端或本机硬件的能力 MUST 由 client 执行。导出 MUST 由 host 序列化内容、由 client 写入本机路径；导入对称。一条 reload MUST 同时让 client 热加载本机键位与主题，并向 host 请求重装 MCP / prompt / 技能。默认 embed 同进程时，导出/导入/reload MUST 视为已满足（同一进程内按角色分工即可），MUST NOT 要求先存在跨进程 attach。"
+  "la-cs3","embed 不要求监听器","host 是操作器角色，MUST NOT 被等同于占用了网络绑定的监听器。默认 embed MUST 允许 client 与 host 同进程、同一条产品契约自连，且 MUST NOT 要求先占用监听地址。占用绑定是显式 serve 的职责，不是 embed 的前提。本 requirement MUST NOT 废止现行 server 应用面的单实例锁与 REST 暴露约束；那是监听器与 server 面的既有规则，与 host 操作器角色的定义分开。"
   "la-cs4","session 原子与分面","产品最小对话单元 MUST 是 session。cwd MUST 只表示执行面（工具 / bang / trust / MCP 池），MUST NOT 当作唯一分类夹。视图组织 MUST 允许用 tag 等高频分面，且分面索引 MUST 与 transcript 分离。本 requirement MUST NOT 要求交付独立 tag catalog。"
   "la-cs5","一 session 一写者","同一 session MUST 至多一个写者。对已被写入的 session 再 attach MUST 只读恢复。只读面上发起写入 MUST 失败并说明已有其它客户端以写者连接。尚未提供多客户端 attach 时，单进程默认路径 MUST 视为已满足本规则。"
 scenarios[30]{req_id,id,given,when,then,feature}:

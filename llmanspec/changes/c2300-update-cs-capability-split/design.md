@@ -39,7 +39,7 @@ client  --Command/Event-->  host dispatcher
 | `cli-entry` ce6/ce8：InProcess/Remote 双 Driver；`server run/install/stop` | 薄客户端 + `serve` / `--attach` | c2303 |
 | `app-tui` tui2/tui3：默认 InProcessDriver；三面 REST+WS 共存 | 默认仍是同进程 embed（可继续叫 InProcess）；REST 产品面后撤 | tui2 本票保留；tui3 随 c2301/c2302 |
 
-本票只 **新增** 角色合约，让默认单进程路径仍然为真，因此本票可独立校验、独立归档。
+本票只 **新增** 角色合约，让默认单进程路径仍然为真，因此本票可独立校验、独立归档。新条款已写明：`la-cs3` **不**废止 `la6` 的锁/REST；导出/导入/reload 与一写者在未提供 attach 时由同进程路径满足。后续票改 `la6` / `server-core` 时再收旧 MUST，避免读者把角色合约读成「现在就必须拆进程或拆掉 REST」。
 
 ## 4. 绑定与 Docker（用户已裁）
 
