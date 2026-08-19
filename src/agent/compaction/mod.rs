@@ -42,7 +42,7 @@ pub use token_estimator::{
 use anyhow::Result;
 use serde_json::json;
 
-use crate::protocol::error::{XySessionError, XySessionStoreError};
+use crate::protocol::error::{XyError, XySessionError, XySessionStoreError};
 use crate::protocol::ports::{XyModel, XySessionStore};
 use crate::protocol::session::{CompactionEntry, EntryBase, MessageEntry, SessionEntry};
 
@@ -53,6 +53,10 @@ pub enum CompactionError {
     Store(#[from] XySessionStoreError),
     #[error(transparent)]
     Session(#[from] XySessionError),
+    /// Model construction / selection failed; keeps the typed `XyError` (kind/source)
+    /// instead of being flattened into a `Policy` string (c2270 family).
+    #[error(transparent)]
+    Model(#[from] XyError),
     #[error("{0}")]
     Policy(String),
 }

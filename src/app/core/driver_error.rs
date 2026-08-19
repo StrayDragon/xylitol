@@ -339,6 +339,7 @@ impl From<CompactionError> for XyDriverError {
         match err {
             CompactionError::Store(store) => store.into(),
             CompactionError::Session(sess) => sess.into(),
+            CompactionError::Model(model) => model.into(),
             CompactionError::Policy(message) => Self::message(message),
         }
     }

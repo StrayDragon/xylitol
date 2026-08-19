@@ -30,9 +30,7 @@ impl AgentCapabilities {
             .session_id()
             .ok_or(CompactionError::from(XySessionError::NoActiveSession))?;
 
-        let model = self
-            .build_current_model()
-            .map_err(|e| CompactionError::policy(e.to_string()))?;
+        let model = self.build_current_model()?;
 
         let ctx_window = self
             .current_model()
@@ -73,9 +71,7 @@ impl AgentCapabilities {
             .session_id()
             .ok_or(CompactionError::from(XySessionError::NoActiveSession))?;
 
-        let model = self
-            .build_current_model()
-            .map_err(|e| CompactionError::policy(e.to_string()))?;
+        let model = self.build_current_model()?;
 
         if let Some(bus) = &self.hook_bus {
             let (ty, phase, ctx) = crate::agent::runtime::script_hook_ctx::session_before_compact();
