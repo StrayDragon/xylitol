@@ -63,6 +63,12 @@ fn test_ce19_tui_run(surface_flags_bdd: SurfaceFlagsBdd) {}
 
 #[scenario(
     path = "tests/features/cli-entry.feature",
+    name = "surface-flags-tui-attach"
+)]
+fn test_ce19_tui_attach(surface_flags_bdd: SurfaceFlagsBdd) {}
+
+#[scenario(
+    path = "tests/features/cli-entry.feature",
     name = "surface-flags-on-print"
 )]
 fn test_ce19_print(surface_flags_bdd: SurfaceFlagsBdd) {}

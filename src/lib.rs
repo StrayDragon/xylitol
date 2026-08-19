@@ -42,7 +42,9 @@ pub mod utils;
 
 // ── Curated `pub use` (c500 / architecture.ar09) ─────────────────────
 
-pub use crate::app::core::attach::{DEFAULT_ATTACH_URL, attach_fail_message, probe_host};
+pub use crate::app::core::attach::{
+    DEFAULT_ATTACH_URL, attach_fail_message, probe_host, resolve_attach_url,
+};
 pub use crate::app::core::driver::{XyDriver, XyDriverError, XyInProcessDriver};
 #[cfg(feature = "server")]
 pub use crate::app::core::host_client::HttpWsClient;

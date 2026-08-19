@@ -76,6 +76,12 @@
     那么 解析成功且 --session 生效
 
   @req:ce19
+  场景: surface-flags-tui-attach
+    假如 表面旗标上下文就绪
+    当 xylitol tui --attach http://127.0.0.1:9 --port 11
+    那么 解析成功且 --attach 优先于 --port
+
+  @req:ce19
   场景: surface-flags-on-print
     假如 表面旗标上下文就绪
     当 xylitol print --session sid --no-color hi
