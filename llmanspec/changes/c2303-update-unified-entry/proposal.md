@@ -1,9 +1,12 @@
 ---
 depends_on:
-  - c2300-update-cs-capability-split
-  - c2301-update-stable-wire-protocol
-  - c2290-update-standalone-host
-  - c2302-update-host-multi-session
+- c2300-update-cs-capability-split
+- c2301-update-stable-wire-protocol
+- c2290-update-standalone-host
+- c2302-update-host-multi-session
+branch: sdd/c2303-update-unified-entry
+base_sha: 9c2a77fab774ce1514c331920fc14fce90d25b9b
+checkpointed: false
 ---
 
 # CLI：serve / attach 形状
