@@ -45,7 +45,7 @@ pub use message::{AgentMessage, AgentPart, EnvMessage, LlmMessage};
 pub use model::{XyChunk, XyModelMeta, XyToolSchema};
 pub use model::{XyModelConfig, XyModelKind};
 pub use tool_name::{
-    MCP_PUBLIC_DELIMITER, is_mcp_tool_name, is_provider_safe_tool_name, mcp_tool_armed_prefix,
-    mcp_tool_public_name,
+    BuiltinToolName, MCP_PUBLIC_DELIMITER, is_mcp_tool_name, is_provider_safe_tool_name,
+    mcp_tool_armed_prefix, mcp_tool_public_name,
 };
 pub use tool_timeout::{MAX_TOOL_TIMEOUT_SECS, ToolTimeout, ToolTimeoutError};

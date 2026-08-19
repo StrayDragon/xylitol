@@ -97,7 +97,7 @@ pub(super) fn push_viewport_diff_lines(
     let exp_opts = ExpandableOutputOptions {
         max_preview_lines: DIFF_VIEWPORT_LINES,
         from: TruncateFrom::Tail,
-        expand_hint: "ctrl+o to expand".into(),
+        expand_hint: CTRL_O_EXPAND_HINT.into(),
         hint_style: None,
     };
     push_expandable_with_viewport_hit(
@@ -117,6 +117,9 @@ pub(super) fn output_is_hard_truncated(output: &str) -> bool {
 }
 
 pub(super) const HARD_TRUNCATED_EXPAND_HINT: &str = "expand disabled — see Full output";
+
+/// Ctrl+O viewport expand hint — single literal shared by tool / bash / diff painters.
+pub(super) const CTRL_O_EXPAND_HINT: &str = "ctrl+o to expand";
 
 /// Paint bash/tool body lines; Full output footer uses warning fg (att15 / pi).
 pub(super) fn paint_output_with_full_footer(

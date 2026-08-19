@@ -1,11 +1,22 @@
 use xylitol_tui::terminal_colors::RgbColor;
 use xylitol_tui::{
-    Component, Markdown, bold, fg_rgb, mix_rgb, paint_left_rail_line, truncate_to_width,
-    visible_width, wrap_text_with_ansi,
+    Component, ExpandableOutputOptions, Markdown, TruncateFrom, bold, fg_rgb, mix_rgb,
+    paint_left_rail_line, truncate_to_width, visible_width, wrap_text_with_ansi,
 };
 
-use crate::app::tui::bridge::{AskPhase, BashBlockStatus};
+use crate::app::tui::activity_fold::{format_elapsed_secs, thought_header_body};
+use crate::app::tui::bridge::{AskPhase, BashBlockStatus, CompactionBlockStatus};
 use crate::app::tui::layout::LayoutTheme;
+
+use super::super::fold_hit::FoldTarget;
+use super::super::glyphs::GlyphSet;
+use super::ScrollbackFold;
+use super::cache::{CachedFoldHit, marker_cols};
+use super::diff::{
+    CTRL_O_EXPAND_HINT, HARD_TRUNCATED_EXPAND_HINT, RAILED_MARKER_COL, TOOLS_OUTPUT_PREVIEW_LINES,
+    WRITE_BODY_PREVIEW_LINES, diff_fold_key, output_is_hard_truncated,
+    paint_output_with_full_footer, push_expandable_with_viewport_hit, push_viewport_diff_lines,
+};
 
 pub(super) fn key_hint(chord: &str) -> String {
     format!("({chord})")
@@ -348,4 +359,493 @@ pub(super) fn paint_streaming_assistant(
         stream.stable_prefix.clear();
     }
     all
+}
+
+// ── Per-`UiEntry` block painters (extracted from `render_scrollback`) ────────
+//
+// Each paints one entry into block lines + fold hits; the caller owns the
+// paint cache (fingerprint hit / miss) and fold-hit emission.
+
+/// Shared paint-plane inputs (fold toggles, glyphs, theme, width).
+#[derive(Clone, Copy)]
+pub(super) struct PaintCtx<'a> {
+    pub fold: &'a ScrollbackFold,
+    pub glyphs: GlyphSet,
+    pub theme: LayoutTheme,
+    pub width: usize,
+}
+
+/// User row: `prefix text` — no user-message-bg wash, no status rail (atc8 / c1830).
+pub(super) fn paint_user_block(text: &str, ctx: PaintCtx) -> (Vec<String>, Vec<CachedFoldHit>) {
+    let PaintCtx {
+        glyphs,
+        theme,
+        width,
+        ..
+    } = ctx;
+    let mut lines = Vec::new();
+    let prefix = theme.paint_user(glyphs.user());
+    let painted = highlight_dollar_skill_refs(text, theme.palette().skill_ref);
+    push_wrapped(&mut lines, &format!("{prefix} {painted}"), width);
+    (lines, Vec::new())
+}
+
+/// Assistant row: Markdown render + fit (no rail).
+pub(super) fn paint_assistant_block(
+    text: &str,
+    ctx: PaintCtx,
+) -> (Vec<String>, Vec<CachedFoldHit>) {
+    let PaintCtx { theme, width, .. } = ctx;
+    let mut lines = Vec::new();
+    let mut md = Markdown::new(
+        text.to_string(),
+        0,
+        0,
+        theme.palette().markdown_theme(),
+        None,
+    );
+    for line in md.render(width) {
+        lines.push(fit(&line, width));
+    }
+    (lines, Vec::new())
+}
+
+/// Thinking row: foldable header + optional body. `thought_only` entries fold
+/// into the cluster header (no second L1 row).
+pub(super) fn paint_thinking_block(
+    id: &str,
+    text: &str,
+    elapsed_secs: Option<u64>,
+    thought_only: bool,
+    ctx: PaintCtx,
+) -> (Vec<String>, Vec<CachedFoldHit>) {
+    let PaintCtx {
+        fold,
+        glyphs,
+        theme,
+        width,
+    } = ctx;
+    let mut lines = Vec::new();
+    let mut block_hits = Vec::new();
+    if thought_only {
+        // Cluster header is already Thought; don't paint a second L1 row.
+        push_wrapped(&mut lines, &theme.paint_muted(text), width);
+        return (lines, block_hits);
+    }
+    let expanded = fold.thinking_effective(id);
+    let marker = if expanded {
+        glyphs.unfold()
+    } else {
+        glyphs.fold()
+    };
+    let mw = marker_cols(marker);
+    let dur = elapsed_secs.filter(|s| *s > 0).map(format_elapsed_secs);
+    let label = thought_header_body(dur.as_deref());
+    let header = theme.paint_muted(&format!("{marker} {label}  {}", key_hint("Ctrl+T")));
+    let header_row = lines.len();
+    push_wrapped(&mut lines, &header, width);
+    block_hits.push(CachedFoldHit {
+        row_offset: header_row,
+        col_start: 0,
+        col_end: mw,
+        target: FoldTarget::Thinking(id.to_string()),
+    });
+    if expanded {
+        push_wrapped(&mut lines, &theme.paint_muted(text), width);
+    }
+    (lines, block_hits)
+}
+
+/// Tool row: railed header + optional write body / output / diff (c1300).
+#[allow(clippy::too_many_arguments)] // tool row carries the richest payload (distinct paint plane)
+pub(super) fn paint_tool_block(
+    id: &str,
+    name: &str,
+    args_preview: &str,
+    write_content: Option<&str>,
+    display_diff: Option<&str>,
+    output: &str,
+    is_error: bool,
+    done: bool,
+    ctx: PaintCtx,
+) -> (Vec<String>, Vec<CachedFoldHit>) {
+    let PaintCtx {
+        fold,
+        glyphs,
+        theme,
+        width,
+    } = ctx;
+    let inner = rail_inner_width(width);
+    let expanded = fold.tools_effective(id);
+    let marker = if expanded {
+        glyphs.unfold()
+    } else {
+        glyphs.fold()
+    };
+    let mw = marker_cols(marker);
+    let header = paint_tool_header_line(theme, marker, name, args_preview);
+    let rgb = tool_rail_rgb(!done, is_error, theme);
+    let mut block = Vec::new();
+    let mut block_hits = Vec::new();
+    push_wrapped(&mut block, &header, inner);
+    block_hits.push(CachedFoldHit {
+        row_offset: 0,
+        col_start: RAILED_MARKER_COL,
+        col_end: RAILED_MARKER_COL + mw,
+        target: FoldTarget::Tool(id.to_string()),
+    });
+
+    if expanded {
+        if let Some(content) = write_content
+            && !content.is_empty()
+        {
+            let total = content.lines().count().max(1);
+            let opts = ExpandableOutputOptions {
+                max_preview_lines: WRITE_BODY_PREVIEW_LINES,
+                from: TruncateFrom::Tail,
+                expand_hint: format!("{total} total, {CTRL_O_EXPAND_HINT}"),
+                hint_style: None,
+            };
+            push_expandable_with_viewport_hit(
+                &mut block,
+                &mut block_hits,
+                content,
+                inner,
+                fold.tools_output_expanded,
+                &opts,
+                RAILED_MARKER_COL,
+            );
+        }
+
+        if !output.is_empty() {
+            let painted = paint_output_with_full_footer(output, theme, is_error);
+            let hard = output_is_hard_truncated(output);
+            let opts = ExpandableOutputOptions {
+                max_preview_lines: TOOLS_OUTPUT_PREVIEW_LINES,
+                from: TruncateFrom::Tail,
+                expand_hint: if hard {
+                    HARD_TRUNCATED_EXPAND_HINT.into()
+                } else {
+                    CTRL_O_EXPAND_HINT.into()
+                },
+                hint_style: None,
+            };
+            let viewport = fold.tools_output_expanded && !hard;
+            push_expandable_with_viewport_hit(
+                &mut block,
+                &mut block_hits,
+                &painted,
+                inner,
+                viewport,
+                &opts,
+                RAILED_MARKER_COL,
+            );
+        }
+
+        if let Some(diff) = display_diff
+            && !diff.is_empty()
+        {
+            if !block.is_empty() {
+                block.push(String::new());
+            }
+            push_viewport_diff_lines(
+                &mut block,
+                &mut block_hits,
+                diff,
+                inner,
+                theme,
+                fold.tools_output_expanded,
+            );
+        }
+    }
+
+    let mut lines = Vec::new();
+    push_railed(&mut lines, &block, width, rgb);
+    (lines, block_hits)
+}
+
+/// Diff row: railed summary header + diff viewport (c1350).
+pub(super) fn paint_diff_block(
+    summary: &str,
+    display_diff: &str,
+    ctx: PaintCtx,
+) -> (Vec<String>, Vec<CachedFoldHit>) {
+    let PaintCtx {
+        fold,
+        glyphs,
+        theme,
+        width,
+    } = ctx;
+    let inner = rail_inner_width(width);
+    let key = diff_fold_key(summary, display_diff);
+    let expanded = fold.tools_effective(&key);
+    let marker = if expanded {
+        glyphs.unfold()
+    } else {
+        glyphs.fold()
+    };
+    let mw = marker_cols(marker);
+    let header = paint_tool_header_line(theme, marker, "diff", summary);
+    let mut block = Vec::new();
+    let mut block_hits = Vec::new();
+    push_wrapped(&mut block, &header, inner);
+    block_hits.push(CachedFoldHit {
+        row_offset: 0,
+        col_start: RAILED_MARKER_COL,
+        col_end: RAILED_MARKER_COL + mw,
+        target: FoldTarget::Diff(key),
+    });
+    let rgb = tool_rail_rgb(false, false, theme);
+    if expanded && !display_diff.is_empty() {
+        block.push(String::new());
+        push_viewport_diff_lines(
+            &mut block,
+            &mut block_hits,
+            display_diff,
+            inner,
+            theme,
+            fold.tools_output_expanded,
+        );
+    }
+    let mut lines = Vec::new();
+    push_railed(&mut lines, &block, width, rgb);
+    (lines, block_hits)
+}
+
+/// Bash row: `$ command` + output viewport or pending hint (c668).
+pub(super) fn paint_bash_block(
+    command: &str,
+    status: BashBlockStatus,
+    output: &str,
+    ctx: PaintCtx,
+) -> (Vec<String>, Vec<CachedFoldHit>) {
+    let PaintCtx {
+        fold, theme, width, ..
+    } = ctx;
+    let inner = rail_inner_width(width);
+    let mut block = Vec::new();
+    let mut block_hits = Vec::new();
+    push_wrapped(
+        &mut block,
+        &theme.paint_success(&format!("$ {command}")),
+        inner,
+    );
+    if !output.is_empty() {
+        let body = paint_output_with_full_footer(
+            output,
+            theme,
+            matches!(status, BashBlockStatus::Error | BashBlockStatus::Cancelled),
+        );
+        let hard = output_is_hard_truncated(output);
+        let opts = ExpandableOutputOptions {
+            max_preview_lines: TOOLS_OUTPUT_PREVIEW_LINES,
+            from: TruncateFrom::Tail,
+            expand_hint: if hard {
+                HARD_TRUNCATED_EXPAND_HINT.into()
+            } else {
+                CTRL_O_EXPAND_HINT.into()
+            },
+            hint_style: None,
+        };
+        let expanded = fold.tools_output_expanded && !hard;
+        push_expandable_with_viewport_hit(
+            &mut block,
+            &mut block_hits,
+            &body,
+            inner,
+            expanded,
+            &opts,
+            RAILED_MARKER_COL,
+        );
+    } else if matches!(status, BashBlockStatus::Pending) {
+        push_wrapped(
+            &mut block,
+            &theme.paint_muted(&format!("Running… {}", key_hint("Esc"))),
+            inner,
+        );
+    }
+    let mut lines = Vec::new();
+    push_railed(&mut lines, &block, width, bash_rail_rgb(status, theme));
+    (lines, block_hits)
+}
+
+/// Ask row: accent header + optional detail lines (c1850).
+pub(super) fn paint_ask_block(
+    id: &str,
+    summary: &str,
+    detail_lines: &[String],
+    phase: AskPhase,
+    ctx: PaintCtx,
+) -> (Vec<String>, Vec<CachedFoldHit>) {
+    let PaintCtx {
+        fold,
+        glyphs,
+        theme,
+        width,
+    } = ctx;
+    let inner = rail_inner_width(width);
+    let expanded = fold.tools_effective(id);
+    let marker = if expanded {
+        glyphs.unfold()
+    } else {
+        glyphs.fold()
+    };
+    let mw = marker_cols(marker);
+    let header = paint_ask_header_line(theme, marker, summary, inner);
+    let mut block = vec![fit(&header, inner)];
+    let block_hits = vec![CachedFoldHit {
+        row_offset: 0,
+        col_start: RAILED_MARKER_COL,
+        col_end: RAILED_MARKER_COL + mw,
+        target: FoldTarget::Ask(id.to_string()),
+    }];
+    if expanded {
+        for line in detail_lines {
+            block.push(fit(&theme.paint_muted(line), inner));
+        }
+    }
+    let mut lines = Vec::new();
+    push_railed(&mut lines, &block, width, ask_rail_rgb(phase, theme));
+    (lines, block_hits)
+}
+
+/// Compaction row: pending hint / foldable summary / failure detail (c1730).
+pub(super) fn paint_compaction_block(
+    status: CompactionBlockStatus,
+    summary: &str,
+    tokens_before: u64,
+    detail: Option<&str>,
+    ctx: PaintCtx,
+) -> (Vec<String>, Vec<CachedFoldHit>) {
+    let PaintCtx {
+        fold,
+        glyphs,
+        theme,
+        width,
+    } = ctx;
+    let mut lines = Vec::new();
+    let mut block_hits = Vec::new();
+    match status {
+        CompactionBlockStatus::Pending => {
+            push_wrapped(
+                &mut lines,
+                &theme.paint_muted("[compaction] Compacting…"),
+                width,
+            );
+        }
+        CompactionBlockStatus::Complete => {
+            let n = format_token_count(tokens_before);
+            let marker = if fold.compaction_expanded {
+                glyphs.unfold()
+            } else {
+                glyphs.fold()
+            };
+            let mw = marker_cols(marker);
+            let header = if fold.compaction_expanded {
+                format!("{marker} [compaction] Compacted from {n} tokens")
+            } else {
+                format!("{marker} [compaction] Compacted from {n} tokens (Alt+E to expand)")
+            };
+            let header_row = lines.len();
+            push_wrapped(&mut lines, &theme.paint_muted(&header), width);
+            block_hits.push(CachedFoldHit {
+                row_offset: header_row,
+                col_start: 0,
+                col_end: mw,
+                target: FoldTarget::Compaction,
+            });
+            if fold.compaction_expanded && !summary.is_empty() {
+                lines.push(String::new());
+                push_wrapped(&mut lines, &theme.paint_muted(summary), width);
+            }
+        }
+        CompactionBlockStatus::Aborted | CompactionBlockStatus::Failed => {
+            let text = detail.unwrap_or("compaction aborted");
+            push_wrapped(
+                &mut lines,
+                &theme.paint_muted(&format!("[compaction] {text}")),
+                width,
+            );
+        }
+    }
+    (lines, block_hits)
+}
+
+/// Todo checklist row: one-line summary + optional items (c1955).
+pub(super) fn paint_todo_block(
+    summary: &str,
+    detail_lines: &[String],
+    ctx: PaintCtx,
+) -> (Vec<String>, Vec<CachedFoldHit>) {
+    let PaintCtx {
+        fold,
+        glyphs,
+        theme,
+        width,
+    } = ctx;
+    let inner = rail_inner_width(width);
+    let expanded = fold.todo_expanded;
+    let marker = if expanded {
+        glyphs.unfold()
+    } else {
+        glyphs.fold()
+    };
+    let mw = marker_cols(marker);
+    let hint = if expanded {
+        String::new()
+    } else {
+        format!("  {}", key_hint("Alt+E"))
+    };
+    let header = format!("{marker} {summary}{hint}");
+    let mut block = vec![fit(&theme.paint_muted(&header), inner)];
+    let block_hits = vec![CachedFoldHit {
+        row_offset: 0,
+        col_start: RAILED_MARKER_COL,
+        col_end: RAILED_MARKER_COL + mw,
+        target: FoldTarget::Todo,
+    }];
+    if expanded {
+        for line in detail_lines {
+            block.push(fit(&theme.paint_muted(line), inner));
+        }
+    }
+    let rail = {
+        let p = theme.palette();
+        mix_rgb(p.surface, p.muted, 0.72)
+    };
+    let mut lines = Vec::new();
+    push_railed(&mut lines, &block, width, rail);
+    (lines, block_hits)
+}
+
+/// Scroll notice row (trailing / navigation instant hints).
+pub(super) fn paint_scroll_notice_block(
+    text: &str,
+    ctx: PaintCtx,
+) -> (Vec<String>, Vec<CachedFoldHit>) {
+    let PaintCtx {
+        glyphs,
+        theme,
+        width,
+        ..
+    } = ctx;
+    let mut lines = Vec::new();
+    push_wrapped(
+        &mut lines,
+        &theme.paint_muted(&format!("{} {text}", glyphs.system())),
+        width,
+    );
+    (lines, Vec::new())
+}
+
+/// Error row.
+pub(super) fn paint_error_block(text: &str, ctx: PaintCtx) -> (Vec<String>, Vec<CachedFoldHit>) {
+    let PaintCtx { theme, width, .. } = ctx;
+    let mut lines = Vec::new();
+    push_wrapped(
+        &mut lines,
+        &theme.paint_error(&format!("error: {text}")),
+        width,
+    );
+    (lines, Vec::new())
 }

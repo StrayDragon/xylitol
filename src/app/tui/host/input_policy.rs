@@ -289,8 +289,9 @@ impl<T: Terminal> HostSession<T> {
             root.set_editor_text(String::new());
             drop(root);
             self.push_scroll_notice(format!(
-                "unknown command: {} (try /exit, /model, /theme, /mcp, /session, /session-resume, /session-new, /session-clone, /session-name, /session-tree, /session-fork, /session-compact, /session-export, /session-import, /reload, /trust, /history-copy-last)",
-                text.split_whitespace().next().unwrap_or("/")
+                "unknown command: {} {}",
+                text.split_whitespace().next().unwrap_or("/"),
+                product_slash_hint()
             ));
             return true;
         }
@@ -471,4 +472,18 @@ fn looks_like_unknown_slash_command(text: &str) -> bool {
     }
     // `/tmp/…`, `/home/…`, `//unc` → prompt text, not a slash command.
     first.matches('/').count() <= 1
+}
+
+/// `(try /exit, /model, …)` hint for unknown-slash notices.
+///
+/// Generated from the product slash SSOT (`app::product_commands`) so adding a
+/// slash can never leave this notice stale (c1175; same source as slash_catalog).
+fn product_slash_hint() -> String {
+    let names = crate::app::product_commands::product_slash_commands();
+    let joined = names
+        .iter()
+        .map(|c| format!("/{}", c.name))
+        .collect::<Vec<_>>()
+        .join(", ");
+    format!("(try {joined})")
 }

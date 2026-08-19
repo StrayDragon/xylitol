@@ -1,6 +1,7 @@
 //! Tool execution + edit diff extraction.
 
 use crate::app::core::driver::XyEvent;
+use crate::app::tool_display::is_ask_tool;
 use crate::app::tui::bridge::preview::humanize_ask_result;
 use crate::app::tui::bridge::session_tree::sync_todo_checklist_from_tool_result;
 use crate::app::tui::bridge::{
@@ -16,7 +17,7 @@ pub fn apply_tools_family(model: &mut UiModel, event: &XyEvent) -> bool {
     match event {
         XyEvent::ToolExecutionStart { id, name, args } => {
             model.flush_streaming();
-            if name == "ask" {
+            if is_ask_tool(name) {
                 upsert_ask_entry(model, id, AskPhase::Waiting, "Ask · 等待回答…", vec![]);
             } else {
                 upsert_tool_entry(model, id, name, args);
@@ -45,7 +46,7 @@ pub fn apply_tools_family(model: &mut UiModel, event: &XyEvent) -> bool {
             result,
             is_error,
         } => {
-            if name == "ask" {
+            if is_ask_tool(name) {
                 let (phase, summary, detail) = humanize_ask_result(result, *is_error);
                 upsert_ask_entry(model, id, phase, &summary, detail);
             } else {

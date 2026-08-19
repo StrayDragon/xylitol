@@ -12,6 +12,7 @@ use async_trait::async_trait;
 use serde::Deserialize;
 use serde_json::{Value, json};
 
+use crate::protocol::BuiltinToolName;
 use crate::protocol::error::XyToolError;
 use crate::protocol::ports::XyToolCtx;
 
@@ -39,7 +40,7 @@ impl TypedTool for WriteTool {
     type Args = WriteArgs;
 
     fn name(&self) -> &str {
-        "write"
+        BuiltinToolName::Write.as_str()
     }
 
     fn description(&self) -> &str {

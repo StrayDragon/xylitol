@@ -9,6 +9,7 @@ use async_trait::async_trait;
 use serde_json::{Value, json};
 
 use super::typed::TypedTool;
+use crate::protocol::BuiltinToolName;
 use crate::protocol::error::XyToolError;
 use crate::protocol::ports::ask::{AskArgs, AskUserGateway};
 use crate::protocol::ports::{XyToolCtx, XyToolExecutionMode};
@@ -29,7 +30,7 @@ impl TypedTool for AskTool {
     type Args = AskArgs;
 
     fn name(&self) -> &str {
-        "ask"
+        BuiltinToolName::Ask.as_str()
     }
 
     fn description(&self) -> &str {

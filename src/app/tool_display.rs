@@ -11,6 +11,23 @@ pub(crate) fn is_mcp_tool_name(name: &str) -> bool {
     crate::protocol::is_mcp_tool_name(name)
 }
 
+/// Builtin `ask` tool (choice gateway, c1850): TUI renders it as an interactive choice.
+pub(crate) fn is_ask_tool(name: &str) -> bool {
+    crate::protocol::BuiltinToolName::from_name(name) == Some(crate::protocol::BuiltinToolName::Ask)
+}
+
+/// Builtin `write` tool: file-write entries carry a content preview body.
+pub(crate) fn is_write_tool(name: &str) -> bool {
+    crate::protocol::BuiltinToolName::from_name(name)
+        == Some(crate::protocol::BuiltinToolName::Write)
+}
+
+/// Builtin `edit` tool: file-edit entries carry a diff body.
+pub(crate) fn is_edit_tool(name: &str) -> bool {
+    crate::protocol::BuiltinToolName::from_name(name)
+        == Some(crate::protocol::BuiltinToolName::Edit)
+}
+
 /// Pretty-print a JSON [`Value`]; falls back to compact `to_string` on failure.
 pub(crate) fn pretty_json_value(value: &Value) -> String {
     serde_json::to_string_pretty(value).unwrap_or_else(|_| value.to_string())

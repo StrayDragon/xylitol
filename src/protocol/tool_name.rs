@@ -39,6 +39,43 @@ pub fn is_mcp_tool_name(name: &str) -> bool {
         || name.starts_with("mcp:")
 }
 
+/// Builtin (crate-registered) tool identities whose names the UI discriminates.
+///
+/// Registry SSOT: the infra tool impls return their `name()` from here and the
+/// app display layer classifies via [`BuiltinToolName::from_name`], so renaming
+/// a builtin tool becomes a compile-time break instead of silent UI drift.
+/// Wire-visible names stay stable strings ([`BuiltinToolName::as_str`]).
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
+pub enum BuiltinToolName {
+    Ask,
+    Write,
+    Edit,
+}
+
+impl BuiltinToolName {
+    /// All builtin identities (exhaustive iteration / tests).
+    pub const ALL: [Self; 3] = [Self::Ask, Self::Write, Self::Edit];
+
+    /// Stable wire / tool-registry name (no marker; matches tool `name()`).
+    pub fn as_str(self) -> &'static str {
+        match self {
+            Self::Ask => "ask",
+            Self::Write => "write",
+            Self::Edit => "edit",
+        }
+    }
+
+    /// Classify a tool name into a builtin identity.
+    pub fn from_name(name: &str) -> Option<Self> {
+        match name {
+            "ask" => Some(Self::Ask),
+            "write" => Some(Self::Write),
+            "edit" => Some(Self::Edit),
+            _ => None,
+        }
+    }
+}
+
 /// Provider-visible tool name pattern shared by DeepSeek / Anthropic / OpenAI-compat.
 pub fn is_provider_safe_tool_name(name: &str) -> bool {
     !name.is_empty()
@@ -63,6 +100,17 @@ mod tests {
         assert!(is_mcp_tool_name("mcp_transition_form"));
         assert!(is_mcp_tool_name("mcp-hyphen-transition"));
         assert_eq!(mcp_tool_armed_prefix("context7"), "mcp__context7__");
+    }
+
+    #[test]
+    fn builtin_names_roundtrip_through_registry() {
+        for kind in BuiltinToolName::ALL {
+            assert_eq!(BuiltinToolName::from_name(kind.as_str()), Some(kind));
+        }
+        assert_eq!(BuiltinToolName::from_name("unknown"), None);
+        assert_eq!(BuiltinToolName::Ask.as_str(), "ask");
+        assert_eq!(BuiltinToolName::Write.as_str(), "write");
+        assert_eq!(BuiltinToolName::Edit.as_str(), "edit");
     }
 
     #[test]
