@@ -4,6 +4,7 @@ depends_on:
   - c2302-update-host-multi-session
   - c2303-update-unified-entry
   - c2304-add-conformance-gate
+  - c2306-fix-tui-attach-parity
 ---
 
 # 后置：方案 A（一条命令 loopback Host+TUI）
@@ -12,7 +13,7 @@ depends_on:
 
 ## Why
 
-方案 C 要两个终端。有人要「开箱一条命令」又不想退回 TUI 直握 runtime。DSH 也有 web 进程内自服务的体感，但通道仍是 HTTP。MUST 等 c2304（方法表 + 工具 chrome + 会话/reload/MCP 对齐）归档后再 apply，避免一条命令仍是残 TUI。
+方案 C 要两个终端。有人要「开箱一条命令」又不想退回 TUI 直握 runtime。DSH 也有 web 进程内自服务的体感，但通道仍是 HTTP。MUST 等 c2306（attach 对拍旧 TUI：MCP 头卡、队列条、不卡死、续联）归档后再 apply，避免一条命令仍是残 TUI。
 
 ## What Changes
 

@@ -2,7 +2,7 @@ kind: llman.sdd.spec
 name: "app-tui-host"
 purpose: 产品 TUI 宿主：host 驱动引擎、终端生命周期、即时日志、尺寸降级，以及合成垂直切片 / 产品 PTY smoke 验收。
 valid_scope[2]: "产品 TUI 面（app-tui 族）","TUI e2e 测试"
-requirements[31]{req_id,title,statement}:
+requirements[33]{req_id,title,statement}:
   ath1,"host-driven-engine","产品 TUI MUST 以 host 驱动引擎（事件分发、按需渲染、idle 心跳）驱动 packages/xylitol-tui；产品路径 MUST NOT 进入引擎的阻塞主循环（包 demo 专用启动 API 勿用于生产面）。"
   ath2,"terminal-restore",产品 TUI MUST 在正常退出、错误退出与 panic 路径恢复终端（关闭 raw mode 等），不得把用户终端留在损坏状态；MUST 安装 panic hook（仅靠 Drop 不足）。
   ath3,"infra-logging-default","debug 构建下产品 TUI MUST 默认启用即时文件日志（人类与 agent 可用 tail -f 观察）；release 构建 MUST 默认关闭，仍可通过 XYLITOL_DEBUG 或 RUST_LOG 显式打开。日志路径与查看方式由面 AGENTS 文档写明。"
@@ -34,10 +34,14 @@ requirements[31]{req_id,title,statement}:
   ath31,"mode-b-copy-notice-chrome","产品 TUI 在 ApplicationOwned 会话下，当库发出松手复制成功 copy-notice（ptim15）时 MUST 展示短时用户可见提醒（TTL 约 1.5–3s 后自动消失）。落点 SHOULD 为下缘 chrome 内、status/输入带附近的单行提示（或独立 info 壳层槽）；MUST NOT 写入 transcript / ScrollNotice；MUST NOT 使用带 `Error: ` 前缀的拒闸 chrome-toast 形态冒充成功确认。折叠点击不在范围。"
   ath32,"enter-follows-transcript-bottom","产品 TUI 在 ApplicationOwned 的 Ready 主输入面收到 `tui.input.submit` Enter 时 MUST 立即将 transcript 视口滚到底部并恢复尾随；该行为 MUST 同时适用于非空提交与空输入。空输入 MUST NOT 因此创建 submit；非 Editor 槽中的 Enter MUST 保留给该槽自身的确认语义，不得强制滚动 transcript。"
   ath33,"fold-triangle-hit-priority","产品 TUI 在 ApplicationOwned 会话下 MUST 将 live scrollback 折叠三角命中表接到库 set_transcript_hit_priority（或等价）：Left Down 命中三角列时 MUST 吞按下、清除 transcript 选区且不启拖选，并触发 att20/att21 的单块 toggle；未命中时 MUST 保持既有选区/dock/Editor 路径。transcript 拖选进行中 MUST 不重新消费折叠命中。产品 MUST NOT 经 XYLITOL_TUI_MOUSE 作为折叠开关。验证 MUST 含无真 TTY harness（合成 Mouse）。"
-scenarios[6]{req_id,id,given,when,then,feature}:
+  ath34,"attach-tick-no-blocking-rpc","产品 TUI attach 路径的 host 循环在 idle/busy tick 与 drain_pending 中 MUST NOT 同步阻塞等待 Host unary（含 get_state / current_model / MCP settle）。status spinner MUST 在 Host 慢连接或写者 unary 进行中仍能换帧；键入 MUST 仍可进入 editor。写者 unary（含 SetModel）MUST NOT 在返回前等待全部 MCP 连接完成。模型列表打开与选定 MUST 在 MCP 未结算时仍可操作（选定可走 NextTurn）。"
+  ath35,"attach-mux-session-lifetime","产品 TUI attach MUST 在进入 host 循环前完成握手并订阅该 session 的 mux（启动即订，不等第一次 prompt）。单次 AgentEnd MUST NOT 拆掉该订阅。WS 断开后 MUST 用 last_seq 再次 subscribe 续传；收到 session/resync_required 后 MUST 按 server-core 再订并重建可见 transcript，MUST NOT 只留一行错误后放弃事件流。退出 TUI 才关闭 mux。"
+scenarios[8]{req_id,id,given,when,then,feature}:
   ath28,ath28-unit,"reload-in-progress-ux 由产品 harness/单测覆盖（非 BDD harness）",审查实现与对应测试,"行为符合本 requirement 陈述",false
   ath29,ath29-unit,"mouse-input-opt-in-no-moved-paint 由产品 harness 与 ignore PTY 覆盖（非 BDD harness）",审查实现与对应测试,"行为符合本 requirement 陈述",false
   ath30,ath30-unit,"interaction-mode-application-owned-default 由产品 harness/配置单测覆盖（非 BDD harness）",审查实现与对应测试,"行为符合本 requirement 陈述",false
   ath31,ath31-unit,"mode-b-copy-notice-chrome 由产品 harness/单测与 ApplicationOwned 人验覆盖（非 BDD harness）",审查实现与对应测试,"行为符合本 requirement 陈述",false
   ath32,ath32-unit,"enter-follows-transcript-bottom 由产品 harness 覆盖空输入与非空提交",审查实现与对应测试,"行为符合本 requirement 陈述",false
   ath33,ath33-unit,"fold-triangle-hit-priority 由产品 harness 覆盖（非 BDD harness）",合成 Mouse Down 三角列与拖选中划过,"命中吞按并单块 toggle；拖选中不 toggle",false
+  ath34,ath34-unit,"attach tick 不阻塞由产品 harness 覆盖（非 BDD）",MCP 慢连接时推进 tick 与 /model,"spinner 仍换帧且键入可达；SetModel 不 await MCP settle",false
+  ath35,ath35-unit,"attach mux 常驻由 harness/双 carrier 覆盖（非 BDD）",AgentEnd 后再入队或断线重订,"下行仍达客户端；resync 后 transcript 可恢复",false
