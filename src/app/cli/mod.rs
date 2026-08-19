@@ -12,6 +12,29 @@ pub mod tokenizer;
 #[cfg(feature = "tui")]
 mod trust_gate;
 
+/// Map `tui.activity_fold` config DTO → runtime knobs at the config-owning CLI
+/// boundary (the TUI widget layer does not import infra config types, c2277).
+#[cfg(feature = "tui")]
+impl From<crate::infra::config::types::TuiActivityFoldConfig>
+    for crate::app::tui::activity_fold::ActivityFoldSettings
+{
+    fn from(c: crate::infra::config::types::TuiActivityFoldConfig) -> Self {
+        use crate::app::tui::activity_fold::SegmentLevel;
+        use crate::infra::config::types::ActivityFoldStreamCollapse;
+        let collapse_floor = match c.stream_collapse {
+            ActivityFoldStreamCollapse::Envelope => SegmentLevel::L3,
+            ActivityFoldStreamCollapse::Clusters => SegmentLevel::L2,
+        };
+        Self {
+            enabled: c.enabled,
+            keep_recent_turns: c.keep_recent_turns,
+            auto_on_rebuild: c.auto_on_rebuild,
+            auto_on_turn_end: c.auto_on_turn_end,
+            collapse_floor,
+        }
+    }
+}
+
 use clap::{Args, Parser, Subcommand};
 
 use crate::app::cli::resources::ResourcesAction;
