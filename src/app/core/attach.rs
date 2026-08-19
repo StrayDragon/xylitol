@@ -50,9 +50,19 @@ fn tcp_connect(addr: SocketAddr) -> std::io::Result<TcpStream> {
     TcpStream::connect_timeout(&addr, Duration::from_millis(400))
 }
 
+pub fn resolve_attach_url(attach: Option<&str>, port: Option<u16>) -> String {
+    if let Some(url) = attach.map(str::trim).filter(|s| !s.is_empty()) {
+        return url.to_string();
+    }
+    match port {
+        Some(p) => format!("http://127.0.0.1:{p}"),
+        None => DEFAULT_ATTACH_URL.to_string(),
+    }
+}
+
 pub fn attach_fail_message(url: &str) -> String {
     format!(
-        "Host is not listening at {url}. Start it with: xylitol server run\n\
+        "Host is not listening at {url}. Start it with: xylitol serve\n\
          (default http://127.0.0.1:18790)"
     )
 }
@@ -65,5 +75,19 @@ mod tests {
     fn probe_fails_when_nothing_listens() {
         let err = probe_host("http://127.0.0.1:1").unwrap_err();
         assert!(matches!(err, AttachError::NotListening { .. }));
+    }
+
+    #[test]
+    fn resolve_attach_url_prefers_attach_over_port() {
+        assert_eq!(resolve_attach_url(None, None), DEFAULT_ATTACH_URL);
+        assert_eq!(resolve_attach_url(None, Some(9)), "http://127.0.0.1:9");
+        assert_eq!(
+            resolve_attach_url(Some("http://127.0.0.1:77"), Some(9)),
+            "http://127.0.0.1:77"
+        );
+        assert_eq!(
+            resolve_attach_url(Some("  "), Some(9)),
+            "http://127.0.0.1:9"
+        );
     }
 }

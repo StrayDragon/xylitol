@@ -741,6 +741,41 @@ fn t_ce16_print_no_hello(surface_bdd: &SurfaceBdd) {
     assert!(!err.contains("Hello!"), "{err}");
 }
 
+#[when("xylitol serve --help")]
+fn w_ce8_serve_help(tokenizer_bdd: &TokenizerBdd) {
+    use clap::CommandFactory;
+    let mut cmd = xylitol::app::cli::CliArgs::command();
+    let help = cmd
+        .find_subcommand_mut("serve")
+        .expect("serve subcommand")
+        .render_long_help()
+        .to_string();
+    tokenizer_bdd.cli_out.replace(help);
+    tokenizer_bdd.cli_code_ok.set(true);
+}
+
+#[then("可见 --host --port 与 stop、install，且无 server 或 run 别名")]
+fn t_ce8_serve_shape(tokenizer_bdd: &TokenizerBdd) {
+    use clap::{CommandFactory, Parser};
+    let help = tokenizer_bdd.cli_out.borrow();
+    assert!(help.contains("--host"), "{help}");
+    assert!(help.contains("--port"), "{help}");
+    let mut cmd = xylitol::app::cli::CliArgs::command();
+    assert!(cmd.find_subcommand("server").is_none());
+    let serve = cmd.find_subcommand_mut("serve").expect("serve");
+    assert!(serve.find_subcommand("stop").is_some(), "{help}");
+    assert!(serve.find_subcommand("install").is_some(), "{help}");
+    assert!(serve.find_subcommand("run").is_none(), "{help}");
+    assert!(
+        xylitol::app::cli::CliArgs::try_parse_from(["xylitol", "server"]).is_err(),
+        "server alias must not parse"
+    );
+    assert!(
+        xylitol::app::cli::CliArgs::try_parse_from(["xylitol", "serve", "run"]).is_err(),
+        "serve run must not parse"
+    );
+}
+
 #[when("xylitol --help")]
 fn w_ce16_top_help(tokenizer_bdd: &TokenizerBdd) {
     use clap::CommandFactory;
@@ -751,18 +786,29 @@ fn w_ce16_top_help(tokenizer_bdd: &TokenizerBdd) {
     tokenizer_bdd.cli_code_ok.set(true);
 }
 
-#[then("Commands 含 tokenizer 与 resources 为顶层而非 tui 子命令")]
+#[then("Commands 含 tokenizer、resources 与 serve 为顶层而非 tui 子命令")]
 fn t_ce16_ops_toplevel(tokenizer_bdd: &TokenizerBdd) {
     use clap::CommandFactory;
     let help = tokenizer_bdd.cli_out.borrow();
     assert!(help.contains("tokenizer"), "{help}");
     assert!(help.contains("resources"), "{help}");
+    assert!(help.contains("serve"), "{help}");
     assert!(help.contains("tui"), "{help}");
     assert!(help.contains("print"), "{help}");
     let mut cmd = xylitol::app::cli::CliArgs::command();
+    assert!(
+        cmd.find_subcommand("serve").is_some(),
+        "serve must be a top-level verb"
+    );
+    assert!(
+        cmd.find_subcommand("server").is_none(),
+        "server must not remain as a product verb"
+    );
     let tui = cmd.find_subcommand_mut("tui").expect("tui subcommand");
     assert!(
-        tui.find_subcommand("tokenizer").is_none() && tui.find_subcommand("resources").is_none(),
+        tui.find_subcommand("tokenizer").is_none()
+            && tui.find_subcommand("resources").is_none()
+            && tui.find_subcommand("serve").is_none(),
         "ops must not nest under tui"
     );
 }
@@ -979,7 +1025,7 @@ fn w_ce21_attach(attach_bdd: &AttachBdd) {
     attach_bdd.err.replace(Some(err.to_string()));
 }
 
-#[then("非零退出并提示先启动 Host")]
+#[then("非零退出并提示用 xylitol serve 启动 Host")]
 fn t_ce21_fail(attach_bdd: &AttachBdd) {
     let msg = attach_bdd.err.borrow().clone().expect("probe error");
     assert!(
@@ -987,7 +1033,8 @@ fn t_ce21_fail(attach_bdd: &AttachBdd) {
         "{msg}"
     );
     let hint = xylitol::attach_fail_message(xylitol::DEFAULT_ATTACH_URL);
-    assert!(hint.contains("xylitol server run"), "{hint}");
+    assert!(hint.contains("xylitol serve"), "{hint}");
+    assert!(!hint.contains("server run"), "{hint}");
 }
 
 #[when("无 prompt 且 TTY 启动 TUI")]

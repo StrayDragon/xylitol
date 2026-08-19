@@ -44,7 +44,7 @@ use crate::app::core::bootstrap::{
 };
 use crate::app::core::driver::XyDriver;
 #[cfg(feature = "server")]
-use crate::app::server::subcommand::ServerSubcommand;
+use crate::app::server::subcommand::ServeAction;
 use crate::infra::timing;
 
 /// Surface flags for `xylitol tui` / `xylitol tui run` (c1565).
@@ -66,6 +66,12 @@ pub struct TuiSurfaceArgs {
     /// Do not trust the project directory; skip its `.xylitol/` resources.
     #[arg(long)]
     pub no_trust: bool,
+    /// Host origin to attach (`http://host:port`). Wins over `--port`.
+    #[arg(long)]
+    pub attach: Option<String>,
+    /// Attach `http://127.0.0.1:<port>` when `--attach` is omitted.
+    #[arg(long)]
+    pub port: Option<u16>,
 }
 
 /// Optional leaf under `xylitol tui` (default = run when omitted).
@@ -130,11 +136,17 @@ pub enum CliCommand {
         #[command(subcommand)]
         action: TokenizerAction,
     },
-    /// Server lifecycle management.
+    /// Host listener (default 127.0.0.1:18790). Closing the TUI does not stop it.
     #[cfg(feature = "server")]
-    Server {
+    Serve {
+        /// Bind address.
+        #[arg(long, default_value = "127.0.0.1")]
+        host: String,
+        /// Bind port (`0` lets the OS assign and prints the actual port).
+        #[arg(long, default_value_t = 18790)]
+        port: u16,
         #[command(subcommand)]
-        action: ServerSubcommand,
+        action: Option<ServeAction>,
     },
 }
 
@@ -159,6 +171,8 @@ pub struct SurfaceBootstrap {
     pub no_color: bool,
     pub trust: bool,
     pub no_trust: bool,
+    pub attach: Option<String>,
+    pub port: Option<u16>,
 }
 
 fn merge_tui_surface(parent: &TuiSurfaceArgs, action: Option<&TuiAction>) -> TuiSurfaceArgs {
@@ -174,6 +188,8 @@ fn merge_tui_surface(parent: &TuiSurfaceArgs, action: Option<&TuiAction>) -> Tui
         no_color: run.no_color || parent.no_color,
         trust: run.trust || parent.trust,
         no_trust: run.no_trust || parent.no_trust,
+        attach: run.attach.clone().or_else(|| parent.attach.clone()),
+        port: run.port.or(parent.port),
     }
 }
 
@@ -190,6 +206,8 @@ pub fn surface_from_command(command: Option<&CliCommand>) -> SurfaceBootstrap {
                 no_color: s.no_color,
                 trust: s.trust,
                 no_trust: s.no_trust,
+                attach: s.attach,
+                port: s.port,
             }
         }
         Some(CliCommand::Print { surface, .. }) => SurfaceBootstrap {
@@ -200,6 +218,8 @@ pub fn surface_from_command(command: Option<&CliCommand>) -> SurfaceBootstrap {
             no_color: surface.no_color,
             trust: surface.trust,
             no_trust: surface.no_trust,
+            attach: None,
+            port: None,
         },
         _ => SurfaceBootstrap::default(),
     }
@@ -342,8 +362,8 @@ pub async fn run() -> Result<(), Box<dyn std::error::Error>> {
             return Ok(());
         }
         #[cfg(feature = "server")]
-        Some(CliCommand::Server { action }) => {
-            return crate::app::server::subcommand::run(action).await;
+        Some(CliCommand::Serve { host, port, action }) => {
+            return crate::app::server::subcommand::run(host, port, action).await;
         }
         Some(CliCommand::Tui { .. } | CliCommand::Print { .. }) | None => {}
     }
@@ -369,9 +389,10 @@ pub async fn run() -> Result<(), Box<dyn std::error::Error>> {
 
     #[cfg(all(feature = "tui", feature = "server"))]
     if want_tui {
-        let url = crate::app::core::attach::DEFAULT_ATTACH_URL;
-        if crate::app::core::attach::probe_host(url).is_err() {
-            eprintln!("{}", crate::app::core::attach::attach_fail_message(url));
+        let url =
+            crate::app::core::attach::resolve_attach_url(surface.attach.as_deref(), surface.port);
+        if crate::app::core::attach::probe_host(&url).is_err() {
+            eprintln!("{}", crate::app::core::attach::attach_fail_message(&url));
             return Err("host not listening".into());
         }
     }
@@ -523,7 +544,8 @@ async fn run_product_tui_attached(
         eprintln!("Error: TUI requires a TTY");
         return Err("tui requires tty".into());
     }
-    let attach_url = crate::app::core::attach::DEFAULT_ATTACH_URL;
+    let attach_url =
+        crate::app::core::attach::resolve_attach_url(surface.attach.as_deref(), surface.port);
     let mut driver = crate::app::core::driver::XyRemoteDriver::new(
         attach_url,
         surface.session.clone().unwrap_or_default(),
@@ -777,6 +799,8 @@ mod tests {
             &["xylitol", "--no-trust"][..],
             &["xylitol", "--config", "c.yaml"][..],
             &["xylitol", "--no-color"][..],
+            &["xylitol", "--attach", "http://127.0.0.1:9"][..],
+            &["xylitol", "--port", "9"][..],
         ] {
             assert!(
                 CliArgs::try_parse_from(bad).is_err(),
@@ -857,6 +881,17 @@ mod tests {
                 "expected `{name}` in top-level help:\n{help}"
             );
         }
+        #[cfg(feature = "server")]
+        {
+            assert!(
+                cmd.find_subcommand("serve").is_some(),
+                "expected serve in top-level help:\n{help}"
+            );
+            assert!(
+                cmd.find_subcommand("server").is_none(),
+                "server must not remain as a product verb:\n{help}"
+            );
+        }
         assert!(
             !help.contains("--tui") && !help.contains("--print"),
             "flat surface flags must be gone:\n{help}"
@@ -870,8 +905,112 @@ mod tests {
             "ops must stay top-level, not under tui:\n{tui_help}"
         );
         assert!(
-            tui_help.contains("--session") && tui_help.contains("--trust"),
+            tui_help.contains("--session")
+                && tui_help.contains("--trust")
+                && tui_help.contains("--attach")
+                && tui_help.contains("--port"),
             "tui must own surface flags:\n{tui_help}"
         );
+    }
+
+    #[cfg(feature = "server")]
+    #[test]
+    fn parses_cli_serve_and_rejects_aliases() {
+        let listen = CliArgs::try_parse_from(["xylitol", "serve"]).unwrap();
+        match listen.command {
+            Some(CliCommand::Serve {
+                host,
+                port,
+                action: None,
+            }) => {
+                assert_eq!(host, "127.0.0.1");
+                assert_eq!(port, 18790);
+            }
+            other => panic!("expected bare serve, got {other:?}"),
+        }
+
+        let custom =
+            CliArgs::try_parse_from(["xylitol", "serve", "--host", "0.0.0.0", "--port", "0"])
+                .unwrap();
+        match custom.command {
+            Some(CliCommand::Serve {
+                host,
+                port,
+                action: None,
+            }) => {
+                assert_eq!(host, "0.0.0.0");
+                assert_eq!(port, 0);
+            }
+            other => panic!("expected serve flags, got {other:?}"),
+        }
+
+        let stop = CliArgs::try_parse_from(["xylitol", "serve", "stop"]).unwrap();
+        assert!(matches!(
+            stop.command,
+            Some(CliCommand::Serve {
+                action: Some(ServeAction::Stop),
+                ..
+            })
+        ));
+        let install = CliArgs::try_parse_from(["xylitol", "serve", "install"]).unwrap();
+        assert!(matches!(
+            install.command,
+            Some(CliCommand::Serve {
+                action: Some(ServeAction::Install),
+                ..
+            })
+        ));
+
+        assert!(
+            CliArgs::try_parse_from(["xylitol", "server"]).is_err(),
+            "server alias must not parse"
+        );
+        assert!(
+            CliArgs::try_parse_from(["xylitol", "serve", "run"]).is_err(),
+            "serve run must not parse"
+        );
+    }
+
+    #[test]
+    fn tui_attach_flags_and_print_rejects_them() {
+        let a =
+            CliArgs::try_parse_from(["xylitol", "tui", "--attach", "http://127.0.0.1:9"]).unwrap();
+        let s = surface_from_command(a.command.as_ref());
+        assert_eq!(s.attach.as_deref(), Some("http://127.0.0.1:9"));
+
+        let b = CliArgs::try_parse_from(["xylitol", "tui", "--port", "9"]).unwrap();
+        let s = surface_from_command(b.command.as_ref());
+        assert_eq!(s.port, Some(9));
+        assert_eq!(
+            crate::app::core::attach::resolve_attach_url(s.attach.as_deref(), s.port),
+            "http://127.0.0.1:9"
+        );
+
+        let c = CliArgs::try_parse_from([
+            "xylitol",
+            "tui",
+            "--port",
+            "9",
+            "--attach",
+            "http://127.0.0.1:77",
+        ])
+        .unwrap();
+        let s = surface_from_command(c.command.as_ref());
+        assert_eq!(
+            crate::app::core::attach::resolve_attach_url(s.attach.as_deref(), s.port),
+            "http://127.0.0.1:77"
+        );
+
+        let d = CliArgs::try_parse_from(["xylitol", "tui", "run", "--port", "11"]).unwrap();
+        let s = surface_from_command(d.command.as_ref());
+        assert_eq!(s.port, Some(11));
+
+        assert!(
+            CliArgs::try_parse_from(["xylitol", "print", "--attach", "http://127.0.0.1:9", "hi"])
+                .is_err()
+        );
+        assert!(CliArgs::try_parse_from(["xylitol", "print", "--port", "9", "hi"]).is_err());
+        assert!(CliArgs::try_parse_from(["xylitol", "--attach", "http://127.0.0.1:9"]).is_err());
+        assert!(CliArgs::try_parse_from(["xylitol", "--port", "9"]).is_err());
     }
 }

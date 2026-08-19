@@ -1,46 +1,46 @@
-//! Server lifecycle subcommands dispatched from the CLI `server` verb.
+//! Host lifecycle ops dispatched from the CLI `serve` verb.
 //!
-//! `stop` prints how to SIGTERM the listener. There is no lock-file mutex.
+//! Bare `xylitol serve` binds the listener. `stop` prints how to SIGTERM it.
+//! There is no lock-file mutex and no `server` / `run` alias.
 
 use clap::Subcommand;
 
-/// Server lifecycle subcommands.
+/// Optional leaves under `xylitol serve` (omit to listen).
 #[derive(Subcommand, Debug)]
-pub enum ServerSubcommand {
-    /// Start the xylitol server.
-    Run {
-        /// Port to bind to.
-        #[arg(long, default_value = "18790")]
-        port: u16,
-    },
-    /// Register the server as a launchd/systemd service (macOS/Linux).
+pub enum ServeAction {
+    /// Register as a launchd/systemd service (macOS/Linux). Not implemented.
     Install,
     /// Print how to stop a running listener (SIGTERM). Does not read a lock file.
     Stop,
 }
 
-/// Run a server subcommand.
-pub async fn run(action: ServerSubcommand) -> Result<(), Box<dyn std::error::Error>> {
+/// Run a `serve` invocation.
+pub async fn run(
+    host: String,
+    port: u16,
+    action: Option<ServeAction>,
+) -> Result<(), Box<dyn std::error::Error>> {
     match action {
-        ServerSubcommand::Run { port } => {
+        None => {
             let config = crate::app::server::runtime::ServerConfig {
+                host: host.clone(),
                 port,
                 ..Default::default()
             };
             let (handle, actual_port) = crate::app::server::runtime::start(config).await?;
-            eprintln!("Server started on port {}", actual_port);
+            eprintln!("Host listening on {host}:{actual_port}");
             tokio::signal::ctrl_c().await?;
             eprintln!("Shutting down...");
             handle.shutdown();
             Ok(())
         }
-        ServerSubcommand::Install => {
-            eprintln!("Server install not yet implemented");
+        Some(ServeAction::Install) => {
+            eprintln!("Host install not yet implemented");
             Ok(())
         }
-        ServerSubcommand::Stop => {
+        Some(ServeAction::Stop) => {
             eprintln!(
-                "No lock-file stop protocol. Send SIGTERM to the xylitol server process \
+                "No lock-file stop protocol. Send SIGTERM to the xylitol serve process \
                  (the one listening on the configured host:port, default 127.0.0.1:18790)."
             );
             Ok(())
