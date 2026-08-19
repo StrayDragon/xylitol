@@ -116,6 +116,8 @@ mod tests {
         );
     }
 
+    // env_global: 真改进程环境变量（set_var/remove_var），与同域测试串行防交叉污染。
+    // 消除路径：用例自清理 env；未来若环境改注入式，可降为 #[parallel(env_global)]。
     #[test]
     #[serial(env_global)]
     fn inject_does_not_override_existing_env() {
@@ -132,6 +134,7 @@ mod tests {
         }
     }
 
+    // env_global: 见上（inject_sets_missing_keys 真 set_var）。
     #[test]
     #[serial(env_global)]
     fn inject_sets_missing_keys() {
@@ -148,6 +151,8 @@ mod tests {
         }
     }
 
+    // env_global: 加载 secret.env 会真注入进程环境，与同域测试串行防交叉污染。
+    // 消除路径：同 inject_does_not_override_existing_env。
     #[test]
     #[serial(env_global)]
     fn load_from_temp_project_dir() {
