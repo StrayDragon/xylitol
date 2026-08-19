@@ -1,6 +1,6 @@
-# 03 消息路径与现状缺口（prompt / bang / 审批，非裁决）
+# 03 消息路径与现状缺口
 
-> 本篇讲三种交互的协议流程、两种 bash 语义的差异、以及现状里与「同名方法但语义不同」相关的坑。信封选哪种、是否直播、Event 命名等裁决在提案（「研究结论」+「BashDelta 实现票种子」）；本篇只给流程与缺口事实。
+> 流程与缺口。信封保持 tagged JSON、bash 增量进协议：c2301。JSON-RPC / gRPC 仅作对照。
 
 ## 一种协议的两种信封形状（事实）
 
@@ -47,10 +47,12 @@ JSON-RPC 2.0 是另一种信封：
 
 进程内：`chunk_tx: mpsc::Sender<Vec<u8>>`，TUI 边收边画。`XyRemoteDriver::execute_bash` 把 `chunk_tx` 标成 `_`，REST 一问一答——长命令会整段卡住，Esc 取消和直播环对不上。**这是一个 Remote Driver 的缺口，与选哪个 HTTP 框架无关。**
 
-若要让 attach 具备直播，可选方向（候选，采纳与否见提案）：
-- 新增一个**专给 bang 的 wire Event**（UI / Esc / 会话条目都与工具不同，不建议复用 `ToolExecutionUpdate`）——方案名意向 `BashDelta` + 已有 `BashResult`；
-- 走**同一条 WebSocket 订阅**（journal 或旁路同一连接），TUI 才能在 `select!` 里一边收 chunk 一边收键；
-- `Abort` 在 bang 进行中需要能打到 server 那棵进程树（已有 `BangExecHandler` 的 cancel token）——这是该方向的一条硬性要求。
+attach 要直播，现状缺口对应的能力（不是第二套 REST 语义）：
+- bang 与工具：UI / Esc / 会话条目不同（`!!` 可不进模型上下文）
+- 同一条订阅上收 chunk 与键
+- `Abort` 打到 host 那棵 bang 进程树（已有 `BangExecHandler` cancel token）
+
+DSH 对照（`packages/core/session/src/known-event-types.ts`）：会话词表分列 `assistant/chunk`、`tool/call`+`tool/result`、`command/run`+`command/done`。模型 bash 走 `tool/*`；人发起的 slash 走 `command/*`。没有统一 ToolDelta。bash 工具集成测写的是 call/result 对，直播在 jobs 运行时，不进这条会话词表。xylitol 现状：`ToolStart`/`ToolExecutionUpdate`/`ToolEnd` vs `BashResult`；bang 在 app/`XyDriver`，不进 `AgentCapabilities`。
 
 ## 路径 3：审批（模型跑工具要你点头）
 
