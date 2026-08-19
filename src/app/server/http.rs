@@ -145,9 +145,25 @@ async fn mux_upgrade(
         return Err(StatusError::internal_server_error());
     };
     WebSocketUpgrade::new()
-        .check_origin(|o| o.is_none() || true)
+        .check_origin(mux_origin_allowed)
         .upgrade(req, res, move |ws| handle_mux(ws, host))
         .await
+}
+
+/// Native clients omit Origin. Loopback pages may send one; anything else waits c2303 `--trusted-host`.
+fn mux_origin_allowed(origin: Option<&str>) -> bool {
+    let Some(raw) = origin.filter(|s| !s.is_empty()) else {
+        return true;
+    };
+    let Ok(url) = url::Url::parse(raw) else {
+        return false;
+    };
+    match url.host() {
+        Some(url::Host::Ipv4(addr)) => addr.is_loopback(),
+        Some(url::Host::Ipv6(addr)) => addr.is_loopback(),
+        Some(url::Host::Domain(host)) => host.eq_ignore_ascii_case("localhost"),
+        None => false,
+    }
 }
 
 async fn handle_mux(ws: WebSocket, host: Arc<HostState>) {
@@ -225,6 +241,16 @@ mod tests {
             text.contains("server-response") || text.contains("ok"),
             "{text}"
         );
+    }
+
+    #[test]
+    fn mux_origin_native_and_loopback_only() {
+        assert!(mux_origin_allowed(None));
+        assert!(mux_origin_allowed(Some("http://127.0.0.1:18790")));
+        assert!(mux_origin_allowed(Some("http://localhost:5173")));
+        assert!(mux_origin_allowed(Some("http://[::1]/")));
+        assert!(!mux_origin_allowed(Some("https://evil.example")));
+        assert!(!mux_origin_allowed(Some("null")));
     }
 
     #[tokio::test]
