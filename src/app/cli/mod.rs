@@ -528,6 +528,12 @@ async fn run_product_tui_attached(
         attach_url,
         surface.session.clone().unwrap_or_default(),
     );
+    let ask_gateway = std::sync::Arc::new(crate::app::tui::AskHostGateway::new());
+    ask_gateway.set_host_client(std::sync::Arc::new(driver.host_client().clone()));
+    let gw = ask_gateway.clone();
+    driver.set_reverse_rpc_notify(std::sync::Arc::new(move |rpc_id, method, payload| {
+        gw.push_from_server(rpc_id, &method, payload);
+    }));
     let seed_n;
     let activity_fold;
     match crate::infra::config::loader::load_app_config(
@@ -542,7 +548,6 @@ async fn run_product_tui_attached(
             activity_fold = crate::app::tui::activity_fold::ActivityFoldSettings::default();
         }
     }
-    let ask_gateway = std::sync::Arc::new(crate::app::tui::AskHostGateway::new());
     let tui_result = crate::app::tui::run(
         &mut driver,
         crate::app::tui::TuiRunOptions {

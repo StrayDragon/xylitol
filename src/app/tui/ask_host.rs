@@ -16,20 +16,102 @@ pub struct PendingAsk {
 }
 
 /// Channel-based [`AskUserGateway`] shared by AskTool and the TUI host.
+///
+/// When a [`HostClient`] is set (product TUI attach), reverse-RPC answers go
+/// through `POST /api/respond` instead of a local fake.
 pub struct AskHostGateway {
     pending: Mutex<Option<PendingAsk>>,
+    host: Mutex<Option<std::sync::Arc<dyn crate::app::core::host_client::HostClient>>>,
 }
 
 impl AskHostGateway {
     pub fn new() -> Self {
         Self {
             pending: Mutex::new(None),
+            host: Mutex::new(None),
+        }
+    }
+
+    /// Attach-mode: answers are posted to Host via [`HostClient::respond`].
+    pub fn set_host_client(
+        &self,
+        client: std::sync::Arc<dyn crate::app::core::host_client::HostClient>,
+    ) {
+        if let Ok(mut slot) = self.host.lock() {
+            *slot = Some(client);
         }
     }
 
     /// Take one pending ask (if any) for the host to mount ChoicePrompt.
     pub fn take_pending(&self) -> Option<PendingAsk> {
         self.pending.lock().ok()?.take()
+    }
+
+    /// Mux `approval/requested` / `question/requested` → local ChoicePrompt, then respond.
+    pub fn push_from_server(&self, rpc_id: String, method: &str, payload: serde_json::Value) {
+        use crate::protocol::ports::ask::{AskModeArg, AskOptionArg, AskQuestionArg};
+        let questions = if method == "approval/requested" {
+            vec![AskQuestionArg {
+                id: "approved".into(),
+                prompt: "Host requests tool approval".into(),
+                label: Some("Approval".into()),
+                mode: AskModeArg::Single,
+                options: vec![
+                    AskOptionArg {
+                        value: "true".into(),
+                        label: "Approve".into(),
+                        description: None,
+                        recommended: true,
+                    },
+                    AskOptionArg {
+                        value: "false".into(),
+                        label: "Deny".into(),
+                        description: None,
+                        recommended: false,
+                    },
+                ],
+                allow_other: false,
+            }]
+        } else {
+            payload
+                .get("questions")
+                .cloned()
+                .and_then(|v| serde_json::from_value(v).ok())
+                .unwrap_or_default()
+        };
+        let (tx, rx) = oneshot::channel();
+        {
+            let Ok(mut slot) = self.pending.lock() else {
+                return;
+            };
+            *slot = Some(PendingAsk {
+                questions,
+                reply: tx,
+            });
+        }
+        let host = self.host.lock().ok().and_then(|g| g.clone());
+        let kind_approval = method == "approval/requested";
+        tokio::spawn(async move {
+            let answered = rx.await;
+            let Some(host) = host else {
+                return;
+            };
+            let payload = match answered {
+                Ok(Ok(text)) if kind_approval => {
+                    let approved = text.contains("true") && !text.contains("false");
+                    serde_json::json!({ "approved": approved })
+                }
+                Ok(Ok(text)) => serde_json::json!({ "answer": text }),
+                Ok(Err(_)) | Err(_) => {
+                    if kind_approval {
+                        serde_json::json!({ "approved": false })
+                    } else {
+                        serde_json::json!({ "answer": "" })
+                    }
+                }
+            };
+            let _ = host.respond(&rpc_id, payload).await;
+        });
     }
 }
 

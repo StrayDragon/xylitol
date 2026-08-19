@@ -14,7 +14,7 @@ pub trait AskUserGateway: Send + Sync {
 }
 
 /// One option inside an ask question.
-#[derive(Debug, Clone, serde::Deserialize)]
+#[derive(Debug, Clone, serde::Serialize, serde::Deserialize)]
 pub struct AskOptionArg {
     pub value: String,
     pub label: String,
@@ -25,7 +25,7 @@ pub struct AskOptionArg {
 }
 
 /// Selection mode for one question.
-#[derive(Debug, Clone, Copy, PartialEq, Eq, serde::Deserialize)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
 #[serde(rename_all = "lowercase")]
 pub enum AskModeArg {
     Single,
@@ -33,7 +33,7 @@ pub enum AskModeArg {
 }
 
 /// One question in an `ask` call.
-#[derive(Debug, Clone, serde::Deserialize)]
+#[derive(Debug, Clone, serde::Serialize, serde::Deserialize)]
 pub struct AskQuestionArg {
     pub id: String,
     pub prompt: String,
@@ -50,7 +50,7 @@ fn default_allow_other() -> bool {
 }
 
 /// Typed args for the `ask` tool.
-#[derive(Debug, Clone, serde::Deserialize)]
+#[derive(Debug, Clone, serde::Serialize, serde::Deserialize)]
 pub struct AskArgs {
     pub questions: Vec<AskQuestionArg>,
 }
