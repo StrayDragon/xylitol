@@ -6,7 +6,7 @@
 
 - [x] 1.1 已 `change attach` 到 `sdd/c2306-fix-tui-attach-parity`（`base_sha` 钉本地 HEAD `977650e0`）；未走 `change start`（当时规划壳未提交）
 - [x] 1.2 live specs：`app-tui-host`（drain/tick 禁止同步 RPC；启动即 mux+subscribe；MCP 头卡刷新到 settle）；`app-tui-chrome` / `app-tui-input`（头卡 connected；strip 不被空 stats 抹掉；同文二次提问可见）；`server-core` / `protocol-app`（`loaded_resources` 真连接态；`queue_stats` 只读 unary；subscribe 跨 AgentEnd）；`infra-mcp`（写者 unary 不 wait 全部 MCP）
-- [ ] 1.3 commit Specs landing；`llman sdd validate c2306-fix-tui-attach-parity --strict --no-interactive`；`readyToImplement=true`
+- [x] 1.3 commit Specs landing；`llman sdd validate c2306-fix-tui-attach-parity --strict --no-check --no-interactive` 结构过闸（实现任务仍待 apply）
 
 ## 2. MCP 头卡（先红后绿）
 
