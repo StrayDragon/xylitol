@@ -22,7 +22,7 @@ N 客户端 ↔ 1 个 HTTP host，host 承载多 session。栈：salvo。REST �
 ## 开放决策
 
 - MCP 池 key 的落地阈值。
-- embed 同进程如何接到该传输面（c2303）。
+- embed 同进程的 **carrier 实现**（channel vs 套接字）归 c2301/c2303。产品缝已由 c2300 design 钉死：client 与 host 走同一 dispatcher，禁止「只有套接字才进 host」。
 
 ## 非目标
 
