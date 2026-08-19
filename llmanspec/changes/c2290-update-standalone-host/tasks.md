@@ -6,14 +6,14 @@
 
 ## 1. 合约
 
-- [ ] 1.1 `llman sdd change start c2290-update-standalone-host`（工作区干净且在默认分支；旧同名分支须已删）
-- [ ] 1.2 live specs：`layer-architecture` / `app-tui` / `cli-entry` / `protocol-app` / `server-core`——四象限 + 产品 TUI attach；**不要**写 JSON-RPC 2.0 或产品 SSE
+- [x] 1.1 `llman sdd change start c2290-update-standalone-host`（工作区干净且在默认分支；旧同名分支须已删）
+- [x] 1.2 live specs：`layer-architecture` / `app-tui` / `cli-entry` / `protocol-app` / `server-core`——四象限 + 产品 TUI attach；**不要**写 JSON-RPC 2.0 或产品 SSE
 - [ ] 1.3 [blocked-by: 1.2] `llman sdd validate c2290-update-standalone-host --strict --no-interactive --no-check`；commit Specs landing
 
 ## 2. 文档
 
-- [ ] 2.1 根 `AGENTS.md`、`src/AGENTS.md`：产品 TUI = 四象限客户端；host 角色仍 ≠ listener 定义；默认拓扑是独立 Host
-- [ ] 2.2 `docs/architecture/库与多客户端.md` 与 `远程体验与线协议.md`：薄客户端已接线为 attach；信封与通道解耦；库 embed / print 仍 InProcess
+- [x] 2.1 根 `AGENTS.md`、`src/AGENTS.md`：产品 TUI = 四象限客户端；host 角色仍 ≠ listener 定义；默认拓扑是独立 Host
+- [x] 2.2 `docs/architecture/库与多客户端.md` 与 `远程体验与线协议.md`：薄客户端已接线为 attach；信封与通道解耦；库 embed / print 仍 InProcess
 
 ## 3. 信封、方法表、typed client、specta（监听器仍可留给 c2302）
 

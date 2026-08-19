@@ -41,7 +41,8 @@ Skill/extension slash 尚未交付：需要时在 **app / `XyDriver`** 侧注册
 
 - **组合根**才同时 import `agent` + `infra` 做装配（`app/core` 与各面入口）。靠 review + 行为测守住；**禁止**源码 grep 元测试卡 import。
 - **应用面**：只经 `crate::agent`（mod 级）与 `crate::app::core`；共享流水线 = 装配 → `XyDriver::run` → `XyEvent` 流 → 面渲染。不够就扩 seam（`l8ng-write-surface`），不绕过。
-- **产品角色（client / host）**：TUI 等面是 client（键、画、TTY、编辑器、剪贴板）。模型 / 会话 / MCP / 工作区 / trust 是 host 操作器角色。默认 embed 两角色同进程、走同一条 Command/Event 语义；**禁止**把 host 等同于 HTTP 监听器。监听器是 `serve` 的后置职责。
+- **产品角色（client / host）**：TUI 等面是 client（键、画、TTY、编辑器、剪贴板）。模型 / 会话 / MCP / 工作区 / trust 是 host 操作器角色。print / 库嵌入仍可同进程走同一方法表。**禁止**把 host 等同于 HTTP 监听器；**产品 TUI** 默认 attach 本机监听器（未在听失败）。
+- **产品信封**：四象限（client-request / server-response / server-request / client-response）。unary + respond = HTTP POST；下行 = WebSocket 且不收业务上行。Command/Event 是 payload。跨进程不跳过信封直调 Driver。
 - **进程内 Driver** 可调 `infra` 做 trust/clipboard/config 等表面能力；默认工具集 / provider / session 仍归组合根。面仍禁止 reach。剪贴板等面本地能力留在 client，不交给远程 host 写本机盘。
 - **steer / follow-up / abort**：只经 `XyDriver` 队列 API；面不得改 ReAct 内部队列。产品语义：`docs/architecture/插话续跑与中止.md`。
 - **`AgentRuntime` 会话 actor（硬约束）**：一个 runtime **显式绑定一个 session** 后才可根提交；任意时刻至多一个 ReAct worker 可写该 session（单飞）。根提交默认拒绝忙碌并发；`steer`/`follow_up` 是轮内改道，**不是**第二次根提交。`RunId` 仅运行时内部，不进 `XyEvent`/wire。未来子 agent = **另建隔离 runtime**，不得在同一 runtime 按 session id 多路复用，也不得共享 history / cancel / active turn / 插话队列。构造基线用可克隆的 `RuntimePorts`（`AgentBuilder::build_ports` → `materialize_runtime`），每次物化得到独立 ModelManager / queues / session / coordinator / compaction。
@@ -51,8 +52,8 @@ Skill/extension slash 尚未交付：需要时在 **app / `XyDriver`** 侧注册
 ## 三圈契约与 `Xy*`
 
 ```text
-① 线协议     wire Command / Event
-② 应用协议   XyDriver + XyEvent 流 + XyDriverError
+① 线协议     四象限信封 + 方法表（Command/Event 为载荷）
+② 应用协议   XyDriver + XyEvent 流 + XyDriverError（Host 内缝；跨进程走信封）
 ③ 可替换口   XyModel / XyTool / XySessionStore / …
 ```
 

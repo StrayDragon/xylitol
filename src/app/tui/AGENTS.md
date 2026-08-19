@@ -35,7 +35,7 @@
 
 - 渲染只用 `xylitol_tui`；缺能力先改包再接线。产品路径 **host 驱动**（demo 专用启动 API 勿用于生产面）。
 - **鼠标**：产品默认 **ApplicationOwned**（alt-screen）：会话 begin 后开 mouse capture，应用内选区 + dock 排除输入面；**不**读 `XYLITOL_TUI_MOUSE`（该 env 仅库 lab / e2e / Inline demo）。库仍暴露 Inline 构造入口。模式在 host **启动构造**时绑定（`new_product_ui_with_meta_mode` / `TuiRunOptions`，缺省 ApplicationOwned）；**禁止** mid-session 热切 / 再引入 `apply_interaction_mode`。`XYLITOL_TUI_INLINE=1` 仅 lab 窥视产品 Inline 构造（启动绑定）；**不是**产品旗标 / 设置；缺省仍 ApplicationOwned。折叠三角列点击（Tool/Diff/Ask/Thinking per-id + Compaction / OutputViewport / Segment）经 `set_transcript_hit_priority` 接线（[`c2040`](../../../llmanspec/changes/archive/2026-08-12-c2040-add-tui-mouse-click-fold-triangle/proposal.md)；广义剩余 [`c2045`](../../../llmanspec/changes/archive/2026-08-12-c2045-add-tui-fold-target-remaining/proposal.md)；库双模式见 [`c2070`](../../../llmanspec/changes/archive/2026-08-12-c2070-add-package-tui-dual-interaction-modes/proposal.md)）。命名：用 `Inline` / `ApplicationOwned`，勿写 `mode_a`/`mode_b`（见 `packages/xylitol-tui/AGENTS.md` §硬约束 8）。
-- Agent 只经 `XyDriver`；禁止 reach `agent` / `infra` 内部（同 `src/AGENTS.md`）。
+- Agent 只经产品信封客户端（面侧）或 Host 内 `XyDriver`；禁止 reach `agent` / `infra` 内部（同 `src/AGENTS.md`）。产品 TUI MUST NOT 默认同进程直握操作器。
 - Trust 在 CLI 闸；本面 `EditorSlot::Choice` 已解冻给内置 `ask`（c1850）。Plate/Settings stub 仍冻结；产品未拍板勿扩活树/活设置。
 - Esc（行为规则；实现细节以代码与 stage-QA design 为准）：
   - Idle 空 editor → 双 Esc 开树

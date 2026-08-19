@@ -2,7 +2,7 @@ kind: llman.sdd.spec
 name: "layer-architecture"
 purpose: "分层与 seam、Xy 精选导出、嵌入缝与组件粒度：agent / protocol / infra / app（单 crate；无独立 domain 或 runtime_protocol 顶栏；不用源码 grep 元测试卡写法）。"
 valid_scope[3]: "agent 层与 infra 层与 app 层与 protocol 层","workspace 测试","分层约定载体（AGENTS）"
-requirements[30]{req_id,title,statement}:
+requirements[31]{req_id,title,statement}:
   la1,核心层与 protocol 布局,"System MUST 以 agent 层承载编排与投影（ReAct、LLM 投影、session 编排）；agent 侧共享类型 MUST 经 protocol 承载（因 infra 不得依赖 agent）。System MUST 以单一 protocol 层作为跨边界契约 SSOT：wire（Command/Event）与 ports（XyModel、XyTool、XySessionStore、XyEventSink 等）为契约子树；进 port/wire 签名的共享类型（AgentMessage、Env、SessionEntry、XyEvent、XyChunk 等）MUST 位于 protocol 根共享区（可按领域聚子树，非独立 vocab/types 顶栏）；wire MUST NOT 依赖 ports；ports MAY 依赖根共享类型；根共享类型 MUST NOT 依赖 ports/wire/agent/infra。MUST NOT 提供独立的 domain、runtime_protocol 或第三顶栏子树。"
   la2,向下依赖,"infra 层 MUST NOT 导入任何 agent 符号；agent 层 MUST NOT 导入任何具体 infra 类型（仅经 protocol ports）；应用面（cli 渲染子路径、tui、非组合根的 app 模块）MUST NOT 导入 infra 或 agent 子模块内部，MUST 经 app 跨面缝（composition / Driver / bootstrap / dispatch）与 agent 公共入口导入。组合根（cli 面、server 面、装配模块）可同时导入 agent 与 infra 做装配。InProcessDriver MAY 调用文档化的表面 infra（trust / clipboard / 必要 config 读）；MUST NOT 成为第二套组合根去构造 provider/session 工具集。protocol 层 MUST NOT 依赖 agent 或 infra 实现。分层靠 AGENTS + review + 缝行为测保障，MUST NOT 要求源码 grep 元测试。"
   la4,app 层命名,"app 表面（用户入口：cli、server、tui、gui）与跨面缝（composition、driver）MUST 分离：缝位于 app 跨面缝区，表面不托管缝实现。print 模式 MUST 为 CLI 子模式，而非顶层 app 模块。"
@@ -22,7 +22,7 @@ requirements[30]{req_id,title,statement}:
   "la-dispatch-consume",dispatch 有消费方,"跨面命令执行缝 dispatch MUST 至少被一个生产应用面消费（Server 或 TUI）；仅单测覆盖而无面接线视为逻辑死码，死码分诊与激活策略由架构 AGENTS 与 l8ng-audit-dead-code skill 承载。"
   la25,provider 包开闭,"LLM 厂商差异 MUST 收敛在 packages/xylitol-ai-bridge 的 adapter 族；主仓投影缝（agent 内 project_for_llm）仅负责 Env→LLM 折叠。新 OpenAI-like 或 Anthropic-like 兼容端 MUST 以开闭方式扩展（新 adapter/配置），MUST NOT 为某一网关修改 AgentMessage 角色集或 agent ReAct 核心；agent MAY 依赖 bridge DTO 组合 Llm 臂；agent/infra MUST NOT 依赖厂商 HTTP/SDK。"
   la26,feature-flags,"System MUST 为每个可选能力定义带域前缀的 feature flag，使非默认 feature 零开销编译剔除。内置能力（tools、hooks、security、print-mode）无 feature flag，运行时由 config.yaml 控制。ACP 模式使用 feature flag infra-acp。"
-  la27,minimal-default-features,"Cargo.toml default MUST 为 cli + tui + otel（个人 agent 开箱）；server MUST 为 opt-in；MUST NOT 要求 default 包含全部非 dev feature。构建 feature 闸与条件编译以 Cargo.toml 为 SSOT（原 build-config 并入）。"
+  la27,minimal-default-features,"Cargo.toml default MUST 为 cli + tui + otel + server（个人 agent 开箱含本机 Host 监听器能力）；MUST NOT 要求 default 包含全部非 dev feature。构建 feature 闸与条件编译以 Cargo.toml 为 SSOT（原 build-config 并入）。"
   ar01,清除 pi 文档引用,"源文件 doc comments MUST NOT 引用 pi coding agent 或其 TypeScript 模块；pi 设计理由引用 MUST 替换为该模块实际职责的独立描述。文档卫生清单（含存量清理跟进）由架构 AGENTS 维护。"
   ar06,精选库入口 Xy 前缀,精选进 crate 公开 API（lib.rs pub use）的可替换端口、跨面生命周期事件及其绑定签名类型 MUST 使用 Xy 前缀；应用面缝（Driver/bootstrap/dispatch）、protocol 线协议类型、infra 具体实现、以及未导出的内部协作者 MUST NOT 仅为品牌而加 Xy 前缀。
   ar07,消除重复领域实体,System MUST NOT 为同一领域概念定义多种类型；Usage、StopReason 与 Compaction 配置 MUST 各有一个 canonical 类型。
@@ -30,10 +30,11 @@ requirements[30]{req_id,title,statement}:
   r12,配置 JSON Schema 边界,"需要 JSON Schema 的配置/settings DTO MUST 收敛于 infra 配置边界（config/settings 或等价）并在该处 derive schemars；agent/protocol 会话词汇 MUST NOT 仅为 schema 而 derive JsonSchema。"
   "la-cs1","双角色","System MUST 把运行时分成 client 与 host 两个产品角色（职责划分，MUST NOT 解读为必须拆成两个进程）。client MUST 只承担面本地：键盘、绘制、TTY、本机编辑器、剪贴板。host MUST 承担模型、会话生命周期、资源装配（配置 / MCP / 工具 / 技能 / prompt）、工作区执行（含人发起的 bang）与项目信任。"
   "la-cs2","归属判据","依赖工作区、仓库、模型或 MCP 的能力 MUST 由 host 执行。依赖本机终端或本机硬件的能力 MUST 由 client 执行。导出 MUST 由 host 序列化内容、由 client 写入本机路径；导入对称。一条 reload MUST 同时让 client 热加载本机键位与主题，并向 host 请求重装 MCP / prompt / 技能。默认 embed 同进程时，导出/导入/reload MUST 视为已满足（同一进程内按角色分工即可），MUST NOT 要求先存在跨进程 attach。"
-  "la-cs3","embed 不要求监听器","host 是操作器角色，MUST NOT 被等同于占用了网络绑定的监听器。默认 embed MUST 允许 client 与 host 同进程、同一条产品契约自连，且 MUST NOT 要求先占用监听地址。占用绑定是显式 serve 的职责，不是 embed 的前提。本 requirement MUST NOT 废止现行 server 应用面的单实例锁与 REST 暴露约束；那是监听器与 server 面的既有规则，与 host 操作器角色的定义分开。"
+  "la-cs3","embed 不要求监听器","host 是操作器角色，MUST NOT 被等同于占用了网络绑定的监听器。print 与库嵌入 MUST 允许 client 与 host 同进程、同一条产品契约自连，且 MUST NOT 要求先占用监听地址。占用绑定是显式 serve 的职责，不是 embed 的前提。本条 MUST NOT 解读为产品 TUI 可以无监听器启动。"
   "la-cs4","session 原子与分面","产品最小对话单元 MUST 是 session。cwd MUST 只表示执行面（工具 / bang / trust / MCP 池），MUST NOT 当作唯一分类夹。视图组织 MUST 允许用 tag 等高频分面，且分面索引 MUST 与 transcript 分离。本 requirement MUST NOT 要求交付独立 tag catalog。"
   "la-cs5","一 session 一写者","同一 session MUST 至多一个写者。对已被写入的 session 再 attach MUST 只读恢复。只读面上发起写入 MUST 失败并说明已有其它客户端以写者连接。尚未提供多客户端 attach 时，单进程默认路径 MUST 视为已满足本规则。"
-scenarios[30]{req_id,id,given,when,then,feature}:
+  "la-cs6","产品 TUI 要求监听器","产品 TUI MUST 要求本机 Host 监听器已在听（默认 127.0.0.1:18790，可覆盖）。未在听 MUST 失败。print 与库嵌入 MUST 仍允许无网络绑定。"
+scenarios[31]{req_id,id,given,when,then,feature}:
   la1,la1-unit,"核心层 约束由架构约定与缝行为测覆盖（非 BDD harness）",审查实现与对应测试,"行为符合本 requirement 陈述",false
   la2,la2-unit,"向下依赖 约束由架构约定与缝行为测覆盖（非 BDD harness）",审查实现与对应测试,"行为符合本 requirement 陈述",false
   la4,la4-unit,"app 层命名 约束由架构约定与缝行为测覆盖（非 BDD harness）",审查实现与对应测试,"行为符合本 requirement 陈述",false
@@ -64,3 +65,4 @@ scenarios[30]{req_id,id,given,when,then,feature}:
   "la-cs3","la-cs3-unit","embed 不要求监听器 约束由架构约定与缝行为测覆盖（非 BDD harness）",审查实现与对应测试,"行为符合本 requirement 陈述",false
   "la-cs4","la-cs4-unit","session 原子与分面 约束由架构约定与缝行为测覆盖（非 BDD harness）",审查实现与对应测试,"行为符合本 requirement 陈述",false
   "la-cs5","la-cs5-unit","一 session 一写者 约束由架构约定与缝行为测覆盖（非 BDD harness）",审查实现与对应测试,"行为符合本 requirement 陈述",false
+  "la-cs6","la-cs6-unit","产品 TUI 要求监听器 约束由架构约定与缝行为测覆盖（非 BDD harness）",审查实现与对应测试,"行为符合本 requirement 陈述",false
