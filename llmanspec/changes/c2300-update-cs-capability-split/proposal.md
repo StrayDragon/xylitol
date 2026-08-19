@@ -1,5 +1,8 @@
 ---
 depends_on: []
+branch: sdd/c2300-update-cs-capability-split
+base_sha: 7acd591a41afffa741a7a1ea199ec53701e3aa6b
+checkpointed: false
 ---
 
 # 统一 client / host 能力归属
