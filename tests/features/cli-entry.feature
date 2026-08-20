@@ -104,3 +104,9 @@
     假如 当前 session 未持久化
     当 TUI 或 print 正常退出
     那么 stderr 不含 resume 提示行
+
+  @req:ce21
+  场景: tui-attach-host-down
+    假如 本机 Host 未在听
+    当 产品 TUI 尝试 attach
+    那么 非零退出并提示先启动 Host

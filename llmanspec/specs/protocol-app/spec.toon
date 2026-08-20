@@ -1,15 +1,15 @@
 kind: llman.sdd.spec
 name: "protocol-app"
-purpose: Client↔core 线协议词汇（Command/Event 为产品真源；传输无关；禁双轨）。
+purpose: Client↔host 产品真源为四象限信封；Command/Event 为方法/帧载荷；禁 JSON-RPC 2.0 与全双工 WS 外层。
 valid_scope[2]: "主 crate","workspace 测试"
-requirements[21]{req_id,title,statement}:
+requirements[24]{req_id,title,statement}:
   ip1,Command 枚举,protocol MUST 定义 Command 枚举，至少覆盖 Run、Cancel、SwitchModel、SetThinking、ListCommands、ApproveTool、AnswerQuestion、SwitchSession、GetMessages、ExportHtml、ExportJsonl、ImportJsonl；每个 client→core 消息 MUST 反序列化为此枚举。
   ip2,Event 枚举,protocol/ MUST 定义 Event 枚举，至少覆盖 TurnStart、Delta、ToolCall、ApprovalRequired、QuestionRequired、TurnEnd、Usage；每个 core→client 消息 MUST 反序列化为此枚举。
-  ip3,信封与错误,"protocol/ MUST 定义统一 REST 响应信封 {code, msg, data, request_id} 与类型化错误码集；信封类型位于 protocol/ 且 MUST 传输无关（内部无 HTTP 或 WS 类型）。"
+  ip3,信封与错误,"产品 unary 应答 MUST 使用结果形态：成功则 ok 为真并带 value，失败则 ok 为假并带稳定 code 与 details。合法信封的 HTTP 状态 MUST 表示载体成功；非法信封 MUST 失败。MUST NOT 以 JSON-RPC 2.0 数字码为产品错误模型。旧 REST {code,msg,data} 形态 MUST NOT 再作为产品 TUI 路径。"
   ip6,Subscribe 命令,"protocol/ MUST 定义 Command::Subscribe {session_id, last_seq} 用于 WS 订阅，Event::Subscribed {session_id, seq} 作为确认。"
   ip7,Event 变体完整,"protocol::Event MUST 覆盖全部 AgentEvent 变体：TurnStart、TurnEnd、MessageStart、MessageEnd、MessageUpdate、ToolExecutionUpdate、CompactionEnd、TextDelta、ThinkingDelta；ThinkingDelta MUST 往返 XyEvent::ThinkingDelta 且不得降级为空 MessageUpdate。"
   ip8,会话命令分发,RPC dispatch MUST 实现 SwitchSession：经 SessionStore 校验目标会话存在并切换上下文；GetMessages 返回已加载 SessionEntry 记录；ExportJsonl 与 ImportJsonl 委托会话导出/导入实现；MUST NOT 交付 stub 或仅字符串实现。
-  ip9,dispatch 归属,"protocol::Command 变体执行语义（Command 分发时做什么）MUST 位于 app::core::dispatch 并由 tui 消费；需活跃 WS 会话的传输专属变体（Subscribe、ApproveTool、AnswerQuestion）MUST 留在 server/ws 层，MUST NOT 泄漏到 app::core::dispatch。"
+  ip9,dispatch 归属,"会话操作的执行语义 MUST 进入同一产品分发。订阅 MUST 为 unary。审批与问卷 MUST 作为对 host 可应答下行的 client-response（回显同一相关 id），MUST NOT 当作 unary，MUST NOT 留在仅全双工 WebSocket 应用层。"
   "ip-q1",steer 与 followup 命令,"protocol::Command MUST 包含 Steer、FollowUp 与 ClearQueue（或语义等价变体）；client 经线协议入队或清队列 MUST 反序列化为这些变体。"
   "ip-q2",dispatch 队列命令,"app::core::dispatch MUST 将 Steer、FollowUp、ClearQueue 路由到 Driver 对应方法；这些变体 MUST NOT 留在仅 WS 层处理。"
   ip10,线协议不镜像厂商事件,"protocol::Event MUST 映射领域 XyEvent 闭集；MUST NOT 为 OpenAI/Anthropic 等厂商专属事件增加平行变体。无法表达的细节 MUST 留在领域 Message 载荷或被省略，而非拓宽线协议宽表。"
@@ -18,20 +18,23 @@ requirements[21]{req_id,title,statement}:
   pa-m2,"preview-text-excludes-thinking",用于 editor 预填与树摘要的 message 纯文本提取（message_text 或等价）MUST 只聚合 type=text 的正文；MUST NOT 把 type=thinking 的正文拼进预填/摘要。
   pa-e1,"xy-event-error-kind","XyEvent::Error MUST 携带结构化 XyEventError（kind + message）；kind 在源自 XyError 时 MUST 对齐 XyError::kind（Aborted/Provider/Session/Config/Tool/…），裸字符串 MUST 归类为 Message（message==aborted 除外，归 Aborted）。wire Event::Error MUST 可选携带 kind；有 kind 时往返 MUST 保留；缺省反序列化 MUST 不 panic（可回落 Message 或由 message 推断 Aborted）。"
   pa-e2,"error-kind-at-source","应用缝与 XyEvent::Error 对会话持久化、导出/导入、trust 持久化失败 MUST 给出稳定 kind（至少能区分缺失、IO、校验、不支持），MUST NOT 仅凭错误文案子串猜测这些域的分类。用户可见 message MUST 不把同一语义前缀叠两次。真正无结构的提示 MAY 使用 Message kind。"
-  "pa-cs1","单一产品真源","client 与 host 之间的产品语义 MUST 且仅 MUST 经 Command 或 Event 表达。embed 与 attach MUST 使用同一套类型。MUST NOT 为远程再开平行的 REST 产品动词。现行 REST 响应信封约束在监听器收口前仍可存在，MUST NOT 再增加新的 REST 产品动词。"
+  "pa-cs1","单一产品真源","client 与 host 之间的产品消息 MUST 且仅 MUST 经四象限信封投递。Command 与 Event 闭集 MUST 作为方法载荷 / 下行帧内容，MUST NOT 再作为产品协议外层。测试用进程内客户端与产品 attach 客户端 MUST 使用同一方法表。MUST NOT 为远程再开平行的 REST 产品动词或第二套词表。"
+  "pa-env1","四象限与通道","产品信封 MUST 区分为 client-request、server-response、server-request、client-response。相关 id 由发起方铸造，应答 MUST 回显。网络 unary 与 respond MUST 经 HTTP POST；网络下行 MUST 为 WebSocket 文本帧且该套接字 MUST NOT 收业务上行。产品 TUI MUST NOT 用 SSE 当下行真源。MUST NOT 以 JSON-RPC 2.0 为产品协议。"
+  "pa-map1","一份方法表","已承诺的会话操作 MUST 出现在一份方法表（unary 名 + 载荷 + 返回）。关闭 TUI MUST NOT 停 Host。审批与问卷 MUST NOT 登记为 unary。下行生命周期 MUST 能作为 server-request 载荷携带既有 Event，MUST NOT 为每个增量另开方法名。未登记方法 MUST 失败。"
+  "pa-bind1","跨语言类型闸","信封与方法载荷的 TypeScript 形状 MUST 从同一份产品类型导出并检入；重生后与检入副本不一致 MUST 使日常验证入口失败。MUST NOT 以 OpenAPI 或 AsyncAPI 为产品类型真源。"
   "pa-cs2","面本地不进协议","剪贴板（含 OSC 52）、TTY、本机编辑器、键位与绘制 MUST NOT 成为 Command 或 Event 变体。这些能力 MUST 留在 client 面本地。"
   "pa-cs3","bang 与工具分流","人发起的工作区 bash MUST 走独立于模型工具的事件路径，MUST NOT 并进 ToolStart / ToolExecutionUpdate / ToolEnd。结束态 MUST 能用 BashResult（或语义等价）表达。直播增量若尚未成为 Event 变体，MUST NOT 改走工具流或 REST 冒充。"
   "pa-cs4","订阅与握手版本","每条线协议消息 MUST 归属某个 session。客户端 MUST 能以 session 与 last_seq 订阅并续传；journal 截断超过 last_seq 时 MUST 发出 resync。握手 MUST 携带协议版本；对不上 MUST 断开且 MUST NOT 降级。现行 ServerHello 版本字段在改名前 MUST 视为同一握手语义，MUST NOT 同时维护两套版本协商。"
   "pa-cs5","闭集缺口禁旁路","协议闭集 MUST 能表达：host 侧重装（MCP / prompt / 技能）、项目信任持久化、session 写者与只读、导出回传内容、人 bash 直播增量。上述语义在尚未进入 Command/Event 枚举前，MUST NOT 用新的 REST 产品动词或第二套远程专用词表冒充；MUST NOT 要求本 requirement 单独新增运行时枚举变体。"
   "pa-cs6","反向 RPC 首应答","host 向 client 发起的审批与问卷 MUST 能经线协议往返；同一 call 的第一应答 MUST 生效，后续 MUST 忽略。"
-scenarios[23]{req_id,id,given,when,then,feature}:
+scenarios[26]{req_id,id,given,when,then,feature}:
   ip1,command-enum-roundtrip,"构造含 ExportJsonl 与 ImportJsonl 的 Command","serde JSON 往返",变体与字段保持一致,false
   ip2,event-enum-covers-lifecycle,"检查 protocol::Event 变体集","对照 TurnStart/Delta/ToolCall/ApprovalRequired/QuestionRequired/TurnEnd/Usage",所需生命周期变体均存在,false
-  ip3,envelope-serializes,"构造含 code Ok 与 data 的统一信封","序列化为 JSON","含 code、msg、data、request_id 且无 HTTP/WS 类型泄漏",false
+  ip3,envelope-serializes,"构造成功与失败的产品 unary 结果","序列化为 JSON","成功含 ok 真与 value；失败含 ok 假与 code；无 JSON-RPC 数字码",false
   ip6,subscribe-command-roundtrip,"Command::Subscribe {session_id, last_seq}","serde JSON 往返","session_id 与 last_seq 一致",false
   ip7,thinking-delta-wire-roundtrip,"XyEvent::ThinkingDelta 经 wire Event 映射",反序列化,"仍为 ThinkingDelta 而非空 MessageUpdate",false
   ip8,switch-session-validates,"对不存在 session id 分发 SwitchSession","RPC/dispatch 处理",返回错误且活动会话未改变,false
-  ip9,ws-only-variants-stay-server,"检查 app::core::dispatch","审查 Subscribe/ApproveTool/AnswerQuestion","不在 core dispatch；留在 server/ws",false
+  ip9,respond-not-unary,"审批或问卷","经产品分发","走 client-response 回显相关 id；不作为 unary；不留在仅全双工 WS 层",false
   ip-q1,steer-followup-serde,"Command::Steer / FollowUp / ClearQueue","serde JSON 往返",字段与原文一致,false
   ip-q2,dispatch-queue-commands,"dispatch Steer/FollowUp/ClearQueue",执行,"路由到 Driver 对应方法且非未处理变体",false
   ip10,no-vendor-wire-variants,"对比 protocol::Event 与厂商 SSE 事件名",审查线协议变体,无厂商专名平行变体,false
@@ -42,7 +45,10 @@ scenarios[23]{req_id,id,given,when,then,feature}:
   pa-e1,xy-event-error-legacy-message,"wire Event::Error 仅有 message=aborted 且无 kind","反序列化为 XyEvent::Error","is_aborted 为真",false
   pa-e2,session-persist-kind-not-guessed,会话持久化失败（缺失或写盘）,经应用缝或 XyEvent::Error 观察,kind 为稳定分类而非仅凭文案子串猜出,false
   pa-e2,message-no-stacked-prefix,失败 message 含缺失语义,展示给用户,同一前缀（如 not found）不叠两次,false
-  "pa-cs1","pa-cs1-unit","产品语义只经 Command/Event","审查协议与 REST 产品动词","无平行 REST 产品动词扩展；embed 与 attach 类型同一",false
+  "pa-cs1","pa-cs1-unit","产品消息经四象限","审查协议与 REST 产品动词","无平行 REST 产品动词；方法表同一；Command/Event 不作外层",false
+  "pa-env1","pa-env1-unit","四象限与通道","审查信封与下行","POST unary；WS 只下行；无产品 SSE；无 JSON-RPC 2.0",false
+  "pa-map1","pa-map1-unit","方法表","审查 unary 与下行","Quit 不停 Host；审批非 unary；未知方法失败",false
+  "pa-bind1","pa-bind1-unit","TS 类型闸","重生导出文件","与检入副本一致；OpenAPI 非真源",false
   "pa-cs2","pa-cs2-unit","面本地能力","审查 Command/Event 变体","无剪贴板 TTY 编辑器 键位 绘制变体",false
   "pa-cs3","pa-cs3-unit","人 bash 与模型工具","对照事件路径","bash 不并进工具流；结束态可表达",false
   "pa-cs4","pa-cs4-unit","订阅续传与握手版本","审查握手与 journal","有版本字段；对不上不降级；resync 可表达",false

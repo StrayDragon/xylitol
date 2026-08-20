@@ -19,6 +19,11 @@
     当 server 应用面启动
     那么 装配 infra 运行时并注入 agent 端口，供路由处理器调用
 
+  @req:sr-env1
+  场景: product-path-four-quadrant
+    当 产品 TUI 访问 Host
+    那么 经四象限 POST unary 与 WebSocket 下行
+
   @req:sr2
   场景: server-rest-ws-under-app
     当 启动 app::server 运行时

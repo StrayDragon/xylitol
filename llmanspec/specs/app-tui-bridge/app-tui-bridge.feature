@@ -25,7 +25,7 @@
   @req:atb4
   场景: remote-type-kept
     当 检查 Driver 实现
-    那么 InProcess 为默认且 RemoteDriver 仍存在
+    那么 默认 attach 且同进程驱动路径仍保留给 print 与嵌入
 
   @req:atb5
   场景: compact-start-status

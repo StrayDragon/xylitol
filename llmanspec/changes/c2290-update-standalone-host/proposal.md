@@ -1,13 +1,16 @@
 ---
 depends_on: []
 blocks:
-  - c2302-update-host-multi-session
-  - c2303-update-unified-entry
-  - c2304-add-conformance-gate
-  - c2305-update-acp-provider-adapter
-  - c2310-add-web-ts-client
-  - c2315-add-loopback-host-tui
-  - c2320-add-salvo-oapi-docs
+- c2302-update-host-multi-session
+- c2303-update-unified-entry
+- c2304-add-conformance-gate
+- c2305-update-acp-provider-adapter
+- c2310-add-web-ts-client
+- c2315-add-loopback-host-tui
+- c2320-add-salvo-oapi-docs
+branch: sdd/c2290-update-standalone-host
+base_sha: e5ca88291181b2286196d1138ed567f03c0bb2ca
+checkpointed: false
 ---
 
 # 独立 Host：四象限 RPC + 产品 TUI 只当客户端
