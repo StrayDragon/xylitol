@@ -1,19 +1,6 @@
-//! WebSocket protocol — event streaming and reverse RPC for the server.
+//! Session event journal + reverse RPC. Product mux emits `RpcMessage::ServerRequest`.
 //!
-//! Frame protocol (JSON over WebSocket):
-//!
-//! **Server → Client:**
-//! - `ServerHello { version }` — sent on connect after Subscribe
-//! - `Ack { seq, request_id }` — acknowledgment of Subscribe
-//! - `Event { session_id, seq, event }` — streamed agent event
-//! - `ResyncRequired { session_id }` — journal truncated, client needs full resync
-//! - `ReverseRpc { rpc_type, call_id, payload }` — approval/question from server
-//!
-//! **Client → Server:**
-//! - `Subscribe { session_id, last_seq }` — subscribe to event stream
-//! - `ApproveTool { call_id, approved }` — respond to approval request
-//! - `AnswerQuestion { call_id, answer }` — respond to question
-//! - `Ping` — keep-alive
+//! `ServerFrame` / `ClientFrame` remain as internal DTOs (not the product wire).
 
 use std::collections::HashMap;
 use std::collections::VecDeque;
@@ -24,8 +11,19 @@ use std::time::Duration;
 use tokio::sync::oneshot;
 
 use serde::{Deserialize, Serialize};
+use serde_json::Value;
 
 use crate::protocol::Event;
+use crate::protocol::RpcMessage;
+
+/// Build a product downlink envelope (fresh rpcId). Reverse-RPC callers overwrite `rpcId`.
+pub fn downlink_server_request(method: impl Into<String>, payload: Value) -> RpcMessage {
+    RpcMessage::ServerRequest {
+        rpc_id: uuid::Uuid::new_v4().to_string(),
+        method: method.into(),
+        payload,
+    }
+}
 
 // ── Frame types ────────────────────────────────────────────────────
 
@@ -219,6 +217,19 @@ impl ReverseRpcGateway {
         } else {
             false
         }
+    }
+
+    /// Apply a `POST /api/respond` payload (`approved` and/or `answer`).
+    ///
+    /// First matching field wins; unknown payloads are ignored (returns false).
+    pub fn handle_respond(&self, rpc_id: &str, payload: &Value) -> bool {
+        if let Some(approved) = payload.get("approved").and_then(|v| v.as_bool()) {
+            return self.handle_approve(rpc_id, approved);
+        }
+        if let Some(answer) = payload.get("answer").and_then(|v| v.as_str()) {
+            return self.handle_answer(rpc_id, answer.to_string());
+        }
+        false
     }
 
     /// Remove a pending call_id (e.g., on timeout).

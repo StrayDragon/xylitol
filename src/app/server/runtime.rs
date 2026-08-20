@@ -1,60 +1,57 @@
-//! Server runtime — second composition root for xylitol.
+//! Server runtime — Host composition root (salvo listener).
 //!
-//! Constructs the agent via the shared bootstrap path (config → registry → trust → resource discovery → build_agent), builds
-//! the REST and WS routers, acquires the single-instance lock, and starts
-//! the HTTP server with graceful shutdown.
+//! Binds `ServerConfig.host`+`port` (default 127.0.0.1:18790). EADDRINUSE fails;
+//! no port+1, no lock file. Product routes are four-quadrant POST unary + mux
+//! downlink (see [`super::http`]). Session occupancy is lazy per slot
+//! ([`super::host::HostState`]).
 
 use std::sync::Arc;
+use std::time::Duration;
 
-use tokio::net::TcpListener;
-use tokio::sync::Mutex;
-use tokio_util::sync::CancellationToken;
-use tower_http::cors::CorsLayer;
+use salvo::conn::tcp::TcpAcceptor;
+use salvo::prelude::*;
+use salvo::server::ServerHandle;
 
-use crate::app::core::bootstrap::{BootstrapError, BootstrapInput, bootstrap};
-use crate::app::server::lock::{LockInfo, ServerLock};
-use crate::app::server::port_retry::{self, PORT_RETRY_LIMIT};
-use crate::app::server::rest::{self, AppState};
-use crate::app::server::ws::{EventJournal, ReverseRpcGateway};
+use crate::app::core::bootstrap::{BootstrapError, BootstrapInput, resolve_assembly};
+use crate::app::core::composition::build_ports;
+use crate::app::server::host::{HostState, ReloadBaseline};
+use crate::app::server::http;
 
 /// Handle to a running server. Dropping this triggers graceful shutdown.
 pub struct RunningServer {
-    cancel: CancellationToken,
-    /// Single-instance lock; held for the struct's lifetime so the OS lock
-    /// stays acquired, and released when `RunningServer` is dropped. Never
-    /// read directly.
-    #[allow(dead_code)]
-    lock: Option<ServerLock>,
+    handle: ServerHandle,
+    host: Arc<HostState>,
 }
 
 impl RunningServer {
     /// Signal the server to shut down gracefully.
     pub fn shutdown(&self) {
-        self.cancel.cancel();
+        self.host
+            .shutting_down
+            .store(true, std::sync::atomic::Ordering::Relaxed);
+        self.handle.stop_graceful(Duration::from_secs(30));
     }
 
     /// Wait for the server to finish shutting down.
-    pub async fn join(self) {
-        // Lock drops on destruction which removes the lock file.
-    }
+    pub async fn join(self) {}
 }
 
 impl Drop for RunningServer {
     fn drop(&mut self) {
-        self.cancel.cancel();
+        self.host
+            .shutting_down
+            .store(true, std::sync::atomic::Ordering::Relaxed);
+        self.handle.stop_graceful(Duration::from_secs(30));
     }
 }
 
 /// Configuration for starting the server.
 ///
-/// Agent assembly fields (model registry, system prompt, compaction, ...) are
-/// intentionally absent: the server shares the [`bootstrap`] assembly path with
-/// print/tui (spec ce9), so it discovers config, resources, and trust from the
-/// current environment just like print mode. Only transport-level knobs live here.
+/// Agent assembly fields live in the shared [`resolve_assembly`] / [`build_ports`]
+/// path (spec ce9). Only transport-level knobs live here.
 pub struct ServerConfig {
     pub host: String,
     pub port: u16,
-    pub lock_path: Option<std::path::PathBuf>,
     pub sessions_dir: Option<std::path::PathBuf>,
 }
 
@@ -63,34 +60,16 @@ impl Default for ServerConfig {
         Self {
             host: "127.0.0.1".into(),
             port: 18790,
-            lock_path: None,
             sessions_dir: None,
         }
     }
 }
 
-/// Start the server. Returns a `RunningServer` handle and the bound port.
-///
-/// This is the server's composition root — it wires:
-/// - XySessionStore (infra::session::SessionManager)
-/// - XyEventSink (infra::event::EventBus)
-/// - ModelRegistry / ToolSet
-/// - REST router with shared state
-/// - Single-instance lock
-/// - Port retry
+/// Start the product Host listener (bootstrap → RuntimePorts → salvo).
 pub async fn start(
     config: ServerConfig,
 ) -> Result<(RunningServer, u16), Box<dyn std::error::Error>> {
-    let cancel = CancellationToken::new();
-
-    // ── Agent construction (shared bootstrap path — spec ce9) ──────
-    // The server assembles the agent via the same bootstrap as print/tui, so
-    // config load, resource discovery (AGENTS.md context_files,
-    // append_system_prompt), trust resolution, and compaction settings all
-    // apply identically. The previous headless shortcut (empty context_files,
-    // caller-supplied registry) is removed: server no longer ships a
-    // simplified copy of the assembly path.
-    let bootstrapped = bootstrap(BootstrapInput {
+    let assembly = resolve_assembly(&BootstrapInput {
         config_path: None,
         session: None,
         model: None,
@@ -108,107 +87,136 @@ pub async fn start(
         }
         BootstrapError::BuildFailed(msg) => msg,
     })?;
-    let project_trusted = !bootstrapped.warnings.iter().any(|w| {
+
+    let fallback_session = assembly.session_id.clone();
+    let mcp_servers = assembly.mcp_servers.clone().unwrap_or_default();
+    let project_trusted = !assembly.warnings.iter().any(|w| {
         matches!(
             w,
             crate::app::core::bootstrap::BootstrapWarning::ProjectNotTrusted { .. }
         )
     });
-    let runtime = bootstrapped.into_runtime();
-    let servers = runtime.mcp_servers.unwrap_or_default();
-    let mut driver = runtime.driver;
     let cwd = std::env::current_dir().unwrap_or_else(|_| std::path::PathBuf::from("."));
     let agent_dir = crate::infra::resource::DefaultResourceLoader::default_agent_dir();
-    driver.enable_reload_state(cwd, agent_dir, project_trusted, servers);
-    use crate::app::core::driver::XyDriver;
-    driver.begin_mcp_bootstrap().await;
-    driver.wait_mcp_bootstrap().await;
-    if let Some(summary) = driver.mcp_status_summary().await {
-        log::info!("{summary}");
-    }
+    let ports = if let Some(dir) = &config.sessions_dir {
+        let store: std::sync::Arc<dyn crate::protocol::ports::XySessionStore> =
+            std::sync::Arc::new(crate::infra::session::SessionManager::new(dir.clone()));
+        crate::app::core::composition::build_ports_with_store(assembly.into_build_options(), store)?
+    } else {
+        build_ports(assembly.into_build_options())?
+    };
 
-    // ── Server state (XyDriver seam — same as Print) ────────────────
-    let session_id = format!("srv-{}", uuid::Uuid::new_v4());
-    let journal = EventJournal::with_default_capacity(&session_id);
-    let gateway = Arc::new(ReverseRpcGateway::new());
-    let state = Arc::new(AppState {
-        driver: Arc::new(Mutex::new(driver)),
-        journal: Arc::new(Mutex::new(journal)),
-        gateway,
-    });
-
-    // ── Lock acquisition ──────────────────────────────────────────
-    let lock_path = config
-        .lock_path
-        .unwrap_or_else(|| std::path::PathBuf::from("/tmp/xylitol-server.lock"));
-
-    let hostname = std::env::var("HOSTNAME")
-        .or_else(|_| std::env::var("COMPUTERNAME"))
-        .unwrap_or_else(|_| "localhost".into());
-
-    let (listener, actual_port, lock) = acquire_lock_and_bind(&lock_path, &hostname, config.port)?;
-
-    // ── Router ────────────────────────────────────────────────────
-    let app = rest::router(state).layer(CorsLayer::permissive());
-
-    // ── Start server ──────────────────────────────────────────────
-    let server_cancel = cancel.clone();
-    tokio::spawn(async move {
-        axum::serve(listener, app)
-            .with_graceful_shutdown(async move {
-                server_cancel.cancelled().await;
-            })
-            .await
-            .ok();
-    });
-
-    Ok((
-        RunningServer {
-            cancel,
-            lock: Some(lock),
+    let host = HostState::from_bootstrap(
+        ports,
+        ReloadBaseline {
+            cwd,
+            agent_dir,
+            project_trusted,
+            mcp_servers,
         },
-        actual_port,
-    ))
+        fallback_session,
+    );
+    serve(config, host).await
 }
 
-/// Acquire the server lock and bind to a port, with retry if the port is busy.
-fn acquire_lock_and_bind(
-    lock_path: &std::path::Path,
-    hostname: &str,
-    start_port: u16,
-) -> Result<(tokio::net::TcpListener, u16, ServerLock), Box<dyn std::error::Error>> {
-    let pid = std::process::id();
+/// Bind and serve an already-built [`HostState`] (tests / custom assembly).
+pub async fn serve(
+    config: ServerConfig,
+    host: Arc<HostState>,
+) -> Result<(RunningServer, u16), Box<dyn std::error::Error>> {
+    let addr = format!("{}:{}", config.host, config.port);
+    // Fail on EADDRINUSE: bind with tokio first so we get a Result, then hand off.
+    let std_listener = std::net::TcpListener::bind(&addr).map_err(|e| {
+        Box::new(std::io::Error::new(e.kind(), format!("bind {addr}: {e}")))
+            as Box<dyn std::error::Error>
+    })?;
+    std_listener.set_nonblocking(true)?;
+    let local = std_listener.local_addr()?;
+    let actual_port = local.port();
 
-    let info = LockInfo {
-        port: start_port,
-        pid,
-        hostname: hostname.to_string(),
+    let tokio_listener = tokio::net::TcpListener::from_std(std_listener)?;
+    let acceptor = TcpAcceptor::try_from(tokio_listener)?;
+    let router = http::router(host.clone());
+    let server = Server::new(acceptor);
+    let handle = server.handle();
+    let shutdown_handle = handle.clone();
+    tokio::spawn(async move {
+        shutdown_signal(shutdown_handle).await;
+    });
+    tokio::spawn(async move {
+        server.serve(router).await;
+    });
+
+    Ok((RunningServer { handle, host }, actual_port))
+}
+
+async fn shutdown_signal(handle: ServerHandle) {
+    let ctrl_c = async {
+        let _ = tokio::signal::ctrl_c().await;
     };
-    let lock = ServerLock::try_acquire(lock_path, &info)?;
 
-    for offset in 0..PORT_RETRY_LIMIT {
-        let try_port = start_port + offset;
-        // Use std TcpListener first to probe, then convert to tokio
-        match std::net::TcpListener::bind((std::net::Ipv4Addr::LOCALHOST, try_port)) {
-            Ok(std_listener) => {
-                let actual = std_listener.local_addr().unwrap().port();
-                if actual != start_port {
-                    lock.update_port(actual)?;
-                }
-                // Convert to tokio listener
-                std_listener.set_nonblocking(true)?;
-                let tokio_listener = TcpListener::from_std(std_listener)?;
-                return Ok((tokio_listener, actual, lock));
-            }
-            Err(_) if offset < PORT_RETRY_LIMIT - 1 => continue,
-            Err(e) => {
-                return Err(Box::new(port_retry::PortRetryExhausted {
-                    start_port,
-                    last_error: e,
-                }));
-            }
+    #[cfg(unix)]
+    let terminate = async {
+        use tokio::signal::unix::{SignalKind, signal};
+        let mut sigterm = signal(SignalKind::terminate()).expect("install SIGTERM");
+        let mut sigquit = signal(SignalKind::quit()).expect("install SIGQUIT");
+        tokio::select! {
+            _ = sigterm.recv() => {}
+            _ = sigquit.recv() => {}
         }
-    }
+    };
 
-    unreachable!("loop always returns or errors")
+    #[cfg(not(unix))]
+    let terminate = async {
+        std::future::pending::<()>().await;
+    };
+
+    tokio::select! {
+        _ = ctrl_c => {}
+        _ = terminate => {}
+    }
+    handle.stop_graceful(Duration::from_secs(30));
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[tokio::test]
+    async fn eaddrinuse_fails_without_port_plus_one() {
+        let host = HostState::for_test().expect("host");
+        let (running, port) = serve(
+            ServerConfig {
+                host: "127.0.0.1".into(),
+                port: 0,
+                sessions_dir: None,
+            },
+            host,
+        )
+        .await
+        .expect("first bind");
+        let occupied = port;
+        let host2 = HostState::for_test().expect("host2");
+        let second = serve(
+            ServerConfig {
+                host: "127.0.0.1".into(),
+                port: occupied,
+                sessions_dir: None,
+            },
+            host2,
+        )
+        .await;
+        assert!(second.is_err(), "second bind must fail");
+        if let Err(err) = second {
+            let msg = err.to_string();
+            assert!(
+                msg.contains("Address already in use")
+                    || msg.contains("addr")
+                    || msg.contains("bind")
+                    || msg.to_lowercase().contains("in use"),
+                "expected EADDRINUSE-ish error, got {msg}"
+            );
+        }
+        running.shutdown();
+    }
 }

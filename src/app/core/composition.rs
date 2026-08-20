@@ -64,22 +64,24 @@ impl Default for BuildAgentOptions {
     }
 }
 
-/// Construct a fully-wired [`AgentRuntime`] from the given options.
+/// Construct a clonable [`crate::agent::RuntimePorts`] baseline from the given options.
 ///
-/// This is the single composition-root helper used by CLI, RPC, server, and
-/// future TUI/GUI modes. It injects the concrete infra implementations
-/// (`SessionManager`, `XyEventSink`, bang/export via Driver) into the
-/// agent without letting `agent/` know about `infra/` types.
-///
-/// **Event paths:** turn progress is the `XyDriver::run` → `XyEvent` stream.
-/// The injected [`XyEventSink`] (default [`EventBus`]) is for side lifecycle
-/// (e.g. compaction); it is not the multi-client turn bus.
-pub fn build_agent(options: BuildAgentOptions) -> Result<AgentRuntime, XyDriverError> {
+/// Host processes share one baseline and lazy-materialize isolated Drivers per
+/// session slot. Print/TUI embed still call [`build_agent`] (one actor).
+pub fn build_ports(
+    options: BuildAgentOptions,
+) -> Result<crate::agent::RuntimePorts, XyDriverError> {
     let sessions_dir = SessionManager::default_dir();
     std::fs::create_dir_all(&sessions_dir).map_err(|e| format!("create sessions dir: {e}"))?;
     let session_mgr = SessionManager::new(sessions_dir);
+    build_ports_with_store(options, Arc::new(session_mgr))
+}
 
-    let store: Arc<dyn XySessionStore> = Arc::new(session_mgr);
+/// Like [`build_ports`], but injects an existing session store (tests / Host).
+pub fn build_ports_with_store(
+    options: BuildAgentOptions,
+    store: Arc<dyn XySessionStore>,
+) -> Result<crate::agent::RuntimePorts, XyDriverError> {
     let sink: Arc<dyn XyEventSink> = options
         .event_sink
         .unwrap_or_else(|| Arc::new(EventBus::new()));
@@ -128,7 +130,21 @@ pub fn build_agent(options: BuildAgentOptions) -> Result<AgentRuntime, XyDriverE
         builder = builder.system_prompt(sp);
     }
 
-    Ok(builder.build())
+    Ok(builder.build_ports())
+}
+
+/// Construct a fully-wired [`AgentRuntime`] from the given options.
+///
+/// This is the single composition-root helper used by CLI, RPC, server, and
+/// future TUI/GUI modes. It injects the concrete infra implementations
+/// (`SessionManager`, `XyEventSink`, bang/export via Driver) into the
+/// agent without letting `agent/` know about `infra/` types.
+///
+/// **Event paths:** turn progress is the `XyDriver::run` → `XyEvent` stream.
+/// The injected [`XyEventSink`] (default [`EventBus`]) is for side lifecycle
+/// (e.g. compaction); it is not the multi-client turn bus.
+pub fn build_agent(options: BuildAgentOptions) -> Result<AgentRuntime, XyDriverError> {
+    Ok(build_ports(options)?.materialize_runtime())
 }
 
 /// Outcome of [`McpSession::reload`] (c1205).

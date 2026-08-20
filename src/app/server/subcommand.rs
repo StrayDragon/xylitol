@@ -1,10 +1,6 @@
 //! Server lifecycle subcommands dispatched from the CLI `server` verb.
 //!
-//! `ServerSubcommand` (Run/Install/Stop) and its `run` implementation live here
-//! — in the server domain, next to [`crate::app::server::lock`] — rather than in
-//! the CLI. The CLI keeps only the `server` parsing variant (`CliCommand::Server`)
-//! and delegates here, so server lifecycle logic (lock-file probing, SIGTERM)
-//! does not leak into CLI parsing code (design c310 §A/B).
+//! `stop` prints how to SIGTERM the listener. There is no lock-file mutex.
 
 use clap::Subcommand;
 
@@ -19,9 +15,9 @@ pub enum ServerSubcommand {
     },
     /// Register the server as a launchd/systemd service (macOS/Linux).
     Install,
-    /// Stop a running server by removing its lock file.
+    /// Print how to stop a running listener (SIGTERM). Does not read a lock file.
     Stop {
-        /// Path to the lock file.
+        /// Ignored (legacy flag; lock files are not a product mutex).
         #[arg(long, default_value = "/tmp/xylitol-server.lock")]
         lock: String,
     },
@@ -35,54 +31,22 @@ pub async fn run(action: ServerSubcommand) -> Result<(), Box<dyn std::error::Err
                 port,
                 ..Default::default()
             };
-            let (_handle, actual_port) = crate::app::server::runtime::start(config).await?;
+            let (handle, actual_port) = crate::app::server::runtime::start(config).await?;
             eprintln!("Server started on port {}", actual_port);
-            // Keep running until Ctrl+C
             tokio::signal::ctrl_c().await?;
             eprintln!("Shutting down...");
+            handle.shutdown();
             Ok(())
         }
         ServerSubcommand::Install => {
             eprintln!("Server install not yet implemented");
             Ok(())
         }
-        ServerSubcommand::Stop { lock } => {
-            let path = std::path::Path::new(&lock);
-            if !path.exists() {
-                eprintln!("No lock file found at: {lock}");
-                return Ok(());
-            }
-
-            // Read lock file to get the PID
-            match crate::app::server::lock::ServerLock::probe(path) {
-                Ok(info) => {
-                    eprintln!(
-                        "Sending SIGTERM to server (pid {}, port {})",
-                        info.pid, info.port
-                    );
-                    #[cfg(unix)]
-                    {
-                        use std::process::Command;
-                        let _ = Command::new("kill")
-                            .arg("-TERM")
-                            .arg(info.pid.to_string())
-                            .status();
-                        // Give it a moment, then remove the lock
-                        tokio::time::sleep(std::time::Duration::from_secs(1)).await;
-                    }
-                    #[cfg(not(unix))]
-                    {
-                        eprintln!("Warning: server stop requires Unix (SIGTERM)");
-                    }
-                }
-                Err(e) => {
-                    eprintln!("Could not read lock file: {e}");
-                }
-            }
-
-            // Clean up lock file
-            std::fs::remove_file(path).ok();
-            eprintln!("Lock file removed: {lock}");
+        ServerSubcommand::Stop { lock: _ } => {
+            eprintln!(
+                "No lock-file stop protocol. Send SIGTERM to the xylitol server process \
+                 (the one listening on the configured host:port, default 127.0.0.1:18790)."
+            );
             Ok(())
         }
     }

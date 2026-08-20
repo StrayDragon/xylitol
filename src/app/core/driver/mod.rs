@@ -11,9 +11,8 @@
 //! The trait carries not just `run`/`abort` but the full set of command
 //! execution semantics (model selection, compaction, export, session ops) so
 //! that [`crate::app::core::dispatch`] can be a pure Command→method dispatcher
-//! shared by tui (spec ce10). WS-transport-specific commands
-//! (Subscribe/ApproveTool/AnswerQuestion) do NOT live here — they stay in
-//! `app::server::ws`.
+//! shared by tui (spec ce10). `subscribe` is a Host unary; reverse-RPC answers
+//! are `POST /api/respond` (not WS application frames).
 //!
 //! Product TUI attach uses [`HttpWsClient`](super::host_client::HttpWsClient);
 //! this adapter keeps the existing [`XyDriver`] seam until TUI speaks the envelope trait directly.

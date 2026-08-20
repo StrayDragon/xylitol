@@ -63,9 +63,8 @@ tokio-util = "0.7.18"
 yaml_serde = "0.10.4"
 
 pathdiff = "0.2.3"
-axum = { version = "0.8", features = ["ws"], optional = true }
+salvo = { version = "0.94", optional = true, default-features = true, features = ["websocket", "test"] }
 tokio-tungstenite = { version = "0.29", features = ["connect", "handshake"], optional = true }
-tower-http = { version = "0.7", features = ["cors"], optional = true }
 
 # ── terminal UI (product surface redesigns on packages/xylitol-tui) ──
 # Old in-tree engine/widgets under src/app/tui/ were removed; the app surface is
@@ -84,7 +83,7 @@ default = ["cli", "tui", "otel", "server"]
 # CLI composition root.
 cli = []
 # Always-on HTTP/WebSocket server (product TUI attach default).
-server = ["dep:axum", "dep:tokio-tungstenite", "dep:tower-http"]
+server = ["dep:salvo", "dep:tokio-tungstenite"]
 # Terminal UI surface (host-driven on xylitol-tui).
 tui = ["dep:xylitol-tui", "dep:crossterm"]
 # Optional OTLP/HTTP export (Langfuse / Collector). Default on for local agents;
