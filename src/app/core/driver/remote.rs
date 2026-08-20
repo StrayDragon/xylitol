@@ -3,14 +3,14 @@
 use std::path::Path;
 
 use async_trait::async_trait;
-use futures::{SinkExt, StreamExt};
-use tokio_tungstenite::{connect_async, tungstenite::Message};
+use futures::StreamExt;
 use tokio_util::sync::CancellationToken;
 
-use crate::app::server::ws::{ClientFrame, ServerFrame};
+use crate::app::core::host_client::{HostClient, HttpWsClient};
 use crate::protocol::model::THINKING_OFF;
 use crate::protocol::ports::XyBashResult;
 use crate::protocol::session::{SessionEntry, SessionTreeKind, SessionTreeNode, SessionTreeTravel};
+use crate::protocol::{Event, RpcMessage};
 
 use super::XyDriver;
 use super::XyDriverError;
@@ -19,63 +19,42 @@ use super::types::{
     SessionStats, XyEvent, estimate_from_session_entries, session_tree_kind_unimplemented,
 };
 
-/// Remote driver — speaks protocol over REST/WS to a xylitol server.
-///
-/// Uses `reqwest` for control commands (prompt, abort, model, export, ...) and
-/// `tokio-tungstenite` for WebSocket event streaming.
-///
-/// 预留：独立远程薄端客户端接线后由该面 `XyRemoteDriver::new` 实例化；
-/// 落地条件：远程客户端应用面开闸。当前 Server 面用进程内 XyDriver，不构造本类型。
+/// Remote driver — [`XyDriver`] over [`HttpWsClient`] (HTTP POST unary + WS downlink).
 #[cfg(feature = "server")]
-#[allow(dead_code)] // reserved remote thin-client surface; see doc above
 pub struct XyRemoteDriver {
-    base_url: String,
+    host: HttpWsClient,
     session_id: String,
-    client: reqwest::Client,
     cancel: CancellationToken,
-    /// Cached thinking level (server does not expose a getter; tracked locally
-    /// so get_state returns something sensible). NOTE: ceiling: server gains a
-    /// state endpoint. upgrade: when server exposes GET /state.
     thinking: std::sync::Mutex<String>,
 }
 
 #[cfg(feature = "server")]
-#[allow(dead_code)] // reserved with XyRemoteDriver until thin client wires it
 impl XyRemoteDriver {
     /// Create a new XyRemoteDriver connected to `base_url`.
     ///
-    /// `base_url` should be the server root, e.g. `http://127.0.0.1:8080`.
+    /// `base_url` should be the server root, e.g. `http://127.0.0.1:18790`.
     pub fn new(base_url: impl Into<String>, session_id: impl Into<String>) -> Self {
         Self {
-            base_url: base_url.into(),
+            host: HttpWsClient::new(base_url),
             session_id: session_id.into(),
-            client: reqwest::Client::new(),
             cancel: CancellationToken::new(),
             thinking: std::sync::Mutex::new(THINKING_OFF.into()),
         }
     }
 
-    fn run_url(&self) -> String {
-        format!("{}/api/v1/session/{}/run", self.base_url, self.session_id)
-    }
-
-    fn cancel_url(&self) -> String {
-        format!("{}/api/v1/session/{}", self.base_url, self.session_id)
-    }
-
-    fn ws_url(&self) -> String {
-        let ws_base = self
-            .base_url
-            .replace("https://", "wss://")
-            .replace("http://", "ws://");
-        format!("{ws_base}/api/v1/session/{}/ws", self.session_id)
-    }
-
-    fn api(&self, suffix: &str) -> String {
-        format!(
-            "{}/api/v1/session/{}/{}",
-            self.base_url, self.session_id, suffix
-        )
+    async fn unary(
+        &self,
+        method: &str,
+        payload: serde_json::Value,
+    ) -> Result<serde_json::Value, XyDriverError> {
+        let result = self
+            .host
+            .unary(method, payload)
+            .await
+            .map_err(|e| XyDriverError::remote(e.to_string()))?;
+        result
+            .into_std()
+            .map_err(|e| XyDriverError::remote(format!("{}: {}", e.code, e.details)))
     }
 
     fn block_on<T>(
@@ -90,48 +69,6 @@ impl XyRemoteDriver {
                 .map_err(|e| XyDriverError::io(e.to_string()))?
                 .block_on(fut),
         }
-    }
-
-    async fn get_data(&self, suffix: &str) -> Result<serde_json::Value, XyDriverError> {
-        let resp = self
-            .client
-            .get(self.api(suffix))
-            .send()
-            .await
-            .map_err(|e| XyDriverError::remote(e.to_string()))?;
-        Self::parse_envelope(resp).await
-    }
-
-    async fn post_data(
-        &self,
-        suffix: &str,
-        body: serde_json::Value,
-    ) -> Result<serde_json::Value, XyDriverError> {
-        let resp = self
-            .client
-            .post(self.api(suffix))
-            .json(&body)
-            .send()
-            .await
-            .map_err(|e| XyDriverError::remote(e.to_string()))?;
-        Self::parse_envelope(resp).await
-    }
-
-    async fn parse_envelope(resp: reqwest::Response) -> Result<serde_json::Value, XyDriverError> {
-        let status = resp.status();
-        let env: crate::protocol::Envelope<serde_json::Value> = resp
-            .json()
-            .await
-            .map_err(|e| XyDriverError::remote(e.to_string()))?;
-        if env.code != crate::protocol::ErrorCode::Ok {
-            let err = XyDriverError::remote(
-                env.msg
-                    .unwrap_or_else(|| format!("server error ({status})")),
-            );
-            err.log_failure("remote.parse_envelope");
-            return Err(err);
-        }
-        Ok(env.data.unwrap_or(serde_json::Value::Null))
     }
 
     fn model_from_value(v: &serde_json::Value) -> Result<ModelInfo, XyDriverError> {
@@ -171,84 +108,65 @@ impl XyRemoteDriver {
 #[async_trait]
 impl XyDriver for XyRemoteDriver {
     async fn run(&mut self, prompt: &str) -> EventStream {
-        let client = self.client.clone();
-        let run_url = self.run_url();
-        let cancel_url = self.cancel_url();
-        let ws_url = self.ws_url();
+        let host = self.host.clone();
         let cancel = self.cancel.clone();
         let prompt = prompt.to_string();
 
         let stream = async_stream::stream! {
-            // 1. Submit prompt via REST (triggers agent execution)
-            let payload = serde_json::json!({"prompt": prompt});
-            match client.post(&run_url).json(&payload).send().await {
-                Ok(resp) if !resp.status().is_success() => {
-                    let status = resp.status();
-                    yield XyEvent::error_msg(format!("server returned {status}"));
-                    return;
-                }
-                Err(e) => {
-                    yield XyEvent::error_msg(format!("connection failed: {e}"));
-                    return;
-                }
-                _ => {} // success
-            }
-
-            // 2. Connect to WS for event streaming
-            let ws_stream = match connect_async(&ws_url).await {
-                Ok((ws, _)) => ws,
+            let mut mux = match host.mux().await {
+                Ok(s) => s,
                 Err(e) => {
                     yield XyEvent::error_msg(format!("WS connect failed: {e}"));
                     return;
                 }
             };
 
-            let (mut ws_writer, mut ws_reader) = ws_stream.split();
-
-            // 3. Send Subscribe
-            let subscribe = serde_json::to_string(&ClientFrame::Subscribe {
-                session_id: String::new(), // server knows from URL
-                last_seq: 0,
-            })
-            .unwrap();
-            if ws_writer.send(Message::Text(subscribe.into())).await.is_err() {
-                yield XyEvent::error_msg("WS send failed");
+            if let Err(e) = host
+                .unary("prompt", serde_json::json!({"message": prompt}))
+                .await
+            {
+                yield XyEvent::error_msg(format!("prompt failed: {e}"));
                 return;
             }
 
-            // 4. Read events until AgentEnd or abort
             loop {
                 tokio::select! {
                     _ = cancel.cancelled() => {
-                        let _ = client.delete(&cancel_url).send().await;
+                        let _ = host.unary("abort", serde_json::json!({})).await;
                         break;
                     }
-                    msg = ws_reader.next() => {
+                    msg = mux.next() => {
                         match msg {
-                            Some(Ok(Message::Text(text))) => {
-                                if let Ok(frame) = serde_json::from_str::<ServerFrame>(&text) {
-                                    match frame {
-                                        ServerFrame::ServerHello { .. } | ServerFrame::Ack { .. } => {
-                                            // Handshake frames, ignore
-                                        }
-                                        ServerFrame::Event { event, .. } => {
-                                            if let Ok(agent_event) = XyEvent::try_from(&event) {
-                                                let is_end = matches!(agent_event, XyEvent::AgentEnd { .. });
-                                                yield agent_event;
-                                                if is_end {
-                                                    break;
-                                                }
-                                            }
-                                        }
-                                        ServerFrame::ResyncRequired { .. } => {
-                                            yield XyEvent::error_msg("journal truncated, resync required");
-                                            break;
-                                        }
-                                    }
+                            Some(Ok(RpcMessage::ServerRequest { method, payload, .. }))
+                                if method == "session/event" =>
+                            {
+                                let event_val =
+                                    payload.get("event").cloned().unwrap_or(payload);
+                                let Ok(ev) = serde_json::from_value::<Event>(event_val) else {
+                                    continue;
+                                };
+                                let Ok(agent_event) = XyEvent::try_from(&ev) else {
+                                    continue;
+                                };
+                                let is_end =
+                                    matches!(agent_event, XyEvent::AgentEnd { .. });
+                                yield agent_event;
+                                if is_end {
+                                    break;
                                 }
                             }
-                            Some(Ok(Message::Close(_))) | None => break,
-                            _ => {}
+                            Some(Ok(RpcMessage::ServerRequest { method, .. }))
+                                if method == "session/resync_required" =>
+                            {
+                                yield XyEvent::error_msg("journal truncated, resync required");
+                                break;
+                            }
+                            Some(Ok(_)) => {}
+                            Some(Err(e)) => {
+                                yield XyEvent::error_msg(e.to_string());
+                                break;
+                            }
+                            None => break,
                         }
                     }
                 }
@@ -260,16 +178,15 @@ impl XyDriver for XyRemoteDriver {
 
     fn abort(&self) {
         self.cancel.cancel();
-        let url = self.cancel_url();
-        let client = self.client.clone();
+        let host = self.host.clone();
         tokio::spawn(async move {
-            let _ = client.delete(&url).send().await;
+            let _ = host.unary("abort", serde_json::json!({})).await;
         });
     }
 
     fn current_model(&self) -> Option<ModelInfo> {
         self.block_on(async {
-            let data = self.get_data("state").await?;
+            let data = self.unary("get_state", serde_json::json!({})).await?;
             match data.get("model") {
                 Some(m) if !m.is_null() => Self::model_from_value(m).map(Some),
                 _ => Ok(None),
@@ -281,7 +198,9 @@ impl XyDriver for XyRemoteDriver {
 
     fn available_models(&self) -> Vec<ModelInfo> {
         self.block_on(async {
-            let data = self.get_data("models").await?;
+            let data = self
+                .unary("get_available_models", serde_json::json!({}))
+                .await?;
             let arr = data
                 .get("models")
                 .and_then(|m| m.as_array())
@@ -294,19 +213,12 @@ impl XyDriver for XyRemoteDriver {
 
     async fn select_model(&mut self, model_id: &str) -> Result<ModelInfo, XyDriverError> {
         let model_id = model_id.to_string();
-        let url = format!(
-            "{}/api/v1/session/{}/model?model_id={}",
-            self.base_url,
-            self.session_id,
-            urlencoding_loose(&model_id)
-        );
-        let resp = self
-            .client
-            .post(&url)
-            .send()
-            .await
-            .map_err(|e| XyDriverError::remote(e.to_string()))?;
-        let data = Self::parse_envelope(resp).await?;
+        let data = self
+            .unary(
+                "set_model",
+                serde_json::json!({ "provider": "", "model_id": model_id }),
+            )
+            .await?;
         // Endpoint returns { model, display_name }; enrich via list if needed.
         let selected = if data.get("id").is_some() {
             Self::model_from_value(&data)?
@@ -337,7 +249,7 @@ impl XyDriver for XyRemoteDriver {
     }
 
     async fn cycle_model(&mut self) -> Result<ModelInfo, XyDriverError> {
-        let data = self.post_data("model/cycle", serde_json::json!({})).await?;
+        let data = self.unary("cycle_model", serde_json::json!({})).await?;
         let selected = Self::model_from_value(&data)?;
         *self.thinking.lock().unwrap() = selected
             .thinking_levels
@@ -348,7 +260,7 @@ impl XyDriver for XyRemoteDriver {
     }
 
     async fn set_thinking_level(&mut self, level: String) -> Result<(), XyDriverError> {
-        self.post_data("thinking", serde_json::json!({ "level": level }))
+        self.unary("set_thinking_level", serde_json::json!({ "level": level }))
             .await?;
         *self.thinking.lock().unwrap() = level;
         Ok(())
@@ -390,7 +302,7 @@ impl XyDriver for XyRemoteDriver {
     ) -> Result<XyBashResult, XyDriverError> {
         // Remote REST bash is request/response — no live chunk uplink.
         let data = self
-            .post_data(
+            .unary(
                 "bash",
                 serde_json::json!({
                     "command": command,
@@ -426,7 +338,7 @@ impl XyDriver for XyRemoteDriver {
 
     async fn compact(&mut self, instructions: Option<String>) -> Result<bool, XyDriverError> {
         let data = self
-            .post_data(
+            .unary(
                 "compact",
                 serde_json::json!({ "instructions": instructions }),
             )
@@ -438,12 +350,11 @@ impl XyDriver for XyRemoteDriver {
     }
 
     async fn export_html(&mut self, path: &Path) -> Result<String, XyDriverError> {
-        let data = self
-            .post_data(
-                "export/html",
-                serde_json::json!({ "path": path.to_string_lossy() }),
-            )
-            .await?;
+        let data = self.unary("export_html", serde_json::json!({})).await?;
+        if let Some(content) = data.get("content").and_then(|c| c.as_str()) {
+            std::fs::write(path, content).map_err(|e| XyDriverError::io(e.to_string()))?;
+            return Ok(path.to_string_lossy().into_owned());
+        }
         Ok(data
             .get("path")
             .and_then(|p| p.as_str())
@@ -452,12 +363,11 @@ impl XyDriver for XyRemoteDriver {
     }
 
     async fn export_jsonl(&mut self, path: &Path) -> Result<String, XyDriverError> {
-        let data = self
-            .post_data(
-                "export/jsonl",
-                serde_json::json!({ "path": path.to_string_lossy() }),
-            )
-            .await?;
+        let data = self.unary("export_jsonl", serde_json::json!({})).await?;
+        if let Some(content) = data.get("content").and_then(|c| c.as_str()) {
+            std::fs::write(path, content).map_err(|e| XyDriverError::io(e.to_string()))?;
+            return Ok(path.to_string_lossy().into_owned());
+        }
         Ok(data
             .get("path")
             .and_then(|p| p.as_str())
@@ -466,11 +376,10 @@ impl XyDriver for XyRemoteDriver {
     }
 
     async fn import_jsonl(&mut self, path: &Path) -> Result<String, XyDriverError> {
+        let content =
+            std::fs::read_to_string(path).map_err(|e| XyDriverError::io(e.to_string()))?;
         let data = self
-            .post_data(
-                "import/jsonl",
-                serde_json::json!({ "path": path.to_string_lossy() }),
-            )
+            .unary("import_jsonl", serde_json::json!({ "content": content }))
             .await?;
         Ok(data
             .get("session_id")
@@ -485,7 +394,7 @@ impl XyDriver for XyRemoteDriver {
         position: crate::protocol::session::ForkPosition,
     ) -> Result<String, XyDriverError> {
         let data = self
-            .post_data(
+            .unary(
                 "fork",
                 serde_json::json!({
                     "entry_id": entry_id,
@@ -505,7 +414,10 @@ impl XyDriver for XyRemoteDriver {
 
     async fn switch_session(&mut self, session_id: &str) -> Result<String, XyDriverError> {
         let data = self
-            .post_data("switch", serde_json::json!({ "session_id": session_id }))
+            .unary(
+                "switch_session",
+                serde_json::json!({ "session_id": session_id }),
+            )
             .await?;
         let id = data
             .get("session_id")
@@ -517,7 +429,7 @@ impl XyDriver for XyRemoteDriver {
     }
 
     async fn get_messages(&self) -> Result<Vec<SessionEntry>, XyDriverError> {
-        let data = self.get_data("messages").await?;
+        let data = self.unary("get_messages", serde_json::json!({})).await?;
         let entries = data
             .get("entries")
             .cloned()
@@ -526,7 +438,9 @@ impl XyDriver for XyRemoteDriver {
     }
 
     async fn get_session_stats(&self) -> Result<SessionStats, XyDriverError> {
-        let data = self.get_data("stats").await?;
+        let data = self
+            .unary("get_session_stats", serde_json::json!({}))
+            .await?;
         Ok(SessionStats {
             session_id: data
                 .get("session_id")
@@ -574,7 +488,7 @@ impl XyDriver for XyRemoteDriver {
 
     fn get_commands(&self) -> Vec<CommandInfo> {
         self.block_on(async {
-            let data = self.get_data("commands").await?;
+            let data = self.unary("get_commands", serde_json::json!({})).await?;
             let arr = data
                 .get("commands")
                 .and_then(|c| c.as_array())
@@ -599,7 +513,7 @@ impl XyDriver for XyRemoteDriver {
 
     fn steer(&mut self, message: &str) -> Result<(), XyDriverError> {
         self.block_on(async {
-            self.post_data("steer", serde_json::json!({ "message": message }))
+            self.unary("steer", serde_json::json!({ "message": message }))
                 .await?;
             Ok(())
         })
@@ -607,7 +521,7 @@ impl XyDriver for XyRemoteDriver {
 
     fn follow_up(&mut self, message: &str) -> Result<(), XyDriverError> {
         self.block_on(async {
-            self.post_data("follow-up", serde_json::json!({ "message": message }))
+            self.unary("follow_up", serde_json::json!({ "message": message }))
                 .await?;
             Ok(())
         })
@@ -619,8 +533,8 @@ impl XyDriver for XyRemoteDriver {
         clear_follow_up: bool,
     ) -> Result<(), XyDriverError> {
         self.block_on(async {
-            self.post_data(
-                "queue/clear",
+            self.unary(
+                "clear_queue",
                 serde_json::json!({
                     "clear_steer": clear_steer,
                     "clear_follow_up": clear_follow_up,
@@ -632,36 +546,16 @@ impl XyDriver for XyRemoteDriver {
     }
 
     fn queue_stats(&self) -> crate::agent::capabilities::QueueStats {
-        self.block_on(async {
-            let data = self.get_data("queue").await?;
-            Ok(crate::agent::capabilities::QueueStats {
-                steer_count: data
-                    .get("steer_count")
-                    .and_then(|n| n.as_u64())
-                    .unwrap_or(0) as usize,
-                follow_up_count: data
-                    .get("follow_up_count")
-                    .and_then(|n| n.as_u64())
-                    .unwrap_or(0) as usize,
-            })
-        })
-        .unwrap_or_default()
+        crate::agent::capabilities::QueueStats::default()
     }
 
     async fn session_tree(
         &self,
         kind: SessionTreeKind,
     ) -> Result<Vec<SessionTreeNode>, XyDriverError> {
-        match kind {
-            SessionTreeKind::MessageHistory => {
-                let data = self.get_data("trees/message-history").await?;
-                let tree = data.get("tree").cloned().unwrap_or(serde_json::Value::Null);
-                serde_json::from_value(tree).map_err(|e| XyDriverError::remote(e.to_string()))
-            }
-            SessionTreeKind::FileBrowser => Err(XyDriverError::unsupported(
-                session_tree_kind_unimplemented(kind),
-            )),
-        }
+        Err(XyDriverError::unsupported(session_tree_kind_unimplemented(
+            kind,
+        )))
     }
 
     async fn travel_session_tree(
@@ -669,20 +563,10 @@ impl XyDriver for XyRemoteDriver {
         kind: SessionTreeKind,
         entry_id: &str,
     ) -> Result<SessionTreeTravel, XyDriverError> {
-        match kind {
-            SessionTreeKind::MessageHistory => {
-                let data = self
-                    .post_data(
-                        "trees/message-history/travel",
-                        serde_json::json!({ "entry_id": entry_id }),
-                    )
-                    .await?;
-                serde_json::from_value(data).map_err(|e| XyDriverError::remote(e.to_string()))
-            }
-            SessionTreeKind::FileBrowser => Err(XyDriverError::unsupported(
-                session_tree_kind_unimplemented(kind),
-            )),
-        }
+        let _ = entry_id;
+        Err(XyDriverError::unsupported(session_tree_kind_unimplemented(
+            kind,
+        )))
     }
 
     async fn append_entry_label(
@@ -706,59 +590,9 @@ impl XyDriver for XyRemoteDriver {
     }
 
     async fn list_sessions(&self) -> Result<Vec<SessionListEntry>, XyDriverError> {
-        self.block_on(async {
-            let data = self.get_data("sessions").await?;
-            let arr = data
-                .get("sessions")
-                .and_then(|s| s.as_array())
-                .cloned()
-                .unwrap_or_default();
-            Ok(arr
-                .iter()
-                .filter_map(|row| {
-                    Some(SessionListEntry {
-                        id: row.get("id")?.as_str()?.to_string(),
-                        name: row
-                            .get("name")
-                            .and_then(|n| n.as_str())
-                            .filter(|s| !s.is_empty())
-                            .map(str::to_string),
-                        first_message: row
-                            .get("first_message")
-                            .or_else(|| row.get("firstMessage"))
-                            .and_then(|n| n.as_str())
-                            .filter(|s| !s.is_empty())
-                            .map(str::to_string),
-                        message_count: row
-                            .get("message_count")
-                            .or_else(|| row.get("messageCount"))
-                            .and_then(|n| n.as_u64())
-                            .unwrap_or(0) as usize,
-                        modified_unix: row
-                            .get("modified_unix")
-                            .or_else(|| row.get("modified"))
-                            .and_then(|n| n.as_u64()),
-                        parent_session_id: row
-                            .get("parent_session_id")
-                            .or_else(|| row.get("parentSession"))
-                            .and_then(|n| n.as_str())
-                            .filter(|s| !s.is_empty())
-                            .map(str::to_string),
-                        tree_prefix: String::new(),
-                        cwd: row
-                            .get("cwd")
-                            .and_then(|n| n.as_str())
-                            .filter(|s| !s.is_empty())
-                            .map(str::to_string),
-                        path: row
-                            .get("path")
-                            .and_then(|n| n.as_str())
-                            .filter(|s| !s.is_empty())
-                            .map(str::to_string),
-                    })
-                })
-                .collect())
-        })
+        Err(XyDriverError::unsupported(
+            "list_sessions is not a v1 unary method",
+        ))
     }
 
     async fn load_session_entries(
@@ -807,10 +641,4 @@ impl XyDriver for XyRemoteDriver {
     async fn loaded_resources_snapshot(&self) -> LoadedResourcesSnapshot {
         LoadedResourcesSnapshot::default()
     }
-}
-
-#[cfg(feature = "server")]
-#[allow(dead_code)] // used by reserved XyRemoteDriver; keep while thin-client surface is dormant
-fn urlencoding_loose(s: &str) -> String {
-    s.replace(' ', "%20")
 }

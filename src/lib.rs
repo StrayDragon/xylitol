@@ -13,6 +13,7 @@
 //! [`XyPermission`], [`XyBashExecutor`], [`XyExportIo`], [`XySecretResolver`],
 //! [`XyModelBuilder`], [`XyHookBus`].
 //! Shared application protocol: [`XyDriver`], [`XyInProcessDriver`], [`XyDriverError`].
+//! Envelope client: [`HostClient`], [`InProcessClient`].
 //! Events / stream: [`XyEvent`], [`XyChunk`], [`XyStream`].
 //! Hook outcomes: [`XyHookOutcome`], [`NoopHookBus`].
 //! Errors: [`XyError`], [`XyToolError`], [`XySessionStoreError`], [`XySessionError`], [`XyExportError`], [`XyTrustError`], [`XyDriverError`].
@@ -41,7 +42,11 @@ pub mod utils;
 
 // ── Curated `pub use` (c500 / architecture.ar09) ─────────────────────
 
+pub use crate::app::core::attach::{DEFAULT_ATTACH_URL, attach_fail_message, probe_host};
 pub use crate::app::core::driver::{XyDriver, XyDriverError, XyInProcessDriver};
+#[cfg(feature = "server")]
+pub use crate::app::core::host_client::HttpWsClient;
+pub use crate::app::core::host_client::{HostClient, HostClientError, InProcessClient};
 pub use crate::protocol::error::{
     XyError, XyExportError, XySessionError, XySessionStoreError, XyToolError, XyTrustError,
 };

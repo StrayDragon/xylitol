@@ -6,7 +6,7 @@
 //!
 //! - [`XyInProcessDriver`]: wraps the local agent module (composition root wires
 //!   ports and agent together).
-//! - [`XyRemoteDriver`]: speaks the protocol over REST/WS to a remote server.
+//! - [`XyRemoteDriver`]: `XyDriver` adapter over [`super::host_client::HttpWsClient`].
 //!
 //! The trait carries not just `run`/`abort` but the full set of command
 //! execution semantics (model selection, compaction, export, session ops) so
@@ -15,9 +15,8 @@
 //! (Subscribe/ApproveTool/AnswerQuestion) do NOT live here — they stay in
 //! `app::server::ws`.
 //!
-//! NOTE: trait methods are consumed via dispatch under tui/server features.
-//! `XyRemoteDriver` is reserved for a remote thin-client surface (not constructed
-//! yet) — `dead_code` allow is on that type/impl, not this module.
+//! Product TUI attach uses [`HttpWsClient`](super::host_client::HttpWsClient);
+//! this adapter keeps the existing [`XyDriver`] seam until TUI speaks the envelope trait directly.
 
 mod in_process;
 mod proto;
@@ -29,7 +28,6 @@ pub use crate::app::core::driver_error::XyDriverError;
 pub use in_process::XyInProcessDriver;
 pub use proto::XyDriver;
 #[cfg(feature = "server")]
-#[allow(unused_imports)] // reserved remote thin-client surface
 pub use remote::XyRemoteDriver;
 // Re-export seam DTOs for surfaces (`crate::app::core::driver::*`).
 #[allow(unused_imports)]

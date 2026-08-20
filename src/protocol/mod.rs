@@ -25,7 +25,13 @@ pub mod tool_name;
 pub mod tool_timeout;
 
 // Wire Command/Event at protocol root (legacy call sites).
-pub use wire::{Command, Envelope, ErrorCode, Event};
+pub use wire::{
+    ApprovalRequestedPayload, BINDINGS_RELATIVE_PATH, Command, DOWNLINK_METHODS, Envelope,
+    ErrorCode, Event, HostDescribeValue, HostHelloPayload, PROTOCOL_VERSION,
+    QuestionRequestedPayload, RpcError, RpcMessage, RpcResult, SessionEventPayload,
+    SessionResyncRequiredPayload, SessionSubscribedPayload, UNARY_METHODS,
+    export_typescript_bindings, is_downlink_method, is_unary_method,
+};
 
 // Flat port re-exports for `crate::protocol::{XyModel, …}` call sites.
 pub use ports::{

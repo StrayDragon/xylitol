@@ -62,7 +62,7 @@ impl Default for ServerConfig {
     fn default() -> Self {
         Self {
             host: "127.0.0.1".into(),
-            port: 8080,
+            port: 18790,
             lock_path: None,
             sessions_dir: None,
         }

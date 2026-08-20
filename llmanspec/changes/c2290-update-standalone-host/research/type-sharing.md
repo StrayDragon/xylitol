@@ -56,6 +56,8 @@ Web 才需要跨语言导出。
 
 1. **SSOT = Rust `protocol` 信封 + 方法表 payload**（serde）。TUI 零生成，直接 `use`。
 2. **c2290 落地 specta 闸**：`#[derive(Type)]` + 检入 `bindings.ts` + `just qa` 重生 diff。覆盖信封、`RpcResult`、unary payload/value、`Event`、下行帧。**不是** Web UI。
+   - specta-serde **unified** `Format` 盖不住 `skip_serializing_if`（要 PhasesFormat 才会拆 `*_Serialize`/`*_Deserialize`）。产品信封/`Event` 的 Option 字段改 `#[serde(default)]`、序列化显式 `null`，换单一 TS 类型。不要为可选字段再开双相导出。
+   - JSON 数字：`u64`/`usize` 用 `#[specta(type = specta_typescript::Number)]`（JS number，会话 seq/token 可接受精度）；`serde_json::Value` 用 `Any`。禁止为 specta 把线类型改成 String bigint。
 3. **薄 TS 客户端**（铸 `rpcId`、POST、校验回显、订 mux）→ `c2310-add-web-ts-client`；Vite SPA 更后。
 4. salvo oapi / OpenAPI → `c2320-add-salvo-oapi-docs`；仅 unary **调试文档**；MUST NOT 成为第二套产品词表。WS 下行不进 OpenAPI。
 5. 不引入 rspc、不为 TUI 引入 ts-rs、v1 不上 AsyncAPI。

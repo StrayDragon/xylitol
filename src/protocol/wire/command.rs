@@ -1,9 +1,10 @@
 //! Command vocabulary — client → core messages.
 
-use serde::Deserialize;
+use serde::{Deserialize, Serialize};
+use specta::Type;
 
 /// A command from the client. Each carries an optional `id` for correlation.
-#[derive(Debug, Clone, Deserialize)]
+#[derive(Debug, Clone, Serialize, Deserialize, Type)]
 #[serde(tag = "type", rename_all = "snake_case")]
 pub enum Command {
     Prompt {
@@ -117,6 +118,7 @@ pub enum Command {
         #[serde(default)]
         id: Option<String>,
         session_id: String,
+        #[specta(type = specta_typescript::Number)]
         last_seq: u64,
     },
     /// Approve a tool execution (reverse RPC response).

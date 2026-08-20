@@ -1,5 +1,6 @@
 use crate::steps_cli_tokenizer::{
-    SurfaceBdd, SurfaceFlagsBdd, TokenizerBdd, surface_bdd, surface_flags_bdd, tokenizer_bdd,
+    AttachBdd, SurfaceBdd, SurfaceFlagsBdd, TokenizerBdd, attach_bdd, surface_bdd,
+    surface_flags_bdd, tokenizer_bdd,
 };
 use rstest_bdd_macros::scenario;
 
@@ -92,3 +93,9 @@ fn test_ce20_hint_yes(surface_flags_bdd: SurfaceFlagsBdd) {}
     name = "resume-hint-absent-when-unpersisted"
 )]
 fn test_ce20_hint_no(surface_flags_bdd: SurfaceFlagsBdd) {}
+
+#[scenario(
+    path = "tests/features/cli-entry.feature",
+    name = "tui-attach-host-down"
+)]
+fn test_ce21_attach_down(attach_bdd: AttachBdd) {}

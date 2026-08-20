@@ -367,6 +367,15 @@ pub async fn run() -> Result<(), Box<dyn std::error::Error>> {
     #[cfg(not(feature = "tui"))]
     let want_tui = false;
 
+    #[cfg(all(feature = "tui", feature = "server"))]
+    if want_tui {
+        let url = crate::app::core::attach::DEFAULT_ATTACH_URL;
+        if crate::app::core::attach::probe_host(url).is_err() {
+            eprintln!("{}", crate::app::core::attach::attach_fail_message(url));
+            return Err("host not listening".into());
+        }
+    }
+
     // c490: Ask trust inside ChoicePrompt **before** bootstrap (no stdio menu).
     #[cfg(feature = "tui")]
     if want_tui {
@@ -384,6 +393,11 @@ pub async fn run() -> Result<(), Box<dyn std::error::Error>> {
         }
     }
 
+    #[cfg(all(feature = "tui", feature = "server"))]
+    if want_tui {
+        return run_product_tui_attached(&surface).await;
+    }
+
     let bootstrap_input = BootstrapInput {
         config_path: surface.config.as_ref().map(std::path::PathBuf::from),
         session: surface.session.clone(),
@@ -391,7 +405,7 @@ pub async fn run() -> Result<(), Box<dyn std::error::Error>> {
         trust_override,
         // c490: product TUI Ask is `run_trust_gate_if_needed` (ChoicePrompt), never stdio.
         interactive: false,
-        caller: if want_tui { "tui" } else { "cli" },
+        caller: "cli",
     };
 
     // `--list-models` needs the resolved registry before any agent build; it
@@ -447,12 +461,6 @@ pub async fn run() -> Result<(), Box<dyn std::error::Error>> {
         Err(e) => return Err(e.into()),
     };
     render_warnings(&bootstrapped.warnings);
-    #[cfg(feature = "tui")]
-    let refuse_tui_untrusted = want_tui
-        && bootstrapped
-            .warnings
-            .iter()
-            .any(|w| matches!(w, BootstrapWarning::ProjectNotTrusted { .. }));
     let runtime = bootstrapped.into_runtime();
     let session_id = runtime.session_id;
     let project_trusted = !runtime
@@ -464,47 +472,10 @@ pub async fn run() -> Result<(), Box<dyn std::error::Error>> {
     let agent_dir = crate::infra::resource::DefaultResourceLoader::default_agent_dir();
     let mcp_servers = runtime.mcp_servers.unwrap_or_default();
     driver.enable_reload_state(cwd, agent_dir, project_trusted, mcp_servers);
-    #[cfg(feature = "tui")]
+    #[cfg(all(feature = "tui", not(feature = "server")))]
     if want_tui {
-        // Align with pi / 图4: untrusted project → message already printed, no TUI.
-        if refuse_tui_untrusted {
-            return Ok(());
-        }
-        if let Err(e) = crate::app::tui::preflight(&driver) {
-            eprintln!("Error: {e}");
-            return Err(e.into());
-        }
-        let seed_n;
-        let activity_fold;
-        match crate::infra::config::loader::load_app_config(
-            surface.config.as_ref().map(std::path::Path::new),
-        ) {
-            Ok(c) => {
-                seed_n = c.tui.editor_history_seed_sessions;
-                activity_fold = c.tui.activity_fold.into();
-            }
-            Err(_) => {
-                seed_n = 1;
-                activity_fold = crate::app::tui::activity_fold::ActivityFoldSettings::default();
-            }
-        }
-        // c1200: do not await full MCP before opening the TUI.
-        driver.begin_mcp_bootstrap().await;
-        let ask_gateway = std::sync::Arc::new(crate::app::tui::AskHostGateway::new());
-        driver.install_ask_tool(ask_gateway.clone());
-        let tui_result = crate::app::tui::run(
-            &mut driver,
-            crate::app::tui::TuiRunOptions {
-                editor_history_seed_sessions: seed_n,
-                activity_fold,
-                restored_session: surface.session.is_some(),
-                ask_gateway: Some(ask_gateway),
-                interaction_mode: crate::app::tui::lab_interaction_mode_from_env(),
-            },
-        )
-        .await;
-        maybe_print_resume_hint(&driver).await;
-        return tui_result.map_err(|e| e.into());
+        eprintln!("Error: product TUI requires the server feature to attach Host");
+        return Err("tui requires server feature".into());
     }
 
     // print / non-TUI: settle MCP before the oneshot prompt (c1200).
@@ -541,6 +512,50 @@ pub async fn run() -> Result<(), Box<dyn std::error::Error>> {
 
     timing::print_timings();
     Ok(())
+}
+
+#[cfg(all(feature = "tui", feature = "server"))]
+async fn run_product_tui_attached(
+    surface: &SurfaceBootstrap,
+) -> Result<(), Box<dyn std::error::Error>> {
+    use std::io::IsTerminal;
+    if !std::io::stdin().is_terminal() || !std::io::stdout().is_terminal() {
+        eprintln!("Error: TUI requires a TTY");
+        return Err("tui requires tty".into());
+    }
+    let attach_url = crate::app::core::attach::DEFAULT_ATTACH_URL;
+    let mut driver = crate::app::core::driver::XyRemoteDriver::new(
+        attach_url,
+        surface.session.clone().unwrap_or_default(),
+    );
+    let seed_n;
+    let activity_fold;
+    match crate::infra::config::loader::load_app_config(
+        surface.config.as_ref().map(std::path::Path::new),
+    ) {
+        Ok(c) => {
+            seed_n = c.tui.editor_history_seed_sessions;
+            activity_fold = c.tui.activity_fold.into();
+        }
+        Err(_) => {
+            seed_n = 1;
+            activity_fold = crate::app::tui::activity_fold::ActivityFoldSettings::default();
+        }
+    }
+    let ask_gateway = std::sync::Arc::new(crate::app::tui::AskHostGateway::new());
+    let tui_result = crate::app::tui::run(
+        &mut driver,
+        crate::app::tui::TuiRunOptions {
+            editor_history_seed_sessions: seed_n,
+            activity_fold,
+            restored_session: surface.session.is_some(),
+            ask_gateway: Some(ask_gateway),
+            interaction_mode: crate::app::tui::lab_interaction_mode_from_env(),
+        },
+    )
+    .await;
+    maybe_print_resume_hint(&driver).await;
+    tui_result.map_err(|e| e.into())
 }
 
 /// stderr resume line when the session was persisted (c1565).

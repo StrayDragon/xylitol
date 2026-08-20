@@ -14,7 +14,7 @@ pub enum ServerSubcommand {
     /// Start the xylitol server.
     Run {
         /// Port to bind to.
-        #[arg(long, default_value = "8080")]
+        #[arg(long, default_value = "18790")]
         port: u16,
     },
     /// Register the server as a launchd/systemd service (macOS/Linux).
