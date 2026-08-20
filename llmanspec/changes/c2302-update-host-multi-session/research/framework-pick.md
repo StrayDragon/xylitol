@@ -1,7 +1,9 @@
 # HTTP/WS 框架选型：needs 覆盖 vs axum / poem（结论：salvo）
 
+> **2026-08-20 补记：** 产品信封已改到 c2290 四象限。Salvo **结论仍锁**。下表「WS 全双工承载 tagged JSON Command/Event」作废——网络路径是 POST unary + **WS 只下行** `ServerRequest`。ACP 仍不走产品信封。
+>
 > c2302「契约传输面」的框架决策。**本文只对比特性覆盖，不做可行性验证**（按用户要求）。一手来源：本地 `salvo-skills` 全套（websocket / realtime / graceful-shutdown / ...）、docs.rs 官方、c2280 research `01` 既有对照。版本锚：salvo 0.94/0.95（2026），axum 0.8。
-> 需求来自 c2300（A 统一 CS、本机 UDS 一级拓扑）、c2301（契约传输面）、c2305（ACP provider 未来）、c2280 research（热路径 / 多订阅者广播 / 停服语义）。
+> 需求来自 c2300（A 统一 CS、本机 UDS 一级拓扑）、c2290（四象限）、c2305（ACP provider 未来）、c2280 research（热路径 / 多订阅者广播 / 停服语义）。
 
 ## 需求 → 覆盖矩阵（salvo）
 

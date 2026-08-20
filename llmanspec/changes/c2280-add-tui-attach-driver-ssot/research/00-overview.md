@@ -5,13 +5,19 @@
 | 问题 | 证据 | 裁决 |
 |---|---|---|
 | 归属 / 连接方式 / 多窗写入 | `02-split`；开销 `c2300/research/overhead-eval.md` | c2300 |
-| 线协议闭集 | `03-paths` | c2301 |
-| 多会话 host / HTTP 栈 | `01-framework` `04-topology`；`c2302/research/framework-pick.md` | c2302 |
-| embed + attach | `04-topology` | c2303 |
-| 符合性闸 | — | c2304 |
-| ACP | `acp-interop.md` | c2305（后置） |
+| 线协议闭集（方法/帧载荷） | `03-paths` | c2301；外包四象限见 c2290 |
+| 产品信封 + 默认拓扑 | DSH apiproxy / 2026-08-04 WS 下行 | **c2290**（四象限；POST 上行 + WS 下行；TUI attach） |
+| 多会话 host / HTTP 栈 | `01-framework` `04-topology`；`c2302/research/framework-pick.md` | c2302（salvo **载体**，不再全双工 WS Command/Event） |
+| embed + attach CLI | `04-topology` | c2303 |
+| 符合性闸 | — | c2304（`InProcessClient` vs `HttpWsClient` 同方法表） |
+| ACP | `acp-interop.md` | c2305（后置；译进方法表；不共用产品信封） |
+| 薄 TS 客户端 | c2290 specta 闸之后 | **c2310**（无 SPA） |
+| 方案 A loopback | c2290 design 曾记一节 | **c2315** |
+| salvo oapi 调试文档 | type-sharing | **c2320**（非 SSOT） |
+| 跨面公共动作 id | `docs/roadmaps/Web与TUI同源.md` | **c2325** |
 | 吞吐 / 编码 / 工具链 | `05-throughput` | c2300 tagged JSON；c2301 不预埋二进制 |
-| 浏览器壳 | `06-web` | 不开闸；契约不堵 WS |
+| 浏览器壳 | `06-web` | 不开闸；契约不堵 WS 下行 |
+| 跨语言类型 | c2290 `research/type-sharing.md` | **c2290 落地** specta `bindings.ts` 闸（无 Web UI）；薄 TS 客户端 / SPA 后置草案；不上 rspc/OpenAPI-first |
 
 ## 术语（后文每词只用一栏）
 
@@ -22,7 +28,7 @@
 | Command | 命令 | 客户端 → host |
 | Event | 事件 | host → 客户端 |
 | encoding | 编码 | JSON / postcard 等字节格式；消息种类不变 |
-| envelope | 信封 | JSON-RPC 外包层 |
+| envelope | 信封 | 四象限 RPC 外包层（不是 JSON-RPC 2.0） |
 | HTTP stack | HTTP 栈 | 路由 + WS upgrade |
 | listener | 监听器 | TCP 或 UDS |
 | UDS | Unix 域套接字 | 同内核 IPC；见下 |
