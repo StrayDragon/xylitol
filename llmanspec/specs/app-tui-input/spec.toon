@@ -2,7 +2,7 @@ kind: llman.sdd.spec
 name: "app-tui-input"
 purpose: "Editor 操作区、取消/退出键位、steer 与 follow-up、信任后 yolo。"
 valid_scope[1]: "产品 TUI 面"
-requirements[41]{req_id,title,statement}:
+requirements[43]{req_id,title,statement}:
   ati1,"editor-operation-zone","输入区 MUST 使用 xylitol-tui Editor，并保留上下边框作为操作区边界；选择器打开时 MUST 替换 editor 槽而非画到内容顶部。"
   ati2,"cancel-and-ctrl-c","流式、agent 忙碌或 bang（!/!!）忙碌且无 overlay 时，Esc 与 Ctrl+C（app.clear）MUST 同语义调用 Driver::abort（或等价 pending abort latch）且 MUST NOT 退出 TUI；有 overlay 时 Ctrl+C MUST 先关槽且 MUST NOT abort。idle 且无 overlay 时：编辑器非空 Ctrl+C MUST 清空输入；编辑器为空 Ctrl+C MUST 退出 TUI。"
   ati3,"steer-and-followup-keys","agent 忙碌时普通 Enter MUST 将当前输入作为 steer 入队；Alt+Enter MUST 将当前输入作为 follow-up 入队（等待当前 agent loop 全部完成后再执行）。"
@@ -13,8 +13,8 @@ requirements[41]{req_id,title,statement}:
   ati8,"demo-bash-prefix-border",agent_demo 中当编辑器文本 trim 后以 ! 开头时，Editor 操作区边框 MUST 切换为 bash 强调色（对齐 DESIGN success 前景）；去掉 ! 前缀后 MUST 恢复默认 muted 边框。
   ati9,"demo-external-editor-stub",agent_demo MUST 将 Ctrl+G 绑定为外部编辑器原型：记录调用并写入系统提示；MUST NOT 在 harness 路径强制 spawn 真实 $EDITOR；MAY 向编辑器追加 stub 标记以演示往返。
   ati10,"product-host-key-wiring","产品 HostSession MUST 在 agent 忙碌且会话树关闭时将普通 Enter 映射为 Driver::steer、Alt+Enter 映射为 Driver::follow_up；忙碌时 Esc MUST 调用 Driver::abort 并 clear_queue(steer=true, follow_up=false)；MUST NOT 在忙碌 Esc 时打开 c491 stub 树。"
-  ati11,"product-queue-chrome","产品 TUI 在 steer/follow-up 队列非空时 MUST 在 scrollback 与 status 之间以 muted 色渲染 Steering:/Follow-up: 行及 Alt+Up dequeue 提示（对齐 pi pendingMessagesContainer；实现为 queue strip）；MUST NOT 将排队内容写成 scrollback System [steer]/[follow-up] 墙；MUST NOT 在 footer/status 另加队列计数徽章（如 `q:sN|fM`）；Alt+Up MUST 将队列文本还原进 editor 并 clear_queue(steer=true, follow_up=true)。"
-  ati12,"product-queue-uplink","当 steer/follow-up 从队列注入 agent history 时，runtime MUST 发射 MessageStart/MessageEnd（role=user，带 message）；产品 bridge MUST 将其提交为 scrollback UiEntry::User（与 idle 提交同形）；queue strip 随 QueueUpdate 消退后用户文本 MUST 仍留在 transcript；MUST NOT 仅在 strip 闪现后丢失。"
+  ati11,"product-queue-chrome","产品 TUI 在 steer/follow-up 队列非空时 MUST 在 scrollback 与 status 之间以 muted 色渲染 Steering:/Follow-up: 行及 Alt+Up dequeue 提示（对齐 pi pendingMessagesContainer；实现为 queue strip）；MUST NOT 将排队内容写成 scrollback System [steer]/[follow-up] 墙；MUST NOT 在 footer/status 另加队列计数徽章（如 `q:sN|fM`）；Alt+Up MUST 将队列文本还原进 editor 并 clear_queue(steer=true, follow_up=true)。经 attach/Remote 时，入队后的 drain_pending MUST NOT 用空队列深度把已画条文案清掉；校准 MUST 只按 Host 真实深度 FIFO 消退。"
+  ati12,"product-queue-uplink","当 steer/follow-up 从队列注入 agent history 时，runtime MUST 发射 MessageStart/MessageEnd（role=user，带 message）；产品 bridge MUST 将其提交为 scrollback UiEntry::User（与 idle 提交同形）；queue strip 随 QueueUpdate 消退后用户文本 MUST 仍留在 transcript；MUST NOT 仅在 strip 闪现后丢失。即使用户连续两次提交相同正文（idle 后再 busy 插话，或两轮根提交），transcript MUST 出现两条用户气泡，MUST NOT 因正文相同而吞掉第二次提问。"
   ati13,"product-editor-send-history","产品 Host 在 idle 提交、busy steer、busy follow-up 发送用户文本时 MUST 调用 Editor::add_to_history（跳过空串与连续重复）；同一 TUI session 内 MUST 能在 editor 空或已在浏览态时用 ↑/↓ 召回这些文本（委托包 ed05）；启动与切 session 时 MAY 从 session store 只读装载用户发送历史种子（见 ati41），MUST NOT 要求把 editor 浏览态本身做成独立持久化文件。"
   ati41,"editor-history-session-seed","纯 new session（含 /session-new）启动时，产品 Host MUST 在当前 cwd 下按 mtime 取最近 N 个其它已持久化 session（N 来自配置 tui.editor_history_seed_sessions，缺省 1），抽取其中 user 角色正文（跳过 trim 后以 / 开头的行），按较旧 session 先、会话内时间序调用 add_to_history，使 ↑ 先召回全局最近一条；恢复或切换到已有 session 时 MUST 仅用该 session 的 user 正文替换 editor 发送历史缓冲；MUST NOT 写入 assistant/tool/thinking；MUST NOT 改 transcript 或会话树；cwd 比较 MUST 与 resume Current scope 的 cwd_matches 同口径。"
   ati14,"product-abort-resumable","产品 TUI 在用户 Esc abort 当前流之后 MUST 回到可提交 idle（follow-up restore 语义不变）；MUST NOT 让后续用户输入持续产生粘性 aborted Error 而无法继续对话。"
@@ -44,5 +44,9 @@ requirements[41]{req_id,title,statement}:
   ati36,"thinking-level-picker-only","产品 TUI MUST NOT 注册全局 app.thinking.cycle，MUST NOT 在 Editor 槽（非 Models）将 Shift+Tab 绑为 thinking cycle。thinking 档变更 MUST 仅经 /model 槽（←→ / 槽内 Shift+Tab）或有参 /model <id>（可调默认声明列表末项，不可调为 off）路径提交。MUST NOT 新增产品 /thinking-level slash；MUST NOT 与 app.thinking.toggle（Ctrl+T 折叠）混淆；MUST NOT 用包 ThinkingBorderLevel::cycle_next 作为产品真源。"
   ati37,"paste-image-temp-path","产品 TUI MUST 支持将系统剪贴板图片粘贴进对话：经 Driver 只读缝读取图片字节；成功时 MUST 写入带不可预测名的 tempfile，并向 Editor 插入绝对路径纯文本（对齐 pi；MUST NOT 要求 @ 前缀）；MUST NOT 在 Editor 内嵌大段 base64；MUST NOT 在 idle/busy 提交时把该路径转成 user AgentPart::Image；MUST NOT 从 app/tui reach infra::clipboard 或 infra::image；当剪贴板无图（或读图失败）时 MUST 经 Driver 尝试读取系统剪贴板 UTF-8 文本并插入 Editor；仅当图与文本皆不可用时 MUST 向 scrollback 追加短 Error；MUST NOT panic。"
   ati43,"reload-soft-gate-keys","产品 TUI 在 /reload 进行中（ath28）且无 overlay 时：MUST 允许向 Editor 打字与 Ctrl+G 外编；Enter（普通上行、slash、bang）MUST 硬拒绝并经壳层通告 body `reloading — wait`，MUST NOT 调用 Driver::run / execute_bash / 第二次 reload，MUST NOT 入 steer/follow-up；Esc 与 Ctrl+C MUST 请求取消重载且 MUST NOT 退出 TUI、MUST NOT 打开会话树。有 overlay 时 Esc/Ctrl+C MUST 先关槽且 MUST NOT 仅因此取消重载。取消或重载结束后键位恢复既有 idle/agent/bang 规则（ati2/ati10/ati19）。"
-scenarios[1]{req_id,id,given,when,then,feature}:
+  ati44,"attach-queue-stats-calibrate","产品 TUI attach 校准队列条深度时 MUST 使用 Host 只读 queue_stats（或语义等价 unary）与下行 QueueUpdate；Remote 默认空深度 MUST NOT 当作已清空。入队瞬间本地条文案 MUST 保持可见，直到 Host 深度下降。"
+  ati45,"same-text-second-user-visible","产品 TUI 在用户连续提交相同正文时 MUST 让第二次提问在 transcript 中作为独立用户气泡可见（含 busy 插话注入）；MUST NOT 仅因与上一条 UiEntry::User 正文相等而跳过写入。"
+scenarios[3]{req_id,id,given,when,then,feature}:
   ati43,ati43-unit,"reload 软闸键位由产品 harness 覆盖（非 BDD）",审查实现与对应测试,"行为符合本 requirement 陈述",false
+  ati44,ati44-unit,"attach 队列条校准由产品 harness 覆盖（非 BDD）",busy 入队后 drain_pending,"Steering/Follow-up 行仍含入队文案",false
+  ati45,ati45-unit,"同文二次提问由产品 harness 覆盖（非 BDD）",两次相同正文提交或注入,"transcript 含两条用户气泡",false
