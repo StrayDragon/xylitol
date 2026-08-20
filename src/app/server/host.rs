@@ -132,7 +132,7 @@ impl HostState {
         ))
     }
 
-    /// Default production ports from [`build_ports`] (caller supplies store via composition).
+    /// Default production ports from `build_ports` (caller supplies store via composition).
     pub fn from_default_ports(
         reload: ReloadBaseline,
         fallback_session: String,

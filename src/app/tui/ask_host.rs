@@ -17,7 +17,7 @@ pub struct PendingAsk {
 
 /// Channel-based [`AskUserGateway`] shared by AskTool and the TUI host.
 ///
-/// When a [`HostClient`] is set (product TUI attach), reverse-RPC answers go
+/// When a [`crate::HostClient`] is set (product TUI attach), reverse-RPC answers go
 /// through `POST /api/respond` instead of a local fake.
 pub struct AskHostGateway {
     pending: Mutex<Option<PendingAsk>>,
@@ -32,7 +32,7 @@ impl AskHostGateway {
         }
     }
 
-    /// Attach-mode: answers are posted to Host via [`HostClient::respond`].
+    /// Attach-mode: answers are posted to Host via [`crate::HostClient::respond`].
     pub fn set_host_client(
         &self,
         client: std::sync::Arc<dyn crate::app::core::host_client::HostClient>,
