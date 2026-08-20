@@ -1,12 +1,15 @@
 //! Remote HTTP/WS [`XyRemoteDriver`] (feature = "server").
 
+use std::collections::VecDeque;
 use std::path::Path;
 use std::sync::Arc;
 use std::sync::atomic::{AtomicBool, AtomicU64, Ordering};
+use std::time::Duration;
 
 use async_trait::async_trait;
 use futures::StreamExt;
 use serde_json::Value;
+use tokio::sync::Notify;
 use tokio_util::sync::CancellationToken;
 
 use crate::app::core::host_client::{HostClient, HttpWsClient};
@@ -19,24 +22,76 @@ use crate::protocol::{Event, RpcMessage};
 use super::XyDriver;
 use super::XyDriverError;
 use super::types::{
-    CommandInfo, DebugSceneLoad, EventStream, LoadedResourcesSnapshot, ModelInfo, ReloadStepReport,
-    RuntimeReloadReport, SessionListEntry, SessionStats, XyEvent, estimate_from_session_entries,
+    CommandInfo, DebugSceneLoad, EventStream, LoadedResourcesSnapshot, ModelInfo, QueueStats,
+    ReloadStepReport, RuntimeReloadReport, SessionListEntry, SessionStats, XyEvent,
+    estimate_from_session_entries,
 };
 
 /// Notify the product TUI of mux reverse-RPC (approval/question).
 pub type ReverseRpcNotify = Arc<dyn Fn(String, String, Value) + Send + Sync>;
+
+#[derive(Clone)]
+struct SharedDownlink {
+    events: Arc<std::sync::Mutex<VecDeque<XyEvent>>>,
+    notify: Arc<Notify>,
+    started: Arc<AtomicBool>,
+}
+
+impl SharedDownlink {
+    fn new() -> Self {
+        Self {
+            events: Arc::new(std::sync::Mutex::new(VecDeque::new())),
+            notify: Arc::new(Notify::new()),
+            started: Arc::new(AtomicBool::new(false)),
+        }
+    }
+
+    fn push(&self, ev: XyEvent) {
+        if let Ok(mut q) = self.events.lock() {
+            q.push_back(ev);
+        }
+        self.notify.notify_waiters();
+    }
+
+    fn drain(&self) -> Vec<XyEvent> {
+        self.events
+            .lock()
+            .map(|mut q| q.drain(..).collect())
+            .unwrap_or_default()
+    }
+
+    fn push_front_batch(&self, rest: Vec<XyEvent>) {
+        if rest.is_empty() {
+            return;
+        }
+        if let Ok(mut q) = self.events.lock() {
+            for ev in rest.into_iter().rev() {
+                q.push_front(ev);
+            }
+        }
+    }
+}
 
 /// Remote driver — [`XyDriver`] over a [`HostClient`] carrier.
 #[cfg(feature = "server")]
 pub struct XyRemoteDriver<C = HttpWsClient> {
     host: C,
     session_id: String,
-    cancel: CancellationToken,
+    session_life: CancellationToken,
+    turn_cancel: Arc<std::sync::Mutex<CancellationToken>>,
     thinking: std::sync::Mutex<String>,
     leaf_entry_id: Arc<std::sync::Mutex<Option<String>>>,
     last_seq: Arc<AtomicU64>,
     handshake_done: Arc<AtomicBool>,
     reverse_rpc: Option<ReverseRpcNotify>,
+    downlink: SharedDownlink,
+    resync_needed: Arc<AtomicBool>,
+    subscribed_ok: Arc<AtomicBool>,
+    cached_model: Arc<std::sync::Mutex<Option<ModelInfo>>>,
+    cached_models: Arc<std::sync::Mutex<Option<Vec<ModelInfo>>>>,
+    cached_commands: Arc<std::sync::Mutex<Option<Vec<CommandInfo>>>>,
+    cached_queue: Arc<std::sync::Mutex<QueueStats>>,
+    cached_resources: Arc<std::sync::Mutex<LoadedResourcesSnapshot>>,
 }
 
 #[cfg(feature = "server")]
@@ -74,17 +129,279 @@ where
         Self {
             host,
             session_id,
-            cancel: CancellationToken::new(),
+            session_life: CancellationToken::new(),
+            turn_cancel: Arc::new(std::sync::Mutex::new(CancellationToken::new())),
             thinking: std::sync::Mutex::new(THINKING_OFF.into()),
             leaf_entry_id: Arc::new(std::sync::Mutex::new(None)),
             last_seq: Arc::new(AtomicU64::new(0)),
             handshake_done: Arc::new(AtomicBool::new(false)),
             reverse_rpc: None,
+            downlink: SharedDownlink::new(),
+            resync_needed: Arc::new(AtomicBool::new(false)),
+            subscribed_ok: Arc::new(AtomicBool::new(false)),
+            cached_model: Arc::new(std::sync::Mutex::new(None)),
+            cached_models: Arc::new(std::sync::Mutex::new(None)),
+            cached_commands: Arc::new(std::sync::Mutex::new(None)),
+            cached_queue: Arc::new(std::sync::Mutex::new(QueueStats::default())),
+            cached_resources: Arc::new(std::sync::Mutex::new(LoadedResourcesSnapshot::default())),
         }
     }
 
     pub fn set_reverse_rpc_notify(&mut self, notify: ReverseRpcNotify) {
         self.reverse_rpc = Some(notify);
+    }
+
+    fn cache_queue_from_value(&self, data: &Value) {
+        let stats = QueueStats {
+            steer_count: data.get("steer_count").and_then(Value::as_u64).unwrap_or(0) as usize,
+            follow_up_count: data
+                .get("follow_up_count")
+                .and_then(Value::as_u64)
+                .unwrap_or(0) as usize,
+        };
+        if let Ok(mut cached) = self.cached_queue.lock() {
+            *cached = stats;
+        }
+    }
+
+    fn cache_model(&self, model: ModelInfo) {
+        if let Ok(mut cached) = self.cached_model.lock() {
+            *cached = Some(model);
+        }
+    }
+
+    fn restart_downlink(&mut self) {
+        self.session_life.cancel();
+        self.session_life = CancellationToken::new();
+        self.subscribed_ok.store(false, Ordering::SeqCst);
+        self.downlink.started.store(false, Ordering::SeqCst);
+        self.ensure_downlink();
+    }
+
+    fn ensure_downlink(&self)
+    where
+        C: HostClient + Clone + 'static,
+    {
+        if self.downlink.started.swap(true, Ordering::SeqCst) {
+            return;
+        }
+        let host = self.host.clone();
+        let session_id = self.session_id.clone();
+        let last_seq = self.last_seq.clone();
+        let handshake_done = self.handshake_done.clone();
+        let reverse_rpc = self.reverse_rpc.clone();
+        let downlink = self.downlink.clone();
+        let life = self.session_life.clone();
+        let resync_needed = self.resync_needed.clone();
+        let subscribed_ok = self.subscribed_ok.clone();
+        let cached_queue = self.cached_queue.clone();
+        tokio::spawn(async move {
+            let mut backoff = Duration::from_millis(200);
+            loop {
+                if life.is_cancelled() {
+                    break;
+                }
+                match host.mux().await {
+                    Ok(mut mux) => {
+                        backoff = Duration::from_millis(200);
+                        if !handshake_done.load(Ordering::SeqCst) {
+                            match host.unary("host.describe", serde_json::json!({})).await {
+                                Ok(result) => {
+                                    let proto = result
+                                        .value
+                                        .as_ref()
+                                        .and_then(|v| v.get("protocol"))
+                                        .and_then(|v| v.as_u64())
+                                        .unwrap_or(0);
+                                    if proto != PROTOCOL_VERSION as u64 {
+                                        downlink.push(XyEvent::error_msg(format!(
+                                            "host protocol {proto} != {PROTOCOL_VERSION}"
+                                        )));
+                                        return;
+                                    }
+                                    handshake_done.store(true, Ordering::SeqCst);
+                                }
+                                Err(e) => {
+                                    downlink.push(XyEvent::error_msg(format!(
+                                        "host.describe failed: {e}"
+                                    )));
+                                    tokio::select! {
+                                        _ = life.cancelled() => return,
+                                        _ = tokio::time::sleep(backoff) => {}
+                                    }
+                                    backoff = (backoff * 2).min(Duration::from_secs(5));
+                                    continue;
+                                }
+                            }
+                        }
+                        let seq = last_seq.load(Ordering::SeqCst);
+                        if let Err(e) = host
+                            .unary(
+                                "subscribe",
+                                serde_json::json!({
+                                    "session_id": session_id,
+                                    "last_seq": seq,
+                                }),
+                            )
+                            .await
+                        {
+                            downlink.push(XyEvent::error_msg(format!("subscribe failed: {e}")));
+                            tokio::select! {
+                                _ = life.cancelled() => return,
+                                _ = tokio::time::sleep(backoff) => {}
+                            }
+                            backoff = (backoff * 2).min(Duration::from_secs(5));
+                            continue;
+                        }
+                        subscribed_ok.store(true, Ordering::SeqCst);
+                        loop {
+                            tokio::select! {
+                                _ = life.cancelled() => return,
+                                msg = mux.next() => {
+                                    match msg {
+                                        Some(Ok(RpcMessage::ServerRequest { method, payload, .. }))
+                                            if method == "session/event" =>
+                                        {
+                                            if let Some(s) = payload.get("seq").and_then(Value::as_u64) {
+                                                last_seq.store(s, Ordering::SeqCst);
+                                            }
+                                            let event_val =
+                                                payload.get("event").cloned().unwrap_or(payload);
+                                            let Ok(ev) = serde_json::from_value::<Event>(event_val) else {
+                                                continue;
+                                            };
+                                            let Ok(agent_event) = XyEvent::try_from(&ev) else {
+                                                continue;
+                                            };
+                                            if let XyEvent::QueueUpdate {
+                                                steer_count,
+                                                follow_up_count,
+                                            } = &agent_event
+                                                && let Ok(mut cached) = cached_queue.lock()
+                                            {
+                                                *cached = QueueStats {
+                                                    steer_count: *steer_count,
+                                                    follow_up_count: *follow_up_count,
+                                                };
+                                            }
+                                            downlink.push(agent_event);
+                                        }
+                                        Some(Ok(RpcMessage::ServerRequest { method, .. }))
+                                            if method == "session/resync_required" =>
+                                        {
+                                            last_seq.store(0, Ordering::SeqCst);
+                                            resync_needed.store(true, Ordering::SeqCst);
+                                            let _ = host
+                                                .unary(
+                                                    "subscribe",
+                                                    serde_json::json!({
+                                                        "session_id": session_id,
+                                                        "last_seq": 0,
+                                                    }),
+                                                )
+                                                .await;
+                                        }
+                                        Some(Ok(RpcMessage::ServerRequest { rpc_id, method, payload }))
+                                            if method == "approval/requested"
+                                                || method == "question/requested" =>
+                                        {
+                                            if let Some(notify) = &reverse_rpc {
+                                                notify(rpc_id, method, payload);
+                                            }
+                                        }
+                                        Some(Ok(_)) => {}
+                                        Some(Err(e)) => {
+                                            downlink.push(XyEvent::error_msg(e.to_string()));
+                                            break;
+                                        }
+                                        None => break,
+                                    }
+                                }
+                            }
+                        }
+                    }
+                    Err(e) => {
+                        downlink.push(XyEvent::error_msg(format!("WS connect failed: {e}")));
+                        tokio::select! {
+                            _ = life.cancelled() => return,
+                            _ = tokio::time::sleep(backoff) => {}
+                        }
+                        backoff = (backoff * 2).min(Duration::from_secs(5));
+                    }
+                }
+            }
+        });
+    }
+
+    async fn wait_subscribed(&self) -> Result<(), XyDriverError> {
+        let wait_deadline = tokio::time::Instant::now() + Duration::from_secs(5);
+        while !self.subscribed_ok.load(Ordering::SeqCst) {
+            if tokio::time::Instant::now() > wait_deadline {
+                return Err(XyDriverError::remote("subscribe timed out"));
+            }
+            tokio::time::sleep(Duration::from_millis(10)).await;
+        }
+        Ok(())
+    }
+
+    async fn refresh_chrome_caches(&self) -> Result<(), XyDriverError> {
+        if let Ok(data) = self.unary("get_state", serde_json::json!({})).await {
+            self.update_leaf_from_state(&data);
+            if let Some(m) = data.get("model").filter(|m| !m.is_null())
+                && let Ok(model) = Self::model_from_value(m)
+            {
+                self.cache_model(model);
+            }
+        }
+        if let Ok(data) = self
+            .unary("get_available_models", serde_json::json!({}))
+            .await
+        {
+            let arr = data
+                .get("models")
+                .and_then(|m| m.as_array())
+                .cloned()
+                .unwrap_or_default();
+            if let Ok(models) = arr
+                .iter()
+                .map(Self::model_from_value)
+                .collect::<Result<Vec<_>, _>>()
+                && let Ok(mut cached) = self.cached_models.lock()
+            {
+                *cached = Some(models);
+            }
+        }
+        if let Ok(data) = self.unary("get_commands", serde_json::json!({})).await {
+            let arr = data
+                .get("commands")
+                .and_then(|c| c.as_array())
+                .cloned()
+                .unwrap_or_default();
+            let cmds = arr
+                .iter()
+                .filter_map(|c| {
+                    Some(CommandInfo {
+                        name: c.get("name")?.as_str()?.to_string(),
+                        description: c
+                            .get("description")
+                            .and_then(|d| d.as_str())
+                            .unwrap_or("")
+                            .to_string(),
+                    })
+                })
+                .collect();
+            if let Ok(mut cached) = self.cached_commands.lock() {
+                *cached = Some(cmds);
+            }
+        }
+        let snap = match self.unary("loaded_resources", serde_json::json!({})).await {
+            Ok(data) => serde_json::from_value(data).unwrap_or_default(),
+            Err(_) => LoadedResourcesSnapshot::default(),
+        };
+        if let Ok(mut cached) = self.cached_resources.lock() {
+            *cached = snap;
+        }
+        Ok(())
     }
 
     fn with_session(&self, mut payload: serde_json::Value) -> serde_json::Value {
@@ -176,69 +493,65 @@ where
     }
 }
 
+impl<C> Drop for XyRemoteDriver<C> {
+    fn drop(&mut self) {
+        self.session_life.cancel();
+    }
+}
+
 #[cfg(feature = "server")]
 #[async_trait]
 impl<C> XyDriver for XyRemoteDriver<C>
 where
     C: HostClient + Clone + 'static,
 {
+    async fn attach_session(&mut self) -> Result<(), XyDriverError> {
+        if !self.handshake_done.load(Ordering::SeqCst) {
+            let data = self.unary("host.describe", serde_json::json!({})).await?;
+            let proto = data.get("protocol").and_then(Value::as_u64).unwrap_or(0);
+            if proto != PROTOCOL_VERSION as u64 {
+                return Err(XyDriverError::remote(format!(
+                    "host protocol {proto} != {PROTOCOL_VERSION}"
+                )));
+            }
+            self.handshake_done.store(true, Ordering::SeqCst);
+        }
+        self.ensure_downlink();
+        self.wait_subscribed().await?;
+        self.refresh_chrome_caches().await
+    }
+
+    fn drain_idle_events(&mut self) -> Vec<XyEvent> {
+        self.downlink.drain()
+    }
+
+    fn take_resync_rebuild(&mut self) -> bool {
+        self.resync_needed.swap(false, Ordering::SeqCst)
+    }
+
     async fn run(&mut self, prompt: &str) -> EventStream {
+        self.ensure_downlink();
+        if let Err(e) = self.wait_subscribed().await {
+            let err = e.to_string();
+            let stream = async_stream::stream! {
+                yield XyEvent::error_msg(err);
+            };
+            return Box::pin(stream);
+        }
+        let turn = {
+            let mut g = self.turn_cancel.lock().unwrap_or_else(|e| e.into_inner());
+            if g.is_cancelled() {
+                *g = CancellationToken::new();
+            }
+            g.clone()
+        };
         let host = self.host.clone();
-        let cancel = self.cancel.clone();
         let prompt = prompt.to_string();
         let session_id = self.session_id.clone();
-        let last_seq = self.last_seq.clone();
-        let handshake_done = self.handshake_done.clone();
-        let reverse_rpc = self.reverse_rpc.clone();
         let leaf_entry_id = self.leaf_entry_id.clone();
+        let downlink = self.downlink.clone();
 
         let stream = async_stream::stream! {
-            let mut mux = match host.mux().await {
-                Ok(s) => s,
-                Err(e) => {
-                    yield XyEvent::error_msg(format!("WS connect failed: {e}"));
-                    return;
-                }
-            };
-
-            if !handshake_done.swap(true, Ordering::SeqCst) {
-                match host.unary("host.describe", serde_json::json!({})).await {
-                    Ok(result) => {
-                        let proto = result
-                            .value
-                            .as_ref()
-                            .and_then(|v| v.get("protocol"))
-                            .and_then(|v| v.as_u64())
-                            .unwrap_or(0);
-                        if proto != PROTOCOL_VERSION as u64 {
-                            yield XyEvent::error_msg(format!(
-                                "host protocol {proto} != {PROTOCOL_VERSION}"
-                            ));
-                            return;
-                        }
-                    }
-                    Err(e) => {
-                        yield XyEvent::error_msg(format!("host.describe failed: {e}"));
-                        return;
-                    }
-                }
-            }
-
-            let seq = last_seq.load(Ordering::SeqCst);
-            if let Err(e) = host
-                .unary(
-                    "subscribe",
-                    serde_json::json!({
-                        "session_id": session_id,
-                        "last_seq": seq,
-                    }),
-                )
-                .await
-            {
-                yield XyEvent::error_msg(format!("subscribe failed: {e}"));
-                return;
-            }
-
             if let Err(e) = host
                 .unary(
                     "prompt",
@@ -254,77 +567,53 @@ where
             }
 
             loop {
-                tokio::select! {
-                    _ = cancel.cancelled() => {
-                        let _ = host.unary("abort", serde_json::json!({
-                            "session_id": session_id,
-                        })).await;
-                        break;
-                    }
-                    msg = mux.next() => {
-                        match msg {
-                            Some(Ok(RpcMessage::ServerRequest { method, payload, .. }))
-                                if method == "session/event" =>
-                            {
-                                if let Some(s) = payload.get("seq").and_then(|v| v.as_u64()) {
-                                    last_seq.store(s, Ordering::SeqCst);
-                                }
-                                let event_val =
-                                    payload.get("event").cloned().unwrap_or(payload);
-                                let Ok(ev) = serde_json::from_value::<Event>(event_val) else {
-                                    continue;
-                                };
-                                let Ok(agent_event) = XyEvent::try_from(&ev) else {
-                                    continue;
-                                };
-                                let is_end =
-                                    matches!(agent_event, XyEvent::AgentEnd { .. });
-                                if is_end
-                                    && let Ok(result) = host
-                                        .unary(
-                                            "get_state",
-                                            serde_json::json!({
-                                                "session_id": session_id,
-                                            }),
-                                        )
-                                        .await
-                                    && let Some(leaf) = result
-                                        .value
-                                        .as_ref()
-                                        .and_then(|value| value.get("leaf_entry_id"))
-                                        .and_then(Value::as_str)
-                                    && let Ok(mut cached) = leaf_entry_id.lock()
-                                {
-                                    *cached = Some(leaf.to_string());
-                                }
-                                yield agent_event;
-                                if is_end {
-                                    break;
-                                }
-                            }
-                            Some(Ok(RpcMessage::ServerRequest { method, .. }))
-                                if method == "session/resync_required" =>
-                            {
-                                last_seq.store(0, Ordering::SeqCst);
-                                yield XyEvent::error_msg("journal truncated, resync required");
-                                break;
-                            }
-                            Some(Ok(RpcMessage::ServerRequest { rpc_id, method, payload }))
-                                if method == "approval/requested"
-                                    || method == "question/requested" =>
-                            {
-                                if let Some(notify) = &reverse_rpc {
-                                    notify(rpc_id, method, payload);
-                                }
-                            }
-                            Some(Ok(_)) => {}
-                            Some(Err(e)) => {
-                                yield XyEvent::error_msg(e.to_string());
-                                break;
-                            }
-                            None => break,
+                let batch = downlink.drain();
+                if batch.is_empty() {
+                    tokio::select! {
+                        _ = turn.cancelled() => {
+                            let _ = host.unary("abort", serde_json::json!({
+                                "session_id": session_id,
+                            })).await;
+                            break;
                         }
+                        _ = downlink.notify.notified() => {}
                     }
+                    continue;
+                }
+                let mut ended = false;
+                let mut rest = Vec::new();
+                for ev in batch {
+                    if ended {
+                        rest.push(ev);
+                        continue;
+                    }
+                    let is_end = matches!(ev, XyEvent::AgentEnd { .. });
+                    if is_end
+                        && let Ok(result) = host
+                            .unary(
+                                "get_state",
+                                serde_json::json!({
+                                    "session_id": session_id,
+                                }),
+                            )
+                            .await
+                        && let Some(leaf) = result
+                            .value
+                            .as_ref()
+                            .and_then(|value| value.get("leaf_entry_id"))
+                            .and_then(Value::as_str)
+                        && let Ok(mut cached) = leaf_entry_id.lock()
+                    {
+                        *cached = Some(leaf.to_string());
+                    }
+                    yield ev;
+                    if is_end {
+                        ended = true;
+                    }
+                }
+                downlink.push_front_batch(rest);
+                if ended {
+                    break;
                 }
             }
         };
@@ -333,7 +622,9 @@ where
     }
 
     fn abort(&self) {
-        self.cancel.cancel();
+        if let Ok(g) = self.turn_cancel.lock() {
+            g.cancel();
+        }
         let host = self.host.clone();
         let payload = self.with_session(serde_json::json!({}));
         tokio::spawn(async move {
@@ -342,6 +633,11 @@ where
     }
 
     fn current_model(&self) -> Option<ModelInfo> {
+        if let Ok(cached) = self.cached_model.lock()
+            && cached.is_some()
+        {
+            return cached.clone();
+        }
         self.block_on(async {
             let data = self.unary("get_state", serde_json::json!({})).await?;
             self.update_leaf_from_state(&data);
@@ -352,9 +648,15 @@ where
         })
         .ok()
         .flatten()
+        .inspect(|model| self.cache_model(model.clone()))
     }
 
     fn available_models(&self) -> Vec<ModelInfo> {
+        if let Ok(cached) = self.cached_models.lock()
+            && let Some(models) = cached.as_ref()
+        {
+            return models.clone();
+        }
         self.block_on(async {
             let data = self
                 .unary("get_available_models", serde_json::json!({}))
@@ -365,6 +667,11 @@ where
                 .cloned()
                 .unwrap_or_default();
             arr.iter().map(Self::model_from_value).collect()
+        })
+        .inspect(|models: &Vec<ModelInfo>| {
+            if let Ok(mut cached) = self.cached_models.lock() {
+                *cached = Some(models.clone());
+            }
         })
         .unwrap_or_default()
     }
@@ -403,6 +710,7 @@ where
             .cloned()
             .unwrap_or_else(|| THINKING_OFF.into());
         *self.thinking.lock().unwrap() = default;
+        self.cache_model(selected.clone());
         Ok(selected)
     }
 
@@ -414,6 +722,7 @@ where
             .last()
             .cloned()
             .unwrap_or_else(|| THINKING_OFF.into());
+        self.cache_model(selected.clone());
         Ok(selected)
     }
 
@@ -586,6 +895,9 @@ where
         if let Ok(mut leaf) = self.leaf_entry_id.lock() {
             *leaf = None;
         }
+        if self.downlink.started.load(Ordering::SeqCst) {
+            self.restart_downlink();
+        }
         Ok(id)
     }
 
@@ -648,6 +960,11 @@ where
     }
 
     fn get_commands(&self) -> Vec<CommandInfo> {
+        if let Ok(cached) = self.cached_commands.lock()
+            && let Some(cmds) = cached.as_ref()
+        {
+            return cmds.clone();
+        }
         self.block_on(async {
             let data = self.unary("get_commands", serde_json::json!({})).await?;
             let arr = data
@@ -669,21 +986,30 @@ where
                 })
                 .collect())
         })
+        .inspect(|cmds: &Vec<CommandInfo>| {
+            if let Ok(mut cached) = self.cached_commands.lock() {
+                *cached = Some(cmds.clone());
+            }
+        })
         .unwrap_or_default()
     }
 
     fn steer(&mut self, message: &str) -> Result<(), XyDriverError> {
         self.block_on(async {
-            self.unary("steer", serde_json::json!({ "message": message }))
+            let data = self
+                .unary("steer", serde_json::json!({ "message": message }))
                 .await?;
+            self.cache_queue_from_value(&data);
             Ok(())
         })
     }
 
     fn follow_up(&mut self, message: &str) -> Result<(), XyDriverError> {
         self.block_on(async {
-            self.unary("follow_up", serde_json::json!({ "message": message }))
+            let data = self
+                .unary("follow_up", serde_json::json!({ "message": message }))
                 .await?;
+            self.cache_queue_from_value(&data);
             Ok(())
         })
     }
@@ -694,20 +1020,22 @@ where
         clear_follow_up: bool,
     ) -> Result<(), XyDriverError> {
         self.block_on(async {
-            self.unary(
-                "clear_queue",
-                serde_json::json!({
-                    "clear_steer": clear_steer,
-                    "clear_follow_up": clear_follow_up,
-                }),
-            )
-            .await?;
+            let data = self
+                .unary(
+                    "clear_queue",
+                    serde_json::json!({
+                        "clear_steer": clear_steer,
+                        "clear_follow_up": clear_follow_up,
+                    }),
+                )
+                .await?;
+            self.cache_queue_from_value(&data);
             Ok(())
         })
     }
 
-    fn queue_stats(&self) -> crate::agent::capabilities::QueueStats {
-        crate::agent::capabilities::QueueStats::default()
+    fn queue_stats(&self) -> QueueStats {
+        self.cached_queue.lock().map(|s| *s).unwrap_or_default()
     }
 
     async fn session_tree(
@@ -763,10 +1091,35 @@ where
         self.leaf_entry_id.lock().ok().and_then(|leaf| leaf.clone())
     }
 
-    async fn load_debug_scene(&mut self, _scene: &str) -> Result<DebugSceneLoad, XyDriverError> {
-        Err(XyDriverError::unsupported(
-            "remote: load_debug_scene not implemented",
-        ))
+    async fn load_debug_scene(&mut self, scene: &str) -> Result<DebugSceneLoad, XyDriverError> {
+        let data = self
+            .unary("load_debug_scene", serde_json::json!({ "scene": scene }))
+            .await?;
+        let session_id = data
+            .get("session_id")
+            .and_then(Value::as_str)
+            .unwrap_or("")
+            .to_string();
+        let entries = serde_json::from_value(data.get("entries").cloned().unwrap_or(Value::Null))
+            .map_err(|e| XyDriverError::remote(e.to_string()))?;
+        let note = data
+            .get("note")
+            .and_then(Value::as_str)
+            .unwrap_or("")
+            .to_string();
+        let model = data
+            .get("model")
+            .filter(|m| !m.is_null())
+            .and_then(|m| Self::model_from_value(m).ok());
+        if let Some(m) = model.as_ref() {
+            self.cache_model(m.clone());
+        }
+        Ok(DebugSceneLoad {
+            session_id,
+            entries,
+            note,
+            model,
+        })
     }
 
     async fn list_sessions(&self) -> Result<Vec<SessionListEntry>, XyDriverError> {
@@ -799,6 +1152,9 @@ where
         self.session_id = id.clone();
         if let Ok(mut leaf) = self.leaf_entry_id.lock() {
             *leaf = None;
+        }
+        if self.downlink.started.load(Ordering::SeqCst) {
+            self.restart_downlink();
         }
         Ok(id)
     }
@@ -853,7 +1209,7 @@ where
     }
 
     async fn loaded_resources_snapshot(&self) -> LoadedResourcesSnapshot {
-        match self.unary("loaded_resources", serde_json::json!({})).await {
+        let snap = match self.unary("loaded_resources", serde_json::json!({})).await {
             Ok(data) => serde_json::from_value(data).unwrap_or_else(|e| LoadedResourcesSnapshot {
                 mcp_diag_short: vec![format!("remote loaded_resources decode: {e}")],
                 ..LoadedResourcesSnapshot::default()
@@ -862,7 +1218,42 @@ where
                 mcp_diag_short: vec![format!("remote loaded_resources: {e}")],
                 ..LoadedResourcesSnapshot::default()
             },
+        };
+        if let Ok(mut cached) = self.cached_resources.lock() {
+            *cached = snap.clone();
         }
+        snap
+    }
+
+    fn mcp_blocks_agent(&self) -> bool {
+        self.cached_resources
+            .lock()
+            .map(|snap| snap.mcp_configured > 0 && !snap.mcp_bootstrap_complete)
+            .unwrap_or(false)
+    }
+
+    fn is_tools_frozen(&self) -> bool {
+        self.cached_resources
+            .lock()
+            .map(|snap| {
+                snap.mcp_configured == 0 || snap.tools_table_frozen || snap.mcp_bootstrap_complete
+            })
+            .unwrap_or(true)
+    }
+
+    async fn poll_mcp_bootstrap(&mut self) -> bool {
+        let prev = self
+            .cached_resources
+            .lock()
+            .map(|s| s.clone())
+            .unwrap_or_default();
+        if prev.mcp_configured == 0 {
+            return false;
+        }
+        if prev.mcp_bootstrap_complete && prev.mcp_connecting_label.is_none() {
+            return false;
+        }
+        true
     }
 
     async fn reload_runtime(
@@ -1013,6 +1404,14 @@ mod tests {
 
         let snapshot = driver.loaded_resources_snapshot().await;
         assert!(snapshot.mcp_diag_short.is_empty());
+        driver.steer("nudge").expect("steer");
+        assert_eq!(driver.queue_stats().steer_count, 1);
+        let queued = driver
+            .unary("queue_stats", serde_json::json!({}))
+            .await
+            .expect("queue_stats unary");
+        assert_eq!(queued.get("steer_count").and_then(Value::as_u64), Some(1));
+        driver.clear_queue(true, true).expect("clear queue");
         let report = driver
             .reload_runtime(&CancellationToken::new())
             .await
@@ -1062,5 +1461,164 @@ mod tests {
             "in-process-seed",
         ))
         .await;
+    }
+
+    fn fixture_mcp(name: &str) -> crate::app::core::mcp_spec::McpServerSpec {
+        use crate::app::core::mcp_spec::{McpServerSpec, McpTransportSpec};
+        use std::collections::HashMap;
+
+        let script = std::path::PathBuf::from(env!("CARGO_MANIFEST_DIR"))
+            .join("tests/support/mcp_fixture_server.py");
+        let mut env = HashMap::new();
+        env.insert("XYLITOL_MCP_FIXTURE_TOOLS".into(), "ping".into());
+        McpServerSpec {
+            name: name.into(),
+            transport: McpTransportSpec::Stdio,
+            command: Some("python3".into()),
+            args: Some(vec![script.display().to_string()]),
+            url: None,
+            env: Some(env),
+            headers: None,
+        }
+    }
+
+    #[tokio::test]
+    async fn loaded_resources_reads_writer_mcp_not_hollow_shell() {
+        use crate::app::server::host::materialize_writer;
+
+        let host =
+            HostState::for_test_with_mcp(vec![fixture_mcp("a"), fixture_mcp("b")]).expect("host");
+        let slot = host.slot("mcp-sess").await;
+        materialize_writer(&host, &slot)
+            .await
+            .expect("materialize writer");
+        {
+            let mut guard = slot.driver.lock().await;
+            let driver = guard.as_mut().expect("writer");
+            let deadline = std::time::Instant::now() + std::time::Duration::from_secs(20);
+            while std::time::Instant::now() < deadline {
+                let _ = driver.poll_mcp_bootstrap().await;
+                if !driver.mcp_blocks_agent() {
+                    break;
+                }
+                tokio::time::sleep(std::time::Duration::from_millis(50)).await;
+            }
+        }
+        let snap = host.loaded_resources_snapshot().await;
+        assert_eq!(snap.mcp_configured, 2);
+        assert!(
+            !snap.mcp_connected.is_empty()
+                || !snap.mcp_diag_short.is_empty()
+                || snap.mcp_connecting_label.is_some(),
+            "loaded_resources MUST NOT stay at configured-only hollow shell: {snap:?}"
+        );
+        if snap.mcp_bootstrap_complete {
+            assert!(
+                !snap.mcp_connected.is_empty() || !snap.mcp_diag_short.is_empty(),
+                "settled snapshot MUST NOT be fake-complete 0 connected: {snap:?}"
+            );
+        }
+    }
+
+    #[tokio::test]
+    async fn loaded_resources_before_writer_is_not_fake_complete() {
+        let host = HostState::for_test_with_mcp(vec![fixture_mcp("pre")]).expect("host");
+        let snap = host.loaded_resources_snapshot().await;
+        assert_eq!(snap.mcp_configured, 1);
+        assert!(
+            !snap.mcp_bootstrap_complete
+                || snap.mcp_connecting_label.is_some()
+                || !snap.mcp_connected.is_empty()
+                || !snap.mcp_diag_short.is_empty(),
+            "pre-subscribe snapshot MUST NOT be Idle-complete 0 connected: {snap:?}"
+        );
+    }
+
+    #[tokio::test]
+    async fn materialize_writer_does_not_wait_mcp_bootstrap() {
+        use crate::app::core::mcp_spec::{McpServerSpec, McpTransportSpec};
+        use crate::app::server::host::materialize_writer;
+
+        let hang = McpServerSpec {
+            name: "hang".into(),
+            transport: McpTransportSpec::Stdio,
+            command: Some("sleep".into()),
+            args: Some(vec!["30".into()]),
+            url: None,
+            env: None,
+            headers: None,
+        };
+        let host = HostState::for_test_with_mcp(vec![hang]).expect("host");
+        let slot = host.slot("hang-sess").await;
+        let t0 = std::time::Instant::now();
+        materialize_writer(&host, &slot).await.expect("materialize");
+        assert!(
+            t0.elapsed() < std::time::Duration::from_secs(2),
+            "writer unary MUST NOT wait MCP connect: {:?}",
+            t0.elapsed()
+        );
+        let t1 = std::time::Instant::now();
+        let result = crate::app::server::host::handle_unary(
+            &host,
+            "set_model",
+            serde_json::json!({
+                "provider": "",
+                "model_id": "missing",
+                "session_id": "hang-sess",
+            }),
+            None,
+        )
+        .await;
+        assert!(
+            t1.elapsed() < std::time::Duration::from_secs(2),
+            "set_model MUST NOT wait MCP: {:?} result={result:?}",
+            t1.elapsed()
+        );
+    }
+
+    #[tokio::test]
+    async fn attach_mux_survives_after_idle_and_receives_later_events() {
+        use crate::app::core::host_client::InProcessClient;
+        use crate::protocol::Event;
+
+        let host = HostState::for_test().expect("host");
+        let client = InProcessClient::host_state(host.clone());
+        let mut driver = XyRemoteDriver::with_host(client, "mux-sess");
+        driver.attach_session().await.expect("attach");
+        tokio::time::sleep(std::time::Duration::from_millis(80)).await;
+        let slot = host.slot("mux-sess").await;
+        slot.append_and_push(Event::QueueUpdate {
+            steer_count: 1,
+            follow_up_count: 0,
+        })
+        .await;
+        tokio::time::sleep(std::time::Duration::from_millis(80)).await;
+        let first = driver.drain_idle_events();
+        assert!(
+            first
+                .iter()
+                .any(|e| matches!(e, XyEvent::QueueUpdate { steer_count: 1, .. })),
+            "first downlink event missing: {first:?}"
+        );
+        slot.append_and_push(Event::AgentEnd).await;
+        tokio::time::sleep(std::time::Duration::from_millis(40)).await;
+        let _ = driver.drain_idle_events();
+        slot.append_and_push(Event::QueueUpdate {
+            steer_count: 0,
+            follow_up_count: 1,
+        })
+        .await;
+        tokio::time::sleep(std::time::Duration::from_millis(80)).await;
+        let later = driver.drain_idle_events();
+        assert!(
+            later.iter().any(|e| matches!(
+                e,
+                XyEvent::QueueUpdate {
+                    follow_up_count: 1,
+                    ..
+                }
+            )),
+            "mux MUST still deliver after AgentEnd: {later:?}"
+        );
     }
 }

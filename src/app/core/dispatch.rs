@@ -276,6 +276,13 @@ async fn dispatch_inner(
         Command::LoadedResources { .. } => Ok(DispatchOutcome::LoadedResources(
             driver.loaded_resources_snapshot().await,
         )),
+        Command::GetQueueStats { .. } => {
+            let stats = driver.queue_stats();
+            Ok(DispatchOutcome::QueueStats {
+                steer_count: stats.steer_count,
+                follow_up_count: stats.follow_up_count,
+            })
+        }
         Command::GetCommands { .. } => Ok(DispatchOutcome::Commands(driver.get_commands())),
         Command::Steer { message, .. } => {
             driver.steer(&message)?;
@@ -354,6 +361,7 @@ fn cmd_variant_name(cmd: &Command) -> &'static str {
         Command::DeleteSession { .. } => "DeleteSession",
         Command::Reload { .. } => "Reload",
         Command::LoadedResources { .. } => "LoadedResources",
+        Command::GetQueueStats { .. } => "GetQueueStats",
         Command::Steer { .. } => "Steer",
         Command::FollowUp { .. } => "FollowUp",
         Command::ClearQueue { .. } => "ClearQueue",
@@ -746,6 +754,33 @@ mod tests {
                 follow_up_count,
             } => {
                 assert_eq!(steer_count, 0);
+                assert_eq!(follow_up_count, 0);
+            }
+            _ => panic!("expected QueueStats"),
+        }
+    }
+
+    #[tokio::test]
+    async fn get_queue_stats_is_readonly_snapshot() {
+        let mut d = stub();
+        dispatch(
+            &mut d,
+            Command::Steer {
+                id: None,
+                message: "nudge".into(),
+            },
+        )
+        .await
+        .unwrap();
+        let outcome = dispatch(&mut d, Command::GetQueueStats { id: None })
+            .await
+            .unwrap();
+        match outcome {
+            DispatchOutcome::QueueStats {
+                steer_count,
+                follow_up_count,
+            } => {
+                assert_eq!(steer_count, 1);
                 assert_eq!(follow_up_count, 0);
             }
             _ => panic!("expected QueueStats"),

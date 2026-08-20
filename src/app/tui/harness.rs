@@ -103,6 +103,8 @@ pub struct ScriptedDriver {
     clipboard_text: Mutex<Option<String>>,
     /// c1900 first-turn freeze gate; default true (no gate) like trait default.
     tools_frozen: AtomicBool,
+    /// Mimic attach Remote `queue_stats` returning 0 after local strip enqueue.
+    pub force_zero_queue_stats: AtomicBool,
 }
 
 impl ScriptedDriver {
@@ -215,6 +217,7 @@ impl ScriptedDriver {
             clipboard_image_error: Mutex::new(None),
             clipboard_text: Mutex::new(None),
             tools_frozen: AtomicBool::new(true),
+            force_zero_queue_stats: AtomicBool::new(false),
         }
     }
 
@@ -716,6 +719,9 @@ impl XyDriver for ScriptedDriver {
     }
 
     fn queue_stats(&self) -> QueueStats {
+        if self.force_zero_queue_stats.load(Ordering::SeqCst) {
+            return QueueStats::default();
+        }
         QueueStats {
             steer_count: self.steer_queued,
             follow_up_count: self.follow_up_queued,
@@ -2090,6 +2096,26 @@ mod slice_tests {
             session.ui_model().status
         );
         assert!(!session.is_busy());
+    }
+
+    #[tokio::test]
+    async fn drain_pending_keeps_steer_strip_when_queue_stats_are_empty() {
+        let mut session = HostSession::new_product_ui(TestTerminal::new(80, 24));
+        let root = session.ui_root().expect("ui").clone();
+        let mut driver = ScriptedDriver::new();
+        driver.force_zero_queue_stats.store(true, Ordering::SeqCst);
+        session.on_run_started("hello");
+        root.borrow_mut().set_editor_text("nudge");
+        session.step(HostEvent::Input(enter_event())).unwrap();
+        let mut stream = None;
+        drain_pending(&mut session, &mut driver, &mut stream)
+            .await
+            .unwrap();
+        assert_eq!(
+            session.ui_model().pending_steer,
+            vec!["nudge".to_string()],
+            "empty Remote-like queue_stats MUST NOT wipe local strip text"
+        );
     }
 
     #[tokio::test]

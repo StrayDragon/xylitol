@@ -211,6 +211,7 @@ async fn run_host_loop(
     driver: &mut dyn XyDriver,
     options: TuiRunOptions,
 ) -> Result<(), XyDriverError> {
+    driver.attach_session().await?;
     let model = driver
         .current_model()
         .map(|m| {
@@ -365,6 +366,9 @@ async fn run_host_loop(
                     while let Some((job_id, label)) = session.try_recv_footer_token() {
                         session.step(HostEvent::FooterTokens { job_id, label })?;
                     }
+                    if agent_stream.is_none() {
+                        apply_idle_downlink(&mut session, driver)?;
+                    }
                     if driver.poll_mcp_bootstrap().await {
                         let t0 = std::time::Instant::now();
                         session.refresh_loaded_resources(driver).await;
@@ -502,6 +506,22 @@ async fn wait_for_ao_wheel_deadline(deadline: Option<std::time::Instant>) {
         Some(deadline) => tokio::time::sleep_until(deadline.into()).await,
         None => std::future::pending().await,
     }
+}
+
+fn apply_idle_downlink<T: xylitol_tui::Terminal>(
+    session: &mut HostSession<T>,
+    driver: &mut dyn XyDriver,
+) -> Result<(), XyDriverError> {
+    if driver.take_resync_rebuild() {
+        session.ui_model_mut().entries.clear();
+        session.ui_model_mut().streaming_assistant.clear();
+        session.ui_model_mut().streaming_thinking.clear();
+        session.sync_ui_root_from_model();
+    }
+    for ev in driver.drain_idle_events() {
+        session.step(HostEvent::Xy(Box::new(ev)))?;
+    }
+    Ok(())
 }
 
 fn wheel_delta_from_item(item: &Result<Event, std::io::Error>, step: isize) -> Option<isize> {

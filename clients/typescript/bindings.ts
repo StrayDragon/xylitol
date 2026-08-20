@@ -12,7 +12,7 @@ export type Command = { type: "prompt"; id?: string | null; message: string } | 
 /**  Optional focus text for summarization (c1670; pi `customInstructions`). */
 instructions?: string | null } | { type: "get_session_stats"; id?: string | null } | { type: "export_html"; id?: string | null; output_path?: string | null } | { type: "export_jsonl"; id?: string | null; output_path?: string | null } | { type: "import_jsonl"; id?: string | null; input_path: string } | { type: "switch_session"; id?: string | null; session_path: string } | { type: "fork"; id?: string | null; entry_id: string;
 /**  `"before"` | `"at"` (default `"at"`). */
-position?: string | null } | { type: "get_messages"; id?: string | null } | { type: "get_commands"; id?: string | null } | { type: "session_tree"; id?: string | null; kind: SessionTreeKind } | { type: "travel_session_tree"; id?: string | null; kind: SessionTreeKind; entry_id: string } | { type: "append_entry_label"; id?: string | null; target_id: string; label?: string | null } | { type: "list_sessions"; id?: string | null } | { type: "load_session_entries"; id?: string | null; session_id: string } | { type: "new_session"; id?: string | null } | { type: "get_session_name"; id?: string | null } | { type: "set_session_name"; id?: string | null; name: string } | { type: "set_session_name_for"; id?: string | null; session_id: string; name: string } | { type: "delete_session"; id?: string | null; session_id: string } | { type: "reload"; id?: string | null } | { type: "loaded_resources"; id?: string | null } | { type: "steer"; id?: string | null; message: string } | { type: "follow_up"; id?: string | null; message: string } | { type: "clear_queue"; id?: string | null; clear_steer?: boolean; clear_follow_up?: boolean } |
+position?: string | null } | { type: "get_messages"; id?: string | null } | { type: "get_commands"; id?: string | null } | { type: "session_tree"; id?: string | null; kind: SessionTreeKind } | { type: "travel_session_tree"; id?: string | null; kind: SessionTreeKind; entry_id: string } | { type: "append_entry_label"; id?: string | null; target_id: string; label?: string | null } | { type: "list_sessions"; id?: string | null } | { type: "load_session_entries"; id?: string | null; session_id: string } | { type: "new_session"; id?: string | null } | { type: "get_session_name"; id?: string | null } | { type: "set_session_name"; id?: string | null; name: string } | { type: "set_session_name_for"; id?: string | null; session_id: string; name: string } | { type: "delete_session"; id?: string | null; session_id: string } | { type: "reload"; id?: string | null } | { type: "loaded_resources"; id?: string | null } | { type: "get_queue_stats"; id?: string | null } | { type: "steer"; id?: string | null; message: string } | { type: "follow_up"; id?: string | null; message: string } | { type: "clear_queue"; id?: string | null; clear_steer?: boolean; clear_follow_up?: boolean } |
 /**  Subscribe to a session's event stream (WebSocket). */
 { type: "subscribe"; id?: string | null; session_id: string; last_seq: number } |
 /**  Approve a tool execution (reverse RPC response). */
@@ -134,6 +134,8 @@ export const UNARY_METHODS = [
   "delete_session",
   "reload",
   "loaded_resources",
+  "queue_stats",
+  "load_debug_scene",
   "steer",
   "follow_up",
   "clear_queue",

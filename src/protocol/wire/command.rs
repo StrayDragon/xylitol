@@ -156,6 +156,10 @@ pub enum Command {
         #[serde(default)]
         id: Option<String>,
     },
+    GetQueueStats {
+        #[serde(default)]
+        id: Option<String>,
+    },
     Steer {
         #[serde(default)]
         id: Option<String>,
@@ -239,6 +243,7 @@ impl Command {
             | Command::DeleteSession { id, .. }
             | Command::Reload { id }
             | Command::LoadedResources { id }
+            | Command::GetQueueStats { id }
             | Command::Steer { id, .. }
             | Command::FollowUp { id, .. }
             | Command::ClearQueue { id, .. }

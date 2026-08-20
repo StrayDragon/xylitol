@@ -12,8 +12,9 @@
 //! All cases are `#[ignore]`: they spawn a real process + PTY and are slow
 //! (spec `test-infra` r8). Run via `just test-tui-e2e` / `just test-tui-e2e-pty`.
 
-use std::io::{Read, Write};
+use std::io::{BufRead, BufReader, Read, Write};
 use std::path::Path;
+use std::process::{Command, Stdio};
 use std::sync::mpsc;
 use std::time::{Duration, Instant};
 
@@ -32,6 +33,7 @@ pub struct PtySession {
     writer: Box<dyn Write + Send>,
     rx: mpsc::Receiver<Vec<u8>>,
     buf: Vec<u8>,
+    serve: Option<std::process::Child>,
 }
 
 impl Drop for PtySession {
@@ -39,6 +41,12 @@ impl Drop for PtySession {
         if self.child.try_wait().ok().flatten().is_none() {
             let _ = self.child.kill();
             let _ = self.child.wait();
+        }
+        if let Some(mut serve) = self.serve.take()
+            && serve.try_wait().ok().flatten().is_none()
+        {
+            let _ = serve.kill();
+            let _ = serve.wait();
         }
     }
 }
@@ -79,14 +87,27 @@ impl PtySession {
         config_dir: &Path,
         home_dir: &Path,
     ) -> std::io::Result<Self> {
+        let (port, serve) = spawn_ephemeral_host(project_root, config_dir, home_dir)?;
         let mut cmd = CommandBuilder::new("cargo");
-        cmd.args(["run", "--quiet", "--", "tui", "--trust", "--model", "fake"]);
+        cmd.args([
+            "run",
+            "--quiet",
+            "--",
+            "tui",
+            "--trust",
+            "--model",
+            "fake",
+            "--port",
+            &port.to_string(),
+        ]);
         cmd.cwd(env!("CARGO_MANIFEST_DIR"));
         cmd.env("TERM", "xterm-256color");
         cmd.env("HOME", home_dir);
         cmd.env("XYLITOL_CONFIG_DIR", config_dir);
         cmd.env("XYLITOL_PROJECT_DIR", project_root);
-        Self::spawn_cmd(cmd, cols, rows)
+        let mut session = Self::spawn_cmd(cmd, cols, rows)?;
+        session.serve = Some(serve);
+        Ok(session)
     }
 
     fn spawn_cmd(cmd: CommandBuilder, cols: u16, rows: u16) -> std::io::Result<Self> {
@@ -137,6 +158,7 @@ impl PtySession {
             writer,
             rx,
             buf: Vec::with_capacity(8192),
+            serve: None,
         })
     }
 
@@ -328,6 +350,69 @@ impl PtySession {
             }
         }
     }
+}
+
+fn spawn_ephemeral_host(
+    project_root: &Path,
+    config_dir: &Path,
+    home_dir: &Path,
+) -> std::io::Result<(u16, std::process::Child)> {
+    let mut cmd = Command::new("cargo");
+    cmd.args([
+        "run",
+        "--quiet",
+        "--",
+        "serve",
+        "--host",
+        "127.0.0.1",
+        "--port",
+        "0",
+    ]);
+    cmd.current_dir(env!("CARGO_MANIFEST_DIR"));
+    cmd.env("TERM", "xterm-256color");
+    cmd.env("HOME", home_dir);
+    cmd.env("XYLITOL_CONFIG_DIR", config_dir);
+    cmd.env("XYLITOL_PROJECT_DIR", project_root);
+    cmd.stdout(Stdio::null());
+    cmd.stderr(Stdio::piped());
+    let mut child = cmd.spawn()?;
+    let stderr = child
+        .stderr
+        .take()
+        .ok_or_else(|| std::io::Error::other("serve stderr missing"))?;
+    let (tx, rx) = mpsc::channel::<u16>();
+    std::thread::spawn(move || {
+        let mut reader = BufReader::new(stderr);
+        let mut line = String::new();
+        loop {
+            line.clear();
+            match reader.read_line(&mut line) {
+                Ok(0) | Err(_) => break,
+                Ok(_) => {
+                    if let Some(port) = parse_host_listening_port(&line) {
+                        let _ = tx.send(port);
+                        break;
+                    }
+                }
+            }
+        }
+    });
+    match rx.recv_timeout(Duration::from_secs(120)) {
+        Ok(port) => Ok((port, child)),
+        Err(_) => {
+            let _ = child.kill();
+            let _ = child.wait();
+            Err(std::io::Error::other(
+                "timed out waiting for Host listening on …",
+            ))
+        }
+    }
+}
+
+fn parse_host_listening_port(line: &str) -> Option<u16> {
+    let marker = "Host listening on ";
+    let rest = line.trim().strip_prefix(marker)?;
+    rest.rsplit(':').next()?.parse().ok()
 }
 
 /// Write isolated Fake model project config under `project_root/.xylitol/`.

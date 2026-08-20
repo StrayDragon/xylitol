@@ -270,10 +270,17 @@ pub(crate) fn apply_tool_result_to_entries(
 
 /// Append a user scrollback row; skip if it duplicates the trailing user entry
 /// (e.g. idle `begin_run` already seeded the same prompt).
+///
+/// Steer / follow-up inject MUST still add a bubble even when the text matches
+/// the previous user row (`ati45`).
 pub(crate) fn push_user_entry_dedup(model: &mut UiModel, text: String) {
-    if let Some(UiEntry::User { text: last }) = model.entries.last()
-        && last == &text
-    {
+    let same_trailing_user = matches!(
+        model.entries.last(),
+        Some(UiEntry::User { text: last }) if last == &text
+    );
+    let queued_inject = model.pending_steer.iter().any(|s| s == &text)
+        || model.pending_follow_up.iter().any(|s| s == &text);
+    if same_trailing_user && !queued_inject {
         return;
     }
     model.entries.push(UiEntry::User { text });
