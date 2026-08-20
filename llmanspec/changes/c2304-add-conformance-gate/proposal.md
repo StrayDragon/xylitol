@@ -7,7 +7,8 @@ depends_on:
 - c2303-update-unified-entry
 branch: sdd/c2304-add-conformance-gate
 base_sha: 36b70adcf6608ddc9a2614599d494758badc6f7d
-checkpointed: false
+checkpointed: true
+checkpoint_sha: 511b675132c69cdff0fc1a841f112c674fdbdb5b
 ---
 
 # 产品位：符合性闸
