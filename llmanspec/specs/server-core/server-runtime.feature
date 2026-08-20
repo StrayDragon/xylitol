@@ -95,8 +95,20 @@
   @req:sr-st1
   场景: remote-travel
     假如 RemoteDriver 指向该 server
-    当 调用未入方法表的 session_tree/travel
-    那么 不经 REST 冒充；可为未实现或默认值
+    当 调用已登记方法表的 session_tree/travel
+    那么 经四象限 unary 到达 Host 且不经 REST 冒充
+
+  @req:sr-method1
+  场景: remote-session-methods
+    假如 RemoteDriver 指向该 server
+    当 调用已登记的 session 能力 unary
+    那么 经四象限 unary 到达 Host 且不经 REST 冒充
+
+  @req:sr-resource1
+  场景: remote-host-resource-methods
+    假如 RemoteDriver 指向该 server
+    当 调用 Host 资源 unary
+    那么 经四象限 unary 到达 Host 且不经 REST 冒充
 
   @req:sr-w1
   场景: writer-lease

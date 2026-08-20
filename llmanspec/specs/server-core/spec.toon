@@ -2,7 +2,7 @@ kind: llman.sdd.spec
 name: "server-core"
 purpose: "Server 运行时 — 独立 Host 监听器经四象限信封暴露产品契约（POST unary/respond + WS 只下行）；每 session 槽独立 journal 与写者。"
 valid_scope[1]: "server 应用面"
-requirements[26]{req_id,title,statement}:
+requirements[28]{req_id,title,statement}:
   sr1,server 托管 agent,"app::server MUST 在启动时装配 infra 运行时并注入 agent 端口；组合根 MUST 持有可按 session 槽取用的 Driver（或等价缝），供 unary 处理器调用，MUST NOT 以无槽的裸 Agent 作为唯一生产入口。"
   "sr-env1","产品路径四象限","产品 TUI 与其它产品客户端 MUST 经四象限信封访问 Host：unary 与 respond 为 HTTP POST，下行为 WebSocket 且 MUST NOT 收业务上行。Host 监听器 MUST 实现该路径。现行 REST 资源动词与全双工 WS 应用帧 MUST NOT 再作为产品真源。"
   sr2,四象限 HTTP 与 WS 下行,"Host MUST 暴露 POST /api/{method}（ClientRequest→ServerResponse）、POST /api/respond（ClientResponse）与 GET /api/events.mux（WebSocket 只下行 ServerRequest）。method 集合 MUST 为已登记 unary。MUST NOT 再以 /api/v1 REST 资源动词或全双工 WS 应用帧承载产品命令。"
@@ -16,7 +16,9 @@ requirements[26]{req_id,title,statement}:
   "sr-driver1",Server 经 Driver 驱动,Server 运行时 MUST 通过 Driver（或等价文档化缝）驱动对话与会话命令，MUST NOT 在生产路径上以裸 AgentRuntime 作为唯一后端旁路 Print 主线。
   "sr-remote1",RemoteDriver 经信封,产品 RemoteDriver MUST 经四象限 HostClient 调用已登记 unary 与 mux；未登记方法 MUST NOT 发明 REST 端点来假装与 InProcess 对等。
   "sr-dispatch1",Server 经 dispatch 执行命令,"Server 对可映射的会话命令 MUST 经 protocol::Command + dispatch（或文档化的同一执行路径）执行，MUST NOT 为同一语义维护第二套与 dispatch 漂移的手写分支。"
-  "sr-st1",会话树不经 REST,"Host MUST NOT 再为 SessionTreeKind 提供 REST 读树/travel 端点。未入方法表的 session_tree MUST NOT 经 /api/v1 冒充产品路径。"
+  "sr-st1",会话树经方法表,"Host MUST 为 session_tree、travel_session_tree 与 append_entry_label 提供已登记的四象限 unary；Host MUST NOT 再为 SessionTreeKind 提供 REST 读树/travel 端点。"
+  "sr-method1",会话生命周期方法接线,"Host MUST 为 list_sessions、load_session_entries、new_session、get_session_name、set_session_name、set_session_name_for 与 delete_session 提供已登记 unary，并经同一 Driver/dispatch 语义执行；Remote 客户端调用这些方法时 MUST NOT 得到预留 unsupported。"
+  "sr-resource1",Host 资源方法接线,"Host MUST 提供 reload 与 loaded_resources unary；reload MUST 重装共享的 skills、MCP 与 prompt 资源，loaded_resources MUST 返回当前快照，且这些 Host 级操作 MUST NOT 被伪装成 session 专属 REST。"
   "sr-w1",session 写者租约,"同一 session MUST 至多一个写者租约。首次非只读 unary 颁发 writerToken；后续非只读 unary MUST 回显该令牌。缺失或错误 MUST 以业务错误拒绝（HTTP 仍 200）。只读 unary 与 subscribe MUST NOT 占用写者。HTTP 连接不是写者身份（每次 unary 都是新 TCP）。"
   w1,下行信封,"mux 文本帧 MUST 为四象限 ServerRequest（type、rpcId、method、payload）。产品下行 method MUST 含 session/event、session/subscribed、session/resync_required；可应答审批/问卷为 approval/requested 与 question/requested。MUST NOT 再以 ServerFrame tagged 外层为产品真源。"
   w2,WS 不收业务上行,"mux WebSocket MUST NOT 接受业务 ClientRequest/ApproveTool/AnswerQuestion/Subscribe 应用帧。subscribe 为 unary；审批与问卷应答为 POST /api/respond。载体 ping/pong/close 除外。"
