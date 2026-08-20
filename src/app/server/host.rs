@@ -154,6 +154,28 @@ impl HostState {
         ))
     }
 
+    /// Isolated host with configured MCP servers (parity tests).
+    #[cfg(test)]
+    pub fn for_test_with_mcp(
+        mcp_servers: Vec<McpServerSpec>,
+    ) -> Result<Arc<Self>, Box<dyn std::error::Error>> {
+        let dir = std::env::temp_dir().join(format!("xylitol-host-{}", uuid::Uuid::new_v4()));
+        let store: Arc<dyn XySessionStore> = Arc::new(SessionManager::new(dir.join("sessions")));
+        let ports = build_ports_with_store(BuildAgentOptions::default(), store)?;
+        let cwd = std::env::current_dir().unwrap_or_else(|_| PathBuf::from("."));
+        let agent_dir = crate::infra::resource::DefaultResourceLoader::default_agent_dir();
+        Ok(Self::new(
+            ports,
+            ReloadBaseline {
+                cwd,
+                agent_dir,
+                project_trusted: true,
+                mcp_servers,
+            },
+            "test-session".into(),
+        ))
+    }
+
     /// Default production ports from `build_ports` (caller supplies store via composition).
     pub fn from_default_ports(
         reload: ReloadBaseline,
@@ -252,12 +274,19 @@ impl HostState {
     }
 
     pub async fn loaded_resources_snapshot(&self) -> LoadedResourcesSnapshot {
+        {
+            let sessions = self.sessions.read().await;
+            for slot in sessions.values() {
+                let guard = slot.driver.lock().await;
+                if let Some(driver) = guard.as_ref() {
+                    return driver.loaded_resources_snapshot().await;
+                }
+            }
+        }
         let mut guard = self.ensure_resource_driver().await;
-        guard
-            .as_mut()
-            .expect("resource driver initialized")
-            .loaded_resources_snapshot()
-            .await
+        let driver = guard.as_mut().expect("resource driver initialized");
+        driver.begin_mcp_bootstrap().await;
+        driver.loaded_resources_snapshot().await
     }
 }
 
@@ -513,7 +542,6 @@ pub async fn materialize_writer(
     );
     driver.install_ask_tool(Arc::new(SlotAskGateway { slot: slot.clone() }));
     driver.begin_mcp_bootstrap().await;
-    driver.wait_mcp_bootstrap().await;
     *guard = Some(driver);
     slot.writer.store(true, Ordering::SeqCst);
     Ok(())
@@ -771,6 +799,7 @@ pub fn command_from_method(method: &str, payload: &Value) -> Result<Command, Str
         }),
         "reload" => Ok(Command::Reload { id: None }),
         "loaded_resources" => Ok(Command::LoadedResources { id: None }),
+        "queue_stats" => Ok(Command::GetQueueStats { id: None }),
         "steer" => Ok(Command::Steer {
             id: None,
             message: p
@@ -893,6 +922,12 @@ pub async fn handle_unary(
             .and_then(|v| v.as_u64())
             .unwrap_or(0);
         let slot = host.slot(&session_id).await;
+        if let Err(e) = materialize_writer(host, &slot).await {
+            log::warn!(
+                target: "xylitol::host",
+                "subscribe materialize_writer failed: {e}"
+            );
+        }
         return host.bind_mux_to_session(&slot, last_seq).await;
     }
 
@@ -941,6 +976,43 @@ pub async fn handle_unary(
             json!({ "session_id": session_id }),
             &token,
         ));
+    }
+
+    if method == "load_debug_scene" {
+        let scene = payload
+            .get("scene")
+            .and_then(|v| v.as_str())
+            .unwrap_or("")
+            .to_string();
+        let token = match take_writer_lease(&slot, presented).await {
+            Ok(t) => t,
+            Err(e) => return e,
+        };
+        if let Err(e) = materialize_writer(host, &slot).await {
+            let mut r = rpc_err(e);
+            r.value = Some(json!({ "writerToken": token }));
+            return r;
+        }
+        let mut g = slot.driver.lock().await;
+        let Some(driver) = g.as_mut() else {
+            return RpcResult::error("unavailable", "no writer engine");
+        };
+        return match driver.load_debug_scene(&scene).await {
+            Ok(load) => RpcResult::ok_value(attach_writer_token(
+                json!({
+                    "session_id": load.session_id,
+                    "entries": load.entries,
+                    "note": load.note,
+                    "model": load.model.as_ref().map(model_data),
+                }),
+                &token,
+            )),
+            Err(e) => {
+                let mut r = rpc_err(e);
+                r.value = Some(json!({ "writerToken": token }));
+                r
+            }
+        };
     }
 
     if is_writer_method(method) {
@@ -1025,6 +1097,10 @@ pub async fn handle_unary(
                     "user_messages": 0,
                     "assistant_messages": 0,
                     "total_messages": 0,
+                })),
+                "queue_stats" => RpcResult::ok_value(json!({
+                    "steer_count": 0,
+                    "follow_up_count": 0,
                 })),
                 _ => RpcResult::error("not_found", format!("session not found: {session_id}")),
             };

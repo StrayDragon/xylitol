@@ -11,7 +11,7 @@ mod slash;
 use xylitol_tui::Terminal;
 
 use crate::app::core::driver::{
-    EventStream, XyDriver, XyDriverError, estimate_from_session_entries,
+    EventStream, QueueStats, XyDriver, XyDriverError, estimate_from_session_entries,
     tokenizer_override_from_app_config,
 };
 
@@ -153,8 +153,7 @@ pub async fn drain_pending<T: Terminal>(
             e.log_failure("tui.steer");
             session.push_scroll_notice(format!("steer failed: {e}"));
         }
-        let stats = driver.queue_stats();
-        session.set_queue_badge(stats.steer_count, stats.follow_up_count);
+        calibrate_queue_after_local_enqueue(session, driver.queue_stats());
         let _ = session.render_now();
     }
     if let Some(msg) = session.take_follow_up() {
@@ -163,8 +162,7 @@ pub async fn drain_pending<T: Terminal>(
             e.log_failure("tui.follow_up");
             session.push_scroll_notice(format!("follow-up failed: {e}"));
         }
-        let stats = driver.queue_stats();
-        session.set_queue_badge(stats.steer_count, stats.follow_up_count);
+        calibrate_queue_after_local_enqueue(session, driver.queue_stats());
         let _ = session.render_now();
     }
 
@@ -241,6 +239,21 @@ pub async fn drain_pending<T: Terminal>(
     let _ = session.render_now();
 
     Ok(())
+}
+
+/// Host depths calibrate the badge; never wipe local strip text with empty 0/0
+/// before `QueueUpdate` confirms the host consumed the enqueue (`ati44`).
+fn calibrate_queue_after_local_enqueue<T: Terminal>(
+    session: &mut HostSession<T>,
+    stats: QueueStats,
+) {
+    let local_steer = session.ui_model().pending_steer.len();
+    let local_follow = session.ui_model().pending_follow_up.len();
+    if stats.steer_count == 0 && stats.follow_up_count == 0 && (local_steer > 0 || local_follow > 0)
+    {
+        return;
+    }
+    session.set_queue_badge(stats.steer_count, stats.follow_up_count);
 }
 
 async fn start_run_after_tool_gate<T: Terminal>(

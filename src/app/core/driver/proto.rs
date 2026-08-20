@@ -11,7 +11,7 @@ use super::XyDriverError;
 use super::types::{
     ClipboardCopyOutcome, CommandInfo, DebugSceneLoad, EventStream, LoadedResourcesSnapshot,
     ModelInfo, ProjectTrustMode, ProjectTrustPersistReport, QueueStats, RuntimeReloadReport,
-    SessionListEntry, SessionState, SessionStats,
+    SessionListEntry, SessionState, SessionStats, XyEvent,
 };
 
 /// XyDriver — interact with the core without knowing its internals.
@@ -31,6 +31,24 @@ use super::types::{
 pub trait XyDriver: Send {
     /// Submit a prompt and receive a stream of events.
     async fn run(&mut self, prompt: &str) -> EventStream;
+
+    /// Product TUI attach: handshake + mux subscribe before the host loop.
+    ///
+    /// Default no-op (in-process / scripted). Remote MUST open mux and subscribe
+    /// here so the first prompt is not the first WebSocket.
+    async fn attach_session(&mut self) -> Result<(), XyDriverError> {
+        Ok(())
+    }
+
+    /// Events that arrived on a persistent downlink while no `run` stream is held.
+    fn drain_idle_events(&mut self) -> Vec<XyEvent> {
+        Vec::new()
+    }
+
+    /// Consume a `session/resync_required` rebuild flag (journal replay).
+    fn take_resync_rebuild(&mut self) -> bool {
+        false
+    }
 
     /// Cancel the current turn.
     fn abort(&self);

@@ -259,6 +259,31 @@ fn user_message_start_commits_steer_to_scrollback() {
 }
 
 #[test]
+fn same_text_steer_inject_adds_second_user_bubble() {
+    use crate::protocol::message::AgentMessage;
+
+    let mut model = UiModel::new();
+    model.begin_run("hello");
+    model.enqueue_steer_strip("hello".into());
+    apply_xy_event(
+        &mut model,
+        &XyEvent::MessageStart {
+            role: "user".into(),
+            message: Some(AgentMessage::user("hello")),
+        },
+    );
+    let users: Vec<_> = model
+        .entries
+        .iter()
+        .filter_map(|e| match e {
+            UiEntry::User { text } => Some(text.as_str()),
+            _ => None,
+        })
+        .collect();
+    assert_eq!(users, ["hello", "hello"]);
+}
+
+#[test]
 fn aborted_error_is_system_note_and_idles() {
     let mut model = UiModel::new();
     model.begin_run("hi");
