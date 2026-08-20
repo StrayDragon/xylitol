@@ -31,3 +31,7 @@ host 是端口上的 HTTP 服务器。DSH web 是 `--host` / `--port`（默认 `
 ## 非目标
 
 协议闭集、多会话组合根、符合性闸、ACP、方案 A（c2315）、Web UI。
+
+## Further Notes
+
+c2290 已把产品 TUI 默认 attach 做成未在听失败（无静默 InProcess）。本票只收 CLI 形状（`serve` / `--attach`）；握手里的 `subscribe` 与 c2302 journal 对齐。

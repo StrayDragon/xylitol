@@ -35,3 +35,7 @@ c2301 归档交接里「c2302 必须走 WS 承载 Command/Event」作废：WS �
 ## 非目标
 
 进线 CLI（`--attach` / `serve` 改名）、符合性闸、ACP、二进制编码、UDS 默认发现、Docker 粗沙盒、MCP 池 key 落地、Web UI、salvo oapi（c2320）、embed 的 in-process 信封 carrier（print 仍走现有 InProcessDriver；`InProcessClient` 已在 c2290）。
+
+## Further Notes
+
+c2290 verify 未修项（真 Host / ReverseRpc / `sr-env1` 假绿升级）：[`research/c2290-verify-handoff.md`](./research/c2290-verify-handoff.md)

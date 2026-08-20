@@ -12,6 +12,7 @@ mod bindings_agent_runtime;
 mod bindings_agent_session;
 mod bindings_agent_session_store;
 mod bindings_agent_tools;
+mod bindings_app_tui;
 mod bindings_app_tui_ask;
 mod bindings_cli_entry;
 mod bindings_domain_compaction;

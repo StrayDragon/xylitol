@@ -22,6 +22,7 @@
 - [ ] 3.3 每 session journal / seq / reverse RPC 迁到 salvo 回调；多 session 注册表
 - [ ] 3.4 一写者；只读连接写操作回业务 error
 - [ ] 3.5 接上 c2290 `HttpWsClient`；删除产品 REST 路由与全双工 `ClientFrame`
+- [ ] 3.6 把 `sr-env1` 从「客户端实现了 HostClient」升级为真 bind + POST unary + WS 下行往返；审批走 `POST /api/respond`；`subscribe` 进 `run()` / journal 重连
 
 ## 4. 闸
 

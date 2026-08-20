@@ -22,3 +22,9 @@ fn test_approval_roundtrip(approval_test: ApprovalTest) {}
     name = "tool-denied"
 )]
 fn test_approval_denied(approval_test: ApprovalTest) {}
+
+#[scenario(
+    path = "llmanspec/specs/server-core/server-runtime.feature",
+    name = "product-path-four-quadrant"
+)]
+fn test_sr_env1_four_quadrant(server_test: ServerTest) {}
