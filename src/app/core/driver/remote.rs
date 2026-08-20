@@ -1,15 +1,19 @@
 //! Remote HTTP/WS [`XyRemoteDriver`] (feature = "server").
 
 use std::path::Path;
+use std::sync::Arc;
+use std::sync::atomic::{AtomicBool, AtomicU64, Ordering};
 
 use async_trait::async_trait;
 use futures::StreamExt;
+use serde_json::Value;
 use tokio_util::sync::CancellationToken;
 
 use crate::app::core::host_client::{HostClient, HttpWsClient};
 use crate::protocol::model::THINKING_OFF;
 use crate::protocol::ports::XyBashResult;
 use crate::protocol::session::{SessionEntry, SessionTreeKind, SessionTreeNode, SessionTreeTravel};
+use crate::protocol::wire::envelope::PROTOCOL_VERSION;
 use crate::protocol::{Event, RpcMessage};
 
 use super::XyDriver;
@@ -19,6 +23,9 @@ use super::types::{
     SessionStats, XyEvent, estimate_from_session_entries, session_tree_kind_unimplemented,
 };
 
+/// Notify the product TUI of mux reverse-RPC (approval/question).
+pub type ReverseRpcNotify = Arc<dyn Fn(String, String, Value) + Send + Sync>;
+
 /// Remote driver — [`XyDriver`] over [`HttpWsClient`] (HTTP POST unary + WS downlink).
 #[cfg(feature = "server")]
 pub struct XyRemoteDriver {
@@ -26,6 +33,9 @@ pub struct XyRemoteDriver {
     session_id: String,
     cancel: CancellationToken,
     thinking: std::sync::Mutex<String>,
+    last_seq: Arc<AtomicU64>,
+    handshake_done: Arc<AtomicBool>,
+    reverse_rpc: Option<ReverseRpcNotify>,
 }
 
 #[cfg(feature = "server")]
@@ -39,7 +49,18 @@ impl XyRemoteDriver {
             session_id: session_id.into(),
             cancel: CancellationToken::new(),
             thinking: std::sync::Mutex::new(THINKING_OFF.into()),
+            last_seq: Arc::new(AtomicU64::new(0)),
+            handshake_done: Arc::new(AtomicBool::new(false)),
+            reverse_rpc: None,
         }
+    }
+
+    pub fn host_client(&self) -> &HttpWsClient {
+        &self.host
+    }
+
+    pub fn set_reverse_rpc_notify(&mut self, notify: ReverseRpcNotify) {
+        self.reverse_rpc = Some(notify);
     }
 
     async fn unary(
@@ -111,6 +132,10 @@ impl XyDriver for XyRemoteDriver {
         let host = self.host.clone();
         let cancel = self.cancel.clone();
         let prompt = prompt.to_string();
+        let session_id = self.session_id.clone();
+        let last_seq = self.last_seq.clone();
+        let handshake_done = self.handshake_done.clone();
+        let reverse_rpc = self.reverse_rpc.clone();
 
         let stream = async_stream::stream! {
             let mut mux = match host.mux().await {
@@ -121,8 +146,52 @@ impl XyDriver for XyRemoteDriver {
                 }
             };
 
+            if !handshake_done.swap(true, Ordering::SeqCst) {
+                match host.unary("host.describe", serde_json::json!({})).await {
+                    Ok(result) => {
+                        let proto = result
+                            .value
+                            .as_ref()
+                            .and_then(|v| v.get("protocol"))
+                            .and_then(|v| v.as_u64())
+                            .unwrap_or(0);
+                        if proto != PROTOCOL_VERSION as u64 {
+                            yield XyEvent::error_msg(format!(
+                                "host protocol {proto} != {PROTOCOL_VERSION}"
+                            ));
+                            return;
+                        }
+                    }
+                    Err(e) => {
+                        yield XyEvent::error_msg(format!("host.describe failed: {e}"));
+                        return;
+                    }
+                }
+            }
+
+            let seq = last_seq.load(Ordering::SeqCst);
             if let Err(e) = host
-                .unary("prompt", serde_json::json!({"message": prompt}))
+                .unary(
+                    "subscribe",
+                    serde_json::json!({
+                        "session_id": session_id,
+                        "last_seq": seq,
+                    }),
+                )
+                .await
+            {
+                yield XyEvent::error_msg(format!("subscribe failed: {e}"));
+                return;
+            }
+
+            if let Err(e) = host
+                .unary(
+                    "prompt",
+                    serde_json::json!({
+                        "message": prompt,
+                        "session_id": session_id,
+                    }),
+                )
                 .await
             {
                 yield XyEvent::error_msg(format!("prompt failed: {e}"));
@@ -132,7 +201,9 @@ impl XyDriver for XyRemoteDriver {
             loop {
                 tokio::select! {
                     _ = cancel.cancelled() => {
-                        let _ = host.unary("abort", serde_json::json!({})).await;
+                        let _ = host.unary("abort", serde_json::json!({
+                            "session_id": session_id,
+                        })).await;
                         break;
                     }
                     msg = mux.next() => {
@@ -140,6 +211,9 @@ impl XyDriver for XyRemoteDriver {
                             Some(Ok(RpcMessage::ServerRequest { method, payload, .. }))
                                 if method == "session/event" =>
                             {
+                                if let Some(s) = payload.get("seq").and_then(|v| v.as_u64()) {
+                                    last_seq.store(s, Ordering::SeqCst);
+                                }
                                 let event_val =
                                     payload.get("event").cloned().unwrap_or(payload);
                                 let Ok(ev) = serde_json::from_value::<Event>(event_val) else {
@@ -158,8 +232,17 @@ impl XyDriver for XyRemoteDriver {
                             Some(Ok(RpcMessage::ServerRequest { method, .. }))
                                 if method == "session/resync_required" =>
                             {
+                                last_seq.store(0, Ordering::SeqCst);
                                 yield XyEvent::error_msg("journal truncated, resync required");
                                 break;
+                            }
+                            Some(Ok(RpcMessage::ServerRequest { rpc_id, method, payload }))
+                                if method == "approval/requested"
+                                    || method == "question/requested" =>
+                            {
+                                if let Some(notify) = &reverse_rpc {
+                                    notify(rpc_id, method, payload);
+                                }
                             }
                             Some(Ok(_)) => {}
                             Some(Err(e)) => {

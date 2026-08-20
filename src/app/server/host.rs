@@ -342,24 +342,19 @@ impl SessionSlot {
     pub async fn request_question(
         &self,
         rpc_id: String,
+        questions: serde_json::Value,
     ) -> tokio::sync::oneshot::Receiver<ReverseRpcResult> {
         let rx = self.gateway.register(rpc_id.clone());
-        let inner = downlink_server_request(
-            "question/requested",
-            serde_json::to_value(QuestionRequestedPayload {
-                call_id: rpc_id.clone(),
-            })
-            .unwrap_or(Value::Null),
-        );
-        let RpcMessage::ServerRequest {
-            method, payload, ..
-        } = inner
-        else {
-            unreachable!("downlink helper always builds ServerRequest");
-        };
+        let mut payload = serde_json::to_value(QuestionRequestedPayload {
+            call_id: rpc_id.clone(),
+        })
+        .unwrap_or(Value::Null);
+        if let Some(obj) = payload.as_object_mut() {
+            obj.insert("questions".into(), questions);
+        }
         self.broadcast(RpcMessage::ServerRequest {
             rpc_id,
-            method,
+            method: "question/requested".into(),
             payload,
         })
         .await;
@@ -374,9 +369,10 @@ struct SlotAskGateway {
 
 #[async_trait::async_trait]
 impl AskUserGateway for SlotAskGateway {
-    async fn prompt(&self, _args: AskArgs) -> Result<String, XyToolError> {
+    async fn prompt(&self, args: AskArgs) -> Result<String, XyToolError> {
         let rpc_id = uuid::Uuid::new_v4().to_string();
-        let rx = self.slot.request_question(rpc_id.clone()).await;
+        let questions = serde_json::to_value(&args.questions).unwrap_or(Value::Null);
+        let rx = self.slot.request_question(rpc_id.clone(), questions).await;
         match timeout(crate::app::server::ws::REVERSE_RPC_TIMEOUT, rx).await {
             Ok(Ok(ReverseRpcResult::Answered(s))) => Ok(s),
             Ok(Ok(ReverseRpcResult::Approved)) => Ok("{}".into()),
