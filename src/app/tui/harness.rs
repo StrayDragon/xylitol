@@ -946,7 +946,7 @@ impl XyDriver for ScriptedDriver {
         })
     }
 
-    fn persist_project_trust(
+    async fn persist_project_trust(
         &mut self,
         mode: crate::app::core::driver::ProjectTrustMode,
     ) -> Result<crate::app::core::driver::ProjectTrustPersistReport, XyDriverError> {

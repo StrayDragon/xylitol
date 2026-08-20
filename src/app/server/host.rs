@@ -21,7 +21,8 @@ use crate::app::core::composition::{
 };
 use crate::app::core::dispatch::{DispatchOutcome, dispatch};
 use crate::app::core::driver::{
-    LoadedResourcesSnapshot, ModelInfo, RuntimeReloadReport, XyDriver, XyInProcessDriver,
+    LoadedResourcesSnapshot, ModelInfo, ProjectTrustMode, RuntimeReloadReport, XyDriver,
+    XyInProcessDriver,
 };
 use crate::app::core::driver_error::XyDriverError;
 use crate::app::server::ws::{
@@ -1297,6 +1298,46 @@ pub async fn handle_unary(
         ));
     }
 
+    if method == "persist_trust" {
+        let token = match take_writer_lease(&slot, presented).await {
+            Ok(t) => t,
+            Err(e) => return e,
+        };
+        if let Err(e) = materialize_writer_at(host, &slot, &workspace).await {
+            let mut r = rpc_err(e);
+            r.value = Some(json!({ "writerToken": token }));
+            return r;
+        }
+        let mode = match payload.get("mode").and_then(Value::as_str) {
+            Some("trust_cwd") | None => ProjectTrustMode::TrustCwd,
+            Some("trust_parent") => ProjectTrustMode::TrustParent,
+            Some("deny") => ProjectTrustMode::Deny,
+            Some(other) => {
+                return RpcResult::error("invalid_input", format!("unknown trust mode: {other}"));
+            }
+        };
+        let mut g = slot.driver.lock().await;
+        let Some(driver) = g.as_mut() else {
+            return RpcResult::error("unavailable", "no writer engine");
+        };
+        let report = match driver.persist_project_trust(mode).await {
+            Ok(report) => report,
+            Err(e) => {
+                let mut r = rpc_err(e);
+                r.value = Some(json!({ "writerToken": token }));
+                return r;
+            }
+        };
+        return RpcResult::ok_value(attach_writer_token(
+            json!({
+                "trusted": report.trusted,
+                "saved_path": report.saved_path,
+                "message": report.message,
+            }),
+            &token,
+        ));
+    }
+
     if method == "load_debug_scene" {
         let scene = payload
             .get("scene")
@@ -1349,6 +1390,23 @@ pub async fn handle_unary(
         {
             return defer_runtime_setting(&slot, method, &payload, &token).await;
         }
+        // Export over the wire stages to a unique Host-side temp file; the
+        // content is read back into the response and the TUI writes its own
+        // local copy (D4: the file lands on the machine that asked for it).
+        let staged_export = matches!(method, "export_html" | "export_jsonl")
+            && payload.get("output_path").is_none()
+            && payload.get("path").is_none();
+        let mut payload = payload;
+        if staged_export {
+            let ext = if method == "export_jsonl" {
+                "jsonl"
+            } else {
+                "html"
+            };
+            payload["output_path"] = json!(
+                std::env::temp_dir().join(format!("xylitol-export-{}.{ext}", uuid::Uuid::new_v4()))
+            );
+        }
         let cmd = match command_from_method(method, &payload) {
             Ok(c) => c,
             Err(e) => return RpcResult::error("invalid_input", e),
@@ -1359,7 +1417,26 @@ pub async fn handle_unary(
         };
         return match dispatch(driver, cmd).await {
             Ok(outcome) => {
-                RpcResult::ok_value(attach_writer_token(outcome_to_value(outcome), &token))
+                let mut value = outcome_to_value(outcome);
+                if staged_export
+                    && let Some(p) = value
+                        .get("path")
+                        .and_then(Value::as_str)
+                        .map(std::path::PathBuf::from)
+                {
+                    match std::fs::read_to_string(&p) {
+                        Ok(content) => {
+                            value["content"] = Value::String(content);
+                        }
+                        Err(e) => log::warn!(
+                            target: "xylitol::host",
+                            "export stage read {}: {e}",
+                            p.display()
+                        ),
+                    }
+                    let _ = std::fs::remove_file(&p);
+                }
+                RpcResult::ok_value(attach_writer_token(value, &token))
             }
             Err(e) => {
                 let mut r = rpc_err(e);

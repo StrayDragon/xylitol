@@ -470,7 +470,7 @@ pub trait XyDriver: Send {
     /// # Errors
     ///
     /// `Err` on unsupported driver (default) or IO.
-    fn persist_project_trust(
+    async fn persist_project_trust(
         &mut self,
         _mode: ProjectTrustMode,
     ) -> Result<ProjectTrustPersistReport, XyDriverError> {

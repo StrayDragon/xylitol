@@ -23,8 +23,8 @@ use super::XyDriver;
 use super::XyDriverError;
 use super::types::{
     ClipboardCopyOutcome, CommandInfo, DebugSceneLoad, EventStream, LoadedResourcesSnapshot,
-    ModelInfo, QueueStats, ReloadStepReport, RuntimeReloadReport, SessionListEntry, SessionStats,
-    XyEvent, estimate_from_session_entries,
+    ModelInfo, ProjectTrustMode, ProjectTrustPersistReport, QueueStats, ReloadStepReport,
+    RuntimeReloadReport, SessionListEntry, SessionStats, XyEvent, estimate_from_session_entries,
 };
 
 /// Notify the product TUI of mux reverse-RPC (approval/question).
@@ -1424,6 +1424,38 @@ where
             .map_err(|e| XyDriverError::io(format!("clipboard text task failed: {e}")))?
             .map_err(XyDriverError::from)
     }
+
+    /// Trust is a Host fact (gate + persistence live with the writer), so this
+    /// routes through a Host unary scoped to the session workspace — the TUI
+    /// MUST NOT write the Host's agent dir itself (D2).
+    async fn persist_project_trust(
+        &mut self,
+        mode: ProjectTrustMode,
+    ) -> Result<ProjectTrustPersistReport, XyDriverError> {
+        let mode_str = match mode {
+            ProjectTrustMode::TrustCwd => "trust_cwd",
+            ProjectTrustMode::TrustParent => "trust_parent",
+            ProjectTrustMode::Deny => "deny",
+        };
+        let data = self
+            .unary("persist_trust", serde_json::json!({ "mode": mode_str }))
+            .await?;
+        Ok(ProjectTrustPersistReport {
+            trusted: data
+                .get("trusted")
+                .and_then(Value::as_bool)
+                .unwrap_or(false),
+            saved_path: data
+                .get("saved_path")
+                .and_then(Value::as_str)
+                .map(str::to_string),
+            message: data
+                .get("message")
+                .and_then(Value::as_str)
+                .unwrap_or_default()
+                .to_string(),
+        })
+    }
 }
 
 #[cfg(test)]
@@ -2057,6 +2089,85 @@ mod tests {
             got.canonicalize().unwrap(),
             dir.path().canonicalize().unwrap(),
             "attach bang MUST run in the session workspace, not serve cwd; got: {output}"
+        );
+    }
+
+    #[tokio::test]
+    async fn persist_trust_unary_routes_to_writer() {
+        use crate::app::server::host::{handle_unary, materialize_writer_at};
+
+        let host = HostState::for_test().expect("host");
+        let slot = host.slot("ws-trust").await;
+        let dir = tempfile::tempdir().expect("tmp");
+        materialize_writer_at(&host, &slot, dir.path())
+            .await
+            .expect("materialize");
+        let result = handle_unary(
+            &host,
+            "persist_trust",
+            serde_json::json!({ "session_id": "ws-trust", "mode": "trust_cwd" }),
+            None,
+        )
+        .await;
+        assert!(
+            result.ok,
+            "persist_trust MUST route to the writer: {result:?}"
+        );
+        let value = result.value.as_ref().expect("value");
+        assert!(
+            value.get("trusted").is_some() && value.get("message").is_some(),
+            "report shape MUST surface trusted/message: {value}"
+        );
+    }
+
+    #[tokio::test]
+    async fn export_unary_returns_content_and_cleans_stage() {
+        use crate::app::server::host::{handle_unary, materialize_writer_at};
+
+        let host = HostState::for_test().expect("host");
+        let slot = host.slot("ws-export").await;
+        let dir = tempfile::tempdir().expect("tmp");
+        materialize_writer_at(&host, &slot, dir.path())
+            .await
+            .expect("materialize");
+        let minted = handle_unary(
+            &host,
+            "new_session",
+            serde_json::json!({ "session_id": "ws-export" }),
+            None,
+        )
+        .await;
+        assert!(minted.ok, "new_session MUST succeed: {minted:?}");
+        let writer_token = minted
+            .value
+            .as_ref()
+            .and_then(|v| v.get("writerToken"))
+            .and_then(Value::as_str)
+            .expect("writer token")
+            .to_string();
+        let result = handle_unary(
+            &host,
+            "export_jsonl",
+            serde_json::json!({ "session_id": "ws-export" }),
+            Some(writer_token),
+        )
+        .await;
+        assert!(result.ok, "export unary MUST succeed: {result:?}");
+        let value = result.value.as_ref().expect("value");
+        let content = value
+            .get("content")
+            .and_then(Value::as_str)
+            .expect("export response MUST carry content bytes for the TUI to write locally");
+        assert!(!content.is_empty(), "jsonl export should have header rows");
+        let staged = value
+            .get("path")
+            .and_then(Value::as_str)
+            .map(std::path::PathBuf::from)
+            .expect("staged path");
+        assert!(
+            !staged.exists(),
+            "Host-side stage file MUST be cleaned up: {}",
+            staged.display()
         );
     }
 

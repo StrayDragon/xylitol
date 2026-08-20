@@ -126,8 +126,8 @@ STATUS: incomplete
 - [ ] **A1 快照** c2307：`get_messages` 一次投影
 - [x] **D1** 剪贴板改走 TUI 本机，去掉对 Remote `unsupported` 的依赖（`XyRemoteDriver` 活在 TUI 进程，直接镜像 InProcess 的 `infra::clipboard` 三实现；回归 `clipboard_ops_stay_client_local` 断言零 unary）
 - [x] **B6** steer/follow_up/clear_queue 去 `block_on`（trait 改 async，与 `/model` 同纪律走 effects 泵；删除 Remote `block_on` helper）
-- [ ] **D2** `/trust` 经 Host unary（若产品还要这条 slash）
-- [ ] **D4** export 落点与文案（TUI 盘 vs Host 盘）一次说清
+- [x] **D2** `/trust` 经 Host unary（产品保留该 slash；`persist_trust` 路由会话槽 writer，按会话工作区解析信任；trait 方法改 async 与 B6 同纪律）
+- [x] **D4** export 落点与文案（Host 暂存临时文件→响应带 `content` 字节→TUI 写本机盘并清理暂存；`/export` 无参时落 TUI cwd，文案显示本机路径）
 
 ### P1 — 对拍收口后才动
 
