@@ -89,6 +89,7 @@ pub struct SessionSlot {
     pub subscribers: Mutex<HashMap<u64, MuxSink>>,
     pub gateway: Arc<ReverseRpcGateway>,
     next_conn: AtomicU64,
+    resync_offered: AtomicBool,
 }
 
 impl HostState {
@@ -199,6 +200,7 @@ impl SessionSlot {
             subscribers: Mutex::new(HashMap::new()),
             gateway: Arc::new(ReverseRpcGateway::new()),
             next_conn: AtomicU64::new(1),
+            resync_offered: AtomicBool::new(false),
         })
     }
 
@@ -214,9 +216,30 @@ impl SessionSlot {
 
     async fn replay_or_resync(&self, last_seq: u64) -> RpcResult {
         let journal = self.journal.lock().await;
+        let wrapped_gap =
+            journal.is_full() && last_seq < journal.min_seq() && journal.min_seq() > 1;
+        if wrapped_gap && !self.resync_offered.swap(true, Ordering::SeqCst) {
+            drop(journal);
+            let msg = downlink_server_request(
+                "session/resync_required",
+                serde_json::to_value(SessionResyncRequiredPayload {
+                    session_id: self.session_id.clone(),
+                })
+                .unwrap_or(Value::Null),
+            );
+            self.broadcast(msg).await;
+            return RpcResult::ok_value(
+                serde_json::to_value(SessionSubscribedPayload {
+                    session_id: self.session_id.clone(),
+                    seq: 0,
+                })
+                .unwrap_or(Value::Null),
+            );
+        }
         match journal.replay_from(last_seq) {
             None => {
                 drop(journal);
+                self.resync_offered.store(true, Ordering::SeqCst);
                 let msg = downlink_server_request(
                     "session/resync_required",
                     serde_json::to_value(SessionResyncRequiredPayload {

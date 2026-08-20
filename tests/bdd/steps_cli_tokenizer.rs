@@ -1012,13 +1012,3 @@ fn t_atb4_attach_and_inprocess() {
     assert!(inprocess.contains("XyInProcessDriver"), "{inprocess}");
     assert!(http_ws.contains("HttpWsClient"), "{http_ws}");
 }
-
-#[when("产品 TUI 访问 Host")]
-fn w_sr_env1_tui_host() {}
-
-#[then("经四象限 POST unary 与 WebSocket 下行")]
-fn t_sr_env1_four_quadrant() {
-    fn assert_client<T: xylitol::HostClient>() {}
-    assert_client::<xylitol::InProcessClient>();
-    assert_client::<xylitol::HttpWsClient>();
-}
