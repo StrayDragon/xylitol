@@ -4,9 +4,19 @@
 //! MUST NOT depend on [`crate::protocol::ports`].
 
 pub mod command;
+pub mod envelope;
 pub mod event;
+pub mod method;
 pub mod transport;
+pub mod ts_export;
 
 pub use command::Command;
+pub use envelope::{
+    ApprovalRequestedPayload, HostDescribeValue, HostHelloPayload, PROTOCOL_VERSION,
+    QuestionRequestedPayload, RpcError, RpcMessage, RpcResult, SessionEventPayload,
+    SessionResyncRequiredPayload, SessionSubscribedPayload,
+};
 pub use event::Event;
+pub use method::{DOWNLINK_METHODS, UNARY_METHODS, is_downlink_method, is_unary_method};
 pub use transport::{Envelope, ErrorCode};
+pub use ts_export::{BINDINGS_RELATIVE_PATH, export_typescript_bindings, protocol_types};

@@ -75,12 +75,15 @@ xylitol-tui = { path = "packages/xylitol-tui", optional = true }
 xylitol-ai-bridge = { path = "packages/xylitol-ai-bridge" }
 crossterm = { version = "0.29", optional = true, features = ["event-stream"] }
 http = "1"
+specta = { version = "2.0.0-rc.25", features = ["derive", "serde_json"] }
+specta-typescript = "0.0.12"
+specta-serde = "0.0.12"
 
 [features]
-default = ["cli", "tui", "otel"]
+default = ["cli", "tui", "otel", "server"]
 # CLI composition root.
 cli = []
-# Always-on HTTP/WebSocket server.
+# Always-on HTTP/WebSocket server (product TUI attach default).
 server = ["dep:axum", "dep:tokio-tungstenite", "dep:tower-http"]
 # Terminal UI surface (host-driven on xylitol-tui).
 tui = ["dep:xylitol-tui", "dep:crossterm"]

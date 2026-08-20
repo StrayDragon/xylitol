@@ -2,25 +2,27 @@
 
 use serde::{Deserialize, Serialize};
 use serde_json::Value;
+use specta::Type;
 
 use crate::protocol::lifecycle::XyEvent;
 
 /// An event from the core: either a response to a command or a streamed
 /// occurrence during a turn.
-#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize, Type)]
 #[serde(tag = "type", rename_all = "snake_case")]
 pub enum Event {
     Error {
-        #[serde(skip_serializing_if = "Option::is_none")]
+        #[serde(default)]
         id: Option<String>,
-        #[serde(default, skip_serializing_if = "Option::is_none")]
+        #[serde(default)]
         kind: Option<String>,
         message: String,
     },
     Response {
-        #[serde(skip_serializing_if = "Option::is_none")]
+        #[serde(default)]
         id: Option<String>,
-        #[serde(skip_serializing_if = "Option::is_none")]
+        #[serde(default)]
+        #[specta(type = specta_typescript::Any)]
         payload: Option<Value>,
     },
     TextDelta {
@@ -50,10 +52,11 @@ pub enum Event {
     /// Acknowledgment of a Subscribe command.
     Subscribed {
         session_id: String,
+        #[specta(type = specta_typescript::Number)]
         seq: u64,
     },
     BashResult {
-        #[serde(skip_serializing_if = "Option::is_none")]
+        #[serde(default)]
         id: Option<String>,
         output: String,
         exit_code: Option<i32>,
@@ -79,7 +82,7 @@ pub enum Event {
     /// Streaming message update (replaces previous text/thinking for this message).
     MessageUpdate {
         text: String,
-        #[serde(skip_serializing_if = "Option::is_none")]
+        #[serde(default)]
         thinking: Option<String>,
     },
     /// Streaming tool execution output.
@@ -91,18 +94,25 @@ pub enum Event {
     CompactionEnd,
     /// Shared context-token settlement (c1860) for footer / cross-client chrome.
     ContextTokenSettlement {
+        #[specta(type = specta_typescript::Number)]
         tokens: u64,
         provenance: String,
+        #[specta(type = specta_typescript::Number)]
         usage_tokens: u64,
+        #[specta(type = specta_typescript::Number)]
         trailing_tokens: u64,
-        #[serde(default, skip_serializing_if = "Option::is_none")]
+        #[serde(default)]
+        #[specta(type = Option<specta_typescript::Number>)]
         last_usage_index: Option<usize>,
         reason: String,
+        #[specta(type = specta_typescript::Number)]
         generation: u64,
     },
     /// Pending steer / follow-up queue depths (cross-client badge).
     QueueUpdate {
+        #[specta(type = specta_typescript::Number)]
         steer_count: usize,
+        #[specta(type = specta_typescript::Number)]
         follow_up_count: usize,
     },
 }

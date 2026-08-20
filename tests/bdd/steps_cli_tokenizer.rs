@@ -946,3 +946,46 @@ fn t_ce20_hint_present(surface_flags_bdd: &SurfaceFlagsBdd) {
 fn t_ce20_hint_absent(surface_flags_bdd: &SurfaceFlagsBdd) {
     assert!(surface_flags_bdd.hint.borrow().is_none());
 }
+
+// ═══════════════════════════════════════════════════════════════════
+// c2290 — TUI attach fail-closed (ce21)
+// ═══════════════════════════════════════════════════════════════════
+
+pub struct AttachBdd {
+    pub(crate) err: RefCell<Option<String>>,
+}
+
+impl AttachBdd {
+    fn new() -> Self {
+        Self {
+            err: RefCell::new(None),
+        }
+    }
+}
+
+#[fixture]
+pub fn attach_bdd() -> AttachBdd {
+    AttachBdd::new()
+}
+
+#[given("本机 Host 未在听")]
+fn g_ce21_host_down(attach_bdd: &AttachBdd) {
+    assert!(attach_bdd.err.borrow().is_none());
+}
+
+#[when("产品 TUI 尝试 attach")]
+fn w_ce21_attach(attach_bdd: &AttachBdd) {
+    let err = xylitol::probe_host("http://127.0.0.1:1").expect_err("port 1 must be down");
+    attach_bdd.err.replace(Some(err.to_string()));
+}
+
+#[then("非零退出并提示先启动 Host")]
+fn t_ce21_fail(attach_bdd: &AttachBdd) {
+    let msg = attach_bdd.err.borrow().clone().expect("probe error");
+    assert!(
+        msg.contains("not listening") || msg.contains("Host is not listening"),
+        "{msg}"
+    );
+    let hint = xylitol::attach_fail_message(xylitol::DEFAULT_ATTACH_URL);
+    assert!(hint.contains("xylitol server run"), "{hint}");
+}
