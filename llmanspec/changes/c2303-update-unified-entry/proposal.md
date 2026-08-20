@@ -6,7 +6,8 @@ depends_on:
 - c2302-update-host-multi-session
 branch: sdd/c2303-update-unified-entry
 base_sha: 9c2a77fab774ce1514c331920fc14fce90d25b9b
-checkpointed: false
+checkpointed: true
+checkpoint_sha: dbe5aa2b9b0389054e3daa4c4a4c6641f137fd9f
 ---
 
 # CLI：serve / attach 形状
