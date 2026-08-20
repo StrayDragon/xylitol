@@ -26,11 +26,14 @@
 
 use std::path::PathBuf;
 
-use crate::app::core::driver::{CommandInfo, ModelInfo, SessionState, XyDriver};
+use crate::app::core::driver::{
+    CommandInfo, LoadedResourcesSnapshot, ModelInfo, RuntimeReloadReport, SessionListEntry,
+    SessionState, XyDriver,
+};
 pub use crate::app::core::driver_error::XyDriverError;
 use crate::protocol::Command;
 use crate::protocol::ports::XyBashResult;
-use crate::protocol::session::SessionEntry;
+use crate::protocol::session::{SessionEntry, SessionTreeNode, SessionTreeTravel};
 
 /// The result of executing a (non-Prompt, non-Quit, non-WS) Command.
 ///
@@ -71,6 +74,22 @@ pub enum DispatchOutcome {
         session_id: String,
         entries: Vec<SessionEntry>,
     },
+    /// `SessionTree` — the current session message tree.
+    SessionTree(Vec<SessionTreeNode>),
+    /// `TravelSessionTree` — the selected tree position and editor prefill.
+    SessionTreeTravel(SessionTreeTravel),
+    /// `ListSessions` — resumable session rows.
+    Sessions(Vec<SessionListEntry>),
+    /// `LoadSessionEntries` — raw entries for a named session.
+    SessionEntries(Vec<SessionEntry>),
+    /// `GetSessionName` / `SetSessionName` — current display name.
+    SessionName(Option<String>),
+    /// `Reload` — host runtime resource reload report.
+    Reload(RuntimeReloadReport),
+    /// `LoadedResources` — host resource snapshot.
+    LoadedResources(LoadedResourcesSnapshot),
+    /// Mutating command with no value payload.
+    Empty,
     /// `GetCommands` — the available slash commands.
     Commands(Vec<CommandInfo>),
     /// `Steer` / `FollowUp` / `ClearQueue` — current queue depths.
@@ -213,6 +232,50 @@ async fn dispatch_inner(
                 entries,
             })
         }
+        Command::SessionTree { kind, .. } => Ok(DispatchOutcome::SessionTree(
+            driver.session_tree(kind).await?,
+        )),
+        Command::TravelSessionTree { kind, entry_id, .. } => Ok(
+            DispatchOutcome::SessionTreeTravel(driver.travel_session_tree(kind, &entry_id).await?),
+        ),
+        Command::AppendEntryLabel {
+            target_id, label, ..
+        } => {
+            driver
+                .append_entry_label(&target_id, label.as_deref())
+                .await?;
+            Ok(DispatchOutcome::Empty)
+        }
+        Command::ListSessions { .. } => {
+            Ok(DispatchOutcome::Sessions(driver.list_sessions().await?))
+        }
+        Command::LoadSessionEntries { session_id, .. } => Ok(DispatchOutcome::SessionEntries(
+            driver.load_session_entries(&session_id).await?,
+        )),
+        Command::NewSession { .. } => Ok(DispatchOutcome::NewSession(driver.new_session().await?)),
+        Command::GetSessionName { .. } => Ok(DispatchOutcome::SessionName(
+            driver.get_session_name().await?,
+        )),
+        Command::SetSessionName { name, .. } => Ok(DispatchOutcome::SessionName(Some(
+            driver.set_session_name(&name).await?,
+        ))),
+        Command::SetSessionNameFor {
+            session_id, name, ..
+        } => Ok(DispatchOutcome::SessionName(Some(
+            driver.set_session_name_for(&session_id, &name).await?,
+        ))),
+        Command::DeleteSession { session_id, .. } => {
+            driver.delete_session(&session_id).await?;
+            Ok(DispatchOutcome::Empty)
+        }
+        Command::Reload { .. } => Ok(DispatchOutcome::Reload(
+            driver
+                .reload_runtime(&tokio_util::sync::CancellationToken::new())
+                .await?,
+        )),
+        Command::LoadedResources { .. } => Ok(DispatchOutcome::LoadedResources(
+            driver.loaded_resources_snapshot().await,
+        )),
         Command::GetCommands { .. } => Ok(DispatchOutcome::Commands(driver.get_commands())),
         Command::Steer { message, .. } => {
             driver.steer(&message)?;
@@ -279,6 +342,18 @@ fn cmd_variant_name(cmd: &Command) -> &'static str {
         Command::Fork { .. } => "Fork",
         Command::GetMessages { .. } => "GetMessages",
         Command::GetCommands { .. } => "GetCommands",
+        Command::SessionTree { .. } => "SessionTree",
+        Command::TravelSessionTree { .. } => "TravelSessionTree",
+        Command::AppendEntryLabel { .. } => "AppendEntryLabel",
+        Command::ListSessions { .. } => "ListSessions",
+        Command::LoadSessionEntries { .. } => "LoadSessionEntries",
+        Command::NewSession { .. } => "NewSession",
+        Command::GetSessionName { .. } => "GetSessionName",
+        Command::SetSessionName { .. } => "SetSessionName",
+        Command::SetSessionNameFor { .. } => "SetSessionNameFor",
+        Command::DeleteSession { .. } => "DeleteSession",
+        Command::Reload { .. } => "Reload",
+        Command::LoadedResources { .. } => "LoadedResources",
         Command::Steer { .. } => "Steer",
         Command::FollowUp { .. } => "FollowUp",
         Command::ClearQueue { .. } => "ClearQueue",

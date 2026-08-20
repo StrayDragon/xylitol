@@ -12,7 +12,7 @@ export type Command = { type: "prompt"; id?: string | null; message: string } | 
 /**  Optional focus text for summarization (c1670; pi `customInstructions`). */
 instructions?: string | null } | { type: "get_session_stats"; id?: string | null } | { type: "export_html"; id?: string | null; output_path?: string | null } | { type: "export_jsonl"; id?: string | null; output_path?: string | null } | { type: "import_jsonl"; id?: string | null; input_path: string } | { type: "switch_session"; id?: string | null; session_path: string } | { type: "fork"; id?: string | null; entry_id: string;
 /**  `"before"` | `"at"` (default `"at"`). */
-position?: string | null } | { type: "get_messages"; id?: string | null } | { type: "get_commands"; id?: string | null } | { type: "steer"; id?: string | null; message: string } | { type: "follow_up"; id?: string | null; message: string } | { type: "clear_queue"; id?: string | null; clear_steer?: boolean; clear_follow_up?: boolean } |
+position?: string | null } | { type: "get_messages"; id?: string | null } | { type: "get_commands"; id?: string | null } | { type: "session_tree"; id?: string | null; kind: SessionTreeKind } | { type: "travel_session_tree"; id?: string | null; kind: SessionTreeKind; entry_id: string } | { type: "append_entry_label"; id?: string | null; target_id: string; label?: string | null } | { type: "list_sessions"; id?: string | null } | { type: "load_session_entries"; id?: string | null; session_id: string } | { type: "new_session"; id?: string | null } | { type: "get_session_name"; id?: string | null } | { type: "set_session_name"; id?: string | null; name: string } | { type: "set_session_name_for"; id?: string | null; session_id: string; name: string } | { type: "delete_session"; id?: string | null; session_id: string } | { type: "reload"; id?: string | null } | { type: "loaded_resources"; id?: string | null } | { type: "steer"; id?: string | null; message: string } | { type: "follow_up"; id?: string | null; message: string } | { type: "clear_queue"; id?: string | null; clear_steer?: boolean; clear_follow_up?: boolean } |
 /**  Subscribe to a session's event stream (WebSocket). */
 { type: "subscribe"; id?: string | null; session_id: string; last_seq: number } |
 /**  Approve a tool execution (reverse RPC response). */
@@ -26,7 +26,7 @@ position?: string | null } | { type: "get_messages"; id?: string | null } | { ty
  */
 export type Event = { type: "error"; id?: string | null; kind?: string | null; message: string } | { type: "response"; id?: string | null; payload?: any } | { type: "text_delta"; text: string } |
 /**  Streaming thinking / reasoning text (e.g. Anthropic extended thinking). */
-{ type: "thinking_delta"; text: string } | { type: "tool_start"; id: string; name: string } | { type: "tool_end"; id: string; name: string; result: string } | { type: "agent_end" } | { type: "model_select"; provider: string; model_id: string } | { type: "compaction_start"; reason: string } |
+{ type: "thinking_delta"; text: string } | { type: "tool_start"; id: string; name: string; args?: any } | { type: "tool_end"; id: string; name: string; result: string } | { type: "agent_end" } | { type: "model_select"; provider: string; model_id: string } | { type: "compaction_start"; reason: string } |
 /**  Acknowledgment of a Subscribe command. */
 { type: "subscribed"; session_id: string; seq: number } | { type: "bash_result"; id?: string | null; output: string; exit_code: number | null; cancelled: boolean; truncated: boolean } |
 /**  Turn started. */
@@ -38,7 +38,7 @@ export type Event = { type: "error"; id?: string | null; kind?: string | null; m
 /**  Message ended. */
 { type: "message_end"; role: string } |
 /**  Streaming message update (replaces previous text/thinking for this message). */
-{ type: "message_update"; text: string; thinking?: string | null } |
+{ type: "message_update"; text: string; thinking?: string | null; message?: any | null } |
 /**  Streaming tool execution output. */
 { type: "tool_execution_update"; id: string; output: string } |
 /**  Compaction completed. */
@@ -98,6 +98,11 @@ export type SessionSubscribedPayload = {
 	seq: number,
 };
 
+/**  Kind of session tree exposed via [`crate::app::core::driver::XyDriver`]. */
+export type SessionTreeKind = "message_history" |
+/**  Reserved; callers MUST receive an explicit error until implemented. */
+"file_browser";
+
 export const PROTOCOL_VERSION = 1 as const;
 export const UNARY_METHODS = [
   "prompt",
@@ -117,6 +122,18 @@ export const UNARY_METHODS = [
   "fork",
   "get_messages",
   "get_commands",
+  "session_tree",
+  "travel_session_tree",
+  "append_entry_label",
+  "list_sessions",
+  "load_session_entries",
+  "new_session",
+  "get_session_name",
+  "set_session_name",
+  "set_session_name_for",
+  "delete_session",
+  "reload",
+  "loaded_resources",
   "steer",
   "follow_up",
   "clear_queue",

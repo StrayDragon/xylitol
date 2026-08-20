@@ -495,6 +495,10 @@ fn t_remote1(_server_test: &ServerTest) {
 #[then("未登记方法不发明 REST")]
 fn t_no_invented_rest(_server_test: &ServerTest) {
     assert!(source_contains(
+        "src/protocol/wire/method.rs",
+        "\"list_sessions\""
+    ));
+    assert!(!source_contains(
         "src/app/core/driver/remote.rs",
         "list_sessions is not a v1 unary method"
     ));
@@ -535,15 +539,32 @@ fn t_not_product(server_test: &ServerTest) {
 #[given("RemoteDriver 指向该 server")]
 fn g_remote_points(_server_test: &ServerTest) {}
 
-#[when("调用未入方法表的 session_tree/travel")]
-fn w_session_tree_unregistered(_server_test: &ServerTest) {}
+#[when("调用已登记方法表的 session_tree/travel")]
+fn w_session_tree_registered(_server_test: &ServerTest) {}
 
-#[then("不经 REST 冒充；可为未实现或默认值")]
-fn t_tree_unsupported(_server_test: &ServerTest) {
+#[then("经四象限 unary 到达 Host 且不经 REST 冒充")]
+fn t_tree_registered(_server_test: &ServerTest) {
+    assert!(source_contains(
+        "src/protocol/wire/method.rs",
+        "\"session_tree\""
+    ));
     assert!(source_contains(
         "src/app/core/driver/remote.rs",
-        "session_tree_kind_unimplemented"
+        "session_tree"
     ));
+}
+
+#[when("调用已登记的 session 能力 unary")]
+fn w_session_methods_registered(_server_test: &ServerTest) {
+    assert!(source_contains(
+        "src/protocol/wire/method.rs",
+        "\"list_sessions\""
+    ));
+}
+
+#[when("调用 Host 资源 unary")]
+fn w_host_resource_methods(_server_test: &ServerTest) {
+    assert!(source_contains("src/protocol/wire/method.rs", "\"reload\""));
 }
 
 // ── server-ws ─────────────────────────────────────────────────────

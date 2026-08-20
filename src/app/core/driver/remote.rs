@@ -19,27 +19,28 @@ use crate::protocol::{Event, RpcMessage};
 use super::XyDriver;
 use super::XyDriverError;
 use super::types::{
-    CommandInfo, DebugSceneLoad, EventStream, LoadedResourcesSnapshot, ModelInfo, SessionListEntry,
-    SessionStats, XyEvent, estimate_from_session_entries, session_tree_kind_unimplemented,
+    CommandInfo, DebugSceneLoad, EventStream, LoadedResourcesSnapshot, ModelInfo, ReloadStepReport,
+    RuntimeReloadReport, SessionListEntry, SessionStats, XyEvent, estimate_from_session_entries,
 };
 
 /// Notify the product TUI of mux reverse-RPC (approval/question).
 pub type ReverseRpcNotify = Arc<dyn Fn(String, String, Value) + Send + Sync>;
 
-/// Remote driver — [`XyDriver`] over [`HttpWsClient`] (HTTP POST unary + WS downlink).
+/// Remote driver — [`XyDriver`] over a [`HostClient`] carrier.
 #[cfg(feature = "server")]
-pub struct XyRemoteDriver {
-    host: HttpWsClient,
+pub struct XyRemoteDriver<C = HttpWsClient> {
+    host: C,
     session_id: String,
     cancel: CancellationToken,
     thinking: std::sync::Mutex<String>,
+    leaf_entry_id: Arc<std::sync::Mutex<Option<String>>>,
     last_seq: Arc<AtomicU64>,
     handshake_done: Arc<AtomicBool>,
     reverse_rpc: Option<ReverseRpcNotify>,
 }
 
 #[cfg(feature = "server")]
-impl XyRemoteDriver {
+impl XyRemoteDriver<HttpWsClient> {
     /// Create a new XyRemoteDriver connected to `base_url`.
     ///
     /// `base_url` should be the server root, e.g. `http://127.0.0.1:18790`.
@@ -50,19 +51,36 @@ impl XyRemoteDriver {
         } else {
             session_id
         };
-        Self {
-            host: HttpWsClient::new(base_url),
-            session_id,
-            cancel: CancellationToken::new(),
-            thinking: std::sync::Mutex::new(THINKING_OFF.into()),
-            last_seq: Arc::new(AtomicU64::new(0)),
-            handshake_done: Arc::new(AtomicBool::new(false)),
-            reverse_rpc: None,
-        }
+        Self::with_host(HttpWsClient::new(base_url), session_id)
     }
 
     pub fn host_client(&self) -> &HttpWsClient {
         &self.host
+    }
+}
+
+#[cfg(feature = "server")]
+impl<C> XyRemoteDriver<C>
+where
+    C: HostClient + Clone + 'static,
+{
+    pub fn with_host(host: C, session_id: impl Into<String>) -> Self {
+        let session_id = session_id.into();
+        let session_id = if session_id.trim().is_empty() {
+            uuid::Uuid::new_v4().to_string()
+        } else {
+            session_id
+        };
+        Self {
+            host,
+            session_id,
+            cancel: CancellationToken::new(),
+            thinking: std::sync::Mutex::new(THINKING_OFF.into()),
+            leaf_entry_id: Arc::new(std::sync::Mutex::new(None)),
+            last_seq: Arc::new(AtomicU64::new(0)),
+            handshake_done: Arc::new(AtomicBool::new(false)),
+            reverse_rpc: None,
+        }
     }
 
     pub fn set_reverse_rpc_notify(&mut self, notify: ReverseRpcNotify) {
@@ -84,6 +102,16 @@ impl XyRemoteDriver {
             );
         }
         payload
+    }
+
+    fn update_leaf_from_state(&self, data: &Value) {
+        let leaf = data
+            .get("leaf_entry_id")
+            .and_then(Value::as_str)
+            .map(str::to_string);
+        if let Ok(mut cached) = self.leaf_entry_id.lock() {
+            *cached = leaf;
+        }
     }
 
     async fn unary(
@@ -150,7 +178,10 @@ impl XyRemoteDriver {
 
 #[cfg(feature = "server")]
 #[async_trait]
-impl XyDriver for XyRemoteDriver {
+impl<C> XyDriver for XyRemoteDriver<C>
+where
+    C: HostClient + Clone + 'static,
+{
     async fn run(&mut self, prompt: &str) -> EventStream {
         let host = self.host.clone();
         let cancel = self.cancel.clone();
@@ -159,6 +190,7 @@ impl XyDriver for XyRemoteDriver {
         let last_seq = self.last_seq.clone();
         let handshake_done = self.handshake_done.clone();
         let reverse_rpc = self.reverse_rpc.clone();
+        let leaf_entry_id = self.leaf_entry_id.clone();
 
         let stream = async_stream::stream! {
             let mut mux = match host.mux().await {
@@ -247,6 +279,24 @@ impl XyDriver for XyRemoteDriver {
                                 };
                                 let is_end =
                                     matches!(agent_event, XyEvent::AgentEnd { .. });
+                                if is_end
+                                    && let Ok(result) = host
+                                        .unary(
+                                            "get_state",
+                                            serde_json::json!({
+                                                "session_id": session_id,
+                                            }),
+                                        )
+                                        .await
+                                    && let Some(leaf) = result
+                                        .value
+                                        .as_ref()
+                                        .and_then(|value| value.get("leaf_entry_id"))
+                                        .and_then(Value::as_str)
+                                    && let Ok(mut cached) = leaf_entry_id.lock()
+                                {
+                                    *cached = Some(leaf.to_string());
+                                }
                                 yield agent_event;
                                 if is_end {
                                     break;
@@ -294,6 +344,7 @@ impl XyDriver for XyRemoteDriver {
     fn current_model(&self) -> Option<ModelInfo> {
         self.block_on(async {
             let data = self.unary("get_state", serde_json::json!({})).await?;
+            self.update_leaf_from_state(&data);
             match data.get("model") {
                 Some(m) if !m.is_null() => Self::model_from_value(m).map(Some),
                 _ => Ok(None),
@@ -532,6 +583,9 @@ impl XyDriver for XyRemoteDriver {
             .unwrap_or(session_id)
             .to_string();
         self.session_id = id.clone();
+        if let Ok(mut leaf) = self.leaf_entry_id.lock() {
+            *leaf = None;
+        }
         Ok(id)
     }
 
@@ -660,9 +714,16 @@ impl XyDriver for XyRemoteDriver {
         &self,
         kind: SessionTreeKind,
     ) -> Result<Vec<SessionTreeNode>, XyDriverError> {
-        Err(XyDriverError::unsupported(session_tree_kind_unimplemented(
-            kind,
-        )))
+        let data = self
+            .unary(
+                "session_tree",
+                serde_json::json!({
+                    "kind": serde_json::to_value(kind).unwrap_or(Value::Null),
+                }),
+            )
+            .await?;
+        serde_json::from_value(data.get("tree").cloned().unwrap_or(Value::Null))
+            .map_err(|e| XyDriverError::remote(e.to_string()))
     }
 
     async fn travel_session_tree(
@@ -670,24 +731,36 @@ impl XyDriver for XyRemoteDriver {
         kind: SessionTreeKind,
         entry_id: &str,
     ) -> Result<SessionTreeTravel, XyDriverError> {
-        let _ = entry_id;
-        Err(XyDriverError::unsupported(session_tree_kind_unimplemented(
-            kind,
-        )))
+        let data = self
+            .unary(
+                "travel_session_tree",
+                serde_json::json!({
+                    "kind": serde_json::to_value(kind).unwrap_or(Value::Null),
+                    "entry_id": entry_id,
+                }),
+            )
+            .await?;
+        serde_json::from_value(data).map_err(|e| XyDriverError::remote(e.to_string()))
     }
 
     async fn append_entry_label(
         &mut self,
-        _target_id: &str,
-        _label: Option<&str>,
+        target_id: &str,
+        label: Option<&str>,
     ) -> Result<(), XyDriverError> {
-        Err(XyDriverError::unsupported(
-            "remote: append_entry_label not implemented",
-        ))
+        self.unary(
+            "append_entry_label",
+            serde_json::json!({
+                "target_id": target_id,
+                "label": label,
+            }),
+        )
+        .await?;
+        Ok(())
     }
 
     fn leaf_entry_id(&self) -> Option<String> {
-        None
+        self.leaf_entry_id.lock().ok().and_then(|leaf| leaf.clone())
     }
 
     async fn load_debug_scene(&mut self, _scene: &str) -> Result<DebugSceneLoad, XyDriverError> {
@@ -697,62 +770,141 @@ impl XyDriver for XyRemoteDriver {
     }
 
     async fn list_sessions(&self) -> Result<Vec<SessionListEntry>, XyDriverError> {
-        Err(XyDriverError::unsupported(
-            "list_sessions is not a v1 unary method",
-        ))
+        let data = self.unary("list_sessions", serde_json::json!({})).await?;
+        serde_json::from_value(data.get("sessions").cloned().unwrap_or(Value::Null))
+            .map_err(|e| XyDriverError::remote(e.to_string()))
     }
 
     async fn load_session_entries(
         &self,
-        _session_id: &str,
+        session_id: &str,
     ) -> Result<Vec<SessionEntry>, XyDriverError> {
-        Err(XyDriverError::unsupported(
-            "remote: load_session_entries not implemented",
-        ))
+        let data = self
+            .unary(
+                "load_session_entries",
+                serde_json::json!({ "session_id": session_id }),
+            )
+            .await?;
+        serde_json::from_value(data.get("entries").cloned().unwrap_or(Value::Null))
+            .map_err(|e| XyDriverError::remote(e.to_string()))
     }
 
     async fn new_session(&mut self) -> Result<String, XyDriverError> {
-        Err(XyDriverError::unsupported(
-            "remote: new_session not implemented",
-        ))
+        let data = self.unary("new_session", serde_json::json!({})).await?;
+        let id = data
+            .get("session_id")
+            .and_then(|value| value.as_str())
+            .ok_or_else(|| XyDriverError::remote("new_session response missing session_id"))?
+            .to_string();
+        self.session_id = id.clone();
+        if let Ok(mut leaf) = self.leaf_entry_id.lock() {
+            *leaf = None;
+        }
+        Ok(id)
     }
 
     async fn get_session_name(&self) -> Result<Option<String>, XyDriverError> {
-        Err(XyDriverError::unsupported(
-            "remote: get_session_name not implemented",
-        ))
+        let data = self
+            .unary("get_session_name", serde_json::json!({}))
+            .await?;
+        Ok(data
+            .get("name")
+            .and_then(|value| value.as_str())
+            .map(str::to_string))
     }
 
-    async fn set_session_name(&mut self, _name: &str) -> Result<String, XyDriverError> {
-        Err(XyDriverError::unsupported(
-            "remote: set_session_name not implemented",
-        ))
+    async fn set_session_name(&mut self, name: &str) -> Result<String, XyDriverError> {
+        let data = self
+            .unary("set_session_name", serde_json::json!({ "name": name }))
+            .await?;
+        data.get("name")
+            .and_then(|value| value.as_str())
+            .map(str::to_string)
+            .ok_or_else(|| XyDriverError::remote("set_session_name response missing name"))
     }
 
     async fn set_session_name_for(
         &mut self,
-        _session_id: &str,
-        _name: &str,
+        session_id: &str,
+        name: &str,
     ) -> Result<String, XyDriverError> {
-        Err(XyDriverError::unsupported(
-            "remote: set_session_name_for not implemented",
-        ))
+        let data = self
+            .unary(
+                "set_session_name_for",
+                serde_json::json!({
+                    "session_id": session_id,
+                    "name": name,
+                }),
+            )
+            .await?;
+        data.get("name")
+            .and_then(|value| value.as_str())
+            .map(str::to_string)
+            .ok_or_else(|| XyDriverError::remote("set_session_name_for response missing name"))
     }
 
-    async fn delete_session(&mut self, _session_id: &str) -> Result<(), XyDriverError> {
-        Err(XyDriverError::unsupported(
-            "remote: delete_session not implemented",
-        ))
+    async fn delete_session(&mut self, session_id: &str) -> Result<(), XyDriverError> {
+        self.unary(
+            "delete_session",
+            serde_json::json!({ "session_id": session_id }),
+        )
+        .await?;
+        Ok(())
     }
 
     async fn loaded_resources_snapshot(&self) -> LoadedResourcesSnapshot {
-        LoadedResourcesSnapshot::default()
+        match self.unary("loaded_resources", serde_json::json!({})).await {
+            Ok(data) => serde_json::from_value(data).unwrap_or_else(|e| LoadedResourcesSnapshot {
+                mcp_diag_short: vec![format!("remote loaded_resources decode: {e}")],
+                ..LoadedResourcesSnapshot::default()
+            }),
+            Err(e) => LoadedResourcesSnapshot {
+                mcp_diag_short: vec![format!("remote loaded_resources: {e}")],
+                ..LoadedResourcesSnapshot::default()
+            },
+        }
+    }
+
+    async fn reload_runtime(
+        &mut self,
+        _cancel: &CancellationToken,
+    ) -> Result<RuntimeReloadReport, XyDriverError> {
+        let data = self.unary("reload", serde_json::json!({})).await?;
+        let cancelled = data
+            .get("cancelled")
+            .and_then(|value| value.as_bool())
+            .unwrap_or(false);
+        let steps = data
+            .get("steps")
+            .and_then(|value| value.as_array())
+            .map(|values| {
+                values
+                    .iter()
+                    .map(|value| ReloadStepReport {
+                        step: match value.get("step").and_then(|v| v.as_str()) {
+                            Some("skills") => "skills",
+                            Some("mcp") => "mcp",
+                            Some("context") => "context",
+                            _ => "runtime",
+                        },
+                        ok: value.get("ok").and_then(|v| v.as_bool()).unwrap_or(false),
+                        message: value
+                            .get("message")
+                            .and_then(|v| v.as_str())
+                            .unwrap_or("")
+                            .to_string(),
+                    })
+                    .collect()
+            })
+            .unwrap_or_default();
+        Ok(RuntimeReloadReport { steps, cancelled })
     }
 }
 
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::app::core::host_client::InProcessClient;
     use crate::app::server::host::HostState;
     use crate::app::server::runtime::{ServerConfig, serve};
 
@@ -784,5 +936,131 @@ mod tests {
             .await;
         running.shutdown();
         result.expect("subscribe must accept the minted session_id");
+    }
+
+    async fn exercise_session_and_host_capabilities<C>(mut driver: XyRemoteDriver<C>)
+    where
+        C: HostClient + Clone + 'static,
+    {
+        let session_id = driver.new_session().await.expect("new session");
+        let listed = driver.list_sessions().await.expect("list sessions");
+        assert!(listed.iter().any(|entry| entry.id == session_id));
+
+        let stored_name = driver
+            .set_session_name(" remote name\n")
+            .await
+            .expect("set name");
+        assert_eq!(stored_name, "remote name");
+        assert_eq!(
+            driver
+                .get_session_name()
+                .await
+                .expect("get name")
+                .as_deref(),
+            Some("remote name")
+        );
+        assert_eq!(
+            driver
+                .load_session_entries(&session_id)
+                .await
+                .expect("load entries")
+                .len(),
+            2
+        );
+        let tree = driver
+            .session_tree(SessionTreeKind::MessageHistory)
+            .await
+            .expect("session tree");
+        let _ = driver.current_model();
+        assert!(driver.leaf_entry_id().is_some());
+        let target_id = tree
+            .first()
+            .and_then(|node| node.entry.entry_id())
+            .map(str::to_string)
+            .expect("session tree entry");
+        driver
+            .append_entry_label(&target_id, Some("important"))
+            .await
+            .expect("append label");
+        let labelled_tree = driver
+            .session_tree(SessionTreeKind::MessageHistory)
+            .await
+            .expect("labelled tree");
+        assert_eq!(
+            labelled_tree.first().and_then(|node| node.label.as_deref()),
+            Some("important")
+        );
+        let travel = driver
+            .travel_session_tree(SessionTreeKind::MessageHistory, &target_id)
+            .await
+            .expect("travel");
+        assert_eq!(travel.selected_id, target_id);
+        assert_eq!(
+            driver
+                .set_session_name_for(&session_id, "named for session")
+                .await
+                .expect("set name for"),
+            "named for session"
+        );
+        assert_eq!(
+            driver
+                .get_session_name()
+                .await
+                .expect("get name")
+                .as_deref(),
+            Some("named for session")
+        );
+
+        let snapshot = driver.loaded_resources_snapshot().await;
+        assert!(snapshot.mcp_diag_short.is_empty());
+        let report = driver
+            .reload_runtime(&CancellationToken::new())
+            .await
+            .expect("reload");
+        assert!(!report.steps.is_empty());
+        driver
+            .delete_session(&session_id)
+            .await
+            .expect("delete session");
+        assert!(
+            !driver
+                .list_sessions()
+                .await
+                .expect("list after delete")
+                .iter()
+                .any(|entry| entry.id == session_id)
+        );
+    }
+
+    #[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+    async fn session_and_host_capabilities_roundtrip_over_host() {
+        let host = HostState::for_test().expect("host");
+        let (running, port) = serve(
+            ServerConfig {
+                host: "127.0.0.1".into(),
+                port: 0,
+                sessions_dir: None,
+            },
+            host,
+        )
+        .await
+        .expect("bind");
+        exercise_session_and_host_capabilities(XyRemoteDriver::new(
+            format!("http://127.0.0.1:{port}"),
+            "remote-seed",
+        ))
+        .await;
+        running.shutdown();
+    }
+
+    #[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+    async fn session_and_host_capabilities_match_in_process_carrier() {
+        let host = HostState::for_test().expect("host");
+        let client = InProcessClient::host_state(host);
+        exercise_session_and_host_capabilities(XyRemoteDriver::with_host(
+            client,
+            "in-process-seed",
+        ))
+        .await;
     }
 }

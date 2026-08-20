@@ -3,6 +3,8 @@
 use serde::{Deserialize, Serialize};
 use specta::Type;
 
+use crate::protocol::session::SessionTreeKind;
+
 /// A command from the client. Each carries an optional `id` for correlation.
 #[derive(Debug, Clone, Serialize, Deserialize, Type)]
 #[serde(tag = "type", rename_all = "snake_case")]
@@ -95,6 +97,65 @@ pub enum Command {
         #[serde(default)]
         id: Option<String>,
     },
+    SessionTree {
+        #[serde(default)]
+        id: Option<String>,
+        kind: SessionTreeKind,
+    },
+    TravelSessionTree {
+        #[serde(default)]
+        id: Option<String>,
+        kind: SessionTreeKind,
+        entry_id: String,
+    },
+    AppendEntryLabel {
+        #[serde(default)]
+        id: Option<String>,
+        target_id: String,
+        #[serde(default)]
+        label: Option<String>,
+    },
+    ListSessions {
+        #[serde(default)]
+        id: Option<String>,
+    },
+    LoadSessionEntries {
+        #[serde(default)]
+        id: Option<String>,
+        session_id: String,
+    },
+    NewSession {
+        #[serde(default)]
+        id: Option<String>,
+    },
+    GetSessionName {
+        #[serde(default)]
+        id: Option<String>,
+    },
+    SetSessionName {
+        #[serde(default)]
+        id: Option<String>,
+        name: String,
+    },
+    SetSessionNameFor {
+        #[serde(default)]
+        id: Option<String>,
+        session_id: String,
+        name: String,
+    },
+    DeleteSession {
+        #[serde(default)]
+        id: Option<String>,
+        session_id: String,
+    },
+    Reload {
+        #[serde(default)]
+        id: Option<String>,
+    },
+    LoadedResources {
+        #[serde(default)]
+        id: Option<String>,
+    },
     Steer {
         #[serde(default)]
         id: Option<String>,
@@ -166,6 +227,18 @@ impl Command {
             | Command::Fork { id, .. }
             | Command::GetMessages { id }
             | Command::GetCommands { id }
+            | Command::SessionTree { id, .. }
+            | Command::TravelSessionTree { id, .. }
+            | Command::AppendEntryLabel { id, .. }
+            | Command::ListSessions { id }
+            | Command::LoadSessionEntries { id, .. }
+            | Command::NewSession { id }
+            | Command::GetSessionName { id }
+            | Command::SetSessionName { id, .. }
+            | Command::SetSessionNameFor { id, .. }
+            | Command::DeleteSession { id, .. }
+            | Command::Reload { id }
+            | Command::LoadedResources { id }
             | Command::Steer { id, .. }
             | Command::FollowUp { id, .. }
             | Command::ClearQueue { id, .. }
