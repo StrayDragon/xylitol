@@ -60,6 +60,7 @@ pub fn replace_hooks(&mut self, hooks: AgentHooks)
 pub fn selected_turn_binding(&self) -> Option<ActiveTurnBinding>
 pub fn session_id(&self) -> Option<&str>
 pub fn session_store(&self) -> Arc<dyn XySessionStore>
+pub fn set_cwd(&mut self, cwd: impl Into<String>)
 pub fn set_mode(&mut self, mode: QueueMode)
 pub fn set_permission(&mut self, permission: std::sync::Arc<dyn XyPermission>)
 pub fn set_session(&mut self, session_id: String)
