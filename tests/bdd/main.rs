@@ -49,4 +49,4 @@ pub use steps_cli_tokenizer::{
     SurfaceBdd, SurfaceFlagsBdd, TokenizerBdd, surface_bdd, surface_flags_bdd, tokenizer_bdd,
 };
 pub use steps_runtime_config::{RcSnap, rc_snap};
-pub use steps_server::{ApprovalTest, ServerTest, approval_test, server_test};
+pub use steps_server::{ServerTest, approval_test, server_test};

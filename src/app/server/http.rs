@@ -44,7 +44,7 @@ pub fn router(state: Arc<HostState>) -> Router {
         .push(Router::with_path("healthz").get(healthz))
         .push(Router::with_path("api/respond").post(respond))
         .push(Router::with_path("api/events.mux").get(mux_upgrade))
-        .push(Router::with_path("api/<method>").post(unary))
+        .push(Router::with_path("api/{method}").post(unary))
 }
 
 #[handler]
@@ -203,6 +203,28 @@ mod tests {
         assert_eq!(resp.status_code.unwrap(), StatusCode::OK);
         let body = resp.take_string().await.unwrap();
         assert!(body.contains("ok"), "{body}");
+    }
+
+    #[tokio::test]
+    async fn unary_host_describe_ok() {
+        let state = HostState::for_test().expect("host");
+        let service = Service::new(router(state));
+        let body = serde_json::json!({
+            "type": "client-request",
+            "rpcId": "r1",
+            "method": "host.describe",
+            "payload": {}
+        });
+        let mut resp = TestClient::post("http://127.0.0.1:0/api/host.describe")
+            .json(&body)
+            .send(&service)
+            .await;
+        assert_eq!(resp.status_code.unwrap(), StatusCode::OK, "unary path");
+        let text = resp.take_string().await.unwrap();
+        assert!(
+            text.contains("server-response") || text.contains("ok"),
+            "{text}"
+        );
     }
 
     #[tokio::test]

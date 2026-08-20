@@ -120,6 +120,11 @@ impl EventJournal {
         self.buffer.front().map(|(seq, _)| *seq).unwrap_or(0)
     }
 
+    /// Whether the ring is at capacity (oldest events may have been evicted).
+    pub fn is_full(&self) -> bool {
+        self.buffer.len() >= self.capacity
+    }
+
     /// Replay events after `from_seq` (exclusive) to the end of the journal.
     ///
     /// Returns `None` only if the journal has wrapped (capacity reached) AND
