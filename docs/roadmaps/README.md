@@ -90,7 +90,7 @@ flowchart TB
 | [Agent-Eval与回归基准.md](./Agent-Eval与回归基准.md) | SWE 先、TB 后；Docker 出分；AA 选模对照；Langfuse 回归旁路 |
 | [上下文缓存与极致压缩.md](./上下文缓存与极致压缩.md) | prompt cache、动态压缩、工具结果分级压缩 |
 | [Cloud-Agent与Web控制台.md](./Cloud-Agent与Web控制台.md) | 多工作区 CS + Web |
-| [运行时即时设置.md](./运行时即时设置.md) | 能力覆盖盘 / 可观察覆盖集 / Web 同源（模型 NextTurn 已迁 [architecture](../architecture/运行时即时设置.md)） |
+| [运行时即时设置.md](./运行时即时设置.md) | 能力覆盖盘 / 可观察覆盖集 / Web 同源（模型/thinking 即时设置已迁 [architecture](../architecture/运行时即时设置.md)） |
 | [Loop管理与触发可视化.md](./Loop管理与触发可视化.md) | Loop 管理与触发醒目 |
 | [Sub-Agent编排.md](./Sub-Agent编排.md) | 子 agent 派生/回收/可见 |
 | [LSP会话集成.md](./LSP会话集成.md) | lspz；会话启停；零成本 |

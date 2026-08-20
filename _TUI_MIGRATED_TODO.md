@@ -119,7 +119,7 @@ STATUS: incomplete
 - [x] **A7 补**：bang `!` 落在 serve cwd 而非会话工作区。真根因：bash 执行器无 cwd 概念——`BashExecOpts.cwd` + `InfraBashExecutor.current_dir` + Driver 传 `agent.cwd()` 已修（回归：`bash_unary_runs_in_client_workspace` / `cwd_option_spawns_shell_in_workspace`）
 - [ ] **A7 后续**：模型侧 bash 工具（`infra/tools/bash.rs`）与文件工具 `resolve_to_cwd` 仍继承 Host 进程 cwd；多工作区 attach 下 LLM 相对路径操作会落错目录。需给工具执行面穿会话工作区（XyToolCtx 或 per-driver 构造），走 propose
 - [x] 手测 2026-08-21：idle 切模 footer 立刻变且下一句走新模（provider trace 证实 openai-responses→anthropic-messages）；busy 切模当前轮全程旧模、下一句才换、无 `Next turn:`；`/model` 不进 steer
-- [ ] 改架构文 `运行时即时设置.md`：产品 TUI/Host = **run 绑定**；删「attach 应对齐下轮预告」
+- [x] 改架构文 `运行时即时设置.md`：产品 TUI/Host = **run 绑定**；删「attach 应对齐下轮预告」（2026-08-21 同步一轮对话/配置与档案/扩展与开闭/README/chrome 词表标注/roadmap M0；词表词条保留至 P1 随 ath22 spec 一并退役）
 - [x] **A1 磁带** client 冷订丢弃 Agent 实况（c2307 快照投影仍未做）
 - [x] **C4** `$skill` 从 `loaded_resources.skill_names` 缓存
 - [x] **C5** `mcp_gate_notice` 进 snapshot，Remote `take_mcp_gate_notice`
