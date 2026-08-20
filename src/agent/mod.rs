@@ -22,7 +22,7 @@
 //! `agent::runtime` / `agent::capabilities` / `agent::tools` 子模块是分层违规，唯一
 //! 例外是组合根（`app::core::composition`），它在构造期注入具体 adapter。
 //! [`AgentRuntime`] 是 in-process 半边的 XyDriver 抽象（见 c265）；远程半边是
-//! `app::server::ws` / `app::server::rest`。
+//! Host 四象限信封（`app::server` POST unary + mux 下行）。
 
 pub mod builder;
 pub mod capabilities;

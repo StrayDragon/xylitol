@@ -1,13 +1,16 @@
-//! Server module — hosts agent + infra runtimes and exposes protocol/ over
-//! REST (/api/v1) and WebSocket.
+//! Server module — Host composition root.
 //!
-//! This is the second composition root (the first being app::cli).
-
-pub mod lock;
-pub mod port_retry;
+//! Product carrier is four-quadrant RPC: HTTP POST unary / respond, plus a
+//! downlink-only WebSocket at `GET /api/events.mux`. Occupancy is a **session
+//! slot** (journal + seq + writer Driver), not a process-wide `Mutex` Driver.
+//! The Host process shares one `RuntimePorts` baseline; slots lazy-materialize
+//! isolated Drivers. Print / embed still use in-process Driver and do not bind.
 
 #[cfg(feature = "server")]
-pub mod rest;
+pub mod host;
+
+#[cfg(feature = "server")]
+pub mod http;
 
 #[cfg(feature = "server")]
 pub mod runtime;
