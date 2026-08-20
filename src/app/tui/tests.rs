@@ -1707,6 +1707,63 @@ fn harness_resume_seeds_only_entry_users() {
 }
 
 #[test]
+fn harness_resume_snapshot_rebuild_renders_full_history_once_idle() {
+    use super::bridge::UiEntry;
+    use crate::protocol::session::{EntryBase, MessageEntry, SessionEntry, fixture_message_json};
+
+    let entries = vec![
+        SessionEntry::Message(MessageEntry {
+            base: EntryBase {
+                entry_type: "message".into(),
+                id: "r-u1".into(),
+                parent_id: None,
+                timestamp: 0,
+            },
+            message: fixture_message_json("user", "first question"),
+        }),
+        SessionEntry::Message(MessageEntry {
+            base: EntryBase {
+                entry_type: "message".into(),
+                id: "r-a1".into(),
+                parent_id: Some("r-u1".into()),
+                timestamp: 0,
+            },
+            message: fixture_message_json("assistant", "full answer one"),
+        }),
+        SessionEntry::Message(MessageEntry {
+            base: EntryBase {
+                entry_type: "message".into(),
+                id: "r-u2".into(),
+                parent_id: Some("r-a1".into()),
+                timestamp: 0,
+            },
+            message: fixture_message_json("user", "follow-up"),
+        }),
+    ];
+    let mut session = HostSession::new_product_ui(TestTerminal::new(80, 24));
+    session.apply_resume_session("sid-resume", entries);
+    let model = session.ui_model();
+    assert!(
+        model.entries.iter().any(|e| matches!(
+            e,
+            UiEntry::User { text } if text.contains("first question")
+        )) && model.entries.iter().any(|e| matches!(
+            e,
+            UiEntry::Assistant { text, .. } if text.contains("full answer one")
+        )) && model.entries.iter().any(|e| matches!(
+            e,
+            UiEntry::User { text } if text.contains("follow-up")
+        )),
+        "resume rebuild MUST project full history in one shot: {:?}",
+        model.entries
+    );
+    assert!(
+        !session.is_busy(),
+        "snapshot projection MUST leave the session Idle (no fake spinner)"
+    );
+}
+
+#[test]
 fn harness_cli_restored_session_rebuilds_transcript() {
     use super::bridge::UiEntry;
     use crate::protocol::session::{EntryBase, MessageEntry, SessionEntry, fixture_message_json};

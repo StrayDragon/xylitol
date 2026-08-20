@@ -816,6 +816,128 @@ fn t_w7(server_test: &ServerTest) {
     assert!(hit, "expected session/event, got {frames:?}");
 }
 
+// ── w8 冷恢复投影 ────────────────────────────────────────────────
+
+async fn seed_w8_history(server_test: &ServerTest) {
+    start_host(server_test).await;
+    let host = server_test.host.borrow().as_ref().expect("host").clone();
+    host.ports
+        .store
+        .create("s0", Some("."), None)
+        .await
+        .expect("create session");
+    for i in 0..3 {
+        let entry = SessionEntry::Message(MessageEntry {
+            base: EntryBase {
+                entry_type: "message".into(),
+                id: format!("w8-{i}"),
+                parent_id: None,
+                timestamp: 1_700_000_000_000 + i,
+            },
+            message: serde_json::json!({"role": "user", "content": format!("m{i}")}),
+        });
+        host.ports
+            .store
+            .append_session_entry("s0", &entry)
+            .await
+            .expect("append entry");
+    }
+}
+
+async fn snapshot_s0(server_test: &ServerTest) {
+    let client = HttpWsClient::new(server_test.base_url());
+    let switched = client
+        .unary("switch_session", serde_json::json!({ "session_id": "s0" }))
+        .await
+        .expect("switch_session");
+    assert!(switched.ok, "{switched:?}");
+    let snap = client
+        .unary("get_messages", serde_json::json!({ "session_id": "s0" }))
+        .await
+        .expect("get_messages");
+    assert!(snap.ok, "snapshot MUST succeed: {snap:?}");
+    server_test
+        .unary_body
+        .replace(Some(serde_json::to_string(&snap).unwrap()));
+}
+
+#[given("会话 s0 已有 3 条历史条目且客户端无有效 last_seq")]
+async fn g_w8_history(server_test: &ServerTest) {
+    seed_w8_history(server_test).await;
+}
+
+#[when("冷订客户端调用消息快照")]
+async fn w_w8_snapshot(server_test: &ServerTest) {
+    snapshot_s0(server_test).await;
+}
+
+#[then("快照一次返回全部 3 条条目")]
+fn t_w8_snapshot_count(server_test: &ServerTest) {
+    let body = server_test.unary_body.borrow();
+    let v: serde_json::Value = serde_json::from_str(body.as_deref().expect("body")).expect("json");
+    let entries = v["value"]["entries"].as_array().expect("entries array");
+    let messages = entries
+        .iter()
+        .filter(|e| e.get("type").and_then(serde_json::Value::as_str) == Some("message"))
+        .count();
+    assert_eq!(messages, 3, "snapshot MUST project full history once: {v}");
+}
+
+#[given("冷订客户端处于恢复窗内且 journal 含实况磁带事件")]
+async fn g_w8_tape_window(server_test: &ServerTest) {
+    seed_w8_history(server_test).await;
+    let host = server_test.host.borrow().as_ref().expect("host").clone();
+    let slot = host.slot("s0").await;
+    {
+        let mut j = slot.journal.lock().await;
+        j.append(Event::TextDelta {
+            text: "tape-1".into(),
+        });
+        j.append(Event::TextDelta {
+            text: "tape-2".into(),
+        });
+    }
+}
+
+#[when("调用消息快照")]
+async fn w_w8_snapshot_windowed(server_test: &ServerTest) {
+    snapshot_s0(server_test).await;
+}
+
+#[then("快照内容与磁带回放无关")]
+fn t_w8_unpolluted(server_test: &ServerTest) {
+    let body = server_test.unary_body.borrow();
+    let v: serde_json::Value = serde_json::from_str(body.as_deref().expect("body")).expect("json");
+    let serialized = v.to_string();
+    let entries = v["value"]["entries"].as_array().expect("entries array");
+    let messages = entries
+        .iter()
+        .filter(|e| e.get("type").and_then(serde_json::Value::as_str) == Some("message"))
+        .count();
+    assert_eq!(
+        messages, 3,
+        "snapshot MUST stay the persisted projection: {v}"
+    );
+    assert!(
+        !serialized.contains("tape-1") && !serialized.contains("tape-2"),
+        "journal live tape MUST NOT leak into the snapshot: {serialized}"
+    );
+}
+
+#[then("断线续传语义仍按 sr4 从 last_seq+1 重放")]
+fn t_w8_sr4_intact(server_test: &ServerTest) {
+    let host = server_test.host.borrow().as_ref().expect("host").clone();
+    let slot = futures::executor::block_on(host.slot("s0"));
+    let replayed =
+        futures::executor::block_on(async { slot.journal.lock().await.replay_from(0).unwrap() });
+    let seqs: Vec<u64> = replayed.iter().map(|(s, _)| *s).collect();
+    assert_eq!(
+        seqs.first().copied(),
+        Some(1),
+        "sr4 continuity MUST hold: replay starts at last_seq+1"
+    );
+}
+
 // ── reverse RPC ───────────────────────────────────────────────────
 
 #[given("服务端和已连接的 mux 客户端")]

@@ -37,9 +37,11 @@ requirements[34]{req_id,title,statement}:
   ath34,"attach-tick-no-blocking-rpc","产品 TUI attach 路径的 host 循环在 idle/busy tick 与 drain_pending 中 MUST NOT 同步阻塞等待 Host unary（含 get_state / current_model / MCP settle）。status spinner MUST 在 Host 慢连接或写者 unary 进行中仍能换帧；键入 MUST 仍可进入 editor。写者 unary（含 SetModel）MUST NOT 在返回前等待全部 MCP 连接完成。模型列表打开与选定 MUST 在 MCP 未结算时仍可操作（选定可走 NextTurn）。"
   ath35,"attach-mux-session-lifetime","产品 TUI attach MUST 在进入 host 循环前完成握手并订阅该 session 的 mux（启动即订，不等第一次 prompt）。单次 AgentEnd MUST NOT 拆掉该订阅。WS 断开后 MUST 用 last_seq 再次 subscribe 续传；收到 session/resync_required 后 MUST 按 server-core 再订并重建可见 transcript，MUST NOT 只留一行错误后放弃事件流。退出 TUI 才关闭 mux。"
   "ath36","attach-restore-projection","产品 TUI attach 恢复（CLI --session 启动与空闲 Resume 切换）MUST 以 Host 消息快照一次重建 transcript：完整历史一次可见、会话 Idle、无假 spinner、无逐条回放；恢复窗内的冷订实况磁带（AgentStart / TextDelta 等回合磁带）MUST NOT 渲染进 transcript；MUST NOT 以 loading 态掩盖回放。"
-scenarios[8]{req_id,id,given,when,then,feature}:
+scenarios[10]{req_id,id,given,when,then,feature}:
   ath28,ath28-unit,"reload-in-progress-ux 由产品 harness/单测覆盖（非 BDD harness）",审查实现与对应测试,"行为符合本 requirement 陈述",false
   ath29,ath29-unit,"mouse-input-opt-in-no-moved-paint 由产品 harness 与 ignore PTY 覆盖（非 BDD harness）",审查实现与对应测试,"行为符合本 requirement 陈述",false
+  "ath36","ath36-unit-cold-tape","冷订恢复窗磁带由 XyRemoteDriver 下行过滤的驱动级测试覆盖（非 BDD harness）",审查实现与对应测试,"行为符合本 requirement 陈述",false
+  "ath36","ath36-unit-resume-rebuild","Resume 快照一次重建（完整历史、Idle、无假 spinner）由 HostSession harness 测试覆盖（非 BDD harness）",审查实现与对应测试,"行为符合本 requirement 陈述",false
   ath30,ath30-unit,"interaction-mode-application-owned-default 由产品 harness/配置单测覆盖（非 BDD harness）",审查实现与对应测试,"行为符合本 requirement 陈述",false
   ath31,ath31-unit,"mode-b-copy-notice-chrome 由产品 harness/单测与 ApplicationOwned 人验覆盖（非 BDD harness）",审查实现与对应测试,"行为符合本 requirement 陈述",false
   ath32,ath32-unit,"enter-follows-transcript-bottom 由产品 harness 覆盖空输入与非空提交",审查实现与对应测试,"行为符合本 requirement 陈述",false
