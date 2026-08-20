@@ -224,21 +224,21 @@ pub trait XyDriver: Send {
     /// # Errors
     ///
     /// `Err` when the steering queue is unavailable (remote / stub drivers).
-    fn steer(&mut self, message: &str) -> Result<(), XyDriverError>;
+    async fn steer(&mut self, message: &str) -> Result<(), XyDriverError>;
 
     /// Enqueue a follow-up message delivered when the run would otherwise stop.
     ///
     /// # Errors
     ///
     /// `Err` when the follow-up queue is unavailable (remote / stub drivers).
-    fn follow_up(&mut self, message: &str) -> Result<(), XyDriverError>;
+    async fn follow_up(&mut self, message: &str) -> Result<(), XyDriverError>;
 
     /// Clear one or both pending-message queues.
     ///
     /// # Errors
     ///
     /// `Err` when the queues are unavailable (remote / stub drivers).
-    fn clear_queue(
+    async fn clear_queue(
         &mut self,
         clear_steer: bool,
         clear_follow_up: bool,

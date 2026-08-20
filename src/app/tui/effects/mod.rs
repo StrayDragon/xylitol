@@ -130,14 +130,14 @@ pub async fn drain_pending<T: Terminal>(
             session.set_queue_badge(stats.steer_count, stats.follow_up_count);
         }
         session.note_user_abort();
-        let _ = driver.clear_queue(true, false);
+        let _ = driver.clear_queue(true, false).await;
         let stats = driver.queue_stats();
         session.set_queue_badge(stats.steer_count, stats.follow_up_count);
         let _ = session.render_now();
     }
     if session.take_dequeue() {
         log::info!(target: "xylitol::tui", "XyDriver::clear_queue (Alt+Up dequeue)");
-        let _ = driver.clear_queue(true, true);
+        let _ = driver.clear_queue(true, true).await;
         // Alt+Up already restored the gate strip into the editor; cancel Assembling
         // so a later freeze MUST NOT start the withdrawn prompt.
         if session.take_gated_submit().is_some() {
@@ -149,7 +149,7 @@ pub async fn drain_pending<T: Terminal>(
     }
     if let Some(msg) = session.take_steer() {
         log::info!(target: "xylitol::tui", "XyDriver::steer prompt_len={}", msg.len());
-        if let Err(e) = driver.steer(&msg) {
+        if let Err(e) = driver.steer(&msg).await {
             e.log_failure("tui.steer");
             session.push_scroll_notice(format!("steer failed: {e}"));
         }
@@ -158,7 +158,7 @@ pub async fn drain_pending<T: Terminal>(
     }
     if let Some(msg) = session.take_follow_up() {
         log::info!(target: "xylitol::tui", "XyDriver::follow_up prompt_len={}", msg.len());
-        if let Err(e) = driver.follow_up(&msg) {
+        if let Err(e) = driver.follow_up(&msg).await {
             e.log_failure("tui.follow_up");
             session.push_scroll_notice(format!("follow-up failed: {e}"));
         }

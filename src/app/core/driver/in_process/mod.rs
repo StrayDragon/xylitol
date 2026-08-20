@@ -497,17 +497,17 @@ impl XyDriver for XyInProcessDriver {
             .collect()
     }
 
-    fn steer(&mut self, message: &str) -> Result<(), XyDriverError> {
+    async fn steer(&mut self, message: &str) -> Result<(), XyDriverError> {
         self.agent.steer(message);
         Ok(())
     }
 
-    fn follow_up(&mut self, message: &str) -> Result<(), XyDriverError> {
+    async fn follow_up(&mut self, message: &str) -> Result<(), XyDriverError> {
         self.agent.follow_up(message);
         Ok(())
     }
 
-    fn clear_queue(
+    async fn clear_queue(
         &mut self,
         clear_steer: bool,
         clear_follow_up: bool,

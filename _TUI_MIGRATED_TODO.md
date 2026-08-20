@@ -125,7 +125,7 @@ STATUS: incomplete
 - [x] **C5** `mcp_gate_notice` 进 snapshot，Remote `take_mcp_gate_notice`
 - [ ] **A1 快照** c2307：`get_messages` 一次投影
 - [ ] **D1** 剪贴板改走 TUI 本机，去掉对 Remote `unsupported` 的依赖
-- [ ] **B6** steer/follow_up/clear_queue 去 `block_on`
+- [x] **B6** steer/follow_up/clear_queue 去 `block_on`（trait 改 async，与 `/model` 同纪律走 effects 泵；删除 Remote `block_on` helper）
 - [ ] **D2** `/trust` 经 Host unary（若产品还要这条 slash）
 - [ ] **D4** export 落点与文案（TUI 盘 vs Host 盘）一次说清
 

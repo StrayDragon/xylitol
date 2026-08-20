@@ -120,7 +120,7 @@ where
     }
     session.end_bash_exec();
     if aborted_during_bash {
-        let _ = driver.clear_queue(true, false);
+        let _ = driver.clear_queue(true, false).await;
         let stats = driver.queue_stats();
         session.set_queue_badge(stats.steer_count, stats.follow_up_count);
     }
