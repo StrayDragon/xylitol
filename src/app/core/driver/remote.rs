@@ -44,9 +44,15 @@ impl XyRemoteDriver {
     ///
     /// `base_url` should be the server root, e.g. `http://127.0.0.1:18790`.
     pub fn new(base_url: impl Into<String>, session_id: impl Into<String>) -> Self {
+        let session_id = session_id.into();
+        let session_id = if session_id.trim().is_empty() {
+            uuid::Uuid::new_v4().to_string()
+        } else {
+            session_id
+        };
         Self {
             host: HttpWsClient::new(base_url),
-            session_id: session_id.into(),
+            session_id,
             cancel: CancellationToken::new(),
             thinking: std::sync::Mutex::new(THINKING_OFF.into()),
             last_seq: Arc::new(AtomicU64::new(0)),
@@ -63,6 +69,23 @@ impl XyRemoteDriver {
         self.reverse_rpc = Some(notify);
     }
 
+    fn with_session(&self, mut payload: serde_json::Value) -> serde_json::Value {
+        let Some(map) = payload.as_object_mut() else {
+            return payload;
+        };
+        let has_sid = map
+            .get("session_id")
+            .and_then(|v| v.as_str())
+            .is_some_and(|s| !s.is_empty());
+        if !has_sid {
+            map.insert(
+                "session_id".into(),
+                serde_json::Value::String(self.session_id.clone()),
+            );
+        }
+        payload
+    }
+
     async fn unary(
         &self,
         method: &str,
@@ -70,7 +93,7 @@ impl XyRemoteDriver {
     ) -> Result<serde_json::Value, XyDriverError> {
         let result = self
             .host
-            .unary(method, payload)
+            .unary(method, self.with_session(payload))
             .await
             .map_err(|e| XyDriverError::remote(e.to_string()))?;
         result
@@ -262,8 +285,9 @@ impl XyDriver for XyRemoteDriver {
     fn abort(&self) {
         self.cancel.cancel();
         let host = self.host.clone();
+        let payload = self.with_session(serde_json::json!({}));
         tokio::spawn(async move {
-            let _ = host.unary("abort", serde_json::json!({})).await;
+            let _ = host.unary("abort", payload).await;
         });
     }
 
@@ -723,5 +747,42 @@ impl XyDriver for XyRemoteDriver {
 
     async fn loaded_resources_snapshot(&self) -> LoadedResourcesSnapshot {
         LoadedResourcesSnapshot::default()
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::app::server::host::HostState;
+    use crate::app::server::runtime::{ServerConfig, serve};
+
+    #[test]
+    fn empty_session_arg_mints_uuid() {
+        let driver = XyRemoteDriver::new("http://127.0.0.1:9", "");
+        let sid = driver.session_id().expect("session");
+        assert!(uuid::Uuid::parse_str(&sid).is_ok(), "{sid}");
+        let kept = XyRemoteDriver::new("http://127.0.0.1:9", "keep-me");
+        assert_eq!(kept.session_id().as_deref(), Some("keep-me"));
+    }
+
+    #[tokio::test]
+    async fn minted_session_subscribe_does_not_require_cli_flag() {
+        let host = HostState::for_test().expect("host");
+        let (running, port) = serve(
+            ServerConfig {
+                host: "127.0.0.1".into(),
+                port: 0,
+                sessions_dir: None,
+            },
+            host,
+        )
+        .await
+        .expect("bind");
+        let driver = XyRemoteDriver::new(format!("http://127.0.0.1:{port}"), "");
+        let result = driver
+            .unary("subscribe", serde_json::json!({ "last_seq": 0 }))
+            .await;
+        running.shutdown();
+        result.expect("subscribe must accept the minted session_id");
     }
 }

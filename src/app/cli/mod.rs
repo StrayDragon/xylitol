@@ -550,6 +550,12 @@ async fn run_product_tui_attached(
         attach_url,
         surface.session.clone().unwrap_or_default(),
     );
+    if let Some(model_id) = surface.model.as_deref() {
+        driver
+            .select_model(model_id)
+            .await
+            .map_err(|e| format!("--model {model_id}: {e}"))?;
+    }
     let ask_gateway = std::sync::Arc::new(crate::app::tui::AskHostGateway::new());
     ask_gateway.set_host_client(std::sync::Arc::new(driver.host_client().clone()));
     let gw = ask_gateway.clone();
