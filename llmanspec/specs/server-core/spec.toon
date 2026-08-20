@@ -1,31 +1,31 @@
 kind: llman.sdd.spec
 name: "server-core"
-purpose: "Server 运行时 — 产品路径为四象限 POST + WS 下行；现行 REST/全双工 WS 待载体票替换。"
+purpose: "Server 运行时 — 独立 Host 监听器经四象限信封暴露产品契约（POST unary/respond + WS 只下行）；每 session 槽独立 journal 与写者。"
 valid_scope[1]: "server 应用面"
 requirements[25]{req_id,title,statement}:
-  sr1,server 托管 agent,"app::server MUST 在启动时装配 infra 运行时并注入 agent 端口；app::server MUST 将 Agent 传入 AppState 供路由处理器调用。"
-  "sr-env1","产品路径四象限","产品 TUI 与其它产品客户端 MUST 经四象限信封访问 Host：unary 与 respond 为 HTTP POST，下行为 WebSocket 且 MUST NOT 收业务上行。现行 REST 资源动词与全双工 WS 应用帧 MUST NOT 再作为产品 TUI 真源。"
-  sr2,REST 与 WS,"app::server MUST 在 /api/v1 前缀下经 REST（控制命令与状态查询）与 WebSocket（流式事件）暴露 protocol/；二者 MUST 使用 protocol::Command 与 protocol::Event 类型。"
-  sr3,单实例锁,"app::server MUST 在绑定前获取单实例锁；同一锁路径上第二个 server MUST 收到 ServerLockedError。"
-  sr4,重连 journal,app/server/ MUST 维护每会话单调事件序号与事件 journal；客户端以 last_seq 重连订阅时 MUST 从 last_seq+1 重放事件；journal 截断超过 last_seq 时 server MUST 发出 resync_required。
-  sr5,反向 RPC,app/server/ MUST 支持 ApprovalRequired 与 QuestionRequired 事件的反向 RPC：经 WebSocket 向持有会话的已连接客户端推送请求、挂起回合，并在匹配 call_id 的 ApproveTool 或 AnswerQuestion 时恢复。
-  sr7,锁文件内容,server 锁文件 MUST 含 JSON 载荷：port（u16）、pid（u32）、hostname（String）；ServerLock drop（优雅关闭）时 MUST 删除文件。
-  sr8,端口重试,配置端口繁忙（EADDRINUSE）时，server MUST 尝试 port+1 至多 PORT_RETRY_LIMIT（10）次，并用实际端口更新锁文件。
-  sr9,REST 路由可用,"app/server/ MUST 响应 POST /api/v1/session/{id}/run 调用 Agent::run 并返回 session_id；DELETE /api/v1/session/{id} MUST 中止 agent；GET /api/v1/session/{id}/events MUST 从 journal 拉取。"
+  sr1,server 托管 agent,"app::server MUST 在启动时装配 infra 运行时并注入 agent 端口；组合根 MUST 持有可按 session 槽取用的 Driver（或等价缝），供 unary 处理器调用，MUST NOT 以无槽的裸 Agent 作为唯一生产入口。"
+  "sr-env1","产品路径四象限","产品 TUI 与其它产品客户端 MUST 经四象限信封访问 Host：unary 与 respond 为 HTTP POST，下行为 WebSocket 且 MUST NOT 收业务上行。Host 监听器 MUST 实现该路径。现行 REST 资源动词与全双工 WS 应用帧 MUST NOT 再作为产品真源。"
+  sr2,四象限 HTTP 与 WS 下行,"Host MUST 暴露 POST /api/{method}（ClientRequest→ServerResponse）、POST /api/respond（ClientResponse）与 GET /api/events.mux（WebSocket 只下行 ServerRequest）。method 集合 MUST 为已登记 unary。MUST NOT 再以 /api/v1 REST 资源动词或全双工 WS 应用帧承载产品命令。"
+  sr3,绑定占用,"Host MUST 绑定配置的地址与端口（默认 127.0.0.1:18790）。同一 {addr,port} 已被占用时 MUST 失败（EADDRINUSE），MUST NOT port+1，MUST NOT 使用整机锁文件作为单实例闸。"
+  sr4,重连 journal,Host MUST 维护每会话单调事件序号与事件 journal；客户端经 unary subscribe 携带 last_seq 重连时 MUST 从 last_seq+1 重放事件；journal 截断超过 last_seq 时 Host MUST 发出 session/resync_required。
+  sr5,反向 RPC,Host MUST 支持 ApprovalRequired 与 QuestionRequired 的反向 RPC：经 mux 下行可应答 ServerRequest，挂起回合，并在匹配 rpcId 的 POST /api/respond 时恢复。MUST NOT 再经 WS 上行 ApproveTool/AnswerQuestion 应用帧应答。
+  sr7,无整机锁文件,Host MUST NOT 依赖锁文件载荷（port/pid/hostname）做单实例互斥；优雅停机 MUST 释放监听套接字，MUST NOT 以删除锁文件当作停机协议。
+  sr8,禁止端口重试,配置端口繁忙（EADDRINUSE）时 Host MUST 失败返回，MUST NOT 尝试 port+1，MUST NOT 用实际端口回写锁文件。
+  sr9,unary 驱动回合,"Host MUST 以 unary prompt 入队/驱动对话（HTTP 200 + ServerResponse）；abort 为 unary。MUST NOT 再提供 POST /api/v1/session/{id}/run、DELETE /api/v1/session/{id} 或 GET /api/v1/session/{id}/events 作为产品路径。"
   sr10,ExportIo 接线,Server 运行时组合根 MUST 构造导出 I/O 实现，并在组装运行时注入导出协作器（优先经 app 组合缝）。
   "sr-driver1",Server 经 Driver 驱动,Server 运行时 MUST 通过 Driver（或等价文档化缝）驱动对话与会话命令，MUST NOT 在生产路径上以裸 AgentRuntime 作为唯一后端旁路 Print 主线。
-  "sr-remote1",RemoteDriver 命令对齐,RemoteDriver MUST 实现与 InProcessDriver 对等的文档化 Driver 命令面（模型/会话/队列/导出等），MUST NOT 在生产路径对已承诺命令返回未实现错误。
+  "sr-remote1",RemoteDriver 经信封,产品 RemoteDriver MUST 经四象限 HostClient 调用已登记 unary 与 mux；未登记方法 MUST NOT 发明 REST 端点来假装与 InProcess 对等。
   "sr-dispatch1",Server 经 dispatch 执行命令,"Server 对可映射的会话命令 MUST 经 protocol::Command + dispatch（或文档化的同一执行路径）执行，MUST NOT 为同一语义维护第二套与 dispatch 漂移的手写分支。"
-  "sr-st1",会话树 REST,"Server REST MUST 为 SessionTreeKind::MessageHistory 提供与 Driver 对等的读树与 travel 端点（路径/查询参数文档化 kind）；RemoteDriver MUST 经这些端点实现 session_tree/travel_session_tree，MUST NOT 对已承诺的 MessageHistory 返回未实现错误。"
-  w1,WS 帧协议,"Server→Client 帧 MUST 为 ServerFrame 枚举，变体含 ServerHello {version}、Ack {seq, request_id}、Event {session_id, seq, event}、ResyncRequired {session_id}。"
-  w2,WS 客户端帧,"Client→Server 帧 MUST 为 ClientFrame 枚举，变体含 Subscribe {session_id, last_seq}、ApproveTool {call_id, approved}、AnswerQuestion {call_id, answer}、Ping。"
-  w3,WS 握手,"WS 连接时 server MUST 等待 Subscribe，再以 ServerHello + Ack 响应；server MUST 在 /api/v1/session/{id}/ws 挂载承载此握手的 WebSocket 升级处理器。"
+  "sr-st1",会话树不经 REST,"Host MUST NOT 再为 SessionTreeKind 提供 REST 读树/travel 端点。未入方法表的 session_tree MUST NOT 经 /api/v1 冒充产品路径。"
+  w1,下行信封,"mux 文本帧 MUST 为四象限 ServerRequest（type、rpcId、method、payload）。产品下行 method MUST 含 session/event、session/subscribed、session/resync_required；可应答审批/问卷为 approval/requested 与 question/requested。MUST NOT 再以 ServerFrame tagged 外层为产品真源。"
+  w2,WS 不收业务上行,"mux WebSocket MUST NOT 接受业务 ClientRequest/ApproveTool/AnswerQuestion/Subscribe 应用帧。subscribe 为 unary；审批与问卷应答为 POST /api/respond。载体 ping/pong/close 除外。"
+  w3,mux 升级,"Host MUST 在 GET /api/events.mux 挂载 WebSocket 升级。会话选择 MUST NOT 依赖 /api/v1/session/{id}/ws 路径。缺 Origin 的原生客户端 MUST 可升级。"
   w4,单调 seq,每个会话 MUST 维护单调递增的 u64 序号，每 append 事件递增；seq MUST 每会话单调递增。
-  w5,journal 环形缓冲,server MUST 维护每会话最近 N 个事件的环形 journal（默认 10000）；journal 环绕超过客户端 last_seq 时，server MUST 向该客户端发出 ResyncRequired。
-  w6,resync 流程,收到 ResyncRequired 后，客户端 MUST 以更新的 last_seq（如 0 全量重放）重新订阅以恢复事件流。
-  w7,WS 事件推送,握手后，server MUST 为 agent 发出的每个新事件推送 Event 帧，附带会话单调 seq；Event 帧 MUST 以 JSON 经 WS 连接发送。
-  rr1,"reverse-rpc-approval","ApprovalRequired 事件时，server MUST 向持有该 session 的所有 WS 连接广播 ServerFrame::ReverseRpc {type: approval, call_id, ...}；首个客户端响应胜出。"
-  rr2,"reverse-rpc-question","QuestionRequired 事件时，server MUST 向所有 WS 连接广播 ServerFrame::ReverseRpc {type: question, call_id, ...}；同样首个响应胜出。"
-  rr3,"call-id-lifecycle",每个 reverse RPC MUST 有 UUID call_id，在 HashMap 中注册 oneshot channel；超时（默认 60s）时 channel 收到 ApprovalTimeout 错误；应答时 channel 收到结果；消费后 MUST 移除条目。
-  rr4,"no-conflict-arbitration",v1 MUST NOT 实现多客户端冲突仲裁；给定 call_id 的首个 ApproveTool 或 AnswerQuestion 胜出；同一 call_id 的后续响应 MUST 被静默忽略。
+  w5,journal 环形缓冲,Host MUST 维护每会话最近 N 个事件的环形 journal（默认 10000）；journal 环绕超过客户端 last_seq 时，Host MUST 向该客户端发出 session/resync_required。
+  w6,resync 流程,收到 session/resync_required 后，客户端 MUST 以更新的 last_seq（如 0 全量重放）再次 unary subscribe 以恢复事件流。
+  w7,WS 事件推送,subscribe 之后，Host MUST 为 agent 发出的每个新事件推送 session/event 的 ServerRequest，附带会话单调 seq；MUST 以 JSON 文本帧经 mux 发送。
+  rr1,"reverse-rpc-approval","ApprovalRequired 时，Host MUST 向该 session 的 mux 连接广播 approval/requested ServerRequest；首个 POST /api/respond 胜出。"
+  rr2,"reverse-rpc-question","QuestionRequired 时，Host MUST 向该 session 的 mux 连接广播 question/requested ServerRequest；首个 POST /api/respond 胜出。"
+  rr3,"call-id-lifecycle",每个 reverse RPC MUST 有稳定 rpcId，在表中注册 oneshot；超时（默认 60s）时收到 ApprovalTimeout；应答时收到结果；消费后 MUST 移除条目。
+  rr4,"no-conflict-arbitration",v1 MUST NOT 实现多客户端冲突仲裁；给定 rpcId 的首个 ClientResponse 胜出；同一 rpcId 的后续 respond MUST 被静默忽略。
 scenarios[0]:
