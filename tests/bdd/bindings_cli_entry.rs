@@ -46,6 +46,9 @@ fn test_ce16_print(surface_bdd: SurfaceBdd) {}
 #[scenario(path = "tests/features/cli-entry.feature", name = "ops-stay-toplevel")]
 fn test_ce16_ops(tokenizer_bdd: TokenizerBdd) {}
 
+#[scenario(path = "tests/features/cli-entry.feature", name = "serve-ops-verb")]
+fn test_ce8_serve(tokenizer_bdd: TokenizerBdd) {}
+
 #[scenario(
     path = "tests/features/cli-entry.feature",
     name = "surface-flags-on-tui"
