@@ -1,11 +1,12 @@
 ---
 depends_on:
-  - c2300-update-cs-capability-split
-  - c2301-update-stable-wire-protocol
-  - c2290-update-standalone-host
+- c2300-update-cs-capability-split
+- c2301-update-stable-wire-protocol
+- c2290-update-standalone-host
 branch: sdd/c2302-update-host-multi-session
 base_sha: 833ac1a1ea01777c5c4182c4d18c87efd5a8a219
-checkpointed: false
+checkpointed: true
+checkpoint_sha: cccda7be8824bc64743525ed5af17b7ad3240fe3
 ---
 
 # host 多会话与 salvo 载体（POST + WS 下行）
