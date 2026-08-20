@@ -77,4 +77,38 @@ InProcessDriver **不**占用 TCP。产品语义仍进同一 dispatch（c2300）
 
 ## 8. 旧 MUST 收口
 
-本票 **替换**（不再并存）：`server-core` sr2/sr3/sr7/sr8/sr9/sr-st1 的 REST/锁/port+1；`layer-architecture` la6 单实例锁+REST 产品面；`w3` 的 URL 绑 session。`ip3` REST 信封类型可留在 protocol 作历史 DTO，但 server **不得**再用它承载产品动词。
+本票 **替换**（不再并存）：`server-core` sr2/sr3/sr7/sr8/sr9/sr-st1 的 REST/锁/port+1；`layer-architecture` la6 单实例锁+REST 产品面；`w3` 的 URL 绑 session。`ip3` REST 信封类型可留在 protocol 作历史 DTO，但 server **不得**再用它承载产品动词。`w1`/`w2`/`w3` 的 `ServerFrame`/`ClientFrame` 产品 MUST 废止（journal/seq/resync **语义**迁到四象限下行方法）。
+
+## 9. 对照 c2290 / 现码后锁定（未决只留 §10）
+
+- **不实现** `GET /api/events.host`。TUI v1 只订 `GET /api/events.mux`。
+- mux 每连接 bounded mpsc 满：对该连接发 `session/resync_required`；已无法投递则断开。MUST NOT 静默丢事件。
+- WS 收到业务上行 text/binary：**关连接**。ping/pong/close 按载体处理。
+- 产品 REST `/api/v1/...` **删除**，不 410 双路径。未知 unary path → 404 或非法信封 400，不发明 REST 别名。
+- **不扩方法表**：`list_sessions` / `session_tree` / `queue_stats` 不登记。`XyRemoteDriver` 继续 unsupported/default；live spec 改掉 sr-st1 / 对 REST 树的 MUST，而不是把树塞回 HTTP。
+- 绑定 `ServerConfig.host`+`port`（默认 `127.0.0.1:18790`）。EADDRINUSE → 失败。禁止 port+1。删产品路径上的锁文件（`lock.rs` / `port_retry` 的占用语义）。
+- `server stop`：不再读 `/tmp/xylitol-server.lock`。本票只打印「对监听进程发 SIGTERM」；**不**做 PID 发现。`serve --stop` 归 c2303。
+- `host.describe` 必须实现。产品 TUI attach 成功后 unary 一次；`protocol` 对不上 → 失败断开，不降级。版本不走 WS subprotocol。
+- ReverseRpc：mux 下发可应答 `approval/requested` / `question/requested`；应答只 `POST /api/respond`。TUI `AskHostGateway` 本票改走 `HostClient::respond`，禁止再在附加模式下本地假审批。
+- `XyRemoteDriver::run()`：先 `mux`，再 unary `subscribe`（session + last_seq），再 `prompt`。
+- `sr-env1`：真 bind + POST unary + WS 下行往返，禁止只断言类型存在。
+- unary 解 payload → 现有 `dispatch` / `XyDriver`。禁止第二套与 Driver 漂移的 handler 语义。
+- 不挂 permissive CORS（TUI 常无 Origin）。WS `check_origin` 允许 `None`。
+- salvo 不启用 `logging`（避免 `tracing`）。`oapi` 不进本票。
+- `InProcessClient` Echo → c2304。print / embed 仍 InProcessDriver，不占 TCP。
+- 组合根仍 `bootstrap`（ce9）。现码是一把 `Mutex<XyInProcessDriver>` + 一个 journal。Driver 基数见 §10（已钉）。
+
+## 10. Driver 基数（已钉）
+
+**占用粒度 = session 槽，不是 Host 进程。**
+
+产品已经按 session 切占用：`la-cs5` 一 session 一写者、每 session 独立 journal/seq。若进程里只有一把 turn 引擎，就会出现两套占用模型——session 上说「可以有各自的写者」，进程上却只有一个 busy / 一条 steer 队列 / 一次 `switch_session`。两窗同时 `prompt` 会互相踩，journal 也无法诚实地按 session 追加。
+
+因此：
+
+- **Host 进程**共享一份 `RuntimePorts` 基线（store / MCP / 模型注册表 / 工具 / prompt）。reload 打在这份基线上，再按槽物化。
+- **每个 session 槽**在首次需要写者（非只读 unary）时 lazy `materialize` 一把隔离的 `XyInProcessDriver`（新的队列、绑定、compaction、busy）。闲置槽可在无订阅者且无进行中回合后回收（本票可先不回收，只 lazy 创建）。
+- **一把 Driver 不得**同时绑定两个 session 做两次根提交。这不是「进程里只能有一个 Runtime」——那是把 TUI 单窗习惯误当成 Host 拓扑。
+- 只读 attach 只订 mux / 读方法，不物化写者引擎。
+
+本票按此落地，不把 N 槽推迟到下一票（否则 salvo 换栈后还要再拆一次 AppState）。

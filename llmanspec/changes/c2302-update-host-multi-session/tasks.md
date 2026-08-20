@@ -19,7 +19,7 @@
 
 - [ ] 3.1 `POST /api/{method}` 只展开 c2290 方法表 unary；`POST /api/respond`；HTTP 200 + `RpcResult`；非法信封 400；未登记 method 失败
 - [ ] 3.2 `GET /api/events.mux` 升级：`check_origin` 允许缺 Origin；bounded per-client mpsc；只推方法表下行 `ServerRequest`（`session/event` 等）
-- [ ] 3.3 每 session journal / seq / reverse RPC 迁到 salvo 回调；多 session 注册表
+- [ ] 3.3 每 session 槽：独立 journal / seq / 写者；首次非只读 unary 才 lazy 物化隔离 Driver（共享 `RuntimePorts` 基线）。只读连接不物化写者。reverse RPC 挂在槽上，应答走 `POST /api/respond`
 - [ ] 3.4 一写者；只读连接写操作回业务 error
 - [ ] 3.5 接上 c2290 `HttpWsClient`；删除产品 REST 路由与全双工 `ClientFrame`
 - [ ] 3.6 把 `sr-env1` 从「客户端实现了 HostClient」升级为真 bind + POST unary + WS 下行往返；审批走 `POST /api/respond`；`subscribe` 进 `run()` / journal 重连

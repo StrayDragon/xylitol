@@ -20,7 +20,7 @@ c2301 归档交接里「c2302 必须走 WS 承载 Command/Event」作废：WS �
 ## What Changes
 
 - 监听 `127.0.0.1:18790`（`ServerConfig` / 现有 `server run --port`）。`--host` 可显式 `0.0.0.0`（本票配置字段即可；CLI 旗标形状归 c2303）。占用同一 `{addr,port}` → EADDRINUSE，不 port+1，无整机锁文件。
-- 多 session：每 session 独立 journal / seq / 写者。一写者；第二连接只读，写入回产品错误。
+- 多 session：每 session **槽**独立 journal / seq / 写者 / turn 引擎。进程共享一份 `RuntimePorts`；槽在首次非只读 unary 时 lazy 物化。只读 attach 不物化写者。一写者；第二连接只读，写入回产品错误。
 - 资源按 **本监听器进程** 装配。reload 作用于该进程、所有连接共享。
 - 传输（salvo）：**只实现 c2290 方法表已登记的 unary**，禁止另开 REST 动词或第二套 method 字符串。
   - `POST /api/{method}`：ClientRequest → 同一 dispatch → ServerResponse
@@ -36,6 +36,12 @@ c2301 归档交接里「c2302 必须走 WS 承载 Command/Event」作废：WS �
 
 进线 CLI（`--attach` / `serve` 改名）、符合性闸、ACP、二进制编码、UDS 默认发现、Docker 粗沙盒、MCP 池 key 落地、Web UI、salvo oapi（c2320）、embed 的 in-process 信封 carrier（print 仍走现有 InProcessDriver；`InProcessClient` 已在 c2290）。
 
+## Open Questions
+
+无。Driver 基数已钉：占用 = session 槽；进程共享 `RuntimePorts`；每槽 lazy 物化隔离 Driver。见 `design.md` §10。
+
 ## Further Notes
 
 c2290 verify 未修项（真 Host / ReverseRpc / `sr-env1` 假绿升级）：[`research/c2290-verify-handoff.md`](./research/c2290-verify-handoff.md)
+
+已锁定细节：`design.md` §9（不实现 `events.host`、删 REST、停机不读锁、审批走 respond、`subscribe` 进 `run()` 等）。
