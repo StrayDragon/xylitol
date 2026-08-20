@@ -20,6 +20,9 @@ pub enum RpcMessage {
         #[serde(default)]
         #[specta(type = specta_typescript::Any)]
         payload: Value,
+        /// Session writer lease. First non-readonly unary mints it; later writes must echo it.
+        #[serde(default, rename = "writerToken")]
+        writer_token: Option<String>,
     },
     ServerResponse {
         #[serde(rename = "rpcId")]
@@ -149,6 +152,7 @@ mod tests {
             rpc_id: "r1".into(),
             method: "prompt".into(),
             payload: serde_json::json!({"message": "hi"}),
+            writer_token: None,
         };
         let v = serde_json::to_value(&msg).unwrap();
         assert_eq!(v["type"], "client-request");

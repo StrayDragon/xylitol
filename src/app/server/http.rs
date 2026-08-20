@@ -91,6 +91,7 @@ async fn unary(req: &mut Request, depot: &mut Depot, res: &mut Response) {
         rpc_id,
         method,
         payload,
+        writer_token,
     } = body
     else {
         illegal_envelope(res);
@@ -101,7 +102,7 @@ async fn unary(req: &mut Request, depot: &mut Depot, res: &mut Response) {
         return;
     }
 
-    let result = handle_unary(&host, &method, payload).await;
+    let result = handle_unary(&host, &method, payload, writer_token).await;
     res.status_code(StatusCode::OK);
     res.render(Json(RpcMessage::ServerResponse { rpc_id, result }));
 }

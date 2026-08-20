@@ -180,3 +180,9 @@ async fn test_rr3(approval_test: ServerTest) {}
     name = "second-answer-ignored"
 )]
 async fn test_rr4(approval_test: ServerTest) {}
+
+#[scenario(
+    path = "llmanspec/specs/server-core/server-runtime.feature",
+    name = "writer-lease"
+)]
+async fn test_sr_w1_writer_lease(server_test: ServerTest) {}
