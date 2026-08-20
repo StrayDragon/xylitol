@@ -1,5 +1,7 @@
 //! Runtime boundary for bash command execution.
 
+use std::path::PathBuf;
+
 use async_trait::async_trait;
 use tokio::sync::mpsc;
 use tokio_util::sync::CancellationToken;
@@ -36,6 +38,10 @@ pub struct BashExecOpts {
     pub chunk_tx: Option<mpsc::Sender<Vec<u8>>>,
     /// Wall-clock timeout; default [`ToolTimeout::Unlimited`].
     pub timeout: ToolTimeout,
+    /// Working directory for the spawned shell; `None` inherits the process
+    /// cwd. Callers that own a session workspace (attach writer) MUST pass it
+    /// so `!cmd` runs in the workspace, not the server process directory.
+    pub cwd: Option<PathBuf>,
 }
 
 impl BashExecOpts {
@@ -45,6 +51,7 @@ impl BashExecOpts {
             cancel: Some(cancel),
             chunk_tx: None,
             timeout: ToolTimeout::Unlimited,
+            cwd: None,
         }
     }
 }

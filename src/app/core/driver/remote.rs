@@ -1949,6 +1949,39 @@ mod tests {
     }
 
     #[tokio::test]
+    async fn bash_unary_runs_in_client_workspace() {
+        use crate::app::server::host::{handle_unary, materialize_writer_at};
+
+        let host = HostState::for_test().expect("host");
+        let slot = host.slot("ws-bang").await;
+        let dir = tempfile::tempdir().expect("tmp");
+        materialize_writer_at(&host, &slot, dir.path())
+            .await
+            .expect("materialize");
+        let result = handle_unary(
+            &host,
+            "bash",
+            serde_json::json!({ "session_id": "ws-bang", "command": "pwd" }),
+            None,
+        )
+        .await;
+        assert!(result.ok, "bash unary MUST succeed: {result:?}");
+        let output = result
+            .value
+            .as_ref()
+            .and_then(|v| v.get("output"))
+            .and_then(Value::as_str)
+            .unwrap_or("")
+            .to_string();
+        let got = std::path::PathBuf::from(output.trim());
+        assert_eq!(
+            got.canonicalize().unwrap(),
+            dir.path().canonicalize().unwrap(),
+            "attach bang MUST run in the session workspace, not serve cwd; got: {output}"
+        );
+    }
+
+    #[tokio::test]
     async fn inflight_set_thinking_does_not_apply_until_flush() {
         use crate::app::server::host::{handle_unary, materialize_writer};
 

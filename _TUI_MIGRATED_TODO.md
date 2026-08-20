@@ -115,12 +115,14 @@ STATUS: incomplete
 
 - [x] **B2** `prompt`（及如需要的 `steer`/`follow_up`）载荷含 `model_id` + thinking；TUI 用 **client 当前选择** 填，不靠 Host footer 反推
 - [x] **B3** Host `prompt` 开跑前套用载荷模型；忙时 `set_model`/`thinking` 推迟到本 run 结束（不改 ReAct ar25 重读）
-- [ ] 手测：idle 切模再发；busy 切模看当前轮不换、下一句才换；无 `Next turn:`
+- [x] **A7** TUI 启动目录随 unary 到 Host；writer 工具 / session.create / trust 用该 cwd（缺省才回落 `serve` cwd）
+- [x] **A7 补**：bang `!` 落在 serve cwd 而非会话工作区。真根因：bash 执行器无 cwd 概念——`BashExecOpts.cwd` + `InfraBashExecutor.current_dir` + Driver 传 `agent.cwd()` 已修（回归：`bash_unary_runs_in_client_workspace` / `cwd_option_spawns_shell_in_workspace`）
+- [ ] **A7 后续**：模型侧 bash 工具（`infra/tools/bash.rs`）与文件工具 `resolve_to_cwd` 仍继承 Host 进程 cwd；多工作区 attach 下 LLM 相对路径操作会落错目录。需给工具执行面穿会话工作区（XyToolCtx 或 per-driver 构造），走 propose
+- [x] 手测 2026-08-21：idle 切模 footer 立刻变且下一句走新模（provider trace 证实 openai-responses→anthropic-messages）；busy 切模当前轮全程旧模、下一句才换、无 `Next turn:`；`/model` 不进 steer
 - [ ] 改架构文 `运行时即时设置.md`：产品 TUI/Host = **run 绑定**；删「attach 应对齐下轮预告」
 - [x] **A1 磁带** client 冷订丢弃 Agent 实况（c2307 快照投影仍未做）
 - [x] **C4** `$skill` 从 `loaded_resources.skill_names` 缓存
 - [x] **C5** `mcp_gate_notice` 进 snapshot，Remote `take_mcp_gate_notice`
-- [x] **A7** TUI 启动目录随 unary 到 Host；writer 工具 / session.create / trust 用该 cwd（缺省才回落 `serve` cwd）
 - [ ] **A1 快照** c2307：`get_messages` 一次投影
 - [ ] **D1** 剪贴板改走 TUI 本机，去掉对 Remote `unsupported` 的依赖
 - [ ] **B6** steer/follow_up/clear_queue 去 `block_on`

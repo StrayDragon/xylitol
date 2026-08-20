@@ -382,6 +382,7 @@ impl BashTool {
                     cancel: Some(cancel),
                     chunk_tx: Some(chunk_tx),
                     timeout: tool_timeout,
+                    cwd: None,
                 },
             )
             .await;
