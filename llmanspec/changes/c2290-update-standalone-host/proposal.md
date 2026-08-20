@@ -10,7 +10,8 @@ blocks:
 - c2320-add-salvo-oapi-docs
 branch: sdd/c2290-update-standalone-host
 base_sha: e5ca88291181b2286196d1138ed567f03c0bb2ca
-checkpointed: false
+checkpointed: true
+checkpoint_sha: 589d370a65f157aa861ebc828bc7d894a8458466
 ---
 
 # 独立 Host：四象限 RPC + 产品 TUI 只当客户端
