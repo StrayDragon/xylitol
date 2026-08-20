@@ -25,6 +25,29 @@ async fn begin_mcp_bootstrap_empty_settles_immediately() {
 }
 
 #[tokio::test]
+async fn poll_settled_armed_gate_freezes_tools_table() {
+    let dir = tempfile::tempdir().unwrap();
+    let store = Arc::new(SessionManager::new(dir.path().join("sessions")));
+    let (mut driver, _obs) = build_test_driver(store).await;
+    driver.enable_reload_state(
+        dir.path().to_path_buf(),
+        dir.path().join(".xylitol"),
+        true,
+        Vec::new(),
+    );
+    driver.begin_mcp_bootstrap().await;
+    // Attach TUI arms the gate after bootstrap may already be Settled.
+    driver.arm_tool_freeze_gate().await;
+    if !driver.is_tools_frozen() {
+        let _ = driver.poll_mcp_bootstrap().await;
+    }
+    assert!(
+        driver.is_tools_frozen(),
+        "Settled + armed first-turn gate MUST freeze so Assembling can release"
+    );
+}
+
+#[tokio::test]
 
 async fn mcp_settle_defers_system_prompt_off_tick() {
     use crate::app::core::mcp_spec::{McpServerSpec, McpTransportSpec};
