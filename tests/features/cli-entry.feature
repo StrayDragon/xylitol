@@ -55,7 +55,13 @@
   场景: ops-stay-toplevel
     假如 CLI 已解析
     当 xylitol --help
-    那么 Commands 含 tokenizer 与 resources 为顶层而非 tui 子命令
+    那么 Commands 含 tokenizer、resources 与 serve 为顶层而非 tui 子命令
+
+  @req:ce8
+  场景: serve-ops-verb
+    假如 CLI 已解析
+    当 xylitol serve --help
+    那么 可见 --host --port 与 stop、install，且无 server 或 run 别名
 
   @req:ce19
   场景: surface-flags-on-tui
@@ -109,4 +115,4 @@
   场景: tui-attach-host-down
     假如 本机 Host 未在听
     当 产品 TUI 尝试 attach
-    那么 非零退出并提示先启动 Host
+    那么 非零退出并提示用 xylitol serve 启动 Host
