@@ -26,12 +26,15 @@ host 是端口上的 HTTP 服务器。DSH web 是 `--host` / `--port`（默认 `
 
 ## 开放决策
 
-自动 attach、后台拉起、引用计数、`serve --stop`、浏览器 `Origin` / `--trusted-host`（Web 未开闸）、Docker 粗沙盒。
+无。本票不包含：自动拉起 Host、引用计数、PID 发现式 `serve --stop`、`--trusted-host` / 非 loopback Origin（Web 未开闸）、Docker 粗沙盒。这些分别见 c2315 / 本文件非目标。
 
 ## 非目标
 
-协议闭集、多会话组合根、符合性闸、ACP、方案 A（c2315）、Web UI。
+协议闭集、多会话组合根、符合性闸、ACP、方案 A（c2315）、Web UI、自动 attach、后台拉起 Host、浏览器 Origin 白名单。
+
+`serve stop` **只**打印 SIGTERM 指引（c2302 已如此），不发现 PID、不读锁文件。
 
 ## Further Notes
 
-- mux Origin：缺省允许无 Origin（原生 TUI）。c2302 已把带 Origin 的请求限制为 loopback（127.0.0.1 / localhost / ::1）。非 loopback 浏览器 Origin / `--trusted-host` 仍是本票开放决策。
+- mux Origin：c2302 已允许无 Origin + loopback Origin。非 loopback / `--trusted-host` **不**进本票。
+- 握手（mux + `host.describe` + `subscribe`）已在 c2302 `XyRemoteDriver`。本票只把 **CLI 形状**接到可覆盖的 attach URL，不重做握手。
