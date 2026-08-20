@@ -16,11 +16,7 @@ pub enum ServerSubcommand {
     /// Register the server as a launchd/systemd service (macOS/Linux).
     Install,
     /// Print how to stop a running listener (SIGTERM). Does not read a lock file.
-    Stop {
-        /// Ignored (legacy flag; lock files are not a product mutex).
-        #[arg(long, default_value = "/tmp/xylitol-server.lock")]
-        lock: String,
-    },
+    Stop,
 }
 
 /// Run a server subcommand.
@@ -42,7 +38,7 @@ pub async fn run(action: ServerSubcommand) -> Result<(), Box<dyn std::error::Err
             eprintln!("Server install not yet implemented");
             Ok(())
         }
-        ServerSubcommand::Stop { lock: _ } => {
+        ServerSubcommand::Stop => {
             eprintln!(
                 "No lock-file stop protocol. Send SIGTERM to the xylitol server process \
                  (the one listening on the configured host:port, default 127.0.0.1:18790)."
