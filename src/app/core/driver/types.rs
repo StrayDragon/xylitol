@@ -3,12 +3,13 @@
 use std::pin::Pin;
 
 use futures::Stream;
+use serde::{Deserialize, Serialize};
 
 use crate::protocol::model::{THINKING_OFF, XyModelMeta, thinking_levels_are_adjustable};
 use crate::protocol::session::{SessionEntry, SessionTreeKind};
 
 /// One step in a [`RuntimeReloadReport`] (c1120).
-#[derive(Debug, Clone, PartialEq, Eq)]
+#[derive(Debug, Clone, PartialEq, Eq, Serialize)]
 pub struct ReloadStepReport {
     pub step: &'static str,
     pub ok: bool,
@@ -16,7 +17,7 @@ pub struct ReloadStepReport {
 }
 
 /// Aggregated runtime reload outcome for `/reload` (c1120 / c1205).
-#[derive(Debug, Clone, PartialEq, Eq, Default)]
+#[derive(Debug, Clone, PartialEq, Eq, Default, Serialize)]
 pub struct RuntimeReloadReport {
     pub steps: Vec<ReloadStepReport>,
     /// True when the caller cancelled mid-flight (cooperative cancel; partial steps OK).
@@ -91,7 +92,7 @@ impl RuntimeReloadReport {
 ///
 /// MUST NOT carry secrets or env values — only server ids, tool counts, and short
 /// failure lines safe for dim header display.
-#[derive(Debug, Clone, PartialEq, Eq, Default)]
+#[derive(Debug, Clone, PartialEq, Eq, Default, Serialize, Deserialize)]
 pub struct LoadedResourcesSnapshot {
     pub skill_names: Vec<String>,
     /// `(server_id, tool_count)` for successfully connected MCP servers.
@@ -111,7 +112,8 @@ pub struct LoadedResourcesSnapshot {
 }
 
 /// Connection phase for one configured MCP server (c1210 `/mcp` panel).
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "snake_case")]
 pub enum McpServerPhase {
     Connecting,
     Connected,
@@ -119,7 +121,7 @@ pub enum McpServerPhase {
 }
 
 /// One MCP server row for `/mcp` / armed snapshot (c1210).
-#[derive(Debug, Clone, PartialEq, Eq)]
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 pub struct McpServerSnapshot {
     pub id: String,
     pub phase: McpServerPhase,
@@ -246,6 +248,7 @@ pub struct SessionState {
     pub session_id: String,
     pub model: Option<ModelInfo>,
     pub thinking_level: String,
+    pub leaf_entry_id: Option<String>,
 }
 
 /// Minimal model info returned by the XyDriver, decoupled from `XyModelMeta`'s

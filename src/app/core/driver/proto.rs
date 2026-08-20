@@ -95,6 +95,7 @@ pub trait XyDriver: Send {
             session_id: self.session_id().unwrap_or_default(),
             model: self.current_model(),
             thinking_level: self.thinking_level(),
+            leaf_entry_id: self.leaf_entry_id(),
         }
     }
 

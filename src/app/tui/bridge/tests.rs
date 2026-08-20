@@ -64,6 +64,93 @@ fn turn_end_does_not_idle() {
 }
 
 #[test]
+fn tool_start_path_preview_matches_after_wire_roundtrip() {
+    let event = XyEvent::ToolExecutionStart {
+        id: "read-1".into(),
+        name: "read".into(),
+        args: serde_json::json!({"path": "README.md"}),
+    };
+
+    let mut local = UiModel::new();
+    apply_xy_event(&mut local, &event);
+
+    let wire = event.to_wire_event().expect("ToolStart is wire-visible");
+    let encoded = serde_json::to_value(&wire).expect("wire serializes");
+    let decoded: crate::protocol::wire::Event =
+        serde_json::from_value(encoded).expect("wire deserializes");
+    let remote_event = XyEvent::try_from(&decoded).expect("roundtrip succeeds");
+    let mut remote = UiModel::new();
+    apply_xy_event(&mut remote, &remote_event);
+
+    let preview = |model: &UiModel| -> String {
+        model
+            .entries
+            .iter()
+            .find_map(|entry| match entry {
+                UiEntry::Tool { args_preview, .. } => Some(args_preview.clone()),
+                _ => None,
+            })
+            .expect("tool entry")
+    };
+    assert_eq!(preview(&local), preview(&remote));
+    assert!(preview(&remote).contains("README.md"));
+    assert_ne!(preview(&remote), "Read ...");
+}
+
+#[test]
+fn message_update_tool_path_matches_after_wire_roundtrip() {
+    use crate::protocol::message::{AgentMessage, AgentPart, LlmMessage};
+
+    let message = AgentMessage::Llm(LlmMessage::AssistantMessage {
+        content: vec![AgentPart::ToolCall {
+            id: "read-1".into(),
+            name: "read".into(),
+            arguments: serde_json::json!({"path": "README.md"}),
+        }],
+        stop_reason: None,
+        usage: None,
+        api: String::new(),
+        provider: String::new(),
+        model: String::new(),
+        response_id: None,
+        error_message: None,
+        timestamp: 0,
+        diagnostics: Vec::new(),
+    });
+    let event = XyEvent::MessageUpdate {
+        text: String::new(),
+        thinking: None,
+        message: Some(message),
+    };
+
+    let mut local = UiModel::new();
+    apply_xy_event(&mut local, &event);
+
+    let wire = event
+        .to_wire_event()
+        .expect("MessageUpdate is wire-visible");
+    let encoded = serde_json::to_value(&wire).expect("wire serializes");
+    let decoded: crate::protocol::wire::Event =
+        serde_json::from_value(encoded).expect("wire deserializes");
+    let remote_event = XyEvent::try_from(&decoded).expect("roundtrip succeeds");
+    let mut remote = UiModel::new();
+    apply_xy_event(&mut remote, &remote_event);
+
+    let preview = |model: &UiModel| -> String {
+        model
+            .entries
+            .iter()
+            .find_map(|entry| match entry {
+                UiEntry::Tool { args_preview, .. } => Some(args_preview.clone()),
+                _ => None,
+            })
+            .expect("tool entry")
+    };
+    assert_eq!(preview(&local), preview(&remote));
+    assert!(preview(&remote).contains("README.md"));
+}
+
+#[test]
 fn agent_end_idles_when_follow_up_empty() {
     let mut model = UiModel::new();
     model.begin_run("x");

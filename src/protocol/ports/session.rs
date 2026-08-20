@@ -1,6 +1,7 @@
 //! Runtime boundary for session persistence.
 
 use async_trait::async_trait;
+use serde::{Deserialize, Serialize};
 
 use crate::protocol::error::{XySessionError, XySessionStoreError};
 use crate::protocol::session::{
@@ -10,7 +11,7 @@ use crate::protocol::session::{
 pub use crate::protocol::session::ForkPosition;
 
 /// Row for session resume picker (XyDriver seam; mtime order is store-defined).
-#[derive(Debug, Clone, PartialEq, Eq)]
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 pub struct SessionListEntry {
     pub id: String,
     pub name: Option<String>,

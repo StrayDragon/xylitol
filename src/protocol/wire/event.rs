@@ -35,6 +35,9 @@ pub enum Event {
     ToolStart {
         id: String,
         name: String,
+        #[serde(default)]
+        #[specta(type = specta_typescript::Any)]
+        args: Value,
     },
     ToolEnd {
         id: String,
@@ -84,6 +87,9 @@ pub enum Event {
         text: String,
         #[serde(default)]
         thinking: Option<String>,
+        #[serde(default)]
+        #[specta(type = Option<specta_typescript::Any>)]
+        message: Option<Value>,
     },
     /// Streaming tool execution output.
     ToolExecutionUpdate {
@@ -135,13 +141,21 @@ impl XyEvent {
             }),
             XyEvent::MessageStart { role, .. } => Some(Event::MessageStart { role: role.clone() }),
             XyEvent::MessageEnd { role, .. } => Some(Event::MessageEnd { role: role.clone() }),
-            XyEvent::MessageUpdate { text, thinking, .. } => Some(Event::MessageUpdate {
+            XyEvent::MessageUpdate {
+                text,
+                thinking,
+                message,
+            } => Some(Event::MessageUpdate {
                 text: text.clone(),
                 thinking: thinking.clone(),
+                message: message
+                    .as_ref()
+                    .and_then(|value| serde_json::to_value(value).ok()),
             }),
-            XyEvent::ToolExecutionStart { id, name, .. } => Some(Event::ToolStart {
+            XyEvent::ToolExecutionStart { id, name, args, .. } => Some(Event::ToolStart {
                 id: id.clone(),
                 name: name.clone(),
+                args: args.clone(),
             }),
             XyEvent::ToolExecutionEnd {
                 id, name, result, ..
@@ -236,15 +250,21 @@ impl TryFrom<&Event> for XyEvent {
                 role: role.clone(),
                 message: None,
             }),
-            Event::MessageUpdate { text, thinking } => Ok(XyEvent::MessageUpdate {
+            Event::MessageUpdate {
+                text,
+                thinking,
+                message,
+            } => Ok(XyEvent::MessageUpdate {
                 text: text.clone(),
                 thinking: thinking.clone(),
-                message: None,
+                message: message
+                    .as_ref()
+                    .and_then(|value| serde_json::from_value(value.clone()).ok()),
             }),
-            Event::ToolStart { id, name } => Ok(XyEvent::ToolExecutionStart {
+            Event::ToolStart { id, name, args } => Ok(XyEvent::ToolExecutionStart {
                 id: id.clone(),
                 name: name.clone(),
-                args: Value::Null,
+                args: args.clone(),
             }),
             Event::ToolEnd { id, name, result } => Ok(XyEvent::ToolExecutionEnd {
                 id: id.clone(),
@@ -443,5 +463,69 @@ mod tests {
             XyEvent::Error(err) => assert!(err.is_aborted()),
             other => panic!("unexpected: {other:?}"),
         }
+    }
+
+    #[test]
+    fn tool_start_preserves_args_through_wire_json_roundtrip() {
+        let domain = XyEvent::ToolExecutionStart {
+            id: "read-1".into(),
+            name: "read".into(),
+            args: serde_json::json!({"path": "README.md"}),
+        };
+        let wire = domain.to_wire_event().expect("ToolStart is wire-visible");
+        let encoded = serde_json::to_value(&wire).expect("wire serializes");
+        assert_eq!(encoded["args"], serde_json::json!({"path": "README.md"}));
+
+        let decoded: Event = serde_json::from_value(encoded).expect("wire deserializes");
+        let back = XyEvent::try_from(&decoded).expect("roundtrip succeeds");
+        assert!(matches!(
+            back,
+            XyEvent::ToolExecutionStart { args, .. }
+                if args == serde_json::json!({"path": "README.md"})
+        ));
+    }
+
+    #[test]
+    fn message_update_preserves_streaming_tool_call_through_wire_roundtrip() {
+        use crate::protocol::message::{AgentMessage, AgentPart, LlmMessage};
+
+        let partial = AgentMessage::Llm(LlmMessage::AssistantMessage {
+            content: vec![AgentPart::ToolCall {
+                id: "call-1".into(),
+                name: "read".into(),
+                arguments: serde_json::json!({"path": "README.md"}),
+            }],
+            stop_reason: None,
+            usage: None,
+            api: String::new(),
+            provider: String::new(),
+            model: String::new(),
+            response_id: None,
+            error_message: None,
+            timestamp: 0,
+            diagnostics: Vec::new(),
+        });
+        let expected = serde_json::to_value(&partial).expect("message serializes");
+        let domain = XyEvent::MessageUpdate {
+            text: String::new(),
+            thinking: None,
+            message: Some(partial),
+        };
+
+        let wire = domain
+            .to_wire_event()
+            .expect("MessageUpdate is wire-visible");
+        let encoded = serde_json::to_value(&wire).expect("wire serializes");
+        assert_eq!(encoded["message"], expected);
+
+        let decoded: Event = serde_json::from_value(encoded).expect("wire deserializes");
+        let back = XyEvent::try_from(&decoded).expect("roundtrip succeeds");
+        let XyEvent::MessageUpdate { message, .. } = back else {
+            panic!("unexpected event");
+        };
+        assert_eq!(
+            serde_json::to_value(message.expect("tool call message")).expect("message serializes"),
+            expected
+        );
     }
 }

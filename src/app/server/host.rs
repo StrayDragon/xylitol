@@ -11,15 +11,18 @@ use std::sync::atomic::{AtomicBool, AtomicU64, Ordering};
 
 use futures::StreamExt;
 use serde_json::{Value, json};
-use tokio::sync::{Mutex, RwLock, mpsc};
+use tokio::sync::{Mutex, RwLock, broadcast, mpsc};
 use tokio::time::timeout;
+use tokio_util::sync::CancellationToken;
 
 use crate::agent::RuntimePorts;
 use crate::app::core::composition::{
     BuildAgentOptions, McpServerSpec, build_ports, build_ports_with_store,
 };
 use crate::app::core::dispatch::{DispatchOutcome, dispatch};
-use crate::app::core::driver::{ModelInfo, XyDriver, XyInProcessDriver};
+use crate::app::core::driver::{
+    LoadedResourcesSnapshot, ModelInfo, RuntimeReloadReport, XyDriver, XyInProcessDriver,
+};
 use crate::app::core::driver_error::XyDriverError;
 use crate::app::server::ws::{
     EventJournal, ReverseRpcGateway, ReverseRpcResult, downlink_server_request,
@@ -53,6 +56,12 @@ const WRITER_METHODS: &[&str] = &[
     "import_jsonl",
     "switch_session",
     "fork",
+    "travel_session_tree",
+    "append_entry_label",
+    "new_session",
+    "set_session_name",
+    "set_session_name_for",
+    "delete_session",
     "steer",
     "follow_up",
     "clear_queue",
@@ -65,6 +74,12 @@ pub struct HostState {
     pub sessions: RwLock<HashMap<String, Arc<SessionSlot>>>,
     /// Mux connections not yet bound by unary `subscribe`.
     pub unbound_mux: Mutex<Vec<MuxSink>>,
+    /// Host-level resource owner for `/reload` and `loaded_resources`.
+    pub resource_driver: Mutex<Option<XyInProcessDriver>>,
+    /// Downlink bus for the in-process Host carrier.
+    pub in_process_downlink: broadcast::Sender<RpcMessage>,
+    /// Cancellation token for the process-level reload currently in flight.
+    pub reload_cancel: Mutex<Option<CancellationToken>>,
     pub shutting_down: AtomicBool,
     pub fallback_session: String,
 }
@@ -90,17 +105,22 @@ pub struct SessionSlot {
     pub writer_token: Mutex<Option<String>>,
     pub subscribers: Mutex<HashMap<u64, MuxSink>>,
     pub gateway: Arc<ReverseRpcGateway>,
+    pub in_process_downlink: broadcast::Sender<RpcMessage>,
     next_conn: AtomicU64,
     resync_offered: AtomicBool,
 }
 
 impl HostState {
     pub fn new(ports: RuntimePorts, reload: ReloadBaseline, fallback_session: String) -> Arc<Self> {
+        let (in_process_downlink, _) = broadcast::channel(MUX_CHAN_CAP);
         Arc::new(Self {
             ports,
             reload,
             sessions: RwLock::new(HashMap::new()),
             unbound_mux: Mutex::new(Vec::new()),
+            resource_driver: Mutex::new(None),
+            in_process_downlink,
+            reload_cancel: Mutex::new(None),
             shutting_down: AtomicBool::new(false),
             fallback_session,
         })
@@ -152,7 +172,7 @@ impl HostState {
         }
         let mut map = self.sessions.write().await;
         map.entry(session_id.to_string())
-            .or_insert_with(|| SessionSlot::new(session_id))
+            .or_insert_with(|| SessionSlot::new(session_id, self.in_process_downlink.clone()))
             .clone()
     }
 
@@ -189,10 +209,63 @@ impl HostState {
         }
         false
     }
+
+    async fn ensure_resource_driver(
+        &self,
+    ) -> tokio::sync::MutexGuard<'_, Option<XyInProcessDriver>> {
+        let mut guard = self.resource_driver.lock().await;
+        if guard.is_none() {
+            let agent = self.ports.materialize_runtime();
+            let mut driver = XyInProcessDriver::new(agent, self.ports.store.clone());
+            driver.enable_reload_state(
+                self.reload.cwd.clone(),
+                self.reload.agent_dir.clone(),
+                self.reload.project_trusted,
+                self.reload.mcp_servers.clone(),
+            );
+            *guard = Some(driver);
+        }
+        guard
+    }
+
+    pub async fn reload_resources(&self) -> Result<RuntimeReloadReport, XyDriverError> {
+        let mut guard = self.ensure_resource_driver().await;
+        let cancel = CancellationToken::new();
+        *self.reload_cancel.lock().await = Some(cancel.clone());
+        let result = guard
+            .as_mut()
+            .expect("resource driver initialized")
+            .reload_runtime(&cancel)
+            .await;
+        *self.reload_cancel.lock().await = None;
+        result
+    }
+
+    pub async fn abort_reload(&self) -> bool {
+        let guard = self.reload_cancel.lock().await;
+        if let Some(cancel) = guard.as_ref() {
+            cancel.cancel();
+            true
+        } else {
+            false
+        }
+    }
+
+    pub async fn loaded_resources_snapshot(&self) -> LoadedResourcesSnapshot {
+        let mut guard = self.ensure_resource_driver().await;
+        guard
+            .as_mut()
+            .expect("resource driver initialized")
+            .loaded_resources_snapshot()
+            .await
+    }
 }
 
 impl SessionSlot {
-    pub fn new(session_id: impl Into<String>) -> Arc<Self> {
+    pub fn new(
+        session_id: impl Into<String>,
+        in_process_downlink: broadcast::Sender<RpcMessage>,
+    ) -> Arc<Self> {
         let session_id = session_id.into();
         Arc::new(Self {
             journal: Mutex::new(EventJournal::with_default_capacity(&session_id)),
@@ -202,6 +275,7 @@ impl SessionSlot {
             writer_token: Mutex::new(None),
             subscribers: Mutex::new(HashMap::new()),
             gateway: Arc::new(ReverseRpcGateway::new()),
+            in_process_downlink,
             next_conn: AtomicU64::new(1),
             resync_offered: AtomicBool::new(false),
         })
@@ -295,6 +369,7 @@ impl SessionSlot {
     }
 
     pub async fn broadcast(&self, msg: RpcMessage) {
+        let _ = self.in_process_downlink.send(msg.clone());
         let mut subs = self.subscribers.lock().await;
         let mut dead = Vec::new();
         let resync = downlink_server_request(
@@ -444,6 +519,27 @@ pub async fn materialize_writer(
     Ok(())
 }
 
+fn new_reader_driver(host: &HostState) -> XyInProcessDriver {
+    let agent = host.ports.materialize_runtime();
+    let mut driver = XyInProcessDriver::new(agent, host.ports.store.clone());
+    driver.enable_reload_state(
+        host.reload.cwd.clone(),
+        host.reload.agent_dir.clone(),
+        host.reload.project_trusted,
+        host.reload.mcp_servers.clone(),
+    );
+    driver
+}
+
+async fn materialize_reader(
+    host: &HostState,
+    session_id: &str,
+) -> Result<XyInProcessDriver, XyDriverError> {
+    let mut driver = new_reader_driver(host);
+    driver.switch_session(session_id).await?;
+    Ok(driver)
+}
+
 fn model_data(m: &ModelInfo) -> Value {
     json!({
         "id": m.id,
@@ -461,6 +557,7 @@ pub fn outcome_to_value(outcome: DispatchOutcome) -> Value {
             "session_id": st.session_id,
             "model": st.model.as_ref().map(model_data),
             "thinking_level": st.thinking_level,
+            "leaf_entry_id": st.leaf_entry_id,
         }),
         DispatchOutcome::Model(model) => model_data(&model),
         DispatchOutcome::Models(models) => {
@@ -482,6 +579,24 @@ pub fn outcome_to_value(outcome: DispatchOutcome) -> Value {
         DispatchOutcome::Messages { entries, .. } => json!({
             "entries": serde_json::to_value(entries).unwrap_or(Value::Null)
         }),
+        DispatchOutcome::SessionTree(tree) => json!({
+            "tree": serde_json::to_value(tree).unwrap_or(Value::Null)
+        }),
+        DispatchOutcome::SessionTreeTravel(travel) => {
+            serde_json::to_value(travel).unwrap_or(Value::Null)
+        }
+        DispatchOutcome::Sessions(sessions) => json!({
+            "sessions": serde_json::to_value(sessions).unwrap_or(Value::Null)
+        }),
+        DispatchOutcome::SessionEntries(entries) => json!({
+            "entries": serde_json::to_value(entries).unwrap_or(Value::Null)
+        }),
+        DispatchOutcome::SessionName(name) => json!({ "name": name }),
+        DispatchOutcome::Reload(report) => serde_json::to_value(report).unwrap_or(Value::Null),
+        DispatchOutcome::LoadedResources(snapshot) => {
+            serde_json::to_value(snapshot).unwrap_or(Value::Null)
+        }
+        DispatchOutcome::Empty => json!({}),
         DispatchOutcome::Commands(cmds) => {
             let cmds: Vec<Value> = cmds
                 .into_iter()
@@ -592,6 +707,70 @@ pub fn command_from_method(method: &str, payload: &Value) -> Result<Command, Str
         }),
         "get_messages" => Ok(Command::GetMessages { id: None }),
         "get_commands" => Ok(Command::GetCommands { id: None }),
+        "session_tree" => Ok(Command::SessionTree {
+            id: None,
+            kind: session_tree_kind(&p)?,
+        }),
+        "travel_session_tree" => Ok(Command::TravelSessionTree {
+            id: None,
+            kind: session_tree_kind(&p)?,
+            entry_id: p
+                .get("entry_id")
+                .and_then(|v| v.as_str())
+                .ok_or("missing entry_id")?
+                .to_string(),
+        }),
+        "append_entry_label" => Ok(Command::AppendEntryLabel {
+            id: None,
+            target_id: p
+                .get("target_id")
+                .and_then(|v| v.as_str())
+                .ok_or("missing target_id")?
+                .to_string(),
+            label: p.get("label").and_then(|v| v.as_str()).map(str::to_string),
+        }),
+        "list_sessions" => Ok(Command::ListSessions { id: None }),
+        "load_session_entries" => Ok(Command::LoadSessionEntries {
+            id: None,
+            session_id: p
+                .get("session_id")
+                .and_then(|v| v.as_str())
+                .ok_or("missing session_id")?
+                .to_string(),
+        }),
+        "new_session" => Ok(Command::NewSession { id: None }),
+        "get_session_name" => Ok(Command::GetSessionName { id: None }),
+        "set_session_name" => Ok(Command::SetSessionName {
+            id: None,
+            name: p
+                .get("name")
+                .and_then(|v| v.as_str())
+                .ok_or("missing name")?
+                .to_string(),
+        }),
+        "set_session_name_for" => Ok(Command::SetSessionNameFor {
+            id: None,
+            session_id: p
+                .get("session_id")
+                .and_then(|v| v.as_str())
+                .ok_or("missing session_id")?
+                .to_string(),
+            name: p
+                .get("name")
+                .and_then(|v| v.as_str())
+                .ok_or("missing name")?
+                .to_string(),
+        }),
+        "delete_session" => Ok(Command::DeleteSession {
+            id: None,
+            session_id: p
+                .get("session_id")
+                .and_then(|v| v.as_str())
+                .ok_or("missing session_id")?
+                .to_string(),
+        }),
+        "reload" => Ok(Command::Reload { id: None }),
+        "loaded_resources" => Ok(Command::LoadedResources { id: None }),
         "steer" => Ok(Command::Steer {
             id: None,
             message: p
@@ -621,6 +800,14 @@ pub fn command_from_method(method: &str, payload: &Value) -> Result<Command, Str
         }),
         other => Err(format!("unmapped unary {other}")),
     }
+}
+
+fn session_tree_kind(payload: &Value) -> Result<crate::protocol::session::SessionTreeKind, String> {
+    let raw = payload
+        .get("kind")
+        .cloned()
+        .unwrap_or_else(|| json!("message_history"));
+    serde_json::from_value(raw).map_err(|e| format!("invalid kind: {e}"))
 }
 
 fn rpc_err(e: XyDriverError) -> RpcResult {
@@ -671,6 +858,20 @@ pub async fn handle_unary(
     }
     if !is_unary_method(method) {
         return RpcResult::error("not_found", format!("unregistered method {method}"));
+    }
+
+    if method == "reload" {
+        return match host.reload_resources().await {
+            Ok(report) => RpcResult::ok_value(outcome_to_value(DispatchOutcome::Reload(report))),
+            Err(e) => rpc_err(e),
+        };
+    }
+    if method == "loaded_resources" {
+        let snapshot = host.loaded_resources_snapshot().await;
+        return RpcResult::ok_value(outcome_to_value(DispatchOutcome::LoadedResources(snapshot)));
+    }
+    if method == "abort" && host.abort_reload().await {
+        return RpcResult::ok_value(json!({ "cancelled": true }));
     }
 
     let session_id = if method == "subscribe" {
@@ -792,22 +993,54 @@ pub async fn handle_unary(
     }
 
     if !is_writer_method(method) && slot.driver.lock().await.is_none() {
-        // Read-only with no writer: empty snapshot, do not materialize.
-        return match method {
-            "get_state" => RpcResult::ok_value(json!({
-                "session_id": session_id,
-                "model": Value::Null,
-                "thinking_level": Value::Null,
-            })),
-            "get_messages" => RpcResult::ok_value(json!({ "entries": [] })),
-            "get_commands" => RpcResult::ok_value(json!({ "commands": [] })),
-            "get_session_stats" => RpcResult::ok_value(json!({
-                "session_id": session_id,
-                "user_messages": 0,
-                "assistant_messages": 0,
-                "total_messages": 0,
-            })),
-            _ => RpcResult::ok_value(json!({})),
+        if matches!(method, "list_sessions" | "get_commands") {
+            let mut reader = new_reader_driver(host);
+            let cmd = match command_from_method(method, &payload) {
+                Ok(c) => c,
+                Err(e) => return RpcResult::error("invalid_input", e),
+            };
+            return match dispatch(&mut reader, cmd).await {
+                Ok(outcome) => RpcResult::ok_value(outcome_to_value(outcome)),
+                Err(e) => rpc_err(e),
+            };
+        }
+
+        let session_exists = host.ports.store.exists(&session_id).await;
+        if !session_exists && method == "session_tree" {
+            let cwd = host.reload.cwd.to_string_lossy().into_owned();
+            if let Err(e) = host.ports.store.create(&session_id, Some(&cwd), None).await {
+                return rpc_err(e.into());
+            }
+        } else if !session_exists {
+            return match method {
+                "get_state" => RpcResult::ok_value(json!({
+                    "session_id": session_id,
+                    "model": Value::Null,
+                    "thinking_level": Value::Null,
+                    "leaf_entry_id": host.ports.store.leaf_id(&session_id),
+                })),
+                "get_messages" => RpcResult::ok_value(json!({ "entries": [] })),
+                "get_session_stats" => RpcResult::ok_value(json!({
+                    "session_id": session_id,
+                    "user_messages": 0,
+                    "assistant_messages": 0,
+                    "total_messages": 0,
+                })),
+                _ => RpcResult::error("not_found", format!("session not found: {session_id}")),
+            };
+        }
+
+        let mut reader = match materialize_reader(host, &session_id).await {
+            Ok(driver) => driver,
+            Err(e) => return rpc_err(e),
+        };
+        let cmd = match command_from_method(method, &payload) {
+            Ok(c) => c,
+            Err(e) => return RpcResult::error("invalid_input", e),
+        };
+        return match dispatch(&mut reader, cmd).await {
+            Ok(outcome) => RpcResult::ok_value(outcome_to_value(outcome)),
+            Err(e) => rpc_err(e),
         };
     }
 

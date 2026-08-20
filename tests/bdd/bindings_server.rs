@@ -104,6 +104,18 @@ async fn test_sr_st1_rest(server_test: ServerTest) {}
 fn test_sr_st1_remote(server_test: ServerTest) {}
 
 #[scenario(
+    path = "llmanspec/specs/server-core/server-runtime.feature",
+    name = "remote-session-methods"
+)]
+fn test_sr_method1(server_test: ServerTest) {}
+
+#[scenario(
+    path = "llmanspec/specs/server-core/server-runtime.feature",
+    name = "remote-host-resource-methods"
+)]
+fn test_sr_resource1(server_test: ServerTest) {}
+
+#[scenario(
     path = "llmanspec/specs/server-core/server-ws.feature",
     name = "frame-serialize"
 )]
