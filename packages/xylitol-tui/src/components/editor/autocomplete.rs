@@ -168,6 +168,7 @@ impl super::Editor {
         suggestions: AutocompleteSuggestions,
         mode: AutocompleteMode,
     ) {
+        let prev_prefix = self.autocomplete_prefix.clone();
         self.autocomplete_prefix = suggestions.prefix.clone();
         let items: Vec<SelectItem> = suggestions
             .items
@@ -179,7 +180,24 @@ impl super::Editor {
             })
             .collect();
 
+        // Tab re-probes before apply (paste-burst stale prefix). MCP/skill
+        // catalog ticks also rebuild the list. Always picking the first prefix
+        // match would discard Down/Up and apply the first id. Only keep the
+        // row when the typed prefix is unchanged — further keystrokes must
+        // re-rank (fuzzy `model-t` still matches `model-fast`).
+        let prev_value = self
+            .autocomplete_list
+            .as_ref()
+            .and_then(|l| l.get_selected_item())
+            .map(|i| i.value.clone());
         let best_idx = self.get_best_autocomplete_match_index(&items, &self.autocomplete_prefix);
+        let selected_idx = if prev_prefix == self.autocomplete_prefix {
+            prev_value
+                .and_then(|v| items.iter().position(|i| i.value == v))
+                .unwrap_or(best_idx)
+        } else {
+            best_idx
+        };
         let layout = if self.autocomplete_prefix.starts_with('/') {
             SelectListLayoutOptions {
                 min_primary_column_width: Some(12),
@@ -199,8 +217,8 @@ impl super::Editor {
             SelectListTheme::default(),
             layout,
         );
-        if best_idx < sl.filtered_items.len() {
-            sl.set_selected_index(best_idx);
+        if selected_idx < sl.filtered_items.len() {
+            sl.set_selected_index(selected_idx);
         }
         self.autocomplete_list = Some(sl);
         self.autocomplete_state = Some(mode);
