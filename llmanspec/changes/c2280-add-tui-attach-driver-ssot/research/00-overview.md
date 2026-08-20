@@ -14,7 +14,7 @@
 | 薄 TS 客户端 | c2290 specta 闸之后 | **c2310**（无 SPA） |
 | 方案 A loopback | c2290 design 曾记一节 | **c2315** |
 | salvo oapi 调试文档 | type-sharing | **c2320**（非 SSOT） |
-| 跨面公共动作 id | `docs/roadmaps/Web与TUI同源.md` | **c2325** |
+| 跨面公共动作 id | `docs/roadmaps/Web与TUI同源.md` | **delayed** `c2325`（client 登记表，不进 Host；Web 未开闸） |
 | 吞吐 / 编码 / 工具链 | `05-throughput` | c2300 tagged JSON；c2301 不预埋二进制 |
 | 浏览器壳 | `06-web` | 不开闸；契约不堵 WS 下行 |
 | 跨语言类型 | c2290 `research/type-sharing.md` | **c2290 落地** specta `bindings.ts` 闸（无 Web UI）；薄 TS 客户端 / SPA 后置草案；不上 rspc/OpenAPI-first |

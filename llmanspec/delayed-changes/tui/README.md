@@ -11,3 +11,4 @@
 | id | 说明 |
 |---|---|
 | `c1940-add-tui-prompt-cache-footer/` | 与双交互族无关；仍 stay delayed |
+| `c2325-add-cross-surface-actions/` | 跨面动作 id 登记表；TUI 已交付 expand/collapseNearest；**不进 Host**；Web 未开闸前不 promote |
