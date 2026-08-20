@@ -888,6 +888,30 @@ fn t_ce19_session_ok(surface_flags_bdd: &SurfaceFlagsBdd) {
     assert_eq!(surface_flags_bdd.session.borrow().as_deref(), Some("sid"));
 }
 
+#[when("xylitol tui --attach http://127.0.0.1:9 --port 11")]
+fn w_ce19_tui_attach(surface_flags_bdd: &SurfaceFlagsBdd) {
+    use clap::Parser;
+    use xylitol::app::cli::{CliArgs, surface_from_command};
+    let args = CliArgs::try_parse_from([
+        "xylitol",
+        "tui",
+        "--attach",
+        "http://127.0.0.1:9",
+        "--port",
+        "11",
+    ])
+    .expect("parse tui --attach/--port");
+    let s = surface_from_command(args.command.as_ref());
+    let url = xylitol::resolve_attach_url(s.attach.as_deref(), s.port);
+    assert_eq!(url, "http://127.0.0.1:9");
+    surface_flags_bdd.parse_ok.set(true);
+}
+
+#[then("解析成功且 --attach 优先于 --port")]
+fn t_ce19_attach_wins(surface_flags_bdd: &SurfaceFlagsBdd) {
+    assert!(surface_flags_bdd.parse_ok.get());
+}
+
 #[when("xylitol print --session sid --no-color hi")]
 fn w_ce19_print_flags(surface_flags_bdd: &SurfaceFlagsBdd) {
     use clap::Parser;
