@@ -33,6 +33,7 @@ pub const UNARY_METHODS: &[&str] = &[
     "loaded_resources",
     "queue_stats",
     "load_debug_scene",
+    "arm_tool_freeze",
     "steer",
     "follow_up",
     "clear_queue",
@@ -68,5 +69,6 @@ mod tests {
         assert!(!is_unary_method("approve_tool"));
         assert!(is_unary_method("prompt"));
         assert!(is_unary_method("host.describe"));
+        assert!(is_unary_method("arm_tool_freeze"));
     }
 }

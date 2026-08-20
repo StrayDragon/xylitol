@@ -963,11 +963,24 @@ pub async fn handle_unary(
         let slot_push = slot.clone();
         tokio::spawn(async move {
             let stream = {
-                let mut g = driver.lock().await;
-                let Some(d) = g.as_mut() else {
-                    return;
-                };
-                d.run(&message).await
+                let deadline = std::time::Instant::now()
+                    + crate::agent::MCP_FIRST_TURN_GATE_TIMEOUT
+                    + std::time::Duration::from_millis(250);
+                loop {
+                    let mut g = driver.lock().await;
+                    let Some(d) = g.as_mut() else {
+                        return;
+                    };
+                    d.arm_tool_freeze_gate().await;
+                    let _ = d.poll_mcp_bootstrap().await;
+                    if d.is_tools_frozen() || std::time::Instant::now() >= deadline {
+                        let stream = d.run(&message).await;
+                        drop(g);
+                        break stream;
+                    }
+                    drop(g);
+                    tokio::time::sleep(std::time::Duration::from_millis(20)).await;
+                }
             };
             let mut stream = stream;
             while let Some(event) = stream.next().await {
@@ -981,6 +994,29 @@ pub async fn handle_unary(
         });
         return RpcResult::ok_value(attach_writer_token(
             json!({ "session_id": session_id }),
+            &token,
+        ));
+    }
+
+    if method == "arm_tool_freeze" {
+        let token = match take_writer_lease(&slot, presented).await {
+            Ok(t) => t,
+            Err(e) => return e,
+        };
+        if let Err(e) = materialize_writer(host, &slot).await {
+            let mut r = rpc_err(e);
+            r.value = Some(json!({ "writerToken": token }));
+            return r;
+        }
+        let mut g = slot.driver.lock().await;
+        let Some(driver) = g.as_mut() else {
+            return RpcResult::error("unavailable", "no writer engine");
+        };
+        driver.arm_tool_freeze_gate().await;
+        let _ = driver.poll_mcp_bootstrap().await;
+        let snapshot = driver.loaded_resources_snapshot().await;
+        return RpcResult::ok_value(attach_writer_token(
+            serde_json::to_value(&snapshot).unwrap_or(Value::Null),
             &token,
         ));
     }
