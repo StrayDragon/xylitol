@@ -172,3 +172,166 @@ pub fn is_assistant_message(entry: &SessionEntry) -> bool {
         SessionEntry::Message(m) if message_role(&m.message) == Some("assistant")
     )
 }
+
+/// Resolve the transcript leaf anchor from persisted entries.
+///
+/// Honors `hint` only when it points at an existing chain entry
+/// ([`SessionEntry::anchors_transcript`]); otherwise (missing, or the hint lands
+/// on bookkeeping such as a parent-less trailing `modelChange`) scans back to
+/// the last chain entry so resume projection / branch assembly keep full history.
+pub fn transcript_leaf_anchor(entries: &[SessionEntry], hint: Option<&str>) -> Option<String> {
+    if let Some(id) = hint
+        && entries
+            .iter()
+            .find(|e| e.entry_id() == Some(id))
+            .is_some_and(SessionEntry::anchors_transcript)
+    {
+        return Some(id.to_string());
+    }
+    entries
+        .iter()
+        .rev()
+        .find(|e| e.anchors_transcript())
+        .and_then(|e| e.entry_id().map(str::to_string))
+}
+
+/// Ancestry path (root → leaf) for transcript projection.
+///
+/// Walks `parent_id` links from `leaf`. When the walk reaches a bookkeeping row
+/// ([`SessionEntry::anchors_transcript`] == false) whose parent is missing, it
+/// continues from the nearest preceding chain entry in file order: cold
+/// materialize used to splice parent-less `modelChange` / `thinkingLevelChange`
+/// rows into otherwise intact chains, and those seams must not truncate
+/// history. A chain-participating root (message / compaction / branchSummary
+/// with no parent) still terminates the walk normally, so compaction cut
+/// semantics are untouched.
+pub fn transcript_ancestry_ids(entries: &[SessionEntry], leaf_id: Option<&str>) -> Vec<String> {
+    let Some(start) = leaf_id.map(str::to_string) else {
+        return Vec::new();
+    };
+    let mut path = vec![start.clone()];
+    let mut visited = std::collections::HashSet::new();
+    visited.insert(start.clone());
+    let mut cur = start;
+    while let Some(entry) = entries.iter().find(|e| e.entry_id() == Some(cur.as_str())) {
+        let next = match entry.parent_id() {
+            Some(parent) => Some(parent.to_string()),
+            None if entry.anchors_transcript() => None,
+            // Bookkeeping seam: splice across to the nearest preceding chain entry.
+            None => {
+                let pos = entries
+                    .iter()
+                    .position(|e| e.entry_id() == Some(cur.as_str()))
+                    .unwrap_or(0);
+                entries[..pos]
+                    .iter()
+                    .rev()
+                    .find(|e| e.anchors_transcript())
+                    .and_then(|e| e.entry_id())
+                    .map(str::to_string)
+            }
+        };
+        let Some(next) = next else { break };
+        if !visited.insert(next.clone()) {
+            break; // cycle
+        }
+        path.push(next.clone());
+        cur = next;
+    }
+    path.reverse();
+    path
+}
+
+#[cfg(test)]
+mod leaf_anchor_tests {
+    use super::*;
+    use crate::protocol::session::{EntryBase, MessageEntry, ModelChangeEntry};
+
+    fn msg(id: &str, parent: Option<&str>) -> SessionEntry {
+        SessionEntry::Message(MessageEntry {
+            base: EntryBase {
+                entry_type: "message".into(),
+                id: id.into(),
+                parent_id: parent.map(str::to_string),
+                timestamp: 0,
+            },
+            message: fixture_message_json("user", "hi"),
+        })
+    }
+
+    fn model_change(id: &str) -> SessionEntry {
+        SessionEntry::ModelChange(ModelChangeEntry {
+            base: EntryBase {
+                entry_type: "model_change".into(),
+                id: id.into(),
+                parent_id: None,
+                timestamp: 0,
+            },
+            provider: "fake".into(),
+            model_id: "fake/m".into(),
+        })
+    }
+
+    #[test]
+    fn leaf_anchor_skips_trailing_parentless_bookkeeping() {
+        let entries = vec![msg("u1", None), msg("a1", Some("u1")), model_change("mc")];
+        assert_eq!(
+            transcript_leaf_anchor(&entries, None).as_deref(),
+            Some("a1"),
+            "resume anchor MUST land on the last chain entry, not the bookkeeping tail"
+        );
+        assert!(!model_change("mc").anchors_transcript());
+        assert!(msg("a1", None).anchors_transcript());
+    }
+
+    #[test]
+    fn leaf_anchor_honors_chain_hint_and_ignores_metadata_hint() {
+        let entries = vec![msg("u1", None), msg("a1", Some("u1")), model_change("mc")];
+        assert_eq!(
+            transcript_leaf_anchor(&entries, Some("a1")).as_deref(),
+            Some("a1")
+        );
+        assert_eq!(
+            transcript_leaf_anchor(&entries, Some("mc")).as_deref(),
+            Some("a1")
+        );
+        assert_eq!(
+            transcript_leaf_anchor(&entries, Some("missing")).as_deref(),
+            Some("a1")
+        );
+        assert_eq!(transcript_leaf_anchor(&[], None), None);
+    }
+
+    #[test]
+    fn ancestry_splices_across_parentless_bookkeeping_seam() {
+        // Historical pollution: messages chained THROUGH a parent-less
+        // modelChange. The walk must splice the seam, not truncate history.
+        let entries = vec![
+            msg("u1", None),
+            msg("a1", Some("u1")),
+            model_change("mc_seam"), // parentless, mid-chain
+            msg("u2", Some("mc_seam")),
+            msg("a2", Some("u2")),
+        ];
+        assert_eq!(
+            transcript_ancestry_ids(&entries, Some("a2")),
+            vec!["u1", "a1", "mc_seam", "u2", "a2"],
+        );
+    }
+
+    #[test]
+    fn ancestry_stops_at_legitimate_chain_root_without_splice() {
+        // Compaction-style cut: a chain-participating root (message with no
+        // parent) terminates the walk — no linear resurrection of earlier rows.
+        let entries = vec![
+            msg("old1", None),
+            msg("old2", Some("old1")),
+            msg("kept_root", None), // e.g. post-compaction kept root
+            msg("kept_child", Some("kept_root")),
+        ];
+        assert_eq!(
+            transcript_ancestry_ids(&entries, Some("kept_child")),
+            vec!["kept_root", "kept_child"],
+        );
+    }
+}

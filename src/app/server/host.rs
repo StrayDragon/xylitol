@@ -717,11 +717,11 @@ pub async fn materialize_writer_at(
     driver.install_ask_tool(Arc::new(SlotAskGateway { slot: slot.clone() }));
     driver.begin_mcp_bootstrap().await;
     if let Some(id) = host.reload.default_model_id.as_deref()
-        && let Err(e) = driver.select_model(id).await
+        && let Err(e) = driver.restore_model(id).await
     {
         log::warn!(
             target: "xylitol::host",
-            "writer default model select failed id={id}: {e}"
+            "writer default model restore failed id={id}: {e}"
         );
     }
     *guard = Some(driver);

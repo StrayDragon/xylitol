@@ -31,32 +31,27 @@ impl SessionManager {
             .filter_map(|e| e.entry_id().map(|id| (id, e)))
             .collect();
 
-        let effective_leaf = match leaf_id {
-            Some(id) => id.to_string(),
-            None => match entries.iter().rev().find_map(|e| e.entry_id()) {
-                Some(id) => id.to_string(),
-                None => return Ok(vec![]),
-            },
+        // Anchor on a chain entry: a stored/absent leaf that lands on bookkeeping
+        // (e.g. parent-less trailing modelChange from cold materialize) must not
+        // truncate the branch to that row alone.
+        let Some(effective_leaf) =
+            crate::protocol::session::transcript_leaf_anchor(&entries, leaf_id)
+        else {
+            return Ok(vec![]);
         };
 
-        // Collect path from leaf to root
-        let mut path = Vec::new();
-        let mut current = Some(effective_leaf.as_str());
-        let mut visited = std::collections::HashSet::new();
-
-        while let Some(id) = current {
-            if !visited.insert(id) {
-                break; // Cycle detection
-            }
-            if let Some(entry) = id_map.get(id) {
+        // Collect path from leaf to root; splices across bookkeeping seams
+        // (parent-less modelChange/thinkingLevelChange spliced into the chain).
+        let path_ids = crate::protocol::session::transcript_ancestry_ids(
+            &entries,
+            Some(effective_leaf.as_str()),
+        );
+        let mut path = Vec::with_capacity(path_ids.len());
+        for id in &path_ids {
+            if let Some(entry) = id_map.get(id.as_str()) {
                 path.push((*entry).clone());
-                current = entry.parent_id();
-            } else {
-                break;
             }
         }
-
-        path.reverse();
         Ok(path)
     }
 

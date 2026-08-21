@@ -4594,6 +4594,43 @@ mod slice_tests {
     }
 
     #[tokio::test]
+    async fn resume_rebuild_anchors_past_trailing_parentless_model_change() {
+        // ath36: attach restore MUST show full history. A cold materialize may
+        // append a parent-less `modelChange` at the JSONL tail; the resume leaf
+        // anchor must skip it instead of collapsing the ancestry walk to that
+        // row alone (empty / truncated transcript).
+        let mut entries = harness_sample_session_messages();
+        entries.push(SessionEntry::ModelChange(
+            crate::protocol::session::ModelChangeEntry {
+                base: crate::protocol::session::EntryBase {
+                    entry_type: "model_change".into(),
+                    id: "mc-tail".into(),
+                    parent_id: None,
+                    timestamp: 0,
+                },
+                provider: "fake".into(),
+                model_id: "fake/m".into(),
+            },
+        ));
+
+        let mut session = HostSession::new_product_ui_with_meta(
+            TestTerminal::new(80, 24),
+            "~/x".into(),
+            "Fake".into(),
+        );
+        let root = session.ui_root().expect("ui").clone();
+        session.apply_resume_session("sid-restored", entries);
+
+        let screen = root.borrow_mut().render(80);
+        let text = screen.join("\n");
+        assert!(
+            text.contains("hello") && text.contains("next"),
+            "resume transcript must show first and last user rows despite trailing \
+             parent-less modelChange; got:\n{text}"
+        );
+    }
+
+    #[tokio::test]
     async fn c1120_reload_preserves_session_message_count() {
         use crate::app::tui::commands::{PendingSlash, parse_slash_command};
 

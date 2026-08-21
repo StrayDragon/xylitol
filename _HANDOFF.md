@@ -6,7 +6,13 @@
 
 ---
 
-PS: c2307-fix-tui-attach-cold-restore 有点bug, 会导致resume 的session展示错位, 重复, 重影等, 需要进一步调研修复
+PS（2026-08-22 更新）: c2307 resume 展示错位/重复/重影 **已修复**。根因与修法：
+1. 冷物化 attach 时 `select_model` 无条件持久化 `modelChange`，进程内 leaf 为空 → 写出 `parentId=None` 的 bookkeeping 行；后续消息链穿过它 → resume 祖先行走断链（空 transcript / 只剩尾部几轮 / LLM 上下文截断）。
+   - 修复：`transcript_leaf_anchor` + `transcript_ancestry_ids`（protocol::session）——锚点跳过 bookkeeping、行走对「无父 metadata 断缝」定点接续（compaction 合法根不受影响）；store `get_branch` 与 TUI rebuild 共用。
+   - 止血：model/thinking 选择无变化不持久化；物化装配默认模型走 `restore_model`（source=restore，不落盘）。
+2. steer/follow-up 上行后用户行消失：wire `Event::MessageStart/End` 丢 `message` 载荷（违反 ati12），attach 客户端拿不到文本。
+   - 修复：wire 投影携带 `message: Option<Value>`（同 MessageUpdate 模式），TS bindings 已重生成。
+真机验证：污染会话 a961d074 resume 全 7 轮历史一次可见；steer 注入后用户气泡实时上行。
 
 ## 0. 给 Agent / 协作者
 

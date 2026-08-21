@@ -58,7 +58,22 @@ impl AgentCapabilities {
     pub async fn set_thinking_level(&mut self, level: String) -> Result<(), XyError> {
         let previous = self.thinking_level();
         self.with_models_mut(|mm| mm.set_thinking_level(level.clone()))?;
-        self.persist_thinking_level_change(previous, level).await;
+        // Persist only a real change: attach-time restore of the same level must
+        // not append a parent-less thinkingLevelChange row at the session tail.
+        // The select hook still observes every action (thw6).
+        if previous != level {
+            self.persist_thinking_level_change(previous, level).await;
+        } else if let Some(bus) = self.hook_bus.clone() {
+            observe_hook_sync(
+                &bus,
+                "thinking_level_select",
+                "",
+                serde_json::json!({
+                    "level": level,
+                    "previous": previous,
+                }),
+            );
+        }
         Ok(())
     }
 
@@ -127,6 +142,9 @@ impl AgentCapabilities {
     }
 
     /// Select a model and emit `model_select` with the given source (`set` | `cycle`).
+    ///
+    /// `source = "restore"` is composition-root assembly (attach-time default
+    /// binding): it persists nothing — the session already records its model.
     pub async fn select_model_with_source(
         &mut self,
         model_id: &str,
@@ -134,7 +152,13 @@ impl AgentCapabilities {
     ) -> Result<(), XyError> {
         let previous = self.current_model().map(|m| m.id.clone());
         self.with_models_mut(|mm| mm.select_model(model_id))?;
-        if let Some(ref sid) = self.session_id {
+        // Persist only a real user-driven change: attach-time default restore
+        // must not append a parent-less modelChange row that breaks resume
+        // projection. The select hook still observes every action (thw6).
+        if source != "restore"
+            && previous.as_deref() != Some(model_id)
+            && let Some(ref sid) = self.session_id
+        {
             let entry = SessionEntry::ModelChange(ModelChangeEntry {
                 base: EntryBase {
                     entry_type: "model_change".into(),

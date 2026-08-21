@@ -375,10 +375,7 @@ impl<T: Terminal> HostSession<T> {
         entries: Vec<SessionEntry>,
         editor_prefill: Option<String>,
     ) {
-        let leaf_id = entries
-            .iter()
-            .rev()
-            .find_map(|e| e.entry_id().map(str::to_string));
+        let leaf_id = crate::protocol::session::transcript_leaf_anchor(&entries, None);
         let travel = SessionTreeTravel {
             kind: crate::protocol::session::SessionTreeKind::MessageHistory,
             selected_id: child_id.to_string(),
@@ -472,10 +469,7 @@ impl<T: Terminal> HostSession<T> {
         // When true, seed ↑/↓ from prior sessions (session-new); else from `entries`.
         seed_as_new: bool,
     ) {
-        let leaf_id = entries
-            .iter()
-            .rev()
-            .find_map(|e| e.entry_id().map(str::to_string));
+        let leaf_id = crate::protocol::session::transcript_leaf_anchor(&entries, None);
         let travel = SessionTreeTravel {
             kind: crate::protocol::session::SessionTreeKind::MessageHistory,
             selected_id: session_id.to_string(),
@@ -501,11 +495,7 @@ impl<T: Terminal> HostSession<T> {
 
     /// Apply `/debug <scene>` load: rebuild transcript and optional footer model (c710).
     pub fn apply_debug_scene(&mut self, load: crate::app::core::driver::DebugSceneLoad) {
-        let leaf_id = load
-            .entries
-            .iter()
-            .rev()
-            .find_map(|e| e.entry_id().map(str::to_string));
+        let leaf_id = crate::protocol::session::transcript_leaf_anchor(&load.entries, None);
         let travel = SessionTreeTravel {
             kind: crate::protocol::session::SessionTreeKind::MessageHistory,
             selected_id: leaf_id.clone().unwrap_or_else(|| load.session_id.clone()),
