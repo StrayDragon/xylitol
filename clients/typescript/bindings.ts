@@ -34,9 +34,9 @@ export type Event = { type: "error"; id?: string | null; kind?: string | null; m
 /**  Turn ended. */
 { type: "turn_end"; turn_index: number } |
 /**  Message started. */
-{ type: "message_start"; role: string } |
+{ type: "message_start"; role: string; message?: any | null } |
 /**  Message ended. */
-{ type: "message_end"; role: string } |
+{ type: "message_end"; role: string; message?: any | null } |
 /**  Streaming message update (replaces previous text/thinking for this message). */
 { type: "message_update"; text: string; thinking?: string | null; message?: any | null } |
 /**  Streaming tool execution output. */
