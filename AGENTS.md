@@ -31,6 +31,7 @@
 - 产品心智图：`docs/architecture/`；候补方向：`docs/roadmaps/`（不维护进度列）；文档闭环：`docs/AGENTS.md`。
 - TUI chrome / 滚动区固定词（下轮预告、滚动提示、尾随…）：`docs/architecture/TUI信息面与chrome词汇.md`（面约束见 `src/app/tui/AGENTS.md`）。
 - 交互设计稿：仓库顶层 `designing/`（现 `tui/`，以后可加其它端；`just open-designing`）。**代码是运行时真值**；稿是对照辅助。无独立快捷键设计。
+- **产品 TUI attach 迁移（临时）**：<!-- TUI_MIGRATED_TODO_REQUIRED -->根 [`_TUI_MIGRATED_TODO.md`](_TUI_MIGRATED_TODO.md) 是对拍未完成前的清单，**禁止**挪进 `llmanspec/` / `docs/`。`just qa` 经 `scripts/check_tui_migrated_todo.py`：P0/P1 仍有未勾项时本文件与本标记 MUST 同时存在。收口后 **同一提交**删该 md、本条、以及该脚本。
 
 ## 工作原则
 

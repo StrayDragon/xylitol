@@ -9,6 +9,8 @@ use crate::protocol::Command;
 
 pub(super) async fn open<T: Terminal>(session: &mut HostSession<T>, driver: &mut dyn XyDriver) {
     // c1780: busy Allow — open list; selection still NextTurn via SetModel path.
+    // Attach caches models asynchronously; never block the tick on HTTP.
+    let _ = driver.refresh_surface_caches().await;
     match dispatch(driver, Command::GetAvailableModels { id: None }).await {
         Ok(DispatchOutcome::Models(models)) => {
             let current = driver.current_model().map(|m| m.id);

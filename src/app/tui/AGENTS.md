@@ -29,6 +29,8 @@
 
 **与未来 Web 的公共体验（跨面）**：凡 TUI 与 Web **共有**的能力（会话、改道、折叠/展开类减噪、即时设置等），用户学习模型与动作语义 MUST 同源——理解成本一致；快捷键 / 发现方式 SHOULD 尽量同构（允许 OS 修饰键差异与 Web 额外点击）。**仅**某一面独有的能力才可另起交互。约束板：[`docs/roadmaps/Web与TUI同源.md`](../../../docs/roadmaps/Web与TUI同源.md)；落地心智：[`docs/architecture/库与多客户端.md`](../../../docs/architecture/库与多客户端.md)。改公共交互前先对齐全套面，禁止静默开出「只教 TUI」的第二套故事。长历史 activity 折叠（`activity.expandNearest` / `collapseNearest`）TUI 已交付；Web 未开闸，不在本面预埋第二套 id。约束仍见 roadmap，不把未开闸面写成现行 MUST。
 
+**attach 对拍未完成**：仓库根 [`_TUI_MIGRATED_TODO.md`](../../../_TUI_MIGRATED_TODO.md)（闸在根 `AGENTS.md` `TUI_MIGRATED_TODO_REQUIRED`）。改本面 attach 行为先对那份清单；未勾完不得删该文件。
+
 ## 硬约束
 
 - 滚动提示 / 导航瞬时提示：默认 **尾随**（跟底可见、保 paint-cache）。**顶插不是绝对禁令**——顶层原则是高效绘制 + 用户跟底仍能合理看见关键反馈；仅当有明确理由（且接受缓存失效 / 视口外风险）才可顶插，须在 design/提案写清。瞬时确认优先页脚 / 状态条 / **下轮预告** / 槽，不要堆滚动提示。

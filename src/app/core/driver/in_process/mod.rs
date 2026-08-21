@@ -236,6 +236,11 @@ impl XyInProcessDriver {
         self.agent.loaded_skills()
     }
 
+    #[cfg(test)]
+    pub(crate) fn agent_cwd_for_test(&self) -> String {
+        self.agent.cwd().to_string()
+    }
+
     fn skill_catalog_pairs(&self) -> Vec<(String, String)> {
         self.agent
             .loaded_skills()
