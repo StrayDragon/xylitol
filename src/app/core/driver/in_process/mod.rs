@@ -260,6 +260,15 @@ impl XyInProcessDriver {
     pub(crate) fn system_prompt_for_test(&self) -> Option<String> {
         self.agent.system_prompt().map(String::from)
     }
+
+    /// Composition-root assembly: bind the configured default model without
+    /// persisting a `modelChange` row (attach-time restore, not a user change).
+    pub async fn restore_model(&mut self, model_id: &str) -> Result<(), XyDriverError> {
+        self.agent
+            .select_model_with_source(model_id, "restore")
+            .await
+            .map_err(XyDriverError::from)
+    }
 }
 
 fn bind_session_or_err(

@@ -242,6 +242,22 @@ impl SessionEntry {
         self.base().and_then(|b| b.parent_id.as_deref())
     }
 
+    /// True when this entry kind participates in the message chain and may
+    /// anchor transcript projection / tree travel (leaf).
+    ///
+    /// Bookkeeping rows (`session` header / `modelChange` /
+    /// `thinkingLevelChange`) never anchor: they project no transcript rows and
+    /// cold materialize may append them before any leaf is known (parent-less
+    /// tail), which would collapse an ancestry walk to that row alone.
+    pub fn anchors_transcript(&self) -> bool {
+        !matches!(
+            self,
+            SessionEntry::Header(_)
+                | SessionEntry::ModelChange(_)
+                | SessionEntry::ThinkingLevelChange(_)
+        )
+    }
+
     /// Convert a persisted entry into an [`AgentMessage`] for context / ReAct seed.
     ///
     /// Includes: Message (all roles including nested `bashExecution`), compaction /

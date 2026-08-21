@@ -718,4 +718,133 @@ mod tests {
             }
         );
     }
+
+    fn model_meta(
+        id: &str,
+        thinking: bool,
+        levels: &[&str],
+    ) -> crate::protocol::model::XyModelMeta {
+        crate::protocol::model::XyModelMeta {
+            id: id.into(),
+            config: crate::protocol::model::XyModelConfig {
+                kind: crate::protocol::model::XyModelKind::Fake,
+                api_key: String::new(),
+                model: id.into(),
+                base_url: None,
+                api: None,
+                compat: None,
+            },
+            display_name: id.into(),
+            thinking,
+            context_window: 0,
+            api: String::new(),
+            provider: "fake".into(),
+            cost_input: 0.0,
+            cost_output: 0.0,
+            cost_cache_read: 0.0,
+            cost_cache_write: 0.0,
+            max_tokens: 0,
+            thinking_levels: levels.iter().map(|s| (*s).to_string()).collect(),
+            thinking_level_map: Default::default(),
+        }
+    }
+
+    fn make_session_with_models(
+        models: Vec<crate::protocol::model::XyModelMeta>,
+    ) -> AgentCapabilities {
+        let mgr = SessionManager::new(tempfile::tempdir().unwrap().path().join("sessions"));
+        let store: std::sync::Arc<dyn XySessionStore> = std::sync::Arc::new(mgr);
+        let sink: std::sync::Arc<dyn XyEventSink> =
+            std::sync::Arc::new(crate::infra::event::EventBus::new());
+        let mut registry = ModelRegistry::new(std::sync::Arc::new(
+            crate::infra::config::value::InfraSecretResolver::new(),
+        ));
+        for m in models {
+            registry.register(m);
+        }
+        AgentCapabilities::new(
+            registry,
+            ToolSet::from_iter(crate::infra::tools::default_tools()),
+            store.clone(),
+            sink,
+            Some("you are helpful".into()),
+            Vec::new(),
+            Vec::new(),
+            ".".into(),
+            None,
+            std::sync::Arc::new(crate::infra::provider::factory::build_provider),
+            crate::infra::permission::allow_all_permission(),
+            QueueMode::default(),
+            QueueMode::default(),
+            None,
+        )
+    }
+
+    #[tokio::test]
+    async fn select_model_same_id_does_not_persist_model_change() {
+        use crate::protocol::session::SessionEntry;
+        let sid = "cap-modelchange-guard";
+        let mut session = make_session_with_models(vec![model_meta("m-a", true, &["off", "high"])]);
+        session.set_session(sid.into());
+
+        session.select_model("m-a").await.unwrap();
+        // Re-selecting the same id (attach-time default restore) must not append
+        // a parent-less modelChange row that breaks resume projection.
+        session.select_model("m-a").await.unwrap();
+
+        let entries = session.session_store().load_entries(sid).await.unwrap();
+        let changes = entries
+            .iter()
+            .filter(|e| matches!(e, SessionEntry::ModelChange(_)))
+            .count();
+        assert_eq!(
+            changes, 1,
+            "expected exactly one modelChange, got {changes}"
+        );
+    }
+
+    #[tokio::test]
+    async fn restore_source_select_persists_nothing() {
+        use crate::protocol::session::SessionEntry;
+        let sid = "cap-modelchange-restore";
+        let mut session = make_session_with_models(vec![model_meta("m-a", true, &["off", "high"])]);
+        session.set_session(sid.into());
+        session.ensure_session(sid, None).await.unwrap();
+
+        // Composition-root assembly (fresh writer, current = None): restoring the
+        // configured default must not write a parent-less modelChange tail.
+        session
+            .select_model_with_source("m-a", "restore")
+            .await
+            .unwrap();
+
+        let entries = session.session_store().load_entries(sid).await.unwrap();
+        assert!(
+            entries
+                .iter()
+                .all(|e| !matches!(e, SessionEntry::ModelChange(_))),
+            "restore select MUST NOT persist modelChange, got {entries:?}"
+        );
+    }
+
+    #[tokio::test]
+    async fn set_thinking_level_same_value_does_not_persist_entry() {
+        use crate::protocol::session::SessionEntry;
+        let sid = "cap-thinking-guard";
+        let mut session = make_session_with_models(vec![model_meta("m-a", true, &["off", "high"])]);
+        session.set_session(sid.into());
+        session.select_model("m-a").await.unwrap();
+
+        // Default level is the last declared one ("high"); make one real change
+        // then repeat it — only the real change may persist.
+        session.set_thinking_level("off".into()).await.unwrap();
+        session.set_thinking_level("off".into()).await.unwrap();
+
+        let entries = session.session_store().load_entries(sid).await.unwrap();
+        let changes = entries
+            .iter()
+            .filter(|e| matches!(e, SessionEntry::ThinkingLevelChange(_)))
+            .count();
+        assert_eq!(changes, 1, "expected exactly one thinkingLevelChange");
+    }
 }

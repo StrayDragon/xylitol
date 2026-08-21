@@ -200,21 +200,7 @@ pub fn travel_history_note(entries: &[SessionEntry], travel: &SessionTreeTravel)
 }
 
 pub(crate) fn ancestry_path_ids(entries: &[SessionEntry], leaf_id: Option<&str>) -> Vec<String> {
-    let Some(mut cur) = leaf_id.map(str::to_string) else {
-        return Vec::new();
-    };
-    let mut path = vec![cur.clone()];
-    while let Some(parent) = entries
-        .iter()
-        .find(|e| e.entry_id() == Some(cur.as_str()))
-        .and_then(|e| e.parent_id())
-        .map(str::to_string)
-    {
-        path.push(parent.clone());
-        cur = parent;
-    }
-    path.reverse();
-    path
+    crate::protocol::session::transcript_ancestry_ids(entries, leaf_id)
 }
 
 /// Truncate opaque ids for the travel banner (full UUID path overflows COLS and
@@ -1047,6 +1033,83 @@ mod tests {
             ),
             "got: {:?}",
             ui.entries
+        );
+    }
+
+    #[test]
+    fn rebuild_splices_parentless_bookkeeping_seam_in_chain() {
+        // Historical pollution: messages chained THROUGH a parent-less
+        // modelChange. Resume rebuild must show the full history, not just the
+        // rows after the seam.
+        let entries = vec![
+            SessionEntry::Message(MessageEntry {
+                base: EntryBase {
+                    entry_type: "message".into(),
+                    id: "u1".into(),
+                    parent_id: None,
+                    timestamp: 0,
+                },
+                message: fixture_message_json("user", "first"),
+            }),
+            SessionEntry::Message(MessageEntry {
+                base: EntryBase {
+                    entry_type: "message".into(),
+                    id: "a1".into(),
+                    parent_id: Some("u1".into()),
+                    timestamp: 0,
+                },
+                message: fixture_message_json("assistant", "reply one"),
+            }),
+            SessionEntry::ModelChange(crate::protocol::session::ModelChangeEntry {
+                base: EntryBase {
+                    entry_type: "model_change".into(),
+                    id: "mc_seam".into(),
+                    parent_id: None,
+                    timestamp: 0,
+                },
+                provider: "fake".into(),
+                model_id: "fake/m".into(),
+            }),
+            SessionEntry::Message(MessageEntry {
+                base: EntryBase {
+                    entry_type: "message".into(),
+                    id: "u2".into(),
+                    parent_id: Some("mc_seam".into()),
+                    timestamp: 0,
+                },
+                message: fixture_message_json("user", "second"),
+            }),
+            SessionEntry::Message(MessageEntry {
+                base: EntryBase {
+                    entry_type: "message".into(),
+                    id: "a2".into(),
+                    parent_id: Some("u2".into()),
+                    timestamp: 0,
+                },
+                message: fixture_message_json("assistant", "reply two"),
+            }),
+        ];
+        let leaf = crate::protocol::session::transcript_leaf_anchor(&entries, None);
+        let travel = SessionTreeTravel {
+            kind: crate::protocol::session::SessionTreeKind::MessageHistory,
+            selected_id: leaf.clone().unwrap_or_default(),
+            leaf_id: leaf,
+            editor_text: None,
+        };
+        let mut ui = UiModel::default();
+        rebuild_scrollback_from_travel(&mut ui, &entries, &travel);
+        let users: Vec<_> = ui
+            .entries
+            .iter()
+            .filter_map(|e| match e {
+                UiEntry::User { text } => Some(text.as_str()),
+                _ => None,
+            })
+            .collect();
+        assert_eq!(
+            users,
+            vec!["first", "second"],
+            "seam splice must keep pre-seam user rows, got {users:?}"
         );
     }
 }
