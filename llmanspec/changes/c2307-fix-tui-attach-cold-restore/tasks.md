@@ -4,13 +4,13 @@
 
 ## 1. 合约落地（Specs landing）
 
-- [ ] 1.1 `change start` 绑定 `sdd/c2307-fix-tui-attach-cold-restore`（规划壳已提交默认分支，树干净）
-- [ ] 1.2 live specs：`server-core` 新增 `w7` 冷恢复投影（快照 unary 是 transcript 投影源；journal 重放 MUST NOT 作冷恢复来源；sr4/w5/w6 不动）；`app-tui-host` 新增 `ath36` attach 恢复渲染（一次重建、完整历史、Idle、无假 spinner；冷订窗磁带不渲染）
-- [ ] 1.3 commit Specs landing；`llman sdd validate c2307-fix-tui-attach-cold-restore --strict --no-check --no-interactive` 结构过闸
+- [x] 1.1 `change start` 绑定 `sdd/c2307-fix-tui-attach-cold-restore`（规划壳已提交默认分支，树干净）
+- [x] 1.2 live specs：`server-core` 新增 `w8` 冷恢复投影（快照 unary 是 transcript 投影源；journal 重放 MUST NOT 作冷恢复来源；sr4/w5/w6 不动；`w7` 已被 WS 事件推送占用故顺延）；`app-tui-host` 新增 `ath36` attach 恢复渲染（一次重建、完整历史、Idle、无假 spinner；冷订窗磁带不渲染）
+- [x] 1.3 commit Specs landing；结构过闸（`readyToImplement=true`）
 
 ## 2. server-core：w7 场景（Host unary seam）
 
-- [ ] 2.1 [blocked-by: 1.3] 失败测/场景：`server-ws.feature` 挂 `@req:w7`——会话有历史条目时，冷订（last_seq=0）后 `get_messages` 返回全量条目一次投影
+- [ ] 2.1 [blocked-by: 1.3] 失败测/场景：`server-ws.feature` 挂 `@req:w8`——会话有历史条目时，冷订（last_seq=0）后 `get_messages` 返回全量条目一次投影
 - [ ] 2.2 场景：journal 重放窗内的实况磁带事件不改变 `get_messages` 快照结果（快照与重放互不污染）
 - [ ] 2.3 若场景暴露真实缺口（如投影缺失/重复），在本任务内修码至绿；`cargo test --test bdd` 过
 
