@@ -846,6 +846,15 @@ async fn seed_w8_history(server_test: &ServerTest) {
 
 async fn snapshot_s0(server_test: &ServerTest) {
     let client = HttpWsClient::new(server_test.base_url());
+    // 冷订进入恢复窗（last_seq=0），与真实 attach 一致。
+    let subscribed = client
+        .unary(
+            "subscribe",
+            serde_json::json!({ "session_id": "s0", "last_seq": 0 }),
+        )
+        .await
+        .expect("subscribe");
+    assert!(subscribed.ok, "{subscribed:?}");
     let switched = client
         .unary("switch_session", serde_json::json!({ "session_id": "s0" }))
         .await
@@ -925,11 +934,10 @@ fn t_w8_unpolluted(server_test: &ServerTest) {
 }
 
 #[then("断线续传语义仍按 sr4 从 last_seq+1 重放")]
-fn t_w8_sr4_intact(server_test: &ServerTest) {
+async fn t_w8_sr4_intact(server_test: &ServerTest) {
     let host = server_test.host.borrow().as_ref().expect("host").clone();
-    let slot = futures::executor::block_on(host.slot("s0"));
-    let replayed =
-        futures::executor::block_on(async { slot.journal.lock().await.replay_from(0).unwrap() });
+    let slot = host.slot("s0").await;
+    let replayed = slot.journal.lock().await.replay_from(0).unwrap();
     let seqs: Vec<u64> = replayed.iter().map(|(s, _)| *s).collect();
     assert_eq!(
         seqs.first().copied(),
