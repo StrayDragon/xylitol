@@ -5,39 +5,41 @@ depends_on:
 
 # attach 冷恢复：Host 快照投影，禁止 journal 实况回放
 
-产品 TUI 是 **client**；会话 JSONL / 写者 / journal 在 **Host**。`--session` 恢复长历史时，attach 用 `last_seq=0` 订阅，把 EventJournal 里的 AgentStart / 文本增量 / AgentEnd **当本轮实况**灌进 TUI，spinner 会转、正文会像打字机从头播一遍。本票只记方向，落实走 propose。
+产品 TUI 是 **client**；会话 JSONL / 写者 / journal 在 **Host**。长历史会话的恢复（CLI `--session` 启动、TUI 内 Resume 切换）必须走 Host 消息快照**一次**重建 transcript，而不是把 EventJournal 里的实况回合磁带当 live 事件逐条播放。
 
 ## Why
 
-c2306 把 mux 常驻和 `subscribe(last_seq)` 续联做对了，但冷恢复和断线续传共用同一条「journal 全量当 live event」路径。
+c2306 交付了 mux 常驻与 `subscribe(last_seq)` 断线续传（sr4/w5/w6），但**冷订恢复**与续传共用同一条「journal 全量当 live event」路径：
 
-- TUI **没有**（也不该有）本机 JSONL。快照必须来自 Host unary（`get_messages` / 等价 entries），不是 TUI 读盘。
-- Journal 是本进程 **实况回合磁带**（delta、thinking、AgentStart），不是 transcript 投影源。
-- 用「卡死等到全部画完」藏回放是错的：仍然在逐条当 live 步进，只是挡住输入；长会话更慢。
+- Journal 是本进程实况回合磁带（TextDelta、thinking、AgentStart/End）。把它当实况播放 = 长会话恢复时 spinner 转、正文像打字机重演整场生成。
+- 客户端没有（也不应有）Host 的 JSONL；transcript 投影源只能是 Host 消息快照。
+- 「卡死输入等回放画完」不是修复——仍是逐条当实况步进，只是挡住输入。
 
-## What Changes（草案，未拍板）
+现状代码事实（2026-08-21）：attach 侧已有 `get_messages` 一次投影（CLI `--session` 与 Resume 切换都走它），冷订窗口内客户端丢弃 Agent 实况磁带；但该语义**无合约**（specs 只钉了 sr4 续传与 resync），且快照与订阅流之间的时序关系未定义。
 
-- 冷 attach / `--session` / 空闲切会话：用 Host 消息快照 **一次**重建 transcript（现有 `apply_cli_restored_session` 一类），**MUST NOT** 把历史 journal 当实况 Agent 事件播放。
-- `subscribe`：空闲恢复跳过历史磁带（例如订到当前 `max_seq`，或客户端丢弃恢复窗内的 Agent* 实况）；journal 重放 **仅**留给回合中途断线（`w6` / `last_seq+1`）。
-- Loading 中间态：仅当 Host 快照 unary 本身慢（大 JSONL）时 MAY 加；**禁止**用 loading 掩盖 live replay。
-- 对拍：同一长会话，InProcess 与 HttpWs 都应一次出现完整历史、Idle、无假 spinner。
+## What Changes
 
-## 开放决策（propose 时深挖）
+- **恢复投影合约**：冷恢复（`--session` 启动、空闲切换会话）用 Host 消息快照**一次**重建 transcript；MUST NOT 把恢复窗内的 journal 实况磁带当 Agent 事件播放。对拍口径：同一长会话，attach 与同进程恢复都应一次出现完整历史、Idle、无假 spinner。
+- **冷订 vs 续传分岔**：`subscribe(last_seq=0)` 的恢复语义与 `last_seq>0` 续传（sr4）明确分岔；环形缓冲截断仍走 `session/resync_required`（w5/w6）不变。
+- **快照与实况流的时序**：定义快照 unary 与 mux 订阅的应用顺序约束，避免恢复窗内丢增量或重播。
 
-- 跳过回放：Host 侧 `subscribe` 对冷订忽略磁带 vs 客户端忽略 vs 专用 `resume` 语义。
-- 与 `session/resync_required` / `w6` 全量再订如何分岔（冷恢复 vs 环形缓冲截断）。
-- 快照形状：现有 `get_messages` 是否够，要不要带 `seq` 游标以免快照后丢增量。
-- 大会话：分页 / 折叠 / 先投影 leaf 路径再补，是否本票。
+## 开放决策（design 裁决）
 
-## Capabilities（拟）
+- 冷订跳过磁带的归属：Host 侧忽略 vs 客户端丢弃 vs 订阅携带恢复游标。
+- 快照形状：现 `get_messages` 是否足够，是否需要 seq 游标衔接快照后的增量。
 
-- `app-tui-host` / `app-tui-input`（恢复投影 vs 实况流）
-- `server-core` / `protocol-app`（subscribe 冷订 vs 续传）
+## Capabilities
+
+- `server-core`：冷订恢复与 sr4 续传的分岔、快照投影的线语义
+- `app-tui-host`：attach 恢复投影 vs 实况流、无假 spinner 口径
 
 ## Impact
 
-远程 attach（JSONL 只在 Host）也能秒开长会话，体感对齐旧同进程 restore，而不是重演整场生成。
+远程 attach（JSONL 只在 Host）秒开长会话：一次出全文、Idle、无假 spinner，体感对齐旧同进程 restore。
 
 ## 非目标
 
-c2306 已交付的 MCP 头卡 / 队列条 / 定稿闸 / mux 常驻；c2315 一条命令；在 TUI 机器上读 Host 的 JSONL 文件；把 PTY 升成 `just qa` 硬闸。
+- 改 ReAct / 工具闸；改 sr4 断线续传与 w5/w6 resync 既有语义
+- 在 TUI 机器上读 Host 的 JSONL 文件
+- 分页 / 折叠加载超大会话（先整段一次投影）
+- 把 PTY 升级为 `just qa` 硬闸
