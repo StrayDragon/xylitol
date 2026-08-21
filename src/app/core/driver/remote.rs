@@ -27,6 +27,17 @@ use super::types::{
     estimate_from_session_entries,
 };
 
+/// Attach pull cadence: busy TUI ticks at 16ms; connecting labels change slowly.
+const REMOTE_MCP_POLL_PULL: Duration = Duration::from_millis(250);
+
+/// Writer still connecting / unfrozen — attach may pull a snapshot.
+fn remote_mcp_poll_needs_pull(snap: &LoadedResourcesSnapshot) -> bool {
+    if snap.mcp_configured == 0 {
+        return false;
+    }
+    !(snap.tools_table_frozen && snap.mcp_bootstrap_complete && snap.mcp_connecting_label.is_none())
+}
+
 /// Notify the product TUI of mux reverse-RPC (approval/question).
 pub type ReverseRpcNotify = Arc<dyn Fn(String, String, Value) + Send + Sync>;
 
@@ -87,11 +98,22 @@ pub struct XyRemoteDriver<C = HttpWsClient> {
     downlink: SharedDownlink,
     resync_needed: Arc<AtomicBool>,
     subscribed_ok: Arc<AtomicBool>,
+    /// When true, mux drops Agent/Turn/tool tape from a `last_seq=0` subscribe
+    /// (cold attach). Cleared on `session/subscribed`. Mid-turn reconnect uses
+    /// `last_seq>0` and keeps replay.
+    skip_cold_replay: Arc<AtomicBool>,
+    /// TUI process cwd; injected on every unary so Host can bind the session workspace.
+    client_cwd: String,
     cached_model: Arc<std::sync::Mutex<Option<ModelInfo>>>,
     cached_models: Arc<std::sync::Mutex<Option<Vec<ModelInfo>>>>,
     cached_commands: Arc<std::sync::Mutex<Option<Vec<CommandInfo>>>>,
     cached_queue: Arc<std::sync::Mutex<QueueStats>>,
     cached_resources: Arc<std::sync::Mutex<LoadedResourcesSnapshot>>,
+    cached_skills: Arc<std::sync::Mutex<Vec<(String, String)>>>,
+    cached_gate_notice: Arc<std::sync::Mutex<Option<String>>>,
+    gate_notice_consumed: Arc<AtomicBool>,
+    /// Last attach pull of `loaded_resources` (Remote poll is not 16Hz unary).
+    last_mcp_poll_at: std::sync::Mutex<Option<std::time::Instant>>,
 }
 
 #[cfg(feature = "server")]
@@ -139,11 +161,19 @@ where
             downlink: SharedDownlink::new(),
             resync_needed: Arc::new(AtomicBool::new(false)),
             subscribed_ok: Arc::new(AtomicBool::new(false)),
+            skip_cold_replay: Arc::new(AtomicBool::new(false)),
+            client_cwd: std::env::current_dir()
+                .map(|p| p.to_string_lossy().into_owned())
+                .unwrap_or_else(|_| ".".into()),
             cached_model: Arc::new(std::sync::Mutex::new(None)),
             cached_models: Arc::new(std::sync::Mutex::new(None)),
             cached_commands: Arc::new(std::sync::Mutex::new(None)),
             cached_queue: Arc::new(std::sync::Mutex::new(QueueStats::default())),
             cached_resources: Arc::new(std::sync::Mutex::new(LoadedResourcesSnapshot::default())),
+            cached_skills: Arc::new(std::sync::Mutex::new(Vec::new())),
+            cached_gate_notice: Arc::new(std::sync::Mutex::new(None)),
+            gate_notice_consumed: Arc::new(AtomicBool::new(false)),
+            last_mcp_poll_at: std::sync::Mutex::new(None),
         }
     }
 
@@ -167,6 +197,56 @@ where
     fn cache_model(&self, model: ModelInfo) {
         if let Ok(mut cached) = self.cached_model.lock() {
             *cached = Some(model);
+        }
+    }
+
+    fn cache_model_unset(&self) {
+        if let Ok(mut cached) = self.cached_model.lock() {
+            *cached = None;
+        }
+    }
+
+    /// True for Agent/Turn/stream tape that a cold `last_seq=0` subscribe must not
+    /// paint as live (c2307). Queue / error / chrome facts still pass.
+    fn is_cold_replay_tape(ev: &XyEvent) -> bool {
+        matches!(
+            ev,
+            XyEvent::AgentStart { .. }
+                | XyEvent::AgentEnd { .. }
+                | XyEvent::TurnStart { .. }
+                | XyEvent::TurnEnd { .. }
+                | XyEvent::MessageStart { .. }
+                | XyEvent::MessageUpdate { .. }
+                | XyEvent::MessageEnd { .. }
+                | XyEvent::TextDelta(_)
+                | XyEvent::ThinkingDelta(_)
+                | XyEvent::ToolExecutionStart { .. }
+                | XyEvent::ToolExecutionUpdate { .. }
+                | XyEvent::ToolExecutionEnd { .. }
+                | XyEvent::CompactionStart { .. }
+                | XyEvent::CompactionEnd { .. }
+                | XyEvent::AutoRetryStart { .. }
+                | XyEvent::AutoRetryEnd { .. }
+        )
+    }
+
+    fn apply_resources_cache(&self, snap: LoadedResourcesSnapshot) {
+        let skills: Vec<(String, String)> = snap
+            .skill_names
+            .iter()
+            .map(|name| (name.clone(), String::new()))
+            .collect();
+        if let Ok(mut cached) = self.cached_skills.lock() {
+            *cached = skills;
+        }
+        if let Some(notice) = snap.mcp_gate_notice.as_ref()
+            && !self.gate_notice_consumed.load(Ordering::SeqCst)
+            && let Ok(mut cached) = self.cached_gate_notice.lock()
+        {
+            *cached = Some(notice.clone());
+        }
+        if let Ok(mut cached) = self.cached_resources.lock() {
+            *cached = snap;
         }
     }
 
@@ -194,7 +274,9 @@ where
         let life = self.session_life.clone();
         let resync_needed = self.resync_needed.clone();
         let subscribed_ok = self.subscribed_ok.clone();
+        let skip_cold_replay = self.skip_cold_replay.clone();
         let cached_queue = self.cached_queue.clone();
+        let client_cwd = self.client_cwd.clone();
         tokio::spawn(async move {
             let mut backoff = Duration::from_millis(200);
             loop {
@@ -235,12 +317,14 @@ where
                             }
                         }
                         let seq = last_seq.load(Ordering::SeqCst);
+                        skip_cold_replay.store(seq == 0, Ordering::SeqCst);
                         if let Err(e) = host
                             .unary(
                                 "subscribe",
                                 serde_json::json!({
                                     "session_id": session_id,
                                     "last_seq": seq,
+                                    "cwd": client_cwd,
                                 }),
                             )
                             .await
@@ -284,7 +368,17 @@ where
                                                     follow_up_count: *follow_up_count,
                                                 };
                                             }
+                                            if skip_cold_replay.load(Ordering::SeqCst)
+                                                && Self::is_cold_replay_tape(&agent_event)
+                                            {
+                                                continue;
+                                            }
                                             downlink.push(agent_event);
+                                        }
+                                        Some(Ok(RpcMessage::ServerRequest { method, .. }))
+                                            if method == "session/subscribed" =>
+                                        {
+                                            skip_cold_replay.store(false, Ordering::SeqCst);
                                         }
                                         Some(Ok(RpcMessage::ServerRequest { method, .. }))
                                             if method == "session/resync_required" =>
@@ -297,6 +391,7 @@ where
                                                     serde_json::json!({
                                                         "session_id": session_id,
                                                         "last_seq": 0,
+                                                        "cwd": client_cwd,
                                                     }),
                                                 )
                                                 .await;
@@ -351,6 +446,8 @@ where
                 && let Ok(model) = Self::model_from_value(m)
             {
                 self.cache_model(model);
+            } else {
+                self.cache_model_unset();
             }
         }
         if let Ok(data) = self
@@ -398,9 +495,7 @@ where
             Ok(data) => serde_json::from_value(data).unwrap_or_default(),
             Err(_) => LoadedResourcesSnapshot::default(),
         };
-        if let Ok(mut cached) = self.cached_resources.lock() {
-            *cached = snap;
-        }
+        self.apply_resources_cache(snap);
         Ok(())
     }
 
@@ -416,6 +511,16 @@ where
             map.insert(
                 "session_id".into(),
                 serde_json::Value::String(self.session_id.clone()),
+            );
+        }
+        let has_cwd = map
+            .get("cwd")
+            .and_then(|v| v.as_str())
+            .is_some_and(|s| !s.is_empty());
+        if !has_cwd {
+            map.insert(
+                "cwd".into(),
+                serde_json::Value::String(self.client_cwd.clone()),
             );
         }
         payload
@@ -521,6 +626,10 @@ where
         self.refresh_chrome_caches().await
     }
 
+    async fn refresh_surface_caches(&mut self) -> Result<(), XyDriverError> {
+        self.refresh_chrome_caches().await
+    }
+
     fn drain_idle_events(&mut self) -> Vec<XyEvent> {
         self.downlink.drain()
     }
@@ -550,18 +659,28 @@ where
         let session_id = self.session_id.clone();
         let leaf_entry_id = self.leaf_entry_id.clone();
         let downlink = self.downlink.clone();
+        let client_cwd = self.client_cwd.clone();
+        let model_id = self.current_model().map(|m| m.id);
+        let thinking_level = self
+            .thinking
+            .lock()
+            .ok()
+            .map(|t| t.clone())
+            .filter(|t| !t.is_empty());
 
         let stream = async_stream::stream! {
-            if let Err(e) = host
-                .unary(
-                    "prompt",
-                    serde_json::json!({
-                        "message": prompt,
-                        "session_id": session_id,
-                    }),
-                )
-                .await
-            {
+            let mut body = serde_json::json!({
+                "message": prompt,
+                "session_id": session_id,
+                "cwd": client_cwd,
+            });
+            if let Some(id) = model_id {
+                body["model_id"] = serde_json::Value::String(id);
+            }
+            if let Some(level) = thinking_level {
+                body["thinking_level"] = serde_json::Value::String(level);
+            }
+            if let Err(e) = host.unary("prompt", body).await {
                 yield XyEvent::error_msg(format!("prompt failed: {e}"));
                 return;
             }
@@ -633,47 +752,20 @@ where
     }
 
     fn current_model(&self) -> Option<ModelInfo> {
-        if let Ok(cached) = self.cached_model.lock()
-            && cached.is_some()
-        {
-            return cached.clone();
-        }
-        self.block_on(async {
-            let data = self.unary("get_state", serde_json::json!({})).await?;
-            self.update_leaf_from_state(&data);
-            match data.get("model") {
-                Some(m) if !m.is_null() => Self::model_from_value(m).map(Some),
-                _ => Ok(None),
-            }
-        })
-        .ok()
-        .flatten()
-        .inspect(|model| self.cache_model(model.clone()))
+        // Product TUI ticks / footer sync call this synchronously. HTTP `block_on`
+        // here freezes input (and `/model`) while MCP or Host unary is in flight.
+        self.cached_model
+            .lock()
+            .ok()
+            .and_then(|cached| cached.clone())
     }
 
     fn available_models(&self) -> Vec<ModelInfo> {
-        if let Ok(cached) = self.cached_models.lock()
-            && let Some(models) = cached.as_ref()
-        {
-            return models.clone();
-        }
-        self.block_on(async {
-            let data = self
-                .unary("get_available_models", serde_json::json!({}))
-                .await?;
-            let arr = data
-                .get("models")
-                .and_then(|m| m.as_array())
-                .cloned()
-                .unwrap_or_default();
-            arr.iter().map(Self::model_from_value).collect()
-        })
-        .inspect(|models: &Vec<ModelInfo>| {
-            if let Ok(mut cached) = self.cached_models.lock() {
-                *cached = Some(models.clone());
-            }
-        })
-        .unwrap_or_default()
+        self.cached_models
+            .lock()
+            .ok()
+            .and_then(|cached| cached.clone())
+            .unwrap_or_default()
     }
 
     async fn select_model(&mut self, model_id: &str) -> Result<ModelInfo, XyDriverError> {
@@ -960,38 +1052,11 @@ where
     }
 
     fn get_commands(&self) -> Vec<CommandInfo> {
-        if let Ok(cached) = self.cached_commands.lock()
-            && let Some(cmds) = cached.as_ref()
-        {
-            return cmds.clone();
-        }
-        self.block_on(async {
-            let data = self.unary("get_commands", serde_json::json!({})).await?;
-            let arr = data
-                .get("commands")
-                .and_then(|c| c.as_array())
-                .cloned()
-                .unwrap_or_default();
-            Ok(arr
-                .iter()
-                .filter_map(|c| {
-                    Some(CommandInfo {
-                        name: c.get("name")?.as_str()?.to_string(),
-                        description: c
-                            .get("description")
-                            .and_then(|d| d.as_str())
-                            .unwrap_or("")
-                            .to_string(),
-                    })
-                })
-                .collect())
-        })
-        .inspect(|cmds: &Vec<CommandInfo>| {
-            if let Ok(mut cached) = self.cached_commands.lock() {
-                *cached = Some(cmds.clone());
-            }
-        })
-        .unwrap_or_default()
+        self.cached_commands
+            .lock()
+            .ok()
+            .and_then(|cached| cached.clone())
+            .unwrap_or_default()
     }
 
     fn steer(&mut self, message: &str) -> Result<(), XyDriverError> {
@@ -1219,10 +1284,12 @@ where
                 ..LoadedResourcesSnapshot::default()
             },
         };
-        if let Ok(mut cached) = self.cached_resources.lock() {
-            *cached = snap.clone();
-        }
+        self.apply_resources_cache(snap.clone());
         snap
+    }
+
+    fn loaded_resources_cached(&self) -> Option<LoadedResourcesSnapshot> {
+        self.cached_resources.lock().ok().map(|snap| snap.clone())
     }
 
     fn mcp_blocks_agent(&self) -> bool {
@@ -1239,6 +1306,21 @@ where
             .unwrap_or(true)
     }
 
+    fn dollar_skill_catalog(&self) -> Vec<(String, String)> {
+        self.cached_skills
+            .lock()
+            .map(|skills| skills.clone())
+            .unwrap_or_default()
+    }
+
+    fn take_mcp_gate_notice(&mut self) -> Option<String> {
+        self.gate_notice_consumed.store(true, Ordering::SeqCst);
+        self.cached_gate_notice
+            .lock()
+            .ok()
+            .and_then(|mut notice| notice.take())
+    }
+
     async fn arm_tool_freeze_gate(&mut self) {
         let data = match self.unary("arm_tool_freeze", serde_json::json!({})).await {
             Ok(data) => data,
@@ -1247,10 +1329,8 @@ where
                 return;
             }
         };
-        if let Ok(snap) = serde_json::from_value::<LoadedResourcesSnapshot>(data)
-            && let Ok(mut cached) = self.cached_resources.lock()
-        {
-            *cached = snap;
+        if let Ok(snap) = serde_json::from_value::<LoadedResourcesSnapshot>(data) {
+            self.apply_resources_cache(snap);
         }
     }
 
@@ -1260,22 +1340,30 @@ where
             .lock()
             .map(|s| s.clone())
             .unwrap_or_default();
-        if prev.mcp_configured == 0 {
+        if !remote_mcp_poll_needs_pull(&prev) {
             return false;
         }
-        if prev.tools_table_frozen
-            && prev.mcp_bootstrap_complete
-            && prev.mcp_connecting_label.is_none()
+        // In-process poll is local-dirty only. Attach cannot join the writer, so
+        // pull `loaded_resources` — but not on the 16ms busy ticker.
         {
-            return false;
+            let mut last = self
+                .last_mcp_poll_at
+                .lock()
+                .unwrap_or_else(|e| e.into_inner());
+            if last.is_some_and(|t| t.elapsed() < REMOTE_MCP_POLL_PULL) {
+                return false;
+            }
+            *last = Some(std::time::Instant::now());
         }
-        true
+        let snap = self.loaded_resources_snapshot().await;
+        snap != prev
     }
 
     async fn reload_runtime(
         &mut self,
         _cancel: &CancellationToken,
     ) -> Result<RuntimeReloadReport, XyDriverError> {
+        self.gate_notice_consumed.store(false, Ordering::SeqCst);
         let data = self.unary("reload", serde_json::json!({})).await?;
         let cancelled = data
             .get("cancelled")
@@ -1322,6 +1410,118 @@ mod tests {
         assert!(uuid::Uuid::parse_str(&sid).is_ok(), "{sid}");
         let kept = XyRemoteDriver::new("http://127.0.0.1:9", "keep-me");
         assert_eq!(kept.session_id().as_deref(), Some("keep-me"));
+    }
+
+    #[test]
+    fn remote_mcp_poll_needs_pull_only_while_in_flight() {
+        assert!(!remote_mcp_poll_needs_pull(
+            &LoadedResourcesSnapshot::default()
+        ));
+        assert!(remote_mcp_poll_needs_pull(&LoadedResourcesSnapshot {
+            mcp_configured: 2,
+            mcp_bootstrap_complete: false,
+            tools_table_frozen: false,
+            mcp_connecting_label: Some("connecting 0/2".into()),
+            ..LoadedResourcesSnapshot::default()
+        }));
+        assert!(!remote_mcp_poll_needs_pull(&LoadedResourcesSnapshot {
+            mcp_configured: 2,
+            mcp_bootstrap_complete: true,
+            tools_table_frozen: true,
+            mcp_connecting_label: None,
+            ..LoadedResourcesSnapshot::default()
+        }));
+    }
+
+    #[derive(Clone)]
+    struct SnapClient {
+        snap: Arc<std::sync::Mutex<LoadedResourcesSnapshot>>,
+        calls: Arc<std::sync::atomic::AtomicUsize>,
+    }
+
+    #[async_trait]
+    impl HostClient for SnapClient {
+        async fn unary(
+            &self,
+            method: &str,
+            _payload: Value,
+        ) -> Result<crate::protocol::RpcResult, crate::app::core::host_client::HostClientError>
+        {
+            self.calls.fetch_add(1, Ordering::SeqCst);
+            assert_eq!(method, "loaded_resources");
+            let snap = self.snap.lock().expect("snap").clone();
+            Ok(crate::protocol::RpcResult::ok_value(
+                serde_json::to_value(snap).expect("snap json"),
+            ))
+        }
+
+        async fn respond(
+            &self,
+            _rpc_id: &str,
+            _payload: Value,
+        ) -> Result<(), crate::app::core::host_client::HostClientError> {
+            Ok(())
+        }
+
+        async fn mux(
+            &self,
+        ) -> Result<
+            crate::app::core::host_client::MuxStream,
+            crate::app::core::host_client::HostClientError,
+        > {
+            Ok(Box::pin(futures::stream::empty()))
+        }
+    }
+
+    #[tokio::test]
+    async fn poll_mcp_bootstrap_skips_unary_when_unconfigured() {
+        let client = SnapClient {
+            snap: Arc::new(std::sync::Mutex::new(LoadedResourcesSnapshot::default())),
+            calls: Arc::new(std::sync::atomic::AtomicUsize::new(0)),
+        };
+        let mut driver = XyRemoteDriver::with_host(client.clone(), "s");
+        assert!(!driver.poll_mcp_bootstrap().await);
+        assert_eq!(client.calls.load(Ordering::SeqCst), 0);
+    }
+
+    #[tokio::test]
+    async fn poll_mcp_bootstrap_pulls_once_per_window_and_only_when_changed() {
+        let connecting = LoadedResourcesSnapshot {
+            mcp_configured: 1,
+            mcp_bootstrap_complete: false,
+            tools_table_frozen: false,
+            mcp_connecting_label: Some("connecting 0/1".into()),
+            ..LoadedResourcesSnapshot::default()
+        };
+        let client = SnapClient {
+            snap: Arc::new(std::sync::Mutex::new(connecting.clone())),
+            calls: Arc::new(std::sync::atomic::AtomicUsize::new(0)),
+        };
+        let mut driver = XyRemoteDriver::with_host(client.clone(), "s");
+        driver.apply_resources_cache(connecting.clone());
+
+        assert!(
+            !driver.poll_mcp_bootstrap().await,
+            "identical snapshot is not dirty"
+        );
+        assert_eq!(client.calls.load(Ordering::SeqCst), 1);
+
+        assert!(
+            !driver.poll_mcp_bootstrap().await,
+            "throttle must skip a second unary"
+        );
+        assert_eq!(client.calls.load(Ordering::SeqCst), 1);
+
+        {
+            let mut snap = client.snap.lock().expect("snap");
+            snap.mcp_connecting_label = Some("connecting 1/1".into());
+        }
+        tokio::time::sleep(REMOTE_MCP_POLL_PULL + Duration::from_millis(20)).await;
+        assert!(
+            driver.poll_mcp_bootstrap().await,
+            "label change after throttle MUST refresh"
+        );
+        assert_eq!(client.calls.load(Ordering::SeqCst), 2);
     }
 
     #[tokio::test]
@@ -1378,6 +1578,10 @@ mod tests {
             .session_tree(SessionTreeKind::MessageHistory)
             .await
             .expect("session tree");
+        driver
+            .refresh_surface_caches()
+            .await
+            .expect("refresh chrome caches");
         let _ = driver.current_model();
         assert!(driver.leaf_entry_id().is_some());
         let target_id = tree
@@ -1717,5 +1921,78 @@ mod tests {
             )),
             "mux MUST still deliver after AgentEnd: {later:?}"
         );
+    }
+
+    #[test]
+    fn cold_replay_tape_drops_agent_keeps_queue() {
+        assert!(XyRemoteDriver::<InProcessClient>::is_cold_replay_tape(
+            &XyEvent::AgentStart {
+                session_id: "s".into(),
+                model: "m".into(),
+            }
+        ));
+        assert!(XyRemoteDriver::<InProcessClient>::is_cold_replay_tape(
+            &XyEvent::TextDelta("hi".into())
+        ));
+        assert!(!XyRemoteDriver::<InProcessClient>::is_cold_replay_tape(
+            &XyEvent::QueueUpdate {
+                steer_count: 1,
+                follow_up_count: 0,
+            }
+        ));
+        assert!(!XyRemoteDriver::<InProcessClient>::is_cold_replay_tape(
+            &XyEvent::error_msg("boom")
+        ));
+    }
+
+    #[tokio::test]
+    async fn materialize_writer_binds_client_workspace_cwd() {
+        use crate::app::server::host::materialize_writer_at;
+
+        let host = HostState::for_test().expect("host");
+        let slot = host.slot("ws-cwd").await;
+        let dir = tempfile::tempdir().expect("tmp");
+        materialize_writer_at(&host, &slot, dir.path())
+            .await
+            .expect("materialize");
+        let guard = slot.driver.lock().await;
+        let cwd = guard.as_ref().expect("writer").agent_cwd_for_test();
+        assert_eq!(
+            std::path::Path::new(&cwd),
+            dir.path(),
+            "writer cwd MUST be the TUI workspace, not serve cwd"
+        );
+    }
+
+    #[tokio::test]
+    async fn inflight_set_thinking_does_not_apply_until_flush() {
+        use crate::app::server::host::{handle_unary, materialize_writer};
+
+        let host = HostState::for_test().expect("host");
+        let slot = host.slot("th").await;
+        materialize_writer(&host, &slot).await.expect("writer");
+        let before = {
+            let g = slot.driver.lock().await;
+            g.as_ref().expect("driver").thinking_level()
+        };
+        slot.mark_run_inflight_for_test(true);
+        let result = handle_unary(
+            &host,
+            "set_thinking_level",
+            serde_json::json!({ "session_id": "th", "level": "high" }),
+            None,
+        )
+        .await;
+        assert!(result.ok, "defer thinking MUST succeed: {result:?}");
+        let during = {
+            let g = slot.driver.lock().await;
+            g.as_ref().expect("driver").thinking_level()
+        };
+        assert_eq!(
+            during, before,
+            "busy thinking MUST NOT retune the in-flight run"
+        );
+        slot.mark_run_inflight_for_test(false);
+        slot.flush_pending_runtime_for_test().await;
     }
 }

@@ -283,6 +283,7 @@ async fn run_host_loop(
     }
     // Refresh while editor-history seed / CLI restore run in the background.
     session.refresh_loaded_resources(driver).await;
+    session.set_dollar_skill_catalog(driver.dollar_skill_catalog());
     session.set_mcp_blocks_agent(driver.mcp_blocks_agent());
 
     let mut term_events = CrosstermEventStream::new();
@@ -371,7 +372,12 @@ async fn run_host_loop(
                     }
                     if driver.poll_mcp_bootstrap().await {
                         let t0 = std::time::Instant::now();
-                        session.refresh_loaded_resources(driver).await;
+                        if let Some(snap) = driver.loaded_resources_cached() {
+                            session.refresh_loaded_resources_from_snap(snap);
+                        } else {
+                            session.refresh_loaded_resources(driver).await;
+                        }
+                        session.set_dollar_skill_catalog(driver.dollar_skill_catalog());
                         session.set_mcp_blocks_agent(driver.mcp_blocks_agent());
                         crate::app::core::lag::note("host_mcp_poll_refresh", t0);
                     }

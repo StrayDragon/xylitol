@@ -109,6 +109,9 @@ pub struct LoadedResourcesSnapshot {
     /// Provider-visible tools already FROZEN (c1900). While false, Connected-but-unarmed
     /// still warrants `mcp pending` (resume / first-turn gate).
     pub tools_table_frozen: bool,
+    /// One-shot timeout line after first-turn MCP gate freeze (`/mcp` to retry).
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub mcp_gate_notice: Option<String>,
 }
 
 /// Connection phase for one configured MCP server (c1210 `/mcp` panel).

@@ -40,6 +40,14 @@ pub trait XyDriver: Send {
         Ok(())
     }
 
+    /// Refresh cached chrome (model / models / commands) without blocking a tick.
+    ///
+    /// Default no-op. Remote MUST hit Host unaries here so `/model` and footer
+    /// sync do not `block_on` HTTP from sync getters.
+    async fn refresh_surface_caches(&mut self) -> Result<(), XyDriverError> {
+        Ok(())
+    }
+
     /// Events that arrived on a persistent downlink while no `run` stream is held.
     fn drain_idle_events(&mut self) -> Vec<XyEvent> {
         Vec::new()
@@ -378,6 +386,15 @@ pub trait XyDriver: Send {
     /// Remote / stub drivers return empty (no default body — `dyn XyDriver` + Sync).
     async fn loaded_resources_snapshot(&self) -> LoadedResourcesSnapshot;
 
+    /// Last loaded-resources snapshot already held by the driver (**no I/O**).
+    ///
+    /// After [`Self::poll_mcp_bootstrap`] returns true, product hosts SHOULD apply
+    /// this instead of awaiting [`Self::loaded_resources_snapshot`] again: Remote
+    /// poll already pulled. In-process returns `None` (snapshot is local and cheap).
+    fn loaded_resources_cached(&self) -> Option<LoadedResourcesSnapshot> {
+        None
+    }
+
     /// True while MCP bootstrap is in flight and agent prompt must wait (c1200).
     fn mcp_blocks_agent(&self) -> bool {
         false
@@ -402,6 +419,12 @@ pub trait XyDriver: Send {
 
     /// Poll background MCP bootstrap; returns true when loaded-resources should refresh
     /// (connecting label changed, tools applied, or bootstrap phase advanced).
+    ///
+    /// In-process: observe local boot state — **MUST NOT** report dirty every tick.
+    /// Remote: attach cannot join the writer task; MAY unary `loaded_resources` to
+    /// observe progress, but MUST throttle and MUST return `true` only when the
+    /// snapshot actually changed (same contract as in-process). Unchanged ticks
+    /// MUST NOT refresh TUI catalogs (slash popup / skill list).
     ///
     /// **Contract (sticky cue)**: `Settling → Settled` (deferred system-prompt install
     /// finished) MUST return `true` even when no tool-freeze gate is armed. Hosts only

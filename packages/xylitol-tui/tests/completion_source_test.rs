@@ -3,6 +3,7 @@
 mod support;
 
 use support::TuiTestHarness;
+use xylitol_tui::Component;
 use xylitol_tui::Focusable;
 use xylitol_tui::autocomplete::{AutocompleteItem, AutocompleteSuggestions, SlashCommand};
 use xylitol_tui::clock::SystemClock;
@@ -494,4 +495,44 @@ fn slash_arg_model_esc_closes_without_apply() {
         text.contains("/model dee"),
         "Esc must not rewrite the typed prefix; got:\n{text}"
     );
+}
+
+#[test]
+fn replacing_sources_keeps_open_slash_popup() {
+    fn slash_src() -> Box<dyn CompletionSource> {
+        Box::new(SlashCommandSource::new(vec![
+            SlashCommand {
+                name: "model".into(),
+                description: Some("Switch model".into()),
+                argument_hint: None,
+                get_argument_completions: None,
+            },
+            SlashCommand {
+                name: "mcp".into(),
+                description: Some("MCP panel".into()),
+                argument_hint: None,
+                get_argument_completions: None,
+            },
+        ]))
+    }
+
+    let mut e = editor_with(vec![slash_src()]);
+    for ch in "/mo".chars() {
+        use crossterm::event::{KeyCode, KeyEvent, KeyModifiers};
+        use xylitol_tui::InputEvent;
+        e.handle_input(InputEvent::Key(KeyEvent::new(
+            KeyCode::Char(ch),
+            KeyModifiers::NONE,
+        )));
+    }
+    assert!(
+        e.is_showing_autocomplete(),
+        "typing /mo must open slash popup"
+    );
+    e.set_completion_sources(vec![slash_src()]);
+    assert!(
+        e.is_showing_autocomplete(),
+        "catalog refresh must not dismiss an open slash popup"
+    );
+    assert_eq!(e.get_text(), "/mo");
 }

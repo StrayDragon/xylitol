@@ -19,9 +19,15 @@ impl super::Editor {
     }
 
     /// Primary API: register pluggable completion sources (`/`, `@`, future `$`/`^`).
+    ///
+    /// Replacing sources MUST NOT dismiss an open popup — hosts refresh catalogs
+    /// while the user is typing (MCP poll / skill list). Re-probe in place.
     pub fn set_completion_sources(&mut self, sources: Vec<Box<dyn CompletionSource>>) {
-        self.cancel_autocomplete();
+        let keep_popup = self.is_showing_autocomplete();
         self.completion.set_sources(sources);
+        if keep_popup {
+            self.request_autocomplete(false, false);
+        }
     }
 
     /// Compatibility shim: split Combined into Slash + AtPath sources.
@@ -249,7 +255,7 @@ impl super::Editor {
     }
 
     /// Apply the highlighted autocomplete item into the editor buffer only
-    /// (no submit). Used by product host Idle-Enter before slash parse.
+    /// (no submit). Used by product host Enter (idle and busy) before slash parse.
     pub fn confirm_autocomplete_selection(&mut self) -> bool {
         self.apply_selected_autocomplete(/* chain_next */ false)
     }
