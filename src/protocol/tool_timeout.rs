@@ -3,7 +3,7 @@
 use std::time::Duration;
 
 /// Hard ceiling for model-requested tool timeouts (seconds), aligned with
-/// [`crate::MAX_EXTERNAL_WAIT_SECS`]. Requests above it are clamped, not
+/// [`crate::protocol::MAX_EXTERNAL_WAIT_SECS`]. Requests above it are clamped, not
 /// rejected (c2430 program authority).
 pub const MAX_TOOL_TIMEOUT_SECS: u64 = 600;
 
