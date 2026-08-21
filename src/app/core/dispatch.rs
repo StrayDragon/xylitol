@@ -285,7 +285,7 @@ async fn dispatch_inner(
         }
         Command::GetCommands { .. } => Ok(DispatchOutcome::Commands(driver.get_commands())),
         Command::Steer { message, .. } => {
-            driver.steer(&message)?;
+            driver.steer(&message).await?;
             let stats = driver.queue_stats();
             Ok(DispatchOutcome::QueueStats {
                 steer_count: stats.steer_count,
@@ -293,7 +293,7 @@ async fn dispatch_inner(
             })
         }
         Command::FollowUp { message, .. } => {
-            driver.follow_up(&message)?;
+            driver.follow_up(&message).await?;
             let stats = driver.queue_stats();
             Ok(DispatchOutcome::QueueStats {
                 steer_count: stats.steer_count,
@@ -305,7 +305,7 @@ async fn dispatch_inner(
             clear_follow_up,
             ..
         } => {
-            driver.clear_queue(clear_steer, clear_follow_up)?;
+            driver.clear_queue(clear_steer, clear_follow_up).await?;
             let stats = driver.queue_stats();
             Ok(DispatchOutcome::QueueStats {
                 steer_count: stats.steer_count,
@@ -491,15 +491,15 @@ mod tests {
                 description: "compact".into(),
             }]
         }
-        fn steer(&mut self, _message: &str) -> Result<(), XyDriverError> {
+        async fn steer(&mut self, _message: &str) -> Result<(), XyDriverError> {
             self.steer += 1;
             Ok(())
         }
-        fn follow_up(&mut self, _message: &str) -> Result<(), XyDriverError> {
+        async fn follow_up(&mut self, _message: &str) -> Result<(), XyDriverError> {
             self.follow_up += 1;
             Ok(())
         }
-        fn clear_queue(
+        async fn clear_queue(
             &mut self,
             clear_steer: bool,
             clear_follow_up: bool,

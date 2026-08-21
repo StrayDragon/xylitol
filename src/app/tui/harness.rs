@@ -691,19 +691,19 @@ impl XyDriver for ScriptedDriver {
         Vec::new()
     }
 
-    fn steer(&mut self, message: &str) -> Result<(), XyDriverError> {
+    async fn steer(&mut self, message: &str) -> Result<(), XyDriverError> {
         self.steer_calls.push(message.to_string());
         self.steer_queued += 1;
         Ok(())
     }
 
-    fn follow_up(&mut self, message: &str) -> Result<(), XyDriverError> {
+    async fn follow_up(&mut self, message: &str) -> Result<(), XyDriverError> {
         self.follow_up_calls.push(message.to_string());
         self.follow_up_queued += 1;
         Ok(())
     }
 
-    fn clear_queue(
+    async fn clear_queue(
         &mut self,
         clear_steer: bool,
         clear_follow_up: bool,

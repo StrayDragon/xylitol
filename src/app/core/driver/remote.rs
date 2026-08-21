@@ -579,20 +579,6 @@ where
             .map_err(|e| XyDriverError::remote(format!("{}: {}", e.code, e.details)))
     }
 
-    fn block_on<T>(
-        &self,
-        fut: impl std::future::Future<Output = Result<T, XyDriverError>>,
-    ) -> Result<T, XyDriverError> {
-        match tokio::runtime::Handle::try_current() {
-            Ok(handle) => tokio::task::block_in_place(|| handle.block_on(fut)),
-            Err(_) => tokio::runtime::Builder::new_current_thread()
-                .enable_all()
-                .build()
-                .map_err(|e| XyDriverError::io(e.to_string()))?
-                .block_on(fut),
-        }
-    }
-
     fn model_from_value(v: &serde_json::Value) -> Result<ModelInfo, XyDriverError> {
         let thinking = v.get("thinking").and_then(|x| x.as_bool()).unwrap_or(false);
         let thinking_levels = v
@@ -1087,44 +1073,38 @@ where
             .unwrap_or_default()
     }
 
-    fn steer(&mut self, message: &str) -> Result<(), XyDriverError> {
-        self.block_on(async {
-            let data = self
-                .unary("steer", serde_json::json!({ "message": message }))
-                .await?;
-            self.cache_queue_from_value(&data);
-            Ok(())
-        })
+    async fn steer(&mut self, message: &str) -> Result<(), XyDriverError> {
+        let data = self
+            .unary("steer", serde_json::json!({ "message": message }))
+            .await?;
+        self.cache_queue_from_value(&data);
+        Ok(())
     }
 
-    fn follow_up(&mut self, message: &str) -> Result<(), XyDriverError> {
-        self.block_on(async {
-            let data = self
-                .unary("follow_up", serde_json::json!({ "message": message }))
-                .await?;
-            self.cache_queue_from_value(&data);
-            Ok(())
-        })
+    async fn follow_up(&mut self, message: &str) -> Result<(), XyDriverError> {
+        let data = self
+            .unary("follow_up", serde_json::json!({ "message": message }))
+            .await?;
+        self.cache_queue_from_value(&data);
+        Ok(())
     }
 
-    fn clear_queue(
+    async fn clear_queue(
         &mut self,
         clear_steer: bool,
         clear_follow_up: bool,
     ) -> Result<(), XyDriverError> {
-        self.block_on(async {
-            let data = self
-                .unary(
-                    "clear_queue",
-                    serde_json::json!({
-                        "clear_steer": clear_steer,
-                        "clear_follow_up": clear_follow_up,
-                    }),
-                )
-                .await?;
-            self.cache_queue_from_value(&data);
-            Ok(())
-        })
+        let data = self
+            .unary(
+                "clear_queue",
+                serde_json::json!({
+                    "clear_steer": clear_steer,
+                    "clear_follow_up": clear_follow_up,
+                }),
+            )
+            .await?;
+        self.cache_queue_from_value(&data);
+        Ok(())
     }
 
     fn queue_stats(&self) -> QueueStats {
@@ -1613,14 +1593,14 @@ mod tests {
             driver.is_tools_frozen(),
             "arm_tool_freeze MUST freeze when no MCP is configured"
         );
-        driver.steer("nudge").expect("steer");
+        driver.steer("nudge").await.expect("steer");
         assert_eq!(driver.queue_stats().steer_count, 1);
         let queued = driver
             .unary("queue_stats", serde_json::json!({}))
             .await
             .expect("queue_stats unary");
         assert_eq!(queued.get("steer_count").and_then(Value::as_u64), Some(1));
-        driver.clear_queue(true, true).expect("clear queue");
+        driver.clear_queue(true, true).await.expect("clear queue");
         let report = driver
             .reload_runtime(&CancellationToken::new())
             .await
