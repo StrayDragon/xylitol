@@ -438,6 +438,36 @@ fn slash_arg_model_opens_after_space_not_bare() {
 }
 
 #[test]
+fn slash_arg_tab_applies_highlighted_not_first() {
+    let catalog = vec![
+        ("deepseek-v4-flash".into(), "fast".into()),
+        ("deepseek-v4-pro".into(), "pro".into()),
+    ];
+    let mut h = TuiTestHarness::new(80, 16);
+    h.mount(Box::new(editor_with(vec![Box::new(
+        SlashArgCompletionSource::new("model", catalog).with_id("model-id"),
+    )])))
+    .focus(Some(0));
+
+    h.render_result().expect("render");
+    h.keys("/model dee");
+    h.render_result().expect("arg popup");
+    h.assert_text_contains("deepseek-v4-flash");
+    h.assert_text_contains("deepseek-v4-pro");
+    h.keys("\x1b[B\t");
+    h.render_result().expect("Down then Tab");
+    let after = h.tui.terminal.viewport().join("\n");
+    assert!(
+        after.contains("/model deepseek-v4-pro"),
+        "Tab must apply the highlighted row, not the first prefix match; got:\n{after}"
+    );
+    assert!(
+        !after.contains("/model deepseek-v4-flash"),
+        "first candidate must not win after Down; got:\n{after}"
+    );
+}
+
+#[test]
 fn slash_arg_model_bare_opt_in_opens_catalog() {
     let catalog = vec![
         ("deepseek-v4-flash".into(), "opencode-go".into()),
@@ -535,4 +565,47 @@ fn replacing_sources_keeps_open_slash_popup() {
         "catalog refresh must not dismiss an open slash popup"
     );
     assert_eq!(e.get_text(), "/mo");
+}
+
+#[test]
+fn replacing_sources_keeps_highlighted_row_on_tab() {
+    use crossterm::event::{KeyCode, KeyEvent, KeyModifiers};
+    use xylitol_tui::InputEvent;
+
+    fn key(code: KeyCode) -> InputEvent {
+        InputEvent::Key(KeyEvent::new(code, KeyModifiers::NONE))
+    }
+
+    let catalog = vec![
+        ("deepseek-v4-flash".into(), "fast".into()),
+        ("deepseek-v4-pro".into(), "pro".into()),
+    ];
+    fn arg_src(catalog: &[(String, String)]) -> Box<dyn CompletionSource> {
+        Box::new(SlashArgCompletionSource::new("model", catalog.to_vec()).with_id("model-id"))
+    }
+
+    let mut e = editor_with(vec![arg_src(&catalog)]);
+    for ch in "/model dee".chars() {
+        e.handle_input(key(KeyCode::Char(ch)));
+    }
+    assert!(
+        e.is_showing_autocomplete(),
+        "typing /model dee must open id popup"
+    );
+    e.handle_input(key(KeyCode::Down));
+    e.set_completion_sources(vec![arg_src(&catalog)]);
+    assert!(
+        e.is_showing_autocomplete(),
+        "catalog refresh must keep the popup"
+    );
+    e.handle_input(key(KeyCode::Tab));
+    let text = e.get_text();
+    assert!(
+        text.contains("deepseek-v4-pro"),
+        "Tab after refresh must apply the highlighted id; got {text:?}"
+    );
+    assert!(
+        !text.contains("deepseek-v4-flash"),
+        "first prefix match must not win after Down+refresh; got {text:?}"
+    );
 }

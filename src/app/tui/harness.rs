@@ -1785,6 +1785,40 @@ mod slice_tests {
     }
 
     #[tokio::test]
+    async fn c999_model_arg_tab_applies_highlighted_id() {
+        let mut session = HostSession::new_product_ui(TestTerminal::new(80, 24));
+        let root = session.ui_root().expect("ui").clone();
+        let driver = ScriptedDriver::new();
+        session.set_model_arg_catalog_from_models(&driver.available_models());
+        for ch in "/model model-".chars() {
+            session.step(HostEvent::Input(char_event(ch))).unwrap();
+        }
+        let frame = root.borrow_mut().render(80);
+        assert!(
+            frame.iter().any(|l| l.contains("model-fast"))
+                && frame.iter().any(|l| l.contains("model-think")),
+            "expected both model-* ids; got: {frame:?}"
+        );
+        session.step(HostEvent::Input(down_event())).unwrap();
+        session.step(HostEvent::Input(tab_event())).unwrap();
+        let text = root.borrow().editor_text();
+        assert!(
+            text.contains("model-think"),
+            "Tab must apply the highlighted id, not the first match; got {text:?}"
+        );
+        assert!(
+            !text.contains("model-fast"),
+            "first candidate must not win after Down; got {text:?}"
+        );
+        assert_eq!(
+            crate::app::tui::commands::parse_slash_command(&text),
+            Some(crate::app::tui::commands::PendingSlash::SetModel(
+                "model-think".into()
+            ))
+        );
+    }
+
+    #[tokio::test]
     async fn c1105_trust_arg_space_shows_self_parent_deny() {
         let mut session = HostSession::new_product_ui(TestTerminal::new(80, 24));
         let root = session.ui_root().expect("ui").clone();
@@ -4024,6 +4058,44 @@ mod slice_tests {
             .await
             .unwrap();
         assert_eq!(driver.model.id, "model-think");
+        assert!(!root.borrow().models_open());
+    }
+
+    #[tokio::test]
+    async fn busy_model_arg_down_enter_after_catalog_refresh_sets_highlighted() {
+        let mut session = HostSession::new_product_ui(TestTerminal::new(80, 24));
+        let root = session.ui_root().expect("ui").clone();
+        session.on_run_started("hello");
+        session.ui_model_mut().enqueue_follow_up_strip("hi".into());
+        session.sync_ui_root_from_model();
+        let mut driver = ScriptedDriver::new();
+        session.set_model_arg_catalog_from_models(&driver.available_models());
+        let mut stream = None;
+
+        for ch in "/model model-".chars() {
+            session.step(HostEvent::Input(char_event(ch))).unwrap();
+        }
+        assert!(
+            root.borrow().editor_autocomplete_open(),
+            "expected /model id popup; editor={:?}",
+            root.borrow().editor_text()
+        );
+        session.step(HostEvent::Input(down_event())).unwrap();
+        session.set_dollar_skill_catalog(vec![("demo".into(), "demo".into())]);
+        assert!(
+            root.borrow().editor_autocomplete_open(),
+            "skill catalog refresh must keep the popup and the highlighted row"
+        );
+
+        session.step(HostEvent::Input(enter_event())).unwrap();
+        assert!(session.take_steer().is_none());
+        pump_host_driver(&mut session, &mut driver, &mut stream)
+            .await
+            .unwrap();
+        assert_eq!(
+            driver.model.id, "model-think",
+            "Enter after Down+refresh must apply the highlighted id, not the first match"
+        );
         assert!(!root.borrow().models_open());
     }
 
