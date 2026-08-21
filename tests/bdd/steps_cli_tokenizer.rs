@@ -1061,17 +1061,6 @@ fn t_ce21_fail(attach_bdd: &AttachBdd) {
     assert!(!hint.contains("server run"), "{hint}");
 }
 
-#[when("无 prompt 且 TTY 启动 TUI")]
-fn w_tui2_start(attach_bdd: &AttachBdd) {
-    w_ce21_attach(attach_bdd);
-}
-
-#[then("默认 attach 本机 Host 且未在听则失败")]
-fn t_tui2_attach_default(attach_bdd: &AttachBdd) {
-    assert_eq!(xylitol::DEFAULT_ATTACH_URL, "http://127.0.0.1:18790");
-    t_ce21_fail(attach_bdd);
-}
-
 #[when("检查 Driver 实现")]
 fn w_atb4_inspect_drivers() {}
 
