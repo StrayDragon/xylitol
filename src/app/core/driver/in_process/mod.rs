@@ -424,6 +424,7 @@ impl XyDriver for XyInProcessDriver {
                 command,
                 exclude_from_context,
                 chunk_tx,
+                Some(self.agent.cwd().to_string()),
             )
             .await
             .map_err(XyDriverError::from)

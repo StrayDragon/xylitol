@@ -85,6 +85,7 @@ impl XyBashExecutor for InfraBashExecutor {
             cancel,
             chunk_tx,
             timeout,
+            cwd,
         } = opts;
 
         if cancel.as_ref().is_some_and(|c| c.is_cancelled()) {
@@ -99,13 +100,16 @@ impl XyBashExecutor for InfraBashExecutor {
         }
 
         let shell_cfg = crate::infra::process::shell::find_bash(None);
-        let mut child = match Command::new(&shell_cfg.shell)
+        let mut spawn = Command::new(&shell_cfg.shell);
+        spawn
             .args(&shell_cfg.args)
             .arg(command)
             .stdout(std::process::Stdio::piped())
-            .stderr(std::process::Stdio::piped())
-            .spawn()
-        {
+            .stderr(std::process::Stdio::piped());
+        if let Some(dir) = cwd {
+            spawn.current_dir(dir);
+        }
+        let mut child = match spawn.spawn() {
             Ok(c) => c,
             Err(_) => {
                 return XyBashResult {
@@ -241,6 +245,27 @@ mod tests {
     }
 
     #[tokio::test]
+    async fn cwd_option_spawns_shell_in_workspace() {
+        let dir = tempfile::tempdir().expect("tmp");
+        let result = InfraBashExecutor::new()
+            .execute(
+                "pwd",
+                BashExecOpts {
+                    cwd: Some(dir.path().to_path_buf()),
+                    ..Default::default()
+                },
+            )
+            .await;
+        let got = std::path::PathBuf::from(result.output.trim());
+        assert_eq!(
+            got.canonicalize().unwrap(),
+            dir.path().canonicalize().unwrap(),
+            "executor MUST spawn the shell in opts.cwd, got: {}",
+            result.output
+        );
+    }
+
+    #[tokio::test]
     async fn cancellation_kills_process() {
         let cancel = CancellationToken::new();
         let cancel_clone = cancel.clone();
@@ -255,6 +280,7 @@ mod tests {
                     cancel: Some(cancel),
                     chunk_tx: None,
                     timeout: ToolTimeout::Unlimited,
+                    cwd: None,
                 },
             )
             .await;
@@ -272,6 +298,7 @@ mod tests {
                     cancel: None,
                     chunk_tx: None,
                     timeout: ToolTimeout::After(Duration::from_secs(1)),
+                    cwd: None,
                 },
             )
             .await;
@@ -308,6 +335,7 @@ mod tests {
                     cancel: None,
                     chunk_tx: Some(tx),
                     timeout: ToolTimeout::Unlimited,
+                    cwd: None,
                 },
             )
             .await;

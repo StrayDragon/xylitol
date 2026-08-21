@@ -44,6 +44,10 @@ impl BangExecHandler {
     /// but omits it from LLM context (see `build_session_context`).
     ///
     /// `chunk_tx`: optional live output uplink for product TUI (c669).
+    ///
+    /// `cwd`: session workspace for the spawned shell (`None` inherits the
+    /// process cwd). Attach writers pass the TUI-provided workspace so `!cmd`
+    /// runs there, not in the server process directory.
     pub async fn execute(
         &self,
         store: &dyn XySessionStore,
@@ -51,6 +55,7 @@ impl BangExecHandler {
         command: &str,
         exclude_from_context: bool,
         chunk_tx: Option<mpsc::Sender<Vec<u8>>>,
+        cwd: Option<String>,
     ) -> Result<XyBashResult, XyError> {
         let executor = self
             .executor
@@ -66,6 +71,7 @@ impl BangExecHandler {
                 BashExecOpts {
                     cancel: Some(cancel),
                     chunk_tx,
+                    cwd: cwd.map(std::path::PathBuf::from),
                     ..Default::default()
                 },
             )
@@ -135,7 +141,7 @@ mod tests {
         let store_exec = Arc::clone(&store);
         let join = tokio::spawn(async move {
             handler_exec
-                .execute(store_exec.as_ref(), None, "sleep 30", false, None)
+                .execute(store_exec.as_ref(), None, "sleep 30", false, None, None)
                 .await
         });
 

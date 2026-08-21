@@ -971,7 +971,7 @@ pub(crate) async fn w_sess_execute_bash_no_executor(agent: &AgentState) {
     let store: Arc<dyn xylitol::protocol::ports::XySessionStore> = Arc::new(mgr);
     let bang = BangExecHandler::new(None);
     let result = bang
-        .execute(store.as_ref(), None, "echo hi", false, None)
+        .execute(store.as_ref(), None, "echo hi", false, None, None)
         .await;
     agent.last_result.replace(Some(
         result.map(|_| "ok".into()).map_err(XyDriverError::from),
