@@ -1,0 +1,21 @@
+# Tasks
+
+Host 监听器新增只读 `GET /openapi.json` 调试文档；零生产行为变更。
+
+## 1. Branch binding + Specs landing
+
+- [ ] 1.1 `change start` 绑定 `sdd/c2320-add-salvo-oapi-docs`
+- [ ] 1.2 live specs：`server-core` 新增 sr-oapi1（含 scenarios 文档行）；`server-runtime.feature` 增可执行场景 `@req:sr-oapi1`
+- [ ] 1.3 commit Specs landing；结构过闸 + `readyToImplement=true`
+
+## 2. 实现 + BDD 接线
+
+- [ ] 2.1 新增文档构建模块（serde_json 手构 OpenAPI 3.1，方法条目从 UNARY_METHODS 生成，信封级 components，info 说明指向 specta bindings）+ 单测结构断言
+- [ ] 2.2 `http.rs::router` 挂载 `GET /openapi.json`
+- [ ] 2.3 BDD 接线：bindings_server.rs 注册场景 + steps_server.rs 步骤定义
+
+## 3. 验收门禁
+
+- [ ] 3.1 定向测试绿：oapi 单测 + server http 测试 + bdd server 场景
+- [ ] 3.2 全量 validate（含 BDD 编译 `--check`）绿
+- [ ] 3.3 架构文档落点补一句：`库与多客户端.md` 或 `远程体验与线协议.md` 提及调试文档端点
