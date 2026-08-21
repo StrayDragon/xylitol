@@ -1,7 +1,7 @@
 # TUI 信息面与 chrome 词汇
 
 > 固定讨论/文档用词，降低「system / message / trail」失真。**新文与 AGENTS 只准用本表**；代码标识符与本表同步。
-> 跨面生命周期闭集见 [用户可见事件.md](./用户可见事件.md)。NextTurn 行为见 [运行时即时设置.md](./运行时即时设置.md)。
+> 跨面生命周期闭集见 [用户可见事件.md](./用户可见事件.md)。换模生效语义见 [运行时即时设置.md](./运行时即时设置.md)。
 
 ## 关键词汇（SSOT）
 
@@ -14,7 +14,7 @@
 | **状态条** | status | busy 时输入区上方短状态（idle = 0 行） | 塞进 scrollback |
 | **页脚** | footer | 输入区下：生效中模型、用量 provenance 等 | 成功确认刷滚动提示 |
 | **待生效** | pending | 状态：`selected ≠ active`，下一 turn 边界才起用 | 挂账（弃用主词） |
-| **下轮预告** | **next-turn cue** | busy status **行右侧** dim 文案（用户可见常为 `Next turn: …`） | Status trail、trail、即将消息、pending message |
+| **下轮预告** | **next-turn cue** | busy status **行右侧** dim 文案（用户可见常为 `Next turn: …`）。**产品 attach 面不渲染**（run 绑定语义，见 [运行时即时设置.md](./运行时即时设置.md)）；仅旧同进程面与测试保留，随面退役一并清词 | Status trail、trail、即将消息、pending message |
 | **队列条** | queue strip | steer / follow-up 条 | 下轮预告、对话正文 |
 | **槽** | overlay / slot | 树、模型列表、resume… | 用滚动提示复述成功路径 |
 | **尾随** | trail-append / trailing | append 到 entries **末**（跟底可见） | 与 next-turn **cue** 不同根概念 |
@@ -47,7 +47,7 @@
 | **A 对话正文** | user / assistant / thinking / tool / diff / bash / compaction | 对话条目 | 是 | 按时间序 append |
 | **B 导航瞬时** | `history @`、`forked →`、`switched →` | **滚动提示 · 尾随** | 随 scrollback；rebuild 可清 | **默认尾随**（跟底可见） |
 | **C 操作结果 / 诊断** | slash 失败、复制、trust 报告 | 短：滚动提示尾随；成功换模/主题 → **不**刷 | 易堆墙 | **默认尾随** |
-| **D 即时设置** | 换模 / thinking / 主题成功 | **页脚 + 下轮预告**（待生效时） | 否（态） | — |
+| **D 即时设置** | 换模 / thinking / 主题成功 | **页脚**（选中即时反映；attach 无下轮预告） | 否（态） | — |
 | **E 运行态** | busy、abort、队列；busy 下硬拒闸（如 Resume switch） | 状态条 / 队列条 / **壳层通告** | 否 | 禁止冒充 A/B；硬拒闸优先壳层通告，勿 ScrollNotice |
 | **F 槽内确认** | 树 travel、选模 | 关槽 + chrome / B 类尾随 | 视 B/C | **默认尾随** |
 | **G 减噪折叠** | 旧工具中间步（候补） | 折叠摘要条目 | 是（形态变） | — |

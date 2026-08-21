@@ -61,4 +61,4 @@ flowchart TD
 - [配置与档案.md](./配置与档案.md)
 - [库与多客户端.md](./库与多客户端.md)
 - [信任与项目闸.md](./信任与项目闸.md)
-- chrome 词汇（壳层通告 / 下轮预告短 cue）：[TUI信息面与chrome词汇.md](./TUI信息面与chrome词汇.md)
+- chrome 词汇（壳层通告等固定词）：[TUI信息面与chrome词汇.md](./TUI信息面与chrome词汇.md)
