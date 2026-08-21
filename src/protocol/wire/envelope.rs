@@ -118,6 +118,14 @@ pub struct SessionResyncRequiredPayload {
     pub session_id: String,
 }
 
+/// Downlink payload for `session/resources` (MCP/skills chrome; not journaled).
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize, Type)]
+pub struct SessionResourcesPayload {
+    pub session_id: String,
+    #[specta(type = specta_typescript::Any)]
+    pub snapshot: Value,
+}
+
 /// Downlink payload for `host/hello`.
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, Type)]
 pub struct HostHelloPayload {

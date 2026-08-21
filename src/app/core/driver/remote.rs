@@ -27,17 +27,6 @@ use super::types::{
     estimate_from_session_entries,
 };
 
-/// Attach pull cadence: busy TUI ticks at 16ms; connecting labels change slowly.
-const REMOTE_MCP_POLL_PULL: Duration = Duration::from_millis(250);
-
-/// Writer still connecting / unfrozen — attach may pull a snapshot.
-fn remote_mcp_poll_needs_pull(snap: &LoadedResourcesSnapshot) -> bool {
-    if snap.mcp_configured == 0 {
-        return false;
-    }
-    !(snap.tools_table_frozen && snap.mcp_bootstrap_complete && snap.mcp_connecting_label.is_none())
-}
-
 /// Notify the product TUI of mux reverse-RPC (approval/question).
 pub type ReverseRpcNotify = Arc<dyn Fn(String, String, Value) + Send + Sync>;
 
@@ -112,8 +101,8 @@ pub struct XyRemoteDriver<C = HttpWsClient> {
     cached_skills: Arc<std::sync::Mutex<Vec<(String, String)>>>,
     cached_gate_notice: Arc<std::sync::Mutex<Option<String>>>,
     gate_notice_consumed: Arc<AtomicBool>,
-    /// Last attach pull of `loaded_resources` (Remote poll is not 16Hz unary).
-    last_mcp_poll_at: std::sync::Mutex<Option<std::time::Instant>>,
+    /// Set when mux `session/resources` (or a snapshot unary) updates the cache.
+    resources_dirty: Arc<AtomicBool>,
 }
 
 #[cfg(feature = "server")]
@@ -173,7 +162,7 @@ where
             cached_skills: Arc::new(std::sync::Mutex::new(Vec::new())),
             cached_gate_notice: Arc::new(std::sync::Mutex::new(None)),
             gate_notice_consumed: Arc::new(AtomicBool::new(false)),
-            last_mcp_poll_at: std::sync::Mutex::new(None),
+            resources_dirty: Arc::new(AtomicBool::new(false)),
         }
     }
 
@@ -248,6 +237,7 @@ where
         if let Ok(mut cached) = self.cached_resources.lock() {
             *cached = snap;
         }
+        self.resources_dirty.store(true, Ordering::SeqCst);
     }
 
     fn restart_downlink(&mut self) {
@@ -276,6 +266,11 @@ where
         let subscribed_ok = self.subscribed_ok.clone();
         let skip_cold_replay = self.skip_cold_replay.clone();
         let cached_queue = self.cached_queue.clone();
+        let cached_skills = self.cached_skills.clone();
+        let cached_resources = self.cached_resources.clone();
+        let cached_gate_notice = self.cached_gate_notice.clone();
+        let gate_notice_consumed = self.gate_notice_consumed.clone();
+        let resources_dirty = self.resources_dirty.clone();
         let client_cwd = self.client_cwd.clone();
         tokio::spawn(async move {
             let mut backoff = Duration::from_millis(200);
@@ -379,6 +374,39 @@ where
                                             if method == "session/subscribed" =>
                                         {
                                             skip_cold_replay.store(false, Ordering::SeqCst);
+                                        }
+                                        Some(Ok(RpcMessage::ServerRequest { method, payload, .. }))
+                                            if method == "session/resources" =>
+                                        {
+                                            let snap_val = payload
+                                                .get("snapshot")
+                                                .cloned()
+                                                .unwrap_or(payload);
+                                            if let Ok(snap) = serde_json::from_value::<
+                                                LoadedResourcesSnapshot,
+                                            >(
+                                                snap_val
+                                            ) {
+                                                let skills: Vec<(String, String)> = snap
+                                                    .skill_names
+                                                    .iter()
+                                                    .map(|name| (name.clone(), String::new()))
+                                                    .collect();
+                                                if let Ok(mut cached) = cached_skills.lock() {
+                                                    *cached = skills;
+                                                }
+                                                if let Some(notice) = snap.mcp_gate_notice.as_ref()
+                                                    && !gate_notice_consumed.load(Ordering::SeqCst)
+                                                    && let Ok(mut cached) =
+                                                        cached_gate_notice.lock()
+                                                {
+                                                    *cached = Some(notice.clone());
+                                                }
+                                                if let Ok(mut cached) = cached_resources.lock() {
+                                                    *cached = snap;
+                                                }
+                                                resources_dirty.store(true, Ordering::SeqCst);
+                                            }
                                         }
                                         Some(Ok(RpcMessage::ServerRequest { method, .. }))
                                             if method == "session/resync_required" =>
@@ -1335,28 +1363,8 @@ where
     }
 
     async fn poll_mcp_bootstrap(&mut self) -> bool {
-        let prev = self
-            .cached_resources
-            .lock()
-            .map(|s| s.clone())
-            .unwrap_or_default();
-        if !remote_mcp_poll_needs_pull(&prev) {
-            return false;
-        }
-        // In-process poll is local-dirty only. Attach cannot join the writer, so
-        // pull `loaded_resources` — but not on the 16ms busy ticker.
-        {
-            let mut last = self
-                .last_mcp_poll_at
-                .lock()
-                .unwrap_or_else(|e| e.into_inner());
-            if last.is_some_and(|t| t.elapsed() < REMOTE_MCP_POLL_PULL) {
-                return false;
-            }
-            *last = Some(std::time::Instant::now());
-        }
-        let snap = self.loaded_resources_snapshot().await;
-        snap != prev
+        // Attach observes writer MCP via mux `session/resources`, not 16Hz unary.
+        self.resources_dirty.swap(false, Ordering::SeqCst)
     }
 
     async fn reload_runtime(
@@ -1412,30 +1420,8 @@ mod tests {
         assert_eq!(kept.session_id().as_deref(), Some("keep-me"));
     }
 
-    #[test]
-    fn remote_mcp_poll_needs_pull_only_while_in_flight() {
-        assert!(!remote_mcp_poll_needs_pull(
-            &LoadedResourcesSnapshot::default()
-        ));
-        assert!(remote_mcp_poll_needs_pull(&LoadedResourcesSnapshot {
-            mcp_configured: 2,
-            mcp_bootstrap_complete: false,
-            tools_table_frozen: false,
-            mcp_connecting_label: Some("connecting 0/2".into()),
-            ..LoadedResourcesSnapshot::default()
-        }));
-        assert!(!remote_mcp_poll_needs_pull(&LoadedResourcesSnapshot {
-            mcp_configured: 2,
-            mcp_bootstrap_complete: true,
-            tools_table_frozen: true,
-            mcp_connecting_label: None,
-            ..LoadedResourcesSnapshot::default()
-        }));
-    }
-
     #[derive(Clone)]
     struct SnapClient {
-        snap: Arc<std::sync::Mutex<LoadedResourcesSnapshot>>,
         calls: Arc<std::sync::atomic::AtomicUsize>,
     }
 
@@ -1443,16 +1429,12 @@ mod tests {
     impl HostClient for SnapClient {
         async fn unary(
             &self,
-            method: &str,
+            _method: &str,
             _payload: Value,
         ) -> Result<crate::protocol::RpcResult, crate::app::core::host_client::HostClientError>
         {
             self.calls.fetch_add(1, Ordering::SeqCst);
-            assert_eq!(method, "loaded_resources");
-            let snap = self.snap.lock().expect("snap").clone();
-            Ok(crate::protocol::RpcResult::ok_value(
-                serde_json::to_value(snap).expect("snap json"),
-            ))
+            panic!("poll_mcp_bootstrap must not unary");
         }
 
         async fn respond(
@@ -1474,54 +1456,56 @@ mod tests {
     }
 
     #[tokio::test]
-    async fn poll_mcp_bootstrap_skips_unary_when_unconfigured() {
+    async fn poll_mcp_bootstrap_is_cache_dirty_only() {
         let client = SnapClient {
-            snap: Arc::new(std::sync::Mutex::new(LoadedResourcesSnapshot::default())),
             calls: Arc::new(std::sync::atomic::AtomicUsize::new(0)),
         };
         let mut driver = XyRemoteDriver::with_host(client.clone(), "s");
         assert!(!driver.poll_mcp_bootstrap().await);
         assert_eq!(client.calls.load(Ordering::SeqCst), 0);
-    }
 
-    #[tokio::test]
-    async fn poll_mcp_bootstrap_pulls_once_per_window_and_only_when_changed() {
-        let connecting = LoadedResourcesSnapshot {
+        driver.apply_resources_cache(LoadedResourcesSnapshot {
             mcp_configured: 1,
             mcp_bootstrap_complete: false,
             tools_table_frozen: false,
             mcp_connecting_label: Some("connecting 0/1".into()),
             ..LoadedResourcesSnapshot::default()
-        };
-        let client = SnapClient {
-            snap: Arc::new(std::sync::Mutex::new(connecting.clone())),
-            calls: Arc::new(std::sync::atomic::AtomicUsize::new(0)),
-        };
-        let mut driver = XyRemoteDriver::with_host(client.clone(), "s");
-        driver.apply_resources_cache(connecting.clone());
+        });
+        assert!(driver.poll_mcp_bootstrap().await);
+        assert!(!driver.poll_mcp_bootstrap().await);
+        assert_eq!(client.calls.load(Ordering::SeqCst), 0);
+    }
 
-        assert!(
-            !driver.poll_mcp_bootstrap().await,
-            "identical snapshot is not dirty"
-        );
-        assert_eq!(client.calls.load(Ordering::SeqCst), 1);
-
-        assert!(
-            !driver.poll_mcp_bootstrap().await,
-            "throttle must skip a second unary"
-        );
-        assert_eq!(client.calls.load(Ordering::SeqCst), 1);
-
-        {
-            let mut snap = client.snap.lock().expect("snap");
-            snap.mcp_connecting_label = Some("connecting 1/1".into());
+    #[tokio::test]
+    async fn push_resources_is_not_journaled() {
+        let host = HostState::for_test().expect("host");
+        let slot = host.slot("res").await;
+        let mut rx = host.in_process_downlink.subscribe();
+        slot.push_resources(LoadedResourcesSnapshot {
+            mcp_configured: 1,
+            mcp_connecting_label: Some("connecting 0/1".into()),
+            ..LoadedResourcesSnapshot::default()
+        })
+        .await;
+        let msg = tokio::time::timeout(Duration::from_secs(1), rx.recv())
+            .await
+            .expect("downlink")
+            .expect("msg");
+        match msg {
+            RpcMessage::ServerRequest {
+                method, payload, ..
+            } => {
+                assert_eq!(method, "session/resources");
+                assert_eq!(payload["session_id"], "res");
+                assert_eq!(payload["snapshot"]["mcp_configured"], 1);
+            }
+            other => panic!("unexpected {other:?}"),
         }
-        tokio::time::sleep(REMOTE_MCP_POLL_PULL + Duration::from_millis(20)).await;
-        assert!(
-            driver.poll_mcp_bootstrap().await,
-            "label change after throttle MUST refresh"
+        assert_eq!(
+            slot.journal.lock().await.max_seq(),
+            0,
+            "session/resources MUST NOT consume journal seq"
         );
-        assert_eq!(client.calls.load(Ordering::SeqCst), 2);
     }
 
     #[tokio::test]

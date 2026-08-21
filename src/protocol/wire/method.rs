@@ -46,6 +46,7 @@ pub const DOWNLINK_METHODS: &[&str] = &[
     "session/event",
     "session/subscribed",
     "session/resync_required",
+    "session/resources",
     "approval/requested",
     "question/requested",
     "host/hello",
@@ -70,5 +71,7 @@ mod tests {
         assert!(is_unary_method("prompt"));
         assert!(is_unary_method("host.describe"));
         assert!(is_unary_method("arm_tool_freeze"));
+        assert!(is_downlink_method("session/event"));
+        assert!(is_downlink_method("session/resources"));
     }
 }

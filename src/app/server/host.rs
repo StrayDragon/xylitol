@@ -5,7 +5,7 @@
 //! at once.
 
 use std::collections::HashMap;
-use std::path::PathBuf;
+use std::path::{Path, PathBuf};
 use std::sync::Arc;
 use std::sync::atomic::{AtomicBool, AtomicU64, Ordering};
 
@@ -35,8 +35,8 @@ use crate::protocol::ports::XySessionStore;
 use crate::protocol::ports::ask::{AskArgs, AskUserGateway};
 use crate::protocol::wire::envelope::{
     ApprovalRequestedPayload, HostDescribeValue, PROTOCOL_VERSION, QuestionRequestedPayload,
-    RpcMessage, RpcResult, SessionEventPayload, SessionResyncRequiredPayload,
-    SessionSubscribedPayload,
+    RpcMessage, RpcResult, SessionEventPayload, SessionResourcesPayload,
+    SessionResyncRequiredPayload, SessionSubscribedPayload,
 };
 use crate::protocol::wire::method::is_unary_method;
 
@@ -91,6 +91,9 @@ pub struct ReloadBaseline {
     pub agent_dir: PathBuf,
     pub project_trusted: bool,
     pub mcp_servers: Vec<McpServerSpec>,
+    /// `models.default_model` (or CLI `--model`) applied when a writer is materialized.
+    /// `RuntimePorts::materialize_runtime` leaves ModelManager unset; Host MUST select.
+    pub default_model_id: Option<String>,
 }
 
 pub type MuxSink = mpsc::Sender<RpcMessage>;
@@ -108,6 +111,12 @@ pub struct SessionSlot {
     pub in_process_downlink: broadcast::Sender<RpcMessage>,
     next_conn: AtomicU64,
     resync_offered: AtomicBool,
+    /// True from Host `prompt` spawn start until the run stream ends.
+    run_inflight: AtomicBool,
+    /// `/model` during inflight: apply after AgentEnd (this run stays frozen).
+    pending_model: std::sync::Mutex<Option<String>>,
+    pending_thinking: std::sync::Mutex<Option<String>>,
+    mcp_watch_started: AtomicBool,
 }
 
 impl HostState {
@@ -149,6 +158,7 @@ impl HostState {
                 agent_dir,
                 project_trusted: true,
                 mcp_servers: Vec::new(),
+                default_model_id: None,
             },
             "test-session".into(),
         ))
@@ -171,6 +181,7 @@ impl HostState {
                 agent_dir,
                 project_trusted: true,
                 mcp_servers,
+                default_model_id: None,
             },
             "test-session".into(),
         ))
@@ -274,10 +285,30 @@ impl HostState {
     }
 
     pub async fn loaded_resources_snapshot(&self) -> LoadedResourcesSnapshot {
-        // Drop `sessions` before polling: `poll_mcp_bootstrap` joins a finished
-        // connect task and installs the manager. Attach TUI never calls that on
-        // the writer (Remote poll is cache-only); without this, progress hits
-        // `connecting n/n` then the header sticks at `N configured · 0 connected`.
+        self.loaded_resources_snapshot_for("").await
+    }
+
+    /// Poll the writer for `session_id` when present; otherwise first occupied slot
+    /// or the process-level resource driver.
+    ///
+    /// Drop `sessions` before polling: `poll_mcp_bootstrap` joins a finished
+    /// connect task and installs the manager. Attach TUI never calls that on
+    /// the writer (Remote poll is cache-only); without this, progress hits
+    /// `connecting n/n` then the header sticks at `N configured · 0 connected`.
+    pub async fn loaded_resources_snapshot_for(&self, session_id: &str) -> LoadedResourcesSnapshot {
+        if !session_id.is_empty() {
+            let slot = {
+                let sessions = self.sessions.read().await;
+                sessions.get(session_id).cloned()
+            };
+            if let Some(slot) = slot {
+                let mut guard = slot.driver.lock().await;
+                if let Some(driver) = guard.as_mut() {
+                    let _ = driver.poll_mcp_bootstrap().await;
+                    return driver.loaded_resources_snapshot().await;
+                }
+            }
+        }
         let slots: Vec<Arc<SessionSlot>> = {
             let sessions = self.sessions.read().await;
             sessions.values().cloned().collect()
@@ -314,6 +345,10 @@ impl SessionSlot {
             in_process_downlink,
             next_conn: AtomicU64::new(1),
             resync_offered: AtomicBool::new(false),
+            run_inflight: AtomicBool::new(false),
+            pending_model: std::sync::Mutex::new(None),
+            pending_thinking: std::sync::Mutex::new(None),
+            mcp_watch_started: AtomicBool::new(false),
         })
     }
 
@@ -325,6 +360,47 @@ impl SessionSlot {
 
     pub async fn remove_subscriber(&self, id: u64) {
         self.subscribers.lock().await.remove(&id);
+    }
+
+    fn clear_pending_runtime(&self) {
+        if let Ok(mut g) = self.pending_model.lock() {
+            *g = None;
+        }
+        if let Ok(mut g) = self.pending_thinking.lock() {
+            *g = None;
+        }
+    }
+
+    async fn flush_pending_runtime(&self) {
+        let model = self.pending_model.lock().ok().and_then(|mut g| g.take());
+        let thinking = self.pending_thinking.lock().ok().and_then(|mut g| g.take());
+        if model.is_none() && thinking.is_none() {
+            return;
+        }
+        let mut guard = self.driver.lock().await;
+        let Some(driver) = guard.as_mut() else {
+            return;
+        };
+        if let Some(id) = model.as_deref()
+            && let Err(e) = driver.select_model(id).await
+        {
+            log::warn!(target: "xylitol::host", "flush pending model {id}: {e}");
+        }
+        if let Some(level) = thinking
+            && let Err(e) = driver.set_thinking_level(level).await
+        {
+            log::warn!(target: "xylitol::host", "flush pending thinking: {e}");
+        }
+    }
+
+    #[cfg(test)]
+    pub(crate) fn mark_run_inflight_for_test(&self, on: bool) {
+        self.run_inflight.store(on, Ordering::SeqCst);
+    }
+
+    #[cfg(test)]
+    pub(crate) async fn flush_pending_runtime_for_test(&self) {
+        self.flush_pending_runtime().await;
     }
 
     async fn replay_or_resync(&self, last_seq: u64) -> RpcResult {
@@ -448,6 +524,51 @@ impl SessionSlot {
         self.broadcast(msg).await;
     }
 
+    /// Chrome-only MCP/skills snapshot. Not journaled (must not consume seq).
+    pub async fn push_resources(&self, snap: LoadedResourcesSnapshot) {
+        let msg = downlink_server_request(
+            "session/resources",
+            serde_json::to_value(SessionResourcesPayload {
+                session_id: self.session_id.clone(),
+                snapshot: serde_json::to_value(&snap).unwrap_or(Value::Null),
+            })
+            .unwrap_or(Value::Null),
+        );
+        self.broadcast(msg).await;
+    }
+
+    /// Poll the writer locally and push `session/resources` when dirty.
+    pub fn ensure_mcp_resources_watch(self: &Arc<Self>) {
+        if self.mcp_watch_started.swap(true, Ordering::SeqCst) {
+            return;
+        }
+        let weak = Arc::downgrade(self);
+        tokio::spawn(async move {
+            loop {
+                let Some(slot) = weak.upgrade() else {
+                    return;
+                };
+                let snap = {
+                    let mut g = slot.driver.lock().await;
+                    let Some(driver) = g.as_mut() else {
+                        drop(g);
+                        tokio::time::sleep(std::time::Duration::from_millis(50)).await;
+                        continue;
+                    };
+                    if driver.poll_mcp_bootstrap().await {
+                        Some(driver.loaded_resources_snapshot().await)
+                    } else {
+                        None
+                    }
+                };
+                if let Some(snap) = snap {
+                    slot.push_resources(snap).await;
+                }
+                tokio::time::sleep(std::time::Duration::from_millis(50)).await;
+            }
+        });
+    }
+
     pub async fn request_approval(
         &self,
         rpc_id: String,
@@ -528,29 +649,84 @@ pub fn is_writer_method(method: &str) -> bool {
     WRITER_METHODS.contains(&method)
 }
 
+fn workspace_from_payload(host: &HostState, payload: &Value) -> PathBuf {
+    payload
+        .get("cwd")
+        .and_then(Value::as_str)
+        .map(str::trim)
+        .filter(|s| !s.is_empty())
+        .map(PathBuf::from)
+        .unwrap_or_else(|| host.reload.cwd.clone())
+}
+
+fn same_workspace(a: &Path, b: &Path) -> bool {
+    match (a.canonicalize(), b.canonicalize()) {
+        (Ok(left), Ok(right)) => left == right,
+        _ => a == b,
+    }
+}
+
+fn project_trusted_for(host: &HostState, workspace: &Path) -> bool {
+    if same_workspace(workspace, &host.reload.cwd) {
+        return host.reload.project_trusted;
+    }
+    let mgr = crate::infra::trust::TrustManager::new(&host.reload.agent_dir);
+    let cwd = workspace.to_string_lossy();
+    crate::infra::trust::resolve_project_trusted(
+        &mgr,
+        &cwd,
+        None,
+        crate::infra::trust::DefaultProjectTrust::default(),
+        false,
+        |_| None,
+    )
+    .trusted
+}
+
 pub async fn materialize_writer(
     host: &HostState,
     slot: &Arc<SessionSlot>,
 ) -> Result<(), XyDriverError> {
+    materialize_writer_at(host, slot, &host.reload.cwd).await
+}
+
+pub async fn materialize_writer_at(
+    host: &HostState,
+    slot: &Arc<SessionSlot>,
+    workspace: &Path,
+) -> Result<(), XyDriverError> {
     let mut guard = slot.driver.lock().await;
     if guard.is_some() {
+        drop(guard);
+        slot.ensure_mcp_resources_watch();
         return Ok(());
     }
     let mut agent = host.ports.materialize_runtime();
+    agent.set_cwd(workspace.to_string_lossy().into_owned());
     agent
         .bind_session(slot.session_id.clone())
         .map_err(|e| XyDriverError::from(e.to_string()))?;
     let mut driver = XyInProcessDriver::new(agent, host.ports.store.clone());
     driver.enable_reload_state(
-        host.reload.cwd.clone(),
+        workspace.to_path_buf(),
         host.reload.agent_dir.clone(),
-        host.reload.project_trusted,
+        project_trusted_for(host, workspace),
         host.reload.mcp_servers.clone(),
     );
     driver.install_ask_tool(Arc::new(SlotAskGateway { slot: slot.clone() }));
     driver.begin_mcp_bootstrap().await;
+    if let Some(id) = host.reload.default_model_id.as_deref()
+        && let Err(e) = driver.select_model(id).await
+    {
+        log::warn!(
+            target: "xylitol::host",
+            "writer default model select failed id={id}: {e}"
+        );
+    }
     *guard = Some(driver);
     slot.writer.store(true, Ordering::SeqCst);
+    drop(guard);
+    slot.ensure_mcp_resources_watch();
     Ok(())
 }
 
@@ -573,6 +749,72 @@ async fn materialize_reader(
     let mut driver = new_reader_driver(host);
     driver.switch_session(session_id).await?;
     Ok(driver)
+}
+
+/// Busy `/model` / thinking: remember for the next run; do not retune this run's LLM calls.
+async fn defer_runtime_setting(
+    slot: &SessionSlot,
+    method: &str,
+    payload: &Value,
+    token: &str,
+) -> RpcResult {
+    let mut g = slot.driver.lock().await;
+    let Some(driver) = g.as_mut() else {
+        return RpcResult::error("unavailable", "no writer engine");
+    };
+    match method {
+        "set_model" => {
+            let id = payload
+                .get("model_id")
+                .and_then(Value::as_str)
+                .unwrap_or("")
+                .to_string();
+            let Some(model) = driver.available_models().into_iter().find(|m| m.id == id) else {
+                return RpcResult::error("not_found", format!("model not found: {id}"));
+            };
+            drop(g);
+            if let Ok(mut pending) = slot.pending_model.lock() {
+                *pending = Some(model.id.clone());
+            }
+            RpcResult::ok_value(attach_writer_token(model_data(&model), token))
+        }
+        "cycle_model" => {
+            let list = driver.available_models();
+            if list.is_empty() {
+                return RpcResult::error("not_found", "no models available");
+            }
+            let current = driver.current_model().map(|m| m.id);
+            let idx = current
+                .as_ref()
+                .and_then(|cur| list.iter().position(|m| m.id == *cur))
+                .unwrap_or(0);
+            let model = list[(idx + 1) % list.len()].clone();
+            drop(g);
+            if let Ok(mut pending) = slot.pending_model.lock() {
+                *pending = Some(model.id.clone());
+            }
+            RpcResult::ok_value(attach_writer_token(model_data(&model), token))
+        }
+        "set_thinking_level" => {
+            let level = payload
+                .get("level")
+                .and_then(Value::as_str)
+                .unwrap_or("")
+                .to_string();
+            drop(g);
+            if level.trim().is_empty() {
+                return RpcResult::error("invalid_input", "empty thinking level");
+            }
+            if let Ok(mut pending) = slot.pending_thinking.lock() {
+                *pending = Some(level.clone());
+            }
+            RpcResult::ok_value(attach_writer_token(
+                json!({ "thinking_level": level }),
+                token,
+            ))
+        }
+        _ => RpcResult::error("not_found", format!("unregistered method {method}")),
+    }
 }
 
 fn model_data(m: &ModelInfo) -> Value {
@@ -903,7 +1145,8 @@ pub async fn handle_unary(
         };
     }
     if method == "loaded_resources" {
-        let snapshot = host.loaded_resources_snapshot().await;
+        let session_id = host.session_id_from_payload(&payload);
+        let snapshot = host.loaded_resources_snapshot_for(&session_id).await;
         return RpcResult::ok_value(outcome_to_value(DispatchOutcome::LoadedResources(snapshot)));
     }
     if method == "abort" && host.abort_reload().await {
@@ -919,6 +1162,7 @@ pub async fn handle_unary(
     } else {
         host.session_id_from_payload(&payload)
     };
+    let workspace = workspace_from_payload(host, &payload);
 
     if method == "subscribe" {
         if session_id.is_empty() {
@@ -929,7 +1173,7 @@ pub async fn handle_unary(
             .and_then(|v| v.as_u64())
             .unwrap_or(0);
         let slot = host.slot(&session_id).await;
-        if let Err(e) = materialize_writer(host, &slot).await {
+        if let Err(e) = materialize_writer_at(host, &slot, &workspace).await {
             log::warn!(
                 target: "xylitol::host",
                 "subscribe materialize_writer failed: {e}"
@@ -954,13 +1198,25 @@ pub async fn handle_unary(
             Ok(t) => t,
             Err(e) => return e,
         };
-        if let Err(e) = materialize_writer(host, &slot).await {
+        if let Err(e) = materialize_writer_at(host, &slot, &workspace).await {
             let mut r = rpc_err(e);
             r.value = Some(json!({ "writerToken": token }));
             return r;
         }
         let driver = slot.driver.clone();
         let slot_push = slot.clone();
+        let prompt_model = payload
+            .get("model_id")
+            .and_then(Value::as_str)
+            .map(str::trim)
+            .filter(|s| !s.is_empty())
+            .map(str::to_string);
+        let prompt_thinking = payload
+            .get("thinking_level")
+            .and_then(Value::as_str)
+            .map(str::trim)
+            .filter(|s| !s.is_empty())
+            .map(str::to_string);
         tokio::spawn(async move {
             let stream = {
                 let deadline = std::time::Instant::now()
@@ -974,6 +1230,24 @@ pub async fn handle_unary(
                     d.arm_tool_freeze_gate().await;
                     let _ = d.poll_mcp_bootstrap().await;
                     if d.is_tools_frozen() || std::time::Instant::now() >= deadline {
+                        slot_push.clear_pending_runtime();
+                        if let Some(id) = prompt_model.as_deref()
+                            && let Err(e) = d.select_model(id).await
+                        {
+                            log::warn!(
+                                target: "xylitol::host",
+                                "prompt model_id={id} select failed: {e}"
+                            );
+                        }
+                        if let Some(level) = prompt_thinking.as_deref()
+                            && let Err(e) = d.set_thinking_level(level.to_string()).await
+                        {
+                            log::warn!(
+                                target: "xylitol::host",
+                                "prompt thinking_level select failed: {e}"
+                            );
+                        }
+                        slot_push.run_inflight.store(true, Ordering::SeqCst);
                         let stream = d.run(&message).await;
                         drop(g);
                         break stream;
@@ -991,6 +1265,8 @@ pub async fn handle_unary(
                     break;
                 }
             }
+            slot_push.run_inflight.store(false, Ordering::SeqCst);
+            slot_push.flush_pending_runtime().await;
         });
         return RpcResult::ok_value(attach_writer_token(
             json!({ "session_id": session_id }),
@@ -1003,7 +1279,7 @@ pub async fn handle_unary(
             Ok(t) => t,
             Err(e) => return e,
         };
-        if let Err(e) = materialize_writer(host, &slot).await {
+        if let Err(e) = materialize_writer_at(host, &slot, &workspace).await {
             let mut r = rpc_err(e);
             r.value = Some(json!({ "writerToken": token }));
             return r;
@@ -1031,7 +1307,7 @@ pub async fn handle_unary(
             Ok(t) => t,
             Err(e) => return e,
         };
-        if let Err(e) = materialize_writer(host, &slot).await {
+        if let Err(e) = materialize_writer_at(host, &slot, &workspace).await {
             let mut r = rpc_err(e);
             r.value = Some(json!({ "writerToken": token }));
             return r;
@@ -1063,10 +1339,15 @@ pub async fn handle_unary(
             Ok(t) => t,
             Err(e) => return e,
         };
-        if let Err(e) = materialize_writer(host, &slot).await {
+        if let Err(e) = materialize_writer_at(host, &slot, &workspace).await {
             let mut r = rpc_err(e);
             r.value = Some(json!({ "writerToken": token }));
             return r;
+        }
+        if slot.run_inflight.load(Ordering::SeqCst)
+            && matches!(method, "set_model" | "cycle_model" | "set_thinking_level")
+        {
+            return defer_runtime_setting(&slot, method, &payload, &token).await;
         }
         let cmd = match command_from_method(method, &payload) {
             Ok(c) => c,
@@ -1122,7 +1403,7 @@ pub async fn handle_unary(
 
         let session_exists = host.ports.store.exists(&session_id).await;
         if !session_exists && method == "session_tree" {
-            let cwd = host.reload.cwd.to_string_lossy().into_owned();
+            let cwd = workspace.to_string_lossy().into_owned();
             if let Err(e) = host.ports.store.create(&session_id, Some(&cwd), None).await {
                 return rpc_err(e.into());
             }

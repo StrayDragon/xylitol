@@ -90,6 +90,7 @@ pub async fn start(
 
     let fallback_session = assembly.session_id.clone();
     let mcp_servers = assembly.mcp_servers.clone().unwrap_or_default();
+    let default_model_id = assembly.default_profile_model.clone();
     let project_trusted = !assembly.warnings.iter().any(|w| {
         matches!(
             w,
@@ -113,6 +114,7 @@ pub async fn start(
             agent_dir,
             project_trusted,
             mcp_servers,
+            default_model_id,
         },
         fallback_session,
     );

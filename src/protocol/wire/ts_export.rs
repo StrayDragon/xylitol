@@ -7,7 +7,7 @@ use super::command::Command;
 use super::envelope::{
     ApprovalRequestedPayload, HostDescribeValue, HostHelloPayload, PROTOCOL_VERSION,
     QuestionRequestedPayload, RpcError, RpcMessage, RpcResult, SessionEventPayload,
-    SessionResyncRequiredPayload, SessionSubscribedPayload,
+    SessionResourcesPayload, SessionResyncRequiredPayload, SessionSubscribedPayload,
 };
 use super::event::Event;
 use super::method::{DOWNLINK_METHODS, UNARY_METHODS};
@@ -30,6 +30,7 @@ pub fn protocol_types() -> Types {
         .register::<SessionEventPayload>()
         .register::<SessionSubscribedPayload>()
         .register::<SessionResyncRequiredPayload>()
+        .register::<SessionResourcesPayload>()
         .register::<HostHelloPayload>()
         .register::<ApprovalRequestedPayload>()
         .register::<QuestionRequestedPayload>()
@@ -128,6 +129,7 @@ mod tests {
         assert!(ts.contains("\"prompt\""));
         assert!(ts.contains("\"host.describe\""));
         assert!(ts.contains("\"session/event\""));
+        assert!(ts.contains("\"session/resources\""));
         assert!(ts.contains("UNARY_METHODS"));
         assert!(ts.contains("PROTOCOL_VERSION"));
         assert!(!ts.contains("openapi"), "OpenAPI must not be the SSOT");

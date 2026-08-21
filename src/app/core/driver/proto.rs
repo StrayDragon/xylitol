@@ -390,7 +390,8 @@ pub trait XyDriver: Send {
     ///
     /// After [`Self::poll_mcp_bootstrap`] returns true, product hosts SHOULD apply
     /// this instead of awaiting [`Self::loaded_resources_snapshot`] again: Remote
-    /// poll already pulled. In-process returns `None` (snapshot is local and cheap).
+    /// poll is a dirty flag on the mux cache. In-process returns `None`
+    /// (snapshot is local and cheap).
     fn loaded_resources_cached(&self) -> Option<LoadedResourcesSnapshot> {
         None
     }
@@ -421,10 +422,10 @@ pub trait XyDriver: Send {
     /// (connecting label changed, tools applied, or bootstrap phase advanced).
     ///
     /// In-process: observe local boot state — **MUST NOT** report dirty every tick.
-    /// Remote: attach cannot join the writer task; MAY unary `loaded_resources` to
-    /// observe progress, but MUST throttle and MUST return `true` only when the
-    /// snapshot actually changed (same contract as in-process). Unchanged ticks
-    /// MUST NOT refresh TUI catalogs (slash popup / skill list).
+    /// Remote: **MUST NOT** unary on the TUI tick. Host pushes `session/resources`
+    /// when the writer poll is dirty; this method returns true when that cache
+    /// update has not yet been applied to the TUI. Unchanged ticks MUST NOT
+    /// refresh TUI catalogs (slash popup / skill list).
     ///
     /// **Contract (sticky cue)**: `Settling → Settled` (deferred system-prompt install
     /// finished) MUST return `true` even when no tool-freeze gate is armed. Hosts only
