@@ -8,6 +8,7 @@ use xylitol::app::server::runtime::{RunningServer, ServerConfig, serve};
 use xylitol::app::server::ws::{EventJournal, ReverseRpcResult};
 use xylitol::protocol::Event;
 use xylitol::protocol::wire::envelope::{PROTOCOL_VERSION, RpcMessage};
+use xylitol::protocol::wire::method::{DOWNLINK_METHODS, UNARY_METHODS};
 use xylitol::{HostClient, HttpWsClient};
 
 /// Shared fixture for server-core scenarios.
@@ -121,6 +122,69 @@ async fn t_healthz(server_test: &ServerTest) {
     let (status, body) = http_status(server_test.port.get(), "GET", "/healthz", "").await;
     assert_eq!(status, 200, "{body}");
     assert!(body.contains("ok"), "{body}");
+}
+
+#[when("GET /openapi.json")]
+async fn w_openapi_doc(server_test: &ServerTest) {
+    let (status, body) = http_status(server_test.port.get(), "GET", "/openapi.json", "").await;
+    server_test.unary_status.set(status);
+    *server_test.unary_body.borrow_mut() = Some(body);
+}
+
+#[then("返回 OpenAPI 3.1 文档且含全部登记 unary 条目")]
+fn t_openapi_methods(server_test: &ServerTest) {
+    assert_eq!(server_test.unary_status.get(), 200, "must be 200");
+    let body = server_test.unary_body.borrow().clone().unwrap_or_default();
+    let v: serde_json::Value = serde_json::from_str(&body).expect("valid openapi json");
+    assert_eq!(v["openapi"], "3.1.0", "{body}");
+    let paths = v["paths"].as_object().expect("paths object");
+    for m in UNARY_METHODS {
+        let key = format!("/api/{m}");
+        let entry = paths
+            .get(key.as_str())
+            .unwrap_or_else(|| panic!("missing /api/{m}"));
+        assert_eq!(
+            entry["post"]["operationId"].as_str(),
+            Some(*m),
+            "mismatched operationId for {m}"
+        );
+    }
+    assert!(paths.contains_key("/healthz"));
+    assert!(paths.contains_key("/api/respond"));
+}
+
+#[then("文档不含 WS 下行 path")]
+fn t_openapi_no_ws(server_test: &ServerTest) {
+    let body = server_test.unary_body.borrow().clone().unwrap_or_default();
+    let v: serde_json::Value = serde_json::from_str(&body).expect("valid openapi json");
+    let paths = v["paths"].as_object().expect("paths object");
+    assert!(!paths.keys().any(|k| k.contains("events.mux")));
+    for d in DOWNLINK_METHODS {
+        assert!(!paths.contains_key(*d), "downlink path leaked: {d}");
+    }
+    // The prose pointer is the contract (sr-oapi1): mux channel + specta bindings.
+    let desc = v["info"]["description"].as_str().expect("description");
+    assert!(desc.contains("events.mux"), "{desc}");
+    assert!(desc.contains("bindings.ts"), "{desc}");
+}
+
+#[when("GET /docs")]
+async fn w_scalar_page(server_test: &ServerTest) {
+    let (status, body) = http_status(server_test.port.get(), "GET", "/docs", "").await;
+    server_test.unary_status.set(status);
+    *server_test.unary_body.borrow_mut() = Some(body);
+}
+
+#[then("Scalar 调试页可达且指向 spec")]
+fn t_scalar_page(server_test: &ServerTest) {
+    assert_eq!(server_test.unary_status.get(), 200, "must be 200");
+    let body = server_test.unary_body.borrow().clone().unwrap_or_default();
+    let lower = body.to_lowercase();
+    assert!(lower.contains("scalar"), "scalar UI html expected: {body}");
+    assert!(
+        body.contains("/openapi.json"),
+        "must point at the spec: {body}"
+    );
 }
 
 #[given("服务端已在该地址端口监听")]

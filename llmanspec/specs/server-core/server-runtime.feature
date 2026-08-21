@@ -8,10 +8,12 @@
 
   @req:sr-oapi1
   场景: openapi-debug-doc
-    假如 服务端在空闲端口上启动
-    当 GET /openapi.json
+    当 服务端在空闲端口上启动
+    并且 GET /openapi.json
     那么 返回 OpenAPI 3.1 文档且含全部登记 unary 条目
     并且 文档不含 WS 下行 path
+    当 GET /docs
+    那么 Scalar 调试页可达且指向 spec
 
   场景: second-instance-rejected
     假如 服务端已在该地址端口监听

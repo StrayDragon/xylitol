@@ -63,7 +63,8 @@ tokio-util = "0.7.18"
 yaml_serde = "0.10.4"
 
 pathdiff = "0.2.3"
-salvo = { version = "0.94", optional = true, default-features = true, features = ["websocket", "test"] }
+salvo = { version = "0.95.2", optional = true, default-features = true, features = ["websocket", "test"] }
+salvo-oapi = { version = "0.95.2", optional = true, default-features = false, features = ["scalar"] }
 tokio-tungstenite = { version = "0.29", features = ["connect", "handshake"], optional = true }
 
 # ── terminal UI (product surface redesigns on packages/xylitol-tui) ──
@@ -83,7 +84,7 @@ default = ["cli", "tui", "otel", "server"]
 # CLI composition root.
 cli = []
 # Always-on HTTP/WebSocket server (product TUI attach default).
-server = ["dep:salvo", "dep:tokio-tungstenite"]
+server = ["dep:salvo", "dep:salvo-oapi", "dep:tokio-tungstenite"]
 # Terminal UI surface (host-driven on xylitol-tui).
 tui = ["dep:xylitol-tui", "dep:crossterm"]
 # Optional OTLP/HTTP export (Langfuse / Collector). Default on for local agents;

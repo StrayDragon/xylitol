@@ -23,11 +23,12 @@ specta 盖信封 + WS 下行；人手调试 unary 仍想要 `/openapi.json`。�
   - WS 下行 MUST NOT 作为 OpenAPI path 呈现——以文档说明指向 specta `bindings.ts` 的 `ServerRequest` / `DOWNLINK_METHODS`。
   - 该端点仅调试文档：MUST NOT 作为客户端生成真源（pa-bind1「OpenAPI 非类型 SSOT」不变）。
 - **实现**：`src/app/server/` 新增文档构建模块 + 路由挂载（`server` feature 内）。
+- **Scalar 调试 UI**：`GET /docs` 托管 Scalar UI（salvo-oapi `scalar` feature，**唯一调试 UI**，指向 `/openapi.json`）；MUST NOT 引入第二套调试 UI。随此把 salvo 升到最新 0.95.2 与 salvo-oapi 同版对齐。
 - **BDD**：`server-runtime.feature` 增可执行场景 `@req:sr-oapi1`（走既有 ServerTest harness）。
 
 ## 已拍板决策
 
-- **载体**：不引入 salvo-oapi 依赖——用 serde_json 手构 OpenAPI 3.1（零新增依赖、无上游 churn、结构正确性由单测守护）。偏离本草案早期「salvo oapi」字样；合约本质是「OpenAPI 3.1 调试文档」，与载体无关。理由见 design.md D1。
+- **载体**：OpenAPI 文档本体仍由 serde_json 从方法表手构（零逻辑依赖、无 schema 词表漂移）；salvo-oapi 仅作 Scalar UI 托管载体，不参与 spec 构建。偏离本草案早期「salvo oapi」字样；合约本质是「OpenAPI 3.1 调试文档」，与构建方式无关。理由见 design.md D1/D6。
 - **路径形态**：逐方法显式条目（`/api/prompt`、`/api/subscribe`…），不做 `{method}` 通配枚举——浏览友好且仍从方法表程序化生成。
 
 ## Capabilities
