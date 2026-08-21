@@ -43,6 +43,10 @@ pub enum Event {
         id: String,
         name: String,
         result: String,
+        /// Terminal failure marker (c2440). Serde default keeps old journals
+        /// and lenient clients on the success path.
+        #[serde(default)]
+        is_error: bool,
     },
     AgentEnd,
     ModelSelect {
@@ -174,11 +178,15 @@ impl XyEvent {
                 args: args.clone(),
             }),
             XyEvent::ToolExecutionEnd {
-                id, name, result, ..
+                id,
+                name,
+                result,
+                is_error,
             } => Some(Event::ToolEnd {
                 id: id.clone(),
                 name: name.clone(),
                 result: result.clone(),
+                is_error: *is_error,
             }),
             XyEvent::ToolExecutionUpdate { id, output } => Some(Event::ToolExecutionUpdate {
                 id: id.clone(),
@@ -286,11 +294,16 @@ impl TryFrom<&Event> for XyEvent {
                 name: name.clone(),
                 args: args.clone(),
             }),
-            Event::ToolEnd { id, name, result } => Ok(XyEvent::ToolExecutionEnd {
+            Event::ToolEnd {
+                id,
+                name,
+                result,
+                is_error,
+            } => Ok(XyEvent::ToolExecutionEnd {
                 id: id.clone(),
                 name: name.clone(),
                 result: result.clone(),
-                is_error: false,
+                is_error: *is_error,
             }),
             Event::ToolExecutionUpdate { id, output } => Ok(XyEvent::ToolExecutionUpdate {
                 id: id.clone(),
@@ -587,5 +600,32 @@ mod tests {
             serde_json::to_value(message.expect("tool call message")).expect("message serializes"),
             expected
         );
+    }
+    #[test]
+    fn tool_end_roundtrips_is_error_and_defaults_lenient() {
+        let domain = XyEvent::ToolExecutionEnd {
+            id: "t1".into(),
+            name: "bash".into(),
+            result: "Tool 'bash' error: timeout after 3s".into(),
+            is_error: true,
+        };
+        let wire = domain.to_wire_event().expect("ToolEnd is wire-visible");
+        let encoded = serde_json::to_value(&wire).expect("wire serializes");
+        assert_eq!(
+            encoded.get("is_error"),
+            Some(&serde_json::Value::Bool(true)),
+            "wire must carry the failure flag"
+        );
+
+        // Lenient parse of an old payload without the field.
+        let mut legacy = encoded.clone();
+        legacy.as_object_mut().unwrap().remove("isError");
+        legacy.as_object_mut().unwrap().remove("is_error");
+        let decoded: Event = serde_json::from_value(legacy).expect("legacy parses");
+        let back = XyEvent::try_from(&decoded).expect("roundtrip");
+        let XyEvent::ToolExecutionEnd { is_error, .. } = back else {
+            panic!("unexpected event");
+        };
+        assert!(!is_error, "missing field defaults to success path");
     }
 }

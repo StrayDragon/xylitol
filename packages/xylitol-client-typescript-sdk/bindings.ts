@@ -26,7 +26,12 @@ position?: string | null } | { type: "get_messages"; id?: string | null } | { ty
  */
 export type Event = { type: "error"; id?: string | null; kind?: string | null; message: string } | { type: "response"; id?: string | null; payload?: any } | { type: "text_delta"; text: string } |
 /**  Streaming thinking / reasoning text (e.g. Anthropic extended thinking). */
-{ type: "thinking_delta"; text: string } | { type: "tool_start"; id: string; name: string; args?: any } | { type: "tool_end"; id: string; name: string; result: string } | { type: "agent_end" } | { type: "model_select"; provider: string; model_id: string } | { type: "compaction_start"; reason: string } |
+{ type: "thinking_delta"; text: string } | { type: "tool_start"; id: string; name: string; args?: any } | { type: "tool_end"; id: string; name: string; result: string;
+/**
+ *  Terminal failure marker (c2440). Serde default keeps old journals
+ *  and lenient clients on the success path.
+ */
+is_error?: boolean } | { type: "agent_end" } | { type: "model_select"; provider: string; model_id: string } | { type: "compaction_start"; reason: string } |
 /**  Acknowledgment of a Subscribe command. */
 { type: "subscribed"; session_id: string; seq: number } | { type: "bash_result"; id?: string | null; output: string; exit_code: number | null; cancelled: boolean; truncated: boolean } |
 /**  Turn started. */
