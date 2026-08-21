@@ -117,13 +117,12 @@ STATUS: incomplete
 - [x] **B3** Host `prompt` 开跑前套用载荷模型；忙时 `set_model`/`thinking` 推迟到本 run 结束（不改 ReAct ar25 重读）
 - [x] **A7** TUI 启动目录随 unary 到 Host；writer 工具 / session.create / trust 用该 cwd（缺省才回落 `serve` cwd）
 - [x] **A7 补**：bang `!` 落在 serve cwd 而非会话工作区。真根因：bash 执行器无 cwd 概念——`BashExecOpts.cwd` + `InfraBashExecutor.current_dir` + Driver 传 `agent.cwd()` 已修（回归：`bash_unary_runs_in_client_workspace` / `cwd_option_spawns_shell_in_workspace`）
-- [ ] **A7 后续**：模型侧 bash 工具（`infra/tools/bash.rs`）与文件工具 `resolve_to_cwd` 仍继承 Host 进程 cwd；多工作区 attach 下 LLM 相对路径操作会落错目录。需给工具执行面穿会话工作区（XyToolCtx 或 per-driver 构造），走 propose
+- [x] **A1 快照** c2307：`get_messages` 一次投影（2026-08-21 手测：`--session` 冷恢复 T+2s 一帧完整历史、零 spinner；合约 server-core w8 + app-tui-host ath36 落地，护栏测试全绿）
 - [x] 手测 2026-08-21：idle 切模 footer 立刻变且下一句走新模（provider trace 证实 openai-responses→anthropic-messages）；busy 切模当前轮全程旧模、下一句才换、无 `Next turn:`；`/model` 不进 steer
 - [x] 改架构文 `运行时即时设置.md`：产品 TUI/Host = **run 绑定**；删「attach 应对齐下轮预告」（2026-08-21 同步一轮对话/配置与档案/扩展与开闭/README/chrome 词表标注/roadmap M0；词表词条保留至 P1 随 ath22 spec 一并退役）
 - [x] **A1 磁带** client 冷订丢弃 Agent 实况（c2307 快照投影仍未做）
 - [x] **C4** `$skill` 从 `loaded_resources.skill_names` 缓存
 - [x] **C5** `mcp_gate_notice` 进 snapshot，Remote `take_mcp_gate_notice`
-- [ ] **A1 快照** c2307：`get_messages` 一次投影
 - [x] **D1** 剪贴板改走 TUI 本机，去掉对 Remote `unsupported` 的依赖（`XyRemoteDriver` 活在 TUI 进程，直接镜像 InProcess 的 `infra::clipboard` 三实现；回归 `clipboard_ops_stay_client_local` 断言零 unary）
 - [x] **B6** steer/follow_up/clear_queue 去 `block_on`（trait 改 async，与 `/model` 同纪律走 effects 泵；删除 Remote `block_on` helper）
 - [x] **D2** `/trust` 经 Host unary（产品保留该 slash；`persist_trust` 路由会话槽 writer，按会话工作区解析信任；trait 方法改 async 与 B6 同纪律）
@@ -131,6 +130,7 @@ STATUS: incomplete
 
 ### P1 — 对拍收口后才动
 
+- [ ] **A7 后续**：模型侧 bash 工具（`infra/tools/bash.rs`）与文件工具 `resolve_to_cwd` 仍继承 Host 进程 cwd；多工作区 attach 下 LLM 相对路径操作会落错目录。需给工具执行面穿会话工作区（XyToolCtx 或 per-driver 构造），走 propose
 - [ ] **C3** reload 合作取消
 - [ ] **E1/E2** token 与 bang 流式是否要 Host 事件
 - [ ] `XyRemoteDriver` 拆文件（现 ~1700 行）

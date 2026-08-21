@@ -22,5 +22,5 @@
 
 ## 4. 对拍收尾
 
-- [ ] 4.1 [blocked-by: 2.3; blocked-by: 3.3] 真实 attach 手测迁移清单 §4 步骤 6：`--session` 长历史一次出全文、无假 spinner
-- [ ] 4.2 勾根 `_TUI_MIGRATED_TODO.md` P0「A1 快照」项；P0 清零后核对是否满足收口条件（P1 未勾仍挡删文件）
+- [x] 4.1 真实 attach 手测迁移清单 §4 步骤 6：`--session 05eb4dbd…` 冷恢复 T+2s 一帧完整历史（两轮问答 + restored 滚动提示）、零 spinner 字符、footer token 已恢复；T+6s 稳定无变化
+- [x] 4.2 勾根 `_TUI_MIGRATED_TODO.md` P0「A1 快照」项；「A7 后续」（模型侧工具多工作区）移入 P1——不挡本票
