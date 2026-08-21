@@ -2041,6 +2041,53 @@ mod tests {
     }
 
     #[tokio::test]
+    async fn cold_subscribe_drops_replay_tape_and_stays_live() {
+        use crate::app::core::host_client::InProcessClient;
+        use crate::protocol::Event;
+
+        let host = HostState::for_test().expect("host");
+        {
+            let slot = host.slot("s-cold").await;
+            let mut j = slot.journal.lock().await;
+            j.append(Event::TextDelta {
+                text: "tape-1".into(),
+            });
+            j.append(Event::TextDelta {
+                text: "tape-2".into(),
+            });
+        }
+        let client = InProcessClient::host_state(host.clone());
+        let mut driver = XyRemoteDriver::with_host(client, "s-cold");
+        driver.attach_session().await.expect("attach");
+        tokio::time::sleep(std::time::Duration::from_millis(80)).await;
+        let replay = driver.drain_idle_events();
+        assert!(
+            !replay
+                .iter()
+                .any(|e| matches!(e, XyEvent::TextDelta(t) if t.contains("tape"))),
+            "cold-replay tape MUST NOT reach the transcript stream (ath36): {replay:?}"
+        );
+        let slot = host.slot("s-cold").await;
+        slot.append_and_push(Event::QueueUpdate {
+            steer_count: 0,
+            follow_up_count: 2,
+        })
+        .await;
+        tokio::time::sleep(std::time::Duration::from_millis(80)).await;
+        let live = driver.drain_idle_events();
+        assert!(
+            live.iter().any(|e| matches!(
+                e,
+                XyEvent::QueueUpdate {
+                    follow_up_count: 2,
+                    ..
+                }
+            )),
+            "stream MUST stay live after the recovery window: {live:?}"
+        );
+    }
+
+    #[tokio::test]
     async fn materialize_writer_binds_client_workspace_cwd() {
         use crate::app::server::host::materialize_writer_at;
 

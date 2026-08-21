@@ -158,6 +158,18 @@ async fn test_w6(server_test: ServerTest) {}
 async fn test_w7(server_test: ServerTest) {}
 
 #[scenario(
+    path = "llmanspec/specs/server-core/server-ws.feature",
+    name = "cold-restore-snapshot-projection"
+)]
+async fn test_w8(server_test: ServerTest) {}
+
+#[scenario(
+    path = "llmanspec/specs/server-core/server-ws.feature",
+    name = "replay-window-does-not-pollute-snapshot"
+)]
+async fn test_w8_replay_window(server_test: ServerTest) {}
+
+#[scenario(
     path = "llmanspec/specs/server-core/server-reverse-rpc.feature",
     name = "approve-roundtrip"
 )]
