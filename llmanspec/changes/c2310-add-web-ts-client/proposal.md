@@ -29,4 +29,4 @@ Web 不能 `use` Rust 类型。没有薄客户端，`bindings.ts` 只是一堆 i
 
 ## 非目标
 
-Vite SPA、同源动作 id（c2325）、salvo oapi、ACP、方案 A。
+Vite SPA、同源动作 id（delayed `c2325`，不进本票）、salvo oapi、ACP、方案 A。
