@@ -248,6 +248,10 @@ impl AgentRuntime {
         self.inner.cwd()
     }
 
+    pub fn set_cwd(&mut self, cwd: impl Into<String>) {
+        self.inner.set_cwd(cwd);
+    }
+
     pub fn hook_bus(&self) -> Option<Arc<dyn XyHookBus>> {
         self.inner.hook_bus()
     }

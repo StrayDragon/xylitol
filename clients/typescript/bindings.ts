@@ -87,6 +87,12 @@ export type SessionEventPayload = {
 	event: Event,
 };
 
+/**  Downlink payload for `session/resources` (MCP/skills chrome; not journaled). */
+export type SessionResourcesPayload = {
+	session_id: string,
+	snapshot: any,
+};
+
 /**  Downlink payload for `session/resync_required`. */
 export type SessionResyncRequiredPayload = {
 	session_id: string,
@@ -148,6 +154,7 @@ export const DOWNLINK_METHODS = [
   "session/event",
   "session/subscribed",
   "session/resync_required",
+  "session/resources",
   "approval/requested",
   "question/requested",
   "host/hello",

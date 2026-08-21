@@ -14,7 +14,7 @@ pub use command::Command;
 pub use envelope::{
     ApprovalRequestedPayload, HostDescribeValue, HostHelloPayload, PROTOCOL_VERSION,
     QuestionRequestedPayload, RpcError, RpcMessage, RpcResult, SessionEventPayload,
-    SessionResyncRequiredPayload, SessionSubscribedPayload,
+    SessionResourcesPayload, SessionResyncRequiredPayload, SessionSubscribedPayload,
 };
 pub use event::Event;
 pub use method::{DOWNLINK_METHODS, UNARY_METHODS, is_downlink_method, is_unary_method};

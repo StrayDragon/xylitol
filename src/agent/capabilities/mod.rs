@@ -347,6 +347,10 @@ impl AgentCapabilities {
         &self.cwd
     }
 
+    pub fn set_cwd(&mut self, cwd: impl Into<String>) {
+        self.cwd = cwd.into();
+    }
+
     /// Wire the run-coordinator mid-turn probe (called from [`crate::agent::AgentRuntime::new`]).
     pub(crate) fn set_midturn_active_probe(&mut self, probe: Arc<dyn Fn() -> bool + Send + Sync>) {
         self.midturn_active = probe;
