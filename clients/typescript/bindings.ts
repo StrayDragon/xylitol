@@ -143,6 +143,7 @@ export const UNARY_METHODS = [
   "queue_stats",
   "load_debug_scene",
   "arm_tool_freeze",
+  "persist_trust",
   "steer",
   "follow_up",
   "clear_queue",

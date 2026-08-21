@@ -33,7 +33,7 @@ pub(super) async fn trust<T: Terminal>(
     if session.is_busy() {
         session.push_scroll_notice("agent busy — /trust refused");
     } else {
-        match driver.persist_project_trust(mode) {
+        match driver.persist_project_trust(mode).await {
             Ok(report) => session.push_scroll_notice(report.message),
             Err(e) => {
                 e.log_failure("tui.persist_project_trust");

@@ -629,7 +629,7 @@ impl XyDriver for XyInProcessDriver {
         XyInProcessDriver::reload_runtime(self, cancel).await
     }
 
-    fn persist_project_trust(
+    async fn persist_project_trust(
         &mut self,
         mode: ProjectTrustMode,
     ) -> Result<ProjectTrustPersistReport, XyDriverError> {

@@ -34,6 +34,7 @@ pub const UNARY_METHODS: &[&str] = &[
     "queue_stats",
     "load_debug_scene",
     "arm_tool_freeze",
+    "persist_trust",
     "steer",
     "follow_up",
     "clear_queue",
