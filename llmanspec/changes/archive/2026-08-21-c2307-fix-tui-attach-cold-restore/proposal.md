@@ -3,7 +3,8 @@ depends_on:
 - c2306-fix-tui-attach-parity
 branch: sdd/c2307-fix-tui-attach-cold-restore
 base_sha: cd02ae2e8a2f0a18292a0e04a8686fb816b8c30a
-checkpointed: false
+checkpointed: true
+checkpoint_sha: cd02ae2e8a2f0a18292a0e04a8686fb816b8c30a
 ---
 
 # attach 冷恢复：Host 快照投影，禁止 journal 实况回放

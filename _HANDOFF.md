@@ -6,6 +6,8 @@
 
 ---
 
+PS: c2307-fix-tui-attach-cold-restore 有点bug, 会导致resume 的session展示错位, 重复, 重影等, 需要进一步调研修复
+
 ## 0. 给 Agent / 协作者
 
 | 规则 | 说明 |
