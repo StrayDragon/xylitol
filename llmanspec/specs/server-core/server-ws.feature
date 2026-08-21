@@ -45,3 +45,16 @@
     假如 客户端已 subscribe 且 prompt 运行
     当 agent 发出 TextDelta 事件
     那么 客户端在 mux 上收到 session/event 的 ServerRequest
+
+  @req:w8
+  场景: cold-restore-snapshot-projection
+    假如 会话 s0 已有 3 条历史条目且客户端无有效 last_seq
+    当 冷订客户端调用消息快照
+    那么 快照一次返回全部 3 条条目
+
+  @req:w8
+  场景: replay-window-does-not-pollute-snapshot
+    假如 冷订客户端处于恢复窗内且 journal 含实况磁带事件
+    当 调用消息快照
+    那么 快照内容与磁带回放无关
+    并且 断线续传语义仍按 sr4 从 last_seq+1 重放

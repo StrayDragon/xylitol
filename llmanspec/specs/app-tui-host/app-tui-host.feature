@@ -302,3 +302,15 @@
     假如 PTY 下 Fake+--trust 产品 TUI 已就绪
     当 提交短 prompt 再 /exit
     那么 屏含 Hello from fake provider 且进程退出
+
+  @req:ath36
+  场景: cold-tape-not-rendered
+    假如 attach 客户端处于冷订恢复窗内
+    当 回放注入 AgentStart 与 TextDelta 实况磁带
+    那么 transcript 不渲染这些事件且无假 spinner
+
+  @req:ath36
+  场景: resume-rebuild-once-idle
+    假如 用户空闲切换到含历史的长会话
+    当 快照投影完成
+    那么 transcript 一帧内呈现完整历史且会话为 Idle

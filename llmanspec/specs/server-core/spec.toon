@@ -2,7 +2,7 @@ kind: llman.sdd.spec
 name: "server-core"
 purpose: "Server 运行时 — 独立 Host 监听器经四象限信封暴露产品契约（POST unary/respond + WS 只下行）；每 session 槽独立 journal 与写者。"
 valid_scope[1]: "server 应用面"
-requirements[30]{req_id,title,statement}:
+requirements[31]{req_id,title,statement}:
   sr1,server 托管 agent,"app::server MUST 在启动时装配 infra 运行时并注入 agent 端口；组合根 MUST 持有可按 session 槽取用的 Driver（或等价缝），供 unary 处理器调用，MUST NOT 以无槽的裸 Agent 作为唯一生产入口。"
   "sr-env1","产品路径四象限","产品 TUI 与其它产品客户端 MUST 经四象限信封访问 Host：unary 与 respond 为 HTTP POST，下行为 WebSocket 且 MUST NOT 收业务上行。Host 监听器 MUST 实现该路径。现行 REST 资源动词与全双工 WS 应用帧 MUST NOT 再作为产品真源。"
   sr2,四象限 HTTP 与 WS 下行,"Host MUST 暴露 POST /api/{method}（ClientRequest→ServerResponse）、POST /api/respond（ClientResponse）与 GET /api/events.mux（WebSocket 只下行 ServerRequest）。method 集合 MUST 为已登记 unary。MUST NOT 再以 /api/v1 REST 资源动词或全双工 WS 应用帧承载产品命令。"
@@ -29,6 +29,7 @@ requirements[30]{req_id,title,statement}:
   w5,journal 环形缓冲,Host MUST 维护每会话最近 N 个事件的环形 journal（默认 10000）；journal 环绕超过客户端 last_seq 时，Host MUST 向该客户端发出 session/resync_required。
   w6,resync 流程,收到 session/resync_required 后，客户端 MUST 以更新的 last_seq（如 0 全量重放）再次 unary subscribe 以恢复事件流。
   w7,WS 事件推送,subscribe 之后，Host MUST 为 agent 发出的每个新事件推送 session/event 的 ServerRequest，附带会话单调 seq；MUST 以 JSON 文本帧经 mux 发送。
+  "w8","冷恢复投影","Host MUST 提供会话消息快照 unary（get_messages 或等价）一次返回该会话完整 transcript 条目，作为客户端恢复（冷订或切会话）的投影源；journal 实况重放（sr4）MUST NOT 作为冷恢复的 transcript 投影来源；快照内容 MUST NOT 被恢复窗内的实况磁带回放污染。断线续传语义仍按 sr4/w5/w6。"
   rr1,"reverse-rpc-approval","ApprovalRequired 时，Host MUST 向该 session 的 mux 连接广播 approval/requested ServerRequest；首个 POST /api/respond 胜出。"
   rr2,"reverse-rpc-question","QuestionRequired 时，Host MUST 向该 session 的 mux 连接广播 question/requested ServerRequest；首个 POST /api/respond 胜出。"
   rr3,"call-id-lifecycle",每个 reverse RPC MUST 有稳定 rpcId，在表中注册 oneshot；超时（默认 60s）时收到 ApprovalTimeout；应答时收到结果；消费后 MUST 移除条目。
