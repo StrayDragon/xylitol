@@ -243,6 +243,7 @@ impl super::XyInProcessDriver {
                 mcp_connecting_label,
                 mcp_bootstrap_complete: true,
                 tools_table_frozen,
+                mcp_gate_notice: self.mcp_gate_notice.clone(),
                 ..LoadedResourcesSnapshot::default()
             };
         };
@@ -299,6 +300,7 @@ impl super::XyInProcessDriver {
             mcp_servers,
             mcp_bootstrap_complete,
             tools_table_frozen,
+            mcp_gate_notice: self.mcp_gate_notice.clone(),
         }
     }
 
@@ -495,7 +497,9 @@ impl super::XyInProcessDriver {
 
         let finished = match &self.mcp_boot {
             McpBootState::Running { handle, .. } => handle.is_finished(),
-            _ => return false,
+            // Settled/Idle with an armed first-turn deadline MUST still freeze;
+            // otherwise attach Assembling waits forever after a 0-connected settle.
+            _ => return self.try_complete_armed_tool_gate(),
         };
         if !finished {
             // Progress-only: refresh loaded-resources when the connecting label

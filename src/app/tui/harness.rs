@@ -3888,6 +3888,145 @@ mod slice_tests {
         );
     }
 
+    #[test]
+    fn busy_follow_up_slash_popup_survives_skill_catalog_refresh() {
+        // Assembling / follow-up ticks re-seed `$skill` from MCP poll. Identical
+        // (or even changed) catalogs MUST NOT flash-dismiss the command bar.
+        let mut session = HostSession::new_product_ui(TestTerminal::new(80, 24));
+        let root = session.ui_root().expect("ui").clone();
+        session.on_run_started("hello");
+        session.ui_model_mut().enqueue_follow_up_strip("hi".into());
+        session.ui_model_mut().set_busy_status("Assembling");
+        session.sync_ui_root_from_model();
+        assert!(session.is_busy());
+
+        for ch in "/mode".chars() {
+            session.step(HostEvent::Input(char_event(ch))).unwrap();
+        }
+        assert_eq!(root.borrow().editor_text(), "/mode");
+        assert!(
+            root.borrow().editor_autocomplete_open(),
+            "expected slash popup while typing /mode during follow-up"
+        );
+
+        session.set_dollar_skill_catalog(Vec::new());
+        assert!(
+            root.borrow().editor_autocomplete_open(),
+            "identical skill catalog refresh must keep the command bar"
+        );
+        session.set_dollar_skill_catalog(vec![("demo".into(), "demo skill".into())]);
+        assert!(
+            root.borrow().editor_autocomplete_open(),
+            "updated skill catalog must re-probe, not dismiss, the command bar"
+        );
+    }
+
+    #[tokio::test]
+    async fn busy_slash_fuzzy_enter_applies_before_steer() {
+        // Busy Enter used to skip autocomplete confirm → `/new` stayed literal
+        // (unknown / steered) instead of resolving to session-new.
+        let mut session = HostSession::new_product_ui(TestTerminal::new(80, 24));
+        let root = session.ui_root().expect("ui").clone();
+        session.on_run_started("hello");
+        session.ui_model_mut().enqueue_follow_up_strip("hi".into());
+        session.sync_ui_root_from_model();
+        let mut driver = ScriptedDriver::new();
+        let mut stream = None;
+
+        for ch in "/new".chars() {
+            session.step(HostEvent::Input(char_event(ch))).unwrap();
+        }
+        assert!(
+            root.borrow().editor_autocomplete_open(),
+            "expected slash popup while typing /new busy; editor={:?}",
+            root.borrow().editor_text()
+        );
+
+        session.step(HostEvent::Input(enter_event())).unwrap();
+        assert!(
+            session.take_steer().is_none(),
+            "highlighted slash must not enqueue steer"
+        );
+        pump_host_driver(&mut session, &mut driver, &mut stream)
+            .await
+            .unwrap();
+
+        assert_eq!(driver.new_session_calls(), 0);
+        assert!(
+            system_notes(&session)
+                .iter()
+                .any(|t| t.contains("/session-new refused")),
+            "confirm must resolve /new to session-new (busy-refuse), not unknown: {:?}",
+            system_notes(&session)
+        );
+    }
+
+    #[tokio::test]
+    async fn busy_model_fuzzy_enter_opens_picker() {
+        let mut session = HostSession::new_product_ui(TestTerminal::new(80, 24));
+        let root = session.ui_root().expect("ui").clone();
+        session.on_run_started("hello");
+        session.ui_model_mut().enqueue_follow_up_strip("hi".into());
+        session.sync_ui_root_from_model();
+        let mut driver = ScriptedDriver::new();
+        let mut stream = None;
+
+        for ch in "/mode".chars() {
+            session.step(HostEvent::Input(char_event(ch))).unwrap();
+        }
+        assert!(
+            root.borrow().editor_autocomplete_open(),
+            "expected slash popup for /mode; editor={:?}",
+            root.borrow().editor_text()
+        );
+
+        session.step(HostEvent::Input(enter_event())).unwrap();
+        assert!(session.take_steer().is_none());
+        pump_host_driver(&mut session, &mut driver, &mut stream)
+            .await
+            .unwrap();
+
+        assert!(
+            root.borrow().models_open(),
+            "busy Enter on highlighted /mode must open /model picker, editor={:?}",
+            root.borrow().editor_text()
+        );
+    }
+
+    #[tokio::test]
+    async fn busy_model_arg_highlight_enter_sets_model() {
+        let mut session = HostSession::new_product_ui(TestTerminal::new(80, 24));
+        let root = session.ui_root().expect("ui").clone();
+        session.on_run_started("hello");
+        session.ui_model_mut().enqueue_follow_up_strip("hi".into());
+        session.sync_ui_root_from_model();
+        let mut driver = ScriptedDriver::new();
+        session.set_model_arg_catalog_from_models(&driver.available_models());
+        let mut stream = None;
+
+        for ch in "/model model-t".chars() {
+            session.step(HostEvent::Input(char_event(ch))).unwrap();
+        }
+        assert!(
+            root.borrow().editor_autocomplete_open(),
+            "expected /model id popup; editor={:?}",
+            root.borrow().editor_text()
+        );
+        session.set_dollar_skill_catalog(vec![("demo".into(), "demo".into())]);
+        assert!(
+            root.borrow().editor_autocomplete_open(),
+            "skill catalog refresh must not dismiss /model id popup"
+        );
+
+        session.step(HostEvent::Input(enter_event())).unwrap();
+        assert!(session.take_steer().is_none());
+        pump_host_driver(&mut session, &mut driver, &mut stream)
+            .await
+            .unwrap();
+        assert_eq!(driver.model.id, "model-think");
+        assert!(!root.borrow().models_open());
+    }
+
     #[tokio::test]
     async fn c1035_empty_session_omits_footer_token() {
         use crate::app::tui::effects::refresh_footer_tokens;

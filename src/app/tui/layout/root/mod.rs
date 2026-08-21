@@ -250,18 +250,28 @@ impl UiRoot {
 
     /// Override `@` path completion root (c1125; harness injects tempdir).
     pub fn set_at_path_base(&mut self, base: impl Into<PathBuf>) {
-        self.at_path_base = base.into();
+        let base = base.into();
+        if self.at_path_base == base {
+            return;
+        }
+        self.at_path_base = base;
         self.install_completion_sources();
     }
 
     /// Refresh `/model <id>` inline completion catalog (from `available_models`).
     pub fn set_model_arg_catalog(&mut self, catalog: Vec<(String, String)>) {
+        if self.model_arg_catalog == catalog {
+            return;
+        }
         self.model_arg_catalog = catalog;
         self.install_completion_sources();
     }
 
     /// Refresh `$skill` completion catalog (from Trust-filtered loaded skills; c1130).
     pub fn set_dollar_skill_catalog(&mut self, catalog: Vec<(String, String)>) {
+        if self.dollar_skill_catalog == catalog {
+            return;
+        }
         self.dollar_skill_catalog = catalog;
         self.install_completion_sources();
     }

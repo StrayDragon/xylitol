@@ -146,6 +146,12 @@ impl<T: Terminal> HostSession<T> {
 
         if matches_binding(key, "tui.input.submit") {
             let mut root = root.borrow_mut();
+            // Same as idle Enter: apply highlighted slash/`/model <id>` first.
+            // Otherwise `/mode` stays literal while the command bar is open, or
+            // follow-up/steer steals the key before the picker can confirm.
+            if root.editor_autocomplete_open() {
+                let _ = root.confirm_editor_autocomplete();
+            }
             let text = root.editor_text();
             if text.trim().is_empty() {
                 return true;
