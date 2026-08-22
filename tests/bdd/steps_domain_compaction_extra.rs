@@ -31,8 +31,7 @@ pub(crate) fn g_comp_no_api(agent: &AgentState) {
         .last_result
         .replace(Some(Ok("source:LocalTokenizer tokens:75000".into())));
 }
-#[when("调用上下文估计 fallback")]
-pub(crate) fn w_comp_est_fb(_agent: &AgentState) {}
+
 #[then("采用 LocalTokenizer 而非静默当作 Api")]
 pub(crate) fn t_comp_fallback(agent: &AgentState) {
     assert!(result_ok_str(&agent.last_result).contains("source:LocalTokenizer"));
@@ -636,7 +635,6 @@ pub(crate) fn t_comp_no_compact(agent: &AgentState) {
     assert!(result_ok_str(&agent.last_result).contains("compacted:false"));
 }
 
-#[given("用量未超 reserve 闸但会话有可摘要历史")]
 #[given("用量未超 reserve 闸但 leaf 分支上有可摘要历史（按 pi 同构切点计量超出 keepRecent）")]
 pub(crate) fn g_comp_force_ready(agent: &AgentState) {
     agent.compaction_enabled.set(true);
@@ -691,7 +689,6 @@ pub(crate) fn w_comp_force_path(agent: &AgentState) {
     agent.compaction_result.replace(Some(prep.is_ok()));
 }
 
-#[then("仍执行 compaction 或返回 Already compacted / Nothing to compact 明确错误")]
 #[then("仍执行 compaction 或仅在末条已是 CompactionEntry 时返回 Already compacted")]
 pub(crate) fn t_comp_force_ok_or_err(agent: &AgentState) {
     let s = result_ok_str(&agent.last_result);
@@ -712,7 +709,6 @@ pub(crate) fn t_comp_force_not_maybe(agent: &AgentState) {
     );
 }
 
-#[then("MUST NOT 因切点 JSON 低估把仍有可摘要历史误报为 Nothing to compact")]
 #[then(
     "MUST NOT 因切点 JSON 低估把仍有可摘要历史误报为 Nothing to compact (no summarizable history beyond keep window) 或 session too small"
 )]

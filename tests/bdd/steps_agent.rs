@@ -263,21 +263,6 @@ pub(crate) async fn _t_agent_thinking_saved(_agent: &AgentState) {
     );
 }
 
-#[then("实际思考级别被限制为 {level} 或模型支持的最高级别")]
-pub(crate) fn _t_agent_thinking_clamped(agent: &AgentState, level: String) {
-    let _ = level;
-    assert!(
-        agent
-            .last_result
-            .borrow()
-            .as_ref()
-            .unwrap()
-            .as_ref()
-            .unwrap()
-            .contains("off")
-    );
-}
-
 #[then("实际思考级别为 {level:string} 或 set 被拒绝且保持 off")]
 pub(crate) fn _t_agent_thinking_off_or_rejected(agent: &AgentState, level: String) {
     let level = strip_quotes(&level);

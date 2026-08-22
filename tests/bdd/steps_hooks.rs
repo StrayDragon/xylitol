@@ -15,7 +15,6 @@ fn _g_hook_registered(agent: &AgentState, pat: String) {
     });
 }
 
-#[given("hook 返回 {json_str}")]
 fn _g_hook_returns(agent: &AgentState, json_str: String) {
     if let Some(e) = agent.hook_entries.borrow_mut().last_mut() {
         let j: serde_json::Value = serde_json::from_str(&json_str).unwrap_or_default();
@@ -38,38 +37,11 @@ fn _g_hook_returns(agent: &AgentState, json_str: String) {
     }
 }
 
-#[given("全局配置有 hook for {p}")]
-fn _g_hook_global(agent: &AgentState, p: String) {
-    let _ = p;
-    agent.hook_entries.borrow_mut().push(HookEntry {
-        events: vec!["pre.tool_call".into()],
-        command: "echo '{\"action\":\"allow\",\"source\":\"global\"}'".into(),
-        ..Default::default()
-    });
-}
-
-#[given("用户配置有 hook for {p} 覆盖全局")]
-fn _g_hook_user_override(agent: &AgentState, p: String) {
-    let _ = p;
-    // Simulate user-tier override of the same primary event pattern (merge_hooks).
-    if let Some(e) = agent.hook_entries.borrow_mut().last_mut() {
-        e.command = "echo '{\"action\":\"allow\",\"source\":\"user\"}'".into();
-    } else {
-        agent.hook_entries.borrow_mut().push(HookEntry {
-            events: vec!["pre.tool_call".into()],
-            command: "echo '{\"action\":\"allow\",\"source\":\"user\"}'".into(),
-            ..Default::default()
-        });
-    }
-}
-
-#[given("一个 hook 脚本执行超过 2 秒")]
 fn _g_hook_slow(agent: &AgentState) {
     if let Some(e) = agent.hook_entries.borrow_mut().last_mut() {
         e.command = "sleep 10".into();
     }
 }
-#[given("hook 超时设为 1 秒")]
 fn _g_hook_timeout_1s(agent: &AgentState) {
     if let Some(e) = agent.hook_entries.borrow_mut().last_mut() {
         e.timeout_secs = Some(1);
@@ -298,43 +270,6 @@ fn _t_hook_called(agent: &AgentState) {
     // Legacy hooks.feature (no wiring log): observational.
 }
 
-#[then("hook 收到包含事件类型和参数的 JSON")]
-fn _t_hook_received_json(agent: &AgentState) {
-    if let Some(log) = agent.wiring_hook_log.borrow().as_ref() {
-        let calls = log.calls.lock().unwrap_or_else(|e| e.into_inner());
-        let (event_type, _phase, ctx) = calls
-            .last()
-            .expect("expected library-seam hook call with JSON context");
-        assert!(!event_type.is_empty(), "hook event type must be non-empty");
-        let obj = ctx
-            .as_object()
-            .unwrap_or_else(|| panic!("hook context must be a JSON object, got {ctx}"));
-        assert!(
-            !obj.is_empty(),
-            "hook context JSON must include parameters, got {ctx}"
-        );
-        return;
-    }
-    let ctx = agent
-        .last_hook_stdin
-        .borrow()
-        .clone()
-        .expect("expected hook stdin JSON from dispatch");
-    let obj = ctx
-        .as_object()
-        .unwrap_or_else(|| panic!("hook stdin must be a JSON object, got {ctx}"));
-    let event = obj
-        .get("event")
-        .and_then(|v| v.as_str())
-        .filter(|s| !s.is_empty())
-        .expect("hook stdin JSON must include non-empty event type");
-    assert!(
-        obj.len() >= 2,
-        "hook stdin JSON must include event type and parameters (event={event}), got {ctx}"
-    );
-}
-
-#[then("hook 上下文包含键 {key:string}")]
 fn _t_hook_context_has_key(agent: &AgentState, key: String) {
     let key = strip_quotes(&key);
     let log = agent
@@ -385,18 +320,6 @@ fn _t_hook_blocked(agent: &AgentState) {
     ));
 }
 
-#[then("阻止原因包含 {reason}")]
-fn _t_hook_block_reason(agent: &AgentState, reason: String) {
-    if let Some(DispatchResult::Blocked { reason: r }) = agent.hook_result.borrow().as_ref() {
-        assert!(
-            r.contains(&strip_quotes(&reason)),
-            "block reason '{r}' does not contain '{reason}'"
-        );
-    } else {
-        panic!("Expected Blocked, got {:?}", agent.hook_result.borrow());
-    }
-}
-
 #[then("实际执行的命令为 {cmd}")]
 fn _t_hook_actual_cmd(agent: &AgentState, cmd: String) {
     let expected = strip_quotes(&cmd);
@@ -435,42 +358,9 @@ fn _t_hook_killed(agent: &AgentState) {
     assert!(agent.hook_result.borrow().is_some());
 }
 
-#[then("操作被允许继续")]
-fn _t_hook_allowed(agent: &AgentState) {
-    assert!(matches!(
-        agent.hook_result.borrow().as_ref().unwrap(),
-        DispatchResult::Allowed
-    ));
-}
-
 #[then("hook 收到请求 payload")]
 fn _t_hook_got_payload(agent: &AgentState) {
     assert!(agent.hook_result.borrow().is_some());
-}
-#[then("hook 可以注入 cache_control 字段")]
-async fn _t_hook_cache_control(agent: &AgentState) {
-    agent.hook_entries.borrow_mut().push(HookEntry {
-        events: vec!["before_provider_request".into()],
-        command:
-            "echo '{\"action\":\"modify\",\"args\":{\"cache_control\":{\"type\":\"ephemeral\"}}}'"
-                .into(),
-        ..Default::default()
-    });
-    dispatch_hook(
-        agent,
-        HookEvent::BeforeProviderRequest {
-            model: "deepseek".into(),
-            body: serde_json::json!({"model": "deepseek"}),
-        },
-        HookPhase::Pre,
-    )
-    .await;
-    match agent.hook_result.borrow().as_ref().unwrap() {
-        DispatchResult::Modified { args } => {
-            assert_eq!(args["cache_control"]["type"], "ephemeral");
-        }
-        other => panic!("expected Modified, got {other:?}"),
-    }
 }
 #[then("hook 收到 status=200 和响应 headers")]
 fn _t_hook_got_response(agent: &AgentState) {

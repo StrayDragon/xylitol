@@ -22,15 +22,6 @@ fn _t_file_exists(ws: &Workspace, path: String) {
     assert!(std::path::Path::new(&ws.ws(&path)).exists());
 }
 
-#[then("文件 {path:string} 应该保持CRLF行尾")]
-fn _t_file_has_crlf(ws: &Workspace, path: String) {
-    assert!(
-        std::fs::read_to_string(ws.ws(&path))
-            .unwrap()
-            .contains("\r\n")
-    );
-}
-
 #[then("文件 {path:string} 应该保留UTF8_BOM")]
 fn _t_file_has_bom(ws: &Workspace, path: String) {
     assert!(
@@ -265,11 +256,6 @@ fn _t_ls_lists(ws: &Workspace, entry: String) {
     );
 }
 
-#[then("结果列出 {entry} 带后缀 {suffix}")]
-fn _t_ls_lists_suffix(ws: &Workspace, entry: String, suffix: String) {
-    assert!(result_ok_str(&ws.last_result).contains(&format!("{entry}{suffix}")));
-}
-
 #[then("条目按字母顺序排列")]
 fn _t_ls_sorted(ws: &Workspace) {
     let r = result_ok_str(&ws.last_result);
@@ -356,11 +342,4 @@ fn _t_content_empty(ws: &Workspace) {
             "content not empty"
         );
     }
-}
-
-#[then("内容为:")]
-fn _t_read_content_multi(ws: &Workspace, docstring: String) {
-    let v: serde_json::Value =
-        serde_json::from_str(&result_ok_str(&ws.last_result)).unwrap_or_default();
-    assert_eq!(v["content"].as_str().unwrap_or(""), docstring.trim());
 }

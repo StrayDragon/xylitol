@@ -841,17 +841,6 @@ pub(crate) fn _t_ar27_default_overlap() {
     );
 }
 
-#[then("两工具按源序串行执行且无并行重叠")]
-pub(crate) fn _t_ar27_sequential_no_overlap() {
-    let entries = BATCH_TIMING.with(|t| t.borrow().clone());
-    assert_eq!(entries.len(), 2, "{entries:?}");
-    assert!(
-        !bdd_timing_overlaps((entries[0].1, entries[0].2), (entries[1].1, entries[1].2)),
-        "must not overlap: {entries:?}"
-    );
-    assert!(entries[0].2 <= entries[1].1, "source order: {entries:?}");
-}
-
 #[then("两 ParallelSafe 执行时间重叠且均在 Barrier 开始前结束")]
 pub(crate) fn _t_ar28_overlap() {
     let entries = BATCH_TIMING.with(|t| t.borrow().clone());
