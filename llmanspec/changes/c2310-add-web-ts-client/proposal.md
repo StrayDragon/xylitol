@@ -30,3 +30,10 @@ Web 不能 `use` Rust 类型。没有薄客户端，`bindings.ts` 只是一堆 i
 ## 非目标
 
 Vite SPA、同源动作 id（delayed `c2325`，不进本票）、salvo oapi、ACP、方案 A。
+
+## 状态注记（2026-08-22）
+
+**Delayed**——保持 draft，等待 Web 路线触发信号（Cloud-Agent 控制面立项 / 多工作区管控真实需求）。前端选型讨论结论：资源与 computer-use 优先级下 native Rust 面（TUI/gpui）优先，Web 控制台是不同 job（管控/审阅台）而非编码主面替代。
+
+- 类型保险已独立存在：`packages/xylitol-client-typescript-sdk/bindings.ts` + `just gen-sdk` + pa-bind1 drift 闸，**不依赖本票落地**。
+- 复活判据：出现真实非 Rust 消费者（自研 Web 面或第三方集成），而非预备性建设。
