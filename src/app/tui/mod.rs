@@ -111,8 +111,8 @@ pub(crate) fn lab_interaction_mode_from_env() -> xylitol_tui::InteractionMode {
 
 /// Enter the interactive TUI REPL (host-driven; never calls `TUI::start()`).
 ///
-/// Callers MUST run [`preflight`] first (CLI does). This still fails closed if
-/// `TerminalGuard::enter` cannot start the terminal.
+/// Callers MUST check TTY themselves before entering (CLI does). This still
+/// fails closed if `TerminalGuard::enter` cannot start the terminal.
 pub async fn run(driver: &mut dyn XyDriver, options: TuiRunOptions) -> Result<(), XyDriverError> {
     install_lifecycle_hooks();
     log::info!(target: "xylitol::tui", "starting product TUI host");

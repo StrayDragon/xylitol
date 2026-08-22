@@ -6,6 +6,8 @@
 
 ---
 
+PS（2026-08-22 收口）：**attach 迁移已完成并收口**——P0+P1 全勾，`_TUI_MIGRATED_TODO.md` 与 qa 闸脚本已按规则同提交删除。本文件保留为历史台账；现行拓扑以根 `AGENTS.md` / `src/AGENTS.md` / `docs/architecture/` 为准。
+
 PS（2026-08-22 更新）: c2307 resume 展示错位/重复/重影 **已修复**。根因与修法：
 1. 冷物化 attach 时 `select_model` 无条件持久化 `modelChange`，进程内 leaf 为空 → 写出 `parentId=None` 的 bookkeeping 行；后续消息链穿过它 → resume 祖先行走断链（空 transcript / 只剩尾部几轮 / LLM 上下文截断）。
    - 修复：`transcript_leaf_anchor` + `transcript_ancestry_ids`（protocol::session）——锚点跳过 bookkeeping、行走对「无父 metadata 断缝」定点接续（compaction 合法根不受影响）；store `get_branch` 与 TUI rebuild 共用。
