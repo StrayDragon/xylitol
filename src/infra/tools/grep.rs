@@ -12,7 +12,7 @@ use serde::Deserialize;
 use serde_json::{Value, json};
 use tokio::process::Command;
 
-use super::path_utils::resolve_to_cwd;
+use super::path_utils::resolve_to_dir;
 use super::truncate::{
     DEFAULT_MAX_BYTES, GREP_MAX_LINE_LENGTH, TruncationOptions, truncate_head, truncate_line,
 };
@@ -125,7 +125,7 @@ impl TypedTool for GrepTool {
         })?;
         let effective_limit = (limit_val as usize).max(1);
 
-        let search_dir = resolve_to_cwd(&search_path);
+        let search_dir = resolve_to_dir(&ctx.workspace, &search_path);
         let search_dir_str = search_dir.to_string_lossy().to_string();
 
         if ctx.cancel.is_cancelled() {

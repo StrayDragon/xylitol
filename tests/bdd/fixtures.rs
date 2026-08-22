@@ -31,6 +31,17 @@ impl Workspace {
             .to_string_lossy()
             .to_string()
     }
+
+    /// Workspace root as a string (session-workspace scenarios).
+    pub(crate) fn root(&self) -> String {
+        self.dir
+            .borrow()
+            .as_ref()
+            .expect("workspace not initialized")
+            .path()
+            .to_string_lossy()
+            .to_string()
+    }
     pub(crate) fn init(&self) {
         let d = tempfile::tempdir().expect("create temp dir");
         std::fs::create_dir_all(d.path().join("src")).ok();

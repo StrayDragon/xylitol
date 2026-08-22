@@ -17,6 +17,7 @@ use crate::protocol::error::XyToolError;
 use crate::protocol::ports::XyToolCtx;
 
 use super::mutation::FileMutationQueue;
+use super::path_utils::resolve_to_dir;
 use super::typed::TypedTool;
 
 pub struct WriteTool {
@@ -78,9 +79,14 @@ impl TypedTool for WriteTool {
             return Err(XyToolError::Aborted);
         }
 
+        // Resolve relative paths against the session workspace before queueing
+        // (queue keys are resolved absolute paths).
+        let fp = resolve_to_dir(&ctx.workspace, &file_path)
+            .to_string_lossy()
+            .into_owned();
+
         // Run atomic write under mutation queue
         let mq = self.mutation_queue.clone();
-        let fp = file_path;
         let cancel = ctx.cancel.clone();
 
         mq.run(&fp, || {
@@ -155,6 +161,45 @@ mod tests {
             tokio::fs::read_to_string(&path).await.unwrap(),
             "hello world"
         );
+    }
+
+    /// ws1: relative paths resolve against the ctx workspace; write→read
+    /// roundtrip lands in the workspace, and absolute paths stay untouched.
+    #[tokio::test]
+    async fn test_write_read_roundtrip_in_workspace() {
+        use crate::infra::tools::read::ReadTool;
+
+        let dir = tempfile::tempdir().unwrap();
+        let ws = XyToolCtx::new("ws-roundtrip").with_workspace(dir.path());
+        let write = WriteTool::new(Arc::new(FileMutationQueue::new()));
+        let read = ReadTool;
+
+        write
+            .execute(
+                &ws,
+                json!({"path": "nested/round.txt", "content": "落点正确"}),
+            )
+            .await
+            .expect("write in workspace");
+        // Landed under the workspace, not the process cwd.
+        assert!(dir.path().join("nested/round.txt").exists());
+
+        let content = read
+            .execute(&ws, json!({"path": "nested/round.txt"}))
+            .await
+            .expect("read back from workspace");
+        assert!(content.contains("落点正确"), "got {content}");
+
+        // Absolute paths bypass the workspace join.
+        let abs = dir.path().join("abs.txt");
+        write
+            .execute(
+                &ws,
+                json!({"path": abs.to_str().unwrap(), "content": "abs"}),
+            )
+            .await
+            .expect("absolute write");
+        assert!(abs.exists());
     }
 
     #[tokio::test]

@@ -1,5 +1,7 @@
 //! Runtime boundary for tool execution.
 
+use std::path::{Path, PathBuf};
+
 use async_trait::async_trait;
 use serde_json::Value;
 use tokio::sync::mpsc;
@@ -21,6 +23,13 @@ pub struct XyToolCtx {
     /// executing. ReAct drains this channel and emits Update events. `None` for
     /// tools that only report a final result.
     pub output_tx: Option<mpsc::Sender<String>>,
+    /// Workspace base directory for tool execution.
+    ///
+    /// File tools resolve relative paths against it and shell tools spawn in
+    /// it. Defaults to the process cwd; the runtime MUST inject the frozen
+    /// session workspace so multi-workspace hosts execute in the session's
+    /// directory, not the server process directory.
+    pub workspace: PathBuf,
 }
 
 impl XyToolCtx {
@@ -29,6 +38,7 @@ impl XyToolCtx {
             call_id: call_id.into(),
             cancel: CancellationToken::new(),
             output_tx: None,
+            workspace: fallback_workspace(),
         }
     }
 
@@ -37,6 +47,7 @@ impl XyToolCtx {
             call_id: call_id.into(),
             cancel,
             output_tx: None,
+            workspace: fallback_workspace(),
         }
     }
 
@@ -45,6 +56,17 @@ impl XyToolCtx {
         self.output_tx = Some(tx);
         self
     }
+
+    /// Bind the execution workspace (session cwd). Relative paths in tool args
+    /// and spawned shells resolve against it.
+    pub fn with_workspace(mut self, workspace: impl AsRef<Path>) -> Self {
+        self.workspace = workspace.as_ref().to_path_buf();
+        self
+    }
+}
+
+fn fallback_workspace() -> PathBuf {
+    std::env::current_dir().unwrap_or_else(|_| PathBuf::from("."))
 }
 
 /// Session / config tool-batch scheduling mode (c1545).
@@ -198,6 +220,24 @@ mod tests {
             XyToolExecutionMode::Parallel,
             XyToolExecutionMode::Sequential
         );
+    }
+
+    #[test]
+    fn xy_tool_ctx_workspace_defaults_to_process_cwd() {
+        let ctx = XyToolCtx::new("ws-default");
+        assert_eq!(
+            ctx.workspace,
+            std::env::current_dir().unwrap_or_else(|_| PathBuf::from("."))
+        );
+    }
+
+    #[test]
+    fn xy_tool_ctx_with_workspace_overrides() {
+        let ctx = XyToolCtx::new("ws-explicit").with_workspace("/tmp/proj-a");
+        assert_eq!(ctx.workspace, PathBuf::from("/tmp/proj-a"));
+        let cancel = CancellationToken::new();
+        let ctx = XyToolCtx::with_cancel("ws-explicit-2", cancel).with_workspace("./rel");
+        assert_eq!(ctx.workspace, PathBuf::from("./rel"));
     }
 
     struct MockTool;
