@@ -6,7 +6,6 @@ depends_on:
 
 # previous_response_id 可选链式续跑（配置开启）
 > **一句话**：用 previous_response_id 只传增量续跑（配置开启）；兼容端声明支持才开，断链自动回退全量
-> **当前排序**：#15（2026-08-10 自 delayed-changes 升格入 active）
 
 
 > **已升格（2026-08-10）**：自 delayed-changes 移入 active 待处理队列，当前排序 **#15**。
