@@ -2,11 +2,6 @@
 # managed by llman sdd partition-migrate
 功能: app-tui
 
-  @req:tui2
-  场景: attach-default
-    当 无 prompt 且 TTY 启动 TUI
-    那么 默认 attach 本机 Host 且未在听则失败
-
   @req:tui3
   场景: surfaces-retained
     当 检查 print 与 server 入口

@@ -79,6 +79,7 @@ mod tests {
 
     #[test]
     fn resolve_attach_url_prefers_attach_over_port() {
+        assert_eq!(DEFAULT_ATTACH_URL, "http://127.0.0.1:18790");
         assert_eq!(resolve_attach_url(None, None), DEFAULT_ATTACH_URL);
         assert_eq!(resolve_attach_url(None, Some(9)), "http://127.0.0.1:9");
         assert_eq!(
