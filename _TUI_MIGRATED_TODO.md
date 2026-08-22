@@ -99,8 +99,8 @@ STATUS: incomplete
 
 | id | 能力 | 现码 | 目标 | 备注 |
 |---|---|---|---|---|
-| E1 | footer token / 上下文估计 | Remote **本地** `estimate_from_session_entries` | 对拍是否够用；不够再 Host 结算事件 | 已有 `ContextTokenSettlement` |
-| E2 | bang `!` | `execute_bash` unary | 对拍流式 chunk（现码注释：REST 无 live uplink） | |
+| E1 | footer token / 上下文估计 | **ok** footer 已吃 Host `ContextTokenSettlement` 下行（c1860）；Remote 本地 estimate 仅冷启动/回退 | 维持；不另立 Host 结算通道 | wire 投影见 protocol/wire/event.rs |
+| E2 | bang `!` | `execute_bash` unary | **后置**：长操作走模型 bash（已流式）；bang 流式需新协议面（pa-cs3 禁骑工具流/REST），等真实痛点，做则骑 c2330 mux chrome 模式 | 无 live uplink |
 | E3 | 内置 `ask` | reverse-RPC 已接线 | 手测一轮 | |
 | E4 | abort Esc | unary `abort` spawn | 对拍 latch 文案 | |
 | E5 | 主题 `/theme` | TUI 本地 | 保持 Immediate | |
@@ -134,7 +134,8 @@ STATUS: incomplete
       （c2335 落地：`XyToolCtx.workspace` 由 ReAct 冻结 cwd 注入，bash 双路径 + 文件类工具按工作区解析；回归 `model_tool_runs_in_client_workspace` / BDD `tool-write-in-session-workspace`、`bash-runs-in-session-workspace`）
 - [x] **C3** reload 合作取消
       （c2340 落地：Remote `reload_runtime` 尊重 cancel token，取消时经既有 `abort` unary 触发 Host `abort_reload()` 合作取消并以 cancelled 收尾；合约 server-core sr-abort1 + app-tui-host ath37；护栏 `reload_cancel_requests_host_cooperative_abort`）
-- [ ] **E1/E2** token 与 bang 流式是否要 Host 事件
+- [x] **E1/E2** token 与 bang 流式是否要 Host 事件
+      （对拍结论 2026-08-22：E1 已达标不立项——footer 已吃 Host Settlement 下行，本地 estimate 仅冷启动回退；E2 后置——bang 流式需新协议面且 pa-cs3 禁骑工具流，长操作已由模型 bash 流式覆盖）
 - [ ] `XyRemoteDriver` 拆文件（现 ~1700 行）
 - [ ] 产品路径死 InProcess TUI 入口清掉（print/embed 保留）
 - [ ] AGENTS / architecture 与代码同句（attach 是现行拓扑）
