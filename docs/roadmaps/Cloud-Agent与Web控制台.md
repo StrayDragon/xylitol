@@ -1,5 +1,6 @@
 # Cloud Agent 与 Web 控制台
 
+> **状态：搁置（2026-08-22）。** 前端选型已收敛为 gpui 桌面 + TUI 双 Rust 面（见 [`Gpui桌面客户端.md`](./Gpui桌面客户端.md) 与 [`../research/ui-runtime-tradeoffs-2026.md`](../../research/ui-runtime-tradeoffs-2026.md)）；本文保留为愿景底稿，复活需显式重立项。
 > CS 架构的 self-host 分布式 cloud agent 类似物 + TypeScript 生态 Web 应用：一个前端管控多工作区，并预留与 Cursor Agent 模式协同。
 > 现状对齐：2026-07-22。
 > 排障观测：以 [OTEL与Langfuse观测.md](./OTEL与Langfuse观测.md) 为首要出口；**不**内嵌自研 Inspect 检视台。
