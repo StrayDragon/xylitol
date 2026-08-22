@@ -1,4 +1,4 @@
-//! BDD bindings for c2290 TUI attach / HostClient path.
+//! BDD bindings for the app-tui-bridge carrier contract (atb4 remote-type-kept).
 
 use rstest_bdd_macros::scenario;
 
