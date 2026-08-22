@@ -12,7 +12,7 @@
 | 符合性闸 | — | c2304（`InProcessClient` vs `HttpWsClient` 同方法表） |
 | ACP | `acp-interop.md` | c2305（后置；译进方法表；不共用产品信封） |
 | 薄 TS 客户端 | c2290 specta 闸之后 | **c2310**（无 SPA） |
-| 方案 A loopback | c2290 design 曾记一节 | **c2315** |
+| 方案 A loopback | c2290 design 曾记一节 | **取消**（2026-08-22：一条命令自起 Host 与 serve-first 显式拓扑不一致，端口占用 / 生命周期 / 进程形态三决策难收敛；维持 `serve` 先启 + TUI fail-closed 友好提示，见 cli-entry ce21） |
 | salvo oapi 调试文档 | type-sharing | **c2320**（非 SSOT） |
 | 跨面公共动作 id | `docs/roadmaps/Web与TUI同源.md` | **delayed** `c2325`（client 登记表，不进 Host；Web 未开闸） |
 | 吞吐 / 编码 / 工具链 | `05-throughput` | c2300 tagged JSON；c2301 不预埋二进制 |
