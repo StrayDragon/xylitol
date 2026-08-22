@@ -267,6 +267,16 @@ pub(crate) fn apply_tool_result_to_entries(
         }
     }
 
+    // c2440: terminal tool failures must be VISIBLE in the block body, not
+    // only tinted on the rail — streamed output would otherwise hide the
+    // error line (bash timeout keeps its partial stdout).
+    if is_error && !is_mcp_tool_name(name) && !output.contains(result) {
+        if !output.is_empty() && !output.ends_with('\n') {
+            output.push('\n');
+        }
+        output.push_str(result);
+    }
+
     // Edit line-range after path backfill so `:N-M` is not wiped.
     if is_edit_tool(name)
         && let Some(diff) = display_diff.as_ref()
