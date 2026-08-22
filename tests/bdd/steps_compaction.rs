@@ -119,16 +119,6 @@ pub(crate) fn _g_comp_tokens(agent: &AgentState, tokens: u32) {
         .replace(Some(Ok(format!("tokens:{tokens}"))));
 }
 
-#[given("压缩阈值为 {val:f64}")]
-pub(crate) fn _g_comp_threshold(agent: &AgentState, val: f64) {
-    // Legacy Gherkin step: map percentage-ish values into a reserve budget so
-    // stray scenarios still exercise the reserve formula (c1630 deleted %).
-    let window = agent.context_window.get().max(1);
-    let reserve = ((1.0 - val).max(0.0) * window as f64) as u64;
-    agent.compaction_reserve_tokens.set(reserve);
-    agent.compaction_enabled.set(true);
-}
-
 #[given("compaction reserveTokens 为 {reserve:u64}")]
 pub(crate) fn _g_comp_reserve(agent: &AgentState, reserve: u64) {
     agent.compaction_reserve_tokens.set(reserve);

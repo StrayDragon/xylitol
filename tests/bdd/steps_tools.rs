@@ -272,23 +272,6 @@ async fn _w_edit_overlap(ws: &Workspace, path: String) {
     );
 }
 
-#[when("调用edit工具 路径 {path:string} 做模糊替换")]
-async fn _w_edit_fuzzy(ws: &Workspace, path: String) {
-    let full = ws.ws(&path);
-    let tool = EditTool::new(Arc::new(FileMutationQueue::new()));
-    let ctx = XyToolCtx::new("test");
-    // Use Unicode smart quotes — should be fuzzy-matched to ASCII quotes
-    tool_call!(
-        tool,
-        ctx,
-        serde_json::json!({
-            "path": full,
-            "edits": [{"oldText": "let msg = \u{201C}hello world\u{201D};", "newText": "let msg = \"hi earth\";"}]
-        }),
-        ws
-    );
-}
-
 #[when("调用edit工具 路径 {path:string} 做重复替换")]
 async fn _w_edit_dup(ws: &Workspace, path: String) {
     let full = ws.ws(&path);
@@ -305,29 +288,6 @@ async fn _w_edit_dup(ws: &Workspace, path: String) {
                 {"oldText": "let x", "newText": "let z"}
             ]
         }),
-        ws
-    );
-}
-
-#[when("调用edit工具 路径 {path:string} 进行{count:u32}处替换:")]
-async fn _w_edit_multi(ws: &Workspace, path: String, count: u32, table: Vec<Vec<String>>) {
-    let _ = count;
-    let full = ws.ws(&path);
-    let first_is_old_text =
-        !table.is_empty() && !table[0].is_empty() && !table[0][0].starts_with("oldText");
-    let rows = if first_is_old_text {
-        &table[..]
-    } else {
-        &table[1..]
-    };
-    let edits: Vec<serde_json::Value> = rows.iter().map(|row| {
-        serde_json::json!({"oldText": row[0], "newText": row.get(1).map(|s| s.as_str()).unwrap_or("")})
-    }).collect();
-    let tool = EditTool::new(Arc::new(FileMutationQueue::new()));
-    tool_call!(
-        tool,
-        XyToolCtx::new("test"),
-        serde_json::json!({"path": full, "edits": edits}),
         ws
     );
 }
@@ -594,16 +554,6 @@ fn t_tools_accum_small_ok(ws: &Workspace) {
 #[given("累加器接收 2x max_bytes")]
 fn g_tools_accum_large() {
     _accum_mode::LARGE.with(|f| f.set(true));
-}
-#[when("调用 finish overflow")]
-async fn w_tools_finish_large(ws: &Workspace) {
-    ws.init();
-    tool_call!(
-        BashTool::default(),
-        XyToolCtx::new("test"),
-        serde_json::json!({"command":"dd if=/dev/zero bs=1024 count=120 2>/dev/null | tr '\\0' 'b'"}),
-        ws
-    );
 }
 #[then("快照内容为截断尾部，full_output_path 指向含完整输出的临时文件")]
 fn t_tools_accum_large_ok(ws: &Workspace) {

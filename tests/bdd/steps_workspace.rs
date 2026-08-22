@@ -16,15 +16,6 @@ fn _g_session_dir(sess: &XySessionStore) {
     sess.mgr.replace(Some(SessionManager::new(d)));
 }
 
-#[given("存在文件 {path:string} 内容为:")]
-fn _g_file_with_content(ws: &Workspace, path: String, docstring: String) {
-    let full = ws.ws(&path);
-    if let Some(p) = std::path::Path::new(&full).parent() {
-        std::fs::create_dir_all(p).ok();
-    }
-    std::fs::write(&full, docstring.trim()).expect("write failed");
-}
-
 #[given("存在文件 {path:string}")]
 fn _g_empty_file(ws: &Workspace, path: String) {
     let full = ws.ws(&path);
@@ -42,15 +33,6 @@ fn _g_dir(ws: &Workspace, path: String) {
 #[given("存在空目录 {path:string}")]
 fn _g_empty_dir(ws: &Workspace, path: String) {
     std::fs::create_dir_all(ws.ws(&path)).ok();
-}
-
-#[given("存在文件 {path:string} 使用CRLF行尾 内容为:")]
-fn _g_file_crlf(ws: &Workspace, path: String, docstring: String) {
-    let full = ws.ws(&path);
-    if let Some(p) = std::path::Path::new(&full).parent() {
-        std::fs::create_dir_all(p).ok();
-    }
-    std::fs::write(&full, docstring.trim().replace('\n', "\r\n")).ok();
 }
 
 #[given("存在文件 {path:string} 使用CRLF行尾 内容为 {content:string}")]

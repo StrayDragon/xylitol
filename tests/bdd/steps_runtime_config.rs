@@ -382,12 +382,6 @@ fn t_rc_thinking_high_assembly(rc_snap: &RcSnap) {
     let mm = mm.as_ref().expect("model manager");
     assert_eq!(mm.thinking_level(), "high");
 }
-#[then("thinking level 为 high")]
-fn t_rc_thinking_high(rc_snap: &RcSnap) {
-    let mm = rc_snap.mm.borrow();
-    let mm = mm.as_ref().expect("model manager");
-    assert_eq!(mm.thinking_level(), "high");
-}
 #[then("thinking level 为 max")]
 fn t_rc_thinking_max(rc_snap: &RcSnap) {
     let mm = rc_snap.mm.borrow();

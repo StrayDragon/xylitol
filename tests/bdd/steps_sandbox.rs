@@ -61,7 +61,6 @@ mod sandbox_bdd {
         });
     }
 
-    #[then("结果应为拒绝")]
     fn sandbox_assert_denied() {
         LAST_VERDICT.with(|v| {
             let verdict = v.borrow();
@@ -85,7 +84,6 @@ mod sandbox_bdd {
         });
     }
 
-    #[then("拒绝原因包含 {text:string}")]
     fn sandbox_assert_deny_reason(text: String) {
         LAST_VERDICT.with(|v| {
             let verdict = v.borrow();
