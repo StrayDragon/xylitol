@@ -211,15 +211,9 @@
 
   @req:sp1
   场景: manager-impls-store
-    假如 对照 SessionStore 检查 SessionManager
-    当 检查 impl
-    那么 实现 trait 且可编译
-
-  @req:sp2
-  场景: manager-impls-store
-    假如 对照 SessionStore 测试 SessionManager
-    当 检查 trait 边界
-    那么 三方法可编译且往返数据
+    假如 对照 XySessionStore 端口检查 infra 层 SessionManager
+    当 检查端口实现
+    那么 append、load、load_context、exists 可编译且往返数据
 
   @req:sp6
   场景: journal-reads-recent
