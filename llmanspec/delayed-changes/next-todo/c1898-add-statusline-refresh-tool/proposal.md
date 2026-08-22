@@ -5,7 +5,6 @@ depends_on:
 
 # `statusline_refresh` 按需工具（仅 tool result）
 > **一句话**：statusline_refresh 按需工具（仅 tool result），补充每轮自动尾插的刷新通道；依赖 c1895
-> **当前排序**：#9（2026-08-10 自 delayed-changes 升格入 active）
 
 
 > **已升格（2026-08-10）**：当前排序 **#9**。低 ROI，执行前先确认状态栏主链路已落地。
