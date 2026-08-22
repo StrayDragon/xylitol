@@ -409,3 +409,16 @@
     假如 临时目录有 .txt
     当 调用 read
     那么 返回文本内容且无 Image part
+
+  @req:ws1
+  场景: tool-write-in-session-workspace
+    假定 有一个临时工作目录
+    当 以会话工作区调用write工具 路径 "c2335-probe/notes.txt" 内容 "落点正确"
+    那么 文件 "c2335-probe/notes.txt" 在会话工作区内存在
+    并且 文件 "c2335-probe/notes.txt" 不在进程工作目录
+
+  @req:ws1
+  场景: bash-runs-in-session-workspace
+    假定 有一个临时工作目录
+    当 以会话工作区调用bash命令 "pwd"
+    那么 bash 输出为会话工作区目录
