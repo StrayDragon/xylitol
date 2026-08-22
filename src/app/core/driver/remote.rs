@@ -1349,10 +1349,28 @@ where
 
     async fn reload_runtime(
         &mut self,
-        _cancel: &CancellationToken,
+        cancel: &CancellationToken,
     ) -> Result<RuntimeReloadReport, XyDriverError> {
         self.gate_notice_consumed.store(false, Ordering::SeqCst);
-        let data = self.unary("reload", serde_json::json!({})).await?;
+        // ath37 / sr-abort1: honour the injected cancel token. On cancel, ask the
+        // Host to cooperatively cancel the in-flight process-level reload via the
+        // existing `abort` unary, then finish locally as cancelled instead of
+        // waiting for the original call.
+        let data = {
+            let fut = self.unary("reload", serde_json::json!({}));
+            tokio::pin!(fut);
+            tokio::select! {
+                biased;
+                _ = cancel.cancelled() => {
+                    let _ = self.unary("abort", serde_json::json!({})).await;
+                    return Ok(RuntimeReloadReport {
+                        steps: Vec::new(),
+                        cancelled: true,
+                    });
+                }
+                data = &mut fut => data?,
+            }
+        };
         let cancelled = data
             .get("cancelled")
             .and_then(|value| value.as_bool())
@@ -1517,7 +1535,6 @@ mod tests {
         let mut driver = XyRemoteDriver::with_host(client.clone(), "s");
         assert!(!driver.poll_mcp_bootstrap().await);
         assert_eq!(client.calls.load(Ordering::SeqCst), 0);
-
         driver.apply_resources_cache(LoadedResourcesSnapshot {
             mcp_configured: 1,
             mcp_bootstrap_complete: false,
@@ -1528,6 +1545,91 @@ mod tests {
         assert!(driver.poll_mcp_bootstrap().await);
         assert!(!driver.poll_mcp_bootstrap().await);
         assert_eq!(client.calls.load(Ordering::SeqCst), 0);
+    }
+
+    /// ath37 / sr-abort1 (c2340): cancelling `reload_runtime` mid-flight MUST
+    /// ask the Host to cooperatively cancel the in-flight reload via the
+    /// existing `abort` unary and finish locally as cancelled.
+    #[derive(Clone)]
+    struct ReloadCancelClient {
+        abort_called: Arc<std::sync::atomic::AtomicBool>,
+        release: Arc<tokio::sync::Notify>,
+    }
+
+    #[async_trait]
+    impl HostClient for ReloadCancelClient {
+        async fn unary(
+            &self,
+            method: &str,
+            _payload: Value,
+        ) -> Result<crate::protocol::RpcResult, crate::app::core::host_client::HostClientError>
+        {
+            if method == "reload" {
+                // Hold the reload open until the cooperative abort arrives.
+                let release = self.release.clone();
+                let _ = tokio::select! {
+                    _ = release.notified() => {}
+                    _ = tokio::time::sleep(std::time::Duration::from_secs(5)) => {}
+                };
+                return Ok(crate::protocol::RpcResult::ok_value(
+                    serde_json::json!({ "cancelled": true, "steps": [] }),
+                ));
+            }
+            if method == "abort" {
+                self.abort_called.store(true, Ordering::SeqCst);
+                self.release.notify_waiters();
+                return Ok(crate::protocol::RpcResult::ok_value(
+                    serde_json::json!({ "cancelled": true }),
+                ));
+            }
+            Err(crate::app::core::host_client::HostClientError::Transport(
+                format!("unexpected unary: {method}"),
+            ))
+        }
+
+        async fn respond(
+            &self,
+            _rpc_id: &str,
+            _payload: Value,
+        ) -> Result<(), crate::app::core::host_client::HostClientError> {
+            Ok(())
+        }
+
+        async fn mux(
+            &self,
+        ) -> Result<
+            crate::app::core::host_client::MuxStream,
+            crate::app::core::host_client::HostClientError,
+        > {
+            Ok(Box::pin(futures::stream::empty()))
+        }
+    }
+
+    #[tokio::test]
+    async fn reload_cancel_requests_host_cooperative_abort() {
+        use std::sync::atomic::AtomicBool;
+
+        let client = ReloadCancelClient {
+            abort_called: Arc::new(AtomicBool::new(false)),
+            release: Arc::new(tokio::sync::Notify::new()),
+        };
+        let mut driver = XyRemoteDriver::with_host(client.clone(), "s");
+        let token = CancellationToken::new();
+        let cancel_token = token.clone();
+        tokio::spawn(async move {
+            tokio::time::sleep(std::time::Duration::from_millis(50)).await;
+            cancel_token.cancel();
+        });
+
+        let report = driver.reload_runtime(&token).await.expect("reload report");
+        assert!(
+            report.cancelled,
+            "report MUST be cancelled after token fires"
+        );
+        assert!(
+            client.abort_called.load(Ordering::SeqCst),
+            "cancel MUST reach the Host as a cooperative abort unary"
+        );
     }
 
     #[derive(Clone, Default)]
