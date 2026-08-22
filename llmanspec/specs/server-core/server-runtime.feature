@@ -6,6 +6,13 @@
     当 服务端在空闲端口上启动
     那么 healthz 端点返回 200 OK
 
+  @req:sr-oapi1
+  场景: openapi-debug-doc
+    假如 服务端在空闲端口上启动
+    当 GET /openapi.json
+    那么 返回 OpenAPI 3.1 文档且含全部登记 unary 条目
+    并且 文档不含 WS 下行 path
+
   场景: second-instance-rejected
     假如 服务端已在该地址端口监听
     当 第二个服务端绑定同一地址端口

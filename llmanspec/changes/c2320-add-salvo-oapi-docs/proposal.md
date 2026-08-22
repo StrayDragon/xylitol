@@ -1,7 +1,10 @@
 ---
 depends_on:
-  - c2290-update-standalone-host
-  - c2302-update-host-multi-session
+- c2290-update-standalone-host
+- c2302-update-host-multi-session
+branch: sdd/c2320-add-salvo-oapi-docs
+base_sha: 637fc6eb3888bbae78c21d169b65cb056d9be41c
+checkpointed: false
 ---
 
 # unary 调试文档：GET /openapi.json
