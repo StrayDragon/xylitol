@@ -19,7 +19,7 @@ ReAct pending_root_stream  → cwd = inner.cwd()（冻结进 run）     （已�
             ├─ bash: 流式 → BashExecOpts.cwd = Some(workspace)
             │        非流式 → BashOperations::execute 增加 cwd 参数（内部 .current_dir）
             ├─ ls/grep/find: resolve_to_cwd(path, base=ctx.workspace)
-            └─ read/write/edit/patch: 相对路径先 join(ctx.workspace) 再交 fs/mutation queue
+            └─ read/write/edit（patch.rs 为 edit 的匹配 helper，非独立工具）: 相对路径先 join(ctx.workspace) 再交 fs/mutation queue
 ```
 
 ## 关键点

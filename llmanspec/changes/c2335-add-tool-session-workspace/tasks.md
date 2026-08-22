@@ -24,7 +24,7 @@
 ## 4. 文件类内置工具
 
 - [x] 4.1 [blocked-by: 2.2] `path_utils::resolve_to_cwd` 改吃显式 base（ctx 工作区）；ls/grep/find 接线
-- [x] 4.2 read/write/edit/patch：相对路径先 join ctx 工作区再交 fs / `FileMutationQueue`（键为解析后绝对路径）
+- [x] 4.2 read/write/edit：相对路径先 join ctx 工作区再交 fs / `FileMutationQueue`（键为解析后绝对路径；patch.rs 为 edit 的匹配 helper，非模型可调用工具）
 - [x] 4.3 单测：write→read 经同一 tempdir 工作区往返成功；绝对路径行为不变
 
 ## 5. BDD 场景与收口

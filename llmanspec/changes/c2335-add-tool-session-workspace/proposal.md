@@ -19,7 +19,7 @@ attach 多工作区下，模型（LLM）调用的工具仍继承 Host 进程 cwd
 
 - **协议缝**：`XyToolCtx` MUST 携带本次执行的工作区基目录；运行时（ReAct 工具批）从 run 冻结配置的 cwd 构造该字段（与 B3「run 开始冻结」同构：整段 run 含工具环用同一工作区）。未设置时回落 Host 进程 cwd（print/库嵌入同进程默认行为不变）。
 - **bash 工具**：流式与非流式两条路径 MUST 都以 ctx 工作区为 shell 子进程 cwd。
-- **文件类内置工具**（read/write/edit/patch/ls/grep/find）：相对路径 MUST 相对 ctx 工作区解析；绝对路径行为不变。
+- **文件类内置工具**（read/write/edit/ls/grep/find）：相对路径 MUST 相对 ctx 工作区解析；绝对路径行为不变。
 - **不改**：MCP 工具（进程 cwd 由 MCP 配置管理）、bang 路径（已修）、trust / permission 判定输入、session header / prompt env。
 
 ## Capabilities
