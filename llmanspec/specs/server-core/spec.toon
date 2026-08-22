@@ -2,7 +2,7 @@ kind: llman.sdd.spec
 name: "server-core"
 purpose: "Server 运行时 — 独立 Host 监听器经四象限信封暴露产品契约（POST unary/respond + WS 只下行）；每 session 槽独立 journal 与写者。"
 valid_scope[1]: "server 应用面"
-requirements[32]{req_id,title,statement}:
+requirements[33]{req_id,title,statement}:
   sr1,server 托管 agent,"app::server MUST 在启动时装配 infra 运行时并注入 agent 端口；组合根 MUST 持有可按 session 槽取用的 Driver（或等价缝），供 unary 处理器调用，MUST NOT 以无槽的裸 Agent 作为唯一生产入口。"
   "sr-env1","产品路径四象限","产品 TUI 与其它产品客户端 MUST 经四象限信封访问 Host：unary 与 respond 为 HTTP POST，下行为 WebSocket 且 MUST NOT 收业务上行。Host 监听器 MUST 实现该路径。现行 REST 资源动词与全双工 WS 应用帧 MUST NOT 再作为产品真源。"
   sr2,四象限 HTTP 与 WS 下行,"Host MUST 暴露 POST /api/{method}（ClientRequest→ServerResponse）、POST /api/respond（ClientResponse）与 GET /api/events.mux（WebSocket 只下行 ServerRequest）。method 集合 MUST 为已登记 unary。MUST NOT 再以 /api/v1 REST 资源动词或全双工 WS 应用帧承载产品命令。"
@@ -19,11 +19,12 @@ requirements[32]{req_id,title,statement}:
   "sr-st1",会话树经方法表,"Host MUST 为 session_tree、travel_session_tree 与 append_entry_label 提供已登记的四象限 unary；Host MUST NOT 再为 SessionTreeKind 提供 REST 读树/travel 端点。"
   "sr-method1",会话生命周期方法接线,"Host MUST 为 list_sessions、load_session_entries、new_session、get_session_name、set_session_name、set_session_name_for 与 delete_session 提供已登记 unary，并经同一 Driver/dispatch 语义执行；Remote 客户端调用这些方法时 MUST NOT 得到预留 unsupported。"
   "sr-resource1",Host 资源方法接线,"Host MUST 提供 reload 与 loaded_resources unary；reload MUST 重装共享的 skills、MCP 与 prompt 资源，loaded_resources MUST 返回当前快照。该快照 MUST 反映进程内真实 MCP 连接态（configured / connecting / connected / 诊断），MUST NOT 来自一份从未发起连接的空壳。这些 Host 级操作 MUST NOT 被伪装成 session 专属 REST。"
+  "sr-resource2","chrome 资源下行","Host MUST 为已物化写者的会话经 mux 下行 `session/resources` 推送 MCP/skills chrome 快照：写者侧在 Host 进程内 poll MCP bootstrap，快照变化时才向该会话的 mux 连接广播一帧，payload 含 session_id 与资源快照（形状与 loaded_resources unary 结果一致）。该帧 MUST NOT 消耗 journal seq，MUST NOT 写入事件 journal；断线重放与冷恢复投影 MUST NOT 复播 chrome 帧。不识别该方法的旧客户端 MUST 可忽略该帧且其余行为不受影响；本方法 MUST NOT 要求 bump 协议版本。"
   "sr-abort1","abort 对进程级 reload 的合作取消","进程级 reload 进行中收到 abort unary 时，Host MUST 合作取消该次 reload（停止后续重装步骤），MUST 以 cancelled 指示应答；reload 未进行时该 unary MUST 落回既有会话 abort 处理。reload 仅 idle 可发起，MUST NOT 与回合 abort 产生并发歧义。"
   "sr-q1",队列深度只读方法,"Host MUST 提供只读 unary queue_stats（或语义等价），返回当前 session 的 steer 与 follow-up 深度；该 unary MUST NOT 占用写者租约。Remote 客户端 MUST NOT 将队列深度静默当成恒 0。"
   "sr-sub1",订阅跨回合存活,"客户端对某 session 的 mux 订阅 MUST 持续到该连接断开或再次 subscribe 替换。单次 prompt 的 AgentEnd MUST NOT 结束该订阅，MUST NOT 停止后续 session/event（含 QueueUpdate 与下一轮）。"
   "sr-w1",session 写者租约,"同一 session MUST 至多一个写者租约。首次非只读 unary 颁发 writerToken；后续非只读 unary MUST 回显该令牌。缺失或错误 MUST 以业务错误拒绝（HTTP 仍 200）。只读 unary 与 subscribe MUST NOT 占用写者。HTTP 连接不是写者身份（每次 unary 都是新 TCP）。"
-  w1,下行信封,"mux 文本帧 MUST 为四象限 ServerRequest（type、rpcId、method、payload）。产品下行 method MUST 含 session/event、session/subscribed、session/resync_required；可应答审批/问卷为 approval/requested 与 question/requested。MUST NOT 再以 ServerFrame tagged 外层为产品真源。"
+  w1,下行信封,"mux 文本帧 MUST 为四象限 ServerRequest（type、rpcId、method、payload）。产品下行 method MUST 含 session/event、session/subscribed、session/resync_required 与 session/resources；可应答审批/问卷为 approval/requested 与 question/requested。MUST NOT 再以 ServerFrame tagged 外层为产品真源。"
   w2,WS 不收业务上行,"mux WebSocket MUST NOT 接受业务 ClientRequest/ApproveTool/AnswerQuestion/Subscribe 应用帧。subscribe 为 unary；审批与问卷应答为 POST /api/respond。载体 ping/pong/close 除外。"
   w3,mux 升级,"Host MUST 在 GET /api/events.mux 挂载 WebSocket 升级。会话选择 MUST NOT 依赖 /api/v1/session/{id}/ws 路径。缺 Origin 的原生客户端 MUST 可升级。"
   w4,单调 seq,每个会话 MUST 维护单调递增的 u64 序号，每 append 事件递增；seq MUST 每会话单调递增。
@@ -35,7 +36,8 @@ requirements[32]{req_id,title,statement}:
   rr2,"reverse-rpc-question","QuestionRequired 时，Host MUST 向该 session 的 mux 连接广播 question/requested ServerRequest；首个 POST /api/respond 胜出。"
   rr3,"call-id-lifecycle",每个 reverse RPC MUST 有稳定 rpcId，在表中注册 oneshot；超时（默认 60s）时收到 ApprovalTimeout；应答时收到结果；消费后 MUST 移除条目。
   rr4,"no-conflict-arbitration",v1 MUST NOT 实现多客户端冲突仲裁；给定 rpcId 的首个 ClientResponse 胜出；同一 rpcId 的后续 respond MUST 被静默忽略。
-scenarios[3]{req_id,id,given,when,then,feature}:
+scenarios[4]{req_id,id,given,when,then,feature}:
   sr-q1,queue-stats-readonly,"已有写者的 session","调用 queue_stats unary","返回深度且不占/不抢写者",false
   sr-sub1,subscribe-survives-agent-end,"已 subscribe 且一轮 AgentEnd","Host 再产生 QueueUpdate 或下一轮事件","同一 mux 连接仍收到 session/event",false
   sr-abort1,abort-reload-cooperative,"进程级 reload 进行中","收到 abort unary","合作取消该次 reload 并以 cancelled 指示应答；未进行时落回会话 abort 处理",false
+  "sr-resource2","chrome-downlink-nonjournal","已物化写者的会话且 MCP 连接态变化","审查实现与对应驱动级测试（非 BDD harness）","mux 广播 session/resources 快照帧；不耗 seq 不进 journal；重放与冷恢复不复播",false

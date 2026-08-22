@@ -4,9 +4,9 @@
 
 ## 1. Branch binding + Specs landing
 
-- [ ] 1.1 `change start` 绑定 `sdd/c2330-add-session-resources-downlink`
-- [ ] 1.2 live specs：`server-core` w1 扩列表 + 新增 sr-resource2（含 scenarios 文档行）；`app-tui-host` 新增 ath38（含 scenarios 文档行）
-- [ ] 1.3 commit Specs landing；结构过闸 + `readyToImplement=true`
+- [x] 1.1 `change start` 绑定 `sdd/c2330-add-session-resources-downlink`
+- [x] 1.2 live specs：`server-core` w1 扩列表 + 新增 sr-resource2（含 scenarios 文档行）；`app-tui-host` 新增 ath38（含 scenarios 文档行）
+- [x] 1.3 commit Specs landing；结构过闸 + `readyToImplement=true`
 
 ## 2. 对拍核验
 
