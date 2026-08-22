@@ -138,7 +138,8 @@ STATUS: incomplete
       （对拍结论 2026-08-22：E1 已达标不立项——footer 已吃 Host Settlement 下行，本地 estimate 仅冷启动回退；E2 后置——bang 流式需新协议面且 pa-cs3 禁骑工具流，长操作已由模型 bash 流式覆盖）
 - [x] `XyRemoteDriver` 拆文件
       （2026-08-22 复杂度雷达判定不拆：无一函数进全树 top-20，行数多但均为低复杂度 trait 方法包装；真实热点在别处——`handle_unary` host.rs 124/93（server 面软信号）、resume panel `handle_input` 63/41。按 src/AGENTS.md「功能逼出或编辑痛点明确再动」维持现状）（现 ~1700 行）
-- [ ] 产品路径死 InProcess TUI 入口清掉（print/embed 保留）
+- [x] 产品路径死 InProcess TUI 入口清掉
+      （2026-08-22 审计：`run_tui` 已纯 attach，`app::tui` 无 InProcess 引用；唯一真死残留 `preflight`/`TuiPreflightError` 及其孤儿测试已删（58604b66）。print/embed 经 embed seam 保留）
 - [ ] AGENTS / architecture 与代码同句（attach 是现行拓扑）
 
 ### P2 — 明确后置（不要提前做；不挡删除本文件）

@@ -99,29 +99,8 @@
     当 下一帧 footer
     那么 含新模型标签
 
-  @req:atc11
-  场景: busy-footer-stays-active
-    假如 agent busy 且 active 为模型 A、selected 改为 B
-    当 渲染 footer
-    那么 footer model 仍为 A
 
-  @req:atc19
-  场景: next-turn-cue-model-pending
-    假如 agent busy 且 selected 模型与 active 不同
-    当 渲染 status
-    那么 下轮预告文案为 Next turn: 新模型名且 lead spinner 与 Working 贴左
 
-  @req:atc19
-  场景: next-turn-cue-thinking-only
-    假如 agent busy 且仅 thinking selected 与 active 不同
-    当 渲染 status
-    那么 下轮预告为 Next turn thinking: 档名且不含模型拼接
-
-  @req:atc19
-  场景: bang-no-next-turn-cue
-    假如 仅 bang busy 且无 agent run
-    当 渲染 status
-    那么 无 Next turn 下轮预告
 
   @req:atc20
   场景: success-no-system
