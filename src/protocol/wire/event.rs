@@ -77,10 +77,16 @@ pub enum Event {
     /// Message started.
     MessageStart {
         role: String,
+        #[serde(default)]
+        #[specta(type = Option<specta_typescript::Any>)]
+        message: Option<Value>,
     },
     /// Message ended.
     MessageEnd {
         role: String,
+        #[serde(default)]
+        #[specta(type = Option<specta_typescript::Any>)]
+        message: Option<Value>,
     },
     /// Streaming message update (replaces previous text/thinking for this message).
     MessageUpdate {
@@ -139,8 +145,18 @@ impl XyEvent {
             XyEvent::TurnEnd { turn_index } => Some(Event::TurnEnd {
                 turn_index: *turn_index,
             }),
-            XyEvent::MessageStart { role, .. } => Some(Event::MessageStart { role: role.clone() }),
-            XyEvent::MessageEnd { role, .. } => Some(Event::MessageEnd { role: role.clone() }),
+            XyEvent::MessageStart { role, message } => Some(Event::MessageStart {
+                role: role.clone(),
+                message: message
+                    .as_ref()
+                    .and_then(|value| serde_json::to_value(value).ok()),
+            }),
+            XyEvent::MessageEnd { role, message } => Some(Event::MessageEnd {
+                role: role.clone(),
+                message: message
+                    .as_ref()
+                    .and_then(|value| serde_json::to_value(value).ok()),
+            }),
             XyEvent::MessageUpdate {
                 text,
                 thinking,
@@ -242,13 +258,17 @@ impl TryFrom<&Event> for XyEvent {
             Event::TurnEnd { turn_index } => Ok(XyEvent::TurnEnd {
                 turn_index: *turn_index,
             }),
-            Event::MessageStart { role } => Ok(XyEvent::MessageStart {
+            Event::MessageStart { role, message } => Ok(XyEvent::MessageStart {
                 role: role.clone(),
-                message: None,
+                message: message
+                    .as_ref()
+                    .and_then(|value| serde_json::from_value(value.clone()).ok()),
             }),
-            Event::MessageEnd { role } => Ok(XyEvent::MessageEnd {
+            Event::MessageEnd { role, message } => Ok(XyEvent::MessageEnd {
                 role: role.clone(),
-                message: None,
+                message: message
+                    .as_ref()
+                    .and_then(|value| serde_json::from_value(value.clone()).ok()),
             }),
             Event::MessageUpdate {
                 text,
@@ -346,6 +366,46 @@ impl TryFrom<&Event> for XyEvent {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn user_message_start_carries_message_over_wire() {
+        // ati12: steer/follow-up inject emits MessageStart/End (role=user, with
+        // message); the wire projection must keep the payload so attach clients
+        // can still uplink the user row into scrollback.
+        let domain = XyEvent::MessageStart {
+            role: "user".into(),
+            message: Some(crate::protocol::message::AgentMessage::user("steer text")),
+        };
+        let wire = domain
+            .to_wire_event()
+            .expect("MessageStart is wire-visible");
+        let back = XyEvent::try_from(&wire).expect("roundtrip");
+        match back {
+            XyEvent::MessageStart { role, message } => {
+                assert_eq!(role, "user");
+                let msg = message.expect("message payload must survive the wire");
+                assert_eq!(msg.text(), "steer text");
+            }
+            other => panic!("unexpected event: {other:?}"),
+        }
+    }
+
+    #[test]
+    fn user_message_end_carries_message_over_wire() {
+        let domain = XyEvent::MessageEnd {
+            role: "user".into(),
+            message: Some(crate::protocol::message::AgentMessage::user("follow text")),
+        };
+        let wire = domain.to_wire_event().expect("MessageEnd is wire-visible");
+        let back = XyEvent::try_from(&wire).expect("roundtrip");
+        match back {
+            XyEvent::MessageEnd { role, message } => {
+                assert_eq!(role, "user");
+                assert_eq!(message.expect("message payload").text(), "follow text");
+            }
+            other => panic!("unexpected event: {other:?}"),
+        }
+    }
 
     #[test]
     fn thinking_delta_roundtrips_through_wire_event() {
