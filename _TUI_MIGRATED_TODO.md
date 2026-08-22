@@ -168,7 +168,7 @@ STATUS: incomplete
 5. 生成中再 `/model`：footer 变；**本轮**模型不变；打完再发才换。
 6. `--session` 长历史：一次出全文、无假 spinner（A1 落地后）。
 7. 复制一段 / 粘贴：在 **TUI 这台机器** 的剪贴板（D1 落地后）。
-8. Host 与 TUI 不同目录启动：`!pwd` 是 TUI 目录。
+8. Host 与 TUI 不同目录启动：`!pwd` 是 TUI 目录；模型侧 bash/文件工具（如让模型跑 pwd、相对路径写文件）也落 TUI 目录（c2335）。
 
 ---
 
