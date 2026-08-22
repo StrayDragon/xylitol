@@ -4,24 +4,43 @@ depends_on:
   - c2302-update-host-multi-session
 ---
 
-# 后置：salvo oapi 仅 unary 调试文档
+# unary 调试文档：GET /openapi.json
 
-给 `POST /api/{method}` 与 `/api/respond` 挂 OpenAPI 3.1（salvo `oapi`），方便 curl / 外部脚本看 unary。 **不是** 类型 SSOT，也不是 TUI/Web 客户端真源。
+给 Host 监听器挂 OpenAPI 3.1 调试文档（`GET /openapi.json`），方便 curl / 外部脚本看 unary 面。**不是**类型 SSOT，也不是 TUI/Web 客户端真源。
 
 ## Why
 
-specta 盖信封 + WS 下行；人手调试 unary 仍想要 `/openapi.json`。把 oapi 塞进 c2302 会诱使「OpenAPI 当契约」。单独后置，避免与 specta 闸抢 SSOT。
+specta 盖信封 + WS 下行；人手调试 unary 仍想要 `/openapi.json`。把 oapi 塞进 c2302 会诱使「OpenAPI 当契约」。单独成票，避免与 specta 闸抢 SSOT。
 
 ## What Changes
 
-- 可选 feature 或调试路由：unary 的 OpenAPI。方法名 / payload **必须**从 c2290 方法表来，禁止另写 schema。
-- WS 下行 **不** 进 OpenAPI（没有一等 server-push 模型）。文档里用一句话指向 specta `bindings.ts` 的 `ServerRequest`。
-- MUST NOT 用 openapi-typescript / progenitor 生成产品客户端。
+- **server-core** 新增 requirement `sr-oapi1`（unary 调试文档）：
+  - Host MUST 在监听器暴露 `GET /openapi.json`，返回 OpenAPI 3.1 文档。
+  - 文档 MUST 从已登记 unary 方法表生成：每个登记方法一个 `/api/<method>` 条目（共享信封级 schema）；另含 `/healthz` 与 `/api/respond`。MUST NOT 手写第二套 schema 词表。
+  - WS 下行 MUST NOT 作为 OpenAPI path 呈现——以文档说明指向 specta `bindings.ts` 的 `ServerRequest` / `DOWNLINK_METHODS`。
+  - 该端点仅调试文档：MUST NOT 作为客户端生成真源（pa-bind1「OpenAPI 非类型 SSOT」不变）。
+- **实现**：`src/app/server/` 新增文档构建模块 + 路由挂载（`server` feature 内）。
+- **BDD**：`server-runtime.feature` 增可执行场景 `@req:sr-oapi1`（走既有 ServerTest harness）。
+
+## 已拍板决策
+
+- **载体**：不引入 salvo-oapi 依赖——用 serde_json 手构 OpenAPI 3.1（零新增依赖、无上游 churn、结构正确性由单测守护）。偏离本草案早期「salvo oapi」字样；合约本质是「OpenAPI 3.1 调试文档」，与载体无关。理由见 design.md D1。
+- **路径形态**：逐方法显式条目（`/api/prompt`、`/api/subscribe`…），不做 `{method}` 通配枚举——浏览友好且仍从方法表程序化生成。
+
+## Capabilities
+
+- `server-core`（sr-oapi1）
+
+protocol-app 不动：pa-bind1（TS 真源闸）与 pa-map1（未登记方法失败）语义不变。
 
 ## Impact
 
-仅调试面。产品 TUI / 符合性 / specta 闸不变。
+仅调试面。产品 TUI / 符合性 / specta 闸不变。Host 监听器多一个只读 GET 端点。
 
 ## 非目标
 
-AsyncAPI、rspc、把 oapi 当第二套词表、Web UI。
+AsyncAPI、rspc、swagger-ui 托管页、把 oapi 当第二套词表、Web UI、openapi-typescript / progenitor 客户端生成。
+
+## Further Notes
+
+决策依据与对拍锚点见 `design.md`。
