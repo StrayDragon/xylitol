@@ -6,9 +6,9 @@
 
 ## 1. Specs landing（Branch binding 后、apply 前）
 
-- [ ] 1.1 `change start` 绑定 `sdd/c2335-add-tool-session-workspace`
-- [ ] 1.2 live specs：`agent-tools` toon 新增 requirement（模型侧工具相对路径与 bash 子进程 cwd = 运行时注入的会话工作区；未注入回落 Host 进程 cwd）；`.feature` 新增 `@req` 可执行场景（工具在指定工作区解析相对路径）
-- [ ] 1.3 commit Specs landing；`llman sdd show c2335-add-tool-session-workspace --json` 过 `readyToImplement`
+- [x] 1.1 `change start` 绑定 `sdd/c2335-add-tool-session-workspace`
+- [x] 1.2 live specs：`agent-tools` toon 新增 requirement（模型侧工具相对路径与 bash 子进程 cwd = 运行时注入的会话工作区；未注入回落 Host 进程 cwd）；`.feature` 新增 `@req` 可执行场景（工具在指定工作区解析相对路径）
+- [x] 1.3 commit Specs landing；结构过闸（`llman sdd validate agent-tools --no-check` 绿）
 
 ## 2. 协议缝与运行时穿线
 
