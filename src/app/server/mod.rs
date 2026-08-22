@@ -13,6 +13,9 @@ pub mod host;
 pub mod http;
 
 #[cfg(feature = "server")]
+pub mod oapi;
+
+#[cfg(feature = "server")]
 pub mod runtime;
 
 #[cfg(feature = "server")]

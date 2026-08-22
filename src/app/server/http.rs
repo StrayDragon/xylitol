@@ -1,6 +1,8 @@
 //! Salvo HTTP + mux routes (four-quadrant product carrier).
 //!
 //! - `GET /healthz`
+//! - `GET /openapi.json` (unary debug document, built from the method table)
+//! - `GET /docs` (Scalar debug UI — the only debug UI; points at `/openapi.json`)
 //! - `POST /api/respond`
 //! - `POST /api/{method}` (registered unary only)
 //! - `GET /api/events.mux` (WebSocket downlink only)
@@ -42,6 +44,12 @@ pub fn router(state: Arc<HostState>) -> Router {
     Router::new()
         .hoop(InjectHost(state))
         .push(Router::with_path("healthz").get(healthz))
+        .push(Router::with_path("openapi.json").get(openapi_json))
+        .push(
+            salvo_oapi::scalar::Scalar::new("/openapi.json")
+                .title("xylitol unary debug API")
+                .into_router("docs"),
+        )
         .push(Router::with_path("api/respond").post(respond))
         .push(Router::with_path("api/events.mux").get(mux_upgrade))
         .push(Router::with_path("api/{method}").post(unary))
@@ -59,6 +67,13 @@ async fn healthz(depot: &mut Depot, res: &mut Response) {
     }
     res.status_code(StatusCode::OK);
     res.render(Json(serde_json::json!({"status": "ok"})));
+}
+
+/// sr-oapi1: static OpenAPI 3.1 debug document (built from the method table).
+#[handler]
+async fn openapi_json(res: &mut Response) {
+    res.status_code(StatusCode::OK);
+    res.render(Text::Plain(super::oapi::openapi_doc()));
 }
 
 #[handler]

@@ -20,6 +20,7 @@
 3. **D3 信封级 schema 粒度**：components 只描述 RpcMessage（client-request/client-response）、RpcResult（ok/value/writerToken）、RpcError（code/details）；payload 字段保持 object 粒度。具体 payload 形状的真源是 specta bindings——文档中 info.description 指向之。**禁止**在 OpenAPI 里展开逐 variant schema（那才是第二套词表）。
 4. **D4 WS 下行呈现方式**：不出现在 paths；在 info.description 固定一句指向 bindings.ts `ServerRequest` 与 mux 通道说明。
 5. **D5 feature 门**：挂在既有 `server` feature 内（默认开）。调试文档是只读 GET、零运行时成本；独立 opt-in feature 反而让默认产物缺文档、qa 需要额外矩阵。
+6. **D6 Scalar UI + salvo 升级（用户拍板）**：`GET /docs` 托管 Scalar 作为**唯一**调试 UI；依赖 `salvo-oapi`（`default-features=false, features=["scalar"]`，仅用其 Handler，不参与 spec 构建）；salvo 0.94 → 0.95.2 与 salvo-oapi 同版对齐（Handler trait 跨版本不兼容，必须同版）。升级后全量编译零破坏。
 
 ## 测试边界（前置确认）
 

@@ -210,3 +210,9 @@ async fn test_rr4(approval_test: ServerTest) {}
     name = "writer-lease"
 )]
 async fn test_sr_w1_writer_lease(server_test: ServerTest) {}
+
+#[scenario(
+    path = "llmanspec/specs/server-core/server-runtime.feature",
+    name = "openapi-debug-doc"
+)]
+async fn test_sr_oapi1_openapi_debug_doc(server_test: ServerTest) {}
