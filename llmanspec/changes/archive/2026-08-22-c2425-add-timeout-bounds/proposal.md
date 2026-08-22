@@ -2,7 +2,8 @@
 depends_on: []
 branch: sdd/c2425-add-timeout-bounds
 base_sha: 637fc6eb3888bbae78c21d169b65cb056d9be41c
-checkpointed: false
+checkpointed: true
+checkpoint_sha: 637fc6eb3888bbae78c21d169b65cb056d9be41c
 ---
 
 # 外部等待全链路 timeout 有界化
