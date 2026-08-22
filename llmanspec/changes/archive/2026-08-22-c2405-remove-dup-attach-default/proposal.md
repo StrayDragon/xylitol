@@ -2,7 +2,8 @@
 depends_on: []
 branch: sdd/c2405-remove-dup-attach-default
 base_sha: 637fc6eb3888bbae78c21d169b65cb056d9be41c
-checkpointed: false
+checkpointed: true
+checkpoint_sha: 637fc6eb3888bbae78c21d169b65cb056d9be41c
 ---
 
 # 去重：app-tui attach-default 与 cli-entry 双写
