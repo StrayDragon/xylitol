@@ -22,6 +22,7 @@
 | **ApplicationOwned 交互** | **ApplicationOwned** · `InteractionMode::ApplicationOwned` | 应用自管视口 + **应用内选区**；常经 alt-buffer + mouse capture；**产品缺省（ath30）** | Mode B、alt-screen 当唯一真名（alt-buffer 只是 AO 常见载体） |
 | **终端原生选区** | emulator-owned selection | 仿真器画选区/复制；应用不解释未修饰拖选 | 「开了 mouse 就有原生选区」 |
 | **应用内选区** | application-owned selection | 应用收鼠标、自绘高亮、自复制（OSC52 等） | 把 mouse capture 说成「有选区」 |
+| **timeout 预算注记** | `(timeout {N}s)` · tool header budget note | 工具行 header 在 `(Alt+E)` 前的 muted 预算声明；仅模型显式传 `timeout` 的 bash/grep/find 出现（c2435），走默认不显示 | 倒计时（无）；把工具默认值逐行刷出 |
 
 完整术语 ↔ 代码标识符对照（grabbed/ungrabbed、视口 vs scrollback）：[`emulator-vs-app-selection-oneof.md`](../../llmanspec/changes/archive/2026-08-12-c2070-add-package-tui-dual-interaction-modes/research/emulator-vs-app-selection-oneof.md) §1。
 

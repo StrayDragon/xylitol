@@ -2,7 +2,7 @@ kind: llman.sdd.spec
 name: "app-tui-chrome"
 purpose: 主题 token、glyph、status 与 footer 等 layout 壳（历史 capability 名 chrome）。
 valid_scope[1]: "产品 TUI 壳层（layout/chrome）"
-requirements[25]{req_id,title,statement}:
+requirements[26]{req_id,title,statement}:
   atc1,"idle-status-omitted",产品 UiRoot 空闲时 status 槽 MUST 渲染 0 行；忙碌时 MUST 至多独立 1 行短状态；MUST NOT 将 Working 等忙碌文案并入 footer。
   atc2,"footer-minimal","产品 footer MUST 为 1 行 dim 文本，显示 active（in-flight 或当前 turn 已绑定）的 model，而非仅裸读 selected；字段序为 cwd · model · thinking 标签（形如 `cwd · model · thinking off` 或 `· xhigh`，level 文案为该档位的显示名，off 时用 `thinking off`；字段间只用 ` · `，MUST NOT 在 thinking 前再加装饰 `•`）；当 active 模型无思考或仅不可调 off 时 MUST 省略 thinking 段；并在可获得 ContextTokenEstimate 时追加 `· used … tokens`（文案按 TokenProvenance：Api/RemoteCount/LocalTokenizer 为 used C tokens，Heuristic 为 used ~C tokens，Unknown 为 used ? tokens；其中 C 为与 window 同源的紧凑计数，见 atc24）；当当前模型 context_window > 0 时 MUST 在 used 字段后追加派生占用比（见 atc21）；MUST NOT 在 footer 展示队列计数徽章（如 `q:sN|fM`；队列可见性见 ati11 / atc26）；无估计数据时 MUST NOT 伪造 used 0；MUST NOT 常驻快捷键墙；放不下时 MUST 截断右侧而非增高。"
   atc3,"theme-glyphs-config","产品 host MUST 经 Palette::dark()（或等价闭包）将语义色注入组件主题；glyph 档（unicode/ascii）MUST 由显式配置切换，MUST NOT 做运行时字体探测；产品 MVP MUST NOT 默认开启 theme auto。"
@@ -28,9 +28,11 @@ requirements[25]{req_id,title,statement}:
   atc24,"footer-used-compact-count","footer used 字段中的可数 token 计数 C（atc2/atc13）MUST 与 context_window 紧凑展示使用同一算法（实现单点，勿另立第二套阈值）：C<1000 MUST 为十进制全量；1000≤C<10000 MUST 为一位小数的 k（如 1.0k）；10000≤C<1000000 MUST 为四舍五入整 k（如 42k）；更大 MUST 用 M 同理。Unknown 的 `?` MUST NOT 套用紧凑。MUST NOT 去掉 tokens 词。"
   atc25,"reload-status-and-toasts","产品 TUI 在 /reload 进行中（ath28 reload 态）时 status 槽 MUST 显示 Loader 形态：前导空行 + 一行 spinner+短词 `Reloading`（lead 贴左，与 atc7/atc12 同形）；MUST NOT 冒充 agent Working 或 Assembling；该态下 status 右侧 MUST NOT 显示 mcp pending cue 或任何换模预告。软闸拒提交、取消收口、失败收口的壳层通告 MUST 走 atc22：body 分别为 `reloading — wait`、`reload cancelled`、`reload failed — see report`（可见前缀 `Error: `）；取消与失败 MUST 另有滚动提示报告（见 ath28），软闸拒提交 MUST NOT 为此追加 ScrollNotice。reload 结束后 status MUST 回到 idle 0 内容行（保留呼吸空行）。"
   atc26,"chrome-no-extra-undocumented","产品 TUI 壳层（footer / status / 队列条 / 壳层通告等）可观察文案与徽章 MUST 仅来自文档化视觉 SSOT（见 atc4）已声明的槽与字段；MUST NOT 另加 SSOT 未声明或已废弃的冗余展示（避免用户疑惑）；队列可见性 SSOT 为中间队列条（Steering:/Follow-up:，见 ati11），MUST NOT 再在 footer/status 重复队列计数徽章。"
-scenarios[5]{req_id,id,given,when,then,feature}:
+  atc27,"tool-header-timeout-note","命令类工具（bash/grep/find）的模型显式 timeout 请求 MUST 在工具行 header 的按键提示 (Alt+E) 前以 muted 文本显示 (timeout {N}s)（N 为钳制后的生效秒数）；省略（走工具默认）时 MUST NOT 显示。注记为静态文本，MUST NOT 做倒计时或运行中改写。"
+scenarios[6]{req_id,id,given,when,then,feature}:
   atc22,atc22-unit,"壳层通告约束由产品 harness 覆盖（非 BDD）",审查实现与对应测试,"行为符合本 requirement 陈述",false
   atc23,atc23-unit,"Chrome Footprint 约束由产品 harness 覆盖（非 BDD）",审查实现与对应测试,"行为符合本 requirement 陈述",false
   atc24,atc24-unit,"used 紧凑计数由产品单测/harness 覆盖（非 BDD）",审查紧凑计数实现与 footer 标签,"行为符合本 requirement 陈述",false
   atc25,atc25-unit,"reload status/toast 由产品 harness 覆盖（非 BDD）",审查实现与对应测试,"行为符合本 requirement 陈述",false
   atc26,atc26-unit,"无多余未声明 chrome 由产品单测/harness 覆盖（非 BDD）",审查 footer 格式化与队列条渲染,"行为符合本 requirement 陈述",false
+  atc27,"timeout-note-unit","模型带 timeout 调用 bash","渲染工具行 header","(timeout Ns) 出现在 (Alt+E) 前；省略时不出现",false

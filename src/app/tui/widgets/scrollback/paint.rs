@@ -71,12 +71,21 @@ pub(super) fn paint_tool_header_line(
     marker: &str,
     name: &str,
     args_preview: &str,
+    timeout_secs: Option<u64>,
 ) -> String {
     use crate::app::tui::bridge::display_tool_title;
     let title = display_tool_title(name);
     let hint = theme.paint_muted(&key_hint("Alt+E"));
+    // c2435: budget chrome only when the model explicitly requested a bound.
+    let timeout_note = match timeout_secs {
+        Some(n) => theme.paint_muted(&format!("(timeout {n}s) ")),
+        None => String::new(),
+    };
     if args_preview.is_empty() {
-        format!("{marker} {}  {hint}", theme.paint_tool_name(&title))
+        format!(
+            "{marker} {}  {timeout_note}{hint}",
+            theme.paint_tool_name(&title)
+        )
     } else {
         let (path, range) = split_path_and_range(args_preview);
         let loc = match range {
@@ -87,7 +96,11 @@ pub(super) fn paint_tool_header_line(
             ),
             None => theme.paint_tool_path(path),
         };
-        format!("{marker} {} {}  {hint}", theme.paint_tool_name(&title), loc)
+        format!(
+            "{marker} {} {}  {timeout_note}{hint}",
+            theme.paint_tool_name(&title),
+            loc
+        )
     }
 }
 
@@ -462,6 +475,7 @@ pub(super) fn paint_tool_block(
     id: &str,
     name: &str,
     args_preview: &str,
+    timeout_secs: Option<u64>,
     write_content: Option<&str>,
     display_diff: Option<&str>,
     output: &str,
@@ -483,7 +497,7 @@ pub(super) fn paint_tool_block(
         glyphs.fold()
     };
     let mw = marker_cols(marker);
-    let header = paint_tool_header_line(theme, marker, name, args_preview);
+    let header = paint_tool_header_line(theme, marker, name, args_preview, timeout_secs);
     let rgb = tool_rail_rgb(!done, is_error, theme);
     let mut block = Vec::new();
     let mut block_hits = Vec::new();
@@ -585,7 +599,7 @@ pub(super) fn paint_diff_block(
         glyphs.fold()
     };
     let mw = marker_cols(marker);
-    let header = paint_tool_header_line(theme, marker, "diff", summary);
+    let header = paint_tool_header_line(theme, marker, "diff", summary, None);
     let mut block = Vec::new();
     let mut block_hits = Vec::new();
     push_wrapped(&mut block, &header, inner);

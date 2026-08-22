@@ -350,6 +350,7 @@ pub fn render_scrollback(
                 paint_ctx,
             ),
             UiEntry::Tool {
+                timeout_secs,
                 id,
                 name,
                 args_preview,
@@ -363,6 +364,7 @@ pub fn render_scrollback(
                 id,
                 name,
                 args_preview,
+                *timeout_secs,
                 write_content.as_deref(),
                 display_diff.as_deref(),
                 output,

@@ -1,0 +1,12 @@
+id: expandable.tool-timeout
+cols: 80
+must_contain:
+  - "Bash"
+  - "(timeout 600s)"
+  - "(Alt+E)"
+must_not_contain:
+  - "timeout: "
+lines:
+  -
+    - { text: "▎", token: success }
+    - { text: " ▾ Bash $ make build  (timeout 600s)  (Alt+E)", token: on-surface }

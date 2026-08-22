@@ -14,7 +14,7 @@ Agent 改某表面：先读**产品代码**，再读短 `intent.md` + `states/*.
 | tui | diff | 复制友好的代码变更。产品把 Edit `display_diff` 嵌在 expandable 工具块里（**非**独立浏览面）。 | empty, side-by-side, unified | `/tui/diff` |
 | tui | editor | 输入贴底，上下 `─` 边框。树 / Ask / `/model` 等选择器 **替换本槽**，Esc 还原；禁止 blit 到 transcript 顶。 | idle | `/tui/editor` |
 | tui | errors | 持久错误进错误行：优先 **一行** error 色短文。瞬时硬拒闸走壳层通告。 | row | `/tui/errors` |
-| tui | expandable | 块级折叠（thinking / tool / diff / ask）。段/簇信封见 activity-fold。 | thinking, tool-collapsed, tool-expanded | `/tui/expandable` |
+| tui | expandable | 块级折叠（thinking / tool / diff / ask）。段/簇信封见 activity-fold。 | thinking, tool-collapsed, tool-expanded, tool-timeout | `/tui/expandable` |
 | tui | footer | 恰好 1 行 dim。字段序 `cwd · model · {thinking}`，可续 `used C/~C/? tokens`（紧凑如 `42k`）与占用比。 | default | `/tui/footer` |
 | tui | full-shell | 少装饰壳：可选 loaded 卡片 + scrollback + 可选队列 + toast + status + editor + footer。 | busy | `/tui/full-shell` |
 | tui | layout | 槽高按终端行数预算。短终端仍须看见 busy `Working`，不得被 editor/footer 挤没。 | short | `/tui/layout` |
