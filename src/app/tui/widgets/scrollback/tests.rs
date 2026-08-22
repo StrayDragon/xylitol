@@ -193,6 +193,7 @@ fn compaction_block_expands_with_fold() {
 #[test]
 fn inflight_write_placeholder_is_editing_not_dots() {
     let entry = UiEntry::Tool {
+        timeout_secs: None,
         id: "w1".into(),
         name: "write".into(),
         args_preview: "...".into(),
@@ -205,6 +206,7 @@ fn inflight_write_placeholder_is_editing_not_dots() {
     };
     assert_eq!(inflight_short_label(&entry).as_deref(), Some("Editing"));
     let with_path = UiEntry::Tool {
+        timeout_secs: None,
         id: "w2".into(),
         name: "write".into(),
         args_preview: "a.py".into(),
@@ -223,6 +225,7 @@ fn inflight_write_placeholder_is_editing_not_dots() {
 
 fn inflight_tool(name: &str, path: Option<&str>) -> UiEntry {
     UiEntry::Tool {
+        timeout_secs: None,
         id: name.into(),
         name: name.into(),
         args_preview: path.unwrap_or("").into(),
@@ -284,6 +287,7 @@ fn user_row_highlights_dollar_skill_ref() {
 fn assert_write_header_body_share_rail(done: bool, is_error: bool, expect: RgbColor) {
     let mut model = UiModel::default();
     model.entries.push(UiEntry::Tool {
+        timeout_secs: None,
         id: "w1".into(),
         name: "write".into(),
         args_preview: "a.py".into(),
@@ -352,6 +356,7 @@ fn write_block_rails_header_and_body_together() {
 fn edit_block_rails_header_and_diff_without_wash() {
     let mut model = UiModel::default();
     model.entries.push(UiEntry::Tool {
+        timeout_secs: None,
         id: "e1".into(),
         name: "edit".into(),
         args_preview: "tmp/flow_test.py".into(),
@@ -470,6 +475,7 @@ fn write_viewport_defaults_to_tail_earlier() {
     let mut model = UiModel::default();
     let body: String = (0..18).map(|i| format!("line-{i}\n")).collect();
     model.entries.push(UiEntry::Tool {
+        timeout_secs: None,
         id: "w1".into(),
         name: "write".into(),
         args_preview: "a.py".into(),
@@ -516,6 +522,7 @@ fn huge_edit_diff_is_capped_in_scrollback() {
     }
     let mut model = UiModel::default();
     model.entries.push(UiEntry::Tool {
+        timeout_secs: None,
         id: "e1".into(),
         name: "edit".into(),
         args_preview: "edit big.txt".into(),
@@ -685,4 +692,21 @@ fn strip_ansi_local(s: &str) -> String {
         }
     }
     out
+}
+
+#[test]
+fn tool_header_shows_timeout_only_when_requested() {
+    let theme = LayoutTheme::product_dark();
+
+    // Explicit model request → muted budget note before the key hint.
+    let with = paint::paint_tool_header_line(theme, "▎", "Bash", "$ sleep 600", Some(600));
+    let plain = strip_ansi_local(&with);
+    let t = plain.find("(timeout 600s)").expect("timeout note present");
+    let e = plain.find("(Alt+E)").expect("hint present");
+    assert!(t < e, "timeout note must precede Alt+E hint: {plain:?}");
+
+    // Tool default (omitted) → no chrome.
+    let without = paint::paint_tool_header_line(theme, "▎", "Bash", "$ sleep 2", None);
+    let plain2 = strip_ansi_local(&without);
+    assert!(!plain2.contains("timeout"), "no default chrome: {plain2:?}");
 }

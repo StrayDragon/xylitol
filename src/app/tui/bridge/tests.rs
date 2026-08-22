@@ -1042,3 +1042,54 @@ fn mcp_end_rebuilds_even_if_buffer_was_polluted() {
     assert!(!out.contains("args:\n{}{"), "no glued minified: {out}");
     assert_eq!(out.matches("\"text\": \"ok\"").count(), 1, "{out}");
 }
+
+#[test]
+fn tool_entry_captures_model_requested_timeout() {
+    let mut model = UiModel::new();
+    upsert_tool_entry(
+        &mut model,
+        "b1",
+        "bash",
+        &serde_json::json!({"command": "make", "timeout": 600}),
+    );
+    let UiEntry::Tool { timeout_secs, .. } = &model.entries[0] else {
+        panic!("tool entry");
+    };
+    assert_eq!(*timeout_secs, Some(600));
+
+    // Omitted → None (default armed silently, no header chrome).
+    upsert_tool_entry(
+        &mut model,
+        "b2",
+        "bash",
+        &serde_json::json!({"command": "ls"}),
+    );
+    let UiEntry::Tool { timeout_secs, .. } = &model.entries[1] else {
+        panic!("tool entry");
+    };
+    assert_eq!(*timeout_secs, None);
+
+    // fs tools never advertise (no knob).
+    upsert_tool_entry(
+        &mut model,
+        "r1",
+        "read",
+        &serde_json::json!({"file_path": "x", "timeout": 30}),
+    );
+    let UiEntry::Tool { timeout_secs, .. } = &model.entries[2] else {
+        panic!("tool entry");
+    };
+    assert_eq!(*timeout_secs, None);
+
+    // Negative / zero rejected upstream; here treated as absent.
+    upsert_tool_entry(
+        &mut model,
+        "g1",
+        "grep",
+        &serde_json::json!({"pattern": "x", "timeout": -5}),
+    );
+    let UiEntry::Tool { timeout_secs, .. } = &model.entries[3] else {
+        panic!("tool entry");
+    };
+    assert_eq!(*timeout_secs, None);
+}

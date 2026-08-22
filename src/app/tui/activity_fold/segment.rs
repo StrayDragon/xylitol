@@ -203,6 +203,7 @@ mod tests {
 
     fn tool(id: &str) -> UiEntry {
         UiEntry::Tool {
+            timeout_secs: None,
             id: id.into(),
             name: "read".into(),
             args_preview: "a.rs".into(),

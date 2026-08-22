@@ -2294,6 +2294,7 @@ fn tools_per_block_override_and_alt_e_clears() {
     let mut root = UiRoot::new();
     let mut model = UiModel::new();
     model.entries.push(super::bridge::UiEntry::Tool {
+        timeout_secs: None,
         id: "t1".into(),
         name: "read".into(),
         args_preview: "a.rs".into(),
@@ -2305,6 +2306,7 @@ fn tools_per_block_override_and_alt_e_clears() {
         done: true,
     });
     model.entries.push(super::bridge::UiEntry::Tool {
+        timeout_secs: None,
         id: "t2".into(),
         name: "read".into(),
         args_preview: "b.rs".into(),
@@ -2389,6 +2391,7 @@ fn single_tool_toggle_does_not_miss_unrelated_assistant() {
         });
     }
     model.entries.push(super::bridge::UiEntry::Tool {
+        timeout_secs: None,
         id: "only".into(),
         name: "bash".into(),
         args_preview: "ls".into(),
@@ -2422,6 +2425,7 @@ fn harness_mouse_triangle_toggles_tool_fold() {
     {
         let mut model = session.ui_model().clone();
         model.entries.push(super::bridge::UiEntry::Tool {
+            timeout_secs: None,
             id: "click-me".into(),
             name: "read".into(),
             args_preview: "x.rs".into(),
@@ -2509,6 +2513,7 @@ fn harness_mouse_drag_across_triangle_does_not_toggle_fold() {
     {
         let mut model = session.ui_model().clone();
         model.entries.push(super::bridge::UiEntry::Tool {
+            timeout_secs: None,
             id: "drag-me".into(),
             name: "read".into(),
             args_preview: "y.rs".into(),
@@ -2788,6 +2793,7 @@ fn harness_mouse_triangle_toggles_compaction_fold() {
     {
         let mut model = session.ui_model().clone();
         model.entries.push(super::bridge::UiEntry::Tool {
+            timeout_secs: None,
             id: "keep-override".into(),
             name: "read".into(),
             args_preview: "z.rs".into(),
@@ -3879,6 +3885,7 @@ fn activity_turn(user: &str, tool_id: &str, path: &str, asst: &str) -> Vec<super
     vec![
         super::bridge::UiEntry::User { text: user.into() },
         super::bridge::UiEntry::Tool {
+            timeout_secs: None,
             id: tool_id.into(),
             name: "read".into(),
             args_preview: path.into(),
@@ -3970,6 +3977,7 @@ fn activity_fold_att24_worked_for_and_no_fake_duration_or_pm() {
         .entries
         .push(super::bridge::UiEntry::User { text: "u2".into() });
     model.entries.push(super::bridge::UiEntry::Tool {
+        timeout_secs: None,
         id: "edit1".into(),
         name: "edit".into(),
         args_preview: "b.rs".into(),
@@ -4368,6 +4376,7 @@ fn activity_fold_nested_mouse_envelope_vs_cluster() {
         .entries
         .push(super::bridge::UiEntry::User { text: "u".into() });
     model.entries.push(super::bridge::UiEntry::Tool {
+        timeout_secs: None,
         id: "c0".into(),
         name: "read".into(),
         args_preview: "a.rs".into(),
@@ -4382,6 +4391,7 @@ fn activity_fold_nested_mouse_envelope_vs_cluster() {
         .entries
         .push(super::bridge::UiEntry::Assistant { text: "mid".into() });
     model.entries.push(super::bridge::UiEntry::Tool {
+        timeout_secs: None,
         id: "c1".into(),
         name: "read".into(),
         args_preview: "b.rs".into(),
@@ -4481,6 +4491,7 @@ fn activity_fold_att33_live_planning_and_open_cluster_updates() {
     );
 
     model.entries.push(super::bridge::UiEntry::Tool {
+        timeout_secs: None,
         id: "sealed".into(),
         name: "read".into(),
         args_preview: "old.rs".into(),
@@ -4495,6 +4506,7 @@ fn activity_fold_att33_live_planning_and_open_cluster_updates() {
         .entries
         .push(super::bridge::UiEntry::Assistant { text: "mid".into() });
     model.entries.push(super::bridge::UiEntry::Tool {
+        timeout_secs: None,
         id: "open1".into(),
         name: "edit".into(),
         args_preview: "a.rs".into(),
@@ -4522,6 +4534,7 @@ fn activity_fold_att33_live_planning_and_open_cluster_updates() {
         .to_string();
 
     model.entries.push(super::bridge::UiEntry::Tool {
+        timeout_secs: None,
         id: "open2".into(),
         name: "edit".into(),
         args_preview: "b.rs".into(),
@@ -4624,6 +4637,7 @@ fn activity_fold_att33_cluster_click_expands_open_cluster() {
         .entries
         .push(super::bridge::UiEntry::User { text: "u".into() });
     model.entries.push(super::bridge::UiEntry::Tool {
+        timeout_secs: None,
         id: "sealed-tool".into(),
         name: "read".into(),
         args_preview: "z.rs".into(),
@@ -4691,6 +4705,7 @@ fn activity_fold_default_hides_cluster_kids_and_uses_edited() {
         .entries
         .push(super::bridge::UiEntry::User { text: "u".into() });
     model.entries.push(super::bridge::UiEntry::Tool {
+        timeout_secs: None,
         id: "e1".into(),
         name: "edit".into(),
         args_preview: "a.rs".into(),
@@ -4702,6 +4717,7 @@ fn activity_fold_default_hides_cluster_kids_and_uses_edited() {
         done: true,
     });
     model.entries.push(super::bridge::UiEntry::Tool {
+        timeout_secs: None,
         id: "e2".into(),
         name: "edit".into(),
         args_preview: "b.rs".into(),
@@ -4920,6 +4936,7 @@ fn activity_fold_todo_tools_are_used_not_thought_cluster() {
         .entries
         .push(super::bridge::UiEntry::User { text: "u".into() });
     model.entries.push(super::bridge::UiEntry::Tool {
+        timeout_secs: None,
         id: "t-list".into(),
         name: "todo_list".into(),
         args_preview: String::new(),
@@ -4931,6 +4948,7 @@ fn activity_fold_todo_tools_are_used_not_thought_cluster() {
         done: true,
     });
     model.entries.push(super::bridge::UiEntry::Tool {
+        timeout_secs: None,
         id: "t-up".into(),
         name: "todo_update".into(),
         args_preview: String::new(),
@@ -4983,6 +5001,7 @@ fn activity_fold_repeated_unknown_tools_count_calls() {
         .push(super::bridge::UiEntry::User { text: "u".into() });
     for i in 0..4 {
         model.entries.push(super::bridge::UiEntry::Tool {
+            timeout_secs: None,
             id: format!("t-{i}"),
             name: "todo_update".into(),
             args_preview: String::new(),
@@ -5063,6 +5082,7 @@ fn activity_fold_live_write_placeholder_is_editing_not_dots() {
         .entries
         .push(super::bridge::UiEntry::User { text: "u".into() });
     model.entries.push(super::bridge::UiEntry::Tool {
+        timeout_secs: None,
         id: "w1".into(),
         name: "write".into(),
         args_preview: "...".into(),
@@ -5248,6 +5268,7 @@ fn activity_fold_mcp_cluster_is_used() {
         .entries
         .push(super::bridge::UiEntry::User { text: "u".into() });
     model.entries.push(super::bridge::UiEntry::Tool {
+        timeout_secs: None,
         id: "mcp1".into(),
         name: "mcp:lspz:get_symbols".into(),
         args_preview: String::new(),

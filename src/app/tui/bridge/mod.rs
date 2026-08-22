@@ -48,6 +48,13 @@ pub(crate) fn upsert_tool_entry(model: &mut UiModel, id: &str, name: &str, args:
     use crate::app::tool_display::{is_mcp_tool_name, mcp_tool_body};
 
     let fresh_path = extract_tool_path(args);
+    // c2435: model-requested bound (bash/grep/find only) becomes header chrome.
+    let timeout_secs = matches!(name, "bash" | "grep" | "find")
+        .then(|| args.get("timeout"))
+        .flatten()
+        .and_then(Value::as_i64)
+        .filter(|n| *n > 0)
+        .map(|n| n.min(crate::protocol::MAX_TOOL_TIMEOUT_SECS as i64) as u64);
     let write_content = is_write_tool(name)
         .then(|| {
             args.get("content")
@@ -62,6 +69,7 @@ pub(crate) fn upsert_tool_entry(model: &mut UiModel, id: &str, name: &str, args:
     let mcp_pending_body = mcp.then(|| mcp_tool_body(Some(args), None));
     if let Some(UiEntry::Tool {
         name: n,
+        timeout_secs: ts,
         args_preview,
         tool_path,
         write_content: wc,
@@ -73,6 +81,9 @@ pub(crate) fn upsert_tool_entry(model: &mut UiModel, id: &str, name: &str, args:
         *n = name.to_string();
         if let Some(p) = fresh_path {
             *tool_path = Some(p);
+        }
+        if ts.is_none() {
+            *ts = timeout_secs;
         }
         let new_preview = mcp_preview.clone().unwrap_or_else(|| {
             human_tool_args_preview_with_path(name, args, tool_path.as_deref(), usize::MAX)
@@ -101,6 +112,7 @@ pub(crate) fn upsert_tool_entry(model: &mut UiModel, id: &str, name: &str, args:
         name: name.to_string(),
         args_preview: preview,
         tool_path,
+        timeout_secs,
         write_content,
         display_diff: None,
         output: mcp_pending_body.unwrap_or_default(),

@@ -157,6 +157,7 @@ fn merge_persisted_tool_result(entries: &mut Vec<UiEntry>, entry_id: &str, messa
     if !apply_tool_result_to_entries(entries, tool_call_id, name, &result, is_error) {
         // Orphan: no matching call on path — still one done Tool row (id prefers toolCallId).
         entries.push(UiEntry::Tool {
+            timeout_secs: None,
             id: tool_call_id.to_string(),
             name: name.to_string(),
             args_preview: String::new(),
@@ -339,6 +340,7 @@ fn message_json_to_ui_entries(
                 .unwrap_or("tool")
                 .to_string();
             let mut entries = vec![UiEntry::Tool {
+                timeout_secs: None,
                 id: tool_call_id.to_string(),
                 name: name.clone(),
                 args_preview: String::new(),
@@ -458,6 +460,7 @@ fn assistant_parts_to_ui(
                     .unwrap_or(Value::Object(Default::default()));
                 let mcp = is_mcp_tool_name(name);
                 out.push(UiEntry::Tool {
+                    timeout_secs: None,
                     id,
                     name: name.to_string(),
                     args_preview: if mcp {

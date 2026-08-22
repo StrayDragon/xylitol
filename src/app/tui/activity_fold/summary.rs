@@ -432,6 +432,7 @@ mod tests {
 
     fn tool(name: &str, path: Option<&str>) -> UiEntry {
         UiEntry::Tool {
+            timeout_secs: None,
             id: name.into(),
             name: name.into(),
             args_preview: path.unwrap_or("").into(),
