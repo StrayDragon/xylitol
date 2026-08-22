@@ -2139,6 +2139,113 @@ mod tests {
         );
     }
 
+    /// ws1 (c2335): the model-side tool execution surface MUST run in the
+    /// session workspace bound at writer materialization — a scripted fake
+    /// model emits a `bash pwd` tool call and the result MUST be the
+    /// workspace, not the serve process cwd.
+    #[tokio::test]
+    async fn model_tool_runs_in_client_workspace() {
+        use crate::XyModelMeta;
+        use crate::XySessionStore;
+        use crate::app::core::composition::build_ports_with_store;
+        use crate::app::server::host::{ReloadBaseline, materialize_writer_at};
+        use crate::infra::provider::factory::{reset_fake_state, set_fake_tool_call};
+        use crate::protocol::lifecycle::XyEvent;
+        use crate::protocol::model::{XyModelConfig, XyModelKind};
+        use futures::StreamExt;
+        use std::path::PathBuf;
+        use std::sync::Arc;
+
+        reset_fake_state();
+        set_fake_tool_call("bash", r#"{"command":"pwd"}"#);
+
+        let dir = tempfile::tempdir().expect("tmp");
+        let store: Arc<dyn XySessionStore> = Arc::new(crate::infra::session::SessionManager::new(
+            std::env::temp_dir()
+                .join(format!("xylitol-host-ws-{}", uuid::Uuid::new_v4()))
+                .join("sessions"),
+        ));
+        let mut registry = crate::agent::capabilities::ModelRegistry::new(Arc::new(
+            crate::infra::config::value::InfraSecretResolver::new(),
+        ));
+        registry.register(XyModelMeta {
+            id: "fake-ws".into(),
+            config: XyModelConfig {
+                kind: XyModelKind::Fake,
+                api_key: String::new(),
+                model: "fake-model".into(),
+                base_url: None,
+                api: None,
+                compat: None,
+            },
+            display_name: "Fake WS".into(),
+            thinking: false,
+            context_window: 200_000,
+            api: String::new(),
+            provider: String::new(),
+            cost_input: 0.0,
+            cost_output: 0.0,
+            cost_cache_read: 0.0,
+            cost_cache_write: 0.0,
+            max_tokens: 0,
+            thinking_levels: Vec::new(),
+            thinking_level_map: Default::default(),
+        });
+        let options = crate::app::core::composition::BuildAgentOptions {
+            model_registry: registry,
+            ..Default::default()
+        };
+        let ports = build_ports_with_store(options, store).expect("ports");
+        let host = HostState::new(
+            ports,
+            ReloadBaseline {
+                cwd: std::env::current_dir().unwrap_or_else(|_| PathBuf::from(".")),
+                agent_dir: crate::infra::resource::DefaultResourceLoader::default_agent_dir(),
+                project_trusted: true,
+                mcp_servers: Vec::new(),
+                default_model_id: Some("fake-ws".into()),
+            },
+            "ws-model-tool-fallback".into(),
+        );
+
+        let slot = host.slot("ws-model-tool").await;
+        materialize_writer_at(&host, &slot, dir.path())
+            .await
+            .expect("materialize");
+
+        let mut tool_end_result: Option<String> = None;
+        {
+            let mut guard = slot.driver.lock().await;
+            let driver = guard.as_mut().expect("writer driver");
+            driver.select_model("fake-ws").await.expect("select fake");
+            let mut stream = driver.run("run pwd via tool").await;
+            while let Some(event) = stream.next().await {
+                if let XyEvent::ToolExecutionEnd { ref result, .. } = event {
+                    tool_end_result = Some(result.clone());
+                }
+                if matches!(event, XyEvent::AgentEnd { .. }) {
+                    break;
+                }
+            }
+        }
+
+        let result = tool_end_result.expect("bash tool must execute during the run");
+        assert!(
+            !result.contains("error"),
+            "model-side bash tool MUST succeed; got {result}"
+        );
+        assert!(
+            result.contains(
+                &dir.path()
+                    .canonicalize()
+                    .unwrap()
+                    .to_string_lossy()
+                    .to_string()
+            ),
+            "model-side bash tool MUST run in the session workspace; got {result}"
+        );
+    }
+
     #[tokio::test]
     async fn persist_trust_unary_routes_to_writer() {
         use crate::app::server::host::{handle_unary, materialize_writer_at};

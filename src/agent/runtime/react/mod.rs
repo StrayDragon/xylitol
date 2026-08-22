@@ -1291,6 +1291,7 @@ fn run_react_loop(cfg: ReActConfig) -> impl Stream<Item = XyEvent> + Send {
                     cancel: &cancel,
                     turn_id: turn_id.as_deref(),
                     batch_mode,
+                    workspace: &cwd,
                 };
                 let parent_ctx = iteration_parent;
 

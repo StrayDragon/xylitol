@@ -7,6 +7,7 @@
 //! - Output truncated to DEFAULT_MAX_BYTES
 //! - Cross-platform shell discovery via `infra::process::shell`
 
+use std::path::Path;
 use std::sync::Arc;
 use std::time::Duration;
 
@@ -44,12 +45,13 @@ pub struct BashArgs {
 #[async_trait]
 #[allow(dead_code)] // test-only construction seam (MockBash in cfg(test))
 pub trait BashOperations: Send + Sync {
-    /// Execute a shell command and return its output.
+    /// Execute a shell command in `cwd` and return its output.
     async fn execute(
         &self,
         command: &str,
         tool_timeout: ToolTimeout,
         cancel: tokio_util::sync::CancellationToken,
+        cwd: &Path,
     ) -> Result<BashOutput, BashError>;
 }
 
@@ -98,6 +100,7 @@ impl BashOperations for RealBashOperations {
         command: &str,
         tool_timeout: ToolTimeout,
         cancel: tokio_util::sync::CancellationToken,
+        cwd: &Path,
     ) -> Result<BashOutput, BashError> {
         // Pre-spawn hook
         if let Some(ref hook) = self.hooks.pre_spawn {
@@ -114,6 +117,7 @@ impl BashOperations for RealBashOperations {
         let child = Command::new(&shell_cfg.shell)
             .args(&shell_cfg.args)
             .arg(command)
+            .current_dir(cwd)
             .stdout(std::process::Stdio::piped())
             .stderr(std::process::Stdio::piped())
             .spawn()
@@ -316,13 +320,19 @@ impl TypedTool for BashTool {
         // (c1255 ToolExecutionUpdate). Falls back to wait_with_output otherwise.
         if let Some(out_tx) = ctx.output_tx.clone() {
             return self
-                .execute_streaming(&cmd, tool_timeout, ctx.cancel.clone(), out_tx)
+                .execute_streaming(
+                    &cmd,
+                    tool_timeout,
+                    ctx.cancel.clone(),
+                    out_tx,
+                    &ctx.workspace,
+                )
                 .await;
         }
 
         let output = self
             .operations
-            .execute(&cmd, tool_timeout, ctx.cancel.clone())
+            .execute(&cmd, tool_timeout, ctx.cancel.clone(), &ctx.workspace)
             .await
             .map_err(|e| match e {
                 BashError::Aborted => XyToolError::Aborted,
@@ -361,6 +371,7 @@ impl BashTool {
         tool_timeout: ToolTimeout,
         cancel: tokio_util::sync::CancellationToken,
         out_tx: tokio::sync::mpsc::Sender<String>,
+        cwd: &Path,
     ) -> Result<String, XyToolError> {
         use crate::infra::bash_exec::InfraBashExecutor;
         use crate::protocol::ports::{BashExecOpts, XyBashExecutor};
@@ -382,7 +393,7 @@ impl BashTool {
                     cancel: Some(cancel),
                     chunk_tx: Some(chunk_tx),
                     timeout: tool_timeout,
-                    cwd: None,
+                    cwd: Some(cwd.to_path_buf()),
                 },
             )
             .await;
@@ -416,6 +427,7 @@ impl BashTool {
 mod tests {
     use super::*;
     use crate::protocol::ports::XyTool;
+    use std::path::PathBuf;
 
     fn test_ctx() -> XyToolCtx {
         XyToolCtx::new("test-call")
@@ -471,6 +483,7 @@ mod tests {
                 _command: &str,
                 _tool_timeout: ToolTimeout,
                 _cancel: tokio_util::sync::CancellationToken,
+                _cwd: &Path,
             ) -> Result<BashOutput, BashError> {
                 Ok(BashOutput {
                     stdout: "mock output".into(),
@@ -553,5 +566,40 @@ mod tests {
             .await
             .unwrap_err();
         assert!(matches!(err, XyToolError::Timeout(_)), "got {err}");
+    }
+
+    /// ws1: ctx workspace binds the spawned shell — both streaming and
+    /// non-streaming paths MUST run `pwd` in the injected workspace, not the
+    /// process cwd.
+    async fn assert_pwd_runs_in_workspace(with_output: bool) {
+        let dir = tempfile::tempdir().expect("tmp workspace");
+        let tool = BashTool::default();
+        let mut ctx = XyToolCtx::new("ws-pwd").with_workspace(dir.path());
+        if with_output {
+            let (tx, _rx) = tokio::sync::mpsc::channel::<String>(8);
+            ctx = ctx.with_output_tx(tx);
+        }
+        let result = tool
+            .execute(&ctx, json!({"command": "pwd"}))
+            .await
+            .expect("pwd must succeed");
+        let v: Value = serde_json::from_str(&result).unwrap();
+        let stdout = v["stdout"].as_str().unwrap_or("");
+        let got = PathBuf::from(stdout.trim());
+        assert_eq!(
+            got.canonicalize().unwrap(),
+            dir.path().canonicalize().unwrap(),
+            "bash tool MUST run in the ctx workspace; got {stdout}"
+        );
+    }
+
+    #[tokio::test]
+    async fn test_bash_workspace_streaming_path() {
+        assert_pwd_runs_in_workspace(true).await;
+    }
+
+    #[tokio::test]
+    async fn test_bash_workspace_non_streaming_path() {
+        assert_pwd_runs_in_workspace(false).await;
     }
 }

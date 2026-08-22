@@ -11,7 +11,7 @@ use async_trait::async_trait;
 use serde::Deserialize;
 use serde_json::{Value, json};
 
-use super::path_utils::resolve_to_cwd;
+use super::path_utils::resolve_to_dir;
 use super::typed::TypedTool;
 use crate::protocol::error::XyToolError;
 use crate::protocol::ports::XyToolCtx;
@@ -72,7 +72,7 @@ impl TypedTool for LsTool {
         } = args;
         let limit = limit as usize;
 
-        let resolved = resolve_to_cwd(&dir_path);
+        let resolved = resolve_to_dir(&ctx.workspace, &dir_path);
         let _resolved_str = resolved.to_string_lossy().to_string();
 
         if ctx.cancel.is_cancelled() {

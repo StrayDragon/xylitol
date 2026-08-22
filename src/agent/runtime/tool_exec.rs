@@ -32,6 +32,9 @@ pub(crate) struct ToolExecEnv<'a> {
     pub cancel: &'a CancellationToken,
     pub turn_id: Option<&'a str>,
     pub batch_mode: XyBatchMode,
+    /// Frozen session workspace for this run — injected into every
+    /// [`XyToolCtx`] so tools resolve relative paths / spawn shells in it.
+    pub workspace: &'a str,
 }
 
 /// Capture parent for parallel fan-out (explicit; not the global parent slot).
@@ -96,7 +99,9 @@ pub(crate) async fn run_one(
     let tool = env.tools.get(name);
     let tool_missing = tool.is_none();
     let (out_tx, mut out_rx) = tokio::sync::mpsc::channel::<String>(64);
-    let ctx = XyToolCtx::with_cancel(id, env.cancel.clone()).with_output_tx(out_tx);
+    let ctx = XyToolCtx::with_cancel(id, env.cancel.clone())
+        .with_output_tx(out_tx)
+        .with_workspace(env.workspace);
     let mut tool_args = args.clone();
 
     let mut denied_reason: Option<String> = None;

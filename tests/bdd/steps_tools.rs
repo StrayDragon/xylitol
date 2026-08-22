@@ -1080,6 +1080,62 @@ mod tools_pending {
     }
 }
 
+// ── ws1: tool execution in the session workspace (c2335) ─────────────
+
+#[when("以会话工作区调用write工具 路径 {path:string} 内容 {content:string}")]
+async fn _w_write_file_in_session_workspace(ws: &Workspace, path: String, content: String) {
+    let ctx = XyToolCtx::new("test").with_workspace(ws.root());
+    // Deliberately pass the RELATIVE path — resolution is the behavior under test.
+    tool_call!(
+        WriteTool::new(Arc::new(FileMutationQueue::new())),
+        ctx,
+        serde_json::json!({"path": path, "content": content}),
+        ws
+    );
+}
+
+#[when("以会话工作区调用bash命令 {cmd:string}")]
+async fn _w_bash_cmd_in_session_workspace(ws: &Workspace, cmd: String) {
+    let ctx = XyToolCtx::new("test").with_workspace(ws.root());
+    tool_call!(
+        BashTool::default(),
+        ctx,
+        serde_json::json!({"command": cmd}),
+        ws
+    );
+}
+
+#[then("文件 {path:string} 在会话工作区内存在")]
+fn _t_file_exists_in_session_workspace(ws: &Workspace, path: String) {
+    assert!(
+        std::path::Path::new(&ws.ws(&path)).exists(),
+        "file must land under the session workspace"
+    );
+}
+
+#[then("文件 {path:string} 不在进程工作目录")]
+fn _t_file_not_in_process_cwd(_ws: &Workspace, path: String) {
+    let process_cwd = std::env::current_dir().expect("process cwd");
+    assert!(
+        !process_cwd.join(&path).exists(),
+        "relative tool paths MUST NOT resolve against the process cwd: {}",
+        process_cwd.join(&path).display()
+    );
+}
+
+#[then("bash 输出为会话工作区目录")]
+fn _t_bash_output_is_session_workspace(ws: &Workspace) {
+    let r = result_ok_str(&ws.last_result);
+    let v: serde_json::Value = serde_json::from_str(&r).expect("bash json");
+    let stdout = v["stdout"].as_str().unwrap_or_default();
+    let got = std::path::PathBuf::from(stdout.trim());
+    assert_eq!(
+        got.canonicalize().unwrap(),
+        std::path::PathBuf::from(ws.root()).canonicalize().unwrap(),
+        "bash MUST run in the session workspace; got {stdout}"
+    );
+}
+
 mod _accum_mode {
     use std::cell::Cell;
     thread_local! { pub static LARGE: Cell<bool> = const { Cell::new(false) }; }

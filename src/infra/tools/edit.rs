@@ -21,6 +21,7 @@ use crate::protocol::ports::XyToolCtx;
 
 use super::mutation::FileMutationQueue;
 use super::patch;
+use super::path_utils::resolve_to_dir;
 use super::typed::TypedTool;
 
 pub struct EditTool {
@@ -239,7 +240,11 @@ impl TypedTool for EditTool {
         }
 
         let cancel = ctx.cancel.clone();
-        let fp = file_path;
+        // Resolve relative paths against the session workspace before queueing
+        // (queue keys are resolved absolute paths).
+        let fp = resolve_to_dir(&ctx.workspace, &file_path)
+            .to_string_lossy()
+            .into_owned();
 
         // Use mutation queue to serialize same-path edits
         let result_text = self

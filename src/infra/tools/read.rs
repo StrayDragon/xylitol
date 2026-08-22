@@ -17,6 +17,7 @@ use crate::protocol::message::AgentPart;
 use crate::protocol::ports::XyToolCtx;
 use crate::utils::format_size;
 
+use super::path_utils::resolve_to_dir;
 use super::truncate::{TruncationOptions, truncate_head};
 use super::typed::TypedTool;
 
@@ -98,18 +99,19 @@ impl TypedTool for ReadTool {
             offset,
             limit,
         } = args;
-        let file_path = file_path.as_str();
+        let resolved = resolve_to_dir(&ctx.workspace, &file_path);
+        let file_path = resolved.to_string_lossy().into_owned();
 
         if ctx.cancel.is_cancelled() {
             return Err(XyToolError::Aborted);
         }
 
-        let metadata = tokio::fs::metadata(file_path).await.map_err(|e| {
+        let metadata = tokio::fs::metadata(&file_path).await.map_err(|e| {
             XyToolError::ExecutionFailed(anyhow::anyhow!("failed to stat '{file_path}': {e}"))
         })?;
 
-        if is_image_path(file_path) {
-            let path = std::path::Path::new(file_path);
+        if is_image_path(&file_path) {
+            let path = std::path::Path::new(&file_path);
             return match agent_part_from_image_path(path) {
                 Ok(image_part) => {
                     let note = format!(
@@ -125,7 +127,7 @@ impl TypedTool for ReadTool {
             };
         }
 
-        let raw_content = tokio::fs::read_to_string(file_path).await.map_err(|e| {
+        let raw_content = tokio::fs::read_to_string(&file_path).await.map_err(|e| {
             XyToolError::ExecutionFailed(anyhow::anyhow!("failed to read '{file_path}': {e}"))
         })?;
 

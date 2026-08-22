@@ -371,3 +371,15 @@ fn test_tools_infra_works(ws: Workspace) {}
     name = "toolset-unit-ops"
 )]
 fn test_tools_toolset_ops(ws: Workspace) {}
+
+#[scenario(
+    path = "llmanspec/specs/agent-tools/agent-tools.feature",
+    name = "tool-write-in-session-workspace"
+)]
+fn test_tools_write_in_session_workspace(ws: Workspace) {}
+
+#[scenario(
+    path = "llmanspec/specs/agent-tools/agent-tools.feature",
+    name = "bash-runs-in-session-workspace"
+)]
+fn test_tools_bash_runs_in_session_workspace(ws: Workspace) {}
