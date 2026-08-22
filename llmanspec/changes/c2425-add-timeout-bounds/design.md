@@ -2,15 +2,23 @@
 
 ## 裁决（propose 定案；apply 按此实现）
 
-| 通道 | 裁决 |
-|---|---|
-| bash / grep / find | omit 语义反转：**默认 120s**（= 现行 max 上限，不新造数字）。模型侧**移除 unlimited 表达能力**——r6「0 非无限」继续成立，且不再有任何哨兵表示无限。真正长任务的放宽走系统级配置（形状 apply 时定），模型不可自选无限 |
-| read / write / edit / ls | 默认 **30s**，不暴露 schema 参数；仅系统级默认（防 fs 悬挂：NFS/FUSE） |
-| Provider HTTP | connect **10s**；流式 chunk-gap idle **90s**（任何 chunk 重置，含首 byte 前窗）；非流式请求 total **300s**。常量内置，config 字段后置 |
-| MCP 调用期 | per-request 默认 **120s**（rmcp `*_with_timeout` 或外层 timeout）；per-server 覆盖后置 |
-| Hooks | 未配置 `timeout_secs` 时默认 **30s**；显式配置仍优先 |
-| attach unary POST | 每方法有界：常规 **30s**；已知长操作（如 reload）分级放宽（值 apply 定）。spec 层钉「有界 + 分级」不钉具体数 |
-| mux WS 下行 | client 每 **20s** Ping；连续两个周期无任何入站帧判定半开 → 走既有 resync/重订路径 |
+**权限模型（用户定案 2026-08-22）**：所有外部等待由**程序最高权限管理**——计时器必然武装、必然以 timeout 失败收场；模型侧输入至多是「请求」，被程序校验并钳制，不存在可表达的无限语义。全局兜底上界 **600 秒**（`MAX_EXTERNAL_WAIT_SECS`）。
+
+| 通道 | 默认（差异化） | 模型/配置影响 |
+|---|---|---|
+| bash | **120s**（graduated kill） | 可请求更短，程序钳制 ≤120 |
+| grep | **60s** | 同上 ≤60 |
+| find(fd) | **60s** | 同上 ≤60 |
+| read / write / edit | **30s**，无模型参数 | 仅系统级 |
+| ls | **30s**，无模型参数 | 仅系统级 |
+| Provider HTTP 流式 | chunk-gap idle **90s** | 无模型面；常量内置 |
+| Provider HTTP 非流式 | total **300s** + connect **10s** | 同上 |
+| MCP 调用期 | **120s**/request | per-server 覆盖后置，钳 ≤600 |
+| Hooks | 未配置默认 **30s** | 显式配置优先，钳 ≤600 |
+| attach unary POST | 常规 **30s**；reload 类分级放宽 | 分级表实现定 |
+| mux WS 下行 | Ping 每 **20s** ×2 静默判死→resync | — |
+
+补充：read/write/edit/ls 经 TypedTool `wait_bound` 统一包裹（`FS_TOOL_TIMEOUT_SECS=30`）；config 字段化后置（届时任何配置值钳 ≤600）。
 
 ## 合约影响面（landing 清单）
 

@@ -64,6 +64,11 @@ impl TypedTool for LsTool {
             "required": []
         })
     }
+    fn wait_bound(&self) -> Option<std::time::Duration> {
+        Some(std::time::Duration::from_secs(
+            super::typed::FS_TOOL_TIMEOUT_SECS,
+        ))
+    }
 
     async fn execute_typed(&self, ctx: &XyToolCtx, args: LsArgs) -> Result<String, XyToolError> {
         let LsArgs {

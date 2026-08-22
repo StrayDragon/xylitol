@@ -100,6 +100,9 @@ impl McpConnectProgress {
 }
 
 /// Manages connections to MCP servers and dispatches tool calls.
+/// Per-request wall-clock bound for post-handshake MCP calls (c2425).
+pub const MCP_CALL_TIMEOUT: std::time::Duration = std::time::Duration::from_secs(120);
+
 pub struct McpClientManager {
     services: Mutex<HashMap<String, McpService>>,
     transports: Mutex<HashMap<String, McpTransportKind>>,
@@ -364,7 +367,20 @@ impl McpClientManager {
         let mut counts: HashMap<String, usize> = HashMap::new();
         let services = self.services.lock().await;
         for (server_id, service) in services.iter() {
-            let tools = match service.list_all_tools().await {
+            let tools = match tokio::time::timeout(MCP_CALL_TIMEOUT, service.list_all_tools()).await
+            {
+                Err(_) => {
+                    log::warn!(
+                        "list_all_tools timed out server_id={} timeout_secs={}",
+                        { server_id },
+                        MCP_CALL_TIMEOUT.as_secs()
+                    );
+                    counts.insert(server_id.clone(), 0);
+                    continue;
+                }
+                Ok(r) => r,
+            };
+            let tools = match tools {
                 Ok(t) => t,
                 Err(e) => {
                     log::warn!(
@@ -411,9 +427,14 @@ impl McpClientManager {
         let params = CallToolRequestParams::new(tool_name.to_string()).with_arguments(args_map);
 
         let result: CallToolResult =
-            service
-                .call_tool(params)
+            tokio::time::timeout(MCP_CALL_TIMEOUT, service.call_tool(params))
                 .await
+                .map_err(|_| {
+                    McpError::Timeout(format!(
+                        "mcp tool call timed out after {}s (server={server_id}, tool={tool_name})",
+                        MCP_CALL_TIMEOUT.as_secs()
+                    ))
+                })?
                 .map_err(|source| McpError::Call {
                     server_id: server_id.to_string(),
                     tool_name: tool_name.to_string(),

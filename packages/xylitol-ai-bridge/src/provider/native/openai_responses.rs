@@ -305,7 +305,17 @@ fn responses_sdk_stream(
             ..Default::default()
         };
 
-        while let Some(item) = sdk_stream.next().await {
+        while let Some(item) = tokio::time::timeout(
+                crate::provider::native::wait_bounds::SSE_IDLE,
+                sdk_stream.next(),
+            )
+            .await
+            .map_err(|_| {
+                AiBridgeError::Provider(anyhow::anyhow!(
+                    "provider SSE idle: no bytes within {}s",
+                    crate::provider::native::wait_bounds::SSE_IDLE.as_secs()
+                ))
+            })? {
             let data = item.map_err(|e| {
                 AiBridgeError::Provider(anyhow::anyhow!("{}", format_responses_error(&e)))
             })?;

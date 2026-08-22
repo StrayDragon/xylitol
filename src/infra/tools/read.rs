@@ -75,6 +75,11 @@ impl TypedTool for ReadTool {
             "required": ["path"]
         })
     }
+    fn wait_bound(&self) -> Option<std::time::Duration> {
+        Some(std::time::Duration::from_secs(
+            super::typed::FS_TOOL_TIMEOUT_SECS,
+        ))
+    }
 
     async fn execute_typed(&self, ctx: &XyToolCtx, args: ReadArgs) -> Result<String, XyToolError> {
         let parts = self.execute_as_parts_typed(ctx, args).await?;

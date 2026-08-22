@@ -722,7 +722,7 @@ pub struct HookEntry {
     /// Supports exact and prefix matching.
     #[serde(default)]
     pub events: Vec<String>,
-    /// Optional timeout in seconds. Omit / null = unlimited.
+    /// Optional timeout in seconds. Omit / null = dispatcher default (30s).
     #[serde(default)]
     pub timeout_secs: Option<u64>,
     /// Optional phase filter: "pre", "post", or "" for both. When set, only

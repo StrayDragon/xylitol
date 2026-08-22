@@ -171,7 +171,17 @@ fn completions_sdk_stream(
         let mut tool_accumulators: HashMap<u32, (String, String, String, bool)> = HashMap::new();
         let mut pending_usage: Option<crate::dto::AiBridgeUsage> = None;
 
-        while let Some(item) = sdk_stream.next().await {
+        while let Some(item) = tokio::time::timeout(
+                crate::provider::native::wait_bounds::SSE_IDLE,
+                sdk_stream.next(),
+            )
+            .await
+            .map_err(|_| {
+                AiBridgeError::Provider(anyhow::anyhow!(
+                    "provider SSE idle: no bytes within {}s",
+                    crate::provider::native::wait_bounds::SSE_IDLE.as_secs()
+                ))
+            })? {
             let chunk = item.map_err(|e| {
                 AiBridgeError::Provider(anyhow::anyhow!("OpenAI Completions stream: {e}"))
             })?;

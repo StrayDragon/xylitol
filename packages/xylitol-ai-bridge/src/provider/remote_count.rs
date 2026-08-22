@@ -36,7 +36,10 @@ impl AnthropicRemoteCounter {
         hooks: Option<Arc<dyn HttpHooks>>,
     ) -> Self {
         Self {
-            client: reqwest::Client::new(),
+            client: reqwest::Client::builder()
+                .connect_timeout(crate::provider::native::wait_bounds::CONNECT)
+                .build()
+                .expect("reqwest client with connect timeout"),
             api_key,
             model,
             base_url: base_url.unwrap_or_else(|| "https://api.anthropic.com".into()),

@@ -9,7 +9,7 @@ requirements[43]{req_id,title,statement}:
   r4,读文件大小限制,Read 工具 MUST 拒绝超过 MAX_FILE_SIZE（默认 10MB）的文件，并返回清晰错误信息。
   r5,bash 流式输出,Bash 工具 MUST 流式输出 stdout/stderr 并设字节上限；超限时 MUST 终止子进程。
   r6,整数转换校验,工具 MUST 在转换前校验数值参数（timeout、max_results）处于正数安全范围内；timeout 若出现则 MUST 为正整数秒且不超过配置上界，MUST NOT 将 0 解释为无限。
-  t24,"工具超时默认有界","bash、grep、find 的 timeout 参数 MUST 为可选；省略时 MUST 应用默认执行上限（120 秒）并在到期后终止并返回 timeout 类错误；显式正整数秒覆盖默认且不超过上界。MUST NOT 提供无限语义（无任何哨兵表示不限时）。流式与非流式路径 MUST 共用同一语义。"
+  t24,"工具超时默认有界","命令类工具（bash、grep、find）的执行等待由程序最高权限管理：timeout 参数为模型侧请求，程序 MUST 校验并钳制（正整数秒，bash ≤120、grep/find ≤60），省略时按工具默认（bash 120 秒、grep/find 60 秒）；计时器 MUST 必然武装，到期终止并返回 timeout 类错误。MUST NOT 存在无限语义或可绕过计时的输入。任何外部等待 MUST NOT 超过全局兜底上界（600 秒）。流式与非流式路径共用同一语义。"
   t25,grep-find-timeout-schema,grep 与 find 的 parameters schema MUST 暴露可选 timeout（秒）；行为遵循 t24。
   t29,"fs 工具有界","read、write、edit、ls 四个文件类工具的执行等待 MUST 有默认上限（30 秒），到期以 timeout 类错误呈现；MUST NOT 向模型暴露 per-call timeout 参数。"
   r7,find 禁止绝对路径逃逸,Find 工具 MUST 拒绝绝对 pattern，或 MUST 规范化结果以验证其仍在 root 目录内。

@@ -6,6 +6,19 @@ use std::time::Duration;
 /// of [`ToolTimeout::Unlimited`].
 pub const MAX_TOOL_TIMEOUT_SECS: u64 = 120;
 
+/// Global fallback ceiling for ANY external wait the agent can trigger
+/// (c2425, program authority). Even where configuration may raise a
+/// per-tool/per-channel default, no armed wait may exceed this bound.
+pub const MAX_EXTERNAL_WAIT_SECS: u64 = 600;
+
+/// Wall-clock default applied when a tool invocation omits its timeout.
+///
+/// Product contract (c2425): omitting `timeout` no longer means unlimited —
+/// the tool layer maps an omitted limit to a per-tool bound (see each tool's
+/// constant) so every external wait is bounded. Long legitimate work must
+/// raise the explicit value instead, never exceeding [`MAX_TOOL_TIMEOUT_SECS`].
+pub const DEFAULT_TOOL_TIMEOUT_SECS: u64 = 120;
+
 /// Wall-clock limit for a tool or hook invocation.
 ///
 /// Omitted / [`Self::Unlimited`] means no timer is armed (cancel tokens still apply).
@@ -56,6 +69,19 @@ impl ToolTimeout {
 
     pub fn is_unlimited(self) -> bool {
         matches!(self, Self::Unlimited)
+    }
+
+    /// Replace [`Self::Unlimited`] with a concrete bound.
+    ///
+    /// Used at the product tool layer to guarantee bounded waits: an omitted
+    /// timeout becomes [`DEFAULT_TOOL_TIMEOUT_SECS`]-style bound while an
+    /// explicit value passes through unchanged.
+    pub fn or_default(self, default_secs: u64) -> Self {
+        if self.is_unlimited() {
+            Self::After(Duration::from_secs(default_secs))
+        } else {
+            self
+        }
     }
 }
 
@@ -123,5 +149,15 @@ mod tests {
             ToolTimeout::from_secs_opt(Some(MAX_TOOL_TIMEOUT_SECS + 1)),
             Err(ToolTimeoutError::AboveMax { .. })
         ));
+    }
+
+    #[test]
+    fn or_default_bounds_only_unlimited() {
+        assert_eq!(
+            ToolTimeout::Unlimited.or_default(DEFAULT_TOOL_TIMEOUT_SECS),
+            ToolTimeout::After(Duration::from_secs(DEFAULT_TOOL_TIMEOUT_SECS))
+        );
+        let explicit = ToolTimeout::After(Duration::from_secs(1));
+        assert_eq!(explicit.or_default(DEFAULT_TOOL_TIMEOUT_SECS), explicit);
     }
 }

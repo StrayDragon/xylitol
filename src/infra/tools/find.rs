@@ -18,6 +18,9 @@ use super::typed::TypedTool;
 use crate::protocol::error::XyToolError;
 use crate::protocol::ports::XyToolCtx;
 use crate::protocol::{ToolTimeout, ToolTimeoutError};
+
+/// Per-tool wall-clock default when the model omits `timeout` (c2425).
+pub(crate) const FIND_TOOL_TIMEOUT_SECS: u64 = 60;
 use crate::utils::format_size;
 
 const DEFAULT_LIMIT: usize = 1000;
@@ -30,7 +33,7 @@ pub struct FindArgs {
     path: String,
     #[serde(default = "default_find_limit")]
     limit: u64,
-    /// Optional timeout in seconds; omit for unlimited.
+    /// Optional timeout in seconds; omitted means the default bound (120s).
     #[serde(default)]
     timeout: Option<i64>,
 }
@@ -73,7 +76,7 @@ impl TypedTool for FindTool {
                 },
                 "timeout": {
                     "type": "integer",
-                    "description": "Optional timeout in seconds (omit for unlimited; max 120). Zero is invalid."
+                    "description": "Optional timeout in seconds (defaults to 120; max 120). Zero is invalid."
                 }
             },
             "required": ["pattern"]
@@ -92,6 +95,7 @@ impl TypedTool for FindTool {
                 XyToolError::InvalidArgs(e.to_string())
             }
         })?;
+        let tool_timeout = tool_timeout.or_default(FIND_TOOL_TIMEOUT_SECS);
         let effective_limit = (limit as usize).clamp(1, 10_000);
 
         let search_dir = resolve_to_dir(&ctx.workspace, &search_path);

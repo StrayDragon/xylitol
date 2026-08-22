@@ -201,6 +201,11 @@ impl TypedTool for EditTool {
     fn execution_mode(&self) -> crate::protocol::ports::XyToolExecutionMode {
         crate::protocol::ports::XyToolExecutionMode::Sequential
     }
+    fn wait_bound(&self) -> Option<std::time::Duration> {
+        Some(std::time::Duration::from_secs(
+            super::typed::FS_TOOL_TIMEOUT_SECS,
+        ))
+    }
 
     async fn execute_typed(&self, ctx: &XyToolCtx, args: EditArgs) -> Result<String, XyToolError> {
         let EditArgs {
