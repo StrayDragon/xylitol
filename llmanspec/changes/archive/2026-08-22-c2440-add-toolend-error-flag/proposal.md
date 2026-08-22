@@ -1,6 +1,11 @@
 ---
-depends_on: [c2425-add-timeout-bounds]
+depends_on:
+- c2425-add-timeout-bounds
 skip_specs_landing: true
+branch: sdd/c2440-add-toolend-error-flag
+base_sha: 637fc6eb3888bbae78c21d169b65cb056d9be41c
+checkpointed: true
+checkpoint_sha: 637fc6eb3888bbae78c21d169b65cb056d9be41c
 ---
 
 # ToolEnd 下行携带 is_error 失败标记
