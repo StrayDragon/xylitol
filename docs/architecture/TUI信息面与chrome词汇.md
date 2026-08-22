@@ -13,11 +13,10 @@
 | **错误行** | error row | `UiEntry::Error` | 笼统 system |
 | **状态条** | status | busy 时输入区上方短状态（idle = 0 行） | 塞进 scrollback |
 | **页脚** | footer | 输入区下：生效中模型、用量 provenance 等 | 成功确认刷滚动提示 |
-| **待生效** | pending | 状态：`selected ≠ active`，下一 turn 边界才起用 | 挂账（弃用主词） |
-| **下轮预告** | **next-turn cue** | busy status **行右侧** dim 文案（用户可见常为 `Next turn: …`）。**产品 attach 面不渲染**（run 绑定语义，见 [运行时即时设置.md](./运行时即时设置.md)）；仅旧同进程面与测试保留，随面退役一并清词 | Status trail、trail、即将消息、pending message |
-| **队列条** | queue strip | steer / follow-up 条 | 下轮预告、对话正文 |
+| **待生效** | pending | 状态：本轮生成使用开跑时绑定，`selected ≠ active` 仅在生成进行中短暂成立；footer 即时反映 selected（run 绑定语义，见 [运行时即时设置.md](./运行时即时设置.md)） | 挂账（弃用主词） |
+| **队列条** | queue strip | steer / follow-up 条 | 对话正文 |
 | **槽** | overlay / slot | 树、模型列表、resume… | 用滚动提示复述成功路径 |
-| **尾随** | trail-append / trailing | append 到 entries **末**（跟底可见） | 与 next-turn **cue** 不同根概念 |
+| **尾随** | trail-append / trailing | append 到 entries **末**（跟底可见） | — |
 | **顶插** | prepend | 写入 `entries[0]` 或等价前缀 | — |
 | **Inline 交互** | **Inline** · `InteractionMode::Inline` | 主屏差分；**终端原生选区**取向（emulator-owned）；库 lab/demo | Mode A、inline-only 当唯一真名 |
 | **ApplicationOwned 交互** | **ApplicationOwned** · `InteractionMode::ApplicationOwned` | 应用自管视口 + **应用内选区**；常经 alt-buffer + mouse capture；**产品缺省（ath30）** | Mode B、alt-screen 当唯一真名（alt-buffer 只是 AO 常见载体） |
@@ -30,15 +29,15 @@
 
 | 旧词 | 改用 |
 |---|---|
-| 挂账（主词） | **待生效**（状态）或 **下轮预告**（UI） |
-| Status trail / status trail / `status_trail` | **下轮预告** / **next-turn cue** / `status_next_turn_cue` |
-| 即将消息 | **下轮预告**（不是 message） |
+| 挂账（主词） | **待生效**（状态；仅生成进行中短暂成立） |
+| Status trail / status trail / `status_trail` / 下轮预告 / next-turn cue / `Next turn: …` 文案 | 已随 attach run 绑定**退役**：产品面不渲染换模预告，勿再使用（见 [运行时即时设置.md](./运行时即时设置.md)） |
+| 即将消息 | 弃用：产品无「即将消息」概念（run 绑定语义） |
 | System 确认行 / system 消息（指 UI） / `UiEntry::System` | **滚动提示** / **`UiEntry::ScrollNotice`** |
 | `push_system_note` | **`push_scroll_notice`** |
 | 笼统 Notice 指滚动行 | **ScrollNotice**（瞬时硬拒闸用 **壳层通告**，勿再堆滚动提示） |
 | 把「尾随」写成 trail（无 append） | **尾随 / trail-append** |
 
-用户可见文案 `Next turn:` / `Next turn thinking:` **可保持**；改的是概念名与标识符，不是强迫改屏上字符串。
+换模预告的用户可见文案（`Next turn:` 等）已随 run 绑定语义从产品面退役。
 
 ## 信息分类 × 落点
 
@@ -47,7 +46,7 @@
 | **A 对话正文** | user / assistant / thinking / tool / diff / bash / compaction | 对话条目 | 是 | 按时间序 append |
 | **B 导航瞬时** | `history @`、`forked →`、`switched →` | **滚动提示 · 尾随** | 随 scrollback；rebuild 可清 | **默认尾随**（跟底可见） |
 | **C 操作结果 / 诊断** | slash 失败、复制、trust 报告 | 短：滚动提示尾随；成功换模/主题 → **不**刷 | 易堆墙 | **默认尾随** |
-| **D 即时设置** | 换模 / thinking / 主题成功 | **页脚**（选中即时反映；attach 无下轮预告） | 否（态） | — |
+| **D 即时设置** | 换模 / thinking / 主题成功 | **页脚**（选中即时反映） | 否（态） | — |
 | **E 运行态** | busy、abort、队列；busy 下硬拒闸（如 Resume switch） | 状态条 / 队列条 / **壳层通告** | 否 | 禁止冒充 A/B；硬拒闸优先壳层通告，勿 ScrollNotice |
 | **F 槽内确认** | 树 travel、选模 | 关槽 + chrome / B 类尾随 | 视 B/C | **默认尾随** |
 | **G 减噪折叠** | 旧工具中间步（候补） | 折叠摘要条目 | 是（形态变） | — |
@@ -55,18 +54,17 @@
 **顶层原则（先于「禁顶插」口诀）**：绘制高效 + 跟底时用户仍能合理看到关键反馈。
 - **默认尾随**滚动提示；顶插易导致视口外「假提示」并打散 per-index paint-cache → 通常更差。
 - **不是绝对禁令**：若有明确产品理由且写清代价，可例外。
-- 能进页脚 / 状态条 / 下轮预告 / 槽的，优先别做成滚动提示。
+- 能进页脚 / 状态条 / 槽的，优先别做成滚动提示。
 
-**原则一句话**：能反映在 chrome（页脚 / 状态条 / 下轮预告 / **壳层通告** / 槽）的不要做成滚动提示；必须进主区的瞬时信息 → **默认尾随**。
+**原则一句话**：能反映在 chrome（页脚 / 状态条 / **壳层通告** / 槽）的不要做成滚动提示；必须进主区的瞬时信息 → **默认尾随**。
 
 ## 与代码的对应（可漂移，以代码为准）
 
 | 概念 | 当前落点（摘要） |
 |---|---|
-| 下轮预告 | `status_next_turn_cue` · `status_next_turn_cue_text` · playground `.status-next-turn-cue` |
 | 滚动提示 | `UiEntry::ScrollNotice` · `HostSession::push_scroll_notice`；demo `Role::ScrollNotice` |
 | 壳层通告 | host `push_chrome_toast` · layout toast 槽（status 上方；warning + `Error:`） |
-| 待生效 | selected ≠ active（模型 / thinking） |
+| 待生效 | 生成进行中的 `selected ≠ active`（footer 即时反映 selected） |
 
 ## 维护
 
