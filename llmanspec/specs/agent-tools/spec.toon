@@ -2,15 +2,16 @@ kind: llman.sdd.spec
 name: "agent-tools"
 purpose: 工具系统 — 工具定义、执行分发、文件类内置与 Todo 三工具、路径工具与并发类。
 valid_scope[3]: "agent 层工具","infra 层工具实现","protocol 层"
-requirements[42]{req_id,title,statement}:
+requirements[43]{req_id,title,statement}:
   r32,工具 trait 前缀,System MUST 将主工具接口定义为 XyTool；trait 名已带 Xy 前缀，MUST 与 protocol 边界其余命名一致。
   r42,默认内置工具闭集,"产品 default_tools（Print 与 TUI builtins 基座）MUST 包含且以闭集提供：read、bash、edit、write、grep、find、ls、todo_list、todo_rewrite、todo_update（共 10 个）。ask 等面专属工具 MUST NOT 计入该闭集（见 t28）。Todo 工具语义见 agent-todo。"
   r48,补丁应用,System MUST 使用 fudiff 模糊匹配应用 AI 生成的补丁，并以 patch crate 精确匹配作为回退。
   r4,读文件大小限制,Read 工具 MUST 拒绝超过 MAX_FILE_SIZE（默认 10MB）的文件，并返回清晰错误信息。
   r5,bash 流式输出,Bash 工具 MUST 流式输出 stdout/stderr 并设字节上限；超限时 MUST 终止子进程。
   r6,整数转换校验,工具 MUST 在转换前校验数值参数（timeout、max_results）处于正数安全范围内；timeout 若出现则 MUST 为正整数秒且不超过配置上界，MUST NOT 将 0 解释为无限。
-  t24,工具超时默认无限,"bash、grep、find 的 timeout 参数 MUST 为可选；省略时 MUST 不设执行时限（Unlimited）。显式正整数秒时 MUST 在到期后终止子进程并返回 timeout 类错误。bash 流式与非流式路径 MUST 共用同一 timeout 语义，MUST NOT 丢弃参数或硬编码默认秒数。"
+  t24,"工具超时默认有界","bash、grep、find 的 timeout 参数 MUST 为可选；省略时 MUST 应用默认执行上限（120 秒）并在到期后终止并返回 timeout 类错误；显式正整数秒覆盖默认且不超过上界。MUST NOT 提供无限语义（无任何哨兵表示不限时）。流式与非流式路径 MUST 共用同一语义。"
   t25,grep-find-timeout-schema,grep 与 find 的 parameters schema MUST 暴露可选 timeout（秒）；行为遵循 t24。
+  t29,"fs 工具有界","read、write、edit、ls 四个文件类工具的执行等待 MUST 有默认上限（30 秒），到期以 timeout 类错误呈现；MUST NOT 向模型暴露 per-call timeout 参数。"
   r7,find 禁止绝对路径逃逸,Find 工具 MUST 拒绝绝对 pattern，或 MUST 规范化结果以验证其仍在 root 目录内。
   r8,"安全 UTF-8 截断","输出截断 MUST 使用字符边界感知切片，防止 UTF-8 panic。"
   r9,工具参数辅助函数,工具系统 MUST 提供共享参数提取辅助函数，消除各工具实现中重复的 JSON 字段解析。
@@ -45,12 +46,13 @@ requirements[42]{req_id,title,statement}:
   t27,"dynamic-tool-mcp-hard-barrier","公开名以 `mcp__` 为前缀（过渡期可识别遗留 `mcp-` / `mcp_` / `mcp:`）的工具（含 McpToolAdapter 与任何同前缀注册）在批调度分类中 MUST 为 Barrier，无论其 trait 并发声明或配置如何；MUST NOT 提供 glob、配置名名单或 MCP annotation 将其升为 ParallelSafe。非 mcp 自注册工具缺省 MUST 为 Barrier，MAY 经 ToolConcurrency 显式标 ParallelSafe。由单测覆盖，MUST NOT 为静态默认单独扩 BDD step。"
   t28,"ask-tui-only-builtin","内置工具 ask MUST 以 TypedTool 存在于 infra；schema MUST 含 questions 数组（每题 id/prompt/mode/options，option.description 可选）；execute 成功结果 MUST 为 status 为 skipped 或 answered 的 JSON。default_tools MUST NOT 包含 ask；仅 TUI 装配路径 MAY 经 ToolSet plus 注入。ask MUST 为 Barrier Sequential。Abort MUST NOT 伪装为 skipped。"
   ws1,"工具执行会话工作区","模型侧内置工具 MUST 以运行时注入的会话工作区为基：bash 子进程在该目录内启动；文件类工具（read/write/edit/ls/grep/find）的相对路径相对该目录解析；绝对路径行为不变。运行时未注入工作区时 MUST 回落 Host 进程 cwd。同一回合（含工具环）内工作区 MUST 保持开跑时冻结值，MUST NOT 随进程外状态漂移。"
-scenarios[15]{req_id,id,given,when,then,feature}:
+scenarios[16]{req_id,id,given,when,then,feature}:
   t22,"edit-success-short-llm",edit 成功后,project_for_llm 的 tool result 正文,为短成功句且不含 display_diff,false
   t22,"write-success-short-llm",write 成功后,project_for_llm 的 tool result 正文,为短成功句且不含文件正文,false
-  t24,"omit-timeout-unlimited-doc",省略 bash/grep/find timeout,执行工具,不武装默认秒级 timer（单测断言 ToolTimeout::Unlimited）,false
+  t24,"omit-timeout-default-bound","省略 bash/grep/find 的 timeout",执行含 sleep 的命令,"命令在默认上限内正常完成；超过上限被终止并返回 timeout 错误",false
   t25,"grep-find-schema-timeout",查阅 grep/find schema,检查 parameters,含可选 timeout 字段,false
   r6,"zero-not-unlimited",传入 timeout=0,校验参数,拒绝为无效 timeout,false
+  t29,"fs-tool-default-bound","对 read/write/edit/ls 构造执行上下文","检查等待界","存在 30 秒默认上限且 schema 无 timeout 参数",false
   t26,"builtin-class-table",查询 default_tools 各工具 execution_mode,对照分类表,读族 ParallelSafe 且 write/edit/bash 与 todo_* 为 Barrier,false
   t27,"mcp-hard-barrier",构造 mcp__ 名工具即便 trait 声称 ParallelSafe,经 classify,仍为 Barrier,false
   t28,"ask-not-in-default-tools",查询 default_tools 名称列表,检查 ask,不在列表中,false

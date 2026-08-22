@@ -2,7 +2,7 @@ kind: llman.sdd.spec
 name: "app-tui-host"
 purpose: 产品 TUI 宿主：host 驱动引擎、终端生命周期、即时日志、尺寸降级，以及合成垂直切片 / 产品 PTY smoke 验收。
 valid_scope[2]: "产品 TUI 面（app-tui 族）","TUI e2e 测试"
-requirements[36]{req_id,title,statement}:
+requirements[38]{req_id,title,statement}:
   ath1,"host-driven-engine","产品 TUI MUST 以 host 驱动引擎（事件分发、按需渲染、idle 心跳）驱动 packages/xylitol-tui；产品路径 MUST NOT 进入引擎的阻塞主循环（包 demo 专用启动 API 勿用于生产面）。"
   ath2,"terminal-restore",产品 TUI MUST 在正常退出、错误退出与 panic 路径恢复终端（关闭 raw mode 等），不得把用户终端留在损坏状态；MUST 安装 panic hook（仅靠 Drop 不足）。
   ath3,"infra-logging-default","debug 构建下产品 TUI MUST 默认启用即时文件日志（人类与 agent 可用 tail -f 观察）；release 构建 MUST 默认关闭，仍可通过 XYLITOL_DEBUG 或 RUST_LOG 显式打开。日志路径与查看方式由面 AGENTS 文档写明。"
@@ -39,7 +39,9 @@ requirements[36]{req_id,title,statement}:
   "ath36","attach-restore-projection","产品 TUI attach 恢复（CLI --session 启动与空闲 Resume 切换）MUST 以 Host 消息快照一次重建 transcript：完整历史一次可见、会话 Idle、无假 spinner、无逐条回放；恢复窗内的冷订实况磁带（AgentStart / TextDelta 等回合磁带）MUST NOT 渲染进 transcript；MUST NOT 以 loading 态掩盖回放。"
   ath37,"attach-reload-cooperative-cancel","产品 TUI attach 下 `/reload` 进行中用户触发取消（interrupt/clear 键位）时，client MUST 将取消意图经 Host 转达（合作取消该次进程级 reload），MUST NOT 继续等待原 reload 完成；取消后 reload 界面 MUST 以已取消收尾，Host MUST 停止后续重装步骤。正常完成路径行为保持不变。"
   ath38,"attach-chrome-downlink-driven","产品 TUI attach 下 MCP/skills 头卡的连接态刷新 MUST 由 Host 的 `session/resources` 下行驱动：帧到达置脏后由 tick 读本地缓存刷新；MUST NOT 以周期性 unary 轮询同一刷新。首帧到达前的初始快照 MAY 经一次性 loaded_resources unary 获取；启动与 /reload 后的既有刷新语义（ath23）保持。"
-scenarios[12]{req_id,id,given,when,then,feature}:
+  ath39,"unary-request-bounded","产品 TUI 对 Host 的每笔 unary 请求 MUST 有请求级等待界；已知长操作（如 reload）MUST 分级放宽且各有界；半开连接下 MUST 以超时错误呈现而非无限挂起。"
+  ath40,"mux-halfopen-detect","mux 下行客户端 MUST 周期性探测连接活性（如 keepalive ping）；连续探测周期无任何入站帧时 MUST 判定半开并走既有重订/resync 路径，MUST NOT 静默停摆。"
+scenarios[14]{req_id,id,given,when,then,feature}:
   ath28,ath28-unit,"reload-in-progress-ux 由产品 harness/单测覆盖（非 BDD harness）",审查实现与对应测试,"行为符合本 requirement 陈述",false
   ath29,ath29-unit,"mouse-input-opt-in-no-moved-paint 由产品 harness 与 ignore PTY 覆盖（非 BDD harness）",审查实现与对应测试,"行为符合本 requirement 陈述",false
   "ath36","ath36-unit-cold-tape","冷订恢复窗磁带由 XyRemoteDriver 下行过滤的驱动级测试覆盖（非 BDD harness）",审查实现与对应测试,"行为符合本 requirement 陈述",false
@@ -52,3 +54,5 @@ scenarios[12]{req_id,id,given,when,then,feature}:
   ath35,ath35-unit,"attach mux 常驻由 harness/双 carrier 覆盖（非 BDD）",AgentEnd 后再入队或断线重订,"下行仍达客户端；resync 后 transcript 可恢复",false
   ath37,ath37-unit,"attach reload 合作取消由 HostClient mock 驱动级测试覆盖（非 BDD harness）",reload unary 挂起中触发 cancel token,"Host 收到 abort 合作取消；报告以 cancelled=true 返回",false
   "ath38","ath38-unit","attach 头卡下行驱动由 XyRemoteDriver 驱动级测试覆盖（非 BDD harness）","mux session/resources 帧到达后推进 tick","缓存刷新且不发周期性 unary",false
+  ath39,"unary-halfopen-timeout","Host 进程被 kill -9 且 TCP 半开","产品 TUI 发起 unary 请求","请求级界内返回可观察超时错误而非悬挂至 OS 超时",false
+  ath40,"mux-idle-resync","下行链路半开且静默","连续探测周期无入站帧","客户端判定半开并触发既有 resync/重订恢复",false
