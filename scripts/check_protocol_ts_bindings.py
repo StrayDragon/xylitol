@@ -1,8 +1,9 @@
 #!/usr/bin/env python3
 """QA check: specta TypeScript bindings match the checked-in copy.
 
-Regenerates clients/typescript/bindings.ts via the gen_protocol_ts example and
-diffs it against the copy in git. Drift MUST fail. OpenAPI is not this gate.
+Regenerates packages/xylitol-client-typescript-sdk/bindings.ts via the
+gen_protocol_ts example and diffs it against the copy in git. Drift MUST
+fail. OpenAPI is not this gate.
 
 Usage:
   python3 scripts/check_protocol_ts_bindings.py
@@ -18,7 +19,7 @@ import sys
 from pathlib import Path
 
 REPO = Path(__file__).resolve().parent.parent
-CHECKED_IN = REPO / "clients" / "typescript" / "bindings.ts"
+CHECKED_IN = REPO / "packages" / "xylitol-client-typescript-sdk" / "bindings.ts"
 
 
 def main() -> int:
@@ -37,7 +38,7 @@ def main() -> int:
 
     if not CHECKED_IN.is_file():
         print(
-            f"error: missing {CHECKED_IN.relative_to(REPO)}; run `just gen-protocol-ts`",
+            f"error: missing {CHECKED_IN.relative_to(REPO)}; run `just gen-sdk`",
             file=sys.stderr,
         )
         return 1
@@ -66,7 +67,7 @@ def main() -> int:
     checked = CHECKED_IN.read_text(encoding="utf-8")
     if generated != checked:
         print(
-            "error: clients/typescript/bindings.ts is stale; run `just gen-protocol-ts`",
+            "error: packages/xylitol-client-typescript-sdk/bindings.ts is stale; run `just gen-sdk`",
             file=sys.stderr,
         )
         # Short context: first mismatch line.
