@@ -7,7 +7,6 @@ depends_on:
 
 # Agent 状态栏子系统（可插拔 / 可验证）
 > **一句话**：独立可测的 Agent 状态栏子系统（Lane Runtime），ContextPolicy 选 off/replace/append，避免高变读数伤 cache；Todo 业务已被 c1955 接走
-> **当前排序**：#5（2026-08-10 自 delayed-changes 升格入 active）
 
 
 > **已升格（2026-08-10）**：当前排序 **#5**。默认 always-on 仪表盘对 coding 边际低；产品先走 [`c1955` Todo](../c1955-add-agent-todo-subsystem/proposal.md)（排序 #1）。执行前提：Todo/事件 SSOT 已立，且明确需要「稀疏注入」通道。

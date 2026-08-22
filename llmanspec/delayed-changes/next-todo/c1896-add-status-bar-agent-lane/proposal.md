@@ -5,7 +5,6 @@ depends_on:
 
 # StatusBar · Agent 列（可扩展通道；TODO/计划后挂）
 > **一句话**：状态栏 Agent 列扩展通道契约，后续 TODO/计划等可挂；依赖 c1895
-> **当前排序**：#6（2026-08-10 自 delayed-changes 升格入 active）
 
 
 > **已升格（2026-08-10）**：当前排序 **#6**。Todo 产品意向改由 [`c1955`](../c1955-add-agent-todo-subsystem/proposal.md)（排序 #1）；本文件仅保留「Agent 列 typed 尾插通道」工程想法，执行时再与 Todo 投影对齐。
