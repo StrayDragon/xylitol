@@ -7,4 +7,8 @@ requirements[4]{req_id,title,statement}:
   p2,"shell-env",System MUST 提供 build_shell_env()，将 agent bin 目录注入 PATH。
   p3,"process-group",System MUST 支持 kill_process_tree(pid)，在所有平台上终止进程及其所有子进程。
   p4,"child-wait",System MUST 提供 wait_for_child()，等待进程退出，不因 detached 后代进程持有继承 stdio handle 而挂起。
-scenarios[0]:
+scenarios[4]{req_id,id,given,when,then,feature}:
+  p1,macos,"macOS 且存在 /bin/bash","find_bash 被调用","bash path 为 /bin/bash 且 shell config 使用 -c",false
+  p2,path,"agent bin dir 为 /home/user/.xylitol/bin","build_shell_env 被调用","结果 PATH 含 /home/user/.xylitol/bin",false
+  p3,kill-tree,进程及其子进程运行中,"kill_process_tree(pid) 被调用","进程及所有子进程收到 SIGKILL",false
+  p4,wait,"子进程已退出但 stdout pipe 仍打开","wait_for_child 被调用","函数等待 pipe idle 后返回 exit code",false
