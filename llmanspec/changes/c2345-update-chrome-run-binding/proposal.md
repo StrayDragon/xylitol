@@ -2,7 +2,8 @@
 depends_on: []
 branch: sdd/c2345-update-chrome-run-binding
 base_sha: 637fc6eb3888bbae78c21d169b65cb056d9be41c
-checkpointed: false
+checkpointed: true
+checkpoint_sha: f8a1bbd8909d02271a161407a004a39613bc3243
 ---
 
 # chrome 合约同句：attach run 绑定语义
