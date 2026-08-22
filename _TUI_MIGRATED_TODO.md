@@ -136,7 +136,8 @@ STATUS: incomplete
       （c2340 落地：Remote `reload_runtime` 尊重 cancel token，取消时经既有 `abort` unary 触发 Host `abort_reload()` 合作取消并以 cancelled 收尾；合约 server-core sr-abort1 + app-tui-host ath37；护栏 `reload_cancel_requests_host_cooperative_abort`）
 - [x] **E1/E2** token 与 bang 流式是否要 Host 事件
       （对拍结论 2026-08-22：E1 已达标不立项——footer 已吃 Host Settlement 下行，本地 estimate 仅冷启动回退；E2 后置——bang 流式需新协议面且 pa-cs3 禁骑工具流，长操作已由模型 bash 流式覆盖）
-- [ ] `XyRemoteDriver` 拆文件（现 ~1700 行）
+- [x] `XyRemoteDriver` 拆文件
+      （2026-08-22 复杂度雷达判定不拆：无一函数进全树 top-20，行数多但均为低复杂度 trait 方法包装；真实热点在别处——`handle_unary` host.rs 124/93（server 面软信号）、resume panel `handle_input` 63/41。按 src/AGENTS.md「功能逼出或编辑痛点明确再动」维持现状）（现 ~1700 行）
 - [ ] 产品路径死 InProcess TUI 入口清掉（print/embed 保留）
 - [ ] AGENTS / architecture 与代码同句（attach 是现行拓扑）
 
