@@ -1,5 +1,8 @@
 ---
 depends_on: []
+branch: sdd/c2335-add-tool-session-workspace
+base_sha: 637fc6eb3888bbae78c21d169b65cb056d9be41c
+checkpointed: false
 ---
 
 # 模型侧工具执行面穿会话工作区
