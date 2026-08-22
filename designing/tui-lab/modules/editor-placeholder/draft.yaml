@@ -1,0 +1,12 @@
+id: editor-placeholder
+title: 编辑器空态占位
+surface: tui-lab
+summary: "editor 空且 idle 时显示 muted 示例占位句。"
+alignment:
+  chrome: 只在 editor 槽内；不进 transcript / status / footer
+  item: 占位随输入消失，busy 态不显示
+todos:
+  - { done: false, text: "示例文案集定稿（产品能力展示向）" }
+  - { done: false, text: "轮换策略（新会话轮换）与宽度截断" }
+notes: |
+  纯空态呈现，不引入新信息面概念。无组件自有快捷键。

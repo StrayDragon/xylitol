@@ -1,0 +1,13 @@
+id: interrupt-arm
+title: 中止前的二次确认
+surface: tui-lab
+summary: "Esc 中止改两段式——第一次出提示，5 秒内再按才真正中止。"
+alignment:
+  chrome: 提示行出现在 status 区附近；原地消失，不留滚动提示
+  item: 弹层打开时 Esc 归弹层，不受影响
+todos:
+  - { done: false, text: "人类拍板：维持单 Esc 直接中止 vs 改为二次确认" }
+  - { done: false, text: "若采纳：同步面 AGENTS Esc 规则 + 测试用例" }
+notes: |
+  动机：任务跑了几分钟时误触 Esc 立即全停，代价大且不可撤回；
+  两段式让误触可以自然恢复（不动就行）。闪烁提醒需有静态 fallback（常亮提示）。

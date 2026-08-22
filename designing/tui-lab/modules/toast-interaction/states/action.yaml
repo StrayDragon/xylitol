@@ -1,0 +1,14 @@
+id: toast-interaction.action
+cols: 80
+must_contain:
+  - "› retry"
+  - "+2 more"
+must_not_contain:
+  - "Planning next moves"
+lines:
+  -
+    - { text: "Error: model request failed › retry", token: warning }
+    - { text: " +2 more", token: muted }
+  -
+    - { text: "⠋ Working", token: accent }
+    - { text: "", token: muted }

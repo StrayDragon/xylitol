@@ -1,0 +1,10 @@
+id: delayed-hint.mcp-connecting
+cols: 80
+must_contain:
+  - "mcp connecting"
+must_not_contain:
+  - "Ready"
+lines:
+  -
+    - { text: "⠋ Working", token: accent }
+    - { text: "mcp connecting…", token: muted }

@@ -1,0 +1,13 @@
+id: toast-stack.stack
+cols: 80
+must_contain:
+  - "✓ Copied to clipboard"
+  - "◆ export done › open"
+must_not_contain: []
+lines:
+  -
+    - { text: "                                     ✓ Copied to clipboard", token: success }
+  -
+    - { text: "                                   ◆ export done › open", token: accent }
+  -
+    - { text: "", token: muted }

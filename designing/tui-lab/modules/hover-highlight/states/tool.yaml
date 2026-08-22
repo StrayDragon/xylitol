@@ -1,0 +1,10 @@
+id: hover-highlight.tool
+cols: 80
+must_contain:
+  - "▸"
+must_not_contain: []
+lines:
+  -
+    - { text: "▸ Tool bash cargo test", token: accent }
+  -
+    - { text: "  exit 0 · 1.2s", token: muted }

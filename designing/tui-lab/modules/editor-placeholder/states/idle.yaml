@@ -1,0 +1,12 @@
+id: editor-placeholder.idle
+cols: 72
+must_contain:
+  - "Ask anything"
+must_not_contain: []
+lines:
+  -
+    - { text: "─", token: muted }
+  -
+    - { text: "Ask anything… \"try: fix the failing test\"", token: muted }
+  -
+    - { text: "─", token: muted }

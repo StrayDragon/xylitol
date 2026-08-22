@@ -1,0 +1,12 @@
+id: interrupt-arm.armed
+cols: 72
+must_contain:
+  - "esc again to interrupt"
+must_not_contain:
+  - "Ready"
+lines:
+  -
+    - { text: "⠋ Working", token: accent }
+    - { text: "", token: muted }
+  -
+    - { text: "esc again to interrupt", token: warning }
