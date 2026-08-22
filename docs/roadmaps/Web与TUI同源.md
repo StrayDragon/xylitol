@@ -2,6 +2,7 @@
 
 > **约束板**：凡已开闸的 Web 与 TUI，对会话 / 改道 / 能力开关必须**语义同源**；表现可异。
 > Print / TUI / Server 同构已在 architecture；本文**不**交付 Web 壳本身（见 Cloud-Agent）。
+> **方向更新（2026-08-22）**：第二产品面定为 **gpui 桌面（Linux/Wayland）**，Web 面出局（见 [`Gpui桌面客户端.md`](./Gpui桌面客户端.md)）；本板标题为历史遗留，实质是**跨面**同源约束——gpui ↔ TUI 双 Rust 面同样适用：公共能力一套学习成本、动作语义同源、快捷键尽量同构、面专属能力可分叉。
 > 现状对齐：2026-07-22。
 > 观测出口统一走 fastrace → 可选 OTLP/Langfuse（见 [OTEL与Langfuse观测.md](./OTEL与Langfuse观测.md)），**不**另起「检视事实源」产品面。
 

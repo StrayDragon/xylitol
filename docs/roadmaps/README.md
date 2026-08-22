@@ -4,7 +4,7 @@
 > **闭环规则** → [`docs/AGENTS.md`](../AGENTS.md)。本目录是**统一优先级的候补板**，不是进度表。
 > 某篇全部兑现后：**删除该文件**并更新本索引，不留占位。
 
-现状对齐：2026-08-01。追溯归档 change：`llman sdd archive freeze --list`；产品文尽量不钉 change id。
+现状对齐：2026-08-22。追溯归档 change：`llman sdd archive freeze --list`；产品文尽量不钉 change id。
 
 ## 闭环
 
@@ -29,8 +29,8 @@ docs/roadmaps/  →  llmanspec/changes  →  docs/architecture/
 ```mermaid
 flowchart TB
   subgraph Surfaces["应用面"]
-    Homo["Web 与 TUI 同源 · 约束板"]
-    Web["Cloud Agent 与 Web 控制台"]
+    Homo["跨面同源 · 约束板（原 Web与TUI同源）"]
+    Gui["Gpui 桌面客户端 · Linux/Wayland"]
     Obs["OTEL 与 Langfuse 观测"]
     Visual["TUI 视觉与信息表达"]
     Remaster["TUI 重制"]
@@ -56,18 +56,17 @@ flowchart TB
     Cache["上下文缓存与极致压缩"]
   end
 
-  Homo -.->|跨面约束| Web
+  Homo -.->|跨面约束| Gui
   Homo -.->|覆盖事实源| Live
   Homo -.->|公共发现路径| Keys
   Visual -.->|减噪与密度| Remaster
-  Web -.->|学习键盘挂靠| Keys
   Live --> Lsp
   Live --> Dap
   Live --> Sub
   Live --> Loop
   Obs -.->|排障对照网关| Prov
   Obs -.->|Dataset 种子| Eval
-  Sub -.-> Web
+  Sub -.-> Gui
   Cache -.->|策略变更须回归| Eval
   Cache -.->|工具摘要协同| Lsp
   Cache -.->|工具摘要协同| Dap
@@ -82,15 +81,16 @@ flowchart TB
 
 | 文档 | 候补方向 |
 |---|---|
-| [Web与TUI同源.md](./Web与TUI同源.md) | 跨面语义约束板（含长历史 activity 折叠栈意向；非 Web 壳本身） |
+| [Web与TUI同源.md](./Web与TUI同源.md) | 跨面语义约束板（含长历史 activity 折叠栈意向；非 Web 壳本身）；第二面已定为 gpui 桌面 |
+| [Gpui桌面客户端.md](./Gpui桌面客户端.md) | 第二产品面：gpui 桌面（Linux/Wayland）attach 同一 Host；与 TUI 双 Rust 面 |
 | [TUI视觉与信息表达.md](./TUI视觉与信息表达.md) | 状态减噪、主题密度；与 activity 折叠减噪衔接 |
 | [TUI重制.md](./TUI重制.md) | **UiEntry** rail 皮肤（M1 已兑现）；交互设计稿 = 仓库顶层 `designing/`（≠ 产品真值；≠ `agent_demo`） |
-| [键位与命令发现.md](./键位与命令发现.md) | `/hotkeys` 支线延后；可视化键盘挂 Web；**busy 即时列表 / chrome footprint 已兑现**（见 architecture 词汇表 + DESIGN） |
+| [键位与命令发现.md](./键位与命令发现.md) | `/hotkeys` 支线延后；可视化键盘挂 GUI 面（gpui）；**busy 即时列表 / chrome footprint 已兑现**（见 architecture 词汇表 + DESIGN） |
 | [OTEL与Langfuse观测.md](./OTEL与Langfuse观测.md) | obs.lane / Collector / otel19 门闸、采样预留、子进程出站（已落地见 [architecture](../architecture/进程内观测.md)） |
 | [Agent-Eval与回归基准.md](./Agent-Eval与回归基准.md) | SWE 先、TB 后；Docker 出分；AA 选模对照；Langfuse 回归旁路 |
 | [上下文缓存与极致压缩.md](./上下文缓存与极致压缩.md) | prompt cache、动态压缩、工具结果分级压缩 |
-| [Cloud-Agent与Web控制台.md](./Cloud-Agent与Web控制台.md) | 多工作区 CS + Web |
-| [运行时即时设置.md](./运行时即时设置.md) | 能力覆盖盘 / 可观察覆盖集 / Web 同源（模型/thinking 即时设置已迁 [architecture](../architecture/运行时即时设置.md)） |
+| [Cloud-Agent与Web控制台.md](./Cloud-Agent与Web控制台.md) | **搁置（2026-08-22）**：多工作区 CS + Web；复活需显式重立项 |
+| [运行时即时设置.md](./运行时即时设置.md) | 能力覆盖盘 / 可观察覆盖集 / 跨面同源（模型/thinking 即时设置已迁 [architecture](../architecture/运行时即时设置.md)） |
 | [Loop管理与触发可视化.md](./Loop管理与触发可视化.md) | Loop 管理与触发醒目 |
 | [Sub-Agent编排.md](./Sub-Agent编排.md) | 子 agent 派生/回收/可见 |
 | [LSP会话集成.md](./LSP会话集成.md) | lspz；会话启停；零成本 |
