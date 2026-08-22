@@ -2,7 +2,8 @@
 depends_on: []
 branch: sdd/c2415-refactor-audit-gwt-to-toon
 base_sha: 637fc6eb3888bbae78c21d169b65cb056d9be41c
-checkpointed: false
+checkpointed: true
+checkpoint_sha: 637fc6eb3888bbae78c21d169b65cb056d9be41c
 ---
 
 # 未绑定审计 GWT 迁回 toon（batch 1）
