@@ -88,7 +88,7 @@ pub struct ResolvedProfile {
     pub model_config: XyModelConfig,
     /// Registry alias (`models.models` key / CLI `--model`) this profile's
     /// model resolved from. Differs from the raw vendor id in
-    /// [`Self::model_config.model`]; consumers selecting by registry identity
+    /// `model_config.model`; consumers selecting by registry identity
     /// (e.g. host writer default-model restore) MUST use this value.
     pub model_id: String,
     /// System prompt override for this agent.
