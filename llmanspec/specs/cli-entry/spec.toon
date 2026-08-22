@@ -2,14 +2,13 @@ kind: llman.sdd.spec
 name: "cli-entry"
 purpose: "CLI 统一入口：默认 TUI；surface（tui/print）与 ops（resources/serve/tokenizer）；bootstrap/dispatch；产品 slash 以 session-* 为准。"
 valid_scope[2]: "CLI 应用面","workspace 测试"
-requirements[22]{req_id,title,statement}:
+requirements[21]{req_id,title,statement}:
   r67,"info-fields",SlashCommandInfo MUST 携带 name、description、source 与 source_info 字段。
   r68,"source-enum",SlashCommandSource MUST 恰为 prompt 或 skill 之一（extension 若未实现 MUST NOT 作为产品必选项）。
   r69,"builtin-table","产品对外 slash 与 GetCommands 内建表 MUST 同源自同一产品命令 SSOT（见 app-tui-commands）；名称 MUST 以 session-* /model /exit 等产品名为准（PI_DELTAS A03）；MUST NOT 再以 pi 短名表（/tree /fork /export /compact /resume /new 等）作为 GetCommands 或文档的权威清单；产品解析 MUST NOT 将上述废弃短名识别为有效命令入口。"
   r70,dispatch,产品 TUI idle slash MUST 经 commands→effects→Driver/dispatch；MUST NOT 依赖已移除的 stdio rpc。
   ce1,"app-directory","CLI MUST 为独立应用表面，print 为其子模式；app 面 MUST NOT reach agent 内部（经缝）。"
   ce2,"no-silent-fallback","配置文件存在但 models.models 无任何显式模型别名（或等价零显式条目）时，经 bootstrap 的表面（TUI/print/--list-models/serve）MUST 硬失败并明确报错指向配置，MUST NOT 静默用 provider 环境变量注册或选中默认模型（如 gpt-4o）后继续。无配置文件且无显式模型时同样 MUST NOT 仅凭 OPENAI_API_KEY/ANTHROPIC_API_KEY 造模继续。"
-  ce6,"driver-abstraction","print 与库嵌入 MUST 仍可经同进程驱动缝运行。产品 TUI MUST 经四象限客户端 attach。切换 MUST 只换客户端实现，MUST NOT 为产品 TUI 静默改回同进程直握。"
   ce7,"composition-root-ports","组合根 MUST 从 infra 构造 SessionStore/EventSink 注入装配。"
   ce8,"serve-subcommand","CLI MUST 提供顶层动词 serve：无子命令时直接监听（默认 127.0.0.1:18790）；MUST 接受 --host 与 --port（--port 0 让操作系统分配并打印实际端口）；叶子至少含 stop 与 install。MUST NOT 提供 server 或 serve run 作为产品入口别名。"
   ce9,"assembly-via-bootstrap","cli 与 Host 监听器 MUST 经共享 bootstrap 装配，MUST NOT 内联第二套装配。"
@@ -25,14 +24,13 @@ requirements[22]{req_id,title,statement}:
   ce19,"surface-owned-flags","CLI MUST 将表面旗标挂在表面动词下：`xylitol tui`（含可选 `run`）MUST 接受 --session/--model/--list-models/--trust/--no-trust/--config/--no-color/--attach/--port；`xylitol print` MUST 接受 --session/--model/--config/--no-color/--trust/--no-trust 且 MUST NOT 接受 --list-models/--attach/--port；顶层 MUST NOT 再提供上述旗标（解析 MUST 失败）。print 的 --trust/--no-trust MUST 经 bootstrap trust_override 生效（interactive=false，MUST NOT 弹出 ChoicePrompt）。`tui --session` 与 `tui run --session` MUST 等价生效。TUI 的 --attach 指定 Host URL（默认 http://127.0.0.1:18790）；仅 --port 时 MUST 连 http://127.0.0.1:<port>；二者都给时 --attach 胜。"
   ce20,"resume-hint-on-exit","TUI 与 print 正常退出后，若当前 session_id 出现在 Driver list_sessions（或等价已持久化判定）中，CLI MUST 向 stderr 打印恰好一行 `Resume by $ xylitol tui --session <uuid>`；未持久化或无 session_id 时 MUST NOT 打印该行。"
   ce21,"tui-attach-fail-closed","产品 TUI（含 TTY 默认进入 TUI 表面）在 attach 目标 Host 未在听时 MUST 非零退出，并提示用 xylitol serve 启动 Host。MUST NOT 静默改走同进程直握操作器。print 与库嵌入 MUST NOT 适用本条。"
-scenarios[22]{req_id,id,given,when,then,feature}:
+scenarios[21]{req_id,id,given,when,then,feature}:
   r67,info-fields-unit,"SlashCommandInfo 类型",检查字段,"含 name/description/source/source_info",false
   r68,source-enum-unit,SlashCommandSource,枚举成员,"恰为 prompt 或 skill",false
   r69,builtin-table-unit,"GetCommands 与产品 slash SSOT",对照表,产品名同源且无废弃短名权威清单,false
   r70,dispatch-path-unit,"产品 TUI idle slash",执行路径,"经 commands→effects→Driver/dispatch",false
   ce1,cli-under-app-unit,源码布局,"定位 CLI 模块","独立应用表面；面不 reach agent 内部",false
   ce2,no-silent-fallback-unit,配置存在但零显式模型别名,"经 bootstrap 启动表面",硬失败并指向配置；不因 env 造模,false
-  ce6,driver-abstraction-unit,"同进程驱动与 attach 客户端",切换构造,"print/嵌入走同进程；产品 TUI 走 attach",false
   ce7,composition-ports-unit,组合根装配,"注入 SessionStore/EventSink","从 infra 构造并注入",false
   ce8,serve-subcommand-unit,"CLI serve 动词","解析 --host/--port 与 stop/install","扁平监听入口存在且无 server/run 别名",false
   ce9,assembly-via-bootstrap-unit,"cli 与 Host 监听器装配",跟踪调用,"经共享 bootstrap",false

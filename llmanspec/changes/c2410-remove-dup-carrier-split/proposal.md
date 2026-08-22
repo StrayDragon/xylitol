@@ -1,5 +1,8 @@
 ---
 depends_on: []
+branch: sdd/c2410-remove-dup-carrier-split
+base_sha: 637fc6eb3888bbae78c21d169b65cb056d9be41c
+checkpointed: false
 ---
 
 # 去重：载体切分条款收敛到 app-tui-bridge
