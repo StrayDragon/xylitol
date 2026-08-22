@@ -27,7 +27,7 @@
 - **产品面**：Print + TUI（TTY 默认）已开闸。产品 TUI 默认 attach 本机 Host（`http://127.0.0.1:18790`）；未在听失败。Print 与库嵌入仍可同进程。TUI 专属规则见 `src/app/tui/AGENTS.md`。
 - **CS 角色**：TUI / Print 是 **client**（面本地：键、画、TTY、编辑器、剪贴板）。模型 / 会话 / MCP / 工作区执行 / trust 是 **host（操作器角色）**。host **不是**「必须先占端口」——print / 库嵌入仍可无绑定。产品 TUI **要求**监听器。占用绑定的是显式 `xylitol serve`。
 - **产品信封**：四象限 RPC（unary HTTP POST + WebSocket 下行、不收业务上行）。Command/Event 是载荷，不是外层。类型 SSOT 在 Rust `protocol`；specta 导出 TS 进 qa。
-- **跨面公共体验**：TUI 与未来 Web **共有**能力的动作语义 / 学习成本 MUST 同源；快捷键 SHOULD 尽量同构；仅面专属能力可分叉。约束板：`docs/roadmaps/Web与TUI同源.md`。
+- **跨面公共体验**：TUI 与第二产品面（gpui 桌面，Linux/Wayland）**共有**能力的动作语义 / 学习成本 MUST 同源；快捷键 SHOULD 尽量同构；仅面专属能力可分叉。约束板：`docs/roadmaps/Web与TUI同源.md`。
 - 产品心智图：`docs/architecture/`；候补方向：`docs/roadmaps/`（不维护进度列）；文档闭环：`docs/AGENTS.md`。
 - TUI chrome / 滚动区固定词（滚动提示、壳层通告、尾随…）：`docs/architecture/TUI信息面与chrome词汇.md`（面约束见 `src/app/tui/AGENTS.md`）。
 - 交互设计稿：仓库顶层 `designing/`（现 `tui/`，以后可加其它端；`just open-designing`）。**代码是运行时真值**；稿是对照辅助。无独立快捷键设计。
