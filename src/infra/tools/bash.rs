@@ -21,6 +21,9 @@ use crate::protocol::error::XyToolError;
 use crate::protocol::ports::XyToolCtx;
 use crate::protocol::{ToolTimeout, ToolTimeoutError};
 
+/// Per-tool wall-clock default when the model omits `timeout` (c2425).
+pub(crate) const BASH_TOOL_TIMEOUT_SECS: u64 = 120;
+
 use super::accumulator::OutputAccumulator;
 use super::typed::TypedTool;
 
@@ -32,7 +35,7 @@ pub struct BashArgs {
     #[serde(default)]
     #[allow(dead_code)] // accepted in schema for LLM UX; not used by executor
     description: Option<String>,
-    /// Optional seconds; omit for unlimited. Zero/negative are invalid.
+    /// Optional seconds; omitted means the default bound (120s). Zero/negative are invalid.
     #[serde(default)]
     timeout: Option<i64>,
 }
@@ -288,7 +291,7 @@ impl TypedTool for BashTool {
                 },
                 "timeout": {
                     "type": "integer",
-                    "description": "Optional timeout in seconds (omit for unlimited; max 120). Zero is invalid."
+                    "description": "Optional timeout in seconds (defaults to 120; max 120). Zero is invalid."
                 }
             },
             "required": ["command"]
@@ -311,6 +314,7 @@ impl TypedTool for BashTool {
                 XyToolError::InvalidArgs(e.to_string())
             }
         })?;
+        let tool_timeout = tool_timeout.or_default(BASH_TOOL_TIMEOUT_SECS);
 
         if ctx.cancel.is_cancelled() {
             return Err(XyToolError::Aborted);
@@ -532,14 +536,21 @@ mod tests {
     }
 
     #[tokio::test]
-    async fn test_bash_omit_timeout_unlimited() {
+    async fn test_bash_omit_timeout_uses_default_bound() {
         let tool = BashTool::default();
+        // Omitted timeout now arms the 120s default (c2425); a 2s sleep still
+        // completes normally, and the schema no longer advertises unlimited.
         let result = tool
             .execute(&test_ctx(), json!({"command": "sleep 2"}))
             .await
             .unwrap();
         let v: Value = serde_json::from_str(&result).unwrap();
         assert_eq!(v["exit_code"], 0);
+        let schema = TypedTool::parameters_schema(&tool);
+        assert!(
+            !schema.to_string().contains("unlimited"),
+            "schema must not advertise unlimited: {schema}"
+        );
     }
 
     #[tokio::test]

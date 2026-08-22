@@ -20,6 +20,9 @@ use super::typed::TypedTool;
 use crate::protocol::error::XyToolError;
 use crate::protocol::ports::XyToolCtx;
 use crate::protocol::{ToolTimeout, ToolTimeoutError};
+
+/// Per-tool wall-clock default when the model omits `timeout` (c2425).
+pub(crate) const GREP_TOOL_TIMEOUT_SECS: u64 = 60;
 use crate::utils::format_size;
 
 const DEFAULT_LIMIT: usize = 100;
@@ -41,7 +44,7 @@ pub struct GrepArgs {
     context: u32,
     #[serde(default = "default_grep_limit")]
     limit: u64,
-    /// Optional timeout in seconds; omit for unlimited.
+    /// Optional timeout in seconds; omitted means the default bound (120s).
     #[serde(default)]
     timeout: Option<i64>,
 }
@@ -100,7 +103,7 @@ impl TypedTool for GrepTool {
                 },
                 "timeout": {
                     "type": "integer",
-                    "description": "Optional timeout in seconds (omit for unlimited; max 120). Zero is invalid."
+                    "description": "Optional timeout in seconds (defaults to 120; max 120). Zero is invalid."
                 }
             },
             "required": ["pattern"]
@@ -123,6 +126,7 @@ impl TypedTool for GrepTool {
                 XyToolError::InvalidArgs(e.to_string())
             }
         })?;
+        let tool_timeout = tool_timeout.or_default(GREP_TOOL_TIMEOUT_SECS);
         let effective_limit = (limit_val as usize).max(1);
 
         let search_dir = resolve_to_dir(&ctx.workspace, &search_path);

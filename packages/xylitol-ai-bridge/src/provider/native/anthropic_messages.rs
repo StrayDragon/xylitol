@@ -57,8 +57,14 @@ impl AnthropicMessagesAdapter {
     ) -> Self {
         let client = reqwest::Client::builder()
             .user_agent(crate::provider::native::openai_client::DEFAULT_HTTP_USER_AGENT)
+            .connect_timeout(crate::provider::native::wait_bounds::CONNECT)
             .build()
-            .unwrap_or_else(|_| reqwest::Client::new());
+            .unwrap_or_else(|_| {
+                reqwest::Client::builder()
+                    .connect_timeout(crate::provider::native::wait_bounds::CONNECT)
+                    .build()
+                    .expect("default reqwest client with connect timeout")
+            });
         Self {
             client,
             api_key,
@@ -166,16 +172,19 @@ impl AnthropicMessagesAdapter {
         run_before_headers(&self.hooks, &mut headers).await?;
         run_before_request(&self.hooks, &self.model, &mut body).await?;
 
-        let response = self
+        let mut request = self
             .client
             .post(&url)
             .headers(to_reqwest_headers(&headers))
-            .json(&body)
-            .send()
-            .await
-            .map_err(|e| {
-                AiBridgeError::Provider(anyhow::anyhow!("Anthropic request error: {e}"))
-            })?;
+            .json(&body);
+        // Program authority (c2425): non-streaming gets a hard total bound;
+        // streaming stays total-free and relies on the SSE idle guard.
+        if !stream {
+            request = request.timeout(crate::provider::native::wait_bounds::NON_STREAM_TOTAL);
+        }
+        let response = request.send().await.map_err(|e| {
+            AiBridgeError::Provider(anyhow::anyhow!("Anthropic request error: {e}"))
+        })?;
 
         let status = response.status().as_u16();
         run_after_response(
@@ -238,16 +247,29 @@ fn anthropic_stream(
         let mut usage_input: u64 = 0;
         let mut usage_output: u64 = 0;
 
-        while let Some(event_result) = event_stream.next().await {
-            let event = match event_result {
-                Ok(e) => e,
-                Err(_) => continue,
+        'sse: loop {
+            let event_result = tokio::time::timeout(
+                crate::provider::native::wait_bounds::SSE_IDLE,
+                event_stream.next(),
+            )
+            .await
+            .map_err(|_| {
+                AiBridgeError::Provider(anyhow::anyhow!(
+                    "provider SSE idle: no bytes within {}s",
+                    crate::provider::native::wait_bounds::SSE_IDLE.as_secs()
+                ))
+            })?;
+            let Some(event_result) = event_result else {
+                break 'sse;
             };
-
+            if event_result.is_err() {
+                continue 'sse;
+            }
+            let event = event_result.expect("parse-error arm continued above");
             let event_type = event.event.as_str();
             let data: Value = match serde_json::from_str(&event.data) {
                 Ok(v) => v,
-                Err(_) => continue,
+                Err(_) => continue 'sse,
             };
 
             if let Some(t) = &trace {

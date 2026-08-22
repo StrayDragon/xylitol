@@ -9,6 +9,10 @@ use super::{DispatchResult, HookAction, HookEvent, HookPhase, entry_matches_raw,
 use crate::infra::config::types::{HookEntry, HooksConfig};
 use crate::protocol::ports::{XyHookBus, XyHookOutcome};
 
+/// Wall-clock default for hooks that omit `timeout_secs` (c2425): an
+/// unbounded hook script must not be able to stall the turn forever.
+pub const DEFAULT_HOOK_TIMEOUT_SECS: u64 = 30;
+
 /// Hook event dispatcher.
 ///
 /// Manages a merged list of hooks from three tiers (global/project/user) and
@@ -31,8 +35,10 @@ impl HookDispatcher {
         Self { hooks }
     }
 
-    fn entry_timeout(hook: &HookEntry) -> Option<Duration> {
-        hook.timeout_secs.map(Duration::from_secs)
+    pub(crate) fn entry_timeout(hook: &HookEntry) -> Option<Duration> {
+        Some(Duration::from_secs(
+            hook.timeout_secs.unwrap_or(DEFAULT_HOOK_TIMEOUT_SECS),
+        ))
     }
 
     /// Dispatch an event to all matching hooks.
@@ -301,5 +307,34 @@ mod tests {
         let dispatcher = HookDispatcher::new(&config);
         assert_eq!(dispatcher.hook_count(), 1);
         assert!(!dispatcher.is_empty());
+    }
+}
+
+#[cfg(test)]
+mod default_timeout_tests {
+    use super::*;
+    use crate::infra::config::types::HookEntry;
+
+    fn hook_without_timeout() -> HookEntry {
+        serde_json::from_value(serde_json::json!({
+            "command": "echo ok",
+            "events": [".*"]
+        }))
+        .expect("minimal hook entry")
+    }
+
+    #[test]
+    fn omitted_timeout_secs_gets_30s_default() {
+        let mut hook = hook_without_timeout();
+        assert!(hook.timeout_secs.is_none());
+        assert_eq!(
+            HookDispatcher::entry_timeout(&hook),
+            Some(Duration::from_secs(DEFAULT_HOOK_TIMEOUT_SECS))
+        );
+        hook.timeout_secs = Some(5);
+        assert_eq!(
+            HookDispatcher::entry_timeout(&hook),
+            Some(Duration::from_secs(5))
+        );
     }
 }

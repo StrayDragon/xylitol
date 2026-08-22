@@ -9,6 +9,7 @@
 //! Third-party quirks that *adjust* these natives live in [`super::dialect`].
 
 pub mod anthropic_messages;
+
 pub mod assembler;
 pub mod openai;
 pub mod openai_client;
@@ -24,3 +25,11 @@ pub use openai_responses::{
     format_responses_error, map_responses_sse_event, messages_to_responses_input,
     messages_to_responses_input_with_diagnostics, messages_to_responses_input_with_options,
 };
+
+/// Program-authority wait bounds for provider HTTP (c2425).
+pub mod wait_bounds {
+    use std::time::Duration;
+    pub const CONNECT: Duration = Duration::from_secs(10);
+    pub const SSE_IDLE: Duration = Duration::from_secs(90);
+    pub const NON_STREAM_TOTAL: Duration = Duration::from_secs(300);
+}

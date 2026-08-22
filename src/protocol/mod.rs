@@ -54,4 +54,7 @@ pub use tool_name::{
     BuiltinToolName, MCP_PUBLIC_DELIMITER, is_mcp_tool_name, is_provider_safe_tool_name,
     mcp_tool_armed_prefix, mcp_tool_public_name,
 };
-pub use tool_timeout::{MAX_TOOL_TIMEOUT_SECS, ToolTimeout, ToolTimeoutError};
+pub use tool_timeout::{
+    DEFAULT_TOOL_TIMEOUT_SECS, MAX_EXTERNAL_WAIT_SECS, MAX_TOOL_TIMEOUT_SECS, ToolTimeout,
+    ToolTimeoutError,
+};
