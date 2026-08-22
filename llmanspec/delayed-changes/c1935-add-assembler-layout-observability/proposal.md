@@ -5,7 +5,6 @@ depends_on:
 
 # Assembler 布局决策可观测
 > **一句话**：记录 Assembler 布局决策（按什么规则组装），排障可复现发出去的规则集
-> **当前排序**：#16（2026-08-10 自 delayed-changes 升格入 active）
 
 
 > **已升格（2026-08-10）**：自 delayed-changes 移入 active 待处理队列，当前排序 **#16**。

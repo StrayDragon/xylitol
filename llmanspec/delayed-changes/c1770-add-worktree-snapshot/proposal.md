@@ -5,7 +5,6 @@ depends_on: []
 # 工作树快照 / 差分（turn 级基线）
 
 > **一句话**：git 工作树 turn 级快照/差分能力（非 git 关闭），为未来 review/回滚铺底；MVP 无产品入口
-> **当前排序**：#18（2026-08-10 自 delayed-changes 升格入 active）
 > **已升格（2026-08-10）**：自 delayed-changes 移入 active 待处理队列，当前排序 **#18**。
 
 ---
