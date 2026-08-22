@@ -17,7 +17,7 @@ Host 监听器新增只读 `GET /openapi.json` 调试文档 + `GET /docs` Scalar
 
 ## 3. 验收门禁
 
-- [ ] 3.1 定向测试绿：oapi 单测 + server http 测试 + bdd server 场景
-- [ ] 3.2 全量 validate（含 BDD 编译 `--check`）绿
-- [ ] 3.3 tmux 真机冒烟：serve 起 → curl `/openapi.json` 与 `/docs` 断言 → 端口释放
-- [ ] 3.4 架构文档落点补一句：`库与多客户端.md` 或 `远程体验与线协议.md` 提及调试文档端点
+- [x] 3.1 定向测试绿：oapi 单测 + server http 测试 + bdd server 场景（lib server 21/21、bdd server 族 36/36 含新场景）
+- [x] 3.2 全量 validate（含 BDD 编译 `--check`）绿
+- [x] 3.3 tmux 真机冒烟：serve 起 → `/openapi.json` 40 paths 无 mux 泄漏、`/docs` 200 Scalar HTML → 端口释放
+- [x] 3.4 架构文档落点补一句：`远程体验与线协议.md` 今日事实段提及调试文档端点
