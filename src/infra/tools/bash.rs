@@ -3,7 +3,7 @@
 //! Key behaviors:
 //! - CancellationToken kills the process tree
 //! - Merges stdout/stderr streaming
-//! - Optional timeout (default unlimited, max 120s) with graduated escalation
+//! - Optional timeout (per-tool default; model requests clamp to 600s) with graduated escalation
 //! - Output truncated to DEFAULT_MAX_BYTES
 //! - Cross-platform shell discovery via `infra::process::shell`
 
@@ -291,7 +291,7 @@ impl TypedTool for BashTool {
                 },
                 "timeout": {
                     "type": "integer",
-                    "description": "Optional timeout in seconds (defaults to 120; max 120). Zero is invalid."
+                    "description": "Optional timeout in seconds; the model may request longer runs (e.g. a 10-minute build). Values are clamped to a 600s ceiling. Zero/negative invalid."
                 }
             },
             "required": ["command"]
@@ -310,11 +310,9 @@ impl TypedTool for BashTool {
         } = args;
 
         let tool_timeout = ToolTimeout::from_i64_opt(requested).map_err(|e| match e {
-            ToolTimeoutError::ZeroOrNegative | ToolTimeoutError::AboveMax { .. } => {
-                XyToolError::InvalidArgs(e.to_string())
-            }
+            ToolTimeoutError::ZeroOrNegative => XyToolError::InvalidArgs(e.to_string()),
         })?;
-        let tool_timeout = tool_timeout.or_default(BASH_TOOL_TIMEOUT_SECS);
+        let tool_timeout = tool_timeout.or_default(BASH_TOOL_TIMEOUT_SECS).clamped();
 
         if ctx.cancel.is_cancelled() {
             return Err(XyToolError::Aborted);

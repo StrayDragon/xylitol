@@ -76,7 +76,7 @@ impl TypedTool for FindTool {
                 },
                 "timeout": {
                     "type": "integer",
-                    "description": "Optional timeout in seconds (defaults to 120; max 120). Zero is invalid."
+                    "description": "Optional timeout in seconds; the model may request longer runs (e.g. a 10-minute build). Values are clamped to a 600s ceiling. Zero/negative invalid."
                 }
             },
             "required": ["pattern"]
@@ -91,11 +91,9 @@ impl TypedTool for FindTool {
             timeout: timeout_arg,
         } = args;
         let tool_timeout = ToolTimeout::from_i64_opt(timeout_arg).map_err(|e| match e {
-            ToolTimeoutError::ZeroOrNegative | ToolTimeoutError::AboveMax { .. } => {
-                XyToolError::InvalidArgs(e.to_string())
-            }
+            ToolTimeoutError::ZeroOrNegative => XyToolError::InvalidArgs(e.to_string()),
         })?;
-        let tool_timeout = tool_timeout.or_default(FIND_TOOL_TIMEOUT_SECS);
+        let tool_timeout = tool_timeout.or_default(FIND_TOOL_TIMEOUT_SECS).clamped();
         let effective_limit = (limit as usize).clamp(1, 10_000);
 
         let search_dir = resolve_to_dir(&ctx.workspace, &search_path);

@@ -1,5 +1,9 @@
 ---
-depends_on: [c2425-add-timeout-bounds]
+depends_on:
+- c2425-add-timeout-bounds
+branch: sdd/c2430-update-tool-timeout-requestable
+base_sha: 637fc6eb3888bbae78c21d169b65cb056d9be41c
+checkpointed: false
 ---
 
 # 工具 timeout 模型可请求化（钳制到全局上界）
