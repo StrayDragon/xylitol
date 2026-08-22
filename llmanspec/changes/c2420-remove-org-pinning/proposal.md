@@ -1,5 +1,8 @@
 ---
 depends_on: []
+branch: sdd/c2420-remove-org-pinning
+base_sha: 637fc6eb3888bbae78c21d169b65cb056d9be41c
+checkpointed: false
 ---
 
 # 去除 spec 中的代码组织钉死条款

@@ -37,7 +37,7 @@ requirements[43]{req_id,title,statement}:
   e3,跨行 span 匹配,精确匹配失败时，System MUST 支持跨不同行段匹配多行 oldText span。
   e4,diff 输出,编辑操作后，System MUST 使用 similar crate 计算结构化 diff 供审阅。
   t17,工具定义包含 schema,展示类型 ToolDefinition MUST 包含 XyToolSchema 字段，而非重复 name/description/parameters 字段。
-  t18,ToolSet 在 agent 终态,"ToolSet（自 ToolRegistry 重命名）MUST 留在 agent/ 作为构建期终态编排状态，持有 Vec<Arc<dyn XyTool>>；具体工具由组合根从 infra::tools::default_tools 注入并经 ToolSet 单元操作组合；构建后交给一轮的集合为终态，无运行时过滤。"
+  t18,ToolSet 在 agent 终态,"ToolSet MUST 作为构建期终态编排状态留在 agent 层：聚合具体工具并组合单元操作；构建后交给一轮的集合即终态，无运行时过滤。具体工具由组合根注入。"
   t19,工具相关类型统一前缀,ToolExecutionMode MUST 重命名为 XyToolExecutionMode；protocol 工具边界及其签名类型 MUST 一致使用 Xy 前缀命名。
   r36,MCP 工具经 XyTool 接入,MCP 工具 MUST 仅通过 XyTool 端口进入 agent 工具集；rmcp 具体类型 MUST NOT 泄漏到 agent/ 或 domain/。
   t21,"read-image-parts","Read 工具在路径为支持的图片文件时 MUST 经 resize/multimodal 准备产出含 AgentPart::Image（base64 data + media_type）的 tool result parts，并附简短 text note；MUST NOT 仅返回「[Image file: …]」占位字符串作为唯一结果。文本文件行为保持既有截断语义。工具端口 MUST 允许 execute 结果以 parts 形式进入 history（默认实现可将纯文本包成 Text part）。"
@@ -60,6 +60,6 @@ scenarios[16]{req_id,id,given,when,then,feature}:
   r32,"tool-trait-prefix-unit",XyTool trait 已定义,检查名称前缀,以 Xy 开头,false
   r10,"no-global-dead-code-unit",crate 根,检查 #![allow(dead_code)],不存在或附理由,false
   t17,"tool-def-schema-unit",ToolDefinition 结构,检查 schema 字段,含 XyToolSchema,false
-  t18,"toolset-agent-final-unit",ToolSet 构建终态,检查模块路径,位于 agent::tools 且一轮接收最终集合,false
+  t18,"toolset-agent-final-unit",ToolSet 构建终态,检查归属与集合语义,留在 agent 层且一轮接收最终集合、无运行时过滤,false
   t19,"tool-exec-mode-renamed-unit",代码引用,检查 ToolExecutionMode,已重命名为 XyToolExecutionMode,false
   r36,"mcp-via-xy-tool-unit",MCP 工具接入路径,检查 rmcp 类型泄漏,agent/ 无 rmcp 引用,false

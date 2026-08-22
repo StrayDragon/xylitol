@@ -2,7 +2,7 @@ kind: llman.sdd.spec
 name: "agent-session-store"
 purpose: 会话持久化 — 基于 JSONL 文件的会话存储，含树操作、compaction、fork 与 CWD 校验。
 valid_scope[1]: "infra 层 session 持久化"
-requirements[32]{req_id,title,statement}:
+requirements[31]{req_id,title,statement}:
   r31,快照操作,System MUST 支持对不可变会话快照执行 snapshot、restore、spawn、list、prune、diff、merge 操作。
   r41,compaction,"当 CompactionSettings.enabled 且上下文占用超过 window−reserve（c1630）时，System MUST 在 agent/capabilities 回合落定后自动 compact（c1640）；MUST NOT 仅依赖百分比闸或仅 TUI 轮询。"
   s1,JSONL 存储,SessionManager MUST 将会话持久化为 JSONL 文件（每行一个带版本标签的 JSON 对象），位于 ~/.xylitol/sessions/。
@@ -29,8 +29,7 @@ requirements[32]{req_id,title,statement}:
   sc2,CWD 错误,System MUST 提供 MissingSessionCwdError，携带会话文件路径、存储 cwd 与 fallback cwd。
   sc3,CWD 格式化,System MUST 提供 format_missing_session_cwd_error 与 format_missing_session_cwd_prompt 用于面向用户的消息。
   sc4,CWD 集成,CLI 与 RPC 模式 MUST 在恢复会话前调用 assert_session_cwd_exists。
-  sp1,SessionStore 实现,"infra::session::SessionManager MUST 实现 protocol::SessionStore，含 append、load、exists，仅覆盖 agent 循环与 compaction 所需；完整 SessionManager 面（fork、navigate、export）MAY 留在具体结构体供组合根直接使用。"
-  sp2,SessionStore 实现,"infra::session::SessionManager MUST 实现 protocol::SessionStore，含 load_context、append、exists，仅覆盖 agent 循环与 compaction 所需；完整 SessionManager 面（fork/navigate/export）MAY 留在具体结构体供 app 组合根使用。"
+  sp1,SessionStore 端口实现,"infra 层的 SessionManager MUST 实现 protocol 的 XySessionStore 端口（append、load、load_context、exists），仅覆盖 agent 循环与 compaction 所需；完整会话面（fork、navigate、export）MAY 留在具体结构体供组合根直接使用。"
   sp6,日志访问,"会话 store MUST 暴露 read_recent(session_id, limit) -> Vec<Event> 供 server journal；journal 容量 MUST 可配置（默认 10000）。"
   sp3,ExportIo 实现,System MUST 提供导出 I/O 端口实现（StdExportIo 或等价，tokio::fs 读写）；组合根 MUST 将导出协作器经该端口注入。
   s22,盘面时间戳,"Session 盘面时间戳（header.timestamp 与条目壳 timestamp）MUST 为 u64 unix 毫秒数，与 message 内 timestamp 同基准；MUST NOT 写出 RFC3339 字符串作为盘面时间戳。展示面需要人类可读时间时 MUST 在展示边格式化。"
