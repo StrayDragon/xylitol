@@ -7,7 +7,6 @@ depends_on:
 
 # tool_search + MCP Deferred 发现（另开；非开箱主路径）
 > **一句话**：MCP 工具极多时 tools_mode=search 按需发现加载，靠 WirePolicy 声明分流（非开箱主路径）
-> **当前排序**：#17（2026-08-10 自 delayed-changes 升格入 active）
 
 
 > **已升格（2026-08-10）**：当前排序 **#17**（c1900 已归档，可独立推进）。与 [`c1900`](../archive/2026-08-05-c1900-update-mcp-first-turn-tool-freeze/proposal.md) **拆分（Q12/Q17 双轨）**。开箱主路径 = 门闸 + Full 定稿；本 change = `defer_loading`/`tool_search` 轨（WirePolicy 声明后）。
