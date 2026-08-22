@@ -2,7 +2,8 @@
 depends_on: []
 branch: sdd/c2340-add-attach-reload-cancel
 base_sha: 637fc6eb3888bbae78c21d169b65cb056d9be41c
-checkpointed: false
+checkpointed: true
+checkpoint_sha: f88f677f317b7132acc9ce5cc356e52f880e1b74
 ---
 
 # attach 下 /reload 合作取消
