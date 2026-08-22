@@ -4,9 +4,9 @@
 
 ## 1. Specs landing
 
-- [ ] 1.1 `change start` 绑定 `sdd/c2340-add-attach-reload-cancel`
-- [ ] 1.2 live specs：`app-tui-host` 新增 `ath37`（reload 进行中取消 → 经 Host 合作取消并以 cancelled 收尾）；`server-core` 新增 `sr-abort1`（abort unary 对进程级 reload 的合作取消）
-- [ ] 1.3 commit Specs landing；结构过闸 + `readyToImplement`
+- [x] 1.1 `change start` 绑定 `sdd/c2340-add-attach-reload-cancel`
+- [x] 1.2 live specs：`app-tui-host` 新增 `ath37`（reload 进行中取消 → 经 Host 合作取消并以 cancelled 收尾）；`server-core` 新增 `sr-abort1`（abort unary 对进程级 reload 的合作取消）
+- [x] 1.3 commit Specs landing；结构过闸 + `readyToImplement`
 
 ## 2. 实现
 
