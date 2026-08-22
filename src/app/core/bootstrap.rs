@@ -512,7 +512,9 @@ pub fn resolve_assembly_with(
         .and_then(|p| p.system_prompt.clone());
     let default_profile_model = resolved_profile
         .as_ref()
-        .map(|p| p.model_config.model.clone());
+        // Registry alias (not the raw vendor id): consumers select by registry
+        // identity (`registry.find(alias)`); raw names fail when alias ≠ model.
+        .map(|p| p.model_id.clone());
 
     let cwd_path = cwd
         .map(Path::to_path_buf)

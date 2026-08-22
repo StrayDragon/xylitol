@@ -86,6 +86,11 @@ impl XyModelConfig {
 pub struct ResolvedProfile {
     /// Agent-level model config.
     pub model_config: XyModelConfig,
+    /// Registry alias (`models.models` key / CLI `--model`) this profile's
+    /// model resolved from. Differs from the raw vendor id in
+    /// [`Self::model_config.model`]; consumers selecting by registry identity
+    /// (e.g. host writer default-model restore) MUST use this value.
+    pub model_id: String,
     /// System prompt override for this agent.
     pub system_prompt: Option<String>,
     /// Allowed tool names. `None` means all tools available.
@@ -228,6 +233,7 @@ mod tests {
         };
         let profile = ResolvedProfile {
             model_config: config,
+            model_id: "gpt-4o".into(),
             system_prompt: Some("You are an AI".into()),
             allowed_tools: Some(vec!["read".into(), "write".into()]),
             name: "default".into(),

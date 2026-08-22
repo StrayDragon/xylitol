@@ -679,6 +679,10 @@ impl AppConfig {
 
         Ok(crate::protocol::model::ResolvedProfile {
             model_config,
+            // Registry alias the model resolved from; raw vendor id lives in
+            // `model_config.model` (bootstrap c2330-followup: host writer
+            // restore must select by alias, not raw name).
+            model_id: model_id.to_string(),
             system_prompt,
             allowed_tools,
             name: name.into(),
@@ -1449,5 +1453,32 @@ tool_batch:
             err.is_err(),
             "MCP allowlist / patterns fields must not be accepted"
         );
+    }
+}
+
+#[cfg(test)]
+mod resolve_profile_model_id_tests {
+    use super::*;
+
+    // Host writer default-model restore selects by registry alias; the
+    // resolved profile must carry the alias key, not the raw vendor model id
+    // (alias ≠ model name previously failed `registry.find` at restore time).
+    #[test]
+    fn resolved_profile_carries_alias_not_raw_model_name() {
+        let cfg: AppConfig = yaml_serde::from_str(
+            r#"
+models:
+  default_model: ds
+  models:
+    ds:
+      provider: openai
+      model: deepseek-v4-flash
+"#,
+        )
+        .expect("valid minimal config");
+        let profile = cfg.resolve_default_profile().expect("default profile");
+        assert_eq!(profile.model_id, "ds", "alias, not raw vendor id");
+        assert_eq!(profile.model_config.model, "deepseek-v4-flash");
+        assert_ne!(profile.model_id, profile.model_config.model);
     }
 }
