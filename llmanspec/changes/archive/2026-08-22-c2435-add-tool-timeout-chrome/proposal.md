@@ -3,7 +3,8 @@ depends_on:
 - c2425-add-timeout-bounds
 branch: sdd/c2435-add-tool-timeout-chrome
 base_sha: 637fc6eb3888bbae78c21d169b65cb056d9be41c
-checkpointed: false
+checkpointed: true
+checkpoint_sha: 637fc6eb3888bbae78c21d169b65cb056d9be41c
 ---
 
 # 工具行 timeout 预算提示（chrome）
