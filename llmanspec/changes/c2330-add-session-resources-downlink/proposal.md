@@ -1,5 +1,8 @@
 ---
 depends_on: []
+branch: sdd/c2330-add-session-resources-downlink
+base_sha: 637fc6eb3888bbae78c21d169b65cb056d9be41c
+checkpointed: false
 ---
 
 # 下行补 session/resources：MCP chrome 走 mux，不进 journal
