@@ -132,7 +132,8 @@ STATUS: incomplete
 
 - [x] **A7 后续**：模型侧 bash 工具（`infra/tools/bash.rs`）与文件工具 `resolve_to_cwd` 仍继承 Host 进程 cwd；多工作区 attach 下 LLM 相对路径操作会落错目录。需给工具执行面穿会话工作区（XyToolCtx 或 per-driver 构造），走 propose
       （c2335 落地：`XyToolCtx.workspace` 由 ReAct 冻结 cwd 注入，bash 双路径 + 文件类工具按工作区解析；回归 `model_tool_runs_in_client_workspace` / BDD `tool-write-in-session-workspace`、`bash-runs-in-session-workspace`）
-- [ ] **C3** reload 合作取消
+- [x] **C3** reload 合作取消
+      （c2340 落地：Remote `reload_runtime` 尊重 cancel token，取消时经既有 `abort` unary 触发 Host `abort_reload()` 合作取消并以 cancelled 收尾；合约 server-core sr-abort1 + app-tui-host ath37；护栏 `reload_cancel_requests_host_cooperative_abort`）
 - [ ] **E1/E2** token 与 bang 流式是否要 Host 事件
 - [ ] `XyRemoteDriver` 拆文件（现 ~1700 行）
 - [ ] 产品路径死 InProcess TUI 入口清掉（print/embed 保留）
