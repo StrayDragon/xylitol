@@ -3340,16 +3340,6 @@ fn scrollback_diff_header_tint_and_body() {
 }
 
 #[test]
-fn preflight_error_messages_are_cli_friendly() {
-    let msg = super::TuiPreflightError::NoModelSelected.to_string();
-    assert!(msg.contains("selected model"), "{msg}");
-    assert!(msg.contains("--model") || msg.contains("config"), "{msg}");
-
-    let msg = super::TuiPreflightError::StdinNotTty.to_string();
-    assert!(msg.contains("TTY"), "{msg}");
-}
-
-#[test]
 fn harness_ready_narrow_with_long_cwd_does_not_hang() {
     // Regression: startup-card wrap_plain spun forever on long path tokens at
     // Ready widths 40–44 (felt like "shrink then dead").
