@@ -1,0 +1,7 @@
+# Seeds for failure cases proptest has generated in the past. It is
+# automatically read and these particular cases re-run before any
+# novel cases are generated.
+#
+# It is recommended to check this file in to source control so that
+# everyone who runs the test benefits from these saved cases.
+cc 15fd424e4ecfabc02a95d50d4d349e92d101b926df47be2f50560873c5168666 # shrinks to ops = [ErrorAssistant("a")]

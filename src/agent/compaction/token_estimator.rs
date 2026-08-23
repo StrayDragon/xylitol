@@ -246,6 +246,22 @@ mod tests {
     use xylitol_ai_bridge::registry::TokenizerOverride;
 
     #[test]
+    fn calculate_context_tokens_fallback_sums_components() {
+        // total 缺席（=0）时回退到四分量求和——5 个存活变异所在的路径。
+        let usage = XyUsage {
+            total_tokens: 0,
+            input: 100,
+            output: 20,
+            cache_read: 7,
+            cache_write: 3,
+            ..Default::default()
+        };
+        assert_eq!(calculate_context_tokens(&usage), 130);
+        let empty = XyUsage::default();
+        assert_eq!(calculate_context_tokens(&empty), 0);
+    }
+
+    #[test]
     fn override_enables_local_tokenizer_for_unmapped_alias() {
         let msgs = [AgentMessage::user("hello world")];
         let without_over = estimate_context_tokens_with(
