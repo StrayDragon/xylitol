@@ -1,8 +1,9 @@
 import "../../generated/tokens.css";
 import "./shell.css";
 import { applyFrame, hasSpin, spinFrames, spinMs } from "./animate";
-import { loadModules } from "./catalog";
+import { loadModules, simFor } from "./catalog";
 import { renderGrid } from "./cell-grid";
+import type { Sim } from "./sim";
 import { handoffCopy, handoffMarkdown } from "./handoff";
 import { renderMarkdown } from "./markdown";
 import {
@@ -36,6 +37,60 @@ let scheme: Scheme = "light";
 let playTimer = 0;
 let lastAction = "opened";
 
+// --- interactive lab prototypes (tui-lab sim.ts) ---
+const LIVE_STATE = "__live__";
+let liveSim: Sim | null = null;
+let liveModel: unknown = null;
+let liveKey = "";
+let liveTimer = 0;
+
+function stopLiveTimer(): void {
+  if (liveTimer) {
+    window.clearInterval(liveTimer);
+    liveTimer = 0;
+  }
+}
+
+function currentSim(): Sim | null {
+  return current ? simFor(current.surface || "tui", current.id) : null;
+}
+
+function isLiveMode(): boolean {
+  return Boolean(currentSim()) && stateId === LIVE_STATE;
+}
+
+function rerenderLiveGrid(): void {
+  const host = document.getElementById("live-grid-host");
+  if (!host || !liveSim) return;
+  host.replaceChildren(
+    renderGrid({ id: "__live__", cols: 80, lines: liveSim.view(liveModel) }),
+  );
+}
+
+function mountLive(): void {
+  const sim = currentSim();
+  const key = current ? `${current.surface || "tui"}/${current.id}` : "";
+  if (!sim || key !== liveKey) {
+    stopLiveTimer();
+    liveSim = null;
+    liveModel = null;
+    liveKey = "";
+  }
+  if (!sim) return;
+  if (!liveModel) {
+    liveSim = sim;
+    liveKey = key;
+    liveModel = sim.initial();
+  }
+  if (sim.tickMs && !liveTimer) {
+    liveTimer = window.setInterval(() => {
+      if (!liveSim) return;
+      liveModel = liveSim.onKey("__tick__", liveModel);
+      rerenderLiveGrid();
+    }, sim.tickMs);
+  }
+}
+
 function currentState() {
   return current?.states[stateId];
 }
@@ -60,8 +115,13 @@ function applyRoute(partial: Partial<Route>, fallback: ModulePreview | null): vo
     fallback;
   if (!hit) return;
   current = hit;
+  const sim = simFor(hit.surface || "tui", hit.id);
   const keys = Object.keys(hit.states);
-  stateId = partial.state && keys.includes(partial.state) ? partial.state : (keys[0] ?? "");
+  const fallbackState = sim ? LIVE_STATE : (keys[0] ?? "");
+  stateId =
+    partial.state && (partial.state === LIVE_STATE || keys.includes(partial.state))
+      ? partial.state
+      : fallbackState;
   const st = current.states[stateId];
   const n = st ? spinFrames(st).length : 0;
   frame = n ? (partial.frame ?? 0) % n : 0;
@@ -143,7 +203,9 @@ function paintNav(): void {
       btn.setAttribute("aria-current", String(mod === current));
       btn.addEventListener("click", () => {
         current = mod;
-        stateId = Object.keys(mod.states)[0] ?? "";
+        stateId = simFor(mod.surface || "tui", mod.id)
+          ? LIVE_STATE
+          : Object.keys(mod.states)[0] ?? "";
         frame = 0;
         lastAction = `opened module ${mod.surface}/${mod.id} state ${stateId}`;
         setPlaying(false);
@@ -157,10 +219,13 @@ function paintNav(): void {
 function paintChips(): void {
   chipsEl.replaceChildren();
   if (!current) return;
-  for (const id of Object.keys(current.states)) {
+  const ids = currentSim()
+    ? [LIVE_STATE, ...Object.keys(current.states)]
+    : Object.keys(current.states);
+  for (const id of ids) {
     const btn = document.createElement("button");
     btn.type = "button";
-    btn.textContent = id;
+    btn.textContent = id === LIVE_STATE ? "交互原型" : id;
     btn.setAttribute("aria-pressed", String(id === stateId));
     btn.addEventListener("click", () => {
       lastAction = `selected state chip: ${stateId} → ${id}`;
@@ -178,8 +243,26 @@ function paintStageBar(): void {
   const st = currentState();
   const hint = document.createElement("p");
   hint.className = "stage-hint";
-  hint.textContent = "切态用上方按钮；动画只用播放/暂停；终端格子可框选";
+  hint.textContent = isLiveMode()
+    ? "点击终端聚焦后用键盘交互；「重置演示」回到初始态"
+    : "切态用上方按钮；动画只用播放/暂停；终端格子可框选";
   stageBarEl.appendChild(hint);
+  if (isLiveMode()) {
+    const wrap = document.createElement("div");
+    wrap.className = "frame-controls";
+    const reset = document.createElement("button");
+    reset.type = "button";
+    reset.textContent = "重置演示";
+    reset.addEventListener("click", (ev) => {
+      ev.stopPropagation();
+      if (liveSim) liveModel = liveSim.initial();
+      lastAction = "reset demo";
+      rerenderLiveGrid();
+    });
+    wrap.appendChild(reset);
+    stageBarEl.appendChild(wrap);
+    return;
+  }
   if (!st || !hasSpin(st)) return;
   const n = spinFrames(st).length;
   const wrap = document.createElement("div");
@@ -220,6 +303,11 @@ function paintStageBar(): void {
 
 function paintStage(): void {
   stageEl.replaceChildren();
+  mountLive();
+  if (isLiveMode() && liveSim) {
+    stageEl.appendChild(buildLiveStage());
+    return;
+  }
   const state = currentState();
   if (!state) {
     stageEl.textContent = "无固定态";
@@ -230,6 +318,55 @@ function paintStage(): void {
   term.setAttribute("aria-label", "设计稿预览");
   term.appendChild(renderGrid(applyFrame(state, frame)));
   stageEl.appendChild(term);
+}
+
+const LIVE_BLOCKED_KEYS = new Set([
+  "ArrowLeft",
+  "ArrowRight",
+  "ArrowUp",
+  "ArrowDown",
+  " ",
+  "Backspace",
+  "Enter",
+  "Tab",
+]);
+
+function buildLiveStage(): HTMLElement {
+  const wrap = document.createElement("div");
+  const badge = document.createElement("p");
+  badge.className = "live-badge";
+  badge.textContent = "交互原型 · 键盘驱动（非产品代码，行为以提案 intent 为准）";
+  const term = document.createElement("div");
+  term.className = "term-frame term-live";
+  term.tabIndex = 0;
+  term.setAttribute("aria-label", "交互原型（键盘驱动）");
+  const gridHost = document.createElement("div");
+  gridHost.id = "live-grid-host";
+  term.appendChild(gridHost);
+  const hintEl = document.createElement("div");
+  hintEl.className = "live-hint";
+  for (const line of liveSim!.hint) {
+    const item = document.createElement("span");
+    const sep = line.indexOf(" ");
+    const chord = sep > 0 ? line.slice(0, sep) : line;
+    const desc = sep > 0 ? line.slice(sep + 1) : "";
+    const kbd = document.createElement("kbd");
+    kbd.textContent = chord;
+    item.append(kbd);
+    if (desc) item.appendChild(document.createTextNode(desc));
+    hintEl.appendChild(item);
+  }
+  wrap.append(badge, term, hintEl);
+  rerenderLiveGrid();
+  term.addEventListener("click", () => term.focus());
+  term.addEventListener("keydown", (ev) => {
+    if (ev.metaKey || ev.ctrlKey || ev.altKey) return;
+    if (LIVE_BLOCKED_KEYS.has(ev.key)) ev.preventDefault();
+    lastAction = `key ${ev.key}`;
+    liveModel = liveSim!.onKey(ev.key, liveModel);
+    rerenderLiveGrid();
+  });
+  return wrap;
 }
 
 function stepFrame(dir: 1 | -1): void {

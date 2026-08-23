@@ -313,3 +313,37 @@ pre.notes {
   .shell { grid-template-columns: 11rem 1fr; }
   aside { grid-column: 1 / -1; border-left: none; border-top: 1px solid var(--hairline); }
 }
+
+/* --- interactive lab prototypes (tui-lab sim) --- */
+.live-badge {
+  margin: 0 0 6px;
+  font-size: 12px;
+  color: var(--accent);
+}
+.term-live {
+  cursor: text;
+}
+.term-live:focus-visible,
+.term-live:focus {
+  outline: 2px solid var(--accent);
+  outline-offset: 2px;
+}
+.live-hint {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 10px;
+  align-items: center;
+  padding: 8px 2px 0;
+  font-size: 12px;
+  color: var(--muted);
+}
+.live-hint kbd {
+  border: 1px solid var(--border, #bbb);
+  border-radius: 3px;
+  padding: 0 5px;
+  margin-right: 4px;
+  background: var(--surface, transparent);
+  color: inherit;
+  font-family: inherit;
+  font-size: 11px;
+}
