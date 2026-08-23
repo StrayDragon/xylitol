@@ -5270,7 +5270,7 @@ fn activity_fold_mcp_cluster_is_used() {
     model.entries.push(super::bridge::UiEntry::Tool {
         timeout_secs: None,
         id: "mcp1".into(),
-        name: "mcp:lspz:get_symbols".into(),
+        name: "mcp__lspz__get_symbols".into(),
         args_preview: String::new(),
         tool_path: None,
         write_content: None,

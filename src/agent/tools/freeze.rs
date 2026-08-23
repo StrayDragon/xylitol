@@ -174,25 +174,25 @@ mod tests {
     #[test]
     fn upsert_replaces_same_name_no_dup() {
         let base = ToolSet::from_iter(vec![tool(
-            "mcp_fs_read",
+            "mcp__fs__read",
             "old",
             serde_json::json!({"type": "object"}),
         )]);
         let incoming = ToolSet::from_iter(vec![
             tool(
-                "mcp_fs_read",
+                "mcp__fs__read",
                 "new",
                 serde_json::json!({"type": "object", "properties": {"path": {"type": "string"}}}),
             ),
-            tool("mcp_fs_write", "w", serde_json::json!({"type": "object"})),
+            tool("mcp__fs__write", "w", serde_json::json!({"type": "object"})),
         ]);
         let merged = upsert_tools_by_name(base, incoming);
         let names: Vec<_> = merged.iter().map(|t| t.name().to_string()).collect();
         assert_eq!(
             names,
-            vec!["mcp_fs_read".to_string(), "mcp_fs_write".to_string()]
+            vec!["mcp__fs__read".to_string(), "mcp__fs__write".to_string()]
         );
-        assert_eq!(merged.get("mcp_fs_read").unwrap().description(), "new");
+        assert_eq!(merged.get("mcp__fs__read").unwrap().description(), "new");
     }
 
     #[test]

@@ -29,14 +29,12 @@ pub fn mcp_tool_armed_prefix(server_id: &str) -> String {
     format!("{MCP_PUBLIC_MARK}{MCP_PUBLIC_DELIMITER}{server_id}{MCP_PUBLIC_DELIMITER}")
 }
 
-/// True when `name` is an MCP-registered tool.
+/// True when `name` is an MCP-registered tool (`mcp__{server_id}__{tool_name}`).
 ///
-/// Accepts modern `mcp__…`, transition `mcp-…` / `mcp_…`, and legacy `mcp:…`.
+/// Single canonical form: transition/legacy prefixes (`mcp-` / `mcp_` / `mcp:`)
+/// were never shipped and are no longer recognized.
 pub fn is_mcp_tool_name(name: &str) -> bool {
     name.starts_with(&format!("{MCP_PUBLIC_MARK}{MCP_PUBLIC_DELIMITER}"))
-        || name.starts_with("mcp-")
-        || name.starts_with("mcp_")
-        || name.starts_with("mcp:")
 }
 
 /// Builtin (crate-registered) tool identities whose names the UI discriminates.
@@ -96,9 +94,9 @@ mod tests {
         assert!(is_provider_safe_tool_name(&n));
         assert!(is_mcp_tool_name(&n));
         assert!(!is_mcp_tool_name("read"));
-        assert!(is_mcp_tool_name("mcp:legacy:tool"));
-        assert!(is_mcp_tool_name("mcp_transition_form"));
-        assert!(is_mcp_tool_name("mcp-hyphen-transition"));
+        assert!(!is_mcp_tool_name("mcp:legacy:tool"));
+        assert!(!is_mcp_tool_name("mcp_transition_form"));
+        assert!(!is_mcp_tool_name("mcp-hyphen-transition"));
         assert_eq!(mcp_tool_armed_prefix("context7"), "mcp__context7__");
     }
 

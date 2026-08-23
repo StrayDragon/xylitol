@@ -289,12 +289,12 @@ mod tests {
         let events = vec![
             XyEvent::ToolExecutionStart {
                 id: "m1".into(),
-                name: "mcp_lspz_get_diagnostics".into(),
+                name: "mcp__lspz__get_diagnostics".into(),
                 args: serde_json::json!({"uri": "file:///x"}),
             },
             XyEvent::ToolExecutionEnd {
                 id: "m1".into(),
-                name: "mcp_lspz_get_diagnostics".into(),
+                name: "mcp__lspz__get_diagnostics".into(),
                 result: r#"{"content":[{"type":"text","text":"a"}],"isError":false}"#.into(),
                 is_error: false,
             },
@@ -310,19 +310,19 @@ mod tests {
     #[test]
     fn mcp_format_helpers_pretty_print() {
         let start = format_tool_start_lines(
-            "mcp_lspz_get_diagnostics",
+            "mcp__lspz__get_diagnostics",
             &serde_json::json!({"uri": "file:///x"}),
         );
         let joined = start.join("\n");
         assert!(
-            joined.contains("[Tool: mcp_lspz_get_diagnostics]"),
+            joined.contains("[Tool: mcp__lspz__get_diagnostics]"),
             "{joined}"
         );
         assert!(joined.contains("args:\n"), "{joined}");
         assert!(joined.contains("\"uri\": \"file:///x\""), "{joined}");
 
         let end = format_tool_end_line(
-            "mcp_lspz_get_diagnostics",
+            "mcp__lspz__get_diagnostics",
             r#"{"content":[{"type":"text","text":"a"}],"isError":false}"#,
         );
         assert!(end.contains("\"isError\": false"), "{end}");

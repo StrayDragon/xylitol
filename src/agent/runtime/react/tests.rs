@@ -2257,7 +2257,7 @@ async fn batch_mcp_never_parallel_even_if_trait_lies() {
             epoch,
         }) as Arc<dyn crate::protocol::ports::XyTool>,
         Arc::new(SlowTool {
-            name: "mcp_fake_x",
+            name: "mcp__fake__x",
             mode: crate::protocol::ports::XyToolExecutionMode::Parallel, // lie
             sleep_ms: 80,
             log: log.clone(),
@@ -2266,7 +2266,7 @@ async fn batch_mcp_never_parallel_even_if_trait_lies() {
     ]);
     let rounds = multi_tool_rounds(vec![
         ("slow_safe", r#"{"n":1}"#),
-        ("mcp_fake_x", r#"{}"#),
+        ("mcp__fake__x", r#"{}"#),
         ("slow_safe", r#"{"n":2}"#),
     ]);
     let mut agent = make_agent_with_rounds(rounds, tools);
@@ -2275,9 +2275,12 @@ async fn batch_mcp_never_parallel_even_if_trait_lies() {
     while stream.next().await.is_some() {}
     let entries = log.lock().unwrap().clone();
     assert_eq!(entries.len(), 3, "{entries:?}");
-    let mcp = entries.iter().find(|(n, _, _)| n == "mcp_fake_x").unwrap();
+    let mcp = entries
+        .iter()
+        .find(|(n, _, _)| n == "mcp__fake__x")
+        .unwrap();
     for (n, s, e) in &entries {
-        if n == "mcp_fake_x" {
+        if n == "mcp__fake__x" {
             continue;
         }
         assert!(
