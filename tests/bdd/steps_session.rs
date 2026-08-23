@@ -483,11 +483,6 @@ async fn _t_session_context_branches(sess: &XySessionStore) {
 
 // ── Label and session_info steps ──
 
-#[given("向会话追加一条消息 {msg:string}")]
-async fn _given_session_append_msg(sess: &XySessionStore, msg: String) {
-    _w_session_append(sess, msg).await;
-}
-
 #[when("为最后一条记录设置标签 {label:string}")]
 async fn _w_session_set_label(sess: &XySessionStore, label: String) {
     sess.ensure_mgr();
