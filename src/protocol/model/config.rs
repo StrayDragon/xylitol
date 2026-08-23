@@ -82,21 +82,14 @@ impl XyModelConfig {
 /// Produced by [`AppConfig::resolve_profile`](crate::infra::config::types::AppConfig)
 /// from config-level profile entries.
 #[derive(Debug, Clone)]
-#[allow(dead_code)]
 pub struct ResolvedProfile {
-    /// Agent-level model config.
-    pub model_config: XyModelConfig,
     /// Registry alias (`models.models` key / CLI `--model`) this profile's
     /// model resolved from. Differs from the raw vendor id in
-    /// `model_config.model`; consumers selecting by registry identity
+    /// `models.models.<id>.model`; consumers selecting by registry identity
     /// (e.g. host writer default-model restore) MUST use this value.
     pub model_id: String,
     /// System prompt override for this agent.
     pub system_prompt: Option<String>,
-    /// Allowed tool names. `None` means all tools available.
-    pub allowed_tools: Option<Vec<String>>,
-    /// Profile name (for logging and diagnostics).
-    pub name: String,
 }
 
 /// Default context window size for a given model kind.
@@ -223,25 +216,11 @@ mod tests {
 
     #[test]
     fn resolved_profile_construct() {
-        let config = XyModelConfig {
-            kind: XyModelKind::OpenAi,
-            api_key: "sk-test".into(),
-            model: "gpt-4o".into(),
-            base_url: None,
-            api: None,
-            compat: None,
-        };
         let profile = ResolvedProfile {
-            model_config: config,
             model_id: "gpt-4o".into(),
             system_prompt: Some("You are an AI".into()),
-            allowed_tools: Some(vec!["read".into(), "write".into()]),
-            name: "default".into(),
         };
-        assert_eq!(profile.name, "default");
-        assert_eq!(
-            profile.allowed_tools.as_deref(),
-            Some(&["read".to_string(), "write".to_string()][..])
-        );
+        assert_eq!(profile.model_id, "gpt-4o");
+        assert_eq!(profile.system_prompt.as_deref(), Some("You are an AI"));
     }
 }

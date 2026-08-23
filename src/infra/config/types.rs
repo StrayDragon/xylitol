@@ -506,9 +506,6 @@ pub struct AgentProfile {
     /// System prompt / instruction for this agent.
     #[serde(default)]
     pub system_prompt: Option<String>,
-    /// Tool names this agent is allowed to use. `None` = all tools.
-    #[serde(default)]
-    pub allowed_tools: Option<Vec<String>>,
 }
 
 /// Agent profiles container.
@@ -656,13 +653,9 @@ impl AppConfig {
     ) -> Result<crate::protocol::model::ResolvedProfile, LoadError> {
         let profile = self.agents.profiles.get(name);
 
-        let (model_ref, system_prompt, allowed_tools) = match profile {
-            Some(p) => (
-                p.model.as_deref(),
-                p.system_prompt.as_ref().cloned(),
-                p.allowed_tools.as_ref().cloned(),
-            ),
-            None => (None, self.execution.system_prompt.clone(), None),
+        let (model_ref, system_prompt) = match profile {
+            Some(p) => (p.model.as_deref(), p.system_prompt.as_ref().cloned()),
+            None => (None, self.execution.system_prompt.clone()),
         };
 
         let model_id = model_ref
@@ -675,17 +668,17 @@ impl AppConfig {
                         .to_string(),
                 )
             })?;
-        let model_config = self.resolve_model(model_id)?;
+        // Validate the alias resolves against `models.models` even though
+        // callers rebuild the vendor config via [`Self::resolve_model`] — an
+        // unknown alias must fail at resolve time, not at first provider use.
+        self.resolve_model(model_id)?;
 
         Ok(crate::protocol::model::ResolvedProfile {
-            model_config,
             // Registry alias the model resolved from; raw vendor id lives in
-            // `model_config.model` (bootstrap c2330-followup: host writer
+            // `models.models.<id>.model` (bootstrap c2330-followup: host writer
             // restore must select by alias, not raw name).
             model_id: model_id.to_string(),
             system_prompt,
-            allowed_tools,
-            name: name.into(),
         })
     }
 
@@ -1478,7 +1471,13 @@ models:
         .expect("valid minimal config");
         let profile = cfg.resolve_default_profile().expect("default profile");
         assert_eq!(profile.model_id, "ds", "alias, not raw vendor id");
-        assert_eq!(profile.model_config.model, "deepseek-v4-flash");
-        assert_ne!(profile.model_id, profile.model_config.model);
+        assert_eq!(
+            cfg.resolve_model("ds").expect("alias resolves").model,
+            "deepseek-v4-flash",
+        );
+        assert_ne!(
+            profile.model_id,
+            cfg.resolve_model("ds").expect("alias resolves").model
+        );
     }
 }

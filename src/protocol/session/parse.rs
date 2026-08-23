@@ -63,6 +63,20 @@ fn unsupported_session_version_msg(v: u32) -> String {
     )
 }
 
+/// First JSONL object's session-header version (listing fast-path; no full parse).
+pub fn peek_session_header_version(content: &str) -> Option<u32> {
+    for line in content.lines() {
+        if line.trim().is_empty() {
+            continue;
+        }
+        return match serde_json::from_str::<SessionEntry>(line) {
+            Ok(SessionEntry::Header(h)) => Some(h.version),
+            _ => None,
+        };
+    }
+    None
+}
+
 #[cfg(test)]
 mod prop_tests {
     use super::*;
@@ -156,18 +170,4 @@ mod prop_tests {
             prop_assert_eq!(parsed, all);
         }
     }
-}
-
-/// First JSONL object's session-header version (listing fast-path; no full parse).
-pub fn peek_session_header_version(content: &str) -> Option<u32> {
-    for line in content.lines() {
-        if line.trim().is_empty() {
-            continue;
-        }
-        return match serde_json::from_str::<SessionEntry>(line) {
-            Ok(SessionEntry::Header(h)) => Some(h.version),
-            _ => None,
-        };
-    }
-    None
 }

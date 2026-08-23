@@ -12,7 +12,6 @@ pub(crate) const GREP_MAX_LINE_LENGTH: usize = 500; // Max chars per grep match 
 
 /// Result of a truncation operation.
 #[derive(Debug, Clone)]
-#[allow(dead_code)]
 pub(crate) struct TruncationResult {
     /// The truncated content.
     pub(crate) content: String,
@@ -20,22 +19,8 @@ pub(crate) struct TruncationResult {
     pub(crate) truncated: bool,
     /// Which limit was hit: "lines", "bytes", or None if not truncated.
     pub(crate) truncated_by: Option<TruncationLimit>,
-    /// Total number of lines in the original content.
-    pub(crate) total_lines: usize,
-    /// Total number of bytes in the original content.
-    pub(crate) total_bytes: usize,
     /// Number of complete lines in the truncated output.
     pub(crate) output_lines: usize,
-    /// Number of bytes in the truncated output.
-    pub(crate) output_bytes: usize,
-    /// Whether the first line was partially truncated (for head truncation when first line > max bytes).
-    pub(crate) last_line_partial: bool,
-    /// Whether the first line alone exceeded the byte limit.
-    pub(crate) first_line_exceeds_limit: bool,
-    /// The max lines limit that was applied.
-    pub(crate) max_lines: usize,
-    /// The max bytes limit that was applied.
-    pub(crate) max_bytes: usize,
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -90,14 +75,7 @@ pub(crate) fn truncate_head(content: &str, options: TruncationOptions) -> Trunca
             content: content.to_string(),
             truncated: false,
             truncated_by: None,
-            total_lines,
-            total_bytes,
             output_lines: total_lines,
-            output_bytes: total_bytes,
-            last_line_partial: false,
-            first_line_exceeds_limit: false,
-            max_lines,
-            max_bytes,
         };
     }
 
@@ -109,14 +87,7 @@ pub(crate) fn truncate_head(content: &str, options: TruncationOptions) -> Trunca
             content: String::new(),
             truncated: true,
             truncated_by: Some(TruncationLimit::Bytes),
-            total_lines,
-            total_bytes,
             output_lines: 0,
-            output_bytes: 0,
-            last_line_partial: false,
-            first_line_exceeds_limit: true,
-            max_lines,
-            max_bytes,
         };
     }
 
@@ -146,20 +117,12 @@ pub(crate) fn truncate_head(content: &str, options: TruncationOptions) -> Trunca
     }
 
     let output_content = output_lines_arr.join("\n");
-    let final_output_bytes = output_content.len();
 
     TruncationResult {
         content: output_content,
         truncated: true,
         truncated_by: Some(truncated_by),
-        total_lines,
-        total_bytes,
         output_lines: output_lines_arr.len(),
-        output_bytes: final_output_bytes,
-        last_line_partial: false,
-        first_line_exceeds_limit: false,
-        max_lines,
-        max_bytes,
     }
 }
 /// Truncate a single line to max characters, adding [truncated] suffix.
@@ -168,15 +131,6 @@ pub(crate) fn truncate_line(line: &str, max_chars: usize) -> TruncatedLine {
     if line.char_indices().count() <= max_chars {
         return TruncatedLine {
             text: line.to_string(),
-            was_truncated: false,
-        };
-    }
-
-    let char_count = line.char_indices().count();
-    if char_count <= max_chars {
-        return TruncatedLine {
-            text: line.to_string(),
-            was_truncated: false,
         };
     }
 
@@ -187,16 +141,11 @@ pub(crate) fn truncate_line(line: &str, max_chars: usize) -> TruncatedLine {
         .chain("... [truncated]".chars())
         .collect();
 
-    TruncatedLine {
-        text: truncated,
-        was_truncated: true,
-    }
+    TruncatedLine { text: truncated }
 }
 
 pub(crate) struct TruncatedLine {
     pub(crate) text: String,
-    #[allow(dead_code)]
-    pub(crate) was_truncated: bool,
 }
 
 #[cfg(test)]
@@ -209,7 +158,7 @@ mod tests {
         let result = truncate_head(content, TruncationOptions::default());
         assert!(!result.truncated);
         assert_eq!(result.content, content);
-        assert_eq!(result.total_lines, 1);
+        assert_eq!(result.output_lines, 1);
     }
 
     #[test]
@@ -227,14 +176,13 @@ mod tests {
         let very_long = "x".repeat(100_000);
         let result = truncate_head(&very_long, TruncationOptions::default());
         assert!(result.truncated);
-        assert!(result.first_line_exceeds_limit);
+        assert_eq!(result.truncated_by, Some(TruncationLimit::Bytes));
         assert_eq!(result.content, "");
     }
 
     #[test]
     fn test_truncate_line_within_limit() {
         let result = truncate_line("short line", GREP_MAX_LINE_LENGTH);
-        assert!(!result.was_truncated);
         assert_eq!(result.text, "short line");
     }
 
@@ -242,7 +190,6 @@ mod tests {
     fn test_truncate_line_exceeds_limit() {
         let long = "x".repeat(600);
         let result = truncate_line(&long, GREP_MAX_LINE_LENGTH);
-        assert!(result.was_truncated);
         assert!(result.text.ends_with("[truncated]"));
     }
 }

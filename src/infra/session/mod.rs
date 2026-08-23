@@ -8,7 +8,6 @@
 //! - Version migration support
 //! - Atomic appends with file locking
 
-pub mod cwd;
 pub(crate) mod manager;
 pub mod types;
 
