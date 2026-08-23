@@ -1,0 +1,16 @@
+---
+source: src/protocol/error.rs
+expression: table
+---
+XyError::Provider: provider error: API returned 500
+XyError::Tool/InvalidArgs: tool error: invalid arguments: missing 'path'
+XyError::Tool/PermissionDenied: tool error: permission denied: /etc/shadow
+XyError::Tool/Timeout: tool error: timeout after 120s
+XyError::Tool/Aborted: tool error: aborted
+XySessionStoreError::NotFound: session not found: abc
+XySessionStoreError::Unsupported: fork not supported
+XySessionStoreError::Validation: entry type unknown
+XySessionError::NoActiveSession: no active session
+XySessionError::Busy: a turn is already running
+XySessionError::EntryNotFound: target entry not found: e-42
+XyError::Aborted: aborted

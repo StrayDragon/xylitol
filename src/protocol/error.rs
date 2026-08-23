@@ -355,4 +355,65 @@ mod tests {
         let debug = format!("{err:?}");
         assert!(debug.contains("Timeout"));
     }
+
+    // ── Snapshot: user-visible error vocabulary ─────────────────────
+
+    /// One row per user-facing error arm. Wording here is product surface
+    /// (TUI/print render it verbatim): review snapshot diffs like copy edits.
+    #[test]
+    fn error_display_vocabulary_snapshot() {
+        let cases: Vec<(&str, String)> = vec![
+            (
+                "XyError::Provider",
+                XyError::Provider(anyhow::anyhow!("API returned 500")).to_string(),
+            ),
+            (
+                "XyError::Tool/InvalidArgs",
+                XyError::Tool(XyToolError::InvalidArgs("missing 'path'".into())).to_string(),
+            ),
+            (
+                "XyError::Tool/PermissionDenied",
+                XyError::Tool(XyToolError::PermissionDenied("/etc/shadow".into())).to_string(),
+            ),
+            (
+                "XyError::Tool/Timeout",
+                XyError::Tool(XyToolError::Timeout(Duration::from_secs(120))).to_string(),
+            ),
+            (
+                "XyError::Tool/Aborted",
+                XyError::Tool(XyToolError::Aborted).to_string(),
+            ),
+            (
+                "XySessionStoreError::NotFound",
+                XySessionStoreError::not_found("abc").to_string(),
+            ),
+            (
+                "XySessionStoreError::Unsupported",
+                XySessionStoreError::unsupported("fork").to_string(),
+            ),
+            (
+                "XySessionStoreError::Validation",
+                XySessionStoreError::validation("entry type unknown").to_string(),
+            ),
+            (
+                "XySessionError::NoActiveSession",
+                XySessionError::NoActiveSession.to_string(),
+            ),
+            (
+                "XySessionError::Busy",
+                XySessionError::busy("a turn is already running").to_string(),
+            ),
+            (
+                "XySessionError::EntryNotFound",
+                XySessionError::entry_not_found("e-42").to_string(),
+            ),
+            ("XyError::Aborted", XyError::Aborted.to_string()),
+        ];
+        let table: String = cases
+            .into_iter()
+            .map(|(arm, text)| format!("{arm}: {text}"))
+            .collect::<Vec<_>>()
+            .join("\n");
+        insta::assert_snapshot!("error_display_vocabulary", table);
+    }
 }
