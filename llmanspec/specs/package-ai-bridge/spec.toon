@@ -27,7 +27,7 @@ requirements[24]{req_id,title,statement}:
   pab25,"responses-reasoning-full-replay-only","从 session 形 AiBridgeMessage（含 thinkingSignature）经 ResponsesAssembler 重建 input 时，回放策略 MUST 仅为全量回放：有合法 signature 则原样推入 reasoning item；MUST NOT 提供 Strip/BestEffort 产品旋钮或 ExtraPolicy 回放模式枚举；空字符串 encrypted_content 的 signature MUST 仍整包回放。由包内 golden/单测覆盖，MUST NOT 单独扩 BDD step。"
   pab26,"responses-reasoning-encrypted-backfill","流式 Responses 路径在 response.completed 或 response.incomplete 时，若能按 reasoning id 将终端 output 中的非空 encrypted_content 合并进先前 ThinkingEnd 的 thinkingSignature，MUST 在随后的 Done 之前发出更新后的 ThinkingEnd（或文档化等价）；主路径 MUST NOT 因缺 encrypted 而崩溃。由包内合成 SSE 单测覆盖，MUST NOT 单独扩 BDD step。"
   pab27,"responses-assemble-prefix-idempotent","对同一 Vec<AiBridgeMessage>、同一 AiBridgeGenerateOptions（含 system_prompt）、同一 tools schema 与 WirePolicy，ResponsesAssembler 构造的 openai-responses 请求体中业务布局（至少 input 项序列与 tools）MUST 规范化后幂等：连续组装两次相等；消息经 serde 或 JSONL 行往返后再组装 MUST 仍得相等前缀。MUST NOT 因仅序列化往返而重排或改写历史 input。由包内单测与维护 lab（lab_session_prefix_idempotency）覆盖，MUST NOT 单独扩 BDD step。"
-scenarios[16]{req_id,id,given,when,then,feature}:
+scenarios[27]{req_id,id,given,when,then,feature}:
   pab28,"exact-known-level-no-casefold-unit","level 为 HIGH 且无 map","resolve_thinking_for_request Anthropic","不得当作内置 high 预算；须 Invalid 或非内置预算路径",false
   pab17,session-vs-llm-vocab-unit,"AgentMessage 位于 protocol 根","调用 project_for_llm / 检查 XyModel 签名","Llm+Env 组合；XyModel 只收 AiBridgeMessage；无平行 LLM 叶 enum",false
   pab18,"responses-embedded-error-message-unit","错误串含 content:{\"error\":{\"code\":400,\"message\":\"…exceeds…\",\"type\":\"exceed_context_size_error\"}}","map_err 或 extract","错误文案含 upstream message（及可选 type），非仅 deserialize 失败",false
@@ -44,3 +44,14 @@ scenarios[16]{req_id,id,given,when,then,feature}:
   pab26,"completed-backfills-encrypted-unit","output_item.done 无 encrypted 且 completed.output 同 id 有非空 encrypted","map_responses_sse_event","Done 前有更新 signature 的 ThinkingEnd",false
   pab27,"assemble-prefix-idempotent-unit","固定 messages/options/tools/WirePolicy","ResponsesAssembler 组装两次及 serde/JSONL 往返后再组装","规范化 input 与 tools 相等",false
   "pab29","http-wait-bounded","provider 流已建立但上游停止发送字节","等待后续 chunk","idle 上界到期后返回可分类超时错误且连接释放",false
+  pab1,crate-no-dep-xylitol,packages/xylitol-ai-bridge 已加入 workspace,检查该包 Cargo.toml 依赖,不存在对主包 xylitol 的依赖,false
+  pab2,modules-exist,包源码树已按 design 落地,枚举 src 模块,存在 provider usage accounting tokenize registry 职责边界,false
+  pab3,dto-no-bash-role,审查 bridge 公共消息 enum,列出 role 变体,无 bashExecution/compactionSummary/branchSummary 平行会话角色,false
+  pab4,explicit-projection,含 BashExecution 的 AgentMessage 列表,调用 project_for_llm,"得到 Vec AiBridgeMessage 且无独立 bash 角色，内容按规则折叠或跳过",false
+  pab4,no-json-twin-map,生成路径装配,审查 infra map 与 agent,"不存在第二份平行 LLM 叶 enum，也不存在 AgentMessage↔AiBridgeMessage 全量 serde_json 往返主路径",false
+  pab5,single-impl,OpenAI 与 Anthropic 路径已迁入包,审查主仓 provider 装配与包 provider,主仓无并行完整 adapter 实现体仅剩映射或装配,false
+  pab11,openai-via-sdk,Responses 请求,实现归属,经 async-openai Client（非手写重复 SSE 栈为默认路径）,false
+  pab11,open-closed-adapter,新增一 OpenAI-compatible base_url,接线,仅增配置/薄 adapter 不改 AgentMessage,false
+  pab12,openai-responses-effort,level=medium 且无自定义 map,组装 Responses 请求,body.reasoning.effort 为 medium,false
+  pab12,anthropic-budget-off,level=off,组装 Anthropic 请求,body 无 enabled thinking budget 块,false
+  pab12,map-override,map 将 high 映射为 max,组装 OpenAI 类请求,effort 字段为 max,false

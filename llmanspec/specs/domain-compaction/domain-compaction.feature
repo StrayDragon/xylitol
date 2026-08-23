@@ -168,12 +168,6 @@
     那么 所用 token 数字与同源估计一致且 MUST NOT 另算独立 len/4 总和
     并且 触发比较式为占用大于窗口减 reserveTokens
 
-  @req:c26
-  场景: turn-settlement-once-shared
-    假如 单次 turn 收尾且未实际执行 compaction
-    当 compact 预检与 footer 刷新完成
-    那么 二者消费同一 settlement generation 且 MUST NOT 同秒重复独立 estimate 打点
-
   @req:c17
   @req:c2
   场景: auto-over-threshold
@@ -253,27 +247,3 @@
     假如 overflow Case1 触发 auto-compact
     当 观察 CompactionStart 与 CompactionEnd
     那么 reason 可区分为 overflow 且与 threshold 或 manual 不同
-
-  @req:c24
-  场景: bare-force
-    假如 会话可 compact 且无 instructions
-    当 执行手动 force compact
-    那么 发生 compaction 且送入摘要模型的 prompt MUST NOT 含 Additional focus
-
-  @req:c24
-  场景: with-text
-    假如 会话可 compact 且 instructions 为非空文本
-    当 执行手动 force compact 并传入该文本
-    那么 history 摘要 prompt MUST 含 Additional focus 与该文本
-
-  @req:c24
-  场景: whitespace
-    假如 instructions 仅空白或 None
-    当 执行手动 force compact
-    那么 行为等同无 instructions（prompt 无 Additional focus）
-
-  @req:c24
-  场景: auto-clean
-    假如 threshold 或 overflow auto-compact 触发
-    当 观察摘要模型输入
-    那么 MUST NOT 含 Additional focus 且 MUST NOT 复用上一次 manual instructions

@@ -15,7 +15,7 @@ requirements[12]{req_id,title,statement}:
   pt11,"builtins-available-tools-mcp-discover","默认 build_system_prompt 路径下 Available tools 散文清单 MUST 仅含内置（非 mcp__ / 过渡 mcp- / mcp_ 前缀）工具片段；MUST 含一句引导：MCP/custom 工具以本会话定稿后的请求 tools 列表为准并按精确名调用（MAY 提示用户经产品 `/mcp` 查看连接与 armed）。MUST NOT 在 Available tools 段枚举 mcp 工具名。定稿后 provider tools 参数 MUST 可含当时冻结的 mcp 工具；MUST NOT 暗示 settle 后会继续热扩 tools 表。自定义 SYSTEM.md 或 custom_prompt 整段替换默认正文时 MUST 保持 pt9 替换语义。"
   pt12,"date-placement-and-session-env","系统提示若写入日历日 MUST 经 ContextPolicy.date_placement：默认 Omit（system 无 Current date，亦无 CWD）；SystemAsToday / SystemPinnedAtSession 仅为消融/lab。产品路径 MUST 将日历日/CWD 以状态栏族特殊类型 session_env（Env CustomMessage，project_for_llm 投影为 user）在用户真实输入落盘之前持久化：首轮或相对上次 session_env 的日历日/CWD 有变时追加；同日同 cwd MUST NOT 重复追加。压缩裁剪或 overflow 同轮 reload 之后、继续向模型生成之前，上下文 MUST 仍含与当前日历日/进程 cwd 对齐的 session_env（缺失或日/cwd 过期则 ensure 追加并持久化）。秒级时间戳 MUST NOT 进系统提示。完整状态栏 Lane 由后继 change 消费既有 session_env。由单测覆盖；MUST NOT 为静态存在性单独扩 BDD step。"
   pt13,"no-instructions-dual-copy","openai-responses 主路径 MUST NOT 将系统提示再写入顶栏 instructions 与 input 前缀各一份；SSOT 为 system_prompt → input 前缀 item（thinking on 可为 developer）。由 Assembler/单测回归覆盖。"
-scenarios[10]{req_id,id,given,when,then,feature}:
+scenarios[21]{req_id,id,given,when,then,feature}:
   pt5,"safe-minijinja-unit-covered",默认组装与钉 date 的沙箱渲染,单测,strict/白名单/可钉 date 行为由 unit 覆盖,false
   pt10,"barrier-parallel-injects-runtime-policy","batch_mode 为 BarrierParallel","组装系统提示","含恰好一段 runtime_policy 且含多-tool 同消息策略短句",false
   pt10,"sequential-omits-runtime-policy","batch_mode 为 Sequential","组装系统提示","MUST NOT 含 runtime_policy 段",false
@@ -26,3 +26,14 @@ scenarios[10]{req_id,id,given,when,then,feature}:
   pt12,"session-env-append-rules","空历史或日/cwd 变更","检查 should_append_session_env","空或变更则追加；同日同 cwd 不追加",false
   pt12,"ensure-after-compact-or-overflow","压缩后上下文丢失 session_env 或日/cwd 过期","ensure_session_env_in_history","MUST 追加对齐当前日历日与 cwd 的 session_env",false
   pt13,"no-top-level-instructions","ResponsesAssembler 默认组装","检查 body JSON","MUST NOT 含顶栏 instructions 键",false
+  pt1,assemble,提供 tools 与 context,build_system_prompt,输出含工具与 context 片段,false
+  pt2,skills,已加载 demo-skill,组装系统提示,含 skill 名或 available_skills 段,false
+  pt2,skills-untrusted,项目未信任且仅有项目 skill,组装,MUST NOT 含该项目 skill,false
+  pt6,apply-next-turn,会话已有 user/assistant 历史,apply_prompt_resources 换新 AGENTS 内容,历史条数不变且下一轮 system 含新 context,false
+  pt7,bootstrap-inject,信任且已加载 demo-skill,构造 Agent 或 bootstrap 装配,系统提示含 demo-skill 或 available_skills 段,false
+  pt7,untrusted-skip,未信任且仅有项目 skill,装配系统提示,MUST NOT 含该项目 skill 名,false
+  pt7,apply-keeps-history,会话已有历史,apply_skills 换新目录,历史条数不变且下一轮 system 反映新 skills,false
+  pt8,inject-known,目录含 demo 且用户文本含 $demo,展开后发模型,模型侧 user 文本含 SKILL.md 正文片段,false
+  pt8,history-raw,同上,检查会话历史 user 文本,仍含字面 $demo 且无强制展开块作为唯一形态,false
+  pt8,unknown-passthrough,文本含 $nosuch,展开,无 nosuch 的 skill 块；$nosuch 仍在文本中,false
+  pt11,builtins-only-available-tools-mcp-discover,ToolSet 含 builtins 与至少一个 mcp_ 工具且使用默认正文,build_system_prompt,Available tools 段无 mcp__ 工具名且含按本轮 tools 列表发现并精确调用的引导句,false

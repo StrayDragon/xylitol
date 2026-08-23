@@ -18,7 +18,7 @@ requirements[15]{req_id,title,statement}:
   atb12,"write-intent-body-stream","当 MessageUpdate/ToolCall 名为 write 且 arguments 含 content 时，bridge MUST 刷新同一 Tool 行的可渲染正文为当前 content 快照（可与 args_preview 并存）；MUST NOT 等 ToolExecutionEnd 才首次出现正文。"
   atb13,"tool-path-stream-sticky","write/edit/read 意图流式阶段，args 一旦可解析出 path（含 file_path/file 别名）MUST 立即进入该 Tool 行 args_preview（~/ 缩短）；path 仍空时 MUST 用 … 占位（如 edit … / write …），MUST NOT 等 ToolExecutionEnd 才首次出现路径槽。同 id 后续 upsert 若新 args 缺 path 但该行已见真实 path，MUST 保留（粘性）。ToolExecutionEnd MUST NOT 用空 args 重写已有 call header（bash `$ cmd`、已流式 write/edit path MUST 在 done 后仍可见）。仅当 header 仍缺真实 path 且成功 JSON 含 path 时 MUST 回填。read 在有 offset/limit 时 MUST 在 path 后附 :start 或 :start-end（end=offset+limit-1；仅 offset 则 :offset）。edit header MUST NOT 附加 :N 行域（行号仅在 display_diff 正文）。"
   atb15,"tool-path-wire-parity","产品 TUI 经 attach 收到的 ToolExecutionStart MUST 与进程内收到的同一事件使用同一 args 语义；经 wire 往返后，read/write/edit 的 args_preview MUST 保留可解析出的真实路径，MUST NOT 因载荷映射丢失而显示为 `Read ...` 等占位。"
-scenarios[13]{req_id,id,given,when,then,feature}:
+scenarios[27]{req_id,id,given,when,then,feature}:
   atb14,config-error-sticky,"收到 XyEvent::Error kind=Config",经 apply_xy_event,出现粘性 UiEntry::Error 且非 ScrollNotice Aborted,false
   atb14,provider-error-sticky,"收到 XyEvent::Error kind=Provider",经 apply_xy_event,出现粘性 UiEntry::Error 且非 ScrollNotice Aborted,false
   atb10,"intent-upsert",MessageUpdate 含渐进 ToolCall,经 apply_xy_event,出现单条 UiEntry::Tool 且 Start 不重复 push,false
@@ -32,3 +32,17 @@ scenarios[13]{req_id,id,given,when,then,feature}:
   atb13,"end-keeps-bash-command",bash Start 含 command 后 End 成功,经 apply_xy_event,args_preview 仍含 $ command,false
   atb13,"end-keeps-streamed-write-path",write 流式已有 path 后 End 成功,经 apply_xy_event,args_preview 仍含该 path,false
   atb15,tool-path-wire-roundtrip,"同一 read ToolExecutionStart 分别走直接投影与 wire 往返","比较两侧 UiModel 工具摘要","两侧 args_preview 相等且包含真实路径",false
+  atb1,unknown-event,,收到未映射 XyEvent,记录日志且 UI 不崩溃,false
+  atb1,no-xyevent-in-render,,审查 tui 渲染模块,无 XyEvent 匹配；事件经 apply_xy_event,false
+  atb2,tool-turn-middle,,工具调用后出现中间 TurnEnd,UI 仍保持 busy 并继续消费后续事件,false
+  atb3,queue-update,,steer 与 follow-up 入队,UI 收到 QueueUpdate 计数,false
+  atb5,compact-start-status,agent Busy,CompactionStart,status 为 Compacting 且 scrollback 含 compaction 占位块,false
+  atb5,compact-end-restores-working,Busy 且 status=Compacting 且已有占位块,CompactionEnd aborted=false 且含 summary 与 tokens_before,占位就地变为默认折叠完成块且 status 恢复 Working；MUST NOT 追加 compaction complete 滚动提示,false
+  atb5,compact-end-aborted,Busy 且 Compacting 且已有占位块,CompactionEnd aborted=true,占位就地变为短失败态且 status 恢复 Working,false
+  atb5,compact-rebuild-collapsed,session 含 CompactionEntry,rebuild scrollback from travel,出现默认折叠的 compaction 完成块；MUST NOT 整段滚动提示 dump summary,false
+  atb6,retry-start-status,agent Busy,AutoRetryStart attempt=2 max=5,status 为 Retry 2/5,false
+  atb6,retry-end-fail-note,Busy 且 Retry 状态,AutoRetryEnd success=false,scrollback 含失败说明且 status 恢复 Working,false
+  atb6,retry-end-success-restores,Busy 且 Retry 状态,AutoRetryEnd success=true,status 恢复 Working 且无失败滚动提示,false
+  atb7,esc-clears-streaming,busy 且已有 streaming_thinking,note_user_abort,streaming 缓冲为空且含 Aborted,false
+  atb8,bash-entry-shape,idle 提交 bang,审查 UiModel entries,存在 Bash 块或等价含 command 字段,false
+  atb9,append-keeps-pending,已 begin_bash_block,连续两次 append_bash_output,同一 Bash 条目 output 增长且 status 仍为 pending,false

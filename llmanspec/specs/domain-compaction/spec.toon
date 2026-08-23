@@ -29,8 +29,13 @@ requirements[26]{req_id,title,statement}:
   c25,compact 输入为 leaf 分支,"prepare_compaction 与 compact_session（及 Orchestrator force/auto/overflow）MUST 仅消费当前 leaf 的分支路径条目（对齐 pi getBranch）；MUST NOT 把旁支 sibling 条目计入切点或摘要范围。"
   c26,turn-settlement-once,"当一次 ReAct turn 收尾做 threshold/overflow 预检时，System MUST 对该次收尾只产生一份 ContextTokenEstimate settlement（同一 tokens/provenance generation）供 compact 决策与产品 footer 消费；MUST NOT 让 Agent 预检与 TUI TurnEnd/stream-close 在无上下文失效的情况下各自再跑一遍 estimate 并各自打点；若随后实际执行了 compaction，MUST 经 CompactionEnd（或等价）失效并允许新的 settlement。算数入口仍 MUST 为 estimate_from_session_entries（或同源），MUST NOT 另立第二套尺子。"
   c27,"no-invent-reasoning-after-compact","Compaction 以 CompactionEntry 摘要替换 firstKept 之前的轨迹后，随后经 project_for_llm 与 Responses 组装的 input MUST 仅回放仍留在保留消息中的 thinkingSignature；MUST NOT 为已摘要掉的旧 assistant 轮次发明或恢复 reasoning item / thinkingSignature。由单测或文档场景覆盖，MUST NOT 单独扩 BDD step。"
-scenarios[4]{req_id,id,given,when,then,feature}:
+scenarios[9]{req_id,id,given,when,then,feature}:
   c14,"single-compaction-config-unit",代码库,"搜索 CompactionConfig 与 compaction_threshold","零匹配残留（单测或闸脚本维护）",false
   c25,"branch-path-excludes-sibling",文件序含旁支 sibling 且 leaf 在右支,force 或 prepare compact,切点与摘要范围不含左支消息,false
   c26,"turn-settlement-shared-once",单次 turn 收尾且未实际 compact,检查 compact 预检与 footer 所用估计,同一 settlement generation 且无同秒重复独立 estimate 打点,false
   c27,"compact-no-fake-old-signature-unit","compact 后工作 history 仅含 CompactionEntry 与 firstKept 之后消息","组装 Responses input","无已摘要轮次的伪造 reasoning signature",false
+  c26,turn-settlement-once-shared,单次 turn 收尾且未实际执行 compaction,compact 预检与 footer 刷新完成,二者消费同一 settlement generation 且 MUST NOT 同秒重复独立 estimate 打点,false
+  c24,bare-force,会话可 compact 且无 instructions,执行手动 force compact,发生 compaction 且送入摘要模型的 prompt MUST NOT 含 Additional focus,false
+  c24,with-text,会话可 compact 且 instructions 为非空文本,执行手动 force compact 并传入该文本,history 摘要 prompt MUST 含 Additional focus 与该文本,false
+  c24,whitespace,instructions 仅空白或 None,执行手动 force compact,行为等同无 instructions（prompt 无 Additional focus）,false
+  c24,auto-clean,threshold 或 overflow auto-compact 触发,观察摘要模型输入,MUST NOT 含 Additional focus 且 MUST NOT 复用上一次 manual instructions,false

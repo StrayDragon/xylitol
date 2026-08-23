@@ -44,12 +44,6 @@
     当 运行至将结束
     那么 继续循环而非 AgentEnd
 
-  @req:ar8
-  场景: default-drain-one-at-a-time
-    假如 使用缺省 QueueMode 入队两条 steer
-    当 一次 drain
-    那么 只取出一条且队列剩一条
-
   @req:ar9
   场景: queue-update
     假如 装配 agent 并入队 steer
@@ -80,12 +74,6 @@
     当 运行 AgentRuntime 触发 bash
     那么 tool-error 回写且未执行
 
-  @req:ar23
-  场景: persist-done-usage
-    假如 mock 模型流以 Done 结束且携带非空 usage
-    当 运行 AgentRuntime 并检查会话持久化的 assistant 消息
-    那么 usage 字段非空且与 Done 一致
-
   @req:ar24
   场景: should-stop-emits-agent-end
     假如 注册 should_stop_after_turn 在首次 TurnEnd 后返回 true
@@ -110,30 +98,6 @@
     假如 按 session.max_turns=2 安装 should_stop_after_turn 且入队 follow_up 以迫使第二轮
     当 运行 AgentRuntime
     那么 至多出现 2 次 TurnStart 后出现 AgentEnd
-
-  @req:ar25
-  场景: mid-run-select-applies-next-turn
-    假如 多 turn mock 且第一 turn 已开始流式
-    当 run 中途 select_model 或 set_thinking_level 到新值
-    那么 当前流仍用旧绑定且下一 turn 的 generate_stream 用新绑定
-
-  @req:ar25
-  场景: idle-abort-converges
-    假如 run 中途切换 selected 后 abort
-    当 run 结束后查询 active 与 selected
-    那么 active 与 selected 收敛为同一 model 与 thinking
-
-  @req:ar26
-  场景: abort-persists-partial
-    假如 模型流已输出部分正文后用户 abort
-    当 检查 session history
-    那么 存在 stop_reason=aborted 的 assistant 且含 partial 正文
-
-  @req:ar26
-  场景: abort-skipped-in-llm-project
-    假如 history 含 stop_reason=aborted 的 assistant
-    当 project_for_llm
-    那么 投影结果不含该 assistant 行
 
   @req:ar27
   场景: batch-default-barrier-parallel
