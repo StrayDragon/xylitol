@@ -25,10 +25,28 @@ requirements[22]{req_id,title,statement}:
   otel20,"otel-turn-terminal-status","当低频观测 span 激活时，agent.turn 结束 MUST 暴露可过滤终态：若该轮因用户 abort（或等价 cancel 令牌）提前结束，MUST 携带 langfuse.observation.level=ERROR 与 langfuse.observation.status_message=aborted（或等价）；若该轮正常完成，MUST NOT 将 turn 标为 ERROR/aborted。本 req 不强制细分模型/工具 error 类（可 follow-up）。由单测覆盖，MUST NOT 为静态存在性单独扩 BDD step。"
   otel21,"otel-token-estimate-settlement-once","当低频观测 span 激活且完成一次 TurnSettled（无随后 AfterCompaction 失效）时，导出的 token.estimate span 计数 MUST 为 1 且挂在该 agent.turn 下；MUST NOT 再出现同秒同 tokens 的第二 token.estimate（含独立根）。由 CollectingReporter 或 provider-trace 窄读覆盖，MUST NOT 为静态存在性单独扩 BDD step。"
   otel22,"otel-obs-lane-llm","当低频观测 span 激活时，LLM/agent 主路径导出名 agent.turn、agent.iteration、llm.request、tool.execute、过 prepare 的 agent.compaction、以及 settlement 路径的 token.estimate MUST 携带属性 xylitol.obs.lane=llm，供 Collector 或直连消费端过滤；该属性 MUST NOT 写入 XyEvent / hooks；MUST NOT 用 xylitol.signal 作为同义属性名。直连 Langfuse 时，本属 infra 的门闸早退 MUST NOT 伪装为上述 LLM 语义 span（见 otel19）。由单测覆盖，MUST NOT 为静态存在性单独扩 BDD step。"
-scenarios[6]{req_id,id,given,when,then,feature}:
+scenarios[24]{req_id,id,given,when,then,feature}:
   otel18,"parallel-tools-share-iteration",并行窗内两工具并发且观测激活,检查导出 span 树,两 tool.execute 同属一代 iteration 父且非 random 根,false
   otel19,"compaction-under-turn",观测激活且 turn 内发生 compaction,检查导出 span 树,存在 agent.compaction 为该 turn 子节点且 type 为 span 并含 reason,false
   otel19,"prepare-fail-no-compaction-span",观测激活且 manual prepare 早退,收集 SpanRecord,MUST NOT 存在 agent.compaction,false
   otel20,"turn-aborted-marks-error",观测激活且用户 abort 结束一轮,检查 agent.turn 属性,level 为 ERROR 且 status_message 为 aborted,false
   otel21,"token-estimate-once-per-turn-settled",观测激活且单次 turn 收尾未 compact,收集 token.estimate SpanRecord,恰好 1 条且 parent 为该 turn 无额外独立根,false
   otel22,"llm-spans-carry-obs-lane",观测激活且完成一轮含 generation,检查主路径 span 属性,xylitol.obs.lane 均为 llm,false
+  otel1,默认配置不出口 OTLP,AppConfig 未配置 otel 或 exporter 为 none,进程完成观测装配,不得安装向远端发送的 OTLP Reporter,false
+  otel2,显式 otlp-http 才导出,feature otel 已启用且 exporter 为 otlp-http 且 endpoint 与认证合法,进程完成观测装配并产生 fastrace span,经 fastrace-opentelemetry 以 OTLP/HTTP 导出且不得以 gRPC 作为 Langfuse 默认路径,false
+  otel3,坏配置降级不阻断,feature otel 已启用但 otlp-http 的 endpoint 或认证不完整或 exporter 构建失败,进程启动并装配观测,降级为不收集 OTLP 且对话主路径仍可继续,false
+  otel4,出口不引入 tracing 双栈,仓库启用 otel 出口相关依赖,检查 Cargo 与观测装配路径,"时间线仍为 fastrace 且不得依赖 tracing 或 tracing-subscriber，且不得向 stdout 或 stderr 打印破坏 TUI",false
+  otel5,本地与 OTLP 可同时开启,本地 provider-trace FileReporter 与 OTLP Reporter 均满足开启条件,一批 SpanRecord 被报告,fan-out 同时投递两侧且 OTLP 侧失败时按降级处理而不静默关掉本地闸,false
+  otel6,根 span 始终带 session uuid,低频观测 span 已激活且当前会话 UUID 已知,创建 agent.turn 或无父 turn 的独立 token.estimate 或独立 agent.compaction 等根 span,属性含 langfuse.session.id 且值等于该 UUID 且不得用 display name 顶替,false
+  otel7,有 display name 才写 session_name 元数据,当前会话已设置 display name,创建低频根 span,额外含 langfuse.trace.metadata.session_name；若尚未命名则不得写入该键且 session id 不变,false
+  otel8,根 span 带 Langfuse observation 类型,低频观测 span 已激活,创建 llm.request、agent.turn、agent.iteration、tool.execute、agent.compaction,"分别标记 generation、agent、agent、tool、span，且默认不附带完整 prompt 或 completion 载荷",false
+  otel9,generation 写入 usage,低频观测 span 已激活且 provider 流 Done 带 usage,llm.request span 结束,含 langfuse.observation.usage_details；无 usage 时不得伪造零用量,false
+  otel10,observation I/O 仅显式档,observation_io 缺省或为 none,llm.request generation 导出,"不得写入 langfuse.observation.input 或 output；仅 truncated 或 full 时按档写入，且可在任意 Done 或提前结束时附着而不依赖 usage",false
+  otel11,同 turn 父子共享 trace,低频观测 span 已激活且跑完一轮含工具的用户触发处理,收集该轮 fastrace SpanRecord,存在名为 agent.turn 的根且 agent.iteration 与 llm.request 与 tool.execute 共享其 trace_id 并经 parent 挂接；若该轮发生了 compaction 则 agent.compaction 亦共享同一 trace_id 且不得各自无关 random 根,false
+  otel12,导出名使用产品词汇,低频观测 span 已激活且跑完一轮用户触发处理,检查导出或收集到的 span 名,含 agent.turn 与 agent.iteration 与 llm.request 且不含 react.stream 与 react.turn 与 provider.request 作为导出名；若发生 compaction 则名称为 agent.compaction,false
+  otel13,token.estimate 挂 turn 或独立根,低频观测 span 已激活,在活跃 agent.turn 内发生 token.estimate,该 span 为该 turn 的子 span；当无 turn 上下文的真闲置路径时可为独立根并在 session 已知时带同一 langfuse.session.id；TurnSettled 后仅为 footer stream-close 不得再开 random 独立根,false
+  otel21,TurnSettled 至多一个 token.estimate,低频观测 span 已激活且单次 turn 收尾未触发 AfterCompaction,收集 token.estimate SpanRecord,恰好 1 条且挂在该 agent.turn 下,false
+  otel14,tool observation I/O 仅显式档,tool_observation_io 缺省或为 none,tool.execute 导出,不得写入 langfuse.observation.input 或 output；仅 truncated 或 full 时按档写入参数与结果摘要,false
+  otel15,turn 根用户提示预览随 observation_io,observation_io 缺省或为 none,agent.turn 根导出,不得写入 langfuse.observation.input；仅 truncated 或 full 时写入本轮用户提示摘要,false
+  otel16,generation input 来自请求体而非 raw 事件名,observation_io 为 truncated 或 full 且流式 llm.request 已发出完整 request JSON,generation 结束,langfuse.observation.input 含该请求体摘要且不得仅因缺少 response.json 等 raw 事件名而为空,false
+  otel17,abort 提前结束仍 flush 并标 ERROR,observation_io 为 truncated 或 full 且流中已有 TextDelta,llm.request 在未见成功 Done 时因 abort 提前结束,"generation 仍按档带 input 或 output，且 level 为 ERROR、status_message 为 aborted，且不得伪造 usage",false

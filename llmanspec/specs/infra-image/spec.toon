@@ -8,4 +8,9 @@ requirements[5]{req_id,title,statement}:
   i3,"format-convert",System MUST 支持常见图片格式（PNG、JPEG、WebP）互转，需要缩小时自动选择 JPEG 与可配置 quality。
   i4,"multi-modal-prep",System MUST 产出适合 multimodal LLM 输入的输出：base64 编码 JPEG/PNG，载荷低于 4.5MB，含原始尺寸元数据。
   i5,"path-to-multimodal-image","System MUST 提供从本地图片路径产出 multimodal ImageContent（或等价 AgentPart::Image）的入口：读取文件、经图像缩放约束尺寸与载荷、填充 media_type 与 base64 data。路径不可读或超限失败 MUST 返回描述性错误，MUST NOT 静默跳过。"
-scenarios[0]:
+scenarios[5]{req_id,id,given,when,then,feature}:
+  i1,scale-down,"提供 4000x3000 PNG，max 2000px",resize_image 被调用,输出 2000x1500 且 was_resized 为 true,false
+  i2,exif-rotate,JPEG 含 EXIF orientation 6（rotate 90）,resize_image 被调用,像素数据旋转 90 度且 was_resized 为 true,false
+  i3,format-auto,"PNG 大于 4.5MB，max 4.5MB",resize_image 被调用,输出为 quality 80 的 JPEG 且低于 4.5MB,false
+  i4,payload,图片已处理,resize_image 返回,结果含 base64 data、MIME type、原始尺寸与最终尺寸,false
+  i5,small-png-path,临时目录有小 PNG 文件,path_to_image_content 被调用,返回含 data 与 image/png 的 ImageContent,false
