@@ -25,7 +25,7 @@ pub enum ForkPosition {
 
 // ── Header ──────────────────────────────────────────────────────────
 
-#[derive(Debug, Clone, Serialize, Deserialize)]
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub struct SessionHeader {
     #[serde(skip, default)]
@@ -45,7 +45,7 @@ fn default_version() -> u32 {
 
 // ── Entry base ──────────────────────────────────────────────────────
 
-#[derive(Debug, Clone, Serialize, Deserialize)]
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub struct EntryBase {
     #[serde(skip, default)]
@@ -57,7 +57,7 @@ pub struct EntryBase {
 
 // ── Message entry ───────────────────────────────────────────────────
 
-#[derive(Debug, Clone, Serialize, Deserialize)]
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub struct MessageEntry {
     #[serde(flatten)]
@@ -67,7 +67,7 @@ pub struct MessageEntry {
 
 // ── Compaction entry ───────────────────────────────────────────────
 
-#[derive(Debug, Clone, Serialize, Deserialize)]
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub struct CompactionEntry {
     #[serde(flatten)]
@@ -83,7 +83,7 @@ pub struct CompactionEntry {
 
 // ── Branch summary entry ───────────────────────────────────────────
 
-#[derive(Debug, Clone, Serialize, Deserialize)]
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub struct BranchSummaryEntry {
     #[serde(flatten)]
@@ -98,7 +98,7 @@ pub struct BranchSummaryEntry {
 
 // ── Model change entry ─────────────────────────────────────────────
 
-#[derive(Debug, Clone, Serialize, Deserialize)]
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub struct ModelChangeEntry {
     #[serde(flatten)]
@@ -109,7 +109,7 @@ pub struct ModelChangeEntry {
 
 // ── Thinking level change entry ────────────────────────────────────
 
-#[derive(Debug, Clone, Serialize, Deserialize)]
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub struct ThinkingLevelChangeEntry {
     #[serde(flatten)]
@@ -119,7 +119,7 @@ pub struct ThinkingLevelChangeEntry {
 
 // ── Custom entry ───────────────────────────────────────────────────
 
-#[derive(Debug, Clone, Serialize, Deserialize)]
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub struct CustomEntry {
     #[serde(flatten)]
@@ -130,7 +130,7 @@ pub struct CustomEntry {
 
 // ── Custom message entry (participates in LLM context) ─────────────
 
-#[derive(Debug, Clone, Serialize, Deserialize)]
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub struct CustomMessageEntry {
     #[serde(flatten)]
@@ -145,7 +145,7 @@ pub struct CustomMessageEntry {
 // ── Label entry ──────────────────────────────────────────────────────
 
 /// Label entry for user-defined bookmarks/markers on entries.
-#[derive(Debug, Clone, Serialize, Deserialize)]
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub struct LabelEntry {
     #[serde(flatten)]
@@ -157,7 +157,7 @@ pub struct LabelEntry {
 // ── Session info entry ──────────────────────────────────────────────
 
 /// Session metadata entry (e.g., user-defined display name).
-#[derive(Debug, Clone, Serialize, Deserialize)]
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub struct SessionInfoEntry {
     #[serde(flatten)]
@@ -178,7 +178,7 @@ pub struct SessionContext {
 
 // ── Unified entry enum ─────────────────────────────────────────────
 
-#[derive(Debug, Clone, Serialize, Deserialize)]
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 #[serde(tag = "type")]
 pub enum SessionEntry {
     #[serde(rename = "session")]

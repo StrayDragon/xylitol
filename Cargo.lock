@@ -6513,6 +6513,7 @@ dependencies = [
  "opentelemetry_sdk",
  "pathdiff",
  "portable-pty",
+ "proptest",
  "regex",
  "reqwest",
  "rmcp",
