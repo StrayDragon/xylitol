@@ -399,9 +399,12 @@ mod tests {
         }
         let start = std::time::Instant::now();
         let result = spawn_unref_pipe_command(hang.to_str().unwrap(), &[], "payload");
+        // The contract is "returns without waiting for the child" (child would
+        // block ≥120s), not sub-second latency: under a fully parallel test
+        // run, spawn jitter alone can exceed 500ms on loaded machines.
         assert!(
-            start.elapsed() < std::time::Duration::from_millis(500),
-            "unref/forget path must return immediately, elapsed={:?}",
+            start.elapsed() < std::time::Duration::from_secs(5),
+            "unref/forget path must not wait for the hanging child, elapsed={:?}",
             start.elapsed()
         );
         assert_eq!(result, ClipboardResult::Copied);
