@@ -19,4 +19,32 @@ requirements[16]{req_id,title,statement}:
   ast14,"session-tree-e2e-pointer","产品会话树 Search/Help 与 Shift+L 行为 MUST 有 tests/tui_e2e 产品 Fake PTY 覆盖（见 test-qa-gate qg05）；本 requirement 为验收指针，不另增运行时行为。"
   ast15,"travel-notice-trailing","产品会话树 Enter travel 成功并重建 transcript 后，MUST 以可滚 UiEntry::ScrollNotice（或等价滚动提示行）尾随完整 history @ selected · leaf · path 文案，使跟底时出现在输入框上方视野；重建投影 MUST NOT 将该通知 prepend 为 entries 首条。fork / session 切换 / debug scene 等已有尾随产品 note 的路径 MUST NOT 再叠一条 history @（去重）。"
   ast16,"demo-travel-notice-trailing","agent_demo 会话树 travel 重建 transcript 后 MUST 与产品同源：history @ 通知 MUST 尾随于路径条目之后；MUST NOT 在 clear 后先插 ScrollNotice 再推路径（旧顶插）。"
-scenarios[0]:
+scenarios[28]{req_id,id,given,when,then,feature}:
+  ast1,double-esc-opens,空编辑器,双 Esc 于 500ms 内,editor 槽显示 Session tree,false
+  ast2,open-shows-live,Driver 当前 session 已有 user/assistant 消息,空编辑器双 Esc 打开树,树行来自 MessageHistory 活数据而非 sample_session_tree 假树,false
+  ast3,submit-grows-tree,agent_demo 已打开,提交唯一 user 文本,session_tree 含该文本且再开树可见,false
+  ast3,tool-grows-tree,agent_demo 脚本轮产生 Tool,推进 tick 至工具出现,"session_tree 含 tool: 节点",false
+  ast4,travel-user-prefills-editor,"样例树选中 u1（kind=user，其下有 assistant 子节点）",Enter travel,编辑器含原 user 正文、leaf 为 u1 的父、transcript 不含 u1 子 assistant 正文、树关闭且 status 空闲,false
+  ast4,travel-user-omits-reply-spine,同上,Enter travel,transcript 不含 travel 前跟在 u1 后的线性 assistant/tool 回复,false
+  ast4,travel-assistant-no-prefill,选中 assistant 节点,Enter travel,leaf 为该 assistant id 且编辑器未因 travel 填入 user 正文,false
+  ast5,fork-stays-on-user,树选中样例 u1（其下已有 assistant 子节点）,Shift+F 或 fork_from_history,leaf 为 u1、编辑器含原 user 文案、transcript 不含子 assistant 正文,false
+  ast5,submit-creates-sibling,fork 到 u1 之后,提交新 user 文本,u1 的 children 数量加一且活树含新文案,false
+  ast6,annotation-mapped,活树节点域 label 已 resolve,打开会话树,对应 TreeNode.annotation 有值,false
+  ast7,after-turn-tree-nonempty,产品 TUI 完成至少一轮对话且消息已 persist,双 Esc 打开会话树,树节点数大于 0 且可见 user 正文,false
+  ast8,ctrl-t-hides-tools,产品树已打开且含 tool 行,按 Ctrl+T 进入 no-tools,"可见行无 kind=tool 且状态含 [no-tools]",false
+  ast8,toggle-back-default,树在 no-tools,再按 Ctrl+T,"回到 default 谓词且状态无 [no-tools]",false
+  ast8,labeled-only,树含带 annotation 与无 annotation 节点,Ctrl+L 进入 labeled-only,仅 annotation 有值的行可见,false
+  ast9,fold-hides-descendants,树开且选中有子节点的可折行,按 Ctrl+Left（或 Alt+Left）,"该节点 is_folded 且后代行不可见，帧含 ⊞ 或等价",false
+  ast9,unfold-restores,同上已折叠,按 Ctrl+Right（或 Alt+Right）,后代重新可见,false
+  ast10,fork-new-session,树开且选中节点,按 Shift+F,fork+switch 后当前为 child、树关闭、父 JSONL 未改,false
+  ast10,fork-user-before,树选中 kind=user,Shift+F,"Before：editor 含正文且 child 不含该 user id",false
+  ast10,fork-non-user-at,树选中 assistant/tool,Shift+F,"At：child 含该节点 id 且 editor 未因 fork 填 user 正文",false
+  ast10,fork-no-sibling-leak,父会话同层已有兄弟分支,对一侧路径 Shift+F,child 不含另一侧兄弟条目,false
+  ast11,open-shows-search-help,产品 TUI idle 且已打开会话树,渲染 Tree 槽一帧,"帧内含 Search 或 Type to search 类提示，且含由键位解析得到的 move 或 filters 或 cycle 等 Help 片段",false
+  ast11,search-echo,产品会话树已打开,键入搜索串 foo,Search 行显示含 foo 的查询回显,false
+  ast12,label-persist,产品树已打开且选中节点,Shift+L 输入 keep 后 Enter,"树行含 [keep] 且 store 有对应该节点的 Label entry",false
+  ast13,after-debug-tree-nonempty,已成功 /debug session-tree-multiturn,双 Esc 开树,树节点数大于 0 且可见 fixture user 正文,false
+  ast14,e2e-case-exists,,列出 tests/tui_e2e/pty.rs,"存在产品会话树 #[ignore] 用例且注释或名含 session_tree",false
+  ast15,travel-notice-trailing,产品树选中节点且 transcript 路径足够长,Enter travel 成功,"scrollback 末尾附近含 history @ 文案，且 entries 首条不是该 history @ 顶插",false
+  ast15,fork-no-extra-history-banner,产品树 Shift+F fork 成功,查看 scrollback 滚动提示（ScrollNotice）,"含 forked → 类 note，且 MUST NOT 再叠一条 travel 用 history @",false
+  ast16,demo-travel-notice-trailing,agent_demo 树 travel 完成,查看 transcript,history @ 出现在路径条目之后而非 clear 后的第一条,false
