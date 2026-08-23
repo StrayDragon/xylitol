@@ -37,7 +37,7 @@ requirements[34]{req_id,title,statement}:
   ar34,"mcp-tool-table-freeze-gate","轨 A：Agent/session MUST 在首次 generate（会话尚未工具定稿）前执行 MCP 门闸（对齐 infra-mcp mcp8）：等待 settle 或超时后定稿 provider 可见工具表；定稿后 MUST 忽略会扩表的 settle 热并；idle `/reload` MUST 按 name upsert 重定稿；本波 resume/切会话 MUST 清冻再门闸（指纹持久化后的一致续冻另波，对齐 mcp8）。tools_mode=search（c1960）不在本要求交付范围。由单测覆盖，MUST NOT 单独扩 BDD step。"
   ar35,"stream-error-carries-kind","ReAct / session 热路径在将 XyError 投影为 XyEvent::Error 时 MUST 经 XyEventError::from_xy（或等价）保留稳定 kind（对齐 XyError::kind）；MUST NOT 仅把 Display 字符串塞进无 kind 的 Error。Abort 路径 MUST 使用 Aborted kind（或 is_aborted 可识别）。由单测覆盖，MUST NOT 单独扩 BDD step。"
   ar36,"stream-node-timestamps","ReAct 持久化 assistant 消息时 MUST 附加 streamTiming（camelCase unix-ms 节点，LLM 投影忽略）：本 run 的 agentStarted、本 turn 的 turnStarted、思考通道起止、正文首末 TextDelta、首个工具意图、messageEnded；仅写入实际发生的键。思考通道结束 MUST 在先到的正文/工具意图/ThinkingEnd 打一次，MUST NOT 用 Done 或整段正文结束冒充。textEnded MAY 随最后 TextDelta 覆盖。Thought 展示用思考通道起止派生 thinkingElapsedSecs（不到 1s 省略）。由单测覆盖，MUST NOT 单独扩 BDD step。"
-scenarios[19]{req_id,id,given,when,then,feature}:
+scenarios[25]{req_id,id,given,when,then,feature}:
   ar15,"unknown-ok",构造内部专用 XyEvent 变体,经 to_wire_event 降级,返回 None 且不 panic,false
   ar16,"default-thinking",装配未设 thinking 的 agent,查询 thinking level,返回默认值,false
   ar16,"no-max-iterations-default",检查 AgentBuilder 与 profile 默认,查询步数闸,MUST NOT 存在 max_iterations 默认或生效字段,false
@@ -57,3 +57,9 @@ scenarios[19]{req_id,id,given,when,then,feature}:
   ar34,"freeze-gate-unit","未定稿会话首次 generate","门闸超时或 settle 后","工具表 FROZEN；其后 settle 不扩 provider 表",false
   ar35,"stream-error-kind-unit","热路径 XyError::Provider 投影为 XyEvent::Error","检查 XyEventError","kind=Provider 且 message 含 Display",false
   ar36,"stream-timing-nodes-unit","thinking 后长正文再 Done","persist assistant","streamTiming 含思考起止与正文起止；thinkingElapsedSecs 不含正文墙钟",false
+  ar8,default-drain-one-at-a-time,使用缺省 QueueMode 入队两条 steer,一次 drain,只取出一条且队列剩一条,false
+  ar23,persist-done-usage,mock 模型流以 Done 结束且携带非空 usage,运行 AgentRuntime 并检查会话持久化的 assistant 消息,usage 字段非空且与 Done 一致,false
+  ar25,mid-run-select-applies-next-turn,多 turn mock 且第一 turn 已开始流式,run 中途 select_model 或 set_thinking_level 到新值,当前流仍用旧绑定且下一 turn 的 generate_stream 用新绑定,false
+  ar25,idle-abort-converges,run 中途切换 selected 后 abort,run 结束后查询 active 与 selected,active 与 selected 收敛为同一 model 与 thinking,false
+  ar26,abort-persists-partial,模型流已输出部分正文后用户 abort,检查 session history,存在 stop_reason=aborted 的 assistant 且含 partial 正文,false
+  ar26,abort-skipped-in-llm-project,history 含 stop_reason=aborted 的 assistant,project_for_llm,投影结果不含该 assistant 行,false

@@ -14,4 +14,18 @@ requirements[11]{req_id,title,statement}:
   paa8,"tokenizer-cache-manage-api","HfTokenizerCache（或等价）MUST 提供可测的缓存根查询、条目列举与按键删除；opt-in download MUST 在成功前不把不完整文件当作可用缓存；CLI 与其它面 MUST 经此 API 管理缓存，MUST NOT 在估计路径调用 download。"
   paa9,"hf-endpoint-base","拼装 HuggingFace resolve URL 时 MUST 以环境变量 HF_ENDPOINT 为优先基址（去尾斜杠），未设置时可回退 HF_HUB_ENDPOINT，再默认 https://huggingface.co；URL 形状 MUST 为 {base}/{repo}/resolve/main/{file}（本波 revision 固定 main）；opt-in download MUST 使用该基址，MUST NOT 在已设 HF_ENDPOINT 时仍硬编码仅官方域。"
   paa10,"local-tokenizer-gate","LocalTokenizer 档 MUST 仅在显式允许时参与估计（配置 on|off，默认 off）；off 时即便 registry 已映射或缓存可用，估计路径 MUST NOT 调用本地 encode，并 MUST 继续按 paa1 降级到其后档；本波 MUST NOT 引入 every-N 或 idle 等其它本地计数策略。"
-scenarios[0]:
+scenarios[14]{req_id,id,given,when,then,feature}:
+  paa1,prefer-api,消息集含可信 last Api usage 且其后无新消息,调用 estimate_context,provenance 为 Api 且 tokens 反映该 usage,false
+  paa11,api-trailing-after-anchor-only,消息集含长历史与带 usage 的末条 assistant 及之后少量新消息,调用 estimate_context,provenance 为 Api 且 tokens 约等于 usage 加锚点后增量而非 usage 加全量 heuristic,false
+  paa1,fallback-local,无 Api 锚点且 LocalTokenizer 闸为 on 且 registry 命中已加载词表,调用 estimate_context,provenance 为 LocalTokenizer,false
+  paa10,fallback-local,无 Api 锚点且 LocalTokenizer 闸为 on 且 registry 命中已加载词表,调用 estimate_context,provenance 为 LocalTokenizer,false
+  paa10,local-off-skips-tokenizer,无 Api 锚点且 LocalTokenizer 闸为 off 且 registry 已映射可用词表,调用 estimate_context,provenance 不是 LocalTokenizer 且估计路径未调用本地 encode,false
+  paa1,fallback-heuristic,无 Api、RemoteCount 不可用、无 LocalTokenizer,调用 estimate_context,provenance 为 Heuristic 且仍返回估计值,false
+  paa2,abort-not-anchor,最近 assistant 为 abort 且带非零 usage,估计当前上下文,不得仅因该 usage 将 provenance 标为 Api 锚点,false
+  paa3,no-per-delta-encode,正在流式生成且开启本地 tokenizer,仅处理 TextDelta 热路径,不因每个 delta 触发全文 encode,false
+  paa4,heuristic-provenance,估计结果来自 chars/4,检查 ContextTokenEstimate,provenance 为 Heuristic,false
+  paa5,remote-fail-degrade,RemoteCount 已启用但网络失败,估计上下文,降级到 LocalTokenizer 或 Heuristic 且 provenance 不是 Api,false
+  paa6,hf-opt-in,模型映射到 HuggingFace tokenizer 且本地无缓存且未 opt-in 下载,估计上下文,不静默下载大文件并降级到 Heuristic 或明确错误策略后降级,false
+  paa7,openai-input-tokens-success,Responses 路径 RemoteCount 启用且 input_tokens 返回 123,调用 estimate 且无 Api 锚点,provenance 为 RemoteCount 且 tokens 为 123,false
+  paa7,openai-input-tokens-http-fail,Responses RemoteCount 启用但 HTTP 非 2xx,估计上下文,provenance 不是 RemoteCount 也不是 Api,false
+  paa7,non-responses-no-fake-remote,非 Responses 路径且未声明 input_tokens,未注入 remote_count_tokens,不声称 OpenAI RemoteCount 成功,false
