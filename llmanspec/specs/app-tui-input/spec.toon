@@ -46,7 +46,90 @@ requirements[43]{req_id,title,statement}:
   ati43,"reload-soft-gate-keys","产品 TUI 在 /reload 进行中（ath28）且无 overlay 时：MUST 允许向 Editor 打字与 Ctrl+G 外编；Enter（普通上行、slash、bang）MUST 硬拒绝并经壳层通告 body `reloading — wait`，MUST NOT 调用 Driver::run / execute_bash / 第二次 reload，MUST NOT 入 steer/follow-up；Esc 与 Ctrl+C MUST 请求取消重载且 MUST NOT 退出 TUI、MUST NOT 打开会话树。有 overlay 时 Esc/Ctrl+C MUST 先关槽且 MUST NOT 仅因此取消重载。取消或重载结束后键位恢复既有 idle/agent/bang 规则（ati2/ati10/ati19）。"
   ati44,"attach-queue-stats-calibrate","产品 TUI attach 校准队列条深度时 MUST 使用 Host 只读 queue_stats（或语义等价 unary）与下行 QueueUpdate；Remote 默认空深度 MUST NOT 当作已清空。入队瞬间本地条文案 MUST 保持可见，直到 Host 深度下降。"
   ati45,"same-text-second-user-visible","产品 TUI 在用户连续提交相同正文时 MUST 让第二次提问在 transcript 中作为独立用户气泡可见（含 busy 插话注入）；MUST NOT 仅因与上一条 UiEntry::User 正文相等而跳过写入。"
-scenarios[3]{req_id,id,given,when,then,feature}:
+scenarios[86]{req_id,id,given,when,then,feature}:
   ati43,ati43-unit,"reload 软闸键位由产品 harness 覆盖（非 BDD）",审查实现与对应测试,"行为符合本 requirement 陈述",false
   ati44,ati44-unit,"attach 队列条校准由产品 harness 覆盖（非 BDD）",busy 入队后 drain_pending,"Steering/Follow-up 行仍含入队文案",false
   ati45,ati45-unit,"同文二次提问由产品 harness 覆盖（非 BDD）",两次相同正文提交或注入,"transcript 含两条用户气泡",false
+  ati1,selector-slot,,打开模型选择器,editor 槽被选择器替换且贴底可见,false
+  ati2,esc-aborts,,流式中按 Esc,"Driver::abort 被调用",false
+  ati2,busy-ctrl-c-aborts,agent 忙碌且无 overlay,按 Ctrl+C,abort 被请求且不退出 TUI,false
+  ati2,idle-ctrl-c-clear-then-quit,idle 且编辑器非空,按 Ctrl+C 再对空编辑器按 Ctrl+C,先清空后退出,false
+  ati3,alt-enter-followup,,忙碌时 Alt+Enter 提交文本,消息进入 follow-up 队列而非立即 steer,false
+  ati4,no-tool-modal,,信任目录下工具执行,无逐工具审批 UI 且 hooks 仍可注册,false
+  ati5,esc-closes-tree,会话树已打开,按 Esc,树关闭且 editor 槽恢复,false
+  ati6,busy-enter-steer,agent_demo 轮次忙碌且编辑器有文本,按 Enter,steer 队列长度增加且状态仍为忙碌类（Thinking/Working/Drafting 等）,false
+  ati6,alt-enter-followup,agent_demo 轮次忙碌,Alt+Enter 提交文本,follow-up 队列长度增加且会话树尚未出现该 follow-up 的 user 节点,false
+  ati6,queue-strip-visible,steer 或 follow-up 队列非空,渲染一帧,"出现 Steering: 或 Follow-up: 行且 footer 不含 q:sN|fM 计数徽章",false
+  ati7,steer-no-abort,已 submit 进入 Thinking 且 scheduled_actions 非空,再次 Enter 提交 steer 文本,scheduled 流式/工具动作仍可继续推进而非被立即清空为仅 Ready,false
+  ati8,bang-enables-bash,编辑器文本为 !ls,sync 边框,bash_mode 为真,false
+  ati8,clear-bang-restores,曾处于 bash 模式,文本改为 hello 后 sync,bash_mode 为假,false
+  ati9,ctrl-g-stub,编辑器有文本,Ctrl+G 或 stub API,external_editor 计数加一且 transcript 含 external editor stub,false
+  ati10,busy-enter-steer,产品 host 忙碌且 editor 非空,按 Enter,steer 被调用或 pending steer 入队且 editor 清空,false
+  ati10,busy-alt-enter-followup,产品 host 忙碌,Alt+Enter 提交文本,follow_up 被调用或 pending follow-up 入队,false
+  ati10,busy-esc-abort,产品 host 忙碌且树关闭,按 Esc,abort 被请求且不打开会话树,false
+  ati11,busy-steer-strip,产品 host 忙碌且已入队 steer,渲染一帧,"出现 Steering: 行且无 scrollback [steer] System 墙",false
+  ati11,busy-followup-strip,产品 host 忙碌且已入队 follow-up,渲染一帧,"出现 Follow-up: 行与 Alt+Up hint",false
+  ati11,busy-alt-up-dequeue,产品 host 忙碌且队列非空,按 Alt+Up,队列文本进入 editor 且请求 clear 两侧队列,false
+  ati12,steer-inject-scrollback,busy 且 steer 已注入,收到 user MessageStart,scrollback 出现对应用户行,false
+  ati12,followup-inject-scrollback,follow-up 注入后 QueueUpdate 清 queue strip,渲染,"Follow-up 文本仍在 UiEntry::User 中",false
+  ati13,submit-then-up,idle 提交过非空 prompt 且 editor 已空,按 ↑,editor 回填该 prompt,false
+  ati13,steer-in-history,busy 发送过 steer 文本,idle 后 editor 空再按 ↑,可召回该 steer 文本,false
+  ati41,new-session-seeds-prior-cwd-user-prompts,同 cwd 存在另一已持久化 session 含非 slash user 正文且当前为纯 new session,TUI 启动完成且 editor 为空后按 ↑,editor 回填该先验 user 正文,false
+  ati41,resume-seeds-only-current-session,恢复已有 session 且其它 session 也有 user 正文,装载完成且 editor 空后按 ↑,仅召回当前 session 的 user 正文,false
+  ati41,seed-skips-slash-user-lines,先验 session 的 user 行以 /session-name 开头,纯 new session 装载种子后按 ↑,不回填该 slash 行,false
+  ati14,esc-then-submit,TUI busy 中 Esc abort 后,再 idle Enter 提交,新一轮开始且无连续 aborted Error 墙,false
+  ati15,clear-restores-thinking,曾处于 bash 边框且 thinking 为 low,文本改为 hello 后 sync,边框恢复为 low thinking 色而非仅 muted,false
+  ati16,bang-executes,idle 且 editor 为 !echo hi,Enter,execute_bash 被调用且 run 未被调用,false
+  ati16,bangbang-exclude,idle 且 editor 为 !!echo x,Enter,exclude_from_context 为 true,false
+  ati16,empty-bang,idle 且 editor 仅为 !,Enter,出现提示且未执行 bash,false
+  ati16,slash-wins,idle 且 editor 为 /exit,Enter,走 slash 退出而非 bash,false
+  ati17,ctrl-g-harness-stub,产品 host 可测/harness 环境,Ctrl+G,不 spawn 真实编辑器且有 stub 或系统提示可观测且不崩,false
+  ati17,ctrl-g-missing-editor-error,交互路径且 VISUAL 与 EDITOR 均未设置或为空,Ctrl+G,"出现 UiEntry::Error 短行提示需配置编辑器且 Editor 原文保留且进程不崩",false
+  ati17,ctrl-g-spawn-fail-error,已配置编辑器但 spawn 或读写 tempfile 失败,Ctrl+G 真路径执行,"出现 UiEntry::Error 短行且 Editor 原文保留且不崩",false
+  ati17,ctrl-g-tty-success-writeback,交互 TTY 且 VISUAL 或 EDITOR 已配置且编辑器成功退出,Ctrl+G,经 with_terminal_suspended 往返后 Editor 文本为编辑器保存内容,false
+  ati18,tree-slot-live,产品 TUI idle,双 Esc 打开 Tree 槽,槽内为 MessageHistory 活树且 Esc 可关回 Editor,false
+  ati19,esc-cancels-hanging-bang,产品 idle bang 已开始且 bash 未返回,按 Esc,"Driver::abort 被调用且 bash 结果 cancelled 或等价中止",false
+  ati20,second-bang-rejected,第一 bang 仍在执行,再提交 !echo second,出现拒绝提示且 execute_bash 调用次数仍为 1,false
+  ati21,open-filter-select,idle 已打开 models 槽,过滤后 Enter 选定一项,footer model 更新且槽关闭回到 Editor,false
+  ati21,esc-cancels,models 槽已打开,Esc,关槽且模型不变,false
+  ati23,space-opens-catalog,产品 idle 且 catalog 已注入,键入 /model 加空格,补全 popup 出现模型项,false
+  ati23,tab-applies-id,/model dee 补全已开,按 Tab,editor 含 /model 与选定 id,false
+  ati23,bare-still-slot,产品 idle,提交无参 /model,打开 Models 槽而非仅依赖 arg bare catalog,false
+  ati22,ctrl-o-cycles,树开且当前 default,按 Ctrl+O,"进入 no-tools 或状态含 [no-tools]",false
+  ati22,tree-ctrl-t-not-thinking,树开,按 Ctrl+T,走 filter toggle 而非 thinking 折叠,false
+  ati22,esc-clears-search-first,树开且已键入搜索串,按 Esc,搜索清空且树仍开；再 Esc 关树,false
+  ati24,tree-forwards-fold-chords,产品树已打开,按 ctrl+left,TreeSelector 收到输入（fold 或分支跳转生效）,false
+  ati25,shift-f-in-tree,"EditorSlot::Tree 打开",按 Shift+F,pending fork 或等价入口被置位且不向 editor 写入字面 F,false
+  ati26,cycle-backward,树开且当前 FilterMode 为 default,按 Ctrl+Shift+O,"进入 all 或状态含 [all]",false
+  ati22,ctrl-o-forward-unchanged,树开且当前 default,按 Ctrl+O,"进入 no-tools 或状态含 [no-tools]",false
+  ati27,shift-l-opens-edit,"EditorSlot::Tree 打开",按 Shift+L,进入 label 编辑且树仍开,false
+  ati28,idle-session-tree-slash,产品 idle Editor 槽,提交 /session-tree,pending 为 OpenTree 或树被打开,false
+  ati28,old-tree-not-pending,产品 idle Editor 槽,提交 /tree,不产生 OpenTree pending（unknown 或系统错误）,false
+  ati30,abort-and-late-delta,agent busy 且用户 Esc abort,再注入迟到 TextDelta 或 AgentEnd,UI 保持 Aborted/idle 语义且无新 assistant 正文复活,false
+  ati42,abort-keeps-streamed-text,agent busy 且已流式输出部分 assistant 正文,按 Esc 或 Ctrl+C abort,scrollback 仍含该正文并带 abort 脚注,false
+  ati30,bang-esc-and-second,hanging bang 进行中,Esc 取消后再开第二 bang 并可再 Esc,"出现 cancelled 语义且第二 bang 仍可 abort，无粘性 Aborted 挡住",false
+  ati30,esc-overlay-vs-tree,busy 无 overlay 或已开 Models/Tree overlay,按 Esc,无 overlay 时 abort 且不开树；有 overlay 时只关槽不 abort,false
+  ati30,queue-keys,agent busy,Enter / Alt+Enter / Alt+Up,分别触发 steer、follow_up、双队列清空并还原 editor 文本契约,false
+  ati31,harness-esc-inject-before-drain,ScriptedDriver 轮次 busy,Esc 后注入 TextDelta 再 drain_pending,abort 被调用、无新 assistant 正文、可再 submit,false
+  ati32,agent-busy-bang-rejected,agent busy 且编辑器为 !ls,按 Enter,出现拒绝提示、steer 未被调用、编辑器仍含命令,false
+  ati29,tab-toggles-scope,Resume 面板已开,按 Tab,header scope 在 Current 与 All 间切换或列表按 cwd 过滤变化,false
+  ati29,sort-cycles,Resume 面板已开,按 Ctrl+S,Sort 标签在 Threaded/Recent/Fuzzy 间变化,false
+  ati29,named-filter,Resume 面板已开且存在未命名会话,按 Ctrl+N 至 Named,未命名行不可见,false
+  ati29,delete-confirm-esc,Resume 面板选中可删项并 Ctrl+D,按 Esc,未删除且退出确认态,false
+  ati29,fold-hides-children,Threaded 且选中有子会话的父节点,按 fold 键,子行不可见且再 unfold 恢复,false
+  ati29,toggle-id-visibility,Resume 面板已开且默认隐藏 id,按 Ctrl+U,完整 session id 列出现；再按 Ctrl+U 则隐藏,false
+  ati33,at-opens-popup,产品 idle 且 AtPath 根目录含 hello.rs,键入 @hel,补全 popup 出现 hello.rs,false
+  ati33,tab-inserts-path,@ 补全已开且选中 hello.rs,按 Tab,editor 含 @ 与 hello.rs 路径引用,false
+  ati34,idle-submit-expanded,产品 idle 且 editor 显示长粘贴折叠 marker,Enter 提交,"pending submit 或 Driver::run 文本为展开全文而非 [paste #",false
+  ati34,steer-expanded,产品 busy 且 editor 含折叠 paste marker,Enter 入队 steer,steer 文本为展开全文,false
+  ati35,match-by-app-id,产品 idle 且默认绑定,按下 app.thinking.toggle 默认键,thinking 折叠切换生效,false
+  ati35,reload-success,磁盘 keybindings.json 将某 app.* 改到新和弦,调用 reload,新和弦生效且旧和弦不再触发该动作,false
+  ati35,reload-bad-keeps-old,磁盘 JSON 损坏,调用 reload,绑定保持重载前状态且有诊断或错误提示,false
+  ati40,completion,目录含 demo,键入 $de,补全列表含 demo,false
+  ati40,highlight,scrollback 有用户行含 $demo,渲染用户消息,$demo 使用 skill-ref 前景（可测 ANSI/cell）,false
+  ati36,no-global-shift-tab-cycle,产品 idle 且 Editor 槽（非 Models）且模型支持 off 与 high,按 Shift+Tab,thinking level MUST NOT 仅因该键前进一档,false
+  ati36,busy-no-global-cycle,产品 agent busy 且非 Models 槽,按 Shift+Tab,thinking level MUST NOT cycle 且 MUST NOT 因 cycle 写系统块,false
+  ati37,paste-inserts-abs-path,ScriptedDriver 剪贴板含 PNG,触发粘贴图片键,Editor 文本含 tempfile 绝对路径且无超长 base64,false
+  ati37,submit-stays-text,已粘贴图路径且 idle,Enter 提交,"Driver::run 收到含该路径的纯文本且无强制 user Image part",false
+  ati37,clipboard-text-fallback,剪贴板无图但有 UTF-8 文本,触发粘贴键,Editor 插入该文本且 MUST NOT 出现 clipboard no image Error,false
+  ati37,clipboard-miss-error,剪贴板无图且无文本,触发粘贴键,出现短 Error 提示且进程不崩,false

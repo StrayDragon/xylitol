@@ -29,10 +29,54 @@ requirements[26]{req_id,title,statement}:
   atc25,"reload-status-and-toasts","产品 TUI 在 /reload 进行中（ath28 reload 态）时 status 槽 MUST 显示 Loader 形态：前导空行 + 一行 spinner+短词 `Reloading`（lead 贴左，与 atc7/atc12 同形）；MUST NOT 冒充 agent Working 或 Assembling；该态下 status 右侧 MUST NOT 显示 mcp pending cue 或任何换模预告。软闸拒提交、取消收口、失败收口的壳层通告 MUST 走 atc22：body 分别为 `reloading — wait`、`reload cancelled`、`reload failed — see report`（可见前缀 `Error: `）；取消与失败 MUST 另有滚动提示报告（见 ath28），软闸拒提交 MUST NOT 为此追加 ScrollNotice。reload 结束后 status MUST 回到 idle 0 内容行（保留呼吸空行）。"
   atc26,"chrome-no-extra-undocumented","产品 TUI 壳层（footer / status / 队列条 / 壳层通告等）可观察文案与徽章 MUST 仅来自文档化视觉 SSOT（见 atc4）已声明的槽与字段；MUST NOT 另加 SSOT 未声明或已废弃的冗余展示（避免用户疑惑）；队列可见性 SSOT 为中间队列条（Steering:/Follow-up:，见 ati11），MUST NOT 再在 footer/status 重复队列计数徽章。"
   atc27,"tool-header-timeout-note","命令类工具（bash/grep/find）的模型显式 timeout 请求 MUST 在工具行 header 的按键提示 (Alt+E) 前以 muted 文本显示 (timeout {N}s)（N 为钳制后的生效秒数）；省略（走工具默认）时 MUST NOT 显示。注记为静态文本，MUST NOT 做倒计时或运行中改写。"
-scenarios[6]{req_id,id,given,when,then,feature}:
+scenarios[50]{req_id,id,given,when,then,feature}:
   atc22,atc22-unit,"壳层通告约束由产品 harness 覆盖（非 BDD）",审查实现与对应测试,"行为符合本 requirement 陈述",false
   atc23,atc23-unit,"Chrome Footprint 约束由产品 harness 覆盖（非 BDD）",审查实现与对应测试,"行为符合本 requirement 陈述",false
   atc24,atc24-unit,"used 紧凑计数由产品单测/harness 覆盖（非 BDD）",审查紧凑计数实现与 footer 标签,"行为符合本 requirement 陈述",false
   atc25,atc25-unit,"reload status/toast 由产品 harness 覆盖（非 BDD）",审查实现与对应测试,"行为符合本 requirement 陈述",false
   atc26,atc26-unit,"无多余未声明 chrome 由产品单测/harness 覆盖（非 BDD）",审查 footer 格式化与队列条渲染,"行为符合本 requirement 陈述",false
   atc27,"timeout-note-unit","模型带 timeout 调用 bash","渲染工具行 header","(timeout Ns) 出现在 (Alt+E) 前；省略时不出现",false
+  atc1,idle-status-zero-rows,,空闲 UiRoot apply_ui_model 后 render,无独立 Working 行且 status 槽占 0 行,false
+  atc1,busy-status-not-in-footer,,busy 且 status=Working 时 render,存在独立 status 文案且 footer 不含 Working,false
+  atc2,footer-thinking-label,当前 thinking level 为 medium,渲染 footer,末行含 model 与 • medium（或等价 thinking 标签）且仍为单行,false
+  atc3,ascii-glyph-prefix,,配置 glyph=ascii 后渲染用户行,用户前缀为 ascii 档字符,false
+  atc4,index-lists-components,,审计视觉 SSOT 文档结构,总索引列出组件级子文档核心路径,false
+  atc4,diff-block-exists,,实现 Diff 渲染前查阅设计,diff-block 子文档存在且含 unified / word-level / CJK MUST,false
+  atc5,default-dark,未启用 auto,构造 demo,theme_mode 为 Dark,false
+  atc5,auto-osc11-light,已启用 auto,注入近白 OSC11 背景,theme_mode 为 Light,false
+  atc5,auto-off-ignores-env,未启用 auto 且 COLORFGBG 为亮,调用 apply_theme_detect,theme_mode 仍为 Dark,false
+  atc6,idle-editor-short,空闲且 editor 文本为空,render UiRoot,操作区内容可见行数显著少于满 max_vis 空盒（仍含上下边框与光标行）,false
+  atc6,draft-grows,Editor 已有多行草稿,render,可见行随草稿增加且不超过既有 max_vis 上限,false
+  atc7,busy-spinner-row,UiModel busy 且 status=Working,render,存在独立 status 行含 spinner 帧或 accent 标记且 footer 无 spinner,false
+  atc8,user-no-message-bg,scrollback 含用户消息,render,用户行无 user-message-bg 全行淡底且保留语义前缀,false
+  atc9,compacting-one-row,UiModel Busy status=Compacting,UiRoot render,独立 status 至多 1 行且含 Compacting,false
+  atc9,retry-one-row,UiModel Busy status=Retry 1/3,UiRoot render,独立 status 至多 1 行且含 Retry,false
+  atc10,abort-clears-status,Busy 且 status=Working,用户 abort,status 槽 0 行且 scrollback 含 Aborted,false
+  atc11,footer-updates,idle 选定新模型成功,下一帧 footer,含新模型标签,false
+  atc20,success-no-system,idle 经 /model 成功换模,检查 scrollback,无 model → 成功确认滚动提示,false
+  atc12,busy-keeps-leading-blank,产品 host busy,渲染一帧,status 区含前导空行再 spinner 行且紧贴 editor,false
+  atc12,idle-one-blank,产品 host idle,渲染一帧,editor 上方恰好一行空白且无 spinner,false
+  atc13,heuristic-tilde,estimate provenance 为 Heuristic,渲染 footer token 字段,文案为 used ~C tokens（C 为紧凑计数）,false
+  atc24,derived-only,estimate tokens=42000 与 context_window=128000 且 provenance 为 Api,渲染 footer token 字段,文案含 used 42k tokens 与派生 p%/W 且 p 约等于 tokens/window*100,false
+  atc21,no-percent-when-no-window,estimate 存在但 context_window 为 0,渲染 footer token 字段,文案为 used … tokens 且 MUST NOT 含 %/,false
+  atc13,heuristic-percent-tilde,estimate provenance 为 Heuristic 且 context_window>0,渲染 footer token 字段,文案含 used ~C tokens 与 ~p%/W,false
+  atc13,unknown-question,estimate provenance 为 Unknown,渲染 footer token 字段,文案为 used ? tokens,false
+  atc24,used-compact-under-1k,estimate tokens=42 且 provenance 为 Api 且 context_window 为 0,渲染 footer token 字段,文案为 used 42 tokens,false
+  atc14,travel-refreshes-token,用户 travel 到另一 leaf,下一帧 footer,token 字段对应该 leaf 的 estimate,false
+  atc14,compaction-end-refreshes-token,发生 CompactionEnd,下一帧 footer,token 字段经 estimate 刷新,false
+  atc14,turn-end-refreshes-token,发生 TurnEnd 或 ContextTokenSettlement（TurnSettled）,下一帧 footer,token 字段经 settlement 或 estimate 刷新,false
+  atc14,stream-close-skips-second-estimate,本轮已应用 TurnSettled settlement 且 footer 已更新,on_run_stream_closed 后 drain,MUST NOT 再触发第二次 estimate,false
+  atc14,mid-turn-api-usage-throttled,turn 进行中且有 Api usage 更新,host 节流刷新 footer,token 字段更新且 MUST NOT 每 TextDelta encode,false
+  atc14,no-per-delta-encode,正在流式生成,仅处理 TextDelta,不因每个 delta 触发全文 tokenizer.encode,false
+  atc15,apply-light,当前为 dark LayoutTheme,apply 主题名 light,UiRoot palette 为 light 且 transcript 仍在,false
+  atc15,bad-keeps-old,当前为 dark,apply 未知主题名,仍为 dark 且有诊断,false
+  atc16,select-applies,Themes 槽已打开,选中 light 并确认,palette 为 light 且槽关闭,false
+  atc16,esc-keeps,Themes 槽已打开且当前 dark,按 Esc,槽关闭且仍为 dark,false
+  atc16,no-auto-default,产品 host 默认构造,观察主题探测状态,未启用 theme auto,false
+  atc17,border-follows-level,thinking level 为 high 且非 bash 前缀,sync_editor_border 或等价,Editor 边框色为 Palette thinking_border 对应 high,false
+  atc17,bash-overrides-then-restore,thinking level 为 medium,编辑器文本改为 !ls 再改回 hello,"先为 bash 强调色，再恢复 medium thinking 边框",false
+  atc18,brand-line,,渲染 UiRoot,顶部卡片含 xylitol 且不含木糖醇与 ASCII logo,false
+  atc18,skills-all-visible,已加载多个长 skill 名,窄宽渲染,所有 skill 名可见且无省略号,false
+  atc18,skills-above-scrollback,已加载 skills demo,渲染 UiRoot,Skills 出现在 scrollback 之前,false
+  atc18,no-prompts,有 skills,审查文案,不含 Prompts 或 prompt template 清单,false
+  atc18,mcp-connecting-progress-in-slot,已配置 MCP 且连接进行中,渲染 loaded-resources,mcp 行含可区分的 connecting 进度且未逐步刷滚动提示墙,false
