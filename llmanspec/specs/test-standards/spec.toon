@@ -7,4 +7,8 @@ requirements[4]{req_id,title,statement}:
   ts02,核心数据类型测试覆盖,"agent/ 会话词汇与 protocol/ 端口签名类型 MUST 有 #[cfg(test)] 模块验证关键路径：（1）serialization round-trip（适用时），（2）Display/From 转换，（3）constructor invariants。MUST NOT 再以独立 domain/ 或 runtime_protocol/ 顶栏作为测试挂载点。"
   ts03,纯逻辑组件测试覆盖,"以下 agent/ 模块 MUST 有 #[cfg(test)] 验证纯逻辑行为：queue.rs（MessageQueue 全部操作）、retry.rs（状态转换）、commands.rs（slash 解析）、config_value.rs（resolution）。MUST NOT 要求已移除的 prompt templates.rs 展开测试。"
   ts04,Session 子组件测试覆盖,"以下 agent/ 子组件 MUST 有 #[cfg(test)]：model_manager.rs（cycle/select/thinking）、tool_manager.rs（register/filter）、skill_manager.rs（activation/XML 展开）。"
-scenarios[0]:
+scenarios[4]{req_id,id,given,when,then,feature}:
+  ts01,boundary-defined,正在添加新测试,PR 作者查阅 AGENTS.md 测试章节选择层,测试避免在 BDD 与单元测试层重复覆盖,false
+  ts02,domain-types-covered,agent/ 会话词汇与 protocol/ 端口源文件存在,运行 cargo test,相关 agent 与 protocol 模块报告 serialize/Display/From 行为测试通过,false
+  ts03,pure-logic-covered,agent queue/retry/commands/templates 及相关纯逻辑模块存在,运行 cargo test,这些模块报告纯逻辑行为测试通过,false
+  ts04,sub-components-covered,agent model/tool/skill manager 模块存在,运行 cargo test,这些子组件报告其提取职责的测试通过,false
