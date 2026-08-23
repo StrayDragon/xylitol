@@ -1,0 +1,10 @@
+id: interrupt-arm.calm
+cols: 72
+must_contain:
+  - "⠋ Working"
+must_not_contain:
+  - "esc again to interrupt"
+lines:
+  -
+    - { text: "⠋ Working", token: accent }
+    - { text: "", token: muted }

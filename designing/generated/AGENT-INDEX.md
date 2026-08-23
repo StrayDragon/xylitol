@@ -2,6 +2,7 @@
 # designing AGENT-INDEX
 
 Agent 改某表面：先读**产品代码**，再读短 `intent.md` + `states/*.yaml`。禁止把 `app/` 或整包 HTML 当默认上下文。无独立快捷键模块。预览 endpoint：`/{surface}/{id}/{state}`（例 `/tui/diff/side-by-side`）。
+`tui-lab` 面是**实验原型区**（未接入产品）；晋级 / 淘汰流程见 `designing/AGENTS.md`。
 
 | surface | id | 一句话 | states | endpoint |
 |---|---|---|---|---|
@@ -33,3 +34,11 @@ Agent 改某表面：先读**产品代码**，再读短 `intent.md` + `states/*.
 | tui | transcript | 当前轮写入 scrollback。不是 Codex 独立浏览面。 | mixed | `/tui/transcript` |
 | tui | trust-prompt | 项目 Trust 闸：ChoicePrompt **替换 editor 槽**。禁止 stdio 数字菜单。 | choice | `/tui/trust-prompt` |
 | tui | widgets | 列表槽、空态、窄宽。静图槽一律平等，禁止「(包)」置灰表达实现分层。 | empty | `/tui/widgets` |
+| tui-lab | delayed-hint | 长操作的延迟出现提示。 | mcp-connecting | `/tui-lab/delayed-hint` |
+| tui-lab | editor-placeholder | editor 空态占位示例句。 | busy, idle | `/tui-lab/editor-placeholder` |
+| tui-lab | hover-highlight | 鼠标悬停时高亮当前可交互的块，让「哪里能点」看得见。 | tool | `/tui-lab/hover-highlight` |
+| tui-lab | interrupt-arm | 中止前先给一次确认提示，避免误触后无法撤回。 | armed, calm | `/tui-lab/interrupt-arm` |
+| tui-lab | paste-fold | 大段粘贴在输入框里折叠为一行摘要的显示方式。 | folded | `/tui-lab/paste-fold` |
+| tui-lab | toast-interaction | 壳层通告的两点交互增强。 | action | `/tui-lab/toast-interaction` |
+| tui-lab | toast-stack | 右上角通知栈：只承载关键确认类通知，配专属图标。 | stack | `/tui-lab/toast-stack` |
+| tui-lab | turn-usage | 每轮回复结束后，显示一行可展开的用量小结。 | collapsed | `/tui-lab/turn-usage` |

@@ -1,0 +1,12 @@
+id: toast-interaction
+title: 壳层通告交互增强
+surface: tui-lab
+summary: "壳层通告悬停时不自动消失、可带一个 › 动作、多条合并计数。"
+alignment:
+  chrome: 仍是 status 上方恰好 1 行；单槽替换原则不变
+  item: 动作失败转错误行走既有路径；不新增键位（回车/点击）
+todos:
+  - { done: false, text: "悬停检测与 TTL 暂停实现" }
+  - { done: false, text: "动作回调通道（通告 → host dispatch）" }
+notes: |
+  是 chrome-toast 词表内的能力扩展，不改变其位置与边界。

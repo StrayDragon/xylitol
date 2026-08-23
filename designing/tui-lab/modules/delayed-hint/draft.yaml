@@ -1,0 +1,11 @@
+id: delayed-hint
+title: 长操作延迟提示
+surface: tui-lab
+summary: ">3s 的长操作才出提示，位置只用既有 cue / 壳层通告。"
+alignment:
+  chrome: status 右侧 cue 或壳层通告；不新增信息面概念
+  item: 同类至多一条，后者替换前者；结束立即消失
+todos:
+  - { done: false, text: "阈值常量与适用操作清单（压缩 / MCP 冷启动 / 外部编辑器）" }
+notes: |
+  核心是「延迟出现」防闪烁模式，具体文案随接入点定。

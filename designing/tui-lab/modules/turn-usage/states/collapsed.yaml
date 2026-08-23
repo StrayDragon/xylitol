@@ -1,0 +1,9 @@
+id: turn-usage.collapsed
+cols: 80
+must_contain:
+  - "+ Turn:"
+must_not_contain:
+  - "cache bust"
+lines:
+  -
+    - { text: "▸ + Turn: 4 steps · 1.2k new · 56.0k cached · $0.03", token: muted }

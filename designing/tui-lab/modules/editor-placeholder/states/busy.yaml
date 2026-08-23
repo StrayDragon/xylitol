@@ -1,0 +1,12 @@
+id: editor-placeholder.busy
+cols: 72
+must_contain: []
+must_not_contain:
+  - "Ask anything"
+lines:
+  -
+    - { text: "─", token: muted }
+  -
+    - { text: " ", token: on-surface }
+  -
+    - { text: "─", token: muted }

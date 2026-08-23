@@ -1,0 +1,13 @@
+id: paste-fold.folded
+cols: 72
+must_contain:
+  - "[Pasted ~12 lines]"
+must_not_contain:
+  - "def "
+lines:
+  -
+    - { text: "帮我参考这个实现：", token: on-surface }
+  -
+    - { text: "[Pasted ~12 lines]", token: muted }
+  -
+    - { text: "重点看错误处理分支。", token: on-surface }

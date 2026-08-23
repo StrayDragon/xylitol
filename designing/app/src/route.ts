@@ -9,7 +9,7 @@ export type Route = {
   scheme: Scheme;
 };
 
-const SURFACES = new Set(["tui", "web"]);
+const SURFACES = new Set(["tui", "web", "tui-lab"]);
 
 function truthy(raw: string | null): boolean {
   if (raw == null || raw === "") return false;

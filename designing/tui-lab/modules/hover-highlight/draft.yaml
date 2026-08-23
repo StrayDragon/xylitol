@@ -1,0 +1,13 @@
+id: hover-highlight
+title: 悬停高亮
+surface: tui-lab
+summary: "鼠标悬停时淡色凸显当前可交互块，移开即恢复。"
+alignment:
+  chrome: 只作用于 transcript / dock 的可交互块；不可交互区域不响应
+  item: 拖选文本时让位给选区，不叠加显示
+todos:
+  - { done: false, text: "可交互块清单与命中区域划定（与折叠三角点击同一套 hit 数据）" }
+  - { done: false, text: "高亮 token 选型（既有低强度背景）与重绘成本评估" }
+notes: |
+  现状：产品面无任何悬停反馈，「能点」只有用户记住三角列才知道。
+  动机：折叠/展开类交互的可发现性。性能上要求只重绘受影响行。
