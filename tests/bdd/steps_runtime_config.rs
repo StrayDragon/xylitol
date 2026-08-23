@@ -1,5 +1,5 @@
 use crate::prelude::*;
-use crate::steps_cli_tokenizer::{TokenizerBdd, parse_app_config_yaml};
+use crate::steps_tokenizer::{TokenizerBdd, parse_app_config_yaml};
 use rstest::fixture;
 use rstest_bdd_macros::{given, then, when};
 
