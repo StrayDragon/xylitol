@@ -8,4 +8,11 @@ requirements[5]{req_id,title,statement}:
   r49,"thinking-to-stderr",Print 模式下 System MUST 将 reasoning/thinking 内容流式写入 stderr（非 stdout），使正式答案不被污染，包裹于 <think>...</think>；模型已自行发出 <think> 标签时 MUST NOT 双重包裹。
   r52,"message-dedup",Print 模式下 System MUST 仅将增量 TextDelta 写入 stdout，MUST NOT 将累积 MessageUpdate payload 写入 stdout，以避免前缀重复输出。
   r55,"error-nonzero-exit","Print 模式在 XyEvent 流中出现 Error（或等价不可恢复失败）时，进程 MUST 以非零退出码结束；无此类错误且 run 正常结束（含 should_stop_after_turn）时 MUST 以零退出。工具单次失败但 ReAct 继续时 MUST NOT 仅因此非零退出。"
-scenarios[0]:
+scenarios[7]{req_id,id,given,when,then,feature}:
+  r34,happy,agent 发出 TextDelta 事件,Print 模式激活,文本渐进出现在 stdout,false
+  r43,happy,agent 依次调用 read 与 bash 工具,Print 模式显示结果,"每个工具显示 [Tool: name] 摘要行",false
+  r49,thinking-streamed,model 发出 ThinkingDelta 事件,Print 模式激活,"thinking 文本出现在 stderr 且包裹 <think> 标签，stdout 保持干净",false
+  r49,embedded-tags,model 在 ThinkingDelta 内自行发出 <think>...</think> 标签,Print 模式渲染,不添加第二层 <think> 包裹,false
+  r52,text-delta-only,model 对同一内容发出 TextDelta 与 MessageUpdate,Print 模式渲染,stdout 中每个 token 恰好出现一次,false
+  r55,error-nonzero-exit,"agent 事件流发出 XyEvent::Error",Print 模式消费该流结束,进程以非零退出码结束,false
+  r55,success-zero-exit,agent 事件流无 Error 且正常结束,Print 模式消费该流结束,进程以零退出码结束,false

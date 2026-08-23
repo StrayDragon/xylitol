@@ -36,7 +36,7 @@ requirements[33]{req_id,title,statement}:
   att32,"remaining-fold-targets-unified-hit","产品对 att29–att31 剩余可点折叠目标（Compaction、OutputViewport、信封、簇）MUST 登记进与 att20/att21 同一折叠命中表及 ath33 hit_priority 路径；MUST NOT 另开第二套命中管道。transcript 拖选进行中 MUST 忽略这些折叠命中（与 att22/ath33 同构）。本条不要求新增 host latch 管道（ath33 已覆盖吞按与拖选忽略）。"
   att33,"activity-live-window","流式当前轮 MUST 使用 live window，MUST NOT 整轮收成 Worked for 信封。MUST NOT 画 Planning next moves 占位行；尚无可展示助手正文且无 thinking/Ask/工具时 MUST NOT 画空助手气泡，busy 短词走状态条 Working 或 Running {name}。Thinking 流 MUST 画 Thinking 簇头（可点展开，默认折叠正文，无时长）；思考通道结束后 MUST 更新为 Thought，有可靠思考通道起止墙钟 MUST 写 Thought {Ns}（如 Thought 17s）；起止 MUST 不含随后正文或工具流；已封 Thought 簇 MUST NOT 因后续 Thinking 流改回 Thinking；resume 优先落地 thinkingElapsedSecs，否则思考通道节点 unix-ms 相减，缺戳则省略时长；MUST NOT 用相邻条目墙钟冒充思考时长；MUST NOT 流式每帧刷新时长。仅 thinking 的簇 MUST NOT 同时画 Thinking/Thought 簇头与 thinking L1 头（合并为一行）。与工具同簇时簇头走 att24 真实活动，L1 仍可 Thought {Ns}。Ask 等待 MUST 显示 Asking questions，且 Ask 块 MUST 可交互、不得折没。打开簇有进行中或已结束的工具时 MUST 画带折叠三角的簇头（att24 进行时 Editing / Exploring / Running）；流式工具块 MUST 作为该簇子项，默认折叠，点簇头三角 MUST 可展开（含流式）。同一打开簇内工具结束或多次调用归并 MUST NOT 自动收起已展开的子项。paint MUST NOT 每帧改折叠态。MUST NOT 把进行中工具只画成无三角的 live 尾行而藏起块。MUST NOT 把无改写的读文件写成 Editing；MUST NOT 虚构 Explored。助手正文 MUST NOT 被收进簇。已封簇与更早内容 MUST NOT 因打开簇更新而重算。点 Asking questions MUST 揭开已算好的 sealed 细账。状态条短词 MUST 仍为 Working 或 Running {name}。已结束轮何时套 Worked for 信封见 att26，不在 live window 内提前套。"
   att34,"cluster-split-assistant-body","簇边界 MUST 以已可展示的助手正文划分：正文第一个非空白字符 MUST 封口上一打开簇。Thinking、工具、Ask、Diff、Todo、Compaction MUST NOT 单独切簇。同一轮中途再思考仍留在打开簇内，簇头措辞见 att24。同一条目序下 live 与 resume/rebuild 切分 MUST 同构。"
-scenarios[35]{req_id,id,given,when,then,feature}:
+scenarios[52]{req_id,id,given,when,then,feature}:
   att13,"bash-summary",bash 工具 args 含 command,外显或重建 args_preview,以 $ 开头且非纯 JSON 墙,false
   att13,"write-lines-hint",write args 含 path 与多行 content,求 args_preview,含 path 与 lines 且无 content 正文,false
   att13,"edit-no-json-fallback",edit args 仅有 edits 无顶层 path,求 args_preview,为 edit 短形且不含 oldText/newText JSON 墙,false
@@ -72,3 +72,20 @@ scenarios[35]{req_id,id,given,when,then,feature}:
   att32,att32-unit,"remaining-fold-targets-unified-hit 由产品 harness 覆盖",审查剩余目标命中与拖选中划过,"进同一命中表/priority；拖选中不 toggle",false
   att33,att33-unit,"activity-live-window 由产品 harness 覆盖",流式无助手正文后 ToolEnd 再点簇头三角,"不见 Planning next moves；打开簇计数更新且已封簇不变；展开见 sealed 细账；纯 read 进行时为 Exploring 而非 Editing；进行中 write 画带三角的 Editing 簇头且默认折叠；Thinking 流为 Thinking 而非 thinking L1；流结束后为 Thought {Ns}",false
   att34,att34-unit,"cluster-split-assistant-body 由产品 harness 覆盖",thinking 与工具后出现非空白助手正文,"上一簇封口为过去式；thinking 不单独切簇；rebuild 边界同构",false
+  att1,markdown-assistant,,UiModel 含助手 Markdown 条目并 render,"输出含 Markdown 主题着色而非纯 `assistant:` 前缀行",false
+  att3,diff-component,,"UiEntry::Diff 含 display_diff",render 经包 Diff 着色,false
+  att4,edit-status-rail,,渲染含 display_diff 的成功 edit 工具块,header 与 Diff 正文共用 success 轨、无整行 tool-success-bg 洗底、且无 diff-*-bg 行底分层,false
+  att5,reuse-rail-paint,,渲染 tool 块,调用 paint_left_rail_line（或等价包 API）而非手写轨/gutter,false
+  att6,tree-not-transcript-browser,,用户要回看分支,走双 Esc 会话树而非 TranscriptView,false
+  att7,fold-key-hint,,渲染折叠 thinking 头,行旁含 (Ctrl+T),false
+  att8,alt-e-tools-and-diff,存在 tool 与 diff 块,Alt+E,两类块展开态一同翻转,false
+  att8,hint-parenthesized,渲染折叠 thinking 头,行旁提示,含 (Ctrl+T) 而非裸 ^T,false
+  att9,stream-frames-pending,bang 执行中已收到至少一帧输出 chunk,渲染 scrollback,同一块含部分输出且仍为 pending 轨色,false
+  att10,gap-between-blocks,scrollback 含相邻 user 与 bang 块,render,两块内容行之间至少一行空白,false
+  att10,rail-not-full-wash,渲染成功 tool 或 bang 块,检查着色行,可见 status 轨前缀且 MUST NOT 整行铺 tool-success-bg,false
+  att11,reuse-rail-paint-bang,渲染 bang 块,调用 paint_left_rail_line（或等价包 API）,而非手写轨或整行 tool-*-bg 洗底,false
+  att12,rebuild-keeps-thinking,assistant SessionEntry content 含 thinking 与 text,rebuild_scrollback_from_travel 或 fork 后重建,UiModel 含独立 Thinking 与 Assistant 条目,false
+  att12,rebuild-idempotent-with-live,同一轮直播已 flush 出 Thinking+Assistant,用其 persist 的 SessionEntry 再 rebuild,分块种类与顺序一致（正文等价）,false
+  att12,rebuild-tool-call-result-merged,路径含 assistant toolCall 与同 toolCallId 的 toolResult,rebuild_scrollback_from_travel,"UiModel 对该 toolCallId 恰好一条 done UiEntry::Tool（含 args_preview 与 output）",false
+  att12,rebuild-tool-idempotent-with-live,同一轮直播已 ToolExecutionEnd 成单块 Tool,用其 persist 的 SessionEntry 再 rebuild,Tool 条数与 id/preview/output/done 与直播末态幂等,false
+  att18,nav-notice-appended,travel 重建完成且含 history @ 通知,检查 UiModel.entries,该通知不在 entries 首条而在路径投影之后,false
