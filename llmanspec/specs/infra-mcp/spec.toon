@@ -13,8 +13,21 @@ requirements[10]{req_id,title,statement}:
   mcp9,"loaded-resources-live-mcp","当 mcp_servers 非空时，只读 loaded_resources 快照 MUST 与进程内正在连接或已连接的 MCP 状态同源；MUST NOT 用一份从未发起连接的资源壳冒充完成态（仅 configured、connected 恒空且无 connecting/诊断）。无配置时 MUST 仍满足 mcp1。"
   mcp10,"call-phase-timeout","MCP 连接建立后的每笔请求（tools/list、tools/call 等）MUST 有单次调用期超时；到期以可分类超时错误呈现给调用方，MUST NOT 无限等待。"
   mcp8,"first-turn-tool-freeze","轨 A（开箱定稿，非 c1960 search）：无 mcp_servers 时 MUST 立即以仅核心工具定稿。有配置时，会话首次 agent generate（及尚未 FROZEN 时）MUST 等待 MCP settle 或 code-first 门闸超时后再定稿；单 server 连接 MUST 有 code-first 墙钟超时（挂死不得让 bootstrap 永 Running）。门闸超时 MUST 以当时已武装子集定稿、收口 connecting UI、并暴露用户可见诊断（可 `/reload`），MUST NOT 自动重试连接。TUI MUST NOT 在 host tick 上阻塞长等门闸（可跨 tick Assembling）。定稿后 provider 可见工具表 MUST 冻结，直至 idle `/reload` 或 resume/切会话触发的重定稿；重定稿 MUST 按 tool name upsert（有则替换、无则追加），MUST NOT 留下同名多行。本波 resume/切会话 MUST 清冻再门闸（指纹持久化后的一致续冻另波）；重定稿 MAY 用 mcp pending / 超时 notice 作可见 cue。由单测覆盖门闸/冻结/upsert/超时收口；产品 cue 可由 host 场景覆盖。"
-scenarios[4]{req_id,id,given,when,then,feature}:
+scenarios[17]{req_id,id,given,when,then,feature}:
   mcp6,"adapter-hard-barrier",构造 McpToolAdapter,经 concurrency 或 classify,为 Barrier,false
   mcp8,"freeze-after-timeout-subset","有 MCP 且超时仅部分 armed",首次 generate 门闸结束,"provider 可见表=核心∪已武装子集且之后 settle 不再扩表；connecting UI 已收口",false
   mcp9,"snapshot-not-hollow-shell","已配置 MCP 且进程内已有连接或进行中","读取 loaded_resources 快照","connected 非空或 connecting/诊断可见，禁止仅 configured 假完成",false
   mcp10,"tool-call-timeout","已连接 MCP server 的工具调用挂起","等待结果","调用期上界到期返回超时错误而非永久阻塞",false
+  mcp1,zero-cost,配置无 mcp_servers,bootstrap/composition 装配 agent,无 McpClientManager 实例且工具列表无 mcp__ 前缀,false
+  mcp2,wired,配置含一个可用 mcp server,装配完成,ToolSet 含对应 mcp__ 工具且可经 XyTool 执行,false
+  mcp3,reload,已装配一套 MCP 工具,配置变更为另一组 mcp_servers 并触发重载,ToolSet 反映新集合且旧服务器工具不再可用且内置工具仍在,false
+  mcp4,invalid-stdio,stdio 条目缺 command,装配或校验,诊断或错误指出缺字段且该条目未注册 mcp 工具,false
+  mcp4,connect-fail-continues,一个 server 连接失败且另一配置有效,bootstrap 装配,进程仍成功；失败可观察；有效服务器工具仍可注册,false
+  mcp5,snapshot-empty,配置无 mcp_servers,查询已连接列表,空列表且无 client,false
+  mcp5,snapshot-connected,一个 server 已成功连接并注册工具,查询已连接列表,含该 server id 与非零工具数或等价摘要,false
+  mcp7,startup-does-not-await-all-mcp,配置含至少一个慢启动或可连接的 mcp server,产品启动进入 TUI,应用面已渲染且未要求全部 MCP 连接完成,false
+  mcp7,parallel-connect-progress-snapshot,配置含多个 mcp server,后台连接进行中,Driver 只读缝可观察到进行中或已连接进度快照且单失败不拖死其余,false
+  mcp7,agent-prompt-allowed-while-connecting,MCP 仍在 connecting,用户提交普通 agent prompt,允许提交进队列或等价路径；MUST NOT 因 connecting 短拒；generate 门闸语义见 mcp8,false
+  mcp7,settle-updates-registry-unique-names,MCP 结算或 reload 成功并更新 registry,查询内部 armed / ToolSet 名（未谈 provider 定稿）,每个工具名唯一且内置工具仍在,false
+  mcp8,frozen-settle-does-not-expand-provider-tools,会话工具表已 FROZEN,又有 MCP settle 发现新工具,provider 可见 tools 表 MUST NOT 静默变长；用户可经 idle /reload 重定稿,false
+  mcp7,snapshot-exposes-tools-armed,MCP 部分或全部已 settle,读取 Driver/composition MCP 快照,可观察每 server 或汇总的 tools armed 态,false
