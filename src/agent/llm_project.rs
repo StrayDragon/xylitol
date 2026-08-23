@@ -82,7 +82,8 @@ fn custom_text(content: &Value) -> Option<String> {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::protocol::message::{AgentMessage, AgentPart, EnvMessage, LlmMessage};
+    use crate::protocol::message::{AgentMessage, AgentPart, EnvMessage, LlmMessage, XyStopReason};
+    use proptest::prelude::*;
 
     /// Zero every timestamp so the snapshot pins shape, not wall-clock.
     fn normalize_timestamps(value: &mut serde_json::Value) {
@@ -1070,5 +1071,147 @@ mod tests {
             }),
             "summarized-away user/assistant text must be absent: {input:?}"
         );
+    }
+
+    // ── Projection structure property ───────────────────────────────
+
+    /// Arbitrary operation sequences: the projection preserves order and
+    /// count of surviving messages and maps each arm to its documented
+    /// LLM-visible shape. Expectations are derived independently of
+    /// `project_for_llm`'s match arms.
+    #[derive(Debug, Clone)]
+    enum Op {
+        User(String),
+        Assistant(String),
+        ErrorAssistant(String),
+        ToolCall,
+        ToolResult(String),
+        Bash { command: String, output: String },
+        ExcludedBash { command: String },
+        Compact(String),
+        Custom(Option<String>),
+    }
+
+    fn op_strategy() -> impl Strategy<Value = Op> {
+        prop_oneof![
+            3 => any::<String>().prop_map(Op::User),
+            3 => any::<String>().prop_map(Op::Assistant),
+            1 => "[a-z]{1,8}".prop_map(|e| Op::ErrorAssistant(e)),
+            2 => Just(Op::ToolCall),
+            3 => any::<String>().prop_map(Op::ToolResult),
+            2 => (any::<String>(), any::<String>())
+                .prop_map(|(command, output)| Op::Bash { command, output }),
+            1 => "[a-z]{1,8}".prop_map(|command| Op::ExcludedBash { command }),
+            2 => any::<String>().prop_map(Op::Compact),
+            3 => proptest::option::of(any::<String>()).prop_map(Op::Custom),
+        ]
+    }
+
+    fn op_to_message(op: &Op) -> AgentMessage {
+        match op {
+            Op::User(text) => AgentMessage::user(text.clone()),
+            Op::Assistant(text) => AgentMessage::assistant(text.clone()),
+            Op::ErrorAssistant(error) => AgentMessage::Llm(LlmMessage::AssistantMessage {
+                content: vec![],
+                // is_error() keys on stop_reason (Error|Aborted), NOT on
+                // error_message being Some — an assistant may carry an error
+                // note and still be a normal replayed message.
+                stop_reason: Some(XyStopReason::Error),
+                usage: None,
+                api: String::new(),
+                provider: String::new(),
+                model: String::new(),
+                response_id: None,
+                error_message: Some(error.clone()),
+                timestamp: 0,
+                diagnostics: Vec::new(),
+            }),
+            Op::ToolCall => AgentMessage::Llm(LlmMessage::AssistantMessage {
+                content: vec![AgentPart::ToolCall {
+                    id: "call_1".into(),
+                    name: "read".into(),
+                    arguments: serde_json::json!({}),
+                }],
+                stop_reason: None,
+                usage: None,
+                api: String::new(),
+                provider: String::new(),
+                model: String::new(),
+                response_id: None,
+                error_message: None,
+                timestamp: 0,
+                diagnostics: Vec::new(),
+            }),
+            Op::ToolResult(text) => {
+                AgentMessage::tool_result("call_1", "read", vec![AgentPart::text(text)], false)
+            }
+            Op::Bash { command, output } => {
+                AgentMessage::bash(command.clone(), output.clone(), None)
+            }
+            Op::ExcludedBash { command } => AgentMessage::Env(EnvMessage::BashExecutionMessage {
+                command: command.clone(),
+                output: String::new(),
+                exit_code: None,
+                cancelled: false,
+                truncated: false,
+                full_output_path: None,
+                exclude_from_context: true,
+            }),
+            Op::Compact(summary) => AgentMessage::Env(EnvMessage::CompactionSummaryMessage {
+                summary: summary.clone(),
+                tokens_before: 0,
+                tokens_after: 0,
+                read_files: None,
+                modified_files: None,
+            }),
+            Op::Custom(text) => AgentMessage::Env(EnvMessage::CustomMessage {
+                custom_type: "note".into(),
+                content: serde_json::Value::String(text.clone().unwrap_or_default()),
+                display: serde_json::Value::Null,
+                details: serde_json::Value::Null,
+            }),
+        }
+    }
+
+    /// Independent expectation: (LLM role, exact text when pinned).
+    fn expected_row(op: &Op) -> Option<(&'static str, Option<String>)> {
+        match op {
+            Op::User(t) => Some(("user", Some(t.clone()))),
+            Op::Assistant(t) => Some(("assistant", Some(t.clone()))),
+            // Error assistants stay in session but never replay to the model.
+            Op::ErrorAssistant(_) => None,
+            Op::ToolCall => Some(("assistant", None)),
+            Op::ToolResult(t) => Some(("toolResult", Some(t.clone()))),
+            Op::Bash { command, output } => {
+                Some(("user", Some(fold_bash_for_llm(command, output))))
+            }
+            Op::ExcludedBash { .. } => None,
+            Op::Compact(summary) => Some(("user", Some(fold_context_summary_for_llm(summary)))),
+            // Content Null or empty string both drop the row (custom_text).
+            Op::Custom(None) => None,
+            Op::Custom(Some(t)) if t.is_empty() => None,
+            Op::Custom(Some(t)) => Some(("user", Some(t.clone()))),
+        }
+    }
+
+    proptest! {
+        #![proptest_config(proptest::test_runner::Config::with_cases(128))]
+
+        #[test]
+        fn projection_preserves_structure(ops in proptest::collection::vec(op_strategy(), 0..16)) {
+            let messages: Vec<AgentMessage> = ops.iter().map(op_to_message).collect();
+            let projected = project_for_llm(&messages);
+
+            let expected: Vec<(&'static str, Option<String>)> =
+                ops.iter().filter_map(expected_row).collect();
+            prop_assert_eq!(projected.len(), expected.len());
+
+            for (row, (role, text)) in projected.iter().zip(expected.iter()) {
+                prop_assert_eq!(row.role_name(), *role);
+                if let Some(t) = text {
+                    prop_assert_eq!(row.text(), t.clone());
+                }
+            }
+        }
     }
 }
