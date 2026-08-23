@@ -41,7 +41,7 @@ requirements[38]{req_id,title,statement}:
   ath38,"attach-chrome-downlink-driven","产品 TUI attach 下 MCP/skills 头卡的连接态刷新 MUST 由 Host 的 `session/resources` 下行驱动：帧到达置脏后由 tick 读本地缓存刷新；MUST NOT 以周期性 unary 轮询同一刷新。首帧到达前的初始快照 MAY 经一次性 loaded_resources unary 获取；启动与 /reload 后的既有刷新语义（ath23）保持。"
   ath39,"unary-request-bounded","产品 TUI 对 Host 的每笔 unary 请求 MUST 有请求级等待界；已知长操作（如 reload）MUST 分级放宽且各有界；半开连接下 MUST 以超时错误呈现而非无限挂起。"
   ath40,"mux-halfopen-detect","mux 下行客户端 MUST 周期性探测连接活性（如 keepalive ping）；连续探测周期无任何入站帧时 MUST 判定半开并走既有重订/resync 路径，MUST NOT 静默停摆。"
-scenarios[14]{req_id,id,given,when,then,feature}:
+scenarios[65]{req_id,id,given,when,then,feature}:
   ath28,ath28-unit,"reload-in-progress-ux 由产品 harness/单测覆盖（非 BDD harness）",审查实现与对应测试,"行为符合本 requirement 陈述",false
   ath29,ath29-unit,"mouse-input-opt-in-no-moved-paint 由产品 harness 与 ignore PTY 覆盖（非 BDD harness）",审查实现与对应测试,"行为符合本 requirement 陈述",false
   "ath36","ath36-unit-cold-tape","冷订恢复窗磁带由 XyRemoteDriver 下行过滤的驱动级测试覆盖（非 BDD harness）",审查实现与对应测试,"行为符合本 requirement 陈述",false
@@ -56,3 +56,54 @@ scenarios[14]{req_id,id,given,when,then,feature}:
   "ath38","ath38-unit","attach 头卡下行驱动由 XyRemoteDriver 驱动级测试覆盖（非 BDD harness）","mux session/resources 帧到达后推进 tick","缓存刷新且不发周期性 unary",false
   ath39,"unary-halfopen-timeout","Host 进程被 kill -9 且 TCP 半开","产品 TUI 发起 unary 请求","请求级界内返回可观察超时错误而非悬挂至 OS 超时",false
   ath40,"mux-idle-resync","下行链路半开且静默","连续探测周期无入站帧","客户端判定半开并触发既有 resync/重订恢复",false
+  ath1,no-start,,审计产品 TUI 源码,"无 TUI::start；存在 host 驱动调用",false
+  ath2,panic-restore,,TUI 运行中发生 panic,panic hook 恢复终端后用户 shell 可用,false
+  ath3,debug-tail,,以 debug 构建启动 TUI,日志文件持续写入且 AGENTS 记载路径,false
+  ath4,tiny-terminal,,终端高度为 3,"显示放大提示或干净退出，进程不挂死",false
+  ath5,harness-min-size,TestTerminal 尺寸为 20x3,HostSession 推进一帧,视口含放大提示且进程逻辑不 panic,false
+  ath5,harness-no-start,产品 TUI 源码与 host 单元测试,审计调用点,"产品路径无 TUI::start 调用",false
+  ath6,one-pump,生产 host loop 与 harness 泵均接线,审查 drain_pending 调用点,两侧共用同一函数且无重复的 PendingSlash match 副本,false
+  ath7,one-select,审查 run_host_loop 与 harness bang 路径,存在进行中的 bang,两侧共用同一 helper/扇入；无第三份手写 bang Esc select,false
+  ath7,esc-during-stream,hanging bang 已 uplink 且有 chunk,按 Esc,"Driver::abort 被调用且块呈 cancelled",false
+  ath8,abort-then-deltas-ignored,busy 已 Esc abort,再泵入 ThinkingDelta 与 TextDelta 与 AgentEnd,无 assistant 正文条目且 status idle,false
+  ath8,esc-xy-before-drain,agent busy,Esc 后在 drain_pending 前注入 TextDelta,该 delta 被丢弃且 UI 不回 busy,false
+  ath10,layout-section-present,,打开面 AGENTS 文档,"含布局表与模块职责，且无进度表",false
+  ath11,bang-abort-unchanged,hanging bang 中 Esc,取消,块呈 cancelled 且无 ScrollNotice Aborted 混用,false
+  ath12,entry-complexity-under-budget,ath12 入口协调者已接线,运行复杂度闸脚本 --check,cognitive 与 cyclomatic 均在上限内且无第二套 drain 泵,false
+  ath12,input-policy-module,审查 host 目录,定位 busy Esc 与 idle Enter,位于 input_policy（或等价）子模块且 step 仍为唯一调度入口,false
+  ath13,get-messages-error-note,Driver get_messages 返回 Err,执行 travel,scrollback 含失败提示且不假装空树成功,false
+  ath14,list-via-driver,产品 harness 或单元,打开 resume 列表路径,"经 Driver/seam 返回且无 tui→infra::session 依赖",false
+  ath14,row-has-preview-fields,list_sessions 返回非空,检查行字段,含预览或 name 以及可用于 age 的时间信息,false
+  ath15,new-via-driver,产品 harness,提交 /session-new,"经 Driver new_session 返回新 id 且无 tui→infra::session 依赖",false
+  ath15,name-via-driver,产品 harness,提交 /session-name demo,经 Driver set_session_name 且无 tui 直写目录,false
+  ath16,delete-rejects-current,Resume 面板选中当前活跃 session,触发删除确认并确认,出现拒绝提示且会话仍存在,false
+  ath16,rename-via-driver,Resume 面板已开,完成一项 rename,Driver set_session_name 被调用且列表展示新名,false
+  ath20,skills-catalog-refresh,idle 且磁盘 skills 变更后,/reload,dollar skill catalog 或 loaded_skill_names 反映新目录,false
+  ath20,partial-success,某一 reload 步骤失败,/reload,系统报告含失败项且其它步骤仍执行,false
+  ath21,seam-only,ScriptedDriver 可观测,/history-copy-last 成功,copy_text 调用记录含目标正文,false
+  ath21,skip-non-assistant,末条为 system 其前为 assistant,/history-copy-last,复制的是 assistant 而非 system,false
+  ath22,silent-no-transcript,产品 host 已挂载,经 /model 提交新 thinking level,scrollback 无 thinking-border 系统行且 footer 与边框与 Driver 一致,false
+  ath22,model-switch-resync,已切换到支持集不同的模型且 level 被设为声明列表末项,下一帧 render,"footer 与边框反映 Driver::thinking_level 结果",false
+  ath22,busy-pending-no-system,agent busy 且 active 模型为 A,有参 /model B 成功更新 selected,scrollback 无 model → 滚动提示确认行且 status 下轮预告含 Next turn,false
+  ath23,reload-refreshes,idle 且磁盘 skills 变更后,/reload,loaded-resources 与 dollar skill catalog 反映新目录,false
+  ath23,no-infra-reach,审查 app/tui 源码,检查 import,"无 tui→infra::mcp 直达",false
+  ath23,startup-mcp-nonblocking-new-and-resume,配置了 MCP 且选择新会话或 CLI --session resume,进入 TUI,面已渲染（resume 时历史已可投影）且未等待全部 MCP 连接完成,false
+  ath23,prompt-allowed-while-mcp-connecting,MCP 仍 connecting,提交普通 agent prompt,允许提交；头卡仍可显示 connecting 进度；slash 与滚历史仍可用；generate 可按 mcp8 门闸等待定稿,false
+  ath23,in-tui-resume-no-mcp-reconnect-block,MCP 已连接或仍在后台连接,面内 /session-resume 切换会话,不因切换而阻塞等待 MCP 重连,false
+  ath27,mcp-slash-opens-select-list-any-state,MCP 已配置且可能仍 connecting 或 agent busy,提交无参 /mcp,打开替换 editor 槽的 MCP SelectList 且 MUST NOT 仅因开面板 abort agent,false
+  ath27,mcp-select-list-shows-armed,至少一个 MCP 已 settle 并 overlay 进 ToolSet,打开 /mcp,对应行显示 tools armed（或等价）且汇总可区分 armed,false
+  ath27,mcp-select-list-enter-closes,/mcp SelectList 已打开,按 Enter,关槽且 MUST NOT 假实现禁用 MCP,false
+  ath27,mcp-short-cue-fixed-copy,配置了多个 MCP 且尚未全部 armed,渲染可选短 cue,cue 文案为 mcp pending (see /mcp) 且 MUST NOT 含分数计数或 server id 列表,false
+  ath24,idle-tick-skips-paint,Ready 且 idle 无 paint_dirty,"HostEvent::Tick",不因该 Tick 单独 request_render,false
+  ath24,bang-chunk-paints-on-tick,bang 追加 chunk 已标 paint_dirty,随后 Tick,合并 request_render 且 scrollback 可见新输出,false
+  ath24,spinner-reuses-upper-cache,busy 且 transcript 很长,仅 status Loader 推进或仅 status 短词变化,UiRoot 复用上区缓存且 spinner 帧仍更新,false
+  ath25,scrollback-entry-cache-under-streaming,已有多条已提交 Assistant 条目,连续注入多次 TextDelta,不得对全部历史条目重新 Markdown；harness 可观测的重绘或 cache miss 有上界,false
+  ath25,large-scrollback-e2e-smoke,PTY 或 tmux 下产品 TUI 带较大 scrollback 模拟,完成一轮 Fake 对话并 /exit,进程干净退出且不得超时挂死,false
+  ath26,streaming-assistant-reuses-stable-prefix,Busy 且 streaming_assistant 已有多段完整段落,连续追加多次 TextDelta 仅增长后缀,全量 Markdown 解析次数有上界且可见行与全量解析一致,false
+  ath26,streaming-paint-preserves-ctrl-o-viewport,工具块处于高度缩略,流式 assistant 增量绘制进行中并切换 Ctrl+O,工具块视口展开/折叠语义不变,false
+  avs1,h2-stream,HostSession 已 on_run_started,注入 TextDelta 与 AgentEnd,scrollback 含助手文本且 phase 为 Idle,false
+  avs1,h3-tool,Busy 中,注入 ToolExecutionStart/End,"存在 UiEntry::Tool 且渲染含工具名",false
+  avs1,h4-steer,Busy 且 editor 非空,薄编排处理 Enter,"Driver::steer 被记录且出现 Steering: strip",false
+  avs1,h7-abort-resume,Busy 中 Esc 已 abort,再 idle 提交,"第二次 Driver::run 被调用且无粘性 aborted",false
+  avs1,h8-exit,idle 输入 /exit,编排收尾,session quit 且 finish/stop 可观测,false
+  avs2,pty-hello-exit,PTY 下 Fake+--trust 产品 TUI 已就绪,提交短 prompt 再 /exit,屏含 Hello from fake provider 且进程退出,false
