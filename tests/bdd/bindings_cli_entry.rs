@@ -1,7 +1,8 @@
-use crate::steps_cli_tokenizer::{
-    AttachBdd, SurfaceBdd, SurfaceFlagsBdd, TokenizerBdd, attach_bdd, surface_bdd,
-    surface_flags_bdd, tokenizer_bdd,
+use crate::steps_cli_surface::{
+    AttachBdd, CliHelpBdd, SurfaceBdd, SurfaceFlagsBdd, attach_bdd, cli_help_bdd, surface_bdd,
+    surface_flags_bdd,
 };
+use crate::steps_tokenizer::{TokenizerBdd, tokenizer_bdd};
 use rstest_bdd_macros::scenario;
 
 #[scenario(
@@ -44,10 +45,10 @@ fn test_ce16_tui(surface_bdd: SurfaceBdd) {}
 fn test_ce16_print(surface_bdd: SurfaceBdd) {}
 
 #[scenario(path = "tests/features/cli-entry.feature", name = "ops-stay-toplevel")]
-fn test_ce16_ops(tokenizer_bdd: TokenizerBdd) {}
+fn test_ce16_ops(cli_help_bdd: CliHelpBdd) {}
 
 #[scenario(path = "tests/features/cli-entry.feature", name = "serve-ops-verb")]
-fn test_ce8_serve(tokenizer_bdd: TokenizerBdd) {}
+fn test_ce8_serve(cli_help_bdd: CliHelpBdd) {}
 
 #[scenario(
     path = "tests/features/cli-entry.feature",

@@ -1,5 +1,5 @@
-use crate::steps_cli_tokenizer::{TokenizerBdd, tokenizer_bdd};
 use crate::steps_runtime_config::{RcSnap, rc_snap};
+use crate::steps_tokenizer::{TokenizerBdd, tokenizer_bdd};
 use rstest_bdd_macros::scenario;
 
 #[scenario(

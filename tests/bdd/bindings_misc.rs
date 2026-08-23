@@ -1,6 +1,6 @@
 use crate::fixtures::*;
 use crate::steps_bridge::{AiBridgeBdd, PromptBdd, ai_bridge_bdd, prompt_bdd};
-use crate::steps_cli_tokenizer::{TokenizerBdd, tokenizer_bdd};
+use crate::steps_tokenizer::{TokenizerBdd, tokenizer_bdd};
 use rstest_bdd_macros::scenario;
 
 #[scenario(

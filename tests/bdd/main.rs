@@ -29,7 +29,7 @@ mod steps_agent_runtime;
 mod steps_agent_session_extra;
 mod steps_app_tui_ask;
 mod steps_bridge;
-mod steps_cli_tokenizer;
+mod steps_cli_surface;
 mod steps_compaction;
 mod steps_domain_compaction_extra;
 mod steps_domain_security;
@@ -40,13 +40,11 @@ mod steps_sandbox;
 mod steps_server;
 mod steps_session;
 mod steps_shared_thens;
+mod steps_tokenizer;
 mod steps_tools;
 mod steps_workspace;
 
 pub use fixtures::*;
 pub use steps_bridge::{AiBridgeBdd, PromptBdd, ai_bridge_bdd, prompt_bdd};
-pub use steps_cli_tokenizer::{
-    SurfaceBdd, SurfaceFlagsBdd, TokenizerBdd, surface_bdd, surface_flags_bdd, tokenizer_bdd,
-};
 pub use steps_runtime_config::{RcSnap, rc_snap};
 pub use steps_server::{ServerTest, approval_test, server_test};
