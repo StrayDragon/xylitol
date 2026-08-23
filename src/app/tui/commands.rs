@@ -405,9 +405,70 @@ pub fn bash_result_entries(command: &str, result: &XyBashResult) -> Vec<UiEntry>
 #[cfg(test)]
 mod parse_tests {
     use super::{
-        BusySlashPolicy, PendingSlash, SlashPermit, busy_slash_policy, parse_slash_command,
-        slash_allowances,
+        BusySlashPolicy, PendingSlash, SlashPermit, busy_slash_policy, parse_bang_command,
+        parse_slash_command, slash_allowances,
     };
+
+    /// The whole idle-input command surface in one reviewable file: every
+    /// slash verb, its usage-error paths, and bang forms. Adding/removing a
+    /// verb MUST touch this snapshot (deliberate friction — the verb list is
+    /// product vocabulary). `/debug` is excluded: it only exists under
+    /// debug_assertions and would make the snapshot profile-dependent.
+    #[test]
+    fn slash_bang_parse_surface_snapshot() {
+        let inputs = [
+            "",
+            "plain text",
+            "/",
+            "/unknown-verb",
+            "/exit",
+            "/quit",
+            "/model",
+            "/model gpt-x",
+            "/session-tree",
+            "/session-fork",
+            "/session-compact",
+            "/session-compact focus tests first",
+            "/session-export",
+            "/session-export /tmp/a.json",
+            "/session-import",
+            "/session-import x.json",
+            "/session",
+            "/session extra",
+            "/session-resume",
+            "/session-resume abc",
+            "/session-new",
+            "/session-new x",
+            "/session-clone",
+            "/session-clone x",
+            "/session-name",
+            "/session-name n1",
+            "/reload",
+            "/reload arg",
+            "/trust",
+            "/trust parent",
+            "/trust deny",
+            "/trust bogus",
+            "/history-copy-last",
+            "/history-copy-last arg",
+            "/theme dark",
+            "/mcp",
+            "/mcps arg",
+            "!",
+            "!!",
+            "!ls -la",
+            "!!make test",
+        ];
+        let mut lines = Vec::with_capacity(inputs.len());
+        for input in inputs {
+            lines.push(format!(
+                "{input:?} =>\n  slash={:?}\n  bang={:?}",
+                parse_slash_command(input),
+                parse_bang_command(input)
+            ));
+        }
+        insta::assert_snapshot!("slash_bang_parse_surface", lines.join("\n"));
+    }
 
     #[test]
     fn busy_policy_allow_and_reject_table() {

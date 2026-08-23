@@ -84,6 +84,88 @@ mod tests {
     use super::*;
     use crate::protocol::message::{AgentMessage, AgentPart, EnvMessage, LlmMessage};
 
+    /// Zero every timestamp so the snapshot pins shape, not wall-clock.
+    fn normalize_timestamps(value: &mut serde_json::Value) {
+        match value {
+            serde_json::Value::Object(map) => {
+                if map.contains_key("timestamp") {
+                    map.insert("timestamp".into(), serde_json::Value::from(0));
+                }
+                for child in map.values_mut() {
+                    normalize_timestamps(child);
+                }
+            }
+            serde_json::Value::Array(items) => {
+                for item in items {
+                    normalize_timestamps(item);
+                }
+            }
+            _ => {}
+        }
+    }
+
+    #[test]
+    fn full_projection_shape_snapshot() {
+        // One conversation touching every projection arm. The serialized shape
+        // is a prompt-cache prefix contract (c1930/as48): treat snapshot diffs
+        // like wire diffs and land them only via an explicit change.
+        let history = vec![
+            AgentMessage::user("plan the refactor"),
+            AgentMessage::assistant("I will read the entry first"),
+            AgentMessage::Llm(LlmMessage::AssistantMessage {
+                content: vec![AgentPart::ToolCall {
+                    id: "call_1".into(),
+                    name: "read".into(),
+                    arguments: serde_json::json!({"path": "src/main.rs"}),
+                }],
+                stop_reason: None,
+                usage: None,
+                api: String::new(),
+                provider: String::new(),
+                model: String::new(),
+                response_id: None,
+                error_message: None,
+                timestamp: 0,
+                diagnostics: Vec::new(),
+            }),
+            AgentMessage::tool_result(
+                "call_1",
+                "read",
+                vec![AgentPart::text("fn main() {}")],
+                false,
+            ),
+            AgentMessage::tool_result("call_2", "read", vec![AgentPart::text("boom")], true),
+            AgentMessage::bash("ls", "a.txt", Some(0)),
+            AgentMessage::Env(EnvMessage::BashExecutionMessage {
+                command: "secret".into(),
+                output: "x".into(),
+                exit_code: None,
+                cancelled: false,
+                truncated: false,
+                full_output_path: None,
+                exclude_from_context: true,
+            }),
+            AgentMessage::Env(EnvMessage::CompactionSummaryMessage {
+                summary: "earlier work summarized".into(),
+                tokens_before: 20_000,
+                tokens_after: 4_000,
+                read_files: None,
+                modified_files: None,
+            }),
+            AgentMessage::Env(EnvMessage::CustomMessage {
+                custom_type: "note".into(),
+                content: serde_json::Value::String("user pinned note".into()),
+                display: serde_json::Value::Null,
+                details: serde_json::Value::Null,
+            }),
+        ];
+        let projected = project_for_llm(&history);
+        let mut value = serde_json::to_value(&projected).unwrap();
+        normalize_timestamps(&mut value);
+        let pretty = serde_json::to_string_pretty(&value).unwrap();
+        insta::assert_snapshot!(pretty);
+    }
+
     #[test]
     fn agent_todo_custom_skipped_in_llm_prefix() {
         use crate::protocol::session::{
