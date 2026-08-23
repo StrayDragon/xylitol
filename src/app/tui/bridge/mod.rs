@@ -175,6 +175,53 @@ pub(crate) fn find_tool_mut<'a>(entries: &'a mut [UiEntry], id: &str) -> Option<
     })
 }
 
+/// c2440: terminal tool failures must be VISIBLE in the block body, not only
+/// tinted on the rail — streamed output would otherwise hide the error line
+/// (bash timeout keeps its partial stdout).
+fn ensure_visible_failure_line(output: &mut String, result: &str, is_error: bool, is_mcp: bool) {
+    if !is_error || is_mcp || output.contains(result) {
+        return;
+    }
+    if !output.is_empty() && !output.ends_with('\n') {
+        output.push('\n');
+    }
+    output.push_str(result);
+}
+
+/// pi ToolExecutionComponent: updateResult refreshes result body/tint only —
+/// call header stays from streaming args. Never rebuild preview from an empty
+/// synthetic (that wiped bash `$ cmd` / write|edit paths after done).
+fn refresh_header_from_result_path(
+    name: &str,
+    result: &str,
+    args_preview: &mut String,
+    tool_path: &mut Option<String>,
+    write_content: &Option<String>,
+) {
+    let Some(path) = extract_result_path(result) else {
+        return;
+    };
+    let weak_preview = preview_lacks_real_path(name, args_preview);
+    if tool_path.as_deref().filter(|p| !p.is_empty()).is_none() {
+        *tool_path = Some(path);
+    }
+    if weak_preview {
+        let mut synthetic = serde_json::Map::new();
+        if let Some(p) = tool_path.as_deref() {
+            synthetic.insert("path".into(), Value::String(p.to_string()));
+        }
+        if let Some(c) = write_content.as_deref() {
+            synthetic.insert("content".into(), Value::String(c.to_string()));
+        }
+        *args_preview = human_tool_args_preview_with_path(
+            name,
+            &Value::Object(synthetic),
+            tool_path.as_deref(),
+            usize::MAX,
+        );
+    }
+}
+
 /// Fill an existing Tool row with End semantics (live `ToolExecutionEnd` + rebuild merge).
 ///
 /// Returns `false` when no Tool with `id` exists (caller may push an orphan stub then retry).
@@ -245,37 +292,12 @@ pub(crate) fn apply_tool_result_to_entries(
     // pi ToolExecutionComponent: updateResult refreshes result body/tint only —
     // call header stays from streaming args. Never rebuild preview from an empty
     // synthetic (that wiped bash `$ cmd` / write|edit paths after done).
-    if let Some(path) = extract_result_path(result) {
-        let weak_preview = preview_lacks_real_path(name, args_preview);
-        if tool_path.as_deref().filter(|p| !p.is_empty()).is_none() {
-            *tool_path = Some(path);
-        }
-        if weak_preview {
-            let mut synthetic = serde_json::Map::new();
-            if let Some(p) = tool_path.as_deref() {
-                synthetic.insert("path".into(), Value::String(p.to_string()));
-            }
-            if let Some(c) = write_content.as_deref() {
-                synthetic.insert("content".into(), Value::String(c.to_string()));
-            }
-            *args_preview = human_tool_args_preview_with_path(
-                name,
-                &Value::Object(synthetic),
-                tool_path.as_deref(),
-                usize::MAX,
-            );
-        }
-    }
+    refresh_header_from_result_path(name, result, args_preview, tool_path, write_content);
 
     // c2440: terminal tool failures must be VISIBLE in the block body, not
     // only tinted on the rail — streamed output would otherwise hide the
     // error line (bash timeout keeps its partial stdout).
-    if is_error && !is_mcp_tool_name(name) && !output.contains(result) {
-        if !output.is_empty() && !output.ends_with('\n') {
-            output.push('\n');
-        }
-        output.push_str(result);
-    }
+    ensure_visible_failure_line(output, result, is_error, is_mcp_tool_name(name));
 
     // Edit line-range after path backfill so `:N-M` is not wiped.
     if is_edit_tool(name)
