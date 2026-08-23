@@ -421,3 +421,517 @@ pub fn find_cut_point(
         }
     }
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::protocol::session::{
+        BranchSummaryEntry, CompactionEntry, CustomEntry, CustomMessageEntry, EntryBase,
+        LabelEntry, MessageEntry, SESSION_VERSION, SessionEntry, SessionHeader,
+    };
+    use proptest::prelude::*;
+    use serde_json::json;
+
+    fn msg_entry(id: &str, role: &str, content: &str) -> SessionEntry {
+        SessionEntry::Message(MessageEntry {
+            base: EntryBase {
+                entry_type: "message".into(),
+                id: id.into(),
+                parent_id: None,
+                timestamp: 0,
+            },
+            message: json!({"role": role, "content": content}),
+        })
+    }
+    fn compaction_entry(summary: &str) -> SessionEntry {
+        SessionEntry::Compaction(CompactionEntry {
+            base: EntryBase {
+                entry_type: "compaction".into(),
+                id: "c".into(),
+                parent_id: None,
+                timestamp: 0,
+            },
+            summary: summary.into(),
+            first_kept_entry_id: String::new(),
+            tokens_before: 0,
+            details: None,
+            from_hook: None,
+        })
+    }
+    fn label_entry() -> SessionEntry {
+        SessionEntry::Label(LabelEntry {
+            base: EntryBase {
+                entry_type: "label".into(),
+                id: "l".into(),
+                parent_id: None,
+                timestamp: 0,
+            },
+            target_id: "m1".into(),
+            label: None,
+        })
+    }
+    fn header_entry() -> SessionEntry {
+        SessionEntry::Header(SessionHeader {
+            entry_type: String::new(),
+            version: SESSION_VERSION,
+            id: "s".into(),
+            timestamp: 0,
+            cwd: String::new(),
+            parent_session: None,
+        })
+    }
+    fn custom_entry_of(custom_type: &str) -> SessionEntry {
+        SessionEntry::Custom(CustomEntry {
+            base: EntryBase {
+                entry_type: "custom".into(),
+                id: "x".into(),
+                parent_id: None,
+                timestamp: 0,
+            },
+            custom_type: custom_type.into(),
+            data: json!({"k": 1}),
+        })
+    }
+    fn branch_summary_entry() -> SessionEntry {
+        SessionEntry::BranchSummary(BranchSummaryEntry {
+            base: EntryBase {
+                entry_type: "branchSummary".into(),
+                id: "b".into(),
+                parent_id: None,
+                timestamp: 0,
+            },
+            from_id: "root".into(),
+            summary: "s".into(),
+            details: None,
+            from_hook: None,
+        })
+    }
+    fn custom_message_entry() -> SessionEntry {
+        SessionEntry::CustomMessage(CustomMessageEntry {
+            base: EntryBase {
+                entry_type: "customMessage".into(),
+                id: "cm".into(),
+                parent_id: None,
+                timestamp: 0,
+            },
+            custom_type: "note".into(),
+            content: json!("hi"),
+            display: false,
+            details: None,
+        })
+    }
+
+    // ── estimate_lax_message_json_chars（chars 口径）────────────────
+
+    #[test]
+    fn lax_string_content_is_byte_len() {
+        // .len() 是字节口径：CJK 按字节计（4 个汉字 = 12 字节），这是现状契约。
+        assert_eq!(
+            estimate_lax_message_json_chars(&json!({"content": "hello"})),
+            5
+        );
+        assert_eq!(
+            estimate_lax_message_json_chars(&json!({"content": "你好世界"})),
+            12
+        );
+        assert_eq!(estimate_lax_message_json_chars(&json!({"content": ""})), 0);
+    }
+
+    #[test]
+    fn lax_part_array_table() {
+        let cases = [
+            // (描述, message, 期望 chars)
+            (
+                "text part",
+                json!({"role":"user","content":[{"type":"text","text":"abc"}]}),
+                3,
+            ),
+            (
+                "parts 键回退",
+                json!({"parts":[{"type":"text","text":"ab"}]}),
+                2,
+            ),
+            ("无 content/parts → 0", json!({"role":"user"}), 0),
+            (
+                "image 固定 4800",
+                json!({"role":"user","content":[{"type":"image","url":"x"}]}),
+                4800,
+            ),
+            (
+                "assistant thinking 计入",
+                json!({"role":"assistant","content":[{"type":"thinking","thinking":"abcd"}]}),
+                4,
+            ),
+            (
+                "非 assistant thinking 不计入",
+                json!({"role":"user","content":[{"type":"thinking","thinking":"abcd"}]}),
+                0,
+            ),
+            (
+                "assistant toolCall = name + arguments 序列化",
+                json!({"role":"assistant","content":[
+                    {"type":"toolCall","name":"read","arguments":{"path":"a"}}
+                ]}),
+                4 + r#""path":"a""#.len() as u64 + 2, // {"path":"a"} = 12 字节
+            ),
+            (
+                "toolCall 在非 assistant 角色不计入",
+                json!({"role":"toolResult","content":[
+                    {"type":"toolCall","name":"read","arguments":{}}
+                ]}),
+                0,
+            ),
+            ("裸字符串 part", json!({"role":"user","content":["abc"]}), 3),
+            (
+                "未知 type 忽略",
+                json!({"role":"user","content":[{"type":"other","text":"zzzz"}]}),
+                0,
+            ),
+            ("空 parts", json!({"role":"assistant","content":[]}), 0),
+        ];
+        for (desc, msg, expected) in cases {
+            assert_eq!(
+                estimate_lax_message_json_chars(&msg),
+                expected,
+                "case: {desc}"
+            );
+        }
+    }
+
+    // ── estimate_tokens_message_json（tokens = chars/4 上取整）──────
+
+    #[test]
+    fn tokens_string_content_div_ceil() {
+        assert_eq!(
+            estimate_tokens_message_json(&json!({"content": "hello"})),
+            2
+        ); // 5→2
+        assert_eq!(estimate_tokens_message_json(&json!({"content": "abcd"})), 1); // 4→1
+        assert_eq!(estimate_tokens_message_json(&json!({"content": ""})), 0);
+    }
+
+    #[test]
+    fn tokens_part_array_table() {
+        let cases = [
+            ("字符串 part", json!({"content":["abcdef"]}), 2u64), // 6→2
+            (
+                // 注意：tokens 变体把 image 直接记为 4800「token」，而 lax
+                // 变体记 4800「char」（÷4 后=1200 token）——两口径相差 4 倍。
+                // 此处按现状钉住；是否统一属显式行为决策，勿顺手改。
+                "image 形态 → 直接 4800 token",
+                json!({"content":[{"type":"image"}]}),
+                4800,
+            ),
+            (
+                "有 url 无 text/name 同样直接 4800 token",
+                json!({"content":[{"url":"http://x"}]}),
+                4800,
+            ),
+            (
+                "url 带 text 则按 text 计",
+                json!({"content":[{"url":"http://x","text":"abcdefgh"}]}),
+                2,
+            ),
+            (
+                "thinking 与 lax 不同：不区分角色",
+                json!({"role":"user","content":[{"type":"thinking","text":"abcdefgh"}]}),
+                2,
+            ),
+            (
+                "未知 type 用整个 part 序列化长度",
+                json!({"content":[{"type":"zzz","x":"yy"}]}),
+                {
+                    let part = json!({"type":"zzz","x":"yy"});
+                    (part.to_string().len() as u64).div_ceil(4)
+                },
+            ),
+            (
+                "缺 content → 整个消息 JSON 长度",
+                json!({"foo":1}),
+                (r#"{"foo":1}"#.len() as u64).div_ceil(4),
+            ),
+        ];
+        for (desc, msg, expected) in cases {
+            assert_eq!(estimate_tokens_message_json(&msg), expected, "case: {desc}");
+        }
+    }
+
+    #[test]
+    fn entry_level_estimates_table() {
+        use crate::protocol::session::{CompactionEntry, EntryBase, MessageEntry, SessionEntry};
+        let base = |id: &str| EntryBase {
+            entry_type: id.into(),
+            id: id.into(),
+            parent_id: None,
+            timestamp: 0,
+        };
+        let header = SessionEntry::Header(crate::protocol::session::SessionHeader {
+            entry_type: String::new(),
+            version: SESSION_VERSION,
+            id: "s".into(),
+            timestamp: 0,
+            cwd: String::new(),
+            parent_session: None,
+        });
+        assert_eq!(estimate_tokens_entry(&header), 0);
+        let compaction = SessionEntry::Compaction(CompactionEntry {
+            base: base("c1"),
+            summary: "abcdefgh".into(), // 8 → 2
+            first_kept_entry_id: String::new(),
+            tokens_before: 0,
+            details: None,
+            from_hook: None,
+        });
+        assert_eq!(estimate_tokens_entry(&compaction), 2);
+        let message = SessionEntry::Message(MessageEntry {
+            base: base("m1"),
+            message: json!({"role": "user", "content": "hello"}),
+        });
+        assert_eq!(estimate_tokens_entry(&message), 2);
+    }
+
+    // ── 性质：追加合法 part 永不减少估算（防 += → -= 类回归）────────
+
+    fn lax_part_strategy() -> impl Strategy<Value = serde_json::Value> {
+        prop_oneof![
+            3 => "[a-z]{0,12}".prop_map(|s| json!({"type": "text", "text": s})),
+            2 => "[a-z]{0,12}".prop_map(|s| json!({"type": "thinking", "thinking": s})),
+            2 => ("[a-z]{1,6}", "[a-z]{0,8}")
+                .prop_map(|(n, p)| json!({"type": "toolCall", "name": n, "arguments": p})),
+            1 => Just(json!({"type": "image"})),
+            1 => "[a-z]{0,10}".prop_map(|s| json!(s)),
+        ]
+    }
+
+    proptest! {
+        #![proptest_config(proptest::test_runner::Config::with_cases(256))]
+
+        #[test]
+        fn lax_estimate_monotone_under_part_append(
+            role in prop_oneof![Just("assistant"), Just("user"), Just("toolResult")],
+            base in prop::collection::vec(lax_part_strategy(), 0..5),
+            extra in lax_part_strategy(),
+        ) {
+            let mut with_extra = base.clone();
+            with_extra.push(extra);
+            let before = estimate_lax_message_json_chars(
+                &json!({"role": role, "content": base}),
+            );
+            let after = estimate_lax_message_json_chars(
+                &json!({"role": role, "content": with_extra}),
+            );
+            prop_assert!(after >= before);
+        }
+
+        #[test]
+        fn lax_primary_path_equals_byte_len(s in any::<String>()) {
+            prop_assert_eq!(
+                estimate_lax_message_json_chars(&json!({"content": s.clone()})),
+                s.len() as u64
+            );
+        }
+    }
+
+    // ── estimate_custom_content_chars ───────────────────────────────
+
+    #[test]
+    fn custom_content_chars_table() {
+        let cases = [
+            ("字符串直取", json!("abcd"), 4u64),
+            ("数组内 image", json!([{"type":"image"}]), 4800),
+            ("数组内 text part", json!([{"text":"ab"}]), 2),
+            ("数组内裸字符串", json!(["xyz"]), 3),
+            ("空数组", json!([]), 0),
+            (
+                "非数组非字符串 → 整体序列化",
+                json!({"k":1}),
+                r#"{"k":1}"#.len() as u64,
+            ),
+        ];
+        for (desc, content, expected) in cases {
+            assert_eq!(
+                estimate_custom_content_chars(&content),
+                expected,
+                "case: {desc}"
+            );
+        }
+    }
+
+    // ── is_valid_cut_point / is_turn_start_entry ────────────────────
+
+    #[test]
+    fn valid_cut_point_table() {
+        let user = msg_entry("u", "user", "hi");
+        let assistant = msg_entry("a", "assistant", "yo");
+        let tool_result = msg_entry("t", "toolResult", "out");
+        let unknown = msg_entry("?", "mystery", "?");
+        let cases = [
+            (&user, true),
+            (&assistant, true),
+            (&msg_entry("b", "bashExecution", "!ls"), true),
+            (&msg_entry("c", "custom", "x"), true),
+            (&msg_entry("bs", "branchSummary", "s"), true),
+            (&msg_entry("cs", "compactionSummary", "s"), true),
+            (&tool_result, false), // 永不在 toolResult 后切开
+            (&unknown, false),
+            (&branch_summary_entry(), true),
+            (&custom_message_entry(), true),
+            (&custom_entry_of("custom_message"), true),
+            (&custom_entry_of("other_kind"), false),
+            (&header_entry(), false),
+            (&label_entry(), false),
+            (&compaction_entry("s"), false),
+        ];
+        for (entry, expected) in cases {
+            assert_eq!(is_valid_cut_point(entry), expected, "entry role/type");
+        }
+    }
+
+    #[test]
+    fn turn_start_table() {
+        let cases = [
+            (msg_entry("u", "user", "hi"), true),
+            (msg_entry("b", "bashExecution", "!ls"), true),
+            (msg_entry("a", "assistant", "yo"), false),
+            (msg_entry("t", "toolResult", "out"), false),
+            (compaction_entry("s"), false), // 显式早退：压缩条目永不开新 turn
+            (branch_summary_entry(), true),
+            (custom_message_entry(), true),
+            (custom_entry_of("custom_message"), true),
+            (custom_entry_of("other"), false),
+            (header_entry(), false),
+        ];
+        for (entry, expected) in cases {
+            assert_eq!(is_turn_start_entry(&entry), expected);
+        }
+    }
+
+    // ── include_preceding_non_messages ──────────────────────────────
+
+    #[test]
+    fn preceding_zero_token_entries_are_included_until_boundary() {
+        // [user_a, header, label, user_b] cut=3：零 token 的 header/label
+        // 被并入保留窗，遇上有 token 的 user_a 截停 → 保留从 1 开始。
+        let entries = vec![
+            msg_entry("u1", "user", "first"),
+            header_entry(),
+            label_entry(),
+            msg_entry("u2", "user", "hi"),
+        ];
+        assert_eq!(include_preceding_non_messages(&entries, 3, 0), 1);
+    }
+
+    #[test]
+    fn preceding_walk_stops_at_compaction_and_at_token_entries() {
+        // 压缩边界挡住回溯（中间的零 token 条目被并入）。
+        let entries = vec![
+            compaction_entry("s"),
+            header_entry(),
+            label_entry(),
+            msg_entry("u", "user", "hi"),
+        ];
+        assert_eq!(include_preceding_non_messages(&entries, 3, 0), 1);
+        // 有 token 的前驱本身就是保留起点。
+        let entries = vec![
+            msg_entry("u1", "user", "first"),
+            msg_entry("u2", "user", "second"),
+        ];
+        assert_eq!(include_preceding_non_messages(&entries, 1, 0), 1);
+        // 尊重 start_index 下限。
+        let entries = vec![header_entry(), label_entry(), msg_entry("u", "user", "hi")];
+        assert_eq!(include_preceding_non_messages(&entries, 2, 2), 2);
+    }
+
+    // ── find_cut_point 行为场景 ─────────────────────────────────────
+
+    use CutPointResult as _CutPointResultAlias;
+
+    #[test]
+    fn find_cut_point_empty_and_degenerate() {
+        let empty: Vec<SessionEntry> = Vec::new();
+        let r = find_cut_point(&empty, 0, 0, 100);
+        assert_eq!(
+            (
+                r.first_kept_entry_index,
+                r.turn_start_index,
+                r.is_split_turn
+            ),
+            (0, -1, false)
+        );
+
+        let entries = vec![
+            msg_entry("u", "user", "hi"),
+            msg_entry("a", "assistant", "yo"),
+        ];
+        let r = find_cut_point(&entries, 2, 2, 10);
+        assert_eq!(
+            (
+                r.first_kept_entry_index,
+                r.turn_start_index,
+                r.is_split_turn
+            ),
+            (2, -1, false)
+        );
+    }
+
+    #[test]
+    fn find_cut_point_no_valid_cut_points_falls_back_to_start() {
+        // 只有 toolResult：永不成为切点。
+        let entries = vec![
+            msg_entry("t1", "toolResult", "out"),
+            msg_entry("t2", "toolResult", "out2"),
+        ];
+        let r = find_cut_point(&entries, 0, 2, 1);
+        assert_eq!(
+            (
+                r.first_kept_entry_index,
+                r.turn_start_index,
+                r.is_split_turn
+            ),
+            (0, -1, false)
+        );
+    }
+
+    #[test]
+    fn find_cut_point_splits_mid_turn_with_turn_start_hint() {
+        // [user(4tok), assistant(4tok), user(4tok)]，keep=6 → 累计在 assistant 处
+        // 达标 → 切点落到 mid-turn → 返回 turn_start 提示恢复完整 turn。
+        let entries = vec![
+            msg_entry("u1", "user", "abcdefghijklmnop"), // 16 chars → 4 tok
+            msg_entry("a1", "assistant", "abcdefghijklmnop"), // 4 tok
+            msg_entry("u2", "user", "abcdefghijklmnop"), // 4 tok
+        ];
+        let r = find_cut_point(&entries, 0, 3, 6);
+        assert_eq!(r.first_kept_entry_index, 1);
+        assert_eq!(r.turn_start_index, 0);
+        assert!(r.is_split_turn);
+    }
+
+    #[test]
+    fn find_cut_point_on_turn_start_preserves_non_split_semantics() {
+        // keep=4 → 累计恰好在最后一个 user 达标 → 切点即 turn-start：
+        // 即使 include_preceding 回移，也不得标记为 split。
+        let entries = vec![
+            msg_entry("u1", "user", "abcdefghijklmnop"),
+            msg_entry("a1", "assistant", "abcdefghijklmnop"),
+            msg_entry("u2", "user", "abcdefghijklmnop"),
+        ];
+        let r = find_cut_point(&entries, 0, 3, 4);
+        assert_eq!(r.first_kept_entry_index, 2);
+        assert_eq!(r.turn_start_index, -1);
+        assert!(!r.is_split_turn);
+    }
+
+    #[test]
+    fn find_cut_point_respects_compaction_boundary_when_including() {
+        // [user, compaction, user]，小 keep → 切点=2；向前并入被压缩边界挡住。
+        let entries = vec![
+            msg_entry("u1", "user", "first"),
+            compaction_entry("summary"),
+            msg_entry("u2", "user", "abcdefghijklmnop"),
+        ];
+        let r = find_cut_point(&entries, 0, 3, 4);
+        assert_eq!(r.first_kept_entry_index, 2);
+        assert!(!r.is_split_turn);
+    }
+}
