@@ -76,8 +76,8 @@ mod tests {
     #[test]
     fn detects_mcp_prefix() {
         assert!(is_mcp_tool_name("mcp__lspz__get_diagnostics"));
-        assert!(is_mcp_tool_name("mcp-lspz-get_diagnostics")); // transition hyphen
-        assert!(is_mcp_tool_name("mcp_lspz_get_diagnostics")); // transition underscore
+        assert!(!is_mcp_tool_name("mcp-lspz-get_diagnostics"));
+        assert!(!is_mcp_tool_name("mcp_lspz_get_diagnostics"));
         assert!(!is_mcp_tool_name("read"));
         assert!(!is_mcp_tool_name("mcp"));
     }

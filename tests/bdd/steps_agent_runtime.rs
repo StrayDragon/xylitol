@@ -789,7 +789,7 @@ pub(crate) fn _g_ar28_mcp(agent: &AgentState, ws: &Workspace) {
             sleep_ms: 80,
         }) as Arc<dyn XyTool>,
         Arc::new(BddSlowTool {
-            name: "mcp_fake_x",
+            name: "mcp__fake__x",
             mode: xylitol::protocol::ports::XyToolExecutionMode::Parallel,
             sleep_ms: 80,
         }) as Arc<dyn XyTool>,
@@ -799,7 +799,7 @@ pub(crate) fn _g_ar28_mcp(agent: &AgentState, ws: &Workspace) {
         tools,
         &[
             ("slow_safe", r#"{"n":1}"#),
-            ("mcp_fake_x", r#"{}"#),
+            ("mcp__fake__x", r#"{}"#),
             ("slow_safe", r#"{"n":2}"#),
         ],
         xylitol::protocol::ports::XyBatchMode::BarrierParallel,
@@ -891,10 +891,10 @@ pub(crate) fn _t_ar28_mcp_no_overlap() {
     let entries = BATCH_TIMING.with(|t| t.borrow().clone());
     let mcp = entries
         .iter()
-        .find(|(n, _, _)| n == "mcp_fake_x")
+        .find(|(n, _, _)| n == "mcp__fake__x")
         .expect("mcp");
     for (n, s, e) in &entries {
-        if n == "mcp_fake_x" {
+        if n == "mcp__fake__x" {
             continue;
         }
         assert!(

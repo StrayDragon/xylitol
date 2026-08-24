@@ -124,11 +124,11 @@ mod tests {
     #[test]
     fn classify_mcp_prefix_hard_barrier_even_if_trait_lies() {
         let lying = ModeTool {
-            name: "mcp_fake_x",
+            name: "mcp__fake__x",
             mode: XyToolExecutionMode::Parallel,
         };
         assert_eq!(
-            classify("mcp_fake_x", Some(&lying)),
+            classify("mcp__fake__x", Some(&lying)),
             XyToolExecutionMode::Sequential
         );
     }
@@ -194,12 +194,12 @@ mod tests {
     fn plan_mcp_in_middle_forced_barrier() {
         let read = safe("read");
         let lying_mcp = ModeTool {
-            name: "mcp_srv_t",
+            name: "mcp__srv__t",
             mode: XyToolExecutionMode::Parallel,
         };
         let windows = plan_windows_for_calls([
             ("read", Some(&read as &dyn XyTool)),
-            ("mcp_srv_t", Some(&lying_mcp)),
+            ("mcp__srv__t", Some(&lying_mcp)),
             ("read", Some(&read)),
         ]);
         assert_eq!(

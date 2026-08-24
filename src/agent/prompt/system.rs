@@ -481,15 +481,15 @@ mod tests {
         let opts = SystemPromptOpts {
             selected_tools: vec![
                 "read".into(),
-                "mcp_fs_read".into(),
+                "mcp__fs__read".into(),
                 "bash".into(),
-                "mcp_git_status".into(),
+                "mcp__git__status".into(),
             ],
             tool_snippets: vec![
                 ("read".into(), "Read file".into()),
                 ("bash".into(), "Run bash".into()),
-                ("mcp_fs_read".into(), "MCP read".into()),
-                ("mcp_git_status".into(), "MCP git".into()),
+                ("mcp__fs__read".into(), "MCP read".into()),
+                ("mcp__git__status".into(), "MCP git".into()),
             ],
             ..Default::default()
         };
@@ -497,10 +497,10 @@ mod tests {
         assert!(prompt.contains("- read: Read file"));
         assert!(prompt.contains("- bash: Run bash"));
         assert!(
-            !prompt.contains("mcp_fs_read"),
+            !prompt.contains("mcp__fs__read"),
             "Available tools MUST NOT enumerate mcp_ names: {prompt}"
         );
-        assert!(!prompt.contains("mcp_git_status"));
+        assert!(!prompt.contains("mcp__git__status"));
         assert!(prompt.contains("MCP/custom tools are provided in this turn's tools list"));
         assert!(prompt.contains("`/mcp`"));
     }
@@ -509,10 +509,10 @@ mod tests {
     fn custom_prompt_still_skips_default_tools_backfill() {
         let opts = SystemPromptOpts {
             custom_prompt: Some("Only custom".into()),
-            selected_tools: vec!["mcp_fs_read".into(), "read".into()],
+            selected_tools: vec!["mcp__fs__read".into(), "read".into()],
             tool_snippets: vec![
                 ("read".into(), "Read".into()),
-                ("mcp_fs_read".into(), "MCP".into()),
+                ("mcp__fs__read".into(), "MCP".into()),
             ],
             ..Default::default()
         };

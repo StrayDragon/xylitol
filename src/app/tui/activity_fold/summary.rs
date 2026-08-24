@@ -608,7 +608,7 @@ mod tests {
 
     #[test]
     fn mcp_is_used_not_explored() {
-        let entries = vec![tool("mcp:lspz:get_symbols", None)];
+        let entries = vec![tool("mcp__lspz__get_symbols", None)];
         let c = count_middles(&entries, &[0]);
         let s = format_l2_body(&c);
         assert!(s.contains("Used get_symbols"), "{s}");

@@ -178,8 +178,8 @@ mod tests {
             || -> Vec<Arc<dyn XyTool>> { vec![Arc::new(Named("read")), Arc::new(Named("bash"))] };
         let mcp = || -> Vec<Arc<dyn XyTool>> {
             vec![
-                Arc::new(Named("mcp_fs_read")),
-                Arc::new(Named("mcp_git_status")),
+                Arc::new(Named("mcp__fs__read")),
+                Arc::new(Named("mcp__git__status")),
             ]
         };
         let once = ToolSet::rebuild_agent_tools(builtins(), mcp());
@@ -192,7 +192,7 @@ mod tests {
         sorted.dedup();
         assert_eq!(names.len(), sorted.len(), "duplicate names: {names:?}");
         assert_eq!(names.len(), 4);
-        assert!(names.contains(&"mcp_fs_read"));
+        assert!(names.contains(&"mcp__fs__read"));
         assert!(names.contains(&"read"));
     }
 }
