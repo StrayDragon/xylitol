@@ -259,8 +259,6 @@ pub enum GenerationFinishKind {
 /// Span for one provider HTTP stream (`llm.request`); drop reports to FileReporter.
 pub struct ProviderRequestTrace {
     root: Span,
-    #[allow(dead_code)]
-    request_id: String,
     /// First request-shaped JSON (when I/O tier ≠ none).
     input_buf: Mutex<Option<String>>,
     /// Accumulated assistant text deltas (when I/O tier ≠ none).
@@ -293,7 +291,6 @@ impl ProviderRequestTrace {
         });
         Some(Self {
             root,
-            request_id,
             input_buf: Mutex::new(None),
             output_buf: Mutex::new(String::new()),
             finalized: AtomicBool::new(false),

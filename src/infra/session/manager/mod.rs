@@ -19,9 +19,6 @@ mod tree;
 #[cfg(test)]
 mod tests;
 
-#[allow(unused_imports)] // public path: `manager::assert_session_cwd_exists`
-pub use load::assert_session_cwd_exists;
-
 /// Manages session persistence using JSONL files or in-memory storage.
 ///
 /// [`Clone`] shares interior stores via [`Arc`] so handles remain coherent after

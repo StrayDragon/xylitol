@@ -1096,7 +1096,7 @@ mod tests {
         prop_oneof![
             3 => any::<String>().prop_map(Op::User),
             3 => any::<String>().prop_map(Op::Assistant),
-            1 => "[a-z]{1,8}".prop_map(|e| Op::ErrorAssistant(e)),
+            1 => "[a-z]{1,8}".prop_map(Op::ErrorAssistant),
             2 => Just(Op::ToolCall),
             3 => any::<String>().prop_map(Op::ToolResult),
             2 => (any::<String>(), any::<String>())

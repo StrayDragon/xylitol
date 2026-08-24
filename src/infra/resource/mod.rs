@@ -10,5 +10,4 @@
 
 pub mod loader;
 
-#[allow(unused_imports)]
-pub use loader::{AgentsFile, DefaultResourceLoader, ResourceDiagnostic, SkillInfo, ThemeInfo};
+pub use loader::{DefaultResourceLoader, ResourceDiagnostic, SkillInfo, ThemeInfo};

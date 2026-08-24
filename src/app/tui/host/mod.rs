@@ -20,8 +20,6 @@ use crate::protocol::ports::XyBashResult;
 use super::bridge::{UiEntry, UiModel, UiPhase, apply_xy_event};
 use super::layout::{UiRoot, install_ui_root_key_listeners, shared_ui_root_rebuild};
 
-#[allow(unused_imports)] // re-export for callers / harness
-pub use super::commands::{BangParse, parse_bang_command};
 pub use super::commands::{PendingBash, PendingSlash, bash_block_status, bash_output_body};
 
 /// Minimum usable terminal size (ath4).

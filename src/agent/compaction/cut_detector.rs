@@ -844,8 +844,6 @@ mod tests {
 
     // ── find_cut_point 行为场景 ─────────────────────────────────────
 
-    use CutPointResult as _CutPointResultAlias;
-
     #[test]
     fn find_cut_point_empty_and_degenerate() {
         let empty: Vec<SessionEntry> = Vec::new();
