@@ -17,6 +17,7 @@
 //! Product TUI attach uses [`HttpWsClient`](super::host_client::HttpWsClient);
 //! this adapter keeps the existing [`XyDriver`] seam until TUI speaks the envelope trait directly.
 
+mod clipboard;
 mod in_process;
 mod proto;
 #[cfg(feature = "server")]

@@ -10,18 +10,15 @@
 use async_trait::async_trait;
 use serde::Deserialize;
 use serde_json::{Value, json};
-use tokio::process::Command;
 
 use super::path_utils::resolve_to_dir;
 use super::truncate::{DEFAULT_MAX_BYTES, TruncationOptions, truncate_head};
 use super::typed::TypedTool;
 use crate::protocol::error::XyToolError;
 use crate::protocol::ports::XyToolCtx;
-use crate::protocol::{ToolTimeout, ToolTimeoutError};
 
 /// Per-tool wall-clock default when the model omits `timeout` (c2425).
 pub(crate) const FIND_TOOL_TIMEOUT_SECS: u64 = 60;
-use crate::utils::format_size;
 
 const DEFAULT_LIMIT: usize = 1000;
 pub struct FindTool;
@@ -90,10 +87,7 @@ impl TypedTool for FindTool {
             limit,
             timeout: timeout_arg,
         } = args;
-        let tool_timeout = ToolTimeout::from_i64_opt(timeout_arg).map_err(|e| match e {
-            ToolTimeoutError::ZeroOrNegative => XyToolError::InvalidArgs(e.to_string()),
-        })?;
-        let tool_timeout = tool_timeout.or_default(FIND_TOOL_TIMEOUT_SECS).clamped();
+        let tool_timeout = super::process::parse_tool_timeout(timeout_arg, FIND_TOOL_TIMEOUT_SECS)?;
         let effective_limit = (limit as usize).clamp(1, 10_000);
 
         let search_dir = resolve_to_dir(&ctx.workspace, &search_path);
@@ -125,51 +119,12 @@ impl TypedTool for FindTool {
         fd_args.push(effective_pattern);
         fd_args.push(search_dir_str.clone());
 
-        let cancel = ctx.cancel.clone();
-        let child = Command::new("fd")
-            .args(&fd_args)
-            .stdout(std::process::Stdio::piped())
-            .stderr(std::process::Stdio::piped())
-            .spawn()
-            .map_err(|e| XyToolError::ExecutionFailed(anyhow::anyhow!("spawn fd: {e}")))?;
-
-        let pid = child.id().unwrap_or(0);
-
-        let deadline = tool_timeout
-            .duration()
-            .map(|d| tokio::time::Instant::now() + d);
-        let child_result = tokio::select! {
-            _ = cancel.cancelled() => {
-                super::process::kill_tree(pid).await;
-                return Err(XyToolError::Aborted);
-            }
-            r = child.wait_with_output() => r,
-            _ = async {
-                match deadline {
-                    Some(dl) => tokio::time::sleep_until(dl).await,
-                    None => std::future::pending::<()>().await,
-                }
-            } => {
-                super::process::kill_tree(pid).await;
-                return Err(XyToolError::Timeout(
-                    tool_timeout
-                        .duration()
-                        .expect("timeout arm only fires when limited"),
-                ));
-            }
-        };
-
-        let output = child_result
-            .map_err(|e| XyToolError::ExecutionFailed(anyhow::anyhow!("failed to run fd: {e}")))?;
+        let output =
+            super::process::run_search_tool("fd", &fd_args, ctx.cancel.clone(), tool_timeout)
+                .await?;
 
         if !output.status.success() {
-            let stderr = String::from_utf8_lossy(&output.stderr);
-            let msg = if !stderr.is_empty() {
-                stderr.to_string()
-            } else {
-                format!("fd exited with {}", output.status)
-            };
-            return Err(XyToolError::ExecutionFailed(anyhow::anyhow!("{msg}")));
+            return Err(super::process::external_tool_failure(&output, "fd"));
         }
 
         let stdout = String::from_utf8_lossy(&output.stdout);
@@ -217,15 +172,7 @@ impl TypedTool for FindTool {
         if result_limit_reached {
             notices.push(format!("{effective_limit} results limit reached"));
         }
-        if truncation.truncated {
-            notices.push(format!(
-                "{} limit reached",
-                format_size(DEFAULT_MAX_BYTES as u64)
-            ));
-        }
-        if !notices.is_empty() {
-            final_output.push_str(&format!("\n\n[{}]", notices.join(". ")));
-        }
+        super::truncate::push_limit_notices(&mut final_output, notices, truncation.truncated);
 
         Ok(final_output)
     }
@@ -234,12 +181,9 @@ impl TypedTool for FindTool {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::infra::tools::test_ctx;
     use crate::protocol::ports::XyTool;
     use serde_json::json;
-
-    fn test_ctx() -> XyToolCtx {
-        XyToolCtx::new("test-call")
-    }
 
     #[tokio::test]
     async fn test_find_basic() {

@@ -94,11 +94,7 @@ impl McpSlot {
         if matches_binding(key, "tui.select.confirm") {
             return McpAction::Close;
         }
-        if matches_binding(key, "tui.select.up")
-            || matches_binding(key, "tui.select.down")
-            || matches_binding(key, "tui.select.pageUp")
-            || matches_binding(key, "tui.select.pageDown")
-        {
+        if super::is_select_nav_key(key) {
             self.list.handle_input(event);
         }
         McpAction::None

@@ -148,6 +148,23 @@ pub(crate) struct TruncatedLine {
     pub(crate) text: String,
 }
 
+/// Append the shared limit-notice chrome (`\n\n[a. b]`) to tool output.
+///
+/// `extra` carries tool-specific notices (e.g. match limit reached); the
+/// byte-truncation notice is appended here when `truncated`.
+pub(crate) fn push_limit_notices(out: &mut String, extra: Vec<String>, truncated: bool) {
+    let mut notices = extra;
+    if truncated {
+        notices.push(format!(
+            "{} limit reached",
+            crate::utils::format_size(DEFAULT_MAX_BYTES as u64)
+        ));
+    }
+    if !notices.is_empty() {
+        out.push_str(&format!("\n\n[{}]", notices.join(". ")));
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;

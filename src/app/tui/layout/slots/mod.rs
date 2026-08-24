@@ -10,6 +10,8 @@ mod models;
 mod themes;
 mod tree;
 
+use crate::app::tui::keybindings::matches_binding;
+
 pub use ask::AskSlot;
 pub use import::{ImportConfirmDecision, ImportSlot};
 pub use mcp::McpSlot;
@@ -18,6 +20,15 @@ pub use themes::ThemesSlot;
 pub use tree::{TreeAction, TreeSlot};
 
 pub(crate) use import::ImportAction;
+
+/// Whether `key` is bound to one of the shared `tui.select.*` navigation ids
+/// (up / down / pageUp / pageDown). Single place to add a new shared nav key.
+pub(crate) fn is_select_nav_key(key: &crossterm::event::KeyEvent) -> bool {
+    matches_binding(key, "tui.select.up")
+        || matches_binding(key, "tui.select.down")
+        || matches_binding(key, "tui.select.pageUp")
+        || matches_binding(key, "tui.select.pageDown")
+}
 pub(crate) use mcp::McpAction;
 pub(crate) use models::ModelsAction;
 pub(crate) use themes::ThemesAction;

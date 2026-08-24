@@ -1401,46 +1401,21 @@ where
         Ok(RuntimeReloadReport { steps, cancelled })
     }
 
-    /// Client-local clipboard: `XyRemoteDriver` runs in the TUI process, so
-    /// platform tools / OSC 52 here act on the TUI machine. MUST NOT route
-    /// through the Host (D1).
+    /// Client-local clipboard semantics live in [`super::clipboard`] (shared
+    /// with the in-process driver; MUST NOT route through the Host, D1).
     async fn copy_text_to_clipboard(
         &mut self,
         text: &str,
     ) -> Result<ClipboardCopyOutcome, XyDriverError> {
-        let plan = crate::infra::clipboard::plan_clipboard_copy_async(text.to_string())
-            .await
-            .map_err(XyDriverError::from)?;
-        if !plan.will_succeed() {
-            return Err(XyDriverError::io(plan.failure_message()));
-        }
-        Ok(ClipboardCopyOutcome {
-            pending_osc52: plan.osc52_sequence,
-        })
+        super::clipboard::copy_text_to_clipboard(text.to_string()).await
     }
 
     async fn stage_clipboard_image(&mut self) -> Result<Option<std::path::PathBuf>, XyDriverError> {
-        let image = tokio::task::spawn_blocking(crate::infra::clipboard::read_clipboard_image)
-            .await
-            .map_err(|e| XyDriverError::io(format!("clipboard image task failed: {e}")))?
-            .map_err(XyDriverError::from)?;
-        let Some(image) = image else {
-            return Ok(None);
-        };
-        let path = tokio::task::spawn_blocking(move || {
-            crate::infra::clipboard::write_clipboard_image_temp(&image.bytes, &image.mime_type)
-        })
-        .await
-        .map_err(|e| XyDriverError::io(format!("clipboard image write task failed: {e}")))?
-        .map_err(XyDriverError::from)?;
-        Ok(Some(path))
+        super::clipboard::stage_clipboard_image().await
     }
 
     async fn read_clipboard_text(&mut self) -> Result<Option<String>, XyDriverError> {
-        tokio::task::spawn_blocking(crate::infra::clipboard::read_clipboard_text)
-            .await
-            .map_err(|e| XyDriverError::io(format!("clipboard text task failed: {e}")))?
-            .map_err(XyDriverError::from)
+        super::clipboard::read_clipboard_text().await
     }
 
     /// Trust is a Host fact (gate + persistence live with the writer), so this

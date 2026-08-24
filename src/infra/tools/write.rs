@@ -143,11 +143,8 @@ impl TypedTool for WriteTool {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::infra::tools::test_ctx;
     use crate::protocol::ports::XyTool;
-
-    fn test_ctx() -> XyToolCtx {
-        XyToolCtx::new("test-call")
-    }
 
     #[tokio::test]
     async fn test_write_new_file() {
