@@ -9,7 +9,7 @@
 | 路径 | 写什么 | 不写什么 |
 |---|---|---|
 | [`architecture/`](./architecture/README.md) | **已落地**产品心智：MUST/禁止、开箱 vs 后置、多面同构 | 易腐实现路径、进度板、未兑现方向、带日期的 change id |
-| [`roadmaps/`](./roadmaps/README.md) | **未落地**统一候补：可并行主线、依赖、BDD 意图级场景（不维护状态列） | 可执行 `.feature`、模块/类型清单、进度勾选 |
+| [`roadmaps/`](./roadmaps/README.md) | **未落地**统一候选：可并行主线、依赖、BDD 意图级场景（不维护状态列） | 可执行 `.feature`、模块/类型清单、进度勾选 |
 | [`research/`](./research/) | **跨 change 仍常引用**的主题级耐久底稿 | 单 change 选型备忘、易腐深挖笔记（→ `llmanspec/changes/<id>/research/`，见 `llmanspec/AGENTS.md`） |
 | 本文件 | docs 维护规则与产品↔实现闭环 | 具体能力正文（下沉到子目录） |
 
@@ -52,7 +52,7 @@ TUI 与第二产品面（gpui 桌面）等**共有**能力：产品文必须按�
 
 1. **写入 / 更新** `docs/architecture/` 中对应主题（新建或并入既有文），只保留稳定 MUST/禁止与用户心智；
 2. **收敛** `docs/roadmaps/`：删掉已兑现段落；若整篇已无未兑现内容，**删除该文件**并更新索引——禁止长期占位 stub；
-3. **交叉链接**：architecture 可链回仍候补的 roadmap（可选）；勿在 roadmap 里复述已迁入的正文。
+3. **交叉链接**：architecture 可链回仍候选的 roadmap（可选）；勿在 roadmap 里复述已迁入的正文。
 
 未落地的方向**禁止**提前写成 architecture 的现行 MUST（可用「理想 vs 现状」区分的除外，且须标明未兑现）。
 

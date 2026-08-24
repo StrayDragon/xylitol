@@ -40,7 +40,7 @@ def main() -> None:
     session = os.environ.get(
         "XYLITOL_LAB_SESSION", "460ad16e-874f-418f-8ca0-dabc58f89320"
     )
-    model = os.environ.get("XYLITOL_LAB_MODEL", "Ornith-1.0-35B-MTP-APEX/I-Quality")
+    model = os.environ.get("XYLITOL_LAB_MODEL", "Ornith-1.5-35B-APEX/I-Quality")
     target = os.environ.get("CARGO_TARGET_DIR")
     if not target:
         raise SystemExit("CARGO_TARGET_DIR unset — run: eval \"$(just cargo-wt-env)\"")

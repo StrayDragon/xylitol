@@ -43,4 +43,4 @@ provider / fake                                  ← SDK 接线侧
 
 `accounting` / `tokenize` / `registry` **MUST NOT** import `provider::*`。
 
-验证：`cargo test -p xylitol-ai-bridge`；全仓 `just qa`。设计史：`llmanspec/changes/archive/` 下 **c1070-refactor-ai-bridge-sdk-projection**。
+验证：`cargo test -p xylitol-ai-bridge`；全仓 `just qa`。设计史：**c1070-refactor-ai-bridge-sdk-projection**（2026-08-16 前的 change 已冷归档（freeze）进 `llmanspec/changes/archive/freezed_changes.7z.archived`）。

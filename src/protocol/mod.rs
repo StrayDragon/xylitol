@@ -24,7 +24,7 @@ pub mod source_info;
 pub mod tool_name;
 pub mod tool_timeout;
 
-// Wire Command/Event at protocol root (legacy call sites).
+// Wire Command/Event re-exported at protocol root — the canonical application-facing path.
 pub use wire::{
     ApprovalRequestedPayload, BINDINGS_RELATIVE_PATH, Command, DOWNLINK_METHODS, Envelope,
     ErrorCode, Event, HostDescribeValue, HostHelloPayload, PROTOCOL_VERSION,

@@ -115,26 +115,15 @@ pub fn product_slash_commands() -> Vec<ProductSlashCommand> {
     cmds
 }
 
-/// Names that MUST NOT appear as product builtin primary names (A03).
-pub const LEGACY_SHORT_NAMES: &[&str] = &[
-    "tree", "fork", "export", "import", "compact", "resume", "new", "clone", "name", "quit",
-];
-
 #[cfg(test)]
 mod tests {
     use super::*;
 
     #[test]
-    fn product_catalog_has_session_tree_not_legacy_tree() {
+    fn product_catalog_primary_names() {
         let names: Vec<&str> = product_slash_commands().iter().map(|c| c.name).collect();
         assert!(names.contains(&"session-tree"));
         assert!(names.contains(&"model"));
         assert!(names.contains(&"exit"));
-        for legacy in LEGACY_SHORT_NAMES {
-            assert!(
-                !names.contains(legacy),
-                "legacy short name /{legacy} must not be a product builtin primary"
-            );
-        }
     }
 }

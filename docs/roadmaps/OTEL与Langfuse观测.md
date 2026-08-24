@@ -14,7 +14,7 @@
 
 认领时通常一次只提案 **一个** Mn（建议先 M-lane）。
 
-## BDD 意图示例（候补）
+## BDD 意图示例（候选）
 
 **场景：门闸失败不进 Langfuse 语义**
 Given 观测开启且 OTLP 直连 Langfuse

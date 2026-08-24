@@ -62,7 +62,7 @@ change/spec 的命名、ID、依赖、原子性、语言。架构事实（分层
 - 直接编辑仍 MUST 过结构门禁：`llman sdd validate <cap>`（或 `--all`）与相关 BDD 测试绿。
 - 删除 req 时同步清理：`.feature` 的 `@req:` 场景与 `tests/bdd` 的 scenario binding、toon 的 `feature: false` 场景。
 
-## BDD-on 操作闸（字段经验；上游正在收口）
+## BDD-on 操作闸（字段经验；上游正在闭合）
 
 Partitioned 双写与 checkpoint 时序已部分吸收进上游 llman（`improve-partitioned-ssot-agent-friction`）。
 本段只保留 xylitol 仍要遵守的硬约束；CLI 缺口见 `../llman` change **`fix-sdd-bdd-on-change-stage`**。

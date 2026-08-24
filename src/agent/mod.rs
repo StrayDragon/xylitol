@@ -13,7 +13,7 @@
 //!   `AgentBuilder::build_ports` → `materialize_runtime` 物化隔离 actor
 //!   （未来 sub-agent factory 接缝；不共享 history / cancel / active turn）。
 //!
-//! 两者关系是 Runtime + Capabilities：`AgentRuntime` 跑单飞 ReAct，
+//! 两者关系是 Runtime + Capabilities：`AgentRuntime` 以单写者方式跑 ReAct，
 //! `AgentCapabilities` 是被驱动的能力体。
 //!
 //! ## 分层约束

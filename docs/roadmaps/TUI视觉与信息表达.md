@@ -3,9 +3,9 @@
 > 状态减噪与主题密度打磨。工具人类可读与 provenance footer **已在** architecture。
 > 现状对齐：2026-07-20。
 
-## 仍候补（相对已落地）
+## 仍候选（相对已落地）
 
-| 仍候补 | 已落地（勿再当候补主线） |
+| 仍候选 | 已落地（勿再当候选主线） |
 |---|---|
 | 忙碌 / 队列 / 中止表达进一步统一、弱化重复徽章 | 工具主视线人类可读 + 可展开 |
 | 主滚动区默认少噪声，次级元数据可折叠 | Footer 用量 provenance 诚实标注 |
@@ -23,7 +23,7 @@
 
 | 阶段 | 用户可感知结果 | 路径提示 |
 |---|---|---|
-| **M1 状态减噪** | 一轮大量内部进度时，主区仍保住助手结论与工具结果；长史旧操作可收成活动摘要 / Worked for（跨面语义见 [Web与TUI同源.md](./Web与TUI同源.md) M1b） | **TUI 已交付** [c1760](../../llmanspec/changes/archive/2026-08-12-c1760-add-tui-activity-fold/proposal.md)；Web 仍候补；前置 [c2070](../../llmanspec/changes/archive/2026-08-12-c2070-add-package-tui-dual-interaction-modes/proposal.md) |
+| **M1 状态减噪** | 一轮大量内部进度时，主区仍保住助手结论与工具结果；长史旧操作可收成活动摘要 / Worked for（跨面语义见 [Web与TUI同源.md](./Web与TUI同源.md) M1b） | **TUI 已交付** c1760；Web 仍候选；前置 c2070 |
 | **M2 忙碌/队列/中止统一** | 同类状态不再多徽章抢视线 | 有合约则 SDD；否则 quick |
 | **M3 主题密度** | DESIGN 对比度 / 密度打磨，不改语义 | **默认 quick**（不改行为合约） |
 

@@ -6,7 +6,7 @@
 
 ## 分层（normative）
 
-单 crate 逻辑分层（**不**为分层拆 crate；**禁止**再抽 `xylitol-domain` / 把 LLM 叶从 bridge 挪进主仓）：
+单 crate 逻辑分层（**不**为分层拆 crate；**禁止**再抽 `xylitol-domain` / 把 LLM 叶层（leaf）从 bridge 挪进主仓）：
 
 ```text
 app → agent → protocol/{wire, ports, model, session, …}
@@ -39,21 +39,21 @@ app → agent → protocol/{wire, ports, model, session, …}
 
 Skill/extension slash 尚未交付：需要时在 **app / `XyDriver`** 侧注册并并入 `get_commands`，**不要**再塞回 `AgentCapabilities`。产品 builtin 列表只在 `XyDriver::get_commands` 组装。禁止 `agent` → `app`。
 
-- **组合根**才同时 import `agent` + `infra` 做装配（`app/core` 与各面入口）。靠 review + 行为测守住；**禁止**源码 grep 元测试卡 import。
+- **组合根（composition root）**才同时 import `agent` + `infra` 做装配（`app/core` 与各面入口）。靠 review + 行为测守住；**禁止**源码 grep 元测试卡 import。
 - **应用面**：只经 `crate::agent`（mod 级）与 `crate::app::core`；共享流水线 = 装配 → `XyDriver::run` → `XyEvent` 流 → 面渲染。不够就扩 seam（`l8ng-write-surface`），不绕过。
 - **产品角色（client / host）**：TUI 等面是 client（键、画、TTY、编辑器、剪贴板）。模型 / 会话 / MCP / 工作区 / trust 是 host 操作器角色。print / 库嵌入仍可同进程走同一方法表。**禁止**把 host 等同于 HTTP 监听器；**产品 TUI** 默认 attach 本机监听器（未在听失败）。
-- **产品信封**：四象限（client-request / server-response / server-request / client-response）。unary + respond = HTTP POST；下行 = WebSocket 且不收业务上行。Command/Event 是 payload。跨进程不跳过信封直调 Driver。
+- **产品信封（RPC envelope）**：四象限（client-request / server-response / server-request / client-response）。unary + respond = HTTP POST；下行 = WebSocket 且不收业务上行。Command/Event 是 payload。跨进程不跳过信封直调 Driver。
 - **进程内 Driver** 可调 `infra` 做 trust/clipboard/config 等表面能力；默认工具集 / provider / session 仍归组合根。面仍禁止 reach。剪贴板等面本地能力留在 client，不交给远程 host 写本机盘。
 - **steer / follow-up / abort**：只经 `XyDriver` 队列 API；面不得改 ReAct 内部队列。产品语义：`docs/architecture/插话续跑与中止.md`。
-- **`AgentRuntime` 会话 actor（硬约束）**：一个 runtime **显式绑定一个 session** 后才可根提交；任意时刻至多一个 ReAct worker 可写该 session（单飞）。根提交默认拒绝忙碌并发；`steer`/`follow_up` 是轮内改道，**不是**第二次根提交。`RunId` 仅运行时内部，不进 `XyEvent`/wire。未来子 agent = **另建隔离 runtime**，不得在同一 runtime 按 session id 多路复用，也不得共享 history / cancel / active turn / 插话队列。构造基线用可克隆的 `RuntimePorts`（`AgentBuilder::build_ports` → `materialize_runtime`），每次物化得到独立 ModelManager / queues / session / coordinator / compaction。**Host 进程**可以 lazy 物化 N 个 session 槽 Driver，它们共享同一份 `RuntimePorts` 基线；这不是「一把 Driver 多路复用两个 session」。**单把** Driver 仍不得同时两次根提交 / 同时绑两个 session。
+- **`AgentRuntime` 会话 actor（硬约束）**：一个 runtime **显式绑定一个 session** 后才可根提交；任意时刻至多一个 ReAct worker 可写该 session（单写者，single-writer）。根提交默认拒绝忙碌并发；`steer`/`follow_up` 是轮内改向，**不是**第二次根提交。`RunId` 仅运行时内部，不进 `XyEvent`/wire。未来子 agent = **另建隔离 runtime**，不得在同一 runtime 按 session id 多路复用，也不得共享 history / cancel / active turn / 插话队列。构造基线用可克隆的 `RuntimePorts`（`AgentBuilder::build_ports` → `materialize_runtime`），每次物化得到独立 ModelManager / queues / session / coordinator / compaction。**Host 进程**可以 lazy 物化 N 个 session 槽 Driver，它们共享同一份 `RuntimePorts` 基线；这不是「一把 Driver 多路复用两个 session」。**单把** Driver 仍不得同时两次根提交 / 同时绑两个 session。
 
 开箱主线 vs 配置后置（Server / MCP / 更多 adapter）见根 `AGENTS.md` 与 `docs/architecture/`。库嵌入：`xylitol::embed`。
 
-## 三圈契约与 `Xy*`
+## 三层契约与 `Xy*`
 
 ```text
-① 线协议     四象限信封 + 方法表（Command/Event 为载荷）
-② 应用协议   XyDriver + XyEvent 流 + XyDriverError（Host 内缝；跨进程走信封）
+① 线协议     四象限信封（envelope）+ 方法表（Command/Event 为载荷）
+② 应用协议   XyDriver + XyEvent 流 + XyDriverError（Host 进程内接缝；跨进程走信封）
 ③ 可替换口   XyModel / XyTool / XySessionStore / …
 ```
 
@@ -68,7 +68,7 @@ Skill/extension slash 尚未交付：需要时在 **app / `XyDriver`** 侧注册
 ## 错误与观测
 
 - 热路径：`XyError` / `XyToolError` + 稳定 `kind()`；会话域用 `XySessionError`（含 store 持久化 + 无绑定会话 / busy / 树旅行），`XySessionStoreError` 只表示 `XySessionStore` 持久化失败（`fork` 例外：树定位失败走 `XySessionError`）。Driver flatten：store `NotFound` → `kind=NotFound`；`NoActiveSession` → `kind=Message`、`detail_kind=Session`。
-- 整机缝：`XyDriverError`（含 `Agent(…)`）+ `kind` / `detail_kind` / `log_failure`。session/export/trust 失败 flatten 后 `kind` 仍是 Driver 分类（`NotFound`/`Io`/…），`detail_kind` 与 `log_failure` 的 `source.kind` 保留来源域（`Session`/`Export`/`Trust`）。opaque 字符串经 `from_opaque`（具体短语，避免裸 token 误伤）。
+- 整机接缝（seam）：`XyDriverError`（含 `Agent(…)`）+ `kind` / `detail_kind` / `log_failure`。session/export/trust 失败 flatten 后 `kind` 仍是 Driver 分类（`NotFound`/`Io`/…），`detail_kind` 与 `log_failure` 的 `source.kind` 保留来源域（`Session`/`Export`/`Trust`）。opaque 字符串经 `from_opaque`（具体短语，避免裸 token 误伤）。
 - 栈：**仅** fastrace + `log`；禁止 `tracing` 双栈。失败日志宜带 `error.kind`。
 - 读 trace：skill `xylitol-inspect-runtime-logs` / `just obs-*`；禁止整文件灌 JSONL。
 
@@ -99,7 +99,7 @@ Trust / Permission / MCP 产品语义分别见 `docs/architecture/` 对应文；
 
 业务只认 `XyModel`。HTTP/SSE 优先官方 SDK，落在 `packages/xylitol-ai-bridge`；主仓：
 
-1. **agent**：`project_for_llm`（`AgentMessage` → LLM 叶；Env 折叠）
+1. **agent**：`project_for_llm`（投影 projection：`AgentMessage` → LLM 叶层；Env 折叠）
 2. **infra**：装配 `XyModel`、边界 map；**MUST NOT** 再对 `AgentMessage` 做 Env 折叠主路径
 
 | 概念 | 归属 |
@@ -111,7 +111,7 @@ Trust / Permission / MCP 产品语义分别见 `docs/architecture/` 对应文；
 
 protocol **MAY** 依赖 bridge **DTO only**，**MUST NOT** 依赖 bridge HTTP/SDK。新兼容端 = adapter/配置；**不改** ReAct / `AgentMessage`。Pre-1.0 交付范围见根 `AGENTS.md`。
 
-Hook 三缝只认可移植 JSON（headers map + body Value）；不把 reqwest/某一 SDK 类型泄漏进 hook。原始 SSE 诊断用进程内 provider trace，不进 hook。
+Hook 三条接缝只认可移植 JSON（headers map + body Value）；不把 reqwest/某一 SDK 类型泄漏进 hook。原始 SSE 诊断用进程内 provider trace，不进 hook。
 
 ## 复杂度与体量
 

@@ -1,7 +1,7 @@
-# 产品路线图（与 pi 分道后的候补方向）
+# 产品路线图（与 pi 分道后的候选方向）
 
 > **只写尚未兑现的高维产品方向。** 已兑现心智只在 [`docs/architecture/`](../architecture/README.md)。
-> **闭环规则** → [`docs/AGENTS.md`](../AGENTS.md)。本目录是**统一优先级的候补板**，不是进度表。
+> **闭环规则** → [`docs/AGENTS.md`](../AGENTS.md)。本目录是**统一优先级的候选板**，不是进度表。
 > 某篇全部兑现后：**删除该文件**并更新本索引，不留占位。
 
 现状对齐：2026-08-22。追溯归档 change：`llman sdd archive freeze --list`；产品文尽量不钉 change id。
@@ -22,9 +22,9 @@ docs/roadmaps/  →  llmanspec/changes  →  docs/architecture/
 | 可并行主线、**分阶段切片**、支线意向 | 进度勾选、状态列、「已迁入」对照表 |
 
 认领时：读各篇「分阶段」表，一次只提案**一个可交付切片**（通常 Mn）；有 MUST/SHALL → SDD；纯主题/文案 → quick。
-支线表 = 头脑风暴候补，**不**等于已排期。
+支线表 = 头脑风暴候选，**不**等于已排期。
 
-## 候补一览
+## 候选一览
 
 ```mermaid
 flowchart TB
@@ -73,13 +73,13 @@ flowchart TB
   Prov -.->|cache 能力声明| Cache
 ```
 
-> **观测**：本地 fastrace JSONL + OTLP/Langfuse 已落地（见 [architecture](../architecture/进程内观测.md)）；候补为 obs.lane / Collector / 门闸压缩语义 / 采样 / 子进程出站（见 [OTEL与Langfuse观测.md](./OTEL与Langfuse观测.md)）。**不**自研 Inspect 检视台。
+> **观测**：本地 fastrace JSONL + OTLP/Langfuse 已落地（见 [architecture](../architecture/进程内观测.md)）；候选为 obs.lane / Collector / 门闸压缩语义 / 采样 / 子进程出站（见 [OTEL与Langfuse观测.md](./OTEL与Langfuse观测.md)）。**不**自研 Inspect 检视台。
 > **压缩**：会话 auto-compact + provenance 已落地（见 [architecture](../architecture/压缩与上下文.md)）；缓存/动态压缩见新篇。
 > **Eval 调研底稿**：[../research/agent-eval-frameworks-2026.md](../research/agent-eval-frameworks-2026.md)。
 > **键位学习 UI 调研**：[../research/keybinding-keyboard-visualizer-2026.md](../research/keybinding-keyboard-visualizer-2026.md)（挂 [键位与命令发现.md](./键位与命令发现.md) M4）。
 > **TUI 重制**：景观 [../research/coding-agent-tui-design-landscape-2026.md](../research/coding-agent-tui-design-landscape-2026.md)；引擎缺口 [../research/xylitol-tui-capability-hooks-vs-landscape-2026.md](../research/xylitol-tui-capability-hooks-vs-landscape-2026.md)。
 
-| 文档 | 候补方向 |
+| 文档 | 候选方向 |
 |---|---|
 | [Web与TUI同源.md](./Web与TUI同源.md) | 跨面语义约束板（含长历史 activity 折叠栈意向；非 Web 壳本身）；第二面已定为 gpui 桌面 |
 | [Gpui桌面客户端.md](./Gpui桌面客户端.md) | 第二产品面：gpui 桌面（Linux/Wayland）attach 同一 Host；与 TUI 双 Rust 面 |

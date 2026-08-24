@@ -26,15 +26,16 @@
 - **MCP**：配置驱动；未配置则零装配；支持动态重载。实现边界见 `src/AGENTS.md`。
 - **产品面**：Print + TUI（TTY 默认）已开闸。产品 TUI 默认 attach 本机 Host（`http://127.0.0.1:18790`）；未在听失败。Print 与库嵌入仍可同进程。TUI 专属规则见 `src/app/tui/AGENTS.md`。
 - **CS 角色**：TUI / Print 是 **client**（面本地：键、画、TTY、编辑器、剪贴板）。模型 / 会话 / MCP / 工作区执行 / trust 是 **host（操作器角色）**。host **不是**「必须先占端口」——print / 库嵌入仍可无绑定。产品 TUI **要求**监听器。占用绑定的是显式 `xylitol serve`。
-- **产品信封**：四象限 RPC（unary HTTP POST + WebSocket 下行、不收业务上行）。Command/Event 是载荷，不是外层。类型 SSOT 在 Rust `protocol`；specta 导出 TS 进 qa。
+- **产品信封（RPC envelope）**：四象限 RPC（unary HTTP POST + WebSocket 下行、不收业务上行）。Command/Event 是载荷，不是外层。类型 SSOT 在 Rust `protocol`；specta 导出 TS 进 qa。
 - **跨面公共体验**：TUI 与第二产品面（gpui 桌面，Linux/Wayland）**共有**能力的动作语义 / 学习成本 MUST 同源；快捷键 SHOULD 尽量同构；仅面专属能力可分叉。约束板：`docs/roadmaps/Web与TUI同源.md`。
-- 产品心智图：`docs/architecture/`；候补方向：`docs/roadmaps/`（不维护进度列）；文档闭环：`docs/AGENTS.md`。
+- 产品架构总览：`docs/architecture/`；候选方向：`docs/roadmaps/`（不维护进度列）；文档闭环：`docs/AGENTS.md`。
 - TUI chrome / 滚动区固定词（滚动提示、壳层通告、尾随…）：`docs/architecture/TUI信息面与chrome词汇.md`（面约束见 `src/app/tui/AGENTS.md`）。
-- 交互设计稿：仓库顶层 `designing/`（现 `tui/`，以后可加其它端；`just open-designing`）。**代码是运行时真值**；稿是对照辅助。无独立快捷键设计。
+- 交互设计稿：仓库顶层 `designing/`（现 `tui/` + `tui-lab/` 交互实验区，以后可加其它端；`just open-designing`）。**代码是运行时真值**；稿是对照辅助。无独立快捷键设计。
 
 ## 工作原则
 
 - 第一性原理：真实需求、代码事实、验证结果；目标不清先对齐。
+- 散文黑话首现须附标准词或英文对照（总表见 `docs/architecture/术语表.md`）；内部编号（`c####` / `ath##` 等）单独引用时须带 ≤12 字语义尾，避免检索死端。
 - **代码是真值源**；架构规则 SSOT 在 `src/AGENTS.md`；设计史在 `llmanspec/changes/archive/`。
 - 动代码前读相关代码，沿目录树遵循最近的 `AGENTS.md`。
 - 改动聚焦；提交不加 co-author / 不暴露 agent 身份。
@@ -46,7 +47,7 @@
 | 层 | 角色 |
 |---|---|
 | `protocol/` | wire + ports + 根上共享类型 |
-| `agent/` | 薄编排（ReAct、capabilities、投影） |
+| `agent/` | 薄编排（ReAct、capabilities、投影 projection） |
 | `infra/` | ports 实现与 vendor |
 | `app/` | 应用面 + `core` seam |
 | `packages/xylitol-tui` | 通用 TUI 引擎（零引用主 crate） |
@@ -82,7 +83,7 @@
 
 ## 命令与验证
 
-- 日常：`just setup` / `fmt` / `lint` / `test` / `test-tui`；满闸 `just qa`（或 `ci`）；真终端协议再 `just qa-e2e`。
+- 日常：`just setup` / `fmt` / `lint` / `test` / `test-tui`；全量门禁 `just qa`（或 `ci`）；真终端协议再 `just qa-e2e`。
 - `just qa` 在 workspace 测试之后串行跑 `test-live-provider`（`--test-threads=1`，不进 nextest 并行矩阵）；专用配置 `<global-dir>/dev/live-provider.yaml`（全局目录：`$XYLITOL_CONFIG_DIR` → `$XDG_CONFIG_HOME/xylitol` → `~/.config/xylitol`，经 dotxylitol 多机共享；示例由 `just gen-live-provider-example` 自动生成；`enabled: true` 才实打网关；缺失/关闭则 skip）。产品示例配置 `configs/example.yaml` 由 `just gen-config-example` 生成（改 `scripts/gen_config_example.py` 模板，勿直接手改产物）。
 - 闸默认 quiet；`just qa normal` / `verbose` 或 `JUST_VERBOSITY=`。
 - 非变更闸脚本 `scripts/check_*.py` **MUST** 经 wiring 进 `qa`；维护脚本不进闸。
@@ -123,7 +124,7 @@
 ## llmanspec 命名
 
 - capability = 领域名词、kebab-case；purpose / statement / scenario **中文**。
-- 前缀按层：`package-tui-*` / `app-tui-*` / `agent-*` / `infra-*` / `protocol-*` / `cli-*` / `server-*` / `test-*` 等。细则：`llmanspec/config.yaml` → `rules.proposal` 与 `llmanspec/AGENTS.md`。
+- 前缀按层：`package-tui-*` / `app-tui-*` / `agent-*` / `infra-*` / `protocol-*` / `cli-*` / `server-*` / `test-*` 等。细则：`llmanspec/AGENTS.md`。
 
 ## Specs 约束层级（产品级优先）
 

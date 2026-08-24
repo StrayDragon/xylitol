@@ -184,9 +184,9 @@ coding agent 默认：环境类（cwd）可留 system；高变读数（工具计
 
 | 方向（工程） | change（草案） | `depends_on` 摘要 |
 |---|---|---|
-| Responses 默认 + Completions 显式 `api` + Anthropic 桩 + code-first WirePolicy | [`c1880`](../../llmanspec/changes/archive/2026-08-04-c1880-update-responses-first-api-boundary/proposal.md)（已归档） | `[]` |
-| Responses cache usage 诚实透出 | [`c1885`](../../llmanspec/changes/archive/2026-08-05-c1885-add-responses-cache-usage-honesty/proposal.md)（已归档） | `[]` |
-| ContextPolicy + ResponsesAssembler | [`c1890`](../../llmanspec/changes/archive/2026-08-05-c1890-add-responses-context-policy-assembler/proposal.md)（已归档） | `c1880` |
+| Responses 默认 + Completions 显式 `api` + Anthropic 桩 + code-first WirePolicy | `c1880`（已归档） | `[]` |
+| Responses cache usage 诚实透出 | `c1885`（已归档） | `[]` |
+| ContextPolicy + ResponsesAssembler | `c1890`（已归档） | `c1880` |
 | Thinking/reasoning 回放保真（JSONL→input） | [`c1925`](../../llmanspec/changes/c1925-update-responses-thinking-replay-flavor/proposal.md) | `c1880`+`c1890` |
 | Session SSOT ↔ Provider view · **本波** | [`c1930`](../../llmanspec/changes/c1930-update-session-provider-view-contract/proposal.md)（§5.3 lab） | `c1890` |
 | Assembler 布局决策可观测（**deferred**） | [`delayed c1935`](../../llmanspec/delayed-changes/context/c1935-add-assembler-layout-observability/proposal.md) | `c1890` |
@@ -194,7 +194,7 @@ coding agent 默认：环境类（cwd）可留 system；高变读数（工具计
 | Agent 状态栏族（**deferred**） | [`delayed c1895`](../../llmanspec/delayed-changes/context/c1895-add-agent-status-bar-subsystem/proposal.md)（+ c1896/97/98） | 升格待 Todo/事件 |
 | MCP 首条门闸 + 工具定稿 · **本期主线** | [`c1900`](../../llmanspec/changes/c1900-update-mcp-first-turn-tool-freeze/proposal.md) | `c1880`+`c1890` |
 | tool_search + Deferred · **双轨 B（活跃草案，后实现）** | [`c1960`](../../llmanspec/delayed-changes/tools/c1960-add-tool-search-mcp-discovery/proposal.md) | `c1900` |
-| tools 稳定 id / resume MCP（**调研**） | [`research`](../../llmanspec/changes/archive/2026-08-05-c1900-update-mcp-first-turn-tool-freeze/research/responses-tools-stable-id-and-resume-mcp-2026.md)（含 2026-08-10：MCP-only vs 删内建的 `input`/`tools[]` bust 面） | — |
+| tools 稳定 id / resume MCP（**调研**） | `research`（含 2026-08-10：MCP-only vs 删内建的 `input`/`tools[]` bust 面） | — |
 | system 稳定/可变切分（**deferred**） | [`delayed c1905`](../../llmanspec/delayed-changes/context/c1905-update-system-prompt-stable-volatile-split/proposal.md) | `c1890` |
 | 压缩冻结替换串（**deferred**） | [`delayed c1910`](../../llmanspec/delayed-changes/context/c1910-update-compaction-freeze-tool-replacements/proposal.md) | `c1890`+`c1930` |
 | previous_response_id 可选链 | [`c1915`](../../llmanspec/changes/c1915-add-previous-response-id-optional-chain/proposal.md)（active；断链=非 input 快照比对，无 epoch） | `c1880`+`c1890` |

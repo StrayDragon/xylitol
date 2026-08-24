@@ -22,9 +22,9 @@
 | **ApplicationOwned 交互** | **ApplicationOwned** · `InteractionMode::ApplicationOwned` | 应用自管视口 + **应用内选区**；常经 alt-buffer + mouse capture；**产品缺省（ath30）** | Mode B、alt-screen 当唯一真名（alt-buffer 只是 AO 常见载体） |
 | **终端原生选区** | emulator-owned selection | 仿真器画选区/复制；应用不解释未修饰拖选 | 「开了 mouse 就有原生选区」 |
 | **应用内选区** | application-owned selection | 应用收鼠标、自绘高亮、自复制（OSC52 等） | 把 mouse capture 说成「有选区」 |
-| **timeout 预算注记** | `(timeout {N}s)` · tool header budget note | 工具行 header 在 `(Alt+E)` 前的 muted 预算声明；仅模型显式传 `timeout` 的 bash/grep/find 出现（c2435），走默认不显示 | 倒计时（无）；把工具默认值逐行刷出 |
+| **timeout 预算注记** | `(timeout {N}s)` · tool header budget note | 工具行 header 在 `(Alt+E)` 前的 muted 预算声明；仅模型显式传 `timeout` 的 bash/grep/find 出现（c2435 tool-timeout-chrome），走默认不显示 | 倒计时（无）；把工具默认值逐行刷出 |
 
-完整术语 ↔ 代码标识符对照（grabbed/ungrabbed、视口 vs scrollback）：[`emulator-vs-app-selection-oneof.md`](../../llmanspec/changes/archive/2026-08-12-c2070-add-package-tui-dual-interaction-modes/research/emulator-vs-app-selection-oneof.md) §1。
+完整术语 ↔ 代码标识符对照（grabbed/ungrabbed、视口 vs scrollback）：`emulator-vs-app-selection-oneof.md` §1（c2070 research；2026-08-16 前的 change 已冷归档（freeze）进 `llmanspec/changes/archive/freezed_changes.7z.archived`）。
 
 ### 弃用（见旧文时对照本表改写）
 
@@ -50,7 +50,7 @@
 | **D 即时设置** | 换模 / thinking / 主题成功 | **页脚**（选中即时反映） | 否（态） | — |
 | **E 运行态** | busy、abort、队列；busy 下硬拒闸（如 Resume switch） | 状态条 / 队列条 / **壳层通告** | 否 | 禁止冒充 A/B；硬拒闸优先壳层通告，勿 ScrollNotice |
 | **F 槽内确认** | 树 travel、选模 | 关槽 + chrome / B 类尾随 | 视 B/C | **默认尾随** |
-| **G 减噪折叠** | 旧工具中间步（候补） | 折叠摘要条目 | 是（形态变） | — |
+| **G 减噪折叠** | 旧工具中间步（候选） | 折叠摘要条目 | 是（形态变） | — |
 
 **顶层原则（先于「禁顶插」口诀）**：绘制高效 + 跟底时用户仍能合理看到关键反馈。
 - **默认尾随**滚动提示；顶插易导致视口外「假提示」并打散 per-index paint-cache → 通常更差。
@@ -72,6 +72,6 @@
 - 六个月后仍真？否则不要扩表。
 - 新 chrome 能力先归类 A–G，再选落点；禁止静默发明第四套同义词。
 - 面操作边界：[`src/app/tui/AGENTS.md`](../../src/app/tui/AGENTS.md)。
-- **交互模型（库双入口）**：终端原生选区 vs 应用内选区（oneof）见 [`c2070`](../../llmanspec/changes/archive/2026-08-12-c2070-add-package-tui-dual-interaction-modes/proposal.md)；术语表 §1 [`emulator-vs-app-selection-oneof.md`](../../llmanspec/changes/archive/2026-08-12-c2070-add-package-tui-dual-interaction-modes/research/emulator-vs-app-selection-oneof.md)。库保留 **Inline** + **ApplicationOwned**；ApplicationOwned 默认须含拖选 / 跨页续选 / 松手复制。**产品默认 ApplicationOwned**（ath30 / [`c2071`](../../llmanspec/changes/archive/2026-08-12-c2071-update-app-tui-host-mode-b-only/proposal.md)）；库 Inline 仅 lab/demo。段级 Activity 折叠见 [`c1760`](../../llmanspec/changes/archive/2026-08-12-c1760-add-tui-activity-fold/proposal.md)（已归档）；Segment 鼠标命中见 [`c2045`](../../llmanspec/changes/archive/2026-08-12-c2045-add-tui-fold-target-remaining/proposal.md)。`c2020` 鼠标管道为 ApplicationOwned 地基；`XYLITOL_TUI_MOUSE` 仅 lab/e2e，产品 `TerminalGuard` 不读。
+- **交互模型（库双入口）**：终端原生选区 vs 应用内选区（oneof）见 `c2070`；术语表 §1 `emulator-vs-app-selection-oneof.md`。库保留 **Inline** + **ApplicationOwned**；ApplicationOwned 默认须含拖选 / 跨页续选 / 松手复制。**产品默认 ApplicationOwned**（ath30 / `c2071`）；库 Inline 仅 lab/demo。段级 Activity 折叠见 `c1760`（已归档）；Segment 鼠标命中见 `c2045`。`c2020` 鼠标管道为 ApplicationOwned 地基；`XYLITOL_TUI_MOUSE` 仅 lab/e2e，产品 `TerminalGuard` 不读。
 - **归档 change**（`llmanspec/changes/archive/`）可保留当时旧词作史实；**新文 / 活 docs / 活 specs（产品面）** 只准用本表。
 - **designing**（仓库顶层 `designing/`）= 交互设计稿；`agent_demo` = 包演示，文案/chrome **允许不同**。**禁止**把本表当成「必须改写 demo 字符串」的闸。
