@@ -47,7 +47,6 @@ scenarios[31]{req_id,id,given,when,then,feature}:
   pa-m1,agent-part-tagged-wire,"序列化含 thinking/text/toolCall 的 AgentPart","写入 JSONL/session content","带 type 判别；拒绝 untagged 与裸字符串 Text",false
   pa-m2,preview-text-excludes-thinking,"assistant content 含 thinking 与 text","提取 message_text 预填/摘要","仅聚合 type=text 正文",false
   pa-e1,xy-event-error-kind-roundtrip,"构造 XyEvent::Error(kind=Provider,message=…)","经 wire Event 映射往返","kind 与 message 保留",false
-  pa-e1,xy-event-error-legacy-message,"wire Event::Error 仅有 message=aborted 且无 kind","反序列化为 XyEvent::Error","is_aborted 为真",false
   pa-e2,session-persist-kind-not-guessed,会话持久化失败（缺失或写盘）,经应用缝或 XyEvent::Error 观察,kind 为稳定分类而非仅凭文案子串猜出,false
   pa-e2,message-no-stacked-prefix,失败 message 含缺失语义,展示给用户,同一前缀（如 not found）不叠两次,false
   "pa-cs1","pa-cs1-unit","产品消息经四象限","审查协议与 REST 产品动词","无平行 REST 产品动词；方法表同一；Command/Event 不作外层",false

@@ -22,8 +22,7 @@ pub fn app_config_schema() -> serde_json::Value {
 ///
 /// Returns a stable one-line message on the first violation. Structural errors
 /// (wrong field type) surface here before serde hits them; unknown keys stay
-/// permissive (schemars does not mirror `deny_unknown_fields` — historical
-/// configs keep loading through `migrate`).
+/// permissive (schemars does not mirror `deny_unknown_fields`).
 pub(crate) fn validate_merged_config(value: &Value) -> Result<(), LoadError> {
     // Null = "no YAML layers" — the loader short-circuits to `AppConfig::default()`
     // before this call; keep the contract total for future call sites.

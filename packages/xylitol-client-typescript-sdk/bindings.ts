@@ -24,32 +24,31 @@ position?: string | null } | { type: "get_messages"; id?: string | null } | { ty
  *  An event from the core: either a response to a command or a streamed
  *  occurrence during a turn.
  */
-export type Event = { type: "error"; id?: string | null; kind?: string | null; message: string } | { type: "response"; id?: string | null; payload?: any } | { type: "text_delta"; text: string } |
+export type Event = { type: "error";
+/**  Stable classification aligned with [`crate::protocol::lifecycle`] kinds. */
+kind: string; message: string } | { type: "response"; id: string | null; payload: any } | { type: "text_delta"; text: string } |
 /**  Streaming thinking / reasoning text (e.g. Anthropic extended thinking). */
-{ type: "thinking_delta"; text: string } | { type: "tool_start"; id: string; name: string; args?: any } | { type: "tool_end"; id: string; name: string; result: string;
-/**
- *  Terminal failure marker (c2440). Serde default keeps old journals
- *  and lenient clients on the success path.
- */
-is_error?: boolean } | { type: "agent_end" } | { type: "model_select"; provider: string; model_id: string } | { type: "compaction_start"; reason: string } |
+{ type: "thinking_delta"; text: string } | { type: "tool_start"; id: string; name: string; args: any } | { type: "tool_end"; id: string; name: string; result: string;
+/**  Terminal failure marker (c2440); required on the wire. */
+is_error: boolean } | { type: "agent_end" } | { type: "model_select"; provider: string; model_id: string } | { type: "compaction_start"; reason: string } |
 /**  Acknowledgment of a Subscribe command. */
-{ type: "subscribed"; session_id: string; seq: number } | { type: "bash_result"; id?: string | null; output: string; exit_code: number | null; cancelled: boolean; truncated: boolean } |
+{ type: "subscribed"; session_id: string; seq: number } | { type: "bash_result"; id: string | null; output: string; exit_code: number | null; cancelled: boolean; truncated: boolean } |
 /**  Turn started. */
 { type: "turn_start"; turn_index: number } |
 /**  Turn ended. */
 { type: "turn_end"; turn_index: number } |
 /**  Message started. */
-{ type: "message_start"; role: string; message?: any | null } |
+{ type: "message_start"; role: string; message: any | null } |
 /**  Message ended. */
-{ type: "message_end"; role: string; message?: any | null } |
+{ type: "message_end"; role: string; message: any | null } |
 /**  Streaming message update (replaces previous text/thinking for this message). */
-{ type: "message_update"; text: string; thinking?: string | null; message?: any | null } |
+{ type: "message_update"; text: string; thinking: string | null; message: any | null } |
 /**  Streaming tool execution output. */
 { type: "tool_execution_update"; id: string; output: string } |
 /**  Compaction completed. */
 { type: "compaction_end" } |
 /**  Shared context-token settlement (c1860) for footer / cross-client chrome. */
-{ type: "context_token_settlement"; tokens: number; provenance: string; usage_tokens: number; trailing_tokens: number; last_usage_index?: number | null; reason: string; generation: number } |
+{ type: "context_token_settlement"; tokens: number; provenance: string; usage_tokens: number; trailing_tokens: number; last_usage_index: number | null; reason: string; generation: number } |
 /**  Pending steer / follow-up queue depths (cross-client badge). */
 { type: "queue_update"; steer_count: number; follow_up_count: number };
 

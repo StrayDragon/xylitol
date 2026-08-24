@@ -6,7 +6,7 @@
 
 Token 色板数据：[`src/app/tui/DESIGN.md`](../src/app/tui/DESIGN.md) frontmatter（一份）。引擎库：`packages/xylitol-tui/AGENTS.md`。产品面：[`src/app/tui/AGENTS.md`](../src/app/tui/AGENTS.md)。
 
-旧 `src/app/tui/design/playground/` 已拆除。`src/app/tui/design/*.md` 只留指针。
+旧 `src/app/tui/design/`（playground 与指针 stub）已整体删除——设计稿入口即本目录 `tui/modules/<id>/`，无中间跳转层。
 
 ## 目录
 

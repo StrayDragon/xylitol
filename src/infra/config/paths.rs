@@ -32,7 +32,7 @@ impl ConfigPaths {
                 if let Ok(v) = std::env::var(k) {
                     return Some(v);
                 }
-                // Match resolve_global_dir / legacy migrate: dirs when HOME unset.
+                // Match resolve_global_dir: dirs when HOME unset.
                 if k == "HOME" {
                     return dirs::home_dir().map(|p| p.to_string_lossy().into_owned());
                 }
@@ -51,7 +51,6 @@ impl ConfigPaths {
         cwd: Option<&Path>,
     ) -> Self {
         let global_dir = resolve_global_dir_with(&get_env);
-        super::migrate::migrate_legacy_global_config_files_with(&global_dir, &get_env);
         let project_dir = resolve_project_dir_with(&get_env, cwd);
         Self {
             global_dir,
