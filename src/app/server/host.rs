@@ -1120,6 +1120,43 @@ async fn take_writer_lease(
     }
 }
 
+/// Guard for a writer-method unary call: acquires the session's writer lease,
+/// materializes the engine, and stamps every response — success or failure —
+/// with the lease token so the client can keep writing.
+struct WriterLease {
+    token: String,
+}
+
+impl WriterLease {
+    async fn acquire(
+        host: &HostState,
+        slot: &Arc<SessionSlot>,
+        workspace: &Path,
+        presented: Option<&str>,
+    ) -> Result<Self, RpcResult> {
+        let token = take_writer_lease(slot, presented).await?;
+        if let Err(e) = materialize_writer_at(host, slot, workspace).await {
+            let mut r = rpc_err(e);
+            r.value = Some(json!({ "writerToken": token }));
+            return Err(r);
+        }
+        Ok(Self { token })
+    }
+
+    /// Attach the lease token to `result` (inserted into success payloads,
+    /// replacing the value on failures).
+    fn seal(&self, mut result: RpcResult) -> RpcResult {
+        if result.ok {
+            if let Some(v) = result.value.take() {
+                result.value = Some(attach_writer_token(v, &self.token));
+            }
+        } else {
+            result.value = Some(json!({ "writerToken": self.token }));
+        }
+        result
+    }
+}
+
 /// Dispatch a registered unary method against the session slot.
 pub async fn handle_unary(
     host: &Arc<HostState>,
@@ -1195,15 +1232,10 @@ pub async fn handle_unary(
         if message.is_empty() {
             return RpcResult::error("invalid_input", "missing message");
         }
-        let token = match take_writer_lease(&slot, presented).await {
-            Ok(t) => t,
+        let lease = match WriterLease::acquire(host, &slot, &workspace, presented).await {
+            Ok(l) => l,
             Err(e) => return e,
         };
-        if let Err(e) = materialize_writer_at(host, &slot, &workspace).await {
-            let mut r = rpc_err(e);
-            r.value = Some(json!({ "writerToken": token }));
-            return r;
-        }
         let driver = slot.driver.clone();
         let slot_push = slot.clone();
         let prompt_model = payload
@@ -1269,22 +1301,14 @@ pub async fn handle_unary(
             slot_push.run_inflight.store(false, Ordering::SeqCst);
             slot_push.flush_pending_runtime().await;
         });
-        return RpcResult::ok_value(attach_writer_token(
-            json!({ "session_id": session_id }),
-            &token,
-        ));
+        return lease.seal(RpcResult::ok_value(json!({ "session_id": session_id })));
     }
 
     if method == "arm_tool_freeze" {
-        let token = match take_writer_lease(&slot, presented).await {
-            Ok(t) => t,
+        let lease = match WriterLease::acquire(host, &slot, &workspace, presented).await {
+            Ok(l) => l,
             Err(e) => return e,
         };
-        if let Err(e) = materialize_writer_at(host, &slot, &workspace).await {
-            let mut r = rpc_err(e);
-            r.value = Some(json!({ "writerToken": token }));
-            return r;
-        }
         let mut g = slot.driver.lock().await;
         let Some(driver) = g.as_mut() else {
             return RpcResult::error("unavailable", "no writer engine");
@@ -1292,22 +1316,16 @@ pub async fn handle_unary(
         driver.arm_tool_freeze_gate().await;
         let _ = driver.poll_mcp_bootstrap().await;
         let snapshot = driver.loaded_resources_snapshot().await;
-        return RpcResult::ok_value(attach_writer_token(
+        return lease.seal(RpcResult::ok_value(
             serde_json::to_value(&snapshot).unwrap_or(Value::Null),
-            &token,
         ));
     }
 
     if method == "persist_trust" {
-        let token = match take_writer_lease(&slot, presented).await {
-            Ok(t) => t,
+        let lease = match WriterLease::acquire(host, &slot, &workspace, presented).await {
+            Ok(l) => l,
             Err(e) => return e,
         };
-        if let Err(e) = materialize_writer_at(host, &slot, &workspace).await {
-            let mut r = rpc_err(e);
-            r.value = Some(json!({ "writerToken": token }));
-            return r;
-        }
         let mode = match payload.get("mode").and_then(Value::as_str) {
             Some("trust_cwd") | None => ProjectTrustMode::TrustCwd,
             Some("trust_parent") => ProjectTrustMode::TrustParent,
@@ -1322,20 +1340,13 @@ pub async fn handle_unary(
         };
         let report = match driver.persist_project_trust(mode).await {
             Ok(report) => report,
-            Err(e) => {
-                let mut r = rpc_err(e);
-                r.value = Some(json!({ "writerToken": token }));
-                return r;
-            }
+            Err(e) => return lease.seal(rpc_err(e)),
         };
-        return RpcResult::ok_value(attach_writer_token(
-            json!({
-                "trusted": report.trusted,
-                "saved_path": report.saved_path,
-                "message": report.message,
-            }),
-            &token,
-        ));
+        return lease.seal(RpcResult::ok_value(json!({
+            "trusted": report.trusted,
+            "saved_path": report.saved_path,
+            "message": report.message,
+        })));
     }
 
     if method == "load_debug_scene" {
@@ -1344,51 +1355,34 @@ pub async fn handle_unary(
             .and_then(|v| v.as_str())
             .unwrap_or("")
             .to_string();
-        let token = match take_writer_lease(&slot, presented).await {
-            Ok(t) => t,
+        let lease = match WriterLease::acquire(host, &slot, &workspace, presented).await {
+            Ok(l) => l,
             Err(e) => return e,
         };
-        if let Err(e) = materialize_writer_at(host, &slot, &workspace).await {
-            let mut r = rpc_err(e);
-            r.value = Some(json!({ "writerToken": token }));
-            return r;
-        }
         let mut g = slot.driver.lock().await;
         let Some(driver) = g.as_mut() else {
             return RpcResult::error("unavailable", "no writer engine");
         };
         return match driver.load_debug_scene(&scene).await {
-            Ok(load) => RpcResult::ok_value(attach_writer_token(
-                json!({
-                    "session_id": load.session_id,
-                    "entries": load.entries,
-                    "note": load.note,
-                    "model": load.model.as_ref().map(model_data),
-                }),
-                &token,
-            )),
-            Err(e) => {
-                let mut r = rpc_err(e);
-                r.value = Some(json!({ "writerToken": token }));
-                r
-            }
+            Ok(load) => lease.seal(RpcResult::ok_value(json!({
+                "session_id": load.session_id,
+                "entries": load.entries,
+                "note": load.note,
+                "model": load.model.as_ref().map(model_data),
+            }))),
+            Err(e) => lease.seal(rpc_err(e)),
         };
     }
 
     if is_writer_method(method) {
-        let token = match take_writer_lease(&slot, presented).await {
-            Ok(t) => t,
+        let lease = match WriterLease::acquire(host, &slot, &workspace, presented).await {
+            Ok(l) => l,
             Err(e) => return e,
         };
-        if let Err(e) = materialize_writer_at(host, &slot, &workspace).await {
-            let mut r = rpc_err(e);
-            r.value = Some(json!({ "writerToken": token }));
-            return r;
-        }
         if slot.run_inflight.load(Ordering::SeqCst)
             && matches!(method, "set_model" | "cycle_model" | "set_thinking_level")
         {
-            return defer_runtime_setting(&slot, method, &payload, &token).await;
+            return defer_runtime_setting(&slot, method, &payload, &lease.token).await;
         }
         // Export over the wire stages to a unique Host-side temp file; the
         // content is read back into the response and the TUI writes its own
@@ -1436,13 +1430,9 @@ pub async fn handle_unary(
                     }
                     let _ = std::fs::remove_file(&p);
                 }
-                RpcResult::ok_value(attach_writer_token(value, &token))
+                lease.seal(RpcResult::ok_value(value))
             }
-            Err(e) => {
-                let mut r = rpc_err(e);
-                r.value = Some(json!({ "writerToken": token }));
-                r
-            }
+            Err(e) => lease.seal(rpc_err(e)),
         };
     }
 
