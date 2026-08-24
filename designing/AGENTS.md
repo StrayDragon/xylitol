@@ -15,7 +15,7 @@ designing/
   AGENTS.md
   app/                 # bun + Vite；package.json 只在这里
   generated/           # AGENT-INDEX.md、tokens.css/js；勿手改
-  tui/modules/<id>/    # 产品面（已交付 / 已拍板）
+  tui/modules/<id>/    # 产品面（已交付 / 已定案）
     draft.yaml         # 摘要 / 对齐（chrome·item·todo-bar）/ todos / 组件键 / 备注
     intent.md          # 可观察 MUST（软顶 ~80 行）
     states/*.yaml      # cell/span 固定态
@@ -49,7 +49,7 @@ intent.md 只写 **可观察 MUST**（词表、禁止滑入、轨/flush、跨面
 ## tui-lab 实验区（交互候选）
 
 产品面模块树（`tui/modules/`）之外的第二棵树：`designing/tui-lab/modules/<id>/`，预览 endpoint
-`/tui-lab/<id>/<state>`。**位置即语义**——tui-lab 内模块一律是未拍板的交互候选 / 原型，
+`/tui-lab/<id>/<state>`。**位置即语义**——tui-lab 内模块一律是未定案的交互候选 / 原型，
 MUST NOT 再在正文里散布「未交付」「候选」字样。
 
 | 规则 | 内容 |

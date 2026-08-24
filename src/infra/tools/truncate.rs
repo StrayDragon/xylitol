@@ -59,8 +59,8 @@ fn split_lines_for_counting(content: &str) -> Vec<&str> {
 /// Truncate content from the head (keep first N lines/bytes).
 /// Suitable for file reads where you want to see the beginning.
 ///
-/// Never returns partial lines. If first line exceeds byte limit,
-/// returns empty content with `first_line_exceeds_limit = true`.
+/// Never returns partial lines. If the first line alone exceeds the byte
+/// limit, returns empty content truncated by bytes (`truncated_by = Bytes`).
 pub(crate) fn truncate_head(content: &str, options: TruncationOptions) -> TruncationResult {
     let max_lines = options.max_lines.unwrap_or(DEFAULT_MAX_LINES);
     let max_bytes = options.max_bytes.unwrap_or(DEFAULT_MAX_BYTES);

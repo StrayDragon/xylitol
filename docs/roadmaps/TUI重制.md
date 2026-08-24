@@ -1,7 +1,7 @@
 # TUI 重制（设计不变量）
 
 > **方向**：重置 **`UiEntry` 主条目**呈现（rail 皮肤）；承接 pi 交互优点，无默认洗底，可复制 / 复制省 token。
-> **M1 已兑现（c1830）**：产品 scrollback；交互设计稿现为仓库顶层 `designing/`。
+> **M1 已兑现（c1830 tui-entry-rail-default）**：产品 scrollback；交互设计稿现为仓库顶层 `designing/`。
 > 调研：[`../research/coding-agent-tui-design-landscape-2026.md`](../research/coding-agent-tui-design-landscape-2026.md) · 引擎：[`../research/xylitol-tui-capability-hooks-vs-landscape-2026.md`](../research/xylitol-tui-capability-hooks-vs-landscape-2026.md)。
 > 并行减噪：[`TUI视觉与信息表达.md`](./TUI视觉与信息表达.md)；跨面：[`Web与TUI同源.md`](./Web与TUI同源.md)。
 
@@ -60,8 +60,8 @@ packages/xylitol-tui（paint_left_rail_line）
 | 阶段 | 状态 |
 |---|---|
 | **M0 / M1** | **已兑现**：产品 rail + index SSOT |
-| **M2 语义复制** | 候补 |
-| **M3 引擎按需** | 候补 |
+| **M2 语义复制** | 候选 |
+| **M3 引擎按需** | 候选 |
 
 ## 相关
 

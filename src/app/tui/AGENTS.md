@@ -27,16 +27,16 @@
 
 **与 `agent_demo` 分界**：`just demo-tui` / `packages/…/agent_demo` = 包引擎演示，**不是**本面 SSOT，**不是** designing。**MUST NOT** 把 demo 屏上英文 / plate 文案当成产品 chrome 真值；**MUST NOT** 为对齐本词表去强改 demo 字符串（除非人类明确要求）。产品视觉意图走仓库顶层 `designing/` + `just open-designing`；运行时以产品测 / host 为准。
 
-**与未来 Web 的公共体验（跨面）**：凡 TUI 与 Web **共有**的能力（会话、改道、折叠/展开类减噪、即时设置等），用户学习模型与动作语义 MUST 同源——理解成本一致；快捷键 / 发现方式 SHOULD 尽量同构（允许 OS 修饰键差异与 Web 额外点击）。**仅**某一面独有的能力才可另起交互。约束板：[`docs/roadmaps/Web与TUI同源.md`](../../../docs/roadmaps/Web与TUI同源.md)；落地心智：[`docs/architecture/库与多客户端.md`](../../../docs/architecture/库与多客户端.md)。改公共交互前先对齐全套面，禁止静默开出「只教 TUI」的第二套故事。长历史 activity 折叠（`activity.expandNearest` / `collapseNearest`）TUI 已交付；Web 未开闸，不在本面预埋第二套 id。约束仍见 roadmap，不把未开闸面写成现行 MUST。
+**与未来 Web 的公共体验（跨面）**：凡 TUI 与 Web **共有**的能力（会话、改向、折叠/展开类减噪、即时设置等），用户学习模型与动作语义 MUST 同源——理解成本一致；快捷键 / 发现方式 SHOULD 尽量同构（允许 OS 修饰键差异与 Web 额外点击）。**仅**某一面独有的能力才可另起交互。约束板：[`docs/roadmaps/Web与TUI同源.md`](../../../docs/roadmaps/Web与TUI同源.md)；落地心智：[`docs/architecture/库与多客户端.md`](../../../docs/architecture/库与多客户端.md)。改公共交互前先对齐全套面，禁止静默开出「只教 TUI」的第二套故事。长历史 activity 折叠（`activity.expandNearest` / `collapseNearest`）TUI 已交付；Web 未开闸，不在本面预埋第二套 id。约束仍见 roadmap，不把未开闸面写成现行 MUST。
 
 ## 硬约束
 
 - 滚动提示 / 导航瞬时提示：默认 **尾随**（跟底可见、保 paint-cache）。**顶插不是绝对禁令**——顶层原则是高效绘制 + 用户跟底仍能合理看见关键反馈；仅当有明确理由（且接受缓存失效 / 视口外风险）才可顶插，须在 design/提案写清。瞬时确认优先页脚 / 状态条 / 槽，不要堆滚动提示。
 
 - 渲染只用 `xylitol_tui`；缺能力先改包再接线。产品路径 **host 驱动**（demo 专用启动 API 勿用于生产面）。
-- **鼠标**：产品默认 **ApplicationOwned**（alt-screen）：会话 begin 后开 mouse capture，应用内选区 + dock 排除输入面；**不**读 `XYLITOL_TUI_MOUSE`（该 env 仅库 lab / e2e / Inline demo）。库仍暴露 Inline 构造入口。模式在 host **启动构造**时绑定（`new_product_ui_with_meta_mode` / `TuiRunOptions`，缺省 ApplicationOwned）；**禁止** mid-session 热切 / 再引入 `apply_interaction_mode`。`XYLITOL_TUI_INLINE=1` 仅 lab 窥视产品 Inline 构造（启动绑定）；**不是**产品旗标 / 设置；缺省仍 ApplicationOwned。折叠三角列点击（Tool/Diff/Ask/Thinking per-id + Compaction / OutputViewport / Segment）经 `set_transcript_hit_priority` 接线（[`c2040`](../../../llmanspec/changes/archive/2026-08-12-c2040-add-tui-mouse-click-fold-triangle/proposal.md)；广义剩余 [`c2045`](../../../llmanspec/changes/archive/2026-08-12-c2045-add-tui-fold-target-remaining/proposal.md)；库双模式见 [`c2070`](../../../llmanspec/changes/archive/2026-08-12-c2070-add-package-tui-dual-interaction-modes/proposal.md)）。命名：用 `Inline` / `ApplicationOwned`，勿写 `mode_a`/`mode_b`（见 `packages/xylitol-tui/AGENTS.md` §硬约束 8）。
+- **鼠标**：产品默认 **ApplicationOwned**（alt-screen）：会话 begin 后开 mouse capture，应用内选区 + dock 排除输入面；**不**读 `XYLITOL_TUI_MOUSE`（该 env 仅库 lab / e2e / Inline demo）。库仍暴露 Inline 构造入口。模式在 host **启动构造**时绑定（`new_product_ui_with_meta_mode` / `TuiRunOptions`，缺省 ApplicationOwned）；**禁止** mid-session 热切 / 再引入 `apply_interaction_mode`。`XYLITOL_TUI_INLINE=1` 仅 lab 窥视产品 Inline 构造（启动绑定）；**不是**产品旗标 / 设置；缺省仍 ApplicationOwned。折叠三角列点击（Tool/Diff/Ask/Thinking per-id + Compaction / OutputViewport / Segment）经 `set_transcript_hit_priority` 接线（`c2040`；广义剩余 `c2045`；库双模式见 `c2070`）。命名：用 `Inline` / `ApplicationOwned`，勿写 `mode_a`/`mode_b`（见 `packages/xylitol-tui/AGENTS.md` §硬约束 8）。
 - Agent 只经产品信封客户端（面侧）或 Host 内 `XyDriver`；禁止 reach `agent` / `infra` 内部（同 `src/AGENTS.md`）。产品 TUI MUST NOT 默认同进程直握操作器。
-- Trust 在 CLI 闸；本面 `EditorSlot::Choice` 已解冻给内置 `ask`（c1850）。Plate/Settings stub 仍冻结；产品未拍板勿扩活树/活设置。
+- Trust 在 CLI 闸；本面 `EditorSlot::Choice` 已解冻给内置 `ask`（c1850 tui-ask-tool）。Plate/Settings stub 仍冻结；产品未拍板勿扩活树/活设置。
 - Esc（行为规则；实现细节以代码与 stage-QA design 为准）：
   - Idle 空 editor → 双 Esc 开树
   - Busy 无 overlay → abort latch；立刻臂装 Xy 抑制，drain 仍须 `XyDriver::abort`

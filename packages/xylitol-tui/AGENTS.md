@@ -80,7 +80,7 @@
 5. 终端 I/O / 输入硬切：见上表「底层 / 输入」。
 6. `enable_mouse_capture` / `XYLITOL_TUI_MOUSE`：**包 API + lab/e2e 保留**；默认不 Enable。产品 **Inline** 不得经 env 自动开 capture。**ApplicationOwned**（alt-screen）经 `begin_application_owned_session` 挂 `ApplicationOwnedRuntime`（ScrollView 视口 + 选区 + dock 排除 + OSC52），进 alt-buffer + mouse（c2070 / `package-tui-interaction-modes`）。Inline 文档 MUST NOT 暗示「开了 mouse = 原生选区 + 应用点选」兼得。
 7. 默认隐藏硬件光标；有 `CURSOR_MARKER` 时可相对定位 IME，但不得无条件 `show_cursor`。
-8. **命名（代码 SSOT）**：交互模式与 ApplicationOwned API **MUST** 用自解释标识符——`InteractionMode::{Inline,ApplicationOwned}`、`ApplicationOwnedTui` / `ApplicationOwnedRuntime`、`set_dock_rows` / `dock_rows_hint`、`set_transcript_copy_on_release`、`set_append_session_to_main_scrollback_on_exit`、`finish` / `finish_application_owned` / `finish_inline`。**禁止**在新/改代码里引入 `mode_a` / `mode_b` / `ModeA` / `ModeB` / `*_mode_b_*` 符号（含 pub API、字段、测试函数名）。口语「Mode A/B」仅允许出现在对照旧笔记时，且 MUST 立刻映射到 Inline / ApplicationOwned。概念 ↔ 代码列：[`emulator-vs-app-selection-oneof.md`](../../llmanspec/changes/archive/2026-08-12-c2070-add-package-tui-dual-interaction-modes/research/emulator-vs-app-selection-oneof.md) §1。勿加兼容别名——一步到位改调用点。
+8. **命名（代码 SSOT）**：交互模式与 ApplicationOwned API **MUST** 用自解释标识符——`InteractionMode::{Inline,ApplicationOwned}`、`ApplicationOwnedTui` / `ApplicationOwnedRuntime`、`set_dock_rows` / `dock_rows_hint`、`set_transcript_copy_on_release`、`set_append_session_to_main_scrollback_on_exit`、`finish` / `finish_application_owned` / `finish_inline`。**禁止**在新/改代码里引入 `mode_a` / `mode_b` / `ModeA` / `ModeB` / `*_mode_b_*` 符号（含 pub API、字段、测试函数名）。口语「Mode A/B」仅允许出现在对照旧笔记时，且 MUST 立刻映射到 Inline / ApplicationOwned。概念 ↔ 代码列：`emulator-vs-app-selection-oneof.md` §1（c2070 research，已冷归档（freeze）进 `llmanspec/changes/archive/freezed_changes.7z.archived`）。勿加兼容别名——一步到位改调用点。
 
 ## ApplicationOwned host checklist（ptim14）
 
@@ -95,7 +95,7 @@
 | Editor 命中 | `editor_screen_origin(term_rows, dock_rows, rows_above_editor)` → `Editor::set_screen_origin` → 传 **绝对** screen `InputEvent::Mouse`（Editor 内减 origin） |
 | dock 过滤 | `mouse_in_dock`；按下始于 dock 不启 transcript 选区（引擎已做）；Editor 仅收 dock/拖选中事件 |
 | 复制提示 | `take_copy_notice` / `copy_notice_active` → 壳层短提示（勿写 transcript） |
-| fold hit（c2040） | `set_transcript_hit_priority` — Left Down 优先于选区；回调 `true` 则吞按下并清 transcript 选区 |
+| fold hit（c2040 tui-mouse-click-fold-triangle） | `set_transcript_hit_priority` — Left Down 优先于选区；回调 `true` 则吞按下并清 transcript 选区 |
 | Editor OSC52 | `Editor::take_pending_clipboard` → `enqueue_clipboard_sequences` |
 | 退出 | `finish`（按模式分发）；或显式 `finish_application_owned` / `finish_inline` |
 | 挂起 | `with_terminal_suspended` — ApplicationOwned 自动重进 alt+mouse（ptim11） |
@@ -110,19 +110,19 @@
 |---|---|---|
 | 包组件层 1–4（键序列 / snapshot / 时序 / proptest） | 本包 `tests/` | `just test-tui` |
 | 真终端层 5（crossterm / PTY / tmux） | 工作区 `tests/tui_e2e/`：主场景 spawn **`agent_demo`**；另含产品 Fake smoke（`pty_product_*`，隔离 config） | `just test-tui-e2e`（或 `-pty` / `-tmux`） |
-| 仓库满闸（不含层 5） | 全仓 | `just qa` |
-| 满闸 + 层 5 | 全仓 | `just qa-e2e` |
+| 仓库全量门禁（不含层 5） | 全仓 | `just qa` |
+| 全量门禁 + 层 5 | 全仓 | `just qa-e2e` |
 | 产品 host / `XyEvent` / slash 接线 | `src/app/tui/tests.rs` 等 | 随产品测；**不**替代上表 |
 
 **分工（勿混）**
 
 - **包 E2E / `agent_demo*`**：引擎 + 通用组件 + 真终端协议；就绪探针 `DEMO_READY_NEEDLE`（`tests/tui_e2e.rs`，footer `theme:dark`——勿用易滚出视口的标题行）。PTY 上 plate/settings 宜用 `XYLITOL_AGENT_DEMO_INITIAL_PROMPT` + 足够行高；tmux 用 `C-p` / `C-s`。**文案 / chrome 标签以 demo 自身为准**，勿按产品词表强改。ApplicationOwned：example `agent_demo_alt` / `just demo-tui-alt-screen`；PTY 最小闸见 `pty_agent_demo_alt_*`。
-- **产品 TUI**：Driver / bridge / layout / 键位 → 应用面 harness（`src/app/tui`）。层 5 另有 **`pty_product_*` Fake smoke**（隔离 HOME/config，不绑真 LLM）；日常仍勿把满闸默认绑完整配置/真 API。
+- **产品 TUI**：Driver / bridge / layout / 键位 → 应用面 harness（`src/app/tui`）。层 5 另有 **`pty_product_*` Fake smoke**（隔离 HOME/config，不绑真 LLM）；日常仍勿把全量门禁默认绑完整配置/真 API。
 - 层 5 全 `#[ignore]`；缺 tmux 时用 `just test-tui-e2e-pty`。操作细则：`test-tui-harness` skill（how-to，非第二份边界文）。
 
 ## Specs
 
-本包能力 specs 使用 `package-tui-*` 前缀（见根 `AGENTS.md` / `llmanspec/config.yaml`）。产品面用 `app-tui-*`（不再堆进单体 `app-tui`）。
+本包能力 specs 使用 `package-tui-*` 前缀（见根 `AGENTS.md` 与 `llmanspec/AGENTS.md`）。产品面用 `app-tui-*`（不再堆进单体 `app-tui`）。
 
 ## HOW（指针）
 

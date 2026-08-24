@@ -443,7 +443,7 @@ fn shared_effect_pump_is_single_entry() {
 #[test]
 fn product_slash_catalog_matches_agent_ssot() {
     // c1175 / sc3 / atm7: TUI catalog names == product SSOT (same crate build).
-    use crate::app::product_commands::{LEGACY_SHORT_NAMES, product_slash_commands};
+    use crate::app::product_commands::product_slash_commands;
     use crate::app::tui::layout::product_slash_commands_for_editor;
 
     let ssot: Vec<&str> = product_slash_commands().iter().map(|c| c.name).collect();
@@ -455,9 +455,6 @@ fn product_slash_catalog_matches_agent_ssot() {
         catalog,
         ssot.iter().map(|s| (*s).to_string()).collect::<Vec<_>>()
     );
-    for legacy in LEGACY_SHORT_NAMES {
-        assert!(!catalog.iter().any(|n| n == legacy));
-    }
 }
 
 #[test]
