@@ -32,6 +32,13 @@ use std::sync::Arc;
 
 use crate::protocol::ports::{AgentTodoGateway, XyTool};
 
+/// Shared tool-test context (`XyToolCtx::new("test-call")`) for the
+/// per-tool `#[cfg(test)]` modules.
+#[cfg(test)]
+pub(crate) fn test_ctx() -> crate::protocol::ports::XyToolCtx {
+    crate::protocol::ports::XyToolCtx::new("test-call")
+}
+
 /// Ephemeral in-memory Todo gateway for call sites that do not bind a session
 /// (unit / BDD name tables). Product surfaces SHOULD prefer
 /// [`default_tools_with_todo`] with a [`SessionAgentTodoGateway`].

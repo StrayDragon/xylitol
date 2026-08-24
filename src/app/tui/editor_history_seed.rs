@@ -6,6 +6,7 @@ use crate::app::core::driver::{XyDriver, XyDriverError};
 use crate::app::tui::session_resume::cwd_matches;
 use crate::protocol::error::XySessionStoreError;
 use crate::protocol::ports::XySessionStore;
+use crate::protocol::ports::session::SessionListEntry;
 use crate::protocol::session::{SessionEntry, message_role, message_text};
 
 /// Extract user prompt texts from session entries (chronological order; skip `/…`).
@@ -28,17 +29,22 @@ pub fn user_prompt_texts_from_entries(entries: &[SessionEntry]) -> Vec<String> {
     out
 }
 
-/// Prior same-cwd sessions via [`XySessionStore`] (spawn-safe; no `&dyn XyDriver`).
-pub async fn collect_new_session_seed_from_store(
-    store: &dyn XySessionStore,
+/// Shared seed pipeline tail: same-cwd filter → mtime desc → take `n` →
+/// oldest-first ordering → per-session user prompt texts.
+///
+/// `load_entries` returns `None` when the session's entries are unreadable;
+/// the failure has already been logged by the caller-side closure.
+async fn seed_texts_from_listed<F, Fut>(
+    listed: Vec<SessionListEntry>,
     current_cwd: &str,
     current_id: Option<&str>,
     n: u32,
-) -> Vec<String> {
-    if n == 0 {
-        return Vec::new();
-    }
-    let listed = store.list_sessions().await.unwrap_or_default();
+    mut load_entries: F,
+) -> Vec<String>
+where
+    F: FnMut(String) -> Fut,
+    Fut: std::future::Future<Output = Option<Vec<SessionEntry>>>,
+{
     let mut matched: Vec<_> = listed
         .into_iter()
         .filter(|e| cwd_matches(e.cwd.as_deref(), current_cwd))
@@ -54,18 +60,44 @@ pub async fn collect_new_session_seed_from_store(
     matched.reverse();
     let mut texts = Vec::new();
     for entry in matched {
-        match store.load_entries(&entry.id).await {
-            Ok(entries) => texts.extend(user_prompt_texts_from_entries(&entries)),
-            Err(e) => {
+        match load_entries(entry.id.clone()).await {
+            Some(entries) => texts.extend(user_prompt_texts_from_entries(&entries)),
+            None => {
                 log::debug!(
                     target: "xylitol::tui",
-                    "editor history seed skip session {}: {e}",
+                    "editor history seed skip session {}",
                     entry.id
                 );
             }
         }
     }
     texts
+}
+
+/// Prior same-cwd sessions via [`XySessionStore`] (spawn-safe; no `&dyn XyDriver`).
+pub async fn collect_new_session_seed_from_store(
+    store: &dyn XySessionStore,
+    current_cwd: &str,
+    current_id: Option<&str>,
+    n: u32,
+) -> Vec<String> {
+    if n == 0 {
+        return Vec::new();
+    }
+    let listed = store.list_sessions().await.unwrap_or_default();
+    seed_texts_from_listed(listed, current_cwd, current_id, n, |id| async move {
+        match store.load_entries(&id).await {
+            Ok(entries) => Some(entries),
+            Err(e) => {
+                log::debug!(
+                    target: "xylitol::tui",
+                    "editor history seed skip session {id}: {e}"
+                );
+                None
+            }
+        }
+    })
+    .await
 }
 
 /// Prior same-cwd sessions (mtime desc, exclude `current_id`), take `n`, oldest→newest texts.
@@ -84,31 +116,19 @@ pub async fn collect_new_session_seed(
         return Ok(Vec::new());
     }
     let listed = driver.list_sessions().await.unwrap_or_default();
-    let mut matched: Vec<_> = listed
-        .into_iter()
-        .filter(|e| cwd_matches(e.cwd.as_deref(), current_cwd))
-        .filter(|e| current_id.is_none_or(|id| e.id != id))
-        .collect();
-    matched.sort_by(|a, b| {
-        b.modified_unix
-            .unwrap_or(0)
-            .cmp(&a.modified_unix.unwrap_or(0))
-    });
-    matched.truncate(n as usize);
-    matched.reverse();
-    let mut texts = Vec::new();
-    for entry in matched {
-        match driver.load_session_entries(&entry.id).await {
-            Ok(entries) => texts.extend(user_prompt_texts_from_entries(&entries)),
+    let texts = seed_texts_from_listed(listed, current_cwd, current_id, n, |id| async move {
+        match driver.load_session_entries(&id).await {
+            Ok(entries) => Some(entries),
             Err(e) => {
                 log::debug!(
                     target: "xylitol::tui",
-                    "editor history seed skip session {}: {e}",
-                    entry.id
+                    "editor history seed skip session {id}: {e}"
                 );
+                None
             }
         }
-    }
+    })
+    .await;
     Ok(texts)
 }
 

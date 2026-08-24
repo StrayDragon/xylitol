@@ -2,13 +2,8 @@ use super::diff::{previous_body, shifted_previous_index};
 use super::{CURSOR_MARKER, RenderError, TUI};
 use crate::application_owned_runtime::ApplicationOwnedRuntime;
 use crate::terminal::Terminal;
+use crate::terminal_image::is_image_line;
 use crate::utils::{normalize_terminal_output, visible_width};
-
-/// Heuristic for Kitty inline-image lines (APC `<_...ST`). Their visible width
-/// is 0 (all escape bytes), so they're exempt from the width invariant.
-fn is_image_line(line: &str) -> bool {
-    line.contains("\x1b_G") || line.contains("\x1b]1337;File")
-}
 
 /// Last successful `do_render` cost snapshot (obs / labs / harness).
 #[derive(Debug, Clone, Copy, Default, PartialEq, Eq)]

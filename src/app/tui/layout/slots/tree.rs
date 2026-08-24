@@ -180,10 +180,7 @@ impl TreeSlot {
             self.tree.toggle_annotation_timestamps();
             return TreeAction::None;
         }
-        if matches_binding(key, "tui.select.up")
-            || matches_binding(key, "tui.select.down")
-            || matches_binding(key, "tui.select.pageUp")
-            || matches_binding(key, "tui.select.pageDown")
+        if super::is_select_nav_key(key)
             || matches_binding(key, "tui.tree.foldOrUp")
             || matches_binding(key, "tui.tree.unfoldOrDown")
             || matches_key_event(key, "backspace")

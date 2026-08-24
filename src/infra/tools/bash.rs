@@ -17,10 +17,9 @@ use serde_json::{Value, json};
 use tokio::process::Command;
 use tokio::time::timeout;
 
+use crate::protocol::ToolTimeout;
 use crate::protocol::error::XyToolError;
 use crate::protocol::ports::XyToolCtx;
-use crate::protocol::{ToolTimeout, ToolTimeoutError};
-
 /// Per-tool wall-clock default when the model omits `timeout` (c2425).
 pub(crate) const BASH_TOOL_TIMEOUT_SECS: u64 = 120;
 
@@ -309,10 +308,7 @@ impl TypedTool for BashTool {
             timeout: requested,
         } = args;
 
-        let tool_timeout = ToolTimeout::from_i64_opt(requested).map_err(|e| match e {
-            ToolTimeoutError::ZeroOrNegative => XyToolError::InvalidArgs(e.to_string()),
-        })?;
-        let tool_timeout = tool_timeout.or_default(BASH_TOOL_TIMEOUT_SECS).clamped();
+        let tool_timeout = super::process::parse_tool_timeout(requested, BASH_TOOL_TIMEOUT_SECS)?;
 
         if ctx.cancel.is_cancelled() {
             return Err(XyToolError::Aborted);
@@ -348,14 +344,12 @@ impl TypedTool for BashTool {
                 }
             })?;
 
-        Ok(serde_json::to_string(&json!({
-            "stdout": output.combined,
-            "stderr": "",
-            "exit_code": output.exit_code,
-            "combined": output.combined,
-            "truncated": output.truncated,
-            "full_output_path": output.full_output_path,
-        }))
+        Ok(serde_json::to_string(&bash_result_json(
+            &output.combined,
+            output.exit_code,
+            output.truncated,
+            &output.full_output_path,
+        ))
         .expect("serde_json::to_string on Value/Map never fails"))
     }
 
@@ -413,27 +407,43 @@ impl BashTool {
             ));
         }
 
-        Ok(serde_json::to_string(&json!({
-            "stdout": result.output,
-            "stderr": "",
-            "exit_code": result.exit_code,
-            "combined": result.output,
-            "full_output_path": result.full_output_path,
-            "truncated": result.truncated,
-        }))
+        Ok(serde_json::to_string(&bash_result_json(
+            &result.output,
+            result.exit_code,
+            result.truncated,
+            &result.full_output_path,
+        ))
         .expect("serde_json::to_string on Value/Map never fails"))
     }
+}
+
+/// Shared result JSON shape for streaming and non-streaming bash runs.
+///
+/// `exit_code` is generic because the two paths genuinely differ: the
+/// blocking executor reports a plain code, the streaming one `Option<i32>`
+/// (`null` when killed before exit).
+fn bash_result_json<E: Into<serde_json::Value> + serde::Serialize>(
+    combined: &str,
+    exit_code: E,
+    truncated: bool,
+    full_output_path: &Option<String>,
+) -> serde_json::Value {
+    json!({
+        "stdout": combined,
+        "stderr": "",
+        "exit_code": exit_code,
+        "combined": combined,
+        "truncated": truncated,
+        "full_output_path": full_output_path,
+    })
 }
 
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::infra::tools::test_ctx;
     use crate::protocol::ports::XyTool;
     use std::path::PathBuf;
-
-    fn test_ctx() -> XyToolCtx {
-        XyToolCtx::new("test-call")
-    }
 
     #[tokio::test]
     async fn test_bash_echo() {

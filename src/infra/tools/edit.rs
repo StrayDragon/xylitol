@@ -278,11 +278,8 @@ impl TypedTool for EditTool {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::infra::tools::test_ctx;
     use crate::protocol::ports::XyTool;
-
-    fn test_ctx() -> XyToolCtx {
-        XyToolCtx::new("test-call")
-    }
 
     #[tokio::test]
     async fn test_edit_single_replace() {

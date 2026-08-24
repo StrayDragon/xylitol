@@ -202,12 +202,9 @@ impl TypedTool for ReadTool {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::infra::tools::test_ctx;
     use crate::protocol::ports::XyTool;
     use image::{ImageBuffer, Rgb};
-
-    fn test_ctx() -> XyToolCtx {
-        XyToolCtx::new("test-call")
-    }
 
     #[tokio::test]
     async fn test_read_whole_file() {
