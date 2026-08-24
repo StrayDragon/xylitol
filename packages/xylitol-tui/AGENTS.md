@@ -108,17 +108,17 @@
 
 | 验什么 | 在哪跑 | 命令 |
 |---|---|---|
-| 包组件层 1–4（键序列 / snapshot / 时序 / proptest） | 本包 `tests/` | `just test-tui` |
-| 真终端层 5（crossterm / PTY / tmux） | 工作区 `tests/tui_e2e/`：主场景 spawn **`agent_demo`**；另含产品 Fake smoke（`pty_product_*`，隔离 config） | `just test-tui-e2e`（或 `-pty` / `-tmux`） |
-| 仓库全量门禁（不含层 5） | 全仓 | `just qa` |
-| 全量门禁 + 层 5 | 全仓 | `just qa-e2e` |
+| 包组件层 1–3（键序列 / snapshot / 时序） | 本包 `tests/` | `just test-tui` |
+| 真终端层 4（crossterm / PTY / tmux） | 工作区 `tests/tui_e2e/`：主场景 spawn **`agent_demo`**；另含产品 Fake smoke（`pty_product_*`，隔离 config） | `just test-tui-e2e`（或 `-pty` / `-tmux`） |
+| 仓库全量门禁（不含层 4） | 全仓 | `just qa` |
+| 全量门禁 + 层 4 | 全仓 | `just qa-e2e` |
 | 产品 host / `XyEvent` / slash 接线 | `src/app/tui/tests.rs` 等 | 随产品测；**不**替代上表 |
 
 **分工（勿混）**
 
 - **包 E2E / `agent_demo*`**：引擎 + 通用组件 + 真终端协议；就绪探针 `DEMO_READY_NEEDLE`（`tests/tui_e2e.rs`，footer `theme:dark`——勿用易滚出视口的标题行）。PTY 上 plate/settings 宜用 `XYLITOL_AGENT_DEMO_INITIAL_PROMPT` + 足够行高；tmux 用 `C-p` / `C-s`。**文案 / chrome 标签以 demo 自身为准**，勿按产品词表强改。ApplicationOwned：example `agent_demo_alt` / `just demo-tui-alt-screen`；PTY 最小闸见 `pty_agent_demo_alt_*`。
-- **产品 TUI**：Driver / bridge / layout / 键位 → 应用面 harness（`src/app/tui`）。层 5 另有 **`pty_product_*` Fake smoke**（隔离 HOME/config，不绑真 LLM）；日常仍勿把全量门禁默认绑完整配置/真 API。
-- 层 5 全 `#[ignore]`；缺 tmux 时用 `just test-tui-e2e-pty`。操作细则：`test-tui-harness` skill（how-to，非第二份边界文）。
+- **产品 TUI**：Driver / bridge / layout / 键位 → 应用面 harness（`src/app/tui`）。层 4 另有 **`pty_product_*` Fake smoke**（隔离 HOME/config，不绑真 LLM）；日常仍勿把全量门禁默认绑完整配置/真 API。
+- 层 4 全 `#[ignore]`；缺 tmux 时用 `just test-tui-e2e-pty`。操作细则：`test-tui-harness` skill（how-to，非第二份边界文）。
 
 ## Specs
 

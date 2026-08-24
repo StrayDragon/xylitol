@@ -54,6 +54,6 @@
 | Agent 尽量跑 | `just test-tui-e2e-pty`（真终端） |
 | 人类 | 最短手测观感；**不**替代 harness |
 
-包侧五层：`packages/xylitol-tui/AGENTS.md` + skill `test-tui-harness`。排障：`xylitol-inspect-runtime-logs`（勿整文件灌 log）。新增应用面：`l8ng-write-surface`。
+包侧四层：`packages/xylitol-tui/AGENTS.md` + skill `test-tui-harness`。排障：`xylitol-inspect-runtime-logs`（勿整文件灌 log）。新增应用面：`l8ng-write-surface`。
 
 live 只进 scrollback；历史/分叉以会话树为准。不做 Codex TranscriptView；不做运行时 Settings/Plate 改配置；**不**绑定 Ctrl+P 打开 Command Plate stub。

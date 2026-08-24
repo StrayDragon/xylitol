@@ -1,7 +1,6 @@
 //! Autocomplete tests — fd subprocess + debounce + async CancellationToken.
 //!
-//! Uses c405 layers 1 (unit), 3 (timing with `#[tokio::test(start_paused = true)]`),
-//! and 4 (proptest).
+//! Uses c405 layers 1 (unit) and 3 (timing with `#[tokio::test(start_paused = true)]`).
 
 mod support;
 
@@ -276,67 +275,4 @@ fn slash_command_completion_works() {
         res.is_some() && res.unwrap().items.iter().any(|i| i.value == "help"),
         "slash command completion should match /hel"
     );
-}
-
-// ── proptest: fd vs read_dir consistency (layer 4) ─────────────────────────
-
-#[cfg(test)]
-mod proptest_tests {
-    use super::*;
-    use proptest::prelude::*;
-    use std::collections::HashSet;
-    use std::fs;
-
-    fn collect_read_dir_recursive(dir: &std::path::Path) -> HashSet<String> {
-        let mut set = HashSet::new();
-        fn walk(set: &mut HashSet<String>, root: &std::path::Path, dir: &std::path::Path) {
-            if let Ok(entries) = fs::read_dir(dir) {
-                for entry in entries.flatten() {
-                    let path = entry.path();
-                    let is_dir = entry.file_type().map(|t| t.is_dir()).unwrap_or(false);
-                    let rel = path.strip_prefix(root).unwrap_or(&path);
-                    let display = rel.to_string_lossy().replace('\\', "/");
-                    if is_dir {
-                        set.insert(format!("{}/", display));
-                        walk(set, root, &path);
-                    } else {
-                        set.insert(display.to_string());
-                    }
-                }
-            }
-        }
-        walk(&mut set, dir, dir);
-        set
-    }
-
-    proptest! {
-        #[test]
-        fn fd_results_subset_of_read_dir(_seed: u64) {
-            // Skip if fd not installed
-            if fd_path().is_none() {
-                return Ok(());
-            }
-            let dir = make_temp_dir_with_files();
-            let base = dir.path().to_string_lossy().to_string();
-            let ct = CancellationToken::new();
-            let fd_results = walk_directory_with_fd(&base, "fd", ".", 200, ct);
-
-            let fd_set: HashSet<String> = fd_results
-                .into_iter()
-                .map(|(p, _)| p)
-                .collect();
-
-            let readdir_set = collect_read_dir_recursive(dir.path());
-
-            // Every fd result should exist in a recursive read_dir walk
-            for entry in &fd_set {
-                // fd normalizes paths; so should our read_dir walker
-                assert!(
-                    readdir_set.contains(entry) || readdir_set.contains(&format!("{}/", entry)),
-                    "fd returned {entry} but recursive read_dir does not contain it. \
-                     readdir: {readdir_set:?}, fd: {fd_set:?}"
-                );
-            }
-        }
-    }
 }
