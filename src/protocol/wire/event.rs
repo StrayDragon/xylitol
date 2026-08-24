@@ -12,16 +12,12 @@ use crate::protocol::lifecycle::XyEvent;
 #[serde(tag = "type", rename_all = "snake_case")]
 pub enum Event {
     Error {
-        #[serde(default)]
-        id: Option<String>,
-        #[serde(default)]
-        kind: Option<String>,
+        /// Stable classification aligned with [`crate::protocol::lifecycle`] kinds.
+        kind: String,
         message: String,
     },
     Response {
-        #[serde(default)]
         id: Option<String>,
-        #[serde(default)]
         #[specta(type = specta_typescript::Any)]
         payload: Option<Value>,
     },
@@ -35,7 +31,6 @@ pub enum Event {
     ToolStart {
         id: String,
         name: String,
-        #[serde(default)]
         #[specta(type = specta_typescript::Any)]
         args: Value,
     },
@@ -43,9 +38,7 @@ pub enum Event {
         id: String,
         name: String,
         result: String,
-        /// Terminal failure marker (c2440). Serde default keeps old journals
-        /// and lenient clients on the success path.
-        #[serde(default)]
+        /// Terminal failure marker (c2440); required on the wire.
         is_error: bool,
     },
     AgentEnd,
@@ -63,7 +56,6 @@ pub enum Event {
         seq: u64,
     },
     BashResult {
-        #[serde(default)]
         id: Option<String>,
         output: String,
         exit_code: Option<i32>,
@@ -81,23 +73,19 @@ pub enum Event {
     /// Message started.
     MessageStart {
         role: String,
-        #[serde(default)]
         #[specta(type = Option<specta_typescript::Any>)]
         message: Option<Value>,
     },
     /// Message ended.
     MessageEnd {
         role: String,
-        #[serde(default)]
         #[specta(type = Option<specta_typescript::Any>)]
         message: Option<Value>,
     },
     /// Streaming message update (replaces previous text/thinking for this message).
     MessageUpdate {
         text: String,
-        #[serde(default)]
         thinking: Option<String>,
-        #[serde(default)]
         #[specta(type = Option<specta_typescript::Any>)]
         message: Option<Value>,
     },
@@ -117,7 +105,6 @@ pub enum Event {
         usage_tokens: u64,
         #[specta(type = specta_typescript::Number)]
         trailing_tokens: u64,
-        #[serde(default)]
         #[specta(type = Option<specta_typescript::Number>)]
         last_usage_index: Option<usize>,
         reason: String,
@@ -215,8 +202,7 @@ impl XyEvent {
             }),
             XyEvent::AgentEnd { .. } => Some(Event::AgentEnd),
             XyEvent::Error(err) => Some(Event::Error {
-                id: None,
-                kind: Some(err.kind.clone()),
+                kind: err.kind.clone(),
                 message: err.message.clone(),
             }),
             XyEvent::QueueUpdate {
@@ -357,13 +343,9 @@ impl TryFrom<&Event> for XyEvent {
             Event::AgentEnd => Ok(XyEvent::AgentEnd {
                 messages: Vec::new(),
             }),
-            Event::Error { message, kind, .. } => Ok(XyEvent::Error({
-                let mut e = crate::protocol::lifecycle::XyEventError::message_only(message.clone());
-                if let Some(k) = kind.clone() {
-                    e.kind = k;
-                }
-                e
-            })),
+            Event::Error { message, kind } => Ok(XyEvent::Error(
+                crate::protocol::lifecycle::XyEventError::new(kind, message),
+            )),
             Event::QueueUpdate {
                 steer_count,
                 follow_up_count,
@@ -509,10 +491,9 @@ mod tests {
         assert!(matches!(
             wire,
             Event::Error {
-                kind: Some(ref k),
+                ref kind,
                 ref message,
-                ..
-            } if k == "Provider" && message == "provider error: 503"
+            } if kind == "Provider" && message == "provider error: 503"
         ));
         let back = XyEvent::try_from(&wire).expect("roundtrip");
         match back {
@@ -525,17 +506,11 @@ mod tests {
     }
 
     #[test]
-    fn error_legacy_aborted_message_without_kind() {
-        let wire = Event::Error {
-            id: None,
-            kind: None,
-            message: "aborted".into(),
-        };
-        let back = XyEvent::try_from(&wire).expect("legacy error ok");
-        match back {
-            XyEvent::Error(err) => assert!(err.is_aborted()),
-            other => panic!("unexpected: {other:?}"),
-        }
+    fn error_requires_kind_on_the_wire() {
+        // Strict wire: missing `kind` is rejected, not heuristically classified.
+        let wire = serde_json::json!({"type": "error", "message": "aborted"});
+        let decoded: Result<Event, _> = serde_json::from_value(wire);
+        assert!(decoded.is_err(), "missing kind must be rejected");
     }
 
     #[test]
@@ -602,7 +577,7 @@ mod tests {
         );
     }
     #[test]
-    fn tool_end_roundtrips_is_error_and_defaults_lenient() {
+    fn tool_end_roundtrips_is_error_strictly() {
         let domain = XyEvent::ToolExecutionEnd {
             id: "t1".into(),
             name: "bash".into(),
@@ -617,15 +592,17 @@ mod tests {
             "wire must carry the failure flag"
         );
 
-        // Lenient parse of an old payload without the field.
-        let mut legacy = encoded.clone();
-        legacy.as_object_mut().unwrap().remove("isError");
-        legacy.as_object_mut().unwrap().remove("is_error");
-        let decoded: Event = serde_json::from_value(legacy).expect("legacy parses");
+        // Strict wire: missing `is_error` is rejected, not defaulted to success.
+        let mut stripped = encoded.clone();
+        stripped.as_object_mut().unwrap().remove("is_error");
+        let decoded: Result<Event, _> = serde_json::from_value(stripped);
+        assert!(decoded.is_err(), "missing is_error must be rejected");
+
+        let decoded: Event = serde_json::from_value(encoded).expect("wire deserializes");
         let back = XyEvent::try_from(&decoded).expect("roundtrip");
         let XyEvent::ToolExecutionEnd { is_error, .. } = back else {
             panic!("unexpected event");
         };
-        assert!(!is_error, "missing field defaults to success path");
+        assert!(is_error, "failure flag survives the roundtrip");
     }
 }

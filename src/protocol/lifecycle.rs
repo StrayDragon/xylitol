@@ -28,13 +28,8 @@ use crate::protocol::model::ContextTokenEstimate;
 pub struct XyEventError {
     /// Stable kind aligned with [`XyError::kind`] when sourced from hot-path errors
     /// (`Aborted`, `Provider`, `Session`, `Config`, …). Opaque strings use `Message`.
-    #[serde(default = "default_event_error_kind")]
     pub kind: String,
     pub message: String,
-}
-
-fn default_event_error_kind() -> String {
-    "Message".into()
 }
 
 impl XyEventError {
@@ -53,29 +48,8 @@ impl XyEventError {
         Self::new(err.kind(), err.to_string())
     }
 
-    /// Classify a bare message (legacy emitters / remote strings).
-    pub fn message_only(message: impl Into<String>) -> Self {
-        let message = message.into();
-        if message == "aborted" {
-            return Self::aborted();
-        }
-        Self::new("Message", message)
-    }
-
     pub fn is_aborted(&self) -> bool {
         self.kind == "Aborted" || self.message == "aborted"
-    }
-}
-
-impl From<String> for XyEventError {
-    fn from(message: String) -> Self {
-        Self::message_only(message)
-    }
-}
-
-impl From<&str> for XyEventError {
-    fn from(message: &str) -> Self {
-        Self::message_only(message)
     }
 }
 
@@ -227,7 +201,7 @@ impl XyEvent {
     }
 
     pub fn error_msg(message: impl Into<String>) -> Self {
-        Self::Error(XyEventError::message_only(message))
+        Self::Error(XyEventError::new("Message", message))
     }
 
     pub fn error_xy(err: &XyError) -> Self {

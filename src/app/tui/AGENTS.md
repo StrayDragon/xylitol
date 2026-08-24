@@ -43,6 +43,7 @@
   - Busy + overlay → 先关槽，不 abort
   - Agent abort 与 Bang abort 文案/抑制策略不同（见代码与 harness）
 - 颜色走本面 theme token。已确认需求须有 harness / BDD 护栏。
+- **UiEntry 默认**：tool/bash/diff = status 左边轨 + gutter；user / assistant / thinking = flush。`Palette` = [`DESIGN.md`](./DESIGN.md) frontmatter 的运行时快照。
 - steer / follow-up 经 Driver 队列；本面不持有 ReAct 队列。
 
 ## 验证与 HOW
