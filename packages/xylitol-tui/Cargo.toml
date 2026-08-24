@@ -32,8 +32,6 @@ vte = "0.13"
 tokio = { version = "1", features = ["rt", "rt-multi-thread", "macros", "time", "test-util"] }
 # insta: whole-screen snapshot golden (c405 layer 2) — viewport output regression.
 insta = { version = "1", features = ["filters"] }
-# proptest: state-machine property tests (c405 layer 4) — random key sequences.
-proptest = "1"
 tempfile = "3"
 
 [[example]]

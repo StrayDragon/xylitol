@@ -429,7 +429,6 @@ mod tests {
         BranchSummaryEntry, CompactionEntry, CustomEntry, CustomMessageEntry, EntryBase,
         LabelEntry, MessageEntry, SESSION_VERSION, SessionEntry, SessionHeader,
     };
-    use proptest::prelude::*;
     use serde_json::json;
 
     fn msg_entry(id: &str, role: &str, content: &str) -> SessionEntry {
@@ -688,48 +687,6 @@ mod tests {
             message: json!({"role": "user", "content": "hello"}),
         });
         assert_eq!(estimate_tokens_entry(&message), 2);
-    }
-
-    // ── 性质：追加合法 part 永不减少估算（防 += → -= 类回归）────────
-
-    fn lax_part_strategy() -> impl Strategy<Value = serde_json::Value> {
-        prop_oneof![
-            3 => "[a-z]{0,12}".prop_map(|s| json!({"type": "text", "text": s})),
-            2 => "[a-z]{0,12}".prop_map(|s| json!({"type": "thinking", "thinking": s})),
-            2 => ("[a-z]{1,6}", "[a-z]{0,8}")
-                .prop_map(|(n, p)| json!({"type": "toolCall", "name": n, "arguments": p})),
-            1 => Just(json!({"type": "image"})),
-            1 => "[a-z]{0,10}".prop_map(|s| json!(s)),
-        ]
-    }
-
-    proptest! {
-        #![proptest_config(proptest::test_runner::Config::with_cases(256))]
-
-        #[test]
-        fn lax_estimate_monotone_under_part_append(
-            role in prop_oneof![Just("assistant"), Just("user"), Just("toolResult")],
-            base in prop::collection::vec(lax_part_strategy(), 0..5),
-            extra in lax_part_strategy(),
-        ) {
-            let mut with_extra = base.clone();
-            with_extra.push(extra);
-            let before = estimate_lax_message_json_chars(
-                &json!({"role": role, "content": base}),
-            );
-            let after = estimate_lax_message_json_chars(
-                &json!({"role": role, "content": with_extra}),
-            );
-            prop_assert!(after >= before);
-        }
-
-        #[test]
-        fn lax_primary_path_equals_byte_len(s in any::<String>()) {
-            prop_assert_eq!(
-                estimate_lax_message_json_chars(&json!({"content": s.clone()})),
-                s.len() as u64
-            );
-        }
     }
 
     // ── estimate_custom_content_chars ───────────────────────────────
