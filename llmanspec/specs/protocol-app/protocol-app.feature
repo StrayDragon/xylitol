@@ -83,7 +83,7 @@
 
   @req:pa-err1 @human
   场景: ToolEnd 失败标记下行
-    - wire 的 ToolEnd 事件 MUST 携带 is_error 终态失败标记（缺省按成功解析以兼容旧载荷）；attach 客户端据此呈现失败态。
+    - wire 的 ToolEnd 事件 MUST 携带 is_error 终态失败标记，该字段线上必填（缺失载荷 MUST 解析失败）；attach 客户端据此呈现失败态。
 
   @req:pa-cs1 @human
   场景: 单一产品真源
@@ -116,3 +116,44 @@
   @req:pa-cs6 @human
   场景: 反向 RPC 首应答
     - host 向 client 发起的审批与问卷 MUST 能经线协议往返；同一 call 的第一应答 MUST 生效，后续 MUST 忽略。
+
+  @req:ip-q1 @executable
+  场景: command-queue-variants-parse
+    当 解析队列命令 steer、follow_up、clear_queue 的线协议 JSON
+    那么 分别得到 Steer、FollowUp 与 ClearQueue 变体
+  @req:pa-cs2 @executable
+  场景: command-closed-set-rejects-local-surface
+    当 解析面本地能力冒充的命令（clipboard_write / osc52_put / set_keybinding）
+    那么 命令闭集拒绝且不产生任何变体
+  @req:ip7 @executable
+  场景: agent-streaming-events-roundtrip
+    当 对 Agent 流族事件做线协议序列化与反序列化往返
+    那么 流族事件保真且 thinking_delta 可投影为 XyEvent
+  @req:pa-wire2 @executable
+  场景: tool-start-args-survive-wire
+    当 对携带工具参数的 tool_start 做线协议往返
+    那么 工具参数在往返后保持原字段
+  @req:pa-err1 @executable
+  场景: tool-end-is-error-flag
+    当 序列化 is_error 失败标记的 tool_end 并构造缺省旧载荷
+    那么 完整载荷保真失败态且缺失标记的载荷被拒绝
+  @req:pa-env1 @executable
+  场景: four-quadrant-envelope-shape
+    当 解析四象限信封样例（client-request/server-response/server-request/client-response）
+    那么 四象限形态与 rpcId 回显成立
+  @req:ip3 @executable
+  场景: unary-stable-error-envelope
+    当 服务端在空闲端口上启动
+    并且 调用未登记 unary 方法 no_such_method
+    那么 应答为稳定错误形态且无 JSON-RPC 数字码
+  @req:pa-map4 @executable
+  场景: queue-stats-method-table-readonly
+    当 服务端在空闲端口上启动
+    并且 查询只读 unary queue_stats
+    那么 返回 steer 与 follow-up 队列深度
+    并且 响应不携带写者租约 token
+  @req:pa-cs6 @executable
+  场景: reverse-rpc-first-answer-effective
+    假如 工具需审批
+    当 推送 ApprovalRequired
+    那么 客户端经 POST /api/respond 应答且回合恢复

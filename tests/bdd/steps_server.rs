@@ -1475,3 +1475,33 @@ fn t_subscription_alive(server_test: &ServerTest) {
         "post-turn event must arrive on same subscription: {texts:?}"
     );
 }
+
+#[when("调用未登记 unary 方法 no_such_method")]
+async fn w_unknown_unary(server_test: &ServerTest) {
+    let (st, body) = http_status(server_test.port.get(), "POST", "/api/no_such_method", "{}").await;
+    server_test.unary_status.set(st);
+    *server_test.unary_body.borrow_mut() = Some(body);
+}
+
+#[then("应答为稳定错误形态且无 JSON-RPC 数字码")]
+fn t_unknown_unary_shape(server_test: &ServerTest) {
+    let st = server_test.unary_status.get();
+    let body = server_test.unary_body.borrow().clone().unwrap_or_default();
+    assert!(
+        !body.contains("jsonrpc"),
+        "product errors must not be JSON-RPC, got {body}"
+    );
+    if st == 200 {
+        let v: serde_json::Value = serde_json::from_str(&body).expect("envelope body");
+        assert_eq!(v["ok"], serde_json::json!(false), "{body}");
+        assert!(
+            v["error"]["code"].is_string(),
+            "stable string code required, got {body}"
+        );
+    } else {
+        assert!(
+            matches!(st, 400 | 404 | 405),
+            "carrier must reject unknown method, got {st} {body}"
+        );
+    }
+}
