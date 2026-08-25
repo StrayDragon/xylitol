@@ -47,7 +47,7 @@
 
   @req:ath12 @human
   场景: host-module-boundaries
-    - 产品 TUI MUST 将 HostSession 协调逻辑与可单测切片分离：pending 副作用标志 MUST 收拢为单一结构（或等价）；输入策略（busy/idle Esc、steer、bang 拒绝）与 session tree/models/resume mount 及 apply 切换 MUST 位于可单测子模块；slash 目录与 slot 输入路由、effects 的 slash 副作用、bridge 的 UiModel 投影与事件应用 MUST 可按族切文件且仍经单一事件泵；组件与 layout MUST NOT 直接调用 Driver。入口协调者的函数级复杂度 MUST 受 qa 闸强制（Sonar cognitive 与 McCabe cyclomatic 上限）；文件切分与闸门脚本随代码组织演进，由架构 AGENTS 体量策略与 qa 闸维护。物理行数不作为 TUI 硬闸。
+    - 产品 TUI 的组件与 layout MUST NOT 直接调用 Driver；HostSession 协调逻辑 MUST 位于可单测切片并经单一事件泵驱动。
 
   @req:ath13 @human
   场景: session-read-errors-surfaced

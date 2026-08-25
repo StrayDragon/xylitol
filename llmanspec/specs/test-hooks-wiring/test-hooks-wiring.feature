@@ -7,7 +7,7 @@
 
   @req:thw1 @human
   场景: hooks-wiring-feature
-    - 仓库 MUST 提供 llmanspec/specs/test-hooks-wiring/test-hooks-wiring.feature（live Partitioned），以场景大纲固定「观察型 / 可取消」库缝接线；与 agent-hooks（调度器机制）分工：本 capability 只证 Driver/XyHookBus 权威路径，MUST NOT 用 HookDispatcher::dispatch 冒充。
+    - hooks 接线验收 MUST 以场景大纲固定「观察型 / 可取消」库缝接线；与 agent-hooks（调度器机制）分工：本 capability 只证 Driver/XyHookBus 权威路径，MUST NOT 用 HookDispatcher::dispatch 冒充。
 
   @req:thw2 @human
   场景: operation-dictionary-steps

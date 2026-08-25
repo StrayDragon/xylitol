@@ -25,10 +25,6 @@
   场景: double-esc-session-tree
     - 空编辑器下双 Esc（时间窗与 demo 一致）MUST 打开会话树；树打开时 Esc MUST 关闭树并还原 editor 槽。
 
-  @req:ati6 @human
-  场景: demo-steer-followup-morphology
-    - 在产品 Driver 接线前，packages/xylitol-tui 的 agent_demo MUST 以假队列验证 ati3 键位：agent 忙碌时普通 Enter MUST 将输入作为 steer 入队且 MUST NOT 清空或中止当前轮的脚本/流式调度；Alt+Enter MUST 将输入作为 follow-up 入队并仅在完全空闲后开新轮；队列非空时 MUST 在 scrollback 与 status 之间渲染 Steering:/Follow-up: 队列条；MUST NOT 在 footer 另加队列计数徽章（如 `q:sN|fM`）。
-
   @req:ati7 @human
   场景: demo-steer-preserves-turn
     - agent_demo 在 steer 入队时 MUST 将 steer 文本写入 transcript（可带 [steer] 标记）并可挂到会话活树；MUST NOT 调用会清空 scheduled_actions/pending_events 的新一轮 queue_simulated_turn 入口来「顶替」当前忙碌轮。
@@ -75,7 +71,7 @@
 
   @req:ati17 @human
   场景: product-external-editor
-    - 产品 Host MUST 将 Ctrl+G 绑定为外部编辑器入口：交互 TTY 且已配置非空 $VISUAL 或 $EDITOR 时 MUST 经 xylitol_tui::TUI::with_terminal_suspended 挂起终端、写入 tempfile、spawn 该编辑器、成功退出后把文件内容写回 Editor；harness / 非 TTY / 测试路径 MUST NOT spawn 真实编辑器（保持 stub：系统提示与可选 stub 标记）；未配置 $VISUAL 与 $EDITOR、tempfile/spawn/读回失败、或编辑器非零退出时 MUST NOT panic，MUST 向 scrollback 追加 UiEntry::Error 短行并保留原 Editor 文本；MUST NOT 静默默认 nano/notepad；MUST NOT 在 packages/xylitol-tui 内实现 $EDITOR/tempfile/spawn（包仅提供 with_terminal_suspended）。
+    - 产品 Host MUST 将 Ctrl+G 绑定为外部编辑器入口：交互 TTY 且已配置非空 $VISUAL 或 $EDITOR 时 MUST 经 xylitol_tui::TUI::with_terminal_suspended（或等价）挂起终端、写入 tempfile、spawn 该编辑器、成功退出后把文件内容写回 Editor；harness / 非 TTY / 测试路径 MUST NOT spawn 真实编辑器（保持 stub：系统提示与可选 stub 标记）；未配置 $VISUAL 与 $EDITOR、tempfile/spawn/读回失败、或编辑器非零退出时 MUST NOT panic，MUST 向 scrollback 追加 UiEntry::Error 短行并保留原 Editor 文本；MUST NOT 静默默认 nano/notepad；MUST NOT 在 packages/xylitol-tui 内实现 $EDITOR/tempfile/spawn（包仅提供 with_terminal_suspended）。
 
   @req:ati18 @human
   场景: editor-slot-machine-live-tree
