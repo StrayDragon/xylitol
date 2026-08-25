@@ -9,8 +9,8 @@ Encodes the dead-step audit method (see cb4dff5e) as a permanent gate:
      whose step lines do not all resolve to a registered pattern of the right
      kind; cargo test would fail at runtime with "Step not found".
 
-Scenarios without a #[scenario] binding are info-only: they are audit-style
-documentation scheduled for migration to spec.toon doc rows.
+Scenarios without a #[scenario] binding are info-only: they are `@human`
+constraint rules (single-track feature-as-spec) audited by llman itself.
 
 Usage:
   python3 scripts/check_bdd_steps.py --check

@@ -1,0 +1,38 @@
+# language: zh-CN
+# capability: test-qa-gate
+# purpose: 统一 just qa / qa-e2e 验证入口：日常满闸与可选 TUI 第 5 层 E2E 的分工。
+# scope: justfile, AGENTS.md, scripts/, .claude/skills/test-tui-harness/, .agents/skills/test-tui-harness/, packages/xylitol-tui/AGENTS.md, configs/testing/, .config/nextest.toml
+
+功能: test-qa-gate
+
+  @req:qg01 @human
+  场景: 统一 just qa 满闸
+    - 仓库 MUST 提供 just qa 作为日常与 PR 前的统一验证入口；该入口 MUST 顺序包含：cargo fmt --check、clippy（all-features、-D warnings）、cargo/nextest 全特性测试、live-provider 串行闸（见 qg07）、显式 packages/xylitol-tui 测试（四层中的 1–3）、cargo doc --no-deps --all-features、DESIGN token/Palette 一致性检查（check-tui-tokens）、scripts/check_* 入闸校验与执行（check-scripts-wired 与 check-scripts；约定 scripts/check_*.py 或 check-*.py 为非变更闸脚本）、以及 prek run --all-files。just check 与 just ci MUST 作为 just qa 的别名。
+
+  @req:qg02 @human
+  场景: qa-e2e 可选第 5 层
+    - 仓库 MUST 提供 just qa-e2e，其行为 MUST 为先执行 just qa，再执行 just test-tui-e2e（portable-pty 与 tmux 驱动的 #[ignore] 用例）。默认 just qa MUST NOT 自动运行第 5 层 E2E，以免缺少 tmux/PTY 环境时整闸失败。
+
+  @req:qg03 @human
+  场景: 文档指针
+    - 根 AGENTS.md 命令段与 test-tui-harness skill MUST 写明 just qa 与 just qa-e2e 的分工，以及 live-provider 串行闸与专用配置路径；TUI 四层方法论仍以 package-tui-testing 与该 skill 为 SSOT，本闸仅统一入口。
+
+  @req:qg04 @human
+  场景: scripts-check-convention
+    - 仓库 MUST 约定 scripts/check_*.py（或 check-*.py）为非变更闸脚本且 MUST 经 just qa 的 check-scripts-wired/check-scripts 入闸；cleanup_* 等维护脚本 MUST NOT 被 just qa 强制执行。
+
+  @req:qg05 @human
+  场景: session-tree-pty-e2e
+    - 仓库 MUST 在 tests/tui_e2e（portable-pty）提供至少一条产品 Fake 会话树 E2E：双 Esc 开树后屏幕 MUST 含 Search 或 Type to search 类提示，且含 TreeHelp 用途片段（如 fold/unfold 或 filters）；该用例 MUST 为 #[ignore] 并由 just test-tui-e2e-pty（或 qa-e2e）拉取；默认 just qa MUST NOT 强制运行之。
+
+  @req:qg06 @human
+  场景: ath12-entry-complexity-gate
+    - 仓库 MUST 提供 scripts/check_complexity.py，并经 just qa 的 check-scripts 强制 ath12 入口协调者的函数级复杂度（cccc-rs）；该脚本属 scripts/check_* 约定，MUST NOT 仅作维护探针。入口名单与阈值数字由架构 AGENTS 体量策略维护，本 req MUST NOT 钉具体源文件路径。just complexity（--radar）MAY 报告更广子树且 MUST NOT 作为硬失败条件。
+
+  @req:qg07 @human
+  场景: live-provider-serial-in-qa
+    - just qa MUST 在 workspace 测试之后以严格串行（单 test binary、`--test-threads=1`）调用 `just test-live-provider`；配置 MUST 为全局共享目录专用文件 `<global-dir>/dev/live-provider.yaml`（`global-dir` 解析优先级：`XYLITOL_CONFIG_DIR` → `$XDG_CONFIG_HOME/xylitol` → `~/.config/xylitol`；示例为仓库 `configs/testing/live-provider.example.yaml`，由维护脚本生成），由测试程序化解析（`enabled` / base_url / model / api_key），MUST NOT 从全局 AppConfig `config.yaml` 合并 live-provider 参数。缺失配置或 `enabled=false` 时 MUST skip（通过）；`enabled=true` 时 MUST 对配置的 Responses 端点做 prompt-cache 反例验证。该套件 MUST NOT 进入 nextest 默认并行矩阵，以免压垮本地 llama.cpp。
+
+  @req:qg08 @human
+  场景: protocol-ts-bindings-in-qa
+    - 日常验证入口 MUST 校验：从产品信封与方法载荷重生的 TypeScript 类型文件与检入副本一致；漂移 MUST 失败。MUST NOT 以 OpenAPI 文档代替该校验。

@@ -1,0 +1,38 @@
+# language: zh-CN
+# capability: infra-clipboard
+# purpose: 剪贴板集成 — 原生剪贴板、OSC 52 与图片复制支持。
+# scope: infra 层 clipboard
+
+功能: infra-clipboard
+
+  @req:r13 @human
+  场景: text-copy
+    - System MUST 提供 copy_to_clipboard(text)，经平台原生工具将 UTF-8 文本复制到系统剪贴板。
+
+  @req:r14 @human
+  场景: platform-order
+    - System MUST 按顺序尝试平台原生剪贴板：native addon > pbcopy/clip > wl-copy > xclip/xsel > termux-clipboard-set > OSC 52。
+
+  @req:r15 @human
+  场景: image-clipboard
+    - System MUST 在支持平台上读取剪贴板图片数据并检测 MIME 类型。
+
+  @req:r16 @human
+  场景: osc52-remote
+    - 原生剪贴板不可用时，System MUST 对远程会话（SSH）回退到 OSC 52 转义序列。
+
+  @req:r17 @human
+  场景: osc52-limit
+    - System MUST 遵守 OSC 52 载荷大小限制（编码后 100KB），超出时 MUST 跳过 OSC 52 回退。
+
+  @req:r18 @human
+  场景: clipboard-error
+    - 所有剪贴板方法均失败时，System MUST 返回描述性错误，MUST NOT 静默吞掉失败。
+
+  @req:r19 @human
+  场景: clipboard-image-temp-file
+    - System MUST 提供将剪贴板图片字节写入 tempfile 的能力：文件名含不可预测分量；扩展名由 MIME 推导；返回绝对路径。MUST NOT 写入固定世界可读路径（如 ~/.xylitol/paste.png）。写盘失败 MUST 返回描述性错误。
+
+  @req:r20 @human
+  场景: clipboard-text-read
+    - System MUST 提供 read_clipboard_text：在支持平台上读取系统剪贴板 UTF-8 文本；无文本时返回空/None；工具不可用或失败 MUST 返回描述性错误。MUST NOT 依赖 OSC 52 读取（OSC 52 仅用于写出回退）。

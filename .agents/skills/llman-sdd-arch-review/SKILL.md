@@ -2,7 +2,7 @@
 name: "llman-sdd-arch-review"
 description: "扫描 codebase 的薄模块（接口几乎等于实现），找出可以加深（藏更多行为到更小接口后）的候选。当用户想做架构审查、寻找模块加深机会、或想改善代码可测性与 AI 可导航性时使用。"
 metadata:
-  version: "0.0.66"
+  version: "0.0.68"
   llman_sdd:
     bdd_mode: "on"
     skill_set: "optional"
@@ -34,7 +34,7 @@ metadata:
 ### 1. 探索（先定范围，YAGNI）
 - 若用户指定了方向（模块/子系统/痛点），直接采信，跳过推断。
 - 否则回看 `git log --oneline` 找热点（反复出现的文件/区域）。
-- 优先读 live `spec.toon`（BDD-on，领域语义 SSOT）与 `design.md`（已有 ADR），MUST NOT 另建 `CONTEXT.md`。
+- 优先读 live `<capability>.feature`（单轨 SSOT）与 `design.md`（已有 ADR），MUST NOT 另建 `CONTEXT.md`。
 - 用 Agent 工具（subagent_type=Explore）走查 codebase，记录摩擦点：
   - 理解一个概念是否要在多个小模块间跳来跳去？
   - 哪里模块**薄**（接口几乎和实现一样复杂，调用者没省事）？
@@ -56,7 +56,7 @@ metadata:
 ### 3. 逐问深挖（用户选定候选后）
 用户从候选中选一个后，运行 `llman-sdd-explore` 的**逐问深挖分支**（触发词「深挖」）逐个走清决策——约束、依赖、加深后的模块形状、接缝后放什么、哪些测试存活。
 
-- 加深后的模块用到了 `spec.toon` 里没有的概念？→ 仅在 change 已 Branch binding 且当前在绑定分支上时，更新 live `spec.toon`（Specs landing）；否则 STOP，先走 `llman-sdd-propose` / `change start`，**禁止**在默认分支改 live specs。
+- 加深后的模块用到了 capability `.feature` 里没有的概念？→ 仅在 change 已 Branch binding 且当前在绑定分支上时，更新 live `.feature`（Specs landing）；否则 STOP，先走 `llman-sdd-propose` / `change start`，**禁止**在默认分支改 live specs。
 - 用户以关键理由拒绝候选？→ 仅当「难逆转 + 无上下文会困惑 + 真实权衡」三者皆满足时，建议记入 `design.md`。
 
 ## 输出
