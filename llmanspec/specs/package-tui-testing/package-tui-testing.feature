@@ -32,3 +32,7 @@
   @req:tt07 @human
   场景: 单一主 example 表面
     - xylitol-tui 包 MUST 保留代表假 coding-agent 工作流的单一主 example 表面，而非多个重叠 showcase demo。验收与 E2E 测试 MUST 瞄准该主 example。主 example MUST 覆盖 transcript history、tool activity、侧栏或状态表面、可编辑输入区，且 MUST 在 realistic submit 流程中不违反 engine 宽度合约。
+
+  @req:tt08 @human
+  场景: 无头帧挂载面
+    - 主 crate MUST 经 `xylitol::app::tui` 导出无头产品帧挂载面（SceneBuilder 流式脚本 + render(width) 返回剥离 ANSI 的纯文本帧与语义 dump），供 BDD 与集成测试直驱真实产品渲染；该面为测试支撑合约，MUST NOT 被产品运行时路径反向依赖。

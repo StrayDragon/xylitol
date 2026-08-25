@@ -14,3 +14,9 @@ fn test_att19_fold_glyphs(transcript_bdd: TranscriptBdd) {}
     name = "tool-human-summary-location-only"
 )]
 fn test_att13_tool_summary(transcript_bdd: TranscriptBdd) {}
+
+#[scenario(
+    path = "llmanspec/specs/app-tui-transcript/app-tui-transcript.feature",
+    name = "scrollback-block-gap-headless"
+)]
+fn test_att10_block_gap(transcript_bdd: TranscriptBdd) {}
