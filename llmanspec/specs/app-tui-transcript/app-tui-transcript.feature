@@ -21,7 +21,7 @@
   场景: tool-rail-via-package-helper
     - rail 行绘制 MUST 复用 packages/xylitol-tui 的 paint_left_rail_line（或等价包 API：轨+gutter+内容宽）；MUST NOT 在应用面手写第二套轨/gutter/宽预算逻辑。
 
-  @req:att6 @human
+  @req:att6 @human @manual
   场景: no-codex-transcript-view
     - 产品 TUI MUST NOT 实现 Codex 风格的独立 transcript 浏览面或专用 TranscriptView 作为主 UX；历史/分支 travel MUST 经双 Esc 会话树（app-tui session-tree / package TreeSelector）。
 
@@ -155,3 +155,22 @@
   场景: scrollback-block-gap-headless
     当 以场景构建器渲染相邻的助手块与工具块（宽 80）
     那么 相邻块之间至少一行空行分隔且不粘连成墙
+
+  @req:att24 @executable
+  场景: cluster-head-wording-exclusivity
+    当 以场景构建器回放读后改写序列（read old.rs 然后 edit a.rs）
+    那么 改写活动以聚合簇头呈现且不虚构只读完成态
+    并且 全帧不出现 Worked for 与 Planning next moves
+
+  @req:att34 @executable
+  场景: assistant-body-seals-cluster-headless
+    当 以场景构建器在两个工具活动之间插入助手正文
+    那么 正文封口前簇且新簇在其下方独立开口
+
+  @req:att33 @executable
+  场景: live-window-unenveloped-headless
+    当 以场景构建器渲染流式思考中的 live window
+    那么 出现 Thinking 簇头且无 Thought 与 Ctrl+T 旁注
+    当 以场景构建器渲染含助手正文的 live window
+    那么 助手正文可见且仍无信封封套
+    并且 全帧不出现 Worked for 与 Planning next moves

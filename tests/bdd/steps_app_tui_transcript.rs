@@ -7,12 +7,15 @@ use crate::prelude::*;
 use rstest::fixture;
 use rstest_bdd_macros::{given, then, when};
 use xylitol::app::tui::GlyphSet;
+use xylitol::app::tui::SceneBuilder;
 
 /// Shared state for transcript glyph scenarios.
 pub struct TranscriptBdd {
     pub glyph_pair: RefCell<Option<(&'static str, &'static str)>>,
     pub previews: RefCell<Vec<String>>,
     pub plain_frame: RefCell<Option<String>>,
+    /// P2 批量：场景内累计的纯文本帧（顺序即渲染序）。
+    pub frames: RefCell<Vec<String>>,
 }
 
 #[fixture]
@@ -21,7 +24,16 @@ pub fn transcript_bdd() -> TranscriptBdd {
         glyph_pair: RefCell::new(None),
         previews: RefCell::new(Vec::new()),
         plain_frame: RefCell::new(None),
+        frames: RefCell::new(Vec::new()),
     }
+}
+
+/// P2 管线公共入口：脚本事件 → 真实 UiRoot 渲染 → 剥离 ANSI 纯文本帧。
+fn render_plain(script: impl FnOnce(&mut SceneBuilder)) -> String {
+    let mut sb = SceneBuilder::begin();
+    script(&mut sb);
+    let (plain, _) = sb.render(80);
+    plain
 }
 
 fn read_glyph_pair() -> (&'static str, &'static str) {
@@ -152,5 +164,128 @@ fn then_block_gap_present(transcript_bdd: &TranscriptBdd) {
     assert!(
         gap_blank,
         "att10: adjacent blocks need >=1 blank line between:\n{plain}"
+    );
+}
+
+// ---- att24 / att34 / att33：簇语义帧断言（P2 管线批量，真值对齐 live_tape）----
+
+#[when("以场景构建器回放读后改写序列（read old.rs 然后 edit a.rs）")]
+fn when_replay_read_then_edit(transcript_bdd: &TranscriptBdd) {
+    let plain = render_plain(|sb| {
+        sb.tool_start("r1", "read", "old.rs")
+            .tool_end("r1", "read")
+            .tool_start("e1", "edit", "a.rs")
+            .tool_end("e1", "edit");
+    });
+    *transcript_bdd.frames.borrow_mut() = vec![plain];
+}
+
+#[then("改写活动以聚合簇头呈现且不虚构只读完成态")]
+fn then_explored_and_editing_heads(transcript_bdd: &TranscriptBdd) {
+    let frames = transcript_bdd.frames.borrow();
+    let plain = frames.last().expect("frame");
+    assert!(
+        plain.contains("Editing a.rs"),
+        "write cluster head must read Editing:\n{plain}"
+    );
+    // att24 互斥：未发生的只读完成态不得虚构；时态不得混用
+    assert!(!plain.contains("Edited a.rs"), "{plain}");
+    assert!(
+        !plain.contains("Explored a.rs"),
+        "read/write tenses must not be conflated:\n{plain}"
+    );
+}
+
+#[then("全帧不出现 Worked for 与 Planning next moves")]
+fn then_no_envelope_no_planning(transcript_bdd: &TranscriptBdd) {
+    let frames = transcript_bdd.frames.borrow();
+    for (i, plain) in frames.iter().enumerate() {
+        assert!(
+            !plain.contains("Worked for"),
+            "frame {i}: live window must not seal envelope\n{plain}"
+        );
+        assert!(
+            !plain.contains("Planning next moves"),
+            "frame {i}: no placeholder row allowed\n{plain}"
+        );
+    }
+}
+
+#[when("以场景构建器在两个工具活动之间插入助手正文")]
+fn when_insert_body_between_tools(transcript_bdd: &TranscriptBdd) {
+    let plain = render_plain(|sb| {
+        sb.tool_start("r1", "read", "old.rs")
+            .tool_end("r1", "read")
+            .assistant("mid-body")
+            .tool_start("e1", "edit", "a.rs");
+    });
+    *transcript_bdd.frames.borrow_mut() = vec![plain];
+}
+
+#[then("正文封口前簇且新簇在其下方独立开口")]
+fn then_body_seals_previous_cluster(transcript_bdd: &TranscriptBdd) {
+    let frames = transcript_bdd.frames.borrow();
+    let plain = frames.last().expect("frame");
+    let lines: Vec<&str> = plain.lines().collect();
+    let pos = |needle: &str| {
+        lines
+            .iter()
+            .position(|l| l.contains(needle))
+            .unwrap_or_else(|| panic!("frame must contain {needle:?}:\n{plain}"))
+    };
+    let sealed = pos("Explored old.rs");
+    let body = pos("mid-body");
+    let next = pos("Editing a.rs");
+    assert!(
+        sealed < body && body < next,
+        "att34: body must seal previous cluster and precede new cluster head:\n{plain}"
+    );
+}
+
+#[when("以场景构建器渲染流式思考中的 live window")]
+fn when_render_streaming_thinking(transcript_bdd: &TranscriptBdd) {
+    let plain = render_plain(|sb| {
+        sb.thinking("consider next edit");
+    });
+    transcript_bdd.frames.borrow_mut().push(plain);
+}
+
+#[then("出现 Thinking 簇头且无 Thought 与 Ctrl+T 旁注")]
+fn then_thinking_stream_head(transcript_bdd: &TranscriptBdd) {
+    let frames = transcript_bdd.frames.borrow();
+    let plain = frames.last().expect("frame");
+    assert!(
+        plain.contains("Thinking"),
+        "streaming thinking must show Thinking cluster head:\n{plain}"
+    );
+    assert!(
+        !plain.contains("Thought"),
+        "unsealed thinking must not show Thought:\n{plain}"
+    );
+    assert!(
+        !plain.contains("Ctrl+T"),
+        "inflight thinking carries no fold chord hint:\n{plain}"
+    );
+}
+
+#[when("以场景构建器渲染含助手正文的 live window")]
+fn when_render_assistant_live(transcript_bdd: &TranscriptBdd) {
+    let plain = render_plain(|sb| {
+        sb.assistant("alpha live body").message_end();
+    });
+    transcript_bdd.frames.borrow_mut().push(plain);
+}
+
+#[then("助手正文可见且仍无信封封套")]
+fn then_assistant_live_unenveloped(transcript_bdd: &TranscriptBdd) {
+    let frames = transcript_bdd.frames.borrow();
+    let plain = frames.last().expect("frame");
+    assert!(
+        plain.contains("alpha live body"),
+        "live assistant body must be visible:\n{plain}"
+    );
+    assert!(
+        !plain.contains("Worked for") && !plain.contains("Planning next moves"),
+        "att33: live window stays open, no envelope/placeholder:\n{plain}"
     );
 }
