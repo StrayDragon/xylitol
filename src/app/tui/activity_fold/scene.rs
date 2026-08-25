@@ -279,19 +279,4 @@ impl SceneBuilder {
         let dump = SemanticDump::from_product_frame(&plain, &self.model.entries);
         (plain, dump)
     }
-
-    /// att24/att25 措辞与分层断言用：关闭 ActivityFold 自动收纳的全展开渲染。
-    /// 产品默认收纳行为（att26）由独立场景断言，不与本旋钮混用。
-    pub fn render_expanded(&mut self, width: usize) -> (String, SemanticDump) {
-        use crate::app::tui::activity_fold::ActivityFoldSettings;
-        let mut root = crate::app::tui::layout::UiRoot::new();
-        root.apply_ui_model(&self.model);
-        root.set_activity_settings(ActivityFoldSettings {
-            enabled: false,
-            ..Default::default()
-        });
-        let plain = strip_ansi_live_window(&root.render(width).join("\n"));
-        let dump = SemanticDump::from_product_frame(&plain, &self.model.entries);
-        (plain, dump)
-    }
 }
