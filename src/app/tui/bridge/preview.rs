@@ -193,7 +193,7 @@ pub(crate) fn human_tool_args_preview_with_path(
     compact_json_preview(&Value::String(summary), max_chars)
 }
 
-pub(crate) fn human_tool_args_preview(name: &str, args: &Value, max_chars: usize) -> String {
+pub fn human_tool_args_preview(name: &str, args: &Value, max_chars: usize) -> String {
     human_tool_args_preview_with_path(name, args, None, max_chars)
 }
 

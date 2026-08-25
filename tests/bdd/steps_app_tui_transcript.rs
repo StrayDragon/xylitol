@@ -11,12 +11,14 @@ use xylitol::app::tui::GlyphSet;
 /// Shared state for transcript glyph scenarios.
 pub struct TranscriptBdd {
     pub glyph_pair: RefCell<Option<(&'static str, &'static str)>>,
+    pub previews: RefCell<Vec<String>>,
 }
 
 #[fixture]
 pub fn transcript_bdd() -> TranscriptBdd {
     TranscriptBdd {
         glyph_pair: RefCell::new(None),
+        previews: RefCell::new(Vec::new()),
     }
 }
 
@@ -64,4 +66,53 @@ fn when_flip_ascii_reread(transcript_bdd: &TranscriptBdd) {
 fn then_ascii_fallback(transcript_bdd: &TranscriptBdd) {
     let pair = transcript_bdd.glyph_pair.borrow().expect("glyphs");
     assert_eq!(pair, (">", "v"), "ascii fold/unfold fallback glyphs");
+}
+
+// ---- att13：折叠态工具人话摘要（位置摘要，名字由 header 单独绘制）----
+
+#[when("折叠态读取 bash、read、write 三类参数人话摘要")]
+fn then_read_tool_previews(transcript_bdd: &TranscriptBdd) {
+    use xylitol::app::tui::human_tool_args_preview;
+    let bash = human_tool_args_preview("bash", &serde_json::json!({"command": "cargo test"}), 200);
+    let read = human_tool_args_preview(
+        "read",
+        &serde_json::json!({"path": "src/lib.rs", "offset": 10, "limit": 5}),
+        200,
+    );
+    let write = human_tool_args_preview("write", &serde_json::json!({"path": "docs/x.md"}), 200);
+    *transcript_bdd.previews.borrow_mut() = vec![bash, read, write];
+}
+
+#[then("bash 前缀 $ 且 read 附行号区间且 write 为纯路径不带名前缀")]
+fn then_tool_preview_shapes(transcript_bdd: &TranscriptBdd) {
+    let previews = transcript_bdd.previews.borrow();
+    assert_eq!(previews[0], "$ cargo test", "bash → $ {{command}}");
+    assert_eq!(
+        previews[1], "src/lib.rs:10-14",
+        "read offset/limit → :start-end"
+    );
+    assert_eq!(previews[2], "docs/x.md", "write → 纯路径");
+    for p in previews.iter() {
+        assert!(
+            !p.starts_with("bash ") && !p.starts_with("read ") && !p.starts_with("write "),
+            "summary must be location-only (name painted separately): {p}"
+        );
+        assert!(!p.contains('{'), "must not leak raw args JSON: {p}");
+    }
+}
+
+#[then("缺 path 时用三点占位且不回退完整 args JSON")]
+fn then_missing_path_placeholder(transcript_bdd: &TranscriptBdd) {
+    use xylitol::app::tui::human_tool_args_preview;
+    // 前一步存的是三类正常摘要；这里直接补算 edit 无 path 场景
+    let edit_no_path = human_tool_args_preview(
+        "edit",
+        &serde_json::json!({"edits": [{"oldText": "a", "newText": "b"}]}),
+        200,
+    );
+    assert_eq!(edit_no_path, "...", "missing path must fall back to ...");
+    assert!(
+        !edit_no_path.contains("oldText"),
+        "must not embed full args JSON: {edit_no_path}"
+    );
 }
