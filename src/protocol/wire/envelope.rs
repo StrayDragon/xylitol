@@ -4,13 +4,12 @@
 
 use serde::{Deserialize, Serialize};
 use serde_json::Value;
-use specta::Type;
 
 /// Stable protocol version returned by `host.describe`.
 pub const PROTOCOL_VERSION: u32 = 1;
 
 /// Discriminated four-quadrant message.
-#[derive(Debug, Clone, PartialEq, Serialize, Deserialize, Type)]
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 #[serde(tag = "type", rename_all = "kebab-case")]
 pub enum RpcMessage {
     ClientRequest {
@@ -18,7 +17,6 @@ pub enum RpcMessage {
         rpc_id: String,
         method: String,
         #[serde(default)]
-        #[specta(type = specta_typescript::Any)]
         payload: Value,
         /// Session writer lease. First non-readonly unary mints it; later writes must echo it.
         #[serde(default, rename = "writerToken")]
@@ -34,24 +32,21 @@ pub enum RpcMessage {
         rpc_id: String,
         method: String,
         #[serde(default)]
-        #[specta(type = specta_typescript::Any)]
         payload: Value,
     },
     ClientResponse {
         #[serde(rename = "rpcId")]
         rpc_id: String,
         #[serde(default)]
-        #[specta(type = specta_typescript::Any)]
         payload: Value,
     },
 }
 
 /// Unary / respond result. HTTP 200 means the envelope parsed.
-#[derive(Debug, Clone, PartialEq, Serialize, Deserialize, Type)]
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 pub struct RpcResult {
     pub ok: bool,
     #[serde(default)]
-    #[specta(type = Option<specta_typescript::Any>)]
     pub value: Option<Value>,
     #[serde(default)]
     pub error: Option<RpcError>,
@@ -89,63 +84,60 @@ impl RpcResult {
     }
 }
 
-#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, Type)]
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 pub struct RpcError {
     pub code: String,
     pub details: String,
 }
 
 /// Downlink payload for `session/event`.
-#[derive(Debug, Clone, PartialEq, Serialize, Deserialize, Type)]
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 pub struct SessionEventPayload {
     pub session_id: String,
-    #[specta(type = specta_typescript::Number)]
     pub seq: u64,
     pub event: crate::protocol::Event,
 }
 
 /// Downlink payload for `session/subscribed`.
-#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, Type)]
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 pub struct SessionSubscribedPayload {
     pub session_id: String,
-    #[specta(type = specta_typescript::Number)]
     pub seq: u64,
 }
 
 /// Downlink payload for `session/resync_required`.
-#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, Type)]
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 pub struct SessionResyncRequiredPayload {
     pub session_id: String,
 }
 
 /// Downlink payload for `session/resources` (MCP/skills chrome; not journaled).
-#[derive(Debug, Clone, PartialEq, Serialize, Deserialize, Type)]
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 pub struct SessionResourcesPayload {
     pub session_id: String,
-    #[specta(type = specta_typescript::Any)]
     pub snapshot: Value,
 }
 
 /// Downlink payload for `host/hello`.
-#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, Type)]
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 pub struct HostHelloPayload {
     pub protocol: u32,
 }
 
 /// Downlink payload for `approval/requested` (stable `rpcId` on the envelope).
-#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, Type)]
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 pub struct ApprovalRequestedPayload {
     pub call_id: String,
 }
 
 /// Downlink payload for `question/requested` (stable `rpcId` on the envelope).
-#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, Type)]
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 pub struct QuestionRequestedPayload {
     pub call_id: String,
 }
 
 /// `host.describe` result.value.
-#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, Type)]
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 pub struct HostDescribeValue {
     pub protocol: u32,
 }

@@ -31,9 +31,9 @@ Host 侧也无按 ID 去重的准入语义。pre-0.0.1 期内改 wire 最便宜�
 ## Impact
 
 - `src/protocol/wire/`：Command 载荷加可选 ID 字段（serde 可忽略未知旧字段不成立——本仓未发布，
-  直接改形状并同步 TS 导出）。
+  直接改形状）。
 - `src/app/server/host.rs`：方法表分发处的准入去重点。
-- specta TS 导出随动；BDD 补一条「重试不双发」可执行场景。
+- BDD 补一条「重试不双发」可执行场景。
 
 ## Further Notes
 

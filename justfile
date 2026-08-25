@@ -148,12 +148,6 @@ gen-live-provider-example:
 gen-config-example:
     python3 scripts/gen_config_example.py
 
-# Generate packages/xylitol-client-typescript-sdk/bindings.ts from protocol
-# specta types (c2290). Drift is caught by scripts/check_protocol_ts_bindings.py
-# via `just qa`. Future home of the thin TS client (c2310 draft).
-gen-sdk:
-    cargo run -q --example gen_protocol_ts
-
 # Provider-safe MCP tool naming gate (registry SSOT + wire encode on all three APIs).
 # Not live-network; safe in qa loops. Prefer this after changing MCP_PUBLIC_DELIMITER.
 [arg('verbosity', pattern='quiet|normal|verbose')]

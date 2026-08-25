@@ -32,7 +32,3 @@
   @req:qg07 @human
   场景: live-provider-serial-in-qa
     - just qa MUST 在 workspace 测试之后以严格串行（单 test binary、`--test-threads=1`）调用 `just test-live-provider`；配置 MUST 为全局共享目录专用文件 `<global-dir>/dev/live-provider.yaml`（`global-dir` 解析优先级：`XYLITOL_CONFIG_DIR` → `$XDG_CONFIG_HOME/xylitol` → `~/.config/xylitol`；示例为仓库 `configs/testing/live-provider.example.yaml`，由维护脚本生成），由测试程序化解析（`enabled` / base_url / model / api_key），MUST NOT 从全局 AppConfig `config.yaml` 合并 live-provider 参数。缺失配置或 `enabled=false` 时 MUST skip（通过）；`enabled=true` 时 MUST 对配置的 Responses 端点做 prompt-cache 反例验证。该套件 MUST NOT 进入 nextest 默认并行矩阵，以免压垮本地 llama.cpp。
-
-  @req:qg08 @human
-  场景: protocol-ts-bindings-in-qa
-    - 日常验证入口 MUST 校验：从产品信封与方法载荷重生的 TypeScript 类型文件与检入副本一致；漂移 MUST 失败。MUST NOT 以 OpenAPI 文档代替该校验。
