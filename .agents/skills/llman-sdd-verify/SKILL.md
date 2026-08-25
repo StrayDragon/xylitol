@@ -2,7 +2,7 @@
 name: "llman-sdd-verify"
 description: "验证已实施的 llman SDD 变更是否与 specs/design/tasks 一致。产出分级报告（CRITICAL / WARNING / SUGGESTION），对比代码与工件。在 apply 完成后运行；全绿则可归档。"
 metadata:
-  version: "0.0.68"
+  version: "0.0.69"
   llman_sdd:
     bdd_mode: "on"
     skill_set: "default"

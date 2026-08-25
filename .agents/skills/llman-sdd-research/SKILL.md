@@ -2,7 +2,7 @@
 name: "llman-sdd-research"
 description: "以后台 agent 委托外部文献调研。当用户需要针对某个问题查阅官方文档/API/源码等一手资料、或想把阅读文献的活委托给后台 agent 时使用。"
 metadata:
-  version: "0.0.68"
+  version: "0.0.69"
   llman_sdd:
     bdd_mode: "on"
     skill_set: "optional"

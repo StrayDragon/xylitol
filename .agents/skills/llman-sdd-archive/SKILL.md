@@ -2,7 +2,7 @@
 name: "llman-sdd-archive"
 description: "归档已完成的 llman SDD 变更。自动 ff-merge 到默认分支，再将 change 文档改名到 archive/。在 verify 报告全绿后运行。"
 metadata:
-  version: "0.0.68"
+  version: "0.0.69"
   llman_sdd:
     bdd_mode: "on"
     skill_set: "default"
@@ -55,7 +55,7 @@ flowchart LR
 - **Git-native 收尾**：
   - 前置：已 Branch binding（`change start` / `attach`）；仍在绑定分支上（或 ff-merge 后已在默认分支）。
   - `change archive` / `change finalize` **先自动 ff-merge**（`git merge --ff-only <feature>` 到默认分支），**再**将 change 文档改名到 `changes/archive/`——merge 失败也不会回滚改名。
-  - change 下遗留活跃 `*.feature.delta.toon` 是迁移阻断项——归档前须移除/迁移。
+  - specs 下遗留 `*.feature.delta.toon` 或 `spec.toon` 均为迁移阻断项——跑 `llman sdd project migrate --kind toon2features`。
   - **推荐：单 commit 收尾（`change finalize`）**——同进程跑门禁 → 自动 ff-merge → 文档改名；结束后工作区脏一次，**一次 `git commit`** 收尾：
     ```text
     1. 实现 live specs + 代码（工作区可保持脏）

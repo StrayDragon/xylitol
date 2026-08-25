@@ -2,7 +2,7 @@
 name: "llman-sdd-explore"
 description: "进入 llman SDD 探索模式：理清思路、调查需求、分析问题。仅思考，禁止写代码。用于意图不明确或需要分析后再行动的场景。"
 metadata:
-  version: "0.0.68"
+  version: "0.0.69"
   llman_sdd:
     bdd_mode: "on"
     skill_set: "default"

@@ -2,7 +2,7 @@
 name: "llman-sdd-ff"
 description: "Fast-forward：一次性创建规划壳（proposal/design/tasks），再 Branch binding + Specs landing。禁止写入 changes/<id>/specs/。"
 metadata:
-  version: "0.0.68"
+  version: "0.0.69"
   llman_sdd:
     bdd_mode: "on"
     skill_set: "optional"
