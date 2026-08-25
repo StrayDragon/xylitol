@@ -45,8 +45,14 @@ change/spec 的命名、ID、依赖、原子性、语言。架构事实（分层
 
 ## 语言
 
-- spec 的 `purpose` / requirement `title`+`statement` / scenario `given`/`when`/`then` **MUST 中文**；技术标识符（类型名、路径、命令、req_id）保留英文。
-- Gherkin `.feature`：BDD-on（Partitioned SSOT）下 `spec.toon` = 约束/不可执行场景；live `llmanspec/specs/<capability>/*.feature` = 可执行 GWT（`@req:`）。在非默认 feature 分支直接编辑二者 → `llman sdd change attach` / `checkpoint` → docs-only `change archive` → Git merge。**禁止** `solidify`、`change delta`、新建 `*.feature.delta.toon`。场景标题 MUST 用英文 `scenario.id`；可保留 rich Gherkin（Background / docstring / 并且）。与 `tests/features/` 手写链路可并存。
+- spec 的 `purpose` / requirement statement / scenario 步骤 **MUST 中文**；技术标识符（类型名、路径、命令、req_id）保留英文。规则块场景名用 requirement title；验收场景名用英文 `scenario.id`。
+- **单轨 feature-as-spec（r131）**：每个 capability 恰好一个 live spec 文件 `llmanspec/specs/<capability>/<capability>.feature`；`spec.toon` 已退役，validate 拒绝读取。文件头部注释 `# language:` / `# capability:` / `# purpose:` / `# scope:` 必备。
+- 场景三档（标签决定语义）：
+  - `@req:<id> @human` = **约束规则**（statement 须含 MUST/SHALL/必须/不得/禁止）；已锁定（r135），agent 修改须走 ack 流程；
+  - `@executable`（+ `@req:<id>`）= 验收场景，由 `tests/bdd/bindings_*.rs` 的 `#[scenario(path=…, name=…)]` 按**精确名与步骤文本**绑定；`@req` MUST 指向本文件已定义的规则；
+  - `@human @manual` = 人工豁免。
+- `背景:`（Background）MUST 紧跟 `功能:` 行（中间不得有空行）——rstest-bdd 才会执行其步骤。
+- 在非默认 feature 分支直接编辑 live `.feature` → `llman sdd change attach` / `checkpoint` → docs-only `change archive` → Git merge。**禁止** `solidify`、`change delta`、新建 `*.feature.delta.toon`。与 `tests/features/` 手写链路可并存。
 
 ## spec 约束层级（产品级优先）
 
@@ -57,25 +63,12 @@ change/spec 的命名、ID、依赖、原子性、语言。架构事实（分层
 
 ## spec 维护（产品级同步，直接编辑）
 
-- 因代码组织演进导致 spec 过期（主语/路径/迁移条款）→ **直接编辑** spec.toon / .feature 并直接 commit，**免 change 生命周期**（无需 attach/checkpoint/finalize/archive）。
+- 因代码组织演进导致 spec 过期（主语/路径/迁移条款）→ **直接编辑** live `.feature` 并直接 commit，**免 change 生命周期**（无需 attach/checkpoint/finalize/archive）。
 - 新增/变更**产品行为**仍走标准 change 流程（propose → apply → verify → archive）。
-- 直接编辑仍 MUST 过结构门禁：`llman sdd validate <cap>`（或 `--all`）与相关 BDD 测试绿。
-- 删除 req 时同步清理：`.feature` 的 `@req:` 场景与 `tests/bdd` 的 scenario binding、toon 的 `feature: false` 场景。
+- 直接编辑仍 MUST 过结构门禁：`llman sdd validate <cap>`（或 `--all`，BDD-on 下含 runner check）与相关 BDD 测试绿。
+- 删除 req 时同步清理：`.feature` 的规则块与 `@req:` 验收场景、`tests/bdd` 的 scenario binding。
 
-## BDD-on 操作闸（字段经验；上游正在闭合）
-
-Partitioned 双写与 checkpoint 时序已部分吸收进上游 llman（`improve-partitioned-ssot-agent-friction`）。
-本段只保留 xylitol 仍要遵守的硬约束；CLI 缺口见 `../llman` change **`fix-sdd-bdd-on-change-stage`**。
-
-### Partitioned 双写（MUST）
-
-| 放哪 | 可执行场景（进 harness） | 仅文档场景 |
-|---|---|---|
-| `spec.toon` `scenarios[]` | **禁止**出现（无则 `scenarios[0]:`） | `feature: false` + GWT 可以 |
-| `*.feature` + `@req:` | **唯一**可执行 GWT 正文 | n/a |
-
-- **禁止**在 toon 写 `feature: true` 行（哪怕 GWT 与 `.feature`「看起来一样」——validate 报 `dual-write`）。
-- 新需求：toon 只加 `requirements` 行；例子只加 `.feature` 场景。
+## change 操作闸
 
 ### checkpoint / finalize 提交序（MUST 知悉）
 
@@ -109,7 +102,7 @@ commit（live specs + 代码）
 2. **闭环收尾优先 `finalize`**，减少 checkpoint/archive 礼仪 commit。
 3. **产品 vs 流程**：实现用 `feat`/`fix`/`refactor`；SDD 礼仪用 `chore(sdd):` / `docs(sdd):`。
 
-### stage=draft（BDD-on）
+### stage=draft
 
 已有 `proposal+design+tasks` 仍报 `draft` 时：通常是 **未 attach** → `llman sdd change attach <id>`（不要新建 `changes/<id>/specs/`）。attach 后应为 `full`。
 

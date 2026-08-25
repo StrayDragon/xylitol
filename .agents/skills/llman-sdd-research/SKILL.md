@@ -2,7 +2,7 @@
 name: "llman-sdd-research"
 description: "以后台 agent 委托外部文献调研。当用户需要针对某个问题查阅官方文档/API/源码等一手资料、或想把阅读文献的活委托给后台 agent 时使用。"
 metadata:
-  version: "0.0.66"
+  version: "0.0.68"
   llman_sdd:
     bdd_mode: "on"
     skill_set: "optional"
@@ -24,7 +24,7 @@ metadata:
 
 1. 针对**一手资料**调研问题——官方文档、源码、spec、第一方 API——而非对它们的二手转述。把每个论断追溯到拥有它的源头。
 2. 把发现写入单个 Markdown 文件，为每个论断标注来源引用。
-3. 存放位置（真源 `llmanspec/AGENTS.md` → research）：**默认** `llmanspec/changes/<current-change>/research/<topic>.md`（Change 文档，**不是** live specs）。仅当主题跨多个 change、归档后仍常引用时才写 `docs/research/`；**禁止**把单 change 选型/易腐深挖塞进 `docs/research/`。
+3. 存放位置（仓库另有约定时优先遵循）：**默认** `llmanspec/changes/<current-change>/research/<topic>.md`（Change 文档，**不是** live specs）。仅当主题跨多个 change、归档后仍常引用时才写 `docs/research/`；**禁止**把单 change 选型/易腐深挖塞进 `docs/research/`。
 4. **禁止**本 skill 直接编辑 `llmanspec/specs/**`。若调研表明必须改 MUST/SHALL → 建议 `llman-sdd-propose`（Branch binding → Specs landing）。
 
 ## 步骤

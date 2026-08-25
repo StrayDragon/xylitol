@@ -1,0 +1,42 @@
+# language: zh-CN
+# capability: package-tui-diff
+# purpose: 可复用 Diff 组件（行级与 word-level、可选 side-by-side、CJK 宽度）。
+# scope: packages/xylitol-tui/
+
+功能: package-tui-diff
+
+  @req:ptd1 @human
+  场景: diff-component-api
+    - xylitol-tui MUST 提供 Diff 组件（及/或 render_diff_lines），接受 display_diff 文本、unified diff 文本或 old/new 行对，输出 Vec of ANSI 行；主题 MUST 经闭包注入；MUST NOT 依赖主 crate xylitol。
+
+  @req:ptd2 @human
+  场景: diff-word-level
+    - 当恰好一对相邻删除行与添加行时，Diff MUST 对该对做词级（或字级）对比并用 reverse/word_change 高亮变更片段；多行连续增减 MUST NOT 做词级对比。
+
+  @req:ptd3 @human
+  场景: diff-width-cjk
+    - Diff 行宽 MUST 按 visible_width（CJK/emoji）处理；当宽度低于 side-by-side 阈值时 MUST 使用 unified；达到阈值且启用时 MAY 左右对照；MUST NOT 使用 Unicode 表线装饰。
+
+  @req:ptd4 @human
+  场景: diff-edit-text-format
+    - xylitol-tui Diff MUST 接受 DiffInput::EditText，解析 pi edit 行格式（^[+-\\s](\\s*\\d*)\\s(.*)$），并在 unified 路径以紧凑 ±{lineNum} {content} 渲染；行号宽度 MUST 按本输入 max line pad。
+
+  @req:ptd5 @human
+  场景: diff-side-by-side-line-numbers
+    - 当 Diff 以 side-by-side 渲染时，左栏 MUST 显示 old_no、右栏 MUST 显示 new_no（pad 对齐）；空半栏 MUST NOT 伪造行号；MUST NOT 使用 Unicode 表线装饰。
+
+  @req:ptd6 @human
+  场景: diff-optional-content-highlight
+    - DiffTheme MAY 提供 highlight_line 闭包对内容做语法高亮；默认 MUST 为 identity（无额外依赖）；包 MUST NOT 在非 highlight 构建中强制 syntect。
+
+  @req:ptd7 @human
+  场景: sbs-no-default-row-bg
+    - 当 Diff 以 side-by-side 渲染时，增删半栏 MUST NOT 默认套用 added_line_bg / removed_line_bg 全行背景；极性 MUST 仅用 fg（及 gutter 符号/行号）表达。Unified 路径 MAY 继续使用行底。
+
+  @req:ptd8 @human
+  场景: cjk-narrow-wrap
+    - 当 Diff 行含全角/CJK 且宽度受限时，折行或截断 MUST 按 visible_width 处理；MUST NOT 按字节中途切开字形。
+
+  @req:ptd9 @human
+  场景: sbs-empty-half-no-fake-lineno
+    - side-by-side 仅一侧有内容时，空半栏 MUST NOT 伪造行号；有内容半栏 MUST 仍显示对应 old_no 或 new_no。

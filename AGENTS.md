@@ -117,7 +117,7 @@
 ## 提交与测试
 
 - Conventional Commits；开 PR 前 `just qa`。
-- BDD-on / Partitioned SSOT：live specs + features；流程见 `llmanspec/AGENTS.md`。**禁止** `solidify` / `change delta` / 新建 `*.feature.delta.toon`。
+- 单轨 feature-as-spec（llman ≥0.0.68）：每个 capability 恰一个 `llmanspec/specs/<cap>/<cap>.feature`（`@human` 规则 + `@executable` 验收场景）；流程见 `llmanspec/AGENTS.md`。**禁止** `solidify` / `change delta` / 新建 `*.feature.delta.toon`。
 - 测试分层：BDD 管端到端编排；单测管纯数据/组件边界，不重复全链路。
 - 实现计划变更后同步 `llmanspec/`；读代码优先 `rg`。
 
