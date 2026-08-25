@@ -2,9 +2,9 @@
 //!
 //! Generated from the wire method table — never a hand-written second
 //! vocabulary. Schemas stay envelope-level; concrete payload shapes' SSOT is
-//! the specta TS export (`packages/xylitol-client-typescript-sdk/bindings.ts`).
-//! This document is documentation only and MUST NOT be used to generate
-//! product clients (pa-bind1: OpenAPI is not the type SSOT).
+//! the Rust protocol types (`crate::protocol::wire`). This document is
+//! documentation only and MUST NOT be used to generate product clients
+//! (OpenAPI is not a wire-type source).
 
 use std::sync::OnceLock;
 
@@ -66,10 +66,9 @@ fn build() -> String {
          failures ride `RpcResult.ok=false`.\n\n\
          WebSocket downlink is NOT an OpenAPI path: subscribe via unary, then \
          receive ServerRequest frames ({downlink_note}) on `GET /api/events.mux`. \
-         Concrete payload shapes live in the specta export \
-         `packages/xylitol-client-typescript-sdk/bindings.ts`, which — not this \
-         document — is the wire-type reference. Do not generate product clients \
-         from this file."
+         Concrete payload shapes live in the Rust protocol types \
+         (`xylitol::protocol::wire`), which — not this document — is the \
+         wire-type reference. Do not generate product clients from this file."
     );
 
     let doc = json!({
@@ -102,7 +101,7 @@ fn client_request_schema() -> Value {
             "type": {"const": "client-request"},
             "rpcId": {"type": "string"},
             "method": {"type": "string"},
-            "payload": {"description": "method payload; shape per specta bindings"},
+            "payload": {"description": "method payload; shape per Rust protocol wire types"},
             "writerToken": {"type": ["string", "null"]}
         },
         "required": ["type", "rpcId", "method"]
@@ -116,7 +115,7 @@ fn client_response_schema() -> Value {
         "properties": {
             "type": {"const": "client-response"},
             "rpcId": {"type": "string"},
-            "payload": {"description": "answer payload; shape per specta bindings"}
+            "payload": {"description": "answer payload; shape per Rust protocol wire types"}
         },
         "required": ["type", "rpcId"]
     })
@@ -140,7 +139,7 @@ fn rpc_result_schema() -> Value {
         "type": "object",
         "properties": {
             "ok": {"type": "boolean"},
-            "value": {"description": "result value; shape per specta bindings"},
+            "value": {"description": "result value; shape per Rust protocol wire types"},
             "error": {"$ref": "#/components/schemas/RpcError"}
         },
         "required": ["ok"]
@@ -190,15 +189,15 @@ mod tests {
         for d in DOWNLINK_METHODS {
             assert!(!paths.contains_key(*d), "downlink path leaked: {d}");
         }
-        // …but the prose pointer to the mux channel + specta bindings is the contract.
+        // …but the prose pointer to the mux channel + Rust protocol types is the contract.
         let desc = v["info"]["description"].as_str().expect("description");
         assert!(
             desc.contains("events.mux"),
             "must explain mux channel: {desc}"
         );
         assert!(
-            desc.contains("bindings.ts"),
-            "must point at specta bindings"
+            desc.contains("protocol::wire"),
+            "must point at Rust protocol types"
         );
         for d in DOWNLINK_METHODS {
             assert!(

@@ -83,7 +83,7 @@
 
   @req:sr-oapi1 @human
   场景: unary 调试文档
-    - Host MUST 在监听器暴露 GET /openapi.json，返回 OpenAPI 3.1 文档描述 unary 调试面：每个已登记 unary 方法一个 /api/<method> 条目并附 /healthz 与 /api/respond。条目 MUST 从方法表生成，MUST NOT 手写第二套 schema 词表；payload schema 保持信封级粒度，具体形状以 specta bindings 为准。Host MUST 在 GET /docs 提供 Scalar 调试 UI（指向 /openapi.json），且它 MUST 是唯一的调试 UI，MUST NOT 引入第二套调试 UI。WS 下行 MUST NOT 作为 OpenAPI path 呈现，MUST 以文档说明指向 specta bindings。该端点仅调试文档，MUST NOT 作为客户端生成真源。
+    - Host MUST 在监听器暴露 GET /openapi.json，返回 OpenAPI 3.1 文档描述 unary 调试面：每个已登记 unary 方法一个 /api/<method> 条目并附 /healthz 与 /api/respond。条目 MUST 从方法表生成，MUST NOT 手写第二套 schema 词表；payload schema 保持信封级粒度，具体形状以 Rust protocol 类型为准。Host MUST 在 GET /docs 提供 Scalar 调试 UI（指向 /openapi.json），且它 MUST 是唯一的调试 UI，MUST NOT 引入第二套调试 UI。WS 下行 MUST NOT 作为 OpenAPI path 呈现，MUST 以文档说明指向 events.mux 通道与 Rust protocol 类型。该端点仅调试文档，MUST NOT 作为客户端生成真源。
 
   @req:sr-q1 @human
   场景: 队列深度只读方法

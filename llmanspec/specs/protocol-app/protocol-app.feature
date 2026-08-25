@@ -97,10 +97,6 @@
   场景: 一份方法表
     - 已承诺的会话操作 MUST 出现在一份方法表（unary 名 + 载荷 + 返回）。关闭 TUI MUST NOT 停 Host。审批与问卷 MUST NOT 登记为 unary。下行生命周期 MUST 能作为 server-request 载荷携带既有 Event，MUST NOT 为每个增量另开方法名。未登记方法 MUST 失败。
 
-  @req:pa-bind1 @human
-  场景: 跨语言类型闸
-    - 信封与方法载荷的 TypeScript 形状 MUST 从同一份产品类型导出并检入；重生后与检入副本不一致 MUST 使日常验证入口失败。MUST NOT 以 OpenAPI 或 AsyncAPI 为产品类型真源。
-
   @req:pa-cs2 @human
   场景: 面本地不进协议
     - 剪贴板（含 OSC 52）、TTY、本机编辑器、键位与绘制 MUST NOT 成为 Command 或 Event 变体。这些能力 MUST 留在 client 面本地。

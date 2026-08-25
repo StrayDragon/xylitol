@@ -162,10 +162,10 @@ fn t_openapi_no_ws(server_test: &ServerTest) {
     for d in DOWNLINK_METHODS {
         assert!(!paths.contains_key(*d), "downlink path leaked: {d}");
     }
-    // The prose pointer is the contract (sr-oapi1): mux channel + specta bindings.
+    // The prose pointer is the contract (sr-oapi1): mux channel + Rust protocol types.
     let desc = v["info"]["description"].as_str().expect("description");
     assert!(desc.contains("events.mux"), "{desc}");
-    assert!(desc.contains("bindings.ts"), "{desc}");
+    assert!(desc.contains("protocol::wire"), "{desc}");
 }
 
 #[when("GET /docs")]

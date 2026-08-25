@@ -1,14 +1,13 @@
 //! Session tree shapes and MessageHistory travel planner.
 
 use serde::{Deserialize, Serialize};
-use specta::Type;
 
 use super::entries::SessionEntry;
 use super::helpers::{is_user_message, message_text};
 use crate::protocol::error::XySessionError;
 
 /// Kind of session tree exposed via [`crate::app::core::driver::XyDriver`].
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize, Type)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(rename_all = "snake_case")]
 pub enum SessionTreeKind {
     MessageHistory,
