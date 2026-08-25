@@ -48,7 +48,7 @@ pub use crate::app::core::attach::{
 pub use crate::app::core::driver::{XyDriver, XyDriverError, XyInProcessDriver};
 #[cfg(feature = "server")]
 pub use crate::app::core::host_client::HttpWsClient;
-pub use crate::app::core::host_client::{HostClient, HostClientError, InProcessClient};
+pub use crate::app::core::host_client::{HostClient, HostClientError, InProcessClient, MuxStream};
 pub use crate::protocol::error::{
     XyError, XyExportError, XySessionError, XySessionStoreError, XyToolError, XyTrustError,
 };
