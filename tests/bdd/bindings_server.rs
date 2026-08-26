@@ -216,3 +216,27 @@ async fn test_sr_w1_writer_lease(server_test: ServerTest) {}
     name = "openapi-debug-doc"
 )]
 async fn test_sr_oapi1_openapi_debug_doc(server_test: ServerTest) {}
+
+#[scenario(
+    path = "llmanspec/specs/server-core/server-core.feature",
+    name = "queue-stats-readonly-unary"
+)]
+async fn test_sr_q1_queue_stats(server_test: ServerTest) {}
+
+#[scenario(
+    path = "llmanspec/specs/server-core/server-core.feature",
+    name = "reload-cooperative-cancel"
+)]
+async fn test_sr_abort1_cancel(server_test: ServerTest) {}
+
+#[scenario(
+    path = "llmanspec/specs/server-core/server-core.feature",
+    name = "abort-idle-falls-back-to-session"
+)]
+async fn test_sr_abort1_idle(server_test: ServerTest) {}
+
+#[scenario(
+    path = "llmanspec/specs/server-core/server-core.feature",
+    name = "subscription-survives-agent-end"
+)]
+async fn test_sr_sub1_alive(server_test: ServerTest) {}

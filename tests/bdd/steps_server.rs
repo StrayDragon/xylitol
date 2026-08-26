@@ -9,7 +9,7 @@ use xylitol::app::server::ws::{EventJournal, ReverseRpcResult};
 use xylitol::protocol::Event;
 use xylitol::protocol::wire::envelope::{PROTOCOL_VERSION, RpcMessage};
 use xylitol::protocol::wire::method::{DOWNLINK_METHODS, UNARY_METHODS};
-use xylitol::{HostClient, HttpWsClient};
+use xylitol::{HostClient, HttpWsClient, MuxStream};
 
 /// Shared fixture for server-core scenarios.
 pub struct ServerTest {
@@ -26,6 +26,8 @@ pub struct ServerTest {
     pub approval_rx: RefCell<Option<tokio::sync::oneshot::Receiver<ReverseRpcResult>>>,
     pub last_rpc: RefCell<Option<ReverseRpcResult>>,
     pub mux_acc: Arc<std::sync::Mutex<Vec<RpcMessage>>>,
+    /// sr-sub1：跨步骤持有已订阅会话的下行流。
+    pub mux_rx: RefCell<Option<MuxStream>>,
 }
 
 impl ServerTest {
@@ -44,6 +46,7 @@ impl ServerTest {
             approval_rx: RefCell::new(None),
             last_rpc: RefCell::new(None),
             mux_acc: Arc::new(std::sync::Mutex::new(Vec::new())),
+            mux_rx: RefCell::new(None),
         }
     }
 
@@ -1304,5 +1307,171 @@ fn t_sr_w1_conflict(server_test: &ServerTest) {
     assert!(
         s.contains("writer_conflict") || s.contains("another client is the writer"),
         "{s}"
+    );
+}
+
+// ---- sr-q1 / sr-abort1 / sr-sub1：queue_stats 只读、reload 合作取消、订阅跨回合存活 ----
+
+#[when("查询只读 unary queue_stats")]
+async fn w_queue_stats(server_test: &ServerTest) {
+    let client = HttpWsClient::new(server_test.base_url());
+    let r = client
+        .unary("queue_stats", serde_json::json!({"session_id": "s-q"}))
+        .await
+        .expect("queue_stats");
+    assert!(r.ok, "{r:?}");
+    server_test
+        .unary_body
+        .replace(Some(serde_json::to_string(&r).unwrap()));
+}
+
+#[then("返回 steer 与 follow-up 队列深度")]
+fn t_queue_stats_shape(server_test: &ServerTest) {
+    let body = server_test.unary_body.borrow().clone().expect("body");
+    let v: serde_json::Value = serde_json::from_str(&body).unwrap();
+    assert!(v["value"]["steer_count"].is_u64(), "{body}");
+    assert!(v["value"]["follow_up_count"].is_u64(), "{body}");
+}
+
+#[then("响应不携带写者租约 token")]
+fn t_queue_stats_no_writer_lease(server_test: &ServerTest) {
+    let body = server_test.unary_body.borrow().clone().expect("body");
+    assert!(
+        !body.contains("writerToken"),
+        "readonly unary must not lease writer, got {body}"
+    );
+}
+
+#[given("进程级 reload 正在进行（取消令牌已注册）")]
+async fn g_reload_inflight(server_test: &ServerTest) {
+    start_host(server_test).await;
+    let host = server_test.host.borrow().as_ref().expect("host").clone();
+    *host.reload_cancel.lock().await = Some(tokio_util::sync::CancellationToken::new());
+}
+
+#[when("收到进程级 abort unary")]
+async fn w_abort_unary(server_test: &ServerTest) {
+    let client = HttpWsClient::new(server_test.base_url());
+    let r = client
+        .unary("abort", serde_json::json!({}))
+        .await
+        .expect("abort");
+    server_test
+        .unary_body
+        .replace(Some(serde_json::to_string(&r).unwrap()));
+}
+
+#[then("应答携带 cancelled 指示且取消令牌被置位")]
+async fn t_reload_cancelled(server_test: &ServerTest) {
+    let body = server_test.unary_body.borrow().clone().expect("body");
+    let v: serde_json::Value = serde_json::from_str(&body).unwrap();
+    assert_eq!(v["value"]["cancelled"], serde_json::json!(true), "{body}");
+    let host = server_test.host.borrow().as_ref().expect("host").clone();
+    let token = host
+        .reload_cancel
+        .lock()
+        .await
+        .clone()
+        .expect("token still registered");
+    assert!(token.is_cancelled(), "reload token must be cancelled");
+}
+
+#[given("无进行中的进程级 reload")]
+async fn g_reload_idle(server_test: &ServerTest) {
+    start_host(server_test).await;
+    let host = server_test.host.borrow().as_ref().expect("host").clone();
+    assert!(host.reload_cancel.lock().await.is_none());
+}
+
+#[then("未命中 reload 取消而落回会话 abort 处理")]
+fn t_abort_falls_back(server_test: &ServerTest) {
+    let body = server_test.unary_body.borrow().clone().expect("body");
+    let v: serde_json::Value = serde_json::from_str(&body).unwrap();
+    // reload 分支应答为纯 {"cancelled": true}（无租约）；
+    // 落回既有会话 abort 处理时，abort 作为非只读 unary 颁发写者租约（见 sr-w1）
+    assert!(
+        v["value"]["writerToken"].is_string(),
+        "idle abort must fall through to leased session abort, got {body}"
+    );
+}
+
+#[given("客户端已订阅会话 s-sub")]
+async fn g_subscribe_ssub(server_test: &ServerTest) {
+    start_host(server_test).await;
+    let client = HttpWsClient::new(server_test.base_url());
+    let mux = client.mux().await.expect("mux");
+    server_test.mux_rx.replace(Some(mux));
+    let host = server_test.host.borrow().as_ref().expect("host").clone();
+    wait_unbound(&host, 1).await;
+    let r = client
+        .unary(
+            "subscribe",
+            serde_json::json!({"session_id": "s-sub", "last_seq": 0}),
+        )
+        .await
+        .expect("subscribe");
+    assert!(r.ok, "{r:?}");
+}
+
+#[when("会话回合以 AgentEnd 结束后又追加新事件")]
+async fn w_agent_end_then_more(server_test: &ServerTest) {
+    let mut mux = server_test.mux_rx.borrow_mut().take().expect("mux");
+    let host = server_test.host.borrow().as_ref().expect("host").clone();
+    let slot = host.slot("s-sub").await;
+    slot.append_and_push(Event::AgentEnd).await;
+
+    // 收 AgentEnd 帧（可能先到 subscribed 确认帧）
+    let mut frames: Vec<RpcMessage> = Vec::new();
+    for _ in 0..3 {
+        let f = tokio::time::timeout(Duration::from_secs(2), mux.next())
+            .await
+            .expect("timeout waiting agent_end frame")
+            .expect("mux eof")
+            .expect("ws frame");
+        let text = serde_json::to_string(&f).unwrap();
+        let is_end = text.contains("agent_end") || text.contains("AgentEnd");
+        frames.push(f);
+        if is_end {
+            break;
+        }
+    }
+    assert!(
+        frames.iter().any(|f| {
+            let t = serde_json::to_string(f).unwrap();
+            t.contains("agent_end") || t.contains("AgentEnd")
+        }),
+        "expected AgentEnd frame, got {frames:?}"
+    );
+
+    // 回合结束后订阅必须仍存活：追加新事件且继续送达同一连接
+    slot.append_and_push(Event::TextDelta {
+        text: "after-agent-end".into(),
+    })
+    .await;
+    let f = tokio::time::timeout(Duration::from_secs(2), mux.next())
+        .await
+        .expect("timeout: subscription did not survive agent end")
+        .expect("mux eof")
+        .expect("ws frame");
+    frames.push(f);
+    server_test.mux_frames.replace(frames);
+}
+
+#[then("订阅仍存活且新事件继续送达")]
+fn t_subscription_alive(server_test: &ServerTest) {
+    let frames = server_test.mux_frames.borrow();
+    let texts: Vec<String> = frames
+        .iter()
+        .map(|f| serde_json::to_string(f).unwrap())
+        .collect();
+    let end_idx = texts
+        .iter()
+        .position(|t| t.contains("agent_end") || t.contains("AgentEnd"))
+        .expect("agent_end frame");
+    assert!(
+        texts[end_idx + 1..]
+            .iter()
+            .any(|t| t.contains("after-agent-end")),
+        "post-turn event must arrive on same subscription: {texts:?}"
     );
 }

@@ -334,3 +334,24 @@
     假如 第二个客户端对已消费 rpcId POST /api/respond
     当 server 收到该应答
     那么 应答被静默忽略（无状态变化、无错误）
+  @req:sr-q1 @executable
+  场景: queue-stats-readonly-unary
+    当 服务端在空闲端口上启动
+    并且 查询只读 unary queue_stats
+    那么 返回 steer 与 follow-up 队列深度
+    并且 响应不携带写者租约 token
+  @req:sr-abort1 @executable
+  场景: reload-cooperative-cancel
+    假如 进程级 reload 正在进行（取消令牌已注册）
+    当 收到进程级 abort unary
+    那么 应答携带 cancelled 指示且取消令牌被置位
+  @req:sr-abort1 @executable
+  场景: abort-idle-falls-back-to-session
+    假如 无进行中的进程级 reload
+    当 收到进程级 abort unary
+    那么 未命中 reload 取消而落回会话 abort 处理
+  @req:sr-sub1 @executable
+  场景: subscription-survives-agent-end
+    假如 客户端已订阅会话 s-sub
+    当 会话回合以 AgentEnd 结束后又追加新事件
+    那么 订阅仍存活且新事件继续送达
