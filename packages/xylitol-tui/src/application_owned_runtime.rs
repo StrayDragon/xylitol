@@ -144,10 +144,38 @@ impl ApplicationOwnedRuntime {
         let dock_lines = &full_lines[content_end..];
         self.last_dock_lines = dock_lines.to_vec();
 
+        // Streaming-reflow guard: a *completed* selection goes stale once rows
+        // at/above its anchor changed identity (re-wrap shifts row indices out
+        // from under it). Active drags keep their coordinates — focus
+        // recomputes per mouse event, and cancelling mid-drag would violate
+        // the no-copy-cancel-during-drag rule (ptim12).
+        if self.selection.has_selection() && !self.selection.is_dragging() {
+            let top_row = self
+                .selection
+                .bounds()
+                .map(|(start, _)| start.row)
+                .unwrap_or(0);
+            if Self::prefix_changed(self.scroll.lines(), content, top_row) {
+                self.selection.clear();
+            }
+        }
+
         let viewport_h = term_height.saturating_sub(dock);
         self.scroll.set_viewport_height(viewport_h.max(1));
         self.scroll.set_lines(content.to_vec());
         self.paint_visible(viewport_h, term_height)
+    }
+
+    /// True when rows `[0, upto]` differ between old and new content.
+    ///
+    /// Appends below the anchor (`upto` prefix identical) keep the selection;
+    /// any mutation at/above it invalidates the row-index coordinates.
+    fn prefix_changed(old: &[String], new: &[String], upto: usize) -> bool {
+        let n = upto.saturating_add(1);
+        if old.len() < n || new.len() < n {
+            return true;
+        }
+        old[..n] != new[..n]
     }
 
     /// Re-slice the already-ingested transcript + dock after scroll/selection
@@ -464,5 +492,71 @@ mod tests {
         assert!(runtime.tick_copy_notice());
         assert!(!runtime.take_copy_notice());
         assert!(!runtime.tick_copy_notice());
+    }
+
+    fn drag_select_rows_1_to_2(runtime: &mut ApplicationOwnedRuntime) {
+        use crossterm::event::{KeyModifiers, MouseButton, MouseEvent, MouseEventKind};
+        let ev = |kind, col: u16, row: u16| MouseEvent {
+            kind,
+            column: col,
+            row,
+            modifiers: KeyModifiers::NONE,
+        };
+        assert!(runtime.handle_mouse(&ev(MouseEventKind::Down(MouseButton::Left), 0, 1), 20, 6));
+        assert!(runtime.handle_mouse(&ev(MouseEventKind::Drag(MouseButton::Left), 2, 2), 20, 6));
+        assert!(runtime.handle_mouse(&ev(MouseEventKind::Up(MouseButton::Left), 2, 2), 20, 6));
+    }
+
+    fn reflow_fixture(tail: &[&str], first_row: &str) -> Vec<String> {
+        let mut v: Vec<String> = ["alpha", "beta", "gamma", "delta", "echo"]
+            .iter()
+            .map(|s| s.to_string())
+            .collect();
+        if first_row != "alpha" {
+            v[0] = first_row.to_string();
+        }
+        v.extend(tail.iter().map(|s| s.to_string()));
+        v.push("dock".into());
+        v
+    }
+
+    #[test]
+    fn completed_selection_survives_append_below_and_clears_on_reflow_above() {
+        let mut runtime = ApplicationOwnedRuntime::new(1);
+        let full1 = reflow_fixture(&[], "alpha");
+        let _ = runtime.project_frame(&full1, 6);
+        drag_select_rows_1_to_2(&mut runtime);
+        assert!(runtime.has_selection(), "drag must complete with selection");
+
+        // Streaming appends below the selection — rows ≤ anchor unchanged → kept.
+        let full2 = reflow_fixture(&["foxtrot"], "alpha");
+        let _ = runtime.project_frame(&full2, 7);
+        assert!(runtime.has_selection(), "append below must not clear");
+
+        // Re-wrap above the anchor — row indices shifted → stale, cleared.
+        let full3 = reflow_fixture(&["foxtrot"], "alpha wraps differently now");
+        let _ = runtime.project_frame(&full3, 7);
+        assert!(!runtime.has_selection(), "reflow above must invalidate");
+    }
+
+    #[test]
+    fn active_drag_is_not_cancelled_by_reflow_above() {
+        use crossterm::event::{KeyModifiers, MouseButton, MouseEvent, MouseEventKind};
+        let mut runtime = ApplicationOwnedRuntime::new(1);
+        let full1 = reflow_fixture(&[], "alpha");
+        let _ = runtime.project_frame(&full1, 6);
+        let ev = |kind, col: u16, row: u16| MouseEvent {
+            kind,
+            column: col,
+            row,
+            modifiers: KeyModifiers::NONE,
+        };
+        assert!(runtime.handle_mouse(&ev(MouseEventKind::Down(MouseButton::Left), 0, 1), 20, 6));
+        assert!(runtime.selection.is_dragging());
+
+        // Mid-drag frame with changed rows above: keep dragging (ptim12).
+        let full2 = reflow_fixture(&[], "alpha wraps differently now");
+        let _ = runtime.project_frame(&full2, 6);
+        assert!(runtime.selection.is_dragging());
     }
 }

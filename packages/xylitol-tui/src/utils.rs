@@ -46,15 +46,17 @@ pub fn visible_width(s: &str) -> usize {
 }
 
 /// Byte length of a recognized ANSI escape at `i`, or `None` if not a skippable sequence.
-fn ansi_escape_len(bytes: &[u8], i: usize) -> Option<usize> {
+pub(crate) fn ansi_escape_len(bytes: &[u8], i: usize) -> Option<usize> {
     if i >= bytes.len() || bytes[i] != 0x1b || i + 1 >= bytes.len() {
         return None;
     }
     match bytes[i + 1] {
         b'[' => {
-            // CSI: ESC [ ... m/G/K/H/J
+            // CSI: ESC [ params/intermediates… final byte (ECMA-48 0x40..=0x7E).
+            // Full final range (not just m/G/K/H/J) so private modes like
+            // `\x1b[?25l` cannot swallow the rest of the line into one "escape".
             let mut j = i + 2;
-            while j < bytes.len() && !b"mGKHJ".contains(&bytes[j]) {
+            while j < bytes.len() && !(0x40..=0x7e).contains(&bytes[j]) {
                 j += 1;
             }
             if j < bytes.len() {

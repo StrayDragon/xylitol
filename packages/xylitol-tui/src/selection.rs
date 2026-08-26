@@ -2,9 +2,17 @@
 //!
 //! Drag-select over transcript content coordinates, edge auto-scroll via
 //! [`ScrollView`], optional copy-on-release, and dock/input exclusion.
+//!
+//! Coordinate model: [`CellPoint::col`] is a **display column** (terminal
+//! cells, ANSI-stripped; wide chars occupy 2), not a char index. All
+//! extraction / inversion convert between columns and char indices via the
+//! width-aware helpers below, so CJK / emoji-bearing lines select and copy
+//! exactly what is visually covered.
 
 use crate::scroll_view::ScrollView;
+use crate::utils::ansi_escape_len;
 use crossterm::event::{MouseButton, MouseEvent, MouseEventKind};
+use unicode_width::UnicodeWidthChar;
 
 // UX tuning knobs: keep the first tier at one row for precise selection. These
 // hold thresholds and later multipliers may be adjusted together after manual
@@ -15,6 +23,9 @@ const EDGE_AUTOSCROLL_MEDIUM_MULTIPLIER: isize = 2;
 const EDGE_AUTOSCROLL_FAST_MULTIPLIER: isize = 4;
 
 /// Content-space cell (row = content line index, col = display column).
+///
+/// `col` counts terminal cells of the ANSI-stripped text — one per narrow
+/// char, two per wide char — matching what the screen and mouse report.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub struct CellPoint {
     pub row: usize,
@@ -590,41 +601,72 @@ fn ordered(a: CellPoint, b: CellPoint) -> (CellPoint, CellPoint) {
     }
 }
 
+/// Display width (terminal cells) of a line's visible content.
 fn visible_len(line: &str) -> usize {
-    // Selection columns are byte-index approximations for ASCII-heavy transcripts;
-    // ANSI is stripped roughly by ignoring ESC sequences for length.
-    strip_ansi_approx(line).chars().count()
+    strip_ansi(line).chars().map(char_cols).sum()
 }
 
-fn strip_ansi_approx(s: &str) -> String {
-    let mut out = String::with_capacity(s.len());
-    let mut chars = s.chars().peekable();
-    while let Some(c) = chars.next() {
-        if c == '\u{1b}' {
-            match chars.peek() {
-                Some('[') => {
-                    chars.next();
-                    for c2 in chars.by_ref() {
-                        if c2.is_ascii_alphabetic() {
-                            break;
-                        }
-                    }
-                }
-                Some(']') => {
-                    chars.next();
-                    for c2 in chars.by_ref() {
-                        if c2 == '\u{7}' {
-                            break;
-                        }
-                    }
-                }
-                _ => {}
-            }
-        } else {
-            out.push(c);
+/// Terminal columns for one scalar, matching `utils::grapheme_width`
+/// semantics (tab = 3, control/zero-width = 0).
+fn char_cols(c: char) -> usize {
+    if c == '\t' { 3 } else { c.width().unwrap_or(0) }
+}
+
+/// Strip ANSI escapes (CSI any final, OSC/APC BEL or ST terminated) leaving
+/// only visible text. Shares [`ansi_escape_len`] with the engine width model.
+fn strip_ansi(line: &str) -> String {
+    let mut out = String::with_capacity(line.len());
+    let bytes = line.as_bytes();
+    let mut i = 0usize;
+    while i < bytes.len() {
+        if let Some(len) = ansi_escape_len(bytes, i) {
+            i += len;
+            continue;
         }
+        let c = line[i..].chars().next().expect("char boundary");
+        out.push(c);
+        i += c.len_utf8();
     }
     out
+}
+
+/// Map the **start** boundary display column to a char index.
+///
+/// A column falling anywhere inside a wide char snaps onto that char
+/// (dragging from either half of `你` anchors at `你`).
+fn col_to_idx_from(plain: &str, col: usize) -> usize {
+    let mut start = 0usize;
+    for (idx, c) in plain.chars().enumerate() {
+        let cw = char_cols(c);
+        if col < start + cw {
+            return idx;
+        }
+        start += cw;
+        if cw == 0 && start > col {
+            return idx;
+        }
+    }
+    plain.chars().count()
+}
+
+/// Map the **end** boundary display column to an exclusive char index.
+///
+/// A column falling inside a wide char resolves past it, so a drag ending on
+/// either half of `你` includes `你`.
+fn col_to_idx_to(plain: &str, col: usize) -> usize {
+    let mut w = 0usize;
+    for (idx, c) in plain.chars().enumerate() {
+        if w >= col {
+            return idx;
+        }
+        w += char_cols(c);
+    }
+    plain.chars().count()
+}
+
+/// Map a char index in the stripped projection back to a display column.
+fn idx_to_col(plain: &str, idx: usize) -> usize {
+    plain.chars().take(idx).map(char_cols).sum()
 }
 
 fn extract_range(lines: &[String], start: CellPoint, end: CellPoint) -> String {
@@ -634,23 +676,28 @@ fn extract_range(lines: &[String], start: CellPoint, end: CellPoint) -> String {
         s.trim_end_matches([' ', '\t']).to_string()
     }
 
+    /// Slice one row's plain projection by display-column bounds.
+    fn slice_cols(plain: &str, from_col: usize, to_col: Option<usize>) -> String {
+        let chars: Vec<char> = plain.chars().collect();
+        let s = col_to_idx_from(plain, from_col).min(chars.len());
+        let e = match to_col {
+            Some(c) => col_to_idx_to(plain, c).max(s).min(chars.len()),
+            None => chars.len(),
+        };
+        chars[s..e].iter().collect()
+    }
+
     if start.row == end.row {
-        let plain = strip_ansi_approx(lines.get(start.row).map(|s| s.as_str()).unwrap_or(""));
-        return trim_copy_piece(
-            plain
-                .chars()
-                .skip(start.col)
-                .take(end.col.saturating_sub(start.col))
-                .collect(),
-        );
+        let plain = strip_ansi(lines.get(start.row).map(|s| s.as_str()).unwrap_or(""));
+        return trim_copy_piece(slice_cols(&plain, start.col, Some(end.col)));
     }
     let mut parts: Vec<String> = Vec::new();
     for row in start.row..=end.row {
-        let plain = strip_ansi_approx(lines.get(row).map(|s| s.as_str()).unwrap_or(""));
+        let plain = strip_ansi(lines.get(row).map(|s| s.as_str()).unwrap_or(""));
         let piece: String = if row == start.row {
-            plain.chars().skip(start.col).collect()
+            slice_cols(&plain, start.col, None)
         } else if row == end.row {
-            plain.chars().take(end.col).collect()
+            slice_cols(&plain, 0, Some(end.col))
         } else {
             plain
         };
@@ -682,10 +729,11 @@ fn expand_range(
     match g {
         SelectionGranularity::Character => {}
         SelectionGranularity::Word => {
-            let plain = strip_ansi_approx(lines.get(start.row).map(|s| s.as_str()).unwrap_or(""));
+            let plain = strip_ansi(lines.get(start.row).map(|s| s.as_str()).unwrap_or(""));
             let chars: Vec<char> = plain.chars().collect();
-            let mut l = start.col.min(chars.len());
-            let mut r = end.col.min(chars.len());
+            // Bounds arrive as display columns; expand in char space, report back columns.
+            let mut l = col_to_idx_from(&plain, start.col).min(chars.len());
+            let mut r = col_to_idx_to(&plain, end.col).max(l).min(chars.len());
             while l > 0
                 && chars
                     .get(l - 1)
@@ -696,8 +744,8 @@ fn expand_range(
             while r < chars.len() && (chars[r].is_alphanumeric() || chars[r] == '_') {
                 r += 1;
             }
-            start.col = l;
-            end.col = r;
+            start.col = idx_to_col(&plain, l);
+            end.col = idx_to_col(&plain, r);
         }
         SelectionGranularity::Line => {
             start.col = 0;
@@ -707,23 +755,60 @@ fn expand_range(
     (start, end)
 }
 
+/// Apply reverse-video to the display-column range `[from, to)` **in place**,
+/// preserving the line's original SGR styling (syntax colors survive).
+///
+/// Strategy: splice `\x1b[7m` before the first visible char at/after `from`
+/// and `\x1b[27m` before the first visible char at/after `to`; rewrite every
+/// SGR sequence inside the span by appending `;7` (`\x1b[0m` → `\x1b[0;7m`,
+/// `\x1b[31m` → `\x1b[31;7m`) so inner resets cannot wipe the reversal
+/// mid-span. Wide chars straddling a boundary are included whole.
 fn invert_columns(line: &str, from: usize, to: usize) -> String {
-    // Apply reverse SGR around the approximate char range on the plain projection,
-    // then splice back — for tests/ASCII this is enough; full ANSI-aware invert
-    // can be refined later without changing the selection model.
-    let plain = strip_ansi_approx(line);
-    let chars: Vec<char> = plain.chars().collect();
-    if from >= chars.len() || from >= to {
+    if to <= from || line.is_empty() {
         return line.to_string();
     }
-    let to = to.min(chars.len());
-    let mut out = String::new();
-    out.extend(chars[..from].iter());
-    out.push_str("\x1b[7m");
-    out.extend(chars[from..to].iter());
-    out.push_str("\x1b[27m");
-    out.extend(chars[to..].iter());
+    let mut out = String::with_capacity(line.len() + 16);
+    let bytes = line.as_bytes();
+    let mut col = 0usize;
+    let mut started = false;
+    let mut finished = false;
+    let mut i = 0usize;
+    while i < line.len() {
+        if let Some(len) = ansi_escape_len(bytes, i) {
+            let seq = &line[i..i + len];
+            if started && !finished && is_sgr(seq) {
+                // Keep the sequence's own parameters, force reverse back on.
+                out.push_str(&seq[..seq.len() - 1]);
+                out.push_str(";7m");
+            } else {
+                out.push_str(seq);
+            }
+            i += len;
+            continue;
+        }
+        let c = line[i..].chars().next().expect("char boundary");
+        let cw = char_cols(c);
+        if started && !finished && col >= to {
+            out.push_str("\x1b[27m");
+            finished = true;
+        }
+        if !started && col < to && col + cw.max(1) > from {
+            out.push_str("\x1b[7m");
+            started = true;
+        }
+        out.push(c);
+        col += cw;
+        i += c.len_utf8();
+    }
+    if started && !finished {
+        out.push_str("\x1b[27m");
+    }
     out
+}
+
+/// True for CSI SGR sequences (`ESC[…m`).
+fn is_sgr(seq: &str) -> bool {
+    seq.starts_with("\x1b[") && seq.ends_with('m')
 }
 
 #[cfg(test)]
@@ -1179,5 +1264,147 @@ mod tests {
             top0 - scroll.scroll_top(),
             ScrollView::wheel_notch() as usize
         );
+    }
+
+    // ── display-column coordinate model regressions ────────────────────────
+
+    /// What `n` display columns of visible text actually cover.
+    fn cols_prefix(plain: &str, n: usize) -> String {
+        let mut w = 0usize;
+        plain
+            .chars()
+            .take_while(|c| {
+                let cw = char_cols(*c);
+                let fits = w + cw <= n;
+                if fits {
+                    w += cw;
+                }
+                fits
+            })
+            .collect()
+    }
+
+    #[test]
+    fn column_to_char_index_snaps_inside_wide_char() {
+        // cells: a@0 b@1 你@2-3 好@4-5 c@6 d@7
+        let plain = "ab你好cd";
+        assert_eq!(col_to_idx_from(plain, 0), 0);
+        assert_eq!(col_to_idx_from(plain, 1), 1);
+        assert_eq!(col_to_idx_from(plain, 2), 2, "left half of 你");
+        assert_eq!(col_to_idx_from(plain, 3), 2, "right half still anchors 你");
+        assert_eq!(col_to_idx_from(plain, 4), 3);
+        assert_eq!(col_to_idx_from(plain, 99), plain.chars().count());
+        assert_eq!(col_to_idx_to(plain, 2), 2, "end at col 2 excludes 你");
+        assert_eq!(col_to_idx_to(plain, 3), 3, "end inside 你 includes it");
+        assert_eq!(idx_to_col(plain, 2), 2);
+        assert_eq!(idx_to_col(plain, 4), 6);
+    }
+
+    #[test]
+    fn highlighted_cjk_drag_copies_exactly_visible_columns() {
+        // Streamed rust-ish line with a CJK comment in fake syntect SGRs — the
+        // historical bug: char-index selection drifted by one cell per wide char.
+        let line = "\x1b[38;2;166;227;161mlet\x1b[38;2;205;214;244m total = \
+                    \x1b[38;2;137;220;235m42\x1b[38;2;205;214;244m; // 累计订单金额\
+                    \x1b[38;2;137;180;255m（含税）\x1b[0m";
+        let plain = strip_ansi(line);
+        // Select up through `累计`: 19 ASCII cols + 累计 = 23 columns.
+        let expected = cols_prefix(&plain, 23);
+        assert_eq!(expected, "let total = 42; // 累计");
+
+        let mut scroll = ScrollView::new(4);
+        scroll.set_lines(vec![line.to_string()]);
+        let mut sel = SelectionController::new();
+        let mut sink = RecordingClipboardSink::default();
+        // Wide transcript rect — the shared `layout()` is only 20 cols wide
+        // and would clamp the drag to its right edge.
+        let tr = ScreenRect {
+            row: 0,
+            col: 0,
+            height: 4,
+            width: 60,
+        };
+        let dock = ScreenRect {
+            row: 4,
+            col: 0,
+            height: 2,
+            width: 60,
+        };
+
+        assert!(sel.handle_mouse(
+            &mouse(MouseEventKind::Down(MouseButton::Left), 0, 0),
+            &mut scroll,
+            tr,
+            dock,
+            &mut sink
+        ));
+        assert!(sel.handle_mouse(
+            &mouse(MouseEventKind::Drag(MouseButton::Left), 23, 0),
+            &mut scroll,
+            tr,
+            dock,
+            &mut sink
+        ));
+        assert!(sel.handle_mouse(
+            &mouse(MouseEventKind::Up(MouseButton::Left), 23, 0),
+            &mut scroll,
+            tr,
+            dock,
+            &mut sink
+        ));
+        assert_eq!(sink.copies, vec![expected], "copy must match visible span");
+    }
+
+    #[test]
+    fn reverse_video_preserves_syntax_and_survives_inner_resets() {
+        let line = "A\x1b[31mBC\x1b[0mDE";
+        let inverted = invert_columns(line, 1, 4);
+        assert_eq!(
+            inverted, "A\x1b[31m\x1b[7mBC\x1b[0;7mD\x1b[27mE",
+            "original SGR kept; inner reset rewritten to keep reversal on"
+        );
+        assert_eq!(strip_ansi(&inverted), strip_ansi(line));
+    }
+
+    #[test]
+    fn reverse_video_snaps_wide_char_boundaries() {
+        // 你 spans columns 2-3; from=3 (right half) must include all of 你,
+        // and the span closes before `d` at column 4.
+        let inverted = invert_columns("ab你de", 3, 4);
+        assert_eq!(inverted, "ab\x1b[7m你\x1b[27mde");
+    }
+
+    #[test]
+    fn st_terminated_osc_does_not_inflate_length() {
+        let line = crate::hyperlink("text", "https://example.test");
+        assert_eq!(visible_len(&line), 4);
+
+        let mut scroll = ScrollView::new(4);
+        scroll.set_lines(vec![line]);
+        let mut sel = SelectionController::new();
+        let mut sink = RecordingClipboardSink::default();
+        let (tr, dock) = layout();
+        sel.handle_mouse(
+            &mouse(MouseEventKind::Down(MouseButton::Left), 0, 0),
+            &mut scroll,
+            tr,
+            dock,
+            &mut sink,
+        );
+        sel.handle_mouse(
+            &mouse(MouseEventKind::Drag(MouseButton::Left), 4, 0),
+            &mut scroll,
+            tr,
+            dock,
+            &mut sink,
+        );
+        sel.handle_mouse(
+            &mouse(MouseEventKind::Up(MouseButton::Left), 4, 0),
+            &mut scroll,
+            tr,
+            dock,
+            &mut sink,
+        );
+        assert_eq!(sink.copies, vec!["text".to_string()]);
     }
 }
