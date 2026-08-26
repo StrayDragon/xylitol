@@ -18,8 +18,10 @@ mod summary;
 /// Semantic scene dump (c2200 scene slice): product path chords (L3/L2/L1)
 /// over the product render. Tests in [`crate::app::tui::tests`] assert the
 /// c1762 lessons 1–3 on product frames.
-#[cfg(test)]
-pub(crate) mod scene;
+///
+/// tt08：该面同时是对外测试支撑合约（BDD 经 `xylitol::app::tui` 直驱产品渲染），
+/// 故不再限 `#[cfg(test)]`。
+pub mod scene;
 
 #[cfg(test)]
 pub(crate) use atom::{ToolActivityRole, is_path_placeholder, tool_activity_role};

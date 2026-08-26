@@ -12,6 +12,7 @@ use xylitol::app::tui::GlyphSet;
 pub struct TranscriptBdd {
     pub glyph_pair: RefCell<Option<(&'static str, &'static str)>>,
     pub previews: RefCell<Vec<String>>,
+    pub plain_frame: RefCell<Option<String>>,
 }
 
 #[fixture]
@@ -19,6 +20,7 @@ pub fn transcript_bdd() -> TranscriptBdd {
     TranscriptBdd {
         glyph_pair: RefCell::new(None),
         previews: RefCell::new(Vec::new()),
+        plain_frame: RefCell::new(None),
     }
 }
 
@@ -114,5 +116,41 @@ fn then_missing_path_placeholder(transcript_bdd: &TranscriptBdd) {
     assert!(
         !edit_no_path.contains("oldText"),
         "must not embed full args JSON: {edit_no_path}"
+    );
+}
+
+// ---- att10：相邻块空行分隔（P2 无头帧挂载面首证）----
+
+#[when("以场景构建器渲染相邻的助手块与工具块（宽 80）")]
+fn then_render_adjacent_blocks(transcript_bdd: &TranscriptBdd) {
+    use xylitol::app::tui::SceneBuilder;
+    let mut sb = SceneBuilder::begin();
+    sb.assistant("alpha body").message_end();
+    sb.tool_start("t1", "read", "src/lib.rs")
+        .tool_end("t1", "read");
+    let (plain, _dump) = sb.render(80);
+    *transcript_bdd.plain_frame.borrow_mut() = Some(plain);
+}
+
+#[then("相邻块之间至少一行空行分隔且不粘连成墙")]
+fn then_block_gap_present(transcript_bdd: &TranscriptBdd) {
+    let plain = transcript_bdd.plain_frame.borrow().clone().expect("frame");
+    let lines: Vec<&str> = plain.lines().collect();
+    let find_last = |needle: &str| {
+        lines
+            .iter()
+            .rposition(|l| l.contains(needle))
+            .unwrap_or_else(|| panic!("frame must contain {needle:?}:\n{plain}"))
+    };
+    let alpha = find_last("alpha body");
+    let tool = find_last("lib.rs");
+    assert!(
+        tool > alpha,
+        "tool block must render below assistant block:\n{plain}"
+    );
+    let gap_blank = lines[alpha + 1..tool].iter().any(|l| l.trim().is_empty());
+    assert!(
+        gap_blank,
+        "att10: adjacent blocks need >=1 blank line between:\n{plain}"
     );
 }

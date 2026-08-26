@@ -3,6 +3,9 @@
 //! See `AGENTS.md` in this directory. Engine: `packages/xylitol-tui`.
 
 pub(crate) mod activity_fold;
+/// P2 无头产品帧挂载面（package-tui-testing 契约）：
+/// SceneBuilder 流式脚本事件 → 真实 UiRoot 渲染 → 剥离 ANSI 的纯文本帧 + 语义 dump。
+pub use activity_fold::scene::{SceneBuilder, SemanticDump};
 mod ask_host;
 mod bridge;
 mod commands;

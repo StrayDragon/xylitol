@@ -150,3 +150,8 @@
     当 折叠态读取 bash、read、write 三类参数人话摘要
     那么 bash 前缀 $ 且 read 附行号区间且 write 为纯路径不带名前缀
     并且 缺 path 时用三点占位且不回退完整 args JSON
+
+  @req:att10 @executable
+  场景: scrollback-block-gap-headless
+    当 以场景构建器渲染相邻的助手块与工具块（宽 80）
+    那么 相邻块之间至少一行空行分隔且不粘连成墙
