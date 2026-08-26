@@ -827,3 +827,107 @@ fn then_html_block_text(sess: &XySessionStore, file: String, text: String) {
 async fn when_append_bash_record(sess: &XySessionStore, cmd: String, out: String) {
     append_bash_execution(sess, &cmd, &out).await;
 }
+
+// ---- sc1 / sc2 / s16：CWD 校验三面（load_validated 同一 seam）----
+// sc3/sc4 属呈现与 CLI/RPC 接线条款，生产暂无调用方，维持 @human。
+
+#[when("创建存储于目录 {cwd:string} 的新会话 {id:string}")]
+async fn when_create_with_cwd(sess: &XySessionStore, cwd: String, id: String) {
+    sess.ensure_mgr();
+    let mgr = sess.mgr.borrow().as_ref().unwrap().clone();
+    let _ = mgr.create(&id, Some(&cwd), None).await;
+    sess.current_id.replace(Some(id.clone()));
+}
+
+#[then("校验加载 {id:string} 回退 {fb:string} 成功且非空")]
+async fn then_cwd_validate_ok(sess: &XySessionStore, id: String, fb: String) {
+    let mgr = sess.mgr.borrow().as_ref().unwrap().clone();
+    let entries = mgr
+        .load_validated(&id, &fb)
+        .await
+        .unwrap_or_else(|e| panic!("sc1: fallback must rescue, got {e}"));
+    assert!(
+        !entries.is_empty(),
+        "sc1: validated load must return entries"
+    );
+}
+
+#[then("校验加载 {id:string} 回退 {fb:string} 失败并提及 {a:string} 与 {b:string}")]
+async fn then_cwd_validate_err_both(
+    sess: &XySessionStore,
+    id: String,
+    fb: String,
+    a: String,
+    b: String,
+) {
+    let mgr = sess.mgr.borrow().as_ref().unwrap().clone();
+    let err = mgr
+        .load_validated(&id, &fb)
+        .await
+        .expect_err("sc2: both missing must fail");
+    let msg = err.to_string();
+    assert!(msg.contains(&a), "sc2: stored cwd in message: {msg}");
+    assert!(msg.contains(&b), "sc2: fallback cwd in message: {msg}");
+}
+
+// ---- s19：toolResult 以 toolCallId 键持久化（对齐 pi）----
+
+#[when("向会话追加关联 {call_id:string} 的工具结果消息 {text:string}")]
+async fn when_append_tool_result(sess: &XySessionStore, call_id: String, text: String) {
+    use xylitol::protocol::message::{AgentMessage, AgentPart};
+    sess.ensure_mgr();
+    let id = sess.current_id.borrow().clone().expect("current session");
+    let mgr = sess.mgr.borrow().as_ref().unwrap().clone();
+    let n = mgr.load(&id).await.unwrap_or_default().len();
+    let am = AgentMessage::tool_result(call_id, "read", vec![AgentPart::text(text)], false);
+    let entry = SessionEntry::Message(MessageEntry {
+        base: EntryBase {
+            entry_type: "message".into(),
+            id: format!("tool-{n}"),
+            parent_id: None,
+            timestamp: 1704067200000,
+        },
+        message: serde_json::to_value(&am).expect("serialize AgentMessage"),
+    });
+    mgr.append_with_id(&id, &entry).await.unwrap();
+}
+
+#[then("会话 {id:string} 的磁盘行含 toolCallId 且不含 toolUseId")]
+async fn then_tool_call_id_key(sess: &XySessionStore, id: String) {
+    let p = session_file(&sess_dir(sess), &id);
+    let body = std::fs::read_to_string(&p).unwrap();
+    let hit = body
+        .lines()
+        .find(|l| l.contains("\"toolResult\""))
+        .expect("s19: persisted toolResult line");
+    assert!(hit.contains("\"toolCallId\""), "s19: {hit}");
+    assert!(!hit.contains("toolUseId"), "s19: legacy key leaked: {hit}");
+}
+
+// ---- s6：分支摘要生成器边界（空切点 ⇒ 空摘要）----
+
+#[when("调用分支摘要生成于空切点集合")]
+async fn when_summary_empty_set(sess: &XySessionStore) {
+    sess.ensure_mgr();
+    let mgr = sess.mgr.borrow().as_ref().unwrap().clone();
+    let summary = mgr.generate_branch_summary(&[]);
+    sess.last_result
+        .replace(Some(Ok(format!("summary-len={}", summary.chars().count()))));
+}
+
+#[then("分支摘要为空字符串")]
+async fn then_summary_empty(sess: &XySessionStore) {
+    let text = {
+        let b = sess.last_result.borrow();
+        let r = b.as_ref().expect("summary captured");
+        match r {
+            Ok(t) => t.clone(),
+            Err(e) => panic!("s6: {e}"),
+        }
+    };
+    assert_eq!(
+        text.trim(),
+        "summary-len=0",
+        "s6: empty input => empty output"
+    );
+}

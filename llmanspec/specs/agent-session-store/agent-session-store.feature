@@ -271,3 +271,36 @@
     当 导出会话 "doc2" 为 HTML 文件 "blocks.html"
     那么 HTML 文件 "blocks.html" 含可读块文本 "$ make test"
     并且 HTML 文件 "blocks.html" 含可读块文本 "构建通过"
+
+  @req:sc1 @executable
+  场景: resume-fallback-cwd-rescues
+    假如 会话存储目录已初始化
+    当 创建存储于目录 "/definitely-missing/xylitol-cwd" 的新会话 "migrated"
+    并且 向会话追加用户消息 "带上我的历史"
+    那么 校验加载 "migrated" 回退 "." 成功且非空
+
+  @req:s16 @executable
+  场景: stored-cwd-accessible-loads
+    假如 会话存储目录已初始化
+    当 创建存储于目录 "." 的新会话 "native"
+    并且 向会话追加用户消息 "本地直接恢复"
+    那么 校验加载 "native" 回退 "." 成功且非空
+
+  @req:sc2 @executable
+  场景: cwd-error-carries-both-paths
+    假如 会话存储目录已初始化
+    当 创建存储于目录 "/definitely-missing/xylitol-cwd" 的新会话 "lost"
+    那么 校验加载 "lost" 回退 "/also-missing/fallback" 失败并提及 "/definitely-missing/xylitol-cwd" 与 "/also-missing/fallback"
+
+  @req:s19 @executable
+  场景: tool-result-persists-tool-call-id-key
+    假如 会话存储目录已初始化
+    当 创建一个新会话 "tools"
+    当 向会话追加关联 "call-1" 的工具结果消息 "ok"
+    那么 会话 "tools" 的磁盘行含 toolCallId 且不含 toolUseId
+
+  @req:s6 @executable
+  场景: branch-summary-empty-input-empty-output
+    假如 会话存储目录已初始化
+    当 调用分支摘要生成于空切点集合
+    那么 分支摘要为空字符串
