@@ -192,3 +192,46 @@
     并且 为最后一条记录设置标签 "重要"
     并且 清除该记录的标签
     那么 该记录没有标签
+
+  @req:s12 @executable
+  场景: delayed-header-flush-on-first-append
+    假如 会话存储目录已初始化
+    当 创建一个新会话 "lazy"
+    那么 会话 "lazy" 的磁盘 JSONL 尚不存在
+    当 向会话追加用户消息 "hello"
+    那么 会话 "lazy" 的磁盘 JSONL 已存在且包含 "hello"
+
+  @req:s9 @executable
+  场景: fork-copies-cutoff-and-summary
+    假如 存在会话 "parent" 包含 6 条记录
+    当 在记录 3 处分叉创建会话 "child"
+    那么 会话 "child" 包含一个 branch_summary 记录
+    并且 会话 "child" 包含文本 "message 2"
+    并且 会话 "child" 不含文本 "message 5"
+
+  @req:s10 @executable
+  场景: branch-summary-content
+    假如 存在会话 "parent" 包含 6 条记录
+    当 在记录 4 处分叉创建会话 "child"
+    那么 会话 "child" 的 branch_summary 摘要包含 "message 4"
+    并且 会话 "child" 不含文本 "message 5"
+
+  @req:s11 @executable
+  场景: fork-session-returns-child-id
+    假如 存在会话 "parent" 包含 4 条记录
+    当 在记录 2 处分叉创建会话 "kid"
+    那么 会话 "kid" 包含文本 "message 1"
+    并且 会话 "kid" 包含一个 branch_summary 记录
+
+  @req:s21 @executable
+  场景: list-resilient-to-corrupt-file
+    假如 存在会话 "good" 包含 2 条记录
+    当 目录中植入损坏的会话文件 broken.jsonl
+    当 列出所有会话
+    那么 结果包含 "good"
+
+  @req:s22 @executable
+  场景: timestamps-u64-ms
+    假如 存在会话 "ts1" 包含 2 条记录
+    当 加载会话 "ts1"
+    那么 会话 "ts1" 的 JSONL 时间戳均为 u64 毫秒
