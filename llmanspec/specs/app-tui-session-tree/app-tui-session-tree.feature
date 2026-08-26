@@ -13,10 +13,6 @@
   场景: live-travel-via-driver
     - 产品双 Esc 会话树 MUST 渲染当前 session 的 MessageHistory 活树（经 Driver::session_tree(MessageHistory) 映射为包 TreeNode，含 kind）；Enter 选中节点时 MUST 调用 Driver::travel_session_tree(MessageHistory, id)，按返回的 SessionTreeTravel 关闭树、预填 editor（仅当 editor_text 有值）、并重建/刷新 transcript 与后续提交 leaf 语义；MUST NOT 再使用 c491 假树样例作为唯一数据源；filter/fold/fork/label 见本 capability 其余 requirement。
 
-  @req:ast3 @human
-  场景: demo-live-session-tree
-    - 在产品真 session 图接线前，packages/xylitol-tui agent_demo MUST 维护可变 session_tree：用户提交、工具事件与助手回复结束 MUST 在当前 history leaf 下挂对应节点并推进 leaf；双 Esc 打开的树 MUST 渲染该活树而非仅静态样例。
-
   @req:ast4 @human
   场景: demo-travel-pi-semantics
     - agent_demo 在会话树 Enter travel 时：若选中节点 kind 为 user，则 MUST 将 history leaf 设为该节点的父（根 user 则回到无叶/约定根策略）、MUST 用该 user 正文预填编辑器（可剥 steer 前缀）、MUST 重建 transcript 为 root→父 路径且 MUST NOT 纳入被选 user 及其后线性回复；若选中非 user，则 MUST 将 leaf 设为选中 id、MUST 重建 root→选中路径、MUST NOT 因 travel 预填 user 正文；完成后 status MUST 回到空闲（无 spinner）；重建后 MUST 以可滚 ScrollNotice（滚动提示）行尾随 history @ 通知（完整 selected/leaf/path 文案），MUST NOT 把该通知插在 transcript 条目最前。
@@ -56,10 +52,6 @@
   @req:ast13 @human
   场景: debug-scene-tree-fixture
     - 经 /debug session-tree-multiturn 或 /debug session-tree-labeled 装载后，产品双 Esc 打开的 MessageHistory 树 MUST 非空且可见 fixture user 正文；session-tree-labeled MUST 使至少一节点 annotation 有值以便 labeled-only 过滤可验。
-
-  @req:ast14 @human
-  场景: session-tree-e2e-pointer
-    - 产品会话树 Search/Help 与 Shift+L 行为 MUST 有 tests/tui_e2e 产品 Fake PTY 覆盖（见 test-qa-gate qg05）；本 requirement 为验收指针，不另增运行时行为。
 
   @req:ast15 @human
   场景: travel-notice-trailing

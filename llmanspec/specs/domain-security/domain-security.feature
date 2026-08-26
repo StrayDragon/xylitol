@@ -35,7 +35,7 @@
 
   @req:r64 @human
   场景: Permission 配置结构
-    - System MUST 定义 PermissionConfig 结构（自 SandboxConfig 重命名），含 enabled、backend（PermissionBackend，当前仅 Glob）、filesystem（read_allowed、write_allowed、write_denied）、network（allowed_domains、denied_domains）、process（allowed_paths），可从 config.yaml security.permission 键加载（自 security.sandbox 重命名）。
+    - System MUST 定义 PermissionConfig 结构，含 enabled、backend（PermissionBackend，当前仅 Glob）、filesystem（read_allowed、write_allowed、write_denied）、network（allowed_domains、denied_domains）、process（allowed_paths），可从 config.yaml security.permission 键加载。
 
   @req:r65 @human
   场景: 文件系统权限检查
