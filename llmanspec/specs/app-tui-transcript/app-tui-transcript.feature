@@ -136,3 +136,11 @@
   @req:att34 @human
   场景: cluster-split-assistant-body
     - 簇边界 MUST 以已可展示的助手正文划分：正文第一个非空白字符 MUST 封口上一打开簇。Thinking、工具、Ask、Diff、Todo、Compaction MUST NOT 单独切簇。同一轮中途再思考仍留在打开簇内，簇头措辞见 att24。同一条目序下 live 与 resume/rebuild 切分 MUST 同构。
+
+  @req:att19 @executable
+  场景: fold-glyph-unicode-and-ascii-fallback
+    假如 折叠字形环境未指定（默认 Unicode 集）
+    当 读取折叠与展开字形
+    那么 折叠为 ▸ 展开为 ▾ 且各占单列
+    并且 切换环境变量 XYLITOL_TUI_GLYPH_SET=ascii 并重新读取
+    并且 折叠回退为 > 展开回退为 v 且各占单列
