@@ -56,4 +56,6 @@
 
 包侧四层：`packages/xylitol-tui/AGENTS.md` + skill `test-tui-harness`。排障：`xylitol-inspect-runtime-logs`（勿整文件灌 log）。新增应用面：`l8ng-write-surface`。
 
+应用面无头帧挂载（BDD 直驱真实渲染）：`SceneBuilder`（经 `xylitol::app::tui` 导出；契约 `package-tui-testing` tt08）。
+
 live 只进 scrollback；历史/分叉以会话树为准。不做 Codex TranscriptView；不做运行时 Settings/Plate 改配置；**不**绑定 Ctrl+P 打开 Command Plate stub。
