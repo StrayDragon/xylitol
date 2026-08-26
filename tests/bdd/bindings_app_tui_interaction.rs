@@ -56,3 +56,41 @@ fn test_att32_unified_hit_table(tui_interaction: TuiInteraction) {}
     name = "expandable-block-fold-summary-and-chords-headless"
 )]
 fn test_att7_expandable_summary_chords(tui_interaction: TuiInteraction) {}
+
+// ── app-tui-input: session-tree slot key family ──
+
+#[scenario(
+    path = "llmanspec/specs/app-tui-input/app-tui-input.feature",
+    name = "session-tree-filter-keys-headless"
+)]
+fn test_ati22_tree_filter_keys(tui_interaction: TuiInteraction) {}
+
+#[scenario(
+    path = "llmanspec/specs/app-tui-input/app-tui-input.feature",
+    name = "session-tree-fold-keys-headless"
+)]
+fn test_ati24_tree_fold_keys(tui_interaction: TuiInteraction) {}
+
+#[scenario(
+    path = "llmanspec/specs/app-tui-input/app-tui-input.feature",
+    name = "session-tree-fork-key-headless"
+)]
+fn test_ati25_tree_fork_key(tui_interaction: TuiInteraction) {}
+
+#[scenario(
+    path = "llmanspec/specs/app-tui-input/app-tui-input.feature",
+    name = "session-tree-cycle-backward-key-headless"
+)]
+fn test_ati26_cycle_backward(tui_interaction: TuiInteraction) {}
+
+#[scenario(
+    path = "llmanspec/specs/app-tui-input/app-tui-input.feature",
+    name = "session-tree-label-keys-headless"
+)]
+fn test_ati27_label_keys(tui_interaction: TuiInteraction) {}
+
+#[scenario(
+    path = "llmanspec/specs/app-tui-input/app-tui-input.feature",
+    name = "thinking-cycle-not-bound-editor-slot-headless"
+)]
+fn test_ati36_no_thinking_cycle(tui_interaction: TuiInteraction) {}

@@ -993,6 +993,41 @@ impl UiRoot {
         }
     }
 
+    // ── headless interaction fixture surface (`InteractionBdd`) ──
+
+    pub(crate) fn slot_is_tree(&self) -> bool {
+        matches!(&self.slot, EditorSlot::Tree(_))
+    }
+
+    pub(crate) fn tree_select(&mut self, id: &str) -> bool {
+        match &mut self.slot {
+            EditorSlot::Tree(tree) => tree.select_id(id),
+            _ => false,
+        }
+    }
+
+    pub(crate) fn tree_label_editing(&self) -> bool {
+        match &self.slot {
+            EditorSlot::Tree(tree) => tree.is_label_editing(),
+            _ => false,
+        }
+    }
+
+    pub(crate) fn tree_node_folded(&self, id: &str) -> bool {
+        match &self.slot {
+            EditorSlot::Tree(tree) => tree.is_folded(id),
+            _ => false,
+        }
+    }
+
+    pub(crate) fn pending_tree_fork(&self) -> Option<String> {
+        self.pending.tree_fork.clone()
+    }
+
+    pub(crate) fn pending_tree_label(&self) -> Option<(String, Option<String>)> {
+        self.pending.tree_label.clone()
+    }
+
     #[cfg(test)]
     pub fn tree_search_query_for_test(&self) -> &str {
         match &self.slot {

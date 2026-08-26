@@ -9,7 +9,8 @@ use crate::prelude::*;
 use crossterm::event::{KeyCode, KeyEvent, KeyEventKind, KeyEventState, KeyModifiers};
 use rstest::fixture;
 use rstest_bdd_macros::{then, when};
-use xylitol::app::tui::{FoldTarget, InteractionBdd, SceneBuilder};
+use xylitol::app::tui::{FoldTarget, InteractionBdd, SceneBuilder, UiModel};
+use xylitol_tui::TreeNode;
 
 /// Shared state for interaction scenes.
 pub struct TuiInteraction {
@@ -518,5 +519,177 @@ fn then_collapsed_summary_and_chord_hints(tui_interaction: &TuiInteraction) {
     assert!(
         frame.contains("(Alt+E)"),
         "tool chord hint is a full parenthesised chord"
+    );
+}
+
+// ── session-tree slot key family (ati22–ati27 / ati36) ──
+
+/// Decode chord specs like `Ctrl+Shift+O` / `Alt+Right` / `Esc` / `Tab`.
+fn parse_chord(spec: &str) -> KeyEvent {
+    let mut modifiers = KeyModifiers::NONE;
+    let mut code = KeyCode::Null;
+    for part in spec.split('+') {
+        match part.to_ascii_lowercase().as_str() {
+            "ctrl" => modifiers |= KeyModifiers::CONTROL,
+            "alt" => modifiers |= KeyModifiers::ALT,
+            "shift" => modifiers |= KeyModifiers::SHIFT,
+            "esc" => code = KeyCode::Esc,
+            "enter" => code = KeyCode::Enter,
+            "left" => code = KeyCode::Left,
+            "right" => code = KeyCode::Right,
+            "up" => code = KeyCode::Up,
+            "down" => code = KeyCode::Down,
+            "tab" => code = KeyCode::Tab,
+            other => code = KeyCode::Char(other.chars().next().expect("non-empty chord segment")),
+        }
+    }
+    KeyEvent {
+        code,
+        modifiers,
+        kind: KeyEventKind::Press,
+        state: KeyEventState::NONE,
+    }
+}
+
+fn tree_roots() -> Vec<TreeNode> {
+    let parent = TreeNode::new("p1", "parent branch").with_child(TreeNode::new("c1", "child leaf"));
+    vec![TreeNode::new("root", "main session"), parent]
+}
+
+#[when("打开样例会话树并挂载交互面")]
+fn when_mount_tree(tui_interaction: &TuiInteraction) {
+    let mut fx = InteractionBdd::from_model(UiModel::new());
+    fx.mount_tree(tree_roots(), Some("root"));
+    assert!(fx.is_tree_slot(), "tree slot must own the editor area");
+    *tui_interaction.fx.borrow_mut() = Some(fx);
+}
+
+#[when("在树槽按下和弦 \"{chord}\"")]
+fn when_press_chord_in_tree(tui_interaction: &TuiInteraction, chord: String) {
+    let mut fx = tui_interaction.fx.borrow_mut();
+    fx.as_mut()
+        .expect("fixture mounted")
+        .handle_key(parse_chord(&chord));
+}
+
+#[when("选中节点 \"{id}\" 再收到和弦 \"{chord}\"")]
+fn when_select_then_press(tui_interaction: &TuiInteraction, id: String, chord: String) {
+    let mut fx = tui_interaction.fx.borrow_mut();
+    let fx = fx.as_mut().expect("fixture mounted");
+    assert!(
+        fx.select_tree_node(&id),
+        "node `{id}` must exist in the tree"
+    );
+    fx.handle_key(parse_chord(&chord));
+}
+
+#[then("树过滤模式为 \"{mode}\"")]
+fn then_filter_mode_is(tui_interaction: &TuiInteraction, mode: String) {
+    let fx = tui_interaction.fx.borrow();
+    let got = fx
+        .as_ref()
+        .expect("fixture mounted")
+        .tree_filter_name()
+        .expect("tree slot owns the area");
+    assert_eq!(got, mode, "FilterMode mismatch");
+}
+
+#[then("思考折叠默认态未被树槽过滤键触碰")]
+fn then_thinking_default_untouched_by_tree_keys(tui_interaction: &TuiInteraction) {
+    let fx = tui_interaction.fx.borrow();
+    let fx = fx.as_ref().expect("fixture mounted");
+    assert!(!fx.fold().thinking_expanded);
+    assert!(fx.fold().thinking_overrides.is_empty());
+}
+
+#[then("该节点子会话行被收起")]
+fn then_node_folded(tui_interaction: &TuiInteraction) {
+    let fx = tui_interaction.fx.borrow();
+    assert!(
+        fx.as_ref().expect("fixture mounted").tree_node_folded("p1"),
+        "parent children must be folded after Ctrl+Left"
+    );
+}
+
+#[then("该节点子会话行重新展开")]
+fn then_node_unfolded(tui_interaction: &TuiInteraction) {
+    let fx = tui_interaction.fx.borrow();
+    assert!(
+        !fx.as_ref().expect("fixture mounted").tree_node_folded("p1"),
+        "parent children must be visible after Alt+Right"
+    );
+}
+
+#[then("fork 请求交给主机且编辑器未收到字面输入")]
+fn then_fork_pending_editor_clean(tui_interaction: &TuiInteraction) {
+    let fx = tui_interaction.fx.borrow();
+    let fx = fx.as_ref().expect("fixture mounted");
+    assert_eq!(
+        fx.pending_tree_fork(),
+        Some("root".to_string()),
+        "Shift+F on a node hands its id to the host pump"
+    );
+    assert!(
+        fx.editor_display_text().is_empty(),
+        "editor must not receive the literal keystroke"
+    );
+}
+
+#[when("挂载空模型的编辑器交互面")]
+fn when_mount_empty_editor(tui_interaction: &TuiInteraction) {
+    *tui_interaction.fx.borrow_mut() = Some(InteractionBdd::from_model(UiModel::new()));
+}
+
+#[when("在编辑器槽按下和弦 \"{chord}\"")]
+fn when_press_chord_in_editor(tui_interaction: &TuiInteraction, chord: String) {
+    let mut fx = tui_interaction.fx.borrow_mut();
+    fx.as_mut()
+        .expect("fixture mounted")
+        .handle_key(parse_chord(&chord));
+}
+
+#[then("标签编辑在树内打开且编辑器未收到字面输入")]
+fn then_label_edit_open(tui_interaction: &TuiInteraction) {
+    let fx = tui_interaction.fx.borrow();
+    let fx = fx.as_ref().expect("fixture mounted");
+    assert!(
+        fx.tree_label_editing(),
+        "Shift+L opens the in-tree label editor"
+    );
+    assert!(fx.editor_display_text().is_empty());
+}
+
+#[then("树仍开着且无标签写入动作排入")]
+fn then_tree_open_no_label_writeback(tui_interaction: &TuiInteraction) {
+    let fx = tui_interaction.fx.borrow();
+    let fx = fx.as_ref().expect("fixture mounted");
+    assert!(
+        fx.is_tree_slot(),
+        "Esc during label edit cancels edit, not the tree"
+    );
+    assert!(!fx.tree_label_editing());
+    assert!(fx.pending_tree_label().is_none());
+}
+
+#[then("编辑器文本保持为空且仍在编辑器槽")]
+fn then_editor_slot_untouched(tui_interaction: &TuiInteraction) {
+    let fx = tui_interaction.fx.borrow();
+    let fx = fx.as_ref().expect("fixture mounted");
+    assert!(!fx.is_tree_slot(), "still the editor slot");
+    assert!(fx.editor_display_text().is_empty());
+}
+
+#[then("思考折叠默认态翻转且全帧不出现模型列表")]
+fn then_thinking_flipped_no_models_panel(tui_interaction: &TuiInteraction) {
+    let (frame, expanded) = {
+        let mut fx = tui_interaction.fx.borrow_mut();
+        let fx = fx.as_mut().expect("fixture mounted");
+        let frame = fx.render_plain(80);
+        (frame, fx.fold().thinking_expanded)
+    };
+    assert!(expanded, "Ctrl+T flips the thinking fold default");
+    assert!(
+        !frame.to_lowercase().contains("model"),
+        "no model picker panel may appear: {frame}"
     );
 }

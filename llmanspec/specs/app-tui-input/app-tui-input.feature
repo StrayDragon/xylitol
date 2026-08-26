@@ -172,3 +172,50 @@
   @req:ati45 @human
   场景: same-text-second-user-visible
     - 产品 TUI 在用户连续提交相同正文时 MUST 让第二次提问在 transcript 中作为独立用户气泡可见（含 busy 插话注入）；MUST NOT 仅因与上一条 UiEntry::User 正文相等而跳过写入。
+
+  @req:ati22 @executable
+  场景: session-tree-filter-keys-headless
+    当 打开样例会话树并挂载交互面
+    当 在树槽按下和弦 "Ctrl+U"
+    那么 树过滤模式为 "user-only"
+    并且 思考折叠默认态未被树槽过滤键触碰
+    当 在树槽按下和弦 "Ctrl+A"
+    那么 树过滤模式为 "all"
+
+  @req:ati24 @executable
+  场景: session-tree-fold-keys-headless
+    当 打开样例会话树并挂载交互面
+    当 选中节点 "p1" 再收到和弦 "Ctrl+Left"
+    那么 该节点子会话行被收起
+    当 选中节点 "p1" 再收到和弦 "Alt+Right"
+    那么 该节点子会话行重新展开
+
+  @req:ati25 @executable
+  场景: session-tree-fork-key-headless
+    当 打开样例会话树并挂载交互面
+    当 选中节点 "root" 再收到和弦 "Shift+F"
+    那么 fork 请求交给主机且编辑器未收到字面输入
+
+  @req:ati26 @executable
+  场景: session-tree-cycle-backward-key-headless
+    当 打开样例会话树并挂载交互面
+    当 在树槽按下和弦 "Ctrl+Shift+O"
+    那么 树过滤模式为 "all"
+    当 在树槽按下和弦 "Ctrl+Shift+O"
+    那么 树过滤模式为 "labeled-only"
+
+  @req:ati27 @executable
+  场景: session-tree-label-keys-headless
+    当 打开样例会话树并挂载交互面
+    当 选中节点 "root" 再收到和弦 "Shift+L"
+    那么 标签编辑在树内打开且编辑器未收到字面输入
+    当 在树槽按下和弦 "Esc"
+    那么 树仍开着且无标签写入动作排入
+
+  @req:ati36 @executable
+  场景: thinking-cycle-not-bound-editor-slot-headless
+    当 挂载空模型的编辑器交互面
+    当 在编辑器槽按下和弦 "Shift+Tab"
+    那么 编辑器文本保持为空且仍在编辑器槽
+    当 在编辑器槽按下和弦 "Ctrl+T"
+    那么 思考折叠默认态翻转且全帧不出现模型列表

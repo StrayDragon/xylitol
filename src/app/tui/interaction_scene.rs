@@ -19,8 +19,9 @@ use crate::app::core::driver::XyEvent;
 use crate::app::tui::activity_fold::scene::SemanticDump;
 use crate::app::tui::activity_fold::strip_ansi_live_window;
 use crate::app::tui::bridge::{UiEntry, UiModel, apply_xy_event};
-use crate::app::tui::layout::UiRoot;
+use crate::app::tui::layout::{FilterMode, UiRoot};
 use crate::app::tui::widgets::{FoldHitTable, ScrollbackFold};
+use xylitol_tui::TreeNode;
 
 /// Headless keyboard/mouse interaction surface over a product `UiRoot`.
 ///
@@ -31,6 +32,8 @@ use crate::app::tui::widgets::{FoldHitTable, ScrollbackFold};
 pub struct InteractionBdd {
     model: UiModel,
     root: UiRoot,
+    /// Backing flag for `on_ctrl_c` (idle empty-editor Ctrl+C quits the TUI).
+    quit_flag: std::sync::Arc<std::sync::atomic::AtomicBool>,
 }
 
 impl InteractionBdd {
@@ -38,7 +41,11 @@ impl InteractionBdd {
     pub fn from_model(model: UiModel) -> Self {
         let mut root = UiRoot::new();
         root.apply_ui_model(&model);
-        Self { model, root }
+        Self {
+            model,
+            root,
+            quit_flag: std::sync::Arc::new(std::sync::atomic::AtomicBool::new(false)),
+        }
     }
 
     /// Tall transcript pane for hit geometry (`scroll_top = 0`): mouse rows in
@@ -56,8 +63,19 @@ impl InteractionBdd {
         self
     }
 
-    /// Press a decoded key through the product chord router.
+    /// Press a decoded key through the product pipeline: pre-focus
+    /// `app.clear` / `app.interrupt` listeners first (same order as
+    /// `install_ui_root_key_listeners`), then focus/slot routing.
     pub fn handle_key(&mut self, key: KeyEvent) -> &mut Self {
+        use crate::app::tui::keybindings::matches_binding;
+        if matches_binding(&key, "app.clear") {
+            let flag = self.quit_flag.clone();
+            self.root.on_ctrl_c(&flag);
+            return self;
+        }
+        if matches_binding(&key, "app.interrupt") && self.root.on_escape() {
+            return self;
+        }
         self.root.handle_key(key);
         self
     }
@@ -113,5 +131,65 @@ impl InteractionBdd {
     /// Live model entries for identity checks (`UiEntry` shapes).
     pub fn entries(&self) -> &[UiEntry] {
         &self.model.entries
+    }
+
+    // ── session-tree slot scenes (ati22–ati27) ──
+
+    /// Open the product tree slot over a supplied sample (same seam the
+    /// effects use: [`UiRoot::mount_session_tree`]).
+    pub fn mount_tree(&mut self, roots: Vec<TreeNode>, active: Option<&str>) -> &mut Self {
+        self.root.mount_session_tree(roots, active);
+        self
+    }
+
+    /// Whether the tree slot currently owns the editor area.
+    pub fn is_tree_slot(&self) -> bool {
+        self.root.slot_is_tree()
+    }
+
+    /// Active `FilterMode` as its binding-table name (`default` / `no-tools` /
+    /// `user-only` / `labeled-only` / `all`); `None` outside the tree slot.
+    pub fn tree_filter_name(&self) -> Option<&'static str> {
+        if !self.is_tree_slot() {
+            return None;
+        }
+        Some(match self.root.tree_filter_for_test() {
+            FilterMode::Default => "default",
+            FilterMode::NoTools => "no-tools",
+            FilterMode::UserOnly => "user-only",
+            FilterMode::LabeledOnly => "labeled-only",
+            FilterMode::All => "all",
+        })
+    }
+
+    /// Select a node by id (`TreeSlot::select_id`).
+    pub fn select_tree_node(&mut self, id: &str) -> bool {
+        self.root.tree_select(id)
+    }
+
+    /// Whether a parent node's children are folded.
+    pub fn tree_node_folded(&self, id: &str) -> bool {
+        self.root.tree_node_folded(id)
+    }
+
+    /// Whether a node-label edit session is open (Shift+L).
+    pub fn tree_label_editing(&self) -> bool {
+        self.root.tree_label_editing()
+    }
+
+    /// Fork request handed to the host pump (`app.session.fork`).
+    pub fn pending_tree_fork(&self) -> Option<String> {
+        self.root.pending_tree_fork()
+    }
+
+    /// Label write-back request handed to the host pump (`tui.select.confirm`
+    /// inside a label edit).
+    pub fn pending_tree_label(&self) -> Option<(String, Option<String>)> {
+        self.root.pending_tree_label()
+    }
+
+    /// Editor display buffer (may contain `[paste #N …]` markers).
+    pub fn editor_display_text(&self) -> String {
+        self.root.editor_display_text()
     }
 }
