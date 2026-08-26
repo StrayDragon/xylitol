@@ -5,11 +5,11 @@
 
 功能: protocol-app
 
-  @req:ip1 @human
+  @manual @req:ip1 @human
   场景: Command 枚举
     - protocol MUST 定义 Command 枚举，至少覆盖 Run、Cancel、SwitchModel、SetThinking、ListCommands、ApproveTool、AnswerQuestion、SwitchSession、GetMessages、ExportHtml、ExportJsonl、ImportJsonl；每个 client→core 消息 MUST 反序列化为此枚举。
 
-  @req:ip2 @human
+  @req:ip2 @human @manual
   场景: Event 枚举
     - protocol/ MUST 定义 Event 枚举，至少覆盖 TurnStart、Delta、ToolCall、ApprovalRequired、QuestionRequired、TurnEnd、Usage；每个 core→client 消息 MUST 反序列化为此枚举。
 
@@ -17,7 +17,7 @@
   场景: 信封与错误
     - 产品 unary 应答 MUST 使用结果形态：成功则 ok 为真并带 value，失败则 ok 为假并带稳定 code 与 details。合法信封的 HTTP 状态 MUST 表示载体成功；非法信封 MUST 失败。MUST NOT 以 JSON-RPC 2.0 数字码为产品错误模型。旧 REST {code,msg,data} 形态 MUST NOT 再作为产品 TUI 路径。
 
-  @req:ip6 @human
+  @req:ip6 @human @manual
   场景: Subscribe 命令
     - protocol/ MUST 定义 Command::Subscribe {session_id, last_seq} 用于 WS 订阅，Event::Subscribed {session_id, seq} 作为确认。
 
@@ -25,7 +25,7 @@
   场景: Event 变体完整
     - protocol::Event MUST 覆盖全部 AgentEvent 变体：TurnStart、TurnEnd、MessageStart、MessageEnd、MessageUpdate、ToolExecutionUpdate、CompactionEnd、TextDelta、ThinkingDelta；ThinkingDelta MUST 往返 XyEvent::ThinkingDelta 且不得降级为空 MessageUpdate。
 
-  @req:ip8 @human
+  @req:ip8 @human @manual
   场景: 会话命令分发
     - RPC dispatch MUST 实现 SwitchSession：经 SessionStore 校验目标会话存在并切换上下文；GetMessages 返回已加载 SessionEntry 记录；ExportJsonl 与 ImportJsonl 委托会话导出/导入实现；MUST NOT 交付 stub 或仅字符串实现。
 
@@ -109,7 +109,7 @@
   场景: 订阅与握手版本
     - 每条线协议消息 MUST 归属某个 session。客户端 MUST 能以 session 与 last_seq 订阅并续传；journal 截断超过 last_seq 时 MUST 发出 resync。握手 MUST 携带协议版本；对不上 MUST 断开且 MUST NOT 降级。现行 ServerHello 版本字段在改名前 MUST 视为同一握手语义，MUST NOT 同时维护两套版本协商。
 
-  @req:pa-cs5 @human
+  @req:pa-cs5 @human @manual
   场景: 闭集缺口禁旁路
     - 协议闭集 MUST 能表达：host 侧重装（MCP / prompt / 技能）、项目信任持久化、session 写者与只读、导出回传内容、人 bash 直播增量。上述语义在尚未进入 Command/Event 枚举前，MUST NOT 用新的 REST 产品动词或第二套远程专用词表冒充；MUST NOT 要求本 requirement 单独新增运行时枚举变体。
 
