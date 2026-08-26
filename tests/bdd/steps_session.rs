@@ -716,3 +716,114 @@ async fn then_timestamps_u64_ms(sess: &XySessionStore, id: String) {
         );
     }
 }
+
+// ---- ex1–ex4：导出/导入四连（SessionExporter 纯协作者直驱）----
+
+fn tmp_root(sess: &XySessionStore) -> std::path::PathBuf {
+    sess_dir(sess)
+        .parent()
+        .map(std::path::Path::to_path_buf)
+        .expect("leaked tempdir root")
+}
+
+fn exporter() -> xylitol::SessionExporter {
+    use xylitol::infra::export::StdExportIo;
+    xylitol::SessionExporter::new(Some(std::sync::Arc::new(StdExportIo::new())))
+}
+
+async fn append_bash_execution(sess: &XySessionStore, cmd: &str, out: &str) {
+    sess.ensure_mgr();
+    let id = sess.current_id.borrow().clone().expect("current session");
+    let mgr = sess.mgr.borrow().as_ref().unwrap().clone();
+    let n = mgr.load(&id).await.unwrap_or_default().len();
+    let entry = SessionEntry::Message(MessageEntry {
+        base: EntryBase {
+            entry_type: "message".into(),
+            id: format!("bash-{n}"),
+            parent_id: None,
+            timestamp: 1704067200000,
+        },
+        message: serde_json::json!({
+            "role": "bashExecution",
+            "command": cmd,
+            "output": out
+        }),
+    });
+    mgr.append_with_id(&id, &entry).await.unwrap();
+}
+
+#[when("导出会话 {id:string} 为 JSONL 文件 {file:string}")]
+async fn when_export_jsonl(sess: &XySessionStore, id: String, file: String) {
+    sess.ensure_mgr();
+    let mgr = sess.mgr.borrow().as_ref().unwrap().clone();
+    let path = tmp_root(sess).join(&file);
+    exporter()
+        .export_to_jsonl(&mgr, &id, &path)
+        .await
+        .unwrap_or_else(|e| panic!("ex2 export jsonl: {e}"));
+}
+
+#[then("导出文件 {file:string} 包含 {text:string}")]
+fn then_export_file_contains(sess: &XySessionStore, file: String, text: String) {
+    let body = std::fs::read_to_string(tmp_root(sess).join(&file))
+        .unwrap_or_else(|e| panic!("ex2: {file}: {e}"));
+    assert!(body.contains(&text), "ex2: {text:?} missing in:\n{body}");
+}
+
+#[when("把 JSONL 文件 {file:string} 导入全新会话存储为 {id:string}")]
+async fn when_import_jsonl_fresh_store(sess: &XySessionStore, file: String, id: String) {
+    let root = tmp_root(sess);
+    let fresh = SessionManager::new(root.join("imported-sessions"));
+    let returned = exporter()
+        .import_from_jsonl(&fresh, &root.join(&file))
+        .await
+        .unwrap_or_else(|e| panic!("ex3 import jsonl: {e}"));
+    assert_eq!(returned, id, "ex3: header-reused session id must match");
+    sess.second_mgr.replace(Some(fresh));
+}
+
+#[then("导入存储中会话 {id:string} 包含文本 {text:string}")]
+async fn then_imported_has_text(sess: &XySessionStore, id: String, text: String) {
+    let mgr = sess
+        .second_mgr
+        .borrow()
+        .as_ref()
+        .expect("imported store")
+        .clone();
+    let all = serialized_entries(&mgr.load(&id).await.unwrap());
+    assert!(
+        all.iter().any(|s| s.contains(&text)),
+        "ex3: imported entries must contain {text:?}:\n{}",
+        all.join("\n")
+    );
+}
+
+#[when("导出会话 {id:string} 为 HTML 文件 {file:string}")]
+async fn when_export_html(sess: &XySessionStore, id: String, file: String) {
+    sess.ensure_mgr();
+    let mgr = sess.mgr.borrow().as_ref().unwrap().clone();
+    let path = tmp_root(sess).join(&file);
+    exporter()
+        .export_to_html(&mgr, &id, &path)
+        .await
+        .unwrap_or_else(|e| panic!("ex1 export html: {e}"));
+}
+
+#[then("HTML 文件 {file:string} 含可读块文本 {text:string}")]
+fn then_html_block_text(sess: &XySessionStore, file: String, text: String) {
+    let html = std::fs::read_to_string(tmp_root(sess).join(&file))
+        .unwrap_or_else(|e| panic!("ex4: {file}: {e}"));
+    assert!(
+        html.starts_with("<!doctype html>"),
+        "standalone document required"
+    );
+    assert!(
+        html.contains(&text),
+        "ex4: readable block must contain {text:?}"
+    );
+}
+
+#[when("向会话追加 bash 执行记录（命令 {cmd:string} 输出 {out:string}）")]
+async fn when_append_bash_record(sess: &XySessionStore, cmd: String, out: String) {
+    append_bash_execution(sess, &cmd, &out).await;
+}

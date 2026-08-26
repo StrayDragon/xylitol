@@ -235,3 +235,39 @@
     假如 存在会话 "ts1" 包含 2 条记录
     当 加载会话 "ts1"
     那么 会话 "ts1" 的 JSONL 时间戳均为 u64 毫秒
+
+  @req:ex2 @executable
+  场景: export-jsonl
+    假如 会话存储目录已初始化
+    当 创建一个新会话 "src"
+    并且 向会话追加用户消息 "需求梳理"
+    当 导出会话 "src" 为 JSONL 文件 "dump.jsonl"
+    那么 导出文件 "dump.jsonl" 包含 "需求梳理"
+
+  @req:ex3 @executable
+  场景: import-jsonl-roundtrip
+    假如 会话存储目录已初始化
+    当 创建一个新会话 "src"
+    并且 向会话追加用户消息 "往来内容"
+    当 导出会话 "src" 为 JSONL 文件 "share.jsonl"
+    当 把 JSONL 文件 "share.jsonl" 导入全新会话存储为 "src"
+    那么 导入存储中会话 "src" 包含文本 "往来内容"
+
+  @req:ex1 @executable
+  场景: export-html
+    假如 会话存储目录已初始化
+    当 创建一个新会话 "doc"
+    并且 向会话追加助手消息 "结论如下"
+    当 导出会话 "doc" 为 HTML 文件 "report.html"
+    那么 导出文件 "report.html" 包含 "<!doctype html>"
+
+  @req:ex4 @executable
+  场景: html-readable-blocks
+    假如 会话存储目录已初始化
+    当 创建一个新会话 "doc2"
+    并且 向会话追加用户消息 "跑一下构建"
+    并且 向会话追加 bash 执行记录（命令 "make test" 输出 "all ok"）
+    并且 向会话追加助手消息 "构建通过"
+    当 导出会话 "doc2" 为 HTML 文件 "blocks.html"
+    那么 HTML 文件 "blocks.html" 含可读块文本 "$ make test"
+    并且 HTML 文件 "blocks.html" 含可读块文本 "构建通过"

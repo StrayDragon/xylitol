@@ -82,3 +82,27 @@ async fn test_s21_list_resilient(ws: Workspace, sess: XySessionStore) {}
     name = "timestamps-u64-ms"
 )]
 async fn test_s22_timestamps(sess: XySessionStore) {}
+
+#[scenario(
+    path = "llmanspec/specs/agent-session-store/agent-session-store.feature",
+    name = "export-jsonl"
+)]
+async fn test_ex2_export_jsonl(sess: XySessionStore) {}
+
+#[scenario(
+    path = "llmanspec/specs/agent-session-store/agent-session-store.feature",
+    name = "import-jsonl-roundtrip"
+)]
+async fn test_ex3_import_roundtrip(sess: XySessionStore) {}
+
+#[scenario(
+    path = "llmanspec/specs/agent-session-store/agent-session-store.feature",
+    name = "export-html"
+)]
+async fn test_ex1_export_html(sess: XySessionStore) {}
+
+#[scenario(
+    path = "llmanspec/specs/agent-session-store/agent-session-store.feature",
+    name = "html-readable-blocks"
+)]
+async fn test_ex4_html_blocks(sess: XySessionStore) {}

@@ -56,6 +56,8 @@ pub struct XySessionStore {
     pub last_result: RefCell<Option<Result<String, XyDriverError>>>,
     /// s12/s21/s22 原始文件断言用的会话目录。
     pub sessions_dir: RefCell<Option<std::path::PathBuf>>,
+    /// ex3：导入侧的全新存储与返回 id。
+    pub second_mgr: RefCell<Option<SessionManager>>,
 }
 impl XySessionStore {
     fn new() -> Self {
@@ -65,6 +67,7 @@ impl XySessionStore {
             current_id: RefCell::new(None),
             last_result: RefCell::new(None),
             sessions_dir: RefCell::new(None),
+            second_mgr: RefCell::new(None),
         }
     }
     /// Auto-initialize session manager if not yet set.

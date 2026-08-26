@@ -49,6 +49,8 @@ pub use crate::app::core::driver::{XyDriver, XyDriverError, XyInProcessDriver};
 #[cfg(feature = "server")]
 pub use crate::app::core::host_client::HttpWsClient;
 pub use crate::app::core::host_client::{HostClient, HostClientError, InProcessClient, MuxStream};
+/// att ex 族：无头导出/导入协作者（BDD 直驱；真身 app::core 私有链）。
+pub use crate::app::core::session_export::SessionExporter;
 pub use crate::protocol::error::{
     XyError, XyExportError, XySessionError, XySessionStoreError, XyToolError, XyTrustError,
 };
