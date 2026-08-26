@@ -277,6 +277,173 @@ fn when_press_alt_e_ctrl_t_ctrl_o(tui_interaction: &TuiInteraction) {
         .handle_key(ctrl('o'));
 }
 
+#[when("以场景构建器回放压缩事件并封轮挂载交互面")]
+fn when_mount_compaction(tui_interaction: &TuiInteraction) {
+    let mut sb = SceneBuilder::begin();
+    sb.assistant("开始整理");
+    sb.message_end();
+    let mut fx = InteractionBdd::from_model(sb.into_model());
+    fx.push_xy(XyEvent::CompactionStart {
+        reason: "threshold".into(),
+    });
+    fx.push_xy(XyEvent::CompactionEnd {
+        result: None,
+        aborted: false,
+        reason: "threshold".into(),
+        will_retry: false,
+        error_message: None,
+        summary: Some("摘要完成".into()),
+        tokens_before: Some(1200),
+    });
+    let plain = mount(&mut fx);
+    *tui_interaction.mounted_frame.borrow_mut() = plain;
+    *tui_interaction.fx.borrow_mut() = Some(fx);
+}
+
+#[when("左键单击 Compaction 块的折叠三角列")]
+fn when_click_compaction_triangle(tui_interaction: &TuiInteraction) {
+    let mut fx = tui_interaction.fx.borrow_mut();
+    let fx = fx.as_mut().expect("fixture mounted");
+    let _ = fx.render_plain(80); // refresh the registered regions
+    let hit = fx
+        .fold_hits()
+        .regions
+        .iter()
+        .find(|r| matches!(&r.target, FoldTarget::Compaction))
+        .map(|r| (r.col_start as u16, r.content_row as u16))
+        .expect("a registered compaction triangle");
+    assert!(fx.left_click(hit.0, hit.1), "compaction click must consume");
+}
+
+#[then("Compaction 全局展开态翻转")]
+fn then_compaction_global_toggled(tui_interaction: &TuiInteraction) {
+    let fx = tui_interaction.fx.borrow();
+    let fx = fx.as_ref().expect("fixture mounted");
+    assert!(
+        fx.fold().compaction_expanded,
+        "one click on the compaction triangle expands the global state"
+    );
+}
+
+#[then("工具族覆盖表仍为空且工具族默认态未变")]
+fn then_tools_family_untouched(tui_interaction: &TuiInteraction) {
+    let fx = tui_interaction.fx.borrow();
+    let fx = fx.as_ref().expect("fixture mounted");
+    assert!(fx.fold().tools_overrides.is_empty());
+    assert!(fx.fold().tools_expanded, "tools default stays open");
+}
+
+fn long_output(lines: usize) -> String {
+    (1..=lines)
+        .map(|i| format!("line-{i:02}"))
+        .collect::<Vec<_>>()
+        .join("\n")
+}
+
+#[when("以场景构建器回放多行输出的工具并封轮挂载交互面")]
+fn when_mount_long_output_tool(tui_interaction: &TuiInteraction) {
+    let mut sb = SceneBuilder::begin();
+    sb.assistant("看日志");
+    sb.message_end();
+    sb.tool_start("t-log", "bash", "/tmp/app");
+    let mut fx = InteractionBdd::from_model(sb.into_model());
+    fx.push_xy(XyEvent::ToolExecutionEnd {
+        id: "t-log".into(),
+        name: "bash".into(),
+        result: long_output(24),
+        is_error: false,
+    });
+    let plain = mount(&mut fx);
+    *tui_interaction.mounted_frame.borrow_mut() = plain;
+    *tui_interaction.fx.borrow_mut() = Some(fx);
+}
+
+#[when("点击输出的 Ctrl+O 提示带")]
+fn when_click_viewport_hint_band(tui_interaction: &TuiInteraction) {
+    let mut fx = tui_interaction.fx.borrow_mut();
+    let fx = fx.as_mut().expect("fixture mounted");
+    let _ = fx.render_plain(80); // refresh the registered regions
+    let hit = fx
+        .fold_hits()
+        .regions
+        .iter()
+        .find(|r| matches!(&r.target, FoldTarget::OutputViewport))
+        .map(|r| (r.col_start as u16, r.content_row as u16))
+        .expect("a registered output viewport hint band");
+    assert!(fx.left_click(hit.0, hit.1), "hint band click must consume");
+}
+
+#[then("提示带点击翻转输出视口全局态且与按 Ctrl+O 同构")]
+fn then_hint_band_same_state_bit_as_ctrl_o(tui_interaction: &TuiInteraction) {
+    let mut fx = tui_interaction.fx.borrow_mut();
+    let fx = fx.as_mut().expect("fixture mounted");
+    assert!(
+        fx.fold().tools_output_expanded,
+        "hint-band click expands the global viewport state"
+    );
+    // Same state bit as the keyboard chord: one press flips it back.
+    fx.handle_key(ctrl('o'));
+    assert!(!fx.fold().tools_output_expanded, "Ctrl+O flips it back");
+    fx.handle_key(ctrl('o'));
+    assert!(fx.fold().tools_output_expanded);
+}
+
+#[when("以场景构建器回放压缩加多行输出并封轮挂载交互面")]
+fn when_mount_compaction_and_long_output(tui_interaction: &TuiInteraction) {
+    let mut sb = SceneBuilder::begin();
+    sb.assistant("记录并清理");
+    sb.message_end();
+    sb.tool_start("t-read2", "read", "big.txt");
+    let mut fx = InteractionBdd::from_model(sb.into_model());
+    fx.push_xy(XyEvent::ToolExecutionEnd {
+        id: "t-read2".into(),
+        name: "read".into(),
+        result: long_output(18),
+        is_error: false,
+    });
+    fx.push_xy(XyEvent::CompactionStart {
+        reason: "threshold".into(),
+    });
+    fx.push_xy(XyEvent::CompactionEnd {
+        result: None,
+        aborted: false,
+        reason: "threshold".into(),
+        will_retry: false,
+        error_message: None,
+        summary: Some("压缩完成".into()),
+        tokens_before: Some(900),
+    });
+    let plain = mount(&mut fx);
+    *tui_interaction.mounted_frame.borrow_mut() = plain;
+    *tui_interaction.fx.borrow_mut() = Some(fx);
+}
+
+#[then("Compaction、输出提示带与块级三角登记于同一命中表且定点可点")]
+fn then_targets_share_one_hit_table(tui_interaction: &TuiInteraction) {
+    let mut fx = tui_interaction.fx.borrow_mut();
+    let fx = fx.as_mut().expect("fixture mounted");
+    // After the `when` step opened the cluster, all three remaining target
+    // kinds must live in the *same* registered table and be precisely
+    // clickable. Each click repaints, so re-locate before every click — the
+    // real engine does the same against fresh frames.
+    let locate = |fx: &mut InteractionBdd, pred: &dyn Fn(&FoldTarget) -> bool| -> (u16, u16) {
+        let _ = fx.render_plain(80);
+        fx.fold_hits()
+            .regions
+            .iter()
+            .find(|r| pred(&r.target))
+            .map(|r| (r.col_start as u16, r.content_row as u16))
+            .expect("target kind must be registered")
+    };
+
+    let compaction = locate(fx, &|t| matches!(t, FoldTarget::Compaction));
+    assert!(fx.left_click(compaction.0, compaction.1));
+    let band = locate(fx, &|t| matches!(t, FoldTarget::OutputViewport));
+    assert!(fx.left_click(band.0, band.1));
+    let block = locate(fx, &|t| matches!(t, FoldTarget::Tool(_)));
+    assert!(fx.left_click(block.0, block.1));
+}
+
 #[when("点击簇头行的摘要正文列而非三角列")]
 fn when_click_cluster_body_column(tui_interaction: &TuiInteraction) {
     let mut fx = tui_interaction.fx.borrow_mut();
@@ -335,5 +502,21 @@ fn then_frame_unchanged_after_chords(tui_interaction: &TuiInteraction) {
     assert_eq!(
         *before, now,
         "chords must not alter a collapsed storage's appearance"
+    );
+}
+
+#[then("收起块保留摘要行且展开旁注为括号完整和弦")]
+fn then_collapsed_summary_and_chord_hints(tui_interaction: &TuiInteraction) {
+    let frame = {
+        let mut fx = tui_interaction.fx.borrow_mut();
+        fx.as_mut().expect("fixture mounted").render_plain(80)
+    };
+    assert!(
+        frame.contains("Read old.rs"),
+        "collapsed block keeps a readable summary line: {frame}"
+    );
+    assert!(
+        frame.contains("(Alt+E)"),
+        "tool chord hint is a full parenthesised chord"
     );
 }
