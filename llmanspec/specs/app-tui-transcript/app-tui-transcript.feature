@@ -51,7 +51,7 @@
 
   @req:att13 @human
   场景: tool-human-summary
-    - 折叠态 tool 块 args_preview MUST 使用人类可读摘要（bash/shell → `$ {command}`；read/ls/edit → `{name} {path|…}`；write → `write {path|…}` 且有 content 时 MUST 附 `(N lines)`；read 有 offset/limit 时 MUST 附 `:start` 或 `:start-end`）。path 键 MUST 认 path/file_path/file。缺 path 时 MUST 用 `…` 占位（如 `edit …` / `write …`），MUST NOT 把完整 args JSON（含 content/edits/oldText/newText）当作默认 args_preview。历史重建 MUST 与直播路径共用同一摘要 helper。edit header MUST NOT 附加 `:N` 行域（行号在 diff 正文）。
+    - 折叠态 tool 块 args_preview MUST 使用人类可读的位置摘要（工具名由 header 单独绘制，摘要 MUST NOT 携带工具名前缀）：bash/shell → `$ {command}`；read/ls/edit/write 等取路径槽（path 键认 path/file_path/file 及 edits[0]）；read 有 offset/limit 时 MUST 附 `:start` 或 `:start-end`；edit 摘要 MUST NOT 附加行域（行号在 diff 正文）。path 缺失时 MUST 用 `...` 占位，MUST NOT 把完整 args JSON（含 content/edits/oldText/newText）当作默认 args_preview。历史重建 MUST 与直播路径共用同一摘要 helper。
 
   @req:att14 @human
   场景: write-edit-process-chrome
@@ -144,3 +144,9 @@
     那么 折叠为 ▸ 展开为 ▾ 且各占单列
     并且 切换环境变量 XYLITOL_TUI_GLYPH_SET=ascii 并重新读取
     并且 折叠回退为 > 展开回退为 v 且各占单列
+
+  @req:att13 @executable
+  场景: tool-human-summary-location-only
+    当 折叠态读取 bash、read、write 三类参数人话摘要
+    那么 bash 前缀 $ 且 read 附行号区间且 write 为纯路径不带名前缀
+    并且 缺 path 时用三点占位且不回退完整 args JSON

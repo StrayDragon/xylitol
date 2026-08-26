@@ -51,6 +51,8 @@ pub use self::host::{
 };
 pub use self::layout::{EditorSlot, EditorSlotKind, LayoutTheme};
 pub use self::widgets::GlyphSet;
+/// att13：折叠态工具人话摘要的窄导出（BDD 直驱纯函数合约）。
+pub use bridge::human_tool_args_preview;
 // TuiRunOptions exported via struct above in this module
 
 /// Options for [`run`] (c1560 / c2070).

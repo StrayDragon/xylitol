@@ -8,3 +8,9 @@ use rstest_bdd_macros::scenario;
     name = "fold-glyph-unicode-and-ascii-fallback"
 )]
 fn test_att19_fold_glyphs(transcript_bdd: TranscriptBdd) {}
+
+#[scenario(
+    path = "llmanspec/specs/app-tui-transcript/app-tui-transcript.feature",
+    name = "tool-human-summary-location-only"
+)]
+fn test_att13_tool_summary(transcript_bdd: TranscriptBdd) {}
