@@ -174,25 +174,48 @@ fn when_replay_read_then_edit(transcript_bdd: &TranscriptBdd) {
     let plain = render_plain(|sb| {
         sb.tool_start("r1", "read", "old.rs")
             .tool_end("r1", "read")
+            .assistant("mid-body")
             .tool_start("e1", "edit", "a.rs")
             .tool_end("e1", "edit");
     });
     *transcript_bdd.frames.borrow_mut() = vec![plain];
 }
 
-#[then("改写活动以聚合簇头呈现且不虚构只读完成态")]
+#[then("只读前簇封口为 Explored old.rs 且改写簇头保持 Editing a.rs")]
 fn then_explored_and_editing_heads(transcript_bdd: &TranscriptBdd) {
     let frames = transcript_bdd.frames.borrow();
     let plain = frames.last().expect("frame");
+    let lines: Vec<&str> = plain.lines().collect();
+    let pos = |needle: &str| {
+        lines
+            .iter()
+            .position(|l| l.contains(needle))
+            .unwrap_or_else(|| panic!("frame must contain {needle:?}:\n{plain}"))
+    };
+    let sealed = pos("Explored old.rs");
+    let body = pos("mid-body");
+    let editing = pos("Editing a.rs");
     assert!(
-        plain.contains("Editing a.rs"),
-        "write cluster head must read Editing:\n{plain}"
+        sealed < body && body < editing,
+        "att24: sealed head, body divider, editing head must co-exist in order:\n{plain}"
     );
-    // att24 互斥：未发生的只读完成态不得虚构；时态不得混用
-    assert!(!plain.contains("Edited a.rs"), "{plain}");
+}
+
+#[then("改写结束后无 Edited 错时态")]
+fn then_no_wrong_tense_after_end(transcript_bdd: &TranscriptBdd) {
+    let frames = transcript_bdd.frames.borrow();
+    let plain = frames.last().expect("frame");
+    // 开启中的回合内改写簇头保持现在时 Editing；MUST NOT 翻成 Edited 或与 Explored 并列同头
     assert!(
-        !plain.contains("Explored a.rs"),
-        "read/write tenses must not be conflated:\n{plain}"
+        plain.contains("Editing a.rs") && !plain.contains("Edited a.rs"),
+        "post-end cluster head must stay Editing within live turn:\n{plain}"
+    );
+    assert!(
+        !(plain.contains("Edited") && plain.contains("Explored old.rs") && {
+            let edited_line = plain.lines().find(|l| l.contains("Edited")).unwrap();
+            edited_line.contains("Explored")
+        }),
+        "att24 exclusivity: Edited and Explored must not share one head:\n{plain}"
     );
 }
 

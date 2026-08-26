@@ -159,7 +159,8 @@
   @req:att24 @executable
   场景: cluster-head-wording-exclusivity
     当 以场景构建器回放读后改写序列（read old.rs 然后 edit a.rs）
-    那么 改写活动以聚合簇头呈现且不虚构只读完成态
+    那么 只读前簇封口为 Explored old.rs 且改写簇头保持 Editing a.rs
+    并且 改写结束后无 Edited 错时态
     并且 全帧不出现 Worked for 与 Planning next moves
 
   @req:att34 @executable
