@@ -333,12 +333,7 @@ impl<T: Terminal> HostSession<T> {
         };
         self.tui
             .set_transcript_hit_priority(Some(Box::new(move |col, row| {
-                let mut root = ui_root.borrow_mut();
-                let Some(target) = root.fold_hits().hit(col, row) else {
-                    return false;
-                };
-                root.toggle_fold_target(target);
-                true
+                ui_root.borrow_mut().click_fold_at(col, row)
             })));
     }
 

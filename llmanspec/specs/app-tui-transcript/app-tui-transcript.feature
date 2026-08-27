@@ -175,3 +175,47 @@
     当 以场景构建器渲染含助手正文的 live window
     那么 助手正文可见且仍无信封封套
     并且 全帧不出现 Worked for 与 Planning next moves
+
+  @req:att20 @executable
+  场景: tools-per-block-fold-click-and-alt-e-headless
+    当 以场景构建器回放读后改写序列并封轮挂载交互面
+    当 左键单击折叠命中表中的簇头三角列
+    当 再左键单击 "t-read" 的工具块三角列
+    那么 该块经覆盖表收起且覆盖表只有这一个条目
+    当 按下和弦 Alt+E
+    那么 工具族默认展开态翻转且块级覆盖清空
+
+  @req:att21 @executable
+  场景: thinking-per-id-fold-click-and-ctrl-t-headless
+    当 以场景构建器回放思考加工具并封轮挂载交互面
+    当 左键单击折叠命中表中的簇头三角列
+    当 再左键单击第一条思考的折叠三角列
+    那么 该条思考经覆盖展开且另一条不受影响
+    当 按下和弦 Ctrl+T
+    那么 思考默认展开态翻转且全部 per-id 覆盖清空
+
+  @req:att22 @executable
+  场景: mouse-fold-hit-triangle-column-only-headless
+    当 以场景构建器回放读后改写序列并封轮挂载交互面
+    当 左键单击折叠命中表中的簇头三角列
+    当 点击该行折叠命中区右边界之外的一列
+    那么 折叠命中不消费且覆盖表为空
+    当 再左键单击 "t-edit" 的工具块三角列
+    那么 该块经覆盖表收起且覆盖表只有这一个条目
+
+  @req:att25 @executable
+  场景: activity-fold-layered-collapse-hides-blocks-headless
+    当 以场景构建器回放读后改写序列并封轮挂载交互面
+    那么 簇即为折叠收纳态且无内层块登记
+    当 依序按下和弦 Alt+E、Ctrl+T、Ctrl+O
+    那么 渲染帧与按键前逐字一致
+    当 左键单击折叠命中表中的簇头三角列
+    那么 仅该簇被定点展开且内层块行可见
+
+  @req:att31 @executable
+  场景: cluster-fold-marker-mouse-precise-headless
+    当 以场景构建器回放读后改写序列并封轮挂载交互面
+    当 点击簇头行的摘要正文列而非三角列
+    那么 折叠命中不消费且覆盖表为空
+    当 左键单击折叠命中表中的簇头三角列
+    那么 仅该簇被定点展开且内层块行可见

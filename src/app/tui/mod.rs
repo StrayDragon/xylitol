@@ -14,6 +14,9 @@ mod effects;
 pub(crate) mod error;
 mod external_editor;
 mod host;
+/// P3 无头键鼠交互挂载面：和弦路由 / 折叠命中 / per-id 覆盖表的产品路径夹具。
+mod interaction_scene;
+pub use interaction_scene::InteractionBdd;
 pub(crate) mod keybindings;
 mod layout;
 pub(crate) mod session_resume;
@@ -53,7 +56,7 @@ pub use self::host::{
     TOO_SMALL_HINT, display_cwd, is_too_small,
 };
 pub use self::layout::{EditorSlot, EditorSlotKind, LayoutTheme};
-pub use self::widgets::GlyphSet;
+pub use self::widgets::{FoldHitTable, FoldTarget, GlyphSet, ScrollbackFold};
 /// att13：折叠态工具人话摘要的窄导出（BDD 直驱纯函数合约）。
 pub use bridge::human_tool_args_preview;
 // TuiRunOptions exported via struct above in this module
