@@ -106,3 +106,33 @@ async fn test_ex1_export_html(sess: XySessionStore) {}
     name = "html-readable-blocks"
 )]
 async fn test_ex4_html_blocks(sess: XySessionStore) {}
+
+#[scenario(
+    path = "llmanspec/specs/agent-session-store/agent-session-store.feature",
+    name = "resume-fallback-cwd-rescues"
+)]
+async fn test_sc1_fallback_rescues(sess: XySessionStore) {}
+
+#[scenario(
+    path = "llmanspec/specs/agent-session-store/agent-session-store.feature",
+    name = "stored-cwd-accessible-loads"
+)]
+async fn test_s16_stored_cwd_loads(sess: XySessionStore) {}
+
+#[scenario(
+    path = "llmanspec/specs/agent-session-store/agent-session-store.feature",
+    name = "cwd-error-carries-both-paths"
+)]
+async fn test_sc2_both_paths(sess: XySessionStore) {}
+
+#[scenario(
+    path = "llmanspec/specs/agent-session-store/agent-session-store.feature",
+    name = "tool-result-persists-tool-call-id-key"
+)]
+async fn test_s19_tool_call_id_key(sess: XySessionStore) {}
+
+#[scenario(
+    path = "llmanspec/specs/agent-session-store/agent-session-store.feature",
+    name = "branch-summary-empty-input-empty-output"
+)]
+async fn test_s6_empty_boundary(sess: XySessionStore) {}
