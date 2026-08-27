@@ -13,6 +13,7 @@ fn _g_session_dir(sess: &XySessionStore) {
     let dir = tempfile::tempdir().unwrap();
     let d = dir.path().join("sessions");
     std::fs::create_dir_all(&d).ok();
+    sess.sessions_dir.replace(Some(d.clone()));
     sess.mgr.replace(Some(SessionManager::new(d)));
 }
 

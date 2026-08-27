@@ -22,7 +22,8 @@ fn message_entry(id: &str, parent_id: Option<&str>, role: &str, content: &str) -
             parent_id: parent_id.map(str::to_string),
             timestamp: 1704067200000,
         },
-        message: serde_json::json!({"role": role, "content": content}),
+        // dm1：content 必须是带 type 判别的部件数组；裸字符串按 c646 不可读。
+        message: serde_json::json!({"role": role, "content": [{"type": "text", "text": content}]}),
     })
 }
 
@@ -577,4 +578,141 @@ fn _t_grep_exact_matches(ws: &Workspace, n: u32) {
         count, n as usize,
         "expected exactly {n} matches, got {count} in:\n{r}"
     );
+}
+
+// ---- agent-session-store 转写批（s9 / s10 / s11 / s12 / s21 / s22）----
+
+fn session_file(dir: &std::path::Path, id: &str) -> std::path::PathBuf {
+    dir.join(format!("{id}.jsonl"))
+}
+
+fn sess_dir(sess: &XySessionStore) -> std::path::PathBuf {
+    sess.sessions_dir
+        .borrow()
+        .clone()
+        .expect("sessions dir captured by ensure_mgr")
+}
+
+async fn append_typed_message(sess: &XySessionStore, role: &str, msg: &str) {
+    sess.ensure_mgr();
+    let id = sess.current_id.borrow().clone().expect("current session");
+    let mgr = sess.mgr.borrow().as_ref().unwrap().clone();
+    let n = mgr.load(&id).await.unwrap_or_default().len();
+    let entry = SessionEntry::Message(MessageEntry {
+        base: EntryBase {
+            entry_type: "message".into(),
+            id: format!("{role}-{n}"),
+            parent_id: None,
+            timestamp: 1704067200000,
+        },
+        // dm1 合法形态（同 message_entry）。
+        message: serde_json::json!({
+            "role": role,
+            "content": [{"type": "text", "text": msg}]
+        }),
+    });
+    mgr.append_with_id(&id, &entry).await.unwrap();
+}
+
+#[when("向会话追加用户消息 {msg:string}")]
+async fn when_append_user_msg(sess: &XySessionStore, msg: String) {
+    append_typed_message(sess, "user", &msg).await;
+}
+
+#[when("向会话追加助手消息 {msg:string}")]
+async fn when_append_assistant_msg(sess: &XySessionStore, msg: String) {
+    append_typed_message(sess, "assistant", &msg).await;
+}
+
+#[then("会话 {id:string} 的磁盘 JSONL 尚不存在")]
+async fn then_disk_absent(sess: &XySessionStore, id: String) {
+    let p = session_file(&sess_dir(sess), &id);
+    assert!(
+        !p.exists(),
+        "s12: header/entries must stay deferred before first append, found {}",
+        p.display()
+    );
+}
+
+#[then("会话 {id:string} 的磁盘 JSONL 已存在且包含 {text:string}")]
+async fn then_disk_contains(sess: &XySessionStore, id: String, text: String) {
+    let p = session_file(&sess_dir(sess), &id);
+    assert!(p.exists(), "s12: disk jsonl must exist, {}", p.display());
+    let body = std::fs::read_to_string(&p).unwrap();
+    assert!(body.contains(&text), "{text} missing in:\n{body}");
+    let first = body.lines().next().expect("header line");
+    assert!(
+        first.contains("\"session\""),
+        "first line must be the header entry: {first}"
+    );
+}
+
+fn serialized_entries(entries: &[SessionEntry]) -> Vec<String> {
+    entries
+        .iter()
+        .map(|e| serde_json::to_string(e).expect("serialize entry"))
+        .collect()
+}
+
+#[then("会话 {id:string} 包含文本 {text:string}")]
+async fn then_session_has_text(sess: &XySessionStore, id: String, text: String) {
+    let mgr = sess.mgr.borrow().as_ref().unwrap().clone();
+    let all = serialized_entries(&mgr.load(&id).await.unwrap());
+    assert!(
+        all.iter().any(|s| s.contains(&text)),
+        "{text} missing in {} entries:\n{}",
+        all.len(),
+        all.join("\n")
+    );
+}
+
+#[then("会话 {id:string} 不含文本 {text:string}")]
+async fn then_session_lacks_text(sess: &XySessionStore, id: String, text: String) {
+    let mgr = sess.mgr.borrow().as_ref().unwrap().clone();
+    let all = serialized_entries(&mgr.load(&id).await.unwrap());
+    assert!(
+        all.iter().all(|s| !s.contains(&text)),
+        "s9: forked child must not contain post-cutoff text {text}:\n{}",
+        all.join("\n")
+    );
+}
+
+#[then("会话 {id:string} 的 branch_summary 摘要包含 {text:string}")]
+async fn then_summary_mentions(sess: &XySessionStore, id: String, text: String) {
+    let mgr = sess.mgr.borrow().as_ref().unwrap().clone();
+    let entries = mgr.load(&id).await.unwrap();
+    let summary = entries
+        .iter()
+        .find_map(|e| match e {
+            SessionEntry::BranchSummary(b) => Some(b.summary.clone()),
+            _ => None,
+        })
+        .expect("branch_summary entry");
+    assert!(
+        summary.contains(&text),
+        "s10: summary must mention {text:?}, got {summary:?}"
+    );
+}
+
+#[when("目录中植入损坏的会话文件 broken.jsonl")]
+fn when_plant_corrupt_file(sess: &XySessionStore) {
+    let p = session_file(&sess_dir(sess), "broken");
+    std::fs::write(&p, "{ not json\n").expect("plant corrupt file");
+}
+
+#[then("会话 {id:string} 的 JSONL 时间戳均为 u64 毫秒")]
+async fn then_timestamps_u64_ms(sess: &XySessionStore, id: String) {
+    let p = session_file(&sess_dir(sess), &id);
+    let body = std::fs::read_to_string(&p).unwrap();
+    for (i, line) in body.lines().enumerate() {
+        let v: serde_json::Value =
+            serde_json::from_str(line).unwrap_or_else(|e| panic!("line {i}: {e}"));
+        let ts = v
+            .get("timestamp")
+            .unwrap_or_else(|| panic!("s22: line {i} must carry shell timestamp:\n{line}"));
+        assert!(
+            ts.is_u64() && ts.as_u64().unwrap() >= 1_000_000_000_000,
+            "s22: line {i} timestamp must be u64 unix-ms, got {ts}"
+        );
+    }
 }

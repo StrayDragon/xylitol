@@ -46,3 +46,39 @@ async fn test_session_label_set(sess: XySessionStore) {}
     name = "label-clear"
 )]
 async fn test_session_label_clear(sess: XySessionStore) {}
+
+#[scenario(
+    path = "llmanspec/specs/agent-session-store/agent-session-store.feature",
+    name = "delayed-header-flush-on-first-append"
+)]
+async fn test_s12_delayed_flush(sess: XySessionStore) {}
+
+#[scenario(
+    path = "llmanspec/specs/agent-session-store/agent-session-store.feature",
+    name = "fork-copies-cutoff-and-summary"
+)]
+async fn test_s9_fork_copy(sess: XySessionStore) {}
+
+#[scenario(
+    path = "llmanspec/specs/agent-session-store/agent-session-store.feature",
+    name = "branch-summary-content"
+)]
+async fn test_s10_summary_content(sess: XySessionStore) {}
+
+#[scenario(
+    path = "llmanspec/specs/agent-session-store/agent-session-store.feature",
+    name = "fork-session-returns-child-id"
+)]
+async fn test_s11_fork_child_id(sess: XySessionStore) {}
+
+#[scenario(
+    path = "llmanspec/specs/agent-session-store/agent-session-store.feature",
+    name = "list-resilient-to-corrupt-file"
+)]
+async fn test_s21_list_resilient(ws: Workspace, sess: XySessionStore) {}
+
+#[scenario(
+    path = "llmanspec/specs/agent-session-store/agent-session-store.feature",
+    name = "timestamps-u64-ms"
+)]
+async fn test_s22_timestamps(sess: XySessionStore) {}

@@ -117,6 +117,7 @@ fn then_tool_preview_shapes(transcript_bdd: &TranscriptBdd) {
 
 #[then("缺 path 时用三点占位且不回退完整 args JSON")]
 fn then_missing_path_placeholder(transcript_bdd: &TranscriptBdd) {
+    let _ = transcript_bdd; // 断言本地自足，夹具仅用于步骤分组
     use xylitol::app::tui::human_tool_args_preview;
     // 前一步存的是三类正常摘要；这里直接补算 edit 无 path 场景
     let edit_no_path = human_tool_args_preview(

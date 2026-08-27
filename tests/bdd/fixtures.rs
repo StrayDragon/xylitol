@@ -54,6 +54,8 @@ pub struct XySessionStore {
     pub entries: RefCell<Vec<SessionEntry>>,
     pub current_id: RefCell<Option<String>>,
     pub last_result: RefCell<Option<Result<String, XyDriverError>>>,
+    /// s12/s21/s22 原始文件断言用的会话目录。
+    pub sessions_dir: RefCell<Option<std::path::PathBuf>>,
 }
 impl XySessionStore {
     fn new() -> Self {
@@ -62,6 +64,7 @@ impl XySessionStore {
             entries: RefCell::new(Vec::new()),
             current_id: RefCell::new(None),
             last_result: RefCell::new(None),
+            sessions_dir: RefCell::new(None),
         }
     }
     /// Auto-initialize session manager if not yet set.
@@ -70,6 +73,7 @@ impl XySessionStore {
             let dir = tempfile::tempdir().unwrap();
             let d = dir.path().join("sessions");
             std::fs::create_dir_all(&d).ok();
+            self.sessions_dir.replace(Some(d.clone()));
             // Leak the TempDir to keep it alive for the test duration.
             // This is only for tests.
             std::mem::forget(dir);
