@@ -219,3 +219,30 @@
     那么 折叠命中不消费且覆盖表为空
     当 左键单击折叠命中表中的簇头三角列
     那么 仅该簇被定点展开且内层块行可见
+
+  @req:att29 @executable
+  场景: compaction-fold-triangle-mouse-headless
+    当 以场景构建器回放压缩事件并封轮挂载交互面
+    当 左键单击 Compaction 块的折叠三角列
+    那么 Compaction 全局展开态翻转
+    并且 工具族覆盖表仍为空且工具族默认态未变
+
+  @req:att30 @executable
+  场景: output-viewport-hint-band-mouse-headless
+    当 以场景构建器回放多行输出的工具并封轮挂载交互面
+    当 左键单击折叠命中表中的簇头三角列
+    当 点击输出的 Ctrl+O 提示带
+    那么 提示带点击翻转输出视口全局态且与按 Ctrl+O 同构
+
+  @req:att32 @executable
+  场景: remaining-fold-targets-unified-hit-table-headless
+    当 以场景构建器回放压缩加多行输出并封轮挂载交互面
+    当 左键单击折叠命中表中的簇头三角列
+    那么 Compaction、输出提示带与块级三角登记于同一命中表且定点可点
+
+  @req:att7 @executable
+  场景: expandable-block-fold-summary-and-chords-headless
+    当 以场景构建器回放读后改写序列并封轮挂载交互面
+    当 左键单击折叠命中表中的簇头三角列
+    当 再左键单击 "t-read" 的工具块三角列
+    那么 收起块保留摘要行且展开旁注为括号完整和弦

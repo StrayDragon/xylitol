@@ -32,3 +32,27 @@ fn test_att25_layered_collapse(tui_interaction: TuiInteraction) {}
     name = "cluster-fold-marker-mouse-precise-headless"
 )]
 fn test_att31_cluster_precise(tui_interaction: TuiInteraction) {}
+
+#[scenario(
+    path = "llmanspec/specs/app-tui-transcript/app-tui-transcript.feature",
+    name = "compaction-fold-triangle-mouse-headless"
+)]
+fn test_att29_compaction_triangle(tui_interaction: TuiInteraction) {}
+
+#[scenario(
+    path = "llmanspec/specs/app-tui-transcript/app-tui-transcript.feature",
+    name = "output-viewport-hint-band-mouse-headless"
+)]
+fn test_att30_viewport_hint_band(tui_interaction: TuiInteraction) {}
+
+#[scenario(
+    path = "llmanspec/specs/app-tui-transcript/app-tui-transcript.feature",
+    name = "remaining-fold-targets-unified-hit-table-headless"
+)]
+fn test_att32_unified_hit_table(tui_interaction: TuiInteraction) {}
+
+#[scenario(
+    path = "llmanspec/specs/app-tui-transcript/app-tui-transcript.feature",
+    name = "expandable-block-fold-summary-and-chords-headless"
+)]
+fn test_att7_expandable_summary_chords(tui_interaction: TuiInteraction) {}
