@@ -31,5 +31,4 @@ pub use theme::LayoutTheme;
 
 #[cfg(test)]
 pub use root::build_root;
-#[cfg(test)]
 pub(crate) use session_tree::FilterMode;

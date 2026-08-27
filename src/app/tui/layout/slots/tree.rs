@@ -48,6 +48,11 @@ impl TreeSlot {
         self.filter
     }
 
+    /// Whether a node-label edit session is open (Shift+L; Esc cancels it).
+    pub fn is_label_editing(&self) -> bool {
+        self.label_edit.is_some()
+    }
+
     pub fn search_query(&self) -> &str {
         self.tree.search_query()
     }
