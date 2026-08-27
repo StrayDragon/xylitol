@@ -19,13 +19,14 @@ use std::path::PathBuf;
 use std::sync::atomic::{AtomicBool, Ordering};
 use std::time::Instant;
 
+use crossterm::event::KeyEvent;
 use xylitol_tui::Component;
 use xylitol_tui::components::editor::{Editor, EditorOptions};
 use xylitol_tui::components::loader::{Loader, LoaderIndicatorOptions};
 use xylitol_tui::components::text::Text;
 use xylitol_tui::{
-    AtPathSource, ChoiceQuestion, CompletionSource, Focusable, SlashArgCompletionSource,
-    SlashCommandSource, SystemClock, TreeNode, fg_rgb,
+    AtPathSource, ChoiceQuestion, CompletionSource, Focusable, InputEvent,
+    SlashArgCompletionSource, SlashCommandSource, SystemClock, TreeNode, fg_rgb,
 };
 
 use super::dollar_skill_source::DollarSkillSource;
@@ -410,6 +411,31 @@ impl UiRoot {
 
     pub fn fold_hits(&self) -> &FoldHitTable {
         &self.fold_hits
+    }
+
+    /// Read-only fold state view (att20–att31 headless asserts; consumed by
+    /// [`crate::app::tui::InteractionBdd`]). Borrowing twin of [`Self::fold`]
+    /// (which clones) — callers comparing frames between toggles prefer this.
+    pub fn fold_view(&self) -> &ScrollbackFold {
+        &self.fold
+    }
+
+    /// Left click at screen `(col, row)` through the product fold hit table —
+    /// the single toggle pipeline shared by the host hit-priority wiring and
+    /// BDD mouse injection (att20 / att22 / att29–att32).
+    pub fn click_fold_at(&mut self, col: u16, row: u16) -> bool {
+        let Some(target) = self.fold_hits.hit(col, row) else {
+            return false;
+        };
+        self.toggle_fold_target(target);
+        true
+    }
+
+    /// Product input routing for a decoded key event (chord →
+    /// [`crate::app::tui::keybindings`] ids → fold/slot effects). Kept off the
+    /// external API surface; the headless interaction fixture is in-tree.
+    pub(crate) fn handle_key(&mut self, key: KeyEvent) {
+        self.handle_slot_input(InputEvent::Key(key));
     }
 
     pub fn sync_fold_hit_viewport(&mut self, scroll_top: usize, transcript_rows: u16) {

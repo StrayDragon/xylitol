@@ -265,6 +265,12 @@ impl SceneBuilder {
         &self.model.entries
     }
 
+    /// Hand the built model to an [`InteractionBdd`] for key/mouse interaction
+    /// scenes (att20–att32): the model itself moves, nothing is re-applied.
+    pub fn into_model(self) -> UiModel {
+        self.model
+    }
+
     /// Live thinking buffers must be empty after a product flush.
     pub fn live_think_idle(&self) -> bool {
         self.model.streaming_think_id.is_none() && self.model.streaming_thinking.is_empty()
