@@ -60,3 +60,106 @@
   @req:pts14 @human
   场景: kind-in-search
     - TreeSelector 增量搜索 MUST 将节点 kind（若有）纳入匹配；搜索 MUST 仍与 include_node 组合（AND）。
+
+  @req:pts1 @executable
+  场景: tree-selector-navigable-model-headless
+    当 以样例树挂载 TreeSelector
+    那么 根与子节点行可见且选中态落在首项
+
+  @req:pts2 @executable
+  场景: include-node-filter-rebuilds-headless
+    当 以样例树挂载 TreeSelector 并设置只含叶子的过滤
+    那么 可见列表仅剩叶子且行完整重算
+    当 设置放行全部的过滤
+    那么 树行完整恢复
+
+  @req:pts3 @executable
+  场景: select-keybindings-and-theme-cursor-headless
+    当 以样例树挂载 TreeSelector
+    当 按下 select down 再按下 select up
+    那么 选中态回到首项
+    当 按下 select confirm
+    那么 on_select 回调收到该节点 id
+    当 按下 select cancel
+    那么 on_cancel 回调触发
+    并且 选中行经主题闭包反色渲染
+
+  @req:pts4 @executable
+  场景: incremental-search-esc-clears-first-headless
+    当 以样例树挂载 TreeSelector 并输入搜索串 "child"
+    那么 可见列表收窄到匹配项
+    当 退格删除一个字符
+    那么 搜索串变为 "chil"
+    当 按下 select cancel 且搜索串非空
+    那么 搜索被清空且取消回调未触发
+    当 设置只含叶子的过滤并搜索 "second"
+    那么 搜索与过滤按 AND 组合
+
+  @req:pts5 @executable
+  场景: page-keys-move-by-max-visible-headless
+    当 以 30 叶树挂载并作用域绑定翻页键
+    当 按下 select pageDown
+    那么 选中前进 max_visible
+    当 按下 select pageUp
+    那么 选中回到首项
+    当 默认键表下按左右方向键
+    那么 选中保持不变
+
+  @req:pts6 @executable
+  场景: status-suffix-after-counter-headless
+    当 以样例树挂载并设置状态后缀 "[no-tools]"
+    那么 状态行在 (i/n) 后附加该后缀
+
+  @req:pts7 @executable
+  场景: fold-and-branch-jump-keys-headless
+    当 以样例树挂载并把选中移到可折叠父节点
+    当 按下 tree foldOrUp
+    那么 该节点子树折叠且渲染出现折叠标记
+    当 按下 tree unfoldOrDown
+    那么 子树重新展开
+    当 输入搜索字符
+    那么 折叠态被清空
+
+  @req:pts8 @executable
+  场景: node-annotation-renders-headless
+    当 以带注解与时间戳的样例树挂载
+    那么 注解以括号形式先于主标签渲染
+    当 开启时间戳显示
+    那么 注解时间戳随之出现
+
+  @req:pts9 @executable
+  场景: label-edit-and-timestamp-toggle-keys-headless
+    当 以带注解的样例树挂载并选中该节点
+    当 按下 tree editLabel
+    那么 on_label_edit 收到 id 与当前注解
+    当 按下 tree toggleLabelTimestamp
+    那么 时间戳显示翻转
+
+  @req:pts10 @executable
+  场景: horizontal-viewport-pan-narrow-width-headless
+    当 以超长标签树挂载并按窄宽渲染
+    那么 选中行保留光标 gutter 且标签尾部内容仍可见
+
+  @req:pts11 @executable
+  场景: empty-visible-state-row-headless
+    当 以样例树挂载并过滤到空集
+    那么 渲染出现可辨识空态行且计数为 (0/0)
+
+  @req:pts12 @executable
+  场景: selection-stable-on-filter-change-headless
+    当 以样例树挂载并选中仍可见的节点后变更过滤
+    那么 选中保持该节点
+    当 变更为排除该节点的过滤
+    那么 选中落到可见首项
+
+  @req:pts13 @executable
+  场景: node-kind-prefix-headless
+    当 以带 kind 的样例树挂载
+    那么 kind 前缀经主题闭包渲染在主标签前
+    当 以无 kind 的样例树挂载
+    那么 渲染不强制 kind 前缀
+
+  @req:pts14 @executable
+  场景: kind-matches-in-search-headless
+    当 以带 kind 的样例树挂载并搜索 kind 词
+    那么 该节点经 kind 匹配保持可见
