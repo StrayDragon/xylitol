@@ -335,3 +335,17 @@
     那么 最近展开信封收回为 Worked for 折叠态
     当 再按下和弦 Ctrl+Alt+Shift+E
     那么 全部信封收回为 Worked for 折叠态
+
+  @req:att9 @executable
+  场景: product-bash-block-lifecycle-headless
+    当 以主机泵提交 bang 命令并注入分段输出与成功结果
+    那么 命令进入单一 Bash 块且输出在同一块内且状态轨为成功
+    当 注入取消的结果
+    那么 块内呈现 (cancelled) 而非 agent 的 Aborted
+    当 注入非零退出码结果
+    那么 块状态为 error 且以错误轨强调
+
+  @req:att11 @executable
+  场景: bang-block-rail-no-wash-headless
+    当 以主机泵提交 bang 命令并完成成功结果
+    那么 bang 块行带单列状态轨加无底色 gutter 且内容区无整行洗底

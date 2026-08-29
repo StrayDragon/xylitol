@@ -617,7 +617,7 @@ use xylitol::app::tui::FoldTarget;
 use xylitol::app::tui::InteractionBdd;
 
 /// rail 前缀 = 1 列底色 + `49m` 复位 + 1 列无底色 gutter（paint_left_rail_line 同构）。
-fn rail_prefix(rgb: xylitol_tui::terminal_colors::RgbColor) -> String {
+pub(crate) fn rail_prefix(rgb: xylitol_tui::terminal_colors::RgbColor) -> String {
     format!("\x1b[48;2;{};{};{}m \x1b[49m ", rgb.r, rgb.g, rgb.b)
 }
 
