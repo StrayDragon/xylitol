@@ -270,3 +270,32 @@
   场景: travel-notice-trailing-append-headless
     当 重建到叶节点并按产品路径追加路径通告
     那么 通告条目位于 entries 末尾且重建内容次序保持原样
+
+  @req:att4 @executable
+  场景: tool-rail-status-colors-headless
+    当 以场景构建器回放 pending、成功与失败三种工具并取 ANSI 帧
+    那么 pending 轨用 accent 而成功轨用 success 且失败轨用 error
+    并且 轨为单列加无底色 gutter 且外层背景以复位码收束
+    并且 内容行除轨外无整行洗底
+
+  @req:att14 @executable
+  场景: write-viewport-and-edit-diff-chrome-headless
+    当 以场景构建器回放超长 write 正文并挂载交互面
+    那么 正文视口至多 10 行尾且以 total 加 ctrl+o 提示省略
+    并且 write 头行与正文共用同一状态轨
+    当 以场景构建器回放 edit 成功并挂载交互面
+    那么 diff 正文默认可见且头行无状态字面标签
+
+  @req:att15 @executable
+  场景: bash-full-output-footer-warning-headless
+    当 以场景构建器回放带 Full output 脚注的 bash 工具并取 ANSI 帧
+    那么 脚注行以 warning 前景绘制且帧内可见脚注
+    当 以场景构建器回放未截断的正常输出
+    那么 帧内不出现伪造的 Full output 脚注
+
+  @req:att16 @executable
+  场景: hard-truncated-viewport-guard-headless
+    当 以场景构建器回放硬截断 bash 工具并按下 Ctrl+O
+    那么 视口保持尾窗且提示 expand disabled 且不出全文
+    当 回放超长 write 正文并按下 Ctrl+O
+    那么 write 正文可展开为全文
