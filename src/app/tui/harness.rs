@@ -1,7 +1,9 @@
 //! c485 synthetic vertical-slice harness — ScriptedDriver + host/driver pump.
 //!
-//! Only compiled in unit tests (`cfg(test)`). Stays inside `app/tui` and talks
-//! to the core solely via [`crate::app::core::driver::XyDriver`] (layering seam).
+//! Normal compile path (SceneBuilder tt08 precedent): the BDD suite and unit
+//! tests share this one pump — never a second side-effect pump (ati30). Stays
+//! inside `app/tui` and talks to the core solely via
+//! [`crate::app::core::driver::XyDriver`] (layering seam).
 
 use std::collections::HashMap;
 use std::collections::VecDeque;
@@ -12,7 +14,7 @@ use std::time::Duration;
 
 use async_trait::async_trait;
 use futures::StreamExt;
-use xylitol_tui::Terminal;
+use xylitol_tui::{InputEvent, Terminal};
 
 use crate::app::core::driver::{
     CommandInfo, DebugSceneLoad, EventStream, LoadedResourcesSnapshot, ModelInfo, QueueStats,
@@ -1057,7 +1059,6 @@ pub async fn pump_host_driver<T: Terminal>(
     Ok(())
 }
 
-#[cfg(test)]
 pub fn harness_sample_message_history_tree() -> Vec<SessionTreeNode> {
     use crate::protocol::session::{EntryBase, MessageEntry};
 
@@ -1097,7 +1098,6 @@ pub fn harness_sample_message_history_tree() -> Vec<SessionTreeNode> {
     vec![u1]
 }
 
-#[cfg(test)]
 pub fn harness_sample_session_messages() -> Vec<SessionEntry> {
     harness_sample_message_history_tree()
         .into_iter()
@@ -1113,13 +1113,93 @@ fn flatten_session_tree_entries(node: SessionTreeNode) -> Vec<SessionEntry> {
     out
 }
 
+// ── ati30/att9 无头宿主门：单测与 BDD 共用的终端替身与键事件 ──
+
+pub struct TestTerminal {
+    cols: u16,
+    rows: u16,
+    frames: Vec<String>,
+    started: bool,
+    stopped: bool,
+}
+
+impl TestTerminal {
+    pub fn new(cols: u16, rows: u16) -> Self {
+        Self {
+            cols,
+            rows,
+            frames: Vec::new(),
+            started: false,
+            stopped: false,
+        }
+    }
+}
+
+impl Terminal for TestTerminal {
+    fn write(&mut self, data: &str) {
+        self.frames.push(data.to_string());
+    }
+    fn columns(&self) -> u16 {
+        self.cols
+    }
+    fn rows(&self) -> u16 {
+        self.rows
+    }
+    fn hide_cursor(&mut self) {}
+    fn show_cursor(&mut self) {}
+    fn clear_line(&mut self) {}
+    fn clear_from_cursor(&mut self) {}
+    fn clear_screen(&mut self) {}
+    fn flush(&mut self) {}
+    fn set_size_hint(&mut self, cols: u16, rows: u16) {
+        self.cols = cols;
+        self.rows = rows;
+    }
+    fn start(&mut self) {
+        self.started = true;
+    }
+    fn stop(&mut self) {
+        self.stopped = true;
+    }
+}
+
+pub fn enter_event() -> InputEvent {
+    use crossterm::event::{KeyCode, KeyEvent, KeyEventKind, KeyEventState, KeyModifiers};
+    InputEvent::Key(KeyEvent {
+        code: KeyCode::Enter,
+        modifiers: KeyModifiers::NONE,
+        kind: KeyEventKind::Press,
+        state: KeyEventState::NONE,
+    })
+}
+
+pub fn alt_enter_event() -> InputEvent {
+    use crossterm::event::{KeyCode, KeyEvent, KeyEventKind, KeyEventState, KeyModifiers};
+    InputEvent::Key(KeyEvent {
+        code: KeyCode::Enter,
+        modifiers: KeyModifiers::ALT,
+        kind: KeyEventKind::Press,
+        state: KeyEventState::NONE,
+    })
+}
+
+pub fn esc_event() -> InputEvent {
+    use crossterm::event::{KeyCode, KeyEvent, KeyEventKind, KeyEventState, KeyModifiers};
+    InputEvent::Key(KeyEvent {
+        code: KeyCode::Esc,
+        modifiers: KeyModifiers::NONE,
+        kind: KeyEventKind::Press,
+        state: KeyEventState::NONE,
+    })
+}
+
 #[cfg(test)]
 mod slice_tests {
     use super::*;
     use crate::app::tui::bridge::{UiEntry, UiPhase};
     use crate::app::tui::host::{HostEvent, HostSession};
     use futures::Stream;
-    use xylitol_tui::{Component, InputEvent, Terminal};
+    use xylitol_tui::{Component, InputEvent};
 
     /// HostEvent stream for hanging-bang Esc: delay → Esc(+backlog) → park (no EOF).
     fn bang_esc_input_stream(
@@ -1138,84 +1218,6 @@ mod slice_tests {
             rx,
             |mut rx| async move { rx.recv().await.map(|ev| (ev, rx)) },
         )
-    }
-
-    struct TestTerminal {
-        cols: u16,
-        rows: u16,
-        frames: Vec<String>,
-        started: bool,
-        stopped: bool,
-    }
-
-    impl TestTerminal {
-        fn new(cols: u16, rows: u16) -> Self {
-            Self {
-                cols,
-                rows,
-                frames: Vec::new(),
-                started: false,
-                stopped: false,
-            }
-        }
-    }
-
-    impl Terminal for TestTerminal {
-        fn write(&mut self, data: &str) {
-            self.frames.push(data.to_string());
-        }
-        fn columns(&self) -> u16 {
-            self.cols
-        }
-        fn rows(&self) -> u16 {
-            self.rows
-        }
-        fn hide_cursor(&mut self) {}
-        fn show_cursor(&mut self) {}
-        fn clear_line(&mut self) {}
-        fn clear_from_cursor(&mut self) {}
-        fn clear_screen(&mut self) {}
-        fn flush(&mut self) {}
-        fn set_size_hint(&mut self, cols: u16, rows: u16) {
-            self.cols = cols;
-            self.rows = rows;
-        }
-        fn start(&mut self) {
-            self.started = true;
-        }
-        fn stop(&mut self) {
-            self.stopped = true;
-        }
-    }
-
-    fn enter_event() -> InputEvent {
-        use crossterm::event::{KeyCode, KeyEvent, KeyEventKind, KeyEventState, KeyModifiers};
-        InputEvent::Key(KeyEvent {
-            code: KeyCode::Enter,
-            modifiers: KeyModifiers::NONE,
-            kind: KeyEventKind::Press,
-            state: KeyEventState::NONE,
-        })
-    }
-
-    fn alt_enter_event() -> InputEvent {
-        use crossterm::event::{KeyCode, KeyEvent, KeyEventKind, KeyEventState, KeyModifiers};
-        InputEvent::Key(KeyEvent {
-            code: KeyCode::Enter,
-            modifiers: KeyModifiers::ALT,
-            kind: KeyEventKind::Press,
-            state: KeyEventState::NONE,
-        })
-    }
-
-    fn esc_event() -> InputEvent {
-        use crossterm::event::{KeyCode, KeyEvent, KeyEventKind, KeyEventState, KeyModifiers};
-        InputEvent::Key(KeyEvent {
-            code: KeyCode::Esc,
-            modifiers: KeyModifiers::NONE,
-            kind: KeyEventKind::Press,
-            state: KeyEventState::NONE,
-        })
     }
 
     fn down_event() -> InputEvent {

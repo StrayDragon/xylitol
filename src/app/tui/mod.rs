@@ -24,8 +24,9 @@ pub(crate) mod terminal_guard;
 mod themes;
 mod widgets;
 
-#[cfg(test)]
-mod harness;
+/// ati30：BDD/单测共用的 ScriptedDriver + TestTerminal + host 泵。
+/// 正常编译路径（SceneBuilder tt08 先例）——验证与生产共用唯一副作用泵。
+pub mod harness;
 #[cfg(test)]
 mod lab_ao_perf;
 #[cfg(test)]
@@ -46,7 +47,7 @@ use self::host::{HostEvent, HostSession};
 use self::terminal_guard::{TerminalGuard, exit_requested, install_lifecycle_hooks};
 
 pub use self::ask_host::{AskHostGateway, ask_questions_to_choice};
-pub use self::bridge::{QueueBadge, UiEntry, UiModel, UiPhase, apply_xy_event};
+pub use self::bridge::{BashBlockStatus, QueueBadge, UiEntry, UiModel, UiPhase, apply_xy_event};
 /// att12/att18：travel 重建 seam 窄导出（BDD 与外部消费者同一管道）。
 pub use self::bridge::{rebuild_scrollback_from_travel, travel_history_note};
 pub use self::commands::{
