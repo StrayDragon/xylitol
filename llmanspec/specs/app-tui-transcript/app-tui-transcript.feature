@@ -299,3 +299,39 @@
     那么 视口保持尾窗且提示 expand disabled 且不出全文
     当 回放超长 write 正文并按下 Ctrl+O
     那么 write 正文可展开为全文
+
+  @req:att23 @executable
+  场景: envelope-fold-hides-inner-keeps-heads-headless
+    当 以场景构建器回放四轮活动并按回合结束收纳
+    那么 最旧信封折叠为用户行加 Worked for 加末段正文且无内层块
+    当 左键单击折叠命中表中的信封三角列
+    那么 该信封定点展开且中间助手正文与簇头行重新可见
+
+  @req:att26 @executable
+  场景: activity-auto-collapse-windows-headless
+    当 以场景构建器回放四轮活动并按回合结束收纳
+    那么 仅最旧两轮折叠为 Worked for 且近窗轮正文与簇头保持
+    当 以重建路径应用重建收纳
+    那么 全部四轮折叠为 Worked for
+    当 关闭 ActivityFold 重挂并按回合结束收纳
+    那么 全帧无 Worked for
+
+  @req:att27 @executable
+  场景: envelope-cluster-markers-and-chords-headless
+    当 以场景构建器回放四轮活动并按回合结束收纳
+    那么 折叠信封与收起簇头旁注均为 Alt+Shift+E
+    当 左键单击折叠命中表中的簇头三角列
+    那么 展开簇头旁注为 Ctrl+Alt+Shift+E 且信封簇头行不带 (Alt+E)
+    并且 全帧无 Planning next moves
+
+  @req:att28 @executable
+  场景: activity-expand-collapse-nearest-keys-headless
+    当 以场景构建器回放四轮活动并按重建收纳
+    当 按下和弦 Alt+Shift+E
+    那么 最近信封降为簇头态且 Worked for 保持
+    当 再按下和弦 Alt+Shift+E
+    那么 次近折叠信封降为簇头态且最近簇头保持
+    当 按下和弦 Ctrl+Alt+Shift+E
+    那么 最近展开信封收回为 Worked for 折叠态
+    当 再按下和弦 Ctrl+Alt+Shift+E
+    那么 全部信封收回为 Worked for 折叠态

@@ -59,6 +59,8 @@ pub use self::host::{
 };
 pub use self::layout::{EditorSlot, EditorSlotKind, LayoutTheme};
 pub use self::widgets::{FoldHitTable, FoldTarget, GlyphSet, ScrollbackFold};
+/// att26：ActivityFold 自动收纳旋钮（信封/簇折叠配置面）。
+pub use activity_fold::ActivityFoldSettings;
 /// att13：折叠态工具人话摘要的窄导出（BDD 直驱纯函数合约）。
 pub use bridge::human_tool_args_preview;
 // TuiRunOptions exported via struct above in this module

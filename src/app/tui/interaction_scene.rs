@@ -16,11 +16,13 @@ use crossterm::event::KeyEvent;
 use xylitol_tui::Component;
 
 use crate::app::core::driver::XyEvent;
+use crate::app::tui::activity_fold::ActivityFoldSettings;
 use crate::app::tui::activity_fold::scene::SemanticDump;
 use crate::app::tui::activity_fold::strip_ansi_live_window;
 use crate::app::tui::bridge::{UiEntry, UiModel, apply_xy_event};
 use crate::app::tui::layout::{FilterMode, UiRoot};
 use crate::app::tui::widgets::{FoldHitTable, ScrollbackFold};
+use crate::protocol::session::{SessionEntry, SessionTreeTravel};
 use xylitol_tui::TreeNode;
 
 /// Headless keyboard/mouse interaction surface over a product `UiRoot`.
@@ -60,6 +62,31 @@ impl InteractionBdd {
     pub fn push_xy(&mut self, event: XyEvent) -> &mut Self {
         apply_xy_event(&mut self.model, &event);
         self.root.apply_ui_model(&self.model);
+        self
+    }
+
+    // ── activity auto-collapse (att23 / att26 / att28) ──
+
+    /// Replace the auto-collapse knobs (product config seam, `tui.activity_fold`).
+    pub fn set_activity_settings(&mut self, settings: ActivityFoldSettings) -> &mut Self {
+        self.root.set_activity_settings(settings);
+        self
+    }
+
+    /// Turn-end auto crush — the host calls the same root method when a turn ends.
+    pub fn turn_end_activity(&mut self) -> &mut Self {
+        self.root.apply_activity_after_turn_end();
+        self
+    }
+
+    /// Rebuild-path wall-clock ingest + auto crush (travel / resume / fork).
+    pub fn rebuild_activity(
+        &mut self,
+        session_entries: &[SessionEntry],
+        travel: &SessionTreeTravel,
+    ) -> &mut Self {
+        self.root
+            .apply_activity_after_rebuild(session_entries, travel);
         self
     }
 
