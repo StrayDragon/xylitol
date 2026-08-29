@@ -67,3 +67,27 @@ fn test_att12_history_rebuild_merge(transcript_bdd: TranscriptBdd) {}
     name = "travel-notice-trailing-append-headless"
 )]
 fn test_att18_travel_notice_trailing(transcript_bdd: TranscriptBdd) {}
+
+#[scenario(
+    path = "llmanspec/specs/app-tui-transcript/app-tui-transcript.feature",
+    name = "tool-rail-status-colors-headless"
+)]
+fn test_att4_rail_status_colors(tui_interaction: TuiInteraction) {}
+
+#[scenario(
+    path = "llmanspec/specs/app-tui-transcript/app-tui-transcript.feature",
+    name = "write-viewport-and-edit-diff-chrome-headless"
+)]
+fn test_att14_write_edit_chrome(tui_interaction: TuiInteraction) {}
+
+#[scenario(
+    path = "llmanspec/specs/app-tui-transcript/app-tui-transcript.feature",
+    name = "bash-full-output-footer-warning-headless"
+)]
+fn test_att15_footer_warning_fg(tui_interaction: TuiInteraction) {}
+
+#[scenario(
+    path = "llmanspec/specs/app-tui-transcript/app-tui-transcript.feature",
+    name = "hard-truncated-viewport-guard-headless"
+)]
+fn test_att16_hard_truncation_guard(tui_interaction: TuiInteraction) {}

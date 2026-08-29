@@ -610,3 +610,391 @@ fn then_notice_trailing_not_prepended(transcript_bdd: &TranscriptBdd) {
         "att18: prepend is forbidden — rebuilt content keeps its order untouched"
     );
 }
+
+// ---- att4：rail 皮肤状态轨（accent / success / error，轨+gutter 结构） ----
+
+use xylitol::app::tui::FoldTarget;
+use xylitol::app::tui::InteractionBdd;
+
+/// rail 前缀 = 1 列底色 + `49m` 复位 + 1 列无底色 gutter（paint_left_rail_line 同构）。
+fn rail_prefix(rgb: xylitol_tui::terminal_colors::RgbColor) -> String {
+    format!("\x1b[48;2;{};{};{}m \x1b[49m ", rgb.r, rgb.g, rgb.b)
+}
+
+/// 封轮 + 打开命中视口 + 定点展开簇头（簇头默认折叠，内层块须展开才进帧）。
+fn seal_and_open_cluster(fx: &mut InteractionBdd) {
+    fx.push_xy(XyEvent::AgentEnd {
+        messages: Vec::new(),
+    });
+    fx.open_hit_viewport(200);
+    let _ = fx.render_plain(80); // 注册折叠命中区
+    let hit = fx
+        .fold_hits()
+        .regions
+        .iter()
+        .find(|r| matches!(&r.target, FoldTarget::Cluster(_)))
+        .map(|r| (r.col_start as u16, r.content_row as u16))
+        .expect("a registered cluster header region");
+    assert!(fx.left_click(hit.0, hit.1), "cluster click must consume");
+}
+
+#[when("以场景构建器回放 pending、成功与失败三种工具并取 ANSI 帧")]
+fn when_mount_three_status_tools(tui_interaction: &TuiInteraction) {
+    let mut sb = SceneBuilder::begin();
+    sb.assistant("开工").message_end();
+    sb.tool_start("t-pend", "read", "pending.rs");
+    sb.tool_start("t-ok", "read", "done.rs")
+        .tool_end("t-ok", "read");
+    sb.tool_start("t-err", "read", "bad.rs");
+    let mut fx = InteractionBdd::from_model(sb.into_model());
+    fx.push_xy(XyEvent::ToolExecutionEnd {
+        id: "t-err".into(),
+        name: "read".into(),
+        result: "boom".into(),
+        is_error: true,
+    });
+    seal_and_open_cluster(&mut fx);
+    *tui_interaction.fx.borrow_mut() = Some(fx);
+}
+
+#[then("pending 轨用 accent 而成功轨用 success 且失败轨用 error")]
+fn then_rail_status_colors(tui_interaction: &TuiInteraction) {
+    use xylitol_tui::mix_rgb;
+    let ansi = {
+        let mut fx = tui_interaction.fx.borrow_mut();
+        let fx = fx.as_mut().expect("fixture mounted");
+        fx.render_lines(80).join("\n")
+    };
+    let theme = xylitol::app::tui::LayoutTheme::product_dark();
+    let p = theme.palette();
+    // att4 MAY soft-mix surface：产品轨色为 surface 与 vivid 的 0.72 混合。
+    let cases = [
+        ("pending.rs", mix_rgb(p.surface, p.accent, 0.72), "pending"),
+        ("done.rs", mix_rgb(p.surface, p.success, 0.72), "success"),
+        ("bad.rs", mix_rgb(p.surface, p.error, 0.72), "error"),
+    ];
+    for (needle, rgb, label) in cases {
+        let prefix = rail_prefix(rgb);
+        assert!(
+            ansi.lines()
+                .filter(|l| l.contains(needle))
+                .any(|l| l.starts_with(&prefix)),
+            "att4: {label} tool line must carry its status rail:\n{ansi:?}"
+        );
+    }
+}
+
+#[then("轨为单列加无底色 gutter 且外层背景以复位码收束")]
+fn then_rail_shape_and_reset(tui_interaction: &TuiInteraction) {
+    let (done, prefix) = {
+        use xylitol_tui::mix_rgb;
+        let theme = xylitol::app::tui::LayoutTheme::product_dark();
+        let p = theme.palette();
+        let prefix = rail_prefix(mix_rgb(p.surface, p.success, 0.72));
+        let mut fx = tui_interaction.fx.borrow_mut();
+        let fx = fx.as_mut().expect("fixture mounted");
+        let ansi = fx.render_lines(80).join("\n");
+        let done = ansi
+            .lines()
+            .find(|l| l.contains("done.rs"))
+            .expect("success tool line")
+            .to_string();
+        (done, prefix)
+    };
+    // rail_prefix 末位即 \x1b[49m 复位 + 无底色 gutter 空格（结构即断言）。
+    assert!(
+        done.starts_with(&prefix),
+        "att4: rail is one bg cell + 49m reset + bare gutter:\n{done:?}"
+    );
+}
+
+#[then("内容行除轨外无整行洗底")]
+fn then_no_full_row_wash(tui_interaction: &TuiInteraction) {
+    let (done, prefix) = {
+        use xylitol_tui::mix_rgb;
+        let theme = xylitol::app::tui::LayoutTheme::product_dark();
+        let p = theme.palette();
+        let prefix = rail_prefix(mix_rgb(p.surface, p.success, 0.72));
+        let mut fx = tui_interaction.fx.borrow_mut();
+        let fx = fx.as_mut().expect("fixture mounted");
+        let ansi = fx.render_lines(80).join("\n");
+        let done = ansi
+            .lines()
+            .find(|l| l.contains("done.rs"))
+            .expect("success tool line")
+            .to_string();
+        (done, prefix)
+    };
+    let rest = &done[prefix.len()..];
+    assert!(
+        !rest.contains("48;2;"),
+        "att4: content area must not be washed with tool bg:\n{done:?}"
+    );
+}
+
+// ---- att14：write 正文视口 + edit diff 默认可见 ----
+
+fn long_body(lines: usize) -> String {
+    (1..=lines)
+        .map(|i| format!("body-line-{i:02}"))
+        .collect::<Vec<_>>()
+        .join("\n")
+}
+
+#[when("以场景构建器回放超长 write 正文并挂载交互面")]
+fn when_mount_long_write(tui_interaction: &TuiInteraction) {
+    let mut sb = SceneBuilder::begin();
+    sb.assistant("开工").message_end();
+    let mut fx = InteractionBdd::from_model(sb.into_model());
+    fx.push_xy(XyEvent::ToolExecutionStart {
+        id: "w1".into(),
+        name: "write".into(),
+        args: serde_json::json!({ "path": "docs/x.md", "content": long_body(30) }),
+    });
+    seal_and_open_cluster(&mut fx);
+    *tui_interaction.fx.borrow_mut() = Some(fx);
+}
+
+#[then("正文视口至多 10 行尾且以 total 加 ctrl+o 提示省略")]
+fn then_write_viewport_tail(tui_interaction: &TuiInteraction) {
+    let plain = {
+        let mut fx = tui_interaction.fx.borrow_mut();
+        fx.as_mut().expect("fixture mounted").render_plain(80)
+    };
+    assert!(
+        plain.contains("body-line-30"),
+        "tail window keeps the last line:\n{plain}"
+    );
+    assert!(
+        !plain.contains("body-line-01"),
+        "early lines must stay outside the 10-line tail viewport:\n{plain}"
+    );
+    assert!(
+        plain.contains("30 total") && plain.contains("ctrl+o to expand"),
+        "att14: omitted lines are announced with count + ctrl+o hint:\n{plain}"
+    );
+}
+
+#[then("write 头行与正文共用同一状态轨")]
+fn then_write_shared_rail(tui_interaction: &TuiInteraction) {
+    use xylitol_tui::mix_rgb;
+    let (header, body, prefix) = {
+        let theme = xylitol::app::tui::LayoutTheme::product_dark();
+        let p = theme.palette();
+        let prefix = rail_prefix(mix_rgb(p.surface, p.accent, 0.72));
+        let mut fx = tui_interaction.fx.borrow_mut();
+        let fx = fx.as_mut().expect("fixture mounted");
+        let ansi = fx.render_lines(80).join("\n");
+        let header = ansi
+            .lines()
+            .find(|l| l.contains("docs/x.md"))
+            .expect("write header line")
+            .to_string();
+        let body = ansi
+            .lines()
+            .find(|l| l.contains("body-line-30"))
+            .expect("write body line")
+            .to_string();
+        (header, body, prefix)
+    };
+    assert!(
+        header.starts_with(&prefix) && body.starts_with(&prefix),
+        "att14: header and body must share one status rail:\n{header:?}\n{body:?}"
+    );
+}
+
+#[when("以场景构建器回放 edit 成功并挂载交互面")]
+fn when_mount_edit_success(tui_interaction: &TuiInteraction) {
+    let mut sb = SceneBuilder::begin();
+    sb.assistant("开工").message_end();
+    sb.tool_start("e1", "edit", "a.rs");
+    let mut fx = InteractionBdd::from_model(sb.into_model());
+    fx.push_xy(XyEvent::ToolExecutionEnd {
+        id: "e1".into(),
+        name: "edit".into(),
+        result: serde_json::json!({
+            "display_diff": "@@ -1,2 +1,3 @@\n ctx\n-removed\n+added"
+        })
+        .to_string(),
+        is_error: false,
+    });
+    seal_and_open_cluster(&mut fx);
+    *tui_interaction.fx.borrow_mut() = Some(fx);
+}
+
+#[then("diff 正文默认可见且头行无状态字面标签")]
+fn then_edit_diff_default_visible(tui_interaction: &TuiInteraction) {
+    let plain = {
+        let mut fx = tui_interaction.fx.borrow_mut();
+        fx.as_mut().expect("fixture mounted").render_plain(80)
+    };
+    assert!(
+        plain.contains("+added") && plain.contains("-removed"),
+        "att14: edit diff must be visible by default (no Alt+E needed):\n{plain}"
+    );
+    for label in ["[ok]", "[err]", "[…]"] {
+        assert!(
+            !plain.contains(label),
+            "att14: headers must not embed literal status labels: {label}"
+        );
+    }
+}
+
+// ---- att15：[Full output: 脚注 warning 前景；未截断不伪造 ----
+
+const FULL_OUTPUT_FOOTER: &str =
+    "[Full output: /tmp/x.log. Truncated: 20 lines shown (50.0KB limit)]";
+
+fn bash_output(lines: usize, footer: Option<&str>) -> String {
+    let mut out = (1..=lines)
+        .map(|i| format!("line-{i:02}"))
+        .collect::<Vec<_>>()
+        .join("\n");
+    if let Some(f) = footer {
+        out.push('\n');
+        out.push_str(f);
+    }
+    out
+}
+
+/// att16 产品形状：硬截断 bash 结果为 JSON（truncated + combined 内含脚注）。
+fn truncated_bash_result(lines: usize) -> String {
+    serde_json::json!({
+        "exit_code": 0,
+        "truncated": true,
+        "combined": bash_output(lines, Some(FULL_OUTPUT_FOOTER))
+    })
+    .to_string()
+}
+
+fn mount_bash_tool(tui_interaction: &TuiInteraction, result: String) {
+    let mut sb = SceneBuilder::begin();
+    sb.assistant("开工").message_end();
+    sb.tool_start("b1", "bash", "/tmp/app");
+    let mut fx = InteractionBdd::from_model(sb.into_model());
+    fx.push_xy(XyEvent::ToolExecutionEnd {
+        id: "b1".into(),
+        name: "bash".into(),
+        result,
+        is_error: false,
+    });
+    seal_and_open_cluster(&mut fx);
+    *tui_interaction.fx.borrow_mut() = Some(fx);
+}
+
+#[when("以场景构建器回放带 Full output 脚注的 bash 工具并取 ANSI 帧")]
+fn when_mount_truncated_bash(tui_interaction: &TuiInteraction) {
+    mount_bash_tool(tui_interaction, truncated_bash_result(20));
+}
+
+#[then("脚注行以 warning 前景绘制且帧内可见脚注")]
+fn then_footer_warning_fg(tui_interaction: &TuiInteraction) {
+    use xylitol_tui::{bold, fg_rgb};
+    let ansi = {
+        let mut fx = tui_interaction.fx.borrow_mut();
+        let fx = fx.as_mut().expect("fixture mounted");
+        fx.render_lines(120).join("\n")
+    };
+    let expect = bold(&fg_rgb(
+        xylitol::app::tui::LayoutTheme::product_dark()
+            .palette()
+            .warning,
+        FULL_OUTPUT_FOOTER,
+    ));
+    assert!(
+        ansi.contains(&expect),
+        "att15: footer must paint warning fg (bold allowed):\n{ansi:?}"
+    );
+}
+
+#[when("以场景构建器回放未截断的正常输出")]
+fn when_mount_normal_bash(tui_interaction: &TuiInteraction) {
+    mount_bash_tool(tui_interaction, bash_output(4, None));
+}
+
+#[then("帧内不出现伪造的 Full output 脚注")]
+fn then_no_fabricated_footer(tui_interaction: &TuiInteraction) {
+    let plain = {
+        let mut fx = tui_interaction.fx.borrow_mut();
+        fx.as_mut().expect("fixture mounted").render_plain(120)
+    };
+    assert!(
+        !plain.contains("[Full output:"),
+        "att15: untruncated output must not fabricate the footer:\n{plain}"
+    );
+}
+
+// ---- att16：硬截断禁视口展开；write 正文仍可 Ctrl+O ----
+
+fn ctrl_key(ch: char) -> crossterm::event::KeyEvent {
+    crossterm::event::KeyEvent {
+        code: crossterm::event::KeyCode::Char(ch),
+        modifiers: crossterm::event::KeyModifiers::CONTROL,
+        kind: crossterm::event::KeyEventKind::Press,
+        state: crossterm::event::KeyEventState::NONE,
+    }
+}
+
+#[when("以场景构建器回放硬截断 bash 工具并按下 Ctrl+O")]
+fn when_mount_hard_truncated_bash(tui_interaction: &TuiInteraction) {
+    let mut sb = SceneBuilder::begin();
+    sb.assistant("开工").message_end();
+    sb.tool_start("b1", "bash", "/tmp/app");
+    let mut fx = InteractionBdd::from_model(sb.into_model());
+    fx.push_xy(XyEvent::ToolExecutionEnd {
+        id: "b1".into(),
+        name: "bash".into(),
+        result: truncated_bash_result(24),
+        is_error: false,
+    });
+    seal_and_open_cluster(&mut fx);
+    fx.handle_key(ctrl_key('o'));
+    *tui_interaction.fx.borrow_mut() = Some(fx);
+}
+
+#[then("视口保持尾窗且提示 expand disabled 且不出全文")]
+fn then_hard_truncation_guard(tui_interaction: &TuiInteraction) {
+    let plain = {
+        let mut fx = tui_interaction.fx.borrow_mut();
+        fx.as_mut().expect("fixture mounted").render_plain(120)
+    };
+    assert!(
+        plain.contains("expand disabled"),
+        "att16: hard truncation must announce expand disabled:\n{plain}"
+    );
+    assert!(
+        plain.contains("line-24"),
+        "tail preview stays visible:\n{plain}"
+    );
+    assert!(
+        !plain.contains("line-01"),
+        "att16: Ctrl+O must NOT expand hard-truncated output to full text:\n{plain}"
+    );
+}
+
+#[when("回放超长 write 正文并按下 Ctrl+O")]
+fn when_mount_long_write_ctrl_o(tui_interaction: &TuiInteraction) {
+    let mut sb = SceneBuilder::begin();
+    sb.assistant("开工").message_end();
+    let mut fx = InteractionBdd::from_model(sb.into_model());
+    fx.push_xy(XyEvent::ToolExecutionStart {
+        id: "w1".into(),
+        name: "write".into(),
+        args: serde_json::json!({ "path": "docs/x.md", "content": long_body(30) }),
+    });
+    seal_and_open_cluster(&mut fx);
+    fx.handle_key(ctrl_key('o'));
+    *tui_interaction.fx.borrow_mut() = Some(fx);
+}
+
+#[then("write 正文可展开为全文")]
+fn then_write_body_expands(tui_interaction: &TuiInteraction) {
+    let plain = {
+        let mut fx = tui_interaction.fx.borrow_mut();
+        fx.as_mut().expect("fixture mounted").render_plain(120)
+    };
+    assert!(
+        plain.contains("body-line-01") && plain.contains("body-line-30"),
+        "att16: write body viewport MUST still allow Ctrl+O expansion:\n{plain}"
+    );
+}
