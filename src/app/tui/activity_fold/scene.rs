@@ -239,7 +239,7 @@ impl SceneBuilder {
     }
 
     /// Seal a thinking burst the product way: [`XyEvent::ThinkingDelta`] then
-    /// [`UiModel::flush_streaming_elapsed`] (same flush `MessageEnd` uses).
+    /// `UiModel::flush_streaming_elapsed` (same flush `MessageEnd` uses).
     ///
     /// Elapsed is pinned because a scene cannot steer
     /// [`std::time::Instant`]. This is **not** stuffing `UiEntry::Thinking`.
@@ -250,12 +250,12 @@ impl SceneBuilder {
     }
 
     /// Inflight stream for the live window. Identity is
-    /// [`crate::app::tui::bridge::STREAMING_THINK_ID`], not a nonempty buffer.
+    /// `STREAMING_THINK_ID`, not a nonempty buffer.
     pub fn live_thinking(&mut self, text: &str) -> &mut Self {
         self.push_xy(XyEvent::ThinkingDelta(text.into()))
     }
 
-    /// Live Xy events for [`HostSession::step(HostEvent::Xy)`]. Does not include
+    /// Live Xy events for `HostSession::step(HostEvent::Xy)`. Does not include
     /// [`Self::thinking_flushed`] (pinned elapsed is Resume-shaped).
     pub fn live_events(&self) -> &[XyEvent] {
         &self.live
@@ -265,7 +265,8 @@ impl SceneBuilder {
         &self.model.entries
     }
 
-    /// Hand the built model to an [`InteractionBdd`] for key/mouse interaction
+    /// Hand the built model to an [`InteractionBdd`](crate::app::tui::InteractionBdd)
+    /// for key/mouse interaction
     /// scenes (att20–att32): the model itself moves, nothing is re-applied.
     pub fn into_model(self) -> UiModel {
         self.model
