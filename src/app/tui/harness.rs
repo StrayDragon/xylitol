@@ -27,7 +27,7 @@ use crate::protocol::session::{
     SessionEntry, SessionTreeKind, SessionTreeNode, SessionTreeTravel, plan_message_history_travel,
 };
 
-use super::effects::{
+pub use super::effects::{
     drain_pending, refresh_footer_tokens, run_interactive_bang, run_interactive_reload,
 };
 use super::host::{HostEvent, HostSession};

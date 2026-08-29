@@ -219,3 +219,93 @@
     那么 编辑器文本保持为空且仍在编辑器槽
     当 在编辑器槽按下和弦 "Ctrl+T"
     那么 思考折叠默认态翻转且全帧不出现模型列表
+
+  @req:ati2 @executable
+  场景: busy-abort-and-idle-quit-keys-headless
+    当 以主机泵开启忙碌流并按下 Esc
+    那么 abort 计一次且未退出且回到可输入 idle
+    当 再次开启忙碌流并按下 Ctrl+C
+    那么 abort 同语义计两次且未退出
+    当 打开样例树槽后按下 Ctrl+C
+    那么 树槽关闭且未退出且未新增 abort
+    当 编辑器输入草稿后按下 Ctrl+C
+    那么 编辑器被清空且未退出且未新增 abort
+    当 清空编辑器再按下 Ctrl+C
+    那么 会话请求退出
+
+  @req:ati3 @executable
+  场景: busy-enter-steer-alt-enter-followup-headless
+    当 以主机泵开启忙碌流并输入 nudge 后按 Enter
+    那么 steer 收到 nudge 且未发起第二次 run
+    当 输入 later 并按 Alt+Enter
+    那么 follow_up 收到 later 且未发起第二次 run
+
+  @req:ati10 @executable
+  场景: busy-esc-aborts-clears-steer-no-tree-headless
+    当 以主机泵开启忙碌流并按下 Esc
+    那么 abort 计一次且清队为 steer 不清 follow_up
+    并且 会话树未打开
+
+  @req:ati14 @executable
+  场景: abort-then-resubmit-runs-again-headless
+    当 以主机泵开启忙碌流并按下 Esc 后收流关闭
+    那么 run 不再活跃且 abort 已计一次
+    当 输入 second 并按 Enter
+    那么 run 收到 second 且无粘性 aborted 错误
+
+  @req:ati16 @executable
+  场景: idle-bang-execute-not-run-headless
+    当 以主机泵在 idle 提交 bang 命令
+    那么 execute_bash 收到命令体且未调用 run
+    当 提交双感叹号命令
+    那么 exclude_from_context 为真
+    当 提交空命令体的感叹号
+    那么 有提示且未执行 bash 且未调用 run
+
+  @req:ati19 @executable
+  场景: bang-esc-aborts-hanging-bash-headless
+    当 以主机泵提交挂起 bang 并经输入流注入 Esc
+    那么 abort 到达驱动且 Bash 块为 cancelled 且回到 idle
+    并且 无 agent 的 Aborted 滚动提示
+
+  @req:ati20 @executable
+  场景: bash-active-second-bang-hard-reject-headless
+    当 以主机泵令 bash 执行中并提交第二条 bang
+    那么 有硬拒提示且编辑器保留命令体
+    并且 未发起第二次 execute_bash 且未排队
+
+  @req:ati28 @executable
+  场景: slash-session-tree-pending-not-prompt-headless
+    当 以主机泵在 idle 提交斜杠 session-tree
+    那么 会话树打开且未作为 prompt 调用 run
+    当 开启忙碌流再提交斜杠 session-tree
+    那么 树未重复打开
+    当 在 idle 提交斜杠 tree
+    那么 无该动词路径且未开树且未调用 run
+
+  @req:ati30 @executable
+  场景: bang-esc-then-second-bang-still-abortable-headless
+    当 以主机泵提交挂起 bang 并注入 Esc 加积压 Esc
+    当 再提交第二条挂起 bang 并注入 Esc
+    那么 第二次 bang 仍可被 Esc 中止且块为 cancelled
+
+  @req:ati31 @executable
+  场景: abort-latch-suppresses-late-xy-headless
+    当 以主机泵开启忙碌流注入正文增量后按下 Esc 再注入迟到增量
+    那么 已流式正文保留且迟到增量不出现
+    并且 abort 计一次且滚动提示为 aborted 语义
+
+  @req:ati32 @executable
+  场景: agent-busy-bang-prefix-hard-reject-headless
+    当 以主机泵开启忙碌流并提交 bang 前缀文本
+    那么 有硬拒提示且编辑器保留文本
+    并且 未入 steer 且未调用 execute_bash
+
+  @req:ati43 @executable
+  场景: reload-soft-gate-keys-headless
+    当 以主机泵开启重载并输入草稿后按 Enter
+    那么 壳层通告为 reloading 且草稿保留且未新增滚动提示
+    当 经输入流注入 Esc 取消挂起重载
+    那么 重载结束且通告为已取消
+    当 重载结束后提交 bang 命令
+    那么 键位恢复 idle 规则且 execute_bash 收到命令体
