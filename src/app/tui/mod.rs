@@ -47,6 +47,8 @@ use self::terminal_guard::{TerminalGuard, exit_requested, install_lifecycle_hook
 
 pub use self::ask_host::{AskHostGateway, ask_questions_to_choice};
 pub use self::bridge::{QueueBadge, UiEntry, UiModel, UiPhase, apply_xy_event};
+/// att12/att18：travel 重建 seam 窄导出（BDD 与外部消费者同一管道）。
+pub use self::bridge::{rebuild_scrollback_from_travel, travel_history_note};
 pub use self::commands::{
     BangParse, PendingBash, PendingSlash as TuiPendingSlash, bash_result_entries,
     parse_bang_command,

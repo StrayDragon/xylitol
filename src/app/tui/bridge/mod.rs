@@ -23,6 +23,8 @@ pub(crate) use preview::{
     merge_path_preview_with_range, output_looks_like_machine_json, preview_is_downgrade,
     preview_lacks_real_path,
 };
+/// att12/att18：travel 重建 seam（history rebuild 的正常路径入口）。
+pub use session_tree::{rebuild_scrollback_from_travel, travel_history_note};
 
 use serde_json::Value;
 
