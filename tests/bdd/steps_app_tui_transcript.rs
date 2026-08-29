@@ -998,3 +998,409 @@ fn then_write_body_expands(tui_interaction: &TuiInteraction) {
         "att16: write body viewport MUST still allow Ctrl+O expansion:\n{plain}"
     );
 }
+
+// ---- att23 / att26 / att27 / att28：信封嵌套与 ActivityFold 自动收纳 ----
+
+/// 一轮会话条目：user → read 工具 → 中段正文 → edit 工具 → 末段正文。
+/// 每轮投影 5 个 UiEntry（User/Tool/Assistant/Tool/Assistant），seg id = `seg-{5n}`。
+fn activity_turns_fixture(turns: usize) -> (Vec<SessionEntry>, SessionTreeTravel) {
+    fn add(
+        entries: &mut Vec<SessionEntry>,
+        parent: &mut Option<String>,
+        last_id: &mut String,
+        id: &str,
+        message: serde_json::Value,
+    ) {
+        entries.push(SessionEntry::Message(MessageEntry {
+            base: EntryBase {
+                entry_type: "message".into(),
+                id: id.into(),
+                parent_id: parent.clone(),
+                timestamp: 0,
+            },
+            message,
+        }));
+        *parent = Some(id.to_string());
+        *last_id = id.to_string();
+    }
+    let mut entries = Vec::new();
+    let mut parent = None;
+    let mut last_id = String::new();
+    for n in 0..turns {
+        add(
+            &mut entries,
+            &mut parent,
+            &mut last_id,
+            &format!("u{n}"),
+            serde_json::json!({
+                "role": "user",
+                "content": [{ "type": "text", "text": format!("u-turn-{n}") }],
+                "timestamp": 0u64,
+            }),
+        );
+        add(
+            &mut entries,
+            &mut parent,
+            &mut last_id,
+            &format!("c{n}-1"),
+            serde_json::json!({
+                "role": "assistant",
+                "content": [{ "type": "toolCall", "id": format!("tc{n}-1"),
+                              "name": "read", "arguments": { "path": format!("f{n}-1.rs") } }],
+                "timestamp": 0u64,
+            }),
+        );
+        add(
+            &mut entries,
+            &mut parent,
+            &mut last_id,
+            &format!("r{n}-1"),
+            serde_json::json!({
+                "role": "toolResult", "toolCallId": format!("tc{n}-1"), "toolName": "read",
+                "content": [{ "type": "text", "text": "ok" }], "isError": false,
+                "timestamp": 0u64,
+            }),
+        );
+        add(
+            &mut entries,
+            &mut parent,
+            &mut last_id,
+            &format!("a{n}"),
+            serde_json::json!({
+                "role": "assistant",
+                "content": [
+                    { "type": "text", "text": format!("mid-turn-{n}") },
+                    { "type": "toolCall", "id": format!("tc{n}-2"),
+                      "name": "edit", "arguments": { "path": format!("f{n}-2.rs") } }
+                ],
+                "timestamp": 0u64,
+            }),
+        );
+        add(
+            &mut entries,
+            &mut parent,
+            &mut last_id,
+            &format!("r{n}-2"),
+            serde_json::json!({
+                "role": "toolResult", "toolCallId": format!("tc{n}-2"), "toolName": "edit",
+                "content": [{ "type": "text", "text": "patched" }], "isError": false,
+                "timestamp": 0u64,
+            }),
+        );
+        add(
+            &mut entries,
+            &mut parent,
+            &mut last_id,
+            &format!("e{n}"),
+            serde_json::json!({
+                "role": "assistant",
+                "content": [{ "type": "text", "text": format!("end-turn-{n}") }],
+                "timestamp": 0u64,
+            }),
+        );
+    }
+    let travel = SessionTreeTravel {
+        kind: SessionTreeKind::MessageHistory,
+        selected_id: last_id.clone(),
+        leaf_id: Some(last_id),
+        editor_text: None,
+    };
+    (entries, travel)
+}
+
+fn mount_activity_turns(tui_interaction: &TuiInteraction, turns: usize) {
+    let (entries, travel) = activity_turns_fixture(turns);
+    let mut model = UiModel::default();
+    rebuild_scrollback_from_travel(&mut model, &entries, &travel);
+    let mut fx = InteractionBdd::from_model(model);
+    fx.open_hit_viewport(400);
+    *tui_interaction.fx.borrow_mut() = Some(fx);
+}
+
+fn frame_of(tui_interaction: &TuiInteraction, width: usize) -> String {
+    let mut fx = tui_interaction.fx.borrow_mut();
+    fx.as_mut().expect("fixture mounted").render_plain(width)
+}
+
+fn worked_for_lines(frame: &str) -> usize {
+    frame.lines().filter(|l| l.contains("Worked for")).count()
+}
+
+#[when("以场景构建器回放四轮活动并按回合结束收纳")]
+fn when_mount_four_turns_turn_end(tui_interaction: &TuiInteraction) {
+    mount_activity_turns(tui_interaction, 4);
+    let mut fx = tui_interaction.fx.borrow_mut();
+    fx.as_mut().expect("fixture mounted").turn_end_activity();
+}
+
+#[when("左键单击折叠命中表中的信封三角列")]
+fn when_click_envelope_triangle(tui_interaction: &TuiInteraction) {
+    let mut fx = tui_interaction.fx.borrow_mut();
+    let fx = fx.as_mut().expect("fixture mounted");
+    let _ = fx.render_plain(120); // 重新注册命中区
+    let hit = fx
+        .fold_hits()
+        .regions
+        .iter()
+        .find(|r| matches!(&r.target, FoldTarget::Segment(_)))
+        .map(|r| (r.col_start as u16, r.content_row as u16))
+        .expect("a registered envelope triangle");
+    assert!(fx.left_click(hit.0, hit.1), "envelope click must consume");
+}
+
+#[then("最旧信封折叠为用户行加 Worked for 加末段正文且无内层块")]
+fn then_oldest_envelope_collapsed(tui_interaction: &TuiInteraction) {
+    let plain = frame_of(tui_interaction, 120);
+    assert!(
+        plain.contains("u-turn-0"),
+        "att23: folded envelope keeps the user row:\n{plain}"
+    );
+    assert!(
+        worked_for_lines(&plain) >= 1,
+        "att23: folded envelope paints a Worked for head:\n{plain}"
+    );
+    assert!(
+        plain.contains("end-turn-0"),
+        "att23: folded envelope keeps the last assistant body:\n{plain}"
+    );
+    assert!(
+        !plain.contains("mid-turn-0") && !plain.contains("Read f0-1.rs"),
+        "att23: middle body and inner blocks must be stored away:\n{plain}"
+    );
+}
+
+#[then("该信封定点展开且中间助手正文与簇头行重新可见")]
+fn then_envelope_precise_expand(tui_interaction: &TuiInteraction) {
+    let plain = frame_of(tui_interaction, 120);
+    // att23 展开到簇头态（L2）：中间正文与簇头行可见；内层块仍由簇级折叠
+    // 管辖（att25/att31），不在此处要求。
+    assert!(
+        plain.contains("mid-turn-0")
+            && plain.contains("Explored f0-1.rs")
+            && plain.contains("Edited f0-2.rs"),
+        "att23: expanding the envelope reveals the middle body and cluster heads:\n{plain}"
+    );
+    assert!(
+        worked_for_lines(&plain) >= 1,
+        "att23: the Worked for head row stays for re-folding:\n{plain}"
+    );
+}
+
+#[then("仅最旧两轮折叠为 Worked for 且近窗轮正文与簇头保持")]
+fn then_turn_end_window(tui_interaction: &TuiInteraction) {
+    let plain = frame_of(tui_interaction, 120);
+    assert_eq!(
+        worked_for_lines(&plain),
+        2,
+        "att26: keep_recent_turns=2 folds only turns outside the window:\n{plain}"
+    );
+    // 近窗轮 = 信封展开的簇头态：正文与簇头行可见（内层块归簇级折叠管辖）。
+    assert!(
+        plain.contains("mid-turn-2")
+            && plain.contains("end-turn-2")
+            && plain.contains("Explored f2-1.rs"),
+        "att26: near-window turns keep bodies and cluster heads visible:\n{plain}"
+    );
+}
+
+#[when("以重建路径应用重建收纳")]
+fn when_apply_rebuild_crush(tui_interaction: &TuiInteraction) {
+    let (_, travel) = activity_turns_fixture(4);
+    let mut fx = tui_interaction.fx.borrow_mut();
+    fx.as_mut()
+        .expect("fixture mounted")
+        .rebuild_activity(&[], &travel);
+}
+
+#[then("全部四轮折叠为 Worked for")]
+fn then_rebuild_folds_all(tui_interaction: &TuiInteraction) {
+    let plain = frame_of(tui_interaction, 120);
+    assert_eq!(
+        worked_for_lines(&plain),
+        4,
+        "att26: auto_on_rebuild folds every ended turn:\n{plain}"
+    );
+}
+
+#[when("关闭 ActivityFold 重挂并按回合结束收纳")]
+fn when_mount_disabled_fold(tui_interaction: &TuiInteraction) {
+    use xylitol::app::tui::ActivityFoldSettings;
+    mount_activity_turns(tui_interaction, 4);
+    let mut fx = tui_interaction.fx.borrow_mut();
+    let fx = fx.as_mut().expect("fixture mounted");
+    fx.set_activity_settings(ActivityFoldSettings {
+        enabled: false,
+        ..ActivityFoldSettings::default()
+    });
+    fx.turn_end_activity();
+}
+
+#[then("全帧无 Worked for")]
+fn then_no_envelope_when_disabled(tui_interaction: &TuiInteraction) {
+    let plain = frame_of(tui_interaction, 120);
+    assert!(
+        !plain.contains("Worked for"),
+        "att26: disabled ActivityFold keeps the full ledger:\n{plain}"
+    );
+    // 关闭收纳 ≠ 强制展开：密封簇保持默认收起（att25），簇头行可见即可再展开。
+    assert!(
+        plain.contains("Explored f0-1.rs"),
+        "att26: cluster heads stay visible when disabled:\n{plain}"
+    );
+}
+
+#[then("折叠信封与收起簇头旁注均为 Alt+Shift+E")]
+fn then_marker_chords(tui_interaction: &TuiInteraction) {
+    let plain = frame_of(tui_interaction, 120);
+    // 折叠信封（L3）与收起簇头（L2/virgin heads）的旁注都是「展开最近」和弦。
+    for line in plain.lines().filter(|l| l.contains("Worked for")) {
+        assert!(
+            line.contains("(Alt+Shift+E)"),
+            "att27: folded envelope head advertises the expand chord: {line:?}"
+        );
+    }
+    assert!(
+        plain.contains("▸ Explored f2-1.rs  (Alt+Shift+E)"),
+        "att27: collapsed cluster heads advertise the same expand chord:\n{plain}"
+    );
+    assert!(
+        plain.contains('▸'),
+        "att27: fold glyphs follow att19:\n{plain}"
+    );
+}
+
+#[then("展开簇头旁注为 Ctrl+Alt+Shift+E 且信封簇头行不带 (Alt+E)")]
+fn then_expanded_head_chord(tui_interaction: &TuiInteraction) {
+    let plain = frame_of(tui_interaction, 120);
+    let expanded_head = plain
+        .lines()
+        .find(|l| l.contains("▾") && l.contains("Explored"))
+        .expect("a cluster head was opened by the click");
+    assert!(
+        expanded_head.contains("(Ctrl+Alt+Shift+E)"),
+        "att27: expanded cluster head advertises the collapse chord: {expanded_head:?}"
+    );
+    for line in plain.lines() {
+        let is_head = line.contains("Worked for")
+            || line.contains("Explored")
+            || line.contains("Edited")
+            || line.contains("Ran ");
+        assert!(
+            !is_head || !line.contains("(Alt+E)"),
+            "att27: envelope/cluster heads must not carry the block chord: {line:?}"
+        );
+    }
+}
+
+#[then("全帧无 Planning next moves")]
+fn then_no_planning_placeholder(tui_interaction: &TuiInteraction) {
+    let plain = frame_of(tui_interaction, 120);
+    assert!(
+        !plain.contains("Planning next moves"),
+        "att27: no placeholder rows:\n{plain}"
+    );
+}
+
+// ---- att28：跨面动作 expandNearest / collapseNearest（键位路径） ----
+
+#[when("以场景构建器回放四轮活动并按重建收纳")]
+fn when_mount_four_turns_rebuild(tui_interaction: &TuiInteraction) {
+    mount_activity_turns(tui_interaction, 4);
+    when_apply_rebuild_crush(tui_interaction);
+}
+
+fn chord_key(ch: char, modifiers: crossterm::event::KeyModifiers) -> crossterm::event::KeyEvent {
+    crossterm::event::KeyEvent {
+        code: crossterm::event::KeyCode::Char(ch),
+        modifiers,
+        kind: crossterm::event::KeyEventKind::Press,
+        state: crossterm::event::KeyEventState::NONE,
+    }
+}
+
+#[when("按下和弦 Alt+Shift+E")]
+fn when_press_alt_shift_e(tui_interaction: &TuiInteraction) {
+    use crossterm::event::KeyModifiers;
+    let mut fx = tui_interaction.fx.borrow_mut();
+    fx.as_mut()
+        .expect("fixture mounted")
+        .handle_key(chord_key('e', KeyModifiers::ALT | KeyModifiers::SHIFT));
+}
+
+#[when("再按下和弦 Alt+Shift+E")]
+fn when_press_alt_shift_e_again(tui_interaction: &TuiInteraction) {
+    when_press_alt_shift_e(tui_interaction);
+}
+
+#[when("按下和弦 Ctrl+Alt+Shift+E")]
+fn when_press_ctrl_alt_shift_e(tui_interaction: &TuiInteraction) {
+    use crossterm::event::KeyModifiers;
+    let mut fx = tui_interaction.fx.borrow_mut();
+    fx.as_mut().expect("fixture mounted").handle_key(chord_key(
+        'e',
+        KeyModifiers::CONTROL | KeyModifiers::ALT | KeyModifiers::SHIFT,
+    ));
+}
+
+#[when("再按下和弦 Ctrl+Alt+Shift+E")]
+fn when_press_ctrl_alt_shift_e_again(tui_interaction: &TuiInteraction) {
+    when_press_ctrl_alt_shift_e(tui_interaction);
+}
+
+#[then("最近信封降为簇头态且 Worked for 保持")]
+fn then_nearest_expanded_to_heads(tui_interaction: &TuiInteraction) {
+    let plain = frame_of(tui_interaction, 120);
+    assert!(
+        plain.contains("Explored f3-1.rs") && plain.contains("Edited f3-2.rs"),
+        "att28: expandNearest opens the nearest folded envelope to cluster heads:\n{plain}"
+    );
+    assert!(
+        !plain.contains("Read f3-1.rs"),
+        "att28: cluster heads only — inner blocks stay hidden:\n{plain}"
+    );
+    assert_eq!(
+        worked_for_lines(&plain),
+        4,
+        "att28: the envelope head stays while at cluster level:\n{plain}"
+    );
+}
+
+#[then("次近折叠信封降为簇头态且最近簇头保持")]
+fn then_next_envelope_to_heads(tui_interaction: &TuiInteraction) {
+    let plain = frame_of(tui_interaction, 120);
+    assert!(
+        plain.contains("Explored f2-1.rs"),
+        "att28: expandNearest proceeds to the next nearest folded envelope:\n{plain}"
+    );
+    assert!(
+        plain.contains("Explored f3-1.rs"),
+        "att28: the previously opened envelope stays at cluster level:\n{plain}"
+    );
+}
+
+#[then("最近展开信封收回为 Worked for 折叠态")]
+fn then_nearest_envelope_recollapsed(tui_interaction: &TuiInteraction) {
+    let plain = frame_of(tui_interaction, 120);
+    assert!(
+        !plain.contains("Explored f3-1.rs"),
+        "att28: collapseNearest re-folds the nearest non-L3 envelope:\n{plain}"
+    );
+    assert!(
+        plain.contains("Explored f2-1.rs"),
+        "att28: the farther opened envelope stays:\n{plain}"
+    );
+}
+
+#[then("全部信封收回为 Worked for 折叠态")]
+fn then_all_envelopes_recollapsed(tui_interaction: &TuiInteraction) {
+    let plain = frame_of(tui_interaction, 120);
+    assert!(
+        !plain.contains("Explored f2-1.rs"),
+        "att28: second collapseNearest re-folds the remaining envelope:\n{plain}"
+    );
+    assert_eq!(
+        worked_for_lines(&plain),
+        4,
+        "att28: every turn is back under a Worked for head:\n{plain}"
+    );
+}

@@ -91,3 +91,27 @@ fn test_att15_footer_warning_fg(tui_interaction: TuiInteraction) {}
     name = "hard-truncated-viewport-guard-headless"
 )]
 fn test_att16_hard_truncation_guard(tui_interaction: TuiInteraction) {}
+
+#[scenario(
+    path = "llmanspec/specs/app-tui-transcript/app-tui-transcript.feature",
+    name = "envelope-fold-hides-inner-keeps-heads-headless"
+)]
+fn test_att23_envelope_fold(tui_interaction: TuiInteraction) {}
+
+#[scenario(
+    path = "llmanspec/specs/app-tui-transcript/app-tui-transcript.feature",
+    name = "activity-auto-collapse-windows-headless"
+)]
+fn test_att26_auto_collapse(tui_interaction: TuiInteraction) {}
+
+#[scenario(
+    path = "llmanspec/specs/app-tui-transcript/app-tui-transcript.feature",
+    name = "envelope-cluster-markers-and-chords-headless"
+)]
+fn test_att27_markers_chords(tui_interaction: TuiInteraction) {}
+
+#[scenario(
+    path = "llmanspec/specs/app-tui-transcript/app-tui-transcript.feature",
+    name = "activity-expand-collapse-nearest-keys-headless"
+)]
+fn test_att28_nearest_keys(tui_interaction: TuiInteraction) {}
