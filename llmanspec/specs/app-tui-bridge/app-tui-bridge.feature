@@ -69,3 +69,97 @@
   场景: remote-type-kept
     当 检查 Driver 实现
     那么 默认 attach 且同进程驱动路径仍保留给 print 与嵌入
+
+  @req:atb1 @executable
+  场景: metadata-events-degrade-quietly-headless
+    当 以桥缝注入元数据事件（模型选择与 thinking 档位）
+    那么 模型不 panic 且条目与相位不变
+
+  @req:atb2 @executable
+  场景: busy-lifecycle-until-agent-end-headless
+    当 以桥缝注入 AgentStart 与中间 TurnEnd
+    那么 相位保持忙碌且 status 不空
+    当 注入带 follow_up 队列的 AgentEnd
+    那么 相位仍忙碌且 status 为 Follow-up pending
+    当 注入空队列的 AgentEnd
+    那么 相位回到 idle
+
+  @req:atb3 @executable
+  场景: queue-counts-and-display-diff-headless
+    当 以桥缝注入 QueueUpdate steer=2 follow_up=1
+    那么 队列计数同步为 2/1
+    当 注入 edit 工具成功结果（JSON 含 display_diff）
+    那么 同一条工具行的 display_diff 被填入
+
+  @req:atb5 @executable
+  场景: compaction-block-lifecycle-headless
+    当 以桥缝注入 CompactionStart
+    那么 busy status 为 Compacting 且出现 pending 占位块
+    当 注入成功 CompactionEnd（含 summary 与 tokens_before）
+    那么 占位就地变为完成块且 status 恢复 Working
+    当 注入失败 CompactionEnd
+    那么 块变为短失败态
+
+  @req:atb6 @executable
+  场景: auto-retry-status-lifecycle-headless
+    当 以桥缝注入 AutoRetryStart attempt=2 max=5
+    那么 busy status 为 Retry 2/5
+    当 注入失败 AutoRetryEnd
+    那么 滚动提示说明失败且 status 恢复 Working
+
+  @req:atb7 @executable
+  场景: aborted-error-note-dedupe-headless
+    当 以桥缝注入流式正文与 aborted 错误
+    那么 已流式正文保留且至多一行 aborted 提示且相位 idle
+    当 再注入同轮 aborted 错误
+    那么 不追加重复 aborted 行
+
+  @req:atb8 @executable
+  场景: bash-ui-block-not-notice-headless
+    当 以桥缝创建 pending Bash 块并增量追加输出
+    那么 条目为 Bash 块而非裸滚动提示且 status 保持 pending
+    当 注入完成收口
+    那么 块状态切换为终态
+
+  @req:atb10 @executable
+  场景: tool-intent-upsert-single-row-headless
+    当 以桥缝注入含 ToolCall 的助手快照
+    那么 按工具 id 恰好一行且路径进 args_preview
+    当 注入同 id 的新快照与 ToolExecutionStart
+    那么 行被 upsert 而非再 push
+    并且 正文快照不写入 streaming 缓冲
+
+  @req:atb11 @executable
+  场景: write-edit-success-quiet-output-headless
+    当 以桥缝注入 write 意图（含 content）与成功 JSON 结果
+    那么 正文进同一工具块且成功 JSON 不外显
+    当 注入 edit 成功 JSON 结果（含 display_diff）
+    那么 diff 合入同一条工具块且不另起 Diff 行
+    当 注入 edit 失败结果
+    那么 错误文案保留在块末
+
+  @req:atb12 @executable
+  场景: write-intent-body-before-end-headless
+    当 以桥缝在 End 前注入 write 快照（arguments.content）
+    那么 工具行正文在 End 前即出现
+
+  @req:atb13 @executable
+  场景: tool-path-stream-sticky-headless
+    当 以桥缝注入 file_path 别名的 write 意图
+    那么 路径即进 args_preview
+    当 注入缺 path 的后续快照与成功 End
+    那么 已见路径保持
+    当 注入 read 意图（含 offset 与 limit）
+    那么 路径附行号区间
+
+  @req:atb14 @executable
+  场景: error-kind-branch-sticky-vs-abort-headless
+    当 以桥缝注入 Provider 错误
+    那么 追加粘性 Error 行
+    当 注入 Aborted 错误
+    那么 走 aborted 提示路径而非粘性 Error
+
+  @req:atb15 @executable
+  场景: wire-roundtrip-preserves-tool-args-headless
+    当 经 wire 序列化往返 ToolExecutionStart 后注入桥缝
+    那么 args_preview 保留真实路径不退化为占位
