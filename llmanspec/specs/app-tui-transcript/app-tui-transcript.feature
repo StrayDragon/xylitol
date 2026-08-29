@@ -246,3 +246,27 @@
     当 左键单击折叠命中表中的簇头三角列
     当 再左键单击 "t-read" 的工具块三角列
     那么 收起块保留摘要行且展开旁注为括号完整和弦
+
+  @req:att1 @executable
+  场景: live-scrollback-no-truncation-headless
+    当 以场景构建器渲染多段助手正文（宽 80）
+    那么 各段正文均在帧内且早段未被挤出
+    并且 助手正文行携带样式转义
+
+  @req:att8 @executable
+  场景: thought-label-duration-and-hint-headless
+    当 以场景构建器回放思考加工具并结算 7 秒封轮挂载交互面
+    当 左键单击折叠命中表中的簇头三角列
+    那么 结算行外显 Thought 7s 且不再出现流式 Thinking 头
+    并且 思考块旁注为括号完整和弦 Ctrl+T
+
+  @req:att12 @executable
+  场景: history-rebuild-tool-merge-headless
+    当 以含思考正文与同 id 工具调用加结果的条目重建 transcript
+    那么 思考正文工具各成一块且工具恰一行不另起第二工具
+    并且 重建工具行与同轮直播工具行逐字段一致
+
+  @req:att18 @executable
+  场景: travel-notice-trailing-append-headless
+    当 重建到叶节点并按产品路径追加路径通告
+    那么 通告条目位于 entries 末尾且重建内容次序保持原样

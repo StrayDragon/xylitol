@@ -1,5 +1,6 @@
 //! app-tui-transcript BDD 绑定（P1：纯字形合约）。
 
+use crate::steps_app_tui_interaction::{TuiInteraction, tui_interaction};
 use crate::steps_app_tui_transcript::{TranscriptBdd, transcript_bdd};
 use rstest_bdd_macros::scenario;
 
@@ -38,3 +39,31 @@ fn test_att34_body_seals(transcript_bdd: TranscriptBdd) {}
     name = "live-window-unenveloped-headless"
 )]
 fn test_att33_live_window(transcript_bdd: TranscriptBdd) {}
+
+#[scenario(
+    path = "llmanspec/specs/app-tui-transcript/app-tui-transcript.feature",
+    name = "live-scrollback-no-truncation-headless"
+)]
+fn test_att1_scrollback_no_truncation(transcript_bdd: TranscriptBdd) {}
+
+#[scenario(
+    path = "llmanspec/specs/app-tui-transcript/app-tui-transcript.feature",
+    name = "thought-label-duration-and-hint-headless"
+)]
+fn test_att8_thought_label_duration(
+    transcript_bdd: TranscriptBdd,
+    tui_interaction: TuiInteraction,
+) {
+}
+
+#[scenario(
+    path = "llmanspec/specs/app-tui-transcript/app-tui-transcript.feature",
+    name = "history-rebuild-tool-merge-headless"
+)]
+fn test_att12_history_rebuild_merge(transcript_bdd: TranscriptBdd) {}
+
+#[scenario(
+    path = "llmanspec/specs/app-tui-transcript/app-tui-transcript.feature",
+    name = "travel-notice-trailing-append-headless"
+)]
+fn test_att18_travel_notice_trailing(transcript_bdd: TranscriptBdd) {}
