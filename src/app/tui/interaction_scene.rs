@@ -27,9 +27,10 @@ use xylitol_tui::TreeNode;
 
 /// Headless keyboard/mouse interaction surface over a product `UiRoot`.
 ///
-/// Build the transcript with [`SceneBuilder`] first, hand it over with
-/// [`SceneBuilder::into_model`], then press keys / click triangles /
-/// assert frames. Mouse coordinates are screen cells with `scroll_top = 0`
+/// Build the transcript with [`SceneBuilder`](crate::app::tui::SceneBuilder)
+/// first, hand it over with
+/// [`SceneBuilder::into_model`](crate::app::tui::SceneBuilder::into_model),
+/// then press keys / click triangles / assert frames. Mouse coordinates are screen cells with `scroll_top = 0`
 /// (fixtures set a tall transcript pane instead of scrolling).
 pub struct InteractionBdd {
     model: UiModel,
@@ -163,7 +164,7 @@ impl InteractionBdd {
     // ── session-tree slot scenes (ati22–ati27) ──
 
     /// Open the product tree slot over a supplied sample (same seam the
-    /// effects use: [`UiRoot::mount_session_tree`]).
+    /// effects use: `UiRoot::mount_session_tree`).
     pub fn mount_tree(&mut self, roots: Vec<TreeNode>, active: Option<&str>) -> &mut Self {
         self.root.mount_session_tree(roots, active);
         self

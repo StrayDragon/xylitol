@@ -26,7 +26,7 @@ pub use reload::run_interactive_reload;
 /// Empty session → omit field (MUST NOT forge `used 0`). Estimate errors → omit.
 ///
 /// **Harness / tests**: awaits estimate (override is instant). Production host
-/// MUST prefer [`kick_footer_token_refresh`] so HF encode does not block input.
+/// MUST prefer `kick_footer_token_refresh` so HF encode does not block input.
 pub async fn refresh_footer_tokens<T: Terminal>(
     session: &mut HostSession<T>,
     driver: &dyn XyDriver,
@@ -104,7 +104,7 @@ pub async fn kick_footer_token_refresh<T: Terminal>(
 ///
 /// Ordering matches the historical `run_host_loop` body (abort → dequeue → steer →
 /// follow-up → slash → optional submit→`XyDriver::run`). Bang is **not** awaited here
-/// (c665 — host `select!` / [`run_pending_bash`]). Production and harness MUST share
+/// (c665 — host `select!` / `run_pending_bash`). Production and harness MUST share
 /// this entry so slash/steer branches cannot diverge.
 ///
 /// When `agent_stream` is already `Some`, submit is not taken. A newly started
