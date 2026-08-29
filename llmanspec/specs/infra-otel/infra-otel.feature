@@ -92,3 +92,51 @@
   @req:otel22 @human
   场景: otel-obs-lane-llm
     - 当低频观测 span 激活时，LLM/agent 主路径导出名 agent.turn、agent.iteration、llm.request、tool.execute、过 prepare 的 agent.compaction、以及 settlement 路径的 token.estimate MUST 携带属性 xylitol.obs.lane=llm，供 Collector 或直连消费端过滤；该属性 MUST NOT 写入 XyEvent / hooks；MUST NOT 用 xylitol.signal 作为同义属性名。直连 Langfuse 时，本属 infra 的门闸早退 MUST NOT 伪装为上述 LLM 语义 span（见 otel19）。由单测覆盖，MUST NOT 为静态存在性单独扩 BDD step。
+
+  @req:otel6 @executable
+  场景: otel-session-id-on-turn-root-headless
+    假如 mock 模型先 tool 后无 tool
+    当 以观测闸开启、会话 UUID 与收集槽运行一次带工具调用的 agent 回合
+    那么 agent.turn 根 span 携带等于会话 UUID 的 langfuse.session.id
+
+  @req:otel7 @executable
+  场景: otel-session-name-metadata-headless
+    假如 mock 模型先 tool 后无 tool
+    当 以带 display name 的会话身份运行一次 agent 回合
+    那么 根 span 携带 session_name 元数据
+    当 以无 name 的会话身份运行一次 agent 回合
+    那么 根 span 不写 session_name 属性
+
+  @req:otel8 @executable
+  场景: otel-observation-types-headless
+    假如 mock 模型先 tool 后无 tool
+    当 以观测闸开启运行一次带工具调用的 agent 回合
+    那么 agent.span 为 agent 且 tool.execute 为 tool
+    并且 不写 gen_ai 等价键
+# llm.request 的 generation 类型由 native 适配层单测承载（fake 无 HTTP 层）。
+
+  @req:otel11 @executable
+  场景: otel-turn-span-tree-headless
+    假如 mock 模型先 tool 后无 tool
+    当 以观测闸开启运行一次带工具调用的 agent 回合
+    那么 iteration、tool 与 token.estimate 均为 turn 根的后代并共享 trace_id
+
+  @req:otel12 @executable
+  场景: otel-product-span-names-headless
+    假如 mock 模型先 tool 后无 tool
+    当 以观测闸开启运行一次带工具调用的 agent 回合
+    那么 导出名全部为产品词汇（含 token.estimate）且无旧名
+
+  @req:otel22 @executable
+  场景: otel-obs-lane-llm-headless
+    假如 mock 模型先 tool 后无 tool
+    当 以观测闸开启运行一次带工具调用的 agent 回合
+    那么 全部主路径 span 携带 xylitol.obs.lane=llm
+
+  @req:otel10 @executable
+  场景: otel-observation-io-tier-headless
+    假如 mock 模型先 tool 后无 tool
+    当 以 io=none 的观测闸运行一次带工具调用的 agent 回合
+    那么 任何 span 都不带 observation input 或 output
+    当 以 io=truncated 的观测闸运行一次带工具调用的 agent 回合
+    那么 tool.execute 带参数与结果摘要且 agent.turn 带提示预览
