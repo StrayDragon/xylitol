@@ -86,23 +86,6 @@ impl SessionManager {
         Ok(result)
     }
 
-    /// Create a branched (forked) session from a parent session up to a given entry.
-    /// This is a cleaner alias for `fork()` that creates the child explicitly.
-    pub async fn create_branched_session(
-        &self,
-        parent_id: &str,
-        child_id: &str,
-        target_entry_id: &str,
-    ) -> Result<(), XySessionError> {
-        self.fork(
-            parent_id,
-            child_id,
-            target_entry_id,
-            crate::protocol::session::ForkPosition::At,
-        )
-        .await
-    }
-
     // ── Fork ────────────────────────────────────────────────────
 
     /// Fork a session: create a child session from a parent branch path.

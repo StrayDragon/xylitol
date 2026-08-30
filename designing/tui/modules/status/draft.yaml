@@ -1,7 +1,7 @@
 id: status
 title: 状态条
 surface: tui
-summary: idle 一行空白呼吸距；busy 为 spinner+短词，可带右侧下轮预告。
+summary: idle 一行空白呼吸距；busy 为 spinner+短词。
 alignment:
   chrome: editor 上方；idle 不算 status 文案
   item: 队列条不进本行

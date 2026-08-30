@@ -161,7 +161,7 @@ impl Palette {
         }
     }
 
-    /// Diff inside a `tool-*-bg` wash (pi edit path / `design/diff-block.md` §Edit 一体块).
+    /// Diff inside a `tool-*-bg` wash (pi edit path / designing `diff` module §Edit 一体块).
     ///
     /// Polarity stays on fg; word spans use [`word_wash_bg`] toward red/green and restore
     /// to `block_bg`. **No** `diff-*-bg` row tints — the expandable shell owns the wash.

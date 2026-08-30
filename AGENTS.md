@@ -112,7 +112,7 @@
   ```
   输出 `CARGO_TARGET_DIR=~/.cache/cargo-targets/<repo>/<wt-key>/`，按仓库根路径哈希隔离；脚本见 `scripts/cargo_worktree_env.sh`（维护脚本，不进 qa）。
 - **共享层**：`~/.cargo`（registry/git）+ sccache（`RUSTC_WRAPPER=sccache`）跨树安全；`SCCACHE_CACHE_SIZE` 防止缓存反噬磁盘。
-- 清盘：删除旧 worktree 后顺手 `rm -rf ~/.cache/cargo-targets/<repo>/<对应key>/`；大 target 内部结构（debuginfo / incremental）处置思路见 skill `rust-build-tune`（关联实测笔记为本机 `docs/research/` 私有件，不入库）。
+- 清盘：删除旧 worktree 后顺手 `rm -rf ~/.cache/cargo-targets/<repo>/<对应key>/`；大 target 内部结构（debuginfo / incremental）处置思路见 skill `rust-build-tune`。
 
 ## 提交与测试
 

@@ -5,7 +5,7 @@ summary: "status 上方单行 warning 通告，前缀 Error:。"
 alignment:
   chrome: 队列条之下、status 之上恰好 1 行
   item: 不进 transcript / ScrollNotice / UiEntry
-  todo-bar: 不占用队列条或下轮预告
+  todo-bar: 不占用队列条
 todos:
   - { done: true, text: "词表 Error: 前缀 + warning 色" }
   - { done: true, text: "busy Resume 硬拒闸走本槽" }

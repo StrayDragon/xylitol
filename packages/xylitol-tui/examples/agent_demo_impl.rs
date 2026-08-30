@@ -1552,7 +1552,7 @@ impl FakeCodingAgentApp {
     }
 
     /// Update terminal size used to remap ApplicationOwned mouse into the editor.
-    #[allow(dead_code)]
+    #[allow(dead_code)] // live via example binaries; dead only under agent_demo_test include (see file note)
     pub fn set_term_rows_for_mouse(&mut self, rows: u16) {
         self.term_rows = rows.max(1);
     }
@@ -1607,7 +1607,7 @@ impl FakeCodingAgentApp {
     }
 
     /// Arm the ApplicationOwned «Copied» dock cue (~2s). Not a ScrollNotice / transcript line.
-    #[allow(dead_code)]
+    #[allow(dead_code)] // live via example binaries; dead only under agent_demo_test include (see file note)
     pub fn arm_copy_notice(&mut self) {
         self.copy_notice_until = Some(Instant::now() + Duration::from_millis(2000));
     }
@@ -2224,7 +2224,7 @@ impl FakeCodingAgentApp {
         self.input.cursor_position()
     }
 
-    #[allow(dead_code)]
+    #[allow(dead_code)] // live via example binaries; dead only under agent_demo_test include (see file note)
     pub fn push_system(&mut self, text: String) {
         self.push_message(Role::ScrollNotice, text);
     }
