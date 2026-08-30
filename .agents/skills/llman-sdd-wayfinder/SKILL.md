@@ -2,10 +2,7 @@
 name: "llman-sdd-wayfinder"
 description: "人类主动触发。把大型、一团乱的工作（超出单个 agent 会话容量）拆成一张决策地图，逐个解决决策直到路径清晰。仅手动触发，agent 禁止自动启用。"
 metadata:
-  version: "0.0.69"
-  llman_sdd:
-    bdd_mode: "on"
-    skill_set: "optional"
+  version: "0.0.72"
 ---
 
 # LLMAN SDD Wayfinder
@@ -85,36 +82,29 @@ metadata:
 地图 change + 子决策 change 的依赖图（`llman sdd graph`）。路径清晰后建议进入 `llman-sdd-propose`（含 Branch binding → Specs landing，至 `readyToImplement=true`）把决策收拢为可实施计划。
 
 ## Context
-- 执行前先确认当前 change/spec 状态。
-- 优先使用 `llman sdd context --task --paths` 获取相关 specs，而非全量读取或猜测。
+- 先查状态再动手：change/spec 状态以 `llman sdd show/list/validate` 输出为准。
+- 读 spec 全文前先用 `llman sdd context --task --paths` 定位相关 specs。
 
 ## Goal
-- 明确本次命令/skill 要达成的可验证结果。
+- 本节命令达成一个可验证结果；结果路径与校验状态随报告输出。
 
 ## Constraints
-- 变更保持最小化且范围明确。
-- 标识符或意图不明确时禁止猜测。
-- 在读取 spec 全文前，先使用 `llman sdd context --task --paths` 获取相关 specs。
-- 判断变更规模后选择路径：行为合约变更走完整 SDD（Branch binding → Specs landing → `readyToImplement` → apply）；实现变更走快速路径（live specs 仍须绑定分支）。
-- 勿混淆 Skill 导航与 Git-native 生命周期；勿在默认分支编辑 live `llmanspec/specs/**`。
+- 遵守正文「硬约束/硬规则」，本节不复读。先判断变更规模选路径（triage）：行为合约变更走完整 SDD，实现层走 quick；不确定选完整 SDD（保守）。
+- 改动保持最小；已知校验错误禁止强行继续。
 
 ## Workflow
-- 以 `llman sdd` 命令结果为事实来源。
-- 涉及文件/规范变更时执行校验。
-- 首选 `llman sdd context` 获取相关 specs，而非全量读取或猜测。
-- 当 context 不可用时，按错误提示处理（重建 index 或降级到 `list --specs --json`）。
+- 每步以 `llman sdd` 命令结果为事实来源；改动工件后必跑 `llman sdd validate`。
+- 命令细节见下方生成式命令参考或 `llman sdd <cmd> --help`。
 
 ## Decision Policy
-- 高影响歧义必须先澄清。
-- 已知校验错误下禁止强行继续。
+- 高影响歧义先澄清再继续；事实自己查证，只有决策问用户。
 
 ## Output Contract
-- 汇总已执行动作。
-- 给出结果路径与校验状态。
+- 报告先给人读摘要（结论 / 风险 / 待决策），机器细节随后。
 
 ## Ethics Governance
-- `ethics.risk_level`：按 `low|medium|high|critical` 标注风险等级。
-- `ethics.prohibited_actions`：列出绝对禁止执行的动作。
-- `ethics.required_evidence`：列出高影响输出前必须具备的证据。
-- `ethics.refusal_contract`：定义何时拒答以及安全替代响应方式。
-- `ethics.escalation_policy`：定义何时必须升级为用户确认/人工复核。
+- `ethics.risk_level`：low——仅读写本仓库与 `llmanspec/`，无外发动作；正文另有声明时从其声明。
+- `ethics.prohibited_actions`：违反正文「硬约束」的动作；未经用户明确要求的 push / PR / 外部上传。
+- `ethics.required_evidence`：结论须有命令输出或文件路径佐证；门禁状态以 `llman sdd validate` 为准。
+- `ethics.refusal_contract`：门禁 CRITICAL 未清零 → 拒绝进入下一阶段；自修复达上限 → 报告 blocker。
+- `ethics.escalation_policy`：改动 SDD 合约/模板或执行不可逆动作前，暂停并请用户确认。
