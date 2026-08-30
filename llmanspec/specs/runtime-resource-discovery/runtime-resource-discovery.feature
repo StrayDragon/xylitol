@@ -1,7 +1,7 @@
 # language: zh-CN
 # capability: runtime-resource-discovery
 # purpose: 统一资源发现：skills、themes、AGENTS.md / SYSTEM 与诊断（list/info/doctor）；不含 slash prompt 模板。
-# scope: infra 层 resource, protocol 层
+# scope: src/infra/resource/, src/protocol/
 
 功能: runtime-resource-discovery
 

@@ -1,7 +1,7 @@
 # language: zh-CN
 # capability: app-tui
 # purpose: 跨切面不变量索引。产品细节见 app-tui-*；引擎/harness 见 package-tui-*；CLI 默认进 TUI 见 cli-entry。
-# scope: 主 crate, workspace 测试
+# scope: src/, tests/
 
 功能: app-tui
 

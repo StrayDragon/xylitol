@@ -1,7 +1,7 @@
 # language: zh-CN
 # capability: test-hooks-wiring
 # purpose: hooks 接线 BDD：观察/可取消/可修改矩阵与 XyHookBus 精选导出。
-# scope: 主 crate, workspace 测试
+# scope: src/, tests/
 
 功能: test-hooks-wiring
 

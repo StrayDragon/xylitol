@@ -1,7 +1,7 @@
 # language: zh-CN
 # capability: infra-provider
 # purpose: Provider 装配与映射：协议适配实现在 xylitol-ai-bridge；主仓 LlmAdapter/XyModel 外壳与 DTO 映射。
-# scope: infra 层 provider, xylitol-ai-bridge 包, workspace 测试
+# scope: src/infra/provider/, packages/xylitol-ai-bridge/, tests/
 
 功能: infra-provider
 

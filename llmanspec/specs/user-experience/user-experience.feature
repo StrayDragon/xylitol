@@ -1,7 +1,7 @@
 # language: zh-CN
 # capability: user-experience
 # purpose: 用户体验 — 鉴权引导消息、错误消息与启动诊断。
-# scope: CLI 应用面（print 等）
+# scope: src/app/cli/
 
 功能: user-experience
 

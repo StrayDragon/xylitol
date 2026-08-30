@@ -1,7 +1,7 @@
 # language: zh-CN
 # capability: app-tui-commands
 # purpose: 斜杠命令与 protocol::Command / dispatch 映射。
-# scope: 产品 TUI 面
+# scope: src/app/tui/
 
 功能: app-tui-commands
 

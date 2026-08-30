@@ -1,7 +1,7 @@
 # language: zh-CN
 # capability: app-tui-design-playground
 # purpose: 交互设计稿：token 从视觉 SSOT 生成；模块固定态可闸；无快捷键墙；浏览器稿不是运行时真值。
-# scope: designing 应用与生成物, 产品 TUI 视觉 SSOT（lint 与约定由面 AGENTS 承继）
+# scope: designing/, src/app/tui/
 
 功能: app-tui-design-playground
 

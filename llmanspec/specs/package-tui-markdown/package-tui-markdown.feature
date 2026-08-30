@@ -1,7 +1,7 @@
 # language: zh-CN
 # capability: package-tui-markdown
 # purpose: token 友好的 Markdown 终端渲染：SGR 层级、明文链接、无围栏代码块、空格对齐表。
-# scope: xylitol-tui 包 Markdown, 产品 TUI design 文档
+# scope: packages/xylitol-tui/, docs/architecture/
 
 功能: package-tui-markdown
 

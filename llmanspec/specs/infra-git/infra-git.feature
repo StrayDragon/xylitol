@@ -1,7 +1,7 @@
 # language: zh-CN
 # capability: infra-git
 # purpose: Git 仓库操作 — 分支管理、仓库发现与 URL 解析。
-# scope: infra 层 git
+# scope: src/infra/git/
 
 功能: infra-git
 

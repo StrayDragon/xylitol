@@ -1,7 +1,7 @@
 # language: zh-CN
 # capability: infra-clipboard
 # purpose: 剪贴板集成 — 原生剪贴板、OSC 52 与图片复制支持。
-# scope: infra 层 clipboard
+# scope: src/infra/clipboard/
 
 功能: infra-clipboard
 

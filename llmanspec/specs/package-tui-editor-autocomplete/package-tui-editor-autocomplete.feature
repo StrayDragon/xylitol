@@ -1,7 +1,7 @@
 # language: zh-CN
 # capability: package-tui-editor-autocomplete
 # purpose: Editor 补全 popup：可插拔 CompletionSource 注册表（slash、@-path、未来触发符）。
-# scope: xylitol-tui 包, workspace 测试
+# scope: packages/xylitol-tui/, tests/
 
 功能: package-tui-editor-autocomplete
 

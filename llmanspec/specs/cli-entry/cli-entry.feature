@@ -1,7 +1,7 @@
 # language: zh-CN
 # capability: cli-entry
 # purpose: CLI 统一入口：默认 TUI；surface（tui/print）与 ops（resources/serve/tokenizer）；bootstrap/dispatch；产品 slash 以 session-* 为准。
-# scope: CLI 应用面, workspace 测试
+# scope: src/app/cli/, src/main.rs, tests/
 
 功能: cli-entry
 

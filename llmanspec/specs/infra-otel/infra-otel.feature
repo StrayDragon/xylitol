@@ -1,7 +1,7 @@
 # language: zh-CN
 # capability: infra-otel
 # purpose: 可选 OpenTelemetry OTLP/HTTP 出口：Cargo feature otel + 配置显式开启；默认与失败路径均不收集；经 fastrace-opentelemetry 导出；Langfuse 会话、GenAI 属性、xylitol.obs.lane 与同一 turn 内父子 span 树（含过 prepare 的 agent.compaction）在 opt-in 出口之上叠加。
-# scope: infra 层观测, CLI 日志接线, xylitol-ai-bridge 包
+# scope: src/infra/observability/, src/app/cli/, packages/xylitol-ai-bridge/
 
 功能: infra-otel
 

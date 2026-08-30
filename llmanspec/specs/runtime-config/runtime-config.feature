@@ -1,7 +1,7 @@
 # language: zh-CN
 # capability: runtime-config
 # purpose: 运行时配置 — 深合并、secret.env、settings；仅 config.yaml + secret.env，不支持 config.local。
-# scope: infra 层配置, infra 层 settings
+# scope: src/infra/config/, src/infra/settings/
 
 功能: runtime-config
 

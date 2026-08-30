@@ -1,7 +1,7 @@
 # language: zh-CN
 # capability: domain-compaction
 # purpose: "对话 compaction — n-gram 切点检测、LLM 摘要与 token 估计。"
-# scope: agent 层 compaction, agent 层 capabilities, infra 层 session
+# scope: src/agent/compaction/, src/agent/capabilities/, src/infra/session/
 
 功能: domain-compaction
   背景:

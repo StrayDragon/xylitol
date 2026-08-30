@@ -1,7 +1,7 @@
 # language: zh-CN
 # capability: package-tui-autocomplete
 # purpose: 自动补全：CancellationToken 取消、可选 fd 模糊搜、DebouncedAutocomplete。
-# scope: xylitol-tui 包, workspace 测试
+# scope: packages/xylitol-tui/, tests/
 
 功能: package-tui-autocomplete
 
