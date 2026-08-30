@@ -2,7 +2,7 @@
 
 > **目的**：对照 `../pi/packages/coding-agent` interactive 做 UX 对齐时，**不得静默覆盖**本文件列出的 xylitol 产品决议。
 > **定位**：本面是 xylitol 产品 TUI（host + XyDriver seam），不是 pi interactive 的 1:1 port。包层差异见 [`packages/xylitol-tui/PI_DELTAS.md`](../../../packages/xylitol-tui/PI_DELTAS.md)。
-> **不是**进度板；能力差距清单见 `design/session-tree-vs-pi.md`。稳定边界见本目录 `AGENTS.md`。
+> **不是**进度板。稳定边界见本目录 `AGENTS.md`。
 > 新增刻意差异时：**先改代码与测试（或明确不实现），再在本表加一行**；回退差异须显式评审。
 
 对齐源路径（历史参考）：`../pi/packages/coding-agent`（interactive / tree / travel）。

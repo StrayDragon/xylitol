@@ -8,7 +8,7 @@
 //! `text (url)`; no code fences or box-drawing tables; bold/italic = SGR only
 //! (no visible `**`/`*`); `` ` `` / `~~` retained; blockquotes use a muted
 //! `│ ` gutter (same token as quote body). UX SSOT:
-//! `src/app/tui/design/markdown.md`.
+//! designing `markdown` module (`designing/tui/modules/markdown/`).
 //!
 //! The `MarkdownTheme` is deliberately a struct of boxed closures so consumers
 //! (e.g. the main crate with syntect) can inject their own styling pipeline
@@ -414,7 +414,7 @@ fn collect_inline_until(
                 *idx += 1;
                 let inner =
                     collect_inline_until(md, events, idx, default_fn, style_prefix).concat();
-                // SGR bold only — no visible `**` (design/markdown.md).
+                // SGR bold only — no visible `**` (designing `markdown` module).
                 parts.push((md.theme.bold)(&inner));
                 parts.push(style_prefix.to_string());
             }
@@ -471,7 +471,7 @@ fn collect_inline_until(
                 *idx += 1;
             }
             Event::TaskListMarker(checked) => {
-                // Visible round-trip markers (design/markdown.md): `- [ ]` / `- [x]`.
+                // Visible round-trip markers (designing `markdown` module): `- [ ]` / `- [x]`.
                 let marker = if *checked { "[x] " } else { "[ ] " };
                 parts.push(default_fn(marker));
                 *idx += 1;

@@ -57,9 +57,10 @@ packages/xylitol-tui（paint_left_rail_line）
 
 ## 分阶段
 
+> M0（产品 rail）与 M1（index SSOT）已落地，以 [`designing/tui/modules/transcript`](../../designing/tui/modules/transcript/intent.md) 与代码为准；本文只留未兑现切片。
+
 | 阶段 | 状态 |
 |---|---|
-| **M0 / M1** | **已兑现**：产品 rail + index SSOT |
 | **M2 语义复制** | 候选 |
 | **M3 引擎按需** | 候选 |
 

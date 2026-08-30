@@ -19,7 +19,7 @@ designing/
     draft.yaml         # 摘要 / 对齐（chrome·item·todo-bar）/ todos / 组件键 / 备注
     intent.md          # 可观察 MUST（软顶 ~80 行）
     states/*.yaml      # cell/span 固定态
-  lab/modules/<id>/    # 实验原型区（未接入产品），内部结构与上面相同
+  tui-lab/modules/<id>/  # 实验原型区（未接入产品），内部结构与上面相同
 ```
 
 不放 `tools/`，不进 `packages/xylitol-tui`。未交付的 Web 端 **不要**先建空 `web/`。

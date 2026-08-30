@@ -40,7 +40,7 @@
 | D15 | 测试分层 | vitest + virtual-terminal | 四层 harness + PTY/tmux E2E（`test-tui-harness`） | 是 |
 | D16 | 双交互模式 | `TuiMainScreen` / `TuiAltScreen` 两套实现 | 单 `TUI` + `InteractionMode`；ApplicationOwned 经 alt-buffer + `ScrollView`/`SelectionController`；**产品默认 ApplicationOwned**（ath30 / c2071）；库仍暴露 Inline | 是 |
 | D16 | InputListener | VT 字符串回调常见 | **`InputEvent` 原生** `add_input_listener`；无 KeyEvent→VT；`Continue` / `Consumed`（Key·Paste 刷帧，Mouse 静默）/ `ConsumedRerender`（显式 dirty） | 是 |
-| D17 | Diff 组件 | `renderDiff` 函数式 | **`Diff` Component + `render_diff_lines`**；`similar` 在包内；主题闭包；对齐 `design/diff-block.md` | 是 |
+| D17 | Diff 组件 | `renderDiff` 函数式 | **`Diff` Component + `render_diff_lines`**；`similar` 在包内；主题闭包；对齐 `designing/tui/modules/diff` | 是 |
 | D18 | 代码高亮 | 应用层常见 | **`highlight` optional feature**（syntect+two-face）；默认依赖无 syntect；经 `MarkdownTheme.highlight_code` 注入 | 是 |
 | D19 | `requestRender(true)` / suspend / resize | force 用 `previousWidth=-1` → **整屏 clear**；resize 回调 **soft** `requestRender()` → `width/heightChanged` → `fullRender(true)`；外部编辑器 resume 亦 `force` clear | **对齐**：force 用 `FORCE_SIZE_SENTINEL`（`usize::MAX` ≡ pi `-1`）→ **clear**；host resize / mount **soft** `request_render(false)`；`with_terminal_suspended` 仍保留 `previous_lines`、不立刻 paint（resume 后由调用方 soft/force） | 是 |
 | D20 | paste marker 原子分段 | `segmentWithMarkers`：光标/删除把 `[paste #N …]` 当单段 | **未移植**；折叠/展开与 `get_expanded_text` 已对齐；原子分段另开 change | 是 |

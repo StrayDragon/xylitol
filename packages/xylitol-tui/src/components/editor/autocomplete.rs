@@ -1,8 +1,6 @@
 use super::types::AutocompleteMode;
-use crate::autocomplete::{
-    AutocompleteItem, AutocompleteSuggestions, CombinedAutocompleteProvider,
-};
-use crate::completion::{AtPathSource, CompletionContext, CompletionSource, SlashCommandSource};
+use crate::autocomplete::{AutocompleteItem, AutocompleteSuggestions};
+use crate::completion::{CompletionContext, CompletionSource};
 use crate::components::select_list::{
     SelectItem, SelectList, SelectListLayoutOptions, SelectListTheme,
 };
@@ -27,23 +25,6 @@ impl super::Editor {
         self.completion.set_sources(sources);
         if keep_popup {
             self.request_autocomplete(false, false);
-        }
-    }
-
-    /// Compatibility shim: split Combined into Slash + AtPath sources.
-    pub fn set_autocomplete_provider(&mut self, provider: Option<CombinedAutocompleteProvider>) {
-        self.cancel_autocomplete();
-        match provider {
-            None => self.completion.clear(),
-            Some(p) => {
-                let (commands, base, fd) = p.into_parts();
-                let at: Box<dyn CompletionSource> = match fd {
-                    Some(fd_path) => Box::new(AtPathSource::new_with_fd(base, fd_path)),
-                    None => Box::new(AtPathSource::new(base)),
-                };
-                self.completion
-                    .set_sources(vec![Box::new(SlashCommandSource::new(commands)), at]);
-            }
         }
     }
 

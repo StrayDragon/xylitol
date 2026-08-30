@@ -13,4 +13,4 @@ keys:
   - { chord: "Alt+Enter", when: "follow-up 入队" }
   - { chord: "Alt+Up", when: "还原队列进 editor" }
 notes: |
-  组件键，不是全局百科。下轮预告不在本带。
+  组件键，不是全局百科。

@@ -21,14 +21,13 @@ Agent 改某表面：先读**产品代码**，再读短 `intent.md` + `states/*.
 | tui | layout | 槽高按终端行数预算。短终端仍须看见 busy `Working`，不得被 editor/footer 挤没。 | short | `/tui/layout` |
 | tui | loaded-resources | scrollback 上方 Codex 风边框卡片：`>_ xylitol` + directory。有 skills 时 skill-ref 色 skills 行并换行全量；有 MCP 时 success 色 mcp 行。 | card | `/tui/loaded-resources` |
 | tui | markdown | 助手正文：终端里直观、安静；框选粘贴省 token。包 Markdown 已按本节收敛。 | sample | `/tui/markdown` |
-| tui | mcp-cue | 短 cue 固定 `mcp pending (see /mcp)`。agent-busy 且已有 `Next turn` 时 **不覆盖** 下轮预告。 | cue-short-busy, panel-connecting, panel-mixed | `/tui/mcp-cue` |
+| tui | mcp-cue | 短 cue 固定 `mcp pending (see /mcp)`。 | cue-short-busy, panel-connecting, panel-mixed | `/tui/mcp-cue` |
 | tui | models | `/model` 同时选模型与 xylitol thinking 档。↑↓ 选模型；←→ 或槽内 Shift+Tab cycle 档。 | filter, narrow, no-thinking, wide | `/tui/models` |
 | tui | palette | 语义色短表：on-surface / muted / accent / user / assistant / tool / error / warning / success / diff-* / surface / skill-ref。 | swatches | `/tui/palette` |
-| tui | pending | agent 仍在跑时换模 / thinking：footer = **生效中**；status 行右 = **下轮预告**。 | next-turn, thinking | `/tui/pending` |
 | tui | queue-steer | 非空时在 scrollback 与 status 之间：`Steering:` / `Follow-up:`，末行 `↳ Alt+Up to edit all queued messages`。 | both | `/tui/queue-steer` |
 | tui | session-resume | 标题 `Resume Session`。替换 editor 槽。 | default, id-on | `/tui/session-resume` |
 | tui | session-tree | 产品树是 Driver MessageHistory **活树**（双 Esc 开）。kind 前缀（user/assistant/tool）走 token 色；选中反转 inherit，禁止 kind 前景穿透。 | filter | `/tui/session-tree` |
-| tui | status | idle：**1 行空白**呼吸距，无 spinner / Ready。busy：`spinner + 短词` 紧贴左；可选右侧下轮预告。 | busy, idle | `/tui/status` |
+| tui | status | idle：**1 行空白**呼吸距，无 spinner / Ready。busy：`spinner + 短词` 紧贴左。 | busy, idle | `/tui/status` |
 | tui | theme | **产品 host 默认 dark**。本稿预览默认 light 只为审色，不是产品默认。 | list | `/tui/theme` |
 | tui | tool | tool / bash / diff：**1-cell 轨 + gutter + 内容**（与 expandable 同源）。 | success | `/tui/tool` |
 | tui | transcript | 当前轮写入 scrollback。不是 Codex 独立浏览面。 | mixed | `/tui/transcript` |

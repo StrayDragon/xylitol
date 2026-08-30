@@ -1,7 +1,5 @@
 # xylitol
 
-> TODO: 等需求稳定在写
-
 ## Acknowledgments
 
 This project draws inspiration from [pi](https://pi.dev), a powerful coding agent CLI/SDK. The following ideas and patterns were adapted from pi:
