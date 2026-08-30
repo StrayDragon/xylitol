@@ -1,7 +1,7 @@
 # language: zh-CN
 # capability: agent-tools
 # purpose: 工具系统 — 工具定义、执行分发、文件类内置与 Todo 三工具、路径工具与并发类。
-# scope: agent 层工具, infra 层工具实现, protocol 层
+# scope: src/agent/tools/, src/infra/tools/, src/protocol/
 
 功能: agent-tools
   背景:

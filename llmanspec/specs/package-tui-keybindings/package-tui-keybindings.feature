@@ -1,7 +1,7 @@
 # language: zh-CN
 # capability: package-tui-keybindings
 # purpose: xylitol-tui KeybindingsManager：静态 definitions、拥有型用户覆盖与按 id 匹配。
-# scope: xylitol-tui 包, xylitol-tui 包测试
+# scope: packages/xylitol-tui/, packages/xylitol-tui/tests/
 
 功能: package-tui-keybindings
 

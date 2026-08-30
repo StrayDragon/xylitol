@@ -1,7 +1,7 @@
 # language: zh-CN
 # capability: test-infra
 # purpose: 测试基础设施：Fake/Faux provider、临时目录 RAII、TUI E2E 隔离。
-# scope: 主 crate, workspace 测试
+# scope: src/, tests/
 
 功能: test-infra
 

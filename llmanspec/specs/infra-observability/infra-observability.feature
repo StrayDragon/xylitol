@@ -1,7 +1,7 @@
 # language: zh-CN
 # capability: infra-observability
 # purpose: Debug 观察与 provider trace 管线：env 驱动激活的 fastrace 时间线 + log 文件 + provider-trace.jsonl（~/.xylitol/logs/），file-only 不毁 TUI 渲染，在组合根 app::cli::run 统一装配；禁止 tracing 双栈；低频跨层 span 可关联；导出名与父子树对齐 infra-otel 产品词汇。
-# scope: infra 层观测, CLI 日志接线
+# scope: src/infra/observability/, src/app/cli/
 
 功能: infra-observability
 

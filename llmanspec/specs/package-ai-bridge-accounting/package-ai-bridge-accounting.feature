@@ -1,7 +1,7 @@
 # language: zh-CN
 # capability: package-ai-bridge-accounting
 # purpose: "xylitol-ai-bridge 多源上下文 token 计量与 TokenProvenance。"
-# scope: xylitol-ai-bridge 包, agent 层 compaction
+# scope: packages/xylitol-ai-bridge/, src/agent/compaction/
 
 功能: package-ai-bridge-accounting
 

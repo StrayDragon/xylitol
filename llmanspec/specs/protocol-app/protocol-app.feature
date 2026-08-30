@@ -1,7 +1,7 @@
 # language: zh-CN
 # capability: protocol-app
 # purpose: Client↔host 产品真源为四象限信封；Command/Event 为方法/帧载荷；禁 JSON-RPC 2.0 与全双工 WS 外层。
-# scope: 主 crate, workspace 测试
+# scope: src/, tests/
 
 功能: protocol-app
 

@@ -1,7 +1,7 @@
 # language: zh-CN
 # capability: runtime-model-registry
 # purpose: "模型注册表 — provider 注册、鉴权检查、模型发现与解析。Pre-1.0.0 仅支持 OpenAI 兼容与 Anthropic provider。"
-# scope: agent 层 model, protocol 层
+# scope: src/agent/model/, src/protocol/
 
 功能: runtime-model-registry
 

@@ -1,7 +1,7 @@
 # language: zh-CN
 # capability: layer-architecture
 # purpose: 分层与 seam、Xy 精选导出、嵌入缝与组件粒度：agent / protocol / infra / app（单 crate；无独立 domain 或 runtime_protocol 顶栏；不用源码 grep 元测试卡写法）。
-# scope: agent 层与 infra 层与 app 层与 protocol 层, workspace 测试, 分层约定载体（AGENTS）
+# scope: src/agent/, src/infra/, src/app/, src/protocol/, tests/, AGENTS.md, src/AGENTS.md
 
 功能: layer-architecture
 

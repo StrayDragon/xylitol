@@ -1,7 +1,7 @@
 # language: zh-CN
 # capability: agent-runtime
 # purpose: "薄编排 ReAct 运行时：AgentRuntime 循环、工具批执行、steer/follow-up 队列、abort 与 XyEvent 流（不含 adk / OutputGuard）。"
-# scope: agent 层, protocol 层, workspace 测试
+# scope: src/agent/, src/protocol/, tests/
 
 功能: agent-runtime
 

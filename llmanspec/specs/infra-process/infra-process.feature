@@ -1,7 +1,7 @@
 # language: zh-CN
 # capability: infra-process
 # purpose: Shell 进程管理 — 子进程 spawn、进程组与取消。
-# scope: infra 层 process, protocol 层
+# scope: src/infra/process/, src/protocol/
 
 功能: infra-process
 

@@ -1,7 +1,7 @@
 # language: zh-CN
 # capability: test-standards
 # purpose: 测试标准与约定 — 测试组织、harness 要求与覆盖期望。
-# scope: workspace 测试, 主 crate 测试入口
+# scope: tests/, src/
 
 功能: test-standards
 

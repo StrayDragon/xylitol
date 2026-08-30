@@ -1,7 +1,7 @@
 # language: zh-CN
 # capability: app-tui-chrome
 # purpose: 主题 token、glyph、status 与 footer 等 layout 壳（历史 capability 名 chrome）。
-# scope: 产品 TUI 壳层（layout/chrome）
+# scope: src/app/tui/
 
 功能: app-tui-chrome
 

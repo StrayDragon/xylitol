@@ -1,7 +1,7 @@
 # language: zh-CN
 # capability: server-core
 # purpose: Server 运行时 — 独立 Host 监听器经四象限信封暴露产品契约（POST unary/respond + WS 只下行）；每 session 槽独立 journal 与写者。
-# scope: server 应用面
+# scope: src/app/server/
 
 功能: server-core
 

@@ -1,7 +1,7 @@
 # language: zh-CN
 # capability: agent-todo
 # purpose: 会话内 Todo SSOT — Custom latest-wins 持久、内置三工具读写、至多一条 in_progress、不进 LLM 前缀；TUI 可折 checklist 与状态栏只读投影边界。
-# scope: protocol 层, agent 层, infra 层工具, 产品 TUI 面
+# scope: src/protocol/, src/agent/, src/infra/tools/, src/app/tui/
 
 功能: agent-todo
 

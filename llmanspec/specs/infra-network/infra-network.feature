@@ -1,7 +1,7 @@
 # language: zh-CN
 # capability: infra-network
 # purpose: 网络配置 — HTTP 代理设置、idle 超时与 dispatcher 配置。
-# scope: infra 层配置, infra 层 settings
+# scope: src/infra/config/, src/infra/settings/
 
 功能: infra-network
 
