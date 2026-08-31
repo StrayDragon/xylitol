@@ -3,7 +3,8 @@ depends_on: []
 skip_specs_landing: true
 branch: sdd/c2500-unify-select-list-protocol
 base_sha: 50095ac9a0b48d08e133dc07fd0805362ad18e7c
-checkpointed: false
+checkpointed: true
+checkpoint_sha: 50095ac9a0b48d08e133dc07fd0805362ad18e7c
 ---
 
 # SelectList 结构下沉：五槽去重与过滤纯函数化（行为零变化）
