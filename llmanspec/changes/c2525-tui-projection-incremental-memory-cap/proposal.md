@@ -1,6 +1,5 @@
 ---
 depends_on: []
-status: draft
 ---
 
 # TUI 投影增量化与内存缓存上限（冻结后触发）
