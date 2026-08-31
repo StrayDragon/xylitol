@@ -2,7 +2,8 @@
 depends_on: []
 branch: sdd/c2460-add-command-idempotency
 base_sha: 50095ac9a0b48d08e133dc07fd0805362ad18e7c
-checkpointed: false
+checkpointed: true
+checkpoint_sha: 50095ac9a0b48d08e133dc07fd0805362ad18e7c
 ---
 
 # Unary Command 幂等准入：调用方产 ID、首次获胜
