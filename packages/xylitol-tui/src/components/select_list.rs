@@ -69,6 +69,18 @@ impl Default for SelectListTheme {
     }
 }
 
+/// Prefix filter over item values, case-insensitive (pure; `SelectList::set_filter`'s
+/// semantics). Empty filter keeps every item.
+pub fn filter_by_prefix(items: &[SelectItem], filter: &str) -> Vec<SelectItem> {
+    let filter_lower = filter.to_lowercase();
+    items
+        .iter()
+        .filter(|item| item.value.to_lowercase().starts_with(&filter_lower))
+        .cloned()
+        .collect()
+}
+
+#[derive(Default)]
 pub struct SelectListLayoutOptions {
     pub min_primary_column_width: Option<usize>,
     pub max_primary_column_width: Option<usize>,
@@ -117,13 +129,7 @@ impl SelectList {
     }
 
     pub fn set_filter(&mut self, filter: &str) {
-        let filter_lower = filter.to_lowercase();
-        self.filtered_items = self
-            .items
-            .iter()
-            .filter(|item| item.value.to_lowercase().starts_with(&filter_lower))
-            .cloned()
-            .collect();
+        self.filtered_items = filter_by_prefix(&self.items, filter);
         self.selected_index = 0;
     }
 
@@ -363,6 +369,10 @@ mod tests {
         }
     }
 
+    fn default_layout() -> SelectListLayoutOptions {
+        SelectListLayoutOptions::default()
+    }
+
     fn items() -> Vec<SelectItem> {
         vec![
             SelectItem::new("apple", "Apple").with_description("A sweet fruit"),
@@ -373,16 +383,7 @@ mod tests {
 
     #[test]
     fn test_select_list_renders_items() {
-        let mut list = SelectList::new(
-            items(),
-            10,
-            theme(),
-            SelectListLayoutOptions {
-                min_primary_column_width: None,
-                max_primary_column_width: None,
-                truncate_primary: None,
-            },
-        );
+        let mut list = SelectList::new(items(), 10, theme(), default_layout());
         let lines = list.render(80);
         assert!(!lines.is_empty());
         assert!(
@@ -394,16 +395,7 @@ mod tests {
 
     #[test]
     fn test_select_list_selection_indicator() {
-        let mut list = SelectList::new(
-            items(),
-            10,
-            theme(),
-            SelectListLayoutOptions {
-                min_primary_column_width: None,
-                max_primary_column_width: None,
-                truncate_primary: None,
-            },
-        );
+        let mut list = SelectList::new(items(), 10, theme(), default_layout());
         let lines = list.render(80);
         // First item (index 0) should have "→" prefix
         assert!(
@@ -422,16 +414,7 @@ mod tests {
     #[test]
     fn test_select_list_moves_selection_down() {
         use crossterm::event::KeyCode;
-        let mut list = SelectList::new(
-            items(),
-            10,
-            theme(),
-            SelectListLayoutOptions {
-                min_primary_column_width: None,
-                max_primary_column_width: None,
-                truncate_primary: None,
-            },
-        );
+        let mut list = SelectList::new(items(), 10, theme(), default_layout());
         feed(&mut list, KeyCode::Down);
         assert_eq!(list.selected_index, 1);
     }
@@ -439,16 +422,7 @@ mod tests {
     #[test]
     fn test_select_list_wraps_selection_up() {
         use crossterm::event::KeyCode;
-        let mut list = SelectList::new(
-            items(),
-            10,
-            theme(),
-            SelectListLayoutOptions {
-                min_primary_column_width: None,
-                max_primary_column_width: None,
-                truncate_primary: None,
-            },
-        );
+        let mut list = SelectList::new(items(), 10, theme(), default_layout());
         feed(&mut list, KeyCode::Up); // up wraps to bottom
         assert_eq!(list.selected_index, 2);
     }
@@ -456,16 +430,7 @@ mod tests {
     #[test]
     fn test_select_list_wraps_selection_down() {
         use crossterm::event::KeyCode;
-        let mut list = SelectList::new(
-            items(),
-            10,
-            theme(),
-            SelectListLayoutOptions {
-                min_primary_column_width: None,
-                max_primary_column_width: None,
-                truncate_primary: None,
-            },
-        );
+        let mut list = SelectList::new(items(), 10, theme(), default_layout());
         feed(&mut list, KeyCode::Down); // 0->1
         feed(&mut list, KeyCode::Down); // 1->2
         feed(&mut list, KeyCode::Down); // wrap to 0
@@ -476,16 +441,7 @@ mod tests {
     fn test_select_list_confirm_fires_callback() {
         use crossterm::event::KeyCode;
         use std::sync::{Arc, Mutex};
-        let mut list = SelectList::new(
-            items(),
-            10,
-            theme(),
-            SelectListLayoutOptions {
-                min_primary_column_width: None,
-                max_primary_column_width: None,
-                truncate_primary: None,
-            },
-        );
+        let mut list = SelectList::new(items(), 10, theme(), default_layout());
         let selected = Arc::new(Mutex::new(None));
         let s = selected.clone();
         list.on_select = Some(Box::new(move |item| {
@@ -501,16 +457,7 @@ mod tests {
     fn test_select_list_cancel() {
         use crossterm::event::KeyCode;
         use std::sync::{Arc, Mutex};
-        let mut list = SelectList::new(
-            items(),
-            10,
-            theme(),
-            SelectListLayoutOptions {
-                min_primary_column_width: None,
-                max_primary_column_width: None,
-                truncate_primary: None,
-            },
-        );
+        let mut list = SelectList::new(items(), 10, theme(), default_layout());
         let cancelled = Arc::new(Mutex::new(false));
         let c = cancelled.clone();
         list.on_cancel = Some(Box::new(move || {
@@ -522,16 +469,7 @@ mod tests {
 
     #[test]
     fn test_select_list_filter() {
-        let mut list = SelectList::new(
-            items(),
-            10,
-            theme(),
-            SelectListLayoutOptions {
-                min_primary_column_width: None,
-                max_primary_column_width: None,
-                truncate_primary: None,
-            },
-        );
+        let mut list = SelectList::new(items(), 10, theme(), default_layout());
         list.set_filter("b");
         assert_eq!(list.filtered_items.len(), 1);
         assert_eq!(list.filtered_items[0].value, "banana");
@@ -539,16 +477,7 @@ mod tests {
 
     #[test]
     fn test_select_list_filter_no_match() {
-        let mut list = SelectList::new(
-            items(),
-            10,
-            theme(),
-            SelectListLayoutOptions {
-                min_primary_column_width: None,
-                max_primary_column_width: None,
-                truncate_primary: None,
-            },
-        );
+        let mut list = SelectList::new(items(), 10, theme(), default_layout());
         list.set_filter("zzz");
         assert_eq!(list.filtered_items.len(), 0);
         let lines = list.render(80);
@@ -557,16 +486,7 @@ mod tests {
 
     #[test]
     fn test_select_list_get_selected() {
-        let mut list = SelectList::new(
-            items(),
-            10,
-            theme(),
-            SelectListLayoutOptions {
-                min_primary_column_width: None,
-                max_primary_column_width: None,
-                truncate_primary: None,
-            },
-        );
+        let mut list = SelectList::new(items(), 10, theme(), default_layout());
         feed(&mut list, crossterm::event::KeyCode::Down); // move to 1
         let selected = list.get_selected_item().unwrap();
         assert_eq!(selected.value, "banana");
@@ -574,16 +494,7 @@ mod tests {
 
     #[test]
     fn test_select_list_descriptions_rendered() {
-        let mut list = SelectList::new(
-            items(),
-            10,
-            theme(),
-            SelectListLayoutOptions {
-                min_primary_column_width: None,
-                max_primary_column_width: None,
-                truncate_primary: None,
-            },
-        );
+        let mut list = SelectList::new(items(), 10, theme(), default_layout());
         let lines = list.render(100);
         assert!(
             lines[0].contains("sweet fruit"),
@@ -597,16 +508,7 @@ mod tests {
         let many_items: Vec<SelectItem> = (0..20)
             .map(|i| SelectItem::new(format!("item{}", i), format!("Item {}", i)))
             .collect();
-        let mut list = SelectList::new(
-            many_items,
-            5,
-            theme(),
-            SelectListLayoutOptions {
-                min_primary_column_width: None,
-                max_primary_column_width: None,
-                truncate_primary: None,
-            },
-        );
+        let mut list = SelectList::new(many_items, 5, theme(), default_layout());
         let lines = list.render(80);
         assert!(
             lines.iter().any(|l| l.contains("/20")),
@@ -624,7 +526,7 @@ mod tests {
             SelectListLayoutOptions {
                 min_primary_column_width: Some(12),
                 max_primary_column_width: Some(32),
-                truncate_primary: None,
+                ..default_layout()
             },
         );
         for w in [1usize, 8, 20, 40] {
@@ -647,5 +549,17 @@ mod tests {
                 );
             }
         }
+    }
+
+    #[test]
+    fn filter_by_prefix_matches_value_case_insensitively() {
+        let items = items();
+        assert_eq!(filter_by_prefix(&items, "BAN")[0].value, "banana");
+        assert_eq!(filter_by_prefix(&items, "").len(), 3);
+        assert!(
+            filter_by_prefix(&items, "A sweet").is_empty(),
+            "label/description must not match"
+        );
+        assert!(filter_by_prefix(&items, "zzz").is_empty());
     }
 }

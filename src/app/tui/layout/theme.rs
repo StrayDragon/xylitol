@@ -1,7 +1,9 @@
 //! Product layout theme — fixed dark `Palette` → component closures (c475).
 
 use xylitol_tui::components::editor::EditorTheme;
-use xylitol_tui::components::select_list::SelectListTheme;
+use xylitol_tui::components::select_list::{
+    SelectItem, SelectList, SelectListLayoutOptions, SelectListTheme,
+};
 use xylitol_tui::components::tree_selector::TreeSelectorTheme;
 use xylitol_tui::{Palette, fg_rgb};
 
@@ -26,6 +28,26 @@ impl LayoutTheme {
 
     pub fn palette(self) -> Palette {
         self.palette
+    }
+
+    /// Shared SelectList assembly path for all product slots (c2500): uniform
+    /// layout options (`truncate_primary: None`, explicit primary width bounds).
+    pub fn select_list(
+        self,
+        items: Vec<SelectItem>,
+        max_visible: usize,
+        primary_width: (usize, usize),
+    ) -> SelectList {
+        SelectList::new(
+            items,
+            max_visible,
+            self.select_list_theme(),
+            SelectListLayoutOptions {
+                min_primary_column_width: Some(primary_width.0),
+                max_primary_column_width: Some(primary_width.1),
+                truncate_primary: None,
+            },
+        )
     }
 
     /// SelectList theme for models picker (DESIGN models-picker.md).

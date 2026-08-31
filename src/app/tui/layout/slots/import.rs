@@ -1,6 +1,6 @@
 //! `/session-import` Yes/No confirm payload for [`super::EditorSlot::ImportConfirm`].
 
-use xylitol_tui::components::select_list::{SelectItem, SelectList, SelectListLayoutOptions};
+use xylitol_tui::components::select_list::{SelectItem, SelectList};
 use xylitol_tui::{Component, InputEvent};
 
 use super::super::theme::LayoutTheme;
@@ -76,16 +76,9 @@ impl ImportSlot {
 }
 
 fn import_confirm_list(theme: LayoutTheme) -> SelectList {
-    let mut list = SelectList::new(
+    theme.select_list(
         vec![SelectItem::new("yes", "Yes"), SelectItem::new("no", "No")],
         DEFAULT_MAX_VISIBLE,
-        theme.select_list_theme(),
-        SelectListLayoutOptions {
-            min_primary_column_width: Some(8),
-            max_primary_column_width: Some(24),
-            truncate_primary: None,
-        },
-    );
-    list.selected_index = 0;
-    list
+        (8, 24),
+    )
 }

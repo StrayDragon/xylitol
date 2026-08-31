@@ -1,6 +1,6 @@
 //! Fuzzy model picker payload for [`super::EditorSlot::Models`].
 
-use xylitol_tui::components::select_list::{SelectItem, SelectList, SelectListLayoutOptions};
+use xylitol_tui::components::select_list::{SelectItem, SelectList};
 use xylitol_tui::{
     Component, InputEvent, fuzzy_filter, matches_key_event, printable_from_key_event,
 };
@@ -179,14 +179,5 @@ impl ModelsSlot {
 }
 
 fn empty_models_list(theme: LayoutTheme) -> SelectList {
-    SelectList::new(
-        Vec::new(),
-        DEFAULT_MAX_VISIBLE,
-        theme.select_list_theme(),
-        SelectListLayoutOptions {
-            min_primary_column_width: Some(24),
-            max_primary_column_width: Some(48),
-            truncate_primary: None,
-        },
-    )
+    theme.select_list(Vec::new(), DEFAULT_MAX_VISIBLE, (24, 48))
 }
