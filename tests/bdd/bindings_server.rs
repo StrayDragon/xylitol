@@ -258,3 +258,21 @@ async fn test_sr_idem_conflict(server_test: ServerTest) {}
     name = "idempotency-inflight-wait"
 )]
 async fn test_sr_idem_inflight(server_test: ServerTest) {}
+
+#[scenario(
+    path = "llmanspec/specs/server-core/server-core.feature",
+    name = "starting-window-503"
+)]
+async fn test_sr_rdy1_starting_window(server_test: ServerTest) {}
+
+#[scenario(
+    path = "llmanspec/specs/server-core/server-core.feature",
+    name = "ready-flips-healthz"
+)]
+async fn test_sr_rdy1_ready_flips(server_test: ServerTest) {}
+
+#[scenario(
+    path = "llmanspec/specs/server-core/server-core.feature",
+    name = "failed-nonretryable"
+)]
+async fn test_sr_rdy1_failed(server_test: ServerTest) {}

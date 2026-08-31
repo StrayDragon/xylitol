@@ -1,5 +1,9 @@
 ---
 depends_on: []
+branch: sdd/c2465-add-server-readiness-window
+base_sha: 50095ac9a0b48d08e133dc07fd0805362ad18e7c
+checkpointed: true
+checkpoint_sha: 50095ac9a0b48d08e133dc07fd0805362ad18e7c
 ---
 
 # Serve 启动就绪窗口：三态健康语义

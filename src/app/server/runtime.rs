@@ -20,15 +20,16 @@ use crate::app::server::http;
 /// Handle to a running server. Dropping this triggers graceful shutdown.
 pub struct RunningServer {
     handle: ServerHandle,
-    host: Arc<HostState>,
+    gateway: Arc<http::Gateway>,
 }
 
 impl RunningServer {
     /// Signal the server to shut down gracefully.
     pub fn shutdown(&self) {
-        self.host
-            .shutting_down
-            .store(true, std::sync::atomic::Ordering::Relaxed);
+        if let Some(host) = self.gateway.host() {
+            host.shutting_down
+                .store(true, std::sync::atomic::Ordering::Relaxed);
+        }
         self.handle.stop_graceful(Duration::from_secs(30));
     }
 
@@ -38,9 +39,10 @@ impl RunningServer {
 
 impl Drop for RunningServer {
     fn drop(&mut self) {
-        self.host
-            .shutting_down
-            .store(true, std::sync::atomic::Ordering::Relaxed);
+        if let Some(host) = self.gateway.host() {
+            host.shutting_down
+                .store(true, std::sync::atomic::Ordering::Relaxed);
+        }
         self.handle.stop_graceful(Duration::from_secs(30));
     }
 }
@@ -65,10 +67,31 @@ impl Default for ServerConfig {
     }
 }
 
-/// Start the product Host listener (bootstrap → RuntimePorts → salvo).
+/// Start the product Host listener (bind-first, then assemble: c2465 readiness
+/// window — connections during assembly get a semantic 503 instead of refusal).
 pub async fn start(
     config: ServerConfig,
 ) -> Result<(RunningServer, u16), Box<dyn std::error::Error>> {
+    let gateway = http::Gateway::starting();
+    let (running, port) = bind_serve(&config, gateway.clone()).await?;
+    match assemble(&config).await {
+        Ok(host) => {
+            gateway.set_host(host);
+            Ok((running, port))
+        }
+        Err(e) => {
+            gateway.mark_failed();
+            // Bounded hold so a probing client can read the failed reason
+            // before the listener goes away (c2465 D2).
+            tokio::time::sleep(Duration::from_secs(10)).await;
+            drop(running);
+            Err(e)
+        }
+    }
+}
+
+/// Config → assembly → RuntimePorts → HostState (the pre-bind startup work).
+async fn assemble(config: &ServerConfig) -> Result<Arc<HostState>, Box<dyn std::error::Error>> {
     let assembly = resolve_assembly(&BootstrapInput {
         config_path: None,
         session: None,
@@ -107,7 +130,7 @@ pub async fn start(
         build_ports(assembly.into_build_options())?
     };
 
-    let host = HostState::from_bootstrap(
+    Ok(HostState::from_bootstrap(
         ports,
         ReloadBaseline {
             cwd,
@@ -117,14 +140,25 @@ pub async fn start(
             default_model_id,
         },
         fallback_session,
-    );
-    serve(config, host).await
+    ))
 }
 
 /// Bind and serve an already-built [`HostState`] (tests / custom assembly).
+/// Ready as soon as the socket is up (no assembly window).
 pub async fn serve(
     config: ServerConfig,
     host: Arc<HostState>,
+) -> Result<(RunningServer, u16), Box<dyn std::error::Error>> {
+    let gateway = http::Gateway::starting();
+    gateway.set_host(host);
+    bind_serve(&config, gateway).await
+}
+
+/// Bind and serve with an explicit gateway — the assembly-window seam used by
+/// [`start`] and the readiness BDD scenarios (c2465).
+pub async fn bind_serve(
+    config: &ServerConfig,
+    gateway: Arc<http::Gateway>,
 ) -> Result<(RunningServer, u16), Box<dyn std::error::Error>> {
     let addr = format!("{}:{}", config.host, config.port);
     // Fail on EADDRINUSE: bind with tokio first so we get a Result, then hand off.
@@ -138,7 +172,7 @@ pub async fn serve(
 
     let tokio_listener = tokio::net::TcpListener::from_std(std_listener)?;
     let acceptor = TcpAcceptor::try_from(tokio_listener)?;
-    let router = http::router(host.clone());
+    let router = http::router(gateway.clone());
     let server = Server::new(acceptor);
     let handle = server.handle();
     let shutdown_handle = handle.clone();
@@ -149,7 +183,7 @@ pub async fn serve(
         server.serve(router).await;
     });
 
-    Ok((RunningServer { handle, host }, actual_port))
+    Ok((RunningServer { handle, gateway }, actual_port))
 }
 
 async fn shutdown_signal(handle: ServerHandle) {
