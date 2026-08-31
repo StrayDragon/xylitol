@@ -36,6 +36,15 @@ depends_on: []
 - `src/app/server/oapi.rs`：healthz 响应形状扩展。
 - TUI attach 错误文案分支；BDD 补「旧版本注册可识别」场景。
 
+## 决策记录
+
+- 2026-09-01（ff 深挖定案，全部设计层）：注册文件定 `~/.xylitol/serve.json`
+  （数据目录惯例，单文件最后写入者赢 + 5s 自检自我驱逐 = 无锁防僵尸）；
+  原子写 0600，优雅退出删除，SIGKILL 残留由 attach 侧 pid 校验兜底；
+  healthz **全 phase** body 统一携带 `pid`（`std::process::id()`）与 `version`
+  （`CARGO_PKG_VERSION`）——attach 以此判定「是否本服务 / 是否同版本」；
+  attach 诊断链仅在 TCP 失败时读文件（正常路径零开销）。详见 `design.md`。
+
 ## Further Notes
 
 - 一手对照（外部实现的 discover/incumbent/ensure、注册 owns 自检摘录）：[research/registration-discovery-notes.md](./research/registration-discovery-notes.md)
