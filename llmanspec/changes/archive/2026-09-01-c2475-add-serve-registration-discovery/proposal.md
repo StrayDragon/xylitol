@@ -2,7 +2,8 @@
 depends_on: []
 branch: sdd/c2475-add-serve-registration-discovery
 base_sha: 50095ac9a0b48d08e133dc07fd0805362ad18e7c
-checkpointed: false
+checkpointed: true
+checkpoint_sha: 50095ac9a0b48d08e133dc07fd0805362ad18e7c
 ---
 
 # Serve 注册文件发现契约：pid/version 门禁与自我驱逐
