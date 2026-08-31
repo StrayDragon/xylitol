@@ -25,6 +25,10 @@
   场景: healthz 探针
     - Host 监听器 MUST 提供 GET /healthz 健康探针；服务端在地址端口上完成启动后访问该端点 MUST 返回 200 OK。
 
+  @req:sr-rdy1 @human
+  场景: 启动就绪窗口三态语义
+    - Host 监听器 MUST 提供就绪状态机（starting / ready / stopping / failed）：绑定端口后装配完成前为 starting，此时 /healthz MUST 返回 503 并携带 starting 语义与 retry-after；其余 unary 与 WS 升级 MUST 统一 503 拒绝（同语义码）且 MUST NOT 半执行。装配完成后 /healthz MUST 返回 200。装配失败 MUST 进入 failed 不可重试语义；优雅停机 MUST 进入 stopping 语义。
+
   @req:sr4 @human
   场景: 重连 journal
     - Host MUST 维护每会话单调事件序号与事件 journal；客户端经 unary subscribe 携带 last_seq 重连时 MUST 从 last_seq+1 重放事件；journal 截断超过 last_seq 时 Host MUST 发出 session/resync_required。
@@ -377,3 +381,22 @@
     假如 rpcId R 的首次命令仍在处理中
     当 相同 rpcId R 的重复请求到达
     那么 等待首次完成并回放同一结果且不并行执行
+
+  @executable @req:sr-rdy1
+  场景: starting-window-503
+    假如 监听器已绑定端口但装配未完成
+    当 访问 /healthz 或任一 unary
+    那么 healthz 返回 503 且携带 starting 语义与 retry-after
+    并且 unary 得到同语义 503 且不半执行
+
+  @executable @req:sr-rdy1
+  场景: ready-flips-healthz
+    假如 装配已完成
+    当 访问 /healthz
+    那么 返回 200 OK
+
+  @executable @req:sr-rdy1
+  场景: failed-nonretryable
+    假如 装配失败
+    当 访问 /healthz
+    那么 返回 503 且携带 failed 不可重试语义
