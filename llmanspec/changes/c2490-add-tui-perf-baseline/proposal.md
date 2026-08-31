@@ -1,5 +1,6 @@
 ---
 depends_on: []
+skip_specs_landing: true
 ---
 
 # TUI 渲染性能与占用基线：先测量，后优化
@@ -34,8 +35,14 @@ depends_on: []
 
 ## Impact
 
-- 新增 lab 二进制 / example（`lab_` 前缀惯例）；可能复用包引擎既有计时钩子。
-- 无生产行为变化；无 specs 合约变更（skip_specs_landing 可考虑）。
+- 扩展既有 `src/app/tui/lab_ao_perf.rs`（帧成本探针已大半存在，见 design 现状核对）；
+  新增内存画像探针，不新建 example/binary。
+- 无生产行为变化；**无 specs 合约变更 → `skip_specs_landing: true`**（2026-09-01 拍板）。
+
+## 决策记录
+
+- 2026-09-01（ff 深挖拍板）：落点扩展既有 lab 模块；内存口径 `/proc/self/statm` RSS；
+  规模档 1k/1w/10w 合成为主；`skip_specs_landing: true`。详见 `design.md`。
 
 ## Further Notes
 
