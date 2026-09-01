@@ -15,7 +15,6 @@ pub(super) async fn select<T: Terminal>(session: &mut HostSession<T>, driver: &m
     match dispatch(
         driver,
         Command::SetModel {
-            id: None,
             provider: String::new(),
             model_id: choice.model_id.clone(),
         },

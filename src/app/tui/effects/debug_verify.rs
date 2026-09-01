@@ -49,7 +49,7 @@ pub(super) async fn run_verify_smoke<T: Terminal>(
     }
 
     // B4: bare /model opens picker
-    match dispatch(driver, Command::GetAvailableModels { id: None }).await {
+    match dispatch(driver, Command::GetAvailableModels {}).await {
         Ok(DispatchOutcome::Models(models)) => {
             let current = driver.current_model().map(|m| m.id);
             session.mount_models_picker(models, current, driver.thinking_level());

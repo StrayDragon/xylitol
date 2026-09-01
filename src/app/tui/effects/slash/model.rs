@@ -11,7 +11,7 @@ pub(super) async fn open<T: Terminal>(session: &mut HostSession<T>, driver: &mut
     // c1780: busy Allow — open list; selection still NextTurn via SetModel path.
     // Attach caches models asynchronously; never block the tick on HTTP.
     let _ = driver.refresh_surface_caches().await;
-    match dispatch(driver, Command::GetAvailableModels { id: None }).await {
+    match dispatch(driver, Command::GetAvailableModels {}).await {
         Ok(DispatchOutcome::Models(models)) => {
             let current = driver.current_model().map(|m| m.id);
             session.mount_models_picker(models, current, driver.thinking_level());
@@ -30,7 +30,6 @@ pub(super) async fn set<T: Terminal>(
     match dispatch(
         driver,
         Command::SetModel {
-            id: None,
             provider: String::new(),
             model_id,
         },

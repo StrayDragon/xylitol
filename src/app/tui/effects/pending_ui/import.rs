@@ -24,7 +24,6 @@ pub(super) async fn decide<T: Terminal>(session: &mut HostSession<T>, driver: &m
             match dispatch(
                 driver,
                 Command::ImportJsonl {
-                    id: None,
                     input_path: path.clone(),
                 },
             )

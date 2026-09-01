@@ -45,15 +45,9 @@ pub(super) async fn export<T: Terminal>(
         .as_ref()
         .is_some_and(|p| p.to_ascii_lowercase().ends_with(".jsonl"))
     {
-        Command::ExportJsonl {
-            id: None,
-            output_path: path,
-        }
+        Command::ExportJsonl { output_path: path }
     } else {
-        Command::ExportHtml {
-            id: None,
-            output_path: path,
-        }
+        Command::ExportHtml { output_path: path }
     };
     match dispatch(driver, cmd).await {
         Ok(DispatchOutcome::ExportedPath(written)) => {
@@ -75,7 +69,7 @@ pub(super) async fn import<T: Terminal>(session: &mut HostSession<T>, path: Stri
 }
 
 pub(super) async fn dump<T: Terminal>(session: &mut HostSession<T>, driver: &mut dyn XyDriver) {
-    match dispatch(driver, Command::GetSessionStats { id: None }).await {
+    match dispatch(driver, Command::GetSessionStats {}).await {
         Ok(DispatchOutcome::SessionStats(stats)) => {
             let state = driver.get_state();
             session.push_scroll_notice(format_session_stats_dump(&stats, &state));

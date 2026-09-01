@@ -469,7 +469,7 @@ where
     }
 
     async fn refresh_chrome_caches(&self) -> Result<(), XyDriverError> {
-        if let Ok(data) = self.unary_cmd(Command::GetState { id: None }).await {
+        if let Ok(data) = self.unary_cmd(Command::GetState {}).await {
             self.update_leaf_from_state(&data);
             if let Some(m) = data.get("model").filter(|m| !m.is_null())
                 && let Ok(model) = Self::model_from_value(m)
@@ -479,10 +479,7 @@ where
                 self.cache_model_unset();
             }
         }
-        if let Ok(data) = self
-            .unary_cmd(Command::GetAvailableModels { id: None })
-            .await
-        {
+        if let Ok(data) = self.unary_cmd(Command::GetAvailableModels {}).await {
             let arr = data
                 .get("models")
                 .and_then(|m| m.as_array())
@@ -497,7 +494,7 @@ where
                 *cached = Some(models);
             }
         }
-        if let Ok(data) = self.unary_cmd(Command::GetCommands { id: None }).await {
+        if let Ok(data) = self.unary_cmd(Command::GetCommands {}).await {
             let arr = data
                 .get("commands")
                 .and_then(|c| c.as_array())
@@ -520,7 +517,7 @@ where
                 *cached = Some(cmds);
             }
         }
-        let snap = match self.unary_cmd(Command::LoadedResources { id: None }).await {
+        let snap = match self.unary_cmd(Command::LoadedResources {}).await {
             Ok(data) => serde_json::from_value(data).unwrap_or_default(),
             Err(_) => LoadedResourcesSnapshot::default(),
         };
@@ -800,7 +797,6 @@ where
     async fn select_model(&mut self, model_id: &str) -> Result<ModelInfo, XyDriverError> {
         let data = self
             .unary_cmd(Command::SetModel {
-                id: None,
                 provider: String::new(),
                 model_id: model_id.to_string(),
             })
@@ -836,7 +832,7 @@ where
     }
 
     async fn cycle_model(&mut self) -> Result<ModelInfo, XyDriverError> {
-        let data = self.unary_cmd(Command::CycleModel { id: None }).await?;
+        let data = self.unary_cmd(Command::CycleModel {}).await?;
         let selected = Self::model_from_value(&data)?;
         *self.thinking.lock().unwrap() = selected
             .thinking_levels
@@ -849,7 +845,6 @@ where
 
     async fn set_thinking_level(&mut self, level: String) -> Result<(), XyDriverError> {
         self.unary_cmd(Command::SetThinkingLevel {
-            id: None,
             level: level.clone(),
         })
         .await?;
@@ -894,7 +889,6 @@ where
         // Remote REST bash is request/response — no live chunk uplink.
         let data = self
             .unary_cmd(Command::Bash {
-                id: None,
                 command: command.to_string(),
                 exclude_from_context,
             })
@@ -926,12 +920,7 @@ where
     }
 
     async fn compact(&mut self, instructions: Option<String>) -> Result<bool, XyDriverError> {
-        let data = self
-            .unary_cmd(Command::Compact {
-                id: None,
-                instructions,
-            })
-            .await?;
+        let data = self.unary_cmd(Command::Compact { instructions }).await?;
         Ok(data
             .get("compacted")
             .and_then(|c| c.as_bool())
@@ -940,10 +929,7 @@ where
 
     async fn export_html(&mut self, path: &Path) -> Result<String, XyDriverError> {
         let data = self
-            .unary_cmd(Command::ExportHtml {
-                id: None,
-                output_path: None,
-            })
+            .unary_cmd(Command::ExportHtml { output_path: None })
             .await?;
         if let Some(content) = data.get("content").and_then(|c| c.as_str()) {
             std::fs::write(path, content).map_err(|e| XyDriverError::io(e.to_string()))?;
@@ -958,10 +944,7 @@ where
 
     async fn export_jsonl(&mut self, path: &Path) -> Result<String, XyDriverError> {
         let data = self
-            .unary_cmd(Command::ExportJsonl {
-                id: None,
-                output_path: None,
-            })
+            .unary_cmd(Command::ExportJsonl { output_path: None })
             .await?;
         if let Some(content) = data.get("content").and_then(|c| c.as_str()) {
             std::fs::write(path, content).map_err(|e| XyDriverError::io(e.to_string()))?;
@@ -994,7 +977,6 @@ where
     ) -> Result<String, XyDriverError> {
         let data = self
             .unary_cmd(Command::Fork {
-                id: None,
                 entry_id: entry_id.to_string(),
                 position: Some(
                     match position {
@@ -1015,7 +997,6 @@ where
     async fn switch_session(&mut self, session_id: &str) -> Result<String, XyDriverError> {
         let data = self
             .unary_cmd(Command::SwitchSession {
-                id: None,
                 session_path: session_id.to_string(),
             })
             .await?;
@@ -1035,7 +1016,7 @@ where
     }
 
     async fn get_messages(&self) -> Result<Vec<SessionEntry>, XyDriverError> {
-        let data = self.unary_cmd(Command::GetMessages { id: None }).await?;
+        let data = self.unary_cmd(Command::GetMessages {}).await?;
         let entries = data
             .get("entries")
             .cloned()
@@ -1044,9 +1025,7 @@ where
     }
 
     async fn get_session_stats(&self) -> Result<SessionStats, XyDriverError> {
-        let data = self
-            .unary_cmd(Command::GetSessionStats { id: None })
-            .await?;
+        let data = self.unary_cmd(Command::GetSessionStats {}).await?;
         Ok(SessionStats {
             session_id: data
                 .get("session_id")
@@ -1103,7 +1082,6 @@ where
     async fn steer(&mut self, message: &str) -> Result<(), XyDriverError> {
         let data = self
             .unary_cmd(Command::Steer {
-                id: None,
                 message: message.to_string(),
             })
             .await?;
@@ -1114,7 +1092,6 @@ where
     async fn follow_up(&mut self, message: &str) -> Result<(), XyDriverError> {
         let data = self
             .unary_cmd(Command::FollowUp {
-                id: None,
                 message: message.to_string(),
             })
             .await?;
@@ -1129,7 +1106,6 @@ where
     ) -> Result<(), XyDriverError> {
         let data = self
             .unary_cmd(Command::ClearQueue {
-                id: None,
                 clear_steer,
                 clear_follow_up,
             })
@@ -1146,9 +1122,7 @@ where
         &self,
         kind: SessionTreeKind,
     ) -> Result<Vec<SessionTreeNode>, XyDriverError> {
-        let data = self
-            .unary_cmd(Command::SessionTree { id: None, kind })
-            .await?;
+        let data = self.unary_cmd(Command::SessionTree { kind }).await?;
         serde_json::from_value(data.get("tree").cloned().unwrap_or(Value::Null))
             .map_err(|e| XyDriverError::remote(e.to_string()))
     }
@@ -1160,7 +1134,6 @@ where
     ) -> Result<SessionTreeTravel, XyDriverError> {
         let data = self
             .unary_cmd(Command::TravelSessionTree {
-                id: None,
                 kind,
                 entry_id: entry_id.to_string(),
             })
@@ -1174,7 +1147,6 @@ where
         label: Option<&str>,
     ) -> Result<(), XyDriverError> {
         self.unary_cmd(Command::AppendEntryLabel {
-            id: None,
             target_id: target_id.to_string(),
             label: label.map(str::to_string),
         })
@@ -1218,7 +1190,7 @@ where
     }
 
     async fn list_sessions(&self) -> Result<Vec<SessionListEntry>, XyDriverError> {
-        let data = self.unary_cmd(Command::ListSessions { id: None }).await?;
+        let data = self.unary_cmd(Command::ListSessions {}).await?;
         serde_json::from_value(data.get("sessions").cloned().unwrap_or(Value::Null))
             .map_err(|e| XyDriverError::remote(e.to_string()))
     }
@@ -1229,7 +1201,6 @@ where
     ) -> Result<Vec<SessionEntry>, XyDriverError> {
         let data = self
             .unary_cmd(Command::LoadSessionEntries {
-                id: None,
                 session_id: session_id.to_string(),
             })
             .await?;
@@ -1238,7 +1209,7 @@ where
     }
 
     async fn new_session(&mut self) -> Result<String, XyDriverError> {
-        let data = self.unary_cmd(Command::NewSession { id: None }).await?;
+        let data = self.unary_cmd(Command::NewSession {}).await?;
         let id = data
             .get("session_id")
             .and_then(|value| value.as_str())
@@ -1255,7 +1226,7 @@ where
     }
 
     async fn get_session_name(&self) -> Result<Option<String>, XyDriverError> {
-        let data = self.unary_cmd(Command::GetSessionName { id: None }).await?;
+        let data = self.unary_cmd(Command::GetSessionName {}).await?;
         Ok(data
             .get("name")
             .and_then(|value| value.as_str())
@@ -1265,7 +1236,6 @@ where
     async fn set_session_name(&mut self, name: &str) -> Result<String, XyDriverError> {
         let data = self
             .unary_cmd(Command::SetSessionName {
-                id: None,
                 name: name.to_string(),
             })
             .await?;
@@ -1282,7 +1252,6 @@ where
     ) -> Result<String, XyDriverError> {
         let data = self
             .unary_cmd(Command::SetSessionNameFor {
-                id: None,
                 session_id: session_id.to_string(),
                 name: name.to_string(),
             })
@@ -1295,7 +1264,6 @@ where
 
     async fn delete_session(&mut self, session_id: &str) -> Result<(), XyDriverError> {
         self.unary_cmd(Command::DeleteSession {
-            id: None,
             session_id: session_id.to_string(),
         })
         .await?;
@@ -1303,7 +1271,7 @@ where
     }
 
     async fn loaded_resources_snapshot(&self) -> LoadedResourcesSnapshot {
-        let snap = match self.unary_cmd(Command::LoadedResources { id: None }).await {
+        let snap = match self.unary_cmd(Command::LoadedResources {}).await {
             Ok(data) => serde_json::from_value(data).unwrap_or_else(|e| LoadedResourcesSnapshot {
                 mcp_diag_short: vec![format!("remote loaded_resources decode: {e}")],
                 ..LoadedResourcesSnapshot::default()
