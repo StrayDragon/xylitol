@@ -29,6 +29,10 @@
   场景: 启动就绪窗口三态语义
     - Host 监听器 MUST 提供就绪状态机（starting / ready / stopping / failed）：绑定端口后装配完成前为 starting，此时 /healthz MUST 返回 503 并携带 starting 语义与 retry-after；其余 unary 与 WS 升级 MUST 统一 503 拒绝（同语义码）且 MUST NOT 半执行。装配完成后 /healthz MUST 返回 200。装配失败 MUST 进入 failed 不可重试语义；优雅停机 MUST 进入 stopping 语义。
 
+  @req:sr-reg1 @human
+  场景: serve 注册文件发现契约
+    - serve 装配完成（ready）后 MUST 原子写注册文件 `~/.xylitol/serve.json`（0600），内容含 url、pid、version；优雅退出 MUST 删除该文件。serve 进程 MUST 周期复读注册文件，字段与自身不全等（被顶替或被删）时 MUST 自行优雅退出。/healthz 各状态应答 body MUST 携带本进程 pid 与 version。客户端 attach 探活失败时 MUST 读取注册文件给出可操作分级诊断（未启动 / 僵死注册 / 旧版本 / 端口被无关进程占用 / serve 已退出），探活正常路径 MUST NOT 依赖该文件。
+
   @req:sr4 @human
   场景: 重连 journal
     - Host MUST 维护每会话单调事件序号与事件 journal；客户端经 unary subscribe 携带 last_seq 重连时 MUST 从 last_seq+1 重放事件；journal 截断超过 last_seq 时 Host MUST 发出 session/resync_required。
@@ -400,3 +404,22 @@
     假如 装配失败
     当 访问 /healthz
     那么 返回 503 且携带 failed 不可重试语义
+
+  @executable @req:sr-reg1
+  场景: serve-writes-registration-file
+    假如 serve 已装配完成并在空闲端口监听
+    当 读取注册文件
+    那么 文件存在且为 0600 且内容含 url、pid 与 version
+    并且 healthz 应答 body 的 pid 和 version 与文件一致
+
+  @executable @req:sr-reg1
+  场景: attach-diagnoses-stale-registration
+    假如 注册文件存在但对应端口的 serve 已退出
+    当 客户端 attach 探活该地址
+    那么 得到可操作诊断说明 pid 对应的 serve 已退出并提示重新 serve
+
+  @executable @req:sr-reg1
+  场景: registration-takeover-evicts-old-daemon
+    假如 旧 serve 进程持有注册文件
+    当 新 serve 写入字段不同的注册文件
+    那么 旧进程在自检周期内检测到字段不全等并自行退出
