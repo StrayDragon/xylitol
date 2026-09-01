@@ -2,7 +2,8 @@
 depends_on: []
 branch: sdd/c2535-add-staged-wire-import
 base_sha: 2c04ff709430795d77101d1e632ae66080ee80db
-checkpointed: false
+checkpointed: true
+checkpoint_sha: 2c04ff709430795d77101d1e632ae66080ee80db
 ---
 
 # Staged Wire Import：import_jsonl 的 content 载荷暂存导入

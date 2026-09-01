@@ -1208,6 +1208,24 @@ async fn dispatch_session_unary(
         let staged_export = matches!(method, "export_html" | "export_jsonl")
             && payload.get("output_path").is_none()
             && payload.get("path").is_none();
+        // Import over the wire stages the pushed content symmetrically
+        // (sr-imp1): the client reads its local file and sends `content`;
+        // the Host lands it on a unique temp input path, dispatches, and
+        // cleans up afterwards.
+        let staged_import = method == "import_jsonl"
+            && payload.get("input_path").is_none()
+            && payload.get("path").is_none()
+            && payload.get("content").is_some();
+        let import_temp = if staged_import {
+            let temp =
+                std::env::temp_dir().join(format!("xylitol-import-{}.jsonl", uuid::Uuid::new_v4()));
+            if let Err(e) = std::fs::write(&temp, payload["content"].as_str().unwrap_or_default()) {
+                return RpcResult::error("internal_error", format!("stage import write: {e}"));
+            }
+            Some(temp)
+        } else {
+            None
+        };
         let mut payload = payload;
         if staged_export {
             let ext = if method == "export_jsonl" {
@@ -1219,6 +1237,9 @@ async fn dispatch_session_unary(
                 std::env::temp_dir().join(format!("xylitol-export-{}.{ext}", uuid::Uuid::new_v4()))
             );
         }
+        if let Some(temp) = &import_temp {
+            payload["input_path"] = json!(temp);
+        }
         let cmd = match parse_command(method, &payload) {
             Ok(c) => c,
             Err(e) => return RpcResult::error("invalid_input", e),
@@ -1227,7 +1248,7 @@ async fn dispatch_session_unary(
         let Some(driver) = g.as_mut() else {
             return RpcResult::error("unavailable", "no writer engine");
         };
-        return match dispatch(driver, cmd).await {
+        let result = match dispatch(driver, cmd).await {
             Ok(outcome) => {
                 let mut value = outcome_to_value(outcome);
                 if staged_export
@@ -1252,6 +1273,10 @@ async fn dispatch_session_unary(
             }
             Err(e) => lease.seal(rpc_err(e)),
         };
+        if let Some(temp) = import_temp {
+            let _ = std::fs::remove_file(temp);
+        }
+        return result;
     }
 
     if method == "get_available_models" && slot.driver.lock().await.is_none() {
