@@ -86,7 +86,8 @@ impl InProcessHost for HostStateHost {
         payload: Value,
         writer_token: Option<String>,
     ) -> RpcResult {
-        crate::app::server::host::handle_unary(&self.host, method, payload, writer_token).await
+        crate::app::server::host::handle_unary(&self.host, None, method, payload, writer_token)
+            .await
     }
 
     async fn handle_respond(&self, rpc_id: &str, payload: Value) -> Result<(), HostClientError> {

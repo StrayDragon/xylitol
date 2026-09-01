@@ -10,6 +10,9 @@
 pub mod host;
 
 #[cfg(feature = "server")]
+pub mod idempotency;
+
+#[cfg(feature = "server")]
 pub mod http;
 
 #[cfg(feature = "server")]

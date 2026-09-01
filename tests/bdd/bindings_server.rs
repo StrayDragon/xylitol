@@ -240,3 +240,21 @@ async fn test_sr_abort1_idle(server_test: ServerTest) {}
     name = "subscription-survives-agent-end"
 )]
 async fn test_sr_sub1_alive(server_test: ServerTest) {}
+
+#[scenario(
+    path = "llmanspec/specs/server-core/server-core.feature",
+    name = "idempotent-replay-first-result"
+)]
+async fn test_sr_idem_replay(server_test: ServerTest) {}
+
+#[scenario(
+    path = "llmanspec/specs/server-core/server-core.feature",
+    name = "idempotency-conflict-differs"
+)]
+async fn test_sr_idem_conflict(server_test: ServerTest) {}
+
+#[scenario(
+    path = "llmanspec/specs/server-core/server-core.feature",
+    name = "idempotency-inflight-wait"
+)]
+async fn test_sr_idem_inflight(server_test: ServerTest) {}

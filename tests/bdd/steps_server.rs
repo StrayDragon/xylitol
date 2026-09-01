@@ -28,6 +28,11 @@ pub struct ServerTest {
     pub mux_acc: Arc<std::sync::Mutex<Vec<RpcMessage>>>,
     /// sr-sub1：跨步骤持有已订阅会话的下行流。
     pub mux_rx: RefCell<Option<MuxStream>>,
+    /// c2460 sr-idem：幂等场景的两次应答与首次执行的侧写。
+    pub idem_first: Arc<std::sync::Mutex<Option<String>>>,
+    pub idem_second: RefCell<Option<String>>,
+    pub idem_exec_file: RefCell<Option<std::path::PathBuf>>,
+    pub idem_task: RefCell<Option<tokio::task::JoinHandle<()>>>,
 }
 
 impl ServerTest {
@@ -47,6 +52,10 @@ impl ServerTest {
             last_rpc: RefCell::new(None),
             mux_acc: Arc::new(std::sync::Mutex::new(Vec::new())),
             mux_rx: RefCell::new(None),
+            idem_first: Arc::new(std::sync::Mutex::new(None)),
+            idem_second: RefCell::new(None),
+            idem_exec_file: RefCell::new(None),
+            idem_task: RefCell::new(None),
         }
     }
 
@@ -1504,4 +1513,208 @@ fn t_unknown_unary_shape(server_test: &ServerTest) {
             "carrier must reject unknown method, got {st} {body}"
         );
     }
+}
+
+// ---- c2460 sr-idem：unary 幂等准入 ----
+
+/// 以固定信封 `rpcId` 提交一个 unary ClientRequest，返回应答体原文。
+async fn post_unary_rpc_id(
+    port: u16,
+    rpc_id: &str,
+    method: &str,
+    payload: serde_json::Value,
+) -> String {
+    let request = serde_json::json!({
+        "type": "client-request",
+        "rpcId": rpc_id,
+        "method": method,
+        "payload": payload,
+    });
+    let (_, body) = http_status(
+        port,
+        "POST",
+        &format!("/api/{method}"),
+        &serde_json::to_string(&request).expect("serialize request"),
+    )
+    .await;
+    body
+}
+
+#[given("客户端以 rpcId R 对某 session 提交 unary 命令并得到结果")]
+async fn g_idem_first_steer(server_test: &ServerTest) {
+    start_host(server_test).await;
+    let body = post_unary_rpc_id(
+        server_test.port.get(),
+        "R",
+        "steer",
+        serde_json::json!({ "session_id": "idem-s1", "message": "idem-replay" }),
+    )
+    .await;
+    *server_test.idem_first.lock().expect("idem_first") = Some(body);
+}
+
+#[when("客户端以相同 rpcId R 重试同一命令")]
+async fn w_idem_retry(server_test: &ServerTest) {
+    let body = post_unary_rpc_id(
+        server_test.port.get(),
+        "R",
+        "steer",
+        serde_json::json!({ "session_id": "idem-s1", "message": "idem-replay" }),
+    )
+    .await;
+    *server_test.idem_second.borrow_mut() = Some(body);
+}
+
+#[then("第二次得到与首次相同的结果且命令仅执行一次")]
+async fn t_idem_replay_once(server_test: &ServerTest) {
+    let first = server_test
+        .idem_first
+        .lock()
+        .expect("idem_first")
+        .clone()
+        .expect("first result recorded");
+    let second = server_test
+        .idem_second
+        .borrow()
+        .clone()
+        .expect("second result recorded");
+    let first: serde_json::Value = serde_json::from_str(&first).expect("first envelope");
+    let second: serde_json::Value = serde_json::from_str(&second).expect("second envelope");
+    assert_eq!(first, second, "duplicate MUST replay the first result");
+    assert_eq!(first["result"]["ok"], serde_json::json!(true), "{first}");
+    let stats = post_unary_rpc_id(
+        server_test.port.get(),
+        "R-stats",
+        "queue_stats",
+        serde_json::json!({ "session_id": "idem-s1" }),
+    )
+    .await;
+    let stats: serde_json::Value = serde_json::from_str(&stats).expect("queue_stats envelope");
+    assert_eq!(
+        stats["result"]["value"]["steer_count"],
+        serde_json::json!(1),
+        "steer MUST be admitted exactly once: {stats}"
+    );
+}
+
+#[given("rpcId R 已被某 method 与 payload 的提交占用")]
+async fn g_idem_occupied(server_test: &ServerTest) {
+    start_host(server_test).await;
+    let body = post_unary_rpc_id(
+        server_test.port.get(),
+        "R",
+        "get_state",
+        serde_json::json!({ "session_id": "idem-s2" }),
+    )
+    .await;
+    let v: serde_json::Value = serde_json::from_str(&body).expect("get_state envelope");
+    assert_eq!(v["result"]["ok"], serde_json::json!(true), "{v}");
+}
+
+#[when("以相同 rpcId R 提交不同 method 或 payload")]
+async fn w_idem_conflict(server_test: &ServerTest) {
+    let body = post_unary_rpc_id(
+        server_test.port.get(),
+        "R",
+        "get_session_stats",
+        serde_json::json!({ "session_id": "idem-s2" }),
+    )
+    .await;
+    *server_test.idem_second.borrow_mut() = Some(body);
+}
+
+#[then("返回 ok=false 且 code=idempotency_conflict 且不执行")]
+async fn t_idem_conflict(server_test: &ServerTest) {
+    let second = server_test
+        .idem_second
+        .borrow()
+        .clone()
+        .expect("conflict result recorded");
+    let v: serde_json::Value = serde_json::from_str(&second).expect("envelope");
+    assert_eq!(v["result"]["ok"], serde_json::json!(false), "{v}");
+    assert_eq!(
+        v["result"]["error"]["code"],
+        serde_json::json!("idempotency_conflict"),
+        "{v}"
+    );
+}
+
+#[given("rpcId R 的首次命令仍在处理中")]
+async fn g_idem_inflight(server_test: &ServerTest) {
+    start_host(server_test).await;
+    let exec_file = std::env::temp_dir().join(format!("xylitol-idem-{}.txt", uuid::Uuid::new_v4()));
+    let command = format!(
+        "printf x >> '{file}' && sleep 0.4",
+        file = exec_file.display()
+    );
+    let port = server_test.port.get();
+    let first_body = server_test.idem_first.clone();
+    let task = tokio::spawn(async move {
+        let body = post_unary_rpc_id(
+            port,
+            "R",
+            "bash",
+            serde_json::json!({ "session_id": "idem-s3", "command": command }),
+        )
+        .await;
+        *first_body.lock().expect("idem_first") = Some(body);
+    });
+    *server_test.idem_task.borrow_mut() = Some(task);
+    *server_test.idem_exec_file.borrow_mut() = Some(exec_file);
+    // 让首次请求先进桩，落在处理中窗口内。
+    tokio::time::sleep(Duration::from_millis(120)).await;
+}
+
+#[when("相同 rpcId R 的重复请求到达")]
+async fn w_idem_inflight_duplicate(server_test: &ServerTest) {
+    let file = server_test
+        .idem_exec_file
+        .borrow()
+        .clone()
+        .expect("exec file recorded");
+    let command = format!("printf x >> '{file}' && sleep 0.4", file = file.display());
+    let body = post_unary_rpc_id(
+        server_test.port.get(),
+        "R",
+        "bash",
+        serde_json::json!({ "session_id": "idem-s3", "command": command }),
+    )
+    .await;
+    *server_test.idem_second.borrow_mut() = Some(body);
+}
+
+#[then("等待首次完成并回放同一结果且不并行执行")]
+async fn t_idem_inflight_wait(server_test: &ServerTest) {
+    let task = server_test
+        .idem_task
+        .borrow_mut()
+        .take()
+        .expect("first task");
+    task.await.expect("join first bash task");
+    let first = server_test
+        .idem_first
+        .lock()
+        .expect("idem_first")
+        .clone()
+        .expect("first result recorded");
+    let second = server_test
+        .idem_second
+        .borrow()
+        .clone()
+        .expect("duplicate result recorded");
+    let first: serde_json::Value = serde_json::from_str(&first).expect("first envelope");
+    let second: serde_json::Value = serde_json::from_str(&second).expect("second envelope");
+    assert_eq!(first, second, "duplicate MUST wait then replay: {second}");
+    assert_eq!(first["result"]["ok"], serde_json::json!(true), "{first}");
+    let file = server_test
+        .idem_exec_file
+        .borrow()
+        .clone()
+        .expect("exec file recorded");
+    let executed = std::fs::read_to_string(&file).unwrap_or_default();
+    assert_eq!(
+        executed, "x",
+        "bash MUST execute exactly once, got {executed:?}"
+    );
+    let _ = std::fs::remove_file(&file);
 }

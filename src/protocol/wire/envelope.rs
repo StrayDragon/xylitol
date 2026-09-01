@@ -13,6 +13,10 @@ pub const PROTOCOL_VERSION: u32 = 1;
 #[serde(tag = "type", rename_all = "kebab-case")]
 pub enum RpcMessage {
     ClientRequest {
+        /// Caller-generated identity of this request. Doubles as correlation
+        /// id and idempotency admission key (c2460): a retry of the same
+        /// logical command MUST reuse it, and the host replays the first
+        /// result for duplicates (first-wins).
         #[serde(rename = "rpcId")]
         rpc_id: String,
         method: String,
