@@ -410,7 +410,7 @@ mod tests {
             "method": "host.describe",
             "payload": {}
         });
-        let mut resp = TestClient::post("http://127.0.0.1:0/api/host.describe")
+        let resp = TestClient::post("http://127.0.0.1:0/api/host.describe")
             .json(&body)
             .send(&service)
             .await;
@@ -421,7 +421,7 @@ mod tests {
         );
 
         gateway.set_host(HostState::for_test().expect("host"));
-        let mut resp = TestClient::get("http://127.0.0.1:0/healthz")
+        let resp = TestClient::get("http://127.0.0.1:0/healthz")
             .send(&service)
             .await;
         assert_eq!(resp.status_code.unwrap(), StatusCode::OK, "flip to ready");
