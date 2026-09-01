@@ -1,6 +1,9 @@
 ---
 depends_on: []
 skip_specs_landing: true
+branch: sdd/c2530-add-typed-method-registry
+base_sha: 2c04ff709430795d77101d1e632ae66080ee80db
+checkpointed: false
 ---
 
 # Typed Method Registry：unary 方法单点声明注册表
