@@ -25,8 +25,8 @@ fn build() -> String {
     let healthz = json!({
         "get": {
             "operationId": "healthz",
-            "summary": "Liveness probe",
-            "responses": {"200": {"description": "ok / shutting_down"}}
+            "summary": "Liveness/readiness probe (c2465)",
+            "responses": {"200": {"description": "ok"}, "503": {"description": "starting (retry_after) / stopping / failed"}}
         }
     });
     paths.insert("/healthz".into(), healthz);

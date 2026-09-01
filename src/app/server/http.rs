@@ -8,6 +8,8 @@
 //! - `GET /api/events.mux` (WebSocket downlink only)
 
 use std::sync::Arc;
+use std::sync::OnceLock;
+use std::sync::atomic::{AtomicU8, Ordering};
 
 use futures::StreamExt;
 use salvo::http::StatusCode;
@@ -19,10 +21,84 @@ use crate::app::server::host::{HostState, MUX_CHAN_CAP, handle_unary};
 use crate::protocol::RpcMessage;
 use crate::protocol::wire::method::is_unary_method;
 
-struct InjectHost(Arc<HostState>);
+/// Readiness phase of the listener (c2465 sr-rdy1).
+#[derive(Clone, Copy, PartialEq, Eq)]
+pub enum Phase {
+    /// Bound, assembly not finished yet.
+    Starting,
+    /// Assembled and serving.
+    Ready,
+    /// Assembly failed (non-retryable).
+    Failed,
+}
+
+/// Host cell + readiness phase. Created at bind time with an empty cell; the
+/// host is filled after assembly and the phase flips to [`Phase::Ready`].
+pub struct Gateway {
+    phase: AtomicU8,
+    host: OnceLock<Arc<HostState>>,
+}
+
+impl Gateway {
+    const STARTING: u8 = 0;
+    const READY: u8 = 1;
+    const FAILED: u8 = 2;
+
+    pub fn starting() -> Arc<Self> {
+        Arc::new(Self {
+            phase: AtomicU8::new(Self::STARTING),
+            host: OnceLock::new(),
+        })
+    }
+
+    /// Fill the host and flip to ready (idempotent fill: first writer wins).
+    pub fn set_host(&self, host: Arc<HostState>) {
+        let _ = self.host.set(host);
+        self.phase.store(Self::READY, Ordering::SeqCst);
+    }
+
+    pub fn mark_failed(&self) {
+        self.phase.store(Self::FAILED, Ordering::SeqCst);
+    }
+
+    pub fn phase(&self) -> Phase {
+        match self.phase.load(Ordering::SeqCst) {
+            Self::READY => Phase::Ready,
+            Self::FAILED => Phase::Failed,
+            _ => Phase::Starting,
+        }
+    }
+
+    pub fn host(&self) -> Option<Arc<HostState>> {
+        self.host.get().cloned()
+    }
+}
+
+fn gateway_from(depot: &Depot) -> Option<Arc<Gateway>> {
+    depot.get_typed::<Arc<Gateway>>().ok().cloned()
+}
+
+/// 503 with the phase's semantic body (c2465 D3).
+fn render_unavailable(res: &mut Response, phase: Phase) {
+    res.status_code(StatusCode::SERVICE_UNAVAILABLE);
+    if phase == Phase::Starting {
+        let _ = res.add_header("retry-after", "1", true);
+        res.render(Json(serde_json::json!({
+            "status": "starting",
+            "retry_after": 1,
+        })));
+    } else {
+        res.render(Json(serde_json::json!({ "status": "failed" })));
+    }
+}
+
+/// Injects the [`Gateway`] and, once ready, the [`HostState`]. Every route
+/// except `/healthz` is short-circuited with a semantic 503 until ready
+/// (c2465: requests in the window MUST NOT half-execute).
+struct GatewayHoop(Arc<Gateway>);
 
 #[async_trait]
-impl Handler for InjectHost {
+impl Handler for GatewayHoop {
     async fn handle(
         &self,
         req: &mut Request,
@@ -31,7 +107,22 @@ impl Handler for InjectHost {
         ctrl: &mut FlowCtrl,
     ) {
         depot.insert_typed(self.0.clone());
-        ctrl.call_next(req, depot, res).await;
+        let is_healthz = req.uri().path().trim_end_matches('/') == "/healthz";
+        match self.0.phase() {
+            Phase::Ready => {
+                if let Some(host) = self.0.host() {
+                    depot.insert_typed(host);
+                }
+                ctrl.call_next(req, depot, res).await;
+            }
+            _ if is_healthz => {
+                ctrl.call_next(req, depot, res).await;
+            }
+            phase => {
+                render_unavailable(res, phase);
+                ctrl.skip_rest();
+            }
+        }
     }
 }
 
@@ -40,9 +131,9 @@ fn host_from(depot: &Depot) -> Option<Arc<HostState>> {
 }
 
 /// Product router (no `/api/v1` REST).
-pub fn router(state: Arc<HostState>) -> Router {
+pub fn router(gateway: Arc<Gateway>) -> Router {
     Router::new()
-        .hoop(InjectHost(state))
+        .hoop(GatewayHoop(gateway))
         .push(Router::with_path("healthz").get(healthz))
         .push(Router::with_path("openapi.json").get(openapi_json))
         .push(
@@ -57,16 +148,35 @@ pub fn router(state: Arc<HostState>) -> Router {
 
 #[handler]
 async fn healthz(depot: &mut Depot, res: &mut Response) {
-    let shutting = host_from(depot)
-        .map(|h| h.shutting_down.load(std::sync::atomic::Ordering::Relaxed))
-        .unwrap_or(false);
-    if shutting {
-        res.status_code(StatusCode::SERVICE_UNAVAILABLE);
-        res.render(Json(serde_json::json!({"status": "shutting_down"})));
+    let Some(gateway) = gateway_from(depot) else {
+        res.status_code(StatusCode::INTERNAL_SERVER_ERROR);
         return;
+    };
+    match gateway.phase() {
+        Phase::Starting => {
+            res.status_code(StatusCode::SERVICE_UNAVAILABLE);
+            let _ = res.add_header("retry-after", "1", true);
+            res.render(Json(
+                serde_json::json!({"status": "starting", "retry_after": 1}),
+            ));
+        }
+        Phase::Failed => {
+            res.status_code(StatusCode::SERVICE_UNAVAILABLE);
+            res.render(Json(serde_json::json!({ "status": "failed" })));
+        }
+        Phase::Ready => {
+            let stopping = gateway
+                .host()
+                .is_some_and(|h| h.shutting_down.load(Ordering::Relaxed));
+            if stopping {
+                res.status_code(StatusCode::SERVICE_UNAVAILABLE);
+                res.render(Json(serde_json::json!({ "status": "stopping" })));
+            } else {
+                res.status_code(StatusCode::OK);
+                res.render(Json(serde_json::json!({ "status": "ok" })));
+            }
+        }
     }
-    res.status_code(StatusCode::OK);
-    res.render(Json(serde_json::json!({"status": "ok"})));
 }
 
 /// sr-oapi1: static OpenAPI 3.1 debug document (built from the method table).
@@ -228,7 +338,9 @@ mod tests {
     #[tokio::test]
     async fn healthz_ok_json() {
         let state = HostState::for_test().expect("host");
-        let service = Service::new(router(state));
+        let gateway = Gateway::starting();
+        gateway.set_host(state);
+        let service = Service::new(router(gateway));
         let mut resp = TestClient::get("http://127.0.0.1:0/healthz")
             .send(&service)
             .await;
@@ -240,7 +352,9 @@ mod tests {
     #[tokio::test]
     async fn unary_host_describe_ok() {
         let state = HostState::for_test().expect("host");
-        let service = Service::new(router(state));
+        let gateway = Gateway::starting();
+        gateway.set_host(state);
+        let service = Service::new(router(gateway));
         let body = serde_json::json!({
             "type": "client-request",
             "rpcId": "r1",
@@ -259,6 +373,44 @@ mod tests {
         );
     }
 
+    #[tokio::test]
+    async fn starting_window_gates_all_but_healthz_then_flips() {
+        let gateway = Gateway::starting();
+        let service = Service::new(router(gateway.clone()));
+
+        let mut resp = TestClient::get("http://127.0.0.1:0/healthz")
+            .send(&service)
+            .await;
+        assert_eq!(resp.status_code.unwrap(), StatusCode::SERVICE_UNAVAILABLE);
+        let body = resp.take_string().await.unwrap();
+        assert!(
+            body.contains("starting") && body.contains("retry_after"),
+            "{body}"
+        );
+
+        let body = serde_json::json!({
+            "type": "client-request",
+            "rpcId": "r-window",
+            "method": "host.describe",
+            "payload": {}
+        });
+        let mut resp = TestClient::post("http://127.0.0.1:0/api/host.describe")
+            .json(&body)
+            .send(&service)
+            .await;
+        assert_eq!(
+            resp.status_code.unwrap(),
+            StatusCode::SERVICE_UNAVAILABLE,
+            "unary must be gated in the window"
+        );
+
+        gateway.set_host(HostState::for_test().expect("host"));
+        let mut resp = TestClient::get("http://127.0.0.1:0/healthz")
+            .send(&service)
+            .await;
+        assert_eq!(resp.status_code.unwrap(), StatusCode::OK, "flip to ready");
+    }
+
     #[test]
     fn mux_origin_native_and_loopback_only() {
         assert!(mux_origin_allowed(None));
@@ -272,7 +424,9 @@ mod tests {
     #[tokio::test]
     async fn v1_rest_is_not_mounted() {
         let state = HostState::for_test().expect("host");
-        let service = Service::new(router(state));
+        let gateway = Gateway::starting();
+        gateway.set_host(state);
+        let service = Service::new(router(gateway));
         let resp = TestClient::post("http://127.0.0.1:0/api/v1/session/x/run")
             .send(&service)
             .await;

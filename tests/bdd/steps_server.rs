@@ -4,7 +4,7 @@ use rstest_bdd_macros::{given, then, when};
 use std::time::Duration;
 
 use xylitol::app::server::host::HostState;
-use xylitol::app::server::runtime::{RunningServer, ServerConfig, serve};
+use xylitol::app::server::runtime::{RunningServer, ServerConfig, bind_serve, serve};
 use xylitol::app::server::ws::{EventJournal, ReverseRpcResult};
 use xylitol::protocol::Event;
 use xylitol::protocol::wire::envelope::{PROTOCOL_VERSION, RpcMessage};
@@ -33,6 +33,10 @@ pub struct ServerTest {
     pub idem_second: RefCell<Option<String>>,
     pub idem_exec_file: RefCell<Option<std::path::PathBuf>>,
     pub idem_task: RefCell<Option<tokio::task::JoinHandle<()>>>,
+    /// c2465 sr-rdy1：就绪窗口场景的网关与最近一次 healthz 应答。
+    pub gateway: RefCell<Option<Arc<xylitol::app::server::http::Gateway>>>,
+    pub rdy_status: Cell<u16>,
+    pub rdy_body: RefCell<Option<String>>,
 }
 
 impl ServerTest {
@@ -56,6 +60,9 @@ impl ServerTest {
             idem_second: RefCell::new(None),
             idem_exec_file: RefCell::new(None),
             idem_task: RefCell::new(None),
+            gateway: RefCell::new(None),
+            rdy_status: Cell::new(0),
+            rdy_body: RefCell::new(None),
         }
     }
 
@@ -1717,4 +1724,124 @@ async fn t_idem_inflight_wait(server_test: &ServerTest) {
         "bash MUST execute exactly once, got {executed:?}"
     );
     let _ = std::fs::remove_file(&file);
+}
+
+// ---- c2465 sr-rdy1：启动就绪窗口三态语义 ----
+
+#[given("监听器已绑定端口但装配未完成")]
+async fn g_rdy_starting(server_test: &ServerTest) {
+    let gateway = xylitol::app::server::http::Gateway::starting();
+    let (running, port) = bind_serve(
+        &ServerConfig {
+            host: "127.0.0.1".into(),
+            port: 0,
+            sessions_dir: None,
+        },
+        gateway.clone(),
+    )
+    .await
+    .expect("bind_serve");
+    *server_test.running.borrow_mut() = Some(running);
+    server_test.port.set(port);
+    *server_test.gateway.borrow_mut() = Some(gateway);
+    tokio::time::sleep(Duration::from_millis(30)).await;
+}
+
+#[when("访问 /healthz 或任一 unary")]
+async fn w_rdy_probe_window(server_test: &ServerTest) {
+    let (hz_status, hz_body) = http_status(server_test.port.get(), "GET", "/healthz", "").await;
+    server_test.rdy_status.set(hz_status);
+    *server_test.rdy_body.borrow_mut() = Some(hz_body);
+    let request = serde_json::json!({
+        "type": "client-request",
+        "rpcId": "rdy-probe",
+        "method": "get_state",
+        "payload": { "session_id": "rdy-s1" },
+    });
+    let (st, body) = http_status(
+        server_test.port.get(),
+        "POST",
+        "/api/get_state",
+        &serde_json::to_string(&request).expect("serialize request"),
+    )
+    .await;
+    server_test.unary_status.set(st);
+    *server_test.unary_body.borrow_mut() = Some(body);
+}
+
+#[then("healthz 返回 503 且携带 starting 语义与 retry-after")]
+async fn t_rdy_starting(server_test: &ServerTest) {
+    assert_eq!(
+        server_test.rdy_status.get(),
+        503,
+        "healthz must be 503 in window"
+    );
+    let body = server_test.rdy_body.borrow().clone().unwrap_or_default();
+    let v: serde_json::Value = serde_json::from_str(&body).expect("healthz json");
+    assert_eq!(v["status"], serde_json::json!("starting"), "{v}");
+    assert_eq!(v["retry_after"], serde_json::json!(1), "{v}");
+}
+
+#[then("unary 得到同语义 503 且不半执行")]
+async fn t_rdy_starting_unary(server_test: &ServerTest) {
+    assert_eq!(
+        server_test.unary_status.get(),
+        503,
+        "unary must be 503 in window"
+    );
+    let ubody = server_test.unary_body.borrow().clone().unwrap_or_default();
+    assert!(
+        ubody.contains("starting"),
+        "unary must carry starting semantics: {ubody}"
+    );
+}
+
+#[given("装配已完成")]
+async fn g_rdy_ready(server_test: &ServerTest) {
+    start_host(server_test).await;
+}
+
+#[when("访问 /healthz")]
+async fn w_rdy_probe_healthz(server_test: &ServerTest) {
+    let (status, body) = http_status(server_test.port.get(), "GET", "/healthz", "").await;
+    server_test.rdy_status.set(status);
+    *server_test.rdy_body.borrow_mut() = Some(body);
+}
+
+#[then("返回 200 OK")]
+async fn t_rdy_ready(server_test: &ServerTest) {
+    assert_eq!(server_test.rdy_status.get(), 200);
+    let body = server_test.rdy_body.borrow().clone().unwrap_or_default();
+    assert!(body.contains("ok"), "{body}");
+}
+
+#[given("装配失败")]
+async fn g_rdy_failed(server_test: &ServerTest) {
+    let gateway = xylitol::app::server::http::Gateway::starting();
+    gateway.mark_failed();
+    let (running, port) = bind_serve(
+        &ServerConfig {
+            host: "127.0.0.1".into(),
+            port: 0,
+            sessions_dir: None,
+        },
+        gateway,
+    )
+    .await
+    .expect("bind_serve");
+    *server_test.running.borrow_mut() = Some(running);
+    server_test.port.set(port);
+    tokio::time::sleep(Duration::from_millis(30)).await;
+}
+
+#[then("返回 503 且携带 failed 不可重试语义")]
+async fn t_rdy_failed(server_test: &ServerTest) {
+    assert_eq!(server_test.rdy_status.get(), 503);
+    let body = server_test.rdy_body.borrow().clone().unwrap_or_default();
+    let v: serde_json::Value = serde_json::from_str(&body).expect("healthz json");
+    assert_eq!(v["status"], serde_json::json!("failed"), "{v}");
+    assert!(
+        v.get("retry_after").is_none(),
+        "failed must not advertise retry: {v}"
+    );
 }
