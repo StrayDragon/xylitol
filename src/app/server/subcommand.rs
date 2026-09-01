@@ -27,11 +27,18 @@ pub async fn run(
                 port,
                 ..Default::default()
             };
-            let (handle, actual_port) = crate::app::server::runtime::start(config).await?;
+            let (mut handle, actual_port) = crate::app::server::runtime::start(config).await?;
             eprintln!("Host listening on {host}:{actual_port}");
-            tokio::signal::ctrl_c().await?;
-            eprintln!("Shutting down...");
-            handle.shutdown();
+            tokio::select! {
+                _ = tokio::signal::ctrl_c() => {
+                    eprintln!("Shutting down...");
+                    handle.shutdown();
+                }
+                _ = handle.evicted() => {
+                    eprintln!("Serve registration taken over by a newer daemon; exiting.");
+                    handle.shutdown();
+                }
+            }
             Ok(())
         }
         Some(ServeAction::Install) => {

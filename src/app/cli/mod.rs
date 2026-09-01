@@ -391,8 +391,8 @@ pub async fn run() -> Result<(), Box<dyn std::error::Error>> {
     if want_tui {
         let url =
             crate::app::core::attach::resolve_attach_url(surface.attach.as_deref(), surface.port);
-        if crate::app::core::attach::probe_host(&url).is_err() {
-            eprintln!("{}", crate::app::core::attach::attach_fail_message(&url));
+        if let Err(msg) = crate::app::core::attach::attach_preflight(&url).await {
+            eprintln!("{msg}");
             return Err("host not listening".into());
         }
     }

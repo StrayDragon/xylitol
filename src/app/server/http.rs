@@ -146,6 +146,21 @@ pub fn router(gateway: Arc<Gateway>) -> Router {
         .push(Router::with_path("api/{method}").post(unary))
 }
 
+/// Healthz body with the daemon identity fields (c2475 sr-reg1).
+fn healthz_body(status: &str, extra: serde_json::Value) -> serde_json::Value {
+    let mut v = serde_json::json!({
+        "status": status,
+        "pid": std::process::id(),
+        "version": env!("CARGO_PKG_VERSION"),
+    });
+    if let (Some(obj), Some(extra)) = (v.as_object_mut(), extra.as_object()) {
+        for (k, val) in extra {
+            obj.insert(k.clone(), val.clone());
+        }
+    }
+    v
+}
+
 #[handler]
 async fn healthz(depot: &mut Depot, res: &mut Response) {
     let Some(gateway) = gateway_from(depot) else {
@@ -156,13 +171,14 @@ async fn healthz(depot: &mut Depot, res: &mut Response) {
         Phase::Starting => {
             res.status_code(StatusCode::SERVICE_UNAVAILABLE);
             let _ = res.add_header("retry-after", "1", true);
-            res.render(Json(
-                serde_json::json!({"status": "starting", "retry_after": 1}),
-            ));
+            res.render(Json(healthz_body(
+                "starting",
+                serde_json::json!({ "retry_after": 1 }),
+            )));
         }
         Phase::Failed => {
             res.status_code(StatusCode::SERVICE_UNAVAILABLE);
-            res.render(Json(serde_json::json!({ "status": "failed" })));
+            res.render(Json(healthz_body("failed", serde_json::json!({}))));
         }
         Phase::Ready => {
             let stopping = gateway
@@ -170,10 +186,10 @@ async fn healthz(depot: &mut Depot, res: &mut Response) {
                 .is_some_and(|h| h.shutting_down.load(Ordering::Relaxed));
             if stopping {
                 res.status_code(StatusCode::SERVICE_UNAVAILABLE);
-                res.render(Json(serde_json::json!({ "status": "stopping" })));
+                res.render(Json(healthz_body("stopping", serde_json::json!({}))));
             } else {
                 res.status_code(StatusCode::OK);
-                res.render(Json(serde_json::json!({ "status": "ok" })));
+                res.render(Json(healthz_body("ok", serde_json::json!({}))));
             }
         }
     }
