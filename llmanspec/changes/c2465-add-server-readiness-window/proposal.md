@@ -29,6 +29,15 @@ starting / ready / stopping / failed 分态应答 + `retry-after`，由服务端
 - `src/app/server/runtime.rs` / `http.rs`：绑定后先挂最小应答器，装配完成后切换路由。
 - `/openapi.json` 文档随动；BDD 补「启动窗口内请求得到 503 + retry-after」场景。
 
+## 决策记录
+
+- 2026-09-01（ff 深挖定案，全部设计层）：机制取**门禁 hoop + Host 单元格**（非 router
+  swap——salvo 单 router 内前置 hoop 按 phase 短路，ready 后直通）；四态
+  starting/ready/stopping/failed，failed 有界保持 10s 后退出；healthz 形态
+  `{"status":...,"retry_after":1}`（starting）+ `Retry-After` 头，常量不加配置；
+  `{pid, version}` 字段留 c2475。现状代码事实：装配先于 bind，窗口内为连接拒绝——
+  本票将其改为可观察的 503 语义。详见 `design.md`。
+
 ## Further Notes
 
 - 外部实现对照笔记：[research/readiness-window-notes.md](./research/readiness-window-notes.md)
