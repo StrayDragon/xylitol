@@ -1,6 +1,6 @@
 //! `/mcp` SelectList payload for [`super::EditorSlot::Mcp`].
 
-use xylitol_tui::components::select_list::{SelectItem, SelectList, SelectListLayoutOptions};
+use xylitol_tui::components::select_list::{SelectItem, SelectList};
 use xylitol_tui::{Component, InputEvent};
 
 use super::super::theme::LayoutTheme;
@@ -56,16 +56,7 @@ impl McpSlot {
         };
 
         Self {
-            list: SelectList::new(
-                items,
-                DEFAULT_MAX_VISIBLE,
-                theme.select_list_theme(),
-                SelectListLayoutOptions {
-                    min_primary_column_width: Some(24),
-                    max_primary_column_width: Some(72),
-                    truncate_primary: None,
-                },
-            ),
+            list: theme.select_list(items, DEFAULT_MAX_VISIBLE, (24, 72)),
             summary_line,
             diag_lines,
         }
@@ -134,14 +125,5 @@ impl McpSlot {
 }
 
 fn empty_mcp_list(theme: LayoutTheme) -> SelectList {
-    SelectList::new(
-        Vec::new(),
-        DEFAULT_MAX_VISIBLE,
-        theme.select_list_theme(),
-        SelectListLayoutOptions {
-            min_primary_column_width: Some(24),
-            max_primary_column_width: Some(72),
-            truncate_primary: None,
-        },
-    )
+    theme.select_list(Vec::new(), DEFAULT_MAX_VISIBLE, (24, 72))
 }

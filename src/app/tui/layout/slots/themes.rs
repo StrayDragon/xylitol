@@ -1,6 +1,6 @@
 //! Built-in theme picker payload for [`super::EditorSlot::Themes`].
 
-use xylitol_tui::components::select_list::{SelectItem, SelectList, SelectListLayoutOptions};
+use xylitol_tui::components::select_list::{SelectItem, SelectList};
 use xylitol_tui::{Component, InputEvent};
 
 use super::super::theme::LayoutTheme;
@@ -31,16 +31,7 @@ impl ThemesSlot {
             })
             .collect();
         Self {
-            list: SelectList::new(
-                items,
-                4,
-                theme.select_list_theme(),
-                SelectListLayoutOptions {
-                    min_primary_column_width: Some(12),
-                    max_primary_column_width: Some(24),
-                    truncate_primary: None,
-                },
-            ),
+            list: theme.select_list(items, 4, (12, 24)),
         }
     }
 
@@ -81,14 +72,5 @@ impl ThemesSlot {
 }
 
 fn empty_themes_list(theme: LayoutTheme) -> SelectList {
-    SelectList::new(
-        Vec::new(),
-        DEFAULT_MAX_VISIBLE,
-        theme.select_list_theme(),
-        SelectListLayoutOptions {
-            min_primary_column_width: Some(12),
-            max_primary_column_width: Some(24),
-            truncate_primary: None,
-        },
-    )
+    theme.select_list(Vec::new(), DEFAULT_MAX_VISIBLE, (12, 24))
 }
