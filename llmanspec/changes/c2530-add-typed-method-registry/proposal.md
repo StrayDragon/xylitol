@@ -49,4 +49,4 @@ checkpointed: false
 ## Further Notes
 
 - 选型分析全文与宪法：[research/protocol-selection-notes.md](./research/protocol-selection-notes.md)
-- tonic 对照探针报告：[research/lab-tonic-probe-report.md](./research/lab-tonic-probe-report.md)（待补）
+- tonic 对照探针报告：[research/lab-tonic-probe-report.md](./research/lab-tonic-probe-report.md)
