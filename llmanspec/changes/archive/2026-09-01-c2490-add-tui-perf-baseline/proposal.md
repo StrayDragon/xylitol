@@ -3,7 +3,8 @@ depends_on: []
 skip_specs_landing: true
 branch: sdd/c2490-add-tui-perf-baseline
 base_sha: 50095ac9a0b48d08e133dc07fd0805362ad18e7c
-checkpointed: false
+checkpointed: true
+checkpoint_sha: 50095ac9a0b48d08e133dc07fd0805362ad18e7c
 ---
 
 # TUI 渲染性能与占用基线：先测量，后优化
