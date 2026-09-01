@@ -1704,6 +1704,7 @@ mod tests {
                 host: "127.0.0.1".into(),
                 port: 0,
                 sessions_dir: None,
+                registration_path: None,
             },
             host,
         )
@@ -1836,6 +1837,7 @@ mod tests {
                 host: "127.0.0.1".into(),
                 port: 0,
                 sessions_dir: None,
+                registration_path: None,
             },
             host,
         )

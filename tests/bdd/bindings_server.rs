@@ -276,3 +276,21 @@ async fn test_sr_rdy1_ready_flips(server_test: ServerTest) {}
     name = "failed-nonretryable"
 )]
 async fn test_sr_rdy1_failed(server_test: ServerTest) {}
+
+#[scenario(
+    path = "llmanspec/specs/server-core/server-core.feature",
+    name = "serve-writes-registration-file"
+)]
+async fn test_sr_reg1_writes_file(server_test: ServerTest) {}
+
+#[scenario(
+    path = "llmanspec/specs/server-core/server-core.feature",
+    name = "attach-diagnoses-stale-registration"
+)]
+async fn test_sr_reg1_stale_diagnosis(server_test: ServerTest) {}
+
+#[scenario(
+    path = "llmanspec/specs/server-core/server-core.feature",
+    name = "registration-takeover-evicts-old-daemon"
+)]
+async fn test_sr_reg1_takeover(server_test: ServerTest) {}

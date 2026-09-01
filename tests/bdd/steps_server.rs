@@ -37,6 +37,9 @@ pub struct ServerTest {
     pub gateway: RefCell<Option<Arc<xylitol::app::server::http::Gateway>>>,
     pub rdy_status: Cell<u16>,
     pub rdy_body: RefCell<Option<String>>,
+    /// c2475 sr-reg1：注册文件路径与自检驱逐信号。
+    pub reg_path: RefCell<Option<std::path::PathBuf>>,
+    pub evict_rx: RefCell<Option<tokio::sync::watch::Receiver<bool>>>,
 }
 
 impl ServerTest {
@@ -63,6 +66,8 @@ impl ServerTest {
             gateway: RefCell::new(None),
             rdy_status: Cell::new(0),
             rdy_body: RefCell::new(None),
+            reg_path: RefCell::new(None),
+            evict_rx: RefCell::new(None),
         }
     }
 
@@ -88,6 +93,7 @@ async fn start_host(t: &ServerTest) {
             host: "127.0.0.1".into(),
             port: 0,
             sessions_dir: None,
+            registration_path: None,
         },
         host.clone(),
     )
@@ -219,6 +225,7 @@ async fn w_second_bind(server_test: &ServerTest) {
             host: "127.0.0.1".into(),
             port: server_test.port.get(),
             sessions_dir: None,
+            registration_path: None,
         },
         host2,
     )
@@ -483,6 +490,7 @@ async fn w_start_18790(server_test: &ServerTest) {
             host: "127.0.0.1".into(),
             port: 18790,
             sessions_dir: None,
+            registration_path: None,
         },
         host,
     )
@@ -1736,6 +1744,7 @@ async fn g_rdy_starting(server_test: &ServerTest) {
             host: "127.0.0.1".into(),
             port: 0,
             sessions_dir: None,
+            registration_path: None,
         },
         gateway.clone(),
     )
@@ -1824,6 +1833,7 @@ async fn g_rdy_failed(server_test: &ServerTest) {
             host: "127.0.0.1".into(),
             port: 0,
             sessions_dir: None,
+            registration_path: None,
         },
         gateway,
     )
@@ -1844,4 +1854,160 @@ async fn t_rdy_failed(server_test: &ServerTest) {
         v.get("retry_after").is_none(),
         "failed must not advertise retry: {v}"
     );
+}
+
+// ---- c2475 sr-reg1：serve 注册文件发现契约 ----
+
+use xylitol::app::server::registration::{
+    Registration, read_registration, run_self_check, write_registration,
+};
+use xylitol::app::server::runtime::serve_registered;
+
+fn temp_reg_path() -> std::path::PathBuf {
+    std::env::temp_dir().join(format!("xylitol-bdd-reg-{}.json", uuid::Uuid::new_v4()))
+}
+
+#[given("serve 已装配完成并在空闲端口监听")]
+async fn g_reg_serving(server_test: &ServerTest) {
+    let host = HostState::for_test().expect("host");
+    let reg_path = temp_reg_path();
+    let (running, port) = serve_registered(
+        ServerConfig {
+            host: "127.0.0.1".into(),
+            port: 0,
+            sessions_dir: None,
+            registration_path: None,
+        },
+        host,
+        reg_path.clone(),
+    )
+    .await
+    .expect("serve_registered");
+    *server_test.running.borrow_mut() = Some(running);
+    server_test.port.set(port);
+    *server_test.reg_path.borrow_mut() = Some(reg_path);
+    tokio::time::sleep(Duration::from_millis(30)).await;
+}
+
+#[when("读取注册文件")]
+async fn w_reg_read(server_test: &ServerTest) {
+    let reg_path = server_test.reg_path.borrow().clone().expect("reg path");
+    let reg = read_registration(&reg_path).expect("registration readable");
+    *server_test.rdy_body.borrow_mut() =
+        Some(serde_json::to_string(&reg).expect("serialize registration"));
+    let (status, body) = http_status(server_test.port.get(), "GET", "/healthz", "").await;
+    server_test.unary_status.set(status);
+    *server_test.unary_body.borrow_mut() = Some(body);
+}
+
+#[then("文件存在且为 0600 且内容含 url、pid 与 version")]
+async fn t_reg_file(server_test: &ServerTest) {
+    #[cfg(unix)]
+    {
+        use std::os::unix::fs::PermissionsExt;
+        let reg_path = server_test.reg_path.borrow().clone().expect("reg path");
+        let mode = std::fs::metadata(&reg_path)
+            .expect("meta")
+            .permissions()
+            .mode();
+        assert_eq!(mode & 0o777, 0o600, "registration must be 0600");
+    }
+    let body = server_test.rdy_body.borrow().clone().unwrap_or_default();
+    let v: serde_json::Value = serde_json::from_str(&body).expect("registration json");
+    assert!(v["url"].is_string(), "{v}");
+    assert!(v["pid"].is_u64(), "{v}");
+    assert!(v["version"].is_string(), "{v}");
+}
+
+#[then("healthz 应答 body 的 pid 和 version 与文件一致")]
+async fn t_reg_healthz_identity(server_test: &ServerTest) {
+    assert_eq!(server_test.unary_status.get(), 200, "ready healthz");
+    let file = server_test.rdy_body.borrow().clone().unwrap_or_default();
+    let file: serde_json::Value = serde_json::from_str(&file).expect("registration json");
+    let hz = server_test.unary_body.borrow().clone().unwrap_or_default();
+    let hz: serde_json::Value = serde_json::from_str(&hz).expect("healthz json");
+    assert_eq!(hz["pid"], file["pid"], "{hz}");
+    assert_eq!(hz["version"], file["version"], "{hz}");
+}
+
+#[given("注册文件存在但对应端口的 serve 已退出")]
+async fn g_reg_stale(server_test: &ServerTest) {
+    let reg_path = temp_reg_path();
+    let reg = Registration {
+        url: "http://127.0.0.1:1".into(),
+        pid: 2_147_483_647,
+        version: "0.0.0-dev".into(),
+    };
+    write_registration(&reg_path, &reg).expect("write stale registration");
+    *server_test.reg_path.borrow_mut() = Some(reg_path);
+}
+
+#[when("客户端 attach 探活该地址")]
+async fn w_reg_attach_probe(server_test: &ServerTest) {
+    let reg_path = server_test.reg_path.borrow().clone().expect("reg path");
+    let msg = xylitol::attach_preflight_with("http://127.0.0.1:1", Some(reg_path))
+        .await
+        .expect_err("stale registration must fail the preflight");
+    *server_test.unary_body.borrow_mut() = Some(msg);
+}
+
+#[then("得到可操作诊断说明 pid 对应的 serve 已退出并提示重新 serve")]
+async fn t_reg_stale_diagnosis(server_test: &ServerTest) {
+    let msg = server_test.unary_body.borrow().clone().unwrap_or_default();
+    assert!(msg.contains("has exited"), "{msg}");
+    assert!(msg.contains("pid 2147483647"), "{msg}");
+    assert!(msg.contains("xylitol serve"), "{msg}");
+    if let Some(path) = server_test.reg_path.borrow().clone() {
+        // 确认死亡后残留注册应被清理。
+        assert!(
+            !path.exists(),
+            "stale registration must be removed after diagnosis"
+        );
+        let _ = std::fs::remove_file(&path);
+    }
+}
+
+#[given("旧 serve 进程持有注册文件")]
+async fn g_reg_takeover_old(server_test: &ServerTest) {
+    let reg_path = temp_reg_path();
+    let own = Registration::own("http://127.0.0.1:9".into());
+    write_registration(&reg_path, &own).expect("write old registration");
+    let (tx, rx) = tokio::sync::watch::channel(false);
+    tokio::spawn(run_self_check(
+        reg_path.clone(),
+        own,
+        Duration::from_millis(50),
+        move || {
+            let _ = tx.send(true);
+        },
+    ));
+    *server_test.reg_path.borrow_mut() = Some(reg_path);
+    *server_test.evict_rx.borrow_mut() = Some(rx);
+}
+
+#[when("新 serve 写入字段不同的注册文件")]
+async fn w_reg_takeover_new(server_test: &ServerTest) {
+    tokio::time::sleep(Duration::from_millis(80)).await;
+    let reg_path = server_test.reg_path.borrow().clone().expect("reg path");
+    let newcomer = Registration {
+        url: "http://127.0.0.1:9".into(),
+        pid: 2_147_483_646,
+        version: "0.0.0-dev".into(),
+    };
+    write_registration(&reg_path, &newcomer).expect("takeover write");
+}
+
+#[then("旧进程在自检周期内检测到字段不全等并自行退出")]
+async fn t_reg_takeover_evicted(server_test: &ServerTest) {
+    let mut rx = server_test
+        .evict_rx
+        .borrow_mut()
+        .take()
+        .expect("eviction watch");
+    tokio::time::timeout(Duration::from_secs(5), rx.changed())
+        .await
+        .expect("eviction within self-check period")
+        .expect("watch open");
+    let reg_path = server_test.reg_path.borrow().clone().expect("reg path");
+    let _ = std::fs::remove_file(&reg_path);
 }

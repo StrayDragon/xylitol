@@ -5,6 +5,7 @@
 //! downlink (see [`super::http`]). Session occupancy is lazy per slot
 //! ([`super::host::HostState`]).
 
+use std::path::PathBuf;
 use std::sync::Arc;
 use std::time::Duration;
 
@@ -16,11 +17,16 @@ use crate::app::core::bootstrap::{BootstrapError, BootstrapInput, resolve_assemb
 use crate::app::core::composition::build_ports;
 use crate::app::server::host::{HostState, ReloadBaseline};
 use crate::app::server::http;
+use crate::app::server::registration::{self, Registration};
 
 /// Handle to a running server. Dropping this triggers graceful shutdown.
 pub struct RunningServer {
     handle: ServerHandle,
     gateway: Arc<http::Gateway>,
+    /// Fires when the self-check detects the registration file was taken over
+    /// or removed (c2475). Never fires unless registration is armed.
+    evicted: tokio::sync::watch::Receiver<bool>,
+    registration_path: Option<PathBuf>,
 }
 
 impl RunningServer {
@@ -33,8 +39,37 @@ impl RunningServer {
         self.handle.stop_graceful(Duration::from_secs(30));
     }
 
+    /// Resolves when the self-check detects registration takeover/removal
+    /// (c2475 self-eviction).
+    pub async fn evicted(&mut self) {
+        let _ = self.evicted.changed().await;
+    }
+
     /// Wait for the server to finish shutting down.
     pub async fn join(self) {}
+
+    /// Write the registration file and arm the self-eviction watch (c2475).
+    fn arm_registration(
+        &mut self,
+        url: String,
+        registration_path: PathBuf,
+        interval: Duration,
+    ) -> std::io::Result<()> {
+        let own = Registration::own(url);
+        registration::write_registration(&registration_path, &own)?;
+        self.registration_path = Some(registration_path.clone());
+        let (tx, rx) = tokio::sync::watch::channel(false);
+        self.evicted = rx;
+        tokio::spawn(registration::run_self_check(
+            registration_path,
+            own,
+            interval,
+            move || {
+                let _ = tx.send(true);
+            },
+        ));
+        Ok(())
+    }
 }
 
 impl Drop for RunningServer {
@@ -42,6 +77,9 @@ impl Drop for RunningServer {
         if let Some(host) = self.gateway.host() {
             host.shutting_down
                 .store(true, std::sync::atomic::Ordering::Relaxed);
+        }
+        if let Some(path) = &self.registration_path {
+            registration::remove_registration(path);
         }
         self.handle.stop_graceful(Duration::from_secs(30));
     }
@@ -55,6 +93,8 @@ pub struct ServerConfig {
     pub host: String,
     pub port: u16,
     pub sessions_dir: Option<std::path::PathBuf>,
+    /// Registration file override (tests / BDD). `None` = `~/.xylitol/serve.json`.
+    pub registration_path: Option<PathBuf>,
 }
 
 impl Default for ServerConfig {
@@ -63,6 +103,7 @@ impl Default for ServerConfig {
             host: "127.0.0.1".into(),
             port: 18790,
             sessions_dir: None,
+            registration_path: None,
         }
     }
 }
@@ -73,10 +114,21 @@ pub async fn start(
     config: ServerConfig,
 ) -> Result<(RunningServer, u16), Box<dyn std::error::Error>> {
     let gateway = http::Gateway::starting();
-    let (running, port) = bind_serve(&config, gateway.clone()).await?;
+    let (mut running, port) = bind_serve(&config, gateway.clone()).await?;
     match assemble(&config).await {
         Ok(host) => {
             gateway.set_host(host);
+            let registration_path = config
+                .registration_path
+                .clone()
+                .unwrap_or_else(registration::default_registration_path);
+            if let Err(e) = running.arm_registration(
+                format!("http://{}:{port}", config.host),
+                registration_path,
+                Duration::from_secs(5),
+            ) {
+                return Err(Box::new(e));
+            }
             Ok((running, port))
         }
         Err(e) => {
@@ -154,6 +206,26 @@ pub async fn serve(
     bind_serve(&config, gateway).await
 }
 
+/// Pre-assembled variant that also arms the registration contract (BDD /
+/// tests): ready at bind, registration written, self-eviction armed.
+pub async fn serve_registered(
+    config: ServerConfig,
+    host: Arc<HostState>,
+    registration_path: PathBuf,
+) -> Result<(RunningServer, u16), Box<dyn std::error::Error>> {
+    let gateway = http::Gateway::starting();
+    gateway.set_host(host);
+    let (mut running, port) = bind_serve(&config, gateway).await?;
+    running
+        .arm_registration(
+            format!("http://{}:{port}", config.host),
+            registration_path,
+            Duration::from_secs(5),
+        )
+        .map_err(Box::new)?;
+    Ok((running, port))
+}
+
 /// Bind and serve with an explicit gateway — the assembly-window seam used by
 /// [`start`] and the readiness BDD scenarios (c2465).
 pub async fn bind_serve(
@@ -183,7 +255,17 @@ pub async fn bind_serve(
         server.serve(router).await;
     });
 
-    Ok((RunningServer { handle, gateway }, actual_port))
+    let (evict_tx, evict_rx) = tokio::sync::watch::channel(false);
+    drop(evict_tx);
+    Ok((
+        RunningServer {
+            handle,
+            gateway,
+            evicted: evict_rx,
+            registration_path: None,
+        },
+        actual_port,
+    ))
 }
 
 async fn shutdown_signal(handle: ServerHandle) {
@@ -226,6 +308,7 @@ mod tests {
                 host: "127.0.0.1".into(),
                 port: 0,
                 sessions_dir: None,
+                registration_path: None,
             },
             host,
         )
@@ -238,6 +321,7 @@ mod tests {
                 host: "127.0.0.1".into(),
                 port: occupied,
                 sessions_dir: None,
+                registration_path: None,
             },
             host2,
         )
