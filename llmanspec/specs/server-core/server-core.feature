@@ -1,7 +1,7 @@
 # language: zh-CN
 # capability: server-core
 # purpose: Server 运行时 — 独立 Host 监听器经四象限信封暴露产品契约（POST unary/respond + WS 只下行）；每 session 槽独立 journal 与写者。
-# scope: src/app/server/
+# scope: src/
 
 功能: server-core
 
@@ -144,6 +144,10 @@
   @req:rr4 @human
   场景: no-conflict-arbitration
     - v1 MUST NOT 实现多客户端冲突仲裁；给定 rpcId 的首个 ClientResponse 胜出；同一 rpcId 的后续 respond MUST 被静默忽略。
+
+  @req:sr-idem1 @human
+  场景: unary 幂等准入
+    - Host MUST 以信封 `rpcId` 为幂等键：同一 session 槽内，同 `rpcId` 的重复 unary 首次准入获胜，Host MUST 回放首次执行结果且 MUST NOT 二次执行；首次仍在处理中的同键重复 MUST 等待首次完成后获得同一结果，MUST NOT 并行执行。同 `rpcId` 但 method 或 payload 不同的提交 MUST 返回稳定冲突错误（code=idempotency_conflict，HTTP 仍 200）。幂等账本 MUST 有界且进程内，MUST NOT 跨重启持久化。
 
   @executable @req:sr-h1
   场景: start-healthz
@@ -355,3 +359,21 @@
     假如 客户端已订阅会话 s-sub
     当 会话回合以 AgentEnd 结束后又追加新事件
     那么 订阅仍存活且新事件继续送达
+
+  @executable @req:sr-idem1
+  场景: idempotent-replay-first-result
+    假如 客户端以 rpcId R 对某 session 提交 unary 命令并得到结果
+    当 客户端以相同 rpcId R 重试同一命令
+    那么 第二次得到与首次相同的结果且命令仅执行一次
+
+  @executable @req:sr-idem1
+  场景: idempotency-conflict-differs
+    假如 rpcId R 已被某 method 与 payload 的提交占用
+    当 以相同 rpcId R 提交不同 method 或 payload
+    那么 返回 ok=false 且 code=idempotency_conflict 且不执行
+
+  @executable @req:sr-idem1
+  场景: idempotency-inflight-wait
+    假如 rpcId R 的首次命令仍在处理中
+    当 相同 rpcId R 的重复请求到达
+    那么 等待首次完成并回放同一结果且不并行执行
