@@ -25,6 +25,7 @@ use crate::app::core::driver::{
     XyInProcessDriver,
 };
 use crate::app::core::driver_error::XyDriverError;
+use crate::app::server::idempotency::{Admission, IdempotencyLedger, conflict_result};
 use crate::app::server::ws::{
     EventJournal, ReverseRpcGateway, ReverseRpcResult, downlink_server_request,
 };
@@ -118,6 +119,8 @@ pub struct SessionSlot {
     pending_model: std::sync::Mutex<Option<String>>,
     pending_thinking: std::sync::Mutex<Option<String>>,
     mcp_watch_started: AtomicBool,
+    /// Unary idempotency admission keyed by envelope `rpcId` (c2460).
+    pub idempotency: IdempotencyLedger,
 }
 
 impl HostState {
@@ -350,6 +353,7 @@ impl SessionSlot {
             pending_model: std::sync::Mutex::new(None),
             pending_thinking: std::sync::Mutex::new(None),
             mcp_watch_started: AtomicBool::new(false),
+            idempotency: IdempotencyLedger::default(),
         })
     }
 
@@ -1157,9 +1161,14 @@ impl WriterLease {
     }
 }
 
-/// Dispatch a registered unary method against the session slot.
+/// Dispatch a registered unary method.
+///
+/// `rpc_id` is the envelope `rpcId` on wire carriers and doubles as the
+/// idempotency admission key (c2460); carriers without a wire envelope pass
+/// `None` and skip admission.
 pub async fn handle_unary(
     host: &Arc<HostState>,
+    rpc_id: Option<&str>,
     method: &str,
     payload: Value,
     writer_token: Option<String>,
@@ -1201,7 +1210,42 @@ pub async fn handle_unary(
         host.session_id_from_payload(&payload)
     };
     let workspace = workspace_from_payload(host, &payload);
+    let slot = host.slot(&session_id).await;
+    let presented = writer_token.as_deref();
 
+    // c2460: session-scoped admission keyed by the envelope rpcId — first
+    // admission wins, duplicates replay the first result, foreign reuse of a
+    // key is a stable conflict.
+    let reservation = match slot.idempotency.admit(rpc_id, method, &payload).await {
+        Admission::Proceed(reservation) => reservation,
+        Admission::Replay(result) => return result,
+        Admission::Conflict => return conflict_result(),
+    };
+
+    let result = dispatch_session_unary(
+        host,
+        &slot,
+        &session_id,
+        method,
+        payload,
+        presented,
+        &workspace,
+    )
+    .await;
+    reservation.complete(result.clone());
+    result
+}
+
+/// Session-scoped unary execution, after idempotency admission.
+async fn dispatch_session_unary(
+    host: &Arc<HostState>,
+    slot: &Arc<SessionSlot>,
+    session_id: &str,
+    method: &str,
+    payload: Value,
+    presented: Option<&str>,
+    workspace: &Path,
+) -> RpcResult {
     if method == "subscribe" {
         if session_id.is_empty() {
             return RpcResult::error("invalid_input", "subscribe requires session_id");
@@ -1210,18 +1254,14 @@ pub async fn handle_unary(
             .get("last_seq")
             .and_then(|v| v.as_u64())
             .unwrap_or(0);
-        let slot = host.slot(&session_id).await;
-        if let Err(e) = materialize_writer_at(host, &slot, &workspace).await {
+        if let Err(e) = materialize_writer_at(host, slot, workspace).await {
             log::warn!(
                 target: "xylitol::host",
                 "subscribe materialize_writer failed: {e}"
             );
         }
-        return host.bind_mux_to_session(&slot, last_seq).await;
+        return host.bind_mux_to_session(slot, last_seq).await;
     }
-
-    let slot = host.slot(&session_id).await;
-    let presented = writer_token.as_deref();
 
     if method == "prompt" {
         let message = payload
@@ -1232,7 +1272,7 @@ pub async fn handle_unary(
         if message.is_empty() {
             return RpcResult::error("invalid_input", "missing message");
         }
-        let lease = match WriterLease::acquire(host, &slot, &workspace, presented).await {
+        let lease = match WriterLease::acquire(host, slot, workspace, presented).await {
             Ok(l) => l,
             Err(e) => return e,
         };
@@ -1305,7 +1345,7 @@ pub async fn handle_unary(
     }
 
     if method == "arm_tool_freeze" {
-        let lease = match WriterLease::acquire(host, &slot, &workspace, presented).await {
+        let lease = match WriterLease::acquire(host, slot, workspace, presented).await {
             Ok(l) => l,
             Err(e) => return e,
         };
@@ -1322,7 +1362,7 @@ pub async fn handle_unary(
     }
 
     if method == "persist_trust" {
-        let lease = match WriterLease::acquire(host, &slot, &workspace, presented).await {
+        let lease = match WriterLease::acquire(host, slot, workspace, presented).await {
             Ok(l) => l,
             Err(e) => return e,
         };
@@ -1355,7 +1395,7 @@ pub async fn handle_unary(
             .and_then(|v| v.as_str())
             .unwrap_or("")
             .to_string();
-        let lease = match WriterLease::acquire(host, &slot, &workspace, presented).await {
+        let lease = match WriterLease::acquire(host, slot, workspace, presented).await {
             Ok(l) => l,
             Err(e) => return e,
         };
@@ -1375,14 +1415,14 @@ pub async fn handle_unary(
     }
 
     if is_writer_method(method) {
-        let lease = match WriterLease::acquire(host, &slot, &workspace, presented).await {
+        let lease = match WriterLease::acquire(host, slot, workspace, presented).await {
             Ok(l) => l,
             Err(e) => return e,
         };
         if slot.run_inflight.load(Ordering::SeqCst)
             && matches!(method, "set_model" | "cycle_model" | "set_thinking_level")
         {
-            return defer_runtime_setting(&slot, method, &payload, &lease.token).await;
+            return defer_runtime_setting(slot, method, &payload, &lease.token).await;
         }
         // Export over the wire stages to a unique Host-side temp file; the
         // content is read back into the response and the TUI writes its own
@@ -1468,10 +1508,10 @@ pub async fn handle_unary(
             };
         }
 
-        let session_exists = host.ports.store.exists(&session_id).await;
+        let session_exists = host.ports.store.exists(session_id).await;
         if !session_exists && method == "session_tree" {
             let cwd = workspace.to_string_lossy().into_owned();
-            if let Err(e) = host.ports.store.create(&session_id, Some(&cwd), None).await {
+            if let Err(e) = host.ports.store.create(session_id, Some(&cwd), None).await {
                 return rpc_err(e.into());
             }
         } else if !session_exists {
@@ -1480,7 +1520,7 @@ pub async fn handle_unary(
                     "session_id": session_id,
                     "model": Value::Null,
                     "thinking_level": Value::Null,
-                    "leaf_entry_id": host.ports.store.leaf_id(&session_id),
+                    "leaf_entry_id": host.ports.store.leaf_id(session_id),
                 })),
                 "get_messages" => RpcResult::ok_value(json!({ "entries": [] })),
                 "get_session_stats" => RpcResult::ok_value(json!({
@@ -1497,7 +1537,7 @@ pub async fn handle_unary(
             };
         }
 
-        let mut reader = match materialize_reader(host, &session_id).await {
+        let mut reader = match materialize_reader(host, session_id).await {
             Ok(driver) => driver,
             Err(e) => return rpc_err(e),
         };

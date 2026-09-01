@@ -1979,6 +1979,7 @@ mod tests {
         );
         let result = crate::app::server::host::handle_unary(
             &host,
+            None,
             "arm_tool_freeze",
             serde_json::json!({ "session_id": "mcp-freeze" }),
             None,
@@ -2033,6 +2034,7 @@ mod tests {
         let t1 = std::time::Instant::now();
         let result = crate::app::server::host::handle_unary(
             &host,
+            None,
             "set_model",
             serde_json::json!({
                 "provider": "",
@@ -2195,6 +2197,7 @@ mod tests {
             .expect("materialize");
         let result = handle_unary(
             &host,
+            None,
             "bash",
             serde_json::json!({ "session_id": "ws-bang", "command": "pwd" }),
             None,
@@ -2335,6 +2338,7 @@ mod tests {
             .expect("materialize");
         let result = handle_unary(
             &host,
+            None,
             "persist_trust",
             serde_json::json!({ "session_id": "ws-trust", "mode": "trust_cwd" }),
             None,
@@ -2363,6 +2367,7 @@ mod tests {
             .expect("materialize");
         let minted = handle_unary(
             &host,
+            None,
             "new_session",
             serde_json::json!({ "session_id": "ws-export" }),
             None,
@@ -2378,6 +2383,7 @@ mod tests {
             .to_string();
         let result = handle_unary(
             &host,
+            None,
             "export_jsonl",
             serde_json::json!({ "session_id": "ws-export" }),
             Some(writer_token),
@@ -2416,6 +2422,7 @@ mod tests {
         slot.mark_run_inflight_for_test(true);
         let result = handle_unary(
             &host,
+            None,
             "set_thinking_level",
             serde_json::json!({ "session_id": "th", "level": "high" }),
             None,

@@ -43,6 +43,21 @@ pub trait HostClient: Send + Sync {
     /// ClientRequest → ServerResponse (`POST /api/<method>` or in-process).
     async fn unary(&self, method: &str, payload: Value) -> Result<RpcResult, HostClientError>;
 
+    /// Unary with a caller-chosen envelope `rpcId` — the idempotency admission
+    /// key (c2460). Retries of one logical command MUST reuse the same id so
+    /// the host replays the first result instead of executing twice. Default:
+    /// ignore the id (carrier without a wire identity) and fall back to
+    /// [`HostClient::unary`].
+    async fn unary_with_id(
+        &self,
+        rpc_id: &str,
+        method: &str,
+        payload: Value,
+    ) -> Result<RpcResult, HostClientError> {
+        let _ = rpc_id;
+        self.unary(method, payload).await
+    }
+
     /// ClientResponse (`POST /api/respond`). HTTP body is a carrier ack, not a second RpcMessage.
     async fn respond(&self, rpc_id: &str, payload: Value) -> Result<(), HostClientError>;
 

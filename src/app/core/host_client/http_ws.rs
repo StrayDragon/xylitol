@@ -49,15 +49,17 @@ impl HttpWsClient {
             .replace("http://", "ws://");
         format!("{ws_base}/api/events.mux")
     }
-}
 
-#[async_trait]
-impl HostClient for HttpWsClient {
-    async fn unary(&self, method: &str, payload: Value) -> Result<RpcResult, HostClientError> {
-        let rpc_id = uuid::Uuid::new_v4().to_string();
+    /// One unary POST under a caller-chosen envelope `rpcId` (c2460).
+    async fn post_unary(
+        &self,
+        rpc_id: &str,
+        method: &str,
+        payload: Value,
+    ) -> Result<RpcResult, HostClientError> {
         let writer_token = self.writer_token.lock().ok().and_then(|g| g.clone());
         let body = RpcMessage::ClientRequest {
-            rpc_id: rpc_id.clone(),
+            rpc_id: rpc_id.to_string(),
             method: method.to_string(),
             payload,
             writer_token,
@@ -94,7 +96,7 @@ impl HostClient for HttpWsClient {
             } => {
                 if echo != rpc_id {
                     return Err(HostClientError::RpcIdMismatch {
-                        sent: rpc_id,
+                        sent: rpc_id.to_string(),
                         got: echo,
                     });
                 }
@@ -108,6 +110,23 @@ impl HostClient for HttpWsClient {
             }
             other => Err(HostClientError::UnexpectedEnvelope(format!("{other:?}"))),
         }
+    }
+}
+
+#[async_trait]
+impl HostClient for HttpWsClient {
+    async fn unary(&self, method: &str, payload: Value) -> Result<RpcResult, HostClientError> {
+        let rpc_id = uuid::Uuid::new_v4().to_string();
+        self.post_unary(&rpc_id, method, payload).await
+    }
+
+    async fn unary_with_id(
+        &self,
+        rpc_id: &str,
+        method: &str,
+        payload: Value,
+    ) -> Result<RpcResult, HostClientError> {
+        self.post_unary(rpc_id, method, payload).await
     }
 
     async fn respond(&self, rpc_id: &str, payload: Value) -> Result<(), HostClientError> {
