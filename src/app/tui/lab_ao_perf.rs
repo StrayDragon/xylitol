@@ -5,7 +5,8 @@
 //! eval "$(just cargo-wt-env)"
 //! cargo test -p xylitol --lib lab_ao_session_perf_report -- --ignored --nocapture
 //! cargo test -p xylitol --lib lab_ao_stream_delta_perf_report -- --ignored --nocapture
-//! # optional: XYLITOL_LAB_SESSION=<uuid>
+//! cargo test -p xylitol --lib lab_ao_memory_profile -- --ignored --nocapture
+//! # optional: XYLITOL_LAB_SESSION=<uuid> (memory profile: profile one real session)
 //! ```
 
 use std::path::PathBuf;
@@ -19,6 +20,7 @@ use super::host::{HostEvent, HostSession};
 use crate::app::core::driver::XyEvent;
 use crate::infra::session::SessionManager;
 use crate::protocol::ports::XySessionStore;
+use crate::protocol::session::{EntryBase, MessageEntry, SessionEntry, fixture_message_json};
 
 struct LabTerminal {
     cols: u16,
@@ -115,39 +117,62 @@ fn percentile(sorted: &[u64], p: f64) -> u64 {
     sorted[idx.min(sorted.len() - 1)]
 }
 
+/// Resident set size in kB from `/proc/self/status` (Linux lab only).
+fn rss_kb() -> u64 {
+    let status = std::fs::read_to_string("/proc/self/status").unwrap_or_default();
+    for line in status.lines() {
+        if let Some(rest) = line.strip_prefix("VmRSS:") {
+            return rest
+                .trim()
+                .trim_end_matches("kB")
+                .trim()
+                .parse()
+                .unwrap_or(0);
+        }
+    }
+    0
+}
+
 #[tokio::test]
 #[ignore = "lab: AO perf report against disk session or synthetic seed"]
 async fn lab_ao_session_perf_report() {
-    let session_id = std::env::var("XYLITOL_LAB_SESSION")
-        .unwrap_or_else(|_| "460ad16e-874f-418f-8ca0-dabc58f89320".into());
-    let sessions_dir = default_sessions_dir();
-    let path = sessions_dir.join(format!("{session_id}.jsonl"));
-
-    let (sid, entries, source) = if path.is_file() {
-        let mgr = SessionManager::new(sessions_dir);
-        let entries = mgr
-            .load_entries(&session_id)
-            .await
-            .expect("load lab session");
-        (
-            session_id,
-            entries,
-            format!("disk:{path}", path = path.display()),
-        )
-    } else {
-        let mgr = SessionManager::in_memory();
-        mgr.create("lab-ao-perf", Some("."), None)
-            .await
-            .expect("create");
-        crate::app::debug_fixtures::seed_scene(&mgr, "lab-ao-perf", "ao-perf-scroll")
-            .await
-            .expect("seed ao-perf-scroll");
-        let entries = mgr.load_entries("lab-ao-perf").await.expect("load seed");
-        (
-            "lab-ao-perf".into(),
-            entries,
-            "synthetic:ao-perf-scroll".into(),
-        )
+    // Disk session is opt-in via XYLITOL_LAB_SESSION; default is the synthetic
+    // seed so the probe runs on any machine (no hardcoded session UUIDs).
+    let (sid, entries, source) = match std::env::var("XYLITOL_LAB_SESSION").ok() {
+        Some(session_id) => {
+            let sessions_dir = default_sessions_dir();
+            let path = sessions_dir.join(format!("{session_id}.jsonl"));
+            assert!(
+                path.is_file(),
+                "XYLITOL_LAB_SESSION={session_id} not found at {}",
+                path.display()
+            );
+            let mgr = SessionManager::new(sessions_dir);
+            let entries = mgr
+                .load_entries(&session_id)
+                .await
+                .expect("load lab session");
+            (
+                session_id,
+                entries,
+                format!("disk:{path}", path = path.display()),
+            )
+        }
+        None => {
+            let mgr = SessionManager::in_memory();
+            mgr.create("lab-ao-perf", Some("."), None)
+                .await
+                .expect("create");
+            crate::app::debug_fixtures::seed_scene(&mgr, "lab-ao-perf", "ao-perf-scroll")
+                .await
+                .expect("seed ao-perf-scroll");
+            let entries = mgr.load_entries("lab-ao-perf").await.expect("load seed");
+            (
+                "lab-ao-perf".into(),
+                entries,
+                "synthetic:ao-perf-scroll".into(),
+            )
+        }
     };
 
     let mut session = HostSession::new_product_ui(LabTerminal::new(120, 40));
@@ -223,9 +248,9 @@ async fn lab_ao_session_perf_report() {
         "REPORT lab_ao_session_perf\n\
          source={source}\n\
          warm_us={warm_us} component_lines={} paint_lines={} finalize_checks={} reuses={}\n\
-         idle_paint p50={}us p95={}us\n\
-         wheel_paint p50={}us p95={}us reprojected={wheel_reprojected}/40 vertical_shifted={wheel_vertical_shifted}/40 ao_reproject_frames={}\n\
-         drag_paint p50={}us p95={}us\n\
+         idle_paint p50={}us p95={}us max={}us\n\
+         wheel_paint p50={}us p95={}us max={}us reprojected={wheel_reprojected}/40 vertical_shifted={wheel_vertical_shifted}/40 ao_reproject_frames={}\n\
+         drag_paint p50={}us p95={}us max={}us\n\
          last_frame component_lines={} paint_lines={} finalize_checks={} reuses={} do_render_us={} ao_reprojected={}",
         warm_perf.component_lines,
         warm_perf.paint_lines,
@@ -233,11 +258,14 @@ async fn lab_ao_session_perf_report() {
         warm_perf.finalize_line_reuses,
         percentile(&idle_us, 0.50),
         percentile(&idle_us, 0.95),
+        percentile(&idle_us, 1.00),
         percentile(&wheel_us, 0.50),
         percentile(&wheel_us, 0.95),
+        percentile(&wheel_us, 1.00),
         session.tui.ao_reproject_frames_for_test(),
         percentile(&drag_us, 0.50),
         percentile(&drag_us, 0.95),
+        percentile(&drag_us, 1.00),
         last.component_lines,
         last.paint_lines,
         last.finalize_width_checks,
@@ -286,27 +314,35 @@ fn cpu_pct(j0: u64, j1: u64, wall_secs: f64) -> f64 {
 }
 
 async fn seed_long_session(session: &mut HostSession<LabTerminal>) {
-    let session_id = std::env::var("XYLITOL_LAB_SESSION")
-        .unwrap_or_else(|_| "460ad16e-874f-418f-8ca0-dabc58f89320".into());
-    let sessions_dir = default_sessions_dir();
-    let path = sessions_dir.join(format!("{session_id}.jsonl"));
-    let (sid, entries) = if path.is_file() {
-        let mgr = SessionManager::new(sessions_dir);
-        let entries = mgr
-            .load_entries(&session_id)
-            .await
-            .expect("load lab session");
-        (session_id, entries)
-    } else {
-        let mgr = SessionManager::in_memory();
-        mgr.create("lab-ao-stream", Some("."), None)
-            .await
-            .expect("create");
-        crate::app::debug_fixtures::seed_scene(&mgr, "lab-ao-stream", "ao-perf-scroll")
-            .await
-            .expect("seed");
-        let entries = mgr.load_entries("lab-ao-stream").await.expect("load");
-        ("lab-ao-stream".into(), entries)
+    // Disk session is opt-in via XYLITOL_LAB_SESSION (see session perf report);
+    // default runs on the synthetic seed so the probe is machine-portable.
+    let (sid, entries) = match std::env::var("XYLITOL_LAB_SESSION").ok() {
+        Some(session_id) => {
+            let sessions_dir = default_sessions_dir();
+            let path = sessions_dir.join(format!("{session_id}.jsonl"));
+            assert!(
+                path.is_file(),
+                "XYLITOL_LAB_SESSION={session_id} not found at {}",
+                path.display()
+            );
+            let mgr = SessionManager::new(sessions_dir);
+            let entries = mgr
+                .load_entries(&session_id)
+                .await
+                .expect("load lab session");
+            (session_id, entries)
+        }
+        None => {
+            let mgr = SessionManager::in_memory();
+            mgr.create("lab-ao-stream", Some("."), None)
+                .await
+                .expect("create");
+            crate::app::debug_fixtures::seed_scene(&mgr, "lab-ao-stream", "ao-perf-scroll")
+                .await
+                .expect("seed");
+            let entries = mgr.load_entries("lab-ao-stream").await.expect("load");
+            ("lab-ao-stream".into(), entries)
+        }
     };
     session.apply_cli_restored_session(&sid, entries);
 }
@@ -415,9 +451,11 @@ async fn lab_ao_stream_delta_perf_report() {
     eprintln!(
         "REPORT lab_ao_stream_delta_perf\n\
          deltas={DELTAS} tick_every={TICK_EVERY} max_component_lines={max_component_lines}\n\
-         per_token_paint paints={uncoal_paints} sum_do_render_us={uncoal_us} wall_s={uncoal_wall:.3} cpu%≈{uncoal_cpu:.1}\n\
-         tick_paced      paints={paced_paints} sum_do_render_us={paced_us} wall_s={paced_wall:.3} cpu%≈{paced_cpu:.1}\n\
-         ratio paints={paint_ratio:.2}x  sum_us={us_ratio:.2}x (higher ⇒ tick-pace saves more)"
+         per_token_paint paints={uncoal_paints} paints_per_s={:.0} sum_do_render_us={uncoal_us} wall_s={uncoal_wall:.3} cpu%≈{uncoal_cpu:.1}\n\
+         tick_paced      paints={paced_paints} paints_per_s={:.0} sum_do_render_us={paced_us} wall_s={paced_wall:.3} cpu%≈{paced_cpu:.1}\n\
+         ratio paints={paint_ratio:.2}x  sum_us={us_ratio:.2}x (higher ⇒ tick-pace saves more)",
+        uncoal_paints as f64 / uncoal_wall,
+        paced_paints as f64 / paced_wall,
     );
 
     assert_eq!(uncoal_paints, DELTAS as u32);
@@ -433,4 +471,131 @@ async fn lab_ao_stream_delta_perf_report() {
         paint_ratio >= 4.0,
         "expected fewer paints under tick pace, got {paint_ratio:.2}x"
     );
+}
+
+// ---- c2490: memory profile (transcript scale → resident memory) ----
+
+fn msg_entry(role: &str, text: &str) -> SessionEntry {
+    SessionEntry::Message(MessageEntry {
+        base: EntryBase {
+            entry_type: "message".into(),
+            id: String::new(),
+            parent_id: None,
+            timestamp: 0,
+        },
+        message: fixture_message_json(role, text),
+    })
+}
+
+/// One turn = a short user line + a multi-line assistant block (CJK content,
+/// wraps like real output at 120 cols).
+async fn append_turn(store: &SessionManager, sid: &str, i: usize, block_lines: usize) {
+    let user = format!("q{i}: brief ask");
+    let block = (0..block_lines)
+        .map(|l| format!("answer {i}.{l}: {}", "字".repeat(40)))
+        .collect::<Vec<_>>()
+        .join("\n");
+    store
+        .append_session_entry(sid, &msg_entry("user", &user))
+        .await
+        .expect("append user entry");
+    store
+        .append_session_entry(sid, &msg_entry("assistant", &block))
+        .await
+        .expect("append assistant entry");
+}
+
+/// Resident-memory profile: synthetic transcript ladder 1k → 1w → 10w display
+/// lines in one process (models a session growing in place); RSS sampled from
+/// `/proc/self/status` after a settled warm render per scale.
+/// `XYLITOL_LAB_SESSION=<uuid>` profiles one real disk session instead.
+#[tokio::test]
+#[ignore = "lab: memory profile across transcript scales"]
+async fn lab_ao_memory_profile() {
+    const TERM_COLS: u16 = 120;
+    const TERM_ROWS: u16 = 40;
+    /// Display lines per assistant block (pre-wrap; actual lines measured live).
+    const BLOCK_LINES: usize = 8;
+    const SCALES: &[(&str, usize)] = &[("1k", 1_000), ("1w", 10_000), ("10w", 100_000)];
+
+    eprintln!(
+        "REPORT lab_ao_memory_profile baseline_rss_kb={} cols={TERM_COLS} rows={TERM_ROWS} block_lines={BLOCK_LINES}",
+        rss_kb()
+    );
+
+    let mut session = HostSession::new_product_ui(LabTerminal::new(TERM_COLS, TERM_ROWS));
+
+    if let Ok(session_uuid) = std::env::var("XYLITOL_LAB_SESSION") {
+        let dir = default_sessions_dir();
+        if dir.join(format!("{session_uuid}.jsonl")).is_file() {
+            let mgr = SessionManager::new(dir);
+            let entries = mgr
+                .load_entries(&session_uuid)
+                .await
+                .expect("load lab session");
+            let warm = Instant::now();
+            session.apply_cli_restored_session(&session_uuid, entries);
+            session.tui.render_now().expect("warm render");
+            let perf = session.tui.last_render_perf();
+            eprintln!(
+                "REPORT lab_ao_memory_profile scale=disk entries_src={session_uuid} \
+                 component_lines={} paint_lines={} warm_render_ms={} rss_kb={}",
+                perf.component_lines,
+                perf.paint_lines,
+                warm.elapsed().as_millis(),
+                rss_kb()
+            );
+            return;
+        }
+        eprintln!(
+            "XYLITOL_LAB_SESSION={session_uuid} not found on disk; falling back to synthetic ladder"
+        );
+    }
+
+    let mgr = SessionManager::in_memory();
+    mgr.create("lab-ao-mem", Some("."), None)
+        .await
+        .expect("create session");
+    let sid = "lab-ao-mem".to_string();
+
+    let mut blocks_done = 0usize;
+    let mut prev_rss = rss_kb();
+    let mut prev_lines = 0u64;
+    for (name, target_lines) in SCALES {
+        let target_blocks = target_lines / BLOCK_LINES;
+        let fill = Instant::now();
+        while blocks_done < target_blocks {
+            append_turn(&mgr, &sid, blocks_done, BLOCK_LINES).await;
+            blocks_done += 1;
+        }
+        let entries = mgr.load_entries(&sid).await.expect("load entries");
+        let entry_count = entries.len();
+        let warm = Instant::now();
+        session.apply_cli_restored_session(&sid, entries);
+        session.tui.render_now().expect("warm render");
+        let warm_ms = warm.elapsed().as_millis();
+        session.tui.request_render(false);
+        session.tui.render_now().expect("settle render");
+        let perf = session.tui.last_render_perf();
+        let rss = rss_kb();
+        let d_rss = rss.saturating_sub(prev_rss);
+        let d_lines = (perf.component_lines as u64).saturating_sub(prev_lines);
+        let kb_per_1k_lines = if d_lines > 0 {
+            d_rss as f64 * 1_000.0 / d_lines as f64
+        } else {
+            0.0
+        };
+        eprintln!(
+            "REPORT lab_ao_memory_profile scale={name} store_fill_ms={} entries={} \
+             component_lines={} paint_lines={} warm_render_ms={warm_ms} rss_kb={rss} \
+             delta_rss_kb={d_rss} kb_per_1k_lines={:.1}",
+            fill.elapsed().as_millis(),
+            entry_count,
+            perf.component_lines,
+            perf.paint_lines,
+            kb_per_1k_lines,
+        );
+        prev_rss = rss;
+        prev_lines = perf.component_lines as u64;
+    }
 }

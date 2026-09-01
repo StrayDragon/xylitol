@@ -1,6 +1,9 @@
 ---
 depends_on: []
 skip_specs_landing: true
+branch: sdd/c2490-add-tui-perf-baseline
+base_sha: 50095ac9a0b48d08e133dc07fd0805362ad18e7c
+checkpointed: false
 ---
 
 # TUI 渲染性能与占用基线：先测量，后优化
@@ -43,6 +46,8 @@ skip_specs_landing: true
 
 - 2026-09-01（ff 深挖拍板）：落点扩展既有 lab 模块；内存口径 `/proc/self/statm` RSS；
   规模档 1k/1w/10w 合成为主；`skip_specs_landing: true`。详见 `design.md`。
+- 2026-09-01（apply 发现）：既有两探针原硬编码作者机器的会话 UUID，改为 `XYLITOL_LAB_SESSION`
+  显式 opt-in 磁盘会话、缺省合成种子（探针可移植化，属本票 lab 工具范围）。
 
 ## Further Notes
 
