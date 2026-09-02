@@ -454,5 +454,11 @@ mod tests {
             parse_command("get_state", &json!({"id": "x"})),
             Ok(Command::GetState {})
         ));
+        // sr-imp1：input_path 直传不受暂存引入影响；content-only 走 Host 暂存（parse 层不做）。
+        assert!(matches!(
+            parse_command("import_jsonl", &json!({"input_path": "a.jsonl"})),
+            Ok(Command::ImportJsonl { .. })
+        ));
+        assert!(parse_command("import_jsonl", &json!({})).is_err());
     }
 }

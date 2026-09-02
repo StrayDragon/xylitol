@@ -2023,7 +2023,7 @@ async fn g_server_ready(server_test: &ServerTest) {
 
 #[when("推送 content 载荷导入会话")]
 async fn w_staged_wire_import(server_test: &ServerTest) {
-    let content = "{\"type\":\"session\",\"version\":1,\"id\":\"imp-scenario-1\",\"timestamp\":1,\"cwd\":\"/tmp\"}\n";
+    let content = "{\"type\":\"session\",\"version\":6,\"id\":\"imp-scenario-1\",\"timestamp\":1,\"cwd\":\"/tmp\"}\n";
     let body = serde_json::json!({
         "type": "client-request",
         "rpcId": "r-staged-import",
@@ -2044,8 +2044,8 @@ async fn t_staged_wire_import(server_test: &ServerTest) {
     let v: serde_json::Value = serde_json::from_str(&body).expect("valid envelope");
     let sid = v["result"]["value"]["session_id"]
         .as_str()
-        .expect("session_id in result value")
-        .to_string();
+        .map(str::to_string)
+        .unwrap_or_else(|| panic!("no session_id in result value, body={body}"));
     assert!(!sid.is_empty(), "imported session id must be non-empty");
     let host = server_test.host.borrow().clone().expect("host state");
     assert!(
