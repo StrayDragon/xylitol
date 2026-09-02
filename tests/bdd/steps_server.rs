@@ -2015,3 +2015,50 @@ async fn t_reg_takeover_evicted(server_test: &ServerTest) {
     let reg_path = server_test.reg_path.borrow().clone().expect("reg path");
     let _ = std::fs::remove_file(&reg_path);
 }
+
+#[given("server 就绪")]
+async fn g_server_ready(server_test: &ServerTest) {
+    start_host(server_test).await;
+}
+
+#[when("推送 content 载荷导入会话")]
+async fn w_staged_wire_import(server_test: &ServerTest) {
+    let content = "{\"type\":\"session\",\"version\":1,\"id\":\"imp-scenario-1\",\"timestamp\":1,\"cwd\":\"/tmp\"}\n";
+    let body = serde_json::json!({
+        "type": "client-request",
+        "rpcId": "r-staged-import",
+        "method": "import_jsonl",
+        "payload": { "content": content },
+    })
+    .to_string();
+    let (status, resp) =
+        http_status(server_test.port.get(), "POST", "/api/import_jsonl", &body).await;
+    server_test.unary_status.set(status);
+    *server_test.unary_body.borrow_mut() = Some(resp);
+}
+
+#[then("返回新 session_id 且暂存文件不残留")]
+async fn t_staged_wire_import(server_test: &ServerTest) {
+    assert_eq!(server_test.unary_status.get(), 200, "unary must be 200");
+    let body = server_test.unary_body.borrow().clone().unwrap_or_default();
+    let v: serde_json::Value = serde_json::from_str(&body).expect("valid envelope");
+    let sid = v["result"]["value"]["session_id"]
+        .as_str()
+        .expect("session_id in result value")
+        .to_string();
+    assert!(!sid.is_empty(), "imported session id must be non-empty");
+    let host = server_test.host.borrow().clone().expect("host state");
+    assert!(
+        host.ports.store.exists(&sid).await,
+        "imported session must exist in store"
+    );
+    let leftovers = std::fs::read_dir(std::env::temp_dir())
+        .expect("temp dir readable")
+        .filter_map(|e| e.ok())
+        .any(|e| {
+            e.file_name()
+                .to_string_lossy()
+                .starts_with("xylitol-import-")
+        });
+    assert!(!leftovers, "staged import temp file must be cleaned up");
+}

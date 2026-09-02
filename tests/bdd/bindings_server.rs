@@ -294,3 +294,9 @@ async fn test_sr_reg1_stale_diagnosis(server_test: ServerTest) {}
     name = "registration-takeover-evicts-old-daemon"
 )]
 async fn test_sr_reg1_takeover(server_test: ServerTest) {}
+
+#[scenario(
+    path = "llmanspec/specs/server-core/server-core.feature",
+    name = "staged-wire-import"
+)]
+async fn test_sr_imp1_staged_import(server_test: ServerTest) {}

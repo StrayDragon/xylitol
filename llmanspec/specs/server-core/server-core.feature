@@ -77,6 +77,10 @@
   场景: 会话生命周期方法接线
     - Host MUST 为 list_sessions、load_session_entries、new_session、get_session_name、set_session_name、set_session_name_for 与 delete_session 提供已登记 unary，并经同一 Driver/dispatch 语义执行；Remote 客户端调用这些方法时 MUST NOT 得到预留 unsupported。
 
+  @req:sr-imp1 @human
+  场景: wire 会话导入内容暂存
+    - Host MUST 为 import_jsonl 提供内容暂存导入：载荷携带 content 而无 input_path/path 时，MUST 将内容暂存为临时输入路径、经同一 dispatch 导入并返回新 session_id，处理结束 MUST 清理暂存文件；携带 input_path/path 的直传行为 MUST 保持不变。
+
   @req:sr-resource1 @human
   场景: Host 资源方法接线
     - Host MUST 提供 reload 与 loaded_resources unary；reload MUST 重装共享的 skills、MCP 与 prompt 资源，loaded_resources MUST 返回当前快照。该快照 MUST 反映进程内真实 MCP 连接态（configured / connecting / connected / 诊断），MUST NOT 来自一份从未发起连接的空壳。这些 Host 级操作 MUST NOT 被伪装成 session 专属 REST。
@@ -251,6 +255,11 @@
     假如 RemoteDriver 指向该 server
     当 调用已登记的 session 能力 unary
     那么 经四象限 unary 到达 Host 且不经 REST 冒充
+  @req:sr-imp1 @executable
+  场景: staged-wire-import
+    假如 server 就绪
+    当 推送 content 载荷导入会话
+    那么 返回新 session_id 且暂存文件不残留
   @req:sr-resource1 @executable
   场景: remote-host-resource-methods
     假如 RemoteDriver 指向该 server
