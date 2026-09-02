@@ -621,9 +621,7 @@ mod tests {
     #[tokio::test]
     async fn get_state_returns_snapshot() {
         let mut d = stub();
-        let outcome = dispatch(&mut d, Command::GetState { id: None })
-            .await
-            .unwrap();
+        let outcome = dispatch(&mut d, Command::GetState {}).await.unwrap();
         match outcome {
             DispatchOutcome::State(SessionState {
                 session_id, model, ..
@@ -641,7 +639,6 @@ mod tests {
         let outcome = dispatch(
             &mut d,
             Command::SetThinkingLevel {
-                id: None,
                 level: "high".into(),
             },
         )
@@ -664,7 +661,6 @@ mod tests {
         let outcome = dispatch(
             &mut d,
             Command::SetThinkingLevel {
-                id: None,
                 level: "off".into(),
             },
         )
@@ -683,7 +679,6 @@ mod tests {
         let outcome = dispatch(
             &mut d,
             Command::SetThinkingLevel {
-                id: None,
                 level: "vendor-max".into(),
             },
         )
@@ -706,7 +701,6 @@ mod tests {
         let err = dispatch(
             &mut d,
             Command::Prompt {
-                id: None,
                 message: "hi".into(),
             },
         )
@@ -721,7 +715,6 @@ mod tests {
         let outcome = dispatch(
             &mut d,
             Command::Steer {
-                id: None,
                 message: "nudge".into(),
             },
         )
@@ -741,7 +734,6 @@ mod tests {
         let outcome = dispatch(
             &mut d,
             Command::ClearQueue {
-                id: None,
                 clear_steer: true,
                 clear_follow_up: false,
             },
@@ -766,15 +758,12 @@ mod tests {
         dispatch(
             &mut d,
             Command::Steer {
-                id: None,
                 message: "nudge".into(),
             },
         )
         .await
         .unwrap();
-        let outcome = dispatch(&mut d, Command::GetQueueStats { id: None })
-            .await
-            .unwrap();
+        let outcome = dispatch(&mut d, Command::GetQueueStats {}).await.unwrap();
         match outcome {
             DispatchOutcome::QueueStats {
                 steer_count,
@@ -793,7 +782,6 @@ mod tests {
         let outcome = dispatch(
             &mut d,
             Command::SwitchSession {
-                id: None,
                 session_path: "/tmp/sessions/abc.jsonl".into(),
             },
         )

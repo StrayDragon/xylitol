@@ -293,16 +293,14 @@ pub fn names() -> impl Iterator<Item = &'static str> {
 }
 
 /// 由方法名 + 载荷构造 [`Command`]：注入 serde tag 后交给 Command 自己的
-/// derive 解析。字段名真值只在 Command 上；`id` 来自信封 rpcId，载荷内的
-/// `id` 一律不参与构造（与手搓解析行为等价）。
+/// derive 解析。字段名真值只在 Command 上；载荷内未知键（含历史遗留的
+/// `id`）由 serde 忽略——传输级关联唯一走信封 rpcId（c2460）。
 pub fn parse_command(method: &str, payload: &Value) -> Result<Command, String> {
     let mut merged = serde_json::Map::new();
     merged.insert("type".into(), json!(method));
     if let Value::Object(map) = payload {
         for (k, v) in map {
-            if k != "id" {
-                merged.insert(k.clone(), v.clone());
-            }
+            merged.insert(k.clone(), v.clone());
         }
     }
     serde_json::from_value(Value::Object(merged)).map_err(|e| e.to_string())
@@ -451,10 +449,10 @@ mod tests {
             parse_command("session_tree", &json!({})),
             Ok(Command::SessionTree { .. })
         ));
-        // 载荷内的 id 不参与构造。
+        // 载荷携带的 id 字段现在只是未知键，serde 忽略之。
         assert!(matches!(
             parse_command("get_state", &json!({"id": "x"})),
-            Ok(Command::GetState { id: None, .. })
+            Ok(Command::GetState {})
         ));
     }
 }

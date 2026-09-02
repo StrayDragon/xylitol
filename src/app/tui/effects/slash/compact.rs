@@ -13,15 +13,7 @@ pub(super) async fn run<T: Terminal>(
     driver: &mut dyn XyDriver,
     instructions: Option<String>,
 ) {
-    match dispatch(
-        driver,
-        Command::Compact {
-            id: None,
-            instructions,
-        },
-    )
-    .await
-    {
+    match dispatch(driver, Command::Compact { instructions }).await {
         Ok(DispatchOutcome::Compacted(did)) => {
             if did {
                 append_compaction_from_session(session, driver).await;
