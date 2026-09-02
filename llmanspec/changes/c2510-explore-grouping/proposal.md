@@ -1,5 +1,8 @@
 ---
 depends_on: []
+branch: sdd/c2510-explore-grouping
+base_sha: 5df0baa5
+checkpointed: false
 ---
 
 # 探索分组：近窗连续检索段默认聚合为一行计数摘要
