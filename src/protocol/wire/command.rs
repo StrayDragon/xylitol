@@ -5,7 +5,7 @@ use serde::{Deserialize, Serialize};
 use crate::protocol::session::SessionTreeKind;
 
 /// A command from the client. Each carries an optional `id` for correlation.
-#[derive(Debug, Clone, Serialize, Deserialize)]
+#[derive(Debug, Clone, Serialize, Deserialize, strum::VariantNames)]
 #[serde(tag = "type", rename_all = "snake_case")]
 pub enum Command {
     Prompt {
@@ -24,6 +24,9 @@ pub enum Command {
     SetModel {
         #[serde(default)]
         id: Option<String>,
+        /// Hand parse accepted a missing `provider` as empty string; keep that
+        /// wire shape accept-able under serde parsing (c2530).
+        #[serde(default)]
         provider: String,
         model_id: String,
     },
@@ -61,23 +64,25 @@ pub enum Command {
     ExportHtml {
         #[serde(default)]
         id: Option<String>,
-        #[serde(default)]
+        #[serde(default, alias = "path")]
         output_path: Option<String>,
     },
     ExportJsonl {
         #[serde(default)]
         id: Option<String>,
-        #[serde(default)]
+        #[serde(default, alias = "path")]
         output_path: Option<String>,
     },
     ImportJsonl {
         #[serde(default)]
         id: Option<String>,
+        #[serde(alias = "path")]
         input_path: String,
     },
     SwitchSession {
         #[serde(default)]
         id: Option<String>,
+        #[serde(alias = "session_id")]
         session_path: String,
     },
     Fork {
@@ -99,6 +104,8 @@ pub enum Command {
     SessionTree {
         #[serde(default)]
         id: Option<String>,
+        /// Hand parse defaulted a missing `kind` to message history (c2530).
+        #[serde(default = "default_session_tree_kind")]
         kind: SessionTreeKind,
     },
     TravelSessionTree {
@@ -155,6 +162,9 @@ pub enum Command {
         #[serde(default)]
         id: Option<String>,
     },
+    /// Wire method is `queue_stats`; the alias keeps serde tag parsing
+    /// accept-able for it (c2530).
+    #[serde(alias = "queue_stats")]
     GetQueueStats {
         #[serde(default)]
         id: Option<String>,
@@ -206,6 +216,10 @@ pub enum Command {
 
 fn default_true() -> bool {
     true
+}
+
+fn default_session_tree_kind() -> SessionTreeKind {
+    SessionTreeKind::MessageHistory
 }
 
 impl Command {

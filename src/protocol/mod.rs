@@ -29,8 +29,7 @@ pub use wire::{
     ApprovalRequestedPayload, Command, DOWNLINK_METHODS, Envelope, ErrorCode, Event,
     HostDescribeValue, HostHelloPayload, PROTOCOL_VERSION, QuestionRequestedPayload, RpcError,
     RpcMessage, RpcResult, SessionEventPayload, SessionResourcesPayload,
-    SessionResyncRequiredPayload, SessionSubscribedPayload, UNARY_METHODS, is_downlink_method,
-    is_unary_method,
+    SessionResyncRequiredPayload, SessionSubscribedPayload, is_downlink_method, is_unary_method,
 };
 
 // Flat port re-exports for `crate::protocol::{XyModel, …}` call sites.

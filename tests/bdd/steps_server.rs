@@ -8,7 +8,8 @@ use xylitol::app::server::runtime::{RunningServer, ServerConfig, bind_serve, ser
 use xylitol::app::server::ws::{EventJournal, ReverseRpcResult};
 use xylitol::protocol::Event;
 use xylitol::protocol::wire::envelope::{PROTOCOL_VERSION, RpcMessage};
-use xylitol::protocol::wire::method::{DOWNLINK_METHODS, UNARY_METHODS};
+use xylitol::protocol::wire::method::DOWNLINK_METHODS;
+use xylitol::protocol::wire::registry;
 use xylitol::{HostClient, HttpWsClient, MuxStream};
 
 /// Shared fixture for server-core scenarios.
@@ -163,14 +164,14 @@ fn t_openapi_methods(server_test: &ServerTest) {
     let v: serde_json::Value = serde_json::from_str(&body).expect("valid openapi json");
     assert_eq!(v["openapi"], "3.1.0", "{body}");
     let paths = v["paths"].as_object().expect("paths object");
-    for m in UNARY_METHODS {
+    for m in registry::names() {
         let key = format!("/api/{m}");
         let entry = paths
             .get(key.as_str())
             .unwrap_or_else(|| panic!("missing /api/{m}"));
         assert_eq!(
             entry["post"]["operationId"].as_str(),
-            Some(*m),
+            Some(m),
             "mismatched operationId for {m}"
         );
     }
@@ -586,7 +587,7 @@ fn t_remote1(_server_test: &ServerTest) {
 #[then("未登记方法不发明 REST")]
 fn t_no_invented_rest(_server_test: &ServerTest) {
     assert!(source_contains(
-        "src/protocol/wire/method.rs",
+        "src/protocol/wire/registry.rs",
         "\"list_sessions\""
     ));
     assert!(!source_contains(
@@ -636,7 +637,7 @@ fn w_session_tree_registered(_server_test: &ServerTest) {}
 #[then("经四象限 unary 到达 Host 且不经 REST 冒充")]
 fn t_tree_registered(_server_test: &ServerTest) {
     assert!(source_contains(
-        "src/protocol/wire/method.rs",
+        "src/protocol/wire/registry.rs",
         "\"session_tree\""
     ));
     assert!(source_contains(
@@ -648,14 +649,17 @@ fn t_tree_registered(_server_test: &ServerTest) {
 #[when("调用已登记的 session 能力 unary")]
 fn w_session_methods_registered(_server_test: &ServerTest) {
     assert!(source_contains(
-        "src/protocol/wire/method.rs",
+        "src/protocol/wire/registry.rs",
         "\"list_sessions\""
     ));
 }
 
 #[when("调用 Host 资源 unary")]
 fn w_host_resource_methods(_server_test: &ServerTest) {
-    assert!(source_contains("src/protocol/wire/method.rs", "\"reload\""));
+    assert!(source_contains(
+        "src/protocol/wire/registry.rs",
+        "\"reload\""
+    ));
 }
 
 // ── server-ws ─────────────────────────────────────────────────────

@@ -7,6 +7,7 @@ pub mod command;
 pub mod envelope;
 pub mod event;
 pub mod method;
+pub mod registry;
 pub mod transport;
 
 pub use command::Command;
@@ -16,5 +17,6 @@ pub use envelope::{
     SessionResourcesPayload, SessionResyncRequiredPayload, SessionSubscribedPayload,
 };
 pub use event::Event;
-pub use method::{DOWNLINK_METHODS, UNARY_METHODS, is_downlink_method, is_unary_method};
+pub use method::{DOWNLINK_METHODS, is_downlink_method, is_unary_method};
+pub use registry::{Auth, Idem, MethodEntry, REGISTRY, Resp, lookup, names, parse_command};
 pub use transport::{Envelope, ErrorCode};

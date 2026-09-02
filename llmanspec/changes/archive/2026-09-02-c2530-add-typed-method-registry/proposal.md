@@ -3,7 +3,8 @@ depends_on: []
 skip_specs_landing: true
 branch: sdd/c2530-add-typed-method-registry
 base_sha: 2c04ff709430795d77101d1e632ae66080ee80db
-checkpointed: false
+checkpointed: true
+checkpoint_sha: 2c04ff709430795d77101d1e632ae66080ee80db
 ---
 
 # Typed Method Registry：unary 方法单点声明注册表
@@ -24,10 +25,10 @@ checkpointed: false
 
 ## What Changes
 
-- 新增声明式方法注册表（宏驱动）：单点声明 `方法名 ↔ Command 变体 ↔ handler ↔ 请求/响应类型 ↔ 能力位`；
+- 新增声明式方法注册表（单点 const 表 + strum 穷举守卫，design D1 as-built）：单点声明 `方法名 ↔ Command 变体 ↔ handler ↔ 请求/响应类型 ↔ 能力位`；
 - 从注册表派生：方法表与 404 语义、请求解析与 serde 校验（替换手搓转换表）、salvo 路由绑定、进程内 port 入口、客户端类型化调用方法；
 - 响应种类成为声明能力位：`result`（同步）/ `stream`（ack + 事件走 mux）/ `job`（ticket，预留）；bash/reload 后续毕业为作业语义（本 change 只预留位，不实现 job 语义）；
-- 顺序敏感语义显式化：「abort 旁路幂等」从代码行位改为 handler 能力声明；
+- 顺序敏感语义显式化：结构性 pre-admit 短路（host.describe / reload / loaded_resources）以 `idem: bypass` 声明并由守卫测试锁定；reload 窗口内 abort 的短路为运行时条件特例，abort 本体照常 admission（design D3 as-built 修正）；
 - `Command` 枚举保留为 port 级词表（进程内 XyDriver 消费路径不变），注册表保证方法名 ↔ Command ↔ handler 一一对应，不产生第二 SSOT。
 
 ## 非目标
@@ -50,3 +51,4 @@ checkpointed: false
 
 - 选型分析全文与宪法：[research/protocol-selection-notes.md](./research/protocol-selection-notes.md)
 - tonic 对照探针报告：[research/lab-tonic-probe-report.md](./research/lab-tonic-probe-report.md)
+- **实施期发现的存量 bug（超出本 change 范围，未修）**：`driver/remote.rs::import_jsonl` 发送 `{"content": …}`，而服务端（手搓表与注册表解析皆然）要求 `input_path`——远程导入路径现状必报 `missing input_path`，两侧失配被手搓解析时代掩盖。建议单独开票修复（服务端补 content 暂存或客户端改发路径）。
