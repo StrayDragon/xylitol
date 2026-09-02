@@ -30,7 +30,6 @@ use crate::app::server::ws::{
     EventJournal, ReverseRpcGateway, ReverseRpcResult, downlink_server_request,
 };
 use crate::infra::session::SessionManager;
-use crate::protocol::Command;
 use crate::protocol::error::XyToolError;
 use crate::protocol::lifecycle::XyEvent;
 use crate::protocol::ports::XySessionStore;
@@ -41,33 +40,10 @@ use crate::protocol::wire::envelope::{
     SessionResyncRequiredPayload, SessionSubscribedPayload,
 };
 use crate::protocol::wire::method::is_unary_method;
+use crate::protocol::wire::registry::parse_command;
 
 /// Bounded per-mux-connection queue. Overflow → `session/resync_required` or drop conn.
 pub const MUX_CHAN_CAP: usize = 256;
-
-const WRITER_METHODS: &[&str] = &[
-    "prompt",
-    "abort",
-    "set_model",
-    "cycle_model",
-    "set_thinking_level",
-    "bash",
-    "compact",
-    "export_html",
-    "export_jsonl",
-    "import_jsonl",
-    "switch_session",
-    "fork",
-    "travel_session_tree",
-    "append_entry_label",
-    "new_session",
-    "set_session_name",
-    "set_session_name_for",
-    "delete_session",
-    "steer",
-    "follow_up",
-    "clear_queue",
-];
 
 /// Shared Host process state (salvo Depot).
 pub struct HostState {
@@ -651,7 +627,9 @@ impl AskUserGateway for SlotAskGateway {
 }
 
 pub fn is_writer_method(method: &str) -> bool {
-    WRITER_METHODS.contains(&method)
+    // c2530 D3：租约准入由注册表能力位声明，取代手维护的 WRITER_METHODS。
+    crate::protocol::wire::registry::lookup(method)
+        .is_some_and(|e| e.auth == crate::protocol::wire::registry::Auth::Writer)
 }
 
 fn workspace_from_payload(host: &HostState, payload: &Value) -> PathBuf {
@@ -891,206 +869,6 @@ pub fn outcome_to_value(outcome: DispatchOutcome) -> Value {
             follow_up_count,
         } => json!({ "steer_count": steer_count, "follow_up_count": follow_up_count }),
     }
-}
-
-pub fn command_from_method(method: &str, payload: &Value) -> Result<Command, String> {
-    let p = payload.clone();
-    match method {
-        "abort" => Ok(Command::Abort { id: None }),
-        "get_state" => Ok(Command::GetState { id: None }),
-        "set_model" => Ok(Command::SetModel {
-            id: None,
-            provider: p
-                .get("provider")
-                .and_then(|v| v.as_str())
-                .unwrap_or("")
-                .to_string(),
-            model_id: p
-                .get("model_id")
-                .and_then(|v| v.as_str())
-                .ok_or("missing model_id")?
-                .to_string(),
-        }),
-        "cycle_model" => Ok(Command::CycleModel { id: None }),
-        "get_available_models" => Ok(Command::GetAvailableModels { id: None }),
-        "set_thinking_level" => Ok(Command::SetThinkingLevel {
-            id: None,
-            level: p
-                .get("level")
-                .and_then(|v| v.as_str())
-                .ok_or("missing level")?
-                .to_string(),
-        }),
-        "bash" => Ok(Command::Bash {
-            id: None,
-            command: p
-                .get("command")
-                .and_then(|v| v.as_str())
-                .ok_or("missing command")?
-                .to_string(),
-            exclude_from_context: p
-                .get("exclude_from_context")
-                .and_then(|v| v.as_bool())
-                .unwrap_or(false),
-        }),
-        "compact" => Ok(Command::Compact {
-            id: None,
-            instructions: p
-                .get("instructions")
-                .and_then(|v| v.as_str())
-                .map(str::to_string),
-        }),
-        "get_session_stats" => Ok(Command::GetSessionStats { id: None }),
-        "export_html" => Ok(Command::ExportHtml {
-            id: None,
-            output_path: p
-                .get("output_path")
-                .or_else(|| p.get("path"))
-                .and_then(|v| v.as_str())
-                .map(str::to_string),
-        }),
-        "export_jsonl" => Ok(Command::ExportJsonl {
-            id: None,
-            output_path: p
-                .get("output_path")
-                .or_else(|| p.get("path"))
-                .and_then(|v| v.as_str())
-                .map(str::to_string),
-        }),
-        "import_jsonl" => Ok(Command::ImportJsonl {
-            id: None,
-            input_path: p
-                .get("input_path")
-                .or_else(|| p.get("path"))
-                .and_then(|v| v.as_str())
-                .ok_or("missing input_path")?
-                .to_string(),
-        }),
-        "switch_session" => Ok(Command::SwitchSession {
-            id: None,
-            session_path: p
-                .get("session_id")
-                .or_else(|| p.get("session_path"))
-                .and_then(|v| v.as_str())
-                .ok_or("missing session_id")?
-                .to_string(),
-        }),
-        "fork" => Ok(Command::Fork {
-            id: None,
-            entry_id: p
-                .get("entry_id")
-                .and_then(|v| v.as_str())
-                .ok_or("missing entry_id")?
-                .to_string(),
-            position: p
-                .get("position")
-                .and_then(|v| v.as_str())
-                .map(str::to_string),
-        }),
-        "get_messages" => Ok(Command::GetMessages { id: None }),
-        "get_commands" => Ok(Command::GetCommands { id: None }),
-        "session_tree" => Ok(Command::SessionTree {
-            id: None,
-            kind: session_tree_kind(&p)?,
-        }),
-        "travel_session_tree" => Ok(Command::TravelSessionTree {
-            id: None,
-            kind: session_tree_kind(&p)?,
-            entry_id: p
-                .get("entry_id")
-                .and_then(|v| v.as_str())
-                .ok_or("missing entry_id")?
-                .to_string(),
-        }),
-        "append_entry_label" => Ok(Command::AppendEntryLabel {
-            id: None,
-            target_id: p
-                .get("target_id")
-                .and_then(|v| v.as_str())
-                .ok_or("missing target_id")?
-                .to_string(),
-            label: p.get("label").and_then(|v| v.as_str()).map(str::to_string),
-        }),
-        "list_sessions" => Ok(Command::ListSessions { id: None }),
-        "load_session_entries" => Ok(Command::LoadSessionEntries {
-            id: None,
-            session_id: p
-                .get("session_id")
-                .and_then(|v| v.as_str())
-                .ok_or("missing session_id")?
-                .to_string(),
-        }),
-        "new_session" => Ok(Command::NewSession { id: None }),
-        "get_session_name" => Ok(Command::GetSessionName { id: None }),
-        "set_session_name" => Ok(Command::SetSessionName {
-            id: None,
-            name: p
-                .get("name")
-                .and_then(|v| v.as_str())
-                .ok_or("missing name")?
-                .to_string(),
-        }),
-        "set_session_name_for" => Ok(Command::SetSessionNameFor {
-            id: None,
-            session_id: p
-                .get("session_id")
-                .and_then(|v| v.as_str())
-                .ok_or("missing session_id")?
-                .to_string(),
-            name: p
-                .get("name")
-                .and_then(|v| v.as_str())
-                .ok_or("missing name")?
-                .to_string(),
-        }),
-        "delete_session" => Ok(Command::DeleteSession {
-            id: None,
-            session_id: p
-                .get("session_id")
-                .and_then(|v| v.as_str())
-                .ok_or("missing session_id")?
-                .to_string(),
-        }),
-        "reload" => Ok(Command::Reload { id: None }),
-        "loaded_resources" => Ok(Command::LoadedResources { id: None }),
-        "queue_stats" => Ok(Command::GetQueueStats { id: None }),
-        "steer" => Ok(Command::Steer {
-            id: None,
-            message: p
-                .get("message")
-                .and_then(|v| v.as_str())
-                .ok_or("missing message")?
-                .to_string(),
-        }),
-        "follow_up" => Ok(Command::FollowUp {
-            id: None,
-            message: p
-                .get("message")
-                .and_then(|v| v.as_str())
-                .ok_or("missing message")?
-                .to_string(),
-        }),
-        "clear_queue" => Ok(Command::ClearQueue {
-            id: None,
-            clear_steer: p
-                .get("clear_steer")
-                .and_then(|v| v.as_bool())
-                .unwrap_or(true),
-            clear_follow_up: p
-                .get("clear_follow_up")
-                .and_then(|v| v.as_bool())
-                .unwrap_or(true),
-        }),
-        other => Err(format!("unmapped unary {other}")),
-    }
-}
-
-fn session_tree_kind(payload: &Value) -> Result<crate::protocol::session::SessionTreeKind, String> {
-    let raw = payload
-        .get("kind")
-        .cloned()
-        .unwrap_or_else(|| json!("message_history"));
-    serde_json::from_value(raw).map_err(|e| format!("invalid kind: {e}"))
 }
 
 fn rpc_err(e: XyDriverError) -> RpcResult {
@@ -1441,7 +1219,7 @@ async fn dispatch_session_unary(
                 std::env::temp_dir().join(format!("xylitol-export-{}.{ext}", uuid::Uuid::new_v4()))
             );
         }
-        let cmd = match command_from_method(method, &payload) {
+        let cmd = match parse_command(method, &payload) {
             Ok(c) => c,
             Err(e) => return RpcResult::error("invalid_input", e),
         };
@@ -1498,7 +1276,7 @@ async fn dispatch_session_unary(
     if !is_writer_method(method) && slot.driver.lock().await.is_none() {
         if matches!(method, "list_sessions" | "get_commands") {
             let mut reader = new_reader_driver(host);
-            let cmd = match command_from_method(method, &payload) {
+            let cmd = match parse_command(method, &payload) {
                 Ok(c) => c,
                 Err(e) => return RpcResult::error("invalid_input", e),
             };
@@ -1541,7 +1319,7 @@ async fn dispatch_session_unary(
             Ok(driver) => driver,
             Err(e) => return rpc_err(e),
         };
-        let cmd = match command_from_method(method, &payload) {
+        let cmd = match parse_command(method, &payload) {
             Ok(c) => c,
             Err(e) => return RpcResult::error("invalid_input", e),
         };
@@ -1551,7 +1329,7 @@ async fn dispatch_session_unary(
         };
     }
 
-    let cmd = match command_from_method(method, &payload) {
+    let cmd = match parse_command(method, &payload) {
         Ok(c) => c,
         Err(e) => return RpcResult::error("invalid_input", e),
     };

@@ -11,7 +11,8 @@ use std::sync::OnceLock;
 use serde_json::{Value, json};
 
 use crate::protocol::wire::envelope::PROTOCOL_VERSION;
-use crate::protocol::wire::method::{DOWNLINK_METHODS, UNARY_METHODS};
+use crate::protocol::wire::method::DOWNLINK_METHODS;
+use crate::protocol::wire::registry;
 
 /// The checked-in document body (built once; the method table is static).
 pub fn openapi_doc() -> &'static str {
@@ -41,7 +42,7 @@ fn build() -> String {
     });
     paths.insert("/api/respond".into(), respond);
 
-    for method in UNARY_METHODS {
+    for method in registry::names() {
         let entry = json!({
             "post": {
                 "operationId": method,
@@ -166,13 +167,13 @@ mod tests {
         let v: Value = serde_json::from_str(openapi_doc()).expect("valid json");
         let paths = v["paths"].as_object().expect("paths object");
         assert_eq!(v["openapi"], "3.1.0");
-        for m in UNARY_METHODS {
+        for m in registry::names() {
             let key = format!("/api/{m}");
             let entry = paths
                 .get(key.as_str())
                 .unwrap_or_else(|| panic!("missing entry for {m}"));
             assert!(
-                entry["post"]["operationId"].as_str() == Some(*m),
+                entry["post"]["operationId"].as_str() == Some(m),
                 "mismatched operationId for {m}"
             );
         }

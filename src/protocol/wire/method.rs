@@ -1,46 +1,7 @@
-//! Product method table (unary names). Payload shapes stay on `Command`.
+//! Product method vocabulary. Unary names live on [`super::registry`] (c2530);
+//! this module keeps the downlink closure and re-exports the unary gate.
 
-/// Unary methods registered for v1. Unknown names MUST fail envelope parse/dispatch.
-pub const UNARY_METHODS: &[&str] = &[
-    "prompt",
-    "abort",
-    "get_state",
-    "set_model",
-    "cycle_model",
-    "get_available_models",
-    "set_thinking_level",
-    "bash",
-    "compact",
-    "get_session_stats",
-    "export_html",
-    "export_jsonl",
-    "import_jsonl",
-    "switch_session",
-    "fork",
-    "get_messages",
-    "get_commands",
-    "session_tree",
-    "travel_session_tree",
-    "append_entry_label",
-    "list_sessions",
-    "load_session_entries",
-    "new_session",
-    "get_session_name",
-    "set_session_name",
-    "set_session_name_for",
-    "delete_session",
-    "reload",
-    "loaded_resources",
-    "queue_stats",
-    "load_debug_scene",
-    "arm_tool_freeze",
-    "persist_trust",
-    "steer",
-    "follow_up",
-    "clear_queue",
-    "subscribe",
-    "host.describe",
-];
+use super::registry;
 
 /// Downlink `ServerRequest.method` values (not unary).
 pub const DOWNLINK_METHODS: &[&str] = &[
@@ -54,7 +15,7 @@ pub const DOWNLINK_METHODS: &[&str] = &[
 ];
 
 pub fn is_unary_method(name: &str) -> bool {
-    UNARY_METHODS.contains(&name)
+    registry::lookup(name).is_some()
 }
 
 pub fn is_downlink_method(name: &str) -> bool {
