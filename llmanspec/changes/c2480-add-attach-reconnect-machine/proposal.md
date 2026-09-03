@@ -1,6 +1,8 @@
 ---
 depends_on: []
-blocks: [c2350-add-gpui-desktop-client]
+branch: sdd/c2480-add-attach-reconnect-machine
+base_sha: cf68a0fc1936c3bdab7d232562dc62a3008d4a5f
+checkpointed: false
 ---
 
 # Attach 连接韧性状态机：每连接握手、退避升级、代际失效、宽限 UX 与下行合帧
