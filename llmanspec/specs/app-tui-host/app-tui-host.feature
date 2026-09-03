@@ -156,3 +156,52 @@
   @req:ath40 @human
   场景: mux-halfopen-detect
     - mux 下行客户端 MUST 周期性探测连接活性（如 keepalive ping）；连续探测周期无任何入站帧时 MUST 判定半开并走既有重订/resync 路径，MUST NOT 静默停摆。
+
+  @req:ath41 @human
+  场景: attach-reconnect-backoff-generation
+    - 产品 TUI attach 的 mux 重连循环 MUST 指数退避，且单次连接存活达到阈值后才 MUST 归零退避：存活不足阈值的反复闪断 MUST 按持续故障逐次升级，MUST NOT 以固定高频重试冲击 Host。重订/重连循环 MUST 携带代际计数，旧代连接的迟到帧 MUST NOT 进入新代投影。
+
+  @req:ath42 @human
+  场景: attach-reconnect-grace-ux
+    - 产品 TUI attach 下初始连接与重连 MUST 各有宽限期：宽限内 MUST NOT 因断线/重试打扰信息面（transcript 与状态条零输出）；超宽限 MUST 以壳层通告（chrome toast）提示断线重连中，恢复成功 MUST 以壳层通告收尾并清除断线态；重连窗内 MUST NOT 向 transcript 推错误行。
+
+  @req:ath43 @human
+  场景: attach-coalesce-downlink
+    - mux 下行事件 MUST 在短窗口内攒批合帧：同窗口多条事件 MUST 合并为一次 UI 投影批消费，MUST NOT 逐事件触发投影。
+
+  @req:ath44 @human
+  场景: attach-hello-handshake
+    - mux 下行连接建立后 server MUST 首帧发送 server_hello 且载荷携带现行协议版本；客户端 MUST 对每条连接校验首帧与版本：首帧缺失或不符 MUST 判连接失败进入重连判定，版本不符 MUST 按不可重试故障终止（fatal），MUST NOT 降级、MUST NOT 重试风暴；握手版本语义 MUST 单一，MUST NOT 同时维护两套版本协商。
+
+  @req:ath41 @executable
+  场景: reconnect-backoff-escalation
+    假如 以注入短常量的 mock HostClient 驱动 attach 重连
+    当 连续建立存活不足归零阈值即断开的连接
+    那么 重试间隔 MUST 逐次翻倍升级
+    当 某次连接存活达到归零阈值后断开
+    那么 下次重试间隔 MUST 回落到起点
+
+  @req:ath41 @executable
+  场景: reconnect-stale-generation-dropped
+    假如 已有一条订阅中的 mock mux 连接
+    当 触发重订或换会话产生新代循环后旧代连接迟到推入事件
+    那么 该迟到事件 MUST NOT 出现在新代的 drain 结果中
+
+  @req:ath43 @executable
+  场景: attach-coalesce-burst-single-projection
+    假如 合帧窗口开启
+    当 窗口内连续到达多条下行事件
+    那么 客户端 MUST 以一次投影批消费且消费批数等于合并后批数而非事件条数
+
+  @req:ath44 @executable
+  场景: attach-hello-mismatch-fatal
+    假如 mock HostClient 在 mux 首帧发送版本不符的 server_hello
+    当 attach 客户端完成首帧校验
+    那么 driver MUST 报版本错误并终止该代循环且 MUST NOT 进入重试循环
+
+  @req:ath44 @executable
+  场景: real-kill-reconnect-journal-resume
+    假如 真进程 serve 已启动且 attach 客户端已订阅
+    当 server 进程被终止并以同版本重启
+    那么 客户端 MUST 在宽限内不上屏断线错误并自动重连
+    并且 重连后 MUST 按 last_seq 从 journal 续传缺失事件且 MUST NOT 依赖人工重开
