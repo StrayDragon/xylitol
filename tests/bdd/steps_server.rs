@@ -10,7 +10,9 @@ use xylitol::protocol::Event;
 use xylitol::protocol::wire::envelope::{PROTOCOL_VERSION, RpcMessage};
 use xylitol::protocol::wire::method::DOWNLINK_METHODS;
 use xylitol::protocol::wire::registry;
-use xylitol::{HostClient, HttpWsClient, MuxStream};
+use xylitol::{
+    HostClient, HttpWsClient, LinkHealth, LinkTunings, MuxStream, XyDriver, XyRemoteDriver,
+};
 
 /// Shared fixture for server-core scenarios.
 pub struct ServerTest {
@@ -41,6 +43,8 @@ pub struct ServerTest {
     /// c2475 sr-reg1：注册文件路径与自检驱逐信号。
     pub reg_path: RefCell<Option<std::path::PathBuf>>,
     pub evict_rx: RefCell<Option<tokio::sync::watch::Receiver<bool>>>,
+    /// c2480 ath44：真线 attach 场景跨步骤持有产品 RemoteDriver。
+    pub attach_driver: RefCell<Option<XyRemoteDriver<HttpWsClient>>>,
 }
 
 impl ServerTest {
@@ -69,6 +73,7 @@ impl ServerTest {
             rdy_body: RefCell::new(None),
             reg_path: RefCell::new(None),
             evict_rx: RefCell::new(None),
+            attach_driver: RefCell::new(None),
         }
     }
 
@@ -295,12 +300,21 @@ async fn w_product_tui(server_test: &ServerTest) {
             text: "roundtrip".into(),
         })
         .await;
-    let frame = tokio::time::timeout(Duration::from_secs(2), mux.next())
-        .await
-        .expect("mux timeout")
-        .expect("mux eof")
-        .expect("mux frame");
-    server_test.mux_frames.replace(vec![frame]);
+    // ath44: the mux hands the server_hello handshake frame first; collect
+    // downlink frames until the first business ServerRequest shows up.
+    let mut frames: Vec<RpcMessage> = Vec::new();
+    let _ = tokio::time::timeout(Duration::from_secs(2), async {
+        while let Some(item) = mux.next().await {
+            let Ok(frame) = item else { break };
+            let is_request = matches!(&frame, RpcMessage::ServerRequest { .. });
+            frames.push(frame);
+            if is_request {
+                break;
+            }
+        }
+    })
+    .await;
+    server_test.mux_frames.replace(frames);
 }
 
 #[then("经四象限 POST unary 与 WebSocket 下行")]
@@ -2061,4 +2075,107 @@ async fn t_staged_wire_import(server_test: &ServerTest) {
                 .starts_with("xylitol-import-")
         });
     assert!(!leftovers, "staged import temp file must be cleaned up");
+}
+
+// ── c2480 ath44 real-wire attach resilience ────────────────────────
+
+#[given("真进程 serve 已启动且 attach 客户端已订阅")]
+async fn g_real_attach(server_test: &ServerTest) {
+    start_host(server_test).await;
+    let driver =
+        XyRemoteDriver::new(server_test.base_url(), "s-real-attach").with_tunings(LinkTunings {
+            backoff_base: Duration::from_millis(50),
+            backoff_cap: Duration::from_millis(400),
+            survive_threshold: Duration::from_millis(80),
+            coalesce_window: Duration::from_millis(10),
+        });
+    let mut driver = driver;
+    driver.attach_session().await.expect("real attach");
+    server_test.attach_driver.replace(Some(driver));
+}
+
+#[when("server 的 mux 连接被断开且期间 journal 新增事件")]
+async fn w_real_drop_mux(server_test: &ServerTest) {
+    let host = server_test.host.borrow().as_ref().expect("host").clone();
+    let slot = host.slot("s-real-attach").await;
+    // one live event the driver sees (bumps last_seq past cold-attach)
+    slot.append_and_push(Event::TextDelta {
+        text: "online".into(),
+    })
+    .await;
+    tokio::time::sleep(Duration::from_millis(120)).await;
+    // kill every mux sink: the WS closes and the client must self-heal
+    slot.subscribers.lock().await.clear();
+    // events journaled while the client is offline
+    slot.append_and_push(Event::TextDelta {
+        text: "offline".into(),
+    })
+    .await;
+    tokio::time::sleep(Duration::from_millis(30)).await;
+}
+
+#[then("客户端 MUST 在宽限内不上屏断线错误并自动重连")]
+async fn t_real_no_error_rows(server_test: &ServerTest) {
+    let mut driver_slot = server_test.attach_driver.borrow_mut();
+    let driver = driver_slot.as_mut().expect("attach driver");
+    // ath42 驱动信号：断线后 link_health MUST 如实报 Down（Down 窗口 ≥ 一个
+    // 退避间隔，2ms 采样必然命中），随后无人工干预恢复 Up。
+    let deadline = std::time::Instant::now() + Duration::from_secs(2);
+    let mut saw_down = false;
+    while std::time::Instant::now() < deadline {
+        if driver.link_health() == LinkHealth::Down {
+            saw_down = true;
+            break;
+        }
+        tokio::time::sleep(Duration::from_millis(2)).await;
+    }
+    assert!(
+        saw_down,
+        "link_health MUST report Down during the outage (ath42 signal)"
+    );
+    let deadline = std::time::Instant::now() + Duration::from_secs(3);
+    while std::time::Instant::now() < deadline && driver.link_health() != LinkHealth::Up {
+        tokio::time::sleep(Duration::from_millis(5)).await;
+    }
+    assert_eq!(
+        driver.link_health(),
+        LinkHealth::Up,
+        "client MUST auto-reconnect without manual action"
+    );
+}
+
+#[then("重连后 MUST 按 last_seq 从 journal 续传缺失事件且 MUST NOT 依赖人工重开")]
+async fn t_real_replay_offline(server_test: &ServerTest) {
+    let mut driver_slot = server_test.attach_driver.borrow_mut();
+    let driver = driver_slot.as_mut().expect("attach driver");
+    let deadline = std::time::Instant::now() + Duration::from_secs(3);
+    let mut replayed = false;
+    let mut saw_error_row = false;
+    while std::time::Instant::now() < deadline {
+        for ev in driver.drain_idle_events() {
+            match ev {
+                XyEvent::TextDelta(text) => {
+                    if text == "offline" {
+                        replayed = true;
+                    }
+                }
+                XyEvent::Error(err) => {
+                    // ath42: reconnect churn must not paint transcript rows.
+                    if !err.message.contains("protocol") {
+                        saw_error_row = true;
+                    }
+                }
+                _ => {}
+            }
+        }
+        if replayed {
+            break;
+        }
+        tokio::time::sleep(Duration::from_millis(20)).await;
+    }
+    assert!(replayed, "offline event MUST replay after auto-reconnect");
+    assert!(
+        !saw_error_row,
+        "reconnect window MUST NOT produce transcript error rows"
+    );
 }

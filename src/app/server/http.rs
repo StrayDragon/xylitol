@@ -19,6 +19,7 @@ use tokio::sync::mpsc;
 
 use crate::app::server::host::{HostState, MUX_CHAN_CAP, handle_unary};
 use crate::protocol::RpcMessage;
+use crate::protocol::wire::envelope::PROTOCOL_VERSION;
 use crate::protocol::wire::method::is_unary_method;
 
 /// Readiness phase of the listener (c2465 sr-rdy1).
@@ -311,6 +312,16 @@ fn mux_origin_allowed(origin: Option<&str>) -> bool {
 async fn handle_mux(ws: WebSocket, host: Arc<HostState>) {
     use futures::SinkExt;
     let (mut sink, mut stream) = ws.split();
+    // ath44/c2480: the first frame on every mux connection is the version
+    // handshake. It goes out before the connection joins the broadcast pool so
+    // a client can never observe a business frame ahead of it.
+    let hello = serde_json::to_string(&RpcMessage::ServerHello {
+        protocol: PROTOCOL_VERSION,
+    })
+    .expect("server_hello serializes");
+    if sink.send(Message::text(hello)).await.is_err() {
+        return;
+    }
     let (tx, mut rx) = mpsc::channel::<RpcMessage>(MUX_CHAN_CAP);
     host.register_unbound_mux(tx).await;
 

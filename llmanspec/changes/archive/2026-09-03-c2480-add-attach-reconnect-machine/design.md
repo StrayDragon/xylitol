@@ -3,7 +3,7 @@
 ## D1 握手统一：mux 首帧为唯一握手（用户拍板）
 
 - `RpcMessage` 新增 `ServerHello { protocol: u32 }`（与 `PROTOCOL_VERSION` 同型，
-  serde tag `server_hello`）；server 侧 events.mux 连接建立后**首帧**发送；客户端
+  serde tag 走信封既有 kebab 约定即 `server-hello`）；server 侧 events.mux 连接建立后**首帧**发送；客户端
   每条连接校验，不符即 fatal（推错误事件、终止该代循环），与今日 describe 不符
   语义一致——版本错不是可重试故障。
 - driver 下行主路径退役 `host.describe`：`ensure_downlink` 的握手步骤与

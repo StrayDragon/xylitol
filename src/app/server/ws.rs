@@ -31,9 +31,6 @@ pub fn downlink_server_request(method: impl Into<String>, payload: Value) -> Rpc
 #[derive(Debug, Serialize, Deserialize)]
 #[serde(tag = "type", rename_all = "snake_case")]
 pub enum ServerFrame {
-    ServerHello {
-        version: String,
-    },
     Ack {
         seq: u64,
         #[serde(skip_serializing_if = "Option::is_none")]
@@ -346,13 +343,13 @@ mod tests {
     }
 
     #[test]
-    fn server_frame_serialization() {
-        let frame = ServerFrame::ServerHello {
-            version: "1.0".into(),
-        };
-        let json = serde_json::to_string(&frame).unwrap();
-        assert!(json.contains("\"type\":\"server_hello\""));
-        assert!(json.contains("\"version\":\"1.0\""));
+    fn server_hello_wire_tag_and_version() {
+        // ath44/c2480: the product handshake frame lives on RpcMessage now.
+        let json = serde_json::to_string(&RpcMessage::ServerHello { protocol: 7 }).unwrap();
+        assert!(json.contains("\"type\":\"server-hello\""), "{json}");
+        assert!(json.contains("\"protocol\":7"), "{json}");
+        let back: RpcMessage = serde_json::from_str(&json).unwrap();
+        assert_eq!(back, RpcMessage::ServerHello { protocol: 7 });
     }
 
     #[test]

@@ -45,6 +45,8 @@ pub mod utils;
 pub use crate::app::core::attach::{
     DEFAULT_ATTACH_URL, attach_fail_message, attach_preflight_with, probe_host, resolve_attach_url,
 };
+#[cfg(feature = "server")]
+pub use crate::app::core::driver::{LinkHealth, LinkTunings, XyRemoteDriver};
 pub use crate::app::core::driver::{XyDriver, XyDriverError, XyInProcessDriver};
 #[cfg(feature = "server")]
 pub use crate::app::core::host_client::HttpWsClient;

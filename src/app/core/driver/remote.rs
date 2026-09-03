@@ -12,12 +12,11 @@ use serde_json::Value;
 use tokio::sync::Notify;
 use tokio_util::sync::CancellationToken;
 
-use crate::app::core::host_client::{HostClient, HttpWsClient};
+use crate::app::core::host_client::{HostClient, HostClientError, HttpWsClient};
 use crate::protocol::model::THINKING_OFF;
 use crate::protocol::ports::XyBashResult;
 use crate::protocol::session::{SessionEntry, SessionTreeKind, SessionTreeNode, SessionTreeTravel};
 use crate::protocol::wire::Command;
-use crate::protocol::wire::envelope::PROTOCOL_VERSION;
 use crate::protocol::{Event, RpcMessage};
 
 use super::XyDriver;
@@ -36,6 +35,9 @@ struct SharedDownlink {
     events: Arc<std::sync::Mutex<VecDeque<XyEvent>>>,
     notify: Arc<Notify>,
     started: Arc<AtomicBool>,
+    /// ath43 coalescing window in millis (trailing-edge debounce).
+    window_ms: Arc<AtomicU64>,
+    notify_scheduled: Arc<AtomicBool>,
 }
 
 impl SharedDownlink {
@@ -44,14 +46,41 @@ impl SharedDownlink {
             events: Arc::new(std::sync::Mutex::new(VecDeque::new())),
             notify: Arc::new(Notify::new()),
             started: Arc::new(AtomicBool::new(false)),
+            window_ms: Arc::new(AtomicU64::new(10)),
+            notify_scheduled: Arc::new(AtomicBool::new(false)),
         }
+    }
+
+    /// Inject the coalescing window (c2480 tunings; MUST precede the first
+    /// downlink burst to matter).
+    fn set_window(&self, window: Duration) {
+        self.window_ms
+            .store(window.as_millis() as u64, Ordering::SeqCst);
     }
 
     fn push(&self, ev: XyEvent) {
         if let Ok(mut q) = self.events.lock() {
             q.push_back(ev);
         }
-        self.notify.notify_waiters();
+        self.request_notify();
+    }
+
+    /// One notify per burst: pushes inside the window share a single wake, so
+    /// the consumer drains the whole batch as one projection pass.
+    fn request_notify(&self) {
+        if self.notify_scheduled.swap(true, Ordering::SeqCst) {
+            return;
+        }
+        let notify = self.notify.clone();
+        let scheduled = self.notify_scheduled.clone();
+        let window_ms = self.window_ms.load(Ordering::SeqCst);
+        tokio::spawn(async move {
+            tokio::time::sleep(Duration::from_millis(window_ms)).await;
+            // Re-arm before waking: a push landing between these two lines
+            // schedules a fresh debounce instead of racing a spent permit.
+            scheduled.store(false, Ordering::SeqCst);
+            notify.notify_one();
+        });
     }
 
     fn drain(&self) -> Vec<XyEvent> {
@@ -73,6 +102,33 @@ impl SharedDownlink {
     }
 }
 
+/// c2480 connection-resilience knobs. Product constants by default; tests
+/// inject micro-second values through [`XyRemoteDriver::with_tunings`] —
+/// there is deliberately no user-facing config surface for these.
+#[derive(Debug, Clone)]
+pub struct LinkTunings {
+    /// First reconnect delay; every young connection doubles it.
+    pub backoff_base: Duration,
+    /// Escalation ceiling.
+    pub backoff_cap: Duration,
+    /// A connection that lived at least this long resets backoff to base —
+    /// flapping links (die young) escalate instead of hammering the port.
+    pub survive_threshold: Duration,
+    /// Downlink event coalescing window (ath43): one notify per burst.
+    pub coalesce_window: Duration,
+}
+
+impl Default for LinkTunings {
+    fn default() -> Self {
+        Self {
+            backoff_base: Duration::from_millis(200),
+            backoff_cap: Duration::from_secs(5),
+            survive_threshold: Duration::from_secs(1),
+            coalesce_window: Duration::from_millis(10),
+        }
+    }
+}
+
 /// Remote driver — [`XyDriver`] over a [`HostClient`] carrier.
 #[cfg(feature = "server")]
 pub struct XyRemoteDriver<C = HttpWsClient> {
@@ -83,7 +139,14 @@ pub struct XyRemoteDriver<C = HttpWsClient> {
     thinking: std::sync::Mutex<String>,
     leaf_entry_id: Arc<std::sync::Mutex<Option<String>>>,
     last_seq: Arc<AtomicU64>,
-    handshake_done: Arc<AtomicBool>,
+    /// c2480 downlink generation: bumped on every (re)start so a stale loop's
+    /// late pushes cannot reach the shared projection.
+    downlink_gen: Arc<AtomicU64>,
+    /// Set when the downlink loop dies irrecoverably (e.g. protocol mismatch,
+    /// ath44): `wait_subscribed` fails fast with this message instead of
+    /// riding out its full deadline.
+    fatal: Arc<std::sync::Mutex<Option<String>>>,
+    tunings: Arc<LinkTunings>,
     reverse_rpc: Option<ReverseRpcNotify>,
     downlink: SharedDownlink,
     resync_needed: Arc<AtomicBool>,
@@ -146,7 +209,9 @@ where
             thinking: std::sync::Mutex::new(THINKING_OFF.into()),
             leaf_entry_id: Arc::new(std::sync::Mutex::new(None)),
             last_seq: Arc::new(AtomicU64::new(0)),
-            handshake_done: Arc::new(AtomicBool::new(false)),
+            downlink_gen: Arc::new(AtomicU64::new(0)),
+            fatal: Arc::new(std::sync::Mutex::new(None)),
+            tunings: Arc::new(LinkTunings::default()),
             reverse_rpc: None,
             downlink: SharedDownlink::new(),
             resync_needed: Arc::new(AtomicBool::new(false)),
@@ -165,6 +230,15 @@ where
             gate_notice_consumed: Arc::new(AtomicBool::new(false)),
             resources_dirty: Arc::new(AtomicBool::new(false)),
         }
+    }
+
+    /// Builder-style resilience tuning injection (tests / labs only; product
+    /// code uses the [`LinkTunings::default`] constants). MUST be called
+    /// before the first attach so the downlink loop is spawned with it.
+    pub fn with_tunings(mut self, tunings: LinkTunings) -> Self {
+        self.downlink.set_window(tunings.coalesce_window);
+        self.tunings = Arc::new(tunings);
+        self
     }
 
     pub fn set_reverse_rpc_notify(&mut self, notify: ReverseRpcNotify) {
@@ -242,6 +316,8 @@ where
     }
 
     fn restart_downlink(&mut self) {
+        // c2480: the new generation invalidates the old loop's late pushes.
+        self.downlink_gen.fetch_add(1, Ordering::SeqCst);
         self.session_life.cancel();
         self.session_life = CancellationToken::new();
         self.subscribed_ok.store(false, Ordering::SeqCst);
@@ -259,7 +335,6 @@ where
         let host = self.host.clone();
         let session_id = self.session_id.clone();
         let last_seq = self.last_seq.clone();
-        let handshake_done = self.handshake_done.clone();
         let reverse_rpc = self.reverse_rpc.clone();
         let downlink = self.downlink.clone();
         let life = self.session_life.clone();
@@ -273,48 +348,53 @@ where
         let gate_notice_consumed = self.gate_notice_consumed.clone();
         let resources_dirty = self.resources_dirty.clone();
         let client_cwd = self.client_cwd.clone();
+        let downlink_gen = self.downlink_gen.clone();
+        let fatal = self.fatal.clone();
+        let tunings = self.tunings.clone();
+        let my_gen = downlink_gen.load(Ordering::SeqCst);
+        if let Ok(mut slot) = fatal.lock() {
+            *slot = None;
+        }
+        // ath41/c2480: pushes from a downlink generation are dropped the
+        // moment the driver moves past it — stale frames never reach the
+        // shared projection.
+        let push_current = {
+            let my_generation = downlink_gen.clone();
+            let downlink = downlink.clone();
+            move |ev: XyEvent| {
+                if my_generation.load(Ordering::SeqCst) == my_gen {
+                    downlink.push(ev);
+                }
+            }
+        };
+        // ath41/c2480: a connection that survived the threshold earned a
+        // backoff reset; one that died young escalates (flapping ≠ outage).
+        let next_backoff = {
+            let tunings = tunings.clone();
+            move |backoff: Duration, lived: Duration| -> Duration {
+                if lived >= tunings.survive_threshold {
+                    tunings.backoff_base
+                } else {
+                    (backoff * 2).min(tunings.backoff_cap)
+                }
+            }
+        };
         tokio::spawn(async move {
-            let mut backoff = Duration::from_millis(200);
+            let mut backoff = tunings.backoff_base;
             loop {
                 if life.is_cancelled() {
                     break;
                 }
+                let connected_at = tokio::time::Instant::now();
                 match host.mux().await {
                     Ok(mut mux) => {
-                        backoff = Duration::from_millis(200);
-                        if !handshake_done.load(Ordering::SeqCst) {
-                            match host.unary("host.describe", serde_json::json!({})).await {
-                                Ok(result) => {
-                                    let proto = result
-                                        .value
-                                        .as_ref()
-                                        .and_then(|v| v.get("protocol"))
-                                        .and_then(|v| v.as_u64())
-                                        .unwrap_or(0);
-                                    if proto != PROTOCOL_VERSION as u64 {
-                                        downlink.push(XyEvent::error_msg(format!(
-                                            "host protocol {proto} != {PROTOCOL_VERSION}"
-                                        )));
-                                        return;
-                                    }
-                                    handshake_done.store(true, Ordering::SeqCst);
-                                }
-                                Err(e) => {
-                                    downlink.push(XyEvent::error_msg(format!(
-                                        "host.describe failed: {e}"
-                                    )));
-                                    tokio::select! {
-                                        _ = life.cancelled() => return,
-                                        _ = tokio::time::sleep(backoff) => {}
-                                    }
-                                    backoff = (backoff * 2).min(Duration::from_secs(5));
-                                    continue;
-                                }
-                            }
-                        }
+                        // ath44: the carrier already validated this
+                        // connection's server_hello before handing us the
+                        // stream; a mismatch would have surfaced as a fatal
+                        // ProtocolMismatch below.
                         let seq = last_seq.load(Ordering::SeqCst);
                         skip_cold_replay.store(seq == 0, Ordering::SeqCst);
-                        if let Err(e) = host
+                        if let Err(_e) = host
                             .unary(
                                 "subscribe",
                                 serde_json::json!({
@@ -325,12 +405,14 @@ where
                             )
                             .await
                         {
-                            downlink.push(XyEvent::error_msg(format!("subscribe failed: {e}")));
+                            // ath42: silent — reconnect churn must not paint
+                            // the transcript; chrome grace UX handles notice.
+                            subscribed_ok.store(false, Ordering::SeqCst);
+                            backoff = next_backoff(backoff, connected_at.elapsed());
                             tokio::select! {
                                 _ = life.cancelled() => return,
                                 _ = tokio::time::sleep(backoff) => {}
                             }
-                            backoff = (backoff * 2).min(Duration::from_secs(5));
                             continue;
                         }
                         subscribed_ok.store(true, Ordering::SeqCst);
@@ -369,7 +451,7 @@ where
                                             {
                                                 continue;
                                             }
-                                            downlink.push(agent_event);
+                                            push_current(agent_event);
                                         }
                                         Some(Ok(RpcMessage::ServerRequest { method, .. }))
                                             if method == "session/subscribed" =>
@@ -434,8 +516,11 @@ where
                                             }
                                         }
                                         Some(Ok(_)) => {}
-                                        Some(Err(e)) => {
-                                            downlink.push(XyEvent::error_msg(e.to_string()));
+                                        Some(Err(_)) => {
+                                            // ath42: silent break — the frame
+                                            // error is a connection fact, not
+                                            // a transcript event; reconnect
+                                            // and re-subscribe handle recovery.
                                             break;
                                         }
                                         None => break,
@@ -443,14 +528,37 @@ where
                                 }
                             }
                         }
-                    }
-                    Err(e) => {
-                        downlink.push(XyEvent::error_msg(format!("WS connect failed: {e}")));
+                        // Connection ended: report Down for the grace UX
+                        // (ath42), survive-or-escalate, then retry.
+                        subscribed_ok.store(false, Ordering::SeqCst);
+                        backoff = next_backoff(backoff, connected_at.elapsed());
+                        if life.is_cancelled() {
+                            return;
+                        }
                         tokio::select! {
                             _ = life.cancelled() => return,
                             _ = tokio::time::sleep(backoff) => {}
                         }
-                        backoff = (backoff * 2).min(Duration::from_secs(5));
+                    }
+                    Err(e) if matches!(e, HostClientError::ProtocolMismatch { .. }) => {
+                        // ath44: a version the client cannot speak is fatal,
+                        // never a transient failure — surface once and stop.
+                        let msg = e.to_string();
+                        if let Ok(mut slot) = fatal.lock() {
+                            *slot = Some(msg.clone());
+                        }
+                        push_current(XyEvent::error_msg(msg));
+                        return;
+                    }
+                    Err(_) => {
+                        // ath42: silent — reconnect churn must not paint the
+                        // transcript; chrome grace UX handles the notice.
+                        subscribed_ok.store(false, Ordering::SeqCst);
+                        backoff = next_backoff(backoff, connected_at.elapsed());
+                        tokio::select! {
+                            _ = life.cancelled() => return,
+                            _ = tokio::time::sleep(backoff) => {}
+                        }
                     }
                 }
             }
@@ -460,6 +568,9 @@ where
     async fn wait_subscribed(&self) -> Result<(), XyDriverError> {
         let wait_deadline = tokio::time::Instant::now() + Duration::from_secs(5);
         while !self.subscribed_ok.load(Ordering::SeqCst) {
+            if let Some(msg) = self.fatal.lock().ok().and_then(|mut slot| slot.take()) {
+                return Err(XyDriverError::remote(msg));
+            }
             if tokio::time::Instant::now() > wait_deadline {
                 return Err(XyDriverError::remote("subscribe timed out"));
             }
@@ -637,16 +748,9 @@ where
     C: HostClient + Clone + 'static,
 {
     async fn attach_session(&mut self) -> Result<(), XyDriverError> {
-        if !self.handshake_done.load(Ordering::SeqCst) {
-            let data = self.unary("host.describe", serde_json::json!({})).await?;
-            let proto = data.get("protocol").and_then(Value::as_u64).unwrap_or(0);
-            if proto != PROTOCOL_VERSION as u64 {
-                return Err(XyDriverError::remote(format!(
-                    "host protocol {proto} != {PROTOCOL_VERSION}"
-                )));
-            }
-            self.handshake_done.store(true, Ordering::SeqCst);
-        }
+        // ath44: the version handshake rides on every mux connection's
+        // server_hello (carrier-validated); there is no separate unary
+        // describe on the attach critical path.
         self.ensure_downlink();
         self.wait_subscribed().await?;
         self.refresh_chrome_caches().await
@@ -658,6 +762,16 @@ where
 
     fn drain_idle_events(&mut self) -> Vec<XyEvent> {
         self.downlink.drain()
+    }
+
+    /// ath42/c2480: attachment health tracks the mux subscription; chrome
+    /// grace UX (never transcript error rows) consumes it.
+    fn link_health(&self) -> super::LinkHealth {
+        if self.subscribed_ok.load(Ordering::SeqCst) {
+            super::LinkHealth::Up
+        } else {
+            super::LinkHealth::Down
+        }
     }
 
     fn take_resync_rebuild(&mut self) -> bool {

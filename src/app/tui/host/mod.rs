@@ -2,9 +2,14 @@
 
 mod editor_history;
 mod input_policy;
+mod link_grace;
 mod pending;
 mod session_ops;
 
+pub use link_grace::{
+    LINK_DOWN_NOTICE, LINK_GRACE_INITIAL, LINK_GRACE_RECONNECT, LINK_RECOVERED_NOTICE, LinkGrace,
+    LinkNotice,
+};
 pub use pending::PendingOps;
 
 use std::cell::RefCell;

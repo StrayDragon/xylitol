@@ -4,6 +4,9 @@
 use super::registry;
 
 /// Downlink `ServerRequest.method` values (not unary).
+///
+/// The mux version handshake is the `RpcMessage::ServerHello` envelope frame
+/// (ath44), not a `ServerRequest` method.
 pub const DOWNLINK_METHODS: &[&str] = &[
     "session/event",
     "session/subscribed",
@@ -11,7 +14,6 @@ pub const DOWNLINK_METHODS: &[&str] = &[
     "session/resources",
     "approval/requested",
     "question/requested",
-    "host/hello",
 ];
 
 pub fn is_unary_method(name: &str) -> bool {
