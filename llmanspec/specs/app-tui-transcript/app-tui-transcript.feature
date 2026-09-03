@@ -349,3 +349,23 @@
   场景: bang-block-rail-no-wash-headless
     当 以主机泵提交 bang 命令并完成成功结果
     那么 bang 块行带单列状态轨加无底色 gutter 且内容区无整行洗底
+
+  @req:att35 @human
+  场景: explore-grouping-auto-aggregate
+    - 产品 MUST 提供探索分组策略：相邻连续同类检索段（读文件 / 搜索；中间无助手正文或其它类段隔断）达到阈值（默认 ≥3）时，近窗与流式渲染 MUST 默认聚合为单行分组摘要（类目计数式，形如 `✱ Explored — 3 reads · 2 searches`；进行时 MUST 用 Exploring 词形且计数随工具开始更新，对齐 att24 计数时机），MUST NOT 逐条平铺组内子块；不足阈值或类别断开 MUST 保持既有逐块渲染。写类 / bash / diff / compaction / ask 段 MUST NOT 进分组（分组在其实际位置断开）。分组摘要行与 att24 簇头（文件计数式）MUST 在词表上可区分。组折叠时组内子块 MUST NOT 进渲染（与 att25 同构）；展开后组内子块 MUST 服从既有块级折叠态（att20/att21）。`tui.activity_fold.auto_group` 为 false 时 MUST NOT 分组（全细账逐块渲染，块级折叠仍可用）。分组 MUST NOT 改变 att23 嵌套结构与 att26 回合窗收纳语义。手动展开某分组后，该组 MUST 保持展开（不因组内新段到达或流式推进被自动收起）；分组 MUST 有稳定 id，live 与 travel/fork/resume 重建 MUST 同构。
+
+  @req:att35 @executable
+  场景: explore-group-merge-and-expand
+    假如 近窗内存在连续的读段与检索段且无其它类段隔断
+    当 同类段数量达到阈值（默认 3）
+    那么 scrollback MUST 只渲染一行分组摘要且 MUST NOT 平铺组内子块
+    当 相邻出现写类或 bash 段
+    那么 分组 MUST 在该段处断开且两侧保持既有渲染
+    当 用户手动展开该分组
+    那么 组内子块 MUST 全部可见且该组在其后新段到达时仍保持展开
+
+  @req:att35 @executable
+  场景: explore-group-rebuild-isomorphic
+    假如 一个被手动展开退组的分组随会话 travel 或 fork 或 resume 重建
+    当 重建按稳定分组 id 恢复
+    那么 同组 MUST 保持展开态且分组摘要行词形与计数 MUST 与重建前一致
