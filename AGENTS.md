@@ -27,7 +27,7 @@
 - **产品面**：Print + TUI（TTY 默认）已开闸。产品 TUI 默认 attach 本机 Host（`http://127.0.0.1:18790`）；未在听失败。Print 与库嵌入仍可同进程。TUI 专属规则见 `src/app/tui/AGENTS.md`。
 - **CS 角色**：TUI / Print 是 **client**（面本地：键、画、TTY、编辑器、剪贴板）。模型 / 会话 / MCP / 工作区执行 / trust 是 **host（操作器角色）**。host **不是**「必须先占端口」——print / 库嵌入仍可无绑定。产品 TUI **要求**监听器。占用绑定的是显式 `xylitol serve`。
 - **产品信封（RPC envelope）**：四象限 RPC（unary HTTP POST + WebSocket 下行、不收业务上行）。Command/Event 是载荷，不是外层。类型 SSOT 在 Rust `protocol`（无跨语言类型导出；OpenAPI 仅调试文档）。
-- **跨面公共体验**：TUI 与第二产品面（gpui 桌面，Linux/Wayland）**共有**能力的动作语义 / 学习成本 MUST 同源；快捷键 SHOULD 尽量同构；仅面专属能力可分叉。约束板：`docs/roadmaps/Web与TUI同源.md`。
+- **跨面公共体验**：TUI 与第二产品面（gpui 桌面，Linux/Wayland）**共有**能力的动作语义 / 学习成本 MUST 同源；快捷键 SHOULD 尽量同构；仅面专属能力可分叉。约束板：`docs/roadmaps/跨面同源.md`。
 - 产品架构总览：`docs/architecture/`；候选方向：`docs/roadmaps/`（不维护进度列）；文档闭环：`docs/AGENTS.md`。
 - TUI 信息面固定词（滚动提示、通知条、尾插…）：`docs/architecture/TUI信息面与固定区词汇.md`（面约束见 `src/app/tui/AGENTS.md`）。
 - 交互设计稿：仓库顶层 `designing/`（现 `tui/` + `tui-lab/` 交互实验区，以后可加其它端；`just open-designing`）。**代码是运行时真值**；稿是对照辅助。无独立快捷键设计。UI/UX 迭代走 SOP：候选先进 `tui-lab` 实验原型（staged），评审后晋级产品面或淘汰（见 `designing/AGENTS.md`）。
@@ -50,6 +50,7 @@
 | `agent/` | 薄编排（ReAct、capabilities、投影 projection） |
 | `infra/` | ports 实现与 vendor |
 | `app/` | 应用面 + `core` seam |
+| `utils/` | 纯叶工具（仅 std；非 Xy* 稳定面） |
 | `packages/xylitol-tui` | 通用 TUI 引擎（零引用主 crate） |
 
 `app → agent|infra → protocol`；`agent` ↛ `infra`；`infra` ↛ `agent`。
@@ -96,7 +97,7 @@
 | 形态 | 约定 | 是否进 `just qa` |
 |---|---|---|
 | `packages/*/examples/lab_*.rs` | 人跑维护 lab（`cargo run -p … --example lab_…`） | **否** |
-| `packages/*/tests/lab_*.rs` | 可打真网关的 lab 二进制；是否入闸看 just 接线 | **仅**已接线者（现：`lab_responses_prompt_cache` ← `just test-live-provider`） |
+| `packages/*/tests/lab_*.rs` | 可打真网关的 lab 二进制；是否入闸看 just 接线 | **仅**已接线者（见 `just test-live-provider`） |
 | `#[test] fn lab_*` / `async fn lab_*` | 闸内契约实验（无网或假网） | **是**（随 crate 测） |
 
 配置文件名 `live-provider.yaml` / recipe `test-live-provider` 保留「live 网关」语义，与代码符号前缀无关。新试验 **MUST** 用 `lab_`；禁止再引入 `evidence_` / `experiment_` 前缀。
@@ -117,21 +118,9 @@
 ## 提交与测试
 
 - Conventional Commits；开 PR 前 `just qa`。
-- 单轨 feature-as-spec（llman ≥0.0.68）：每个 capability 恰一个 `llmanspec/specs/<cap>/<cap>.feature`（`@human` 规则 + `@executable` 验收场景）；流程见 `llmanspec/AGENTS.md`。**禁止** `solidify` / `change delta` / 新建 `*.feature.delta.toon`。
+- 单轨 feature-as-spec、capability 命名、spec 约束层级（产品级 WHAT，禁止钉代码组织）：`llmanspec/AGENTS.md`。**禁止** `solidify` / `change delta` / 新建 `*.feature.delta.toon`。
 - 测试分层：BDD 管端到端编排；单测管纯数据/组件边界，不重复全链路。
 - 实现计划变更后同步 `llmanspec/`；读代码优先 `rg`。
-
-## llmanspec 命名
-
-- capability = 领域名词、kebab-case；purpose / statement / scenario **中文**。
-- 前缀按层：`package-tui-*` / `app-tui-*` / `agent-*` / `infra-*` / `protocol-*` / `cli-*` / `server-*` / `test-*` 等。细则：`llmanspec/AGENTS.md`。
-
-## Specs 约束层级（产品级优先）
-
-- specs 的 requirement 约束落在**产品级**：可观察行为、产品语义、数据契约、验证结果；**禁止硬约束代码组织**——具体路径、文件/模块名、类型名、行数、方法归属、迁移清单（除非是**大的组织方向**：分层依赖、端口 seam、crate 边界、组合根职责、跨面同源）。
-- 代码组织演进（重构、改名、移动）不要求改 spec；spec 只随产品行为变化而变。代码是真值源，spec 不追平组织细节。
-- 已删除对象（类型/模块/方法）的引用条款随删除一并清理，不保留「防复活」清单（除非真实回归风险）。
-- 细则：`llmanspec/AGENTS.md` → 「spec 约束层级」；组织细节维护落在 `src/AGENTS.md`，不落在 specs。
 
 ## Skills
 

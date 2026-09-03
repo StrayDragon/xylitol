@@ -40,11 +40,11 @@ TUI 与第二产品面（gpui 桌面）等**共有**能力：产品文必须按�
 
 | 写哪 | 怎么写 |
 |---|---|
-| 未兑现公共交互 | `roadmaps/Web与TUI同源.md`（及衔接篇）；可链 `llmanspec` 草案 |
+| 未兑现公共交互 | `roadmaps/跨面同源.md`（及衔接篇）；可链 `llmanspec` 草案 |
 | 已兑现公共心智 | `architecture/`（如多客户端）；勿把未开闸面写成现行 MUST |
-| 面专属（纯 TTY / 纯 DOM） | 可分叉；**禁止**把专属键位/流程写成公共 MUST |
+| 面专属（纯 TTY / 纯 GUI） | 可分叉；**禁止**把专属键位/流程写成公共 MUST |
 
-改公共交互相关 roadmap / architecture / 面 `AGENTS` 前先对齐全套面，禁止静默开出「只教 TUI」或「只教 Web」的第二套公共故事。细则约束板：[`roadmaps/Web与TUI同源.md`](./roadmaps/Web与TUI同源.md)。
+改公共交互相关 roadmap / architecture / 面 `AGENTS` 前先对齐全套面，禁止静默开出「只教某一面」的第二套公共故事。细则约束板：[`roadmaps/跨面同源.md`](./roadmaps/跨面同源.md)。
 
 ### ROADMAP 落地后迁移（MUST）
 

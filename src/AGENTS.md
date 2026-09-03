@@ -117,7 +117,7 @@ Hook 三条接缝只认可移植 JSON（headers map + body Value）；不把 req
 
 生产模块避免无结构 God 文件。**不以文件物理行数作为质量约束**（行数与可维护性无直接映射，行数硬测会逼出按 impl 块散落的假拆分）；质量信号只走函数级复杂度指标（cccc-rs 的 Sonar cognitive / McCabe cyclomatic）。
 
-**TUI 面复杂度闸（HARD）**：产品 TUI 入口协调者（host 入口、layout 根、effects 入口、bridge 入口）的函数级复杂度经 `just qa` 的 `scripts/check_complexity.py`（cccc-rs）强制：Sonar cognitive ≤32 且 McCabe cyclomatic ≤27（按当前协调者 max 收紧，禁止回涨到旧 35/30）。**不以文件物理行数作为硬闸**（行数硬测会逼出按 impl 块散落的假拆分）。测试专用模块不参与本闸。
+**TUI 面复杂度闸（HARD）**：产品 TUI 入口协调者（host 入口、layout 根、effects 入口、bridge 入口）的函数级复杂度经 `just qa` 的 `scripts/check_complexity.py`（cccc-rs）强制：Sonar cognitive ≤32 且 McCabe cyclomatic ≤27。**不以文件物理行数作为硬闸**（行数硬测会逼出按 impl 块散落的假拆分）。测试专用模块不参与本闸。
 
 **全树复杂度雷达（review 信号）**：`just complexity`（`--radar`）对全生产树（排除测试文件）报告 cccc-rs top-cognitive 排名，作为 review 参照；软信号，非硬闸。复杂度高的函数优先拆分/重构，不用行数 KPI。
 
@@ -129,15 +129,10 @@ Hook 三条接缝只认可移植 JSON（headers map + body Value）；不把 req
 
 ### 进程级全局状态与并行纪律
 
-进程内共享、跨测会互相踩的状态（非穷尽）：obs parent / session 槽、`provider_trace_active` 与 fastrace 全局 reporter、`std::env` / cwd、包级 `GLOBAL_KEYBINDINGS`、固定磁盘路径与端口。
+obs / env / 键位 / cwd / 固定路径与端口等跨测会互相踩的状态，按**域名**隔离；具体 helper 以代码为准，不在本文件维护存量清单。
 
 - 新测试禁止无必要引入新的进程级可变全局；能注入 / 局部化则注入。
-- 必须串行时用**按域命名**的 `#[serial(<domain>_global)]`（`obs_global` / `env_global` / `kb_global` 等），禁止默认空组把无关域捆在一起；注释写清为何串行与消除路径。
-- 同域内「只写等价默认值、可与破坏者互斥」的测可用 `#[parallel(<domain>_global)]`（与同名 `serial` 互斥、彼此可并行）。
-- 主闸 `just qa` 走 nextest（一测一进程）：跨测互斥优先考虑 nextest `test-groups`（共享 FS/端口等外部资源）；勿假设 in-process `#[serial]` 在 nextest 下跨测生效。当前无固定端口 / 共享非 temp 路径 → **不**配置 `[test-groups]`（见 `.config/nextest.toml`）；出现新外部共享资源再开。
+- 必须串行时用 `#[serial(<domain>_global)]`，禁止默认空组把无关域捆在一起。
+- 主闸 `just qa` 走 nextest（一测一进程）：勿假设 in-process `#[serial]` 跨测生效。当前无固定端口 / 共享非 temp 路径 → **不**配置 `[test-groups]`；出现新外部共享资源再开。
 - `cargo test` 回退与 `just test-tui` 仍依赖 in-process 命名组。
-- 产品 `HostSession` 经 `KeybindingsScope`（thread-local）持有键位；勿在 `new_product_ui` 路径无必要写 `GLOBAL_KEYBINDINGS`。配置发现优先 `ConfigPaths::discover_with` / `load_app_config_*_with` 注入；trust 持久化走 reload `agent_dir`（勿为测改 `HOME`）。测试勿把 `SessionManager` 指到开发者真实 `~/.xylitol/sessions`（用 tempfile）。Obs 会话身份测用 `ObsSessionScope`（勿为测独占改写进程槽）。
-- **`env_global` 仅剩**：`secret.env` 真注入进程环境（`secret_env` 单测 + `loader` 相关测）；`otel` live Langfuse smoke（兼 `obs_global`，装 fastrace reporter）。其它路径能注入则注入。
-- **`obs_global` 必须 `serial`**：仅 live OTLP smoke（及仍直接 `fastrace::set_reporter` 的非 demux 路径）。单元测用 `ObsGateScope`（TLS 闸）+ `SpanCollectScope`（进程全局 demux sink + 互斥 permit；`flush` 在 helper 线程 report，故不能 TLS）；会话槽用 `ObsSessionScope`；parent 已走 `obs_parent`。
-- **`kb_global`**：产品 / 组件测优先 `KeybindingsScope`；勿为测写 `GLOBAL_KEYBINDINGS`（域已可空）。
-- **Kitty 键盘协议标志**：测走 `with_kitty_protocol_active`（API 内串行锁）；勿裸 `set_kitty_protocol_active` 跨断言窗口。
+- 配置 / trust / session 测走注入与 tempfile；勿改 `HOME`、勿指到开发者真实 `~/.xylitol/sessions`。产品路径勿无必要写包级 `GLOBAL_KEYBINDINGS`。

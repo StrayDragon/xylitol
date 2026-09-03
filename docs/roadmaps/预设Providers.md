@@ -39,7 +39,7 @@ Then 行为与开箱兼容厂商同构（在该预设声明的能力内）
 
 **场景：Cursor 协同可选**
 Given 用户未配置 Cursor SDK
-When 仅使用 xylitol TUI/Web 对话
+When 仅使用 xylitol TUI/Print 对话
 Then 无 Cursor 依赖；配置后可按协同路线调度
 
 ## 分阶段

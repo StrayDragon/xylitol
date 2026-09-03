@@ -25,7 +25,7 @@ c1885 把 Prompt Cache 尺子落在 bridge + trace/Langfuse，**刻意不做 TUI
 ## Capabilities（意向）
 
 - `app-tui-fixed-zone`（或等价）
-- 跨面：若 Web 同源，跟 [`Web与TUI同源`](../../../../docs/roadmaps/Web与TUI同源.md) 约束
+- 跨面：跟 [`跨面同源`](../../../../docs/roadmaps/跨面同源.md) 约束
 
 ## Impact
 

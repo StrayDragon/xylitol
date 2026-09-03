@@ -28,7 +28,7 @@
 | D03 | 输入模型 | VT 字符串 / 自解析为主 | **硬切** `InputEvent::{Key,Paste,Mouse}`；Mouse 默认不刷帧（`InputReaction` / `input_wants_rerender`）；禁止 KeyEvent→VT→parse 运行时路径 | 是 |
 | D04 | 键匹配 | 字符串 `matchesKey` 等 | 运行时 `matches_key_event` / `KeybindingsManager::matches_event` | 是 |
 | D05 | 平台专属输入 | `native-modifiers`、Apple/Windows native | **不移植** | 是 |
-| D06 | 调试写盘 | `writeLogPath` | **不移植**（tracing / 应用面日志） | 是 |
+| D06 | 调试写盘 | `writeLogPath` | **不移植**（应用面日志 / fastrace+log） | 是 |
 | D07 | 根类型 | `TUI extends Container` | `TUI` 持有根列表 + 独立 `Container` 组件 | 是 |
 | D08 | Overlay focus-restore | eligible/blocked/resume 完整状态机 | **已对齐**（c575）：`FocusTarget` + eligible/blocked/resume；`dispatch_event` reclaim；NC 可显式 `focus`；host 驱动路径 | 是 |
 | D09 | 事件循环 | 库内 `start` 常见 | 产品路径 **host 驱动**；`TUI::start()` **仅 demo** | 是 |

@@ -82,7 +82,7 @@ Then 可按配置调度到 xylitol 工作区或并行；未配置时互不影响
 | 依赖 | 说明 |
 |---|---|
 | 远程体验 parity | [../architecture/远程体验与线协议.md](../architecture/远程体验与线协议.md) |
-| [Web与TUI同源.md](./Web与TUI同源.md) | 跨面语义约束 |
+| [跨面同源.md](./跨面同源.md) | 跨面语义约束 |
 | 观测 | [OTEL与Langfuse观测.md](./OTEL与Langfuse观测.md)；底座见 [../architecture/进程内观测.md](../architecture/进程内观测.md) |
 | 可并行 | TUI 视觉优化（不同面） |
 
