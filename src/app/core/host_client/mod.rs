@@ -29,6 +29,10 @@ pub enum HostClientError {
     RpcIdMismatch { sent: String, got: String },
     #[error("expected server-response, got {0}")]
     UnexpectedEnvelope(String),
+    /// Mux handshake spoke a different protocol version (ath44/c2480). Fatal:
+    /// the driver MUST NOT retry-loop against a version it cannot talk to.
+    #[error("protocol mismatch: host speaks {got}, client expects {expected}")]
+    ProtocolMismatch { got: u32, expected: u32 },
 }
 
 impl HostClientError {

@@ -12,9 +12,9 @@ pub mod transport;
 
 pub use command::Command;
 pub use envelope::{
-    ApprovalRequestedPayload, HostDescribeValue, HostHelloPayload, PROTOCOL_VERSION,
-    QuestionRequestedPayload, RpcError, RpcMessage, RpcResult, SessionEventPayload,
-    SessionResourcesPayload, SessionResyncRequiredPayload, SessionSubscribedPayload,
+    ApprovalRequestedPayload, HostDescribeValue, PROTOCOL_VERSION, QuestionRequestedPayload,
+    RpcError, RpcMessage, RpcResult, SessionEventPayload, SessionResourcesPayload,
+    SessionResyncRequiredPayload, SessionSubscribedPayload,
 };
 pub use event::Event;
 pub use method::{DOWNLINK_METHODS, is_downlink_method, is_unary_method};

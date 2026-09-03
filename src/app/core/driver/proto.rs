@@ -14,6 +14,16 @@ use super::types::{
     SessionListEntry, SessionState, SessionStats, XyEvent,
 };
 
+/// Downlink attachment health (ath42/c2480): drives the chrome grace notice —
+/// never transcript error rows.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum LinkHealth {
+    /// Subscribed and streaming.
+    Up,
+    /// Downlink not currently subscribed (connecting, retrying, or resyncing).
+    Down,
+}
+
 /// XyDriver — interact with the core without knowing its internals.
 ///
 /// [`crate::app::core::driver::XyInProcessDriver`] keeps a cached `AgentRuntime` and is the local
@@ -51,6 +61,15 @@ pub trait XyDriver: Send {
     /// Events that arrived on a persistent downlink while no `run` stream is held.
     fn drain_idle_events(&mut self) -> Vec<XyEvent> {
         Vec::new()
+    }
+
+    /// Downlink attachment health for chrome-level grace UX (ath42/c2480).
+    ///
+    /// Default [`LinkHealth::Up`]: in-process and scripted drivers are their
+    /// own host, there is no link to lose. Remote overrides with the mux
+    /// subscription state.
+    fn link_health(&self) -> LinkHealth {
+        LinkHealth::Up
     }
 
     /// Consume a `session/resync_required` rebuild flag (journal replay).

@@ -38,6 +38,10 @@ pub enum RpcMessage {
         #[serde(default)]
         payload: Value,
     },
+    /// First frame on every mux connection (ath44/c2480): the per-connection
+    /// version handshake. Clients MUST validate it before trusting the stream;
+    /// a mismatch is fatal (no downgrade, no retry storm).
+    ServerHello { protocol: u32 },
     ClientResponse {
         #[serde(rename = "rpcId")]
         rpc_id: String,
@@ -120,12 +124,6 @@ pub struct SessionResyncRequiredPayload {
 pub struct SessionResourcesPayload {
     pub session_id: String,
     pub snapshot: Value,
-}
-
-/// Downlink payload for `host/hello`.
-#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
-pub struct HostHelloPayload {
-    pub protocol: u32,
 }
 
 /// Downlink payload for `approval/requested` (stable `rpcId` on the envelope).

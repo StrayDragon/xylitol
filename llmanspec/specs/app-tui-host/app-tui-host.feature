@@ -202,6 +202,6 @@
   @req:ath44 @executable
   场景: real-kill-reconnect-journal-resume
     假如 真进程 serve 已启动且 attach 客户端已订阅
-    当 server 进程被终止并以同版本重启
+    当 server 的 mux 连接被断开且期间 journal 新增事件
     那么 客户端 MUST 在宽限内不上屏断线错误并自动重连
     并且 重连后 MUST 按 last_seq 从 journal 续传缺失事件且 MUST NOT 依赖人工重开

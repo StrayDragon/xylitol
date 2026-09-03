@@ -27,9 +27,9 @@ pub mod tool_timeout;
 // Wire Command/Event re-exported at protocol root — the canonical application-facing path.
 pub use wire::{
     ApprovalRequestedPayload, Command, DOWNLINK_METHODS, Envelope, ErrorCode, Event,
-    HostDescribeValue, HostHelloPayload, PROTOCOL_VERSION, QuestionRequestedPayload, RpcError,
-    RpcMessage, RpcResult, SessionEventPayload, SessionResourcesPayload,
-    SessionResyncRequiredPayload, SessionSubscribedPayload, is_downlink_method, is_unary_method,
+    HostDescribeValue, PROTOCOL_VERSION, QuestionRequestedPayload, RpcError, RpcMessage, RpcResult,
+    SessionEventPayload, SessionResourcesPayload, SessionResyncRequiredPayload,
+    SessionSubscribedPayload, is_downlink_method, is_unary_method,
 };
 
 // Flat port re-exports for `crate::protocol::{XyModel, …}` call sites.

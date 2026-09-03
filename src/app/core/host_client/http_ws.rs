@@ -9,6 +9,7 @@ use tokio_tungstenite::{connect_async, tungstenite::Message};
 
 use crate::protocol::RpcMessage;
 use crate::protocol::RpcResult;
+use crate::protocol::wire::envelope::PROTOCOL_VERSION;
 
 use super::{HostClient, HostClientError, MuxStream};
 
@@ -156,6 +157,49 @@ impl HostClient for HttpWsClient {
             .await
             .map_err(|e| HostClientError::transport(format!("WS connect {url}: {e}")))?;
         let (mut sink, mut reader) = ws_stream.split();
+
+        // ath44/c2480 per-connection handshake: the first frame MUST be
+        // `server_hello` with an acceptable version. A wrong version is fatal
+        // (never retry-loopable); a missing/garbled hello is an ordinary
+        // connection failure handed to the driver's reconnect judgement.
+        let hello = tokio::time::timeout(MUX_IDLE_TIMEOUT, async {
+            loop {
+                let Some(item) = reader.next().await else {
+                    return Err(HostClientError::transport(
+                        "mux hello: connection closed before handshake",
+                    ));
+                };
+                match item {
+                    Ok(Message::Text(text)) => return Ok(text),
+                    Ok(Message::Close(_)) => {
+                        return Err(HostClientError::transport(
+                            "mux hello: connection closed before handshake",
+                        ));
+                    }
+                    Ok(_) => continue,
+                    Err(e) => {
+                        return Err(HostClientError::transport(format!("mux hello read: {e}")));
+                    }
+                }
+            }
+        })
+        .await
+        .map_err(|_| HostClientError::transport("mux hello: timed out"))??;
+        match serde_json::from_str::<RpcMessage>(&hello) {
+            Ok(RpcMessage::ServerHello { protocol }) if protocol == PROTOCOL_VERSION => {}
+            Ok(RpcMessage::ServerHello { protocol }) => {
+                return Err(HostClientError::ProtocolMismatch {
+                    got: protocol,
+                    expected: PROTOCOL_VERSION,
+                });
+            }
+            Ok(_) => {
+                return Err(HostClientError::transport(
+                    "mux hello: first frame is not server_hello",
+                ));
+            }
+            Err(e) => return Err(HostClientError::transport(format!("mux hello decode: {e}"))),
+        }
 
         // c2425 half-open detection: periodic pings keep the connection honest;
         // the read side fails after two silent windows so a silently dead link

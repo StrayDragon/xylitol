@@ -247,6 +247,9 @@ async fn run_host_loop(
         TICK_IDLE_MS
     }));
     ticker.set_missed_tick_behavior(tokio::time::MissedTickBehavior::Skip);
+    // ath42/c2480: connection grace state machine — transient link churn
+    // stays invisible; a prolonged outage/recovery surfaces as chrome toast.
+    let mut link_grace = host::LinkGrace::new();
 
     // Always restore the TTY (even on RenderError / other Err) so a failed
     // host exit does not leave raw mode / keyboard protocol stuck.
@@ -317,6 +320,23 @@ async fn run_host_loop(
                     }
                     if agent_stream.is_none() {
                         apply_idle_downlink(&mut session, driver)?;
+                    }
+                    // ath42: link grace UX — announce only past the grace
+                    // window, once, via chrome toast (never transcript rows).
+                    if let Some(notice) = link_grace.tick(
+                        driver.link_health(),
+                        std::time::Instant::now(),
+                        host::LINK_GRACE_INITIAL,
+                        host::LINK_GRACE_RECONNECT,
+                    ) {
+                        match notice {
+                            host::LinkNotice::Disconnected => {
+                                session.push_chrome_toast(host::LINK_DOWN_NOTICE);
+                            }
+                            host::LinkNotice::Recovered => {
+                                session.push_chrome_toast(host::LINK_RECOVERED_NOTICE);
+                            }
+                        }
                     }
                     if driver.poll_mcp_bootstrap().await {
                         let t0 = std::time::Instant::now();
