@@ -351,21 +351,20 @@
     那么 bang 块行带单列状态轨加无底色 gutter 且内容区无整行洗底
 
   @req:att35 @human
-  场景: explore-grouping-auto-aggregate
-    - 产品 MUST 提供探索分组策略：相邻连续同类检索段（读文件 / 搜索；中间无助手正文或其它类段隔断）达到阈值（默认 ≥3）时，近窗与流式渲染 MUST 默认聚合为单行分组摘要（类目计数式，形如 `✱ Explored — 3 reads · 2 searches`；进行时 MUST 用 Exploring 词形且计数随工具开始更新，对齐 att24 计数时机），MUST NOT 逐条平铺组内子块；不足阈值或类别断开 MUST 保持既有逐块渲染。写类 / bash / diff / compaction / ask 段 MUST NOT 进分组（分组在其实际位置断开）。分组摘要行与 att24 簇头（文件计数式）MUST 在词表上可区分。组折叠时组内子块 MUST NOT 进渲染（与 att25 同构）；展开后组内子块 MUST 服从既有块级折叠态（att20/att21）。`tui.activity_fold.auto_group` 为 false 时 MUST NOT 分组（全细账逐块渲染，块级折叠仍可用）。分组 MUST NOT 改变 att23 嵌套结构与 att26 回合窗收纳语义。手动展开某分组后，该组 MUST 保持展开（不因组内新段到达或流式推进被自动收起）；分组 MUST 有稳定 id，live 与 travel/fork/resume 重建 MUST 同构。
+  场景: explore-cluster-auto-collapse
+    - 产品 MUST 提供探索簇近窗默认收起：当某簇的折叠中间段全部为读/检索类且总数达到阈值（默认 ≥3）时，该簇在近窗与流式期间 MUST 默认呈簇头收纳态（仅簇头行可见，子块 MUST NOT 进渲染，与 att25 同构），且簇头 MUST 附加类目计数后缀（形如 `· 5 reads · 2 searches`；进行时 MUST 用 Exploring 词形，计数随工具开始更新，对齐 att24 计数时机）。混有写类 / bash / compaction / ask / todo / MCP 等非读检索段的簇 MUST NOT 自动收起（保持 att20 默认展开）。用户显式展开后该簇 MUST 保持展开（不因新段到达或流式推进被自动收起），展开后子块 MUST 服从既有块级折叠态（att20/att21）。`tui.activity_fold.auto_collapse_explore` 为 false 时 MUST NOT 自动收起。本条不改变 att23 嵌套结构、att24 基础词形、att26 回合窗与 stream_collapse 折叠地板语义；近窗内的收起簇 MUST 纳入 att28 就近展开作用域。
 
   @req:att35 @executable
-  场景: explore-group-merge-and-expand
-    假如 近窗内存在连续的读段与检索段且无其它类段隔断
-    当 同类段数量达到阈值（默认 3）
-    那么 scrollback MUST 只渲染一行分组摘要且 MUST NOT 平铺组内子块
-    当 相邻出现写类或 bash 段
-    那么 分组 MUST 在该段处断开且两侧保持既有渲染
-    当 用户手动展开该分组
-    那么 组内子块 MUST 全部可见且该组在其后新段到达时仍保持展开
+  场景: explore-cluster-collapse-and-expand
+    假如 近窗内存在一个全部由读段与检索段构成的簇且总数达到阈值
+    那么 该簇 MUST 默认呈现为仅簇头行且附类目计数后缀且子块不进渲染
+    当 用户显式展开该簇
+    那么 子块 MUST 全部可见且该簇在其后新段到达时仍保持展开
+    当 簇内混入写类或 bash 段
+    那么 该簇 MUST NOT 自动收起且保持既有逐块渲染
 
   @req:att35 @executable
-  场景: explore-group-rebuild-isomorphic
-    假如 一个被手动展开退组的分组随会话 travel 或 fork 或 resume 重建
-    当 重建按稳定分组 id 恢复
-    那么 同组 MUST 保持展开态且分组摘要行词形与计数 MUST 与重建前一致
+  场景: explore-cluster-suffix-counting
+    假如 一个探索簇处于流式进行中且已满足自动收起阈值
+    当 新的读段或检索段开始
+    那么 簇头后缀计数 MUST 随工具开始更新且进行时词形 MUST 为 Exploring
