@@ -413,7 +413,21 @@ mod tests {
     #[tokio::test]
     async fn plan_async_completes_within_pipe_timeout() {
         let start = std::time::Instant::now();
-        let _ = plan_clipboard_copy_async("xylitol async clipboard probe".into()).await;
+        // Empty PATH → native miss. MUST NOT call `plan_clipboard_copy_async`
+        // (that reads the real PATH and would spawn wl-copy/xclip/pbcopy).
+        let plan = tokio::task::spawn_blocking(|| {
+            plan_clipboard_copy_with("xylitol async clipboard probe", |k| match k {
+                "PATH" => Some(String::new()),
+                "SSH_CONNECTION" | "SSH_CLIENT" | "MOSH_CONNECTION" => None,
+                _ => None,
+            })
+        })
+        .await
+        .expect("spawn_blocking join");
+        assert!(
+            !plan.native_copied,
+            "empty PATH must not touch native clipboard"
+        );
         assert!(
             start.elapsed() < std::time::Duration::from_secs(6),
             "async plan must not hang past pipe timeout"
