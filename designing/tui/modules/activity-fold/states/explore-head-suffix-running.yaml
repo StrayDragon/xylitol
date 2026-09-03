@@ -1,0 +1,11 @@
+id: activity-fold.explore-head-suffix-running
+cols: 80
+must_contain:
+  - "Exploring 2 files · 2 reads · 1 search"
+must_not_contain:
+  - "Explored"
+  - "Worked for"
+lines:
+  - - { text: "❯ ", token: user }
+    - { text: "排查 flaky 测试", token: on-surface }
+  - - { text: "▸ Exploring 2 files · 2 reads · 1 search  (Alt+Shift+E)", token: muted }

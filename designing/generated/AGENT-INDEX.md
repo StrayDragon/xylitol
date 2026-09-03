@@ -6,7 +6,7 @@ Agent 改某表面：先读**产品代码**，再读短 `intent.md` + `states/*.
 
 | surface | id | 一句话 | states | endpoint |
 |---|---|---|---|---|
-| tui | activity-fold | 折叠减噪：低级操作收进簇；默认最小化入口。 | collapsed, envelope, expanded | `/tui/activity-fold` |
+| tui | activity-fold | 折叠减噪：低级操作收进簇；默认最小化入口。 | collapsed, envelope, expanded, explore-head-suffix, explore-head-suffix-running | `/tui/activity-fold` |
 | tui | ask | 等待态簇底标题 `Asking questions`，**不**画三角。Ask 块必须可交互。禁止 `Planning next moves`。 | waiting | `/tui/ask` |
 | tui | atoms | 截断 `…`、spinner、选中反转（bg on-surface、fg surface，子孙 inherit）。 | rev | `/tui/atoms` |
 | tui | bash | `!` / `!!` 执行进 scrollback：与 tool/diff 同一套 **1-cell 轨**。`!` 时 editor 边框切 success。 | running | `/tui/bash` |

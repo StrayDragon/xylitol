@@ -351,20 +351,18 @@
     那么 bang 块行带单列状态轨加无底色 gutter 且内容区无整行洗底
 
   @req:att35 @human
-  场景: explore-cluster-auto-collapse
-    - 产品 MUST 提供探索簇近窗默认收起：当某簇的折叠中间段全部为读/检索类且总数达到阈值（默认 ≥3）时，该簇在近窗与流式期间 MUST 默认呈簇头收纳态（仅簇头行可见，子块 MUST NOT 进渲染，与 att25 同构），且簇头 MUST 附加类目计数后缀（形如 `· 5 reads · 2 searches`；进行时 MUST 用 Exploring 词形，计数随工具开始更新，对齐 att24 计数时机）。混有写类 / bash / compaction / ask / todo / MCP 等非读检索段的簇 MUST NOT 自动收起（保持 att20 默认展开）。用户显式展开后该簇 MUST 保持展开（不因新段到达或流式推进被自动收起），展开后子块 MUST 服从既有块级折叠态（att20/att21）。`tui.activity_fold.auto_collapse_explore` 为 false 时 MUST NOT 自动收起。本条不改变 att23 嵌套结构、att24 基础词形、att26 回合窗与 stream_collapse 折叠地板语义；近窗内的收起簇 MUST 纳入 att28 就近展开作用域。
+  场景: explore-cluster-head-category-counts
+    - 含探索活动（读 / 搜索调用）的簇，其簇头 MUST 在 att24 文件层词形之后附加类目计数后缀，形如 `· 5 reads · 2 searches`：计数为调用次数（非去重路径数，与 att24 文件计数可区分），仅列非零类目，无路径的搜索调用计入 searches。进行时 MUST 用 Exploring 词形且后缀计数随工具开始更新（对齐 att24 计数时机）。簇内子块的既有默认收纳与展开语义（点击簇头 / att28 就近展开）MUST 保持不变；本条不改变 att23 嵌套结构、att24 基础词形、att26 回合窗语义。
 
   @req:att35 @executable
-  场景: explore-cluster-collapse-and-expand
-    假如 近窗内存在一个全部由读段与检索段构成的簇且总数达到阈值
-    那么 该簇 MUST 默认呈现为仅簇头行且附类目计数后缀且子块不进渲染
-    当 用户显式展开该簇
-    那么 子块 MUST 全部可见且该簇在其后新段到达时仍保持展开
-    当 簇内混入写类或 bash 段
-    那么 该簇 MUST NOT 自动收起且保持既有逐块渲染
+  场景: explore-head-suffix-counts
+    当 以场景构建器回放多读多检索序列（三读两检索且检索无路径）
+    那么 封口簇头 MUST 同时含文件计数与类目计数后缀（3 files · 3 reads · 2 searches）
+    当 以场景构建器回放同类别单序列（三读）
+    那么 后缀 MUST 只列该非零类目
 
   @req:att35 @executable
-  场景: explore-cluster-suffix-counting
-    假如 一个探索簇处于流式进行中且已满足自动收起阈值
+  场景: explore-head-suffix-live-update
+    假如 探索簇流式进行中
     当 新的读段或检索段开始
     那么 簇头后缀计数 MUST 随工具开始更新且进行时词形 MUST 为 Exploring

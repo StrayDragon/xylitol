@@ -215,7 +215,3 @@
     假如 仅存在 config.local.yaml 含可观测字段而无同层 config.yaml
     当 加载配置
     那么 该字段不生效（local 被忽略）
-
-  @req:rc29 @human
-  场景: tui-activity-fold-auto-collapse-explore
-    - AppConfig MUST 支持可选 `tui.activity_fold.auto_collapse_explore`（缺省 true，布尔）：为 false 时探索簇近窗默认收起策略关闭（近窗全部簇保持 att20 默认展开，块级折叠仍可用）；非法值（非布尔）MUST 使配置加载失败，与 tui-activity-fold（rc28）非法值语义同构。由配置单测覆盖，MUST NOT 为静态字段形状单独扩 BDD step。
