@@ -115,3 +115,15 @@ fn test_att27_markers_chords(tui_interaction: TuiInteraction) {}
     name = "activity-expand-collapse-nearest-keys-headless"
 )]
 fn test_att28_nearest_keys(tui_interaction: TuiInteraction) {}
+
+#[scenario(
+    path = "llmanspec/specs/app-tui-transcript/app-tui-transcript.feature",
+    name = "explore-head-suffix-counts"
+)]
+async fn test_att35_head_suffix_counts(transcript_bdd: TranscriptBdd) {}
+
+#[scenario(
+    path = "llmanspec/specs/app-tui-transcript/app-tui-transcript.feature",
+    name = "explore-head-suffix-live-update"
+)]
+async fn test_att35_head_suffix_live(transcript_bdd: TranscriptBdd) {}

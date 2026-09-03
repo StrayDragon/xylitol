@@ -29,6 +29,8 @@ pub struct TranscriptBdd {
     pub ansi_frame: RefCell<Option<String>>,
     /// P4：rebuild 场景的模型快照（重建 / 直播 / 追加通告等顺序留痕）。
     pub models: RefCell<Vec<UiModel>>,
+    /// c2510/att35：跨步推进的场景构建器（流式计数更新断言）。
+    pub scene: RefCell<Option<SceneBuilder>>,
 }
 
 #[fixture]
@@ -40,6 +42,7 @@ pub fn transcript_bdd() -> TranscriptBdd {
         frames: RefCell::new(Vec::new()),
         ansi_frame: RefCell::new(None),
         models: RefCell::new(Vec::new()),
+        scene: RefCell::new(None),
     }
 }
 
@@ -1260,7 +1263,7 @@ fn then_marker_chords(tui_interaction: &TuiInteraction) {
         );
     }
     assert!(
-        plain.contains("▸ Explored f2-1.rs  (Alt+Shift+E)"),
+        plain.contains("▸ Explored f2-1.rs · 1 read  (Alt+Shift+E)"),
         "att27: collapsed cluster heads advertise the same expand chord:\n{plain}"
     );
     assert!(
@@ -1402,5 +1405,98 @@ fn then_all_envelopes_recollapsed(tui_interaction: &TuiInteraction) {
         worked_for_lines(&plain),
         4,
         "att28: every turn is back under a Worked for head:\n{plain}"
+    );
+}
+
+// ── c2510/att35: explore cluster head category-count suffix ────────
+
+#[when("以场景构建器回放多读多检索序列（三读两检索且检索无路径）")]
+fn when_replay_multi_read_search(transcript_bdd: &TranscriptBdd) {
+    let plain = render_plain(|sb| {
+        sb.tool_start("r1", "read", "a.rs")
+            .tool_end("r1", "read")
+            .tool_start("r2", "read", "b.rs")
+            .tool_end("r2", "read")
+            .tool_start("r3", "read", "c.rs")
+            .tool_end("r3", "read")
+            .tool_start("g1", "grep", "")
+            .tool_end("g1", "grep")
+            .tool_start("g2", "grep", "")
+            .tool_end("g2", "grep")
+            .assistant("seal");
+    });
+    *transcript_bdd.frames.borrow_mut() = vec![plain];
+}
+
+#[when("以场景构建器回放同类别单序列（三读）")]
+fn when_replay_reads_only(transcript_bdd: &TranscriptBdd) {
+    let plain = render_plain(|sb| {
+        sb.tool_start("r1", "read", "a.rs")
+            .tool_end("r1", "read")
+            .tool_start("r2", "read", "b.rs")
+            .tool_end("r2", "read")
+            .tool_start("r3", "read", "c.rs")
+            .tool_end("r3", "read")
+            .assistant("seal");
+    });
+    *transcript_bdd.frames.borrow_mut() = vec![plain];
+}
+
+#[then("封口簇头 MUST 同时含文件计数与类目计数后缀（3 files · 3 reads · 2 searches）")]
+fn then_head_file_and_call_counts(transcript_bdd: &TranscriptBdd) {
+    let frames = transcript_bdd.frames.borrow();
+    let plain = frames.last().expect("frame");
+    assert!(
+        plain.contains("Explored 3 files · 3 reads · 2 searches"),
+        "head must carry file count then invocation counts:\n{plain}"
+    );
+}
+
+#[then("后缀 MUST 只列该非零类目")]
+fn then_suffix_single_category(transcript_bdd: &TranscriptBdd) {
+    let frames = transcript_bdd.frames.borrow();
+    let plain = frames.last().expect("frame");
+    assert!(plain.contains("· 3 reads"), "{plain}");
+    assert!(
+        !plain.contains("search"),
+        "single-category suffix must omit searches:\n{plain}"
+    );
+}
+
+#[given("探索簇流式进行中")]
+fn given_live_explore_cluster(transcript_bdd: &TranscriptBdd) {
+    let mut sb = SceneBuilder::begin();
+    sb.tool_start("r1", "read", "a.rs");
+    let (plain, _) = sb.render(80);
+    *transcript_bdd.frames.borrow_mut() = vec![plain];
+    *transcript_bdd.scene.borrow_mut() = Some(sb);
+}
+
+#[when("新的读段或检索段开始")]
+fn when_new_tool_starts(transcript_bdd: &TranscriptBdd) {
+    let mut scene = transcript_bdd.scene.borrow_mut();
+    let sb = scene.as_mut().expect("live scene");
+    sb.tool_end("r1", "read");
+    sb.tool_start("r2", "read", "b.rs");
+    let (plain, _) = sb.render(80);
+    transcript_bdd.frames.borrow_mut().push(plain);
+}
+
+#[then("簇头后缀计数 MUST 随工具开始更新且进行时词形 MUST 为 Exploring")]
+fn then_suffix_updates_live(transcript_bdd: &TranscriptBdd) {
+    let frames = transcript_bdd.frames.borrow();
+    assert_eq!(frames.len(), 2, "two streaming frames");
+    let (first, second) = (&frames[0], &frames[1]);
+    assert!(
+        first.contains("Exploring") && first.contains("· 1 read"),
+        "first frame must be Exploring with 1 read:\n{first}"
+    );
+    assert!(
+        second.contains("Exploring") && second.contains("· 2 reads"),
+        "suffix count MUST update as tools start:\n{second}"
+    );
+    assert!(
+        !second.contains("· 1 read"),
+        "stale count must not linger:\n{second}"
     );
 }

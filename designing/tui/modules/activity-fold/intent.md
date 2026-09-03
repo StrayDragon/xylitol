@@ -14,8 +14,15 @@
 | Asking questions | Ask 等待尾行 |
 | Worked for {duration} | 旧 turn 信封（缺戳则省略时长，禁止伪造） |
 | Working / Running {name} | 状态条 busy 短词 |
+| `Explored N files · N reads[ · M searches]` | 探索簇头类目计数后缀（c2510/att35）：calls 计数 ≠ 文件计数；进行时 Exploring 同构携带；仅列非零类目；Edited 头不附 |
 
-**禁止**：`Planning next moves`（簇头、尾行、状态条都不进）。
+**禁止**：`Planning next moves`（簇头、尾行、状态条都不进）；探索计数后缀编造文件数（后缀恒为调用次数，文件数恒为去重 path）。
+
+## 探索计数后缀（c2510/att35）
+
+- 含探索活动（读 / 搜索调用）的簇，簇头 MUST 在文件层词形后附 `· N reads[ · M searches]`；无路径搜索计入 searches。
+- 进行时 `Exploring …` 同构携带后缀，计数随工具开始更新。
+- Edited 头（文件层互斥）不附探索计数。
 
 ## 可观察 MUST
 

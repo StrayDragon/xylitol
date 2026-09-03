@@ -1,0 +1,11 @@
+id: activity-fold.explore-head-suffix
+cols: 80
+must_contain:
+  - "Explored 3 files · 3 reads · 2 searches"
+must_not_contain:
+  - "Planning next moves"
+lines:
+  - - { text: "❯ ", token: user }
+    - { text: "排查 flaky 测试", token: on-surface }
+  - - { text: "▸ Explored 3 files · 3 reads · 2 searches", token: muted }
+  - - { text: "瓶颈在重试间隔，准备改退避参数", token: on-surface }

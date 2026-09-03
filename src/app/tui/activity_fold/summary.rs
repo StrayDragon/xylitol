@@ -24,6 +24,11 @@ pub struct ActivityCounts {
     pub explore_paths: Vec<String>,
     /// Search ran with no usable path — still qualifies Explored, no fake N.
     pub search_no_path: bool,
+    /// Explore invocations by category (c2510/att35 head suffix): invocation
+    /// count, not the deduped-path count of `explore_paths`. Pathless
+    /// searches count here too.
+    pub read_calls: u32,
+    pub search_calls: u32,
     pub commands: u32,
     pub thinking: u32,
     /// MCP / unknown / todo_* display names (first-seen, unique; N=1 header).
@@ -155,11 +160,17 @@ fn counts_from_atoms(atoms: impl IntoIterator<Item = ActivityAtom>) -> ActivityC
                     saw_diff_stats = true;
                 }
             }
-            ActivityAtom::Explore { path, kind } => match (path, kind) {
-                (Some(p), _) => push_unique(&mut c.explore_paths, p),
-                (None, ExploreKind::Search) => c.search_no_path = true,
-                (None, ExploreKind::File) => anon_explores += 1,
-            },
+            ActivityAtom::Explore { path, kind } => {
+                match kind {
+                    ExploreKind::File => c.read_calls = c.read_calls.saturating_add(1),
+                    ExploreKind::Search => c.search_calls = c.search_calls.saturating_add(1),
+                }
+                match (path, kind) {
+                    (Some(p), _) => push_unique(&mut c.explore_paths, p),
+                    (None, ExploreKind::Search) => c.search_no_path = true,
+                    (None, ExploreKind::File) => anon_explores += 1,
+                }
+            }
             ActivityAtom::Run => c.commands += 1,
             ActivityAtom::Used { display_name } => {
                 c.used_calls = c.used_calls.saturating_add(1);
@@ -208,16 +219,42 @@ fn basename(path: &str) -> &str {
     ""
 }
 
+/// Shared count pluralization (files / tools / commands / reads / searches).
+fn plural_word<'a>(n: u32, single: &'a str, many: &'a str) -> &'a str {
+    if n == 1 { single } else { many }
+}
+
 fn files_word(n: u32) -> &'static str {
-    if n == 1 { "file" } else { "files" }
+    plural_word(n, "file", "files")
 }
 
 fn tool_word(n: u32) -> &'static str {
-    if n == 1 { "tool" } else { "tools" }
+    plural_word(n, "tool", "tools")
 }
 
 fn command_word(n: u32) -> &'static str {
-    if n == 1 { "command" } else { "commands" }
+    plural_word(n, "command", "commands")
+}
+
+/// `· 5 reads · 2 searches` body (without the leading separator); empty when
+/// the cluster has no explore invocations.
+fn explore_calls_clause(counts: &ActivityCounts) -> String {
+    let mut parts = Vec::new();
+    if counts.read_calls > 0 {
+        parts.push(format!(
+            "{} {}",
+            counts.read_calls,
+            plural_word(counts.read_calls, "read", "reads")
+        ));
+    }
+    if counts.search_calls > 0 {
+        parts.push(format!(
+            "{} {}",
+            counts.search_calls,
+            plural_word(counts.search_calls, "search", "searches")
+        ));
+    }
+    parts.join(" · ")
 }
 
 fn file_clause(verb: &str, paths: &[String]) -> String {
@@ -250,15 +287,21 @@ pub fn format_cluster_body(counts: &ActivityCounts, progressive: bool) -> String
     };
     if !counts.edit_paths.is_empty() {
         parts.push(file_clause(file_verb, &counts.edit_paths));
-    } else if !counts.explore_paths.is_empty() {
+    } else if !counts.explore_paths.is_empty() || counts.search_no_path {
         let explore_verb = if progressive { "Exploring" } else { "Explored" };
-        parts.push(file_clause(explore_verb, &counts.explore_paths));
-    } else if counts.search_no_path {
-        parts.push(if progressive {
-            "Exploring".into()
+        let mut clause = if !counts.explore_paths.is_empty() {
+            file_clause(explore_verb, &counts.explore_paths)
         } else {
-            "Explored".into()
-        });
+            explore_verb.to_string()
+        };
+        // c2510/att35: invocation-category counts after the file clause —
+        // real calls, not another deduped-path figure.
+        let calls = explore_calls_clause(counts);
+        if !calls.is_empty() {
+            clause.push_str(" · ");
+            clause.push_str(&calls);
+        }
+        parts.push(clause);
     }
     if counts.commands > 0 {
         parts.push(format!(
@@ -479,10 +522,49 @@ mod tests {
         let s = format_l2_body(&c);
         assert!(s.contains("Explored a.rs"), "{s}");
         assert!(!s.contains("Explored 2"), "{s}");
-        assert!(!s.contains("search"), "{s}");
+        // c2510/att35: invocation counts are real, no fake file figure.
+        assert!(s.contains("· 2 reads · 1 search"), "{s}");
         let live = format_cluster_body(&c, true);
-        assert!(live.contains("Exploring a.rs"), "{live}");
+        assert!(
+            live.contains("Exploring a.rs · 2 reads · 1 search"),
+            "{live}"
+        );
         assert!(!live.contains("Editing"), "{live}");
+    }
+
+    #[test]
+    fn explore_head_suffix_single_category_and_counts() {
+        // three reads, one pathless search on top → both categories listed
+        let entries = vec![
+            tool("read", Some("a.rs")),
+            tool("read", Some("b.rs")),
+            tool("read", Some("c.rs")),
+            tool("grep", None),
+            tool("grep", None),
+        ];
+        let c = count_middles(&entries, &[0, 1, 2, 3, 4]);
+        let s = format_l2_body(&c);
+        assert!(s.contains("Explored 3 files · 3 reads · 2 searches"), "{s}");
+
+        // single category → only that category listed, singular form kept
+        let reads_only = vec![tool("read", Some("a.rs"))];
+        let c = count_middles(&reads_only, &[0]);
+        let s = format_l2_body(&c);
+        assert!(s.contains("Explored a.rs · 1 read"), "{s}");
+        assert!(!s.contains("search"), "{s}");
+
+        // pathless searches only → bare verb carries the search count
+        let searches_only = vec![tool("grep", None), tool("grep", None)];
+        let c = count_middles(&searches_only, &[0, 1]);
+        let s = format_l2_body(&c);
+        assert_eq!(s, "Explored · 2 searches");
+
+        // Edited head takes no explore suffix (att24 file-layer mutex)
+        let mixed = vec![tool("read", Some("a.rs")), tool("edit", Some("b.rs"))];
+        let c = count_middles(&mixed, &[0, 1]);
+        let s = format_l2_body(&c);
+        assert!(s.starts_with("Edited"), "{s}");
+        assert!(!s.contains("reads"), "{s}");
     }
 
     #[test]
@@ -657,17 +739,17 @@ mod tests {
         let entries = vec![tool("ls", Some(".")), tool("bash", None)];
         let c = count_middles(&entries, &[0, 1]);
         let s = format_l2_body(&c);
-        assert_eq!(s, "Explored 1 file, Ran 1 command");
+        assert_eq!(s, "Explored 1 file · 1 read, Ran 1 command");
         assert!(!s.contains("Explored ."), "{s}");
         assert!(!s.contains("Explored ..."), "{s}");
 
         let abs = tool("ls", Some("/home/l8ng/Projects/__straydragon__/xylitol/."));
         let c = count_middles(&[abs], &[0]);
-        assert_eq!(format_l2_body(&c), "Explored xylitol");
+        assert_eq!(format_l2_body(&c), "Explored xylitol · 1 read");
 
         let dotfile = tool("read", Some(".gitignore"));
         let c = count_middles(&[dotfile], &[0]);
-        assert_eq!(format_l2_body(&c), "Explored .gitignore");
+        assert_eq!(format_l2_body(&c), "Explored .gitignore · 1 read");
     }
 
     #[test]
