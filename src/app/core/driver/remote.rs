@@ -1748,15 +1748,51 @@ mod tests {
         }
     }
 
+    /// Empty PATH so `plan_clipboard_copy` cannot spawn wl-copy/xclip/pbcopy.
+    /// Restored on drop. `env_global` covers the cargo-test in-process fallback
+    /// (nextest is already process-per-test).
+    struct StarveNativeClipboard {
+        saved_path: Option<std::ffi::OsString>,
+    }
+
+    impl StarveNativeClipboard {
+        fn enter() -> Self {
+            let saved_path = std::env::var_os("PATH");
+            unsafe {
+                std::env::set_var("PATH", "");
+            }
+            Self { saved_path }
+        }
+    }
+
+    impl Drop for StarveNativeClipboard {
+        fn drop(&mut self) {
+            unsafe {
+                match self.saved_path.take() {
+                    Some(path) => std::env::set_var("PATH", path),
+                    None => std::env::remove_var("PATH"),
+                }
+            }
+        }
+    }
+
+    // env_global: this test clears PATH so native clipboard tools are not
+    // spawned (would clobber the developer clipboard). Elimination path:
+    // inject get_env into Driver clipboard helpers.
     #[tokio::test]
+    #[serial_test::serial(env_global)]
     async fn clipboard_ops_stay_client_local() {
+        let _starve = StarveNativeClipboard::enter();
         let client = CountingClient::default();
         let mut driver = XyRemoteDriver::with_host(client.clone(), "s");
 
-        let outcome = driver.copy_text_to_clipboard("copy-me").await;
+        let outcome = driver
+            .copy_text_to_clipboard("copy-me")
+            .await
+            .expect("OSC52 fallback MUST make copy succeed without native tools");
         assert!(
-            outcome.is_ok(),
-            "OSC52 fallback MUST make copy succeed headless: {outcome:?}"
+            outcome.pending_osc52.is_some(),
+            "empty PATH MUST take OSC52 fallback, not native copy"
         );
         let _ = driver.stage_clipboard_image().await;
         let _ = driver.read_clipboard_text().await;
