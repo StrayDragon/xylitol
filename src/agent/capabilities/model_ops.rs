@@ -43,7 +43,7 @@ impl AgentCapabilities {
         self.with_models(|mm| mm.thinking_level())
     }
 
-    /// Selected binding when idle (no in-flight turn). Live chrome uses the
+    /// Selected binding when idle (no in-flight turn). Live fixed zone uses the
     /// run coordinator via [`crate::agent::runtime::AgentRuntime`].
     pub fn selected_turn_binding(&self) -> Option<ActiveTurnBinding> {
         self.with_models(ActiveTurnBinding::from_manager)

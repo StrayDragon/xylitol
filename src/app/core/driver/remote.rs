@@ -271,7 +271,7 @@ where
     }
 
     /// True for Agent/Turn/stream tape that a cold `last_seq=0` subscribe must not
-    /// paint as live (c2307). Queue / error / chrome facts still pass.
+    /// paint as live (c2307). Queue / error / fixed-zone facts still pass.
     fn is_cold_replay_tape(ev: &XyEvent) -> bool {
         matches!(
             ev,
@@ -406,7 +406,7 @@ where
                             .await
                         {
                             // ath42: silent — reconnect churn must not paint
-                            // the transcript; chrome grace UX handles notice.
+                            // the transcript; fixed-zone grace UX handles notice.
                             subscribed_ok.store(false, Ordering::SeqCst);
                             backoff = next_backoff(backoff, connected_at.elapsed());
                             tokio::select! {
@@ -552,7 +552,7 @@ where
                     }
                     Err(_) => {
                         // ath42: silent — reconnect churn must not paint the
-                        // transcript; chrome grace UX handles the notice.
+                        // transcript; fixed-zone grace UX handles the notice.
                         subscribed_ok.store(false, Ordering::SeqCst);
                         backoff = next_backoff(backoff, connected_at.elapsed());
                         tokio::select! {
@@ -579,7 +579,7 @@ where
         Ok(())
     }
 
-    async fn refresh_chrome_caches(&self) -> Result<(), XyDriverError> {
+    async fn refresh_fixed_zone_caches(&self) -> Result<(), XyDriverError> {
         if let Ok(data) = self.unary_cmd(Command::GetState {}).await {
             self.update_leaf_from_state(&data);
             if let Some(m) = data.get("model").filter(|m| !m.is_null())
@@ -753,18 +753,18 @@ where
         // describe on the attach critical path.
         self.ensure_downlink();
         self.wait_subscribed().await?;
-        self.refresh_chrome_caches().await
+        self.refresh_fixed_zone_caches().await
     }
 
     async fn refresh_surface_caches(&mut self) -> Result<(), XyDriverError> {
-        self.refresh_chrome_caches().await
+        self.refresh_fixed_zone_caches().await
     }
 
     fn drain_idle_events(&mut self) -> Vec<XyEvent> {
         self.downlink.drain()
     }
 
-    /// ath42/c2480: attachment health tracks the mux subscription; chrome
+    /// ath42/c2480: attachment health tracks the mux subscription; fixed-zone
     /// grace UX (never transcript error rows) consumes it.
     fn link_health(&self) -> super::LinkHealth {
         if self.subscribed_ok.load(Ordering::SeqCst) {
@@ -1504,7 +1504,7 @@ where
         Ok(RuntimeReloadReport { steps, cancelled })
     }
 
-    /// Client-local clipboard semantics live in [`super::clipboard`] (shared
+    /// Client-local clipboard semantics live in `super::clipboard` (shared
     /// with the in-process driver; MUST NOT route through the Host, D1).
     async fn copy_text_to_clipboard(
         &mut self,
@@ -1857,7 +1857,7 @@ mod tests {
         driver
             .refresh_surface_caches()
             .await
-            .expect("refresh chrome caches");
+            .expect("refresh fixed zone caches");
         let _ = driver.current_model();
         assert!(driver.leaf_entry_id().is_some());
         let target_id = tree

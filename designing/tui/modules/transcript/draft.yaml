@@ -1,9 +1,10 @@
 id: transcript
-title: 对话区
+title: 主滚动区
+category: 对话条目
 surface: tui
 summary: live scrollback：user/assistant/thinking flush；tool 轨。
 alignment:
-  chrome: 主滚动区
+  fixed: 主滚动区
   item: 非 Codex TranscriptView
   todo-bar: Todo 块可在折叠簇内，不另起浏览面
 todos:

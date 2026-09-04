@@ -1,14 +1,14 @@
-//! Chrome Footprint apply path for [`UiRoot`] (atc23 / c1810).
+//! Fixed-Zone Footprint apply path for [`UiRoot`] (atc23 / c1810).
 
 use super::super::slots::EditorSlot;
 use super::super::{
     IMPORT_SLOT, MCP_SLOT_BASE, MODELS_SLOT, RESUME_SLOT, THEMES_SLOT, TREE_SLOT,
-    queue_strip_line_count, reserved_lower_chrome, slot_body_budget,
+    queue_strip_line_count, reserved_lower_fixed_zone, slot_body_budget,
 };
 use super::UiRoot;
 
 impl UiRoot {
-    /// Terminal height for Chrome Footprint budgets (atc23). Host MUST sync on
+    /// Terminal height for Fixed-Zone Footprint budgets (atc23). Host MUST sync on
     /// construct / resize / before paint.
     pub fn set_term_rows(&mut self, rows: usize) {
         self.term_rows = rows.max(1);
@@ -19,13 +19,13 @@ impl UiRoot {
     }
 
     /// Apply term-aware `max_visible` to the live flex list/tree slot (atc23).
-    pub(crate) fn apply_chrome_footprint(&mut self) {
+    pub(crate) fn apply_fixed_zone_footprint(&mut self) {
         let queue_lines = queue_strip_line_count(
             self.ui_model.pending_steer.len(),
             self.ui_model.pending_follow_up.len(),
         );
-        let toast_present = self.chrome_toast.is_some();
-        let reserved = reserved_lower_chrome(self.status_busy, queue_lines, toast_present);
+        let toast_present = self.toast_notice.is_some();
+        let reserved = reserved_lower_fixed_zone(self.status_busy, queue_lines, toast_present);
         let rows = self.term_rows;
 
         match &mut self.slot {

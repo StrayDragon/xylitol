@@ -31,7 +31,7 @@ pub use super::commands::{PendingBash, PendingSlash, bash_block_status, bash_out
 pub const MIN_COLS: u16 = 40;
 pub const MIN_ROWS: u16 = 6;
 
-/// Compact path for chrome (`$HOME` / `%USERPROFILE%` → `~`).
+/// Compact path for display (`$HOME` / `%USERPROFILE%` → `~`).
 pub fn display_path(path: impl AsRef<std::path::Path>) -> String {
     let abs = path.as_ref().display().to_string();
     let home = std::env::var_os("HOME").or_else(|| std::env::var_os("USERPROFILE"));
@@ -228,8 +228,8 @@ impl<T: Terminal> HostSession<T> {
         }
     }
 
-    /// Register lower chrome as ApplicationOwned dock (status/editor/footer…).
-    /// Prefers last-frame measured rows; falls back to a chrome estimate.
+    /// Register lower fixed zone as ApplicationOwned dock (status/editor/footer…).
+    /// Prefers last-frame measured rows; falls back to a fixed-zone estimate.
     pub fn sync_dock_rows(&mut self) {
         let rows = if let Some(root) = self.ui_root.as_ref() {
             let r = root.borrow();
@@ -281,7 +281,7 @@ impl<T: Terminal> HostSession<T> {
     /// Product UI with a fixed interaction mode chosen at construction (ath30).
     ///
     /// **No mid-session mode switch** — pass the desired mode here (or rebuild
-    /// the whole host). ApplicationOwned begins alt+mouse after chrome is wired.
+    /// the whole host). ApplicationOwned begins alt+mouse after the fixed zone is wired.
     pub fn new_product_ui_with_meta_mode(
         terminal: T,
         cwd: String,
@@ -430,7 +430,7 @@ impl<T: Terminal> HostSession<T> {
         }
     }
 
-    /// Clear reload chrome after success / cancel / fail.
+    /// Clear reload fixed-zone state after success / cancel / fail.
     pub fn end_reload(&mut self) {
         self.reload_active = false;
         self.reload_cancel = None;
@@ -624,8 +624,8 @@ impl<T: Terminal> HostSession<T> {
         root.borrow_mut().set_thinking_level_ui(level);
     }
 
-    /// Sync footer active chrome + optional next-turn cue from driver (c1470).
-    pub fn sync_runtime_chrome(&mut self, driver: &dyn crate::app::core::driver::XyDriver) {
+    /// Sync footer active fixed zone + optional next-turn cue from driver (c1470).
+    pub fn sync_fixed_zone(&mut self, driver: &dyn crate::app::core::driver::XyDriver) {
         let selected = driver.current_model();
         let selected_label = selected
             .as_ref()
@@ -669,7 +669,7 @@ impl<T: Terminal> HostSession<T> {
 
         if let Some(root) = self.ui_root.as_ref() {
             let mut root = root.borrow_mut();
-            root.set_active_chrome(footer_label, footer_thinking, omit);
+            root.set_active_fixed_zone(footer_label, footer_thinking, omit);
             root.set_status_next_turn_cue(cue);
         }
         self.sync_ui_root_from_model();
@@ -736,10 +736,10 @@ impl<T: Terminal> HostSession<T> {
         self.sync_ui_root_from_model();
     }
 
-    /// Push chrome toast (shell notice above status; not `UiEntry`).
-    pub fn push_chrome_toast(&mut self, text: impl Into<String>) {
+    /// Push toast notice (shell notice above status; not `UiEntry`).
+    pub fn push_toast_notice(&mut self, text: impl Into<String>) {
         if let Some(root) = self.ui_root.as_ref() {
-            root.borrow_mut().push_chrome_toast(text);
+            root.borrow_mut().push_toast_notice(text);
             self.paint_dirty = true;
         }
     }
@@ -840,7 +840,7 @@ impl<T: Terminal> HostSession<T> {
         let mut root = root.borrow_mut();
         root.set_term_rows(rows);
         root.apply_ui_model(&self.ui_model);
-        // Entries / chrome changed — ApplicationOwned must not reproject stale cache.
+        // Entries / fixed zone changed — ApplicationOwned must not reproject stale cache.
         drop(root);
         self.tui.mark_ao_components_stale();
     }
@@ -898,9 +898,9 @@ impl<T: Terminal> HostSession<T> {
         self.step_paint_only()
     }
 
-    /// Throttled paint after model/chrome updates (shared by `step` and stream coalesce).
+    /// Throttled paint after model/fixed-zone updates (shared by `step` and stream coalesce).
     pub(crate) fn step_paint_only(&mut self) -> Result<(), XyDriverError> {
-        // Dock sync only when chrome/content may have changed. Reproject-only
+        // Dock sync only when fixed-zone/content may have changed. Reproject-only
         // wheel frames keep the prior dock measurement.
         let may_paint = self.tui.is_render_requested();
         let need_dock_sync =
@@ -999,7 +999,7 @@ impl<T: Terminal> HostSession<T> {
                     self.tui.mark_ao_components_stale();
                 }
             }
-            // ptim15 → ath31: library edge → chrome «Copied» (not Error: toast).
+            // ptim15 → ath31: library edge → fixed-zone «Copied» (not Error: toast).
             if self.tui.take_copy_notice()
                 && let Some(root) = self.ui_root.as_ref()
             {
@@ -1078,7 +1078,7 @@ impl<T: Terminal> HostSession<T> {
                 self.tui.add_child(child);
             }
             self.tui.set_focus(Some(0));
-            // Force clearing redraw so Ready chrome does not ghost over the hint.
+            // Force clearing redraw so Ready fixed zone does not ghost over the hint.
             self.tui.request_render(true);
             if self.tui.render_now().is_ok() {
                 log::warn!(

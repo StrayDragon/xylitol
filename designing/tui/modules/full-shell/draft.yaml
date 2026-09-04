@@ -1,10 +1,13 @@
 id: full-shell
-title: 整壳
+title: 整壳与预算
+category: 布局与基础
 surface: tui
-summary: idle/busy 整屏对照：transcript + 队列 + toast + status + editor + footer。
+summary: idle/busy 整屏对照 + 短终端预算：transcript + 队列 + 通知条 + status + editor + footer。
 alignment:
-  chrome: 自上而下 scrollback → 队列 → toast → status → editor → footer
+  fixed: 自上而下 scrollback → 队列 → toast → status → editor → footer
 todos:
   - { done: true, text: "busy 示意 Working + footer active" }
+  - { done: true, text: "短终端仍见 Working（fixed_zone_footprint 预算）" }
 notes: |
   组合稿；细节以各模块 + 产品代码为准。
+  代码 SSOT：fixed_zone_footprint（槽高与下缘固定区预算）。

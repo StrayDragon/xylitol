@@ -1,9 +1,10 @@
 id: expandable
-title: Expandable
+title: 块级折叠
+category: 对话条目
 surface: tui
 summary: 块级折叠；Alt+E 显隐正文，Ctrl+O 视口满高。thinking flush，tool 轨。
 alignment:
-  chrome: transcript 块，不是簇级 activity-fold
+  fixed: transcript 块，不是簇级 activity-fold
   item: 与 Diff / Ask 共用 tools 展开开关
 todos:
   - { done: true, text: "collapsed / expanded 对照 Alt+E 与 Ctrl+O" }

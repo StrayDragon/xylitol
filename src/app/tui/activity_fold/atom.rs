@@ -43,7 +43,7 @@ pub enum ActivityAtom {
         id: String,
     },
     Compaction,
-    /// Envelope / chrome rows (User, Assistant, notices, bang Bash). Omitted.
+    /// Envelope / scaffold rows (User, Assistant, notices, bang Bash). Omitted.
     Noise,
     /// Todo checklist is a projection of `todo_*` results, not a Used call.
     Projection,
@@ -152,7 +152,7 @@ fn used_display_name(name: &str) -> String {
     name.to_string()
 }
 
-/// Streaming / empty path chrome (`preview.rs` `PATH_PLACEHOLDER`), not a real file.
+/// Streaming / empty-path placeholder (`preview.rs` `PATH_PLACEHOLDER`), not a real file.
 pub(crate) fn is_path_placeholder(p: &str) -> bool {
     let p = p.trim();
     p.is_empty() || p == "..." || p == "…" || p == "$ ..." || p.starts_with("...")

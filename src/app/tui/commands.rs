@@ -74,7 +74,7 @@ pub enum SlashPermit {
 /// Alias kept for call sites / specs that say «busy slash policy» (c1580).
 pub type BusySlashPolicy = SlashPermit;
 
-/// Chrome-toast body when Resume Enter would switch/rename/delete while busy
+/// Toast-notice body when Resume Enter would switch/rename/delete while busy
 /// (c1780 / c1800 / atm10). Render prefixes `Error: ` with warning paint.
 pub const BUSY_SESSION_SWITCH_NOTICE: &str =
     "agent busy — finish turn or Esc abort before switching session";
@@ -88,11 +88,11 @@ pub const RELOAD_CANCELLED_NOTICE: &str = "reload cancelled";
 /// Toast body when `/reload` fails (c1205); details stay in the ScrollNotice report.
 pub const RELOAD_FAILED_NOTICE: &str = "reload failed — see report";
 
-/// Default TTL for chrome toast auto-clear (atc22 · ~3–5s).
-pub const CHROME_TOAST_TTL: std::time::Duration = std::time::Duration::from_secs(4);
+/// Default TTL for toast notice auto-clear (atc22 · ~3–5s).
+pub const TOAST_NOTICE_TTL: std::time::Duration = std::time::Duration::from_secs(4);
 
-/// Visible prefix for chrome toast lines (atc22 / chrome-toast.md).
-pub const CHROME_TOAST_ERROR_PREFIX: &str = "Error: ";
+/// Visible prefix for toast notice lines (atc22 / toast-notice.md).
+pub const TOAST_NOTICE_ERROR_PREFIX: &str = "Error: ";
 
 /// Per-slash allowances across host gates (c1210).
 ///
@@ -146,7 +146,7 @@ pub fn slash_allowances(slash: &PendingSlash) -> SlashAllowances {
         PendingSlash::ForkAtLeaf => SlashAllowances {
             when_agent_busy: Reject,
         },
-        // Chrome / trust
+        // Misc / trust
         PendingSlash::Theme { .. } => SlashAllowances {
             when_agent_busy: Allow,
         },

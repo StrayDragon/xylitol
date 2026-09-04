@@ -14,12 +14,12 @@ pub enum PreviewInject {
     /// SessionEntry / JSONL seed → `rebuild_scrollback_from_travel`.
     Resume,
     /// `mount_*` / toast / footer / slash-only UI smoke.
-    Chrome(ChromeOp),
+    FixedZone(FixedZoneOp),
 }
 
-/// Chrome-plane inject (not transcript `UiEntry`s).
+/// Fixed-zone-plane inject (not transcript `UiEntry`s).
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub enum ChromeOp {
+pub enum FixedZoneOp {
     Toast,
     NextTurnCue,
     SlotModels,
@@ -67,7 +67,7 @@ pub const DEBUG_SCENES: &[DebugSceneMeta] = &[
     DebugSceneMeta {
         id: "verify-smoke",
         description: "UI-only B4/B7 smoke (no LLM, no /exit); report via scroll notice",
-        inject: PreviewInject::Chrome(ChromeOp::SlotModels),
+        inject: PreviewInject::FixedZone(FixedZoneOp::SlotModels),
     },
     DebugSceneMeta {
         id: "activity-fold-live",
@@ -165,16 +165,16 @@ mod tests {
         assert_eq!(by_id["activity-fold-live"], LiveTape);
         assert_eq!(by_id["activity-fold-live-xy"], LiveXy);
         assert_eq!(by_id["activity-fold-resume"], Resume);
-        assert_eq!(by_id["verify-smoke"], Chrome(ChromeOp::SlotModels));
+        assert_eq!(by_id["verify-smoke"], FixedZone(FixedZoneOp::SlotModels));
         let _seams = [
             LiveXy,
             LiveTape,
             Resume,
-            Chrome(ChromeOp::Toast),
-            Chrome(ChromeOp::NextTurnCue),
-            Chrome(ChromeOp::SlotModels),
-            Chrome(ChromeOp::SlotChoice),
-            Chrome(ChromeOp::SlotTree),
+            FixedZone(FixedZoneOp::Toast),
+            FixedZone(FixedZoneOp::NextTurnCue),
+            FixedZone(FixedZoneOp::SlotModels),
+            FixedZone(FixedZoneOp::SlotChoice),
+            FixedZone(FixedZoneOp::SlotTree),
         ];
         assert_eq!(_seams.len(), 8);
         assert_eq!(by_id["session-tree-multiturn"], Resume);

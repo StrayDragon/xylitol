@@ -3,7 +3,7 @@ title: 回合用量折叠行
 surface: tui-lab
 summary: "每轮回复后追加 tokens/cost 折叠行，缓存劣化标 warning。"
 alignment:
-  chrome: transcript 信息面的折叠条目；不是壳层通告 / 错误行
+  fixed: transcript 信息面的折叠条目；不是通知条 / 错误行
   item: 展开交互与 expandable / activity fold 同源，不另立键位
 todos:
   - { done: false, text: "usage provenance 数据到行字段的映射" }

@@ -1,0 +1,19 @@
+id: paste-fold.plain
+cols: 72
+must_contain:
+  - "def handle(req):"
+must_not_contain:
+  - "[Pasted"
+lines:
+  -
+    - { text: "帮我参考这个实现：", token: on-surface }
+  -
+    - { text: "def handle(req):", token: on-surface }
+  -
+    - { text: "    try:", token: on-surface }
+  -
+    - { text: "    except: …", token: on-surface }
+  -
+    - { text: "（12 行全量展开，光标逐字符移动）", token: muted }
+  -
+    - { text: "重点看错误处理分支。", token: on-surface }

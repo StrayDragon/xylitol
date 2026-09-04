@@ -1,8 +1,8 @@
 //! PendingSlash side-effect arms (c1170). Still drained only via drain_pending.
 
-mod chrome;
 mod compact;
 mod debug;
+mod misc;
 mod model;
 mod session;
 
@@ -18,7 +18,7 @@ pub(super) async fn handle_slash<T: Terminal>(
     slash: PendingSlash,
 ) {
     match slash {
-        PendingSlash::Exit => chrome::exit(session).await,
+        PendingSlash::Exit => misc::exit(session).await,
         PendingSlash::OpenModels => model::open(session, driver).await,
         PendingSlash::SetModel(model_id) => model::set(session, driver, model_id).await,
         PendingSlash::DebugScene(scene) => debug::run(session, driver, scene).await,
@@ -34,11 +34,11 @@ pub(super) async fn handle_slash<T: Terminal>(
         PendingSlash::SessionNew => session::new_session(session, driver).await,
         PendingSlash::SessionClone => session::clone_session(session, driver).await,
         PendingSlash::SessionName { name } => session::name(session, driver, name).await,
-        PendingSlash::Reload => chrome::reload(session).await,
-        PendingSlash::Trust { mode } => chrome::trust(session, driver, mode).await,
-        PendingSlash::HistoryCopyLast => chrome::history_copy_last(session, driver).await,
-        PendingSlash::Theme { arg } => chrome::theme(session, arg).await,
-        PendingSlash::OpenMcp => chrome::open_mcp(session, driver).await,
-        PendingSlash::Usage(msg) => chrome::usage(session, msg).await,
+        PendingSlash::Reload => misc::reload(session).await,
+        PendingSlash::Trust { mode } => misc::trust(session, driver, mode).await,
+        PendingSlash::HistoryCopyLast => misc::history_copy_last(session, driver).await,
+        PendingSlash::Theme { arg } => misc::theme(session, arg).await,
+        PendingSlash::OpenMcp => misc::open_mcp(session, driver).await,
+        PendingSlash::Usage(msg) => misc::usage(session, msg).await,
     }
 }

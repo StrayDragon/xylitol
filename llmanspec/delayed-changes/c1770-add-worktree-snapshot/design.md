@@ -111,7 +111,7 @@ changeset。未来若需要持久 review/session，再单独设计 ref 命名、
 | 是否拆成 infra 与 agent/app 两个 change？ | **现在就按两个 change 的边界规划。** 本 change 只做 infra port + Git adapter；Turn consumer、review gate、UI、回滚入口各自后置 | 当前 `depends_on: []`；后续消费者依赖本 change 归档后的契约 |
 | tree oid 是否挂 ref 防 GC？ | **MVP 不挂 ref。** 只在内存持有，跨进程不保证；失效明确报 `StaleBaseline` | 持久化快照需另开存活/清理设计 |
 | `git` CLI 还是 gix/git2？ | **MVP 选 Git CLI。** 仓库已有 CLI 进程模式且无现成库依赖；参数数组和固定 diff flags 限制 shell/config 旁路 | 后续若性能证据足够，再以独立 adapter 评估 gix |
-| 「TurnEnd 静默 capture 默认开」由谁控制？ | **不是 infra port 的职责。** MVP 不读配置、不改 settings；未来 `agent-turn-changeset` 消费者拥有开关和失败观测语义 | `XyEvent` / TUI chrome 不在本 change |
+| 「TurnEnd 静默 capture 默认开」由谁控制？ | **不是 infra port 的职责。** MVP 不读配置、不改 settings；未来 `agent-turn-changeset` 消费者拥有开关和失败观测语义 | `XyEvent` / TUI 固定区不在本 change |
 
 ## 5. 测试 seam 与验收
 

@@ -1,0 +1,19 @@
+# shell 视图区域注解：module + 文本锚点（渲染时定位首条命中行，抗布局漂移）。
+# 帧由 `just export-design-frame` 从产品代码生成；改布局后重新导出，
+# 锚点只在文案变化时才需要跟随。rows = 从锚点行起覆盖的行数。
+frames:
+  busy:
+    - { module: transcript, contains: "debug: older reply 1", rows: 13 }
+    - { module: queue-steer, contains: "Steering: 顺手把相关的测试也补上", rows: 2 }
+    - { module: toast-notice, contains: "Error: preview: toast", rows: 1 }
+    - { module: status, contains: "⠋ Working", rows: 1 }
+    - { module: editor, contains: "────────", rows: 3 }
+    - { module: footer, contains: "~/x · Ornith", rows: 1 }
+  idle:
+    - { module: transcript, contains: "debug: older reply 0", rows: 18 }
+    - { module: footer, contains: "~/x · Ornith", rows: 1 }
+  short:
+    - { module: transcript, contains: "❯ debug: activity-fold live window", rows: 8 }
+    - { module: status, contains: "⠋ Working", rows: 1 }
+    - { module: models, contains: "models", rows: 2 }
+    - { module: footer, contains: "~/x · Ornith", rows: 1 }

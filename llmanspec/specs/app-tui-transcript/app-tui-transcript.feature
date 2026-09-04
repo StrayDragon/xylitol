@@ -54,11 +54,11 @@
     - 折叠态 tool 块 args_preview MUST 使用人类可读的位置摘要（工具名由 header 单独绘制，摘要 MUST NOT 携带工具名前缀）：bash/shell → `$ {command}`；read/ls/edit/write 等取路径槽（path 键认 path/file_path/file 及 edits[0]）；read 有 offset/limit 时 MUST 附 `:start` 或 `:start-end`；edit 摘要 MUST NOT 附加行域（行号在 diff 正文）。path 缺失时 MUST 用 `...` 占位，MUST NOT 把完整 args JSON（含 content/edits/oldText/newText）当作默认 args_preview。历史重建 MUST 与直播路径共用同一摘要 helper。
 
   @req:att14 @human
-  场景: write-edit-process-chrome
+  场景: write-edit-process-fixed-zone
     - 产品 write 工具块 MUST 在意图/执行过程中默认展示正文 viewport（对齐流式跟尾：默认至多 10 逻辑行 Tail，超出 MUST 提示 earlier lines 与 ctrl+o）；write 的 header 与正文 MUST 共用同一 status 轨色（pending/success/error），MUST NOT 默认整行 tool-*-bg 洗底，MUST NOT 仅头行有轨而正文裸露无轨。edit 成功后 diff MUST 在同一工具块内默认可见（MUST NOT 依赖 Alt+E 才露出）。工具头行 MUST NOT 嵌入 [ok]/[err]/[…] 字面状态标签；成败 MUST 由轨色与块末错误行表达。
 
   @req:att15 @human
-  场景: bash-full-output-footer-chrome
+  场景: bash-full-output-footer-fixed-zone
     - 产品 live scrollback 中 bang Bash 块与 bash 工具块的输出若含以 `[Full output:` 开头的脚注行，该行 MUST 以 DESIGN `{colors.warning}` 前景绘制（可 bold）；截断时 MUST 展示该脚注而非仅用 `(truncated)` 字面替换；未截断 MUST NOT 伪造该脚注。
 
   @req:att16 @human
@@ -95,7 +95,7 @@
 
   @req:att24 @human
   场景: cluster-summary-envelope-worked-for
-    - 簇摘要行 MUST 只描述真实发生的活动，英文 Title Case。文件层 MUST 互斥：有改写（edit/write 等）则只写 Edited；否则有读或搜索则写 Explored；MUST NOT 同一头并列 Edited 与 explored。有 shell 才追加 Ran N commands；仅 shell、无文件活动时整行 MUST 为 Ran。N MUST 为去重 path；仅一个 path 时 MUST 写可用 basename（`.` / `..` MUST NOT 当文件名，可回退上一路径分量；仍无可用名则写 N file，MUST NOT 写 Edited . / Explored .）；多个 MUST 写 N files。无 path 的搜索 MUST NOT 加成假文件数，但仍可使该簇进入 Explored。混合簇头 MUST NOT 写入 thinking、MCP 或 compaction。当文件层与 Ran 皆空：仅 thinking 流式未结束 MUST 为 Thinking（无时长）；思考通道结束后 MUST 为 Thought，有可靠思考通道起止墙钟才附 Thought {Ns}；resume MUST 优先用落地的 thinkingElapsedSecs 恢复 Thought {Ns}；否则用落盘思考通道起止节点 unix-ms 相减；缺任一端 MUST 省略时长，MUST NOT 用相邻条目墙钟冒充思考时长，禁止伪造；MUST NOT 流式滴答时长。同一轮中途 thinking 不切簇（att34），与工具或 Ask 同簇时簇头 MUST 走 Edited / Explored / Ran / Used / Asking questions 等真实活动，MUST NOT 用 Thought 当聚合头；todo_* 与其它未知/MCP 工具一样走 Used，不单开类目。Used 的 N MUST 为调用次数（与 Ran 同构），同一工具多次调用 MUST 按次累加；仅一次时 MUST 写 Used {短名}；多次 MUST 写 Used N tools。checklist 投影行 MUST NOT 计入 Used N。仅 MCP 或未知工具 MUST 为 Used；仅 Ask MUST 为 Asking questions；仅 Compaction MUST NOT 画簇头（见 att23）。MUST NOT 用文件占位虚构 Explored。打开簇进行中 MUST 用 Editing / Exploring / Running（与文件互斥及 Ran 对齐）；封口后 MUST 用 Edited / Explored / Ran。类目计数 MUST 在工具开始时更新；+/- MUST 仅在有可靠 diff 统计时于工具结束附加，否则省略；MUST NOT 伪造 +/-。无中间操作 MUST NOT 生成空簇。信封 Worked for MUST 以可靠双端墙钟书写时长；缺任一端 MUST 仍可画 Worked for 但省略时长数字；MUST NOT 伪造时长。
+    - 簇摘要行 MUST 只描述真实发生的活动，英文 Title Case。文件层 MUST 互斥：有改写（edit/write 等）则只写 Edited；否则有读或搜索则写 Explored；MUST NOT 同一头并列 Edited 与 explored。有 shell 才追加 Ran N commands；仅 shell、无文件活动时整行 MUST 为 Ran。N MUST 为去重 path 计数：恰一个写 `1 file`、多个写 `N files`（c2540：MUST NOT 以 basename / 路径片段替代计数——具体文件由展开簇内子块呈现；`Explored .` 类输出随计数式天然消失）。无 path 的搜索 MUST NOT 加成假文件数，但仍可使该簇进入 Explored。混合簇头 MUST NOT 写入 thinking、MCP 或 compaction。当文件层与 Ran 皆空：仅 thinking 流式未结束 MUST 为 Thinking（无时长）；思考通道结束后 MUST 为 Thought，有可靠思考通道起止墙钟才附 Thought {Ns}；resume MUST 优先用落地的 thinkingElapsedSecs 恢复 Thought {Ns}；否则用落盘思考通道起止节点 unix-ms 相减；缺任一端 MUST 省略时长，MUST NOT 用相邻条目墙钟冒充思考时长，禁止伪造；MUST NOT 流式滴答时长。同一轮中途 thinking 不切簇（att34），与工具或 Ask 同簇时簇头 MUST 走 Edited / Explored / Ran / Used / Asking questions 等真实活动，MUST NOT 用 Thought 当聚合头；todo_* 与其它未知/MCP 工具一样走 Used，不单开类目。Used 的 N MUST 为调用次数（与 Ran 同构），同一工具多次调用 MUST 按次累加；仅一次时 MUST 写 Used {短名}；多次 MUST 写 Used N tools。checklist 投影行 MUST NOT 计入 Used N。仅 MCP 或未知工具 MUST 为 Used；仅 Ask MUST 为 Asking questions；仅 Compaction MUST NOT 画簇头（见 att23）。MUST NOT 用文件占位虚构 Explored。打开簇进行中 MUST 用 Editing / Exploring / Running（与文件互斥及 Ran 对齐）；封口后 MUST 用 Edited / Explored / Ran。类目计数 MUST 在工具开始时更新；+/- MUST 仅在有可靠 diff 统计时于工具结束附加，否则省略；MUST NOT 伪造 +/-。无中间操作 MUST NOT 生成空簇。信封 Worked for MUST 以可靠双端墙钟书写时长；缺任一端 MUST 仍可画 Worked for 但省略时长数字；MUST NOT 伪造时长。
 
   @req:att25 @human
   场景: activity-fold-layered-with-l1
@@ -159,7 +159,7 @@
   @req:att24 @executable
   场景: cluster-head-wording-exclusivity
     当 以场景构建器回放读后改写序列（read old.rs 然后 edit a.rs）
-    那么 只读前簇封口为 Explored old.rs 且改写簇头保持 Editing a.rs
+    那么 只读前簇封口为 Explored 1 file 且改写簇头保持 Editing 1 file
     并且 改写结束后无 Edited 错时态
     并且 全帧不出现 Worked for 与 Planning next moves
 
@@ -279,7 +279,7 @@
     并且 内容行除轨外无整行洗底
 
   @req:att14 @executable
-  场景: write-viewport-and-edit-diff-chrome-headless
+  场景: write-viewport-and-edit-diff-fixed-zone-headless
     当 以场景构建器回放超长 write 正文并挂载交互面
     那么 正文视口至多 10 行尾且以 total 加 ctrl+o 提示省略
     并且 write 头行与正文共用同一状态轨

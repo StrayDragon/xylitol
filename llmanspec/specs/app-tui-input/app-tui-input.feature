@@ -42,7 +42,7 @@
     - 产品 HostSession MUST 在 agent 忙碌且会话树关闭时将普通 Enter 映射为 Driver::steer、Alt+Enter 映射为 Driver::follow_up；忙碌时 Esc MUST 调用 Driver::abort 并 clear_queue(steer=true, follow_up=false)；MUST NOT 在忙碌 Esc 时打开 c491 stub 树。
 
   @req:ati11 @human
-  场景: product-queue-chrome
+  场景: product-queue-fixed-zone
     - 产品 TUI 在 steer/follow-up 队列非空时 MUST 在 scrollback 与 status 之间以 muted 色渲染 Steering:/Follow-up: 行及 Alt+Up dequeue 提示（对齐 pi pendingMessagesContainer；实现为 queue strip）；MUST NOT 将排队内容写成 scrollback System [steer]/[follow-up] 墙；MUST NOT 在 footer/status 另加队列计数徽章（如 `q:sN|fM`）；Alt+Up MUST 将队列文本还原进 editor 并 clear_queue(steer=true, follow_up=true)。经 attach/Remote 时，入队后的 drain_pending MUST NOT 用空队列深度把已画条文案清掉；校准 MUST 只按 Host 真实深度 FIFO 消退。
 
   @req:ati12 @human
@@ -135,7 +135,7 @@
 
   @req:ati29 @human
   场景: session-resume-panel-keys
-    - 产品 TUI 在 EditorSlot::SessionResume 打开时：Tab MUST 切换 scope Current/All；Ctrl+S（或键位表等价）MUST 循环 Sort Threaded/Recent/Fuzzy；Ctrl+N MUST 切换 Name All/Named；Ctrl+P MUST 切换 path 显示；Ctrl+U（或键位表 app.session.toggleId）MUST 切换会话行完整 session id 列显隐（默认隐藏）；Ctrl+R MUST 进入选中项 rename（Esc 取消 rename MUST NOT 改名）；Ctrl+D MUST 进入删除确认（Enter 确认 / Esc 取消）；Threaded 下 ctrl/alt+left|right（tui.tree.foldOrUp / unfoldOrDown）MUST 折叠或展开选中父节点的子会话行；上述键 MUST 优先于 Editor 槽同名语义；面板关闭后键位恢复既有语义；搜索键入 MUST 交给面板 filter 而非误提交 prompt。agent/bang busy 时 Enter 选定会话 MUST NOT SwitchSession，MUST 经壳层通告显示 atm10 约定文案（见 atc22），MUST NOT 为此追加 ScrollNotice；idle 行为不变。
+    - 产品 TUI 在 EditorSlot::SessionResume 打开时：Tab MUST 切换 scope Current/All；Ctrl+S（或键位表等价）MUST 循环 Sort Threaded/Recent/Fuzzy；Ctrl+N MUST 切换 Name All/Named；Ctrl+P MUST 切换 path 显示；Ctrl+U（或键位表 app.session.toggleId）MUST 切换会话行完整 session id 列显隐（默认隐藏）；Ctrl+R MUST 进入选中项 rename（Esc 取消 rename MUST NOT 改名）；Ctrl+D MUST 进入删除确认（Enter 确认 / Esc 取消）；Threaded 下 ctrl/alt+left|right（tui.tree.foldOrUp / unfoldOrDown）MUST 折叠或展开选中父节点的子会话行；上述键 MUST 优先于 Editor 槽同名语义；面板关闭后键位恢复既有语义；搜索键入 MUST 交给面板 filter 而非误提交 prompt。agent/bang busy 时 Enter 选定会话 MUST NOT SwitchSession，MUST 经通知条显示 atm10 约定文案（见 atc22），MUST NOT 为此追加 ScrollNotice；idle 行为不变。
 
   @req:ati33 @human
   场景: at-path-completion
@@ -163,7 +163,7 @@
 
   @req:ati43 @human
   场景: reload-soft-gate-keys
-    - 产品 TUI 在 /reload 进行中（ath28）且无 overlay 时：MUST 允许向 Editor 打字与 Ctrl+G 外编；Enter（普通上行、slash、bang）MUST 硬拒绝并经壳层通告 body `reloading — wait`，MUST NOT 调用 Driver::run / execute_bash / 第二次 reload，MUST NOT 入 steer/follow-up；Esc 与 Ctrl+C MUST 请求取消重载且 MUST NOT 退出 TUI、MUST NOT 打开会话树。有 overlay 时 Esc/Ctrl+C MUST 先关槽且 MUST NOT 仅因此取消重载。取消或重载结束后键位恢复既有 idle/agent/bang 规则（ati2/ati10/ati19）。
+    - 产品 TUI 在 /reload 进行中（ath28）且无 overlay 时：MUST 允许向 Editor 打字与 Ctrl+G 外编；Enter（普通上行、slash、bang）MUST 硬拒绝并经通知条 body `reloading — wait`，MUST NOT 调用 Driver::run / execute_bash / 第二次 reload，MUST NOT 入 steer/follow-up；Esc 与 Ctrl+C MUST 请求取消重载且 MUST NOT 退出 TUI、MUST NOT 打开会话树。有 overlay 时 Esc/Ctrl+C MUST 先关槽且 MUST NOT 仅因此取消重载。取消或重载结束后键位恢复既有 idle/agent/bang 规则（ati2/ati10/ati19）。
 
   @req:ati44 @human
   场景: attach-queue-stats-calibrate
@@ -304,7 +304,7 @@
   @req:ati43 @executable
   场景: reload-soft-gate-keys-headless
     当 以主机泵开启重载并输入草稿后按 Enter
-    那么 壳层通告为 reloading 且草稿保留且未新增滚动提示
+    那么 通知条为 reloading 且草稿保留且未新增滚动提示
     当 经输入流注入 Esc 取消挂起重载
     那么 重载结束且通告为已取消
     当 重载结束后提交 bang 命令

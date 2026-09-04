@@ -35,7 +35,7 @@
 
   @req:atd8 @human
   场景: tui-checklist-collapsible
-    - 产品 TUI 在有 Todo 条目时 MUST 以对话区可折叠 checklist 呈现同源列表：默认一行摘要（含完成/总数类计数，如 Todo · 2/5）；用户展开见完整只读勾选列表。MUST NOT 以常驻 Plan/双栏侧栏、status/footer/chrome toast 或 ScrollNotice 刷墙作为主清单。本波 MUST NOT 要求用户手改条目或 /todo slash。
+    - 产品 TUI 在有 Todo 条目时 MUST 以对话区可折叠 checklist 呈现同源列表：默认一行摘要（含完成/总数类计数，如 Todo · 2/5）；用户展开见完整只读勾选列表。MUST NOT 以常驻 Plan/双栏侧栏、status/footer/toast notice 或 ScrollNotice 刷墙作为主清单。本波 MUST NOT 要求用户手改条目或 /todo slash。
 
   @req:atd9 @human
   场景: tui-resume-and-tool-refresh

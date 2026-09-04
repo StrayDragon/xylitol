@@ -19,7 +19,7 @@
 
   @req:ptt04 @human
   场景: demo-full-restyle
-    - 当 agent_demo theme_mode 为 Light 时 MUST 将 markdown、diff、tool 背景与 muted chrome 切换为 Light 色板；Dark 时 MUST 使用 Dark 色板。
+    - 当 agent_demo theme_mode 为 Light 时 MUST 将 markdown、diff、tool 背景与 muted 固定区 切换为 Light 色板；Dark 时 MUST 使用 Dark 色板。
 
   @req:ptt05 @human
   场景: detect-opt-in

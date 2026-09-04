@@ -77,7 +77,7 @@ fn todo_checklist_defaults_to_summary_line() {
     );
     assert!(
         !plain.to_lowercase().contains("plan"),
-        "must not render Plan side chrome: {plain}"
+        "must not render Plan side scaffold: {plain}"
     );
 }
 
@@ -575,7 +575,7 @@ fn live_window_omits_planning_placeholder() {
     let plain = strip_ansi_local(&lines.join("\n"));
     assert!(
         !plain.contains("Planning next moves"),
-        "busy chrome is status spinner, not a Planning placeholder: {plain}"
+        "busy fixed zone is status spinner, not a Planning placeholder: {plain}"
     );
     assert!(
         !plain.contains("Worked for"),
@@ -705,8 +705,11 @@ fn tool_header_shows_timeout_only_when_requested() {
     let e = plain.find("(Alt+E)").expect("hint present");
     assert!(t < e, "timeout note must precede Alt+E hint: {plain:?}");
 
-    // Tool default (omitted) → no chrome.
+    // Tool default (omitted) → no header note.
     let without = paint::paint_tool_header_line(theme, "▎", "Bash", "$ sleep 2", None);
     let plain2 = strip_ansi_local(&without);
-    assert!(!plain2.contains("timeout"), "no default chrome: {plain2:?}");
+    assert!(
+        !plain2.contains("timeout"),
+        "no default header note: {plain2:?}"
+    );
 }

@@ -1,16 +1,11 @@
 import { parse } from "yaml";
 import type { Alignment, DraftDoc, ModulePreview, StateDoc } from "./types";
-import type { Sim } from "./sim";
 
 const drafts = import.meta.glob("../../*/modules/*/draft.yaml", {
   query: "?raw",
   eager: true,
   import: "default",
 }) as Record<string, string>;
-
-const sims = import.meta.glob("../../*/modules/*/sim.ts", {
-  eager: true,
-}) as Record<string, { sim: Sim }>;
 
 const intents = import.meta.glob("../../*/modules/*/intent.md", {
   query: "?raw",
@@ -38,19 +33,6 @@ function statesFor(surface: string, id: string): Record<string, StateDoc> {
     out[name] = parse(raw) as StateDoc;
   }
   return out;
-}
-
-function parseSimPath(path: string): { surface: string; id: string } {
-  const m = path.match(/\/([^/]+)\/modules\/([^/]+)\/sim\.ts$/);
-  return { surface: m?.[1] ?? "tui", id: m?.[2] ?? "" };
-}
-
-export function simFor(surface: string, id: string): Sim | null {
-  for (const [path, mod] of Object.entries(sims)) {
-    const key = parseSimPath(path);
-    if (key.surface === surface && key.id === id) return mod.sim;
-  }
-  return null;
 }
 
 function intentFor(surface: string, id: string): string {
@@ -90,6 +72,7 @@ export function loadModules(): ModulePreview[] {
       ...draft,
       id: draft.id || id,
       surface: draft.surface || surface,
+      category: draft.category,
       intent: intentFor(surface, id),
       states: statesFor(surface, id),
       alignment: normalizeAlignment(draft.alignment),

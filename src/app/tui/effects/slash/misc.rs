@@ -1,4 +1,4 @@
-//! Chrome / misc slash arms (exit, reload, trust, theme, mcp, copy-last).
+//! Misc slash arms (exit, reload, trust, theme, mcp, copy-last).
 
 use xylitol_tui::Terminal;
 
@@ -18,7 +18,7 @@ pub(super) async fn reload<T: Terminal>(session: &mut HostSession<T>) {
     if session.run_active() || session.bash_active() {
         session.push_scroll_notice("agent busy — /reload refused");
     } else if session.reload_active() {
-        session.push_chrome_toast(crate::app::tui::commands::RELOADING_WAIT_NOTICE);
+        session.push_toast_notice(crate::app::tui::commands::RELOADING_WAIT_NOTICE);
     } else {
         session.arm_reload();
     }
@@ -75,7 +75,7 @@ pub(super) async fn history_copy_last<T: Terminal>(
 }
 
 pub(super) async fn theme<T: Terminal>(session: &mut HostSession<T>, arg: Option<String>) {
-    // c1780: busy Allow chrome theme open/apply.
+    // c1780: busy Allow covers theme open/apply.
     match arg.as_deref().map(str::trim).filter(|s| !s.is_empty()) {
         None => session.mount_themes_picker(),
         Some(name) => {

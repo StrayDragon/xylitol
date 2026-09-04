@@ -3274,10 +3274,10 @@ mod slice_tests {
             .collect()
     }
 
-    fn chrome_toast_body(session: &HostSession<TestTerminal>) -> Option<String> {
+    fn toast_notice_body(session: &HostSession<TestTerminal>) -> Option<String> {
         session
             .ui_root()
-            .and_then(|r| r.borrow().chrome_toast_body().map(str::to_string))
+            .and_then(|r| r.borrow().toast_notice_body().map(str::to_string))
     }
 
     #[tokio::test]
@@ -4686,7 +4686,7 @@ mod slice_tests {
 
     #[tokio::test]
     async fn c1205_reload_soft_gate_toast_keeps_draft() {
-        use crate::app::tui::commands::{CHROME_TOAST_ERROR_PREFIX, RELOADING_WAIT_NOTICE};
+        use crate::app::tui::commands::{RELOADING_WAIT_NOTICE, TOAST_NOTICE_ERROR_PREFIX};
 
         let mut session = HostSession::new_product_ui(TestTerminal::new(80, 24));
         let root = session.ui_root().expect("ui").clone();
@@ -4697,12 +4697,12 @@ mod slice_tests {
         session.step(HostEvent::Input(enter_event())).unwrap();
 
         assert_eq!(
-            chrome_toast_body(&session).as_deref(),
+            toast_notice_body(&session).as_deref(),
             Some(RELOADING_WAIT_NOTICE)
         );
         let frame = root.borrow_mut().render(80).join("\n");
         assert!(
-            frame.contains(CHROME_TOAST_ERROR_PREFIX) && frame.contains(RELOADING_WAIT_NOTICE),
+            frame.contains(TOAST_NOTICE_ERROR_PREFIX) && frame.contains(RELOADING_WAIT_NOTICE),
             "visible toast MUST be Error: + body: {frame}"
         );
         assert_eq!(
@@ -4745,7 +4745,7 @@ mod slice_tests {
             .unwrap();
 
         assert_eq!(
-            chrome_toast_body(&session).as_deref(),
+            toast_notice_body(&session).as_deref(),
             Some(RELOAD_CANCELLED_NOTICE)
         );
         assert!(
@@ -4776,7 +4776,7 @@ mod slice_tests {
             .unwrap();
 
         assert_eq!(
-            chrome_toast_body(&session).as_deref(),
+            toast_notice_body(&session).as_deref(),
             Some(RELOAD_FAILED_NOTICE)
         );
         let notes = system_notes(&session);
@@ -4865,7 +4865,7 @@ mod slice_tests {
             .unwrap();
 
         assert_eq!(
-            chrome_toast_body(&session).as_deref(),
+            toast_notice_body(&session).as_deref(),
             Some(RELOAD_CANCELLED_NOTICE)
         );
         assert!(
@@ -4891,7 +4891,7 @@ mod slice_tests {
         session.step(HostEvent::Input(enter_event())).unwrap();
 
         assert_eq!(
-            chrome_toast_body(&session).as_deref(),
+            toast_notice_body(&session).as_deref(),
             Some(RELOADING_WAIT_NOTICE)
         );
         let notes = system_notes(&session);
@@ -4917,7 +4917,7 @@ mod slice_tests {
         session.step(HostEvent::Input(enter_event())).unwrap();
 
         assert_eq!(
-            chrome_toast_body(&session).as_deref(),
+            toast_notice_body(&session).as_deref(),
             Some(RELOADING_WAIT_NOTICE)
         );
         assert!(
@@ -4940,7 +4940,7 @@ mod slice_tests {
         assert!(session.reload_active(), "Ctrl+G MUST NOT cancel reload");
         assert_eq!(root.borrow().external_editor_invocations(), 1);
         assert!(
-            chrome_toast_body(&session).is_none(),
+            toast_notice_body(&session).is_none(),
             "Ctrl+G MUST NOT toast soft-gate/cancel"
         );
         session.end_reload();
@@ -5020,7 +5020,7 @@ mod slice_tests {
             "overlay Esc MUST NOT fire reload cancel token"
         );
         assert!(
-            chrome_toast_body(&session).is_none(),
+            toast_notice_body(&session).is_none(),
             "overlay Esc MUST NOT toast cancel"
         );
         session.end_reload();
@@ -5038,7 +5038,7 @@ mod slice_tests {
 
         assert_eq!(root.borrow().editor_text(), "ab");
         assert!(session.reload_active());
-        assert!(chrome_toast_body(&session).is_none());
+        assert!(toast_notice_body(&session).is_none());
         session.end_reload();
     }
 
@@ -5238,7 +5238,7 @@ mod slice_tests {
         };
 
         // Repro: freeze completed but UiRoot still had tools_table_frozen=false;
-        // idle sync_runtime_chrome clears next-turn then refresh_mcp_short_cue
+        // idle sync_fixed_zone clears next-turn then refresh_mcp_short_cue
         // would sticky-restore MCP_PENDING_CUE from the stale snap.
         let mut session = HostSession::new_product_ui(TestTerminal::new(80, 24));
         let root = session.ui_root().expect("ui").clone();
@@ -5284,7 +5284,7 @@ mod slice_tests {
         };
         driver.set_loaded_resources_for_driver(frozen);
         session.refresh_loaded_resources(&driver).await;
-        // Same as idle sync_runtime_chrome: clear next-turn, then mcp refresh.
+        // Same as idle sync_fixed_zone: clear next-turn, then mcp refresh.
         root.borrow_mut().set_status_next_turn_cue(None);
         assert_eq!(
             root.borrow().status_next_turn_cue_for_test(),
@@ -5385,7 +5385,7 @@ mod slice_tests {
         session.ui_model_mut().set_busy_status("Assembling");
         session.sync_ui_root_from_model();
         root.borrow_mut().refresh_mcp_short_cue();
-        // Mimic sync_runtime_chrome clearing Next-turn when no active agent turn.
+        // Mimic sync_fixed_zone clearing Next-turn when no active agent turn.
         root.borrow_mut().set_status_next_turn_cue(None);
         assert_eq!(
             root.borrow().status_next_turn_cue_for_test().as_deref(),
@@ -5796,9 +5796,9 @@ mod slice_tests {
             "panel may stay open after refused switch"
         );
         assert_eq!(
-            chrome_toast_body(&session).as_deref(),
+            toast_notice_body(&session).as_deref(),
             Some(BUSY_SESSION_SWITCH_NOTICE),
-            "expected chrome toast body A"
+            "expected toast notice body A"
         );
         assert!(
             !system_notes(&session)
@@ -5874,9 +5874,9 @@ mod slice_tests {
             driver.set_session_name_for_calls()
         );
         assert_eq!(
-            chrome_toast_body(&session).as_deref(),
+            toast_notice_body(&session).as_deref(),
             Some(BUSY_SESSION_SWITCH_NOTICE),
-            "expected chrome toast A after rename"
+            "expected toast notice A after rename"
         );
         assert!(
             !system_notes(&session)
@@ -5898,9 +5898,9 @@ mod slice_tests {
             driver.delete_session_calls()
         );
         assert_eq!(
-            chrome_toast_body(&session).as_deref(),
+            toast_notice_body(&session).as_deref(),
             Some(BUSY_SESSION_SWITCH_NOTICE),
-            "expected chrome toast A after delete"
+            "expected toast notice A after delete"
         );
         assert!(
             !system_notes(&session)
@@ -5971,9 +5971,9 @@ mod slice_tests {
             driver.switch_calls()
         );
         assert_eq!(
-            chrome_toast_body(&session).as_deref(),
+            toast_notice_body(&session).as_deref(),
             Some(BUSY_SESSION_SWITCH_NOTICE),
-            "expected chrome toast A under bang busy"
+            "expected toast notice A under bang busy"
         );
         assert!(
             !system_notes(&session)
@@ -5985,20 +5985,20 @@ mod slice_tests {
     }
 
     #[tokio::test]
-    async fn c1800_chrome_toast_ttl_clears_on_tick() {
+    async fn c1800_toast_notice_ttl_clears_on_tick() {
         use crate::app::tui::commands::BUSY_SESSION_SWITCH_NOTICE;
 
         let mut session = HostSession::new_product_ui(TestTerminal::new(80, 24));
         let root = session.ui_root().expect("ui").clone();
-        session.push_chrome_toast(BUSY_SESSION_SWITCH_NOTICE);
+        session.push_toast_notice(BUSY_SESSION_SWITCH_NOTICE);
         assert_eq!(
-            chrome_toast_body(&session).as_deref(),
+            toast_notice_body(&session).as_deref(),
             Some(BUSY_SESSION_SWITCH_NOTICE)
         );
-        root.borrow_mut().expire_chrome_toast_now();
+        root.borrow_mut().expire_toast_notice_now();
         session.step(HostEvent::Tick).unwrap();
         assert_eq!(
-            chrome_toast_body(&session),
+            toast_notice_body(&session),
             None,
             "expired toast MUST clear on idle_tick/Tick"
         );
@@ -6175,10 +6175,10 @@ mod slice_tests {
         );
     }
 
-    /// Toast occupies reserved: short terminal keeps Working **and** chrome toast in viewport.
+    /// Toast occupies reserved: short terminal keeps Working **and** toast notice in viewport.
     #[tokio::test]
     async fn busy_resume_short_terminal_with_toast_keeps_working_and_toast_in_viewport() {
-        use crate::app::tui::commands::{BUSY_SESSION_SWITCH_NOTICE, CHROME_TOAST_ERROR_PREFIX};
+        use crate::app::tui::commands::{BUSY_SESSION_SWITCH_NOTICE, TOAST_NOTICE_ERROR_PREFIX};
 
         let term_rows = 16usize;
         let mut session = HostSession::new_product_ui(TestTerminal::new(80, term_rows as u16));
@@ -6208,13 +6208,13 @@ mod slice_tests {
             .await
             .unwrap();
         assert!(root.borrow().session_resume_open());
-        session.push_chrome_toast(BUSY_SESSION_SWITCH_NOTICE);
+        session.push_toast_notice(BUSY_SESSION_SWITCH_NOTICE);
 
         let frame = root.borrow_mut().render(80);
         let vp_top = frame.len().saturating_sub(term_rows);
         let working_idx = frame.iter().position(|l| l.contains("Working"));
         let toast_idx = frame.iter().position(|l| {
-            l.contains(CHROME_TOAST_ERROR_PREFIX) && l.contains(BUSY_SESSION_SWITCH_NOTICE)
+            l.contains(TOAST_NOTICE_ERROR_PREFIX) && l.contains(BUSY_SESSION_SWITCH_NOTICE)
         });
         assert!(
             working_idx.is_some_and(|i| i >= vp_top),
@@ -6223,7 +6223,7 @@ mod slice_tests {
         );
         assert!(
             toast_idx.is_some_and(|i| i >= vp_top),
-            "chrome toast MUST stay in viewport when reserved (atc23); vp_top={vp_top} toast={toast_idx:?} frame_len={}",
+            "toast notice MUST stay in viewport when reserved (atc23); vp_top={vp_top} toast={toast_idx:?} frame_len={}",
             frame.len()
         );
     }

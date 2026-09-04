@@ -8,13 +8,21 @@
   <body data-scheme="light">
     <header>
       <h1>xylitol designing</h1>
-      <p class="meta">代码为运行时真值 · 本稿为交互设计稿 · 浏览器格子不是产品真值</p>
-      <button type="button" id="scheme" aria-pressed="false">dark</button>
+      <p class="meta">交互设计稿 · 运行时真值以产品代码为准 · 中间终端为产品渲染（默认暗色，可切亮色）</p>
     </header>
     <div class="shell">
-      <nav id="nav" aria-label="模块"></nav>
       <main>
-        <h2 id="module-title">designing</h2>
+        <div class="title-row">
+          <h2 id="module-title">designing</h2>
+          <button
+            type="button"
+            id="theme-toggle"
+            title="切换终端背景"
+            aria-label="切换终端背景"
+          >
+            暗色背景
+          </button>
+        </div>
         <p class="spec" id="module-spec"></p>
         <div class="chips" id="state-chips"></div>
         <div class="stage-bar" id="stage-bar"></div>
@@ -22,9 +30,17 @@
       </main>
       <aside aria-label="设计细节">
         <div class="handoff">
-          <code id="endpoint">/tui/</code>
-          <div id="handoff-md" class="md-body"></div>
           <button type="button" id="copy-handoff">复制路径</button>
+          <code id="endpoint">/tui</code>
+          <button
+            type="button"
+            id="handoff-toggle"
+            aria-expanded="false"
+            aria-controls="handoff-md"
+          >
+            展开 ▾
+          </button>
+          <div id="handoff-md" class="md-body" hidden></div>
         </div>
         <div id="detail"></div>
       </aside>

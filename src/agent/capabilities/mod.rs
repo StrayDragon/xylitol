@@ -59,7 +59,7 @@ pub struct ActiveTurnBinding {
 }
 
 impl ActiveTurnBinding {
-    /// Snapshot the currently selected model + thinking level for chrome / ReAct.
+    /// Snapshot the currently selected model + thinking level for fixed zone / ReAct.
     pub(crate) fn from_manager(mm: &ModelManager) -> Option<Self> {
         let meta = mm.current_model()?;
         let levels = ModelManager::levels_for_meta(meta);

@@ -32,7 +32,7 @@ export type KeyHint = {
 };
 
 export type Alignment = {
-  chrome?: string;
+  fixed?: string;
   item?: string;
   "todo-bar"?: string;
 };
@@ -41,6 +41,7 @@ export type DraftDoc = {
   id: string;
   title: string;
   surface: string;
+  category?: string;
   summary: string;
   alignment: Alignment;
   todos: TodoItem[];

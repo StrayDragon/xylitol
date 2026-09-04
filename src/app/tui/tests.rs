@@ -312,8 +312,8 @@ fn product_tui_source_has_no_tui_start_call() {
         ("effects/mod.rs", include_str!("effects/mod.rs")),
         ("effects/slash/mod.rs", include_str!("effects/slash/mod.rs")),
         (
-            "effects/slash/chrome.rs",
-            include_str!("effects/slash/chrome.rs"),
+            "effects/slash/misc.rs",
+            include_str!("effects/slash/misc.rs"),
         ),
         (
             "effects/slash/compact.rs",
@@ -3781,7 +3781,7 @@ fn interaction_application_owned_at_construction_registers_dock() {
 }
 
 #[test]
-fn application_owned_copy_notice_chrome_ath31() {
+fn application_owned_copy_notice_fixed_zone_ath31() {
     use crossterm::event::{KeyModifiers, MouseButton, MouseEvent, MouseEventKind};
 
     let mut session = HostSession::new_product_ui_with_meta_mode(
@@ -3838,8 +3838,8 @@ fn application_owned_copy_notice_chrome_ath31() {
 
     assert_eq!(root.borrow().copy_notice_body_for_test(), Some("Copied"));
     assert!(
-        root.borrow().chrome_toast_body().is_none(),
-        "ath31 MUST NOT use Error: chrome-toast for copy success"
+        root.borrow().toast_notice_body().is_none(),
+        "ath31 MUST NOT use Error: toast-notice for copy success"
     );
     let joined = session.tui.terminal.frames.concat();
     assert!(
@@ -3864,11 +3864,11 @@ fn application_owned_copy_notice_arms_copied_cue_not_error_toast() {
     let root = session.ui_root().expect("ui root");
     root.borrow_mut().arm_copy_notice();
     assert_eq!(root.borrow().copy_notice_body_for_test(), Some("Copied"));
-    assert!(root.borrow().chrome_toast_body().is_none());
+    assert!(root.borrow().toast_notice_body().is_none());
     let frame = root.borrow_mut().render(80).join("\n");
     assert!(
         frame.contains("Copied"),
-        "ApplicationOwned copy cue must paint in chrome: {frame}"
+        "ApplicationOwned copy cue must paint in fixed zone: {frame}"
     );
     assert!(
         !frame.contains("Error: Copied"),
@@ -4480,7 +4480,7 @@ fn activity_fold_att33_live_planning_and_open_cluster_updates() {
     let empty = strip_ansi_activity(&root.render(100).join("\n"));
     assert!(
         !empty.contains("Planning next moves"),
-        "busy chrome is status, not Planning: {empty}"
+        "busy fixed zone is status, not Planning: {empty}"
     );
     assert!(
         !empty.contains("Worked for"),
@@ -5479,22 +5479,22 @@ fn scene_live_xy_steps_host_session() {
 }
 
 #[test]
-fn chrome_op_toast_is_not_scroll_notice() {
+fn fixed_zone_op_toast_is_not_scroll_notice() {
     use super::bridge::UiEntry;
-    use crate::app::debug_fixtures::ChromeOp;
+    use crate::app::debug_fixtures::FixedZoneOp;
 
     let mut session = HostSession::new_product_ui(TestTerminal::new(80, 24));
-    session.apply_chrome_op(ChromeOp::Toast);
+    session.apply_fixed_zone_op(FixedZoneOp::Toast);
     let body = session
         .ui_root()
         .expect("product ui root")
         .borrow()
-        .chrome_toast_body()
+        .toast_notice_body()
         .unwrap_or("")
         .to_string();
     assert!(
         body.contains("toast"),
-        "expected chrome toast body; got {body:?}"
+        "expected toast notice body; got {body:?}"
     );
     assert!(
         !session
@@ -5502,17 +5502,17 @@ fn chrome_op_toast_is_not_scroll_notice() {
             .entries
             .iter()
             .any(|e| matches!(e, UiEntry::ScrollNotice { .. })),
-        "chrome toast must not be a ScrollNotice"
+        "toast notice must not be a ScrollNotice"
     );
 }
 
 #[test]
-fn chrome_op_slot_models_mounts_picker() {
+fn fixed_zone_op_slot_models_mounts_picker() {
     use super::layout::EditorSlotKind;
-    use crate::app::debug_fixtures::ChromeOp;
+    use crate::app::debug_fixtures::FixedZoneOp;
 
     let mut session = HostSession::new_product_ui(TestTerminal::new(80, 24));
-    session.apply_chrome_op(ChromeOp::SlotModels);
+    session.apply_fixed_zone_op(FixedZoneOp::SlotModels);
     assert_eq!(
         session.ui_root().expect("product ui root").borrow().slot(),
         EditorSlotKind::Models
@@ -5520,12 +5520,12 @@ fn chrome_op_slot_models_mounts_picker() {
 }
 
 #[test]
-fn chrome_op_next_turn_cue_is_not_scroll_notice() {
+fn fixed_zone_op_next_turn_cue_is_not_scroll_notice() {
     use super::bridge::UiEntry;
-    use crate::app::debug_fixtures::ChromeOp;
+    use crate::app::debug_fixtures::FixedZoneOp;
 
     let mut session = HostSession::new_product_ui(TestTerminal::new(80, 24));
-    session.apply_chrome_op(ChromeOp::NextTurnCue);
+    session.apply_fixed_zone_op(FixedZoneOp::NextTurnCue);
     let cue = session
         .ui_root()
         .expect("product ui root")
@@ -5543,17 +5543,17 @@ fn chrome_op_next_turn_cue_is_not_scroll_notice() {
 }
 
 #[test]
-fn chrome_op_slot_choice_and_tree_mount() {
+fn fixed_zone_op_slot_choice_and_tree_mount() {
     use super::layout::EditorSlotKind;
-    use crate::app::debug_fixtures::ChromeOp;
+    use crate::app::debug_fixtures::FixedZoneOp;
 
     let mut session = HostSession::new_product_ui(TestTerminal::new(80, 24));
-    session.apply_chrome_op(ChromeOp::SlotChoice);
+    session.apply_fixed_zone_op(FixedZoneOp::SlotChoice);
     assert_eq!(
         session.ui_root().expect("product ui root").borrow().slot(),
         EditorSlotKind::Choice
     );
-    session.apply_chrome_op(ChromeOp::SlotTree);
+    session.apply_fixed_zone_op(FixedZoneOp::SlotTree);
     assert_eq!(
         session.ui_root().expect("product ui root").borrow().slot(),
         EditorSlotKind::Tree
@@ -5635,12 +5635,12 @@ fn scene_dump_covers_product_render_scrollback() {
         &mut FoldHitTable::default(),
     );
     let plain = strip_ansi_live_window(&frame.join("\n"));
-    assert!(plain.contains("Explored a.rs"), "frame:\n{plain}");
+    assert!(plain.contains("Explored 1 file"), "frame:\n{plain}");
 
     let dump = SemanticDump::from_product_frame(&plain, &entries);
     assert!(
         dump.rows_with_chord("L2 cluster")
-            .any(|r| r.cluster_head.contains("Explored a.rs")),
+            .any(|r| r.cluster_head.contains("Explored 1 file")),
         "dump must anchor the sealed read cluster; dump:\n{}",
         dump.to_text()
     );

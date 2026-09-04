@@ -14,7 +14,7 @@ use super::types::{
     SessionListEntry, SessionState, SessionStats, XyEvent,
 };
 
-/// Downlink attachment health (ath42/c2480): drives the chrome grace notice —
+/// Downlink attachment health (ath42/c2480): drives the fixed-zone grace notice —
 /// never transcript error rows.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum LinkHealth {
@@ -50,7 +50,7 @@ pub trait XyDriver: Send {
         Ok(())
     }
 
-    /// Refresh cached chrome (model / models / commands) without blocking a tick.
+    /// Refresh cached fixed-zone state (model / models / commands) without blocking a tick.
     ///
     /// Default no-op. Remote MUST hit Host unaries here so `/model` and footer
     /// sync do not `block_on` HTTP from sync getters.
@@ -63,7 +63,7 @@ pub trait XyDriver: Send {
         Vec::new()
     }
 
-    /// Downlink attachment health for chrome-level grace UX (ath42/c2480).
+    /// Downlink attachment health for fixed-zone grace UX (ath42/c2480).
     ///
     /// Default [`LinkHealth::Up`]: in-process and scripted drivers are their
     /// own host, there is no link to lose. Remote overrides with the mux

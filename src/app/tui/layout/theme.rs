@@ -139,7 +139,7 @@ impl LayoutTheme {
         fg_rgb(self.palette.on_surface, s)
     }
 
-    /// Line-range suffix (`:12-40`) — mauve `skill_ref`, fits Mocha chrome (not warning yellow).
+    /// Line-range suffix (`:12-40`) — mauve `skill_ref`, fits the Mocha frame (not warning yellow).
     pub fn paint_tool_range(self, s: &str) -> String {
         fg_rgb(self.palette.skill_ref, s)
     }

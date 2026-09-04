@@ -29,8 +29,8 @@
 - **产品信封（RPC envelope）**：四象限 RPC（unary HTTP POST + WebSocket 下行、不收业务上行）。Command/Event 是载荷，不是外层。类型 SSOT 在 Rust `protocol`（无跨语言类型导出；OpenAPI 仅调试文档）。
 - **跨面公共体验**：TUI 与第二产品面（gpui 桌面，Linux/Wayland）**共有**能力的动作语义 / 学习成本 MUST 同源；快捷键 SHOULD 尽量同构；仅面专属能力可分叉。约束板：`docs/roadmaps/Web与TUI同源.md`。
 - 产品架构总览：`docs/architecture/`；候选方向：`docs/roadmaps/`（不维护进度列）；文档闭环：`docs/AGENTS.md`。
-- TUI chrome / 滚动区固定词（滚动提示、壳层通告、尾随…）：`docs/architecture/TUI信息面与chrome词汇.md`（面约束见 `src/app/tui/AGENTS.md`）。
-- 交互设计稿：仓库顶层 `designing/`（现 `tui/` + `tui-lab/` 交互实验区，以后可加其它端；`just open-designing`）。**代码是运行时真值**；稿是对照辅助。无独立快捷键设计。
+- TUI 信息面固定词（滚动提示、通知条、尾插…）：`docs/architecture/TUI信息面与固定区词汇.md`（面约束见 `src/app/tui/AGENTS.md`）。
+- 交互设计稿：仓库顶层 `designing/`（现 `tui/` + `tui-lab/` 交互实验区，以后可加其它端；`just open-designing`）。**代码是运行时真值**；稿是对照辅助。无独立快捷键设计。UI/UX 迭代走 SOP：候选先进 `tui-lab` 实验原型（staged），评审后晋级产品面或淘汰（见 `designing/AGENTS.md`）。
 
 ## 工作原则
 

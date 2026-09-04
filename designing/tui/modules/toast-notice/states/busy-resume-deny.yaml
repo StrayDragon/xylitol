@@ -1,4 +1,4 @@
-id: chrome-toast.busy-resume-deny
+id: toast-notice.busy-resume-deny
 cols: 80
 must_contain:
   - "Error:"

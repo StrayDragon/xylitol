@@ -1,0 +1,9 @@
+id: interrupt-arm.stopped
+cols: 72
+must_contain:
+  - "· Stopped"
+lines:
+  -
+    - { text: "· Stopped", token: muted }
+  -
+    - { text: "已中止当前任务（partial 保留，stop_reason=aborted）", token: muted }

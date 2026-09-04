@@ -7,6 +7,8 @@ export type Route = {
   frame: number;
   play: boolean;
   scheme: Scheme;
+  /// shell 视图帧选择（busy / idle / short）；lab 不使用。
+  view?: string;
 };
 
 const SURFACES = new Set(["tui", "web", "tui-lab"]);
@@ -39,15 +41,22 @@ export function parseLocation(loc: Location = location): Partial<Route> {
     frame: Number.isFinite(frame) ? Math.max(0, Math.floor(frame as number)) : undefined,
     play: q.has("play") ? truthy(q.get("play")) : undefined,
     scheme,
+    view: q.get("view") ?? undefined,
   };
 }
 
 export function formatPath(route: Pick<Route, "surface" | "id" | "state">): string {
-  return `/${route.surface}/${route.id}/${route.state}`;
+  // shell 视图无 state（/tui 或 /tui/<region>）；lab 模块仍带 state 段。
+  const idPart = route.id ? `/${route.id}` : "";
+  const statePart = route.state ? `/${route.state}` : "";
+  return `/${route.surface}${idPart}${statePart}`;
 }
 
-export function formatSearch(route: Pick<Route, "frame" | "play" | "scheme">): string {
+export function formatSearch(
+  route: Pick<Route, "frame" | "play" | "scheme" | "view">,
+): string {
   const q = new URLSearchParams();
+  if (route.view) q.set("view", route.view);
   if (route.frame > 0) q.set("frame", String(route.frame));
   if (route.play) q.set("play", "1");
   if (route.scheme === "dark") q.set("scheme", "dark");

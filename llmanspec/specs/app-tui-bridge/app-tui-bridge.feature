@@ -18,7 +18,7 @@
     - bridge MUST 能消费 QueueUpdate（steer_count / follow_up_count）；display_diff 等工具结果字段 MUST 在 ToolExecutionEnd 路径可被抽取供 transcript 使用。
 
   @req:atb10 @human
-  场景: tool-intent-chrome
+  场景: tool-intent-fixed-zone
     - bridge 收到 MessageUpdate 且 message 含 AgentPart::ToolCall 时 MUST 按 tool id upsert UiEntry::Tool（可缺完整 args）；后续同 id 的 MessageUpdate MUST 刷新 args_preview；ToolExecutionStart MUST upsert 同一行而非再 push。MessageUpdate 的 text/thinking 快照 MUST NOT 写入 streaming 缓冲（防与 TextDelta 重复）。助手 Markdown 路径 MUST NOT 把 toolCall 当正文。resume/travel 重建路径对同 toolCallId 的 call+result MUST 复用与本条 upsert 及 ToolExecutionEnd 等价的单行合入语义（细则 att12）。
 
   @req:atb4 @human

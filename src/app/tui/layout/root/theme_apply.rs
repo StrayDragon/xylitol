@@ -12,7 +12,7 @@ impl UiRoot {
         self.theme
     }
 
-    /// Replace the layout theme and rebuild theme-dependent chrome (c1095).
+    /// Replace the layout theme and rebuild theme-dependent fixed zone (c1095).
     /// Does not clear transcript / `ui_model` entries.
     pub fn set_layout_theme(&mut self, theme: LayoutTheme) {
         self.theme = theme;

@@ -1,7 +1,7 @@
 //! Session tree / models / resume mount + apply helpers (c1170 / ath12).
 
 use crate::app::core::driver::{ModelInfo, XyDriver};
-use crate::app::debug_fixtures::ChromeOp;
+use crate::app::debug_fixtures::FixedZoneOp;
 use crate::protocol::session::{SessionEntry, SessionTreeTravel};
 use xylitol_tui::{ChoiceMode, ChoiceOption, ChoiceQuestion, Terminal, TreeNode};
 
@@ -521,29 +521,29 @@ impl<T: Terminal> HostSession<T> {
         self.push_scroll_notice(load.note);
     }
 
-    /// Apply a typed chrome inject (toast / cue / slot). Not transcript stuffing.
-    pub fn apply_chrome_op(&mut self, op: ChromeOp) {
+    /// Apply a typed fixed-zone inject (toast / cue / slot). Not transcript stuffing.
+    pub fn apply_fixed_zone_op(&mut self, op: FixedZoneOp) {
         match op {
-            ChromeOp::Toast => {
-                self.push_chrome_toast("preview: toast");
+            FixedZoneOp::Toast => {
+                self.push_toast_notice("preview: toast");
             }
-            ChromeOp::NextTurnCue => {
+            FixedZoneOp::NextTurnCue => {
                 if let Some(root) = self.ui_root.as_ref() {
                     root.borrow_mut()
                         .set_status_next_turn_cue(Some("Next turn: preview".into()));
                     self.paint_dirty = true;
                 }
             }
-            ChromeOp::SlotModels => {
+            FixedZoneOp::SlotModels => {
                 self.mount_models_picker(Vec::new(), None, String::new());
             }
-            ChromeOp::SlotChoice => {
+            FixedZoneOp::SlotChoice => {
                 let (tx, _rx) = tokio::sync::oneshot::channel();
                 self.mount_ask_choice(
                     vec![ChoiceQuestion {
                         id: "preview".into(),
                         label: "Preview".into(),
-                        prompt: "chrome preview choice".into(),
+                        prompt: "fixed-zone preview choice".into(),
                         mode: ChoiceMode::Single,
                         options: vec![ChoiceOption::new("ok", "OK")],
                         allow_other: false,
@@ -551,7 +551,7 @@ impl<T: Terminal> HostSession<T> {
                     tx,
                 );
             }
-            ChromeOp::SlotTree => {
+            FixedZoneOp::SlotTree => {
                 self.mount_session_tree(Vec::new(), None);
             }
         }

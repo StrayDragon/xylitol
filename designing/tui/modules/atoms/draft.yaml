@@ -1,9 +1,10 @@
 id: atoms
 title: 原子
+category: 布局与基础
 surface: tui
 summary: 截断、loader、反转选中。
 alignment:
-  chrome: 原子样式
+  fixed: 原子样式
   item: 树/模型选中行共用
 todos:
   - { done: true, text: "选中反转 color inherit" }

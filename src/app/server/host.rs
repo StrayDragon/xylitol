@@ -505,7 +505,7 @@ impl SessionSlot {
         self.broadcast(msg).await;
     }
 
-    /// Chrome-only MCP/skills snapshot. Not journaled (must not consume seq).
+    /// Fixed-zone-only MCP/skills snapshot. Not journaled (must not consume seq).
     pub async fn push_resources(&self, snap: LoadedResourcesSnapshot) {
         let msg = downlink_server_request(
             "session/resources",

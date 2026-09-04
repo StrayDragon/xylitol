@@ -89,7 +89,7 @@ pub enum Event {
     },
     /// Compaction completed.
     CompactionEnd,
-    /// Shared context-token settlement (c1860) for footer / cross-client chrome.
+    /// Shared context-token settlement (c1860) for footer / cross-client fixed zone.
     ContextTokenSettlement {
         tokens: u64,
         provenance: String,

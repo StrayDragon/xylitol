@@ -1,9 +1,10 @@
 id: trust-prompt
-title: Trust prompt
+title: 信任确认
+category: 槽与面板
 surface: tui
 summary: Trust 用 ChoicePrompt 换 editor 槽；禁止 stdio 数字菜单。不等于内置 ask。
 alignment:
-  chrome: 替换 editor 槽
+  fixed: 替换 editor 槽
   item: 不是 Ask 工具块
 todos:
   - { done: true, text: "禁 stdio 数字菜单" }

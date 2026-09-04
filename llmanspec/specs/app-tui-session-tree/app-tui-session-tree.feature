@@ -15,7 +15,7 @@
 
   @req:ast4 @human
   场景: demo-travel-pi-semantics
-    - agent_demo 在会话树 Enter travel 时：若选中节点 kind 为 user，则 MUST 将 history leaf 设为该节点的父（根 user 则回到无叶/约定根策略）、MUST 用该 user 正文预填编辑器（可剥 steer 前缀）、MUST 重建 transcript 为 root→父 路径且 MUST NOT 纳入被选 user 及其后线性回复；若选中非 user，则 MUST 将 leaf 设为选中 id、MUST 重建 root→选中路径、MUST NOT 因 travel 预填 user 正文；完成后 status MUST 回到空闲（无 spinner）；重建后 MUST 以可滚 ScrollNotice（滚动提示）行尾随 history @ 通知（完整 selected/leaf/path 文案），MUST NOT 把该通知插在 transcript 条目最前。
+    - agent_demo 在会话树 Enter travel 时：若选中节点 kind 为 user，则 MUST 将 history leaf 设为该节点的父（根 user 则回到无叶/约定根策略）、MUST 用该 user 正文预填编辑器（可剥 steer 前缀）、MUST 重建 transcript 为 root→父 路径且 MUST NOT 纳入被选 user 及其后线性回复；若选中非 user，则 MUST 将 leaf 设为选中 id、MUST 重建 root→选中路径、MUST NOT 因 travel 预填 user 正文；完成后 status MUST 回到空闲（无 spinner）；重建后 MUST 以可滚 ScrollNotice（滚动提示）行尾插 history @ 通知（完整 selected/leaf/path 文案），MUST NOT 把该通知插在 transcript 条目最前。
 
   @req:ast5 @human
   场景: demo-session-tree-fork
@@ -55,8 +55,8 @@
 
   @req:ast15 @human
   场景: travel-notice-trailing
-    - 产品会话树 Enter travel 成功并重建 transcript 后，MUST 以可滚 UiEntry::ScrollNotice（或等价滚动提示行）尾随完整 history @ selected · leaf · path 文案，使跟底时出现在输入框上方视野；重建投影 MUST NOT 将该通知 prepend 为 entries 首条。fork / session 切换 / debug scene 等已有尾随产品 note 的路径 MUST NOT 再叠一条 history @（去重）。
+    - 产品会话树 Enter travel 成功并重建 transcript 后，MUST 以可滚 UiEntry::ScrollNotice（或等价滚动提示行）尾插完整 history @ selected · leaf · path 文案，使跟底时出现在输入框上方视野；重建投影 MUST NOT 将该通知 prepend 为 entries 首条。fork / session 切换 / debug scene 等已有尾插产品 note 的路径 MUST NOT 再叠一条 history @（去重）。
 
   @req:ast16 @human
   场景: demo-travel-notice-trailing
-    - agent_demo 会话树 travel 重建 transcript 后 MUST 与产品同源：history @ 通知 MUST 尾随于路径条目之后；MUST NOT 在 clear 后先插 ScrollNotice 再推路径（旧顶插）。
+    - agent_demo 会话树 travel 重建 transcript 后 MUST 与产品同源：history @ 通知 MUST 尾插于路径条目之后；MUST NOT 在 clear 后先插 ScrollNotice 再推路径（旧顶插）。

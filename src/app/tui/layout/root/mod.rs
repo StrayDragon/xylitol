@@ -3,8 +3,8 @@
 //! Named `UiRoot` (not `shell`/`scene`) to avoid clashing with bash /
 //! `infra::process::shell` and to read as the product component tree root.
 
-mod chrome_footprint_apply;
 mod editor_border;
+mod fixed_zone_footprint_apply;
 mod mcp_slot;
 mod models_slot;
 mod mount;
@@ -83,8 +83,8 @@ pub struct UiRoot {
     status_next_turn_cue: Option<String>,
     /// c1205: while `/reload` runs, hide mcp pending / next-turn on the right.
     suppress_status_right_cue: bool,
-    /// Chrome toast body + deadline (atc22); not in `UiModel.entries`.
-    chrome_toast: Option<(String, Instant)>,
+    /// Toast notice body + deadline (atc22); not in `UiModel.entries`.
+    toast_notice: Option<(String, Instant)>,
     /// Mutually exclusive editor-zone face (ati18).
     slot: EditorSlot,
     /// Handshake with host `drain_pending_ui` (outlives the live payload).
@@ -106,7 +106,7 @@ pub struct UiRoot {
     upper_cache_width: usize,
     upper_cache_lines: Vec<String>,
     scrollback_paint: ScrollbackPaintCache,
-    /// Terminal rows from host (Chrome Footprint / atc23); soft default until first sync.
+    /// Terminal rows from host (Fixed-Zone Footprint / atc23); soft default until first sync.
     term_rows: usize,
     /// Last paint: toast + status + editor + footer row count (ApplicationOwned dock).
     last_dock_rows: usize,
@@ -114,7 +114,7 @@ pub struct UiRoot {
     last_toast_rows: usize,
     last_status_rows: usize,
     last_editor_rows: usize,
-    /// ApplicationOwned copy-success cue (`Copied`, ~2s). Not chrome-toast / ScrollNotice.
+    /// ApplicationOwned copy-success cue (`Copied`, ~2s). Not toast-notice / ScrollNotice.
     copy_notice_until: Option<Instant>,
     /// Test/obs: how many times upper (loaded+scrollback+queue) was rebuilt.
     #[cfg(test)]
@@ -163,7 +163,7 @@ impl UiRoot {
             footer_omit_thinking: false,
             status_next_turn_cue: None,
             suppress_status_right_cue: false,
-            chrome_toast: None,
+            toast_notice: None,
             slot: EditorSlot::Editor,
             pending: PendingSlotOps::default(),
             last_esc_at: None,
@@ -493,7 +493,7 @@ impl UiRoot {
         Component::input_wants_rerender(&self.editor, event)
     }
 
-    /// Arm ApplicationOwned «Copied» chrome cue (~2s). Must not use Error: toast (ath31).
+    /// Arm ApplicationOwned «Copied» fixed-zone cue (~2s). Must not use Error: toast (ath31).
     pub fn arm_copy_notice(&mut self) {
         self.copy_notice_until = Some(Instant::now() + xylitol_tui::COPY_NOTICE_TTL);
     }
@@ -526,10 +526,10 @@ impl UiRoot {
             // Steering/Follow-up lines + Alt+Up hint (see render_queue_strip).
             self.ui_model.pending_steer.len() + self.ui_model.pending_follow_up.len() + 1
         };
-        crate::app::tui::layout::reserved_lower_chrome(
+        crate::app::tui::layout::reserved_lower_fixed_zone(
             self.status_busy,
             queue_rows,
-            self.chrome_toast.is_some(),
+            self.toast_notice.is_some(),
         )
         .saturating_add(4) // editor borders + body floor
         .max(4)
@@ -841,7 +841,7 @@ impl UiRoot {
 
     /// Push bridge UI model into status / footer; scrollback re-renders from model (c476).
     pub fn apply_ui_model(&mut self, model: &UiModel) {
-        // Queue strip is dock chrome — steer/follow-up alone must not invalidate
+        // Queue strip is part of the dock — steer/follow-up alone must not invalidate
         // the transcript upper cache (streaming frames stay cheaper).
         let upper_changed = self.ui_model.entries != model.entries
             || self.ui_model.streaming_assistant != model.streaming_assistant
@@ -886,8 +886,8 @@ impl UiRoot {
         self.footer.set_text(self.theme.paint_muted(&base));
     }
 
-    /// Apply active chrome for footer (model + thinking); omit thinking when not adjustable.
-    pub fn set_active_chrome(
+    /// Apply active fixed zone for footer (model + thinking); omit thinking when not adjustable.
+    pub fn set_active_fixed_zone(
         &mut self,
         model_label: impl Into<String>,
         thinking: String,
@@ -919,28 +919,28 @@ impl UiRoot {
         }
     }
 
-    /// Push / replace chrome toast body (TTL from [`crate::app::tui::commands::CHROME_TOAST_TTL`]).
-    pub fn push_chrome_toast(&mut self, body: impl Into<String>) {
-        self.chrome_toast = Some((
+    /// Push / replace toast notice body (TTL from [`crate::app::tui::commands::TOAST_NOTICE_TTL`]).
+    pub fn push_toast_notice(&mut self, body: impl Into<String>) {
+        self.toast_notice = Some((
             body.into(),
-            Instant::now() + crate::app::tui::commands::CHROME_TOAST_TTL,
+            Instant::now() + crate::app::tui::commands::TOAST_NOTICE_TTL,
         ));
     }
 
     /// Body only (no `Error: ` prefix); `None` when cleared / expired.
-    pub fn chrome_toast_body(&self) -> Option<&str> {
-        self.chrome_toast.as_ref().map(|(b, _)| b.as_str())
+    pub fn toast_notice_body(&self) -> Option<&str> {
+        self.toast_notice.as_ref().map(|(b, _)| b.as_str())
     }
 
-    pub fn clear_chrome_toast(&mut self) {
-        self.chrome_toast = None;
+    pub fn clear_toast_notice(&mut self) {
+        self.toast_notice = None;
     }
 
     /// Test/harness: force deadline into the past so the next `tick` clears.
     #[cfg(test)]
-    pub fn expire_chrome_toast_now(&mut self) {
-        if let Some((body, _)) = self.chrome_toast.take() {
-            self.chrome_toast = Some((
+    pub fn expire_toast_notice_now(&mut self) {
+        if let Some((body, _)) = self.toast_notice.take() {
+            self.toast_notice = Some((
                 body,
                 Instant::now()
                     .checked_sub(std::time::Duration::from_secs(1))
@@ -950,13 +950,13 @@ impl UiRoot {
     }
 
     /// Clear toast when past deadline; returns whether state changed.
-    pub(super) fn clear_chrome_toast_if_expired(&mut self) -> bool {
+    pub(super) fn clear_toast_notice_if_expired(&mut self) -> bool {
         let expired = self
-            .chrome_toast
+            .toast_notice
             .as_ref()
             .is_some_and(|(_, d)| Instant::now() >= *d);
         if expired {
-            self.chrome_toast = None;
+            self.toast_notice = None;
             true
         } else {
             false

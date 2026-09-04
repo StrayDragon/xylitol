@@ -26,7 +26,7 @@
 
 - 分类器输入 = 既有 segment 类别序列，输出 = 分组决策
   （纯函数，可直测）；类别清单首版仅 {读文件, 检索}。
-- 分组行文案走 chrome 词表新增条目（如 `Explored —` 前缀），需同步词表文档。
+- 分组行文案走固定区词表新增条目（如 `Explored —` 前缀），需同步词表文档。
 - 与 settings 打通：`ActivityFoldSettings` 增加 auto-group 开关（默认 on）。
 
 ## 决策点

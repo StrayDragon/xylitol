@@ -1,9 +1,9 @@
 # language: zh-CN
-# capability: app-tui-chrome
-# purpose: 主题 token、glyph、status 与 footer 等 layout 壳（历史 capability 名 chrome）。
+# capability: app-tui-fixed-zone
+# purpose: 主题 token、glyph、status、footer、通知条等固定区（非滚动 layout 壳）行为。
 # scope: src/app/tui/
 
-功能: app-tui-chrome
+功能: app-tui-fixed-zone
 
   @req:atc1 @human
   场景: idle-status-omitted
@@ -78,7 +78,7 @@
     - 产品 UiRoot MUST 在 scrollback 上方渲染 loaded-resources 槽：Codex 风边框卡片（>_ xylitol + model/directory；有 skills 时 skill-ref 色 skills 行并换行全量；有 MCP 时 success 色 mcp 行）；MCP 连接进行中时 mcp 行 MUST 显示可区分的 connecting 进度（含已配置数或 i/n 与当前 server id 或等价），完成后 MUST 收敛为 connected 摘要（已连接 id 与工具数或等价）。Host 侧已有成功连接时 MUST NOT 把头卡停在仅 `N configured · 0 connected` 且无 connecting 进度、无失败诊断。失败诊断 MUST 可感且 MUST NOT 用逐步滚动提示刷墙。MUST NOT 展示木糖醇中文标签；MUST NOT 渲染 ASCII logo 艺术字；MUST NOT 用省略号截断资源名；MUST NOT 列出或暗示存在 prompt templates（产品无此能力）；MUST NOT 展示密钥或完整 env。
 
   @req:atc20 @human
-  场景: chrome-success-no-system
+  场景: fixed-zone-success-no-system
     - 产品 host 成功切换 model、thinking 或 theme 时 MUST NOT 向 scrollback 追加成功确认类滚动提示（如 model → …）；失败与诊断 MAY 写滚动提示（ScrollNotice）。
 
   @req:atc21 @human
@@ -86,12 +86,12 @@
     - 当 footer 已展示 ContextTokenEstimate 且当前模型 context_window > 0 时，MUST 在 used 字段后追加派生占用比：percent = tokens/context_window*100（展示 1 位小数）与紧凑 window（如 128k），形如 ` · 32.8%/128k`（used 侧紧凑例：`used 42k tokens · 32.8%/128k`）；Heuristic MUST 为 ` · ~p%/W`；Unknown 且有窗 MUST 为 ` · ?%/W`；context_window 为 0 或不展示 used 字段时 MUST NOT 追加 %；该百分比 MUST 仅作展示，MUST NOT 作为 should_compact / reserve 触发 SSOT，MUST NOT 恢复 compaction_threshold 或百分比闸配置。
 
   @req:atc22 @human
-  场景: chrome-toast-ephemeral
-    - 产品 TUI MUST 提供壳层通告（chrome toast）：固定于 layout 壳、位于 status/spinner 槽上方恰好一行；前景 MUST 用 warning token（非 muted、非 accent）；可见文案 MUST 以字面前缀 `Error: ` 开头后接 body；MUST NOT 写入 UiModel.entries / UiEntry；新通告 MUST 替换旧通告（单槽）；显示后 MUST 在约定 TTL（默认约 3–5s）内经 idle_tick/step 自动清除。agent/bang busy 下 Resume 面板 switch/rename/delete 拒闸（见 atm10）MUST 走壳层通告，MUST NOT 再追加 UiEntry::ScrollNotice。MUST NOT 用壳层通告冒充对话正文或下轮预告。
+  场景: toast-notice-ephemeral
+    - 产品 TUI MUST 提供通知条（toast notice）：固定于固定区、位于 status/spinner 槽上方恰好一行；前景 MUST 用 warning token（非 muted、非 accent）；可见文案 MUST 以字面前缀 `Error: ` 开头后接 body；MUST NOT 写入 UiModel.entries / UiEntry；新通知 MUST 替换旧通知（单槽）；显示后 MUST 在约定 TTL（默认约 3–5s）内经 idle_tick/step 自动清除。agent/bang busy 下 Resume 面板 switch/rename/delete 拒闸（见 atm10）MUST 走通知条，MUST NOT 再追加 UiEntry::ScrollNotice。MUST NOT 用通知条冒充对话正文或下轮预告。
 
   @req:atc23 @human
-  场景: chrome-footprint-term-budget
-    - 产品 TUI MUST 维护 Chrome Footprint（单表或单函数 SSOT）：按终端行高 term_rows 为 lower chrome 预留最小行（busy status 按前导空行+短词计 2 行、footer 1 行；非空 queue strip / chrome toast 各按其实际行计入）。EditorSlot 内带 max_visible 的列表/树（至少 Resume、Tree、Models、MCP、Themes、Import）body 可见行顶 MUST = term_rows 减去上述 reserved 与槽头行后的预算且 MUST ≥ 1；MUST NOT 以与 term_rows 脱节的硬编码 10 作为运行时顶。content-end 视口下，短终端 agent-busy 且上述高槽打开时，视口内 MUST 仍能看到 status lead（Working 或等价 spinner 短词）。MUST NOT 为本需求改 xylitol-tui content-end 视口语义或引入引擎级 bottom-chrome pin（除非另开变更）。
+  场景: fixed-zone-footprint-term-budget
+    - 产品 TUI MUST 维护 Fixed-Zone Footprint（单表或单函数 SSOT）：按终端行高 term_rows 为下缘固定区预留最小行（busy status 按前导空行+短词计 2 行、footer 1 行；非空 queue strip / 通知条各按其实际行计入）。EditorSlot 内带 max_visible 的列表/树（至少 Resume、Tree、Models、MCP、Themes、Import）body 可见行顶 MUST = term_rows 减去上述 reserved 与槽头行后的预算且 MUST ≥ 1；MUST NOT 以与 term_rows 脱节的硬编码 10 作为运行时顶。content-end 视口下，短终端 agent-busy 且上述高槽打开时，视口内 MUST 仍能看到 status lead（Working 或等价 spinner 短词）。MUST NOT 为本需求改 xylitol-tui content-end 视口语义或引入引擎级 bottom-fixed-zone pin（除非另开变更）。
 
   @req:atc24 @human
   场景: footer-used-compact-count
@@ -99,11 +99,11 @@
 
   @req:atc25 @human
   场景: reload-status-and-toasts
-    - 产品 TUI 在 /reload 进行中（ath28 reload 态）时 status 槽 MUST 显示 Loader 形态：前导空行 + 一行 spinner+短词 `Reloading`（lead 贴左，与 atc7/atc12 同形）；MUST NOT 冒充 agent Working 或 Assembling；该态下 status 右侧 MUST NOT 显示 mcp pending cue 或任何换模预告。软闸拒提交、取消收口、失败收口的壳层通告 MUST 走 atc22：body 分别为 `reloading — wait`、`reload cancelled`、`reload failed — see report`（可见前缀 `Error: `）；取消与失败 MUST 另有滚动提示报告（见 ath28），软闸拒提交 MUST NOT 为此追加 ScrollNotice。reload 结束后 status MUST 回到 idle 0 内容行（保留呼吸空行）。
+    - 产品 TUI 在 /reload 进行中（ath28 reload 态）时 status 槽 MUST 显示 Loader 形态：前导空行 + 一行 spinner+短词 `Reloading`（lead 贴左，与 atc7/atc12 同形）；MUST NOT 冒充 agent Working 或 Assembling；该态下 status 右侧 MUST NOT 显示 mcp pending cue 或任何换模预告。软闸拒提交、取消收口、失败收口的通知条 MUST 走 atc22：body 分别为 `reloading — wait`、`reload cancelled`、`reload failed — see report`（可见前缀 `Error: `）；取消与失败 MUST 另有滚动提示报告（见 ath28），软闸拒提交 MUST NOT 为此追加 ScrollNotice。reload 结束后 status MUST 回到 idle 0 内容行（保留呼吸空行）。
 
   @req:atc26 @human
-  场景: chrome-no-extra-undocumented
-    - 产品 TUI 壳层（footer / status / 队列条 / 壳层通告等）可观察文案与徽章 MUST 仅来自文档化视觉 SSOT（见 atc4）已声明的槽与字段；MUST NOT 另加 SSOT 未声明或已废弃的冗余展示（避免用户疑惑）；队列可见性 SSOT 为中间队列条（Steering:/Follow-up:，见 ati11），MUST NOT 再在 footer/status 重复队列计数徽章。
+  场景: fixed-zone-no-extra-undocumented
+    - 产品 TUI 固定区（footer / status / 队列条 / 通知条等）可观察文案与徽章 MUST 仅来自文档化视觉 SSOT（见 atc4）已声明的槽与字段；MUST NOT 另加 SSOT 未声明或已废弃的冗余展示（避免用户疑惑）；队列可见性 SSOT 为中间队列条（Steering:/Follow-up:，见 ati11），MUST NOT 再在 footer/status 重复队列计数徽章。
 
   @req:atc27 @human
   场景: tool-header-timeout-note

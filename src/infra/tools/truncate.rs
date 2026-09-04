@@ -148,7 +148,7 @@ pub(crate) struct TruncatedLine {
     pub(crate) text: String,
 }
 
-/// Append the shared limit-notice chrome (`\n\n[a. b]`) to tool output.
+/// Append the shared limit-notice suffix (`\n\n[a. b]`) to tool output.
 ///
 /// `extra` carries tool-specific notices (e.g. match limit reached); the
 /// byte-truncation notice is appended here when `truncated`.

@@ -1,4 +1,4 @@
-//! Tool args preview, path chrome, and quiet success output helpers.
+//! Tool args preview, path display, and quiet success output helpers.
 
 use std::path::{Path, PathBuf};
 
@@ -16,7 +16,7 @@ pub(crate) fn compact_json_preview(value: &Value, max_chars: usize) -> String {
     format!("{truncated}…")
 }
 
-/// Display path for tool chrome: under process cwd → relative; otherwise absolute.
+/// Display path for tool output: under process cwd → relative; otherwise absolute.
 ///
 /// Aligns with VS Code / CLI path disclosure (not `~/` shortening).
 pub(crate) fn display_fs_path(path: &str) -> String {
@@ -114,7 +114,7 @@ fn format_read_line_range(args: &Value) -> String {
     }
 }
 
-/// Title-case tool name for scrollback chrome (`read` → `Read`).
+/// Title-case tool name for scrollback display (`read` → `Read`).
 pub(crate) fn display_tool_title(name: &str) -> String {
     let mut chars = name.chars();
     match chars.next() {
@@ -197,7 +197,7 @@ pub fn human_tool_args_preview(name: &str, args: &Value, max_chars: usize) -> St
     human_tool_args_preview_with_path(name, args, None, max_chars)
 }
 
-/// Map built-in tool `result` → TUI body text (no machine JSON chrome).
+/// Map built-in tool `result` → TUI body text (no machine JSON remnants).
 ///
 /// Returns `None` when the result should stay as-is (errors, unknown shapes, plain text).
 pub(crate) fn humanize_tool_result_for_tui(
@@ -318,7 +318,7 @@ fn ellipsize_ask_frag(s: &str, max: usize) -> String {
     format!("{}…", s.chars().take(take).collect::<String>())
 }
 
-/// True when `text` is a JSON object that still looks like tool wire chrome.
+/// True when `text` is a JSON object that still looks like tool wire remnants.
 pub(crate) fn output_looks_like_machine_json(text: &str) -> bool {
     let trimmed = text.trim();
     if !(trimmed.starts_with('{') && trimmed.ends_with('}')) {
@@ -394,7 +394,7 @@ fn humanize_read_tool_output(result: &str) -> Option<String> {
     Some(body)
 }
 
-/// Turn bash/shell tool JSON into shell-like stdout/stderr text (not raw JSON chrome).
+/// Turn bash/shell tool JSON into shell-like stdout/stderr text (not raw JSON remnants).
 pub(crate) fn humanize_bash_tool_output(result: &str) -> Option<String> {
     let value: Value = serde_json::from_str(result).ok()?;
     if !value.is_object() {
@@ -1253,7 +1253,7 @@ mod tests {
 
     #[test]
     fn builtin_tool_results_never_leak_machine_json_in_tui() {
-        // Typical success envelopes from infra tools → TUI body must not be raw JSON chrome.
+        // Typical success envelopes from infra tools → TUI body must not be raw JSON remnants.
         let cases: &[(&str, &str, &str)] = &[
             ("write", r#"{"success":true,"path":"a.py","bytes":12}"#, ""),
             (

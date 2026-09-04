@@ -37,10 +37,10 @@ pub(super) async fn set<T: Terminal>(
     .await
     {
         Ok(DispatchOutcome::Model(_)) => {
-            session.sync_runtime_chrome(driver);
+            session.sync_fixed_zone(driver);
         }
         Ok(_) => {
-            session.sync_runtime_chrome(driver);
+            session.sync_fixed_zone(driver);
         }
         Err(e) => session.push_scroll_notice(format!("/model failed: {e}")),
     }

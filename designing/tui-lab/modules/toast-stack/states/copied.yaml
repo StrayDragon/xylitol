@@ -1,0 +1,11 @@
+id: toast-stack.copied
+cols: 80
+must_contain:
+  - "✓ Copied to clipboard"
+must_not_contain:
+  - "export done"
+lines:
+  -
+    - { text: "                                     ✓ Copied to clipboard", token: success }
+  -
+    - { text: "", token: muted }

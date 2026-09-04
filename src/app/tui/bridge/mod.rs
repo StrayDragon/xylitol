@@ -52,7 +52,7 @@ pub(crate) fn upsert_tool_entry(model: &mut UiModel, id: &str, name: &str, args:
     use crate::app::tool_display::{is_mcp_tool_name, mcp_tool_body};
 
     let fresh_path = extract_tool_path(args);
-    // c2435: model-requested bound (bash/grep/find only) becomes header chrome.
+    // c2435: model-requested bound (bash/grep/find only) becomes header note.
     let timeout_secs = matches!(name, "bash" | "grep" | "find")
         .then(|| args.get("timeout"))
         .flatten()
@@ -68,7 +68,7 @@ pub(crate) fn upsert_tool_entry(model: &mut UiModel, id: &str, name: &str, args:
         .flatten()
         .filter(|s| !s.is_empty());
     let mcp = is_mcp_tool_name(name);
-    // Header: no args chrome for mcp (body owns `args:` — avoids `{}` / compact JSON redundancy).
+    // Header: no args section for mcp (body owns `args:` — avoids `{}` / compact JSON redundancy).
     let mcp_preview = mcp.then(String::new);
     let mcp_pending_body = mcp.then(|| mcp_tool_body(Some(args), None));
     if let Some(UiEntry::Tool {
@@ -279,7 +279,7 @@ pub(crate) fn apply_tool_result_to_entries(
         *output = result.to_string();
     }
 
-    // Safety net: never leave built-in success JSON chrome in the TUI body.
+    // Safety net: never leave built-in success JSON remnants in the TUI body.
     if !is_error
         && output_looks_like_machine_json(output)
         && let Some(human) = humanize_tool_result_for_tui(name, result, false)

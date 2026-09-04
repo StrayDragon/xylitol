@@ -630,7 +630,7 @@ fn pty_product_fake_extreme_shrink_then_restore() {
             COLS as usize,
             ROWS as usize,
         )
-        .expect("Ready chrome must recover after enlarge");
+        .expect("Ready fixed zone must recover after enlarge");
 
     session.send_keys("\x15/exit\r").expect("submit /exit");
     let code = session
@@ -1101,7 +1101,7 @@ fn pty_product_fake_busy_model_list_keeps_running_lead() {
         .expect("Models slot should list fake");
     assert!(
         session.raw_contains(b"Running"),
-        "busy status lead MUST remain in PTY stream while Models open (chrome footprint)"
+        "busy status lead MUST remain in PTY stream while Models open (fixed zone footprint)"
     );
 
     session.send_keys("\x1b").expect("Esc close Models");
