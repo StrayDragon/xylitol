@@ -1,13 +1,14 @@
-id: chrome-toast
-title: 壳层通告
+id: toast-notice
+title: 通知条
+category: 固定区
 surface: tui
 summary: "status 上方单行 warning 通告，前缀 Error:。"
 alignment:
-  chrome: 队列条之下、status 之上恰好 1 行
+  fixed: 队列条之下、status 之上恰好 1 行
   item: 不进 transcript / ScrollNotice / UiEntry
   todo-bar: 不占用队列条
 todos:
   - { done: true, text: "词表 Error: 前缀 + warning 色" }
   - { done: true, text: "busy Resume 硬拒闸走本槽" }
 notes: |
-  代码 SSOT：host push_chrome_toast。TTL 默认 4s。无组件自有快捷键。
+  代码 SSOT：host push_toast_notice。TTL 默认 4s。无组件自有快捷键。

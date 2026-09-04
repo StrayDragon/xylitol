@@ -3,7 +3,7 @@ title: 大粘贴折叠
 surface: tui-lab
 summary: "大段粘贴折叠为一行摘要；核心问题是光标能否把整块当一个单元移动。"
 alignment:
-  chrome: 只作用于 editor 槽内容；不进 transcript / scrollback
+  fixed: 只作用于 editor 槽内容；不进 transcript / scrollback
   item: 与 `$name` 高亮同层的行内区间构造
 keys:
   - { chord: "← →", when: "移动光标；unit 模式下整块跳过粘贴区" }
@@ -17,4 +17,3 @@ todos:
 notes: |
   现状：编辑器为纯文本行缓冲，粘贴全量插入；expanded 展开态产品已有
   （即现状本身），故本稿只保留 folded 目标态。提交语义不变是 MUST。
-  本模块带 sim.ts：stage 默认即交互原型，t 键可对比提案行为与现状。

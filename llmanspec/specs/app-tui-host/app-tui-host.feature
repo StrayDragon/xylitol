@@ -75,7 +75,7 @@
 
   @req:ath22 @human
   场景: thinking-level-silent-commit
-    - 产品 host 经 /model 槽或有参 /model 提交 model/thinking 时 MUST 经 Driver set_thinking_level / SetModel（或 Command 等价）更新 selected；成功路径 MUST 仅更新 chrome（footer、边框），MUST NOT 向 live scrollback / transcript 追加 model → … 或 thinking-border → … 类滚动提示确认块；失败或诊断 MAY 写滚动提示。agent-busy 时 footer MUST 立即反映 selected（run 绑定语义；产品面无换模预告）。模型切换后 MUST 从 Driver 重同步 UI；组件 MUST NOT 直接 reach ModelManager。
+    - 产品 host 经 /model 槽或有参 /model 提交 model/thinking 时 MUST 经 Driver set_thinking_level / SetModel（或 Command 等价）更新 selected；成功路径 MUST 仅更新固定区（footer、边框），MUST NOT 向 live scrollback / transcript 追加 model → … 或 thinking-border → … 类滚动提示确认块；失败或诊断 MAY 写滚动提示。agent-busy 时 footer MUST 立即反映 selected（run 绑定语义；产品面无换模预告）。模型切换后 MUST 从 Driver 重同步 UI；组件 MUST NOT 直接 reach ModelManager。
 
   @req:ath23 @human
   场景: loaded-resources-via-driver
@@ -99,7 +99,7 @@
 
   @req:ath28 @human
   场景: reload-in-progress-ux
-    - 产品 TUI 在 idle 启动无参 /reload 后、重载未完成前 MUST：以独立 reload 进行中态（非 agent run_active、非 bang busy）驱动 status lead 为 spinner+`Reloading`；host/effects MUST NOT 因 await 重载而阻塞终端 tick 与键入处理。进行中 MUST 允许打字与 Ctrl+G 外编；Enter 提交普通上行 / slash（含二次 /reload）/ bang MUST 拒绝且经壳层通告 body 恰好为 `reloading — wait`（可见 `Error: reloading — wait`），MUST NOT 调用第二次 runtime reload 或入 steer。无 overlay 时 Esc 与 Ctrl+C MUST 请求协作取消重载（非退出）；有 overlay 时 MUST 先关槽。取消收口 MUST 恢复一致工具/MCP 快照（旧 manager 保留至新装好或取消恢复）、put-back reload 句柄、解除进行中态，并以滚动提示 `Reload cancelled:`（含已完成步进摘要）+ 壳层通告 body `reload cancelled` 说明；已写入的 skills/context MUST NOT 要求事务回滚。失败（含墙钟超时诊断）MUST 以既有 `Reload:` 步进报告 + 壳层通告 body `reload failed — see report` 说明并解除进行中态。成功路径仍尾随既有 `Reload:` 汇总；MUST NOT 清空 transcript/session 历史或 editor 草稿。agent/bang 真 busy 时 /reload 拒绝保持 ath20/atm12。墙钟对齐既有 MCP 单 server 与首 turn 门闸常量。验证 MUST 含可注入慢/失败/取消的 harness。
+    - 产品 TUI 在 idle 启动无参 /reload 后、重载未完成前 MUST：以独立 reload 进行中态（非 agent run_active、非 bang busy）驱动 status lead 为 spinner+`Reloading`；host/effects MUST NOT 因 await 重载而阻塞终端 tick 与键入处理。进行中 MUST 允许打字与 Ctrl+G 外编；Enter 提交普通上行 / slash（含二次 /reload）/ bang MUST 拒绝且经通知条 body 恰好为 `reloading — wait`（可见 `Error: reloading — wait`），MUST NOT 调用第二次 runtime reload 或入 steer。无 overlay 时 Esc 与 Ctrl+C MUST 请求协作取消重载（非退出）；有 overlay 时 MUST 先关槽。取消收口 MUST 恢复一致工具/MCP 快照（旧 manager 保留至新装好或取消恢复）、put-back reload 句柄、解除进行中态，并以滚动提示 `Reload cancelled:`（含已完成步进摘要）+ 通知条 body `reload cancelled` 说明；已写入的 skills/context MUST NOT 要求事务回滚。失败（含墙钟超时诊断）MUST 以既有 `Reload:` 步进报告 + 通知条 body `reload failed — see report` 说明并解除进行中态。成功路径仍尾插既有 `Reload:` 汇总；MUST NOT 清空 transcript/session 历史或 editor 草稿。agent/bang 真 busy 时 /reload 拒绝保持 ath20/atm12。墙钟对齐既有 MCP 单 server 与首 turn 门闸常量。验证 MUST 含可注入慢/失败/取消的 harness。
 
   @req:avs1 @human
   场景: synthetic-harness-one-round
@@ -115,15 +115,15 @@
 
   @req:ath30 @human
   场景: interaction-mode-application-owned-default
-    - 产品 TUI MUST 在 host **启动构造时**绑定 xylitol-tui 交互模式为 ApplicationOwned（应用自管视口 / alt-screen）。缺省/未配置 MUST 为 ApplicationOwned。一次会话 MUST 只有一个主模式；MUST NOT 在会话运行中热切模式（改模式 = 结束进程或新建 HostSession，不是 mid-loop 换栈 API）。MUST NOT 把 XYLITOL_TUI_MOUSE 环境变量当作产品模式开关；MUST NOT 提供面向用户的 Inline/ApplicationOwned 切换设置。产品 MUST 将下缘 chrome（至少 status/editor/footer 所占行）登记为 dock，使包级选区排除输入面；teardown MUST 不残留 mouse capture / alt-buffer。退出 ApplicationOwned 时产品 MUST 依赖库 finish dump（或等价）使主屏 scrollback 仍可读会话内容；本要求不要求向用户暴露 dump opt-out。折叠点击语义不在本要求范围（见后续 fold 族 change）。库仍可暴露 Inline 构造入口供 lab/demo；产品默认路径 MUST NOT 使用 Inline。
+    - 产品 TUI MUST 在 host **启动构造时**绑定 xylitol-tui 交互模式为 ApplicationOwned（应用自管视口 / alt-screen）。缺省/未配置 MUST 为 ApplicationOwned。一次会话 MUST 只有一个主模式；MUST NOT 在会话运行中热切模式（改模式 = 结束进程或新建 HostSession，不是 mid-loop 换栈 API）。MUST NOT 把 XYLITOL_TUI_MOUSE 环境变量当作产品模式开关；MUST NOT 提供面向用户的 Inline/ApplicationOwned 切换设置。产品 MUST 将下缘固定区（至少 status/editor/footer 所占行）登记为 dock，使包级选区排除输入面；teardown MUST 不残留 mouse capture / alt-buffer。退出 ApplicationOwned 时产品 MUST 依赖库 finish dump（或等价）使主屏 scrollback 仍可读会话内容；本要求不要求向用户暴露 dump opt-out。折叠点击语义不在本要求范围（见后续 fold 族 change）。库仍可暴露 Inline 构造入口供 lab/demo；产品默认路径 MUST NOT 使用 Inline。
 
   @req:ath31 @human
-  场景: mode-b-copy-notice-chrome
-    - 产品 TUI 在 ApplicationOwned 会话下，当库发出松手复制成功 copy-notice（ptim15）时 MUST 展示短时用户可见提醒（TTL 约 1.5–3s 后自动消失）。落点 SHOULD 为下缘 chrome 内、status/输入带附近的单行提示（或独立 info 壳层槽）；MUST NOT 写入 transcript / ScrollNotice；MUST NOT 使用带 `Error: ` 前缀的拒闸 chrome-toast 形态冒充成功确认。折叠点击不在范围。
+  场景: mode-b-copy-notice-fixed-zone
+    - 产品 TUI 在 ApplicationOwned 会话下，当库发出松手复制成功 copy-notice（ptim15）时 MUST 展示短时用户可见提醒（TTL 约 1.5–3s 后自动消失）。落点 SHOULD 为下缘固定区内、status/输入带附近的单行提示（或独立 info 固定区槽）；MUST NOT 写入 transcript / ScrollNotice；MUST NOT 使用带 `Error: ` 前缀的拒闸 toast-notice 形态冒充成功确认。折叠点击不在范围。
 
   @req:ath32 @human
   场景: enter-follows-transcript-bottom
-    - 产品 TUI 在 ApplicationOwned 的 Ready 主输入面收到 `tui.input.submit` Enter 时 MUST 立即将 transcript 视口滚到底部并恢复尾随；该行为 MUST 同时适用于非空提交与空输入。空输入 MUST NOT 因此创建 submit；非 Editor 槽中的 Enter MUST 保留给该槽自身的确认语义，不得强制滚动 transcript。
+    - 产品 TUI 在 ApplicationOwned 的 Ready 主输入面收到 `tui.input.submit` Enter 时 MUST 立即将 transcript 视口滚到底部并恢复尾插；该行为 MUST 同时适用于非空提交与空输入。空输入 MUST NOT 因此创建 submit；非 Editor 槽中的 Enter MUST 保留给该槽自身的确认语义，不得强制滚动 transcript。
 
   @req:ath33 @human
   场景: fold-triangle-hit-priority
@@ -146,7 +146,7 @@
     - 产品 TUI attach 下 `/reload` 进行中用户触发取消（interrupt/clear 键位）时，client MUST 将取消意图经 Host 转达（合作取消该次进程级 reload），MUST NOT 继续等待原 reload 完成；取消后 reload 界面 MUST 以已取消收尾，Host MUST 停止后续重装步骤。正常完成路径行为保持不变。
 
   @req:ath38 @human
-  场景: attach-chrome-downlink-driven
+  场景: attach-fixed-zone-downlink-driven
     - 产品 TUI attach 下 MCP/skills 头卡的连接态刷新 MUST 由 Host 的 `session/resources` 下行驱动：帧到达置脏后由 tick 读本地缓存刷新；MUST NOT 以周期性 unary 轮询同一刷新。首帧到达前的初始快照 MAY 经一次性 loaded_resources unary 获取；启动与 /reload 后的既有刷新语义（ath23）保持。
 
   @req:ath39 @human
@@ -163,7 +163,7 @@
 
   @req:ath42 @human
   场景: attach-reconnect-grace-ux
-    - 产品 TUI attach 下初始连接与重连 MUST 各有宽限期：宽限内 MUST NOT 因断线/重试打扰信息面（transcript 与状态条零输出）；超宽限 MUST 以壳层通告（chrome toast）提示断线重连中，恢复成功 MUST 以壳层通告收尾并清除断线态；重连窗内 MUST NOT 向 transcript 推错误行。
+    - 产品 TUI attach 下初始连接与重连 MUST 各有宽限期：宽限内 MUST NOT 因断线/重试打扰信息面（transcript 与状态条零输出）；超宽限 MUST 以通知条（toast notice）提示断线重连中，恢复成功 MUST 以通知条收尾并清除断线态；重连窗内 MUST NOT 向 transcript 推错误行。
 
   @req:ath43 @human
   场景: attach-coalesce-downlink

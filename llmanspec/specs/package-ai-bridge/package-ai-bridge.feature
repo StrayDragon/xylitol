@@ -83,7 +83,7 @@
 
   @req:pab23 @human
   场景: prompt-cache-usage-obs-honesty
-    - 当 ProviderRequestTrace（或等价）激活并附着 usage 时，MUST 将 Prompt Cache 三态透出到观测属性（Langfuse/trace 自定义 property 或等价）；langfuse.observation.usage_details 中的 cache_read 数字 MUST 仅在 Tokens(n) 语义下写入。MUST NOT 在 NotReported 或 NotApplicable 时写入 cache_read:0 冒充已回报命中。由包内单测覆盖，MUST NOT 单独扩 BDD step。本 req 不要求 TUI chrome。
+    - 当 ProviderRequestTrace（或等价）激活并附着 usage 时，MUST 将 Prompt Cache 三态透出到观测属性（Langfuse/trace 自定义 property 或等价）；langfuse.observation.usage_details 中的 cache_read 数字 MUST 仅在 Tokens(n) 语义下写入。MUST NOT 在 NotReported 或 NotApplicable 时写入 cache_read:0 冒充已回报命中。由包内单测覆盖，MUST NOT 单独扩 BDD step。本 req 不要求 TUI 固定区。
 
   @req:pab24 @human
   场景: responses-assembler-sole-body

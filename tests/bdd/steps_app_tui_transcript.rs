@@ -174,7 +174,9 @@ fn then_block_gap_present(transcript_bdd: &TranscriptBdd) {
             .unwrap_or_else(|| panic!("frame must contain {needle:?}:\n{plain}"))
     };
     let alpha = find_last("alpha body");
-    let tool = find_last("lib.rs");
+    // c2540: the cluster head is count-only now — locate the block row by its
+    // head form (the kid stays collapsed behind it in this scene).
+    let tool = find_last("Exploring 1 file");
     assert!(
         tool > alpha,
         "tool block must render below assistant block:\n{plain}"
@@ -200,7 +202,7 @@ fn when_replay_read_then_edit(transcript_bdd: &TranscriptBdd) {
     *transcript_bdd.frames.borrow_mut() = vec![plain];
 }
 
-#[then("只读前簇封口为 Explored old.rs 且改写簇头保持 Editing a.rs")]
+#[then("只读前簇封口为 Explored 1 file 且改写簇头保持 Editing 1 file")]
 fn then_explored_and_editing_heads(transcript_bdd: &TranscriptBdd) {
     let frames = transcript_bdd.frames.borrow();
     let plain = frames.last().expect("frame");
@@ -211,9 +213,9 @@ fn then_explored_and_editing_heads(transcript_bdd: &TranscriptBdd) {
             .position(|l| l.contains(needle))
             .unwrap_or_else(|| panic!("frame must contain {needle:?}:\n{plain}"))
     };
-    let sealed = pos("Explored old.rs");
+    let sealed = pos("Explored 1 file");
     let body = pos("mid-body");
-    let editing = pos("Editing a.rs");
+    let editing = pos("Editing 1 file");
     assert!(
         sealed < body && body < editing,
         "att24: sealed head, body divider, editing head must co-exist in order:\n{plain}"
@@ -226,11 +228,11 @@ fn then_no_wrong_tense_after_end(transcript_bdd: &TranscriptBdd) {
     let plain = frames.last().expect("frame");
     // 开启中的回合内改写簇头保持现在时 Editing；MUST NOT 翻成 Edited 或与 Explored 并列同头
     assert!(
-        plain.contains("Editing a.rs") && !plain.contains("Edited a.rs"),
+        plain.contains("Editing 1 file") && !plain.contains("Edited 1 file"),
         "post-end cluster head must stay Editing within live turn:\n{plain}"
     );
     assert!(
-        !(plain.contains("Edited") && plain.contains("Explored old.rs") && {
+        !(plain.contains("Edited") && plain.contains("Explored 1 file") && {
             let edited_line = plain.lines().find(|l| l.contains("Edited")).unwrap();
             edited_line.contains("Explored")
         }),
@@ -275,9 +277,9 @@ fn then_body_seals_previous_cluster(transcript_bdd: &TranscriptBdd) {
             .position(|l| l.contains(needle))
             .unwrap_or_else(|| panic!("frame must contain {needle:?}:\n{plain}"))
     };
-    let sealed = pos("Explored old.rs");
+    let sealed = pos("Explored 1 file");
     let body = pos("mid-body");
-    let next = pos("Editing a.rs");
+    let next = pos("Editing 1 file");
     assert!(
         sealed < body && body < next,
         "att34: body must seal previous cluster and precede new cluster head:\n{plain}"
@@ -1179,8 +1181,8 @@ fn then_envelope_precise_expand(tui_interaction: &TuiInteraction) {
     // 管辖（att25/att31），不在此处要求。
     assert!(
         plain.contains("mid-turn-0")
-            && plain.contains("Explored f0-1.rs")
-            && plain.contains("Edited f0-2.rs"),
+            && plain.contains("Explored 1 file")
+            && plain.contains("Edited 1 file"),
         "att23: expanding the envelope reveals the middle body and cluster heads:\n{plain}"
     );
     assert!(
@@ -1201,7 +1203,7 @@ fn then_turn_end_window(tui_interaction: &TuiInteraction) {
     assert!(
         plain.contains("mid-turn-2")
             && plain.contains("end-turn-2")
-            && plain.contains("Explored f2-1.rs"),
+            && plain.contains("Explored 1 file"),
         "att26: near-window turns keep bodies and cluster heads visible:\n{plain}"
     );
 }
@@ -1247,7 +1249,7 @@ fn then_no_envelope_when_disabled(tui_interaction: &TuiInteraction) {
     );
     // 关闭收纳 ≠ 强制展开：密封簇保持默认收起（att25），簇头行可见即可再展开。
     assert!(
-        plain.contains("Explored f0-1.rs"),
+        plain.contains("Explored 1 file"),
         "att26: cluster heads stay visible when disabled:\n{plain}"
     );
 }
@@ -1263,7 +1265,7 @@ fn then_marker_chords(tui_interaction: &TuiInteraction) {
         );
     }
     assert!(
-        plain.contains("▸ Explored f2-1.rs · 1 read  (Alt+Shift+E)"),
+        plain.contains("▸ Explored 1 file · 1 read  (Alt+Shift+E)"),
         "att27: collapsed cluster heads advertise the same expand chord:\n{plain}"
     );
     assert!(
@@ -1354,7 +1356,7 @@ fn when_press_ctrl_alt_shift_e_again(tui_interaction: &TuiInteraction) {
 fn then_nearest_expanded_to_heads(tui_interaction: &TuiInteraction) {
     let plain = frame_of(tui_interaction, 120);
     assert!(
-        plain.contains("Explored f3-1.rs") && plain.contains("Edited f3-2.rs"),
+        plain.contains("Explored 1 file") && plain.contains("Edited 1 file"),
         "att28: expandNearest opens the nearest folded envelope to cluster heads:\n{plain}"
     );
     assert!(
@@ -1371,34 +1373,30 @@ fn then_nearest_expanded_to_heads(tui_interaction: &TuiInteraction) {
 #[then("次近折叠信封降为簇头态且最近簇头保持")]
 fn then_next_envelope_to_heads(tui_interaction: &TuiInteraction) {
     let plain = frame_of(tui_interaction, 120);
-    assert!(
-        plain.contains("Explored f2-1.rs"),
+    // c2540: heads are count-only now — distinguish envelopes by occurrence.
+    assert_eq!(
+        plain.matches("Explored 1 file").count(),
+        2,
         "att28: expandNearest proceeds to the next nearest folded envelope:\n{plain}"
-    );
-    assert!(
-        plain.contains("Explored f3-1.rs"),
-        "att28: the previously opened envelope stays at cluster level:\n{plain}"
     );
 }
 
 #[then("最近展开信封收回为 Worked for 折叠态")]
 fn then_nearest_envelope_recollapsed(tui_interaction: &TuiInteraction) {
     let plain = frame_of(tui_interaction, 120);
-    assert!(
-        !plain.contains("Explored f3-1.rs"),
+    assert_eq!(
+        plain.matches("Explored 1 file").count(),
+        1,
         "att28: collapseNearest re-folds the nearest non-L3 envelope:\n{plain}"
-    );
-    assert!(
-        plain.contains("Explored f2-1.rs"),
-        "att28: the farther opened envelope stays:\n{plain}"
     );
 }
 
 #[then("全部信封收回为 Worked for 折叠态")]
 fn then_all_envelopes_recollapsed(tui_interaction: &TuiInteraction) {
     let plain = frame_of(tui_interaction, 120);
-    assert!(
-        !plain.contains("Explored f2-1.rs"),
+    assert_eq!(
+        plain.matches("Explored 1 file").count(),
+        0,
         "att28: second collapseNearest re-folds the remaining envelope:\n{plain}"
     );
     assert_eq!(

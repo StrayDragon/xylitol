@@ -7,8 +7,18 @@
     "noEmit": true,
     "skipLibCheck": true,
     "verbatimModuleSyntax": true,
-    "types": ["vite/client"],
-    "lib": ["ES2022", "DOM", "DOM.Iterable"]
+    "types": [
+      "vite/client"
+    ],
+    "lib": [
+      "ES2022",
+      "DOM",
+      "DOM.Iterable"
+    ],
+    "resolveJsonModule": true
   },
-  "include": ["src", "../tui/modules"]
+  "include": [
+    "src",
+    "../tui/modules"
+  ]
 }

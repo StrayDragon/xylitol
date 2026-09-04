@@ -1,9 +1,10 @@
 id: widgets
 title: 槽控件
+category: 槽与面板
 surface: tui
 summary: SelectList / 空态 / 窄槽；产品 overlay 共用形态。
 alignment:
-  chrome: overlay
+  fixed: overlay
   item: 与 models/tree/resume 同形
 todos:
   - { done: true, text: "无 (包) 分层样式" }

@@ -1,5 +1,5 @@
 //! SessionTreeNode → package `TreeNode` mapping (c615 / ast6) + product FilterMode (c635).
-//! Tree slot Search/Help helpers (c685) — layout, not browser chrome.
+//! Tree slot Search/Help helpers (c685) — layout, not browser UI.
 
 use xylitol_tui::{TreeNode, truncate_to_width, visible_width, with_keybindings};
 

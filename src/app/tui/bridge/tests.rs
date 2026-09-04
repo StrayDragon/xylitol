@@ -944,7 +944,7 @@ fn mcp_tool_shows_pretty_args_and_result() {
     let (preview, body) = pending.expect("mcp tool row");
     assert!(
         preview.is_empty(),
-        "mcp header must omit args chrome (body owns args:): {preview:?}"
+        "mcp header must omit args section (body owns args:): {preview:?}"
     );
     assert!(
         body.starts_with("args:\n") && body.contains("\"uri\": \"file:///tmp/a.rs\""),
@@ -1057,7 +1057,7 @@ fn tool_entry_captures_model_requested_timeout() {
     };
     assert_eq!(*timeout_secs, Some(600));
 
-    // Omitted → None (default armed silently, no header chrome).
+    // Omitted → None (default armed silently, no header note).
     upsert_tool_entry(
         &mut model,
         "b2",

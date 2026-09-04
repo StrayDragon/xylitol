@@ -68,7 +68,7 @@ TUI 与第二产品面（gpui 桌面）等**共有**能力：产品文必须按�
 ## 与其它 AGENTS 的关系
 
 - 根 `AGENTS.md`：全仓工作原则；产品图入口指向本目录；含跨面公共体验一行指针。
-- `src/app/tui/AGENTS.md`：TUI 面边界 + 跨面公共体验操作约束；chrome 词表指针 → `architecture/TUI信息面与chrome词汇.md`。
+- `src/app/tui/AGENTS.md`：TUI 面边界 + 跨面公共体验操作约束；固定区词表指针 → `architecture/TUI信息面与固定区词汇.md`。
 - `llmanspec/AGENTS.md`：change/spec 命名与语言规则；含 change 附属 `research/` 落点。
 - `src/AGENTS.md`：代码分层真值；**不**在 docs 重复分层长文。
 

@@ -1,6 +1,6 @@
 # activity-fold
 
-折叠减噪：低级操作收进簇；默认最小化入口。
+调用活动折叠：低级操作收进簇（簇=同一轮的多条过程行折成一组）；默认最小化入口。
 
 ## 词表（屏上）
 
@@ -12,7 +12,7 @@
 | Editing / Exploring / Running | 进行时簇头（文件层互斥 Editing vs Exploring；有 shell 才追加 Running） |
 | Edited / Explored / Ran | 助手正文封口后过去式 |
 | Asking questions | Ask 等待尾行 |
-| Worked for {duration} | 旧 turn 信封（缺戳则省略时长，禁止伪造） |
+| Worked for {duration} | 旧 turn 信封（信封=一轮 turn 的折叠外壳；缺戳则省略时长，禁止伪造） |
 | Working / Running {name} | 状态条 busy 短词 |
 | `Explored N files · N reads[ · M searches]` | 探索簇头类目计数后缀（c2510/att35）：calls 计数 ≠ 文件计数；进行时 Exploring 同构携带；仅列非零类目；Edited 头不附 |
 

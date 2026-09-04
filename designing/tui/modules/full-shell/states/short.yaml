@@ -1,4 +1,4 @@
-id: layout.short
+id: full-shell.short
 cols: 40
 must_contain:
   - "Working"

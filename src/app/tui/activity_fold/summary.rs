@@ -6,9 +6,7 @@ use crate::app::tui::bridge::{UiEntry, UiModel};
 use crate::app::tui::keybindings::with_keybindings;
 use crate::app::tui::widgets::GlyphSet;
 
-use super::atom::{
-    ActivityAtom, ExploreKind, STREAMING_THINK_ID, activity_atom, is_path_placeholder,
-};
+use super::atom::{ActivityAtom, ExploreKind, STREAMING_THINK_ID, activity_atom};
 #[cfg(test)]
 use super::segment::SegmentLevel;
 use super::segment::{
@@ -202,23 +200,6 @@ fn counts_from_atoms(atoms: impl IntoIterator<Item = ActivityAtom>) -> ActivityC
     c
 }
 
-fn basename(path: &str) -> &str {
-    if path.starts_with('\0') {
-        return "";
-    }
-    for part in path.rsplit(['/', '\\']) {
-        let p = part.trim();
-        if p.is_empty() || p == "." || p == ".." {
-            continue;
-        }
-        if is_path_placeholder(p) {
-            return "";
-        }
-        return p;
-    }
-    ""
-}
-
 /// Shared count pluralization (files / tools / commands / reads / searches).
 fn plural_word<'a>(n: u32, single: &'a str, many: &'a str) -> &'a str {
     if n == 1 { single } else { many }
@@ -258,14 +239,9 @@ fn explore_calls_clause(counts: &ActivityCounts) -> String {
 }
 
 fn file_clause(verb: &str, paths: &[String]) -> String {
+    // c2540: count-only — basenames echoed user content on a metrics row;
+    // concrete files live in the cluster's expandable children.
     let n = paths.len() as u32;
-    if n == 1 {
-        let base = basename(&paths[0]);
-        if !base.is_empty() {
-            return format!("{verb} {base}");
-        }
-        return format!("{verb} 1 file");
-    }
     format!("{verb} {n} {}", files_word(n))
 }
 
@@ -520,13 +496,13 @@ mod tests {
         ];
         let c = count_middles(&entries, &[0, 1, 2]);
         let s = format_l2_body(&c);
-        assert!(s.contains("Explored a.rs"), "{s}");
+        assert!(s.contains("Explored 1 file · 2 reads · 1 search"), "{s}");
         assert!(!s.contains("Explored 2"), "{s}");
         // c2510/att35: invocation counts are real, no fake file figure.
         assert!(s.contains("· 2 reads · 1 search"), "{s}");
         let live = format_cluster_body(&c, true);
         assert!(
-            live.contains("Exploring a.rs · 2 reads · 1 search"),
+            live.contains("Exploring 1 file · 2 reads · 1 search"),
             "{live}"
         );
         assert!(!live.contains("Editing"), "{live}");
@@ -550,7 +526,7 @@ mod tests {
         let reads_only = vec![tool("read", Some("a.rs"))];
         let c = count_middles(&reads_only, &[0]);
         let s = format_l2_body(&c);
-        assert!(s.contains("Explored a.rs · 1 read"), "{s}");
+        assert!(s.contains("Explored 1 file · 1 read"), "{s}");
         assert!(!s.contains("search"), "{s}");
 
         // pathless searches only → bare verb carries the search count
@@ -590,10 +566,10 @@ mod tests {
         let entries = vec![tool("edit", Some("b.rs")), tool("read", Some("a.rs"))];
         let c = count_middles(&entries, &[0, 1]);
         let s = format_l2_body(&c);
-        assert!(s.contains("Edited b.rs"), "{s}");
+        assert!(s.contains("Edited 1 file"), "{s}");
         assert!(!s.to_ascii_lowercase().contains("explored"), "{s}");
         let live = format_cluster_body(&c, true);
-        assert!(live.contains("Editing b.rs"), "{live}");
+        assert!(live.contains("Editing 1 file"), "{live}");
         assert!(!live.contains("Edited"), "{live}");
         assert!(!live.contains("Explor"), "{live}");
     }
@@ -745,11 +721,11 @@ mod tests {
 
         let abs = tool("ls", Some("/home/l8ng/Projects/__straydragon__/xylitol/."));
         let c = count_middles(&[abs], &[0]);
-        assert_eq!(format_l2_body(&c), "Explored xylitol · 1 read");
+        assert_eq!(format_l2_body(&c), "Explored 1 file · 1 read");
 
         let dotfile = tool("read", Some(".gitignore"));
         let c = count_middles(&[dotfile], &[0]);
-        assert_eq!(format_l2_body(&c), "Explored .gitignore · 1 read");
+        assert_eq!(format_l2_body(&c), "Explored 1 file · 1 read");
     }
 
     #[test]

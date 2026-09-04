@@ -9,7 +9,7 @@
 
 | 要 | 不要 |
 |---|---|
-| 重置 User / Thinking / Tool / Assistant(/Bash/Diff…) **主视线** | 先大改 chrome 整壳再碰条目 |
+| 重置 User / Thinking / Tool / Assistant(/Bash/Diff…) **主视线** | 先大改固定区整壳再碰条目 |
 | 承接 pi：**一行摘要可展开**、键位旁注、`Name path:range`、工具成败语义、无 `ASSISTANT>` 长标签 | 丢掉可扫读 / 可展开 / 人类可读工具行 |
 | **rail**：工具类左边轨 + 条目空行；无全局蓝绿洗底 | 平行实验页与 SSOT 双源 |
 
@@ -63,9 +63,14 @@ packages/xylitol-tui（paint_left_rail_line）
 |---|---|
 | **M2 语义复制** | 候选 |
 | **M3 引擎按需** | 候选 |
+| **M4 悬停高亮区块** | 候选（c2550 后新意向，见下） |
+
+## M4 悬停高亮区块（候选意向）
+
+产品 TUI 引入 **鼠标悬停高亮语义区块**：hover 到工具块 / 折叠簇 / 队列条等区块时给出可点暗示（微弱底色 tint，非反色），点击就地展开/聚焦——参考 opencode session-v2 的 `BlockTool` 模式（语义块包一层带鼠标事件的容器，命中交给渲染层，无手工坐标表）。方向是**逐步替代「最小原则折叠小三角点击」**作为主交互；activity-fold 级别的折叠块（多行信封）仍需独立表达，不走逐块 hover。设计稿侧已在 `designing/app` shell 页演示同款交互（`data-region` + 事件委托），可作交互手感原型。
 
 ## 相关
 
 - 对照稿：仓库顶层 `designing/` · `just open-designing`（代码为运行时 SSOT）
-- 现行：[`../architecture/TUI信息面与chrome词汇.md`](../architecture/TUI信息面与chrome词汇.md) · `designing/tui/modules/transcript` · `designing/tui/modules/expandable`
+- 现行：[`../architecture/TUI信息面与固定区词汇.md`](../architecture/TUI信息面与固定区词汇.md) · `designing/tui/modules/transcript` · `designing/tui/modules/expandable`
 - 索引：[README.md](./README.md)

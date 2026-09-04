@@ -1,9 +1,10 @@
 id: footer
 title: 页脚
+category: 固定区
 surface: tui
 summary: 一行 dim：cwd · model · thinking · used。
 alignment:
-  chrome: 输入区下方恰好 1 行
+  fixed: 输入区下方恰好 1 行
   item: pending 时本行仍是 active
   todo-bar: 禁止队列计数徽章
 todos:

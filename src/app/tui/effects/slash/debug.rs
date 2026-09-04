@@ -19,13 +19,13 @@ pub(super) async fn run<T: Terminal>(
     } else if let Some(meta) = crate::app::debug_fixtures::find_scene(&scene) {
         match (meta.inject, meta.id) {
             (
-                PreviewInject::Chrome(crate::app::debug_fixtures::ChromeOp::SlotModels),
+                PreviewInject::FixedZone(crate::app::debug_fixtures::FixedZoneOp::SlotModels),
                 "verify-smoke",
             ) => {
                 super::super::debug_verify::run_verify_smoke(session, driver).await;
             }
-            (PreviewInject::Chrome(op), _) => {
-                session.apply_chrome_op(op);
+            (PreviewInject::FixedZone(op), _) => {
+                session.apply_fixed_zone_op(op);
             }
             (PreviewInject::LiveTape, "activity-fold-live") => {
                 super::super::debug_activity_fold::run_activity_fold_live(session);

@@ -235,7 +235,7 @@ pub async fn drain_pending<T: Terminal>(
         }
     }
 
-    session.sync_runtime_chrome(driver);
+    session.sync_fixed_zone(driver);
     let _ = session.render_now();
 
     Ok(())

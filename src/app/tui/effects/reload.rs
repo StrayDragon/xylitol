@@ -111,16 +111,16 @@ where
             lines[0] = reload_notice_title(report.cancelled).to_string();
             lines.extend(report.format_lines());
             if report.cancelled {
-                session.push_chrome_toast(RELOAD_CANCELLED_NOTICE);
+                session.push_toast_notice(RELOAD_CANCELLED_NOTICE);
             } else if report.any_step_failed() {
-                session.push_chrome_toast(RELOAD_FAILED_NOTICE);
+                session.push_toast_notice(RELOAD_FAILED_NOTICE);
             }
         }
         Err(e) => {
             e.log_failure("tui.reload_runtime");
             lines[0] = "Reload:".into();
             lines.push(format!("runtime: failed — {e}"));
-            session.push_chrome_toast(RELOAD_FAILED_NOTICE);
+            session.push_toast_notice(RELOAD_FAILED_NOTICE);
         }
     }
 

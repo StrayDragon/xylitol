@@ -1,6 +1,10 @@
 ---
 depends_on: []
 rules_edit_acked: true
+branch: sdd/c2540-replace-cluster-head-basename-with-count
+base_sha: 28e72e2d
+checkpointed: true
+checkpoint_sha: 28e72e2d
 ---
 
 # 簇头文件分句统一计数式：撤销 basename 回显

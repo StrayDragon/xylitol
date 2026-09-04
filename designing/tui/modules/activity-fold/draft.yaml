@@ -1,9 +1,10 @@
 id: activity-fold
-title: Activity fold
+title: 调用活动折叠
+category: 对话条目
 surface: tui
-summary: 折叠减噪：低级操作收进簇；默认最小化入口。
+summary: 调用活动折叠：低级操作收进簇（簇=同一轮的多条过程行折成一组）；默认最小化入口。
 alignment:
-  chrome: 主滚动区段/簇/信封，不是块级 expandable
+  fixed: 主滚动区段/簇/信封，不是块级 expandable
   item: Todo/Compaction 可进信封；ScrollNotice / Error 不进
   todo-bar: 簇内 Todo 行，不另起浏览面
 todos:

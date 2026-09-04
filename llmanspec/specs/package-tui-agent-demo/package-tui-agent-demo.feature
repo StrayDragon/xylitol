@@ -1,6 +1,6 @@
 # language: zh-CN
 # capability: package-tui-agent-demo
-# purpose: xylitol-tui agent_demo 演示面：command plate 预制触发、瘦 chrome、打字机 Markdown stub（≠ 产品 DESIGN playground）。
+# purpose: xylitol-tui agent_demo 演示面：command plate 预制触发、瘦固定区、打字机 Markdown stub（≠ 产品 DESIGN playground）。
 # scope: packages/xylitol-tui/examples/, packages/xylitol-tui/tests/
 
 功能: package-tui-agent-demo
@@ -22,7 +22,7 @@
     - agent_demo footer MUST NOT 常驻多行或长键位墙；完整键位说明 MUST 经 plate 项或 /help 进入 transcript。
 
   @req:pad5 @human
-  场景: demo-compaction-retry-chrome
+  场景: demo-compaction-retry-fixed-zone
     - agent_demo MUST 提供可触发的 Compacting 与 Retry n/m 单行 status 预览（和弦或 plate 或 slash），时序结束后 MUST 回到 Ready/Working 类空闲短词，并 MUST 向 transcript 追加对应 ScrollNotice；MUST NOT 以 capturing overlay focus-restore 演示作为本预览的一部分。
 
   @req:pad6 @human

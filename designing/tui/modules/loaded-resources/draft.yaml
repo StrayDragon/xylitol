@@ -1,9 +1,10 @@
 id: loaded-resources
 title: 启动卡片
+category: 固定区
 surface: tui
 summary: scrollback 上方 Codex 风边框卡片；资源名全量换行，禁止省略号截断。
 alignment:
-  chrome: 主滚动区之上，不是 footer
+  fixed: 主滚动区之上，不是 footer
   item: skills 用 skill-ref；mcp 用 success
   todo-bar: 不进队列条
 todos:

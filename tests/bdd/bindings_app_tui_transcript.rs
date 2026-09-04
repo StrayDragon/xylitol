@@ -76,9 +76,9 @@ fn test_att4_rail_status_colors(tui_interaction: TuiInteraction) {}
 
 #[scenario(
     path = "llmanspec/specs/app-tui-transcript/app-tui-transcript.feature",
-    name = "write-viewport-and-edit-diff-chrome-headless"
+    name = "write-viewport-and-edit-diff-fixed-zone-headless"
 )]
-fn test_att14_write_edit_chrome(tui_interaction: TuiInteraction) {}
+fn test_att14_write_edit_fixed_zone(tui_interaction: TuiInteraction) {}
 
 #[scenario(
     path = "llmanspec/specs/app-tui-transcript/app-tui-transcript.feature",

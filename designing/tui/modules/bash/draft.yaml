@@ -1,9 +1,10 @@
 id: bash
-title: Bash
+title: 内置工具
+category: 工具调用
 surface: tui
 summary: "! / !! 进 scrollback，工具类左边轨。Ctrl+G 真 $EDITOR。"
 alignment:
-  chrome: 作为 transcript 条目，不是独立浏览面
+  fixed: 作为 transcript 条目，不是独立浏览面
   item: 与 tool 同轨
 todos:
   - { done: true, text: "bang 用轨，不用 ASSISTANT> 墙" }

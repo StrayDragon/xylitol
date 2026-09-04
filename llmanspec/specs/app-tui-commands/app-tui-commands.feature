@@ -43,7 +43,7 @@
 
   @req:atm10 @human
   场景: slash-session-resume
-    - 产品 TUI idle 提交无参 /session-resume 时 MUST 打开替换 editor 槽的 Resume 面板（非居中 overlay）：数据经 Driver list_sessions 或等价 seam；面板 MUST 提供 header（scope Current/All、Name All/Named、Sort Threaded/Recent/Fuzzy）、搜索（支持 re: 正则与引号 phrase）与会话行（name 或 first_message 预览、message_count、相对时间；Threaded 时 parent 树前缀）。预览列宽度 MUST 按终端比例软顶（约 60% 可用宽，扣除 meta 与可选 id 列后）；超长 MUST … 截断。默认 MUST NOT 在会话行展示 session id；经 Ctrl+U（或键位表 app.session.toggleId）打开 id 列时 MUST 完整显示 session id 且 MUST NOT 截断。无 name/first_message 时预览 MUST 用占位（如 —）且 MUST NOT 用 id 顶替预览列。Enter 选定：idle 时 MUST SwitchSession 并重建 transcript、关闭面板；agent/bang busy 时 MUST NOT SwitchSession，MUST 经壳层通告（chrome toast，见 atc22）显示可见文案恰好为 `Error: ` + `agent busy — finish turn or Esc abort before switching session`（body 为文档约定等价常量；前缀由渲染层拼），MUST NOT 为此追加 UiEntry::ScrollNotice；面板可保持打开；Esc 取消 MUST NOT 切换；busy 时无参 /session-resume MUST 仍可打开面板供浏览/搜索（Allow）；旧名 /resume MUST NOT 被识别；MVP MUST NOT 要求路径直参；TUI MUST NOT reach infra::session。
+    - 产品 TUI idle 提交无参 /session-resume 时 MUST 打开替换 editor 槽的 Resume 面板（非居中 overlay）：数据经 Driver list_sessions 或等价 seam；面板 MUST 提供 header（scope Current/All、Name All/Named、Sort Threaded/Recent/Fuzzy）、搜索（支持 re: 正则与引号 phrase）与会话行（name 或 first_message 预览、message_count、相对时间；Threaded 时 parent 树前缀）。预览列宽度 MUST 按终端比例软顶（约 60% 可用宽，扣除 meta 与可选 id 列后）；超长 MUST … 截断。默认 MUST NOT 在会话行展示 session id；经 Ctrl+U（或键位表 app.session.toggleId）打开 id 列时 MUST 完整显示 session id 且 MUST NOT 截断。无 name/first_message 时预览 MUST 用占位（如 —）且 MUST NOT 用 id 顶替预览列。Enter 选定：idle 时 MUST SwitchSession 并重建 transcript、关闭面板；agent/bang busy 时 MUST NOT SwitchSession，MUST 经通知条（toast notice，见 atc22）显示可见文案恰好为 `Error: ` + `agent busy — finish turn or Esc abort before switching session`（body 为文档约定等价常量；前缀由渲染层拼），MUST NOT 为此追加 UiEntry::ScrollNotice；面板可保持打开；Esc 取消 MUST NOT 切换；busy 时无参 /session-resume MUST 仍可打开面板供浏览/搜索（Allow）；旧名 /resume MUST NOT 被识别；MVP MUST NOT 要求路径直参；TUI MUST NOT reach infra::session。
 
   @req:atm11 @human
   场景: slash-session-lifecycle
@@ -67,7 +67,7 @@
 
   @req:atm16 @human
   场景: busy-slash-policy
-    - 产品 TUI agent/bang 忙碌且无 overlay 时，Enter 提交经 parse_slash_command 命中的 PendingSlash MUST 经单一穷尽 BusySlashPolicy::{Allow,Reject} 分流且 MUST NOT 落入 steer/follow-up：Allow 至少含 SessionName、SetModel、HistoryCopyLast、SessionDump、Export、Exit、Compact、OpenMcp、Theme、OpenModels、OpenSessionResume；Reject 至少含 Reload、Trust、OpenTree、ForkAtLeaf、SessionNew、SessionClone、Import、DebugScene、Usage。OpenSessionResume Allow 仅覆盖打开/浏览；busy 下面板内 SwitchSession（及会写盘的 rename/delete 确认）MUST 另闸拒绝并经壳层通告提示（见 atm10 / atc22），MUST NOT 因 Allow 开面板而放行 switch。未识别且 looks_like_unknown_slash 的 `/…` MUST 短提示拒绝且 MUST NOT 入 steer（严于 pi）。try_busy_input MUST NOT 再对个别命令散落特判。
+    - 产品 TUI agent/bang 忙碌且无 overlay 时，Enter 提交经 parse_slash_command 命中的 PendingSlash MUST 经单一穷尽 BusySlashPolicy::{Allow,Reject} 分流且 MUST NOT 落入 steer/follow-up：Allow 至少含 SessionName、SetModel、HistoryCopyLast、SessionDump、Export、Exit、Compact、OpenMcp、Theme、OpenModels、OpenSessionResume；Reject 至少含 Reload、Trust、OpenTree、ForkAtLeaf、SessionNew、SessionClone、Import、DebugScene、Usage。OpenSessionResume Allow 仅覆盖打开/浏览；busy 下面板内 SwitchSession（及会写盘的 rename/delete 确认）MUST 另闸拒绝并经通知条提示（见 atm10 / atc22），MUST NOT 因 Allow 开面板而放行 switch。未识别且 looks_like_unknown_slash 的 `/…` MUST 短提示拒绝且 MUST NOT 入 steer（严于 pi）。try_busy_input MUST NOT 再对个别命令散落特判。
 
   @req:atm17 @human
   场景: slash-mcp

@@ -1,9 +1,10 @@
 id: compaction
 title: 压缩块
+category: 对话条目
 surface: tui
 summary: 历史 compaction 一行摘要；展开看说明。
 alignment:
-  chrome: 进 transcript，不是 status Compacting…
+  fixed: 进 transcript，不是 status Compacting…
   item: "折叠头 [compaction]"
 todos:
   - { done: true, text: "collapsed 含 Alt+E 组件键" }

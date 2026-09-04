@@ -26,12 +26,12 @@ pub(super) async fn select<T: Terminal>(session: &mut HostSession<T>, driver: &m
                 e.log_failure("tui.set_thinking_level");
                 session.push_scroll_notice(format!("thinking level failed: {e}"));
             }
-            session.sync_runtime_chrome(driver);
+            session.sync_fixed_zone(driver);
             session.close_models_slot();
         }
         Ok(_) => {
             let _ = driver.set_thinking_level(choice.thinking).await;
-            session.sync_runtime_chrome(driver);
+            session.sync_fixed_zone(driver);
             session.close_models_slot();
         }
         // dispatch already logs error.kind

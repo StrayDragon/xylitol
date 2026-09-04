@@ -1,9 +1,10 @@
 id: queue-steer
 title: 队列条
+category: 固定区
 surface: tui
 summary: scrollback 与 status 之间的 Steering / Follow-up 条。
 alignment:
-  chrome: scrollback → 队列条 → 壳层通告 → status
+  fixed: scrollback → 队列条 → 通知条 → status
   item: 注入后变普通 User 条目
   todo-bar: 本条即 steer/follow-up 可见性 SSOT
 todos:

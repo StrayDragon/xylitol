@@ -76,7 +76,7 @@ pub(super) fn paint_tool_header_line(
     use crate::app::tui::bridge::display_tool_title;
     let title = display_tool_title(name);
     let hint = theme.paint_muted(&key_hint("Alt+E"));
-    // c2435: budget chrome only when the model explicitly requested a bound.
+    // c2435: budget note only when the model explicitly requested a bound.
     let timeout_note = match timeout_secs {
         Some(n) => theme.paint_muted(&format!("(timeout {n}s) ")),
         None => String::new(),

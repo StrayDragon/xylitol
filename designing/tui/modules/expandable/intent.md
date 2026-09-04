@@ -2,7 +2,7 @@
 
 块级折叠（thinking / tool / diff / ask）。段/簇信封见 activity-fold。
 
-默认皮肤 **rail**：tool/bash/diff = 1-cell status 轨 + gutter + 内容；thinking / user / assistant = **flush**。**MUST NOT** 默认整行 `tool-*-bg` 洗底。
+默认皮肤 **rail**（行首细色轨）：tool/bash/diff = 1-cell status 轨 + gutter + 内容；thinking / user / assistant = **flush**（无轨，正文平铺）。**MUST NOT** 默认整行 `tool-*-bg` 洗底。
 
 ## MUST（与产品核对）
 

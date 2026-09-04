@@ -119,7 +119,7 @@ pub struct SessionResyncRequiredPayload {
     pub session_id: String,
 }
 
-/// Downlink payload for `session/resources` (MCP/skills chrome; not journaled).
+/// Downlink payload for `session/resources` (MCP/skills fixed-zone snapshot; not journaled).
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 pub struct SessionResourcesPayload {
     pub session_id: String,

@@ -1,9 +1,10 @@
 id: session-resume
-title: Resume
+title: 会话恢复面板
+category: 槽与面板
 surface: tui
 summary: Resume Session 列表；默认不暴露完整 session id。
 alignment:
-  chrome: 替换 editor 槽
+  fixed: 替换 editor 槽
   item: 选中行高亮
   todo-bar: 不进队列
 todos:

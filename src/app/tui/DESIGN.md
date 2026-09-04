@@ -137,7 +137,7 @@ components:
 
 情绪：安静、高效、像在普通 REPL 里聊天。用户应能向上翻历史、框选复制，再贴回下一轮提问——**复制友好优先于视觉热闹**。
 
-参考实现锚点：浏览器 [`designing/`](../../../designing/) = **交互设计稿**（固定状态，对照辅助）；生产接线在本目录 `src/app/tui`（运行时真值）。包侧 `agent_demo`（`just demo-tui`）= 引擎交互演示，**允许与产品 chrome / 文案有差异**，**不**充当 designing。
+参考实现锚点：浏览器 [`designing/`](../../../designing/) = **交互设计稿**（固定状态，对照辅助）；生产接线在本目录 `src/app/tui`（运行时真值）。包侧 `agent_demo`（`just demo-tui`）= 引擎交互演示，**允许与产品固定区 / 文案有差异**，**不**充当 designing。
 
 ## Colors
 
@@ -215,7 +215,7 @@ footer            1 行 dim（cwd · model · 可选 context%）
 
 ## Components
 
-组件级 MUST 与固定态在 [`designing/tui/modules/`](../../../designing/tui/modules/)——索引见 [`generated/AGENT-INDEX.md`](../../../designing/generated/AGENT-INDEX.md)，覆盖：session-tree · session-resume · models · transcript · activity-fold · expandable · status · chrome-toast · layout · editor · loaded-resources · mcp-cue · footer · diff · markdown · errors · compaction · bash · trust-prompt · queue-steer · theme · palette · ask · tool。本目录不另维护组件子文档；子文档 token 表达式 → 本文件（见「Token 引用」）。
+组件级 MUST 与固定态在 [`designing/tui/modules/`](../../../designing/tui/modules/)——索引见 [`generated/AGENT-INDEX.md`](../../../designing/generated/AGENT-INDEX.md)，覆盖：session-tree · session-resume · models · transcript · activity-fold · expandable · status · toast-notice · layout · editor · loaded-resources · mcp-cue · footer · diff · markdown · errors · compaction · bash · trust-prompt · queue-steer · theme · palette · ask · tool。本目录不另维护组件子文档；子文档 token 表达式 → 本文件（见「Token 引用」）。
 
 产品默认 **`Palette::dark()`**；**MUST NOT** 默认开 theme auto / OSC11。用户可经 **`/theme`** 切换内建色板（`theme` 设计模块）。
 

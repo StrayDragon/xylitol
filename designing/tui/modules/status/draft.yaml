@@ -1,11 +1,12 @@
 id: status
 title: 状态条
+category: 固定区
 surface: tui
 summary: idle 一行空白呼吸距；busy 为 spinner+短词。
 alignment:
-  chrome: editor 上方；idle 不算 status 文案
+  fixed: editor 上方；idle 不算 status 文案
   item: 队列条不进本行
-  todo-bar: 与壳层通告分离（toast 在本行之上）
+  todo-bar: 与通知条分离（toast 在本行之上）
 todos:
   - { done: true, text: "lead 不可 space-between 把 Working 顶到行尾" }
 notes: |

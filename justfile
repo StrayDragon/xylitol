@@ -228,6 +228,10 @@ demo-tui-no-highlight:
 sync-tui-tokens:
     python3 scripts/sync_tui_tokens.py
 
+# Export real product TUI frames for the designing shell view (manual lab).
+export-design-frame:
+    cargo test -p xylitol --lib lab_design_frame_export -- --ignored --nocapture
+
 # Fail if designing tokens or package Palette diverge from DESIGN.md.
 [arg('verbosity', pattern='quiet|normal|verbose')]
 check-tui-tokens verbosity=verbosity_default:

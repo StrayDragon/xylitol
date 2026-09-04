@@ -9,6 +9,7 @@ Usage:
 from __future__ import annotations
 
 import argparse
+import json
 import re
 import subprocess
 import sys
@@ -165,6 +166,45 @@ def check_module(surface: str, mod: Path, errors: list[str]) -> None:
             pass
 
 
+def check_shell(errors: list[str]) -> None:
+    """Shell 视图：帧数据与区域注解（module 存在、锚点可解析）。"""
+    regions_path = DESIGNING / "tui" / "shell.regions.yaml"
+    frame_path = DESIGNING / "generated" / "shell-frame.json"
+    if not regions_path.is_file():
+        fail("missing designing/tui/shell.regions.yaml", errors)
+        return
+    try:
+        regions_doc = load_yaml(regions_path)
+    except Exception as e:  # noqa: BLE001
+        fail(f"parse shell.regions.yaml: {e}", errors)
+        return
+    module_ids = {path.name for _, path in iter_modules()}
+    for frame_id, regions in (regions_doc.get("frames") or {}).items():
+        if not isinstance(regions, list) or not regions:
+            fail(f"shell.regions.yaml: frames/{frame_id} 为空", errors)
+            continue
+        for region in regions:
+            module = region.get("module") if isinstance(region, dict) else None
+            if module not in module_ids:
+                fail(f"shell.regions.yaml: 未知 module {module!r}（frames/{frame_id}）", errors)
+            if not isinstance(region, dict) or not region.get("contains") or not region.get("rows"):
+                fail(f"shell.regions.yaml: frames/{frame_id} 区域缺 contains/rows", errors)
+    if not frame_path.is_file():
+        fail("missing designing/generated/shell-frame.json — run: just export-design-frame", errors)
+        return
+    try:
+        frame_doc = json.loads(frame_path.read_text(encoding="utf-8"))
+    except Exception as e:  # noqa: BLE001
+        fail(f"parse shell-frame.json: {e}", errors)
+        return
+    frames = frame_doc.get("frames") or []
+    if not frames:
+        fail("shell-frame.json: 无帧", errors)
+    missing = set((regions_doc.get("frames") or {})) - {f.get("id") for f in frames}
+    if missing:
+        fail(f"shell-frame.json 缺帧: {sorted(missing)} — run: just export-design-frame", errors)
+
+
 def main() -> int:
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--check", action="store_true", help="non-mutating gate")
@@ -186,6 +226,7 @@ def main() -> int:
     for surface, mod in mods:
         check_module(surface, mod, errors)
     check_app(errors)
+    check_shell(errors)
 
     want = subprocess.check_output(
         [sys.executable, str(GEN), "--stdout"],

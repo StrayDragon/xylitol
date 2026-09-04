@@ -1,0 +1,513 @@
+{
+  "cols": 80,
+  "generated_by": "cargo test -p xylitol --lib lab_design_frame_export -- --ignored",
+  "themes": {
+    "dark": {
+      "surface": "#1e1e2e"
+    },
+    "light": {
+      "surface": "#eff1f5",
+      "tokens": {
+        "accent": "#1e66f5",
+        "assistant": "#4c4f69",
+        "diff-added": "#40a02b",
+        "diff-added-bg": "#dde8dc",
+        "diff-added-word-bg": "#c5dbc4",
+        "diff-context": "#9ca0b0",
+        "diff-removed": "#d20f39",
+        "diff-removed-bg": "#e8dce0",
+        "diff-removed-word-bg": "#dbc5ca",
+        "error": "#d20f39",
+        "muted": "#9ca0b0",
+        "on-surface": "#4c4f69",
+        "skill-ref": "#8839ef",
+        "success": "#40a02b",
+        "surface": "#eff1f5",
+        "tool": "#9ca0b0",
+        "tool-error-bg": "#e8dce0",
+        "tool-pending-bg": "#ccd0da",
+        "tool-success-bg": "#dce8d8",
+        "user": "#8839ef",
+        "user-message-bg": "#ccd0da",
+        "warning": "#df8e1d"
+      }
+    }
+  },
+  "frames": [
+    {
+      "id": "busy",
+      "rows": 24,
+      "lines": [
+        [],
+        [
+          {
+            "text": "debug: older reply 1",
+            "token": "on-surface",
+            "fg": "#cdd6f4",
+            "bg": null,
+            "bg_token": null,
+            "rev": false
+          }
+        ],
+        [],
+        [],
+        [
+          {
+            "text": "❯",
+            "token": "user",
+            "fg": "#cba6f7",
+            "bg": null,
+            "bg_token": null,
+            "rev": false
+          },
+          {
+            "text": " debug: activity-fold live window",
+            "token": "on-surface",
+            "fg": "#cdd6f4",
+            "bg": null,
+            "bg_token": null,
+            "rev": false
+          }
+        ],
+        [],
+        [
+          {
+            "text": "▸ Worked for 0s  (Alt+Shift+E)",
+            "token": "muted",
+            "fg": "#6c7086",
+            "bg": null,
+            "bg_token": null,
+            "rev": false
+          }
+        ],
+        [],
+        [
+          {
+            "text": "Thanks — continuing from your answer.",
+            "token": "on-surface",
+            "fg": "#cdd6f4",
+            "bg": null,
+            "bg_token": null,
+            "rev": false
+          }
+        ],
+        [],
+        [],
+        [
+          {
+            "text": "· restored → session design-shell",
+            "token": "muted",
+            "fg": "#6c7086",
+            "bg": null,
+            "bg_token": null,
+            "rev": false
+          }
+        ],
+        [],
+        [
+          {
+            "text": "❯",
+            "token": "user",
+            "fg": "#cba6f7",
+            "bg": null,
+            "bg_token": null,
+            "rev": false
+          },
+          {
+            "text": " 帮我分析这段报错的原因，并给出修复方案",
+            "token": "on-surface",
+            "fg": "#cdd6f4",
+            "bg": null,
+            "bg_token": null,
+            "rev": false
+          }
+        ],
+        [],
+        [
+          {
+            "text": "Steering: 顺手把相关的测试也补上",
+            "token": "muted",
+            "fg": "#6c7086",
+            "bg": null,
+            "bg_token": null,
+            "rev": false
+          }
+        ],
+        [
+          {
+            "text": "↳ Alt+Up to edit all queued messages",
+            "token": "muted",
+            "fg": "#6c7086",
+            "bg": null,
+            "bg_token": null,
+            "rev": false
+          }
+        ],
+        [
+          {
+            "text": "Error: preview: toast",
+            "token": "warning",
+            "fg": "#f9e2af",
+            "bg": null,
+            "bg_token": null,
+            "rev": false
+          }
+        ],
+        [],
+        [
+          {
+            "text": " ",
+            "token": "on-surface",
+            "fg": "#cdd6f4",
+            "bg": null,
+            "bg_token": null,
+            "rev": false
+          },
+          {
+            "text": "⠋",
+            "token": "accent",
+            "fg": "#89b4fa",
+            "bg": null,
+            "bg_token": null,
+            "rev": false
+          },
+          {
+            "text": " ",
+            "token": "on-surface",
+            "fg": "#cdd6f4",
+            "bg": null,
+            "bg_token": null,
+            "rev": false
+          },
+          {
+            "text": "Working",
+            "token": "muted",
+            "fg": "#6c7086",
+            "bg": null,
+            "bg_token": null,
+            "rev": false
+          }
+        ],
+        [
+          {
+            "text": "────────────────────────────────────────────────────────────────────────────────",
+            "token": null,
+            "fg": "#505050",
+            "bg": null,
+            "bg_token": null,
+            "rev": false
+          }
+        ],
+        [],
+        [
+          {
+            "text": "────────────────────────────────────────────────────────────────────────────────",
+            "token": null,
+            "fg": "#505050",
+            "bg": null,
+            "bg_token": null,
+            "rev": false
+          }
+        ],
+        [
+          {
+            "text": "~/x · Ornith-1.5-35B · thinking off",
+            "token": "muted",
+            "fg": "#6c7086",
+            "bg": null,
+            "bg_token": null,
+            "rev": false
+          }
+        ]
+      ]
+    },
+    {
+      "id": "idle",
+      "rows": 24,
+      "lines": [
+        [],
+        [
+          {
+            "text": "debug: older reply 0",
+            "token": "on-surface",
+            "fg": "#cdd6f4",
+            "bg": null,
+            "bg_token": null,
+            "rev": false
+          }
+        ],
+        [],
+        [],
+        [
+          {
+            "text": "❯",
+            "token": "user",
+            "fg": "#cba6f7",
+            "bg": null,
+            "bg_token": null,
+            "rev": false
+          },
+          {
+            "text": " debug: older turn 1",
+            "token": "on-surface",
+            "fg": "#cdd6f4",
+            "bg": null,
+            "bg_token": null,
+            "rev": false
+          }
+        ],
+        [],
+        [
+          {
+            "text": "▸ Worked for 0s  (Alt+Shift+E)",
+            "token": "muted",
+            "fg": "#6c7086",
+            "bg": null,
+            "bg_token": null,
+            "rev": false
+          }
+        ],
+        [],
+        [
+          {
+            "text": "debug: older reply 1",
+            "token": "on-surface",
+            "fg": "#cdd6f4",
+            "bg": null,
+            "bg_token": null,
+            "rev": false
+          }
+        ],
+        [],
+        [],
+        [
+          {
+            "text": "❯",
+            "token": "user",
+            "fg": "#cba6f7",
+            "bg": null,
+            "bg_token": null,
+            "rev": false
+          },
+          {
+            "text": " debug: activity-fold live window",
+            "token": "on-surface",
+            "fg": "#cdd6f4",
+            "bg": null,
+            "bg_token": null,
+            "rev": false
+          }
+        ],
+        [],
+        [
+          {
+            "text": "▸ Worked for 0s  (Alt+Shift+E)",
+            "token": "muted",
+            "fg": "#6c7086",
+            "bg": null,
+            "bg_token": null,
+            "rev": false
+          }
+        ],
+        [],
+        [
+          {
+            "text": "Thanks — continuing from your answer.",
+            "token": "on-surface",
+            "fg": "#cdd6f4",
+            "bg": null,
+            "bg_token": null,
+            "rev": false
+          }
+        ],
+        [],
+        [],
+        [
+          {
+            "text": "· restored → session design-shell",
+            "token": "muted",
+            "fg": "#6c7086",
+            "bg": null,
+            "bg_token": null,
+            "rev": false
+          }
+        ],
+        [],
+        [
+          {
+            "text": "────────────────────────────────────────────────────────────────────────────────",
+            "token": null,
+            "fg": "#505050",
+            "bg": null,
+            "bg_token": null,
+            "rev": false
+          }
+        ],
+        [],
+        [
+          {
+            "text": "────────────────────────────────────────────────────────────────────────────────",
+            "token": null,
+            "fg": "#505050",
+            "bg": null,
+            "bg_token": null,
+            "rev": false
+          }
+        ],
+        [
+          {
+            "text": "~/x · Ornith-1.5-35B · thinking off",
+            "token": "muted",
+            "fg": "#6c7086",
+            "bg": null,
+            "bg_token": null,
+            "rev": false
+          }
+        ]
+      ]
+    },
+    {
+      "id": "short",
+      "rows": 16,
+      "lines": [
+        [],
+        [
+          {
+            "text": "❯",
+            "token": "user",
+            "fg": "#cba6f7",
+            "bg": null,
+            "bg_token": null,
+            "rev": false
+          },
+          {
+            "text": " debug: activity-fold live window",
+            "token": "on-surface",
+            "fg": "#cdd6f4",
+            "bg": null,
+            "bg_token": null,
+            "rev": false
+          }
+        ],
+        [],
+        [
+          {
+            "text": "▸ Worked for 0s  (Alt+Shift+E)",
+            "token": "muted",
+            "fg": "#6c7086",
+            "bg": null,
+            "bg_token": null,
+            "rev": false
+          }
+        ],
+        [],
+        [
+          {
+            "text": "Thanks — continuing from your answer.",
+            "token": "on-surface",
+            "fg": "#cdd6f4",
+            "bg": null,
+            "bg_token": null,
+            "rev": false
+          }
+        ],
+        [],
+        [],
+        [
+          {
+            "text": "· restored → session design-shell",
+            "token": "muted",
+            "fg": "#6c7086",
+            "bg": null,
+            "bg_token": null,
+            "rev": false
+          }
+        ],
+        [],
+        [
+          {
+            "text": "❯",
+            "token": "user",
+            "fg": "#cba6f7",
+            "bg": null,
+            "bg_token": null,
+            "rev": false
+          },
+          {
+            "text": " 切换一下模型对比输出风格",
+            "token": "on-surface",
+            "fg": "#cdd6f4",
+            "bg": null,
+            "bg_token": null,
+            "rev": false
+          }
+        ],
+        [],
+        [
+          {
+            "text": " ",
+            "token": "on-surface",
+            "fg": "#cdd6f4",
+            "bg": null,
+            "bg_token": null,
+            "rev": false
+          },
+          {
+            "text": "⠋",
+            "token": "accent",
+            "fg": "#89b4fa",
+            "bg": null,
+            "bg_token": null,
+            "rev": false
+          },
+          {
+            "text": " ",
+            "token": "on-surface",
+            "fg": "#cdd6f4",
+            "bg": null,
+            "bg_token": null,
+            "rev": false
+          },
+          {
+            "text": "Working",
+            "token": "muted",
+            "fg": "#6c7086",
+            "bg": null,
+            "bg_token": null,
+            "rev": false
+          }
+        ],
+        [
+          {
+            "text": " models",
+            "token": "muted",
+            "fg": "#6c7086",
+            "bg": null,
+            "bg_token": null,
+            "rev": false
+          }
+        ],
+        [
+          {
+            "text": "  No matching items",
+            "token": "muted",
+            "fg": "#6c7086",
+            "bg": null,
+            "bg_token": null,
+            "rev": false
+          }
+        ],
+        [
+          {
+            "text": "~/x · Ornith-1.5-35B · thinking off",
+            "token": "muted",
+            "fg": "#6c7086",
+            "bg": null,
+            "bg_token": null,
+            "rev": false
+          }
+        ]
+      ]
+    }
+  ]
+}

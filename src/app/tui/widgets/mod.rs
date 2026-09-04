@@ -75,7 +75,7 @@ pub fn footer_thinking_label(level: &str) -> String {
 
 /// Footer identity line (`cwd · model · {thinking}`, optional tokens).
 /// Empty `thinking_label` omits the thinking segment (no-thinking models).
-/// Queue chrome lives in the mid-layout strip — not a footer `q:sN|fM` badge.
+/// The queue strip lives in the mid-layout — not a footer `q:sN|fM` badge.
 pub fn format_footer_text(
     cwd: &str,
     model: &str,

@@ -1,7 +1,7 @@
 //! `/debug verify-smoke` — UI-only product smoke (no real LLM / `/exit`).
 //!
 //! Covers checklist-style B4/B7 style gates: open models overlay, Esc closes
-//! without quit, chrome still Ready. Harness owns full B1–B5; this is a hand /
+//! without quit, fixed zone still Ready. Harness owns full B1–B5; this is a hand /
 //! slash entry that reuses the same UI mounts.
 
 use xylitol_tui::{InputEvent, Terminal};

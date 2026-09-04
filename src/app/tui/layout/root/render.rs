@@ -28,13 +28,13 @@ impl UiRoot {
         )
     }
 
-    pub(super) fn render_chrome_toast_slot(&mut self, width: usize) -> Vec<String> {
-        let Some((body, _)) = self.chrome_toast.as_ref() else {
+    pub(super) fn render_toast_notice_slot(&mut self, width: usize) -> Vec<String> {
+        let Some((body, _)) = self.toast_notice.as_ref() else {
             return Vec::new();
         };
         let line = format!(
             "{}{body}",
-            crate::app::tui::commands::CHROME_TOAST_ERROR_PREFIX
+            crate::app::tui::commands::TOAST_NOTICE_ERROR_PREFIX
         );
         let painted = self.theme.paint_warning(&line);
         if width == 0 {
@@ -58,7 +58,7 @@ impl UiRoot {
         if !self.status_busy {
             // Idle: optional MCP short cue (c1210), right-aligned; otherwise breathing room.
             // ApplicationOwned copy cue (ath31): reuse the blank status row when no next-turn cue
-            // so dock height stays stable; never use Error: chrome-toast.
+            // so dock height stays stable; never use Error: toast-notice.
             if let Some(cue) = self.status_next_turn_cue.as_deref() {
                 let mut lines = vec![paint_cue_line(&self.theme, cue, width)];
                 if self.copy_notice_visible() {
@@ -170,15 +170,15 @@ impl Component for UiRoot {
             }
             lines.extend(upper);
         }
-        // Queue strip is dock chrome (between transcript and status) — must not
+        // Queue strip is part of the dock (between transcript and status) — must not
         // live in the ApplicationOwned ScrollView or short sessions pin it under
         // the startup card with a pad of empty rows (Inline stuck-to-bottom feel).
         let queue = self.render_queue_slot(width);
-        let toast = self.render_chrome_toast_slot(width);
+        let toast = self.render_toast_notice_slot(width);
         let status = self.render_status_slot(width);
         // Editor owns the operation-zone ─ borders (DESIGN editor.md / agent_demo).
         // Do NOT wrap with a second outer border pair.
-        self.apply_chrome_footprint();
+        self.apply_fixed_zone_footprint();
         let editor = self.render_editor_slot(width);
         let footer = if width == 0 {
             self.footer.text().to_string()
@@ -221,7 +221,7 @@ impl Component for UiRoot {
 
     fn tick(&mut self) -> bool {
         let mut dirty = self.editor.tick();
-        dirty = self.clear_chrome_toast_if_expired() || dirty;
+        dirty = self.clear_toast_notice_if_expired() || dirty;
         dirty = self.clear_copy_notice_if_expired() || dirty;
         if self.status_busy {
             let interval = self.status_loader.interval_ms() as u128;

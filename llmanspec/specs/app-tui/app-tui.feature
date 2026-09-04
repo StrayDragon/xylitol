@@ -19,7 +19,7 @@
 
   @req:tui-index @human
   场景: capability-index
-    - 产品 TUI 行为细节 MUST 由 app-tui-host / app-tui-bridge / app-tui-transcript / app-tui-chrome / app-tui-input / app-tui-commands 各自约束；引擎与四层 harness MUST 由 package-tui-*（含 package-tui-testing）约束，不得在本索引重复实现史细节。
+    - 产品 TUI 行为细节 MUST 由 app-tui-host / app-tui-bridge / app-tui-transcript / app-tui-fixed-zone / app-tui-input / app-tui-commands 各自约束；引擎与四层 harness MUST 由 package-tui-*（含 package-tui-testing）约束，不得在本索引重复实现史细节。
 
   @req:tui-cs @human
   场景: TUI 只承担面本地

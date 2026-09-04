@@ -4,8 +4,8 @@
 //! and product theme wiring. Atomic widgets live in [`crate::app::tui::widgets`];
 //! generic Editor/Markdown/TreeSelector stay in `xylitol_tui`.
 
-mod chrome_footprint;
 mod dollar_skill_source;
+mod fixed_zone_footprint;
 mod models_picker;
 mod root;
 mod session_tree;
@@ -13,9 +13,9 @@ mod slash_catalog;
 mod slots;
 mod theme;
 
-pub(crate) use chrome_footprint::{
+pub(crate) use fixed_zone_footprint::{
     DEFAULT_MAX_VISIBLE, IMPORT_SLOT, MCP_SLOT_BASE, MODELS_SLOT, RESUME_SLOT, THEMES_SLOT,
-    TREE_SLOT, queue_strip_line_count, reserved_lower_chrome, slot_body_budget,
+    TREE_SLOT, queue_strip_line_count, reserved_lower_fixed_zone, slot_body_budget,
 };
 
 pub(crate) use models_picker::{ModelPickerRow, PendingModelChoice, status_next_turn_cue_text};

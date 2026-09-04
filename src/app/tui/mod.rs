@@ -30,6 +30,8 @@ pub mod harness;
 #[cfg(test)]
 mod lab_ao_perf;
 #[cfg(test)]
+mod lab_design_frame;
+#[cfg(test)]
 mod tests;
 
 use std::time::Duration;
@@ -186,7 +188,7 @@ async fn run_host_loop(
     session.set_dollar_skill_catalog(driver.dollar_skill_catalog());
     session.set_mcp_blocks_agent(driver.mcp_blocks_agent());
     // First paint before CLI restore / loaded-resources / ↑/↓ history seed so
-    // welcome chrome is not blocked by JSONL load or list_sessions work.
+    // welcome fixed-zone paint is not blocked by JSONL load or list_sessions work.
     session.render_now()?;
 
     type CliRestoreHandle = tokio::task::JoinHandle<
@@ -248,7 +250,7 @@ async fn run_host_loop(
     }));
     ticker.set_missed_tick_behavior(tokio::time::MissedTickBehavior::Skip);
     // ath42/c2480: connection grace state machine — transient link churn
-    // stays invisible; a prolonged outage/recovery surfaces as chrome toast.
+    // stays invisible; a prolonged outage/recovery surfaces as toast notice.
     let mut link_grace = host::LinkGrace::new();
 
     // Always restore the TTY (even on RenderError / other Err) so a failed
@@ -281,7 +283,7 @@ async fn run_host_loop(
 
             if session.take_reload() {
                 if session.reload_active() {
-                    session.push_chrome_toast(self::commands::RELOADING_WAIT_NOTICE);
+                    session.push_toast_notice(self::commands::RELOADING_WAIT_NOTICE);
                 } else {
                     let input = term_events
                         .by_ref()
@@ -322,7 +324,7 @@ async fn run_host_loop(
                         apply_idle_downlink(&mut session, driver)?;
                     }
                     // ath42: link grace UX — announce only past the grace
-                    // window, once, via chrome toast (never transcript rows).
+                    // window, once, via toast notice (never transcript rows).
                     if let Some(notice) = link_grace.tick(
                         driver.link_health(),
                         std::time::Instant::now(),
@@ -331,10 +333,10 @@ async fn run_host_loop(
                     ) {
                         match notice {
                             host::LinkNotice::Disconnected => {
-                                session.push_chrome_toast(host::LINK_DOWN_NOTICE);
+                                session.push_toast_notice(host::LINK_DOWN_NOTICE);
                             }
                             host::LinkNotice::Recovered => {
-                                session.push_chrome_toast(host::LINK_RECOVERED_NOTICE);
+                                session.push_toast_notice(host::LINK_RECOVERED_NOTICE);
                             }
                         }
                     }

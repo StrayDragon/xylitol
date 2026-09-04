@@ -132,7 +132,7 @@ pub enum UiEntry {
         is_error: bool,
         done: bool,
         /// Model-requested execution bound in seconds (c2435); `None` when the
-        /// call omitted `timeout` (tool default armed, no header chrome).
+        /// call omitted `timeout` (tool default armed, no header note).
         timeout_secs: Option<u64>,
     },
     /// Builtin `ask` questionnaire (c1850) — dedicated rail entry, not generic Tool wash.

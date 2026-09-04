@@ -1,4 +1,4 @@
-//! Chrome Footprint — term-aware reserved rows + slot body budget (atc23 / c1810).
+//! Fixed-Zone Footprint — term-aware reserved rows + slot body budget (atc23 / c1810).
 //!
 //! Keeps xylitol-tui content-end viewport; budgets EditorSlot list/tree `max_visible`
 //! so busy status stays in the visible window on short terminals.
@@ -14,42 +14,42 @@ pub const FOOTER_ROWS: usize = 1;
 
 /// Non-body lines for each flex slot (header above body + optional trail below).
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub struct SlotChromeRows {
+pub struct SlotFixedZoneRows {
     pub header: usize,
     pub trailer: usize,
 }
 
-impl SlotChromeRows {
+impl SlotFixedZoneRows {
     pub const fn overhead(self) -> usize {
         self.header.saturating_add(self.trailer)
     }
 }
 
-pub const MODELS_SLOT: SlotChromeRows = SlotChromeRows {
+pub const MODELS_SLOT: SlotFixedZoneRows = SlotFixedZoneRows {
     header: 1,
     trailer: 0,
 };
-pub const THEMES_SLOT: SlotChromeRows = SlotChromeRows {
+pub const THEMES_SLOT: SlotFixedZoneRows = SlotFixedZoneRows {
     header: 1,
     trailer: 0,
 };
-pub const IMPORT_SLOT: SlotChromeRows = SlotChromeRows {
+pub const IMPORT_SLOT: SlotFixedZoneRows = SlotFixedZoneRows {
     header: 1,
     trailer: 0,
 };
 /// Header summary + Esc trailer; diag lines add to trailer at apply time.
-pub const MCP_SLOT_BASE: SlotChromeRows = SlotChromeRows {
+pub const MCP_SLOT_BASE: SlotFixedZoneRows = SlotFixedZoneRows {
     header: 1,
     trailer: 1,
 };
 /// Scope + help + filter hint + filter input; optional status_line adds to header.
 /// Trailer: `(selected/total)` scroll info under the body.
-pub const RESUME_SLOT: SlotChromeRows = SlotChromeRows {
+pub const RESUME_SLOT: SlotFixedZoneRows = SlotFixedZoneRows {
     header: 4,
     trailer: 1,
 };
 /// Title + ~2 help wraps + search; tree scroll_info as trailer.
-pub const TREE_SLOT: SlotChromeRows = SlotChromeRows {
+pub const TREE_SLOT: SlotFixedZoneRows = SlotFixedZoneRows {
     header: 4,
     trailer: 1,
 };
@@ -67,8 +67,12 @@ pub fn queue_strip_line_count(steer: usize, follow_up: usize) -> usize {
     }
 }
 
-/// Lower chrome reserved (queue + toast + status + footer). Upper scrollback is not reserved.
-pub fn reserved_lower_chrome(status_busy: bool, queue_lines: usize, toast_present: bool) -> usize {
+/// Lower fixed zone reserved (queue + toast + status + footer). Upper scrollback is not reserved.
+pub fn reserved_lower_fixed_zone(
+    status_busy: bool,
+    queue_lines: usize,
+    toast_present: bool,
+) -> usize {
     let status = if status_busy {
         STATUS_BUSY_ROWS
     } else {
@@ -82,7 +86,7 @@ pub fn reserved_lower_chrome(status_busy: bool, queue_lines: usize, toast_presen
 }
 
 /// Body `max_visible` for a flex list/tree slot. Always ≥ 1.
-pub fn slot_body_budget(term_rows: usize, reserved_lower: usize, slot: SlotChromeRows) -> usize {
+pub fn slot_body_budget(term_rows: usize, reserved_lower: usize, slot: SlotFixedZoneRows) -> usize {
     term_rows
         .saturating_sub(reserved_lower)
         .saturating_sub(slot.overhead())
@@ -96,7 +100,7 @@ mod tests {
     #[test]
     fn short_terminal_resume_budget_keeps_status_room() {
         // 16 rows: reserved busy+footer(+no queue/toast)=3; resume overhead=5 → body ≤ 8
-        let reserved = reserved_lower_chrome(true, 0, false);
+        let reserved = reserved_lower_fixed_zone(true, 0, false);
         assert_eq!(reserved, 3);
         let body = slot_body_budget(16, reserved, RESUME_SLOT);
         assert_eq!(body, 8);
@@ -108,7 +112,7 @@ mod tests {
     fn toast_and_queue_shrink_resume_body_so_lower_stack_fits() {
         // 1 steer → spacer + msg + hint = 3 queue lines; + toast 1 → reserved 7
         assert_eq!(queue_strip_line_count(1, 0), 3);
-        let reserved = reserved_lower_chrome(true, 3, true);
+        let reserved = reserved_lower_fixed_zone(true, 3, true);
         assert_eq!(reserved, 7);
         let body = slot_body_budget(16, reserved, RESUME_SLOT);
         assert_eq!(body, 4);

@@ -75,7 +75,7 @@ impl<T: Terminal> HostSession<T> {
             return true;
         }
         if matches_binding(key, "tui.input.submit") {
-            self.push_chrome_toast(RELOADING_WAIT_NOTICE);
+            self.push_toast_notice(RELOADING_WAIT_NOTICE);
             return true;
         }
         false

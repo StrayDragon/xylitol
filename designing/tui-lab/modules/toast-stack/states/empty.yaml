@@ -1,0 +1,8 @@
+id: toast-stack.empty
+cols: 80
+must_not_contain:
+  - "Copied to clipboard"
+  - "export done"
+lines:
+  -
+    - { text: "", token: muted }

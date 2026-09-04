@@ -969,7 +969,7 @@ pub(crate) async fn w_ati43_reload_gate(host_pump_bdd: &HostPumpBdd) {
     step_key(host_pump_bdd, enter_event());
 }
 
-#[then("壳层通告为 reloading 且草稿保留且未新增滚动提示")]
+#[then("通知条为 reloading 且草稿保留且未新增滚动提示")]
 pub(crate) async fn t_ati43_reload_gate_toast(host_pump_bdd: &HostPumpBdd) {
     let notices_before = stats(host_pump_bdd).notices.len();
     let frame = render_frame(host_pump_bdd, 120);

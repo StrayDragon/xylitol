@@ -161,7 +161,7 @@ impl super::XyInProcessDriver {
         }
     }
 
-    /// Take one-shot gate timeout notice for TUI chrome / scroll.
+    /// Take one-shot gate timeout notice for TUI fixed zone / scroll.
     pub(super) fn take_mcp_gate_notice_inner(&mut self) -> Option<String> {
         self.mcp_gate_notice.take()
     }

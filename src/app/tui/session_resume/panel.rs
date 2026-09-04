@@ -15,7 +15,7 @@ use crate::protocol::ports::format_session_age;
 
 use super::search::{NameFilter, SessionScope, SortMode, filter_and_sort};
 
-/// Soft default body rows before term-aware Chrome Footprint sync (atc23).
+/// Soft default body rows before term-aware Fixed-Zone Footprint sync (atc23).
 const DEFAULT_MAX_VISIBLE_SESSIONS: usize = 10;
 
 /// Soft cap for the preview column as a fraction of terminal width (≈60%).
@@ -51,7 +51,7 @@ pub struct SessionResumePanel {
     current_cwd: String,
     status_line: Option<String>,
     theme: LayoutTheme,
-    /// Body rows in the session list viewport (Chrome Footprint budget).
+    /// Body rows in the session list viewport (Fixed-Zone Footprint budget).
     max_visible: usize,
 }
 
