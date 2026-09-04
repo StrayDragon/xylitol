@@ -28,7 +28,7 @@
 ### `agent_demo` 硬边界（防误导）
 
 - **MUST NOT** 把 `agent_demo` / `agent_demo_alt` / `just demo-tui*` 当成产品 TUI 或 designing 交互稿。
-- `XYLITOL_TUI_MOUSE` 仅在 **Inline** demo（及以其为目标的 PTY e2e）生效；**不是**产品 inline 鼠标开关；**禁止**用 `XYLITOL_AGENT_DEMO_MODE` 切模式（已拆双 example）。
+- `XYLITOL_TUI_MOUSE` 仅在 **Inline** demo（及以其为目标的 PTY e2e）生效；**不是**产品 inline 鼠标开关。Inline 与 ApplicationOwned 用双 example 区分，勿再加 env 热切。
 - **MUST NOT** 为「对齐产品固定区词汇表」去改写 demo 屏上英文 / plate 文案（除非人类明确要求）；demo 文案 **允许**与产品中文 SSOT（队列条 / 滚动提示 / 命令面板…）不同。
 - **MAY** 形态学对照产品（如 rail 默认、中间队列条）；对照 ≠ 同一 SSOT。
 - 产品固定区用词：[`docs/architecture/TUI信息面与固定区词汇.md`](../../docs/architecture/TUI信息面与固定区词汇.md) — **只约束产品面文档与 host**，不约束本包 demo 字符串。
@@ -38,36 +38,7 @@
 
 ## 与 pi-tui 的刻意差异（不得回退成「必须完整 port」）
 
-目标：**差分渲染 + 可组合组件 + crossterm 原生输入**，并随 xylitol 本体迭代；产品壳与视觉在 `src/app/tui/`。上游 bugfix 可择优吸收，**默认不**为对齐而回退本表决议。
-
-### 底层 / 输入
-
-| 主题 | pi-tui | xylitol-tui |
-|---|---|---|
-| 终端 I/O | 自管 VT / raw 序列较多 | **优先 crossterm Command**（raw、paste、Kitty push/pop、`Clear`/`SetTitle`/`cursor::*`、同步输出）；仅 OSC 9;4 等库未暴露的才 `write_raw` |
-| stdin | 自研 `stdin-buffer` | **不移植**；crossterm 已解码 `Event` |
-| 按键模型 | VT 字符串 / 自解析为主 | **硬切 `InputEvent::{Key,Paste,Mouse}`**；Mouse 默认不刷帧；禁止 KeyEvent→VT→parse 运行时路径 |
-| 键匹配 | 字符串 `matchesKey` 等 | 运行时 `matches_key_event` / `KeybindingsManager::matches_event`；`matches_key`/`parse_key` 仅测试与配置字符串 |
-| 平台专属输入 | `native-modifiers`、Apple/Windows 路径 | **不移植** |
-| 调试写盘 | `writeLogPath` | **不移植**（用 tracing / 应用面日志） |
-
-### 引擎 / API 形状
-
-| 主题 | pi-tui | xylitol-tui |
-|---|---|---|
-| 根类型 | `TUI extends Container` | `TUI` 持有根 `components`；另提供独立 `Container` 组件（组合，非继承） |
-| Overlay | `OverlayHandle` + 完整 focus-restore 状态机 | `OverlayHandle` + **eligible/blocked/resume**（c575）；host `dispatch_event` reclaim |
-| 事件循环 | 库内 `start` 常见 | 产品路径 **host 驱动** `dispatch_event` / `request_render` / `try_render` / `idle_tick`；`TUI::start()` **仅 demo** |
-| 硬件光标 | 可开 | 默认 **隐藏**；Editor 用反色假光标（防流式闪烁） |
-| 渲染输出 | `string[]` ANSI | 同：`Vec<String>`；**不**引入结构化 `StyledLine` |
-| Editor 补全 | provider + 引擎内 `/` 特判较多 | **`CompletionSource` 注册表**；引擎只管 popup；`/` `@` 等为可插拔 Source（见 `completion.rs`） |
-
-### 有意不移植 / 已裁剪的模块
-
-- `stdin-buffer`、`native-modifiers`、Apple/Windows 专属输入、`writeLogPath`
-- **`Image` 组件**与 Kitty/iTerm **完整 encode 路径**（c445 裁剪）；保留 `is_image_line`（宽度豁免）与 `hyperlink`
-- pi coding-agent **产品壳**（transcript/slash/session UI）→ 在 `src/app/tui/`，不进本包
-- 完整 overlay focus-restore 状态机 → **已落地**（c575）；产品壳仍不进本包
+目标：**差分渲染 + 可组合组件 + crossterm 原生输入**；产品壳与视觉在 `src/app/tui/`。上游 bugfix 可择优吸收，**默认不**为对齐而回退 [`PI_DELTAS.md`](PI_DELTAS.md) 的决议。主题对照、不移植清单、Overlay / Image 裁剪都以该台账为 SSOT，勿在本文件再抄一表。
 
 缺能力时：**先在本包补通用能力，再由应用面接线**——不要把准通用实现塞进 `src/app/tui/`。
 
@@ -77,30 +48,16 @@
 2. 异步事件合流在 `src/app/tui/`，不进本 package。
 3. `render` → `Vec<String>`（ANSI）；不引入结构化 `StyledLine` 层。
 4. 主题用闭包注入；语义 token 映射在应用面（`src/app/tui/DESIGN.md`）。
-5. 终端 I/O / 输入硬切：见上表「底层 / 输入」。
-6. `enable_mouse_capture` / `XYLITOL_TUI_MOUSE`：**包 API + lab/e2e 保留**；默认不 Enable。产品 **Inline** 不得经 env 自动开 capture。**ApplicationOwned**（alt-screen）经 `begin_application_owned_session` 挂 `ApplicationOwnedRuntime`（ScrollView 视口 + 选区 + dock 排除 + OSC52），进 alt-buffer + mouse（c2070 / `package-tui-interaction-modes`）。Inline 文档 MUST NOT 暗示「开了 mouse = 原生选区 + 应用点选」兼得。
+5. 终端 I/O / 输入：优先 crossterm `Command`；硬切 `InputEvent::{Key,Paste,Mouse}`；不移植 `stdin-buffer` / 平台专属输入 / `writeLogPath`。细则 [`PI_DELTAS.md`](PI_DELTAS.md)。
+6. `enable_mouse_capture` / `XYLITOL_TUI_MOUSE`：**包 API + lab/e2e 保留**；默认不 Enable。产品 **Inline** 不得经 env 自动开 capture。**ApplicationOwned**（alt-screen）经 `begin_application_owned_session` 挂 `ApplicationOwnedRuntime`（ScrollView 视口 + 选区 + dock 排除 + OSC52）。Inline 文档 MUST NOT 暗示「开了 mouse = 原生选区 + 应用点选」兼得。
 7. 默认隐藏硬件光标；有 `CURSOR_MARKER` 时可相对定位 IME，但不得无条件 `show_cursor`。
-8. **命名（代码 SSOT）**：交互模式与 ApplicationOwned API **MUST** 用自解释标识符——`InteractionMode::{Inline,ApplicationOwned}`、`ApplicationOwnedTui` / `ApplicationOwnedRuntime`、`set_dock_rows` / `dock_rows_hint`、`set_transcript_copy_on_release`、`set_append_session_to_main_scrollback_on_exit`、`finish` / `finish_application_owned` / `finish_inline`。**禁止**在新/改代码里引入 `mode_a` / `mode_b` / `ModeA` / `ModeB` / `*_mode_b_*` 符号（含 pub API、字段、测试函数名）。口语「Mode A/B」仅允许出现在对照旧笔记时，且 MUST 立刻映射到 Inline / ApplicationOwned。概念 ↔ 代码列见 c2070 research（已冷归档进 `llmanspec/changes/archive/freezed_changes.7z.archived`）。勿加兼容别名——一步到位改调用点。
+8. **命名（代码 SSOT）**：交互模式 **MUST** 用 `InteractionMode::{Inline,ApplicationOwned}` 及对应 `ApplicationOwnedTui` / `ApplicationOwnedRuntime` / `finish_*`。**禁止**引入 `mode_a` / `mode_b` / `ModeA` / `ModeB` 符号。口语旧称仅允许出现在对照笔记时，且 MUST 立刻映射到 Inline / ApplicationOwned。勿加兼容别名。
 
-## ApplicationOwned host checklist（ptim14）
+## ApplicationOwned host checklist
 
-产品 / 自写 host **MUST** 走此清单；**禁止**把 `agent_demo_impl` 私有坐标算术当 SSOT。样板：`examples/host_loop_application_owned.rs`（`just demo-tui-host-loop`）。
+产品 / 自写 host **MUST** 以 `examples/host_loop_application_owned.rs`（`just demo-tui-host-loop`）为样板；**禁止**把 `agent_demo_impl` 私有坐标算术当 SSOT。
 
-| 步骤 | API |
-|---|---|
-| 构造 | `ApplicationOwnedTui::new(term)` 或 `TUI::with_interaction_mode(..., ApplicationOwned)` |
-| 开会话 | `terminal.start()` → `begin_application_owned_session` / `ApplicationOwnedTui::begin` |
-| 环 | host 驱动 `dispatch_event` → `idle_tick` → `try_render` / `render_now`（**勿**产品路径调 `TUI::start()`） |
-| dock | 每帧（或 dock 变）`set_dock_rows`；组件可 `dock_rows_hint` |
-| Editor 命中 | `editor_screen_origin(term_rows, dock_rows, rows_above_editor)` → `Editor::set_screen_origin` → 传 **绝对** screen `InputEvent::Mouse`（Editor 内减 origin） |
-| dock 过滤 | `mouse_in_dock`；按下始于 dock 不启 transcript 选区（引擎已做）；Editor 仅收 dock/拖选中事件 |
-| 复制提示 | `take_copy_notice` / `copy_notice_active` → 壳层短提示（勿写 transcript） |
-| fold hit（c2040 tui-mouse-click-fold-triangle） | `set_transcript_hit_priority` — Left Down 优先于选区；回调 `true` 则吞按下并清 transcript 选区 |
-| Editor OSC52 | `Editor::take_pending_clipboard` → `enqueue_clipboard_sequences` |
-| 退出 | `finish`（按模式分发）；或显式 `finish_application_owned` / `finish_inline` |
-| 挂起 | `with_terminal_suspended` — ApplicationOwned 自动重进 alt+mouse（ptim11） |
-
-入口类型：`ApplicationOwnedTui`（Deref→`TUI`）。布局纯函数：`editor_screen_origin` / `mouse_in_dock`。
+构造 `ApplicationOwnedTui`（或 `TUI::with_interaction_mode(..., ApplicationOwned)`）→ `begin_application_owned_session` → host 驱动 `dispatch_event` / `idle_tick` / `try_render`（**勿**产品路径调 `TUI::start()`）→ 每帧 `set_dock_rows` → Editor 用 `editor_screen_origin` 收**绝对** screen 坐标 → `mouse_in_dock` 过滤 dock → 折叠命中 `set_transcript_hit_priority` → 复制走 `take_copy_notice` / Editor OSC52 → 退出 `finish`。挂起用 `with_terminal_suspended`（ApplicationOwned 自动重进 alt+mouse）。
 
 ## 验证（本文件 = 人类/agent 验证分工 SSOT）
 
@@ -116,9 +73,9 @@
 
 **分工（勿混）**
 
-- **包 E2E / `agent_demo*`**：引擎 + 通用组件 + 真终端协议；就绪探针 `DEMO_READY_NEEDLE`（`tests/tui_e2e.rs`，footer `theme:dark`——勿用易滚出视口的标题行）。PTY 上 plate/settings 宜用 `XYLITOL_AGENT_DEMO_INITIAL_PROMPT` + 足够行高；tmux 用 `C-p` / `C-s`。**文案 / 标签以 demo 自身为准**，勿按产品词表强改。ApplicationOwned：example `agent_demo_alt` / `just demo-tui-alt-screen`；PTY 最小闸见 `pty_agent_demo_alt_*`。
-- **产品 TUI**：Driver / bridge / layout / 键位 → 应用面 harness（`src/app/tui`）。层 4 另有 **`pty_product_*` Fake smoke**（隔离 HOME/config，不绑真 LLM）；日常仍勿把全量门禁默认绑完整配置/真 API。
-- 层 4 全 `#[ignore]`；缺 tmux 时用 `just test-tui-e2e-pty`。操作细则：`test-tui-harness` skill（how-to，非第二份边界文）。
+- **包 E2E / `agent_demo*`**：引擎 + 通用组件 + 真终端协议；文案以 demo 自身为准。
+- **产品 TUI**：Driver / bridge / layout / 键位 → 应用面 harness。层 4 另有隔离 config 的产品 Fake smoke，日常不绑真 API。
+- 层 4 全 `#[ignore]`；缺 tmux 用 `just test-tui-e2e-pty`。操作细则：`test-tui-harness` skill。
 
 ## Specs
 

@@ -45,5 +45,5 @@ Host/client 已分离：模型/会话/MCP/trust 在 host（serve 或同进程）
 ## 相关落点
 
 - 方向正文：`docs/roadmaps/Gpui桌面客户端.md`
-- 同源约束板（实质跨面）：`docs/roadmaps/Web与TUI同源.md`
+- 同源约束板（实质跨面）：`docs/roadmaps/跨面同源.md`
 - 搁置愿景：`docs/roadmaps/Cloud-Agent与Web控制台.md`

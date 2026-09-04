@@ -17,26 +17,22 @@
 | layout / widgets | 呈现与局部交互 | 直接调 Driver / 读写 session |
 | harness / tests | 合成切片护栏 | 与生产复杂度闸混用（测试另计） |
 
-运行时真值：本目录产品代码。交互设计稿：仓库顶层 [`designing/`](../../../designing/)（`tui/modules/<id>/intent.md` + `draft.yaml` + `states/*.yaml`；人类 `just open-designing`）。Agent 改本面先读代码，再读 [`designing/AGENTS.md`](../../../designing/AGENTS.md) + [`designing/generated/AGENT-INDEX.md`](../../../designing/generated/AGENT-INDEX.md) + 相关模块；**默认忽略** `designing/app/`。无独立快捷键设计（组件键写在模块 `draft.yaml` `keys:`）。现行词「固定区」（历史文案 chrome）= layout/widgets；勿用 `shell`/`scene` 命名。
+运行时真值：本目录产品代码。交互设计稿：[`designing/`](../../../designing/)（对照辅助）。Agent 改本面先读代码，再读 [`designing/AGENTS.md`](../../../designing/AGENTS.md) + [`designing/generated/AGENT-INDEX.md`](../../../designing/generated/AGENT-INDEX.md) + 相关模块 intent/states；**默认忽略** `designing/app/`。改固定态跑 designing lint（入 `just qa`）与 `check-tui-tokens`。无独立快捷键设计。现行词「固定区」= layout/widgets；勿用 `shell`/`scene` 命名。
 
-**布局地图（本文件自指要求）**：本文件按「角色表（上）→ 硬约束 → 验证与 HOW」提供本地布局地图：目录/文件职责、协调者与可下沉模块边界（host / effects / bridge / layout / widgets / commands）、硬约束指针（Esc 归属与 bang/agent abort 分岔、禁止 reach-in、禁止继续堆 God 文件）、验证命令指针；并保留对 [`PI_DELTAS.md`](./PI_DELTAS.md) 与 `l8ng-write-tui` skill 的指针。不写进度板或易腐清单。
+**信息面词汇（固定）**：讨论与**本面**文档 / host MUST 使用 [`docs/architecture/TUI信息面与固定区词汇.md`](../../../docs/architecture/TUI信息面与固定区词汇.md) 表内词——尤其 **滚动提示**、**通知条**、**尾插 / 顶插**。禁止主用「挂账」「Status trail」「system 消息」指 UI。勿再引入已退役的换模预告。
 
-**设计稿文档职责**（designing lint 承继）：Agent 改本面先读产品代码，再读 designing 短模块 intent/states；**默认忽略** `designing/app/`，仅在人类点名路径时才读应用壳。改固定态须跑 designing lint（入 `just qa`）与 `check-tui-tokens`；token 生成物由同步脚本从 `DESIGN.md` frontmatter 写出，手改不作为长期真值。无独立快捷键设计模块。
+**与 `agent_demo` 分界**：包引擎演示，不是本面 SSOT、不是 designing。硬边界见 `packages/xylitol-tui/AGENTS.md`。
 
-**信息面词汇（固定）**：讨论与**本面**文档 / host MUST 使用 [`docs/architecture/TUI信息面与固定区词汇.md`](../../../docs/architecture/TUI信息面与固定区词汇.md) 表内词——尤其 **滚动提示**（`UiEntry::ScrollNotice` / `push_scroll_notice`）、**通知条**（toast notice / `push_toast_notice`，status 上方；≠ ScrollNotice / `UiEntry::Error`）、**尾插 / 顶插**。禁止主用「挂账」「Status trail」「system 消息」/`UiEntry::System` 指 UI；换模预告（Next turn cue）已随 attach run 绑定退役，勿再使用。
-
-**与 `agent_demo` 分界**：`just demo-tui` / `packages/…/agent_demo` = 包引擎演示，**不是**本面 SSOT，**不是** designing。**MUST NOT** 把 demo 屏上英文 / plate 文案当成产品固定区真值；**MUST NOT** 为对齐本词表去强改 demo 字符串（除非人类明确要求）。产品视觉意图走仓库顶层 `designing/` + `just open-designing`；运行时以产品测 / host 为准。
-
-**与未来 Web 的公共体验（跨面）**：凡 TUI 与 Web **共有**的能力（会话、改向、折叠/展开类减噪、即时设置等），用户学习模型与动作语义 MUST 同源——理解成本一致；快捷键 / 发现方式 SHOULD 尽量同构（允许 OS 修饰键差异与 Web 额外点击）。**仅**某一面独有的能力才可另起交互。约束板：[`docs/roadmaps/Web与TUI同源.md`](../../../docs/roadmaps/Web与TUI同源.md)；落地心智：[`docs/architecture/库与多客户端.md`](../../../docs/architecture/库与多客户端.md)。改公共交互前先对齐全套面，禁止静默开出「只教 TUI」的第二套故事。长历史 activity 折叠（`activity.expandNearest` / `collapseNearest`）TUI 已交付；Web 未开闸，不在本面预埋第二套 id。约束仍见 roadmap，不把未开闸面写成现行 MUST。
+**跨面公共体验**：与第二产品面（gpui 桌面，尚未开闸）**共有**的能力，动作语义 / 学习成本 MUST 同源；快捷键 SHOULD 尽量同构；仅面专属可分叉。约束板：[`docs/roadmaps/跨面同源.md`](../../../docs/roadmaps/跨面同源.md)；落地心智：[`docs/architecture/库与多客户端.md`](../../../docs/architecture/库与多客户端.md)。改公共交互前先对齐全套面。未开闸面不要写成现行 MUST，也不要在本面预埋第二套动作 id。
 
 ## 硬约束
 
 - 滚动提示 / 导航瞬时提示：默认 **尾插**（跟底可见、保 paint-cache）。**顶插不是绝对禁令**——顶层原则是高效绘制 + 用户跟底仍能合理看见关键反馈；仅当有明确理由（且接受缓存失效 / 视口外风险）才可顶插，须在 design/提案写清。瞬时确认优先页脚 / 状态条 / 槽，不要堆滚动提示。
 
 - 渲染只用 `xylitol_tui`；缺能力先改包再接线。产品路径 **host 驱动**（demo 专用启动 API 勿用于生产面）。
-- **鼠标**：产品默认 **ApplicationOwned**（alt-screen）：会话 begin 后开 mouse capture，应用内选区 + dock 排除输入面；**不**读 `XYLITOL_TUI_MOUSE`（该 env 仅库 lab / e2e / Inline demo）。库仍暴露 Inline 构造入口。模式在 host **启动构造**时绑定（`new_product_ui_with_meta_mode` / `TuiRunOptions`，缺省 ApplicationOwned）；**禁止** mid-session 热切 / 再引入 `apply_interaction_mode`。`XYLITOL_TUI_INLINE=1` 仅 lab 窥视产品 Inline 构造（启动绑定）；**不是**产品旗标 / 设置；缺省仍 ApplicationOwned。折叠三角列点击（Tool/Diff/Ask/Thinking per-id + Compaction / OutputViewport / Segment）经 `set_transcript_hit_priority` 接线（折叠点击接线 `c2040`；库双模式 `c2070`）。命名：用 `Inline` / `ApplicationOwned`，勿写 `mode_a`/`mode_b`（见 `packages/xylitol-tui/AGENTS.md` §硬约束 8）。
+- **鼠标**：产品默认 **ApplicationOwned**（alt-screen）：会话 begin 后开 mouse capture，应用内选区 + dock 排除输入面；**不**读 `XYLITOL_TUI_MOUSE`（该 env 仅库 lab / e2e / Inline demo）。库仍暴露 Inline 构造入口。模式在 host **启动构造**时绑定（缺省 ApplicationOwned）；**禁止** mid-session 热切。`XYLITOL_TUI_INLINE=1` 仅 lab 窥视产品 Inline 构造（启动绑定）；**不是**产品旗标 / 设置。折叠三角列点击经 `set_transcript_hit_priority`。命名：`Inline` / `ApplicationOwned`，勿写 `mode_a`/`mode_b`（见包 AGENTS 硬约束）。
 - Agent 只经产品信封客户端（面侧）或 Host 内 `XyDriver`；禁止 reach `agent` / `infra` 内部（同 `src/AGENTS.md`）。产品 TUI MUST NOT 默认同进程直握操作器。
-- Trust 在 CLI 闸；本面 `EditorSlot::Choice` 已解冻给内置 `ask`（c1850 tui-ask-tool）。Plate/Settings stub 仍冻结；产品未拍板勿扩活树/活设置。
+- Trust 在 CLI 闸；本面 `EditorSlot::Choice` 已解冻给内置 `ask`。Plate/Settings stub 仍冻结；产品未拍板勿扩活树/活设置。
 - Esc（行为规则；实现细节以代码与 stage-QA design 为准）：
   - Idle 空 editor → 双 Esc 开树
   - Busy 无 overlay → abort latch；立刻臂装 Xy 抑制，drain 仍须 `XyDriver::abort`
@@ -56,6 +52,6 @@
 
 包侧四层：`packages/xylitol-tui/AGENTS.md` + skill `test-tui-harness`。排障：`xylitol-inspect-runtime-logs`（勿整文件灌 log）。新增应用面：`l8ng-write-surface`。
 
-应用面无头帧挂载（BDD 直驱真实渲染）：`SceneBuilder`（经 `xylitol::app::tui` 导出；契约 `package-tui-testing` tt08）。
+应用面无头帧挂载（BDD 直驱真实渲染）：`SceneBuilder`（经 `xylitol::app::tui` 导出；契约 `package-tui-testing`）。
 
 live 只进 scrollback；历史/分叉以会话树为准。不做 Codex TranscriptView；不做运行时 Settings/Plate 改配置；**不**绑定 Ctrl+P 打开 Command Plate stub。

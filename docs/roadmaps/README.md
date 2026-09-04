@@ -29,7 +29,7 @@ docs/roadmaps/  →  llmanspec/changes  →  docs/architecture/
 ```mermaid
 flowchart TB
   subgraph Surfaces["应用面"]
-    Homo["跨面同源 · 约束板（原 Web与TUI同源）"]
+    Homo["跨面同源 · 约束板"]
     Gui["Gpui 桌面客户端 · Linux/Wayland"]
     Obs["OTEL 与 Langfuse 观测"]
     Visual["TUI 视觉与信息表达"]
@@ -81,7 +81,7 @@ flowchart TB
 
 | 文档 | 候选方向 |
 |---|---|
-| [Web与TUI同源.md](./Web与TUI同源.md) | 跨面语义约束板（含长历史 activity 折叠栈意向；非 Web 壳本身）；第二面已定为 gpui 桌面 |
+| [跨面同源.md](./跨面同源.md) | 跨面语义约束板（含 activity 折叠栈意向）；第二面是 gpui 桌面，不交付面壳本身 |
 | [Gpui桌面客户端.md](./Gpui桌面客户端.md) | 第二产品面：gpui 桌面（Linux/Wayland）attach 同一 Host；与 TUI 双 Rust 面 |
 | [TUI视觉与信息表达.md](./TUI视觉与信息表达.md) | 状态减噪、主题密度；与调用活动折叠衔接 |
 | [TUI重制.md](./TUI重制.md) | **UiEntry** rail 皮肤（M1 已兑现）；交互设计稿 = 仓库顶层 `designing/`（≠ 产品真值；≠ `agent_demo`） |

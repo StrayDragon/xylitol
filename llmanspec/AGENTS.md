@@ -13,7 +13,7 @@ change/spec 的命名、ID、依赖、原子性、语言。架构事实（分层
 
 - **Change ID 格式**：`c{priority}-{verb}-{subject}`。
   - `verb` ∈ `add` / `update` / `remove` / `refactor` / `fix`（实测无其它）。
-  - `priority` 为整数。**建议**用 5 的倍数（c05/c10/c1200）——目的是**预留加塞间隙**，方便后续插队；**非**强制 5 倍数。需要插队时直接占用相邻空位（c06/c07/c08/c09；实测 c996/c997/c998/c1156）。priority **MUST 唯一**。
+  - `priority` 为整数。**建议**用 5 的倍数（c05/c10/c1200）——目的是**预留加塞间隙**，方便后续插队；**非**强制 5 倍数。需要插队时直接占用相邻空位。priority **MUST 唯一**。
 - **priority 是建议性排序**：实际执行先沿 `depends_on` 依赖边，priority 仅作并列时的 tiebreaker。
 - **frontmatter**：每个 `proposal.md` MUST 含 YAML frontmatter，至少带 `depends_on`（list，无依赖用 `[]`）。
 - **依赖闸**：`depends_on` 引用的 change 全部归档（移入 `changes/archive/`）前，本 change 不可 apply。引用不存在的 change = 校验错误，STOP。
@@ -26,11 +26,11 @@ change/spec 的命名、ID、依赖、原子性、语言。架构事实（分层
 - **capability 前缀按层**（实测分布，normative）：
   - `package-tui-*` — `packages/xylitol-tui`
   - `package-ai-bridge*` — `packages/xylitol-ai-bridge`
-  - `app-tui-*` — 产品 TUI（`src/app/tui`）；可多 capability，禁止把新产品合约堆进单体 `app-tui`（正经 c450 退役）
+  - `app-tui-*` — 产品 TUI（`src/app/tui`）；可多 capability，禁止把新产品合约堆进单体 `app-tui`
   - `agent-*` / `domain-*` / `runtime-*` / `infra-*` / `protocol-*` / `server-*` / `cli-*` — 对应分层
   - `test-*` — 测试基础设施（BDD harness、fake provider、qa-gate…）
   - `workspace-*` / `build-*` / `layer-*` / `user-*` / `architecture` — 仓库 meta / 跨层
-  - 历史名可并存，迁移见并行清理任务。
+  - 历史名可并存。
 
 ### tasks
 
