@@ -5,8 +5,21 @@ use serde_json::Value;
 use crate::dto::{AiBridgeUsage, PromptCacheRead};
 use crate::wire_policy::WirePolicy;
 
-/// OpenAI-style `{prompt_tokens, completion_tokens, ...}` → [`AiBridgeUsage`].
+/// OpenAI Completions `{prompt_tokens, completion_tokens, ...}` → [`AiBridgeUsage`].
+///
+/// Uses [`WirePolicy::default()`] (expects prompt-cache usage by default).
 pub fn from_openai_usage(value: &Value) -> AiBridgeUsage {
+    from_openai_usage_with_policy(value, WirePolicy::default())
+}
+
+/// Completions usage mapping gated by [`WirePolicy`].
+///
+/// Cache read: `prompt_cache_hit_tokens` first, else `prompt_tokens_details.cached_tokens`.
+///
+/// - `!expects_prompt_cache_usage()` → [`PromptCacheRead::NotApplicable`]
+/// - expects + a cache field present → [`PromptCacheRead::Tokens`] (including 0)
+/// - expects + both absent → [`PromptCacheRead::NotReported`]
+pub fn from_openai_usage_with_policy(value: &Value, policy: WirePolicy) -> AiBridgeUsage {
     let input = value
         .get("prompt_tokens")
         .and_then(|v| v.as_u64())
@@ -19,11 +32,6 @@ pub fn from_openai_usage(value: &Value) -> AiBridgeUsage {
         .get("total_tokens")
         .and_then(|v| v.as_u64())
         .unwrap_or(input + output);
-    let cache_read = value
-        .get("prompt_tokens_details")
-        .and_then(|d| d.get("cached_tokens"))
-        .and_then(|v| v.as_u64())
-        .unwrap_or(0);
     AiBridgeUsage {
         input,
         output,
@@ -33,7 +41,27 @@ pub fn from_openai_usage(value: &Value) -> AiBridgeUsage {
         cost: None,
         ..AiBridgeUsage::default()
     }
-    .with_prompt_cache_read(PromptCacheRead::Tokens(cache_read))
+    .with_prompt_cache_read(completions_prompt_cache_read(value, policy))
+}
+
+fn completions_prompt_cache_read(value: &Value, policy: WirePolicy) -> PromptCacheRead {
+    if !policy.expects_prompt_cache_usage() {
+        return PromptCacheRead::NotApplicable;
+    }
+    if let Some(n) = value
+        .get("prompt_cache_hit_tokens")
+        .and_then(|v| v.as_u64())
+    {
+        return PromptCacheRead::Tokens(n);
+    }
+    if let Some(n) = value
+        .get("prompt_tokens_details")
+        .and_then(|d| d.get("cached_tokens"))
+        .and_then(|v| v.as_u64())
+    {
+        return PromptCacheRead::Tokens(n);
+    }
+    PromptCacheRead::NotReported
 }
 
 /// Anthropic-style `{input_tokens, output_tokens, cache_*}` → [`AiBridgeUsage`].
@@ -155,7 +183,79 @@ mod tests {
         assert_eq!(u.input, 100);
         assert_eq!(u.output, 50);
         assert_eq!(u.total_tokens, 150);
+        assert_eq!(u.prompt_cache_read, PromptCacheRead::NotReported);
+        assert_eq!(u.cache_read, 0);
+    }
+
+    #[test]
+    fn openai_usage_prefers_prompt_cache_hit_tokens() {
+        let json = serde_json::json!({
+            "prompt_tokens": 754,
+            "completion_tokens": 10,
+            "total_tokens": 764,
+            "prompt_cache_hit_tokens": 640,
+            "prompt_tokens_details": { "cached_tokens": 1 }
+        });
+        let u = from_openai_usage_with_policy(&json, WirePolicy::for_compat(Compat::Deepseek));
+        assert_eq!(u.prompt_cache_read, PromptCacheRead::Tokens(640));
+        assert_eq!(u.cache_read, 640);
+    }
+
+    #[test]
+    fn openai_usage_falls_back_to_prompt_tokens_details() {
+        let json = serde_json::json!({
+            "prompt_tokens": 754,
+            "completion_tokens": 10,
+            "total_tokens": 764,
+            "prompt_tokens_details": { "cached_tokens": 640 }
+        });
+        let u = from_openai_usage_with_policy(&json, WirePolicy::for_compat(Compat::Deepseek));
+        assert_eq!(u.prompt_cache_read, PromptCacheRead::Tokens(640));
+        assert_eq!(u.cache_read, 640);
+    }
+
+    #[test]
+    fn openai_usage_not_applicable_when_policy_off() {
+        let policy = WirePolicy {
+            compat: Compat::Generic,
+            extra_policy: ExtraPolicy {
+                prompt_cache_usage: false,
+                prompt_cache_key: false,
+                previous_response_id: false,
+            },
+        };
+        let json = serde_json::json!({
+            "prompt_tokens": 100,
+            "completion_tokens": 50,
+            "prompt_cache_hit_tokens": 40,
+            "prompt_tokens_details": { "cached_tokens": 40 }
+        });
+        let u = from_openai_usage_with_policy(&json, policy);
+        assert_eq!(u.prompt_cache_read, PromptCacheRead::NotApplicable);
+        assert_eq!(u.cache_read, 0);
+    }
+
+    #[test]
+    fn openai_usage_tokens_zero_is_not_not_reported() {
+        let json = serde_json::json!({
+            "prompt_tokens": 100,
+            "completion_tokens": 50,
+            "prompt_cache_hit_tokens": 0
+        });
+        let u = from_openai_usage(&json);
         assert_eq!(u.prompt_cache_read, PromptCacheRead::Tokens(0));
+    }
+
+    #[test]
+    fn deepseek_policy_maps_responses_cached_tokens() {
+        let json = serde_json::json!({
+            "input_tokens": 754,
+            "output_tokens": 20,
+            "input_tokens_details": { "cached_tokens": 640 }
+        });
+        let u = from_responses_usage_with_policy(&json, WirePolicy::for_compat(Compat::Deepseek));
+        assert_eq!(u.prompt_cache_read, PromptCacheRead::Tokens(640));
+        assert_eq!(u.cache_read, 640);
     }
 
     #[test]
