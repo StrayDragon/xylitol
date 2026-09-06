@@ -20,7 +20,7 @@ use assistant::{
     streaming_assistant_parts, streaming_message_update, upsert_streaming_tool,
 };
 use support::{
-    ClearActiveTurn, call_with_retry, observe_script_hook, persist_agent_message,
+    ClearActiveTurn, attempt_model_stream, observe_script_hook, persist_agent_message,
     persist_agent_message_with_thought_elapsed, prepare_turn_binding,
 };
 use turn_end::{
@@ -35,7 +35,7 @@ use futures::StreamExt;
 use serde_json::Value;
 use tokio_util::sync::CancellationToken;
 
-use super::retry::RetryState;
+use super::retry::{RetryState, is_retryable_error};
 use super::state::{
     FrozenRootConfig, RunId, RunLease, RunPolicy, RuntimeControlError, SharedRunCoordinator,
 };
@@ -47,7 +47,9 @@ use crate::agent::tools::ToolSet;
 use crate::protocol::error::{XyError, XySessionError};
 use crate::protocol::message::{AgentMessage, AgentPart};
 use crate::protocol::model::{XyChunk, XyToolSchema};
-use crate::protocol::ports::{XyBatchMode, XyHookBus, XyHookOutcome, XyModel, XySessionStore};
+use crate::protocol::ports::{
+    XyBatchMode, XyHookBus, XyHookOutcome, XyModel, XySessionStore, XyStream,
+};
 use crate::protocol::resource::SkillInfo;
 
 // ── AgentRuntime ───────────────────────────────────────────────────────
@@ -938,14 +940,66 @@ fn run_react_loop(cfg: ReActConfig) -> impl Stream<Item = XyEvent> + Send {
 
                 // Race cancel against connect/retry so Esc aborts hung `send()`
                 // (reqwest drop-cancels the in-flight HTTP future).
-                let stream_result = tokio::select! {
-                    biased;
-                    _ = cancel.cancelled() => None,
-                    result = call_with_retry(
-                        &model, messages, &tool_schemas, &retry_state, &generate_options,
-                        turn_id.as_deref(),
-                    ) => Some(result),
-                };
+                // 重试环在生成器内联:AutoRetryStart 在 backoff 等待「前」yield,
+                // bridge 才能在等待期间显示 Retry attempt/max(atb6)。
+                let llm_messages = crate::agent::llm_project::project_for_llm(&messages);
+                let mut stream_result: Option<Result<XyStream, XyError>> = None;
+                loop {
+                    let result = tokio::select! {
+                        biased;
+                        _ = cancel.cancelled() => break,
+                        result = attempt_model_stream(
+                            &model, llm_messages.clone(), &tool_schemas, &generate_options,
+                        ) => result,
+                    };
+                    match result {
+                        Ok(stream) => {
+                            if retry_state.attempt() > 0 {
+                                yield XyEvent::AutoRetryEnd {
+                                    success: true,
+                                    attempt: retry_state.attempt(),
+                                };
+                            }
+                            stream_result = Some(Ok(stream));
+                            break;
+                        }
+                        Err(e) => {
+                            if is_retryable_error(&e.to_string()) && retry_state.can_retry() {
+                                log::warn!(
+                                    target: "xylitol::react",
+                                    "model.generate_stream retrying error.kind={} turn_id={} error={e}",
+                                    e.kind(),
+                                    turn_id.as_deref().unwrap_or("")
+                                );
+                                let delay = retry_state.next_delay();
+                                yield XyEvent::AutoRetryStart {
+                                    attempt: retry_state.attempt(),
+                                    max_retries: retry_state.max_retries(),
+                                    delay_ms: delay.as_millis() as u64,
+                                };
+                                tokio::select! {
+                                    biased;
+                                    _ = cancel.cancelled() => break,
+                                    _ = retry_state.backoff(delay) => continue,
+                                }
+                            }
+                            super::obs::record_xy_error(
+                                "model.generate_stream",
+                                &e,
+                                turn_id.as_deref(),
+                                generate_options.obs_parent,
+                            );
+                            if retry_state.attempt() > 0 {
+                                yield XyEvent::AutoRetryEnd {
+                                    success: false,
+                                    attempt: retry_state.attempt(),
+                                };
+                            }
+                            stream_result = Some(Err(e));
+                            break;
+                        }
+                    }
+                }
 
                 let mut chunk_stream: Pin<Box<dyn Stream<Item = Result<XyChunk, XyError>> + Send>>;
                 match stream_result {

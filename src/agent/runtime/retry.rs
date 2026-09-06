@@ -53,6 +53,15 @@ impl RetryState {
         self.attempt.load(Ordering::Acquire) < self.max_retries
     }
 
+    /// 已调度的重试次数（不含首次尝试；`next_delay` 每次自增）。
+    pub(crate) fn attempt(&self) -> u32 {
+        self.attempt.load(Ordering::Acquire)
+    }
+
+    pub(crate) fn max_retries(&self) -> u32 {
+        self.max_retries
+    }
+
     pub(crate) fn next_delay(&self) -> Duration {
         let attempt = self.attempt.fetch_add(1, Ordering::AcqRel) + 1;
         let delay_ms = self.base_delay_ms * 2u64.pow(attempt.saturating_sub(1));

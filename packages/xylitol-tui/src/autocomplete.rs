@@ -325,9 +325,12 @@ impl CombinedAutocompleteProvider {
         let (raw, is_at, _is_quoted_unused) = parse_path_prefix(query);
         let _ = is_quoted;
 
-        if let Some(ref fd_path) = self.fd_path
-            && !ct.is_cancelled()
-        {
+        // 已配置 fd 的查询被取消:取消语义 MUST 生效,不得静默降级到同步读目录。
+        if self.fd_path.is_some() && ct.is_cancelled() {
+            return Vec::new();
+        }
+
+        if let Some(ref fd_path) = self.fd_path {
             let base_dir = self.base_path.to_string_lossy().to_string();
             let entries = walk_directory_with_fd(&base_dir, fd_path, raw, 100, ct);
 
@@ -574,11 +577,31 @@ impl CombinedAutocompleteProvider {
         let (raw, is_at, is_quoted) = parse_path_prefix(query);
         let expanded = expand_home_path(raw);
 
-        // Walk the base dir (non-recursive for now).
-        let search_dir = if expanded.starts_with('/') {
-            PathBuf::from(&expanded)
+        // Non-fd fallback mirrors AtPathSource: bare fragment lists the base dir
+        // fuzzy-filtered, `src/` lists that dir, `src/m` lists src/ filtered by
+        // `m`. Recursive fuzzy search needs the fd subprocess — this is the
+        // graceful degradation, not a second walk.
+        let (search_dir, filter, display_prefix) = if expanded.ends_with('/') {
+            if expanded.starts_with('/') {
+                (PathBuf::from(&expanded), String::new(), expanded.clone())
+            } else {
+                (
+                    self.base_path.join(&expanded),
+                    String::new(),
+                    expanded.clone(),
+                )
+            }
+        } else if let Some((parent, name)) = expanded.rsplit_once('/') {
+            let dir = if parent.is_empty() {
+                PathBuf::from("/")
+            } else if parent.starts_with('/') {
+                PathBuf::from(parent)
+            } else {
+                self.base_path.join(parent)
+            };
+            (dir, name.to_string(), format!("{parent}/"))
         } else {
-            self.base_path.join(&expanded)
+            (self.base_path.clone(), expanded.clone(), String::new())
         };
 
         let entries: Vec<_> = match std::fs::read_dir(&search_dir) {
@@ -591,7 +614,10 @@ impl CombinedAutocompleteProvider {
             .filter_map(|e| {
                 let is_dir = e.file_type().ok()?.is_dir();
                 let name = e.file_name().to_str()?.to_string();
-                let score = fuzzy_match(raw, &name).map(|m| m.score).unwrap_or(1.0);
+                if filter.is_empty() {
+                    return Some((0usize, is_dir, name));
+                }
+                let score = fuzzy_match(&filter, &name).map(|m| m.score).unwrap_or(1.0);
                 if score >= 0.0 {
                     return None;
                 }
@@ -601,8 +627,6 @@ impl CombinedAutocompleteProvider {
 
         scored.sort_by(|a, b| b.0.cmp(&a.0).then_with(|| a.2.cmp(&b.2)));
 
-        // Fuzzy walk here is base-dir only; keep basename values (no nested prefix).
-        let display_prefix = String::new();
         scored
             .into_iter()
             .take(20)

@@ -54,6 +54,20 @@ fn provider_with_fd(base: PathBuf) -> CombinedAutocompleteProvider {
     CombinedAutocompleteProvider::new_with_fd(vec![], base, "fd".to_string())
 }
 
+#[test]
+fn at_fuzzy_fallback_without_fd_lists_base_dir() {
+    let dir = make_temp_dir_with_files();
+    let p = CombinedAutocompleteProvider::new(vec![], dir.path().to_path_buf());
+    let lines = vec!["@C".to_string()];
+    let res = p.get_suggestions(&lines, 0, 2, false);
+    let res = res.expect("@ fuzzy without fd must degrade to base-dir listing, not None");
+    let names: Vec<String> = res.items.iter().map(|i| i.value.clone()).collect();
+    assert!(
+        names.iter().any(|v| v.contains("Cargo.toml")),
+        "@C fallback should surface Cargo.toml, got {names:?}"
+    );
+}
+
 // ── ac02: fd recursive search ──────────────────────────────────────────────
 
 #[test]
