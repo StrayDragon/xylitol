@@ -93,6 +93,10 @@
   场景: otel-obs-lane-llm
     - 当低频观测 span 激活时，LLM/agent 主路径导出名 agent.turn、agent.iteration、llm.request、tool.execute、过 prepare 的 agent.compaction、以及 settlement 路径的 token.estimate MUST 携带属性 xylitol.obs.lane=llm，供 Collector 或直连消费端过滤；该属性 MUST NOT 写入 XyEvent / hooks；MUST NOT 用 xylitol.signal 作为同义属性名。直连 Langfuse 时，本属 infra 的门闸早退 MUST NOT 伪装为上述 LLM 语义 span（见 otel19）。由单测覆盖，MUST NOT 为静态存在性单独扩 BDD step。
 
+  @req:otel23 @human
+  场景: otel-session-id-per-generate
+    - 当低频观测 span 激活且两路（或以上）绑定不同会话 UUID 的处理重叠进行时，各路导出的根 span 与该路 llm.request MUST 携带自己那次处理所绑定会话的 langfuse.session.id；MUST NOT 因共享进程级会话槽而被另一路中途 bind 覆盖。本 req 不改变「值为 xylitol 书签 UUID」的语义。由包内/观测单测覆盖，MUST NOT 单独扩 BDD step。
+
   @req:otel6 @executable
   场景: otel-session-id-on-turn-root-headless
     假如 mock 模型先 tool 后无 tool
