@@ -2,6 +2,7 @@
 //!
 //! Uses the `image` crate for core operations.
 
+use base64::Engine as _;
 use image::GenericImageView;
 use std::io::Cursor;
 
@@ -86,7 +87,7 @@ pub fn resize_image(data: &[u8], options: &ImageResizeOptions) -> Result<Resized
             .write_to(&mut cursor, image::ImageFormat::Png)
             .map_err(|e| ImageError::decode("failed to encode PNG", e))?;
     }
-    let png_b64 = base64_encode(&png_bytes);
+    let png_b64 = base64::engine::general_purpose::STANDARD.encode(&png_bytes);
 
     if png_b64.len() <= options.max_bytes {
         return Ok(ResizedImage {
@@ -113,7 +114,7 @@ pub fn resize_image(data: &[u8], options: &ImageResizeOptions) -> Result<Resized
             .map_err(|e| ImageError::decode("failed to encode JPEG", e))?;
     }
 
-    let jpeg_b64 = base64_encode(&jpeg_bytes);
+    let jpeg_b64 = base64::engine::general_purpose::STANDARD.encode(&jpeg_bytes);
 
     if jpeg_b64.len() <= options.max_bytes {
         was_resized = true;
@@ -133,40 +134,9 @@ pub fn resize_image(data: &[u8], options: &ImageResizeOptions) -> Result<Resized
     ))
 }
 
-/// Minimal base64 encoder (RFC 4648) — mirrors clipboard version.
-fn base64_encode(input: &[u8]) -> String {
-    const CHARS: &[u8] = b"ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789+/";
-    let mut result = String::with_capacity(input.len().div_ceil(3) * 4);
-    for chunk in input.chunks(3) {
-        let b0 = chunk[0] as u32;
-        let b1 = chunk.get(1).copied().unwrap_or(0) as u32;
-        let b2 = chunk.get(2).copied().unwrap_or(0) as u32;
-        let triple = (b0 << 16) | (b1 << 8) | b2;
-        result.push(CHARS[((triple >> 18) & 0x3F) as usize] as char);
-        result.push(CHARS[((triple >> 12) & 0x3F) as usize] as char);
-        if chunk.len() > 1 {
-            result.push(CHARS[((triple >> 6) & 0x3F) as usize] as char);
-        } else {
-            result.push('=');
-        }
-        if chunk.len() > 2 {
-            result.push(CHARS[(triple & 0x3F) as usize] as char);
-        } else {
-            result.push('=');
-        }
-    }
-    result
-}
-
 #[cfg(test)]
 mod tests {
     use super::*;
-
-    #[test]
-    fn test_base64_encode() {
-        assert_eq!(base64_encode(b"hello"), "aGVsbG8=");
-        assert_eq!(base64_encode(b""), "");
-    }
 
     #[test]
     fn test_default_options() {

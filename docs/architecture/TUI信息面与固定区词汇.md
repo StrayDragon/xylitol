@@ -20,12 +20,12 @@
 | **尾插** | tail-append / append | append 到 entries **末**（跟底可见） | — |
 | **顶插** | prepend | 写入 `entries[0]` 或等价前缀 | — |
 | **Inline 交互** | **Inline** · `InteractionMode::Inline` | 主屏差分；**终端原生选区**取向（emulator-owned）；库 lab/demo | Mode A、inline-only 当唯一真名 |
-| **ApplicationOwned 交互** | **ApplicationOwned** · `InteractionMode::ApplicationOwned` | 应用自管视口 + **应用内选区**；常经 alt-buffer + mouse capture；**产品缺省（ath30）** | Mode B、alt-screen 当唯一真名（alt-buffer 只是 AO 常见载体） |
+| **ApplicationOwned 交互** | **ApplicationOwned** · `InteractionMode::ApplicationOwned` | 应用自管视口 + **应用内选区**；常经 alt-buffer + mouse capture；**产品缺省（ath30，AO 缺省）** | Mode B、alt-screen 当唯一真名（alt-buffer 只是 AO 常见载体） |
 | **终端原生选区** | emulator-owned selection | 仿真器画选区/复制；应用不解释未修饰拖选 | 「开了 mouse 就有原生选区」 |
 | **应用内选区** | application-owned selection | 应用收鼠标、自绘高亮、自复制（OSC52 等） | 把 mouse capture 说成「有选区」 |
 | **timeout 预算注记** | `(timeout {N}s)` · tool header budget note | 工具行 header 在 `(Alt+E)` 前的 muted 预算声明；仅模型显式传 `timeout` 的 bash/grep/find 出现（c2435 tool-timeout-chrome），走默认不显示 | 倒计时（无）；把工具默认值逐行刷出 |
 
-完整术语 ↔ 代码标识符对照（grabbed/ungrabbed、视口 vs scrollback）：`emulator-vs-app-selection-oneof.md` §1（c2070 research；2026-08-16 前的 change 已冷归档（freeze）进 `llmanspec/changes/archive/freezed_changes.7z.archived`）。
+完整术语 ↔ 代码标识符对照（grabbed/ungrabbed、视口 vs scrollback）：`emulator-vs-app-selection-oneof.md` §1（`c2070`（双交互模式）research；2026-08-16 前的 change 已冷归档（freeze）进 `llmanspec/changes/archive/freezed_changes.7z.archived`）。
 
 ### 弃用（见旧文时对照本表改写）
 
@@ -76,6 +76,6 @@
 - 六个月后仍真？否则不要扩表。
 - 新固定区能力先归类 A–G，再选落点；禁止静默发明第四套同义词。
 - 面操作边界：[`src/app/tui/AGENTS.md`](../../src/app/tui/AGENTS.md)。
-- **交互模型（库双入口）**：终端原生选区 vs 应用内选区（oneof）见 `c2070`；术语表 §1 `emulator-vs-app-selection-oneof.md`。库保留 **Inline** + **ApplicationOwned**；ApplicationOwned 默认须含拖选 / 跨页续选 / 松手复制。**产品默认 ApplicationOwned**（ath30 / `c2071`）；库 Inline 仅 lab/demo。段级 Activity 折叠见 `c1760`（已归档）；Segment 鼠标命中见 `c2045`。`c2020` 鼠标管道为 ApplicationOwned 地基；`XYLITOL_TUI_MOUSE` 仅 lab/e2e，产品 `TerminalGuard` 不读。
+- **交互模型**：终端原生选区 vs 应用内选区（oneof）的跨面同源细则（库双入口、产品缺省、拖选 MUST、鼠标管道、`XYLITOL_TUI_MOUSE` 边界）→ [`../roadmaps/跨面同源.md`](../roadmaps/跨面同源.md)「支线与方向」表；词汇以本表 **Inline** / **ApplicationOwned** 词条为准。TUI 专属实现指针：段级 Activity 折叠见 `c1760`（activity 折叠，已归档）；Segment 鼠标命中见 `c2045`（剩余折叠目标）。
 - **归档 change**（`llmanspec/changes/archive/`）可保留当时旧词作史实；**新文 / 活 docs / 活 specs（产品面）** 只准用本表。
 - **designing**（仓库顶层 `designing/`）= 交互设计稿；`agent_demo` = 包演示，文案/固定区 **允许不同**。**禁止**把本表当成「必须改写 demo 字符串」的闸。

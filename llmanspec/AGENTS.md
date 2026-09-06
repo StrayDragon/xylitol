@@ -110,6 +110,14 @@ commit（live specs + 代码）
 
 - `depends_on` 指向的 change **归档后**仍可用原 `change_id`（目录进 `archive/YYYY-MM-DD-*`）；apply 前确认依赖已归档或本分支已落地其行为。
 
+## delayed-changes（搁置提案 park）
+
+`llmanspec/delayed-changes/` 收纳**未启动**的搁置提案（可按 `tui/`、`models/`、`tools/` 等分类；`legacy/` 存旧代提案）：
+
+- park 内只放 proposal / design / tasks / research 等规划工件；**禁止** `specs/`（spec landing 只发生在 propose 之后）。
+- 启动实现 = 经 propose / ff 正式化迁回 `changes/`；**归档时必须删除 delayed 副本**（一 id 一处真值）。
+- 阶段性清淤时对照归档清点：已落地副本删除、已放弃提案删除、退役格式工件（如 `spec.toon`）不留。
+
 ## 指针
 
 - 架构 SSOT（分层、不变量、seam、Xy\*、Provider 适配）：`src/AGENTS.md`。

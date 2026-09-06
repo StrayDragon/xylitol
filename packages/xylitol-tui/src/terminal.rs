@@ -215,7 +215,7 @@ impl CrosstermTerminal {
         self.kitty_pushed = true;
     }
 
-    #[allow(dead_code)] // 预留：route-B modifyOtherKeys 协商；Kitty 路径今日不调用
+    #[allow(dead_code)] // 预留：route-B modifyOtherKeys 协商（无 Kitty 协议终端的兜底）；落地条件：keys.rs 增加 CSI-u/modifyOtherKeys 匹配分支并在终端协商处随 Kitty probe 接线调用
     fn enable_modify_other_keys(&mut self) {
         if self.kitty_pushed || self.modify_other_keys_active {
             return;

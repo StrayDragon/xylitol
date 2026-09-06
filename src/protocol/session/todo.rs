@@ -144,14 +144,6 @@ pub fn latest_agent_todo(entries: &[SessionEntry]) -> Option<TodoList> {
     })
 }
 
-/// True when any `agent_todo` Custom remains on the branch.
-pub fn leaf_has_agent_todo(entries: &[SessionEntry]) -> bool {
-    entries.iter().any(|e| match e {
-        SessionEntry::Custom(c) => c.custom_type == CUSTOM_TYPE_AGENT_TODO,
-        _ => false,
-    })
-}
-
 /// Normalize rewrite inputs: generate missing ids; trim content.
 pub fn normalize_rewrite_items(items: Vec<TodoItemDraft>) -> Result<TodoList, TodoValidationError> {
     let mut out = Vec::with_capacity(items.len());

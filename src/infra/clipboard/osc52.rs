@@ -29,34 +29,19 @@ pub fn is_remote_session_with(get_env: impl Fn(&str) -> Option<String>) -> bool 
         || get_env("MOSH_CONNECTION").is_some()
 }
 
-/// Minimal base64 encoder (RFC 4648) — no external crate needed for OSC 52.
+/// Base64 encoder (RFC 4648 standard alphabet + padding) via the `base64` crate.
 pub(crate) fn base64_encode(input: &[u8]) -> String {
-    const CHARS: &[u8] = b"ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789+/";
-    let mut result = String::with_capacity(input.len().div_ceil(3) * 4);
-    for chunk in input.chunks(3) {
-        let b0 = chunk[0] as u32;
-        let b1 = chunk.get(1).copied().unwrap_or(0) as u32;
-        let b2 = chunk.get(2).copied().unwrap_or(0) as u32;
-        let triple = (b0 << 16) | (b1 << 8) | b2;
-        result.push(CHARS[((triple >> 18) & 0x3F) as usize] as char);
-        result.push(CHARS[((triple >> 12) & 0x3F) as usize] as char);
-        if chunk.len() > 1 {
-            result.push(CHARS[((triple >> 6) & 0x3F) as usize] as char);
-        } else {
-            result.push('=');
-        }
-        if chunk.len() > 2 {
-            result.push(CHARS[(triple & 0x3F) as usize] as char);
-        } else {
-            result.push('=');
-        }
-    }
-    result
+    use base64::Engine as _;
+    base64::engine::general_purpose::STANDARD.encode(input)
 }
 
 /// Build an OSC 52 sequence without writing anywhere.
 ///
 /// Returns `None` when the base64 payload exceeds `MAX_OSC52_ENCODED_LENGTH` (100_000).
+///
+/// Mirrored in `packages/xylitol-tui/src/selection.rs::format_osc52`: the TUI
+/// package must not depend on the host crate, so the logic is duplicated —
+/// keep sequence format and the length cap in sync on both sides.
 pub fn format_osc52(text: &str) -> Option<String> {
     let encoded = base64_encode(text.as_bytes());
     if encoded.len() > MAX_OSC52_ENCODED_LENGTH {

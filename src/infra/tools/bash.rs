@@ -45,7 +45,6 @@ pub struct BashArgs {
 ///
 /// Supports mock implementations for testing and hook injection.
 #[async_trait]
-#[allow(dead_code)] // test-only construction seam (MockBash in cfg(test))
 pub trait BashOperations: Send + Sync {
     /// Execute a shell command in `cwd` and return its output.
     async fn execute(
