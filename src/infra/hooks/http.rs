@@ -176,10 +176,14 @@ mod tests {
 
     #[tokio::test]
     async fn run_after_response_dispatches() {
+        // Marker file proves the hook command actually executed (a pure
+        // `echo allow` would not distinguish dispatch from silent drop).
+        let tmp = tempfile::tempdir().unwrap();
+        let marker = tmp.path().join("after-response-ran");
         let config = HooksConfig {
             global: vec![HookEntry {
                 events: vec!["after_provider_response".into()],
-                command: "echo '{\"action\":\"allow\"}'".into(),
+                command: format!("printf done > {}", marker.display()),
                 ..Default::default()
             }],
             project: vec![],
@@ -189,5 +193,9 @@ mod tests {
         let hooks = Some(dispatcher);
         let headers = bag(&[("content-type", "application/json")]);
         run_after_response(&hooks, 200, &headers).await;
+        assert!(
+            marker.exists(),
+            "after_provider_response hook must actually execute"
+        );
     }
 }

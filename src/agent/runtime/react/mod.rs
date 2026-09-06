@@ -908,11 +908,6 @@ fn run_react_loop(cfg: ReActConfig) -> impl Stream<Item = XyEvent> + Send {
                 }
 
                 let mut messages = history.clone();
-                if !hooks.transform_context.is_empty() {
-                    for hook in &hooks.transform_context {
-                        messages = hook(messages);
-                    }
-                }
                 // Expand `$skill` only on the model-bound clone (history stays raw).
                 expand_skills_in_agent_messages(&mut messages, &skills);
                 if let Some(bus) = &hook_bus

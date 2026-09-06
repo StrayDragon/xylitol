@@ -87,10 +87,11 @@ mod tests {
 
     #[test]
     fn test_disabled_by_default() {
-        // Don't set the env var — timing should be a no-op
+        // Don't set the env var — timing must be a full no-op: no state init.
         reset_timings();
         time("test");
-        // Should not crash
+        let state = STATE.lock().unwrap();
+        assert!(state.is_none(), "disabled timing must not initialize state");
     }
 
     #[test]
@@ -99,6 +100,8 @@ mod tests {
         time("step1");
         reset_timings();
         time("step2");
-        // Should not crash
+        // Still disabled: nothing may have been recorded.
+        let state = STATE.lock().unwrap();
+        assert!(state.is_none(), "disabled timing must not record entries");
     }
 }

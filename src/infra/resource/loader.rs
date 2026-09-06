@@ -907,10 +907,18 @@ mod tests {
 
     #[test]
     fn test_load_context_files_all_diagnostics() {
+        // Inaccessible cwd (and its missing AGENTS.md/CLAUDE.md) must yield no
+        // files and no diagnostics — the walk tolerates unreadable directories.
         let loader =
             DefaultResourceLoader::new(PathBuf::from("/nonexistent_dir"), PathBuf::from("/tmp"));
         let diags = loader.get_all_diagnostics();
-        // Should not crash on inaccessible directories
-        let _ = diags.len();
+        assert!(
+            loader.get_agents_files().is_empty(),
+            "missing dirs must yield no context files"
+        );
+        assert!(
+            diags.is_empty(),
+            "missing dirs must not produce diagnostics: {diags:?}"
+        );
     }
 }
