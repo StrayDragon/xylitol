@@ -423,46 +423,14 @@ pub fn resolve_assembly_with(
                 missing_key_providers.insert(entry.provider.provider_name().to_string());
             }
 
-            let context_window = if entry.context_window > 0 {
-                entry.context_window
-            } else {
-                crate::agent::model::registry::default_context_window_for(entry.provider)
-            };
-
-            let (thinking_levels, thinking_level_map) = match entry.resolve_thinking_config() {
-                Ok(config) => config,
+            match build_model_meta(alias, entry, api_key) {
+                Ok(meta) => model_registry.register(meta),
                 Err(e) => {
                     warnings.push(BootstrapWarning::ModelEntrySkipped(format!(
                         "models.{alias}: {e}"
                     )));
-                    continue;
                 }
-            };
-
-            model_registry.register(XyModelMeta {
-                id: alias.clone(),
-                config: crate::protocol::model::XyModelConfig {
-                    kind: entry.provider,
-                    api_key,
-                    model: entry.model.clone(),
-                    base_url: entry.base_url.clone(),
-                    // c1598: honor YAML `models.*.api`; None → infra default_for
-                    api: entry.api.clone(),
-                    compat: entry.compat.clone(),
-                },
-                display_name: alias.clone(),
-                thinking: entry.thinking,
-                context_window,
-                api: entry.api.clone().unwrap_or_default(),
-                provider: entry.provider.provider_name().to_string(),
-                cost_input: 0.0,
-                cost_output: 0.0,
-                cost_cache_read: 0.0,
-                cost_cache_write: 0.0,
-                max_tokens: 0,
-                thinking_levels,
-                thinking_level_map,
-            });
+            }
         }
         for provider in missing_key_providers {
             warnings.push(BootstrapWarning::NoApiKey { provider });
@@ -862,6 +830,48 @@ fn resolve_entry_api_key(entry: &crate::infra::config::types::ModelEntry) -> Str
         Some(k) if !k.is_empty() => k.clone(),
         _ => String::new(),
     }
+}
+
+/// One YAML `models.<alias>` entry → its [`XyModelMeta`]. Err = skip with a
+/// `ModelEntrySkipped` warning (thinking-config resolution failure).
+fn build_model_meta(
+    alias: &str,
+    entry: &crate::infra::config::types::ModelEntry,
+    api_key: String,
+) -> Result<XyModelMeta, String> {
+    let context_window = if entry.context_window > 0 {
+        entry.context_window
+    } else {
+        crate::agent::model::registry::default_context_window_for(entry.provider)
+    };
+
+    let (thinking_levels, thinking_level_map) =
+        entry.resolve_thinking_config().map_err(|e| e.to_string())?;
+
+    Ok(XyModelMeta {
+        id: alias.to_string(),
+        config: crate::protocol::model::XyModelConfig {
+            kind: entry.provider,
+            api_key,
+            model: entry.model.clone(),
+            base_url: entry.base_url.clone(),
+            // c1598: honor YAML `models.*.api`; None → infra default_for
+            api: entry.api.clone(),
+            compat: entry.compat.clone(),
+        },
+        display_name: alias.to_string(),
+        thinking: entry.thinking,
+        context_window,
+        api: entry.api.clone().unwrap_or_default(),
+        provider: entry.provider.provider_name().to_string(),
+        cost_input: 0.0,
+        cost_output: 0.0,
+        cost_cache_read: 0.0,
+        cost_cache_write: 0.0,
+        max_tokens: 0,
+        thinking_levels,
+        thinking_level_map,
+    })
 }
 
 fn queue_mode_from_settings(

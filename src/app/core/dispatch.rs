@@ -114,11 +114,17 @@ pub fn validate_nonempty_thinking_level(s: &str) -> Result<(), XyDriverError> {
 /// `Prompt`, `Quit`, `Subscribe`, `ApproveTool`, `AnswerQuestion` are NOT
 /// handled here — callers must match those before calling this function.
 /// Reaching one of them here is a caller bug and returns an error.
+/// Variant name for a Command (log `where` / error messages); SSOT is the
+/// `strum::IntoStaticStr` derive on [`Command`].
+fn variant_name(cmd: &Command) -> &'static str {
+    cmd.into()
+}
+
 pub async fn dispatch(
     driver: &mut dyn XyDriver,
     cmd: Command,
 ) -> Result<DispatchOutcome, XyDriverError> {
-    let where_ = format!("dispatch.{}", cmd_variant_name(&cmd));
+    let where_ = format!("dispatch.{}", variant_name(&cmd));
     match dispatch_inner(driver, cmd).await {
         Ok(outcome) => Ok(outcome),
         Err(err) => {
@@ -320,51 +326,8 @@ async fn dispatch_inner(
         | Command::ApproveTool { .. }
         | Command::AnswerQuestion { .. } => Err(XyDriverError::invalid_input(format!(
             "Command variant {:?} is not handled by shared dispatch; the caller must handle it before calling dispatch()",
-            cmd_variant_name(&cmd)
+            variant_name(&cmd)
         ))),
-    }
-}
-
-/// Return a stable name for a Command variant (for error messages / log `where`).
-fn cmd_variant_name(cmd: &Command) -> &'static str {
-    match cmd {
-        Command::Prompt { .. } => "Prompt",
-        Command::Quit { .. } => "Quit",
-        Command::Subscribe { .. } => "Subscribe",
-        Command::ApproveTool { .. } => "ApproveTool",
-        Command::AnswerQuestion { .. } => "AnswerQuestion",
-        Command::Abort { .. } => "Abort",
-        Command::GetState { .. } => "GetState",
-        Command::SetModel { .. } => "SetModel",
-        Command::CycleModel { .. } => "CycleModel",
-        Command::GetAvailableModels { .. } => "GetAvailableModels",
-        Command::SetThinkingLevel { .. } => "SetThinkingLevel",
-        Command::Bash { .. } => "Bash",
-        Command::Compact { .. } => "Compact",
-        Command::GetSessionStats { .. } => "GetSessionStats",
-        Command::ExportHtml { .. } => "ExportHtml",
-        Command::ExportJsonl { .. } => "ExportJsonl",
-        Command::ImportJsonl { .. } => "ImportJsonl",
-        Command::SwitchSession { .. } => "SwitchSession",
-        Command::Fork { .. } => "Fork",
-        Command::GetMessages { .. } => "GetMessages",
-        Command::GetCommands { .. } => "GetCommands",
-        Command::SessionTree { .. } => "SessionTree",
-        Command::TravelSessionTree { .. } => "TravelSessionTree",
-        Command::AppendEntryLabel { .. } => "AppendEntryLabel",
-        Command::ListSessions { .. } => "ListSessions",
-        Command::LoadSessionEntries { .. } => "LoadSessionEntries",
-        Command::NewSession { .. } => "NewSession",
-        Command::GetSessionName { .. } => "GetSessionName",
-        Command::SetSessionName { .. } => "SetSessionName",
-        Command::SetSessionNameFor { .. } => "SetSessionNameFor",
-        Command::DeleteSession { .. } => "DeleteSession",
-        Command::Reload { .. } => "Reload",
-        Command::LoadedResources { .. } => "LoadedResources",
-        Command::GetQueueStats { .. } => "GetQueueStats",
-        Command::Steer { .. } => "Steer",
-        Command::FollowUp { .. } => "FollowUp",
-        Command::ClearQueue { .. } => "ClearQueue",
     }
 }
 

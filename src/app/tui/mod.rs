@@ -156,6 +156,56 @@ pub async fn run(driver: &mut dyn XyDriver, options: TuiRunOptions) -> Result<()
     result
 }
 
+type CliRestoreHandle = tokio::task::JoinHandle<
+    Result<
+        Vec<crate::protocol::session::SessionEntry>,
+        crate::protocol::error::XySessionStoreError,
+    >,
+>;
+
+/// 冷恢复（`--session` 延续）：有 cloneable store 时后台 spawn JSONL 装载；
+/// 否则阻塞装载并直接投喂 UI。返回后台任务句柄供主循环收割。
+async fn apply_cli_restore(
+    session: &mut HostSession<CrosstermTerminal>,
+    driver: &mut dyn XyDriver,
+) -> Option<(std::time::Instant, String, CliRestoreHandle)> {
+    match (driver.session_id(), driver.session_store()) {
+        (Some(sid), Some(store)) => Some((
+            std::time::Instant::now(),
+            sid.clone(),
+            editor_history_seed::spawn_cli_session_load(store, sid),
+        )),
+        _ => match driver.get_messages().await {
+            Ok(entries) => {
+                if let Some(sid) = driver.session_id() {
+                    session.apply_cli_restored_session(&sid, entries);
+                } else {
+                    session.seed_editor_history_from_entries(&entries);
+                }
+                None
+            }
+            Err(e) => {
+                log::debug!(target: "xylitol::tui", "CLI session restore UI failed: {e}");
+                None
+            }
+        },
+    }
+}
+
+/// 新会话的编辑器历史种子：可异步则后台 spawn（返回句柄），否则阻塞 seed
+/// （Scripted / remote 无 cloneable store）。
+async fn seed_editor_history(
+    session: &mut HostSession<CrosstermTerminal>,
+    driver: &mut dyn XyDriver,
+) -> Option<(std::time::Instant, tokio::task::JoinHandle<Vec<String>>)> {
+    if session.kick_editor_history_seed_async(driver) {
+        session.take_editor_history_seed_job()
+    } else {
+        session.seed_editor_history_for_new_session(driver).await;
+        None
+    }
+}
+
 async fn run_host_loop(
     terminal: CrosstermTerminal,
     driver: &mut dyn XyDriver,
@@ -191,46 +241,17 @@ async fn run_host_loop(
     // welcome fixed-zone paint is not blocked by JSONL load or list_sessions work.
     session.render_now()?;
 
-    type CliRestoreHandle = tokio::task::JoinHandle<
-        Result<
-            Vec<crate::protocol::session::SessionEntry>,
-            crate::protocol::error::XySessionStoreError,
-        >,
-    >;
-    let mut cli_restore: Option<(std::time::Instant, String, CliRestoreHandle)> = None;
-    if options.restored_session {
-        match (driver.session_id(), driver.session_store()) {
-            (Some(sid), Some(store)) => {
-                cli_restore = Some((
-                    std::time::Instant::now(),
-                    sid.clone(),
-                    editor_history_seed::spawn_cli_session_load(store, sid),
-                ));
-            }
-            _ => match driver.get_messages().await {
-                Ok(entries) => {
-                    if let Some(sid) = driver.session_id() {
-                        session.apply_cli_restored_session(&sid, entries);
-                    } else {
-                        session.seed_editor_history_from_entries(&entries);
-                    }
-                }
-                Err(e) => {
-                    log::debug!(target: "xylitol::tui", "CLI session restore UI failed: {e}");
-                }
-            },
-        }
-    }
+    let mut cli_restore = if options.restored_session {
+        apply_cli_restore(&mut session, driver).await
+    } else {
+        None
+    };
 
-    let mut editor_seed: Option<(std::time::Instant, tokio::task::JoinHandle<Vec<String>>)> = None;
-    if !options.restored_session {
-        if session.kick_editor_history_seed_async(driver) {
-            editor_seed = session.take_editor_history_seed_job();
-        } else {
-            // Scripted / remote: no cloneable store — keep blocking seed.
-            session.seed_editor_history_for_new_session(driver).await;
-        }
-    }
+    let mut editor_seed = if options.restored_session {
+        None
+    } else {
+        seed_editor_history(&mut session, driver).await
+    };
     // Refresh while editor-history seed / CLI restore run in the background.
     session.refresh_loaded_resources(driver).await;
     session.set_dollar_skill_catalog(driver.dollar_skill_catalog());

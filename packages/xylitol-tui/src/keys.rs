@@ -447,6 +447,25 @@ fn legacy_sequence_matches(data: &str, sequences: &[&str]) -> bool {
     sequences.contains(&data)
 }
 
+/// 方向键族（up/down/left/right）的公共尾部：无修饰走 legacy/kitty 二选一，
+/// 其余修饰先试 legacy 修饰序列再试 kitty。ALT 的额外 legacy 字节与 CTRL 的
+/// 专属序列因键而异，由各臂在调用本函数前自行处理。
+fn matches_arrow_tail(
+    data: &str,
+    key: &str,
+    modifier: u32,
+    legacy: &[&str],
+    codepoint: u32,
+) -> bool {
+    if modifier == 0 {
+        legacy_sequence_matches(data, legacy) || matches_kitty_sequence(data, codepoint, 0)
+    } else if legacy_modifier_matches(data, key, modifier) {
+        true
+    } else {
+        matches_kitty_sequence(data, codepoint, modifier)
+    }
+}
+
 fn legacy_modifier_shift(data: &str, key: &str) -> bool {
     match key {
         "up" => data == "\x1b[a",
@@ -710,27 +729,19 @@ pub fn matches_key(data: &str, key_id: &str) -> bool {
             if modifier == MOD_ALT {
                 return data == "\x1bp" || matches_kitty_sequence(data, ARROW_UP as u32, MOD_ALT);
             }
-            if modifier == 0 {
-                legacy_sequence_matches(data, &["\x1b[A", "\x1bOA"])
-                    || matches_kitty_sequence(data, ARROW_UP as u32, 0)
-            } else if legacy_modifier_matches(data, "up", modifier) {
-                true
-            } else {
-                matches_kitty_sequence(data, ARROW_UP as u32, modifier)
-            }
+            matches_arrow_tail(data, "up", modifier, &["\x1b[A", "\x1bOA"], ARROW_UP as u32)
         }
         "down" => {
             if modifier == MOD_ALT {
                 return data == "\x1bn" || matches_kitty_sequence(data, ARROW_DOWN as u32, MOD_ALT);
             }
-            if modifier == 0 {
-                legacy_sequence_matches(data, &["\x1b[B", "\x1bOB"])
-                    || matches_kitty_sequence(data, ARROW_DOWN as u32, 0)
-            } else if legacy_modifier_matches(data, "down", modifier) {
-                true
-            } else {
-                matches_kitty_sequence(data, ARROW_DOWN as u32, modifier)
-            }
+            matches_arrow_tail(
+                data,
+                "down",
+                modifier,
+                &["\x1b[B", "\x1bOB"],
+                ARROW_DOWN as u32,
+            )
         }
         "left" => {
             if modifier == MOD_ALT {
@@ -744,14 +755,13 @@ pub fn matches_key(data: &str, key_id: &str) -> bool {
                     || legacy_modifier_matches(data, "left", MOD_CTRL)
                     || matches_kitty_sequence(data, ARROW_LEFT as u32, MOD_CTRL);
             }
-            if modifier == 0 {
-                legacy_sequence_matches(data, &["\x1b[D", "\x1bOD"])
-                    || matches_kitty_sequence(data, ARROW_LEFT as u32, 0)
-            } else if legacy_modifier_matches(data, "left", modifier) {
-                true
-            } else {
-                matches_kitty_sequence(data, ARROW_LEFT as u32, modifier)
-            }
+            matches_arrow_tail(
+                data,
+                "left",
+                modifier,
+                &["\x1b[D", "\x1bOD"],
+                ARROW_LEFT as u32,
+            )
         }
         "right" => {
             if modifier == MOD_ALT {
@@ -765,14 +775,13 @@ pub fn matches_key(data: &str, key_id: &str) -> bool {
                     || legacy_modifier_matches(data, "right", MOD_CTRL)
                     || matches_kitty_sequence(data, ARROW_RIGHT as u32, MOD_CTRL);
             }
-            if modifier == 0 {
-                legacy_sequence_matches(data, &["\x1b[C", "\x1bOC"])
-                    || matches_kitty_sequence(data, ARROW_RIGHT as u32, 0)
-            } else if legacy_modifier_matches(data, "right", modifier) {
-                true
-            } else {
-                matches_kitty_sequence(data, ARROW_RIGHT as u32, modifier)
-            }
+            matches_arrow_tail(
+                data,
+                "right",
+                modifier,
+                &["\x1b[C", "\x1bOC"],
+                ARROW_RIGHT as u32,
+            )
         }
         "f1" => modifier == 0 && legacy_sequence_matches(data, &["\x1bOP", "\x1b[11~", "\x1b[[A"]),
         "f2" => modifier == 0 && legacy_sequence_matches(data, &["\x1bOQ", "\x1b[12~", "\x1b[[B"]),
