@@ -158,18 +158,6 @@ impl SessionManager {
         Ok(entries.into_iter().find(|e| e.entry_id() == Some(entry_id)))
     }
 
-    /// Get the current leaf entry.
-    pub async fn get_leaf_entry(
-        &self,
-        session_id: &str,
-    ) -> Result<Option<SessionEntry>, XySessionStoreError> {
-        let leaf_id = self.get_leaf(session_id);
-        match leaf_id {
-            Some(id) => self.get_entry(session_id, &id).await,
-            None => Ok(None),
-        }
-    }
-
     /// Get the current leaf id.
     pub fn get_leaf_id(&self, session_id: &str) -> Option<String> {
         self.get_leaf(session_id)

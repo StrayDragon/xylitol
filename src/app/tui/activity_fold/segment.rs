@@ -80,16 +80,6 @@ pub struct ActivitySegment {
     pub turn_ordinal: usize,
 }
 
-impl ActivitySegment {
-    pub fn has_activity(&self) -> bool {
-        !self.middle.is_empty()
-    }
-
-    pub fn contains_entry(&self, idx: usize) -> bool {
-        self.middle.contains(&idx)
-    }
-}
-
 fn is_foldable_middle(entry: &UiEntry) -> bool {
     activity_atom(entry).is_foldable_middle()
 }

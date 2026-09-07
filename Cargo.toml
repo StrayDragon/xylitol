@@ -5,7 +5,7 @@ edition = "2024"
 rust-version = "1.97.1"
 license = "MIT"
 repository = "https://github.com/straydragon/xylitol"
-description = "xylitol (placeholder)"
+description = "Out-of-the-box personal coding agent (LLM-augmented dev toolkit)"
 readme = "README.md"
 keywords = []
 categories = []
@@ -25,7 +25,6 @@ dirs = "6"
 thiserror = "2.0.18"
 # Timeline tracing (c1000): enable at the binary crate; FileReporter is file-only.
 fastrace = { version = "0.7.18", features = ["enable"] }
-fastrace-futures = "0.7.18"
 # Optional OTLP export (c1475): fastrace → OpenTelemetry → Langfuse/Collector.
 fastrace-opentelemetry = { version = "0.18", optional = true }
 opentelemetry = { version = "0.32", default-features = false, features = ["trace"], optional = true }
@@ -42,7 +41,6 @@ futures = "0.3.32"
 anyhow = "1.0.103"
 regex = "1.12.4"
 rmcp = { version = "1.8.0", features = ["client", "transport-child-process", "transport-streamable-http-client", "transport-streamable-http-client-reqwest"] }
-zstd = "0.13.3"
 sha2 = "0.11.0"
 hex = "0.4.3"
 time = { version = "0.3.53", features = ["formatting", "parsing", "macros"] }
@@ -53,23 +51,19 @@ base64 = "0.22.1"
 # ── image processing ──
 image = { version = "0.25.10", default-features = false, features = ["png", "jpeg", "gif", "webp"] }
 url = { version = "2.5.8" }
-flate2 = { version = "1.1.9" }
-tar = { version = "0.4.46" }
 
 reqwest = { version = "0.13.4", default-features = false, features = ["stream", "json", "rustls", "charset", "http2", "system-proxy"] }
 async-stream = "0.3.6"
 tokio-util = "0.7.18"
 yaml_serde = "0.10.4"
 
-pathdiff = "0.2.3"
 salvo = { version = "0.95.2", optional = true, default-features = true, features = ["websocket", "test"] }
 salvo-oapi = { version = "0.95.2", optional = true, default-features = false, features = ["scalar"] }
 tokio-tungstenite = { version = "0.29", features = ["connect", "handshake"], optional = true }
 
-# ── terminal UI (product surface redesigns on packages/xylitol-tui) ──
-# Old in-tree engine/widgets under src/app/tui/ were removed; the app surface is
-# a placeholder until the xylitol-tui-based rewrite. Keep the path dep so the
-# workspace builds uniformly and the package stays testable in-tree.
+# ── terminal UI ──
+# Product TUI is host-driven on the xylitol-tui engine (packages/xylitol-tui);
+# in-tree product host/layout layers live under src/app/tui/.
 xylitol-tui = { path = "packages/xylitol-tui", optional = true }
 xylitol-ai-bridge = { path = "packages/xylitol-ai-bridge" }
 crossterm = { version = "0.29", optional = true, features = ["event-stream"] }

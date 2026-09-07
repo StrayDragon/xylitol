@@ -185,15 +185,6 @@ pub fn apply_thinking_openai_completions_with_compat(
     crate::provider::dialect::apply_completions_thinking(body, resolved, compat);
 }
 
-/// Anthropic thinking inject gated by compat (DeepSeek omits `budget_tokens`).
-pub fn apply_thinking_anthropic_with_compat(
-    body: &mut Value,
-    resolved: &AiBridgeResolvedThinking,
-    compat: crate::wire_policy::Compat,
-) {
-    crate::provider::dialect::apply_anthropic_thinking(body, resolved, compat);
-}
-
 /// Inject OpenAI Responses `reasoning: { effort, summary }` (summary aligns with pi default `auto`).
 pub fn apply_thinking_openai_responses(body: &mut Value, resolved: &AiBridgeResolvedThinking) {
     match resolved {

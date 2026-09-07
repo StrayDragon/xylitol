@@ -137,16 +137,6 @@ pub struct McpServerSnapshot {
 pub const MCP_PENDING_CUE: &str = "mcp pending (see /mcp)";
 
 impl LoadedResourcesSnapshot {
-    /// Whether skills or MCP sections would render (brand line is separate).
-    pub fn has_resource_rows(&self) -> bool {
-        !self.skill_names.is_empty()
-            || self.mcp_configured > 0
-            || !self.mcp_connected.is_empty()
-            || !self.mcp_diag_short.is_empty()
-            || self.mcp_connecting_label.is_some()
-            || !self.mcp_servers.is_empty()
-    }
-
     /// MCP configured and still discovering / mid-settle arming / pre-freeze gap.
     ///
     /// - `connecting_label` or any `Connecting` → pending

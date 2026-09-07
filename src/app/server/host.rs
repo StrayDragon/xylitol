@@ -16,9 +16,7 @@ use tokio::time::timeout;
 use tokio_util::sync::CancellationToken;
 
 use crate::agent::RuntimePorts;
-use crate::app::core::composition::{
-    BuildAgentOptions, McpServerSpec, build_ports, build_ports_with_store,
-};
+use crate::app::core::composition::{BuildAgentOptions, McpServerSpec, build_ports_with_store};
 use crate::app::core::dispatch::{DispatchOutcome, dispatch};
 use crate::app::core::driver::{
     LoadedResourcesSnapshot, ModelInfo, ProjectTrustMode, RuntimeReloadReport, XyDriver,
@@ -165,15 +163,6 @@ impl HostState {
             },
             "test-session".into(),
         ))
-    }
-
-    /// Default production ports from `build_ports` (caller supplies store via composition).
-    pub fn from_default_ports(
-        reload: ReloadBaseline,
-        fallback_session: String,
-    ) -> Result<Arc<Self>, Box<dyn std::error::Error>> {
-        let ports = build_ports(BuildAgentOptions::default())?;
-        Ok(Self::from_bootstrap(ports, reload, fallback_session))
     }
 
     pub async fn slot(&self, session_id: &str) -> Arc<SessionSlot> {
@@ -337,10 +326,6 @@ impl SessionSlot {
         let id = self.next_conn.fetch_add(1, Ordering::Relaxed);
         self.subscribers.lock().await.insert(id, tx);
         id
-    }
-
-    pub async fn remove_subscriber(&self, id: u64) {
-        self.subscribers.lock().await.remove(&id);
     }
 
     fn clear_pending_runtime(&self) {

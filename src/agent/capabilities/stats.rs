@@ -59,11 +59,6 @@ pub struct ContextUsage {
 
 pub use crate::agent::compaction::orchestrator::should_compact;
 
-/// Estimate token count from messages via accounting (Heuristic fallback).
-pub fn estimate_tokens(messages: &[crate::protocol::message::AgentMessage]) -> u64 {
-    crate::agent::compaction::token_estimator::estimate_context_tokens(messages, None).tokens
-}
-
 /// Compute context usage info from a token estimate and window size.
 ///
 /// `percent` is a derived display value only; trigger uses reserve formula via `settings`.

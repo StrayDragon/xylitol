@@ -7,9 +7,9 @@ use time::OffsetDateTime;
 use crate::app::tui::bridge::UiEntry;
 
 use super::degrade::{AutoTrigger, apply_auto_degrade, in_virgin_recent_window};
-use super::segment::{ActivitySegment, SegmentLevel, middle_entry_indices, partition_segments};
+use super::segment::{SegmentLevel, partition_segments};
 use super::settings::ActivityFoldSettings;
-use super::summary::{count_segment, format_duration};
+use super::summary::format_duration;
 
 /// Reserved hit seam: segment summary → content-relative half-open row range.
 #[derive(Debug, Clone, Default, PartialEq, Eq)]
@@ -256,23 +256,6 @@ impl ActivityFoldState {
         self.toggle_cluster(&cl.id)
     }
 
-    /// Lookup collapsed segment covering a middle entry index.
-    pub fn collapsed_segment_for_entry<'a>(
-        &self,
-        entries: &[UiEntry],
-        segments: &'a [ActivitySegment],
-        entry_idx: usize,
-    ) -> Option<&'a ActivitySegment> {
-        let seg = segments
-            .iter()
-            .find(|s| middle_entry_indices(entries, s).contains(&entry_idx))?;
-        if self.effective_level(&seg.id).is_collapsed() {
-            Some(seg)
-        } else {
-            None
-        }
-    }
-
     pub fn duration_for(&self, id: &str) -> Option<String> {
         self.clock_of(id).and_then(|c| c.duration_label())
     }
@@ -281,13 +264,5 @@ impl ActivityFoldState {
     pub fn force_level(&mut self, id: &str, level: SegmentLevel) {
         self.mark_entered(id);
         self.set_level(id, level);
-    }
-
-    pub fn counts_for(
-        &self,
-        entries: &[UiEntry],
-        seg: &ActivitySegment,
-    ) -> super::summary::ActivityCounts {
-        count_segment(entries, seg)
     }
 }

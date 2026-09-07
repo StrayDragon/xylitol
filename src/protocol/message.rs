@@ -116,13 +116,6 @@ impl AgentMessage {
         }
     }
 
-    pub fn as_env(&self) -> Option<&EnvMessage> {
-        match self {
-            Self::Env(m) => Some(m),
-            Self::Llm(_) => None,
-        }
-    }
-
     pub fn role_name(&self) -> &'static str {
         match self {
             Self::Llm(m) => m.role_name(),

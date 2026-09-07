@@ -92,12 +92,6 @@ impl SettingsList {
             submenu_item_index: None,
         }
     }
-
-    pub fn update_value(&mut self, id: &str, new_value: String) {
-        if let Some(item) = self.items.iter_mut().find(|i| i.id == id) {
-            item.current_value = new_value;
-        }
-    }
 }
 
 impl Component for SettingsList {

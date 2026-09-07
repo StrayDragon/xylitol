@@ -157,13 +157,10 @@ pub fn load_models_from_manifest(
 #[cfg(test)]
 mod tests {
     use super::*;
-    use std::sync::Arc;
     use tempfile::NamedTempFile;
 
     fn empty_registry() -> ModelRegistry {
-        ModelRegistry::new(Arc::new(
-            crate::infra::config::value::InfraSecretResolver::new(),
-        ))
+        ModelRegistry::new()
     }
 
     #[test]

@@ -99,13 +99,6 @@ impl Markdown {
         self
     }
 
-    pub fn set_table_header_underline(&mut self, enabled: bool) {
-        if self.table_header_underline != enabled {
-            self.table_header_underline = enabled;
-            self.invalidate();
-        }
-    }
-
     pub fn table_header_underline(&self) -> bool {
         self.table_header_underline
     }

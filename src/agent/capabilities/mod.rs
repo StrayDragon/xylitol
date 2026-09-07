@@ -27,10 +27,8 @@ mod stats;
 mod tools_ops;
 
 pub(crate) use self::hook_bus::{HookBlockedError, cancel_hook, observe_hook, observe_hook_sync};
-pub use self::queue::{
-    AsyncQueueRuntime, PendingMessageQueue, QueueChannel, QueueMode, QueueStats,
-};
-pub use self::stats::{ContextUsage, SessionStats, estimate_tokens, get_context_usage};
+pub use self::queue::{AsyncQueueRuntime, PendingMessageQueue, QueueMode, QueueStats};
+pub use self::stats::{ContextUsage, SessionStats, get_context_usage};
 
 use crate::agent::compaction::CompactionSettings;
 use crate::agent::compaction::orchestrator::CompactionOrchestrator;
@@ -374,9 +372,7 @@ mod tests {
         let sink: std::sync::Arc<dyn crate::protocol::ports::XyEventSink> =
             std::sync::Arc::new(crate::infra::event::EventBus::new());
         AgentCapabilities::new(
-            ModelRegistry::new(std::sync::Arc::new(
-                crate::infra::config::value::InfraSecretResolver::new(),
-            )),
+            ModelRegistry::new(),
             ToolSet::from_iter(crate::infra::tools::default_tools()),
             store,
             sink,
@@ -756,9 +752,7 @@ mod tests {
         let store: std::sync::Arc<dyn XySessionStore> = std::sync::Arc::new(mgr);
         let sink: std::sync::Arc<dyn XyEventSink> =
             std::sync::Arc::new(crate::infra::event::EventBus::new());
-        let mut registry = ModelRegistry::new(std::sync::Arc::new(
-            crate::infra::config::value::InfraSecretResolver::new(),
-        ));
+        let mut registry = ModelRegistry::new();
         for m in models {
             registry.register(m);
         }

@@ -132,10 +132,6 @@ impl CompletionRegistry {
         self.active = None;
     }
 
-    pub fn set_active(&mut self, index: usize) {
-        self.active = Some(index);
-    }
-
     /// Probe all sources in order; return first match and its index.
     pub fn probe_first(&self, ctx: &CompletionContext<'_>) -> Option<(usize, CompletionMatch)> {
         for (i, src) in self.sources.iter().enumerate() {
@@ -157,19 +153,6 @@ impl CompletionRegistry {
             None => true,
             Some(m) => src.should_dismiss(ctx, &m),
         }
-    }
-
-    pub fn suggestions_for_active(
-        &self,
-        ctx: &CompletionContext<'_>,
-    ) -> Option<AutocompleteSuggestions> {
-        let i = self.active?;
-        let src = self.sources.get(i)?;
-        let m = src.probe(ctx)?;
-        if src.should_dismiss(ctx, &m) {
-            return None;
-        }
-        src.suggestions(ctx, &m)
     }
 
     /// Probe (or keep active) and fetch suggestions. Sets `active` on success.
@@ -350,10 +333,6 @@ impl SlashArgCompletionSource {
         self
     }
 
-    pub fn set_catalog(&mut self, catalog: Vec<(String, String)>) {
-        self.catalog = catalog;
-    }
-
     fn arg_prefix(&self, before: &str) -> Option<String> {
         if let Some(arg) = extract_slash_arg_prefix(before, &self.command) {
             return Some(arg.to_string());
@@ -472,12 +451,6 @@ pub struct AtPathSource {
 impl AtPathSource {
     pub fn new(base_path: PathBuf) -> Self {
         Self { base_path }
-    }
-
-    /// Historically accepted an `fd` path; sync [`CompletionSource`] still uses
-    /// `read_dir` only. Fd-backed fuzzy remains on [`CombinedAutocompleteProvider`].
-    pub fn new_with_fd(base_path: PathBuf, _fd_path: String) -> Self {
-        Self::new(base_path)
     }
 
     fn get_fuzzy_file_suggestions(&self, query: &str, _is_quoted: bool) -> Vec<AutocompleteItem> {
@@ -604,19 +577,6 @@ impl CompletionSource for AtPathSource {
             before.len() + cursor_offset + suffix.len(),
         )
     }
-}
-
-/// Build the default slash + `@` source pair from a Combined-style config.
-pub fn sources_from_combined(
-    commands: Vec<SlashCommand>,
-    base_path: PathBuf,
-    fd_path: Option<String>,
-) -> Vec<Box<dyn CompletionSource>> {
-    let at = match fd_path {
-        Some(fd) => AtPathSource::new_with_fd(base_path, fd),
-        None => AtPathSource::new(base_path),
-    };
-    vec![Box::new(SlashCommandSource::new(commands)), Box::new(at)]
 }
 
 #[cfg(test)]

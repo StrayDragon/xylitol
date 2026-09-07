@@ -26,11 +26,6 @@ impl Text {
         self.cache = None;
     }
 
-    pub fn set_custom_bg_fn(&mut self, bg_fn: Option<BgFn>) {
-        self.custom_bg_fn = bg_fn;
-        self.cache = None;
-    }
-
     pub fn text(&self) -> &str {
         &self.text
     }

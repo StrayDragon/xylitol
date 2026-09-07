@@ -1362,7 +1362,7 @@ fn agent_demo_plate_ask_tool_fake_call_then_skip() {
 #[test]
 fn agent_demo_seed_tool_blocks_use_status_background_tints() {
     use agent_demo_example::ToolBlockStatus;
-    use xylitol_tui::SemanticPalette;
+    use xylitol_tui::Palette;
 
     let mut h = TuiTestHarness::new(120, 80);
     h.mount(Box::new(FakeCodingAgentApp::new(Arc::new(
@@ -1371,7 +1371,7 @@ fn agent_demo_seed_tool_blocks_use_status_background_tints() {
     .focus(Some(0));
     h.render_result().expect("initial render");
 
-    let p = SemanticPalette::dark();
+    let p = Palette::dark();
     let success = ToolBlockStatus::Success.rgb(&p);
     let error = ToolBlockStatus::Error.rgb(&p);
     assert!(
@@ -1407,7 +1407,7 @@ fn agent_demo_scripted_tool_flips_pending_to_success_bg() {
         .focus(Some(0));
     h.render_result().expect("initial render");
 
-    let pending = ToolBlockStatus::Pending.rgb(&xylitol_tui::SemanticPalette::dark());
+    let pending = ToolBlockStatus::Pending.rgb(&xylitol_tui::Palette::dark());
     let text0 = h.tui.terminal.viewport().join("\n");
     assert!(
         text0.contains("inject-tool") && text0.contains("· running"),
@@ -1453,7 +1453,7 @@ fn agent_demo_parallel_tools_flip_by_index_not_last() {
         .focus(Some(0));
     h.render_result().expect("initial");
 
-    let pending = ToolBlockStatus::Pending.rgb(&xylitol_tui::SemanticPalette::dark());
+    let pending = ToolBlockStatus::Pending.rgb(&xylitol_tui::Palette::dark());
     assert!(
         viewport_row_with_text_has_bg_rgb(&h, "inject-tool", pending),
         "both tools start pending"
@@ -1557,7 +1557,7 @@ fn agent_demo_idle_returns_to_ready_after_tool_flips() {
 fn agent_demo_diff_body_shares_tool_wash_no_row_tints() {
     use agent_demo_example::ToolBlockStatus;
     use support::Color;
-    use xylitol_tui::SemanticPalette;
+    use xylitol_tui::Palette;
 
     let mut h = TuiTestHarness::new(120, 80);
     h.mount(Box::new(FakeCodingAgentApp::new(Arc::new(
@@ -1566,7 +1566,7 @@ fn agent_demo_diff_body_shares_tool_wash_no_row_tints() {
     .focus(Some(0));
     h.render_result().expect("initial render");
 
-    let p = SemanticPalette::dark();
+    let p = Palette::dark();
     let success = Color::Rgb(
         ToolBlockStatus::Success.rgb(&p).0,
         ToolBlockStatus::Success.rgb(&p).1,
@@ -2236,7 +2236,7 @@ fn agent_demo_feed_terminal_color_reply_light() {
         app.theme_mode_for_test(),
         xylitol_tui::TerminalColorScheme::Light
     );
-    let light = xylitol_tui::SemanticPalette::light();
+    let light = xylitol_tui::Palette::light();
     assert_eq!(app.palette().accent, light.accent);
 }
 
@@ -2263,8 +2263,8 @@ fn agent_demo_light_chrome_uses_latte_tool_bg() {
         .focus(Some(0));
     h.render_result().expect("light render");
 
-    let latte_pending = ToolBlockStatus::Pending.rgb(&xylitol_tui::SemanticPalette::light());
-    let mocha_pending = ToolBlockStatus::Pending.rgb(&xylitol_tui::SemanticPalette::dark());
+    let latte_pending = ToolBlockStatus::Pending.rgb(&xylitol_tui::Palette::light());
+    let mocha_pending = ToolBlockStatus::Pending.rgb(&xylitol_tui::Palette::dark());
     assert_ne!(latte_pending, mocha_pending);
     assert!(
         viewport_has_bg_rgb(&h, latte_pending),

@@ -18,10 +18,6 @@ impl LayoutTheme {
         Self::from_palette(Palette::dark())
     }
 
-    pub fn product_light() -> Self {
-        Self::from_palette(Palette::light())
-    }
-
     pub fn from_palette(palette: Palette) -> Self {
         Self { palette }
     }
@@ -120,14 +116,6 @@ impl LayoutTheme {
         fg_rgb(self.palette.user, s)
     }
 
-    pub fn paint_assistant(self, s: &str) -> String {
-        fg_rgb(self.palette.assistant, s)
-    }
-
-    pub fn paint_tool(self, s: &str) -> String {
-        fg_rgb(self.palette.tool, s)
-    }
-
     /// Tool name in header: bold + accent (DESIGN `tool-name` experiment → accent until settled).
     pub fn paint_tool_name(self, s: &str) -> String {
         use xylitol_tui::bold;
@@ -173,17 +161,6 @@ impl LayoutTheme {
     pub fn bash_border_color(self) -> Box<dyn Fn(&str) -> String> {
         let success = self.palette.success;
         Box::new(move |s| fg_rgb(success, s))
-    }
-
-    /// Default muted editor border painter.
-    pub fn muted_border_color(self) -> Box<dyn Fn(&str) -> String> {
-        let muted = self.palette.muted;
-        Box::new(move |s| fg_rgb(muted, s))
-    }
-
-    pub fn paint_border(self, width: usize) -> String {
-        let raw = "─".repeat(width.clamp(1, 80));
-        self.paint_muted(&raw)
     }
 }
 

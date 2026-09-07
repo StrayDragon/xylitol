@@ -10,7 +10,6 @@ pub use xylitol::agent::compaction::should_compact;
 pub use xylitol::agent::runtime::{AgentRuntime, XyEvent};
 pub use xylitol::agent::tools::ToolSet;
 pub use xylitol::infra::config::types::HookEntry;
-pub use xylitol::infra::config::value::InfraSecretResolver;
 pub use xylitol::infra::hooks::{DispatchResult, HookEvent, HookPhase};
 pub use xylitol::infra::provider::factory::{
     reset_fake_state, set_fake_slow_stream, set_fake_text, set_fake_tool_call, set_fake_tool_result,

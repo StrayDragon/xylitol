@@ -194,14 +194,6 @@ impl AiBridgePart {
         }
     }
 
-    pub fn is_tool_call(&self) -> bool {
-        matches!(self, Self::ToolCall { .. })
-    }
-
-    pub fn is_text_content(&self) -> bool {
-        matches!(self, Self::Text { .. } | Self::Thinking { .. })
-    }
-
     pub fn as_text(&self) -> Option<&str> {
         match self {
             Self::Text { text } => Some(text.as_str()),

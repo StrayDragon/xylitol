@@ -783,15 +783,6 @@ impl UiRoot {
         Some(json)
     }
 
-    pub fn close_ask_choice(&mut self) {
-        if let EditorSlot::Choice(ref mut ask) = self.slot {
-            ask.abort();
-        }
-        if matches!(&self.slot, EditorSlot::Choice(_)) {
-            self.slot = EditorSlot::Editor;
-        }
-    }
-
     pub fn ask_choice_open(&self) -> bool {
         matches!(&self.slot, EditorSlot::Choice(ask) if ask.has_prompt())
     }
@@ -930,10 +921,6 @@ impl UiRoot {
     /// Body only (no `Error: ` prefix); `None` when cleared / expired.
     pub fn toast_notice_body(&self) -> Option<&str> {
         self.toast_notice.as_ref().map(|(b, _)| b.as_str())
-    }
-
-    pub fn clear_toast_notice(&mut self) {
-        self.toast_notice = None;
     }
 
     /// Test/harness: force deadline into the past so the next `tick` clears.

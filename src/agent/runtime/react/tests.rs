@@ -42,9 +42,7 @@ fn fake_model_builder() -> ModelBuilderFn {
 
 #[tokio::test]
 async fn test_agent_session_builds_model() {
-    let mut reg = ModelRegistry::new(std::sync::Arc::new(
-        crate::infra::config::value::InfraSecretResolver::new(),
-    ));
+    let mut reg = ModelRegistry::new();
     reg.register(XyModelMeta {
         id: "mock".into(),
         config: crate::protocol::model::XyModelConfig {
@@ -98,9 +96,7 @@ async fn test_agent_session_builds_model() {
 async fn model_change_entry_lands_before_following_message() {
     use crate::protocol::session::{EntryBase, MessageEntry};
 
-    let mut reg = ModelRegistry::new(std::sync::Arc::new(
-        crate::infra::config::value::InfraSecretResolver::new(),
-    ));
+    let mut reg = ModelRegistry::new();
     reg.register(XyModelMeta {
         id: "mock".into(),
         config: crate::protocol::model::XyModelConfig {
@@ -212,9 +208,7 @@ async fn model_change_entry_lands_before_following_message() {
 
 #[tokio::test]
 async fn test_agent_loop_emits_events() {
-    let mut reg = ModelRegistry::new(std::sync::Arc::new(
-        crate::infra::config::value::InfraSecretResolver::new(),
-    ));
+    let mut reg = ModelRegistry::new();
     reg.register(XyModelMeta {
         id: "mock".into(),
         config: crate::protocol::model::XyModelConfig {
@@ -365,9 +359,7 @@ impl crate::protocol::ports::XyTool for StreamingMockTool {
 }
 
 fn mock_model_registry() -> ModelRegistry {
-    let mut reg = ModelRegistry::new(std::sync::Arc::new(
-        crate::infra::config::value::InfraSecretResolver::new(),
-    ));
+    let mut reg = ModelRegistry::new();
     reg.register(XyModelMeta {
         id: "mock".into(),
         config: XyModelConfig {

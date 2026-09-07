@@ -85,14 +85,6 @@ impl ObsGateState {
             tool_observation_io: ObservationIoTier::None,
         }
     }
-
-    pub fn active_truncated() -> Self {
-        Self {
-            active: true,
-            observation_io: ObservationIoTier::Truncated,
-            tool_observation_io: ObservationIoTier::Truncated,
-        }
-    }
 }
 
 thread_local! {

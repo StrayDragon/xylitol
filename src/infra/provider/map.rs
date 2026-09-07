@@ -17,7 +17,6 @@ use xylitol_ai_bridge::dto::{
 use xylitol_ai_bridge::error::AiBridgeError;
 
 use crate::protocol::error::XyError;
-use crate::protocol::message::XyUsage;
 use crate::protocol::model::{ContextTokenEstimate, TokenProvenance, XyToolSchema};
 use crate::protocol::ports::XyStream;
 
@@ -64,11 +63,6 @@ pub fn to_bridge_error(err: XyError) -> AiBridgeError {
         XyError::Aborted => AiBridgeError::Aborted,
         other => AiBridgeError::Provider(anyhow::anyhow!("{other}")),
     }
-}
-
-/// Identity clone (usage types are aliases).
-pub fn to_bridge_usage(u: &XyUsage) -> xylitol_ai_bridge::dto::AiBridgeUsage {
-    *u
 }
 
 pub fn to_xy_stream(stream: AiBridgeStream) -> XyStream {

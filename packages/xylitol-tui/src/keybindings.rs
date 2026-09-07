@@ -223,17 +223,6 @@ impl KeybindingsManager {
     pub fn set_user_bindings(&mut self, user_bindings: KeybindingsConfig) {
         self.rebuild(&user_bindings);
     }
-
-    /// Merge additional static definitions (e.g. product `app.*`) then rebuild with
-    /// the given user overrides (or empty).
-    pub fn extend_definitions(
-        &mut self,
-        extra: HashMap<&'static str, KeybindingDefinition>,
-        user_bindings: KeybindingsConfig,
-    ) {
-        self.definitions.extend(extra);
-        self.rebuild(&user_bindings);
-    }
 }
 
 static GLOBAL_KEYBINDINGS: LazyLock<Mutex<Option<KeybindingsManager>>> =

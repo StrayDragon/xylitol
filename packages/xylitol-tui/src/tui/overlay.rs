@@ -123,10 +123,6 @@ impl OverlayHandle {
         tui.set_overlay_hidden(self, hidden);
     }
 
-    pub fn is_hidden<T: Terminal>(self, tui: &TUI<T>) -> bool {
-        tui.is_overlay_hidden(self)
-    }
-
     pub fn is_focused<T: Terminal>(self, tui: &TUI<T>) -> bool {
         tui.is_overlay_focused(self)
     }

@@ -1007,16 +1007,6 @@ impl Diff {
         }
     }
 
-    pub fn set_input(&mut self, input: DiffInput) {
-        self.input = input;
-        self.cache = None;
-    }
-
-    pub fn set_options(&mut self, options: DiffOptions) {
-        self.options = options;
-        self.cache = None;
-    }
-
     fn input_fingerprint(&self) -> u64 {
         use std::collections::hash_map::DefaultHasher;
         use std::hash::{Hash, Hasher};

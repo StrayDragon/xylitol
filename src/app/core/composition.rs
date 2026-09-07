@@ -45,9 +45,7 @@ pub struct BuildAgentOptions {
 impl Default for BuildAgentOptions {
     fn default() -> Self {
         Self {
-            model_registry: ModelRegistry::new(Arc::new(
-                crate::infra::config::value::InfraSecretResolver::new(),
-            )),
+            model_registry: ModelRegistry::new(),
             system_prompt: None,
             context_files: Vec::new(),
             append_system_prompt: Vec::new(),

@@ -1,5 +1,3 @@
-use serde_json::Value;
-
 use super::BashExecutionParams;
 use super::SessionManager;
 use crate::infra::session::types::*;
@@ -49,51 +47,6 @@ impl SessionManager {
         })
     }
 
-    /// Build session context as `Vec<AgentMessage>` (type-safe version).
-    /// Walks from leaf to root via unified [`SessionEntry::as_agent_message`],
-    /// after compaction-aware cut (pi `buildContextEntries`).
-    pub async fn build_session_context_v2(
-        &self,
-        session_id: &str,
-    ) -> Result<Vec<crate::protocol::message::AgentMessage>, XySessionStoreError> {
-        let leaf_id = self.get_leaf(session_id);
-        let branch = self.get_branch(session_id, leaf_id.as_deref()).await?;
-        let branch = crate::protocol::session::build_context_entries(&branch);
-        Ok(branch.iter().filter_map(|e| e.as_agent_message()).collect())
-    }
-
-    /// Append a label to an entry.
-    pub async fn append_label(
-        &self,
-        session_id: &str,
-        target_id: &str,
-        label: &str,
-        description: Option<&str>,
-    ) -> Result<(), XySessionError> {
-        // Verify target exists
-        let _ = self
-            .get_entry(session_id, target_id)
-            .await?
-            .ok_or_else(|| XySessionError::entry_not_found(target_id))?;
-
-        let entry = SessionEntry::Label(LabelEntry {
-            base: EntryBase {
-                entry_type: "label".into(),
-                id: String::new(),
-                parent_id: None,
-                timestamp: 0,
-            },
-            target_id: target_id.to_string(),
-            label: Some(if let Some(desc) = description {
-                format!("{label}: {desc}")
-            } else {
-                label.to_string()
-            }),
-        });
-        self.append(session_id, &entry).await?;
-        Ok(())
-    }
-
     // ── Change tracking helpers ─────────────────────────────────
 
     /// Append a model change entry.
@@ -130,30 +83,6 @@ impl SessionManager {
                 timestamp: 0,
             },
             thinking_level: level.to_string(),
-        });
-        self.append(session_id, &entry).await
-    }
-
-    /// Append a custom message entry (participates in LLM context).
-    pub async fn append_custom_message(
-        &self,
-        session_id: &str,
-        custom_type: &str,
-        content: Value,
-        display: bool,
-        details: Option<Value>,
-    ) -> Result<(), XySessionStoreError> {
-        let entry = SessionEntry::CustomMessage(CustomMessageEntry {
-            base: EntryBase {
-                entry_type: "custom_message".into(),
-                id: String::new(),
-                parent_id: None,
-                timestamp: 0,
-            },
-            custom_type: custom_type.to_string(),
-            content,
-            display,
-            details,
         });
         self.append(session_id, &entry).await
     }
@@ -292,24 +221,6 @@ impl SessionManager {
             }
         }
         Ok(None)
-    }
-
-    /// Append a session info entry (e.g., display name).
-    pub async fn append_session_info(
-        &self,
-        session_id: &str,
-        name: &str,
-    ) -> Result<(), XySessionStoreError> {
-        let entry = SessionEntry::SessionInfo(SessionInfoEntry {
-            base: EntryBase {
-                entry_type: "session_info".into(),
-                id: String::new(),
-                parent_id: None,
-                timestamp: 0,
-            },
-            name: Some(name.trim().to_string()),
-        });
-        self.append(session_id, &entry).await
     }
 
     /// Append a bash-execution entry (`!cmd` / `!!cmd`) as nested Message (c1210).

@@ -18,6 +18,3 @@ pub use paint::{
 };
 pub use palette::Palette;
 pub use thinking_border::{ThinkingBorderLevel, apply_thinking_border};
-
-/// Alias kept for call sites that already say “semantic”.
-pub type SemanticPalette = Palette;

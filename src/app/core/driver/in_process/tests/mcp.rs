@@ -415,8 +415,7 @@ async fn lab_provider_tools_field_follows_reload_freeze() {
     let dir = tempfile::tempdir().unwrap();
     let store = Arc::new(SessionManager::new(dir.path().join("sessions")));
     let store_trait: Arc<dyn XySessionStore> = store.clone();
-    let mut reg =
-        crate::agent::model::registry::ModelRegistry::new(Arc::new(InfraSecretResolver::new()));
+    let mut reg = crate::agent::model::registry::ModelRegistry::new();
     reg.register(XyModelMeta {
         id: "mock".into(),
         config: XyModelConfig {

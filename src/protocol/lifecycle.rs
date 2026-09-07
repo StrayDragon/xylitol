@@ -204,10 +204,6 @@ impl XyEvent {
         Self::Error(XyEventError::new("Message", message))
     }
 
-    pub fn error_xy(err: &XyError) -> Self {
-        Self::Error(XyEventError::from_xy(err))
-    }
-
     /// A short human-readable description of the event.
     pub fn description(&self) -> &'static str {
         self.into()

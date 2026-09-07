@@ -32,7 +32,6 @@ use crate::agent::capabilities::ModelRegistry;
 use crate::agent::model::resolver;
 use crate::app::core::composition::{BuildAgentOptions, build_agent};
 use crate::infra::config::loader::load_app_config_detailed_with;
-use crate::infra::config::value::InfraSecretResolver;
 use crate::infra::permission;
 use crate::infra::session::SessionManager;
 use crate::infra::timing;
@@ -413,9 +412,7 @@ pub fn resolve_assembly_with(
     timing::time("config.load");
 
     // ── Step 2: build ModelRegistry ───────────────────────────────
-    let secret_resolver: Arc<dyn crate::protocol::ports::XySecretResolver> =
-        Arc::new(InfraSecretResolver::new());
-    let mut model_registry = ModelRegistry::new(secret_resolver);
+    let mut model_registry = ModelRegistry::new();
 
     if let Some(ref cfg) = app_config {
         let mut missing_key_providers = std::collections::BTreeSet::new();

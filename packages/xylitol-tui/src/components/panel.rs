@@ -48,11 +48,6 @@ impl Panel {
         self.invalidate_cache();
     }
 
-    pub fn set_bg_fn(&mut self, bg_fn: Option<BgFn>) {
-        self.bg_fn = bg_fn;
-        // Don't invalidate here - bgFn changes are detected by sampling output
-    }
-
     fn invalidate_cache(&mut self) {
         self.cache = None;
     }

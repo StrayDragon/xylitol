@@ -603,7 +603,7 @@ pub(crate) fn t_sess_prompt_from_agents(agent: &AgentState) {
 
 #[given("模型支持 thinking")]
 pub(crate) fn g_sess_thinking_model(agent: &AgentState) {
-    let mut r = ModelRegistry::new(Arc::new(InfraSecretResolver::new()));
+    let mut r = ModelRegistry::new();
     r.register(XyModelMeta {
         id: "test".into(),
         config: XyModelConfig {
