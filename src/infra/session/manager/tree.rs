@@ -55,37 +55,6 @@ impl SessionManager {
         Ok(path)
     }
 
-    /// Get a range of branch entries between two entry IDs.
-    /// Returns entries from `start_id` (inclusive) to `end_id` (exclusive).
-    pub async fn get_branch_entries(
-        &self,
-        session_id: &str,
-        start_id: &str,
-        end_id: &str,
-    ) -> Result<Vec<SessionEntry>, XySessionStoreError> {
-        let leaf_id = self.get_leaf(session_id);
-        let branch = self.get_branch(session_id, leaf_id.as_deref()).await?;
-
-        let mut in_range = false;
-        let mut result = Vec::new();
-        for entry in &branch {
-            let Some(eid) = entry.entry_id() else {
-                continue;
-            };
-            if eid == start_id {
-                in_range = true;
-            }
-            if in_range {
-                result.push(entry.clone());
-            }
-            if eid == end_id {
-                break;
-            }
-        }
-
-        Ok(result)
-    }
-
     // ── Fork ────────────────────────────────────────────────────
 
     /// Fork a session: create a child session from a parent branch path.
@@ -318,15 +287,5 @@ impl SessionManager {
         }
 
         Ok(())
-    }
-
-    /// Get the session as a tree structure.
-    /// Builds a `Vec<SessionTreeNode>` with labels resolved from LabelEntries.
-    pub async fn get_tree(
-        &self,
-        session_id: &str,
-    ) -> Result<Vec<SessionTreeNode>, XySessionStoreError> {
-        let entries = self.load(session_id).await?;
-        Ok(crate::protocol::session::build_session_tree(&entries))
     }
 }

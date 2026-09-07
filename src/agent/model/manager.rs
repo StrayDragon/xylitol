@@ -235,9 +235,7 @@ mod tests {
     type ModelBuilderFn = crate::protocol::ports::XyModelBuilder;
 
     fn empty_registry() -> ModelRegistry {
-        ModelRegistry::new(Arc::new(
-            crate::infra::config::value::InfraSecretResolver::new(),
-        ))
+        ModelRegistry::new()
     }
 
     fn fake_builder() -> ModelBuilderFn {

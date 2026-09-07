@@ -1465,18 +1465,6 @@ dependencies = [
 ]
 
 [[package]]
-name = "fastrace-futures"
-version = "0.7.18"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "e3b6a02e77334be6072af69c93f49a07af3212de09b5cd95a9ee44be49ffb2ac"
-dependencies = [
- "fastrace",
- "futures-core",
- "futures-sink",
- "pin-project",
-]
-
-[[package]]
 name = "fastrace-macro"
 version = "0.7.18"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -1524,16 +1512,6 @@ dependencies = [
  "libc",
  "thiserror 1.0.69",
  "winapi",
-]
-
-[[package]]
-name = "filetime"
-version = "0.2.29"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "5c287a33c7f0a620c38e641e7f60827713987b3c0f26e8ddc9462cc69cf75759"
-dependencies = [
- "cfg-if",
- "libc",
 ]
 
 [[package]]
@@ -3130,12 +3108,6 @@ name = "pastey"
 version = "0.2.2"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "c5a797f0e07bdf071d15742978fc3128ec6c22891c31a3a931513263904c982a"
-
-[[package]]
-name = "pathdiff"
-version = "0.2.3"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "df94ce210e5bc13cb6651479fa48d14f601d9858cfe0467f43ae157023b938d3"
 
 [[package]]
 name = "peg"
@@ -4870,17 +4842,6 @@ dependencies = [
 ]
 
 [[package]]
-name = "tar"
-version = "0.4.46"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "3f6221d9a6003c78398e3b239969f352578258df48c8eb051caadae0015bc840"
-dependencies = [
- "filetime",
- "libc",
- "xattr",
-]
-
-[[package]]
 name = "tempfile"
 version = "3.27.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -6210,16 +6171,6 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "1ffae5123b2d3fc086436f8834ae3ab053a283cfac8fe0a0b8eaae044768a4c4"
 
 [[package]]
-name = "xattr"
-version = "1.6.1"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "32e45ad4206f6d2479085147f02bc2ef834ac85886624a23575ae137c8aa8156"
-dependencies = [
- "libc",
- "rustix",
-]
-
-[[package]]
 name = "xml"
 version = "1.4.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -6245,9 +6196,7 @@ dependencies = [
  "dirs",
  "env_logger",
  "fastrace",
- "fastrace-futures",
  "fastrace-opentelemetry",
- "flate2",
  "futures",
  "glob",
  "hex",
@@ -6260,7 +6209,6 @@ dependencies = [
  "opentelemetry",
  "opentelemetry-otlp",
  "opentelemetry_sdk",
- "pathdiff",
  "portable-pty",
  "regex",
  "reqwest",
@@ -6277,7 +6225,6 @@ dependencies = [
  "sha2 0.11.0",
  "similar 3.1.1",
  "strum",
- "tar",
  "tempfile",
  "thiserror 2.0.18",
  "time",
@@ -6291,7 +6238,6 @@ dependencies = [
  "xylitol-ai-bridge",
  "xylitol-tui",
  "yaml_serde",
- "zstd",
 ]
 
 [[package]]

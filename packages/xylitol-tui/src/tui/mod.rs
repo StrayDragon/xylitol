@@ -311,19 +311,6 @@ impl<T: Terminal> TUI<T> {
         self.interaction_mode
     }
 
-    /// Set the mode flag without entering/leaving alt-buffer.
-    ///
-    /// Prefer [`Self::with_interaction_mode`] at construction. This is **not** a
-    /// restack / live-switch API — hosts that need another mode MUST build a new
-    /// `TUI` (product: new `HostSession`). If an application session is active and
-    /// `mode` is Inline, this ends the session so flag and TTY state stay aligned.
-    pub fn set_interaction_mode(&mut self, mode: InteractionMode) {
-        if mode.is_inline() && self.application_session_active {
-            self.end_application_owned_session();
-        }
-        self.interaction_mode = mode;
-    }
-
     /// ApplicationOwned enter: alternate screen (SHOULD) + mouse capture + viewport runtime.
     /// Idempotent. No-op when mode is [`InteractionMode::Inline`].
     pub fn begin_application_owned_session(&mut self) {
@@ -446,13 +433,6 @@ impl<T: Terminal> TUI<T> {
 
     pub fn dock_rows(&self) -> usize {
         self.dock_rows
-    }
-
-    pub fn set_transcript_copy_on_release(&mut self, on: bool) {
-        self.transcript_copy_on_release = on;
-        if let Some(runtime) = self.application_owned.as_mut() {
-            runtime.set_copy_on_release(on);
-        }
     }
 
     /// Transcript Left-Down priority hook (c2040 fold triangle, etc.).
@@ -584,18 +564,6 @@ impl<T: Terminal> TUI<T> {
         )
     }
 
-    pub fn set_show_hardware_cursor(&mut self, enabled: bool) {
-        if self.show_hardware_cursor == enabled {
-            return;
-        }
-        self.show_hardware_cursor = enabled;
-        if !enabled {
-            self.terminal.hide_cursor();
-        }
-    }
-    pub fn set_clear_on_shrink(&mut self, enabled: bool) {
-        self.clear_on_shrink = enabled;
-    }
     pub fn add_child(&mut self, component: Box<dyn Component>) {
         self.components.push(component);
     }

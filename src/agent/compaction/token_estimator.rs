@@ -19,9 +19,6 @@ pub fn calculate_context_tokens(usage: &XyUsage) -> u64 {
     usage.input + usage.output + usage.cache_read + usage.cache_write
 }
 
-/// Backward-compatible alias used by older compaction tests.
-pub type ContextUsageEstimate = ContextTokenEstimate;
-
 fn to_domain_provenance(p: AiBridgeProvenance) -> TokenProvenance {
     match p {
         AiBridgeProvenance::Api => TokenProvenance::Api,

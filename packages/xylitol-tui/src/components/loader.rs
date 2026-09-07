@@ -75,22 +75,6 @@ impl Loader {
         self.update_display();
     }
 
-    pub fn set_indicator(&mut self, indicator: Option<LoaderIndicatorOptions>) {
-        let indicator = indicator.unwrap_or_default();
-        self.frames = if indicator.frames.is_empty() {
-            LoaderIndicatorOptions::default().frames
-        } else {
-            indicator.frames
-        };
-        self.interval_ms = if indicator.interval_ms > 0 {
-            indicator.interval_ms
-        } else {
-            80
-        };
-        self.current_frame = 0;
-        self.update_display();
-    }
-
     pub fn tick(&mut self) {
         if self.frames.len() <= 1 {
             return;

@@ -162,7 +162,7 @@ impl XyExportError {
     }
 }
 
-/// Persistence failures from [`crate::protocol::ports::XyTrustStore`].
+/// Persistence failures from project trust decision storage.
 #[derive(Debug, thiserror::Error, IntoStaticStr)]
 pub enum XyTrustError {
     #[error("{op}: {source}")]

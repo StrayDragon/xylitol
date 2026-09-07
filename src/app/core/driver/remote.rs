@@ -2386,9 +2386,7 @@ mod tests {
                 .join(format!("xylitol-host-ws-{}", uuid::Uuid::new_v4()))
                 .join("sessions"),
         ));
-        let mut registry = crate::agent::capabilities::ModelRegistry::new(Arc::new(
-            crate::infra::config::value::InfraSecretResolver::new(),
-        ));
+        let mut registry = crate::agent::capabilities::ModelRegistry::new();
         registry.register(XyModelMeta {
             id: "fake-ws".into(),
             config: XyModelConfig {

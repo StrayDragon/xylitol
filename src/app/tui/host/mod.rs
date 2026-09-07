@@ -744,17 +744,6 @@ impl<T: Terminal> HostSession<T> {
         }
     }
 
-    /// Push a completed compaction transcript block (c1730 slash path).
-    pub fn push_compaction_complete(&mut self, summary: String, tokens_before: u64) {
-        self.ui_model.entries.push(UiEntry::Compaction {
-            status: crate::app::tui::bridge::CompactionBlockStatus::Complete,
-            summary,
-            tokens_before,
-            detail: None,
-        });
-        self.sync_ui_root_from_model();
-    }
-
     /// Push an error line (`UiEntry::Error` / `errors.md` one-liner).
     pub fn push_error_note(&mut self, text: impl Into<String>) {
         self.ui_model
@@ -776,17 +765,6 @@ impl<T: Terminal> HostSession<T> {
         cmd: Option<Result<String, super::error::TuiSurfaceError>>,
     ) {
         self.external_editor_cmd_override = cmd;
-    }
-
-    pub fn request_submit(&mut self, prompt: impl Into<String>) {
-        if self.run_active || self.ui_model.phase == UiPhase::Busy {
-            return;
-        }
-        let prompt = prompt.into();
-        if prompt.trim().is_empty() {
-            return;
-        }
-        self.pending.submit = Some(prompt);
     }
 
     /// Mark that `XyDriver::run` has started; seeds the user entry + busy phase.

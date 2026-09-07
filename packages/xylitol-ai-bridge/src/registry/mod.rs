@@ -86,13 +86,6 @@ pub fn remote_count_kind_for_adapter(adapter: &str) -> Option<RemoteCountKind> {
     }
 }
 
-/// Convenience: Claude models prefer Anthropic count; gpt/o* can use Responses input_tokens
-/// when the adapter is Responses (caller still passes adapter string).
-pub fn remote_count_kind_for(model_id: &str, adapter: &str) -> Option<RemoteCountKind> {
-    let _ = model_id;
-    remote_count_kind_for_adapter(adapter)
-}
-
 #[cfg(test)]
 mod tests {
     use super::*;

@@ -107,7 +107,7 @@ pub(crate) fn _t_agent_event_order(agent: &AgentState) {
 // Thinking
 #[given("当前思考级别为 {level:string}")]
 pub(crate) fn _g_agent_thinking_level(agent: &AgentState, level: String) {
-    let mut r = ModelRegistry::new(Arc::new(InfraSecretResolver::new()));
+    let mut r = ModelRegistry::new();
     r.register(XyModelMeta {
         id: "test".into(),
         config: XyModelConfig {
@@ -140,7 +140,7 @@ pub(crate) fn _g_agent_thinking_level(agent: &AgentState, level: String) {
 
 #[given("当前模型不支持思考")]
 pub(crate) fn _g_agent_no_thinking(agent: &AgentState) {
-    let mut r = ModelRegistry::new(Arc::new(InfraSecretResolver::new()));
+    let mut r = ModelRegistry::new();
     r.register(XyModelMeta {
         id: "test".into(),
         config: XyModelConfig {

@@ -19,9 +19,6 @@ pub struct AutocompleteItem {
     pub description: Option<String>,
 }
 
-/// Awaitable alias — synchronous for now, but signature allows future async.
-pub type Awaitable<T> = T;
-
 #[allow(clippy::type_complexity)]
 pub struct SlashCommand {
     pub name: String,
@@ -105,25 +102,6 @@ impl CombinedAutocompleteProvider {
             base_path,
             fd_path: Some(fd_path),
         }
-    }
-
-    /// Split into parts for [`crate::completion::CompletionRegistry`] wiring.
-    pub fn into_parts(self) -> (Vec<SlashCommand>, PathBuf, Option<String>) {
-        let commands = self
-            .commands
-            .into_iter()
-            .map(|(name, description)| SlashCommand {
-                name,
-                description: if description.is_empty() {
-                    None
-                } else {
-                    Some(description)
-                },
-                argument_hint: None,
-                get_argument_completions: None,
-            })
-            .collect();
-        (commands, self.base_path, self.fd_path)
     }
 }
 

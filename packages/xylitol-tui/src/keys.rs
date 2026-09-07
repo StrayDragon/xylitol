@@ -37,8 +37,6 @@ pub fn with_kitty_protocol_active<R>(active: bool, f: impl FnOnce() -> R) -> R {
     }
 }
 
-pub type KeyId = &'static str;
-
 const MOD_SHIFT: u32 = 1;
 const MOD_ALT: u32 = 2;
 const MOD_CTRL: u32 = 4;
@@ -1178,22 +1176,6 @@ pub fn decode_kitty_printable(data: &str) -> Option<String> {
     }
 
     char::from_u32(effective_cp).map(|c| c.to_string())
-}
-
-fn decode_modify_other_keys_printable(data: &str) -> Option<String> {
-    let (modifier, cp) = parse_modify_other_keys(data)?;
-    let effective = modifier & !LOCK_MASK;
-    if (effective & !MOD_SHIFT) != 0 {
-        return None;
-    }
-    if cp < 32 {
-        return None;
-    }
-    char::from_u32(cp).map(|c| c.to_string())
-}
-
-pub fn decode_printable_key(data: &str) -> Option<String> {
-    decode_kitty_printable(data).or_else(|| decode_modify_other_keys_printable(data))
 }
 
 /// Match a crossterm `KeyEvent` against a key id (`"ctrl+c"`, `"up"`, …).

@@ -95,9 +95,7 @@ mod tests {
     use std::sync::atomic::{AtomicUsize, Ordering};
 
     fn mock_registry() -> ModelRegistry {
-        let mut reg = ModelRegistry::new(std::sync::Arc::new(
-            crate::infra::config::value::InfraSecretResolver::new(),
-        ));
+        let mut reg = ModelRegistry::new();
         reg.register(XyModelMeta {
             id: "mock".into(),
             config: XyModelConfig {

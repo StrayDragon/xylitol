@@ -5,8 +5,7 @@
 //!   (`app.thinking.toggle` / `app.tools.blocks` / …);
 //! - mouse injection → [`UiRoot::click_fold_at`] (the same function the host
 //!   hit-priority wiring calls), so BDD and host share one toggle pipeline;
-//! - paint → the same `render` / ANSI-strip / [`SemanticDump`] chain
-//!   [`SceneBuilder`] uses.
+//! - paint → the same `render` / ANSI-strip chain [`SceneBuilder`] uses.
 //!
 //! Entries enter by replaying [`XyEvent`]s through [`apply_xy_event`] in a
 //! [`SceneBuilder`], then moving the built model here via
@@ -17,7 +16,6 @@ use xylitol_tui::Component;
 
 use crate::app::core::driver::XyEvent;
 use crate::app::tui::activity_fold::ActivityFoldSettings;
-use crate::app::tui::activity_fold::scene::SemanticDump;
 use crate::app::tui::activity_fold::strip_ansi_live_window;
 use crate::app::tui::bridge::{UiEntry, UiModel, apply_xy_event};
 use crate::app::tui::layout::{FilterMode, UiRoot};
@@ -142,18 +140,6 @@ impl InteractionBdd {
     /// Plain (ANSI-stripped) frame text of the current interaction state.
     pub fn render_plain(&mut self, width: usize) -> String {
         strip_ansi_live_window(&self.render_lines(width).join("\n"))
-    }
-
-    /// Plain frame + semantic dump (row chords attributed to scene entries).
-    pub fn render_semantic(&mut self, width: usize) -> (String, SemanticDump) {
-        let plain = self.render_plain(width);
-        let dump = SemanticDump::from_product_frame(&plain, &self.model.entries);
-        (plain, dump)
-    }
-
-    /// Row count of live model entries (transcript size asserts).
-    pub fn entries_len(&self) -> usize {
-        self.model.entries.len()
     }
 
     /// Live model entries for identity checks (`UiEntry` shapes).

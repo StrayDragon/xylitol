@@ -6,12 +6,10 @@
 //! - Themes from global and project directories
 //! - System prompt files (SYSTEM.md, APPEND_SYSTEM.md)
 //!
-//! All resources are loaded once and cached. `reload()` refreshes everything.
+//! All resources are loaded once and cached.
 
 use std::collections::HashMap;
 use std::path::{Path, PathBuf};
-
-use crate::protocol::ports::{XyReloadable, XyResourceLoader};
 
 pub use crate::protocol::resource::{AgentsFile, ResourceDiagnostic, SkillInfo, ThemeInfo};
 
@@ -19,7 +17,7 @@ pub use crate::protocol::resource::{AgentsFile, ResourceDiagnostic, SkillInfo, T
 
 /// Aggregates all resources needed by the agent session.
 ///
-/// Resources are loaded eagerly in `new()` and can be refreshed with `reload()`.
+/// Resources are loaded eagerly in `new()`.
 /// Accessors provide read-only views of cached resources.
 pub struct DefaultResourceLoader {
     /// Current working directory.
@@ -76,25 +74,6 @@ impl DefaultResourceLoader {
         self.load_skills_internal();
         self.load_themes();
         self.discover_system_prompt();
-    }
-
-    fn clear_caches(&mut self) {
-        self.context_files.clear();
-        self.skills.clear();
-        self.themes.clear();
-        self.system_prompt = None;
-        self.append_system_prompt.clear();
-        self.context_diagnostics.clear();
-        self.skills_diagnostics.clear();
-        self.themes_diagnostics.clear();
-    }
-
-    /// Re-discover all resources from disk (c1100). Does not touch session history.
-    /// Prefer this inherent method at call sites; [`XyReloadable`] is the port constraint.
-    #[allow(dead_code)] // public API for c1120 / long-lived loader holders
-    pub fn reload(&mut self) {
-        self.clear_caches();
-        self.load_all();
     }
 
     // ── Getters ───────────────────────────────────────────────────────
@@ -293,24 +272,24 @@ impl DefaultResourceLoader {
     fn source_info_for_path(
         &self,
         path: &std::path::Path,
-    ) -> crate::infra::source_info::SourceInfo {
+    ) -> crate::protocol::source_info::SourceInfo {
         let under_user_agents = self
             .agent_dir
             .parent()
             .map(|p| p.join(".agents"))
             .is_some_and(|root| path.starts_with(root));
         let scope = if path.starts_with(&self.agent_dir) || under_user_agents {
-            crate::infra::source_info::SourceScope::User
+            crate::protocol::source_info::SourceScope::User
         } else if path.starts_with(&self.cwd) {
-            crate::infra::source_info::SourceScope::Project
+            crate::protocol::source_info::SourceScope::Project
         } else {
-            crate::infra::source_info::SourceScope::Temporary
+            crate::protocol::source_info::SourceScope::Temporary
         };
-        crate::infra::source_info::create_source_info(
+        crate::protocol::source_info::create_source_info(
             path.to_path_buf(),
             "local".into(),
             scope,
-            crate::infra::source_info::SourceOrigin::TopLevel,
+            crate::protocol::source_info::SourceOrigin::TopLevel,
             Some(self.agent_dir.clone()),
         )
     }
@@ -479,37 +458,6 @@ impl DefaultResourceLoader {
                 source_info: self.source_info_for_path(&path),
             });
         }
-    }
-}
-
-impl XyReloadable for DefaultResourceLoader {
-    type Outcome = ();
-
-    fn reload(&mut self) -> Self::Outcome {
-        DefaultResourceLoader::reload(self);
-    }
-}
-
-// Port impl for boundary clarity. Production callers use inherent methods
-// (bootstrap projects into BuildAgentOptions). No `dyn XyResourceLoader`
-// consumer yet — do not add one for symmetry; upgrade when a second
-// implementation or embed replacement is real. See src/AGENTS.md「扩展开闭」.
-#[allow(dead_code)]
-impl XyResourceLoader for DefaultResourceLoader {
-    fn get_agents_files(&self) -> &[AgentsFile] {
-        &self.context_files
-    }
-
-    fn get_skills(&self) -> (&[SkillInfo], &[ResourceDiagnostic]) {
-        (&self.skills, &self.skills_diagnostics)
-    }
-
-    fn get_system_prompt(&self) -> Option<&str> {
-        self.system_prompt.as_deref()
-    }
-
-    fn get_append_system_prompt(&self) -> &[String] {
-        &self.append_system_prompt
     }
 }
 
@@ -964,41 +912,5 @@ mod tests {
         let diags = loader.get_all_diagnostics();
         // Should not crash on inaccessible directories
         let _ = diags.len();
-    }
-
-    #[test]
-    fn test_reload_picks_up_changed_agents_md() {
-        use crate::protocol::ports::XyReloadable;
-
-        let tmp = tempfile::tempdir().unwrap();
-        let agent_dir = tempfile::tempdir().unwrap();
-        let agents = tmp.path().join("AGENTS.md");
-        std::fs::write(&agents, "v1 rules").unwrap();
-
-        let mut loader =
-            DefaultResourceLoader::new(tmp.path().to_path_buf(), agent_dir.path().to_path_buf());
-        assert!(
-            loader
-                .get_agents_files()
-                .iter()
-                .any(|f| f.content.contains("v1 rules"))
-        );
-
-        std::fs::write(&agents, "v2 rules after edit").unwrap();
-        XyReloadable::reload(&mut loader);
-
-        assert!(
-            loader
-                .get_agents_files()
-                .iter()
-                .any(|f| f.content.contains("v2 rules after edit")),
-            "reload must re-read AGENTS.md from disk"
-        );
-        assert!(
-            !loader
-                .get_agents_files()
-                .iter()
-                .any(|f| f.content.contains("v1 rules"))
-        );
     }
 }

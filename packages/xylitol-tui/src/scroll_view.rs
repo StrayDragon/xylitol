@@ -78,10 +78,6 @@ impl ScrollView {
         self.scroll_top = self.max_scroll();
     }
 
-    pub fn scroll_to_start(&mut self) {
-        self.scroll_top = 0;
-    }
-
     /// True when the viewport already shows the last content page.
     pub fn at_bottom(&self) -> bool {
         self.scroll_top >= self.max_scroll()

@@ -250,12 +250,6 @@ impl TreeSelector {
         sel
     }
 
-    pub fn set_roots(&mut self, roots: Vec<TreeNode>) {
-        self.roots = roots;
-        self.folded_nodes.clear();
-        self.rebuild();
-    }
-
     /// Update annotation on a node without resetting selection/folds.
     pub fn set_annotation(&mut self, id: &str, annotation: Option<String>) {
         if let Some(node) = find_node_mut(&mut self.roots, id) {
@@ -271,14 +265,6 @@ impl TreeSelector {
 
     pub fn annotation_of(&self, id: &str) -> Option<&str> {
         find_node(&self.roots, id).and_then(|n| n.annotation.as_deref())
-    }
-
-    pub fn kind_of(&self, id: &str) -> Option<&str> {
-        find_node(&self.roots, id).and_then(|n| n.kind.as_deref())
-    }
-
-    pub fn label_of(&self, id: &str) -> Option<&str> {
-        find_node(&self.roots, id).map(|n| n.label.as_str())
     }
 
     /// Move selection to `id` if it is in the current visible (filtered) list.
@@ -305,14 +291,6 @@ impl TreeSelector {
 
     pub fn set_max_visible(&mut self, max_visible: usize) {
         self.options.max_visible = max_visible.max(1);
-    }
-
-    pub fn set_active_id(&mut self, id: Option<String>) {
-        self.options.active_id = id;
-        self.build_active_path();
-        if let Some(active) = self.options.active_id.as_deref() {
-            self.selected_index = find_nearest_visible_index(&self.flat, &self.filtered, active);
-        }
     }
 
     pub fn search_query(&self) -> &str {

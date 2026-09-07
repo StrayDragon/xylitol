@@ -52,12 +52,6 @@ impl Drop for ObsSessionScope {
     }
 }
 
-/// Run `f` under an [`ObsSessionScope`].
-pub fn with_obs_session<R>(ctx: ObsSessionContext, f: impl FnOnce() -> R) -> R {
-    let _g = ObsSessionScope::enter(ctx);
-    f()
-}
-
 fn with_active_mut<R>(f: impl FnOnce(&mut ObsSessionContext) -> R) -> R {
     if SCOPED.with(|slot| slot.borrow().is_some()) {
         return SCOPED.with(|slot| {
@@ -132,8 +126,6 @@ pub fn langfuse_observation_properties(observation_type: &str) -> Vec<(String, S
 pub const XYLITOL_OBS_LANE_ATTR: &str = "xylitol.obs.lane";
 /// LLM / agent product process-tree lane.
 pub const XYLITOL_OBS_LANE_LLM: &str = "llm";
-/// Infra / client failure-experience lane (future spans; prepare-fail MUST NOT fake LLM spans).
-pub const XYLITOL_OBS_LANE_INFRA: &str = "infra";
 
 /// Property pairs for `xylitol.obs.lane`.
 pub fn xylitol_obs_lane_properties(lane: &str) -> Vec<(String, String)> {

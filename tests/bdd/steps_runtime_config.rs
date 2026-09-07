@@ -46,7 +46,7 @@ fn rc_make_model_manager(
     cfg: &xylitol::infra::config::types::AppConfig,
 ) -> xylitol::agent::model::ModelManager {
     let meta = cfg.resolve_model_meta("m").expect("resolve_model_meta");
-    let mut reg = ModelRegistry::new(Arc::new(InfraSecretResolver::new()));
+    let mut reg = ModelRegistry::new();
     reg.register(meta);
     xylitol::agent::model::ModelManager::new(
         reg,

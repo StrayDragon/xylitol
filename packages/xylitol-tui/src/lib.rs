@@ -5,7 +5,6 @@ pub mod autocomplete_fd;
 pub mod clock;
 pub mod completion;
 pub mod components;
-pub mod editor_component;
 pub mod fuzzy;
 pub mod highlight;
 pub mod interaction_mode;
@@ -35,7 +34,7 @@ pub use autocomplete_fd::{build_fd_path_query, walk_directory_with_fd};
 pub use clock::{Clock, MockClock, SystemClock};
 pub use completion::{
     AtPathSource, CompletionContext, CompletionMatch, CompletionRegistry, CompletionSource,
-    SlashArgCompletionSource, SlashCommandSource, extract_slash_arg_prefix, sources_from_combined,
+    SlashArgCompletionSource, SlashCommandSource, extract_slash_arg_prefix,
 };
 pub use components::cancellable_loader::CancellableLoader;
 pub use components::choice_prompt::{
@@ -68,7 +67,6 @@ pub use components::tree_selector::{
     TreeSelectorTheme, flatten_tree,
 };
 pub use components::truncated_text::TruncatedText;
-pub use editor_component::EditorComponent;
 pub use fuzzy::{FuzzyMatch, fuzzy_filter, fuzzy_match};
 pub use highlight::{highlight_code, highlight_code_owned};
 pub use interaction_mode::InteractionMode;
@@ -78,8 +76,8 @@ pub use keybindings::{
     with_keybindings, with_keybindings_mut,
 };
 pub use keys::{
-    KeyId, decode_printable_key, is_key_release, is_key_repeat, matches_key, matches_key_event,
-    parse_key, printable_from_key_event, set_kitty_protocol_active, with_kitty_protocol_active,
+    is_key_release, is_key_repeat, matches_key, matches_key_event, parse_key,
+    printable_from_key_event, set_kitty_protocol_active, with_kitty_protocol_active,
 };
 pub use paste_burst::PasteBurst;
 pub use scroll_view::ScrollView;
@@ -96,9 +94,9 @@ pub use terminal_colors::{
 };
 pub use terminal_image::{hyperlink, is_image_line};
 pub use theme::{
-    Palette, SemanticPalette, ThinkingBorderLevel, apply_thinking_border, bg_rgb, bold, dim,
-    fg_bg_rgb, fg_rgb, italic, mix_rgb, paint_left_rail_line, shade_toward_black,
-    shade_toward_white, strikethrough, underline, word_wash_bg,
+    Palette, ThinkingBorderLevel, apply_thinking_border, bg_rgb, bold, dim, fg_bg_rgb, fg_rgb,
+    italic, mix_rgb, paint_left_rail_line, shade_toward_black, shade_toward_white, strikethrough,
+    underline, word_wash_bg,
 };
 pub use tui::{
     Component, FocusTarget, Focusable, InputEvent, InputListenerResult, InputReaction,

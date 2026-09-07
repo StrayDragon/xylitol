@@ -5,8 +5,7 @@ use serde_json::Value;
 
 use crate::protocol::lifecycle::XyEvent;
 
-/// An event from the core: either a response to a command or a streamed
-/// occurrence during a turn.
+/// An event from the core: a streamed occurrence during a turn.
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 #[serde(tag = "type", rename_all = "snake_case")]
 pub enum Event {
@@ -14,10 +13,6 @@ pub enum Event {
         /// Stable classification aligned with [`crate::protocol::lifecycle`] kinds.
         kind: String,
         message: String,
-    },
-    Response {
-        id: Option<String>,
-        payload: Option<Value>,
     },
     TextDelta {
         text: String,
@@ -45,18 +40,6 @@ pub enum Event {
     },
     CompactionStart {
         reason: String,
-    },
-    /// Acknowledgment of a Subscribe command.
-    Subscribed {
-        session_id: String,
-        seq: u64,
-    },
-    BashResult {
-        id: Option<String>,
-        output: String,
-        exit_code: Option<i32>,
-        cancelled: bool,
-        truncated: bool,
     },
     /// Turn started.
     TurnStart {
@@ -339,7 +322,6 @@ impl TryFrom<&Event> for XyEvent {
                 steer_count: *steer_count,
                 follow_up_count: *follow_up_count,
             }),
-            other => Err(WireEventConvertError::Unmapped(format!("{other:?}"))),
         }
     }
 }

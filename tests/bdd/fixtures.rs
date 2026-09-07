@@ -6,7 +6,6 @@ use xylitol::XyDriverError;
 use xylitol::agent::capabilities::{ContextUsage, ModelRegistry};
 use xylitol::agent::runtime::XyEvent;
 use xylitol::infra::config::types::HookEntry;
-use xylitol::infra::config::value::InfraSecretResolver;
 use xylitol::infra::hooks::DispatchResult;
 use xylitol::infra::session::{SessionEntry, SessionManager};
 
@@ -140,7 +139,7 @@ pub struct AgentState {
 impl AgentState {
     fn new() -> Self {
         Self {
-            registry: RefCell::new(ModelRegistry::new(Arc::new(InfraSecretResolver::new()))),
+            registry: RefCell::new(ModelRegistry::new()),
             events: RefCell::new(Vec::new()),
             last_result: RefCell::new(None),
             context_usage: RefCell::new(None),

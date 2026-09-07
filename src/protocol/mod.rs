@@ -26,8 +26,8 @@ pub mod tool_timeout;
 
 // Wire Command/Event re-exported at protocol root — the canonical application-facing path.
 pub use wire::{
-    ApprovalRequestedPayload, Command, DOWNLINK_METHODS, Envelope, ErrorCode, Event,
-    HostDescribeValue, PROTOCOL_VERSION, QuestionRequestedPayload, RpcError, RpcMessage, RpcResult,
+    ApprovalRequestedPayload, Command, DOWNLINK_METHODS, Event, HostDescribeValue,
+    PROTOCOL_VERSION, QuestionRequestedPayload, RpcError, RpcMessage, RpcResult,
     SessionEventPayload, SessionResourcesPayload, SessionResyncRequiredPayload,
     SessionSubscribedPayload, is_downlink_method, is_unary_method,
 };
@@ -36,9 +36,9 @@ pub use wire::{
 pub use ports::{
     BashExecOpts, LifecycleHandler, NoopHookBus, SessionListEntry, XyBashExecutor, XyBashResult,
     XyBatchMode, XyEventSink, XyExportIo, XyGenerateOptions, XyHookBus, XyHookOutcome, XyModel,
-    XyModelBuilder, XyPermission, XyPermissionVerdict, XyReloadable, XyResourceLoader,
-    XySecretResolver, XySessionStore, XyStream, XyTool, XyToolCtx, XyToolExecutionMode,
-    XyTrustStore, flatten_session_forest, format_session_age, sanitize_session_display_name,
+    XyModelBuilder, XyPermission, XyPermissionVerdict, XySecretResolver, XySessionStore, XyStream,
+    XyTool, XyToolCtx, XyToolExecutionMode, flatten_session_forest, format_session_age,
+    sanitize_session_display_name,
 };
 
 // Shared vocabulary commonly imported from protocol root.

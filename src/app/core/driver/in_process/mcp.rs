@@ -1,6 +1,5 @@
 use std::sync::Arc;
 
-use super::XyDriverError;
 use super::types::LoadedResourcesSnapshot;
 
 pub(super) type McpToolList = Vec<Arc<dyn crate::protocol::ports::XyTool>>;
@@ -43,22 +42,6 @@ pub(super) enum McpBootState {
 }
 
 impl super::XyInProcessDriver {
-    /// Initial MCP bootstrap after assembly (cli / server).
-    ///
-    /// Prefer [`crate::app::core::driver::XyDriver::begin_mcp_bootstrap`] + poll for TUI (c1200). This
-    /// still performs a blocking reload for callers that need a settled ToolSet
-    /// synchronously (legacy / tests).
-    pub async fn bootstrap_mcp(&mut self) -> Result<(), XyDriverError> {
-        let servers = self
-            .reload
-            .as_ref()
-            .map(|s| s.mcp_servers.clone())
-            .unwrap_or_default();
-        self.reload_mcp_with_servers(&servers).await?;
-        self.mcp_boot = McpBootState::Settled;
-        Ok(())
-    }
-
     /// One-line MCP status for startup logs (empty when reload/MCP disabled).
     pub async fn mcp_status_summary(&self) -> Option<String> {
         let state = self.reload.as_ref()?;
@@ -83,19 +66,6 @@ impl super::XyInProcessDriver {
             line.push_str(&format!("; diagnostics: {detail}"));
         }
         Some(line)
-    }
-
-    async fn reload_mcp_with_servers(
-        &mut self,
-        servers: &[crate::app::core::mcp_spec::McpServerSpec],
-    ) -> Result<(), XyDriverError> {
-        let Some(mut state) = self.reload.take() else {
-            return Ok(());
-        };
-        let cancel = tokio_util::sync::CancellationToken::new();
-        let result = state.mcp.reload(self, servers, &cancel).await;
-        self.reload = Some(state);
-        result.map(|_| ())
     }
 
     /// Wait settle/timeout then freeze the current tool table if not already frozen.

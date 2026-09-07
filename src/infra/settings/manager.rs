@@ -227,12 +227,6 @@ impl SettingsManager {
         changed
     }
 
-    /// Drain accumulated errors (e.g., parse failures from load/reload).
-    pub fn drain_errors(&self) -> Vec<(SettingsScope, String)> {
-        let mut errs = self.errors.lock().unwrap();
-        std::mem::take(&mut *errs)
-    }
-
     // ── Project trust ─────────────────────────────────────────
 
     pub fn is_project_trusted(&self) -> bool {
@@ -261,10 +255,6 @@ impl SettingsManager {
 
     pub fn get_settings(&self) -> &Settings {
         &self.settings
-    }
-
-    pub fn get_global_settings(&self) -> &Settings {
-        &self.global_settings
     }
 
     pub fn get_project_settings(&self) -> &Settings {

@@ -5,7 +5,6 @@ use xylitol_ai_bridge::provider::{ObsSessionContext, ObsSessionScope};
 use super::*;
 use crate::agent::AgentBuilder;
 use crate::agent::tools::ToolSet;
-use crate::infra::config::value::InfraSecretResolver;
 use crate::infra::event::EventBus;
 use crate::infra::permission;
 use crate::infra::session::SessionManager;
@@ -39,7 +38,7 @@ async fn build_test_driver(store: Arc<SessionManager>) -> (XyInProcessDriver, Ob
     let scope = ObsSessionScope::enter(ObsSessionContext::default());
     let store_trait: Arc<dyn XySessionStore> = store.clone();
     let mut agent = AgentBuilder::new(
-        crate::agent::model::registry::ModelRegistry::new(Arc::new(InfraSecretResolver::new())),
+        crate::agent::model::registry::ModelRegistry::new(),
         Arc::new(crate::infra::provider::factory::build_provider),
         store_trait.clone(),
         Arc::new(EventBus::new()) as Arc<dyn XyEventSink>,

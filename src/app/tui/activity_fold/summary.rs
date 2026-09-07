@@ -9,9 +9,7 @@ use crate::app::tui::widgets::GlyphSet;
 use super::atom::{ActivityAtom, ExploreKind, STREAMING_THINK_ID, activity_atom};
 #[cfg(test)]
 use super::segment::SegmentLevel;
-use super::segment::{
-    ActivityCluster, ActivitySegment, cluster_middle_indices, middle_entry_indices,
-};
+use super::segment::{ActivityCluster, cluster_middle_indices};
 
 /// Observable activity for one cluster header (att24).
 #[derive(Debug, Clone, Default, PartialEq, Eq)]
@@ -79,10 +77,6 @@ impl ActivityCounts {
         self.live_think_id = Some(id.into());
         self
     }
-}
-
-pub fn count_segment(entries: &[UiEntry], seg: &ActivitySegment) -> ActivityCounts {
-    count_middles(entries, &middle_entry_indices(entries, seg))
 }
 
 /// Counts for one cluster only (open-cluster -2 vs frozen -3).

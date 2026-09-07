@@ -375,14 +375,6 @@ impl AnsiCodeTracker {
         // SGR reset does not affect OSC 8 hyperlink state
     }
 
-    /// Full reset including hyperlink state.
-    /// 预留：对齐 pi `AnsiCodeTracker.clear`（extract_segments 完整移植时启用）。
-    #[allow(dead_code)]
-    fn clear(&mut self) {
-        self.reset();
-        self.active_hyperlink = None;
-    }
-
     pub(crate) fn get_active_codes(&self) -> String {
         let mut codes: Vec<String> = Vec::new();
         if self.bold {
@@ -426,23 +418,6 @@ impl AnsiCodeTracker {
             result.push_str(&format!("\x1b]8;{};{}{}", hl.params, hl.url, hl.terminator));
         }
         result
-    }
-
-    /// Whether any SGR attribute is active.
-    /// 预留：对齐 pi `hasActiveCodes`（extract_segments 完整移植时启用）。
-    #[allow(dead_code)]
-    fn has_active_codes(&self) -> bool {
-        self.bold
-            || self.dim
-            || self.italic
-            || self.underline
-            || self.blink
-            || self.inverse
-            || self.hidden
-            || self.strikethrough
-            || self.fg_color.is_some()
-            || self.bg_color.is_some()
-            || self.active_hyperlink.is_some()
     }
 
     fn get_line_end_reset(&self) -> String {

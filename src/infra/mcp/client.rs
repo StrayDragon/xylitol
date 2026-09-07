@@ -238,10 +238,6 @@ impl McpClientManager {
         }
     }
 
-    /// Latest connect progress (c1200).
-    pub async fn progress_snapshot(&self) -> McpConnectProgress {
-        self.progress.lock().await.clone()
-    }
     async fn push_diagnostic(&self, server: String, message: String) {
         self.diagnostics
             .lock()

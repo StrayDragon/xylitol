@@ -4,7 +4,6 @@
 //! owns domain mapping, Fake/`XyModel` assembly, and the composition-root factory.
 //! - OpenAI Responses / Completions / Anthropic Messages → `adapter::MappedBridgeAdapter`
 //! - [`FakeProvider`]: scenario-based mock for offline testing
-//! - `MockXyModel` (test-only): returns a fixed text response
 
 pub mod adapter;
 pub mod factory;
@@ -12,12 +11,8 @@ pub mod hooks_port;
 pub mod map;
 
 mod fake;
-#[cfg(test)]
-mod mock;
 
 pub use fake::*;
-#[cfg(test)]
-pub use mock::MockXyModel;
 
 pub use crate::protocol::model::{ContextTokenEstimate, TokenProvenance};
 

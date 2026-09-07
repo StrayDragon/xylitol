@@ -115,10 +115,6 @@ impl ExpandableOutput {
     pub fn expanded(&self) -> bool {
         self.expanded
     }
-
-    pub fn toggle_expanded(&mut self) {
-        self.expanded = !self.expanded;
-    }
 }
 
 impl Component for ExpandableOutput {

@@ -44,7 +44,7 @@ async fn in_process_session_tree_ensures_missing_session() {
     let store = Arc::new(SessionManager::new(dir.path().join("sessions")));
     let store_trait: Arc<dyn XySessionStore> = store.clone();
     let mut agent = AgentBuilder::new(
-        crate::agent::model::registry::ModelRegistry::new(Arc::new(InfraSecretResolver::new())),
+        crate::agent::model::registry::ModelRegistry::new(),
         Arc::new(crate::infra::provider::factory::build_provider),
         store_trait.clone(),
         Arc::new(EventBus::new()) as Arc<dyn XyEventSink>,
@@ -238,8 +238,7 @@ async fn after_run_session_tree_reflects_persisted_turn() {
     let dir = tempfile::tempdir().unwrap();
     let store = Arc::new(SessionManager::new(dir.path().join("sessions")));
     let store_trait: Arc<dyn XySessionStore> = store.clone();
-    let mut reg =
-        crate::agent::model::registry::ModelRegistry::new(Arc::new(InfraSecretResolver::new()));
+    let mut reg = crate::agent::model::registry::ModelRegistry::new();
     reg.register(XyModelMeta {
         id: "mock".into(),
         config: XyModelConfig {
@@ -394,8 +393,7 @@ async fn concurrent_run_rejects_second_with_busy() {
     let dir = tempfile::tempdir().unwrap();
     let store = Arc::new(SessionManager::new(dir.path().join("sessions")));
     let store_trait: Arc<dyn XySessionStore> = store.clone();
-    let mut reg =
-        crate::agent::model::registry::ModelRegistry::new(Arc::new(InfraSecretResolver::new()));
+    let mut reg = crate::agent::model::registry::ModelRegistry::new();
     reg.register(XyModelMeta {
         id: "mock".into(),
         config: XyModelConfig {
