@@ -105,6 +105,10 @@
   场景: deepseek-prompt-cache-read-mapped
     - 命名轮廓 compat=deepseek 在解析上游 usage 时 MUST 把已出现的 Prompt Cache 读数映射为 Tokens(n)：Responses 认 input_tokens_details.cached_tokens；Completions 优先 prompt_cache_hit_tokens，否则 prompt_tokens_details.cached_tokens。MUST NOT 仅因方言而标 NotApplicable 从而丢掉这些字段。缺字段且轮廓期望缓存读数时 MUST 为 NotReported，MUST NOT 写成命中 0。encrypted include 与 previous_response_id 仍按该轮廓省略。由包内单测覆盖，MUST NOT 单独扩 BDD step。
 
+  @req:pab30 @human
+  场景: generate-obs-session-snapshot
+    - 适配器一次 generate（流式或非流）的观测会话身份 MUST 来自该次调用携带的快照（与 generate 选项或等价入参绑定）；OpenCode 会话归因 header 与 llm.request 上的 langfuse.session.id MUST 使用该快照。MUST NOT 在请求进行中读取可被其它并发 generate 覆盖的进程级会话槽作为权威源。由包内单测覆盖，MUST NOT 单独扩 BDD step。
+
   @executable @req:pab13
   场景: responses-toolcall-streams-before-done
     假如 Responses SSE 含 function_call 的 output_item.added 与多帧 function_call_arguments.delta 后才有 output_item.done
