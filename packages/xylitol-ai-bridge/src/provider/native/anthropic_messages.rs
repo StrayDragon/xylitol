@@ -209,7 +209,7 @@ impl AnthropicMessagesAdapter {
             "anthropic-messages",
             &self.model,
             options.obs_parent,
-            &options.obs_session,
+            &crate::provider::obs_for_llm_request(&options.obs_session, &self.base_url),
         );
         if let Some(t) = &trace {
             t.capture_request_input(&body.to_string());

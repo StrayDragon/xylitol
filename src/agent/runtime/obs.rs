@@ -696,16 +696,19 @@ mod tests {
         let _sess = ObsSessionScope::enter(ObsSessionContext {
             session_id: Some("process-wrong".into()),
             session_name: None,
+            ..Default::default()
         });
         let collect = SpanCollectScope::enter();
 
         let a = ObsSessionContext {
             session_id: Some("bookmark-a".into()),
             session_name: None,
+            ..Default::default()
         };
         let b = ObsSessionContext {
             session_id: Some("bookmark-b".into()),
             session_name: None,
+            ..Default::default()
         };
         {
             let ta = AgentTurnSpan::start_with_session(None, None, &a).expect("turn a");
@@ -747,12 +750,14 @@ mod tests {
         let _sess = ObsSessionScope::enter(ObsSessionContext {
             session_id: Some("bookmark-b".into()),
             session_name: None,
+            ..Default::default()
         });
         let collect = SpanCollectScope::enter();
 
         let b = ObsSessionContext {
             session_id: Some("bookmark-b".into()),
             session_name: None,
+            ..Default::default()
         };
         {
             let turn = AgentTurnSpan::start_with_session(Some("hi"), None, &b).expect("turn");
@@ -792,5 +797,39 @@ mod tests {
                 "{name} must keep the run snapshot after a slot stomp"
             );
         }
+    }
+
+    #[test]
+    fn turn_root_writes_xylitol_session_id_and_fork_edge_not_gateway_placeholder() {
+        let _g = ObsGateScope::enter(ObsGateState::active_none_io());
+        let collect = SpanCollectScope::enter();
+        let snap = xylitol_ai_bridge::ObsSessionContext {
+            session_id: Some("child".into()),
+            parent_session_id: Some("parent".into()),
+            fork_at_entry_id: Some("u6".into()),
+            llm_gateway_session_id: None,
+            ..Default::default()
+        };
+        {
+            let turn = AgentTurnSpan::start_with_session(None, None, &snap).expect("turn");
+            turn.finish(TurnEndReason::Ok);
+        }
+        fastrace::flush();
+        let turn = collect
+            .records()
+            .into_iter()
+            .find(|s| s.name == "agent.turn")
+            .expect("turn");
+        let prop = |k: &str| {
+            turn.properties
+                .iter()
+                .find(|(kk, _)| kk.as_ref() == k)
+                .map(|(_, v)| v.as_ref())
+        };
+        assert_eq!(prop("langfuse.session.id"), Some("child"));
+        assert_eq!(prop("xylitol.session.id"), Some("child"));
+        assert_eq!(prop("xylitol.session.parent_session_id"), Some("parent"));
+        assert_eq!(prop("xylitol.session.fork_at_entry_id"), Some("u6"));
+        assert!(prop("xylitol.session.llm_gateway_session_id").is_none());
     }
 }

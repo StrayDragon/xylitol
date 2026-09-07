@@ -187,6 +187,7 @@ impl SessionManager {
             }
         });
         self.create(child_id, parent_cwd, Some(parent_id)).await?;
+        self.stamp_header_fork_at_entry_id(child_id, at_entry_id);
 
         let has_assistant = child_body.iter().any(is_assistant_message);
 

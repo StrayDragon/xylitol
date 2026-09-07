@@ -851,9 +851,18 @@ fn run_react_loop(cfg: ReActConfig) -> impl Stream<Item = XyEvent> + Send {
             let mm = crate::utils::lock_mutex(&model_manager);
             mm.current_model().map(|m| m.api.clone())
         };
+        let (parent_session_id, fork_at_entry_id) = store
+            .load_entries(&session_id)
+            .await
+            .ok()
+            .map(|entries| crate::protocol::session::session_fork_edge(&entries))
+            .unwrap_or((None, None));
         let obs_session = xylitol_ai_bridge::ObsSessionContext {
             session_id: Some(session_id.clone()),
             session_name: xylitol_ai_bridge::provider::obs_session_context().session_name,
+            parent_session_id,
+            fork_at_entry_id,
+            llm_gateway_session_id: None,
         };
         let agent_turn_span = super::obs::AgentTurnSpan::start_with_session(
             Some(user_preview.as_str()),

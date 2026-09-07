@@ -23,6 +23,7 @@ fn openai_config(api_key: String, base_url: Option<String>) -> OpenAIConfig {
 pub struct OpenAiClientFactory {
     config: OpenAIConfig,
     http: HooksHttpService,
+    api_base: String,
 }
 
 impl OpenAiClientFactory {
@@ -31,10 +32,19 @@ impl OpenAiClientFactory {
         base_url: Option<String>,
         hooks: Option<Arc<dyn HttpHooks>>,
     ) -> Self {
+        let api_base = base_url
+            .clone()
+            .unwrap_or_else(|| "https://api.openai.com/v1".into());
         Self {
             config: openai_config(api_key, base_url),
             http: HooksHttpService::new(hooks),
+            api_base,
         }
+    }
+
+    /// Request base used for gateway attribution / obs facts.
+    pub fn api_base(&self) -> &str {
+        &self.api_base
     }
 
     /// Per-call wrapping: bind this generate's obs snapshot onto hooks.

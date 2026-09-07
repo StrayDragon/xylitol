@@ -51,7 +51,24 @@ impl AgentCapabilities {
         xylitol_ai_bridge::ObsSessionContext {
             session_id: self.session_id.clone(),
             session_name: xylitol_ai_bridge::provider::obs_session_context().session_name,
+            ..Default::default()
         }
+    }
+
+    /// Snapshot plus header tree edge (facts from disk). Idle callers may skip this.
+    pub(crate) async fn obs_session_snapshot_from_store(
+        &self,
+    ) -> xylitol_ai_bridge::ObsSessionContext {
+        let mut ctx = self.obs_session_snapshot();
+        let Some(sid) = ctx.session_id.clone() else {
+            return ctx;
+        };
+        if let Ok(entries) = self.store.load_entries(&sid).await {
+            let (parent, cut) = crate::protocol::session::session_fork_edge(&entries);
+            ctx.parent_session_id = parent;
+            ctx.fork_at_entry_id = cut;
+        }
+        ctx
     }
 
     /// Get the active session ID.

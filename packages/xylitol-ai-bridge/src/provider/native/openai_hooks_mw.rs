@@ -148,6 +148,7 @@ mod tests {
         let _g = ObsSessionScope::enter(ObsSessionContext {
             session_id: Some("process-wrong".into()),
             session_name: None,
+            ..Default::default()
         });
         set_obs_session("hijacked", None);
         let mut request = reqwest::Request::new(
@@ -159,6 +160,7 @@ mod tests {
         let snap = ObsSessionContext {
             session_id: Some("bookmark-a".into()),
             session_name: None,
+            ..Default::default()
         };
         apply_hooks_to_request(&None, &mut request, Some(&snap))
             .await

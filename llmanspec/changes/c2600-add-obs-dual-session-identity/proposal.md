@@ -33,7 +33,7 @@ fork             新建一个 session，把父 session 里到某条 entry 为止
 - LLM 无状态：B 的下一轮请求带的是与 A 共享的那段 entry 前缀。c2620 可能让「发给网关的会话身份」继续跟这段前缀走，而不是跟新 session id 走。那是**另一条轴**，不能占用 `langfuse.session.id`。
 - 树边：B 来自 session A、切在 entry `u6`。没有这两项，Langfuse 里 B 是孤岛。`ForkPosition::Before` 时 `u6` 根本不拷进 B，所以切点必须写在 B 的 header 上。
 
-本刀只**钉字段**。`xylitol.session.llm_gateway_session_id` 未落地策略前 MAY 暂等于 `xylitol.session.id`，但键必须写出，否则 c2620 当天分析查询会断档。
+本刀只**钉字段**，且观测键的值 MUST 是事实：没向 LLM 通道呈报会话身份时，**不写** `llm_gateway_session_id`（禁止用 `xylitol.session.id` 占位）。今日 OpenCode 请求会带 `x-opencode-session`，该键才等于呈报值。c2620 只改呈报策略，不改「没呈报就不写键」。
 
 本刀之后，B 上一次 generate：
 
@@ -41,7 +41,7 @@ fork             新建一个 session，把父 session 里到某条 entry 为止
 |---|---|---|
 | `langfuse.session.id` | B | 产品 Session = 这本 xylitol session |
 | `xylitol.session.id` | B | 同上，显式 xylitol 键，不靠 Langfuse 厂商键兼差 |
-| `xylitol.session.llm_gateway_session_id` | 暂 = B | 发给 LLM/网关的会话身份（c2620 再填） |
+| `xylitol.session.llm_gateway_session_id` | 实际呈报值 | 发给 LLM 通道的会话身份（c2620 再填策略；未呈报则省略键） |
 | `xylitol.session.parent_session_id` | A | 父 **session**（禁止叫 `parent_id`，那是 entry 链） |
 | `xylitol.session.fork_at_entry_id` | u6 | 父 session 里作为切点的那条 **entry** |
 
@@ -51,7 +51,7 @@ fork             新建一个 session，把父 session 里到某条 entry 为止
 
 - 观测键（session / entry 词，不用 bookmark / worldline）：
   - `xylitol.session.id`：当前 xylitol session
-  - `xylitol.session.llm_gateway_session_id`：发给 LLM 通道的会话身份（网关 header 等；c2620 按策略填，不限于某一网关）
+  - `xylitol.session.llm_gateway_session_id`：仅当本次 LLM 请求实际向通道呈报了会话身份时写出（值 = 呈报值；今日 OpenCode 为 `x-opencode-session`）
   - `xylitol.session.parent_session_id`：父 session
   - `xylitol.session.fork_at_entry_id`：切点 entry
 - `langfuse.session.id` **永远等于** `xylitol.session.id`，禁止改成 `llm_gateway_session_id`

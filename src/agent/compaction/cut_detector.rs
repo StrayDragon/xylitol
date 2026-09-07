@@ -477,6 +477,7 @@ mod tests {
             timestamp: 0,
             cwd: String::new(),
             parent_session: None,
+            fork_at_entry_id: None,
         })
     }
     fn custom_entry_of(custom_type: &str) -> SessionEntry {
@@ -671,6 +672,7 @@ mod tests {
             timestamp: 0,
             cwd: String::new(),
             parent_session: None,
+            fork_at_entry_id: None,
         });
         assert_eq!(estimate_tokens_entry(&header), 0);
         let compaction = SessionEntry::Compaction(CompactionEntry {

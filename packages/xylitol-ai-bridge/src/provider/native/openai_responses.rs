@@ -235,7 +235,7 @@ impl AiBridgeLlmAdapter for OpenAiResponsesAdapter {
             "openai-responses",
             &self.model,
             options.obs_parent,
-            &options.obs_session,
+            &crate::provider::obs_for_llm_request(&options.obs_session, self.client.api_base()),
         );
         let body = self.build_body(messages, tools, true, &options);
         if let Some(t) = &trace {
@@ -267,7 +267,7 @@ impl AiBridgeLlmAdapter for OpenAiResponsesAdapter {
             "openai-responses",
             &self.model,
             options.obs_parent,
-            &options.obs_session,
+            &crate::provider::obs_for_llm_request(&options.obs_session, self.client.api_base()),
         );
         let body = self.build_body(messages, tools, false, &options);
         if let Some(t) = &trace {

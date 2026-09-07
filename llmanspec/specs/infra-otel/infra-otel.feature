@@ -107,7 +107,7 @@
 
   @req:otel26 @human
   场景: otel-session-dual-identity-and-fork-edge
-    - 当低频观测 span 激活且当前 xylitol session UUID 已知时，一次处理导出的低频观测 span（覆盖范围与 otel24 相同）MUST 同时携带 xylitol.session.id（值等于该 session UUID）与 xylitol.session.llm_gateway_session_id（发给 LLM 通道的会话身份；策略未落地时 MAY 等于 xylitol.session.id，但键 MUST 写出）；langfuse.session.id MUST 等于 xylitol.session.id，MUST NOT 改成 llm_gateway_session_id。当该 session 由 fork 产生且切点条目已知时 MUST 另写 xylitol.session.parent_session_id 与 xylitol.session.fork_at_entry_id（切点为 fork 时所选条目 id，含 Before 切位时未拷入子会话的那条）；无父则 MUST NOT 写这两键。无处理快照的闲置路径 MAY 省略树边两键。由单测覆盖，MUST NOT 单独扩 BDD step。
+    - 当低频观测 span 激活且当前 xylitol session UUID 已知时，一次处理导出的低频观测 span（覆盖范围与 otel24 相同）MUST 携带 xylitol.session.id，其值 MUST 等于该 session UUID；langfuse.session.id MUST 等于 xylitol.session.id，MUST NOT 改成发给 LLM 通道的会话身份。xylitol.session.llm_gateway_session_id MUST 仅在该 span 所对应的 LLM 请求实际向通道呈报了会话身份时写出，且值 MUST 等于该次呈报值；未呈报 MUST NOT 写该键；MUST NOT 用 xylitol.session.id 占位。当该 session 由 fork 产生且会话头记录了父 session 与切点条目时 MUST 写出 xylitol.session.parent_session_id 与 xylitol.session.fork_at_entry_id（切点为 fork 时所选条目 id，含 Before 切位时未拷入子会话的那条）；无父或切点未知则 MUST NOT 写对应键。无处理快照的闲置路径 MAY 省略树边两键。由单测覆盖，MUST NOT 单独扩 BDD step。
 
   @req:otel6 @executable
   场景: otel-session-id-on-turn-root-headless

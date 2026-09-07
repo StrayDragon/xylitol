@@ -258,6 +258,7 @@ mod tests {
             timestamp: 1_781_827_200_000, // 2026-06-19T00:00:00Z (unix-ms)
             cwd: "/tmp".into(),
             parent_session: None,
+            fork_at_entry_id: None,
         })
     }
 

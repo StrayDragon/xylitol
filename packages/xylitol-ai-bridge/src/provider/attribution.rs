@@ -64,6 +64,30 @@ pub fn merge_opencode_attribution_from(
     }
 }
 
+/// Session identity this request will present on the LLM channel, if any.
+///
+/// Today: OpenCode `x-opencode-session` = xylitol session id. Other hosts: none.
+/// Must not invent a value when nothing is sent.
+pub fn presented_llm_gateway_session_id(
+    request_or_base_url: &str,
+    ctx: &ObsSessionContext,
+) -> Option<String> {
+    if !is_opencode_host(request_or_base_url) {
+        return None;
+    }
+    ctx.session_id.clone().filter(|s| !s.is_empty())
+}
+
+/// Copy of `ctx` with [`ObsSessionContext::llm_gateway_session_id`] set from the wire fact.
+pub fn obs_for_llm_request(
+    ctx: &ObsSessionContext,
+    request_or_base_url: &str,
+) -> ObsSessionContext {
+    let mut out = ctx.clone();
+    out.llm_gateway_session_id = presented_llm_gateway_session_id(request_or_base_url, ctx);
+    out
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -111,11 +135,13 @@ mod tests {
         let _g = ObsSessionScope::enter(ObsSessionContext {
             session_id: Some("process-wrong".into()),
             session_name: None,
+            ..Default::default()
         });
         let mut headers = HeaderBag::new();
         let snap = ObsSessionContext {
             session_id: Some("bookmark-a".into()),
             session_name: None,
+            ..Default::default()
         };
         merge_opencode_attribution_from(&mut headers, "https://opencode.ai/zen/v1", &snap);
         assert_eq!(
@@ -138,5 +164,34 @@ mod tests {
         let mut headers = HeaderBag::new();
         merge_opencode_attribution(&mut headers, "https://api.deepseek.com/v1");
         assert!(headers.is_empty());
+    }
+
+    #[test]
+    fn presented_gateway_id_is_wire_fact_not_placeholder() {
+        let ctx = ObsSessionContext {
+            session_id: Some("sid-1".into()),
+            ..Default::default()
+        };
+        assert_eq!(
+            presented_llm_gateway_session_id("https://opencode.ai/zen/v1", &ctx).as_deref(),
+            Some("sid-1")
+        );
+        assert_eq!(
+            presented_llm_gateway_session_id("https://api.deepseek.com/v1", &ctx),
+            None
+        );
+        let obs = obs_for_llm_request(&ctx, "https://api.openai.com/v1");
+        assert!(obs.llm_gateway_session_id.is_none());
+        let p = crate::provider::obs_session::langfuse_session_properties_from(&obs);
+        assert!(
+            !p.iter()
+                .any(|(k, _)| k == "xylitol.session.llm_gateway_session_id")
+        );
+        let presented = obs_for_llm_request(&ctx, "https://opencode.ai/zen/v1");
+        let p = crate::provider::obs_session::langfuse_session_properties_from(&presented);
+        assert!(p.contains(&(
+            "xylitol.session.llm_gateway_session_id".into(),
+            "sid-1".into()
+        )));
     }
 }

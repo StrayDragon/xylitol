@@ -58,6 +58,31 @@ impl SessionManager {
         write_result
     }
 
+    /// Record the fork cut on the child header created by [`Self::create`] (s23).
+    pub(super) fn stamp_header_fork_at_entry_id(&self, session_id: &str, at_entry_id: &str) {
+        let stamp = |entries: &mut Vec<SessionEntry>| {
+            if let Some(entry) = entries
+                .iter_mut()
+                .find(|e| matches!(e, SessionEntry::Header(_)))
+                && let SessionEntry::Header(h) = entry
+            {
+                h.fork_at_entry_id = Some(at_entry_id.to_string());
+            }
+        };
+        {
+            let mut pending = lock_rwlock_write(&self.pending_store);
+            if let Some(entries) = pending.get_mut(session_id) {
+                stamp(entries);
+            }
+        }
+        {
+            let mut mem = lock_rwlock_write(&self.in_memory_store);
+            if let Some(entries) = mem.get_mut(session_id) {
+                stamp(entries);
+            }
+        }
+    }
+
     pub(super) async fn flush_pending_to_disk(
         &self,
         session_id: &str,
@@ -150,6 +175,7 @@ impl SessionManager {
             timestamp: now_ms(),
             cwd: cwd.unwrap_or(".").to_string(),
             parent_session: parent_session.map(String::from),
+            fork_at_entry_id: None,
         });
 
         match &self.backend {
@@ -260,6 +286,7 @@ impl SessionManager {
                                     timestamp: now_ms(),
                                     cwd: ".".into(),
                                     parent_session: None,
+                                    fork_at_entry_id: None,
                                 }),
                             );
                         }
@@ -307,13 +334,14 @@ impl SessionManager {
         };
 
         match entry {
-            SessionEntry::Header(_) => SessionEntry::Header(SessionHeader {
+            SessionEntry::Header(h) => SessionEntry::Header(SessionHeader {
                 entry_type: "session".into(),
                 version: SESSION_VERSION,
                 id: id.to_string(),
                 timestamp,
                 cwd: String::new(),
                 parent_session: parent_id.map(String::from),
+                fork_at_entry_id: h.fork_at_entry_id.clone(),
             }),
             SessionEntry::Message(m) => SessionEntry::Message(MessageEntry {
                 base,

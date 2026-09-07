@@ -804,6 +804,7 @@ mod tests {
             timestamp: 1785974400000,
             cwd: "/tmp/lab".into(),
             parent_session: None,
+            fork_at_entry_id: None,
         })];
         for (i, msg) in memory.iter().enumerate() {
             let base = EntryBase {
