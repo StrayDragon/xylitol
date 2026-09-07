@@ -266,19 +266,32 @@ impl ProviderRequestTrace {
     }
 
     pub fn start_with_parent(api: &str, model: &str, parent: Option<SpanContext>) -> Option<Self> {
+        Self::start_with_parent_obs(api, model, parent, &super::obs_session_context())
+    }
+
+    /// Start `llm.request` using a generate-scoped session snapshot (c2590).
+    pub fn start_with_parent_obs(
+        api: &str,
+        model: &str,
+        parent: Option<SpanContext>,
+        obs: &super::ObsSessionContext,
+    ) -> Option<Self> {
         if !provider_trace_active() {
             return None;
         }
         let request_id = uuid::Uuid::new_v4().to_string();
         let parent_ctx = parent.unwrap_or_else(SpanContext::random);
-        let root = Span::root("llm.request", parent_ctx).with_properties(|| {
+        let obs = obs.clone();
+        let model = model.to_string();
+        let api = api.to_string();
+        let root = Span::root("llm.request", parent_ctx).with_properties(move || {
             // `api` / `request_id` are xylitol-local; model goes only via
             // `langfuse.observation.model.name` (see langfuse_generation_properties).
             let mut props = vec![
                 ("request_id".to_string(), request_id.clone()),
-                ("api".to_string(), api.to_string()),
+                ("api".to_string(), api.clone()),
             ];
-            props.extend(super::langfuse_generation_properties(model));
+            props.extend(super::langfuse_generation_properties_from(&model, &obs));
             props
         });
         Some(Self {

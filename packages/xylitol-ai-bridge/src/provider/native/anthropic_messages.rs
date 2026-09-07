@@ -76,7 +76,7 @@ impl AnthropicMessagesAdapter {
         }
     }
 
-    fn headers_bag(&self) -> HeaderBag {
+    fn headers_bag(&self, obs: &crate::provider::obs_session::ObsSessionContext) -> HeaderBag {
         let mut headers = HeaderBag::new();
         headers.insert(
             "content-type".into(),
@@ -87,7 +87,11 @@ impl AnthropicMessagesAdapter {
             "anthropic-version".into(),
             Value::String(ANTHROPIC_VERSION.into()),
         );
-        crate::provider::attribution::merge_opencode_attribution(&mut headers, &self.base_url);
+        crate::provider::attribution::merge_opencode_attribution_from(
+            &mut headers,
+            &self.base_url,
+            obs,
+        );
         headers
     }
 }
@@ -168,7 +172,7 @@ impl AnthropicMessagesAdapter {
 
         let url = format!("{}/v1/messages", self.base_url);
 
-        let mut headers = self.headers_bag();
+        let mut headers = self.headers_bag(&options.obs_session);
         run_before_headers(&self.hooks, &mut headers).await?;
         run_before_request(&self.hooks, &self.model, &mut body).await?;
 
@@ -201,10 +205,11 @@ impl AnthropicMessagesAdapter {
             return Err(AiBridgeError::Provider(anyhow::anyhow!(msg)));
         }
 
-        let trace = crate::provider::trace::ProviderRequestTrace::start_with_parent(
+        let trace = crate::provider::trace::ProviderRequestTrace::start_with_parent_obs(
             "anthropic-messages",
             &self.model,
             options.obs_parent,
+            &options.obs_session,
         );
         if let Some(t) = &trace {
             t.capture_request_input(&body.to_string());

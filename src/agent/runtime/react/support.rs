@@ -34,6 +34,7 @@ pub(crate) fn prepare_turn_binding(
         thinking_budgets: mm.thinking_budgets().cloned(),
         system_prompt: system_prompt.clone(),
         obs_parent: None,
+        obs_session: xylitol_ai_bridge::ObsSessionContext::default(),
     };
     let model = match run_model.as_ref() {
         Some((id, model)) if id == &model_id => Arc::clone(model),

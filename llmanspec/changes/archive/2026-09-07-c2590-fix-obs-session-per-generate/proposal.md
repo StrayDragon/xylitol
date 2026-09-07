@@ -2,7 +2,8 @@
 depends_on: []
 branch: sdd/c2590-fix-obs-session-per-generate
 base_sha: 5c10e3b0c2afd38c6dfbffb92b56ee142f5fb080
-checkpointed: false
+checkpointed: true
+checkpoint_sha: 5c10e3b0c2afd38c6dfbffb92b56ee142f5fb080
 ---
 
 # 观测会话上下文跟本次 generate，禁止进程槽竞态
