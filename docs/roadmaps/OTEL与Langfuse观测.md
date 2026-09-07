@@ -7,12 +7,13 @@
 
 | 阶段 | 用户可感知结果 | 备注 |
 |---|---|---|
+| **M-tree** | 分叉在 Langfuse 上能看出从哪本书签、哪个切点长出；cache 读数能对照是否砍了树干。两本会话同时跑时 id 不错位 | 书签 ≠ 树干 ≠ 供应商键；先修观测槽再加树属性。认领见探索壳 `c2580-add-session-identity-split` |
 | **M-lane** | Langfuse 不再被「门闸失败 / 纯 infra」噪声淹没；可选 Tempo 看失败体验 | `xylitol.obs.lane`；otel19「实际执行」= 过 prepare；直连时应用侧降噪 |
 | **M-collector** | 需要 infra 时 endpoint 指 Collector，按 lane 分到 Langfuse / Tempo | 文档 + 示例配置；应用仍单一 OTLP；**不做**应用内双 exporter |
 | **M-sample** | 高流量时可尾采样 / 限流而不改业务埋点 | 预留配置意向；默认仍全量（ForceSampled 现状） |
 | **M5 子进程出站** | 托管 bash/MCP 对外请求策略透明 | 后置；挂 turn 树或独立 infra lane |
 
-认领时通常一次只提案 **一个** Mn（建议先 M-lane）。
+认领时通常一次只提案 **一个** Mn（建议观测身份先 M-tree 的「观测槽」切片，再 M-lane）。
 
 ## BDD 意图示例（候选）
 
@@ -31,10 +32,15 @@ Given endpoint 指向 Collector 且示例过滤生效
 When 同时存在 llm 与 infra span
 Then Langfuse 仅见 llm lane；Tempo（或等价）可见 infra
 
-**场景：子进程出站透明（M5）**
-Given 操作通过托管 bash 或 MCP 发出外部请求
-When 观测开启且配置了 OTLP 出口
-Then 该子请求活动与耗时可在过程树或 infra 车道中对照
+**场景：分叉边可见（M-tree）**
+Given 从父会话某条目 fork 出子会话并再问一轮
+When 查看 Langfuse 上该轮 generation
+Then 能识别子书签、父书签与切点；MUST NOT 只能看到一个孤立 session id
+
+**场景：并发两本会话观测不错位（M-tree 槽）**
+Given Host 上两本会话同时在跑模型
+When 两边都产生 `llm.request`
+Then 各自的会话 id 与书签一致；MUST NOT 后 bind 的会话盖住先完成的那次请求
 
 ## 支线与方向
 
