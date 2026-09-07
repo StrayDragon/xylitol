@@ -1,9 +1,9 @@
 //! Agent hooks — extension points for customizing the ReAct loop.
 //!
-//! [`AgentHooks`] carries callback chains injected at tool-call boundaries and
-//! context transforms, plus an optional pi-aligned [`ShouldStopAfterTurnHook`]
-//! slot. The loop consults them when non-empty; empty chains are a cheap
-//! `is_empty()` check. This is the "open for extension" seam of the runtime.
+//! [`AgentHooks`] carries callback chains injected at tool-call boundaries,
+//! plus an optional pi-aligned [`ShouldStopAfterTurnHook`] slot. The loop
+//! consults them when non-empty; empty chains are a cheap `is_empty()` check.
+//! This is the "open for extension" seam of the runtime.
 //!
 //! Steering / follow-up injection is owned by [`crate::agent::capabilities::PendingMessageQueue`]
 //! on [`crate::agent::capabilities::AgentCapabilities`] (c461). Product paths use
@@ -26,10 +26,6 @@ pub type BeforeToolHook = Arc<dyn Fn(&str, &str, &Value) -> Option<String> + Sen
 /// the loop and recorded in history.
 pub type AfterToolHook =
     Arc<dyn Fn(&str, &str, Value, bool) -> Option<(Value, bool)> + Send + Sync>;
-
-/// Context-transform callback. Receives the message history before the model
-/// call and returns the transformed history.
-pub type TransformCtxHook = Arc<dyn Fn(Vec<AgentMessage>) -> Vec<AgentMessage> + Send + Sync>;
 
 /// Context passed to [`ShouldStopAfterTurnHook`] after each `TurnEnd` (pi-aligned).
 #[derive(Debug, Clone)]
@@ -94,7 +90,6 @@ mod max_turns_hook_tests {
 pub struct AgentHooks {
     pub before_tool_call: Vec<BeforeToolHook>,
     pub after_tool_call: Vec<AfterToolHook>,
-    pub transform_context: Vec<TransformCtxHook>,
     /// Optional single-slot stop gate (pi: one callback, not a chain).
     pub should_stop_after_turn: Option<ShouldStopAfterTurnHook>,
 }
@@ -113,11 +108,6 @@ impl AgentHooks {
     /// Add an after-tool hook. Hooks run in registration order.
     pub fn add_after(&mut self, hook: AfterToolHook) {
         self.after_tool_call.push(hook);
-    }
-
-    /// Add a context-transform hook.
-    pub fn add_transform_context(&mut self, hook: TransformCtxHook) {
-        self.transform_context.push(hook);
     }
 
     /// Set or clear the pi-aligned after-turn stop callback (single slot).

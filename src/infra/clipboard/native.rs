@@ -433,11 +433,4 @@ mod tests {
             "async plan must not hang past pipe timeout"
         );
     }
-
-    #[test]
-    #[ignore = "touches the real system clipboard (spawns wl-copy/xclip/pbcopy); \
-        run explicitly with --ignored"]
-    fn test_copy_to_clipboard_no_panic() {
-        let _ = copy_to_clipboard("xylitol test");
-    }
 }

@@ -40,6 +40,12 @@ fn fd_path() -> Option<&'static str> {
     }
 }
 
+/// Hard-fail instead of silently skipping: a missing fd is an environment gap,
+/// and a silent skip would leave these paths permanently unexercised under qa.
+fn require_fd() -> &'static str {
+    fd_path().expect("fd (sharkdp/fd) must be installed for the fd autocomplete tests")
+}
+
 fn provider(base: PathBuf) -> CombinedAutocompleteProvider {
     CombinedAutocompleteProvider::new(vec![], base)
 }
@@ -79,11 +85,7 @@ fn build_fd_path_query_escapes_special_chars() {
 
 #[test]
 fn fd_recursive_search_finds_nested_files() {
-    let _fd = fd_path();
-    if fd_path().is_none() {
-        eprintln!("skipping: fd not installed");
-        return;
-    }
+    let _fd = require_fd();
     let dir = make_temp_dir_with_files();
     let base = dir.path().to_string_lossy().to_string();
     let ct = CancellationToken::new();
@@ -96,10 +98,7 @@ fn fd_recursive_search_finds_nested_files() {
 
 #[test]
 fn fd_recursive_search_finds_directories() {
-    if fd_path().is_none() {
-        eprintln!("skipping: fd not installed");
-        return;
-    }
+    let _fd = require_fd();
     let dir = make_temp_dir_with_files();
     let base = dir.path().to_string_lossy().to_string();
     let ct = CancellationToken::new();
@@ -111,10 +110,7 @@ fn fd_recursive_search_finds_directories() {
 
 #[test]
 fn fd_cancellation_kills_subprocess() {
-    if fd_path().is_none() {
-        eprintln!("skipping: fd not installed");
-        return;
-    }
+    let _fd = require_fd();
     let dir = make_temp_dir_with_files();
     let base = dir.path().to_string_lossy().to_string();
     // Cancel before spawn
@@ -128,20 +124,22 @@ fn fd_cancellation_kills_subprocess() {
 fn fd_path_none_fallback() {
     let dir = make_temp_dir_with_files();
     let p = CombinedAutocompleteProvider::new(vec![], dir.path().to_path_buf());
-    let lines = vec!["@mod".to_string()];
-    let res = p.get_suggestions(&lines, 0, 4, false);
-    // Without fd_path, should use non-recursive read_dir (no fd subprocess)
-    // Just verify it doesn't panic
-    assert!(res.is_some() || res.is_none());
+    // Without fd_path, plain path prefixes still complete via non-recursive
+    // read_dir ("src/m" → filter src/ entries by prefix "m").
+    let lines = vec!["src/m".to_string()];
+    let res = p.get_suggestions(&lines, 0, 5, false);
+    let res = res.expect("without fd_path, read_dir fallback must complete path prefixes");
+    let names: Vec<String> = res.items.iter().map(|i| i.value.clone()).collect();
+    assert!(
+        names.iter().any(|v| v.contains("main.rs")),
+        "fallback should surface src/main.rs, got {names:?}"
+    );
 }
 
 #[test]
 fn async_get_suggestions_with_fd() {
     let rt = tokio::runtime::Runtime::new().unwrap();
-    if fd_path().is_none() {
-        eprintln!("skipping: fd not installed");
-        return;
-    }
+    let _fd = require_fd();
     let dir = make_temp_dir_with_files();
     let p = provider_with_fd(dir.path().to_path_buf());
     let lines = vec!["@Car".to_string()];
@@ -158,10 +156,7 @@ fn async_get_suggestions_with_fd() {
 #[test]
 fn async_get_suggestions_respects_cancellation() {
     let rt = tokio::runtime::Runtime::new().unwrap();
-    if fd_path().is_none() {
-        eprintln!("skipping: fd not installed");
-        return;
-    }
+    let _fd = require_fd();
     let dir = make_temp_dir_with_files();
     let p = provider_with_fd(dir.path().to_path_buf());
     let lines = vec!["@Car".to_string()];
@@ -182,7 +177,7 @@ async fn debounce_drops_intermediate_calls() {
     let dir = make_temp_dir_with_files();
     let p = provider(dir.path().to_path_buf());
     let mut debounced = DebouncedAutocomplete::new(p, Duration::from_millis(250));
-    let lines = vec!["test".to_string()];
+    let lines = vec!["src/".to_string()];
 
     // First call at t=0
     let ct1 = CancellationToken::new();
@@ -196,8 +191,8 @@ async fn debounce_drops_intermediate_calls() {
 
     let ct2 = CancellationToken::new();
     let res = debounced.get_suggestions(&lines, 0, 4, false, ct2).await;
-    // Should complete (doesn't panic/crash on cancelled previous)
-    assert!(res.is_some() || res.is_none());
+    let res = res.expect("debounced call must complete with suggestions");
+    assert!(!res.items.is_empty(), "expected at least one suggestion");
 }
 
 #[tokio::test(start_paused = true)]
@@ -205,14 +200,15 @@ async fn debounce_single_call_fires_after_delay() {
     let dir = make_temp_dir_with_files();
     let p = provider(dir.path().to_path_buf());
     let mut debounced = DebouncedAutocomplete::new(p, Duration::from_millis(250));
-    let lines = vec!["test".to_string()];
+    let lines = vec!["src/".to_string()];
     let ct = CancellationToken::new();
 
     // We can't easily poll for completion on a single-threaded runtime
     // without spawning, but we can advance time and await.
     tokio::time::advance(Duration::from_millis(250)).await;
     let res = debounced.get_suggestions(&lines, 0, 4, false, ct).await;
-    assert!(res.is_some() || res.is_none());
+    let res = res.expect("single debounced call must fire after the delay");
+    assert!(!res.items.is_empty(), "expected at least one suggestion");
 }
 
 #[tokio::test(start_paused = true)]
@@ -220,7 +216,7 @@ async fn debounce_successive_calls_do_not_panic() {
     let dir = make_temp_dir_with_files();
     let p = provider(dir.path().to_path_buf());
     let mut debounced = DebouncedAutocomplete::new(p, Duration::from_millis(250));
-    let lines = vec!["test".to_string()];
+    let lines = vec!["src/".to_string()];
 
     // Fire first query and let it complete
     let ct1 = CancellationToken::new();
@@ -231,7 +227,8 @@ async fn debounce_successive_calls_do_not_panic() {
     let ct2 = CancellationToken::new();
     tokio::time::advance(Duration::from_millis(250)).await;
     let res = debounced.get_suggestions(&lines, 0, 4, false, ct2).await;
-    assert!(res.is_some() || res.is_none());
+    let res = res.expect("successive debounced calls must still complete");
+    assert!(!res.items.is_empty(), "expected at least one suggestion");
 }
 
 #[tokio::test]
@@ -256,7 +253,8 @@ fn get_suggestions_sync_still_works() {
     let p = provider(dir.path().to_path_buf());
     let lines = vec!["mod".to_string()];
     let res = p.get_suggestions(&lines, 0, 3, false);
-    assert!(res.is_some() || res.is_none());
+    // Plain text has no @ / trigger, so no source fires — must be None, not a panic.
+    assert!(res.is_none(), "non-trigger text must not suggest");
 }
 
 #[test]

@@ -356,10 +356,11 @@ mod tests {
     // serial(env_global, obs_global): live smoke 真装 fastrace 全局 reporter（obs_global 必须
     // serial）+ 读 LANGFUSE_* env；#[ignore] 仅显式 live 时跑。消除路径：离线断言走
     // SpanCollectScope/ObsGateScope，live 保持 ignore + serial。
+    // 手动 lab：cargo test -p xylitol --lib lab_live_langfuse -- --ignored --nocapture
     #[test]
     #[ignore = "live Langfuse; needs LANGFUSE_* + network"]
     #[serial_test::serial(env_global, obs_global)]
-    fn live_langfuse_otlp_json_http1_smoke() {
+    fn lab_live_langfuse_otlp_json_http1_smoke() {
         let cfg = OtelConfig {
             exporter: OtelExporterKind::OtlpHttp,
             protocol: crate::infra::config::types::OtelHttpProtocol::HttpJson,

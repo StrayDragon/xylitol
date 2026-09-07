@@ -208,53 +208,39 @@ async fn model_change_entry_lands_before_following_message() {
 
 #[tokio::test]
 async fn test_agent_loop_emits_events() {
-    let mut reg = ModelRegistry::new();
-    reg.register(XyModelMeta {
-        id: "mock".into(),
-        config: crate::protocol::model::XyModelConfig {
-            kind: crate::protocol::model::XyModelKind::OpenAi,
-            api_key: "sk-test".into(),
-            model: "mock-model".into(),
-            base_url: None,
-            api: None,
-            compat: None,
+    use crate::protocol::lifecycle::XyEvent;
+    use crate::protocol::message::XyStopReason;
+    use futures::StreamExt;
+
+    let chunks = vec![
+        crate::protocol::model::XyChunk::TextDelta("hello from mock".into()),
+        crate::protocol::model::XyChunk::Done {
+            finish_reason: XyStopReason::Stop,
+            usage: None,
         },
-        display_name: "Mock".into(),
-        thinking: false,
-        context_window: 128000,
-        api: String::new(),
-        provider: String::new(),
-        cost_input: 0.0,
-        cost_output: 0.0,
-        cost_cache_read: 0.0,
-        cost_cache_write: 0.0,
-        max_tokens: 0,
-        thinking_levels: Vec::new(),
-        thinking_level_map: Default::default(),
-    });
+    ];
+    let (mut agent, _store) = make_agent_with_tools_and_store(chunks, ToolSet::from_iter([]));
+    let mut stream = run_agent_with_id(&mut agent, "hello", "test-session").await;
 
-    let session_mgr = SessionManager::new(tempfile::tempdir().unwrap().path().join("sessions"));
-    let store: Arc<dyn XySessionStore> = Arc::new(session_mgr.clone());
-    let sink: Arc<dyn XyEventSink> = Arc::new(crate::infra::event::EventBus::new());
-    let session = select_mock(AgentCapabilities::new(
-        reg,
-        ToolSet::from_iter(crate::infra::tools::default_tools()),
-        store,
-        sink,
-        Some("You are helpful.".into()),
-        Vec::new(),
-        Vec::new(),
-        ".".into(),
-        None,
-        fake_model_builder(),
-        crate::infra::permission::allow_all_permission(),
-        crate::agent::capabilities::QueueMode::default(),
-        crate::agent::capabilities::QueueMode::default(),
-        None,
-    ));
-
-    let mut loop_runner = AgentRuntime::new(session);
-    let _stream = run_agent_with_id(&mut loop_runner, "hello", "test-session").await;
+    let mut saw_text = false;
+    let mut turn_starts = 0usize;
+    let mut turn_ends = 0usize;
+    let mut ended = false;
+    while let Some(ev) = stream.next().await {
+        match ev {
+            XyEvent::TextDelta(_) => saw_text = true,
+            XyEvent::TurnStart { .. } => turn_starts += 1,
+            XyEvent::TurnEnd { .. } => turn_ends += 1,
+            XyEvent::AgentEnd { .. } => ended = true,
+            _ => {}
+        }
+    }
+    assert!(saw_text, "loop must emit TextDelta from the mock model");
+    assert!(
+        turn_starts >= 1 && turn_starts == turn_ends,
+        "turn lifecycle must pair up: starts={turn_starts} ends={turn_ends}"
+    );
+    assert!(ended, "loop must terminate with AgentEnd");
 }
 
 // ── Mock model / tool helpers for hook and snapshot tests ───────
