@@ -3,21 +3,20 @@
 //! Lives in ai-bridge so both `llm.request` and agent ReAct obs can read
 //! it without agent → infra edges. App driver updates on session switch/name.
 //!
-//! Resolution (Keybindings-style):
+//! Resolution (Keybindings-style) for **idle** paths (no generate options):
 //! 1. thread-local [`ObsSessionScope`] if entered (tests / sync inject)
 //! 2. else process `Mutex` slot (production — survives tokio worker hops)
 //!
-//! Production MUST keep writing the process slot (no prod TLS-only scope around
-//! HTTP middleware). Scope is for cargo-test isolation.
+//! Overlapping generate (c2590): the snapshot on
+//! [`crate::thinking::AiBridgeGenerateOptions::obs_session`] is the authority.
+//! HTTP hooks / `llm.request` MUST use that copy and MUST NOT re-read this slot
+//! mid-request. The process slot remains a fallback for paths that never received
+//! options (remote count, tests). Scope is for cargo-test isolation.
 
 use std::cell::RefCell;
 use std::sync::{Mutex, OnceLock};
 
-#[derive(Clone, Debug, Default, PartialEq, Eq)]
-pub struct ObsSessionContext {
-    pub session_id: Option<String>,
-    pub session_name: Option<String>,
-}
+pub use crate::thinking::ObsSessionContext;
 
 fn slot() -> &'static Mutex<ObsSessionContext> {
     static SLOT: OnceLock<Mutex<ObsSessionContext>> = OnceLock::new();
@@ -98,28 +97,41 @@ pub fn obs_session_context() -> ObsSessionContext {
     slot().lock().unwrap_or_else(|e| e.into_inner()).clone()
 }
 
-/// Fastrace property pairs for Langfuse session mapping.
-pub fn langfuse_session_properties() -> Vec<(String, String)> {
-    let ctx = obs_session_context();
+/// Fastrace property pairs for Langfuse session mapping from an explicit snapshot.
+pub fn langfuse_session_properties_from(ctx: &ObsSessionContext) -> Vec<(String, String)> {
     let mut out = Vec::with_capacity(2);
-    if let Some(id) = ctx.session_id.filter(|s| !s.is_empty()) {
+    if let Some(id) = ctx.session_id.clone().filter(|s| !s.is_empty()) {
         out.push(("langfuse.session.id".into(), id));
     }
-    if let Some(name) = ctx.session_name.filter(|s| !s.is_empty()) {
+    if let Some(name) = ctx.session_name.clone().filter(|s| !s.is_empty()) {
         out.push(("langfuse.trace.metadata.session_name".into(), name));
     }
     out
 }
 
-/// Append Langfuse observation type (+ session + llm obs lane) onto span property lists.
-pub fn langfuse_observation_properties(observation_type: &str) -> Vec<(String, String)> {
+/// Idle-path session properties (process slot / TLS). Generate MUST use
+/// [`langfuse_session_properties_from`] with the options snapshot instead.
+pub fn langfuse_session_properties() -> Vec<(String, String)> {
+    langfuse_session_properties_from(&obs_session_context())
+}
+
+/// Append Langfuse observation type (+ session + llm obs lane) from a snapshot.
+pub fn langfuse_observation_properties_from(
+    observation_type: &str,
+    ctx: &ObsSessionContext,
+) -> Vec<(String, String)> {
     let mut out = vec![(
         "langfuse.observation.type".into(),
         observation_type.to_string(),
     )];
-    out.extend(langfuse_session_properties());
+    out.extend(langfuse_session_properties_from(ctx));
     out.extend(xylitol_obs_lane_properties(XYLITOL_OBS_LANE_LLM));
     out
+}
+
+/// Idle-path observation properties (process slot / TLS).
+pub fn langfuse_observation_properties(observation_type: &str) -> Vec<(String, String)> {
+    langfuse_observation_properties_from(observation_type, &obs_session_context())
 }
 
 /// Fastrace attribute for Collector / consumer routing (`llm` | `infra`).
@@ -132,17 +144,25 @@ pub fn xylitol_obs_lane_properties(lane: &str) -> Vec<(String, String)> {
     vec![(XYLITOL_OBS_LANE_ATTR.into(), lane.to_string())]
 }
 
-/// Generation helpers: observation type + single model attribute.
+/// Generation helpers from an explicit session snapshot (overlapping generate).
 ///
 /// Prefer `langfuse.observation.model.name` only (Langfuse OTEL mapping; `langfuse.*`
 /// takes precedence). Do not also set bare `model` / `gen_ai.request.model` — same
 /// mapped field, and bare `model` can force generation typing on unrelated spans.
-pub fn langfuse_generation_properties(model: &str) -> Vec<(String, String)> {
-    let mut out = langfuse_observation_properties("generation");
+pub fn langfuse_generation_properties_from(
+    model: &str,
+    ctx: &ObsSessionContext,
+) -> Vec<(String, String)> {
+    let mut out = langfuse_observation_properties_from("generation", ctx);
     if !model.is_empty() {
         out.push(("langfuse.observation.model.name".into(), model.to_string()));
     }
     out
+}
+
+/// Idle-path generation helpers (process slot / TLS).
+pub fn langfuse_generation_properties(model: &str) -> Vec<(String, String)> {
+    langfuse_generation_properties_from(model, &obs_session_context())
 }
 
 #[cfg(test)]
@@ -204,5 +224,31 @@ mod tests {
             );
         }
         assert!(obs_session_context().session_id.is_none());
+    }
+
+    #[test]
+    fn properties_from_snapshot_ignore_process_slot() {
+        let _g = ObsSessionScope::enter(ObsSessionContext {
+            session_id: Some("process-wrong".into()),
+            session_name: Some("wrong-name".into()),
+        });
+        let snap = ObsSessionContext {
+            session_id: Some("bookmark-a".into()),
+            session_name: Some("alpha".into()),
+        };
+        let p = langfuse_session_properties_from(&snap);
+        assert_eq!(
+            p,
+            vec![
+                ("langfuse.session.id".into(), "bookmark-a".into()),
+                (
+                    "langfuse.trace.metadata.session_name".into(),
+                    "alpha".into()
+                ),
+            ]
+        );
+        let g = langfuse_generation_properties_from("gpt-test", &snap);
+        assert!(g.contains(&("langfuse.session.id".into(), "bookmark-a".into())));
+        assert!(!g.iter().any(|(_, v)| v == "process-wrong"));
     }
 }

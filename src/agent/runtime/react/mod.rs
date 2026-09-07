@@ -840,8 +840,15 @@ fn run_react_loop(cfg: ReActConfig) -> impl Stream<Item = XyEvent> + Send {
             let mm = crate::utils::lock_mutex(&model_manager);
             mm.current_model().map(|m| m.api.clone())
         };
-        let agent_turn_span =
-            super::obs::AgentTurnSpan::start(Some(user_preview.as_str()), model_api.as_deref());
+        let obs_session = xylitol_ai_bridge::ObsSessionContext {
+            session_id: Some(session_id.clone()),
+            session_name: xylitol_ai_bridge::provider::obs_session_context().session_name,
+        };
+        let agent_turn_span = super::obs::AgentTurnSpan::start_with_session(
+            Some(user_preview.as_str()),
+            model_api.as_deref(),
+            &obs_session,
+        );
         let turn_obs_parent = super::tool_exec::capture_iteration_parent(
             agent_turn_span.as_ref().map(|s| s.span()),
         );
@@ -937,6 +944,7 @@ fn run_react_loop(cfg: ReActConfig) -> impl Stream<Item = XyEvent> + Send {
                     }
                 };
                 generate_options.obs_parent = iteration_parent;
+                generate_options.obs_session = obs_session.clone();
 
                 // Race cancel against connect/retry so Esc aborts hung `send()`
                 // (reqwest drop-cancels the in-flight HTTP future).

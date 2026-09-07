@@ -112,6 +112,7 @@ pub(super) async fn generate_complete(
             false,
             crate::protocol::ports::XyGenerateOptions {
                 obs_parent,
+                obs_session: xylitol_ai_bridge::provider::obs_session_context(),
                 ..Default::default()
             },
         )

@@ -335,6 +335,7 @@ mod tests {
             thinking_budgets: None,
             system_prompt: None,
             obs_parent: None,
+            obs_session: Default::default(),
         };
         let _ = adapter
             .generate(vec![AiBridgeMessage::user("hi")], &[], opts)
@@ -528,6 +529,105 @@ mod tests {
         assert_eq!(
             arr[2].pointer("/function/name").and_then(|v| v.as_str()),
             Some("mcp__legacy__colon")
+        );
+    }
+
+    fn completions_ok_json() -> serde_json::Value {
+        serde_json::json!({
+            "id": "x",
+            "choices": [{
+                "index": 0,
+                "message": {"role": "assistant", "content": "ok"},
+                "finish_reason": "stop"
+            }],
+            "usage": {"prompt_tokens": 1, "completion_tokens": 1, "total_tokens": 2}
+        })
+    }
+
+    #[tokio::test]
+    async fn overlapping_generate_uses_options_snapshot_not_process_slot() {
+        use std::time::Duration;
+
+        use crate::provider::obs_session::{ObsSessionContext, ObsSessionScope, set_obs_session};
+        use crate::provider::trace::{ObsGateScope, ObsGateState, SpanCollectScope};
+
+        let server = MockServer::start().await;
+        Mock::given(method("POST"))
+            .and(path("/chat/completions"))
+            .respond_with(
+                ResponseTemplate::new(200)
+                    .set_delay(Duration::from_millis(200))
+                    .set_body_json(completions_ok_json()),
+            )
+            .expect(2)
+            .mount(&server)
+            .await;
+
+        let _g = ObsGateScope::enter(ObsGateState::active_none_io());
+        let _sess = ObsSessionScope::enter(ObsSessionContext {
+            session_id: Some("process-wrong".into()),
+            session_name: None,
+        });
+        let collect = SpanCollectScope::enter();
+        set_obs_session("process-wrong", None);
+
+        let adapter = OpenAiCompletionsAdapter::new(
+            "sk-test".into(),
+            "gpt-test".into(),
+            Some(server.uri()),
+            None,
+        );
+
+        let opts_a = crate::thinking::AiBridgeGenerateOptions {
+            obs_session: ObsSessionContext {
+                session_id: Some("bookmark-a".into()),
+                session_name: None,
+            },
+            ..Default::default()
+        };
+        let opts_b = crate::thinking::AiBridgeGenerateOptions {
+            obs_session: ObsSessionContext {
+                session_id: Some("bookmark-b".into()),
+                session_name: None,
+            },
+            ..Default::default()
+        };
+
+        let (ra, rb, _) = tokio::join!(
+            adapter.generate(vec![AiBridgeMessage::user("a")], &[], opts_a),
+            adapter.generate(vec![AiBridgeMessage::user("b")], &[], opts_b),
+            async {
+                tokio::time::sleep(Duration::from_millis(40)).await;
+                set_obs_session("hijacked", None);
+            }
+        );
+        drop(ra.expect("generate a"));
+        drop(rb.expect("generate b"));
+
+        fastrace::flush();
+        let spans = collect.records();
+        let ids: Vec<&str> = spans
+            .iter()
+            .filter(|s| s.name == "llm.request")
+            .filter_map(|s| {
+                s.properties
+                    .iter()
+                    .find(|(k, _)| k.as_ref() == "langfuse.session.id")
+                    .map(|(_, v)| v.as_ref())
+            })
+            .collect();
+        assert!(
+            ids.contains(&"bookmark-a"),
+            "missing bookmark-a on llm.request: {ids:?} spans={spans:?}"
+        );
+        assert!(
+            ids.contains(&"bookmark-b"),
+            "missing bookmark-b on llm.request: {ids:?}"
+        );
+        assert!(
+            !ids.iter()
+                .any(|id| *id == "process-wrong" || *id == "hijacked"),
+            "process slot leaked into llm.request: {ids:?}"
         );
     }
 }

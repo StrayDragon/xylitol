@@ -25,7 +25,9 @@ pub mod reqwest_bridge;
 pub mod tool_wire;
 pub mod trace;
 
-pub use attribution::{is_opencode_host, merge_opencode_attribution};
+pub use attribution::{
+    is_opencode_host, merge_opencode_attribution, merge_opencode_attribution_from,
+};
 pub use dialect::{apply_anthropic_thinking, apply_completions_thinking};
 pub use native::{
     AnthropicMessagesAdapter, OpenAiCompletionsAdapter, OpenAiResponsesAdapter, ResponsesAssembler,
@@ -35,9 +37,10 @@ pub use native::{
 };
 pub use obs_session::{
     ObsSessionContext, ObsSessionScope, XYLITOL_OBS_LANE_ATTR, XYLITOL_OBS_LANE_LLM,
-    clear_obs_session, langfuse_generation_properties, langfuse_observation_properties,
-    langfuse_session_properties, obs_session_context, set_obs_session, set_obs_session_name,
-    xylitol_obs_lane_properties,
+    clear_obs_session, langfuse_generation_properties, langfuse_generation_properties_from,
+    langfuse_observation_properties, langfuse_observation_properties_from,
+    langfuse_session_properties, langfuse_session_properties_from, obs_session_context,
+    set_obs_session, set_obs_session_name, xylitol_obs_lane_properties,
 };
 pub use remote_count::{
     AnthropicRemoteCounter, OpenAiResponsesRemoteCounter, RemoteCounter, StubRemoteCounter,

@@ -7,8 +7,6 @@ use std::collections::HashMap;
 use std::pin::Pin;
 use std::sync::Arc;
 
-use async_openai::Client;
-use async_openai::config::OpenAIConfig;
 use async_openai::types::chat::{
     ChatCompletionMessageToolCalls, ChatCompletionRequestAssistantMessage,
     ChatCompletionRequestAssistantMessageContent, ChatCompletionRequestMessage,
@@ -26,11 +24,11 @@ use crate::dto::{AiBridgeChunk, AiBridgeToolSchema};
 use crate::dto::{AiBridgeMessage, AiBridgePart, AiBridgeStopReason, collect_text_parts};
 use crate::error::AiBridgeError;
 use crate::hooks::HttpHooks;
-use crate::provider::native::openai_client::build_openai_client;
+use crate::provider::native::openai_client::OpenAiClientFactory;
 use crate::wire_policy::WirePolicy;
 
 pub struct OpenAIProvider {
-    client: Client<OpenAIConfig>,
+    client: OpenAiClientFactory,
     model: String,
     wire_policy: WirePolicy,
 }
@@ -53,7 +51,7 @@ impl OpenAIProvider {
         wire_policy: WirePolicy,
     ) -> Self {
         Self {
-            client: build_openai_client(api_key, base_url, hooks),
+            client: OpenAiClientFactory::new(api_key, base_url, hooks),
             model,
             wire_policy,
         }
@@ -71,10 +69,11 @@ impl OpenAIProvider {
         stream: bool,
         options: &crate::thinking::AiBridgeGenerateOptions,
     ) -> Result<AiBridgeStream, AiBridgeError> {
-        let trace = crate::provider::trace::ProviderRequestTrace::start_with_parent(
+        let trace = crate::provider::trace::ProviderRequestTrace::start_with_parent_obs(
             "openai-completions",
             &self.model,
             options.obs_parent,
+            &options.obs_session,
         );
         let msgs = convert_agent_messages(&messages, options.system_prompt.as_deref());
         let tool_defs = convert_tools(tools);
@@ -111,6 +110,7 @@ impl OpenAIProvider {
 
             let sdk_stream = self
                 .client
+                .bind(&options.obs_session)
                 .chat()
                 .create_stream_byot::<_, CreateChatCompletionStreamResponse>(body)
                 .await
@@ -140,6 +140,7 @@ impl OpenAIProvider {
 
             let json: Value = self
                 .client
+                .bind(&options.obs_session)
                 .chat()
                 .create_byot(body)
                 .await

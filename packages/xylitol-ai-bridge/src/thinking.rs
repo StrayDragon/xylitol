@@ -5,6 +5,17 @@ use std::collections::HashMap;
 use fastrace::prelude::SpanContext;
 use serde_json::{Value, json};
 
+/// Snapshot of xylitol bookmark identity for one generate / turn (c2590).
+///
+/// Lives next to [`AiBridgeGenerateOptions`] so generate can carry the snapshot
+/// without a thinking ↔ provider module cycle. Slot / TLS live in
+/// [`crate::provider::obs_session`].
+#[derive(Debug, Clone, Default, PartialEq, Eq)]
+pub struct ObsSessionContext {
+    pub session_id: Option<String>,
+    pub session_name: Option<String>,
+}
+
 /// Optional Settings-style budget overrides for Anthropic.
 #[derive(Debug, Clone, Default, PartialEq, Eq)]
 pub struct AiBridgeThinkingBudgets {
@@ -26,6 +37,11 @@ pub struct AiBridgeGenerateOptions {
     pub system_prompt: Option<String>,
     /// Optional fastrace parent for `llm.request` nesting (iteration / compaction).
     pub obs_parent: Option<SpanContext>,
+    /// Generate-scoped obs session snapshot. HTTP attribution and `llm.request`
+    /// MUST use this copy; overlapping generate MUST NOT re-read the process slot.
+    /// Empty (`Default`) means no session on this call (idle paths may still
+    /// bind a Client without a snapshot and fall back to the process slot).
+    pub obs_session: ObsSessionContext,
 }
 
 impl Default for AiBridgeGenerateOptions {
@@ -36,6 +52,7 @@ impl Default for AiBridgeGenerateOptions {
             thinking_budgets: None,
             system_prompt: None,
             obs_parent: None,
+            obs_session: ObsSessionContext::default(),
         }
     }
 }

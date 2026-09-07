@@ -18,9 +18,11 @@
 //! `Span` kept alive for the turn/iteration. Must not import `crate::infra`.
 
 use fastrace::prelude::*;
-use xylitol_ai_bridge::provider::langfuse_observation_properties;
 use xylitol_ai_bridge::provider::trace::{
     observation_io_tier, provider_trace_active, tool_observation_io_tier, truncate_observation_text,
+};
+use xylitol_ai_bridge::provider::{
+    langfuse_observation_properties, langfuse_observation_properties_from,
 };
 
 use crate::protocol::error::{XyError, XyToolError};
@@ -44,14 +46,31 @@ impl AgentTurnSpan {
     /// Start a turn root. When `[otel].observation_io` ≠ none, `user_preview` is
     /// attached as `langfuse.observation.input` for Langfuse Session list (c1555).
     /// `model_api` (when known) is recorded as `xylitol.model.api` (c1600).
+    /// Idle / test helper: read the process (or TLS) obs slot.
+    #[cfg(test)]
     pub(crate) fn start(user_preview: Option<&str>, model_api: Option<&str>) -> Option<Self> {
+        Self::start_with_session(
+            user_preview,
+            model_api,
+            &xylitol_ai_bridge::provider::obs_session_context(),
+        )
+    }
+
+    /// Start a turn root with an explicit bookmark snapshot (c2590 / otel23).
+    pub(crate) fn start_with_session(
+        user_preview: Option<&str>,
+        model_api: Option<&str>,
+        obs: &xylitol_ai_bridge::ObsSessionContext,
+    ) -> Option<Self> {
         if !provider_trace_active() {
             return None;
         }
         let turn_id = uuid::Uuid::new_v4().to_string();
-        let root = Span::root("agent.turn", SpanContext::random()).with_properties(|| {
-            let mut props = vec![("turn_id".to_string(), turn_id.clone())];
-            props.extend(langfuse_observation_properties("agent"));
+        let obs = obs.clone();
+        let turn_id_attr = turn_id.clone();
+        let root = Span::root("agent.turn", SpanContext::random()).with_properties(move || {
+            let mut props = vec![("turn_id".to_string(), turn_id_attr)];
+            props.extend(langfuse_observation_properties_from("agent", &obs));
             if let Some(api) = model_api.filter(|s| !s.is_empty()) {
                 props.push(("xylitol.model.api".to_string(), api.to_string()));
             }
@@ -631,5 +650,54 @@ mod tests {
             assert_eq!(props.get("tool_batch.mode"), Some(&"barrier_parallel"));
             assert_eq!(props.get("tool_batch.barrier_index"), Some(&"0"));
         }
+    }
+
+    #[test]
+    fn overlapping_turn_roots_keep_own_session_id() {
+        use xylitol_ai_bridge::ObsSessionContext;
+        use xylitol_ai_bridge::provider::{ObsSessionScope, set_obs_session};
+
+        let _g = ObsGateScope::enter(ObsGateState::active_none_io());
+        let _sess = ObsSessionScope::enter(ObsSessionContext {
+            session_id: Some("process-wrong".into()),
+            session_name: None,
+        });
+        let collect = SpanCollectScope::enter();
+
+        let a = ObsSessionContext {
+            session_id: Some("bookmark-a".into()),
+            session_name: None,
+        };
+        let b = ObsSessionContext {
+            session_id: Some("bookmark-b".into()),
+            session_name: None,
+        };
+        {
+            let ta = AgentTurnSpan::start_with_session(None, None, &a).expect("turn a");
+            set_obs_session("hijacked", None);
+            let tb = AgentTurnSpan::start_with_session(None, None, &b).expect("turn b");
+            ta.finish(TurnEndReason::Ok);
+            tb.finish(TurnEndReason::Ok);
+        }
+        fastrace::flush();
+
+        let spans = collect.records();
+        let ids: Vec<&str> = spans
+            .iter()
+            .filter(|s| s.name == "agent.turn")
+            .filter_map(|s| {
+                s.properties
+                    .iter()
+                    .find(|(k, _)| k.as_ref() == "langfuse.session.id")
+                    .map(|(_, v)| v.as_ref())
+            })
+            .collect();
+        assert!(ids.contains(&"bookmark-a"), "missing a: {ids:?}");
+        assert!(ids.contains(&"bookmark-b"), "missing b: {ids:?}");
+        assert!(
+            !ids.iter()
+                .any(|id| *id == "process-wrong" || *id == "hijacked"),
+            "process slot leaked: {ids:?}"
+        );
     }
 }

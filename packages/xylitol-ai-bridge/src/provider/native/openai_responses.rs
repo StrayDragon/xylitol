@@ -7,8 +7,6 @@ use std::collections::HashMap;
 use std::pin::Pin;
 use std::sync::Arc;
 
-use async_openai::Client;
-use async_openai::config::OpenAIConfig;
 use async_trait::async_trait;
 use futures::{Stream, StreamExt};
 use serde_json::Value;
@@ -18,14 +16,14 @@ use crate::dto::{AiBridgeChunk, AiBridgeToolSchema, Diagnostic};
 use crate::dto::{AiBridgeMessage, AiBridgePart, AiBridgeStopReason};
 use crate::error::AiBridgeError;
 use crate::hooks::HttpHooks;
-use crate::provider::native::openai_client::{build_openai_client, normalize_openai_v1_base};
+use crate::provider::native::openai_client::{OpenAiClientFactory, normalize_openai_v1_base};
 use crate::wire_policy::WirePolicy;
 
 use crate::provider::AiBridgeLlmAdapter;
 
 /// Adapter for the OpenAI Responses API (`/v1/responses`).
 pub struct OpenAiResponsesAdapter {
-    client: Client<OpenAIConfig>,
+    client: OpenAiClientFactory,
     model: String,
     wire_policy: WirePolicy,
 }
@@ -51,7 +49,7 @@ impl OpenAiResponsesAdapter {
     ) -> Self {
         let base = base_url.map(|b| normalize_openai_v1_base(&b));
         Self {
-            client: build_openai_client(api_key, base, hooks),
+            client: OpenAiClientFactory::new(api_key, base, hooks),
             model,
             wire_policy,
         }
@@ -233,10 +231,11 @@ impl AiBridgeLlmAdapter for OpenAiResponsesAdapter {
         tools: &[AiBridgeToolSchema],
         options: crate::thinking::AiBridgeGenerateOptions,
     ) -> Result<AiBridgeStream, AiBridgeError> {
-        let trace = crate::provider::trace::ProviderRequestTrace::start_with_parent(
+        let trace = crate::provider::trace::ProviderRequestTrace::start_with_parent_obs(
             "openai-responses",
             &self.model,
             options.obs_parent,
+            &options.obs_session,
         );
         let body = self.build_body(messages, tools, true, &options);
         if let Some(t) = &trace {
@@ -246,6 +245,7 @@ impl AiBridgeLlmAdapter for OpenAiResponsesAdapter {
         // typed `ResponseStreamEvent` requires (`created_at` on `response.created`).
         let sdk_stream = self
             .client
+            .bind(&options.obs_session)
             .responses()
             .create_stream_byot::<_, Value>(body)
             .await
@@ -263,10 +263,11 @@ impl AiBridgeLlmAdapter for OpenAiResponsesAdapter {
         tools: &[AiBridgeToolSchema],
         options: crate::thinking::AiBridgeGenerateOptions,
     ) -> Result<AiBridgeStream, AiBridgeError> {
-        let trace = crate::provider::trace::ProviderRequestTrace::start_with_parent(
+        let trace = crate::provider::trace::ProviderRequestTrace::start_with_parent_obs(
             "openai-responses",
             &self.model,
             options.obs_parent,
+            &options.obs_session,
         );
         let body = self.build_body(messages, tools, false, &options);
         if let Some(t) = &trace {
@@ -274,6 +275,7 @@ impl AiBridgeLlmAdapter for OpenAiResponsesAdapter {
         }
         let json: Value = self
             .client
+            .bind(&options.obs_session)
             .responses()
             .create_byot(body)
             .await
@@ -1188,6 +1190,7 @@ mod tests {
             thinking_budgets: None,
             system_prompt: None,
             obs_parent: None,
+            obs_session: Default::default(),
         };
         let body_map = adapter.build_body(vec![AiBridgeMessage::user("hi")], &[], false, &mapped);
         assert_eq!(body_map["reasoning"]["effort"], "max");
