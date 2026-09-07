@@ -10,8 +10,8 @@ pub(crate) mod session_tree;
 
 pub(crate) use model::trailing_aborted_note;
 pub use model::{
-    AskPhase, BashBlockStatus, CompactionBlockStatus, QueueBadge, STREAMING_THINK_ID, UiEntry,
-    UiModel, UiPhase, allocate_thinking_id,
+    AskPhase, BashBlockStatus, CompactionBlockStatus, QueueBadge, STREAMING_THINK_ID,
+    StreamingTailKind, UiEntry, UiModel, UiPhase, allocate_thinking_id,
 };
 pub use preview::extract_display_diff;
 /// att13：折叠态工具人话摘要（窄导出，供 BDD 直驱纯函数合约）。

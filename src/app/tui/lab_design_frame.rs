@@ -19,7 +19,7 @@
 mod vt_support;
 
 #[cfg(test)]
-mod lab_design_frame {
+mod export {
     use super::vt_support::{Color, VirtualTerminal};
     use crate::app::debug_fixtures::FixedZoneOp;
     use crate::app::debug_fixtures::seed_scene;
@@ -124,10 +124,11 @@ mod lab_design_frame {
     /// exports of the same fixture produce identical JSON.
     fn normalize_spinner(mut spans: Vec<SpanOut>) -> Vec<SpanOut> {
         for span in &mut spans {
-            if let Some(first) = span.text.chars().next() {
-                if ('\u{2800}'..='\u{28ff}').contains(&first) && span.text.contains("Working") {
-                    span.text = format!("⠋{}", &span.text[first.len_utf8()..]);
-                }
+            if let Some(first) = span.text.chars().next()
+                && ('\u{2800}'..='\u{28ff}').contains(&first)
+                && span.text.contains("Working")
+            {
+                span.text = format!("⠋{}", &span.text[first.len_utf8()..]);
             }
         }
         spans

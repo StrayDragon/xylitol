@@ -65,202 +65,266 @@ const CMD: bool = true;
 /// 非 Command 特例方法（host.describe / load_debug_scene / arm_tool_freeze / persist_trust）。
 const RAW: bool = false;
 
+/// 方法名词表单一定义点：REGISTRY 行与 host 分派共用；改名只动此处。
+pub const METHOD_PROMPT: &str = "prompt";
+pub const METHOD_ABORT: &str = "abort";
+pub const METHOD_GET_STATE: &str = "get_state";
+pub const METHOD_SET_MODEL: &str = "set_model";
+pub const METHOD_CYCLE_MODEL: &str = "cycle_model";
+pub const METHOD_GET_AVAILABLE_MODELS: &str = "get_available_models";
+pub const METHOD_SET_THINKING_LEVEL: &str = "set_thinking_level";
+pub const METHOD_BASH: &str = "bash";
+pub const METHOD_COMPACT: &str = "compact";
+pub const METHOD_GET_SESSION_STATS: &str = "get_session_stats";
+pub const METHOD_EXPORT_HTML: &str = "export_html";
+pub const METHOD_EXPORT_JSONL: &str = "export_jsonl";
+pub const METHOD_IMPORT_JSONL: &str = "import_jsonl";
+pub const METHOD_SWITCH_SESSION: &str = "switch_session";
+pub const METHOD_FORK: &str = "fork";
+pub const METHOD_GET_MESSAGES: &str = "get_messages";
+pub const METHOD_GET_COMMANDS: &str = "get_commands";
+pub const METHOD_SESSION_TREE: &str = "session_tree";
+pub const METHOD_TRAVEL_SESSION_TREE: &str = "travel_session_tree";
+pub const METHOD_APPEND_ENTRY_LABEL: &str = "append_entry_label";
+pub const METHOD_LIST_SESSIONS: &str = "list_sessions";
+pub const METHOD_LOAD_SESSION_ENTRIES: &str = "load_session_entries";
+pub const METHOD_NEW_SESSION: &str = "new_session";
+pub const METHOD_GET_SESSION_NAME: &str = "get_session_name";
+pub const METHOD_SET_SESSION_NAME: &str = "set_session_name";
+pub const METHOD_SET_SESSION_NAME_FOR: &str = "set_session_name_for";
+pub const METHOD_DELETE_SESSION: &str = "delete_session";
+pub const METHOD_RELOAD: &str = "reload";
+pub const METHOD_LOADED_RESOURCES: &str = "loaded_resources";
+pub const METHOD_QUEUE_STATS: &str = "queue_stats";
+pub const METHOD_LOAD_DEBUG_SCENE: &str = "load_debug_scene";
+pub const METHOD_ARM_TOOL_FREEZE: &str = "arm_tool_freeze";
+pub const METHOD_PERSIST_TRUST: &str = "persist_trust";
+pub const METHOD_STEER: &str = "steer";
+pub const METHOD_FOLLOW_UP: &str = "follow_up";
+pub const METHOD_CLEAR_QUEUE: &str = "clear_queue";
+pub const METHOD_SUBSCRIBE: &str = "subscribe";
+pub const METHOD_HOST_DESCRIBE: &str = "host.describe";
+
 /// 顺序与 `UNARY_METHODS` 保持一致（守卫测试锁定）。
 pub const REGISTRY: &[MethodEntry] = &[
-    m("prompt", Auth::Writer, Idem::PerRpc, Resp::Stream, CMD),
-    m("abort", Auth::Writer, Idem::PerRpc, Resp::Result, CMD),
+    m(METHOD_PROMPT, Auth::Writer, Idem::PerRpc, Resp::Stream, CMD),
+    m(METHOD_ABORT, Auth::Writer, Idem::PerRpc, Resp::Result, CMD),
     m(
-        "get_state",
-        Auth::Readonly,
-        Idem::PerRpc,
-        Resp::Result,
-        true,
-    ),
-    m("set_model", Auth::Writer, Idem::PerRpc, Resp::Result, CMD),
-    m(
-        "cycle_model",
-        Auth::Writer,
-        Idem::PerRpc,
-        Resp::Result,
-        true,
-    ),
-    m(
-        "get_available_models",
+        METHOD_GET_STATE,
         Auth::Readonly,
         Idem::PerRpc,
         Resp::Result,
         true,
     ),
     m(
-        "set_thinking_level",
+        METHOD_SET_MODEL,
+        Auth::Writer,
+        Idem::PerRpc,
+        Resp::Result,
+        CMD,
+    ),
+    m(
+        METHOD_CYCLE_MODEL,
         Auth::Writer,
         Idem::PerRpc,
         Resp::Result,
         true,
     ),
-    m("bash", Auth::Writer, Idem::PerRpc, Resp::Result, CMD),
-    m("compact", Auth::Writer, Idem::PerRpc, Resp::Result, CMD),
     m(
-        "get_session_stats",
+        METHOD_GET_AVAILABLE_MODELS,
         Auth::Readonly,
         Idem::PerRpc,
         Resp::Result,
         true,
     ),
     m(
-        "export_html",
+        METHOD_SET_THINKING_LEVEL,
         Auth::Writer,
         Idem::PerRpc,
         Resp::Result,
         true,
     ),
+    m(METHOD_BASH, Auth::Writer, Idem::PerRpc, Resp::Result, CMD),
     m(
-        "export_jsonl",
+        METHOD_COMPACT,
         Auth::Writer,
         Idem::PerRpc,
         Resp::Result,
-        true,
+        CMD,
     ),
     m(
-        "import_jsonl",
-        Auth::Writer,
-        Idem::PerRpc,
-        Resp::Result,
-        true,
-    ),
-    m(
-        "switch_session",
-        Auth::Writer,
-        Idem::PerRpc,
-        Resp::Result,
-        true,
-    ),
-    m("fork", Auth::Writer, Idem::PerRpc, Resp::Result, CMD),
-    m(
-        "get_messages",
+        METHOD_GET_SESSION_STATS,
         Auth::Readonly,
         Idem::PerRpc,
         Resp::Result,
         true,
     ),
     m(
-        "get_commands",
-        Auth::Readonly,
-        Idem::PerRpc,
-        Resp::Result,
-        true,
-    ),
-    m(
-        "session_tree",
-        Auth::Readonly,
-        Idem::PerRpc,
-        Resp::Result,
-        true,
-    ),
-    m(
-        "travel_session_tree",
+        METHOD_EXPORT_HTML,
         Auth::Writer,
         Idem::PerRpc,
         Resp::Result,
         true,
     ),
     m(
-        "append_entry_label",
+        METHOD_EXPORT_JSONL,
         Auth::Writer,
         Idem::PerRpc,
         Resp::Result,
         true,
     ),
     m(
-        "list_sessions",
+        METHOD_IMPORT_JSONL,
+        Auth::Writer,
+        Idem::PerRpc,
+        Resp::Result,
+        true,
+    ),
+    m(
+        METHOD_SWITCH_SESSION,
+        Auth::Writer,
+        Idem::PerRpc,
+        Resp::Result,
+        true,
+    ),
+    m(METHOD_FORK, Auth::Writer, Idem::PerRpc, Resp::Result, CMD),
+    m(
+        METHOD_GET_MESSAGES,
         Auth::Readonly,
         Idem::PerRpc,
         Resp::Result,
         true,
     ),
     m(
-        "load_session_entries",
+        METHOD_GET_COMMANDS,
         Auth::Readonly,
         Idem::PerRpc,
         Resp::Result,
         true,
     ),
     m(
-        "new_session",
-        Auth::Writer,
-        Idem::PerRpc,
-        Resp::Result,
-        true,
-    ),
-    m(
-        "get_session_name",
+        METHOD_SESSION_TREE,
         Auth::Readonly,
         Idem::PerRpc,
         Resp::Result,
         true,
     ),
     m(
-        "set_session_name",
+        METHOD_TRAVEL_SESSION_TREE,
         Auth::Writer,
         Idem::PerRpc,
         Resp::Result,
         true,
     ),
     m(
-        "set_session_name_for",
+        METHOD_APPEND_ENTRY_LABEL,
         Auth::Writer,
         Idem::PerRpc,
         Resp::Result,
         true,
     ),
     m(
-        "delete_session",
+        METHOD_LIST_SESSIONS,
+        Auth::Readonly,
+        Idem::PerRpc,
+        Resp::Result,
+        true,
+    ),
+    m(
+        METHOD_LOAD_SESSION_ENTRIES,
+        Auth::Readonly,
+        Idem::PerRpc,
+        Resp::Result,
+        true,
+    ),
+    m(
+        METHOD_NEW_SESSION,
+        Auth::Writer,
+        Idem::PerRpc,
+        Resp::Result,
+        true,
+    ),
+    m(
+        METHOD_GET_SESSION_NAME,
+        Auth::Readonly,
+        Idem::PerRpc,
+        Resp::Result,
+        true,
+    ),
+    m(
+        METHOD_SET_SESSION_NAME,
+        Auth::Writer,
+        Idem::PerRpc,
+        Resp::Result,
+        true,
+    ),
+    m(
+        METHOD_SET_SESSION_NAME_FOR,
+        Auth::Writer,
+        Idem::PerRpc,
+        Resp::Result,
+        true,
+    ),
+    m(
+        METHOD_DELETE_SESSION,
         Auth::Writer,
         Idem::PerRpc,
         Resp::Result,
         true,
     ),
     // pre-admit 短路：见 handle_unary 的三个早期分支（Idem::Bypass）。
-    m("reload", Auth::Readonly, Idem::Bypass, Resp::Result, CMD),
     m(
-        "loaded_resources",
+        METHOD_RELOAD,
+        Auth::Readonly,
+        Idem::Bypass,
+        Resp::Result,
+        CMD,
+    ),
+    m(
+        METHOD_LOADED_RESOURCES,
         Auth::Readonly,
         Idem::Bypass,
         Resp::Result,
         true,
     ),
     m(
-        "queue_stats",
+        METHOD_QUEUE_STATS,
         Auth::Readonly,
         Idem::PerRpc,
         Resp::Result,
         true,
     ),
     m(
-        "load_debug_scene",
+        METHOD_LOAD_DEBUG_SCENE,
         Auth::Writer,
         Idem::PerRpc,
         Resp::Result,
         RAW,
     ),
     m(
-        "arm_tool_freeze",
+        METHOD_ARM_TOOL_FREEZE,
         Auth::Writer,
         Idem::PerRpc,
         Resp::Result,
         RAW,
     ),
     m(
-        "persist_trust",
+        METHOD_PERSIST_TRUST,
         Auth::Writer,
         Idem::PerRpc,
         Resp::Result,
         RAW,
     ),
-    m("steer", Auth::Writer, Idem::PerRpc, Resp::Result, CMD),
-    m("follow_up", Auth::Writer, Idem::PerRpc, Resp::Result, CMD),
+    m(METHOD_STEER, Auth::Writer, Idem::PerRpc, Resp::Result, CMD),
     m(
-        "clear_queue",
+        METHOD_FOLLOW_UP,
+        Auth::Writer,
+        Idem::PerRpc,
+        Resp::Result,
+        CMD,
+    ),
+    m(
+        METHOD_CLEAR_QUEUE,
         Auth::Writer,
         Idem::PerRpc,
         Resp::Result,
@@ -268,14 +332,14 @@ pub const REGISTRY: &[MethodEntry] = &[
     ),
     // subscribe：无租约位（不在 WRITER_METHODS），但 materialize_writer_at 语义留在自身分支。
     m(
-        "subscribe",
+        METHOD_SUBSCRIBE,
         Auth::Readonly,
         Idem::PerRpc,
         Resp::Result,
         true,
     ),
     m(
-        "host.describe",
+        METHOD_HOST_DESCRIBE,
         Auth::Readonly,
         Idem::Bypass,
         Resp::Result,
@@ -378,7 +442,7 @@ mod tests {
         const NON_WIRE: &[&str] = &["ApproveTool", "AnswerQuestion", "Quit"];
         let mut wired = 0;
         for variant in Command::VARIANTS {
-            if NON_WIRE.contains(&variant) {
+            if NON_WIRE.contains(variant) {
                 continue;
             }
             let snake = camel_to_snake(variant);

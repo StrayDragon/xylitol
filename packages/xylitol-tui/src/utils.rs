@@ -120,7 +120,7 @@ fn visible_width_ansi_ascii(s: &str) -> Option<usize> {
 }
 
 /// Strip ANSI escape sequences from a string.
-fn strip_ansi_codes(s: &str) -> String {
+pub fn strip_ansi_codes(s: &str) -> String {
     let mut result = String::with_capacity(s.len());
     let mut i = 0;
     let bytes = s.as_bytes();

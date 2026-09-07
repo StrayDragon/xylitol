@@ -613,26 +613,7 @@ fn matches_tree_unfold_down(key: &KeyEvent) -> bool {
 #[cfg(test)]
 mod tests {
     use super::*;
-
-    fn strip_ansi(s: &str) -> String {
-        let mut out = String::new();
-        let mut chars = s.chars().peekable();
-        while let Some(c) = chars.next() {
-            if c == '\u{1b}' {
-                if chars.peek() == Some(&'[') {
-                    chars.next();
-                    for ch in chars.by_ref() {
-                        if ch.is_ascii_alphabetic() {
-                            break;
-                        }
-                    }
-                }
-                continue;
-            }
-            out.push(c);
-        }
-        out
-    }
+    use crate::app::tui::activity_fold::strip_ansi_live_window as strip_ansi_codes;
 
     fn entry(id: &str, n: usize) -> SessionListEntry {
         SessionListEntry {
@@ -673,7 +654,7 @@ mod tests {
         panel.scope = SessionScope::All;
 
         let text = panel.render(80).join("\n");
-        let plain = strip_ansi(&text);
+        let plain = strip_ansi_codes(&text);
         let body_hits = (0..30)
             .filter(|i| plain.contains(&format!("session-s{i}")))
             .count();
@@ -703,7 +684,7 @@ mod tests {
         panel.load_entries(entries, None);
         panel.scope = SessionScope::All;
         panel.selected = 20;
-        let plain = strip_ansi(&panel.render(80).join("\n"));
+        let plain = strip_ansi_codes(&panel.render(80).join("\n"));
         assert!(
             plain.contains("session-s20"),
             "selected entry must stay in viewport: {plain}"
@@ -780,7 +761,7 @@ mod tests {
         panel.load_entries(vec![e], None);
         panel.scope = SessionScope::All;
 
-        let plain_off = strip_ansi(&panel.render(100).join("\n"));
+        let plain_off = strip_ansi_codes(&panel.render(100).join("\n"));
         assert!(
             !plain_off.contains(uuid),
             "default must hide full session id: {plain_off}"
@@ -796,14 +777,14 @@ mod tests {
 
         let key = KeyEvent::new(KeyCode::Char('u'), KeyModifiers::CONTROL);
         panel.handle_input(InputEvent::Key(key));
-        let plain_on = strip_ansi(&panel.render(100).join("\n"));
+        let plain_on = strip_ansi_codes(&panel.render(100).join("\n"));
         assert!(
             plain_on.contains(uuid),
             "ctrl+u must show full session id: {plain_on}"
         );
 
         panel.handle_input(InputEvent::Key(key));
-        let plain_again = strip_ansi(&panel.render(100).join("\n"));
+        let plain_again = strip_ansi_codes(&panel.render(100).join("\n"));
         assert!(
             !plain_again.contains(uuid),
             "second ctrl+u must hide id again: {plain_again}"

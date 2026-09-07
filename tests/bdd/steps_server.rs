@@ -2116,14 +2116,22 @@ async fn w_real_drop_mux(server_test: &ServerTest) {
 
 #[then("客户端 MUST 在宽限内不上屏断线错误并自动重连")]
 async fn t_real_no_error_rows(server_test: &ServerTest) {
-    let mut driver_slot = server_test.attach_driver.borrow_mut();
-    let driver = driver_slot.as_mut().expect("attach driver");
     // ath42 驱动信号：断线后 link_health MUST 如实报 Down（Down 窗口 ≥ 一个
     // 退避间隔，2ms 采样必然命中），随后无人工干预恢复 Up。
+    // RefCell 借用只在同步读取段持有，不得跨 await（panic 隐患）。
+    fn link_health(server_test: &ServerTest) -> LinkHealth {
+        server_test
+            .attach_driver
+            .borrow_mut()
+            .as_mut()
+            .expect("attach driver")
+            .link_health()
+    }
+
     let deadline = std::time::Instant::now() + Duration::from_secs(2);
     let mut saw_down = false;
     while std::time::Instant::now() < deadline {
-        if driver.link_health() == LinkHealth::Down {
+        if link_health(server_test) == LinkHealth::Down {
             saw_down = true;
             break;
         }
@@ -2134,11 +2142,11 @@ async fn t_real_no_error_rows(server_test: &ServerTest) {
         "link_health MUST report Down during the outage (ath42 signal)"
     );
     let deadline = std::time::Instant::now() + Duration::from_secs(3);
-    while std::time::Instant::now() < deadline && driver.link_health() != LinkHealth::Up {
+    while std::time::Instant::now() < deadline && link_health(server_test) != LinkHealth::Up {
         tokio::time::sleep(Duration::from_millis(5)).await;
     }
     assert_eq!(
-        driver.link_health(),
+        link_health(server_test),
         LinkHealth::Up,
         "client MUST auto-reconnect without manual action"
     );
@@ -2146,26 +2154,27 @@ async fn t_real_no_error_rows(server_test: &ServerTest) {
 
 #[then("重连后 MUST 按 last_seq 从 journal 续传缺失事件且 MUST NOT 依赖人工重开")]
 async fn t_real_replay_offline(server_test: &ServerTest) {
-    let mut driver_slot = server_test.attach_driver.borrow_mut();
-    let driver = driver_slot.as_mut().expect("attach driver");
     let deadline = std::time::Instant::now() + Duration::from_secs(3);
     let mut replayed = false;
     let mut saw_error_row = false;
     while std::time::Instant::now() < deadline {
-        for ev in driver.drain_idle_events() {
-            match ev {
-                XyEvent::TextDelta(text) => {
-                    if text == "offline" {
-                        replayed = true;
+        // RefCell 借用只在同步 drain 段持有，不跨 await。
+        {
+            let mut driver_slot = server_test.attach_driver.borrow_mut();
+            let driver = driver_slot.as_mut().expect("attach driver");
+            for ev in driver.drain_idle_events() {
+                match ev {
+                    XyEvent::TextDelta(text) => {
+                        if text == "offline" {
+                            replayed = true;
+                        }
                     }
-                }
-                XyEvent::Error(err) => {
                     // ath42: reconnect churn must not paint transcript rows.
-                    if !err.message.contains("protocol") {
+                    XyEvent::Error(err) if !err.message.contains("protocol") => {
                         saw_error_row = true;
                     }
+                    _ => {}
                 }
-                _ => {}
             }
         }
         if replayed {

@@ -42,6 +42,8 @@ lint verbosity=verbosity_default:
     esac
 
 # Clippy on all targets — local / pre-PR.
+# The no-default-features check covers the xylitol-tui highlight stub branch,
+# which no qa compile (all default features on) otherwise ever builds.
 [arg('verbosity', pattern='quiet|normal|verbose')]
 lint-all verbosity=verbosity_default:
     #!/usr/bin/env bash
@@ -50,14 +52,17 @@ lint-all verbosity=verbosity_default:
       quiet)
         cargo clippy -q --all-features --all-targets --message-format=short -- -D warnings
         cargo clippy -q -p xylitol-tui --all-targets --message-format=short -- -D warnings
+        cargo check -q -p xylitol-tui --no-default-features --message-format=short
         ;;
       normal)
         cargo clippy --all-features --all-targets -- -D warnings
         cargo clippy -p xylitol-tui --all-targets -- -D warnings
+        cargo check -p xylitol-tui --no-default-features
         ;;
       verbose)
         cargo clippy -v --all-features --all-targets -- -D warnings
         cargo clippy -v -p xylitol-tui --all-targets -- -D warnings
+        cargo check -v -p xylitol-tui --no-default-features
         ;;
     esac
 

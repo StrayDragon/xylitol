@@ -39,6 +39,11 @@ use crate::protocol::wire::envelope::{
 };
 use crate::protocol::wire::method::is_unary_method;
 use crate::protocol::wire::registry::parse_command;
+use crate::protocol::wire::registry::{
+    METHOD_ABORT, METHOD_ARM_TOOL_FREEZE, METHOD_EXPORT_JSONL, METHOD_GET_AVAILABLE_MODELS,
+    METHOD_HOST_DESCRIBE, METHOD_IMPORT_JSONL, METHOD_LOAD_DEBUG_SCENE, METHOD_LOADED_RESOURCES,
+    METHOD_PERSIST_TRUST, METHOD_PROMPT, METHOD_RELOAD, METHOD_SESSION_TREE, METHOD_SUBSCRIBE,
+};
 
 /// Bounded per-mux-connection queue. Overflow → `session/resync_required` or drop conn.
 pub const MUX_CHAN_CAP: usize = 256;
@@ -936,7 +941,7 @@ pub async fn handle_unary(
     payload: Value,
     writer_token: Option<String>,
 ) -> RpcResult {
-    if method == "host.describe" {
+    if method == METHOD_HOST_DESCRIBE {
         return RpcResult::ok_value(
             serde_json::to_value(HostDescribeValue {
                 protocol: PROTOCOL_VERSION,
@@ -948,22 +953,22 @@ pub async fn handle_unary(
         return RpcResult::error("not_found", format!("unregistered method {method}"));
     }
 
-    if method == "reload" {
+    if method == METHOD_RELOAD {
         return match host.reload_resources().await {
             Ok(report) => RpcResult::ok_value(outcome_to_value(DispatchOutcome::Reload(report))),
             Err(e) => rpc_err(e),
         };
     }
-    if method == "loaded_resources" {
+    if method == METHOD_LOADED_RESOURCES {
         let session_id = host.session_id_from_payload(&payload);
         let snapshot = host.loaded_resources_snapshot_for(&session_id).await;
         return RpcResult::ok_value(outcome_to_value(DispatchOutcome::LoadedResources(snapshot)));
     }
-    if method == "abort" && host.abort_reload().await {
+    if method == METHOD_ABORT && host.abort_reload().await {
         return RpcResult::ok_value(json!({ "cancelled": true }));
     }
 
-    let session_id = if method == "subscribe" {
+    let session_id = if method == METHOD_SUBSCRIBE {
         payload
             .get("session_id")
             .and_then(|v| v.as_str())
@@ -1009,7 +1014,7 @@ async fn dispatch_session_unary(
     presented: Option<&str>,
     workspace: &Path,
 ) -> RpcResult {
-    if method == "subscribe" {
+    if method == METHOD_SUBSCRIBE {
         if session_id.is_empty() {
             return RpcResult::error("invalid_input", "subscribe requires session_id");
         }
@@ -1026,7 +1031,7 @@ async fn dispatch_session_unary(
         return host.bind_mux_to_session(slot, last_seq).await;
     }
 
-    if method == "prompt" {
+    if method == METHOD_PROMPT {
         let message = payload
             .get("message")
             .and_then(|v| v.as_str())
@@ -1107,7 +1112,7 @@ async fn dispatch_session_unary(
         return lease.seal(RpcResult::ok_value(json!({ "session_id": session_id })));
     }
 
-    if method == "arm_tool_freeze" {
+    if method == METHOD_ARM_TOOL_FREEZE {
         let lease = match WriterLease::acquire(host, slot, workspace, presented).await {
             Ok(l) => l,
             Err(e) => return e,
@@ -1124,7 +1129,7 @@ async fn dispatch_session_unary(
         ));
     }
 
-    if method == "persist_trust" {
+    if method == METHOD_PERSIST_TRUST {
         let lease = match WriterLease::acquire(host, slot, workspace, presented).await {
             Ok(l) => l,
             Err(e) => return e,
@@ -1152,7 +1157,7 @@ async fn dispatch_session_unary(
         })));
     }
 
-    if method == "load_debug_scene" {
+    if method == METHOD_LOAD_DEBUG_SCENE {
         let scene = payload
             .get("scene")
             .and_then(|v| v.as_str())
@@ -1197,7 +1202,7 @@ async fn dispatch_session_unary(
         // (sr-imp1): the client reads its local file and sends `content`;
         // the Host lands it on a unique temp input path, dispatches, and
         // cleans up afterwards.
-        let staged_import = method == "import_jsonl"
+        let staged_import = method == METHOD_IMPORT_JSONL
             && payload.get("input_path").is_none()
             && payload.get("path").is_none()
             && payload.get("content").is_some();
@@ -1213,7 +1218,7 @@ async fn dispatch_session_unary(
         };
         let mut payload = payload;
         if staged_export {
-            let ext = if method == "export_jsonl" {
+            let ext = if method == METHOD_EXPORT_JSONL {
                 "jsonl"
             } else {
                 "html"
@@ -1264,7 +1269,7 @@ async fn dispatch_session_unary(
         return result;
     }
 
-    if method == "get_available_models" && slot.driver.lock().await.is_none() {
+    if method == METHOD_GET_AVAILABLE_MODELS && slot.driver.lock().await.is_none() {
         let models: Vec<Value> = host
             .ports
             .model_registry
@@ -1297,7 +1302,7 @@ async fn dispatch_session_unary(
         }
 
         let session_exists = host.ports.store.exists(session_id).await;
-        if !session_exists && method == "session_tree" {
+        if !session_exists && method == METHOD_SESSION_TREE {
             let cwd = workspace.to_string_lossy().into_owned();
             if let Err(e) = host.ports.store.create(session_id, Some(&cwd), None).await {
                 return rpc_err(e.into());

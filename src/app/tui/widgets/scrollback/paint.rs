@@ -1,7 +1,7 @@
 use xylitol_tui::terminal_colors::RgbColor;
 use xylitol_tui::{
-    Component, ExpandableOutputOptions, Markdown, TruncateFrom, bold, fg_rgb, mix_rgb,
-    paint_left_rail_line, truncate_to_width, visible_width, wrap_text_with_ansi,
+    Component, ExpandableOutputOptions, Markdown, TruncateFrom, highlight_dollar_skill_refs,
+    mix_rgb, paint_left_rail_line, truncate_to_width, visible_width, wrap_text_with_ansi,
 };
 
 use crate::app::tui::activity_fold::{format_elapsed_secs, thought_header_body};
@@ -220,34 +220,6 @@ pub(super) fn ask_rail_rgb(phase: AskPhase, theme: LayoutTheme) -> RgbColor {
         AskPhase::Skipped => p.muted,
     };
     mix_rgb(p.surface, vivid, 0.72)
-}
-
-/// Paint `$name` with `skill_ref` (bold); leave other text unstyled (A10 / c1130).
-pub(super) fn highlight_dollar_skill_refs(text: &str, skill_ref: RgbColor) -> String {
-    let bytes = text.as_bytes();
-    let mut out = String::new();
-    let mut i = 0;
-    while i < bytes.len() {
-        if bytes[i] == b'$' {
-            let start = i + 1;
-            let mut end = start;
-            while end < bytes.len()
-                && (bytes[end].is_ascii_alphanumeric() || bytes[end] == b'_' || bytes[end] == b'-')
-            {
-                end += 1;
-            }
-            if end > start {
-                let token = &text[i..end];
-                out.push_str(&bold(&fg_rgb(skill_ref, token)));
-                i = end;
-                continue;
-            }
-        }
-        let ch = text[i..].chars().next().unwrap();
-        out.push(ch);
-        i += ch.len_utf8();
-    }
-    out
 }
 
 /// End index of a stable markdown prefix (after last `\n\n` not inside a fence).

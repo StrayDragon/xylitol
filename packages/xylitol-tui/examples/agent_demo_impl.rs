@@ -28,10 +28,10 @@ use xylitol_tui::{
     Markdown, MarkdownTheme, Palette, Panel, SystemClock, TUI, Terminal, TerminalColorScheme, Text,
     ThemeDetectSources, ThinkingBorderLevel, TreeNode, TreeSelector, TreeSelectorOptions,
     TreeSelectorTheme, TruncateFrom, TruncatedText, apply_background_to_line,
-    apply_thinking_border, bg_rgb, fg_bg_rgb, fg_rgb, matches_key_event, mix_rgb,
-    paint_left_rail_line, printable_from_key_event, render_diff_lines, render_expandable_output,
-    resolve_terminal_color_scheme, truncate_to_width, visible_width, word_wash_bg,
-    wrap_text_with_ansi,
+    apply_thinking_border, bg_rgb, fg_bg_rgb, fg_rgb, highlight_dollar_skill_refs,
+    matches_key_event, mix_rgb, paint_left_rail_line, printable_from_key_event, render_diff_lines,
+    render_expandable_output, resolve_terminal_color_scheme, truncate_to_width, visible_width,
+    word_wash_bg, wrap_text_with_ansi,
 };
 #[cfg(test)]
 use xylitol_tui::{
@@ -104,34 +104,6 @@ fn dollar_skill_names(text: &str) -> Vec<String> {
             }
         }
         i += 1;
-    }
-    out
-}
-
-/// Paint `$name` with `skill_ref` (bold); leave other text unstyled (A10).
-fn highlight_dollar_skill_refs(text: &str, skill_ref: xylitol_tui::RgbColor) -> String {
-    let bytes = text.as_bytes();
-    let mut out = String::new();
-    let mut i = 0;
-    while i < bytes.len() {
-        if bytes[i] == b'$' {
-            let start = i + 1;
-            let mut end = start;
-            while end < bytes.len()
-                && (bytes[end].is_ascii_alphanumeric() || bytes[end] == b'_' || bytes[end] == b'-')
-            {
-                end += 1;
-            }
-            if end > start {
-                let token = &text[i..end];
-                out.push_str(&bold(&fg_rgb(skill_ref, token)));
-                i = end;
-                continue;
-            }
-        }
-        let ch = text[i..].chars().next().unwrap();
-        out.push(ch);
-        i += ch.len_utf8();
     }
     out
 }

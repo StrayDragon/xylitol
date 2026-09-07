@@ -129,6 +129,34 @@ pub fn paint_left_rail_line(line: &str, width: usize, rgb: RgbColor) -> String {
     format!("{rail}{gutter}{clipped}{}", " ".repeat(pad))
 }
 
+/// Paint `$name` with `skill_ref` (bold); leave other text unstyled (A10 / c1130).
+pub fn highlight_dollar_skill_refs(text: &str, skill_ref: RgbColor) -> String {
+    let bytes = text.as_bytes();
+    let mut out = String::new();
+    let mut i = 0;
+    while i < bytes.len() {
+        if bytes[i] == b'$' {
+            let start = i + 1;
+            let mut end = start;
+            while end < bytes.len()
+                && (bytes[end].is_ascii_alphanumeric() || bytes[end] == b'_' || bytes[end] == b'-')
+            {
+                end += 1;
+            }
+            if end > start {
+                let token = &text[i..end];
+                out.push_str(&bold(&fg_rgb(skill_ref, token)));
+                i = end;
+                continue;
+            }
+        }
+        let ch = text[i..].chars().next().unwrap();
+        out.push(ch);
+        i += ch.len_utf8();
+    }
+    out
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;

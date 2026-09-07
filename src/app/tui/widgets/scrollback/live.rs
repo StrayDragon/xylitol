@@ -4,7 +4,9 @@ use crate::app::tui::activity_fold::{
 };
 #[cfg(test)]
 use crate::app::tui::activity_fold::{ToolActivityRole, is_path_placeholder, tool_activity_role};
-use crate::app::tui::bridge::{AskPhase, BashBlockStatus, UiEntry, UiModel, UiPhase};
+use crate::app::tui::bridge::{
+    AskPhase, BashBlockStatus, StreamingTailKind, UiEntry, UiModel, UiPhase,
+};
 use crate::app::tui::layout::LayoutTheme;
 
 use super::super::fold_hit::{FoldHitTable, FoldTarget};
@@ -188,7 +190,9 @@ pub(super) fn streaming_assistant_displayable(model: &UiModel) -> bool {
     model
         .streaming_scrollback_tails()
         .iter()
-        .any(|(kind, text)| *kind == "assistant" && text.chars().any(|c| !c.is_whitespace()))
+        .any(|(kind, text)| {
+            *kind == StreamingTailKind::Assistant && text.chars().any(|c| !c.is_whitespace())
+        })
 }
 
 pub(super) fn live_window_segment_idx(

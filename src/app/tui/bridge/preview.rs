@@ -3,6 +3,7 @@
 use std::path::{Path, PathBuf};
 
 use serde_json::Value;
+use xylitol_tui::{ASK_HEADER_A_MAX, ASK_HEADER_Q_MAX, ellipsize_ask_frag};
 
 pub(crate) fn compact_json_preview(value: &Value, max_chars: usize) -> String {
     let raw = match value {
@@ -303,19 +304,6 @@ pub(crate) fn humanize_ask_result(
         }
         _ => (AskPhase::Answered, "Ask · 已答".into(), vec![]),
     }
-}
-
-/// Header budget for question id / answer labels (chars; body keeps full text).
-const ASK_HEADER_Q_MAX: usize = 14;
-const ASK_HEADER_A_MAX: usize = 22;
-
-fn ellipsize_ask_frag(s: &str, max: usize) -> String {
-    let n = s.chars().count();
-    if n <= max {
-        return s.to_string();
-    }
-    let take = max.saturating_sub(1);
-    format!("{}…", s.chars().take(take).collect::<String>())
 }
 
 /// True when `text` is a JSON object that still looks like tool wire remnants.

@@ -18,7 +18,9 @@ use pulldown_cmark::{Event, HeadingLevel, Options, Parser, Tag, TagEnd};
 
 use crate::terminal_image::is_image_line;
 use crate::tui::Component;
-use crate::utils::{apply_background_to_line, visible_width, wrap_text_with_ansi};
+use crate::utils::{
+    apply_background_to_line, strip_ansi_codes, visible_width, wrap_text_with_ansi,
+};
 
 // ── theme / options ─────────────────────────────────────────────────────────
 
@@ -432,7 +434,7 @@ fn collect_inline_until(
                 let inner =
                     collect_inline_until(md, events, idx, default_fn, style_prefix).concat();
                 let url = dest_url.as_ref();
-                let label = if strip_ansi_for_empty(&inner).is_empty() {
+                let label = if strip_ansi_codes(&inner).is_empty() {
                     url.to_string()
                 } else {
                     inner
@@ -447,7 +449,7 @@ fn collect_inline_until(
                 let inner =
                     collect_inline_until(md, events, idx, default_fn, style_prefix).concat();
                 let url = dest_url.as_ref();
-                let label = if strip_ansi_for_empty(&inner).is_empty() {
+                let label = if strip_ansi_codes(&inner).is_empty() {
                     url.to_string()
                 } else {
                     inner
@@ -540,41 +542,6 @@ fn next_is_block_start(events: &[Event], idx: usize) -> bool {
                 | Tag::HtmlBlock,
         ))
     )
-}
-
-/// True empty after stripping CSI / OSC for label fallback.
-fn strip_ansi_for_empty(s: &str) -> String {
-    let mut out = String::with_capacity(s.len());
-    let mut chars = s.chars().peekable();
-    while let Some(c) = chars.next() {
-        if c == '\u{1b}' {
-            match chars.peek() {
-                Some('[') => {
-                    chars.next();
-                    for ch in chars.by_ref() {
-                        if ch.is_ascii_alphabetic() {
-                            break;
-                        }
-                    }
-                }
-                Some(']') => {
-                    chars.next();
-                    for ch in chars.by_ref() {
-                        if ch == '\u{7}' {
-                            break;
-                        }
-                        if ch == '\\' {
-                            break;
-                        }
-                    }
-                }
-                _ => {}
-            }
-        } else {
-            out.push(c);
-        }
-    }
-    out.trim().to_string()
 }
 
 fn fenced_lang<'a>(kind: &'a pulldown_cmark::CodeBlockKind<'_>) -> Option<&'a str> {
@@ -1236,7 +1203,7 @@ mod tests {
     fn visible_join(md: &mut Markdown, width: usize) -> String {
         md.render(width)
             .iter()
-            .map(|l| strip_ansi_for_empty(l))
+            .map(|l| strip_ansi_codes(l))
             .collect::<Vec<_>>()
             .join("\n")
     }
@@ -1419,7 +1386,7 @@ mod tests {
         let lines: Vec<String> = md
             .render(24)
             .iter()
-            .map(|l| strip_ansi_for_empty(l))
+            .map(|l| strip_ansi_codes(l))
             .filter(|l| !l.trim().is_empty())
             .collect();
         assert!(lines.len() >= 2, "expected wrap:\n{lines:?}");
@@ -1690,7 +1657,7 @@ mod tests {
     fn nested_lists_keep_indent_and_ordered_markers() {
         let src = "1. 有序一项\n2. 有序二项\n   - 嵌套无序 A\n   - 嵌套无序 B\n     1. 再嵌套有序\n3. 有序三项含 [链接](https://example.com/list) 与 `code`\n";
         let mut md = Markdown::new(src.into(), 0, 0, identity_theme(), None);
-        // trim_end only — strip_ansi_for_empty().trim() would erase list indent.
+        // trim_end only — strip_ansi_codes().trim() would erase list indent.
         let lines: Vec<String> = md
             .render(48)
             .iter()
