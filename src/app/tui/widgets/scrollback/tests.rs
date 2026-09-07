@@ -2,6 +2,7 @@ use super::super::fold_hit::FoldTarget;
 use super::live::inflight_short_label;
 use super::*;
 use xylitol_tui::terminal_colors::RgbColor;
+use xylitol_tui::utils::strip_ansi_codes;
 use xylitol_tui::{bold, fg_rgb, mix_rgb};
 
 use crate::app::tui::bridge::{AskPhase, BashBlockStatus, CompactionBlockStatus, UiEntry};
@@ -40,7 +41,7 @@ fn ask_header_paints_accent_ask_and_keeps_full_body() {
         joined.contains(&accent_ask),
         "Ask brand must use accent paint; got:\n{joined}"
     );
-    let plain = strip_ansi_local(&joined);
+    let plain = strip_ansi_codes(&joined);
     assert!(
         plain.contains("🔍 搜代码") && plain.contains("🚀 跑命令"),
         "expanded body must stay full; got:\n{plain}"
@@ -65,7 +66,7 @@ fn todo_checklist_defaults_to_summary_line() {
         &mut ScrollbackPaintCache::default(),
         &mut FoldHitTable::default(),
     );
-    let plain = strip_ansi_local(&lines.join("\n"));
+    let plain = strip_ansi_codes(&lines.join("\n"));
     assert!(plain.contains("Todo · 2/5"), "missing summary: {plain}");
     assert!(
         plain.contains("(Alt+E)") && !plain.contains("((Alt+E))"),
@@ -102,7 +103,7 @@ fn todo_checklist_expands_with_fold() {
         &mut ScrollbackPaintCache::default(),
         &mut FoldHitTable::default(),
     );
-    let plain = strip_ansi_local(&lines.join("\n"));
+    let plain = strip_ansi_codes(&lines.join("\n"));
     assert!(
         plain.contains("[x] done") && plain.contains("[~] wip"),
         "{plain}"
@@ -129,7 +130,7 @@ fn compaction_block_defaults_collapsed() {
         &mut ScrollbackPaintCache::default(),
         &mut FoldHitTable::default(),
     );
-    let plain = strip_ansi_local(&lines.join("\n"));
+    let plain = strip_ansi_codes(&lines.join("\n"));
     let header = plain
         .lines()
         .find(|l| l.contains("Compacted from"))
@@ -169,7 +170,7 @@ fn compaction_block_expands_with_fold() {
         &mut ScrollbackPaintCache::default(),
         &mut FoldHitTable::default(),
     );
-    let plain = strip_ansi_local(&lines.join("\n"));
+    let plain = strip_ansi_codes(&lines.join("\n"));
     let header = plain
         .lines()
         .find(|l| l.contains("Compacted from"))
@@ -455,7 +456,7 @@ fn bash_full_output_footer_uses_warning_fg() {
         joined.contains(&expect),
         "Full output footer must use warning fg; got {joined:?}"
     );
-    let plain = strip_ansi_local(&joined);
+    let plain = strip_ansi_codes(&joined);
     assert!(
         plain.contains("expand disabled"),
         "hard-truncated must not offer ctrl+o expand; got {plain:?}"
@@ -497,7 +498,7 @@ fn write_viewport_defaults_to_tail_earlier() {
         &mut ScrollbackPaintCache::default(),
         &mut FoldHitTable::default(),
     );
-    let plain = strip_ansi_local(&lines.join("\n"));
+    let plain = strip_ansi_codes(&lines.join("\n"));
     assert!(
         plain.contains("earlier lines"),
         "write must use Tail earlier hint; got {plain:?}"
@@ -544,7 +545,7 @@ fn huge_edit_diff_is_capped_in_scrollback() {
         &mut ScrollbackPaintCache::default(),
         &mut FoldHitTable::default(),
     );
-    let plain = strip_ansi_local(&lines.join("\n"));
+    let plain = strip_ansi_codes(&lines.join("\n"));
     assert!(
         plain.contains("omitted") || plain.contains("capped"),
         "huge diff must show cap notice; got {plain:?}"
@@ -572,7 +573,7 @@ fn live_window_omits_planning_placeholder() {
         &mut ScrollbackPaintCache::default(),
         &mut hits,
     );
-    let plain = strip_ansi_local(&lines.join("\n"));
+    let plain = strip_ansi_codes(&lines.join("\n"));
     assert!(
         !plain.contains("Planning next moves"),
         "busy fixed zone is status spinner, not a Planning placeholder: {plain}"
@@ -674,40 +675,20 @@ fn scrollback_warm_flatten_grows_with_entry_count() {
     );
 }
 
-fn strip_ansi_local(s: &str) -> String {
-    let mut out = String::new();
-    let mut chars = s.chars().peekable();
-    while let Some(c) = chars.next() {
-        if c == '\u{1b}' {
-            if chars.peek() == Some(&'[') {
-                chars.next();
-                for x in chars.by_ref() {
-                    if x.is_ascii_alphabetic() {
-                        break;
-                    }
-                }
-            }
-        } else {
-            out.push(c);
-        }
-    }
-    out
-}
-
 #[test]
 fn tool_header_shows_timeout_only_when_requested() {
     let theme = LayoutTheme::product_dark();
 
     // Explicit model request → muted budget note before the key hint.
     let with = paint::paint_tool_header_line(theme, "▎", "Bash", "$ sleep 600", Some(600));
-    let plain = strip_ansi_local(&with);
+    let plain = strip_ansi_codes(&with);
     let t = plain.find("(timeout 600s)").expect("timeout note present");
     let e = plain.find("(Alt+E)").expect("hint present");
     assert!(t < e, "timeout note must precede Alt+E hint: {plain:?}");
 
     // Tool default (omitted) → no header note.
     let without = paint::paint_tool_header_line(theme, "▎", "Bash", "$ sleep 2", None);
-    let plain2 = strip_ansi_local(&without);
+    let plain2 = strip_ansi_codes(&without);
     assert!(
         !plain2.contains("timeout"),
         "no default header note: {plain2:?}"

@@ -28,9 +28,7 @@ pub(crate) use atom::{ToolActivityRole, is_path_placeholder, tool_activity_role}
 pub use degrade::AutoTrigger;
 #[cfg(test)]
 pub use live_tape::LIVE_ASK_CLOSE_TEXT;
-pub use live_tape::{
-    live_ask_close_events, replay_live_window, strip_ansi as strip_ansi_live_window,
-};
+pub use live_tape::{live_ask_close_events, replay_live_window};
 pub use segment::ActivityCluster;
 pub use segment::{
     ActivitySegment, SegmentLevel, cluster_middle_indices, middle_entry_indices, partition_segments,
@@ -42,6 +40,7 @@ pub use summary::{
     format_elapsed_secs, format_envelope_line, live_think_id_for_cluster, streaming_thought_counts,
     thought_header_body,
 };
+pub use xylitol_tui::utils::strip_ansi_codes as strip_ansi_live_window;
 
 use time::OffsetDateTime;
 

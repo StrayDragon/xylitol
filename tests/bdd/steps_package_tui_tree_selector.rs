@@ -12,6 +12,7 @@ use rstest_bdd_macros::{then, when};
 use xylitol_tui::keybindings::{
     KeybindingsConfig, KeybindingsManager, KeybindingsScope, create_default_definitions,
 };
+use xylitol_tui::utils::strip_ansi_codes;
 use xylitol_tui::{
     Component, InputEvent, TreeNode, TreeSelector, TreeSelectorOptions, TreeSelectorTheme,
 };
@@ -69,23 +70,6 @@ fn key_char(ch: char, modifiers: KeyModifiers) -> InputEvent {
     key(KeyCode::Char(ch), modifiers)
 }
 
-fn strip_ansi_local(s: &str) -> String {
-    let mut out = String::with_capacity(s.len());
-    let mut chars = s.chars().peekable();
-    while let Some(c) = chars.next() {
-        if c == '\x1b' && chars.peek() == Some(&'[') {
-            for c2 in chars.by_ref() {
-                if c2.is_ascii_alphabetic() {
-                    break;
-                }
-            }
-        } else {
-            out.push(c);
-        }
-    }
-    out
-}
-
 fn with_sel<T>(bdd: &TreeSelBdd, f: impl FnOnce(&mut TreeSelector) -> T) -> T {
     let mut guard = bdd.sel.borrow_mut();
     let sel = guard.as_mut().expect("TreeSelector mounted");
@@ -93,7 +77,7 @@ fn with_sel<T>(bdd: &TreeSelBdd, f: impl FnOnce(&mut TreeSelector) -> T) -> T {
 }
 
 fn render_into(bdd: &TreeSelBdd, width: usize) -> String {
-    let text = with_sel(bdd, |sel| strip_ansi_local(&sel.render(width).join("\n")));
+    let text = with_sel(bdd, |sel| strip_ansi_codes(&sel.render(width).join("\n")));
     *bdd.last_frame.borrow_mut() = text.clone();
     text
 }

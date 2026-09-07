@@ -1115,6 +1115,9 @@ fn flatten_session_tree_entries(node: SessionTreeNode) -> Vec<SessionEntry> {
 
 // ── ati30/att9 无头宿主门：单测与 BDD 共用的终端替身与键事件 ──
 
+// 与 tests.rs 的 TestTerminal 保持同步(字段差异: tests 版多 mouse_capture_active /
+// alternate_screen_active,frames 为 pub,stop() 额外复位两标志并覆写 mouse-capture /
+// alt-screen 方法;本版走 Terminal 默认 no-op)。
 pub struct TestTerminal {
     cols: u16,
     rows: u16,

@@ -1,12 +1,17 @@
 //! Host harness tests — no real TTY (ath5).
 
 use super::bridge::{UiModel, UiPhase, apply_xy_event};
+use super::harness::{alt_enter_event, enter_event, esc_event};
 use super::host::{HostEvent, HostSession, LayoutMode, TOO_SMALL_HINT, is_too_small};
 use super::layout::build_root;
 use crate::app::core::driver::XyEvent;
+use xylitol_tui::utils::strip_ansi_codes as strip_ansi;
 use xylitol_tui::{Component, InputEvent, Terminal};
 
 /// Minimal in-memory terminal for host tests.
+// 与 harness.rs 的 TestTerminal 保持同步(字段差异: 本版多 mouse_capture_active /
+// alternate_screen_active,frames 为 pub,stop() 额外复位两标志并覆写 mouse-capture /
+// alt-screen 方法;harness 版走 Terminal 默认 no-op)。
 struct TestTerminal {
     cols: u16,
     rows: u16,
@@ -532,35 +537,8 @@ fn harness_ctrl_c_consumed_before_editor_insert() {
     assert!(!session.should_quit());
 }
 
-fn esc_event() -> InputEvent {
-    use crossterm::event::{KeyCode, KeyEvent, KeyEventKind, KeyEventState, KeyModifiers};
-    InputEvent::Key(KeyEvent {
-        code: KeyCode::Esc,
-        modifiers: KeyModifiers::NONE,
-        kind: KeyEventKind::Press,
-        state: KeyEventState::NONE,
-    })
-}
-
-fn enter_event() -> InputEvent {
-    use crossterm::event::{KeyCode, KeyEvent, KeyEventKind, KeyEventState, KeyModifiers};
-    InputEvent::Key(KeyEvent {
-        code: KeyCode::Enter,
-        modifiers: KeyModifiers::NONE,
-        kind: KeyEventKind::Press,
-        state: KeyEventState::NONE,
-    })
-}
-
-fn alt_enter_event() -> InputEvent {
-    use crossterm::event::{KeyCode, KeyEvent, KeyEventKind, KeyEventState, KeyModifiers};
-    InputEvent::Key(KeyEvent {
-        code: KeyCode::Enter,
-        modifiers: KeyModifiers::ALT,
-        kind: KeyEventKind::Press,
-        state: KeyEventState::NONE,
-    })
-}
+// esc_event / enter_event / alt_enter_event 复用 harness.rs 的 pub 版(签名与
+// KeyEvent 字段完全一致);ctrl_c_event 仅本文件使用,保留在此。
 
 #[test]
 fn harness_busy_enter_queues_steer() {
@@ -2185,26 +2163,6 @@ fn scrollback_bash_ctrl_o_viewport_keeps_rail() {
     assert!(strip_ansi(&expanded).contains("line-19"));
 }
 
-fn strip_ansi(s: &str) -> String {
-    let mut out = String::new();
-    let mut chars = s.chars().peekable();
-    while let Some(c) = chars.next() {
-        if c == '\x1b' {
-            if chars.peek() == Some(&'[') {
-                chars.next();
-                for x in chars.by_ref() {
-                    if x.is_ascii_alphabetic() {
-                        break;
-                    }
-                }
-            }
-        } else {
-            out.push(c);
-        }
-    }
-    out
-}
-
 #[test]
 fn layout_ascii_user_glyph() {
     use super::layout::UiRoot;
@@ -3192,13 +3150,13 @@ fn harness_l2_ignores_l1_override_after_segment_present() {
     root.apply_ui_model(&model);
     root.activity_mut().force_level("seg-0", SegmentLevel::L2);
     root.touch_activity();
-    let before = strip_ansi_activity(&root.render(100).join("\n"));
+    let before = strip_ansi(&root.render(100).join("\n"));
     assert!(
         before.contains("Explored") || before.contains("file"),
         "L2 summary expected: {before}"
     );
     root.toggle_fold_target(FoldTarget::Tool("hidden-tool".into()));
-    let after = strip_ansi_activity(&root.render(100).join("\n"));
+    let after = strip_ansi(&root.render(100).join("\n"));
     assert_eq!(
         before, after,
         "L1 override MUST NOT change L2 segment appearance"
@@ -3897,26 +3855,6 @@ fn activity_turn(user: &str, tool_id: &str, path: &str, asst: &str) -> Vec<super
     ]
 }
 
-fn strip_ansi_activity(s: &str) -> String {
-    let mut out = String::new();
-    let mut chars = s.chars().peekable();
-    while let Some(c) = chars.next() {
-        if c == '\u{1b}' {
-            if chars.peek() == Some(&'[') {
-                chars.next();
-                for n in chars.by_ref() {
-                    if n.is_ascii_alphabetic() {
-                        break;
-                    }
-                }
-            }
-        } else {
-            out.push(c);
-        }
-    }
-    out
-}
-
 #[test]
 fn activity_fold_att23_l2_shows_summary_keeps_user_asst_scrollnotice() {
     use super::activity_fold::SegmentLevel;
@@ -3939,7 +3877,7 @@ fn activity_fold_att23_l2_shows_summary_keeps_user_asst_scrollnotice() {
     // keep_recent=2 → oldest seg-0 auto-crush via force (simulate rebuild crush)
     root.activity_mut().force_level("seg-0", SegmentLevel::L2);
     root.touch_activity();
-    let plain = strip_ansi_activity(&root.render(100).join("\n"));
+    let plain = strip_ansi(&root.render(100).join("\n"));
     assert!(plain.contains("u0"), "user must stay: {plain}");
     assert!(plain.contains("a0"), "final assistant must stay: {plain}");
     assert!(
@@ -3993,7 +3931,7 @@ fn activity_fold_att24_worked_for_and_no_fake_duration_or_pm() {
     root.activity_mut().force_level("seg-0", SegmentLevel::L3);
     root.touch_activity();
     // no clock → must not invent a duration number
-    let plain_no = strip_ansi_activity(&root.render(100).join("\n"));
+    let plain_no = strip_ansi(&root.render(100).join("\n"));
     assert!(
         plain_no.contains("Worked for"),
         "L3 row without stamps still paints Worked for: {plain_no}"
@@ -4013,7 +3951,7 @@ fn activity_fold_att24_worked_for_and_no_fake_duration_or_pm() {
         },
     );
     root.touch_activity();
-    let plain_yes = strip_ansi_activity(&root.render(100).join("\n"));
+    let plain_yes = strip_ansi(&root.render(100).join("\n"));
     assert!(
         plain_yes.contains("Worked for 2m 3s"),
         "reliable stamps → duration: {plain_yes}"
@@ -4021,7 +3959,7 @@ fn activity_fold_att24_worked_for_and_no_fake_duration_or_pm() {
 
     root.activity_mut().force_level("seg-3", SegmentLevel::L2);
     root.touch_activity();
-    let plain_l2 = strip_ansi_activity(&root.render(100).join("\n"));
+    let plain_l2 = strip_ansi(&root.render(100).join("\n"));
     assert!(
         plain_l2.contains("+1 -1") || plain_l2.contains("+1") && plain_l2.contains("-1"),
         "reliable diff pm: {plain_l2}"
@@ -4044,12 +3982,12 @@ fn activity_fold_att25_l2_ignores_alt_e_then_l0_restores_l1() {
     root.apply_ui_model(&model);
     root.activity_mut().force_level("seg-0", SegmentLevel::L2);
     root.touch_activity();
-    let before = strip_ansi_activity(&root.render(100).join("\n"));
+    let before = strip_ansi(&root.render(100).join("\n"));
     root.handle_input(InputEvent::Key(KeyEvent::new(
         KeyCode::Char('e'),
         KeyModifiers::ALT,
     )));
-    let after_alt = strip_ansi_activity(&root.render(100).join("\n"));
+    let after_alt = strip_ansi(&root.render(100).join("\n"));
     assert_eq!(
         before
             .lines()
@@ -4071,7 +4009,7 @@ fn activity_fold_att25_l2_ignores_alt_e_then_l0_restores_l1() {
             KeyModifiers::ALT,
         )));
     }
-    let opened = strip_ansi_activity(&root.render(100).join("\n"));
+    let opened = strip_ansi(&root.render(100).join("\n"));
     assert!(
         opened.contains("x.rs") || opened.contains("read"),
         "opening the cluster must show the tool block: {opened}"
@@ -4137,7 +4075,7 @@ fn activity_fold_att27_markers_and_full_chord_hints() {
     root.apply_ui_model(&model);
     root.activity_mut().force_level("seg-0", SegmentLevel::L2);
     root.touch_activity();
-    let plain = strip_ansi_activity(&root.render(100).join("\n"));
+    let plain = strip_ansi(&root.render(100).join("\n"));
     let fold_mark = GlyphSet::from_env().fold();
     let unfold_mark = GlyphSet::from_env().unfold();
     assert!(
@@ -4163,7 +4101,7 @@ fn activity_fold_att27_markers_and_full_chord_hints() {
 
     root.activity_mut().force_level("seg-0", SegmentLevel::L3);
     root.touch_activity();
-    let plain3 = strip_ansi_activity(&root.render(100).join("\n"));
+    let plain3 = strip_ansi(&root.render(100).join("\n"));
     assert!(plain3.contains("(Alt+Shift+E)"), "L3 expand hint: {plain3}");
     assert!(!plain3.contains("(Alt+E)"), "no Alt+E on L3: {plain3}");
 }
@@ -4286,13 +4224,13 @@ fn activity_fold_att31_expand_header_then_collapse() {
     root.touch_activity();
     let _ = root.render(100);
     root.toggle_fold_target(FoldTarget::Cluster("seg-0:c0".into()));
-    let expanded = strip_ansi_activity(&root.render(100).join("\n"));
+    let expanded = strip_ansi(&root.render(100).join("\n"));
     assert!(
         expanded.contains("x.rs") || expanded.contains("read"),
         "cluster expand must reveal L1: {expanded}"
     );
     root.toggle_fold_target(FoldTarget::Cluster("seg-0:c0".into()));
-    let collapsed = strip_ansi_activity(&root.render(100).join("\n"));
+    let collapsed = strip_ansi(&root.render(100).join("\n"));
     assert!(
         collapsed.contains("Explored") || collapsed.contains("file"),
         "header remains after collapse: {collapsed}"
@@ -4318,7 +4256,7 @@ fn activity_fold_envelope_header_stays_when_expanded() {
     root.apply_ui_model(&model);
     root.activity_mut().force_level("seg-0", SegmentLevel::L3);
     root.touch_activity();
-    let folded = strip_ansi_activity(&root.render(100).join("\n"));
+    let folded = strip_ansi(&root.render(100).join("\n"));
     let fold_mark = GlyphSet::from_env().fold();
     let unfold_mark = GlyphSet::from_env().unfold();
     assert!(folded.contains("Worked for"), "L3 envelope: {folded}");
@@ -4330,7 +4268,7 @@ fn activity_fold_envelope_header_stays_when_expanded() {
 
     root.toggle_fold_target(FoldTarget::Segment("seg-0".into()));
     assert_eq!(root.activity().level_of("seg-0"), SegmentLevel::L2);
-    let opened = strip_ansi_activity(&root.render(100).join("\n"));
+    let opened = strip_ansi(&root.render(100).join("\n"));
     assert!(
         opened.contains("Worked for"),
         "expanded envelope MUST keep Worked for header: {opened}"
@@ -4353,7 +4291,7 @@ fn activity_fold_envelope_header_stays_when_expanded() {
 
     root.toggle_fold_target(FoldTarget::Segment("seg-0".into()));
     assert_eq!(root.activity().level_of("seg-0"), SegmentLevel::L3);
-    let refolded = strip_ansi_activity(&root.render(100).join("\n"));
+    let refolded = strip_ansi(&root.render(100).join("\n"));
     assert!(refolded.contains("Worked for"), "re-fold: {refolded}");
     assert!(
         !refolded.contains("Explored"),
@@ -4457,7 +4395,7 @@ fn activity_fold_att26_rebuild_paints_worked_for() {
     root.activity_mut()
         .auto_degrade(&model.entries, AutoTrigger::Rebuild, false);
     root.touch_activity();
-    let plain = strip_ansi_activity(&root.render(100).join("\n"));
+    let plain = strip_ansi(&root.render(100).join("\n"));
     assert!(
         plain.contains("Worked for"),
         "ended turns must paint envelope: {plain}"
@@ -4477,7 +4415,7 @@ fn activity_fold_att33_live_planning_and_open_cluster_updates() {
         .entries
         .push(super::bridge::UiEntry::User { text: "u".into() });
     root.apply_ui_model(&model);
-    let empty = strip_ansi_activity(&root.render(100).join("\n"));
+    let empty = strip_ansi(&root.render(100).join("\n"));
     assert!(
         !empty.contains("Planning next moves"),
         "busy fixed zone is status, not Planning: {empty}"
@@ -4515,7 +4453,7 @@ fn activity_fold_att33_live_planning_and_open_cluster_updates() {
         done: true,
     });
     root.apply_ui_model(&model);
-    let before = strip_ansi_activity(&root.render(100).join("\n"));
+    let before = strip_ansi(&root.render(100).join("\n"));
     assert!(
         !before.contains("Planning next moves"),
         "open cluster still unsealed → no Planning placeholder: {before}"
@@ -4543,7 +4481,7 @@ fn activity_fold_att33_live_planning_and_open_cluster_updates() {
         done: true,
     });
     root.apply_ui_model(&model);
-    let after = strip_ansi_activity(&root.render(100).join("\n"));
+    let after = strip_ansi(&root.render(100).join("\n"));
     let frozen_after = after
         .lines()
         .find(|l| l.contains("Explored"))
@@ -4587,7 +4525,7 @@ fn activity_fold_att33_ask_waiting_stays_clickable() {
     session.tui.request_render(true);
     session.step_paint_only().unwrap();
 
-    let plain = strip_ansi_activity(&root.borrow_mut().render(100).join("\n"));
+    let plain = strip_ansi(&root.borrow_mut().render(100).join("\n"));
     assert!(
         plain.contains("Asking questions"),
         "Ask waiting must label the live tail: {plain}"
@@ -4729,7 +4667,7 @@ fn activity_fold_default_hides_cluster_kids_and_uses_edited() {
         text: "done".into(),
     });
     root.apply_ui_model(&model);
-    let collapsed = strip_ansi_activity(&root.render(100).join("\n"));
+    let collapsed = strip_ansi(&root.render(100).join("\n"));
     assert!(
         collapsed.contains("Edited 2 files"),
         "sealed edit cluster must say Edited: {collapsed}"
@@ -4748,7 +4686,7 @@ fn activity_fold_default_hides_cluster_kids_and_uses_edited() {
     );
 
     root.toggle_fold_target(FoldTarget::Cluster("seg-0:c0".into()));
-    let expanded = strip_ansi_activity(&root.render(100).join("\n"));
+    let expanded = strip_ansi(&root.render(100).join("\n"));
     assert!(
         expanded.contains("a.rs") && expanded.contains("b.rs"),
         "opening the cluster reveals same-column tool rows: {expanded}"
@@ -4784,7 +4722,7 @@ fn activity_fold_thinking_only_is_thought_not_explored() {
     root.apply_ui_model(&model);
     root.activity_mut().force_level("seg-0", SegmentLevel::L2);
     root.touch_activity();
-    let plain = strip_ansi_activity(&root.render(100).join("\n"));
+    let plain = strip_ansi(&root.render(100).join("\n"));
     assert!(plain.contains("Thought"), "thinking-only header: {plain}");
     assert!(
         !plain.contains("Explored"),
@@ -4802,7 +4740,7 @@ fn activity_fold_thinking_only_is_thought_not_explored() {
     );
 
     root.toggle_fold_target(super::widgets::FoldTarget::Cluster("seg-0:c0".into()));
-    let opened = strip_ansi_activity(&root.render(100).join("\n"));
+    let opened = strip_ansi(&root.render(100).join("\n"));
     assert!(
         opened.contains("consider"),
         "opening Thought reveals the body: {opened}"
@@ -4836,7 +4774,7 @@ fn activity_fold_thought_only_cluster_shows_frozen_duration() {
     root.apply_ui_model(&model);
     root.activity_mut().force_level("seg-0", SegmentLevel::L2);
     root.touch_activity();
-    let plain = strip_ansi_activity(&root.render(100).join("\n"));
+    let plain = strip_ansi(&root.render(100).join("\n"));
     assert!(
         plain.contains("Thought 17s"),
         "thought-only cluster MUST show frozen duration: {plain}"
@@ -4872,7 +4810,7 @@ fn activity_fold_sealed_thought_stays_when_later_thinking_streams() {
     root.apply_ui_model(&model);
     root.activity_mut().force_level("seg-0", SegmentLevel::L2);
     root.touch_activity();
-    let plain = strip_ansi_activity(&root.render(100).join("\n"));
+    let plain = strip_ansi(&root.render(100).join("\n"));
     assert!(
         plain.contains("Thought 17s"),
         "sealed Thought MUST NOT flip back to Thinking: {plain}"
@@ -4907,7 +4845,7 @@ fn activity_fold_thinking_text_without_id_does_not_flip_headers() {
     root.apply_ui_model(&model);
     root.activity_mut().force_level("seg-0", SegmentLevel::L2);
     root.touch_activity();
-    let plain = strip_ansi_activity(&root.render(100).join("\n"));
+    let plain = strip_ansi(&root.render(100).join("\n"));
     assert!(
         plain.contains("Thought 17s"),
         "buffer without live id MUST NOT flip sealed Thought: {plain}"
@@ -4967,7 +4905,7 @@ fn activity_fold_todo_tools_are_used_not_thought_cluster() {
     root.apply_ui_model(&model);
     root.activity_mut().force_level("seg-0", SegmentLevel::L2);
     root.touch_activity();
-    let plain = strip_ansi_activity(&root.render(100).join("\n"));
+    let plain = strip_ansi(&root.render(100).join("\n"));
     assert!(
         plain.contains("Used 2 tools"),
         "two distinct todo_* calls MUST count as Used 2 tools: {plain}"
@@ -4979,7 +4917,7 @@ fn activity_fold_todo_tools_are_used_not_thought_cluster() {
         "MUST NOT use Thought as the aggregate cluster header: {plain}"
     );
     root.toggle_fold_target(super::widgets::FoldTarget::Cluster("seg-0:c0".into()));
-    let opened = strip_ansi_activity(&root.render(100).join("\n"));
+    let opened = strip_ansi(&root.render(100).join("\n"));
     assert!(
         opened.contains("Thought 4s") && opened.contains("(Ctrl+T)"),
         "L1 thinking kid MUST keep frozen duration: {opened}"
@@ -5025,7 +4963,7 @@ fn activity_fold_repeated_unknown_tools_count_calls() {
     root.apply_ui_model(&model);
     root.activity_mut().force_level("seg-0", SegmentLevel::L2);
     root.touch_activity();
-    let plain = strip_ansi_activity(&root.render(100).join("\n"));
+    let plain = strip_ansi(&root.render(100).join("\n"));
     assert!(
         plain.contains("Used 4 tools"),
         "four todo_update calls MUST be Used 4 tools, not unique-name 1 or checklist+name 2: {plain}"
@@ -5056,7 +4994,7 @@ fn activity_fold_compaction_only_has_no_explored_header() {
     root.apply_ui_model(&model);
     root.activity_mut().force_level("seg-0", SegmentLevel::L2);
     root.touch_activity();
-    let plain = strip_ansi_activity(&root.render(100).join("\n"));
+    let plain = strip_ansi(&root.render(100).join("\n"));
     assert!(
         !plain.contains("Explored"),
         "compaction-only must not invent Explored: {plain}"
@@ -5091,7 +5029,7 @@ fn activity_fold_live_write_placeholder_is_editing_not_dots() {
         done: false,
     });
     root.apply_ui_model(&model);
-    let plain = strip_ansi_activity(&root.render(100).join("\n"));
+    let plain = strip_ansi(&root.render(100).join("\n"));
     assert!(
         plain.contains("Editing"),
         "inflight write must still say Editing: {plain}"
@@ -5118,7 +5056,7 @@ fn activity_fold_live_write_placeholder_is_editing_not_dots() {
     );
 
     root.toggle_fold_target(FoldTarget::Cluster("seg-0:c0".into()));
-    let opened = strip_ansi_activity(&root.render(100).join("\n"));
+    let opened = strip_ansi(&root.render(100).join("\n"));
     assert!(
         opened.contains("fn demo") && opened.contains("Write"),
         "opening the cluster reveals the streaming write: {opened}"
@@ -5128,7 +5066,7 @@ fn activity_fold_live_write_placeholder_is_editing_not_dots() {
         *done = true;
     }
     root.apply_ui_model(&model);
-    let after_end = strip_ansi_activity(&root.render(100).join("\n"));
+    let after_end = strip_ansi(&root.render(100).join("\n"));
     assert!(
         after_end.contains("fn demo") && after_end.contains("Write"),
         "ToolEnd on an opened cluster must not auto-collapse kids: {after_end}"
@@ -5154,7 +5092,7 @@ fn activity_fold_live_thinking_stream_merges_into_thought() {
         .thought_clock
         .pin_start_at(std::time::Instant::now() - std::time::Duration::from_secs(17));
     root.apply_ui_model(&model);
-    let plain = strip_ansi_activity(&root.render(100).join("\n"));
+    let plain = strip_ansi(&root.render(100).join("\n"));
     assert!(
         plain.contains("Thinking"),
         "stream must be a Thinking bar: {plain}"
@@ -5179,7 +5117,7 @@ fn activity_fold_live_thinking_stream_merges_into_thought() {
     );
 
     root.toggle_fold_target(FoldTarget::Cluster("seg-0:c0".into()));
-    let opened = strip_ansi_activity(&root.render(100).join("\n"));
+    let opened = strip_ansi(&root.render(100).join("\n"));
     assert!(
         opened.contains("consider next edit"),
         "opening Thinking reveals the stream: {opened}"
@@ -5197,7 +5135,7 @@ fn activity_fold_live_thinking_stream_merges_into_thought() {
         .as_secs();
     apply_xy_event(&mut model, &XyEvent::AgentEnd { messages: vec![] });
     root.apply_ui_model(&model);
-    let flushed = strip_ansi_activity(&root.render(100).join("\n"));
+    let flushed = strip_ansi(&root.render(100).join("\n"));
     let expect = format!("Thought {expect_dur}s");
     assert!(
         flushed.contains(&expect),
@@ -5234,7 +5172,7 @@ fn activity_fold_text_delta_seals_thought_without_waiting_for_body() {
         .stamp_end_at(start + std::time::Duration::from_secs(2));
     apply_xy_event(&mut model, &XyEvent::TextDelta("answer".into()));
     root.apply_ui_model(&model);
-    let mid = strip_ansi_activity(&root.render(100).join("\n"));
+    let mid = strip_ansi(&root.render(100).join("\n"));
     assert!(
         mid.contains("Thought 2s"),
         "first TextDelta MUST freeze Thought at thinking-channel end: {mid}"
@@ -5247,7 +5185,7 @@ fn activity_fold_text_delta_seals_thought_without_waiting_for_body() {
     apply_xy_event(&mut model, &XyEvent::TextDelta(" continues".into()));
     apply_xy_event(&mut model, &XyEvent::AgentEnd { messages: vec![] });
     root.apply_ui_model(&model);
-    let done = strip_ansi_activity(&root.render(100).join("\n"));
+    let done = strip_ansi(&root.render(100).join("\n"));
     assert!(
         done.contains("Thought 2s"),
         "body / AgentEnd MUST NOT inflate thought wall-clock: {done}"
@@ -5282,7 +5220,7 @@ fn activity_fold_mcp_cluster_is_used() {
     root.apply_ui_model(&model);
     root.activity_mut().force_level("seg-0", SegmentLevel::L2);
     root.touch_activity();
-    let plain = strip_ansi_activity(&root.render(100).join("\n"));
+    let plain = strip_ansi(&root.render(100).join("\n"));
     assert!(plain.contains("Used get_symbols"), "MCP header: {plain}");
     assert!(
         !plain.contains("Explored"),

@@ -38,8 +38,8 @@ pub use completion::{
 };
 pub use components::cancellable_loader::CancellableLoader;
 pub use components::choice_prompt::{
-    ChoiceAnswer, ChoiceMode, ChoiceOption, ChoicePrompt, ChoicePromptTheme, ChoiceQuestion,
-    ChoiceResult, ChoiceStatus,
+    ASK_HEADER_A_MAX, ASK_HEADER_Q_MAX, ChoiceAnswer, ChoiceMode, ChoiceOption, ChoicePrompt,
+    ChoicePromptTheme, ChoiceQuestion, ChoiceResult, ChoiceStatus, ellipsize_ask_frag,
 };
 pub use components::container::Container;
 pub use components::diff::{
@@ -95,8 +95,8 @@ pub use terminal_colors::{
 pub use terminal_image::{hyperlink, is_image_line};
 pub use theme::{
     Palette, ThinkingBorderLevel, apply_thinking_border, bg_rgb, bold, dim, fg_bg_rgb, fg_rgb,
-    italic, mix_rgb, paint_left_rail_line, shade_toward_black, shade_toward_white, strikethrough,
-    underline, word_wash_bg,
+    highlight_dollar_skill_refs, italic, mix_rgb, paint_left_rail_line, shade_toward_black,
+    shade_toward_white, strikethrough, underline, word_wash_bg,
 };
 pub use tui::{
     Component, FocusTarget, Focusable, InputEvent, InputListenerResult, InputReaction,
@@ -106,6 +106,6 @@ pub use tui::{
 pub use utils::{
     ExtractedSegments, TruncateFrom, VisualTruncateResult, apply_background_to_line,
     extract_ansi_code, extract_segments, is_punctuation_char, is_whitespace_char,
-    normalize_terminal_output, slice_by_column, slice_by_column_strict, truncate_to_visual_lines,
-    truncate_to_width, visible_width, wrap_text_with_ansi,
+    normalize_terminal_output, slice_by_column, slice_by_column_strict, strip_ansi_codes,
+    truncate_to_visual_lines, truncate_to_width, visible_width, wrap_text_with_ansi,
 };

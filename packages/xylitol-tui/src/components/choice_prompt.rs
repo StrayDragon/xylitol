@@ -187,10 +187,16 @@ fn escape_json_str(s: &str) -> String {
     s.replace('\\', "\\\\").replace('"', "\\\"")
 }
 
-const ASK_HEADER_Q_MAX: usize = 14;
-const ASK_HEADER_A_MAX: usize = 22;
+/// Max question-fragment length in the Ask header summary, counted in **chars**
+/// (not display columns; CJK can render wider).
+pub const ASK_HEADER_Q_MAX: usize = 14;
+/// Max answer-fragment length in the Ask header summary, counted in **chars**
+/// (not display columns; CJK can render wider).
+pub const ASK_HEADER_A_MAX: usize = 22;
 
-fn ellipsize_ask_frag(s: &str, max: usize) -> String {
+/// Ellipsize `s` to at most `max` **chars** (not display columns), keeping one
+/// trailing `…` when the text is cut.
+pub fn ellipsize_ask_frag(s: &str, max: usize) -> String {
     let n = s.chars().count();
     if n <= max {
         return s.to_string();

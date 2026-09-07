@@ -34,6 +34,20 @@ async fn render_stream<W: Write>(
     let mut in_thinking_block = false;
     let mut thinking_has_tags = false;
 
+    // Close an open thinking block: emit the closing `</think>` when the model
+    // did not tag the block itself, then clear block state. Shared by the
+    // MessageEnd / TextDelta / Error / stream-end paths below.
+    let close_thinking_block = |in_thinking_block: &mut bool, thinking_has_tags: &mut bool| {
+        if *in_thinking_block {
+            if !*thinking_has_tags {
+                let _ = write!(io::stderr(), "</think>");
+                let _ = io::stderr().flush();
+            }
+            *in_thinking_block = false;
+            *thinking_has_tags = false;
+        }
+    };
+
     while let Some(event) = stream.next().await {
         match event {
             XyEvent::TurnStart { turn_index } => {
@@ -48,24 +62,10 @@ async fn render_stream<W: Write>(
                 thinking_has_tags = false;
             }
             XyEvent::MessageEnd { .. } => {
-                if in_thinking_block {
-                    if !thinking_has_tags {
-                        let _ = write!(io::stderr(), "</think>");
-                        let _ = io::stderr().flush();
-                    }
-                    in_thinking_block = false;
-                    thinking_has_tags = false;
-                }
+                close_thinking_block(&mut in_thinking_block, &mut thinking_has_tags);
             }
             XyEvent::TextDelta(text) => {
-                if in_thinking_block {
-                    if !thinking_has_tags {
-                        let _ = write!(io::stderr(), "</think>");
-                        let _ = io::stderr().flush();
-                    }
-                    in_thinking_block = false;
-                    thinking_has_tags = false;
-                }
+                close_thinking_block(&mut in_thinking_block, &mut thinking_has_tags);
                 let _ = write!(writer, "{text}");
                 let _ = writer.flush();
             }
@@ -107,10 +107,7 @@ async fn render_stream<W: Write>(
             XyEvent::Error(err) => {
                 let msg = &err.message;
                 eprintln!("\n[Error] {msg}");
-                if in_thinking_block && !thinking_has_tags {
-                    let _ = write!(io::stderr(), "</think>");
-                    let _ = io::stderr().flush();
-                }
+                close_thinking_block(&mut in_thinking_block, &mut thinking_has_tags);
                 return Err(XyDriverError::message(msg.clone()));
             }
             XyEvent::CompactionStart { reason } => {
@@ -136,10 +133,7 @@ async fn render_stream<W: Write>(
             XyEvent::AgentEnd { .. } => break,
         }
     }
-    if in_thinking_block && !thinking_has_tags {
-        let _ = write!(io::stderr(), "</think>");
-        let _ = io::stderr().flush();
-    }
+    close_thinking_block(&mut in_thinking_block, &mut thinking_has_tags);
     let _ = writeln!(writer);
     Ok(())
 }

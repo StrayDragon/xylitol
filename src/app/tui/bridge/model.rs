@@ -198,6 +198,24 @@ pub fn allocate_thinking_id(entries: &[UiEntry], text: &str) -> String {
     format!("{short}-{ordinal}")
 }
 
+/// Role of an in-flight streaming tail rendered in scrollback.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum StreamingTailKind {
+    /// Model reasoning text (foldable / muted).
+    Thinking,
+    /// Visible assistant answer text.
+    Assistant,
+}
+
+impl StreamingTailKind {
+    pub fn as_str(self) -> &'static str {
+        match self {
+            Self::Thinking => "thinking",
+            Self::Assistant => "assistant",
+        }
+    }
+}
+
 /// Product TUI state produced solely by [`super::apply_xy_event`] / [`UiModel::begin_run`].
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct UiModel {
@@ -397,19 +415,25 @@ impl UiModel {
             }
         }
         for (kind, text) in self.streaming_scrollback_tails() {
-            lines.push(format!("{kind}: {text}…"));
+            lines.push(format!("{}: {text}…", kind.as_str()));
         }
         lines
     }
 
-    /// In-flight streaming tails for layout scrollback (role label, text).
-    pub(crate) fn streaming_scrollback_tails(&self) -> Vec<(&'static str, &str)> {
+    /// In-flight streaming tails for layout scrollback (role, text).
+    pub(crate) fn streaming_scrollback_tails(&self) -> Vec<(StreamingTailKind, &str)> {
         let mut out = Vec::new();
         if self.streaming_think_id.is_some() && !self.streaming_thinking.is_empty() {
-            out.push(("thinking", self.streaming_thinking.as_str()));
+            out.push((
+                StreamingTailKind::Thinking,
+                self.streaming_thinking.as_str(),
+            ));
         }
         if !self.streaming_assistant.is_empty() {
-            out.push(("assistant", self.streaming_assistant.as_str()));
+            out.push((
+                StreamingTailKind::Assistant,
+                self.streaming_assistant.as_str(),
+            ));
         }
         out
     }

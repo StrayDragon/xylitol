@@ -22,7 +22,7 @@ use crate::app::tui::activity_fold::{
     ActivityFoldState, ActivitySegment, SegmentLevel, cluster_is_thought_only,
     cluster_middle_indices, cluster_omits_header, middle_entry_indices, partition_segments,
 };
-use crate::app::tui::bridge::{UiEntry, UiModel, UiPhase};
+use crate::app::tui::bridge::{StreamingTailKind, UiEntry, UiModel, UiPhase};
 use crate::app::tui::layout::LayoutTheme;
 
 use super::fold_hit::{FoldHitTable, FoldTarget};
@@ -419,7 +419,10 @@ pub fn render_scrollback(
     }
 
     let streaming_tails = model.streaming_scrollback_tails();
-    if !streaming_tails.iter().any(|(kind, _)| *kind == "assistant") {
+    if !streaming_tails
+        .iter()
+        .any(|(kind, _)| *kind == StreamingTailKind::Assistant)
+    {
         cache.streaming_assistant.invalidate();
     }
 
@@ -429,7 +432,7 @@ pub fn render_scrollback(
         }
         need_spacer = true;
         match kind {
-            "thinking" => {
+            StreamingTailKind::Thinking => {
                 if activity.settings.enabled {
                     paint_folded_streaming_thought(
                         &mut lines,
@@ -453,7 +456,7 @@ pub fn render_scrollback(
                     push_wrapped(&mut lines, &theme.paint_muted(&format!("{text}…")), width);
                 }
             }
-            "assistant" => {
+            StreamingTailKind::Assistant => {
                 lines.extend(paint_streaming_assistant(
                     text,
                     width,
@@ -461,7 +464,6 @@ pub fn render_scrollback(
                     &mut cache.streaming_assistant,
                 ));
             }
-            _ => {}
         }
     }
 

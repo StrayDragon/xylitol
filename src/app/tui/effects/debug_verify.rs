@@ -4,22 +4,13 @@
 //! without quit, fixed zone still Ready. Harness owns full B1–B5; this is a hand /
 //! slash entry that reuses the same UI mounts.
 
-use xylitol_tui::{InputEvent, Terminal};
+use xylitol_tui::Terminal;
 
 use crate::app::core::dispatch::{DispatchOutcome, dispatch};
+use crate::app::tui::harness::esc_event;
 use crate::protocol::Command;
 
 use super::super::host::{HostEvent, HostSession, LayoutMode};
-
-fn esc_event() -> InputEvent {
-    use crossterm::event::{KeyCode, KeyEvent, KeyEventKind, KeyEventState, KeyModifiers};
-    InputEvent::Key(KeyEvent {
-        code: KeyCode::Esc,
-        modifiers: KeyModifiers::NONE,
-        kind: KeyEventKind::Press,
-        state: KeyEventState::NONE,
-    })
-}
 
 /// Run UI-only verify smoke and report via scroll notice.
 pub(super) async fn run_verify_smoke<T: Terminal>(

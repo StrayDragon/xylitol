@@ -7,6 +7,12 @@ use crate::protocol::session::{
     SessionEntry, SessionTreeNode, message_custom_type, message_role, message_text,
 };
 
+/// 树节点 kind 词表（本模块 `session_tree_node_kind` 产出、`FilterMode` 过滤共用;
+/// 勿内联字面量。注意与 LLM message role 词表是两套语义）。
+pub(crate) const NODE_KIND_USER: &str = "user";
+pub(crate) const NODE_KIND_TOOL: &str = "tool";
+pub(crate) const NODE_KIND_META: &str = "meta";
+
 const LABEL_PREVIEW_WIDTH: usize = 48;
 
 /// Product session-tree filter modes (wired via `include_node` + `status_suffix`).
@@ -32,9 +38,9 @@ impl FilterMode {
     pub fn include(self, node: &TreeNode) -> bool {
         let kind = node.kind.as_deref().unwrap_or("");
         match self {
-            Self::Default => kind != "meta",
-            Self::NoTools => kind != "meta" && kind != "tool",
-            Self::UserOnly => kind == "user",
+            Self::Default => kind != NODE_KIND_META,
+            Self::NoTools => kind != NODE_KIND_META && kind != NODE_KIND_TOOL,
+            Self::UserOnly => kind == NODE_KIND_USER,
             Self::LabeledOnly => node.annotation.is_some(),
             Self::All => true,
         }
@@ -272,9 +278,9 @@ fn map_session_tree_node(node: &SessionTreeNode) -> TreeNode {
 fn session_tree_node_kind(entry: &SessionEntry) -> Option<String> {
     match entry {
         SessionEntry::Message(m) => match message_role(&m.message) {
-            Some("bashExecution") => Some("tool".into()),
+            Some("bashExecution") => Some(NODE_KIND_TOOL.into()),
             // c1905: Env custom (session_env) is meta — Default filter hides it.
-            Some("custom") => Some("meta".into()),
+            Some("custom") => Some(NODE_KIND_META.into()),
             Some(role) => Some(role.to_string()),
             None => None,
         },
@@ -284,7 +290,7 @@ fn session_tree_node_kind(entry: &SessionEntry) -> Option<String> {
         | SessionEntry::SessionInfo(_)
         | SessionEntry::Custom(_)
         | SessionEntry::CustomMessage(_)
-        | SessionEntry::Header(_) => Some("meta".into()),
+        | SessionEntry::Header(_) => Some(NODE_KIND_META.into()),
         _ => None,
     }
 }
@@ -351,7 +357,7 @@ mod tests {
         let mapped = map_session_tree_nodes(&[user_node("u1", "hello")]);
         assert_eq!(mapped[0].id, "u1");
         assert_eq!(mapped[0].label, "hello");
-        assert_eq!(mapped[0].kind.as_deref(), Some("user"));
+        assert_eq!(mapped[0].kind.as_deref(), Some(NODE_KIND_USER));
         assert!(!mapped[0].label.contains("user:"));
     }
 
@@ -380,7 +386,7 @@ mod tests {
             label: None,
         };
         let mapped = map_session_tree_nodes(&[node]);
-        assert_eq!(mapped[0].kind.as_deref(), Some("meta"));
+        assert_eq!(mapped[0].kind.as_deref(), Some(NODE_KIND_META));
     }
 
     #[test]
@@ -404,7 +410,7 @@ mod tests {
             label: None,
         };
         let mapped = map_session_tree_nodes(&[node]);
-        assert_eq!(mapped[0].kind.as_deref(), Some("meta"));
+        assert_eq!(mapped[0].kind.as_deref(), Some(NODE_KIND_META));
         assert_eq!(mapped[0].label, "session_env");
         assert!(!FilterMode::Default.include(&mapped[0]));
     }

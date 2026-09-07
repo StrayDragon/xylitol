@@ -10,7 +10,7 @@
 //! exactly what is visually covered.
 
 use crate::scroll_view::ScrollView;
-use crate::utils::ansi_escape_len;
+use crate::utils::{ansi_escape_len, strip_ansi_codes};
 use crossterm::event::{MouseButton, MouseEvent, MouseEventKind};
 use unicode_width::UnicodeWidthChar;
 
@@ -607,31 +607,13 @@ fn ordered(a: CellPoint, b: CellPoint) -> (CellPoint, CellPoint) {
 
 /// Display width (terminal cells) of a line's visible content.
 fn visible_len(line: &str) -> usize {
-    strip_ansi(line).chars().map(char_cols).sum()
+    strip_ansi_codes(line).chars().map(char_cols).sum()
 }
 
 /// Terminal columns for one scalar, matching `utils::grapheme_width`
 /// semantics (tab = 3, control/zero-width = 0).
 fn char_cols(c: char) -> usize {
     if c == '\t' { 3 } else { c.width().unwrap_or(0) }
-}
-
-/// Strip ANSI escapes (CSI any final, OSC/APC BEL or ST terminated) leaving
-/// only visible text. Shares [`ansi_escape_len`] with the engine width model.
-fn strip_ansi(line: &str) -> String {
-    let mut out = String::with_capacity(line.len());
-    let bytes = line.as_bytes();
-    let mut i = 0usize;
-    while i < bytes.len() {
-        if let Some(len) = ansi_escape_len(bytes, i) {
-            i += len;
-            continue;
-        }
-        let c = line[i..].chars().next().expect("char boundary");
-        out.push(c);
-        i += c.len_utf8();
-    }
-    out
 }
 
 /// Map the **start** boundary display column to a char index.
@@ -692,12 +674,12 @@ fn extract_range(lines: &[String], start: CellPoint, end: CellPoint) -> String {
     }
 
     if start.row == end.row {
-        let plain = strip_ansi(lines.get(start.row).map(|s| s.as_str()).unwrap_or(""));
+        let plain = strip_ansi_codes(lines.get(start.row).map(|s| s.as_str()).unwrap_or(""));
         return trim_copy_piece(slice_cols(&plain, start.col, Some(end.col)));
     }
     let mut parts: Vec<String> = Vec::new();
     for row in start.row..=end.row {
-        let plain = strip_ansi(lines.get(row).map(|s| s.as_str()).unwrap_or(""));
+        let plain = strip_ansi_codes(lines.get(row).map(|s| s.as_str()).unwrap_or(""));
         let piece: String = if row == start.row {
             slice_cols(&plain, start.col, None)
         } else if row == end.row {
@@ -733,7 +715,7 @@ fn expand_range(
     match g {
         SelectionGranularity::Character => {}
         SelectionGranularity::Word => {
-            let plain = strip_ansi(lines.get(start.row).map(|s| s.as_str()).unwrap_or(""));
+            let plain = strip_ansi_codes(lines.get(start.row).map(|s| s.as_str()).unwrap_or(""));
             let chars: Vec<char> = plain.chars().collect();
             // Bounds arrive as display columns; expand in char space, report back columns.
             let mut l = col_to_idx_from(&plain, start.col).min(chars.len());
@@ -1311,7 +1293,7 @@ mod tests {
         let line = "\x1b[38;2;166;227;161mlet\x1b[38;2;205;214;244m total = \
                     \x1b[38;2;137;220;235m42\x1b[38;2;205;214;244m; // 累计订单金额\
                     \x1b[38;2;137;180;255m（含税）\x1b[0m";
-        let plain = strip_ansi(line);
+        let plain = strip_ansi_codes(line);
         // Select up through `累计`: 19 ASCII cols + 累计 = 23 columns.
         let expected = cols_prefix(&plain, 23);
         assert_eq!(expected, "let total = 42; // 累计");
@@ -1367,7 +1349,7 @@ mod tests {
             inverted, "A\x1b[31m\x1b[7mBC\x1b[0;7mD\x1b[27mE",
             "original SGR kept; inner reset rewritten to keep reversal on"
         );
-        assert_eq!(strip_ansi(&inverted), strip_ansi(line));
+        assert_eq!(strip_ansi_codes(&inverted), strip_ansi_codes(line));
     }
 
     #[test]
