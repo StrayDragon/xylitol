@@ -53,6 +53,10 @@
   场景: agent fork
     - System MUST 支持 fork_session(at_entry_id)：经 SessionManager::fork() 创建新子会话并返回子 session id。
 
+  @req:s23 @human
+  场景: fork-header-cut-entry
+    - fork 创建子会话时，子会话头 MUST 记录父会话 id，且 MUST 记录切点条目 id（fork 时所选条目，含 Before 切位时未拷入子会话的那条）；非 fork 创建的会话头 MUST NOT 写入切点字段。加载缺少该切点字段的旧会话文件时 MUST 视为无切点，MUST NOT 因此失败。
+
   @req:s16 @human
   场景: 会话 CWD 校验
     - 从磁盘加载会话时 SessionManager MUST 校验存储 CWD 存在且可访问；不可用时返回可操作错误信息。

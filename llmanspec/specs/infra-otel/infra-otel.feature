@@ -105,6 +105,10 @@
   场景: otel-obs-slot-write-discipline
     - 进程级观测槽 MUST 仅由会话自身的 writer 绑定路径（runtime bind_session / 显式 set_obs_session 调用）更新；host 对只读 RPC（session stats / tree / messages / 列表等）materialize 的 reader driver MUST NOT 写观测槽（含会话名），reader 物化前后槽内容 MUST 不变。槽仍可作无 options 闲置路径的回退。由单测覆盖，MUST NOT 单独扩 BDD step。
 
+  @req:otel26 @human
+  场景: otel-session-dual-identity-and-fork-edge
+    - 当低频观测 span 激活且当前 xylitol session UUID 已知时，一次处理导出的低频观测 span（覆盖范围与 otel24 相同）MUST 同时携带 xylitol.session.id（值等于该 session UUID）与 xylitol.session.llm_gateway_session_id（发给 LLM 通道的会话身份；策略未落地时 MAY 等于 xylitol.session.id，但键 MUST 写出）；langfuse.session.id MUST 等于 xylitol.session.id，MUST NOT 改成 llm_gateway_session_id。当该 session 由 fork 产生且切点条目已知时 MUST 另写 xylitol.session.parent_session_id 与 xylitol.session.fork_at_entry_id（切点为 fork 时所选条目 id，含 Before 切位时未拷入子会话的那条）；无父则 MUST NOT 写这两键。无处理快照的闲置路径 MAY 省略树边两键。由单测覆盖，MUST NOT 单独扩 BDD step。
+
   @req:otel6 @executable
   场景: otel-session-id-on-turn-root-headless
     假如 mock 模型先 tool 后无 tool
