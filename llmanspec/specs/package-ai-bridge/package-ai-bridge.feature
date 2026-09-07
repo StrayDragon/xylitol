@@ -101,6 +101,10 @@
   场景: responses-assemble-prefix-idempotent
     - 对同一 Vec<AiBridgeMessage>、同一 AiBridgeGenerateOptions（含 system_prompt）、同一 tools schema 与 WirePolicy，ResponsesAssembler 构造的 openai-responses 请求体中业务布局（至少 input 项序列与 tools）MUST 规范化后幂等：连续组装两次相等；消息经 serde 或 JSONL 行往返后再组装 MUST 仍得相等前缀。MUST NOT 因仅序列化往返而重排或改写历史 input。由包内单测与维护 lab（lab_session_prefix_idempotency）覆盖，MUST NOT 单独扩 BDD step。
 
+  @req:pab28 @human
+  场景: deepseek-prompt-cache-read-mapped
+    - 命名轮廓 compat=deepseek 在解析上游 usage 时 MUST 把已出现的 Prompt Cache 读数映射为 Tokens(n)：Responses 认 input_tokens_details.cached_tokens；Completions 优先 prompt_cache_hit_tokens，否则 prompt_tokens_details.cached_tokens。MUST NOT 仅因方言而标 NotApplicable 从而丢掉这些字段。缺字段且轮廓期望缓存读数时 MUST 为 NotReported，MUST NOT 写成命中 0。encrypted include 与 previous_response_id 仍按该轮廓省略。由包内单测覆盖，MUST NOT 单独扩 BDD step。
+
   @executable @req:pab13
   场景: responses-toolcall-streams-before-done
     假如 Responses SSE 含 function_call 的 output_item.added 与多帧 function_call_arguments.delta 后才有 output_item.done
