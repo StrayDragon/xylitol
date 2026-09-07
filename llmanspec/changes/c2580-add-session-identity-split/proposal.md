@@ -45,7 +45,7 @@ c2570 只保证「上游报了 cache 读数就不要假装 NotApplicable」。�
 |---|---|---|
 | **A. 观测槽按本次 generate** | 两本会话同时跑时，Langfuse / OpenCode header 不再张冠李戴 | 行为合约；须 SDD。**本刀落地**见 `c2590-fix-obs-session-per-generate` |
 | **B. 供应商键策略（缓存优先）** | 分叉后前缀/网关缓存尽量仍命中；命名轮廓决定 header/`prompt_cache_key`，禁止插件式 trait 市场 | 跟在 A 之后 |
-| **C. 观测双 id + 树边** | `xylitol` 书签 id 与 LLM 投影会话 id 拆开；parent/fork_at 可分析；无旧格式债 | 跟在 A 之后；会改 otel6「langfuse.session.id = 书签」的单一语义 |
+| **C. 观测双 id + 树边** | 书签 id 与 LLM 投影 id 拆开；parent/fork_at 可分析；无旧格式债 | 提案壳 `c2600-add-obs-dual-session-identity`（A 之后 start） |
 
 ## Capabilities
 
