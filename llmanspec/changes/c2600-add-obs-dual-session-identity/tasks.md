@@ -1,10 +1,8 @@
 # Tasks: c2600-add-obs-dual-session-identity
 
-测试 seam：infra-otel CollectingReporter + ai-bridge 观测属性单测。不打网。不新扩 BDD（与 otel6 头less 并存，双 id 由单测钉）。
+测试 seam：infra-otel CollectingReporter + session header 单测 + ai-bridge 观测属性单测。不打网。不新扩 BDD（与 otel6 headless 并存，双 id / 树边由单测钉）。
 
-建议在 c2590 归档后再 `change start` / Specs landing（本文件可先留在 main 防遗忘）。
-
-- [ ] t1 specs：infra-otel 新增双 id + 树边 MUST；otel6 仍为 langfuse.session.id=书签且 MUST 同时写 bookmark 显式键。`rules_edit_acked` 仅当确需改已锁 otel6 句面
-- [ ] t2 观测快照/span 写出 bookmark_id、llm_id；fork 子本写 parent_bookmark_id 与 fork_entry_id
-- [ ] t3 单测：新会话无 parent 键；fork 子本有树边；langfuse.session.id 与 bookmark_id 一致且不等于「混用的单一旧语义」
+- [ ] t1 specs：`infra-otel` 新增 otel26（`xylitol.session.id` + `llm_gateway_session_id` + 树边；`langfuse.session.id` 仍等于当前 session 且 MUST 同时写 `xylitol.session.id`）；`agent-session-store` 钉 fork 写入 `header.forkAtEntryId`。不改已锁 otel6 句面
+- [ ] t2 fork 写 `parentSession` + `forkAtEntryId`；观测快照/span 写出四键；无父省略树边。c2620 未落地时 `llm_gateway_session_id` MAY 等于 `xylitol.session.id` 但键 MUST 在
+- [ ] t3 单测：新会话无树边键；fork 子本 header 与 span 树边一致；`langfuse.session.id` == `xylitol.session.id`；旧文件无 `forkAtEntryId` 时省略切点属性
 - [ ] t4 相关单测 + `llman sdd validate c2600-add-obs-dual-session-identity --strict --no-check`
