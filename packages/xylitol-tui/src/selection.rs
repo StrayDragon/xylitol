@@ -83,6 +83,10 @@ impl ClipboardSink for RecordingClipboardSink {
 }
 
 /// Build an OSC 52 clipboard write sequence (package-local; no infra dependency).
+///
+/// Twin of `src/infra/clipboard/osc52.rs::format_osc52` in the host crate;
+/// duplication is deliberate (this package has no host-crate dependency) —
+/// keep the sequence format and the `MAX` cap in sync on both sides.
 pub fn format_osc52(text: &str) -> Option<String> {
     const MAX: usize = 100_000;
     let encoded = base64_encode(text.as_bytes());

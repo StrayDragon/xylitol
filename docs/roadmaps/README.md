@@ -84,8 +84,8 @@ flowchart TB
 | [跨面同源.md](./跨面同源.md) | 跨面语义约束板（含 activity 折叠栈意向）；第二面是 gpui 桌面，不交付面壳本身 |
 | [Gpui桌面客户端.md](./Gpui桌面客户端.md) | 第二产品面：gpui 桌面（Linux/Wayland）attach 同一 Host；与 TUI 双 Rust 面 |
 | [TUI视觉与信息表达.md](./TUI视觉与信息表达.md) | 状态减噪、主题密度；与调用活动折叠衔接 |
-| [TUI重制.md](./TUI重制.md) | **UiEntry** rail 皮肤（M1 已兑现）；交互设计稿 = 仓库顶层 `designing/`（≠ 产品真值；≠ `agent_demo`） |
-| [键位与命令发现.md](./键位与命令发现.md) | `/hotkeys` 支线延后；可视化键盘挂 GUI 面（gpui）；**busy 即时列表 / 固定区 footprint 已兑现**（见 architecture 词汇表 + DESIGN） |
+| [TUI重制.md](./TUI重制.md) | **UiEntry** 语义复制 / 引擎按需 / 悬停高亮区块；交互设计稿 = 仓库顶层 `designing/`（≠ 产品真值；≠ `agent_demo`） |
+| [键位与命令发现.md](./键位与命令发现.md) | `/hotkeys` 支线延后；可视化键盘挂 GUI 面（gpui） |
 | [OTEL与Langfuse观测.md](./OTEL与Langfuse观测.md) | obs.lane / Collector / otel19 门闸、采样预留、子进程出站（已落地见 [architecture](../architecture/进程内观测.md)） |
 | [Agent-Eval与回归基准.md](./Agent-Eval与回归基准.md) | SWE 先、TB 后；Docker 出分；AA 选模对照；Langfuse 回归旁路 |
 | [上下文缓存与极致压缩.md](./上下文缓存与极致压缩.md) | prompt cache、动态压缩、工具结果分级压缩 |

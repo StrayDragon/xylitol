@@ -1,6 +1,6 @@
 # designing/
 
-跨面 **交互设计稿**（现在只有 `tui/`；禁止为空端预留空目录）。人类主视图：`just open-designing` → `/tui`（产品代码导出的真实帧 + 右栏区域）。tui-lab 经 `/tui-lab/<id>/<state>`，不进 shell 页。深链与亮暗/帧查询见 app；预览是 pathname 不是 hash。
+跨面 **交互设计稿**（现在只有 `tui/`；禁止为空端预留空目录）。人类主视图：`just open-designing` → `/tui`（产品代码导出的真实帧 + 右栏区域）。tui-lab 经 `/tui-lab/<id>/<state>`，不进 shell 页。深链与亮暗/帧查询见 app；预览是 pathname 不是 hash。右栏 **复制路径**（copy-handoff）给出当前 endpoint / surface / module / state 等元信息与相关设计文档的仓库相对路径清单，便于 handoff 定位。
 
 **代码是运行时真值。** 改 TUI 先读 [`src/app/tui/`](../src/app/tui/)。本稿是对照辅助，不是第二套视觉 SSOT。浏览器格子比 / 差分 / 鼠标 / 流式仍以 host 为准。
 

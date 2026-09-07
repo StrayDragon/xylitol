@@ -287,23 +287,21 @@ check-scripts-wired verbosity=verbosity_default:
         exit 1
     fi
     shopt -s nullglob
-    missing=0
-    has_glob=0
-    if grep -E -q 'scripts/check_\*\.py|scripts/check-\*\.py' justfile; then
-        has_glob=1
+    files=(scripts/check_*.py scripts/check-*.py)
+    if [[ "${#files[@]}" -eq 0 ]]; then
+        echo "error: no scripts/check_*.py on disk; gate must not silently run zero checks" >&2
+        exit 1
     fi
-    for f in scripts/check_*.py scripts/check-*.py; do
-        if grep -F -q "$f" justfile || [[ "$has_glob" -eq 1 ]]; then
-            continue
-        fi
-        echo "error: QA check script not wired into justfile (list it or keep check-scripts glob): $f" >&2
-        missing=1
-    done
-    if [[ "$missing" -ne 0 ]]; then
+    body="$(awk '/^check-scripts([ :]|$)/ {grab=1; next} grab {if ($0 ~ /^[ \t]/) print; else exit}' justfile)"
+    if ! grep -Eq 'files=\(scripts/check_\*\.py scripts/check-\*\.py\)' <<<"$body" \
+        || ! grep -Fq '"${files[@]}"' <<<"$body"; then
+        echo "error: check-scripts recipe must keep glob wiring:" >&2
+        echo '  files=(scripts/check_*.py scripts/check-*.py) + iterate "${files[@]}"' >&2
+        echo "  (explicit per-file whitelists fork from the glob and strand new checks)" >&2
         exit 1
     fi
     if [[ "{{verbosity}}" == "verbose" ]]; then
-        echo "ok: scripts/check_* wired into just qa"
+        echo "ok: check-scripts keeps glob wiring over ${#files[@]} check script(s)"
     fi
 
 # Run every scripts/check_*.py / check-*.py (prefer `--check` when supported).
@@ -431,7 +429,7 @@ profile-summary path:
 
 # --- Cargo worktree target isolation (maintenance; not in qa) ---
 # Per-worktree CARGO_TARGET_DIR under ~/.cache/cargo-targets/…
-# Docs: docs/research/rust-disk-worktree-cache-2026.md
+# Docs: root AGENTS.md "Worktree 并行开发" section / scripts/cargo_worktree_env.sh
 # Usage: eval "$(just cargo-wt-env)"   or   source scripts/cargo_worktree_env.sh
 cargo-wt-env:
     #!/usr/bin/env bash
