@@ -389,6 +389,85 @@ fn mock_model_builder(chunks: Vec<crate::protocol::model::XyChunk>) -> ModelBuil
     })
 }
 
+/// 首次 `generate_stream` 返回可重试错误(503),之后恢复成功——用于断言
+/// AutoRetryStart/AutoRetryEnd 事件在重试环中被发射。
+struct FlakyOnceModel {
+    failed: std::sync::atomic::AtomicBool,
+}
+
+#[async_trait::async_trait]
+impl XyModel for FlakyOnceModel {
+    fn name(&self) -> &str {
+        "flaky"
+    }
+
+    async fn generate_stream(
+        &self,
+        _messages: Vec<LlmMessage>,
+        _tools: &[crate::protocol::model::XyToolSchema],
+        _stream: bool,
+        _options: crate::protocol::ports::XyGenerateOptions,
+    ) -> Result<XyStream, XyError> {
+        use crate::protocol::message::XyStopReason;
+        use std::sync::atomic::Ordering;
+        if !self.failed.swap(true, Ordering::SeqCst) {
+            return Err(XyError::Provider(anyhow::anyhow!(
+                "provider returned error: 503 service unavailable"
+            )));
+        }
+        Ok(Box::pin(futures::stream::iter(vec![
+            Ok(XyChunk::TextDelta("recovered".into())),
+            Ok(XyChunk::Done {
+                finish_reason: XyStopReason::Stop,
+                usage: None,
+            }),
+        ])))
+    }
+}
+
+fn flaky_model_builder() -> ModelBuilderFn {
+    Arc::new(move |_| {
+        Arc::new(FlakyOnceModel {
+            failed: std::sync::atomic::AtomicBool::new(false),
+        }) as Arc<dyn XyModel>
+    })
+}
+
+#[tokio::test]
+async fn test_auto_retry_events_emitted_between_attempts() {
+    use futures::StreamExt;
+
+    let (mut agent, _store) =
+        make_agent_with_builder_and_store(flaky_model_builder(), ToolSet::from_iter([]));
+    let mut stream = run_agent(&mut agent, "hello").await;
+
+    let mut retry_start: Option<(u32, u32, u64)> = None;
+    let mut retry_end: Option<(bool, u32)> = None;
+    while let Some(ev) = stream.next().await {
+        match ev {
+            crate::protocol::lifecycle::XyEvent::AutoRetryStart {
+                attempt,
+                max_retries,
+                delay_ms,
+            } => retry_start = Some((attempt, max_retries, delay_ms)),
+            crate::protocol::lifecycle::XyEvent::AutoRetryEnd { success, attempt } => {
+                retry_end = Some((success, attempt));
+            }
+            _ => {}
+        }
+    }
+    assert_eq!(
+        retry_start,
+        Some((1, 3, 1000)),
+        "first retry must emit AutoRetryStart attempt=1/3 with base delay"
+    );
+    assert_eq!(
+        retry_end,
+        Some((true, 1)),
+        "recovery must emit AutoRetryEnd success=true"
+    );
+}
+
 fn make_agent_with_tools(
     chunks: Vec<crate::protocol::model::XyChunk>,
     tools: ToolSet,
@@ -398,6 +477,13 @@ fn make_agent_with_tools(
 
 fn make_agent_with_tools_and_store(
     chunks: Vec<crate::protocol::model::XyChunk>,
+    tools: ToolSet,
+) -> (AgentRuntime, Arc<dyn XySessionStore>) {
+    make_agent_with_builder_and_store(mock_model_builder(chunks), tools)
+}
+
+fn make_agent_with_builder_and_store(
+    builder: ModelBuilderFn,
     tools: ToolSet,
 ) -> (AgentRuntime, Arc<dyn XySessionStore>) {
     let reg = mock_model_registry();
@@ -414,7 +500,7 @@ fn make_agent_with_tools_and_store(
         Vec::new(),
         ".".into(),
         None,
-        mock_model_builder(chunks),
+        builder,
         crate::infra::permission::allow_all_permission(),
         crate::agent::capabilities::QueueMode::default(),
         crate::agent::capabilities::QueueMode::default(),

@@ -1,14 +1,11 @@
-//! Shared helpers for ReAct setup, persistence, and model retry.
+//! Shared helpers for ReAct setup and persistence.
 
 use std::pin::Pin;
 use std::sync::{Arc, Mutex};
 
 use futures::Stream;
 
-use super::super::obs;
-use super::super::retry::{RetryState, is_retryable_error};
 use super::super::state::{RunId, SharedRunCoordinator};
-use crate::agent::llm_project::project_for_llm;
 use crate::protocol::error::XyError;
 use crate::protocol::message::AgentMessage;
 use crate::protocol::model::{XyChunk, XyToolSchema};
@@ -127,38 +124,15 @@ pub(crate) async fn observe_script_hook(
     }
 }
 
-/// Helper: call model with retry for transient errors.
-pub(crate) async fn call_with_retry(
+/// 单次模型连接尝试（投影 + generate_stream）。重试环在 react 生成器内联,
+/// 以便在尝试之间 yield `AutoRetryStart` / `AutoRetryEnd` 事件。
+pub(crate) async fn attempt_model_stream(
     model: &Arc<dyn XyModel>,
-    messages: Vec<AgentMessage>,
+    llm_messages: Vec<crate::protocol::message::LlmMessage>,
     tool_schemas: &[XyToolSchema],
-    retry_state: &RetryState,
     options: &crate::protocol::ports::XyGenerateOptions,
-    turn_id: Option<&str>,
 ) -> Result<Pin<Box<dyn Stream<Item = Result<XyChunk, XyError>> + Send>>, XyError> {
-    let llm_messages = project_for_llm(&messages);
-    loop {
-        match model
-            .generate_stream(llm_messages.clone(), tool_schemas, true, options.clone())
-            .await
-        {
-            Ok(stream) => return Ok(stream),
-            Err(e) => {
-                let err_msg = e.to_string();
-                if is_retryable_error(&err_msg) && retry_state.can_retry() {
-                    log::warn!(
-                        target: "xylitol::react",
-                        "model.generate_stream retrying error.kind={} turn_id={} error={e}",
-                        e.kind(),
-                        turn_id.unwrap_or("")
-                    );
-                    let delay = retry_state.next_delay();
-                    retry_state.backoff(delay).await;
-                    continue;
-                }
-                obs::record_xy_error("model.generate_stream", &e, turn_id, options.obs_parent);
-                return Err(e);
-            }
-        }
-    }
+    model
+        .generate_stream(llm_messages, tool_schemas, true, options.clone())
+        .await
 }
