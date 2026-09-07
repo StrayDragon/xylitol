@@ -161,6 +161,7 @@ pub async fn compact_session(
     settings: &CompactionSettings,
     custom_instructions: Option<&str>,
     obs_parent: Option<fastrace::prelude::SpanContext>,
+    obs_session: &xylitol_ai_bridge::ObsSessionContext,
 ) -> Result<CompactionEntry, CompactionError> {
     if !settings.enabled {
         return Err("compaction disabled".into());
@@ -255,6 +256,7 @@ pub async fn compact_session(
                 previous_summary,
                 custom_instructions,
                 obs_parent,
+                obs_session,
             )
             .await
             {
@@ -273,6 +275,7 @@ pub async fn compact_session(
             model,
             settings.reserve_tokens,
             obs_parent,
+            obs_session,
         )
         .await
         {
@@ -291,6 +294,7 @@ pub async fn compact_session(
             previous_summary,
             custom_instructions,
             obs_parent,
+            obs_session,
         )
         .await
         {
@@ -1123,7 +1127,7 @@ mod tests {
 
     #[tokio::test]
     async fn test_compact_session_split_dual_summary_merge() {
-        use crate::infra::provider::{FakeProvider, ScenarioStep};
+        use crate::infra::provider::{ScenarioStep, fake_xy_model};
         use crate::infra::session::SessionManager;
 
         let long = "x".repeat(400);
@@ -1142,7 +1146,7 @@ mod tests {
             mgr.append(sid, &e).await.unwrap();
         }
 
-        let model = FakeProvider::new(
+        let model = fake_xy_model(
             "sum",
             vec![
                 ScenarioStep::text("## Goal\nhistory-summary"),
@@ -1154,9 +1158,17 @@ mod tests {
             reserve_tokens: 1024,
             keep_recent_tokens: 80,
         };
-        let entry = compact_session(&mgr, sid, &model, &settings, None, None)
-            .await
-            .expect("compact");
+        let entry = compact_session(
+            &mgr,
+            sid,
+            model.as_ref(),
+            &settings,
+            None,
+            None,
+            &Default::default(),
+        )
+        .await
+        .expect("compact");
         assert!(
             entry.summary.contains("**Turn Context (split turn):**"),
             "summary={}",
@@ -1172,14 +1184,15 @@ mod tests {
 
     #[tokio::test]
     async fn test_generate_turn_prefix_summary_uses_prompt() {
-        use crate::infra::provider::{FakeProvider, ScenarioStep};
+        use crate::infra::provider::{ScenarioStep, fake_xy_model};
         use crate::protocol::message::AgentMessage;
 
-        let model = FakeProvider::new("tp", vec![ScenarioStep::text("prefix-ok")]);
+        let model = fake_xy_model("tp", vec![ScenarioStep::text("prefix-ok")]);
         let msgs = vec![AgentMessage::user("do the thing")];
-        let text = generate_turn_prefix_summary(&msgs, &model, 1024, None)
-            .await
-            .unwrap();
+        let text =
+            generate_turn_prefix_summary(&msgs, model.as_ref(), 1024, None, &Default::default())
+                .await
+                .unwrap();
         assert_eq!(text, "prefix-ok");
     }
 

@@ -35,6 +35,8 @@ pub(crate) struct ToolExecEnv<'a> {
     /// Frozen session workspace for this run — injected into every
     /// [`XyToolCtx`] so tools resolve relative paths / spawn shells in it.
     pub workspace: &'a str,
+    /// This run's obs session snapshot (otel24): tool spans stamp it, not the slot.
+    pub obs_session: &'a xylitol_ai_bridge::ObsSessionContext,
 }
 
 /// Capture parent for parallel fan-out (explicit; not the global parent slot).
@@ -84,6 +86,7 @@ pub(crate) async fn run_one(
         parent_ctx,
         batch_mode_label(env.batch_mode),
         barrier_index,
+        env.obs_session,
     );
     let args_io = serde_json::to_string(args).unwrap_or_else(|_| "{}".into());
 
@@ -221,7 +224,7 @@ pub(crate) async fn run_one(
             (vec![AgentPart::text(err)], true)
         }
         Err(e) => {
-            super::obs::record_tool_error(name, &e, env.turn_id, parent_ctx);
+            super::obs::record_tool_error(name, &e, env.turn_id, parent_ctx, env.obs_session);
             let err = if tool_missing {
                 format!("Unknown tool: {name}")
             } else {

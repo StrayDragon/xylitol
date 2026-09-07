@@ -190,6 +190,296 @@ impl XyRemoteDriver<HttpWsClient> {
 }
 
 #[cfg(feature = "server")]
+/// Per-generation downlink state: the driver's shared handles cloned once for
+/// one spawned reconnect loop, plus the loop's generation snapshot (c2480).
+struct DownlinkCtx<C> {
+    host: C,
+    session_id: String,
+    last_seq: Arc<AtomicU64>,
+    reverse_rpc: Option<ReverseRpcNotify>,
+    downlink: SharedDownlink,
+    life: CancellationToken,
+    resync_needed: Arc<AtomicBool>,
+    subscribed_ok: Arc<AtomicBool>,
+    skip_cold_replay: Arc<AtomicBool>,
+    cached_queue: Arc<std::sync::Mutex<QueueStats>>,
+    cached_skills: Arc<std::sync::Mutex<Vec<(String, String)>>>,
+    cached_resources: Arc<std::sync::Mutex<LoadedResourcesSnapshot>>,
+    cached_gate_notice: Arc<std::sync::Mutex<Option<String>>>,
+    gate_notice_consumed: Arc<AtomicBool>,
+    resources_dirty: Arc<AtomicBool>,
+    client_cwd: String,
+    downlink_gen: Arc<AtomicU64>,
+    fatal: Arc<std::sync::Mutex<Option<String>>>,
+    tunings: Arc<LinkTunings>,
+    /// Generation this loop belongs to (ath41): frames from a superseded
+    /// generation are dropped before they reach the projection.
+    my_gen: u64,
+}
+
+#[cfg(feature = "server")]
+/// Cache a resources snapshot and flip the dirty flag — shared by the
+/// driver-side snapshot paths (`apply_resources_cache`) and the downlink
+/// `session/resources` arm.
+fn store_resources_snapshot(
+    cached_skills: &std::sync::Mutex<Vec<(String, String)>>,
+    gate_notice_consumed: &AtomicBool,
+    cached_gate_notice: &std::sync::Mutex<Option<String>>,
+    cached_resources: &std::sync::Mutex<LoadedResourcesSnapshot>,
+    resources_dirty: &AtomicBool,
+    snap: LoadedResourcesSnapshot,
+) {
+    let skills: Vec<(String, String)> = snap
+        .skill_names
+        .iter()
+        .map(|name| (name.clone(), String::new()))
+        .collect();
+    if let Ok(mut cached) = cached_skills.lock() {
+        *cached = skills;
+    }
+    if let Some(notice) = snap.mcp_gate_notice.as_ref()
+        && !gate_notice_consumed.load(Ordering::SeqCst)
+        && let Ok(mut cached) = cached_gate_notice.lock()
+    {
+        *cached = Some(notice.clone());
+    }
+    if let Ok(mut cached) = cached_resources.lock() {
+        *cached = snap;
+    }
+    resources_dirty.store(true, Ordering::SeqCst);
+}
+
+#[cfg(feature = "server")]
+/// One downlink frame arm (connected phase): session event tape,
+/// subscribe/resync/resources lifecycle, reverse-RPC prompts. Unknown frames
+/// are ignored; a malformed event is a no-op — recovery is driven by
+/// reconnect, never by frame errors (ath42).
+async fn handle_frame<C>(ctx: &DownlinkCtx<C>, push_current: &impl Fn(XyEvent), frame: RpcMessage)
+where
+    C: HostClient + Clone + 'static,
+{
+    match frame {
+        RpcMessage::ServerRequest {
+            method, payload, ..
+        } if method == "session/event" => {
+            if let Some(s) = payload.get("seq").and_then(Value::as_u64) {
+                ctx.last_seq.store(s, Ordering::SeqCst);
+            }
+            let event_val = payload.get("event").cloned().unwrap_or(payload);
+            let Ok(ev) = serde_json::from_value::<Event>(event_val) else {
+                return;
+            };
+            let Ok(agent_event) = XyEvent::try_from(&ev) else {
+                return;
+            };
+            if let XyEvent::QueueUpdate {
+                steer_count,
+                follow_up_count,
+            } = &agent_event
+                && let Ok(mut cached) = ctx.cached_queue.lock()
+            {
+                *cached = QueueStats {
+                    steer_count: *steer_count,
+                    follow_up_count: *follow_up_count,
+                };
+            }
+            if ctx.skip_cold_replay.load(Ordering::SeqCst)
+                && XyRemoteDriver::<C>::is_cold_replay_tape(&agent_event)
+            {
+                return;
+            }
+            push_current(agent_event);
+        }
+        RpcMessage::ServerRequest { method, .. } if method == "session/subscribed" => {
+            ctx.skip_cold_replay.store(false, Ordering::SeqCst);
+        }
+        RpcMessage::ServerRequest {
+            method, payload, ..
+        } if method == "session/resources" => {
+            let snap_val = payload.get("snapshot").cloned().unwrap_or(payload);
+            if let Ok(snap) = serde_json::from_value::<LoadedResourcesSnapshot>(snap_val) {
+                store_resources_snapshot(
+                    &ctx.cached_skills,
+                    &ctx.gate_notice_consumed,
+                    &ctx.cached_gate_notice,
+                    &ctx.cached_resources,
+                    &ctx.resources_dirty,
+                    snap,
+                );
+            }
+        }
+        RpcMessage::ServerRequest { method, .. } if method == "session/resync_required" => {
+            ctx.last_seq.store(0, Ordering::SeqCst);
+            ctx.resync_needed.store(true, Ordering::SeqCst);
+            let _ = ctx
+                .host
+                .unary(
+                    "subscribe",
+                    serde_json::json!({
+                        "session_id": ctx.session_id,
+                        "last_seq": 0,
+                        "cwd": ctx.client_cwd,
+                    }),
+                )
+                .await;
+        }
+        RpcMessage::ServerRequest {
+            rpc_id,
+            method,
+            payload,
+        } if method == "approval/requested" || method == "question/requested" => {
+            if let Some(notify) = &ctx.reverse_rpc {
+                notify(rpc_id, method, payload);
+            }
+        }
+        _ => {}
+    }
+}
+
+#[cfg(feature = "server")]
+/// ath42: silent reconnect pause — apply the flapping-aware backoff rule
+/// (ath41), then sleep until the pause elapses or the lifecycle token
+/// cancels. `None` = cancelled: stop the loop instead of reconnecting.
+async fn reconnect_pause<C>(
+    ctx: &DownlinkCtx<C>,
+    backoff: Duration,
+    lived: Duration,
+    next_backoff: impl Fn(Duration, Duration) -> Duration,
+) -> Option<Duration> {
+    if ctx.life.is_cancelled() {
+        return None;
+    }
+    let backoff = next_backoff(backoff, lived);
+    tokio::select! {
+        _ = ctx.life.cancelled() => None,
+        _ = tokio::time::sleep(backoff) => Some(backoff),
+    }
+}
+
+#[cfg(feature = "server")]
+/// The downlink reconnect loop: connect → subscribe → dispatch until the
+/// lifecycle token cancels. Split from the former inline `ensure_downlink`
+/// body; ath41/ath42/ath44 and c2480 semantics are unchanged.
+async fn downlink_loop<C>(ctx: DownlinkCtx<C>)
+where
+    C: HostClient + Clone + 'static,
+{
+    // ath41/c2480: pushes from a downlink generation are dropped the
+    // moment the driver moves past it — stale frames never reach the
+    // shared projection.
+    let push_current = {
+        let downlink = ctx.downlink.clone();
+        let downlink_gen = ctx.downlink_gen.clone();
+        let my_gen = ctx.my_gen;
+        move |ev: XyEvent| {
+            if downlink_gen.load(Ordering::SeqCst) == my_gen {
+                downlink.push(ev);
+            }
+        }
+    };
+    // ath41: a connection that survived the threshold earned a
+    // backoff reset; one that died young escalates (flapping ≠ outage).
+    let next_backoff = {
+        let tunings = ctx.tunings.clone();
+        move |backoff: Duration, lived: Duration| -> Duration {
+            if lived >= tunings.survive_threshold {
+                tunings.backoff_base
+            } else {
+                (backoff * 2).min(tunings.backoff_cap)
+            }
+        }
+    };
+    let mut backoff = ctx.tunings.backoff_base;
+    loop {
+        if ctx.life.is_cancelled() {
+            break;
+        }
+        let connected_at = tokio::time::Instant::now();
+        match ctx.host.mux().await {
+            Ok(mut mux) => {
+                // ath44: the carrier already validated this
+                // connection's server_hello before handing us the
+                // stream; a mismatch would have surfaced as a fatal
+                // ProtocolMismatch below.
+                let seq = ctx.last_seq.load(Ordering::SeqCst);
+                ctx.skip_cold_replay.store(seq == 0, Ordering::SeqCst);
+                if ctx
+                    .host
+                    .unary(
+                        "subscribe",
+                        serde_json::json!({
+                            "session_id": ctx.session_id,
+                            "last_seq": seq,
+                            "cwd": ctx.client_cwd,
+                        }),
+                    )
+                    .await
+                    .is_err()
+                {
+                    // ath42: silent — reconnect churn must not paint
+                    // the transcript; fixed-zone grace UX handles notice.
+                    ctx.subscribed_ok.store(false, Ordering::SeqCst);
+                    match reconnect_pause(&ctx, backoff, connected_at.elapsed(), &next_backoff)
+                        .await
+                    {
+                        Some(next) => backoff = next,
+                        None => return,
+                    }
+                    continue;
+                }
+                ctx.subscribed_ok.store(true, Ordering::SeqCst);
+                loop {
+                    tokio::select! {
+                        _ = ctx.life.cancelled() => return,
+                        msg = mux.next() => {
+                            match msg {
+                                Some(Ok(frame)) => {
+                                    handle_frame(&ctx, &push_current, frame).await;
+                                }
+                                Some(Err(_)) => {
+                                    // ath42: silent break — the frame
+                                    // error is a connection fact, not
+                                    // a transcript event; reconnect
+                                    // and re-subscribe handle recovery.
+                                    break;
+                                }
+                                None => break,
+                            }
+                        }
+                    }
+                }
+                // Connection ended: report Down for the grace UX
+                // (ath42), survive-or-escalate, then retry.
+                ctx.subscribed_ok.store(false, Ordering::SeqCst);
+                match reconnect_pause(&ctx, backoff, connected_at.elapsed(), &next_backoff).await {
+                    Some(next) => backoff = next,
+                    None => return,
+                }
+            }
+            Err(e) if matches!(e, HostClientError::ProtocolMismatch { .. }) => {
+                // ath44: a version the client cannot speak is fatal,
+                // never a transient failure — surface once and stop.
+                let msg = e.to_string();
+                if let Ok(mut slot) = ctx.fatal.lock() {
+                    *slot = Some(msg.clone());
+                }
+                push_current(XyEvent::error_msg(msg));
+                return;
+            }
+            Err(_) => {
+                // ath42: silent — reconnect churn must not paint the
+                // transcript; fixed-zone grace UX handles the notice.
+                ctx.subscribed_ok.store(false, Ordering::SeqCst);
+                match reconnect_pause(&ctx, backoff, connected_at.elapsed(), &next_backoff).await {
+                    Some(next) => backoff = next,
+                    None => return,
+                }
+            }
+        }
+    }
+}
+
+#[cfg(feature = "server")]
 impl<C> XyRemoteDriver<C>
 where
     C: HostClient + Clone + 'static,
@@ -295,24 +585,14 @@ where
     }
 
     fn apply_resources_cache(&self, snap: LoadedResourcesSnapshot) {
-        let skills: Vec<(String, String)> = snap
-            .skill_names
-            .iter()
-            .map(|name| (name.clone(), String::new()))
-            .collect();
-        if let Ok(mut cached) = self.cached_skills.lock() {
-            *cached = skills;
-        }
-        if let Some(notice) = snap.mcp_gate_notice.as_ref()
-            && !self.gate_notice_consumed.load(Ordering::SeqCst)
-            && let Ok(mut cached) = self.cached_gate_notice.lock()
-        {
-            *cached = Some(notice.clone());
-        }
-        if let Ok(mut cached) = self.cached_resources.lock() {
-            *cached = snap;
-        }
-        self.resources_dirty.store(true, Ordering::SeqCst);
+        store_resources_snapshot(
+            &self.cached_skills,
+            &self.gate_notice_consumed,
+            &self.cached_gate_notice,
+            &self.cached_resources,
+            &self.resources_dirty,
+            snap,
+        );
     }
 
     fn restart_downlink(&mut self) {
@@ -332,237 +612,32 @@ where
         if self.downlink.started.swap(true, Ordering::SeqCst) {
             return;
         }
-        let host = self.host.clone();
-        let session_id = self.session_id.clone();
-        let last_seq = self.last_seq.clone();
-        let reverse_rpc = self.reverse_rpc.clone();
-        let downlink = self.downlink.clone();
-        let life = self.session_life.clone();
-        let resync_needed = self.resync_needed.clone();
-        let subscribed_ok = self.subscribed_ok.clone();
-        let skip_cold_replay = self.skip_cold_replay.clone();
-        let cached_queue = self.cached_queue.clone();
-        let cached_skills = self.cached_skills.clone();
-        let cached_resources = self.cached_resources.clone();
-        let cached_gate_notice = self.cached_gate_notice.clone();
-        let gate_notice_consumed = self.gate_notice_consumed.clone();
-        let resources_dirty = self.resources_dirty.clone();
-        let client_cwd = self.client_cwd.clone();
-        let downlink_gen = self.downlink_gen.clone();
-        let fatal = self.fatal.clone();
-        let tunings = self.tunings.clone();
-        let my_gen = downlink_gen.load(Ordering::SeqCst);
-        if let Ok(mut slot) = fatal.lock() {
+        if let Ok(mut slot) = self.fatal.lock() {
             *slot = None;
         }
-        // ath41/c2480: pushes from a downlink generation are dropped the
-        // moment the driver moves past it — stale frames never reach the
-        // shared projection.
-        let push_current = {
-            let my_generation = downlink_gen.clone();
-            let downlink = downlink.clone();
-            move |ev: XyEvent| {
-                if my_generation.load(Ordering::SeqCst) == my_gen {
-                    downlink.push(ev);
-                }
-            }
+        let ctx = DownlinkCtx {
+            host: self.host.clone(),
+            session_id: self.session_id.clone(),
+            last_seq: self.last_seq.clone(),
+            reverse_rpc: self.reverse_rpc.clone(),
+            downlink: self.downlink.clone(),
+            life: self.session_life.clone(),
+            resync_needed: self.resync_needed.clone(),
+            subscribed_ok: self.subscribed_ok.clone(),
+            skip_cold_replay: self.skip_cold_replay.clone(),
+            cached_queue: self.cached_queue.clone(),
+            cached_skills: self.cached_skills.clone(),
+            cached_resources: self.cached_resources.clone(),
+            cached_gate_notice: self.cached_gate_notice.clone(),
+            gate_notice_consumed: self.gate_notice_consumed.clone(),
+            resources_dirty: self.resources_dirty.clone(),
+            client_cwd: self.client_cwd.clone(),
+            downlink_gen: self.downlink_gen.clone(),
+            fatal: self.fatal.clone(),
+            tunings: self.tunings.clone(),
+            my_gen: self.downlink_gen.load(Ordering::SeqCst),
         };
-        // ath41/c2480: a connection that survived the threshold earned a
-        // backoff reset; one that died young escalates (flapping ≠ outage).
-        let next_backoff = {
-            let tunings = tunings.clone();
-            move |backoff: Duration, lived: Duration| -> Duration {
-                if lived >= tunings.survive_threshold {
-                    tunings.backoff_base
-                } else {
-                    (backoff * 2).min(tunings.backoff_cap)
-                }
-            }
-        };
-        tokio::spawn(async move {
-            let mut backoff = tunings.backoff_base;
-            loop {
-                if life.is_cancelled() {
-                    break;
-                }
-                let connected_at = tokio::time::Instant::now();
-                match host.mux().await {
-                    Ok(mut mux) => {
-                        // ath44: the carrier already validated this
-                        // connection's server_hello before handing us the
-                        // stream; a mismatch would have surfaced as a fatal
-                        // ProtocolMismatch below.
-                        let seq = last_seq.load(Ordering::SeqCst);
-                        skip_cold_replay.store(seq == 0, Ordering::SeqCst);
-                        if let Err(_e) = host
-                            .unary(
-                                "subscribe",
-                                serde_json::json!({
-                                    "session_id": session_id,
-                                    "last_seq": seq,
-                                    "cwd": client_cwd,
-                                }),
-                            )
-                            .await
-                        {
-                            // ath42: silent — reconnect churn must not paint
-                            // the transcript; fixed-zone grace UX handles notice.
-                            subscribed_ok.store(false, Ordering::SeqCst);
-                            backoff = next_backoff(backoff, connected_at.elapsed());
-                            tokio::select! {
-                                _ = life.cancelled() => return,
-                                _ = tokio::time::sleep(backoff) => {}
-                            }
-                            continue;
-                        }
-                        subscribed_ok.store(true, Ordering::SeqCst);
-                        loop {
-                            tokio::select! {
-                                _ = life.cancelled() => return,
-                                msg = mux.next() => {
-                                    match msg {
-                                        Some(Ok(RpcMessage::ServerRequest { method, payload, .. }))
-                                            if method == "session/event" =>
-                                        {
-                                            if let Some(s) = payload.get("seq").and_then(Value::as_u64) {
-                                                last_seq.store(s, Ordering::SeqCst);
-                                            }
-                                            let event_val =
-                                                payload.get("event").cloned().unwrap_or(payload);
-                                            let Ok(ev) = serde_json::from_value::<Event>(event_val) else {
-                                                continue;
-                                            };
-                                            let Ok(agent_event) = XyEvent::try_from(&ev) else {
-                                                continue;
-                                            };
-                                            if let XyEvent::QueueUpdate {
-                                                steer_count,
-                                                follow_up_count,
-                                            } = &agent_event
-                                                && let Ok(mut cached) = cached_queue.lock()
-                                            {
-                                                *cached = QueueStats {
-                                                    steer_count: *steer_count,
-                                                    follow_up_count: *follow_up_count,
-                                                };
-                                            }
-                                            if skip_cold_replay.load(Ordering::SeqCst)
-                                                && Self::is_cold_replay_tape(&agent_event)
-                                            {
-                                                continue;
-                                            }
-                                            push_current(agent_event);
-                                        }
-                                        Some(Ok(RpcMessage::ServerRequest { method, .. }))
-                                            if method == "session/subscribed" =>
-                                        {
-                                            skip_cold_replay.store(false, Ordering::SeqCst);
-                                        }
-                                        Some(Ok(RpcMessage::ServerRequest { method, payload, .. }))
-                                            if method == "session/resources" =>
-                                        {
-                                            let snap_val = payload
-                                                .get("snapshot")
-                                                .cloned()
-                                                .unwrap_or(payload);
-                                            if let Ok(snap) = serde_json::from_value::<
-                                                LoadedResourcesSnapshot,
-                                            >(
-                                                snap_val
-                                            ) {
-                                                let skills: Vec<(String, String)> = snap
-                                                    .skill_names
-                                                    .iter()
-                                                    .map(|name| (name.clone(), String::new()))
-                                                    .collect();
-                                                if let Ok(mut cached) = cached_skills.lock() {
-                                                    *cached = skills;
-                                                }
-                                                if let Some(notice) = snap.mcp_gate_notice.as_ref()
-                                                    && !gate_notice_consumed.load(Ordering::SeqCst)
-                                                    && let Ok(mut cached) =
-                                                        cached_gate_notice.lock()
-                                                {
-                                                    *cached = Some(notice.clone());
-                                                }
-                                                if let Ok(mut cached) = cached_resources.lock() {
-                                                    *cached = snap;
-                                                }
-                                                resources_dirty.store(true, Ordering::SeqCst);
-                                            }
-                                        }
-                                        Some(Ok(RpcMessage::ServerRequest { method, .. }))
-                                            if method == "session/resync_required" =>
-                                        {
-                                            last_seq.store(0, Ordering::SeqCst);
-                                            resync_needed.store(true, Ordering::SeqCst);
-                                            let _ = host
-                                                .unary(
-                                                    "subscribe",
-                                                    serde_json::json!({
-                                                        "session_id": session_id,
-                                                        "last_seq": 0,
-                                                        "cwd": client_cwd,
-                                                    }),
-                                                )
-                                                .await;
-                                        }
-                                        Some(Ok(RpcMessage::ServerRequest { rpc_id, method, payload }))
-                                            if method == "approval/requested"
-                                                || method == "question/requested" =>
-                                        {
-                                            if let Some(notify) = &reverse_rpc {
-                                                notify(rpc_id, method, payload);
-                                            }
-                                        }
-                                        Some(Ok(_)) => {}
-                                        Some(Err(_)) => {
-                                            // ath42: silent break — the frame
-                                            // error is a connection fact, not
-                                            // a transcript event; reconnect
-                                            // and re-subscribe handle recovery.
-                                            break;
-                                        }
-                                        None => break,
-                                    }
-                                }
-                            }
-                        }
-                        // Connection ended: report Down for the grace UX
-                        // (ath42), survive-or-escalate, then retry.
-                        subscribed_ok.store(false, Ordering::SeqCst);
-                        backoff = next_backoff(backoff, connected_at.elapsed());
-                        if life.is_cancelled() {
-                            return;
-                        }
-                        tokio::select! {
-                            _ = life.cancelled() => return,
-                            _ = tokio::time::sleep(backoff) => {}
-                        }
-                    }
-                    Err(e) if matches!(e, HostClientError::ProtocolMismatch { .. }) => {
-                        // ath44: a version the client cannot speak is fatal,
-                        // never a transient failure — surface once and stop.
-                        let msg = e.to_string();
-                        if let Ok(mut slot) = fatal.lock() {
-                            *slot = Some(msg.clone());
-                        }
-                        push_current(XyEvent::error_msg(msg));
-                        return;
-                    }
-                    Err(_) => {
-                        // ath42: silent — reconnect churn must not paint the
-                        // transcript; fixed-zone grace UX handles the notice.
-                        subscribed_ok.store(false, Ordering::SeqCst);
-                        backoff = next_backoff(backoff, connected_at.elapsed());
-                        tokio::select! {
-                            _ = life.cancelled() => return,
-                            _ = tokio::time::sleep(backoff) => {}
-                        }
-                    }
-                }
-            }
-        });
+        tokio::spawn(downlink_loop(ctx));
     }
 
     async fn wait_subscribed(&self) -> Result<(), XyDriverError> {

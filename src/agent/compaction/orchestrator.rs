@@ -54,6 +54,7 @@ impl CompactionOrchestrator {
         model: &dyn XyModel,
         event_sink: &dyn XyEventSink,
         instructions: Option<String>,
+        obs_session: &xylitol_ai_bridge::ObsSessionContext,
     ) -> Result<(), CompactionError> {
         event_sink
             .emit(&XyEvent::CompactionStart {
@@ -78,7 +79,7 @@ impl CompactionOrchestrator {
             return Err(err);
         }
 
-        let obs = AgentCompactionSpan::start("manual", None);
+        let obs = AgentCompactionSpan::start("manual", None, obs_session);
 
         let mut force_settings = self.settings.clone();
         force_settings.enabled = true;
@@ -91,6 +92,7 @@ impl CompactionOrchestrator {
             &force_settings,
             instructions.as_deref(),
             llm_parent,
+            obs_session,
         )
         .await;
 
@@ -117,7 +119,7 @@ impl CompactionOrchestrator {
             .await;
 
         if result.is_ok() {
-            emit_after_compaction_settlement(store, sid, event_sink, None).await;
+            emit_after_compaction_settlement(store, sid, event_sink, None, obs_session).await;
         }
 
         result?;
@@ -138,6 +140,7 @@ impl CompactionOrchestrator {
         current_model_id: &str,
         overflow_recovery_attempted: bool,
         turn_obs_parent: Option<fastrace::prelude::SpanContext>,
+        obs_session: &xylitol_ai_bridge::ObsSessionContext,
     ) -> Result<OverflowCompactOutcome, CompactionError> {
         if !self.settings.enabled {
             return Ok(OverflowCompactOutcome::Skipped);
@@ -177,6 +180,7 @@ impl CompactionOrchestrator {
                     false,
                     &entries,
                     turn_obs_parent,
+                    obs_session,
                 )
                 .await
                 .map(|ran| {
@@ -212,6 +216,7 @@ impl CompactionOrchestrator {
             true,
             &entries,
             turn_obs_parent,
+            obs_session,
         )
         .await
         .map(|ran| {
@@ -239,6 +244,7 @@ impl CompactionOrchestrator {
         last_assistant: Option<&AgentMessage>,
         precomputed: Option<&crate::protocol::model::ContextTokenEstimate>,
         turn_obs_parent: Option<fastrace::prelude::SpanContext>,
+        obs_session: &xylitol_ai_bridge::ObsSessionContext,
     ) -> Result<bool, CompactionError> {
         if !self.settings.enabled {
             return Ok(false);
@@ -287,6 +293,7 @@ impl CompactionOrchestrator {
             false,
             &entries,
             turn_obs_parent,
+            obs_session,
         )
         .await
     }
@@ -302,6 +309,7 @@ impl CompactionOrchestrator {
         will_retry: bool,
         entries: &[SessionEntry],
         turn_obs_parent: Option<fastrace::prelude::SpanContext>,
+        obs_session: &xylitol_ai_bridge::ObsSessionContext,
     ) -> Result<bool, CompactionError> {
         if prepare_compaction(entries, &self.settings).is_err() {
             return Ok(false);
@@ -312,10 +320,19 @@ impl CompactionOrchestrator {
                 reason: reason.to_string(),
             })
             .await;
-        let obs = AgentCompactionSpan::start(reason, turn_obs_parent);
+        let obs = AgentCompactionSpan::start(reason, turn_obs_parent, obs_session);
 
         let llm_parent = obs.as_ref().and_then(|s| s.span_context());
-        let result = compact_session(store, sid, model, &self.settings, None, llm_parent).await;
+        let result = compact_session(
+            store,
+            sid,
+            model,
+            &self.settings,
+            None,
+            llm_parent,
+            obs_session,
+        )
+        .await;
         let (ok_result, err_msg, summary, tokens_before) = match &result {
             Ok(entry) => (
                 Some("ok".to_string()),
@@ -359,7 +376,8 @@ impl CompactionOrchestrator {
             .await;
 
         if result.is_ok() {
-            emit_after_compaction_settlement(store, sid, event_sink, turn_obs_parent).await;
+            emit_after_compaction_settlement(store, sid, event_sink, turn_obs_parent, obs_session)
+                .await;
         }
 
         match result {
@@ -374,6 +392,7 @@ async fn emit_after_compaction_settlement(
     sid: &str,
     event_sink: &dyn XyEventSink,
     turn_obs_parent: Option<fastrace::prelude::SpanContext>,
+    obs_session: &xylitol_ai_bridge::ObsSessionContext,
 ) {
     use crate::agent::compaction::settlement::{
         ContextTokenSettlementReason, settle_from_session_entries,
@@ -385,6 +404,7 @@ async fn emit_after_compaction_settlement(
         &fresh,
         &EstimateOpts {
             obs_parent: turn_obs_parent,
+            obs_session: obs_session.clone(),
             ..Default::default()
         },
         ContextTokenSettlementReason::AfterCompaction,
@@ -568,7 +588,14 @@ mod tests {
 
         let orch = CompactionOrchestrator::new(CompactionSettings::default());
         let err = orch
-            .compact(&EmptyLeafStore, "sid", &PanicModel, &NoopSink, None)
+            .compact(
+                &EmptyLeafStore,
+                "sid",
+                &PanicModel,
+                &NoopSink,
+                None,
+                &Default::default(),
+            )
             .await
             .expect_err("empty session must fail prepare");
         assert!(

@@ -54,6 +54,7 @@ impl AgentCapabilities {
                 last_assistant,
                 None,
                 None,
+                &self.obs_session_snapshot(),
             )
             .await?;
 
@@ -85,6 +86,7 @@ impl AgentCapabilities {
                 model.as_ref(),
                 self.sink.as_ref(),
                 instructions,
+                &self.obs_session_snapshot(),
             )
             .await?;
 

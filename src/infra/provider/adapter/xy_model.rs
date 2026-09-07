@@ -1,21 +1,24 @@
-//! Generic `XyModel` wrapper around any [`crate::infra::provider::adapter::LlmAdapter`].
+//! The single-layer `XyModel` shell over a bridge adapter (pa1).
 
 use async_trait::async_trait;
 
-use crate::infra::provider::adapter::AdapterRef;
+use crate::infra::provider::map::{to_bridge_tools, to_xy_error, to_xy_stream};
 use crate::protocol::error::XyError;
 use crate::protocol::message::LlmMessage;
 use crate::protocol::model::XyToolSchema;
 use crate::protocol::ports::{XyGenerateOptions, XyModel, XyStream};
+use xylitol_ai_bridge::provider::AdapterRef as AiBridgeAdapterRef;
 
-/// An [`XyModel`] backed by an [`AdapterRef`].
+/// An [`XyModel`] backed directly by a bridge `AiBridgeLlmAdapter`; the
+/// DTO→`XyChunk` mapping runs inline via the infra `map` module (pa7: vendor
+/// types stop at this infra mapping boundary).
 pub struct AdapterXyModel {
-    adapter: AdapterRef,
+    adapter: AiBridgeAdapterRef,
 }
 
 impl AdapterXyModel {
-    /// Wrap an adapter as an `XyModel`.
-    pub fn new(adapter: AdapterRef) -> Self {
+    /// Wrap a bridge adapter as an `XyModel`.
+    pub fn new(adapter: AiBridgeAdapterRef) -> Self {
         Self { adapter }
     }
 }
@@ -33,10 +36,21 @@ impl XyModel for AdapterXyModel {
         stream: bool,
         options: XyGenerateOptions,
     ) -> Result<XyStream, XyError> {
+        let bridge_tools = to_bridge_tools(tools);
         if stream {
-            self.adapter.generate_stream(messages, tools, options).await
+            let bridge_stream = self
+                .adapter
+                .generate_stream(messages, &bridge_tools, options)
+                .await
+                .map_err(to_xy_error)?;
+            Ok(to_xy_stream(bridge_stream))
         } else {
-            self.adapter.generate(messages, tools, options).await
+            let bridge_stream = self
+                .adapter
+                .generate(messages, &bridge_tools, options)
+                .await
+                .map_err(to_xy_error)?;
+            Ok(to_xy_stream(bridge_stream))
         }
     }
 }

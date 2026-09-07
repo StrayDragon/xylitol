@@ -1,13 +1,13 @@
 # language: zh-CN
 # capability: infra-provider
-# purpose: Provider 装配与映射：协议适配实现在 xylitol-ai-bridge；主仓 LlmAdapter/XyModel 外壳与 DTO 映射。
+# purpose: Provider 装配与映射：协议适配实现在 xylitol-ai-bridge；主仓 AdapterXyModel 单层外壳与 DTO 映射。
 # scope: src/infra/provider/, packages/xylitol-ai-bridge/, tests/
 
 功能: infra-provider
 
   @req:pa1 @human
-  场景: adapter-trait
-    - System SHALL 在 infra/provider/adapter 定义 LlmAdapter trait，暴露 generate_stream 与 generate 方法，返回 XyStream。
+  场景: adapter-single-layer-wrap
+    - System SHALL 在 infra/provider/adapter 提供单层适配外壳 AdapterXyModel 直接包装 bridge adapter（AiBridgeLlmAdapter），经主仓 infra map 完成 DTO→XyStream 映射，并按 stream 入参分派 generate_stream / generate；MUST NOT 在 XyModel 外壳与 bridge adapter 之间保留 1:1 包装 trait 层。
 
   @req:pa2 @human
   场景: openai-responses-adapter

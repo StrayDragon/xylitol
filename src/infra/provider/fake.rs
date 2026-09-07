@@ -1,107 +1,50 @@
-//! Domain-facing Fake provider — wraps xylitol-ai-bridge Fake (c1030).
+//! Domain-facing Fake provider — the bridge fake exposed through the unified
+//! adapter shell (pa1/pa6, r38: same assembly path as vendor models).
 
-use async_trait::async_trait;
+use std::sync::Arc;
 
-use crate::infra::provider::map::{to_bridge_tools, to_xy_error, to_xy_stream};
-use crate::protocol::error::XyError;
-use crate::protocol::message::LlmMessage;
-use crate::protocol::model::XyToolSchema;
-use crate::protocol::ports::{XyGenerateOptions, XyModel, XyStream};
+use crate::infra::provider::adapter::AdapterXyModel;
+use crate::protocol::ports::XyModel;
 
 pub use xylitol_ai_bridge::fake::{
-    FakeProvider as AiBridgeFakeProvider, FakeProviderBuilder, FakeProviderMode, ScenarioStep,
+    FakeProvider, FakeProviderBuilder, FakeProviderMode, ScenarioStep,
 };
 
-/// Scenario-based offline model used by BDD / unit tests.
-pub struct FakeProvider {
-    inner: AiBridgeFakeProvider,
+/// Build a scenario-driven fake `XyModel` via the single-layer adapter shell.
+pub fn fake_xy_model(name: impl Into<String>, steps: Vec<ScenarioStep>) -> Arc<dyn XyModel> {
+    fake_xy_model_of(FakeProvider::new(name, steps))
 }
 
-impl FakeProvider {
-    pub fn new(name: impl Into<String>, steps: Vec<ScenarioStep>) -> Self {
-        Self {
-            inner: AiBridgeFakeProvider::new(name, steps),
-        }
-    }
-
-    pub fn builder(name: impl Into<String>) -> FakeProviderBuilder {
-        AiBridgeFakeProvider::builder(name)
-    }
-
-    pub fn with_mode(mut self, mode: FakeProviderMode) -> Self {
-        self.inner = self.inner.with_mode(mode);
-        self
-    }
-
-    pub fn reset(&self) {
-        self.inner.reset();
-    }
-}
-
-impl From<AiBridgeFakeProvider> for FakeProvider {
-    fn from(inner: AiBridgeFakeProvider) -> Self {
-        Self { inner }
-    }
-}
-
-#[async_trait]
-impl XyModel for FakeProvider {
-    fn name(&self) -> &str {
-        xylitol_ai_bridge::fake::AiBridgeModel::name(&self.inner)
-    }
-
-    async fn generate_stream(
-        &self,
-        messages: Vec<LlmMessage>,
-        tools: &[XyToolSchema],
-        stream: bool,
-        _options: XyGenerateOptions,
-    ) -> Result<XyStream, XyError> {
-        let bridge_tools = to_bridge_tools(tools);
-        let bridge_stream = xylitol_ai_bridge::fake::AiBridgeModel::generate_stream(
-            &self.inner,
-            messages,
-            &bridge_tools,
-            stream,
-        )
-        .await
-        .map_err(to_xy_error)?;
-        Ok(to_xy_stream(bridge_stream))
-    }
+/// Expose an already-configured [`FakeProvider`] (builder / custom mode) as an
+/// `XyModel` via the single-layer adapter shell.
+pub fn fake_xy_model_of(provider: FakeProvider) -> Arc<dyn XyModel> {
+    Arc::new(AdapterXyModel::new(Arc::new(provider)))
 }
 
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::protocol::model::XyChunk;
+    use crate::protocol::ports::XyGenerateOptions;
     use futures::StreamExt;
-    use xylitol_ai_bridge::fake::AiBridgeModel;
 
     #[tokio::test]
     async fn fake_xy_model_text() {
-        let provider = FakeProvider::new("test", vec![ScenarioStep::text("Hello world")]);
-        let mut stream = XyModel::generate_stream(
-            &provider,
-            vec![],
-            &[],
-            false,
-            crate::protocol::ports::XyGenerateOptions::default(),
-        )
-        .await
-        .unwrap();
+        let model = fake_xy_model("test", vec![ScenarioStep::text("Hello world")]);
+        let mut stream = model
+            .generate_stream(vec![], &[], false, XyGenerateOptions::default())
+            .await
+            .unwrap();
         let chunk = stream.next().await.unwrap().unwrap();
-        assert!(matches!(
-            chunk,
-            crate::protocol::model::XyChunk::TextDelta(t) if t == "Hello world"
-        ));
+        assert!(matches!(chunk, XyChunk::TextDelta(t) if t == "Hello world"));
     }
 
     #[tokio::test]
-    async fn builder_builds_bridge_then_wrap() {
+    async fn builder_builds_bridge_then_shell() {
         let bridge = FakeProvider::builder("b")
             .step(ScenarioStep::text("x"))
             .build();
-        let provider = FakeProvider::from(bridge);
-        assert_eq!(XyModel::name(&provider), "b");
-        let _ = AiBridgeModel::name(&provider.inner);
+        let model = fake_xy_model_of(bridge);
+        assert_eq!(XyModel::name(model.as_ref()), "b");
     }
 }

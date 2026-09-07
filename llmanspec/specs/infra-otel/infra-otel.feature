@@ -97,6 +97,14 @@
   场景: otel-session-id-per-generate
     - 当低频观测 span 激活且两路（或以上）绑定不同会话 UUID 的处理重叠进行时，各路导出的根 span 与该路 llm.request MUST 携带自己那次处理所绑定会话的 langfuse.session.id；MUST NOT 因共享进程级会话槽而被另一路中途 bind 覆盖。本 req 不改变「值为 xylitol 书签 UUID」的语义。由包内/观测单测覆盖，MUST NOT 单独扩 BDD step。
 
+  @req:otel24 @human
+  场景: otel-session-id-whole-tree-per-processing
+    - 当低频观测 span 激活且一次处理（绑定某会话 UUID 的 generate / compaction）导出任意低频观测 span（agent.turn、agent.iteration、llm.request、tool.execute、过 prepare 的 agent.compaction、token.estimate、react.error、tool.error，含 compaction summarizer 发起的 llm.request）时，这些 span 的 langfuse.session.id MUST 全部等于该次处理所绑定会话的书签 UUID；重叠处理下 MUST NOT 在 span 创建时读进程级会话槽，MUST NOT 因他路 bind 或 reader 物化改写槽而串入其它会话 id。无 run 上下文的闲置路径（如 slash compaction）MAY 以槽为回退。本 req 不改变「值为书签 UUID」的语义。由单测覆盖，MUST NOT 单独扩 BDD step。
+
+  @req:otel25 @human
+  场景: otel-obs-slot-write-discipline
+    - 进程级观测槽 MUST 仅由会话自身的 writer 绑定路径（runtime bind_session / 显式 set_obs_session 调用）更新；host 对只读 RPC（session stats / tree / messages / 列表等）materialize 的 reader driver MUST NOT 写观测槽（含会话名），reader 物化前后槽内容 MUST 不变。槽仍可作无 options 闲置路径的回退。由单测覆盖，MUST NOT 单独扩 BDD step。
+
   @req:otel6 @executable
   场景: otel-session-id-on-turn-root-headless
     假如 mock 模型先 tool 后无 tool

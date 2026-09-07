@@ -18,11 +18,9 @@
 //! `Span` kept alive for the turn/iteration. Must not import `crate::infra`.
 
 use fastrace::prelude::*;
+use xylitol_ai_bridge::provider::langfuse_observation_properties_from;
 use xylitol_ai_bridge::provider::trace::{
     observation_io_tier, provider_trace_active, tool_observation_io_tier, truncate_observation_text,
-};
-use xylitol_ai_bridge::provider::{
-    langfuse_observation_properties, langfuse_observation_properties_from,
 };
 
 use crate::protocol::error::{XyError, XyToolError};
@@ -40,6 +38,9 @@ pub(crate) enum TurnEndReason {
 pub(crate) struct AgentTurnSpan {
     root: Span,
     turn_id: String,
+    /// This run's obs session snapshot (otel24): children inherit it instead of
+    /// re-reading the process slot mid-run.
+    obs: xylitol_ai_bridge::ObsSessionContext,
 }
 
 impl AgentTurnSpan {
@@ -68,9 +69,10 @@ impl AgentTurnSpan {
         let turn_id = uuid::Uuid::new_v4().to_string();
         let obs = obs.clone();
         let turn_id_attr = turn_id.clone();
+        let span_obs = obs.clone();
         let root = Span::root("agent.turn", SpanContext::random()).with_properties(move || {
             let mut props = vec![("turn_id".to_string(), turn_id_attr)];
-            props.extend(langfuse_observation_properties_from("agent", &obs));
+            props.extend(langfuse_observation_properties_from("agent", &span_obs));
             if let Some(api) = model_api.filter(|s| !s.is_empty()) {
                 props.push(("xylitol.model.api".to_string(), api.to_string()));
             }
@@ -90,11 +92,16 @@ impl AgentTurnSpan {
                 ("name", "agent.turn".to_string()),
             ]
         }));
-        Some(Self { root, turn_id })
+        Some(Self { root, turn_id, obs })
     }
 
     pub(crate) fn turn_id(&self) -> &str {
         &self.turn_id
+    }
+
+    /// This run's obs session snapshot (otel24).
+    pub(crate) fn obs(&self) -> &xylitol_ai_bridge::ObsSessionContext {
+        &self.obs
     }
 
     pub(crate) fn span(&self) -> &Span {
@@ -145,15 +152,20 @@ impl AgentIterationSpan {
         let turn_id = turn
             .map(|t| t.turn_id().to_string())
             .unwrap_or_else(|| uuid::Uuid::new_v4().to_string());
+        // otel24: inherit the run snapshot from the turn; only turn-less
+        // (test / gate-off) iterations may fall back to the process slot.
+        let obs = turn
+            .map(|t| t.obs().clone())
+            .unwrap_or_else(xylitol_ai_bridge::provider::obs_session_context);
         let span = match turn {
             Some(t) => Span::enter_with_parent("agent.iteration", t.span()),
             None => Span::root("agent.iteration", SpanContext::random()),
         }
-        .with_properties(|| {
+        .with_properties(move || {
             // `turn_id` lives on `agent.turn` span attrs only — same value on every
             // iteration was Langfuse observation noise (parent chain correlates).
             let mut props = vec![("turn_index".to_string(), turn_index.to_string())];
-            props.extend(langfuse_observation_properties("agent"));
+            props.extend(langfuse_observation_properties_from("agent", &obs));
             props
         });
         span.add_event(Event::new("lifecycle").with_properties(|| {
@@ -196,32 +208,46 @@ impl ToolExecuteSpan {
         batch_mode: Option<&str>,
         barrier_index: Option<u32>,
     ) -> Option<Self> {
-        if !provider_trace_active() {
-            return None;
-        }
-        let span = match parent {
-            Some(p) => Span::enter_with_parent("tool.execute", p),
-            None => Span::root("tool.execute", SpanContext::random()),
-        };
-        Some(Self::finish_start(
-            span,
+        Self::start_with_ctx(
             name,
             id,
+            parent.and_then(SpanContext::from_span),
             batch_mode,
             barrier_index,
-        ))
+            &xylitol_ai_bridge::ObsSessionContext::default(),
+        )
     }
 
     /// Child of a captured parent [`SpanContext`] (BarrierParallel fan-out).
     ///
     /// Capturing the context before `join_all` avoids racing concurrent tools
     /// and avoids `SpanContext::random` roots for concurrent tools.
+    /// `obs` is the run's session snapshot (otel24) — never the process slot.
     pub(crate) fn start_with_parent_ctx(
         name: &str,
         id: &str,
         parent_ctx: Option<SpanContext>,
         batch_mode: &str,
         barrier_index: u32,
+        obs: &xylitol_ai_bridge::ObsSessionContext,
+    ) -> Option<Self> {
+        Self::start_with_ctx(
+            name,
+            id,
+            parent_ctx,
+            Some(batch_mode),
+            Some(barrier_index),
+            obs,
+        )
+    }
+
+    fn start_with_ctx(
+        name: &str,
+        id: &str,
+        parent_ctx: Option<SpanContext>,
+        batch_mode: Option<&str>,
+        barrier_index: Option<u32>,
+        obs: &xylitol_ai_bridge::ObsSessionContext,
     ) -> Option<Self> {
         if !provider_trace_active() {
             return None;
@@ -234,8 +260,9 @@ impl ToolExecuteSpan {
             span,
             name,
             id,
-            Some(batch_mode),
-            Some(barrier_index),
+            batch_mode,
+            barrier_index,
+            obs,
         ))
     }
 
@@ -245,8 +272,10 @@ impl ToolExecuteSpan {
         id: &str,
         batch_mode: Option<&str>,
         barrier_index: Option<u32>,
+        obs: &xylitol_ai_bridge::ObsSessionContext,
     ) -> Self {
-        let span = span.with_properties(|| {
+        let obs = obs.clone();
+        let span = span.with_properties(move || {
             let mut props = vec![
                 ("tool_name".to_string(), name.to_string()),
                 ("tool_id".to_string(), id.to_string()),
@@ -257,7 +286,7 @@ impl ToolExecuteSpan {
             if let Some(i) = barrier_index {
                 props.push(("tool_batch.barrier_index".to_string(), i.to_string()));
             }
-            props.extend(langfuse_observation_properties("tool"));
+            props.extend(langfuse_observation_properties_from("tool", &obs));
             props
         });
         span.add_event(Event::new("lifecycle").with_properties(|| {
@@ -290,6 +319,7 @@ pub(crate) fn record_xy_error(
     err: &XyError,
     turn_id: Option<&str>,
     parent: Option<SpanContext>,
+    obs: &xylitol_ai_bridge::ObsSessionContext,
 ) {
     let kind = err.kind();
     let tid = turn_id.unwrap_or("");
@@ -301,13 +331,14 @@ pub(crate) fn record_xy_error(
         return;
     }
     let parent = parent.unwrap_or_else(SpanContext::random);
-    let span = Span::root("react.error", parent).with_properties(|| {
+    let obs = obs.clone();
+    let span = Span::root("react.error", parent).with_properties(move || {
         let mut props = vec![
             ("error.kind".to_string(), kind.to_string()),
             ("where".to_string(), where_.to_string()),
             ("turn_id".to_string(), tid.to_string()),
         ];
-        props.extend(langfuse_observation_properties("span"));
+        props.extend(langfuse_observation_properties_from("span", &obs));
         props
     });
     span.add_event(Event::new("error").with_properties(|| {
@@ -325,6 +356,7 @@ pub(crate) fn record_tool_error(
     err: &XyToolError,
     turn_id: Option<&str>,
     parent: Option<SpanContext>,
+    obs: &xylitol_ai_bridge::ObsSessionContext,
 ) {
     let kind = err.kind();
     let tid = turn_id.unwrap_or("");
@@ -336,13 +368,14 @@ pub(crate) fn record_tool_error(
         return;
     }
     let parent = parent.unwrap_or_else(SpanContext::random);
-    let span = Span::root("tool.error", parent).with_properties(|| {
+    let obs = obs.clone();
+    let span = Span::root("tool.error", parent).with_properties(move || {
         let mut props = vec![
             ("error.kind".to_string(), kind.to_string()),
             ("tool_name".to_string(), tool.to_string()),
             ("turn_id".to_string(), tid.to_string()),
         ];
-        props.extend(langfuse_observation_properties("span"));
+        props.extend(langfuse_observation_properties_from("span", &obs));
         props
     });
     span.add_event(Event::new("error").with_properties(|| {
@@ -605,6 +638,7 @@ mod tests {
                 parent_ctx,
                 "barrier_parallel",
                 0,
+                turn.obs(),
             )
             .expect("t1");
             let t2 = ToolExecuteSpan::start_with_parent_ctx(
@@ -613,6 +647,7 @@ mod tests {
                 parent_ctx,
                 "barrier_parallel",
                 0,
+                turn.obs(),
             )
             .expect("t2");
             drop(t1);
@@ -699,5 +734,63 @@ mod tests {
                 .any(|id| *id == "process-wrong" || *id == "hijacked"),
             "process slot leaked: {ids:?}"
         );
+    }
+
+    /// otel24 / c2610: mid-run slot stomps (reader materialization, another
+    /// runtime's bind) must not leak into iteration / tool / error spans.
+    #[test]
+    fn slot_stomp_between_turns_keeps_children_session_id() {
+        use xylitol_ai_bridge::ObsSessionContext;
+        use xylitol_ai_bridge::provider::{ObsSessionScope, set_obs_session};
+
+        let _g = ObsGateScope::enter(ObsGateState::active_none_io());
+        let _sess = ObsSessionScope::enter(ObsSessionContext {
+            session_id: Some("bookmark-b".into()),
+            session_name: None,
+        });
+        let collect = SpanCollectScope::enter();
+
+        let b = ObsSessionContext {
+            session_id: Some("bookmark-b".into()),
+            session_name: None,
+        };
+        {
+            let turn = AgentTurnSpan::start_with_session(Some("hi"), None, &b).expect("turn");
+            // Reader materialization / another slot's bind stomps the process slot.
+            set_obs_session("old-session-a", None);
+
+            let iter = AgentIterationSpan::start(Some(&turn), 0).expect("iter");
+            let parent_ctx = SpanContext::from_span(iter.span());
+            let tool = ToolExecuteSpan::start_with_parent_ctx(
+                "bash",
+                "t1",
+                parent_ctx,
+                "barrier_parallel",
+                0,
+                turn.obs(),
+            )
+            .expect("tool");
+            drop(tool);
+            drop(iter);
+            turn.finish(TurnEndReason::Ok);
+        }
+        fastrace::flush();
+
+        let spans = collect.records();
+        let session_of = |name: &str| -> Option<&str> {
+            spans.iter().find(|s| s.name == name).and_then(|s| {
+                s.properties
+                    .iter()
+                    .find(|(k, _)| k.as_ref() == "langfuse.session.id")
+                    .map(|(_, v)| v.as_ref())
+            })
+        };
+        for name in ["agent.turn", "agent.iteration", "tool.execute"] {
+            assert_eq!(
+                session_of(name),
+                Some("bookmark-b"),
+                "{name} must keep the run snapshot after a slot stomp"
+            );
+        }
     }
 }

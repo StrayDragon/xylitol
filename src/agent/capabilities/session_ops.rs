@@ -18,9 +18,12 @@ impl AgentCapabilities {
     ///
     /// Drops any ablation calendar pin from a previous bind **without** rebuilding
     /// the system prompt (product [`crate::agent::context_policy::DatePlacement::Omit`]
-    /// ignores the pin; c1905).
+    /// ignores the pin; c1905). Writes the process obs slot only when
+    /// `Self::obs_slot_writes` is on (otel25: host reader drivers opt out).
     pub fn set_session(&mut self, session_id: String) {
-        xylitol_ai_bridge::provider::set_obs_session(session_id.clone(), None);
+        if self.obs_slot_writes {
+            xylitol_ai_bridge::provider::set_obs_session(session_id.clone(), None);
+        }
         self.session_id = Some(session_id);
         self.system_date_pin = None;
         if matches!(
@@ -28,6 +31,26 @@ impl AgentCapabilities {
             crate::agent::context_policy::DatePlacement::SystemPinnedAtSession
         ) {
             self.prompt_opts.date = None;
+        }
+    }
+
+    /// Obs-slot write permission for `set_session` (otel25). Default on;
+    /// host reader drivers turn this off before binding.
+    pub(crate) fn set_obs_slot_writes(&mut self, enabled: bool) {
+        self.obs_slot_writes = enabled;
+    }
+
+    pub(crate) fn obs_slot_writes(&self) -> bool {
+        self.obs_slot_writes
+    }
+
+    /// This session's obs identity snapshot (otel24 / c2610): the bound bookmark
+    /// id plus the slot's display name. Compaction / idle callers with a known
+    /// session MUST build the snapshot here instead of re-reading the slot id.
+    pub(crate) fn obs_session_snapshot(&self) -> xylitol_ai_bridge::ObsSessionContext {
+        xylitol_ai_bridge::ObsSessionContext {
+            session_id: self.session_id.clone(),
+            session_name: xylitol_ai_bridge::provider::obs_session_context().session_name,
         }
     }
 

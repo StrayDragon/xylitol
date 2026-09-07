@@ -67,7 +67,9 @@ impl super::XyInProcessDriver {
         } else {
             self.mcp_boot = McpBootState::Settled;
         }
-        if let Ok(Some(name)) = self.store.get_session_name(session_id).await {
+        if self.agent.obs_slot_writes()
+            && let Ok(Some(name)) = self.store.get_session_name(session_id).await
+        {
             xylitol_ai_bridge::provider::set_obs_session_name(Some(name.as_str()));
         }
         Ok(session_id.to_string())

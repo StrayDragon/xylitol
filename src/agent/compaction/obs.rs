@@ -4,7 +4,7 @@
 //! a runtime ↔ compaction cycle. Gated like `token.estimate` / ReAct low-freq spans.
 
 use fastrace::prelude::*;
-use xylitol_ai_bridge::provider::langfuse_observation_properties;
+use xylitol_ai_bridge::provider::langfuse_observation_properties_from;
 use xylitol_ai_bridge::provider::trace::provider_trace_active;
 
 /// Normalize Start/End reason strings to product kinds.
@@ -28,18 +28,25 @@ impl AgentCompactionSpan {
     ///
     /// `parent` is typically the active `agent.turn` context when compacting inside
     /// a turn; `None` starts an independent root (slash / out-of-turn compact).
-    pub(crate) fn start(reason: &str, parent: Option<SpanContext>) -> Option<Self> {
+    /// `obs` is the caller's session snapshot (otel24 / c2610) — never a mid-run
+    /// read of the process slot.
+    pub(crate) fn start(
+        reason: &str,
+        parent: Option<SpanContext>,
+        obs: &xylitol_ai_bridge::ObsSessionContext,
+    ) -> Option<Self> {
         if !provider_trace_active() {
             return None;
         }
         let kind = compaction_reason_kind(reason);
         let parent = parent.unwrap_or_else(SpanContext::random);
-        let span = Span::root("agent.compaction", parent).with_properties(|| {
+        let obs = obs.clone();
+        let span = Span::root("agent.compaction", parent).with_properties(move || {
             let mut props = vec![("reason".to_string(), kind.to_string())];
             if reason != kind {
                 props.push(("reason.detail".to_string(), reason.to_string()));
             }
-            props.extend(langfuse_observation_properties("span"));
+            props.extend(langfuse_observation_properties_from("span", &obs));
             props
         });
         span.add_event(Event::new("lifecycle").with_properties(|| {
@@ -93,9 +100,7 @@ impl AgentCompactionSpan {
 mod tests {
     use super::*;
 
-    use xylitol_ai_bridge::provider::obs_session::{
-        ObsSessionContext, ObsSessionScope, set_obs_session,
-    };
+    use xylitol_ai_bridge::provider::obs_session::ObsSessionContext;
     use xylitol_ai_bridge::provider::trace::{ObsGateScope, ObsGateState, SpanCollectScope};
 
     #[test]
@@ -111,7 +116,9 @@ mod tests {
     #[test]
     fn inactive_start_is_none() {
         let _g = ObsGateScope::enter(ObsGateState::OFF);
-        assert!(AgentCompactionSpan::start("manual", None).is_none());
+        assert!(
+            AgentCompactionSpan::start("manual", None, &ObsSessionContext::default()).is_none()
+        );
     }
 
     #[test]
@@ -122,7 +129,12 @@ mod tests {
         {
             let turn = Span::root("agent.turn", SpanContext::random());
             let turn_ctx = SpanContext::from_span(&turn).expect("turn ctx");
-            let c = AgentCompactionSpan::start("threshold: demo", Some(turn_ctx)).expect("compact");
+            let c = AgentCompactionSpan::start(
+                "threshold: demo",
+                Some(turn_ctx),
+                &ObsSessionContext::default(),
+            )
+            .expect("compact");
             c.finish(false, false, None);
             drop(turn);
         }
@@ -153,14 +165,17 @@ mod tests {
 
     #[test]
     fn independent_root_carries_session_id_and_lane() {
-        let _obs = ObsSessionScope::enter(ObsSessionContext::default());
         let _g = ObsGateScope::enter(ObsGateState::active_none_io());
-        set_obs_session("sess-compact-1", None);
         let collect = SpanCollectScope::enter();
+
+        let snapshot = ObsSessionContext {
+            session_id: Some("sess-compact-1".into()),
+            session_name: None,
+        };
 
         {
             // Post-prepare failure path (e.g. summarization error), not prepare early-exit.
-            let c = AgentCompactionSpan::start("manual", None).expect("compact");
+            let c = AgentCompactionSpan::start("manual", None, &snapshot).expect("compact");
             c.finish(false, false, Some("compaction failed: model error"));
         }
         fastrace::flush();
@@ -197,7 +212,8 @@ mod tests {
         {
             let turn = Span::root("agent.turn", SpanContext::random());
             let turn_ctx = SpanContext::from_span(&turn);
-            let c = AgentCompactionSpan::start("overflow", turn_ctx).expect("compact");
+            let c = AgentCompactionSpan::start("overflow", turn_ctx, &ObsSessionContext::default())
+                .expect("compact");
             let compact_ctx = c.span_context();
             let _llm = xylitol_ai_bridge::provider::trace::ProviderRequestTrace::start_with_parent(
                 "openai-responses",
