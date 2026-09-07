@@ -73,7 +73,7 @@ flowchart TB
   Prov -.->|cache 能力声明| Cache
 ```
 
-> **观测**：本地 fastrace JSONL + OTLP/Langfuse 已落地（见 [architecture](../architecture/进程内观测.md)）；候选为 **M-tree（分叉身份/观测槽）** / obs.lane / Collector / 采样 / 子进程出站（见 [OTEL与Langfuse观测.md](./OTEL与Langfuse观测.md)）。**不**自研 Inspect 检视台。
+> **观测**：本地 fastrace JSONL + OTLP/Langfuse、分叉身份与并发快照已落地（见 [architecture](../architecture/进程内观测.md)）；候选为 obs.lane / Collector / 采样 / 子进程出站（见 [OTEL与Langfuse观测.md](./OTEL与Langfuse观测.md)）。**不**自研 Inspect 检视台。
 > **压缩**：会话 auto-compact + provenance 已落地（见 [architecture](../architecture/压缩与上下文.md)）；缓存/动态压缩见新篇。
 > **Eval 调研底稿**：[../research/agent-eval-frameworks-2026.md](../research/agent-eval-frameworks-2026.md)。
 > **键位学习 UI 调研**：[../research/keybinding-keyboard-visualizer-2026.md](../research/keybinding-keyboard-visualizer-2026.md)（挂 [键位与命令发现.md](./键位与命令发现.md) M4）。
@@ -86,7 +86,7 @@ flowchart TB
 | [TUI视觉与信息表达.md](./TUI视觉与信息表达.md) | 状态减噪、主题密度；与调用活动折叠衔接 |
 | [TUI重制.md](./TUI重制.md) | **UiEntry** 语义复制 / 引擎按需 / 悬停高亮区块；交互设计稿 = 仓库顶层 `designing/`（≠ 产品真值；≠ `agent_demo`） |
 | [键位与命令发现.md](./键位与命令发现.md) | `/hotkeys` 支线延后；可视化键盘挂 GUI 面（gpui） |
-| [OTEL与Langfuse观测.md](./OTEL与Langfuse观测.md) | M-tree（分叉身份与观测槽）/ obs.lane / Collector / 采样 / 子进程出站 |
+| [OTEL与Langfuse观测.md](./OTEL与Langfuse观测.md) | obs.lane / Collector / 采样 / 子进程出站 |
 | [Agent-Eval与回归基准.md](./Agent-Eval与回归基准.md) | SWE 先、TB 后；Docker 出分；AA 选模对照；Langfuse 回归旁路 |
 | [上下文缓存与极致压缩.md](./上下文缓存与极致压缩.md) | prompt cache、动态压缩、工具结果分级压缩 |
 | [Cloud-Agent与Web控制台.md](./Cloud-Agent与Web控制台.md) | **搁置（2026-08-22）**：多工作区 CS + Web；复活需显式重立项 |

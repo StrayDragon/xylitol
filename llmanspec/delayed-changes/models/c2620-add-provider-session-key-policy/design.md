@@ -1,5 +1,7 @@
 # Design: c2620 供应商键策略(缓存优先)
 
+> **deferred（2026-09-08）**：与 proposal 同迁 `delayed-changes/models/`。公开预览不落地。
+
 ## Decision
 
 键取值 = **命名策略表**(按供应商/轮廓分流),不是新 trait 市场:

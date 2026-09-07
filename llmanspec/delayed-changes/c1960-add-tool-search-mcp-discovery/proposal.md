@@ -9,7 +9,7 @@ depends_on:
 > **一句话**：MCP 工具极多时 tools_mode=search 按需发现加载，靠 WirePolicy 声明分流（非开箱主路径）
 
 
-> **已升格（2026-08-10）**：当前排序 **#17**（c1900 已归档，可独立推进）。与 `c1900`（freeze） **拆分（Q12/Q17 双轨）**。开箱主路径 = 门闸 + Full 定稿；本 change = `defer_loading`/`tool_search` 轨（WirePolicy 声明后）。
+> **⚠️ deferred（2026-09-08）**：仍在 `delayed-changes/`，未进活跃 graph。2026-08-10 排序 #17 作废。c1900 freeze 已归档，本票仍是非开箱 `tool_search` 轨，公开预览不挡。
 > **对照**：`../codex` Deferred + `tool_search_*` + `defer_loading`。
 > **Lab**：Ornith/llama.cpp **不支持** hosted `tool_search`（静默剥离）；`tool_search_*` item **400**；function 形可用。见下探测摘要。
 > **调研**：`responses-tools-stable-id-and-resume-mcp-2026.md`（freeze） — **无** definition id/占位 remap；client `tool_search` 是 OpenAI 上追加能力的较好路线，**不能**单独解决 resume 删除/重命名；方言仍受 Ornith 限制。
