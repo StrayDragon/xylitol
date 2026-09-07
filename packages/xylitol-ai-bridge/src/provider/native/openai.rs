@@ -116,7 +116,7 @@ impl OpenAIProvider {
                 .await
                 .map_err(Self::map_err)?;
 
-            Ok(completions_sdk_stream(sdk_stream, trace))
+            Ok(completions_sdk_stream(sdk_stream, trace, self.wire_policy))
         } else {
             let request = CreateChatCompletionRequestArgs::default()
                 .model(self.model.clone())
@@ -148,7 +148,7 @@ impl OpenAIProvider {
             if let Some(t) = &trace {
                 t.emit_raw("chat.completion.json", &json.to_string());
             }
-            let chunks = parse_nonstream_json(&json);
+            let chunks = parse_nonstream_json(&json, self.wire_policy);
             if let Some(t) = &trace {
                 for c in &chunks {
                     t.emit_mapped_chunk(c);
@@ -166,6 +166,7 @@ fn completions_sdk_stream(
     + Unpin
     + 'static,
     trace: Option<crate::provider::trace::ProviderRequestTrace>,
+    wire_policy: WirePolicy,
 ) -> Pin<Box<dyn Stream<Item = Result<AiBridgeChunk, AiBridgeError>> + Send>> {
     Box::pin(async_stream::try_stream! {
         let mut tool_accumulators: HashMap<u32, (String, String, String, bool)> = HashMap::new();
@@ -196,15 +197,11 @@ fn completions_sdk_stream(
             }
 
             if let Some(u) = &chunk.usage {
-                pending_usage = Some(
-                    crate::dto::AiBridgeUsage {
-                        input: u.prompt_tokens as u64,
-                        output: u.completion_tokens as u64,
-                        total_tokens: u.total_tokens as u64,
-                        ..Default::default()
-                    }
-                    .with_prompt_cache_read(crate::dto::PromptCacheRead::Tokens(0)),
-                );
+                let usage_json = serde_json::to_value(u).unwrap_or(Value::Null);
+                pending_usage = Some(crate::usage::from_openai_usage_with_policy(
+                    &usage_json,
+                    wire_policy,
+                ));
             }
 
             for choice in &chunk.choices {
@@ -329,20 +326,11 @@ fn convert_tools(tools: &[AiBridgeToolSchema]) -> Vec<ChatCompletionTools> {
 
 // ── Non-streaming response ─────────────────────────────────────────
 
-fn parse_nonstream_json(response: &Value) -> Vec<AiBridgeChunk> {
+fn parse_nonstream_json(response: &Value, wire_policy: WirePolicy) -> Vec<AiBridgeChunk> {
     let mut chunks = Vec::new();
-    let usage = response.get("usage").map(|u| {
-        crate::dto::AiBridgeUsage {
-            input: u.get("prompt_tokens").and_then(|v| v.as_u64()).unwrap_or(0),
-            output: u
-                .get("completion_tokens")
-                .and_then(|v| v.as_u64())
-                .unwrap_or(0),
-            total_tokens: u.get("total_tokens").and_then(|v| v.as_u64()).unwrap_or(0),
-            ..Default::default()
-        }
-        .with_prompt_cache_read(crate::dto::PromptCacheRead::Tokens(0))
-    });
+    let usage = response
+        .get("usage")
+        .map(|u| crate::usage::from_openai_usage_with_policy(u, wire_policy));
 
     let Some(choices) = response.get("choices").and_then(|c| c.as_array()) else {
         return chunks;
@@ -500,7 +488,8 @@ pub fn convert_agent_messages(
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::dto::{AiBridgeMessage, AiBridgeStopReason};
+    use crate::dto::{AiBridgeMessage, AiBridgeStopReason, PromptCacheRead};
+    use crate::wire_policy::Compat;
 
     #[test]
     fn convert_user_message() {
@@ -599,5 +588,77 @@ mod tests {
             },
             _ => panic!("expected User message"),
         }
+    }
+
+    fn done_usage(chunks: &[AiBridgeChunk]) -> crate::dto::AiBridgeUsage {
+        chunks
+            .iter()
+            .find_map(|c| match c {
+                AiBridgeChunk::Done { usage, .. } => *usage,
+                _ => None,
+            })
+            .expect("Done usage")
+    }
+
+    #[test]
+    fn parse_nonstream_prefers_prompt_cache_hit_tokens() {
+        let json = serde_json::json!({
+            "choices": [{
+                "message": { "content": "ok" },
+                "finish_reason": "stop"
+            }],
+            "usage": {
+                "prompt_tokens": 754,
+                "completion_tokens": 10,
+                "total_tokens": 764,
+                "prompt_cache_hit_tokens": 640,
+                "prompt_tokens_details": { "cached_tokens": 1 }
+            }
+        });
+        let chunks = parse_nonstream_json(&json, WirePolicy::for_compat(Compat::Deepseek));
+        let u = done_usage(&chunks);
+        assert_eq!(u.input, 754);
+        assert_eq!(u.output, 10);
+        assert_eq!(u.prompt_cache_read, PromptCacheRead::Tokens(640));
+    }
+
+    #[test]
+    fn parse_nonstream_falls_back_to_cached_tokens() {
+        let json = serde_json::json!({
+            "choices": [{
+                "message": { "content": "ok" },
+                "finish_reason": "stop"
+            }],
+            "usage": {
+                "prompt_tokens": 754,
+                "completion_tokens": 10,
+                "total_tokens": 764,
+                "prompt_tokens_details": { "cached_tokens": 640 }
+            }
+        });
+        let chunks = parse_nonstream_json(&json, WirePolicy::for_compat(Compat::Deepseek));
+        assert_eq!(
+            done_usage(&chunks).prompt_cache_read,
+            PromptCacheRead::Tokens(640)
+        );
+    }
+
+    #[test]
+    fn parse_nonstream_missing_cache_fields_are_not_reported() {
+        let json = serde_json::json!({
+            "choices": [{
+                "message": { "content": "ok" },
+                "finish_reason": "stop"
+            }],
+            "usage": {
+                "prompt_tokens": 100,
+                "completion_tokens": 5,
+                "total_tokens": 105
+            }
+        });
+        let chunks = parse_nonstream_json(&json, WirePolicy::for_compat(Compat::Deepseek));
+        let u = done_usage(&chunks);
+        assert_eq!(u.prompt_cache_read, PromptCacheRead::NotReported);
+        assert_eq!(u.cache_read, 0);
     }
 }

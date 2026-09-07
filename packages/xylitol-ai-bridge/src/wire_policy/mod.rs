@@ -91,8 +91,10 @@ impl WirePolicy {
             Compat::Deepseek => Self {
                 compat: Compat::Deepseek,
                 extra_policy: ExtraPolicy {
-                    // DeepSeek Responses/Completions do not claim OpenAI first-language cache fields.
-                    prompt_cache_usage: false,
+                    // DeepSeek reports cache reads (Completions hit_tokens / details;
+                    // Responses input_tokens_details). Still omit encrypted include
+                    // and previous_response_id.
+                    prompt_cache_usage: true,
                     prompt_cache_key: false,
                     previous_response_id: false,
                 },
@@ -162,13 +164,14 @@ mod tests {
     }
 
     #[test]
-    fn deepseek_profile_skips_encrypted_include_and_cache_assumptions() {
+    fn deepseek_profile_expects_cache_skips_encrypted_include() {
         let p = WirePolicy::for_compat(Compat::Deepseek);
         assert_eq!(p.compat, Compat::Deepseek);
         assert_eq!(Compat::parse("deepseek"), Some(Compat::Deepseek));
-        assert!(!p.expects_prompt_cache_usage());
+        assert!(p.expects_prompt_cache_usage());
         assert!(!p.allows_reasoning_encrypted_include());
         assert!(!p.allows_previous_response_id());
+        assert!(!p.allows_prompt_cache_key());
     }
 
     #[test]

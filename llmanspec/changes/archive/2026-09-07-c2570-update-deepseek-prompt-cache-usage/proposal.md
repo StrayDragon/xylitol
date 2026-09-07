@@ -2,7 +2,8 @@
 depends_on: []
 branch: sdd/c2570-update-deepseek-prompt-cache-usage
 base_sha: 4c883674fb1b17eb5147d8c794fcbf6a1d634991
-checkpointed: false
+checkpointed: true
+checkpoint_sha: 4c883674fb1b17eb5147d8c794fcbf6a1d634991
 ---
 
 # DeepSeek 方言诚实映射 Prompt Cache 读数
