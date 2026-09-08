@@ -9,7 +9,7 @@ use std::cell::RefCell;
 use std::sync::Arc;
 
 use crate::infra::provider::adapter::{AdapterXyModel, factory::build_adapter};
-use crate::infra::provider::{FakeProvider, ScenarioStep};
+use crate::infra::provider::{ScenarioStep, fake_xy_model};
 use crate::protocol::model::{XyModelConfig, XyModelKind};
 use crate::protocol::ports::XyModel;
 
@@ -117,8 +117,7 @@ pub fn build_provider_with_hooks(
                     vec![ScenarioStep::text("Hello from fake provider")]
                 }
             };
-            let fake = FakeProvider::new("__fake__", steps);
-            Arc::new(fake) as Arc<dyn XyModel>
+            fake_xy_model("__fake__", steps)
         }
     }
 }

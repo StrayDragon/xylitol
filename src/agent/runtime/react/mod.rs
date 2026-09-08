@@ -82,6 +82,17 @@ impl AgentRuntime {
         Ok(())
     }
 
+    /// Toggle process obs-slot writes for `bind_session` (otel25). Host reader
+    /// drivers disable this so read-only RPCs cannot stomp another session's id.
+    pub(crate) fn set_obs_slot_writes(&mut self, enabled: bool) {
+        self.inner.set_obs_slot_writes(enabled);
+    }
+
+    /// Whether `bind_session` on this runtime writes the process obs slot.
+    pub(crate) fn obs_slot_writes(&self) -> bool {
+        self.inner.obs_slot_writes()
+    }
+
     /// Currently bound session id, if any.
     pub fn session_id(&self) -> Option<&str> {
         self.inner.session_id()
@@ -996,6 +1007,7 @@ fn run_react_loop(cfg: ReActConfig) -> impl Stream<Item = XyEvent> + Send {
                                 &e,
                                 turn_id.as_deref(),
                                 generate_options.obs_parent,
+                                &obs_session,
                             );
                             if retry_state.attempt() > 0 {
                                 yield XyEvent::AutoRetryEnd {
@@ -1044,6 +1056,7 @@ fn run_react_loop(cfg: ReActConfig) -> impl Stream<Item = XyEvent> + Send {
                             &mut overflow_recovery_attempted,
                             None,
                             turn_obs_parent,
+                            &obs_session,
                             &cwd,
                         )
                         .await;
@@ -1217,6 +1230,7 @@ fn run_react_loop(cfg: ReActConfig) -> impl Stream<Item = XyEvent> + Send {
                                 &e,
                                 turn_id.as_deref(),
                                 iteration_parent,
+                                &obs_session,
                             );
                             let err_text = format!("stream error: {e}");
                             done_stop_reason =
@@ -1311,6 +1325,7 @@ fn run_react_loop(cfg: ReActConfig) -> impl Stream<Item = XyEvent> + Send {
                         &steer_queue,
                         &follow_up_queue,
                         turn_obs_parent,
+                        &obs_session,
                         &cwd,
                     )
                     .await;
@@ -1349,6 +1364,7 @@ fn run_react_loop(cfg: ReActConfig) -> impl Stream<Item = XyEvent> + Send {
                     turn_id: turn_id.as_deref(),
                     batch_mode,
                     workspace: &cwd,
+                    obs_session: &obs_session,
                 };
                 let parent_ctx = iteration_parent;
 
@@ -1488,6 +1504,7 @@ fn run_react_loop(cfg: ReActConfig) -> impl Stream<Item = XyEvent> + Send {
                     &steer_queue,
                     &follow_up_queue,
                     turn_obs_parent,
+                    &obs_session,
                     &cwd,
                 )
                 .await;

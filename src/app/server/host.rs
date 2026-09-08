@@ -704,7 +704,10 @@ pub async fn materialize_writer_at(
 }
 
 fn new_reader_driver(host: &HostState) -> XyInProcessDriver {
-    let agent = host.ports.materialize_runtime();
+    let mut agent = host.ports.materialize_runtime();
+    // otel25: read-only RPCs must never stomp the process obs slot — it belongs
+    // to whichever session's writer bound it last.
+    agent.set_obs_slot_writes(false);
     let mut driver = XyInProcessDriver::new(agent, host.ports.store.clone());
     driver.enable_reload_state(
         host.reload.cwd.clone(),

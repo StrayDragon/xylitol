@@ -45,7 +45,16 @@ pub(crate) async fn comp_run_compact(
         reserve_tokens: 1024,
         keep_recent_tokens,
     };
-    let result = compact_session(&mgr, sid, model.as_ref(), &settings, None, None).await;
+    let result = compact_session(
+        &mgr,
+        sid,
+        model.as_ref(),
+        &settings,
+        None,
+        None,
+        &xylitol_ai_bridge::ObsSessionContext::default(),
+    )
+    .await;
     match result {
         Ok(entry) => {
             agent

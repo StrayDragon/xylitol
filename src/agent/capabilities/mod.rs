@@ -122,6 +122,10 @@ pub struct AgentCapabilities {
     /// Session-pinned calendar day for ablation
     /// [`DatePlacement::SystemPinnedAtSession`] only (c1905; product uses session_env).
     system_date_pin: Option<String>,
+    /// Whether `set_session` may write the process obs slot (otel25). Off on
+    /// host **reader** drivers so read-only RPCs never stomp another session's
+    /// identity; writer binds keep the default `true`.
+    obs_slot_writes: bool,
 }
 
 impl AgentCapabilities {
@@ -181,6 +185,7 @@ impl AgentCapabilities {
             hook_bus,
             context_policy: crate::agent::context_policy::ContextPolicy::default(),
             system_date_pin: None,
+            obs_slot_writes: true,
         };
         // Assemble full system prompt (tools + context + SYSTEM/APPEND + runtime
         // policy) once at construction so bootstrap-injected AGENTS.md is visible

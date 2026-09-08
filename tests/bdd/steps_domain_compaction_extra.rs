@@ -246,7 +246,7 @@ pub(crate) async fn g_comp_split_dual(sess: &XySessionStore) {
 #[when("执行 split-turn compact_session")]
 pub(crate) async fn w_comp_session_split(agent: &AgentState, sess: &XySessionStore) {
     use xylitol::agent::compaction::{CompactionSettings, compact_session};
-    use xylitol::infra::provider::{FakeProvider, ScenarioStep};
+    use xylitol::infra::provider::{ScenarioStep, fake_xy_model};
     let sid = sess
         .current_id
         .borrow()
@@ -254,7 +254,7 @@ pub(crate) async fn w_comp_session_split(agent: &AgentState, sess: &XySessionSto
         .unwrap_or_else(|| "split-dual-bdd".into());
     sess.ensure_mgr();
     let mgr = sess.mgr.borrow().as_ref().unwrap().clone();
-    let model = FakeProvider::new(
+    let model = fake_xy_model(
         "split-dual",
         vec![
             ScenarioStep::text("## Goal\nhistory-summary"),
@@ -266,7 +266,16 @@ pub(crate) async fn w_comp_session_split(agent: &AgentState, sess: &XySessionSto
         reserve_tokens: 1024,
         keep_recent_tokens: 80,
     };
-    let result = compact_session(&mgr, &sid, &model, &settings, None, None).await;
+    let result = compact_session(
+        &mgr,
+        &sid,
+        model.as_ref(),
+        &settings,
+        None,
+        None,
+        &xylitol_ai_bridge::ObsSessionContext::default(),
+    )
+    .await;
     agent.last_result.replace(Some(
         result
             .map(|e| format!("summary:{}", e.summary))
@@ -321,9 +330,17 @@ pub(crate) async fn g_comp_tokens_before_done(agent: &AgentState, sess: &XySessi
         reserve_tokens: 1024,
         keep_recent_tokens: 200,
     };
-    let entry = compact_session(&mgr, sid, model.as_ref(), &settings, None, None)
-        .await
-        .expect("compact");
+    let entry = compact_session(
+        &mgr,
+        sid,
+        model.as_ref(),
+        &settings,
+        None,
+        None,
+        &xylitol_ai_bridge::ObsSessionContext::default(),
+    )
+    .await
+    .expect("compact");
     let loaded = mgr.load(sid).await.unwrap_or_default();
     // Pre-compact estimate: everything before the CompactionEntry (exclude the
     // entry itself and any post-compact ensure rows such as session_env).
@@ -883,7 +900,16 @@ pub(crate) async fn w_compact_summarize(agent: &AgentState, sess: &XySessionStor
         reserve_tokens: 1024,
         keep_recent_tokens: 4_000,
     };
-    let result = compact_session(&mgr, sid, model.as_ref(), &settings, None, None).await;
+    let result = compact_session(
+        &mgr,
+        sid,
+        model.as_ref(),
+        &settings,
+        None,
+        None,
+        &xylitol_ai_bridge::ObsSessionContext::default(),
+    )
+    .await;
     agent.last_result.replace(Some(
         result
             .map(|e| format!("compacted:{}", e.summary.len()))
@@ -980,7 +1006,16 @@ Edit src/file5.rs and update Cargo.toml
             compat: None,
         },
     );
-    let result = generate_summary(&messages, model.as_ref(), 4096, None, None, None).await;
+    let result = generate_summary(
+        &messages,
+        model.as_ref(),
+        4096,
+        None,
+        None,
+        None,
+        &xylitol_ai_bridge::ObsSessionContext::default(),
+    )
+    .await;
     agent
         .last_result
         .replace(Some(result.map_err(|e| XyDriverError::from(e.to_string()))));
@@ -1048,7 +1083,16 @@ pub(crate) async fn w_comp_agent_compact(agent: &AgentState, sess: &XySessionSto
         reserve_tokens: 1024,
         keep_recent_tokens: 4_000,
     };
-    let result = compact_session(&mgr, sid, model.as_ref(), &settings, None, None).await;
+    let result = compact_session(
+        &mgr,
+        sid,
+        model.as_ref(),
+        &settings,
+        None,
+        None,
+        &xylitol_ai_bridge::ObsSessionContext::default(),
+    )
+    .await;
     agent.last_result.replace(Some(
         result
             .map(|_| "compact:true".to_string())
@@ -1191,8 +1235,16 @@ pub(crate) async fn w_comp_iterative_summary(agent: &AgentState, sess: &XySessio
             compat: None,
         },
     );
-    let result =
-        generate_summary(&messages, model.as_ref(), 4096, prev.as_deref(), None, None).await;
+    let result = generate_summary(
+        &messages,
+        model.as_ref(),
+        4096,
+        prev.as_deref(),
+        None,
+        None,
+        &xylitol_ai_bridge::ObsSessionContext::default(),
+    )
+    .await;
     agent
         .last_result
         .replace(Some(result.map_err(|e| XyDriverError::from(e.to_string()))));

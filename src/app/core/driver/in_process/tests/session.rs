@@ -467,3 +467,26 @@ async fn concurrent_run_rejects_second_with_busy() {
 
     while first.next().await.is_some() {}
 }
+
+#[tokio::test]
+async fn reader_driver_switch_session_does_not_stomp_obs_slot() {
+    // otel25 / c2610: host reader materialization binds the target session on its
+    // own runtime; the active obs identity must stay the writer's session.
+    let dir = tempfile::tempdir().unwrap();
+    let store = Arc::new(SessionManager::new(dir.path().join("sessions")));
+    let target = "reader-target";
+    store.create(target, Some("."), None).await.unwrap();
+
+    let (mut reader, _scope) = build_test_driver(store.clone()).await;
+    let writer_identity = xylitol_ai_bridge::provider::obs_session_context();
+    reader.agent.set_obs_slot_writes(false);
+
+    reader.switch_session(target).await.unwrap();
+
+    assert_eq!(reader.session_id(), Some(target.to_string()));
+    assert_eq!(
+        xylitol_ai_bridge::provider::obs_session_context(),
+        writer_identity,
+        "reader materialization must not stomp the obs identity"
+    );
+}

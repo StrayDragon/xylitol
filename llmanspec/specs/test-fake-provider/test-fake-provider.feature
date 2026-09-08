@@ -7,7 +7,7 @@
 
   @req:r38 @human
   场景: fake-provider
-    - System MUST 实现 FakeProvider，实现 XyModel，经 ScenarioStep 序列返回预配置响应。
+    - System MUST 提供 FakeProvider，经统一装配路径（AdapterXyModel）暴露为 XyModel，经 ScenarioStep 序列返回预配置响应。
 
   @req:r45 @human
   场景: scenario-orchestration

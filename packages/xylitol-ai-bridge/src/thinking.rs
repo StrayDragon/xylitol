@@ -47,7 +47,7 @@ pub struct AiBridgeGenerateOptions {
 impl Default for AiBridgeGenerateOptions {
     fn default() -> Self {
         Self {
-            thinking_level: "off".into(),
+            thinking_level: AiBridgeBuiltinThinkingLevels::OFF.into(),
             level_map: HashMap::new(),
             thinking_budgets: None,
             system_prompt: None,
@@ -75,37 +75,57 @@ pub enum AiBridgeResolvedThinking {
     Invalid(String),
 }
 
+/// Builtin canonical thinking-level names — the single-source request
+/// vocabulary (exact spelling, canonical order). Levels stay opaque strings at
+/// runtime: this table is consumed for matching/budgets, never as a closed
+/// user-facing enum.
+pub struct AiBridgeBuiltinThinkingLevels;
+
+impl AiBridgeBuiltinThinkingLevels {
+    pub const OFF: &'static str = "off";
+    pub const MINIMAL: &'static str = "minimal";
+    pub const LOW: &'static str = "low";
+    pub const MEDIUM: &'static str = "medium";
+    pub const HIGH: &'static str = "high";
+    pub const XHIGH: &'static str = "xhigh";
+    pub const MAX: &'static str = "max";
+    /// All builtin names, canonical order (off first, max last).
+    pub const ALL: &'static [&'static str] = &[
+        Self::OFF,
+        Self::MINIMAL,
+        Self::LOW,
+        Self::MEDIUM,
+        Self::HIGH,
+        Self::XHIGH,
+        Self::MAX,
+    ];
+}
+
 /// Return a built-in level only when its configured spelling matches exactly.
 fn canonical_known_level(level: &str) -> Option<&'static str> {
-    match level {
-        "off" => Some("off"),
-        "minimal" => Some("minimal"),
-        "low" => Some("low"),
-        "medium" => Some("medium"),
-        "high" => Some("high"),
-        "xhigh" => Some("xhigh"),
-        "max" => Some("max"),
-        _ => None,
-    }
+    AiBridgeBuiltinThinkingLevels::ALL
+        .iter()
+        .copied()
+        .find(|builtin| *builtin == level)
 }
 
 fn builtin_anthropic_budget(level: &str) -> u64 {
     match level {
-        "minimal" => 1024,
-        "low" => 2048,
-        "medium" => 8192,
-        "high" => 16384,
-        "xhigh" | "max" => 32768,
+        AiBridgeBuiltinThinkingLevels::MINIMAL => 1024,
+        AiBridgeBuiltinThinkingLevels::LOW => 2048,
+        AiBridgeBuiltinThinkingLevels::MEDIUM => 8192,
+        AiBridgeBuiltinThinkingLevels::HIGH => 16384,
+        AiBridgeBuiltinThinkingLevels::XHIGH | AiBridgeBuiltinThinkingLevels::MAX => 32768,
         _ => unreachable!("budget only requested for canonical known level"),
     }
 }
 
 fn budget_for_level(level: &str, budgets: Option<&AiBridgeThinkingBudgets>) -> u64 {
     let override_budget = budgets.and_then(|b| match level {
-        "minimal" => b.minimal,
-        "low" => b.low,
-        "medium" => b.medium,
-        "high" => b.high,
+        AiBridgeBuiltinThinkingLevels::MINIMAL => b.minimal,
+        AiBridgeBuiltinThinkingLevels::LOW => b.low,
+        AiBridgeBuiltinThinkingLevels::MEDIUM => b.medium,
+        AiBridgeBuiltinThinkingLevels::HIGH => b.high,
         _ => None,
     });
     override_budget.unwrap_or_else(|| builtin_anthropic_budget(level))
@@ -251,6 +271,19 @@ pub fn resolve_from_options(
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn builtin_levels_table_is_the_canonical_vocabulary() {
+        assert_eq!(
+            AiBridgeBuiltinThinkingLevels::ALL,
+            &["off", "minimal", "low", "medium", "high", "xhigh", "max"]
+        );
+        for level in AiBridgeBuiltinThinkingLevels::ALL {
+            assert_eq!(canonical_known_level(level), Some(*level));
+        }
+        assert_eq!(canonical_known_level("vendor-max"), None);
+        assert_eq!(canonical_known_level("HIGH"), None);
+    }
 
     #[test]
     fn openai_absent_medium_identity() {

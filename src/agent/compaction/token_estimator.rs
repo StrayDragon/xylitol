@@ -47,6 +47,9 @@ pub struct EstimateOpts {
     pub emit_obs: bool,
     /// Optional `agent.turn` parent for `token.estimate` nesting.
     pub obs_parent: Option<fastrace::prelude::SpanContext>,
+    /// Obs session snapshot for the `token.estimate` span (otel24 / c2610);
+    /// empty default stamps no session attributes (quiet estimates never emit).
+    pub obs_session: xylitol_ai_bridge::ObsSessionContext,
 }
 
 /// Build a [`ContextTokenEstimate`] from persisted session entries (footer + compact).
@@ -217,7 +220,7 @@ pub(crate) fn emit_token_estimate_obs(est: &ContextTokenEstimate, opts: &Estimat
     {
         props.push(("model_id".into(), model.to_string()));
     }
-    props.extend(xylitol_ai_bridge::provider::langfuse_session_properties());
+    props.extend(xylitol_ai_bridge::provider::langfuse_session_properties_from(&opts.obs_session));
     props.extend(xylitol_ai_bridge::provider::xylitol_obs_lane_properties(
         xylitol_ai_bridge::provider::XYLITOL_OBS_LANE_LLM,
     ));

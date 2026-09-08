@@ -62,10 +62,18 @@ pub(crate) async fn finish_turn(
     steer_queue: &Arc<Mutex<PendingMessageQueue>>,
     follow_up_queue: &Arc<Mutex<PendingMessageQueue>>,
     turn_obs_parent: Option<fastrace::prelude::SpanContext>,
+    obs_session: &xylitol_ai_bridge::ObsSessionContext,
     cwd: &str,
 ) -> FinishTurnResult {
     let turn_index = turn as u32;
-    let settlement = settle_turn_context(store, session_id, model_manager, turn_obs_parent).await;
+    let settlement = settle_turn_context(
+        store,
+        session_id,
+        model_manager,
+        turn_obs_parent,
+        obs_session,
+    )
+    .await;
     let mut events = Vec::new();
     if let Some(s) = &settlement {
         events.push(XyEvent::ContextTokenSettlement {
@@ -89,6 +97,7 @@ pub(crate) async fn finish_turn(
         overflow_recovery_attempted,
         settlement.as_ref().map(|s| &s.estimate),
         turn_obs_parent,
+        obs_session,
         cwd,
     )
     .await;
@@ -132,6 +141,7 @@ pub(crate) async fn settle_turn_context(
     session_id: &str,
     model_manager: &Arc<Mutex<crate::agent::model::manager::ModelManager>>,
     turn_obs_parent: Option<fastrace::prelude::SpanContext>,
+    obs_session: &xylitol_ai_bridge::ObsSessionContext,
 ) -> Option<crate::agent::compaction::ContextTokenSettlement> {
     use crate::agent::compaction::{
         ContextTokenSettlementReason, EstimateOpts, settle_from_session_entries,
@@ -152,6 +162,7 @@ pub(crate) async fn settle_turn_context(
         &EstimateOpts {
             model_id,
             obs_parent: turn_obs_parent,
+            obs_session: obs_session.clone(),
             ..Default::default()
         },
         ContextTokenSettlementReason::TurnSettled,
@@ -173,6 +184,7 @@ pub(crate) async fn try_turn_end_compaction(
     overflow_recovery_attempted: &mut bool,
     precomputed: Option<&crate::protocol::model::ContextTokenEstimate>,
     turn_obs_parent: Option<fastrace::prelude::SpanContext>,
+    obs_session: &xylitol_ai_bridge::ObsSessionContext,
     cwd: &str,
 ) -> bool {
     use crate::agent::compaction::{CompactionOrchestrator, EstimateOpts, OverflowCompactOutcome};
@@ -219,6 +231,7 @@ pub(crate) async fn try_turn_end_compaction(
             &model_id,
             *overflow_recovery_attempted,
             turn_obs_parent,
+            obs_session,
         )
         .await
     {
@@ -272,6 +285,7 @@ pub(crate) async fn try_turn_end_compaction(
     let opts = EstimateOpts {
         model_id: Some(model_id),
         obs_parent: turn_obs_parent,
+        obs_session: obs_session.clone(),
         ..Default::default()
     };
     if let Err(e) = orch
@@ -285,6 +299,7 @@ pub(crate) async fn try_turn_end_compaction(
             Some(&last_assistant),
             precomputed,
             turn_obs_parent,
+            obs_session,
         )
         .await
     {

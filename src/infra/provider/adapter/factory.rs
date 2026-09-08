@@ -1,11 +1,13 @@
-//! Adapter factory — constructs a domain [`super::LlmAdapter`] via xylitol-ai-bridge.
+//! Adapter factory — constructs a bridge adapter (pa1: the domain
+//! [`super::AdapterXyModel`] shell wraps it directly).
 
 use std::sync::Arc;
 
 use crate::infra::hooks::HookDispatcher;
-use crate::infra::provider::adapter::{AdapterKind, AdapterRef, MappedBridgeAdapter, default_for};
+use crate::infra::provider::adapter::{AdapterKind, default_for};
 use crate::infra::provider::hooks_port::to_http_hooks;
 use crate::protocol::model::XyModelConfig;
+use xylitol_ai_bridge::provider::AdapterRef as AiBridgeAdapterRef;
 
 /// Resolve the adapter kind for a model config.
 pub fn resolve_adapter_kind(config: &XyModelConfig) -> AdapterKind {
@@ -32,19 +34,21 @@ pub fn resolve_wire_policy(config: &XyModelConfig) -> xylitol_ai_bridge::WirePol
 ///
 /// WirePolicy comes from named `compat` profiles in the bridge (c1940); free-form
 /// `extra_policy` YAML is not accepted. AdapterKind still ignores WirePolicy.
-pub fn build_adapter(config: &XyModelConfig, hooks: Option<Arc<HookDispatcher>>) -> AdapterRef {
+pub fn build_adapter(
+    config: &XyModelConfig,
+    hooks: Option<Arc<HookDispatcher>>,
+) -> AiBridgeAdapterRef {
     let kind = resolve_adapter_kind(config);
     let http_hooks = to_http_hooks(hooks);
     let wire_policy = resolve_wire_policy(config);
-    let bridge = xylitol_ai_bridge::provider::factory::build_adapter_with_wire_policy(
+    xylitol_ai_bridge::provider::factory::build_adapter_with_wire_policy(
         config.api_key.clone(),
         config.model.clone(),
         config.base_url.clone(),
         kind,
         http_hooks,
         wire_policy,
-    );
-    Arc::new(MappedBridgeAdapter::new(bridge)) as AdapterRef
+    )
 }
 
 #[cfg(test)]

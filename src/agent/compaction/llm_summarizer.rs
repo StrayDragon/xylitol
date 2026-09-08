@@ -104,6 +104,7 @@ pub(super) async fn generate_complete(
     messages: Vec<LlmMessage>,
     _max_tokens: u32,
     obs_parent: Option<fastrace::prelude::SpanContext>,
+    obs_session: &xylitol_ai_bridge::ObsSessionContext,
 ) -> Result<String> {
     let mut stream = model
         .generate_stream(
@@ -112,7 +113,7 @@ pub(super) async fn generate_complete(
             false,
             crate::protocol::ports::XyGenerateOptions {
                 obs_parent,
-                obs_session: xylitol_ai_bridge::provider::obs_session_context(),
+                obs_session: obs_session.clone(),
                 ..Default::default()
             },
         )
@@ -222,6 +223,7 @@ pub async fn generate_summary(
     previous_summary: Option<&str>,
     custom_instructions: Option<&str>,
     obs_parent: Option<fastrace::prelude::SpanContext>,
+    obs_session: &xylitol_ai_bridge::ObsSessionContext,
 ) -> Result<String> {
     let conversation_text = serialize_conversation(messages);
 
@@ -248,6 +250,7 @@ pub async fn generate_summary(
         summarization_messages,
         max_tokens.max(256),
         obs_parent,
+        obs_session,
     )
     .await
 }
@@ -258,6 +261,7 @@ pub async fn generate_turn_prefix_summary(
     model: &dyn XyModel,
     _reserve_tokens: u64,
     obs_parent: Option<fastrace::prelude::SpanContext>,
+    obs_session: &xylitol_ai_bridge::ObsSessionContext,
 ) -> Result<String> {
     let conversation_text = serialize_conversation(messages);
     let prompt_text = format!(
@@ -271,6 +275,7 @@ pub async fn generate_turn_prefix_summary(
         summarization_messages,
         max_tokens.max(256),
         obs_parent,
+        obs_session,
     )
     .await
 }
@@ -344,6 +349,7 @@ mod tests {
             None,
             Some("prioritize API errors"),
             None,
+            &Default::default(),
         )
         .await
         .unwrap();
@@ -360,7 +366,7 @@ mod tests {
             last: Mutex::new(None),
         };
         let msgs = vec![AgentMessage::user("hello")];
-        let _ = generate_summary(&msgs, &model, 1024, None, None, None)
+        let _ = generate_summary(&msgs, &model, 1024, None, None, None, &Default::default())
             .await
             .unwrap();
         let prompt = model.last.lock().expect("last").clone().expect("captured");

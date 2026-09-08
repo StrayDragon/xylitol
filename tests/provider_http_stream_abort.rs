@@ -123,7 +123,8 @@ async fn dropping_reqwest_bytes_stream_stops_server_writes() {
 
 #[tokio::test(flavor = "multi_thread", worker_threads = 2)]
 async fn anthropic_adapter_drop_stream_stops_server_writes() {
-    use xylitol::infra::provider::adapter::{LlmAdapter, MappedBridgeAdapter};
+    use xylitol::infra::provider::adapter::AdapterXyModel;
+    use xylitol::protocol::ports::XyModel;
     use xylitol_ai_bridge::provider::AnthropicMessagesAdapter as BridgeAnthropic;
 
     let listener = TcpListener::bind("127.0.0.1:0").await.expect("bind");
@@ -137,7 +138,7 @@ async fn anthropic_adapter_drop_stream_stops_server_writes() {
         serve_slow_chunked(listener, w, d).await;
     });
 
-    let adapter = MappedBridgeAdapter::new(Arc::new(BridgeAnthropic::new(
+    let adapter = AdapterXyModel::new(Arc::new(BridgeAnthropic::new(
         "test-key".into(),
         "claude-test".into(),
         Some(format!("http://{addr}")),
@@ -145,8 +146,7 @@ async fn anthropic_adapter_drop_stream_stops_server_writes() {
     )));
 
     // Anthropic path POSTs /v1/messages; our stub ignores method/path and streams.
-    let mut stream = adapter
-        .generate_stream(vec![], &[], Default::default())
+    let mut stream = XyModel::generate_stream(&adapter, vec![], &[], true, Default::default())
         .await
         .expect("adapter stream");
 
