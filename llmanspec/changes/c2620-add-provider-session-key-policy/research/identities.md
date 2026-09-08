@@ -1,6 +1,6 @@
 # 三份身份（代码对照）
 
-探索备忘，随 c2580 归档。产品叙述见 `docs/architecture/会话与持久化.md`。
+探索备忘，自 c2580 伞移入 c2620（供应商键策略）。产品叙述见 `docs/architecture/会话与持久化.md`。
 
 ## 今日接线
 
@@ -11,6 +11,8 @@
 | 供应商键 | 默认不发 `prompt_cache_key` / `previous_response_id`；OpenCode 发 `x-opencode-session`=书签 | 子本新 header |
 
 ## 观测槽
+
+（本节竞态已由 c2590 修复：观测快照跟本次 generate，进程槽仅作未收到 options 路径的 fallback。以下为当时事实，留档。）
 
 `packages/xylitol-ai-bridge/src/provider/obs_session.rs`：进程 `Mutex` + 测试用 TLS `ObsSessionScope`。
 

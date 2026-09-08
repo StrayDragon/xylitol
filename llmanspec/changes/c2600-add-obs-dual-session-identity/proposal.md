@@ -35,4 +35,4 @@ depends_on: []
 
 ## Further Notes
 
-伞：`c2580-add-session-identity-split`。先 A=`c2590-fix-obs-session-per-generate`，再本刀，再 B 供应商键策略填满 `llm_id`。
+切片链：A=`c2590-fix-obs-session-per-generate`（已归档）→ 本刀 → B=`c2620-add-provider-session-key-policy` 填满 `llm_id`。原伞 `c2580-add-session-identity-split` 已拆除，三切片全部物化。

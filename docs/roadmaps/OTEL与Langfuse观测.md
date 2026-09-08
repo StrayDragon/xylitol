@@ -7,7 +7,7 @@
 
 | 阶段 | 用户可感知结果 | 备注 |
 |---|---|---|
-| **M-tree** | 分叉在 Langfuse 上能看出从哪本书签、哪个切点长出；cache 读数能对照是否砍了树干。两本会话同时跑时 id 不错位 | 书签 ≠ 树干 ≠ 供应商键；先修观测槽再加树属性。认领见探索壳 `c2580-add-session-identity-split` |
+| **M-tree** | 分叉在 Langfuse 上能看出从哪本书签、哪个切点长出；cache 读数能对照是否砍了树干。两本会话同时跑时 id 不错位 | 书签 ≠ 树干 ≠ 供应商键；观测槽已修（`c2590`，已归档）。认领：树属性见 `c2600-add-obs-dual-session-identity`，供应商键见 `c2620-add-provider-session-key-policy` |
 | **M-lane** | Langfuse 不再被「门闸失败 / 纯 infra」噪声淹没；可选 Tempo 看失败体验 | `xylitol.obs.lane`；otel19「实际执行」= 过 prepare；直连时应用侧降噪 |
 | **M-collector** | 需要 infra 时 endpoint 指 Collector，按 lane 分到 Langfuse / Tempo | 文档 + 示例配置；应用仍单一 OTLP；**不做**应用内双 exporter |
 | **M-sample** | 高流量时可尾采样 / 限流而不改业务埋点 | 预留配置意向；默认仍全量（ForceSampled 现状） |
