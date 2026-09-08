@@ -1,7 +1,11 @@
 ---
 depends_on:
-  - c2700-refactor-crate-public-surface
+- c2700-refactor-crate-public-surface
 skip_specs_landing: true
+branch: sdd/c2715-refactor-eventbus-xyeventsink
+base_sha: 43d72a54cc94d05b6e76653c1142d4b99dcfa8a9
+checkpointed: true
+checkpoint_sha: 43d72a54cc94d05b6e76653c1142d4b99dcfa8a9
 ---
 
 # EventBus 降为 XyEventSink 实现，去掉第二总线
