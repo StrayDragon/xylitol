@@ -79,7 +79,7 @@
 
   @req:sr-imp1 @human
   场景: wire 会话导入内容暂存
-    - Host MUST 为 import_jsonl 提供内容暂存导入：载荷携带 content 而无 input_path/path 时，MUST 将内容暂存为临时输入路径、经同一 dispatch 导入并返回新 session_id，处理结束 MUST 清理暂存文件；携带 input_path/path 的直传行为 MUST 保持不变。
+    - Host MUST 为 import_jsonl 提供内容暂存导入：载荷携带 content 而无 input_path 时，MUST 将内容暂存为临时输入路径、经同一 dispatch 导入并返回新 session_id，处理结束 MUST 清理暂存文件；携带 input_path 的直传行为 MUST 保持不变。
 
   @req:sr-resource1 @human
   场景: Host 资源方法接线

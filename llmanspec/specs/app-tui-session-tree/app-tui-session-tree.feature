@@ -11,7 +11,7 @@
 
   @req:ast2 @human
   场景: live-travel-via-driver
-    - 产品双 Esc 会话树 MUST 渲染当前 session 的 MessageHistory 活树（经 Driver::session_tree(MessageHistory) 映射为包 TreeNode，含 kind）；Enter 选中节点时 MUST 调用 Driver::travel_session_tree(MessageHistory, id)，按返回的 SessionTreeTravel 关闭树、预填 editor（仅当 editor_text 有值）、并重建/刷新 transcript 与后续提交 leaf 语义；MUST NOT 再使用 c491 假树样例作为唯一数据源；filter/fold/fork/label 见本 capability 其余 requirement。
+    - 产品双 Esc 会话树 MUST 渲染当前 session 的 MessageHistory 活树（经 Command::SessionTree（MessageHistory）执行器映射为包 TreeNode，含 kind）；Enter 选中节点时 MUST 调用 Command::TravelSessionTree（MessageHistory, id），按返回的 SessionTreeTravel 关闭树、预填 editor（仅当 editor_text 有值）、并重建/刷新 transcript 与后续提交 leaf 语义；MUST NOT 再使用 c491 假树样例作为唯一数据源；filter/fold/fork/label 见本 capability 其余 requirement。
 
   @req:ast4 @human
   场景: demo-travel-pi-semantics
@@ -19,7 +19,7 @@
 
   @req:ast5 @human
   场景: demo-session-tree-fork
-    - agent_demo 会话树打开时 MUST 支持 Shift+F fork：重建 root→选中节点路径（MUST NOT 自动纳入其后线性 assistant/tool 回复链）；history leaf MUST 等于选中 id；若选中为 user 消息 MUST 将其文本预填编辑器；关闭树后下一次用户提交 MUST 在该 leaf 下挂新子节点（与既有子树形成兄弟分叉）；MUST NOT 打开新会话文件或调用产品 Driver::fork。
+    - agent_demo 会话树打开时 MUST 支持 Shift+F fork：重建 root→选中节点路径（MUST NOT 自动纳入其后线性 assistant/tool 回复链）；history leaf MUST 等于选中 id；若选中为 user 消息 MUST 将其文本预填编辑器；关闭树后下一次用户提交 MUST 在该 leaf 下挂新子节点（与既有子树形成兄弟分叉）；MUST NOT 打开新会话文件或调用产品 Command::Fork。
 
   @req:ast6 @human
   场景: map-session-tree-nodes
@@ -27,7 +27,7 @@
 
   @req:ast7 @human
   场景: tree-reflects-persisted-turn
-    - 在 auto-persist 与稳定 session_id 就绪后，产品双 Esc 打开的 MessageHistory 树 MUST 能反映已完成回合写入 store 的消息节点；一轮 user/assistant 成功结束后 session_tree(MessageHistory) MUST NOT 因 store 仅有 header 而长期为 0 节点（空会话除外）。
+    - 在 auto-persist 与稳定 session_id 就绪后，产品双 Esc 打开的 MessageHistory 树 MUST 能反映已完成回合写入 store 的消息节点；一轮 user/assistant 成功结束后 Command::SessionTree（MessageHistory）MUST NOT 因 store 仅有 header 而长期为 0 节点（空会话除外）。
 
   @req:ast8 @human
   场景: session-tree-filter
@@ -39,7 +39,7 @@
 
   @req:ast10 @human
   场景: product-session-tree-fork
-    - 产品会话树 Shift+F MUST 创建新 child session：内容 MUST 为 get_branch 路径并重链 parent_id（对齐 pi createBranchedSession），MUST NOT 按 JSONL 文件序切片，MUST NOT 改写父文件，header MUST 含 parent_session。选中 user 时 MUST 用 ForkPosition::Before（leaf=parent、预填正文、不拷该 user）；选中非 user 时 MUST 用 ForkPosition::At（路径含选中、不因 fork 预填 user 正文）。随后 MUST switch_session 到 child 并关树。MUST NOT 使用 demo 同会话 ast5。
+    - 产品会话树 Shift+F MUST 创建新 child session：内容 MUST 为 get_branch 路径并重链 parent_id（对齐 pi createBranchedSession），MUST NOT 按 JSONL 文件序切片，MUST NOT 改写父文件，header MUST 含 parent_session。选中 user 时 MUST 用 ForkPosition::Before（leaf=parent、预填正文、不拷该 user）；选中非 user 时 MUST 用 ForkPosition::At（路径含选中、不因 fork 预填 user 正文）。随后 MUST 经 Command::SwitchSession 切换到 child 并关树。MUST NOT 使用 demo 同会话 ast5。
 
   @req:ast11 @human
   场景: session-tree-slot-help-search
