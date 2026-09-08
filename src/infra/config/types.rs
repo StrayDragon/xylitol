@@ -31,8 +31,6 @@ pub struct AppConfig {
     /// YAML loading-phase compaction config. Mapped to runtime
     /// `CompactionSettings` (in `agent::compaction::settings`)
     /// via `From<XyCompactionSettingsConfig>`.
-    /// Schema twin: [`CompactionSettingsSchema`] (domain type is serde-only).
-    #[schemars(with = "Option<CompactionSettingsSchema>")]
     pub compaction: Option<crate::protocol::compaction_config::XyCompactionSettingsConfig>,
 
     pub mcp_servers: Option<Vec<McpServerConfig>>,
@@ -890,20 +888,6 @@ pub struct SessionStorageConfig {
 
 fn default_storage_backend() -> String {
     "file".into()
-}
-
-// Compaction: domain type is serde-only; schema twin lives here for AppConfig.
-
-/// JSON Schema twin of [`XyCompactionSettingsConfig`] (infra-only; c510).
-#[derive(Clone, Debug, Default, Serialize, Deserialize, JsonSchema)]
-#[serde(default, rename_all = "camelCase")]
-pub struct CompactionSettingsSchema {
-    #[serde(skip_serializing_if = "Option::is_none")]
-    pub enabled: Option<bool>,
-    #[serde(skip_serializing_if = "Option::is_none")]
-    pub reserve_tokens: Option<u64>,
-    #[serde(skip_serializing_if = "Option::is_none")]
-    pub keep_recent_tokens: Option<u64>,
 }
 
 // ---------------------------------------------------------------------------

@@ -3,16 +3,18 @@
 //! Pure serde types shared by `agent::compaction` (runtime settings conversion)
 //! and `infra::{config, settings}` (file loading). Zero crate-internal deps.
 //!
-//! JSON Schema for config/settings files is derived on infra DTOs / `schemars(with=…)`
-//! twins (c510); this protocol type stays serde-only.
+//! JSON Schema is derived on this type in place (c2720, landing c510's
+//! single-field-table intent): infra config/settings DTOs reference it
+//! directly, with no hand-written schema twin.
 
+use schemars::JsonSchema;
 use serde::{Deserialize, Serialize};
 
 /// Compaction settings as loaded from YAML/JSON files (all-optional form).
 ///
 /// Mapped to the runtime `CompactionSettings` (in `agent::compaction::settings`)
 /// via `From<XyCompactionSettingsConfig>`.
-#[derive(Debug, Clone, PartialEq, Serialize, Deserialize, Default)]
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize, Default, JsonSchema)]
 #[serde(default, rename_all = "camelCase")]
 pub struct XyCompactionSettingsConfig {
     #[serde(skip_serializing_if = "Option::is_none")]
