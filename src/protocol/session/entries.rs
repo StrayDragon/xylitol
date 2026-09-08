@@ -37,6 +37,9 @@ pub struct SessionHeader {
     pub cwd: String,
     #[serde(skip_serializing_if = "Option::is_none")]
     pub parent_session: Option<String>,
+    /// Fork cut: the `at_entry_id` passed to `fork` (s23). Absent on non-fork / old files.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub fork_at_entry_id: Option<String>,
 }
 
 fn default_version() -> u32 {

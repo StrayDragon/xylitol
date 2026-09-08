@@ -12,8 +12,16 @@ use serde_json::{Value, json};
 /// [`crate::provider::obs_session`].
 #[derive(Debug, Clone, Default, PartialEq, Eq)]
 pub struct ObsSessionContext {
+    /// Xylitol session id (JSONL / user-switchable). Always a product fact when known.
     pub session_id: Option<String>,
     pub session_name: Option<String>,
+    /// Parent xylitol session (header `parentSession`). Omit when this is not a fork.
+    pub parent_session_id: Option<String>,
+    /// Fork cut entry id (header `forkAtEntryId`). Omit when unknown / not a fork.
+    pub fork_at_entry_id: Option<String>,
+    /// Session identity actually presented on the LLM channel for this request.
+    /// Omit when the request did not send one (do not fill with `session_id` as a placeholder).
+    pub llm_gateway_session_id: Option<String>,
 }
 
 /// Optional Settings-style budget overrides for Anthropic.

@@ -73,6 +73,9 @@ pub fn set_obs_session(session_id: impl Into<String>, name: Option<String>) {
         }
         g.session_id = Some(id.to_string());
         g.session_name = name.map(|n| n.trim().to_string()).filter(|n| !n.is_empty());
+        g.parent_session_id = None;
+        g.fork_at_entry_id = None;
+        g.llm_gateway_session_id = None;
     });
 }
 
@@ -99,9 +102,19 @@ pub fn obs_session_context() -> ObsSessionContext {
 
 /// Fastrace property pairs for Langfuse session mapping from an explicit snapshot.
 pub fn langfuse_session_properties_from(ctx: &ObsSessionContext) -> Vec<(String, String)> {
-    let mut out = Vec::with_capacity(2);
+    let mut out = Vec::with_capacity(6);
     if let Some(id) = ctx.session_id.clone().filter(|s| !s.is_empty()) {
-        out.push(("langfuse.session.id".into(), id));
+        out.push(("langfuse.session.id".into(), id.clone()));
+        out.push(("xylitol.session.id".into(), id));
+    }
+    if let Some(gw) = ctx.llm_gateway_session_id.clone().filter(|s| !s.is_empty()) {
+        out.push(("xylitol.session.llm_gateway_session_id".into(), gw));
+    }
+    if let Some(parent) = ctx.parent_session_id.clone().filter(|s| !s.is_empty()) {
+        out.push(("xylitol.session.parent_session_id".into(), parent));
+    }
+    if let Some(cut) = ctx.fork_at_entry_id.clone().filter(|s| !s.is_empty()) {
+        out.push(("xylitol.session.fork_at_entry_id".into(), cut));
     }
     if let Some(name) = ctx.session_name.clone().filter(|s| !s.is_empty()) {
         out.push(("langfuse.trace.metadata.session_name".into(), name));
@@ -174,7 +187,13 @@ mod tests {
         let _g = ObsSessionScope::enter(ObsSessionContext::default());
         set_obs_session("sid-1", None);
         let p = langfuse_session_properties();
-        assert_eq!(p, vec![("langfuse.session.id".into(), "sid-1".into())]);
+        assert_eq!(
+            p,
+            vec![
+                ("langfuse.session.id".into(), "sid-1".into()),
+                ("xylitol.session.id".into(), "sid-1".into()),
+            ]
+        );
         assert!(!p.iter().any(|(k, _)| k.contains("session_name")));
     }
 
@@ -194,7 +213,13 @@ mod tests {
         assert!(p2.contains(&("langfuse.trace.metadata.session_name".into(), "beta".into())));
         set_obs_session_name(Some("  "));
         let p3 = langfuse_session_properties();
-        assert_eq!(p3, vec![("langfuse.session.id".into(), "sid-2".into())]);
+        assert_eq!(
+            p3,
+            vec![
+                ("langfuse.session.id".into(), "sid-2".into()),
+                ("xylitol.session.id".into(), "sid-2".into()),
+            ]
+        );
     }
 
     #[test]
@@ -208,7 +233,7 @@ mod tests {
             !p.iter()
                 .any(|(k, _)| k == "gen_ai.request.model" || k == "model")
         );
-        assert!(p.contains(&("langfuse.session.id".into(), "sid-g".into())));
+        assert!(p.contains(&("xylitol.session.id".into(), "sid-g".into())));
         assert!(p.contains(&(XYLITOL_OBS_LANE_ATTR.into(), XYLITOL_OBS_LANE_LLM.into())));
     }
 
@@ -231,16 +256,19 @@ mod tests {
         let _g = ObsSessionScope::enter(ObsSessionContext {
             session_id: Some("process-wrong".into()),
             session_name: Some("wrong-name".into()),
+            ..Default::default()
         });
         let snap = ObsSessionContext {
             session_id: Some("bookmark-a".into()),
             session_name: Some("alpha".into()),
+            ..Default::default()
         };
         let p = langfuse_session_properties_from(&snap);
         assert_eq!(
             p,
             vec![
                 ("langfuse.session.id".into(), "bookmark-a".into()),
+                ("xylitol.session.id".into(), "bookmark-a".into()),
                 (
                     "langfuse.trace.metadata.session_name".into(),
                     "alpha".into()
@@ -249,6 +277,43 @@ mod tests {
         );
         let g = langfuse_generation_properties_from("gpt-test", &snap);
         assert!(g.contains(&("langfuse.session.id".into(), "bookmark-a".into())));
+        assert!(g.contains(&("xylitol.session.id".into(), "bookmark-a".into())));
+        assert!(
+            !g.iter()
+                .any(|(k, _)| k == "xylitol.session.llm_gateway_session_id")
+        );
         assert!(!g.iter().any(|(_, v)| v == "process-wrong"));
+    }
+
+    #[test]
+    fn properties_omit_unpresented_gateway_and_missing_fork_edge() {
+        let snap = ObsSessionContext {
+            session_id: Some("s1".into()),
+            parent_session_id: Some("parent".into()),
+            fork_at_entry_id: Some("u6".into()),
+            llm_gateway_session_id: Some("gw".into()),
+            ..Default::default()
+        };
+        let p = langfuse_session_properties_from(&snap);
+        assert!(p.contains(&("xylitol.session.parent_session_id".into(), "parent".into())));
+        assert!(p.contains(&("xylitol.session.fork_at_entry_id".into(), "u6".into())));
+        assert!(p.contains(&("xylitol.session.llm_gateway_session_id".into(), "gw".into())));
+        let bare = ObsSessionContext {
+            session_id: Some("s1".into()),
+            ..Default::default()
+        };
+        let p2 = langfuse_session_properties_from(&bare);
+        assert!(
+            !p2.iter()
+                .any(|(k, _)| k.starts_with("xylitol.session.parent"))
+        );
+        assert!(
+            !p2.iter()
+                .any(|(k, _)| k == "xylitol.session.llm_gateway_session_id")
+        );
+        assert!(
+            !p2.iter()
+                .any(|(k, _)| k == "xylitol.session.fork_at_entry_id")
+        );
     }
 }

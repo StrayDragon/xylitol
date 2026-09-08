@@ -242,6 +242,18 @@ pub fn transcript_ancestry_ids(entries: &[SessionEntry], leaf_id: Option<&str>) 
     path
 }
 
+/// Parent xylitol session and fork cut from the header row, if any.
+///
+/// Old files without `forkAtEntryId` yield `(_, None)`. Non-fork headers yield `(None, None)`.
+pub fn session_fork_edge(entries: &[SessionEntry]) -> (Option<String>, Option<String>) {
+    for entry in entries {
+        if let SessionEntry::Header(h) = entry {
+            return (h.parent_session.clone(), h.fork_at_entry_id.clone());
+        }
+    }
+    (None, None)
+}
+
 #[cfg(test)]
 mod leaf_anchor_tests {
     use super::*;

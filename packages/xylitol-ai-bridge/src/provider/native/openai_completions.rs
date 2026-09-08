@@ -567,6 +567,7 @@ mod tests {
         let _sess = ObsSessionScope::enter(ObsSessionContext {
             session_id: Some("process-wrong".into()),
             session_name: None,
+            ..Default::default()
         });
         let collect = SpanCollectScope::enter();
         set_obs_session("process-wrong", None);
@@ -582,6 +583,7 @@ mod tests {
             obs_session: ObsSessionContext {
                 session_id: Some("bookmark-a".into()),
                 session_name: None,
+                ..Default::default()
             },
             ..Default::default()
         };
@@ -589,6 +591,7 @@ mod tests {
             obs_session: ObsSessionContext {
                 session_id: Some("bookmark-b".into()),
                 session_name: None,
+                ..Default::default()
             },
             ..Default::default()
         };
@@ -606,9 +609,9 @@ mod tests {
 
         fastrace::flush();
         let spans = collect.records();
-        let ids: Vec<&str> = spans
+        let llm: Vec<_> = spans.iter().filter(|s| s.name == "llm.request").collect();
+        let ids: Vec<&str> = llm
             .iter()
-            .filter(|s| s.name == "llm.request")
             .filter_map(|s| {
                 s.properties
                     .iter()
@@ -629,5 +632,22 @@ mod tests {
                 .any(|id| *id == "process-wrong" || *id == "hijacked"),
             "process slot leaked into llm.request: {ids:?}"
         );
+        for s in &llm {
+            let get = |k: &str| {
+                s.properties
+                    .iter()
+                    .find(|(kk, _)| kk.as_ref() == k)
+                    .map(|(_, v)| v.as_ref())
+            };
+            assert_eq!(
+                get("langfuse.session.id"),
+                get("xylitol.session.id"),
+                "langfuse.session.id must equal xylitol.session.id"
+            );
+            assert!(
+                get("xylitol.session.llm_gateway_session_id").is_none(),
+                "mock OpenAI host did not present a channel session id; must not invent one"
+            );
+        }
     }
 }

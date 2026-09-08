@@ -35,7 +35,7 @@ Then Langfuse 仅见 llm lane；Tempo（或等价）可见 infra
 **场景：分叉边可见（M-tree）**
 Given 从父会话某条目 fork 出子会话并再问一轮
 When 查看 Langfuse 上该轮 generation
-Then 能识别子书签、父书签与切点；MUST NOT 只能看到一个孤立 session id
+Then 能识别子书签、父书签与切点；MUST NOT 只能看到一个孤立 session id；发给 LLM 通道的会话身份 MUST 是该次请求实际呈报的值，未呈报 MUST 省略该键（禁止用 xylitol session id 占位）
 
 **场景：并发两本会话观测不错位（M-tree 槽）**
 Given Host 上两本会话同时在跑模型

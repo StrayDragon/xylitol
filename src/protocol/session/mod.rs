@@ -18,8 +18,8 @@ pub use entries::{
 pub use helpers::{
     bash_execution_message_entry, count_tool_calls, fixture_message_json, is_assistant_message,
     is_env_custom_message, is_tool_call_part, is_user_message, message_custom_type, message_parts,
-    message_role, message_text, tool_call_arguments, tool_call_name, tool_file_paths,
-    transcript_ancestry_ids, transcript_leaf_anchor,
+    message_role, message_text, session_fork_edge, tool_call_arguments, tool_call_name,
+    tool_file_paths, transcript_ancestry_ids, transcript_leaf_anchor,
 };
 pub use parse::{
     enforce_session_version, parse_session_jsonl, parse_session_jsonl_lines,
@@ -100,10 +100,32 @@ mod session_tree_tests {
             timestamp: 0,
             cwd: "/tmp".into(),
             parent_session: Some("p".into()),
+            fork_at_entry_id: None,
         });
         let v = serde_json::to_value(&header).unwrap();
         assert_eq!(v["version"], 6);
         assert_eq!(v["parentSession"], "p");
+        assert!(v.get("forkAtEntryId").is_none());
+
+        let with_cut = SessionEntry::Header(SessionHeader {
+            entry_type: "session".into(),
+            version: SESSION_VERSION,
+            id: "s1".into(),
+            timestamp: 0,
+            cwd: "/tmp".into(),
+            parent_session: Some("p".into()),
+            fork_at_entry_id: Some("u6".into()),
+        });
+        let v = serde_json::to_value(&with_cut).unwrap();
+        assert_eq!(v["forkAtEntryId"], "u6");
+
+        let old = r#"{"type":"session","version":6,"id":"s1","timestamp":0,"cwd":"/tmp","parentSession":"p"}"#;
+        let parsed: SessionEntry = serde_json::from_str(old).unwrap();
+        let SessionEntry::Header(h) = parsed else {
+            panic!("header");
+        };
+        assert_eq!(h.parent_session.as_deref(), Some("p"));
+        assert_eq!(h.fork_at_entry_id, None);
 
         let msg = msg_entry("e1", Some("p1"), "user", "hi");
         let v = serde_json::to_value(&msg).unwrap();
@@ -283,6 +305,7 @@ mod session_tree_tests {
             timestamp: 1_781_827_200_000,
             cwd: "/tmp".into(),
             parent_session: Some("p".into()),
+            fork_at_entry_id: None,
         });
         let raw_header = serde_json::to_string(&header).unwrap();
         assert!(

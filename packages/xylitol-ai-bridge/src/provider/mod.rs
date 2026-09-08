@@ -27,6 +27,7 @@ pub mod trace;
 
 pub use attribution::{
     is_opencode_host, merge_opencode_attribution, merge_opencode_attribution_from,
+    obs_for_llm_request, presented_llm_gateway_session_id,
 };
 pub use dialect::{apply_anthropic_thinking, apply_completions_thinking};
 pub use native::{

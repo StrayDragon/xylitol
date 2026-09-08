@@ -21,9 +21,9 @@
 | 观测键 | 含义 | `langfuse.session.id` |
 |---|---|---|
 | `xylitol.session.id` | 当前 xylitol session | **同一值** |
-| `xylitol.session.llm_gateway_session_id` | 发给 LLM 通道的会话身份（网关 header / 其后策略填的同一键，不限于 OpenCode） | 不占用 |
+| `xylitol.session.llm_gateway_session_id` | 本次 LLM 请求实际呈报的通道会话身份；未呈报则省略 | 不占用 |
 
-c2620 未落地时 `llm_gateway_session_id` MAY 暂等于 `xylitol.session.id`，键 MUST 仍写出。
+观测 MUST 记事实：禁止用 `xylitol.session.id` 给 `llm_gateway_session_id` 占位。今日 OpenCode 呈报 `x-opencode-session` 时，该键等于呈报值（可与 xylitol session id 相同，因为线上就是这个值）。c2620 未落地时非 OpenCode 路径 MUST NOT 写该键。
 
 树边（仅子 session，header 带 `parentSession`）：
 

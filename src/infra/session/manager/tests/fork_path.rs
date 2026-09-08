@@ -105,6 +105,18 @@ async fn fork_at_excludes_sibling_branch() {
         header.and_then(|h| h.parent_session.as_deref()),
         Some(parent_id.as_str())
     );
+    assert_eq!(
+        header.and_then(|h| h.fork_at_entry_id.as_deref()),
+        Some("u_right")
+    );
+    let raw = tokio::fs::read_to_string(mgr.session_path(&child_id))
+        .await
+        .unwrap();
+    assert!(
+        raw.contains("\"forkAtEntryId\":\"u_right\"")
+            || raw.contains("\"forkAtEntryId\": \"u_right\""),
+        "cut must be on disk, not only in memory: {raw}"
+    );
 }
 
 #[tokio::test]
@@ -129,6 +141,19 @@ async fn fork_before_user_omits_user_and_prefills_source() {
         "selected user must not be copied (pi before): {ids:?}"
     );
     assert!(!ids.contains(&"a_left"), "no sibling leak: {ids:?}");
+    let header = child.iter().find_map(|e| match e {
+        SessionEntry::Header(h) => Some(h),
+        _ => None,
+    });
+    assert_eq!(
+        header.and_then(|h| h.parent_session.as_deref()),
+        Some(parent_id.as_str())
+    );
+    assert_eq!(
+        header.and_then(|h| h.fork_at_entry_id.as_deref()),
+        Some("u_right"),
+        "Before cut is the omitted user entry, not the copied path leaf"
+    );
 
     let parent = mgr.load(&parent_id).await.unwrap();
     let u = parent
@@ -247,8 +272,8 @@ async fn fork_user_only_path_defers_child_file() {
     assert!(
         loaded
             .iter()
-            .any(|e| matches!(e, SessionEntry::Header(h) if h.parent_session.as_deref() == Some(parent_id.as_str()))),
-        "header parent_session: {loaded:?}"
+            .any(|e| matches!(e, SessionEntry::Header(h) if h.parent_session.as_deref() == Some(parent_id.as_str()) && h.fork_at_entry_id.as_deref() == Some("u1"))),
+        "header parent_session + forkAtEntryId: {loaded:?}"
     );
 
     // First assistant on child flushes (deferred persist).
@@ -269,6 +294,22 @@ async fn fork_user_only_path_defers_child_file() {
             |e| matches!(e, SessionEntry::Message(m) if message_role_of(m) == Some("assistant"))
         ),
         "assistant present after flush: {flushed:?}"
+    );
+    assert!(
+        flushed.iter().any(|e| matches!(
+            e,
+            SessionEntry::Header(h)
+                if h.parent_session.as_deref() == Some(parent_id.as_str())
+                    && h.fork_at_entry_id.as_deref() == Some("u1")
+        )),
+        "deferred flush must keep forkAtEntryId: {flushed:?}"
+    );
+    let raw = tokio::fs::read_to_string(mgr.session_path(&child_id))
+        .await
+        .unwrap();
+    assert!(
+        raw.contains("\"forkAtEntryId\":\"u1\"") || raw.contains("\"forkAtEntryId\": \"u1\""),
+        "{raw}"
     );
 }
 
@@ -358,6 +399,10 @@ async fn create_writes_session_version_five() {
         "{raw}"
     );
     assert!(!raw.contains("\"type\":\"bashExecution\""));
+    assert!(
+        !raw.contains("forkAtEntryId"),
+        "non-fork create must omit cut field: {raw}"
+    );
 }
 
 #[tokio::test]

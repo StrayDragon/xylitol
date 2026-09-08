@@ -73,7 +73,7 @@ impl OpenAIProvider {
             "openai-completions",
             &self.model,
             options.obs_parent,
-            &options.obs_session,
+            &crate::provider::obs_for_llm_request(&options.obs_session, self.client.api_base()),
         );
         let msgs = convert_agent_messages(&messages, options.system_prompt.as_deref());
         let tool_defs = convert_tools(tools);
