@@ -1,12 +1,22 @@
 ---
 depends_on: []
+apply_band: deferred
 ---
 
 # 供应商会话键策略(缓存优先)
 
+> **⚠️ deferred（2026-09-08）**：移入 `llmanspec/delayed-changes/models/`，避免活跃 graph 里像还要落地。公开预览不挡：`prompt_cache_key` / `previous_response_id` 产品默认关且请求体从不写入；前缀匹配缓存（DeepSeek / llama.cpp）不靠这些键。唯一 live 呈报是 OpenCode Zen `x-opencode-session` = 当前 xylitol session id。升格回 `llmanspec/changes/` 后再 `change start`。观测跟出站事实（c2600 已归档）：未呈报则省略 `xylitol.session.llm_gateway_session_id`。
+
 ## Why
 
-「会话」在供应商眼里靠一组**会话键**路由/持态:OpenCode Zen 网关的 `x-opencode-session` header、`prompt_cache_key`(OpenAI 兼容族)、`previous_response_id`(Responses API)。今日实现把**书签 UUID** 直接当这些键:OpenCode header = 当前书签,`prompt_cache_key` / `previous_response_id` 产品默认关。
+「会话」在供应商眼里靠一组**会话键**路由/持态:OpenCode Zen 网关的 `x-opencode-session` header、`prompt_cache_key`(OpenAI 兼容族)、`previous_response_id`(Responses API)。
+
+今日接线（代码事实，不是意向）：
+
+| 键 | 今日 |
+|---|---|
+| `x-opencode-session` | 仅 `opencode.ai`：写入当前 xylitol session id |
+| `prompt_cache_key` / `previous_response_id` | WirePolicy 默认关；装配路径只**剥掉**它们，**从不填值** |
 
 分叉在产品语义上是「共享树干前缀的新书签」,前缀匹配型缓存(DeepSeek 磁盘前缀、llama.cpp 槽内 KV)本可继续命中;但书签当键等于每次 fork 向供应商宣告全新会话 → 冷缓存。前缀匹配本身不是主风险;**把书签泄漏进供应商键 / 稿首**才是。
 
@@ -36,6 +46,7 @@ depends_on: []
 
 ## Further Notes
 
-- 姊妹切片:观测双 id `c2600-add-obs-dual-session-identity` 先钉字段;本刀落地后按命名策略填满其 `llm_id`(本刀未落地时 `llm_id` 暂等于书签,字段不缺)。切片 A = `c2590-fix-obs-session-per-generate` 已归档。
-- 原伞草案 `c2580-add-session-identity-split` 已移除:三切片全部物化(A=归档、C=c2600、B=本刀)。
+- 观测字段已由归档的 `c2600-add-obs-dual-session-identity` 钉死：`xylitol.session.llm_gateway_session_id` = **该次请求实际呈报值**；未呈报 MUST 省略。本刀若升格，只改呈报策略，观测函数跟 `merge_opencode_attribution*` 同源，禁止再把 xylitol session id 当占位。
+- 切片 A = `c2590-fix-obs-session-per-generate` 已归档。原伞 `c2580-add-session-identity-split` 已拆除。
 - 调研笔记:`research/identities.md`(本目录,自 c2580 移入)。
+- 升格前须先钉 design Open：各轮廓 `x-opencode-session` 算法；无 header 族是否只「不发键」。`previous_response_id` 产品化另见 delayed `c1915`。

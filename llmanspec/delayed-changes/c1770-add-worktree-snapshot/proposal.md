@@ -5,7 +5,7 @@ depends_on: []
 # 工作树快照 / 差分（turn 级基线）
 
 > **一句话**：git 工作树 turn 级快照/差分能力（非 git 关闭），为未来 review/回滚铺底；MVP 无产品入口
-> **已升格（2026-08-10）**：自 delayed-changes 移入 active 待处理队列，当前排序 **#18**。
+> **⚠️ deferred（2026-09-08）**：仍在 `delayed-changes/`，未进活跃 graph。2026-08-10「移入 active 待处理队列 / 排序 #18」作废。
 
 ---
 

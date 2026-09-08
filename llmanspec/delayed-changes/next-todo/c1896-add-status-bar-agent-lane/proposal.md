@@ -7,7 +7,7 @@ depends_on:
 > **一句话**：状态栏 Agent 列扩展通道契约，后续 TODO/计划等可挂；依赖 c1895
 
 
-> **已升格（2026-08-10）**：当前排序 **#6**。Todo 产品意向改由 [`c1955`](../c1955-add-agent-todo-subsystem/proposal.md)（排序 #1）；本文件仅保留「Agent 列 typed 尾插通道」工程想法，执行时再与 Todo 投影对齐。
+> **⚠️ deferred（2026-09-08）**：仍在 `delayed-changes/next-todo`，未进活跃 graph。2026-08-10 排序 #6 作废。本文件只留「Agent 列 typed 尾插通道」工程想法；Todo 产品面已是 live `agent-todo`。
 > **来源**：深挖 [`c1895`](../c1895-add-agent-status-bar-subsystem/proposal.md) Q1。
 > **书边界**：栏读数仍须代码/结构化权威；**禁止** LLM 批量扫 transcript 生成权威栏。Agent 列 = 经工具尾插的 **typed message**，不是散文「自己写状态」。
 > **工程约定**：code-first defaults；本草案阶段 **不**加 YAML；业务 TODO UX 未定前禁止假实现。

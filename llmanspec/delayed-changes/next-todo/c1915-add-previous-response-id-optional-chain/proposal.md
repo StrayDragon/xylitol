@@ -8,7 +8,7 @@ depends_on:
 > **一句话**：用 previous_response_id 只传增量续跑（配置开启）；兼容端声明支持才开，断链自动回退全量
 
 
-> **已升格（2026-08-10）**：自 delayed-changes 移入 active 待处理队列，当前排序 **#15**。
+> **⚠️ deferred（2026-09-08）**：仍在 `delayed-changes/next-todo`，未进活跃 graph。2026-08-10「移入 active 待处理队列 / 排序 #15」作废。与 park 的 `c2620` 相关：产品默认仍不发 `previous_response_id`。
 
 
 > **调研底稿**：[`docs/research/responses-context-layout-and-cache-2026.md`](../../../docs/research/responses-context-layout-and-cache-2026.md) §5（术语对照 §7）

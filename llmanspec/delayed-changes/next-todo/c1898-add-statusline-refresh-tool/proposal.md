@@ -7,7 +7,7 @@ depends_on:
 > **一句话**：statusline_refresh 按需工具（仅 tool result），补充每轮自动尾插的刷新通道；依赖 c1895
 
 
-> **已升格（2026-08-10）**：当前排序 **#9**。低 ROI，执行前先确认状态栏主链路已落地。
+> **⚠️ deferred（2026-09-08）**：仍在 `delayed-changes/next-todo`，未进活跃 graph。2026-08-10 排序 #9 作废。低 ROI，执行前先确认状态栏主链路真要落地。
 > **来源**：深挖 [`c1895`](../c1895-add-agent-status-bar-subsystem/proposal.md) Q6′。
 > **书边界**：栏仍由 Harness 代码维护；工具不得变成「LLM 扫历史写权威栏」。
 > **工程约定**：code-first；未切 Designed 前禁止假实现进主路径。

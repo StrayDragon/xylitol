@@ -9,7 +9,7 @@ depends_on:
 > **一句话**：独立可测的 Agent 状态栏子系统（Lane Runtime），ContextPolicy 选 off/replace/append，避免高变读数伤 cache；Todo 业务已被 c1955 接走
 
 
-> **已升格（2026-08-10）**：当前排序 **#5**。默认 always-on 仪表盘对 coding 边际低；产品先走 [`c1955` Todo](../c1955-add-agent-todo-subsystem/proposal.md)（排序 #1）。执行前提：Todo/事件 SSOT 已立，且明确需要「稀疏注入」通道。
+> **⚠️ deferred（2026-09-08）**：仍在 `delayed-changes/next-todo`，未进活跃 graph。2026-08-10 排序 #5 作废。默认 always-on 仪表盘对 coding 边际低；Todo 产品面已是 live `agent-todo`（勿再解析失效的 `c1955` 相对路径）。执行前提：明确需要「稀疏注入」通道，而不是再做一套仪表盘。
 > **调研底稿**：[`docs/research/responses-context-layout-and-cache-2026.md`](../../../docs/research/responses-context-layout-and-cache-2026.md) §3（术语对照 §7）
 > **书指针**：《深入理解 AI Agent》Ch2「Agent 状态栏」（姊妹仓 `ai-agent-book/book/chapter2.md`）；书语仅经 research §7 术语表映射，**禁止**写入 live specs。
 > **自包含**：原意向 Runtime 列 + Agent 列壳；Todo 业务改由 **c1955**；Agent 列通道稿见同目录 [`c1896`](../c1896-add-status-bar-agent-lane/proposal.md)。

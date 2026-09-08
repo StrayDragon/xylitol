@@ -7,7 +7,7 @@ depends_on:
 > **一句话**：记录 Assembler 布局决策（按什么规则组装），排障可复现发出去的规则集
 
 
-> **已升格（2026-08-10）**：自 delayed-changes 移入 active 待处理队列，当前排序 **#16**。
+> **⚠️ deferred（2026-09-08）**：仍在 `delayed-changes/`，未进活跃 graph。2026-08-10「移入 active 待处理队列 / 排序 #16」作废。
 
 
 > **调研底稿**：[`docs/research/responses-context-layout-and-cache-2026.md`](../../../docs/research/responses-context-layout-and-cache-2026.md)（术语对照 §7）

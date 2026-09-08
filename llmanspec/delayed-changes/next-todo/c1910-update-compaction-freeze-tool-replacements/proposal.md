@@ -8,7 +8,7 @@ depends_on:
 > **一句话**：压缩生成的大工具输出替换串首次冻结，重启会话仍用同一串，保前缀一致与可复现
 
 
-> **已升格（2026-08-10）**：自 delayed-changes 移入 active 待处理队列，当前排序 **#7**。
+> **⚠️ deferred（2026-09-08）**：仍在 `delayed-changes/next-todo`，未进活跃 graph。2026-08-10「移入 active 待处理队列 / 排序 #7」作废。
 
 
 > **调研底稿**：[`docs/research/responses-context-layout-and-cache-2026.md`](../../../docs/research/responses-context-layout-and-cache-2026.md) §6（术语对照 §7）
