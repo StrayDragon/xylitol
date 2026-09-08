@@ -61,7 +61,7 @@ pub struct AgentRuntime {
 }
 
 impl AgentRuntime {
-    pub fn new(mut inner: AgentCapabilities) -> Self {
+    pub(crate) fn new(mut inner: AgentCapabilities) -> Self {
         let coordinator = SharedRunCoordinator::new();
         let probe_coord = coordinator.clone();
         inner.set_midturn_active_probe(Arc::new(move || {
@@ -267,6 +267,36 @@ impl AgentRuntime {
 
     pub fn hook_bus(&self) -> Option<Arc<dyn XyHookBus>> {
         self.inner.hook_bus()
+    }
+
+    /// Cancel-path script hook (pre-flight): dispatch on the hook bus when
+    /// present; a `Blocked` outcome maps to [`HookBlockedError`]. No bus is a
+    /// no-op `Ok`.
+    pub async fn script_hook_cancel(
+        &self,
+        event_type: &str,
+        phase: &str,
+        context: serde_json::Value,
+    ) -> Result<(), crate::agent::capabilities::HookBlockedError> {
+        match self.inner.hook_bus() {
+            Some(bus) => {
+                crate::agent::capabilities::cancel_hook(&bus, event_type, phase, context).await
+            }
+            None => Ok(()),
+        }
+    }
+
+    /// Observe-path script hook: fail-open (`Blocked` only logs). No bus is a
+    /// no-op.
+    pub async fn script_hook_observe(
+        &self,
+        event_type: &str,
+        phase: &str,
+        context: serde_json::Value,
+    ) {
+        if let Some(bus) = self.inner.hook_bus() {
+            crate::agent::capabilities::observe_hook(&bus, event_type, phase, context).await;
+        }
     }
 
     pub fn current_model(&self) -> Option<crate::protocol::model::XyModelMeta> {

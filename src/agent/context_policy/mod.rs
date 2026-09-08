@@ -14,6 +14,7 @@ pub use defaults::{
 
 /// How tools are exposed on the provider request.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
+#[allow(dead_code)] // c2750 dead-code purge candidate
 pub enum ToolsMode {
     /// Full tool schema list (current product default).
     #[default]
@@ -29,6 +30,7 @@ pub enum ToolsMode {
 /// c1895 SHOULD scan / merge that type when enabling `Replace` / `Append`;
 /// default remains [`StatusBarMode::Off`] (bootstrap-only).
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
+#[allow(dead_code)] // c2750 dead-code purge candidate
 pub enum StatusBarMode {
     #[default]
     Off,

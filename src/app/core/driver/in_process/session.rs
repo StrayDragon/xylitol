@@ -34,16 +34,14 @@ impl super::XyInProcessDriver {
         if !self.store.exists(session_id).await {
             return Err(XyDriverError::not_found(session_id.to_string()));
         }
-        if let Some(bus) = self.agent.hook_bus() {
-            let (ty, phase, ctx) =
-                crate::agent::runtime::script_hook_ctx::session_before_switch("resume", session_id);
-            crate::agent::capabilities::cancel_hook(&bus, ty, phase, ctx).await?;
-            let (ty, phase, ctx) = crate::agent::runtime::script_hook_ctx::session_shutdown_resume(
-                session_id,
-                self.agent.session_id(),
-            );
-            crate::agent::capabilities::observe_hook(&bus, ty, phase, ctx).await;
-        }
+        let (ty, phase, ctx) =
+            crate::agent::runtime::script_hook_ctx::session_before_switch("resume", session_id);
+        self.agent.script_hook_cancel(ty, phase, ctx).await?;
+        let (ty, phase, ctx) = crate::agent::runtime::script_hook_ctx::session_shutdown_resume(
+            session_id,
+            self.agent.session_id(),
+        );
+        self.agent.script_hook_observe(ty, phase, ctx).await;
         let context = self.store.build_session_context(session_id).await?;
         bind_session_or_err(&mut self.agent, session_id.to_string())?;
         self.bind_todo_session(Some(session_id)).await;
@@ -108,12 +106,9 @@ impl super::XyInProcessDriver {
         kind: SessionTreeKind,
     ) -> Result<Vec<SessionTreeNode>, XyDriverError> {
         let sid = require_active_session(&self.agent)?;
-        if let Some(bus) = self.agent.hook_bus() {
-            let kind = format!("{kind:?}");
-            let (ty, phase, ctx) =
-                crate::agent::runtime::script_hook_ctx::session_before_tree(&kind);
-            crate::agent::capabilities::cancel_hook(&bus, ty, phase, ctx).await?;
-        }
+        let kind_s = format!("{kind:?}");
+        let (ty, phase, ctx) = crate::agent::runtime::script_hook_ctx::session_before_tree(&kind_s);
+        self.agent.script_hook_cancel(ty, phase, ctx).await?;
         // Bootstrap may assign a fresh id before any persist; wiped HOME may leave
         // an orphan id. Ensure an empty session so double-Esc opens an empty tree.
         self.agent
@@ -128,11 +123,9 @@ impl super::XyInProcessDriver {
                 )));
             }
         };
-        if let Some(bus) = self.agent.hook_bus() {
-            let kind = format!("{kind:?}");
-            let (ty, phase, ctx) = crate::agent::runtime::script_hook_ctx::session_tree(&kind);
-            crate::agent::capabilities::observe_hook(&bus, ty, phase, ctx).await;
-        }
+        let kind_s = format!("{kind:?}");
+        let (ty, phase, ctx) = crate::agent::runtime::script_hook_ctx::session_tree(&kind_s);
+        self.agent.script_hook_observe(ty, phase, ctx).await;
         Ok(tree)
     }
 
@@ -142,14 +135,10 @@ impl super::XyInProcessDriver {
         entry_id: &str,
     ) -> Result<SessionTreeTravel, XyDriverError> {
         let sid = require_active_session(&self.agent)?;
-        if let Some(bus) = self.agent.hook_bus() {
-            let kind_s = format!("{kind:?}");
-            let (ty, phase, ctx) =
-                crate::agent::runtime::script_hook_ctx::session_before_tree_travel(
-                    &kind_s, entry_id,
-                );
-            crate::agent::capabilities::cancel_hook(&bus, ty, phase, ctx).await?;
-        }
+        let kind_s = format!("{kind:?}");
+        let (ty, phase, ctx) =
+            crate::agent::runtime::script_hook_ctx::session_before_tree_travel(&kind_s, entry_id);
+        self.agent.script_hook_cancel(ty, phase, ctx).await?;
         let travel = match kind {
             SessionTreeKind::MessageHistory => {
                 let entries = self.store.load_entries(sid).await?;
@@ -163,15 +152,12 @@ impl super::XyInProcessDriver {
                 )));
             }
         };
-        if let Some(bus) = self.agent.hook_bus() {
-            let kind_s = format!("{kind:?}");
-            let (ty, phase, ctx) = crate::agent::runtime::script_hook_ctx::session_tree_travel(
-                &kind_s,
-                entry_id,
-                travel.leaf_id.as_deref(),
-            );
-            crate::agent::capabilities::observe_hook(&bus, ty, phase, ctx).await;
-        }
+        let (ty, phase, ctx) = crate::agent::runtime::script_hook_ctx::session_tree_travel(
+            &kind_s,
+            entry_id,
+            travel.leaf_id.as_deref(),
+        );
+        self.agent.script_hook_observe(ty, phase, ctx).await;
         Ok(travel)
     }
 

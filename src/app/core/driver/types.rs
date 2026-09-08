@@ -175,7 +175,7 @@ impl LoadedResourcesSnapshot {
 /// without importing `crate::agent::capabilities` directly (layering: surfaces use
 /// the XyDriver seam). Surfaces reference this as
 /// `crate::app::core::driver::SessionStats`.
-pub use crate::agent::capabilities::{QueueStats, SessionStats};
+pub use crate::agent::{QueueStats, SessionStats};
 
 /// Session resume list row (from [`XySessionStore::list_sessions`]).
 pub use crate::protocol::ports::SessionListEntry;

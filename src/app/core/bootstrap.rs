@@ -28,7 +28,7 @@ use std::future::Future;
 use std::path::{Path, PathBuf};
 use std::sync::Arc;
 
-use crate::agent::capabilities::ModelRegistry;
+use crate::agent::ModelRegistry;
 use crate::agent::model::resolver;
 use crate::app::core::composition::{BuildAgentOptions, build_agent};
 use crate::infra::config::loader::load_app_config_detailed_with;
@@ -297,8 +297,8 @@ pub struct ResolvedAssembly {
     pub cwd: String,
     pub compaction_settings: Option<crate::agent::compaction::CompactionSettings>,
     pub permission: Option<Arc<dyn crate::protocol::ports::XyPermission>>,
-    pub steering_mode: crate::agent::capabilities::QueueMode,
-    pub follow_up_mode: crate::agent::capabilities::QueueMode,
+    pub steering_mode: crate::agent::QueueMode,
+    pub follow_up_mode: crate::agent::QueueMode,
     /// Resolved default profile's model id, if any (for startup model selection
     /// when `BootstrapInput::model` is absent).
     pub default_profile_model: Option<String>,
@@ -872,13 +872,11 @@ fn build_model_meta(
 
 fn queue_mode_from_settings(
     mode: crate::infra::settings::types::SteeringMode,
-) -> crate::agent::capabilities::QueueMode {
+) -> crate::agent::QueueMode {
     match mode {
-        crate::infra::settings::types::SteeringMode::All => {
-            crate::agent::capabilities::QueueMode::All
-        }
+        crate::infra::settings::types::SteeringMode::All => crate::agent::QueueMode::All,
         crate::infra::settings::types::SteeringMode::OneAtATime => {
-            crate::agent::capabilities::QueueMode::OneAtATime
+            crate::agent::QueueMode::OneAtATime
         }
     }
 }

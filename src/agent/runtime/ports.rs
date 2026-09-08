@@ -52,7 +52,7 @@ impl RuntimePorts {
     /// Always creates a new ModelManager (selection unset), new queue Arc,
     /// `session_id = None`, midturn probe false initially, and a new
     /// compaction orchestrator instance.
-    pub fn materialize_capabilities(&self) -> AgentCapabilities {
+    pub(crate) fn materialize_capabilities(&self) -> AgentCapabilities {
         let mut caps = AgentCapabilities::new(
             self.model_registry.clone(),
             self.tools.clone(),

@@ -4,7 +4,7 @@ use std::sync::Arc;
 
 use crate::agent::AgentBuilder;
 use crate::agent::AgentRuntime;
-use crate::agent::capabilities::QueueMode;
+use crate::agent::QueueMode;
 use crate::agent::compaction::CompactionSettings;
 use crate::agent::model::registry::ModelRegistry;
 use crate::agent::tools::ToolSet;

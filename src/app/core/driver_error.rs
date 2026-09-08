@@ -390,8 +390,8 @@ impl From<ClipboardError> for XyDriverError {
     }
 }
 
-impl From<crate::agent::capabilities::HookBlockedError> for XyDriverError {
-    fn from(err: crate::agent::capabilities::HookBlockedError) -> Self {
+impl From<crate::agent::HookBlockedError> for XyDriverError {
+    fn from(err: crate::agent::HookBlockedError) -> Self {
         Self::message(err.0)
     }
 }
