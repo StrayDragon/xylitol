@@ -8,9 +8,7 @@
 //! (c1930 / as48): changing the bash or context-summary templates breaks
 //! Responses `input` byte prefixes and prompt cache. Edit only via explicit change.
 
-use serde_json::Value;
-
-use crate::protocol::message::{AgentMessage, AgentPart, EnvMessage, LlmMessage, now_ms};
+use crate::protocol::message::{AgentMessage, AgentPart, EnvLlmProjection, LlmMessage, now_ms};
 
 /// Stable bash → LLM user-row fold (`$ {command}\n{output}`).
 pub(crate) fn fold_bash_for_llm(command: &str, output: &str) -> String {
@@ -35,30 +33,16 @@ pub fn project_for_llm(messages: &[AgentMessage]) -> Vec<LlmMessage> {
                 }
                 out.push(m.clone());
             }
-            AgentMessage::Env(EnvMessage::BashExecutionMessage {
-                command,
-                output,
-                exclude_from_context,
-                ..
-            }) => {
-                if *exclude_from_context {
-                    continue;
+            AgentMessage::Env(env) => match env.llm_projection() {
+                Some(EnvLlmProjection::Bash { command, output }) => {
+                    out.push(user_text(fold_bash_for_llm(&command, &output)));
                 }
-                out.push(user_text(fold_bash_for_llm(command, output)));
-            }
-            AgentMessage::Env(
-                EnvMessage::CompactionSummaryMessage { summary, .. }
-                | EnvMessage::BranchSummaryMessage { summary, .. },
-            ) => {
-                out.push(user_text(fold_context_summary_for_llm(summary)));
-            }
-            AgentMessage::Env(EnvMessage::CustomMessage { content, .. }) => {
-                if let Some(text) = custom_text(content)
-                    && !text.is_empty()
-                {
-                    out.push(user_text(text));
+                Some(EnvLlmProjection::ContextSummary { summary }) => {
+                    out.push(user_text(fold_context_summary_for_llm(&summary)));
                 }
-            }
+                Some(EnvLlmProjection::CustomText { text }) => out.push(user_text(text)),
+                None => {}
+            },
         }
     }
     out
@@ -68,14 +52,6 @@ fn user_text(text: String) -> LlmMessage {
     LlmMessage::UserMessage {
         content: vec![AgentPart::text(text)],
         timestamp: now_ms(),
-    }
-}
-
-fn custom_text(content: &Value) -> Option<String> {
-    match content {
-        Value::String(s) => Some(s.clone()),
-        Value::Null => None,
-        other => Some(other.to_string()),
     }
 }
 

@@ -40,13 +40,9 @@ pub fn estimate_tokens_entry_for_cut(entry: &SessionEntry) -> u64 {
         SessionEntry::Message(msg) => {
             match serde_json::from_value::<AgentMessage>(msg.message.clone()) {
                 Ok(agent_msg) => {
-                    if matches!(
-                        agent_msg,
-                        AgentMessage::Env(EnvMessage::BashExecutionMessage {
-                            exclude_from_context: true,
-                            ..
-                        })
-                    ) {
+                    if let AgentMessage::Env(env) = &agent_msg
+                        && env.exclude_from_context()
+                    {
                         return 0;
                     }
                     estimate_tokens_message_for_cut(&agent_msg)

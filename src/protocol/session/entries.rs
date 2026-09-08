@@ -346,11 +346,8 @@ pub fn build_context_entries(path: &[SessionEntry]) -> Vec<SessionEntry> {
 }
 
 fn agent_msg_excluded_from_context(msg: &AgentMessage) -> bool {
-    matches!(
-        msg,
-        AgentMessage::Env(EnvMessage::BashExecutionMessage {
-            exclude_from_context: true,
-            ..
-        })
-    )
+    match msg {
+        AgentMessage::Env(env) => env.exclude_from_context(),
+        AgentMessage::Llm(_) => false,
+    }
 }
