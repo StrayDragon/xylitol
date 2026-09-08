@@ -1,22 +1,42 @@
 # Design: c2600 观测双会话 id
 
+## Vocabulary
+
+只使用产品里已有的对象名：
+
+| 词 | 是什么 | 不是什么 |
+|---|---|---|
+| **session** | 一本对话（JSONL / `header.id` / 用户切换） | Langfuse 厂商字段；网关 header |
+| **entry** | session 内树上的节点 | session 本身 |
+| **`entry.parent_id`** | 上一条 entry | 父 session |
+| **`header.parentSession`** | 父 session | entry 链 |
+| **`forkAtEntryId`** | fork 时选中的那条 entry（`at_entry_id`） | 拷贝路径的最后一条 |
+
+书签 / 世界线 / 时间线：理解用，不进属性名。
+
 ## Decision
 
-两套 id 都是一等属性，不靠 Langfuse 单一 `session.id` 兼差：
+两套 session 身份都是一等属性，不靠 `langfuse.session.id` 兼差：
 
-| 键 | 含义 | langfuse.session.id |
+| 观测键 | 含义 | `langfuse.session.id` |
 |---|---|---|
-| `xylitol.session.bookmark_id` | 书签（JSONL / 用户切换） | **同一值**（产品 Session = 一本） |
-| `xylitol.session.llm_id` | LLM 投影 / 供应商会话身份 | 不占用 |
+| `xylitol.session.id` | 当前 xylitol session | **同一值** |
+| `xylitol.session.llm_gateway_session_id` | 发给 LLM 通道的会话身份（网关 header / 其后策略填的同一键，不限于 OpenCode） | 不占用 |
 
-B 未落地时 `llm_id` MAY 暂等于 bookmark_id，但键 MUST 仍写出（分析侧能发现「尚未分叉策略」）。B 落地后投影 id 按命名策略填，本刀不改策略表。
+c2620 未落地时 `llm_gateway_session_id` MAY 暂等于 `xylitol.session.id`，键 MUST 仍写出。
 
-树边只在子本（create 时带 parent）写出 parent_bookmark_id + fork_entry_id。
+树边（仅子 session，header 带 `parentSession`）：
 
-无旧键兼容窗。
+| 观测键 | 盘上字段 |
+|---|---|
+| `xylitol.session.parent_session_id` | 已有 `parentSession` |
+| `xylitol.session.fork_at_entry_id` | 新可选 `forkAtEntryId` |
+
+禁止观测键叫 `parent_id`（与 entry 链撞名）。旧文件无 `forkAtEntryId` → 省略切点属性。无旧键兼容窗。
 
 ## Non-goals
 
 - 并发槽（A / c2590）
-- OpenCode header / prompt_cache_key 算法（B）
-- COW 盘格式
+- OpenCode header / `prompt_cache_key` 算法（B / c2620）
+- 改 COW 写路径、bump `SESSION_VERSION`、生产 fork 写 `branchSummary`
+- 改术语表里的「书签」旧称（架构文可后置对齐）
