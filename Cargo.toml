@@ -21,7 +21,7 @@ serde = { version = "1", features = ["derive"] }
 serde_json = "1"
 strum = { version = "0.28", features = ["derive"] }
 schemars = { version = "1", features = ["derive"] }
-jsonschema = "0.46"
+jsonschema = "0.55"
 minijinja = { version = "2.24.0", features = ["json", "builtins"] }
 dirs = "6"
 thiserror = "2.0.20"
