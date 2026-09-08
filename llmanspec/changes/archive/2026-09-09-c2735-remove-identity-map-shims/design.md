@@ -1,6 +1,6 @@
 # Design: 删除 identity map
 
-> Designed / pre-start。依赖 `c2700`。
+> Implemented。依赖 `c2700`。
 
 ## 1. 目标
 
@@ -15,13 +15,11 @@ bridge DTO 与 protocol 已同构的类型不再维护平行 enum + From。
 
 `tool_spill` 符号当前仓库 **不存在**；不要为审计旧名复开模块。
 
-## 3. 做法
+## 3. 决策与做法
 
-方案 A（与 LlmMessage 一致）：protocol `pub use xylitol_ai_bridge::dto::{TokenProvenance, ContextTokenEstimate}`（若 bridge 已有同名）。注意 protocol 依赖 ai-bridge 是否已存在（message.rs 已依赖）。
+选择方案 A，与 `LlmMessage` 保持同一 alias 方向。bridge 已有同名 token DTO，因此补齐其 serde wire 形状与观测字符串方法；protocol 直接 `pub use` 这两个 DTO。主仓 provider map 删除 token identity `From`，token estimator 直接返回 bridge estimate。错误转换仍保留。
 
-方案 B：只留 protocol 类型，adapter 返回时直接构造，删除 From 文件中的 match。
-
-选 A 当 bridge 已是 SSOT；选 B 当不想 protocol 再多 export。禁止 A+B 双类型。
+禁止 A+B 双类型。
 
 ## 4. 验证
 

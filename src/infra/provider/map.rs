@@ -10,39 +10,12 @@
 //! no `AgentMessage` folding paths.
 
 use futures::StreamExt;
-use xylitol_ai_bridge::dto::{
-    AiBridgeStream, AiBridgeToolSchema, ContextTokenEstimate as AiBridgeContextTokenEstimate,
-    TokenProvenance as AiBridgeTokenProvenance,
-};
+use xylitol_ai_bridge::dto::{AiBridgeStream, AiBridgeToolSchema};
 use xylitol_ai_bridge::error::AiBridgeError;
 
 use crate::protocol::error::XyError;
-use crate::protocol::model::{ContextTokenEstimate, TokenProvenance, XyToolSchema};
+use crate::protocol::model::XyToolSchema;
 use crate::protocol::ports::XyStream;
-
-impl From<AiBridgeTokenProvenance> for TokenProvenance {
-    fn from(value: AiBridgeTokenProvenance) -> Self {
-        match value {
-            AiBridgeTokenProvenance::Api => Self::Api,
-            AiBridgeTokenProvenance::RemoteCount => Self::RemoteCount,
-            AiBridgeTokenProvenance::LocalTokenizer => Self::LocalTokenizer,
-            AiBridgeTokenProvenance::Heuristic => Self::Heuristic,
-            AiBridgeTokenProvenance::Unknown => Self::Unknown,
-        }
-    }
-}
-
-impl From<AiBridgeContextTokenEstimate> for ContextTokenEstimate {
-    fn from(value: AiBridgeContextTokenEstimate) -> Self {
-        Self {
-            tokens: value.tokens,
-            provenance: value.provenance.into(),
-            usage_tokens: value.usage_tokens,
-            trailing_tokens: value.trailing_tokens,
-            last_usage_index: value.last_usage_index,
-        }
-    }
-}
 
 /// `XyToolSchema` ≡ [`AiBridgeToolSchema`] — clone into owned vec for the bridge call.
 pub fn to_bridge_tools(tools: &[XyToolSchema]) -> Vec<AiBridgeToolSchema> {

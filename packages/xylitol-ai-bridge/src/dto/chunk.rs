@@ -1,7 +1,7 @@
 use std::pin::Pin;
 
 use futures::Stream;
-use serde::Serialize;
+use serde::{Deserialize, Serialize};
 use serde_json::Value;
 
 use super::message::{AiBridgeStopReason, AiBridgeUsage};
@@ -55,7 +55,8 @@ pub struct AiBridgeToolSchema {
 
 pub type AiBridgeStream = Pin<Box<dyn Stream<Item = Result<AiBridgeChunk, AiBridgeError>> + Send>>;
 
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "snake_case")]
 pub enum TokenProvenance {
     Api,
     RemoteCount,
@@ -64,7 +65,20 @@ pub enum TokenProvenance {
     Unknown,
 }
 
-#[derive(Debug, Clone)]
+impl TokenProvenance {
+    /// Stable PascalCase key used by observation and wire projection code.
+    pub fn as_str(self) -> &'static str {
+        match self {
+            Self::Api => "Api",
+            Self::RemoteCount => "RemoteCount",
+            Self::LocalTokenizer => "LocalTokenizer",
+            Self::Heuristic => "Heuristic",
+            Self::Unknown => "Unknown",
+        }
+    }
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct ContextTokenEstimate {
     pub tokens: u64,
     pub provenance: TokenProvenance,
