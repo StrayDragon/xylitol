@@ -2,7 +2,8 @@
 depends_on: []
 branch: sdd/c2600-add-obs-dual-session-identity
 base_sha: a7e82a8c5fa452edbc86b8819e8ae8b0c4bf7f12
-checkpointed: false
+checkpointed: true
+checkpoint_sha: 635f91cb84a492cd6230faa4703b77e6526869e6
 ---
 
 # 观测拆开「xylitol 会话」与「发给 LLM 的会话身份」
