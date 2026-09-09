@@ -28,7 +28,7 @@ pub enum FixedZoneOp {
 }
 
 impl PreviewInject {
-    /// JSONL seed via `XyDriver::load_debug_scene` (resume rebuild).
+    /// JSONL seed via the process-local inject arm (resume rebuild; c2740).
     pub const fn seeds_jsonl(self) -> bool {
         matches!(self, Self::Resume)
     }

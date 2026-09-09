@@ -16,9 +16,8 @@ use futures::StreamExt;
 use xylitol_tui::{InputEvent, Terminal};
 
 use crate::app::core::driver::{
-    CommandInfo, DebugSceneLoad, EventStream, LoadedResourcesSnapshot, ModelInfo, QueueStats,
-    ReloadStepReport, RuntimeReloadReport, SessionListEntry, SessionStats, XyDriver, XyDriverError,
-    XyEvent,
+    CommandInfo, EventStream, LoadedResourcesSnapshot, ModelInfo, QueueStats, ReloadStepReport,
+    RuntimeReloadReport, SessionListEntry, SessionStats, XyDriver, XyDriverError, XyEvent,
 };
 use crate::protocol::model::THINKING_OFF;
 use crate::protocol::ports::XyBashResult;
@@ -58,7 +57,6 @@ pub struct ScriptedDriver {
     fork_calls: Mutex<Vec<(String, crate::protocol::session::ForkPosition)>>,
     switch_calls: Mutex<Vec<String>>,
     label_calls: Mutex<Vec<(String, Option<String>)>>,
-    debug_scene_calls: Mutex<Vec<String>>,
     active_session_id: Mutex<String>,
     /// Scripted leaf for `/session-fork` (c700/c1005).
     leaf_entry_id: Mutex<Option<String>>,
@@ -181,7 +179,6 @@ impl ScriptedDriver {
             fork_calls: Mutex::new(Vec::new()),
             switch_calls: Mutex::new(Vec::new()),
             label_calls: Mutex::new(Vec::new()),
-            debug_scene_calls: Mutex::new(Vec::new()),
             active_session_id: Mutex::new("scripted".into()),
             leaf_entry_id: Mutex::new(None),
             compact_calls: Mutex::new(Vec::new()),
@@ -384,13 +381,6 @@ impl ScriptedDriver {
         *self.leaf_entry_id.lock().expect("leaf") = id;
     }
 
-    pub fn debug_scene_calls(&self) -> Vec<String> {
-        self.debug_scene_calls
-            .lock()
-            .expect("debug_scene_calls")
-            .clone()
-    }
-
     pub fn switch_calls(&self) -> Vec<String> {
         self.switch_calls.lock().expect("switch_calls").clone()
     }
@@ -539,23 +529,6 @@ impl XyDriver for ScriptedDriver {
 
     fn leaf_entry_id(&self) -> Option<String> {
         self.leaf_entry_id.lock().expect("leaf").clone()
-    }
-
-    async fn load_debug_scene(&mut self, scene: &str) -> Result<DebugSceneLoad, XyDriverError> {
-        self.debug_scene_calls
-            .lock()
-            .expect("debug_scene_calls")
-            .push(scene.to_string());
-        let canonical = crate::app::debug_fixtures::resolve_scene_id(scene).unwrap_or(scene);
-        let sid = format!("debug-{canonical}-scripted");
-        *self.active_session_id.lock().expect("active_session_id") = sid.clone();
-        let entries = self.session_messages.clone();
-        Ok(DebugSceneLoad {
-            session_id: sid,
-            entries,
-            note: format!("debug scene `{canonical}` (scripted)"),
-            model: Some(self.model.clone()),
-        })
     }
 
     fn dollar_skill_catalog(&self) -> Vec<(String, String)> {
@@ -3002,10 +2975,6 @@ mod slice_tests {
         pump_host_driver(&mut session, &mut driver, &mut stream)
             .await
             .unwrap();
-        assert!(
-            driver.debug_scene_calls().is_empty(),
-            "list must not call XyDriver::load_debug_scene"
-        );
         let note = session
             .ui_model()
             .entries
@@ -3031,13 +3000,20 @@ mod slice_tests {
         pump_host_driver(&mut session, &mut driver, &mut stream)
             .await
             .unwrap();
-        assert_eq!(
-            driver.debug_scene_calls(),
-            vec!["session-tree-multiturn".to_string()]
-        );
-        assert_eq!(
-            driver.session_id().as_deref(),
-            Some("debug-session-tree-multiturn-scripted")
+        // c2740: scene applied in-process (memory store) — driver is not involved.
+        let note = session
+            .ui_model()
+            .entries
+            .iter()
+            .rev()
+            .find_map(|e| match e {
+                crate::app::tui::UiEntry::ScrollNotice { text } => Some(text.as_str()),
+                _ => None,
+            })
+            .unwrap_or("");
+        assert!(
+            note.contains("local in-memory session"),
+            "multiturn load should report a local in-memory session; got: {note}"
         );
 
         // `/debug ` arg completion (same path as `/model `).
@@ -3063,10 +3039,6 @@ mod slice_tests {
         pump_host_driver(&mut session, &mut driver, &mut stream)
             .await
             .unwrap();
-        assert!(
-            driver.debug_scene_calls().is_empty(),
-            "verify-smoke must not call load_debug_scene"
-        );
         assert!(!session.should_quit(), "verify-smoke must not quit");
         let note = session
             .ui_model()
@@ -3100,10 +3072,6 @@ mod slice_tests {
         pump_host_driver(&mut session, &mut driver, &mut stream)
             .await
             .unwrap();
-        assert!(
-            driver.debug_scene_calls().is_empty(),
-            "activity-fold-live must not call load_debug_scene"
-        );
         let note = session
             .ui_model()
             .entries
@@ -3186,10 +3154,6 @@ mod slice_tests {
         pump_host_driver(&mut session, &mut driver, &mut stream)
             .await
             .unwrap();
-        assert_eq!(
-            driver.debug_scene_calls(),
-            vec!["activity-fold-resume".to_string()]
-        );
         assert!(
             !root.borrow().ask_choice_open(),
             "ended resume scene must not mount Choice"

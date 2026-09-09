@@ -62,7 +62,7 @@ const fn m(
 
 /// 行尾 `command_backed` 的命名形式：存在同名 serde tag 的 Command 变体。
 const CMD: bool = true;
-/// 非 Command 特例方法（host.describe / load_debug_scene / arm_tool_freeze / persist_trust）。
+/// 非 Command 特例方法（host.describe / arm_tool_freeze / persist_trust）。
 const RAW: bool = false;
 
 /// 方法名词表单一定义点：REGISTRY 行与 host 分派共用；改名只动此处。
@@ -96,7 +96,6 @@ pub const METHOD_DELETE_SESSION: &str = "delete_session";
 pub const METHOD_RELOAD: &str = "reload";
 pub const METHOD_LOADED_RESOURCES: &str = "loaded_resources";
 pub const METHOD_QUEUE_STATS: &str = "queue_stats";
-pub const METHOD_LOAD_DEBUG_SCENE: &str = "load_debug_scene";
 pub const METHOD_ARM_TOOL_FREEZE: &str = "arm_tool_freeze";
 pub const METHOD_PERSIST_TRUST: &str = "persist_trust";
 pub const METHOD_STEER: &str = "steer";
@@ -295,13 +294,6 @@ pub const REGISTRY: &[MethodEntry] = &[
         true,
     ),
     m(
-        METHOD_LOAD_DEBUG_SCENE,
-        Auth::Writer,
-        Idem::PerRpc,
-        Resp::Result,
-        RAW,
-    ),
-    m(
         METHOD_ARM_TOOL_FREEZE,
         Auth::Writer,
         Idem::PerRpc,
@@ -421,7 +413,6 @@ mod tests {
                 "set_session_name",
                 "set_session_name_for",
                 "delete_session",
-                "load_debug_scene",
                 "arm_tool_freeze",
                 "persist_trust",
                 "steer",
@@ -460,7 +451,7 @@ mod tests {
         }
         assert_eq!(
             wired,
-            REGISTRY.len() - 4,
+            REGISTRY.len() - 3,
             "command_backed 行数应与 wire 变体数一致"
         );
         for v in NON_WIRE {

@@ -14,8 +14,8 @@ use crate::protocol::error::XySessionError;
 use crate::protocol::ports::{XyBashResult, XySessionStore};
 
 use super::types::{
-    ClipboardCopyOutcome, CommandInfo, DebugSceneLoad, EventStream, LoadedResourcesSnapshot,
-    ModelInfo, ProjectTrustMode, ProjectTrustPersistReport, RuntimeReloadReport,
+    ClipboardCopyOutcome, CommandInfo, EventStream, LoadedResourcesSnapshot, ModelInfo,
+    ProjectTrustMode, ProjectTrustPersistReport, RuntimeReloadReport,
 };
 pub(super) use super::{XyDriver, XyDriverError, types};
 
@@ -365,10 +365,6 @@ impl XyDriver for XyInProcessDriver {
 
     fn leaf_entry_id(&self) -> Option<String> {
         XyInProcessDriver::leaf_entry_id(self)
-    }
-
-    async fn load_debug_scene(&mut self, scene: &str) -> Result<DebugSceneLoad, XyDriverError> {
-        XyInProcessDriver::load_debug_scene(self, scene).await
     }
 
     fn session_store(&self) -> Option<Arc<dyn XySessionStore>> {

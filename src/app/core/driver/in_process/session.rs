@@ -7,8 +7,8 @@ use super::XyDriver;
 use super::XyDriverError;
 use super::mcp::McpBootState;
 use super::types::{
-    DebugSceneLoad, SessionListEntry, SessionStats, estimate_from_session_entries,
-    session_tree_kind_unimplemented, tokenizer_override_from_app_config,
+    SessionListEntry, SessionStats, estimate_from_session_entries, session_tree_kind_unimplemented,
+    tokenizer_override_from_app_config,
 };
 use super::{bind_session_or_err, require_active_session};
 
@@ -200,55 +200,6 @@ impl super::XyInProcessDriver {
     pub(crate) fn leaf_entry_id(&self) -> Option<String> {
         let sid = self.agent.session_id()?;
         self.store.leaf_id(sid)
-    }
-
-    pub(crate) async fn load_debug_scene(
-        &mut self,
-        scene: &str,
-    ) -> Result<DebugSceneLoad, XyDriverError> {
-        use crate::app::debug_fixtures::{list_note, resolve_scene_id, seed_scene};
-
-        let scene = scene.trim();
-        if scene.is_empty() || scene.eq_ignore_ascii_case("list") {
-            return Err(XyDriverError::invalid_input(list_note()));
-        }
-        let canonical = resolve_scene_id(scene).ok_or_else(|| {
-            XyDriverError::invalid_input(format!("unknown debug scene: {scene}\n{}", list_note()))
-        })?;
-        let short = &uuid::Uuid::new_v4().to_string()[..8];
-        let session_id = format!("debug-{canonical}-{short}");
-        let cwd = std::env::current_dir()
-            .ok()
-            .map(|p| p.to_string_lossy().into_owned());
-        self.store
-            .create(&session_id, cwd.as_deref(), None)
-            .await
-            .map_err(XyDriverError::from)?;
-        let canonical = seed_scene(self.store.as_ref(), &session_id, scene).await?;
-        bind_session_or_err(&mut self.agent, session_id.clone())?;
-        self.bind_todo_session(Some(&session_id)).await;
-        let entries = self
-            .store
-            .load_entries(&session_id)
-            .await
-            .map_err(XyDriverError::from)?;
-        let mut note = format!("debug scene `{canonical}` → session {session_id}");
-        let model = match self.select_model("fake").await {
-            Ok(m) => {
-                note.push_str("; model → fake");
-                Some(m)
-            }
-            Err(_) => {
-                note.push_str("; fake not in catalog (tree fixture only)");
-                None
-            }
-        };
-        Ok(DebugSceneLoad {
-            session_id,
-            entries,
-            note,
-            model,
-        })
     }
 
     pub(crate) async fn list_sessions(&self) -> Result<Vec<SessionListEntry>, XyDriverError> {

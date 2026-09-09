@@ -4,9 +4,8 @@ use async_trait::async_trait;
 
 use super::XyDriverError;
 use super::types::{
-    ClipboardCopyOutcome, CommandInfo, DebugSceneLoad, EventStream, LoadedResourcesSnapshot,
-    ModelInfo, ProjectTrustMode, ProjectTrustPersistReport, RuntimeReloadReport, SessionState,
-    XyEvent,
+    ClipboardCopyOutcome, CommandInfo, EventStream, LoadedResourcesSnapshot, ModelInfo,
+    ProjectTrustMode, ProjectTrustPersistReport, RuntimeReloadReport, SessionState, XyEvent,
 };
 
 /// Downlink attachment health (ath42/c2480): drives the fixed-zone grace notice —
@@ -144,8 +143,6 @@ pub trait XyDriver: crate::app::core::dispatch::SessionCommandExecutor + Send {
     /// # Errors
     ///
     /// `Err` when the named scene is unknown.
-    async fn load_debug_scene(&mut self, scene: &str) -> Result<DebugSceneLoad, XyDriverError>;
-
     /// `(name, description)` for product `$skill` completion (c1130).
     ///
     /// Default empty (remote / scripted drivers). In-process uses Trust-filtered
