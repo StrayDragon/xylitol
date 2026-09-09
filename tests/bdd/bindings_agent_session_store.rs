@@ -1,4 +1,4 @@
-use crate::fixtures::*;
+use crate::tests::bdd::fixtures::*;
 use rstest_bdd_macros::scenario;
 
 #[scenario(

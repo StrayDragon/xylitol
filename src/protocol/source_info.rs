@@ -61,6 +61,7 @@ pub fn create_source_info(
 }
 
 /// Create a synthetic SourceInfo (e.g., for built-in or generated resources).
+#[allow(dead_code)]
 pub fn create_synthetic_source_info(
     path: PathBuf,
     source: String,

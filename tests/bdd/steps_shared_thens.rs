@@ -1,5 +1,5 @@
-use crate::fixtures::*;
-use crate::helpers::*;
+use crate::tests::bdd::fixtures::*;
+use crate::tests::bdd::helpers::*;
 use rstest_bdd_macros::then;
 
 #[then("文件 {path:string} 应该包含 {text}")]

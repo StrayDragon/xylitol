@@ -27,11 +27,6 @@
 //! The replaceable port is crate-root [`crate::XyHookBus`] / [`crate::XyHookOutcome`]
 //! (and [`crate::NoopHookBus`]). Prefer those over `infra::hooks` types.
 //!
-//! ## Known leaks (not stability promises)
-//!
-//! - [`BootstrappedAgent::agent`] still exposes `AgentRuntime` — use
-//!   [`BootstrappedAgent::into_runtime`] / [`BootstrappedAgent::into_driver`].
-//!
 //! ## Not exported here
 //!
 //! - `dispatch` / `XyRemoteDriver` — stay crate-internal until a surface wires

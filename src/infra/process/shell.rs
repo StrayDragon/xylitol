@@ -7,6 +7,7 @@ use std::process::Command;
 
 /// Shell configuration result.
 #[derive(Debug, Clone)]
+#[allow(dead_code)]
 pub struct ShellConfig {
     /// Path to the shell binary.
     pub shell: PathBuf,
@@ -47,6 +48,7 @@ pub fn find_bash(custom_shell: Option<&std::path::Path>) -> ShellConfig {
 }
 
 /// Build a shell environment with the agent bin directory injected into PATH.
+#[allow(dead_code)]
 pub fn build_shell_env(agent_bin_dir: Option<&std::path::Path>) -> Vec<(String, String)> {
     let mut env = Vec::new();
 

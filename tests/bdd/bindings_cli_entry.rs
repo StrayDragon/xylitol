@@ -1,8 +1,8 @@
-use crate::steps_cli_surface::{
+use crate::tests::bdd::steps_cli_surface::{
     AttachBdd, CliHelpBdd, SurfaceBdd, SurfaceFlagsBdd, attach_bdd, cli_help_bdd, surface_bdd,
     surface_flags_bdd,
 };
-use crate::steps_tokenizer::{TokenizerBdd, tokenizer_bdd};
+use crate::tests::bdd::steps_tokenizer::{TokenizerBdd, tokenizer_bdd};
 use rstest_bdd_macros::scenario;
 
 #[scenario(

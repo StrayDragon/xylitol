@@ -22,6 +22,7 @@ thread_local! {
 }
 
 /// Reset all mock state (call in test setup when needed).
+#[allow(dead_code)]
 pub fn reset_fake_state() {
     FAKE_TEXT.with(|c| c.replace(None));
     FAKE_TOOL_CALL.with(|c| c.replace(None));
@@ -30,26 +31,31 @@ pub fn reset_fake_state() {
 }
 
 /// Set the text the fake model should return.
+#[allow(dead_code)]
 pub fn set_fake_text(text: &str) {
     FAKE_TEXT.with(|c| c.replace(Some(text.to_string())));
 }
 
 /// Script a slow multi-chunk text stream (`chunk_count` deltas, `delay_ms` apart).
+#[allow(dead_code)]
 pub fn set_fake_slow_stream(chunk_count: usize, delay_ms: u64) {
     FAKE_SLOW_STREAM.with(|c| c.replace(Some((chunk_count, delay_ms))));
 }
 
 /// Set the tool call the fake model should return.
+#[allow(dead_code)]
 pub fn set_fake_tool_call(name: &str, args: &str) {
     FAKE_TOOL_CALL.with(|c| c.replace(Some((name.to_string(), args.to_string()))));
 }
 
 /// Set the result a tool execution should return.
+#[allow(dead_code)]
 pub fn set_fake_tool_result(text: &str) {
     FAKE_TOOL_RESULT.with(|c| c.replace(Some(text.to_string())));
 }
 
 /// Build a provider instance from a model config.
+#[allow(dead_code)]
 pub fn build_provider(config: &XyModelConfig) -> Arc<dyn XyModel> {
     build_provider_with_hooks(config, None)
 }

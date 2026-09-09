@@ -122,16 +122,12 @@ pub const UNSET_MODEL_DISPLAY: &str = "NOT-SET";
 
 /// A fully-assembled agent plus the resolved side-products surfaces need.
 ///
-/// Prefer [`Self::into_runtime`] (or [`Self::into_driver`]) over reading
-/// [`Self::agent`] / [`Self::store`] directly — those fields remain for
-/// transitional callers and still name `AgentRuntime` (not an embed stability
-/// promise).
+/// Assemble the runtime via [`Self::into_runtime`] / [`Self::into_driver`];
+/// internal fields are not part of the embed seam.
 pub struct BootstrappedAgent {
-    /// The constructed, ready-to-run agent.
-    ///
-    /// **Leak:** prefer [`Self::into_runtime`] so embedders need not name
-    /// `AgentRuntime`.
-    pub agent: crate::agent::AgentRuntime,
+    /// The constructed, ready-to-run agent (crate-internal; embedders go
+    /// through [`Self::into_runtime`] / [`Self::into_driver`]).
+    pub(crate) agent: crate::agent::AgentRuntime,
     /// Session id (restored or freshly generated).
     pub session_id: String,
     /// Diagnostics produced during assembly (surface renders these).

@@ -1,3 +1,7 @@
+// Pre-0.0.1 audit: all product symbols in this module are currently unused;
+// kept pending the dedicated dead-code removal change.
+#![allow(dead_code)]
+
 //! Model manifest loader — loads model metadata from JSON/YAML configuration.
 //!
 //! Allows users to define custom providers and models without code changes.

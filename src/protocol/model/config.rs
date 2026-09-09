@@ -56,7 +56,7 @@ impl XyModelKind {
 /// Connection parameters for building an LLM provider instance.
 ///
 /// This is a pure data struct — the actual provider construction
-/// lives in the [`agent`](crate::agent) layer where provider implementations
+/// lives in the `agent` layer where provider implementations
 /// are available.
 #[derive(Debug, Clone)]
 pub struct XyModelConfig {

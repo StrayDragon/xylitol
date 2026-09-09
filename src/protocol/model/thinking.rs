@@ -73,7 +73,3 @@ pub fn validate_thinking_level_map(
 
 /// Optional Settings-style thinking budget overrides (Anthropic budget path).
 pub use xylitol_ai_bridge::AiBridgeThinkingBudgets as ThinkingBudgets;
-
-/// Builtin canonical thinking-level names (bridge request vocabulary, exact
-/// spelling; NOT a closed runtime enum — declared lists stay opaque strings).
-pub use xylitol_ai_bridge::AiBridgeBuiltinThinkingLevels as BuiltinThinkingLevels;

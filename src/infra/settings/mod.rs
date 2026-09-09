@@ -11,4 +11,5 @@ pub mod storage;
 pub mod types;
 
 pub use manager::SettingsManager;
-pub use types::*;
+#[cfg(test)]
+pub use types::{Settings, SteeringMode};

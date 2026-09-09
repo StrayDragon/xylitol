@@ -1,7 +1,7 @@
 mod sandbox_bdd {
+    use crate::infra::permission::{XyPermission, XyPermissionVerdict};
     use rstest_bdd_macros::{given, then, when};
     use std::sync::Arc;
-    use xylitol::infra::permission::{XyPermission, XyPermissionVerdict};
 
     thread_local! {
         static SANDBOX_ENGINE: std::cell::RefCell<Option<Arc<dyn XyPermission>>> =
@@ -10,7 +10,7 @@ mod sandbox_bdd {
             const { std::cell::RefCell::new(None) };
     }
 
-    use xylitol::infra::config::types::{
+    use crate::infra::config::types::{
         PermissionBackend, PermissionConfig, PermissionFilesystemConfig, PermissionNetworkConfig,
         PermissionProcessConfig,
     };
@@ -37,7 +37,7 @@ mod sandbox_bdd {
     #[given("沙箱引擎已初始化")]
     fn sandbox_engine_init() {
         SANDBOX_ENGINE.with(|e| {
-            *e.borrow_mut() = Some(xylitol::infra::permission::build_permission(
+            *e.borrow_mut() = Some(crate::infra::permission::build_permission(
                 &default_sandbox(),
             ));
         });

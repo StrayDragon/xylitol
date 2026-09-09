@@ -86,6 +86,7 @@ impl HookDispatcher {
     }
 
     /// Number of registered hooks.
+    #[allow(dead_code)]
     pub fn hook_count(&self) -> usize {
         self.hooks.len()
     }

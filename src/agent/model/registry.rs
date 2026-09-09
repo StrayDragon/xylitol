@@ -82,11 +82,13 @@ impl ProviderConfig {
 
 // ── Default Model IDs ───────────────────────────────────────────────
 
+#[allow(dead_code)]
 const DEFAULT_MODEL_PER_PROVIDER: &[(&str, &str)] = &[
     ("openai", "gpt-4o"),
     ("anthropic", "claude-sonnet-4-20250514"),
 ];
 
+#[allow(dead_code)]
 pub fn default_model_id_for_provider(provider_name: &str) -> Option<&'static str> {
     DEFAULT_MODEL_PER_PROVIDER
         .iter()

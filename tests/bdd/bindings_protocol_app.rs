@@ -1,7 +1,7 @@
 //! protocol-app BDD 绑定：纯协议层场景 + 复用 server 词表的方法表场景。
 
-use crate::steps_protocol::{ProtocolBdd, protocol_bdd};
-use crate::steps_server::{ServerTest, server_test};
+use crate::tests::bdd::steps_protocol::{ProtocolBdd, protocol_bdd};
+use crate::tests::bdd::steps_server::{ServerTest, server_test};
 use rstest_bdd_macros::scenario;
 
 #[scenario(

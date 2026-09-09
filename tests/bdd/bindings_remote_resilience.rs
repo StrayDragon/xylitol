@@ -1,7 +1,7 @@
 //! app-tui-host attach-resilience BDD bindings (ath41/ath43/ath44, c2480).
 
-use crate::steps_remote_resilience::{ResilienceBdd, resilience_bdd};
-use crate::steps_server::{ServerTest, server_test};
+use crate::tests::bdd::steps_remote_resilience::{ResilienceBdd, resilience_bdd};
+use crate::tests::bdd::steps_server::{ServerTest, server_test};
 use rstest_bdd_macros::scenario;
 
 #[scenario(

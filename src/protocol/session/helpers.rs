@@ -117,6 +117,7 @@ pub fn tool_call_name(part: &Value) -> Option<&str> {
 }
 
 /// Tool arguments object (`arguments` or legacy `args`).
+#[allow(dead_code)]
 pub fn tool_call_arguments(part: &Value) -> Option<&Value> {
     if !is_tool_call_part(part) {
         return None;
@@ -125,6 +126,7 @@ pub fn tool_call_arguments(part: &Value) -> Option<&Value> {
 }
 
 /// Count tool-call parts in a serialized message.
+#[allow(dead_code)]
 pub fn count_tool_calls(msg: &Value) -> usize {
     message_parts(msg)
         .map(|parts| parts.iter().filter(|p| is_tool_call_part(p)).count())
@@ -132,6 +134,7 @@ pub fn count_tool_calls(msg: &Value) -> usize {
 }
 
 /// Collect unique `path` args from read/write/edit tool calls in a message.
+#[allow(dead_code)]
 pub fn tool_file_paths(msg: &Value) -> Vec<String> {
     let Some(parts) = message_parts(msg) else {
         return Vec::new();

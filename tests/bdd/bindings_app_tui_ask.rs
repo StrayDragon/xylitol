@@ -1,6 +1,6 @@
 //! BDD bindings for `app-tui-ask` (c1850).
 
-use crate::fixtures::*;
+use crate::tests::bdd::fixtures::*;
 use rstest_bdd_macros::scenario;
 
 #[scenario(

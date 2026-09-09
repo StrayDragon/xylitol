@@ -17,27 +17,26 @@ pub mod settings;
 pub mod settlement;
 pub mod token_estimator;
 
-pub use orchestrator::{CompactionOrchestrator, OverflowCompactOutcome, should_compact};
+pub use orchestrator::{CompactionOrchestrator, OverflowCompactOutcome};
 
-pub use cut_detector::{
-    CutPointResult, estimate_tokens_entry, estimate_tokens_entry_for_cut,
-    estimate_tokens_message_for_cut, find_cut_point, is_context_overflow,
-};
-pub use file_ops::{
-    FileOps, compute_file_lists, extract_file_ops_from_messages, format_file_ops_xml,
-};
-pub use llm_summarizer::{generate_summary, generate_turn_prefix_summary, serialize_conversation};
-pub use overflow::{
-    assistant_same_model, error_message_is_context_overflow, is_context_overflow_assistant,
-};
+pub use cut_detector::{estimate_tokens_entry, find_cut_point};
+pub use file_ops::{compute_file_lists, extract_file_ops_from_messages, format_file_ops_xml};
+pub use llm_summarizer::{generate_summary, generate_turn_prefix_summary};
+pub use overflow::error_message_is_context_overflow;
 pub use settings::CompactionSettings;
+// Test-support re-exports (in-crate tests import via this facade).
+#[cfg(test)]
+pub use cut_detector::{estimate_tokens_entry_for_cut, is_context_overflow};
+#[cfg(test)]
+pub use file_ops::FileOps;
+#[cfg(test)]
+pub use orchestrator::should_compact;
+#[cfg(test)]
+pub use overflow::{assistant_same_model, is_context_overflow_assistant};
 pub use settlement::{
-    ContextTokenSettlement, ContextTokenSettlementReason, estimate_quiet,
-    next_settlement_generation, settle_from_session_entries,
+    ContextTokenSettlement, ContextTokenSettlementReason, settle_from_session_entries,
 };
-pub use token_estimator::{
-    EstimateOpts, calculate_context_tokens, estimate_context_tokens, estimate_from_session_entries,
-};
+pub use token_estimator::{EstimateOpts, estimate_from_session_entries};
 
 use anyhow::Result;
 use serde_json::json;

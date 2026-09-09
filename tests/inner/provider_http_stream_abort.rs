@@ -123,8 +123,8 @@ async fn dropping_reqwest_bytes_stream_stops_server_writes() {
 
 #[tokio::test(flavor = "multi_thread", worker_threads = 2)]
 async fn anthropic_adapter_drop_stream_stops_server_writes() {
-    use xylitol::infra::provider::adapter::AdapterXyModel;
-    use xylitol::protocol::ports::XyModel;
+    use crate::infra::provider::adapter::AdapterXyModel;
+    use crate::protocol::ports::XyModel;
     use xylitol_ai_bridge::provider::AnthropicMessagesAdapter as BridgeAnthropic;
 
     let listener = TcpListener::bind("127.0.0.1:0").await.expect("bind");

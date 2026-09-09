@@ -17,7 +17,7 @@ pub enum XyHookOutcome {
 
 /// Event bus for config-driven script hooks.
 ///
-/// Implemented by [`crate::infra::hooks::HookDispatcher`] at the composition
+/// Implemented by `infra::hooks::HookDispatcher` at the composition
 /// root. When no hooks are configured, callers should pass `None` rather than
 /// a bus instance (zero-cost no-op).
 #[async_trait]

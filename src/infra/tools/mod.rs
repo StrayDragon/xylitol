@@ -23,10 +23,10 @@ pub mod truncate;
 pub mod typed;
 pub mod write;
 
-pub use ask::{AskTool, default_tools_with_ask, default_tools_with_ask_and_todo};
-pub use todo::{
-    SessionAgentTodoGateway, TodoListTool, TodoRewriteTool, TodoUpdateTool, todo_tools,
-};
+#[cfg(test)]
+pub use ask::default_tools_with_ask;
+pub use ask::default_tools_with_ask_and_todo;
+pub use todo::{SessionAgentTodoGateway, todo_tools};
 
 use std::sync::Arc;
 

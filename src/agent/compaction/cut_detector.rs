@@ -19,6 +19,7 @@ pub struct CutPointResult {
 
 /// Check if a token estimate indicates context overflow relative to the
 /// model's context window.
+#[allow(dead_code)]
 pub fn is_context_overflow(token_estimate: u64, context_window: u64, reserve_tokens: u64) -> bool {
     if context_window == 0 {
         return false;

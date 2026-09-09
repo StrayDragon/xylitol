@@ -1,3 +1,7 @@
+// Pre-0.0.1 audit: all product symbols in this module are currently unused;
+// kept pending the dedicated dead-code removal change.
+#![allow(dead_code)]
+
 //! Reliable child process waiting with pipe drain protection.
 //!
 //! A process may `exit` while a detached descendant keeps stdout/stderr pipes

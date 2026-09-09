@@ -1,21 +1,21 @@
-use crate::prelude::*;
-use crate::steps_tokenizer::{TokenizerBdd, parse_app_config_yaml};
+use crate::tests::bdd::prelude::*;
+use crate::tests::bdd::steps_tokenizer::{TokenizerBdd, parse_app_config_yaml};
 use rstest::fixture;
 use rstest_bdd_macros::{given, then, when};
 
 pub struct RcSnap {
-    pub(crate) settings: RefCell<xylitol::infra::settings::Settings>,
-    pub(crate) mgr: RefCell<Option<xylitol::infra::settings::SettingsManager>>,
-    pub(crate) app_config: RefCell<Option<xylitol::infra::config::types::AppConfig>>,
+    pub(crate) settings: RefCell<crate::infra::settings::Settings>,
+    pub(crate) mgr: RefCell<Option<crate::infra::settings::SettingsManager>>,
+    pub(crate) app_config: RefCell<Option<crate::infra::config::types::AppConfig>>,
     pub(crate) local_yaml: RefCell<Option<String>>,
-    pub(crate) compaction: RefCell<Option<xylitol::agent::compaction::CompactionSettings>>,
+    pub(crate) compaction: RefCell<Option<crate::agent::compaction::CompactionSettings>>,
     pub(crate) meta: RefCell<Option<XyModelMeta>>,
-    pub(crate) mm: RefCell<Option<xylitol::agent::model::ModelManager>>,
+    pub(crate) mm: RefCell<Option<crate::agent::model::ModelManager>>,
 }
 impl RcSnap {
     fn new() -> Self {
         Self {
-            settings: RefCell::new(xylitol::infra::settings::Settings::default()),
+            settings: RefCell::new(crate::infra::settings::Settings::default()),
             mgr: RefCell::new(None),
             app_config: RefCell::new(None),
             local_yaml: RefCell::new(None),
@@ -28,9 +28,7 @@ impl RcSnap {
     fn load_settings_mgr(&self) {
         let s = self.settings.borrow().clone();
         self.mgr
-            .replace(Some(xylitol::infra::settings::SettingsManager::in_memory(
-                s,
-            )));
+            .replace(Some(crate::infra::settings::SettingsManager::in_memory(s)));
     }
 }
 
@@ -43,14 +41,14 @@ pub(crate) mod rc_load_flag {
 }
 
 fn rc_make_model_manager(
-    cfg: &xylitol::infra::config::types::AppConfig,
-) -> xylitol::agent::model::ModelManager {
+    cfg: &crate::infra::config::types::AppConfig,
+) -> crate::agent::model::ModelManager {
     let meta = cfg.resolve_model_meta("m").expect("resolve_model_meta");
     let mut reg = ModelRegistry::new();
     reg.register(meta);
-    xylitol::agent::model::ModelManager::new(
+    crate::agent::model::ModelManager::new(
         reg,
-        Arc::new(xylitol::infra::provider::factory::build_provider),
+        Arc::new(crate::infra::provider::factory::build_provider),
     )
 }
 #[fixture]
@@ -62,7 +60,7 @@ pub fn rc_snap() -> RcSnap {
 #[given("settings.json 中 steering_mode 设为 one-at-a-time")]
 fn g_rc_steering(rc_snap: &RcSnap) {
     rc_snap.settings.borrow_mut().steering_mode =
-        Some(xylitol::infra::settings::SteeringMode::OneAtATime);
+        Some(crate::infra::settings::SteeringMode::OneAtATime);
 }
 #[given("settings 未配置 steering_mode 与 follow_up_mode")]
 fn g_rc_mode_defaults(rc_snap: &RcSnap) {
@@ -228,13 +226,13 @@ fn w_rc_load_compaction(rc_snap: &RcSnap) {
     let comp = cfg.compaction.expect("compaction section");
     rc_snap
         .compaction
-        .replace(Some(xylitol::agent::compaction::CompactionSettings::from(
+        .replace(Some(crate::agent::compaction::CompactionSettings::from(
             comp,
         )));
 }
 #[when("读取默认配置")]
 fn w_rc_default_config(rc_snap: &RcSnap) {
-    let cfg = xylitol::infra::config::types::AppConfig::default();
+    let cfg = crate::infra::config::types::AppConfig::default();
     rc_snap.app_config.replace(Some(cfg));
 }
 #[when("加载配置并 resolve_model_meta")]
@@ -301,7 +299,7 @@ fn t_rc_steering(rc_snap: &RcSnap) {
     let mgr = mgr.as_ref().expect("settings loaded");
     assert_eq!(
         mgr.get_steering_mode(),
-        xylitol::infra::settings::SteeringMode::OneAtATime
+        crate::infra::settings::SteeringMode::OneAtATime
     );
 }
 #[then("二者均为 OneAtATime")]
@@ -310,11 +308,11 @@ fn t_rc_both(rc_snap: &RcSnap) {
     let mgr = mgr.as_ref().expect("settings loaded");
     assert_eq!(
         mgr.get_steering_mode(),
-        xylitol::infra::settings::SteeringMode::OneAtATime
+        crate::infra::settings::SteeringMode::OneAtATime
     );
     assert_eq!(
         mgr.get_follow_up_mode(),
-        xylitol::infra::settings::SteeringMode::OneAtATime
+        crate::infra::settings::SteeringMode::OneAtATime
     );
 }
 #[then("Settings 仅含已接线交付字段")]
@@ -346,7 +344,7 @@ fn t_rc_no_prompts_field(rc_snap: &RcSnap) {
         !v.get("prompts").is_some_and(|p| !p.is_null()),
         "Settings must not expose prompts list field"
     );
-    let legacy: xylitol::infra::settings::Settings =
+    let legacy: crate::infra::settings::Settings =
         serde_json::from_str(r#"{"prompts":["legacy"]}"#).unwrap();
     let legacy_v = serde_json::to_value(&legacy).unwrap();
     assert!(
@@ -431,7 +429,7 @@ fn t_rc_empty_map(tokenizer_bdd: &TokenizerBdd) {
 }
 #[then("该字段不生效（local 被忽略）")]
 fn t_rc_local(rc_snap: &RcSnap) {
-    let cfg = xylitol::infra::config::types::AppConfig::default();
+    let cfg = crate::infra::config::types::AppConfig::default();
     assert!(cfg.model.default_model.is_none());
     let local = rc_snap
         .local_yaml

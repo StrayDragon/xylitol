@@ -1,8 +1,8 @@
 //! infra-otel BDD 绑定（otel6/7/8/10/11/12/22 低频观测族）。
 
-use crate::fixtures::*;
-use crate::fixtures::{Workspace, ws};
-use crate::steps_otel_obs::{OtelBdd, otel_bdd};
+use crate::tests::bdd::fixtures::*;
+use crate::tests::bdd::fixtures::{Workspace, ws};
+use crate::tests::bdd::steps_otel_obs::{OtelBdd, otel_bdd};
 use rstest_bdd_macros::scenario;
 use serial_test::serial;
 

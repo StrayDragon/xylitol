@@ -2,12 +2,13 @@
 //!
 //! LLM-Augmented Development Toolkit.
 //!
-//! ## Curated public API (`Xy*` contracts)
+//! ## Public API = `embed` + curated `Xy*` re-exports
 //!
-//! Stable library entry points are re-exported below. Prefer these over
-//! reaching into `protocol` submodules by path. Everything else under `pub mod`
-//! is crate structure for the binary / advanced embedding — not a stability
-//! promise.
+//! The only externally reachable surface is the [`embed`] seam plus the
+//! curated re-exports below. `agent` / `infra` / `utils` are `pub(crate)`;
+//! `protocol::wire` / `protocol::ports` and the root `Xy*` re-exports are the
+//! shared vocabulary. There is no second stable face: deep module paths are
+//! not a stability promise — extend the seam instead.
 //!
 //! Ports: [`XyModel`], [`XyTool`], [`XySessionStore`], [`XyEventSink`],
 //! [`XyPermission`], [`XyBashExecutor`], [`XyExportIo`], [`XySecretResolver`],
@@ -27,18 +28,34 @@
 //! [`embed::XyInProcessDriver`], [`embed::XyDriver`], [`embed::BuildAgentOptions`],
 //! [`embed::McpSession`]. Script hooks are configured via
 //! [`embed::BuildAgentOptions::hooks_config`]; replaceable port is [`XyHookBus`].
-//! Do **not** treat `infra::*` or `agent::capabilities::*` as a stability promise —
-//! extend the seam instead.
 //!
 //! Not exported from `embed`: `dispatch`, `XyRemoteDriver`, infra concrete types
 //! (`HookDispatcher`, `HookEvent`).
+//!
+//! Visibility is enforced by the compiler, not convention:
+//!
+//! ```compile_fail
+//! // `infra` is `pub(crate)` — external crates cannot reach it.
+//! use xylitol::infra::session::SessionEntry;
+//! ```
+//!
+//! ```compile_fail
+//! // `agent::capabilities` is `pub(crate)` too.
+//! use xylitol::agent::capabilities::AgentCapabilities;
+//! ```
+//!
+//! ```rust
+//! // The sanctioned seam compiles.
+//! use xylitol::embed::BootstrapInput;
+//! use xylitol::XyDriver as _;
+//! ```
 
-pub mod agent;
+pub(crate) mod agent;
 pub mod app;
 pub mod embed;
-pub mod infra;
+pub(crate) mod infra;
 pub mod protocol;
-pub mod utils;
+pub(crate) mod utils;
 
 // ── Curated `pub use` (c500 / architecture.ar09) ─────────────────────
 

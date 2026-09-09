@@ -5,11 +5,11 @@
 //! the shared fold-toggle pipeline (`UiRoot::click_fold_at`, also called by the
 //! host hit-priority wiring), and product paint for frames.
 
-use crate::prelude::*;
+use crate::app::tui::{FoldTarget, InteractionBdd, SceneBuilder, UiModel};
+use crate::tests::bdd::prelude::*;
 use crossterm::event::{KeyCode, KeyEvent, KeyEventKind, KeyEventState, KeyModifiers};
 use rstest::fixture;
 use rstest_bdd_macros::{then, when};
-use xylitol::app::tui::{FoldTarget, InteractionBdd, SceneBuilder, UiModel};
 use xylitol_tui::TreeNode;
 
 /// Shared state for interaction scenes.

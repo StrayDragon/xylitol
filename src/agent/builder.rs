@@ -113,6 +113,7 @@ impl AgentBuilder {
     }
 
     /// Override the permission port (default: the one passed to [`new`](Self::new)).
+    #[allow(dead_code)]
     pub fn permission(mut self, permission: Arc<dyn XyPermission>) -> Self {
         self.permission = permission;
         self
@@ -171,6 +172,7 @@ impl AgentBuilder {
     /// Build the [`AgentRuntime`] (ReAct-loop runtime over capabilities).
     ///
     /// Internally builds [`RuntimePorts`] then materializes one actor.
+    #[allow(dead_code)]
     pub fn build(self) -> AgentRuntime {
         self.build_ports().materialize_runtime()
     }

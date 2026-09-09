@@ -5,11 +5,11 @@
 //! （spec 明文禁 BDD step），otel1–5 / 9 / 13 / 17 / 20 / 21 维持单测与
 //! live smoke 承载，不在本文件范围。
 
-use crate::fixtures::AgentState;
-use crate::prelude::*;
+use crate::infra::provider::factory::{set_fake_text, set_fake_tool_call, set_fake_tool_result};
+use crate::tests::bdd::fixtures::AgentState;
+use crate::tests::bdd::prelude::*;
 use rstest::fixture;
 use rstest_bdd_macros::{then, when};
-use xylitol::infra::provider::factory::{set_fake_text, set_fake_tool_call, set_fake_tool_result};
 use xylitol_ai_bridge::provider::trace::{
     ObservationIoTier, SpanCollectScope, set_observation_io_tier, set_provider_trace_active,
     set_tool_observation_io_tier,
@@ -75,14 +75,14 @@ async fn run_turn_with_tool(agent: &AgentState, session_name: Option<&str>) {
     set_fake_text("我来读文件");
     set_fake_tool_call("read", r#"{"path":"src/main.rs"}"#);
     set_fake_tool_result("hello world");
-    let mut runner = crate::helpers::make_agent(agent);
+    let mut runner = crate::tests::bdd::helpers::make_agent(agent);
     // 显式绑定已知会话 UUID——runtime bind_session 会把 obs session 槽
     // 同步为当前会话，otel6 的「当前会话 UUID」即此 id。
-    crate::helpers::bind_session_or_panic(&mut runner, SESSION_UUID);
+    crate::tests::bdd::helpers::bind_session_or_panic(&mut runner, SESSION_UUID);
     if let Some(name) = session_name {
         xylitol_ai_bridge::provider::set_obs_session_name(Some(name));
     }
-    let mut stream = crate::helpers::agent_submit_root(&mut runner, "读取文件").await;
+    let mut stream = crate::tests::bdd::helpers::agent_submit_root(&mut runner, "读取文件").await;
     while let Some(e) = stream.next().await {
         if let XyEvent::Error(err) = &e {
             panic!(

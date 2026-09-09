@@ -76,6 +76,7 @@ pub async fn connect_and_discover_with_progress(
 ///
 /// Missing / empty `mcp_servers` → `None`. Configured servers follow
 /// [`connect_and_discover`]: failures are diagnostics, not `None`.
+#[allow(dead_code)]
 pub async fn connect_and_discover_from_config(
     config: &AppConfig,
 ) -> Option<(Arc<McpClientManager>, Vec<Arc<dyn XyTool>>)> {

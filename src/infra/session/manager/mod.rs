@@ -25,6 +25,7 @@ mod tests;
 /// deferred (pre-flush) creates — deep-copying pending would drop sessions on
 /// `mgr.clone()` + mutate patterns used by tests and thin wrappers.
 #[derive(Debug, Clone)]
+#[allow(dead_code)]
 pub struct SessionManager {
     sessions_dir: PathBuf,
     /// Storage backend.
@@ -56,6 +57,7 @@ impl Default for SessionManager {
 }
 
 /// Parameters for [`SessionManager::append_bash_execution`].
+#[allow(dead_code)]
 pub struct BashExecutionParams<'a> {
     pub session_id: &'a str,
     pub command: &'a str,
@@ -84,6 +86,7 @@ impl SessionManager {
 
     /// Create an in-memory SessionManager (no disk writes).
     /// All entries are stored in a Vec, suitable for ephemeral sessions.
+    #[allow(dead_code)]
     pub fn in_memory() -> Self {
         Self {
             sessions_dir: PathBuf::from("."),
@@ -134,6 +137,7 @@ impl SessionManager {
     }
 
     /// Get the session file, if persisted.
+    #[allow(dead_code)]
     pub fn get_session_file(&self, id: &str) -> Option<PathBuf> {
         match &self.backend {
             SessionBackend::Persisted { .. } => Some(self.session_path(id)),

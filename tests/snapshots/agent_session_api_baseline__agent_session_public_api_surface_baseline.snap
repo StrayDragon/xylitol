@@ -88,4 +88,5 @@ pub struct SessionStats
 pub tokens: u64, pub context_window: u64, pub percent: u64, pub should_compact: bool, } pub use crate::agent::compaction::orchestrator::should_compact
 pub use crate::agent::model::registry::ModelRegistry
 pub use self::queue::{AsyncQueueRuntime, PendingMessageQueue, QueueMode, QueueStats}
-pub use self::stats::{ContextUsage, SessionStats, get_context_usage}
+pub use self::stats::SessionStats
+pub use self::stats::{ContextUsage, get_context_usage}

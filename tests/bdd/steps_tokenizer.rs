@@ -3,8 +3,8 @@
 //! - `llmanspec/specs/package-ai-bridge-accounting` HfTokenizerCache (paa8/paa9)
 //! - `llmanspec/specs/runtime-config` config tokenizer override (rc18/rc19)
 
-use crate::prelude::*;
-use crate::steps_runtime_config::rc_load_flag;
+use crate::tests::bdd::prelude::*;
+use crate::tests::bdd::steps_runtime_config::rc_load_flag;
 use rstest::fixture;
 use rstest_bdd_macros::{given, then, when};
 
@@ -19,7 +19,7 @@ enum HfEndpointInject {
 pub struct TokenizerBdd {
     pub(crate) cache_dir: RefCell<Option<tempfile::TempDir>>,
     pub(crate) cache: RefCell<Option<xylitol_ai_bridge::tokenize::HfTokenizerCache>>,
-    pub(crate) config: RefCell<xylitol::infra::config::types::AppConfig>,
+    pub(crate) config: RefCell<crate::infra::config::types::AppConfig>,
     pub(crate) cli_out: RefCell<String>,
     pub(crate) cli_code_ok: Cell<bool>,
     pub(crate) last_url: RefCell<String>,
@@ -37,7 +37,7 @@ impl TokenizerBdd {
         Self {
             cache_dir: RefCell::new(None),
             cache: RefCell::new(None),
-            config: RefCell::new(xylitol::infra::config::types::AppConfig::default()),
+            config: RefCell::new(crate::infra::config::types::AppConfig::default()),
             cli_out: RefCell::new(String::new()),
             cli_code_ok: Cell::new(false),
             last_url: RefCell::new(String::new()),
@@ -88,10 +88,10 @@ pub fn tokenizer_bdd() -> TokenizerBdd {
 
 pub(crate) fn parse_app_config_yaml(
     yaml: &str,
-) -> Result<xylitol::infra::config::types::AppConfig, XyDriverError> {
+) -> Result<crate::infra::config::types::AppConfig, XyDriverError> {
     // Prefer direct typed deserialize so unknown enum variants (e.g. local_tokenizer)
     // fail here rather than only after a loose Value round-trip.
-    let cfg: xylitol::infra::config::types::AppConfig =
+    let cfg: crate::infra::config::types::AppConfig =
         yaml_serde::from_str(yaml).map_err(|e| format!("yaml: {e}"))?;
     cfg.validate_thinking_levels()?;
     cfg.validate_model_tokenizers()?;
@@ -124,7 +124,7 @@ models:
 fn g_ce15_cli_parsed() {
     use clap::CommandFactory;
     assert!(
-        xylitol::app::cli::CliArgs::command()
+        crate::app::cli::CliArgs::command()
             .find_subcommand("tokenizer")
             .is_some()
     );
@@ -133,7 +133,7 @@ fn g_ce15_cli_parsed() {
 #[when("xylitol tokenizer --help")]
 fn w_ce15_tokenizer_help(tokenizer_bdd: &TokenizerBdd) {
     use clap::CommandFactory;
-    let mut cmd = xylitol::app::cli::CliArgs::command();
+    let mut cmd = crate::app::cli::CliArgs::command();
     let help = cmd
         .find_subcommand_mut("tokenizer")
         .expect("tokenizer subcommand")
@@ -165,12 +165,12 @@ fn g_ce15_empty_cache(tokenizer_bdd: &TokenizerBdd) {
 fn g_ce15_tokenizer_only(tokenizer_bdd: &TokenizerBdd) {
     let _ = tokenizer_bdd.ensure_cache();
     use clap::Parser;
-    let args = xylitol::app::cli::CliArgs::try_parse_from(["xylitol", "tokenizer", "status"])
+    let args = crate::app::cli::CliArgs::try_parse_from(["xylitol", "tokenizer", "status"])
         .expect("parse");
     assert!(
         matches!(
             args.command,
-            Some(xylitol::app::cli::CliCommand::Tokenizer { .. })
+            Some(crate::app::cli::CliCommand::Tokenizer { .. })
         ),
         "expected tokenizer-only command"
     );
@@ -178,8 +178,8 @@ fn g_ce15_tokenizer_only(tokenizer_bdd: &TokenizerBdd) {
 
 #[when("xylitol tokenizer status")]
 async fn w_ce15_status(tokenizer_bdd: &TokenizerBdd) {
+    use crate::app::cli::tokenizer::{TokenizerAction, run_with};
     use std::process::ExitCode;
-    use xylitol::app::cli::tokenizer::{TokenizerAction, run_with};
 
     let cache = tokenizer_bdd.ensure_cache();
     let cfg = tokenizer_bdd.config.borrow().clone();
@@ -206,10 +206,10 @@ fn g_ce15_mapped_missing(tokenizer_bdd: &TokenizerBdd) {
 
 #[when("xylitol tokenizer download <target> --yes")]
 async fn w_ce15_download_yes(tokenizer_bdd: &TokenizerBdd) {
+    use crate::app::cli::tokenizer::{TokenizerAction, run_with_hf_endpoint};
     use std::process::ExitCode;
     use wiremock::matchers::{method, path};
     use wiremock::{Mock, MockServer, ResponseTemplate};
-    use xylitol::app::cli::tokenizer::{TokenizerAction, run_with_hf_endpoint};
 
     let server = MockServer::start().await;
     Mock::given(method("GET"))
@@ -258,7 +258,7 @@ models:
 
 #[then("词表落入缓存路径且再次 status 可见")]
 async fn t_ce15_download_cached(tokenizer_bdd: &TokenizerBdd) {
-    use xylitol::app::cli::tokenizer::{TokenizerAction, run_with};
+    use crate::app::cli::tokenizer::{TokenizerAction, run_with};
 
     assert!(
         tokenizer_bdd.cli_code_ok.get(),
@@ -287,8 +287,8 @@ fn g_ce15_has_entry(tokenizer_bdd: &TokenizerBdd) {
 
 #[when("xylitol tokenizer clean --all")]
 async fn w_ce15_clean_all(tokenizer_bdd: &TokenizerBdd) {
+    use crate::app::cli::tokenizer::{TokenizerAction, run_with};
     use std::process::ExitCode;
-    use xylitol::app::cli::tokenizer::{TokenizerAction, run_with};
 
     let cache = tokenizer_bdd.ensure_cache();
     let cfg = tokenizer_bdd.config.borrow().clone();
@@ -309,7 +309,7 @@ async fn w_ce15_clean_all(tokenizer_bdd: &TokenizerBdd) {
 
 #[then("条目被移除且 status 不再列出")]
 async fn t_ce15_clean_gone(tokenizer_bdd: &TokenizerBdd) {
-    use xylitol::app::cli::tokenizer::{TokenizerAction, run_with};
+    use crate::app::cli::tokenizer::{TokenizerAction, run_with};
 
     assert!(tokenizer_bdd.cli_code_ok.get());
     let cache = tokenizer_bdd.ensure_cache();
@@ -343,7 +343,7 @@ fn g_ce15_hf_mirror_mapped(tokenizer_bdd: &TokenizerBdd) {
 
 #[when("xylitol tokenizer download <target> 进入确认摘要（或 --yes 的等价日志）")]
 async fn w_ce15_download_summary(tokenizer_bdd: &TokenizerBdd) {
-    use xylitol::app::cli::tokenizer::{TokenizerAction, run_with_hf_endpoint};
+    use crate::app::cli::tokenizer::{TokenizerAction, run_with_hf_endpoint};
 
     let cache = tokenizer_bdd.ensure_cache();
     let cfg = tokenizer_bdd.config.borrow().clone();
@@ -481,7 +481,7 @@ fn g_rc18_named(tokenizer_bdd: &TokenizerBdd) {
 #[when("加载配置")]
 fn w_rc18_load(tokenizer_bdd: &TokenizerBdd) {
     if rc_load_flag::LOCAL_ONLY.with(|f| f.get()) {
-        let cfg = xylitol::infra::config::types::AppConfig::default();
+        let cfg = crate::infra::config::types::AppConfig::default();
         tokenizer_bdd.config.replace(cfg.clone());
         tokenizer_bdd.cfg_ok.set(true);
     } else {

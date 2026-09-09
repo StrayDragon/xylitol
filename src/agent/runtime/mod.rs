@@ -24,4 +24,4 @@ pub use event::XyEventStream;
 pub use hooks::AgentHooks;
 pub use ports::RuntimePorts;
 pub use react::AgentRuntime;
-pub use state::{RunId, RunPolicy, RuntimeControlError, RuntimePhase};
+pub use state::{RunPolicy, RuntimeControlError};

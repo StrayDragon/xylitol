@@ -13,6 +13,5 @@ pub mod manifest;
 pub mod registry;
 pub mod resolver;
 
+#[cfg(test)]
 pub use manager::ModelManager;
-pub use manifest::ModelManifest;
-pub use registry::*;

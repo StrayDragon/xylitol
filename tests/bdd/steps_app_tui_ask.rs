@@ -3,13 +3,13 @@
 use std::cell::RefCell;
 use std::sync::Arc;
 
-use rstest_bdd_macros::{given, then, when};
-use xylitol::agent::tools::ToolSet;
-use xylitol::infra::tools::{default_tools, default_tools_with_ask};
-use xylitol::protocol::error::XyToolError;
-use xylitol::protocol::ports::ask::{
+use crate::agent::tools::ToolSet;
+use crate::infra::tools::{default_tools, default_tools_with_ask};
+use crate::protocol::error::XyToolError;
+use crate::protocol::ports::ask::{
     AskArgs, AskModeArg, AskOptionArg, AskQuestionArg, AskUserGateway,
 };
+use rstest_bdd_macros::{given, then, when};
 use xylitol_tui::{ChoiceAnswer, ChoiceResult, ChoiceStatus};
 
 thread_local! {
@@ -65,7 +65,7 @@ fn given_ask_waiting() {
         }],
         allow_other: true,
     }];
-    let converted = xylitol::app::tui::ask_questions_to_choice(questions);
+    let converted = crate::app::tui::ask_questions_to_choice(questions);
     assert_eq!(converted.len(), 1);
     assert_eq!(converted[0].label, "Scope");
 }

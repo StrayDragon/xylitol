@@ -1,4 +1,4 @@
-//! Ports — boundary traits between [`crate::agent`] and [`crate::infra`].
+//! Ports — boundary traits between the `agent` and `infra` layers.
 //!
 //! Trait contracts and signature-only associated types. Depends on protocol-root
 //! shared types (and MAY depend on `xylitol_ai_bridge::dto`). MUST NOT depend on

@@ -125,6 +125,7 @@ impl SettingsStorage for FileSettingsStorage {
 
 /// In-memory storage for testing.
 #[derive(Debug)]
+#[allow(dead_code)]
 pub struct InMemorySettingsStorage {
     pub global: std::sync::Arc<std::sync::Mutex<Option<String>>>,
     pub project: std::sync::Arc<std::sync::Mutex<Option<String>>>,

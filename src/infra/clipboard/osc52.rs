@@ -18,6 +18,7 @@ use std::io::Write;
 pub const MAX_OSC52_ENCODED_LENGTH: usize = 100_000;
 
 /// Check whether the current session is a remote (SSH) session.
+#[allow(dead_code)]
 pub fn is_remote_session() -> bool {
     is_remote_session_with(|k| std::env::var(k).ok())
 }
@@ -51,6 +52,7 @@ pub fn format_osc52(text: &str) -> Option<String> {
 }
 
 /// Write a preformatted OSC 52 sequence to stdout and flush (CLI / non-TUI).
+#[allow(dead_code)]
 pub fn write_osc52_stdout(sequence: &str) -> Result<(), std::io::Error> {
     let mut stdout = std::io::stdout().lock();
     stdout.write_all(sequence.as_bytes())?;

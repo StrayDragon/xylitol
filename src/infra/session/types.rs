@@ -8,11 +8,12 @@ use std::path::PathBuf;
 pub use crate::protocol::session::{
     BranchSummaryEntry, CompactionEntry, CustomEntry, CustomMessageEntry, EntryBase, LabelEntry,
     MessageEntry, ModelChangeEntry, SESSION_VERSION, SessionContext, SessionEntry, SessionHeader,
-    SessionInfoEntry, SessionTreeNode, ThinkingLevelChangeEntry,
+    SessionInfoEntry, ThinkingLevelChangeEntry,
 };
 
 /// Storage backend for a session.
 #[derive(Debug, Clone)]
+#[allow(dead_code)]
 pub enum SessionBackend {
     /// Persisted to a JSONL file in a directory.
     Persisted { sessions_dir: PathBuf },

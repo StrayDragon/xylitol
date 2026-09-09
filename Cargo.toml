@@ -128,10 +128,6 @@ rstest-bdd-macros = { version = "0.6.0-beta3", features = ["compile-time-validat
 #   cargo test --features rstest-bdd-macros/compile-time-validation
 # The feature is enabled here primarily for IDE support.
 
-[[bench]]
-name = "token_estimator"
-harness = false
-
 [package.metadata.docs.rs]
 all-features = true
 rustdoc-args = ["--cfg", "docsrs"]

@@ -34,7 +34,7 @@ pub type XyGenerateOptions = xylitol_ai_bridge::AiBridgeGenerateOptions;
 /// produce a streaming response from LLM-visible history.
 ///
 /// Callers MUST project session [`crate::protocol::message::AgentMessage`] history
-/// via [`crate::agent::llm_project::project_for_llm`] before invoking this trait.
+/// via `agent::llm_project::project_for_llm` before invoking this trait.
 /// [`LlmMessage`] is a type alias of bridge `AiBridgeMessage`.
 #[async_trait]
 pub trait XyModel: Send + Sync {

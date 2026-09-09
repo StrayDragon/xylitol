@@ -1,6 +1,10 @@
 ---
 depends_on: []
 skip_specs_landing: true
+branch: sdd/c2700-refactor-crate-public-surface
+base_sha: 43d72a54cc94d05b6e76653c1142d4b99dcfa8a9
+checkpointed: true
+checkpoint_sha: 43d72a54cc94d05b6e76653c1142d4b99dcfa8a9
 ---
 
 # 收窄 crate 公开面：只留 embed 与 Xy*
@@ -41,5 +45,8 @@ skip_specs_landing: true
 本 change 是可见性底座。下游：`c2705`、`c2715`、`c2720`、`c2735`。并行：`c2725`（不依赖本 change）。
 
 ## Further Notes
+
+实际 diff 范围（apply 后）：约 132 个文件。可见性收窄集中在 `src/lib.rs`、`src/app/mod.rs`、`src/protocol/mod.rs`；`tests/bdd`（52 文件）整树挂载为 crate 内 `#[cfg(test)] mod bdd`（`tests/bdd/main.rs` → `suite.rs`，路径 `crate::tests::bdd::`），`tests/inner/` 收纳原独立测试与 bench（bench 转 `#[cfg(test)]` 入口）；其余为收窄暴露的「仅测试消费」死码注解（`#[allow(dead_code)]`，约 40 簇，删除登记为后续 draft change）、rustdoc 去私有链接、BDD 校验命令迁移（`llmanspec/config.yaml` run_command → `cargo test --lib --all-features tests::bdd::`）与 API 表面快照接受。`c2705` 接手时注意：`BootstrappedAgent.agent` 已 `pub(crate)`；`agent/infra/utils` 已 `pub(crate)`；`app::tui` 因 spec tt08 保持 `pub`。
+
 
 审计报告：[src 发布前审计 canvas](file:///home/l8ng/.cursor/projects/home-l8ng-Projects-straydragon-xylitol/canvases/src-pre-release-audit.canvas.tsx) 候选 #2。架构 SSOT：`src/AGENTS.md` 三层契约与组合根。

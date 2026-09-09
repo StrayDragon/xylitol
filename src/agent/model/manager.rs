@@ -205,17 +205,20 @@ impl ModelManager {
     }
 
     /// Get the index of the currently selected model (`None` if unset).
+    #[allow(dead_code)]
     pub fn current_index(&self) -> Option<usize> {
         self.current_index
     }
 
     /// Get the XyModelConfig for the current model.
+    #[allow(dead_code)]
     pub fn current_config(&self) -> Option<XyModelConfig> {
         let idx = self.current_index?;
         self.registry.list().get(idx).map(|m| m.config.clone())
     }
 
     /// Whether the selected model has a declared adjustable option.
+    #[allow(dead_code)]
     pub fn thinking_is_adjustable(&self) -> bool {
         self.supported_levels()
             .is_some_and(|levels| thinking_levels_are_adjustable(&levels))

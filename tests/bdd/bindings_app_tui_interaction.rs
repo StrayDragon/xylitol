@@ -1,6 +1,6 @@
 //! app-tui-transcript BDD 绑定（P3：键鼠交互折叠族）。
 
-use crate::steps_app_tui_interaction::{TuiInteraction, tui_interaction};
+use crate::tests::bdd::steps_app_tui_interaction::{TuiInteraction, tui_interaction};
 use rstest_bdd_macros::scenario;
 
 #[scenario(
