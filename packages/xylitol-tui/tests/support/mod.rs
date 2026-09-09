@@ -357,16 +357,13 @@ impl VirtualTerminal {
             for offset in (0..overlap).rev() {
                 self.grid[top + offset + count] = self.grid[top + offset].clone();
             }
-            for row in top..top + count {
-                self.grid[row] = blank.clone();
-            }
+            self.grid[top..top + count].fill(blank.clone());
         } else {
             for offset in 0..overlap {
                 self.grid[top + offset] = self.grid[top + offset + count].clone();
             }
-            for row in self.scroll_bottom + 1 - count..=self.scroll_bottom {
-                self.grid[row] = blank.clone();
-            }
+            let start = self.scroll_bottom + 1 - count;
+            self.grid[start..=self.scroll_bottom].fill(blank.clone());
         }
     }
 
