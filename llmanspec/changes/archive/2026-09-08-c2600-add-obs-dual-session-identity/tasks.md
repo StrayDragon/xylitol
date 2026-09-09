@@ -1,8 +1,0 @@
-# Tasks: c2600-add-obs-dual-session-identity
-
-测试 seam：infra-otel CollectingReporter + session header 单测 + ai-bridge 观测属性单测。不打网。不新扩 BDD（与 otel6 headless 并存，双 id / 树边由单测钉）。
-
-- [x] t1 specs：`infra-otel` 新增 otel26（`xylitol.session.id` + `llm_gateway_session_id` + 树边；`langfuse.session.id` 仍等于当前 session 且 MUST 同时写 `xylitol.session.id`）；`agent-session-store` 新增 s23（fork 写入切点字段）。不改已锁 otel6 句面
-- [x] t2 fork 写 `parentSession` + `forkAtEntryId`；观测快照/span 写出 `xylitol.session.id`（及事实存在的树边 / 通道会话身份）；无父省略树边；未向 LLM 通道呈报则省略 `llm_gateway_session_id`
-- [x] t3 单测：新会话无树边键；fork 子本 header 与 span 树边一致；`langfuse.session.id` == `xylitol.session.id`；旧文件无 `forkAtEntryId` 时省略切点属性
-- [x] t4 相关单测 + `llman sdd validate c2600-add-obs-dual-session-identity --strict --no-check`
