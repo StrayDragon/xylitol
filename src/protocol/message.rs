@@ -10,9 +10,10 @@ use serde_json::Value;
 
 pub use xylitol_ai_bridge::dto::{
     AiBridgeImageContent as ImageContent, AiBridgeMessage as LlmMessage, AiBridgePart as AgentPart,
-    AiBridgeStopReason as XyStopReason, AiBridgeUsage as XyUsage, AiBridgeUsageCost as XyUsageCost,
-    Diagnostic, collect_text_parts, now_ms,
+    AiBridgeStopReason as XyStopReason, AiBridgeUsage as XyUsage, now_ms,
 };
+#[cfg(test)]
+pub use xylitol_ai_bridge::dto::{AiBridgeUsageCost as XyUsageCost, Diagnostic};
 
 // ── EnvMessage / AgentMessage (domain composition) ─────────────────
 
@@ -201,6 +202,7 @@ impl AgentMessage {
 
 /// Public agent state snapshot.
 #[derive(Debug, Clone)]
+#[allow(dead_code)]
 pub struct AgentState {
     /// System prompt sent with each model request.
     pub system_prompt: String,
@@ -226,6 +228,7 @@ pub struct AgentState {
 
 /// Context snapshot passed into the low-level agent loop before each LLM call.
 #[derive(Debug, Clone)]
+#[allow(dead_code)]
 pub struct AgentContext {
     /// System prompt included with the request.
     pub system_prompt: String,

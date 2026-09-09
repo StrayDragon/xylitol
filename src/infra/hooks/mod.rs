@@ -53,6 +53,7 @@ impl HookPhase {
 ///
 /// Each variant carries the context data relevant to that event.
 #[derive(Debug, Clone)]
+#[allow(dead_code)]
 pub enum HookEvent {
     /// A tool is about to be called (pre) or has completed (post).
     ToolCall {
@@ -258,6 +259,7 @@ impl HookEvent {
     /// Payload-only JSON for [`crate::protocol::ports::XyHookBus`] (no `event`/`phase` keys).
     ///
     /// Script stdin via typed [`Self::to_json_context`] still includes `event` + `phase`.
+    #[allow(dead_code)]
     pub fn payload_context(&self) -> serde_json::Value {
         let mut ctx = self.to_json_context(HookPhase::Pre);
         if let Some(map) = ctx.as_object_mut() {

@@ -10,7 +10,7 @@ use crate::protocol::lifecycle::XyEvent;
 #[serde(tag = "type", rename_all = "snake_case")]
 pub enum Event {
     Error {
-        /// Stable classification aligned with [`crate::protocol::lifecycle`] kinds.
+        /// Stable classification aligned with `protocol::lifecycle` kinds.
         kind: String,
         message: String,
     },

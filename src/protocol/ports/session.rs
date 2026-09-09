@@ -126,7 +126,7 @@ pub trait XySessionStore: Send + Sync {
     /// Current leaf entry id, if any.
     fn leaf_id(&self, session_id: &str) -> Option<String>;
 
-    /// Build the message-history session tree (default: load entries + [`build_session_tree`]).
+    /// Build the message-history session tree (default: load entries + `build_session_tree`).
     ///
     /// # Errors
     ///

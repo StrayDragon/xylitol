@@ -1,6 +1,6 @@
-use crate::fixtures::*;
-use crate::steps_bridge::{AiBridgeBdd, PromptBdd, ai_bridge_bdd, prompt_bdd};
-use crate::steps_tokenizer::{TokenizerBdd, tokenizer_bdd};
+use crate::tests::bdd::fixtures::*;
+use crate::tests::bdd::steps_bridge::{AiBridgeBdd, PromptBdd, ai_bridge_bdd, prompt_bdd};
+use crate::tests::bdd::steps_tokenizer::{TokenizerBdd, tokenizer_bdd};
 use rstest_bdd_macros::scenario;
 
 #[scenario(
@@ -134,7 +134,7 @@ fn test_paa9_default(tokenizer_bdd: TokenizerBdd) {}
 #[test]
 fn curated_xy_hook_bus_symbols_resolve() {
     fn assert_port<T: ?Sized>() {}
-    assert_port::<dyn xylitol::XyHookBus>();
-    let _ = xylitol::XyHookOutcome::Allowed;
-    let _ = xylitol::NoopHookBus;
+    assert_port::<dyn crate::XyHookBus>();
+    let _ = crate::XyHookOutcome::Allowed;
+    let _ = crate::NoopHookBus;
 }

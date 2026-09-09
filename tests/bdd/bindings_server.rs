@@ -1,4 +1,4 @@
-use crate::steps_server::{ServerTest, approval_test, server_test};
+use crate::tests::bdd::steps_server::{ServerTest, approval_test, server_test};
 use rstest_bdd_macros::scenario;
 
 #[scenario(

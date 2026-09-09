@@ -9,7 +9,7 @@ pub use chunk::{XyChunk, XyToolSchema};
 pub use config::{ResolvedProfile, XyModelConfig, XyModelKind, default_context_window_for};
 pub use meta::{ContextTokenEstimate, TokenProvenance, XyModelMeta};
 pub use thinking::{
-    BuiltinThinkingLevels, THINKING_OFF, ThinkingBudgets, ThinkingConfigError, ThinkingLevelMap,
+    THINKING_OFF, ThinkingBudgets, ThinkingConfigError, ThinkingLevelMap,
     last_declared_thinking_level, resolve_configured_levels, thinking_levels_are_adjustable,
     validate_thinking_level_map,
 };

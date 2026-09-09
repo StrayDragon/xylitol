@@ -1,3 +1,7 @@
+// Pre-0.0.1 audit: all product symbols in this module are currently unused;
+// kept pending the dedicated dead-code removal change.
+#![allow(dead_code)]
+
 //! Expand `$skill` references into SKILL.md bodies for the model (c1130 / A10).
 //!
 //! Session history and scrollback keep the raw `$name` text; only the LLM-bound

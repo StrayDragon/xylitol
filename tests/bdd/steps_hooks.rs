@@ -1,6 +1,6 @@
-use crate::fixtures::*;
-use crate::helpers::*;
-use crate::prelude::*;
+use crate::tests::bdd::fixtures::*;
+use crate::tests::bdd::helpers::*;
+use crate::tests::bdd::prelude::*;
 use rstest_bdd_macros::{given, then, when};
 
 #[given("注册了匹配 {pat:string} 的 hook")]
@@ -21,17 +21,17 @@ fn _g_hook_returns(agent: &AgentState, json_str: String) {
         e.command = format!("echo '{}'", j.to_string().replace('\'', "'\\''"));
         let log = agent.ensure_wiring_hook_log();
         let outcome = match j.get("action").and_then(|a| a.as_str()) {
-            Some("block") => xylitol::XyHookOutcome::Blocked {
+            Some("block") => crate::XyHookOutcome::Blocked {
                 reason: j
                     .get("reason")
                     .and_then(|r| r.as_str())
                     .unwrap_or("blocked")
                     .to_string(),
             },
-            Some("modify") => xylitol::XyHookOutcome::Modified {
+            Some("modify") => crate::XyHookOutcome::Modified {
                 args: j.get("args").cloned().unwrap_or(j.clone()),
             },
-            _ => xylitol::XyHookOutcome::Allowed,
+            _ => crate::XyHookOutcome::Allowed,
         };
         *log.force.lock().unwrap_or_else(|err| err.into_inner()) = Some(outcome);
     }
@@ -80,13 +80,13 @@ fn _g_hook_merge_combo(agent: &AgentState) {
         command: "echo '{\"action\":\"allow\",\"source\":\"user\"}'".into(),
         ..Default::default()
     };
-    let config = xylitol::infra::config::types::HooksConfig {
+    let config = crate::infra::config::types::HooksConfig {
         global: vec![global],
         project: vec![],
         user: vec![user.clone()],
     };
     // Production path: HookDispatcher::new runs three-tier merge_hooks.
-    let dispatcher = xylitol::infra::hooks::HookDispatcher::new(&config);
+    let dispatcher = crate::infra::hooks::HookDispatcher::new(&config);
     assert_eq!(
         dispatcher.hook_count(),
         1,
@@ -194,12 +194,12 @@ async fn _w_hook_bash_called(agent: &AgentState, cmd: String) {
 #[when("hook 被加载")]
 fn _w_hook_loaded(agent: &AgentState) {
     // Materialize merge the same way production does (HookDispatcher::new).
-    let config = xylitol::infra::config::types::HooksConfig {
+    let config = crate::infra::config::types::HooksConfig {
         global: agent.hook_entries.borrow().clone(),
         project: vec![],
         user: vec![],
     };
-    let dispatcher = xylitol::infra::hooks::HookDispatcher::new(&config);
+    let dispatcher = crate::infra::hooks::HookDispatcher::new(&config);
     assert!(
         !dispatcher.is_empty(),
         "expected at least one merged hook after load"

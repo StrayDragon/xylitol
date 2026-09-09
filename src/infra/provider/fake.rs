@@ -6,9 +6,7 @@ use std::sync::Arc;
 use crate::infra::provider::adapter::AdapterXyModel;
 use crate::protocol::ports::XyModel;
 
-pub use xylitol_ai_bridge::fake::{
-    FakeProvider, FakeProviderBuilder, FakeProviderMode, ScenarioStep,
-};
+pub use xylitol_ai_bridge::fake::{FakeProvider, ScenarioStep};
 
 /// Build a scenario-driven fake `XyModel` via the single-layer adapter shell.
 pub fn fake_xy_model(name: impl Into<String>, steps: Vec<ScenarioStep>) -> Arc<dyn XyModel> {

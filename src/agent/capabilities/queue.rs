@@ -47,11 +47,13 @@ impl PendingMessageQueue {
     }
 
     /// Current drain mode.
+    #[allow(dead_code)]
     pub fn mode(&self) -> QueueMode {
         self.mode
     }
 
     /// Replace the drain mode (does not affect already-queued messages).
+    #[allow(dead_code)]
     pub fn set_mode(&mut self, mode: QueueMode) {
         self.mode = mode;
     }
@@ -62,6 +64,7 @@ impl PendingMessageQueue {
     }
 
     /// Whether the queue holds at least one message.
+    #[allow(dead_code)]
     pub fn has_items(&self) -> bool {
         !self.messages.is_empty()
     }
@@ -72,6 +75,7 @@ impl PendingMessageQueue {
     }
 
     /// Whether the queue is empty.
+    #[allow(dead_code)]
     pub fn is_empty(&self) -> bool {
         self.messages.is_empty()
     }

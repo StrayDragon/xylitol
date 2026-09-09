@@ -1,12 +1,12 @@
 //! protocol-app 纯协议层步骤：serde 往返、闭集拒绝、四象限信封。
-//! 不起 Host —— 全部直接驱动 `xylitol::protocol` 公开类型。
+//! 不起 Host —— 全部直接驱动 `crate::protocol` 公开类型。
 
-use crate::prelude::*;
+use crate::protocol::lifecycle::XyEvent;
+use crate::protocol::{Command, Event, RpcMessage};
+use crate::tests::bdd::prelude::*;
 use rstest::fixture;
 use rstest_bdd_macros::{then, when};
 use std::convert::TryFrom;
-use xylitol::protocol::lifecycle::XyEvent;
-use xylitol::protocol::{Command, Event, RpcMessage};
 
 /// Shared state for protocol-layer scenarios.
 pub struct ProtocolBdd {

@@ -1,6 +1,6 @@
 //! app-tui-transcript / app-tui-input host-pump BDD 绑定（att9/att11 + ati busy 族）。
 
-use crate::steps_app_tui_host::{HostPumpBdd, host_pump_bdd};
+use crate::tests::bdd::steps_app_tui_host::{HostPumpBdd, host_pump_bdd};
 use rstest_bdd_macros::scenario;
 
 #[scenario(

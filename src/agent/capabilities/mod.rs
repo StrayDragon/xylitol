@@ -28,7 +28,10 @@ mod tools_ops;
 
 pub(crate) use self::hook_bus::{HookBlockedError, cancel_hook, observe_hook, observe_hook_sync};
 pub use self::queue::{AsyncQueueRuntime, PendingMessageQueue, QueueMode, QueueStats};
-pub use self::stats::{ContextUsage, SessionStats, get_context_usage};
+pub use self::stats::SessionStats;
+// Test-support re-export (in-crate tests import via this facade).
+#[cfg(test)]
+pub use self::stats::{ContextUsage, get_context_usage};
 
 use crate::agent::compaction::CompactionSettings;
 use crate::agent::compaction::orchestrator::CompactionOrchestrator;

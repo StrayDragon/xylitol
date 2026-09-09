@@ -30,6 +30,7 @@ pub fn downlink_server_request(method: impl Into<String>, payload: Value) -> Rpc
 /// Frame sent from server to client.
 #[derive(Debug, Serialize, Deserialize)]
 #[serde(tag = "type", rename_all = "snake_case")]
+#[allow(dead_code)]
 pub enum ServerFrame {
     Ack {
         seq: u64,
@@ -49,6 +50,7 @@ pub enum ServerFrame {
 /// Frame sent from client to server.
 #[derive(Debug, Serialize, Deserialize)]
 #[serde(tag = "type", rename_all = "snake_case")]
+#[allow(dead_code)]
 pub enum ClientFrame {
     Subscribe { session_id: String, last_seq: u64 },
     ApproveTool { call_id: String, approved: bool },

@@ -1,6 +1,6 @@
 //! BDD bindings for `package-tui-interaction-modes` (c2070).
 
-use crate::fixtures::*;
+use crate::tests::bdd::fixtures::*;
 use rstest_bdd_macros::scenario;
 
 #[scenario(

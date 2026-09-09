@@ -3,11 +3,11 @@
 //! 全部经产品单一桥缝 [`apply_xy_event`]（或其 UiModel API）驱动；
 //! 断言落在 UI-only 模型的可观察字段上，不触碰渲染层。
 
-use crate::prelude::*;
+use crate::app::tui::{BashBlockStatus, UiEntry, UiModel, UiPhase, apply_xy_event};
+use crate::protocol::{AgentMessage, AgentPart, LlmMessage};
+use crate::tests::bdd::prelude::*;
 use rstest::fixture;
 use rstest_bdd_macros::{then, when};
-use xylitol::app::tui::{BashBlockStatus, UiEntry, UiModel, UiPhase, apply_xy_event};
-use xylitol::protocol::{AgentMessage, AgentPart, LlmMessage};
 
 /// One UiModel driven through the bridge seam.
 pub struct BridgeBdd {
@@ -856,7 +856,7 @@ fn t_atb13_line_range(bridge_bdd: &BridgeBdd) {
 fn w_atb14_provider_error(bridge_bdd: &BridgeBdd) {
     apply(
         bridge_bdd,
-        XyEvent::Error(xylitol::protocol::lifecycle::XyEventError::new(
+        XyEvent::Error(crate::protocol::lifecycle::XyEventError::new(
             "Provider",
             "gateway 502",
         )),

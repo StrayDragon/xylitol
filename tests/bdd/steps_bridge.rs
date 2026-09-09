@@ -1,4 +1,4 @@
-use crate::prelude::*;
+use crate::tests::bdd::prelude::*;
 use rstest::fixture;
 use rstest_bdd_macros::{given, then, when};
 
@@ -323,8 +323,8 @@ pub fn prompt_bdd() -> PromptBdd {
 
 #[given("工具集含 bash 且其 prompt_guidelines 非空")]
 fn g_pt9_bash_guidelines(prompt_bdd: &PromptBdd) {
-    use xylitol::agent::prompt::{SystemPromptOpts, build_system_prompt};
-    use xylitol::protocol::ports::XyTool;
+    use crate::agent::prompt::{SystemPromptOpts, build_system_prompt};
+    use crate::protocol::ports::XyTool;
 
     let bash = BashTool::default();
     assert!(
@@ -363,7 +363,7 @@ fn t_pt9_guidelines(prompt_bdd: &PromptBdd) {
 
 #[given("custom_prompt 或 SYSTEM.md 整段替换默认正文且未附 Available tools")]
 fn g_pt9_custom(prompt_bdd: &PromptBdd) {
-    use xylitol::agent::prompt::{SystemPromptOpts, build_system_prompt};
+    use crate::agent::prompt::{SystemPromptOpts, build_system_prompt};
 
     let opts = SystemPromptOpts {
         custom_prompt: Some("CUSTOM_ONLY_BODY".into()),
@@ -389,7 +389,7 @@ fn t_pt9_no_backfill(prompt_bdd: &PromptBdd) {
 // ── agent-prompt pt3 (c1218) ──────────────────────────────────────
 
 #[given("项目或全局 prompts 目录存在 greet.md")]
-fn g_pt3_prompts_dir(ws: &crate::fixtures::Workspace) {
+fn g_pt3_prompts_dir(ws: &crate::tests::bdd::fixtures::Workspace) {
     ws.init();
     let path = ws.ws("prompts/greet.md");
     std::fs::create_dir_all(std::path::Path::new(&path).parent().unwrap()).ok();
@@ -397,10 +397,10 @@ fn g_pt3_prompts_dir(ws: &crate::fixtures::Workspace) {
 }
 
 #[when("装配资源加载器并发现")]
-fn w_pt3_discover(ws: &crate::fixtures::Workspace, prompt_bdd: &PromptBdd) {
+fn w_pt3_discover(ws: &crate::tests::bdd::fixtures::Workspace, prompt_bdd: &PromptBdd) {
     use std::path::PathBuf;
 
-    use xylitol::app::cli::resources::{ResourcesAction, run_with_dirs};
+    use crate::app::cli::resources::{ResourcesAction, run_with_dirs};
 
     let cwd = PathBuf::from(ws.ws("."));
     let agent_dir = cwd.join(".xylitol");
@@ -413,7 +413,7 @@ fn w_pt3_discover(ws: &crate::fixtures::Workspace, prompt_bdd: &PromptBdd) {
     "get_commands MUST NOT 含 template:greet 或 /greet 模板命令且 loader MUST NOT 将 greet 注册为 prompt 模板"
 )]
 fn t_pt3_no_slash_templates(prompt_bdd: &PromptBdd) {
-    use xylitol::app::product_commands::product_slash_commands;
+    use crate::app::product_commands::product_slash_commands;
 
     let list_out = prompt_bdd.prompt.borrow();
     assert!(

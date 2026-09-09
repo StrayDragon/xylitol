@@ -656,6 +656,7 @@ fn project_trusted_for(host: &HostState, workspace: &Path) -> bool {
     .trusted
 }
 
+#[allow(dead_code)]
 pub async fn materialize_writer(
     host: &HostState,
     slot: &Arc<SessionSlot>,

@@ -66,6 +66,7 @@ impl TrustManager {
     }
 
     /// Path to the underlying trust file.
+    #[allow(dead_code)]
     pub fn trust_file_path(&self) -> &Path {
         &self.trust_file_path
     }
@@ -184,6 +185,7 @@ impl TrustManager {
     }
 
     /// Persist a single trust decision for a path.
+    #[allow(dead_code)]
     pub fn set_trust(&self, path: &str, decision: TrustDecision) -> Result<(), XyTrustError> {
         self.apply_updates(&[TrustUpdate {
             path: path.to_string(),

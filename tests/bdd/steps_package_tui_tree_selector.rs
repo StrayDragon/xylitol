@@ -5,7 +5,7 @@
 //! 回调（on_select / on_cancel / on_label_edit）写入 thread-local 捕获，
 //! 供 then 步骤断言（选择器由夹具独占持有，无跨步借用）。
 
-use crate::prelude::*;
+use crate::tests::bdd::prelude::*;
 use crossterm::event::{KeyCode, KeyEvent, KeyEventKind, KeyEventState, KeyModifiers};
 use rstest::fixture;
 use rstest_bdd_macros::{then, when};

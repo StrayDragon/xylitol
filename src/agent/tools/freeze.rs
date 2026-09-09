@@ -82,12 +82,14 @@ fn hex_lower(bytes: impl AsRef<[u8]>) -> String {
 
 /// Upsert `incoming` onto `base` by tool name (unique names; later wins).
 #[inline]
+#[allow(dead_code)]
 pub fn upsert_tools_by_name(base: ToolSet, incoming: ToolSet) -> ToolSet {
     base.overlay_by_name(incoming)
 }
 
 /// Build the frozen table: core/builtins first, then armed MCP/custom by name.
 #[inline]
+#[allow(dead_code)]
 pub fn freeze_table_from_parts(
     core: impl IntoIterator<Item = std::sync::Arc<dyn crate::protocol::ports::XyTool>>,
     armed: impl IntoIterator<Item = std::sync::Arc<dyn crate::protocol::ports::XyTool>>,

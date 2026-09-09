@@ -38,23 +38,13 @@ pub mod tools;
 // 库用户应从 `crate::agent::*` import，而非 reach into 子模块。
 
 pub use crate::agent::builder::AgentBuilder;
-pub use crate::agent::capabilities::AgentCapabilities;
-pub use crate::agent::capabilities::{PendingMessageQueue, QueueMode, QueueStats};
-pub use crate::agent::context_policy::{ContextPolicy, DatePlacement, StatusBarMode, ToolsMode};
-pub use crate::agent::llm_project::project_for_llm;
 /// ReAct 循环运行时（驱动 [`AgentCapabilities`]）。
 pub use crate::agent::runtime::AgentRuntime;
 /// Clonable construction baseline for materializing isolated [`AgentRuntime`]s.
 pub use crate::agent::runtime::RuntimePorts;
-pub use crate::agent::runtime::hooks::BeforeToolHook;
-pub use crate::agent::runtime::hooks::{
-    ShouldStopAfterTurnCtx, ShouldStopAfterTurnHook, max_turns_stop_hook,
-};
-pub use crate::agent::runtime::{AgentHooks, RunPolicy, RuntimeControlError, XyEventStream};
-pub use crate::agent::tools::{
-    MCP_FIRST_TURN_GATE_TIMEOUT, ToolFreezePhase, ToolSet, ToolTableFingerprint,
-    freeze_table_from_parts, upsert_tools_by_name,
-};
+#[cfg(test)]
+pub use crate::agent::runtime::XyEventStream;
+pub use crate::agent::runtime::hooks::max_turns_stop_hook;
+pub use crate::agent::tools::MCP_FIRST_TURN_GATE_TIMEOUT;
 /// Semantic ownership: agent re-exports shared protocol vocabulary.
 pub use crate::protocol::lifecycle::XyEvent;
-pub use crate::protocol::message::AgentMessage;

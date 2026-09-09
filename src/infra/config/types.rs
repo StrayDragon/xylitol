@@ -893,7 +893,6 @@ fn default_storage_backend() -> String {
 }
 
 // Compaction: domain type is serde-only; schema twin lives here for AppConfig.
-pub use crate::protocol::compaction_config::XyCompactionSettingsConfig;
 
 /// JSON Schema twin of [`XyCompactionSettingsConfig`] (infra-only; c510).
 #[derive(Clone, Debug, Default, Serialize, Deserialize, JsonSchema)]

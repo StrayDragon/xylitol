@@ -1,16 +1,16 @@
-use crate::prelude::*;
+use crate::tests::bdd::prelude::*;
 use rstest::fixture;
 use rstest_bdd_macros::{given, then, when};
 use std::time::Duration;
 
-use xylitol::app::server::host::HostState;
-use xylitol::app::server::runtime::{RunningServer, ServerConfig, bind_serve, serve};
-use xylitol::app::server::ws::{EventJournal, ReverseRpcResult};
-use xylitol::protocol::Event;
-use xylitol::protocol::wire::envelope::{PROTOCOL_VERSION, RpcMessage};
-use xylitol::protocol::wire::method::DOWNLINK_METHODS;
-use xylitol::protocol::wire::registry;
-use xylitol::{
+use crate::app::server::host::HostState;
+use crate::app::server::runtime::{RunningServer, ServerConfig, bind_serve, serve};
+use crate::app::server::ws::{EventJournal, ReverseRpcResult};
+use crate::protocol::Event;
+use crate::protocol::wire::envelope::{PROTOCOL_VERSION, RpcMessage};
+use crate::protocol::wire::method::DOWNLINK_METHODS;
+use crate::protocol::wire::registry;
+use crate::{
     HostClient, HttpWsClient, LinkHealth, LinkTunings, MuxStream, XyDriver, XyRemoteDriver,
 };
 
@@ -37,7 +37,7 @@ pub struct ServerTest {
     pub idem_exec_file: RefCell<Option<std::path::PathBuf>>,
     pub idem_task: RefCell<Option<tokio::task::JoinHandle<()>>>,
     /// c2465 sr-rdy1：就绪窗口场景的网关与最近一次 healthz 应答。
-    pub gateway: RefCell<Option<Arc<xylitol::app::server::http::Gateway>>>,
+    pub gateway: RefCell<Option<Arc<crate::app::server::http::Gateway>>>,
     pub rdy_status: Cell<u16>,
     pub rdy_body: RefCell<Option<String>>,
     /// c2475 sr-reg1：注册文件路径与自检驱逐信号。
@@ -1756,7 +1756,7 @@ async fn t_idem_inflight_wait(server_test: &ServerTest) {
 
 #[given("监听器已绑定端口但装配未完成")]
 async fn g_rdy_starting(server_test: &ServerTest) {
-    let gateway = xylitol::app::server::http::Gateway::starting();
+    let gateway = crate::app::server::http::Gateway::starting();
     let (running, port) = bind_serve(
         &ServerConfig {
             host: "127.0.0.1".into(),
@@ -1844,7 +1844,7 @@ async fn t_rdy_ready(server_test: &ServerTest) {
 
 #[given("装配失败")]
 async fn g_rdy_failed(server_test: &ServerTest) {
-    let gateway = xylitol::app::server::http::Gateway::starting();
+    let gateway = crate::app::server::http::Gateway::starting();
     gateway.mark_failed();
     let (running, port) = bind_serve(
         &ServerConfig {
@@ -1876,10 +1876,10 @@ async fn t_rdy_failed(server_test: &ServerTest) {
 
 // ---- c2475 sr-reg1：serve 注册文件发现契约 ----
 
-use xylitol::app::server::registration::{
+use crate::app::server::registration::{
     Registration, read_registration, run_self_check, write_registration,
 };
-use xylitol::app::server::runtime::serve_registered;
+use crate::app::server::runtime::serve_registered;
 
 fn temp_reg_path() -> std::path::PathBuf {
     std::env::temp_dir().join(format!("xylitol-bdd-reg-{}.json", uuid::Uuid::new_v4()))
@@ -1963,7 +1963,7 @@ async fn g_reg_stale(server_test: &ServerTest) {
 #[when("客户端 attach 探活该地址")]
 async fn w_reg_attach_probe(server_test: &ServerTest) {
     let reg_path = server_test.reg_path.borrow().clone().expect("reg path");
-    let msg = xylitol::attach_preflight_with("http://127.0.0.1:1", Some(reg_path))
+    let msg = crate::attach_preflight_with("http://127.0.0.1:1", Some(reg_path))
         .await
         .expect_err("stale registration must fail the preflight");
     *server_test.unary_body.borrow_mut() = Some(msg);

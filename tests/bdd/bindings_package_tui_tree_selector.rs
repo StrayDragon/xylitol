@@ -1,6 +1,6 @@
 //! package-tui-tree-selector BDD 绑定（pts1–pts14）。
 
-use crate::steps_package_tui_tree_selector::{TreeSelBdd, tree_sel_bdd};
+use crate::tests::bdd::steps_package_tui_tree_selector::{TreeSelBdd, tree_sel_bdd};
 use rstest_bdd_macros::scenario;
 
 #[scenario(

@@ -123,6 +123,7 @@ impl TypedTool for AskTool {
 ///
 /// Used by TUI composition / MCP reload. Print MUST keep plain [`super::default_tools`].
 /// Prefer [`default_tools_with_ask_and_todo`] when a session-bound Todo gateway exists.
+#[allow(dead_code)]
 pub fn default_tools_with_ask(
     gateway: Arc<dyn AskUserGateway>,
 ) -> Vec<Arc<dyn crate::protocol::ports::XyTool>> {

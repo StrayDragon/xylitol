@@ -3,26 +3,29 @@
 //! Layout (scheme B):
 //! - [`wire`] — client ↔ core `Command` / `Event` (transport-agnostic)
 //! - [`ports`] — agent ↔ infra replaceable traits (`XyModel`, `XyTool`, …)
-//! - clustered root types — [`model`], [`session`], plus flat modules
+//! - clustered root types — `model`, `session`, plus flat modules
 //!   (`message`, `lifecycle`, …) that appear in port/wire signatures
 //!
 //! Dependency: root types MUST NOT depend on `wire`/`ports`; `wire` MUST NOT
 //! depend on `ports`; `ports` MAY use root types + bridge DTO. This module
 //! MUST NOT depend on `agent` or `infra`.
 
+// wire + ports stay `pub`: they are the sanctioned shared vocabulary beside the
+// crate-root `Xy*` re-exports. Flat leaf modules are `pub(crate)` — reach their
+// curated types via the re-exports above / at the crate root, not by deep path.
 pub mod ports;
 pub mod wire;
 
-pub mod compaction_config;
-pub mod error;
-pub mod lifecycle;
-pub mod message;
-pub mod model;
-pub mod resource;
-pub mod session;
-pub mod source_info;
-pub mod tool_name;
-pub mod tool_timeout;
+pub(crate) mod compaction_config;
+pub(crate) mod error;
+pub(crate) mod lifecycle;
+pub(crate) mod message;
+pub(crate) mod model;
+pub(crate) mod resource;
+pub(crate) mod session;
+pub(crate) mod source_info;
+pub(crate) mod tool_name;
+pub(crate) mod tool_timeout;
 
 // Wire Command/Event re-exported at protocol root — the canonical application-facing path.
 pub use wire::{

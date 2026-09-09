@@ -17,6 +17,7 @@ use super::store::{TrustManager, TrustOption};
 
 /// Default project trust policy when no explicit decision is stored.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
+#[allow(dead_code)]
 pub enum DefaultProjectTrust {
     /// Always trust projects with trust inputs (auto-trust).
     Always,

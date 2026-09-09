@@ -12,6 +12,7 @@ use crate::protocol::model::{ContextTokenEstimate, TokenProvenance};
 
 /// Calculate total context tokens from a XyUsage struct.
 /// Priority: total_tokens > input+output+cache_read+cache_write sum.
+#[allow(dead_code)]
 pub fn calculate_context_tokens(usage: &XyUsage) -> u64 {
     if usage.total_tokens > 0 {
         return usage.total_tokens;
@@ -86,6 +87,7 @@ pub fn estimate_from_session_entries(
 
 /// Estimate context tokens via accounting priority:
 /// Api → RemoteCount → LocalTokenizer → Heuristic.
+#[allow(dead_code)]
 pub fn estimate_context_tokens(
     messages: &[AgentMessage],
     last_usage: Option<&XyUsage>,

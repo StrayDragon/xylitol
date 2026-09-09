@@ -10,6 +10,7 @@ use super::error::ImageError;
 
 /// Result of a resize operation.
 #[derive(Debug, Clone)]
+#[allow(dead_code)]
 pub struct ResizedImage {
     /// Base64-encoded image data.
     pub data: String,

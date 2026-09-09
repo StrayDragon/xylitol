@@ -1,3 +1,7 @@
+// Pre-0.0.1 audit: all product symbols in this module are currently unused;
+// kept pending the dedicated dead-code removal change.
+#![allow(dead_code)]
+
 //! ConfigValueResolver — shell command + env var template resolution for API keys and headers.
 //!
 //! Supports:

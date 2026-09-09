@@ -33,7 +33,7 @@ pub struct BuildAgentOptions {
     pub permission: Option<Arc<dyn XyPermission>>,
     pub steering_mode: QueueMode,
     pub follow_up_mode: QueueMode,
-    /// Optional lifecycle sink (compaction etc.). Default: in-process [`EventBus`].
+    /// Optional lifecycle sink (compaction etc.). Default: in-process `EventBus`.
     /// Turn UX still uses the `XyDriver::run` EventStream, not this bus.
     pub event_sink: Option<Arc<dyn XyEventSink>>,
     /// Three-tier script hook configuration (empty = zero-cost no-op).
@@ -131,7 +131,7 @@ pub fn build_ports_with_store(
     Ok(builder.build_ports())
 }
 
-/// Construct a fully-wired [`AgentRuntime`] from the given options.
+/// Construct a fully-wired `AgentRuntime` from the given options.
 ///
 /// This is the single composition-root helper used by CLI, RPC, server, and
 /// future TUI/GUI modes. It injects the concrete infra implementations
@@ -139,7 +139,7 @@ pub fn build_ports_with_store(
 /// agent without letting `agent/` know about `infra/` types.
 ///
 /// **Event paths:** turn progress is the `XyDriver::run` → `XyEvent` stream.
-/// The injected [`XyEventSink`] (default [`EventBus`]) is for side lifecycle
+/// The injected [`XyEventSink`] (default `EventBus`) is for side lifecycle
 /// (e.g. compaction); it is not the multi-client turn bus.
 pub fn build_agent(options: BuildAgentOptions) -> Result<AgentRuntime, XyDriverError> {
     Ok(build_ports(options)?.materialize_runtime())

@@ -1,6 +1,6 @@
 //! app-tui-bridge BDD 绑定（atb 桥缝模型级族）。
 
-use crate::steps_app_tui_bridge::{BridgeBdd, bridge_bdd};
+use crate::tests::bdd::steps_app_tui_bridge::{BridgeBdd, bridge_bdd};
 use rstest_bdd_macros::scenario;
 
 #[scenario(

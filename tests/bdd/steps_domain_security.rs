@@ -1,18 +1,18 @@
-use crate::fixtures::*;
-use crate::helpers::*;
-use crate::prelude::*;
+use crate::tests::bdd::fixtures::*;
+use crate::tests::bdd::helpers::*;
+use crate::tests::bdd::prelude::*;
 use rstest_bdd_macros::{given, then, when};
 
 mod trust_bdd {
-    use rstest_bdd_macros::{given, then, when};
-    use std::cell::RefCell;
-    use xylitol::infra::trust::{
+    use crate::infra::trust::{
         DefaultProjectTrust as DPT, TrustManager, TrustReason, resolve_project_trusted,
     };
+    use rstest_bdd_macros::{given, then, when};
+    use std::cell::RefCell;
 
     thread_local! {
         static M: RefCell<Option<(tempfile::TempDir, TrustManager)>> = const { RefCell::new(None) };
-        static R: RefCell<Option<xylitol::infra::trust::TrustResolution>> = const { RefCell::new(None) };
+        static R: RefCell<Option<crate::infra::trust::TrustResolution>> = const { RefCell::new(None) };
         static BASE: RefCell<Option<String>> = const { RefCell::new(None) };
     }
 
@@ -216,17 +216,16 @@ mod trust_bdd {
 
     #[then("项目范围 settings 不合并到有效 settings")]
     pub fn t_settings_block() {
-        let s = xylitol::infra::settings::storage::InMemorySettingsStorage::default();
-        let m =
-            xylitol::infra::settings::manager::SettingsManager::from_storage(Box::new(s), false);
+        let s = crate::infra::settings::storage::InMemorySettingsStorage::default();
+        let m = crate::infra::settings::manager::SettingsManager::from_storage(Box::new(s), false);
         assert!(!m.is_project_trusted());
         assert_eq!(
             m.get_project_settings(),
-            &xylitol::infra::settings::Settings::default()
+            &crate::infra::settings::Settings::default()
         );
         assert_eq!(
             m.get_settings(),
-            &xylitol::infra::settings::Settings::default()
+            &crate::infra::settings::Settings::default()
         );
     }
 
@@ -244,10 +243,10 @@ mod trust_bdd {
 // ═══════════════════════════════════════════════════════════════════
 
 pub(crate) mod xs_sec {
+    use crate::infra::config::types::AppConfig;
+    use crate::protocol::ports::{XyPermission, XyPermissionVerdict};
     use std::cell::RefCell;
     use std::sync::Arc;
-    use xylitol::infra::config::types::AppConfig;
-    use xylitol::protocol::ports::{XyPermission, XyPermissionVerdict};
     thread_local! {
         pub static SEC: RefCell<Option<Arc<dyn XyPermission>>> = const { RefCell::new(None) };
         pub static V: RefCell<Option<XyPermissionVerdict>> = const { RefCell::new(None) };
@@ -259,10 +258,10 @@ pub(crate) mod xs_sec {
 #[given("安全启用且 forbidden_patterns=['/etc/**']")]
 fn g_ds_forbidden(ws: &Workspace) {
     ws.init();
-    use xylitol::infra::config::types::{
+    use crate::infra::config::types::{
         PermissionBackend, PermissionConfig, PermissionFilesystemConfig,
     };
-    use xylitol::infra::permission::build_permission;
+    use crate::infra::permission::build_permission;
     let c = PermissionConfig {
         enabled: true,
         backend: PermissionBackend::Glob,
@@ -277,10 +276,10 @@ fn g_ds_forbidden(ws: &Workspace) {
 }
 #[given("安全启用且无 MCP 允许列表")]
 fn g_ds_no_mcp() {
-    use xylitol::infra::config::types::{
+    use crate::infra::config::types::{
         PermissionBackend, PermissionConfig, PermissionProcessConfig,
     };
-    use xylitol::infra::permission::build_permission;
+    use crate::infra::permission::build_permission;
     let c = PermissionConfig {
         enabled: true,
         backend: PermissionBackend::Glob,
@@ -293,16 +292,16 @@ fn g_ds_no_mcp() {
 }
 #[given("全新安装无配置覆盖")]
 fn g_ds_fresh() {
-    let c: xylitol::infra::config::types::SecurityConfig =
+    let c: crate::infra::config::types::SecurityConfig =
         serde_json::from_str("{}").expect("default SecurityConfig");
     assert!(c.enabled, "fresh install must default security enabled");
 }
 #[given("permission.filesystem.read_allowed=['/home/user/project']")]
 fn g_ds_read_allowed() {
-    use xylitol::infra::config::types::{
+    use crate::infra::config::types::{
         PermissionBackend, PermissionConfig, PermissionFilesystemConfig,
     };
-    use xylitol::infra::permission::build_permission;
+    use crate::infra::permission::build_permission;
     let c = PermissionConfig {
         enabled: true,
         backend: PermissionBackend::Glob,
@@ -332,7 +331,7 @@ fn w_ds_mcp() {
 }
 #[when("SecurityEngine 初始化")]
 fn w_ds_init() {
-    let c: xylitol::infra::config::types::SecurityConfig = serde_json::from_str("{}").unwrap();
+    let c: crate::infra::config::types::SecurityConfig = serde_json::from_str("{}").unwrap();
     assert!(c.enabled);
 }
 #[when("read 工具读取 /etc/passwd")]
@@ -358,7 +357,7 @@ fn t_ds_blocked_reason() {
 }
 #[then("enabled 字段为 true")]
 fn t_ds_enabled() {
-    let c: xylitol::infra::config::types::SecurityConfig = serde_json::from_str("{}").unwrap();
+    let c: crate::infra::config::types::SecurityConfig = serde_json::from_str("{}").unwrap();
     assert!(c.enabled);
 }
 #[then("permission engine 返回 access-denied")]
@@ -375,10 +374,10 @@ fn t_ds_access_denied() {
 
 #[given("需审批的工具被 SecurityToolWrapper 包装")]
 fn g_xy_tool_approval_given(_agent: &AgentState) {
-    use xylitol::infra::config::types::{
+    use crate::infra::config::types::{
         PermissionBackend, PermissionConfig, PermissionFilesystemConfig,
     };
-    use xylitol::infra::permission::build_permission;
+    use crate::infra::permission::build_permission;
 
     let config = PermissionConfig {
         enabled: true,
@@ -407,7 +406,7 @@ fn w_xy_tool_approval_call(_agent: &AgentState) {
 
 #[then("审批检查在 XyTool::execute 前运行且拒绝时阻止")]
 fn t_xy_tool_approval_blocks(_agent: &AgentState) {
-    use xylitol::protocol::ports::XyPermissionVerdict;
+    use crate::protocol::ports::XyPermissionVerdict;
 
     xs_sec::V.with(|v| match v.borrow().as_ref() {
         Some(XyPermissionVerdict::Deny { .. }) => {}
@@ -468,10 +467,10 @@ fn t_hook_killed_block(agent: &AgentState) {
 
 #[given("user 配置试图允许禁止 pattern")]
 fn g_ds_forbidden_override() {
-    use xylitol::infra::config::types::{
+    use crate::infra::config::types::{
         PermissionBackend, PermissionConfig, PermissionFilesystemConfig,
     };
-    use xylitol::infra::permission::build_permission;
+    use crate::infra::permission::build_permission;
 
     let mut cfg = PermissionConfig {
         enabled: true,
@@ -539,7 +538,7 @@ security:
 
 #[when("加载安全配置")]
 fn w_ds_load_yaml() {
-    use xylitol::infra::config::types::AppConfig;
+    use crate::infra::config::types::AppConfig;
     let yaml = xs_sec::LAST_YAML.with(|y| y.borrow().clone().expect("yaml"));
     let cfg: AppConfig = yaml_serde::from_str(&yaml).expect("parse permission yaml");
     xs_sec::PARSED_CFG.with(|c| c.replace(Some(cfg)));
@@ -571,7 +570,7 @@ fn t_ds_perm_yaml_ok() {
 
 #[given("permission 后端实例已构造")]
 fn g_ds_perm_trait() {
-    xs_sec::SEC.with(|e| e.replace(Some(xylitol::infra::permission::allow_all_permission())));
+    xs_sec::SEC.with(|e| e.replace(Some(crate::infra::permission::allow_all_permission())));
 }
 
 #[when("调用 check_read(\"/tmp/test\")")]
@@ -590,7 +589,7 @@ fn w_ds_check_read() {
 
 #[then("返回 XyPermissionVerdict 且默认后端为 AllowAllPermission")]
 fn t_ds_allow_all_read() {
-    use xylitol::protocol::ports::XyPermissionVerdict;
+    use crate::protocol::ports::XyPermissionVerdict;
     xs_sec::V.with(|v| match v.borrow().as_ref() {
         Some(XyPermissionVerdict::Allow) => {}
         other => panic!("AllowAllPermission must allow /tmp/test read, got {other:?}"),

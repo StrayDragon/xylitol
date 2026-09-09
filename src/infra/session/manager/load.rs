@@ -50,6 +50,7 @@ impl SessionManager {
     ///
     /// If the CWD from the session header does not exist, tries `fallback_cwd`.
     /// Returns an error if neither directory is accessible.
+    #[allow(dead_code)]
     pub async fn load_validated(
         &self,
         session_id: &str,
@@ -149,6 +150,7 @@ impl SessionManager {
     // ── Tree navigation ─────────────────────────────────────────
 
     /// Get an entry by id.
+    #[allow(dead_code)]
     pub async fn get_entry(
         &self,
         session_id: &str,
@@ -164,6 +166,7 @@ impl SessionManager {
     }
 
     /// Get the current session name from the latest session_info entry.
+    #[allow(dead_code)]
     pub async fn get_session_name(
         &self,
         session_id: &str,
@@ -236,6 +239,7 @@ pub(super) fn session_display_name_from_entries(entries: &[SessionEntry]) -> Opt
 ///
 /// Checks the CWD stored in the session header. If the directory does not
 /// exist, tries `fallback_cwd`. Returns an error if neither is accessible.
+#[allow(dead_code)]
 pub fn assert_session_cwd_exists(
     entries: &[SessionEntry],
     fallback_cwd: &str,

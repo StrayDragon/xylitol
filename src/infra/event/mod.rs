@@ -35,6 +35,7 @@ pub type Handler = Arc<
 >;
 
 /// A handle that unsubscribes when dropped.
+#[allow(dead_code)]
 pub struct UnsubscribeHandle {
     bus: EventBus,
     channel: String,
@@ -48,6 +49,7 @@ impl Drop for UnsubscribeHandle {
 }
 
 #[derive(Clone)]
+#[allow(dead_code)]
 struct ListenerEntry {
     id: u64,
     handler: Handler,
@@ -55,11 +57,13 @@ struct ListenerEntry {
 
 /// Channel-based event bus with string channels and JSON Value payloads.
 #[derive(Clone, Default)]
+#[allow(dead_code)]
 pub struct EventBus {
     listeners: Arc<Mutex<HashMap<String, Vec<ListenerEntry>>>>,
     next_id: Arc<std::sync::atomic::AtomicU64>,
 }
 
+#[allow(dead_code)]
 impl EventBus {
     /// Create a new event bus.
     pub fn new() -> Self {

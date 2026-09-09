@@ -2,14 +2,17 @@
 //! (criterion wiring — complements `just qa` complexity gates with perf
 //! regression data; not part of qa).
 //!
-//! Run: `cargo bench --bench token_estimator` (release profile; see Cargo.toml).
+//! Mounted in-crate as `#[cfg(test)]` (bench targets are separate crates and
+//! cannot see `pub(crate)` items). Run:
+//! `cargo test -r --lib token_estimator -- --ignored --nocapture`
+//! — release profile + `#[ignore]` keeps real perf numbers out of qa.
 
-use criterion::{BenchmarkId, Criterion, criterion_group, criterion_main};
+use criterion::{BenchmarkId, Criterion};
 use std::hint::black_box;
 
-use xylitol::agent::compaction::token_estimator::{EstimateOpts, estimate_context_tokens_with};
-use xylitol::protocol::message::{AgentMessage, AgentPart, LlmMessage, XyStopReason, XyUsage};
-use xylitol::protocol::model::TokenProvenance;
+use crate::agent::compaction::token_estimator::{EstimateOpts, estimate_context_tokens_with};
+use crate::protocol::message::{AgentMessage, AgentPart, LlmMessage, XyStopReason, XyUsage};
+use crate::protocol::model::TokenProvenance;
 
 fn sample_messages(turns: usize) -> Vec<AgentMessage> {
     (0..turns)
@@ -75,5 +78,9 @@ fn bench_estimate_context_tokens(c: &mut Criterion) {
     });
 }
 
-criterion_group!(benches, bench_estimate_context_tokens);
-criterion_main!(benches);
+#[test]
+#[ignore = "perf bench: run via `cargo test -r --lib token_estimator -- --ignored --nocapture`"]
+fn token_estimator_perf() {
+    let mut c = Criterion::default();
+    bench_estimate_context_tokens(&mut c);
+}

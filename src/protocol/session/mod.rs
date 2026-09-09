@@ -18,16 +18,18 @@ pub use entries::{
 pub use helpers::{
     bash_execution_message_entry, count_tool_calls, fixture_message_json, is_assistant_message,
     is_env_custom_message, is_tool_call_part, is_user_message, message_custom_type, message_parts,
-    message_role, message_text, session_fork_edge, tool_call_arguments, tool_call_name,
-    tool_file_paths, transcript_ancestry_ids, transcript_leaf_anchor,
+    message_role, message_text, session_fork_edge, tool_call_name, tool_file_paths,
+    transcript_ancestry_ids, transcript_leaf_anchor,
 };
 pub use parse::{
     enforce_session_version, parse_session_jsonl, parse_session_jsonl_lines,
     peek_session_header_version,
 };
+#[cfg(test)]
+pub use todo::TodoItem;
 pub use todo::{
-    CUSTOM_TYPE_AGENT_TODO, TodoItem, TodoItemDraft, TodoList, TodoStatus, TodoValidationError,
-    apply_todo_update, latest_agent_todo, normalize_rewrite_items, validate_todo_list,
+    CUSTOM_TYPE_AGENT_TODO, TodoItemDraft, TodoList, TodoStatus, apply_todo_update,
+    latest_agent_todo, normalize_rewrite_items,
 };
 pub use tree::{
     SessionTreeKind, SessionTreeNode, SessionTreeTravel, build_session_tree,

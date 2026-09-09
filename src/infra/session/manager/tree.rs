@@ -10,11 +10,13 @@ use crate::utils::{lock_rwlock_read, lock_rwlock_write};
 impl SessionManager {
     /// Branch: change the current leaf to a different entry.
     /// Future appends will be children of this entry.
+    #[allow(dead_code)]
     pub fn branch(&self, session_id: &str, entry_id: &str) {
         self.set_leaf(session_id, Some(entry_id.to_string()));
     }
 
     /// Reset leaf to root (null).
+    #[allow(dead_code)]
     pub fn reset_leaf(&self, session_id: &str) {
         self.set_leaf(session_id, None);
     }
@@ -229,11 +231,13 @@ impl SessionManager {
     // ── Tree operations ────────────────────────────────────────
 
     /// Get the active session id.
+    #[allow(dead_code)]
     pub fn active_session_id(&self) -> Option<String> {
         lock_rwlock_read(&self.active_session).clone()
     }
 
     /// Set the active session.
+    #[allow(dead_code)]
     pub fn set_active_session(&self, id: &str) {
         lock_rwlock_write(&self.active_session).replace(id.to_string());
     }
@@ -241,6 +245,7 @@ impl SessionManager {
     /// Navigate tree: change the current leaf to a different entry.
     /// Future appends will be children of this entry.
     /// Alias for `branch()`.
+    #[allow(dead_code)]
     pub fn navigate_tree(&self, session_id: &str, target_id: Option<&str>) {
         match target_id {
             Some(id) => self.branch(session_id, id),
@@ -250,6 +255,7 @@ impl SessionManager {
 
     /// Switch the active session to a new file path.
     /// This loads entries from the new path and updates the active session.
+    #[allow(dead_code)]
     pub async fn switch_session(
         &self,
         new_session_id: &str,

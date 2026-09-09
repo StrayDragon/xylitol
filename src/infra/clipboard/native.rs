@@ -88,6 +88,7 @@ pub fn plan_clipboard_copy_with(
 }
 
 /// Apply a plan by writing any OSC 52 sequence to stdout (CLI / non-TUI).
+#[allow(dead_code)]
 pub fn apply_clipboard_plan_stdout(plan: ClipboardPlan) -> Result<(), ClipboardError> {
     if let Some(ref seq) = plan.osc52_sequence {
         match write_osc52_stdout(seq) {
@@ -108,6 +109,7 @@ pub fn apply_clipboard_plan_stdout(plan: ClipboardPlan) -> Result<(), ClipboardE
 /// Copy text to the system clipboard using platform-native tools or OSC 52.
 ///
 /// Prefer [`plan_clipboard_copy_async`] + host-side OSC 52 from product TUI.
+#[allow(dead_code)]
 pub fn copy_to_clipboard(text: &str) -> Result<(), ClipboardError> {
     apply_clipboard_plan_stdout(plan_clipboard_copy(text))
 }
@@ -123,6 +125,7 @@ pub async fn plan_clipboard_copy_async(text: String) -> Result<ClipboardPlan, Cl
 ///
 /// CLI convenience. Product TUI must use [`plan_clipboard_copy_async`] so OSC 52
 /// is not written from the blocking pool.
+#[allow(dead_code)]
 pub async fn copy_to_clipboard_async(text: String) -> Result<(), ClipboardError> {
     tokio::task::spawn_blocking(move || copy_to_clipboard(&text))
         .await

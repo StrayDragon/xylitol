@@ -50,6 +50,7 @@ impl SessionManager {
     // ── Change tracking helpers ─────────────────────────────────
 
     /// Append a model change entry.
+    #[allow(dead_code)]
     pub async fn append_model_change(
         &self,
         session_id: &str,
@@ -70,6 +71,7 @@ impl SessionManager {
     }
 
     /// Append a thinking level change entry.
+    #[allow(dead_code)]
     pub async fn append_thinking_level_change(
         &self,
         session_id: &str,
@@ -90,6 +92,7 @@ impl SessionManager {
     // ── Branch summary (text fallback) ──────────────────────────
 
     /// Generate a branch summary for cut-point entries.
+    #[allow(dead_code)]
     pub fn generate_branch_summary(&self, skipped_entries: &[SessionEntry]) -> String {
         use crate::protocol::session::{
             count_tool_calls, is_user_message, message_text, tool_file_paths,
@@ -179,6 +182,7 @@ impl SessionManager {
 
     /// Append a label change entry.
     /// Labels are user-defined bookmarks/markers on entries.
+    #[allow(dead_code)]
     pub async fn append_label_change(
         &self,
         session_id: &str,
@@ -206,6 +210,7 @@ impl SessionManager {
     }
 
     /// Get the label for an entry, if any.
+    #[allow(dead_code)]
     pub async fn get_label(
         &self,
         session_id: &str,
@@ -227,6 +232,7 @@ impl SessionManager {
     ///
     /// Stored on disk; the `exclude_from_context` flag controls whether it
     /// participates in LLM context (see `build_session_context`).
+    #[allow(dead_code)]
     pub async fn append_bash_execution(
         &self,
         params: BashExecutionParams<'_>,

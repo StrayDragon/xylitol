@@ -2,12 +2,12 @@ use rstest::fixture;
 use std::cell::{Cell, RefCell};
 use std::sync::Arc;
 
-use xylitol::XyDriverError;
-use xylitol::agent::capabilities::{ContextUsage, ModelRegistry};
-use xylitol::agent::runtime::XyEvent;
-use xylitol::infra::config::types::HookEntry;
-use xylitol::infra::hooks::DispatchResult;
-use xylitol::infra::session::{SessionEntry, SessionManager};
+use crate::XyDriverError;
+use crate::agent::capabilities::{ContextUsage, ModelRegistry};
+use crate::agent::runtime::XyEvent;
+use crate::infra::config::types::HookEntry;
+use crate::infra::hooks::DispatchResult;
+use crate::infra::session::{SessionEntry, SessionManager};
 
 pub struct Workspace {
     pub dir: RefCell<Option<tempfile::TempDir>>,
@@ -84,10 +84,10 @@ impl XySessionStore {
     }
 }
 
-/// Library-seam hook recorder implementing crate-root [`xylitol::XyHookBus`] (c990).
+/// Library-seam hook recorder implementing crate-root [`crate::XyHookBus`] (c990).
 pub(crate) struct WiringHookLog {
     pub(crate) calls: std::sync::Mutex<Vec<(String, String, serde_json::Value)>>,
-    pub(crate) force: std::sync::Mutex<Option<xylitol::XyHookOutcome>>,
+    pub(crate) force: std::sync::Mutex<Option<crate::XyHookOutcome>>,
 }
 
 impl WiringHookLog {
@@ -100,13 +100,13 @@ impl WiringHookLog {
 }
 
 #[async_trait::async_trait]
-impl xylitol::XyHookBus for WiringHookLog {
+impl crate::XyHookBus for WiringHookLog {
     async fn dispatch(
         &self,
         event_type: &str,
         phase: &str,
         context: serde_json::Value,
-    ) -> xylitol::XyHookOutcome {
+    ) -> crate::XyHookOutcome {
         self.calls.lock().unwrap_or_else(|e| e.into_inner()).push((
             event_type.to_string(),
             phase.to_string(),
@@ -115,7 +115,7 @@ impl xylitol::XyHookBus for WiringHookLog {
         if let Some(outcome) = self.force.lock().unwrap_or_else(|e| e.into_inner()).take() {
             return outcome;
         }
-        xylitol::XyHookOutcome::Allowed
+        crate::XyHookOutcome::Allowed
     }
 }
 

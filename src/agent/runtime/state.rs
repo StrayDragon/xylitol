@@ -17,6 +17,7 @@ use crate::protocol::message::AgentPart;
 pub struct RunId(u64);
 
 impl RunId {
+    #[allow(dead_code)]
     pub fn get(self) -> u64 {
         self.0
     }
@@ -332,6 +333,7 @@ impl RunLease {
         }
     }
 
+    #[allow(dead_code)]
     pub fn run_id(&self) -> RunId {
         self.run_id
     }

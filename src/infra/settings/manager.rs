@@ -8,6 +8,7 @@ use super::storage::{
 use super::types::*;
 
 /// Manages global and project settings with deep merge.
+#[allow(dead_code)]
 pub struct SettingsManager {
     storage: Box<dyn SettingsStorage>,
     global_settings: Settings,
@@ -20,6 +21,7 @@ pub struct SettingsManager {
     errors: Arc<Mutex<Vec<(SettingsScope, String)>>>,
 }
 
+#[allow(dead_code)]
 impl SettingsManager {
     // ── Construction ────────────────────────────────────────────
 

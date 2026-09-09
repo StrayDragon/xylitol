@@ -58,6 +58,7 @@ pub trait BashOperations: Send + Sync {
 
 /// Result of a bash execution.
 #[derive(Debug, Clone)]
+#[allow(dead_code)]
 pub struct BashOutput {
     pub stdout: String,
     pub stderr: String,

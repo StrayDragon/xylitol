@@ -4,17 +4,17 @@
 //! shape as the in-crate `driver/remote.rs` tests, with injected micro-second
 //! tunings so backoff/coalesce timing assertions finish in milliseconds.
 
-use crate::prelude::*;
+use crate::tests::bdd::prelude::*;
 use rstest::fixture;
 use rstest_bdd_macros::{given, then, when};
 use std::collections::VecDeque;
 use std::sync::Mutex as StdMutex;
 use std::time::{Duration, Instant};
 
-use xylitol::protocol::RpcMessage;
-use xylitol::protocol::wire::envelope::PROTOCOL_VERSION;
-use xylitol::{HostClient, HostClientError, MuxStream, XyDriver};
-use xylitol::{LinkTunings, XyRemoteDriver};
+use crate::protocol::RpcMessage;
+use crate::protocol::wire::envelope::PROTOCOL_VERSION;
+use crate::{HostClient, HostClientError, MuxStream, XyDriver};
+use crate::{LinkTunings, XyRemoteDriver};
 
 /// Tunings small enough for millisecond-scale timing assertions.
 fn micro_tunings() -> LinkTunings {
@@ -99,7 +99,7 @@ impl HostClient for ScriptedMuxHost {
         &self,
         method: &str,
         payload: serde_json::Value,
-    ) -> Result<xylitol::protocol::RpcResult, HostClientError> {
+    ) -> Result<crate::protocol::RpcResult, HostClientError> {
         if method == "subscribe" {
             let seq = payload
                 .get("last_seq")
@@ -114,7 +114,7 @@ impl HostClient for ScriptedMuxHost {
             "loaded_resources" => serde_json::json!({ "mcp_configured": 0 }),
             _ => serde_json::json!({}),
         };
-        Ok(xylitol::protocol::RpcResult::ok_value(value))
+        Ok(crate::protocol::RpcResult::ok_value(value))
     }
 
     async fn respond(
@@ -250,7 +250,7 @@ fn t_hello_fatal(resilience_bdd: &ResilienceBdd) {
     let fatal = drained.iter().any(|ev| {
         matches!(
             ev,
-            xylitol::agent::runtime::XyEvent::Error(err)
+            crate::agent::runtime::XyEvent::Error(err)
                 if err.message.contains("protocol mismatch") && err.message.contains("99")
         )
     });
@@ -404,7 +404,7 @@ fn t_stale_dropped(resilience_bdd: &ResilienceBdd) {
     let texts: Vec<String> = drained
         .iter()
         .filter_map(|ev| match ev {
-            xylitol::agent::runtime::XyEvent::TextDelta(t) => Some(t.clone()),
+            crate::agent::runtime::XyEvent::TextDelta(t) => Some(t.clone()),
             _ => None,
         })
         .collect();
@@ -449,7 +449,7 @@ async fn w_coalesce_burst(resilience_bdd: &ResilienceBdd) {
             tokio::select! {
                 _ = tokio::time::sleep_until(deadline) => break,
                 item = stream.next() => match item {
-                    Some(xylitol::agent::runtime::XyEvent::TextDelta(t)) => {
+                    Some(crate::agent::runtime::XyEvent::TextDelta(t)) => {
                         sink.lock().unwrap().push((Instant::now(), t));
                     }
                     Some(_) => {}
