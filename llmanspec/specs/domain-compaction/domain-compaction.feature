@@ -70,7 +70,7 @@
 
   @req:c17 @human
   场景: force 与 auto 分流
-    - 手动 force 路径（CompactionOrchestrator::compact 或等价，经 XyDriver::compact / Command::Compact）MUST 不过 reserve 闸；prepare 与 compact 的会话条目输入 MUST 为当前 leaf 分支路径（对齐 pi getBranch），MUST NOT 仅以整文件线性 load 作为唯一输入；prepare 无内容时 MUST 返回明确错误：末条已是 CompactionEntry 时等价 Already compacted；空 leaf 时等价 Nothing to compact (empty session)；其余确无可摘要历史（含已在 keep_recent 窗内）时等价 Nothing to compact (no summarizable history beyond keep window)；MUST NOT 再以 session too small 作为上述有上下文失败的用户可见主串（偏离 pi 同文，见 PI_DELTAS）；MUST NOT 因切点计量低估（相对 pi estimateTokens）把仍有可摘要历史的会话误判为无可摘要；auto 路径（maybe_auto_compact）在 prepare 失败时 MUST 静默跳过（不抛上述用户错误）。Force 的 CompactionStart.reason MUST 可区分为 manual；threshold auto 的 reason MUST 含 threshold 语义。MUST NOT 让手动入口继续调用 maybe_auto_compact。
+    - 手动 force 路径（CompactionOrchestrator::compact 或等价，经 Command::Compact 执行器）MUST 不过 reserve 闸；prepare 与 compact 的会话条目输入 MUST 为当前 leaf 分支路径（对齐 pi getBranch），MUST NOT 仅以整文件线性 load 作为唯一输入；prepare 无内容时 MUST 返回明确错误：末条已是 CompactionEntry 时等价 Already compacted；空 leaf 时等价 Nothing to compact (empty session)；其余确无可摘要历史（含已在 keep_recent 窗内）时等价 Nothing to compact (no summarizable history beyond keep window)；MUST NOT 再以 session too small 作为上述有上下文失败的用户可见主串（偏离 pi 同文，见 PI_DELTAS）；MUST NOT 因切点计量低估（相对 pi estimateTokens）把仍有可摘要历史的会话误判为无可摘要；auto 路径（maybe_auto_compact）在 prepare 失败时 MUST 静默跳过（不抛上述用户错误）。Force 的 CompactionStart.reason MUST 可区分为 manual；threshold auto 的 reason MUST 含 threshold 语义。MUST NOT 让手动入口继续调用 maybe_auto_compact。
 
   @req:c18 @human
   场景: stale 防抖
@@ -98,7 +98,7 @@
 
   @req:c24 @human
   场景: force 可选 instructions
-    - 手动 force compact（Command::Compact / XyDriver::compact / CompactionOrchestrator::compact）MUST 接受可选 instructions（Option<String> 或等价）；非空时 generate_summary（含 split-turn 的 history 摘要）MUST 在结构化摘要 prompt 上追加「Additional focus:」+ 该文本（对齐 pi customInstructions），MUST NOT 替换整份 Goal/Constraints 骨架；generate_turn_prefix_summary MUST NOT 注入 instructions；仅空白或 None MUST 视为无 instructions；threshold / overflow auto 路径 MUST 不传 instructions，MUST NOT 复用上一次 manual 的 instructions。
+    - 手动 force compact（Command::Compact / CompactionOrchestrator::compact）MUST 接受可选 instructions（Option<String> 或等价）；非空时 generate_summary（含 split-turn 的 history 摘要）MUST 在结构化摘要 prompt 上追加「Additional focus:」+ 该文本（对齐 pi customInstructions），MUST NOT 替换整份 Goal/Constraints 骨架；generate_turn_prefix_summary MUST NOT 注入 instructions；仅空白或 None MUST 视为无 instructions；threshold / overflow auto 路径 MUST 不传 instructions，MUST NOT 复用上一次 manual 的 instructions。
 
   @req:c25 @human
   场景: compact 输入为 leaf 分支

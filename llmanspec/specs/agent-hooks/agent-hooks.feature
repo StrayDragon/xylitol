@@ -67,15 +67,15 @@
 
   @req:h16 @human
   场景: 模型与 thinking 选择接线
-    - 附加 XyHookBus 时，Driver select_model 与 cycle_model MUST 在成功变更后分发 model_select；set_thinking_level MUST 分发 thinking_level_select；二者 MUST 为仅观察 fail-open；MUST NOT 依赖仅 TUI 路径。
+    - 附加 XyHookBus 时，Command::SetModel / CycleModel 执行器 MUST 在成功变更后分发 model_select；Command::SetThinkingLevel 执行器 MUST 分发 thinking_level_select；二者 MUST 为仅观察 fail-open；MUST NOT 依赖仅 TUI 路径。
 
   @req:h18 @human
   场景: 会话树切换 hooks
-    - 附加 XyHookBus 时，Driver session_tree 与 travel_session_tree MUST 分发 session_before_tree（Blocked 可取消）与成功时 session_tree；switch_session MUST 分发 session_before_switch（Blocked 可取消）与成功时对 prior session 的 session_shutdown；process-quit shutdown MAY 直至库拆卸缝存在。
+    - 附加 XyHookBus 时，SessionTree / TravelSessionTree 执行器 MUST 分发 session_before_tree（Blocked 可取消）与成功时 session_tree；SwitchSession 执行器 MUST 分发 session_before_switch（Blocked 可取消）与成功时对 prior session 的 session_shutdown；process-quit shutdown MAY 直至库拆卸缝存在。
 
   @req:h19 @human
   场景: user_bash 于 execute_bash
-    - 附加 XyHookBus 时，Driver execute_bash MUST 在运行命令前分发 user_bash；Blocked MUST 阻止执行并 surfaced 错误。
+    - 附加 XyHookBus 时，Command::Bash 执行器 MUST 在运行命令前分发 user_bash；Blocked MUST 阻止执行并 surfaced 错误。
   @executable @req:r1
   场景: pre-tool-call
     假如 注册了匹配 "pre.tool_call.bash" 的 hook

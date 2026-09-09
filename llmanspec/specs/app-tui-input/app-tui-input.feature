@@ -39,7 +39,7 @@
 
   @req:ati10 @human
   场景: product-host-key-wiring
-    - 产品 HostSession MUST 在 agent 忙碌且会话树关闭时将普通 Enter 映射为 Driver::steer、Alt+Enter 映射为 Driver::follow_up；忙碌时 Esc MUST 调用 Driver::abort 并 clear_queue(steer=true, follow_up=false)；MUST NOT 在忙碌 Esc 时打开 c491 stub 树。
+    - 产品 HostSession MUST 在 agent 忙碌且会话树关闭时将普通 Enter 映射为 Command::Steer、Alt+Enter 映射为 Command::FollowUp（经 dispatch）；忙碌时 Esc MUST 调用 Driver::abort 并 Command::ClearQueue(steer=true, follow_up=false)；MUST NOT 在忙碌 Esc 时打开 c491 stub 树。
 
   @req:ati11 @human
   场景: product-queue-fixed-zone
@@ -67,7 +67,7 @@
 
   @req:ati16 @human
   场景: product-idle-bang-execute
-    - 产品 idle 且会话树关闭时，Enter 提交以 ! 或 !! 开头的非空命令 MUST 调用 Driver::execute_bash（经 Command::Bash / dispatch），MUST NOT 调用 Driver::run；!! 前缀 MUST 设置 exclude_from_context=true，单 ! 为 false；命令体为空时 MUST 提示且 MUST NOT 执行。
+    - 产品 idle 且会话树关闭时，Enter 提交以 ! 或 !! 开头的非空命令 MUST 经 dispatch 调用 Command::Bash，MUST NOT 调用 Driver::run；!! 前缀 MUST 设置 exclude_from_context=true，单 ! 为 false；命令体为空时 MUST 提示且 MUST NOT 执行。
 
   @req:ati17 @human
   场景: product-external-editor
@@ -83,7 +83,7 @@
 
   @req:ati20 @human
   场景: bang-busy-hard-reject
-    - 产品 TUI 在交互 bang 仍 busy（bash_active）时，用户再次 Enter 提交 ! 或 !! 命令 MUST 硬拒绝：MUST 向用户给出简短提示、MUST 恢复编辑器文本（或等价保留命令体）、MUST NOT 调用第二次 Driver::execute_bash、MUST NOT 排队第二 bang；忙碌时非 bang 前缀文本 MUST 仍按既有 steer 规则处理。
+    - 产品 TUI 在交互 bang 仍 busy（bash_active）时，用户再次 Enter 提交 ! 或 !! 命令 MUST 硬拒绝：MUST 向用户给出简短提示、MUST 恢复编辑器文本（或等价保留命令体）、MUST NOT 调用第二次 Command::Bash、MUST NOT 排队第二 bang；忙碌时非 bang 前缀文本 MUST 仍按既有 steer 规则处理。
 
   @req:ati21 @human
   场景: model-picker-slot
@@ -119,7 +119,7 @@
 
   @req:ati30 @human
   场景: input-bdd-guardrails
-    - 产品 TUI 输入面关键行为 MUST 可由 rstest-bdd 场景固定：忙碌 Esc abort 与迟到 Xy 不复活；bang Esc 取消与 suppress_idle_esc 后第二 bang 仍可 abort；overlay Esc 先关槽且忙碌无 overlay 时 Esc MUST NOT 开树；忙碌 Enter/Alt+Enter/Alt+Up 与 Driver steer/follow_up/clear_queue 契约。实现可复用 HostSession+ScriptedDriver+HostEvent 注入，MUST NOT 为 BDD 另造第二套副作用泵。
+    - 产品 TUI 输入面关键行为 MUST 可由 rstest-bdd 场景固定：忙碌 Esc abort 与迟到 Xy 不复活；bang Esc 取消与 suppress_idle_esc 后第二 bang 仍可 abort；overlay Esc 先关槽且忙碌无 overlay 时 Esc MUST NOT 开树；忙碌 Enter/Alt+Enter/Alt+Up 与 Command::Steer/FollowUp/ClearQueue 契约。实现可复用 HostSession+ScriptedDriver+HostEvent 注入，MUST NOT 为 BDD 另造第二套副作用泵。
 
   @req:ati31 @human
   场景: abort-latch-suppresses-xy
@@ -131,7 +131,7 @@
 
   @req:ati32 @human
   场景: busy-bang-prefix-policy
-    - 产品 TUI 在 agent 忙碌（run_active / phase Busy）且非 bash_active 时，用户 Enter 提交以 ! 或 !! 开头的文本 MUST 硬拒绝（提示 + 保留编辑器文本），MUST NOT 将该字面量作为 Driver::steer 入队；bash_active 时第二 bang 硬拒绝仍遵循 ati20。
+    - 产品 TUI 在 agent 忙碌（run_active / phase Busy）且非 bash_active 时，用户 Enter 提交以 ! 或 !! 开头的文本 MUST 硬拒绝（提示 + 保留编辑器文本），MUST NOT 将该字面量作为 Command::Steer 入队；bash_active 时第二 bang 硬拒绝仍遵循 ati20。
 
   @req:ati29 @human
   场景: session-resume-panel-keys
@@ -163,7 +163,7 @@
 
   @req:ati43 @human
   场景: reload-soft-gate-keys
-    - 产品 TUI 在 /reload 进行中（ath28）且无 overlay 时：MUST 允许向 Editor 打字与 Ctrl+G 外编；Enter（普通上行、slash、bang）MUST 硬拒绝并经通知条 body `reloading — wait`，MUST NOT 调用 Driver::run / execute_bash / 第二次 reload，MUST NOT 入 steer/follow-up；Esc 与 Ctrl+C MUST 请求取消重载且 MUST NOT 退出 TUI、MUST NOT 打开会话树。有 overlay 时 Esc/Ctrl+C MUST 先关槽且 MUST NOT 仅因此取消重载。取消或重载结束后键位恢复既有 idle/agent/bang 规则（ati2/ati10/ati19）。
+    - 产品 TUI 在 /reload 进行中（ath28）且无 overlay 时：MUST 允许向 Editor 打字与 Ctrl+G 外编；Enter（普通上行、slash、bang）MUST 硬拒绝并经通知条 body `reloading — wait`，MUST NOT 调用 Driver::run / Command::Bash / 第二次 Reload，MUST NOT 入 Command::Steer/FollowUp；Esc 与 Ctrl+C MUST 请求取消重载且 MUST NOT 退出 TUI、MUST NOT 打开会话树。有 overlay 时 Esc/Ctrl+C MUST 先关槽且 MUST NOT 仅因此取消重载。取消或重载结束后键位恢复既有 idle/agent/bang 规则（ati2/ati10/ati19）。
 
   @req:ati44 @human
   场景: attach-queue-stats-calibrate

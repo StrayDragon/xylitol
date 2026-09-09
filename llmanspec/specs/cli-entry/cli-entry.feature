@@ -55,7 +55,7 @@
 
   @req:ce-st1 @human
   场景: session-tree-kind-api
-    - Driver MUST 暴露 SessionTreeKind 区分的 session_tree / travel_session_tree；至少 MessageHistory；未实现 kind MUST 明确错误。
+    - Command 执行器（SessionTree / TravelSessionTree）MUST 支持 SessionTreeKind 区分；至少 MessageHistory；未实现 kind MUST 明确错误。
 
   @req:ce14 @human
   场景: stable-session-id-on-run
@@ -83,7 +83,7 @@
 
   @req:ce20 @human
   场景: resume-hint-on-exit
-    - TUI 与 print 正常退出后，若当前 session_id 出现在 Driver list_sessions（或等价已持久化判定）中，CLI MUST 向 stderr 打印恰好一行 `Resume by $ xylitol tui --session <uuid>`；未持久化或无 session_id 时 MUST NOT 打印该行。
+    - TUI 与 print 正常退出后，若当前 session_id 出现在 Command::ListSessions（或等价已持久化判定）中，CLI MUST 向 stderr 打印恰好一行 `Resume by $ xylitol tui --session <uuid>`；未持久化或无 session_id 时 MUST NOT 打印该行。
 
   @req:ce21 @human
   场景: tui-attach-fail-closed

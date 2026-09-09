@@ -51,7 +51,7 @@
 
   @req:ath13 @human
   场景: session-read-errors-surfaced
-    - 产品 TUI 在 travel/fork/label 等路径调用 Driver::get_messages（或等价）失败时 MUST 向用户展示 system/error note，MUST NOT 以 unwrap_or_default 静默得到空 transcript 并当作成功。
+    - 产品 TUI 在 travel/fork/label 等路径调用 Command::GetMessages（或等价）失败时 MUST 向用户展示 system/error note，MUST NOT 以 unwrap_or_default 静默得到空 transcript 并当作成功。
 
   @req:ath14 @human
   场景: session-list-seam
@@ -59,11 +59,11 @@
 
   @req:ath15 @human
   场景: session-lifecycle-seam
-    - 产品 TUI 创建空会话与读写会话显示名时 MUST 经 Driver::new_session / get_session_name / set_session_name（或 app::core 公开等价 seam），MUST NOT 从 app/tui 直接 import infra::session 或直接写 sessions 目录；set_session_name MUST 将 CR/LF 规范为空格并 trim；new_session 成功后 MUST 清空与旧 session 绑定的 transcript/树槽；session-clone MUST 仅经既有 fork_session(At)+switch 路径，不得平行 fork 实现。
+    - 产品 TUI 创建空会话与读写会话显示名时 MUST 经 Command::NewSession / GetSessionName / SetSessionName（或 app::core 公开等价 seam），MUST NOT 从 app/tui 直接 import infra::session 或直接写 sessions 目录；set_session_name MUST 将 CR/LF 规范为空格并 trim；new_session 成功后 MUST 清空与旧 session 绑定的 transcript/树槽；session-clone MUST 仅经既有 Command::Fork(At)+Command::SwitchSession 路径，不得平行 fork 实现。
 
   @req:ath16 @human
   场景: session-resume-manage-seam
-    - 产品 TUI Resume 面板内 rename/delete MUST 经 Driver set_session_name / delete_session（或 app::core 公开等价 seam）；删除当前活跃 session MUST 拒绝并提示且 MUST NOT 调用删除；删除 MUST 经显式确认（确认前 MUST NOT 删盘）；scope=Current MUST 仅展示 cwd 匹配会话，scope=All MUST 展示 Driver 列举的全部可 resume 会话；TUI MUST NOT 直删会话文件。
+    - 产品 TUI Resume 面板内 rename/delete MUST 经 Command::SetSessionName / DeleteSession（或 app::core 公开等价 seam）；删除当前活跃 session MUST 拒绝并提示且 MUST NOT 调用删除；删除 MUST 经显式确认（确认前 MUST NOT 删盘）；scope=Current MUST 仅展示 cwd 匹配会话，scope=All MUST 展示 Command::ListSessions 或等价列举的全部可 resume 会话；TUI MUST NOT 直删会话文件。
 
   @req:ath20 @human
   场景: reload-orchestrates-foundations
@@ -75,7 +75,7 @@
 
   @req:ath22 @human
   场景: thinking-level-silent-commit
-    - 产品 host 经 /model 槽或有参 /model 提交 model/thinking 时 MUST 经 Driver set_thinking_level / SetModel（或 Command 等价）更新 selected；成功路径 MUST 仅更新固定区（footer、边框），MUST NOT 向 live scrollback / transcript 追加 model → … 或 thinking-border → … 类滚动提示确认块；失败或诊断 MAY 写滚动提示。agent-busy 时 footer MUST 立即反映 selected（run 绑定语义；产品面无换模预告）。模型切换后 MUST 从 Driver 重同步 UI；组件 MUST NOT 直接 reach ModelManager。
+    - 产品 host 经 /model 槽或有参 /model 提交 model/thinking 时 MUST 经 Command::SetThinkingLevel / SetModel 执行器更新 selected；成功路径 MUST 仅更新固定区（footer、边框），MUST NOT 向 live scrollback / transcript 追加 model → … 或 thinking-border → … 类滚动提示确认块；失败或诊断 MAY 写滚动提示。agent-busy 时 footer MUST 立即反映 selected（run 绑定语义；产品面无换模预告）。模型切换后 MUST 从 Driver 重同步 UI；组件 MUST NOT 直接 reach ModelManager。
 
   @req:ath23 @human
   场景: loaded-resources-via-driver
