@@ -1,4 +1,6 @@
+# Dated nightly pin (application; not rolling `nightly`).
+# Bump cadence: skill `xylitol-bump-toolchain`.
 [toolchain]
-channel = "1.97.1"
+channel = "nightly-2026-09-08"
 profile = "minimal"
 components = ["rustfmt", "clippy"]

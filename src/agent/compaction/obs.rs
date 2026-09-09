@@ -194,11 +194,7 @@ mod tests {
         assert_eq!(props.get("reason"), Some(&"manual"));
         assert_eq!(props.get("langfuse.session.id"), Some(&"sess-compact-1"));
         assert_eq!(props.get("xylitol.session.id"), Some(&"sess-compact-1"));
-        assert!(
-            props
-                .get("xylitol.session.llm_gateway_session_id")
-                .is_none()
-        );
+        assert!(!props.contains_key("xylitol.session.llm_gateway_session_id"));
         assert_eq!(
             props.get("xylitol.obs.lane"),
             Some(&xylitol_ai_bridge::provider::XYLITOL_OBS_LANE_LLM)

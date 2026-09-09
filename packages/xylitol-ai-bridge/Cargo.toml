@@ -2,7 +2,7 @@
 name = "xylitol-ai-bridge"
 version = "0.1.0"
 edition = "2024"
-rust-version = "1.97.1"
+rust-version = "1.98.1"
 license = "MIT"
 description = "LLM provider bridge + multi-source token accounting for xylitol"
 repository = "https://github.com/straydragon/xylitol"
@@ -35,11 +35,11 @@ log = "0.4"
 tiktoken-rs = "0.6"
 tokenizers = { version = "0.21", default-features = false, features = ["onig"] }
 dirs = "6"
-partial-json-fixer = "0.5.3"
+partial-json-fixer = "0.5.5"
 
 [dev-dependencies]
 serial_test = "3.5.0"
 wiremock = "0.6"
 tempfile = "3"
-yaml_serde = "0.10.4"
+yaml_serde = "0.10.7"
 tokio = { version = "1", features = ["rt-multi-thread", "macros"] }

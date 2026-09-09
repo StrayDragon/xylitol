@@ -562,20 +562,18 @@ async fn run_product_tui_attached(
     driver.set_reverse_rpc_notify(std::sync::Arc::new(move |rpc_id, method, payload| {
         gw.push_from_server(rpc_id, &method, payload);
     }));
-    let seed_n;
-    let activity_fold;
-    match crate::infra::config::loader::load_app_config(
+    let (seed_n, activity_fold) = match crate::infra::config::loader::load_app_config(
         surface.config.as_ref().map(std::path::Path::new),
     ) {
-        Ok(c) => {
-            seed_n = c.tui.editor_history_seed_sessions;
-            activity_fold = c.tui.activity_fold.into();
-        }
-        Err(_) => {
-            seed_n = 1;
-            activity_fold = crate::app::tui::activity_fold::ActivityFoldSettings::default();
-        }
-    }
+        Ok(c) => (
+            c.tui.editor_history_seed_sessions,
+            c.tui.activity_fold.into(),
+        ),
+        Err(_) => (
+            1,
+            crate::app::tui::activity_fold::ActivityFoldSettings::default(),
+        ),
+    };
     let tui_result = crate::app::tui::run(
         &mut driver,
         crate::app::tui::TuiRunOptions {

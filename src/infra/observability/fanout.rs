@@ -27,16 +27,14 @@ impl FanoutReporter {
 
 impl Reporter for FanoutReporter {
     fn report(&mut self, spans: Vec<SpanRecord>) {
-        let n = self.inner.len();
-        if n == 0 {
-            return;
-        }
-        for i in 0..n {
-            if i + 1 == n {
-                self.inner[i].report(spans);
-                return;
+        match self.inner.split_last_mut() {
+            None => {}
+            Some((last, rest)) => {
+                for reporter in rest {
+                    reporter.report(spans.clone());
+                }
+                last.report(spans);
             }
-            self.inner[i].report(spans.clone());
         }
     }
 }

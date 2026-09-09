@@ -124,7 +124,7 @@
 
 ## Skills
 
-SDD：`llman-sdd-*`（含 `llman-sdd-quick` 快速路径）。应用面：`l8ng-write-surface`、`l8ng-audit-dead-code`、`l8ng-write-tui`。TUI 验证：`test-tui-harness`。观测窄读：`xylitol-inspect-runtime-logs`。构建/磁盘：`rust-build-tune`。TUI 参考：`tui-expert-of-codex`、`l8ng-terminal-tui-differential-rendering`（`l8ng-*` 均在 `~/.config/llman/skills/` 维护，不在本仓库，避免漂移）。外部锁定：`langfuse`（经 `skills-lock.json` 管理）。
+SDD：`llman-sdd-*`（含 `llman-sdd-quick` 快速路径）。应用面：`l8ng-write-surface`、`l8ng-audit-dead-code`、`l8ng-write-tui`。TUI 验证：`test-tui-harness`。观测窄读：`xylitol-inspect-runtime-logs`。构建/磁盘：`rust-build-tune`。工具链与 crates.io 依赖 bump：`xylitol-bump-toolchain`。TUI 参考：`tui-expert-of-codex`、`l8ng-terminal-tui-differential-rendering`（`l8ng-*` 均在 `~/.config/llman/skills/` 维护，不在本仓库，避免漂移）。外部锁定：`langfuse`（经 `skills-lock.json` 管理）。
 
 ## 编写与维护 AGENTS.md
 
