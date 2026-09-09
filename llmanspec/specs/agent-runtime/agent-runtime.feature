@@ -127,7 +127,7 @@
 
   @req:ar33 @human
   场景: context-policy-responses-assembler
-    - agent 层 MUST 提供 ContextPolicy（或等价）code-first 默认板：至少含 tools_mode（默认 full）、status_bar_mode（默认 off）、date_placement（默认 Omit：system 不含日历日；另支持 SystemAsToday 与 SystemPinnedAtSession 消融）；MUST NOT 本 change 实现 search/状态栏完整行为。date_placement MUST 被系统提示组装消费。openai-responses 主路径 MUST 经 ResponsesAssembler（bridge）构造请求 body，并传入 WirePolicy；MUST NOT 在 ReAct/adapter 散落第二套业务布局。由单测覆盖，MUST NOT 单独扩 BDD step。
+    - agent 层 MUST 提供 ContextPolicy（或等价）code-first 默认板：至少含 tools_mode（默认 full）、status_bar_mode（默认 off）；系统提示 MUST NOT 含日历日/CWD（无 date_placement 旋钮，c2730 删消融）；MUST NOT 本 change 实现 search/状态栏完整行为。openai-responses 主路径 MUST 经 ResponsesAssembler（bridge）构造请求 body，并传入 WirePolicy；MUST NOT 在 ReAct/adapter 散落第二套业务布局。由单测覆盖，MUST NOT 单独扩 BDD step。
 
   @req:ar34 @human
   场景: mcp-tool-table-freeze-gate
