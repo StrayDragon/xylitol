@@ -4,7 +4,7 @@ pub use std::future::Future;
 pub use std::sync::Arc;
 
 pub use crate::XyDriverError;
-pub use crate::agent::capabilities::{AgentCapabilities, ModelRegistry, get_context_usage};
+pub(crate) use crate::agent::capabilities::{AgentCapabilities, ModelRegistry, get_context_usage};
 pub use crate::agent::compaction::should_compact;
 pub use crate::agent::runtime::{AgentRuntime, XyEvent};
 pub use crate::agent::tools::ToolSet;

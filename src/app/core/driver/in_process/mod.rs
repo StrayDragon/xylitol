@@ -418,14 +418,12 @@ impl XyDriver for XyInProcessDriver {
         exclude_from_context: bool,
         chunk_tx: Option<tokio::sync::mpsc::Sender<Vec<u8>>>,
     ) -> Result<XyBashResult, XyDriverError> {
-        if let Some(bus) = self.agent.hook_bus() {
-            let (ty, phase, ctx) = crate::agent::runtime::script_hook_ctx::user_bash(
-                command,
-                exclude_from_context,
-                self.agent.cwd(),
-            );
-            crate::agent::capabilities::cancel_hook(&bus, ty, phase, ctx).await?;
-        }
+        let (ty, phase, ctx) = crate::agent::runtime::script_hook_ctx::user_bash(
+            command,
+            exclude_from_context,
+            self.agent.cwd(),
+        );
+        self.agent.script_hook_cancel(ty, phase, ctx).await?;
         self.bang
             .execute(
                 self.store.as_ref(),
@@ -525,7 +523,7 @@ impl XyDriver for XyInProcessDriver {
         Ok(())
     }
 
-    fn queue_stats(&self) -> crate::agent::capabilities::QueueStats {
+    fn queue_stats(&self) -> crate::agent::QueueStats {
         self.agent.queue_stats()
     }
 

@@ -79,14 +79,15 @@ pub session_id: String, pub user_messages: usize, pub assistant_messages: usize,
 pub steer: Arc<Mutex<PendingMessageQueue>>, pub follow_up: Arc<Mutex<PendingMessageQueue>>, /// Bound as `(RunId, tx)` so a stale stream cannot clear a newer run's sender. event_tx: Arc<Mutex<Option<(RunId, EventTx)>>>, } impl AsyncQueueRuntime
 pub steer_count: usize, pub follow_up_count: usize, } /// Sender bound to the active `XyDriver::run` / ReAct EventStream (may be absent). pub type EventTx = tokio::sync::mpsc::UnboundedSender<XyEvent>
 pub struct ActiveTurnBinding
-pub struct AgentCapabilities
 pub struct AsyncQueueRuntime
 pub struct ContextUsage
+pub struct HookBlockedError(pub String)
 pub struct PendingMessageQueue
 pub struct QueueStats
 pub struct SessionStats
 pub tokens: u64, pub context_window: u64, pub percent: u64, pub should_compact: bool, } pub use crate::agent::compaction::orchestrator::should_compact
 pub use crate::agent::model::registry::ModelRegistry
+pub use self::hook_bus::HookBlockedError
 pub use self::queue::{AsyncQueueRuntime, PendingMessageQueue, QueueMode, QueueStats}
 pub use self::stats::SessionStats
 pub use self::stats::{ContextUsage, get_context_usage}

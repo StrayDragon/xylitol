@@ -7,7 +7,7 @@ use crate::protocol::ports::XyHookBus;
 /// Hook dispatched `Blocked { reason }` (product copy; not `Xy*`).
 #[derive(Debug, Clone, PartialEq, Eq, thiserror::Error)]
 #[error("{0}")]
-pub(crate) struct HookBlockedError(pub String);
+pub struct HookBlockedError(pub String);
 
 pub(crate) async fn cancel_hook(
     bus: &Arc<dyn XyHookBus>,

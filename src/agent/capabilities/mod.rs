@@ -26,7 +26,8 @@ mod session_ops;
 mod stats;
 mod tools_ops;
 
-pub(crate) use self::hook_bus::{HookBlockedError, cancel_hook, observe_hook, observe_hook_sync};
+pub use self::hook_bus::HookBlockedError;
+pub(crate) use self::hook_bus::{cancel_hook, observe_hook, observe_hook_sync};
 pub use self::queue::{AsyncQueueRuntime, PendingMessageQueue, QueueMode, QueueStats};
 pub use self::stats::SessionStats;
 // Test-support re-export (in-crate tests import via this facade).
@@ -80,7 +81,7 @@ impl ActiveTurnBinding {
 /// Engine capability aggregate (model / tools / session / prompt / compaction / queues).
 ///
 /// Product slash, bang, and session export live on [`XyDriver`](crate::app::core::driver::XyDriver).
-pub struct AgentCapabilities {
+pub(crate) struct AgentCapabilities {
     /// Model management (registry, selection, thinking level). Shared so ReAct
     /// can refresh at turn boundaries while surfaces call `select_model`.
     model_manager: Arc<Mutex<ModelManager>>,
@@ -291,6 +292,7 @@ impl AgentCapabilities {
     }
 
     /// Clear the follow-up queue only.
+    #[allow(dead_code)] // c2750 dead-code purge candidate
     pub fn clear_follow_up_queue(&self) {
         self.queues
             .follow_up
@@ -331,6 +333,7 @@ impl AgentCapabilities {
     }
 
     /// Request-layout policy (c1890). Default ≡ full tools / status bar off.
+    #[allow(dead_code)] // c2750 dead-code purge candidate
     pub fn context_policy(&self) -> &crate::agent::context_policy::ContextPolicy {
         &self.context_policy
     }

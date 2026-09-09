@@ -475,8 +475,8 @@ mod tests {
             }
             Ok(())
         }
-        fn queue_stats(&self) -> crate::agent::capabilities::QueueStats {
-            crate::agent::capabilities::QueueStats {
+        fn queue_stats(&self) -> crate::agent::QueueStats {
+            crate::agent::QueueStats {
                 steer_count: self.steer,
                 follow_up_count: self.follow_up,
             }

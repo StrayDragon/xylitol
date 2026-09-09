@@ -38,6 +38,13 @@ pub mod tools;
 // 库用户应从 `crate::agent::*` import，而非 reach into 子模块。
 
 pub use crate::agent::builder::AgentBuilder;
+/// Shared capability vocabulary (queue/session stats and modes, model
+/// registry, hook-block error). The `capabilities::AgentCapabilities`
+/// aggregate itself stays crate-internal — `AgentRuntime` is the only
+/// orchestration entry.
+pub use crate::agent::capabilities::{
+    HookBlockedError, ModelRegistry, QueueMode, QueueStats, SessionStats,
+};
 /// ReAct 循环运行时（驱动 [`AgentCapabilities`]）。
 pub use crate::agent::runtime::AgentRuntime;
 /// Clonable construction baseline for materializing isolated [`AgentRuntime`]s.
