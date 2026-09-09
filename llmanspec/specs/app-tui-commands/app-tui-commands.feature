@@ -23,7 +23,7 @@
 
   @req:atm5 @human
   场景: debug-scene-slash
-    - 产品 TUI 在 debug 构建 idle 时 MUST 解析斜杠 /debug 与 /debug <scene>（空格参数；MUST NOT 要求冒号形式）：无 scene 时 MUST 以系统提示列出可用场景及描述且 MUST NOT 改当前 session；已知 scene（至少 session-tree-multiturn、session-tree-labeled）MUST 经 Driver::load_debug_scene 新建隔离 debug-* session、写入 fixture 后 switch 并重建 transcript；未知 scene MUST 提示错误且 MUST NOT 崩溃；debug 构建 MUST 为 /debug 提供与 /model 同类的参数补全（SlashArgCompletionSource）；MUST NOT 把 debug 场景写成 protocol::Command 主路径；MUST NOT 覆写用户装载前的当前 session 文件内容。
+    - 产品 TUI 在 debug 构建 idle 时 MUST 解析斜杠 /debug 与 /debug <scene>（空格参数；MUST NOT 要求冒号形式）：无 scene 时 MUST 以系统提示列出可用场景及描述且 MUST NOT 改当前 session；已知 scene（至少 session-tree-multiturn、session-tree-labeled）MUST 仅在 TUI 进程内经非产品注入 API（harness/`cfg(debug_assertions)`）新建隔离 debug-* 会话、写入 fixture 后 switch 并重建 transcript；load_debug_scene MUST NOT 存在于 wire/Driver/Host 公开面（不进 protocol::Command、不进远程 unary）；未知 scene MUST 提示错误且 MUST NOT 崩溃；debug 构建 MUST 为 /debug 提供与 /model 同类的参数补全（SlashArgCompletionSource）；MUST NOT 覆写用户装载前的当前 session 文件内容。
 
   @req:atm6 @human
   场景: slash-session-tree-fork
