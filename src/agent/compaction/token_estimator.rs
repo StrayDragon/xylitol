@@ -1,14 +1,14 @@
 //! Token estimation — multi-source accounting via xylitol-ai-bridge (c1030 / c1210).
 
 use xylitol_ai_bridge::accounting::{EstimateContextOpts, estimate_context};
-use xylitol_ai_bridge::dto::{AiBridgeMessage, TokenProvenance as AiBridgeProvenance};
+use xylitol_ai_bridge::dto::AiBridgeMessage;
 use xylitol_ai_bridge::registry::{TokenizerSource, resolve_tokenizer_with_override};
 use xylitol_ai_bridge::tokenize::HfTokenizerCache;
 use xylitol_ai_bridge::tokenize::{BuiltinTokenizer, estimate_messages};
 
 use crate::agent::llm_project::project_for_llm;
 use crate::protocol::message::{AgentMessage, LlmMessage, XyStopReason, XyUsage};
-use crate::protocol::model::{ContextTokenEstimate, TokenProvenance};
+use crate::protocol::model::ContextTokenEstimate;
 
 /// Calculate total context tokens from a XyUsage struct.
 /// Priority: total_tokens > input+output+cache_read+cache_write sum.
@@ -18,16 +18,6 @@ pub fn calculate_context_tokens(usage: &XyUsage) -> u64 {
         return usage.total_tokens;
     }
     usage.input + usage.output + usage.cache_read + usage.cache_write
-}
-
-fn to_domain_provenance(p: AiBridgeProvenance) -> TokenProvenance {
-    match p {
-        AiBridgeProvenance::Api => TokenProvenance::Api,
-        AiBridgeProvenance::RemoteCount => TokenProvenance::RemoteCount,
-        AiBridgeProvenance::LocalTokenizer => TokenProvenance::LocalTokenizer,
-        AiBridgeProvenance::Heuristic => TokenProvenance::Heuristic,
-        AiBridgeProvenance::Unknown => TokenProvenance::Unknown,
-    }
 }
 
 /// Options for [`estimate_context_tokens`].
@@ -166,13 +156,7 @@ pub fn estimate_context_tokens_with(
         },
     );
 
-    let result = ContextTokenEstimate {
-        tokens: est.tokens,
-        provenance: to_domain_provenance(est.provenance),
-        usage_tokens: est.usage_tokens,
-        trailing_tokens: est.trailing_tokens,
-        last_usage_index: est.last_usage_index,
-    };
+    let result: ContextTokenEstimate = est;
     log::debug!(
         target: "xylitol::token_estimate",
         "token estimate backend={} tokens={} usage_tokens={} trailing={} allow_local={} allow_remote={} emit_obs={} model_id={:?}",
