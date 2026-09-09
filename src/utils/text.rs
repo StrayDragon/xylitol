@@ -1,9 +1,4 @@
-//! Pure text utilities (XML escape, calendar day, etc.).
-
-/// UTC calendar day `YYYY-MM-DD` (shared by system prompt / session_env).
-pub fn today_yyyy_mm_dd() -> String {
-    time::OffsetDateTime::now_utc().date().to_string()
-}
+//! Pure text utilities (XML escape, etc.).
 
 /// Escape a string for safe inclusion in XML/HTML text content.
 pub fn xml_escape(s: &str) -> String {

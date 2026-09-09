@@ -3,13 +3,12 @@
 //! Code-first defaults only; no YAML / env overlay this wave.
 //! Status bar is deferred (`c1895`). Tool search / `ToolsMode::Search` is `c1960`.
 //! Track-A freeze (c1900) keeps `ToolsMode::Full` as the open-box default.
-//! Calendar-day placement is consumed by system-prompt assembly (c1905).
+//! Calendar-day placement knob removed (c2730): session_env carries date/cwd.
 
 mod defaults;
 
 pub use defaults::{
-    ALLOW_MIDTURN_TOOLS_REWRITE_DEFAULT, DATE_PLACEMENT_DEFAULT, STATUS_BAR_MODE_DEFAULT,
-    TOOLS_MODE_DEFAULT,
+    ALLOW_MIDTURN_TOOLS_REWRITE_DEFAULT, STATUS_BAR_MODE_DEFAULT, TOOLS_MODE_DEFAULT,
 };
 
 /// How tools are exposed on the provider request.
@@ -40,28 +39,12 @@ pub enum StatusBarMode {
 
 /// Where calendar-day text is placed **in the system prompt** (c1905).
 ///
-/// Product default is [`DatePlacement::Omit`]: date/cwd ride the **session_env**
-/// status-bar bootstrap ([`crate::agent::prompt::session_env`]), not the system
-/// prefix. `SystemAsToday` / `SystemPinnedAtSession` are ablation / lab knobs.
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
-pub enum DatePlacement {
-    /// Emit `Current date` using an explicit inject, else `Utc::now()` calendar day,
-    /// on **every** assemble (ablation / legacy).
-    SystemAsToday,
-    /// Pin `YYYY-MM-DD` once per session into system (lab; not product default).
-    SystemPinnedAtSession,
-    /// Omit the `Current date` line from system (product default; session_env carries it).
-    #[default]
-    Omit,
-}
-
 /// Layout policy consumed by Assembler / ReAct hooks.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct ContextPolicy {
     pub tools_mode: ToolsMode,
     pub status_bar_mode: StatusBarMode,
     pub allow_midturn_tools_rewrite: bool,
-    pub date_placement: DatePlacement,
 }
 
 impl Default for ContextPolicy {
@@ -70,7 +53,6 @@ impl Default for ContextPolicy {
             tools_mode: TOOLS_MODE_DEFAULT,
             status_bar_mode: STATUS_BAR_MODE_DEFAULT,
             allow_midturn_tools_rewrite: ALLOW_MIDTURN_TOOLS_REWRITE_DEFAULT,
-            date_placement: DATE_PLACEMENT_DEFAULT,
         }
     }
 }
@@ -107,7 +89,6 @@ mod tests {
         let p = ContextPolicy::default();
         assert_eq!(p.tools_mode, ToolsMode::Full);
         assert_eq!(p.status_bar_mode, StatusBarMode::Off);
-        assert_eq!(p.date_placement, DatePlacement::Omit);
         assert!(p.allow_midturn_tools_rewrite);
         assert!(p.allows_midturn_tools_rewrite());
     }

@@ -1,9 +1,7 @@
 ---
 source: tests/agent_session_api_baseline.rs
-assertion_line: 127
 expression: "all_items.join(\"\\n\")"
 ---
-pub async fn cycle_thinking_level(&mut self) -> Result<String, XyError>
 pub async fn ensure_session(&self, id: &str, parent: Option<&str>) -> Result<(), XyError>
 pub async fn force_compact(&self, instructions: Option<String>) -> Result<(), CompactionError>
 pub async fn fork_session( &self, at_entry_id: &str, position: crate::protocol::session::ForkPosition, ) -> Result<String, XyError>

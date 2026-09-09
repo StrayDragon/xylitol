@@ -153,30 +153,6 @@ impl ModelManager {
         self.thinking_level = last_declared_thinking_level(&levels);
     }
 
-    /// Cycle to the next level in the current model's support list.
-    ///
-    /// A sticky out-of-set level lands on the list's final item before normal
-    /// cyclic traversal resumes.
-    pub fn cycle_thinking_level(&mut self) -> Result<String, XyError> {
-        let levels = self
-            .supported_levels()
-            .ok_or_else(|| XyError::Config("no model configured".into()))?;
-        if levels.is_empty() {
-            return Err(XyError::Config(
-                "current model has no thinking levels".into(),
-            ));
-        }
-        let next = match levels
-            .iter()
-            .position(|level| level == &self.thinking_level)
-        {
-            Some(index) => levels[(index + 1) % levels.len()].clone(),
-            None => last_declared_thinking_level(&levels),
-        };
-        self.thinking_level = next.clone();
-        Ok(next)
-    }
-
     // ── Model switching ──────────────────────────────────────────
 
     /// Select a model by its ID. Thinking defaults to the final declared item (m10).
@@ -351,7 +327,7 @@ mod tests {
     }
 
     #[test]
-    fn restored_out_of_set_level_stays_sticky_until_cycle() {
+    fn restored_out_of_set_level_stays_sticky() {
         let mut mm = manager_with(vec![
             meta("wide", true, &["off", "high", "vendor-max"]),
             meta("narrow", true, &["off", "high"]),
@@ -361,7 +337,6 @@ mod tests {
         assert_eq!(mm.thinking_level(), "high");
         mm.restore_thinking_level("vendor-max".into());
         assert_eq!(mm.thinking_level(), "vendor-max");
-        assert_eq!(mm.cycle_thinking_level().unwrap(), "high");
     }
 
     #[test]
@@ -393,27 +368,6 @@ mod tests {
         ]);
         mm.select_model("plain").unwrap();
         assert_eq!(mm.thinking_level(), "off");
-    }
-
-    #[test]
-    fn cycle_thinking_level_wraps() {
-        let mut mm = manager_with(vec![meta("m1", true, &["off", "high"])]);
-        mm.set_thinking_level("off".into()).unwrap();
-        assert_eq!(mm.cycle_thinking_level().unwrap(), "high");
-        assert_eq!(mm.cycle_thinking_level().unwrap(), "off");
-    }
-
-    #[test]
-    fn cycle_preserves_freeform_declared_levels() {
-        let mut mm = manager_with(vec![meta("m1", true, &["off", "vendor-mid", "high"])]);
-        mm.set_thinking_level("off".into()).unwrap();
-        assert_eq!(mm.thinking_level(), "off");
-
-        assert_eq!(mm.cycle_thinking_level().unwrap(), "vendor-mid");
-        assert_eq!(mm.thinking_level(), "vendor-mid");
-
-        assert_eq!(mm.cycle_thinking_level().unwrap(), "high");
-        assert_eq!(mm.thinking_level(), "high");
     }
 
     #[test]

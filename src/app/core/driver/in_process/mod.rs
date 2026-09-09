@@ -339,13 +339,6 @@ impl XyDriver for XyInProcessDriver {
         self.agent.thinking_level()
     }
 
-    async fn cycle_thinking_level(&mut self) -> Result<String, XyDriverError> {
-        self.agent
-            .cycle_thinking_level()
-            .await
-            .map_err(XyDriverError::from)
-    }
-
     fn session_id(&self) -> Option<String> {
         self.agent.session_id().map(String::from)
     }

@@ -13,13 +13,12 @@
 //!
 //! Default assemble order (system):
 //! `stable body → append/context/APPEND → skills → Guidelines → runtime_policy`
-//! (no `Current date` / `Current working directory` unless ablation `DatePlacement`).
+//! (no `Current date` / `Current working directory`; date/cwd ride session_env).
 //!
 //! Key functions:
 //! - `build_system_prompt(opts)` — explicit options
 //! - default body path uses sandboxed minijinja (`super::sandbox`)
 
-use crate::agent::context_policy::DatePlacement;
 use crate::agent::tools::ToolSet;
 
 use super::sandbox::render_default_base;
@@ -47,15 +46,6 @@ pub struct SystemPromptOpts {
     pub append_system_prompt: Vec<String>,
     /// Built-in runtime policy fragments (c1605); injected as `<runtime_policy>`.
     pub runtime_policy_fragments: Vec<String>,
-    /// Optional fixed calendar date (`YYYY-MM-DD`).
-    ///
-    /// For [`DatePlacement::SystemAsToday`]: when `None`, uses `Utc::now()` each assemble.
-    /// For [`DatePlacement::SystemPinnedAtSession`]: callers SHOULD set the session pin here
-    /// before assemble (capabilities does this on rebuild).
-    /// For [`DatePlacement::Omit`]: ignored (no `Current date` line).
-    pub date: Option<String>,
-    /// How to place calendar-day text (c1905).
-    pub date_placement: DatePlacement,
 }
 
 /// Build a system prompt dynamically based on options.
@@ -155,18 +145,8 @@ pub fn build_system_prompt(opts: &SystemPromptOpts) -> String {
         prompt.push_str("</runtime_policy>\n");
     }
 
-    // Ablation only: calendar day in system. Product default Omit — session_env
-    // carries date/cwd as Env→user (c1905). cwd is never written into system.
-    match opts.date_placement {
-        DatePlacement::Omit => {}
-        DatePlacement::SystemAsToday | DatePlacement::SystemPinnedAtSession => {
-            let date = opts
-                .date
-                .clone()
-                .unwrap_or_else(crate::utils::today_yyyy_mm_dd);
-            prompt.push_str(&format!("\nCurrent date: {date}"));
-        }
-    }
+    // No `Current date` / cwd here: session_env carries date/cwd as Env→user
+    // (c1905); the placement knob was removed (c2730).
 
     prompt
 }
@@ -228,60 +208,12 @@ mod tests {
                 ("read".into(), "Read file contents".into()),
                 ("bash".into(), "Execute bash commands".into()),
             ],
-            date: Some("2026-07-31".into()),
-            date_placement: DatePlacement::SystemAsToday,
             ..Default::default()
         };
         let prompt = build_system_prompt(&opts);
         assert!(prompt.contains("You are an expert coding assistant"));
         assert!(prompt.contains("- read: Read file contents"));
         assert!(prompt.contains("- bash: Execute bash commands"));
-        assert!(prompt.contains("Current date: 2026-07-31"));
-        assert!(
-            !prompt.contains("Current working directory:"),
-            "cwd must not enter system: {prompt}"
-        );
-    }
-
-    #[test]
-    fn injected_date_is_stable() {
-        let opts = SystemPromptOpts {
-            date: Some("2099-01-02".into()),
-            date_placement: DatePlacement::SystemAsToday,
-            ..Default::default()
-        };
-        let a = build_system_prompt(&opts);
-        let b = build_system_prompt(&opts);
-        assert_eq!(a, b);
-        assert!(a.contains("Current date: 2099-01-02"));
-    }
-
-    #[test]
-    fn pinned_date_survives_when_opts_date_fixed() {
-        let opts = SystemPromptOpts {
-            date: Some("2026-08-05".into()),
-            date_placement: DatePlacement::SystemPinnedAtSession,
-            ..Default::default()
-        };
-        let a = build_system_prompt(&opts);
-        let b = build_system_prompt(&opts);
-        assert_eq!(a, b);
-        assert!(a.contains("Current date: 2026-08-05"));
-        assert!(!a.contains("Current working directory:"));
-    }
-
-    #[test]
-    fn omit_skips_date_and_cwd_in_system() {
-        let opts = SystemPromptOpts {
-            date: Some("2099-01-02".into()),
-            date_placement: DatePlacement::Omit,
-            ..Default::default()
-        };
-        let prompt = build_system_prompt(&opts);
-        assert!(
-            !prompt.contains("Current date:"),
-            "Omit must skip calendar date: {prompt}"
-        );
         assert!(
             !prompt.contains("Current working directory:"),
             "cwd must not enter system: {prompt}"

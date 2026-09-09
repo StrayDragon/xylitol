@@ -77,15 +77,6 @@ impl AgentCapabilities {
         Ok(())
     }
 
-    /// Cycle to the next level in the current model's support list.
-    pub async fn cycle_thinking_level(&mut self) -> Result<String, XyError> {
-        let previous = self.thinking_level();
-        let level = self.with_models_mut(|mm| mm.cycle_thinking_level())?;
-        self.persist_thinking_level_change(previous, level.clone())
-            .await;
-        Ok(level)
-    }
-
     async fn persist_thinking_level_change(&self, previous: String, level: String) {
         if let Some(ref sid) = self.session_id {
             let entry = SessionEntry::ThinkingLevelChange(ThinkingLevelChangeEntry {

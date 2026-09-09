@@ -16,22 +16,13 @@ impl AgentCapabilities {
 
     /// Set the active session ID.
     ///
-    /// Drops any ablation calendar pin from a previous bind **without** rebuilding
-    /// the system prompt (product [`crate::agent::context_policy::DatePlacement::Omit`]
-    /// ignores the pin; c1905). Writes the process obs slot only when
-    /// `Self::obs_slot_writes` is on (otel25: host reader drivers opt out).
+    /// Writes the process obs slot only when `Self::obs_slot_writes` is on
+    /// (otel25: host reader drivers opt out).
     pub fn set_session(&mut self, session_id: String) {
         if self.obs_slot_writes {
             xylitol_ai_bridge::provider::set_obs_session(session_id.clone(), None);
         }
         self.session_id = Some(session_id);
-        self.system_date_pin = None;
-        if matches!(
-            self.context_policy.date_placement,
-            crate::agent::context_policy::DatePlacement::SystemPinnedAtSession
-        ) {
-            self.prompt_opts.date = None;
-        }
     }
 
     /// Obs-slot write permission for `set_session` (otel25). Default on;
