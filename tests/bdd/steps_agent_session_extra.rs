@@ -987,6 +987,7 @@ pub(crate) async fn w_sess_execute_bash_no_executor(agent: &AgentState) {
             "bash-id",
             "echo hi",
             false,
+            tokio_util::sync::CancellationToken::new(),
             None,
             None,
         )

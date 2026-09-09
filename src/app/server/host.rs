@@ -98,6 +98,9 @@ pub struct SessionSlot {
     pending_model: std::sync::Mutex<Option<String>>,
     pending_thinking: std::sync::Mutex<Option<String>>,
     mcp_watch_started: AtomicBool,
+    /// Out-of-band cancel for the interactive bash currently holding the
+    /// writer lock (c2760 follow-up: `abort` must reach it without the lock).
+    pub(crate) bash_run_cancel: std::sync::Mutex<Option<CancellationToken>>,
     /// Unary idempotency admission keyed by envelope `rpcId` (c2460).
     pub idempotency: IdempotencyLedger,
 }
@@ -181,6 +184,11 @@ impl HostState {
         map.entry(session_id.to_string())
             .or_insert_with(|| SessionSlot::new(session_id, self.in_process_downlink.clone()))
             .clone()
+    }
+
+    /// Existing slot for `session_id` (read-only; never creates one).
+    async fn existing_slot(&self, session_id: &str) -> Option<Arc<SessionSlot>> {
+        self.sessions.read().await.get(session_id).cloned()
     }
 
     pub fn session_id_from_payload(&self, payload: &Value) -> String {
@@ -323,6 +331,7 @@ impl SessionSlot {
             pending_model: std::sync::Mutex::new(None),
             pending_thinking: std::sync::Mutex::new(None),
             mcp_watch_started: AtomicBool::new(false),
+            bash_run_cancel: std::sync::Mutex::new(None),
             idempotency: IdempotencyLedger::default(),
         })
     }
@@ -982,8 +991,20 @@ pub async fn handle_unary(
         let snapshot = host.loaded_resources_snapshot_for(&session_id).await;
         return RpcResult::ok_value(outcome_to_value(DispatchOutcome::LoadedResources(snapshot)));
     }
-    if method == METHOD_ABORT && host.abort_reload().await {
-        return RpcResult::ok_value(json!({ "cancelled": true }));
+    if method == METHOD_ABORT {
+        // A running interactive bash holds the writer lock, so a `Command::Abort`
+        // dispatch would queue behind it; cancel the run out-of-band first
+        // (c2760 follow-up: Esc must kill the host-side process tree).
+        let abort_session = host.session_id_from_payload(&payload);
+        if let Some(slot) = host.existing_slot(&abort_session).await
+            && let Some(cancel) = slot.bash_run_cancel.lock().ok().and_then(|c| c.clone())
+        {
+            cancel.cancel();
+            return RpcResult::ok_value(json!({ "cancelled": true }));
+        }
+        if host.abort_reload().await {
+            return RpcResult::ok_value(json!({ "cancelled": true }));
+        }
     }
 
     let session_id = if method == METHOD_SUBSCRIBE {
@@ -1272,16 +1293,22 @@ async fn dispatch_writer_unary(
     let Some(driver) = g.as_mut() else {
         return RpcResult::error("unavailable", "no writer engine");
     };
-    // c2760: forward interactive bang output as non-journal session events.
+    // c2760: forward interactive bang output as non-journal session events;
+    // register the run cancel so `abort` can reach it while the writer lock
+    // is held by this executing bash unary.
     let bash_forwarder = if method == "bash" {
         let (tx, mut rx) = tokio::sync::mpsc::channel(64);
+        let cancel = CancellationToken::new();
+        if let Ok(mut slot_cancel) = slot.bash_run_cancel.lock() {
+            *slot_cancel = Some(cancel.clone());
+        }
         let slot_push = slot.clone();
         let fwd = tokio::spawn(async move {
             while let Some(chunk) = rx.recv().await {
                 slot_push.push_bash_output(chunk).await;
             }
         });
-        driver.set_bash_run_sink(Some(crate::protocol::ports::BashOutputSink { tx }));
+        driver.set_bash_run_sink(Some(crate::protocol::ports::BashOutputSink { tx, cancel }));
         Some(fwd)
     } else {
         None
@@ -1313,6 +1340,9 @@ async fn dispatch_writer_unary(
     };
     if bash_forwarder.is_some() {
         driver.set_bash_run_sink(None);
+        if let Ok(mut slot_cancel) = slot.bash_run_cancel.lock() {
+            *slot_cancel = None;
+        }
     }
     drop(g);
     if let Some(fwd) = bash_forwarder {

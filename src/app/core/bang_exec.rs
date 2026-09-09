@@ -45,6 +45,11 @@ impl BangExecHandler {
     ///
     /// `bash_id`: correlation id for the start/done rows and output chunks.
     ///
+    /// `cancel`: run kill switch. Callers that inject a [`crate::protocol::ports::BashOutputSink`]
+    /// pass its token so host `abort` can reach the run out-of-band while the
+    /// writer lock is held by this executing call; other callers pass a fresh
+    /// token and cancel via [`Self::abort`].
+    ///
     /// `chunk_tx`: optional live output uplink; the caller wires it to the
     /// session output-event sink (c2760) or consumes it locally.
     ///
@@ -59,6 +64,7 @@ impl BangExecHandler {
         bash_id: &str,
         command: &str,
         exclude_from_context: bool,
+        cancel: CancellationToken,
         chunk_tx: Option<mpsc::Sender<Vec<u8>>>,
         cwd: Option<String>,
     ) -> Result<XyBashResult, XyError> {
@@ -67,7 +73,6 @@ impl BangExecHandler {
             .as_ref()
             .ok_or_else(|| XyError::Config("bash executor not configured".into()))?;
 
-        let cancel = CancellationToken::new();
         *crate::utils::lock_mutex(&self.cancel) = Some(cancel.clone());
 
         // c2760: start marker first, so a crash leaves a running row that
@@ -186,6 +191,7 @@ mod tests {
                     "bash-id",
                     "sleep 30",
                     false,
+                    tokio_util::sync::CancellationToken::new(),
                     None,
                     None,
                 )

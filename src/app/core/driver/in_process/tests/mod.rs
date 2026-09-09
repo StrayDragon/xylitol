@@ -56,6 +56,7 @@ async fn build_test_driver(store: Arc<SessionManager>) -> (XyInProcessDriver, Ob
     (XyInProcessDriver::new(agent, store), scope)
 }
 
+mod bash;
 mod mcp;
 mod session;
 mod trust;
