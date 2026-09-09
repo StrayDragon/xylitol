@@ -133,30 +133,6 @@ impl SettingsManager {
 
     // ── Accessors (with defaults) ────────────────────────────
 
-    pub fn get_compaction_enabled(&self) -> bool {
-        self.settings
-            .compaction
-            .as_ref()
-            .and_then(|c| c.enabled)
-            .unwrap_or(true)
-    }
-
-    pub fn get_compaction_reserve_tokens(&self) -> u64 {
-        self.settings
-            .compaction
-            .as_ref()
-            .and_then(|c| c.reserve_tokens)
-            .unwrap_or(16384)
-    }
-
-    pub fn get_compaction_keep_recent_tokens(&self) -> u64 {
-        self.settings
-            .compaction
-            .as_ref()
-            .and_then(|c| c.keep_recent_tokens)
-            .unwrap_or(20000)
-    }
-
     pub fn get_thinking_budgets(&self) -> Option<&ThinkingBudgets> {
         self.settings.thinking_budgets.as_ref()
     }
@@ -182,15 +158,6 @@ impl SettingsManager {
         };
         self.storage
             .with_lock(SettingsScope::Global, &mut |_cur| Some(json.clone()));
-    }
-
-    pub fn set_compaction_enabled(&mut self, enabled: bool) {
-        self.global_settings
-            .compaction
-            .get_or_insert_with(XyCompactionSettingsConfig::default)
-            .enabled = Some(enabled);
-        self.settings = Self::deep_merge(&self.global_settings, &self.project_settings);
-        self.save_global();
     }
 
     // ── Reload ────────────────────────────────────────────────
@@ -375,22 +342,6 @@ mod tests {
             mgr.get_settings().default_thinking_level.as_deref(),
             Some("medium")
         );
-        assert!(mgr.get_compaction_enabled());
-    }
-
-    #[test]
-    fn test_set_compaction_enabled() {
-        let mut mgr = SettingsManager::in_memory(Default::default());
-        mgr.set_compaction_enabled(false);
-        assert!(!mgr.get_compaction_enabled());
-    }
-
-    #[test]
-    fn test_compaction_defaults() {
-        let mgr = SettingsManager::in_memory(Default::default());
-        assert!(mgr.get_compaction_enabled());
-        assert_eq!(mgr.get_compaction_reserve_tokens(), 16384);
-        assert_eq!(mgr.get_compaction_keep_recent_tokens(), 20000);
     }
 
     #[test]

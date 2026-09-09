@@ -15,7 +15,6 @@ pub struct Settings {
     pub default_thinking_level: Option<String>,
 
     #[serde(skip_serializing_if = "Option::is_none")]
-    #[schemars(with = "Option<CompactionSettingsSchema>")]
     pub compaction: Option<XyCompactionSettingsConfig>,
 
     #[serde(skip_serializing_if = "Option::is_none")]
@@ -30,8 +29,6 @@ pub struct Settings {
     pub follow_up_mode: Option<SteeringMode>,
 }
 
-pub use crate::infra::config::types::CompactionSettingsSchema;
-/// Compaction behavior settings — domain serde type; schema twin in config.
 pub use crate::protocol::compaction_config::XyCompactionSettingsConfig;
 
 /// Thinking budget tokens per level.

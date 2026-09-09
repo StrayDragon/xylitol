@@ -1,7 +1,11 @@
 ---
 depends_on:
-  - c2700-refactor-crate-public-surface
+- c2700-refactor-crate-public-surface
 skip_specs_landing: true
+branch: sdd/c2720-refactor-compaction-settings
+base_sha: 43d72a54cc94d05b6e76653c1142d4b99dcfa8a9
+checkpointed: true
+checkpoint_sha: 43d72a54cc94d05b6e76653c1142d4b99dcfa8a9
 ---
 
 # 折叠 compaction 设置三孪生
