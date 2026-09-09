@@ -1,8 +1,9 @@
 //! Typed lifecycle events for the agent session.
 //!
 //! Pure vocabulary: every phase of the agent lifecycle emits a typed event
-//! with a meaningful payload. The `EventBus` runtime (dispatch/subscription)
-//! lives in `infra::event`; this module holds only the event enum and its
+//! with a meaningful payload. Sinks are wired via the [`crate::XyEventSink`]
+//! port; `infra::event` holds an in-process sink implementation. This module
+//! holds only the event enum and its
 //! handler type alias so both `agent` and `infra` can reference them without
 //! a cross-layer reach. Zero crate-internal deps beyond `protocol::message`.
 //!

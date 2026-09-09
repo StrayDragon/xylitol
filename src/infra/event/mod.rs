@@ -16,7 +16,9 @@ use std::sync::{Arc, Mutex};
 use futures::FutureExt;
 use serde_json::Value;
 
-use self::lifecycle::{LifecycleHandler, XyEvent};
+use self::lifecycle::XyEvent;
+#[cfg(test)]
+use crate::protocol::ports::event::LifecycleHandler;
 
 /// Extract the message from a caught panic payload (mirrors `JoinError` display).
 fn panic_payload_message(payload: &(dyn std::any::Any + Send)) -> String {
@@ -35,19 +37,27 @@ pub type Handler = Arc<
 >;
 
 /// A handle that unsubscribes when dropped.
-#[allow(dead_code)]
+///
+/// String-channel subscription is a test-only affordance: product code
+/// consumes lifecycle events exclusively through the [`XyEventSink`] port
+/// (c2715 — no product path may subscribe by channel name).
+#[cfg(test)]
 pub struct UnsubscribeHandle {
     bus: EventBus,
     channel: String,
     id: u64,
 }
 
+#[cfg(test)]
 impl Drop for UnsubscribeHandle {
     fn drop(&mut self) {
         self.bus.remove_listener(&self.channel, self.id);
     }
 }
 
+// Passive fanout plumbing: entries are only ever INSERTED by the test-only
+// `on` API, so construction is test-side; `emit` still iterates the (empty
+// in product) map on the XyEventSink path. Purge candidate: c2750.
 #[derive(Clone)]
 #[allow(dead_code)]
 struct ListenerEntry {
@@ -57,18 +67,18 @@ struct ListenerEntry {
 
 /// Channel-based event bus with string channels and JSON Value payloads.
 #[derive(Clone, Default)]
-#[allow(dead_code)]
-pub struct EventBus {
+pub(crate) struct EventBus {
     listeners: Arc<Mutex<HashMap<String, Vec<ListenerEntry>>>>,
+    #[cfg(test)]
     next_id: Arc<std::sync::atomic::AtomicU64>,
 }
 
-#[allow(dead_code)]
 impl EventBus {
     /// Create a new event bus.
     pub fn new() -> Self {
         Self {
             listeners: Arc::new(Mutex::new(HashMap::new())),
+            #[cfg(test)]
             next_id: Arc::new(std::sync::atomic::AtomicU64::new(1)),
         }
     }
@@ -102,6 +112,7 @@ impl EventBus {
     }
 
     /// Subscribe to a channel. Returns an UnsubscribeHandle.
+    #[cfg(test)]
     pub fn on<F, Fut>(&self, channel: &str, handler: F) -> UnsubscribeHandle
     where
         F: Fn(Value) -> Fut + Send + Sync + 'static,
@@ -134,6 +145,7 @@ impl EventBus {
     }
 
     /// Remove a specific listener by channel and id.
+    #[cfg(test)]
     fn remove_listener(&self, channel: &str, id: u64) {
         if let Ok(mut guard) = self.listeners.lock()
             && let Some(list) = guard.get_mut(channel)
@@ -143,6 +155,7 @@ impl EventBus {
     }
 
     /// Remove all listeners from all channels.
+    #[cfg(test)]
     pub fn clear(&self) {
         self.listeners
             .lock()
@@ -170,6 +183,7 @@ impl EventBus {
     ///
     /// The handler receives every [`XyEvent`] that is emitted.
     /// Returns an [`UnsubscribeHandle`] — drop it to unsubscribe.
+    #[cfg(test)]
     pub fn on_lifecycle<F, Fut>(&self, handler: F) -> UnsubscribeHandle
     where
         F: Fn(XyEvent) -> Fut + Send + Sync + 'static,

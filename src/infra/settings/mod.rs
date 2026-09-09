@@ -1,7 +1,7 @@
 //! SettingsManager — three-tier user preference merge and persistence.
 //!
 //! Three-tier deep merge (global < project < overrides), file locking with
-//! retry, hot reload via EventBus `settings:changed` event.
+//! retry. Settings changes apply on next bootstrap; there is no live hot-reload wiring.
 //!
 //! NOTE(c35): New module. Old `src/infra/config/` is project configuration
 //! (models, tools, hooks). SettingsManager lives alongside it for user prefs.
