@@ -65,6 +65,19 @@ pub enum EnvMessage {
     BranchSummaryMessage { summary: String, from_id: String },
 }
 
+/// Structured LLM-visible projection of an [`EnvMessage`] row (c2725).
+///
+/// `None` from [`EnvMessage::llm_projection`] means the row must not reach the
+/// model (excluded bash / empty custom). Adding an `EnvMessage` variant forces
+/// updating this enum's consumers — the fold shape is the prompt-cache prefix
+/// contract (c1930 / as48), so text templates stay in `agent::llm_project`.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub enum EnvLlmProjection {
+    Bash { command: String, output: String },
+    ContextSummary { summary: String },
+    CustomText { text: String },
+}
+
 impl EnvMessage {
     pub fn role_name(&self) -> &'static str {
         match self {
@@ -72,6 +85,52 @@ impl EnvMessage {
             Self::CustomMessage { .. } => "custom",
             Self::CompactionSummaryMessage { .. } => "compactionSummary",
             Self::BranchSummaryMessage { .. } => "branchSummary",
+        }
+    }
+
+    /// LLM-visible projection of this row; `None` = do not send to model.
+    ///
+    /// Single source of truth for the *whether / what* of env→LLM folding
+    /// (c2725): bash exclusion, compaction/branch summary, custom text.
+    pub fn llm_projection(&self) -> Option<EnvLlmProjection> {
+        match self {
+            Self::BashExecutionMessage {
+                command,
+                output,
+                exclude_from_context,
+                ..
+            } => {
+                if *exclude_from_context {
+                    None
+                } else {
+                    Some(EnvLlmProjection::Bash {
+                        command: command.clone(),
+                        output: output.clone(),
+                    })
+                }
+            }
+            Self::CompactionSummaryMessage { summary, .. }
+            | Self::BranchSummaryMessage { summary, .. } => {
+                Some(EnvLlmProjection::ContextSummary {
+                    summary: summary.clone(),
+                })
+            }
+            Self::CustomMessage { content, .. } => {
+                custom_projection_text(content).map(|text| EnvLlmProjection::CustomText { text })
+            }
+        }
+    }
+
+    /// Whether this row must be excluded from context windows / token math.
+    ///
+    /// Only bash carries a per-row flag; other variants are never excluded.
+    pub fn exclude_from_context(&self) -> bool {
+        match self {
+            Self::BashExecutionMessage {
+                exclude_from_context,
+                ..
+            } => *exclude_from_context,
+            _ => false,
         }
     }
 
@@ -85,6 +144,16 @@ impl EnvMessage {
             | Self::BranchSummaryMessage { summary, .. } => summary.clone(),
         }
     }
+}
+
+/// Custom content → model-visible text; `None` for null / empty (c2725).
+fn custom_projection_text(content: &Value) -> Option<String> {
+    let text = match content {
+        Value::String(s) => s.clone(),
+        Value::Null => return None,
+        other => other.to_string(),
+    };
+    (!text.is_empty()).then_some(text)
 }
 
 /// Session/agent transcript entry: LLM turn **or** environment meta.
@@ -500,5 +569,143 @@ mod tests {
         let llm: LlmMessage = LlmMessage::user("hi");
         let bridge: xylitol_ai_bridge::dto::AiBridgeMessage = llm;
         assert_eq!(bridge.role_name(), "user");
+    }
+
+    // ── c2725: env projection / exclusion helpers ────────────────────
+
+    #[test]
+    fn env_llm_projection_covers_every_variant() {
+        // Exhaustive: adding an EnvMessage variant must update this match (c2725).
+        let bash = AgentMessage::bash("ls", "a.txt", Some(0));
+        let excluded = AgentMessage::Env(EnvMessage::BashExecutionMessage {
+            command: "secret".into(),
+            output: "x".into(),
+            exit_code: None,
+            cancelled: false,
+            truncated: false,
+            full_output_path: None,
+            exclude_from_context: true,
+        });
+        let summary = AgentMessage::Env(EnvMessage::CompactionSummaryMessage {
+            summary: "compressed".into(),
+            tokens_before: 100,
+            tokens_after: 10,
+            read_files: None,
+            modified_files: None,
+        });
+        let branch = AgentMessage::Env(EnvMessage::BranchSummaryMessage {
+            summary: "forked".into(),
+            from_id: "a".into(),
+        });
+        let custom = AgentMessage::Env(EnvMessage::CustomMessage {
+            custom_type: "note".into(),
+            content: serde_json::json!("pinned"),
+            display: serde_json::Value::Null,
+            details: serde_json::Value::Null,
+        });
+        let custom_obj = AgentMessage::Env(EnvMessage::CustomMessage {
+            custom_type: "obj".into(),
+            content: serde_json::json!({ "k": "v" }),
+            display: serde_json::Value::Null,
+            details: serde_json::Value::Null,
+        });
+        let custom_empty = AgentMessage::Env(EnvMessage::CustomMessage {
+            custom_type: "empty".into(),
+            content: serde_json::Value::String(String::new()),
+            display: serde_json::Value::Null,
+            details: serde_json::Value::Null,
+        });
+
+        for msg in [
+            &bash,
+            &excluded,
+            &summary,
+            &branch,
+            &custom,
+            &custom_obj,
+            &custom_empty,
+        ] {
+            let AgentMessage::Env(env) = msg else {
+                panic!("expected env, got {msg:?}")
+            };
+            match env.llm_projection() {
+                Some(EnvLlmProjection::Bash { command, output }) => {
+                    assert_eq!(command, "ls");
+                    assert_eq!(output, "a.txt");
+                }
+                Some(EnvLlmProjection::ContextSummary { summary }) => {
+                    assert!(summary == "compressed" || summary == "forked");
+                }
+                Some(EnvLlmProjection::CustomText { text }) => {
+                    assert!(text == "pinned" || text == r#"{"k":"v"}"#);
+                }
+                None => assert!(
+                    matches!(env, EnvMessage::BashExecutionMessage { .. })
+                        || matches!(env, EnvMessage::CustomMessage { .. })
+                ),
+            }
+        }
+    }
+
+    #[test]
+    fn env_exclude_from_context_only_bash_flag() {
+        let bash = AgentMessage::bash("ls", "a", Some(0));
+        let AgentMessage::Env(env) = &bash else {
+            panic!("expected env")
+        };
+        assert!(!env.exclude_from_context());
+
+        let excluded = AgentMessage::Env(EnvMessage::BashExecutionMessage {
+            command: "secret".into(),
+            output: "x".into(),
+            exit_code: None,
+            cancelled: false,
+            truncated: false,
+            full_output_path: None,
+            exclude_from_context: true,
+        });
+        let AgentMessage::Env(env) = &excluded else {
+            panic!("expected env")
+        };
+        assert!(env.exclude_from_context());
+
+        // Every non-bash variant is never excluded.
+        let summary = EnvMessage::CompactionSummaryMessage {
+            summary: "s".into(),
+            tokens_before: 1,
+            tokens_after: 1,
+            read_files: None,
+            modified_files: None,
+        };
+        let branch = EnvMessage::BranchSummaryMessage {
+            summary: "s".into(),
+            from_id: "a".into(),
+        };
+        let custom = EnvMessage::CustomMessage {
+            custom_type: "n".into(),
+            content: serde_json::json!("x"),
+            display: serde_json::Value::Null,
+            details: serde_json::Value::Null,
+        };
+        for env in [&summary, &branch, &custom] {
+            assert!(!env.exclude_from_context());
+        }
+    }
+
+    #[test]
+    fn env_excluded_bash_projects_to_none() {
+        let msg = AgentMessage::Env(EnvMessage::BashExecutionMessage {
+            command: "secret".into(),
+            output: "x".into(),
+            exit_code: None,
+            cancelled: false,
+            truncated: false,
+            full_output_path: None,
+            exclude_from_context: true,
+        });
+        let AgentMessage::Env(env) = &msg else {
+            panic!("expected env")
+        };
+        assert_eq!(env.llm_projection(), None);
     }
 }

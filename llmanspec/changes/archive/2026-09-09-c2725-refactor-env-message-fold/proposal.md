@@ -1,6 +1,10 @@
 ---
 depends_on: []
 skip_specs_landing: true
+branch: sdd/c2725-refactor-env-message-fold
+base_sha: b2604d2845b4bdb5f8c2de881dd5073e442e473f
+checkpointed: true
+checkpoint_sha: b2604d2845b4bdb5f8c2de881dd5073e442e473f
 ---
 
 # EnvMessage 投影/裁剪/持久化/bang 收口
