@@ -21,7 +21,7 @@ reqwest = { version = "0.13", features = ["stream", "json"] }
 eventsource-stream = "0.2"
 # OpenAI path: Chat Completions + Responses (+ BYOT Value streams) + middleware hooks.
 # TLS: exactly one backend — `rustls` (bundled aws-lc-rs). Do not also enable native-tls*.
-async-openai = { version = "0.41", default-features = false, features = [
+async-openai = { version = "0.42", default-features = false, features = [
   "chat-completion",
   "responses",
   "byot",
