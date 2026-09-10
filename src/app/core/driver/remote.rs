@@ -1018,30 +1018,6 @@ where
         self.thinking.lock().unwrap().clone()
     }
 
-    async fn cycle_thinking_level(&mut self) -> Result<String, XyDriverError> {
-        // Remote REST has set-only; cycle locally over the selected model's
-        // declared support list.
-        let levels = self
-            .current_model()
-            .map(|model| model.thinking_levels)
-            .filter(|levels| !levels.is_empty())
-            .unwrap_or_else(|| vec![THINKING_OFF.into()]);
-        let cur = self.thinking_level();
-        let next = match levels.iter().position(|level| level == &cur) {
-            Some(index) => levels[(index + 1) % levels.len()].clone(),
-            None => levels
-                .last()
-                .cloned()
-                .unwrap_or_else(|| THINKING_OFF.into()),
-        };
-        self.unary_cmd(Command::SetThinkingLevel {
-            level: next.clone(),
-        })
-        .await?;
-        *self.thinking.lock().unwrap() = next.clone();
-        Ok(next)
-    }
-
     fn session_id(&self) -> Option<String> {
         Some(self.session_id.clone())
     }

@@ -255,7 +255,7 @@ impl ScriptedDriver {
             .clone()
     }
 
-    /// Replace the thinking support list used by [`XyDriver::cycle_thinking_level`].
+    /// Replace the thinking support list shown in the models picker.
     pub fn set_thinking_levels(&mut self, levels: Vec<String>) {
         self.thinking_levels = levels;
         if !self.thinking_levels.is_empty()
@@ -513,26 +513,6 @@ impl XyDriver for ScriptedDriver {
 
     fn thinking_level(&self) -> String {
         self.thinking_level.clone()
-    }
-
-    async fn cycle_thinking_level(&mut self) -> Result<String, XyDriverError> {
-        if self.thinking_levels.is_empty() {
-            return Err("current model has no thinking levels".into());
-        }
-        let idx = self
-            .thinking_levels
-            .iter()
-            .position(|level| level == &self.thinking_level);
-        let next = match idx {
-            Some(index) => self.thinking_levels[(index + 1) % self.thinking_levels.len()].clone(),
-            None => self
-                .thinking_levels
-                .last()
-                .cloned()
-                .expect("non-empty: checked above"),
-        };
-        self.thinking_level = next.clone();
-        Ok(next)
     }
 
     fn session_id(&self) -> Option<String> {
@@ -6521,19 +6501,10 @@ mod slice_tests {
     // ── c1470: no global thinking cycle (picker-only) ──────────────
 
     #[test]
-    fn c1470_scripted_driver_cycle_wraps_support_list() {
+    fn c1470_scripted_driver_rejects_out_of_set_level() {
         let mut driver = ScriptedDriver::new();
         driver.set_thinking_levels(vec!["off".into(), "high".into()]);
         assert_eq!(driver.thinking_level(), "off");
-        assert_eq!(
-            futures::executor::block_on(driver.cycle_thinking_level()).unwrap(),
-            "high"
-        );
-        assert_eq!(
-            futures::executor::block_on(driver.cycle_thinking_level()).unwrap(),
-            "off",
-            "must wrap"
-        );
         assert!(futures::executor::block_on(driver.set_thinking_level("xhigh".into())).is_err());
         assert_eq!(driver.thinking_level(), "off");
     }

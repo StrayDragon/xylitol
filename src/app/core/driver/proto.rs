@@ -97,14 +97,6 @@ pub trait XyDriver: crate::app::core::dispatch::SessionCommandExecutor + Send {
 
     /// Cycle to the next level in the current model's thinking support list.
     ///
-    /// Returns the level now in effect. Demo / legacy callers only; product TUI
-    /// changes thinking solely via `/model` (ati36).
-    ///
-    /// # Errors
-    ///
-    /// `Err` when the current model supports no thinking levels.
-    async fn cycle_thinking_level(&mut self) -> Result<String, XyDriverError>;
-
     /// Current session id (the id the next `run`/export acts on).
     fn session_id(&self) -> Option<String>;
 

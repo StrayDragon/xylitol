@@ -8,7 +8,7 @@ pub mod text;
 pub(crate) mod thought_clock;
 
 pub(crate) use sync::{lock_mutex, lock_rwlock_read, lock_rwlock_write};
-pub use text::{format_size, today_yyyy_mm_dd, xml_escape};
+pub use text::{format_size, xml_escape};
 pub(crate) use thought_clock::{
     StreamNode, StreamNodeClock, ThoughtClock, elapsed_from_persist_ms,
 };

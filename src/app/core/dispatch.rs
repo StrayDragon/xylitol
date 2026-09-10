@@ -196,9 +196,6 @@ mod tests {
         fn thinking_level(&self) -> String {
             self.thinking.clone()
         }
-        async fn cycle_thinking_level(&mut self) -> Result<String, XyDriverError> {
-            Ok(self.thinking.clone())
-        }
         fn session_id(&self) -> Option<String> {
             None
         }

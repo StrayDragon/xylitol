@@ -4,7 +4,8 @@ depends_on:
 branch: sdd/c2730-remove-product-dead-knobs
 base_sha: b2604d2845b4bdb5f8c2de881dd5073e442e473f
 rules_edit_acked: true
-checkpointed: false
+checkpointed: true
+checkpoint_sha: b2604d2845b4bdb5f8c2de881dd5073e442e473f
 ---
 
 # 删除产品死旋钮：DatePlacement 消融与 cycle_thinking

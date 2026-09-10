@@ -327,10 +327,6 @@ impl AgentRuntime {
         self.inner.set_thinking_level(level).await
     }
 
-    pub async fn cycle_thinking_level(&mut self) -> Result<String, XyError> {
-        self.inner.cycle_thinking_level().await
-    }
-
     pub fn apply_default_thinking_level(&mut self, raw: Option<&str>) {
         self.inner.apply_default_thinking_level(raw);
     }
