@@ -210,12 +210,6 @@ mod tests {
         fn leaf_entry_id(&self) -> Option<String> {
             None
         }
-        async fn load_debug_scene(
-            &mut self,
-            _scene: &str,
-        ) -> Result<crate::app::core::driver::DebugSceneLoad, XyDriverError> {
-            Err(XyDriverError::unsupported("stub"))
-        }
         async fn loaded_resources_snapshot(&self) -> LoadedResourcesSnapshot {
             LoadedResourcesSnapshot::default()
         }

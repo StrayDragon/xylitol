@@ -4,7 +4,8 @@ depends_on:
 branch: sdd/c2740-remove-debug-from-driver
 base_sha: b2604d2845b4bdb5f8c2de881dd5073e442e473f
 rules_edit_acked: true
-checkpointed: false
+checkpointed: true
+checkpoint_sha: b2604d2845b4bdb5f8c2de881dd5073e442e473f
 ---
 
 # `/debug` 退出 Driver/wire；Host 泵拆分（次段）
@@ -38,6 +39,10 @@ start 后改 live spec：产品信封无 debug scene；`/debug` 非跨面 MUST�
 ## Impact
 
 远程 TUI 不能经 Host 加载 debug scene（预期）。本地 `just test-tui` 改走 harness 注入。
+
+## Further Notes
+
+次段（Host 泵）按 3.2 出口后置：`just complexity` 实测 `src/app/tui/host` 入口 `input_policy::try_busy_input` cognitive 44 / cyclomatic 25（闸 32/27），超闸部分为 busy 输入策略的既有分支，与 debug 解耦无关，非「本该在 effects 的 debug 分支」。下沉动作留给独立 follow-up change，不在本 change 混入 TUI 输入泵重构。
 
 ## 本批依赖
 

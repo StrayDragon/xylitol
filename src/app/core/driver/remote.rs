@@ -20,9 +20,9 @@ use crate::protocol::{Event, RpcMessage};
 use super::XyDriver;
 use super::XyDriverError;
 use super::types::{
-    ClipboardCopyOutcome, CommandInfo, DebugSceneLoad, EventStream, LoadedResourcesSnapshot,
-    ModelInfo, ProjectTrustMode, ProjectTrustPersistReport, QueueStats, ReloadStepReport,
-    RuntimeReloadReport, XyEvent, estimate_from_session_entries,
+    ClipboardCopyOutcome, CommandInfo, EventStream, LoadedResourcesSnapshot, ModelInfo,
+    ProjectTrustMode, ProjectTrustPersistReport, QueueStats, ReloadStepReport, RuntimeReloadReport,
+    XyEvent, estimate_from_session_entries,
 };
 
 /// Notify the product TUI of mux reverse-RPC (approval/question).
@@ -1057,37 +1057,6 @@ where
 
     fn leaf_entry_id(&self) -> Option<String> {
         self.leaf_entry_id.lock().ok().and_then(|leaf| leaf.clone())
-    }
-
-    async fn load_debug_scene(&mut self, scene: &str) -> Result<DebugSceneLoad, XyDriverError> {
-        let data = self
-            .unary("load_debug_scene", serde_json::json!({ "scene": scene }))
-            .await?;
-        let session_id = data
-            .get("session_id")
-            .and_then(Value::as_str)
-            .unwrap_or("")
-            .to_string();
-        let entries = serde_json::from_value(data.get("entries").cloned().unwrap_or(Value::Null))
-            .map_err(|e| XyDriverError::remote(e.to_string()))?;
-        let note = data
-            .get("note")
-            .and_then(Value::as_str)
-            .unwrap_or("")
-            .to_string();
-        let model = data
-            .get("model")
-            .filter(|m| !m.is_null())
-            .and_then(|m| Self::model_from_value(m).ok());
-        if let Some(m) = model.as_ref() {
-            self.cache_model(m.clone());
-        }
-        Ok(DebugSceneLoad {
-            session_id,
-            entries,
-            note,
-            model,
-        })
     }
 
     async fn loaded_resources_snapshot(&self) -> LoadedResourcesSnapshot {

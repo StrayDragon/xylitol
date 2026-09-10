@@ -273,7 +273,7 @@ impl From<&XyModelMeta> for ModelInfo {
     }
 }
 
-/// Outcome of [`XyDriver::load_debug_scene`] (c710).
+/// Outcome of a `/debug` scene load (c710; applied in-process, c2740).
 #[derive(Debug, Clone)]
 pub struct DebugSceneLoad {
     pub session_id: String,

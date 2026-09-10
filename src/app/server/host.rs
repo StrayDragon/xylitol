@@ -41,8 +41,8 @@ use crate::protocol::wire::method::is_unary_method;
 use crate::protocol::wire::registry::parse_command;
 use crate::protocol::wire::registry::{
     METHOD_ABORT, METHOD_ARM_TOOL_FREEZE, METHOD_EXPORT_JSONL, METHOD_GET_AVAILABLE_MODELS,
-    METHOD_HOST_DESCRIBE, METHOD_IMPORT_JSONL, METHOD_LOAD_DEBUG_SCENE, METHOD_LOADED_RESOURCES,
-    METHOD_PERSIST_TRUST, METHOD_PROMPT, METHOD_RELOAD, METHOD_SESSION_TREE, METHOD_SUBSCRIBE,
+    METHOD_HOST_DESCRIBE, METHOD_IMPORT_JSONL, METHOD_LOADED_RESOURCES, METHOD_PERSIST_TRUST,
+    METHOD_PROMPT, METHOD_RELOAD, METHOD_SESSION_TREE, METHOD_SUBSCRIBE,
 };
 
 /// Bounded per-mux-connection queue. Overflow → `session/resync_required` or drop conn.
@@ -1194,31 +1194,6 @@ async fn dispatch_session_unary(
             "saved_path": report.saved_path,
             "message": report.message,
         })));
-    }
-
-    if method == METHOD_LOAD_DEBUG_SCENE {
-        let scene = payload
-            .get("scene")
-            .and_then(|v| v.as_str())
-            .unwrap_or("")
-            .to_string();
-        let lease = match WriterLease::acquire(host, slot, workspace, presented).await {
-            Ok(l) => l,
-            Err(e) => return e,
-        };
-        let mut g = slot.driver.lock().await;
-        let Some(driver) = g.as_mut() else {
-            return RpcResult::error("unavailable", "no writer engine");
-        };
-        return match driver.load_debug_scene(&scene).await {
-            Ok(load) => lease.seal(RpcResult::ok_value(json!({
-                "session_id": load.session_id,
-                "entries": load.entries,
-                "note": load.note,
-                "model": load.model.as_ref().map(model_data),
-            }))),
-            Err(e) => lease.seal(rpc_err(e)),
-        };
     }
 
     if is_writer_method(method) {

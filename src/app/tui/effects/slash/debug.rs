@@ -1,12 +1,15 @@
 //! `/debug` scene inject arm.
+//!
+//! c2740: scenes are process-local — seeded into an in-memory store and
+//! applied to the transcript directly; `load_debug_scene` no longer exists on
+//! the wire / Driver / Host surface.
 
 use xylitol_tui::Terminal;
 
-use crate::app::core::driver::XyDriver;
+use crate::app::core::driver::{DebugSceneLoad, XyDriver};
 use crate::app::debug_fixtures::PreviewInject;
 use crate::app::tui::host::HostSession;
-
-use super::super::helpers::note_driver_err;
+use crate::protocol::ports::XySessionStore;
 
 pub(super) async fn run<T: Terminal>(
     session: &mut HostSession<T>,
@@ -33,13 +36,10 @@ pub(super) async fn run<T: Terminal>(
             (PreviewInject::LiveXy, _) => {
                 super::super::debug_activity_fold::run_preview_live_xy(session);
             }
-            (PreviewInject::Resume, _) => {
-                log::info!(target: "xylitol::tui", "XyDriver::load_debug_scene scene={}", meta.id);
-                match driver.load_debug_scene(meta.id).await {
-                    Ok(load) => session.apply_debug_scene(load),
-                    Err(e) => note_driver_err(session, "tui.load_debug_scene", &e, e.to_string()),
-                }
-            }
+            (PreviewInject::Resume, _) => match load_scene_in_memory(meta.id).await {
+                Ok(load) => session.apply_debug_scene(load),
+                Err(e) => note_load_err(session, "tui.debug_scene", &e, e.to_string()),
+            },
             (inject, id) => {
                 session.push_scroll_notice(format!(
                     "{id}: inject {inject:?} has no /debug runner yet"
@@ -47,11 +47,50 @@ pub(super) async fn run<T: Terminal>(
             }
         }
     } else {
-        log::info!(target: "xylitol::tui", "XyDriver::load_debug_scene scene={}", scene);
-        match driver.load_debug_scene(&scene).await {
+        // Alias resolution still applies (seed_scene resolves canonical ids).
+        match load_scene_in_memory(&scene).await {
             Ok(load) => session.apply_debug_scene(load),
-            Err(e) => note_driver_err(session, "tui.load_debug_scene", &e, e.to_string()),
+            Err(e) => note_load_err(session, "tui.debug_scene", &e, e.to_string()),
         }
     }
     let _ = session.render_now();
+}
+
+/// Seed a scene into an in-memory session and collect its entries (c2740):
+/// never touches the user's session files, never crosses the RPC surface.
+async fn load_scene_in_memory(
+    scene: &str,
+) -> Result<DebugSceneLoad, crate::app::core::driver_error::XyDriverError> {
+    use crate::app::core::driver_error::XyDriverError;
+
+    let short = &uuid::Uuid::new_v4().to_string()[..8];
+    let canonical = crate::app::debug_fixtures::resolve_scene_id(scene).ok_or_else(|| {
+        XyDriverError::invalid_input(format!(
+            "unknown debug scene: {scene}\n{}",
+            crate::app::debug_fixtures::list_note()
+        ))
+    })?;
+    let session_id = format!("debug-{canonical}-{short}");
+    let mgr = crate::infra::session::SessionManager::in_memory();
+    mgr.create(&session_id, None, None)
+        .await
+        .map_err(XyDriverError::from)?;
+    let canonical = crate::app::debug_fixtures::seed_scene(&mgr, &session_id, scene).await?;
+    let entries = mgr.load_entries(&session_id).await?;
+    Ok(DebugSceneLoad {
+        note: format!("debug scene `{canonical}` → local in-memory session {session_id}"),
+        session_id,
+        entries,
+        model: None,
+    })
+}
+
+fn note_load_err<T: Terminal>(
+    session: &mut HostSession<T>,
+    target: &str,
+    err: &crate::app::core::driver_error::XyDriverError,
+    text: String,
+) {
+    log::warn!(target: "xylitol::tui", "{target} failed: {err}");
+    session.push_scroll_notice(format!("/debug failed: {text}"));
 }
