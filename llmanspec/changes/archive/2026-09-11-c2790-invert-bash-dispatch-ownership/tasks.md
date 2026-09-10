@@ -4,7 +4,7 @@
 > （`tests::bdd::`，HostPump 模式 + 挂起 bang + 定时注入流）为主验收 seam；
 > PTY E2E（`just test-tui-e2e`）作真进程时序冒烟；protocol 守卫单测兜 SSOT。
 
-## t1: `XyDriver::bash_run`——三实现 + trait 默认
+## t1: `XyDriver::bash_run`——三实现 + trait 默认 ✅（e5cad13a）
 
 - `proto.rs`：声明 `async fn bash_run(&mut self, command, exclude_from_context)
   -> Result<BashRun, XyDriverError>`（owned 完成接收端；默认 unsupported）。
@@ -15,7 +15,7 @@
   `hang_bash_until_abort` 与 `bash_calls` 记录。
 - 验证：`cargo test -p xylitol --lib`（既有 bang/harness 测试全绿，行为零变化）。
 
-## t2: bang 循环重构 + drain 三件套 + BDD 场景（[blocked-by: t1]）
+## t2: bang 循环重构 + drain 三件套 + BDD 场景 ✅（58e93d4c）
 
 - `commands.rs`：`SlashAllowances` 增 `exec: Exec` 列（单表穷举，见 design §4；
   不新增平行 match）——Inline v1 名单 = OpenModels / Theme / HistoryCopyLast
@@ -27,16 +27,16 @@
   （design §3 键序；abort/完成/sink/超时逐字节保真）。
 - BDD：`bang-inline-effect-runs-during-bang`（atm18）、
   `exclusive-stays-queued`（ath45，样例 `/session-export`）。
-- 验证：`cargo test --lib --all-features tests::bdd::`。
+- 验证：`cargo test --lib --all-features tests::bdd::`（442 通过；mutation 验证 4/4，见提交说明）
 
-## t3: PTY 收紧回 atc23 原契约（[blocked-by: t2]）
+## t3: PTY 收紧回 atc23 原契约 ✅（71b8d132）
 
 - `pty_product_fake_busy_model_list_keeps_running_lead`：bang 不结束即挂载
   （`→ * fake`）→ `Running` lead 在视口 → Esc 关浮层 → Esc 取消 bang →
   `/exit` 干净退出。
 - 验证：`just test-tui-e2e` 30/30。
 
-## t4: 全门禁收尾（[blocked-by: t3]）
+## t4: 全门禁收尾
 
 - `just qa`（fmt/lint/nextest/live-provider）+ `just test-tui` +
   `llman sdd validate c2790-invert-bash-dispatch-ownership --strict --check`。

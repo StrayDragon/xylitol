@@ -58,7 +58,7 @@ pub struct MethodEntry {
     pub resp: Resp,
     /// 存在同名 serde tag 的 [`Command`] 变体，tag-injection 解析可路由。
     pub command_backed: bool,
-    /// 执行类（c2780）。经 [`m`] 声明的行默认 [`Exec::Queued`]。
+    /// 执行类（c2780）。经 `m` 声明的行默认 [`Exec::Queued`]。
     pub exec: Exec,
 }
 

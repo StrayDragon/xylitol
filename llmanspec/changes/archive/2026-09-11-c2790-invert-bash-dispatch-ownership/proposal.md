@@ -3,7 +3,8 @@ depends_on:
 - c2780-add-command-execution-class
 branch: sdd/c2790-invert-bash-dispatch-ownership
 base_sha: afaeac85ff091730d571ae93e22a034421baaeac
-checkpointed: false
+checkpointed: true
+checkpoint_sha: d073fc49ce41ca95f426a43eb9a53ac055f03eb5
 ---
 
 # bash 派发所有权倒置：交互循环 drain Inline 命令
@@ -53,18 +54,24 @@ effects 调用（含不可变重借）都是 E0499；abort 能碰 driver 正因�
   `OpenModels/SetModel/SessionName/HistoryCopyLast/Theme → Inline`；
   `Exit → Exclusive`（提交时即 quit，不入 drain）；其余 `Queued`
   （含 busy-Allow 但重型的 SessionDump/Export/Compact/OpenMcp/OpenSessionResume）。
-- **reload 决定：本 change 不动**。`reload_runtime(&mut self, &cancel)` 两个实现
-  都需要 `&mut`（gate_notice / settings / mcp 装配状态写），不可同型倒置；且
-  reload 有软闸（try_reload_input）与较短窗口。bang-only 交付（proposal 预案
-  兑现；后续路径见 design §6）。
+- **reload 决定：本 change 不动**（bang-only 交付，预案兑现；完整说明见
+  Further Notes，后续路径 design §6）。
 
 ## 非目标
 
-- 不动 `run_interactive_reload` 的泵结构（见上 reload 决定）。
+- 不动 `run_interactive_reload` 的泵结构（见下 Further Notes）。
 - 不动 Host 侧租约/`Auth::Readonly` 写者期间 `slot.driver` 锁争用（另行立项）。
 - 不改 agent 主循环（已正确调度 drain_pending）。
 - 不引入 proc-macro / REGISTRY 表宏化（c2780 design §1 的后续重构，独立评估）。
 - 不改 c2770 的 interrupted 提示投影。
+
+## Further Notes（apply 后回写）
+
+- **reload 保持 bang 期间不 drain**：`reload_runtime(&mut self, &cancel)` 两个
+  实现均需 `&mut`（remote 写 `gate_notice_consumed`；in_process 触及
+  settings/mcp 装配），不可同型倒置；且 reload 有软闸（`try_reload_input`）
+  与较短窗口，收益/复杂度比低。实现期未发现可倒置路径，维持提案预案；
+  后续路径 = 「发起（&mut 一次）+ 拥有型进度接收端」，暂不立项（design §6）。
 
 ## Capabilities
 
