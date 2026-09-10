@@ -1,18 +1,13 @@
 ---
 depends_on: []
+skip_specs_landing: true
 ---
 
 ## Why
 
-TODO: Why is this change needed?
-
-## What Changes
-
-TODO: Bullet list of what changes.
-
-## Why
-
 c2700（crate 公开面收窄）使约 40 簇原先「因对外可见而不报死码」的代码暴露为 unused/dead（约 1700 行，含各自单测）。当时为守住「仅可见性」范围以 `#[allow(dead_code)]` / 文件级 allow 暂留，本 change 是该暂留的**落地条件**：逐簇分诊并删除。
+
+实测基线（2026-09-10，c2705–c2740 合入后）：`allow(dead_code)` 93 处 / 43 文件，其中整文件级 4 个。详见 design.md。
 
 ## What Changes
 
