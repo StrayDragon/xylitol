@@ -2,7 +2,8 @@
 depends_on: []
 branch: sdd/c2780-add-command-execution-class
 base_sha: 1286d3c5df5b744fb05ad8e97c5a4ace59d78b1c
-checkpointed: false
+checkpointed: true
+checkpoint_sha: 889c1c3e8f6d2fbd2c13adf2271a1c1a1fe3e828
 ---
 
 # 命令执行类声明：阻塞语义进 Command SSOT（交互循环 drain 接入移交 c2790）
