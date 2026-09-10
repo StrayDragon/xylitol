@@ -46,8 +46,8 @@
     - 默认 build_system_prompt 路径下 Available tools 散文清单 MUST 仅含内置（非 mcp__ / 过渡 mcp- / mcp_ 前缀）工具片段；MUST 含一句引导：MCP/custom 工具以本会话定稿后的请求 tools 列表为准并按精确名调用（MAY 提示用户经产品 `/mcp` 查看连接与 armed）。MUST NOT 在 Available tools 段枚举 mcp 工具名。定稿后 provider tools 参数 MUST 可含当时冻结的 mcp 工具；MUST NOT 暗示 settle 后会继续热扩 tools 表。自定义 SYSTEM.md 或 custom_prompt 整段替换默认正文时 MUST 保持 pt9 替换语义。
 
   @req:pt12 @human
-  场景: date-placement-and-session-env
-    - 系统提示若写入日历日 MUST 经 ContextPolicy.date_placement：默认 Omit（system 无 Current date，亦无 CWD）；SystemAsToday / SystemPinnedAtSession 仅为消融/lab。产品路径 MUST 将日历日/CWD 以状态栏族特殊类型 session_env（Env CustomMessage，project_for_llm 投影为 user）在用户真实输入落盘之前持久化：首轮或相对上次 session_env 的日历日/CWD 有变时追加；同日同 cwd MUST NOT 重复追加。压缩裁剪或 overflow 同轮 reload 之后、继续向模型生成之前，上下文 MUST 仍含与当前日历日/进程 cwd 对齐的 session_env（缺失或日/cwd 过期则 ensure 追加并持久化）。秒级时间戳 MUST NOT 进系统提示。完整状态栏 Lane 由后继 change 消费既有 session_env。由单测覆盖；MUST NOT 为静态存在性单独扩 BDD step。
+  场景: system-omit-date-and-session-env
+    - 系统提示 MUST NOT 写入日历日或 CWD（无 date_placement 旋钮，日历日/CWD 由 session_env 提供）。产品路径 MUST 将日历日/CWD 以状态栏族特殊类型 session_env（Env CustomMessage，project_for_llm 投影为 user）在用户真实输入落盘之前持久化：首轮或相对上次 session_env 的日历日/CWD 有变时追加；同日同 cwd MUST NOT 重复追加。压缩裁剪或 overflow 同轮 reload 之后、继续向模型生成之前，上下文 MUST 仍含与当前日历日/进程 cwd 对齐的 session_env（缺失或日/cwd 过期则 ensure 追加并持久化）。秒级时间戳 MUST NOT 进系统提示。完整状态栏 Lane 由后继 change 消费既有 session_env。由单测覆盖；MUST NOT 为静态存在性单独扩 BDD step。
 
   @req:pt13 @human
   场景: no-instructions-dual-copy
