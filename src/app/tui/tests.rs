@@ -1643,7 +1643,9 @@ async fn harness_new_session_seeds_prior_user_prompt() {
 
     let mut session = HostSession::new_product_ui(TestTerminal::new(80, 24));
     session.set_editor_history_seed_sessions(1);
-    session.seed_editor_history_for_new_session(&driver).await;
+    session
+        .seed_editor_history_for_new_session(&mut driver)
+        .await;
     let root = session.ui_root().expect("product ui").clone();
     assert!(root.borrow().editor_text().is_empty());
     session.step(HostEvent::Input(arrow_up_event())).unwrap();

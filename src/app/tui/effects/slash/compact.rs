@@ -34,9 +34,9 @@ pub(super) async fn run<T: Terminal>(
 /// After slash/force compact, surface the latest CompactionEntry as a collapsed block.
 async fn append_compaction_from_session<T: Terminal>(
     session: &mut HostSession<T>,
-    driver: &dyn XyDriver,
+    driver: &mut dyn XyDriver,
 ) {
-    let Ok(entries) = driver.get_messages().await else {
+    let Ok(entries) = super::super::session_entries(driver).await else {
         session.push_scroll_notice("session compacted");
         return;
     };

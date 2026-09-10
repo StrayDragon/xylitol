@@ -15,11 +15,42 @@ use crate::app::core::driver::{
     tokenizer_override_from_app_config,
 };
 
+use crate::app::core::dispatch::dispatch;
+use crate::protocol::Command;
+
 use super::host::HostSession;
 use super::widgets::footer_token_label;
 
 pub use bang::run_interactive_bang;
 pub use reload::run_interactive_reload;
+
+/// Load current-session entries via the shared Command path (c2710).
+pub async fn session_entries(
+    driver: &mut dyn XyDriver,
+) -> Result<Vec<crate::protocol::session::SessionEntry>, XyDriverError> {
+    match crate::app::core::dispatch::dispatch(driver, crate::protocol::Command::GetMessages {})
+        .await?
+    {
+        crate::app::core::dispatch::DispatchOutcome::Messages { entries, .. } => Ok(entries),
+        _ => Ok(Vec::new()),
+    }
+}
+
+/// Read queue depths via the shared Command path (c2710).
+pub async fn queue_stats(driver: &mut dyn XyDriver) -> QueueStats {
+    match crate::app::core::dispatch::dispatch(driver, crate::protocol::Command::GetQueueStats {})
+        .await
+    {
+        Ok(crate::app::core::dispatch::DispatchOutcome::QueueStats {
+            steer_count,
+            follow_up_count,
+        }) => QueueStats {
+            steer_count,
+            follow_up_count,
+        },
+        _ => QueueStats::default(),
+    }
+}
 
 /// Refresh footer token usage from [`XyDriver::estimate_context_tokens`] (c1035).
 ///
@@ -29,10 +60,10 @@ pub use reload::run_interactive_reload;
 /// MUST prefer `kick_footer_token_refresh` so HF encode does not block input.
 pub async fn refresh_footer_tokens<T: Terminal>(
     session: &mut HostSession<T>,
-    driver: &dyn XyDriver,
+    driver: &mut dyn XyDriver,
 ) {
     let _ = session.take_pending_footer_token_refresh();
-    let entries = match driver.get_messages().await {
+    let entries = match session_entries(driver).await {
         Ok(e) => e,
         Err(_) => {
             session.set_footer_token_label(None);
@@ -63,10 +94,10 @@ pub async fn refresh_footer_tokens<T: Terminal>(
 #[cfg_attr(test, allow(dead_code))] // production `drain_pending` only (`not(test)`)
 pub async fn kick_footer_token_refresh<T: Terminal>(
     session: &mut HostSession<T>,
-    driver: &dyn XyDriver,
+    driver: &mut dyn XyDriver,
 ) {
     let _ = session.take_pending_footer_token_refresh();
-    let entries = match driver.get_messages().await {
+    let entries = match session_entries(driver).await {
         Ok(e) => e,
         Err(_) => {
             session.set_footer_token_label(None);
@@ -126,43 +157,71 @@ pub async fn drain_pending<T: Terminal>(
         // check see real driver depths (otherwise Esc looks aborted then still runs).
         let cancelled_gate = session.take_gated_submit().is_some();
         if cancelled_gate {
-            let stats = driver.queue_stats();
+            let stats = queue_stats(driver).await;
             session.set_queue_badge(stats.steer_count, stats.follow_up_count);
         }
         session.note_user_abort();
-        let _ = driver.clear_queue(true, false).await;
-        let stats = driver.queue_stats();
+        let _ = dispatch(
+            driver,
+            Command::ClearQueue {
+                clear_steer: true,
+                clear_follow_up: false,
+            },
+        )
+        .await;
+        let stats = queue_stats(driver).await;
         session.set_queue_badge(stats.steer_count, stats.follow_up_count);
         let _ = session.render_now();
     }
     if session.take_dequeue() {
         log::info!(target: "xylitol::tui", "XyDriver::clear_queue (Alt+Up dequeue)");
-        let _ = driver.clear_queue(true, true).await;
+        let _ = dispatch(
+            driver,
+            Command::ClearQueue {
+                clear_steer: true,
+                clear_follow_up: true,
+            },
+        )
+        .await;
         // Alt+Up already restored the gate strip into the editor; cancel Assembling
         // so a later freeze MUST NOT start the withdrawn prompt.
         if session.take_gated_submit().is_some() {
             session.end_gated_assemble_idle();
         }
-        let stats = driver.queue_stats();
+        let stats = queue_stats(driver).await;
         session.set_queue_badge(stats.steer_count, stats.follow_up_count);
         let _ = session.render_now();
     }
     if let Some(msg) = session.take_steer() {
-        log::info!(target: "xylitol::tui", "XyDriver::steer prompt_len={}", msg.len());
-        if let Err(e) = driver.steer(&msg).await {
+        log::info!(target: "xylitol::tui", "Command::Steer prompt_len={}", msg.len());
+        if let Err(e) = dispatch(
+            driver,
+            Command::Steer {
+                message: msg.clone(),
+            },
+        )
+        .await
+        {
             e.log_failure("tui.steer");
             session.push_scroll_notice(format!("steer failed: {e}"));
         }
-        calibrate_queue_after_local_enqueue(session, driver.queue_stats());
+        calibrate_queue_after_local_enqueue(session, queue_stats(driver).await);
         let _ = session.render_now();
     }
     if let Some(msg) = session.take_follow_up() {
-        log::info!(target: "xylitol::tui", "XyDriver::follow_up prompt_len={}", msg.len());
-        if let Err(e) = driver.follow_up(&msg).await {
+        log::info!(target: "xylitol::tui", "Command::FollowUp prompt_len={}", msg.len());
+        if let Err(e) = dispatch(
+            driver,
+            Command::FollowUp {
+                message: msg.clone(),
+            },
+        )
+        .await
+        {
             e.log_failure("tui.follow_up");
             session.push_scroll_notice(format!("follow-up failed: {e}"));
         }
-        calibrate_queue_after_local_enqueue(session, driver.queue_stats());
+        calibrate_queue_after_local_enqueue(session, queue_stats(driver).await);
         let _ = session.render_now();
     }
 
@@ -282,7 +341,7 @@ async fn start_run_after_tool_gate<T: Terminal>(
 
 async fn drain_footer_token_if_pending<T: Terminal>(
     session: &mut HostSession<T>,
-    driver: &dyn XyDriver,
+    driver: &mut dyn XyDriver,
 ) {
     // c1860: prefer settlement snapshot (no re-estimate / no OTel).
     if let Some(est) = session.take_pending_settlement_estimate() {

@@ -529,7 +529,7 @@ pub async fn run() -> Result<(), Box<dyn std::error::Error>> {
     };
 
     crate::app::cli::print::run_print(&mut driver, &prompt, &session_id).await?;
-    maybe_print_resume_hint(&driver).await;
+    maybe_print_resume_hint(&mut driver).await;
 
     timing::print_timings();
     Ok(())
@@ -551,10 +551,15 @@ async fn run_product_tui_attached(
         surface.session.clone().unwrap_or_default(),
     );
     if let Some(model_id) = surface.model.as_deref() {
-        driver
-            .select_model(model_id)
-            .await
-            .map_err(|e| format!("--model {model_id}: {e}"))?;
+        crate::app::core::dispatch::dispatch(
+            &mut driver,
+            crate::protocol::Command::SetModel {
+                provider: String::new(),
+                model_id: model_id.to_string(),
+            },
+        )
+        .await
+        .map_err(|e| format!("--model {model_id}: {e}"))?;
     }
     let ask_gateway = std::sync::Arc::new(crate::app::tui::AskHostGateway::new());
     ask_gateway.set_host_client(std::sync::Arc::new(driver.host_client().clone()));
@@ -585,15 +590,22 @@ async fn run_product_tui_attached(
         },
     )
     .await;
-    maybe_print_resume_hint(&driver).await;
+    maybe_print_resume_hint(&mut driver).await;
     tui_result.map_err(|e| e.into())
 }
 
 /// stderr resume line when the session was persisted (c1565).
-async fn maybe_print_resume_hint(driver: &dyn crate::app::core::driver::XyDriver) {
+async fn maybe_print_resume_hint(driver: &mut dyn crate::app::core::driver::XyDriver) {
     let sid = driver.session_id();
-    let listed = match (sid.as_deref(), driver.list_sessions().await) {
-        (Some(id), Ok(list)) => list.iter().any(|e| e.id == id),
+    let listed = match crate::app::core::dispatch::dispatch(
+        driver,
+        crate::protocol::Command::ListSessions {},
+    )
+    .await
+    {
+        Ok(crate::app::core::dispatch::DispatchOutcome::Sessions(list)) => sid
+            .as_deref()
+            .is_some_and(|id| list.iter().any(|e| e.id == id)),
         _ => false,
     };
     if let Some(line) = resume_hint_line(sid.as_deref(), listed) {

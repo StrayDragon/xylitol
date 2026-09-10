@@ -38,19 +38,17 @@ pub enum Command {
     },
     GetSessionStats {},
     ExportHtml {
-        #[serde(default, alias = "path")]
+        #[serde(default)]
         output_path: Option<String>,
     },
     ExportJsonl {
-        #[serde(default, alias = "path")]
+        #[serde(default)]
         output_path: Option<String>,
     },
     ImportJsonl {
-        #[serde(alias = "path")]
         input_path: String,
     },
     SwitchSession {
-        #[serde(alias = "session_id")]
         session_path: String,
     },
     Fork {
@@ -93,9 +91,9 @@ pub enum Command {
     },
     Reload {},
     LoadedResources {},
-    /// Wire method is `queue_stats`; the alias keeps serde tag parsing
-    /// accept-able for it (c2530).
-    #[serde(alias = "queue_stats")]
+    /// Wire method is `queue_stats` (registry SSOT name); the serde tag
+    /// matches it directly (c2710, no alias).
+    #[serde(rename = "queue_stats")]
     GetQueueStats {},
     Steer {
         message: String,

@@ -7,7 +7,6 @@
 
 use std::collections::HashMap;
 use std::collections::VecDeque;
-use std::path::Path;
 use std::sync::Mutex;
 use std::sync::atomic::{AtomicBool, AtomicUsize, Ordering};
 use std::time::Duration;
@@ -24,7 +23,7 @@ use crate::app::core::driver::{
 use crate::protocol::model::THINKING_OFF;
 use crate::protocol::ports::XyBashResult;
 use crate::protocol::session::{
-    SessionEntry, SessionTreeKind, SessionTreeNode, SessionTreeTravel, plan_message_history_travel,
+    SessionEntry, SessionTreeNode, SessionTreeTravel, plan_message_history_travel,
 };
 
 pub use super::effects::{
@@ -488,83 +487,6 @@ impl XyDriver for ScriptedDriver {
         Box::pin(futures::stream::iter(events))
     }
 
-    fn abort(&self) {
-        self.abort_count.fetch_add(1, Ordering::SeqCst);
-        self.aborted.store(true, Ordering::SeqCst);
-    }
-
-    fn current_model(&self) -> Option<ModelInfo> {
-        Some(self.model.clone())
-    }
-
-    fn available_models(&self) -> Vec<ModelInfo> {
-        if self.available_models.is_empty() {
-            vec![self.model.clone()]
-        } else {
-            self.available_models.clone()
-        }
-    }
-
-    async fn select_model(&mut self, model_id: &str) -> Result<ModelInfo, XyDriverError> {
-        self.model = ModelInfo {
-            id: model_id.into(),
-            display_name: model_id.into(),
-            thinking: false,
-            thinking_levels: Vec::new(),
-            context_window: 8_000,
-        };
-        Ok(self.model.clone())
-    }
-
-    async fn cycle_model(&mut self) -> Result<ModelInfo, XyDriverError> {
-        Ok(self.model.clone())
-    }
-
-    async fn set_thinking_level(&mut self, level: String) -> Result<(), XyDriverError> {
-        if !self.thinking_levels.is_empty()
-            && !self
-                .thinking_levels
-                .iter()
-                .any(|supported| supported == &level)
-        {
-            return Err(format!(
-                "thinking level `{}` is not supported by the current model",
-                level
-            )
-            .into());
-        }
-        self.thinking_level = level;
-        Ok(())
-    }
-
-    fn thinking_level(&self) -> String {
-        self.thinking_level.clone()
-    }
-
-    async fn cycle_thinking_level(&mut self) -> Result<String, XyDriverError> {
-        if self.thinking_levels.is_empty() {
-            return Err("current model has no thinking levels".into());
-        }
-        let idx = self
-            .thinking_levels
-            .iter()
-            .position(|level| level == &self.thinking_level);
-        let next = match idx {
-            Some(index) => self.thinking_levels[(index + 1) % self.thinking_levels.len()].clone(),
-            None => self
-                .thinking_levels
-                .last()
-                .cloned()
-                .expect("non-empty: checked above"),
-        };
-        self.thinking_level = next.clone();
-        Ok(next)
-    }
-
-    fn session_id(&self) -> Option<String> {
-        Some(self.active_session_id.lock().expect("sid").clone())
-    }
-
     async fn execute_bash(
         &self,
         command: &str,
@@ -610,69 +532,49 @@ impl XyDriver for ScriptedDriver {
         Ok(result)
     }
 
-    async fn compact(&mut self, instructions: Option<String>) -> Result<bool, XyDriverError> {
-        self.compact_calls
-            .lock()
-            .expect("compact_calls")
-            .push(instructions);
-        Ok(false)
+    fn abort(&self) {
+        self.abort_count.fetch_add(1, Ordering::SeqCst);
+        self.aborted.store(true, Ordering::SeqCst);
     }
 
-    async fn export_html(&mut self, path: &Path) -> Result<String, XyDriverError> {
-        let s = path.display().to_string();
-        self.export_html_calls
-            .lock()
-            .expect("export_html_calls")
-            .push(s.clone());
-        Ok(s)
+    fn current_model(&self) -> Option<ModelInfo> {
+        Some(self.model.clone())
     }
 
-    async fn export_jsonl(&mut self, path: &Path) -> Result<String, XyDriverError> {
-        let s = path.display().to_string();
-        self.export_jsonl_calls
-            .lock()
-            .expect("export_jsonl_calls")
-            .push(s.clone());
-        Ok(s)
+    fn available_models(&self) -> Vec<ModelInfo> {
+        if self.available_models.is_empty() {
+            vec![self.model.clone()]
+        } else {
+            self.available_models.clone()
+        }
     }
 
-    async fn import_jsonl(&mut self, path: &Path) -> Result<String, XyDriverError> {
-        self.import_jsonl_calls
-            .lock()
-            .expect("import_jsonl_calls")
-            .push(path.display().to_string());
-        Ok("imported".into())
+    fn thinking_level(&self) -> String {
+        self.thinking_level.clone()
     }
 
-    async fn fork_session(
-        &mut self,
-        entry_id: &str,
-        position: crate::protocol::session::ForkPosition,
-    ) -> Result<String, XyDriverError> {
-        self.fork_calls
-            .lock()
-            .expect("fork_calls")
-            .push((entry_id.to_string(), position));
-        Ok("forked-child".into())
+    async fn cycle_thinking_level(&mut self) -> Result<String, XyDriverError> {
+        if self.thinking_levels.is_empty() {
+            return Err("current model has no thinking levels".into());
+        }
+        let idx = self
+            .thinking_levels
+            .iter()
+            .position(|level| level == &self.thinking_level);
+        let next = match idx {
+            Some(index) => self.thinking_levels[(index + 1) % self.thinking_levels.len()].clone(),
+            None => self
+                .thinking_levels
+                .last()
+                .cloned()
+                .expect("non-empty: checked above"),
+        };
+        self.thinking_level = next.clone();
+        Ok(next)
     }
 
-    async fn switch_session(&mut self, session_id: &str) -> Result<String, XyDriverError> {
-        self.switch_calls
-            .lock()
-            .expect("switch_calls")
-            .push(session_id.to_string());
-        *self.active_session_id.lock().expect("sid") = session_id.to_string();
-        Ok(session_id.into())
-    }
-
-    async fn get_messages(&self) -> Result<Vec<SessionEntry>, XyDriverError> {
-        Ok(self.session_messages.clone())
-    }
-
-    async fn get_session_stats(&self) -> Result<SessionStats, XyDriverError> {
-        self.session_stats
-            .clone()
-            .ok_or_else(|| "scripted: no stats".into())
+    fn session_id(&self) -> Option<String> {
+        Some(self.active_session_id.lock().expect("sid").clone())
     }
 
     async fn estimate_context_tokens(
@@ -691,96 +593,6 @@ impl XyDriver for ScriptedDriver {
 
     fn get_commands(&self) -> Vec<CommandInfo> {
         Vec::new()
-    }
-
-    async fn steer(&mut self, message: &str) -> Result<(), XyDriverError> {
-        self.steer_calls.push(message.to_string());
-        self.steer_queued += 1;
-        Ok(())
-    }
-
-    async fn follow_up(&mut self, message: &str) -> Result<(), XyDriverError> {
-        self.follow_up_calls.push(message.to_string());
-        self.follow_up_queued += 1;
-        Ok(())
-    }
-
-    async fn clear_queue(
-        &mut self,
-        clear_steer: bool,
-        clear_follow_up: bool,
-    ) -> Result<(), XyDriverError> {
-        self.clear_calls.push((clear_steer, clear_follow_up));
-        if clear_steer {
-            self.steer_queued = 0;
-        }
-        if clear_follow_up {
-            self.follow_up_queued = 0;
-        }
-        Ok(())
-    }
-
-    fn queue_stats(&self) -> QueueStats {
-        if self.force_zero_queue_stats.load(Ordering::SeqCst) {
-            return QueueStats::default();
-        }
-        QueueStats {
-            steer_count: self.steer_queued,
-            follow_up_count: self.follow_up_queued,
-        }
-    }
-
-    async fn session_tree(
-        &self,
-        kind: SessionTreeKind,
-    ) -> Result<Vec<SessionTreeNode>, XyDriverError> {
-        match kind {
-            SessionTreeKind::MessageHistory => {
-                self.session_tree_calls.fetch_add(1, Ordering::SeqCst);
-                Ok(self.message_history_tree.clone())
-            }
-            SessionTreeKind::FileBrowser => {
-                Err("scripted: file_browser tree not implemented".into())
-            }
-        }
-    }
-
-    async fn travel_session_tree(
-        &self,
-        kind: SessionTreeKind,
-        entry_id: &str,
-    ) -> Result<SessionTreeTravel, XyDriverError> {
-        match kind {
-            SessionTreeKind::MessageHistory => {
-                self.travel_calls
-                    .lock()
-                    .expect("travel_calls")
-                    .push(entry_id.to_string());
-                if let Some(travel) = self.travel_overrides.get(entry_id) {
-                    return Ok(travel.clone());
-                }
-                plan_message_history_travel(&self.session_messages, entry_id).map_err(Into::into)
-            }
-            SessionTreeKind::FileBrowser => {
-                Err("scripted: file_browser travel not implemented".into())
-            }
-        }
-    }
-
-    async fn append_entry_label(
-        &mut self,
-        target_id: &str,
-        label: Option<&str>,
-    ) -> Result<(), XyDriverError> {
-        let cleaned = label
-            .map(str::trim)
-            .filter(|s| !s.is_empty())
-            .map(str::to_string);
-        self.label_calls
-            .lock()
-            .expect("label_calls")
-            .push((target_id.to_string(), cleaned));
-        Ok(())
     }
 
     fn leaf_entry_id(&self) -> Option<String> {
@@ -802,77 +614,6 @@ impl XyDriver for ScriptedDriver {
             note: format!("debug scene `{canonical}` (scripted)"),
             model: Some(self.model.clone()),
         })
-    }
-
-    async fn list_sessions(&self) -> Result<Vec<SessionListEntry>, XyDriverError> {
-        self.list_sessions_calls.fetch_add(1, Ordering::SeqCst);
-        Ok(self.session_list.lock().expect("session_list").clone())
-    }
-
-    async fn load_session_entries(
-        &self,
-        session_id: &str,
-    ) -> Result<Vec<SessionEntry>, XyDriverError> {
-        let _ = session_id;
-        Ok(self.session_messages.clone())
-    }
-
-    async fn new_session(&mut self) -> Result<String, XyDriverError> {
-        self.new_session_calls.fetch_add(1, Ordering::SeqCst);
-        let sid = format!("new-{}", self.new_session_calls());
-        *self.active_session_id.lock().expect("sid") = sid.clone();
-        self.session_messages.clear();
-        *self.leaf_entry_id.lock().expect("leaf") = None;
-        *self.session_name.lock().expect("session_name") = None;
-        Ok(sid)
-    }
-
-    async fn get_session_name(&self) -> Result<Option<String>, XyDriverError> {
-        Ok(self.session_name.lock().expect("session_name").clone())
-    }
-
-    async fn set_session_name(&mut self, name: &str) -> Result<String, XyDriverError> {
-        let stored = crate::protocol::ports::sanitize_session_display_name(name);
-        self.set_session_name_calls
-            .lock()
-            .expect("set_session_name_calls")
-            .push(name.to_string());
-        *self.session_name.lock().expect("session_name") = Some(stored.clone());
-        Ok(stored)
-    }
-
-    async fn set_session_name_for(
-        &mut self,
-        session_id: &str,
-        name: &str,
-    ) -> Result<String, XyDriverError> {
-        let stored = crate::protocol::ports::sanitize_session_display_name(name);
-        self.set_session_name_for_calls
-            .lock()
-            .expect("set_session_name_for_calls")
-            .push((session_id.to_string(), name.to_string()));
-        if let Some(entry) = self
-            .session_list
-            .lock()
-            .expect("session_list")
-            .iter_mut()
-            .find(|e| e.id == session_id)
-        {
-            entry.name = Some(stored.clone());
-        }
-        Ok(stored)
-    }
-
-    async fn delete_session(&mut self, session_id: &str) -> Result<(), XyDriverError> {
-        self.delete_session_calls
-            .lock()
-            .expect("delete_session_calls")
-            .push(session_id.to_string());
-        self.session_list
-            .lock()
-            .expect("session_list")
-            .retain(|e| e.id != session_id);
-        Ok(())
     }
 
     fn dollar_skill_catalog(&self) -> Vec<(String, String)> {
@@ -1020,6 +761,370 @@ impl XyDriver for ScriptedDriver {
 
     async fn read_clipboard_text(&mut self) -> Result<Option<String>, XyDriverError> {
         Ok(self.clipboard_text.lock().expect("clipboard_text").take())
+    }
+}
+
+impl ScriptedDriver {
+    /// Test-helper: scripted session entries (c2710: no longer a Driver trait method).
+    pub async fn get_messages(&self) -> Result<Vec<SessionEntry>, XyDriverError> {
+        Ok(self.session_messages.clone())
+    }
+
+    /// Test-helper: set thinking level with the same support-list validation as
+    /// the Command executor (c2710).
+    pub async fn set_thinking_level(&mut self, level: String) -> Result<(), XyDriverError> {
+        if !self.thinking_levels.is_empty()
+            && !self
+                .thinking_levels
+                .iter()
+                .any(|supported| supported == &level)
+        {
+            return Err(format!(
+                "thinking level `{}` is not supported by the current model",
+                level
+            )
+            .into());
+        }
+        self.thinking_level = level;
+        Ok(())
+    }
+
+    /// Queue depths (c2710): session read via the Command executor and TUI reads.
+    pub fn queue_stats(&self) -> QueueStats {
+        if self.force_zero_queue_stats.load(Ordering::SeqCst) {
+            return QueueStats::default();
+        }
+        QueueStats {
+            steer_count: self.steer_queued,
+            follow_up_count: self.follow_up_queued,
+        }
+    }
+}
+
+// ── Command executor (c2710): ScriptedDriver records dispatched Commands ────
+#[async_trait]
+impl crate::app::core::dispatch::SessionCommandExecutor for ScriptedDriver {
+    async fn execute_session_command(
+        &mut self,
+        cmd: crate::protocol::Command,
+    ) -> Result<crate::app::core::dispatch::DispatchOutcome, XyDriverError> {
+        use crate::app::core::dispatch::DispatchOutcome;
+        use crate::protocol::Command;
+        match cmd {
+            Command::Abort { .. } => {
+                crate::app::core::driver::XyDriver::abort(self);
+                Ok(DispatchOutcome::Aborted { cancelled: true })
+            }
+            Command::GetState { .. } => Ok(DispatchOutcome::State(
+                crate::app::core::driver::XyDriver::get_state(self),
+            )),
+            Command::GetAvailableModels { .. } => Ok(DispatchOutcome::Models(
+                crate::app::core::driver::XyDriver::available_models(self),
+            )),
+            Command::SetModel { model_id, .. } => {
+                self.model = ModelInfo {
+                    id: model_id.clone(),
+                    display_name: model_id,
+                    thinking: false,
+                    thinking_levels: Vec::new(),
+                    context_window: 8_000,
+                };
+                Ok(DispatchOutcome::Model(self.model.clone()))
+            }
+            Command::CycleModel { .. } => Ok(DispatchOutcome::Model(self.model.clone())),
+            Command::SetThinkingLevel { level, .. } => {
+                if !self.thinking_levels.is_empty()
+                    && !self
+                        .thinking_levels
+                        .iter()
+                        .any(|supported| supported == &level)
+                {
+                    return Err(format!(
+                        "thinking level `{}` is not supported by the current model",
+                        level
+                    )
+                    .into());
+                }
+                self.thinking_level = level.clone();
+                Ok(DispatchOutcome::ThinkingLevel(level))
+            }
+            Command::Bash {
+                command,
+                exclude_from_context,
+                ..
+            } => {
+                // Fresh run: do not inherit a prior abort latch (pi: new AbortController each bang).
+                self.aborted.store(false, Ordering::SeqCst);
+                self.bash_calls
+                    .lock()
+                    .expect("bash_calls")
+                    .push((command.clone(), exclude_from_context));
+                if self.hang_bash_until_abort.load(Ordering::SeqCst) {
+                    while !self.aborted.load(Ordering::SeqCst) {
+                        tokio::time::sleep(Duration::from_millis(20)).await;
+                    }
+                    return Ok(DispatchOutcome::Bash(XyBashResult {
+                        output: String::new(),
+                        exit_code: None,
+                        cancelled: true,
+                        timed_out: false,
+                        truncated: false,
+                        full_output_path: None,
+                    }));
+                }
+                let result = self
+                    .bash_results
+                    .lock()
+                    .expect("bash_results")
+                    .pop_front()
+                    .unwrap_or_else(|| self.default_bash.clone());
+                Ok(DispatchOutcome::Bash(result))
+            }
+            Command::Compact { instructions, .. } => {
+                self.compact_calls
+                    .lock()
+                    .expect("compact_calls")
+                    .push(instructions);
+                Ok(DispatchOutcome::Compacted(false))
+            }
+            Command::GetSessionStats { .. } => {
+                let stats = self
+                    .session_stats
+                    .clone()
+                    .ok_or_else(|| XyDriverError::from("scripted: no stats"))?;
+                Ok(DispatchOutcome::SessionStats(serde_json::json!({
+                    "session_id": stats.session_id,
+                    "user_messages": stats.user_messages,
+                    "assistant_messages": stats.assistant_messages,
+                    "total_messages": stats.total_messages,
+                    "thinking_level": stats.thinking_level,
+                    "model": stats.model.map(|(p, m)| {
+                        serde_json::json!({ "provider": p, "model_id": m })
+                    }),
+                })))
+            }
+            Command::ExportHtml { output_path, .. } => {
+                let s = output_path.unwrap_or_else(|| "export.html".to_string());
+                self.export_html_calls
+                    .lock()
+                    .expect("export_html_calls")
+                    .push(s.clone());
+                Ok(DispatchOutcome::ExportedPath(s))
+            }
+            Command::ExportJsonl { output_path, .. } => {
+                let s = output_path.unwrap_or_else(|| "export.jsonl".to_string());
+                self.export_jsonl_calls
+                    .lock()
+                    .expect("export_jsonl_calls")
+                    .push(s.clone());
+                Ok(DispatchOutcome::ExportedPath(s))
+            }
+            Command::ImportJsonl { input_path, .. } => {
+                self.import_jsonl_calls
+                    .lock()
+                    .expect("import_jsonl_calls")
+                    .push(input_path);
+                Ok(DispatchOutcome::NewSession("imported".into()))
+            }
+            Command::Fork {
+                entry_id, position, ..
+            } => {
+                let pos = match position.as_deref() {
+                    Some("before") => crate::protocol::session::ForkPosition::Before,
+                    _ => crate::protocol::session::ForkPosition::At,
+                };
+                self.fork_calls
+                    .lock()
+                    .expect("fork_calls")
+                    .push((entry_id, pos));
+                Ok(DispatchOutcome::NewSession("forked-child".into()))
+            }
+            Command::SwitchSession { session_path, .. } => {
+                let id = std::path::Path::new(&session_path)
+                    .file_stem()
+                    .and_then(|st| st.to_str())
+                    .unwrap_or(&session_path)
+                    .to_string();
+                self.switch_calls
+                    .lock()
+                    .expect("switch_calls")
+                    .push(id.clone());
+                *self.active_session_id.lock().expect("sid") = id.clone();
+                Ok(DispatchOutcome::SwitchedSession(id))
+            }
+            Command::GetMessages { .. } => {
+                let session_id = self.active_session_id.lock().expect("sid").clone();
+                Ok(DispatchOutcome::Messages {
+                    session_id,
+                    entries: self.session_messages.clone(),
+                })
+            }
+            Command::SessionTree { kind, .. } => match kind {
+                crate::protocol::session::SessionTreeKind::MessageHistory => {
+                    self.session_tree_calls.fetch_add(1, Ordering::SeqCst);
+                    Ok(DispatchOutcome::SessionTree(
+                        self.message_history_tree.clone(),
+                    ))
+                }
+                crate::protocol::session::SessionTreeKind::FileBrowser => {
+                    Err("scripted: file_browser tree not implemented".into())
+                }
+            },
+            Command::TravelSessionTree { kind, entry_id, .. } => match kind {
+                crate::protocol::session::SessionTreeKind::MessageHistory => {
+                    self.travel_calls
+                        .lock()
+                        .expect("travel_calls")
+                        .push(entry_id.clone());
+                    if let Some(travel) = self.travel_overrides.get(&entry_id) {
+                        return Ok(DispatchOutcome::SessionTreeTravel(travel.clone()));
+                    }
+                    let travel = plan_message_history_travel(&self.session_messages, &entry_id)
+                        .map_err(XyDriverError::from)?;
+                    Ok(DispatchOutcome::SessionTreeTravel(travel))
+                }
+                crate::protocol::session::SessionTreeKind::FileBrowser => {
+                    Err("scripted: file_browser travel not implemented".into())
+                }
+            },
+            Command::AppendEntryLabel {
+                target_id, label, ..
+            } => {
+                let cleaned = label
+                    .map(|s| s.trim().to_string())
+                    .filter(|s| !s.is_empty());
+                self.label_calls
+                    .lock()
+                    .expect("label_calls")
+                    .push((target_id, cleaned));
+                Ok(DispatchOutcome::Empty)
+            }
+            Command::ListSessions { .. } => {
+                self.list_sessions_calls.fetch_add(1, Ordering::SeqCst);
+                Ok(DispatchOutcome::Sessions(
+                    self.session_list.lock().expect("session_list").clone(),
+                ))
+            }
+            Command::LoadSessionEntries { .. } => Ok(DispatchOutcome::SessionEntries(
+                self.session_messages.clone(),
+            )),
+            Command::NewSession { .. } => {
+                self.new_session_calls.fetch_add(1, Ordering::SeqCst);
+                let sid = format!("new-{}", self.new_session_calls());
+                *self.active_session_id.lock().expect("sid") = sid.clone();
+                self.session_messages.clear();
+                *self.leaf_entry_id.lock().expect("leaf") = None;
+                *self.session_name.lock().expect("session_name") = None;
+                Ok(DispatchOutcome::NewSession(sid))
+            }
+            Command::GetSessionName { .. } => Ok(DispatchOutcome::SessionName(
+                self.session_name.lock().expect("session_name").clone(),
+            )),
+            Command::SetSessionName { name, .. } => {
+                let stored = crate::protocol::ports::sanitize_session_display_name(&name);
+                self.set_session_name_calls
+                    .lock()
+                    .expect("set_session_name_calls")
+                    .push(name);
+                *self.session_name.lock().expect("session_name") = Some(stored.clone());
+                Ok(DispatchOutcome::SessionName(Some(stored)))
+            }
+            Command::SetSessionNameFor {
+                session_id, name, ..
+            } => {
+                let stored = crate::protocol::ports::sanitize_session_display_name(&name);
+                self.set_session_name_for_calls
+                    .lock()
+                    .expect("set_session_name_for_calls")
+                    .push((session_id.clone(), name));
+                if let Some(entry) = self
+                    .session_list
+                    .lock()
+                    .expect("session_list")
+                    .iter_mut()
+                    .find(|e| e.id == session_id)
+                {
+                    entry.name = Some(stored.clone());
+                }
+                Ok(DispatchOutcome::SessionName(Some(stored)))
+            }
+            Command::DeleteSession { session_id, .. } => {
+                self.delete_session_calls
+                    .lock()
+                    .expect("delete_session_calls")
+                    .push(session_id.clone());
+                self.session_list
+                    .lock()
+                    .expect("session_list")
+                    .retain(|e| e.id != session_id);
+                Ok(DispatchOutcome::Empty)
+            }
+            Command::Reload { .. } => Ok(DispatchOutcome::Reload(
+                crate::app::core::driver::XyDriver::reload_runtime(
+                    self,
+                    &tokio_util::sync::CancellationToken::new(),
+                )
+                .await?,
+            )),
+            Command::LoadedResources { .. } => Ok(DispatchOutcome::LoadedResources(
+                crate::app::core::driver::XyDriver::loaded_resources_snapshot(self).await,
+            )),
+            Command::GetQueueStats { .. } => {
+                let stats = self.queue_stats();
+                Ok(DispatchOutcome::QueueStats {
+                    steer_count: stats.steer_count,
+                    follow_up_count: stats.follow_up_count,
+                })
+            }
+            Command::GetCommands { .. } => Ok(DispatchOutcome::Commands(
+                crate::app::core::driver::XyDriver::get_commands(self),
+            )),
+            Command::Steer { message, .. } => {
+                self.steer_calls.push(message);
+                self.steer_queued += 1;
+                let stats = self.queue_stats();
+                Ok(DispatchOutcome::QueueStats {
+                    steer_count: stats.steer_count,
+                    follow_up_count: stats.follow_up_count,
+                })
+            }
+            Command::FollowUp { message, .. } => {
+                self.follow_up_calls.push(message);
+                self.follow_up_queued += 1;
+                let stats = self.queue_stats();
+                Ok(DispatchOutcome::QueueStats {
+                    steer_count: stats.steer_count,
+                    follow_up_count: stats.follow_up_count,
+                })
+            }
+            Command::ClearQueue {
+                clear_steer,
+                clear_follow_up,
+                ..
+            } => {
+                self.clear_calls.push((clear_steer, clear_follow_up));
+                if clear_steer {
+                    self.steer_queued = 0;
+                }
+                if clear_follow_up {
+                    self.follow_up_queued = 0;
+                }
+                let stats = self.queue_stats();
+                Ok(DispatchOutcome::QueueStats {
+                    steer_count: stats.steer_count,
+                    follow_up_count: stats.follow_up_count,
+                })
+            }
+
+            // These variants are the caller's responsibility (see dispatch module docs).
+            Command::Prompt { .. }
+            | Command::Quit { .. }
+            | Command::Subscribe { .. }
+            | Command::ApproveTool { .. }
+            | Command::AnswerQuestion { .. } => {
+                Err(crate::app::core::dispatch::transport_variant_error(&cmd))
+            }
+        }
     }
 }
 
@@ -4113,8 +4218,8 @@ mod slice_tests {
             "~/x".into(),
             "Fake".into(),
         );
-        let driver = ScriptedDriver::new();
-        refresh_footer_tokens(&mut session, &driver).await;
+        let mut driver = ScriptedDriver::new();
+        refresh_footer_tokens(&mut session, &mut driver).await;
         session.render_now().unwrap();
         let frame = session.ui_root().expect("ui").borrow_mut().render(80);
         let footer = frame.last().expect("footer");
@@ -4151,7 +4256,7 @@ mod slice_tests {
             trailing_tokens: 42,
             last_usage_index: None,
         }));
-        refresh_footer_tokens(&mut session, &driver).await;
+        refresh_footer_tokens(&mut session, &mut driver).await;
         let frame = session.ui_root().expect("ui").borrow_mut().render(80);
         let footer = frame.last().expect("footer");
         assert!(
@@ -4190,7 +4295,7 @@ mod slice_tests {
             trailing_tokens: 0,
             last_usage_index: None,
         }));
-        refresh_footer_tokens(&mut session, &driver).await;
+        refresh_footer_tokens(&mut session, &mut driver).await;
         let frame = session.ui_root().expect("ui").borrow_mut().render(80);
         let footer = frame.last().expect("footer");
         assert!(
@@ -4229,7 +4334,7 @@ mod slice_tests {
             trailing_tokens: 0,
             last_usage_index: None,
         }));
-        refresh_footer_tokens(&mut session, &driver).await;
+        refresh_footer_tokens(&mut session, &mut driver).await;
         let frame = session.ui_root().expect("ui").borrow_mut().render(80);
         let footer = frame.last().expect("footer");
         assert!(
@@ -4257,7 +4362,7 @@ mod slice_tests {
             trailing_tokens: 0,
             last_usage_index: Some(0),
         }));
-        refresh_footer_tokens(&mut session, &driver).await;
+        refresh_footer_tokens(&mut session, &mut driver).await;
         let frame = session.ui_root().expect("ui").borrow_mut().render(80);
         let footer = frame.last().expect("footer");
         assert!(

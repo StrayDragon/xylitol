@@ -1,17 +1,14 @@
 //! [`XyDriver`] — shared application driver protocol.
 
-use std::path::Path;
-
 use async_trait::async_trait;
 
 use crate::protocol::ports::XyBashResult;
-use crate::protocol::session::{SessionEntry, SessionTreeKind, SessionTreeNode, SessionTreeTravel};
 
 use super::XyDriverError;
 use super::types::{
     ClipboardCopyOutcome, CommandInfo, DebugSceneLoad, EventStream, LoadedResourcesSnapshot,
-    ModelInfo, ProjectTrustMode, ProjectTrustPersistReport, QueueStats, RuntimeReloadReport,
-    SessionListEntry, SessionState, SessionStats, XyEvent,
+    ModelInfo, ProjectTrustMode, ProjectTrustPersistReport, RuntimeReloadReport, SessionState,
+    XyEvent,
 };
 
 /// Downlink attachment health (ath42/c2480): drives the fixed-zone grace notice —
@@ -38,7 +35,7 @@ pub enum LinkHealth {
 /// to `kind=NotFound`; `NoActiveSession` flattens to `kind=Message`,
 /// `detail_kind=Session`. Per-method docs below list the failing conditions.
 #[async_trait]
-pub trait XyDriver: Send {
+pub trait XyDriver: crate::app::core::dispatch::SessionCommandExecutor + Send {
     /// Submit a prompt and receive a stream of events.
     async fn run(&mut self, prompt: &str) -> EventStream;
 
@@ -97,27 +94,6 @@ pub trait XyDriver: Send {
     /// All registered models.
     fn available_models(&self) -> Vec<ModelInfo>;
 
-    /// Select a model by id (exact match on `id` or `config.model`).
-    ///
-    /// # Errors
-    ///
-    /// `Err` when `model_id` matches no registered model.
-    async fn select_model(&mut self, model_id: &str) -> Result<ModelInfo, XyDriverError>;
-
-    /// Cycle to the next model in the registry.
-    ///
-    /// # Errors
-    ///
-    /// `Err` when the model registry is empty.
-    async fn cycle_model(&mut self) -> Result<ModelInfo, XyDriverError>;
-
-    /// Set the thinking level.
-    ///
-    /// # Errors
-    ///
-    /// `Err` when the level is not in the current model's support set.
-    async fn set_thinking_level(&mut self, level: String) -> Result<(), XyDriverError>;
-
     /// Current thinking level.
     fn thinking_level(&self) -> String;
 
@@ -144,11 +120,15 @@ pub trait XyDriver: Send {
         }
     }
 
-    /// Execute a bash command (the `Bash` Command variant).
+    /// Execute a bash command with live output streaming (interactive surface).
     ///
-    /// Takes `&self` so the host can `select!` keyboard (Esc → [`Self::abort`])
-    /// while bash is in flight (c665). `chunk_tx` uplinks live output bytes for
-    /// product TUI streaming (c669); pass `None` for non-streaming callers.
+    /// Retained on the trait as an **interactive streaming surface** (c2710):
+    /// `chunk_tx` uplinks live output bytes for the product TUI (c669) and the
+    /// host `select!`s keyboard (Esc → [`Self::abort`]) while bash is in flight
+    /// (c665). The wire session operation is `Command::Bash`, executed through
+    /// the shared `SessionCommandExecutor` path without a local chunk channel;
+    /// this method is the in-process TUI path, not a parallel command-table
+    /// entry.
     ///
     /// # Errors
     ///
@@ -160,67 +140,6 @@ pub trait XyDriver: Send {
         exclude_from_context: bool,
         chunk_tx: Option<tokio::sync::mpsc::Sender<Vec<u8>>>,
     ) -> Result<XyBashResult, XyDriverError>;
-
-    /// Force compact (manual). Optional `instructions` focus the summary (c1670).
-    ///
-    /// # Errors
-    ///
-    /// `Err` when no session is bound or compaction fails (store IO / session /
-    /// policy).
-    async fn compact(&mut self, instructions: Option<String>) -> Result<bool, XyDriverError>;
-
-    /// Export the session to HTML at `path`.
-    ///
-    /// # Errors
-    ///
-    /// `Err` when the session is missing or the export write / render fails.
-    async fn export_html(&mut self, path: &Path) -> Result<String, XyDriverError>;
-
-    /// Export the session to JSONL at `path`.
-    ///
-    /// # Errors
-    ///
-    /// `Err` when the session is missing or the export write fails.
-    async fn export_jsonl(&mut self, path: &Path) -> Result<String, XyDriverError>;
-
-    /// Import a JSONL file.
-    ///
-    /// # Errors
-    ///
-    /// `Err` when the file is unreadable or not valid session JSONL.
-    async fn import_jsonl(&mut self, path: &Path) -> Result<String, XyDriverError>;
-
-    /// Fork the current session at `entry_id`.
-    ///
-    /// # Errors
-    ///
-    /// `Err` when `entry_id` is not on the current branch or the store cannot fork.
-    async fn fork_session(
-        &mut self,
-        entry_id: &str,
-        position: crate::protocol::session::ForkPosition,
-    ) -> Result<String, XyDriverError>;
-
-    /// Switch to an existing session id. Validates existence first.
-    ///
-    /// # Errors
-    ///
-    /// `Err` when `session_id` does not exist in the store.
-    async fn switch_session(&mut self, session_id: &str) -> Result<String, XyDriverError>;
-
-    /// Load the message entries of the current session.
-    ///
-    /// # Errors
-    ///
-    /// `Err` when no session is bound or the store read fails.
-    async fn get_messages(&self) -> Result<Vec<SessionEntry>, XyDriverError>;
-
-    /// Load session statistics.
-    ///
-    /// # Errors
-    ///
-    /// `Err` when no session is bound or the store read fails.
-    async fn get_session_stats(&self) -> Result<SessionStats, XyDriverError>;
 
     /// Read-only context token estimate for the current leaf/path (c1030 / c1035).
     ///
@@ -238,74 +157,6 @@ pub trait XyDriver: Send {
     /// List available slash commands.
     fn get_commands(&self) -> Vec<CommandInfo>;
 
-    /// Enqueue a steering message for the active (or next) run.
-    ///
-    /// # Errors
-    ///
-    /// `Err` when the steering queue is unavailable (remote / stub drivers).
-    async fn steer(&mut self, message: &str) -> Result<(), XyDriverError>;
-
-    /// Enqueue a follow-up message delivered when the run would otherwise stop.
-    ///
-    /// # Errors
-    ///
-    /// `Err` when the follow-up queue is unavailable (remote / stub drivers).
-    async fn follow_up(&mut self, message: &str) -> Result<(), XyDriverError>;
-
-    /// Clear one or both pending-message queues.
-    ///
-    /// # Errors
-    ///
-    /// `Err` when the queues are unavailable (remote / stub drivers).
-    async fn clear_queue(
-        &mut self,
-        clear_steer: bool,
-        clear_follow_up: bool,
-    ) -> Result<(), XyDriverError>;
-
-    /// Queue depths for steer / follow-up.
-    fn queue_stats(&self) -> QueueStats;
-
-    /// Read a session tree for the given kind.
-    ///
-    /// XyDriver-only seam (not wired through `protocol::Command`); REST calls this
-    /// directly for MessageHistory tree endpoints.
-    ///
-    /// # Errors
-    ///
-    /// `Err` when the store read fails or the tree kind is unimplemented.
-    async fn session_tree(
-        &self,
-        kind: SessionTreeKind,
-    ) -> Result<Vec<SessionTreeNode>, XyDriverError>;
-
-    /// Travel within a session tree kind and update the active leaf.
-    ///
-    /// XyDriver-only seam (not wired through `protocol::Command`); REST travel
-    /// endpoints call this directly.
-    ///
-    /// # Errors
-    ///
-    /// `Err` when `entry_id` is not on the current branch or the tree kind is
-    /// unimplemented.
-    async fn travel_session_tree(
-        &self,
-        kind: SessionTreeKind,
-        entry_id: &str,
-    ) -> Result<SessionTreeTravel, XyDriverError>;
-
-    /// Persist a tree annotation (`Label` entry) for `target_id` (c690).
-    /// `label: None` or empty clears the annotation.
-    ///
-    /// # Errors
-    ///
-    /// `Err` when `target_id` is not found on the current branch.
-    async fn append_entry_label(
-        &mut self,
-        target_id: &str,
-        label: Option<&str>,
-    ) -> Result<(), XyDriverError>;
-
     /// Active MessageHistory leaf entry id for the current session (c700/c1005 `/session-fork`).
     fn leaf_entry_id(&self) -> Option<String>;
 
@@ -320,69 +171,6 @@ pub trait XyDriver: Send {
     /// `Err` when the named scene is unknown.
     async fn load_debug_scene(&mut self, scene: &str) -> Result<DebugSceneLoad, XyDriverError>;
 
-    /// List resumable sessions for `/session-resume` (c1015).
-    ///
-    /// XyDriver-only seam (not `protocol::Command`); sorted mtime desc by store.
-    /// TUI MUST NOT read the sessions directory directly.
-    ///
-    /// # Errors
-    ///
-    /// `Err` on store listing failure.
-    async fn list_sessions(&self) -> Result<Vec<SessionListEntry>, XyDriverError>;
-
-    /// Load raw session entries for any session id (c1560 editor history seed).
-    ///
-    /// TUI MUST NOT read the sessions directory directly.
-    ///
-    /// # Errors
-    ///
-    /// `Err` when `session_id` does not exist (`NotFound`).
-    async fn load_session_entries(
-        &self,
-        session_id: &str,
-    ) -> Result<Vec<SessionEntry>, XyDriverError>;
-
-    /// Create an empty session and make it current (`/session-new`, c1020).
-    ///
-    /// XyDriver-only seam (not `protocol::Command`).
-    ///
-    /// # Errors
-    ///
-    /// `Err` when the store cannot create the session.
-    async fn new_session(&mut self) -> Result<String, XyDriverError>;
-
-    /// Current session display name (`/session-name`, c1020).
-    ///
-    /// # Errors
-    ///
-    /// `Err` when no session is bound or the store read fails.
-    async fn get_session_name(&self) -> Result<Option<String>, XyDriverError>;
-
-    /// Set current session display name; returns sanitized stored name (c1020).
-    ///
-    /// # Errors
-    ///
-    /// `Err` when no session is bound or the store write fails.
-    async fn set_session_name(&mut self, name: &str) -> Result<String, XyDriverError>;
-
-    /// Set display name for any session (resume panel rename; c1065).
-    ///
-    /// # Errors
-    ///
-    /// `Err` when `session_id` does not exist or the store write fails.
-    async fn set_session_name_for(
-        &mut self,
-        session_id: &str,
-        name: &str,
-    ) -> Result<String, XyDriverError>;
-
-    /// Delete a persisted session (resume panel; c1065). MUST NOT delete active session.
-    ///
-    /// # Errors
-    ///
-    /// `Err` when `session_id` is the active session (refused) or missing / IO.
-    async fn delete_session(&mut self, session_id: &str) -> Result<(), XyDriverError>;
-
     /// `(name, description)` for product `$skill` completion (c1130).
     ///
     /// Default empty (remote / scripted drivers). In-process uses Trust-filtered
@@ -394,7 +182,8 @@ pub trait XyDriver: Send {
     /// Cloneable session store for spawn-safe listing (editor ↑/↓ history seed).
     ///
     /// In-process returns the shared store; remote / scripted drivers return `None`
-    /// (caller falls back to awaiting [`Self::list_sessions`] on the host task).
+    /// (caller falls back to awaiting a `Command::ListSessions` round-trip on
+    /// the host task).
     fn session_store(&self) -> Option<std::sync::Arc<dyn crate::protocol::ports::XySessionStore>> {
         None
     }

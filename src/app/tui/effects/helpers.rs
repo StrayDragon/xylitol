@@ -58,25 +58,48 @@ pub(super) async fn switch_and_rebuild_transcript<T: Terminal>(
         SwitchRebuildKind::Import => "import",
         SwitchRebuildKind::Resume => "resume",
     };
-    match driver.switch_session(session_id).await {
-        Ok(_) => match driver.get_messages().await {
-            Ok(entries) => match kind {
-                SwitchRebuildKind::Import => session.apply_import_session(session_id, entries),
-                SwitchRebuildKind::Resume => session.apply_resume_session(session_id, entries),
-            },
-            Err(e) => {
-                note_driver_err(
-                    session,
-                    &format!("tui.{label}.get_messages"),
-                    &e,
-                    format!("{label}: get_messages failed: {e}"),
-                );
-                match kind {
-                    SwitchRebuildKind::Import => session.close_import_confirm(),
-                    SwitchRebuildKind::Resume => session.close_session_resume_slot(),
+    match crate::app::core::dispatch::dispatch(
+        driver,
+        crate::protocol::Command::SwitchSession {
+            session_path: session_id.to_string(),
+        },
+    )
+    .await
+    {
+        Ok(crate::app::core::dispatch::DispatchOutcome::SwitchedSession(_))
+        | Ok(crate::app::core::dispatch::DispatchOutcome::NewSession(_)) => {
+            match super::session_entries(driver).await {
+                Ok(entries) => match kind {
+                    SwitchRebuildKind::Import => session.apply_import_session(session_id, entries),
+                    SwitchRebuildKind::Resume => session.apply_resume_session(session_id, entries),
+                },
+                Err(e) => {
+                    note_driver_err(
+                        session,
+                        &format!("tui.{label}.get_messages"),
+                        &e,
+                        format!("{label}: get_messages failed: {e}"),
+                    );
+                    match kind {
+                        SwitchRebuildKind::Import => session.close_import_confirm(),
+                        SwitchRebuildKind::Resume => session.close_session_resume_slot(),
+                    }
                 }
             }
-        },
+        }
+        Ok(other) => {
+            let e = outcome_error(&format!("tui.{label}.switch_session"), &other);
+            note_driver_err(
+                session,
+                &format!("tui.{label}.switch_session"),
+                &e,
+                format!("{label}: switch failed: {e}"),
+            );
+            match kind {
+                SwitchRebuildKind::Import => session.close_import_confirm(),
+                SwitchRebuildKind::Resume => session.close_session_resume_slot(),
+            }
+        }
         Err(e) => {
             note_driver_err(
                 session,
@@ -93,6 +116,16 @@ pub(super) async fn switch_and_rebuild_transcript<T: Terminal>(
     // Resume/import clears freeze + may restart MCP — refresh cue / /mcp cache now.
     session.refresh_loaded_resources(driver).await;
     session.set_mcp_blocks_agent(driver.mcp_blocks_agent());
+}
+
+/// Turn an unexpected `DispatchOutcome` into a driver error for UI notices (c2710).
+pub(super) fn outcome_error(
+    op: &str,
+    outcome: &crate::app::core::dispatch::DispatchOutcome,
+) -> crate::app::core::driver::XyDriverError {
+    crate::app::core::driver::XyDriverError::invalid_input(format!(
+        "{op}: unexpected outcome {outcome:?}"
+    ))
 }
 
 /// Pi-aligned session info/stats text block for `/session` (c1015).

@@ -30,10 +30,28 @@ pub(super) async fn rename<T: Terminal>(session: &mut HostSession<T>, driver: &m
     if session.is_busy() {
         session.push_toast_notice(BUSY_SESSION_SWITCH_NOTICE);
     } else {
-        match driver.set_session_name_for(&id, &name).await {
-            Ok(stored) => {
+        match crate::app::core::dispatch::dispatch(
+            driver,
+            crate::protocol::Command::SetSessionNameFor {
+                session_id: id.clone(),
+                name: name.clone(),
+            },
+        )
+        .await
+        {
+            Ok(crate::app::core::dispatch::DispatchOutcome::SessionName(Some(stored))) => {
                 session.session_resume_apply_rename(&id, &stored);
                 session.push_scroll_notice(format!("Session renamed: {stored}"));
+            }
+            Ok(other) => {
+                let e = super::super::helpers::outcome_error("tui.set_session_name_for", &other);
+                note_driver_err(
+                    session,
+                    "tui.set_session_name_for",
+                    &e,
+                    format!("rename failed: {e}"),
+                );
+                session.session_resume_set_status(format!("rename failed: {e}"));
             }
             Err(e) => {
                 note_driver_err(
@@ -59,8 +77,15 @@ pub(super) async fn delete<T: Terminal>(session: &mut HostSession<T>, driver: &m
         session.session_resume_set_status("Cannot delete the active session");
         session.push_scroll_notice("Cannot delete the active session");
     } else {
-        match driver.delete_session(&id).await {
-            Ok(()) => {
+        match crate::app::core::dispatch::dispatch(
+            driver,
+            crate::protocol::Command::DeleteSession {
+                session_id: id.clone(),
+            },
+        )
+        .await
+        {
+            Ok(_) => {
                 session.session_resume_remove_entry(&id);
                 session.push_scroll_notice(format!("Deleted session {id}"));
             }

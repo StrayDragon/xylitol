@@ -9,17 +9,40 @@ use crate::protocol::session::SessionTreeKind;
 
 use super::super::helpers::{deepest_tree_id, note_driver_err};
 
+/// Turn an unexpected `DispatchOutcome` into a driver error for UI notices (c2710).
+pub(super) fn outcome_error(
+    op: &str,
+    outcome: &crate::app::core::dispatch::DispatchOutcome,
+) -> crate::app::core::driver::XyDriverError {
+    crate::app::core::driver::XyDriverError::invalid_input(format!(
+        "{op}: unexpected outcome {outcome:?}"
+    ))
+}
+
 pub(super) async fn open<T: Terminal>(session: &mut HostSession<T>, driver: &mut dyn XyDriver) {
     if !session.take_pending_session_tree_open() {
         return;
     }
-    log::info!(target: "xylitol::tui", "XyDriver::session_tree(MessageHistory)");
-    match driver.session_tree(SessionTreeKind::MessageHistory).await {
-        Ok(nodes) => {
+    log::info!(target: "xylitol::tui", "Command::SessionTree(MessageHistory)");
+    match crate::app::core::dispatch::dispatch(
+        driver,
+        crate::protocol::Command::SessionTree {
+            kind: SessionTreeKind::MessageHistory,
+        },
+    )
+    .await
+    {
+        Ok(crate::app::core::dispatch::DispatchOutcome::SessionTree(nodes)) => {
             let mapped = map_session_tree_nodes(&nodes);
             let active = deepest_tree_id(&mapped);
             session.mount_session_tree(mapped, active);
         }
+        Ok(other) => note_driver_err(
+            session,
+            "tui.session_tree",
+            &outcome_error("tui.session_tree", &other),
+            format!("session tree failed: {other:?}"),
+        ),
         Err(e) => note_driver_err(
             session,
             "tui.session_tree",
@@ -34,26 +57,39 @@ pub(super) async fn travel<T: Terminal>(session: &mut HostSession<T>, driver: &m
     let Some(entry_id) = session.take_pending_session_tree_travel() else {
         return;
     };
-    log::info!(target: "xylitol::tui", "XyDriver::travel_session_tree(MessageHistory) entry_id={}", entry_id);
-    match driver
-        .travel_session_tree(SessionTreeKind::MessageHistory, &entry_id)
-        .await
-    {
-        Ok(travel) => match driver.get_messages().await {
-            Ok(entries) => {
-                session.apply_session_tree_travel(travel, entries);
-                #[cfg(test)]
-                super::super::refresh_footer_tokens(session, driver).await;
-                #[cfg(not(test))]
-                super::super::kick_footer_token_refresh(session, driver).await;
-            }
-            Err(e) => note_driver_err(
-                session,
-                "tui.travel.get_messages",
-                &e,
-                format!("travel: get_messages failed: {e}"),
-            ),
+    log::info!(target: "xylitol::tui", "Command::TravelSessionTree(MessageHistory) entry_id={}", entry_id);
+    match crate::app::core::dispatch::dispatch(
+        driver,
+        crate::protocol::Command::TravelSessionTree {
+            kind: SessionTreeKind::MessageHistory,
+            entry_id: entry_id.clone(),
         },
+    )
+    .await
+    {
+        Ok(crate::app::core::dispatch::DispatchOutcome::SessionTreeTravel(travel)) => {
+            match super::super::session_entries(driver).await {
+                Ok(entries) => {
+                    session.apply_session_tree_travel(travel, entries);
+                    #[cfg(test)]
+                    super::super::refresh_footer_tokens(session, driver).await;
+                    #[cfg(not(test))]
+                    super::super::kick_footer_token_refresh(session, driver).await;
+                }
+                Err(e) => note_driver_err(
+                    session,
+                    "tui.travel.get_messages",
+                    &e,
+                    format!("travel: get_messages failed: {e}"),
+                ),
+            }
+        }
+        Ok(other) => note_driver_err(
+            session,
+            "tui.travel_session_tree",
+            &outcome_error("tui.travel_session_tree", &other),
+            format!("travel failed: {other:?}"),
+        ),
         Err(e) => note_driver_err(
             session,
             "tui.travel_session_tree",
@@ -72,8 +108,8 @@ pub(super) async fn fork<T: Terminal>(
 ) -> bool {
     use crate::protocol::session::{ForkPosition, is_user_message, message_text};
 
-    log::info!(target: "xylitol::tui", "XyDriver::fork_session + switch_session entry_id={}", entry_id);
-    let parent_entries = match driver.get_messages().await {
+    log::info!(target: "xylitol::tui", "Command::Fork + SwitchSession entry_id={}", entry_id);
+    let parent_entries = match super::super::session_entries(driver).await {
         Ok(e) => e,
         Err(e) => {
             note_driver_err(
@@ -108,26 +144,53 @@ pub(super) async fn fork<T: Terminal>(
             } else {
                 (ForkPosition::At, None)
             };
-            match driver.fork_session(&entry_id, position).await {
-                Ok(child_id) => match driver.switch_session(&child_id).await {
-                    Ok(_) => match driver.get_messages().await {
-                        Ok(entries) => {
-                            session.apply_session_tree_fork(&child_id, entries, prefill);
-                        }
+            let pos_str = match position {
+                ForkPosition::Before => "before",
+                ForkPosition::At => "at",
+            };
+            let forked = crate::app::core::dispatch::dispatch(
+                driver,
+                crate::protocol::Command::Fork {
+                    entry_id: entry_id.clone(),
+                    position: Some(pos_str.to_string()),
+                },
+            )
+            .await;
+            match forked {
+                Ok(crate::app::core::dispatch::DispatchOutcome::NewSession(child_id)) => {
+                    match crate::app::core::dispatch::dispatch(
+                        driver,
+                        crate::protocol::Command::SwitchSession {
+                            session_path: child_id.clone(),
+                        },
+                    )
+                    .await
+                    {
+                        Ok(_) => match super::super::session_entries(driver).await {
+                            Ok(entries) => {
+                                session.apply_session_tree_fork(&child_id, entries, prefill);
+                            }
+                            Err(e) => note_driver_err(
+                                session,
+                                "tui.fork.get_messages_after",
+                                &e,
+                                format!("fork: get_messages failed: {e}"),
+                            ),
+                        },
                         Err(e) => note_driver_err(
                             session,
-                            "tui.fork.get_messages_after",
+                            "tui.fork.switch_session",
                             &e,
-                            format!("fork: get_messages failed: {e}"),
+                            format!("switch after fork failed: {e}"),
                         ),
-                    },
-                    Err(e) => note_driver_err(
-                        session,
-                        "tui.fork.switch_session",
-                        &e,
-                        format!("switch after fork failed: {e}"),
-                    ),
-                },
+                    }
+                }
+                Ok(other) => note_driver_err(
+                    session,
+                    "tui.fork_session",
+                    &outcome_error("tui.fork_session", &other),
+                    format!("fork failed: {other:?}"),
+                ),
                 Err(e) => {
                     note_driver_err(session, "tui.fork_session", &e, format!("fork failed: {e}"))
                 }
@@ -142,9 +205,17 @@ pub(super) async fn label<T: Terminal>(session: &mut HostSession<T>, driver: &mu
     let Some((entry_id, label)) = session.take_pending_session_tree_label() else {
         return;
     };
-    log::info!(target: "xylitol::tui", "XyDriver::append_entry_label entry_id={}", entry_id);
-    match driver.append_entry_label(&entry_id, label.as_deref()).await {
-        Ok(()) => session.apply_session_tree_label(&entry_id, label),
+    log::info!(target: "xylitol::tui", "Command::AppendEntryLabel entry_id={}", entry_id);
+    match crate::app::core::dispatch::dispatch(
+        driver,
+        crate::protocol::Command::AppendEntryLabel {
+            target_id: entry_id.clone(),
+            label: label.clone(),
+        },
+    )
+    .await
+    {
+        Ok(_) => session.apply_session_tree_label(&entry_id, label),
         Err(e) => note_driver_err(
             session,
             "tui.append_entry_label",

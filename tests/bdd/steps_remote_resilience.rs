@@ -382,7 +382,14 @@ async fn g_stale_conn(resilience_bdd: &ResilienceBdd) {
 #[when("触发重订或换会话产生新代循环后旧代连接迟到推入事件")]
 async fn w_stale_late_frame(resilience_bdd: &ResilienceBdd) {
     let mut rig = take_rig(resilience_bdd);
-    rig.driver.switch_session("s-res-2").await.expect("switch");
+    crate::app::core::dispatch::dispatch(
+        &mut rig.driver,
+        crate::protocol::Command::SwitchSession {
+            session_path: "s-res-2".into(),
+        },
+    )
+    .await
+    .expect("switch");
     wait_for(
         || rig.host.sender_count() >= 2,
         Duration::from_secs(2),

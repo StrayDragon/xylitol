@@ -120,8 +120,15 @@ where
     }
     session.end_bash_exec();
     if aborted_during_bash {
-        let _ = driver.clear_queue(true, false).await;
-        let stats = driver.queue_stats();
+        let _ = crate::app::core::dispatch::dispatch(
+            driver,
+            crate::protocol::Command::ClearQueue {
+                clear_steer: true,
+                clear_follow_up: false,
+            },
+        )
+        .await;
+        let stats = super::queue_stats(driver).await;
         session.set_queue_badge(stats.steer_count, stats.follow_up_count);
     }
     let _ = session.render_now();

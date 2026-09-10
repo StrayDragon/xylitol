@@ -1187,92 +1187,117 @@ async fn dispatch_session_unary(
     }
 
     if is_writer_method(method) {
-        let lease = match WriterLease::acquire(host, slot, workspace, presented).await {
-            Ok(l) => l,
-            Err(e) => return e,
-        };
-        if slot.run_inflight.load(Ordering::SeqCst)
-            && matches!(method, "set_model" | "cycle_model" | "set_thinking_level")
-        {
-            return defer_runtime_setting(slot, method, &payload, &lease.token).await;
-        }
-        // Export over the wire stages to a unique Host-side temp file; the
-        // content is read back into the response and the TUI writes its own
-        // local copy (D4: the file lands on the machine that asked for it).
-        let staged_export = matches!(method, "export_html" | "export_jsonl")
-            && payload.get("output_path").is_none()
-            && payload.get("path").is_none();
-        // Import over the wire stages the pushed content symmetrically
-        // (sr-imp1): the client reads its local file and sends `content`;
-        // the Host lands it on a unique temp input path, dispatches, and
-        // cleans up afterwards.
-        let staged_import = method == METHOD_IMPORT_JSONL
-            && payload.get("input_path").is_none()
-            && payload.get("path").is_none()
-            && payload.get("content").is_some();
-        let import_temp = if staged_import {
-            let temp =
-                std::env::temp_dir().join(format!("xylitol-import-{}.jsonl", uuid::Uuid::new_v4()));
-            if let Err(e) = std::fs::write(&temp, payload["content"].as_str().unwrap_or_default()) {
-                return RpcResult::error("internal_error", format!("stage import write: {e}"));
-            }
-            Some(temp)
-        } else {
-            None
-        };
-        let mut payload = payload;
-        if staged_export {
-            let ext = if method == METHOD_EXPORT_JSONL {
-                "jsonl"
-            } else {
-                "html"
-            };
-            payload["output_path"] = json!(
-                std::env::temp_dir().join(format!("xylitol-export-{}.{ext}", uuid::Uuid::new_v4()))
-            );
-        }
-        if let Some(temp) = &import_temp {
-            payload["input_path"] = json!(temp);
-        }
-        let cmd = match parse_command(method, &payload) {
-            Ok(c) => c,
-            Err(e) => return RpcResult::error("invalid_input", e),
-        };
-        let mut g = slot.driver.lock().await;
-        let Some(driver) = g.as_mut() else {
-            return RpcResult::error("unavailable", "no writer engine");
-        };
-        let result = match dispatch(driver, cmd).await {
-            Ok(outcome) => {
-                let mut value = outcome_to_value(outcome);
-                if staged_export
-                    && let Some(p) = value
-                        .get("path")
-                        .and_then(Value::as_str)
-                        .map(std::path::PathBuf::from)
-                {
-                    match std::fs::read_to_string(&p) {
-                        Ok(content) => {
-                            value["content"] = Value::String(content);
-                        }
-                        Err(e) => log::warn!(
-                            target: "xylitol::host",
-                            "export stage read {}: {e}",
-                            p.display()
-                        ),
-                    }
-                    let _ = std::fs::remove_file(&p);
-                }
-                lease.seal(RpcResult::ok_value(value))
-            }
-            Err(e) => lease.seal(rpc_err(e)),
-        };
-        if let Some(temp) = import_temp {
-            let _ = std::fs::remove_file(temp);
-        }
-        return result;
+        return dispatch_writer_unary(host, slot, method, payload, presented, workspace).await;
     }
 
+    dispatch_readonly_unary(host, slot, session_id, method, payload, workspace).await
+}
+
+/// Writer-method unary: lease + inflight deferral + wire staging + shared dispatch.
+///
+/// Split out of [`dispatch_session_unary`] (c2710) so the entry point stays a
+/// thin router (special paths → writer → reader).
+async fn dispatch_writer_unary(
+    host: &Arc<HostState>,
+    slot: &Arc<SessionSlot>,
+    method: &str,
+    payload: Value,
+    presented: Option<&str>,
+    workspace: &Path,
+) -> RpcResult {
+    let lease = match WriterLease::acquire(host, slot, workspace, presented).await {
+        Ok(l) => l,
+        Err(e) => return e,
+    };
+    if slot.run_inflight.load(Ordering::SeqCst)
+        && matches!(method, "set_model" | "cycle_model" | "set_thinking_level")
+    {
+        return defer_runtime_setting(slot, method, &payload, &lease.token).await;
+    }
+    // Export over the wire stages to a unique Host-side temp file; the
+    // content is read back into the response and the TUI writes its own
+    // local copy (D4: the file lands on the machine that asked for it).
+    let staged_export =
+        matches!(method, "export_html" | "export_jsonl") && payload.get("output_path").is_none();
+    // Import over the wire stages the pushed content symmetrically
+    // (sr-imp1): the client reads its local file and sends `content`;
+    // the Host lands it on a unique temp input path, dispatches, and
+    // cleans up afterwards.
+    let staged_import = method == METHOD_IMPORT_JSONL
+        && payload.get("input_path").is_none()
+        && payload.get("content").is_some();
+    let import_temp = if staged_import {
+        let temp =
+            std::env::temp_dir().join(format!("xylitol-import-{}.jsonl", uuid::Uuid::new_v4()));
+        if let Err(e) = std::fs::write(&temp, payload["content"].as_str().unwrap_or_default()) {
+            return RpcResult::error("internal_error", format!("stage import write: {e}"));
+        }
+        Some(temp)
+    } else {
+        None
+    };
+    let mut payload = payload;
+    if staged_export {
+        let ext = if method == METHOD_EXPORT_JSONL {
+            "jsonl"
+        } else {
+            "html"
+        };
+        payload["output_path"] = json!(
+            std::env::temp_dir().join(format!("xylitol-export-{}.{ext}", uuid::Uuid::new_v4()))
+        );
+    }
+    if let Some(temp) = &import_temp {
+        payload["input_path"] = json!(temp);
+    }
+    let cmd = match parse_command(method, &payload) {
+        Ok(c) => c,
+        Err(e) => return RpcResult::error("invalid_input", e),
+    };
+    let mut g = slot.driver.lock().await;
+    let Some(driver) = g.as_mut() else {
+        return RpcResult::error("unavailable", "no writer engine");
+    };
+    let result = match dispatch(driver, cmd).await {
+        Ok(outcome) => {
+            let mut value = outcome_to_value(outcome);
+            if staged_export
+                && let Some(p) = value
+                    .get("path")
+                    .and_then(Value::as_str)
+                    .map(std::path::PathBuf::from)
+            {
+                match std::fs::read_to_string(&p) {
+                    Ok(content) => {
+                        value["content"] = Value::String(content);
+                    }
+                    Err(e) => log::warn!(
+                        target: "xylitol::host",
+                        "export stage read {}: {e}",
+                        p.display()
+                    ),
+                }
+                let _ = std::fs::remove_file(&p);
+            }
+            lease.seal(RpcResult::ok_value(value))
+        }
+        Err(e) => lease.seal(rpc_err(e)),
+    };
+    if let Some(temp) = import_temp {
+        let _ = std::fs::remove_file(temp);
+    }
+    result
+}
+
+/// Read-only unary: cache/快速 paths + reader-driver materialization + shared dispatch.
+async fn dispatch_readonly_unary(
+    host: &Arc<HostState>,
+    slot: &Arc<SessionSlot>,
+    session_id: &str,
+    method: &str,
+    payload: Value,
+    workspace: &Path,
+) -> RpcResult {
     if method == METHOD_GET_AVAILABLE_MODELS && slot.driver.lock().await.is_none() {
         let models: Vec<Value> = host
             .ports

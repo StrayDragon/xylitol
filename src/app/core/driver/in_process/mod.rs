@@ -12,12 +12,10 @@ use crate::app::core::bang_exec::BangExecHandler;
 use crate::app::core::session_export::SessionExporter;
 use crate::protocol::error::XySessionError;
 use crate::protocol::ports::{XyBashResult, XySessionStore};
-use crate::protocol::session::{SessionEntry, SessionTreeKind, SessionTreeNode, SessionTreeTravel};
 
 use super::types::{
     ClipboardCopyOutcome, CommandInfo, DebugSceneLoad, EventStream, LoadedResourcesSnapshot,
-    ModelInfo, ProjectTrustMode, ProjectTrustPersistReport, RuntimeReloadReport, SessionListEntry,
-    SessionStats,
+    ModelInfo, ProjectTrustMode, ProjectTrustPersistReport, RuntimeReloadReport,
 };
 pub(super) use super::{XyDriver, XyDriverError, types};
 
@@ -333,70 +331,6 @@ impl XyDriver for XyInProcessDriver {
             .collect()
     }
 
-    async fn select_model(&mut self, model_id: &str) -> Result<ModelInfo, XyDriverError> {
-        // Prefer registry id; only use unique upstream `config.model` as alias.
-        let registry = self.agent.model_registry();
-        let found = registry
-            .list()
-            .iter()
-            .find(|m| m.id == model_id)
-            .map(|m| m.id.clone())
-            .or_else(|| {
-                let hits: Vec<_> = registry
-                    .list()
-                    .iter()
-                    .filter(|m| m.config.model == model_id)
-                    .collect();
-                match hits.as_slice() {
-                    [only] => Some(only.id.clone()),
-                    _ => None,
-                }
-            })
-            .ok_or_else(|| XyDriverError::not_found(format!("model not found: {model_id}")))?;
-        self.agent
-            .select_model(&found)
-            .await
-            .map_err(XyDriverError::from)?;
-        // Re-read the resolved model to return authoritative info.
-        Ok(self
-            .agent
-            .current_model()
-            .map(|m| ModelInfo::from(&m))
-            .unwrap_or_else(|| ModelInfo {
-                id: found.clone(),
-                display_name: found,
-                thinking: true,
-                thinking_levels: Vec::new(),
-                context_window: 0,
-            }))
-    }
-
-    async fn cycle_model(&mut self) -> Result<ModelInfo, XyDriverError> {
-        let list = self.agent.model_registry().list().to_vec();
-        if list.is_empty() {
-            return Err(XyDriverError::not_found("no models available"));
-        }
-        let current_id = self.agent.current_model().map(|m| m.id.clone());
-        let current_idx = current_id
-            .as_ref()
-            .and_then(|cur| list.iter().position(|m| m.id == *cur))
-            .unwrap_or(0);
-        let next_idx = (current_idx + 1) % list.len();
-        let next_id = list[next_idx].id.clone();
-        self.agent
-            .select_model_with_source(&next_id, "cycle")
-            .await
-            .map_err(XyDriverError::from)?;
-        Ok(ModelInfo::from(&list[next_idx]))
-    }
-
-    async fn set_thinking_level(&mut self, level: String) -> Result<(), XyDriverError> {
-        self.agent
-            .set_thinking_level(level)
-            .await
-            .map_err(XyDriverError::from)
-    }
-
     fn thinking_level(&self) -> String {
         self.agent.thinking_level()
     }
@@ -437,57 +371,6 @@ impl XyDriver for XyInProcessDriver {
             .map_err(XyDriverError::from)
     }
 
-    async fn compact(&mut self, instructions: Option<String>) -> Result<bool, XyDriverError> {
-        // Force path (c1640 / pi compact) — MUST NOT use maybe_auto_compact.
-        self.agent
-            .force_compact(instructions)
-            .await
-            .map(|()| true)
-            .map_err(XyDriverError::from)
-    }
-
-    async fn export_html(&mut self, path: &Path) -> Result<String, XyDriverError> {
-        let sid = require_active_session(&self.agent)?.to_string();
-        self.exporter
-            .export_to_html(self.store.as_ref(), &sid, path)
-            .await?;
-        Ok(path.to_string_lossy().into_owned())
-    }
-
-    async fn export_jsonl(&mut self, path: &Path) -> Result<String, XyDriverError> {
-        let sid = require_active_session(&self.agent)?.to_string();
-        self.exporter
-            .export_to_jsonl(self.store.as_ref(), &sid, path)
-            .await?;
-        Ok(path.to_string_lossy().into_owned())
-    }
-
-    async fn import_jsonl(&mut self, path: &Path) -> Result<String, XyDriverError> {
-        self.exporter
-            .import_from_jsonl(self.store.as_ref(), path)
-            .await
-    }
-
-    async fn fork_session(
-        &mut self,
-        entry_id: &str,
-        position: crate::protocol::session::ForkPosition,
-    ) -> Result<String, XyDriverError> {
-        XyInProcessDriver::fork_session(self, entry_id, position).await
-    }
-
-    async fn switch_session(&mut self, session_id: &str) -> Result<String, XyDriverError> {
-        XyInProcessDriver::switch_session(self, session_id).await
-    }
-
-    async fn get_messages(&self) -> Result<Vec<SessionEntry>, XyDriverError> {
-        XyInProcessDriver::get_messages(self).await
-    }
-
-    async fn get_session_stats(&self) -> Result<SessionStats, XyDriverError> {
-        XyInProcessDriver::get_session_stats(self).await
-    }
-
     async fn estimate_context_tokens(
         &self,
     ) -> Result<crate::protocol::model::ContextTokenEstimate, XyDriverError> {
@@ -504,93 +387,12 @@ impl XyDriver for XyInProcessDriver {
             .collect()
     }
 
-    async fn steer(&mut self, message: &str) -> Result<(), XyDriverError> {
-        self.agent.steer(message);
-        Ok(())
-    }
-
-    async fn follow_up(&mut self, message: &str) -> Result<(), XyDriverError> {
-        self.agent.follow_up(message);
-        Ok(())
-    }
-
-    async fn clear_queue(
-        &mut self,
-        clear_steer: bool,
-        clear_follow_up: bool,
-    ) -> Result<(), XyDriverError> {
-        self.agent.clear_queues(clear_steer, clear_follow_up);
-        Ok(())
-    }
-
-    fn queue_stats(&self) -> crate::agent::QueueStats {
-        self.agent.queue_stats()
-    }
-
-    async fn session_tree(
-        &self,
-        kind: SessionTreeKind,
-    ) -> Result<Vec<SessionTreeNode>, XyDriverError> {
-        XyInProcessDriver::session_tree(self, kind).await
-    }
-
-    async fn travel_session_tree(
-        &self,
-        kind: SessionTreeKind,
-        entry_id: &str,
-    ) -> Result<SessionTreeTravel, XyDriverError> {
-        XyInProcessDriver::travel_session_tree(self, kind, entry_id).await
-    }
-
-    async fn append_entry_label(
-        &mut self,
-        target_id: &str,
-        label: Option<&str>,
-    ) -> Result<(), XyDriverError> {
-        XyInProcessDriver::append_entry_label(self, target_id, label).await
-    }
-
     fn leaf_entry_id(&self) -> Option<String> {
         XyInProcessDriver::leaf_entry_id(self)
     }
 
     async fn load_debug_scene(&mut self, scene: &str) -> Result<DebugSceneLoad, XyDriverError> {
         XyInProcessDriver::load_debug_scene(self, scene).await
-    }
-
-    async fn list_sessions(&self) -> Result<Vec<SessionListEntry>, XyDriverError> {
-        XyInProcessDriver::list_sessions(self).await
-    }
-
-    async fn load_session_entries(
-        &self,
-        session_id: &str,
-    ) -> Result<Vec<SessionEntry>, XyDriverError> {
-        XyInProcessDriver::load_session_entries(self, session_id).await
-    }
-
-    async fn new_session(&mut self) -> Result<String, XyDriverError> {
-        XyInProcessDriver::new_session(self).await
-    }
-
-    async fn get_session_name(&self) -> Result<Option<String>, XyDriverError> {
-        XyInProcessDriver::get_session_name(self).await
-    }
-
-    async fn set_session_name(&mut self, name: &str) -> Result<String, XyDriverError> {
-        XyInProcessDriver::set_session_name(self, name).await
-    }
-
-    async fn set_session_name_for(
-        &mut self,
-        session_id: &str,
-        name: &str,
-    ) -> Result<String, XyDriverError> {
-        XyInProcessDriver::set_session_name_for(self, session_id, name).await
-    }
-
-    async fn delete_session(&mut self, session_id: &str) -> Result<(), XyDriverError> {
-        XyInProcessDriver::delete_session(self, session_id).await
     }
 
     fn session_store(&self) -> Option<Arc<dyn XySessionStore>> {
@@ -656,5 +458,337 @@ impl XyDriver for XyInProcessDriver {
 
     async fn read_clipboard_text(&mut self) -> Result<Option<String>, XyDriverError> {
         super::clipboard::read_clipboard_text().await
+    }
+}
+
+// ── Session operations: inherent (Command executor SSOT, c2710) ─────
+impl XyInProcessDriver {
+    pub(crate) async fn select_model(
+        &mut self,
+        model_id: &str,
+    ) -> Result<ModelInfo, XyDriverError> {
+        // Prefer registry id; only use unique upstream `config.model` as alias.
+        let registry = self.agent.model_registry();
+        let found = registry
+            .list()
+            .iter()
+            .find(|m| m.id == model_id)
+            .map(|m| m.id.clone())
+            .or_else(|| {
+                let hits: Vec<_> = registry
+                    .list()
+                    .iter()
+                    .filter(|m| m.config.model == model_id)
+                    .collect();
+                match hits.as_slice() {
+                    [only] => Some(only.id.clone()),
+                    _ => None,
+                }
+            })
+            .ok_or_else(|| XyDriverError::not_found(format!("model not found: {model_id}")))?;
+        self.agent
+            .select_model(&found)
+            .await
+            .map_err(XyDriverError::from)?;
+        // Re-read the resolved model to return authoritative info.
+        Ok(self
+            .agent
+            .current_model()
+            .map(|m| ModelInfo::from(&m))
+            .unwrap_or_else(|| ModelInfo {
+                id: found.clone(),
+                display_name: found,
+                thinking: true,
+                thinking_levels: Vec::new(),
+                context_window: 0,
+            }))
+    }
+
+    pub(crate) async fn cycle_model(&mut self) -> Result<ModelInfo, XyDriverError> {
+        let list = self.agent.model_registry().list().to_vec();
+        if list.is_empty() {
+            return Err(XyDriverError::not_found("no models available"));
+        }
+        let current_id = self.agent.current_model().map(|m| m.id.clone());
+        let current_idx = current_id
+            .as_ref()
+            .and_then(|cur| list.iter().position(|m| m.id == *cur))
+            .unwrap_or(0);
+        let next_idx = (current_idx + 1) % list.len();
+        let next_id = list[next_idx].id.clone();
+        self.agent
+            .select_model_with_source(&next_id, "cycle")
+            .await
+            .map_err(XyDriverError::from)?;
+        Ok(ModelInfo::from(&list[next_idx]))
+    }
+
+    pub(crate) async fn set_thinking_level(&mut self, level: String) -> Result<(), XyDriverError> {
+        self.agent
+            .set_thinking_level(level)
+            .await
+            .map_err(XyDriverError::from)
+    }
+
+    pub(crate) async fn compact(
+        &mut self,
+        instructions: Option<String>,
+    ) -> Result<bool, XyDriverError> {
+        // Force path (c1640 / pi compact) — MUST NOT use maybe_auto_compact.
+        self.agent
+            .force_compact(instructions)
+            .await
+            .map(|()| true)
+            .map_err(XyDriverError::from)
+    }
+
+    pub(crate) async fn export_html(&mut self, path: &Path) -> Result<String, XyDriverError> {
+        let sid = require_active_session(&self.agent)?.to_string();
+        self.exporter
+            .export_to_html(self.store.as_ref(), &sid, path)
+            .await?;
+        Ok(path.to_string_lossy().into_owned())
+    }
+
+    pub(crate) async fn export_jsonl(&mut self, path: &Path) -> Result<String, XyDriverError> {
+        let sid = require_active_session(&self.agent)?.to_string();
+        self.exporter
+            .export_to_jsonl(self.store.as_ref(), &sid, path)
+            .await?;
+        Ok(path.to_string_lossy().into_owned())
+    }
+
+    pub(crate) async fn import_jsonl(&mut self, path: &Path) -> Result<String, XyDriverError> {
+        self.exporter
+            .import_from_jsonl(self.store.as_ref(), path)
+            .await
+    }
+
+    pub(crate) async fn steer(&mut self, message: &str) -> Result<(), XyDriverError> {
+        self.agent.steer(message);
+        Ok(())
+    }
+
+    pub(crate) async fn follow_up(&mut self, message: &str) -> Result<(), XyDriverError> {
+        self.agent.follow_up(message);
+        Ok(())
+    }
+
+    pub(crate) async fn clear_queue(
+        &mut self,
+        clear_steer: bool,
+        clear_follow_up: bool,
+    ) -> Result<(), XyDriverError> {
+        self.agent.clear_queues(clear_steer, clear_follow_up);
+        Ok(())
+    }
+
+    pub(crate) fn queue_stats(&self) -> crate::agent::QueueStats {
+        self.agent.queue_stats()
+    }
+}
+
+// ── Command executor (c2710): Command is the SSOT of session operations ────
+#[async_trait]
+impl crate::app::core::dispatch::SessionCommandExecutor for XyInProcessDriver {
+    async fn execute_session_command(
+        &mut self,
+        cmd: crate::protocol::Command,
+    ) -> Result<crate::app::core::dispatch::DispatchOutcome, XyDriverError> {
+        use crate::app::core::dispatch::DispatchOutcome;
+        use crate::protocol::Command;
+        match cmd {
+            Command::Abort { .. } => {
+                crate::app::core::driver::XyDriver::abort(self);
+                Ok(DispatchOutcome::Aborted { cancelled: true })
+            }
+            Command::GetState { .. } => Ok(DispatchOutcome::State(
+                crate::app::core::driver::XyDriver::get_state(self),
+            )),
+            Command::SetModel { model_id, .. } => {
+                let m = self.select_model(&model_id).await?;
+                Ok(DispatchOutcome::Model(m))
+            }
+            Command::CycleModel { .. } => {
+                let m = self.cycle_model().await?;
+                Ok(DispatchOutcome::Model(m))
+            }
+            Command::GetAvailableModels { .. } => Ok(DispatchOutcome::Models(
+                crate::app::core::driver::XyDriver::available_models(self),
+            )),
+            Command::SetThinkingLevel { level, .. } => {
+                crate::app::core::dispatch::validate_nonempty_thinking_level(&level)?;
+                self.set_thinking_level(level.clone()).await?;
+                Ok(DispatchOutcome::ThinkingLevel(level))
+            }
+            Command::Bash {
+                command,
+                exclude_from_context,
+                ..
+            } => {
+                let r = self
+                    .execute_bash(&command, exclude_from_context, None)
+                    .await?;
+                Ok(DispatchOutcome::Bash(r))
+            }
+            Command::Compact { instructions, .. } => {
+                let did = self.compact(instructions).await?;
+                Ok(DispatchOutcome::Compacted(did))
+            }
+            Command::GetSessionStats { .. } => {
+                let stats = self.get_session_stats().await?;
+                Ok(DispatchOutcome::SessionStats(serde_json::json!({
+                    "session_id": stats.session_id,
+                    "user_messages": stats.user_messages,
+                    "assistant_messages": stats.assistant_messages,
+                    "total_messages": stats.total_messages,
+                    "thinking_level": stats.thinking_level,
+                    "model": stats.model.map(|(p, m)| {
+                        serde_json::json!({ "provider": p, "model_id": m })
+                    }),
+                })))
+            }
+            Command::ExportHtml { output_path, .. } => {
+                let path = output_path
+                    .map(std::path::PathBuf::from)
+                    .unwrap_or_else(|| std::path::PathBuf::from("export.html"));
+                let written = self.export_html(&path).await?;
+                Ok(DispatchOutcome::ExportedPath(written))
+            }
+            Command::ExportJsonl { output_path, .. } => {
+                let path = output_path
+                    .map(std::path::PathBuf::from)
+                    .unwrap_or_else(|| std::path::PathBuf::from("export.jsonl"));
+                let written = self.export_jsonl(&path).await?;
+                Ok(DispatchOutcome::ExportedPath(written))
+            }
+            Command::ImportJsonl { input_path, .. } => {
+                let path = std::path::PathBuf::from(&input_path);
+                let new_id = self.import_jsonl(&path).await?;
+                Ok(DispatchOutcome::NewSession(new_id))
+            }
+            Command::SwitchSession { session_path, .. } => {
+                // Derive session id from path (file stem).
+                let new_id = std::path::Path::new(&session_path)
+                    .file_stem()
+                    .and_then(|st| st.to_str())
+                    .unwrap_or(&session_path)
+                    .to_string();
+                let switched = self.switch_session(&new_id).await?;
+                Ok(DispatchOutcome::SwitchedSession(switched))
+            }
+            Command::Fork {
+                entry_id, position, ..
+            } => {
+                let pos = match position.as_deref() {
+                    Some("before") => crate::protocol::session::ForkPosition::Before,
+                    _ => crate::protocol::session::ForkPosition::At,
+                };
+                let new_id = self.fork_session(&entry_id, pos).await?;
+                Ok(DispatchOutcome::NewSession(new_id))
+            }
+            Command::GetMessages { .. } => {
+                let entries = self.get_messages().await?;
+                let session_id =
+                    crate::app::core::driver::XyDriver::session_id(self).unwrap_or_default();
+                Ok(DispatchOutcome::Messages {
+                    session_id,
+                    entries,
+                })
+            }
+            Command::SessionTree { kind, .. } => {
+                Ok(DispatchOutcome::SessionTree(self.session_tree(kind).await?))
+            }
+            Command::TravelSessionTree { kind, entry_id, .. } => {
+                Ok(DispatchOutcome::SessionTreeTravel(
+                    self.travel_session_tree(kind, &entry_id).await?,
+                ))
+            }
+            Command::AppendEntryLabel {
+                target_id, label, ..
+            } => {
+                self.append_entry_label(&target_id, label.as_deref())
+                    .await?;
+                Ok(DispatchOutcome::Empty)
+            }
+            Command::ListSessions { .. } => {
+                Ok(DispatchOutcome::Sessions(self.list_sessions().await?))
+            }
+            Command::LoadSessionEntries { session_id, .. } => Ok(DispatchOutcome::SessionEntries(
+                self.load_session_entries(&session_id).await?,
+            )),
+            Command::NewSession { .. } => {
+                Ok(DispatchOutcome::NewSession(self.new_session().await?))
+            }
+            Command::GetSessionName { .. } => {
+                Ok(DispatchOutcome::SessionName(self.get_session_name().await?))
+            }
+            Command::SetSessionName { name, .. } => Ok(DispatchOutcome::SessionName(Some(
+                self.set_session_name(&name).await?,
+            ))),
+            Command::SetSessionNameFor {
+                session_id, name, ..
+            } => Ok(DispatchOutcome::SessionName(Some(
+                self.set_session_name_for(&session_id, &name).await?,
+            ))),
+            Command::DeleteSession { session_id, .. } => {
+                self.delete_session(&session_id).await?;
+                Ok(DispatchOutcome::Empty)
+            }
+            Command::Reload { .. } => Ok(DispatchOutcome::Reload(
+                self.reload_runtime(&tokio_util::sync::CancellationToken::new())
+                    .await?,
+            )),
+            Command::LoadedResources { .. } => Ok(DispatchOutcome::LoadedResources(
+                crate::app::core::driver::XyDriver::loaded_resources_snapshot(self).await,
+            )),
+            Command::GetQueueStats { .. } => {
+                let stats = self.queue_stats();
+                Ok(DispatchOutcome::QueueStats {
+                    steer_count: stats.steer_count,
+                    follow_up_count: stats.follow_up_count,
+                })
+            }
+            Command::GetCommands { .. } => Ok(DispatchOutcome::Commands(
+                crate::app::core::driver::XyDriver::get_commands(self),
+            )),
+            Command::Steer { message, .. } => {
+                self.steer(&message).await?;
+                let stats = self.queue_stats();
+                Ok(DispatchOutcome::QueueStats {
+                    steer_count: stats.steer_count,
+                    follow_up_count: stats.follow_up_count,
+                })
+            }
+            Command::FollowUp { message, .. } => {
+                self.follow_up(&message).await?;
+                let stats = self.queue_stats();
+                Ok(DispatchOutcome::QueueStats {
+                    steer_count: stats.steer_count,
+                    follow_up_count: stats.follow_up_count,
+                })
+            }
+            Command::ClearQueue {
+                clear_steer,
+                clear_follow_up,
+                ..
+            } => {
+                self.clear_queue(clear_steer, clear_follow_up).await?;
+                let stats = self.queue_stats();
+                Ok(DispatchOutcome::QueueStats {
+                    steer_count: stats.steer_count,
+                    follow_up_count: stats.follow_up_count,
+                })
+            }
+
+            // These variants are the caller's responsibility (see dispatch module docs).
+            Command::Prompt { .. }
+            | Command::Quit { .. }
+            | Command::Subscribe { .. }
+            | Command::ApproveTool { .. }
+            | Command::AnswerQuestion { .. } => {
+                Err(crate::app::core::dispatch::transport_variant_error(&cmd))
+            }
+        }
     }
 }
