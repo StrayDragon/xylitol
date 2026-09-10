@@ -11,7 +11,7 @@ use crate::app::tui::{BashBlockStatus, UiEntry};
 use crate::protocol::ports::XyBashResult;
 use crate::tests::bdd::prelude::*;
 use rstest::fixture;
-use rstest_bdd_macros::{then, when};
+use rstest_bdd_macros::{given, then, when};
 use xylitol_tui::Component;
 
 /// One mounted host pump (session + scripted driver). Steps take it out,
@@ -639,6 +639,180 @@ fn fresh_pump_with_hanging_bash() -> HostPump {
     let pump = fresh_pump();
     pump.driver.set_hang_bash_until_abort(true);
     pump
+}
+
+// atm18 / ath45 ── c2790: bang 循环 drain Inline 命令 ──────────────────────
+
+fn char_keys(text: &str) -> Vec<xylitol_tui::InputEvent> {
+    use crossterm::event::{KeyCode, KeyEvent, KeyEventKind, KeyEventState, KeyModifiers};
+    text.chars()
+        .map(|c| {
+            xylitol_tui::InputEvent::Key(KeyEvent {
+                code: KeyCode::Char(c),
+                modifiers: KeyModifiers::NONE,
+                kind: KeyEventKind::Press,
+                state: KeyEventState::NONE,
+            })
+        })
+        .collect()
+}
+
+/// Keys typed mid-bang, then `escs` Esc presses (picker close → abort), park.
+/// `prefix` MUST end with the submit Enter — busy Enter is what parses the
+/// slash into `pending.slash`; bare chars only fill the editor buffer.
+fn keys_then_escs_stream(
+    mut prefix: Vec<xylitol_tui::InputEvent>,
+    escs: usize,
+) -> impl futures::Stream<Item = Result<HostEvent, crate::XyDriverError>> {
+    use std::time::Duration;
+    prefix.push(enter_event());
+
+    let (tx, rx) = tokio::sync::mpsc::unbounded_channel();
+    tokio::spawn(async move {
+        tokio::time::sleep(Duration::from_millis(100)).await;
+        for ev in prefix {
+            let _ = tx.send(Ok(HostEvent::Input(ev)));
+        }
+        tokio::time::sleep(Duration::from_millis(400)).await;
+        for _ in 0..escs {
+            let _ = tx.send(Ok(HostEvent::Input(esc_event())));
+            tokio::time::sleep(Duration::from_millis(150)).await;
+        }
+        std::future::pending::<()>().await;
+    });
+    futures::stream::unfold(
+        rx,
+        |mut rx| async move { rx.recv().await.map(|ev| (ev, rx)) },
+    )
+}
+
+/// Shared body for both c2790 bang-Given phrasings (atm18 names the driver
+/// seam; ath45 is the generic host contract — same fixture setup).
+async fn g_c2790_hanging_bang_body(host_pump_bdd: &HostPumpBdd) {
+    let pump = fresh_pump_with_hanging_bash();
+    put_pump(host_pump_bdd, pump);
+    set_editor(host_pump_bdd, "!sleep 99");
+    step_key(host_pump_bdd, enter_event());
+    drain(host_pump_bdd).await;
+}
+
+#[given("交互 bang 正在运行且驱动为 ScriptedDriver")]
+pub(crate) async fn g_c2790_hanging_bang(host_pump_bdd: &HostPumpBdd) {
+    g_c2790_hanging_bang_body(host_pump_bdd).await;
+}
+
+#[given("交互 bang 正在运行")]
+pub(crate) async fn g_ath45_hanging_bang(host_pump_bdd: &HostPumpBdd) {
+    g_c2790_hanging_bang_body(host_pump_bdd).await;
+}
+
+#[when("提交声明为 Inline 的无参 /model")]
+pub(crate) async fn w_atm18_inline_model(host_pump_bdd: &HostPumpBdd) {
+    use crate::app::tui::harness::run_interactive_bang;
+    let mut pump = take_pump(host_pump_bdd);
+    let bash = pump.session.take_bash().expect("pending bang");
+    let mut stream = None;
+    run_interactive_bang(
+        &mut pump.session,
+        &mut pump.driver,
+        bash,
+        &mut stream,
+        keys_then_escs_stream(char_keys("/model"), 2),
+    )
+    .await
+    .expect("bang loop");
+    put_pump(host_pump_bdd, pump);
+}
+
+#[then("模型列表 effect MUST 在 bang 结束前挂载生效")]
+pub(crate) async fn t_atm18_inline_mounted(host_pump_bdd: &HostPumpBdd) {
+    let pump = take_pump(host_pump_bdd);
+    let models_calls = pump.driver.models_calls();
+    let submitted = pump
+        .driver
+        .bash_calls()
+        .iter()
+        .any(|(c, _)| c == "sleep 99");
+    // Mount evidence: the picker row marker `→ * fake` is rendered by the
+    // Models slot only while mounted (SelectList cursor + focused mark) — the
+    // SAME marker the PTY seam waits on (`wait_for_raw("→ * fake")`). The
+    // diff frame log preserves frame order, so the mount frame must precede
+    // the post-abort `(cancelled)` frame: mounted DURING the bang, closed by
+    // the first Esc before the second Esc aborts.
+    let frames = pump.session.tui.terminal.frames();
+    // Mount evidence: the picker row marker `→ * Fake` is rendered by the
+    // Models slot only while mounted (SelectList cursor + focused mark). The
+    // label is the harness model's display_name (`Fake`); the PTY seam waits
+    // on `→ * fake` because the attach-cache model renders its id — each seam
+    // asserts its own rendered screen. The diff frame log preserves frame
+    // order, so the mount frame must precede the post-abort `(cancelled)`
+    // frame: mounted DURING the bang, closed by the first Esc before the
+    // second Esc aborts.
+    let frames = pump.session.tui.terminal.frames();
+    let mount_idx = frames.iter().position(|f| f.contains("→ * Fake"));
+    let cancel_idx = frames.iter().position(|f| f.contains("(cancelled)"));
+    put_pump(host_pump_bdd, pump);
+    assert!(submitted, "hanging bang must have been submitted");
+    assert!(
+        models_calls >= 1,
+        "Inline drain must dispatch GetAvailableModels during the bang"
+    );
+    let mount_idx = mount_idx
+        .unwrap_or_else(|| panic!("Models picker row must be rendered before the bang ends"));
+    assert!(
+        cancel_idx.is_some_and(|i| mount_idx < i),
+        "picker mount frame must precede the bang-cancelled frame (mount_idx={mount_idx}, cancel_idx={cancel_idx:?})"
+    );
+}
+
+#[when("提交 busy-Allow 且执行类为 Queued 的 /session-export")]
+pub(crate) async fn w_ath45_queued_export(host_pump_bdd: &HostPumpBdd) {
+    use crate::app::tui::harness::run_interactive_bang;
+    let mut pump = take_pump(host_pump_bdd);
+    let bash = pump.session.take_bash().expect("pending bang");
+    let mut stream = None;
+    run_interactive_bang(
+        &mut pump.session,
+        &mut pump.driver,
+        bash,
+        &mut stream,
+        keys_then_escs_stream(char_keys("/session-export"), 2),
+    )
+    .await
+    .expect("bang loop");
+    put_pump(host_pump_bdd, pump);
+}
+
+#[then("该命令 MUST 在 bang 结束前不执行")]
+pub(crate) async fn t_ath45_still_queued(host_pump_bdd: &HostPumpBdd) {
+    let mut pump = take_pump(host_pump_bdd);
+    let slash = pump.session.take_slash();
+    let still_queued = slash.is_some();
+    if let Some(slash) = slash {
+        pump.session.put_slash(slash);
+    }
+    let exported = pump.driver.export_html_calls();
+    put_pump(host_pump_bdd, pump);
+    assert!(still_queued, "Queued slash must survive the bang loop");
+    assert!(
+        exported.is_empty(),
+        "Queued slash must not execute during bang: {exported:?}"
+    );
+}
+
+#[then("循环归还后 MUST 照常执行且 MUST NOT 丢失")]
+pub(crate) async fn t_ath45_executes_after_return(host_pump_bdd: &HostPumpBdd) {
+    drain(host_pump_bdd).await;
+    let mut pump = take_pump(host_pump_bdd);
+    let calls = pump.driver.export_html_calls();
+    let slash_left = pump.session.take_slash().is_some();
+    put_pump(host_pump_bdd, pump);
+    assert_eq!(
+        calls.len(),
+        1,
+        "export must execute exactly once: {calls:?}"
+    );
+    assert!(!slash_left, "no slash may remain pending after the drain");
 }
 
 #[when("以主机泵提交挂起 bang 并经输入流注入 Esc")]

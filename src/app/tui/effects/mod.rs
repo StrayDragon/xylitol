@@ -18,11 +18,32 @@ use crate::app::core::driver::{
 use crate::app::core::dispatch::dispatch;
 use crate::protocol::Command;
 
+use crate::app::tui::commands::slash_allowances;
+use crate::protocol::wire::registry::Exec;
+
 use super::host::HostSession;
 use super::widgets::footer_token_label;
 
 pub use bang::run_interactive_bang;
 pub use reload::run_interactive_reload;
+
+/// c2790 / ath45: bang-loop tick-arm pump — execute ONLY pending slashes whose
+/// execution class is `Inline` (atm18: cache/local effects, never a remote
+/// unary). Exclusive/Queued are put back verbatim for the main-loop
+/// `drain_pending` (semantics unchanged). Model-picker confirm deliberately
+/// stays out: SetModel is a real unary (writer lease) on remote.
+pub async fn drain_inline_pending<T: Terminal>(
+    session: &mut HostSession<T>,
+    driver: &mut dyn XyDriver,
+) {
+    if let Some(slash) = session.take_slash() {
+        if slash_allowances(&slash).exec == Exec::Inline {
+            slash::handle_slash(session, driver, slash).await;
+        } else {
+            session.put_slash(slash);
+        }
+    }
+}
 
 /// Load current-session entries via the shared Command path (c2710).
 pub async fn session_entries(

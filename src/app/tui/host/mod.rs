@@ -571,6 +571,11 @@ impl<T: Terminal> HostSession<T> {
         self.pending.take_slash()
     }
 
+    /// Put back an unexecuted slash (c2790 bang inline drain put-back).
+    pub fn put_slash(&mut self, slash: PendingSlash) {
+        self.pending.put_slash(slash);
+    }
+
     /// Take a pending idle bash (`!` / `!!`) request.
     pub fn take_bash(&mut self) -> Option<PendingBash> {
         self.pending.take_bash()

@@ -86,3 +86,15 @@ async fn test_ati32_busy_bang_prefix(host_pump_bdd: HostPumpBdd) {}
     name = "reload-soft-gate-keys-headless"
 )]
 async fn test_ati43_reload_soft_gate(host_pump_bdd: HostPumpBdd) {}
+
+#[scenario(
+    path = "llmanspec/specs/app-tui-commands/app-tui-commands.feature",
+    name = "bang-inline-effect-runs-during-bang"
+)]
+async fn test_atm18_inline_model_during_bang(host_pump_bdd: HostPumpBdd) {}
+
+#[scenario(
+    path = "llmanspec/specs/app-tui-host/app-tui-host.feature",
+    name = "exclusive-stays-queued"
+)]
+async fn test_ath45_queued_survives_bang(host_pump_bdd: HostPumpBdd) {}

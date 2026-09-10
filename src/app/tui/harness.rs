@@ -38,6 +38,8 @@ pub struct ScriptedDriver {
     pub clear_calls: Vec<(bool, bool)>,
     bash_calls: Mutex<Vec<(String, bool)>>,
     abort_count: AtomicUsize,
+    /// GetAvailableModels dispatch counter (c2790 inline-drain observable).
+    models_calls: AtomicUsize,
     /// When true, [`Self::execute_bash`] waits until [`Self::abort`] (c665).
     hang_bash_until_abort: AtomicBool,
     aborted: std::sync::Arc<AtomicBool>,
@@ -117,6 +119,7 @@ impl ScriptedDriver {
             clear_calls: Vec::new(),
             bash_calls: Mutex::new(Vec::new()),
             abort_count: AtomicUsize::new(0),
+            models_calls: AtomicUsize::new(0),
             hang_bash_until_abort: AtomicBool::new(false),
             aborted: std::sync::Arc::new(AtomicBool::new(false)),
             scripts: VecDeque::new(),
@@ -461,6 +464,10 @@ impl ScriptedDriver {
     pub fn abort_count(&self) -> usize {
         self.abort_count.load(Ordering::SeqCst)
     }
+
+    pub fn models_calls(&self) -> usize {
+        self.models_calls.load(Ordering::SeqCst)
+    }
 }
 
 impl Default for ScriptedDriver {
@@ -781,9 +788,12 @@ impl crate::app::core::dispatch::SessionCommandExecutor for ScriptedDriver {
             Command::GetState { .. } => Ok(DispatchOutcome::State(
                 crate::app::core::driver::XyDriver::get_state(self),
             )),
-            Command::GetAvailableModels { .. } => Ok(DispatchOutcome::Models(
-                crate::app::core::driver::XyDriver::available_models(self),
-            )),
+            Command::GetAvailableModels { .. } => {
+                self.models_calls.fetch_add(1, Ordering::SeqCst);
+                Ok(DispatchOutcome::Models(
+                    crate::app::core::driver::XyDriver::available_models(self),
+                ))
+            }
             Command::SetModel { model_id, .. } => {
                 self.model = ModelInfo {
                     id: model_id.clone(),
@@ -1185,6 +1195,14 @@ impl TestTerminal {
             started: false,
             stopped: false,
         }
+    }
+
+    /// Raw terminal write log — one `String` per diff render. BDD seam asserts
+    /// rendered picker rows by the same marker the PTY raw-stream waits use
+    /// (c2790 atm18: `→ * fake` is rendered only while the Models slot is
+    /// mounted).
+    pub fn frames(&self) -> &[String] {
+        &self.frames
     }
 }
 

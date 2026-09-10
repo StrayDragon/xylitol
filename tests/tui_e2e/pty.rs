@@ -1100,29 +1100,30 @@ fn pty_product_fake_busy_model_list_keeps_running_lead() {
         .wait_for_raw("Running", Duration::from_secs(10))
         .expect("bang busy status lead");
 
-    // Editor is empty after the bang submit: `/model` needs no Ctrl-U (busy
-    // app.clear would abort instead). The arm queues behind the bang loop;
-    // the abort below resumes it and the picker mounts from the attach cache.
+    // c2790 / atc23 original contract: /model is Inline (atm18) — busy Enter
+    // submits it, the bang-loop tick drains it, and the picker mounts WHILE
+    // the bang is still running (no abort needed to resume the queue). The
+    // `→ * fake` row is the mounted SelectList cursor + focused mark rendered
+    // only by the Models slot.
     session
         .send_keys("/model\r")
-        .expect("queue /model while busy");
-    session.send_keys("\x1b").expect("Esc abort bang");
-    session
-        .wait_for_raw("(cancelled)", Duration::from_secs(15))
-        .expect("bang cancelled");
-    // The ready footer already contains " · fake", so waiting on bare "fake"
-    // returns before the picker exists; "→ * fake" is the mounted picker row
-    // (SelectList cursor + focused mark, rendered only by the Models slot).
+        .expect("submit /model while bang busy");
     session
         .wait_for_raw("→ * fake", Duration::from_secs(15))
-        .expect("Models picker should mount listing fake");
+        .expect("Models picker must mount while the bang is STILL RUNNING");
     assert!(
         session.raw_contains(b"Running"),
-        "busy status lead MUST remain in PTY stream while Models open (fixed zone footprint)"
+        "busy status lead MUST remain in PTY stream while Models open (fixed-zone footprint / atc23)"
     );
 
     session.send_keys("\x1b").expect("Esc close Models");
     session.drain(Duration::from_millis(150));
+    session
+        .send_keys("\x1b")
+        .expect("Esc cancel the still-running bang");
+    session
+        .wait_for_raw("(cancelled)", Duration::from_secs(15))
+        .expect("bang cancelled");
     session.send_keys("\x15/exit\r").expect("/exit");
     let code = session.wait_exit(Duration::from_secs(30)).expect("exit");
     assert_eq!(code, 0);

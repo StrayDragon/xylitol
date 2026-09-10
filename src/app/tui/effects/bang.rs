@@ -42,11 +42,13 @@ where
         cancel: tokio_util::sync::CancellationToken::new(),
     }));
     let (bash_result, aborted_during_bash) = {
-        let cmd = crate::protocol::Command::Bash {
-            command: bash.command.clone(),
-            exclude_from_context: bash.exclude_from_context,
-        };
-        let mut dispatch_fut = Box::pin(crate::app::core::dispatch::dispatch(driver, cmd));
+        // c2790: owned completion (`XyDriver::bash_run`) — the select loop holds
+        // NO driver borrow, so the tick arm can drain Inline effects (atm18/ath45)
+        // while the bash runs; Esc abort still breaks first and calls
+        // `driver.abort()` after the receiver is dropped (out-of-band kill).
+        let mut bash_run = driver
+            .bash_run(&bash.command, bash.exclude_from_context)
+            .await?;
         let mut ticker = tokio::time::interval(Duration::from_millis(16));
         ticker.set_missed_tick_behavior(tokio::time::MissedTickBehavior::Skip);
         let mut abort_requested = false;
@@ -54,7 +56,7 @@ where
         let result = loop {
             tokio::select! {
                 biased;
-                result = &mut dispatch_fut => break Some(result),
+                result = &mut bash_run => break Some(result),
                 chunk = chunk_rx.recv(), if !chunks_done => {
                     match chunk {
                         Some(chunk) => {
@@ -67,6 +69,7 @@ where
                 }
                 _ = ticker.tick() => {
                     session.step(HostEvent::Tick)?;
+                    super::drain_inline_pending(session, driver).await;
                 }
                 maybe = input.next() => {
                     match maybe {
@@ -116,7 +119,7 @@ where
                 }
             }
         };
-        drop(dispatch_fut);
+        drop(bash_run);
         driver.set_bash_run_sink(None);
         if abort_requested {
             driver.abort();
@@ -125,12 +128,8 @@ where
         }
         (result, abort_requested)
     };
-    // Unwrap the dispatch outcome into the bash result shape consumed below.
     let bash_result = match bash_result {
-        Some(Ok(crate::app::core::dispatch::DispatchOutcome::Bash(r))) => Ok(r),
-        Some(Ok(other)) => Err(XyDriverError::message(format!(
-            "Command::Bash unexpected outcome: {other:?}"
-        ))),
+        Some(Ok(r)) => Ok(r),
         Some(Err(e)) => Err(e),
         None => Err(XyDriverError::message("bash aborted")),
     };
