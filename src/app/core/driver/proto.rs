@@ -2,8 +2,6 @@
 
 use async_trait::async_trait;
 
-use crate::protocol::ports::XyBashResult;
-
 use super::XyDriverError;
 use super::types::{
     ClipboardCopyOutcome, CommandInfo, DebugSceneLoad, EventStream, LoadedResourcesSnapshot,
@@ -120,26 +118,11 @@ pub trait XyDriver: crate::app::core::dispatch::SessionCommandExecutor + Send {
         }
     }
 
-    /// Execute a bash command with live output streaming (interactive surface).
+    /// Inject the interactive bang output-event sink (c2760, surface wiring).
     ///
-    /// Retained on the trait as an **interactive streaming surface** (c2710):
-    /// `chunk_tx` uplinks live output bytes for the product TUI (c669) and the
-    /// host `select!`s keyboard (Esc → [`Self::abort`]) while bash is in flight
-    /// (c665). The wire session operation is `Command::Bash`, executed through
-    /// the shared `SessionCommandExecutor` path without a local chunk channel;
-    /// this method is the in-process TUI path, not a parallel command-table
-    /// entry.
-    ///
-    /// # Errors
-    ///
-    /// `Err` when the command cannot be spawned or its execution fails (kind
-    /// varies; a non-zero exit is normally a successful [`XyBashResult`]).
-    async fn execute_bash(
-        &self,
-        command: &str,
-        exclude_from_context: bool,
-        chunk_tx: Option<tokio::sync::mpsc::Sender<Vec<u8>>>,
-    ) -> Result<XyBashResult, XyDriverError>;
+    /// The caller (TUI) sets it before `Command::Bash` dispatch and clears it
+    /// after. Default: no-op (scripted / drivers without live output).
+    fn set_bash_run_sink(&mut self, _sink: Option<crate::protocol::ports::BashOutputSink>) {}
 
     /// Read-only context token estimate for the current leaf/path (c1030 / c1035).
     ///

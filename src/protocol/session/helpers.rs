@@ -7,7 +7,9 @@ use crate::protocol::message::{AgentMessage, EnvMessage};
 use super::entries::{EntryBase, MessageEntry, SessionEntry};
 
 /// Build a nested bash `SessionEntry::Message` for new bang writes (c1210 / be4).
+#[allow(clippy::too_many_arguments)]
 pub fn bash_execution_message_entry(
+    bash_id: impl Into<String>,
     command: impl Into<String>,
     output: impl Into<String>,
     exit_code: Option<i32>,
@@ -15,8 +17,10 @@ pub fn bash_execution_message_entry(
     truncated: bool,
     full_output_path: Option<String>,
     exclude_from_context: bool,
+    status: crate::protocol::message::BashExecutionStatus,
 ) -> SessionEntry {
     let message = AgentMessage::Env(EnvMessage::BashExecutionMessage {
+        bash_id: bash_id.into(),
         command: command.into(),
         output: output.into(),
         exit_code,
@@ -24,6 +28,7 @@ pub fn bash_execution_message_entry(
         truncated,
         full_output_path,
         exclude_from_context,
+        status,
     });
     SessionEntry::Message(MessageEntry {
         base: EntryBase {

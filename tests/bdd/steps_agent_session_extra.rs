@@ -67,8 +67,17 @@ pub(crate) async fn g_sess_bang(sess: &XySessionStore) {
     let sid = "seed-bash-summary";
     let _ = mgr.create(sid, Some("."), None).await;
 
-    let mut bash_entry =
-        bash_execution_message_entry("echo hello", "hello\n", Some(0), false, false, None, false);
+    let mut bash_entry = bash_execution_message_entry(
+        String::new(),
+        "echo hello",
+        "hello\n",
+        Some(0),
+        false,
+        false,
+        None,
+        false,
+        crate::protocol::message::BashExecutionStatus::Done,
+    );
     if let SessionEntry::Message(ref mut m) = bash_entry {
         m.base.id = "bash-1".into();
         m.base.timestamp = 1704067200000; // 2024-01-01T00:00:00Z (unix-ms)
@@ -972,7 +981,15 @@ pub(crate) async fn w_sess_execute_bash_no_executor(agent: &AgentState) {
     let store: Arc<dyn crate::protocol::ports::XySessionStore> = Arc::new(mgr);
     let bang = BangExecHandler::new(None);
     let result = bang
-        .execute(store.as_ref(), None, "echo hi", false, None, None)
+        .execute(
+            store.as_ref(),
+            None,
+            "bash-id",
+            "echo hi",
+            false,
+            None,
+            None,
+        )
         .await;
     agent.last_result.replace(Some(
         result.map(|_| "ok".into()).map_err(XyDriverError::from),

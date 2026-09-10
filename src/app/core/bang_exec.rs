@@ -38,20 +38,25 @@ impl BangExecHandler {
         Arc::clone(&self.cancel)
     }
 
-    /// Execute a user-initiated bash command and record the result.
+    /// Execute a user-initiated bash command and record its lifecycle.
     ///
     /// `exclude_from_context=true` (the `!!` prefix) stores the entry on disk
     /// but omits it from LLM context (see `build_session_context`).
     ///
-    /// `chunk_tx`: optional live output uplink for product TUI (c669).
+    /// `bash_id`: correlation id for the start/done rows and output chunks.
+    ///
+    /// `chunk_tx`: optional live output uplink; the caller wires it to the
+    /// session output-event sink (c2760) or consumes it locally.
     ///
     /// `cwd`: session workspace for the spawned shell (`None` inherits the
     /// process cwd). Attach writers pass the TUI-provided workspace so `!cmd`
     /// runs there, not in the server process directory.
+    #[allow(clippy::too_many_arguments)]
     pub async fn execute(
         &self,
         store: &dyn XySessionStore,
         session_id: Option<&str>,
+        bash_id: &str,
         command: &str,
         exclude_from_context: bool,
         chunk_tx: Option<mpsc::Sender<Vec<u8>>>,
@@ -64,6 +69,12 @@ impl BangExecHandler {
 
         let cancel = CancellationToken::new();
         *crate::utils::lock_mutex(&self.cancel) = Some(cancel.clone());
+
+        // c2760: start marker first, so a crash leaves a running row that
+        // resumes as `interrupted`.
+        if let Some(sid) = session_id {
+            record_bash_start(store, bash_id, command, exclude_from_context, sid).await?;
+        }
 
         let result = executor
             .execute(
@@ -81,7 +92,7 @@ impl BangExecHandler {
 
         // Record on disk.
         if let Some(sid) = session_id {
-            record_bash_result(store, command, &result, exclude_from_context, sid).await?;
+            record_bash_result(store, bash_id, command, &result, exclude_from_context, sid).await?;
         }
 
         Ok(result)
@@ -95,15 +106,42 @@ impl BangExecHandler {
     }
 }
 
+/// Persist the interactive bang start marker (`status = Running`, c2760).
+pub(crate) async fn record_bash_start(
+    store: &dyn XySessionStore,
+    bash_id: &str,
+    command: &str,
+    exclude_from_context: bool,
+    session_id: &str,
+) -> Result<(), XyError> {
+    let entry = crate::protocol::session::bash_execution_message_entry(
+        bash_id,
+        command,
+        String::new(),
+        None,
+        false,
+        false,
+        None,
+        exclude_from_context,
+        crate::protocol::message::BashExecutionStatus::Running,
+    );
+    store
+        .append_session_entry(session_id, &entry)
+        .await
+        .map_err(XyError::from)
+}
+
 /// Persist a bash result as `SessionEntry::Message` with `role=bashExecution` (c1210).
 pub(crate) async fn record_bash_result(
     store: &dyn XySessionStore,
+    bash_id: &str,
     command: &str,
     result: &XyBashResult,
     exclude_from_context: bool,
     session_id: &str,
 ) -> Result<(), XyError> {
     let entry = bash_execution_message_entry(
+        bash_id,
         command,
         result.output.clone(),
         result.exit_code,
@@ -111,6 +149,7 @@ pub(crate) async fn record_bash_result(
         result.truncated,
         result.full_output_path.clone(),
         exclude_from_context,
+        crate::protocol::message::BashExecutionStatus::Done,
     );
     store
         .append_session_entry(session_id, &entry)
@@ -141,7 +180,15 @@ mod tests {
         let store_exec = Arc::clone(&store);
         let join = tokio::spawn(async move {
             handler_exec
-                .execute(store_exec.as_ref(), None, "sleep 30", false, None, None)
+                .execute(
+                    store_exec.as_ref(),
+                    None,
+                    "bash-id",
+                    "sleep 30",
+                    false,
+                    None,
+                    None,
+                )
                 .await
         });
 
@@ -152,6 +199,32 @@ mod tests {
             result.cancelled,
             "abort must cancel in-flight interactive bash"
         );
+    }
+
+    #[tokio::test]
+    async fn record_bash_start_writes_running_marker() {
+        let dir = tempfile::tempdir().unwrap();
+        let store = crate::infra::session::SessionManager::new(dir.path().join("sessions"));
+        let sid = "s-bash-lifecycle";
+        store.create(sid, Some("/tmp"), None).await.expect("create");
+        record_bash_start(&store, "b1", "sleep 1", false, sid)
+            .await
+            .expect("start");
+        let entries = store.load(sid).await.expect("load");
+        let running = entries
+            .iter()
+            .find_map(|e| match e {
+                crate::protocol::session::SessionEntry::Message(m) => {
+                    let v = &m.message;
+                    (v.get("role").and_then(|r| r.as_str()) == Some("bashExecution")
+                        && v.get("status").and_then(|s| s.as_str()) == Some("running"))
+                    .then(|| v.clone())
+                }
+                _ => None,
+            })
+            .expect("running row");
+        assert_eq!(running["bashId"], "b1");
+        assert_eq!(running["command"], "sleep 1");
     }
 
     #[tokio::test]
@@ -168,7 +241,7 @@ mod tests {
             truncated: false,
             full_output_path: None,
         };
-        record_bash_result(&store, "echo hello", &result, false, sid)
+        record_bash_result(&store, "bash-id", "echo hello", &result, false, sid)
             .await
             .expect("record");
         let entries = store.load(sid).await.expect("load");

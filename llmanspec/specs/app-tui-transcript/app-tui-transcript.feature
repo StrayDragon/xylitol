@@ -35,7 +35,7 @@
 
   @req:att9 @human
   场景: product-bash-result-scrollback
-    - 产品 TUI 在 idle bang 提交时 MUST 立即将命令写入 live scrollback 可着色块；执行中 MUST 为 pending 轨色，且输出 chunk 到达时 MUST 在同一块内增量刷新（保持 pending 轨）；完成后 MUST 按成功或失败或 cancelled 切换轨色；bang Esc 取消 MUST 在该块内呈现 (cancelled) 而非 agent 的 Aborted；exit_code 非 0 MUST 以 error 前景或 error 轨强调；MUST NOT 默认整行铺 tool-*-bg；MUST NOT 为此引入 Codex 式 TranscriptView。
+    - 产品 TUI 在 idle bang 提交时 MUST 立即将命令写入 live scrollback 可着色块；执行中 MUST 为 pending 轨色，且输出事件（session/bash_output）到达时 MUST 在同一块内增量刷新（保持 pending 轨）；完成后 MUST 按成功或失败或 cancelled 切换轨色；resume 重建时，同一 bash_id 有 done 结果 MUST 只显示 done（不得重复），仅 running 无 done 的 MUST 组合渲染为 interrupted（命令 + 中断提示，全文路径若在）；bang Esc 取消 MUST 在该块内呈现 (cancelled) 而非 agent 的 Aborted；exit_code 非 0 MUST 以 error 前景或 error 轨强调；MUST NOT 默认整行铺 tool-*-bg；MUST NOT 为此引入 Codex 式 TranscriptView。
 
   @req:att10 @human
   场景: scrollback-block-gap

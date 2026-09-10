@@ -106,6 +106,8 @@ pub struct ScriptedDriver {
     tools_frozen: AtomicBool,
     /// Mimic attach Remote `queue_stats` returning 0 after local strip enqueue.
     pub force_zero_queue_stats: AtomicBool,
+    /// Interactive bang output-event sink injected by the bang loop (c2760).
+    bash_run_sink: Mutex<Option<crate::protocol::ports::BashOutputSink>>,
 }
 
 impl ScriptedDriver {
@@ -219,6 +221,7 @@ impl ScriptedDriver {
             clipboard_text: Mutex::new(None),
             tools_frozen: AtomicBool::new(true),
             force_zero_queue_stats: AtomicBool::new(false),
+            bash_run_sink: Mutex::new(None),
         }
     }
 
@@ -487,54 +490,13 @@ impl XyDriver for ScriptedDriver {
         Box::pin(futures::stream::iter(events))
     }
 
-    async fn execute_bash(
-        &self,
-        command: &str,
-        exclude_from_context: bool,
-        chunk_tx: Option<tokio::sync::mpsc::Sender<Vec<u8>>>,
-    ) -> Result<XyBashResult, XyDriverError> {
-        // Fresh run: do not inherit a prior abort latch (pi: new AbortController each bang).
-        self.aborted.store(false, Ordering::SeqCst);
-        self.bash_calls
-            .lock()
-            .expect("bash_calls")
-            .push((command.to_string(), exclude_from_context));
-        if self.hang_bash_until_abort.load(Ordering::SeqCst) {
-            while !self.aborted.load(Ordering::SeqCst) {
-                tokio::time::sleep(Duration::from_millis(20)).await;
-            }
-            return Ok(XyBashResult {
-                output: String::new(),
-                exit_code: None,
-                cancelled: true,
-                timed_out: false,
-                truncated: false,
-                full_output_path: None,
-            });
-        }
-        let result = self
-            .bash_results
-            .lock()
-            .expect("bash_results")
-            .pop_front()
-            .unwrap_or_else(|| self.default_bash.clone());
-        if let Some(tx) = chunk_tx {
-            // Stream output in small frames so harness can assert pending tint mid-flight.
-            let bytes = result.output.as_bytes();
-            if !bytes.is_empty() {
-                let mid = bytes.len().saturating_add(1) / 2;
-                let _ = tx.send(bytes[..mid].to_vec()).await;
-                if mid < bytes.len() {
-                    let _ = tx.send(bytes[mid..].to_vec()).await;
-                }
-            }
-        }
-        Ok(result)
-    }
-
     fn abort(&self) {
         self.abort_count.fetch_add(1, Ordering::SeqCst);
         self.aborted.store(true, Ordering::SeqCst);
+    }
+
+    fn set_bash_run_sink(&mut self, sink: Option<crate::protocol::ports::BashOutputSink>) {
+        *self.bash_run_sink.lock().expect("bash_run_sink") = sink;
     }
 
     fn current_model(&self) -> Option<ModelInfo> {
@@ -878,6 +840,14 @@ impl crate::app::core::dispatch::SessionCommandExecutor for ScriptedDriver {
                     .expect("bash_results")
                     .pop_front()
                     .unwrap_or_else(|| self.default_bash.clone());
+                // c2760: relay output through the injected sink like the real driver.
+                if let Some(sink) = self.bash_run_sink.lock().expect("bash_run_sink").take() {
+                    let _ = sink.tx.try_send(crate::protocol::ports::BashChunk {
+                        bash_id: "scripted-bash".into(),
+                        seq: 1,
+                        data: result.output.clone(),
+                    });
+                }
                 Ok(DispatchOutcome::Bash(result))
             }
             Command::Compact { instructions, .. } => {
@@ -2556,17 +2526,26 @@ mod slice_tests {
             truncated: false,
             full_output_path: None,
         });
-        let (tx, mut rx) = tokio::sync::mpsc::channel::<Vec<u8>>(8);
-        let result = driver
-            .execute_bash("echo", false, Some(tx))
-            .await
-            .expect("bash");
+        let (tx, mut rx) = tokio::sync::mpsc::channel::<crate::protocol::ports::BashChunk>(8);
+        driver.set_bash_run_sink(Some(crate::protocol::ports::BashOutputSink { tx }));
+        let outcome = crate::app::core::dispatch::dispatch(
+            &mut driver,
+            crate::protocol::Command::Bash {
+                command: "echo".into(),
+                exclude_from_context: false,
+            },
+        )
+        .await
+        .expect("bash");
+        let crate::app::core::dispatch::DispatchOutcome::Bash(result) = outcome else {
+            panic!("expected bash outcome");
+        };
         assert_eq!(result.output, "abcdef");
-        let mut collected = Vec::new();
+        let mut collected = String::new();
         while let Ok(c) = rx.try_recv() {
-            collected.extend_from_slice(&c);
+            collected.push_str(&c.data);
         }
-        assert_eq!(String::from_utf8_lossy(&collected), "abcdef");
+        assert_eq!(collected, "abcdef");
     }
 
     #[tokio::test]

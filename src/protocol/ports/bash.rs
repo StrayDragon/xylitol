@@ -25,6 +25,32 @@ pub struct XyBashResult {
     pub full_output_path: Option<String>,
 }
 
+/// Runtime-injected sink for interactive bang output events (c2760).
+///
+/// The TUI injects `(bash_id, tx)` before dispatching `Command::Bash`; the
+/// in-process executor relays chunks into `tx`, and the remote driver forwards
+/// `session/bash_output` downlink frames the same way. Not a wire parameter.
+#[derive(Debug, Clone)]
+pub struct BashOutputSink {
+    /// Chunk channel consumed by the caller (TUI bang loop / host forwarder).
+    pub tx: mpsc::Sender<BashChunk>,
+}
+
+/// Interactive bang output event payload (c2760).
+///
+/// Pushed over the non-journal session downlink (`session/bash_output`) and
+/// fanned out to the driver's injected sink. `data` is UTF-8 lossy text;
+/// cross-chunk UTF-8 boundaries are reassembled by the consumer (TUI).
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct BashChunk {
+    /// Correlation id of the bang run (matches the start/done session rows).
+    pub bash_id: String,
+    /// Monotonic chunk sequence within the run.
+    pub seq: u64,
+    /// Output text (lossy).
+    pub data: String,
+}
+
 /// Options for [`XyBashExecutor::execute`].
 ///
 /// `chunk_tx`: when `Some`, the executor emits output byte chunks on this

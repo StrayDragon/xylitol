@@ -291,7 +291,17 @@ mod tests {
     fn html_renders_bash_entry() {
         let entries = vec![
             header("s1"),
-            bash_execution_message_entry("echo hi", "hi", Some(0), false, false, None, false),
+            bash_execution_message_entry(
+                String::new(),
+                "echo hi",
+                "hi",
+                Some(0),
+                false,
+                false,
+                None,
+                false,
+                crate::protocol::message::BashExecutionStatus::Done,
+            ),
         ];
         let html = render_html("s1", &entries);
         assert!(html.contains("$ echo hi"));

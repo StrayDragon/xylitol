@@ -21,7 +21,7 @@ pub mod tool;
 // trait directly from `protocol::ports` (or via `protocol` root) rather than
 // from its submodule.
 pub use ask::{AskArgs, AskModeArg, AskOptionArg, AskQuestionArg, AskUserGateway};
-pub use bash::{BashExecOpts, XyBashExecutor, XyBashResult};
+pub use bash::{BashChunk, BashExecOpts, BashOutputSink, XyBashExecutor, XyBashResult};
 pub use event::{LifecycleHandler, XyEventSink};
 pub use export::XyExportIo;
 pub use hook::{NoopHookBus, XyHookBus, XyHookOutcome};

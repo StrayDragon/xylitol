@@ -165,6 +165,9 @@ pub struct XyRemoteDriver<C = HttpWsClient> {
     gate_notice_consumed: Arc<AtomicBool>,
     /// Set when mux `session/resources` (or a snapshot unary) updates the cache.
     resources_dirty: Arc<AtomicBool>,
+    /// Interactive bang output-event sink (c2760): runtime-injected by the TUI
+    /// bang loop; downlink `session/bash_output` frames are forwarded into it.
+    bash_run_sink: Arc<std::sync::Mutex<Option<crate::protocol::ports::BashOutputSink>>>,
 }
 
 #[cfg(feature = "server")]
@@ -206,6 +209,7 @@ struct DownlinkCtx<C> {
     cached_gate_notice: Arc<std::sync::Mutex<Option<String>>>,
     gate_notice_consumed: Arc<AtomicBool>,
     resources_dirty: Arc<AtomicBool>,
+    bash_run_sink: Arc<std::sync::Mutex<Option<crate::protocol::ports::BashOutputSink>>>,
     client_cwd: String,
     downlink_gen: Arc<AtomicU64>,
     fatal: Arc<std::sync::Mutex<Option<String>>>,
@@ -290,6 +294,29 @@ where
         }
         RpcMessage::ServerRequest { method, .. } if method == "session/subscribed" => {
             ctx.skip_cold_replay.store(false, Ordering::SeqCst);
+        }
+        RpcMessage::ServerRequest {
+            method, payload, ..
+        } if method == "session/bash_output" => {
+            // c2760: non-journal bang output → injected sink (TUI bang loop).
+            let chunk = crate::protocol::ports::BashChunk {
+                bash_id: payload
+                    .get("bash_id")
+                    .and_then(Value::as_str)
+                    .unwrap_or_default()
+                    .to_string(),
+                seq: payload.get("seq").and_then(Value::as_u64).unwrap_or(0),
+                data: payload
+                    .get("data")
+                    .and_then(Value::as_str)
+                    .unwrap_or_default()
+                    .to_string(),
+            };
+            if let Ok(guard) = ctx.bash_run_sink.lock()
+                && let Some(sink) = guard.as_ref()
+            {
+                let _ = sink.tx.try_send(chunk);
+            }
         }
         RpcMessage::ServerRequest {
             method, payload, ..
@@ -517,6 +544,7 @@ where
             cached_gate_notice: Arc::new(std::sync::Mutex::new(None)),
             gate_notice_consumed: Arc::new(AtomicBool::new(false)),
             resources_dirty: Arc::new(AtomicBool::new(false)),
+            bash_run_sink: Arc::new(std::sync::Mutex::new(None)),
         }
     }
 
@@ -629,6 +657,7 @@ where
             cached_gate_notice: self.cached_gate_notice.clone(),
             gate_notice_consumed: self.gate_notice_consumed.clone(),
             resources_dirty: self.resources_dirty.clone(),
+            bash_run_sink: self.bash_run_sink.clone(),
             client_cwd: self.client_cwd.clone(),
             downlink_gen: self.downlink_gen.clone(),
             fatal: self.fatal.clone(),
@@ -957,45 +986,6 @@ where
         Box::pin(stream)
     }
 
-    async fn execute_bash(
-        &self,
-        command: &str,
-        exclude_from_context: bool,
-        _chunk_tx: Option<tokio::sync::mpsc::Sender<Vec<u8>>>,
-    ) -> Result<XyBashResult, XyDriverError> {
-        // Remote REST bash is request/response — no live chunk uplink.
-        let data = self
-            .unary_cmd(Command::Bash {
-                command: command.to_string(),
-                exclude_from_context,
-            })
-            .await?;
-        Ok(XyBashResult {
-            output: data
-                .get("output")
-                .and_then(|o| o.as_str())
-                .unwrap_or("")
-                .to_string(),
-            exit_code: data
-                .get("exit_code")
-                .and_then(|c| c.as_i64())
-                .map(|c| c as i32),
-            cancelled: data
-                .get("cancelled")
-                .and_then(|c| c.as_bool())
-                .unwrap_or(false),
-            timed_out: data
-                .get("timed_out")
-                .and_then(|c| c.as_bool())
-                .unwrap_or(false),
-            truncated: data
-                .get("truncated")
-                .and_then(|c| c.as_bool())
-                .unwrap_or(false),
-            full_output_path: None,
-        })
-    }
-
     fn abort(&self) {
         if let Ok(g) = self.turn_cancel.lock() {
             g.cancel();
@@ -1081,6 +1071,12 @@ where
             .ok()
             .and_then(|cached| cached.clone())
             .unwrap_or_default()
+    }
+
+    fn set_bash_run_sink(&mut self, sink: Option<crate::protocol::ports::BashOutputSink>) {
+        if let Ok(mut guard) = self.bash_run_sink.lock() {
+            *guard = sink;
+        }
     }
 
     fn leaf_entry_id(&self) -> Option<String> {
@@ -1954,6 +1950,39 @@ mod tests {
     }
 
     #[tokio::test]
+    async fn push_bash_output_is_not_journaled() {
+        let host = HostState::for_test().expect("host");
+        let slot = host.slot("bash-ev").await;
+        let mut rx = host.in_process_downlink.subscribe();
+        let seq_before = slot.journal.lock().await.max_seq();
+        slot.push_bash_output(crate::protocol::ports::BashChunk {
+            bash_id: "b1".into(),
+            seq: 1,
+            data: "hello".into(),
+        })
+        .await;
+        let msg = tokio::time::timeout(Duration::from_secs(1), rx.recv())
+            .await
+            .expect("downlink")
+            .expect("msg");
+        match msg {
+            RpcMessage::ServerRequest {
+                method, payload, ..
+            } => {
+                assert_eq!(method, "session/bash_output");
+                assert_eq!(payload["bash_id"], "b1");
+                assert_eq!(payload["data"], "hello");
+            }
+            other => panic!("unexpected {other:?}"),
+        }
+        assert_eq!(
+            slot.journal.lock().await.max_seq(),
+            seq_before,
+            "session/bash_output MUST NOT consume journal seq (c2760)"
+        );
+    }
+
+    #[tokio::test]
     async fn push_resources_is_not_journaled() {
         let host = HostState::for_test().expect("host");
         let slot = host.slot("res").await;
@@ -2202,6 +2231,41 @@ mod tests {
             other => panic!("list after delete outcome: {other:?}"),
         };
         assert!(!listed.iter().any(|entry| entry.id == session_id));
+    }
+
+    #[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+    async fn remote_forwards_bash_output_frames_to_sink() {
+        let host = HostState::for_test().expect("host");
+        let (running, port) = serve(
+            ServerConfig {
+                host: "127.0.0.1".into(),
+                port: 0,
+                sessions_dir: None,
+                registration_path: None,
+            },
+            host.clone(),
+        )
+        .await
+        .expect("bind");
+        let mut driver = XyRemoteDriver::new(format!("http://127.0.0.1:{port}"), "sink-sess");
+        driver.attach_session().await.expect("attach");
+        let (tx, mut rx) = tokio::sync::mpsc::channel(8);
+        driver.set_bash_run_sink(Some(crate::protocol::ports::BashOutputSink { tx }));
+        host.slot("sink-sess")
+            .await
+            .push_bash_output(crate::protocol::ports::BashChunk {
+                bash_id: "b1".into(),
+                seq: 1,
+                data: "streamed".into(),
+            })
+            .await;
+        let chunk = tokio::time::timeout(Duration::from_secs(2), rx.recv())
+            .await
+            .expect("chunk delivery")
+            .expect("chunk");
+        assert_eq!(chunk.bash_id, "b1");
+        assert_eq!(chunk.data, "streamed");
+        running.shutdown();
     }
 
     #[tokio::test(flavor = "multi_thread", worker_threads = 2)]
