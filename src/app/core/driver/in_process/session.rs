@@ -13,7 +13,7 @@ use super::types::{
 use super::{bind_session_or_err, require_active_session};
 
 impl super::XyInProcessDriver {
-    pub(super) async fn fork_session(
+    pub(crate) async fn fork_session(
         &mut self,
         entry_id: &str,
         position: crate::protocol::session::ForkPosition,
@@ -27,7 +27,7 @@ impl super::XyInProcessDriver {
         Ok(id)
     }
 
-    pub(super) async fn switch_session(
+    pub(crate) async fn switch_session(
         &mut self,
         session_id: &str,
     ) -> Result<String, XyDriverError> {
@@ -73,19 +73,19 @@ impl super::XyInProcessDriver {
         Ok(session_id.to_string())
     }
 
-    pub(super) async fn get_messages(&self) -> Result<Vec<SessionEntry>, XyDriverError> {
+    pub(crate) async fn get_messages(&self) -> Result<Vec<SessionEntry>, XyDriverError> {
         let sid = require_active_session(&self.agent)?;
         self.store.load_entries(sid).await.map_err(Into::into)
     }
 
-    pub(super) async fn get_session_stats(&self) -> Result<SessionStats, XyDriverError> {
+    pub(crate) async fn get_session_stats(&self) -> Result<SessionStats, XyDriverError> {
         self.agent
             .get_session_stats()
             .await
             .map_err(XyDriverError::from)
     }
 
-    pub(super) async fn estimate_context_tokens(
+    pub(crate) async fn estimate_context_tokens(
         &self,
     ) -> Result<crate::protocol::model::ContextTokenEstimate, XyDriverError> {
         let entries = self.get_messages().await?;
@@ -101,7 +101,7 @@ impl super::XyInProcessDriver {
         .map_err(|e| XyDriverError::io(format!("estimate join: {e}")))
     }
 
-    pub(super) async fn session_tree(
+    pub(crate) async fn session_tree(
         &self,
         kind: SessionTreeKind,
     ) -> Result<Vec<SessionTreeNode>, XyDriverError> {
@@ -129,7 +129,7 @@ impl super::XyInProcessDriver {
         Ok(tree)
     }
 
-    pub(super) async fn travel_session_tree(
+    pub(crate) async fn travel_session_tree(
         &self,
         kind: SessionTreeKind,
         entry_id: &str,
@@ -161,7 +161,7 @@ impl super::XyInProcessDriver {
         Ok(travel)
     }
 
-    pub(super) async fn append_entry_label(
+    pub(crate) async fn append_entry_label(
         &mut self,
         target_id: &str,
         label: Option<&str>,
@@ -197,12 +197,12 @@ impl super::XyInProcessDriver {
             .map_err(Into::into)
     }
 
-    pub(super) fn leaf_entry_id(&self) -> Option<String> {
+    pub(crate) fn leaf_entry_id(&self) -> Option<String> {
         let sid = self.agent.session_id()?;
         self.store.leaf_id(sid)
     }
 
-    pub(super) async fn load_debug_scene(
+    pub(crate) async fn load_debug_scene(
         &mut self,
         scene: &str,
     ) -> Result<DebugSceneLoad, XyDriverError> {
@@ -251,11 +251,11 @@ impl super::XyInProcessDriver {
         })
     }
 
-    pub(super) async fn list_sessions(&self) -> Result<Vec<SessionListEntry>, XyDriverError> {
+    pub(crate) async fn list_sessions(&self) -> Result<Vec<SessionListEntry>, XyDriverError> {
         self.store.list_sessions().await.map_err(Into::into)
     }
 
-    pub(super) async fn load_session_entries(
+    pub(crate) async fn load_session_entries(
         &self,
         session_id: &str,
     ) -> Result<Vec<SessionEntry>, XyDriverError> {
@@ -265,7 +265,7 @@ impl super::XyInProcessDriver {
             .map_err(Into::into)
     }
 
-    pub(super) async fn new_session(&mut self) -> Result<String, XyDriverError> {
+    pub(crate) async fn new_session(&mut self) -> Result<String, XyDriverError> {
         let session_id = uuid::Uuid::new_v4().to_string();
         let cwd = std::env::current_dir()
             .ok()
@@ -279,19 +279,19 @@ impl super::XyInProcessDriver {
         Ok(session_id)
     }
 
-    pub(super) async fn get_session_name(&self) -> Result<Option<String>, XyDriverError> {
+    pub(crate) async fn get_session_name(&self) -> Result<Option<String>, XyDriverError> {
         let sid = require_active_session(&self.agent)?;
         self.store.get_session_name(sid).await.map_err(Into::into)
     }
 
-    pub(super) async fn set_session_name(&mut self, name: &str) -> Result<String, XyDriverError> {
+    pub(crate) async fn set_session_name(&mut self, name: &str) -> Result<String, XyDriverError> {
         let sid = require_active_session(&self.agent)?;
         let out = self.store.set_session_name(sid, name).await?;
         xylitol_ai_bridge::provider::set_obs_session_name(Some(out.as_str()));
         Ok(out)
     }
 
-    pub(super) async fn set_session_name_for(
+    pub(crate) async fn set_session_name_for(
         &mut self,
         session_id: &str,
         name: &str,
@@ -303,7 +303,7 @@ impl super::XyInProcessDriver {
         Ok(out)
     }
 
-    pub(super) async fn delete_session(&mut self, session_id: &str) -> Result<(), XyDriverError> {
+    pub(crate) async fn delete_session(&mut self, session_id: &str) -> Result<(), XyDriverError> {
         self.store
             .delete_session(session_id)
             .await

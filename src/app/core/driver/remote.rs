@@ -1,7 +1,6 @@
 //! Remote HTTP/WS [`XyRemoteDriver`] (feature = "server").
 
 use std::collections::VecDeque;
-use std::path::Path;
 use std::sync::Arc;
 use std::sync::atomic::{AtomicBool, AtomicU64, Ordering};
 use std::time::Duration;
@@ -15,7 +14,6 @@ use tokio_util::sync::CancellationToken;
 use crate::app::core::host_client::{HostClient, HostClientError, HttpWsClient};
 use crate::protocol::model::THINKING_OFF;
 use crate::protocol::ports::XyBashResult;
-use crate::protocol::session::{SessionEntry, SessionTreeKind, SessionTreeNode, SessionTreeTravel};
 use crate::protocol::wire::Command;
 use crate::protocol::{Event, RpcMessage};
 
@@ -24,7 +22,7 @@ use super::XyDriverError;
 use super::types::{
     ClipboardCopyOutcome, CommandInfo, DebugSceneLoad, EventStream, LoadedResourcesSnapshot,
     ModelInfo, ProjectTrustMode, ProjectTrustPersistReport, QueueStats, ReloadStepReport,
-    RuntimeReloadReport, SessionListEntry, SessionStats, XyEvent, estimate_from_session_entries,
+    RuntimeReloadReport, XyEvent, estimate_from_session_entries,
 };
 
 /// Notify the product TUI of mux reverse-RPC (approval/question).
@@ -711,6 +709,10 @@ where
         Ok(())
     }
 
+    fn queue_stats(&self) -> QueueStats {
+        self.cached_queue.lock().map(|s| *s).unwrap_or_default()
+    }
+
     fn with_session(&self, mut payload: serde_json::Value) -> serde_json::Value {
         let Some(map) = payload.as_object_mut() else {
             return payload;
@@ -955,120 +957,6 @@ where
         Box::pin(stream)
     }
 
-    fn abort(&self) {
-        if let Ok(g) = self.turn_cancel.lock() {
-            g.cancel();
-        }
-        let host = self.host.clone();
-        let payload = self.with_session(serde_json::json!({}));
-        tokio::spawn(async move {
-            let _ = host.unary("abort", payload).await;
-        });
-    }
-
-    fn current_model(&self) -> Option<ModelInfo> {
-        // Product TUI ticks / footer sync call this synchronously. HTTP `block_on`
-        // here freezes input (and `/model`) while MCP or Host unary is in flight.
-        self.cached_model
-            .lock()
-            .ok()
-            .and_then(|cached| cached.clone())
-    }
-
-    fn available_models(&self) -> Vec<ModelInfo> {
-        self.cached_models
-            .lock()
-            .ok()
-            .and_then(|cached| cached.clone())
-            .unwrap_or_default()
-    }
-
-    async fn select_model(&mut self, model_id: &str) -> Result<ModelInfo, XyDriverError> {
-        let data = self
-            .unary_cmd(Command::SetModel {
-                provider: String::new(),
-                model_id: model_id.to_string(),
-            })
-            .await?;
-        // Endpoint returns { model, display_name }; enrich via list if needed.
-        let selected = if data.get("id").is_some() {
-            Self::model_from_value(&data)?
-        } else {
-            ModelInfo {
-                id: data
-                    .get("model")
-                    .and_then(|m| m.as_str())
-                    .unwrap_or(model_id)
-                    .to_string(),
-                display_name: data
-                    .get("display_name")
-                    .and_then(|m| m.as_str())
-                    .unwrap_or("")
-                    .to_string(),
-                thinking: false,
-                thinking_levels: Vec::new(),
-                context_window: 0,
-            }
-        };
-        let default = selected
-            .thinking_levels
-            .last()
-            .cloned()
-            .unwrap_or_else(|| THINKING_OFF.into());
-        *self.thinking.lock().unwrap() = default;
-        self.cache_model(selected.clone());
-        Ok(selected)
-    }
-
-    async fn cycle_model(&mut self) -> Result<ModelInfo, XyDriverError> {
-        let data = self.unary_cmd(Command::CycleModel {}).await?;
-        let selected = Self::model_from_value(&data)?;
-        *self.thinking.lock().unwrap() = selected
-            .thinking_levels
-            .last()
-            .cloned()
-            .unwrap_or_else(|| THINKING_OFF.into());
-        self.cache_model(selected.clone());
-        Ok(selected)
-    }
-
-    async fn set_thinking_level(&mut self, level: String) -> Result<(), XyDriverError> {
-        self.unary_cmd(Command::SetThinkingLevel {
-            level: level.clone(),
-        })
-        .await?;
-        *self.thinking.lock().unwrap() = level;
-        Ok(())
-    }
-
-    fn thinking_level(&self) -> String {
-        self.thinking.lock().unwrap().clone()
-    }
-
-    async fn cycle_thinking_level(&mut self) -> Result<String, XyDriverError> {
-        // Remote REST has set-only; cycle locally over the selected model's
-        // declared support list.
-        let levels = self
-            .current_model()
-            .map(|model| model.thinking_levels)
-            .filter(|levels| !levels.is_empty())
-            .unwrap_or_else(|| vec![THINKING_OFF.into()]);
-        let cur = self.thinking_level();
-        let next = match levels.iter().position(|level| level == &cur) {
-            Some(index) => levels[(index + 1) % levels.len()].clone(),
-            None => levels
-                .last()
-                .cloned()
-                .unwrap_or_else(|| THINKING_OFF.into()),
-        };
-        self.set_thinking_level(next.clone()).await?;
-        Ok(next)
-    }
-
-    fn session_id(&self) -> Option<String> {
-        Some(self.session_id.clone())
-    }
-
     async fn execute_bash(
         &self,
         command: &str,
@@ -1108,149 +996,76 @@ where
         })
     }
 
-    async fn compact(&mut self, instructions: Option<String>) -> Result<bool, XyDriverError> {
-        let data = self.unary_cmd(Command::Compact { instructions }).await?;
-        Ok(data
-            .get("compacted")
-            .and_then(|c| c.as_bool())
-            .unwrap_or(false))
-    }
-
-    async fn export_html(&mut self, path: &Path) -> Result<String, XyDriverError> {
-        let data = self
-            .unary_cmd(Command::ExportHtml { output_path: None })
-            .await?;
-        if let Some(content) = data.get("content").and_then(|c| c.as_str()) {
-            std::fs::write(path, content).map_err(|e| XyDriverError::io(e.to_string()))?;
-            return Ok(path.to_string_lossy().into_owned());
+    fn abort(&self) {
+        if let Ok(g) = self.turn_cancel.lock() {
+            g.cancel();
         }
-        Ok(data
-            .get("path")
-            .and_then(|p| p.as_str())
-            .unwrap_or("")
-            .to_string())
+        let host = self.host.clone();
+        let payload = self.with_session(serde_json::json!({}));
+        tokio::spawn(async move {
+            let _ = host.unary("abort", payload).await;
+        });
     }
 
-    async fn export_jsonl(&mut self, path: &Path) -> Result<String, XyDriverError> {
-        let data = self
-            .unary_cmd(Command::ExportJsonl { output_path: None })
-            .await?;
-        if let Some(content) = data.get("content").and_then(|c| c.as_str()) {
-            std::fs::write(path, content).map_err(|e| XyDriverError::io(e.to_string()))?;
-            return Ok(path.to_string_lossy().into_owned());
-        }
-        Ok(data
-            .get("path")
-            .and_then(|p| p.as_str())
-            .unwrap_or("")
-            .to_string())
+    fn current_model(&self) -> Option<ModelInfo> {
+        // Product TUI ticks / footer sync call this synchronously. HTTP `block_on`
+        // here freezes input (and `/model`) while MCP or Host unary is in flight.
+        self.cached_model
+            .lock()
+            .ok()
+            .and_then(|cached| cached.clone())
     }
 
-    async fn import_jsonl(&mut self, path: &Path) -> Result<String, XyDriverError> {
-        let content =
-            std::fs::read_to_string(path).map_err(|e| XyDriverError::io(e.to_string()))?;
-        let data = self
-            .unary("import_jsonl", serde_json::json!({ "content": content }))
-            .await?;
-        Ok(data
-            .get("session_id")
-            .and_then(|p| p.as_str())
-            .unwrap_or("")
-            .to_string())
+    fn available_models(&self) -> Vec<ModelInfo> {
+        self.cached_models
+            .lock()
+            .ok()
+            .and_then(|cached| cached.clone())
+            .unwrap_or_default()
     }
 
-    async fn fork_session(
-        &mut self,
-        entry_id: &str,
-        position: crate::protocol::session::ForkPosition,
-    ) -> Result<String, XyDriverError> {
-        let data = self
-            .unary_cmd(Command::Fork {
-                entry_id: entry_id.to_string(),
-                position: Some(
-                    match position {
-                        crate::protocol::session::ForkPosition::At => "at",
-                        crate::protocol::session::ForkPosition::Before => "before",
-                    }
-                    .to_string(),
-                ),
-            })
-            .await?;
-        Ok(data
-            .get("session_id")
-            .and_then(|p| p.as_str())
-            .unwrap_or("")
-            .to_string())
+    fn thinking_level(&self) -> String {
+        self.thinking.lock().unwrap().clone()
     }
 
-    async fn switch_session(&mut self, session_id: &str) -> Result<String, XyDriverError> {
-        let data = self
-            .unary_cmd(Command::SwitchSession {
-                session_path: session_id.to_string(),
-            })
-            .await?;
-        let id = data
-            .get("session_id")
-            .and_then(|p| p.as_str())
-            .unwrap_or(session_id)
-            .to_string();
-        self.session_id = id.clone();
-        if let Ok(mut leaf) = self.leaf_entry_id.lock() {
-            *leaf = None;
-        }
-        if self.downlink.started.load(Ordering::SeqCst) {
-            self.restart_downlink();
-        }
-        Ok(id)
-    }
-
-    async fn get_messages(&self) -> Result<Vec<SessionEntry>, XyDriverError> {
-        let data = self.unary_cmd(Command::GetMessages {}).await?;
-        let entries = data
-            .get("entries")
-            .cloned()
-            .unwrap_or(serde_json::Value::Null);
-        serde_json::from_value(entries).map_err(|e| XyDriverError::remote(e.to_string()))
-    }
-
-    async fn get_session_stats(&self) -> Result<SessionStats, XyDriverError> {
-        let data = self.unary_cmd(Command::GetSessionStats {}).await?;
-        Ok(SessionStats {
-            session_id: data
-                .get("session_id")
-                .and_then(|s| s.as_str())
-                .unwrap_or(&self.session_id)
-                .to_string(),
-            user_messages: data
-                .get("user_messages")
-                .and_then(|n| n.as_u64())
-                .unwrap_or(0) as usize,
-            assistant_messages: data
-                .get("assistant_messages")
-                .and_then(|n| n.as_u64())
-                .unwrap_or(0) as usize,
-            total_messages: data
-                .get("total_messages")
-                .and_then(|n| n.as_u64())
-                .unwrap_or(0) as usize,
-            thinking_level: data
-                .get("thinking_level")
-                .and_then(|s| s.as_str())
-                .unwrap_or("")
-                .to_string(),
-            model: data.get("model").and_then(|m| {
-                Some((
-                    m.get("provider")?.as_str()?.to_string(),
-                    m.get("model_id")?.as_str()?.to_string(),
-                ))
-            }),
+    async fn cycle_thinking_level(&mut self) -> Result<String, XyDriverError> {
+        // Remote REST has set-only; cycle locally over the selected model's
+        // declared support list.
+        let levels = self
+            .current_model()
+            .map(|model| model.thinking_levels)
+            .filter(|levels| !levels.is_empty())
+            .unwrap_or_else(|| vec![THINKING_OFF.into()]);
+        let cur = self.thinking_level();
+        let next = match levels.iter().position(|level| level == &cur) {
+            Some(index) => levels[(index + 1) % levels.len()].clone(),
+            None => levels
+                .last()
+                .cloned()
+                .unwrap_or_else(|| THINKING_OFF.into()),
+        };
+        self.unary_cmd(Command::SetThinkingLevel {
+            level: next.clone(),
         })
+        .await?;
+        *self.thinking.lock().unwrap() = next.clone();
+        Ok(next)
+    }
+
+    fn session_id(&self) -> Option<String> {
+        Some(self.session_id.clone())
     }
 
     async fn estimate_context_tokens(
         &self,
     ) -> Result<crate::protocol::model::ContextTokenEstimate, XyDriverError> {
-        let entries = self.get_messages().await.unwrap_or_default();
+        // Remote surface: tokenizer mapping lives on the server; do not inject
+        // local AppConfig override here.
+        let entries = match self.unary_cmd(Command::GetMessages {}).await {
+            Ok(data) => serde_json::from_value(data.get("entries").cloned().unwrap_or(Value::Null))
+                .unwrap_or_default(),
+            Err(_) => Vec::new(),
+        };
         // Remote surface: tokenizer mapping lives on the server; do not inject
         // local AppConfig override here.
         Ok(estimate_from_session_entries(
@@ -1266,81 +1081,6 @@ where
             .ok()
             .and_then(|cached| cached.clone())
             .unwrap_or_default()
-    }
-
-    async fn steer(&mut self, message: &str) -> Result<(), XyDriverError> {
-        let data = self
-            .unary_cmd(Command::Steer {
-                message: message.to_string(),
-            })
-            .await?;
-        self.cache_queue_from_value(&data);
-        Ok(())
-    }
-
-    async fn follow_up(&mut self, message: &str) -> Result<(), XyDriverError> {
-        let data = self
-            .unary_cmd(Command::FollowUp {
-                message: message.to_string(),
-            })
-            .await?;
-        self.cache_queue_from_value(&data);
-        Ok(())
-    }
-
-    async fn clear_queue(
-        &mut self,
-        clear_steer: bool,
-        clear_follow_up: bool,
-    ) -> Result<(), XyDriverError> {
-        let data = self
-            .unary_cmd(Command::ClearQueue {
-                clear_steer,
-                clear_follow_up,
-            })
-            .await?;
-        self.cache_queue_from_value(&data);
-        Ok(())
-    }
-
-    fn queue_stats(&self) -> QueueStats {
-        self.cached_queue.lock().map(|s| *s).unwrap_or_default()
-    }
-
-    async fn session_tree(
-        &self,
-        kind: SessionTreeKind,
-    ) -> Result<Vec<SessionTreeNode>, XyDriverError> {
-        let data = self.unary_cmd(Command::SessionTree { kind }).await?;
-        serde_json::from_value(data.get("tree").cloned().unwrap_or(Value::Null))
-            .map_err(|e| XyDriverError::remote(e.to_string()))
-    }
-
-    async fn travel_session_tree(
-        &self,
-        kind: SessionTreeKind,
-        entry_id: &str,
-    ) -> Result<SessionTreeTravel, XyDriverError> {
-        let data = self
-            .unary_cmd(Command::TravelSessionTree {
-                kind,
-                entry_id: entry_id.to_string(),
-            })
-            .await?;
-        serde_json::from_value(data).map_err(|e| XyDriverError::remote(e.to_string()))
-    }
-
-    async fn append_entry_label(
-        &mut self,
-        target_id: &str,
-        label: Option<&str>,
-    ) -> Result<(), XyDriverError> {
-        self.unary_cmd(Command::AppendEntryLabel {
-            target_id: target_id.to_string(),
-            label: label.map(str::to_string),
-        })
-        .await?;
-        Ok(())
     }
 
     fn leaf_entry_id(&self) -> Option<String> {
@@ -1376,87 +1116,6 @@ where
             note,
             model,
         })
-    }
-
-    async fn list_sessions(&self) -> Result<Vec<SessionListEntry>, XyDriverError> {
-        let data = self.unary_cmd(Command::ListSessions {}).await?;
-        serde_json::from_value(data.get("sessions").cloned().unwrap_or(Value::Null))
-            .map_err(|e| XyDriverError::remote(e.to_string()))
-    }
-
-    async fn load_session_entries(
-        &self,
-        session_id: &str,
-    ) -> Result<Vec<SessionEntry>, XyDriverError> {
-        let data = self
-            .unary_cmd(Command::LoadSessionEntries {
-                session_id: session_id.to_string(),
-            })
-            .await?;
-        serde_json::from_value(data.get("entries").cloned().unwrap_or(Value::Null))
-            .map_err(|e| XyDriverError::remote(e.to_string()))
-    }
-
-    async fn new_session(&mut self) -> Result<String, XyDriverError> {
-        let data = self.unary_cmd(Command::NewSession {}).await?;
-        let id = data
-            .get("session_id")
-            .and_then(|value| value.as_str())
-            .ok_or_else(|| XyDriverError::remote("new_session response missing session_id"))?
-            .to_string();
-        self.session_id = id.clone();
-        if let Ok(mut leaf) = self.leaf_entry_id.lock() {
-            *leaf = None;
-        }
-        if self.downlink.started.load(Ordering::SeqCst) {
-            self.restart_downlink();
-        }
-        Ok(id)
-    }
-
-    async fn get_session_name(&self) -> Result<Option<String>, XyDriverError> {
-        let data = self.unary_cmd(Command::GetSessionName {}).await?;
-        Ok(data
-            .get("name")
-            .and_then(|value| value.as_str())
-            .map(str::to_string))
-    }
-
-    async fn set_session_name(&mut self, name: &str) -> Result<String, XyDriverError> {
-        let data = self
-            .unary_cmd(Command::SetSessionName {
-                name: name.to_string(),
-            })
-            .await?;
-        data.get("name")
-            .and_then(|value| value.as_str())
-            .map(str::to_string)
-            .ok_or_else(|| XyDriverError::remote("set_session_name response missing name"))
-    }
-
-    async fn set_session_name_for(
-        &mut self,
-        session_id: &str,
-        name: &str,
-    ) -> Result<String, XyDriverError> {
-        let data = self
-            .unary_cmd(Command::SetSessionNameFor {
-                session_id: session_id.to_string(),
-                name: name.to_string(),
-            })
-            .await?;
-        data.get("name")
-            .and_then(|value| value.as_str())
-            .map(str::to_string)
-            .ok_or_else(|| XyDriverError::remote("set_session_name_for response missing name"))
-    }
-
-    async fn delete_session(&mut self, session_id: &str) -> Result<(), XyDriverError> {
-        self.unary_cmd(Command::DeleteSession {
-            session_id: session_id.to_string(),
-        })
-        .await?;
-        Ok(())
     }
 
     async fn loaded_resources_snapshot(&self) -> LoadedResourcesSnapshot {
@@ -1629,12 +1288,428 @@ where
     }
 }
 
+// ── Command executor (c2710): Command is the SSOT of session operations ────
+#[async_trait]
+impl<C> crate::app::core::dispatch::SessionCommandExecutor for XyRemoteDriver<C>
+where
+    C: HostClient + Clone + 'static,
+{
+    async fn execute_session_command(
+        &mut self,
+        cmd: crate::protocol::Command,
+    ) -> Result<crate::app::core::dispatch::DispatchOutcome, XyDriverError> {
+        use crate::app::core::dispatch::DispatchOutcome;
+        use crate::protocol::Command;
+
+        match cmd {
+            Command::Abort { .. } => {
+                crate::app::core::driver::XyDriver::abort(self);
+                Ok(DispatchOutcome::Aborted { cancelled: true })
+            }
+            Command::GetState { .. } => Ok(DispatchOutcome::State(
+                crate::app::core::driver::XyDriver::get_state(self),
+            )),
+            Command::GetAvailableModels { .. } => Ok(DispatchOutcome::Models(
+                crate::app::core::driver::XyDriver::available_models(self),
+            )),
+            Command::SetModel { model_id, .. } => {
+                let data = self
+                    .unary_cmd(Command::SetModel {
+                        provider: String::new(),
+                        model_id: model_id.clone(),
+                    })
+                    .await?;
+                let selected = if data.get("id").is_some() {
+                    Self::model_from_value(&data)?
+                } else {
+                    ModelInfo {
+                        id: data
+                            .get("model")
+                            .and_then(|m| m.as_str())
+                            .unwrap_or(&model_id)
+                            .to_string(),
+                        display_name: data
+                            .get("display_name")
+                            .and_then(|m| m.as_str())
+                            .unwrap_or("")
+                            .to_string(),
+                        thinking: false,
+                        thinking_levels: Vec::new(),
+                        context_window: 0,
+                    }
+                };
+                let default = selected
+                    .thinking_levels
+                    .last()
+                    .cloned()
+                    .unwrap_or_else(|| THINKING_OFF.into());
+                *self.thinking.lock().unwrap() = default;
+                self.cache_model(selected.clone());
+                Ok(DispatchOutcome::Model(selected))
+            }
+            Command::CycleModel { .. } => {
+                let data = self.unary_cmd(Command::CycleModel {}).await?;
+                let selected = Self::model_from_value(&data)?;
+                *self.thinking.lock().unwrap() = selected
+                    .thinking_levels
+                    .last()
+                    .cloned()
+                    .unwrap_or_else(|| THINKING_OFF.into());
+                self.cache_model(selected.clone());
+                Ok(DispatchOutcome::Model(selected))
+            }
+            Command::SetThinkingLevel { level, .. } => {
+                self.unary_cmd(Command::SetThinkingLevel {
+                    level: level.clone(),
+                })
+                .await?;
+                *self.thinking.lock().unwrap() = level.clone();
+                Ok(DispatchOutcome::ThinkingLevel(level))
+            }
+            Command::Bash {
+                command,
+                exclude_from_context,
+                ..
+            } => {
+                let data = self
+                    .unary_cmd(Command::Bash {
+                        command: command.clone(),
+                        exclude_from_context,
+                    })
+                    .await?;
+                Ok(DispatchOutcome::Bash(XyBashResult {
+                    output: data
+                        .get("output")
+                        .and_then(|o| o.as_str())
+                        .unwrap_or("")
+                        .to_string(),
+                    exit_code: data
+                        .get("exit_code")
+                        .and_then(|c| c.as_i64())
+                        .map(|c| c as i32),
+                    cancelled: data
+                        .get("cancelled")
+                        .and_then(|c| c.as_bool())
+                        .unwrap_or(false),
+                    timed_out: data
+                        .get("timed_out")
+                        .and_then(|c| c.as_bool())
+                        .unwrap_or(false),
+                    truncated: data
+                        .get("truncated")
+                        .and_then(|c| c.as_bool())
+                        .unwrap_or(false),
+                    full_output_path: None,
+                }))
+            }
+            Command::Compact { instructions, .. } => {
+                let data = self.unary_cmd(Command::Compact { instructions }).await?;
+                Ok(DispatchOutcome::Compacted(
+                    data.get("compacted")
+                        .and_then(|c| c.as_bool())
+                        .unwrap_or(false),
+                ))
+            }
+            Command::GetSessionStats { .. } => {
+                let data = self.unary_cmd(Command::GetSessionStats {}).await?;
+                Ok(DispatchOutcome::SessionStats(data))
+            }
+            Command::ExportHtml { output_path, .. } => {
+                let path = output_path.unwrap_or_else(|| "export.html".to_string());
+                let data = self
+                    .unary_cmd(Command::ExportHtml { output_path: None })
+                    .await?;
+                let written = if let Some(content) = data.get("content").and_then(|c| c.as_str()) {
+                    std::fs::write(&path, content).map_err(|e| XyDriverError::io(e.to_string()))?;
+                    path.clone()
+                } else {
+                    data.get("path")
+                        .and_then(|p| p.as_str())
+                        .unwrap_or(&path)
+                        .to_string()
+                };
+                Ok(DispatchOutcome::ExportedPath(written))
+            }
+            Command::ExportJsonl { output_path, .. } => {
+                let path = output_path.unwrap_or_else(|| "export.jsonl".to_string());
+                let data = self
+                    .unary_cmd(Command::ExportJsonl { output_path: None })
+                    .await?;
+                let written = if let Some(content) = data.get("content").and_then(|c| c.as_str()) {
+                    std::fs::write(&path, content).map_err(|e| XyDriverError::io(e.to_string()))?;
+                    path.clone()
+                } else {
+                    data.get("path")
+                        .and_then(|p| p.as_str())
+                        .unwrap_or(&path)
+                        .to_string()
+                };
+                Ok(DispatchOutcome::ExportedPath(written))
+            }
+            Command::ImportJsonl { input_path, .. } => {
+                let content = std::fs::read_to_string(&input_path)
+                    .map_err(|e| XyDriverError::io(e.to_string()))?;
+                let data = self
+                    .unary("import_jsonl", serde_json::json!({ "content": content }))
+                    .await?;
+                Ok(DispatchOutcome::NewSession(
+                    data.get("session_id")
+                        .and_then(|p| p.as_str())
+                        .unwrap_or("")
+                        .to_string(),
+                ))
+            }
+            Command::SwitchSession { session_path, .. } => {
+                let data = self
+                    .unary_cmd(Command::SwitchSession {
+                        session_path: session_path.clone(),
+                    })
+                    .await?;
+                let id = data
+                    .get("session_id")
+                    .and_then(|p| p.as_str())
+                    .unwrap_or(&session_path)
+                    .to_string();
+                self.session_id = id.clone();
+                if let Ok(mut leaf) = self.leaf_entry_id.lock() {
+                    *leaf = None;
+                }
+                if self.downlink.started.load(Ordering::SeqCst) {
+                    self.restart_downlink();
+                }
+                Ok(DispatchOutcome::SwitchedSession(id))
+            }
+            Command::Fork {
+                entry_id, position, ..
+            } => {
+                let data = self
+                    .unary_cmd(Command::Fork {
+                        entry_id: entry_id.clone(),
+                        position: Some(
+                            match position.as_deref() {
+                                Some("before") => "before",
+                                _ => "at",
+                            }
+                            .to_string(),
+                        ),
+                    })
+                    .await?;
+                Ok(DispatchOutcome::NewSession(
+                    data.get("session_id")
+                        .and_then(|p| p.as_str())
+                        .unwrap_or("")
+                        .to_string(),
+                ))
+            }
+            Command::GetMessages { .. } => {
+                let data = self.unary_cmd(Command::GetMessages {}).await?;
+                let entries = data
+                    .get("entries")
+                    .cloned()
+                    .unwrap_or(serde_json::Value::Null);
+                let entries = serde_json::from_value(entries)
+                    .map_err(|e| XyDriverError::remote(e.to_string()))?;
+                Ok(DispatchOutcome::Messages {
+                    session_id: self.session_id.clone(),
+                    entries,
+                })
+            }
+            Command::SessionTree { kind, .. } => {
+                let data = self.unary_cmd(Command::SessionTree { kind }).await?;
+                let tree = serde_json::from_value(data.get("tree").cloned().unwrap_or(Value::Null))
+                    .map_err(|e| XyDriverError::remote(e.to_string()))?;
+                Ok(DispatchOutcome::SessionTree(tree))
+            }
+            Command::TravelSessionTree { kind, entry_id, .. } => {
+                let data = self
+                    .unary_cmd(Command::TravelSessionTree {
+                        kind,
+                        entry_id: entry_id.clone(),
+                    })
+                    .await?;
+                let travel = serde_json::from_value(data)
+                    .map_err(|e| XyDriverError::remote(e.to_string()))?;
+                Ok(DispatchOutcome::SessionTreeTravel(travel))
+            }
+            Command::AppendEntryLabel {
+                target_id, label, ..
+            } => {
+                self.unary_cmd(Command::AppendEntryLabel {
+                    target_id: target_id.clone(),
+                    label: label.clone(),
+                })
+                .await?;
+                Ok(DispatchOutcome::Empty)
+            }
+            Command::ListSessions { .. } => {
+                let data = self.unary_cmd(Command::ListSessions {}).await?;
+                let sessions =
+                    serde_json::from_value(data.get("sessions").cloned().unwrap_or(Value::Null))
+                        .map_err(|e| XyDriverError::remote(e.to_string()))?;
+                Ok(DispatchOutcome::Sessions(sessions))
+            }
+            Command::LoadSessionEntries { session_id, .. } => {
+                let data = self
+                    .unary_cmd(Command::LoadSessionEntries {
+                        session_id: session_id.clone(),
+                    })
+                    .await?;
+                let entries =
+                    serde_json::from_value(data.get("entries").cloned().unwrap_or(Value::Null))
+                        .map_err(|e| XyDriverError::remote(e.to_string()))?;
+                Ok(DispatchOutcome::SessionEntries(entries))
+            }
+            Command::NewSession { .. } => {
+                let data = self.unary_cmd(Command::NewSession {}).await?;
+                let id = data
+                    .get("session_id")
+                    .and_then(|value| value.as_str())
+                    .ok_or_else(|| {
+                        XyDriverError::remote("new_session response missing session_id")
+                    })?
+                    .to_string();
+                self.session_id = id.clone();
+                if let Ok(mut leaf) = self.leaf_entry_id.lock() {
+                    *leaf = None;
+                }
+                if self.downlink.started.load(Ordering::SeqCst) {
+                    self.restart_downlink();
+                }
+                Ok(DispatchOutcome::NewSession(id))
+            }
+            Command::GetSessionName { .. } => {
+                let data = self.unary_cmd(Command::GetSessionName {}).await?;
+                Ok(DispatchOutcome::SessionName(
+                    data.get("name")
+                        .and_then(|value| value.as_str())
+                        .map(str::to_string),
+                ))
+            }
+            Command::SetSessionName { name, .. } => {
+                let data = self
+                    .unary_cmd(Command::SetSessionName { name: name.clone() })
+                    .await?;
+                Ok(DispatchOutcome::SessionName(Some(
+                    data.get("name")
+                        .and_then(|value| value.as_str())
+                        .map(str::to_string)
+                        .ok_or_else(|| {
+                            XyDriverError::remote("set_session_name response missing name")
+                        })?,
+                )))
+            }
+            Command::SetSessionNameFor {
+                session_id, name, ..
+            } => {
+                let data = self
+                    .unary_cmd(Command::SetSessionNameFor {
+                        session_id: session_id.clone(),
+                        name: name.clone(),
+                    })
+                    .await?;
+                Ok(DispatchOutcome::SessionName(Some(
+                    data.get("name")
+                        .and_then(|value| value.as_str())
+                        .map(str::to_string)
+                        .ok_or_else(|| {
+                            XyDriverError::remote("set_session_name_for response missing name")
+                        })?,
+                )))
+            }
+            Command::DeleteSession { session_id, .. } => {
+                self.unary_cmd(Command::DeleteSession {
+                    session_id: session_id.clone(),
+                })
+                .await?;
+                Ok(DispatchOutcome::Empty)
+            }
+            Command::Reload { .. } => {
+                let report = crate::app::core::driver::XyDriver::reload_runtime(
+                    self,
+                    &tokio_util::sync::CancellationToken::new(),
+                )
+                .await?;
+                Ok(DispatchOutcome::Reload(report))
+            }
+            Command::LoadedResources { .. } => Ok(DispatchOutcome::LoadedResources(
+                crate::app::core::driver::XyDriver::loaded_resources_snapshot(self).await,
+            )),
+            Command::GetQueueStats { .. } => {
+                let data = self.unary_cmd(Command::GetQueueStats {}).await?;
+                self.cache_queue_from_value(&data);
+                let stats = self.queue_stats();
+                Ok(DispatchOutcome::QueueStats {
+                    steer_count: stats.steer_count,
+                    follow_up_count: stats.follow_up_count,
+                })
+            }
+            Command::GetCommands { .. } => Ok(DispatchOutcome::Commands(
+                crate::app::core::driver::XyDriver::get_commands(self),
+            )),
+            Command::Steer { message, .. } => {
+                let data = self
+                    .unary_cmd(Command::Steer {
+                        message: message.clone(),
+                    })
+                    .await?;
+                self.cache_queue_from_value(&data);
+                let stats = self.queue_stats();
+                Ok(DispatchOutcome::QueueStats {
+                    steer_count: stats.steer_count,
+                    follow_up_count: stats.follow_up_count,
+                })
+            }
+            Command::FollowUp { message, .. } => {
+                let data = self
+                    .unary_cmd(Command::FollowUp {
+                        message: message.clone(),
+                    })
+                    .await?;
+                self.cache_queue_from_value(&data);
+                let stats = self.queue_stats();
+                Ok(DispatchOutcome::QueueStats {
+                    steer_count: stats.steer_count,
+                    follow_up_count: stats.follow_up_count,
+                })
+            }
+            Command::ClearQueue {
+                clear_steer,
+                clear_follow_up,
+                ..
+            } => {
+                let data = self
+                    .unary_cmd(Command::ClearQueue {
+                        clear_steer,
+                        clear_follow_up,
+                    })
+                    .await?;
+                self.cache_queue_from_value(&data);
+                let stats = self.queue_stats();
+                Ok(DispatchOutcome::QueueStats {
+                    steer_count: stats.steer_count,
+                    follow_up_count: stats.follow_up_count,
+                })
+            }
+
+            // These variants are the caller's responsibility (see dispatch module docs).
+            Command::Prompt { .. }
+            | Command::Quit { .. }
+            | Command::Subscribe { .. }
+            | Command::ApproveTool { .. }
+            | Command::AnswerQuestion { .. } => {
+                Err(crate::app::core::dispatch::transport_variant_error(&cmd))
+            }
+        }
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
     use crate::app::core::host_client::InProcessClient;
     use crate::app::server::host::HostState;
     use crate::app::server::runtime::{ServerConfig, serve};
+    use crate::protocol::session::SessionTreeKind;
 
     #[test]
     fn empty_session_arg_mints_uuid() {
@@ -1936,35 +2011,73 @@ mod tests {
     where
         C: HostClient + Clone + 'static,
     {
-        let session_id = driver.new_session().await.expect("new session");
-        let listed = driver.list_sessions().await.expect("list sessions");
+        use crate::app::core::dispatch::{DispatchOutcome, dispatch};
+        use crate::protocol::Command;
+
+        let session_id = match dispatch(&mut driver, Command::NewSession {})
+            .await
+            .expect("new session")
+        {
+            DispatchOutcome::NewSession(id) => id,
+            other => panic!("new session outcome: {other:?}"),
+        };
+        let listed = match dispatch(&mut driver, Command::ListSessions {})
+            .await
+            .expect("list sessions")
+        {
+            DispatchOutcome::Sessions(list) => list,
+            other => panic!("list sessions outcome: {other:?}"),
+        };
         assert!(listed.iter().any(|entry| entry.id == session_id));
 
-        let stored_name = driver
-            .set_session_name(" remote name\n")
-            .await
-            .expect("set name");
+        let stored_name = match dispatch(
+            &mut driver,
+            Command::SetSessionName {
+                name: " remote name\n".into(),
+            },
+        )
+        .await
+        .expect("set name")
+        {
+            DispatchOutcome::SessionName(Some(name)) => name,
+            other => panic!("set name outcome: {other:?}"),
+        };
         assert_eq!(stored_name, "remote name");
-        assert_eq!(
-            driver
-                .get_session_name()
-                .await
-                .expect("get name")
-                .as_deref(),
-            Some("remote name")
-        );
-        assert_eq!(
-            driver
-                .load_session_entries(&session_id)
-                .await
-                .expect("load entries")
-                .len(),
-            2
-        );
-        let tree = driver
-            .session_tree(SessionTreeKind::MessageHistory)
+        let fetched = match dispatch(&mut driver, Command::GetSessionName {})
             .await
-            .expect("session tree");
+            .expect("get name")
+        {
+            DispatchOutcome::SessionName(name) => name,
+            other => panic!("get name outcome: {other:?}"),
+        };
+        assert_eq!(fetched.as_deref(), Some("remote name"));
+
+        let entries = match dispatch(
+            &mut driver,
+            Command::LoadSessionEntries {
+                session_id: session_id.clone(),
+            },
+        )
+        .await
+        .expect("load entries")
+        {
+            DispatchOutcome::SessionEntries(entries) => entries,
+            other => panic!("load entries outcome: {other:?}"),
+        };
+        assert_eq!(entries.len(), 2);
+
+        let tree = match dispatch(
+            &mut driver,
+            Command::SessionTree {
+                kind: SessionTreeKind::MessageHistory,
+            },
+        )
+        .await
+        .expect("session tree")
+        {
+            DispatchOutcome::SessionTree(tree) => tree,
+            other => panic!("session tree outcome: {other:?}"),
+        };
         driver
             .refresh_surface_caches()
             .await
@@ -1976,38 +2089,67 @@ mod tests {
             .and_then(|node| node.entry.entry_id())
             .map(str::to_string)
             .expect("session tree entry");
-        driver
-            .append_entry_label(&target_id, Some("important"))
-            .await
-            .expect("append label");
-        let labelled_tree = driver
-            .session_tree(SessionTreeKind::MessageHistory)
-            .await
-            .expect("labelled tree");
+        dispatch(
+            &mut driver,
+            Command::AppendEntryLabel {
+                target_id: target_id.clone(),
+                label: Some("important".into()),
+            },
+        )
+        .await
+        .expect("append label");
+        let labelled_tree = match dispatch(
+            &mut driver,
+            Command::SessionTree {
+                kind: SessionTreeKind::MessageHistory,
+            },
+        )
+        .await
+        .expect("labelled tree")
+        {
+            DispatchOutcome::SessionTree(tree) => tree,
+            other => panic!("labelled tree outcome: {other:?}"),
+        };
         assert_eq!(
             labelled_tree.first().and_then(|node| node.label.as_deref()),
             Some("important")
         );
-        let travel = driver
-            .travel_session_tree(SessionTreeKind::MessageHistory, &target_id)
-            .await
-            .expect("travel");
+        let travel = match dispatch(
+            &mut driver,
+            Command::TravelSessionTree {
+                kind: SessionTreeKind::MessageHistory,
+                entry_id: target_id.clone(),
+            },
+        )
+        .await
+        .expect("travel")
+        {
+            DispatchOutcome::SessionTreeTravel(travel) => travel,
+            other => panic!("travel outcome: {other:?}"),
+        };
         assert_eq!(travel.selected_id, target_id);
-        assert_eq!(
-            driver
-                .set_session_name_for(&session_id, "named for session")
-                .await
-                .expect("set name for"),
-            "named for session"
-        );
-        assert_eq!(
-            driver
-                .get_session_name()
-                .await
-                .expect("get name")
-                .as_deref(),
-            Some("named for session")
-        );
+        let named = match dispatch(
+            &mut driver,
+            Command::SetSessionNameFor {
+                session_id: session_id.clone(),
+                name: "named for session".into(),
+            },
+        )
+        .await
+        .expect("set name for")
+        {
+            DispatchOutcome::SessionName(Some(name)) => name,
+            other => panic!("set name for outcome: {other:?}"),
+        };
+        assert_eq!(named, "named for session");
+        let fetched = match dispatch(&mut driver, Command::GetSessionName {})
+            .await
+            .expect("get name")
+        {
+            DispatchOutcome::SessionName(name) => name,
+            other => panic!("get name outcome: {other:?}"),
+        };
+        assert_eq!(fetched.as_deref(), Some("named for session"));
 
         let snapshot = driver.loaded_resources_snapshot().await;
         assert!(snapshot.mcp_diag_short.is_empty());
@@ -2016,31 +2158,50 @@ mod tests {
             driver.is_tools_frozen(),
             "arm_tool_freeze MUST freeze when no MCP is configured"
         );
-        driver.steer("nudge").await.expect("steer");
+        dispatch(
+            &mut driver,
+            Command::Steer {
+                message: "nudge".into(),
+            },
+        )
+        .await
+        .expect("steer");
         assert_eq!(driver.queue_stats().steer_count, 1);
         let queued = driver
             .unary("queue_stats", serde_json::json!({}))
             .await
             .expect("queue_stats unary");
         assert_eq!(queued.get("steer_count").and_then(Value::as_u64), Some(1));
-        driver.clear_queue(true, true).await.expect("clear queue");
+        dispatch(
+            &mut driver,
+            Command::ClearQueue {
+                clear_steer: true,
+                clear_follow_up: true,
+            },
+        )
+        .await
+        .expect("clear queue");
         let report = driver
             .reload_runtime(&CancellationToken::new())
             .await
             .expect("reload");
         assert!(!report.steps.is_empty());
-        driver
-            .delete_session(&session_id)
+        dispatch(
+            &mut driver,
+            Command::DeleteSession {
+                session_id: session_id.clone(),
+            },
+        )
+        .await
+        .expect("delete session");
+        let listed = match dispatch(&mut driver, Command::ListSessions {})
             .await
-            .expect("delete session");
-        assert!(
-            !driver
-                .list_sessions()
-                .await
-                .expect("list after delete")
-                .iter()
-                .any(|entry| entry.id == session_id)
-        );
+            .expect("list after delete")
+        {
+            DispatchOutcome::Sessions(list) => list,
+            other => panic!("list after delete outcome: {other:?}"),
+        };
+        assert!(!listed.iter().any(|entry| entry.id == session_id));
     }
 
     #[tokio::test(flavor = "multi_thread", worker_threads = 2)]

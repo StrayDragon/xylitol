@@ -102,7 +102,7 @@ pub async fn collect_new_session_seed_from_store(
 
 /// Prior same-cwd sessions (mtime desc, exclude `current_id`), take `n`, oldest→newest texts.
 pub async fn collect_new_session_seed(
-    driver: &dyn XyDriver,
+    driver: &mut dyn XyDriver,
     current_cwd: &str,
     current_id: Option<&str>,
     n: u32,
@@ -115,20 +115,57 @@ pub async fn collect_new_session_seed(
     if n == 0 {
         return Ok(Vec::new());
     }
-    let listed = driver.list_sessions().await.unwrap_or_default();
-    let texts = seed_texts_from_listed(listed, current_cwd, current_id, n, |id| async move {
-        match driver.load_session_entries(&id).await {
-            Ok(entries) => Some(entries),
+    let listed = match crate::app::core::dispatch::dispatch(
+        driver,
+        crate::protocol::Command::ListSessions {},
+    )
+    .await
+    {
+        Ok(crate::app::core::dispatch::DispatchOutcome::Sessions(sessions)) => sessions,
+        _ => Vec::new(),
+    };
+    let mut matched: Vec<_> = listed
+        .into_iter()
+        .filter(|e| cwd_matches(e.cwd.as_deref(), current_cwd))
+        .filter(|e| current_id.is_none_or(|id| e.id != id))
+        .collect();
+    matched.sort_by(|a, b| {
+        b.modified_unix
+            .unwrap_or(0)
+            .cmp(&a.modified_unix.unwrap_or(0))
+    });
+    matched.truncate(n as usize);
+    // Process older sessions first so ↑ lands on globally newest prompt.
+    matched.reverse();
+    let mut texts = Vec::new();
+    for entry in matched {
+        match crate::app::core::dispatch::dispatch(
+            driver,
+            crate::protocol::Command::LoadSessionEntries {
+                session_id: entry.id.clone(),
+            },
+        )
+        .await
+        {
+            Ok(crate::app::core::dispatch::DispatchOutcome::SessionEntries(entries)) => {
+                texts.extend(user_prompt_texts_from_entries(&entries));
+            }
+            Ok(_) => {
+                log::debug!(
+                    target: "xylitol::tui",
+                    "editor history seed skip session {}: unexpected outcome",
+                    entry.id
+                );
+            }
             Err(e) => {
                 log::debug!(
                     target: "xylitol::tui",
-                    "editor history seed skip session {id}: {e}"
+                    "editor history seed skip session {}: {e}",
+                    entry.id
                 );
-                None
             }
         }
-    })
-    .await;
+    }
     Ok(texts)
 }
 

@@ -22,7 +22,14 @@ pub(super) async fn select<T: Terminal>(session: &mut HostSession<T>, driver: &m
     .await
     {
         Ok(DispatchOutcome::Model(_)) => {
-            if let Err(e) = driver.set_thinking_level(choice.thinking).await {
+            if let Err(e) = dispatch(
+                driver,
+                Command::SetThinkingLevel {
+                    level: choice.thinking.clone(),
+                },
+            )
+            .await
+            {
                 e.log_failure("tui.set_thinking_level");
                 session.push_scroll_notice(format!("thinking level failed: {e}"));
             }
@@ -30,7 +37,13 @@ pub(super) async fn select<T: Terminal>(session: &mut HostSession<T>, driver: &m
             session.close_models_slot();
         }
         Ok(_) => {
-            let _ = driver.set_thinking_level(choice.thinking).await;
+            let _ = dispatch(
+                driver,
+                Command::SetThinkingLevel {
+                    level: choice.thinking.clone(),
+                },
+            )
+            .await;
             session.sync_fixed_zone(driver);
             session.close_models_slot();
         }

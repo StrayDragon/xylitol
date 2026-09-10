@@ -78,7 +78,7 @@ impl<T: Terminal> HostSession<T> {
     }
 
     /// Seed ↑/↓ history from prior same-cwd sessions (pure new session; blocking).
-    pub async fn seed_editor_history_for_new_session(&mut self, driver: &dyn XyDriver) {
+    pub async fn seed_editor_history_for_new_session(&mut self, driver: &mut dyn XyDriver) {
         let t = std::time::Instant::now();
         let cwd = std::env::current_dir()
             .map(|p| p.to_string_lossy().into_owned())

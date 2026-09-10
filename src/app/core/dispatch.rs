@@ -1,9 +1,10 @@
-//! Shared Command dispatch — the single execution path for `protocol::Command`
-//! variants, consumed by tui (spec ce10).
+//! Shared Command execution — the single execution path for `protocol::Command`
+//! variants, consumed by tui (spec ce10) and the server Host.
 //!
-//! This module is a **pure dispatcher**: it maps each non-transport Command
-//! variant to a [`XyDriver`] method call and returns a [`DispatchOutcome`]. It
-//! holds no state of its own — all execution state lives behind the XyDriver.
+//! The session operation table IS the [`Command`] enum (c2710): a `Command`
+//! variant is dispatched to a [`SessionCommandExecutor`] — in-process drives the
+//! runtime directly, remote forwards via a single unary. [`XyDriver`] no longer
+//! mirrors the command table; it carries surface/transport capabilities only.
 //!
 //! What does NOT live here (by design, spec ip9):
 //! - `Prompt` — starts an event stream + is tied to the caller's run loop, so
@@ -24,7 +25,7 @@
 //! Outcome payload fields are read by server REST and tui slash wiring
 //! (`/model`, `/compact`, `/export`, …).
 
-use std::path::PathBuf;
+use async_trait::async_trait;
 
 use crate::app::core::driver::{
     CommandInfo, LoadedResourcesSnapshot, ModelInfo, RuntimeReloadReport, SessionListEntry,
@@ -34,6 +35,20 @@ pub use crate::app::core::driver_error::XyDriverError;
 use crate::protocol::Command;
 use crate::protocol::ports::XyBashResult;
 use crate::protocol::session::{SessionEntry, SessionTreeNode, SessionTreeTravel};
+
+/// Executor for session-level Commands (c2710): a `Command` is the SSOT of a
+/// session operation. In-process handlers drive the runtime directly; remote
+/// forwards via a single typed unary.
+///
+/// `Prompt`, `Quit`, `Subscribe`, `ApproveTool`, `AnswerQuestion` are NOT
+/// handled by executors — callers must match those before dispatching.
+#[async_trait]
+pub trait SessionCommandExecutor: Send {
+    async fn execute_session_command(
+        &mut self,
+        cmd: Command,
+    ) -> Result<DispatchOutcome, XyDriverError>;
+}
 
 /// The result of executing a (non-Prompt, non-Quit, non-WS) Command.
 ///
@@ -124,8 +139,10 @@ pub async fn dispatch(
     driver: &mut dyn XyDriver,
     cmd: Command,
 ) -> Result<DispatchOutcome, XyDriverError> {
+    // `XyDriver: SessionCommandExecutor` — every driver executes commands;
+    // in-process directly, remote over a single typed unary (c2710).
     let where_ = format!("dispatch.{}", variant_name(&cmd));
-    match dispatch_inner(driver, cmd).await {
+    match driver.execute_session_command(cmd).await {
         Ok(outcome) => Ok(outcome),
         Err(err) => {
             err.log_failure(&where_);
@@ -134,218 +151,28 @@ pub async fn dispatch(
     }
 }
 
-async fn dispatch_inner(
-    driver: &mut dyn XyDriver,
-    cmd: Command,
-) -> Result<DispatchOutcome, XyDriverError> {
-    match cmd {
-        Command::Abort { .. } => {
-            // The XyDriver::abort cancels the active run loop. Whether something
-            // was actually running is caller/transport-dependent; we report
-            // cancelled=true optimistically (tui only calls Abort when a
-            // loop is active).
-            driver.abort();
-            Ok(DispatchOutcome::Aborted { cancelled: true })
-        }
-        Command::GetState { .. } => Ok(DispatchOutcome::State(driver.get_state())),
-        Command::SetModel { model_id, .. } => {
-            let m = driver.select_model(&model_id).await?;
-            Ok(DispatchOutcome::Model(m))
-        }
-        Command::CycleModel { .. } => {
-            let m = driver.cycle_model().await?;
-            Ok(DispatchOutcome::Model(m))
-        }
-        Command::GetAvailableModels { .. } => {
-            Ok(DispatchOutcome::Models(driver.available_models()))
-        }
-        Command::SetThinkingLevel { level, .. } => {
-            validate_nonempty_thinking_level(&level)?;
-            driver.set_thinking_level(level.clone()).await?;
-            Ok(DispatchOutcome::ThinkingLevel(level))
-        }
-        Command::Bash {
-            command,
-            exclude_from_context,
-            ..
-        } => {
-            let r = driver
-                .execute_bash(&command, exclude_from_context, None)
-                .await?;
-            Ok(DispatchOutcome::Bash(r))
-        }
-        Command::Compact { instructions, .. } => {
-            let did = driver.compact(instructions).await?;
-            Ok(DispatchOutcome::Compacted(did))
-        }
-        Command::GetSessionStats { .. } => {
-            let stats = driver.get_session_stats().await?;
-            Ok(DispatchOutcome::SessionStats(serde_json::json!({
-                "session_id": stats.session_id,
-                "user_messages": stats.user_messages,
-                "assistant_messages": stats.assistant_messages,
-                "total_messages": stats.total_messages,
-                "thinking_level": stats.thinking_level,
-                "model": stats.model.map(|(p, m)| {
-                    serde_json::json!({ "provider": p, "model_id": m })
-                }),
-            })))
-        }
-        Command::ExportHtml { output_path, .. } => {
-            let path = output_path
-                .map(PathBuf::from)
-                .unwrap_or_else(|| PathBuf::from("export.html"));
-            let written = driver.export_html(&path).await?;
-            Ok(DispatchOutcome::ExportedPath(written))
-        }
-        Command::ExportJsonl { output_path, .. } => {
-            let path = output_path
-                .map(PathBuf::from)
-                .unwrap_or_else(|| PathBuf::from("export.jsonl"));
-            let written = driver.export_jsonl(&path).await?;
-            Ok(DispatchOutcome::ExportedPath(written))
-        }
-        Command::ImportJsonl { input_path, .. } => {
-            let path = PathBuf::from(&input_path);
-            let new_id = driver.import_jsonl(&path).await?;
-            Ok(DispatchOutcome::NewSession(new_id))
-        }
-        Command::SwitchSession { session_path, .. } => {
-            // Derive session id from path (file stem).
-            let new_id = std::path::Path::new(&session_path)
-                .file_stem()
-                .and_then(|st| st.to_str())
-                .unwrap_or(&session_path)
-                .to_string();
-            let switched = driver.switch_session(&new_id).await?;
-            Ok(DispatchOutcome::SwitchedSession(switched))
-        }
-        Command::Fork {
-            entry_id, position, ..
-        } => {
-            let pos = match position.as_deref() {
-                Some("before") => crate::protocol::session::ForkPosition::Before,
-                _ => crate::protocol::session::ForkPosition::At,
-            };
-            let new_id = driver.fork_session(&entry_id, pos).await?;
-            Ok(DispatchOutcome::NewSession(new_id))
-        }
-        Command::GetMessages { .. } => {
-            let entries = driver.get_messages().await?;
-            let session_id = driver.session_id().unwrap_or_default();
-            Ok(DispatchOutcome::Messages {
-                session_id,
-                entries,
-            })
-        }
-        Command::SessionTree { kind, .. } => Ok(DispatchOutcome::SessionTree(
-            driver.session_tree(kind).await?,
-        )),
-        Command::TravelSessionTree { kind, entry_id, .. } => Ok(
-            DispatchOutcome::SessionTreeTravel(driver.travel_session_tree(kind, &entry_id).await?),
-        ),
-        Command::AppendEntryLabel {
-            target_id, label, ..
-        } => {
-            driver
-                .append_entry_label(&target_id, label.as_deref())
-                .await?;
-            Ok(DispatchOutcome::Empty)
-        }
-        Command::ListSessions { .. } => {
-            Ok(DispatchOutcome::Sessions(driver.list_sessions().await?))
-        }
-        Command::LoadSessionEntries { session_id, .. } => Ok(DispatchOutcome::SessionEntries(
-            driver.load_session_entries(&session_id).await?,
-        )),
-        Command::NewSession { .. } => Ok(DispatchOutcome::NewSession(driver.new_session().await?)),
-        Command::GetSessionName { .. } => Ok(DispatchOutcome::SessionName(
-            driver.get_session_name().await?,
-        )),
-        Command::SetSessionName { name, .. } => Ok(DispatchOutcome::SessionName(Some(
-            driver.set_session_name(&name).await?,
-        ))),
-        Command::SetSessionNameFor {
-            session_id, name, ..
-        } => Ok(DispatchOutcome::SessionName(Some(
-            driver.set_session_name_for(&session_id, &name).await?,
-        ))),
-        Command::DeleteSession { session_id, .. } => {
-            driver.delete_session(&session_id).await?;
-            Ok(DispatchOutcome::Empty)
-        }
-        Command::Reload { .. } => Ok(DispatchOutcome::Reload(
-            driver
-                .reload_runtime(&tokio_util::sync::CancellationToken::new())
-                .await?,
-        )),
-        Command::LoadedResources { .. } => Ok(DispatchOutcome::LoadedResources(
-            driver.loaded_resources_snapshot().await,
-        )),
-        Command::GetQueueStats { .. } => {
-            let stats = driver.queue_stats();
-            Ok(DispatchOutcome::QueueStats {
-                steer_count: stats.steer_count,
-                follow_up_count: stats.follow_up_count,
-            })
-        }
-        Command::GetCommands { .. } => Ok(DispatchOutcome::Commands(driver.get_commands())),
-        Command::Steer { message, .. } => {
-            driver.steer(&message).await?;
-            let stats = driver.queue_stats();
-            Ok(DispatchOutcome::QueueStats {
-                steer_count: stats.steer_count,
-                follow_up_count: stats.follow_up_count,
-            })
-        }
-        Command::FollowUp { message, .. } => {
-            driver.follow_up(&message).await?;
-            let stats = driver.queue_stats();
-            Ok(DispatchOutcome::QueueStats {
-                steer_count: stats.steer_count,
-                follow_up_count: stats.follow_up_count,
-            })
-        }
-        Command::ClearQueue {
-            clear_steer,
-            clear_follow_up,
-            ..
-        } => {
-            driver.clear_queue(clear_steer, clear_follow_up).await?;
-            let stats = driver.queue_stats();
-            Ok(DispatchOutcome::QueueStats {
-                steer_count: stats.steer_count,
-                follow_up_count: stats.follow_up_count,
-            })
-        }
-
-        // These variants are the caller's responsibility (see module docs).
-        Command::Prompt { .. }
-        | Command::Quit { .. }
-        | Command::Subscribe { .. }
-        | Command::ApproveTool { .. }
-        | Command::AnswerQuestion { .. } => Err(XyDriverError::invalid_input(format!(
-            "Command variant {:?} is not handled by shared dispatch; the caller must handle it before calling dispatch()",
-            variant_name(&cmd)
-        ))),
-    }
+/// Shared helper: reject transport-owned Command variants inside an executor.
+///
+/// Executors MUST reach this (or an equivalent error) for the five variants
+/// the shared path does not own.
+pub fn transport_variant_error(cmd: &Command) -> XyDriverError {
+    let name: &'static str = cmd.into();
+    XyDriverError::invalid_input(format!(
+        "Command variant {name:?} is not handled by shared dispatch; the caller must handle it before calling dispatch()"
+    ))
 }
 
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::app::core::driver::{CommandInfo, ModelInfo, SessionState};
-    use crate::protocol::ports::XyBashResult;
-    use crate::protocol::session::SessionTreeKind;
+    use crate::app::core::driver::ModelInfo;
     use async_trait::async_trait;
 
-    /// A stub XyDriver that records calls and returns canned responses, so the
-    /// dispatcher's Command→method mapping can be asserted without an agent.
+    /// Canned executor stub: dispatch is a thin wrapper (c2710) — the executor
+    /// owns the Command semantics, so these tests only pin the wrapper contract
+    /// (outcome passthrough, transport-variant rejection, error logging path).
     struct StubDriver {
         thinking: String,
-        session_id: Option<String>,
-        steer: usize,
-        follow_up: usize,
     }
 
     #[async_trait]
@@ -366,37 +193,14 @@ mod tests {
         fn available_models(&self) -> Vec<ModelInfo> {
             vec![self.current_model().unwrap()]
         }
-        async fn select_model(&mut self, id: &str) -> Result<ModelInfo, XyDriverError> {
-            Ok(ModelInfo {
-                id: id.into(),
-                display_name: id.into(),
-                thinking: true,
-                thinking_levels: Vec::new(),
-                context_window: 0,
-            })
-        }
-        async fn cycle_model(&mut self) -> Result<ModelInfo, XyDriverError> {
-            Ok(self.current_model().unwrap())
-        }
-        async fn set_thinking_level(&mut self, level: String) -> Result<(), XyDriverError> {
-            self.thinking = level;
-            Ok(())
-        }
         fn thinking_level(&self) -> String {
             self.thinking.clone()
         }
         async fn cycle_thinking_level(&mut self) -> Result<String, XyDriverError> {
-            let levels = ["off", "minimal", "low", "medium", "high"];
-            let idx = levels
-                .iter()
-                .position(|level| *level == self.thinking)
-                .unwrap_or(0);
-            let next = levels[(idx + 1) % levels.len()].to_string();
-            self.thinking = next.clone();
-            Ok(next)
+            Ok(self.thinking.clone())
         }
         fn session_id(&self) -> Option<String> {
-            self.session_id.clone()
+            None
         }
         async fn execute_bash(
             &self,
@@ -406,353 +210,140 @@ mod tests {
         ) -> Result<XyBashResult, XyDriverError> {
             unimplemented!()
         }
-        async fn compact(&mut self, _instructions: Option<String>) -> Result<bool, XyDriverError> {
-            Ok(false)
-        }
-        async fn export_html(&mut self, path: &std::path::Path) -> Result<String, XyDriverError> {
-            Ok(path.to_string_lossy().into_owned())
-        }
-        async fn export_jsonl(&mut self, path: &std::path::Path) -> Result<String, XyDriverError> {
-            Ok(path.to_string_lossy().into_owned())
-        }
-        async fn import_jsonl(&mut self, _path: &std::path::Path) -> Result<String, XyDriverError> {
-            Ok("new-session".into())
-        }
-        async fn fork_session(
-            &mut self,
-            _entry_id: &str,
-            _position: crate::protocol::session::ForkPosition,
-        ) -> Result<String, XyDriverError> {
-            Ok("forked-session".into())
-        }
-        async fn switch_session(&mut self, id: &str) -> Result<String, XyDriverError> {
-            self.session_id = Some(id.into());
-            Ok(id.into())
-        }
-        async fn get_messages(&self) -> Result<Vec<SessionEntry>, XyDriverError> {
-            Ok(Vec::new())
-        }
-        async fn get_session_stats(
-            &self,
-        ) -> Result<crate::app::core::driver::SessionStats, XyDriverError> {
-            unimplemented!()
+        fn get_commands(&self) -> Vec<CommandInfo> {
+            Vec::new()
         }
         async fn estimate_context_tokens(
             &self,
         ) -> Result<crate::protocol::model::ContextTokenEstimate, XyDriverError> {
-            Ok(crate::protocol::model::ContextTokenEstimate {
-                tokens: 0,
-                provenance: crate::protocol::model::TokenProvenance::Unknown,
-                usage_tokens: 0,
-                trailing_tokens: 0,
-                last_usage_index: None,
-            })
+            Err(XyDriverError::unsupported("stub"))
         }
-        fn get_commands(&self) -> Vec<CommandInfo> {
-            vec![CommandInfo {
-                name: "compact".into(),
-                description: "compact".into(),
-            }]
-        }
-        async fn steer(&mut self, _message: &str) -> Result<(), XyDriverError> {
-            self.steer += 1;
-            Ok(())
-        }
-        async fn follow_up(&mut self, _message: &str) -> Result<(), XyDriverError> {
-            self.follow_up += 1;
-            Ok(())
-        }
-        async fn clear_queue(
-            &mut self,
-            clear_steer: bool,
-            clear_follow_up: bool,
-        ) -> Result<(), XyDriverError> {
-            if clear_steer {
-                self.steer = 0;
-            }
-            if clear_follow_up {
-                self.follow_up = 0;
-            }
-            Ok(())
-        }
-        fn queue_stats(&self) -> crate::agent::QueueStats {
-            crate::agent::QueueStats {
-                steer_count: self.steer,
-                follow_up_count: self.follow_up,
-            }
-        }
-
-        async fn session_tree(
-            &self,
-            kind: SessionTreeKind,
-        ) -> Result<Vec<crate::protocol::session::SessionTreeNode>, XyDriverError> {
-            match kind {
-                SessionTreeKind::MessageHistory => Ok(Vec::new()),
-                SessionTreeKind::FileBrowser => {
-                    Err("session tree kind 'file_browser' is not implemented".into())
-                }
-            }
-        }
-
-        async fn travel_session_tree(
-            &self,
-            kind: SessionTreeKind,
-            _entry_id: &str,
-        ) -> Result<crate::protocol::session::SessionTreeTravel, XyDriverError> {
-            match kind {
-                SessionTreeKind::MessageHistory => {
-                    Err("stub: travel_session_tree not implemented".into())
-                }
-                SessionTreeKind::FileBrowser => {
-                    Err("session tree kind 'file_browser' is not implemented".into())
-                }
-            }
-        }
-
-        async fn append_entry_label(
-            &mut self,
-            _target_id: &str,
-            _label: Option<&str>,
-        ) -> Result<(), XyDriverError> {
-            Ok(())
-        }
-
         fn leaf_entry_id(&self) -> Option<String> {
             None
         }
-
         async fn load_debug_scene(
             &mut self,
             _scene: &str,
         ) -> Result<crate::app::core::driver::DebugSceneLoad, XyDriverError> {
-            Err("stub: load_debug_scene not implemented".into())
+            Err(XyDriverError::unsupported("stub"))
         }
-
-        async fn list_sessions(
-            &self,
-        ) -> Result<Vec<crate::app::core::driver::SessionListEntry>, XyDriverError> {
-            Ok(Vec::new())
+        async fn loaded_resources_snapshot(&self) -> LoadedResourcesSnapshot {
+            LoadedResourcesSnapshot::default()
         }
+    }
 
-        async fn load_session_entries(
-            &self,
-            _session_id: &str,
-        ) -> Result<Vec<crate::protocol::session::SessionEntry>, XyDriverError> {
-            Ok(Vec::new())
-        }
-
-        async fn new_session(&mut self) -> Result<String, XyDriverError> {
-            Ok("new-session".into())
-        }
-
-        async fn get_session_name(&self) -> Result<Option<String>, XyDriverError> {
-            Ok(None)
-        }
-
-        async fn set_session_name(&mut self, name: &str) -> Result<String, XyDriverError> {
-            Ok(name.trim().to_string())
-        }
-
-        async fn set_session_name_for(
+    #[async_trait]
+    impl SessionCommandExecutor for StubDriver {
+        async fn execute_session_command(
             &mut self,
-            _session_id: &str,
-            name: &str,
-        ) -> Result<String, XyDriverError> {
-            Ok(name.trim().to_string())
-        }
-
-        async fn delete_session(&mut self, _session_id: &str) -> Result<(), XyDriverError> {
-            Err("stub: delete_session not implemented".into())
-        }
-
-        async fn loaded_resources_snapshot(
-            &self,
-        ) -> crate::app::core::driver::LoadedResourcesSnapshot {
-            crate::app::core::driver::LoadedResourcesSnapshot::default()
+            cmd: Command,
+        ) -> Result<DispatchOutcome, XyDriverError> {
+            match cmd {
+                Command::SetThinkingLevel { level, .. } => {
+                    validate_nonempty_thinking_level(&level)?;
+                    self.thinking = level.clone();
+                    Ok(DispatchOutcome::ThinkingLevel(level))
+                }
+                Command::SetModel { model_id, .. } => Ok(DispatchOutcome::Model(ModelInfo {
+                    id: model_id.clone(),
+                    display_name: model_id,
+                    thinking: false,
+                    thinking_levels: Vec::new(),
+                    context_window: 8_000,
+                })),
+                Command::GetState { .. } => Ok(DispatchOutcome::State(SessionState {
+                    session_id: "s".into(),
+                    model: self.current_model(),
+                    thinking_level: self.thinking.clone(),
+                    leaf_entry_id: None,
+                })),
+                Command::GetAvailableModels { .. } => {
+                    Ok(DispatchOutcome::Models(self.available_models()))
+                }
+                other => Err(transport_variant_error(&other)),
+            }
         }
     }
 
     fn stub() -> StubDriver {
         StubDriver {
-            thinking: "medium".into(),
-            session_id: Some("s1".into()),
-            steer: 0,
-            follow_up: 0,
+            thinking: "off".into(),
         }
     }
 
     #[tokio::test]
-    async fn get_state_returns_snapshot() {
-        let mut d = stub();
-        let outcome = dispatch(&mut d, Command::GetState {}).await.unwrap();
-        match outcome {
-            DispatchOutcome::State(SessionState {
-                session_id, model, ..
-            }) => {
-                assert_eq!(session_id, "s1");
-                assert_eq!(model.unwrap().id, "m1");
-            }
-            _ => panic!("expected State"),
-        }
-    }
-
-    #[tokio::test]
-    async fn set_thinking_level_round_trips() {
-        let mut d = stub();
+    async fn dispatch_passes_executor_outcome_through() {
+        let mut driver = stub();
         let outcome = dispatch(
-            &mut d,
+            &mut driver,
+            Command::SetModel {
+                provider: String::new(),
+                model_id: "m2".into(),
+            },
+        )
+        .await
+        .expect("ok");
+        assert!(matches!(outcome, DispatchOutcome::Model(m) if m.id == "m2"));
+    }
+
+    #[tokio::test]
+    async fn set_thinking_level_validates_and_round_trips_via_executor() {
+        let mut driver = stub();
+        let outcome = dispatch(
+            &mut driver,
             Command::SetThinkingLevel {
                 level: "high".into(),
             },
         )
         .await
-        .unwrap();
-        match outcome {
-            DispatchOutcome::ThinkingLevel(level) if level == "high" => {}
-            _ => panic!("expected ThinkingLevel High"),
+        .expect("ok");
+        assert!(matches!(outcome, DispatchOutcome::ThinkingLevel(l) if l == "high"));
+        assert_eq!(driver.thinking, "high");
+    }
+
+    #[tokio::test]
+    async fn blank_thinking_level_rejected() {
+        let mut driver = stub();
+        let err = dispatch(
+            &mut driver,
+            Command::SetThinkingLevel { level: "  ".into() },
+        )
+        .await
+        .expect_err("blank rejected");
+        assert_eq!(err.kind(), "InvalidInput");
+    }
+
+    #[tokio::test]
+    async fn transport_variants_rejected() {
+        let mut driver = stub();
+        for cmd in [
+            Command::Prompt {
+                message: "hi".into(),
+            },
+            Command::Quit {},
+            Command::Subscribe {
+                session_id: "s".into(),
+                last_seq: 0,
+            },
+            Command::ApproveTool {
+                call_id: "c".into(),
+                approved: true,
+            },
+            Command::AnswerQuestion {
+                call_id: "c".into(),
+                answer: "a".into(),
+            },
+        ] {
+            let err = dispatch(&mut driver, cmd).await.expect_err("rejected");
+            assert_eq!(err.kind(), "InvalidInput");
         }
-        assert_eq!(d.thinking_level(), "high");
-    }
-
-    #[tokio::test]
-    async fn cycle_and_dispatch_preserve_local_thinking_levels() {
-        let mut d = stub();
-        assert_eq!(d.thinking_level(), "medium");
-        assert_eq!(d.cycle_thinking_level().await.unwrap(), "high");
-        assert_eq!(d.thinking_level(), "high");
-
-        let outcome = dispatch(
-            &mut d,
-            Command::SetThinkingLevel {
-                level: "off".into(),
-            },
-        )
-        .await
-        .unwrap();
-        assert!(matches!(
-            outcome,
-            DispatchOutcome::ThinkingLevel(ref level) if level == "off"
-        ));
-        assert_eq!(d.thinking_level(), "off");
-    }
-
-    #[tokio::test]
-    async fn accepts_freeform_thinking_level() {
-        let mut d = stub();
-        let outcome = dispatch(
-            &mut d,
-            Command::SetThinkingLevel {
-                level: "vendor-max".into(),
-            },
-        )
-        .await
-        .unwrap();
-        assert!(
-            matches!(outcome, DispatchOutcome::ThinkingLevel(ref level) if level == "vendor-max")
-        );
     }
 
     #[test]
     fn thinking_level_validation_rejects_only_blank_input() {
-        assert!(validate_nonempty_thinking_level(" \t").is_err());
-        assert!(validate_nonempty_thinking_level(" vendor-max ").is_ok());
-    }
-
-    #[tokio::test]
-    async fn prompt_is_caller_responsibility() {
-        let mut d = stub();
-        let err = dispatch(
-            &mut d,
-            Command::Prompt {
-                message: "hi".into(),
-            },
-        )
-        .await
-        .unwrap_err();
-        assert!(err.to_string().contains("not handled by shared dispatch"));
-    }
-
-    #[tokio::test]
-    async fn steer_and_clear_queue_round_trip() {
-        let mut d = stub();
-        let outcome = dispatch(
-            &mut d,
-            Command::Steer {
-                message: "nudge".into(),
-            },
-        )
-        .await
-        .unwrap();
-        match outcome {
-            DispatchOutcome::QueueStats {
-                steer_count,
-                follow_up_count,
-            } => {
-                assert_eq!(steer_count, 1);
-                assert_eq!(follow_up_count, 0);
-            }
-            _ => panic!("expected QueueStats"),
-        }
-
-        let outcome = dispatch(
-            &mut d,
-            Command::ClearQueue {
-                clear_steer: true,
-                clear_follow_up: false,
-            },
-        )
-        .await
-        .unwrap();
-        match outcome {
-            DispatchOutcome::QueueStats {
-                steer_count,
-                follow_up_count,
-            } => {
-                assert_eq!(steer_count, 0);
-                assert_eq!(follow_up_count, 0);
-            }
-            _ => panic!("expected QueueStats"),
-        }
-    }
-
-    #[tokio::test]
-    async fn get_queue_stats_is_readonly_snapshot() {
-        let mut d = stub();
-        dispatch(
-            &mut d,
-            Command::Steer {
-                message: "nudge".into(),
-            },
-        )
-        .await
-        .unwrap();
-        let outcome = dispatch(&mut d, Command::GetQueueStats {}).await.unwrap();
-        match outcome {
-            DispatchOutcome::QueueStats {
-                steer_count,
-                follow_up_count,
-            } => {
-                assert_eq!(steer_count, 1);
-                assert_eq!(follow_up_count, 0);
-            }
-            _ => panic!("expected QueueStats"),
-        }
-    }
-
-    #[tokio::test]
-    async fn switch_session_derives_id_from_path_stem() {
-        let mut d = stub();
-        let outcome = dispatch(
-            &mut d,
-            Command::SwitchSession {
-                session_path: "/tmp/sessions/abc.jsonl".into(),
-            },
-        )
-        .await
-        .unwrap();
-        match outcome {
-            DispatchOutcome::SwitchedSession(id) => assert_eq!(id, "abc"),
-            _ => panic!("expected SwitchedSession"),
-        }
+        assert!(validate_nonempty_thinking_level("vendor-max").is_ok());
+        assert!(validate_nonempty_thinking_level(" high ").is_ok());
+        assert!(validate_nonempty_thinking_level("").is_err());
+        assert!(validate_nonempty_thinking_level("   ").is_err());
     }
 }

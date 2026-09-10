@@ -654,9 +654,15 @@ fn t_tree_registered(_server_test: &ServerTest) {
         "src/protocol/wire/registry.rs",
         "\"session_tree\""
     ));
+    // c2710: remote session operations are the unified Command executor
+    // (`unary_cmd(Command::…)`), not per-method trait wrappers.
     assert!(source_contains(
         "src/app/core/driver/remote.rs",
-        "session_tree"
+        "Command::SessionTree"
+    ));
+    assert!(source_contains(
+        "src/app/core/driver/remote.rs",
+        "Command::TravelSessionTree"
     ));
 }
 
@@ -965,7 +971,10 @@ async fn snapshot_s0(server_test: &ServerTest) {
         .expect("subscribe");
     assert!(subscribed.ok, "{subscribed:?}");
     let switched = client
-        .unary("switch_session", serde_json::json!({ "session_id": "s0" }))
+        .unary(
+            "switch_session",
+            serde_json::json!({ "session_path": "s0" }),
+        )
         .await
         .expect("switch_session");
     assert!(switched.ok, "{switched:?}");

@@ -536,7 +536,7 @@ pub(crate) async fn w_slash_intercepted(agent: &AgentState, _ws: &Workspace) {
         panic!("slash-dispatch scenario must use /compact, got: {marker}");
     }
 
-    use crate::embed::{XyDriver, XyInProcessDriver};
+    use crate::embed::XyInProcessDriver;
 
     let (mut runtime, store) = make_agent_with_store(agent);
     let sid = uuid::Uuid::new_v4().to_string();

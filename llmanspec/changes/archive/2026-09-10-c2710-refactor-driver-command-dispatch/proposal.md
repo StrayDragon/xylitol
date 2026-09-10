@@ -1,6 +1,11 @@
 ---
 depends_on:
-  - c2705-refactor-runtime-actor-api
+- c2705-refactor-runtime-actor-api
+branch: sdd/c2710-refactor-driver-command-dispatch
+base_sha: b2604d2845b4bdb5f8c2de881dd5073e442e473f
+checkpointed: true
+rules_edit_acked: true
+checkpoint_sha: b2604d2845b4bdb5f8c2de881dd5073e442e473f
 ---
 
 # 塌 XyDriver 方法表：Command 为会话操作 SSOT

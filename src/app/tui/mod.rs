@@ -175,13 +175,22 @@ async fn apply_cli_restore(
             sid.clone(),
             editor_history_seed::spawn_cli_session_load(store, sid),
         )),
-        _ => match driver.get_messages().await {
-            Ok(entries) => {
+        _ => match crate::app::core::dispatch::dispatch(
+            driver,
+            crate::protocol::Command::GetMessages {},
+        )
+        .await
+        {
+            Ok(crate::app::core::dispatch::DispatchOutcome::Messages { entries, .. }) => {
                 if let Some(sid) = driver.session_id() {
                     session.apply_cli_restored_session(&sid, entries);
                 } else {
                     session.seed_editor_history_from_entries(&entries);
                 }
+                None
+            }
+            Ok(other) => {
+                log::debug!(target: "xylitol::tui", "CLI session restore UI: unexpected {other:?}");
                 None
             }
             Err(e) => {

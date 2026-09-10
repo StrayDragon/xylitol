@@ -446,8 +446,9 @@ mod tests {
                 continue;
             }
             let snake = camel_to_snake(variant);
+            // c2710: tags match registry names directly except GetQueueStats,
+            // whose explicit serde rename is `queue_stats`.
             let method = match snake.as_str() {
-                // 唯一名实不符点：wire 方法是 queue_stats（serde alias 兜底）。
                 "get_queue_stats" => "queue_stats",
                 other => other,
             };
@@ -486,9 +487,9 @@ mod tests {
     }
 
     #[test]
-    fn parse_accepts_hand_table_wire_aliases() {
+    fn parse_accepts_primary_wire_keys() {
         assert!(matches!(
-            parse_command("export_html", &json!({"path": "a.html"})),
+            parse_command("export_html", &json!({"output_path": "a.html"})),
             Ok(Command::ExportHtml {
                 output_path: Some(_),
                 ..
