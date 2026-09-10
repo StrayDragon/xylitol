@@ -1,5 +1,8 @@
 //! [`XyDriver`] — shared application driver protocol.
 
+use std::future::Future;
+use std::pin::Pin;
+
 use async_trait::async_trait;
 
 use super::XyDriverError;
@@ -7,6 +10,15 @@ use super::types::{
     ClipboardCopyOutcome, CommandInfo, EventStream, LoadedResourcesSnapshot, ModelInfo,
     ProjectTrustMode, ProjectTrustPersistReport, RuntimeReloadReport, SessionState, XyEvent,
 };
+
+/// Owned bash-completion receiver (c2790): produced by one `&mut` call to
+/// [`XyDriver::bash_run`]; pollable in a select loop **without** borrowing the
+/// driver, so interactive bang loops can drain Inline effects mid-bang. Output
+/// chunks arrive independently via `set_bash_run_sink`; the wall-clock timeout
+/// (host client transport) resolves inside the future.
+pub type BashRun = Pin<
+    Box<dyn Future<Output = Result<crate::protocol::ports::XyBashResult, XyDriverError>> + Send>,
+>;
 
 /// Downlink attachment health (ath42/c2480): drives the fixed-zone grace notice —
 /// never transcript error rows.
@@ -35,6 +47,22 @@ pub enum LinkHealth {
 pub trait XyDriver: crate::app::core::dispatch::SessionCommandExecutor + Send {
     /// Submit a prompt and receive a stream of events.
     async fn run(&mut self, prompt: &str) -> EventStream;
+
+    /// Begin an interactive bash run (c2790): one `&mut` call, owned completion.
+    ///
+    /// The returned receiver is decoupled from the driver borrow — the caller's
+    /// select loop may drain Inline effects (atm18) while the bash runs. Esc
+    /// cancel = drop this receiver then call [`XyDriver::abort`] (out-of-band),
+    /// exactly like the pre-inversion dispatch-fut drop. Pre-hooks (script
+    /// hooks) run eagerly before the receiver is returned.
+    async fn bash_run(
+        &mut self,
+        command: &str,
+        exclude_from_context: bool,
+    ) -> Result<BashRun, XyDriverError> {
+        let _ = (command, exclude_from_context);
+        Err(XyDriverError::unsupported("bash_run"))
+    }
 
     /// Product TUI attach: handshake + mux subscribe before the host loop.
     ///

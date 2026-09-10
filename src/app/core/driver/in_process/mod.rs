@@ -11,7 +11,7 @@ use crate::agent::runtime::RunPolicy;
 use crate::app::core::bang_exec::BangExecHandler;
 use crate::app::core::session_export::SessionExporter;
 use crate::protocol::error::XySessionError;
-use crate::protocol::ports::{XyBashResult, XySessionStore};
+use crate::protocol::ports::XySessionStore;
 
 use super::types::{
     ClipboardCopyOutcome, CommandInfo, EventStream, LoadedResourcesSnapshot, ModelInfo,
@@ -403,6 +403,59 @@ impl XyDriver for XyInProcessDriver {
         XyInProcessDriver::poll_mcp_bootstrap(self).await
     }
 
+    /// c2790: owned bash completion — pre-hooks run eagerly (`&mut` phase);
+    /// the returned future holds only cloned Arc handles (store / bang / sink).
+    async fn bash_run(
+        &mut self,
+        command: &str,
+        exclude_from_context: bool,
+    ) -> Result<super::proto::BashRun, XyDriverError> {
+        let (ty, phase, ctx) = crate::agent::runtime::script_hook_ctx::user_bash(
+            command,
+            exclude_from_context,
+            self.agent.cwd(),
+        );
+        self.agent.script_hook_cancel(ty, phase, ctx).await?;
+
+        let bash_id = uuid::Uuid::new_v4().to_string();
+        let run = self
+            .bash_run_sink
+            .lock()
+            .unwrap_or_else(|e| e.into_inner())
+            .take();
+        let cancel = run
+            .as_ref()
+            .map(|run| run.cancel.clone())
+            .unwrap_or_default();
+        let (chunk_tx, chunk_rx) = tokio::sync::mpsc::channel::<Vec<u8>>(64);
+        let relay =
+            run.map(|run| tokio::spawn(relay_bash_chunks(bash_id.clone(), chunk_rx, run.tx)));
+        let store = self.store.clone();
+        let bang = self.bang.clone();
+        let session_id = self.agent.session_id().map(str::to_string);
+        let cwd = self.agent.cwd().to_string();
+        let command = command.to_string();
+
+        Ok(Box::pin(async move {
+            let result = bang
+                .execute(
+                    store.as_ref(),
+                    session_id.as_deref(),
+                    &bash_id,
+                    &command,
+                    exclude_from_context,
+                    cancel,
+                    Some(chunk_tx),
+                    Some(cwd),
+                )
+                .await;
+            if let Some(relay) = relay {
+                let _ = relay.await;
+            }
+            result.map_err(XyDriverError::from)
+        }) as super::proto::BashRun)
+    }
+
     async fn reload_runtime(
         &mut self,
         cancel: &tokio_util::sync::CancellationToken,
@@ -558,64 +611,6 @@ impl XyInProcessDriver {
     pub(crate) fn queue_stats(&self) -> crate::agent::QueueStats {
         self.agent.queue_stats()
     }
-
-    /// Execute a bash command (interactive bang / `Command::Bash`).
-    ///
-    /// c2760: output chunks are relayed to the injected
-    /// [`crate::protocol::ports::BashOutputSink`] (non-journal session events);
-    /// the finished result still returns synchronously.
-    pub(crate) async fn execute_bash(
-        &self,
-        command: &str,
-        exclude_from_context: bool,
-    ) -> Result<XyBashResult, XyDriverError> {
-        let (ty, phase, ctx) = crate::agent::runtime::script_hook_ctx::user_bash(
-            command,
-            exclude_from_context,
-            self.agent.cwd(),
-        );
-        self.agent.script_hook_cancel(ty, phase, ctx).await?;
-
-        // Execution side generates the correlation id (start/done rows and
-        // output chunks share it); the injected sink carries channel + cancel.
-        let bash_id = uuid::Uuid::new_v4().to_string();
-        let run = self
-            .bash_run_sink
-            .lock()
-            .unwrap_or_else(|e| e.into_inner())
-            .take();
-
-        // Out-of-band kill switch (host `abort`); standalone callers (no sink)
-        // fall back to a fresh token reachable only via `XyDriver::abort`.
-        let cancel = run
-            .as_ref()
-            .map(|run| run.cancel.clone())
-            .unwrap_or_default();
-
-        // Relay raw output bytes to `BashChunk` events, reassembling UTF-8
-        // sequences split across executor chunk boundaries.
-        let (chunk_tx, chunk_rx) = tokio::sync::mpsc::channel::<Vec<u8>>(64);
-        let relay =
-            run.map(|run| tokio::spawn(relay_bash_chunks(bash_id.clone(), chunk_rx, run.tx)));
-
-        let result = self
-            .bang
-            .execute(
-                self.store.as_ref(),
-                self.agent.session_id(),
-                &bash_id,
-                command,
-                exclude_from_context,
-                cancel,
-                Some(chunk_tx),
-                Some(self.agent.cwd().to_string()),
-            )
-            .await;
-        if let Some(relay) = relay {
-            let _ = relay.await;
-        }
-        result.map_err(XyDriverError::from)
-    }
 }
 
 /// Relay executor output bytes to [`crate::protocol::ports::BashChunk`] events.
@@ -719,7 +714,8 @@ impl crate::app::core::dispatch::SessionCommandExecutor for XyInProcessDriver {
                 exclude_from_context,
                 ..
             } => {
-                let r = self.execute_bash(&command, exclude_from_context).await?;
+                let run = XyDriver::bash_run(self, &command, exclude_from_context).await?;
+                let r = run.await?;
                 Ok(DispatchOutcome::Bash(r))
             }
             Command::Compact { instructions, .. } => {

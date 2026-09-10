@@ -19,6 +19,7 @@ use crate::protocol::{Event, RpcMessage};
 
 use super::XyDriver;
 use super::XyDriverError;
+use super::proto::BashRun;
 use super::types::{
     ClipboardCopyOutcome, CommandInfo, EventStream, LoadedResourcesSnapshot, ModelInfo,
     ProjectTrustMode, ProjectTrustPersistReport, QueueStats, ReloadStepReport, RuntimeReloadReport,
@@ -862,6 +863,58 @@ where
         self.refresh_fixed_zone_caches().await
     }
 
+    /// c2790: owned bash completion — payload serialized eagerly so the returned
+    /// future holds only the cloned host client, never `self`.
+    async fn bash_run(
+        &mut self,
+        command: &str,
+        exclude_from_context: bool,
+    ) -> Result<BashRun, XyDriverError> {
+        self.ensure_downlink();
+        self.wait_subscribed().await?;
+        let host = self.host.clone();
+        let cmd = Command::Bash {
+            command: command.to_string(),
+            exclude_from_context,
+        };
+        let payload = self.with_session(
+            serde_json::to_value(&cmd).map_err(|e| XyDriverError::remote(e.to_string()))?,
+        );
+        let fut = async move {
+            let data = host
+                .unary("bash", payload)
+                .await
+                .map_err(|e| XyDriverError::remote(e.to_string()))?
+                .into_std()
+                .map_err(|e| XyDriverError::remote(format!("{}: {}", e.code, e.details)))?;
+            Ok(XyBashResult {
+                output: data
+                    .get("output")
+                    .and_then(|o| o.as_str())
+                    .unwrap_or("")
+                    .to_string(),
+                exit_code: data
+                    .get("exit_code")
+                    .and_then(|c| c.as_i64())
+                    .map(|c| c as i32),
+                cancelled: data
+                    .get("cancelled")
+                    .and_then(|c| c.as_bool())
+                    .unwrap_or(false),
+                timed_out: data
+                    .get("timed_out")
+                    .and_then(|c| c.as_bool())
+                    .unwrap_or(false),
+                truncated: data
+                    .get("truncated")
+                    .and_then(|c| c.as_bool())
+                    .unwrap_or(false),
+                full_output_path: None,
+            })
+        };
+        Ok(Box::pin(fut) as BashRun)
+    }
+
     async fn refresh_surface_caches(&mut self) -> Result<(), XyDriverError> {
         self.refresh_fixed_zone_caches().await
     }
@@ -1312,36 +1365,9 @@ where
                 exclude_from_context,
                 ..
             } => {
-                let data = self
-                    .unary_cmd(Command::Bash {
-                        command: command.clone(),
-                        exclude_from_context,
-                    })
-                    .await?;
-                Ok(DispatchOutcome::Bash(XyBashResult {
-                    output: data
-                        .get("output")
-                        .and_then(|o| o.as_str())
-                        .unwrap_or("")
-                        .to_string(),
-                    exit_code: data
-                        .get("exit_code")
-                        .and_then(|c| c.as_i64())
-                        .map(|c| c as i32),
-                    cancelled: data
-                        .get("cancelled")
-                        .and_then(|c| c.as_bool())
-                        .unwrap_or(false),
-                    timed_out: data
-                        .get("timed_out")
-                        .and_then(|c| c.as_bool())
-                        .unwrap_or(false),
-                    truncated: data
-                        .get("truncated")
-                        .and_then(|c| c.as_bool())
-                        .unwrap_or(false),
-                    full_output_path: None,
-                }))
+                let run = XyDriver::bash_run(self, &command, exclude_from_context).await?;
+                let result = run.await?;
+                Ok(DispatchOutcome::Bash(result))
             }
             Command::Compact { instructions, .. } => {
                 let data = self.unary_cmd(Command::Compact { instructions }).await?;
