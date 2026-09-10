@@ -46,8 +46,8 @@
     - 产品 bridge/host MUST 以 UI-only 可着色块表示交互 bang（建议 UiEntry::Bash 或等价），携带 command 与 status（pending/success/error/cancelled）及输出；渲染层 MUST NOT 再把 bang 长期拼成无语义的裸滚动提示行。
 
   @req:atb9 @human
-  场景: bash-stream-append
-    - 产品 bridge MUST 提供对最后一条 Pending Bash 块的增量追加 API（append_bash_output 或等价）；流式 chunk 追加期间 status MUST 保持 pending tint；BashDone 或取消收口时 MUST 经既有 finish/cancelled 路径切换终态；MUST NOT 每 chunk 新建独立滚动提示行。
+  场景: bash-event-append
+    - 产品 bridge MUST 提供对最后一条 Pending Bash 块的增量追加 API（append_bash_output 或等价），输入为交互 bang 的输出事件（session/bash_output → 面级 sink）；增量追加期间 status MUST 保持 pending tint；BashDone 或取消收口时 MUST 经既有 finish/cancelled 路径切换终态；MUST NOT 每 chunk 新建独立滚动提示行。
 
   @req:atb11 @human
   场景: quiet-write-edit-success-output

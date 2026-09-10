@@ -113,6 +113,7 @@ mod tests {
             AgentMessage::tool_result("call_2", "read", vec![AgentPart::text("boom")], true),
             AgentMessage::bash("ls", "a.txt", Some(0)),
             AgentMessage::Env(EnvMessage::BashExecutionMessage {
+                bash_id: String::new(),
                 command: "secret".into(),
                 output: "x".into(),
                 exit_code: None,
@@ -120,6 +121,7 @@ mod tests {
                 truncated: false,
                 full_output_path: None,
                 exclude_from_context: true,
+                status: crate::protocol::message::BashExecutionStatus::Done,
             }),
             AgentMessage::Env(EnvMessage::CompactionSummaryMessage {
                 summary: "earlier work summarized".into(),
@@ -193,6 +195,7 @@ mod tests {
     #[test]
     fn bash_excluded_from_context_is_skipped() {
         let history = vec![AgentMessage::Env(EnvMessage::BashExecutionMessage {
+            bash_id: String::new(),
             command: "secret".into(),
             output: "x".into(),
             exit_code: None,
@@ -200,6 +203,7 @@ mod tests {
             truncated: false,
             full_output_path: None,
             exclude_from_context: true,
+            status: crate::protocol::message::BashExecutionStatus::Done,
         })];
         assert!(project_for_llm(&history).is_empty());
     }
@@ -797,6 +801,7 @@ mod tests {
                     ..
                 }) => {
                     let mut e = bash_execution_message_entry(
+                        String::new(),
                         command.clone(),
                         output.clone(),
                         Some(0),
@@ -804,6 +809,7 @@ mod tests {
                         false,
                         None,
                         *exclude_from_context,
+                        crate::protocol::message::BashExecutionStatus::Done,
                     );
                     if let SessionEntry::Message(m) = &mut e {
                         m.base = base;

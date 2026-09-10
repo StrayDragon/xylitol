@@ -508,6 +508,20 @@ impl SessionSlot {
         self.broadcast(msg).await;
     }
 
+    /// Interactive bang output event (c2760). Not journaled (must not consume seq).
+    pub async fn push_bash_output(&self, chunk: crate::protocol::ports::BashChunk) {
+        let msg = downlink_server_request(
+            "session/bash_output",
+            serde_json::json!({
+                "session_id": self.session_id.clone(),
+                "bash_id": chunk.bash_id,
+                "seq": chunk.seq,
+                "data": chunk.data,
+            }),
+        );
+        self.broadcast(msg).await;
+    }
+
     /// Poll the writer locally and push `session/resources` when dirty.
     pub fn ensure_mcp_resources_watch(self: &Arc<Self>) {
         if self.mcp_watch_started.swap(true, Ordering::SeqCst) {
@@ -1258,6 +1272,20 @@ async fn dispatch_writer_unary(
     let Some(driver) = g.as_mut() else {
         return RpcResult::error("unavailable", "no writer engine");
     };
+    // c2760: forward interactive bang output as non-journal session events.
+    let bash_forwarder = if method == "bash" {
+        let (tx, mut rx) = tokio::sync::mpsc::channel(64);
+        let slot_push = slot.clone();
+        let fwd = tokio::spawn(async move {
+            while let Some(chunk) = rx.recv().await {
+                slot_push.push_bash_output(chunk).await;
+            }
+        });
+        driver.set_bash_run_sink(Some(crate::protocol::ports::BashOutputSink { tx }));
+        Some(fwd)
+    } else {
+        None
+    };
     let result = match dispatch(driver, cmd).await {
         Ok(outcome) => {
             let mut value = outcome_to_value(outcome);
@@ -1283,6 +1311,13 @@ async fn dispatch_writer_unary(
         }
         Err(e) => lease.seal(rpc_err(e)),
     };
+    if bash_forwarder.is_some() {
+        driver.set_bash_run_sink(None);
+    }
+    drop(g);
+    if let Some(fwd) = bash_forwarder {
+        let _ = fwd.await;
+    }
     if let Some(temp) = import_temp {
         let _ = std::fs::remove_file(temp);
     }

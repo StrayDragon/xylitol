@@ -28,24 +28,41 @@ where
     S: Stream<Item = Result<HostEvent, XyDriverError>>,
 {
     tokio::pin!(input);
-    log::info!(target: "xylitol::tui", "XyDriver::execute_bash (interactive bang) command_len={} exclude={}", bash.command.len(), bash.exclude_from_context);
+    log::info!(target: "xylitol::tui", "Command::Bash (interactive bang) command_len={} exclude={}", bash.command.len(), bash.exclude_from_context);
     session.begin_bash_exec(&bash.command, bash.exclude_from_context);
     let _ = session.render_now();
-    let (chunk_tx, mut chunk_rx) = tokio::sync::mpsc::channel::<Vec<u8>>(64);
+    // c2760: no live chunk uplink — `Command::Bash` runs to completion and the
+    // finished result is rendered once (product bang semantics).
+    // c2760: inject the output-event sink and dispatch `Command::Bash`. The
+    // sink channel is independent of the dispatch borrow, so abort stays a
+    // simple post-loop action.
+    let (chunk_tx, mut chunk_rx) =
+        tokio::sync::mpsc::channel::<crate::protocol::ports::BashChunk>(64);
+    driver.set_bash_run_sink(Some(crate::protocol::ports::BashOutputSink {
+        tx: chunk_tx,
+    }));
     let (bash_result, aborted_during_bash) = {
-        let bash_fut =
-            driver.execute_bash(&bash.command, bash.exclude_from_context, Some(chunk_tx));
-        tokio::pin!(bash_fut);
+        let cmd = crate::protocol::Command::Bash {
+            command: bash.command.clone(),
+            exclude_from_context: bash.exclude_from_context,
+        };
+        let mut dispatch_fut = Box::pin(crate::app::core::dispatch::dispatch(driver, cmd));
         let mut ticker = tokio::time::interval(Duration::from_millis(16));
         ticker.set_missed_tick_behavior(tokio::time::MissedTickBehavior::Skip);
-        let mut aborted_during_bash = false;
-        let bash_result = loop {
+        let mut abort_requested = false;
+        let mut chunks_done = false;
+        let result = loop {
             tokio::select! {
                 biased;
-                result = &mut bash_fut => break result,
-                chunk = chunk_rx.recv() => {
-                    if let Some(bytes) = chunk {
-                        session.append_bash_chunk(&bytes);
+                result = &mut dispatch_fut => break Some(result),
+                chunk = chunk_rx.recv(), if !chunks_done => {
+                    match chunk {
+                        Some(chunk) => {
+                            session.append_bash_chunk(chunk.data.as_bytes());
+                        }
+                        None => {
+                            chunks_done = true;
+                        }
                     }
                 }
                 _ = ticker.tick() => {
@@ -56,17 +73,11 @@ where
                         Some(Ok(ev)) => {
                             session.step(ev)?;
                             if session.take_abort() {
-                                if aborted_during_bash {
-                                    continue;
-                                }
-                                log::info!(
-                                    target: "xylitol::tui",
-                                    "XyDriver::abort during bang"
-                                );
-                                driver.abort();
-                                session.note_bash_cancelled();
-                                aborted_during_bash = true;
-                                let _ = session.render_now();
+                                // Abort after the select releases the dispatch
+                                // borrow: cancel the run loop / kill the bash tree.
+                                log::info!(target: "xylitol::tui", "Command::Abort during bang");
+                                abort_requested = true;
+                                break None;
                             }
                         }
                         Some(Err(e)) => {
@@ -78,7 +89,7 @@ where
                             session.request_quit();
                             let err = XyDriverError::message("input closed during bang");
                             err.log_failure("tui.bang.input_closed");
-                            break Err(err);
+                            break Some(Err(err));
                         }
                     }
                 }
@@ -105,7 +116,23 @@ where
                 }
             }
         };
-        (bash_result, aborted_during_bash)
+        drop(dispatch_fut);
+        driver.set_bash_run_sink(None);
+        if abort_requested {
+            driver.abort();
+            session.note_bash_cancelled();
+            let _ = session.render_now();
+        }
+        (result, abort_requested)
+    };
+    // Unwrap the dispatch outcome into the bash result shape consumed below.
+    let bash_result = match bash_result {
+        Some(Ok(crate::app::core::dispatch::DispatchOutcome::Bash(r))) => Ok(r),
+        Some(Ok(other)) => Err(XyDriverError::message(format!(
+            "Command::Bash unexpected outcome: {other:?}"
+        ))),
+        Some(Err(e)) => Err(e),
+        None => Err(XyDriverError::message("bash aborted")),
     };
     match bash_result {
         Ok(r) => {

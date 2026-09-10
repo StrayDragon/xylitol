@@ -238,6 +238,7 @@ impl SessionManager {
         params: BashExecutionParams<'_>,
     ) -> Result<(), XySessionStoreError> {
         let entry = crate::protocol::session::bash_execution_message_entry(
+            String::new(),
             params.command,
             params.output,
             params.exit_code,
@@ -245,6 +246,7 @@ impl SessionManager {
             params.truncated,
             params.full_output_path.map(|s| s.to_string()),
             params.exclude_from_context,
+            crate::protocol::message::BashExecutionStatus::Done,
         );
         self.append(params.session_id, &entry).await
     }

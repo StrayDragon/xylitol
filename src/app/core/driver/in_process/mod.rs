@@ -66,6 +66,9 @@ pub struct XyInProcessDriver {
     ask_gateway: Option<Arc<dyn crate::protocol::ports::ask::AskUserGateway>>,
     /// Session-bound Todo SSOT gateway shared by `todo_*` builtins (c1955).
     todo_gateway: Arc<crate::infra::tools::SessionAgentTodoGateway>,
+    /// Interactive bang output-event sink (c2760): runtime-injected, `&self`
+    /// bash execution pushes chunks into it while running.
+    bash_run_sink: std::sync::Mutex<Option<crate::protocol::ports::BashOutputSink>>,
 }
 
 impl XyInProcessDriver {
@@ -104,6 +107,7 @@ impl XyInProcessDriver {
             tool_gate_deadline: None,
             ask_gateway: None,
             todo_gateway: todo_gateway.clone(),
+            bash_run_sink: std::sync::Mutex::new(None),
         };
         // Replace ephemeral MemoryTodoGateway from build_agent with store-bound SSOT.
         driver.set_tools(crate::agent::tools::ToolSet::from_iter(
@@ -346,29 +350,8 @@ impl XyDriver for XyInProcessDriver {
         self.agent.session_id().map(String::from)
     }
 
-    async fn execute_bash(
-        &self,
-        command: &str,
-        exclude_from_context: bool,
-        chunk_tx: Option<tokio::sync::mpsc::Sender<Vec<u8>>>,
-    ) -> Result<XyBashResult, XyDriverError> {
-        let (ty, phase, ctx) = crate::agent::runtime::script_hook_ctx::user_bash(
-            command,
-            exclude_from_context,
-            self.agent.cwd(),
-        );
-        self.agent.script_hook_cancel(ty, phase, ctx).await?;
-        self.bang
-            .execute(
-                self.store.as_ref(),
-                self.agent.session_id(),
-                command,
-                exclude_from_context,
-                chunk_tx,
-                Some(self.agent.cwd().to_string()),
-            )
-            .await
-            .map_err(XyDriverError::from)
+    fn set_bash_run_sink(&mut self, sink: Option<crate::protocol::ports::BashOutputSink>) {
+        *self.bash_run_sink.lock().unwrap_or_else(|e| e.into_inner()) = sink;
     }
 
     async fn estimate_context_tokens(
@@ -586,6 +569,75 @@ impl XyInProcessDriver {
     pub(crate) fn queue_stats(&self) -> crate::agent::QueueStats {
         self.agent.queue_stats()
     }
+
+    /// Execute a bash command (interactive bang / `Command::Bash`).
+    ///
+    /// c2760: output chunks are relayed to the injected
+    /// [`crate::protocol::ports::BashOutputSink`] (non-journal session events);
+    /// the finished result still returns synchronously.
+    pub(crate) async fn execute_bash(
+        &self,
+        command: &str,
+        exclude_from_context: bool,
+    ) -> Result<XyBashResult, XyDriverError> {
+        let (ty, phase, ctx) = crate::agent::runtime::script_hook_ctx::user_bash(
+            command,
+            exclude_from_context,
+            self.agent.cwd(),
+        );
+        self.agent.script_hook_cancel(ty, phase, ctx).await?;
+
+        // Execution side generates the correlation id (start/done rows and
+        // output chunks share it); the injected sink only carries the channel.
+        let bash_id = uuid::Uuid::new_v4().to_string();
+        let run = self
+            .bash_run_sink
+            .lock()
+            .unwrap_or_else(|e| e.into_inner())
+            .take();
+
+        // Relay raw output bytes to `BashChunk` events (lossy UTF-8).
+        let (chunk_tx, mut chunk_rx) = tokio::sync::mpsc::channel::<Vec<u8>>(64);
+        let relay = run.map(|run| {
+            let tx = run.tx.clone();
+            let bash_id = bash_id.clone();
+            tokio::spawn(async move {
+                let mut seq: u64 = 0;
+                while let Some(bytes) = chunk_rx.recv().await {
+                    seq += 1;
+                    let data = String::from_utf8_lossy(&bytes).into_owned();
+                    if tx
+                        .send(crate::protocol::ports::BashChunk {
+                            bash_id: bash_id.clone(),
+                            seq,
+                            data,
+                        })
+                        .await
+                        .is_err()
+                    {
+                        break;
+                    }
+                }
+            })
+        });
+
+        let result = self
+            .bang
+            .execute(
+                self.store.as_ref(),
+                self.agent.session_id(),
+                &bash_id,
+                command,
+                exclude_from_context,
+                Some(chunk_tx),
+                Some(self.agent.cwd().to_string()),
+            )
+            .await;
+        if let Some(relay) = relay {
+            let _ = relay.await;
+        }
+        result.map_err(XyDriverError::from)
+    }
 }
 
 // ── Command executor (c2710): Command is the SSOT of session operations ────
@@ -626,9 +678,7 @@ impl crate::app::core::dispatch::SessionCommandExecutor for XyInProcessDriver {
                 exclude_from_context,
                 ..
             } => {
-                let r = self
-                    .execute_bash(&command, exclude_from_context, None)
-                    .await?;
+                let r = self.execute_bash(&command, exclude_from_context).await?;
                 Ok(DispatchOutcome::Bash(r))
             }
             Command::Compact { instructions, .. } => {

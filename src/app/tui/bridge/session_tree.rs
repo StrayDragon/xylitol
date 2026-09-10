@@ -35,6 +35,9 @@ pub fn rebuild_scrollback_from_travel(
     ui_model.current_role = None;
 
     let path = ancestry_path_ids(entries, travel.leaf_id.as_deref());
+    // c2760: bash lifecycle fold — done ids win; a lone running row (crash /
+    // interrupted) renders as interrupted instead of a pending block.
+    let bash_done_ids = bash_done_ids(entries);
     for id in path {
         let Some(entry) = entries.iter().find(|e| e.entry_id() == Some(id.as_str())) else {
             continue;
@@ -43,6 +46,27 @@ pub fn rebuild_scrollback_from_travel(
             let role = message_role(&m.message);
             if matches!(role, Some("toolResult") | Some("tool")) {
                 merge_persisted_tool_result(&mut ui_model.entries, &m.base.id, &m.message);
+                continue;
+            }
+            if role == Some("bashExecution")
+                && m.message.get("status").and_then(Value::as_str) == Some("running")
+            {
+                let bash_id = m
+                    .message
+                    .get("bashId")
+                    .and_then(Value::as_str)
+                    .unwrap_or("");
+                if bash_done_ids.contains(bash_id) {
+                    continue; // the done row renders the block
+                }
+                let mut msg = m.message.clone();
+                msg["output"] =
+                    Value::String("[interrupted: process ended before completion]".into());
+                msg["cancelled"] = Value::Bool(true);
+                msg["status"] = Value::String("done".into());
+                for ui in nested_bash_to_ui(&msg) {
+                    ui_model.entries.push(ui);
+                }
                 continue;
             }
         }
@@ -209,6 +233,33 @@ pub(crate) fn ancestry_path_ids(entries: &[SessionEntry], leaf_id: Option<&str>)
 fn short_entry_id(id: &str) -> &str {
     const KEEP: usize = 8;
     if id.len() > KEEP { &id[..KEEP] } else { id }
+}
+
+/// Collect `bash_id`s that have a finished (`done`) row (c2760).
+fn bash_done_ids(entries: &[SessionEntry]) -> std::collections::HashSet<String> {
+    entries
+        .iter()
+        .filter_map(|e| {
+            let SessionEntry::Message(m) = e else {
+                return None;
+            };
+            if message_role(&m.message) != Some("bashExecution") {
+                return None;
+            }
+            let status = m
+                .message
+                .get("status")
+                .and_then(Value::as_str)
+                .unwrap_or("done");
+            if status != "done" {
+                return None;
+            }
+            m.message
+                .get("bashId")
+                .and_then(Value::as_str)
+                .map(str::to_string)
+        })
+        .collect()
 }
 
 /// Project one session entry into zero or more UI rows (c646: thinking ≠ text).
@@ -1113,6 +1164,114 @@ mod tests {
             users,
             vec!["first", "second"],
             "seam splice must keep pre-seam user rows, got {users:?}"
+        );
+    }
+}
+
+#[cfg(test)]
+mod bash_lifecycle_fold_tests {
+    use super::*;
+    use crate::protocol::session::{EntryBase, MessageEntry, SessionEntry};
+    use serde_json::json;
+
+    fn bash_row(base_id: &str, bash_id: &str, status: &str) -> SessionEntry {
+        SessionEntry::Message(MessageEntry {
+            base: EntryBase {
+                entry_type: "message".into(),
+                id: base_id.into(),
+                parent_id: None,
+                timestamp: 0,
+            },
+            message: json!({
+                "role": "bashExecution",
+                "bashId": bash_id,
+                "command": "echo hi",
+                "output": if status == "running" { "" } else { "hi\n" },
+                "cancelled": false,
+                "truncated": false,
+                "excludeFromContext": false,
+                "status": status,
+            }),
+        })
+    }
+
+    fn rebuild(entries: &[SessionEntry]) -> UiModel {
+        let mut model = UiModel::default();
+        let travel = SessionTreeTravel {
+            kind: crate::protocol::session::SessionTreeKind::MessageHistory,
+            selected_id: entries
+                .last()
+                .and_then(|e| e.entry_id())
+                .unwrap_or("")
+                .to_string(),
+            leaf_id: entries
+                .last()
+                .and_then(|e| e.entry_id())
+                .map(str::to_string),
+            editor_text: None,
+        };
+        rebuild_scrollback_from_travel(&mut model, entries, &travel);
+        model
+    }
+
+    #[test]
+    fn running_with_done_renders_only_done() {
+        let entries = vec![
+            bash_row("b-start", "b1", "running"),
+            bash_row("b-done", "b1", "done"),
+        ];
+        let model = rebuild(&entries);
+        let bash_blocks: Vec<_> = model
+            .entries
+            .iter()
+            .filter(|e| matches!(e, UiEntry::Bash { .. }))
+            .collect();
+        assert_eq!(bash_blocks.len(), 1, "start row must fold into done");
+    }
+
+    #[test]
+    fn lone_running_renders_interrupted() {
+        let entries = vec![bash_row("b-start", "b1", "running")];
+        let model = rebuild(&entries);
+        let output = model
+            .entries
+            .iter()
+            .find_map(|e| match e {
+                UiEntry::Bash { output, .. } => Some(output.clone()),
+                _ => None,
+            })
+            .expect("bash block");
+        assert!(
+            output.contains("interrupted"),
+            "expected interrupted marker: {output:?}"
+        );
+    }
+
+    #[test]
+    fn legacy_row_without_status_renders_done() {
+        let entries = vec![SessionEntry::Message(MessageEntry {
+            base: EntryBase {
+                entry_type: "message".into(),
+                id: "old".into(),
+                parent_id: None,
+                timestamp: 0,
+            },
+            message: json!({
+                "role": "bashExecution",
+                "command": "ls",
+                "output": "a",
+                "cancelled": false,
+                "truncated": false,
+                "excludeFromContext": false,
+            }),
+        })];
+        let model = rebuild(&entries);
+        assert!(
+            model
+                .entries
+                .iter()
+                .any(|e| matches!(e, UiEntry::Bash { .. })),
+            "legacy row must remain a normal bash block"
         );
     }
 }

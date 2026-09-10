@@ -31,7 +31,7 @@
 
   @req:ath7 @human
   场景: single-mux-loop
-    - 产品 TUI host MUST 以单一扇入模型同时等待终端输入、idle tick、可选 agent EventStream、可选 bang 完成与 bang chunk：生产主环与 harness MUST 调用同一共享 bang/主环事件臂（或单一 select 拓扑）；MUST NOT 保留与共享入口分叉的第三套 bang Esc select；bang 进行中 Esc MUST 仍可达 Driver（或等价）abort 并走取消说明；chunk 到达 MUST 仅标记 dirty 并在 Tick 或 BangDone 时按需渲染，MUST NOT 每字节强制全屏重绘；进行中的 bang MUST 仍可 poll agent EventStream（不得 bang-only 饿死 agent）。
+    - 产品 TUI host MUST 以单一扇入模型同时等待终端输入、idle tick、可选 agent EventStream、可选 bang 完成与 bang 输出事件：生产主环与 harness MUST 调用同一共享 bang/主环事件臂（或单一 select 拓扑）；MUST NOT 保留与共享入口分叉的第三套 bang Esc select；bang 进行中 Esc MUST 仍可达 Driver（或等价）abort 并走取消说明；bash 输出事件（session/bash_output）到达 MUST 仅标记 dirty 并在 Tick 或 BangDone 时按需渲染，MUST NOT 每事件强制全屏重绘；进行中的 bang MUST 仍可 poll agent EventStream（不得 bang-only 饿死 agent）。
 
   @req:ath8 @human
   场景: abort-drops-stream-events
@@ -83,7 +83,7 @@
 
   @req:ath24 @human
   场景: tick-gated-local-paint
-    - 产品 host 在 Ready 态处理 Tick 时：MUST 先推进 idle 心跳；仅当 idle 心跳报告 dirty 或 host 已置 paint_dirty（含 bang chunk 追加）时才请求渲染；idle 且无 paint_dirty 时 MUST NOT 仅为 Tick 整帧重绘。UiRoot 对 loaded-resources+scrollback+queue MUST 在仅 status Loader 动画帧推进（含 Loader 帧换与纯 status 短词变化）时复用上区行缓存；仅当 entries、streaming tails、queue strip、fold、theme、loaded-resources 或宽度变化时 MUST 失效该上区缓存。
+    - 产品 host 在 Ready 态处理 Tick 时：MUST 先推进 idle 心跳；仅当 idle 心跳报告 dirty 或 host 已置 paint_dirty（含 bang 输出事件追加）时才请求渲染；idle 且无 paint_dirty 时 MUST NOT 仅为 Tick 整帧重绘。UiRoot 对 loaded-resources+scrollback+queue MUST 在仅 status Loader 动画帧推进（含 Loader 帧换与纯 status 短词变化）时复用上区行缓存；仅当 entries、streaming tails、queue strip、fold、theme、loaded-resources 或宽度变化时 MUST 失效该上区缓存。
 
   @req:ath25 @human
   场景: scrollback-entry-paint-cache

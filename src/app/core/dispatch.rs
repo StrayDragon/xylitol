@@ -202,14 +202,6 @@ mod tests {
         fn session_id(&self) -> Option<String> {
             None
         }
-        async fn execute_bash(
-            &self,
-            _command: &str,
-            _exclude_from_context: bool,
-            _chunk_tx: Option<tokio::sync::mpsc::Sender<Vec<u8>>>,
-        ) -> Result<XyBashResult, XyDriverError> {
-            unimplemented!()
-        }
         fn get_commands(&self) -> Vec<CommandInfo> {
             Vec::new()
         }

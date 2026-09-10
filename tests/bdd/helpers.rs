@@ -171,7 +171,7 @@ pub(crate) async fn run_wiring_operation(
             let _ = agent.ensure_wiring_hook_log();
             let (runtime, store) = make_agent_with_store(agent);
             let driver = XyInProcessDriver::new(runtime, store);
-            driver.execute_bash("true", false, None).await.map(|_| ())
+            driver.execute_bash("true", false).await.map(|_| ())
         }
         other => Err(format!("未知操作: {other}").into()),
     }

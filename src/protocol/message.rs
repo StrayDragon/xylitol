@@ -17,6 +17,18 @@ pub use xylitol_ai_bridge::dto::{AiBridgeUsageCost as XyUsageCost, Diagnostic};
 
 // ── EnvMessage / AgentMessage (domain composition) ─────────────────
 
+/// Lifecycle of an interactive bang run (c2760).
+///
+/// `Running` rows are start markers (command only); `Done` rows carry the
+/// finished result. Old JSONL rows without the field default to `Done`.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Default, Serialize, Deserialize)]
+#[serde(rename_all = "lowercase")]
+pub enum BashExecutionStatus {
+    Running,
+    #[default]
+    Done,
+}
+
 /// Environment / session meta roles (not sent to the model as-is).
 ///
 /// Wire fields are camelCase (`excludeFromContext`, `tokensBefore`, …).
@@ -26,6 +38,9 @@ pub enum EnvMessage {
     #[serde(rename = "bashExecution")]
     #[serde(rename_all = "camelCase")]
     BashExecutionMessage {
+        /// Correlation id linking the running start row to its done row (c2760).
+        #[serde(default)]
+        bash_id: String,
         command: String,
         output: String,
         #[serde(default, skip_serializing_if = "Option::is_none")]
@@ -38,6 +53,9 @@ pub enum EnvMessage {
         full_output_path: Option<String>,
         #[serde(default)]
         exclude_from_context: bool,
+        /// Lifecycle status (c2760); missing = Done for old rows.
+        #[serde(default)]
+        status: BashExecutionStatus,
     },
     #[serde(rename = "custom")]
     #[serde(rename_all = "camelCase")]
@@ -98,9 +116,12 @@ impl EnvMessage {
                 command,
                 output,
                 exclude_from_context,
+                status,
                 ..
             } => {
-                if *exclude_from_context {
+                // c2760: a running start row never projects to the model —
+                // only the finished (done) row is part of the stable prefix.
+                if *exclude_from_context || *status == BashExecutionStatus::Running {
                     None
                 } else {
                     Some(EnvLlmProjection::Bash {
@@ -256,6 +277,7 @@ impl AgentMessage {
         exit_code: Option<i32>,
     ) -> Self {
         Self::Env(EnvMessage::BashExecutionMessage {
+            bash_id: String::new(),
             command: command.into(),
             output: output.into(),
             exit_code,
@@ -263,6 +285,26 @@ impl AgentMessage {
             truncated: false,
             full_output_path: None,
             exclude_from_context: false,
+            status: BashExecutionStatus::Done,
+        })
+    }
+
+    /// Interactive bang start row (c2760): command only, `status = Running`.
+    pub fn bash_running(
+        bash_id: impl Into<String>,
+        command: impl Into<String>,
+        exclude_from_context: bool,
+    ) -> Self {
+        Self::Env(EnvMessage::BashExecutionMessage {
+            bash_id: bash_id.into(),
+            command: command.into(),
+            output: String::new(),
+            exit_code: None,
+            cancelled: false,
+            truncated: false,
+            full_output_path: None,
+            exclude_from_context,
+            status: BashExecutionStatus::Running,
         })
     }
 }
@@ -578,6 +620,7 @@ mod tests {
         // Exhaustive: adding an EnvMessage variant must update this match (c2725).
         let bash = AgentMessage::bash("ls", "a.txt", Some(0));
         let excluded = AgentMessage::Env(EnvMessage::BashExecutionMessage {
+            bash_id: String::new(),
             command: "secret".into(),
             output: "x".into(),
             exit_code: None,
@@ -585,6 +628,7 @@ mod tests {
             truncated: false,
             full_output_path: None,
             exclude_from_context: true,
+            status: crate::protocol::message::BashExecutionStatus::Done,
         });
         let summary = AgentMessage::Env(EnvMessage::CompactionSummaryMessage {
             summary: "compressed".into(),
@@ -656,6 +700,7 @@ mod tests {
         assert!(!env.exclude_from_context());
 
         let excluded = AgentMessage::Env(EnvMessage::BashExecutionMessage {
+            bash_id: String::new(),
             command: "secret".into(),
             output: "x".into(),
             exit_code: None,
@@ -663,6 +708,7 @@ mod tests {
             truncated: false,
             full_output_path: None,
             exclude_from_context: true,
+            status: crate::protocol::message::BashExecutionStatus::Done,
         });
         let AgentMessage::Env(env) = &excluded else {
             panic!("expected env")
@@ -693,8 +739,31 @@ mod tests {
     }
 
     #[test]
+    fn bash_execution_status_defaults_to_done_for_old_rows() {
+        // c2760: JSONL rows written before the lifecycle fields exist must
+        // deserialize as finished (Done) and keep projecting to the model.
+        let json = r#"{"role":"bashExecution","command":"ls","output":"a","cancelled":false,"truncated":false,"excludeFromContext":false}"#;
+        let msg: AgentMessage = serde_json::from_str(json).unwrap();
+        let AgentMessage::Env(EnvMessage::BashExecutionMessage {
+            bash_id, status, ..
+        }) = &msg
+        else {
+            panic!("expected env bash");
+        };
+        assert!(bash_id.is_empty());
+        assert_eq!(*status, BashExecutionStatus::Done);
+        // running rows never project to the model (stable prefix invariant).
+        let running = AgentMessage::bash_running("b1", "ls", false);
+        let AgentMessage::Env(env) = &running else {
+            panic!("expected env");
+        };
+        assert_eq!(env.llm_projection(), None);
+    }
+
+    #[test]
     fn env_excluded_bash_projects_to_none() {
         let msg = AgentMessage::Env(EnvMessage::BashExecutionMessage {
+            bash_id: String::new(),
             command: "secret".into(),
             output: "x".into(),
             exit_code: None,
@@ -702,6 +771,7 @@ mod tests {
             truncated: false,
             full_output_path: None,
             exclude_from_context: true,
+            status: crate::protocol::message::BashExecutionStatus::Done,
         });
         let AgentMessage::Env(env) = &msg else {
             panic!("expected env")

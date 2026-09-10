@@ -89,6 +89,10 @@
   场景: 从 store 播种 history
     - AgentRuntime::run_with_id（或等价入口）在已有 session 上开新一轮时 MUST 经 leaf 分支路径、经与 pi buildContextEntries 同构的 compaction-aware 裁切（取路径上最新 CompactionEntry：保留该摘要，并仅保留 firstKeptEntryId 起至该 compaction 前的条目及 compaction 之后的条目；无 compaction 则保留整条 leaf），再经统一 SessionEntry→AgentMessage 投影灌入 history（含 type=message 内的 LLM/Env 角色，以及 compaction/branchSummary 投影；bang-bash 仅接受 message+role=bashExecution），再追加本轮 user prompt；MUST 尊重 exclude_from_context。MUST NOT 把 firstKept 之前已被摘要的消息再送入工作 history；MUST NOT 每轮从空 history 起步；MUST NOT 仅过滤 Message 行而永久丢弃合法 bang-bash 或摘要上下文；MUST NOT 将旧顶层 type=bashExecution/bash_execution 提升为合法 history（此类行由 agent-session-store s20 跳过）。
 
+  @req:as-bang1 @human
+  场景: bash-run-lifecycle-projection
+    - 交互 bang 的持久化 MUST 由生命周期条目组成：开始执行时写入 message+role=bashExecution 的 running 条目（含 bash_id、command，output 空），完成或取消时写入同 bash_id 的 done 结果条目（output 截断视图、exit_code、cancelled、truncated、full_output_path）。LLM 历史投影 MUST 只使用 done 条目且字节稳定（running 条目 MUST NOT 产出任何投影）；resume 重建的 history 在 bang 部分 MUST 与实时增量一致（前缀不变量）；同 bash_id 仅 running 无 done 时 MAY 投影一条简短 interrupted 提示（MUST 尊重 exclude_from_context）。旧条目无 bash_id/status 字段 MUST 视为 done。
+
   @req:as46 @human
   场景: 持久化带 tag 的 agent 部件
     - ReAct/session 将 AssistantMessage/UserMessage 持久化为 SessionEntry::Message 时 MUST 写出 domain-message dm1 的 tagged content；从 store 恢复为 AgentMessage（as_agent_message 或等价）时 MUST 只接受 tagged 部件；遇旧 untagged/裸字符串 content MUST NOT 静默当成合法对话上下文（MUST 跳过该条目并可观测，对齐 agent-session-store s20），MUST NOT 把 thinking 与 text 糊成单一 Text。
