@@ -85,8 +85,8 @@ impl HookDispatcher {
         }
     }
 
-    /// Number of registered hooks.
-    #[allow(dead_code)]
+    /// Number of registered hooks (BDD @executable hook scenarios assert counts).
+    #[allow(dead_code)] // BDD @executable contract, not product-called
     pub fn hook_count(&self) -> usize {
         self.hooks.len()
     }

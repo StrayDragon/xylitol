@@ -9,19 +9,11 @@
 //! emit from a `spawn_blocking` worker while the TUI owns stdout — that races
 //! CSI 2026 synchronized updates.
 
-use std::io::Write;
-
 /// Maximum encoded (base64) payload length for OSC 52.
 ///
 /// Larger payloads can desynchronize terminal rendering and are rejected
 /// by some terminal emulators.
 pub const MAX_OSC52_ENCODED_LENGTH: usize = 100_000;
-
-/// Check whether the current session is a remote (SSH) session.
-#[allow(dead_code)]
-pub fn is_remote_session() -> bool {
-    is_remote_session_with(|k| std::env::var(k).ok())
-}
 
 /// Injectable remote-session check (reads `SSH_CONNECTION` / `SSH_CLIENT` / `MOSH_CONNECTION`).
 pub fn is_remote_session_with(get_env: impl Fn(&str) -> Option<String>) -> bool {
@@ -49,15 +41,6 @@ pub fn format_osc52(text: &str) -> Option<String> {
         return None;
     }
     Some(format!("\x1b]52;c;{encoded}\x07"))
-}
-
-/// Write a preformatted OSC 52 sequence to stdout and flush (CLI / non-TUI).
-#[allow(dead_code)]
-pub fn write_osc52_stdout(sequence: &str) -> Result<(), std::io::Error> {
-    let mut stdout = std::io::stdout().lock();
-    stdout.write_all(sequence.as_bytes())?;
-    stdout.flush()?;
-    Ok(())
 }
 
 #[cfg(test)]
@@ -106,17 +89,5 @@ mod tests {
     fn format_osc52_rejects_oversize() {
         let large = "a".repeat(MAX_OSC52_ENCODED_LENGTH);
         assert!(format_osc52(&large).is_none());
-    }
-
-    #[test]
-    fn test_is_remote_session_negative_when_no_env() {
-        assert!(!is_remote_session_with(|_| None));
-    }
-
-    #[test]
-    fn test_write_osc52_stdout_ok_for_formatted_sequence() {
-        let seq = format_osc52("small").expect("fits");
-        // In test context stdout is captured.
-        assert!(write_osc52_stdout(&seq).is_ok());
     }
 }

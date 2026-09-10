@@ -10,17 +10,7 @@ use crate::agent::llm_project::project_for_llm;
 use crate::protocol::message::{AgentMessage, LlmMessage, XyStopReason, XyUsage};
 use crate::protocol::model::ContextTokenEstimate;
 
-/// Calculate total context tokens from a XyUsage struct.
-/// Priority: total_tokens > input+output+cache_read+cache_write sum.
-#[allow(dead_code)]
-pub fn calculate_context_tokens(usage: &XyUsage) -> u64 {
-    if usage.total_tokens > 0 {
-        return usage.total_tokens;
-    }
-    usage.input + usage.output + usage.cache_read + usage.cache_write
-}
-
-/// Options for [`estimate_context_tokens`].
+/// Options for [`estimate_context_tokens_with`].
 #[derive(Debug, Clone, Default)]
 pub struct EstimateOpts {
     pub model_id: Option<String>,
@@ -76,16 +66,8 @@ pub fn estimate_from_session_entries(
 }
 
 /// Estimate context tokens via accounting priority:
-/// Api → RemoteCount → LocalTokenizer → Heuristic.
-#[allow(dead_code)]
-pub fn estimate_context_tokens(
-    messages: &[AgentMessage],
-    last_usage: Option<&XyUsage>,
-) -> ContextTokenEstimate {
-    estimate_context_tokens_with(messages, last_usage, None, &EstimateOpts::default())
-}
-
-/// Full estimate entry with optional stop-reason (Api anchor validity) and model id.
+/// Api → RemoteCount → LocalTokenizer → Heuristic. Full entry with optional stop-reason
+/// (Api anchor validity) and model id.
 pub fn estimate_context_tokens_with(
     messages: &[AgentMessage],
     last_usage: Option<&XyUsage>,
@@ -230,22 +212,6 @@ mod tests {
     use crate::protocol::message::AgentMessage;
     use crate::protocol::model::TokenProvenance;
     use xylitol_ai_bridge::registry::TokenizerOverride;
-
-    #[test]
-    fn calculate_context_tokens_fallback_sums_components() {
-        // total 缺席（=0）时回退到四分量求和——5 个存活变异所在的路径。
-        let usage = XyUsage {
-            total_tokens: 0,
-            input: 100,
-            output: 20,
-            cache_read: 7,
-            cache_write: 3,
-            ..Default::default()
-        };
-        assert_eq!(calculate_context_tokens(&usage), 130);
-        let empty = XyUsage::default();
-        assert_eq!(calculate_context_tokens(&empty), 0);
-    }
 
     #[test]
     fn override_enables_local_tokenizer_for_unmapped_alias() {

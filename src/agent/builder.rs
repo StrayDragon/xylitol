@@ -5,14 +5,14 @@
 //! methods, with safe defaults (empty tool set, no optional surface I/O). This keeps the agent layer free of concrete `infra/` types.
 //!
 //! [`AgentBuilder::build_ports`] yields a clonable [`RuntimePorts`] baseline;
-//! [`AgentBuilder::build`] materializes one [`AgentRuntime`] from it.
+//! `RuntimePorts::materialize_runtime` materializes one [`AgentRuntime`] from it.
 
 use std::sync::Arc;
 
 use crate::agent::capabilities::QueueMode;
 use crate::agent::compaction::CompactionSettings;
 use crate::agent::model::registry::ModelRegistry;
-use crate::agent::runtime::{AgentRuntime, RuntimePorts};
+use crate::agent::runtime::RuntimePorts;
 use crate::agent::tools::ToolSet;
 use crate::protocol::ports::{
     XyBatchMode, XyEventSink, XyHookBus, XyModelBuilder, XyPermission, XySessionStore,
@@ -112,13 +112,6 @@ impl AgentBuilder {
         self
     }
 
-    /// Override the permission port (default: the one passed to [`new`](Self::new)).
-    #[allow(dead_code)]
-    pub fn permission(mut self, permission: Arc<dyn XyPermission>) -> Self {
-        self.permission = permission;
-        self
-    }
-
     /// Set steering queue drain mode (default: [`QueueMode::OneAtATime`]).
     pub fn steering_mode(mut self, mode: QueueMode) -> Self {
         self.steering_mode = mode;
@@ -167,13 +160,5 @@ impl AgentBuilder {
             skills: self.skills,
             batch_mode: self.batch_mode,
         }
-    }
-
-    /// Build the [`AgentRuntime`] (ReAct-loop runtime over capabilities).
-    ///
-    /// Internally builds [`RuntimePorts`] then materializes one actor.
-    #[allow(dead_code)]
-    pub fn build(self) -> AgentRuntime {
-        self.build_ports().materialize_runtime()
     }
 }

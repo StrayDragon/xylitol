@@ -25,7 +25,6 @@ mod tests;
 /// deferred (pre-flush) creates — deep-copying pending would drop sessions on
 /// `mgr.clone()` + mutate patterns used by tests and thin wrappers.
 #[derive(Debug, Clone)]
-#[allow(dead_code)]
 pub struct SessionManager {
     sessions_dir: PathBuf,
     /// Storage backend.
@@ -33,7 +32,7 @@ pub struct SessionManager {
     /// Per-session leaf node tracking (in-memory).
     /// session_id -> current leaf entry id (None = root).
     leaf_ids: Arc<RwLock<HashMap<String, Option<String>>>>,
-    /// Active session tracking.
+    /// Active session tracking (BDD @executable session-navigation surface).
     active_session: Arc<RwLock<Option<String>>>,
     /// In-memory entry storage (used when backend is InMemory).
     in_memory_store: Arc<RwLock<HashMap<String, Vec<SessionEntry>>>>,
@@ -56,19 +55,6 @@ impl Default for SessionManager {
     }
 }
 
-/// Parameters for [`SessionManager::append_bash_execution`].
-#[allow(dead_code)]
-pub struct BashExecutionParams<'a> {
-    pub session_id: &'a str,
-    pub command: &'a str,
-    pub output: &'a str,
-    pub exit_code: Option<i32>,
-    pub cancelled: bool,
-    pub truncated: bool,
-    pub full_output_path: Option<&'a str>,
-    pub exclude_from_context: bool,
-}
-
 impl SessionManager {
     /// Create a new SessionManager with the given sessions directory.
     pub fn new(sessions_dir: PathBuf) -> Self {
@@ -86,13 +72,10 @@ impl SessionManager {
 
     /// Create an in-memory SessionManager (no disk writes).
     /// All entries are stored in a Vec, suitable for ephemeral sessions.
-    #[allow(dead_code)]
     pub fn in_memory() -> Self {
         Self {
             sessions_dir: PathBuf::from("."),
-            backend: SessionBackend::InMemory {
-                entries: Vec::new(),
-            },
+            backend: SessionBackend::InMemory,
             leaf_ids: Arc::new(RwLock::new(HashMap::new())),
             active_session: Arc::new(RwLock::new(None)),
             in_memory_store: Arc::new(RwLock::new(HashMap::new())),
@@ -132,16 +115,19 @@ impl SessionManager {
     fn session_path(&self, id: &str) -> PathBuf {
         match &self.backend {
             SessionBackend::Persisted { sessions_dir } => sessions_dir.join(format!("{id}.jsonl")),
-            SessionBackend::InMemory { .. } => PathBuf::from("/dev/null"),
+            SessionBackend::InMemory => PathBuf::from("/dev/null"),
         }
     }
 
     /// Get the session file, if persisted.
-    #[allow(dead_code)]
+    ///
+    /// BDD @executable contract (`会话 JSONL 文件存在` steps) + driver/unit tests;
+    /// no product caller today.
+    #[allow(dead_code)] // BDD @executable contract, not product-called
     pub fn get_session_file(&self, id: &str) -> Option<PathBuf> {
         match &self.backend {
             SessionBackend::Persisted { .. } => Some(self.session_path(id)),
-            SessionBackend::InMemory { .. } => None,
+            SessionBackend::InMemory => None,
         }
     }
 
@@ -152,9 +138,7 @@ impl SessionManager {
                 self.session_file_exists(id)
                     || lock_rwlock_read(&self.pending_store).contains_key(id)
             }
-            SessionBackend::InMemory { .. } => {
-                lock_rwlock_read(&self.in_memory_store).contains_key(id)
-            }
+            SessionBackend::InMemory => lock_rwlock_read(&self.in_memory_store).contains_key(id),
         }
     }
 }

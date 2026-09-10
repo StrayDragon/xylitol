@@ -46,7 +46,8 @@ async fn build_test_driver(store: Arc<SessionManager>) -> (XyInProcessDriver, Ob
     )
     .cwd(".")
     .tools(ToolSet::from_iter(crate::infra::tools::default_tools()))
-    .build();
+    .build_ports()
+    .materialize_runtime();
     let sid = uuid::Uuid::new_v4().to_string();
     store_trait
         .create(&sid, Some("."), None)

@@ -1,5 +1,6 @@
 ---
 source: tests/agent_session_api_baseline.rs
+assertion_line: 127
 expression: "all_items.join(\"\\n\")"
 ---
 pub async fn ensure_session(&self, id: &str, parent: Option<&str>) -> Result<(), XyError>
@@ -19,11 +20,9 @@ pub fn begin_tool_gating(&mut self)
 pub fn bind_event_tx(&self, run_id: RunId, tx: EventTx)
 pub fn build_current_model(&self) -> Result<Arc<dyn XyModel>, XyError>
 pub fn clear(&mut self)
-pub fn clear_follow_up_queue(&self)
 pub fn clear_queues(&self, clear_steer: bool, clear_follow_up: bool)
 pub fn clear_steer_queue(&self)
 pub fn clear_tool_freeze(&mut self)
-pub fn context_policy(&self) -> &crate::agent::context_policy::ContextPolicy
 pub fn current_model(&self) -> Option<XyModelMeta>
 pub fn cwd(&self) -> &str
 pub fn drain(&mut self) -> Vec<AgentMessage>
@@ -37,14 +36,11 @@ pub fn frozen_tool_fingerprint(&self) -> Option<&ToolTableFingerprint>
 pub fn get_context_usage( token_estimate: u64, context_window: u64, settings: &crate::agent::compaction::CompactionSettings, ) -> ContextUsage
 pub fn get_permission(&self) -> std::sync::Arc<dyn XyPermission>
 pub fn has_active_turn(&self) -> bool
-pub fn has_items(&self) -> bool
 pub fn install_system_prompt_text(&mut self, prompt: String)
-pub fn is_empty(&self) -> bool
 pub fn is_tools_frozen(&self) -> bool
 pub fn len(&self) -> usize
 pub fn loaded_skill_names(&self) -> Vec<String>
 pub fn loaded_skills(&self) -> &[crate::protocol::resource::SkillInfo]
-pub fn mode(&self) -> QueueMode
 pub fn model_registry(&self) -> ModelRegistry
 pub fn new( model_registry: ModelRegistry, tool_registry: ToolSet, store: Arc<dyn XySessionStore>, sink: Arc<dyn XyEventSink>, system_prompt: Option<String>, context_files: Vec<(String, String)>, append_system_prompt: Vec<String>, cwd: String, compaction_settings: Option<CompactionSettings>, model_builder: crate::protocol::ports::XyModelBuilder, permission: Arc<dyn XyPermission>, steering_mode: QueueMode, follow_up_mode: QueueMode, hook_bus: Option<Arc<dyn XyHookBus>>, ) -> Self
 pub fn new(mode: QueueMode) -> Self
@@ -58,7 +54,6 @@ pub fn selected_turn_binding(&self) -> Option<ActiveTurnBinding>
 pub fn session_id(&self) -> Option<&str>
 pub fn session_store(&self) -> Arc<dyn XySessionStore>
 pub fn set_cwd(&mut self, cwd: impl Into<String>)
-pub fn set_mode(&mut self, mode: QueueMode)
 pub fn set_permission(&mut self, permission: std::sync::Arc<dyn XyPermission>)
 pub fn set_session(&mut self, session_id: String)
 pub fn set_system_prompt(&mut self, prompt: Option<String>)

@@ -26,7 +26,7 @@ pub use overflow::error_message_is_context_overflow;
 pub use settings::CompactionSettings;
 // Test-support re-exports (in-crate tests import via this facade).
 #[cfg(test)]
-pub use cut_detector::{estimate_tokens_entry_for_cut, is_context_overflow};
+pub use cut_detector::estimate_tokens_entry_for_cut;
 #[cfg(test)]
 pub use file_ops::FileOps;
 #[cfg(test)]
@@ -951,28 +951,6 @@ mod tests {
         assert_eq!(tokens, 0, "expected zero tokens for model change entry");
     }
 
-    // ── is_context_overflow tests ─────────────────────────────────
-
-    #[test]
-    fn test_is_context_overflow_under_threshold() {
-        assert!(!is_context_overflow(1000, 2000, 500));
-    }
-
-    #[test]
-    fn test_is_context_overflow_at_threshold() {
-        assert!(!is_context_overflow(1500, 2000, 500));
-    }
-
-    #[test]
-    fn test_is_context_overflow_over_threshold() {
-        assert!(is_context_overflow(1600, 2000, 500));
-    }
-
-    #[test]
-    fn test_is_context_overflow_zero_window() {
-        assert!(!is_context_overflow(1000, 0, 500));
-    }
-
     // ── FileOps tests ─────────────────────────────────────────────
 
     #[test]
@@ -1062,19 +1040,6 @@ mod tests {
     }
 
     // ── XyUsage tests ───────────────────────────────────────────────
-
-    #[test]
-    fn test_calculate_context_tokens_uses_total() {
-        let usage = crate::protocol::message::XyUsage {
-            total_tokens: 500,
-            input: 200,
-            output: 300,
-            cache_read: 100,
-            cache_write: 50,
-            ..Default::default()
-        };
-        assert_eq!(token_estimator::calculate_context_tokens(&usage), 500);
-    }
 
     #[test]
     fn test_tokens_before_prefers_session_estimate_over_len4_sum() {

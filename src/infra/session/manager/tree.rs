@@ -8,15 +8,17 @@ use crate::protocol::error::{XySessionError, XySessionStoreError};
 use crate::utils::{lock_rwlock_read, lock_rwlock_write};
 
 impl SessionManager {
+    // ── BDD @executable session-navigation surface ──────────────────
+
     /// Branch: change the current leaf to a different entry.
     /// Future appends will be children of this entry.
-    #[allow(dead_code)]
+    #[allow(dead_code)] // BDD @executable contract, not product-called
     pub fn branch(&self, session_id: &str, entry_id: &str) {
         self.set_leaf(session_id, Some(entry_id.to_string()));
     }
 
     /// Reset leaf to root (null).
-    #[allow(dead_code)]
+    #[allow(dead_code)] // BDD @executable contract, not product-called
     pub fn reset_leaf(&self, session_id: &str) {
         self.set_leaf(session_id, None);
     }
@@ -210,7 +212,7 @@ impl SessionManager {
                         .extend(child_body.iter().cloned());
                 }
             }
-            SessionBackend::InMemory { .. } => {
+            SessionBackend::InMemory => {
                 let mut store = lock_rwlock_write(&self.in_memory_store);
                 store
                     .entry(child_id.to_string())
@@ -228,71 +230,27 @@ impl SessionManager {
         Ok(())
     }
 
-    // ── Tree operations ────────────────────────────────────────
+    // ── Tree operations (BDD @executable session-navigation surface) ──
 
     /// Get the active session id.
-    #[allow(dead_code)]
+    #[allow(dead_code)] // BDD @executable pair of `set_active_session`; reader unbound today
     pub fn active_session_id(&self) -> Option<String> {
         lock_rwlock_read(&self.active_session).clone()
     }
 
-    /// Set the active session.
-    #[allow(dead_code)]
+    /// Set the active session (`导航到` step target bookkeeping).
+    #[allow(dead_code)] // BDD @executable contract, not product-called
     pub fn set_active_session(&self, id: &str) {
         lock_rwlock_write(&self.active_session).replace(id.to_string());
     }
 
     /// Navigate tree: change the current leaf to a different entry.
     /// Future appends will be children of this entry.
-    /// Alias for `branch()`.
-    #[allow(dead_code)]
+    #[allow(dead_code)] // BDD @executable contract, not product-called
     pub fn navigate_tree(&self, session_id: &str, target_id: Option<&str>) {
         match target_id {
             Some(id) => self.branch(session_id, id),
             None => self.reset_leaf(session_id),
         }
-    }
-
-    /// Switch the active session to a new file path.
-    /// This loads entries from the new path and updates the active session.
-    #[allow(dead_code)]
-    pub async fn switch_session(
-        &self,
-        new_session_id: &str,
-        new_path: &str,
-    ) -> Result<(), XySessionStoreError> {
-        // Verify the new path exists
-        let path = std::path::Path::new(new_path);
-        if !path.exists() {
-            return Err(XySessionStoreError::not_found(new_path));
-        }
-        // Load entries from the new path
-        let content = tokio::fs::read_to_string(path)
-            .await
-            .map_err(|e| XySessionStoreError::io("read session file", e))?;
-
-        let mut entries: Vec<SessionEntry> = Vec::new();
-        for line in content.lines() {
-            if line.trim().is_empty() {
-                continue;
-            }
-            let entry: SessionEntry =
-                serde_json::from_str(line).map_err(XySessionStoreError::from)?;
-            entries.push(entry);
-        }
-
-        // Update active session
-        self.set_active_session(new_session_id);
-
-        // Update leaf tracking: last entry's id
-        if let Some(last) = entries.last() {
-            if let Some(id) = last.entry_id() {
-                self.set_leaf(new_session_id, Some(id.to_string()));
-            }
-        } else {
-            self.set_leaf(new_session_id, None);
-        }
-
-        Ok(())
     }
 }

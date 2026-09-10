@@ -45,10 +45,6 @@ impl RunningServer {
         let _ = self.evicted.changed().await;
     }
 
-    /// Wait for the server to finish shutting down.
-    #[allow(dead_code)]
-    pub async fn join(self) {}
-
     /// Write the registration file and arm the self-eviction watch (c2475).
     fn arm_registration(
         &mut self,
@@ -198,7 +194,9 @@ async fn assemble(config: &ServerConfig) -> Result<Arc<HostState>, Box<dyn std::
 
 /// Bind and serve an already-built [`HostState`] (tests / custom assembly).
 /// Ready as soon as the socket is up (no assembly window).
-#[allow(dead_code)]
+///
+/// BDD @executable readiness scenarios + driver unit tests; no product caller.
+#[allow(dead_code)] // BDD @executable contract / unit-test seam, not product-called
 pub async fn serve(
     config: ServerConfig,
     host: Arc<HostState>,
@@ -210,7 +208,7 @@ pub async fn serve(
 
 /// Pre-assembled variant that also arms the registration contract (BDD /
 /// tests): ready at bind, registration written, self-eviction armed.
-#[allow(dead_code)]
+#[allow(dead_code)] // BDD @executable contract / unit-test seam, not product-called
 pub async fn serve_registered(
     config: ServerConfig,
     host: Arc<HostState>,

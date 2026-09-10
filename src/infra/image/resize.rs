@@ -9,23 +9,15 @@ use std::io::Cursor;
 use super::error::ImageError;
 
 /// Result of a resize operation.
+///
+/// Only the encoded payload + MIME type are consumed by product (read tool);
+/// dimension/flags metadata was dropped in c2750 (no reader).
 #[derive(Debug, Clone)]
-#[allow(dead_code)]
 pub struct ResizedImage {
     /// Base64-encoded image data.
     pub data: String,
     /// MIME type (e.g. "image/jpeg").
     pub mime_type: String,
-    /// Original width in pixels.
-    pub original_width: u32,
-    /// Original height in pixels.
-    pub original_height: u32,
-    /// Final width in pixels.
-    pub width: u32,
-    /// Final height in pixels.
-    pub height: u32,
-    /// Whether the image was resized/converted.
-    pub was_resized: bool,
 }
 
 /// Options for image resizing.
@@ -60,8 +52,7 @@ pub fn resize_image(data: &[u8], options: &ImageResizeOptions) -> Result<Resized
     let img = image::load_from_memory(data)
         .map_err(|e| ImageError::decode("failed to decode image", e))?;
 
-    let (orig_w, orig_h) = img.dimensions();
-    let (mut w, mut h) = (orig_w, orig_h);
+    let (mut w, mut h) = img.dimensions();
     let mut was_resized = false;
 
     // Scale down if needed
@@ -94,11 +85,6 @@ pub fn resize_image(data: &[u8], options: &ImageResizeOptions) -> Result<Resized
         return Ok(ResizedImage {
             data: png_b64,
             mime_type: "image/png".to_string(),
-            original_width: orig_w,
-            original_height: orig_h,
-            width: w,
-            height: h,
-            was_resized,
         });
     }
 
@@ -118,15 +104,9 @@ pub fn resize_image(data: &[u8], options: &ImageResizeOptions) -> Result<Resized
     let jpeg_b64 = base64::engine::general_purpose::STANDARD.encode(&jpeg_bytes);
 
     if jpeg_b64.len() <= options.max_bytes {
-        was_resized = true;
         return Ok(ResizedImage {
             data: jpeg_b64,
             mime_type: "image/jpeg".to_string(),
-            original_width: orig_w,
-            original_height: orig_h,
-            width: w,
-            height: h,
-            was_resized,
         });
     }
 
@@ -159,9 +139,8 @@ mod tests {
         }
 
         let result = resize_image(&buf, &ImageResizeOptions::default()).unwrap();
-        assert_eq!(result.original_width, 10);
-        assert_eq!(result.original_height, 10);
-        // Small image should not be resized
-        assert!(!result.was_resized || result.mime_type == "image/jpeg");
+        // Small image passes through as PNG (may re-encode to JPEG when the
+        // byte limit forces it — metadata fields were removed in c2750).
+        assert!(result.mime_type == "image/png" || result.mime_type == "image/jpeg");
     }
 }

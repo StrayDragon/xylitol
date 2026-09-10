@@ -124,8 +124,11 @@ impl SettingsStorage for FileSettingsStorage {
 }
 
 /// In-memory storage for testing.
+///
+/// BDD @executable contract (`加载 settings` steps); no product caller —
+/// product uses [`FileSettingsStorage`].
 #[derive(Debug)]
-#[allow(dead_code)]
+#[allow(dead_code)] // BDD @executable contract, not product-called
 pub struct InMemorySettingsStorage {
     pub global: std::sync::Arc<std::sync::Mutex<Option<String>>>,
     pub project: std::sync::Arc<std::sync::Mutex<Option<String>>>,

@@ -16,13 +16,11 @@ use super::store::{TrustManager, TrustOption};
 // ── Configuration ──────────────────────────────────────────────────
 
 /// Default project trust policy when no explicit decision is stored.
+///
+/// Only `Ask` ships (product default; auto-trust / auto-deny policy knobs
+/// removed in c2750 — no config path constructs them).
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
-#[allow(dead_code)]
 pub enum DefaultProjectTrust {
-    /// Always trust projects with trust inputs (auto-trust).
-    Always,
-    /// Never trust projects with trust inputs (auto-deny).
-    Never,
     /// Prompt the user (requires UI). Falls back to deny if no UI.
     #[default]
     Ask,
@@ -48,8 +46,6 @@ pub enum TrustReason {
     NoTrustInputs,
     /// Found in persistent store.
     Store,
-    /// Resolved via default policy.
-    DefaultPolicy,
     /// User chose via UI prompt.
     UserPrompt,
     /// Fallback: no UI available, default is Ask → deny.
@@ -74,7 +70,7 @@ pub fn resolve_project_trusted<F>(
     manager: &TrustManager,
     cwd: &str,
     trust_override: Option<bool>,
-    default_policy: DefaultProjectTrust,
+    _default_policy: DefaultProjectTrust,
     has_ui: bool,
     on_prompt: F,
 ) -> TrustResolution
@@ -105,22 +101,7 @@ where
         };
     }
 
-    // 4. Default policy
-    match default_policy {
-        DefaultProjectTrust::Always => {
-            return TrustResolution {
-                trusted: true,
-                reason: TrustReason::DefaultPolicy,
-            };
-        }
-        DefaultProjectTrust::Never => {
-            return TrustResolution {
-                trusted: false,
-                reason: TrustReason::DefaultPolicy,
-            };
-        }
-        DefaultProjectTrust::Ask => { /* continue to UI */ }
-    }
+    // 4. Default policy (single `Ask` layout — Always/Never removed in c2750)
 
     // 5. UI prompt (only if has_ui)
     if !has_ui {
@@ -217,32 +198,6 @@ mod tests {
         let result = resolve_project_trusted(&mgr, &cwd, None, Default::default(), true, |_| None);
         assert!(!result.trusted);
         assert_eq!(result.reason, TrustReason::Store);
-    }
-
-    #[test]
-    fn test_resolve_default_always() {
-        let (mgr, dir) = store();
-        fs::create_dir_all(dir.path().join(".xylitol")).unwrap();
-        let cwd = dir.path().to_string_lossy().to_string();
-
-        let result =
-            resolve_project_trusted(&mgr, &cwd, None, DefaultProjectTrust::Always, true, |_| {
-                None
-            });
-        assert!(result.trusted);
-        assert_eq!(result.reason, TrustReason::DefaultPolicy);
-    }
-
-    #[test]
-    fn test_resolve_default_never() {
-        let (mgr, dir) = store();
-        fs::create_dir_all(dir.path().join(".xylitol")).unwrap();
-        let cwd = dir.path().to_string_lossy().to_string();
-
-        let result =
-            resolve_project_trusted(&mgr, &cwd, None, DefaultProjectTrust::Never, true, |_| None);
-        assert!(!result.trusted);
-        assert_eq!(result.reason, TrustReason::DefaultPolicy);
     }
 
     #[test]

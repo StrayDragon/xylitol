@@ -5,4 +5,3 @@ pub(crate) mod secret_env;
 pub(crate) mod template;
 pub mod types;
 pub(crate) mod validate;
-pub mod value;

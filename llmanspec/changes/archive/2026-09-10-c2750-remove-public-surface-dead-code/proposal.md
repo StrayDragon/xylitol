@@ -1,6 +1,10 @@
 ---
 depends_on: []
 skip_specs_landing: true
+branch: sdd/c2750-remove-public-surface-dead-code
+base_sha: aaae7f965787e2dbb6b720661c2869a57afd2120
+checkpointed: true
+checkpoint_sha: aaae7f965787e2dbb6b720661c2869a57afd2120
 ---
 
 ## Why

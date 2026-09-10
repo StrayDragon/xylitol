@@ -46,38 +46,14 @@ impl PendingMessageQueue {
         }
     }
 
-    /// Current drain mode.
-    #[allow(dead_code)]
-    pub fn mode(&self) -> QueueMode {
-        self.mode
-    }
-
-    /// Replace the drain mode (does not affect already-queued messages).
-    #[allow(dead_code)]
-    pub fn set_mode(&mut self, mode: QueueMode) {
-        self.mode = mode;
-    }
-
     /// Append a message to the end of the queue.
     pub fn enqueue(&mut self, message: AgentMessage) {
         self.messages.push_back(message);
     }
 
-    /// Whether the queue holds at least one message.
-    #[allow(dead_code)]
-    pub fn has_items(&self) -> bool {
-        !self.messages.is_empty()
-    }
-
     /// Number of queued messages.
     pub fn len(&self) -> usize {
         self.messages.len()
-    }
-
-    /// Whether the queue is empty.
-    #[allow(dead_code)]
-    pub fn is_empty(&self) -> bool {
-        self.messages.is_empty()
     }
 
     /// Drain according to [`QueueMode`]: all messages, or only the first.
@@ -172,7 +148,7 @@ mod tests {
         q.enqueue(user("b"));
         let drained = q.drain();
         assert_eq!(drained.len(), 2);
-        assert!(q.is_empty());
+        assert_eq!(q.len(), 0);
     }
 
     #[test]
@@ -185,7 +161,7 @@ mod tests {
         assert_eq!(q.len(), 1);
         let rest = q.drain();
         assert_eq!(rest.len(), 1);
-        assert!(q.is_empty());
+        assert_eq!(q.len(), 0);
     }
 
     #[test]
@@ -193,7 +169,7 @@ mod tests {
         let mut q = PendingMessageQueue::new(QueueMode::All);
         q.enqueue(user("x"));
         q.clear();
-        assert!(!q.has_items());
+        assert_eq!(q.len(), 0);
         assert!(q.drain().is_empty());
     }
 

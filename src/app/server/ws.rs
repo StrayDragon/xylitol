@@ -28,9 +28,12 @@ pub fn downlink_server_request(method: impl Into<String>, payload: Value) -> Rpc
 // ── Frame types ────────────────────────────────────────────────────
 
 /// Frame sent from server to client.
+///
+/// Internal DTO kept for the ws module's own tests (serde round-trip);
+/// the product wire uses the envelope JSON, not these types (c2750).
 #[derive(Debug, Serialize, Deserialize)]
 #[serde(tag = "type", rename_all = "snake_case")]
-#[allow(dead_code)]
+#[allow(dead_code)] // internal DTO exercised by ws unit tests only
 pub enum ServerFrame {
     Ack {
         seq: u64,
@@ -48,9 +51,12 @@ pub enum ServerFrame {
 }
 
 /// Frame sent from client to server.
+///
+/// Internal DTO kept for the ws module's own tests (serde round-trip);
+/// the product wire uses the envelope JSON, not these types (c2750).
 #[derive(Debug, Serialize, Deserialize)]
 #[serde(tag = "type", rename_all = "snake_case")]
-#[allow(dead_code)]
+#[allow(dead_code)] // internal DTO exercised by ws unit tests only
 pub enum ClientFrame {
     Subscribe { session_id: String, last_seq: u64 },
     ApproveTool { call_id: String, approved: bool },

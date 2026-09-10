@@ -50,7 +50,7 @@ async fn seed_session_with_trailing_model_change(mgr: &SessionManager, sid: &str
             SessionBackend::Persisted { .. } => {
                 mgr.append_with_id(sid, &e).await.unwrap();
             }
-            SessionBackend::InMemory { .. } => {
+            SessionBackend::InMemory => {
                 let mut store = mgr.in_memory_store.write().expect("lock");
                 store.entry(sid.to_string()).or_default().push(e.clone());
             }
@@ -117,7 +117,7 @@ async fn get_branch_splices_seam_when_messages_chain_through_parentless_bookkeep
             SessionBackend::Persisted { .. } => {
                 mgr.append_with_id(sid, &e).await.unwrap();
             }
-            SessionBackend::InMemory { .. } => {
+            SessionBackend::InMemory => {
                 let mut store = mgr.in_memory_store.write().expect("lock");
                 store.entry(sid.to_string()).or_default().push(e.clone());
             }

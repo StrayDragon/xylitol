@@ -80,22 +80,6 @@ impl ProviderConfig {
     }
 }
 
-// ── Default Model IDs ───────────────────────────────────────────────
-
-#[allow(dead_code)]
-const DEFAULT_MODEL_PER_PROVIDER: &[(&str, &str)] = &[
-    ("openai", "gpt-4o"),
-    ("anthropic", "claude-sonnet-4-20250514"),
-];
-
-#[allow(dead_code)]
-pub fn default_model_id_for_provider(provider_name: &str) -> Option<&'static str> {
-    DEFAULT_MODEL_PER_PROVIDER
-        .iter()
-        .find(|(p, _)| *p == provider_name)
-        .map(|(_, m)| *m)
-}
-
 // ── Model Registry ──────────────────────────────────────────────────
 
 /// Registry of model providers and their available models.
@@ -272,18 +256,6 @@ mod tests {
         assert!(available[0].id.starts_with("openai"));
         assert!(available[1].id.starts_with("openai"));
         assert!(available[2].id.starts_with("claude"));
-    }
-
-    #[test]
-    fn test_default_model_id() {
-        let openai = default_model_id_for_provider("openai").expect("openai default");
-        let anthropic = default_model_id_for_provider("anthropic").expect("anthropic default");
-        // Defaults MUST be real, currently-shipping model identifiers — never
-        // placeholders or non-existent model names (regression guard for the
-        // gpt-5.4 / claude-opus-4-8 placeholder bug).
-        assert_eq!(openai, "gpt-4o");
-        assert_eq!(anthropic, "claude-sonnet-4-20250514");
-        assert_eq!(default_model_id_for_provider("unknown"), None);
     }
 
     #[test]

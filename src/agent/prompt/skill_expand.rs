@@ -1,7 +1,3 @@
-// Pre-0.0.1 audit: all product symbols in this module are currently unused;
-// kept pending the dedicated dead-code removal change.
-#![allow(dead_code)]
-
 //! Expand `$skill` references into SKILL.md bodies for the model (c1130 / A10).
 //!
 //! Session history and scrollback keep the raw `$name` text; only the LLM-bound
@@ -95,26 +91,6 @@ fn read_skill_body(path: &Path) -> std::io::Result<String> {
     Ok(strip_skill_frontmatter(&raw))
 }
 
-/// Expand `$skill` inside LLM-visible user messages (in place).
-pub fn expand_skills_in_llm_messages(messages: &mut [LlmMessage], skills: &[SkillInfo]) {
-    if skills.is_empty() {
-        return;
-    }
-    for msg in messages {
-        let LlmMessage::UserMessage { content, .. } = msg else {
-            continue;
-        };
-        for part in content.iter_mut() {
-            if let AgentPart::Text { text } = part {
-                let expanded = expand_skill_refs(text, skills);
-                if expanded != *text {
-                    *text = expanded;
-                }
-            }
-        }
-    }
-}
-
 /// Expand `$skill` on a cloned history destined for the model (session stays raw).
 pub fn expand_skills_in_agent_messages(messages: &mut [AgentMessage], skills: &[SkillInfo]) {
     if skills.is_empty() {
@@ -192,13 +168,13 @@ mod tests {
     }
 
     #[test]
-    fn expand_skills_in_llm_user_message() {
+    fn expand_skills_in_agent_message() {
         let dir = TempDir::new().unwrap();
         let skill_path = dir.path().join("SKILL.md");
         std::fs::write(&skill_path, "---\nname: demo\n---\n\nBODY_X\n").unwrap();
         let skills = vec![skill("demo", skill_path)];
-        let mut msgs = vec![LlmMessage::user("hi $demo")];
-        expand_skills_in_llm_messages(&mut msgs, &skills);
+        let mut msgs = vec![AgentMessage::Llm(LlmMessage::user("hi $demo"))];
+        expand_skills_in_agent_messages(&mut msgs, &skills);
         let text = msgs[0].text();
         assert!(text.contains("hi $demo"));
         assert!(text.contains("BODY_X"));

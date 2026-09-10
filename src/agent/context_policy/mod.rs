@@ -1,40 +1,21 @@
 //! ContextPolicy — request-layout hooks (c1890 / c1905).
 //!
 //! Code-first defaults only; no YAML / env overlay this wave.
-//! Status bar is deferred (`c1895`). Tool search / `ToolsMode::Search` is `c1960`.
-//! Track-A freeze (c1900) keeps `ToolsMode::Full` as the open-box default.
+//! Status bar injection is deferred (c1895) — not represented in the type.
+//! Tool search is deferred (c1960); only the full-tool layout ships (`ToolsMode::Full`).
 //! Calendar-day placement knob removed (c2730): session_env carries date/cwd.
 
 mod defaults;
 
-pub use defaults::{
-    ALLOW_MIDTURN_TOOLS_REWRITE_DEFAULT, STATUS_BAR_MODE_DEFAULT, TOOLS_MODE_DEFAULT,
-};
+pub use defaults::{ALLOW_MIDTURN_TOOLS_REWRITE_DEFAULT, TOOLS_MODE_DEFAULT};
 
-/// How tools are exposed on the provider request.
+/// How tools are exposed on the provider request (full-schema is the only
+/// shipped layout; discovery/search deferred — c1960).
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
-#[allow(dead_code)] // c2750 dead-code purge candidate
 pub enum ToolsMode {
     /// Full tool schema list (current product default).
     #[default]
     Full,
-    /// Deferred discovery / search (c1960; not delivered by c1900 freeze track).
-    Search,
-}
-
-/// Agent status-bar injection mode (full Lane Runtime in `c1895`).
-///
-/// Product already has one **special status-bar type** shipped by c1905:
-/// [`crate::agent::prompt::CUSTOM_TYPE_SESSION_ENV`] (`session_env` bootstrap).
-/// c1895 SHOULD scan / merge that type when enabling `Replace` / `Append`;
-/// default remains [`StatusBarMode::Off`] (bootstrap-only).
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
-#[allow(dead_code)] // c2750 dead-code purge candidate
-pub enum StatusBarMode {
-    #[default]
-    Off,
-    Replace,
-    Append,
 }
 
 /// Where calendar-day text is placed **in the system prompt** (c1905).
@@ -43,7 +24,6 @@ pub enum StatusBarMode {
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct ContextPolicy {
     pub tools_mode: ToolsMode,
-    pub status_bar_mode: StatusBarMode,
     pub allow_midturn_tools_rewrite: bool,
 }
 
@@ -51,19 +31,16 @@ impl Default for ContextPolicy {
     fn default() -> Self {
         Self {
             tools_mode: TOOLS_MODE_DEFAULT,
-            status_bar_mode: STATUS_BAR_MODE_DEFAULT,
             allow_midturn_tools_rewrite: ALLOW_MIDTURN_TOOLS_REWRITE_DEFAULT,
         }
     }
 }
 
 impl ContextPolicy {
-    /// Whether provider `tools` may be rewritten mid-turn (Search defaults false).
+    /// Whether provider `tools` may be rewritten mid-turn (flag-gated;
+    /// `Search` layout that once forbade rewrites is deferred — c1960).
     pub fn allows_midturn_tools_rewrite(&self) -> bool {
-        match self.tools_mode {
-            ToolsMode::Full => self.allow_midturn_tools_rewrite,
-            ToolsMode::Search => false,
-        }
+        self.allow_midturn_tools_rewrite
     }
 }
 
@@ -88,19 +65,8 @@ mod tests {
     fn default_hooks_match_design() {
         let p = ContextPolicy::default();
         assert_eq!(p.tools_mode, ToolsMode::Full);
-        assert_eq!(p.status_bar_mode, StatusBarMode::Off);
         assert!(p.allow_midturn_tools_rewrite);
         assert!(p.allows_midturn_tools_rewrite());
-    }
-
-    #[test]
-    fn search_mode_forbids_midturn_tools_rewrite() {
-        let p = ContextPolicy {
-            tools_mode: ToolsMode::Search,
-            allow_midturn_tools_rewrite: true,
-            ..Default::default()
-        };
-        assert!(!p.allows_midturn_tools_rewrite());
     }
 
     #[test]

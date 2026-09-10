@@ -53,7 +53,7 @@ async fn seeded_sibling_tree(mgr: &SessionManager, sid: &str) {
             SessionBackend::Persisted { .. } => {
                 mgr.append_with_id(sid, &e).await.unwrap();
             }
-            SessionBackend::InMemory { .. } => {
+            SessionBackend::InMemory => {
                 let mut store = mgr.in_memory_store.write().expect("lock");
                 store.entry(sid.to_string()).or_default().push(e.clone());
                 if let Some(id) = e.entry_id() {

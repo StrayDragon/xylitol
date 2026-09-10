@@ -679,7 +679,8 @@ fn project_trusted_for(host: &HostState, workspace: &Path) -> bool {
     .trusted
 }
 
-#[allow(dead_code)]
+/// Unit-test seam (driver delegate tests / BDD); product uses `materialize_writer_at`.
+#[allow(dead_code)] // unit-test seam, not product-called
 pub async fn materialize_writer(
     host: &HostState,
     slot: &Arc<SessionSlot>,
