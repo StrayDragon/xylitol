@@ -31,15 +31,15 @@ where
     log::info!(target: "xylitol::tui", "Command::Bash (interactive bang) command_len={} exclude={}", bash.command.len(), bash.exclude_from_context);
     session.begin_bash_exec(&bash.command, bash.exclude_from_context);
     let _ = session.render_now();
-    // c2760: no live chunk uplink — `Command::Bash` runs to completion and the
-    // finished result is rendered once (product bang semantics).
     // c2760: inject the output-event sink and dispatch `Command::Bash`. The
     // sink channel is independent of the dispatch borrow, so abort stays a
-    // simple post-loop action.
+    // simple post-loop action; the client-side cancel clone is inert (the
+    // host's slot-registered token does the real kill).
     let (chunk_tx, mut chunk_rx) =
         tokio::sync::mpsc::channel::<crate::protocol::ports::BashChunk>(64);
     driver.set_bash_run_sink(Some(crate::protocol::ports::BashOutputSink {
         tx: chunk_tx,
+        cancel: tokio_util::sync::CancellationToken::new(),
     }));
     let (bash_result, aborted_during_bash) = {
         let cmd = crate::protocol::Command::Bash {

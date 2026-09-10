@@ -588,7 +588,7 @@ impl XyInProcessDriver {
         self.agent.script_hook_cancel(ty, phase, ctx).await?;
 
         // Execution side generates the correlation id (start/done rows and
-        // output chunks share it); the injected sink only carries the channel.
+        // output chunks share it); the injected sink carries channel + cancel.
         let bash_id = uuid::Uuid::new_v4().to_string();
         let run = self
             .bash_run_sink
@@ -596,30 +596,18 @@ impl XyInProcessDriver {
             .unwrap_or_else(|e| e.into_inner())
             .take();
 
-        // Relay raw output bytes to `BashChunk` events (lossy UTF-8).
-        let (chunk_tx, mut chunk_rx) = tokio::sync::mpsc::channel::<Vec<u8>>(64);
-        let relay = run.map(|run| {
-            let tx = run.tx.clone();
-            let bash_id = bash_id.clone();
-            tokio::spawn(async move {
-                let mut seq: u64 = 0;
-                while let Some(bytes) = chunk_rx.recv().await {
-                    seq += 1;
-                    let data = String::from_utf8_lossy(&bytes).into_owned();
-                    if tx
-                        .send(crate::protocol::ports::BashChunk {
-                            bash_id: bash_id.clone(),
-                            seq,
-                            data,
-                        })
-                        .await
-                        .is_err()
-                    {
-                        break;
-                    }
-                }
-            })
-        });
+        // Out-of-band kill switch (host `abort`); standalone callers (no sink)
+        // fall back to a fresh token reachable only via `XyDriver::abort`.
+        let cancel = run
+            .as_ref()
+            .map(|run| run.cancel.clone())
+            .unwrap_or_default();
+
+        // Relay raw output bytes to `BashChunk` events, reassembling UTF-8
+        // sequences split across executor chunk boundaries.
+        let (chunk_tx, chunk_rx) = tokio::sync::mpsc::channel::<Vec<u8>>(64);
+        let relay =
+            run.map(|run| tokio::spawn(relay_bash_chunks(bash_id.clone(), chunk_rx, run.tx)));
 
         let result = self
             .bang
@@ -629,6 +617,7 @@ impl XyInProcessDriver {
                 &bash_id,
                 command,
                 exclude_from_context,
+                cancel,
                 Some(chunk_tx),
                 Some(self.agent.cwd().to_string()),
             )
@@ -637,6 +626,69 @@ impl XyInProcessDriver {
             let _ = relay.await;
         }
         result.map_err(XyDriverError::from)
+    }
+}
+
+/// Relay executor output bytes to [`crate::protocol::ports::BashChunk`] events.
+///
+/// Executor chunks are raw 8 KiB reads, so a multi-byte UTF-8 sequence can be
+/// split across a boundary; the incomplete tail is held back and prefixed to
+/// the next chunk. `String::from_utf8_lossy` only runs on complete sequences
+/// (invalid bytes → U+FFFD; a truncated sequence at stream end flushes as-is).
+async fn relay_bash_chunks(
+    bash_id: String,
+    mut rx: tokio::sync::mpsc::Receiver<Vec<u8>>,
+    tx: tokio::sync::mpsc::Sender<crate::protocol::ports::BashChunk>,
+) {
+    use crate::protocol::ports::BashChunk;
+
+    let mut seq: u64 = 0;
+    let mut pending: Vec<u8> = Vec::new();
+    while let Some(bytes) = rx.recv().await {
+        pending.extend_from_slice(&bytes);
+        while !pending.is_empty() {
+            let n = utf8_emit_len(&pending);
+            if n == 0 {
+                break;
+            }
+            let data = String::from_utf8_lossy(&pending[..n]).into_owned();
+            pending.drain(..n);
+            seq += 1;
+            if tx
+                .send(BashChunk {
+                    bash_id: bash_id.clone(),
+                    seq,
+                    data,
+                })
+                .await
+                .is_err()
+            {
+                return;
+            }
+        }
+    }
+    if !pending.is_empty() {
+        seq += 1;
+        let _ = tx
+            .send(BashChunk {
+                bash_id,
+                seq,
+                data: String::from_utf8_lossy(&pending).into_owned(),
+            })
+            .await;
+    }
+}
+
+/// Length of the prefix of `buf` that is safe to convert now: the whole buffer
+/// when it is valid UTF-8 or ends in invalid bytes (those emit as U+FFFD), or
+/// everything before a truncated multi-byte tail (kept for the next chunk).
+fn utf8_emit_len(buf: &[u8]) -> usize {
+    match std::str::from_utf8(buf) {
+        Ok(_) => buf.len(),
+        Err(e) => match e.error_len() {
+            None => e.valid_up_to(),
+            Some(bad) => e.valid_up_to() + bad,
+        },
     }
 }
 

@@ -1983,6 +1983,60 @@ mod tests {
     }
 
     #[tokio::test]
+    async fn abort_cancels_running_bash_out_of_band() {
+        use crate::app::server::host::handle_unary;
+        let host = HostState::for_test().expect("host");
+        let slot = host.slot("abort-bash").await;
+        let cancel = tokio_util::sync::CancellationToken::new();
+        *slot.bash_run_cancel.lock().unwrap() = Some(cancel.clone());
+        let result = handle_unary(
+            &host,
+            None,
+            "abort",
+            serde_json::json!({ "session_id": "abort-bash" }),
+            None,
+        )
+        .await;
+        assert_eq!(
+            result.value.as_ref().and_then(|v| v["cancelled"].as_bool()),
+            Some(true)
+        );
+        assert!(
+            cancel.is_cancelled(),
+            "abort must cancel the registered bash run"
+        );
+    }
+
+    #[tokio::test]
+    async fn abort_without_running_bash_keeps_fallback_path() {
+        use crate::app::server::host::handle_unary;
+        let host = HostState::for_test().expect("host");
+        let slot = host.slot("idle-abort").await;
+        let cancel = tokio_util::sync::CancellationToken::new();
+        *slot.bash_run_cancel.lock().unwrap() = Some(cancel.clone());
+        // A different session id must not reach this slot's registration.
+        let result = handle_unary(
+            &host,
+            None,
+            "abort",
+            serde_json::json!({ "session_id": "other-session" }),
+            None,
+        )
+        .await;
+        assert!(
+            !cancel.is_cancelled(),
+            "foreign abort must not cancel our run"
+        );
+        // No registration on the target slot: falls through to the plain
+        // `Command::Abort` dispatch (for_test materializes a writer), which
+        // must still report a cancelled run.
+        assert_eq!(
+            result.value.as_ref().and_then(|v| v["cancelled"].as_bool()),
+            Some(true)
+        );
+    }
+
+    #[tokio::test]
     async fn push_resources_is_not_journaled() {
         let host = HostState::for_test().expect("host");
         let slot = host.slot("res").await;
@@ -2250,7 +2304,10 @@ mod tests {
         let mut driver = XyRemoteDriver::new(format!("http://127.0.0.1:{port}"), "sink-sess");
         driver.attach_session().await.expect("attach");
         let (tx, mut rx) = tokio::sync::mpsc::channel(8);
-        driver.set_bash_run_sink(Some(crate::protocol::ports::BashOutputSink { tx }));
+        driver.set_bash_run_sink(Some(crate::protocol::ports::BashOutputSink {
+            tx,
+            cancel: tokio_util::sync::CancellationToken::new(),
+        }));
         host.slot("sink-sess")
             .await
             .push_bash_output(crate::protocol::ports::BashChunk {

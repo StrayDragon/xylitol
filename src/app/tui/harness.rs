@@ -2527,7 +2527,10 @@ mod slice_tests {
             full_output_path: None,
         });
         let (tx, mut rx) = tokio::sync::mpsc::channel::<crate::protocol::ports::BashChunk>(8);
-        driver.set_bash_run_sink(Some(crate::protocol::ports::BashOutputSink { tx }));
+        driver.set_bash_run_sink(Some(crate::protocol::ports::BashOutputSink {
+            tx,
+            cancel: tokio_util::sync::CancellationToken::new(),
+        }));
         let outcome = crate::app::core::dispatch::dispatch(
             &mut driver,
             crate::protocol::Command::Bash {

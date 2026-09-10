@@ -25,15 +25,19 @@ pub struct XyBashResult {
     pub full_output_path: Option<String>,
 }
 
-/// Runtime-injected sink for interactive bang output events (c2760).
+/// Runtime-injected handle for an interactive bang run (c2760).
 ///
-/// The TUI injects `(bash_id, tx)` before dispatching `Command::Bash`; the
-/// in-process executor relays chunks into `tx`, and the remote driver forwards
-/// `session/bash_output` downlink frames the same way. Not a wire parameter.
+/// The TUI/host injects it before dispatching `Command::Bash`: the in-process
+/// executor relays output chunks into `tx`, and the remote driver forwards
+/// `session/bash_output` downlink frames the same way. `cancel` kills the run
+/// out-of-band while the writer lock is held by the executing bash unary
+/// (client-side clones are inert). Not a wire parameter.
 #[derive(Debug, Clone)]
 pub struct BashOutputSink {
     /// Chunk channel consumed by the caller (TUI bang loop / host forwarder).
     pub tx: mpsc::Sender<BashChunk>,
+    /// Out-of-band kill switch for the bash run.
+    pub cancel: CancellationToken,
 }
 
 /// Interactive bang output event payload (c2760).

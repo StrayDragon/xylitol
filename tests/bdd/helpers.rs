@@ -111,7 +111,7 @@ pub(crate) async fn run_wiring_operation(
     agent: &AgentState,
     op: &str,
 ) -> Result<(), XyDriverError> {
-    use crate::embed::{XyDriver, XyInProcessDriver};
+    use crate::embed::XyInProcessDriver;
     use crate::protocol::session::SessionTreeKind;
 
     match op {
