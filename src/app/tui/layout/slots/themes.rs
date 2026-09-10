@@ -14,6 +14,9 @@ pub enum ThemesAction {
 
 pub struct ThemesSlot {
     list: SelectList,
+    /// Enter-confirmed theme name (c2790 quick, same show-confirm-on-pending
+    /// contract as the Models picker).
+    confirmed: Option<String>,
 }
 
 impl ThemesSlot {
@@ -32,6 +35,7 @@ impl ThemesSlot {
             .collect();
         Self {
             list: theme.select_list(items, 4, (12, 24)),
+            confirmed: None,
         }
     }
 
@@ -53,6 +57,7 @@ impl ThemesSlot {
         };
         if matches_binding(key, "tui.select.confirm") {
             if let Some(item) = self.list.get_selected_item() {
+                self.confirmed = Some(item.value.clone());
                 return ThemesAction::Select(item.value.clone());
             }
             return ThemesAction::None;
@@ -65,7 +70,23 @@ impl ThemesSlot {
 
     pub fn render(&mut self, width: usize, theme: LayoutTheme) -> Vec<String> {
         let mut lines = Vec::new();
-        lines.push(theme.paint_muted(" themes"));
+        let mut head = " themes".to_string();
+        // c2790 quick: immediate Enter feedback while a bang keeps the confirm
+        // pending (same contract as the Models picker).
+        if let Some(name) = &self.confirmed
+            && self
+                .list
+                .get_selected_item()
+                .is_some_and(|i| &i.value == name)
+        {
+            head = format!("{head} ✓ 已选 {name}");
+        }
+        lines.push(theme.paint_muted(&xylitol_tui::truncate_to_width(
+            &head,
+            width.max(1),
+            "",
+            false,
+        )));
         lines.extend(self.list.render(width.max(1)));
         lines
     }

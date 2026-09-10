@@ -21,6 +21,7 @@ pub(super) struct PendingSlotOps {
 impl PendingSlotOps {
     /// Overlay close: cancel in-flight picker confirms that MUST NOT fire after Esc.
     pub fn clear_cancelled_on_close(&mut self) {
+        self.model_select = None;
         self.theme_select = None;
         self.session_resume_rename = None;
         self.session_resume_delete = None;
