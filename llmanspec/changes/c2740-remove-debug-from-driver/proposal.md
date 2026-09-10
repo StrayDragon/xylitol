@@ -1,6 +1,10 @@
 ---
 depends_on:
-  - c2710-refactor-driver-command-dispatch
+- c2710-refactor-driver-command-dispatch
+branch: sdd/c2740-remove-debug-from-driver
+base_sha: b2604d2845b4bdb5f8c2de881dd5073e442e473f
+rules_edit_acked: true
+checkpointed: false
 ---
 
 # `/debug` 退出 Driver/wire；Host 泵拆分（次段）
