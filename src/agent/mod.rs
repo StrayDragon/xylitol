@@ -7,8 +7,7 @@
 //!   `bind_session` / `submit_root` / `abort` / `set_tools` 等方法。
 //! - [`AgentCapabilities`]（[`capabilities::AgentCapabilities`]）：可插拔的能力聚合体
 //!   （models + io + tools + 编排状态）。被 `AgentRuntime` 持有；构造期由
-//!   [`AgentBuilder`] 装配。**不是** [`crate::protocol::message::AgentContext`]
-//!   （那是 LLM 请求快照）。
+//!   [`AgentBuilder`] 装配。
 //! - [`RuntimePorts`]（[`runtime::RuntimePorts`]）：可克隆的构造基线；
 //!   `AgentBuilder::build_ports` → `materialize_runtime` 物化隔离 actor
 //!   （未来 sub-agent factory 接缝；不共享 history / cancel / active turn）。

@@ -7,7 +7,6 @@ use serde_json::Value;
 use super::adapter::McpToolAdapter;
 use super::client::McpClientManager;
 use super::types::McpServerConfig;
-use crate::infra::config::types::AppConfig;
 use crate::protocol::ports::XyTool;
 
 /// True when MCP should be assembled (non-empty server list).
@@ -76,15 +75,7 @@ pub async fn connect_and_discover_with_progress(
 ///
 /// Missing / empty `mcp_servers` → `None`. Configured servers follow
 /// [`connect_and_discover`]: failures are diagnostics, not `None`.
-#[allow(dead_code)]
-pub async fn connect_and_discover_from_config(
-    config: &AppConfig,
-) -> Option<(Arc<McpClientManager>, Vec<Arc<dyn XyTool>>)> {
-    match &config.mcp_servers {
-        Some(servers) if !servers.is_empty() => connect_and_discover(servers).await,
-        _ => None,
-    }
-}
+/// Removed in c2750 (zero callers); assembly goes through `connect_and_discover`.
 
 #[cfg(test)]
 mod tests {

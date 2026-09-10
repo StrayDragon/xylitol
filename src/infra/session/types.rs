@@ -13,10 +13,9 @@ pub use crate::protocol::session::{
 
 /// Storage backend for a session.
 #[derive(Debug, Clone)]
-#[allow(dead_code)]
 pub enum SessionBackend {
     /// Persisted to a JSONL file in a directory.
     Persisted { sessions_dir: PathBuf },
     /// In-memory only (no disk writes).
-    InMemory { entries: Vec<SessionEntry> },
+    InMemory,
 }

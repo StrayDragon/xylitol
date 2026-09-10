@@ -4,6 +4,5 @@
 //! child process waiting. Used by `agent/runtime/bash.rs` and
 //! `agent/tools/bash.rs`.
 
-pub mod child;
 pub mod group;
 pub mod shell;

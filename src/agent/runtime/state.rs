@@ -17,11 +17,6 @@ use crate::protocol::message::AgentPart;
 pub struct RunId(u64);
 
 impl RunId {
-    #[allow(dead_code)]
-    pub fn get(self) -> u64 {
-        self.0
-    }
-
     #[cfg(test)]
     pub(crate) fn from_raw_for_test(raw: u64) -> Self {
         Self(raw)
@@ -331,11 +326,6 @@ impl RunLease {
             queues,
             finished: false,
         }
-    }
-
-    #[allow(dead_code)]
-    pub fn run_id(&self) -> RunId {
-        self.run_id
     }
 
     /// Idempotent finish — safe from AgentEnd poll and Drop.

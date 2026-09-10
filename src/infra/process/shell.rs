@@ -7,23 +7,11 @@ use std::process::Command;
 
 /// Shell configuration result.
 #[derive(Debug, Clone)]
-#[allow(dead_code)]
 pub struct ShellConfig {
     /// Path to the shell binary.
     pub shell: PathBuf,
     /// Arguments to pass (e.g. `["-c"]` for direct command execution).
     pub args: Vec<String>,
-    /// How the command is transported to the shell.
-    pub command_transport: CommandTransport,
-}
-
-/// How a command is fed to the shell.
-#[derive(Debug, Clone, PartialEq)]
-pub enum CommandTransport {
-    /// Pass as `-c <command>` argument.
-    Argv,
-    /// Pass via stdin (needed for legacy WSL bash).
-    Stdin,
 }
 
 /// Find bash on the current system.
@@ -47,38 +35,6 @@ pub fn find_bash(custom_shell: Option<&std::path::Path>) -> ShellConfig {
     }
 }
 
-/// Build a shell environment with the agent bin directory injected into PATH.
-#[allow(dead_code)]
-pub fn build_shell_env(agent_bin_dir: Option<&std::path::Path>) -> Vec<(String, String)> {
-    let mut env = Vec::new();
-
-    // Copy existing environment
-    for (key, value) in std::env::vars() {
-        // Skip PATH — we'll rebuild it
-        if key.eq_ignore_ascii_case("PATH") {
-            continue;
-        }
-        env.push((key, value));
-    }
-
-    // Rebuild PATH with agent bin dir prepended
-    let path_key = std::env::vars()
-        .find(|(k, _)| k.eq_ignore_ascii_case("PATH"))
-        .map(|(k, _)| k)
-        .unwrap_or_else(|| "PATH".to_string());
-
-    let current_path = std::env::var(&path_key).unwrap_or_default();
-
-    if let Some(bin_dir) = agent_bin_dir {
-        let new_path = format!("{}:{}", bin_dir.display(), current_path);
-        env.push((path_key, new_path));
-    } else {
-        env.push((path_key, current_path));
-    }
-
-    env
-}
-
 // ── Platform-specific ──────────────────────────────────────────────────
 
 fn bash_config(path: &std::path::Path) -> ShellConfig {
@@ -98,11 +54,6 @@ fn bash_config(path: &std::path::Path) -> ShellConfig {
     ShellConfig {
         shell: path.to_path_buf(),
         args,
-        command_transport: if is_legacy_wsl {
-            CommandTransport::Stdin
-        } else {
-            CommandTransport::Argv
-        },
     }
 }
 
@@ -190,31 +141,5 @@ mod tests {
             );
             assert_eq!(config.args, vec!["-c"]);
         }
-    }
-
-    #[test]
-    fn test_shell_env_injects_bin_dir() {
-        let bin_dir = std::path::Path::new("/tmp/test-bin");
-        let env = build_shell_env(Some(bin_dir));
-        let path_entry = env
-            .iter()
-            .find(|(k, _)| k.eq_ignore_ascii_case("PATH"))
-            .map(|(_, v)| v.clone());
-        assert!(path_entry.is_some());
-        let path = path_entry.unwrap();
-        assert!(
-            path.contains("/tmp/test-bin"),
-            "expected PATH to contain /tmp/test-bin, got {path}"
-        );
-    }
-
-    #[test]
-    fn test_shell_env_without_bin_dir_keeps_original_path() {
-        let env = build_shell_env(None);
-        let path_entry = env
-            .iter()
-            .find(|(k, _)| k.eq_ignore_ascii_case("PATH"))
-            .map(|(_, v)| v.clone());
-        assert!(path_entry.is_some());
     }
 }

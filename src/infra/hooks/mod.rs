@@ -52,8 +52,13 @@ impl HookPhase {
 /// Events that can trigger hook scripts.
 ///
 /// Each variant carries the context data relevant to that event.
+///
+/// The pi-aligned variant family (tool / model / step / plan / review / retry /
+/// snapshot …) is constructed only by BDD @executable hook scenarios and unit
+/// tests; product dispatch emits provider events (`Before*`/`AfterProvider*`).
+/// Kept because hook specs (llmanspec/specs/hook-*) bind those scenarios.
 #[derive(Debug, Clone)]
-#[allow(dead_code)]
+#[allow(dead_code)] // variant family: BDD @executable / unit-test surface (c2750)
 pub enum HookEvent {
     /// A tool is about to be called (pre) or has completed (post).
     ToolCall {
@@ -259,7 +264,8 @@ impl HookEvent {
     /// Payload-only JSON for [`crate::protocol::ports::XyHookBus`] (no `event`/`phase` keys).
     ///
     /// Script stdin via typed [`Self::to_json_context`] still includes `event` + `phase`.
-    #[allow(dead_code)]
+    /// Exercised by the module's own unit tests; no product caller.
+    #[allow(dead_code)] // unit-test contract (payload_context_omits_event_phase)
     pub fn payload_context(&self) -> serde_json::Value {
         let mut ctx = self.to_json_context(HookPhase::Pre);
         if let Some(map) = ctx.as_object_mut() {

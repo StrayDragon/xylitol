@@ -1,4 +1,3 @@
-use super::BashExecutionParams;
 use super::SessionManager;
 use crate::infra::session::types::*;
 use crate::protocol::error::{XySessionError, XySessionStoreError};
@@ -50,7 +49,10 @@ impl SessionManager {
     // ── Change tracking helpers ─────────────────────────────────
 
     /// Append a model change entry.
-    #[allow(dead_code)]
+    ///
+    /// BDD @executable contract (`切换模型为` steps); no product caller today —
+    /// product model switches go through `XyDriver` / session projection.
+    #[allow(dead_code)] // BDD @executable contract, not product-called
     pub async fn append_model_change(
         &self,
         session_id: &str,
@@ -71,7 +73,9 @@ impl SessionManager {
     }
 
     /// Append a thinking level change entry.
-    #[allow(dead_code)]
+    ///
+    /// BDD @executable contract (`切换思考级别为` steps); no product caller today.
+    #[allow(dead_code)] // BDD @executable contract, not product-called
     pub async fn append_thinking_level_change(
         &self,
         session_id: &str,
@@ -92,7 +96,11 @@ impl SessionManager {
     // ── Branch summary (text fallback) ──────────────────────────
 
     /// Generate a branch summary for cut-point entries.
-    #[allow(dead_code)]
+    ///
+    /// Spec @executable contract (`场景: 分支摘要` in domain-compaction and
+    /// agent-session-store features); no product caller today — fork-time
+    /// summary generation is not yet wired.
+    #[allow(dead_code)] // spec @executable contract, not product-called
     pub fn generate_branch_summary(&self, skipped_entries: &[SessionEntry]) -> String {
         use crate::protocol::session::{
             count_tool_calls, is_user_message, message_text, tool_file_paths,
@@ -178,11 +186,11 @@ impl SessionManager {
         summary
     }
 
-    // ── Label and session info ─────────────────────────────────
+    // ── Label bookkeeping (BDD @executable surface) ──────────────
 
     /// Append a label change entry.
     /// Labels are user-defined bookmarks/markers on entries.
-    #[allow(dead_code)]
+    #[allow(dead_code)] // BDD @executable contract, not product-called
     pub async fn append_label_change(
         &self,
         session_id: &str,
@@ -210,7 +218,7 @@ impl SessionManager {
     }
 
     /// Get the label for an entry, if any.
-    #[allow(dead_code)]
+    #[allow(dead_code)] // BDD @executable contract, not product-called
     pub async fn get_label(
         &self,
         session_id: &str,
@@ -226,28 +234,5 @@ impl SessionManager {
             }
         }
         Ok(None)
-    }
-
-    /// Append a bash-execution entry (`!cmd` / `!!cmd`) as nested Message (c1210).
-    ///
-    /// Stored on disk; the `exclude_from_context` flag controls whether it
-    /// participates in LLM context (see `build_session_context`).
-    #[allow(dead_code)]
-    pub async fn append_bash_execution(
-        &self,
-        params: BashExecutionParams<'_>,
-    ) -> Result<(), XySessionStoreError> {
-        let entry = crate::protocol::session::bash_execution_message_entry(
-            String::new(),
-            params.command,
-            params.output,
-            params.exit_code,
-            params.cancelled,
-            params.truncated,
-            params.full_output_path.map(|s| s.to_string()),
-            params.exclude_from_context,
-            crate::protocol::message::BashExecutionStatus::Done,
-        );
-        self.append(params.session_id, &entry).await
     }
 }

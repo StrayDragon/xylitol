@@ -58,9 +58,12 @@ pub trait BashOperations: Send + Sync {
 
 /// Result of a bash execution.
 #[derive(Debug, Clone)]
-#[allow(dead_code)]
 pub struct BashOutput {
+    /// Display-safe stdout (spilled to file when truncated).
+    #[allow(dead_code)] // result-shape contract for post_spawn hooks / tests
     pub stdout: String,
+    /// Display-safe stderr (always empty today; shape kept for hooks / tests).
+    #[allow(dead_code)] // result-shape contract for post_spawn hooks / tests
     pub stderr: String,
     pub exit_code: i32,
     pub combined: String,
@@ -249,14 +252,16 @@ impl Default for BashTool {
 }
 
 impl BashTool {
-    #[allow(dead_code)] // test-only construction seam
+    /// Test-only construction seam — swap in fake/mocked [`BashOperations`].
+    #[cfg(test)]
     pub fn with_operations(ops: impl BashOperations + 'static) -> Self {
         Self {
             operations: Arc::new(ops),
         }
     }
 
-    #[allow(dead_code)] // test-only construction seam
+    /// Test-only construction seam — attach hooks without real operations.
+    #[cfg(test)]
     pub fn with_hooks(hooks: BashHooks) -> Self {
         Self {
             operations: Arc::new(RealBashOperations { hooks }),

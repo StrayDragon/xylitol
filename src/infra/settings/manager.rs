@@ -8,7 +8,11 @@ use super::storage::{
 use super::types::*;
 
 /// Manages global and project settings with deep merge.
-#[allow(dead_code)]
+///
+/// Product path only consumes the merged [`Self::settings`] view (bootstrap);
+/// the backing fields feed the BDD @executable settings surface (in_memory /
+/// trust queries).
+#[allow(dead_code)] // backing store of BDD @executable settings surface (c2750)
 pub struct SettingsManager {
     storage: Box<dyn SettingsStorage>,
     global_settings: Settings,
@@ -21,7 +25,6 @@ pub struct SettingsManager {
     errors: Arc<Mutex<Vec<(SettingsScope, String)>>>,
 }
 
-#[allow(dead_code)]
 impl SettingsManager {
     // ── Construction ────────────────────────────────────────────
 
@@ -62,7 +65,9 @@ impl SettingsManager {
         }
     }
 
-    /// Create an in-memory manager from partial settings (testing).
+    /// Create an in-memory manager from partial settings.
+    /// BDD @executable contract (`设置` steps); no product caller today.
+    #[allow(dead_code)] // BDD @executable contract, not product-called
     pub fn in_memory(settings: Settings) -> Self {
         let storage = Box::new(InMemorySettingsStorage::default());
         let json = serde_json::to_string(&settings).unwrap();
@@ -147,77 +152,12 @@ impl SettingsManager {
 
     // ── Mutators (global scope, persist immediately) ──────────
 
-    fn save_global(&mut self) {
-        let settings = self.global_settings.clone();
-        let json = match serde_json::to_string_pretty(&settings) {
-            Ok(j) => j,
-            Err(e) => {
-                log::warn!("serialize global settings: {e}");
-                return;
-            }
-        };
-        self.storage
-            .with_lock(SettingsScope::Global, &mut |_cur| Some(json.clone()));
-    }
-
-    // ── Reload ────────────────────────────────────────────────
-
-    /// Reload from storage and rebuild merged view.
-    /// Returns true if settings actually changed.
-    pub fn reload(&mut self) -> bool {
-        let new_global =
-            Self::load_from_storage(self.storage.as_ref(), SettingsScope::Global, true);
-        let new_project = Self::load_from_storage(
-            self.storage.as_ref(),
-            SettingsScope::Project,
-            self.project_trusted,
-        );
-
-        let changed =
-            self.global_settings != new_global.0 || self.project_settings != new_project.0;
-
-        {
-            let mut errs = self.errors.lock().unwrap();
-            errs.clear();
-            if let Some(ref e) = new_global.1 {
-                errs.push((SettingsScope::Global, e.clone()));
-            }
-            if let Some(ref e) = new_project.1 {
-                errs.push((SettingsScope::Project, e.clone()));
-            }
-        }
-
-        self.global_settings = new_global.0;
-        self.project_settings = new_project.0;
-        self.global_error = new_global.1;
-        self.project_error = new_project.1;
-        self.settings = Self::deep_merge(&self.global_settings, &self.project_settings);
-
-        changed
-    }
-
     // ── Project trust ─────────────────────────────────────────
 
+    /// BDD @executable contract (`settings 信任` steps); no product caller today.
+    #[allow(dead_code)] // BDD @executable contract, not product-called
     pub fn is_project_trusted(&self) -> bool {
         self.project_trusted
-    }
-
-    pub fn set_project_trusted(&mut self, trusted: bool) {
-        if self.project_trusted == trusted {
-            return;
-        }
-        self.project_trusted = trusted;
-
-        if !trusted {
-            self.project_settings = Settings::default();
-            self.project_error = None;
-        } else {
-            let (settings, error) =
-                Self::load_from_storage(self.storage.as_ref(), SettingsScope::Project, true);
-            self.project_settings = settings;
-            self.project_error = error;
-        }
-        self.settings = Self::deep_merge(&self.global_settings, &self.project_settings);
     }
 
     // ── Raw access for callers that need structure ────────────
@@ -226,6 +166,8 @@ impl SettingsManager {
         &self.settings
     }
 
+    /// BDD @executable contract (`settings 信任` steps); no product caller today.
+    #[allow(dead_code)] // BDD @executable contract, not product-called
     pub fn get_project_settings(&self) -> &Settings {
         &self.project_settings
     }
@@ -349,67 +291,5 @@ mod tests {
         let mgr = SettingsManager::in_memory(Default::default());
         assert_eq!(mgr.get_steering_mode(), SteeringMode::OneAtATime);
         assert_eq!(mgr.get_follow_up_mode(), SteeringMode::OneAtATime);
-    }
-
-    #[test]
-    fn test_reload_no_change() {
-        let mut mgr = SettingsManager::in_memory(Settings {
-            default_thinking_level: Some("low".into()),
-            ..Default::default()
-        });
-        let changed = mgr.reload();
-        assert!(!changed);
-    }
-
-    #[test]
-    fn test_project_trust_toggle() {
-        let mut mgr = SettingsManager::in_memory(Settings {
-            default_thinking_level: Some("high".into()),
-            ..Default::default()
-        });
-        assert!(mgr.is_project_trusted());
-        mgr.set_project_trusted(false);
-        assert!(!mgr.is_project_trusted());
-        mgr.set_project_trusted(true);
-        assert!(mgr.is_project_trusted());
-        assert_eq!(
-            mgr.get_settings().default_thinking_level.as_deref(),
-            Some("high")
-        );
-    }
-
-    #[test]
-    fn test_project_trust_untrusted_clears_project_settings() {
-        use crate::infra::settings::storage::InMemorySettingsStorage;
-
-        let storage = InMemorySettingsStorage::default();
-        let global_json = serde_json::to_string(&Settings {
-            default_thinking_level: Some("global-level".into()),
-            ..Default::default()
-        })
-        .unwrap();
-        let project_json = serde_json::to_string(&Settings {
-            default_thinking_level: Some("project-level".into()),
-            ..Default::default()
-        })
-        .unwrap();
-        storage.global.lock().unwrap().replace(global_json);
-        storage.project.lock().unwrap().replace(project_json);
-
-        let mut mgr = SettingsManager::from_storage(Box::new(storage), true);
-        assert!(mgr.is_project_trusted());
-        assert_eq!(
-            mgr.get_settings().default_thinking_level.as_deref(),
-            Some("project-level")
-        );
-
-        mgr.set_project_trusted(false);
-        assert!(!mgr.is_project_trusted());
-        assert_eq!(
-            mgr.get_settings().default_thinking_level.as_deref(),
-            Some("global-level"),
-            "untrusted project MUST NOT contribute to effective settings"
-        );
-        assert_eq!(mgr.get_project_settings(), &Settings::default());
     }
 }

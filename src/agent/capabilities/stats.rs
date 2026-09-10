@@ -49,8 +49,11 @@ pub async fn compute(
 }
 
 /// Context usage summary for compaction decisions.
+///
+/// Kept as spec @executable contract: BDD steps (`getContextUsage` / `get_context_usage`)
+/// exercise it; no product caller today.
 #[derive(Debug, Clone)]
-#[allow(dead_code)]
+#[allow(dead_code)] // BDD @executable contract, not product-called
 pub struct ContextUsage {
     pub tokens: u64,
     pub context_window: u64,
@@ -63,7 +66,8 @@ pub use crate::agent::compaction::orchestrator::should_compact;
 /// Compute context usage info from a token estimate and window size.
 ///
 /// `percent` is a derived display value only; trigger uses reserve formula via `settings`.
-#[allow(dead_code)]
+/// Kept as spec @executable contract (BDD `get_context_usage` steps); no product caller.
+#[allow(dead_code)] // BDD @executable contract, not product-called
 pub fn get_context_usage(
     token_estimate: u64,
     context_window: u64,

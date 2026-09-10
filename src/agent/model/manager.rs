@@ -8,8 +8,7 @@ use std::sync::Arc;
 use crate::agent::model::registry::ModelRegistry;
 use crate::protocol::error::XyError;
 use crate::protocol::model::{
-    THINKING_OFF, ThinkingBudgets, XyModelConfig, XyModelMeta, last_declared_thinking_level,
-    thinking_levels_are_adjustable,
+    THINKING_OFF, ThinkingBudgets, XyModelMeta, last_declared_thinking_level,
 };
 use crate::protocol::ports::XyModel;
 
@@ -179,26 +178,6 @@ impl ModelManager {
     pub fn registry(&self) -> &ModelRegistry {
         &self.registry
     }
-
-    /// Get the index of the currently selected model (`None` if unset).
-    #[allow(dead_code)]
-    pub fn current_index(&self) -> Option<usize> {
-        self.current_index
-    }
-
-    /// Get the XyModelConfig for the current model.
-    #[allow(dead_code)]
-    pub fn current_config(&self) -> Option<XyModelConfig> {
-        let idx = self.current_index?;
-        self.registry.list().get(idx).map(|m| m.config.clone())
-    }
-
-    /// Whether the selected model has a declared adjustable option.
-    #[allow(dead_code)]
-    pub fn thinking_is_adjustable(&self) -> bool {
-        self.supported_levels()
-            .is_some_and(|levels| thinking_levels_are_adjustable(&levels))
-    }
 }
 
 #[cfg(test)]
@@ -282,14 +261,12 @@ mod tests {
         reg.register(meta("m1", true, &["off", "high"]));
         let mm = ModelManager::new(reg, fake_builder());
         assert!(mm.current_model().is_none());
-        assert_eq!(mm.current_index(), None);
     }
 
     #[test]
     fn new_model_manager_empty_registry() {
         let mm = ModelManager::new(empty_registry(), fake_builder());
         assert!(mm.current_model().is_none());
-        assert_eq!(mm.current_index(), None);
         assert_eq!(mm.thinking_level(), "off");
     }
 
@@ -382,12 +359,6 @@ mod tests {
     fn registry_accessor() {
         let mm = ModelManager::new(empty_registry(), fake_builder());
         assert_eq!(mm.registry().list().len(), 0);
-    }
-
-    #[test]
-    fn current_config_empty_returns_none() {
-        let mm = ModelManager::new(empty_registry(), fake_builder());
-        assert!(mm.current_config().is_none());
     }
 
     #[test]

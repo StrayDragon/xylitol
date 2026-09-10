@@ -66,7 +66,10 @@ impl TrustManager {
     }
 
     /// Path to the underlying trust file.
-    #[allow(dead_code)]
+    ///
+    /// BDD @executable contract (persisted-trust assertions) + unit tests;
+    /// no product caller.
+    #[allow(dead_code)] // BDD @executable contract / unit-test seam, not product-called
     pub fn trust_file_path(&self) -> &Path {
         &self.trust_file_path
     }
@@ -184,8 +187,9 @@ impl TrustManager {
         self.is_project_trusted(cwd) == Some(true)
     }
 
-    /// Persist a single trust decision for a path.
-    #[allow(dead_code)]
+    /// Persist a single trust decision for a path (BDD @executable security
+    /// scenarios; no product caller — product persists via `apply_updates`).
+    #[allow(dead_code)] // BDD @executable contract, not product-called
     pub fn set_trust(&self, path: &str, decision: TrustDecision) -> Result<(), XyTrustError> {
         self.apply_updates(&[TrustUpdate {
             path: path.to_string(),

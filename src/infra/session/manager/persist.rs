@@ -197,7 +197,7 @@ impl SessionManager {
                     entries.insert(0, header);
                 }
             }
-            SessionBackend::InMemory { .. } => {
+            SessionBackend::InMemory => {
                 let mut store = lock_rwlock_write(&self.in_memory_store);
                 let entries = store.entry(id.to_string()).or_default();
                 entries.insert(0, header);
@@ -229,7 +229,7 @@ impl SessionManager {
                         entries.iter().any(|e| matches!(e, SessionEntry::Header(_)))
                     })
             }
-            SessionBackend::InMemory { .. } => lock_rwlock_read(&self.in_memory_store)
+            SessionBackend::InMemory => lock_rwlock_read(&self.in_memory_store)
                 .get(session_id)
                 .is_some_and(|entries| {
                     entries.iter().any(|e| matches!(e, SessionEntry::Header(_)))
@@ -297,7 +297,7 @@ impl SessionManager {
                     }
                 }
             }
-            SessionBackend::InMemory { .. } => {
+            SessionBackend::InMemory => {
                 let mut store = lock_rwlock_write(&self.in_memory_store);
                 store
                     .entry(session_id.to_string())

@@ -309,46 +309,6 @@ impl AgentMessage {
     }
 }
 
-// ── AgentState ──────────────────────────────────────────────────────
-
-/// Public agent state snapshot.
-#[derive(Debug, Clone)]
-#[allow(dead_code)]
-pub struct AgentState {
-    /// System prompt sent with each model request.
-    pub system_prompt: String,
-    /// Active model name.
-    pub model: String,
-    /// Thinking/reasoning level.
-    pub thinking_level: String,
-    /// Available tool names.
-    pub tool_names: Vec<String>,
-    /// Conversation transcript.
-    pub messages: Vec<AgentMessage>,
-    /// True while the agent is processing a prompt or continuation.
-    pub is_streaming: bool,
-    /// Partial assistant message for the current streamed response, if any.
-    pub streaming_message: Option<AgentMessage>,
-    /// Tool call ids currently executing.
-    pub pending_tool_calls: Vec<String>,
-    /// Error message from the most recent failed or aborted assistant turn.
-    pub error_message: Option<String>,
-}
-
-// ── AgentContext ────────────────────────────────────────────────────
-
-/// Context snapshot passed into the low-level agent loop before each LLM call.
-#[derive(Debug, Clone)]
-#[allow(dead_code)]
-pub struct AgentContext {
-    /// System prompt included with the request.
-    pub system_prompt: String,
-    /// Transcript visible to the model.
-    pub messages: Vec<AgentMessage>,
-    /// Tool names available for this run.
-    pub tool_names: Vec<String>,
-}
-
 // ── Display ─────────────────────────────────────────────────────────
 
 impl std::fmt::Display for AgentMessage {

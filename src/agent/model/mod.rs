@@ -1,4 +1,4 @@
-//! Model management — configuration, registry, resolution, and manifest loading.
+//! Model management — configuration, registry, and resolution.
 //!
 //! Model config types ([`crate::protocol::model::XyModelConfig`],
 //! [`crate::protocol::model::XyModelKind`]) live in [`crate::protocol::model`];
@@ -6,10 +6,8 @@
 //!
 //! - [`ModelRegistry`] — manages available models
 //! - [`ModelResolver`](resolver) — resolves model IDs to configs
-//! - [`ModelManifest`] — loads model definitions from files
 
 pub mod manager;
-pub mod manifest;
 pub mod registry;
 pub mod resolver;
 

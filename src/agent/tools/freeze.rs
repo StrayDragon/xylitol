@@ -80,23 +80,6 @@ fn hex_lower(bytes: impl AsRef<[u8]>) -> String {
     out
 }
 
-/// Upsert `incoming` onto `base` by tool name (unique names; later wins).
-#[inline]
-#[allow(dead_code)]
-pub fn upsert_tools_by_name(base: ToolSet, incoming: ToolSet) -> ToolSet {
-    base.overlay_by_name(incoming)
-}
-
-/// Build the frozen table: core/builtins first, then armed MCP/custom by name.
-#[inline]
-#[allow(dead_code)]
-pub fn freeze_table_from_parts(
-    core: impl IntoIterator<Item = std::sync::Arc<dyn crate::protocol::ports::XyTool>>,
-    armed: impl IntoIterator<Item = std::sync::Arc<dyn crate::protocol::ports::XyTool>>,
-) -> ToolSet {
-    ToolSet::rebuild_agent_tools(core, armed)
-}
-
 #[cfg(test)]
 mod tests {
     use std::sync::Arc;
@@ -188,7 +171,7 @@ mod tests {
             ),
             tool("mcp__fs__write", "w", serde_json::json!({"type": "object"})),
         ]);
-        let merged = upsert_tools_by_name(base, incoming);
+        let merged = base.overlay_by_name(incoming);
         let names: Vec<_> = merged.iter().map(|t| t.name().to_string()).collect();
         assert_eq!(
             names,
@@ -204,7 +187,7 @@ mod tests {
             tool("mcp_x_t", "m", serde_json::json!({})),
             tool("read", "override-should-win", serde_json::json!({})),
         ];
-        let frozen = freeze_table_from_parts(core, armed);
+        let frozen = ToolSet::rebuild_agent_tools(core, armed);
         let names: Vec<_> = frozen.iter().map(|t| t.name().to_string()).collect();
         assert_eq!(names, vec!["read".to_string(), "mcp_x_t".to_string()]);
         assert_eq!(

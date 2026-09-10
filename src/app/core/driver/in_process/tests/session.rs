@@ -52,7 +52,8 @@ async fn in_process_session_tree_ensures_missing_session() {
     )
     .cwd(".")
     .tools(ToolSet::from_iter(crate::infra::tools::default_tools()))
-    .build();
+    .build_ports()
+    .materialize_runtime();
     // Orphan id: set on agent but never created on disk (wipe / pre-persist).
     let orphan = uuid::Uuid::new_v4().to_string();
     agent.bind_session(orphan.clone()).expect("bind_session");
@@ -272,7 +273,8 @@ async fn after_run_session_tree_reflects_persisted_turn() {
     )
     .cwd(".")
     .tools(ToolSet::empty())
-    .build();
+    .build_ports()
+    .materialize_runtime();
     agent.select_model("mock").await.expect("select mock");
     let sid = uuid::Uuid::new_v4().to_string();
     agent.bind_session(sid).expect("bind_session");
@@ -431,7 +433,8 @@ async fn concurrent_run_rejects_second_with_busy() {
     )
     .cwd(".")
     .tools(ToolSet::empty())
-    .build();
+    .build_ports()
+    .materialize_runtime();
     agent.select_model("mock").await.expect("select mock");
     let sid = uuid::Uuid::new_v4().to_string();
     agent.bind_session(sid).expect("bind_session");

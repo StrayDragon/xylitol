@@ -59,21 +59,3 @@ pub fn create_source_info(
         base_dir,
     }
 }
-
-/// Create a synthetic SourceInfo (e.g., for built-in or generated resources).
-#[allow(dead_code)]
-pub fn create_synthetic_source_info(
-    path: PathBuf,
-    source: String,
-    scope: Option<SourceScope>,
-    origin: Option<SourceOrigin>,
-    base_dir: Option<PathBuf>,
-) -> SourceInfo {
-    SourceInfo {
-        path,
-        source,
-        scope: scope.unwrap_or(SourceScope::Temporary),
-        origin: origin.unwrap_or(SourceOrigin::TopLevel),
-        base_dir,
-    }
-}

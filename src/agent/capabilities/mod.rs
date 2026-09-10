@@ -287,17 +287,6 @@ impl AgentCapabilities {
         self.queues.notify_queue_update();
     }
 
-    /// Clear the follow-up queue only.
-    #[allow(dead_code)] // c2750 dead-code purge candidate
-    pub fn clear_follow_up_queue(&self) {
-        self.queues
-            .follow_up
-            .lock()
-            .unwrap_or_else(|e| e.into_inner())
-            .clear();
-        self.queues.notify_queue_update();
-    }
-
     /// Clear one or both queues.
     pub fn clear_queues(&self, clear_steer: bool, clear_follow_up: bool) {
         if clear_steer {
@@ -326,12 +315,6 @@ impl AgentCapabilities {
 
     pub fn system_prompt(&self) -> Option<&str> {
         self.system_prompt.as_deref()
-    }
-
-    /// Request-layout policy (c1890). Default ≡ full tools / status bar off.
-    #[allow(dead_code)] // c2750 dead-code purge candidate
-    pub fn context_policy(&self) -> &crate::agent::context_policy::ContextPolicy {
-        &self.context_policy
     }
 
     /// Test / in-crate override (proposal Q1: no public session YAML override this wave).
@@ -463,13 +446,13 @@ mod tests {
     }
 
     #[test]
-    fn search_policy_blocks_midturn_set_tools() {
-        use crate::agent::context_policy::{ContextPolicy, ToolsMode};
+    fn rewrite_flag_blocks_midturn_set_tools() {
+        use crate::agent::context_policy::ContextPolicy;
 
         let mut session = make_session();
         let before_n = session.tools().iter().count();
         session.set_context_policy_for_test(ContextPolicy {
-            tools_mode: ToolsMode::Search,
+            allow_midturn_tools_rewrite: false,
             ..Default::default()
         });
         session.set_midturn_active_for_test(true);
@@ -478,7 +461,7 @@ mod tests {
         assert_eq!(
             session.tools().iter().count(),
             before_n,
-            "Search + in-flight turn must not rewrite tools"
+            "deny flag + in-flight turn must not rewrite tools"
         );
 
         session.set_midturn_active_for_test(false);

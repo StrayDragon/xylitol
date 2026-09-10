@@ -9,7 +9,7 @@ impl SessionManager {
     /// For in-memory sessions, returns from the in-memory store.
     pub async fn load(&self, session_id: &str) -> Result<Vec<SessionEntry>, XySessionStoreError> {
         let entries = match &self.backend {
-            SessionBackend::InMemory { .. } => {
+            SessionBackend::InMemory => {
                 let entries = lock_rwlock_read(&self.in_memory_store)
                     .get(session_id)
                     .cloned()
@@ -50,7 +50,10 @@ impl SessionManager {
     ///
     /// If the CWD from the session header does not exist, tries `fallback_cwd`.
     /// Returns an error if neither directory is accessible.
-    #[allow(dead_code)]
+    ///
+    /// Spec @executable contract (`resume_session` BDD steps); no product caller
+    /// today — product resume goes through `XySessionStore::load_entries`.
+    #[allow(dead_code)] // spec @executable contract, not product-called
     pub async fn load_validated(
         &self,
         session_id: &str,
@@ -72,7 +75,7 @@ impl SessionManager {
             leaf.remove(session_id);
         }
         match &self.backend {
-            SessionBackend::InMemory { .. } => {
+            SessionBackend::InMemory => {
                 let mut store = lock_rwlock_write(&self.in_memory_store);
                 store.remove(session_id);
                 Ok(())
@@ -149,8 +152,8 @@ impl SessionManager {
 
     // ── Tree navigation ─────────────────────────────────────────
 
-    /// Get an entry by id.
-    #[allow(dead_code)]
+    /// Get an entry by id (BDD label bookkeeping path; no product caller).
+    #[allow(dead_code)] // BDD @executable label steps, not product-called
     pub async fn get_entry(
         &self,
         session_id: &str,
@@ -163,16 +166,6 @@ impl SessionManager {
     /// Get the current leaf id.
     pub fn get_leaf_id(&self, session_id: &str) -> Option<String> {
         self.get_leaf(session_id)
-    }
-
-    /// Get the current session name from the latest session_info entry.
-    #[allow(dead_code)]
-    pub async fn get_session_name(
-        &self,
-        session_id: &str,
-    ) -> Result<Option<String>, XySessionStoreError> {
-        let entries = self.load(session_id).await?;
-        Ok(session_display_name_from_entries(&entries))
     }
 
     /// Load entries for [`crate::protocol::ports::XySessionStore::list_sessions`] without mutating leaf tracking.
@@ -188,7 +181,7 @@ impl SessionManager {
         };
 
         match &self.backend {
-            SessionBackend::InMemory { .. } => {
+            SessionBackend::InMemory => {
                 let entries = lock_rwlock_read(&self.in_memory_store)
                     .get(session_id)
                     .cloned()
@@ -223,7 +216,8 @@ impl SessionManager {
     }
 }
 
-/// Latest non-empty `session_info.name` (same rule as [`SessionManager::get_session_name`]).
+/// Latest non-empty `session_info.name` (same rule as the removed
+/// `SessionManager::get_session_name`; drives list/resume display).
 pub(super) fn session_display_name_from_entries(entries: &[SessionEntry]) -> Option<String> {
     for entry in entries.iter().rev() {
         if let SessionEntry::SessionInfo(si) = entry {
@@ -239,7 +233,6 @@ pub(super) fn session_display_name_from_entries(entries: &[SessionEntry]) -> Opt
 ///
 /// Checks the CWD stored in the session header. If the directory does not
 /// exist, tries `fallback_cwd`. Returns an error if neither is accessible.
-#[allow(dead_code)]
 pub fn assert_session_cwd_exists(
     entries: &[SessionEntry],
     fallback_cwd: &str,
