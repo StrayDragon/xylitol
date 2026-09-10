@@ -302,6 +302,14 @@ impl UiModel {
         }
     }
 
+    /// Drop one steer strip entry (idle lane conversion consumes it with the lane).
+    pub fn pop_steer_strip_matching(&mut self, text: &str) {
+        if let Some(pos) = self.pending_steer.iter().rposition(|t| t == text) {
+            self.pending_steer.remove(pos);
+            self.queue.steer_count = self.pending_steer.len();
+        }
+    }
+
     /// Drain strip queues into one editor blob (pi Alt+Up restore).
     pub fn take_queued_for_editor(&mut self) -> Vec<String> {
         let mut all = Vec::new();

@@ -42,6 +42,9 @@ pub struct ScriptedDriver {
     models_calls: AtomicUsize,
     /// When true, [`Self::execute_bash`] waits until [`Self::abort`] (c665).
     hang_bash_until_abort: AtomicBool,
+    /// Optional artificial delay before a non-hang bash future resolves —
+    /// lets tests inject keys mid-bang and still complete normally (no abort).
+    bash_delay: Option<Duration>,
     aborted: std::sync::Arc<AtomicBool>,
     scripts: VecDeque<Vec<XyEvent>>,
     default_script: Vec<XyEvent>,
@@ -121,6 +124,7 @@ impl ScriptedDriver {
             abort_count: AtomicUsize::new(0),
             models_calls: AtomicUsize::new(0),
             hang_bash_until_abort: AtomicBool::new(false),
+            bash_delay: None,
             aborted: std::sync::Arc::new(AtomicBool::new(false)),
             scripts: VecDeque::new(),
             default_script: vec![
@@ -457,6 +461,12 @@ impl ScriptedDriver {
         self.aborted.store(false, Ordering::SeqCst);
     }
 
+    /// Delay the next non-hang bash completion so tests can inject keys
+    /// mid-bang while the bang still returns normally.
+    pub fn set_bash_delay(&mut self, delay: Option<Duration>) {
+        self.bash_delay = delay;
+    }
+
     pub fn bash_calls(&self) -> Vec<(String, bool)> {
         self.bash_calls.lock().expect("bash_calls").clone()
     }
@@ -502,6 +512,7 @@ impl XyDriver for ScriptedDriver {
             .push((command.to_string(), exclude_from_context));
         let aborted = self.aborted.clone();
         let hang = self.hang_bash_until_abort.load(Ordering::SeqCst);
+        let delay = self.bash_delay;
         let sink = self.bash_run_sink.lock().expect("bash_run_sink").take();
         let result = self
             .bash_results
@@ -510,6 +521,9 @@ impl XyDriver for ScriptedDriver {
             .pop_front()
             .unwrap_or_else(|| self.default_bash.clone());
         Ok(Box::pin(async move {
+            if let Some(delay) = delay {
+                tokio::time::sleep(delay).await;
+            }
             if hang {
                 while !aborted.load(Ordering::SeqCst) {
                     tokio::time::sleep(Duration::from_millis(20)).await;
@@ -1289,6 +1303,160 @@ mod slice_tests {
             rx,
             |mut rx| async move { rx.recv().await.map(|ev| (ev, rx)) },
         )
+    }
+
+    /// HostEvent stream injecting keys mid-bang (20ms gaps), optional trailing
+    /// Esc, then parks forever (EOF would quit the bang loop).
+    fn bang_keys_input_stream(
+        keys: Vec<InputEvent>,
+    ) -> impl Stream<Item = Result<HostEvent, XyDriverError>> {
+        let (tx, rx) = tokio::sync::mpsc::unbounded_channel();
+        tokio::spawn(async move {
+            tokio::time::sleep(Duration::from_millis(40)).await;
+            for key in keys {
+                let _ = tx.send(Ok(HostEvent::Input(key)));
+                tokio::time::sleep(Duration::from_millis(20)).await;
+            }
+            std::future::pending::<()>().await;
+        });
+        futures::stream::unfold(
+            rx,
+            |mut rx| async move { rx.recv().await.map(|ev| (ev, rx)) },
+        )
+    }
+
+    fn char_key(c: char) -> InputEvent {
+        use crossterm::event::{KeyCode, KeyEvent, KeyEventKind, KeyEventState, KeyModifiers};
+        InputEvent::Key(KeyEvent {
+            code: KeyCode::Char(c),
+            modifiers: KeyModifiers::NONE,
+            kind: KeyEventKind::Press,
+            state: KeyEventState::NONE,
+        })
+    }
+
+    fn alt_enter_key() -> InputEvent {
+        use crossterm::event::{KeyCode, KeyEvent, KeyEventKind, KeyEventState, KeyModifiers};
+        InputEvent::Key(KeyEvent {
+            code: KeyCode::Enter,
+            modifiers: KeyModifiers::ALT,
+            kind: KeyEventKind::Press,
+            state: KeyEventState::NONE,
+        })
+    }
+
+    /// Idle bang return: a follow-up queued during the bang (no worker turn)
+    /// MUST root-run from the next drain — not orphan in the driver queue the
+    /// ReAct worker only drains mid-turn / end-of-turn.
+    #[tokio::test]
+    async fn bang_return_followup_root_runs() {
+        let mut session = HostSession::new_product_ui(TestTerminal::new(80, 24));
+        let root = session.ui_root().expect("ui").clone();
+        let mut driver = ScriptedDriver::new();
+        driver.push_bash_result(XyBashResult {
+            output: "ok".into(),
+            exit_code: Some(0),
+            ..Default::default()
+        });
+        driver.set_bash_delay(Some(Duration::from_millis(200)));
+        let mut stream = None;
+        root.borrow_mut().set_editor_text("!sleep 9");
+        session.step(HostEvent::Input(enter_event())).unwrap();
+        drain_pending(&mut session, &mut driver, &mut stream)
+            .await
+            .unwrap();
+        let bash = session.take_bash().expect("pending bang");
+        run_interactive_bang(
+            &mut session,
+            &mut driver,
+            bash,
+            &mut stream,
+            bang_keys_input_stream(vec![char_key('h'), char_key('i'), alt_enter_key()]),
+        )
+        .await
+        .unwrap();
+        assert!(!session.is_busy(), "bang returned to idle");
+        assert_eq!(
+            session.ui_model().pending_follow_up,
+            vec!["hi".to_string()],
+            "follow-up strip still queued right after the bang"
+        );
+        drain_pending(&mut session, &mut driver, &mut stream)
+            .await
+            .unwrap();
+        assert_eq!(
+            driver.runs,
+            vec!["hi".to_string()],
+            "idle follow-up must root-run after the bang returns"
+        );
+        assert!(
+            driver.follow_up_calls.is_empty(),
+            "idle lane MUST NOT enter the driver follow-up queue"
+        );
+        assert!(
+            session.ui_model().pending_follow_up.is_empty(),
+            "strip clears when the converted run starts"
+        );
+    }
+
+    /// Bang Esc cancel keeps the abort lane contract: local steer dropped
+    /// (中止清插话), queued follow-up stays in the driver queue (留守), and
+    /// no idle conversion may auto-run it.
+    #[tokio::test]
+    async fn bang_cancel_drops_steer_keeps_followup() {
+        let mut session = HostSession::new_product_ui(TestTerminal::new(80, 24));
+        let root = session.ui_root().expect("ui").clone();
+        let mut driver = ScriptedDriver::new();
+        driver.set_hang_bash_until_abort(true);
+        let mut stream = None;
+        root.borrow_mut().set_editor_text("!sleep 99");
+        session.step(HostEvent::Input(enter_event())).unwrap();
+        drain_pending(&mut session, &mut driver, &mut stream)
+            .await
+            .unwrap();
+        let bash = session.take_bash().expect("pending bang");
+        run_interactive_bang(
+            &mut session,
+            &mut driver,
+            bash,
+            &mut stream,
+            bang_keys_input_stream(vec![
+                char_key('h'),
+                char_key('i'),
+                alt_enter_key(),
+                char_key('s'),
+                enter_event(),
+                esc_event(),
+            ]),
+        )
+        .await
+        .unwrap();
+        assert!(driver.abort_count() >= 1, "bang Esc aborted the bash");
+        assert!(!session.bash_active());
+        drain_pending(&mut session, &mut driver, &mut stream)
+            .await
+            .unwrap();
+        assert!(
+            driver.steer_calls.is_empty(),
+            "bang cancel drops the local steer (中止清插话)"
+        );
+        assert!(session.ui_model().pending_steer.is_empty());
+        assert_eq!(
+            driver.follow_up_calls,
+            vec!["hi".to_string()],
+            "queued follow-up stays preserved in the driver queue (留守)"
+        );
+        assert!(
+            driver.runs.is_empty(),
+            "cancel MUST NOT auto-run the preserved follow-up"
+        );
+        drain_pending(&mut session, &mut driver, &mut stream)
+            .await
+            .unwrap();
+        assert!(
+            driver.runs.is_empty(),
+            "no deferred idle conversion after a bang cancel"
+        );
     }
 
     fn down_event() -> InputEvent {

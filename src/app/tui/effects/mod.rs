@@ -152,25 +152,25 @@ pub async fn kick_footer_token_refresh<T: Terminal>(
     });
 }
 
-/// Consume HostSession pending ops and call XyDriver / dispatch.
+/// Abort bookkeeping + steer / follow-up lane pump (ati3 / c665 / busy→idle).
 ///
-/// Ordering matches the historical `run_host_loop` body (abort → dequeue → steer →
-/// follow-up → slash → optional submit→`XyDriver::run`). Bang is **not** awaited here
-/// (c665 — host `select!` / `run_pending_bash`). Production and harness MUST share
-/// this entry so slash/steer branches cannot diverge.
+/// Lanes dispatch into the driver queues only while a worker turn / bang /
+/// Assembling gate is live. Lanes queued while idle (bang return, busy→idle
+/// transition) would never be consumed — the ReAct worker drains queues only
+/// mid-turn and at end-of-turn — so the first lane converts to a root submit
+/// (returned to the caller). Abort keeps the 插话续跑与中止 contract: 插话
+/// 丢弃、续跑留守队列条、不自动跑（bang Esc cancel shares this via the
+/// `bash_cancelled` latch, additionally dropping a locally queued steer since
+/// the bang loop already cleared driver-side steers).
 ///
-/// When `agent_stream` is already `Some`, submit is not taken. A newly started
-/// run is stored in `agent_stream`; callers decide whether to drain it (harness)
-/// or poll it in a select loop (production).
-///
-/// Footer token refresh is **kicked** async (does not await HF encode).
-pub async fn drain_pending<T: Terminal>(
+/// Returns the lane converted to a root submit, if any.
+async fn drain_abort_and_lanes<T: Terminal>(
     session: &mut HostSession<T>,
     driver: &mut dyn XyDriver,
-    agent_stream: &mut Option<EventStream>,
-) -> Result<(), XyDriverError> {
-    drain_footer_token_if_pending(session, driver).await;
-    if session.take_abort() {
+    agent_stream: &Option<EventStream>,
+) -> Option<String> {
+    let aborted_now = session.take_abort();
+    if aborted_now {
         log::info!(target: "xylitol::tui", "XyDriver::abort (Esc)");
         driver.abort();
         // c1900: Assembling uses a host-local gated_submit + follow-up strip that is
@@ -194,6 +194,85 @@ pub async fn drain_pending<T: Terminal>(
         session.set_queue_badge(stats.steer_count, stats.follow_up_count);
         let _ = session.render_now();
     }
+    let bang_cancelled = session.take_bash_cancelled();
+    if bang_cancelled && let Some(msg) = session.take_steer() {
+        session.ui_model_mut().pop_steer_strip_matching(&msg);
+        log::info!(
+            target: "xylitol::tui",
+            "bang cancel drops local steer prompt_len={}",
+            msg.len()
+        );
+    }
+    let idle_no_turn = agent_stream.is_none()
+        && !session.run_active()
+        && !session.bash_active()
+        && !aborted_now
+        && !bang_cancelled
+        && !session.has_gated_submit();
+    if idle_no_turn && let Some(msg) = session.take_steer().or_else(|| session.take_follow_up()) {
+        session.ui_model_mut().pop_follow_up_strip_matching(&msg);
+        session.ui_model_mut().pop_steer_strip_matching(&msg);
+        log::info!(
+            target: "xylitol::tui",
+            "idle queued lane → root submit prompt_len={}",
+            msg.len()
+        );
+        return Some(msg);
+    }
+    if !idle_no_turn && let Some(msg) = session.take_steer() {
+        log::info!(target: "xylitol::tui", "Command::Steer prompt_len={}", msg.len());
+        if let Err(e) = dispatch(
+            driver,
+            Command::Steer {
+                message: msg.clone(),
+            },
+        )
+        .await
+        {
+            e.log_failure("tui.steer");
+            session.push_scroll_notice(format!("steer failed: {e}"));
+        }
+        calibrate_queue_after_local_enqueue(session, queue_stats(driver).await);
+        let _ = session.render_now();
+    }
+    if !idle_no_turn && let Some(msg) = session.take_follow_up() {
+        log::info!(target: "xylitol::tui", "Command::FollowUp prompt_len={}", msg.len());
+        if let Err(e) = dispatch(
+            driver,
+            Command::FollowUp {
+                message: msg.clone(),
+            },
+        )
+        .await
+        {
+            e.log_failure("tui.follow_up");
+            session.push_scroll_notice(format!("follow-up failed: {e}"));
+        }
+        calibrate_queue_after_local_enqueue(session, queue_stats(driver).await);
+        let _ = session.render_now();
+    }
+    None
+}
+
+/// Consume HostSession pending ops and call XyDriver / dispatch.
+///
+/// Ordering matches the historical `run_host_loop` body (abort → dequeue → steer →
+/// follow-up → slash → optional submit→`XyDriver::run`). Bang is **not** awaited here
+/// (c665 — host `select!` / `run_pending_bash`). Production and harness MUST share
+/// this entry so slash/steer branches cannot diverge.
+///
+/// When `agent_stream` is already `Some`, submit is not taken. A newly started
+/// run is stored in `agent_stream`; callers decide whether to drain it (harness)
+/// or poll it in a select loop (production).
+///
+/// Footer token refresh is **kicked** async (does not await HF encode).
+pub async fn drain_pending<T: Terminal>(
+    session: &mut HostSession<T>,
+    driver: &mut dyn XyDriver,
+    agent_stream: &mut Option<EventStream>,
+) -> Result<(), XyDriverError> {
+    drain_footer_token_if_pending(session, driver).await;
+    let converted_submit = drain_abort_and_lanes(session, driver, agent_stream).await;
     if session.take_dequeue() {
         log::info!(target: "xylitol::tui", "XyDriver::clear_queue (Alt+Up dequeue)");
         let _ = dispatch(
@@ -211,38 +290,6 @@ pub async fn drain_pending<T: Terminal>(
         }
         let stats = queue_stats(driver).await;
         session.set_queue_badge(stats.steer_count, stats.follow_up_count);
-        let _ = session.render_now();
-    }
-    if let Some(msg) = session.take_steer() {
-        log::info!(target: "xylitol::tui", "Command::Steer prompt_len={}", msg.len());
-        if let Err(e) = dispatch(
-            driver,
-            Command::Steer {
-                message: msg.clone(),
-            },
-        )
-        .await
-        {
-            e.log_failure("tui.steer");
-            session.push_scroll_notice(format!("steer failed: {e}"));
-        }
-        calibrate_queue_after_local_enqueue(session, queue_stats(driver).await);
-        let _ = session.render_now();
-    }
-    if let Some(msg) = session.take_follow_up() {
-        log::info!(target: "xylitol::tui", "Command::FollowUp prompt_len={}", msg.len());
-        if let Err(e) = dispatch(
-            driver,
-            Command::FollowUp {
-                message: msg.clone(),
-            },
-        )
-        .await
-        {
-            e.log_failure("tui.follow_up");
-            session.push_scroll_notice(format!("follow-up failed: {e}"));
-        }
-        calibrate_queue_after_local_enqueue(session, queue_stats(driver).await);
         let _ = session.render_now();
     }
 
@@ -274,7 +321,7 @@ pub async fn drain_pending<T: Terminal>(
     }
 
     if agent_stream.is_none()
-        && let Some(prompt) = session.take_submit()
+        && let Some(prompt) = converted_submit.or_else(|| session.take_submit())
     {
         if !driver.is_tools_frozen() {
             log::info!(

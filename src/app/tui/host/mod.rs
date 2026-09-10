@@ -523,6 +523,7 @@ impl<T: Terminal> HostSession<T> {
         self.ui_model.note_bash_cancelled();
         self.bash_active = false;
         self.pending.abort = false;
+        self.pending.bash_cancelled = true;
         self.suppress_idle_esc = true;
         self.sync_ui_root_from_model();
     }
@@ -565,6 +566,11 @@ impl<T: Terminal> HostSession<T> {
 
     pub fn take_abort(&mut self) -> bool {
         self.pending.take_abort()
+    }
+
+    /// Consume the bang-Esc cancel latch (set by [`Self::note_bash_cancelled`]).
+    pub fn take_bash_cancelled(&mut self) -> bool {
+        self.pending.take_bash_cancelled()
     }
 
     pub fn take_slash(&mut self) -> Option<PendingSlash> {
