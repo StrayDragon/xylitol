@@ -1073,6 +1073,13 @@ fn pty_product_fake_session_tree_label_path() {
 }
 
 /// Product Fake — bang-busy + short terminal + `/model` keeps status lead in viewport (atc23).
+///
+/// The interactive bang loop pumps input (Esc abort) but not slash effects, so
+/// the `/model` arm applies when the abort resumes the loop; cache-first mount
+/// then shows the picker immediately. This pins that the picker (a) mounts,
+/// (b) never displaces the busy status lead from the PTY stream (fixed zone
+/// footprint), (c) stays Esc-closable despite the post-abort stale-Esc
+/// suppress, and (d) exits cleanly.
 #[test]
 #[ignore = "E2E: product PTY + cargo build; run via `just test-tui-e2e-pty`"]
 fn pty_product_fake_busy_model_list_keeps_running_lead() {
@@ -1093,12 +1100,22 @@ fn pty_product_fake_busy_model_list_keeps_running_lead() {
         .wait_for_raw("Running", Duration::from_secs(10))
         .expect("bang busy status lead");
 
+    // Editor is empty after the bang submit: `/model` needs no Ctrl-U (busy
+    // app.clear would abort instead). The arm queues behind the bang loop;
+    // the abort below resumes it and the picker mounts from the attach cache.
     session
-        .send_keys("\x15/model\r")
-        .expect("open Models while busy");
+        .send_keys("/model\r")
+        .expect("queue /model while busy");
+    session.send_keys("\x1b").expect("Esc abort bang");
     session
-        .wait_for_raw("fake", Duration::from_secs(15))
-        .expect("Models slot should list fake");
+        .wait_for_raw("(cancelled)", Duration::from_secs(15))
+        .expect("bang cancelled");
+    // The ready footer already contains " · fake", so waiting on bare "fake"
+    // returns before the picker exists; "→ * fake" is the mounted picker row
+    // (SelectList cursor + focused mark, rendered only by the Models slot).
+    session
+        .wait_for_raw("→ * fake", Duration::from_secs(15))
+        .expect("Models picker should mount listing fake");
     assert!(
         session.raw_contains(b"Running"),
         "busy status lead MUST remain in PTY stream while Models open (fixed zone footprint)"
@@ -1106,8 +1123,6 @@ fn pty_product_fake_busy_model_list_keeps_running_lead() {
 
     session.send_keys("\x1b").expect("Esc close Models");
     session.drain(Duration::from_millis(150));
-    session.send_keys("\x1b").expect("Esc cancel bang");
-    let _ = session.wait_for_raw("(cancelled)", Duration::from_secs(15));
     session.send_keys("\x15/exit\r").expect("/exit");
     let code = session.wait_exit(Duration::from_secs(30)).expect("exit");
     assert_eq!(code, 0);
@@ -1141,7 +1156,11 @@ fn pty_product_fake_large_scrollback_then_exit() {
     assert_eq!(code, 0);
 }
 
-/// Product Fake — `/debug session-tree-branched` + double Esc shows sibling branches.
+/// Product Fake — real-turn `/session-fork` + double Esc shows sibling user nodes.
+///
+/// c2740 made `/debug` scenes process-local: a seeded fixture never reaches the
+/// host-side session store the tree reads, so the branch structure is grown
+/// through the supported fork flow instead (trunk turn → fork → alt turn).
 #[test]
 #[ignore = "E2E: product PTY + cargo build; run via `just test-tui-e2e-pty`"]
 fn pty_product_fake_session_tree_branched() {
@@ -1149,21 +1168,33 @@ fn pty_product_fake_session_tree_branched() {
     const ROWS: usize = 30;
     let (mut session, _tmp) = spawn_product_fake_ready(COLS as u16, ROWS as u16);
 
+    // Trunk turn: a real user node in the host session.
     session
-        .send_keys("\x15/debug session-tree-branched")
-        .expect("type debug scene");
+        .send_keys("\x15main branch\r")
+        .expect("submit trunk prompt");
+    session
+        .wait_for_raw(crate::FAKE_HELLO, Duration::from_secs(30))
+        .expect("trunk Fake reply");
+
+    // Fork at leaf (dismiss arg-completion popup first, same as /debug typing).
+    session
+        .send_keys("\x15/session-fork")
+        .expect("type fork slash");
     session.drain(Duration::from_millis(200));
     session.send_keys("\x1b").expect("dismiss completion");
     session.drain(Duration::from_millis(100));
-    session.send_keys("\r").expect("submit debug scene");
-    // Tall branched fixture scrolls the scroll notice off the cell-grid oracle;
-    // assert via raw PTY (same rationale as Type to search below).
+    session.send_keys("\r").expect("submit fork");
     session
-        .wait_for_raw("debug scene", Duration::from_secs(20))
-        .expect("debug scene note in PTY stream");
+        .wait_for_raw("forked → session", Duration::from_secs(20))
+        .expect("fork notice");
+
+    // Alt branch turn under the fork. The second Fake reply is byte-identical
+    // to the first (already in the raw stream), so settle with a fixed drain
+    // before opening the tree — the alt node must exist in the host store.
     session
-        .wait_for_raw("alt leaf", Duration::from_secs(15))
-        .expect("fixture alt leaf in PTY stream");
+        .send_keys("\x15alt branch\r")
+        .expect("submit alt prompt");
+    session.drain(Duration::from_secs(3));
 
     // Same open path as labeled (c705): empty editor + double Esc.
     // Assert via raw bytes: tall fixture scrollback desyncs CapturedScreen
@@ -1176,10 +1207,16 @@ fn pty_product_fake_session_tree_branched() {
     session
         .wait_for_raw("Type to search", Duration::from_secs(15))
         .expect("tree Search row in PTY stream");
-    assert!(
-        session.raw_contains(b"main branch") && session.raw_contains(b"alt branch"),
-        "branched fixture must show sibling user nodes in tree (raw PTY)"
-    );
+    // "user: " rows are tree vocabulary — the transcript renders prompts with
+    // a "❯ " marker instead, so these needles prove the tree drew both nodes.
+    // Cell-grid oracle: the raw stream splits each row across style spans
+    // (dim "user: " prefix + label), so contiguous byte matching flakes.
+    session
+        .wait_for("user: main branch", Duration::from_secs(15), COLS, ROWS)
+        .expect("tree shows trunk user node");
+    session
+        .wait_for("user: alt branch", Duration::from_secs(15), COLS, ROWS)
+        .expect("tree shows alt branch user node");
 
     session.send_keys("\x1b").expect("Esc close tree");
     session.drain(Duration::from_millis(200));

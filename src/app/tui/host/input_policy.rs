@@ -39,6 +39,16 @@ impl<T: Terminal> HostSession<T> {
             self.suppress_idle_esc = false;
             return false;
         }
+        // An open overlay owns Esc for its own close (models / tree / …); the
+        // stale backlog only guards the editor's next bang submit. Without this
+        // a picker mounted after the abort could never be Esc-closed.
+        if self
+            .ui_root
+            .as_ref()
+            .is_some_and(|root| root.borrow().slot().is_overlay())
+        {
+            return false;
+        }
         let InputEvent::Key(key) = input else {
             // Paste / other input: user moved on; clear suppress.
             self.suppress_idle_esc = false;

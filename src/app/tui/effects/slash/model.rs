@@ -10,7 +10,10 @@ use crate::protocol::Command;
 pub(super) async fn open<T: Terminal>(session: &mut HostSession<T>, driver: &mut dyn XyDriver) {
     // c1780: busy Allow — open list; selection still NextTurn via SetModel path.
     // Attach caches models asynchronously; never block the tick on HTTP.
-    let _ = driver.refresh_surface_caches().await;
+    // Mount from the cache first: the refresh unaries queue behind a busy
+    // writer turn (observed seconds), and a picker that mounts late ignores
+    // the user's intervening Esc. Idle refreshes after paint so reload-added
+    // models show up on the next open; busy skips the refresh entirely.
     match dispatch(driver, Command::GetAvailableModels {}).await {
         Ok(DispatchOutcome::Models(models)) => {
             let current = driver.current_model().map(|m| m.id);
@@ -20,6 +23,9 @@ pub(super) async fn open<T: Terminal>(session: &mut HostSession<T>, driver: &mut
         Err(e) => session.push_scroll_notice(format!("/model failed: {e}")),
     }
     let _ = session.render_now();
+    if !session.is_busy() {
+        let _ = driver.refresh_surface_caches().await;
+    }
 }
 
 pub(super) async fn set<T: Terminal>(
