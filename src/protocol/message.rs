@@ -106,6 +106,18 @@ impl EnvMessage {
         }
     }
 
+    /// Interrupted-bash notice row (c2770 / as-bang1): the pinned
+    /// `[interrupted] $ <command>` bytes live here — the single template source
+    /// for both history-seeding and session-context assembly.
+    pub fn interrupted_bash(command: impl Into<String>) -> Self {
+        Self::CustomMessage {
+            custom_type: "interrupted-bash".into(),
+            content: Value::String(format!("[interrupted] $ {}", command.into())),
+            display: Value::Bool(false),
+            details: Value::Null,
+        }
+    }
+
     /// LLM-visible projection of this row; `None` = do not send to model.
     ///
     /// Single source of truth for the *whether / what* of env→LLM folding

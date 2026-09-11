@@ -1,6 +1,7 @@
 use super::SessionManager;
 use crate::infra::session::types::*;
 use crate::protocol::error::{XySessionError, XySessionStoreError};
+use crate::protocol::ports::XySessionStore as _;
 
 impl SessionManager {
     /// Build session context from the stored entries.
@@ -29,12 +30,20 @@ impl SessionManager {
         }
 
         let context_entries = crate::protocol::session::build_context_entries(&branch);
+        // c2770 / as-bang1: same interrupted-bash fold as the seeding path
+        // (as48 single path). On a done-set read failure the fold is skipped
+        // (running rows keep no-projection — no false interrupts).
+        let mut msgs: Vec<_> = context_entries
+            .iter()
+            .filter_map(|e| e.as_agent_message())
+            .collect();
+        if let Ok(all) = self.load_entries(session_id).await {
+            let done = crate::protocol::session::done_bash_ids(&all);
+            msgs = crate::protocol::session::fold_interrupted_bash_rows(msgs, &done);
+        }
         let mut messages = Vec::new();
-        for entry in &context_entries {
-            // Unified entry→AgentMessage (honors exclude; nested bang-bash only).
-            if let Some(msg) = entry.as_agent_message()
-                && let Ok(v) = serde_json::to_value(&msg)
-            {
+        for msg in &msgs {
+            if let Ok(v) = serde_json::to_value(msg) {
                 messages.push(v);
             }
         }

@@ -164,3 +164,25 @@ async fn test_sess_export_io(agent: AgentState, sess: XySessionStore, ws: Worksp
     name = "no-bash-configured"
 )]
 async fn test_sess_no_bash(agent: AgentState, ws: Workspace) {}
+
+#[scenario(
+    path = "llmanspec/specs/agent-session/agent-session.feature",
+    name = "interrupted-bang-llm-projection"
+)]
+async fn test_interrupted_bang_llm_projection(
+    ws: Workspace,
+    sess: XySessionStore,
+    agent: AgentState,
+) {
+}
+
+#[scenario(
+    path = "llmanspec/specs/agent-session/agent-session.feature",
+    name = "interrupted-bang-excluded-and-done-pairing"
+)]
+async fn test_interrupted_bang_excluded_pairing(
+    ws: Workspace,
+    sess: XySessionStore,
+    agent: AgentState,
+) {
+}

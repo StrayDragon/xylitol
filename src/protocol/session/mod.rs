@@ -14,6 +14,7 @@ pub use entries::{
     BranchSummaryEntry, CompactionEntry, CustomEntry, CustomMessageEntry, EntryBase, ForkPosition,
     LabelEntry, MessageEntry, ModelChangeEntry, SESSION_VERSION, SessionContext, SessionEntry,
     SessionHeader, SessionInfoEntry, ThinkingLevelChangeEntry, build_context_entries,
+    done_bash_ids, fold_interrupted_bash_rows,
 };
 pub use helpers::{
     bash_execution_message_entry, count_tool_calls, fixture_message_json, is_assistant_message,
