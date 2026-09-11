@@ -205,3 +205,14 @@
     当 server 的 mux 连接被断开且期间 journal 新增事件
     那么 客户端 MUST 在宽限内不上屏断线错误并自动重连
     并且 重连后 MUST 按 last_seq 从 journal 续传缺失事件且 MUST NOT 依赖人工重开
+
+  @req:ath45 @human
+  场景: interactive-loop-pumps-inline
+    - 交互 bang 循环 SHALL 在既有 tick 节奏内经窄入口（drain_inline_pending）调度执行类为 Inline 的 pending effects（消费 atm18 exec_class），MUST NOT 阻塞 bang 输出 chunk 的既有转发节奏；执行类为 Exclusive 与 Queued 的 pending MUST 保持排队至循环归还后由主循环 drain_pending 处理且语义不变；主循环 drain_pending 的全量调度行为 MUST NOT 改变。
+
+  @req:ath45 @executable
+  场景: exclusive-stays-queued
+    假如 交互 bang 正在运行
+    当 提交 busy-Allow 且执行类为 Queued 的 /session-export
+    那么 该命令 MUST 在 bang 结束前不执行
+    并且 循环归还后 MUST 照常执行且 MUST NOT 丢失

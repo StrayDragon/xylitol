@@ -76,3 +76,9 @@
   @req:atm18 @human
   场景: command-execution-class
     - 每条 protocol::Command MUST 经单一 SSOT 声明唯一执行类 Exec（Exclusive=独占会话循环直至完成，至少 bash/prompt/reload；Inline=任何交互循环内立即生效且 effect MUST NOT await 远程 unary/HTTP；Queued=保持排队至循环归还），声明 MUST 与 wire REGISTRY 属性行同源并由守卫测试锁定逐变体穷举一致；客户端（泵循环/effects）MUST 经 exec_class 推导消费，MUST NOT 逐命令散落特判（延续 atm16 收口方向）；新增命令 MUST 在 REGISTRY 行声明执行类且 MUST NOT 为表达执行语义修改任何循环结构；Inline 的非阻塞承诺 MUST 以缓存/本地直出实现（/model open 缓存先挂载为样板）。
+
+  @req:atm18 @executable
+  场景: bang-inline-effect-runs-during-bang
+    假如 交互 bang 正在运行且驱动为 ScriptedDriver
+    当 提交声明为 Inline 的无参 /model
+    那么 模型列表 effect MUST 在 bang 结束前挂载生效
