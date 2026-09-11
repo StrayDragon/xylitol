@@ -34,6 +34,22 @@ pub enum Resp {
     Job,
 }
 
+/// 执行类（c2780）：一条命令相对会话循环的生效时机。
+///
+/// - `Exclusive`：独占会话循环直至完成（prompt / bash / reload）；
+/// - `Inline`：任何交互循环（含 bang / reload select）内立即执行生效——
+///   effect MUST 非阻塞（缓存 / 本地直出）；
+/// - `Queued`：排队至循环归还后由主循环 `drain_pending` 处理（默认）。
+///
+/// 消费只走 [`exec_class`]（无通配穷举 match：新增 [`Command`] 变体不声明
+/// 执行类即编译失败）；本表行与推导的一致性由守卫测试锁定。
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum Exec {
+    Exclusive,
+    Inline,
+    Queued,
+}
+
 #[derive(Debug, Clone, Copy)]
 pub struct MethodEntry {
     pub name: &'static str,
@@ -42,6 +58,8 @@ pub struct MethodEntry {
     pub resp: Resp,
     /// 存在同名 serde tag 的 [`Command`] 变体，tag-injection 解析可路由。
     pub command_backed: bool,
+    /// 执行类（c2780）。经 [`m`] 声明的行默认 [`Exec::Queued`]。
+    pub exec: Exec,
 }
 
 const fn m(
@@ -57,6 +75,26 @@ const fn m(
         idem,
         resp,
         command_backed,
+        exec: Exec::Queued,
+    }
+}
+
+/// `m` 的显式执行类形式：仅 `Inline` / `Exclusive` 行使用（c2780）。
+const fn mx(
+    name: &'static str,
+    auth: Auth,
+    idem: Idem,
+    resp: Resp,
+    command_backed: bool,
+    exec: Exec,
+) -> MethodEntry {
+    MethodEntry {
+        name,
+        auth,
+        idem,
+        resp,
+        command_backed,
+        exec,
     }
 }
 
@@ -106,44 +144,63 @@ pub const METHOD_HOST_DESCRIBE: &str = "host.describe";
 
 /// 顺序与 `UNARY_METHODS` 保持一致（守卫测试锁定）。
 pub const REGISTRY: &[MethodEntry] = &[
-    m(METHOD_PROMPT, Auth::Writer, Idem::PerRpc, Resp::Stream, CMD),
+    mx(
+        METHOD_PROMPT,
+        Auth::Writer,
+        Idem::PerRpc,
+        Resp::Stream,
+        CMD,
+        Exec::Exclusive,
+    ),
     m(METHOD_ABORT, Auth::Writer, Idem::PerRpc, Resp::Result, CMD),
-    m(
+    mx(
         METHOD_GET_STATE,
         Auth::Readonly,
         Idem::PerRpc,
         Resp::Result,
         true,
+        Exec::Inline,
     ),
-    m(
+    mx(
         METHOD_SET_MODEL,
         Auth::Writer,
         Idem::PerRpc,
         Resp::Result,
         CMD,
+        Exec::Inline,
     ),
-    m(
+    mx(
         METHOD_CYCLE_MODEL,
         Auth::Writer,
         Idem::PerRpc,
         Resp::Result,
         true,
+        Exec::Inline,
     ),
-    m(
+    mx(
         METHOD_GET_AVAILABLE_MODELS,
         Auth::Readonly,
         Idem::PerRpc,
         Resp::Result,
         true,
+        Exec::Inline,
     ),
-    m(
+    mx(
         METHOD_SET_THINKING_LEVEL,
         Auth::Writer,
         Idem::PerRpc,
         Resp::Result,
         true,
+        Exec::Inline,
     ),
-    m(METHOD_BASH, Auth::Writer, Idem::PerRpc, Resp::Result, CMD),
+    mx(
+        METHOD_BASH,
+        Auth::Writer,
+        Idem::PerRpc,
+        Resp::Result,
+        CMD,
+        Exec::Exclusive,
+    ),
     m(
         METHOD_COMPACT,
         Auth::Writer,
@@ -194,12 +251,13 @@ pub const REGISTRY: &[MethodEntry] = &[
         Resp::Result,
         true,
     ),
-    m(
+    mx(
         METHOD_GET_COMMANDS,
         Auth::Readonly,
         Idem::PerRpc,
         Resp::Result,
         true,
+        Exec::Inline,
     ),
     m(
         METHOD_SESSION_TREE,
@@ -215,12 +273,13 @@ pub const REGISTRY: &[MethodEntry] = &[
         Resp::Result,
         true,
     ),
-    m(
+    mx(
         METHOD_APPEND_ENTRY_LABEL,
         Auth::Writer,
         Idem::PerRpc,
         Resp::Result,
         true,
+        Exec::Inline,
     ),
     m(
         METHOD_LIST_SESSIONS,
@@ -250,19 +309,21 @@ pub const REGISTRY: &[MethodEntry] = &[
         Resp::Result,
         true,
     ),
-    m(
+    mx(
         METHOD_SET_SESSION_NAME,
         Auth::Writer,
         Idem::PerRpc,
         Resp::Result,
         true,
+        Exec::Inline,
     ),
-    m(
+    mx(
         METHOD_SET_SESSION_NAME_FOR,
         Auth::Writer,
         Idem::PerRpc,
         Resp::Result,
         true,
+        Exec::Inline,
     ),
     m(
         METHOD_DELETE_SESSION,
@@ -272,26 +333,29 @@ pub const REGISTRY: &[MethodEntry] = &[
         true,
     ),
     // pre-admit 短路：见 handle_unary 的三个早期分支（Idem::Bypass）。
-    m(
+    mx(
         METHOD_RELOAD,
         Auth::Readonly,
         Idem::Bypass,
         Resp::Result,
         CMD,
+        Exec::Exclusive,
     ),
-    m(
+    mx(
         METHOD_LOADED_RESOURCES,
         Auth::Readonly,
         Idem::Bypass,
         Resp::Result,
         true,
+        Exec::Inline,
     ),
-    m(
+    mx(
         METHOD_QUEUE_STATS,
         Auth::Readonly,
         Idem::PerRpc,
         Resp::Result,
         true,
+        Exec::Inline,
     ),
     m(
         METHOD_ARM_TOOL_FREEZE,
@@ -346,6 +410,49 @@ pub fn lookup(name: &str) -> Option<&'static MethodEntry> {
 /// 注册表派生的方法名清单（404 语义 / OpenAPI 条目的唯一来源）。
 pub fn names() -> impl Iterator<Item = &'static str> {
     REGISTRY.iter().map(|e| e.name)
+}
+
+/// [`Command`] 的执行类（c2780）：与 REGISTRY 行的 [`Exec`] 声明同源，
+/// 一致性由守卫测试锁定。无通配穷举 match——新增 [`Command`] 变体不在
+/// 此分类即编译失败，执行语义由编译器强制成为命令的一等声明。
+pub fn exec_class(cmd: &Command) -> Exec {
+    match cmd {
+        Command::Prompt { .. } | Command::Bash { .. } | Command::Reload { .. } => Exec::Exclusive,
+        Command::GetState { .. }
+        | Command::SetModel { .. }
+        | Command::CycleModel { .. }
+        | Command::GetAvailableModels { .. }
+        | Command::SetThinkingLevel { .. }
+        | Command::GetQueueStats { .. }
+        | Command::GetCommands { .. }
+        | Command::LoadedResources { .. }
+        | Command::AppendEntryLabel { .. }
+        | Command::SetSessionName { .. }
+        | Command::SetSessionNameFor { .. } => Exec::Inline,
+        Command::Abort { .. }
+        | Command::GetSessionStats { .. }
+        | Command::Compact { .. }
+        | Command::ExportHtml { .. }
+        | Command::ExportJsonl { .. }
+        | Command::ImportJsonl { .. }
+        | Command::SwitchSession { .. }
+        | Command::Fork { .. }
+        | Command::GetMessages { .. }
+        | Command::SessionTree { .. }
+        | Command::TravelSessionTree { .. }
+        | Command::ListSessions { .. }
+        | Command::LoadSessionEntries { .. }
+        | Command::NewSession { .. }
+        | Command::GetSessionName { .. }
+        | Command::DeleteSession { .. }
+        | Command::Steer { .. }
+        | Command::FollowUp { .. }
+        | Command::ClearQueue { .. }
+        | Command::Subscribe { .. }
+        | Command::ApproveTool { .. }
+        | Command::AnswerQuestion { .. }
+        | Command::Quit { .. } => Exec::Queued,
+    }
 }
 
 /// 由方法名 + 载荷构造 [`Command`]：注入 serde tag 后交给 Command 自己的
@@ -516,5 +623,219 @@ mod tests {
             Ok(Command::ImportJsonl { .. })
         ));
         assert!(parse_command("import_jsonl", &json!({})).is_err());
+    }
+
+    /// c2780：执行类列快照锁——REGISTRY 行的 Inline/Exclusive 名单变动必须
+    /// 是有意的规格变更；`exec_class` 侧由无通配穷举 match 由编译器强制。
+    #[test]
+    fn exec_columns_lock_declaration() {
+        let exec_rows = |class| {
+            let mut v: Vec<_> = REGISTRY
+                .iter()
+                .filter(|e| e.exec == class)
+                .map(|e| e.name)
+                .collect();
+            v.sort_unstable();
+            v
+        };
+        assert_eq!(
+            exec_rows(Exec::Exclusive),
+            ["bash", "prompt", "reload"].as_slice()
+        );
+        assert_eq!(
+            exec_rows(Exec::Inline),
+            [
+                "append_entry_label",
+                "cycle_model",
+                "get_available_models",
+                "get_commands",
+                "get_state",
+                "loaded_resources",
+                "queue_stats",
+                "set_model",
+                "set_session_name",
+                "set_session_name_for",
+                "set_thinking_level",
+            ]
+            .as_slice()
+        );
+    }
+
+    /// c2780：`exec_class` 推导与 REGISTRY 行声明同源——command_backed 行
+    /// 逐一对照（Command 实例手工构造成本高，按代表 + 类全集名单双保险）。
+    #[test]
+    fn exec_class_matches_registry_declaration() {
+        use crate::protocol::session::SessionTreeKind;
+
+        // atm18：逐变体穷举对照——每个 command_backed REGISTRY 行的 Exec 列
+        // MUST 与 `exec_class` 推导一致（Quit 无 wire 行，单独断言 Queued）。
+        let cases: Vec<(&str, Command)> = vec![
+            (
+                "prompt",
+                Command::Prompt {
+                    message: String::new(),
+                },
+            ),
+            ("abort", Command::Abort {}),
+            ("get_state", Command::GetState {}),
+            (
+                "set_model",
+                Command::SetModel {
+                    provider: String::new(),
+                    model_id: String::new(),
+                },
+            ),
+            ("cycle_model", Command::CycleModel {}),
+            ("get_available_models", Command::GetAvailableModels {}),
+            (
+                "set_thinking_level",
+                Command::SetThinkingLevel {
+                    level: String::new(),
+                },
+            ),
+            (
+                "bash",
+                Command::Bash {
+                    command: String::new(),
+                    exclude_from_context: false,
+                },
+            ),
+            ("compact", Command::Compact { instructions: None }),
+            ("get_session_stats", Command::GetSessionStats {}),
+            ("export_html", Command::ExportHtml { output_path: None }),
+            ("export_jsonl", Command::ExportJsonl { output_path: None }),
+            (
+                "import_jsonl",
+                Command::ImportJsonl {
+                    input_path: String::new(),
+                },
+            ),
+            (
+                "switch_session",
+                Command::SwitchSession {
+                    session_path: String::new(),
+                },
+            ),
+            (
+                "fork",
+                Command::Fork {
+                    entry_id: String::new(),
+                    position: None,
+                },
+            ),
+            ("get_messages", Command::GetMessages {}),
+            ("get_commands", Command::GetCommands {}),
+            (
+                "session_tree",
+                Command::SessionTree {
+                    kind: SessionTreeKind::MessageHistory,
+                },
+            ),
+            (
+                "travel_session_tree",
+                Command::TravelSessionTree {
+                    kind: SessionTreeKind::MessageHistory,
+                    entry_id: String::new(),
+                },
+            ),
+            (
+                "append_entry_label",
+                Command::AppendEntryLabel {
+                    target_id: String::new(),
+                    label: None,
+                },
+            ),
+            ("list_sessions", Command::ListSessions {}),
+            (
+                "load_session_entries",
+                Command::LoadSessionEntries {
+                    session_id: String::new(),
+                },
+            ),
+            ("new_session", Command::NewSession {}),
+            ("get_session_name", Command::GetSessionName {}),
+            (
+                "set_session_name",
+                Command::SetSessionName {
+                    name: String::new(),
+                },
+            ),
+            (
+                "set_session_name_for",
+                Command::SetSessionNameFor {
+                    session_id: String::new(),
+                    name: String::new(),
+                },
+            ),
+            (
+                "delete_session",
+                Command::DeleteSession {
+                    session_id: String::new(),
+                },
+            ),
+            ("reload", Command::Reload {}),
+            ("loaded_resources", Command::LoadedResources {}),
+            ("queue_stats", Command::GetQueueStats {}),
+            (
+                "steer",
+                Command::Steer {
+                    message: String::new(),
+                },
+            ),
+            (
+                "follow_up",
+                Command::FollowUp {
+                    message: String::new(),
+                },
+            ),
+            (
+                "clear_queue",
+                Command::ClearQueue {
+                    clear_steer: true,
+                    clear_follow_up: true,
+                },
+            ),
+            (
+                "subscribe",
+                Command::Subscribe {
+                    session_id: String::new(),
+                    last_seq: 0,
+                },
+            ),
+        ];
+        // NON_WIRE（ApproveTool / AnswerQuestion / Quit）无 wire 行：approve /
+        // answer 走反向 RPC 响应路径、Quit 为客户端本地命令，均 Queued 语义。
+        assert_eq!(cases.len(), 34, "all command_backed rows must be covered");
+        for (method, cmd) in &cases {
+            let row = lookup(method).expect("row exists for command_backed method");
+            assert!(row.command_backed, "row {method} must be command_backed");
+            assert_eq!(
+                row.exec,
+                exec_class(cmd),
+                "row {method} Exec column vs exec_class() drift"
+            );
+        }
+        // REGISTRY 行与 Command 变体一一对应（无漏行）：名单即上表 method 集合。
+        let backed_rows: Vec<&'static str> = REGISTRY
+            .iter()
+            .filter(|e| e.command_backed)
+            .map(|e| e.name)
+            .collect();
+        assert_eq!(backed_rows.len(), cases.len(), "row/variant count drift");
+        assert_eq!(exec_class(&Command::Quit {}), Exec::Queued);
+        assert_eq!(
+            exec_class(&Command::ApproveTool {
+                call_id: String::new(),
+                approved: true,
+            }),
+            Exec::Queued
+        );
+        assert_eq!(
+            exec_class(&Command::AnswerQuestion {
+                call_id: String::new(),
+                answer: String::new(),
+            }),
+            Exec::Queued
+        );
     }
 }
