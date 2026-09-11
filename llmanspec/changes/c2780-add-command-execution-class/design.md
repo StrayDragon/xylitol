@@ -1,4 +1,4 @@
-# Design: 命令执行类（Exec）声明与交互循环泵
+# Design: 命令执行类（Exec）声明与交互循环 drain 接入
 
 ## 1. Exec 放哪：一张表，不造第二词表
 
@@ -11,9 +11,16 @@
 | C. PendingSlash 上加每变体方法（像 BusySlashPolicy） | 继续分裂：Command 直派路径（非 slash）拿不到语义 |
 
 **取 A+B 融合**：`Exec` 进 REGISTRY 行（SSOT），`protocol` 层暴露
-`exec_class(cmd: &Command) -> Exec`（经既有 command_backed 映射推导），守卫测试锁定
-「逐 Command 枚举穷举 ∧ 与 REGISTRY 行一致」。客户端只允许经 `exec_class` 消费，
-MUST NOT 再散落逐命令特判（延续 atm16 的收口方向）。
+`exec_class(cmd: &Command) -> Exec`。消费侧的强制分两层吃 Rust 特性：
+
+1. **现在（t1）**：`exec_class` 写成**无通配的穷举 `match`**——新增 `Command` 变体
+   不声明执行类直接编译失败，分类由编译器强制，守卫测试只兜 REGISTRY 一致性。
+2. **之后（独立重构，不进本 change）**：`macro_rules!` 单行源——每命令一行同时生成
+   REGISTRY 行与 match 臂，行表与推导彻底同源，连一致性守卫都可省。暂不做：
+   动既有受守卫锁序的表结构，收益不抵本 change 的回归面。
+
+客户端只允许经 `exec_class` 消费，MUST NOT 再散落逐命令特判
+（延续 atm16 的收口方向）。
 
 ## 2. 分类与初版清单
 
@@ -32,17 +39,26 @@ pub enum Exec { Exclusive, Inline, Queued }
 约定：`Inline` 是「随行生效」的承诺，不是分类箱的兜底；新命令默认 `Queued`，
 要 `Inline` 必须满足非阻塞约束（design §4）。
 
-## 3. 泵改造：bang/reload select 加一个窄臂
+## 3. 交互循环 drain 接入：移交 c2790（apply 阻断记录）
 
-`run_interactive_bang` / `run_interactive_reload` 的 `tokio::select!` 在 tick 臂内
-（复用既有 16ms tick 节奏）调用窄入口 `drain_inline_pending(session, driver)`：
+原方案：`run_interactive_bang` / `run_interactive_reload` 的 `tokio::select!` 在 tick 臂内
+调用窄入口 `drain_inline_pending(session, driver)`，仅执行声明为 `Inline` 的 pending。
 
-- 仅处理 `take_slash`/pending 中「effects arm 将派发的 Command 属 `Inline`」的项；
-- `Exclusive`/`Queued` 原样留在 pending（`drain_pending` 归还后处理，语义不变）；
-- 主循环 `drain_pending` 不变（全量）。
+**apply 实测不可行**：两个交互循环的长时 future（`Box::pin(dispatch(driver, cmd))`，
+bang.rs:49；`reload_fut = driver.reload_runtime(&cancel)`，reload.rs:62）横跨 select
+持有 `&mut dyn XyDriver`，tick 臂内任何 driver 调用（含不可变重借）都是 E0499；
+abort 能碰 driver 正因先 `drop(dispatch_fut)`。逃逸路径均否定：
 
- WHY tick 臂而非独立 select 臂：不引入额外唤醒源，bang 输出 chunk 泵节奏不被
- effects 打断；Inline effect 本身非阻塞，卡 tick 一拍以内。
+- `execute_session_command(&mut self)` 是 trait 形状，in_process 的 agent 绑定真需要
+  `&mut`，改 `&self` 波及全部实现；
+- drop 后重建 future = 取消并重发 bash unary（双重执行）；
+- tokio::spawn 不可行（driver 非 Send）。
+
+**正路（c2790-invert-bash-dispatch-ownership，已 draft）**：bash 派发倒置为
+「一次性 `&mut` 调用返回拥有型完成接收端」（镜像 agent `run() → EventStream`，
+c2760 输出 sink channel 不变），循环 select 拥有型 receiver 后 borrow 窗口自然打开，
+`drain_inline_pending`（本 change §2 的 `exec_class` 消费）即可接入。
+本 change 仅交付 §1 的 Exec SSOT 与消费 API；drain 接入全部移交 c2790。
 
 ## 4. Inline 非阻塞约束
 
@@ -62,7 +78,7 @@ pub enum Exec { Exclusive, Inline, Queued }
 ## 6. 进一步 Notes
 
 - Host 侧 `Auth::Readonly` 读命令在写者期间 `slot.driver` 锁争用（实测 2–30s）
-  是独立问题，本 change 不动；Inline 的「立即生效」当前指客户端泵语义。
+  是独立问题，本 change 不动；Inline 的「立即生效」当前指客户端 drain 调度语义。
   若后续 Host 侧也要消费 Exec（例如 Inline+Readonly 走免锁 fast path），
   REGISTRY 行已就位。
 - `try_suppress_stale_esc` 的 overlay 守卫（`11c70806`）与本 change 互补：
