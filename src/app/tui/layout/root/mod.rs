@@ -1087,6 +1087,102 @@ impl UiRoot {
     }
 }
 
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::app::tui::layout::models_picker::ModelPickerRow;
+    use crossterm::event::{KeyCode, KeyEventKind, KeyEventState, KeyModifiers};
+
+    fn key(code: KeyCode) -> crossterm::event::KeyEvent {
+        crossterm::event::KeyEvent {
+            code,
+            modifiers: KeyModifiers::NONE,
+            kind: KeyEventKind::Press,
+            state: KeyEventState::NONE,
+        }
+    }
+
+    fn enter() -> crossterm::event::KeyEvent {
+        key(KeyCode::Enter)
+    }
+
+    fn fake_row() -> ModelPickerRow {
+        ModelPickerRow {
+            id: "fake".into(),
+            label: "Fake".into(),
+            levels: Vec::new(),
+            provisional: "off".into(),
+        }
+    }
+
+    /// Enter in the Models picker records the confirm (drained by the main
+    /// loop later); Esc closing the picker MUST cancel it (c2790 quick: model
+    /// confirm is now reachable while a bang keeps the main loop stopped, and
+    /// Esc close means "abandon").
+    #[test]
+    fn models_esc_close_cancels_recorded_confirm() {
+        let mut root = UiRoot::new();
+        root.mount_models_picker(vec![fake_row()]);
+        root.handle_key(enter());
+        assert!(
+            root.pending.model_select.is_some(),
+            "Enter must record the picker confirm"
+        );
+        root.on_escape();
+        assert!(
+            root.take_pending_model_select().is_none(),
+            "Esc close must cancel the recorded model confirm"
+        );
+    }
+
+    /// Enter in the Themes picker records the confirm; Esc closing the picker
+    /// MUST cancel it (same cancel-on-close contract as model confirm).
+    #[test]
+    fn themes_esc_close_cancels_recorded_confirm() {
+        let mut root = UiRoot::new();
+        root.mount_themes_picker(Some("dark"));
+        root.handle_key(enter());
+        assert!(
+            root.pending.theme_select.is_some(),
+            "Enter must record the theme confirm"
+        );
+        root.on_escape();
+        assert!(
+            root.take_pending_theme_select().is_none(),
+            "Esc close must cancel the recorded theme confirm"
+        );
+    }
+
+    /// Immediate Enter feedback while the confirm is still pending (c2790
+    /// quick): the picker stays open and the confirmed row is flagged in the
+    /// rendered frame.
+    #[test]
+    fn models_enter_flags_confirmed_row_in_frame() {
+        use xylitol_tui::Component;
+        let mut root = UiRoot::new();
+        root.mount_models_picker(vec![fake_row()]);
+        root.handle_key(enter());
+        let frame = root.render(80).join("\n");
+        assert!(
+            frame.contains("✓ 已选 Fake"),
+            "Enter must flag the confirmed model row: {frame}"
+        );
+    }
+
+    #[test]
+    fn themes_enter_flags_confirmed_row_in_frame() {
+        use xylitol_tui::Component;
+        let mut root = UiRoot::new();
+        root.mount_themes_picker(Some("dark"));
+        root.handle_key(enter());
+        let frame = root.render(80).join("\n");
+        assert!(
+            frame.contains("✓ 已选 dark"),
+            "Enter must flag the confirmed theme row: {frame}"
+        );
+    }
+}
+
 impl Default for UiRoot {
     fn default() -> Self {
         Self::new()

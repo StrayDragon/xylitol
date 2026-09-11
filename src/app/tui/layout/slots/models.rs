@@ -22,6 +22,10 @@ pub struct ModelsSlot {
     rows: Vec<ModelPickerRow>,
     filter: String,
     last_width: usize,
+    /// Enter-confirmed model id (c2790 quick). The picker stays open while a
+    /// bang keeps the main loop stopped; the confirm line renders only while
+    /// the focused row still matches, so re-navigation simply drops the badge.
+    confirmed_id: Option<String>,
 }
 
 impl ModelsSlot {
@@ -32,6 +36,7 @@ impl ModelsSlot {
             rows,
             filter: String::new(),
             last_width: 80,
+            confirmed_id: None,
         };
         slot.apply_filter();
         slot
@@ -127,10 +132,11 @@ impl ModelsSlot {
             return ModelsAction::None;
         };
         if matches_binding(key, "tui.select.confirm") {
-            return self
-                .confirm()
-                .map(ModelsAction::Select)
-                .unwrap_or(ModelsAction::None);
+            if let Some(choice) = self.confirm() {
+                self.confirmed_id = Some(choice.model_id.clone());
+                return ModelsAction::Select(choice);
+            }
+            return ModelsAction::None;
         }
         if matches_key_event(key, "left") {
             self.cycle_focused_level(false);
@@ -164,17 +170,34 @@ impl ModelsSlot {
             self.rebuild_keep_selection();
         }
         let mut lines = Vec::new();
-        lines.push(self.filter_line(theme));
+        lines.push(self.filter_line(theme, w));
         lines.extend(self.list.render(w));
         lines
     }
 
-    fn filter_line(&self, theme: LayoutTheme) -> String {
-        if self.filter.is_empty() {
-            theme.paint_muted(" models")
+    fn filter_line(&self, theme: LayoutTheme, width: usize) -> String {
+        let base = if self.filter.is_empty() {
+            " models".to_string()
         } else {
-            theme.paint_muted(&format!(" filter: {}", self.filter))
-        }
+            format!(" filter: {}", self.filter)
+        };
+        // c2790 quick: immediate Enter feedback while a bang keeps the confirm
+        // pending — the picker stays open and the focused row is flagged.
+        let confirmed = self
+            .confirmed_id
+            .as_ref()
+            .and_then(|id| self.rows.iter().find(|r| &r.id == id))
+            .map(|r| format!(" ✓ 已选 {}", r.label));
+        let text = match confirmed {
+            Some(mark) => format!("{base}{mark}"),
+            None => base,
+        };
+        theme.paint_muted(&xylitol_tui::truncate_to_width(
+            &text,
+            width.max(1),
+            "",
+            false,
+        ))
     }
 }
 
