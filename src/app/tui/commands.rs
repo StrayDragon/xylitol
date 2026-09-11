@@ -102,74 +102,99 @@ pub const TOAST_NOTICE_ERROR_PREFIX: &str = "Error: ";
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub struct SlashAllowances {
     pub when_agent_busy: SlashPermit,
+    /// 执行类（c2780/atm18）：`Inline` = 任何交互循环（含 bang）内立即执行
+    /// 且 effect 非阻塞（缓存/本地直出，MUST NOT await 远程 unary）；其余
+    /// 排队至循环归还。bang drain 只消费本列（c2790）。
+    pub exec: crate::protocol::wire::registry::Exec,
 }
 
 /// Canonical slash gate table. Prefer this over ad-hoc matches.
 pub fn slash_allowances(slash: &PendingSlash) -> SlashAllowances {
+    use crate::protocol::wire::registry::Exec;
     use SlashPermit::*;
     match slash {
         // Leave / readonly / export / MCP panel
         PendingSlash::Exit => SlashAllowances {
             when_agent_busy: Allow,
+            exec: Exec::Exclusive,
         },
         PendingSlash::SessionDump => SlashAllowances {
             when_agent_busy: Allow,
+            exec: Exec::Queued,
         },
         PendingSlash::HistoryCopyLast => SlashAllowances {
             when_agent_busy: Allow,
+            exec: Exec::Inline,
         },
         PendingSlash::Export { .. } => SlashAllowances {
             when_agent_busy: Allow,
+            exec: Exec::Queued,
         },
         PendingSlash::OpenMcp => SlashAllowances {
             when_agent_busy: Allow,
+            exec: Exec::Queued,
         },
         // Instant lists (c1780): browse/open Allow; Resume switch gated in pending_ui.
         PendingSlash::OpenSessionResume => SlashAllowances {
             when_agent_busy: Allow,
+            exec: Exec::Queued,
         },
         PendingSlash::SessionNew => SlashAllowances {
             when_agent_busy: Reject,
+            exec: Exec::Queued,
         },
         PendingSlash::SessionClone => SlashAllowances {
             when_agent_busy: Reject,
+            exec: Exec::Queued,
         },
         PendingSlash::SessionName { .. } => SlashAllowances {
             when_agent_busy: Allow,
+            exec: Exec::Queued,
         },
         PendingSlash::Import { .. } => SlashAllowances {
             when_agent_busy: Reject,
+            exec: Exec::Queued,
         },
         PendingSlash::OpenTree => SlashAllowances {
             when_agent_busy: Reject,
+            exec: Exec::Queued,
         },
         PendingSlash::ForkAtLeaf => SlashAllowances {
             when_agent_busy: Reject,
+            exec: Exec::Queued,
         },
         // Misc / trust
         PendingSlash::Theme { .. } => SlashAllowances {
             when_agent_busy: Allow,
+            exec: Exec::Inline,
         },
         PendingSlash::OpenModels => SlashAllowances {
             when_agent_busy: Allow,
+            exec: Exec::Inline,
         },
         PendingSlash::SetModel(_) => SlashAllowances {
             when_agent_busy: Allow,
+            exec: Exec::Queued,
         },
         PendingSlash::Trust { .. } => SlashAllowances {
             when_agent_busy: Reject,
+            exec: Exec::Queued,
         },
         PendingSlash::DebugScene(_) => SlashAllowances {
             when_agent_busy: Reject,
+            exec: Exec::Queued,
         },
         PendingSlash::Usage(_) => SlashAllowances {
             when_agent_busy: Reject,
+            exec: Exec::Queued,
         },
         PendingSlash::Compact { .. } => SlashAllowances {
             when_agent_busy: Allow,
+            exec: Exec::Queued,
         },
         PendingSlash::Reload => SlashAllowances {
             when_agent_busy: Reject,
+            exec: Exec::Queued,
         },
     }
 }

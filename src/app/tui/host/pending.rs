@@ -48,6 +48,11 @@ impl PendingOps {
     pub fn take_slash(&mut self) -> Option<PendingSlash> {
         self.slash.take()
     }
+    /// Put back an unexecuted slash (c2790 inline drain: Queued/Exclusive
+    /// commands taken during a bang must survive until the main drain).
+    pub fn put_slash(&mut self, slash: PendingSlash) {
+        self.slash = Some(slash);
+    }
     pub fn take_bash(&mut self) -> Option<PendingBash> {
         self.bash.take()
     }
