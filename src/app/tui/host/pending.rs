@@ -11,6 +11,10 @@ pub struct PendingOps {
     pub steer: Option<String>,
     pub follow_up: Option<String>,
     pub abort: bool,
+    /// Bang Esc cancel latch: the bang loop already aborted the driver and
+    /// cleared driver steers; the next `drain_pending` keeps the abort lane
+    /// contract (follow-up 留守, no idle→root conversion).
+    pub bash_cancelled: bool,
     /// Alt+Up: restore queued messages to editor and clear both driver queues.
     pub dequeue: bool,
     pub slash: Option<PendingSlash>,
@@ -41,6 +45,9 @@ impl PendingOps {
     }
     pub fn take_abort(&mut self) -> bool {
         std::mem::take(&mut self.abort)
+    }
+    pub fn take_bash_cancelled(&mut self) -> bool {
+        std::mem::take(&mut self.bash_cancelled)
     }
     pub fn take_dequeue(&mut self) -> bool {
         std::mem::take(&mut self.dequeue)
