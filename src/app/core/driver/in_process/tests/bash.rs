@@ -82,9 +82,9 @@ async fn sink_cancel_reaches_execute_bash_out_of_band() {
     // Cancel before dispatch: stands in for host `abort` racing the running
     // bash unary (which holds the writer lock, so dispatch cannot reach it).
     cancel.cancel();
-    let result = driver
-        .execute_bash("sleep 30", false)
+    let run = crate::app::core::driver::XyDriver::bash_run(&mut driver, "sleep 30", false)
         .await
-        .expect("bash result");
+        .expect("bash run");
+    let result = run.await.expect("bash result");
     assert!(result.cancelled, "sink cancel must kill the run");
 }

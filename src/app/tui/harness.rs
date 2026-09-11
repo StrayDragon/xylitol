@@ -40,7 +40,7 @@ pub struct ScriptedDriver {
     abort_count: AtomicUsize,
     /// When true, [`Self::execute_bash`] waits until [`Self::abort`] (c665).
     hang_bash_until_abort: AtomicBool,
-    aborted: AtomicBool,
+    aborted: std::sync::Arc<AtomicBool>,
     scripts: VecDeque<Vec<XyEvent>>,
     default_script: Vec<XyEvent>,
     bash_results: Mutex<VecDeque<XyBashResult>>,
@@ -118,7 +118,7 @@ impl ScriptedDriver {
             bash_calls: Mutex::new(Vec::new()),
             abort_count: AtomicUsize::new(0),
             hang_bash_until_abort: AtomicBool::new(false),
-            aborted: AtomicBool::new(false),
+            aborted: std::sync::Arc::new(AtomicBool::new(false)),
             scripts: VecDeque::new(),
             default_script: vec![
                 XyEvent::AgentStart {
@@ -480,6 +480,54 @@ impl XyDriver for ScriptedDriver {
         Box::pin(futures::stream::iter(events))
     }
 
+    /// c2790: owned bash completion — the hang loop polls the cloned
+    /// `Arc<AtomicBool>` so the future never borrows `self`.
+    async fn bash_run(
+        &mut self,
+        command: &str,
+        exclude_from_context: bool,
+    ) -> Result<crate::app::core::driver::BashRun, XyDriverError> {
+        // Fresh run: do not inherit a prior abort latch (pi: new AbortController each bang).
+        self.aborted.store(false, Ordering::SeqCst);
+        self.bash_calls
+            .lock()
+            .expect("bash_calls")
+            .push((command.to_string(), exclude_from_context));
+        let aborted = self.aborted.clone();
+        let hang = self.hang_bash_until_abort.load(Ordering::SeqCst);
+        let sink = self.bash_run_sink.lock().expect("bash_run_sink").take();
+        let result = self
+            .bash_results
+            .lock()
+            .expect("bash_results")
+            .pop_front()
+            .unwrap_or_else(|| self.default_bash.clone());
+        Ok(Box::pin(async move {
+            if hang {
+                while !aborted.load(Ordering::SeqCst) {
+                    tokio::time::sleep(Duration::from_millis(20)).await;
+                }
+                return Ok(XyBashResult {
+                    output: String::new(),
+                    exit_code: None,
+                    cancelled: true,
+                    timed_out: false,
+                    truncated: false,
+                    full_output_path: None,
+                });
+            }
+            // c2760: relay output through the injected sink like the real driver.
+            if let Some(sink) = sink {
+                let _ = sink.tx.try_send(crate::protocol::ports::BashChunk {
+                    bash_id: "scripted-bash".into(),
+                    seq: 1,
+                    data: result.output.clone(),
+                });
+            }
+            Ok(result)
+        }) as crate::app::core::driver::BashRun)
+    }
+
     fn abort(&self) {
         self.abort_count.fetch_add(1, Ordering::SeqCst);
         self.aborted.store(true, Ordering::SeqCst);
@@ -768,39 +816,13 @@ impl crate::app::core::dispatch::SessionCommandExecutor for ScriptedDriver {
                 exclude_from_context,
                 ..
             } => {
-                // Fresh run: do not inherit a prior abort latch (pi: new AbortController each bang).
-                self.aborted.store(false, Ordering::SeqCst);
-                self.bash_calls
-                    .lock()
-                    .expect("bash_calls")
-                    .push((command.clone(), exclude_from_context));
-                if self.hang_bash_until_abort.load(Ordering::SeqCst) {
-                    while !self.aborted.load(Ordering::SeqCst) {
-                        tokio::time::sleep(Duration::from_millis(20)).await;
-                    }
-                    return Ok(DispatchOutcome::Bash(XyBashResult {
-                        output: String::new(),
-                        exit_code: None,
-                        cancelled: true,
-                        timed_out: false,
-                        truncated: false,
-                        full_output_path: None,
-                    }));
-                }
-                let result = self
-                    .bash_results
-                    .lock()
-                    .expect("bash_results")
-                    .pop_front()
-                    .unwrap_or_else(|| self.default_bash.clone());
-                // c2760: relay output through the injected sink like the real driver.
-                if let Some(sink) = self.bash_run_sink.lock().expect("bash_run_sink").take() {
-                    let _ = sink.tx.try_send(crate::protocol::ports::BashChunk {
-                        bash_id: "scripted-bash".into(),
-                        seq: 1,
-                        data: result.output.clone(),
-                    });
-                }
+                let run = crate::app::core::driver::XyDriver::bash_run(
+                    self,
+                    &command,
+                    exclude_from_context,
+                )
+                .await?;
+                let result = run.await?;
                 Ok(DispatchOutcome::Bash(result))
             }
             Command::Compact { instructions, .. } => {

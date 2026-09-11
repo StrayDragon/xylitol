@@ -14,6 +14,7 @@ use crate::protocol::ports::{BashExecOpts, XyBashExecutor, XyBashResult, XySessi
 use crate::protocol::session::bash_execution_message_entry;
 
 /// Stateful bash-execution collaborator.
+#[derive(Clone)]
 pub struct BangExecHandler {
     /// Injected bash executor port. `None` means `!cmd` is unavailable.
     executor: Option<Arc<dyn XyBashExecutor>>,

@@ -20,6 +20,8 @@
 mod clipboard;
 mod in_process;
 mod proto;
+
+pub use proto::BashRun;
 #[cfg(feature = "server")]
 mod remote;
 mod types;

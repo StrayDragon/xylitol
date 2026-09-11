@@ -170,8 +170,11 @@ pub(crate) async fn run_wiring_operation(
         "执行 bash" => {
             let _ = agent.ensure_wiring_hook_log();
             let (runtime, store) = make_agent_with_store(agent);
-            let driver = XyInProcessDriver::new(runtime, store);
-            driver.execute_bash("true", false).await.map(|_| ())
+            let mut driver = XyInProcessDriver::new(runtime, store);
+            crate::app::core::driver::XyDriver::bash_run(&mut driver, "true", false)
+                .await?
+                .await
+                .map(|_| ())
         }
         other => Err(format!("未知操作: {other}").into()),
     }
