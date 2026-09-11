@@ -735,11 +735,6 @@ pub(crate) async fn t_atm18_inline_mounted(host_pump_bdd: &HostPumpBdd) {
         .any(|(c, _)| c == "sleep 99");
     // Mount evidence: the picker row marker `→ * fake` is rendered by the
     // Models slot only while mounted (SelectList cursor + focused mark) — the
-    // SAME marker the PTY seam waits on (`wait_for_raw("→ * fake")`). The
-    // diff frame log preserves frame order, so the mount frame must precede
-    // the post-abort `(cancelled)` frame: mounted DURING the bang, closed by
-    // the first Esc before the second Esc aborts.
-    let frames = pump.session.tui.terminal.frames();
     // Mount evidence: the picker row marker `→ * Fake` is rendered by the
     // Models slot only while mounted (SelectList cursor + focused mark). The
     // label is the harness model's display_name (`Fake`); the PTY seam waits
