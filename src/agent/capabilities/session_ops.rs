@@ -92,6 +92,11 @@ impl AgentCapabilities {
     }
 
     /// Load conversation messages from the session store (leaf + compaction-aware cut).
+    ///
+    /// c2770 / as-bang1: orphan running bash rows fold into the pinned
+    /// interrupted notice here, paired against a session-scoped done set. On a
+    /// done-set read failure the fold is skipped entirely (running rows keep
+    /// the no-projection behavior — no false interrupts).
     pub(crate) async fn load_conversation_history(
         &self,
         session_id: &str,
@@ -102,10 +107,25 @@ impl AgentCapabilities {
             .await
             .map_err(XyError::from)?;
         let entries = crate::protocol::session::build_context_entries(&entries);
-        Ok(entries
+        let messages: Vec<AgentMessage> = entries
             .iter()
             .filter_map(|e| e.as_agent_message())
-            .collect())
+            .collect();
+        match self.store.load_entries(session_id).await {
+            Ok(all) => {
+                let done = crate::protocol::session::done_bash_ids(&all);
+                Ok(crate::protocol::session::fold_interrupted_bash_rows(
+                    messages, &done,
+                ))
+            }
+            Err(e) => {
+                log::warn!(
+                    target: "xylitol::session",
+                    "interrupted-bash fold skipped: load_entries failed error={e}"
+                );
+                Ok(messages)
+            }
+        }
     }
 
     /// Shared session store handle (same instance as XyDriver uses).

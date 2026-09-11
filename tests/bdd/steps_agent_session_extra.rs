@@ -1014,3 +1014,187 @@ pub(crate) fn t_sess_no_bash_err(agent: &AgentState) {
         "expected bash executor missing error, got: {err}"
     );
 }
+
+// ── agent-session: interrupted-bang projection (c2770 / as-bang1) ────
+
+mod sess_interrupted {
+    use std::cell::RefCell;
+
+    use crate::protocol::message::AgentMessage;
+
+    thread_local! {
+        /// 播种路径的两次构建（折叠文本逐字节一致断言用）。
+        pub static BUILDS: RefCell<Vec<Vec<AgentMessage>>> = const { RefCell::new(Vec::new()) };
+    }
+}
+
+async fn append_interrupted_bash_row(
+    sess: &XySessionStore,
+    id: &str,
+    bash_id: &str,
+    command: &str,
+    output: &str,
+    status: crate::protocol::message::BashExecutionStatus,
+    exclude: bool,
+) {
+    use crate::protocol::session::bash_execution_message_entry;
+
+    sess.ensure_mgr();
+    let mgr = sess.mgr.borrow().as_ref().unwrap().clone();
+    let sid = sess.current_id.borrow().clone().expect("session id");
+    let mut entry = bash_execution_message_entry(
+        bash_id,
+        command,
+        output,
+        Some(0),
+        false,
+        false,
+        None,
+        exclude,
+        status,
+    );
+    if let SessionEntry::Message(ref mut m) = entry {
+        m.base.id = id.into();
+        m.base.timestamp = 1704067200000;
+    }
+    let _ = mgr.append(&sid, &entry).await;
+}
+
+fn interrupted_user_texts(rows: &[crate::protocol::message::LlmMessage]) -> Vec<String> {
+    use crate::protocol::message::{AgentPart, LlmMessage};
+    rows.iter()
+        .filter_map(|m| match m {
+            LlmMessage::UserMessage { content, .. } => content.iter().find_map(|p| match p {
+                AgentPart::Text { text } => Some(text.clone()),
+                _ => None,
+            }),
+            _ => None,
+        })
+        .collect()
+}
+
+#[given("session 含孤儿 running bashExecution（command 为 {command:string}，同 bash_id 无 done）")]
+pub(crate) async fn g_sess_interrupted_orphan(sess: &XySessionStore, command: String) {
+    sess.ensure_mgr();
+    let mgr = sess.mgr.borrow().as_ref().unwrap().clone();
+    let _ = mgr.create("interrupted-orphan", Some("."), None).await;
+    sess.current_id.replace(Some("interrupted-orphan".into()));
+    append_interrupted_bash_row(
+        sess,
+        "r1",
+        "b-serve",
+        &command,
+        "",
+        crate::protocol::message::BashExecutionStatus::Running,
+        false,
+    )
+    .await;
+}
+
+#[given(
+    "session 含 exclude_from_context 的孤儿 running bashExecution（command 为 {command:string}）"
+)]
+pub(crate) async fn g_sess_interrupted_excluded(sess: &XySessionStore, command: String) {
+    sess.ensure_mgr();
+    let mgr = sess.mgr.borrow().as_ref().unwrap().clone();
+    let _ = mgr.create("interrupted-paired", Some("."), None).await;
+    sess.current_id.replace(Some("interrupted-paired".into()));
+    append_interrupted_bash_row(
+        sess,
+        "r1",
+        "b-clean",
+        &command,
+        "",
+        crate::protocol::message::BashExecutionStatus::Running,
+        true,
+    )
+    .await;
+}
+
+#[given("另含一对同 bash_id 的 running 与 done")]
+pub(crate) async fn g_sess_interrupted_pair(sess: &XySessionStore) {
+    append_interrupted_bash_row(
+        sess,
+        "r2",
+        "b-pair",
+        "pair",
+        "",
+        crate::protocol::message::BashExecutionStatus::Running,
+        false,
+    )
+    .await;
+    append_interrupted_bash_row(
+        sess,
+        "d2",
+        "b-pair",
+        "pair",
+        "paired-out",
+        crate::protocol::message::BashExecutionStatus::Done,
+        false,
+    )
+    .await;
+}
+
+#[when("经播种路径构建 LLM history")]
+pub(crate) async fn w_sess_build_llm_history(agent: &AgentState, sess: &XySessionStore) {
+    let sid = sess.current_id.borrow().clone().expect("session id");
+    sess.ensure_mgr();
+    let mgr = sess.mgr.borrow().as_ref().unwrap().clone();
+    let store: Arc<dyn crate::protocol::ports::XySessionStore> = Arc::new(mgr);
+    let caps = make_test_capabilities(agent, store);
+    let first = caps
+        .load_conversation_history(&sid)
+        .await
+        .expect("seed history");
+    let second = caps
+        .load_conversation_history(&sid)
+        .await
+        .expect("seed history again");
+    sess_interrupted::BUILDS.with(|b| b.replace(vec![first, second]));
+}
+
+#[then("送给模型的 history 恰含一行 `[interrupted] $ serve`")]
+pub(crate) fn t_sess_interrupted_line_present(sess: &XySessionStore) {
+    let builds = sess_interrupted::BUILDS.with(|b| b.borrow().clone());
+    let texts = interrupted_user_texts(&crate::agent::llm_project::project_for_llm(&builds[0]));
+    let hits = texts
+        .iter()
+        .filter(|t| *t == "[interrupted] $ serve")
+        .count();
+    assert_eq!(
+        hits, 1,
+        "exactly one interrupted line expected, got {hits} in {texts:?}"
+    );
+}
+
+#[then("重复构建上下文两次折叠文本逐字节一致")]
+pub(crate) fn t_sess_interrupted_byte_stable(sess: &XySessionStore) {
+    let builds = sess_interrupted::BUILDS.with(|b| b.borrow().clone());
+    let first = interrupted_user_texts(&crate::agent::llm_project::project_for_llm(&builds[0]));
+    let second = interrupted_user_texts(&crate::agent::llm_project::project_for_llm(&builds[1]));
+    assert_eq!(first, second, "repeated builds MUST fold byte-stable text");
+}
+
+#[then("history 不含 \"clean\" 的 interrupted 提示")]
+pub(crate) fn t_sess_interrupted_clean_absent(sess: &XySessionStore) {
+    let builds = sess_interrupted::BUILDS.with(|b| b.borrow().clone());
+    let texts = interrupted_user_texts(&crate::agent::llm_project::project_for_llm(&builds[0]));
+    assert!(
+        texts.iter().all(|t| !t.contains("[interrupted] $ clean")),
+        "`!!` orphan MUST NOT project interrupted: {texts:?}"
+    );
+}
+
+#[then("有 done 的 running 不产出任何投影且 done 照常折叠")]
+pub(crate) fn t_sess_paired_running_hidden(sess: &XySessionStore) {
+    let builds = sess_interrupted::BUILDS.with(|b| b.borrow().clone());
+    let texts = interrupted_user_texts(&crate::agent::llm_project::project_for_llm(&builds[0]));
+    assert!(
+        texts.iter().all(|t| !t.contains("[interrupted] $ pair")),
+        "paired running MUST NOT project: {texts:?}"
+    );
+    assert!(
+        texts.iter().filter(|t| *t == "$ pair\npaired-out").count() == 1,
+        "done row keeps the bash fold exactly once: {texts:?}"
+    );
+}

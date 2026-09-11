@@ -1,5 +1,10 @@
 ---
 depends_on: []
+branch: sdd/c2770-add-interrupted-bang-llm-notice
+base_sha: c4d517e21bd7759521974824309bab6318964b21
+checkpointed: true
+rules_edit_acked: true
+checkpoint_sha: c4d517e21bd7759521974824309bab6318964b21
 ---
 
 # interrupted bang 的 LLM 短提示

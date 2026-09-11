@@ -91,7 +91,7 @@
 
   @req:as-bang1 @human
   场景: bash-run-lifecycle-projection
-    - 交互 bang 的持久化 MUST 由生命周期条目组成：开始执行时写入 message+role=bashExecution 的 running 条目（含 bash_id、command，output 空），完成或取消时写入同 bash_id 的 done 结果条目（output 截断视图、exit_code、cancelled、truncated、full_output_path）。LLM 历史投影 MUST 只使用 done 条目且字节稳定（running 条目 MUST NOT 产出任何投影）；resume 重建的 history 在 bang 部分 MUST 与实时增量一致（前缀不变量）；同 bash_id 仅 running 无 done 时 MAY 投影一条简短 interrupted 提示（MUST 尊重 exclude_from_context）。旧条目无 bash_id/status 字段 MUST 视为 done。
+    - 交互 bang 的持久化 MUST 由生命周期条目组成：开始执行时写入 message+role=bashExecution 的 running 条目（含 bash_id、command，output 空），完成或取消时写入同 bash_id 的 done 结果条目（output 截断视图、exit_code、cancelled、truncated、full_output_path）。LLM 历史投影 MUST 只使用 done 条目且字节稳定（running 条目 MUST NOT 产出任何投影）；resume 重建的 history 在 bang 部分 MUST 与实时增量一致（前缀不变量）；同 bash_id 仅 running 无 done（会话级 done 集配对，done 存在于 leaf 路径外也 MUST NOT 误报）时 MUST 投影一条简短 interrupted 提示，形状钉死为 `[interrupted] $ <command>`（command 原文，不含前导 `!`；同会话重复构建上下文 MUST 逐字节一致）；MUST 尊重 exclude_from_context（`!!` 的孤儿 running MUST NOT 投影）。旧条目无 bash_id/status 字段 MUST 视为 done。
 
   @req:as46 @human
   场景: 持久化带 tag 的 agent 部件
@@ -284,3 +284,18 @@
     假如 JSONL message.content 为旧 untagged 形态
     当 as_agent_message 或恢复上下文
     那么 不产生糊成一体的合法 Assistant Text；失败或跳过可观测
+
+  @executable @req:as-bang1
+  场景: interrupted-bang-llm-projection
+    假如 session 含孤儿 running bashExecution（command 为 "serve"，同 bash_id 无 done）
+    当 经播种路径构建 LLM history
+    那么 送给模型的 history 恰含一行 `[interrupted] $ serve`
+    并且 重复构建上下文两次折叠文本逐字节一致
+
+  @executable @req:as-bang1
+  场景: interrupted-bang-excluded-and-done-pairing
+    假如 session 含 exclude_from_context 的孤儿 running bashExecution（command 为 "clean"）
+    并且 另含一对同 bash_id 的 running 与 done
+    当 经播种路径构建 LLM history
+    那么 history 不含 "clean" 的 interrupted 提示
+    并且 有 done 的 running 不产出任何投影且 done 照常折叠
