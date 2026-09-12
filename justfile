@@ -11,6 +11,7 @@ verbosity_default := env("JUST_VERBOSITY", "quiet")
 
 _default:
     @just --list
+    @python3 scripts/doctor_dev_env.py
 
 # Install prek hooks (+ optional complexity CLI into .tools/).
 setup:
@@ -26,6 +27,12 @@ setup:
     if ! command -v cccc-rs >/dev/null && [[ ! -x .tools/bin/cccc-rs ]]; then
       cargo install cccc-rs-cli --version 0.4.0 --locked --root .tools
     fi
+
+# Environment self-check (machine-local state: hooks, tools, worktree env,
+# live-provider config). Not a repo-code gate — never runs in just qa.
+# Bare `just` shows warnings only; silent when healthy.
+doctor:
+    python3 scripts/doctor_dev_env.py --full
 
 # Run cargo fmt (write).
 fmt:

@@ -70,7 +70,7 @@
 
 ## 命令与验证
 
-- 日常：`just setup` / `fmt` / `lint` / `test` / `test-tui`；全量门禁 `just qa`（或 `ci`）；需要真终端（PTY / tmux）验证时再 `just qa-e2e`。
+- 日常：`just setup` / `fmt` / `lint` / `test` / `test-tui`；全量门禁 `just qa`（或 `ci`）；需要真终端（PTY / tmux）验证时再 `just qa-e2e`；新机器 / 环境异常先 `just doctor`（裸 `just` 会在有环境警告时自动提示；检查项集中在 `scripts/doctor_dev_env.py` 的 `CHECKS` 表，加一项 = 一个返回 `(ok, detail)` 的探针）。
 - `just qa` 串行跑 `test-live-provider`（连接真实网关的 lab；配置路径、`enabled` 门禁与 skip 语义见 `justfile` 与 `just gen-live-provider-example`）。产品示例配置 `configs/example.yaml` 由 `just gen-config-example` 生成（改 `scripts/gen_config_example.py` 模板，勿直接手改产物）。
 - `qa` 输出默认 quiet；`just qa normal` / `verbose` 或 `JUST_VERBOSITY=` 调整。
 - 非变更门禁脚本 `scripts/check_*.py` **MUST** 经 wiring 进 `qa`；维护脚本不进门禁。
