@@ -5,10 +5,10 @@ Starts three writers that each block until `read` opens the FIFO, then sleep
 DELAY_SEC and write a marker. Parallel reads ≈ DELAY_SEC; sequential ≈ 3×DELAY.
 
 Usage:
-  python3 scripts/xylitol_batch_slow_fifos.py          # foreground, Ctrl+C to stop
-  python3 scripts/xylitol_batch_slow_fifos.py --delay 2
+  python3 scripts/lab_batch_slow_fifos.py          # foreground, Ctrl+C to stop
+  python3 scripts/lab_batch_slow_fifos.py --delay 2
 
-Then in xylitol (same-message 3× read), see experiments.md Experiment 1.
+Then in xylitol (same-message 3× read), expect ≈DELAY_SEC wall if parallel.
 """
 from __future__ import annotations
 

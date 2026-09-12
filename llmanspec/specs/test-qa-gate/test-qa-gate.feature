@@ -7,7 +7,7 @@
 
   @req:qg01 @human
   场景: 统一 just qa 满闸
-    - 仓库 MUST 提供 just qa 作为日常与 PR 前的统一验证入口；该入口 MUST 顺序包含：cargo fmt --check、clippy（all-features、-D warnings）、cargo/nextest 全特性测试、live-provider 串行闸（见 qg07）、显式 packages/xylitol-tui 测试（四层中的 1–3）、cargo doc --no-deps --all-features、DESIGN token/Palette 一致性检查（check-tui-tokens）、scripts/check_* 入闸校验与执行（check-scripts-wired 与 check-scripts；约定 scripts/check_*.py 或 check-*.py 为非变更闸脚本）、以及 prek run --all-files。just check 与 just ci MUST 作为 just qa 的别名。
+    - 仓库 MUST 提供 just qa 作为日常与 PR 前的统一验证入口；该入口 MUST 顺序包含：cargo fmt --check、clippy（all-features、-D warnings）、cargo/nextest 全特性测试、live-provider 串行闸（见 qg07）、显式 packages/xylitol-tui 测试（四层中的 1–3）、cargo doc --no-deps --all-features、doc-test（cargo test --doc --all-features，根包 doctest）、DESIGN token/Palette 一致性检查（check-tui-tokens）、scripts/check_* 入闸校验与执行（check-scripts-wired 与 check-scripts；约定 scripts/check_*.py 或 check-*.py 为非变更闸脚本）、以及 prek run --all-files（prek 仅承担文本/元数据卫生与 commit-msg 规约，cargo 级门禁 MUST NOT 进 prek）。just check 与 just ci MUST 作为 just qa 的别名。
 
   @req:qg02 @human
   场景: qa-e2e 可选第 5 层
