@@ -100,6 +100,12 @@ impl Reporter for FileTraceReporter {
                     "backend",
                     "provenance",
                     "tokens",
+                    // react.error / tool.error diagnostics (record_xy_error /
+                    // record_tool_error) — without these the error rows carry no
+                    // explanation beyond correlation ids.
+                    "error.kind",
+                    "where",
+                    "message",
                 ] {
                     if let Some(v) = prop(&ev.properties, key) {
                         obj.insert(key.into(), Value::String(v.into()));
@@ -143,4 +149,48 @@ fn prop<'a>(
         .iter()
         .find(|(k, _)| k.as_ref() == key)
         .map(|(_, v)| v.as_ref())
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use fastrace::collector::{EventRecord, SpanId, SpanRecord, TraceId};
+    use std::borrow::Cow;
+
+    /// `react.error` / `tool.error` events must keep their diagnostic fields
+    /// (`error.kind` / `where` / `message`) in the JSONL row — without them an
+    /// error line is unexplainable beyond correlation ids.
+    #[test]
+    fn error_events_keep_diagnostic_fields() {
+        let dir = tempfile::tempdir().unwrap();
+        let path = dir.path().join("provider-trace.jsonl");
+        let mut reporter = FileTraceReporter::open(path.clone()).unwrap();
+        reporter.report(vec![SpanRecord {
+            trace_id: TraceId(1),
+            span_id: SpanId(2),
+            parent_id: SpanId(0),
+            begin_time_unix_ns: 1,
+            duration_ns: 1,
+            name: Cow::Borrowed("react.error"),
+            properties: vec![(Cow::Borrowed("turn_id"), Cow::Borrowed("t-1"))],
+            events: vec![EventRecord {
+                name: Cow::Borrowed("error"),
+                timestamp_unix_ns: 2,
+                properties: vec![
+                    (Cow::Borrowed("error.kind"), Cow::Borrowed("Provider")),
+                    (Cow::Borrowed("where"), Cow::Borrowed("react.run")),
+                    (Cow::Borrowed("message"), Cow::Borrowed("boom")),
+                ],
+            }],
+            links: vec![],
+        }]);
+        let line = std::fs::read_to_string(&path).unwrap();
+        let v: Value = serde_json::from_str(line.trim()).unwrap();
+        assert_eq!(v["kind"], "error");
+        assert_eq!(v["error.kind"], "Provider");
+        assert_eq!(v["where"], "react.run");
+        assert_eq!(v["message"], "boom");
+        // Span-level correlation fallback still applies.
+        assert_eq!(v["turn_id"], "t-1");
+    }
 }

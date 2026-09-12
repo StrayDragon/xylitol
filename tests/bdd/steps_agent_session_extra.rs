@@ -1154,7 +1154,7 @@ pub(crate) async fn w_sess_build_llm_history(agent: &AgentState, sess: &XySessio
 }
 
 #[then("送给模型的 history 恰含一行 `[interrupted] $ serve`")]
-pub(crate) fn t_sess_interrupted_line_present(sess: &XySessionStore) {
+pub(crate) fn t_sess_interrupted_line_present(_sess: &XySessionStore) {
     let builds = sess_interrupted::BUILDS.with(|b| b.borrow().clone());
     let texts = interrupted_user_texts(&crate::agent::llm_project::project_for_llm(&builds[0]));
     let hits = texts
@@ -1168,7 +1168,7 @@ pub(crate) fn t_sess_interrupted_line_present(sess: &XySessionStore) {
 }
 
 #[then("重复构建上下文两次折叠文本逐字节一致")]
-pub(crate) fn t_sess_interrupted_byte_stable(sess: &XySessionStore) {
+pub(crate) fn t_sess_interrupted_byte_stable(_sess: &XySessionStore) {
     let builds = sess_interrupted::BUILDS.with(|b| b.borrow().clone());
     let first = interrupted_user_texts(&crate::agent::llm_project::project_for_llm(&builds[0]));
     let second = interrupted_user_texts(&crate::agent::llm_project::project_for_llm(&builds[1]));
@@ -1176,7 +1176,7 @@ pub(crate) fn t_sess_interrupted_byte_stable(sess: &XySessionStore) {
 }
 
 #[then("history 不含 \"clean\" 的 interrupted 提示")]
-pub(crate) fn t_sess_interrupted_clean_absent(sess: &XySessionStore) {
+pub(crate) fn t_sess_interrupted_clean_absent(_sess: &XySessionStore) {
     let builds = sess_interrupted::BUILDS.with(|b| b.borrow().clone());
     let texts = interrupted_user_texts(&crate::agent::llm_project::project_for_llm(&builds[0]));
     assert!(
@@ -1186,7 +1186,7 @@ pub(crate) fn t_sess_interrupted_clean_absent(sess: &XySessionStore) {
 }
 
 #[then("有 done 的 running 不产出任何投影且 done 照常折叠")]
-pub(crate) fn t_sess_paired_running_hidden(sess: &XySessionStore) {
+pub(crate) fn t_sess_paired_running_hidden(_sess: &XySessionStore) {
     let builds = sess_interrupted::BUILDS.with(|b| b.borrow().clone());
     let texts = interrupted_user_texts(&crate::agent::llm_project::project_for_llm(&builds[0]));
     assert!(
