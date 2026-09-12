@@ -70,7 +70,7 @@ fn keys_helper_drives_multi_step_sequence() {
 }
 
 /// The harness drives the same instance across two frames (no rebuild),
-/// fixing the workaround documented at virtual_terminal_test.rs:178-184.
+/// fixing the rebuild workaround in `virtual_terminal_test.rs`.
 #[test]
 fn harness_renders_same_instance_across_frames() {
     let lines = Rc::new(RefCell::new(vec!["first".to_string()]));

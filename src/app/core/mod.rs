@@ -2,9 +2,8 @@
 //!
 //! Everything under `app/core/` is the **shared seam layer**: privileged
 //! modules that more than one surface depends on. They are distinct from the
-//! self-contained surface directories (`cli/`, `server/`, `tui/`,
-//! `gui.rs`) and are the only `app/` modules allowed to import `agent` and/or
-//! `infra`.
+//! self-contained surface directories (`cli/`, `server/`, `tui/`) and are the
+//! only `app/` modules allowed to import `agent` and/or `infra`.
 //!
 //! - `bootstrap` — shared assembly path from CLI args to a constructed
 //!   agent (config → registry → trust → resources → build_agent). print /

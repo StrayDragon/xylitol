@@ -859,7 +859,7 @@ use xylitol_tui::tui::{Component, InputEvent};
 
 /// A component whose render output is backed by shared mutable state, so a
 /// test can mutate the content between frames without rebuilding the TUI
-/// (the prior workaround in `virtual_terminal_test.rs:178-184` rebuilt a
+/// (the prior workaround in `virtual_terminal_test.rs` rebuilt a
 /// second TUI instance because `Box<dyn Component>` is owned). Generalized
 /// from the single-test-local definition so any test can mount a widget,
 /// drive keys, and mutate across frames.

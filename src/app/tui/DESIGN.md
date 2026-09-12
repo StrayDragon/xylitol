@@ -215,7 +215,7 @@ footer            1 行 dim（cwd · model · 可选 context%）
 
 ## Components
 
-组件级 MUST 与固定态在 [`designing/tui/modules/`](../../../designing/tui/modules/)——索引见 [`generated/AGENT-INDEX.md`](../../../designing/generated/AGENT-INDEX.md)，覆盖：session-tree · session-resume · models · transcript · activity-fold · expandable · status · toast-notice · layout · editor · loaded-resources · mcp-cue · footer · diff · markdown · errors · compaction · bash · trust-prompt · queue-steer · theme · palette · ask · tool。本目录不另维护组件子文档；子文档 token 表达式 → 本文件（见「Token 引用」）。
+组件级 MUST 与固定态在 [`designing/tui/modules/`](../../../designing/tui/modules/)——索引见 [`generated/AGENT-INDEX.md`](../../../designing/generated/AGENT-INDEX.md)（25 模块，全集以索引为准）：activity-fold · ask · atoms · bash · compaction · diff · editor · errors · expandable · footer · full-shell · loaded-resources · markdown · mcp-cue · models · palette · queue-steer · session-resume · session-tree · status · theme · toast-notice · tool · transcript · widgets。本目录不另维护组件子文档；子文档 token 表达式 → 本文件（见「Token 引用」）。
 
 产品默认 **`Palette::dark()`**；**MUST NOT** 默认开 theme auto / OSC11。用户可经 **`/theme`** 切换内建色板（`theme` 设计模块）。
 

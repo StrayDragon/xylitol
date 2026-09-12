@@ -1,30 +1,20 @@
 # OTEL 与 Langfuse 观测
 
-> **已落地**底座（本地 JSONL、可选 OTLP、同 turn 过程树、Langfuse 属性、多总线边界）见 [../architecture/进程内观测.md](../architecture/进程内观测.md)。
-> 本文只留**未兑现**方向：观测车道分流、门闸压缩语义、运维 Collector、采样与子进程出站。分叉身份 / 观测槽 / fork 树边已进 [进程内观测.md](../architecture/进程内观测.md)。
+> **已落地**底座（本地 JSONL、可选 OTLP、同 turn 过程树、Langfuse 属性、多总线边界、`xylitol.obs.lane=llm` 属性、门闸早退降噪、Collector 示例配置）见 [../architecture/进程内观测.md](../architecture/进程内观测.md)。
+> 本文只留**未兑现**方向：infra lane span、运维 Collector 实际分流、采样与子进程出站。分叉身份 / 观测槽 / fork 树边已进 [进程内观测.md](../architecture/进程内观测.md)。
 
 ## 分阶段切片
 
 | 阶段 | 用户可感知结果 | 备注 |
 |---|---|---|
-| **M-lane** | Langfuse 不再被「门闸失败 / 纯 infra」噪声淹没；可选 Tempo 看失败体验 | `xylitol.obs.lane`；otel19「实际执行」= 过 prepare；直连时应用侧降噪 |
-| **M-collector** | 需要 infra 时 endpoint 指 Collector，按 lane 分到 Langfuse / Tempo | 文档 + 示例配置；应用仍单一 OTLP；**不做**应用内双 exporter |
+| **M-lane（余量）** | infra span 也带 lane 标签，Tempo 可按 lane 过滤 | llm 属性与「过 prepare 才进语义 span」已落地（见 architecture 表）；候选只剩 infra lane |
+| **M-collector（余量）** | 需要 infra 时 endpoint 指 Collector，按 lane 分到 Langfuse / Tempo | 示例配置已交付（`configs/examples/otel-collector-lane.yaml`）；实际 infra 分流依赖 M-lane 余量；应用仍单一 OTLP；**不做**应用内双 exporter |
 | **M-sample** | 高流量时可尾采样 / 限流而不改业务埋点 | 预留配置意向；默认仍全量（ForceSampled 现状） |
 | **M5 子进程出站** | 托管 bash/MCP 对外请求策略透明 | 后置；挂 turn 树或独立 infra lane |
 
-认领时通常一次只提案 **一个** Mn（建议 lane / Collector，不要把已落地的分叉身份再开一刀）。供应商键策略（Zen header 跟树干）park 在 `llmanspec/delayed-changes/models/c2620-add-provider-session-key-policy`。
+认领时通常一次只提案 **一个** Mn。供应商键策略（Zen header 跟树干）park 在 `llmanspec/delayed-changes/models/c2620-add-provider-session-key-policy`。
 
 ## BDD 意图示例（候选）
-
-**场景：门闸失败不进 Langfuse 语义**
-Given 观测开启且 OTLP 直连 Langfuse
-When 用户 force compact 且 prepare 报无可摘要历史
-Then MUST NOT 出现独立 ERROR `agent.compaction` 根（或不得标为 LLM lane）；面通知仍可经 `XyEvent` / notice
-
-**场景：真·压缩仍在过程树**
-Given 观测开启且 turn 内发生过 prepare 的 compaction
-When 导出过程树
-Then 存在 `agent.compaction` 为该 turn 后代，`xylitol.obs.lane=llm`（落地后），含诚实 `reason`
 
 **场景：Collector 分流**
 Given endpoint 指向 Collector 且示例过滤生效

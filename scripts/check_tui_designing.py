@@ -35,7 +35,6 @@ REQUIRED_STATES = {
     ("tui", "models"): ("wide", "narrow", "no-thinking", "filter"),
     ("tui", "session-tree"): ("filter",),
     ("tui", "session-resume"): ("default", "id-on"),
-    ("tui", "pending"): ("next-turn", "thinking"),
     ("tui", "markdown"): ("sample",),
     ("tui", "status"): ("idle", "busy"),
     ("tui", "compaction"): ("collapsed", "expanded"),

@@ -1,8 +1,10 @@
 //! File-path and slash-command autocomplete provider.
 //!
-//! Ported from pi's `autocomplete.ts`. The provider walks the filesystem
-//! synchronously (via `std::fs`) and uses [`crate::fuzzy::fuzzy_match`] for
-//! filtering. An optional `fd`-based fuzzy search is left to the consumer.
+//! Ported from pi's `autocomplete.ts`. The sync provider walks the filesystem
+//! (via `std::fs`) and uses [`crate::fuzzy::fuzzy_match`] for filtering; an
+//! `fd`-based async path is also built in
+//! ([`crate::autocomplete_fd::walk_directory_with_fd`], enabled via
+//! `new_with_fd`).
 
 use crate::autocomplete_fd::walk_directory_with_fd;
 use crate::fuzzy::fuzzy_match;
@@ -571,8 +573,9 @@ impl CombinedAutocompleteProvider {
     }
 
     /// Fuzzy file search (without fd, using local read_dir). The real pi
-    /// implementation uses `fd` for fast recursive walking. We keep the stub
-    /// for the trait contract; consumers can inject their own.
+    /// implementation uses `fd` for fast recursive walking; the fd path here is
+    /// [`Self::get_fuzzy_file_suggestions_async`], so this sync method stays
+    /// the graceful fallback for the trait contract.
     fn get_fuzzy_file_suggestions(&self, query: &str, _is_quoted: bool) -> Vec<AutocompleteItem> {
         let (raw, is_at, is_quoted) = parse_path_prefix(query);
         let expanded = expand_home_path(raw);

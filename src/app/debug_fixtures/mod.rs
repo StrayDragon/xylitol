@@ -2,7 +2,7 @@
 //!
 //! **Delete this whole module** to remove `/debug` scenes: also drop
 //! `PendingSlash::DebugScene`, the TUI `effects/slash/debug.rs` inject arm
-//! (slash/completion wiring in `layout/root.rs` / `commands.rs`), and E2E
+//! (slash/completion wiring in `layout/root/` / `commands.rs`), and E2E
 //! cases that call `/debug …`. Scenes are process-local (c2740): no wire.
 //!
 //! Slash + inline completion are registered only under `cfg(debug_assertions)`.

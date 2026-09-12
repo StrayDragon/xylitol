@@ -50,7 +50,7 @@
 | Agent 尽量跑 | `just test-tui-e2e-pty`（真终端） |
 | 人类 | 最短手测观感；**不**替代 harness |
 
-包侧四层：`packages/xylitol-tui/AGENTS.md` + skill `test-tui-harness`。排障：`xylitol-inspect-runtime-logs`（勿整文件灌 log）。新增应用面：`l8ng-write-surface`。
+包侧五层：`packages/xylitol-tui/AGENTS.md` + skill `test-tui-harness`。排障：`xylitol-inspect-runtime-logs`（勿整文件灌 log）。新增应用面：`l8ng-write-surface`。
 
 应用面无头帧挂载（BDD 直驱真实渲染）：`SceneBuilder`（经 `xylitol::app::tui` 导出；契约 `package-tui-testing`）。
 

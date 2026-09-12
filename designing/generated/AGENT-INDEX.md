@@ -30,7 +30,6 @@ Agent 改某表面：先读**产品代码**，再读短 `intent.md` + `states/*.
 | tui | toast-notice | status / spinner **上方**恰好 1 行通知条。不是滚动提示，不是错误行。 | busy-resume-deny | `/tui/toast-notice` |
 | tui | tool | tool / bash / diff：**1-cell 轨 + gutter + 内容**（与 expandable 同源）。 | success | `/tui/tool` |
 | tui | transcript | 当前轮写入 scrollback。不是 Codex 独立浏览面。 | mixed | `/tui/transcript` |
-| tui | trust-prompt | 项目 Trust 闸：ChoicePrompt **替换 editor 槽**。禁止 stdio 数字菜单。 | choice | `/tui/trust-prompt` |
 | tui | widgets | 列表槽、空态、窄宽。静图槽一律平等，禁止「(包)」置灰表达实现分层。 | empty | `/tui/widgets` |
 | tui-lab | delayed-hint | 长操作的延迟出现提示。 | mcp-connecting | `/tui-lab/delayed-hint` |
 | tui-lab | editor-placeholder | editor 空态占位示例句。 | busy, idle | `/tui-lab/editor-placeholder` |

@@ -14,7 +14,7 @@
 //! Chord truth comes from the product decision points:
 //! `partition_segments` (segment.rs) · `count_cluster` / `format_cluster_body`
 //! (summary.rs) · `paint_envelope_header_row` / `paint_cluster_header_row`
-//! (widgets/scrollback.rs).
+//! (widgets/scrollback/live.rs).
 
 use super::summary::{count_cluster, format_cluster_body};
 use crate::app::core::driver::XyEvent;
@@ -150,7 +150,7 @@ impl SemanticDump {
 }
 
 /// Sum of persisted thinking wall-clock secs for a cluster (mirrors
-/// `scrollback.rs::thought_duration_label`, the product duration source).
+/// `widgets/scrollback/live.rs::thought_duration_label`, the product duration source).
 fn thought_duration_label(
     entries: &[UiEntry],
     cluster: &crate::app::tui::activity_fold::ActivityCluster,

@@ -1208,9 +1208,9 @@ async fn test_set_tools_takes_effect_on_next_turn() {
 
 // ── Multi-round tool ReAct (真 bug 复现) ──────────────────────
 //
-// The bug: react.rs:455 `if done { break }` treated XyChunk::Done (which
+// The bug: an old react loop's `if done { break }` treated XyChunk::Done (which
 // just marks the end of ONE model stream) as the end of the whole turn.
-// Providers emit Done right after a FunctionCall (openai.rs:172), so a
+// Providers emit Done right after a FunctionCall, so a
 // tool-calling turn broke out of the for-loop after executing the tool,
 // and the model never got a continuation round with the tool result.
 // Correct ReAct: keep looping while the model calls tools; stop only when
@@ -1280,7 +1280,7 @@ async fn tool_call_then_continuation_round_reaches_final_text() {
     use futures::StreamExt;
 
     // Round 1: model calls a tool. The provider appends Done after the
-    // FunctionCall (openai.rs:156-176), so Done sets `done=true` — this is
+    // FunctionCall, so Done sets `done=true` — this is
     // exactly the case where the old `if done { break }` wrongly aborted.
     // Round 2: model gives the final text reply (no tool call) + Done.
     let done_stop = || crate::protocol::model::XyChunk::Done {
