@@ -6,7 +6,7 @@ summary: live scrollback：user/assistant/thinking flush；tool 轨。
 alignment:
   fixed: 主滚动区
   item: 非 Codex TranscriptView
-  todo-bar: Todo 块可在折叠簇内，不另起浏览面
+  todo-bar: Todo 块可在折叠簇内，不另起浏览界面
 todos:
   - { done: true, text: "rail vs flush 默认" }
 notes: |

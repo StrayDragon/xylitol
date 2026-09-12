@@ -14,7 +14,7 @@
 1. 从 pi 拉行为或补丁前，先扫本表「不得回退」列。
 2. 若 pi 变更触及某行主题，默认 **保留 xylitol 侧**；只有产品明确要求才改决议并更新本表。
 3. 纯 bugfix（两边语义一致）可对齐 pi，不必记入本表。
-4. 应用面（`src/app/tui/`、`agent_demo` 产品壳）**不在** pi-tui 包内——勿把 coding-agent UI 合进本包。
+4. 应用端（`src/app/tui/`、`agent_demo` 产品壳）**不在** pi-tui 包内——勿把 coding-agent UI 合进本包。
 5. 分叉是常态：缺能力优先按 xylitol 产品需求设计，不必先问「pi 怎么做」。
 
 ---
@@ -28,16 +28,16 @@
 | D03 | 输入模型 | VT 字符串 / 自解析为主 | **硬切** `InputEvent::{Key,Paste,Mouse}`；Mouse 默认不刷帧（`InputReaction` / `input_wants_rerender`）；禁止 KeyEvent→VT→parse 运行时路径 | 是 |
 | D04 | 键匹配 | 字符串 `matchesKey` 等 | 运行时 `matches_key_event` / `KeybindingsManager::matches_event` | 是 |
 | D05 | 平台专属输入 | `native-modifiers`、Apple/Windows native | **不移植** | 是 |
-| D06 | 调试写盘 | `writeLogPath` | **不移植**（应用面日志 / fastrace+log） | 是 |
+| D06 | 调试写盘 | `writeLogPath` | **不移植**（应用端日志 / fastrace+log） | 是 |
 | D07 | 根类型 | `TUI extends Container` | `TUI` 持有根列表 + 独立 `Container` 组件 | 是 |
 | D08 | Overlay focus-restore | eligible/blocked/resume 完整状态机 | **已对齐**（c575）：`FocusTarget` + eligible/blocked/resume；`dispatch_event` reclaim；NC 可显式 `focus`；host 驱动路径 | 是 |
 | D09 | 事件循环 | 库内 `start` 常见 | 产品路径 **host 驱动**；`TUI::start()` **仅 demo** | 是 |
 | D10 | 硬件光标 | 可开（env） | 默认 **隐藏**；Editor 反色假光标 | 是 |
 | D11 | Image | 完整 Kitty/iTerm + `Image` 组件 | **裁剪**；保留 `is_image_line` + `hyperlink` | 是 |
 | D12 | 渲染输出 | `string[]` ANSI | 同 `Vec<String>`；**不**引入 `StyledLine` | 是 |
-| D13 | Editor 补全扩展 | provider + 引擎内 `/` 等特判较多 | **`CompletionSource` 注册表**（`completion.rs`）；`/` `@` `$` 等为可插拔 Source（扩展点已落地；业务语义在应用面） | 是 |
+| D13 | Editor 补全扩展 | provider + 引擎内 `/` 等特判较多 | **`CompletionSource` 注册表**（`completion.rs`）；`/` `@` `$` 等为可插拔 Source（扩展点已落地；业务语义在应用端） | 是 |
 | D14 | paste-burst | 无对等模块（或弱） | `PasteBurst` + `Clock`/`MockClock`（确定性时序） | 是 |
-| D15 | 测试分层 | vitest + virtual-terminal | 五层 harness（按键状态 / snapshot / 时序 / proptest / PTY-tmux；`test-tui-harness`） | 是 |
+| D15 | 测试分层 | vitest + virtual-terminal | 分层 harness 口径（按键状态 / snapshot / 时序 / 真终端 PTY-tmux；proptest 未落地；`test-tui-harness`） | 是 |
 | D16 | InputListener | VT 字符串回调常见 | **`InputEvent` 原生** `add_input_listener`；无 KeyEvent→VT；`Continue` / `Consumed`（Key·Paste 刷帧，Mouse 静默）/ `ConsumedRerender`（显式 dirty） | 是 |
 | D17 | Diff 组件 | `renderDiff` 函数式 | **`Diff` Component + `render_diff_lines`**；`similar` 在包内；主题闭包；对齐 `designing/tui/modules/diff` | 是 |
 | D18 | 代码高亮 | 应用层常见 | **`highlight` feature**（syntect+two-face），**默认启用**（`default = ["highlight"]`；`--no-default-features` 可关）；经 `MarkdownTheme.highlight_code` 注入 | 是 |
@@ -47,14 +47,14 @@
 
 ---
 
-## 应用面 / demo 约定（不进 pi 包，整合时勿误删）
+## 应用端 / demo 约定（不进 pi 包，整合时勿误删）
 
 | 主题 | 约定 |
 |---|---|
 | 产品壳 | transcript / slash 语义 / session → `src/app/tui/` 或 `agent_demo`，**不**进本包 |
 | `agent_demo` 快捷键 | 应用级：`Ctrl+P/S` 槽替换；`Ctrl+T` thinking；**`Alt+E` tools**（避 `Ctrl+E`=cursorLineEnd）；**`Alt+G` glyphs**（避 `Ctrl+G`=外部编辑器）；`Ctrl+O` tools viewport；**Ctrl+C** 清编辑器/空则退；**Esc** 流中 abort（经 InputListener）；UI 旁注用 `(Ctrl+T)` 括号完整和弦 |
 | 外部 `$EDITOR` | 包只提供 `TUI::with_terminal_suspended`（stop/start/`refresh_size` + soft pending；**保留** `previous_lines`、**不**立刻 paint；若挂起期间尺寸变了，下一帧走 size-changed clear）；spawn/`$VISUAL`/`$EDITOR`/tempfile 在 demo 或 `src/app/tui`，**不**进本包 |
-| 原型优先 | 真实 `src/app/tui` 所需 UX/UI 交互，优先在 `agent_demo` 验证后再接线产品面 |
+| 原型优先 | 真实 `src/app/tui` 所需 UX/UI 交互，优先在 `agent_demo` 验证后再接线产品端 |
 | 工具 bg 三态 | 产品 theme：`tool-pending-bg` / `tool-success-bg` / `tool-error-bg`（`DESIGN.md`）；对齐 pi coding-agent，**不**进 pi-tui 包 |
 | Diff 行号 | unified 双 gutter + EditText 紧凑 `±N` + SBS 左右行号（c459） |
 
@@ -76,4 +76,4 @@
 | 2026-07-17 | **D19 对齐 pi**：force 哨兵改 clear；resize/mount soft（修宽高残影） |
 | 2026-07-17 | 引擎差分对齐：shrink 清尾同批+CUD、viewport scroll 更新 hardware cursor、all-deletions full 护栏、`normalize_terminal_output` |
 | 2026-08-02 | ChoicePrompt：底栏 Skip、Esc→`ChoiceStatus::Skipped`、Submit→Review、进度 `n/m`；`to_ask_payload_json`；demo plate `ask-tool` 假工具回灌 |
-| 2026-09-12 | 台账卫生：双交互模式行 D16→**D21**（与 InputListener 撞号）；D18 更正为 highlight **默认启用**（`default = ["highlight"]`，commit 4c82d11e 起）；D15 对齐五层 harness 口径 |
+| 2026-09-12 | 台账卫生：双交互模式行 D16→**D21**（与 InputListener 撞号）；D18 更正为 highlight **默认启用**（`default = ["highlight"]`，commit 4c82d11e 起）；D15 对齐分层 harness 口径（去层号） |

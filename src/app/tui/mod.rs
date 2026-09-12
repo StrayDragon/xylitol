@@ -3,7 +3,7 @@
 //! See `AGENTS.md` in this directory. Engine: `packages/xylitol-tui`.
 
 pub(crate) mod activity_fold;
-/// P2 无头产品帧挂载面（package-tui-testing 契约）：
+/// P2 无头产品帧挂载入口（package-tui-testing 契约）：
 /// SceneBuilder 流式脚本事件 → 真实 UiRoot 渲染 → 剥离 ANSI 的纯文本帧 + 语义 dump。
 pub use activity_fold::scene::{SceneBuilder, SemanticDump};
 mod ask_host;
@@ -14,7 +14,7 @@ mod effects;
 pub(crate) mod error;
 mod external_editor;
 mod host;
-/// P3 无头键鼠交互挂载面：和弦路由 / 折叠命中 / per-id 覆盖表的产品路径夹具。
+/// P3 无头键鼠交互挂载入口：和弦路由 / 折叠命中 / per-id 覆盖表的产品路径夹具。
 mod interaction_scene;
 pub use interaction_scene::InteractionBdd;
 pub(crate) mod keybindings;
@@ -24,8 +24,8 @@ pub(crate) mod terminal_guard;
 mod themes;
 mod widgets;
 
-/// ati30：BDD/单测共用的 ScriptedDriver + TestTerminal + host 泵。
-/// 正常编译路径（SceneBuilder tt08 先例）——验证与生产共用唯一副作用泵。
+/// ati30：BDD/单测共用的 ScriptedDriver + TestTerminal + host 主循环（drain）。
+/// 正常编译路径（SceneBuilder tt08 先例）——验证与生产共用唯一副作用 drain 循环。
 pub mod harness;
 #[cfg(test)]
 mod lab_ao_perf;
@@ -62,7 +62,7 @@ pub use self::host::{
 };
 pub use self::layout::{EditorSlot, EditorSlotKind, LayoutTheme};
 pub use self::widgets::{FoldHitTable, FoldTarget, GlyphSet, ScrollbackFold};
-/// att26：ActivityFold 自动收纳旋钮（信封/簇折叠配置面）。
+/// att26：ActivityFold 自动收纳旋钮（信封/簇折叠配置入口）。
 pub use activity_fold::ActivityFoldSettings;
 /// att13：折叠态工具人话摘要的窄导出（BDD 直驱纯函数合约）。
 pub use bridge::human_tool_args_preview;

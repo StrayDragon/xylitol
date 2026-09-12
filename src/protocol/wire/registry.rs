@@ -564,7 +564,7 @@ mod tests {
         for v in NON_WIRE {
             assert!(
                 !lookup(&camel_to_snake(v)).is_some(),
-                "{v} 声明为非 wire 面，却存在 registry 行"
+                "{v} 声明为非 wire 方法，却存在 registry 行"
             );
         }
     }

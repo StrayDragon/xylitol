@@ -9,7 +9,7 @@ description: >-
 
 # xylitol 观测 / Inspect（省 token）
 
-**边界**：窄读与分组摘要。闸门/schema SSOT → `src/AGENTS.md`（Provider / 观测）与 `app/cli/logging.rs`。
+**边界**：窄读与分组摘要。日志开关 / schema SSOT → `src/AGENTS.md`（Provider / 观测）与 `app/cli/logging.rs`。
 **产品前瞻**：检视台在 roadmaps；进程内底座在 `docs/architecture/进程内观测.md`。
 
 ## 硬约束（agent）
@@ -45,7 +45,7 @@ LOG_DIR="$HOME/.xylitol/logs"
 
 > 注：`just obs-tui-lag` 的 shell 封装额外接受 `XYLITOL_AGENT_DIR` 作为脚本默认值覆盖；这不是产品代码的 agent_dir 解析，仅为该 just 命令的便捷参数。
 
-**闸门**（`logging.rs`）：debug 构建默认开 log+trace；release 需 `RUST_LOG` / `XYLITOL_DEBUG=1`，或仅 `XYLITOL_PROVIDER_TRACE=1`（可只开 trace、不开级别日志）。**永不**写 stdout/stderr（保 TUI）。
+**日志开关**（`logging.rs`）：debug 构建默认开 log+trace；release 需 `RUST_LOG` / `XYLITOL_DEBUG=1`，或仅 `XYLITOL_PROVIDER_TRACE=1`（可只开 trace、不开级别日志）。**永不**写 stdout/stderr（保 TUI）。
 
 ## 健康检查（空 log / 双通道）
 
@@ -54,11 +54,11 @@ LOG_DIR="$HOME/.xylitol/logs"
 | 现象 | 先查 | 常见原因 |
 |------|------|----------|
 | log **0 字节**，trace 有数据 | `wc -c` / `stat` 两文件；是否刚被截断 | 人工/脚本 `>` 清空；或只开了 provider-trace |
-| log **不存在**，trace 有 | 闸门 | release + 仅 `XYLITOL_PROVIDER_TRACE=1`（`want_log=false` 不建 log） |
+| log **不存在**，trace 有 | 日志开关 | release + 仅 `XYLITOL_PROVIDER_TRACE=1`（`want_log=false` 不建 log） |
 | 两文件都不长 | `summary` | 观测未开；或写到**另一** `HOME`/`agent_dir`（测例临时目录） |
 | log 存在但不增长 | 复现一轮 + `tail` | `env_logger::try_init` 失败时文件可已创建却无常规写入——应出现 `env_logger init failed` 面包屑行（见 `logging.rs`） |
 
-复验级别日志：开闸后跑一轮短对话，再 `tail -n 20 "$LOG_DIR/xylitol.log"`（仍勿整文件 Read）。
+复验级别日志：开启后跑一轮短对话，再 `tail -n 20 "$LOG_DIR/xylitol.log"`（仍勿整文件 Read）。
 
 ## 分组工具
 
@@ -85,7 +85,7 @@ python3 scripts/inspect_provider_trace.py --request-id RID lag
 
 | 怀疑 | 顺序 |
 |------|------|
-| 开没开闸 / 写到哪 | 健康检查 → `summary` → `requests` |
+| 日志开没开 / 写到哪 | 健康检查 → `summary` → `requests` |
 | 工具意图晚于 args | `lag`（可加 `REQUEST_ID`） |
 | react span | `turns` → `lifecycle` |
 | thinking/text 通道混 | `channel` + 少量 `recent` |

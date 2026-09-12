@@ -2,11 +2,11 @@ id: errors
 title: 错误行
 category: 对话条目
 surface: tui
-summary: "UiEntry::Error 进 transcript；硬拒闸（busy 下直接拒绝提交）走通知条。"
+summary: "UiEntry::Error 进 transcript；硬拒反馈（busy 下直接拒绝提交）走通知条。"
 alignment:
   fixed: 错误行 ≠ 通知条 ≠ 滚动提示
-  item: 词表见 TUI信息面
+  item: 词表见 TUI信息呈现与固定区词汇
 todos:
-  - { done: true, text: "硬拒闸优先通知条" }
+  - { done: true, text: "硬拒反馈优先通知条" }
 notes: |
   不要把通知条（Error: toast）和错误行（Error 条目）混称。

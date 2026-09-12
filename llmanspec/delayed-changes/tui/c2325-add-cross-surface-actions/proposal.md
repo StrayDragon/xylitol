@@ -6,7 +6,7 @@ depends_on: []
 
 > **⚠️ deferred（2026-08-21）**：移入 `llmanspec/delayed-changes/tui/`，避免活跃 graph 里像还要落地。TUI 折叠动作已在面本地交付；gpui 未开闸。**禁止**做成 Host unary / 服务端执行器。文档只写现状，不为未开闸面预埋第二套词表。
 
-约束板：`docs/roadmaps/跨面同源.md`。TUI 已有 `activity.expandNearest` / `activity.collapseNearest`（归档 c1760）。gpui 未兑现。本票记住：凡两面都会有的能力，动作 id 与学习成本 MUST 一套；键位 SHOULD 同构。面本地（TTY 选区 / GUI 点击）可分叉。实现只在 TUI / 未来 gpui 这类 client；Host 只给会话事实与事件。
+约束板：`docs/roadmaps/跨端同源.md`。TUI 已有 `activity.expandNearest` / `activity.collapseNearest`（归档 c1760）。gpui 未兑现。本票记住：凡两面都会有的能力，动作 id 与学习成本 MUST 一套；键位 SHOULD 同构。面本地（TTY 选区 / GUI 点击）可分叉。实现只在 TUI / 未来 gpui 这类 client；Host 只给会话事实与事件。
 
 ## Why
 

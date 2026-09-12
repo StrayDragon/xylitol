@@ -4,11 +4,11 @@ category: 工具调用
 surface: tui
 summary: "! / !! 进 scrollback，工具类左边轨。Ctrl+G 真 $EDITOR。"
 alignment:
-  fixed: 作为 transcript 条目，不是独立浏览面
+  fixed: 作为 transcript 条目，不是独立浏览界面
   item: 与 tool 同轨
 todos:
   - { done: true, text: "bang 用轨，不用 ASSISTANT> 墙" }
 keys:
-  - { chord: "Ctrl+G", when: "打开 TTY $EDITOR（组件/输入面）" }
+  - { chord: "Ctrl+G", when: "打开 TTY $EDITOR（组件/输入区）" }
 notes: |
   代码 SSOT：bang / execute_bash。Ctrl+G 真编辑器；harness 可 stub。

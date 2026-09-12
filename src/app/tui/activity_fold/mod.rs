@@ -19,7 +19,7 @@ mod summary;
 /// over the product render. Tests in [`crate::app::tui::tests`] assert the
 /// c1762 lessons 1–3 on product frames.
 ///
-/// tt08：该面同时是对外测试支撑合约（BDD 经 `xylitol::app::tui` 直驱产品渲染），
+/// tt08：该模块同时是对外测试支撑合约（BDD 经 `xylitol::app::tui` 直驱产品渲染），
 /// 故不再限 `#[cfg(test)]`。
 pub mod scene;
 

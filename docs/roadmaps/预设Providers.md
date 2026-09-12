@@ -28,7 +28,7 @@
 | 预设只扩展接入与默认档案，不改会话/工具主线故事 | 为每个网关分叉 ReAct 语义 |
 | 预设标明兼容族与能力边界（含模态/工具） | 暗示未支持的能力「都有」 |
 | 遵守 [../architecture/多厂商模型.md](../architecture/多厂商模型.md) 已落地的协议族 / `api` / `compat` 现行 MUST（本文不复述） | 偷偷引入第四类传输当默认；把 Completions 当「遗留/将删」叙事 |
-| TS/SDK 集成放在 Web/协同面 | 让 Rust 内核依赖 Cursor 才能对话 |
+| TS/SDK 集成放在 Web/协同端 | 让 Rust 内核依赖 Cursor 才能对话 |
 
 ## BDD 意图示例
 
@@ -49,7 +49,7 @@ Then 无 Cursor 依赖；配置后可按协同路线调度
 | M1 档案与文档 | 主要预设可配置、可发现 |
 | M2 验证过的默认 | 各预设有「已知可用」基线说明 |
 | M3 与计量/检视 | 词表策略、观测出口对网关友好；排障时能对照「线路 vs 理解」（见 [OTEL与Langfuse观测.md](./OTEL与Langfuse观测.md)） |
-| M4 Cursor SDK | Web 协同面落地（见 Cloud 路线图） |
+| M4 Cursor SDK | Web 协同端落地（见 Cloud 路线图） |
 
 ## 依赖
 

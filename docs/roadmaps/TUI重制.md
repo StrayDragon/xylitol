@@ -2,16 +2,16 @@
 
 > **方向**：重置 **`UiEntry` 主条目**呈现（rail 皮肤）；承接 pi 交互优点，无默认洗底，可复制 / 复制省 token。
 > 调研：[`../research/coding-agent-tui-design-landscape-2026.md`](../research/coding-agent-tui-design-landscape-2026.md) · 引擎：[`../research/xylitol-tui-capability-hooks-vs-landscape-2026.md`](../research/xylitol-tui-capability-hooks-vs-landscape-2026.md)。
-> 并行减噪：[`TUI视觉与信息表达.md`](./TUI视觉与信息表达.md)；跨面：[`跨面同源.md`](./跨面同源.md)。
+> 并行减噪：[`TUI视觉与信息表达.md`](./TUI视觉与信息表达.md)；跨端：[`跨端同源.md`](./跨端同源.md)。
 > 现状：主条目重制主体（rail 缺省、键位旁注、复制双出口）**已兑现**；本文只剩未兑现候选 **M4 悬停高亮区块**。
 
 ## 已兑现去向（事实只在一处写全，本文不复述）
 
 | 已兑现 | 事实源 |
 |---|---|
-| rail 皮肤与条目呈现不变量（工具类左边轨 / 无全局洗底 / user 禁洗底） | [`../../src/app/tui/DESIGN.md`](../../src/app/tui/DESIGN.md)（视觉 SSOT）· [`../architecture/TUI信息面与固定区词汇.md`](../architecture/TUI信息面与固定区词汇.md) |
+| rail 皮肤与条目呈现不变量（工具类左边轨 / 无全局洗底 / user 禁洗底） | [`../../src/app/tui/DESIGN.md`](../../src/app/tui/DESIGN.md)（视觉 SSOT）· [`../architecture/TUI信息呈现与固定区词汇.md`](../architecture/TUI信息呈现与固定区词汇.md) |
 | 键位旁注 `(Ctrl+T)` / `(Alt+E)` / `(Ctrl+O)` | 产品键位表（`src/app/tui/keybindings.rs`，代码为真值） |
-| 复制双出口（`/history-copy-last` + 应用内选区，复制默认省 token） | 选区词汇见 TUI信息面词汇（终端原生选区 / 应用内选区）；命令见产品 slash 表 |
+| 复制双出口（`/history-copy-last` + 应用内选区，复制默认省 token） | 选区词汇见 TUI信息呈现词汇（终端原生选区 / 应用内选区）；命令见产品 slash 表 |
 
 ## 边界（仍有效）
 
@@ -25,5 +25,5 @@
 ## 相关
 
 - 对照稿：仓库顶层 `designing/` · `just open-designing`（代码为运行时 SSOT）；晋级/淘汰 SOP：[`designing/AGENTS.md`](../../designing/AGENTS.md)
-- 现行：[`../architecture/TUI信息面与固定区词汇.md`](../architecture/TUI信息面与固定区词汇.md) · `designing/tui/modules/transcript` · `designing/tui/modules/expandable`
+- 现行：[`../architecture/TUI信息呈现与固定区词汇.md`](../architecture/TUI信息呈现与固定区词汇.md) · `designing/tui/modules/transcript` · `designing/tui/modules/expandable`
 - 索引：[README.md](./README.md)

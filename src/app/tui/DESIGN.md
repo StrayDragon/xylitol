@@ -123,7 +123,7 @@ components:
 > **Token SSOT**：本文件 frontmatter。
 > 组件级意图：仓库顶层 [`designing/`](../../../designing/)（`tui/modules` 的 `intent.md` + YAML 固定态）。
 > 人类预览：`just open-designing`（交互设计稿，非产品真值）。
-> Agent：[`designing/AGENTS.md`](../../../designing/AGENTS.md)。包 `packages/xylitol-tui` 只提供引擎与通用组件；语义 token / layout / glyph 配置在本面。运行时以本目录代码为准。
+> Agent：[`designing/AGENTS.md`](../../../designing/AGENTS.md)。包 `packages/xylitol-tui` 只提供引擎与通用组件；语义 token / layout / glyph 配置在本端。运行时以本目录代码为准。
 
 ## Token 引用
 
@@ -133,7 +133,7 @@ components:
 
 **少装饰壳、多内容、可复制。** 跑在用户已有终端模拟器里的 coding-agent 界面，不是仪表盘。
 
-对齐 pi interactive 的体感：当前轮进 scrollback，输入贴底，忙碌时一行 status，底部一行极简 footer；**分支回看 / travel / fork 用双 Esc 会话树**（替换 editor 槽）。**不做** Codex 式独立 transcript 浏览面。装饰、侧栏、常驻 debug、多行快捷键条默认都不要。
+对齐 pi interactive 的体感：当前轮进 scrollback，输入贴底，忙碌时一行 status，底部一行极简 footer；**分支回看 / travel / fork 用双 Esc 会话树**（替换 editor 槽）。**不做** Codex 式独立 transcript 浏览界面。装饰、侧栏、常驻 debug、多行快捷键条默认都不要。
 
 情绪：安静、高效、像在普通 REPL 里聊天。用户应能向上翻历史、框选复制，再贴回下一轮提问——**复制友好优先于视觉热闹**。
 
@@ -141,7 +141,7 @@ components:
 
 ## Colors
 
-色板刻意短。默认偏 Catppuccin Mocha，但产品面只映射这些语义：
+色板刻意短。默认偏 Catppuccin Mocha，但产品端只映射这些语义：
 
 | Token | 用途 |
 |---|---|
@@ -185,7 +185,7 @@ Markdown **fg 内联、bg 延后到行宽 padding**（与 pi-tui Markdown 一致
 
 ```
 loaded_resources  Codex 风启动卡片（见 loaded-resources 设计模块）
-content           全宽；当前轮 live 输出 → 引擎 scrollback（非 Codex 式浏览面）
+content           全宽；当前轮 live 输出 → 引擎 scrollback（非 Codex 式浏览界面）
 status            0 或 1 行（仅 busy / retry / error）
 editor            贴底；上下 muted `─` 边框标出操作区
                   双 Esc 会话树 / 命令面板：替换此槽（showSelector）
@@ -215,7 +215,7 @@ footer            1 行 dim（cwd · model · 可选 context%）
 
 ## Components
 
-组件级 MUST 与固定态在 [`designing/tui/modules/`](../../../designing/tui/modules/)——索引见 [`generated/AGENT-INDEX.md`](../../../designing/generated/AGENT-INDEX.md)（25 模块，全集以索引为准）：activity-fold · ask · atoms · bash · compaction · diff · editor · errors · expandable · footer · full-shell · loaded-resources · markdown · mcp-cue · models · palette · queue-steer · session-resume · session-tree · status · theme · toast-notice · tool · transcript · widgets。本目录不另维护组件子文档；子文档 token 表达式 → 本文件（见「Token 引用」）。
+组件级 MUST 与固定态在 [`designing/tui/modules/`](../../../designing/tui/modules/)——全集以索引 [`generated/AGENT-INDEX.md`](../../../designing/generated/AGENT-INDEX.md) 为准（不在此维护枚举）。本目录不另维护组件子文档；子文档 token 表达式 → 本文件（见「Token 引用」）。
 
 产品默认 **`Palette::dark()`**；**MUST NOT** 默认开 theme auto / OSC11。用户可经 **`/theme`** 切换内建色板（`theme` 设计模块）。
 
@@ -234,11 +234,10 @@ footer            1 行 dim（cwd · model · 可选 context%）
 - Do 工具块用 **status 左边轨**（accent/success/error，经 `paint_left_rail_line`）表达 pending/success/error；**MUST NOT** 默认整行 `tool-*-bg` 洗底。
 - Do YAML frontmatter 中所有 token 值使用双引号（`common-design-md-zh`）。
 - Do 设计模块用 `{colors.*}` 引用本文件，并声明 `tokens_from`。
-- Don't 做 Codex 式独立 transcript 浏览面 / 专用 TranscriptView 主 UX。
+- Don't 做 Codex 式独立 transcript 浏览界面 / 专用 TranscriptView 主 UX。
 - Don't 常驻 Plan / Tools / Files / 快捷键墙。
 - Don't 双栏、卡片、圆角、多字体、阴影。
 - Don't blit 弹层到内容绝对顶部。
 - Don't 截断历史冒充滚动。
 - Don't 为「好看」增加无法复制或复制后无意义的装饰字符（含 Markdown 盒线表、代码 fence 墙、标题 `#` 前缀；引用 `│ ` gutter 为例外，见 `markdown` 设计模块）。
-- Don't 在设计模块另立冲突色板 hex。
 - Don't 在未对齐本 DESIGN 前把 `src/app/tui` 空场景当成产品视觉完成态。

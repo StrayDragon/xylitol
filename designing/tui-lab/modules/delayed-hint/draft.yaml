@@ -3,7 +3,7 @@ title: 长操作延迟提示
 surface: tui-lab
 summary: ">3s 的长操作才出提示，位置只用既有 cue / 通知条。"
 alignment:
-  fixed: status 右侧 cue 或通知条；不新增信息面概念
+  fixed: status 右侧 cue 或通知条；不新增信息呈现概念
   item: 同类至多一条，后者替换前者；结束立即消失
 todos:
   - { done: false, text: "阈值常量与适用操作清单（压缩 / MCP 冷启动 / 外部编辑器）" }

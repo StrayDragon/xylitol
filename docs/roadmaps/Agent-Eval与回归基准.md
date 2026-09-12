@@ -1,7 +1,7 @@
 # Agent Eval 与回归基准
 
 > **主线**：用**同一模型**在主流 agent eval benchmark 上跑分——**先 SWE-bench，再 Terminal-Bench 2.x**；Docker/sandbox 驱动 xylitol 自主多轮，分数来自 harness 官方 grader。
-> **驱动面硬约束**：只经 `print` / headless（`XyDriver::run`）；**不做**自动驱动产品 TUI 作为 eval 主路径或前置（TUI 回归走既有 `test-tui-harness`，与社区刻度正交）。
+> **驱动端硬约束**：只经 `print` / headless（`XyDriver::run`）；**不做**自动驱动产品 TUI 作为 eval 主路径或前置（TUI 回归走既有 `test-tui-harness`，与社区刻度正交）。
 > **旁路**：从 benchmark 失败或 Langfuse trace 钉回归集，做小集 CI 防退化——**不替代**社区刻度。
 > **参考**：[Artificial Analysis](https://artificialanalysis.ai/) Data API / Intelligence Index — 选模与同模型公开基线对照；**不是** xylitol 评测入口。
 > 现状对齐：2026-07-28。**开发者 / CI 后置**，非开箱默认体验。
@@ -58,7 +58,7 @@ flowchart LR
 | 层 | 选型 | 角色 |
 |---|---|---|
 | **主 harness** | SWE-bench（先）+ Harbor Terminal-Bench（后） | 社区刻度 |
-| **xylitol 面** | `print` + `--trust` + eval YAML | headless ReAct |
+| **xylitol 端** | `print` + `--trust` + eval YAML | headless ReAct |
 | **编排** | Python 薄脚本（SWE）→ `harbor run`（TB） | Docker 并行 |
 | **旁路** | Langfuse Experiments / Dataset | 失败钉集、commit 对比 |
 | **参考** | Artificial Analysis Data API | 选模、同模型公开基线；**不**提交 xylitol |

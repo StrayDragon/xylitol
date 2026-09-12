@@ -8,7 +8,7 @@
 //! product slash catalog, bang (`!`/`!!`), session HTML/JSONL export-import.
 //! Skill/extension slash registration, when delivered, belongs on the Driver /
 //! app surface — not this aggregate.
-//! See `src/AGENTS.md` → `AgentCapabilities` 目标面.
+//! See `src/AGENTS.md` → `AgentCapabilities` 职责边界.
 //!
 //! This is the **runtime capability aggregate**, not the persisted session
 //! vocabulary in [`crate::protocol::session`].
