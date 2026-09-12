@@ -506,7 +506,6 @@ fn assistant_parts_to_ui(
                 }
                 let args = part
                     .get("arguments")
-                    .or_else(|| part.get("args"))
                     .cloned()
                     .unwrap_or(Value::Object(Default::default()));
                 let mcp = is_mcp_tool_name(name);

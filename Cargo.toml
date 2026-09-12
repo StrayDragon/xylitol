@@ -122,11 +122,13 @@ serial_test = "3.5.0"
 wiremock = "0.6.5"
 rstest = "0.26"
 rstest-bdd = "0.6.0-beta3"
-rstest-bdd-macros = { version = "0.6.0-beta3", features = ["compile-time-validation"] }
+rstest-bdd-macros = "0.6.0-beta3"
 
-# In CI, to catch missing steps at compile time, use:
-#   cargo test --features rstest-bdd-macros/compile-time-validation
-# The feature is enabled here primarily for IDE support.
+# compile-time-validation intentionally OFF: in this crate the macro's
+# compile-time step registry stays empty (one "step registry has no
+# definitions" warning per #[scenario], 443 total) while all steps resolve at
+# runtime — the qa BDD gate catches missing steps itself. Revisit when an
+# upstream release fixes cross-module registry collection.
 
 [package.metadata.docs.rs]
 all-features = true

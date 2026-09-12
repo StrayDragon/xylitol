@@ -75,11 +75,7 @@ pub fn is_env_custom_message(msg: &Value) -> bool {
 /// Only aggregates `type=text` parts. Thinking / toolCall / image are skipped.
 /// Bare-string content and untyped objects are ignored (c646: no legacy read).
 pub fn message_text(msg: &Value) -> String {
-    if let Some(parts) = msg
-        .get("content")
-        .or_else(|| msg.get("parts"))
-        .and_then(Value::as_array)
-    {
+    if let Some(parts) = msg.get("content").and_then(Value::as_array) {
         return extract_text_from_parts(parts);
     }
     String::new()
@@ -101,11 +97,9 @@ fn extract_text_from_parts(parts: &[Value]) -> String {
     out
 }
 
-/// Iterate `content` or legacy `parts` arrays on a serialized message.
+/// Iterate the canonical `content` array on a serialized message.
 pub fn message_parts(msg: &Value) -> Option<&Vec<Value>> {
-    msg.get("content")
-        .or_else(|| msg.get("parts"))
-        .and_then(Value::as_array)
+    msg.get("content").and_then(Value::as_array)
 }
 
 /// Whether a content/part value is a tool-call (requires `type: toolCall`).
@@ -121,7 +115,7 @@ pub fn tool_call_name(part: &Value) -> Option<&str> {
     part.get("name").and_then(Value::as_str)
 }
 
-/// Tool arguments object (`arguments` or legacy `args`).
+/// Tool arguments object (`arguments`).
 ///
 /// Product callers: none today; kept for the spec @executable branch-summary
 /// path (`generate_branch_summary`).
@@ -130,7 +124,7 @@ pub fn tool_call_arguments(part: &Value) -> Option<&Value> {
     if !is_tool_call_part(part) {
         return None;
     }
-    part.get("arguments").or_else(|| part.get("args"))
+    part.get("arguments")
 }
 
 /// Count tool-call parts in a serialized message.

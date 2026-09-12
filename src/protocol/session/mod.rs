@@ -150,12 +150,16 @@ mod session_tree_tests {
     }
 
     #[test]
-    fn message_text_legacy_parts_still_works() {
+    fn message_text_ignores_legacy_parts_only_shape() {
         let msg = json!({
             "role": "user",
             "parts": [{ "type": "text", "text": "legacy" }],
         });
-        assert_eq!(message_text(&msg), "legacy");
+        assert_eq!(
+            message_text(&msg),
+            "",
+            "canonical shape is `content`; parts-only MUST NOT be read"
+        );
     }
 
     #[test]
@@ -173,10 +177,10 @@ mod session_tree_tests {
     }
 
     #[test]
-    fn count_tool_calls_ignores_untagged_legacy_shape() {
+    fn count_tool_calls_ignores_untagged_part_shapes() {
         let msg = json!({
             "role": "assistant",
-            "parts": [{
+            "content": [{
                 "type": "FunctionCall",
                 "id": "c1",
                 "name": "write",
