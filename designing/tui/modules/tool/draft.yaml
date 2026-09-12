@@ -13,4 +13,4 @@ notes: |
   代码 SSOT：paint_left_rail_line。
   todo_* 块：折叠摘要 `N items · M in progress`（无 items 解析时 `...` 占位）；
   展开正文每条目一行（状态字形 + 内容），字形与 Todo checklist 投影同表；
-  失败结果保持错误文本原样。信息面分界见 docs/architecture/信息平面总览.md。
+  失败结果保持错误文本原样。会话数据流分界见 docs/architecture/会话数据流总览.md。
