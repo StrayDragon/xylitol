@@ -44,7 +44,7 @@ llman sdd validate <change-id> --strict --no-interactive
 ```bash
 llman sdd change finalize <change-id>
 ```
-（工作区可脏；ff-merge + 文档改名 + **自动提交** `archive(sdd): <change-id>` 单进程完成。`--no-commit` 跳过自动提交用于手动/CI 历史——此时自行 `git add -A && git commit -m "archive(sdd): <change-id>"`。）
+（工作区可脏；自动合并（squash 缺省）+ 文档改名 + **自动提交** `archive(sdd): <change-id>` 单进程完成。`--no-commit` 跳过自动提交用于手动/CI 历史——此时自行 `git add -A && git commit -m "archive(sdd): <change-id>"`。）
 
 `change checkpoint` 已移除；普通 `change archive` 命令保留为 fallback（不再要求任何 checkpointed 字段）。
 
@@ -53,7 +53,7 @@ finalize 已自动提交，除非传了 `--no-commit`。
 
 ### 6) 可选清理
 ```bash
-git branch -d <feature-branch>
+git branch -D <feature-branch>   # squash 后分支不再是 main 祖先，-d 会被拒绝
 ```
 push / Hosting PR 仅当用户明确要求。
 
