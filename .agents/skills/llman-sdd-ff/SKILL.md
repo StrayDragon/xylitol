@@ -2,7 +2,7 @@
 name: "llman-sdd-ff"
 description: "Fast-forward：一次性创建规划壳（proposal/design/tasks），再 Branch binding + Specs landing。禁止写入 changes/<id>/specs/。"
 metadata:
-  version: "0.0.72"
+  version: "0.0.77"
 ---
 
 # LLMAN SDD Fast-Forward (FF)
@@ -26,7 +26,7 @@ metadata:
    - `design.md`（按需）
    - `tasks.md`
 5. **Branch binding**：`llman sdd change start <id>`（干净树 + 默认分支）或手动建分支后 `change attach <id>`。
-6. **Specs landing**：在绑定分支编辑 live `llmanspec/specs/<capability>/<capability>.feature` 并 commit；无合约变更则 `skip_specs_landing: true`。
+6. **Specs landing**：在绑定分支编辑 live `llmanspec/specs/<capability>.feature`（扁平，或目录主文件）并 commit；无合约变更则 `needs_specs_change: false`。
 7. 校验：`llman sdd validate <id> --strict --no-interactive`。
 8. 用 `llman sdd show <id> --json` 确认 `readyToImplement=true` 后，建议 `llman-sdd-apply`（不要在未就绪时建议 apply）。
 
@@ -36,13 +36,14 @@ metadata:
 
 硬规则：
 1. **先** Branch binding（`change start` / `attach`）→ Full；**再** Specs landing（绑定分支编辑并 commit `llmanspec/specs/**`）。
-2. 无 live 合约变更 → `skip_specs_landing: true`。apply 前须 `readyToImplement=true`。
-3. **禁止**在默认分支 commit live specs；已 attach 勿重复 `start`。
+2. 无 live 合约变更 → `needs_specs_change: false`。apply 前须 `readyToImplement=true`。
+3. 收口用 `change finalize`（自动提交 `archive(sdd): <id>`；`--no-commit` 可跳过）。`change checkpoint` 已移除。
+4. **禁止**在默认分支 commit live specs；已 attach 勿重复 `start`。
 > 命令细节用 `llman sdd <cmd> --help` 查看；命令参考以 CLI 为准，skill 不内嵌命令表（r139）。
 校验修复（单轨 feature-as-spec）：
 
 1）缺少头注释（`missing # capability: header comment`）：
-每个 `llmanspec/specs/<capability>/<capability>.feature` 必须以以下注释开头：
+每个 capability `.feature`（`llmanspec/specs/<capability>.feature` 或 `llmanspec/specs/<capability>/<capability>.feature`）必须以以下注释开头：
 ```
 # language: zh-CN
 # capability: <capability>
@@ -60,8 +61,8 @@ metadata:
 
 Git-native 护栏：
 - **Branch binding** → **Specs landing**：先 `change start` / `attach`，再在绑定的非默认分支编辑 live `.feature` 并 commit。
-- 锁定规则：修改/删除既有 `@human` 场景会触发门禁，除非 proposal frontmatter 带 `rules_edit_acked: true`。
-- apply 前须 `readyToImplement=true`（或 `skip_specs_landing`）。收尾优先 `change finalize`。
+- 锁定规则：修改/删除既有 `@human` 场景会触发门禁，除非 proposal frontmatter 的 `rules_touched` 列出被改动的 req-id。确认路径：finalize 交互一次 y/n 写回 `rules_touched`；`--yes` 只确认带 `@agent` 的规则（审计写入 `agent_acked`）；`rules_edit_acked` 已移除（r135/q9）。
+- apply 前须 `readyToImplement=true`（或 `needs_specs_change: false`）。收尾优先 `change finalize`。
 - 勿使用 `change delta` / solidify / `*.feature.delta.toon`。
 
 ## Ethics Governance
