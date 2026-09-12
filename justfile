@@ -66,33 +66,41 @@ lint-all verbosity=verbosity_default:
         ;;
     esac
 
-# Workspace tests (nextest profile agent/ci, or cargo test fallback).
-# Live provider binary is filtered out of nextest; see `test-live-provider`.
+# Workspace test matrix (nextest profile agent/ci, or cargo test fallback):
+# root package + xylitol-ai-bridge lib. NOT in this matrix:
+#   - xylitol-tui → sole runner is `just test-tui` (in-process #[serial]
+#     coordination, TUI harness methodology SSOT);
+#   - lab_responses_prompt_cache → serial-only via `test-live-provider`.
+# -E overrides the profile default-filter, so the live-binary clause is
+# restated here; ad-hoc `cargo nextest run` keeps the nextest.toml filter.
 [arg('verbosity', pattern='quiet|normal|verbose')]
 test verbosity=verbosity_default:
     #!/usr/bin/env bash
     set -euo pipefail
+    matrix=(-E 'not (package(xylitol-tui) or binary(lab_responses_prompt_cache))')
     if command -v cargo-nextest >/dev/null; then
       case "{{verbosity}}" in
         quiet)
           # Failures only; keep one Summary line from the agent profile.
-          cargo nextest run --all-features --profile agent \
-            --show-progress none --cargo-quiet \
+          cargo nextest run --workspace --all-features --profile agent \
+            "${matrix[@]}" --show-progress none --cargo-quiet \
             --success-output never
           ;;
         normal)
-          cargo nextest run --all-features --profile ci --show-progress none
+          cargo nextest run --workspace --all-features --profile ci \
+            "${matrix[@]}" --show-progress none
           ;;
         verbose)
-          cargo nextest run --all-features --profile ci \
-            --status-level all --final-status-level all
+          cargo nextest run --workspace --all-features --profile ci \
+            "${matrix[@]}" --status-level all --final-status-level all
           ;;
       esac
     else
-      # Exclude live HTTP suite from parallel cargo test (same intent as nextest filter).
+      # Same matrix without nextest: exclude xylitol-tui (test-tui covers it)
+      # and the live HTTP suite (parallel cargo test would hammer llama.cpp).
       case "{{verbosity}}" in
         quiet)
-          if ! out=$(cargo test -q --workspace --all-features --exclude xylitol-ai-bridge 2>&1); then
+          if ! out=$(cargo test -q --workspace --all-features --exclude xylitol-ai-bridge --exclude xylitol-tui 2>&1); then
             printf '%s\n' "$out"
             exit 1
           fi
@@ -102,11 +110,11 @@ test verbosity=verbosity_default:
           fi
           ;;
         normal)
-          cargo test --workspace --all-features --exclude xylitol-ai-bridge
+          cargo test --workspace --all-features --exclude xylitol-ai-bridge --exclude xylitol-tui
           cargo test -p xylitol-ai-bridge --lib
           ;;
         verbose)
-          cargo test -v --workspace --all-features --exclude xylitol-ai-bridge
+          cargo test -v --workspace --all-features --exclude xylitol-ai-bridge --exclude xylitol-tui
           cargo test -v -p xylitol-ai-bridge --lib
           ;;
       esac
