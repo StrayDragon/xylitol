@@ -13,6 +13,8 @@ pub use model::{
     AskPhase, BashBlockStatus, CompactionBlockStatus, QueueBadge, STREAMING_THINK_ID,
     StreamingTailKind, UiEntry, UiModel, UiPhase, allocate_thinking_id,
 };
+/// att36：todo 空列表 body 固定词（窄导出，供 BDD 断言单一词源）。
+pub use preview::TODO_EMPTY_BODY_HINT;
 pub use preview::extract_display_diff;
 /// att13：折叠态工具人话摘要（窄导出，供 BDD 直驱纯函数合约）。
 pub use preview::human_tool_args_preview;

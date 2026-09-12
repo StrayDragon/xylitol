@@ -18,6 +18,10 @@ pub(crate) fn todo_status_glyph(status: TodoStatus) -> &'static str {
     }
 }
 
+/// att36 fixed empty-list body word (muted parenthetical display family,
+/// same register as `(Alt+E)` / `0 items`).
+pub const TODO_EMPTY_BODY_HINT: &str = "(empty list)";
+
 /// Checklist body lines (status glyph + content), one per item.
 pub(crate) fn todo_list_body_lines(list: &TodoList) -> Vec<String> {
     list.items
@@ -200,9 +204,11 @@ pub(crate) fn human_tool_args_preview_with_path(
             .unwrap_or_else(|| PATH_PLACEHOLDER.to_string()),
         "todo_list" | "todo_rewrite" | "todo_update" => {
             // att13: item-count summary, never the full items JSON. No parsed
-            // items yet (streaming / read-only todo_list) → pathless placeholder.
+            // items yet (streaming / read-only todo_list) → empty summary; the
+            // header paints the tool name alone. `...` is the path-slot
+            // placeholder — meaningless for pathless todo tools.
             match args.get("items").and_then(Value::as_array) {
-                None => PATH_PLACEHOLDER.to_string(),
+                None => String::new(),
                 Some(items) => {
                     let in_progress = items
                         .iter()
@@ -262,11 +268,18 @@ pub(crate) fn humanize_tool_result_for_tui(
         "bash" | "shell" => humanize_bash_tool_output(result),
         "todo_list" | "todo_rewrite" | "todo_update" => {
             // att36: block body is the checklist (shared glyph table), not the
-            // raw items JSON. Empty list → empty body (same as write/edit).
+            // raw items JSON. Empty list → explicit empty hint, never a
+            // silent body.
             serde_json::from_str::<Value>(result)
                 .ok()
                 .and_then(|v| TodoList::from_data_value(&v).ok())
-                .map(|list| todo_list_body_lines(&list).join("\n"))
+                .map(|list| {
+                    if list.is_empty() {
+                        TODO_EMPTY_BODY_HINT.to_string()
+                    } else {
+                        todo_list_body_lines(&list).join("\n")
+                    }
+                })
         }
         "ask" => {
             let (phase, summary, _) = humanize_ask_result(result, false);
@@ -1358,10 +1371,24 @@ mod tests {
             80,
         );
         assert_eq!(solo, "1 item");
-        // No parsed items yet (todo_list / partial stream) → pathless placeholder.
+        // Empty items array still counts (0 items), never a placeholder.
+        assert_eq!(
+            human_tool_args_preview("todo_rewrite", &serde_json::json!({"items": []}), 80),
+            "0 items"
+        );
+        // No parsed items (todo_list no-arg call / todo_update / partial
+        // stream) → empty summary; `...` is the path-slot placeholder.
         assert_eq!(
             human_tool_args_preview("todo_list", &serde_json::json!({}), 80),
-            "..."
+            ""
+        );
+        assert_eq!(
+            human_tool_args_preview(
+                "todo_update",
+                &serde_json::json!({"id": "a", "status": "completed"}),
+                80
+            ),
+            ""
         );
     }
 
@@ -1377,10 +1404,12 @@ mod tests {
         assert_eq!(out, "[~] one\n[x] two");
         assert!(!output_looks_like_machine_json(&out));
 
-        // Cleared list → empty body (same quiet-success family as write/edit).
-        assert_eq!(
-            humanize_tool_result_for_tui("todo_update", r#"{"items":[]}"#, false).as_deref(),
-            Some("")
+        // Cleared list → explicit empty hint (att36), still no JSON remnants.
+        let empty = humanize_tool_result_for_tui("todo_update", r#"{"items":[]}"#, false);
+        assert_eq!(empty.as_deref(), Some(TODO_EMPTY_BODY_HINT));
+        assert!(
+            !output_looks_like_machine_json(empty.as_deref().unwrap_or_default()),
+            "empty hint must not read as machine JSON"
         );
         // Errors keep raw text (early return), never the checklist.
         assert_eq!(
