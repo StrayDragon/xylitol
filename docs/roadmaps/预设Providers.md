@@ -27,7 +27,7 @@
 |---|---|
 | 预设只扩展接入与默认档案，不改会话/工具主线故事 | 为每个网关分叉 ReAct 语义 |
 | 预设标明兼容族与能力边界（含模态/工具） | 暗示未支持的能力「都有」 |
-| Pre-1.0 交付范围仍遵守「三协议族」产品约束；OpenAI 兼容**默认 Responses**，`openai-completions` 为一等显式 `api`（与 Anthropic Messages 并列） | 偷偷引入第四类传输当默认；配置写了 `api` 却在装配时被静默改写；把 Completions 当「遗留/将删」叙事 |
+| 遵守 [../architecture/多厂商模型.md](../architecture/多厂商模型.md) 已落地的协议族 / `api` / `compat` 现行 MUST（本文不复述） | 偷偷引入第四类传输当默认；把 Completions 当「遗留/将删」叙事 |
 | TS/SDK 集成放在 Web/协同面 | 让 Rust 内核依赖 Cursor 才能对话 |
 
 ## BDD 意图示例

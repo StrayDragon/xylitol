@@ -9,7 +9,7 @@
 | 是 | 不是 |
 |---|---|
 | `TUI` 引擎、`Component`/`Focusable`、通用组件 | agent session、slash、`XyEvent`、业务状态机 |
-| 同步库；产品面 host 驱动 | 绑定 tokio / 拥有产品事件循环 |
+| 同步库；产品面 host 驱动（tokio 仅 autocomplete 异步辅助，runtime 由消费方提供） | 拥有产品事件循环 |
 | `lib.rs` re-export = API 边界 SSOT | 应用层 theme token / 流式业务缓冲 / 产品 layout |
 
 历史对齐源（行为参考，非逐文件镜像、非强制同步）：`../pi/packages/tui`。
@@ -65,10 +65,10 @@
 
 | 验什么 | 在哪跑 | 命令 |
 |---|---|---|
-| 包组件层 1–3（键序列 / snapshot / 时序） | 本包 `tests/` | `just test-tui` |
-| 真终端层 4（crossterm / PTY / tmux） | 工作区 `tests/tui_e2e/`：主场景 spawn **`agent_demo`**；另含产品 Fake smoke（`pty_product_*`，隔离 config） | `just test-tui-e2e`（或 `-pty` / `-tmux`） |
-| 仓库全量门禁（不含层 4） | 全仓 | `just qa` |
-| 全量门禁 + 层 4 | 全仓 | `just qa-e2e` |
+| 包组件层 1–4（按键→状态 / snapshot / 时序 / proptest，口径同 skill `test-tui-harness`） | 本包 `tests/` | `just test-tui` |
+| 真终端层 5（crossterm / PTY / tmux） | 工作区 `tests/tui_e2e/`：主场景 spawn **`agent_demo`**；另含产品 Fake smoke（`pty_product_*`，隔离 config） | `just test-tui-e2e`（或 `-pty` / `-tmux`） |
+| 仓库全量门禁（不含层 5） | 全仓 | `just qa` |
+| 全量门禁 + 层 5 | 全仓 | `just qa-e2e` |
 | 产品 host / `XyEvent` / slash 接线 | `src/app/tui/tests.rs` 等 | 随产品测；**不**替代上表 |
 
 **分工（勿混）**

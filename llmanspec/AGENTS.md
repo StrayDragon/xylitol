@@ -15,7 +15,7 @@ change/spec 的命名、ID、依赖、原子性、语言。架构事实（分层
   - `verb` ∈ `add` / `update` / `remove` / `refactor` / `fix`（实测无其它）。
   - `priority` 为整数。**建议**用 5 的倍数（c05/c10/c1200）——目的是**预留加塞间隙**，方便后续插队；**非**强制 5 倍数。需要插队时直接占用相邻空位。priority **MUST 唯一**。
 - **priority 是建议性排序**：实际执行先沿 `depends_on` 依赖边，priority 仅作并列时的 tiebreaker。
-- **frontmatter**：每个 `proposal.md` MUST 含 YAML frontmatter，至少带 `depends_on`（list，无依赖用 `[]`）。
+- **frontmatter**：每个 `proposal.md` MUST 含 YAML frontmatter，至少带 `depends_on`（list，无依赖用 `[]`）。`needs_specs_change` 缺省 true（写 false = 本 change 免 landing specs）；`rules_touched` 声明本 change 实际改动的锁定规则（req-id list）。
 - **依赖闸**：`depends_on` 引用的 change 全部归档（移入 `changes/archive/`）前，本 change 不可 apply。引用不存在的 change = 校验错误，STOP。
 - **原子性**：每个 change 独立可校验、可归档。
 
@@ -48,11 +48,12 @@ change/spec 的命名、ID、依赖、原子性、语言。架构事实（分层
 - spec 的 `purpose` / requirement statement / scenario 步骤 **MUST 中文**；技术标识符（类型名、路径、命令、req_id）保留英文。规则块场景名用 requirement title；验收场景名用英文 `scenario.id`。
 - **单轨 feature-as-spec（r131）**：每个 capability 恰好一个 live spec 文件 `llmanspec/specs/<capability>/<capability>.feature`；`spec.toon` 已退役，validate 拒绝读取。文件头部注释 `# language:` / `# capability:` / `# purpose:` / `# scope:` 必备。
 - 场景三档（标签决定语义）：
-  - `@req:<id> @human` = **约束规则**（statement 须含 MUST/SHALL/必须/不得/禁止）；已锁定（r135），agent 修改须走 ack 流程；
+  - `@req:<id> @human` = **约束规则**（statement 须含 MUST/SHALL/必须/不得/禁止）；已锁定（r135）：改动须在 change frontmatter 声明 `rules_touched: [<req-id>, …]`；
   - `@executable`（+ `@req:<id>`）= 验收场景，由 `tests/bdd/bindings_*.rs` 的 `#[scenario(path=…, name=…)]` 按**精确名与步骤文本**绑定；`@req` MUST 指向本文件已定义的规则；
   - `@human @manual` = 人工豁免。
+  - `@agent`（MUST 与 `@human` 同场景）= 允许 agent 经 `--yes` 确认改动的锁定规则标记；`validate --yes` 仅当次生效，`finalize --yes` 落盘（写 `rules_touched` + `agent_acked`）；无标记规则仍须显式声明 `rules_touched`。
 - `背景:`（Background）MUST 紧跟 `功能:` 行（中间不得有空行）——rstest-bdd 才会执行其步骤。
-- 在非默认 feature 分支直接编辑 live `.feature` → `llman sdd change attach` / `checkpoint` → docs-only `change archive` → Git merge。**禁止** `solidify`、`change delta`、新建 `*.feature.delta.toon`。与 `tests/features/` 手写链路可并存。
+- 在非默认 feature 分支直接编辑 live `.feature` → `llman sdd change attach` → `llman sdd change finalize`（自动 ff-merge 进默认分支 + 归档改名 + 单提交）。**禁止** `solidify`、`change delta`、新建 `*.feature.delta.toon`。与 `tests/features/` 手写链路可并存。
 
 ## spec 约束层级（产品级优先）
 
@@ -70,41 +71,32 @@ change/spec 的命名、ID、依赖、原子性、语言。架构事实（分层
 
 ## change 操作闸
 
-### checkpoint / finalize 提交序（MUST 知悉）
+### finalize 提交序（MUST 知悉）
 
-**推荐（单 commit）**：
+`checkpoint` 已移除（调用即失败并指向 finalize）；闭环收尾用 `finalize`：
 
 ```text
 实现 live specs + 代码（工作区可脏）
 → llman sdd change finalize <id> [--no-check]
-→ git commit   # 一次：实现 + frontmatter + archive 改名
+# finalize 自动：ff-merge 进默认分支 + 归档改名 + 单 git commit（`archive(sdd): <id>`，
+# 打包实现 diff + frontmatter + 改名）；--no-commit 跳过自动提交（CI / hook 场景）
 ```
 
-- `finalize` **不要求**干净树；写入 `checkpointed: true` 且 `checkpoint_sha = attach 时 base_sha`（不是实现 HEAD）。
+- `finalize` **不要求**干净树。
 - 审计仍可用：`git diff base_sha..HEAD` + `branch`。
-
-**Fallback（多 commit，严格 sha）**：
-
-```text
-commit（live specs + 代码）
-→ llman sdd change checkpoint <id>   # checkpoint_sha = 实现 HEAD
-→ commit checkpoint 元数据
-→ llman sdd change archive <id>
-→ commit archive rename
-```
-
+- 仅密封（ff-merge + rename）不收实现时用 `llman sdd change archive <id>`。
 - 结构门禁先跑：`llman sdd validate <cap|change> --strict --no-check`（快）；再跑带 BDD 的全量 validate / finalize。
-- `checkpoint`/`finalize`/`archive` 的 `--no-interactive`：接受并忽略。
+- `finalize`/`archive` 的 `--no-interactive`：接受并忽略。
 
 ### 提交卫生（SHOULD）
 
 1. **Draft 可独提或一批提**：可从 `docs/roadmaps` 等意向一次 `change new` 多个草案并 `chore(sdd): draft …` 入库；**不**要求与实现同提。
-2. **闭环收尾优先 `finalize`**，减少 checkpoint/archive 礼仪 commit。
+2. **闭环收尾优先 `finalize`**（单 `archive(sdd): <id>` auto commit），减少礼仪 commit。
 3. **产品 vs 流程**：实现用 `feat`/`fix`/`refactor`；SDD 礼仪用 `chore(sdd):` / `docs(sdd):`。
 
-### stage=draft
+### stage 四档
 
-已有 `proposal+design+tasks` 仍报 `draft` 时：通常是 **未 attach** → `llman sdd change attach <id>`（不要新建 `changes/<id>/specs/`）。attach 后应为 `full`。
+lifecycle v2 起 stage 为四档：`draft`（仅 proposal）→ `designed`（+design）→ `planned`（+tasks）→ `full`（+attach 绑定）。已有 `proposal+design+tasks` 仍停在 `planned` 时：通常是 **未 attach** → `llman sdd change attach <id>`（不要新建 `changes/<id>/specs/`）。attach 后应为 `full`。
 
 ### depends_on
 
