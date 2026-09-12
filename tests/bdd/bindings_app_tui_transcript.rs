@@ -127,3 +127,9 @@ async fn test_att35_head_suffix_counts(transcript_bdd: TranscriptBdd) {}
     name = "explore-head-suffix-live-update"
 )]
 async fn test_att35_head_suffix_live(transcript_bdd: TranscriptBdd) {}
+
+#[scenario(
+    path = "llmanspec/specs/app-tui-transcript/app-tui-transcript.feature",
+    name = "todo-block-body-renders-checklist"
+)]
+fn test_att36_todo_block_body(transcript_bdd: TranscriptBdd) {}

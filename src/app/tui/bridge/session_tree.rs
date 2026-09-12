@@ -1031,9 +1031,176 @@ mod tests {
         );
     }
 
+    /// att36 / att50: the todo_* block (header preview + glyph-checklist body)
+    /// and the checklist projection row must be identical after a live flush
+    /// and after a travel rebuild from the same session content.
     #[test]
-    fn rebuild_merges_tool_call_and_result_into_one_tool() {
+    fn rebuild_todo_block_matches_live_flush() {
+        let todo_args = json!({ "items": [
+            { "id": "a", "content": "检查环境", "status": "in_progress" },
+            { "id": "b", "content": "写清单" }
+        ]});
+        let todo_result = json!({ "items": [
+            { "id": "a", "content": "检查环境", "status": "in_progress" },
+            { "id": "b", "content": "写清单", "status": "pending" }
+        ]})
+        .to_string();
         let entries = vec![
+            SessionEntry::Message(MessageEntry {
+                base: EntryBase {
+                    entry_type: "message".into(),
+                    id: "u1".into(),
+                    parent_id: None,
+                    timestamp: 0,
+                },
+                message: fixture_message_json("user", "plan it"),
+            }),
+            SessionEntry::Message(MessageEntry {
+                base: EntryBase {
+                    entry_type: "message".into(),
+                    id: "a1".into(),
+                    parent_id: Some("u1".into()),
+                    timestamp: 0,
+                },
+                message: json!({
+                    "role": "assistant",
+                    "content": [{
+                        "type": "toolCall",
+                        "id": "tc-todo",
+                        "name": "todo_rewrite",
+                        "arguments": todo_args,
+                    }],
+                    "timestamp": 0u64,
+                }),
+            }),
+            SessionEntry::Message(MessageEntry {
+                base: EntryBase {
+                    entry_type: "message".into(),
+                    id: "tr1".into(),
+                    parent_id: Some("a1".into()),
+                    timestamp: 0,
+                },
+                message: json!({
+                    "role": "toolResult",
+                    "toolCallId": "tc-todo",
+                    "toolName": "todo_rewrite",
+                    "content": [{ "type": "text", "text": todo_result }],
+                    "isError": false,
+                    "timestamp": 0u64,
+                }),
+            }),
+            // SSOT snapshot (atd2): the resume-side checklist source.
+            SessionEntry::Custom(crate::protocol::session::CustomEntry {
+                base: EntryBase {
+                    entry_type: "custom".into(),
+                    id: "snap1".into(),
+                    parent_id: Some("tr1".into()),
+                    timestamp: 0,
+                },
+                custom_type: crate::protocol::session::CUSTOM_TYPE_AGENT_TODO.into(),
+                data: json!({ "items": [
+                    { "id": "a", "content": "检查环境", "status": "in_progress" },
+                    { "id": "b", "content": "写清单", "status": "pending" }
+                ]}),
+            }),
+        ];
+        let leaf = crate::protocol::session::transcript_leaf_anchor(&entries, None);
+        let travel = SessionTreeTravel {
+            kind: crate::protocol::session::SessionTreeKind::MessageHistory,
+            selected_id: leaf.clone().unwrap_or_default(),
+            leaf_id: leaf,
+            editor_text: None,
+        };
+        let mut rebuilt = UiModel::default();
+        rebuild_scrollback_from_travel(&mut rebuilt, &entries, &travel);
+
+        // Same turn as a live event stream: user row → Start → TodoUpdated
+        // (atd13) → End.
+        let mut live = UiModel::default();
+        live.begin_run("plan it");
+        apply_xy_event(
+            &mut live,
+            &XyEvent::ToolExecutionStart {
+                id: "tc-todo".into(),
+                name: "todo_rewrite".into(),
+                args: json!({ "items": [
+                    { "id": "a", "content": "检查环境", "status": "in_progress" },
+                    { "id": "b", "content": "写清单" }
+                ]}),
+            },
+        );
+        apply_xy_event(
+            &mut live,
+            &XyEvent::TodoUpdated {
+                list: TodoList::new(vec![
+                    crate::protocol::session::TodoItem {
+                        id: "a".into(),
+                        content: "检查环境".into(),
+                        status: crate::protocol::session::TodoStatus::InProgress,
+                    },
+                    crate::protocol::session::TodoItem {
+                        id: "b".into(),
+                        content: "写清单".into(),
+                        status: crate::protocol::session::TodoStatus::Pending,
+                    },
+                ]),
+            },
+        );
+        apply_xy_event(
+            &mut live,
+            &XyEvent::ToolExecutionEnd {
+                id: "tc-todo".into(),
+                name: "todo_rewrite".into(),
+                result: json!({ "items": [
+                    { "id": "a", "content": "检查环境", "status": "in_progress" },
+                    { "id": "b", "content": "写清单", "status": "pending" }
+                ]})
+                .to_string(),
+                is_error: false,
+            },
+        );
+
+        let projection = |model: &UiModel| -> Vec<String> {
+            model
+                .entries
+                .iter()
+                .map(|e| match e {
+                    UiEntry::Tool {
+                        args_preview,
+                        output,
+                        done,
+                        is_error,
+                        ..
+                    } => format!(
+                        "tool[preview={args_preview:?} body={output:?} done={done} err={is_error}]"
+                    ),
+                    UiEntry::Todo {
+                        summary,
+                        detail_lines,
+                    } => format!("todo[{summary} {detail_lines:?}]"),
+                    UiEntry::User { text } => format!("user[{text}]"),
+                    other => format!("other[{other:?}]"),
+                })
+                .collect()
+        };
+        assert_eq!(
+            projection(&rebuilt),
+            projection(&live),
+            "att36: rebuild must be shape-identical to the live flush"
+        );
+        assert_eq!(
+            projection(&live),
+            vec![
+                "user[plan it]".to_string(),
+                "tool[preview=\"2 items · 1 in progress\" body=\"[~] 检查环境\\n[ ] 写清单\" done=true err=false]".to_string(),
+                "todo[Todo · 0/2 [\"[~] 检查环境\", \"[ ] 写清单\"]]".to_string(),
+            ],
+            "att13/att36: humanized preview, checklist body, typed projection row"
+        );
+    }
+
+    #[test]
+    fn rebuild_merges_tool_call_and_result_into_one_tool() {        let entries = vec![
             SessionEntry::Message(MessageEntry {
                 base: EntryBase {
                     entry_type: "message".into(),
