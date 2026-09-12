@@ -74,7 +74,7 @@
 - `just qa` 串行跑 `test-live-provider`（连接真实网关的 lab；配置路径、`enabled` 门禁与 skip 语义见 `justfile` 与 `just gen-live-provider-example`）。产品示例配置 `configs/example.yaml` 由 `just gen-config-example` 生成（改 `scripts/gen_config_example.py` 模板，勿直接手改产物）。
 - `qa` 输出默认 quiet；`just qa normal` / `verbose` 或 `JUST_VERBOSITY=` 调整。
 - 非变更门禁脚本 `scripts/check_*.py` **MUST** 经 wiring 进 `qa`；维护脚本不进门禁。
-- **prek 与 `just qa` 分层、不重复**：pre-commit 只做文本/元数据卫生（空白、EOF、私钥、大文件等）与 commit-msg 规约，保持轻量；cargo 级门禁（fmt / clippy / test / doc-test）**MUST NOT** 拆成独立 hook 进 prek——单一真值是 `just qa`。pre-push 强制跑 `just qa` 全量兜底（逃生口 `git push --no-verify`）；平时提交前是否先跑 qa 靠自觉。
+- **prek 与 `just qa` 正交**：prek hook（任何 stage）只承担文本/元数据卫生（空白、EOF、私钥、大文件等）与 commit-msg 规约，保持轻量；cargo 级门禁（fmt / clippy / test / doc-test）**MUST NOT** 拆成独立 hook 进 prek。`just qa` 是开发过程中的手动门禁，push 前跑不跑靠自觉；push 时点的强制一致性由 CI（GitHub Actions）兜底，不用本地 hook 卡推送。LFS pre-push 由 git-lfs 原生 hook 负责（`just setup` 经 `git lfs install --local` 确保安装）。
 - 探查：`cargo run -- --help`；文档构建与检查：`just doc` / `just doc-check`。
 
 ### 试验 / 真实网关验证命名（`lab_`）
