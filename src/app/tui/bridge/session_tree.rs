@@ -71,7 +71,11 @@ pub fn rebuild_scrollback_from_travel(
             }
         }
         let thought_elapsed = persisted_thinking_elapsed(entry);
-        for ui in session_entry_to_ui_entries_with_thought_elapsed(entry, thought_elapsed) {
+        for ui in session_entry_to_ui_entries_with_thought_elapsed(
+            entry,
+            thought_elapsed,
+            &ui_model.entries,
+        ) {
             ui_model.entries.push(ui);
         }
     }
@@ -263,14 +267,18 @@ fn bash_done_ids(entries: &[SessionEntry]) -> std::collections::HashSet<String> 
 }
 
 /// Project one session entry into zero or more UI rows (c646: thinking ≠ text).
+///
+/// `prior` carries the rows projected before this entry so Thinking ids count
+/// ordinals globally, matching the live flush (att21).
 #[cfg(test)]
 fn session_entry_to_ui_entries(entry: &SessionEntry) -> Vec<UiEntry> {
-    session_entry_to_ui_entries_with_thought_elapsed(entry, None)
+    session_entry_to_ui_entries_with_thought_elapsed(entry, None, &[])
 }
 
 fn session_entry_to_ui_entries_with_thought_elapsed(
     entry: &SessionEntry,
     thought_elapsed: Option<u64>,
+    prior: &[UiEntry],
 ) -> Vec<UiEntry> {
     match entry {
         SessionEntry::Message(m) if message_role(&m.message) == Some("bashExecution") => {
@@ -279,7 +287,7 @@ fn session_entry_to_ui_entries_with_thought_elapsed(
         // c1905: Env CustomMessage (session_env) must not appear as chat / ScrollNotice.
         SessionEntry::Message(m) if is_env_custom_message(&m.message) => Vec::new(),
         SessionEntry::Message(m) => {
-            message_json_to_ui_entries(&m.base.id, &m.message, thought_elapsed)
+            message_json_to_ui_entries(&m.base.id, &m.message, thought_elapsed, prior)
         }
         SessionEntry::CustomMessage(_) => Vec::new(),
         SessionEntry::Compaction(c) => vec![UiEntry::Compaction {
@@ -358,6 +366,7 @@ fn message_json_to_ui_entries(
     entry_id: &str,
     message: &Value,
     thought_elapsed: Option<u64>,
+    prior: &[UiEntry],
 ) -> Vec<UiEntry> {
     let Some(role) = message_role(message) else {
         return Vec::new();
@@ -370,7 +379,7 @@ fn message_json_to_ui_entries(
         "user" => vec![UiEntry::User {
             text: message_text(message),
         }],
-        "assistant" => assistant_parts_to_ui(entry_id, message, thought_elapsed),
+        "assistant" => assistant_parts_to_ui(entry_id, message, thought_elapsed, prior),
         "toolResult" | "tool" => {
             // Standalone projection (orphan / direct call). Rebuild path merges via
             // [`merge_persisted_tool_result`] instead of appending a second Tool.
@@ -439,6 +448,7 @@ fn assistant_parts_to_ui(
     entry_id: &str,
     message: &Value,
     thought_elapsed: Option<u64>,
+    prior: &[UiEntry],
 ) -> Vec<UiEntry> {
     let stop = message
         .get("stopReason")
@@ -466,7 +476,7 @@ fn assistant_parts_to_ui(
                     .filter(|s| !s.is_empty())
                 {
                     let text = t.to_string();
-                    let id = allocate_thinking_id(&out, &text);
+                    let id = allocate_thinking_id(prior.iter().chain(out.iter()), &text);
                     out.push(UiEntry::Thinking {
                         id,
                         text,
@@ -585,6 +595,8 @@ fn push_assistant_terminal_note(
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::app::core::driver::XyEvent;
+    use crate::app::tui::bridge::apply_xy_event;
     use crate::protocol::session::{EntryBase, MessageEntry, fixture_message_json};
     use serde_json::json;
 
@@ -668,6 +680,83 @@ mod tests {
                 UiEntry::Assistant { text: reply }
             ] if text == "step 1" && reply == "hello"),
             "got: {ui:?}"
+        );
+    }
+
+    /// att21: live 与 rebuild 对同一逻辑块 MUST 同 id。直播 flush 的序数按
+    /// 全量 entries 计；rebuild 对跨消息重复的同文 thinking 不得重置序数。
+    #[test]
+    fn rebuild_thinking_ids_match_live_ordinals_across_messages() {
+        let mk_assistant = |id: &str, parent: &str| {
+            SessionEntry::Message(MessageEntry {
+                base: EntryBase {
+                    entry_type: "message".into(),
+                    id: id.into(),
+                    parent_id: Some(parent.into()),
+                    timestamp: 0,
+                },
+                message: json!({
+                    "role": "assistant",
+                    "content": [
+                        { "type": "thinking", "thinking": "same plan" },
+                        { "type": "text", "text": "reply" }
+                    ],
+                    "timestamp": 0u64,
+                }),
+            })
+        };
+        let entries = vec![
+            SessionEntry::Message(MessageEntry {
+                base: EntryBase {
+                    entry_type: "message".into(),
+                    id: "u1".into(),
+                    parent_id: None,
+                    timestamp: 0,
+                },
+                message: json!({
+                    "role": "user",
+                    "content": [{ "type": "text", "text": "hi" }],
+                    "timestamp": 0u64,
+                }),
+            }),
+            mk_assistant("a1", "u1"),
+            mk_assistant("a2", "a1"),
+        ];
+        let travel = SessionTreeTravel {
+            kind: crate::protocol::session::SessionTreeKind::MessageHistory,
+            selected_id: "a2".into(),
+            leaf_id: Some("a2".into()),
+            editor_text: None,
+        };
+        // 直播口径：同文 thinking 第二次 flush 时序数为 1。
+        let mut live = UiModel::default();
+        apply_xy_event(&mut live, &XyEvent::ThinkingDelta("same plan".into()));
+        apply_xy_event(&mut live, &XyEvent::TextDelta("reply".into()));
+        apply_xy_event(&mut live, &XyEvent::ThinkingDelta("same plan".into()));
+        apply_xy_event(&mut live, &XyEvent::TextDelta("reply".into()));
+        let live_ids: Vec<_> = live
+            .entries
+            .iter()
+            .filter_map(|e| match e {
+                UiEntry::Thinking { id, .. } => Some(id.clone()),
+                _ => None,
+            })
+            .collect();
+        assert_eq!(live_ids.len(), 2);
+
+        let mut ui = UiModel::default();
+        rebuild_scrollback_from_travel(&mut ui, &entries, &travel);
+        let rebuilt_ids: Vec<_> = ui
+            .entries
+            .iter()
+            .filter_map(|e| match e {
+                UiEntry::Thinking { id, .. } => Some(id.clone()),
+                _ => None,
+            })
+            .collect();
+        assert_eq!(
+            rebuilt_ids, live_ids,
+            "att21: rebuild ids must match live flush ordinals for identical thinking text"
         );
     }
 
