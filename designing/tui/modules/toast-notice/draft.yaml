@@ -9,6 +9,6 @@ alignment:
   todo-bar: 不占用队列条
 todos:
   - { done: true, text: "词表 Error: 前缀 + warning 色" }
-  - { done: true, text: "busy Resume 硬拒闸走本槽" }
+  - { done: true, text: "busy Resume 硬拒反馈走本槽" }
 notes: |
-  代码 SSOT：host push_toast_notice。TTL 默认 4s。无组件自有快捷键。
+  代码 SSOT：host push_toast_notice（TTL 以代码为准）。无组件自有快捷键。

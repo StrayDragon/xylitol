@@ -11,7 +11,7 @@ keys:
   - { chord: "Enter", when: "执行最新一条的动作" }
   - { chord: "d", when: "关闭最新一条" }
 todos:
-  - { done: false, text: "与通知条的分工规则写入 TUI信息面与固定区词汇.md" }
+  - { done: false, text: "与通知条的分工规则写入 TUI信息呈现与固定区词汇.md" }
   - { done: false, text: "适用消息清单（复制 / 导出等关键确认，过程性消息不进栈）" }
   - { done: false, text: "遮挡规避：与 transcript 滚动区的关系（悬浮 vs 预留列）" }
 notes: |

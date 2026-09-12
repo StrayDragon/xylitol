@@ -13,7 +13,7 @@ pub const LINK_GRACE_INITIAL: Duration = Duration::from_secs(5);
 pub const LINK_GRACE_RECONNECT: Duration = Duration::from_secs(1);
 
 /// 通知条文案（toast notice，E 类运行态；词表 SSOT：
-/// `docs/architecture/TUI信息面与固定区词汇.md`）。
+/// `docs/architecture/TUI信息呈现与固定区词汇.md`）。
 pub const LINK_DOWN_NOTICE: &str = "连接断开，重连中…";
 pub const LINK_RECOVERED_NOTICE: &str = "Host 连接已恢复";
 

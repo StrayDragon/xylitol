@@ -6,10 +6,10 @@ summary: 调用活动折叠：低级操作收进簇（簇=同一轮的多条过�
 alignment:
   fixed: 主滚动区段/簇/信封，不是块级 expandable
   item: Todo/Compaction 可进信封；ScrollNotice / Error 不进
-  todo-bar: 簇内 Todo 行，不另起浏览面
+  todo-bar: 簇内 Todo 行，不另起浏览界面
 todos:
   - { done: true, text: "词表 Thinking / Thought Ns / Used N / 禁止 Planning next moves" }
-  - { done: true, text: "collapsed / envelope / expanded 三态闸走 YAML" }
+  - { done: true, text: "collapsed / envelope / expanded 三态对照走 YAML" }
   - { done: true, text: "c2510 探索簇头后缀 · N reads · M searches（只列非零类目；Edited 头不附；calls 计数 ≠ files 计数）" }
 notes: |
   代码 SSOT：activity_fold paint / scene。本稿是对照辅助。无全局快捷键墙；三角点击是组件命中。

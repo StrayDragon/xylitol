@@ -38,7 +38,7 @@ flowchart TD
 | | 内容 |
 |---|---|
 | **后置 / 配置启用** | MCP 整体（相对开箱主线） |
-| **已落地能力** | 配置驱动装配 · 嵌入缝去泄漏 · `/reload` 重载路径 · 启动不挡 TTI + 并行连接 + loaded-resources 进度 · `/mcp` SelectList 发现面 · hot-merge ungate |
+| **已落地能力** | 配置驱动装配 · 嵌入缝去泄漏 · `/reload` 重载路径 · 启动不挡 TTI + 并行连接 + loaded-resources 进度 · `/mcp` SelectList 发现入口 · hot-merge ungate |
 | **有意后置** | MCP 安全 allowlist 产品 UI；`/reload` 进行中锁输入等整包 UX |
 
 ## 理想 vs 现状
@@ -48,7 +48,7 @@ flowchart TD
 | zero-cost 未配置 | ✅ |
 | 配置装配 + 重载 | ✅ |
 | 嵌入方不碰内部 MCP 配置类型 | ✅ |
-| 启动不挡 TTI + 并行连接 + 进度面 | ✅ |
+| 启动不挡 TTI + 并行连接 + 进度展示 | ✅ |
 | `/mcp` SelectList 发现 | ✅ |
 | 安全 allowlist UI | 🔴 后置 |
 
@@ -60,5 +60,5 @@ flowchart TD
 - [工具与权限.md](./工具与权限.md)
 - [配置与档案.md](./配置与档案.md)
 - [库与多客户端.md](./库与多客户端.md)
-- [信任与项目闸.md](./信任与项目闸.md)
-- 固定区词汇（通知条等固定词）：[TUI信息面与固定区词汇.md](./TUI信息面与固定区词汇.md)
+- [信任与项目门禁.md](./信任与项目门禁.md)
+- 固定区词汇（通知条等固定词）：[TUI信息呈现与固定区词汇.md](./TUI信息呈现与固定区词汇.md)

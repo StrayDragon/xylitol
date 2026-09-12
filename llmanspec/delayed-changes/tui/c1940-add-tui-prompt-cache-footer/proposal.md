@@ -14,7 +14,7 @@ summary: "TUI footer 显示 Prompt Cache 命中/未回报/不适用三态读数�
 
 ## Why
 
-c1885 把 Prompt Cache 尺子落在 bridge + trace/Langfuse，**刻意不做 TUI**。若日后排障或日常会话需要在固定区一眼看见「命中 / 未回报 / 不适用」，需要独立 change：对齐 [`TUI信息面与固定区词汇`](../../../../docs/architecture/TUI信息面与固定区词汇.md)，避免临时塞文案。
+c1885 把 Prompt Cache 尺子落在 bridge + trace/Langfuse，**刻意不做 TUI**。若日后排障或日常会话需要在固定区一眼看见「命中 / 未回报 / 不适用」，需要独立 change：对齐 [`TUI信息呈现与固定区词汇`](../../../../docs/architecture/TUI信息呈现与固定区词汇.md)，避免临时塞文案。
 
 ## What Changes（意向，未钉）
 
@@ -25,7 +25,7 @@ c1885 把 Prompt Cache 尺子落在 bridge + trace/Langfuse，**刻意不做 TUI
 ## Capabilities（意向）
 
 - `app-tui-fixed-zone`（或等价）
-- 跨面：跟 [`跨面同源`](../../../../docs/roadmaps/跨面同源.md) 约束
+- 跨面：跟 [`跨端同源`](../../../../docs/roadmaps/跨端同源.md) 约束
 
 ## Impact
 

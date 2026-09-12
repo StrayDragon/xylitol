@@ -1,6 +1,6 @@
 # Cloud Agent 与 Web 控制台
 
-> **状态：搁置（2026-08-22）。** 前端选型已收敛为 gpui 桌面 + TUI 双 Rust 面（见 [`Gpui桌面客户端.md`](./Gpui桌面客户端.md) 与 [`../research/ui-runtime-tradeoffs-2026.md`](../research/ui-runtime-tradeoffs-2026.md)）；本文保留为愿景底稿，复活需显式重立项。
+> **状态：搁置（2026-08-22）。** 前端选型已收敛为 gpui 桌面 + TUI 双 Rust 端（见 [`Gpui桌面客户端.md`](./Gpui桌面客户端.md) 与 [`../research/ui-runtime-tradeoffs-2026.md`](../research/ui-runtime-tradeoffs-2026.md)）；本文保留为愿景底稿，复活需显式重立项。
 > CS 架构的 self-host 分布式 cloud agent 类似物 + TypeScript 生态 Web 应用：一个前端管控多工作区，并预留与 Cursor Agent 模式协同。
 > 现状对齐：2026-07-22。
 > 排障观测：以 [OTEL与Langfuse观测.md](./OTEL与Langfuse观测.md) 为首要出口；**不**内嵌自研 Inspect 检视台。
@@ -31,10 +31,10 @@ flowchart TB
 | 子域 | 职责 |
 |---|---|
 | **控制面** | 工作区注册、会话列表、权限与信任呈现、总览 |
-| **执行面** | 每工作区仍走 xylitol 同一对话主线（可远程托管） |
-| **审阅面** | diff、文件简易预览、评论/采纳流（产品后可加细） |
+| **执行侧** | 每工作区仍走 xylitol 同一对话主线（可远程托管） |
+| **审阅侧** | diff、文件简易预览、评论/采纳流（产品后可加细） |
 | **观测** | 进程内 fastrace + 可选 OTLP→Langfuse（非自研检视台） |
-| **协同面** | Cursor SDK 等外部 agent；与 xylitol **无关也可用**，有配置时再协作 |
+| **协同端** | Cursor SDK 等外部 agent；与 xylitol **无关也可用**，有配置时再协作 |
 
 ## 与 TUI 的关系
 
@@ -75,16 +75,16 @@ Then 可按配置调度到 xylitol 工作区或并行；未配置时互不影响
 ## 技术生态（产品约束级）
 
 - Web **用 TS 生态**书写（便于 Cursor SDK 与现代审阅 UI）。
-- 内核与对话语义仍在 xylitol；Web 是控制与呈现面，避免再实现第二套 ReAct 故事。
+- 内核与对话语义仍在 xylitol；Web 是控制与呈现端，避免再实现第二套 ReAct 故事。
 
 ## 依赖
 
 | 依赖 | 说明 |
 |---|---|
 | 远程体验 parity | [../architecture/远程体验与线协议.md](../architecture/远程体验与线协议.md) |
-| [跨面同源.md](./跨面同源.md) | 跨面语义约束 |
+| [跨端同源.md](./跨端同源.md) | 跨端语义约束 |
 | 观测 | [OTEL与Langfuse观测.md](./OTEL与Langfuse观测.md)；底座见 [../architecture/进程内观测.md](../architecture/进程内观测.md) |
-| 可并行 | TUI 视觉优化（不同面） |
+| 可并行 | TUI 视觉优化（不同端） |
 
 ## 支线与方向
 

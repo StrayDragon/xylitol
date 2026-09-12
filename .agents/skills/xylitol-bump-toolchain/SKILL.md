@@ -11,7 +11,7 @@ description: >-
 
 # xylitol 工具链与依赖 bump
 
-本仓是 **应用 + 未发布库**（Pre-0.0.1）：编译器钉 dated nightly，不追滚动 `channel = "nightly"`，不为下游保留旧 rustc / 旧 crate 别名。
+编译器钉 **dated nightly**（不追滚动 `channel = "nightly"`）；不为下游保留旧 rustc / 旧 crate 别名。
 
 ## SSOT
 
@@ -43,7 +43,7 @@ description: >-
 4. **对齐 `rust-version`**
    写成当前 **stable**。禁止写成该 nightly 的 `x.y.z`（`1.100.0-nightly` 是 prerelease，Cargo MSRV 可能拒编）。启用 `#![feature]` 时在 commit 里写明声明已与 pin 分叉。
 
-5. **编译器闸**
+5. **编译器门禁**
    `cargo fmt --all`
    `cargo clippy --all-features --all-targets -- -D warnings`
    `cargo clippy -p xylitol-tui --all-targets -- -D warnings`

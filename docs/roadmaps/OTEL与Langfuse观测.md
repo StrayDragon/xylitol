@@ -1,6 +1,6 @@
 # OTEL 与 Langfuse 观测
 
-> **已落地**底座（本地 JSONL、可选 OTLP、同 turn 过程树、Langfuse 属性、多总线边界、`xylitol.obs.lane=llm` 属性、门闸早退降噪、Collector 示例配置）见 [../architecture/进程内观测.md](../architecture/进程内观测.md)。
+> **已落地**底座（本地 JSONL、可选 OTLP、同 turn 过程树、Langfuse 属性、多总线边界、`xylitol.obs.lane=llm` 属性、门禁早退降噪、Collector 示例配置）见 [../architecture/进程内观测.md](../architecture/进程内观测.md)。
 > 本文只留**未兑现**方向：infra lane span、运维 Collector 实际分流、采样与子进程出站。分叉身份 / 观测槽 / fork 树边已进 [进程内观测.md](../architecture/进程内观测.md)。
 
 ## 分阶段切片
@@ -35,12 +35,12 @@ Then Langfuse 仅见 llm lane；Tempo（或等价）可见 infra
 
 - 用观测属性兼做 TUI / 通知总线（`XyEvent` / hooks 已有）
 - 应用内双 OTLP exporter / 第二套 `tracing`·OTel span 栈
-- 自研 Inspect 检视台作主观测面
+- 自研 Inspect 检视台作主观测端
 - 替用户托管 Tempo/Grafana（仅文档 + 示例）
 
 ## 相关
 
 - 现行心智：[../architecture/进程内观测.md](../architecture/进程内观测.md)
-- 面事件：[../architecture/用户可见事件.md](../architecture/用户可见事件.md)
+- 端事件：[../architecture/用户可见事件.md](../architecture/用户可见事件.md)
 - [Agent-Eval与回归基准.md](./Agent-Eval与回归基准.md)
 - 总索引：[README.md](./README.md)

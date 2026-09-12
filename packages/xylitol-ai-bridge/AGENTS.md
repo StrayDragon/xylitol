@@ -9,7 +9,7 @@ LLM **provider 方言桥** + multi-source **token accounting**。Workspace 库�
 | 厂商官方 SDK Client 接线（OpenAI：`async-openai`；Anthropic：**暂 reqwest**，官方 Rust SDK 未成熟）+ middleware / 可移植 hooks | ReAct / session / TUI |
 | **LLM 投影 DTO**（只表达发给模型的形状）+ usage / accounting | 平行拷贝全量 `AgentMessage`（含 bash/compact/branch/custom） |
 | RemoteCount（Anthropic count_tokens、OpenAI Responses input_tokens）优先于本地 tokenizer | 产品 footer 文案；抽第三个 `xylitol-llm-types` |
-| **WirePolicy**（`wire_policy/defaults.rs` 纯常量）：`compat` + 仅 req/resp 的 `extra_policy`；默认 `generic`；`prompt_cache_usage` 默认 true，另两位 false；infra 只注入 | 平行 YAML/env 影子配置；把 `tool_search` 等 agent 能力塞进 WirePolicy |
+| **WirePolicy**（`wire_policy/defaults.rs` 纯常量 = 默认值 SSOT）：`compat` + 仅 req/resp 的 `extra_policy`；具体默认值以该文件为准；infra 只注入 | 平行 YAML/env 影子配置；把 `tool_search` 等 agent 能力塞进 WirePolicy |
 
 ## 与主仓概念分层（normative）
 
@@ -28,7 +28,7 @@ OpenAI-like / Anthropic-like upstream
 | MUST | MUST NOT |
 |---|---|
 | 默认经 **官方 SDK Client** 发请求（OpenAI）；Anthropic 在官方 SDK 成熟前用 reqwest，DTO/hooks 形状不变 | 为每个网关手写第二套完整 HTTP/SSE 栈作默认路径（OpenAI 侧） |
-| OpenAI：`async-openai` 仅启用 **`chat-completion` + `responses` + `byot` + `middleware` + `rustls`**（`default-features = false`；TLS 只选 rustls） | 默认拉 `full`；或同时启用 `native-tls` / `native-tls-vendored`；或无故用 `rustls-no-provider`（需自装 crypto provider） |
+| OpenAI：`async-openai` 关 `default-features`，按需最小启用 features（清单以 `Cargo.toml` 为准）；TLS 只选 rustls | 默认拉 `full`；或同时启用 `native-tls` / `native-tls-vendored`；或无故用 `rustls-no-provider`（需自装 crypto provider） |
 | OpenAI Responses **流式**：`create_stream_byot::<_, Value>`，按事件 `type` 宽松匹配（兼容端常缺字段） | 把 SSE 默认绑死在 typed `ResponseStreamEvent`（如缺 `created_at` 的 `response.created` 会炸） |
 | hooks 经 SDK **middleware**（或文档化等价点）接到可移植 HeaderBag/JSON body | agent/protocol import 本包 `provider` / vendor SDK 类型 |
 | DTO **不含** session 环境角色的平行 enum；主仓 MAY `pub use` DTO 组合 `AgentMessage::Llm` | 与 `AgentMessage` 全量孪生 + JSON 往返「对齐」 |

@@ -4,7 +4,7 @@ category: 工具调用
 surface: tui
 summary: 产品 Edit 走 display_diff；窄屏 unified compact，宽≥100 切 side-by-side；rail 内不叠 diff 行底。
 alignment:
-  fixed: 工具块/Diff 条目正文，不是独立浏览面
+  fixed: 工具块/Diff 条目正文，不是独立浏览界面
   item: 与 markdown 同为行级积木；header 与正文共 status 轨
   todo-bar: 不进队列条
 todos:

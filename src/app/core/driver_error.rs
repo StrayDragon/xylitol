@@ -11,7 +11,7 @@ use crate::protocol::error::{
     XyError, XyExportError, XySessionError, XySessionStoreError, XyToolError, XyTrustError,
 };
 
-/// Errors from [`super::driver::XyDriver`] (整机遥控器 / 多面共享应用协议).
+/// Errors from [`super::driver::XyDriver`] (整机遥控器 / 多端共享应用协议).
 ///
 /// Distinct from [`XyError`] (ReAct / provider / tool hot path). Agent-loop
 /// failures that surface through the driver are wrapped as [`Self::Agent`].

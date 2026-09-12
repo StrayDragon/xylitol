@@ -1,6 +1,6 @@
 # diff
 
-复制友好的代码变更。产品把 Edit `display_diff` 嵌在 expandable 工具块里（**非**独立浏览面）。
+复制友好的代码变更。产品把 Edit `display_diff` 嵌在 expandable 工具块里（**非**独立浏览界面）。
 
 ## 产品行为（与代码核对）
 

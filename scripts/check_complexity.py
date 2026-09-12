@@ -42,7 +42,7 @@ CCCC_RS_VERSION = "0.4.0"
 CCCC_RS_BIN = "cccc-rs"
 
 # HARD gate: ath12 entry coordinators (function complexity, not file LOC).
-# Thresholds MUST match llmanspec ath12 / test-qa-gate qg06 (c1840).
+# Thresholds MUST match `src/AGENTS.md`「复杂度与体量」.
 ENTRY_PATHS = [
     REPO / "src/app/tui/host/mod.rs",
     REPO / "src/app/tui/layout/root/mod.rs",
@@ -57,7 +57,7 @@ RADAR_EXCLUDES = ["**/tests.rs", "**/tests/**", "**/harness.rs"]
 
 # Ratchet: measured entry max is cog 30 / cyc 25 (`apply_tool_result_to_entries`).
 # Keep 2 points of slack so a small arm can land; do not grow back toward 35/30.
-# Keep in sync with `src/AGENTS.md` TUI 面复杂度闸 (复杂度与体量).
+# Keep in sync with `src/AGENTS.md` TUI 端复杂度门禁 (复杂度与体量).
 MAX_COGNITIVE = 32
 MAX_CYCLOMATIC = 27
 

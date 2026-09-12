@@ -9,14 +9,14 @@ change/spec 的命名、ID、依赖、原子性、语言。架构事实（分层
 
 ## Artifact 规则
 
-### proposal
+### proposal（Change Proposal Frontmatter SSOT）
 
 - **Change ID 格式**：`c{priority}-{verb}-{subject}`。
-  - `verb` ∈ `add` / `update` / `remove` / `refactor` / `fix`（实测无其它）。
+  - `verb` ∈ `add` / `update` / `remove` / `refactor` / `fix`（新 change 五选一；冻结档案存在历史 verb，不作范本）。
   - `priority` 为整数。**建议**用 5 的倍数（c05/c10/c1200）——目的是**预留加塞间隙**，方便后续插队；**非**强制 5 倍数。需要插队时直接占用相邻空位。priority **MUST 唯一**。
 - **priority 是建议性排序**：实际执行先沿 `depends_on` 依赖边，priority 仅作并列时的 tiebreaker。
-- **frontmatter**：每个 `proposal.md` MUST 含 YAML frontmatter，至少带 `depends_on`（list，无依赖用 `[]`）。`needs_specs_change` 缺省 true（写 false = 本 change 免 landing specs）；`rules_touched` 声明本 change 实际改动的锁定规则（req-id list）。
-- **依赖闸**：`depends_on` 引用的 change 全部归档（移入 `changes/archive/`）前，本 change 不可 apply。引用不存在的 change = 校验错误，STOP。
+- **frontmatter**：每个 `proposal.md` MUST 含 YAML frontmatter。合法字段以 `llman sdd` 工具 schema 为准：`depends_on`（list，无依赖用 `[]`）/ `blocks` / `branch` / `base_sha` / `needs_specs_change` / `rules_touched` / `agent_acked`；`status`、`title`、`priority`、`author` 等会被 `llman sdd validate` 拒绝。`needs_specs_change` 缺省 true（写 false = 本 change 免 landing specs）；`rules_touched` 声明本 change 实际改动的锁定规则（req-id list）。
+- **依赖门禁**：`depends_on` 引用的 change 全部归档（移入 `changes/archive/`）前，本 change 不可 apply。引用不存在的 change = 校验错误，STOP。
 - **原子性**：每个 change 独立可校验、可归档。
 
 ### spec（capability 命名）
@@ -58,7 +58,7 @@ change/spec 的命名、ID、依赖、原子性、语言。架构事实（分层
 ## spec 约束层级（产品级优先）
 
 - requirement statement MUST 描述**产品可观察行为 / 数据契约**（WHAT），中文；**禁止硬约束代码组织**：具体路径、文件/模块名、类型名、行数、方法归属、迁移清单。
-- 例外——**大的组织方向**可保留：分层依赖方向、端口 seam、crate 边界、组合根职责、跨面同源（如产品 slash SSOT）。
+- 例外——**大的组织方向**可保留：分层依赖方向、端口 seam、crate 边界、组合根职责、跨端同源（如产品 slash SSOT）。
 - 代码组织演进（重构、改名、移动）不要求改 spec；spec 只随产品行为变化而变。
 - 已删除对象（类型/模块/方法）的引用条款随删除一并清理，不保留「防复活」清单（除非有真实回归风险）。
 
@@ -69,7 +69,7 @@ change/spec 的命名、ID、依赖、原子性、语言。架构事实（分层
 - 直接编辑仍 MUST 过结构门禁：`llman sdd validate <cap>`（或 `--all`，BDD-on 下含 runner check）与相关 BDD 测试绿。
 - 删除 req 时同步清理：`.feature` 的规则块与 `@req:` 验收场景、`tests/bdd` 的 scenario binding。
 
-## change 操作闸
+## change 操作门禁
 
 ### finalize 提交序（MUST 知悉）
 

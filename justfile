@@ -209,15 +209,15 @@ test-tui-e2e-tmux verbosity=verbosity_default:
     esac
 
 # Run the xylitol-tui Inline agent_demo (package dynamic playground — not product host).
-# Mode B (alt-screen): `just demo-tui-alt-screen` → example `agent_demo_alt`.
+# ApplicationOwned (alt-screen): `just demo-tui-alt-screen` → example `agent_demo_alt`.
 demo-tui:
     cargo run -p xylitol-tui --example agent_demo
 
-# agent_demo_alt — Mode B (alt-screen + app selection / scroll / OSC52). Human + e2e target.
+# agent_demo_alt — ApplicationOwned (alt-screen + app selection / scroll / OSC52). Human + e2e target.
 demo-tui-alt-screen:
     cargo run -p xylitol-tui --example agent_demo_alt
 
-# Minimal Mode B host loop (ptim14 surface — not agent_demo).
+# Minimal ApplicationOwned host loop (ptim14 surface — not agent_demo).
 demo-tui-host-loop:
     cargo run -p xylitol-tui --example host_loop_application_owned
 
@@ -495,7 +495,7 @@ obs-channel REQUEST_ID="":
     fi
 
 # Spinner / host-loop freeze breadcrumbs in xylitol.log (target xylitol::lag).
-# Repro: XYLITOL_DEBUG=1 or RUST_LOG=xylitol::lag=info,xylitol=info — then submit a prompt
+# Repro: XYLITOL_DEBUG=1 or RUST_LOG=xylitol::lag=info,xylitol=warn — then submit a prompt
 # while MCP is still connecting; run `just obs-tui-lag` and look for host_run_await /
 # mcp_settle_* / rebuild_system_prompt lines ≥80ms.
 obs-tui-lag n="80" LOG="":

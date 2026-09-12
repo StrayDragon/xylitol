@@ -1959,7 +1959,7 @@ mod slice_tests {
     }
 
     /// 硬约束「Busy + overlay → 先关槽，不 abort」：busy 期间打开的 models
-    /// picker，Esc 只归位浮层；abort 闩不得被武装，回合保持运行。
+    /// picker，Esc 只归位浮层；abort 锁存（latch）不得置位，回合保持运行。
     #[tokio::test]
     async fn c1780_busy_models_esc_closes_picker_without_abort() {
         let mut session = HostSession::new_product_ui(TestTerminal::new(80, 24));

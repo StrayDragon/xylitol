@@ -28,8 +28,8 @@ docs/roadmaps/  →  llmanspec/changes  →  docs/architecture/
 
 ```mermaid
 flowchart TB
-  subgraph Surfaces["应用面"]
-    Homo["跨面同源 · 约束板"]
+  subgraph Surfaces["应用端"]
+    Homo["跨端同源 · 约束板"]
     Gui["Gpui 桌面客户端 · Linux/Wayland"]
     Obs["OTEL 与 Langfuse 观测"]
     Visual["TUI 视觉与信息表达"]
@@ -56,7 +56,7 @@ flowchart TB
     Cache["上下文缓存与极致压缩"]
   end
 
-  Homo -.->|跨面约束| Gui
+  Homo -.->|跨端约束| Gui
   Homo -.->|覆盖事实源| Live
   Homo -.->|公共发现路径| Keys
   Visual -.->|减噪与密度| Remaster
@@ -81,16 +81,16 @@ flowchart TB
 
 | 文档 | 候选方向 |
 |---|---|
-| [跨面同源.md](./跨面同源.md) | 跨面语义约束板（含 activity 折叠栈意向）；第二面是 gpui 桌面，不交付面壳本身 |
-| [Gpui桌面客户端.md](./Gpui桌面客户端.md) | 第二产品面：gpui 桌面（Linux/Wayland）attach 同一 Host；与 TUI 双 Rust 面 |
+| [跨端同源.md](./跨端同源.md) | 跨端语义约束板（含 activity 折叠栈意向）；第二端是 gpui 桌面，不交付端壳本身 |
+| [Gpui桌面客户端.md](./Gpui桌面客户端.md) | 第二产品端：gpui 桌面（Linux/Wayland）attach 同一 Host；与 TUI 双 Rust 端 |
 | [TUI视觉与信息表达.md](./TUI视觉与信息表达.md) | 状态减噪、主题密度；与调用活动折叠衔接 |
 | [TUI重制.md](./TUI重制.md) | 悬停高亮语义区块（主条目呈现主体已兑现：rail / 旁注 / 复制出口见 DESIGN 与 architecture） |
-| [键位与命令发现.md](./键位与命令发现.md) | `/hotkeys` 支线延后；可视化键盘挂 GUI 面（gpui） |
+| [键位与命令发现.md](./键位与命令发现.md) | `/hotkeys` 支线延后；可视化键盘挂 GUI 端（gpui） |
 | [OTEL与Langfuse观测.md](./OTEL与Langfuse观测.md) | infra lane span / Collector 实际分流 / 采样 / 子进程出站 |
 | [Agent-Eval与回归基准.md](./Agent-Eval与回归基准.md) | SWE 先、TB 后；Docker 出分；AA 选模对照；Langfuse 回归旁路 |
 | [上下文缓存与极致压缩.md](./上下文缓存与极致压缩.md) | prompt cache、动态压缩、工具结果分级压缩 |
 | [Cloud-Agent与Web控制台.md](./Cloud-Agent与Web控制台.md) | **搁置（2026-08-22）**：多工作区 CS + Web；复活需显式重立项 |
-| [运行时即时设置.md](./运行时即时设置.md) | 能力覆盖盘 / 可观察覆盖集 / 跨面同源（模型/thinking 即时设置已迁 [architecture](../architecture/运行时即时设置.md)） |
+| [运行时即时设置.md](./运行时即时设置.md) | 能力覆盖盘 / 可观察覆盖集 / 跨端同源（模型/thinking 即时设置已迁 [architecture](../architecture/运行时即时设置.md)） |
 | [Loop管理与触发可视化.md](./Loop管理与触发可视化.md) | Loop 管理与触发醒目 |
 | [Sub-Agent编排.md](./Sub-Agent编排.md) | 子 agent 派生/回收/可见 |
 | [LSP会话集成.md](./LSP会话集成.md) | lspz；会话启停；零成本 |

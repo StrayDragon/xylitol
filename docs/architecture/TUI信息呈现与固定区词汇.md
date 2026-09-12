@@ -1,7 +1,7 @@
-# TUI 信息面与固定区词汇
+# TUI 信息呈现与固定区词汇
 
 > 固定讨论/文档用词，降低「system / message / trail」失真。**新文与 AGENTS 只准用本表**；代码标识符与本表同步。
-> 跨面生命周期闭集见 [用户可见事件.md](./用户可见事件.md)。换模生效语义见 [运行时即时设置.md](./运行时即时设置.md)。
+> 跨端生命周期闭集见 [用户可见事件.md](./用户可见事件.md)。换模生效语义见 [运行时即时设置.md](./运行时即时设置.md)。
 
 ## 关键词汇（SSOT）
 
@@ -35,14 +35,14 @@
 | **壳层通告**（主词） | **通知条**（c2550 定名；易误读为 OS shell，且本质是通知类组件） |
 | **尾随** | **尾插**（与顶插成对；append 语义更直白） |
 | chrome / 壳层（指固定框架区时） | **固定区**（代码标识符 `ChromeOp`/`push_chrome_toast` 等已随 c2550 改 `FixedZoneOp`/`push_toast_notice`） |
-| Status trail / status trail / `status_trail` / 下轮预告 / next-turn cue / `Next turn: …` 文案 | 已随 attach run 绑定**退役**：产品面不渲染换模预告，勿再使用（见 [运行时即时设置.md](./运行时即时设置.md)） |
+| Status trail / status trail / `status_trail` / 下轮预告 / next-turn cue / `Next turn: …` 文案 | 已随 attach run 绑定**退役**：产品端不渲染换模预告，勿再使用（见 [运行时即时设置.md](./运行时即时设置.md)） |
 | 即将消息 | 弃用：产品无「即将消息」概念（run 绑定语义） |
 | System 确认行 / system 消息（指 UI） / `UiEntry::System` | **滚动提示** / **`UiEntry::ScrollNotice`** |
 | `push_system_note` | **`push_scroll_notice`** |
-| 笼统 Notice 指滚动行 | **ScrollNotice**（瞬时硬拒闸用 **通知条**，勿再堆滚动提示） |
+| 笼统 Notice 指滚动行 | **ScrollNotice**（瞬时硬拒反馈用 **通知条**，勿再堆滚动提示） |
 | 把「尾插」写成 trail（无 append） | **尾插 / tail-append** |
 
-换模预告的用户可见文案（`Next turn:` 等）已随 run 绑定语义从产品面退役。
+换模预告的用户可见文案（`Next turn:` 等）已随 run 绑定语义从产品端退役。
 
 ## 信息分类 × 落点
 
@@ -52,7 +52,7 @@
 | **B 导航瞬时** | `history @`、`forked →`、`switched →` | **滚动提示 · 尾插** | 随 scrollback；rebuild 可清 | **默认尾插**（跟底可见） |
 | **C 操作结果 / 诊断** | slash 失败、复制、trust 报告 | 短：滚动提示尾插；成功换模/主题 → **不**刷 | 易堆墙 | **默认尾插** |
 | **D 即时设置** | 换模 / thinking / 主题成功 | **页脚**（选中即时反映） | 否（态） | — |
-| **E 运行态** | busy、abort、队列；busy 下硬拒闸（如 Resume switch） | 状态条 / 队列条 / **通知条** | 否 | 禁止冒充 A/B；硬拒闸优先通知条，勿 ScrollNotice |
+| **E 运行态** | busy、abort、队列；busy 下硬拒反馈（如 Resume switch） | 状态条 / 队列条 / **通知条** | 否 | 禁止冒充 A/B；硬拒反馈优先通知条，勿 ScrollNotice |
 | **F 槽内确认** | 树 travel、选模 | 关槽 + 固定区 / B 类尾插 | 视 B/C | **默认尾插** |
 | **G 减噪折叠** | 旧工具中间步；探索簇头计数后缀（`· N reads · M searches`，c2510/att35：调用次数 ≠ 文件计数，进行时 Exploring 同构） | 折叠摘要条目 | 是（形态变） | — |
 
@@ -75,7 +75,7 @@
 
 - 六个月后仍真？否则不要扩表。
 - 新固定区能力先归类 A–G，再选落点；禁止静默发明第四套同义词。
-- 面操作边界：[`src/app/tui/AGENTS.md`](../../src/app/tui/AGENTS.md)。
-- **交互模型**：终端原生选区 vs 应用内选区（oneof）的跨面同源细则（库双入口、产品缺省、拖选 MUST、鼠标管道、`XYLITOL_TUI_MOUSE` 边界）→ [`../roadmaps/跨面同源.md`](../roadmaps/跨面同源.md)「支线与方向」表；词汇以本表 **Inline** / **ApplicationOwned** 词条为准。TUI 专属实现指针：段级 Activity 折叠见 `c1760`（activity 折叠，已归档）；Segment 鼠标命中见 `c2045`（剩余折叠目标）。
-- **归档 change**（`llmanspec/changes/archive/`）可保留当时旧词作史实；**新文 / 活 docs / 活 specs（产品面）** 只准用本表。
-- **designing**（仓库顶层 `designing/`）= 交互设计稿；`agent_demo` = 包演示，文案/固定区 **允许不同**。**禁止**把本表当成「必须改写 demo 字符串」的闸。
+- 端操作边界：[`src/app/tui/AGENTS.md`](../../src/app/tui/AGENTS.md)。
+- **交互模型**：终端原生选区 vs 应用内选区（oneof）的跨端同源细则（库双入口、产品缺省、拖选 MUST、鼠标管道、`XYLITOL_TUI_MOUSE` 边界）→ [`../roadmaps/跨端同源.md`](../roadmaps/跨端同源.md)「支线与方向」表；词汇以本表 **Inline** / **ApplicationOwned** 词条为准。TUI 专属实现指针：段级 Activity 折叠见 `c1760`（activity 折叠，已归档）；Segment 鼠标命中见 `c2045`（剩余折叠目标）。
+- **归档 change**（`llmanspec/changes/archive/`）可保留当时旧词作史实；**新文 / 活 docs / 活 specs（产品端）** 只准用本表。
+- **designing**（仓库顶层 `designing/`）= 交互设计稿；`agent_demo` = 包演示，文案/固定区 **允许不同**。**禁止**把本表当成「必须改写 demo 字符串」的门禁。
