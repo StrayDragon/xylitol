@@ -85,6 +85,13 @@ where
                         }
                         Some(Err(e)) => {
                             e.log_failure("tui.bang.input");
+                            // Tear the bang down like every other exit: kill the
+                            // bash tree out-of-band, unregister the sink, and
+                            // balance `begin_bash_exec` — a bare return would
+                            // leave the process running and the state latched.
+                            driver.abort();
+                            driver.set_bash_run_sink(None);
+                            session.end_bash_exec();
                             session.tui.finish();
                             return Err(e);
                         }
@@ -141,7 +148,12 @@ where
         }
         Err(e) => {
             e.log_failure("tui.execute_bash");
-            session.push_scroll_notice(format!("bash failed: {e}"));
+            // Esc cancel is reported solely by the in-block `(cancelled)`
+            // (app-tui-bridge: bang Esc MUST NOT impersonate agent Aborted /
+            // failure); the notice is for genuine driver failures only.
+            if !aborted_during_bash {
+                session.push_scroll_notice(format!("bash failed: {e}"));
+            }
         }
     }
     session.end_bash_exec();

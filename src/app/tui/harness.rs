@@ -1305,6 +1305,20 @@ mod slice_tests {
         )
     }
 
+    /// Input stream that errors mid-bang (terminal read failure), then parks.
+    fn bang_error_input_stream() -> impl Stream<Item = Result<HostEvent, XyDriverError>> {
+        let (tx, rx) = tokio::sync::mpsc::unbounded_channel();
+        tokio::spawn(async move {
+            tokio::time::sleep(Duration::from_millis(40)).await;
+            let _ = tx.send(Err(XyDriverError::message("input error")));
+            std::future::pending::<()>().await;
+        });
+        futures::stream::unfold(
+            rx,
+            |mut rx| async move { rx.recv().await.map(|ev| (ev, rx)) },
+        )
+    }
+
     /// HostEvent stream injecting keys mid-bang (20ms gaps), optional trailing
     /// Esc, then parks forever (EOF would quit the bang loop).
     fn bang_keys_input_stream(
@@ -2551,6 +2565,71 @@ mod slice_tests {
         );
         assert!(!session.bash_active());
         assert!(!session.is_busy());
+    }
+
+    /// Esc-cancelled bang reports solely via the in-block `(cancelled)`
+    /// (app-tui-bridge: bang Esc MUST NOT impersonate agent Aborted) — no
+    /// `bash failed: …` scroll notice on the cancel path.
+    #[tokio::test]
+    async fn bang_esc_no_bash_failed_notice() {
+        let mut session = HostSession::new_product_ui(TestTerminal::new(80, 24));
+        let root = session.ui_root().expect("ui").clone();
+        let mut driver = ScriptedDriver::new();
+        driver.set_hang_bash_until_abort(true);
+        let mut stream = None;
+        root.borrow_mut().set_editor_text("!sleep 99");
+        session.step(HostEvent::Input(enter_event())).unwrap();
+        drain_pending(&mut session, &mut driver, &mut stream)
+            .await
+            .unwrap();
+        let bash = session.take_bash().expect("pending bang");
+        let input = bang_esc_input_stream(0);
+        run_interactive_bang(&mut session, &mut driver, bash, &mut stream, input)
+            .await
+            .unwrap();
+        let notices: Vec<String> = session
+            .ui_model()
+            .entries
+            .iter()
+            .filter_map(|e| match e {
+                UiEntry::ScrollNotice { text } => Some(text.clone()),
+                _ => None,
+            })
+            .collect();
+        assert!(
+            notices.iter().all(|t| !t.contains("bash failed")),
+            "Esc-cancelled bang must not add failure notice; notices={notices:?}"
+        );
+    }
+
+    /// Input-stream error mid-bang must tear the bang down — kill the running
+    /// bash out-of-band and balance `begin_bash_exec` — instead of leaking the
+    /// process and latching the bash-exec state.
+    #[tokio::test]
+    async fn bang_input_error_kills_bash_and_unlatches() {
+        let mut session = HostSession::new_product_ui(TestTerminal::new(80, 24));
+        let root = session.ui_root().expect("ui").clone();
+        let mut driver = ScriptedDriver::new();
+        driver.set_hang_bash_until_abort(true);
+        let mut stream = None;
+        root.borrow_mut().set_editor_text("!sleep 99");
+        session.step(HostEvent::Input(enter_event())).unwrap();
+        drain_pending(&mut session, &mut driver, &mut stream)
+            .await
+            .unwrap();
+        let bash = session.take_bash().expect("pending bang");
+        let input = bang_error_input_stream();
+        let result =
+            run_interactive_bang(&mut session, &mut driver, bash, &mut stream, input).await;
+        assert!(result.is_err(), "input error must surface: {result:?}");
+        assert!(
+            driver.abort_count() >= 1,
+            "input error must abort the running bash"
+        );
+        assert!(
+            !session.bash_active(),
+            "input error must balance begin_bash_exec"
+        );
     }
 
     #[tokio::test]
