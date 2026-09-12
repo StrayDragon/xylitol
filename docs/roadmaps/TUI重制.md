@@ -1,7 +1,7 @@
 # TUI 重制（设计不变量）
 
 > **方向**：重置 **`UiEntry` 主条目**呈现（rail 皮肤）；承接 pi 交互优点，无默认洗底，可复制 / 复制省 token。
-> 调研：[`../research/coding-agent-tui-design-landscape-2026.md`](../research/coding-agent-tui-design-landscape-2026.md) · 引擎：[`../research/xylitol-tui-capability-hooks-vs-landscape-2026.md`](../research/xylitol-tui-capability-hooks-vs-landscape-2026.md)。
+> 调研底稿已随 2026-09-12 cleanup 移除，结论吸收进 [`../../src/app/tui/DESIGN.md`](../../src/app/tui/DESIGN.md)。
 > 并行减噪：[`TUI视觉与信息表达.md`](./TUI视觉与信息表达.md)；跨端：[`跨端同源.md`](./跨端同源.md)。
 > 现状：主条目重制主体（rail 缺省、键位旁注、复制双出口）**已兑现**；本文只剩未兑现候选 **M4 悬停高亮区块**。
 
