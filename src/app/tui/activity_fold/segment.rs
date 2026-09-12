@@ -54,7 +54,8 @@ impl SegmentLevel {
     }
 }
 
-/// One cluster inside an envelope (split by displayable assistant body, att34).
+/// One cluster inside an envelope (split by displayable assistant body or
+/// Compaction seal, att34).
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct ActivityCluster {
     /// `seg-{user_idx}:c{ord}`
@@ -91,7 +92,8 @@ fn assistant_displayable(text: &str) -> bool {
 /// Partition `entries` into Activity envelopes (att23 / att34).
 ///
 /// ScrollNotice / Error / bang Bash are never middles. Compaction / Todo are middles (in envelope).
-/// Cluster boundaries = displayable assistant body (thinking does not split).
+/// Cluster boundaries = displayable assistant body, plus Compaction which seals the
+/// open cluster and forms its own singleton cluster (thinking does not split).
 pub fn partition_segments(entries: &[UiEntry]) -> Vec<ActivitySegment> {
     let mut out = Vec::new();
     let mut i = 0;
@@ -134,6 +136,13 @@ pub fn partition_segments(entries: &[UiEntry]) -> Vec<ActivitySegment> {
 
         for (j, entry) in entries.iter().enumerate().take(turn_end).skip(i) {
             match entry {
+                // Compaction seals the open cluster and stands alone as a
+                // singleton (att34); the existing omit-header reveal path paints it.
+                UiEntry::Compaction { .. } => {
+                    seal_open(&mut clusters, &mut open_mids, &mut cluster_ord, None);
+                    open_mids.push(j);
+                    seal_open(&mut clusters, &mut open_mids, &mut cluster_ord, None);
+                }
                 e if is_foldable_middle(e) => open_mids.push(j),
                 UiEntry::Assistant { text } if assistant_displayable(text) => {
                     assistants.push(j);
@@ -206,18 +215,22 @@ mod tests {
         }
     }
 
+    fn compaction() -> UiEntry {
+        UiEntry::Compaction {
+            status: crate::app::tui::bridge::CompactionBlockStatus::Complete,
+            summary: "c".into(),
+            tokens_before: 1,
+            detail: None,
+        }
+    }
+
     #[test]
     fn partition_includes_compaction_skips_empty_and_scrollnotice() {
         let entries = vec![
             UiEntry::User { text: "u1".into() },
             tool("t1"),
             UiEntry::Assistant { text: "a1".into() },
-            UiEntry::Compaction {
-                status: crate::app::tui::bridge::CompactionBlockStatus::Complete,
-                summary: "c".into(),
-                tokens_before: 1,
-                detail: None,
-            },
+            compaction(),
             UiEntry::User { text: "u2".into() },
             UiEntry::Assistant { text: "a2".into() },
             UiEntry::ScrollNotice { text: "nav".into() },
@@ -232,6 +245,40 @@ mod tests {
             middle_entry_indices(&entries, &segs[0]).contains(&3),
             "compaction is an envelope middle"
         );
+    }
+
+    #[test]
+    fn compaction_seals_cluster_and_stands_alone() {
+        let entries = vec![
+            UiEntry::User { text: "u".into() },
+            tool("t1"),
+            compaction(),
+            tool("t2"),
+        ];
+        let segs = partition_segments(&entries);
+        assert_eq!(segs.len(), 1);
+        assert_eq!(segs[0].clusters.len(), 3, "tools / compaction / tools");
+        assert_eq!(segs[0].clusters[0].middle, 1..2);
+        assert_eq!(segs[0].clusters[1].middle, 2..3, "compaction singleton");
+        assert_eq!(segs[0].clusters[2].middle, 3..4);
+    }
+
+    #[test]
+    fn consecutive_compactions_form_separate_singletons() {
+        let entries = vec![
+            UiEntry::User { text: "u".into() },
+            compaction(),
+            compaction(),
+            UiEntry::Assistant {
+                text: "done".into(),
+            },
+        ];
+        let segs = partition_segments(&entries);
+        assert_eq!(segs.len(), 1);
+        assert_eq!(segs[0].clusters.len(), 2);
+        assert_eq!(segs[0].clusters[0].middle, 1..2);
+        assert_eq!(segs[0].clusters[1].middle, 2..3);
+        assert_eq!(segs[0].assistant_idx, Some(3));
     }
 
     #[test]

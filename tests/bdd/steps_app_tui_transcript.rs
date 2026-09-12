@@ -286,6 +286,82 @@ fn then_body_seals_previous_cluster(transcript_bdd: &TranscriptBdd) {
     );
 }
 
+#[when("以场景构建器回放工具后压缩再工具序列")]
+fn when_replay_compaction_between_tools(transcript_bdd: &TranscriptBdd) {
+    let plain = render_plain(|sb| {
+        sb.tool_start("r1", "read", "old.rs")
+            .tool_end("r1", "read")
+            .compaction("summarized earlier turns", 90_000)
+            .tool_start("r2", "read", "new.rs")
+            .tool_end("r2", "read");
+    });
+    *transcript_bdd.frames.borrow_mut() = vec![plain];
+}
+
+#[then("压缩块独立成块且前后工具簇各自成簇")]
+fn then_compaction_seals_clusters(transcript_bdd: &TranscriptBdd) {
+    let frames = transcript_bdd.frames.borrow();
+    let plain = frames.last().expect("frame");
+    let lines: Vec<&str> = plain.lines().collect();
+    let compaction_positions = |needle: &str| {
+        let found: Vec<usize> = lines
+            .iter()
+            .enumerate()
+            .filter(|(_, l)| l.contains(needle))
+            .map(|(i, _)| i)
+            .collect();
+        found
+    };
+    let explored = compaction_positions("Explored 1 file");
+    let exploring = compaction_positions("Exploring 1 file");
+    let compaction = compaction_positions("[compaction]");
+    assert_eq!(
+        explored.len() + exploring.len(),
+        2,
+        "att34: tools before and after compaction form separate clusters:\n{plain}"
+    );
+    assert_eq!(
+        compaction.len(),
+        1,
+        "att34: exactly the compaction block line, no cluster head for it:\n{plain}"
+    );
+    assert_eq!(
+        explored.len(),
+        1,
+        "att34: cluster sealed by compaction must use the sealed wording:\n{plain}"
+    );
+    let open_after = exploring
+        .first()
+        .copied()
+        .expect("att34: open cluster after compaction");
+    assert!(
+        explored[0] < compaction[0] && compaction[0] < open_after,
+        "att34: compaction block must stand alone between the two clusters:\n{plain}"
+    );
+    assert!(
+        !plain.contains("Worked for"),
+        "att34: live window must not show envelope:\n{plain}"
+    );
+}
+
+#[then("全帧不出现 Worked for 与 Compaction 簇摘要头")]
+fn then_no_envelope_and_no_compaction_cluster_head(transcript_bdd: &TranscriptBdd) {
+    let frames = transcript_bdd.frames.borrow();
+    let plain = frames.last().expect("frame");
+    assert!(
+        !plain.contains("Worked for"),
+        "att34: no envelope in live window:\n{plain}"
+    );
+    let compaction_lines = plain
+        .lines()
+        .filter(|l| l.contains("compaction") || l.contains("Compacted"))
+        .count();
+    assert_eq!(
+        compaction_lines, 1,
+        "att34: the only compaction line is the block itself (no cluster head):\n{plain}"
+    );
+}
+
 #[when("以场景构建器渲染流式思考中的 live window")]
 fn when_render_streaming_thinking(transcript_bdd: &TranscriptBdd) {
     let plain = render_plain(|sb| {

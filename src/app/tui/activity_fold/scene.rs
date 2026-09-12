@@ -242,6 +242,23 @@ impl SceneBuilder {
         self.push_xy(XyEvent::TextDelta(text.into()))
     }
 
+    /// Compaction through the product projection: Start placeholder then End
+    /// completion, matching the real run stream (c1730 / att34).
+    pub fn compaction(&mut self, summary: &str, tokens_before: u64) -> &mut Self {
+        self.push_xy(XyEvent::CompactionStart {
+            reason: "threshold".into(),
+        });
+        self.push_xy(XyEvent::CompactionEnd {
+            result: Some("ok".into()),
+            aborted: false,
+            reason: "threshold".into(),
+            will_retry: false,
+            error_message: None,
+            summary: Some(summary.into()),
+            tokens_before: Some(tokens_before),
+        })
+    }
+
     /// Flush streaming buffers the way MessageEnd does (product handler).
     pub fn message_end(&mut self) -> &mut Self {
         self.push_xy(XyEvent::MessageEnd {
