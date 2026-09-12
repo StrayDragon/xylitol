@@ -41,6 +41,17 @@
         [],
         [
           {
+            "text": "▸ Worked for 0s  (Alt+Shift+E)",
+            "token": "muted",
+            "fg": "#6c7086",
+            "bg": null,
+            "bg_token": null,
+            "rev": false
+          }
+        ],
+        [],
+        [
+          {
             "text": "debug: older reply 1",
             "token": "on-surface",
             "fg": "#cdd6f4",
@@ -92,17 +103,6 @@
           }
         ],
         [],
-        [],
-        [
-          {
-            "text": "· restored → session design-shell",
-            "token": "muted",
-            "fg": "#6c7086",
-            "bg": null,
-            "bg_token": null,
-            "rev": false
-          }
-        ],
         [],
         [
           {
@@ -225,6 +225,16 @@
       "id": "idle",
       "rows": 24,
       "lines": [
+        [
+          {
+            "text": "▸ Worked for 0s  (Alt+Shift+E)",
+            "token": "muted",
+            "fg": "#6c7086",
+            "bg": null,
+            "bg_token": null,
+            "rev": false
+          }
+        ],
         [],
         [
           {
@@ -321,10 +331,9 @@
           }
         ],
         [],
-        [],
         [
           {
-            "text": "· restored → session design-shell",
+            "text": "restored → session design-shell",
             "token": "muted",
             "fg": "#6c7086",
             "bg": null,
@@ -371,6 +380,7 @@
       "rows": 16,
       "lines": [
         [],
+        [],
         [
           {
             "text": "❯",
@@ -415,17 +425,6 @@
         [],
         [
           {
-            "text": "· restored → session design-shell",
-            "token": "muted",
-            "fg": "#6c7086",
-            "bg": null,
-            "bg_token": null,
-            "rev": false
-          }
-        ],
-        [],
-        [
-          {
             "text": "❯",
             "token": "user",
             "fg": "#cba6f7",
@@ -437,6 +436,16 @@
             "text": " 切换一下模型对比输出风格",
             "token": "on-surface",
             "fg": "#cdd6f4",
+            "bg": null,
+            "bg_token": null,
+            "rev": false
+          }
+        ],
+        [
+          {
+            "text": "restored → session design-shell",
+            "token": "muted",
+            "fg": "#6c7086",
             "bg": null,
             "bg_token": null,
             "rev": false
