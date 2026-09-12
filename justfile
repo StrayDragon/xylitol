@@ -16,11 +16,12 @@ _default:
 setup:
     #!/usr/bin/env bash
     set -euo pipefail
-    # prek defaults to pre-commit only; install all stages declared in prek.toml
-    prek install -t pre-commit -t commit-msg -t pre-push
-    # Git LFS pre-push via prek legacy-hook (stdin forwarding): prek.toml can't
-    # feed git's pre-push stdin to git-lfs, so install the legacy file here.
-    install -m 0755 scripts/pre-push.lfs.sh .git/hooks/pre-push.legacy
+    # pre-commit + commit-msg only: prek owns text hygiene and the commit
+    # convention; cargo gates live in `just qa` (manual / CI), never hooks.
+    prek install -t pre-commit -t commit-msg
+    # LFS pre-push is owned by git-lfs's native hooks (pre-push + post-*),
+    # NOT by prek. Idempotent; also fixes fresh clones missing hooks.
+    git lfs install --local
     # Lazy install also happens in scripts/check_complexity.py; setup warms the cache.
     if ! command -v cccc-rs >/dev/null && [[ ! -x .tools/bin/cccc-rs ]]; then
       cargo install cccc-rs-cli --version 0.4.0 --locked --root .tools

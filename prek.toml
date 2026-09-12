@@ -1,13 +1,13 @@
 # prek.toml - Git hook configuration for xylitol
 # Docs: https://github.com/j178/prek
 #
-# Scope rule — prek and `just qa` are layered, not duplicated
-# (root AGENTS.md 命令与验证):
-# - pre-commit: text/metadata hygiene + commit-msg convention ONLY. Never add
-#   individual cargo gates (fmt / clippy / test / doc-test) as hooks — their
-#   single source of truth is `just qa`.
-# - pre-push: runs `just qa` wholesale (full gate before every push; escape
-#   hatch `git push --no-verify`).
+# Scope rule — prek and `just qa` are orthogonal (root AGENTS.md 命令与验证):
+# - prek hooks (any stage) carry ONLY text/metadata hygiene and the commit-msg
+#   convention. Never add cargo gates (fmt / clippy / test / doc-test) as
+#   hooks — `just qa` is the dev-time gate, run manually.
+# - Push-time consistency is CI's job (GitHub Actions), not local hooks: keep
+#   pre-commit fast and pushes unblocked. LFS pre-push is owned by git-lfs's
+#   native hooks (`just setup` runs `git lfs install --local`).
 
 [[repos]]
 repo = "builtin"
@@ -22,17 +22,6 @@ hooks = [
   { id = "detect-private-key" },
   { id = "check-case-conflict" },
 ]
-
-[[repos]]
-repo = "local"
-
-[[repos.hooks]]
-id = "just-qa"
-name = "just qa (full pre-push gate)"
-language = "system"
-entry = "just qa"
-pass_filenames = false
-stages = ["pre-push"]
 
 [[repos]]
 repo = "https://github.com/compilerla/conventional-pre-commit"
