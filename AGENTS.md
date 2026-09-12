@@ -74,6 +74,7 @@
 - `just qa` 串行跑 `test-live-provider`（连接真实网关的 lab；配置路径、`enabled` 门禁与 skip 语义见 `justfile` 与 `just gen-live-provider-example`）。产品示例配置 `configs/example.yaml` 由 `just gen-config-example` 生成（改 `scripts/gen_config_example.py` 模板，勿直接手改产物）。
 - `qa` 输出默认 quiet；`just qa normal` / `verbose` 或 `JUST_VERBOSITY=` 调整。
 - 非变更门禁脚本 `scripts/check_*.py` **MUST** 经 wiring 进 `qa`；维护脚本不进门禁。
+- **prek 与 `just qa` 正交**：`prek.toml` 只承担文本/元数据卫生（空白、EOF、私钥、大文件等）与 commit-msg 规约；cargo 级门禁（fmt / clippy / test / doc-test）**MUST NOT** 进 prek——统一由 `just qa` 兜底，避免双份漂移。`just doc-test`（根包 doctest）已入闸 `qa`。
 - 探查：`cargo run -- --help`；文档构建与检查：`just doc` / `just doc-check`。
 
 ### 试验 / 真实网关验证命名（`lab_`）

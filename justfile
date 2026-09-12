@@ -361,7 +361,8 @@ test-tui verbosity=verbosity_default:
 
 # Unified daily / PR gate (no TUI layer-5 E2E — needs PTY/tmux).
 # Order: fmt → clippy → workspace tests → live-provider (serial) → package TUI
-# harness → docs → DESIGN tokens → scripts/check_* → prek.
+# harness → docs (doc-check + doc-test) → DESIGN tokens → scripts/check_* →
+# prek (text-hygiene-only hooks; cargo gates never in prek — see AGENTS.md).
 # Default verbosity=quiet (agent-friendly). Pass `normal` / `verbose` for humans.
 [arg('verbosity', pattern='quiet|normal|verbose')]
 qa verbosity=verbosity_default: \
@@ -371,6 +372,7 @@ qa verbosity=verbosity_default: \
     (test-live-provider verbosity) \
     (test-tui verbosity) \
     (doc-check verbosity) \
+    (doc-test verbosity) \
     (check-tui-tokens verbosity) \
     (check-scripts-wired verbosity) \
     (check-scripts verbosity)
@@ -509,6 +511,17 @@ obs-tui-lag n="80" LOG="":
     fi
     echo "# $log (last {{n}} xylitol::lag lines)"
     rg -n "xylitol::lag|host_run_await|host_drain_pending|host_mcp_poll|mcp_settle_|rebuild_system_prompt|run_ensure_session|run_load_history|run_build_tool_schemas|host_tick" "$log" | tail -n "{{n}}"
+
+# --- Manual lab probes (scripts/lab_*.py; maintenance, NOT in qa) ---
+
+# PTY CPU sample of the product TUI with a restored session.
+lab-ao-session-cpu:
+    python3 scripts/lab_ao_session_cpu.py
+
+# FIFO-backed slow reads for tool_batch parallel wall-clock probing
+# (foreground; Ctrl+C to stop. See scripts/lab_batch_slow_fifos.py docstring).
+lab-batch-slow-fifos:
+    python3 scripts/lab_batch_slow_fifos.py
 
 # --- Documentation ---
 
