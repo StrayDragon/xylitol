@@ -119,7 +119,7 @@
 
   @req:att30 @human
   场景: output-viewport-hint-mouse
-    - 产品在 ApplicationOwned 下，对渲染 Ctrl+O 输出视口 expand/collapse hint 的块（含 Tool、Bash、独立 Diff 等凡展示该 hint 者）：左键单击可见 hint 带 MUST 翻转全局 tools_output_expanded（或等价），与键盘 Ctrl+O 同构。命中几何 MUST 为 hint 文案可点带（非折叠三角列；att22 三角列-only 不适用本条）。Bash MUST NOT 另补块级 L1 折叠三角；其输出高度交互 MUST 走本条 Viewport。硬截断禁展开（att16）时 MUST NOT 因点击 hint 而展开全文。态变 MUST 遵守 ath25。
+    - 产品在 ApplicationOwned 下，对渲染 Ctrl+O 输出视口 expand/collapse hint 的块（含 Tool、Bash、独立 Diff 等凡展示该 hint 者）：左键单击可见 expand hint 带 MUST 仅翻转该块的输出视口展开态（全局默认 + 按块覆盖，或等价），MUST NOT 波及其他块；展开态块尾渲染的 fold 提示带单击 MUST 仅把该块折回。键盘 Ctrl+O（app.tools.expand）MUST 翻转全局默认并清除按块覆盖（与 Alt+E / Ctrl+T 的默认+覆盖模型同构）。命中几何 MUST 为 hint 文案可点带（非折叠三角列；att22 三角列-only 不适用本条）。Bash MUST NOT 另补块级 L1 折叠三角；其输出高度交互 MUST 走本条 Viewport。硬截断禁展开（att16）时 MUST NOT 因点击 hint 而展开全文。态变 MUST 遵守 ath25（单块覆盖切换仅重绘该块）。
 
   @req:att31 @human
   场景: envelope-cluster-fold-marker-mouse
