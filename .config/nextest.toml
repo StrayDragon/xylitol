@@ -1,9 +1,15 @@
+# Gate matrix policy (see justfile `test` — the gate restate this filter via -E,
+# which OVERRIDES default-filter; ad-hoc `cargo nextest run` falls back here):
+# - Live HTTP provider suite NEVER enters a parallel nextest matrix: it runs
+#   serial via `just test-live-provider` (--test-threads=1), so local
+#   llama.cpp / Ornith is not hammered alongside unit tests.
+# - xylitol-tui is excluded from the gate matrix via `just test`'s -E, NOT via
+#   default-filter (that would zero out `cargo nextest run -p xylitol-tui`).
+#   Its sole runner is `just test-tui` (in-process #[serial] coordination,
+#   TUI harness methodology SSOT).
 [profile.ci]
 fail-fast = false
 slow-timeout = "60s"
-# Live HTTP provider suite is opted into `just qa` → `test-live-provider`
-# (serial --test-threads=1). Keep it out of the parallel matrix so local
-# llama.cpp / Ornith is not hammered alongside unit tests.
 default-filter = "not binary(lab_responses_prompt_cache)"
 
 [profile.ci.junit]
