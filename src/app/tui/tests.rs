@@ -5585,3 +5585,94 @@ fn scene_dump_covers_product_render_scrollback() {
         dump.to_text()
     );
 }
+
+// ---- ask gateway ↔ Choice slot ↔ oneshot 端到端（ata3 / ata4 产品路径） ────
+
+fn ask_args_fixture() -> crate::protocol::ports::ask::AskArgs {
+    use crate::protocol::ports::ask::{AskModeArg, AskOptionArg, AskQuestionArg};
+    crate::protocol::ports::ask::AskArgs {
+        questions: vec![AskQuestionArg {
+            id: "next".into(),
+            prompt: "continue?".into(),
+            label: Some("Next".into()),
+            mode: AskModeArg::Single,
+            options: vec![
+                AskOptionArg {
+                    value: "go".into(),
+                    label: "Go on".into(),
+                    description: None,
+                    recommended: true,
+                },
+                AskOptionArg {
+                    value: "halt".into(),
+                    label: "Halt".into(),
+                    description: None,
+                    recommended: false,
+                },
+            ],
+            allow_other: false,
+        }],
+    }
+}
+
+#[tokio::test]
+async fn harness_ask_gateway_submit_resolves_answered_payload() {
+    let mut session = HostSession::new_product_ui(TestTerminal::new(80, 24));
+    let gw = std::sync::Arc::new(crate::app::tui::AskHostGateway::new());
+    session.set_ask_gateway(gw.clone());
+    let root = session.ui_root().expect("product ui").clone();
+
+    let tool = {
+        use crate::protocol::ports::ask::AskUserGateway;
+        let gw = gw.clone();
+        tokio::spawn(async move { gw.prompt(ask_args_fixture()).await })
+    };
+    tokio::task::yield_now().await;
+    session.poll_ask_host();
+    assert!(
+        root.borrow().ask_choice_open(),
+        "pending ask must mount the Choice slot"
+    );
+
+    session.step(HostEvent::Input(enter_event())).unwrap();
+    session.poll_ask_host();
+    assert!(
+        !root.borrow().ask_choice_open(),
+        "submit must close the Choice slot"
+    );
+    let result = tool
+        .await
+        .unwrap()
+        .expect("answered ask is a success result");
+    assert!(result.contains("\"status\":\"answered\""), "{result}");
+    assert!(
+        result.contains("go"),
+        "answers carry the chosen value: {result}"
+    );
+}
+
+#[tokio::test]
+async fn harness_ask_gateway_esc_resolves_skipped_success_payload() {
+    let mut session = HostSession::new_product_ui(TestTerminal::new(80, 24));
+    let gw = std::sync::Arc::new(crate::app::tui::AskHostGateway::new());
+    session.set_ask_gateway(gw.clone());
+    let root = session.ui_root().expect("product ui").clone();
+
+    let tool = {
+        use crate::protocol::ports::ask::AskUserGateway;
+        let gw = gw.clone();
+        tokio::spawn(async move { gw.prompt(ask_args_fixture()).await })
+    };
+    tokio::task::yield_now().await;
+    session.poll_ask_host();
+    assert!(root.borrow().ask_choice_open());
+
+    session.step(HostEvent::Input(esc_event())).unwrap();
+    session.poll_ask_host();
+    assert!(!root.borrow().ask_choice_open(), "skip must close the slot");
+    let result = tool
+        .await
+        .unwrap()
+        .expect("Esc skip MUST NOT surface as tool error");
+    assert!(result.contains("\"status\":\"skipped\""), "{result}");
+}

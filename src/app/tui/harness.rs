@@ -1958,6 +1958,50 @@ mod slice_tests {
         assert_eq!(driver.model.id, "fake");
     }
 
+    /// 硬约束「Busy + overlay → 先关槽，不 abort」：busy 期间打开的 models
+    /// picker，Esc 只归位浮层；abort 闩不得被武装，回合保持运行。
+    #[tokio::test]
+    async fn c1780_busy_models_esc_closes_picker_without_abort() {
+        let mut session = HostSession::new_product_ui(TestTerminal::new(80, 24));
+        let root = session.ui_root().expect("ui").clone();
+        let mut driver = ScriptedDriver::new();
+        let mut stream = None;
+        session.on_run_started("busy-turn");
+        root.borrow_mut().set_editor_text("/model");
+        session.step(HostEvent::Input(enter_event())).unwrap();
+        pump_host_driver(&mut session, &mut driver, &mut stream)
+            .await
+            .unwrap();
+        assert!(root.borrow().models_open(), "busy /model must open picker");
+
+        let aborts_before = driver.abort_count();
+        session.step(HostEvent::Input(esc_event())).unwrap();
+        assert!(
+            !root.borrow().models_open(),
+            "Esc over a busy overlay closes the picker first"
+        );
+        drain_pending(&mut session, &mut driver, &mut stream)
+            .await
+            .unwrap();
+        assert_eq!(
+            driver.abort_count(),
+            aborts_before,
+            "Esc that closed the overlay MUST NOT arm the abort latch"
+        );
+        assert!(
+            session.is_busy(),
+            "closing the picker must not end the running turn"
+        );
+
+        // 连开连关：关闭后可立即重新打开（浮层状态无残留）。
+        root.borrow_mut().set_editor_text("/model");
+        session.step(HostEvent::Input(enter_event())).unwrap();
+        pump_host_driver(&mut session, &mut driver, &mut stream)
+            .await
+            .unwrap();
+        assert!(root.borrow().models_open(), "reopen after Esc must work");
+    }
+
     #[tokio::test]
     async fn c630_model_id_direct_set() {
         let mut session = HostSession::new_product_ui(TestTerminal::new(80, 24));

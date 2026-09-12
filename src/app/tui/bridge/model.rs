@@ -182,14 +182,21 @@ pub const STREAMING_THINK_ID: &str = "live:streaming";
 
 /// Stable Thinking id: short text-hash + ordinal among existing Thinking entries
 /// that share the same hash (live flush and session rebuild MUST agree).
-pub fn allocate_thinking_id(entries: &[UiEntry], text: &str) -> String {
+///
+/// `entries` is any slice-like source of already-projected rows; rebuild paths
+/// chain prior rows with the current message's local rows so ordinals count
+/// globally (att21: same id for the same logical block).
+pub fn allocate_thinking_id<'a>(
+    entries: impl IntoIterator<Item = &'a UiEntry>,
+    text: &str,
+) -> String {
     use std::collections::hash_map::DefaultHasher;
     use std::hash::{Hash, Hasher};
     let mut h = DefaultHasher::new();
     text.hash(&mut h);
     let short = format!("{:08x}", h.finish() as u32);
     let ordinal = entries
-        .iter()
+        .into_iter()
         .filter(|e| match e {
             UiEntry::Thinking { id, .. } => id.starts_with(&format!("{short}-")),
             _ => false,
