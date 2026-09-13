@@ -7,7 +7,7 @@
 
   @req:peo1 @human
   场景: expandable-api
-    - 包 MUST 提供 ExpandableOutput 与 render_expandable_output；选项 MUST 含 max_preview_lines、TruncateFrom（Tail 或 Head）、expand_hint；MUST NOT 依赖主 crate xylitol。
+    - 包 MUST 提供 ExpandableOutput 与 render_expandable_output；选项 MUST 含 max_preview_lines、TruncateFrom（Tail 或 Head）、expand_hint、fold_hint；MUST NOT 依赖主 crate xylitol。
 
   @req:peo2 @human
   场景: collapsed-tail-hint
@@ -15,7 +15,7 @@
 
   @req:peo3 @human
   场景: streaming-stick-tail
-    - 流式追加文本时 collapsed Tail 视口 MUST 继续显示最新视觉行；expanded MUST 显示全文且无 earlier 提示。
+    - 流式追加文本时 collapsed Tail 视口 MUST 继续显示最新视觉行；expanded MUST 显示全文且无 earlier 提示；expanded 且内容视觉行数超过 max_preview_lines 时 MUST 在块尾渲染 dim 折叠提示行（`... (expanded, {fold_hint})`），内容未超上限或文本为空时 MUST NOT 渲染该行。
 
   @req:peo4 @human
   场景: head-more-hint
