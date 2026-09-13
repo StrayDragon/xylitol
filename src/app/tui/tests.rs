@@ -2073,6 +2073,7 @@ fn scrollback_bash_block_tint_and_gap() {
         text: "before".into(),
     });
     model.entries.push(super::bridge::UiEntry::Bash {
+        id: "bash-t".into(),
         command: "echo hi".into(),
         status: BashBlockStatus::Success,
         output: "hi".into(),
@@ -2130,6 +2131,7 @@ fn scrollback_bash_ctrl_o_viewport_keeps_rail() {
     let mut model = UiModel::new();
     let long_out: String = (0..20).map(|i| format!("line-{i}\n")).collect();
     model.entries.push(super::bridge::UiEntry::Bash {
+        id: "bash-t".into(),
         command: "seq".into(),
         status: BashBlockStatus::Success,
         output: long_out,
@@ -2908,7 +2910,9 @@ fn harness_mouse_triangle_toggles_compaction_fold() {
 
 #[test]
 fn harness_mouse_hint_toggles_output_viewport() {
-    // att30: Ctrl+O hint band flips tools_output_expanded; isomorphic with Ctrl+O.
+    // att30: hint-band click flips **that block only** (per-block override);
+    // Ctrl+O flips the global default and clears overrides. Two sibling Bash
+    // blocks guard the isolation regression.
     use super::widgets::FoldTarget;
     use crossterm::event::{
         KeyCode, KeyEvent, KeyModifiers, MouseButton, MouseEvent, MouseEventKind,
@@ -2919,11 +2923,21 @@ fn harness_mouse_hint_toggles_output_viewport() {
     {
         let mut model = session.ui_model().clone();
         let mut output = String::new();
-        for i in 0..20 {
+        // 8 lines: past the 5-line collapsed viewport (hint band shows) yet
+        // short enough that the expanded fold band stays on the 24-row screen.
+        for i in 0..8 {
             output.push_str(&format!("viewport-line-{i}\n"));
         }
         model.entries.push(super::bridge::UiEntry::Bash {
-            command: "big".into(),
+            id: "bash-a".into(),
+            command: "big-a".into(),
+            status: super::bridge::BashBlockStatus::Success,
+            output: output.clone(),
+            exclude_from_context: false,
+        });
+        model.entries.push(super::bridge::UiEntry::Bash {
+            id: "bash-b".into(),
+            command: "big-b".into(),
             status: super::bridge::BashBlockStatus::Success,
             output,
             exclude_from_context: false,
@@ -2944,35 +2958,42 @@ fn harness_mouse_hint_toggles_output_viewport() {
             .any(|r| matches!(r.target, FoldTarget::Tool(_))),
         "Bash MUST NOT register L1 Tool triangle"
     );
-    let region = root
-        .borrow()
-        .fold_hits()
-        .regions
-        .iter()
-        .find(|reg| matches!(reg.target, FoldTarget::OutputViewport))
-        .cloned()
-        .unwrap_or_else(|| {
-            panic!(
-                "expected OutputViewport hint hit; regions={:?}",
-                root.borrow().fold_hits().regions
+    let locate_band = |id: &str| {
+        root.borrow()
+            .fold_hits()
+            .regions
+            .iter()
+            .find(
+                |reg| matches!(reg.target, FoldTarget::OutputViewport(ref hit_id) if hit_id == id),
             )
-        });
+            .map(|reg| (reg.content_row, reg.col_start))
+            .unwrap_or_else(|| panic!("expected OutputViewport band for {id}"))
+    };
     assert!(!root.borrow().fold().tools_output_expanded);
+    assert!(!root.borrow().fold().output_effective("bash-a"));
 
-    let screen_row = region
-        .content_row
-        .saturating_sub(root.borrow().fold_hits().scroll_top) as u16;
+    // Click block A's hint band → only A expands; B and the global stay put.
+    let (hint_row, hint_col) = locate_band("bash-a");
+    let hint_screen_row = (hint_row.saturating_sub(root.borrow().fold_hits().scroll_top)) as u16;
     session
         .step(HostEvent::Input(InputEvent::Mouse(MouseEvent {
             kind: MouseEventKind::Down(MouseButton::Left),
-            column: region.col_start as u16,
-            row: screen_row,
+            column: hint_col as u16,
+            row: hint_screen_row,
             modifiers: KeyModifiers::NONE,
         })))
         .unwrap();
     assert!(
-        root.borrow().fold().tools_output_expanded,
-        "hint click must flip tools_output_expanded"
+        root.borrow().fold().output_effective("bash-a"),
+        "hint click must expand the clicked block"
+    );
+    assert!(
+        !root.borrow().fold().output_effective("bash-b"),
+        "sibling block must stay collapsed"
+    );
+    assert!(
+        !root.borrow().fold().tools_output_expanded,
+        "hint click must not flip the global default"
     );
     session.tui.request_render(true);
     session.step_paint_only().unwrap();
@@ -2982,22 +3003,39 @@ fn harness_mouse_hint_toggles_output_viewport() {
         "expanded viewport must show early lines: {expanded}"
     );
 
-    // Collapse via Ctrl+O (same bool), then expand again via key to confirm isomorphism.
+    // The expanded block paints a fold-back band; clicking it folds only A.
+    let (fold_row, fold_col) = locate_band("bash-a");
+    let fold_screen_row = (fold_row.saturating_sub(root.borrow().fold_hits().scroll_top)) as u16;
+    session
+        .step(HostEvent::Input(InputEvent::Mouse(MouseEvent {
+            kind: MouseEventKind::Down(MouseButton::Left),
+            column: fold_col as u16,
+            row: fold_screen_row,
+            modifiers: KeyModifiers::NONE,
+        })))
+        .unwrap();
+    assert!(
+        !root.borrow().fold().output_effective("bash-a"),
+        "fold band must collapse the block"
+    );
+    assert!(!root.borrow().fold().output_effective("bash-b"));
+
+    // Ctrl+O flips the global default (override map already empty) and back.
     root.borrow_mut()
         .handle_input(InputEvent::Key(KeyEvent::new(
             KeyCode::Char('o'),
             KeyModifiers::CONTROL,
         )));
     assert!(
-        !root.borrow().fold().tools_output_expanded,
-        "Ctrl+O must share tools_output_expanded with hint click"
+        root.borrow().fold().tools_output_expanded,
+        "Ctrl+O flips the global viewport default"
     );
     root.borrow_mut()
         .handle_input(InputEvent::Key(KeyEvent::new(
             KeyCode::Char('o'),
             KeyModifiers::CONTROL,
         )));
-    assert!(root.borrow().fold().tools_output_expanded);
+    assert!(!root.borrow().fold().tools_output_expanded);
 }
 
 #[test]
@@ -3256,6 +3294,7 @@ fn compaction_and_viewport_toggle_miss_bound() {
         output.push_str(&format!("line-{i}\n"));
     }
     model.entries.push(super::bridge::UiEntry::Bash {
+        id: "bash-x".into(),
         command: "x".into(),
         status: super::bridge::BashBlockStatus::Success,
         output,
@@ -3274,7 +3313,7 @@ fn compaction_and_viewport_toggle_miss_bound() {
     );
 
     root.clear_scrollback_entry_misses_for_test();
-    root.toggle_fold_target(FoldTarget::OutputViewport);
+    root.toggle_fold_target(FoldTarget::OutputViewport("bash-x".into()));
     let _ = root.render(80);
     let misses_viewport = root.scrollback_entry_misses_for_test();
     assert!(
@@ -3610,6 +3649,7 @@ fn streaming_paint_does_not_break_bash_ctrl_o_viewport() {
     model.streaming_assistant = "streaming…\n\nmore ".into();
     let long_out: String = (0..20).map(|i| format!("line-{i}\n")).collect();
     model.entries.push(super::bridge::UiEntry::Bash {
+        id: "bash-t".into(),
         command: "seq".into(),
         status: BashBlockStatus::Success,
         output: long_out,

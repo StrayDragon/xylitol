@@ -98,7 +98,7 @@ pub(super) fn entry_fingerprint(entry: &UiEntry, fold: &ScrollbackFold) -> u64 {
             is_error.hash(&mut h);
             done.hash(&mut h);
             fold.tools_effective(id).hash(&mut h);
-            fold.tools_output_expanded.hash(&mut h);
+            fold.output_effective(id).hash(&mut h);
         }
         UiEntry::Diff {
             summary,
@@ -108,19 +108,21 @@ pub(super) fn entry_fingerprint(entry: &UiEntry, fold: &ScrollbackFold) -> u64 {
             display_diff.hash(&mut h);
             let key = diff_fold_key(summary, display_diff);
             fold.tools_effective(&key).hash(&mut h);
-            fold.tools_output_expanded.hash(&mut h);
+            fold.output_effective(&key).hash(&mut h);
         }
         UiEntry::Bash {
+            id,
             command,
             status,
             output,
             exclude_from_context,
         } => {
+            id.hash(&mut h);
             command.hash(&mut h);
             status.hash(&mut h);
             output.hash(&mut h);
             exclude_from_context.hash(&mut h);
-            fold.tools_output_expanded.hash(&mut h);
+            fold.output_effective(id).hash(&mut h);
         }
         UiEntry::Ask {
             id,

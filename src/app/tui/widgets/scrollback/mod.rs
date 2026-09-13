@@ -48,6 +48,9 @@ pub struct ScrollbackFold {
     pub tools_expanded: bool,
     /// Ctrl+O — tool/bash detail **viewport** collapsed ↔ full (orthogonal to Alt+E).
     pub tools_output_expanded: bool,
+    /// Per-block output-viewport overrides (Ctrl+O hint / fold-band click, att30);
+    /// prefer over [`Self::tools_output_expanded`].
+    pub output_overrides: HashMap<String, bool>,
     /// Alt+E — compaction summary (default collapsed; shares chord with tools).
     pub compaction_expanded: bool,
     /// Alt+E — Todo checklist (default collapsed one-line summary; c1955).
@@ -65,6 +68,7 @@ impl Default for ScrollbackFold {
             // Product default: tool bodies open; Ctrl+O still clamps viewport height.
             tools_expanded: true,
             tools_output_expanded: false,
+            output_overrides: HashMap::new(),
             // Product default: compaction summary collapsed (c1730 / pi).
             compaction_expanded: false,
             // Product default: Todo checklist collapsed to summary line (c1955).
@@ -109,6 +113,22 @@ impl ScrollbackFold {
     pub fn toggle_thinking(&mut self, id: &str) {
         let next = !self.thinking_effective(id);
         self.thinking_overrides.insert(id.to_string(), next);
+    }
+
+    pub fn output_effective(&self, id: &str) -> bool {
+        self.output_overrides
+            .get(id)
+            .copied()
+            .unwrap_or(self.tools_output_expanded)
+    }
+
+    pub fn toggle_output(&mut self, id: &str) {
+        let next = !self.output_effective(id);
+        self.output_overrides.insert(id.to_string(), next);
+    }
+
+    pub fn clear_output_overrides(&mut self) {
+        self.output_overrides.clear();
     }
 
     pub fn clear_tools_overrides(&mut self) {
@@ -380,11 +400,12 @@ pub fn render_scrollback(
                 display_diff,
             } => paint_diff_block(summary, display_diff, paint_ctx),
             UiEntry::Bash {
+                id,
                 command,
                 status,
                 output,
                 ..
-            } => paint_bash_block(command, *status, output, paint_ctx),
+            } => paint_bash_block(id, command, *status, output, paint_ctx),
             UiEntry::Ask {
                 id,
                 summary,

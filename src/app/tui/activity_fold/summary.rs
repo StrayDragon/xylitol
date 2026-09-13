@@ -680,6 +680,7 @@ mod tests {
     #[test]
     fn bang_bash_entry_is_noise_tool_bash_is_ran() {
         let bang = UiEntry::Bash {
+            id: "bash-t".into(),
             command: "ls".into(),
             status: crate::app::tui::bridge::BashBlockStatus::Success,
             output: String::new(),

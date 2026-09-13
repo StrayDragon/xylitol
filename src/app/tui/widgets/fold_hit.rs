@@ -11,8 +11,9 @@ pub enum FoldTarget {
     Todo,
     /// Global `compaction_expanded` (Wave A / att29).
     Compaction,
-    /// Global `tools_output_expanded` via Ctrl+O hint band (Wave A / att30).
-    OutputViewport,
+    /// Per-block output-viewport fold (Ctrl+O semantics; att30); id = block fold
+    /// key (Tool `toolCallId` / Diff `diff_fold_key` / Bash id).
+    OutputViewport(String),
     /// Activity envelope summary (`Worked for` / att31); id = `seg-{user_idx}`.
     Segment(String),
     /// Activity cluster header; id = `seg-{user_idx}:c{ord}`.

@@ -232,7 +232,13 @@
     当 以场景构建器回放多行输出的工具并封轮挂载交互面
     当 左键单击折叠命中表中的簇头三角列
     当 点击输出的 Ctrl+O 提示带
-    那么 提示带点击翻转输出视口全局态且与按 Ctrl+O 同构
+    那么 提示带点击仅翻转该块输出视口且 Ctrl+O 翻全局并清按块覆盖
+
+  @req:att30 @executable
+  场景: output-viewport-fold-per-block-headless
+    当 以场景构建器回放两个多行输出工具并封轮挂载交互面
+    当 点击第一个工具的 Ctrl+O 提示带
+    那么 仅该块展开且另一块保持折叠且折叠带可点回折
 
   @req:att32 @executable
   场景: remaining-fold-targets-unified-hit-table-headless

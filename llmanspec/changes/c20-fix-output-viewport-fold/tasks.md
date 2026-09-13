@@ -6,19 +6,19 @@
 
 ## Tasks
 
-### T1 包层：expanded 折叠提示行
+### T1 包层：expanded 折叠提示行（已完成）
 
 - `ExpandableOutputOptions` 新增 `fold_hint: String`（默认 `"ctrl+o to fold"`）。
 - `render_expandable_output`：expanded 且视觉行数 > `max_preview_lines` 时块尾追加 dim `... (expanded, {fold_hint})`；否则不追加。
 - 单测：展开超限有提示行、展开未超限无提示行、fold 文案来自选项、既有 streaming/zero-width 用例不回归。
 - 撑 spec：`package-tui-expandable-output` peo1 / peo3（本 change 内已 landing）。
 
-### T2 bridge：Bash 稳定 id
+### T2 bridge：Bash 稳定 id（已完成）
 
 - `UiEntry::Bash` 加 `id: String`；直播 `begin_bash_block` 分配序号 id；rebuild（`session_tree.rs`）填 `bashId`。
 - 修齐既有构造点 / 测试夹具。
 
-### T3 app 层：按块视口翻转 + fold 行命中
+### T3 app 层：按块视口翻转 + fold 行命中（已完成）
 
 - `blocked-by: T1, T2`
 - `ScrollbackFold.output_overrides` + `output_effective(id)` + `toggle_output(id)` + `clear_output_overrides()`；`FoldTarget::OutputViewport(String)`。
@@ -27,7 +27,7 @@
 - `root/mod.rs` `toggle_fold_target` 按块翻转；`slot_input.rs` Ctrl+O 翻全局默认 + 清覆盖（不整表失效缓存，仅 bump 受影响 fingerprint）。
 - headless 测试：点 A 块 hint 只翻 A；B 块不动；点 A 的 fold 行折回 A；Ctrl+O 全局翻转并清覆盖；硬截断块点击不展开（att16 不回归）。
 
-### T4 门禁收口
+### T4 门禁收口（已完成）
 
 - `blocked-by: T3`
 - `just fmt` / `just lint` / `just test` / `just test-tui` 全绿；`llman sdd validate <id> --strict --no-interactive` 全绿。
