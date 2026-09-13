@@ -98,9 +98,9 @@ pub enum Event {
 impl XyEvent {
     /// Convert a domain lifecycle event to its wire-protocol representation.
     ///
-/// Returns `None` for internal-only events that should not cross the
-/// client boundary (auto-retry bookkeeping, etc.). [`XyEvent::QueueUpdate`]
-/// and [`XyEvent::TodoUpdated`] are wire-visible (c540 / pa-todo1).
+    /// Returns `None` for internal-only events that should not cross the
+    /// client boundary (auto-retry bookkeeping, etc.). [`XyEvent::QueueUpdate`]
+    /// and [`XyEvent::TodoUpdated`] are wire-visible (c540 / pa-todo1).
     pub fn to_wire_event(&self) -> Option<Event> {
         match self {
             XyEvent::TextDelta(text) => Some(Event::TextDelta { text: text.clone() }),
@@ -427,11 +427,12 @@ mod tests {
     #[test]
     fn todo_updated_roundtrips_through_wire_event() {
         // pa-todo1: full TodoList snapshot crosses the wire; empty list = cleared.
-        let list = crate::protocol::session::TodoList::new(vec![crate::protocol::session::TodoItem {
-            id: "todo-1".into(),
-            content: "check env".into(),
-            status: crate::protocol::session::TodoStatus::InProgress,
-        }]);
+        let list =
+            crate::protocol::session::TodoList::new(vec![crate::protocol::session::TodoItem {
+                id: "todo-1".into(),
+                content: "check env".into(),
+                status: crate::protocol::session::TodoStatus::InProgress,
+            }]);
         let domain = XyEvent::TodoUpdated { list };
         let wire = domain
             .to_wire_event()
@@ -450,7 +451,9 @@ mod tests {
         let cleared = XyEvent::TodoUpdated {
             list: crate::protocol::session::TodoList::default(),
         };
-        let wire = cleared.to_wire_event().expect("empty list still wire-visible");
+        let wire = cleared
+            .to_wire_event()
+            .expect("empty list still wire-visible");
         let back = XyEvent::try_from(&wire).expect("roundtrip");
         assert!(matches!(
             back,
