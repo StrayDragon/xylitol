@@ -984,9 +984,8 @@ async fn todo_rewrite_publishes_todo_updated_into_run_stream() {
     );
     let gateway: Arc<dyn crate::protocol::ports::AgentTodoGateway> =
         crate::infra::tools::todo::SessionAgentTodoGateway::new(Arc::new(store));
-    let tools = crate::agent::tools::ToolSet::from_iter(crate::infra::tools::todo::todo_tools(
-        gateway,
-    ));
+    let tools =
+        crate::agent::tools::ToolSet::from_iter(crate::infra::tools::todo::todo_tools(gateway));
     let mut agent = make_agent_with_tools(chunks, tools);
 
     let mut stream = run_agent(&mut agent, "plan it").await;
