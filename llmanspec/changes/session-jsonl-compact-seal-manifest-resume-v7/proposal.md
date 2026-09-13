@@ -2,8 +2,6 @@
 depends_on:
 - c25-fix-compact-overflow-placeholder
 needs_specs_change: true
-rules_touched:
-- sr-v6
 ---
 
 # session JSONL 分段冷备（manifest + 活跃段，v7）
