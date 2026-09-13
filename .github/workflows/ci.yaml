@@ -1,0 +1,51 @@
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+  workflow_dispatch:
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: ${{ github.event_name == 'pull_request' }}
+
+env:
+  CARGO_TERM_COLOR: always
+
+jobs:
+  qa:
+    # Same gate as local `just qa`, minus the live-provider lab (no gateway
+    # credentials on CI): XYLITOL_SKIP_LIVE=1 is the documented qa skip option.
+    runs-on: ubuntu-latest
+    timeout-minutes: 45
+    env:
+      XYLITOL_SKIP_LIVE: "1"
+    steps:
+      - uses: actions/checkout@v7
+
+      # No `toolchain` input: rust-toolchain.toml pins the dated nightly
+      # (+ rustfmt/clippy components) and setup-rust-toolchain installs it.
+      - uses: actions-rust-lang/setup-rust-toolchain@v2
+
+      - uses: Swatinem/rust-cache@v2
+
+      - name: Install just + cargo-nextest
+        uses: taiki-e/install-action@v2
+        with:
+          tool: just,cargo-nextest
+
+      # prek hooks run inside `just qa` (text hygiene only, no cargo gates).
+      - name: Install prek
+        run: pipx install prek
+
+      # cccc-rs-cli (complexity HARD gate) is lazy-installed into .tools/ by
+      # scripts/check_complexity.py; cache that install across runs.
+      - name: Cache .tools (cccc-rs)
+        uses: actions/cache@v4
+        with:
+          path: .tools
+          key: tools-cccc-rs-0.4.0
+
+      - name: just qa (skip live-provider)
+        run: just qa quiet
