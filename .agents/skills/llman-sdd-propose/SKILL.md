@@ -25,7 +25,7 @@ flowchart TB
 
   subgraph gate_start["Branch binding"]
     C{"工作区干净<br/>且在默认分支？"}
-    D["change start<br/>建 sdd/&lt;id&gt; + 写 branch/base_sha"]
+    D["change start<br/>建 sdd/&lt;id&gt; + 写 branch/base_branch/base_sha"]
     E["或手动 checkout -b<br/>再 change attach"]
   end
 
@@ -37,7 +37,7 @@ flowchart TB
   subgraph implement["实现"]
     H["apply：按 tasks 改代码<br/>可继续改 specs"]
     I["verify"]
-    J["finalize<br/>ff-merge → rename → 自动提交 archive(sdd): &lt;id&gt;<br/>默认分支才首次合入 specs"]
+    J["finalize<br/>合并（squash 缺省）→ rename → 自动提交 archive(sdd): &lt;id&gt;<br/>目标分支才首次合入 specs"]
   end
 
   A --> B1 --> B2 --> C
@@ -86,7 +86,7 @@ flowchart LR
 
 - **change 已存在**：STOP。若 `readyToImplement=true`，建议 `llman-sdd-apply`；否则补完规划壳 / Branch binding / Specs landing（编辑 `llmanspec/changes/<id>/`，或在配置启用 `extra_skills: [llman-sdd-continue]`）。
 
-- **frontmatter 有固定 schema**：充实 `proposal.md` 时只接受 `llmanspec/AGENTS.md`「Change Proposal Frontmatter SSOT」中的合法字段（含 `depends_on`、`blocks`、`branch`、`base_sha`、`needs_specs_change`、`rules_touched`、`agent_acked`）。`status`/`title`/`priority`/`author` 等会被 `llman sdd validate` 报 ERROR 拒绝；生命周期阶段是推断量（用 `llman sdd show`/`list` 查询），绝不写进 frontmatter。正文 MUST NOT 复读 frontmatter 字段；正文 H1 是人类可读标题，不是 change id 的复读。
+- **frontmatter 有固定 schema**：充实 `proposal.md` 时只接受 `llmanspec/AGENTS.md`「Change Proposal Frontmatter SSOT」中的合法字段（含 `depends_on`、`blocks`、`branch`、`base_sha`、`needs_specs_change`）。`status`/`title`/`priority`/`author` 等会被 `llman sdd validate` 报 ERROR 拒绝；生命周期阶段是推断量（用 `llman sdd show`/`list` 查询），绝不写进 frontmatter。正文 MUST NOT 复读 frontmatter 字段；正文 H1 是人类可读标题，不是 change id 的复读。
 
 ## 快速记录分流
 
@@ -177,7 +177,7 @@ flowchart LR
 
 Git-native 护栏：
 - **Branch binding** → **Specs landing**：先 `change start` / `attach`，再在绑定的非默认分支编辑 live `.feature` 并 commit。
-- 锁定规则：修改/删除既有 `@human` 场景会触发门禁，除非 proposal frontmatter 的 `rules_touched` 列出被改动的 req-id。确认路径：finalize 交互一次 y/n 写回 `rules_touched`；`--yes` 只确认带 `@agent` 的规则（审计写入 `agent_acked`）；`rules_edit_acked` 已移除（r135/q9）。
+- 锁定规则：修改/删除既有 `@human` 场景以 WARNING 报告（报告制，r135/S0），不阻断 validate/finalize/diff。控制点：git 分支对比 + `llman sdd review` / `change diff` 报告浮现。确认元数据（`rules_touched` / `agent_acked` / `@agent` / `--yes` 锁定语义）已移除（q9 无兼容）。
 - apply 前须 `readyToImplement=true`（或 `needs_specs_change: false`）。收尾优先 `change finalize`。
 - 勿使用 `change delta` / solidify / `*.feature.delta.toon`。
 

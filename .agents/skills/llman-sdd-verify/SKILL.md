@@ -56,7 +56,7 @@ llman sdd show <id> --json --type change
    - `proposal.md` 与 `design.md`（如存在）
    - `tasks.md`（理解实现范围）
    - `llmanspec/changes/<id>/specs/` 若残留旧文档可忽略；SSOT 是 live specs
-4. **双轴审查（标准轴 + 合约轴分离，互不掩盖）**——对比 diff（`git diff <merge-base>...HEAD`，merge-base 取 attach 的 base_sha 或 `main`）分两轴：
+4. **双轴审查（标准轴 + 合约轴分离，互不掩盖）**——对比 diff（`git diff <merge-base>...HEAD`，merge-base 用现算 `git merge-base <本地默认分支> HEAD`；存储的 base_sha 仅作审计、MUST NOT 参与范围计算，见 r130/r137）分两轴：
    - **合约轴（Spec）**：实现是否满足 `@human` 规则的 MUST/SHALL 与 `@executable` 的 GWT。
      - 缺失/部分实现的行为、错误实现、以及 diff 中未被 spec 要求的超范围改动。
      - 给出最小修复建议，或建议更新 artifacts。
@@ -126,7 +126,7 @@ llman sdd show <id> --json --type change
 
 Git-native 护栏：
 - **Branch binding** → **Specs landing**：先 `change start` / `attach`，再在绑定的非默认分支编辑 live `.feature` 并 commit。
-- 锁定规则：修改/删除既有 `@human` 场景会触发门禁，除非 proposal frontmatter 的 `rules_touched` 列出被改动的 req-id。确认路径：finalize 交互一次 y/n 写回 `rules_touched`；`--yes` 只确认带 `@agent` 的规则（审计写入 `agent_acked`）；`rules_edit_acked` 已移除（r135/q9）。
+- 锁定规则：修改/删除既有 `@human` 场景以 WARNING 报告（报告制，r135/S0），不阻断 validate/finalize/diff。控制点：git 分支对比 + `llman sdd review` / `change diff` 报告浮现。确认元数据（`rules_touched` / `agent_acked` / `@agent` / `--yes` 锁定语义）已移除（q9 无兼容）。
 - apply 前须 `readyToImplement=true`（或 `needs_specs_change: false`）。收尾优先 `change finalize`。
 - 勿使用 `change delta` / solidify / `*.feature.delta.toon`。
 
