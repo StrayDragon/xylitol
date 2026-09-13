@@ -50,6 +50,8 @@ pub(crate) async fn comp_run_compact(
         model.as_ref(),
         &settings,
         None,
+        0,
+        None,
         None,
         &xylitol_ai_bridge::ObsSessionContext::default(),
     )

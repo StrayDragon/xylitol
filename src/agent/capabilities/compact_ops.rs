@@ -11,6 +11,7 @@ impl AgentCapabilities {
         self.maybe_auto_compact_with(
             &crate::agent::compaction::EstimateOpts {
                 model_id: self.current_model().map(|m| m.id.clone()),
+                fixed_context: Some(self.fixed_request_context()),
                 ..Default::default()
             },
             None,
@@ -53,6 +54,7 @@ impl AgentCapabilities {
                 estimate_opts,
                 last_assistant,
                 None,
+                Some(&self.fixed_request_context()),
                 None,
                 &self.obs_session_snapshot_from_store().await,
             )
@@ -86,6 +88,8 @@ impl AgentCapabilities {
                 model.as_ref(),
                 self.sink.as_ref(),
                 instructions,
+                self.current_model().map(|m| m.context_window).unwrap_or(0),
+                Some(&self.fixed_request_context()),
                 &self.obs_session_snapshot_from_store().await,
             )
             .await?;
@@ -96,5 +100,38 @@ impl AgentCapabilities {
         }
 
         Ok(())
+    }
+
+    /// Resume / session-activation settlement (c26 LeafChanged): one
+    /// overhead-aware estimate so a freshly attached / switched client's footer
+    /// and the next reserve gate see the real context size without a model call.
+    pub async fn emit_leaf_changed_settlement(&self) {
+        use crate::agent::compaction::{
+            ContextTokenSettlementReason, EstimateOpts, settle_from_session_entries,
+        };
+        let Some(sid) = self.session_id().map(str::to_string) else {
+            return;
+        };
+        let Ok(entries) = self.store.load_leaf_branch(&sid).await else {
+            return;
+        };
+        let settled = settle_from_session_entries(
+            &entries,
+            &EstimateOpts {
+                model_id: self.current_model().map(|m| m.id.clone()),
+                fixed_context: Some(self.fixed_request_context()),
+                ..Default::default()
+            },
+            ContextTokenSettlementReason::LeafChanged,
+        );
+        self.sink
+            .emit(
+                &crate::protocol::lifecycle::XyEvent::ContextTokenSettlement {
+                    estimate: settled.estimate,
+                    reason: settled.reason.as_str().to_string(),
+                    generation: settled.generation,
+                },
+            )
+            .await;
     }
 }

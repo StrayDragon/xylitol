@@ -245,6 +245,16 @@ impl AgentRuntime {
         self.inner.system_prompt()
     }
 
+    /// Fixed per-request context for overhead-aware estimates (c25 / c16).
+    pub fn fixed_request_context(&self) -> crate::agent::compaction::FixedRequestContext {
+        self.inner.fixed_request_context()
+    }
+
+    /// Resume / session-activation settlement (c26 LeafChanged).
+    pub async fn emit_leaf_changed_settlement(&self) {
+        self.inner.emit_leaf_changed_settlement().await
+    }
+
     pub fn tools_snapshot(&self) -> ToolSet {
         self.inner.tools().clone()
     }
@@ -834,6 +844,11 @@ fn run_react_loop(cfg: ReActConfig) -> impl Stream<Item = XyEvent> + Send {
         compaction_settings,
         cwd,
     } = cfg;
+    // c25: fixed per-request overhead for overhead-aware settlement / cut clamp.
+    let fixed_context = crate::agent::compaction::FixedRequestContext {
+        system_prompt: system_prompt.clone(),
+        tool_schemas: tool_schemas.clone(),
+    };
     async_stream::stream! {
         let _clear_active = ClearActiveTurn {
             coordinator: coordinator.clone(),
@@ -1087,6 +1102,7 @@ fn run_react_loop(cfg: ReActConfig) -> impl Stream<Item = XyEvent> + Send {
                             &model_manager,
                             &event_sink,
                             &compaction_settings,
+                            &fixed_context,
                             &mut history,
                             &mut overflow_recovery_attempted,
                             None,
@@ -1349,6 +1365,7 @@ fn run_react_loop(cfg: ReActConfig) -> impl Stream<Item = XyEvent> + Send {
                         &model_manager,
                         &event_sink,
                         &compaction_settings,
+                        &fixed_context,
                         &mut history,
                         &mut overflow_recovery_attempted,
                         &hooks,
@@ -1528,6 +1545,7 @@ fn run_react_loop(cfg: ReActConfig) -> impl Stream<Item = XyEvent> + Send {
                     &model_manager,
                     &event_sink,
                     &compaction_settings,
+                    &fixed_context,
                     &mut history,
                     &mut overflow_recovery_attempted,
                     &hooks,

@@ -38,6 +38,23 @@ impl AgentCapabilities {
         self.with_models(|mm| mm.build_current_model())
     }
 
+    /// Fixed per-request context (system prompt + tool schemas) for
+    /// overhead-aware context estimates (c25 / c16).
+    pub fn fixed_request_context(&self) -> crate::agent::compaction::FixedRequestContext {
+        crate::agent::compaction::FixedRequestContext {
+            system_prompt: self.system_prompt.clone(),
+            tool_schemas: self
+                .tools
+                .iter()
+                .map(|t| crate::protocol::model::XyToolSchema {
+                    name: t.name().to_string(),
+                    description: t.description().to_string(),
+                    parameters: t.parameters_schema(),
+                })
+                .collect(),
+        }
+    }
+
     /// Selected thinking level, including a sticky out-of-set restored value.
     pub fn thinking_level(&self) -> String {
         self.with_models(|mm| mm.thinking_level())

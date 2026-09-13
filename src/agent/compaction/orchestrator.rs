@@ -8,7 +8,7 @@
 
 use crate::agent::compaction::obs::AgentCompactionSpan;
 use crate::agent::compaction::overflow::{assistant_same_model, is_context_overflow_assistant};
-use crate::agent::compaction::token_estimator::EstimateOpts;
+use crate::agent::compaction::token_estimator::{EstimateOpts, FixedRequestContext};
 use crate::agent::compaction::{
     CompactionError, CompactionSettings, compact_session, prepare_compaction,
 };
@@ -47,6 +47,7 @@ impl CompactionOrchestrator {
 
     /// Manual force compact (pi `compact(customInstructions?)`). Does **not** apply the reserve gate.
     /// OTel `agent.compaction` starts only after `prepare_compaction` succeeds (otel19).
+    #[allow(clippy::too_many_arguments)]
     pub async fn compact(
         &self,
         store: &dyn XySessionStore,
@@ -54,6 +55,8 @@ impl CompactionOrchestrator {
         model: &dyn XyModel,
         event_sink: &dyn XyEventSink,
         instructions: Option<String>,
+        context_window: u64,
+        fixed_context: Option<&FixedRequestContext>,
         obs_session: &xylitol_ai_bridge::ObsSessionContext,
     ) -> Result<(), CompactionError> {
         event_sink
@@ -63,7 +66,10 @@ impl CompactionOrchestrator {
             .await;
 
         let entries = store.load_leaf_branch(sid).await?;
-        if let Some(err) = prepare_compaction(&entries, &self.settings).err() {
+        let overhead = fixed_context.map_or(0, FixedRequestContext::overhead_tokens);
+        if let Some(err) =
+            prepare_compaction(&entries, &self.settings, context_window, overhead).err()
+        {
             let error_message = err.to_string();
             event_sink
                 .emit(&XyEvent::CompactionEnd {
@@ -91,6 +97,8 @@ impl CompactionOrchestrator {
             model,
             &force_settings,
             instructions.as_deref(),
+            context_window,
+            fixed_context,
             llm_parent,
             obs_session,
         )
@@ -119,7 +127,15 @@ impl CompactionOrchestrator {
             .await;
 
         if result.is_ok() {
-            emit_after_compaction_settlement(store, sid, event_sink, None, obs_session).await;
+            emit_after_compaction_settlement(
+                store,
+                sid,
+                event_sink,
+                fixed_context,
+                None,
+                obs_session,
+            )
+            .await;
         }
 
         result?;
@@ -139,6 +155,7 @@ impl CompactionOrchestrator {
         current_provider: &str,
         current_model_id: &str,
         overflow_recovery_attempted: bool,
+        fixed_context: Option<&FixedRequestContext>,
         turn_obs_parent: Option<fastrace::prelude::SpanContext>,
         obs_session: &xylitol_ai_bridge::ObsSessionContext,
     ) -> Result<OverflowCompactOutcome, CompactionError> {
@@ -178,7 +195,9 @@ impl CompactionOrchestrator {
                     event_sink,
                     "overflow",
                     false,
+                    context_window,
                     &entries,
+                    fixed_context,
                     turn_obs_parent,
                     obs_session,
                 )
@@ -214,7 +233,9 @@ impl CompactionOrchestrator {
             event_sink,
             "overflow",
             true,
+            context_window,
             &entries,
+            fixed_context,
             turn_obs_parent,
             obs_session,
         )
@@ -243,6 +264,7 @@ impl CompactionOrchestrator {
         estimate_opts: &EstimateOpts,
         last_assistant: Option<&AgentMessage>,
         precomputed: Option<&crate::protocol::model::ContextTokenEstimate>,
+        fixed_context: Option<&FixedRequestContext>,
         turn_obs_parent: Option<fastrace::prelude::SpanContext>,
         obs_session: &xylitol_ai_bridge::ObsSessionContext,
     ) -> Result<bool, CompactionError> {
@@ -264,7 +286,9 @@ impl CompactionOrchestrator {
             Some(e) => e.clone(),
             None => {
                 use crate::agent::compaction::settlement::estimate_quiet;
-                estimate_quiet(&entries, estimate_opts)
+                let mut quiet_opts = estimate_opts.clone();
+                quiet_opts.fixed_context = fixed_context.cloned();
+                estimate_quiet(&entries, &quiet_opts)
             }
         };
         if estimate.tokens == 0 {
@@ -291,7 +315,9 @@ impl CompactionOrchestrator {
             event_sink,
             &reason,
             false,
+            context_window,
             &entries,
+            fixed_context,
             turn_obs_parent,
             obs_session,
         )
@@ -307,11 +333,14 @@ impl CompactionOrchestrator {
         event_sink: &dyn XyEventSink,
         reason: &str,
         will_retry: bool,
+        context_window: u64,
         entries: &[SessionEntry],
+        fixed_context: Option<&FixedRequestContext>,
         turn_obs_parent: Option<fastrace::prelude::SpanContext>,
         obs_session: &xylitol_ai_bridge::ObsSessionContext,
     ) -> Result<bool, CompactionError> {
-        if prepare_compaction(entries, &self.settings).is_err() {
+        let overhead = fixed_context.map_or(0, FixedRequestContext::overhead_tokens);
+        if prepare_compaction(entries, &self.settings, context_window, overhead).is_err() {
             return Ok(false);
         }
 
@@ -329,6 +358,8 @@ impl CompactionOrchestrator {
             model,
             &self.settings,
             None,
+            context_window,
+            fixed_context,
             llm_parent,
             obs_session,
         )
@@ -376,8 +407,15 @@ impl CompactionOrchestrator {
             .await;
 
         if result.is_ok() {
-            emit_after_compaction_settlement(store, sid, event_sink, turn_obs_parent, obs_session)
-                .await;
+            emit_after_compaction_settlement(
+                store,
+                sid,
+                event_sink,
+                fixed_context,
+                turn_obs_parent,
+                obs_session,
+            )
+            .await;
         }
 
         match result {
@@ -391,6 +429,7 @@ async fn emit_after_compaction_settlement(
     store: &dyn XySessionStore,
     sid: &str,
     event_sink: &dyn XyEventSink,
+    fixed_context: Option<&FixedRequestContext>,
     turn_obs_parent: Option<fastrace::prelude::SpanContext>,
     obs_session: &xylitol_ai_bridge::ObsSessionContext,
 ) {
@@ -400,9 +439,13 @@ async fn emit_after_compaction_settlement(
     let Ok(fresh) = store.load_leaf_branch(sid).await else {
         return;
     };
+    // c25: AfterCompaction placeholder — estimate of summary row + kept tail +
+    // fixed request overhead (system prompt + tools), the next request's size.
+    // The stale pre-compact Api anchor is dropped inside the estimator.
     let settled = settle_from_session_entries(
         &fresh,
         &EstimateOpts {
+            fixed_context: fixed_context.cloned(),
             obs_parent: turn_obs_parent,
             obs_session: obs_session.clone(),
             ..Default::default()
@@ -579,6 +622,147 @@ mod tests {
         async fn emit(&self, _: &XyEvent) {}
     }
 
+    struct RecordingSink(std::sync::Mutex<Vec<XyEvent>>);
+
+    #[async_trait]
+    impl XyEventSink for RecordingSink {
+        async fn emit(&self, event: &XyEvent) {
+            self.0.lock().unwrap().push(event.clone());
+        }
+    }
+
+    /// c25/c26: force compact on a 92fa9adf-shaped session — the AfterCompaction
+    /// settlement MUST carry the post-cut placeholder (summary + kept tail),
+    /// never the stale pre-compact usage anchor, with no extra model traffic.
+    #[tokio::test(flavor = "current_thread")]
+    async fn after_compaction_settlement_reports_post_cut_placeholder() {
+        use crate::infra::provider::{ScenarioStep, fake_xy_model};
+        use crate::infra::session::SessionManager;
+        use crate::protocol::lifecycle::XyEvent as Ev;
+        use crate::protocol::message::{AgentPart, XyUsage};
+
+        let mgr = SessionManager::in_memory();
+        let sid = "after-compact-settle";
+        mgr.create(sid, Some("."), None).await.unwrap();
+        let usage = XyUsage {
+            input: 90_000,
+            output: 0,
+            total_tokens: 90_000,
+            ..Default::default()
+        };
+        let stale = crate::protocol::message::AgentMessage::Llm(LlmMessage::AssistantMessage {
+            content: vec![AgentPart::text("pre-compact anchor")],
+            stop_reason: Some(XyStopReason::Stop),
+            usage: Some(usage),
+            api: String::new(),
+            provider: String::new(),
+            model: String::new(),
+            response_id: None,
+            error_message: None,
+            timestamp: 1,
+            diagnostics: Vec::new(),
+        });
+        mgr.append(
+            sid,
+            &crate::protocol::session::SessionEntry::Message(
+                crate::protocol::session::MessageEntry {
+                    base: crate::protocol::session::EntryBase {
+                        entry_type: "message".into(),
+                        id: "a_stale".into(),
+                        parent_id: None,
+                        timestamp: 1,
+                    },
+                    message: serde_json::to_value(&stale).unwrap(),
+                },
+            ),
+        )
+        .await
+        .unwrap();
+        // 60 turns ≈ 12k chars/4: below keep(20k) — only the window clamp frees it.
+        for i in 0..60 {
+            for (id, role, body) in [
+                (format!("u{i}"), "user", "x".repeat(400)),
+                (format!("a{i}"), "assistant", "y".repeat(400)),
+            ] {
+                let msg = if role == "user" {
+                    crate::protocol::message::AgentMessage::user(body)
+                } else {
+                    crate::protocol::message::AgentMessage::assistant(body)
+                };
+                mgr.append(
+                    sid,
+                    &crate::protocol::session::SessionEntry::Message(
+                        crate::protocol::session::MessageEntry {
+                            base: crate::protocol::session::EntryBase {
+                                entry_type: "message".into(),
+                                id,
+                                parent_id: None,
+                                timestamp: 0,
+                            },
+                            message: serde_json::to_value(&msg).unwrap(),
+                        },
+                    ),
+                )
+                .await
+                .unwrap();
+            }
+        }
+
+        let model = fake_xy_model("sum", vec![ScenarioStep::text("## Goal\nsummarized")]);
+        let sink = std::sync::Arc::new(RecordingSink(std::sync::Mutex::new(Vec::new())));
+        let orch = CompactionOrchestrator::new(CompactionSettings {
+            enabled: true,
+            reserve_tokens: 16_384,
+            keep_recent_tokens: 20_000,
+        });
+        let fixed = FixedRequestContext {
+            system_prompt: Some("S".repeat(26_000)), // ≈6.5k chars/4 overhead
+            tool_schemas: Vec::new(),
+        };
+        orch.compact(
+            &mgr,
+            sid,
+            model.as_ref(),
+            sink.as_ref(),
+            None,
+            32_768,
+            Some(&fixed),
+            &Default::default(),
+        )
+        .await
+        .expect("force compact succeeds under clamp");
+
+        let events = sink.0.lock().unwrap().clone();
+        let settlement = events
+            .iter()
+            .find_map(|e| match e {
+                Ev::ContextTokenSettlement {
+                    estimate, reason, ..
+                } if reason == "after_compaction" => Some(estimate.tokens),
+                _ => None,
+            })
+            .expect("AfterCompaction settlement emitted");
+        // Steady-state placeholder ≈ kept tail (≈ clamped budget) + overhead;
+        // decisively NOT the stale pre-compact 90k anchor.
+        assert!(
+            settlement < 32_768,
+            "placeholder must track the post-cut context, below the window: {settlement}"
+        );
+        assert!(
+            settlement < 90_000 / 4,
+            "stale pre-compact anchor must be dropped: {settlement}"
+        );
+        // CompactionEnd carries the real payload for the wire (pa-wire3 sender side).
+        assert!(events.iter().any(|e| matches!(
+            e,
+            Ev::CompactionEnd {
+                tokens_before: Some(_),
+                summary: Some(_),
+                ..
+            }
+        )));
+    }
+
     /// otel19: prepare early-exit MUST NOT export `agent.compaction`.
     /// `current_thread` so scoped gates / collect stay on the worker that entered them.
     #[tokio::test(flavor = "current_thread")]
@@ -593,6 +777,8 @@ mod tests {
                 "sid",
                 &PanicModel,
                 &NoopSink,
+                None,
+                0,
                 None,
                 &Default::default(),
             )

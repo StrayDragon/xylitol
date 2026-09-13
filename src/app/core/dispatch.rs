@@ -89,6 +89,8 @@ pub enum DispatchOutcome {
         session_id: String,
         entries: Vec<SessionEntry>,
     },
+    /// `EstimateContext` — the host-side overhead-aware estimate (pa-map5).
+    EstimateContext(crate::protocol::model::ContextTokenEstimate),
     /// `SessionTree` — the current session message tree.
     SessionTree(Vec<SessionTreeNode>),
     /// `TravelSessionTree` — the selected tree position and editor prefill.

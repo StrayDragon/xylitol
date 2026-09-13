@@ -783,6 +783,10 @@ impl crate::app::core::dispatch::SessionCommandExecutor for XyInProcessDriver {
                     entries,
                 })
             }
+            Command::EstimateContext { .. } => {
+                let estimate = XyInProcessDriver::estimate_context_tokens(self).await?;
+                Ok(DispatchOutcome::EstimateContext(estimate))
+            }
             Command::SessionTree { kind, .. } => {
                 Ok(DispatchOutcome::SessionTree(self.session_tree(kind).await?))
             }

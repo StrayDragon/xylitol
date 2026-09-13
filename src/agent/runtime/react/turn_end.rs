@@ -51,6 +51,7 @@ pub(crate) async fn finish_turn(
     model_manager: &Arc<Mutex<crate::agent::model::manager::ModelManager>>,
     event_sink: &Arc<dyn crate::protocol::ports::XyEventSink>,
     compaction_settings: &crate::agent::compaction::CompactionSettings,
+    fixed_context: &crate::agent::compaction::FixedRequestContext,
     history: &mut Vec<AgentMessage>,
     overflow_recovery_attempted: &mut bool,
     hooks: &AgentHooks,
@@ -70,6 +71,7 @@ pub(crate) async fn finish_turn(
         store,
         session_id,
         model_manager,
+        fixed_context,
         turn_obs_parent,
         obs_session,
     )
@@ -93,6 +95,7 @@ pub(crate) async fn finish_turn(
         model_manager,
         event_sink,
         compaction_settings,
+        fixed_context,
         history,
         overflow_recovery_attempted,
         settlement.as_ref().map(|s| &s.estimate),
@@ -140,6 +143,7 @@ pub(crate) async fn settle_turn_context(
     store: &Arc<dyn XySessionStore>,
     session_id: &str,
     model_manager: &Arc<Mutex<crate::agent::model::manager::ModelManager>>,
+    fixed_context: &crate::agent::compaction::FixedRequestContext,
     turn_obs_parent: Option<fastrace::prelude::SpanContext>,
     obs_session: &xylitol_ai_bridge::ObsSessionContext,
 ) -> Option<crate::agent::compaction::ContextTokenSettlement> {
@@ -161,6 +165,8 @@ pub(crate) async fn settle_turn_context(
         &entries,
         &EstimateOpts {
             model_id,
+            // c25: footer / gate share the overhead-aware estimate (c16).
+            fixed_context: Some(fixed_context.clone()),
             obs_parent: turn_obs_parent,
             obs_session: obs_session.clone(),
             ..Default::default()
@@ -180,6 +186,7 @@ pub(crate) async fn try_turn_end_compaction(
     model_manager: &Arc<Mutex<crate::agent::model::manager::ModelManager>>,
     event_sink: &Arc<dyn crate::protocol::ports::XyEventSink>,
     settings: &crate::agent::compaction::CompactionSettings,
+    fixed_context: &crate::agent::compaction::FixedRequestContext,
     history: &mut Vec<AgentMessage>,
     overflow_recovery_attempted: &mut bool,
     precomputed: Option<&crate::protocol::model::ContextTokenEstimate>,
@@ -230,6 +237,7 @@ pub(crate) async fn try_turn_end_compaction(
             &provider,
             &model_id,
             *overflow_recovery_attempted,
+            Some(fixed_context),
             turn_obs_parent,
             obs_session,
         )
@@ -284,6 +292,7 @@ pub(crate) async fn try_turn_end_compaction(
 
     let opts = EstimateOpts {
         model_id: Some(model_id),
+        fixed_context: Some(fixed_context.clone()),
         obs_parent: turn_obs_parent,
         obs_session: obs_session.clone(),
         ..Default::default()
@@ -298,6 +307,7 @@ pub(crate) async fn try_turn_end_compaction(
             &opts,
             Some(&last_assistant),
             precomputed,
+            Some(fixed_context),
             turn_obs_parent,
             obs_session,
         )

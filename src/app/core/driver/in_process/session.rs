@@ -70,6 +70,9 @@ impl super::XyInProcessDriver {
         {
             xylitol_ai_bridge::provider::set_obs_session_name(Some(name.as_str()));
         }
+        // c25/c26: freshly active leaf → one LeafChanged settlement for footer /
+        // reserve gate parity (overhead-aware, no model call).
+        self.agent.emit_leaf_changed_settlement().await;
         Ok(session_id.to_string())
     }
 
@@ -93,9 +96,16 @@ impl super::XyInProcessDriver {
         let tokenizer_override = model_id
             .as_deref()
             .and_then(tokenizer_override_from_app_config);
+        // c25: same fixed context the agent would send — footer parity (c16).
+        let fixed_context = self.agent.fixed_request_context();
         // HF / local encode is CPU-heavy — keep it off the async worker (TUI host loop).
         tokio::task::spawn_blocking(move || {
-            estimate_from_session_entries(&entries, model_id, tokenizer_override)
+            estimate_from_session_entries(
+                &entries,
+                model_id,
+                tokenizer_override,
+                Some(fixed_context),
+            )
         })
         .await
         .map_err(|e| XyDriverError::io(format!("estimate join: {e}")))

@@ -10,10 +10,7 @@ mod slash;
 
 use xylitol_tui::Terminal;
 
-use crate::app::core::driver::{
-    EventStream, QueueStats, XyDriver, XyDriverError, estimate_from_session_entries,
-    tokenizer_override_from_app_config,
-};
+use crate::app::core::driver::{EventStream, QueueStats, XyDriver, XyDriverError};
 
 use crate::app::core::dispatch::dispatch;
 use crate::protocol::Command;
@@ -108,48 +105,33 @@ pub async fn refresh_footer_tokens<T: Terminal>(
     }
 }
 
-/// Start a background footer estimate; return immediately (production host).
+/// Start a background footer estimate; return the label via the footer job tx.
 ///
-/// Loads messages on the async path (cheap), then `spawn_blocking` for encode.
-/// Result arrives via [`HostSession::recv_footer_token`] → `HostEvent::FooterTokens`.
+/// Rides the [`XyDriver::estimate_context_tokens`] seam so in-process and remote
+/// surfaces share the host-side overhead-aware estimate (c25 / c16) instead of a
+/// local entries-only count.
 #[cfg_attr(test, allow(dead_code))] // production `drain_pending` only (`not(test)`)
 pub async fn kick_footer_token_refresh<T: Terminal>(
     session: &mut HostSession<T>,
     driver: &mut dyn XyDriver,
 ) {
     let _ = session.take_pending_footer_token_refresh();
-    let entries = match session_entries(driver).await {
-        Ok(e) => e,
-        Err(_) => {
-            session.set_footer_token_label(None);
-            return;
-        }
-    };
-    if entries.is_empty() {
-        session.set_footer_token_label(None);
-        return;
-    }
-
     let job_id = session.begin_footer_token_job();
     let tx = session.footer_token_tx();
-    let model_id = driver.current_model().map(|m| m.id);
     let context_window = driver
         .current_model()
         .map(|m| m.context_window)
         .unwrap_or(0);
-    let tokenizer_override = model_id
-        .as_deref()
-        .and_then(tokenizer_override_from_app_config);
 
-    tokio::spawn(async move {
-        let label = tokio::task::spawn_blocking(move || {
-            let est = estimate_from_session_entries(&entries, model_id, tokenizer_override);
-            footer_token_label(est.provenance, est.tokens, context_window)
-        })
-        .await
-        .ok();
-        let _ = tx.send((job_id, label));
-    });
+    let label = match driver.estimate_context_tokens().await {
+        Ok(est) => Some(footer_token_label(
+            est.provenance,
+            est.tokens,
+            context_window,
+        )),
+        Err(_) => None,
+    };
+    let _ = tx.send((job_id, label));
 }
 
 /// Abort bookkeeping + steer / follow-up lane pump (ati3 / c665 / busy→idle).

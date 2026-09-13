@@ -23,7 +23,7 @@ use super::proto::BashRun;
 use super::types::{
     ClipboardCopyOutcome, CommandInfo, EventStream, LoadedResourcesSnapshot, ModelInfo,
     ProjectTrustMode, ProjectTrustPersistReport, QueueStats, ReloadStepReport, RuntimeReloadReport,
-    XyEvent, estimate_from_session_entries,
+    XyEvent,
 };
 
 /// Notify the product TUI of mux reverse-RPC (approval/question).
@@ -1092,20 +1092,11 @@ where
     async fn estimate_context_tokens(
         &self,
     ) -> Result<crate::protocol::model::ContextTokenEstimate, XyDriverError> {
-        // Remote surface: tokenizer mapping lives on the server; do not inject
-        // local AppConfig override here.
-        let entries = match self.unary_cmd(Command::GetMessages {}).await {
-            Ok(data) => serde_json::from_value(data.get("entries").cloned().unwrap_or(Value::Null))
-                .unwrap_or_default(),
-            Err(_) => Vec::new(),
-        };
-        // Remote surface: tokenizer mapping lives on the server; do not inject
-        // local AppConfig override here.
-        Ok(estimate_from_session_entries(
-            &entries,
-            self.current_model().map(|m| m.id),
-            None,
-        ))
+        // Remote surface: the host owns the system prompt + tool schemas and the
+        // tokenizer mapping (pa-map5 / sr-est1) — estimate there, never locally.
+        let data = self.unary_cmd(Command::EstimateContext {}).await?;
+        serde_json::from_value(data.get("estimate").cloned().unwrap_or(Value::Null))
+            .map_err(|e| XyDriverError::remote(format!("estimate_context payload: {e}")))
     }
 
     fn get_commands(&self) -> Vec<CommandInfo> {
@@ -1492,6 +1483,13 @@ where
                     session_id: self.session_id.clone(),
                     entries,
                 })
+            }
+            Command::EstimateContext { .. } => {
+                let data = self.unary_cmd(Command::EstimateContext {}).await?;
+                let estimate =
+                    serde_json::from_value(data.get("estimate").cloned().unwrap_or(Value::Null))
+                        .map_err(|e| XyDriverError::remote(e.to_string()))?;
+                Ok(DispatchOutcome::EstimateContext(estimate))
             }
             Command::SessionTree { kind, .. } => {
                 let data = self.unary_cmd(Command::SessionTree { kind }).await?;

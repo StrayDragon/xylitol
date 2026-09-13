@@ -70,8 +70,20 @@ pub enum Event {
         id: String,
         output: String,
     },
-    /// Compaction completed.
-    CompactionEnd,
+    /// Compaction completed — payload mirrors [`XyEvent::CompactionEnd`] so
+    /// attach clients render real token counts / expandable summary (pa-wire3).
+    CompactionEnd {
+        result: Option<String>,
+        #[serde(default)]
+        aborted: bool,
+        #[serde(default)]
+        reason: String,
+        #[serde(default)]
+        will_retry: bool,
+        error_message: Option<String>,
+        summary: Option<String>,
+        tokens_before: Option<u64>,
+    },
     /// Shared context-token settlement (c1860) for footer / cross-client fixed zone.
     ContextTokenSettlement {
         tokens: u64,
@@ -161,7 +173,23 @@ impl XyEvent {
             XyEvent::CompactionStart { reason } => Some(Event::CompactionStart {
                 reason: reason.clone(),
             }),
-            XyEvent::CompactionEnd { .. } => Some(Event::CompactionEnd),
+            XyEvent::CompactionEnd {
+                result,
+                aborted,
+                reason,
+                will_retry,
+                error_message,
+                summary,
+                tokens_before,
+            } => Some(Event::CompactionEnd {
+                result: result.clone(),
+                aborted: *aborted,
+                reason: reason.clone(),
+                will_retry: *will_retry,
+                error_message: error_message.clone(),
+                summary: summary.clone(),
+                tokens_before: *tokens_before,
+            }),
             XyEvent::ContextTokenSettlement {
                 estimate,
                 reason,
@@ -278,14 +306,22 @@ impl TryFrom<&Event> for XyEvent {
             Event::CompactionStart { reason } => Ok(XyEvent::CompactionStart {
                 reason: reason.clone(),
             }),
-            Event::CompactionEnd => Ok(XyEvent::CompactionEnd {
-                result: None,
-                aborted: false,
-                reason: String::new(),
-                will_retry: false,
-                error_message: None,
-                summary: None,
-                tokens_before: None,
+            Event::CompactionEnd {
+                result,
+                aborted,
+                reason,
+                will_retry,
+                error_message,
+                summary,
+                tokens_before,
+            } => Ok(XyEvent::CompactionEnd {
+                result: result.clone(),
+                aborted: *aborted,
+                reason: reason.clone(),
+                will_retry: *will_retry,
+                error_message: error_message.clone(),
+                summary: summary.clone(),
+                tokens_before: *tokens_before,
             }),
             Event::ContextTokenSettlement {
                 tokens,
@@ -617,5 +653,116 @@ mod tests {
             panic!("unexpected event");
         };
         assert!(is_error, "failure flag survives the roundtrip");
+    }
+
+    #[test]
+    fn compaction_end_payload_roundtrips_through_wire_event() {
+        // pa-wire3: success / failure / aborted payloads must survive the wire
+        // so attach clients render real token counts instead of a 0-token block.
+        let success = XyEvent::CompactionEnd {
+            result: Some("ok".into()),
+            aborted: false,
+            reason: "threshold".into(),
+            will_retry: false,
+            error_message: None,
+            summary: Some("prior work summarized".into()),
+            tokens_before: Some(101_080),
+        };
+        let wire = success
+            .to_wire_event()
+            .expect("CompactionEnd is wire-visible");
+        let encoded = serde_json::to_value(&wire).expect("wire serializes");
+        assert_eq!(encoded["type"], "compaction_end");
+        assert_eq!(encoded["tokens_before"], 101_080);
+        assert_eq!(encoded["summary"], "prior work summarized");
+        let decoded: Event = serde_json::from_value(encoded).expect("wire deserializes");
+        let back = XyEvent::try_from(&decoded).expect("roundtrip");
+        let XyEvent::CompactionEnd {
+            result,
+            aborted,
+            reason,
+            will_retry,
+            error_message,
+            summary,
+            tokens_before,
+        } = back
+        else {
+            panic!("unexpected event");
+        };
+        assert_eq!(result.as_deref(), Some("ok"));
+        assert!(!aborted);
+        assert_eq!(reason, "threshold");
+        assert!(!will_retry);
+        assert_eq!(error_message, None);
+        assert_eq!(summary.as_deref(), Some("prior work summarized"));
+        assert_eq!(tokens_before, Some(101_080));
+
+        let failed = XyEvent::CompactionEnd {
+            result: None,
+            aborted: false,
+            reason: "overflow".into(),
+            will_retry: false,
+            error_message: Some("Context overflow recovery failed".into()),
+            summary: None,
+            tokens_before: None,
+        };
+        let wire = failed
+            .to_wire_event()
+            .expect("CompactionEnd is wire-visible");
+        let back = XyEvent::try_from(&wire).expect("roundtrip");
+        let XyEvent::CompactionEnd {
+            error_message,
+            reason,
+            ..
+        } = back
+        else {
+            panic!("unexpected event");
+        };
+        assert_eq!(reason, "overflow");
+        assert_eq!(
+            error_message.as_deref(),
+            Some("Context overflow recovery failed")
+        );
+
+        let aborted = XyEvent::CompactionEnd {
+            result: None,
+            aborted: true,
+            reason: "manual".into(),
+            will_retry: false,
+            error_message: None,
+            summary: None,
+            tokens_before: None,
+        };
+        let wire = aborted
+            .to_wire_event()
+            .expect("CompactionEnd is wire-visible");
+        let back = XyEvent::try_from(&wire).expect("roundtrip");
+        assert!(matches!(back, XyEvent::CompactionEnd { aborted: true, .. }));
+    }
+
+    #[test]
+    fn legacy_bare_compaction_end_decodes_to_default_payload() {
+        // Old producers (pre pa-wire3) may still send a bare compaction_end;
+        // decoding MUST NOT panic and MUST NOT fake a success completion.
+        let decoded: Event = serde_json::from_value(serde_json::json!({"type": "compaction_end"}))
+            .expect("legacy bare payload must decode");
+        let back = XyEvent::try_from(&decoded).expect("roundtrip");
+        match back {
+            XyEvent::CompactionEnd {
+                result,
+                aborted,
+                error_message,
+                summary,
+                tokens_before,
+                ..
+            } => {
+                assert_eq!(result, None);
+                assert!(!aborted);
+                assert_eq!(error_message, None);
+                assert_eq!(summary, None);
+                assert_eq!(tokens_before, None);
+            }
+            other => panic!("unexpected: {other:?}"),
+        }
     }
 }
