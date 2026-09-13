@@ -857,6 +857,9 @@ pub fn outcome_to_value(outcome: DispatchOutcome) -> Value {
         DispatchOutcome::Messages { entries, .. } => json!({
             "entries": serde_json::to_value(entries).unwrap_or(Value::Null)
         }),
+        DispatchOutcome::EstimateContext(estimate) => json!({
+            "estimate": serde_json::to_value(estimate).unwrap_or(Value::Null)
+        }),
         DispatchOutcome::SessionTree(tree) => json!({
             "tree": serde_json::to_value(tree).unwrap_or(Value::Null)
         }),

@@ -184,10 +184,13 @@ pub use crate::protocol::ports::SessionListEntry;
 ///
 /// `tokenizer_override` comes from `AppConfig` (`models.*.tokenizer` / `tokenizers:`)
 /// when the in-process XyDriver estimates; harness / remote may pass `None`.
+/// `fixed_context` carries the host-side system prompt + tool schemas so the
+/// estimate reflects the real next-request size (c25 / c16).
 pub fn estimate_from_session_entries(
     entries: &[SessionEntry],
     model_id: Option<String>,
     tokenizer_override: Option<xylitol_ai_bridge::registry::TokenizerOverride>,
+    fixed_context: Option<crate::agent::compaction::FixedRequestContext>,
 ) -> crate::protocol::model::ContextTokenEstimate {
     use crate::agent::compaction::{EstimateOpts, estimate_from_session_entries as estimate};
     estimate(
@@ -195,6 +198,7 @@ pub fn estimate_from_session_entries(
         &EstimateOpts {
             model_id,
             tokenizer_override,
+            fixed_context,
             allow_local_tokenizer: allow_local_tokenizer_from_app_config(),
             ..Default::default()
         },

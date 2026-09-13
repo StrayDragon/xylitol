@@ -272,6 +272,8 @@ pub(crate) async fn w_comp_session_split(agent: &AgentState, sess: &XySessionSto
         model.as_ref(),
         &settings,
         None,
+        0,
+        None,
         None,
         &xylitol_ai_bridge::ObsSessionContext::default(),
     )
@@ -334,6 +336,8 @@ pub(crate) async fn g_comp_tokens_before_done(agent: &AgentState, sess: &XySessi
         sid,
         model.as_ref(),
         &settings,
+        None,
+        0,
         None,
         None,
         &xylitol_ai_bridge::ObsSessionContext::default(),
@@ -690,7 +694,7 @@ pub(crate) fn w_comp_force_path(agent: &AgentState) {
             })
         })
         .collect();
-    let prep = prepare_compaction(&entries, &settings);
+    let prep = prepare_compaction(&entries, &settings, 0, 0);
     let prep_msg = match &prep {
         Ok(()) => "prepare:true".to_string(),
         Err(e) => format!("prepare:false err:{e}"),
@@ -798,8 +802,8 @@ pub(crate) async fn w_comp_prepare_on_leaf(agent: &AgentState, sess: &XySessionS
         reserve_tokens: 1024,
         keep_recent_tokens: 20_000,
     };
-    let prep_all = prepare_compaction(&all, &settings);
-    let prep_branch = prepare_compaction(&branch, &settings);
+    let prep_all = prepare_compaction(&all, &settings, 0, 0);
+    let prep_branch = prepare_compaction(&branch, &settings, 0, 0);
     let branch_ids: Vec<_> = branch.iter().filter_map(|e| e.entry_id()).collect();
     agent.last_result.replace(Some(Ok(format!(
         "branch_ids:{} prep_all:{} prep_branch:{} has_left:{}",
@@ -899,6 +903,8 @@ pub(crate) async fn w_compact_summarize(agent: &AgentState, sess: &XySessionStor
         sid,
         model.as_ref(),
         &settings,
+        None,
+        0,
         None,
         None,
         &xylitol_ai_bridge::ObsSessionContext::default(),
@@ -1080,6 +1086,8 @@ pub(crate) async fn w_comp_agent_compact(agent: &AgentState, sess: &XySessionSto
         sid,
         model.as_ref(),
         &settings,
+        None,
+        0,
         None,
         None,
         &xylitol_ai_bridge::ObsSessionContext::default(),

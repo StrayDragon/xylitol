@@ -58,6 +58,11 @@ pub enum Command {
         position: Option<String>,
     },
     GetMessages {},
+    /// Read-only context-token estimate computed host-side (pa-map5 / sr-est1).
+    /// The host folds its own system prompt + tool schemas and tokenizer
+    /// mapping, which the client cannot see — MUST NOT be estimated client-side.
+    #[serde(rename = "estimate_context")]
+    EstimateContext {},
     GetCommands {},
     SessionTree {
         /// Hand parse defaulted a missing `kind` to message history (c2530).

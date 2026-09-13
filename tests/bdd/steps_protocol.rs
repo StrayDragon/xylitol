@@ -108,7 +108,15 @@ fn w_stream_events_roundtrip(protocol_bdd: &ProtocolBdd) {
         Event::ThinkingDelta {
             text: "reasoning".into(),
         },
-        Event::CompactionEnd,
+        Event::CompactionEnd {
+            result: Some("ok".into()),
+            aborted: false,
+            reason: "threshold".into(),
+            will_retry: false,
+            error_message: None,
+            summary: Some("prior turns".into()),
+            tokens_before: Some(63_737),
+        },
     ];
     let mut parsed = Vec::new();
     for ev in &originals {

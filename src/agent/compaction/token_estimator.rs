@@ -7,8 +7,61 @@ use xylitol_ai_bridge::tokenize::HfTokenizerCache;
 use xylitol_ai_bridge::tokenize::{BuiltinTokenizer, estimate_messages};
 
 use crate::agent::llm_project::project_for_llm;
-use crate::protocol::message::{AgentMessage, LlmMessage, XyStopReason, XyUsage};
-use crate::protocol::model::ContextTokenEstimate;
+use crate::protocol::message::{AgentMessage, AgentPart, LlmMessage, XyStopReason, XyUsage};
+use crate::protocol::model::{ContextTokenEstimate, XyToolSchema};
+
+/// Fixed per-request context outside the session transcript (c25 / c16).
+///
+/// System prompt + tool schemas ride every provider call but live outside the
+/// session entries; estimates MUST fold them in on non-Api provenance so the
+/// footer / reserve gate see the real next-request size.
+#[derive(Debug, Clone, Default)]
+pub struct FixedRequestContext {
+    pub system_prompt: Option<String>,
+    pub tool_schemas: Vec<XyToolSchema>,
+}
+
+impl FixedRequestContext {
+    /// chars/4 estimate of the fixed overhead (same unit as the cut walk, c8).
+    pub fn overhead_tokens(&self) -> u64 {
+        let mut chars: u64 = self
+            .system_prompt
+            .as_deref()
+            .map(str::len)
+            .unwrap_or_default() as u64;
+        for t in &self.tool_schemas {
+            chars += (t.name.len() + t.description.len()) as u64;
+            chars += t.parameters.to_string().len() as u64;
+        }
+        chars.div_ceil(4)
+    }
+
+    /// Estimate-only pseudo rows folding the fixed context into message accounting.
+    fn pseudo_rows(&self) -> Vec<AiBridgeMessage> {
+        fn user_row(text: String) -> AiBridgeMessage {
+            LlmMessage::UserMessage {
+                content: vec![AgentPart::text(text)],
+                timestamp: 0,
+            }
+        }
+        let mut rows = Vec::new();
+        if let Some(sp) = self.system_prompt.as_deref().filter(|s| !s.is_empty()) {
+            rows.push(user_row(sp.to_string()));
+        }
+        if !self.tool_schemas.is_empty() {
+            let blob = self
+                .tool_schemas
+                .iter()
+                .map(|t| format!("- {} ({}): {}", t.name, t.description, t.parameters))
+                .collect::<Vec<_>>()
+                .join("\n");
+            rows.push(user_row(format!(
+                "[Fixed request context: tool schemas]\n{blob}"
+            )));
+        }
+        rows
+    }
+}
 
 /// Options for [`estimate_context_tokens_with`].
 #[derive(Debug, Clone, Default)]
@@ -22,6 +75,10 @@ pub struct EstimateOpts {
     pub remote_count_tokens: Option<u64>,
     /// When false (default, c1420 / paa10), LocalTokenizer encode is skipped.
     pub allow_local_tokenizer: bool,
+    /// Fixed per-request overhead folded in when no Api anchor exists (c25).
+    /// Api provenance MUST NOT receive this — usage.input already covers the
+    /// full request; folding it in would double-count.
+    pub fixed_context: Option<FixedRequestContext>,
     /// When true, emit a `token.estimate` fastrace span (c1860). Default **false** —
     /// settlement paths call `emit_token_estimate_obs` explicitly so callers do not
     /// each create duplicate OTel observations.
@@ -44,22 +101,41 @@ pub fn estimate_from_session_entries(
     let mut messages: Vec<AgentMessage> = Vec::new();
     let mut last_usage: Option<XyUsage> = None;
     let mut stop_reason = None;
+    let mut usage_anchor_ms: u64 = 0;
+    let mut latest_compaction_ms: u64 = 0;
 
     for entry in &entries {
+        if let SessionEntry::Compaction(c) = entry {
+            latest_compaction_ms = latest_compaction_ms.max(c.base.timestamp);
+        }
         if let SessionEntry::Message(m) = entry
             && let Ok(msg) = serde_json::from_value::<AgentMessage>(m.message.clone())
         {
             if let AgentMessage::Llm(LlmMessage::AssistantMessage {
                 usage: Some(u),
                 stop_reason: sr,
+                timestamp,
                 ..
             }) = &msg
             {
                 last_usage = Some(*u);
                 stop_reason = *sr;
+                usage_anchor_ms = if *timestamp > 0 {
+                    *timestamp
+                } else {
+                    m.base.timestamp
+                };
             }
             messages.push(msg);
         }
+    }
+
+    // c25: a usage anchor not newer than the latest compaction describes the
+    // pre-compact request — drop it so the post-cut estimate (placeholder)
+    // falls back to per-message accounting instead of overstating.
+    if usage_anchor_ms > 0 && usage_anchor_ms <= latest_compaction_ms {
+        last_usage = None;
+        stop_reason = None;
     }
 
     estimate_context_tokens_with(&messages, last_usage.as_ref(), stop_reason, opts)
@@ -75,7 +151,14 @@ pub fn estimate_context_tokens_with(
     opts: &EstimateOpts,
 ) -> ContextTokenEstimate {
     // LlmMessage ≡ AiBridgeMessage (c1210); project_for_llm is the sole map.
-    let bridge_msgs: Vec<AiBridgeMessage> = project_for_llm(messages);
+    let mut bridge_msgs: Vec<AiBridgeMessage> = project_for_llm(messages);
+    // c25: fold fixed request overhead (system prompt + tools) only when no Api
+    // anchor carries it already.
+    if last_usage.is_none()
+        && let Some(fixed) = &opts.fixed_context
+    {
+        bridge_msgs.extend(fixed.pseudo_rows());
+    }
     let bridge_usage = last_usage.copied();
     let bridge_stop = stop_reason;
 
@@ -259,6 +342,162 @@ mod tests {
         );
         assert_ne!(est.provenance, TokenProvenance::LocalTokenizer);
         assert_eq!(est.provenance, TokenProvenance::Heuristic);
+    }
+
+    fn fixed_fixture() -> FixedRequestContext {
+        FixedRequestContext {
+            system_prompt: Some("S".repeat(4_000)),
+            tool_schemas: vec![crate::protocol::model::XyToolSchema {
+                name: "read".into(),
+                description: "d".repeat(200),
+                parameters: serde_json::json!({"type": "object", "properties": {}}),
+            }],
+        }
+    }
+
+    /// c25/c16: overhead folds into Heuristic estimates but never double-counts
+    /// when an Api anchor already covers the full request.
+    #[test]
+    fn fixed_context_folds_into_non_api_only() {
+        let msgs = [AgentMessage::user("hello world")];
+        let fixed = fixed_fixture();
+
+        let base = estimate_context_tokens_with(&msgs, None, None, &EstimateOpts::default());
+        let with_over = estimate_context_tokens_with(
+            &msgs,
+            None,
+            None,
+            &EstimateOpts {
+                fixed_context: Some(fixed.clone()),
+                ..Default::default()
+            },
+        );
+        assert_eq!(base.provenance, TokenProvenance::Heuristic);
+        assert!(
+            with_over.tokens > base.tokens + fixed.overhead_tokens() - 50,
+            "overhead must land in the estimate: base={} with={}",
+            base.tokens,
+            with_over.tokens
+        );
+
+        let usage = XyUsage {
+            input: 5_000,
+            output: 0,
+            total_tokens: 5_000,
+            ..Default::default()
+        };
+        let api_plain = estimate_context_tokens_with(
+            &msgs,
+            Some(&usage),
+            Some(XyStopReason::Stop),
+            &EstimateOpts::default(),
+        );
+        let api_over = estimate_context_tokens_with(
+            &msgs,
+            Some(&usage),
+            Some(XyStopReason::Stop),
+            &EstimateOpts {
+                fixed_context: Some(fixed),
+                ..Default::default()
+            },
+        );
+        assert_eq!(
+            api_plain.tokens, api_over.tokens,
+            "Api anchor already covers system+tools; MUST NOT double-count"
+        );
+    }
+
+    /// c25: after a compaction, the only surviving usage anchor describes the
+    /// pre-compact request; the AfterCompaction placeholder MUST fall back to
+    /// per-message accounting instead of reusing the stale full-request number.
+    #[test]
+    fn usage_anchor_not_newer_than_compaction_is_dropped() {
+        use crate::protocol::message::{LlmMessage, XyStopReason, XyUsage};
+        use crate::protocol::model::TokenProvenance;
+        use crate::protocol::session::{CompactionEntry, EntryBase, MessageEntry, SessionEntry};
+
+        let usage = XyUsage {
+            input: 90_000,
+            output: 0,
+            total_tokens: 90_000,
+            ..Default::default()
+        };
+        let kept = AgentMessage::Llm(LlmMessage::AssistantMessage {
+            content: vec![crate::protocol::message::AgentPart::text("kept tail")],
+            stop_reason: Some(XyStopReason::Stop),
+            usage: Some(usage),
+            api: String::new(),
+            provider: String::new(),
+            model: String::new(),
+            response_id: None,
+            error_message: None,
+            timestamp: 100,
+            diagnostics: Vec::new(),
+        });
+        let msg_entry = |id: &str, parent: Option<&str>, msg: &AgentMessage, ts: u64| {
+            SessionEntry::Message(MessageEntry {
+                base: EntryBase {
+                    entry_type: "message".into(),
+                    id: id.into(),
+                    parent_id: parent.map(str::to_string),
+                    timestamp: ts,
+                },
+                message: serde_json::to_value(msg).unwrap(),
+            })
+        };
+        let compaction = SessionEntry::Compaction(CompactionEntry {
+            base: EntryBase {
+                entry_type: "compaction".into(),
+                id: "c1".into(),
+                parent_id: Some("a_kept".into()),
+                timestamp: 200,
+            },
+            summary: "prior turns summarized".into(),
+            first_kept_entry_id: "a_kept".into(),
+            tokens_before: 90_000,
+            details: None,
+            from_hook: None,
+        });
+        let entries = vec![
+            msg_entry("a_kept", None, &kept, 100),
+            compaction.clone(),
+            msg_entry("u_new", Some("c1"), &AgentMessage::user("continue"), 201),
+        ];
+
+        let est = estimate_from_session_entries(&entries, &EstimateOpts::default());
+        assert_eq!(
+            est.provenance,
+            TokenProvenance::Heuristic,
+            "pre-compact Api anchor MUST be dropped for the placeholder"
+        );
+        assert!(
+            est.tokens < 1_000,
+            "placeholder reflects summary+tail, not the stale 90k: {}",
+            est.tokens
+        );
+
+        // A fresh anchor (timestamp after the compaction) still wins.
+        let fresh = AgentMessage::Llm(LlmMessage::AssistantMessage {
+            content: vec![crate::protocol::message::AgentPart::text("fresh")],
+            stop_reason: Some(XyStopReason::Stop),
+            usage: Some(usage),
+            api: String::new(),
+            provider: String::new(),
+            model: String::new(),
+            response_id: None,
+            error_message: None,
+            timestamp: 300,
+            diagnostics: Vec::new(),
+        });
+        let with_fresh = estimate_from_session_entries(
+            &[
+                msg_entry("a_kept", None, &kept, 100),
+                compaction.clone(),
+                msg_entry("a_fresh", Some("c1"), &fresh, 300),
+            ],
+            &EstimateOpts::default(),
+        );
+        assert_eq!(with_fresh.provenance, TokenProvenance::Api);
     }
 
     #[test]

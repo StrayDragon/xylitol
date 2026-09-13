@@ -120,6 +120,7 @@ pub const METHOD_IMPORT_JSONL: &str = "import_jsonl";
 pub const METHOD_SWITCH_SESSION: &str = "switch_session";
 pub const METHOD_FORK: &str = "fork";
 pub const METHOD_GET_MESSAGES: &str = "get_messages";
+pub const METHOD_ESTIMATE_CONTEXT: &str = "estimate_context";
 pub const METHOD_GET_COMMANDS: &str = "get_commands";
 pub const METHOD_SESSION_TREE: &str = "session_tree";
 pub const METHOD_TRAVEL_SESSION_TREE: &str = "travel_session_tree";
@@ -246,6 +247,13 @@ pub const REGISTRY: &[MethodEntry] = &[
     m(METHOD_FORK, Auth::Writer, Idem::PerRpc, Resp::Result, CMD),
     m(
         METHOD_GET_MESSAGES,
+        Auth::Readonly,
+        Idem::PerRpc,
+        Resp::Result,
+        true,
+    ),
+    m(
+        METHOD_ESTIMATE_CONTEXT,
         Auth::Readonly,
         Idem::PerRpc,
         Resp::Result,
@@ -438,6 +446,7 @@ pub fn exec_class(cmd: &Command) -> Exec {
         | Command::SwitchSession { .. }
         | Command::Fork { .. }
         | Command::GetMessages { .. }
+        | Command::EstimateContext { .. }
         | Command::SessionTree { .. }
         | Command::TravelSessionTree { .. }
         | Command::ListSessions { .. }
@@ -724,6 +733,7 @@ mod tests {
                 },
             ),
             ("get_messages", Command::GetMessages {}),
+            ("estimate_context", Command::EstimateContext {}),
             ("get_commands", Command::GetCommands {}),
             (
                 "session_tree",
@@ -805,7 +815,7 @@ mod tests {
         ];
         // NON_WIRE（ApproveTool / AnswerQuestion / Quit）无 wire 行：approve /
         // answer 走反向 RPC 响应路径、Quit 为客户端本地命令，均 Queued 语义。
-        assert_eq!(cases.len(), 34, "all command_backed rows must be covered");
+        assert_eq!(cases.len(), 35, "all command_backed rows must be covered");
         for (method, cmd) in &cases {
             let row = lookup(method).expect("row exists for command_backed method");
             assert!(row.command_backed, "row {method} must be command_backed");

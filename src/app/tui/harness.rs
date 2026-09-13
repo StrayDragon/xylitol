@@ -589,6 +589,7 @@ impl XyDriver for ScriptedDriver {
             &self.session_messages,
             self.current_model().map(|m| m.id),
             None,
+            None,
         ))
     }
 
@@ -927,6 +928,10 @@ impl crate::app::core::dispatch::SessionCommandExecutor for ScriptedDriver {
                     session_id,
                     entries: self.session_messages.clone(),
                 })
+            }
+            Command::EstimateContext { .. } => {
+                let est = crate::app::core::driver::XyDriver::estimate_context_tokens(self).await?;
+                Ok(DispatchOutcome::EstimateContext(est))
             }
             Command::SessionTree { kind, .. } => match kind {
                 crate::protocol::session::SessionTreeKind::MessageHistory => {
@@ -6888,17 +6893,27 @@ mod slice_tests {
         session.push_scroll_notice("scrollback marker");
 
         let frame = root.borrow_mut().render(80);
-        let joined = frame.join("\n");
+        // The footer echoes the real cwd and truncates it with `...` when the
+        // checkout path is long (worktrees) — that truncation is c1135-unrelated,
+        // so the no-ellipsis guard only inspects non-footer rows.
+        let content = frame
+            .iter()
+            .filter(|l| !l.contains("NOT-SET") && !l.contains('/'))
+            .cloned()
+            .collect::<Vec<_>>()
+            .join("\n");
         assert!(
-            joined.contains("xylitol")
-                && joined.contains("skills")
-                && joined.contains("demo")
-                && !joined.contains("..."),
-            "brand/skills missing or truncated: {joined}"
+            content.contains("xylitol")
+                && content.contains("skills")
+                && content.contains("demo")
+                && !content.contains("..."),
+            "brand/skills missing or truncated: {}",
+            frame.join("\n")
         );
         assert!(
-            !joined.contains("Prompt") && !joined.contains("prompt template"),
-            "MUST NOT list prompts: {joined}"
+            !content.contains("Prompt") && !content.contains("prompt template"),
+            "MUST NOT list prompts: {}",
+            frame.join("\n")
         );
         let skills_idx = frame
             .iter()

@@ -36,7 +36,7 @@ pub use overflow::{assistant_same_model, is_context_overflow_assistant};
 pub use settlement::{
     ContextTokenSettlement, ContextTokenSettlementReason, settle_from_session_entries,
 };
-pub use token_estimator::{EstimateOpts, estimate_from_session_entries};
+pub use token_estimator::{EstimateOpts, FixedRequestContext, estimate_from_session_entries};
 
 use anyhow::Result;
 use serde_json::json;
@@ -83,6 +83,27 @@ fn timestamp_now() -> u64 {
     crate::protocol::message::now_ms()
 }
 
+/// Keep-window budget coordinated with the reserve gate (c8 / c25).
+///
+/// `min(keep_recent_tokens, window − reserve − fixed overhead)`; degenerates to
+/// `keep_recent_tokens` when the window is unknown (0) or overhead not injected.
+/// Without this clamp a keep budget ≥ the threshold makes every cut land on the
+/// first valid entry (keep-everything) and compaction stops shrinking context.
+pub(crate) fn effective_keep_budget(
+    settings: &CompactionSettings,
+    context_window: u64,
+    fixed_overhead_tokens: u64,
+) -> u64 {
+    if context_window == 0 {
+        return settings.keep_recent_tokens;
+    }
+    settings.keep_recent_tokens.min(
+        context_window
+            .saturating_sub(settings.reserve_tokens)
+            .saturating_sub(fixed_overhead_tokens),
+    )
+}
+
 /// pi `prepareCompaction` gate: whether there is content worth summarizing.
 ///
 /// Force-path error strings: `Already compacted` stays pi-aligned; empty /
@@ -91,6 +112,8 @@ fn timestamp_now() -> u64 {
 pub fn prepare_compaction(
     entries: &[SessionEntry],
     settings: &CompactionSettings,
+    context_window: u64,
+    fixed_overhead_tokens: u64,
 ) -> Result<(), CompactionError> {
     if entries.is_empty() {
         return Err("Nothing to compact (empty session)".into());
@@ -119,7 +142,7 @@ pub fn prepare_compaction(
         entries,
         boundary_start,
         boundary_end,
-        settings.keep_recent_tokens,
+        effective_keep_budget(settings, context_window, fixed_overhead_tokens),
     );
     let first_kept = &entries[cut.first_kept_entry_index];
     if first_kept.entry_id().is_none() {
@@ -153,12 +176,15 @@ pub fn prepare_compaction(
 ///
 /// `custom_instructions` is only for the force/manual path (pi `customInstructions`);
 /// auto callers MUST pass `None`.
+#[allow(clippy::too_many_arguments)]
 pub async fn compact_session(
     store: &dyn XySessionStore,
     session_id: &str,
     model: &dyn XyModel,
     settings: &CompactionSettings,
     custom_instructions: Option<&str>,
+    context_window: u64,
+    fixed_context: Option<&FixedRequestContext>,
     obs_parent: Option<fastrace::prelude::SpanContext>,
     obs_session: &xylitol_ai_bridge::ObsSessionContext,
 ) -> Result<CompactionEntry, CompactionError> {
@@ -208,7 +234,11 @@ pub async fn compact_session(
         &entries,
         boundary_start,
         boundary_end,
-        settings.keep_recent_tokens,
+        effective_keep_budget(
+            settings,
+            context_window,
+            fixed_context.map_or(0, FixedRequestContext::overhead_tokens),
+        ),
     );
 
     let first_kept_entry = &entries[cut.first_kept_entry_index];
@@ -828,19 +858,21 @@ mod tests {
             reserve_tokens: 1024,
             keep_recent_tokens: 5_000,
         };
-        prepare_compaction(&entries, &settings).expect("should have history to compact");
+        prepare_compaction(&entries, &settings, 0, 0).expect("should have history to compact");
     }
 
     #[test]
     fn test_prepare_already_compacted_and_truly_small() {
         let settings = CompactionSettings::default();
         assert_eq!(
-            prepare_compaction(&[], &settings).unwrap_err().to_string(),
+            prepare_compaction(&[], &settings, 0, 0)
+                .unwrap_err()
+                .to_string(),
             "Nothing to compact (empty session)"
         );
         let small = vec![make_message_entry("u1", "user", "hi")];
         assert_eq!(
-            prepare_compaction(&small, &settings)
+            prepare_compaction(&small, &settings, 0, 0)
                 .unwrap_err()
                 .to_string(),
             "Nothing to compact (no summarizable history beyond keep window)"
@@ -850,10 +882,81 @@ mod tests {
             make_compaction_entry("c1", "prior"),
         ];
         assert_eq!(
-            prepare_compaction(&already, &settings)
+            prepare_compaction(&already, &settings, 0, 0)
                 .unwrap_err()
                 .to_string(),
             "Already compacted"
+        );
+    }
+
+    /// c25/c8 regression for session 92fa9adf: window 32768 / reserve 16384 /
+    /// keep 20000 with ~12k chars/4 of history — the unclamped budget exceeded
+    /// every walk total, so the cut landed on the first entry (keep-everything)
+    /// and each turn-end compact rewrote nothing while real usage grew past 3×
+    /// the window. The clamp shrinks the budget below the history size.
+    #[test]
+    fn keep_budget_clamp_moves_cut_off_first_entry_on_small_windows() {
+        let settings = CompactionSettings {
+            enabled: true,
+            reserve_tokens: 16_384,
+            keep_recent_tokens: 20_000,
+        };
+        let window = 32_768u64;
+        let overhead = 6_500u64; // system prompt + tool schemas, chars/4
+        let budget = effective_keep_budget(&settings, window, overhead);
+        assert_eq!(budget, window - 16_384 - 6_500);
+
+        // 60 user/assistant turns ≈ 12k chars/4 tokens: below keep(20k) but
+        // above the clamped budget.
+        let mut entries = Vec::new();
+        for i in 0..60 {
+            entries.push(make_message_entry(
+                &format!("u{i}"),
+                "user",
+                &"x".repeat(400),
+            ));
+            entries.push(make_message_entry(
+                &format!("a{i}"),
+                "assistant",
+                &"y".repeat(400),
+            ));
+        }
+
+        // Legacy behavior (no window/no overhead): nothing to compact — the bug.
+        assert!(prepare_compaction(&entries, &settings, 0, 0).is_err());
+        // Clamped: history beyond the budget is summarizable.
+        prepare_compaction(&entries, &settings, window, overhead)
+            .expect("clamped budget must free history for compaction");
+
+        let cut = find_cut_point(&entries, 0, entries.len(), budget);
+        assert!(
+            cut.first_kept_entry_index > 0,
+            "cut MUST move past the first entry: {:?}",
+            cut.first_kept_entry_index
+        );
+    }
+
+    #[test]
+    fn keep_budget_clamp_degenerates_without_window_or_overhead() {
+        let settings = CompactionSettings::default();
+        assert_eq!(
+            effective_keep_budget(&settings, 0, 5_000),
+            settings.keep_recent_tokens,
+            "unknown window (0) → legacy budget"
+        );
+        assert_eq!(
+            effective_keep_budget(&settings, 0, 0),
+            settings.keep_recent_tokens
+        );
+        assert_eq!(
+            effective_keep_budget(&settings, 2_000_000, 0),
+            settings.keep_recent_tokens,
+            "large window: keep budget below threshold → unchanged"
+        );
+        // window - reserve < keep → the reserve side wins.
+        assert_eq!(
+            effective_keep_budget(&settings, 30_000, 0),
+            30_000 - settings.reserve_tokens
         );
     }
 
@@ -917,11 +1020,11 @@ mod tests {
             keep_recent_tokens: 20_000,
         };
         assert!(
-            prepare_compaction(&all, &settings).is_ok(),
+            prepare_compaction(&all, &settings, 0, 0).is_ok(),
             "full JSONL with LEFT sibling looks compactable (false positive)"
         );
         assert_eq!(
-            prepare_compaction(&branch, &settings)
+            prepare_compaction(&branch, &settings, 0, 0)
                 .unwrap_err()
                 .to_string(),
             "Nothing to compact (no summarizable history beyond keep window)"
@@ -1127,6 +1230,8 @@ mod tests {
             sid,
             model.as_ref(),
             &settings,
+            None,
+            0,
             None,
             None,
             &Default::default(),
