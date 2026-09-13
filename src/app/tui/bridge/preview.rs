@@ -5,6 +5,27 @@ use std::path::{Path, PathBuf};
 use serde_json::Value;
 use xylitol_tui::{ASK_HEADER_A_MAX, ASK_HEADER_Q_MAX, ellipsize_ask_frag};
 
+use crate::protocol::session::{TodoList, TodoStatus};
+
+/// Shared todo status glyph — checklist projection row and todo_* block body
+/// MUST use this one table (att36).
+pub(crate) fn todo_status_glyph(status: TodoStatus) -> &'static str {
+    match status {
+        TodoStatus::Pending => "[ ]",
+        TodoStatus::InProgress => "[~]",
+        TodoStatus::Completed => "[x]",
+        TodoStatus::Cancelled => "[-]",
+    }
+}
+
+/// Checklist body lines (status glyph + content), one per item.
+pub(crate) fn todo_list_body_lines(list: &TodoList) -> Vec<String> {
+    list.items
+        .iter()
+        .map(|i| format!("{} {}", todo_status_glyph(i.status), i.content))
+        .collect()
+}
+
 pub(crate) fn compact_json_preview(value: &Value, max_chars: usize) -> String {
     let raw = match value {
         Value::String(s) => s.clone(),
@@ -177,6 +198,27 @@ pub(crate) fn human_tool_args_preview_with_path(
                 }
             })
             .unwrap_or_else(|| PATH_PLACEHOLDER.to_string()),
+        "todo_list" | "todo_rewrite" | "todo_update" => {
+            // att13: item-count summary, never the full items JSON. No parsed
+            // items yet (streaming / read-only todo_list) → pathless placeholder.
+            match args.get("items").and_then(Value::as_array) {
+                None => PATH_PLACEHOLDER.to_string(),
+                Some(items) => {
+                    let in_progress = items
+                        .iter()
+                        .filter(|i| {
+                            i.get("status").and_then(Value::as_str) == Some("in_progress")
+                        })
+                        .count();
+                    let n = items.len();
+                    let mut summary = format!("{n} item{}", if n == 1 { "" } else { "s" });
+                    if in_progress > 0 {
+                        summary.push_str(&format!(" · {in_progress} in progress"));
+                    }
+                    summary
+                }
+            }
+        }
         _ => pick_str(&[
             "path",
             "file_path",
@@ -220,6 +262,14 @@ pub(crate) fn humanize_tool_result_for_tui(
         }
         "read" => humanize_read_tool_output(result),
         "bash" | "shell" => humanize_bash_tool_output(result),
+        "todo_list" | "todo_rewrite" | "todo_update" => {
+            // att36: block body is the checklist (shared glyph table), not the
+            // raw items JSON. Empty list → empty body (same as write/edit).
+            serde_json::from_str::<Value>(result)
+                .ok()
+                .and_then(|v| TodoList::from_data_value(&v).ok())
+                .map(|list| todo_list_body_lines(&list).join("\n"))
+        }
         "ask" => {
             let (phase, summary, _) = humanize_ask_result(result, false);
             let _ = phase;
@@ -337,6 +387,13 @@ pub(crate) fn output_looks_like_machine_json(text: &str) -> bool {
         && (obj.contains_key("total_lines")
             || obj.contains_key("offset")
             || obj.contains_key("truncated"))
+    {
+        return true;
+    }
+    // todo-shaped: full-snapshot envelope (att36 safety net for orphans).
+    if obj.contains_key("items")
+        && obj.get("items").is_some_and(Value::is_array)
+        && obj.len() == 1
     {
         return true;
     }
@@ -1285,6 +1342,66 @@ mod tests {
             );
             assert!(!human.contains("\"bytes\""), "{name} leaked bytes");
         }
+    }
+
+    #[test]
+    fn todo_args_preview_is_item_count_not_json() {
+        // att13: count summary; in_progress suffix only when non-zero.
+        let preview = human_tool_args_preview(
+            "todo_rewrite",
+            &serde_json::json!({"items": [
+                {"content": "a", "status": "in_progress"},
+                {"content": "b"}
+            ]}),
+            80,
+        );
+        assert_eq!(preview, "2 items · 1 in progress");
+        let solo = human_tool_args_preview(
+            "todo_rewrite",
+            &serde_json::json!({"items": [{"content": "a"}]}),
+            80,
+        );
+        assert_eq!(solo, "1 item");
+        // No parsed items yet (todo_list / partial stream) → pathless placeholder.
+        assert_eq!(
+            human_tool_args_preview("todo_list", &serde_json::json!({}), 80),
+            "..."
+        );
+    }
+
+    #[test]
+    fn humanize_todo_result_is_glyph_checklist() {
+        // att36: block body is the checklist via the shared glyph table.
+        let out = humanize_tool_result_for_tui(
+            "todo_rewrite",
+            r#"{"items":[{"id":"a","content":"one","status":"in_progress"},{"id":"b","content":"two","status":"completed"}]}"#,
+            false,
+        )
+        .expect("todo result humanizes");
+        assert_eq!(out, "[~] one\n[x] two");
+        assert!(!output_looks_like_machine_json(&out));
+
+        // Cleared list → empty body (same quiet-success family as write/edit).
+        assert_eq!(
+            humanize_tool_result_for_tui("todo_update", r#"{"items":[]}"#, false).as_deref(),
+            Some("")
+        );
+        // Errors keep raw text (early return), never the checklist.
+        assert_eq!(
+            humanize_tool_result_for_tui("todo_rewrite", "unknown todo id: x", true),
+            None
+        );
+    }
+
+    #[test]
+    fn machine_json_recognizes_todo_snapshot_envelope() {
+        assert!(output_looks_like_machine_json(r#"{"items":[]}"#));
+        assert!(output_looks_like_machine_json(
+            r#"{"items":[{"id":"a","content":"x","status":"pending"}]}"#
+        ));
+        // Mixed-shape objects (e.g. MCP payloads that happen to have `items`)
+        // stay unrecognized — only the exact single-key snapshot envelope.
+        assert!(!output_looks_like_machine_json(r#"{"items":[1],"total":1}"#));
     }
 
     #[test]

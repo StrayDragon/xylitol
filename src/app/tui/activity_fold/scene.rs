@@ -222,10 +222,14 @@ impl SceneBuilder {
         })
     }
 
-    /// todo_* result through the product projection
-    /// (`sync_todo_checklist_from_tool_result` inside `apply_tools_family`):
-    /// the checklist row is a projection, not a Used call (lesson 1).
+    /// todo_* result through the product projection: `TodoUpdated` (atd13)
+    /// drives the checklist row, End drives the block body — the checklist row
+    /// is a projection, not a Used call (lesson 1). Event order matches the
+    /// real run stream (typed state event drains before ToolExecutionEnd).
     pub fn todo_result(&mut self, id: &str, name: &str, result: &str) -> &mut Self {
+        if let Ok(list) = serde_json::from_str::<crate::protocol::session::TodoList>(result) {
+            self.push_xy(XyEvent::TodoUpdated { list });
+        }
         self.push_xy(XyEvent::ToolExecutionEnd {
             id: id.into(),
             name: name.into(),

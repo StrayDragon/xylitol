@@ -2,7 +2,7 @@
 
 use crate::app::tool_display::{is_ask_tool, is_write_tool};
 use crate::protocol::session::{
-    SessionEntry, SessionTreeTravel, TodoList, TodoStatus, is_env_custom_message,
+    SessionEntry, SessionTreeTravel, TodoList, is_env_custom_message,
     is_tool_call_part, latest_agent_todo, message_parts, message_role, message_text,
     tool_call_name,
 };
@@ -98,34 +98,11 @@ pub fn sync_todo_checklist(ui_model: &mut UiModel, list: TodoList) {
     ui_model.entries.push(todo_list_to_ui_entry(&list));
 }
 
-/// Parse `todo_*` tool result JSON into a checklist upsert.
-pub fn sync_todo_checklist_from_tool_result(ui_model: &mut UiModel, result: &str) {
-    let Ok(v) = serde_json::from_str::<Value>(result) else {
-        return;
-    };
-    let Ok(list) = TodoList::from_data_value(&v) else {
-        return;
-    };
-    sync_todo_checklist(ui_model, list);
-}
-
+/// Latest-wins checklist row (summary + shared-glyph body, atd8 / att36).
 fn todo_list_to_ui_entry(list: &TodoList) -> UiEntry {
-    let detail_lines = list
-        .items
-        .iter()
-        .map(|i| {
-            let mark = match i.status {
-                TodoStatus::Pending => "[ ]",
-                TodoStatus::InProgress => "[~]",
-                TodoStatus::Completed => "[x]",
-                TodoStatus::Cancelled => "[-]",
-            };
-            format!("{mark} {}", i.content)
-        })
-        .collect();
     UiEntry::Todo {
         summary: list.summary_line(),
-        detail_lines,
+        detail_lines: crate::app::tui::bridge::todo_list_body_lines(list),
     }
 }
 

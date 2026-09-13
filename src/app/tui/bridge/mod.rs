@@ -21,7 +21,7 @@ pub(crate) use preview::{
     extract_result_path, extract_tool_path, extract_truncated_tool_display,
     human_tool_args_preview_with_path, humanize_ask_result, humanize_tool_result_for_tui,
     merge_path_preview_with_range, output_looks_like_machine_json, preview_is_downgrade,
-    preview_lacks_real_path,
+    preview_lacks_real_path, todo_list_body_lines,
 };
 /// att12/att18：travel 重建 seam（history rebuild 的正常路径入口）。
 pub use session_tree::{rebuild_scrollback_from_travel, travel_history_note};
