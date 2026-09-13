@@ -469,8 +469,8 @@ impl UiRoot {
             FoldTarget::Compaction => {
                 self.fold.compaction_expanded = !self.fold.compaction_expanded;
             }
-            FoldTarget::OutputViewport => {
-                self.fold.tools_output_expanded = !self.fold.tools_output_expanded;
+            FoldTarget::OutputViewport(id) => {
+                self.fold.toggle_output(&id);
             }
             FoldTarget::Segment(id) => {
                 let _ = self.activity.toggle_one_step(&id);

@@ -13,8 +13,8 @@ use super::super::glyphs::GlyphSet;
 use super::ScrollbackFold;
 use super::cache::{CachedFoldHit, marker_cols};
 use super::diff::{
-    CTRL_O_EXPAND_HINT, HARD_TRUNCATED_EXPAND_HINT, RAILED_MARKER_COL, TOOLS_OUTPUT_PREVIEW_LINES,
-    WRITE_BODY_PREVIEW_LINES, diff_fold_key, output_is_hard_truncated,
+    CTRL_O_EXPAND_HINT, CTRL_O_FOLD_HINT, HARD_TRUNCATED_EXPAND_HINT, RAILED_MARKER_COL,
+    TOOLS_OUTPUT_PREVIEW_LINES, WRITE_BODY_PREVIEW_LINES, diff_fold_key, output_is_hard_truncated,
     paint_output_with_full_footer, push_expandable_with_viewport_hit, push_viewport_diff_lines,
 };
 
@@ -490,16 +490,19 @@ pub(super) fn paint_tool_block(
                 max_preview_lines: WRITE_BODY_PREVIEW_LINES,
                 from: TruncateFrom::Tail,
                 expand_hint: format!("{total} total, {CTRL_O_EXPAND_HINT}"),
+                fold_hint: CTRL_O_FOLD_HINT.into(),
                 hint_style: None,
             };
+            let viewport_target = FoldTarget::OutputViewport(id.to_string());
             push_expandable_with_viewport_hit(
                 &mut block,
                 &mut block_hits,
                 content,
                 inner,
-                fold.tools_output_expanded,
+                fold.output_effective(id),
                 &opts,
                 RAILED_MARKER_COL,
+                viewport_target,
             );
         }
 
@@ -514,9 +517,11 @@ pub(super) fn paint_tool_block(
                 } else {
                     CTRL_O_EXPAND_HINT.into()
                 },
+                fold_hint: CTRL_O_FOLD_HINT.into(),
                 hint_style: None,
             };
-            let viewport = fold.tools_output_expanded && !hard;
+            let viewport = fold.output_effective(id) && !hard;
+            let viewport_target = FoldTarget::OutputViewport(id.to_string());
             push_expandable_with_viewport_hit(
                 &mut block,
                 &mut block_hits,
@@ -525,6 +530,7 @@ pub(super) fn paint_tool_block(
                 viewport,
                 &opts,
                 RAILED_MARKER_COL,
+                viewport_target,
             );
         }
 
@@ -540,7 +546,8 @@ pub(super) fn paint_tool_block(
                 diff,
                 inner,
                 theme,
-                fold.tools_output_expanded,
+                fold.output_effective(id),
+                FoldTarget::OutputViewport(id.to_string()),
             );
         }
     }
@@ -579,7 +586,7 @@ pub(super) fn paint_diff_block(
         row_offset: 0,
         col_start: RAILED_MARKER_COL,
         col_end: RAILED_MARKER_COL + mw,
-        target: FoldTarget::Diff(key),
+        target: FoldTarget::Diff(key.clone()),
     });
     let rgb = tool_rail_rgb(false, false, theme);
     if expanded && !display_diff.is_empty() {
@@ -590,7 +597,8 @@ pub(super) fn paint_diff_block(
             display_diff,
             inner,
             theme,
-            fold.tools_output_expanded,
+            fold.output_effective(&key),
+            FoldTarget::OutputViewport(key.clone()),
         );
     }
     let mut lines = Vec::new();
@@ -600,6 +608,7 @@ pub(super) fn paint_diff_block(
 
 /// Bash row: `$ command` + output viewport or pending hint (c668).
 pub(super) fn paint_bash_block(
+    id: &str,
     command: &str,
     status: BashBlockStatus,
     output: &str,
@@ -631,9 +640,10 @@ pub(super) fn paint_bash_block(
             } else {
                 CTRL_O_EXPAND_HINT.into()
             },
+            fold_hint: CTRL_O_FOLD_HINT.into(),
             hint_style: None,
         };
-        let expanded = fold.tools_output_expanded && !hard;
+        let expanded = fold.output_effective(id) && !hard;
         push_expandable_with_viewport_hit(
             &mut block,
             &mut block_hits,
@@ -642,6 +652,7 @@ pub(super) fn paint_bash_block(
             expanded,
             &opts,
             RAILED_MARKER_COL,
+            FoldTarget::OutputViewport(id.to_string()),
         );
     } else if matches!(status, BashBlockStatus::Pending) {
         push_wrapped(

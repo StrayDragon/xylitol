@@ -368,25 +368,119 @@ fn when_click_viewport_hint_band(tui_interaction: &TuiInteraction) {
         .fold_hits()
         .regions
         .iter()
-        .find(|r| matches!(&r.target, FoldTarget::OutputViewport))
+        .find(|r| matches!(&r.target, FoldTarget::OutputViewport(_)))
         .map(|r| (r.col_start as u16, r.content_row as u16))
         .expect("a registered output viewport hint band");
     assert!(fx.left_click(hit.0, hit.1), "hint band click must consume");
 }
 
-#[then("提示带点击翻转输出视口全局态且与按 Ctrl+O 同构")]
-fn then_hint_band_same_state_bit_as_ctrl_o(tui_interaction: &TuiInteraction) {
+#[then("提示带点击仅翻转该块输出视口且 Ctrl+O 翻全局并清按块覆盖")]
+fn then_hint_click_per_block_ctrl_o_global(tui_interaction: &TuiInteraction) {
     let mut fx = tui_interaction.fx.borrow_mut();
     let fx = fx.as_mut().expect("fixture mounted");
+    // Per-block override on the clicked block; the global default stays put.
+    assert!(
+        fx.fold().output_effective("t-log"),
+        "hint-band click expands the clicked block"
+    );
+    assert!(
+        !fx.fold().tools_output_expanded,
+        "per-block click must not flip the global default"
+    );
+    // Keyboard Ctrl+O flips the global default and clears per-block overrides.
+    fx.handle_key(ctrl('o'));
     assert!(
         fx.fold().tools_output_expanded,
-        "hint-band click expands the global viewport state"
+        "Ctrl+O flips the global default"
     );
-    // Same state bit as the keyboard chord: one press flips it back.
+    assert!(
+        fx.fold().output_overrides.is_empty(),
+        "Ctrl+O clears per-block overrides, got {:?}",
+        fx.fold().output_overrides
+    );
+    assert!(fx.fold().output_effective("t-log"));
     fx.handle_key(ctrl('o'));
-    assert!(!fx.fold().tools_output_expanded, "Ctrl+O flips it back");
-    fx.handle_key(ctrl('o'));
-    assert!(fx.fold().tools_output_expanded);
+    assert!(!fx.fold().tools_output_expanded);
+    assert!(
+        !fx.fold().output_effective("t-log"),
+        "global collapse applies to the block again"
+    );
+}
+
+#[when("以场景构建器回放两个多行输出工具并封轮挂载交互面")]
+fn when_mount_two_long_output_tools(tui_interaction: &TuiInteraction) {
+    let mut sb = SceneBuilder::begin();
+    sb.assistant("看两份日志");
+    sb.message_end();
+    sb.tool_start("t-a", "bash", "/tmp/a");
+    sb.tool_start("t-b", "bash", "/tmp/b");
+    let mut fx = InteractionBdd::from_model(sb.into_model());
+    fx.push_xy(XyEvent::ToolExecutionEnd {
+        id: "t-a".into(),
+        name: "bash".into(),
+        result: long_output(24),
+        is_error: false,
+    });
+    fx.push_xy(XyEvent::ToolExecutionEnd {
+        id: "t-b".into(),
+        name: "bash".into(),
+        result: long_output(24),
+        is_error: false,
+    });
+    let plain = mount(&mut fx);
+    *tui_interaction.mounted_frame.borrow_mut() = plain;
+    *tui_interaction.fx.borrow_mut() = Some(fx);
+}
+
+#[when("点击第一个工具的 Ctrl+O 提示带")]
+fn when_click_first_tool_hint_band(tui_interaction: &TuiInteraction) {
+    let mut fx = tui_interaction.fx.borrow_mut();
+    let fx = fx.as_mut().expect("fixture mounted");
+    let _ = fx.render_plain(80); // refresh the registered regions
+    let hit = fx
+        .fold_hits()
+        .regions
+        .iter()
+        .find(|r| matches!(&r.target, FoldTarget::OutputViewport(id) if id.as_str() == "t-a"))
+        .map(|r| (r.col_start as u16, r.content_row as u16))
+        .expect("first tool hint band registered");
+    assert!(fx.left_click(hit.0, hit.1), "hint band click must consume");
+}
+
+#[then("仅该块展开且另一块保持折叠且折叠带可点回折")]
+fn then_per_block_expand_and_fold_band(tui_interaction: &TuiInteraction) {
+    let mut fx = tui_interaction.fx.borrow_mut();
+    let fx = fx.as_mut().expect("fixture mounted");
+    assert!(fx.fold().output_effective("t-a"), "clicked block expands");
+    assert!(
+        !fx.fold().output_effective("t-b"),
+        "sibling block stays collapsed"
+    );
+    assert!(
+        !fx.fold().tools_output_expanded,
+        "global default untouched by per-block click"
+    );
+    // Expanded block paints a fold-back band; clicking it folds only that block.
+    let _ = fx.render_plain(80);
+    let fold_band = fx
+        .fold_hits()
+        .regions
+        .iter()
+        .find(|r| matches!(&r.target, FoldTarget::OutputViewport(id) if id.as_str() == "t-a"))
+        .map(|r| (r.col_start as u16, r.content_row as u16))
+        .expect("expanded fold band registered");
+    assert!(
+        fx.left_click(fold_band.0, fold_band.1),
+        "fold band click must consume"
+    );
+    assert!(
+        !fx.fold().output_effective("t-a"),
+        "fold band collapses the clicked block"
+    );
+    assert!(
+        !fx.fold().output_effective("t-b"),
+        "sibling block unaffected by fold"
+    );
 }
 
 #[when("以场景构建器回放压缩加多行输出并封轮挂载交互面")]
@@ -439,7 +533,7 @@ fn then_targets_share_one_hit_table(tui_interaction: &TuiInteraction) {
 
     let compaction = locate(fx, &|t| matches!(t, FoldTarget::Compaction));
     assert!(fx.left_click(compaction.0, compaction.1));
-    let band = locate(fx, &|t| matches!(t, FoldTarget::OutputViewport));
+    let band = locate(fx, &|t| matches!(t, FoldTarget::OutputViewport(_)));
     assert!(fx.left_click(band.0, band.1));
     let block = locate(fx, &|t| matches!(t, FoldTarget::Tool(_)));
     assert!(fx.left_click(block.0, block.1));

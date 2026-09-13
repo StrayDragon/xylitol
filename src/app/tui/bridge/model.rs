@@ -149,6 +149,9 @@ pub enum UiEntry {
     },
     /// Interactive `!` / `!!` bash block (c668).
     Bash {
+        /// Stable per-block id (live ordinal / rebuild `bashId`); output-viewport
+        /// fold key (att30). Only in-session stability is required.
+        id: String,
         command: String,
         status: BashBlockStatus,
         output: String,
@@ -514,7 +517,13 @@ impl UiModel {
 
     /// Start a bang block (pending tint) at submit.
     pub fn begin_bash_block(&mut self, command: &str, exclude_from_context: bool) {
+        let ordinal = self
+            .entries
+            .iter()
+            .filter(|e| matches!(e, UiEntry::Bash { .. }))
+            .count();
         self.entries.push(UiEntry::Bash {
+            id: format!("bash-live-{ordinal}"),
             command: command.to_string(),
             status: BashBlockStatus::Pending,
             output: String::new(),
@@ -523,6 +532,20 @@ impl UiModel {
         self.bash_utf8_pending.clear();
         self.phase = UiPhase::Busy;
         self.status = Some("Running".into());
+    }
+
+    /// Deterministic Bash block id fallback (att30 fold key) when no persisted
+    /// `bashId` exists — identical commands still get distinct ids per ordinal.
+    pub fn bash_block_id_from_command(entries: &[UiEntry], command: &str) -> String {
+        use std::collections::hash_map::DefaultHasher;
+        use std::hash::{Hash, Hasher};
+        let mut h = DefaultHasher::new();
+        command.hash(&mut h);
+        let ordinal = entries
+            .iter()
+            .filter(|e| matches!(e, UiEntry::Bash { .. }))
+            .count();
+        format!("bash-cmd-{:016x}-{ordinal}", h.finish())
     }
 
     /// Append live bang output bytes to the last Pending Bash block (c669).

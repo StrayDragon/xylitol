@@ -92,7 +92,10 @@ impl UiRoot {
                 return;
             }
             if matches_binding(key, "app.tools.expand") {
+                // Ctrl+O = global default flip + clear per-block overrides
+                // (att30; same default+overrides model as Alt+E / Ctrl+T).
                 self.fold.tools_output_expanded = !self.fold.tools_output_expanded;
+                self.fold.clear_output_overrides();
                 self.scrollback_paint.invalidate();
                 self.bump_upper_gen();
                 return;

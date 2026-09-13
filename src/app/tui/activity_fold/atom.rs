@@ -273,6 +273,7 @@ mod tests {
         );
         assert_atom(
             UiEntry::Bash {
+                id: "bash-t".into(),
                 command: "ls".into(),
                 status: BashBlockStatus::Success,
                 output: String::new(),

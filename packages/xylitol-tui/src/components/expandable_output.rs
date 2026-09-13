@@ -3,8 +3,10 @@
 //! Collapsed **Tail** (default): last `max_preview_lines` with dim
 //! `... (N earlier lines, …)` **below** the window (block footer).
 //! Collapsed **Head**: first N lines with dim `... (N more lines, …)` **below**.
-//! Expanded: full content. `width == 0` returns empty (c550). Host owns the
-//! expand keybinding (pi: `Ctrl+O` / `app.tools.expand`).
+//! Expanded: full content; when it exceeds the collapsed viewport, a dim
+//! `... (expanded, {fold_hint})` fold-back footer is appended (peo3).
+//! `width == 0` returns empty (c550). Host owns the expand keybinding
+//! (pi: `Ctrl+O` / `app.tools.expand`).
 
 use crate::tui::Component;
 use crate::utils::{TruncateFrom, VisualTruncateResult, truncate_to_visual_lines};
@@ -18,6 +20,8 @@ pub struct ExpandableOutputOptions {
     pub from: TruncateFrom,
     /// Trailing phrase after the skipped count, e.g. `"ctrl+o to expand"`.
     pub expand_hint: String,
+    /// Trailing phrase of the expanded fold-back footer, e.g. `"ctrl+o to fold"`.
+    pub fold_hint: String,
     /// Optional style for the hint line (defaults to dim SGR).
     pub hint_style: Option<fn(&str) -> String>,
 }
@@ -28,6 +32,7 @@ impl Default for ExpandableOutputOptions {
             max_preview_lines: 5,
             from: TruncateFrom::Tail,
             expand_hint: "ctrl+o to expand".into(),
+            fold_hint: "ctrl+o to fold".into(),
             hint_style: None,
         }
     }
@@ -51,6 +56,14 @@ pub fn render_expandable_output(
     if expanded || text.is_empty() {
         let VisualTruncateResult { visual_lines, .. } =
             truncate_to_visual_lines(text, usize::MAX, width, TruncateFrom::Tail);
+        // peo3: only content that would actually fold gets a fold-back footer;
+        // short/empty expanded content stays hint-free.
+        if expanded && !text.is_empty() && visual_lines.len() > opts.max_preview_lines.max(1) {
+            let style = opts.hint_style.unwrap_or(default_dim);
+            let mut out = visual_lines;
+            out.push(style(&format!("... (expanded, {})", opts.fold_hint)));
+            return out;
+        }
         return visual_lines;
     }
 
@@ -141,6 +154,7 @@ mod tests {
             max_preview_lines: 3,
             from: TruncateFrom::Tail,
             expand_hint: "ctrl+o to expand".into(),
+            fold_hint: "ctrl+o to fold".into(),
             hint_style: Some(|s| s.to_string()),
         };
         let lines = render_expandable_output(&text, 40, false, &opts);
@@ -165,7 +179,7 @@ mod tests {
     }
 
     #[test]
-    fn expanded_shows_all_without_hint() {
+    fn expanded_over_limit_adds_fold_footer() {
         let text = (1..=8)
             .map(|i| format!("L{i}"))
             .collect::<Vec<_>>()
@@ -175,8 +189,28 @@ mod tests {
             ..ExpandableOutputOptions::default()
         };
         let lines = render_expandable_output(&text, 40, true, &opts);
-        assert_eq!(lines.len(), 8);
+        assert_eq!(lines.len(), 9); // 8 body + fold footer
         assert!(!lines.iter().any(|l| l.contains("earlier")));
+        let last = lines.last().expect("fold footer");
+        assert!(
+            last.contains("(expanded, ctrl+o to fold)"),
+            "expanded fold footer as block footer: {lines:?}"
+        );
+    }
+
+    #[test]
+    fn expanded_within_limit_has_no_footer() {
+        let text = "L1\nL2";
+        let opts = ExpandableOutputOptions {
+            max_preview_lines: 3,
+            ..ExpandableOutputOptions::default()
+        };
+        let lines = render_expandable_output(&text, 40, true, &opts);
+        assert_eq!(lines.len(), 2, "short content stays footer-free: {lines:?}");
+        assert!(
+            !lines.iter().any(|l| l.contains("expanded")),
+            "no fold footer below viewport: {lines:?}"
+        );
     }
 
     #[test]
@@ -187,6 +221,7 @@ mod tests {
                 max_preview_lines: 2,
                 from: TruncateFrom::Tail,
                 expand_hint: "ctrl+o to expand".into(),
+                fold_hint: "ctrl+o to fold".into(),
                 hint_style: Some(|s| s.to_string()),
             },
         );
@@ -231,6 +266,7 @@ mod tests {
             max_preview_lines: 3,
             from: TruncateFrom::Head,
             expand_hint: "ctrl+o to expand".into(),
+            fold_hint: "ctrl+o to fold".into(),
             hint_style: Some(|s| s.to_string()),
         };
         let lines = render_expandable_output(&text, 40, false, &opts);
@@ -264,6 +300,7 @@ mod tests {
             max_preview_lines: 3,
             from: TruncateFrom::Head,
             expand_hint: "ctrl+o to expand".into(),
+            fold_hint: "ctrl+o to fold".into(),
             hint_style: Some(|s| s.to_string()),
         };
         let empty = render_expandable_output("", 40, false, &opts);

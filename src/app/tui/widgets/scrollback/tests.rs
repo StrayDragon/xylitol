@@ -427,6 +427,7 @@ fn bash_full_output_footer_uses_warning_fg() {
     }
     output.push_str("[Full output: /tmp/x.log. Truncated: 20 lines shown (50.0KB limit)]");
     model.entries.push(UiEntry::Bash {
+        id: "bash-t".into(),
         command: "big".into(),
         status: BashBlockStatus::Success,
         output,

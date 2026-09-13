@@ -32,8 +32,11 @@ const MAX_DIFF_RENDER_LINES: usize = 80;
 /// Disable word-level when raw display_diff exceeds this many lines.
 const WORD_LEVEL_DIFF_LINE_LIMIT: usize = 120;
 
-/// Append expandable output; register `OutputViewport` on the visible Ctrl+O hint
-/// footer (att30). `col_offset` is screen content col of the inner text (2 when railed).
+/// Append expandable output; register the block's `OutputViewport` hit on the
+/// visible Ctrl+O hint footer (collapsed) or fold-back footer (expanded,
+/// peo3) — att30. `col_offset` is screen content col of the inner text
+/// (2 when railed).
+#[allow(clippy::too_many_arguments)] // text + viewport + hint geometry + fold target are distinct planes
 pub(super) fn push_expandable_with_viewport_hit(
     lines: &mut Vec<String>,
     block_hits: &mut Vec<CachedFoldHit>,
@@ -42,13 +45,15 @@ pub(super) fn push_expandable_with_viewport_hit(
     viewport_full: bool,
     opts: &ExpandableOutputOptions,
     col_offset: usize,
+    target: FoldTarget,
 ) {
     let out = render_expandable_output(text, width, viewport_full, opts);
-    // Hint footer embeds expand_hint inside dim SGR (incl. hard-truncation copy).
-    let hint_idx = (!viewport_full)
-        .then(|| out.len().checked_sub(1))
-        .flatten()
-        .filter(|&idx| out[idx].contains(&opts.expand_hint));
+    // The hint band is the last line whenever a footer exists: expand hint
+    // footer when collapsed, fold footer when expanded past the viewport.
+    let hint_idx = out
+        .len()
+        .checked_sub(1)
+        .filter(|&idx| out[idx].contains(&opts.expand_hint) || out[idx].contains(&opts.fold_hint));
     let base = lines.len();
     for line in &out {
         lines.push(fit(line, width));
@@ -59,7 +64,7 @@ pub(super) fn push_expandable_with_viewport_hit(
             row_offset: base + idx,
             col_start: col_offset,
             col_end: col_offset.saturating_add(hint_cols),
-            target: FoldTarget::OutputViewport,
+            target,
         });
     }
 }
@@ -71,6 +76,7 @@ pub(super) fn push_viewport_diff_lines(
     width: usize,
     theme: LayoutTheme,
     viewport_full: bool,
+    target: FoldTarget,
 ) {
     let raw_lines = diff.lines().count();
     let word_level = raw_lines <= WORD_LEVEL_DIFF_LINE_LIMIT;
@@ -98,6 +104,7 @@ pub(super) fn push_viewport_diff_lines(
         max_preview_lines: DIFF_VIEWPORT_LINES,
         from: TruncateFrom::Tail,
         expand_hint: CTRL_O_EXPAND_HINT.into(),
+        fold_hint: CTRL_O_FOLD_HINT.into(),
         hint_style: None,
     };
     push_expandable_with_viewport_hit(
@@ -108,6 +115,7 @@ pub(super) fn push_viewport_diff_lines(
         viewport_full,
         &exp_opts,
         RAILED_MARKER_COL,
+        target,
     );
 }
 
@@ -120,6 +128,8 @@ pub(super) const HARD_TRUNCATED_EXPAND_HINT: &str = "expand disabled — see Ful
 
 /// Ctrl+O viewport expand hint — single literal shared by tool / bash / diff painters.
 pub(super) const CTRL_O_EXPAND_HINT: &str = "ctrl+o to expand";
+/// Expanded fold-back footer hint (peo3) — single literal shared by painters.
+pub(super) const CTRL_O_FOLD_HINT: &str = "ctrl+o to fold";
 
 /// Paint bash/tool body lines; Full output footer uses warning fg (att15 / pi).
 pub(super) fn paint_output_with_full_footer(

@@ -4566,6 +4566,7 @@ impl FakeCodingAgentApp {
                             max_preview_lines: self.tools_output_max_lines,
                             from,
                             expand_hint: "ctrl+o to expand".into(),
+                            fold_hint: "ctrl+o to fold".into(),
                             hint_style: Some(dim),
                         };
                         for line in render_expandable_output(
