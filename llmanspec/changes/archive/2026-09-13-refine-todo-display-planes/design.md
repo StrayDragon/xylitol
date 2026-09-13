@@ -12,20 +12,22 @@
 
 ## 决策
 
-### D1 事件发射点：SSOT 变更点（gateway），非 runtime 名称匹配
+### D1 事件发射点：SSOT 变更点（工具执行 ctx 上行）——apply 期修订
 
-三个候选：
+原案（gateway 持有发布器 + composition root 接线 driver 事件流）在实施调查中
+被推翻：host 下行只有一条路——driver run 流（`run_one` 的 `events` tx），gateway
+的跨 run 通道要并入 per-run 流需引入 forwarder 生命周期管理；且 gateway 拿不到
+执行上下文，反而**工具直接持有 `XyToolCtx`**。
 
-1. `XyToolCtx` 加通用事件上行 → 拓宽 tool port，只有一个工具族用，否。
-2. `tool_exec.rs` 在 End 后按 `name == "todo_*"` 匹配并解析 result JSON → host 内
-   又出现一处字符串解析 + 名字魔串，与提案动机矛盾，否。
-3. **`SessionAgentTodoGateway` 持有可选事件发布器**（`Option<UnboundedSender<XyEvent>>`
-   或等价回调），三工具成功 persist 后发布 `TodoUpdated`；composition root（app 组装
-   处）接线到 driver 事件流。选此。
+修订案（实施）：`XyToolCtx` 增可选类型化上行 `state_events`
+（`with_state_event_tx` / `publish_state`，镜像既有 `output_tx` 先例）；react
+`run_one` 的 select 循环 drain 该通道并原样转发进 run 流。todo 三工具在 gateway
+写成功后 `publish_state(TodoUpdated)`。性质不变：仍在 SSOT 变更点发布、无名字
+魔串、无 JSON 解析、unbound 静默；且天然同构覆盖 in-process 与 host attach
+（run 流 → `to_wire_event` → journal/mux）。
 
-理由：SSOT 变更即语义事件（change-stream 语义），无名字匹配、无 JSON 解析；
-层级合法（infra → protocol 依赖允许）。unbound（无发布器）时静默跳过——单测 /
-Print 面零负担。
+否决备选：runtime 按 `name == "todo_*"` 解析结果 JSON（host 内又一处字符串解析 +
+名字匹配，与提案动机矛盾）。
 
 ### D2 事件形状
 

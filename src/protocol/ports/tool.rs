@@ -8,6 +8,7 @@ use tokio::sync::mpsc;
 use tokio_util::sync::CancellationToken;
 
 use crate::protocol::error::XyToolError;
+use crate::protocol::lifecycle::XyEvent;
 use crate::protocol::message::AgentPart;
 
 /// Context passed to tool execution.
@@ -23,6 +24,12 @@ pub struct XyToolCtx {
     /// executing. ReAct drains this channel and emits Update events. `None` for
     /// tools that only report a final result.
     pub output_tx: Option<mpsc::Sender<String>>,
+    /// Optional typed state-event uplink (atd13) for tools that mutate
+    /// host-owned semantic state (e.g. `todo_*` publishing
+    /// [`XyEvent::TodoUpdated`]). ReAct drains and re-emits verbatim into the
+    /// run stream, so both in-process and attach clients see the event.
+    /// `publish_state` is a no-op when unset.
+    state_events: Option<mpsc::UnboundedSender<XyEvent>>,
     /// Workspace base directory for tool execution.
     ///
     /// File tools resolve relative paths against it and shell tools spawn in
@@ -38,6 +45,7 @@ impl XyToolCtx {
             call_id: call_id.into(),
             cancel: CancellationToken::new(),
             output_tx: None,
+            state_events: None,
             workspace: fallback_workspace(),
         }
     }
@@ -47,6 +55,7 @@ impl XyToolCtx {
             call_id: call_id.into(),
             cancel,
             output_tx: None,
+            state_events: None,
             workspace: fallback_workspace(),
         }
     }
@@ -55,6 +64,22 @@ impl XyToolCtx {
     pub fn with_output_tx(mut self, tx: mpsc::Sender<String>) -> Self {
         self.output_tx = Some(tx);
         self
+    }
+
+    /// Attach the typed state-event uplink (atd13).
+    pub fn with_state_event_tx(mut self, tx: mpsc::UnboundedSender<XyEvent>) -> Self {
+        self.state_events = Some(tx);
+        self
+    }
+
+    /// Publish a typed domain-state event from this tool call (atd13).
+    ///
+    /// Silent no-op without an uplink (unit tests / surfaces that don't consume
+    /// state projections) — MUST NOT be load-bearing for SSOT persistence.
+    pub fn publish_state(&self, event: XyEvent) {
+        if let Some(tx) = &self.state_events {
+            let _ = tx.send(event);
+        }
     }
 
     /// Bind the execution workspace (session cwd). Relative paths in tool args

@@ -102,8 +102,12 @@ pub(crate) async fn run_one(
     let tool = env.tools.get(name);
     let tool_missing = tool.is_none();
     let (out_tx, mut out_rx) = tokio::sync::mpsc::channel::<String>(64);
+    // Typed state-event uplink (atd13): tools publishing domain-state events
+    // (todo_* → TodoUpdated) ride the same run stream as tool tape.
+    let (state_tx, mut state_rx) = mpsc::unbounded_channel::<XyEvent>();
     let ctx = XyToolCtx::with_cancel(id, env.cancel.clone())
         .with_output_tx(out_tx)
+        .with_state_event_tx(state_tx)
         .with_workspace(env.workspace);
     let mut tool_args = args.clone();
 
@@ -184,22 +188,18 @@ pub(crate) async fn run_one(
             _ = env.cancel.cancelled() => {
                 break Err(crate::protocol::error::XyToolError::Aborted);
             }
-            chunk = out_rx.recv() => {
-                match chunk {
-                    Some(output) => {
-                        streamed_output = true;
-                        emit(
-                            &events,
-                            XyEvent::ToolExecutionUpdate {
-                                id: id.to_string(),
-                                output,
-                            },
-                        );
-                    }
-                    None => {
-                        break exec_fut.await;
-                    }
-                }
+            Some(chunk) = out_rx.recv() => {
+                streamed_output = true;
+                emit(
+                    &events,
+                    XyEvent::ToolExecutionUpdate {
+                        id: id.to_string(),
+                        output: chunk,
+                    },
+                );
+            }
+            Some(state_event) = state_rx.recv() => {
+                emit(&events, state_event);
             }
             done = &mut exec_fut => {
                 break done;
@@ -215,6 +215,9 @@ pub(crate) async fn run_one(
                 output,
             },
         );
+    }
+    while let Ok(state_event) = state_rx.try_recv() {
+        emit(&events, state_event);
     }
 
     let mut result = match exec_outcome {
