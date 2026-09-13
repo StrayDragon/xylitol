@@ -2,7 +2,7 @@
 name: "llman-sdd-apply"
 description: "在一个闭环内实施 llman SDD 变更的 tasks：写代码 → 跑测试 → 失败自修复 → 直到门禁全绿。自动更新 tasks.md 勾选状态并运行校验。用于提案完成后的实现阶段。"
 metadata:
-  version: "0.0.77"
+  version: "0.0.78"
 ---
 
 # LLMAN SDD Apply
@@ -20,7 +20,7 @@ metadata:
 硬规则：
 1. **先** Branch binding（`change start` / `attach`）→ Full；**再** Specs landing（绑定分支编辑并 commit `llmanspec/specs/**`）。
 2. 无 live 合约变更 → `needs_specs_change: false`。apply 前须 `readyToImplement=true`。
-3. 收口用 `change finalize`（自动提交 `archive(sdd): <id>`；`--no-commit` 可跳过）。`change checkpoint` 已移除。
+3. 收口用 `change finalize`（自动提交 `archive(sdd): <id>`；`--no-commit` 可跳过）。`change checkpoint` 已移除（调用即以非零退出报错，指向 finalize）。
 4. **禁止**在默认分支 commit live specs；已 attach 勿重复 `start`。
 
 ### Skill 导航（非生命周期；仅指示当前 skill）
@@ -49,7 +49,7 @@ flowchart LR
 
 ## Commit 策略
 
-- **change 分支上提交自由**（r25/Q4b）：可按 task/里程碑分段提交（利于 review），也可保持工作区不提交、交给 finalize 一次收尾——两条路都是一等公民。`change checkpoint` 已不存在，因此没有「中途存档点」要维护；`change finalize` 对两种形态都原生支持（不要求干净树）。
+- **change 分支上提交自由**（无存档点概念：`change finalize` 不要求干净树）：可按 task/里程碑分段提交（利于 review），也可保持工作区不提交、交给 finalize 一次收尾——两条路都是一等公民。`change checkpoint` 已不存在（调用它以非零退出报错并指向 finalize），因此没有「中途存档点」要维护；`change finalize` 对两种形态都原生支持（不要求干净树）。
 - **默认收尾**：全部 task 过门禁且 verify 全绿后，`llman sdd change finalize <id>` 自动提交 `archive(sdd): <change-id>`（未提交的实现 diff + frontmatter + archive 改名一次提交）。不要在 apply 循环内 finalize。`--no-commit` 可跳过自动提交（手动/CI 历史、pre-commit hook 冲突场景）。
 - **blocker 中断**：必须因 blocker STOP 时，先做**一次** WIP commit（如 `wip(sdd): <change-id> <摘要>`）保全现场，再报告。
 
@@ -142,7 +142,8 @@ llman sdd show <id> --json --type change
 
 > 💡 实施完成 → 下一步 `llman-sdd-verify`（验证）
 
-> 命令细节用 `llman sdd <cmd> --help` 查看；命令参考以 CLI 为准，skill 不内嵌命令表（r139）。
+> 命令细节用 `llman sdd <cmd> --help` 查看；命令参考以 CLI 为准，skill 不内嵌命令表。
+> 文中「规约」= 本项目 `llmanspec/specs/` 下的 `.feature` 文件；用 `llman sdd list --specs` / `llman sdd show <capability>` 查全文。
 
 校验修复（单轨 feature-as-spec）：
 
@@ -165,7 +166,7 @@ llman sdd show <id> --json --type change
 
 Git-native 护栏：
 - **Branch binding** → **Specs landing**：先 `change start` / `attach`，再在绑定的非默认分支编辑 live `.feature` 并 commit。
-- 锁定规则：修改/删除既有 `@human` 场景以 WARNING 报告（报告制，r135/S0），不阻断 validate/finalize/diff。控制点：git 分支对比 + `llman sdd review` / `change diff` 报告浮现。确认元数据（`rules_touched` / `agent_acked` / `@agent` / `--yes` 锁定语义）已移除（q9 无兼容）。
+- 锁定规则（报告制）：改/删既有 `@human` 场景只出 WARNING，不阻断 validate / change finalize / change diff；报告按 `@req:<id>` 指明被改的是哪条规则。控制点：git 分支对比 + `llman sdd review` / `change diff` 的报告浮现。旧的锁定确认元数据（frontmatter `rules_touched` / `agent_acked`、`@agent` tag、`--yes` 的确认语义）已全部删除，无别名、无兼容层。
 - apply 前须 `readyToImplement=true`（或 `needs_specs_change: false`）。收尾优先 `change finalize`。
 - 勿使用 `change delta` / solidify / `*.feature.delta.toon`。
 

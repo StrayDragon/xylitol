@@ -2,7 +2,7 @@
 name: "llman-sdd-wayfinder"
 description: "人类主动触发。把大型、一团乱的工作（超出单个 agent 会话容量）拆成一张决策地图，逐个解决决策直到路径清晰。仅手动触发，agent 禁止自动启用。"
 metadata:
-  version: "0.0.77"
+  version: "0.0.78"
 ---
 
 # LLMAN SDD Wayfinder
@@ -80,6 +80,9 @@ metadata:
 
 ## 输出
 地图 change + 子决策 change 的依赖图（`llman sdd graph`）。路径清晰后建议进入 `llman-sdd-propose`（含 Branch binding → Specs landing，至 `readyToImplement=true`）把决策收拢为可实施计划。
+
+> 命令细节用 `llman sdd <cmd> --help` 查看；命令参考以 CLI 为准，skill 不内嵌命令表。
+> 文中「规约」= 本项目 `llmanspec/specs/` 下的 `.feature` 文件；用 `llman sdd list --specs` / `llman sdd show <capability>` 查全文。
 
 ## Context
 - 先查状态再动手：change/spec 状态以 `llman sdd show/list/validate` 输出为准。

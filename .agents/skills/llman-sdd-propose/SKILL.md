@@ -2,7 +2,7 @@
 name: "llman-sdd-propose"
 description: "创建带规划工件（proposal/tasks；先 `change start`/`attach` 完成 Branch binding，再在绑定分支编辑 live specs/feature）的 llman SDD 变更提案。用于 MUST/SHALL 行为合约变更。"
 metadata:
-  version: "0.0.77"
+  version: "0.0.78"
 ---
 
 # LLMAN SDD Propose
@@ -49,7 +49,7 @@ flowchart TB
 硬规则：
 1. **先** `change start` / `attach`（Branch binding / 分支绑定）进入 Full；**再**在绑定的非默认分支编辑 `llmanspec/specs/**` 并 commit（Specs landing / 合约落地）。
 2. 无 live 合约变更时可设 frontmatter `needs_specs_change: false`。进入 apply 前 `llman sdd show <id> --json` 的 `readyToImplement` 须为 true（`Full ∧ gateChecks 全过`；specs-landed 项 = `specsLanded ∨ needs_specs_change=false`；一切范围 = 现算 merge-base，存储 `base_sha` 仅审计）。
-3. `change checkpoint` 已移除（r25）：收口一律 `llman sdd change finalize <id>`——自动提交 `archive(sdd): <id>`（实现 diff + 改名一次提交）；`--no-commit` 跳过自动提交（CI/手动历史场景）。change 分支上提交自由（分段或 finalize 单次收尾均可）。
+3. `change checkpoint` 已移除（无存档点概念：中途不必存档，`change finalize` 不要求干净树）。收口一律 `llman sdd change finalize <id>`：自动提交 `archive(sdd): <id>`（实现 diff + 改名一次提交）；`--no-commit` 跳过自动提交（CI/手动历史场景）。change 分支上提交自由（分段或 finalize 单次收尾均可）。
 4. **禁止**为过干净树门禁把 live specs commit 到默认分支；已 attach 时不要重复 `start`。
 # 人读摘要（强制）
 
@@ -80,7 +80,7 @@ flowchart LR
 
 ## 硬约束
 
-- **change id 非阻塞（r140）**：用户已给出 id 则直接采用；否则按 r99 推导规则生成合法 kebab-case id（动词前缀），宣布所用 id 与覆盖方式后继续，MUST NOT 等待确认——Branch binding 前更换 id 成本很低。仅当用户想先记 idea（草案、无需 id）时转 `llman-sdd-draft`。
+- **change id 非阻塞**：用户已给出 id 则直接采用；否则从任务描述推导一个合法 kebab-case id（动词前缀开头，通过 CLI 的 id 合法性检查，并遵循 `llmanspec/AGENTS.md` 声明的命名约定），宣布所用 id 与覆盖方式后继续，MUST NOT 等待确认——Branch binding 前更换 id 成本很低。仅当用户想先记 idea（草案、无需 id）时转 `llman-sdd-draft`。
 - **Live specs 是 SSOT**：只在 Branch binding **之后**、在**绑定的非默认分支**上编辑 `llmanspec/specs/**`（Specs landing）。**不要**在默认分支上改 live specs；**不要**在 `changes/<id>/specs/` 下撰写或使用 `change delta`（已移除）。规划壳可以短暂留在默认分支。
 - **不要问「要不要继续」**：一口气执行完整 propose 阶段，生成工件并校验。
 
@@ -101,6 +101,7 @@ flowchart LR
 - **检查 spec valid_scope 完整性**：用 `llman sdd list --specs --json` 列出全部 specs，逐个核对其 `valid_scope` 中的路径在磁盘上是否存在。任何 scope 文件/目录缺失时，STOP 并建议更新该 spec（从 `valid_scope` 移除已删除的路径）。
 
 ### 1) 评估 change 规模（triage）
+1. 判定类型：
    - **行为合约变更**（修改 MUST/SHALL、改变外部行为）→ 完整 SDD 工作流
    - **实现层变更**（重构、typo、性能）→ 走 `llman-sdd-quick` 快速路径
    - **元规范变更**（SDD 模板/流程）→ 完整 SDD 工作流
@@ -109,10 +110,10 @@ flowchart LR
    - context 不可用时，跑 `llman sdd index rebuild`（默认 `pageindex`，无需模型）后继续。
 3. 收集输入：
    - 一段简短的变更描述
-   - 一个 change id（用户给出则用之；否则按 r140 推导并宣布）
+   - 一个 change id（用户给出则用之；否则按上面的非阻塞规则推导并宣布）
    - 受影响的 capability（用于命名 `specs/<capability>`）
 
-### 2) 确认项目已初始化：
+### 2) 确认项目已初始化
    - `llmanspec/` 必须存在；若缺失，让用户运行 `llman sdd init`，然后 STOP。
 
 ### 3) 创建 change 目录与工件
@@ -127,9 +128,9 @@ flowchart LR
    - **先** `llman sdd change start <change-id>`（推荐；默认分支上工作树干净时）或手动建分支后 `change attach <change-id>` 到达 Full（bound）。
    - **然后**在绑定的非默认分支上编辑 live `llmanspec/specs/<capability>.feature`（扁平，或目录 `llmanspec/specs/<capability>/` 内主文件）并 commit（Specs landing）。**不要**在 start 之前改 live specs；**不要**为过干净树门禁把 live specs commit 到默认分支。已 attach 时勿重复 `start`（丢失 specs 时用 checkout/重建 + `attach --force` 恢复）。
    - 无 live 合约编辑的 change，设置 frontmatter `needs_specs_change: false`。仅当 `llman sdd show <id> --json` 给出 `readyToImplement=true` 才进入 apply。
-   - **破坏性合约变更**（移除/重命名字段、命令、tag 或 stage 值域）MUST 规划升级路径：`migrations/v<from>-v<to>/`（README prompt + 一次性脚本，r28）——写进提案的 What Changes。
+   - **破坏性合约变更**（移除/重命名字段、命令、tag 或 stage 值域）MUST 规划升级路径：`migrations/v<from>-v<to>/`（README prompt + 一次性脚本，随仓库发布）——写进提案的 What Changes。
 
-### 4) 校验：
+### 4) 校验
    ```bash
    llman sdd validate <change-id> --strict --no-interactive
    ```
@@ -149,13 +150,14 @@ flowchart LR
 - change 壳：`llman sdd change new <change-id>` → 填 proposal/design/tasks → `llman sdd change start <change-id>`（或 `change attach`）→ **然后**在绑定分支编辑 live specs 并 commit（Specs landing）。
 - **不要**使用 `change delta` / solidify / `*.feature.delta.toon`；存在活跃 `*.feature.delta.toon` 或遗留 `spec.toon` 时，先跑 `llman sdd project migrate --kind toon2features`。
 
-### 5) 总结并建议下一步：
+### 5) 总结并建议下一步
    - 进入实现阶段：`llman-sdd-apply`。
    - 需要再想清楚：`llman-sdd-explore`。
 
 > 💡 提案完成 → 下一步：`llman-sdd-apply`（实施）
 
-> 命令细节用 `llman sdd <cmd> --help` 查看；命令参考以 CLI 为准，skill 不内嵌命令表（r139）。
+> 命令细节用 `llman sdd <cmd> --help` 查看；命令参考以 CLI 为准，skill 不内嵌命令表。
+> 文中「规约」= 本项目 `llmanspec/specs/` 下的 `.feature` 文件；用 `llman sdd list --specs` / `llman sdd show <capability>` 查全文。
 校验修复（单轨 feature-as-spec）：
 
 1）缺少头注释（`missing # capability: header comment`）：
@@ -177,7 +179,7 @@ flowchart LR
 
 Git-native 护栏：
 - **Branch binding** → **Specs landing**：先 `change start` / `attach`，再在绑定的非默认分支编辑 live `.feature` 并 commit。
-- 锁定规则：修改/删除既有 `@human` 场景以 WARNING 报告（报告制，r135/S0），不阻断 validate/finalize/diff。控制点：git 分支对比 + `llman sdd review` / `change diff` 报告浮现。确认元数据（`rules_touched` / `agent_acked` / `@agent` / `--yes` 锁定语义）已移除（q9 无兼容）。
+- 锁定规则（报告制）：改/删既有 `@human` 场景只出 WARNING，不阻断 validate / change finalize / change diff；报告按 `@req:<id>` 指明被改的是哪条规则。控制点：git 分支对比 + `llman sdd review` / `change diff` 的报告浮现。旧的锁定确认元数据（frontmatter `rules_touched` / `agent_acked`、`@agent` tag、`--yes` 的确认语义）已全部删除，无别名、无兼容层。
 - apply 前须 `readyToImplement=true`（或 `needs_specs_change: false`）。收尾优先 `change finalize`。
 - 勿使用 `change delta` / solidify / `*.feature.delta.toon`。
 
