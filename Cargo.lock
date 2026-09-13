@@ -6051,7 +6051,7 @@ checksum = "aee1b19627c7c60102ab80d3a9cbe18de90bfe03bfa6c3715447681f0e8c8af6"
 
 [[package]]
 name = "xylitol"
-version = "0.0.0-dev"
+version = "0.0.0-pre"
 dependencies = [
  "anyhow",
  "async-stream",

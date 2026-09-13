@@ -131,12 +131,18 @@ test verbosity=verbosity_default:
 # Live Responses prompt-cache counterexample (dedicated <global-dir>/dev config).
 # Strictly serial (--test-threads=1). Always part of default `just qa` (any verbosity).
 # Missing/disabled global dev config → skip (pass). enabled=true → must hit gateway.
-# Example (auto-generated): `just gen-live-provider-example` → configs/testing/live-provider.example.yaml
+# CI / offline opt-out: XYLITOL_SKIP_LIVE=1 skips this gate unconditionally
+# (env, because `qa` composes this recipe as a dependency — conditional deps
+# cannot take just args). Example: `XYLITOL_SKIP_LIVE=1 just qa`.
 alias test-live-responses-cache := test-live-provider
 [arg('verbosity', pattern='quiet|normal|verbose')]
 test-live-provider verbosity=verbosity_default:
     #!/usr/bin/env bash
     set -euo pipefail
+    if [[ "${XYLITOL_SKIP_LIVE:-}" == "1" ]]; then
+      echo "live-provider: skipped (XYLITOL_SKIP_LIVE=1)"
+      exit 0
+    fi
     # One binary, one thread: never fan out concurrent llama.cpp requests from this suite.
     case "{{verbosity}}" in
       quiet)
@@ -380,6 +386,7 @@ test-tui verbosity=verbosity_default:
 # harness → docs (doc-check + doc-test) → DESIGN tokens → scripts/check_* →
 # prek (text-hygiene-only hooks; cargo gates never in prek — see AGENTS.md).
 # Default verbosity=quiet (agent-friendly). Pass `normal` / `verbose` for humans.
+# Skip options (env): XYLITOL_SKIP_LIVE=1 skips the live-provider gate (CI).
 [arg('verbosity', pattern='quiet|normal|verbose')]
 qa verbosity=verbosity_default: \
     (fmt-check verbosity) \

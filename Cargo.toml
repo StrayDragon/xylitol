@@ -1,6 +1,6 @@
 [package]
 name = "xylitol"
-version = "0.0.0-dev"
+version = "0.0.0-pre"
 edition = "2024"
 # rust-toolchain.toml is the compiler pin (dated nightly).
 # rust-version must stay below that nightly's x.y.z — Cargo treats
