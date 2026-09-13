@@ -77,6 +77,10 @@
   场景: 会话生命周期方法接线
     - Host MUST 为 list_sessions、load_session_entries、new_session、get_session_name、set_session_name、set_session_name_for 与 delete_session 提供已登记 unary，并经同一 Driver/dispatch 语义执行；Remote 客户端调用这些方法时 MUST NOT 得到预留 unsupported。
 
+  @req:sr-est1 @human
+  场景: 上下文估计方法接线
+    - Host MUST 为 estimate_context 提供已登记 unary：经与 in-process driver 同源的估算入口计算 ContextTokenEstimate，MUST 计入 host 侧固定请求开销（system prompt + tool schemas）与 host tokenizer 映射；MUST NOT 返回 stub 或客户端自估降级。
+
   @req:sr-imp1 @human
   场景: wire 会话导入内容暂存
     - Host MUST 为 import_jsonl 提供内容暂存导入：载荷携带 content 而无 input_path 时，MUST 将内容暂存为临时输入路径、经同一 dispatch 导入并返回新 session_id，处理结束 MUST 清理暂存文件；携带 input_path 的直传行为 MUST 保持不变。
