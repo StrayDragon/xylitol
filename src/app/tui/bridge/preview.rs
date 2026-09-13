@@ -206,9 +206,7 @@ pub(crate) fn human_tool_args_preview_with_path(
                 Some(items) => {
                     let in_progress = items
                         .iter()
-                        .filter(|i| {
-                            i.get("status").and_then(Value::as_str) == Some("in_progress")
-                        })
+                        .filter(|i| i.get("status").and_then(Value::as_str) == Some("in_progress"))
                         .count();
                     let n = items.len();
                     let mut summary = format!("{n} item{}", if n == 1 { "" } else { "s" });
@@ -391,9 +389,7 @@ pub(crate) fn output_looks_like_machine_json(text: &str) -> bool {
         return true;
     }
     // todo-shaped: full-snapshot envelope (att36 safety net for orphans).
-    if obj.contains_key("items")
-        && obj.get("items").is_some_and(Value::is_array)
-        && obj.len() == 1
+    if obj.contains_key("items") && obj.get("items").is_some_and(Value::is_array) && obj.len() == 1
     {
         return true;
     }
@@ -1401,7 +1397,9 @@ mod tests {
         ));
         // Mixed-shape objects (e.g. MCP payloads that happen to have `items`)
         // stay unrecognized — only the exact single-key snapshot envelope.
-        assert!(!output_looks_like_machine_json(r#"{"items":[1],"total":1}"#));
+        assert!(!output_looks_like_machine_json(
+            r#"{"items":[1],"total":1}"#
+        ));
     }
 
     #[test]

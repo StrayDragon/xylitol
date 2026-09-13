@@ -2,9 +2,8 @@
 
 use crate::app::tool_display::{is_ask_tool, is_write_tool};
 use crate::protocol::session::{
-    SessionEntry, SessionTreeTravel, TodoList, is_env_custom_message,
-    is_tool_call_part, latest_agent_todo, message_parts, message_role, message_text,
-    tool_call_name,
+    SessionEntry, SessionTreeTravel, TodoList, is_env_custom_message, is_tool_call_part,
+    latest_agent_todo, message_parts, message_role, message_text, tool_call_name,
 };
 use crate::utils::elapsed_from_persist_ms;
 use serde_json::Value;
@@ -1200,7 +1199,8 @@ mod tests {
     }
 
     #[test]
-    fn rebuild_merges_tool_call_and_result_into_one_tool() {        let entries = vec![
+    fn rebuild_merges_tool_call_and_result_into_one_tool() {
+        let entries = vec![
             SessionEntry::Message(MessageEntry {
                 base: EntryBase {
                     entry_type: "message".into(),
