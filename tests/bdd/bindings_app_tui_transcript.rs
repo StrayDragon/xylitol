@@ -36,6 +36,12 @@ fn test_att34_body_seals(transcript_bdd: TranscriptBdd) {}
 
 #[scenario(
     path = "llmanspec/specs/app-tui-transcript/app-tui-transcript.feature",
+    name = "compaction-seals-cluster-headless"
+)]
+fn test_att34_compaction_seals(transcript_bdd: TranscriptBdd) {}
+
+#[scenario(
+    path = "llmanspec/specs/app-tui-transcript/app-tui-transcript.feature",
     name = "live-window-unenveloped-headless"
 )]
 fn test_att33_live_window(transcript_bdd: TranscriptBdd) {}

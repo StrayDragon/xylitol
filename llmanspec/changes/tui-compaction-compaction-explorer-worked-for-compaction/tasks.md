@@ -10,6 +10,8 @@
 
 ### T1 specs landing：att34 修订
 
+- [x] 完成
+
 - `llmanspec/specs/app-tui-transcript/app-tui-transcript.feature` att34：
   「Thinking、工具、Ask、Diff、Todo、Compaction MUST NOT 单独切簇」改为
   「Thinking、工具、Ask、Diff、Todo MUST NOT 单独切簇；Compaction MUST 封口当前打开簇并
@@ -19,7 +21,9 @@
 
 ### T2 SceneBuilder compaction 构造 + BDD 步骤/绑定
 
-- `blocked-by: T1`
+- [x] 完成
+
+- [x] `blocked-by: T1`
 - `activity_fold/scene.rs`：`pub fn compaction(&mut self, summary: &str, tokens_before: u64)`。
 - `steps_app_tui_transcript.rs`：when「以场景构建器回放工具后压缩再工具序列」+
   then「压缩块独立成块且前后工具簇各自成簇」（断言两簇头 + compaction 行独立、无 Worked for）。
@@ -27,13 +31,17 @@
 
 ### T3 partition 切簇 + 单测
 
-- `blocked-by: T1`
+- [x] 完成
+
+- [x] `blocked-by: T1`
 - `segment.rs`：match 循环增 `UiEntry::Compaction` 封口分支（先 seal_open(None)、push、再 seal_open(None)）。
 - 单测三形态：tools→compaction→tools（三簇）；连续两条 compaction（两单例簇）；
   纯 compaction 轮（与现状同构，`partition_includes_compaction_skips_empty_and_scrollnotice` 保持绿）。
 
 ### T4 门禁与校准
 
-- `blocked-by: T2, T3`
+- [x] 完成
+
+- [x] `blocked-by: T2, T3`
 - `just fmt` / `just lint` / `cargo test --lib` + tui 测试（含既有 att23/att26/att29/att35/att36 回归）。
 - BDD 步骤断言按实际帧校准；全绿后提交。
