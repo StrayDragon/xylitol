@@ -87,14 +87,20 @@ pub enum Event {
         steer_count: usize,
         follow_up_count: usize,
     },
+    /// Agent Todo checklist snapshot changed (atd13 / pa-todo1): attach clients
+    /// refresh the checklist projection from this payload, never from parsing
+    /// tool-result text.
+    TodoUpdated {
+        list: crate::protocol::session::TodoList,
+    },
 }
 
 impl XyEvent {
     /// Convert a domain lifecycle event to its wire-protocol representation.
     ///
-    /// Returns `None` for internal-only events that should not cross the
-    /// client boundary (auto-retry bookkeeping, etc.). [`XyEvent::QueueUpdate`]
-    /// is wire-visible (c540).
+/// Returns `None` for internal-only events that should not cross the
+/// client boundary (auto-retry bookkeeping, etc.). [`XyEvent::QueueUpdate`]
+/// and [`XyEvent::TodoUpdated`] are wire-visible (c540 / pa-todo1).
     pub fn to_wire_event(&self) -> Option<Event> {
         match self {
             XyEvent::TextDelta(text) => Some(Event::TextDelta { text: text.clone() }),
@@ -181,6 +187,7 @@ impl XyEvent {
                 steer_count: *steer_count,
                 follow_up_count: *follow_up_count,
             }),
+            XyEvent::TodoUpdated { list } => Some(Event::TodoUpdated { list: list.clone() }),
             // Degraded (not on the wire): process-local or REST-covered.
             XyEvent::AgentStart { .. }
             | XyEvent::AutoRetryStart { .. }
@@ -322,6 +329,7 @@ impl TryFrom<&Event> for XyEvent {
                 steer_count: *steer_count,
                 follow_up_count: *follow_up_count,
             }),
+            Event::TodoUpdated { list } => Ok(XyEvent::TodoUpdated { list: list.clone() }),
         }
     }
 }
@@ -413,6 +421,40 @@ mod tests {
                 steer_count: 2,
                 follow_up_count: 1,
             }
+        ));
+    }
+
+    #[test]
+    fn todo_updated_roundtrips_through_wire_event() {
+        // pa-todo1: full TodoList snapshot crosses the wire; empty list = cleared.
+        let list = crate::protocol::session::TodoList::new(vec![crate::protocol::session::TodoItem {
+            id: "todo-1".into(),
+            content: "check env".into(),
+            status: crate::protocol::session::TodoStatus::InProgress,
+        }]);
+        let domain = XyEvent::TodoUpdated { list };
+        let wire = domain
+            .to_wire_event()
+            .expect("TodoUpdated must be wire-visible (pa-todo1)");
+        let encoded = serde_json::to_value(&wire).expect("wire serializes");
+        assert_eq!(encoded["type"], "todo_updated");
+        assert_eq!(encoded["list"]["items"][0]["status"], "in_progress");
+
+        let decoded: Event = serde_json::from_value(encoded).expect("wire deserializes");
+        let back = XyEvent::try_from(&decoded).expect("roundtrip");
+        assert!(matches!(
+            back,
+            XyEvent::TodoUpdated { ref list } if list.items.len() == 1
+        ));
+
+        let cleared = XyEvent::TodoUpdated {
+            list: crate::protocol::session::TodoList::default(),
+        };
+        let wire = cleared.to_wire_event().expect("empty list still wire-visible");
+        let back = XyEvent::try_from(&wire).expect("roundtrip");
+        assert!(matches!(
+            back,
+            XyEvent::TodoUpdated { ref list } if list.is_empty()
         ));
     }
 
