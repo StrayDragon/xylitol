@@ -323,15 +323,15 @@ fn nested_bash_to_ui(message: &Value) -> Vec<UiEntry> {
         .or_else(|| message.get("exclude_from_context"))
         .and_then(Value::as_bool)
         .unwrap_or(false);
-    // att30 fold key: prefer persisted bashId; identical commands still get
-    // distinct blocks via a command hash fallback.
+    // att30 fold key: prefer persisted bashId; fall back to a command hash
+    // (identical commands share the key — bashId is the normative path).
     let id = message
         .get("bashId")
         .or_else(|| message.get("bash_id"))
         .and_then(Value::as_str)
         .filter(|s| !s.is_empty())
         .map(str::to_string)
-        .unwrap_or_else(|| UiModel::bash_block_id_from_command(&[], &command));
+        .unwrap_or_else(|| UiModel::bash_block_id_from_command(&command));
     let status = if cancelled {
         BashBlockStatus::Cancelled
     } else if exit_code.is_some_and(|c| c != 0) {

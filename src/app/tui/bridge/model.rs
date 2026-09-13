@@ -535,17 +535,14 @@ impl UiModel {
     }
 
     /// Deterministic Bash block id fallback (att30 fold key) when no persisted
-    /// `bashId` exists — identical commands still get distinct ids per ordinal.
-    pub fn bash_block_id_from_command(entries: &[UiEntry], command: &str) -> String {
+    /// `bashId` exists. Pure command hash: identical commands share a fold key
+    /// (cosmetic; the normative path is the persisted `bashId`).
+    pub fn bash_block_id_from_command(command: &str) -> String {
         use std::collections::hash_map::DefaultHasher;
         use std::hash::{Hash, Hasher};
         let mut h = DefaultHasher::new();
         command.hash(&mut h);
-        let ordinal = entries
-            .iter()
-            .filter(|e| matches!(e, UiEntry::Bash { .. }))
-            .count();
-        format!("bash-cmd-{:016x}-{ordinal}", h.finish())
+        format!("bash-cmd-{:016x}", h.finish())
     }
 
     /// Append live bang output bytes to the last Pending Bash block (c669).
