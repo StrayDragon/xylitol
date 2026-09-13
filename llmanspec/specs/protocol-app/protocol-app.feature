@@ -89,6 +89,14 @@
   场景: ToolEnd 失败标记下行
     - wire 的 ToolEnd 事件 MUST 携带 is_error 终态失败标记，该字段线上必填（缺失载荷 MUST 解析失败）；attach 客户端据此呈现失败态。
 
+  @req:pa-wire3 @human
+  场景: CompactionEnd 载荷下行
+    - wire 的 CompactionEnd 事件 MUST 与 XyEvent::CompactionEnd 同构携带 result、aborted、reason、will_retry、error_message、summary、tokens_before 全部载荷；经 JSON 序列化与反序列化往返 MUST 保真，反序列化侧 MUST NOT 把丢载荷重建为伪成功完成态；旧的无载荷形态 MUST 可解码为缺省载荷（None/false/空）且 MUST NOT panic。attach 客户端据此呈现真实 Compacted from N tokens 与可展开 summary。
+
+  @req:pa-map5 @human
+  场景: 上下文估计方法
+    - 产品方法表 MUST 登记只读 `estimate_context`：host 侧以与本地 driver 同源入口计算 ContextTokenEstimate（含固定请求开销折算与 host tokenizer 映射）；MUST 为四象限 unary 且不占写者。Remote 客户端 MUST NOT 再以 GetMessages 拉条目在本地自估充当该能力。
+
   @req:pa-cs1 @human
   场景: 单一产品真源
     - client 与 host 之间的产品消息 MUST 且仅 MUST 经四象限信封投递。Command 与 Event 闭集 MUST 作为方法载荷 / 下行帧内容，MUST NOT 再作为产品协议外层。测试用进程内客户端与产品 attach 客户端 MUST 使用同一方法表。MUST NOT 为远程再开平行的 REST 产品动词或第二套词表。

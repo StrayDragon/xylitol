@@ -34,7 +34,7 @@
 
   @req:c8 @human
   场景: 切点
-    - System MUST 自最新条目向后累计 token，在约 keepRecent tokens 预算处找最近合法切点；累计所用 token MUST 对齐 pi estimateTokens：对上下文可见 AgentMessage（含 text/thinking/toolCall/toolResult/bashExecution 等）按字符启发式（chars/4 或等价），零贡献条目 MUST 跳过；MUST NOT 以条目原始 JSON 整包 len/4 作为切点 SSOT；合法切点 MUST 含 user、assistant、bashExecution、custom_message、branch_summary（及等价条目类型）；MUST NOT 在 toolResult 处切断；切在 turn 中部时 MUST 填 turn_start_index 与 is_split_turn=true，切在 turn-start 时 turn_start_index MUST 为哨兵（如 -1）且 is_split_turn=false。
+    - System MUST 自最新条目向后累计 token，在约 keepRecent tokens 预算处找最近合法切点；累计所用 token MUST 对齐 pi estimateTokens：对上下文可见 AgentMessage（含 text/thinking/toolCall/toolResult/bashExecution 等）按字符启发式（chars/4 或等价），零贡献条目 MUST 跳过；MUST NOT 以条目原始 JSON 整包 len/4 作为切点 SSOT；合法切点 MUST 含 user、assistant、bashExecution、custom_message、branch_summary（及等价条目类型）；MUST NOT 在 toolResult 处切断；切在 turn 中部时 MUST 填 turn_start_index 与 is_split_turn=true，切在 turn-start 时 turn_start_index MUST 为哨兵（如 -1）且 is_split_turn=false。keepRecent 预算 MUST 先经窗口协调 clamp：有效预算取 min(keepRecentTokens, contextWindow − reserveTokens − 固定请求开销估计)（固定请求开销与 c16 同源折算；contextWindow 未知或为 0、或开销未注入时 clamp 不生效，预算即 keepRecentTokens）；prepare 与 compact MUST 共用同一 clamp，MUST NOT 出现保留窗预算不低于「窗口减 reserve」而把全部可摘要历史划入保留侧的退化切点。
 
   @req:c9 @human
   场景: 迭代摘要
@@ -66,7 +66,7 @@
 
   @req:c16 @human
   场景: 触发估计同源展示
-    - auto-compact 的 reserve 触发决策 MUST 消费与 TUI footer 相同的 ContextTokenEstimate（或等价共享 settlement snapshot）；当存在可信 Api 锚点时触发所用 token 数字 MUST 跟 Api，MUST NOT 在 footer 已标 Api 时仍用独立 heuristic 触发；派生占用百分比（若展示）MUST NOT 作为触发 SSOT。
+    - auto-compact 的 reserve 触发决策 MUST 消费与 TUI footer 相同的 ContextTokenEstimate（或等价共享 settlement snapshot）；当存在可信 Api 锚点时触发所用 token 数字 MUST 跟 Api，MUST NOT 在 footer 已标 Api 时仍用独立 heuristic 触发；派生占用百分比（若展示）MUST NOT 作为触发 SSOT。该共享估计在 Heuristic / LocalTokenizer 路径（无 Api 锚点）MUST 计入固定请求开销——system prompt 与 tool schemas（取 reload 后最新态）的同源折算；存在 Api 锚点时 MUST NOT 重复叠加（usage.input 已含全请求）。
 
   @req:c17 @human
   场景: force 与 auto 分流
@@ -106,7 +106,7 @@
 
   @req:c26 @human
   场景: turn-settlement-once
-    - 当一次 ReAct turn 收尾做 threshold/overflow 预检时，System MUST 对该次收尾只产生一份 ContextTokenEstimate settlement（同一 tokens/provenance generation）供 compact 决策与产品 footer 消费；MUST NOT 让 Agent 预检与 TUI TurnEnd/stream-close 在无上下文失效的情况下各自再跑一遍 estimate 并各自打点；若随后实际执行了 compaction，MUST 经 CompactionEnd（或等价）失效并允许新的 settlement。算数入口仍 MUST 为 estimate_from_session_entries（或同源），MUST NOT 另立第二套尺子。
+    - 当一次 ReAct turn 收尾做 threshold/overflow 预检时，System MUST 对该次收尾只产生一份 ContextTokenEstimate settlement（同一 tokens/provenance generation）供 compact 决策与产品 footer 消费；MUST NOT 让 Agent 预检与 TUI TurnEnd/stream-close 在无上下文失效的情况下各自再跑一遍 estimate 并各自打点；若随后实际执行了 compaction，MUST 经 CompactionEnd（或等价）失效并允许新的 settlement。算数入口仍 MUST 为 estimate_from_session_entries（或同源），MUST NOT 另立第二套尺子。compaction 成功后 MUST 重载 leaf（含新 CompactionEntry 与回填行）并以「summary 折行 + 保留尾 + 固定请求开销（c16 同源折算）」产出一份 AfterCompaction settlement 占位估计，供 footer 与下一轮 reserve 闸消费；该占位估计 MUST NOT 伴随任何主动模型请求（重算上下文等下一个用户请求经 build_context_entries 同源机制生效）；resume / 会话激活路径 MUST 以同一机制（含固定开销）重建估计（LeafChanged settlement 或 host 同源 unary）。
 
   @req:c27 @human
   场景: no-invent-reasoning-after-compact
