@@ -225,6 +225,10 @@ impl TypedTool for TodoRewriteTool {
             return Err(XyToolError::Aborted);
         }
         let list = self.gateway.rewrite(args.items).await?;
+        // atd13: typed live projection straight from the SSOT mutation point.
+        ctx.publish_state(crate::protocol::lifecycle::XyEvent::TodoUpdated {
+            list: list.clone(),
+        });
         Ok(list_json(&list))
     }
 }
@@ -291,6 +295,10 @@ impl TypedTool for TodoUpdateTool {
             .gateway
             .update(&args.id, args.status, args.content)
             .await?;
+        // atd13: typed live projection straight from the SSOT mutation point.
+        ctx.publish_state(crate::protocol::lifecycle::XyEvent::TodoUpdated {
+            list: list.clone(),
+        });
         Ok(list_json(&list))
     }
 }
@@ -357,6 +365,85 @@ mod tests {
             .collect();
         assert_eq!(customs.len(), 1);
         assert_eq!(customs[0].data["items"], v["items"]);
+    }
+
+    /// atd13: successful writes publish a typed TodoUpdated event through the
+    /// ctx uplink; todo_list (read-only) publishes nothing; no uplink = silent.
+    #[tokio::test]
+    async fn mutation_publishes_typed_todo_updated() {
+        use crate::protocol::lifecycle::XyEvent;
+        use tokio::sync::mpsc::unbounded_channel;
+
+        let (gw, _, _) = bound_gw().await;
+        let (tx, mut rx) = unbounded_channel::<XyEvent>();
+        let rewrite = TodoRewriteTool::new(gw.clone());
+        let ctx = XyToolCtx::new("c1").with_state_event_tx(tx);
+        rewrite
+            .execute(
+                &ctx,
+                json!({"items": [{"id": "a", "content": "one"}, {"content": "two"}]}),
+            )
+            .await
+            .unwrap();
+        match rx.recv().await {
+            Some(XyEvent::TodoUpdated { list }) => {
+                assert_eq!(list.items.len(), 2);
+                assert_eq!(list.items[0].id, "a");
+            }
+            other => panic!("expected TodoUpdated, got {other:?}"),
+        }
+        assert!(
+            rx.try_recv().is_err(),
+            "rewrite must publish exactly one event"
+        );
+
+        let update = TodoUpdateTool::new(gw.clone());
+        update
+            .execute(&ctx, json!({"id": "a", "status": "completed"}))
+            .await
+            .unwrap();
+        match rx.recv().await {
+            Some(XyEvent::TodoUpdated { list }) => {
+                assert_eq!(list.items[0].status, crate::protocol::session::TodoStatus::Completed);
+            }
+            other => panic!("expected TodoUpdated, got {other:?}"),
+        }
+
+        let list_tool = TodoListTool::new(gw);
+        list_tool.execute(&ctx, json!({})).await.unwrap();
+        assert!(
+            rx.try_recv().is_err(),
+            "read-only todo_list MUST NOT publish"
+        );
+
+        // Unbound ctx (no uplink) is a silent no-op.
+        let bare = XyToolCtx::new("c2");
+        let (gw2, _, _) = bound_gw().await;
+        TodoRewriteTool::new(gw2)
+            .execute(&bare, json!({"items": [{"content": "x"}]}))
+            .await
+            .unwrap();
+    }
+
+    /// atd13: clearing via empty rewrite publishes an empty-list event.
+    #[tokio::test]
+    async fn clear_rewrite_publishes_empty_list() {
+        use crate::protocol::lifecycle::XyEvent;
+        use tokio::sync::mpsc::unbounded_channel;
+
+        let (gw, _, _) = bound_gw().await;
+        let (tx, mut rx) = unbounded_channel::<XyEvent>();
+        let ctx = XyToolCtx::new("c1").with_state_event_tx(tx);
+        let tool = TodoRewriteTool::new(gw);
+        tool.execute(&ctx, json!({"items": [{"content": "a"}]}))
+            .await
+            .unwrap();
+        tool.execute(&ctx, json!({"items": []})).await.unwrap();
+        let _ = rx.recv().await; // first write
+        match rx.recv().await {
+            Some(XyEvent::TodoUpdated { list }) => assert!(list.is_empty()),
+            other => panic!("expected TodoUpdated, got {other:?}"),
+        }
     }
 
     #[tokio::test]

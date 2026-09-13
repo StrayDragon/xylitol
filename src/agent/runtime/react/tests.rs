@@ -959,6 +959,60 @@ async fn test_tool_execution_streams_multiple_updates() {
     assert!(saw_end, "expected ToolExecutionEnd");
 }
 
+/// atd13: `todo_*` successful writes publish `XyEvent::TodoUpdated` into the
+/// run stream between ToolExecutionStart and ToolExecutionEnd — clients
+/// project the checklist from the typed event, never from result text.
+#[tokio::test]
+async fn todo_rewrite_publishes_todo_updated_into_run_stream() {
+    use crate::protocol::lifecycle::XyEvent;
+    use futures::StreamExt;
+    use std::sync::Arc;
+
+    let chunks = vec![
+        crate::protocol::model::XyChunk::ToolCallEnd {
+            id: "call-todo".into(),
+            name: "todo_rewrite".into(),
+            args: serde_json::json!({"items": [{"id": "a", "content": "one"}]}),
+        },
+        crate::protocol::model::XyChunk::Done {
+            finish_reason: crate::protocol::message::XyStopReason::ToolUse,
+            usage: None,
+        },
+    ];
+    let store = crate::infra::session::SessionManager::new(
+        tempfile::tempdir().unwrap().path().join("sessions"),
+    );
+    let gateway: Arc<dyn crate::protocol::ports::AgentTodoGateway> =
+        crate::infra::tools::todo::SessionAgentTodoGateway::new(Arc::new(store));
+    let tools = crate::agent::tools::ToolSet::from_iter(crate::infra::tools::todo::todo_tools(
+        gateway,
+    ));
+    let mut agent = make_agent_with_tools(chunks, tools);
+
+    let mut stream = run_agent(&mut agent, "plan it").await;
+    let mut order: Vec<&'static str> = Vec::new();
+    let mut todo_list = None;
+    while let Some(evt) = stream.next().await {
+        match evt {
+            XyEvent::ToolExecutionStart { .. } => order.push("start"),
+            XyEvent::TodoUpdated { list } => {
+                order.push("todo_updated");
+                todo_list = Some(list);
+            }
+            XyEvent::ToolExecutionEnd { .. } => order.push("end"),
+            _ => {}
+        }
+    }
+    assert_eq!(
+        order,
+        vec!["start", "todo_updated", "end"],
+        "TodoUpdated MUST ride the run stream between Start and End: {order:?}"
+    );
+    let list = todo_list.expect("typed TodoList payload");
+    assert_eq!(list.items.len(), 1);
+    assert_eq!(list.items[0].id, "a");
+}
+
 #[tokio::test]
 async fn tool_execute_err_ends_with_tool_end_not_global_error() {
     use crate::protocol::lifecycle::XyEvent;
