@@ -43,15 +43,19 @@ fn default_dim(s: &str) -> String {
 }
 
 /// Render preview or full output (pure function for tests / composition).
+///
+/// Returns the rendered lines plus the **hint-band row index** when a footer
+/// exists (collapsed expand hint, or expanded fold-back footer per peo3) so
+/// hosts can hit-test the band without string sniffing.
 pub fn render_expandable_output(
     text: &str,
     width: usize,
     expanded: bool,
     opts: &ExpandableOutputOptions,
-) -> Vec<String> {
+) -> (Vec<String>, Option<usize>) {
     // c550: zero width is a no-op surface (empty), never panic via wrap-at-1.
     if width == 0 {
-        return Vec::new();
+        return (Vec::new(), None);
     }
     if expanded || text.is_empty() {
         let VisualTruncateResult { visual_lines, .. } =
@@ -62,9 +66,10 @@ pub fn render_expandable_output(
             let style = opts.hint_style.unwrap_or(default_dim);
             let mut out = visual_lines;
             out.push(style(&format!("... (expanded, {})", opts.fold_hint)));
-            return out;
+            let footer_row = out.len() - 1;
+            return (out, Some(footer_row));
         }
-        return visual_lines;
+        return (visual_lines, None);
     }
 
     let max = opts.max_preview_lines.max(1);
@@ -74,7 +79,7 @@ pub fn render_expandable_output(
     } = truncate_to_visual_lines(text, max, width, opts.from);
 
     if skipped_count == 0 {
-        return visual_lines;
+        return (visual_lines, None);
     }
 
     let word = match opts.from {
@@ -90,7 +95,8 @@ pub fn render_expandable_output(
     let mut out = Vec::with_capacity(visual_lines.len() + 1);
     out.extend(visual_lines);
     out.push(hint);
-    out
+    let footer_row = out.len() - 1;
+    (out, Some(footer_row))
 }
 
 /// Component wrapper: host toggles [`Self::set_expanded`]; content may stream via [`Self::set_text`].
@@ -132,7 +138,7 @@ impl ExpandableOutput {
 
 impl Component for ExpandableOutput {
     fn render(&mut self, width: usize) -> Vec<String> {
-        render_expandable_output(&self.text, width, self.expanded, &self.options)
+        render_expandable_output(&self.text, width, self.expanded, &self.options).0
     }
 
     fn handle_input(&mut self, _event: crate::tui::InputEvent) {}
@@ -157,7 +163,8 @@ mod tests {
             fold_hint: "ctrl+o to fold".into(),
             hint_style: Some(|s| s.to_string()),
         };
-        let lines = render_expandable_output(&text, 40, false, &opts);
+        let (lines, footer) = render_expandable_output(&text, 40, false, &opts);
+        assert_eq!(footer, Some(3), "hint footer row reported: {lines:?}");
         assert!(
             lines[0].contains("line-18"),
             "Tail body starts with window head: {lines:?}"
@@ -188,7 +195,8 @@ mod tests {
             max_preview_lines: 3,
             ..ExpandableOutputOptions::default()
         };
-        let lines = render_expandable_output(&text, 40, true, &opts);
+        let (lines, footer) = render_expandable_output(&text, 40, true, &opts);
+        assert_eq!(footer, Some(8), "fold footer row reported: {lines:?}");
         assert_eq!(lines.len(), 9); // 8 body + fold footer
         assert!(!lines.iter().any(|l| l.contains("earlier")));
         let last = lines.last().expect("fold footer");
@@ -205,7 +213,8 @@ mod tests {
             max_preview_lines: 3,
             ..ExpandableOutputOptions::default()
         };
-        let lines = render_expandable_output(&text, 40, true, &opts);
+        let (lines, footer) = render_expandable_output(&text, 40, true, &opts);
+        assert_eq!(footer, None, "short content has no footer: {lines:?}");
         assert_eq!(lines.len(), 2, "short content stays footer-free: {lines:?}");
         assert!(
             !lines.iter().any(|l| l.contains("expanded")),
@@ -269,7 +278,8 @@ mod tests {
             fold_hint: "ctrl+o to fold".into(),
             hint_style: Some(|s| s.to_string()),
         };
-        let lines = render_expandable_output(&text, 40, false, &opts);
+        let (lines, footer) = render_expandable_output(&text, 40, false, &opts);
+        assert_eq!(footer, Some(3), "more-hint footer row reported: {lines:?}");
         assert!(
             lines[0].contains("line-1"),
             "Head must keep original first line on top: {lines:?}"
@@ -303,7 +313,7 @@ mod tests {
             fold_hint: "ctrl+o to fold".into(),
             hint_style: Some(|s| s.to_string()),
         };
-        let empty = render_expandable_output("", 40, false, &opts);
+        let (empty, _) = render_expandable_output("", 40, false, &opts);
         assert!(empty.len() <= 1, "empty text must be bounded: {empty:?}");
 
         let text = (1..=12)
@@ -311,8 +321,8 @@ mod tests {
             .collect::<Vec<_>>()
             .join("\n");
         for w in [0usize, 1] {
-            let collapsed = render_expandable_output(&text, w, false, &opts);
-            let expanded = render_expandable_output(&text, w, true, &opts);
+            let (collapsed, _) = render_expandable_output(&text, w, false, &opts);
+            let (expanded, _) = render_expandable_output(&text, w, true, &opts);
             if w == 0 {
                 assert!(
                     collapsed.is_empty(),

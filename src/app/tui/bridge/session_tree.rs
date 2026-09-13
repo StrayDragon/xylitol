@@ -63,7 +63,7 @@ pub fn rebuild_scrollback_from_travel(
                     Value::String("[interrupted: process ended before completion]".into());
                 msg["cancelled"] = Value::Bool(true);
                 msg["status"] = Value::String("done".into());
-                for ui in nested_bash_to_ui(&msg) {
+                for ui in nested_bash_to_ui(&msg, &ui_model.entries) {
                     ui_model.entries.push(ui);
                 }
                 continue;
@@ -258,7 +258,7 @@ fn session_entry_to_ui_entries_with_thought_elapsed(
 ) -> Vec<UiEntry> {
     match entry {
         SessionEntry::Message(m) if message_role(&m.message) == Some("bashExecution") => {
-            nested_bash_to_ui(&m.message)
+            nested_bash_to_ui(&m.message, prior)
         }
         // c1905: Env CustomMessage (session_env) must not appear as chat / ScrollNotice.
         SessionEntry::Message(m) if is_env_custom_message(&m.message) => Vec::new(),
@@ -299,7 +299,7 @@ fn persisted_thinking_elapsed(entry: &SessionEntry) -> Option<u64> {
     }
 }
 
-fn nested_bash_to_ui(message: &Value) -> Vec<UiEntry> {
+fn nested_bash_to_ui(message: &Value, prior: &[UiEntry]) -> Vec<UiEntry> {
     let command = message
         .get("command")
         .and_then(Value::as_str)
@@ -323,15 +323,15 @@ fn nested_bash_to_ui(message: &Value) -> Vec<UiEntry> {
         .or_else(|| message.get("exclude_from_context"))
         .and_then(Value::as_bool)
         .unwrap_or(false);
-    // att30 fold key: prefer persisted bashId; fall back to a command hash
-    // (identical commands share the key — bashId is the normative path).
+    // att30 fold key: prefer persisted bashId; fall back to command hash +
+    // prior Bash ordinal so identical commands keep distinct fold keys.
     let id = message
         .get("bashId")
         .or_else(|| message.get("bash_id"))
         .and_then(Value::as_str)
         .filter(|s| !s.is_empty())
         .map(str::to_string)
-        .unwrap_or_else(|| UiModel::bash_block_id_from_command(&command));
+        .unwrap_or_else(|| UiModel::bash_block_id_from_command(prior, &command));
     let status = if cancelled {
         BashBlockStatus::Cancelled
     } else if exit_code.is_some_and(|c| c != 0) {

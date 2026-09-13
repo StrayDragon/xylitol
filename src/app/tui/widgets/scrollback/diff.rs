@@ -47,18 +47,14 @@ pub(super) fn push_expandable_with_viewport_hit(
     col_offset: usize,
     target: FoldTarget,
 ) {
-    let out = render_expandable_output(text, width, viewport_full, opts);
-    // The hint band is the last line whenever a footer exists: expand hint
+    let (out, footer_row) = render_expandable_output(text, width, viewport_full, opts);
+    // `footer_row` is the hint band whenever a footer exists: expand hint
     // footer when collapsed, fold footer when expanded past the viewport.
-    let hint_idx = out
-        .len()
-        .checked_sub(1)
-        .filter(|&idx| out[idx].contains(&opts.expand_hint) || out[idx].contains(&opts.fold_hint));
     let base = lines.len();
     for line in &out {
         lines.push(fit(line, width));
     }
-    if let Some(idx) = hint_idx {
+    if let Some(idx) = footer_row {
         let hint_cols = visible_width(&out[idx]).max(1);
         block_hits.push(CachedFoldHit {
             row_offset: base + idx,
