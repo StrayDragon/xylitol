@@ -145,7 +145,8 @@ impl<T: Terminal> HostSession<T> {
 
     fn apply_debug_live_ask_close(&mut self, json: &str) {
         for event in crate::app::tui::activity_fold::live_ask_close_events(json) {
-            self.handle_xy(Box::new(event));
+            // `/debug` 注入的合成 close tape 无本地 run（idle），必须绕过 idle tape 栅栏。
+            self.apply_xy_unfenced(Box::new(event));
         }
     }
 
@@ -487,7 +488,10 @@ impl<T: Terminal> HostSession<T> {
         }
         self.sync_ui_root_from_model();
         self.finish_activity_after_rebuild(&entries, &travel);
-        self.push_scroll_notice(note);
+        // resume-render 修复: switch/resume/restore/clone/import/new are ephemeral TUI-only
+        // tips — fixed-zone info toast above the editor (never a transcript
+        // row, so a later rebuild can never strand them mid-scrollback).
+        self.push_toast_info_notice(note);
         // Resume / restore / clone / import must refresh footer without waiting for
         // a new turn (c1035 was stream-close only; CLI --session left token blank).
         self.request_footer_token_refresh();

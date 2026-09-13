@@ -50,6 +50,14 @@ use crate::protocol::session::{SessionEntry, SessionTreeTravel};
 
 pub use super::slots::ImportConfirmDecision;
 
+/// Toast styling plane: `Error` keeps the warning + `Error: ` prefix;
+/// `Info` renders muted without a prefix (session-switch tips are not failures).
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum ToastKind {
+    Error,
+    Info,
+}
+
 /// Root UI: loaded-resources + live scrollback + optional status + bordered editor|tree + footer.
 pub struct UiRoot {
     /// Brand ASCII + Skills/MCP above scrollback (c1135).
@@ -84,7 +92,7 @@ pub struct UiRoot {
     /// c1205: while `/reload` runs, hide mcp pending / next-turn on the right.
     suppress_status_right_cue: bool,
     /// Toast notice body + deadline (atc22); not in `UiModel.entries`.
-    toast_notice: Option<(String, Instant)>,
+    toast_notice: Option<(String, Instant, ToastKind)>,
     /// Mutually exclusive editor-zone face (ati18).
     slot: EditorSlot,
     /// Handshake with host `drain_pending_ui` (outlives the live payload).
@@ -915,23 +923,35 @@ impl UiRoot {
         self.toast_notice = Some((
             body.into(),
             Instant::now() + crate::app::tui::commands::TOAST_NOTICE_TTL,
+            ToastKind::Error,
+        ));
+    }
+
+    /// Informational toast (muted, no `Error: ` prefix) — session-switch tips
+    /// and other transient notices that are not failures.
+    pub fn push_toast_info_notice(&mut self, body: impl Into<String>) {
+        self.toast_notice = Some((
+            body.into(),
+            Instant::now() + crate::app::tui::commands::TOAST_NOTICE_TTL,
+            ToastKind::Info,
         ));
     }
 
     /// Body only (no `Error: ` prefix); `None` when cleared / expired.
     pub fn toast_notice_body(&self) -> Option<&str> {
-        self.toast_notice.as_ref().map(|(b, _)| b.as_str())
+        self.toast_notice.as_ref().map(|(b, _, _)| b.as_str())
     }
 
     /// Test/harness: force deadline into the past so the next `tick` clears.
     #[cfg(test)]
     pub fn expire_toast_notice_now(&mut self) {
-        if let Some((body, _)) = self.toast_notice.take() {
+        if let Some((body, _, kind)) = self.toast_notice.take() {
             self.toast_notice = Some((
                 body,
                 Instant::now()
                     .checked_sub(std::time::Duration::from_secs(1))
                     .unwrap_or_else(Instant::now),
+                kind,
             ));
         }
     }
@@ -941,7 +961,7 @@ impl UiRoot {
         let expired = self
             .toast_notice
             .as_ref()
-            .is_some_and(|(_, d)| Instant::now() >= *d);
+            .is_some_and(|(_, d, _)| Instant::now() >= *d);
         if expired {
             self.toast_notice = None;
             true

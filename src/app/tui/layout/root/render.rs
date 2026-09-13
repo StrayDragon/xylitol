@@ -29,14 +29,22 @@ impl UiRoot {
     }
 
     pub(super) fn render_toast_notice_slot(&mut self, width: usize) -> Vec<String> {
-        let Some((body, _)) = self.toast_notice.as_ref() else {
+        let Some((body, _, kind)) = self.toast_notice.as_ref() else {
             return Vec::new();
         };
-        let line = format!(
-            "{}{body}",
-            crate::app::tui::commands::TOAST_NOTICE_ERROR_PREFIX
-        );
-        let painted = self.theme.paint_warning(&line);
+        // resume 渲染修复: Info toasts (session-switch tips) render muted without the
+        // `Error: ` prefix — they are transient hints, not failures.
+        let line = match kind {
+            crate::app::tui::layout::root::ToastKind::Error => format!(
+                "{}{body}",
+                crate::app::tui::commands::TOAST_NOTICE_ERROR_PREFIX
+            ),
+            crate::app::tui::layout::root::ToastKind::Info => body.clone(),
+        };
+        let painted = match kind {
+            crate::app::tui::layout::root::ToastKind::Error => self.theme.paint_warning(&line),
+            crate::app::tui::layout::root::ToastKind::Info => self.theme.paint_muted(&line),
+        };
         if width == 0 {
             return vec![painted];
         }
