@@ -420,7 +420,7 @@ pub fn bash_output_body(result: &XyBashResult) -> String {
 /// Build a finished bang [`UiEntry::Bash`] (c668).
 pub fn bash_result_entries(command: &str, result: &XyBashResult) -> Vec<UiEntry> {
     vec![UiEntry::Bash {
-        id: crate::app::tui::bridge::UiModel::bash_block_id_from_command(&[], command),
+        id: crate::app::tui::bridge::UiModel::bash_block_id_from_command(command),
         command: command.to_string(),
         status: bash_block_status(result),
         output: bash_output_body(result),
