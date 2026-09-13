@@ -127,7 +127,10 @@ async fn render_stream<W: Write>(
             | XyEvent::AutoRetryStart { .. }
             | XyEvent::AutoRetryEnd { .. }
             | XyEvent::SessionInfoChanged { .. }
-            | XyEvent::ContextTokenSettlement { .. } => {
+            | XyEvent::ContextTokenSettlement { .. }
+            // atd9: print surface has no checklist UI; todo state stays in
+            // tool results + SSOT.
+            | XyEvent::TodoUpdated { .. } => {
                 // Lifecycle metadata: silent in print mode.
             }
             XyEvent::AgentEnd { .. } => break,

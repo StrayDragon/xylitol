@@ -5,7 +5,8 @@
 //! port; `infra::event` holds an in-process sink implementation. This module
 //! holds only the event enum and its
 //! handler type alias so both `agent` and `infra` can reference them without
-//! a cross-layer reach. Zero crate-internal deps beyond `protocol::message`.
+//! a cross-layer reach. Zero crate-internal deps beyond `protocol::message`
+//! and `protocol::session` (Todo SSOT vocabulary for state-projection events).
 //!
 //! **Closed set:** `XyEvent` is the agent lifecycle vocabulary (Agent/Turn/Message/
 //! Tool/Compaction/Queue…), not a dump of provider SSE names. Provider streams map
@@ -173,6 +174,15 @@ pub enum XyEvent {
     QueueUpdate {
         steer_count: usize,
         follow_up_count: usize,
+    },
+
+    // ── Domain state projections ─────────────────────────────────
+    /// Agent Todo SSOT changed (atd13): full latest-wins snapshot pushed from
+    /// the mutation point. Clients project the checklist from this event —
+    /// they MUST NOT re-parse tool-result strings. Empty list = cleared.
+    /// Not a cold-replay tape: resume rebuilds from `agent_todo` snapshots.
+    TodoUpdated {
+        list: crate::protocol::session::TodoList,
     },
 
     // ── Auto-retry ───────────────────────────────────────────────
