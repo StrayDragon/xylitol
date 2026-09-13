@@ -135,7 +135,13 @@
 
   @req:att34 @human
   场景: cluster-split-assistant-body
-    - 簇边界 MUST 以已可展示的助手正文划分：正文第一个非空白字符 MUST 封口上一打开簇。Thinking、工具、Ask、Diff、Todo、Compaction MUST NOT 单独切簇。同一轮中途再思考仍留在打开簇内，簇头措辞见 att24。同一条目序下 live 与 resume/rebuild 切分 MUST 同构。
+    - 簇边界 MUST 以已可展示的助手正文划分：正文第一个非空白字符 MUST 封口上一打开簇。Thinking、工具、Ask、Diff、Todo MUST NOT 单独切簇；Compaction 例外：MUST 封口当前打开簇并自成单例簇独立成块（簇头呈现遵守 att23），其后中间活动 MUST 另起新簇；连续多条 Compaction 各自成块。同一轮中途再思考仍留在打开簇内，簇头措辞见 att24。同一条目序下 live 与 resume/rebuild 切分 MUST 同构。
+
+  @req:att34 @executable
+  场景: compaction-seals-cluster-headless
+    当 以场景构建器回放工具后压缩再工具序列
+    那么 压缩块独立成块且前后工具簇各自成簇
+    并且 全帧不出现 Worked for 与 Compaction 簇摘要头
 
   @req:att19 @executable
   场景: fold-glyph-unicode-and-ascii-fallback
