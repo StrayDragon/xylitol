@@ -3,6 +3,8 @@ depends_on: []
 rules_touched:
 - att13
 - att36
+branch: sdd/fix-todo-empty-state
+base_sha: 8c6ab02b657aaf6f4b819261d5dd30b9261f33c0
 ---
 
 ## Why

@@ -133,3 +133,15 @@ async fn test_att35_head_suffix_live(transcript_bdd: TranscriptBdd) {}
     name = "todo-block-body-renders-checklist"
 )]
 fn test_att36_todo_block_body(transcript_bdd: TranscriptBdd) {}
+
+#[scenario(
+    path = "llmanspec/specs/app-tui-transcript/app-tui-transcript.feature",
+    name = "todo-summary-empty-not-placeholder"
+)]
+fn test_att13_todo_empty_summary(transcript_bdd: TranscriptBdd) {}
+
+#[scenario(
+    path = "llmanspec/specs/app-tui-transcript/app-tui-transcript.feature",
+    name = "todo-block-empty-list-body-hint"
+)]
+fn test_att36_todo_empty_body(transcript_bdd: TranscriptBdd) {}
