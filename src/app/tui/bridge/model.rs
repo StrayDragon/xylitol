@@ -149,8 +149,10 @@ pub enum UiEntry {
     },
     /// Interactive `!` / `!!` bash block (c668).
     Bash {
-        /// Stable per-block id (live ordinal / rebuild `bashId`); output-viewport
-        /// fold key (att30). Only in-session stability is required.
+        /// Stable per-block id (att30 output-viewport fold key). Live path
+        /// allocates `bash-live-{ordinal}`; rebuild prefers the persisted
+        /// `bashId` (command-hash fallback otherwise). The two need not agree:
+        /// fold overrides are in-memory UI state and reset on resume.
         id: String,
         command: String,
         status: BashBlockStatus,
@@ -535,14 +537,18 @@ impl UiModel {
     }
 
     /// Deterministic Bash block id fallback (att30 fold key) when no persisted
-    /// `bashId` exists. Pure command hash: identical commands share a fold key
-    /// (cosmetic; the normative path is the persisted `bashId`).
-    pub fn bash_block_id_from_command(command: &str) -> String {
+    /// `bashId` exists: command hash + Bash ordinal within `prior`, so identical
+    /// commands still get distinct fold keys. (The normative id is `bashId`.)
+    pub fn bash_block_id_from_command(prior: &[UiEntry], command: &str) -> String {
         use std::collections::hash_map::DefaultHasher;
         use std::hash::{Hash, Hasher};
         let mut h = DefaultHasher::new();
         command.hash(&mut h);
-        format!("bash-cmd-{:016x}", h.finish())
+        let ordinal = prior
+            .iter()
+            .filter(|e| matches!(e, UiEntry::Bash { .. }))
+            .count();
+        format!("bash-cmd-{:016x}-{ordinal}", h.finish())
     }
 
     /// Append live bang output bytes to the last Pending Bash block (c669).

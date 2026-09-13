@@ -673,7 +673,7 @@ fn sample_long_bash_output() -> String {
 fn sample_long_read_output() -> String {
     let mut lines: Vec<String> = vec![
         "// packages/xylitol-tui/src/components/expandable_output.rs".into(),
-        "pub fn render_expandable_output(...) -> Vec<String> {".into(),
+        "pub fn render_expandable_output(...) -> (Vec<String>, Option<usize>) {".into(),
         "    // Head keeps the first N visual lines".into(),
     ];
     lines.extend((4..=28).map(|i| format!("    // body line {i}")));
@@ -4569,12 +4569,13 @@ impl FakeCodingAgentApp {
                             fold_hint: "ctrl+o to fold".into(),
                             hint_style: Some(dim),
                         };
-                        for line in render_expandable_output(
+                        let (rendered, _) = render_expandable_output(
                             detail,
                             rail_inner,
                             self.tools_output_expanded,
                             &opts,
-                        ) {
+                        );
+                        for line in rendered {
                             block.push(line);
                         }
                     }
