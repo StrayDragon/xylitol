@@ -1498,3 +1498,189 @@ fn then_suffix_updates_live(transcript_bdd: &TranscriptBdd) {
         "stale count must not linger:\n{second}"
     );
 }
+
+// ---- att36：todo_* 块 body 清单渲染（直播 vs travel 重建同构） ----
+
+/// 一轮 todo 会话条目：user → assistant(toolCall todo_rewrite) → toolResult 全表快照
+/// + 一条 agent_todo Custom 快照（SSOT，resume 侧 checklist 来源）。
+fn todo_block_fixture_entries() -> (Vec<SessionEntry>, SessionTreeTravel) {
+    use crate::protocol::session::CustomEntry;
+    let todo_json = serde_json::json!({
+        "items": [
+            { "id": "a", "content": "检查环境", "status": "in_progress" },
+            { "id": "b", "content": "写清单", "status": "pending" }
+        ]
+    });
+    let entries = vec![
+        SessionEntry::Message(MessageEntry {
+            base: EntryBase {
+                entry_type: "message".into(),
+                id: "u1".into(),
+                parent_id: None,
+                timestamp: 0,
+            },
+            message: serde_json::json!({
+                "role": "user",
+                "content": [{ "type": "text", "text": "plan it" }],
+                "timestamp": 0u64,
+            }),
+        }),
+        SessionEntry::Message(MessageEntry {
+            base: EntryBase {
+                entry_type: "message".into(),
+                id: "a1".into(),
+                parent_id: Some("u1".into()),
+                timestamp: 0,
+            },
+            message: serde_json::json!({
+                "role": "assistant",
+                "content": [
+                    { "type": "toolCall", "id": "tc-todo", "name": "todo_rewrite",
+                      "arguments": { "items": [
+                          { "id": "a", "content": "检查环境", "status": "in_progress" },
+                          { "id": "b", "content": "写清单" }
+                      ] } }
+                ],
+                "timestamp": 0u64,
+            }),
+        }),
+        SessionEntry::Message(MessageEntry {
+            base: EntryBase {
+                entry_type: "message".into(),
+                id: "tr1".into(),
+                parent_id: Some("a1".into()),
+                timestamp: 0,
+            },
+            message: serde_json::json!({
+                "role": "toolResult",
+                "toolCallId": "tc-todo",
+                "toolName": "todo_rewrite",
+                "content": [{ "type": "text", "text": todo_json.to_string() }],
+                "isError": false,
+                "timestamp": 0u64,
+            }),
+        }),
+        SessionEntry::Custom(CustomEntry {
+            base: crate::protocol::session::EntryBase {
+                entry_type: "custom".into(),
+                id: "snap1".into(),
+                parent_id: Some("tr1".into()),
+                timestamp: 0,
+            },
+            custom_type: crate::protocol::session::CUSTOM_TYPE_AGENT_TODO.into(),
+            data: todo_json.clone(),
+        }),
+    ];
+    let travel = SessionTreeTravel {
+        kind: SessionTreeKind::MessageHistory,
+        selected_id: "snap1".into(),
+        leaf_id: Some("snap1".into()),
+        editor_text: None,
+    };
+    (entries, travel)
+}
+
+#[when("以场景构建器回放 todo_rewrite 成功调用的直播与 travel 重建")]
+fn when_todo_block_live_and_rebuild(transcript_bdd: &TranscriptBdd) {
+    let (entries, travel) = todo_block_fixture_entries();
+    let mut rebuilt = UiModel::default();
+    rebuild_scrollback_from_travel(&mut rebuilt, &entries, &travel);
+
+    // 同一轮的直播事件流：Start → TodoUpdated（typed，atd13）→ End。
+    let todo_args = serde_json::json!({ "items": [
+        { "id": "a", "content": "检查环境", "status": "in_progress" },
+        { "id": "b", "content": "写清单" }
+    ] });
+    let todo_result = serde_json::json!({ "items": [
+        { "id": "a", "content": "检查环境", "status": "in_progress" },
+        { "id": "b", "content": "写清单", "status": "pending" }
+    ] })
+    .to_string();
+    let mut live = UiModel::default();
+    apply_xy_event(
+        &mut live,
+        &XyEvent::ToolExecutionStart {
+            id: "tc-todo".into(),
+            name: "todo_rewrite".into(),
+            args: todo_args,
+        },
+    );
+    let list = crate::protocol::session::TodoList::from_data_value(
+        &serde_json::from_str::<serde_json::Value>(&todo_result).expect("todo json"),
+    )
+    .expect("typed list");
+    apply_xy_event(&mut live, &XyEvent::TodoUpdated { list });
+    apply_xy_event(
+        &mut live,
+        &XyEvent::ToolExecutionEnd {
+            id: "tc-todo".into(),
+            name: "todo_rewrite".into(),
+            result: todo_result,
+            is_error: false,
+        },
+    );
+
+    *transcript_bdd.models.borrow_mut() = vec![rebuilt, live];
+}
+
+#[then("两种路径的块 body MUST 均为清单行形态且逐行一致，MUST NOT 出现原始 items JSON")]
+fn then_todo_block_bodies_agree(transcript_bdd: &TranscriptBdd) {
+    let models = transcript_bdd.models.borrow();
+
+    fn todo_tool(model: &UiModel) -> (String, String) {
+        model
+            .entries
+            .iter()
+            .find_map(|e| match e {
+                UiEntry::Tool {
+                    args_preview,
+                    output,
+                    ..
+                } if !output.is_empty() || !args_preview.is_empty() => {
+                    Some((args_preview.clone(), output.clone()))
+                }
+                _ => None,
+            })
+            .expect("todo tool row")
+    }
+    fn checklist(model: &UiModel) -> (String, Vec<String>) {
+        model
+            .entries
+            .iter()
+            .find_map(|e| match e {
+                UiEntry::Todo {
+                    summary,
+                    detail_lines,
+                } => Some((summary.clone(), detail_lines.clone())),
+                _ => None,
+            })
+            .expect("checklist projection row")
+    }
+
+    let (rebuilt_preview, rebuilt_body) = todo_tool(&models[0]);
+    let (live_preview, live_body) = todo_tool(&models[1]);
+    assert_eq!(
+        rebuilt_preview, live_preview,
+        "att13: header preview must be identical across paths"
+    );
+    assert_eq!(live_preview, "2 items · 1 in progress");
+    assert_eq!(
+        rebuilt_body, live_body,
+        "att36: block body must be line-by-line identical across paths"
+    );
+    assert_eq!(live_body, "[~] 检查环境\n[ ] 写清单");
+    for body in [&rebuilt_body, &live_body] {
+        assert!(
+            !body.contains("{\"items\""),
+            "att36: raw items JSON must not be the block body: {body}"
+        );
+    }
+
+    // checklist projection row：latest-wins、同字形、两路径一致。
+    let (rebuilt_summary, rebuilt_lines) = checklist(&models[0]);
+    let (live_summary, live_lines) = checklist(&models[1]);
+    assert_eq!(rebuilt_summary, live_summary);
+    assert_eq!(rebuilt_summary, "Todo · 0/2");
+    assert_eq!(rebuilt_lines, live_lines);
+    assert_eq!(rebuilt_lines, vec!["[~] 检查环境", "[ ] 写清单"]);
+}
