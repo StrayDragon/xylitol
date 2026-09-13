@@ -132,6 +132,7 @@ struct SegmentPlan {
     thought_only_mids: HashSet<usize>,
     live_open_cluster: bool,
     live_open_cluster_expanded: bool,
+    live_open_cluster_thought_only: bool,
 }
 
 fn plan_segments(
@@ -148,6 +149,7 @@ fn plan_segments(
         thought_only_mids: HashSet::new(),
         live_open_cluster: false,
         live_open_cluster_expanded: false,
+        live_open_cluster_thought_only: false,
     };
     for (si, seg) in segments.iter().enumerate() {
         let live_seg = live_seg_idx == Some(si);
@@ -196,6 +198,7 @@ fn plan_segments(
             if is_open {
                 plan.live_open_cluster = true;
                 plan.live_open_cluster_expanded = expanded;
+                plan.live_open_cluster_thought_only = thought_only;
             }
             for &idx in &mids {
                 let Some(entry) = model.entries.get(idx) else {
@@ -437,11 +440,13 @@ pub fn render_scrollback(
                     paint_folded_streaming_thought(
                         &mut lines,
                         fold_hits,
+                        fold,
                         activity,
                         model,
                         &segments,
                         plan.live_open_cluster,
                         plan.live_open_cluster_expanded,
+                        plan.live_open_cluster_thought_only,
                         text,
                         glyphs,
                         theme,

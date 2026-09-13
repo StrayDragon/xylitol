@@ -5162,6 +5162,92 @@ fn activity_fold_live_thinking_stream_merges_into_thought() {
 }
 
 #[test]
+fn activity_fold_live_thinking_stream_keeps_own_bar_in_tool_cluster() {
+    use super::layout::UiRoot;
+    use super::widgets::FoldTarget;
+
+    let mut root = UiRoot::new();
+    let mut model = UiModel::new();
+    model.phase = UiPhase::Busy;
+    model
+        .entries
+        .push(super::bridge::UiEntry::User { text: "u".into() });
+    model.entries.push(super::bridge::UiEntry::Tool {
+        timeout_secs: None,
+        id: "b1".into(),
+        name: "bash".into(),
+        args_preview: "ls".into(),
+        tool_path: None,
+        write_content: None,
+        display_diff: None,
+        output: "file.rs\n".into(),
+        is_error: false,
+        done: true,
+    });
+    apply_xy_event(
+        &mut model,
+        &XyEvent::ThinkingDelta("command done, now weigh results".into()),
+    );
+    root.apply_ui_model(&model);
+
+    let plain = strip_ansi(&root.render(100).join("\n"));
+    assert!(
+        plain.contains("Running 1 command"),
+        "open tool cluster keeps the progressive header: {plain}"
+    );
+    assert!(
+        !plain.contains("weigh results"),
+        "collapsed cluster hides the stream with the other kids: {plain}"
+    );
+
+    root.toggle_fold_target(FoldTarget::Cluster("seg-0:c0".into()));
+    let opened = strip_ansi(&root.render(100).join("\n"));
+    assert!(
+        opened
+            .lines()
+            .any(|l| l.contains("Thinking") && l.contains("Ctrl+T")),
+        "mixed-cluster stream paints its own L1 Thinking bar below the tool block: {opened}"
+    );
+    assert!(
+        !opened.contains("weigh results"),
+        "Thinking bar body stays folded by default: {opened}"
+    );
+    assert!(
+        root.fold_hits().regions.iter().any(|r| matches!(
+            &r.target,
+            FoldTarget::Thinking(id) if id.as_str() == super::bridge::STREAMING_THINK_ID
+        )),
+        "Thinking bar registers its own fold triangle: {:?}",
+        root.fold_hits().regions
+    );
+
+    root.toggle_fold_target(FoldTarget::Thinking(
+        super::bridge::STREAMING_THINK_ID.into(),
+    ));
+    let revealed = strip_ansi(&root.render(100).join("\n"));
+    assert!(
+        revealed.contains("weigh results"),
+        "clicking the Thinking bar reveals the stream: {revealed}"
+    );
+    assert!(
+        revealed.contains("Running 1 command"),
+        "cluster header keeps the real activity wording: {revealed}"
+    );
+
+    apply_xy_event(&mut model, &XyEvent::AgentEnd { messages: vec![] });
+    root.apply_ui_model(&model);
+    let flushed = strip_ansi(&root.render(100).join("\n"));
+    assert!(
+        flushed.contains("Ran 1 command") && flushed.contains("Thought"),
+        "flushed burst seals into Ran header + Thought L1 row: {flushed}"
+    );
+    assert!(
+        !flushed.contains("Thinking"),
+        "flushed burst MUST NOT keep the live Thinking label: {flushed}"
+    );
+}
+
+#[test]
 fn activity_fold_text_delta_seals_thought_without_waiting_for_body() {
     use super::layout::UiRoot;
 
