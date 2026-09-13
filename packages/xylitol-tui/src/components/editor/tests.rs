@@ -745,3 +745,54 @@ fn editor_mouse_down_wants_rerender_after_handle() {
     assert!(sink.copies.is_empty(), "empty click must not copy");
     assert!(!e.has_selection(), "empty click must clear selection");
 }
+
+/// Regression (c2795): with `padding_x > 0` a full-width chunk plus the
+/// end-of-line reverse-video cursor cell painted `width + 1` columns →
+/// RenderError → host degraded the whole UI to the TooSmall hint while typing
+/// past one line. The wrap width must reserve the cursor column at any padding.
+#[test]
+fn typing_past_full_width_line_never_overflows() {
+    fn assert_rows_fit(e: &mut Editor, width: usize, ctx: &str) {
+        for (i, l) in e.render(width).iter().enumerate() {
+            let w = crate::utils::visible_width(l);
+            assert!(
+                w <= width,
+                "{ctx}: row {i} painted {w} > {width} cols: {l:?}"
+            );
+        }
+    }
+    // Product padding (root/mod.rs uses padding_x: 1).
+    let mk = || {
+        Editor::new(
+            t(),
+            EditorOptions {
+                padding_x: 1,
+                terminal_rows: 8,
+            },
+            clk(),
+        )
+    };
+    let km = crossterm::event::KeyModifiers::empty();
+    let key = |ch: char| {
+        InputEvent::Key(crossterm::event::KeyEvent::new(
+            crossterm::event::KeyCode::Char(ch),
+            km,
+        ))
+    };
+    for (name, text, width) in [
+        ("ascii@20", "ab ".repeat(40), 20usize),
+        ("cjk@40", "汉字输入测试 ".repeat(20), 40usize),
+        ("cjk@39", "混排 mixed ".repeat(20), 39usize),
+    ] {
+        let mut e = mk();
+        e.set_focused(true);
+        for ch in text.chars() {
+            e.handle_input(key(ch));
+            assert_rows_fit(&mut e, width, &format!("{name}/typing/{ch}"));
+        }
+        // Resize after typing must re-wrap under the new width, cursor at EOL.
+        for w in [39usize, 40, 80, 120] {
+            assert_rows_fit(&mut e, w, &format!("{name}/resize@{w}"));
+        }
+    }
+}

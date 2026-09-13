@@ -5,14 +5,15 @@ use crate::app::tui::activity_fold::{
 #[cfg(test)]
 use crate::app::tui::activity_fold::{ToolActivityRole, is_path_placeholder, tool_activity_role};
 use crate::app::tui::bridge::{
-    AskPhase, BashBlockStatus, StreamingTailKind, UiEntry, UiModel, UiPhase,
+    AskPhase, BashBlockStatus, STREAMING_THINK_ID, StreamingTailKind, UiEntry, UiModel, UiPhase,
 };
 use crate::app::tui::layout::LayoutTheme;
 
 use super::super::fold_hit::{FoldHitTable, FoldTarget};
 use super::super::glyphs::GlyphSet;
+use super::ScrollbackFold;
 use super::cache::marker_cols;
-use super::paint::{inter_block_spacer, push_wrapped};
+use super::paint::{inter_block_spacer, key_hint, push_wrapped};
 
 #[allow(clippy::too_many_arguments)] // paint planes: lines, hits, activity, theme
 pub(super) fn paint_envelope_header_row(
@@ -99,28 +100,59 @@ pub(super) fn paint_cluster_header_row(
     *need_spacer = true;
 }
 
-/// ActivityFold on: merge streaming Think into a Thinking bar (no second L1 header).
+/// ActivityFold on: streaming Think paints a Thinking bar (att33 / att37).
 ///
-/// Cluster id matches the cluster `partition_segments` will assign when the
-/// stream flushes, so a user expand survives ToolStart / MessageEnd.
-#[allow(clippy::too_many_arguments)] // paint planes: lines, hits, activity, theme
+/// Thought-only open cluster: the cluster header already is the Thinking bar
+/// (merged rows), so the body streams as its kid — no second L1 row.
+/// Mixed open cluster (tools / Ask kids): the burst keeps its own L1 Thinking
+/// bar, body default-folded, so it stays an independently collapsible block
+/// below the tool blocks and matches the sealed `Thought` row
+/// `paint_thinking_block` paints on flush. Cluster id matches the cluster
+/// `partition_segments` will assign when the stream flushes, so a user expand
+/// survives ToolStart / MessageEnd.
+#[allow(clippy::too_many_arguments)] // paint planes: lines, hits, fold, activity, theme
 pub(super) fn paint_folded_streaming_thought(
     lines: &mut Vec<String>,
     fold_hits: &mut FoldHitTable,
+    fold: &ScrollbackFold,
     activity: &ActivityFoldState,
     model: &UiModel,
     segments: &[crate::app::tui::activity_fold::ActivitySegment],
     live_open_cluster: bool,
     live_open_cluster_expanded: bool,
+    live_open_cluster_thought_only: bool,
     text: &str,
     glyphs: GlyphSet,
     theme: LayoutTheme,
     width: usize,
 ) {
     if live_open_cluster {
-        // Header already painted (Thinking/Thought or Editing/Exploring/…).
-        // Thinking stream is a kid — no second L1 row.
-        if live_open_cluster_expanded {
+        if !live_open_cluster_expanded {
+            // Kids hidden under the cluster header: the stream hides with them.
+            return;
+        }
+        if live_open_cluster_thought_only {
+            // Header already painted (Thinking/Thought) — body is the kid.
+            push_wrapped(lines, &theme.paint_muted(&format!("{text}…")), width);
+            return;
+        }
+        let expanded = fold.thinking_effective(STREAMING_THINK_ID);
+        let marker = if expanded {
+            glyphs.unfold()
+        } else {
+            glyphs.fold()
+        };
+        let mw = marker_cols(marker);
+        let header = theme.paint_muted(&format!("{marker} Thinking  {}", key_hint("Ctrl+T")));
+        let row_start = lines.len();
+        push_wrapped(lines, &header, width);
+        fold_hits.push(
+            row_start,
+            0,
+            mw,
+            FoldTarget::Thinking(STREAMING_THINK_ID.to_string()),
+        );
+        if expanded {
             push_wrapped(lines, &theme.paint_muted(&format!("{text}…")), width);
         }
         return;

@@ -351,11 +351,10 @@ impl Component for super::Editor {
         let max_pad = width.saturating_sub(1) / 2;
         let px = self.padding_x.min(max_pad);
         let cw = width.saturating_sub(px * 2).max(1);
-        let lw = if px > 0 {
-            cw
-        } else {
-            cw.saturating_sub(1).max(1)
-        };
+        // Reserve one column for the end-of-line cursor cell on every row: with
+        // padding_x > 0 a full chunk plus the reverse-video cursor space used to
+        // paint width+1 columns → RenderError → host degraded to the TooSmall hint.
+        let lw = cw.saturating_sub(1).max(1);
         self.last_width = lw;
         self.last_paint_width = width;
         let layout = self.layout_text(lw);

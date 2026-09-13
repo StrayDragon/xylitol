@@ -106,12 +106,20 @@ impl SemanticDump {
                 anchor_at += 1;
                 continue;
             }
-            // Inflight thinking stream paints its own live cluster head
-            // (`paint_folded_streaming_thought`), which is not a sealed anchor.
+            // Inflight thinking stream paints a live row: a thought-only burst
+            // is the cluster head (`paint_folded_streaming_thought`), while a
+            // burst inside a mixed cluster keeps its own L1 Thinking bar
+            // (Ctrl+T chord, like `paint_thinking_block`). Neither is a sealed
+            // anchor.
             if is_marker_row(line) && line.contains("Thinking") {
+                let chord = if line.contains("Ctrl+T") {
+                    "L1 block"
+                } else {
+                    "L2 cluster"
+                };
                 line_rows.push(SceneDumpRow {
                     line_idx,
-                    chord: "L2 cluster",
+                    chord,
                     cluster_head: "Thinking".into(),
                 });
                 continue;
