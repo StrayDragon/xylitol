@@ -6,15 +6,15 @@
   [![](https://img.shields.io/github/actions/workflow/status/straydragon/xylitol/ci.yaml?style=flat-square&logo=github&label=CI)](https://github.com/straydragon/xylitol/actions)
   [![](https://img.shields.io/badge/license-MIT-blue?style=flat-square)](LICENSE)
 
-  **开箱即用的个人 coding agent** — LLM 增强开发工具包
-
 </div>
 
 ---
 
 TUI 与 Print 两种界面,OpenAI 兼容与 Anthropic Messages 两族 provider,内置工具执行、MCP、会话持久化与可观测性。不是插件市场,不为扩展生态堆抽象。
 
-> **早期预览版(0.0.0-pre)**:配置格式、命令行为与数据格式都可能随时变动,已知存在不稳定与 bug。欢迎试用和反馈,但请勿用于生产环境或不可丢失的数据。
+> [!warning]
+> **早期预览版(0.0.0-pre)**
+> 配置格式、命令行为与数据格式都可能随时变动,已知存在不稳定与 bug。欢迎试用和反馈,但请勿用于生产环境或不可丢失的数据。
 
 ## 工作原理
 
