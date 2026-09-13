@@ -1,8 +1,6 @@
 ---
 depends_on: []
 needs_specs_change: true
-rules_touched:
-- att34
 branch: tui/compaction-standalone-block
 base_sha: 65690dd117982e127dbd5e6b155dd04e34b46cc8
 ---

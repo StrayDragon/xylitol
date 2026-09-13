@@ -1,8 +1,6 @@
 ---
 depends_on: []
 needs_specs_change: true
-rules_touched:
-- otel-compaction
 ---
 
 # OTEL / Langfuse 采集盲区修复
