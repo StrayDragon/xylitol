@@ -93,6 +93,19 @@ pub fn render_loaded_resources(
         ));
     }
 
+    // otel3: short diag when the configured OTLP exporter came up off
+    // (missing endpoint/env, build failure). Warning color separates it from
+    // the success-colored mcp line.
+    if let Some(diag) = snap.obs_diag.as_deref() {
+        meta.extend(field_lines(
+            theme,
+            "obs",
+            diag,
+            theme.palette().warning,
+            inner,
+        ));
+    }
+
     let border = |s: &str| theme.paint_muted(s);
     let mut out = Vec::with_capacity(meta.len() + 2);
     out.push(fit_exact(
@@ -236,6 +249,30 @@ mod tests {
             !joined.contains("connecting 1/2 ·"),
             "must not append finished server id during connecting: {joined}"
         );
+    }
+
+    #[test]
+    fn obs_diag_line_shown_only_when_present() {
+        let snap = LoadedResourcesSnapshot {
+            obs_diag: Some(
+                "otlp-http not effective: missing [otel].endpoint or LANGFUSE_BASE_URL/keys env"
+                    .into(),
+            ),
+            ..Default::default()
+        };
+        let joined =
+            render_loaded_resources(LayoutTheme::product_dark(), &snap, "~/x", 72).join("\n");
+        assert!(joined.contains("obs:"), "{joined}");
+        assert!(joined.contains("otlp-http not effective"), "{joined}");
+
+        let joined = render_loaded_resources(
+            LayoutTheme::product_dark(),
+            &LoadedResourcesSnapshot::default(),
+            "~/x",
+            72,
+        )
+        .join("\n");
+        assert!(!joined.contains("obs:"), "{joined}");
     }
 
     #[test]

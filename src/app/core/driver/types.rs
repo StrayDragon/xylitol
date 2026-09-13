@@ -112,6 +112,10 @@ pub struct LoadedResourcesSnapshot {
     /// One-shot timeout line after first-turn MCP gate freeze (`/mcp` to retry).
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub mcp_gate_notice: Option<String>,
+    /// One-line reason the configured OTLP exporter is not effective (otel3);
+    /// `None` when up or intentionally off. No secrets.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub obs_diag: Option<String>,
 }
 
 /// Connection phase for one configured MCP server (c1210 `/mcp` panel).

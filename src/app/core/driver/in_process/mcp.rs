@@ -214,6 +214,7 @@ impl super::XyInProcessDriver {
                 mcp_bootstrap_complete: true,
                 tools_table_frozen,
                 mcp_gate_notice: self.mcp_gate_notice.clone(),
+                obs_diag: crate::infra::observability::otel::otlp_disabled_diag(),
                 ..LoadedResourcesSnapshot::default()
             };
         };
@@ -271,6 +272,7 @@ impl super::XyInProcessDriver {
             mcp_bootstrap_complete,
             tools_table_frozen,
             mcp_gate_notice: self.mcp_gate_notice.clone(),
+            obs_diag: crate::infra::observability::otel::otlp_disabled_diag(),
         }
     }
 

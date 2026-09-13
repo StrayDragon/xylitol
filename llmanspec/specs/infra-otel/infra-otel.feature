@@ -15,7 +15,7 @@
 
   @req:otel3 @human
   场景: otel-fallback-no-block
-    - OTLP exporter 构建失败、凭证缺失、feature otel 未启用、或配置不完整时，观测装配 MUST 降级为不安装 OTLP Reporter（本地 file JSONL 闸仍独立），MUST 将诊断写入 file-only 日志（若级别日志已开），MUST NOT 因此使对话主路径启动失败。
+    - OTLP exporter 构建失败、凭证缺失、feature otel 未启用、或配置不完整时，观测装配 MUST 降级为不安装 OTLP Reporter（本地 file JSONL 闸仍独立），MUST 将诊断写入 file-only 日志（若级别日志已开），MUST NOT 因此使对话主路径启动失败。当 [otel] exporter 请求 otlp-http 而通道未生效（缺 endpoint/认证或构建失败）时，该事实 MUST 经 LoadedResourcesSnapshot.obs_diag 在产品 loaded-resources 卡以单行 obs 诊断呈现；诊断内容 MUST NOT 携带密钥或完整 env；exporter=none 显式关闭时 MUST NOT 渲染提示。
 
   @req:otel4 @human
   场景: otel-fastrace-only
@@ -156,3 +156,7 @@
     那么 任何 span 都不带 observation input 或 output
     当 以 io=truncated 的观测闸运行一次带工具调用的 agent 回合
     那么 tool.execute 带参数与结果摘要且 agent.turn 带提示预览
+
+  @req:otel27 @human
+  场景: otel-compaction-skipped-span
+    - 当低频观测 span 激活且会话 compaction 的 prepare_compaction 门闸早退（无可摘要历史 / Already compacted 等；auto 静默路径与 manual 路径皆然）且会话身份已知时，MUST 导出名为 agent.compaction.skipped 的轻量 span：MUST 携带跳过原因（skip_reason）与该会话的 langfuse.session.id / xylitol.session.id；MUST NOT 使用 agent.compaction 名（otel19 保留予过 prepare 的尝试），MUST NOT 携带 xylitol.obs.lane=llm，MUST NOT 伪装 LLM 语义（otel22）；auto 早退 MUST NOT 因此发出 CompactionEnd；存在活跃 agent.turn 时 MAY 为其子 span；无活跃会话（无可附的会话身份）MAY 省略；观测闸关闭时 MUST 为零/近零开销。由单测（CollectingReporter）覆盖，MUST NOT 为静态存在性单独扩 BDD step。

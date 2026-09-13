@@ -6,7 +6,7 @@
 //! Manual `compact` = force (pi `AgentSession.compact`); auto threshold = Case2;
 //! overflow compact-and-retry = Case1 (c1660).
 
-use crate::agent::compaction::obs::AgentCompactionSpan;
+use crate::agent::compaction::obs::{AgentCompactionSpan, export_skipped};
 use crate::agent::compaction::overflow::{assistant_same_model, is_context_overflow_assistant};
 use crate::agent::compaction::token_estimator::{EstimateOpts, FixedRequestContext};
 use crate::agent::compaction::{
@@ -71,6 +71,7 @@ impl CompactionOrchestrator {
             prepare_compaction(&entries, &self.settings, context_window, overhead).err()
         {
             let error_message = err.to_string();
+            export_skipped(&error_message, None, obs_session);
             event_sink
                 .emit(&XyEvent::CompactionEnd {
                     result: None,
@@ -340,7 +341,9 @@ impl CompactionOrchestrator {
         obs_session: &xylitol_ai_bridge::ObsSessionContext,
     ) -> Result<bool, CompactionError> {
         let overhead = fixed_context.map_or(0, FixedRequestContext::overhead_tokens);
-        if prepare_compaction(entries, &self.settings, context_window, overhead).is_err() {
+        if let Err(err) = prepare_compaction(entries, &self.settings, context_window, overhead) {
+            // otel27: auto path stays event-silent but leaves an obs trace.
+            export_skipped(&err.to_string(), turn_obs_parent, obs_session);
             return Ok(false);
         }
 
@@ -795,6 +798,12 @@ mod tests {
         assert!(
             spans.iter().all(|s| s.name != "agent.compaction"),
             "prepare early-exit must not export agent.compaction; got: {:?}",
+            spans.iter().map(|s| s.name.as_ref()).collect::<Vec<_>>()
+        );
+        // otel27: the early exit is visible under its own name instead.
+        assert!(
+            spans.iter().any(|s| s.name == "agent.compaction.skipped"),
+            "prepare early-exit must export agent.compaction.skipped; got: {:?}",
             spans.iter().map(|s| s.name.as_ref()).collect::<Vec<_>>()
         );
     }
