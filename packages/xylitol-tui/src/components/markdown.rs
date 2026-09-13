@@ -199,6 +199,9 @@ impl Component for Markdown {
                             .into_iter()
                             .map(MdLine::prewrapped),
                     );
+                    if !next_is_space(&events, idx) {
+                        rendered.push(MdLine::raw(String::new()));
+                    }
                 }
 
                 Event::Start(Tag::BlockQuote(_)) => {
@@ -1486,6 +1489,32 @@ mod tests {
         let lines = md.render(20);
         assert!(lines.iter().any(|l| l.contains("one")));
         assert!(lines.iter().any(|l| l.contains("two")));
+    }
+
+    #[test]
+    fn block_after_list_starts_on_blank_line() {
+        let mut md = Markdown::new(
+            "## 标题一\n- a\n- b\n\n## 标题二\n- c\n\n尾随段落\n".into(),
+            0,
+            0,
+            identity_theme(),
+            None,
+        );
+        let lines: Vec<String> = md
+            .render(40)
+            .iter()
+            .map(|l| l.trim_end().to_string())
+            .collect();
+        let blank_between = |from: &str, to: &str| {
+            let a = lines.iter().position(|l| l == from).expect("from line");
+            let b = lines.iter().position(|l| l == to).expect("to line");
+            assert!(
+                b > a + 1 && lines[a + 1..b].iter().all(|l| l.is_empty()),
+                "expected blank line between {from:?} and {to:?}:\n{lines:?}"
+            );
+        };
+        blank_between("- b", "标题二");
+        blank_between("- c", "尾随段落");
     }
 
     #[test]
