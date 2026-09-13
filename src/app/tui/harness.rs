@@ -3805,11 +3805,19 @@ mod slice_tests {
             vec!["/tmp/a.jsonl".to_string()]
         );
         assert_eq!(driver.switch_calls(), vec!["imported".to_string()]);
+        // resume-render 修复: import note is a fixed-zone toast, not a transcript row.
+        assert!(
+            root.borrow()
+                .toast_notice_body()
+                .is_some_and(|b| b.contains("imported → session imported")),
+            "expected import toast: {:?}",
+            root.borrow().toast_notice_body()
+        );
         assert!(
             system_notes(&session)
                 .iter()
-                .any(|t| t.contains("imported") && t.contains("imported")),
-            "expected import note: {:?}",
+                .all(|t| !t.contains("imported → session")),
+            "import note must not be a transcript row: {:?}",
             system_notes(&session)
         );
     }
@@ -3929,11 +3937,19 @@ mod slice_tests {
             .unwrap();
         assert_eq!(driver.switch_calls(), vec!["newer".to_string()]);
         assert!(!root.borrow().session_resume_open());
+        // resume-render 修复: switch note is a fixed-zone toast above the editor.
+        assert!(
+            root.borrow()
+                .toast_notice_body()
+                .is_some_and(|b| b.contains("switched → session newer")),
+            "expected switch toast: {:?}",
+            root.borrow().toast_notice_body()
+        );
         assert!(
             system_notes(&session)
                 .iter()
-                .any(|t| t.contains("switched") && t.contains("newer")),
-            "expected switch note: {:?}",
+                .all(|t| !t.contains("switched → session")),
+            "switch note must not be a transcript row: {:?}",
             system_notes(&session)
         );
     }
@@ -4116,12 +4132,13 @@ mod slice_tests {
             .await
             .unwrap();
         assert_eq!(driver.new_session_calls(), 1);
+        // resume-render 修复: new-session note is a fixed-zone toast, not a transcript row.
         assert!(
-            system_notes(&session)
-                .iter()
-                .any(|t| t.contains("new session") && t.contains("new-1")),
-            "expected new session note: {:?}",
-            system_notes(&session)
+            root.borrow()
+                .toast_notice_body()
+                .is_some_and(|b| b.contains("new session") && b.contains("new-1")),
+            "expected new session toast: {:?}",
+            root.borrow().toast_notice_body()
         );
     }
 
@@ -4166,12 +4183,13 @@ mod slice_tests {
             vec![("leaf-1".to_string(), ForkPosition::At)]
         );
         assert_eq!(driver.switch_calls(), vec!["forked-child".to_string()]);
+        // resume-render 修复: clone note is a fixed-zone toast, not a transcript row.
         assert!(
-            system_notes(&session)
-                .iter()
-                .any(|t| t.contains("cloned") && t.contains("forked-child")),
-            "expected clone note: {:?}",
-            system_notes(&session)
+            root.borrow()
+                .toast_notice_body()
+                .is_some_and(|b| b.contains("cloned → session forked-child")),
+            "expected clone toast: {:?}",
+            root.borrow().toast_notice_body()
         );
     }
 
@@ -4280,12 +4298,13 @@ mod slice_tests {
             "must not treat /new as unknown when popup selected session-new: {:?}",
             system_notes(&session)
         );
+        // resume-render 修复: new-session note is a fixed-zone toast, not a transcript row.
         assert!(
-            system_notes(&session)
-                .iter()
-                .any(|t| t.contains("new session")),
-            "expected new-session note: {:?}",
-            system_notes(&session)
+            root.borrow()
+                .toast_notice_body()
+                .is_some_and(|b| b.contains("new session")),
+            "expected new-session toast: {:?}",
+            root.borrow().toast_notice_body()
         );
     }
 
@@ -6967,5 +6986,415 @@ mod slice_tests {
             !skills_line.contains("old"),
             "stale skill must not remain: {skills_line}"
         );
+    }
+
+    /// lab 复现（临时）：/session-resume 重选当前 session 后的渲染。
+    /// 用户截图症状：① notice 出现在 transcript 中部（assistant 正文之前）；
+    /// ② assistant 首行被吞前缀（"我是你的编码助手，主要帮你在这个 `xyl"）。
+    /// 完整端到端：真实按键流（含 picker）+ 内容溢出视口 + 帧回放 VT 还原屏幕。
+    #[tokio::test]
+    async fn resume_switch_rebuild_toast_and_idle_tape_fence() {
+        use crate::protocol::session::{EntryBase, MessageEntry, SessionEntry};
+        use serde_json::json;
+
+        const CJK_REPLY: &str = "我是你的编码助手，主要帮你在这个 `xylitol` 项目里干活。能力大致分几类：\n\n## 📖 读与查\n- **读代码/文档**：读任意文件（含图片），理解上下文\n- **搜索**：`grep` 全文正则检索、`find` 按 glob 找文件、`ls` 列目录\n- **LSP 诊断**：拿 rust-analyzer / gopls 等的报错、补全、符号跳转（项目里主要是 Rust）\n\n## ✏️ 改代码\n- 新建 / 覆盖 / 精确编辑文件\n- 按分层架构（`protocol/` → `agent/` → `infra/` → `app/`）改，遵守 `src/AGENTS.md` 边界\n\n## 🏃 跑验证\n- `just setup` / `fmt` / `lint` / `test` / `qa`（全量门禁）\n- 需要真终端的 e2e：`just qa-e2e`\n\n简单说：读得懂代码、改得了逻辑、跑得通门禁、跟得上 SDD 流程。你现在想做什么？";
+
+        fn user_msg(id: &str, parent: Option<&str>, text: &str) -> SessionEntry {
+            SessionEntry::Message(MessageEntry {
+                base: EntryBase {
+                    entry_type: "message".into(),
+                    id: id.into(),
+                    parent_id: parent.map(str::to_string),
+                    timestamp: 0,
+                },
+                message: crate::protocol::session::fixture_message_json("user", text),
+            })
+        }
+
+        fn assistant_msg(
+            id: &str,
+            parent: Option<&str>,
+            thinking: &str,
+            text: &str,
+        ) -> SessionEntry {
+            SessionEntry::Message(MessageEntry {
+                base: EntryBase {
+                    entry_type: "message".into(),
+                    id: id.into(),
+                    parent_id: parent.map(str::to_string),
+                    timestamp: 0,
+                },
+                message: json!({
+                    "role": "assistant",
+                    "content": [
+                        { "type": "thinking", "thinking": thinking },
+                        { "type": "text", "text": text }
+                    ],
+                    "timestamp": 0u64,
+                }),
+            })
+        }
+
+        let persisted_entries = vec![
+            user_msg("u1", None, "hi"),
+            assistant_msg("a1", Some("u1"), "The user just said \"hi\".", "Hi! 👋"),
+            user_msg("u2", Some("a1"), "你能做什么"),
+            assistant_msg(
+                "a2",
+                Some("u2"),
+                "The user asks \"what can you do\" in Chinese.",
+                CJK_REPLY,
+            ),
+        ];
+
+        let stream_script = |chunks: &[&str]| -> Vec<XyEvent> {
+            let mut evs = vec![
+                XyEvent::AgentStart {
+                    session_id: "sid-same".into(),
+                    model: "fake".into(),
+                },
+                XyEvent::MessageStart {
+                    role: "assistant".into(),
+                    message: None,
+                },
+                XyEvent::ThinkingDelta("thinking…".into()),
+            ];
+            for c in chunks {
+                evs.push(XyEvent::TextDelta((*c).to_string()));
+            }
+            evs.push(XyEvent::MessageEnd {
+                role: "assistant".into(),
+                message: None,
+            });
+            evs.push(XyEvent::AgentEnd {
+                messages: Vec::new(),
+            });
+            evs
+        };
+
+        let mut session = HostSession::new_product_ui(TestTerminal::new(120, 34));
+        let root = session.ui_root().expect("ui").clone();
+        let mut driver = ScriptedDriver::new();
+        driver.set_session_messages(persisted_entries.clone());
+        driver.set_session_list(vec![SessionListEntry {
+            id: "sid-same".into(),
+            name: None,
+            first_message: Some("hi".into()),
+            message_count: 4,
+            modified_unix: Some(1_700_000_100),
+            parent_session_id: None,
+            tree_prefix: String::new(),
+            cwd: Some(".".into()),
+            path: None,
+        }]);
+        let mut stream = None;
+
+        // 直播轮次 1："hi"（流式分片 + Tick 驱动中途 paint）。
+        driver.push_script(stream_script(&["Hi! 👋"]));
+        root.borrow_mut().set_editor_text("hi");
+        session.step(HostEvent::Input(enter_event())).unwrap();
+        pump_host_driver(&mut session, &mut driver, &mut stream)
+            .await
+            .unwrap();
+
+        // 直播轮次 2："你能做什么"（逐字符 delta + Tick 模拟 60Hz 中途 paint）。
+        let reply_stream = CJK_REPLY;
+        let mut char_chunks: Vec<String> = Vec::new();
+        let mut buf = String::new();
+        for ch in reply_stream.chars() {
+            buf.push(ch);
+            char_chunks.push(std::mem::take(&mut buf));
+        }
+        session.on_run_started("你能做什么");
+        session
+            .step(HostEvent::Xy(Box::new(XyEvent::AgentStart {
+                session_id: "sid-same".into(),
+                model: "fake".into(),
+            })))
+            .unwrap();
+        session
+            .step(HostEvent::Xy(Box::new(XyEvent::MessageStart {
+                role: "assistant".into(),
+                message: None,
+            })))
+            .unwrap();
+        session
+            .step(HostEvent::Xy(Box::new(XyEvent::ThinkingDelta(
+                "thinking…".into(),
+            ))))
+            .unwrap();
+        for (i, chunk) in char_chunks.iter().enumerate() {
+            session
+                .step(HostEvent::Xy(Box::new(XyEvent::TextDelta(chunk.clone()))))
+                .unwrap();
+            if i % 3 == 0 {
+                session.step(HostEvent::Tick).unwrap();
+            }
+        }
+        session
+            .step(HostEvent::Xy(Box::new(XyEvent::MessageEnd {
+                role: "assistant".into(),
+                message: None,
+            })))
+            .unwrap();
+        session
+            .step(HostEvent::Xy(Box::new(XyEvent::AgentEnd {
+                messages: Vec::new(),
+            })))
+            .unwrap();
+        pump_host_driver(&mut session, &mut driver, &mut stream)
+            .await
+            .unwrap();
+
+        // 打开 /session-resume picker 并回车选中（当前会话）。
+        let frames_before_picker = session.tui.terminal.frames().len();
+        root.borrow_mut().set_editor_text("/session-resume");
+        session.step(HostEvent::Input(enter_event())).unwrap();
+        pump_host_driver(&mut session, &mut driver, &mut stream)
+            .await
+            .unwrap();
+        assert!(
+            root.borrow().session_resume_open(),
+            "resume picker should be open"
+        );
+        session.step(HostEvent::Input(enter_event())).unwrap();
+        pump_host_driver(&mut session, &mut driver, &mut stream)
+            .await
+            .unwrap();
+        assert!(
+            !root.borrow().session_resume_open(),
+            "resume picker should be closed after select"
+        );
+
+        // resume-render 修复: 切换 tip 是输入区上方 toast，不是 transcript 行。
+        assert!(
+            root.borrow()
+                .toast_notice_body()
+                .is_some_and(|b| b.contains("switched → session sid-same")),
+            "expected switch toast: {:?}",
+            root.borrow().toast_notice_body()
+        );
+        assert!(
+            !session.ui_model().entries.iter().any(|e| matches!(
+                e,
+                UiEntry::ScrollNotice { text } if text.contains("switched → session")
+            )),
+            "switch notice must not be a transcript row"
+        );
+
+        // 回放全部帧 → 还原最终屏幕。
+        let mut screen = VtReplay::new(120, 34);
+        for f in session.tui.terminal.frames() {
+            screen.feed(f);
+        }
+        let text = screen.text();
+        println!("===== replayed screen =====\n{text}\n===== end =====");
+
+        // switch 前的屏幕（对齐用户「switch 前直播态」）。
+        let mut pre = VtReplay::new(120, 34);
+        for f in session.tui.terminal.frames()[..frames_before_picker].iter() {
+            pre.feed(f);
+        }
+        println!(
+            "===== pre-picker screen =====\n{}\n===== end =====",
+            pre.text()
+        );
+
+        let notice_pos = text.find("switched → session").expect("notice present");
+        let reply_pos = text
+            .find("我是你的编码助手")
+            .expect("reply first line present");
+        assert!(
+            notice_pos > reply_pos,
+            "notice (at {notice_pos}) must render AFTER assistant reply (at {reply_pos})"
+        );
+
+        // resume-render 修复: switch 之后空闲到达的 agent tape（daemon journal 重放/ Foreign run）
+        // 必须被栅栏丢弃 —— transcript 不再追加半截尾巴。
+        let entries_before = session.ui_model().entries.len();
+        for ev in [
+            XyEvent::MessageStart {
+                role: "assistant".into(),
+                message: None,
+            },
+            XyEvent::TextDelta("itol` 项目里干活。能力大致分几类：".into()),
+            XyEvent::MessageEnd {
+                role: "assistant".into(),
+                message: None,
+            },
+            XyEvent::AgentEnd {
+                messages: Vec::new(),
+            },
+        ] {
+            session.step(HostEvent::Xy(Box::new(ev))).unwrap();
+        }
+        assert_eq!(
+            session.ui_model().entries.len(),
+            entries_before,
+            "idle tape must not append transcript entries"
+        );
+        assert!(
+            session.ui_model().entries.iter().all(|e| !matches!(
+                e,
+                UiEntry::Assistant { text } if text.starts_with("itol`")
+            )),
+            "mid-word tail entry must be fenced off"
+        );
+    }
+
+    /// 极简 VT 屏幕回放：只处理引擎实际发射的控制序列
+    ///（CUP/CUU/CUD/CHA/EL/IL/DL/ED/SGR/OSC/\r/\n），无 autowrap（?7l 语义）。
+    struct VtReplay {
+        cols: usize,
+        rows: usize,
+        grid: Vec<Vec<char>>,
+        row: usize,
+        col: usize,
+    }
+
+    /// 宽字符续格哨兵（join 时跳过）。
+    const WIDE_CONT: char = '\u{0}';
+
+    impl VtReplay {
+        fn new(cols: usize, rows: usize) -> Self {
+            Self {
+                cols,
+                rows,
+                grid: vec![vec![' '; cols]; rows],
+                row: 0,
+                col: 0,
+            }
+        }
+
+        fn feed(&mut self, s: &str) {
+            let bytes = s.as_bytes();
+            let mut i = 0;
+            while i < bytes.len() {
+                match bytes[i] {
+                    0x1b => {
+                        if i + 1 >= bytes.len() {
+                            break;
+                        }
+                        match bytes[i + 1] {
+                            b'[' => {
+                                let mut j = i + 2;
+                                while j < bytes.len() && !(0x40..=0x7e).contains(&bytes[j]) {
+                                    j += 1;
+                                }
+                                if j >= bytes.len() {
+                                    break;
+                                }
+                                let body = &s[i + 2..j];
+                                let final_byte = bytes[j];
+                                self.csi(body, final_byte);
+                                i = j + 1;
+                            }
+                            b']' => {
+                                // OSC … BEL / ST
+                                let mut j = i + 2;
+                                while j < bytes.len() && bytes[j] != 0x07 {
+                                    j += 1;
+                                }
+                                i = (j + 1).min(bytes.len());
+                            }
+                            _ => {
+                                i += 2;
+                            }
+                        }
+                    }
+                    b'\r' => {
+                        self.col = 0;
+                        i += 1;
+                    }
+                    b'\n' => {
+                        self.row = (self.row + 1).min(self.rows - 1);
+                        i += 1;
+                    }
+                    _ => {
+                        let ch = s[i..].chars().next().expect("utf8");
+                        let w = xylitol_tui::visible_width(&ch.to_string()).max(1);
+                        if ch != ' ' || self.col < self.cols {
+                            let put = self.col.min(self.cols - 1);
+                            self.grid[self.row][put] = ch;
+                            for k in 1..w {
+                                if put + k < self.cols {
+                                    self.grid[self.row][put + k] = WIDE_CONT;
+                                }
+                            }
+                        }
+                        self.col = (self.col + w).min(self.cols);
+                        i += ch.len_utf8();
+                    }
+                }
+            }
+        }
+
+        fn csi(&mut self, body: &str, final_byte: u8) {
+            let nums: Vec<usize> = body
+                .split([';', '?'])
+                .map(|p| p.parse::<usize>().unwrap_or(0))
+                .collect();
+            let n = || nums.first().copied().filter(|&v| v != 0).unwrap_or(1);
+            match final_byte {
+                b'H' => {
+                    self.row = (nums.first().copied().unwrap_or(1))
+                        .saturating_sub(1)
+                        .min(self.rows - 1);
+                    self.col = (nums.get(1).copied().unwrap_or(1))
+                        .saturating_sub(1)
+                        .min(self.cols - 1);
+                }
+                b'A' => self.row = self.row.saturating_sub(n()),
+                b'B' => self.row = (self.row + n()).min(self.rows - 1),
+                b'G' => self.col = (n().saturating_sub(1)).min(self.cols - 1),
+                b'J' => {
+                    if nums.first().copied().unwrap_or(0) == 2 {
+                        for r in self.grid.iter_mut() {
+                            r.fill(' ');
+                        }
+                        self.row = 0;
+                        self.col = 0;
+                    }
+                }
+                b'K' => {
+                    for c in self.col..self.cols {
+                        self.grid[self.row][c] = ' ';
+                    }
+                }
+                b'L' => {
+                    // IL at cursor row
+                    for _ in 0..n() {
+                        let new_row = vec![' '; self.cols];
+                        let row = self.row;
+                        self.grid.insert(row, new_row);
+                        self.grid.truncate(self.rows);
+                    }
+                }
+                b'M' => {
+                    // DL at cursor row
+                    for _ in 0..n() {
+                        let row = self.row;
+                        self.grid.remove(row);
+                        self.grid.push(vec![' '; self.cols]);
+                    }
+                }
+                _ => {}
+            }
+        }
+
+        fn text(&self) -> String {
+            self.grid
+                .iter()
+                .map(|r| {
+                    r.iter()
+                        .copied()
+                        .filter(|&c| c != WIDE_CONT)
+                        .collect::<String>()
+                        .trim_end()
+                        .to_string()
+                })
+                .collect::<Vec<_>>()
+                .join("\n")
+        }
     }
 }

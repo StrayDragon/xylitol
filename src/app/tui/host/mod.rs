@@ -755,6 +755,15 @@ impl<T: Terminal> HostSession<T> {
         }
     }
 
+    /// Informational toast (muted, no `Error: ` prefix) — resume-render 修复：session-switch
+    /// tips and similar transient notices that are not failures.
+    pub fn push_toast_info_notice(&mut self, text: impl Into<String>) {
+        if let Some(root) = self.ui_root.as_ref() {
+            root.borrow_mut().push_toast_info_notice(text);
+            self.paint_dirty = true;
+        }
+    }
+
     /// Push an error line (`UiEntry::Error` / `errors.md` one-liner).
     pub fn push_error_note(&mut self, text: impl Into<String>) {
         self.ui_model
@@ -1002,12 +1011,54 @@ impl<T: Terminal> HostSession<T> {
         }
     }
 
+    /// Transcript-mutating agent-tape family (resume-render 修复). These events are only
+    /// meaningful while a locally-started run is streaming; the idle fence in
+    /// [`Self::handle_xy`] drops them. Metadata events (settlement / queue /
+    /// compaction / model) stay outside the fence.
+    fn is_agent_tape_event(xy: &XyEvent) -> bool {
+        matches!(
+            xy,
+            XyEvent::AgentStart { .. }
+                | XyEvent::AgentEnd { .. }
+                | XyEvent::TurnStart { .. }
+                | XyEvent::TurnEnd { .. }
+                | XyEvent::MessageStart { .. }
+                | XyEvent::MessageUpdate { .. }
+                | XyEvent::MessageEnd { .. }
+                | XyEvent::TextDelta(_)
+                | XyEvent::ThinkingDelta(_)
+                | XyEvent::ToolExecutionStart { .. }
+                | XyEvent::ToolExecutionUpdate { .. }
+                | XyEvent::ToolExecutionEnd { .. }
+                | XyEvent::AutoRetryStart { .. }
+                | XyEvent::AutoRetryEnd { .. }
+        )
+    }
+
     pub(crate) fn handle_xy(&mut self, xy: Box<XyEvent>) {
         if self.suppress_xy_until_stream_end {
             // c670: abort already noted — do not revive busy via deltas / AgentEnd.
             self.tui.request_render(false);
             return;
         }
+        if !self.run_active && Self::is_agent_tape_event(xy.as_ref()) {
+            // resume-render 修复: idle-received agent tape is stale (daemon journal replay /
+            // resync / foreign mid-stream join). The transcript's idle truth is
+            // the persisted entries from `get_messages` — applying a partial
+            // tape appended a mid-message "tail" after the switch notice.
+            log::debug!(
+                target: "xylitol::tui",
+                "agent tape event dropped while idle"
+            );
+            return;
+        }
+        self.apply_xy_unfenced(xy);
+    }
+
+    /// Apply one XyEvent without the idle tape fence. Only for host-authored
+    /// injections that are tape-shaped by design (`/debug activity-fold-live`
+    /// ask-close replay); never for driver downlink.
+    pub(crate) fn apply_xy_unfenced(&mut self, xy: Box<XyEvent>) {
         apply_xy_event(&mut self.ui_model, &xy);
         match xy.as_ref() {
             XyEvent::AgentEnd { .. } => {

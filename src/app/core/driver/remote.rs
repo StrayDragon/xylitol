@@ -632,6 +632,20 @@ where
         self.ensure_downlink();
     }
 
+    /// Session identity changed: the journal seq space belongs to the OLD
+    /// session, so re-subscribe cold (last_seq=0). The downlink loop arms
+    /// `skip_cold_replay` iff seq==0, which filters the new session's journal
+    /// replay — the transcript is rebuilt from `get_messages` instead. Without
+    /// this reset the stale seq made the daemon replay the new session's tape
+    /// from an arbitrary offset, and the bridge rendered the mid-message tail
+    /// as a live stream appended after the switch notice (resume 渲染修复).
+    fn restart_downlink_for_switched_session(&mut self) {
+        self.last_seq.store(0, Ordering::SeqCst);
+        if self.downlink.started.load(Ordering::SeqCst) {
+            self.restart_downlink();
+        }
+    }
+
     fn ensure_downlink(&self)
     where
         C: HostClient + Clone + 'static,
@@ -1441,9 +1455,7 @@ where
                 if let Ok(mut leaf) = self.leaf_entry_id.lock() {
                     *leaf = None;
                 }
-                if self.downlink.started.load(Ordering::SeqCst) {
-                    self.restart_downlink();
-                }
+                self.restart_downlink_for_switched_session();
                 Ok(DispatchOutcome::SwitchedSession(id))
             }
             Command::Fork {
@@ -1539,9 +1551,7 @@ where
                 if let Ok(mut leaf) = self.leaf_entry_id.lock() {
                     *leaf = None;
                 }
-                if self.downlink.started.load(Ordering::SeqCst) {
-                    self.restart_downlink();
-                }
+                self.restart_downlink_for_switched_session();
                 Ok(DispatchOutcome::NewSession(id))
             }
             Command::GetSessionName { .. } => {
@@ -2632,6 +2642,66 @@ mod tests {
                 }
             )),
             "stream MUST stay live after the recovery window: {live:?}"
+        );
+    }
+
+    #[tokio::test]
+    async fn switch_session_resubscribes_cold_and_drops_new_session_tape() {
+        // resume-render 修复: SwitchSession 用旧 session 的 last_seq 重订阅新 session 时，
+        // journal 从任意偏移重放，mid-message TextDelta 尾巴会涌进 transcript。
+        // 重订阅必须 cold（last_seq=0 → skip_cold_replay 武装）。
+        use crate::app::core::dispatch::{DispatchOutcome, dispatch};
+        use crate::app::core::host_client::InProcessClient;
+        use crate::protocol::{Command, Event};
+
+        let host = HostState::for_test().expect("host");
+        host.ports
+            .store
+            .create("s-target", None, None)
+            .await
+            .expect("seed target session");
+        {
+            let slot = host.slot("s-target").await;
+            let mut j = slot.journal.lock().await;
+            j.append(Event::TextDelta {
+                text: "我是你的编码助手，".into(),
+            });
+            j.append(Event::TextDelta {
+                text: "主要帮你在这个 `xylitol` 项目里干活。".into(),
+            });
+        }
+        let client = InProcessClient::host_state(host.clone());
+        let mut driver = XyRemoteDriver::with_host(client, "s-other");
+        driver.attach_session().await.expect("attach");
+        // 在旧 session 上积累非零 last_seq（模拟看过一轮直播）。
+        {
+            let slot = host.slot("s-other").await;
+            slot.append_and_push(Event::QueueUpdate {
+                steer_count: 0,
+                follow_up_count: 0,
+            })
+            .await;
+        }
+        tokio::time::sleep(std::time::Duration::from_millis(80)).await;
+        let _ = driver.drain_idle_events();
+
+        let outcome = dispatch(
+            &mut driver,
+            Command::SwitchSession {
+                session_path: "s-target".into(),
+            },
+        )
+        .await
+        .expect("switch");
+        assert!(matches!(outcome, DispatchOutcome::SwitchedSession(_)));
+        tokio::time::sleep(std::time::Duration::from_millis(150)).await;
+        let evs = driver.drain_idle_events();
+        assert!(
+            !evs.iter().any(|e| matches!(
+                e,
+                XyEvent::TextDelta(t) if t.contains("xylitol")
+            )),
+            "switch 后旧偏移的 journal 重放不得作为直播尾巴到达 transcript: {evs:?}"
         );
     }
 

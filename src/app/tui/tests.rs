@@ -1784,15 +1784,23 @@ fn harness_cli_restored_session_rebuilds_transcript() {
         "CLI restore must show assistant turn: {:?}",
         model.entries
     );
+    // resume-render 修复: restore note is a fixed-zone toast above the editor, never a
+    // transcript row (a rebuild would strand it mid-scrollback).
     assert!(
-        model.entries.iter().any(|e| matches!(
-            e,
-            UiEntry::ScrollNotice { text } if text.contains("restored → session sid-restored")
-        )),
-        "expected restored note: {:?}",
+        model.entries.iter().all(
+            |e| !matches!(e, UiEntry::ScrollNotice { text } if text.contains("restored → session"))
+        ),
+        "restored note must not be a transcript row: {:?}",
         model.entries
     );
     let root = session.ui_root().expect("product ui").clone();
+    assert!(
+        root.borrow()
+            .toast_notice_body()
+            .is_some_and(|b| b.contains("restored → session sid-restored")),
+        "expected restored toast above editor: {:?}",
+        root.borrow().toast_notice_body()
+    );
     session.step(HostEvent::Input(arrow_up_event())).unwrap();
     assert_eq!(root.borrow().editor_text(), "hi");
 }
