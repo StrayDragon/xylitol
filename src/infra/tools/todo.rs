@@ -226,9 +226,7 @@ impl TypedTool for TodoRewriteTool {
         }
         let list = self.gateway.rewrite(args.items).await?;
         // atd13: typed live projection straight from the SSOT mutation point.
-        ctx.publish_state(crate::protocol::lifecycle::XyEvent::TodoUpdated {
-            list: list.clone(),
-        });
+        ctx.publish_state(crate::protocol::lifecycle::XyEvent::TodoUpdated { list: list.clone() });
         Ok(list_json(&list))
     }
 }
@@ -296,9 +294,7 @@ impl TypedTool for TodoUpdateTool {
             .update(&args.id, args.status, args.content)
             .await?;
         // atd13: typed live projection straight from the SSOT mutation point.
-        ctx.publish_state(crate::protocol::lifecycle::XyEvent::TodoUpdated {
-            list: list.clone(),
-        });
+        ctx.publish_state(crate::protocol::lifecycle::XyEvent::TodoUpdated { list: list.clone() });
         Ok(list_json(&list))
     }
 }
@@ -404,7 +400,10 @@ mod tests {
             .unwrap();
         match rx.recv().await {
             Some(XyEvent::TodoUpdated { list }) => {
-                assert_eq!(list.items[0].status, crate::protocol::session::TodoStatus::Completed);
+                assert_eq!(
+                    list.items[0].status,
+                    crate::protocol::session::TodoStatus::Completed
+                );
             }
             other => panic!("expected TodoUpdated, got {other:?}"),
         }
