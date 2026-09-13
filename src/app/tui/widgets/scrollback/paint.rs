@@ -287,7 +287,8 @@ impl StreamingAssistantPaint {
 }
 
 fn markdown_fit_lines(text: String, width: usize, theme: LayoutTheme) -> Vec<String> {
-    let mut md = Markdown::new(text, 0, 0, theme.palette().markdown_theme(), None);
+    let mut md = Markdown::new(text, 0, 0, theme.palette().markdown_theme(), None)
+        .with_table_header_underline(true);
     md.render(width)
         .into_iter()
         .map(|line| fit(&line, width))
@@ -388,7 +389,8 @@ pub(super) fn paint_assistant_block(
         0,
         theme.palette().markdown_theme(),
         None,
-    );
+    )
+    .with_table_header_underline(true);
     for line in md.render(width) {
         lines.push(fit(&line, width));
     }
