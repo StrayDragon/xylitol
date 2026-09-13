@@ -8,7 +8,7 @@
 
 | 路径 | 写什么 | 不写什么 |
 |---|---|---|
-| [`architecture/`](./architecture/README.md) | **已落地**产品心智：MUST/禁止、开箱 vs 后置、多端同构 | 易腐实现路径、进度板、未兑现方向、带日期的 change id |
+| [`architecture/`](./architecture/AGENTS.md) | **已落地**产品心智：MUST/禁止、开箱 vs 后置、多端同构 | 易腐实现路径、进度板、未兑现方向、带日期的 change id |
 | [`roadmaps/`](./roadmaps/README.md) | **未落地**统一候选：可并行主线、依赖、BDD 意图级场景（不维护状态列） | 可执行 `.feature`、模块/类型清单、进度勾选 |
 | [`research/`](./research/) | **跨 change 仍常引用**的主题级耐久底稿 | 单 change 选型备忘、易腐深挖笔记（→ `llmanspec/changes/<id>/research/`，见 `llmanspec/AGENTS.md`） |
 | 本文件 | docs 维护规则与产品↔实现闭环 | 具体能力正文（下沉到子目录） |

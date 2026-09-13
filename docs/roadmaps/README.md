@@ -1,6 +1,6 @@
 # 产品路线图（与 pi 分道后的候选方向）
 
-> **只写尚未兑现的高维产品方向。** 已兑现心智只在 [`docs/architecture/`](../architecture/README.md)。
+> **只写尚未兑现的高维产品方向。** 已兑现心智只在 [`docs/architecture/`](../architecture/AGENTS.md)。
 > **闭环规则** → [`docs/AGENTS.md`](../AGENTS.md)。本目录是**统一优先级的候选板**，不是进度表。
 > 某篇全部兑现后：**删除该文件**并更新本索引，不留占位。
 
@@ -77,7 +77,7 @@ flowchart TB
 > **压缩**：会话 auto-compact + provenance 已落地（见 [architecture](../architecture/压缩与上下文.md)）；缓存/动态压缩见新篇。
 > **Eval 调研底稿**：[../research/agent-eval-frameworks-2026.md](../research/agent-eval-frameworks-2026.md)。
 > **键位学习 UI 调研**：[../research/keybinding-keyboard-visualizer-2026.md](../research/keybinding-keyboard-visualizer-2026.md)（挂 [键位与命令发现.md](./键位与命令发现.md) M4）。
-> **TUI 重制**：景观 [../research/coding-agent-tui-design-landscape-2026.md](../research/coding-agent-tui-design-landscape-2026.md)；引擎缺口 [../research/xylitol-tui-capability-hooks-vs-landscape-2026.md](../research/xylitol-tui-capability-hooks-vs-landscape-2026.md)。
+> **TUI 重制**：调研底稿已随 2026-09-12 cleanup 移除，结论吸收进 [`src/app/tui/DESIGN.md`](../../src/app/tui/DESIGN.md)。
 
 | 文档 | 候选方向 |
 |---|---|
