@@ -18,6 +18,43 @@ pub(crate) fn compaction_reason_kind(reason: &str) -> &'static str {
     }
 }
 
+/// Lightweight marker for prepare-guard early exits (`agent.compaction.skipped`,
+/// otel27).
+///
+/// otel19 reserves `agent.compaction` for post-prepare attempts; otel22 bars
+/// gate early-exits from masquerading as LLM-lane spans — so this carries only
+/// the skip reason and the session identity, never the llm lane, and the auto
+/// path still emits no `CompactionEnd`.
+pub(crate) fn export_skipped(
+    reason_detail: &str,
+    parent: Option<SpanContext>,
+    obs: &xylitol_ai_bridge::ObsSessionContext,
+) {
+    if !provider_trace_active() {
+        return;
+    }
+    let obs = obs.clone();
+    let detail = reason_detail.to_string();
+    let span = Span::root(
+        "agent.compaction.skipped",
+        parent.unwrap_or_else(SpanContext::random),
+    )
+    .with_properties(move || {
+        let mut props = vec![("skip_reason".to_string(), detail)];
+        props.extend(xylitol_ai_bridge::provider::langfuse_session_properties_from(&obs));
+        props
+    });
+    span.add_event(Event::new("lifecycle").with_properties(|| {
+        [
+            ("kind", "lifecycle".to_string()),
+            ("phase", "start".to_string()),
+            ("name", "agent.compaction.skipped".to_string()),
+        ]
+    }));
+    // Drop → flush via reporter (token.estimate template).
+    drop(span);
+}
+
 /// Timed observation wrapping one compact attempt (`agent.compaction`).
 pub(crate) struct AgentCompactionSpan {
     span: Span,
@@ -118,6 +155,52 @@ mod tests {
         let _g = ObsGateScope::enter(ObsGateState::OFF);
         assert!(
             AgentCompactionSpan::start("manual", None, &ObsSessionContext::default()).is_none()
+        );
+    }
+
+    #[test]
+    fn skipped_span_carries_session_without_lane() {
+        let _g = ObsGateScope::enter(ObsGateState::active_none_io());
+        let collect = SpanCollectScope::enter();
+
+        let snapshot = ObsSessionContext {
+            session_id: Some("sess-skip-1".into()),
+            session_name: None,
+            ..Default::default()
+        };
+        export_skipped("Already compacted", None, &snapshot);
+        fastrace::flush();
+
+        let spans = collect.records();
+        let skipped = spans
+            .iter()
+            .find(|s| s.name == "agent.compaction.skipped")
+            .expect("skipped span");
+        let props: std::collections::HashMap<_, _> = skipped
+            .properties
+            .iter()
+            .map(|(k, v)| (k.as_ref(), v.as_ref()))
+            .collect();
+        assert_eq!(props.get("skip_reason"), Some(&"Already compacted"));
+        assert_eq!(props.get("langfuse.session.id"), Some(&"sess-skip-1"));
+        assert_eq!(props.get("xylitol.session.id"), Some(&"sess-skip-1"));
+        assert!(
+            !props.contains_key("xylitol.obs.lane"),
+            "gate early-exit must not carry the llm lane (otel27/otel22)"
+        );
+    }
+
+    #[test]
+    fn skipped_span_silent_when_gate_off() {
+        let _g = ObsGateScope::enter(ObsGateState::OFF);
+        let collect = SpanCollectScope::enter();
+        export_skipped("Already compacted", None, &ObsSessionContext::default());
+        fastrace::flush();
+        assert!(
+            collect
+                .records()
+                .iter()
+                .all(|s| s.name != "agent.compaction.skipped")
         );
     }
 

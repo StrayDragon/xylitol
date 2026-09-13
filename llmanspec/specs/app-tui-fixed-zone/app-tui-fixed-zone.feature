@@ -75,7 +75,7 @@
 
   @req:atc18 @human
   场景: loaded-resources-slot
-    - 产品 UiRoot MUST 在 scrollback 上方渲染 loaded-resources 槽：Codex 风边框卡片（>_ xylitol + model/directory；有 skills 时 skill-ref 色 skills 行并换行全量；有 MCP 时 success 色 mcp 行）；MCP 连接进行中时 mcp 行 MUST 显示可区分的 connecting 进度（含已配置数或 i/n 与当前 server id 或等价），完成后 MUST 收敛为 connected 摘要（已连接 id 与工具数或等价）。Host 侧已有成功连接时 MUST NOT 把头卡停在仅 `N configured · 0 connected` 且无 connecting 进度、无失败诊断。失败诊断 MUST 可感且 MUST NOT 用逐步滚动提示刷墙。MUST NOT 展示木糖醇中文标签；MUST NOT 渲染 ASCII logo 艺术字；MUST NOT 用省略号截断资源名；MUST NOT 列出或暗示存在 prompt templates（产品无此能力）；MUST NOT 展示密钥或完整 env。
+    - 产品 UiRoot MUST 在 scrollback 上方渲染 loaded-resources 槽：Codex 风边框卡片（>_ xylitol + model/directory；有 skills 时 skill-ref 色 skills 行并换行全量；有 MCP 时 success 色 mcp 行）；MCP 连接进行中时 mcp 行 MUST 显示可区分的 connecting 进度（含已配置数或 i/n 与当前 server id 或等价），完成后 MUST 收敛为 connected 摘要（已连接 id 与工具数或等价）。Host 侧已有成功连接时 MUST NOT 把头卡停在仅 `N configured · 0 connected` 且无 connecting 进度、无失败诊断。失败诊断 MUST 可感且 MUST NOT 用逐步滚动提示刷墙。MUST NOT 展示木糖醇中文标签；MUST NOT 渲染 ASCII logo 艺术字；MUST NOT 用省略号截断资源名；MUST NOT 列出或暗示存在 prompt templates（产品无此能力）；MUST NOT 展示密钥或完整 env。snapshot 携带 obs_diag（观测通道短诊断）时卡 MUST 追加一行 obs 诊断（与 mcp 失败诊断同形：单短行、无密钥、无完整 env）；absent 时 MUST NOT 占行。
 
   @req:atc20 @human
   场景: fixed-zone-success-no-system

@@ -92,6 +92,46 @@ fn inject_langfuse_auth_headers(
     }
 }
 
+/// One-line reason the configured OTLP exporter is not effective (otel3).
+///
+/// Process-level because logging init runs once; the loaded-resources snapshot
+/// reads it for the startup card. Short config-shape reason only — no secrets,
+/// no full env, no error chains (they may carry header material).
+static OTLP_DISABLED_DIAG: std::sync::OnceLock<String> = std::sync::OnceLock::new();
+
+/// Pure reason selector (`OnceLock` itself is not resettable in tests).
+///
+/// `exporter != otlp-http` is an intentional off → no diag. Resolve failure is
+/// the missing-endpoint/env shape; resolve ok but build failed is the second shape.
+fn otlp_disabled_diag_message(
+    exporter_is_otlp_http: bool,
+    resolved: bool,
+    build_failed: bool,
+) -> Option<String> {
+    if !exporter_is_otlp_http {
+        return None;
+    }
+    if !resolved {
+        return Some(
+            "otlp-http not effective: missing [otel].endpoint or LANGFUSE_BASE_URL/keys env"
+                .to_string(),
+        );
+    }
+    build_failed.then_some("otlp-http not effective: exporter build failed".to_string())
+}
+
+fn note_otlp_disabled(message: Option<String>) {
+    if let Some(msg) = message {
+        let _ = OTLP_DISABLED_DIAG.set(msg);
+    }
+}
+
+/// Diagnostics for the loaded-resources card: why the configured OTLP channel
+/// is off. `None` when the channel is up or `exporter: none` (intentional).
+pub fn otlp_disabled_diag() -> Option<String> {
+    OTLP_DISABLED_DIAG.get().cloned()
+}
+
 #[cfg(feature = "otel")]
 pub(crate) mod install {
     use std::borrow::Cow;
@@ -159,10 +199,18 @@ pub(crate) mod install {
 
     /// Build an OTLP reporter or `None` on any failure (caller logs + continues).
     pub(crate) fn try_build_otlp_reporter(cfg: &OtelConfig) -> Option<Box<dyn Reporter>> {
-        let (endpoint, headers) = resolve_otlp_http_target(cfg)?;
+        let requested = matches!(cfg.exporter, OtelExporterKind::OtlpHttp);
+        let (endpoint, headers) = match resolve_otlp_http_target(cfg) {
+            Some(v) => v,
+            None => {
+                note_otlp_disabled(otlp_disabled_diag_message(requested, false, false));
+                return None;
+            }
+        };
         match build_reporter(cfg, &endpoint, headers) {
             Ok(r) => Some(Box::new(r)),
             Err(e) => {
+                note_otlp_disabled(otlp_disabled_diag_message(requested, true, true));
                 log::warn!(
                     target: "xylitol::otel",
                     "OTLP exporter build failed; remote export disabled: {e}"
@@ -271,6 +319,9 @@ pub(crate) mod install {
 
     pub(crate) fn try_build_otlp_reporter(cfg: &OtelConfig) -> Option<Box<dyn Reporter>> {
         if cfg.wants_otlp_http() {
+            note_otlp_disabled(
+                "otlp-http not effective: binary built without feature `otel`".to_string(),
+            );
             log::warn!(
                 target: "xylitol::otel",
                 "otel config requests otlp-http but binary built without feature `otel`; remote export disabled"
@@ -288,6 +339,26 @@ mod tests {
     fn none_exporter_resolves_off() {
         let cfg = OtelConfig::default();
         assert!(resolve_otlp_http_target(&cfg).is_none());
+    }
+
+    #[test]
+    fn disabled_diag_reasons() {
+        // exporter=none: intentional off, no diag.
+        assert_eq!(otlp_disabled_diag_message(false, false, false), None);
+        // Requested but resolve failed: missing endpoint/env shape.
+        assert!(
+            otlp_disabled_diag_message(true, false, false)
+                .expect("diag")
+                .contains("missing [otel].endpoint")
+        );
+        // Resolved but build failed.
+        assert!(
+            otlp_disabled_diag_message(true, true, true)
+                .expect("diag")
+                .contains("build failed")
+        );
+        // Channel up: no diag.
+        assert_eq!(otlp_disabled_diag_message(true, true, false), None);
     }
 
     #[test]
