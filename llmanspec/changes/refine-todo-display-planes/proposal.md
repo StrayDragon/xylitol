@@ -1,7 +1,9 @@
 ---
 depends_on: []
 rules_touched:
-- att54
+- att13
+branch: sdd/refine-todo-display-planes
+base_sha: 4baeb6252aebd89f659387f4609f7f2a49ef574f
 ---
 
 ## Why
@@ -35,6 +37,6 @@ client 展示 / 日志）的显式细化，todo 是第一个受益者。
 ## Capabilities
 
 - `agent-todo`：新增类型化 live 投影事件合约（atd13）。
-- `app-tui-transcript`：att54 args 摘要表补 todo 分支（rules_touched）；新增 att36
+- `app-tui-transcript`：att13 args 摘要表补 todo 分支（rules_touched）；新增 att36
   （todo_* 块 body 清单渲染）。
 - `protocol-app`：新增 pa-todo1（TodoUpdated 线协议可表达 + 降级语义）。

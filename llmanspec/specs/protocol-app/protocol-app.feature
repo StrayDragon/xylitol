@@ -69,6 +69,10 @@
   场景: 工具起始参数往返
     - wire Event 的 ToolStart MUST 保留领域工具起始事件中的工具参数；经 JSON 序列化与反序列化往返后，客户端 MUST 能从同一字段生成与本地路径一致的人类可读工具摘要，MUST NOT 无故退化为 `Read ...` 等路径占位。
 
+  @req:pa-todo1 @human
+  场景: todo-updated-wire
+    - 领域事件 TodoUpdated（完整 TodoList 快照载荷）MUST 能经 wire Event 表达，使远程 attach 端的 live checklist 刷新 MUST NOT 依赖解析工具结果文本；未映射该变体的端 MUST 可降级忽略，MUST NOT panic。该事件 MUST NOT 作为冷回放 tape 重画（resume 侧 checklist 由 SSOT 快照重建）。
+
   @req:pa-map2 @human
   场景: 会话能力方法表
     - 产品方法表 MUST 登记并由 Host 暴露会话树读取与 travel、entry label、会话列表、会话条目读取、新建会话、会话名称读写与删除能力；这些能力 MUST 使用四象限 unary，不得退回未登记的 REST 产品动词。

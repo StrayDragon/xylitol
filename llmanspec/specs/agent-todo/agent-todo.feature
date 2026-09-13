@@ -1,6 +1,6 @@
 # language: zh-CN
 # capability: agent-todo
-# purpose: 会话内 Todo SSOT — Custom latest-wins 持久、内置三工具读写、至多一条 in_progress、不进 LLM 前缀；TUI 可折 checklist 与状态栏只读投影边界。
+# purpose: 会话内 Todo SSOT — Custom latest-wins 持久、内置三工具读写、至多一条 in_progress、不进 LLM 前缀；类型化 live 事件与 TUI 可折 checklist、状态栏只读投影边界。
 # scope: src/protocol/, src/agent/, src/infra/tools/, src/app/tui/
 
 功能: agent-todo
@@ -52,3 +52,7 @@
   @req:atd12 @human
   场景: export-shows-agent-todo
     - 会话导出（HTML/JSONL 或等价）MUST 能呈现 agent_todo Custom 快照（或等价标记），MUST NOT 将其伪装成用户消息。
+
+  @req:atd13 @human
+  场景: typed-live-projection-event
+    - todo_* 成功写入后 host MUST 经领域事件发布类型化 TodoList 全量快照（空表亦然，语义为清除）；产品 client 的 live checklist 投影 MUST 源自该事件，MUST NOT 依赖端侧解析工具结果字符串或调用 args 维持 checklist。resume / 重建 MUST 仍读 agent_todo SSOT 快照，与 live 投影 latest-wins 同构。事件未送达（如旧线协议端）时 checklist MUST 可降级为仅 resume 刷新，MUST NOT panic。MUST NOT 要求 LLM 前缀、SSOT 持久形态或工具结果 JSON 形态为此改变。

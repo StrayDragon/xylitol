@@ -51,7 +51,7 @@
 
   @req:att13 @human
   场景: tool-human-summary
-    - 折叠态 tool 块 args_preview MUST 使用人类可读的位置摘要（工具名由 header 单独绘制，摘要 MUST NOT 携带工具名前缀）：bash/shell → `$ {command}`；read/ls/edit/write 等取路径槽（path 键认 path/file_path/file 及 edits[0]）；read 有 offset/limit 时 MUST 附 `:start` 或 `:start-end`；edit 摘要 MUST NOT 附加行域（行号在 diff 正文）。path 缺失时 MUST 用 `...` 占位，MUST NOT 把完整 args JSON（含 content/edits/oldText/newText）当作默认 args_preview。历史重建 MUST 与直播路径共用同一摘要 helper。
+    - 折叠态 tool 块 args_preview MUST 使用人类可读的位置摘要（工具名由 header 单独绘制，摘要 MUST NOT 携带工具名前缀）：bash/shell → `$ {command}`；read/ls/edit/write 等取路径槽（path 键认 path/file_path/file 及 edits[0]）；read 有 offset/limit 时 MUST 附 `:start` 或 `:start-end`；edit 摘要 MUST NOT 附加行域（行号在 diff 正文）；todo_* → 条目计数摘要（如 `5 items · 1 in progress`），MUST NOT 展开完整 items JSON。path 缺失时 MUST 用 `...` 占位，MUST NOT 把完整 args JSON（含 content/edits/oldText/newText）当作默认 args_preview。历史重建 MUST 与直播路径共用同一摘要 helper。
 
   @req:att14 @human
   场景: write-edit-process-fixed-zone
@@ -366,3 +366,12 @@
     假如 探索簇流式进行中
     当 新的读段或检索段开始
     那么 簇头后缀计数 MUST 随工具开始更新且进行时词形 MUST 为 Exploring
+
+  @req:att36 @human
+  场景: todo-tool-block-body-checklist
+    - todo_* 工具块展开 body MUST 渲染清单形态：每条目一行（状态字形 + content），状态字形与 Todo checklist 投影共用同一张表；MUST NOT 把调用 args 或结果的原始 items JSON 当作块 body。is_error 结果 MUST 保持错误文本原样可见，MUST NOT 套用清单渲染。历史重建与直播 MUST 共用同一渲染 helper，重建形态 MUST 与直播幂等（att50 幂等语义延伸到块 body）。
+
+  @req:att36 @executable
+  场景: todo-block-body-renders-checklist
+    当 以场景构建器回放 todo_rewrite 成功调用的直播与 travel 重建
+    那么 两种路径的块 body MUST 均为清单行形态且逐行一致，MUST NOT 出现原始 items JSON
