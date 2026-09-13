@@ -3,18 +3,20 @@
 use crate::app::core::driver::XyEvent;
 use crate::app::tool_display::is_ask_tool;
 use crate::app::tui::bridge::preview::humanize_ask_result;
-use crate::app::tui::bridge::session_tree::sync_todo_checklist_from_tool_result;
+use crate::app::tui::bridge::session_tree::sync_todo_checklist;
 use crate::app::tui::bridge::{
     AskPhase, UiEntry, UiModel, UiPhase, apply_tool_result_to_entries, find_tool_mut,
     upsert_tool_entry,
 };
 
-fn is_todo_tool(name: &str) -> bool {
-    matches!(name, "todo_list" | "todo_rewrite" | "todo_update")
-}
-
 pub fn apply_tools_family(model: &mut UiModel, event: &XyEvent) -> bool {
     match event {
+        XyEvent::TodoUpdated { list } => {
+            // atd13: checklist projection rides the typed event — clients never
+            // re-parse tool-result strings to stay current.
+            sync_todo_checklist(model, list.clone());
+            true
+        }
         XyEvent::ToolExecutionStart { id, name, args } => {
             model.flush_streaming();
             if is_ask_tool(name) {
@@ -52,9 +54,6 @@ pub fn apply_tools_family(model: &mut UiModel, event: &XyEvent) -> bool {
             } else {
                 let _ =
                     apply_tool_result_to_entries(&mut model.entries, id, name, result, *is_error);
-                if !*is_error && is_todo_tool(name) {
-                    sync_todo_checklist_from_tool_result(model, result);
-                }
             }
             if model.phase == UiPhase::Busy {
                 model.status = Some("Working".into());

@@ -97,6 +97,112 @@ fn tool_start_path_preview_matches_after_wire_roundtrip() {
     assert_ne!(preview(&remote), "Read ...");
 }
 
+/// atd13 / att36: todo block header is the item-count summary, body is the
+/// glyph checklist; the checklist projection row rides the typed TodoUpdated
+/// event only — the End event alone MUST NOT create it.
+#[test]
+fn todo_block_humanized_and_checklist_rides_typed_event() {
+    use crate::protocol::session::{TodoItem, TodoList, TodoStatus};
+
+    let mut model = UiModel::new();
+    model.begin_run("plan");
+    apply_xy_event(
+        &mut model,
+        &XyEvent::ToolExecutionStart {
+            id: "td1".into(),
+            name: "todo_rewrite".into(),
+            args: serde_json::json!({"items": [
+                {"id": "a", "content": "one", "status": "in_progress"},
+                {"id": "b", "content": "two"}
+            ]}),
+        },
+    );
+    let tool = |model: &UiModel| -> (String, String) {
+        model
+            .entries
+            .iter()
+            .find_map(|e| match e {
+                UiEntry::Tool {
+                    id,
+                    args_preview,
+                    output,
+                    ..
+                } if id == "td1" => Some((args_preview.clone(), output.clone())),
+                _ => None,
+            })
+            .expect("todo tool entry")
+    };
+    let (preview, _) = tool(&model);
+    assert_eq!(preview, "2 items · 1 in progress");
+    assert!(!preview.contains('{'), "att13: no args JSON in preview");
+
+    apply_xy_event(
+        &mut model,
+        &XyEvent::ToolExecutionEnd {
+            id: "td1".into(),
+            name: "todo_rewrite".into(),
+            result: r#"{"items":[{"id":"a","content":"one","status":"in_progress"},{"id":"b","content":"two","status":"pending"}]}"#.into(),
+            is_error: false,
+        },
+    );
+    let (_, output) = tool(&model);
+    assert_eq!(output, "[~] one\n[ ] two");
+    assert!(
+        model
+            .entries
+            .iter()
+            .all(|e| !matches!(e, UiEntry::Todo { .. })),
+        "atd13: End alone MUST NOT upsert the checklist row"
+    );
+
+    apply_xy_event(
+        &mut model,
+        &XyEvent::TodoUpdated {
+            list: TodoList::new(vec![
+                TodoItem {
+                    id: "a".into(),
+                    content: "one".into(),
+                    status: TodoStatus::InProgress,
+                },
+                TodoItem {
+                    id: "b".into(),
+                    content: "two".into(),
+                    status: TodoStatus::Pending,
+                },
+            ]),
+        },
+    );
+    let todo = model.entries.iter().find_map(|e| match e {
+        UiEntry::Todo {
+            summary,
+            detail_lines,
+        } => Some((summary.clone(), detail_lines.clone())),
+        _ => None,
+    });
+    assert_eq!(
+        todo,
+        Some((
+            "Todo · 0/2".into(),
+            vec!["[~] one".to_string(), "[ ] two".to_string()]
+        ))
+    );
+
+    // Empty list clears the projection row (rewrite-to-empty semantics).
+    apply_xy_event(
+        &mut model,
+        &XyEvent::TodoUpdated {
+            list: TodoList::default(),
+        },
+    );
+    assert!(
+        model
+            .entries
+            .iter()
+            .all(|e| !matches!(e, UiEntry::Todo { .. })),
+        "empty TodoUpdated MUST remove the checklist row"
+    );
+}
+
 #[test]
 fn message_update_tool_path_matches_after_wire_roundtrip() {
     use crate::protocol::message::{AgentMessage, AgentPart, LlmMessage};
