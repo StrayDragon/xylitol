@@ -2,7 +2,7 @@
 name: "llman-sdd-apply-cycle"
 description: "单个变更的闭环：门禁检查→实施→测试→校验→verify 建议→归档→提交。仅手动触发。Agent MUST NOT 自动调用。"
 metadata:
-  version: "0.0.77"
+  version: "0.0.78"
 disable-model-invocation: true
 ---
 
@@ -70,3 +70,6 @@ push / Hosting PR 仅当用户明确要求。
 - `ethics.required_evidence`: `readyToImplement=true`、validate --strict 通过、tasks 全勾、finalize/archive 成功
 - `ethics.refusal_contract`: 门禁或校验自修复 8 轮仍失败 → 报告 blocker，禁止强行归档
 - `ethics.escalation_policy`: 若改动 SDD 工作流 spec/模板，归档前暂停请用户确认
+
+> 命令细节用 `llman sdd <cmd> --help` 查看；命令参考以 CLI 为准，skill 不内嵌命令表。
+> 文中「规约」= 本项目 `llmanspec/specs/` 下的 `.feature` 文件；用 `llman sdd list --specs` / `llman sdd show <capability>` 查全文。

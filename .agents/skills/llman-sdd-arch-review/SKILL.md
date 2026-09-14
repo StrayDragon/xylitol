@@ -2,7 +2,7 @@
 name: "llman-sdd-arch-review"
 description: "扫描 codebase 的薄模块（接口几乎等于实现），找出可以加深（藏更多行为到更小接口后）的候选。当用户想做架构审查、寻找模块加深机会、或想改善代码可测性与 AI 可导航性时使用。"
 metadata:
-  version: "0.0.77"
+  version: "0.0.78"
 ---
 
 # LLMAN SDD Architecture Review
@@ -58,6 +58,9 @@ metadata:
 
 ## 输出
 候选清单（文本；可选 HTML 报告写 OS temp dir 不落 repo）+ 用户选定后的逐问深挖决策记录（回写 proposal；合约变更须经 Specs landing 才回写 live `<capability>.feature`）。
+
+> 命令细节用 `llman sdd <cmd> --help` 查看；命令参考以 CLI 为准，skill 不内嵌命令表。
+> 文中「规约」= 本项目 `llmanspec/specs/` 下的 `.feature` 文件；用 `llman sdd list --specs` / `llman sdd show <capability>` 查全文。
 
 ## Context
 - 先查状态再动手：change/spec 状态以 `llman sdd show/list/validate` 输出为准。

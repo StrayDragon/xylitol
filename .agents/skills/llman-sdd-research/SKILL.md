@@ -2,7 +2,7 @@
 name: "llman-sdd-research"
 description: "以后台 agent 委托外部文献调研。当用户需要针对某个问题查阅官方文档/API/源码等一手资料、或想把阅读文献的活委托给后台 agent 时使用。"
 metadata:
-  version: "0.0.77"
+  version: "0.0.78"
 ---
 
 # LLMAN SDD Research
@@ -39,6 +39,9 @@ metadata:
 ## 与 wayfinder 的协作
 
 `llman-sdd-wayfinder` 的查资料 ticket 委托本 skill 后台解决；解决后回写 ticket proposal 并在 map 的 Decisions-so-far 记一行要点。
+
+> 命令细节用 `llman sdd <cmd> --help` 查看；命令参考以 CLI 为准，skill 不内嵌命令表。
+> 文中「规约」= 本项目 `llmanspec/specs/` 下的 `.feature` 文件；用 `llman sdd list --specs` / `llman sdd show <capability>` 查全文。
 
 ## Context
 - 先查状态再动手：change/spec 状态以 `llman sdd show/list/validate` 输出为准。

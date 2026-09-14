@@ -2,12 +2,12 @@
 name: "llman-sdd-archive"
 description: "归档已完成的 llman SDD 变更。自动合并回基准分支（squash 缺省），再将 change 文档改名到 archive/。在 verify 报告全绿后运行。"
 metadata:
-  version: "0.0.77"
+  version: "0.0.78"
 ---
 
 # LLMAN SDD 归档
 
-使用此 skill 归档已完成的变更。前置：verify 全绿，且变更已 Branch binding、Specs landing 完成（或 `needs_specs_change: false`；归档时 live specs 已在绑定分支上）。`change finalize` **自动合并**到基准分支（目标：`--into` > 绑定 `base_branch` > 默认分支；方式：`--method` > 配置 `sdd.merge_method`，squash 缺省——feature diff + 改名收敛为目标分支单个 commit）、**将** change 文档改名到 `changes/archive/`，然后**自动提交** `archive(sdd): <change-id>`（实现 diff + 改名一次提交；`--no-commit` 跳过）。`change checkpoint` 已移除（r25）。`git push` / Hosting PR 仅为可选。
+使用此 skill 归档已完成的变更。前置：verify 全绿，且变更已 Branch binding、Specs landing 完成（或 `needs_specs_change: false`；归档时 live specs 已在绑定分支上）。`change finalize` **自动合并**到基准分支（目标：`--into` > 绑定 `base_branch` > 默认分支；方式：`--method` > 配置 `sdd.merge_method`，squash 缺省——feature diff + 改名收敛为目标分支单个 commit）、**将** change 文档改名到 `changes/archive/`，然后**自动提交** `archive(sdd): <change-id>`（实现 diff + 改名一次提交；`--no-commit` 跳过）。`change checkpoint` 已移除（无存档点概念：中途不必存档，`change finalize` 不要求干净树）。`git push` / Hosting PR 仅为可选。
 
 ## Pipeline 位置
 
@@ -52,16 +52,16 @@ flowchart LR
   - **任一失败立即停止**，报告剩余未处理 ID。
 - **Git-native 收尾**：
   - 前置：已 Branch binding（`change start` / `attach`）；仍在绑定分支上（或合并后已在目标分支）。
-  - `change archive` / `change finalize` **先自动合并**（目标 `--into` > 绑定 `base_branch` > 默认分支；方式 squash 缺省或 `ff`；目标被其他 worktree 持有时跳过并打印手动命令，r142），**再**将 change 文档改名到 `changes/archive/`——合并失败也不会回滚改名，降级提示显式可见。
+  - `change archive` / `change finalize` **先自动合并**（目标 `--into` > 绑定 `base_branch` > 默认分支；方式 squash 缺省或 `ff`；目标被其他 worktree 持有时跳过并打印手动命令），**再**将 change 文档改名到 `changes/archive/`——合并失败也不会回滚改名，降级提示显式可见。
   - specs 下遗留 `*.feature.delta.toon` 或 `spec.toon` 均为迁移阻断项——跑 `llman sdd project migrate --kind toon2features`。
-  - **默认：`change finalize`（单命令收口）**——门禁 → 自动合并 → 文档改名 → **自动提交** `archive(sdd): <change-id>`（squash 缺省：实现 diff + 改名收敛为目标分支**单个**提交；无需手动 `git commit`；锁定规则改动为报告制 WARNING，见 spec-format r135）：
+  - **默认：`change finalize`（单命令收口）**——门禁 → 自动合并 → 文档改名 → **自动提交** `archive(sdd): <change-id>`（squash 缺省：实现 diff + 改名收敛为目标分支**单个**提交；无需手动 `git commit`；锁定规则改动为报告制 WARNING——只警告不阻断）：
     ```text
     1. 实现 live specs + 代码（工作区可保持脏；分支上提交自由——分段或完全不提交）
     2. llman sdd change finalize <id>    # 门禁 + 合并（squash 缺省）+ 改名 + 自动提交
     3. 可选：git commit --amend          # 调整提交说明；git branch -D <feature>  # squash 后分支不再是祖先，-d 会被 git 拒绝
     ```
     `--no-commit` 跳过自动提交（CI / pre-commit hook 冲突）：finalize 此时留脏工作区并打印手动 `git commit` 命令。幂等重试：自动提交失败后重跑会识别已归档改名并补提交。
-  - **Fallback：普通 `change archive <id>`**——同样的合并 + 改名，无自动提交；要求干净树。`checkpointed`/`checkpoint_sha` 字段已移除（r25）——无需预写任何存档字段，快照审查改用 `change diff`。
+  - **Fallback：普通 `change archive <id>`**——同样的合并 + 改名，无自动提交；要求干净树。`checkpointed`/`checkpoint_sha` 字段已随 checkpoint 一同移除（无存档点概念：`change finalize` 不要求干净树）——无需预写任何存档字段，快照审查用 `change diff`。
 
 ### 3) 全量校验
 - 全部归档完成后执行：`llman sdd validate --all --strict --no-interactive`。
@@ -70,7 +70,7 @@ flowchart LR
 ### 4) Commit 引导
 - finalize 已自动提交（`archive(sdd): <id>`）；使用 `--no-commit` 时手动提交：`git add -A && git commit -m "archive(sdd): <id1>, <id2>"`（或本 skill 建议的格式）。
 - 可选：合并后 `git branch -D <feature>`（squash 后分支不再是 main 祖先，-d 会被拒绝）。push / Hosting PR 仅在用户或项目明确要求远程审查时才做。
-- **破坏性合约变更**（移除/重命名 frontmatter 字段、命令、tag 或 stage 值域）MUST 提供 `migrations/v<from>-v<to>/` 升级路径（README prompt + 一次性脚本；r28）——收口前确认它存在。
+- **破坏性合约变更**（移除/重命名 frontmatter 字段、命令、tag 或 stage 值域）MUST 提供 `migrations/v<from>-v<to>/` 升级路径（README prompt + 一次性脚本，随仓库发布）——收口前确认它存在。
 - **archived `depends_on`**：archive 会把 change 目录改名为 `archive/YYYY-MM-DD-<id>`，但 validate 会把指向 archived/frozen id 的 `depends_on` 识别为 INFO（非 ERROR），所以**归档后无需**手动更新其它 change 的 `depends_on` frontmatter。
 
 > 💡 上一阶段 `llman-sdd-verify`（验证通过）→ 本阶段归档后闭环结束。若 specs 逐渐膨胀，可运行 `llman-sdd-specs-compact` 压缩。
@@ -82,7 +82,8 @@ flowchart LR
   - 需要恢复时：`llman sdd archive thaw --change <YYYY-MM-DD-id>`
 - freeze/thaw 仅用于日期归档目录（`YYYY-MM-DD-*`）；建议保留少量最近目录不冻结。
 
-> 命令细节用 `llman sdd <cmd> --help` 查看；命令参考以 CLI 为准，skill 不内嵌命令表（r139）。
+> 命令细节用 `llman sdd <cmd> --help` 查看；命令参考以 CLI 为准，skill 不内嵌命令表。
+> 文中「规约」= 本项目 `llmanspec/specs/` 下的 `.feature` 文件；用 `llman sdd list --specs` / `llman sdd show <capability>` 查全文。
 
 校验修复（单轨 feature-as-spec）：
 
@@ -105,7 +106,7 @@ flowchart LR
 
 Git-native 护栏：
 - **Branch binding** → **Specs landing**：先 `change start` / `attach`，再在绑定的非默认分支编辑 live `.feature` 并 commit。
-- 锁定规则：修改/删除既有 `@human` 场景以 WARNING 报告（报告制，r135/S0），不阻断 validate/finalize/diff。控制点：git 分支对比 + `llman sdd review` / `change diff` 报告浮现。确认元数据（`rules_touched` / `agent_acked` / `@agent` / `--yes` 锁定语义）已移除（q9 无兼容）。
+- 锁定规则（报告制）：改/删既有 `@human` 场景只出 WARNING，不阻断 validate / change finalize / change diff；报告按 `@req:<id>` 指明被改的是哪条规则。控制点：git 分支对比 + `llman sdd review` / `change diff` 的报告浮现。旧的锁定确认元数据（frontmatter `rules_touched` / `agent_acked`、`@agent` tag、`--yes` 的确认语义）已全部删除，无别名、无兼容层。
 - apply 前须 `readyToImplement=true`（或 `needs_specs_change: false`）。收尾优先 `change finalize`。
 - 勿使用 `change delta` / solidify / `*.feature.delta.toon`。
 

@@ -1,6 +1,9 @@
 # yaml-language-server: $schema=https://raw.githubusercontent.com/StrayDragon/llman/main/artifacts/schema/configs/en/llmanspec-config.schema.json
 schema: spec-driven
 locale: zh-Hans
+change_id:
+  pattern: '^c[0-9]+-(add|update|remove|refactor|fix)-[a-z0-9]+(?:-[a-z0-9]+)*$'
+  template: 'c{{ llman_sdd_unique_id }}-{{ verb }}-{{ subject }}'
 extra_skills:
 - llman-sdd-ff
 - llman-sdd-arch-review

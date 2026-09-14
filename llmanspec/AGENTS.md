@@ -11,11 +11,11 @@ change/spec 的命名、ID、依赖、原子性、语言。架构事实（分层
 
 ### proposal（Change Proposal Frontmatter SSOT）
 
-- **Change ID 格式**：`c{priority}-{verb}-{subject}`。
+- **Change ID 格式**：`c{priority}-{verb}-{subject}`（可选机读化：`llmanspec/config.yaml` 的 `change_id.pattern` / `change_id.template`；未配置时行为与现状一致）。
   - `verb` ∈ `add` / `update` / `remove` / `refactor` / `fix`（新 change 五选一；冻结档案存在历史 verb，不作范本）。
-  - `priority` 为整数。**建议**用 5 的倍数（c05/c10/c1200）——目的是**预留加塞间隙**，方便后续插队；**非**强制 5 倍数。需要插队时直接占用相邻空位。priority **MUST 唯一**。
+  - `priority` 为整数。**建议**用 5 的倍数（c05/c10/c1200）——目的是**预留加塞间隙**，方便后续插队；**非**强制 5 倍数。需要插队时直接占用相邻空位。priority **MUST 唯一**。预览下一个可用号：`llman sdd change next-id`；`change new --from … --dry-run` 只渲染 id 不落盘。
 - **priority 是建议性排序**：实际执行先沿 `depends_on` 依赖边，priority 仅作并列时的 tiebreaker。
-- **frontmatter**：每个 `proposal.md` MUST 含 YAML frontmatter。合法字段以 `llman sdd` 工具 schema 为准：`depends_on`（list，无依赖用 `[]`）/ `blocks` / `branch` / `base_sha` / `needs_specs_change` / `rules_touched` / `agent_acked`；`status`、`title`、`priority`、`author` 等会被 `llman sdd validate` 拒绝。`needs_specs_change` 缺省 true（写 false = 本 change 免 landing specs）；`rules_touched` 声明本 change 实际改动的锁定规则（req-id list）。
+- **frontmatter**：每个 `proposal.md` MUST 含 YAML frontmatter。合法字段以 `llman sdd` 工具 schema 为准：`depends_on`（list，无依赖用 `[]`）/ `blocks` / `branch` / `base_branch` / `base_sha` / `needs_specs_change`；`status`、`title`、`priority`、`author` 等会被 `llman sdd validate` 拒绝。`needs_specs_change` 缺省 true（写 false = 本 change 免 landing specs）。`rules_touched` / `agent_acked` 已移除（v0.0.78；出现即 ERROR）。
 - **依赖门禁**：`depends_on` 引用的 change 全部归档（移入 `changes/archive/`）前，本 change 不可 apply。引用不存在的 change = 校验错误，STOP。
 - **原子性**：每个 change 独立可校验、可归档。
 
@@ -48,12 +48,11 @@ change/spec 的命名、ID、依赖、原子性、语言。架构事实（分层
 - spec 的 `purpose` / requirement statement / scenario 步骤 **MUST 中文**；技术标识符（类型名、路径、命令、req_id）保留英文。规则块场景名用 requirement title；验收场景名用英文 `scenario.id`。
 - **单轨 feature-as-spec（r131）**：每个 capability 恰好一个 live spec 文件 `llmanspec/specs/<capability>/<capability>.feature`；`spec.toon` 已退役，validate 拒绝读取。文件头部注释 `# language:` / `# capability:` / `# purpose:` / `# scope:` 必备。
 - 场景三档（标签决定语义）：
-  - `@req:<id> @human` = **约束规则**（statement 须含 MUST/SHALL/必须/不得/禁止）；已锁定（r135）：改动须在 change frontmatter 声明 `rules_touched: [<req-id>, …]`；
+  - `@req:<id> @human` = **约束规则**（statement 须含 MUST/SHALL/必须/不得/禁止）；已锁定（r135/S0）：增删改以 **WARNING** 报告，**不阻断** validate / finalize / diff；控制点 = git 分支对比 + `llman sdd review` / `change diff` 报告浮现。
   - `@executable`（+ `@req:<id>`）= 验收场景，由 `tests/bdd/bindings_*.rs` 的 `#[scenario(path=…, name=…)]` 按**精确名与步骤文本**绑定；`@req` MUST 指向本文件已定义的规则；
   - `@human @manual` = 人工豁免。
-  - `@agent`（MUST 与 `@human` 同场景）= 允许 agent 经 `--yes` 确认改动的锁定规则标记；`validate --yes` 仅当次生效，`finalize --yes` 落盘（写 `rules_touched` + `agent_acked`）；无标记规则仍须显式声明 `rules_touched`。
 - `背景:`（Background）MUST 紧跟 `功能:` 行（中间不得有空行）——rstest-bdd 才会执行其步骤。
-- 在非默认 feature 分支直接编辑 live `.feature` → `llman sdd change attach` → `llman sdd change finalize`（自动 ff-merge 进默认分支 + 归档改名 + 单提交）。**禁止** `solidify`、`change delta`、新建 `*.feature.delta.toon`。与 `tests/features/` 手写链路可并存。
+- 在非默认 feature 分支直接编辑 live `.feature` → `llman sdd change attach` → `llman sdd change finalize`（自动合并进基准分支 + 归档改名 + 单提交；目标 `--into` > `base_branch` > 默认分支，方式 `--method` > `sdd.merge_method` 缺省 squash）。**禁止** `solidify`、`change delta`、新建 `*.feature.delta.toon`。与 `tests/features/` 手写链路可并存。
 
 ## spec 约束层级（产品级优先）
 
@@ -78,13 +77,15 @@ change/spec 的命名、ID、依赖、原子性、语言。架构事实（分层
 ```text
 实现 live specs + 代码（工作区可脏）
 → llman sdd change finalize <id> [--no-check]
-# finalize 自动：ff-merge 进默认分支 + 归档改名 + 单 git commit（`archive(sdd): <id>`，
-# 打包实现 diff + frontmatter + 改名）；--no-commit 跳过自动提交（CI / hook 场景）
+# finalize 自动：合并进基准分支（squash 缺省 → 目标分支单一收口 commit）+ 归档改名
+# + 单 git commit（`archive(sdd): <id>`，打包实现 diff + frontmatter + 改名）；
+# --no-commit 跳过自动提交（CI / hook 场景）
 ```
 
 - `finalize` **不要求**干净树。
 - 审计仍可用：`git diff base_sha..HEAD` + `branch`。
-- 仅密封（ff-merge + rename）不收实现时用 `llman sdd change archive <id>`。
+- 合并目标已被其他 worktree 占用时：输出 WARNING + 手动命令指引，不回滚 rename（r142）。
+- 仅密封（merge + rename）不收实现时用 `llman sdd change archive <id>`；保留 feature 多 commit 历史可 `--method ff` 或配置 `sdd.merge_method: ff`。
 - 结构门禁先跑：`llman sdd validate <cap|change> --strict --no-check`（快）；再跑带 BDD 的全量 validate / finalize。
 - `finalize`/`archive` 的 `--no-interactive`：接受并忽略。
 
