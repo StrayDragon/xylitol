@@ -29,3 +29,8 @@ mod provider_http_stream_abort;
 #[cfg(test)]
 #[path = "../tests/inner/token_estimator_bench.rs"]
 mod token_estimator_bench;
+
+// c2810 lab: real-session compaction replay (env-gated, `#[ignore]`, not in qa).
+#[cfg(test)]
+#[path = "../tests/inner/lab_compaction_replay.rs"]
+mod lab_compaction_replay;

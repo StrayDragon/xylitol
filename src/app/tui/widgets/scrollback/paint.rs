@@ -54,7 +54,7 @@ pub(super) fn paint_ask_header_line(
 }
 
 /// Format token counts with thousands separators (pi / design fixture).
-pub(super) fn format_token_count(n: u64) -> String {
+pub(crate) fn format_token_count(n: u64) -> String {
     let s = n.to_string();
     let mut out = String::with_capacity(s.len() + s.len() / 3);
     for (i, ch) in s.chars().rev().enumerate() {
@@ -713,6 +713,7 @@ pub(super) fn paint_compaction_block(
     status: CompactionBlockStatus,
     summary: &str,
     tokens_before: u64,
+    tokens_after: Option<u64>,
     detail: Option<&str>,
     ctx: PaintCtx,
 ) -> (Vec<String>, Vec<CachedFoldHit>) {
@@ -740,10 +741,14 @@ pub(super) fn paint_compaction_block(
                 glyphs.fold()
             };
             let mw = marker_cols(marker);
+            let word = match tokens_after {
+                Some(m) => format!("Compacted from {n} → {} tokens", format_token_count(m)),
+                None => format!("Compacted from {n} tokens"),
+            };
             let header = if fold.compaction_expanded {
-                format!("{marker} [compaction] Compacted from {n} tokens")
+                format!("{marker} [compaction] {word}")
             } else {
-                format!("{marker} [compaction] Compacted from {n} tokens (Alt+E to expand)")
+                format!("{marker} [compaction] {word} (Alt+E to expand)")
             };
             let header_row = lines.len();
             push_wrapped(&mut lines, &theme.paint_muted(&header), width);

@@ -117,9 +117,9 @@ pub(crate) fn comp_active_record_counts(entries: &[SessionEntry]) -> (usize, usi
     }
 }
 
-#[given("配置了上下文窗口为 100000 的模型")]
-pub(crate) fn _g_comp_config_window(agent: &AgentState) {
-    agent.context_window.set(100_000);
+#[given("配置了上下文窗口为 {n:u64} 的模型")]
+pub(crate) fn _g_comp_config_window_n(agent: &AgentState, n: u64) {
+    agent.context_window.set(n);
 }
 
 #[given("会话消息估算使用 {tokens:u32} 个 token")]
@@ -146,6 +146,9 @@ pub(crate) fn _g_comp_enabled_false(agent: &AgentState) {
 
 #[when("调用 shouldCompact")]
 pub(crate) fn _w_comp_check(agent: &AgentState) {
+    use crate::agent::compaction::{
+        projected_post_compact_tokens, should_compact, summary_placeholder_tokens,
+    };
     let tokens: u64 = agent
         .last_result
         .borrow()
@@ -157,10 +160,28 @@ pub(crate) fn _w_comp_check(agent: &AgentState) {
     let settings = crate::agent::compaction::CompactionSettings {
         enabled: agent.compaction_enabled.get(),
         reserve_tokens: agent.compaction_reserve_tokens.get(),
-        keep_recent_tokens: 20_000,
+        keep_recent_tokens: agent.compaction_keep_tokens.get(),
     };
-    let should = should_compact(tokens, window, &settings);
+    // c2: floor-aware threshold — overhead defaults to 0 (degenerate reserve formula)
+    // unless a 固定请求开销 given step injected one.
+    let floor = projected_post_compact_tokens(
+        &settings,
+        window,
+        agent.compaction_fixed_overhead.get(),
+        summary_placeholder_tokens(&[]),
+    );
+    let should = should_compact(tokens, window, &settings, floor);
     agent.compaction_result.replace(Some(should));
+}
+
+#[given("compaction keepRecentTokens 为 {n:u64}")]
+pub(crate) fn _g_comp_keep(agent: &AgentState, n: u64) {
+    agent.compaction_keep_tokens.set(n);
+}
+
+#[given("compaction 固定请求开销为 {n:u64} token")]
+pub(crate) fn _g_comp_overhead(agent: &AgentState, n: u64) {
+    agent.compaction_fixed_overhead.set(n);
 }
 
 #[then("返回 true")]

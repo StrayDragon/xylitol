@@ -256,6 +256,8 @@ impl SceneBuilder {
             error_message: None,
             summary: Some(summary.into()),
             tokens_before: Some(tokens_before),
+            tokens_after: None,
+            notice: None,
         })
     }
 

@@ -472,6 +472,8 @@ mod tests {
             summary: "c".into(),
             tokens_before: 101_494,
             detail: None,
+
+            tokens_after: None,
         }
     }
 

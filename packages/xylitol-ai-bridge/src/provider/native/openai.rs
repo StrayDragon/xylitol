@@ -99,6 +99,9 @@ impl OpenAIProvider {
             let mut body = serde_json::to_value(&request).map_err(|e| {
                 AiBridgeError::Provider(anyhow::anyhow!("serialize completions request: {e}"))
             })?;
+            if let Some(max_tokens) = options.max_output_tokens {
+                body["max_completion_tokens"] = serde_json::json!(max_tokens);
+            }
             crate::provider::dialect::apply_completions_thinking(
                 &mut body,
                 &resolved,
@@ -129,6 +132,9 @@ impl OpenAIProvider {
             let mut body = serde_json::to_value(&request).map_err(|e| {
                 AiBridgeError::Provider(anyhow::anyhow!("serialize completions request: {e}"))
             })?;
+            if let Some(max_tokens) = options.max_output_tokens {
+                body["max_completion_tokens"] = serde_json::json!(max_tokens);
+            }
             crate::provider::dialect::apply_completions_thinking(
                 &mut body,
                 &resolved,

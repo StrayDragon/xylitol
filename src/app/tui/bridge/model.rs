@@ -164,6 +164,8 @@ pub enum UiEntry {
         status: CompactionBlockStatus,
         summary: String,
         tokens_before: u64,
+        /// AfterCompaction settlement tokens (c2810); `None` = legacy/resume, no M.
+        tokens_after: Option<u64>,
         /// Short failure / abort detail when not Complete.
         detail: Option<String>,
     },
@@ -399,6 +401,7 @@ impl UiModel {
                     status,
                     summary,
                     tokens_before,
+                    tokens_after,
                     detail,
                 } => match status {
                     CompactionBlockStatus::Pending => {
@@ -407,7 +410,13 @@ impl UiModel {
                     }
                     CompactionBlockStatus::Complete => {
                         lines.push("[compaction]".into());
-                        lines.push(format!("Compacted from {tokens_before} tokens"));
+                        match tokens_after {
+                            Some(m) => lines.push(format!(
+                                "Compacted from {tokens_before} → {} tokens",
+                                crate::app::tui::widgets::format_token_count(*m)
+                            )),
+                            None => lines.push(format!("Compacted from {tokens_before} tokens")),
+                        }
                         if !summary.is_empty() {
                             lines.push(summary.clone());
                         }

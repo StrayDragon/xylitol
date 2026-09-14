@@ -900,6 +900,8 @@ fn compaction_end_restores_working() {
             error_message: None,
             summary: Some("session summary".into()),
             tokens_before: Some(42_000),
+            tokens_after: None,
+            notice: None,
         },
     );
     assert_eq!(model.status.as_deref(), Some("Working"));
@@ -915,6 +917,47 @@ fn compaction_end_restores_working() {
         "expected complete compaction block, got {:?}",
         model.entries
     );
+}
+
+#[test]
+fn compaction_end_notice_tail_inserts_scroll_notice() {
+    let mut model = UiModel::new();
+    model.begin_run("hi");
+    apply_xy_event(
+        &mut model,
+        &XyEvent::CompactionStart {
+            reason: "threshold".into(),
+        },
+    );
+    apply_xy_event(
+        &mut model,
+        &XyEvent::CompactionEnd {
+            result: Some("ok".into()),
+            aborted: false,
+            reason: "threshold".into(),
+            will_retry: false,
+            error_message: None,
+            summary: Some("s".into()),
+            tokens_before: Some(35_840),
+            tokens_after: Some(3_712),
+            notice: Some("Context still ~3712 tokens after compaction".into()),
+        },
+    );
+    let notice_pos = model.entries.iter().position(
+        |e| matches!(e, UiEntry::ScrollNotice { text } if text.contains("Context still ~3712")),
+    );
+    assert!(
+        notice_pos.is_some(),
+        "diagnostic must land as a scroll notice: {:?}",
+        model.entries
+    );
+    // The compaction block itself stays Complete; the notice must come after it.
+    let block_pos = model
+        .entries
+        .iter()
+        .position(|e| matches!(e, UiEntry::Compaction { .. }))
+        .expect("compaction block");
+    assert!(notice_pos.unwrap() > block_pos);
 }
 
 #[test]
@@ -937,6 +980,8 @@ fn compaction_end_aborted_restores_working() {
             error_message: None,
             summary: None,
             tokens_before: None,
+            tokens_after: None,
+            notice: None,
         },
     );
     assert_eq!(model.status.as_deref(), Some("Working"));

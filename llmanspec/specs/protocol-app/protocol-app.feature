@@ -91,7 +91,7 @@
 
   @req:pa-wire3 @human
   场景: CompactionEnd 载荷下行
-    - wire 的 CompactionEnd 事件 MUST 与 XyEvent::CompactionEnd 同构携带 result、aborted、reason、will_retry、error_message、summary、tokens_before 全部载荷；经 JSON 序列化与反序列化往返 MUST 保真，反序列化侧 MUST NOT 把丢载荷重建为伪成功完成态；旧的无载荷形态 MUST 可解码为缺省载荷（None/false/空）且 MUST NOT panic。attach 客户端据此呈现真实 Compacted from N tokens 与可展开 summary。
+    - wire 的 CompactionEnd 事件 MUST 与 XyEvent::CompactionEnd 同构携带 result、aborted、reason、will_retry、error_message、summary、tokens_before、tokens_after、notice 全部载荷；经 JSON 序列化与反序列化往返 MUST 保真，反序列化侧 MUST NOT 把丢载荷重建为伪成功完成态；旧的无载荷形态 MUST 可解码为缺省载荷（None/false/空）且 MUST NOT panic。attach 客户端据此呈现真实 Compacted from N（或含 tokens_after 的 N → M）tokens 与可展开 summary，notice 携带一次性诊断时以滚动提示呈现。
 
   @req:pa-map5 @human
   场景: 上下文估计方法

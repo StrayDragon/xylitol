@@ -116,6 +116,8 @@ fn w_stream_events_roundtrip(protocol_bdd: &ProtocolBdd) {
             error_message: None,
             summary: Some("prior turns".into()),
             tokens_before: Some(63_737),
+            tokens_after: None,
+            notice: None,
         },
     ];
     let mut parsed = Vec::new();

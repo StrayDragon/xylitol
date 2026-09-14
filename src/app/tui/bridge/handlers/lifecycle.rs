@@ -24,6 +24,8 @@ pub fn apply_lifecycle_family(model: &mut UiModel, event: &XyEvent) -> bool {
             error_message,
             summary,
             tokens_before,
+            tokens_after,
+            notice,
             ..
         } => {
             if *aborted {
@@ -32,6 +34,7 @@ pub fn apply_lifecycle_family(model: &mut UiModel, event: &XyEvent) -> bool {
                     CompactionBlockStatus::Aborted,
                     String::new(),
                     0,
+                    None,
                     Some("compaction aborted".into()),
                 );
             } else if let Some(err) = error_message {
@@ -40,6 +43,7 @@ pub fn apply_lifecycle_family(model: &mut UiModel, event: &XyEvent) -> bool {
                     CompactionBlockStatus::Failed,
                     String::new(),
                     0,
+                    None,
                     Some(err.clone()),
                 );
             } else {
@@ -48,8 +52,16 @@ pub fn apply_lifecycle_family(model: &mut UiModel, event: &XyEvent) -> bool {
                     CompactionBlockStatus::Complete,
                     summary.clone().unwrap_or_default(),
                     tokens_before.unwrap_or(0),
+                    *tokens_after,
                     None,
                 );
+                // c28: one-shot actionable diagnostic rides as a scroll notice;
+                // the compaction block itself keeps its fold state.
+                if let Some(text) = notice {
+                    model
+                        .entries
+                        .push(UiEntry::ScrollNotice { text: text.clone() });
+                }
             }
             // Sticky Compacting would block layout status; restore like ToolExecutionEnd.
             if model.phase == UiPhase::Busy {
@@ -133,21 +145,25 @@ fn push_compaction_pending(model: &mut UiModel) {
         status: CompactionBlockStatus::Pending,
         summary: String::new(),
         tokens_before: 0,
+        tokens_after: None,
         detail: None,
     });
 }
 
+#[allow(clippy::too_many_arguments)]
 fn finish_compaction(
     model: &mut UiModel,
     status: CompactionBlockStatus,
     summary: String,
     tokens_before: u64,
+    tokens_after: Option<u64>,
     detail: Option<String>,
 ) {
     if let Some(UiEntry::Compaction {
         status: slot_status,
         summary: slot_summary,
         tokens_before: slot_tokens,
+        tokens_after: slot_tokens_after,
         detail: slot_detail,
     }) = model.entries.iter_mut().rev().find(|e| {
         matches!(
@@ -161,6 +177,7 @@ fn finish_compaction(
         *slot_status = status;
         *slot_summary = summary;
         *slot_tokens = tokens_before;
+        *slot_tokens_after = tokens_after;
         *slot_detail = detail;
         return;
     }
@@ -168,6 +185,7 @@ fn finish_compaction(
         status,
         summary,
         tokens_before,
+        tokens_after,
         detail,
     });
 }

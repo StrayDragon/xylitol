@@ -13,6 +13,8 @@ mod tests;
 pub use cache::ScrollbackPaintCache;
 // Keep `scrollback::{StreamingAssistantPaint, find_stable_markdown_prefix_end}`
 // as the public module path (widgets re-exports the latter under cfg(test)).
+/// Thousands-separated token count for cross-plane compaction word forms (c2810).
+pub(crate) use paint::format_token_count;
 #[allow(unused_imports)]
 pub use paint::{StreamingAssistantPaint, find_stable_markdown_prefix_end};
 
@@ -417,11 +419,13 @@ pub fn render_scrollback(
                 status,
                 summary,
                 tokens_before,
+                tokens_after,
                 detail,
             } => paint_compaction_block(
                 *status,
                 summary,
                 *tokens_before,
+                *tokens_after,
                 detail.as_deref(),
                 paint_ctx,
             ),

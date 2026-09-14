@@ -884,6 +884,8 @@ fn run_react_loop(cfg: ReActConfig) -> impl Stream<Item = XyEvent> + Send {
         let mut run_model: Option<(String, Arc<dyn XyModel>)> = None;
         // c1660: at most one overflow compact-and-retry per run.
         let mut overflow_recovery_attempted = false;
+        // c28: one-shot post-compact floor diagnostic, once per session/run.
+        let mut compaction_floor_notice_emitted = false;
         let mut stream_clock = StreamNodeClock::new();
         stream_clock.stamp(StreamNode::AgentStart);
         // One OTEL/fastrace tree per user-triggered run (c1495 / c1555 turn preview).
@@ -1105,6 +1107,7 @@ fn run_react_loop(cfg: ReActConfig) -> impl Stream<Item = XyEvent> + Send {
                             &fixed_context,
                             &mut history,
                             &mut overflow_recovery_attempted,
+                            &mut compaction_floor_notice_emitted,
                             None,
                             turn_obs_parent,
                             &obs_session,
@@ -1368,6 +1371,7 @@ fn run_react_loop(cfg: ReActConfig) -> impl Stream<Item = XyEvent> + Send {
                         &fixed_context,
                         &mut history,
                         &mut overflow_recovery_attempted,
+                        &mut compaction_floor_notice_emitted,
                         &hooks,
                         &hook_bus,
                         turn,
@@ -1548,6 +1552,7 @@ fn run_react_loop(cfg: ReActConfig) -> impl Stream<Item = XyEvent> + Send {
                     &fixed_context,
                     &mut history,
                     &mut overflow_recovery_attempted,
+                    &mut compaction_floor_notice_emitted,
                     &hooks,
                     &hook_bus,
                     turn,

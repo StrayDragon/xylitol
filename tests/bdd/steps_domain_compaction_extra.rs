@@ -551,7 +551,7 @@ pub(crate) fn w_comp_reserve_trigger(_agent: &AgentState) { /* set in given */
 pub(crate) fn t_comp_threshold_ok(agent: &AgentState) {
     assert!(result_ok_str(&agent.last_result).contains("shared:true"));
 }
-#[then("触发比较式为占用大于窗口减 reserveTokens")]
+#[then("触发比较式为占用大于有效触发阈值 max(window 减 reserveTokens, 压后地板 加 迟滞带)")]
 pub(crate) fn t_comp_reserve_formula(agent: &AgentState) {
     assert!(
         result_ok_str(&agent.last_result).contains("formula:reserve"),
@@ -624,7 +624,23 @@ pub(crate) fn w_comp_turn_end_check(agent: &AgentState) {
         keep_recent_tokens: 20_000,
     };
     let aborted = result_ok_str(&agent.last_result).contains("aborted:true");
-    let should = !aborted && should_compact(tokens, window, &settings);
+    // c2 floor-aware threshold: overhead defaults to 0 unless a given injected one
+    // (degenerates to the reserve formula, matching pre-c2 semantics in scenarios).
+    let floor = {
+        use crate::agent::compaction::{projected_post_compact_tokens, summary_placeholder_tokens};
+        let settings = CompactionSettings {
+            enabled: true,
+            reserve_tokens: agent.compaction_reserve_tokens.get(),
+            keep_recent_tokens: agent.compaction_keep_tokens.get(),
+        };
+        projected_post_compact_tokens(
+            &settings,
+            window,
+            agent.compaction_fixed_overhead.get(),
+            summary_placeholder_tokens(&[]),
+        )
+    };
+    let should = !aborted && should_compact(tokens, window, &settings, floor);
     agent.compaction_result.replace(Some(should));
     if should {
         agent.last_result.replace(Some(Ok(format!(
@@ -676,7 +692,7 @@ pub(crate) fn w_comp_force_path(agent: &AgentState) {
     let tokens: u64 = 40_000;
     let window = agent.context_window.get();
     assert!(
-        !should_compact(tokens, window, &settings),
+        !should_compact(tokens, window, &settings, 0),
         "fixture must be under reserve gate"
     );
     // Simulate a session with content (not last=compaction); pi-shaped messages.
@@ -1421,7 +1437,7 @@ pub(crate) fn g_comp_split_ready(agent: &AgentState) {
     // pi: tokens > window - reserve → 90_001 > 90_000
     agent
         .compaction_result
-        .replace(Some(should_compact(90_001, 100_000, &settings)));
+        .replace(Some(should_compact(90_001, 100_000, &settings, 0)));
 }
 
 #[when("分别调用 should_compact、find_cut_point 与 compact_session")]

@@ -57,6 +57,8 @@ impl AgentCapabilities {
                 Some(&self.fixed_request_context()),
                 None,
                 &self.obs_session_snapshot_from_store().await,
+                // Library path holds no session-scoped c28 flag → no diagnostic.
+                None,
             )
             .await?;
 

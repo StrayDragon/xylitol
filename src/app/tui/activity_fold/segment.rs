@@ -221,6 +221,8 @@ mod tests {
             summary: "c".into(),
             tokens_before: 1,
             detail: None,
+
+            tokens_after: None,
         }
     }
 

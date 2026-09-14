@@ -43,6 +43,10 @@ pub struct AiBridgeGenerateOptions {
     /// System prompt injected each request via the adapter's formal channel
     /// (Responses `developer`/`system`, Completions system message, Anthropic `system`).
     pub system_prompt: Option<String>,
+    /// Output budget for this single request (Anthropic `max_tokens`, Completions
+    /// `max_completion_tokens`, Responses `max_output_tokens`). `None` = adapter
+    /// default (historical behavior).
+    pub max_output_tokens: Option<u32>,
     /// Optional fastrace parent for `llm.request` nesting (iteration / compaction).
     pub obs_parent: Option<SpanContext>,
     /// Generate-scoped obs session snapshot. HTTP attribution and `llm.request`
@@ -59,6 +63,7 @@ impl Default for AiBridgeGenerateOptions {
             level_map: HashMap::new(),
             thinking_budgets: None,
             system_prompt: None,
+            max_output_tokens: None,
             obs_parent: None,
             obs_session: ObsSessionContext::default(),
         }

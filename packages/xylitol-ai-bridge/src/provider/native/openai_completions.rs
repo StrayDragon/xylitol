@@ -334,6 +334,7 @@ mod tests {
             level_map: map,
             thinking_budgets: None,
             system_prompt: None,
+            max_output_tokens: None,
             obs_parent: None,
             obs_session: Default::default(),
         };

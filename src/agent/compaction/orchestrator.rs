@@ -81,6 +81,8 @@ impl CompactionOrchestrator {
                     error_message: Some(error_message),
                     summary: None,
                     tokens_before: None,
+                    tokens_after: None,
+                    notice: None,
                 })
                 .await;
             return Err(err);
@@ -112,31 +114,31 @@ impl CompactionOrchestrator {
                 result.as_ref().err().map(|e| e.to_string()).as_deref(),
             );
         }
-        event_sink
-            .emit(&XyEvent::CompactionEnd {
-                result: result.as_ref().ok().map(|_| "ok".to_string()),
-                aborted: false,
-                reason: "manual".into(),
-                will_retry: false,
-                error_message: result
-                    .as_ref()
-                    .err()
-                    .map(|e| format!("compaction failed: {e}")),
-                summary: result.as_ref().ok().map(|e| e.summary.clone()),
-                tokens_before: result.as_ref().ok().map(|e| e.tokens_before),
-            })
-            .await;
-
         if result.is_ok() {
-            emit_after_compaction_settlement(
-                store,
-                sid,
-                event_sink,
-                fixed_context,
-                None,
-                obs_session,
-            )
-            .await;
+            // c26/c28: settle BEFORE the end event so CompactionEnd can carry
+            // tokens_after; manual never carries a c28 notice.
+            let settled =
+                compute_after_compaction_settlement(store, sid, fixed_context, None, obs_session)
+                    .await;
+            event_sink
+                .emit(&XyEvent::CompactionEnd {
+                    result: result.as_ref().ok().map(|_| "ok".to_string()),
+                    aborted: false,
+                    reason: "manual".into(),
+                    will_retry: false,
+                    error_message: result
+                        .as_ref()
+                        .err()
+                        .map(|e| format!("compaction failed: {e}")),
+                    summary: result.as_ref().ok().map(|e| e.summary.clone()),
+                    tokens_before: result.as_ref().ok().map(|e| e.tokens_before),
+                    tokens_after: settled.as_ref().map(|s| s.estimate.tokens),
+                    notice: None,
+                })
+                .await;
+            if let Some(settled) = settled {
+                emit_settlement_event(event_sink, &settled).await;
+            }
         }
 
         result?;
@@ -159,6 +161,7 @@ impl CompactionOrchestrator {
         fixed_context: Option<&FixedRequestContext>,
         turn_obs_parent: Option<fastrace::prelude::SpanContext>,
         obs_session: &xylitol_ai_bridge::ObsSessionContext,
+        floor_notice_emitted: Option<&mut bool>,
     ) -> Result<OverflowCompactOutcome, CompactionError> {
         if !self.settings.enabled {
             return Ok(OverflowCompactOutcome::Skipped);
@@ -201,6 +204,7 @@ impl CompactionOrchestrator {
                     fixed_context,
                     turn_obs_parent,
                     obs_session,
+                    floor_notice_emitted,
                 )
                 .await
                 .map(|ran| {
@@ -222,6 +226,8 @@ impl CompactionOrchestrator {
                     error_message: Some(OVERFLOW_ONCE_MSG.into()),
                     summary: None,
                     tokens_before: None,
+                    tokens_after: None,
+                    notice: None,
                 })
                 .await;
             return Ok(OverflowCompactOutcome::FailedOnce);
@@ -239,6 +245,7 @@ impl CompactionOrchestrator {
             fixed_context,
             turn_obs_parent,
             obs_session,
+            floor_notice_emitted,
         )
         .await
         .map(|ran| {
@@ -268,6 +275,7 @@ impl CompactionOrchestrator {
         fixed_context: Option<&FixedRequestContext>,
         turn_obs_parent: Option<fastrace::prelude::SpanContext>,
         obs_session: &xylitol_ai_bridge::ObsSessionContext,
+        floor_notice_emitted: Option<&mut bool>,
     ) -> Result<bool, CompactionError> {
         if !self.settings.enabled {
             return Ok(false);
@@ -300,7 +308,16 @@ impl CompactionOrchestrator {
             return Ok(false);
         }
 
-        if !should_compact(estimate.tokens, context_window, &self.settings) {
+        // c2: the floor is independent of the tokens estimate — it is decided by
+        // settings + window + the leaf's measured summary, not by the estimate.
+        let overhead = fixed_context.map_or(0, FixedRequestContext::overhead_tokens);
+        let floor = super::projected_post_compact_tokens(
+            &self.settings,
+            context_window,
+            overhead,
+            super::summary_placeholder_tokens(&entries),
+        );
+        if !should_compact(estimate.tokens, context_window, &self.settings, floor) {
             return Ok(false);
         }
 
@@ -321,6 +338,7 @@ impl CompactionOrchestrator {
             fixed_context,
             turn_obs_parent,
             obs_session,
+            floor_notice_emitted,
         )
         .await
     }
@@ -339,6 +357,7 @@ impl CompactionOrchestrator {
         fixed_context: Option<&FixedRequestContext>,
         turn_obs_parent: Option<fastrace::prelude::SpanContext>,
         obs_session: &xylitol_ai_bridge::ObsSessionContext,
+        floor_notice_emitted: Option<&mut bool>,
     ) -> Result<bool, CompactionError> {
         let overhead = fixed_context.map_or(0, FixedRequestContext::overhead_tokens);
         if let Err(err) = prepare_compaction(entries, &self.settings, context_window, overhead) {
@@ -397,6 +416,38 @@ impl CompactionOrchestrator {
         if let Some(obs) = obs {
             obs.finish(will_retry_end, false, err_msg.as_deref());
         }
+
+        // c26/c28: settle BEFORE the end event (quiet compute), so CompactionEnd
+        // carries tokens_after + the one-shot c28 notice, then the settlement
+        // event goes out (order preserved: end → settlement).
+        let mut tokens_after = None;
+        let mut notice = None;
+        let mut settled_event = None;
+        if result.is_ok()
+            && let Some(settled) = compute_after_compaction_settlement(
+                store,
+                sid,
+                fixed_context,
+                turn_obs_parent,
+                obs_session,
+            )
+            .await
+        {
+            tokens_after = Some(settled.estimate.tokens);
+            if context_window > 0
+                && settled.estimate.tokens >= context_window
+                && let Some(flag) = floor_notice_emitted
+                && !*flag
+            {
+                *flag = true;
+                notice = Some(floor_diagnostic_notice(
+                    settled.estimate.tokens,
+                    context_window,
+                ));
+            }
+            settled_event = Some(settled);
+        }
+
         event_sink
             .emit(&XyEvent::CompactionEnd {
                 result: ok_result,
@@ -406,19 +457,13 @@ impl CompactionOrchestrator {
                 error_message: err_msg,
                 summary,
                 tokens_before,
+                tokens_after,
+                notice,
             })
             .await;
 
-        if result.is_ok() {
-            emit_after_compaction_settlement(
-                store,
-                sid,
-                event_sink,
-                fixed_context,
-                turn_obs_parent,
-                obs_session,
-            )
-            .await;
+        if let Some(settled) = settled_event {
+            emit_settlement_event(event_sink, &settled).await;
         }
 
         match result {
@@ -428,24 +473,23 @@ impl CompactionOrchestrator {
     }
 }
 
-async fn emit_after_compaction_settlement(
+/// Quietly compute the AfterCompaction settlement (c25/c26) without emitting:
+/// estimate of summary row + kept tail + fixed request overhead — the next main
+/// request's size. The stale pre-compact Api anchor is dropped inside the estimator.
+async fn compute_after_compaction_settlement(
     store: &dyn XySessionStore,
     sid: &str,
-    event_sink: &dyn XyEventSink,
     fixed_context: Option<&FixedRequestContext>,
     turn_obs_parent: Option<fastrace::prelude::SpanContext>,
     obs_session: &xylitol_ai_bridge::ObsSessionContext,
-) {
+) -> Option<crate::agent::compaction::settlement::ContextTokenSettlement> {
     use crate::agent::compaction::settlement::{
         ContextTokenSettlementReason, settle_from_session_entries,
     };
     let Ok(fresh) = store.load_leaf_branch(sid).await else {
-        return;
+        return None;
     };
-    // c25: AfterCompaction placeholder — estimate of summary row + kept tail +
-    // fixed request overhead (system prompt + tools), the next request's size.
-    // The stale pre-compact Api anchor is dropped inside the estimator.
-    let settled = settle_from_session_entries(
+    Some(settle_from_session_entries(
         &fresh,
         &EstimateOpts {
             fixed_context: fixed_context.cloned(),
@@ -454,26 +498,44 @@ async fn emit_after_compaction_settlement(
             ..Default::default()
         },
         ContextTokenSettlementReason::AfterCompaction,
-    );
+    ))
+}
+
+async fn emit_settlement_event(
+    event_sink: &dyn XyEventSink,
+    settled: &crate::agent::compaction::settlement::ContextTokenSettlement,
+) {
     event_sink
         .emit(&XyEvent::ContextTokenSettlement {
-            estimate: settled.estimate,
+            estimate: settled.estimate.clone(),
             reason: settled.reason.as_str().to_string(),
             generation: settled.generation,
         })
         .await;
 }
 
-/// Check if compaction should trigger (pi-aligned reserve formula).
+/// c28 one-shot actionable diagnostic copy (product scroll-notice register).
+fn floor_diagnostic_notice(tokens_after: u64, context_window: u64) -> String {
+    format!(
+        "Context still ~{tokens_after} tokens after compaction (window {context_window}) — lower keepRecentTokens, raise contextWindow, or trim tool surface"
+    )
+}
+
+/// Check if compaction should trigger (c2 floor-aware threshold).
+///
+/// `post_compact_floor` is the [`crate::agent::compaction::projected_post_compact_tokens`]
+/// projection; `0` degenerates to the pi reserve formula `window − reserve`.
 pub fn should_compact(
     context_tokens: u64,
     context_window: u64,
     settings: &CompactionSettings,
+    post_compact_floor: u64,
 ) -> bool {
     if !settings.enabled || context_window == 0 {
         return false;
     }
-    context_tokens > context_window.saturating_sub(settings.reserve_tokens)
+    context_tokens
+        > super::effective_trigger_threshold(context_window, settings, post_compact_floor)
 }
 
 fn assistant_is_aborted(assistant: Option<&AgentMessage>) -> bool {
@@ -761,9 +823,176 @@ mod tests {
             Ev::CompactionEnd {
                 tokens_before: Some(_),
                 summary: Some(_),
+                tokens_after: Some(_),
+                notice: None,
                 ..
             }
         )));
+    }
+
+    /// c28: threshold-path compact whose post-compact projection sits at/over the
+    /// window emits the actionable diagnostic exactly once per session flag; a
+    /// second qualifying compact does not repeat it.
+    #[tokio::test(flavor = "current_thread")]
+    async fn floor_notice_fires_once_and_manual_exempt() {
+        use crate::infra::provider::{ScenarioStep, fake_xy_model};
+        use crate::infra::session::SessionManager;
+        use crate::protocol::lifecycle::XyEvent as Ev;
+        use crate::protocol::message::AgentMessage;
+
+        // window 3000 / reserve 512 / keep 2000 / overhead 3000 tokens.
+        // clamp saturates to 0; floor = 3000+0+2048 = 5048; threshold ≈ 6310.
+        // Post-compact settlement ≈ overhead + small rows ≈ 3.2k ≥ window → the
+        // c28 diagnostic condition holds for both qualifying compacts.
+        let window: u64 = 3_000;
+        let overhead_tokens: u64 = 3_000;
+        let big_summary = format!("## Goal\n{}", "x".repeat(12_000));
+
+        let mgr = SessionManager::in_memory();
+        let sid = "floor-notice";
+        mgr.create(sid, Some("."), None).await.unwrap();
+        let sink = std::sync::Arc::new(RecordingSink(std::sync::Mutex::new(Vec::new())));
+        let orch = CompactionOrchestrator::new(CompactionSettings {
+            enabled: true,
+            reserve_tokens: 512,
+            keep_recent_tokens: 2_000,
+        });
+        let fixed = FixedRequestContext {
+            system_prompt: Some("S".repeat((overhead_tokens * 4) as usize)),
+            tool_schemas: Vec::new(),
+        };
+        let opts = EstimateOpts {
+            fixed_context: Some(fixed.clone()),
+            ..Default::default()
+        };
+        let mut flag = false;
+
+        for i in 0..100 {
+            append_turn(&mgr, sid, i).await;
+        }
+        let model = fake_xy_model("sum", vec![ScenarioStep::text(big_summary.clone())]);
+        orch.maybe_auto_compact(
+            &mgr,
+            sid,
+            model.as_ref(),
+            sink.as_ref(),
+            window,
+            &opts,
+            None,
+            None,
+            Some(&fixed),
+            None,
+            &Default::default(),
+            Some(&mut flag),
+        )
+        .await
+        .expect("first auto compact");
+
+        for i in 0..100 {
+            append_turn(&mgr, sid, i).await;
+        }
+        let model = fake_xy_model("sum", vec![ScenarioStep::text(big_summary.clone())]);
+        orch.maybe_auto_compact(
+            &mgr,
+            sid,
+            model.as_ref(),
+            sink.as_ref(),
+            window,
+            &opts,
+            None,
+            None,
+            Some(&fixed),
+            None,
+            &Default::default(),
+            Some(&mut flag),
+        )
+        .await
+        .expect("second auto compact");
+
+        let events = sink.0.lock().unwrap().clone();
+        let ends: Vec<_> = events
+            .iter()
+            .filter_map(|e| match e {
+                Ev::CompactionEnd {
+                    result: Some(_),
+                    tokens_after,
+                    notice,
+                    ..
+                } => Some((*tokens_after, notice.clone())),
+                _ => None,
+            })
+            .collect();
+        assert_eq!(ends.len(), 2, "two successful auto compacts: {ends:?}");
+        let noticed = ends.iter().filter(|(_, n)| n.is_some()).count();
+        assert_eq!(noticed, 1, "diagnostic must fire exactly once: {ends:?}");
+        assert!(flag, "once flag must be set after the first notice");
+        assert!(
+            ends.iter().all(|(m, _)| m.is_some_and(|v| v >= window)),
+            "post-compact projection must sit at/over the window: {ends:?}"
+        );
+    }
+
+    /// c2 anti-churn: 32k-shape small window — appended turns must NOT compact
+    /// every turn-end; each compact must buy at least the hysteresis band.
+    #[tokio::test(flavor = "current_thread")]
+    async fn floor_threshold_bounds_compaction_frequency() {
+        use crate::infra::provider::{ScenarioStep, fake_xy_model};
+        use crate::infra::session::SessionManager;
+        use crate::protocol::message::AgentMessage;
+
+        let window: u64 = 32_768;
+        let overhead_tokens: u64 = 9_000;
+        let mgr = SessionManager::in_memory();
+        let sid = "floor-churn";
+        mgr.create(sid, Some("."), None).await.unwrap();
+
+        let sink = std::sync::Arc::new(RecordingSink(std::sync::Mutex::new(Vec::new())));
+        let orch = CompactionOrchestrator::new(CompactionSettings {
+            enabled: true,
+            reserve_tokens: 16_384,
+            keep_recent_tokens: 20_000,
+        });
+        let fixed = FixedRequestContext {
+            system_prompt: Some("S".repeat((overhead_tokens * 4) as usize)),
+            tool_schemas: Vec::new(),
+        };
+        let opts = EstimateOpts {
+            fixed_context: Some(fixed.clone()),
+            ..Default::default()
+        };
+        let mut flag = false;
+
+        let mut compactions = 0usize;
+        for i in 0..240 {
+            append_turn(&mgr, sid, i).await;
+            let model = fake_xy_model("sum", vec![ScenarioStep::text("## Goal\ns")]);
+            let ran = orch
+                .maybe_auto_compact(
+                    &mgr,
+                    sid,
+                    model.as_ref(),
+                    sink.as_ref(),
+                    window,
+                    &opts,
+                    None,
+                    None,
+                    Some(&fixed),
+                    None,
+                    &Default::default(),
+                    Some(&mut flag),
+                )
+                .await
+                .expect("auto compact");
+            compactions += usize::from(ran);
+        }
+        // 240 turns ≈ 48k tokens + 9k overhead. The old reserve-only formula
+        // compacted on essentially every turn-end once over threshold (200+).
+        // The floor-aware threshold buys a ≈10-turn cycle here (≈24 rounds) —
+        // every compact ≥ the hysteresis band instead of a no-gain rewrite.
+        assert!(
+            compactions > 1 && compactions <= 40,
+            "floor threshold must bound churn, got {compactions} compactions in 240 turns"
+        );
     }
 
     /// otel19: prepare early-exit MUST NOT export `agent.compaction`.
@@ -814,19 +1043,19 @@ mod tests {
             enabled: false,
             ..Default::default()
         };
-        assert!(!should_compact(100_000, 200_000, &s));
+        assert!(!should_compact(100_000, 200_000, &s, 0));
     }
 
     #[test]
     fn should_compact_window_zero() {
         let s = CompactionSettings::default();
-        assert!(!should_compact(100_000, 0, &s));
+        assert!(!should_compact(100_000, 0, &s, 0));
     }
 
     #[test]
     fn should_compact_not_exceeded() {
         let s = CompactionSettings::default();
-        assert!(!should_compact(50_000, 200_000, &s));
+        assert!(!should_compact(50_000, 200_000, &s, 0));
     }
 
     #[test]
@@ -835,19 +1064,81 @@ mod tests {
             reserve_tokens: 1000,
             ..Default::default()
         };
-        assert!(should_compact(200_000, 200_000, &s));
+        assert!(should_compact(200_000, 200_000, &s, 0));
     }
 
     #[test]
     fn should_compact_exact_boundary_not_trigger() {
         let s = CompactionSettings::default();
-        assert!(!should_compact(183_616, 200_000, &s));
+        assert!(!should_compact(183_616, 200_000, &s, 0));
     }
 
     #[test]
     fn should_compact_one_over_boundary() {
         let s = CompactionSettings::default();
-        assert!(should_compact(183_617, 200_000, &s));
+        assert!(should_compact(183_617, 200_000, &s, 0));
+    }
+
+    /// c2 32k regression: real-measured shape (window 32768 / reserve 16384 /
+    /// keep 20000 / overhead ≈9k, no prior summary) — the old reserve formula
+    /// triggered below the floor and compacted every turn (40/40). The
+    /// floor-aware threshold must hold below 23,040 and fire above it.
+    #[test]
+    fn floor_threshold_holds_32k_shape() {
+        let s = CompactionSettings {
+            enabled: true,
+            reserve_tokens: 16_384,
+            keep_recent_tokens: 20_000,
+        };
+        let floor = crate::agent::compaction::projected_post_compact_tokens(
+            &s,
+            32_768,
+            9_000,
+            crate::agent::compaction::summary_placeholder_tokens(&[]),
+        );
+        assert_eq!(floor, 9_000 + 7_384 + 2_048);
+        let threshold = crate::agent::compaction::effective_trigger_threshold(32_768, &s, floor);
+        assert_eq!(threshold, 23_040);
+        assert!(!should_compact(20_000, 32_768, &s, floor));
+        assert!(should_compact(23_041, 32_768, &s, floor));
+    }
+
+    #[test]
+    fn floor_zero_degenerates_to_reserve_formula() {
+        let s = CompactionSettings {
+            enabled: true,
+            reserve_tokens: 16_384,
+            keep_recent_tokens: 20_000,
+        };
+        assert!(!should_compact(16_384, 32_768, &s, 0));
+        assert!(should_compact(16_385, 32_768, &s, 0));
+    }
+
+    #[test]
+    fn summary_placeholder_measures_latest_entry() {
+        use crate::protocol::session::{CompactionEntry, EntryBase};
+        let entry = CompactionEntry {
+            base: EntryBase {
+                entry_type: "compaction".into(),
+                id: "c1".into(),
+                parent_id: None,
+                timestamp: 1,
+            },
+            summary: "x".repeat(8_192),
+            first_kept_entry_id: "m1".into(),
+            tokens_before: 1_000,
+            details: None,
+            from_hook: None,
+        };
+        let entries = vec![SessionEntry::Compaction(entry)];
+        assert_eq!(
+            crate::agent::compaction::summary_placeholder_tokens(&entries),
+            2_048
+        );
+        assert_eq!(
+            crate::agent::compaction::summary_placeholder_tokens(&[]),
+            2_048
+        );
     }
 
     #[test]
@@ -865,5 +1156,33 @@ mod tests {
             diagnostics: Vec::new(),
         });
         assert!(assistant_is_aborted(Some(&msg)));
+    }
+
+    /// Two 400-char messages ≈ 200 tokens per appended turn (heuristic chars/4).
+    async fn append_turn(mgr: &crate::infra::session::SessionManager, sid: &str, i: usize) {
+        for (id, role, body) in [
+            (format!("u{i}"), "user", "x".repeat(400)),
+            (format!("a{i}"), "assistant", "y".repeat(400)),
+        ] {
+            let msg = if role == "user" {
+                AgentMessage::user(body)
+            } else {
+                AgentMessage::assistant(body)
+            };
+            let _ = mgr
+                .append(
+                    sid,
+                    &SessionEntry::Message(crate::protocol::session::MessageEntry {
+                        base: crate::protocol::session::EntryBase {
+                            entry_type: "message".into(),
+                            id,
+                            parent_id: None,
+                            timestamp: 0,
+                        },
+                        message: serde_json::to_value(&msg).unwrap(),
+                    }),
+                )
+                .await;
+        }
     }
 }

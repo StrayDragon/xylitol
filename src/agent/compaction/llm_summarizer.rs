@@ -102,7 +102,7 @@ Be concise. Focus on what's needed to understand the kept suffix."#;
 pub(super) async fn generate_complete(
     model: &dyn XyModel,
     messages: Vec<LlmMessage>,
-    _max_tokens: u32,
+    max_tokens: u32,
     obs_parent: Option<fastrace::prelude::SpanContext>,
     obs_session: &xylitol_ai_bridge::ObsSessionContext,
 ) -> Result<String> {
@@ -112,6 +112,7 @@ pub(super) async fn generate_complete(
             &[],
             false,
             crate::protocol::ports::XyGenerateOptions {
+                max_output_tokens: Some(max_tokens),
                 obs_parent,
                 obs_session: obs_session.clone(),
                 ..Default::default()
@@ -305,6 +306,7 @@ mod tests {
 
     struct CaptureModel {
         last: Mutex<Option<String>>,
+        last_max_tokens: Mutex<Option<u32>>,
     }
 
     #[async_trait]
@@ -318,7 +320,7 @@ mod tests {
             messages: Vec<LlmMessage>,
             _tools: &[XyToolSchema],
             _stream: bool,
-            _options: XyGenerateOptions,
+            options: XyGenerateOptions,
         ) -> Result<XyStream, XyError> {
             let text = messages
                 .iter()
@@ -326,6 +328,7 @@ mod tests {
                 .collect::<Vec<_>>()
                 .join("\n");
             *self.last.lock().expect("last") = Some(text);
+            *self.last_max_tokens.lock().expect("max") = options.max_output_tokens;
             Ok(Box::pin(futures::stream::iter(vec![
                 Ok(XyChunk::TextDelta("ok".into())),
                 Ok(XyChunk::Done {
@@ -340,6 +343,7 @@ mod tests {
     async fn generate_summary_injects_additional_focus_into_model_input() {
         let model = CaptureModel {
             last: Mutex::new(None),
+            last_max_tokens: Mutex::new(None),
         };
         let msgs = vec![AgentMessage::user("hello")];
         let _ = generate_summary(
@@ -364,11 +368,17 @@ mod tests {
     async fn generate_summary_without_instructions_has_no_additional_focus() {
         let model = CaptureModel {
             last: Mutex::new(None),
+            last_max_tokens: Mutex::new(None),
         };
         let msgs = vec![AgentMessage::user("hello")];
         let _ = generate_summary(&msgs, &model, 1024, None, None, None, &Default::default())
             .await
             .unwrap();
+        // c2810 附带收口：reserve × 0.8 预算必须真正进入请求 options。
+        assert_eq!(
+            model.last_max_tokens.lock().expect("max").unwrap(),
+            (1024.0 * 0.8) as u32
+        );
         let prompt = model.last.lock().expect("last").clone().expect("captured");
         assert!(!prompt.contains("Additional focus:"));
     }

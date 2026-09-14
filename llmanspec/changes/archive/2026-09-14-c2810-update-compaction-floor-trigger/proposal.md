@@ -2,6 +2,9 @@
 depends_on:
 - c25-fix-compact-overflow-placeholder
 needs_specs_change: true
+branch: sdd/c2810-update-compaction-floor-trigger
+base_sha: bcb3791043d0f047f134f453883d80a2d2e10faf
+base_branch: main
 ---
 
 # 紧凑窗口频繁压缩：地板感知触发 + 压后大小呈现 + 一次性诊断 + lab 回放（c2/c26 修订）

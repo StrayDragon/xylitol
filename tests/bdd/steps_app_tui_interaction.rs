@@ -295,6 +295,8 @@ fn when_mount_compaction(tui_interaction: &TuiInteraction) {
         error_message: None,
         summary: Some("摘要完成".into()),
         tokens_before: Some(1200),
+        tokens_after: None,
+        notice: None,
     });
     let plain = mount(&mut fx);
     *tui_interaction.mounted_frame.borrow_mut() = plain;
@@ -507,6 +509,8 @@ fn when_mount_compaction_and_long_output(tui_interaction: &TuiInteraction) {
         error_message: None,
         summary: Some("压缩完成".into()),
         tokens_before: Some(900),
+        tokens_after: None,
+        notice: None,
     });
     let plain = mount(&mut fx);
     *tui_interaction.mounted_frame.borrow_mut() = plain;

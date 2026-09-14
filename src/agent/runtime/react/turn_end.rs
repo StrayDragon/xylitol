@@ -54,6 +54,7 @@ pub(crate) async fn finish_turn(
     fixed_context: &crate::agent::compaction::FixedRequestContext,
     history: &mut Vec<AgentMessage>,
     overflow_recovery_attempted: &mut bool,
+    floor_notice_emitted: &mut bool,
     hooks: &AgentHooks,
     hook_bus: &Option<Arc<dyn XyHookBus>>,
     turn: usize,
@@ -98,6 +99,7 @@ pub(crate) async fn finish_turn(
         fixed_context,
         history,
         overflow_recovery_attempted,
+        floor_notice_emitted,
         settlement.as_ref().map(|s| &s.estimate),
         turn_obs_parent,
         obs_session,
@@ -189,6 +191,7 @@ pub(crate) async fn try_turn_end_compaction(
     fixed_context: &crate::agent::compaction::FixedRequestContext,
     history: &mut Vec<AgentMessage>,
     overflow_recovery_attempted: &mut bool,
+    floor_notice_emitted: &mut bool,
     precomputed: Option<&crate::protocol::model::ContextTokenEstimate>,
     turn_obs_parent: Option<fastrace::prelude::SpanContext>,
     obs_session: &xylitol_ai_bridge::ObsSessionContext,
@@ -240,6 +243,7 @@ pub(crate) async fn try_turn_end_compaction(
             Some(fixed_context),
             turn_obs_parent,
             obs_session,
+            Some(&mut *floor_notice_emitted),
         )
         .await
     {
@@ -310,6 +314,7 @@ pub(crate) async fn try_turn_end_compaction(
             Some(fixed_context),
             turn_obs_parent,
             obs_session,
+            Some(&mut *floor_notice_emitted),
         )
         .await
     {

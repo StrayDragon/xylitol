@@ -118,6 +118,8 @@ fn compaction_block_defaults_collapsed() {
         summary: "long summary body that should stay hidden".into(),
         tokens_before: 186_842,
         detail: None,
+
+        tokens_after: None,
     });
     let theme = LayoutTheme::product_dark();
     let lines = render_scrollback(
@@ -148,6 +150,38 @@ fn compaction_block_defaults_collapsed() {
 }
 
 #[test]
+fn compaction_block_shows_n_to_m_word_form() {
+    let mut model = UiModel::default();
+    model.entries.push(UiEntry::Compaction {
+        status: CompactionBlockStatus::Complete,
+        summary: String::new(),
+        tokens_before: 35_840,
+        tokens_after: Some(18_100),
+        detail: None,
+    });
+    let theme = LayoutTheme::product_dark();
+    let lines = render_scrollback(
+        &model,
+        GlyphSet::from_env(),
+        theme,
+        &ScrollbackFold::default(),
+        &mut crate::app::tui::activity_fold::ActivityFoldState::default(),
+        100,
+        &mut ScrollbackPaintCache::default(),
+        &mut FoldHitTable::default(),
+    );
+    let plain = strip_ansi_codes(&lines.join("\n"));
+    let header = plain
+        .lines()
+        .find(|l| l.contains("Compacted from"))
+        .unwrap_or("");
+    assert!(
+        header.contains("Compacted from 35,840 → 18,100 tokens"),
+        "word form must be N → M: {plain}"
+    );
+}
+
+#[test]
 fn compaction_block_expands_with_fold() {
     let mut model = UiModel::default();
     model.entries.push(UiEntry::Compaction {
@@ -155,6 +189,8 @@ fn compaction_block_expands_with_fold() {
         summary: "visible summary body".into(),
         tokens_before: 1_000,
         detail: None,
+
+        tokens_after: None,
     });
     let theme = LayoutTheme::product_dark();
     let lines = render_scrollback(

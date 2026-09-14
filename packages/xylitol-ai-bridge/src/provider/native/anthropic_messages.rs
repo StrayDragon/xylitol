@@ -135,7 +135,7 @@ impl AnthropicMessagesAdapter {
         let mut body = serde_json::json!({
             "model": self.model,
             "messages": anthropic_msgs,
-            "max_tokens": self.max_tokens,
+            "max_tokens": options.max_output_tokens.unwrap_or(self.max_tokens),
             "stream": stream,
         });
 
@@ -793,6 +793,79 @@ mod tests {
         assert!(
             body.get("thinking").is_none(),
             "off must omit thinking block, got {body}"
+        );
+    }
+
+    #[tokio::test]
+    async fn anthropic_body_max_tokens_follows_options_budget() {
+        // c2810: options.max_output_tokens overrides the adapter default 8192.
+        use std::sync::Arc;
+        use wiremock::matchers::{method, path};
+        use wiremock::{Mock, MockServer, ResponseTemplate};
+
+        use crate::hooks::{HeaderBag, HttpHooks};
+
+        struct CaptureHooks {
+            body: std::sync::Arc<std::sync::Mutex<Option<Value>>>,
+        }
+
+        #[async_trait]
+        impl HttpHooks for CaptureHooks {
+            async fn before_headers(&self, _headers: &mut HeaderBag) -> Result<(), AiBridgeError> {
+                Ok(())
+            }
+
+            async fn before_request(
+                &self,
+                _model: &str,
+                body: &mut Value,
+            ) -> Result<(), AiBridgeError> {
+                *self.body.lock().unwrap() = Some(body.clone());
+                Ok(())
+            }
+
+            async fn after_response(&self, _status: u16, _headers: &HeaderBag) {}
+        }
+
+        let captured = Arc::new(std::sync::Mutex::new(None));
+        let server = MockServer::start().await;
+        Mock::given(method("POST"))
+            .and(path("/v1/messages"))
+            .respond_with(ResponseTemplate::new(200).set_body_json(serde_json::json!({
+                "id": "msg",
+                "type": "message",
+                "role": "assistant",
+                "content": [{"type": "text", "text": "hi"}],
+                "stop_reason": "end_turn",
+                "usage": {"input_tokens": 1, "output_tokens": 1}
+            })))
+            .mount(&server)
+            .await;
+
+        let adapter = AnthropicMessagesAdapter::new(
+            "sk-test".into(),
+            "claude-test".into(),
+            Some(server.uri()),
+            Some(Arc::new(CaptureHooks {
+                body: captured.clone(),
+            })),
+        );
+        let _ = adapter
+            .generate(
+                vec![AiBridgeMessage::user("hi")],
+                &[],
+                crate::thinking::AiBridgeGenerateOptions {
+                    max_output_tokens: Some(819),
+                    ..Default::default()
+                },
+            )
+            .await
+            .expect("generate with budget");
+
+        let body = captured.lock().unwrap().clone().expect("body");
+        assert_eq!(
+            body["max_tokens"], 819,
+            "options budget must override: {body}"
         );
     }
 

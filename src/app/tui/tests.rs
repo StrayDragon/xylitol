@@ -2776,6 +2776,8 @@ fn harness_mouse_triangle_toggles_compaction_fold() {
             summary: "compaction-summary-body".into(),
             tokens_before: 12_345,
             detail: None,
+
+            tokens_after: None,
         });
         *session.ui_model_mut() = model;
         session.sync_ui_root_from_model();
@@ -3288,6 +3290,8 @@ fn compaction_and_viewport_toggle_miss_bound() {
         summary: "sum".into(),
         tokens_before: 100,
         detail: None,
+
+        tokens_after: None,
     });
     let mut output = String::new();
     for i in 0..20 {
@@ -5040,6 +5044,8 @@ fn activity_fold_compaction_only_has_no_explored_header() {
         summary: "sum".into(),
         tokens_before: 101_494,
         detail: None,
+
+        tokens_after: None,
     });
     root.apply_ui_model(&model);
     root.activity_mut().force_level("seg-0", SegmentLevel::L2);

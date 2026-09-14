@@ -66,6 +66,7 @@ async fn append_compaction_from_session<T: Terminal>(
         summary: comp.summary.clone(),
         tokens_before: comp.tokens_before,
         detail: None,
+        tokens_after: None,
     });
     session.sync_ui_root_from_model();
 }

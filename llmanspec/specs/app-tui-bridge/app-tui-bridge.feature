@@ -27,7 +27,7 @@
 
   @req:atb5 @human
   场景: compaction-status-scrollback
-    - 产品 bridge 收到 CompactionStart 时 MUST 将 busy status 设为单行短词 Compacting，并 MUST 向 live scrollback 插入一条 transcript compaction 占位块（标签 [compaction] + Compacting…；与完成块同槽）；收到 CompactionEnd 成功时 MUST 就地将该占位变为完成块（默认折叠：Compacted from N tokens（展开和弦 to expand）；展开后显示 summary），MUST NOT 再追加全文滚动提示 dump 或叠 compaction complete 滚动提示；失败/aborted 时 MUST 就地变为短失败态；若仍 Busy MUST 将 status 恢复为 Working；resume/rebuild 时 CompactionEntry MUST 映射为默认折叠的完成块；展开键 MUST 与 tool 块共用产品面 expand 和弦（Alt+E）；MUST NOT 用多行 status 或 footer 呈现压缩进度/摘要。
+    - 产品 bridge 收到 CompactionStart 时 MUST 将 busy status 设为单行短词 Compacting，并 MUST 向 live scrollback 插入一条 transcript compaction 占位块（标签 [compaction] + Compacting…；与完成块同槽）；收到 CompactionEnd 成功时 MUST 就地将该占位变为完成块（默认折叠：载荷带 tokens_after 时为 Compacted from N → M tokens，缺省落回 Compacted from N tokens；均带展开和弦 to expand；展开后显示 summary），MUST NOT 再追加全文滚动提示 dump 或叠 compaction complete 滚动提示；失败/aborted 时 MUST 就地变为短失败态；若仍 Busy MUST 将 status 恢复为 Working；resume/rebuild 时 CompactionEntry MUST 映射为默认折叠的完成块（无 tokens_after，MUST 落回 N 形词）；展开键 MUST 与 tool 块共用产品面 expand 和弦（Alt+E）；MUST NOT 用多行 status 或 footer 呈现压缩进度/摘要。CompactionEnd 携带一次性诊断 notice 时，bridge MUST 以滚动提示（ScrollNotice）一行尾插该诊断文本，MUST NOT 借此改动 compaction 块折叠态或重复滚动同一条诊断。
 
   @req:atb6 @human
   场景: auto-retry-status-scrollback
