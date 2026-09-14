@@ -35,6 +35,14 @@ jobs:
         with:
           tool: just,cargo-nextest
 
+      # grep/find tools spawn external rg/fd; tool tests fail without them.
+      # Ubuntu's fd-find package installs the binary as `fdfind`.
+      - name: Install rg + fd (test deps)
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y ripgrep fd-find
+          sudo ln -sf /usr/bin/fdfind /usr/local/bin/fd
+
       # prek hooks run inside `just qa` (text hygiene only, no cargo gates).
       - name: Install prek
         run: pipx install prek
