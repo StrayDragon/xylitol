@@ -104,6 +104,60 @@ pub(crate) fn effective_keep_budget(
     )
 }
 
+/// Summary output budget assumed for the c2 floor when the leaf has no prior
+/// CompactionEntry to measure from. ≈2k tokens of structured summary.
+const SUMMARY_PLACEHOLDER_TOKENS: u64 = 2_048;
+
+/// chars/4 estimate of the latest summary on the leaf (c2 summary placeholder);
+/// falls back to [`SUMMARY_PLACEHOLDER_TOKENS`] when there is no CompactionEntry
+/// or the summary is empty.
+pub fn summary_placeholder_tokens(entries: &[SessionEntry]) -> u64 {
+    entries
+        .iter()
+        .rev()
+        .find_map(|e| match e {
+            SessionEntry::Compaction(c) => {
+                let est = c.summary.len() as u64 / 4;
+                Some(if est == 0 {
+                    SUMMARY_PLACEHOLDER_TOKENS
+                } else {
+                    est
+                })
+            }
+            _ => None,
+        })
+        .unwrap_or(SUMMARY_PLACEHOLDER_TOKENS)
+}
+
+/// Post-compaction floor projection (c2): fixed request overhead (c16 folding) +
+/// effective keep tail (c8 clamp) + summary placeholder — what the next main
+/// request will weigh right after a compact. The summary request itself carries
+/// no tool schemas; this floor models the *conversation* request.
+pub fn projected_post_compact_tokens(
+    settings: &CompactionSettings,
+    context_window: u64,
+    fixed_overhead_tokens: u64,
+    summary_placeholder: u64,
+) -> u64 {
+    fixed_overhead_tokens
+        + effective_keep_budget(settings, context_window, fixed_overhead_tokens)
+        + summary_placeholder
+}
+
+/// Effective threshold-auto trigger threshold (c2):
+/// `max(window − reserve, floor + floor/4)`. `floor == 0` (overhead unknown /
+/// not injected) degenerates to the pi reserve formula `window − reserve`, the
+/// same degeneration discipline as the c8 clamp.
+pub fn effective_trigger_threshold(
+    context_window: u64,
+    settings: &CompactionSettings,
+    post_compact_floor: u64,
+) -> u64 {
+    context_window
+        .saturating_sub(settings.reserve_tokens)
+        .max(post_compact_floor + post_compact_floor / 4)
+}
+
 /// pi `prepareCompaction` gate: whether there is content worth summarizing.
 ///
 /// Force-path error strings: `Already compacted` stays pi-aligned; empty /
@@ -1109,14 +1163,14 @@ mod tests {
             enabled: false,
             ..Default::default()
         };
-        assert!(!should_compact(100_000, 200_000, &s));
+        assert!(!should_compact(100_000, 200_000, &s, 0));
     }
 
     #[test]
     fn test_should_compact_enabled_not_exceeded() {
         let s = CompactionSettings::default();
         // 50_000 tokens + 16384 reserve under 200K
-        assert!(!should_compact(50_000, 200_000, &s));
+        assert!(!should_compact(50_000, 200_000, &s, 0));
     }
 
     #[test]
@@ -1126,20 +1180,20 @@ mod tests {
             ..Default::default()
         };
         // threshold = 200_000 - 1000 = 199_000; 200_000 > 199_000
-        assert!(should_compact(200_000, 200_000, &s));
+        assert!(should_compact(200_000, 200_000, &s, 0));
     }
 
     #[test]
     fn test_should_compact_exact_threshold() {
         let s = CompactionSettings::default();
         // threshold = 200_000 - 16384 = 183_616; one over triggers
-        assert!(should_compact(183_617, 200_000, &s));
+        assert!(should_compact(183_617, 200_000, &s, 0));
     }
 
     #[test]
     fn test_should_compact_window_zero() {
         let s = CompactionSettings::default();
-        assert!(!should_compact(100_000, 0, &s));
+        assert!(!should_compact(100_000, 0, &s, 0));
     }
 
     // ── XyUsage tests ───────────────────────────────────────────────

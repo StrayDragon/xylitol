@@ -150,6 +150,15 @@ pub enum XyEvent {
         /// CompactionEntry.tokens_before when compact succeeded.
         #[serde(default, skip_serializing_if = "Option::is_none")]
         tokens_before: Option<u64>,
+        /// AfterCompaction settlement tokens (c26 same-source value) when compact
+        /// succeeded — powers the `Compacted from N → M tokens` word form and the
+        /// c28 floor diagnostic. Live-only; never persisted on CompactionEntry.
+        #[serde(default, skip_serializing_if = "Option::is_none")]
+        tokens_after: Option<u64>,
+        /// One-shot actionable diagnostic (c28): post-compact projection still ≥
+        /// window. At most once per session; manual compacts never carry it.
+        #[serde(default, skip_serializing_if = "Option::is_none")]
+        notice: Option<String>,
     },
 
     /// Shared context-token settlement (c1860) — compact + footer consume one snapshot.

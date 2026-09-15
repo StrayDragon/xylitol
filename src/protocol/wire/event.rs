@@ -83,6 +83,10 @@ pub enum Event {
         error_message: Option<String>,
         summary: Option<String>,
         tokens_before: Option<u64>,
+        #[serde(default)]
+        tokens_after: Option<u64>,
+        #[serde(default)]
+        notice: Option<String>,
     },
     /// Shared context-token settlement (c1860) for footer / cross-client fixed zone.
     ContextTokenSettlement {
@@ -181,6 +185,8 @@ impl XyEvent {
                 error_message,
                 summary,
                 tokens_before,
+                tokens_after,
+                notice,
             } => Some(Event::CompactionEnd {
                 result: result.clone(),
                 aborted: *aborted,
@@ -189,6 +195,8 @@ impl XyEvent {
                 error_message: error_message.clone(),
                 summary: summary.clone(),
                 tokens_before: *tokens_before,
+                tokens_after: *tokens_after,
+                notice: notice.clone(),
             }),
             XyEvent::ContextTokenSettlement {
                 estimate,
@@ -314,6 +322,8 @@ impl TryFrom<&Event> for XyEvent {
                 error_message,
                 summary,
                 tokens_before,
+                tokens_after,
+                notice,
             } => Ok(XyEvent::CompactionEnd {
                 result: result.clone(),
                 aborted: *aborted,
@@ -322,6 +332,8 @@ impl TryFrom<&Event> for XyEvent {
                 error_message: error_message.clone(),
                 summary: summary.clone(),
                 tokens_before: *tokens_before,
+                tokens_after: *tokens_after,
+                notice: notice.clone(),
             }),
             Event::ContextTokenSettlement {
                 tokens,
@@ -667,6 +679,8 @@ mod tests {
             error_message: None,
             summary: Some("prior work summarized".into()),
             tokens_before: Some(101_080),
+            tokens_after: Some(18_240),
+            notice: None,
         };
         let wire = success
             .to_wire_event()
@@ -674,8 +688,9 @@ mod tests {
         let encoded = serde_json::to_value(&wire).expect("wire serializes");
         assert_eq!(encoded["type"], "compaction_end");
         assert_eq!(encoded["tokens_before"], 101_080);
+        assert_eq!(encoded["tokens_after"], 18_240);
         assert_eq!(encoded["summary"], "prior work summarized");
-        let decoded: Event = serde_json::from_value(encoded).expect("wire deserializes");
+        let decoded: Event = serde_json::from_value(encoded.clone()).expect("wire deserializes");
         let back = XyEvent::try_from(&decoded).expect("roundtrip");
         let XyEvent::CompactionEnd {
             result,
@@ -685,6 +700,8 @@ mod tests {
             error_message,
             summary,
             tokens_before,
+            tokens_after,
+            notice,
         } = back
         else {
             panic!("unexpected event");
@@ -696,6 +713,8 @@ mod tests {
         assert_eq!(error_message, None);
         assert_eq!(summary.as_deref(), Some("prior work summarized"));
         assert_eq!(tokens_before, Some(101_080));
+        assert_eq!(tokens_after, Some(18_240));
+        assert_eq!(notice, None);
 
         let failed = XyEvent::CompactionEnd {
             result: None,
@@ -705,6 +724,8 @@ mod tests {
             error_message: Some("Context overflow recovery failed".into()),
             summary: None,
             tokens_before: None,
+            tokens_after: None,
+            notice: None,
         };
         let wire = failed
             .to_wire_event()
@@ -732,6 +753,8 @@ mod tests {
             error_message: None,
             summary: None,
             tokens_before: None,
+            tokens_after: None,
+            notice: None,
         };
         let wire = aborted
             .to_wire_event()
@@ -754,6 +777,8 @@ mod tests {
                 error_message,
                 summary,
                 tokens_before,
+                tokens_after,
+                notice,
                 ..
             } => {
                 assert_eq!(result, None);
@@ -761,8 +786,59 @@ mod tests {
                 assert_eq!(error_message, None);
                 assert_eq!(summary, None);
                 assert_eq!(tokens_before, None);
+                assert_eq!(tokens_after, None);
+                assert_eq!(notice, None);
             }
             other => panic!("unexpected: {other:?}"),
         }
+    }
+
+    #[test]
+    fn compaction_end_tokens_after_and_notice_roundtrip() {
+        // c2810 / c28: post-compact M + one-shot diagnostic survive the wire;
+        // legacy senders without them decode to None (None = fallback word form).
+        let event = XyEvent::CompactionEnd {
+            result: Some("ok".into()),
+            aborted: false,
+            reason: "threshold".into(),
+            will_retry: false,
+            error_message: None,
+            summary: Some("s".into()),
+            tokens_before: Some(35_840),
+            tokens_after: Some(18_100),
+            notice: Some("Context still ~18_100 tokens".into()),
+        };
+        let wire = event.to_wire_event().expect("wire-visible");
+        let encoded = serde_json::to_value(&wire).expect("serializes");
+        let decoded: Event = serde_json::from_value(encoded).expect("decodes");
+        let back = XyEvent::try_from(&decoded).expect("roundtrip");
+        let XyEvent::CompactionEnd {
+            tokens_before,
+            tokens_after,
+            notice,
+            ..
+        } = back
+        else {
+            panic!("unexpected event");
+        };
+        assert_eq!(tokens_before, Some(35_840));
+        assert_eq!(tokens_after, Some(18_100));
+        assert_eq!(notice.as_deref(), Some("Context still ~18_100 tokens"));
+
+        // Old payload shape: no tokens_after / notice keys.
+        let decoded: Event =
+            serde_json::from_value(serde_json::json!({"type": "compaction_end", "result": "ok"}))
+                .expect("legacy decode");
+        let back = XyEvent::try_from(&decoded).expect("roundtrip");
+        let XyEvent::CompactionEnd {
+            tokens_after,
+            notice,
+            ..
+        } = back
+        else {
+            panic!("unexpected event");
+        };
+        assert_eq!(tokens_after, None);
+        assert_eq!(notice, None);
     }
 }

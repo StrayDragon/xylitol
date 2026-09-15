@@ -33,6 +33,9 @@ pub(crate) fn prepare_turn_binding(
         level_map: meta.thinking_level_map.clone(),
         thinking_budgets: mm.thinking_budgets().cloned(),
         system_prompt: system_prompt.clone(),
+        // Main conversation requests carry no explicit output budget
+        // (provider default); only the compaction summary request budgets itself.
+        max_output_tokens: None,
         obs_parent: None,
         obs_session: xylitol_ai_bridge::ObsSessionContext::default(),
     };

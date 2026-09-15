@@ -271,6 +271,7 @@ fn session_entry_to_ui_entries_with_thought_elapsed(
             summary: c.summary.clone(),
             tokens_before: c.tokens_before,
             detail: None,
+            tokens_after: None,
         }],
         SessionEntry::BranchSummary(b) => vec![UiEntry::ScrollNotice {
             text: format!("[branch] {}", b.summary),
@@ -944,6 +945,7 @@ mod tests {
                 [UiEntry::Compaction {
                     status: CompactionBlockStatus::Complete,
                     tokens_before: 186_842,
+                    tokens_after: None,
                     summary,
                     detail: None,
                 }] if summary.contains("keep going")

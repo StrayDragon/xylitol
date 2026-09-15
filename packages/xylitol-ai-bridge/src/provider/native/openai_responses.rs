@@ -170,6 +170,10 @@ pub(crate) fn assemble_responses_body_with_diagnostics(
         "store": false,
     });
 
+    if let Some(max) = options.max_output_tokens {
+        body["max_output_tokens"] = serde_json::json!(max);
+    }
+
     if !tools.is_empty() {
         let tool_defs: Vec<Value> = tools
             .iter()
@@ -1191,6 +1195,7 @@ mod tests {
             system_prompt: None,
             obs_parent: None,
             obs_session: Default::default(),
+            max_output_tokens: None,
         };
         let body_map = adapter.build_body(vec![AiBridgeMessage::user("hi")], &[], false, &mapped);
         assert_eq!(body_map["reasoning"]["effort"], "max");

@@ -4742,6 +4742,8 @@ mod slice_tests {
                 error_message: None,
                 summary: Some("done".into()),
                 tokens_before: Some(100),
+                tokens_after: None,
+                notice: None,
             })))
             .unwrap();
         let mut stream = None;

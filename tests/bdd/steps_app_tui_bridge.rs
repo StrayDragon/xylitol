@@ -259,6 +259,8 @@ fn w_atb5_end_ok(bridge_bdd: &BridgeBdd) {
             error_message: None,
             summary: Some("已压缩".into()),
             tokens_before: Some(1200),
+            tokens_after: None,
+            notice: None,
         },
     );
 }
@@ -296,6 +298,8 @@ fn w_atb5_end_failed(bridge_bdd: &BridgeBdd) {
             error_message: Some("boom".into()),
             summary: None,
             tokens_before: None,
+            tokens_after: None,
+            notice: None,
         },
     );
 }

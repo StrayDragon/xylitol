@@ -60,6 +60,18 @@ fn test_comp_reserve_trigger_shared(agent: AgentState, ws: Workspace) {}
 
 #[scenario(
     path = "llmanspec/specs/domain-compaction/domain-compaction.feature",
+    name = "floor-threshold-holds"
+)]
+fn test_comp_floor_holds(agent: AgentState, ws: Workspace) {}
+
+#[scenario(
+    path = "llmanspec/specs/domain-compaction/domain-compaction.feature",
+    name = "floor-cross-triggers"
+)]
+fn test_comp_floor_cross(agent: AgentState, ws: Workspace) {}
+
+#[scenario(
+    path = "llmanspec/specs/domain-compaction/domain-compaction.feature",
     name = "summarize"
 )]
 async fn test_comp_summarize_c3(agent: AgentState, sess: XySessionStore, ws: Workspace) {}

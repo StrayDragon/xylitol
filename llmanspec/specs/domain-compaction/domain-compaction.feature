@@ -14,7 +14,7 @@
 
   @req:c2 @human
   场景: 应触发 compact
-    - 当 CompactionSettings.enabled 为 true 且 context_window > 0 时，System MUST 在 contextTokens > contextWindow - reserveTokens（与 pi 同构；reserveTokens 来自 CompactionSettings）时判定应触发 compaction；enabled 为 false 时 MUST NOT 因用量触发；该判定所用 contextTokens MUST 与产品 footer / Driver 只读估计同源（同一 paa1 入口与 LocalTokenizer 闸），MUST NOT 另用独立的 message 字符串 len/4 总和，MUST NOT 再使用独立的百分比阈值（如 compaction_threshold / usage_ratio）作为触发 SSOT。
+    - 当 CompactionSettings.enabled 为 true 且 context_window > 0 时，System MUST 在 contextTokens > 有效触发阈值时判定 threshold auto 应触发 compaction；有效触发阈值 = max(contextWindow - reserveTokens, 压后地板 + 迟滞带)（reserveTokens 来自 CompactionSettings）；压后地板 = 固定请求开销（与 c16 同源折算）+ 有效保留尾预算（c8 clamp）+ 摘要占位（最新 CompactionEntry.summary 的 chars/4 估计，无先前摘要时取保守常量）；迟滞带 = 压后地板的 25%（固定常量，MUST NOT 引入新配置字段）；固定请求开销未知或未注入时阈值 MUST 退化为 contextWindow - reserveTokens（与 c8 clamp 同款退化纪律）。该地板阈值 MUST 仅约束 threshold auto 路径：手动 force（c17）与 overflow（c22）MUST NOT 受其约束。enabled 为 false 时 MUST NOT 因用量触发；该判定所用 contextTokens MUST 与产品 footer / Driver 只读估计同源（同一 paa1 入口与 LocalTokenizer 闸），MUST NOT 另用独立的 message 字符串 len/4 总和，MUST NOT 再使用独立的百分比阈值（如 compaction_threshold / usage_ratio）作为触发 SSOT。
 
   @req:c3 @human
   场景: compact 摘要
@@ -106,11 +106,15 @@
 
   @req:c26 @human
   场景: turn-settlement-once
-    - 当一次 ReAct turn 收尾做 threshold/overflow 预检时，System MUST 对该次收尾只产生一份 ContextTokenEstimate settlement（同一 tokens/provenance generation）供 compact 决策与产品 footer 消费；MUST NOT 让 Agent 预检与 TUI TurnEnd/stream-close 在无上下文失效的情况下各自再跑一遍 estimate 并各自打点；若随后实际执行了 compaction，MUST 经 CompactionEnd（或等价）失效并允许新的 settlement。算数入口仍 MUST 为 estimate_from_session_entries（或同源），MUST NOT 另立第二套尺子。compaction 成功后 MUST 重载 leaf（含新 CompactionEntry 与回填行）并以「summary 折行 + 保留尾 + 固定请求开销（c16 同源折算）」产出一份 AfterCompaction settlement 占位估计，供 footer 与下一轮 reserve 闸消费；该占位估计 MUST NOT 伴随任何主动模型请求（重算上下文等下一个用户请求经 build_context_entries 同源机制生效）；resume / 会话激活路径 MUST 以同一机制（含固定开销）重建估计（LeafChanged settlement 或 host 同源 unary）。
+    - 当一次 ReAct turn 收尾做 threshold/overflow 预检时，System MUST 对该次收尾只产生一份 ContextTokenEstimate settlement（同一 tokens/provenance generation）供 compact 决策与产品 footer 消费；MUST NOT 让 Agent 预检与 TUI TurnEnd/stream-close 在无上下文失效的情况下各自再跑一遍 estimate 并各自打点；若随后实际执行了 compaction，MUST 经 CompactionEnd（或等价）失效并允许新的 settlement。算数入口仍 MUST 为 estimate_from_session_entries（或同源），MUST NOT 另立第二套尺子。compaction 成功后 MUST 重载 leaf（含新 CompactionEntry 与回填行）并以「summary 折行 + 保留尾 + 固定请求开销（c16 同源折算）」产出一份 AfterCompaction settlement 占位估计，供 footer 与下一轮 reserve 闸消费；该占位估计 MUST NOT 伴随任何主动模型请求（重算上下文等下一个用户请求经 build_context_entries 同源机制生效）；resume / 会话激活路径 MUST 以同一机制（含固定开销）重建估计（LeafChanged settlement 或 host 同源 unary）。成功的 CompactionEnd 载荷 MUST 携带 tokens_after 与该 AfterCompaction settlement 同源同值（供压后大小呈现与压后地板诊断判定），压后重载 leaf 失败等无法产出 settlement 的退化路径 MUST 缺省 None（消费端落回无 M 词形）；MUST NOT 为此扩展 CompactionEntry 持久化形状（live-only）。
 
   @req:c27 @human
   场景: no-invent-reasoning-after-compact
     - Compaction 以 CompactionEntry 摘要替换 firstKept 之前的轨迹后，随后经 project_for_llm 与 Responses 组装的 input MUST 仅回放仍留在保留消息中的 thinkingSignature；MUST NOT 为已摘要掉的旧 assistant 轮次发明或恢复 reasoning item / thinkingSignature。由单测或文档场景覆盖，MUST NOT 单独扩 BDD step。
+
+  @req:c28 @human
+  场景: 压后地板一次性诊断
+    - auto 路径（threshold / overflow）compaction 成功且其 AfterCompaction settlement tokens ≥ contextWindow（压后仍无可用窗口，固定开销吃满窗口的退化形态）时，System MUST 经 CompactionEnd 载荷（notice 或等价）发一条可行动诊断（建议：调低 keepRecentTokens / 调高 contextWindow / 精简工具面），每个会话运行（run）至多一次（对齐 c22 每 run 一次 overflow recovery 的作用域纪律）；manual force 路径 MUST NOT 发诊断；地板阈值本身不构成诊断条件（地板 + 迟滞 ∈ (window − reserve, window) 的受控频繁模式 MUST NOT 触发诊断）。
   @executable @req:c2
   场景: need-compact
     假如 会话消息估算使用 90000 个 token
@@ -271,7 +275,27 @@
     假如 会话叶上存在可信 Api usage 锚点且 footer 同源估计可用
     当 执行 auto-compact reserve 触发判断
     那么 所用 token 数字与同源估计一致且 MUST NOT 另算独立 len/4 总和
-    并且 触发比较式为占用大于窗口减 reserveTokens
+    并且 触发比较式为占用大于有效触发阈值 max(window 减 reserveTokens, 压后地板 加 迟滞带)
+
+  @executable @req:c2
+  场景: floor-threshold-holds
+    假如 配置了上下文窗口为 32768 的模型
+    并且 compaction reserveTokens 为 16384
+    并且 compaction keepRecentTokens 为 20000
+    并且 compaction 固定请求开销为 9000 token
+    并且 会话消息估算使用 20000 个 token
+    当 调用 shouldCompact
+    那么 返回 false
+
+  @executable @req:c2
+  场景: floor-cross-triggers
+    假如 配置了上下文窗口为 32768 的模型
+    并且 compaction reserveTokens 为 16384
+    并且 compaction keepRecentTokens 为 20000
+    并且 compaction 固定请求开销为 9000 token
+    并且 会话消息估算使用 24000 个 token
+    当 调用 shouldCompact
+    那么 返回 true
 
   @executable @req:c17 @req:c2
   场景: auto-over-threshold

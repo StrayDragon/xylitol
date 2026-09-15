@@ -82,6 +82,7 @@ pub fn get_context_usage(
         tokens: token_estimate,
         context_window,
         percent,
-        should_compact: should_compact(token_estimate, context_window, settings),
+        // BDD contract path: no fixed-overhead injection → floor 0, reserve formula.
+        should_compact: should_compact(token_estimate, context_window, settings, 0),
     }
 }

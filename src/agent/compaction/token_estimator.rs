@@ -549,6 +549,6 @@ mod tests {
         assert!(est.tokens > 0);
         // Reserve formula must use this shared number (not an independent len/4 sum).
         let settings = crate::agent::compaction::CompactionSettings::default();
-        let _ = crate::agent::compaction::should_compact(est.tokens, 128_000, &settings);
+        let _ = crate::agent::compaction::should_compact(est.tokens, 128_000, &settings, 0);
     }
 }

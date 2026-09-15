@@ -119,6 +119,23 @@ pub(crate) fn summary_placeholder_tokens(entries: &[SessionEntry]) -> u64;
   回放：fake model 承担摘要调用；断言单调下降 / 切点合法 / 摘要有界 /
   追加 40 轮固定内容后 compact 次数 ≤ 预期上界。doc 注释给运行命令。
 
+### 附带收口（T2，用户裁决 2026-09-14）：摘要请求输出预算真正接线
+
+现状缺口：`generate_summary` / `generate_turn_prefix_summary` 按 `reserve_tokens × 0.8 / 0.5`
+算出 `max_tokens`，但 `generate_complete` 的参数为 `_max_tokens`（死参），且
+`AiBridgeGenerateOptions` 无输出预算字段——摘要请求实际从未设置输出上限（Anthropic 侧吃
+adapter 硬编码 8192，OpenAI 侧吃服务端默认）。
+
+修复（纯代码级，无 MUST/SHALL 合约变更）：
+
+- bridge `thinking.rs`：`AiBridgeGenerateOptions` 增 `max_output_tokens: Option<u32>`
+  （`None` = adapter 既有默认；该结构 `#[derive(Debug, Clone)]` 不过 wire，纯进程内选项）。
+- `anthropic_messages.rs`：body 的 `max_tokens` 取 `options.max_output_tokens.unwrap_or(self.max_tokens)`。
+- `openai_completions.rs` / `openai_responses.rs`：Some 时分别设 `max_completion_tokens` /
+  `max_output_tokens`，None 不发（与现状一致）。
+- 主 crate `llm_summarizer.rs`：`generate_complete` 死参转正，预算写入 options；
+  0.8× / 0.5× reserve 语义不变（pi 同构）。
+
 ## 风险与回退
 
 - 阈值升高意味着超过 window−reserve 后才 compact（32k 场景 16.4k→23k），单响应可用

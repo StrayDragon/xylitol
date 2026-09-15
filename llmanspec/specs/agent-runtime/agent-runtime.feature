@@ -119,7 +119,7 @@
 
   @req:ar31 @human
   场景: turn-end-threshold-compaction
-    - ReAct 或 session 编排在非 abort 的 assistant 回合落定后 MUST 调用 threshold auto-compact 检查（c1630 reserve 公式 + domain-compaction c17/c18）；CompactionSettings.enabled 为 false、未超闸、abort、或 stale 守卫命中时 MUST NOT compact；MUST NOT 仅依赖 TUI host 轮询触发。该行为 MUST 有可执行 BDD 或等价单测场景。
+    - ReAct 或 session 编排在非 abort 的 assistant 回合落定后 MUST 调用 threshold auto-compact 检查（domain-compaction c2 地板感知有效触发阈值 + c17/c18）；CompactionSettings.enabled 为 false、未超有效阈值、abort、或 stale 守卫命中时 MUST NOT compact；MUST NOT 仅依赖 TUI host 轮询触发。该行为 MUST 有可执行 BDD 或等价单测场景。
 
   @req:ar32 @human
   场景: turn-end-overflow-compact-retry
